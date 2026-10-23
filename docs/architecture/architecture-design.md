@@ -259,7 +259,7 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 
 - `(sourceSystem, eventId)`가 멱등 키. 하위 호환은 필드 추가만, 삭제/rename은 `V2`.
 - 토픽: `{domain}.{aggregate}.v{n}` (예: `order.order.v1`, `mfc.inventory.v1`). 파티션 키 = aggregateId.
-- Outbox 테이블은 서비스마다 동일 스키마(`libraries/common-messaging` — 기술 코드만). 릴레이는 polling publisher(1차) → Debezium(2차) `[결정 필요]`.
+- Outbox 테이블은 서비스마다 동일 스키마(`libraries/common-messaging`의 공통 Flyway 마이그레이션 `V0_0_1__pmart_outbox_inbox.sql`). 발행은 **Debezium**(PostgreSQL 논리 복제 → Kafka Connect → Outbox Event Router)이며 애플리케이션 릴레이는 없다(ADR-0009, 2026-10-23 확정). 발행 전 `contracts/events` JSON Schema 검증(ENFORCE).
 - Inbox 테이블 `(sourceSystem, eventId)` unique로 중복 차단. 역순 수신은 `aggregateVersion` 비교로 폐기하되 **실물 사실(출발·인계·수령)은 폐기하지 않고 정정 경로로 수용**.
 
 ### 5.3 명령 API 규약
@@ -413,7 +413,7 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 | mfc-capacity에 작업 배정·OR-Tools 포함 여부 | mfc | MFC WK-02/09/10 |
 | 고객 슬롯 정원 산정식(08/09시 개시, 시간대별 정원) | delivery-capacity | OMS 6, MFC Q-18 |
 | 첫 구매 자격 점유 위치(order vs promotion) | order | Commerce 8.8 |
-| Outbox 릴레이 방식(polling vs CDC) | libraries/common-messaging | §5.2 |
+| ~~Outbox 릴레이 방식~~ → Debezium 확정(2026-10-23) | libraries/common-messaging, deploy/local | ADR-0009 |
 | 고객센터·재입고 알림·BI 원천 사건의 서비스 배치 | case/notification | Commerce 14, 6.13, 1.2 |
 | 회계·지급 연계(라이더 수행료, 운송비) | 외부 어댑터 | Delivery 7.2, TMS 20, BO-21 |
 | 문서 내 깨진 링크(`시스템 책임 경계.md`, `MFC-business-logic/02_*.md`, `문서_책임정리_20261020/` 등 10건)와 Delivery 이미지 | docs | grep 결과 |

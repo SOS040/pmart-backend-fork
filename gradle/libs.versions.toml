@@ -15,6 +15,7 @@ wiremock-spring-boot = "4.4.3"   # org.wiremock.integrations
 ortools = "9.15.6755"            # Java 바인딩. transport-routing·mfc-capacity에만
 confluent = "8.3.2"              # Schema Registry client + JSON Schema serializer (common-messaging에만)
 jspecify = "1.0.0"
+json-schema-validator = "3.0.8"  # networknt, Jackson 3. contracts/events JSON Schema 검증
 # 플러그인
 spotless = "8.10.4"
 sonarqube = "7.5.0.8588"
@@ -71,6 +72,7 @@ resilience4j-spring-boot4 = { module = "io.github.resilience4j:resilience4j-spri
 ortools-java = { module = "com.google.ortools:ortools-java", version.ref = "ortools" }
 confluent-json-schema-serializer = { module = "io.confluent:kafka-json-schema-serializer", version.ref = "confluent" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
 
 # --- 테스트 (BOM 관리 + 일부 고정) ---
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

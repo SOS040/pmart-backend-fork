@@ -1,0 +1,44 @@
+{
+  "name": "outbox-${SERVICE}",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "${DB_HOST}",
+    "database.port": "${DB_PORT}",
+    "database.user": "${DB_USER}",
+    "database.password": "${DB_PASSWORD}",
+    "database.dbname": "${DB_NAME}",
+    "topic.prefix": "cdc.${SERVICE}",
+
+    "plugin.name": "pgoutput",
+    "publication.name": "pmart_outbox",
+    "publication.autocreate.mode": "disabled",
+    "slot.name": "pmart_outbox_${SERVICE_SLOT}",
+    "snapshot.mode": "no_data",
+
+    "table.include.list": "public.outbox_event",
+    "tombstones.on.delete": "false",
+    "heartbeat.interval.ms": "10000",
+
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.table.field.event.id": "id",
+    "transforms.outbox.table.field.event.key": "aggregateid",
+    "transforms.outbox.table.field.event.type": "type",
+    "transforms.outbox.table.field.event.payload": "payload",
+    "transforms.outbox.route.by.field": "topic",
+    "transforms.outbox.route.topic.replacement": "${routedByValue}",
+    "transforms.outbox.table.expand.json.payload": "false",
+    "transforms.outbox.table.fields.additional.placement": "type:header:eventType,aggregatetype:header:aggregateType,trace_id:header:traceId,correlation_id:header:correlationId",
+    "transforms.outbox.route.tombstone.on.empty.payload": "false",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "header.converter": "org.apache.kafka.connect.storage.SimpleHeaderConverter",
+
+    "errors.tolerance": "none",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true"
+  }
+}
