@@ -9,6 +9,7 @@ plugins {
     id("org.springframework.boot")
     id("pmart.java-conventions")
     id("pmart.contract-check")
+    id("pmart.container-image")
 }
 
 dependencies {
