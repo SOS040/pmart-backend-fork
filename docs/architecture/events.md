@@ -1,0 +1,222 @@
+# 이벤트 카탈로그 (발행자 → 구독자)
+
+문서 버전: 0.1 · 2026-10-23 · 설계안. 봉투 규약은 `architecture-design.md` §5.2. 스키마 파일은 `contracts/events/{EventType}.v1.json`(작성 예정).
+
+> 규칙
+> - 이벤트는 **이미 확정된 사실**만 싣는다. 요청·의도는 이벤트가 아니라 명령 API다(예외: `*Requested`는 "요청이 접수된 사실").
+> - `(sourceSystem, eventId)` 멱등. consumer는 inbox 테이블로 1회 적용. 같은 aggregate의 역순 수신은 `aggregateVersion`으로 폐기하되 실물 사실(출발·인계·수령)은 폐기하지 않고 정정 경로로 수용.
+> - 하위 호환: 필드 추가만. 삭제·타입 변경·rename은 `V2` 신규 이벤트.
+> - 토픽 `{domain}.{aggregate}.v1`, 파티션 키 = aggregateId.
+> - 개인정보·PG 비밀·주소 원문·출입 비밀번호는 payload에 넣지 않는다(참조 ID만).
+> - 단계 표기: ① 1단계 ② 2단계 ③ 3단계.
+
+---
+
+## 1. Commerce
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `ProductVersionPublished` | product-service | product-content, search, storefront, pricing, cdc-inventory, mfc-inventory, order, cart | productId, baseProductId, sku[], unitsPerSku, weightG, packagingSpec, categoryPaths, version | 승인된 상품/SKU 버전 발효 | ① |
+| `SkuIssued` | product-service | cdc-inventory, mfc-inventory, approval | sku(E-/B-), baseProductId, version | 본사 승인 후 SKU 발급 | ① |
+| `ProductSaleStateChanged` | product-service | cart, search, storefront, order, demand-planning | sku, state(ON_SALE/TEMP_OUT/DISCONTINUED), effectiveAt | 전사 판매 상태 변경 | ① |
+| `CategoryChanged` | product-service | search, storefront, product-content | categoryId, parent, state, version | 분류 승인 발효 | ① |
+| `ProductContentPublished` | product-content | search | productId, contentVersion | 콘텐츠 발효(5분 내 반영 목표) | ① |
+| `PriceVersionEffective` | pricing-service | cart, storefront, order, approval | sku, price, priceVersion, effectiveAt | 가격 승인 발효(확정 주문 소급 없음) | ① |
+| `CustomerConsentChanged` | customer-service | notification, audit | accountId, consentType, version, granted, at | 약관/마케팅 동의 변경 | ① |
+| `CustomerWithdrawalRequested` | customer-service | order, cart, notification | accountId | 탈퇴 접수(신규 구매·마케팅 중단) | ① |
+| `CustomerWithdrawalCompleted` | customer-service | auth, cart, notification, audit | accountId, completedAt | 미결 의무 종결 확인 후 완료 | ① |
+| `ShoppingAddressChanged` | customer-service | cart | accountId, shoppingAddressId, shoppingContextVersion, mfcId | 현재 쇼핑 주소 변경(늦은 응답 폐기 기준) | ① |
+| `CartItemChangeApplied` | cart-service | BI | cartId, cartItemId, sku, qty, cartVersion, appliedRequestId | 장바구니 변경 확정 | ① |
+| `ReviewPublished` / `ReviewDeleted` | review-service | product-content, audit | reviewId, orderLineId, productId, rating | 리뷰 등록/삭제(삭제 후 재작성 불가) | ② |
+
+## 2. Order & Payment
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `OrderDraftCreated` | order-service | BI | draftId, purchaseIntentId, accountId, mfcId, quoteVersion, quoteExpiresAt | 초안 생성·가격 동결 시작 | ① |
+| `OrderConfirmed` | order-service | cart, mfc-fulfillment(또는 동기), notification, demand-planning, replenishment, delivery-dispatch(이행 계획), BI | orderId, orderVersion, accountId, mfcId, lines[{orderLineId, sku, qty, unitsPerSku, weightG, unitPrice, discountShare}], deliveryMode, arrivalWindow, outOfStockPreference, reservationIds, slotHoldId, paymentAttemptId, shipments[] | PG 승인 대사 일치 + 자원 확정 후 | ① |
+| `OrderPreparationStarted` | order-service | commerce(조회), notification | orderId, startedAt | MFC `PreparationStarted` 반영. 이후 예약 시간 변경 차단 | ① |
+| `OrderLineQuantityChanged` | order-service | claim, demand-planning, replenishment, commerce | orderId, orderLineId, originalQty, unfulfilledQty, handedOverQty, cancelledBeforeShipQty, reason, version | 부분 취소·결품 반영 | ① |
+| `OrderPartiallyDelivered` | order-service | notification, commerce | orderId, deliveryId, deliveredLines[] | 분할배송 일부 완료 | ① |
+| `OrderCompleted` | order-service | review, notification, BI | orderId, completedAt | 모든 유효 배송 전달 완료 + 미전달분 해소 | ① |
+| `OrderCancelled` | order-service | delivery-dispatch(신규 배차 차단), notification, demand-planning, replenishment, BI | orderId, scope(FULL/PARTIAL), lines[], reason | 취소 확정(환불 완료와 별개) | ① |
+| `OrderExpired` | order-service | cart, BI | draftId/orderId, reason(PRICE_EXPIRED/RESERVATION_EXPIRED/PAYMENT_FAILED) | 10분 만료·미승인 확정 | ① |
+| `ReservationTimeChanged` | order-service | mfc-fulfillment, delivery-capacity, notification | orderId, oldWindow, newWindow, version | S4 성공 | ① |
+| `CustomerCommitmentChanged` | order-service | replenishment | mfcId, sku, orderLineId, committedQty, dueAt, state(VALID/BLOCKED/CANCELLED), version | 확정·취소·결품으로 C 변동(취소 신청만으로는 아님) | ② |
+| `CheckoutSagaStateChanged` | order-orchestration | backoffice-bff, BI | sagaId, orderId, step, state, lastError | 사가 단계 전이 | ① |
+| `CompensationExecuted` | order-orchestration | audit, case | sagaId, resourceType, resourceId, result | 이번 시도 신규 자원 보상 해제 | ① |
+| `ReconciliationRequired` | order-orchestration | case, backoffice-bff | sagaId, orderId, mismatchType(AMOUNT/QTY/STATE), details | 대사 불일치·자동 복구 한도 초과 | ① |
+| `CancellationRequested` | claim-service | order-orchestration | claimId, orderId, lines[], reason | 고객/CS 취소 접수(S3 시작) | ① |
+| `ClaimOpened` | claim-service | notification, case | claimId, orderId, type(CANCEL/RETURN/EXCHANGE), lines[], reason | 접수 | ① |
+| `ClaimDecided` | claim-service | order, delivery-execution(회수), mfc-quality, notification, backoffice | claimId, decisions[{claimLineId, APPROVED/REJECTED, qty}], refundIntentId? | 심사 결과(일부 승인 가능) | ① |
+| `ReturnPickupRequested` | claim-service | delivery-dispatch | claimId, orderId, deliveryId(원), lines[], pickupAddress(원주문 주소 ref) | 회수 승인 | ② |
+| `RefundIntentCreated` | claim-service | payment(명령은 동기; 이벤트는 기록), audit | refundIntentId, orderId, amount, basis(원안분), paymentAttemptId | 환불 의도·금액 산정 | ① |
+| `ExchangeReshipmentApproved` | claim-service | order, delivery-dispatch, mfc-fulfillment | claimId, orderId, lines[], newShipmentRef | 교환 승인(재배송은 교환 건만) | ② |
+| `ClaimClosed` | claim-service | order, notification, case | claimId, outcome | 회수·검수·환불·통지 의무 모두 확인 | ② |
+| `PaymentApproved` | payment-service | order-orchestration, audit | paymentAttemptId, pgTransactionId, orderRef, amount, currency, approvedAt | PG 승인 사실 확인 | ① |
+| `PaymentFailed` | payment-service | order-orchestration, notification | paymentAttemptId, code | 승인 실패 확정 | ① |
+| `PaymentResultUnknown` | payment-service | order-orchestration, case(장기) | paymentAttemptId, inquiryCount, nextInquiryAt | 타임아웃·응답 유실(1분×5→상신→15분) | ① |
+| `PaymentMismatch` | payment-service | order-orchestration, case | paymentAttemptId, expectedAmount, approvedAmount | 금액·통화·주문 불일치 | ① |
+| `RefundResult` | payment-service | claim, order, notification, audit | refundRequestId, refundIntentId, pgTransactionId, amount, result(SUCCESS/FAILED/UNKNOWN), cumulativeRefunded, remainingLimit | 전체/부분 취소 결과 | ① |
+| `CompensationCancelResult` | payment-service | order-orchestration | paymentAttemptId, result | 승인 후 확정 실패 보상 취소 결과 | ① |
+
+## 3. SCM
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `ReplenishmentRecommended` | replenishment | mfc-inbound(요청함), backoffice-bff, notification | planRunId, mfcId, sku, N, Q(추천), W, K, 미충족, firstShortageAt, snapshotRefs | SCM-D04/D05 완료(요청·승인 아님) | ② |
+| `SupplyRequestReceived` | replenishment | mfc-inbound(ACK), approval | supplyRequestId, version, mfcId, lines[], requestedReadyAt, result(ACCEPTED/CONFLICT/PENDING) | SCM-D06 | ② |
+| `TransferApproved` (=ApprovedTransfer) | replenishment | cdc-outbound, transport-planning, mfc-inbound, approval | trfId, trfVersion, fromCdc, toMfc, lines[{sku, approvedQty, unit}], deadlineMeaning(ARRIVAL/HANDOVER/READY), dueAt, priority, approvalRef | 사업승인·부분승인 확정(SCM-D08) | ② |
+| `TransferChanged` / `TransferCancelled` | replenishment | cdc-outbound, transport-planning, mfc-inbound | trfId, fromVersion, toVersion, scope, reason | 승인 후 변경·취소(실출발 전만) | ② |
+| `TransferResidualClosed` | replenishment | cdc-outbound, backoffice-bff, BI | trfId, closedQty(Uclosed), approver, basis | 미출발 잔량 종료(`A0 = D + Cpre + Uclosed + Uopen`) | ② |
+| `SupplyShortfallAlerted` | replenishment | notification, case | cdcId, sku, shortfall, affectedMfcs[] | CDC 전체 공급 부족 | ② |
+| `SupplyStatusChanged` | replenishment | order(영향 주문 조사) | mfcId, sku, expectedQty, expectedAt, state(DELAYED/REDUCED) | 공급 지연·축소 | ② |
+| `ForecastVersionPublished` | demand-planning | replenishment | forecastVersionId, mfcId, sku, buckets[], basis, confidence | 예측 버전 발행 | ② |
+
+## 4. CDC WMS
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `AllocationResult` | cdc-inventory | replenishment, cdc-outbound | trfId, trfVersion, allocationId, lines[{sku, lot, allocatedQty, shortQty}] | TRF 확보(FEFO 다LOT) | ② |
+| `TransferDeparted` (TOUT) | cdc-inventory | mfc-inbound, mfc-inventory(T 참조), replenishment, transport-execution, transport-planning | trfId, departureId, departureLineIds[], lines[{sku, lot, lpn, qty}], departedAt, source(REAL/SIMULATED) | 출발 검증 후 `현물−q·예약−q·Transit+q` 1회 전기 | ② |
+| `TransitReconciled` | cdc-inventory | mfc-inbound, replenishment, backoffice-bff | trfId, departureId, q, r, l, t, state(RECONCILED/PENDING/CONFLICT) | `q = r + l + t` 대사 | ② |
+| `TransferAckStatus` | cdc-inventory | mfc-inventory, replenishment | receiptId, ackState(ACKED/PENDING/CONFLICT) | TIN 확인 처리 결과 | ② |
+| `QuantityPostingResult` | cdc-inventory | cdc-inbound, cdc-outbound, cdc-quality | requestId, commitId, postingType, appliedQty, result | 수량 반영 요청 결과 | ② |
+| `InventorySnapshotPublished` | cdc-inventory / mfc-inventory | replenishment, BI | centerId, asOf, version, lines[{sku, lot, onHand/H, reserved/R, held/Q, available/A, safety}] | 주기/사건 스냅샷 | ② |
+| `LotBlocked` / `LotReleased` | cdc-inventory | cdc-outbound, replenishment, mfc-quality(리콜 참조), order(영향 참조) | sku, lot, scope, reason, blockedQty | quality 요청 반영 | ② |
+| `InventoryAdjustmentPosted` | cdc-inventory / mfc-inventory | approval, audit, replenishment | centerId, adjId, approvalRef, lines[], executedQty | 승인 범위 내 ADJ 집행 | ② |
+| `PutawayTaskStateChanged` | cdc-inbound | backoffice-bff | taskId, state, qty(C/U/K) | 적치 상태 전이 | ② |
+| `ReplenishmentMoveCreated` | cdc-inbound | cdc-location, backoffice-bff | movId, fromLoc, toLoc, sku, qty | 최소 이하 자동 보충 | ② |
+| `LocStateChanged` | cdc-location | cdc-inbound, cdc-outbound | locCode, state | LOC 상태 변경 | ② |
+| `CapacityReservationResult` | cdc-location | cdc-inbound | reservationId, locCode, result | 공간 예약 결과 | ② |
+| `DockReservationResult` | cdc-location | transport-planning | dockId, window, result | 도크 예약 | ② |
+| `WaveStateChanged` | cdc-outbound | backoffice-bff | waveId, state | Wave 전이 | ② |
+| `PickShortageReported` | cdc-outbound | replenishment, cdc-inventory | trfId, sku, lot, shortQty | 실피킹 부족 | ② |
+| `OutboundReadinessChanged` | cdc-outbound | transport-planning | trfId, readyAt(예상/확정), hold, cargo[{lpn, weight, volume, temp}] | 출고 준비 상태 | ② |
+| `TruckDepartureValidated` | cdc-outbound | cdc-inventory(전기 요청), transport-execution | departureId, trfId, validatedLines[], mismatches[] | TruckActuallyDeparted ↔ 실상차 대조 완료 | ② |
+| `TransferShipmentManifestIssued` | cdc-outbound | mfc-inbound, transport-execution | shipmentManifestId, trfId, departureId, lines[{sku, lot, lpn, qty, expiryDate}] | 출발 매니페스트 | ② |
+| `OutboundDiscrepancyRaised` | cdc-outbound | case, replenishment | trfId, type(MIXED/MISSING/EXCESS/SEAL), details | 출발 전 불일치 | ② |
+| `HoldRequested` / `HoldReleased` / `DisposalApproved` | cdc-quality | cdc-inventory | sku, lot, qty, reason, approverRef | 품질 판단(실행은 inventory) | ② |
+| `RecallIssued` | cdc-quality | cdc-inventory, cdc-outbound, mfc-quality, replenishment, order(참조), case | recallId, sku, lots[], scope | 리콜 | ② |
+| `OperationRestrictionApplied` / `Lifted` | cdc-quality(CDC) / mfc-capacity(MFC) / rider(라이더) | order, replenishment, transport-planning, delivery-dispatch, approval, backoffice-bff | centerId/riderId, restrictionType(INTAKE_STOP/WORK_STOP/QUALITY/LINEHAUL/RIDER), scope, appliedAt, approvalRef | 종류별 제한 적용·재개(중첩 유지) | ① |
+
+## 5. MFC
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `InventoryHeld` | mfc-inventory | order-orchestration | reservationId, orderId, lines[{sku, lot?, qty}], expiresAt | 결제 직전 전품목 예약 성공 | ① |
+| `InventoryReleased` | mfc-inventory | order-orchestration, cart | reservationId, reason | 해제 확인 | ① |
+| `InventoryHoldExpired` | mfc-inventory | order-orchestration | reservationId | 10분 만료(PG 불명이면 `결제 확인 대기 점유`로 전환되므로 만료 아님) | ① |
+| `ReservationBlocked` | mfc-inventory | order-orchestration, replenishment | reservationId, orderId, sku, lot, blockedQty, reason | 품질 격리로 예약 BLOCKED(약속은 유지) | ① |
+| `MfcReceiptPosted` (TIN) | mfc-inventory | cdc-inventory, replenishment, mfc-inbound, transport-execution | receiptId, postingId, trfId, departureId, lines[{sku, lot, normalQty, quarantinedQty, pendingQty}], commitId | ConfirmReceipt COMMITTED 후 `H+r` | ② |
+| `ReceiptCorrectionPosted` | mfc-inventory | cdc-inventory | receiptId, δr, reason | 수령 정정 | ② |
+| `PackageHandedOverPosted` | mfc-inventory | mfc-fulfillment, BI | commitId, packageId, lines[{sku, qty}] | 인계 전기 `H−q, E−q, R−q` | ① |
+| `InventoryExecutionApplied` | mfc-inventory | mfc-fulfillment, mfc-inbound, mfc-quality | requestId, commitId, executionType, appliedQty, result | 작업 실행 반영 결과 | ① |
+| `StockAdjusted` | mfc-inventory | approval, audit, replenishment | adjId, lines[], approvalRef | 실사 ADJ | ② |
+| `MfcStockAvailable` | mfc-inventory | notification(재입고 알림) | mfcId, sku, availableQty | 정상 판정·판매 준비 후 A>0 전환 | ③ |
+| `WorkAccepted` / `WorkRejected` | mfc-fulfillment | order-orchestration | orderId, fulfillmentId, taskIds[], rejectReason? | ConfirmOrder 결과(수락≠완료) | ① |
+| `PreparationStarted` | mfc-fulfillment | order, delivery-dispatch(준비 예상) | orderId, fulfillmentId, startedAt, estimatedPackDuration | 실제 준비 시작 확정 | ① |
+| `LineShortageReported` | mfc-fulfillment | order-orchestration, case(동의 없음 시), mfc-quality(파손) | orderId, orderLineId, shortQty, reason(SHORT/DAMAGED/BLOCKED), alreadyHandedOverQty | 피킹 결품·파손 | ① |
+| `PackingFinished` | mfc-fulfillment | delivery-dispatch, commerce | shipmentId, packages[{packageId, bagCount, weight, volume, alcohol}] | 포장 완료(인계 아님) | ① |
+| `ShipmentReady` | mfc-fulfillment | delivery-dispatch, order | orderId, shipmentId, mfcId, readyAt, packages[], pickupLocation | 출하 대기(배차 요청 트리거) | ① |
+| `PackageHandedOver` | mfc-fulfillment | order, delivery-execution, delivery-dispatch, claim, demand-planning, BI | orderId, shipmentId, deliveryId, packageId, riderId, handoverId, inventoryCommitId, lines[], handedAt | QR 전수 스캔·fence·inventory 커밋 후 | ① |
+| `WorkStopResult` | mfc-fulfillment | order-orchestration, claim | orderId, stopRequestId, perPackage[{packageId, STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER}] | 중지 요청 판정 | ① |
+| `PackageInvalidated` | mfc-fulfillment | delivery-dispatch, delivery-execution | packageId, newPackageId, reason | 재포장(구 라벨 무효) | ① |
+| `TaskProgressed` | mfc-fulfillment / mfc-inbound | mfc-capacity, backoffice-bff | taskId, type, state, qty | 작업 전이 | ① |
+| `SupplyRequestSubmitted` | mfc-inbound | replenishment | supplyRequestId, version, mfcId, lines[], requestedReadyAt, urgency, reason, recommendationRef | 로컬 DRAFT→SUBMITTED | ② |
+| `InboundArrivalRecorded` | mfc-inbound | transport-execution, replenishment | trfId, tripId, stopId, arrivedAt | 차량 도착 기록(수령 아님) | ② |
+| `ReceiptDiscrepancyReported` | mfc-inbound | cdc-inventory, transport-execution, replenishment, case | trfId, departureId, expected, received, missingQty, excessQty | 수령 차이 | ② |
+| `ReturnItemReceived` | mfc-inbound | mfc-quality, claim | claimId, returnPickupId, lines[], receivedAt | 회수품 점포 수령(검수 대기, 판매 재고 아님) | ② |
+| `MfcLocationStateChanged` | mfc-location | mfc-inventory, mfc-fulfillment | locationId, state | 위치 폐쇄·활성 | ① |
+| `CapacityHoldResult` | mfc-capacity | order-orchestration | holdId, orderId, result, expiresAt | HoldCapacity 결과 | ① |
+| `CapacityReduced` | mfc-capacity | delivery-capacity, order, notification | mfcId, window, oldCapacity, newCapacity, affectedOrders[] | 용량 축소(기존 약속 삭제 없음) | ① |
+| `ReceivingCapabilityChanged` | mfc-capacity | replenishment, transport-planning | mfcId, windows[], maxPerArrival, staff | 수령창·수용량 변경 | ② |
+| `AssignmentPublished` | mfc-capacity | mfc-fulfillment, mfc-inbound | planVersion, assignments[{taskId, workerId, assignmentVersion}] | 계획 발행(COMMITTED) | ① |
+| `QualityDecisionMade` | mfc-quality | mfc-inventory, case(리콜), order(참조) | sku, lot, decision(QUARANTINE/RELEASE/DISPOSAL_PENDING), qty, approverRef | 판정·승인 | ① |
+| `ReturnInspected` | mfc-quality | claim, mfc-inventory | claimId, lines[{sku, qty, RESALE/DISPOSE}], inspectedAt | 회수품 검수(상온 미개봉만 재판매) | ② |
+| `DisposalApproved` | mfc-quality | mfc-inventory | disposalId, lines[], approverRef | 폐기 승인(실행은 inventory) | ② |
+
+## 6. Middle-mile TMS
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `TransportRequestReceived` | transport-planning | replenishment | trfId, trfVersion, transportRequestId, state(PLAN_READY/DATA_PENDING/TIME_INFEASIBLE), missing[] | TMS-D01 접수 | ② |
+| `TransportFeasibilityResult` | transport-planning | replenishment | trfId, feasible, candidateRuns[], capacityLimit, earliestReadyAt, reason | 운송 가능성·상한 회신 | ② |
+| `TripAssigned` / `TripUpdated` | transport-planning | cdc-outbound, mfc-inbound, transport-execution, cold-chain, fleet | tripId, assignmentVersion, vehicleId, driverId, stops[{mfcId, plannedArrival, window}], cargo[{trfId, lpn[], compartment}] | 배정 CONFIRMED / 변경 | ② |
+| `TripInstructionIssued` | transport-planning | transport-execution(기사 단말) | tripId, instructionVersion | 지시서 발행(구버전 무효) | ② |
+| `TransportUnplannedReported` | transport-planning | replenishment, notification | trfId, qty, reason(NO_VEHICLE/TIME/DATA), alternatives[] | 미편성 | ② |
+| `FleetReservationResult` | fleet | transport-planning | reservationId, vehicleId/driverId, window, result | 점유 예약 결과 | ② |
+| `VehicleAvailabilityChanged` | fleet | transport-planning | vehicleId, nextAvailableAt | 재가용 계산 | ② |
+| `RoadMatrixRefreshed` | transport-routing | transport-planning, transport-execution | matrixVersion, asOf | 도로시간 갱신 | ② |
+| `TruckActuallyDeparted` | transport-execution | cdc-outbound(검증), replenishment, mfc-inbound(예고) | departureId, tripId, vehicleId, driverId, departedAt, evidenceRef, source(REAL/SIMULATED), trfCompositions[{trfId, lines[]}] | 실제 출발 사실(TOUT 아님) | ② |
+| `TripStateChanged` | transport-execution | transport-planning, backoffice-bff | tripId, state | 운행 전이(IN_TRANSIT 삭제 없음) | ② |
+| `StopArrived` | transport-execution | mfc-inbound, delivery? (아님) | tripId, stopId, mfcId, arrivedAt | 정차 도착(수량 증거 아님) | ② |
+| `TransportHandoverEvidenceRecorded` | transport-execution | mfc-inbound, cdc-inventory(대사 참조) | tripId, stopId, trfId, departureId, lines[{lpn, sku, lot, qty}], handedBy, receivedBy, evidenceRef, at | 현장 인계 증빙(TIN 아님) | ② |
+| `TransportIncidentRaised` / `Resolved` | transport-execution | replenishment, mfc-inbound, cdc-quality, case, notification | incidentId, tripId, type(DELAY/BREAKDOWN/GPS_LOST/TEMP/QTY), affectedTrfs[], custodyLocation | 사건 | ② |
+| `TransportEtaUpdated` | transport-execution | mfc-inbound, replenishment | tripId, stopId, originalPromise, latestEta, basis | ETA 갱신(최초 약속 보존) | ② |
+| `TripPhysicallyEnded` | transport-execution | fleet, cold-chain, transport-planning | tripId, endedAt, endLocation, openObligations[] | 승인 구간 종료(사건은 남을 수 있음) | ② |
+| `TripPerformanceRecorded` | transport-execution | BI | tripId, plannedVsActual, costBasis(산정불가 포함) | 실적·비용 근거 | ② |
+| `TemperatureExcursion` / `TemperatureRestored` | cold-chain | cdc-quality, mfc-quality, transport-execution | sensorScope(vehicle/compartment/zone), from, to, range, affectedLpns[] | 이탈/복구(복구≠정상 판정) | ② |
+
+## 7. Last-mile Delivery
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `ServiceabilityVersionApplied` | delivery-serviceability | order, customer, cart, approval | mappingVersion, effectiveAt, changedZones[] | 권역 매핑 발효(기존 주문 불변) | ① |
+| `SlotHoldResult` | delivery-capacity | order-orchestration | slotHoldId, orderId, window, result, expiresAt | HoldSlot 결과 | ① |
+| `SlotCapacityReduced` | delivery-capacity | order, notification | mfcId, window, affectedOrders[] | 정원 축소 | ① |
+| `RiderStateChanged` | rider | delivery-dispatch, delivery-tracking | riderId, operatingState, newDispatchEnabled, vehicleType | 운행 시작/종료·신규배차 ON/OFF | ① |
+| `RiderRestricted` | rider | delivery-dispatch, mfc-fulfillment(인계 차단), audit | riderId, restriction, from, to, basis | 계정 제한(증빙 기반) | ① |
+| `RiderSupplyChanged` | rider | delivery-capacity | zoneId, activeRiders | 수급 참고 | ① |
+| `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce | deliveryId, orderId, shipmentId, type(NORMAL/SPLIT/RETURN/RESHIP), mfcId, dropAddressRef | 배송 단위 생성 | ① |
+| `DispatchOfferSent` | delivery-dispatch | notification(라이더 알림) | offerId, attemptId, deliveryId, riderId, expiresAt(1분), fee | 제안 전송 | ① |
+| `DeliveryAssigned` | delivery-dispatch | delivery-execution, delivery-tracking, mfc-fulfillment, order, notification | deliveryId, riderId, assignmentVersion, acceptedAt | 유효 수락 1건 확정 | ① |
+| `DeliveryAssignmentChanged` | delivery-dispatch | delivery-execution, mfc-fulfillment(이전 기사 인계 차단) | deliveryId, oldRiderId, newRiderId, assignmentVersion, reason | 재배정·배차 취소 | ① |
+| `DispatchFailed` | delivery-dispatch | case, notification, order | deliveryId, reason(NO_RIDER/REPEATED_REJECT/EXPIRED/SYSTEM), attempts | 배차 불가 | ① |
+| `DispatchDelayed` | delivery-dispatch | notification(점포·CS·고객), case | deliveryId, delayedMinutes, threshold | 지연 임계 초과 | ① |
+| `DeliveryCancelledBeforePickup` | delivery-dispatch | delivery-execution, mfc-fulfillment, order | deliveryId, reason | 픽업 전 취소(상품은 점포 보관) | ① |
+| `RiderArrivedAtStore` | delivery-execution | mfc-fulfillment(QR 활성), delivery-tracking | deliveryId, riderId, at | 가게 도착(인계 아님) | ① |
+| `PickupCompleted` | delivery-execution | order, delivery-tracking, notification, delivery-dispatch | deliveryId, packageIds[], handoverIds[], at | 모든 포장 `PackageHandedOver` 확인 후 | ① |
+| `RiderArrivedAtCustomer` | delivery-execution | notification | deliveryId, at | 고객 도착 | ① |
+| `DeliveryCompleted` | delivery-execution | order, review, notification, claim, demand-planning, BI | deliveryId, orderId, lines[{orderLineId, qty}], method(FACE/CONTACTLESS), evidenceRef, deliveredAt | 사진 증빙 확인 후 서버 완료(자동 완료 없음) | ① |
+| `DeliveryFailed` | delivery-execution | order, claim, case, notification | deliveryId, reason, custody(RIDER/STORE), at | 전달 실패·중단 | ① |
+| `DeliveryIncidentRaised` | delivery-execution | case, rider, claim | incidentId, deliveryId, type(DAMAGE/MISDELIVERY/ABSENT/UNSAFE/STATUS_FIX), evidenceRef | 도움요청·사고 | ① |
+| `ReturnPickedUp` / `ReturnDelivered` | delivery-execution | claim, mfc-inbound | returnPickupId, claimId, lines[], at | 고객 수거 / 점포 반납 | ② |
+| `DeliveryStatusCorrected` | delivery-execution | order, audit, notification | deliveryId, from, to, operatorId, basis | 관리자 정정 | ① |
+| `RiderEarningRecorded` | delivery-execution | BI, (회계 어댑터) | deliveryId, riderId, feeBasis, rateVersion, status | 수행료 근거(환불과 독립) | ① |
+| `SettlementStateChanged` | delivery-execution | notification | riderId, periodId, state | 정산 상태 | ② |
+| `DeliveryEtaUpdated` | delivery-tracking | order(고객 조회), mfc-fulfillment(점원), notification(지연) | deliveryId, etaPickup?, etaDrop, basis, staleness | ETA 갱신 | ① |
+| `RiderLocationStale` | delivery-tracking | delivery-dispatch, case | riderId, lastSeenAt | 위치 단절 | ① |
+
+## 8. Platform & Support
+
+| 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
+|---|---|---|---|---|---|
+| `CustomerAuthenticated` | auth | customer | accountId, provider, at | 소셜 인증 성공(이용 가능≠) | ① |
+| `GrantApplied` | auth | approval(Receipt), audit | grantId, approvalRef, operatorId, roles[], centerScope[], effective | 권한 반영 확인 | ① |
+| `DelegationStarted` / `DelegationEnded` | auth | approval, audit | delegationId, from, to, scope(교집합), until | 대행 | ① |
+| `ChangeRequestSubmitted` | approval | 해당 정본(검증용), notification(승인자) | changeRequestId, type, targetRef, expectedVersion, payloadRef | 초안 제출 | ① |
+| `ApprovalDecided` | approval | product, pricing, storefront, product-content, center-master, delivery-serviceability, auth, replenishment, claim, cdc-quality, mfc-quality, mfc-capacity, rider, cdc-inventory, mfc-inventory, notification, audit | approvalId, type, decision(APPROVED/PARTIALLY_APPROVED/REJECTED), targetRef, lines[{qty/amount}], conditions, effectiveFrom, expiresAt, approverId, dossierVersion | 심사 확정(정본 반영은 별도 Receipt) | ① |
+| `ApprovalWithdrawn` / `Expired` / `Superseded` | approval | 해당 정본, audit | approvalId, reason | 철회·만료·대체 | ① |
+| `PolicyVersionApproved` | approval | 정책 소유 서비스(replenishment, mfc-capacity, delivery-capacity, cdc-*, claim 등) | policyRef, ownerService, version, effectiveFrom | 정책 승인(소유 서비스가 발효 후 결과 회신) | ① |
+| `OperationRestrictionRequested` / `ResumeRequested` | approval | cdc-quality, mfc-capacity, rider, delivery-dispatch | centerId/riderId, restrictionType, scope, approvalRef | 제한/재개 요청(적용은 정본) | ① |
+| `BatchRowResultRecorded` | approval | backoffice-bff, audit | batchId, fileHash, rowNo, result | 대량 변경 행별 결과 | ② |
+| `CaseOpened` / `CaseAssigned` / `CaseTransferred` / `CaseClosed` / `CaseReopened` | case | notification, audit, backoffice-bff | caseId, type, refs[{orderId/trfId/deliveryId/…}], assignee, priority | 사건 생명주기 | ① |
+| `ObligationCreated` / `ObligationResolved` | case | backoffice-bff | obligationId, caseId, kind, qty/amount, ownerService | 의무 등록·해소 | ① |
+| `ShiftHandoverCompleted` | case | audit | handoverId, from, to, openCases[] | 교대 | ② |
+| `NotificationDelivered` / `NotificationFailed` | notification | audit, BI | notificationId, channel, recipientRef, result | 발송 결과(읽음≠동의) | ① |
+| `AuditEntryRecorded` | 전 서비스 | audit | actor, action, targetRef, before/after ref, reason, result | 운영자 변경 명령 | ① |
+| `CenterMasterChanged` / `CenterCalendarChanged` | center-master | order, replenishment, transport-planning, delivery-serviceability, mfc-location, mfc-capacity, cdc-location | centerId, version, changedFields / calendarVersion, windows[] | 센터 기준정보·캘린더 발효 | ① |
+
+---
+
+## 9. 멱등·순서·역순 처리 규칙 요약
+
+| 상황 | 처리 |
+|---|---|
+| 같은 `(sourceSystem, eventId)` 재수신 | inbox 조회 후 무시(원결과 유지) |
+| 다른 eventId, 같은 업무 사실(예: 같은 departureId, 같은 handoverId) | 업무 유일성 제약으로 1회 효과. 수량·차량이 다르면 **충돌 사건**(덮어쓰기 금지) |
+| 같은 aggregate의 낮은 version이 늦게 도착 | 상태 전이는 폐기. 단 실물 사실(TransferDeparted, PackageHandedOver, MfcReceiptPosted, DeliveryCompleted)은 폐기하지 않고 발생시각·수신시각 보존 후 대사 |
+| 선행 사건 누락(수령은 왔는데 출발이 없음) | 수령을 버리지 않고 원출발 조회·대사. `ReconciliationRequired` |
+| consumer 처리 실패 | 재시도(멱등 전제). 소진 시 DLQ + `case-service` 상신. 성공한 다른 consumer의 효과는 유지 |
+| 발행자 Outbox 릴레이 지연 | aggregateVersion으로 최신성 판단. 시간 경과로 성공/실패 확정 금지 |
