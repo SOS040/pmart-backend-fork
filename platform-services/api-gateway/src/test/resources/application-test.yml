@@ -5,6 +5,13 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: http://localhost:1/jwks
+  data:
+    redis:
+      url: redis://localhost:1 # 단위 테스트는 Redis 없이: 처리율 제한 비활성
+pmart:
+  gateway:
+    rate-limit:
+      enabled: false
 management:
   tracing:
     enabled: false

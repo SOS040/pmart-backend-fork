@@ -15,6 +15,11 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 - 공개 작업(`pmart.gateway.public-paths`)은 계약의 `security: []` 인 작업과 1:1. 임의 추가 금지.
 - 그 외 `/api/**` 는 유효한 JWT 필수(401/403 Problem). 역할·센터·행위 시점 검증은 각 서비스 책임.
 
+## 처리율 제한 (`filter/RateLimitGlobalFilter`, `pmart.gateway.rate-limit`)
+- Redis 토큰 버킷(`RedisRateLimiter`). 유효한 JWT → subject 단위, 그 외 → 클라이언트 IP 단위(`trusted-proxies` 만큼 `X-Forwarded-For` 신뢰). 초과 시 429 Problem `RATE_LIMITED`(retryable) + `Retry-After`.
+- Redis 장애 시 허용(fail-open). 그래서 Redis health 는 게이트웨이 health 에서 제외.
+- 수치는 잠정값. 웹훅(`/api/v1/webhooks/**`)은 제외. Redis 는 `PMART_REDIS_URL`.
+
 ## 실행
 ```bash
 ./gradlew :platform-services:api-gateway:check
@@ -23,4 +28,4 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 로컬 포트 8080.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). rate limit(Redis 기반 RequestRateLimiter)은 미적용.
+3단계 스캐폴딩(2026-10-23), 처리율 제한 적용(2026-10-23). 통합 테스트 `RateLimitIT` 는 Redis 컨테이너 사용.

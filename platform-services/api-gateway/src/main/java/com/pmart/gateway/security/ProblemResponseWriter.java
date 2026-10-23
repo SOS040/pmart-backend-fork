@@ -16,7 +16,7 @@ import reactor.core.publisher.Mono;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * 게이트웨이 자체 오류(401/403)를 RFC 9457 {@code application/problem+json} 으로 쓴다. 형식은
+ * 게이트웨이 자체 오류(401/403/429)를 RFC 9457 {@code application/problem+json} 으로 쓴다. 형식은
  * contracts/openapi/_common.yaml ErrorResponse 와 같다(type/title/status/detail/instance +
  * code/traceId/requestId/retryable).
  */
@@ -35,6 +35,15 @@ public class ProblemResponseWriter {
 
   public Mono<Void> write(
       ServerWebExchange exchange, HttpStatus status, String code, String detail) {
+    return write(exchange, status, code, detail, false);
+  }
+
+  public Mono<Void> write(
+      ServerWebExchange exchange,
+      HttpStatus status,
+      String code,
+      String detail,
+      boolean retryable) {
     ServerHttpResponse response = exchange.getResponse();
     if (response.isCommitted()) {
       return Mono.empty();
@@ -49,7 +58,7 @@ public class ProblemResponseWriter {
     body.put("detail", detail);
     body.put("instance", exchange.getRequest().getPath().value());
     body.put("code", code);
-    body.put("retryable", false);
+    body.put("retryable", retryable);
     String requestId = response.getHeaders().getFirst(RequestIdWebFilter.HEADER);
     if (requestId != null) {
       body.put("requestId", requestId);

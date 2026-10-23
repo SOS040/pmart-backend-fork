@@ -3,6 +3,7 @@
 # - 같은 세그먼트를 여러 서비스가 쓰는 me / riders / deliveries 는 더 구체적인 경로를 음수 order 로 먼저 매칭한다.
 # - 업스트림 주소는 pmart.gateway.upstream.<service> (기본: Kubernetes Service DNS). 환경변수 PMART_GATEWAY_UPSTREAM_<NAME> 으로 덮어쓴다.
 # - 공개 경로(pmart.gateway.public-paths)는 계약에서 security: [] 인 작업만. 그 외 모든 /api/** 는 JWT 필수.
+# - 처리율 제한(pmart.gateway.rate-limit): JWT subject / 클라이언트 IP 단위 Redis 토큰 버킷. Redis 장애 시 허용(fail-open).
 spring:
   application:
     name: api-gateway
@@ -14,6 +15,9 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: ${PMART_JWKS_URI}
+  data:
+    redis:
+      url: ${PMART_REDIS_URL} # 처리율 제한 토큰 버킷 상태만 둔다(원장 아님)
   cloud:
     gateway:
       server:
@@ -226,7 +230,22 @@ pmart:
         path: /api/v1/auth/social-logins/*/completions # auth-service
       - method: POST
         path: /api/v1/auth/tokens # auth-service
+    # 처리율 제한. 수치는 잠정값(2026-10-23) — 부하 시험·운영 지표로 조정한다. 환경변수 PMART_GATEWAY_RATELIMIT_* 로 덮어쓴다.
+    rate-limit:
+      enabled: true
+      trusted-proxies: 1 # Ingress 1단. X-Forwarded-For 의 오른쪽 1개만 신뢰
+      anonymous: # 공개 작업(검색·홈·로그인) — IP 단위
+        replenish-rate: 10
+        burst-capacity: 20
+      authenticated: # JWT subject 단위
+        replenish-rate: 20
+        burst-capacity: 40
+      exempt-paths:
+        - /api/v1/webhooks/** # PG(토스) 웹훅: 발신 IP 가 몰리고 재전송은 PG 가 관리
 management:
+  health:
+    redis:
+      enabled: false # 처리율 제한은 fail-open 이라 Redis 장애로 게이트웨이를 내리지 않는다
   zipkin:
     tracing:
       endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

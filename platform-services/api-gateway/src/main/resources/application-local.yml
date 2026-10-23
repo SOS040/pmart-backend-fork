@@ -5,6 +5,9 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: ${PMART_JWKS_URI:http://localhost:8501/.well-known/jwks.json}
+  data:
+    redis:
+      url: redis://localhost:6379
 pmart:
   gateway:
     upstream:
