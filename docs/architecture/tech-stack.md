@@ -19,7 +19,7 @@
 | 캐시 | Redis + Spring Data Redis | 캐시·임시 데이터·위치 최신값 |
 | 메시징 | Apache Kafka, KRaft | 도메인 이벤트·비동기 처리 |
 | Kafka 연동 | Spring for Apache Kafka | 발행·소비·재시도·오류 처리 |
-| 이벤트 스키마 | Schema Registry + Avro | 계약 버전과 호환성 관리 |
+| 이벤트 스키마 | JSON Schema(draft 2020-12) + Schema Registry(JSON Schema 모드) | `contracts/events/` 정본. 봉투 allOf 구조, 필드 추가만 허용 |
 | 배치 | Spring Batch | 대사·집계·계획 계산 등 필요 서비스에 적용 |
 | API 명세 | OpenAPI + springdoc-openapi | REST API 계약 문서화 |
 | 입력 검증 | Jakarta Bean Validation | 요청 형식과 기본 제약 검증 |
@@ -46,6 +46,8 @@
 ## 선택적 스택
 - 검색 서비스: OpenSearch
 - AI 서비스: Spring AI + pgvector
+- 경로·배정 최적화: Google OR-Tools **Java 바인딩** (`transport-routing-service`, `mfc-capacity-service`에만). 별도 Python 런타임은 두지 않는다. GreedRL·RouteFinder 등 Python 전용 모델은 3단계에 별도 승인 후 검토.
+- 설정·서비스 검색: Kubernetes Service DNS + ConfigMap + Secret Manager. Spring Cloud Config/Eureka 서비스는 두지 않는다.
 - 일반 업무 서비스에 검색·AI 의존성을 일괄 적용하지 않는다.
 
 ## 전체 구조 예시

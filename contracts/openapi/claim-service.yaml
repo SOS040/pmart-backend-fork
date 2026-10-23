@@ -53,7 +53,7 @@ paths:
         '422':
           description: CLAIM_WINDOW_EXPIRED / QUANTITY_EXCEEDS_AVAILABLE / DUPLICATE_CLAIM / NOT_DELIVERED_YET / EVIDENCE_REQUIRED / ORDER_NOT_CANCELLABLE
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
     get:
@@ -120,7 +120,7 @@ paths:
         '422':
           description: EVIDENCE_REQUIRED (회수 생략·비용 결정 근거 누락) / APPROVAL_REQUIRED / UNSUPPORTED_ACTION
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /claims/{claimId}/decisions/{requestId}:
@@ -167,7 +167,7 @@ paths:
         '409':
           description: INVALID_STATE (환불 완료·종결) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /claims/{claimId}/withdrawals/{requestId}:
@@ -236,12 +236,12 @@ paths:
         '409':
           description: INVALID_STATE (회수 미승인·종결) / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: RECEIPT_EXCEEDS_APPROVED (승인 회수량 초과)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/claims/{claimId}/return-receipts/{requestId}:

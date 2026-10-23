@@ -112,7 +112,7 @@ paths:
         '409':
           description: INVALID_STATE (도착 미등록·이미 TIN_POSTED) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -193,7 +193,7 @@ paths:
         '409':
           description: INVALID_STATE (ACKNOWLEDGED 이후 변경 불가 → 철회 후 재요청) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /supply-requests/{supplyRequestId}/withdrawals:
@@ -220,7 +220,7 @@ paths:
         '409':
           description: INVALID_STATE (이미 이관 승인됨 → replenishment에서 취소)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /return-receipts:
@@ -334,7 +334,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / INVALID_STATE (센터가 초기 반입 단계 아님)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/initial-stock-loads/{receiptId}:

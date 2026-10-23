@@ -84,12 +84,12 @@ paths:
         '409':
           description: INVALID_STATE / VERSION_CONFLICT / DUPLICATE_APPROVAL (이중 발급 금지)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: EVIDENCE_REQUIRED (종류별 필수 증빙 누락)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /change-requests/{changeRequestId}/withdrawals:
@@ -116,7 +116,7 @@ paths:
         '409':
           description: INVALID_STATE (실행 축 IN_PROGRESS 이후 → 취소 승인 별도 요청)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /approvals:
@@ -188,18 +188,18 @@ paths:
         '403':
           description: FORBIDDEN (권한·범위·자기승인·대행 기간 외)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
           description: INVALID_STATE (REVIEW_PENDING/EVIDENCE_REQUIRED 아님) / VERSION_CONFLICT / STALE_VERSION (원객체 예상 버전 불일치)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: VALIDATION_FAILED (부분 승인량 > 요청량) / EVIDENCE_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /approvals/{approvalId}/decisions/{decisionId}:
@@ -287,7 +287,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INVARIANT_VIOLATION (집행 누계 > 승인량)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /batch-changes:
@@ -420,7 +420,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (approvalId 가 APPROVED 아님)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
 components:

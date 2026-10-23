@@ -70,7 +70,7 @@ paths:
         '422':
           description: CAPACITY_EXCEEDED / CONFIG_REQUIRED / OPERATION_RESTRICTED (접수 중지)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -114,7 +114,7 @@ paths:
         '409':
           description: INVALID_STATE (EXPIRED/RELEASED) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/capacity-holds/{holdId}/releases:
@@ -141,7 +141,7 @@ paths:
         '400':
           description: VALIDATION_FAILED (CONFIRMED 해제에 reason 없음)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
@@ -201,7 +201,7 @@ paths:
         '422':
           description: CAPACITY_EXCEEDED (1회 입고 상한·창 외) / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/unloading-bay-reservations/{bayReservationId}:
@@ -361,7 +361,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (승인 참조 없음·불일치)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /operation-restrictions/{restrictionId}:
@@ -395,7 +395,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
 components:

@@ -99,7 +99,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (approvalRef 없음·미승인) / CLOSURE_OBLIGATIONS_OPEN (휴폐점 의무 미완료)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/centers/{centerId}/changes/{requestId}:

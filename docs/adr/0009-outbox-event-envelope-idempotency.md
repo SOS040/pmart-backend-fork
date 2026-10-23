@@ -4,7 +4,7 @@
 - 관련: CLAUDE.md "통신"·"계약 변경", OMS A.1.1·A.4, SCM 19.2·20, TMS 17.2·18, MFC IF-04 L1720·L1976, Commerce E.1·E.5, BackOffice 6.2
 
 ## 결정
-1. **발행**: 모든 서비스는 로컬 트랜잭션에 Outbox 행을 함께 쓰고 릴레이가 Kafka로 발행한다. 릴레이는 1차 polling publisher, 2차 Debezium `[결정 필요]`. `libs/common-outbox`는 테이블·릴레이 기술 코드만 포함(비즈니스 로직 금지).
+1. **발행**: 모든 서비스는 로컬 트랜잭션에 Outbox 행을 함께 쓰고 릴레이가 Kafka로 발행한다. 릴레이는 1차 polling publisher, 2차 Debezium `[결정 필요]`. `libraries/common-messaging`은 봉투·Outbox·Inbox 기술 코드만 포함(비즈니스 로직 금지).
 2. **봉투**(architecture-design §5.2): `eventId, eventType, schemaVersion, sourceSystem, aggregateType/Id/Version, occurredAt(UTC), timezone, traceId, correlationId, causationId, actor, payload`. 스키마는 `contracts/events/{EventType}.v{n}.json`.
 3. **토픽**: `{domain}.{aggregate}.v{n}`, 파티션 키 = aggregateId. 하위 호환은 필드 추가만, 그 외는 `V2` 새 토픽.
 4. **소비**: inbox 테이블 `(sourceSystem, eventId)` unique. 처리와 inbox 기록은 같은 로컬 트랜잭션. 실패는 재시도 → DLQ + `case-service` 상신.

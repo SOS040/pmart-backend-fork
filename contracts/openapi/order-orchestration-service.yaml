@@ -88,7 +88,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (approvalRef 누락·미승인·만료) / UNSUPPORTED_ACTION / STEP_NOT_COMPENSABLE
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/sagas/{sagaId}/manual-actions/{requestId}:
@@ -135,12 +135,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / SAGA_ALREADY_ACTIVE (같은 draftId의 진행 중 사가 존재)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: RE_QUOTE_REQUIRED (quoteExpiresAt 경과) / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/cancellation-sagas:
@@ -171,12 +171,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / SAGA_ALREADY_ACTIVE (같은 stopRequestId 진행 중)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: ORDER_NOT_CANCELLABLE (전량 인계·이미 취소·만료)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
 components:

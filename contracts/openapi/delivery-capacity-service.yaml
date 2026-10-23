@@ -70,12 +70,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / HOLD_ALREADY_ACTIVE (주문당 1건)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: CONFIG_REQUIRED (정원 NOT_SET·조회 실패) / CAPACITY_EXCEEDED / SLOT_NOT_SELECTABLE (과거·07시·미개시)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -151,7 +151,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (OPERATOR 사유에 approvalRef 없음)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/slot-holds/{holdId}/confirmations/{requestId}:

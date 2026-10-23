@@ -41,7 +41,7 @@ paths:
         '409':
           description: TRANSFER_INTAKE_CONFLICT (같은 버전 다른 본문) / IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
 
@@ -94,7 +94,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / TRF_ALREADY_IN_WAVE / INVALID_STATE (미확보 TRF)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /waves/{waveId}:
@@ -127,7 +127,7 @@ paths:
         '409':
           description: INVALID_STATE / VERSION_CONFLICT / OPERATION_RESTRICTED (cdc-quality 운영 제한)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /tasks:
@@ -205,7 +205,7 @@ paths:
         '409':
           description: INVALID_STATE / VERSION_CONFLICT / PICK_EXCEEDS_ALLOCATION
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /sorting-results:
@@ -242,7 +242,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / SORT_EXCEEDS_PICKED / LPN_ALREADY_SEALED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /inspection-results:
@@ -330,7 +330,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / LOAD_EXCEEDS_INSPECTED / LPN_NOT_PASSED / TRIP_MISMATCH
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /work-results/{workResultId}:
@@ -403,7 +403,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / DEPARTURE_ALREADY_VALIDATED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -438,7 +438,7 @@ paths:
         '404':
           description: NOT_FOUND / NOT_DEPARTED (아직 출발 검증 전)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /transfers/{trfId}/pre-departure-cancellations:
@@ -479,7 +479,7 @@ paths:
         '409':
           description: INVALID_STATE (실제 출발 후) / VERSION_CONFLICT / DEPARTURE_IN_PROGRESS (결과 조회로 해소)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /transfers/{trfId}/pre-departure-cancellations/{requestId}:

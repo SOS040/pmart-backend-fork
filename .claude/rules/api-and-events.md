@@ -28,6 +28,6 @@ paths:
 - Kafka 보장을 외부 DB·PG까지의 exactly-once로 확대 해석하지 않는다.
 
 ## 이벤트 스키마
-- `contracts/events/`의 Avro 스키마가 정본. Schema Registry로 호환성 관리.
+- `contracts/events/`의 JSON Schema(draft 2020-12)가 정본. Schema Registry(JSON Schema 모드)로 호환성 관리. 봉투는 `_envelope.v1.json`.
 - 하위 호환이 깨지는 변경(필드 삭제, 타입 변경, rename)은 새 버전으로.
 - 계약 변경 시 영향받는 producer·consumer 서비스를 찾아 보고한다.

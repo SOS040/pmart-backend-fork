@@ -52,7 +52,7 @@ paths:
         '422':
           description: INSUFFICIENT_STOCK (details에 부족 sku·requestedQty·availableQty) / SKU_NOT_HANDLED(센터 취급 OFF) / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -97,7 +97,7 @@ paths:
         '409':
           description: INVALID_STATE (EXPIRED/RELEASED/BLOCKED 예약) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/reservations/{reservationId}/releases:
@@ -159,7 +159,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / RECEIPT_ALREADY_POSTED (같은 receiptId 다른 본문)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
 
@@ -191,12 +191,12 @@ paths:
         '409':
           description: VERSION_CONFLICT / INVALID_STATE (업무상태 전이 불가) / LOCATION_CLOSED / SPACE_EXCEEDED(V 부족)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: INSUFFICIENT_STOCK (피킹 위치 잔량 부족) / PARTIAL_APPLIED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/package-handovers:
@@ -225,12 +225,12 @@ paths:
         '409':
           description: INVALID_STATE (예약 BLOCKED/RELEASED) / FENCE_VERSION_MISMATCH / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: INSUFFICIENT_STOCK (PACKED 잔량 < 인계량)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/quality-postings:
@@ -260,7 +260,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (승인 잔량 초과·승인 참조 없음) / INSUFFICIENT_STOCK
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/adjustments:
@@ -288,7 +288,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / INVARIANT_VIOLATION (0≤R≤E≤H 위반)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/availability:

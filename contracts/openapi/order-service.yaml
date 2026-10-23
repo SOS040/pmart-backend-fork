@@ -40,7 +40,7 @@ paths:
         '422':
           description: 검증 거절 (SKU_NOT_SALEABLE, QUANTITY_LIMIT_EXCEEDED, OUT_OF_SERVICE_AREA, MIN_ORDER_AMOUNT, WEIGHT_UNSPLITTABLE, CONFIG_REQUIRED)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -91,7 +91,7 @@ paths:
         '422':
           description: RE_QUOTE_REQUIRED (10분 경과·가격 변경) / DRAFT_EXPIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /orders:
@@ -154,7 +154,7 @@ paths:
         '409':
           description: INVALID_STATE (이미 상품준비 진입) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
 
@@ -210,7 +210,7 @@ paths:
         '422':
           description: AMOUNT_MISMATCH → 확정 차단, 대사 대상
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/orders/{orderId}/line-quantity-changes:
@@ -246,7 +246,7 @@ paths:
         '409':
           description: 불변식 위반 (원수량 ≠ 미이행 + 인계 누계 + 출고 전 취소 누계)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/accounts/{accountId}/withdrawal-eligibility:

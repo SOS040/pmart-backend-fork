@@ -58,7 +58,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / LOCATION_CODE_DUPLICATE
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /locations/{locationId}:
@@ -111,7 +111,7 @@ paths:
         '409':
           description: INVALID_STATE (잔량·공간 예약 존재 — mfc-inventory 확인 결과)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 

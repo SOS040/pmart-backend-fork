@@ -14,7 +14,7 @@ CLAUDE.md의 `backoffice-bff`는 "관리자 화면별 조회 조합·도메인 �
 | `center-master-service` | 센터 코드·유형·주소·좌표·하차/인계 위치·층수·반입 조건·취급 온도대·다섯 시간표(고객 주문/근무/차량 진입/하차·인계/검수·적치)·휴폐점 의무 | 센터 내부 LOC(각 location), 현장 용량(mfc-capacity), 권역(serviceability) |
 
 - 유효 권한 grant·대행·긴급권한의 **정본은 `auth-service`**(CLAUDE.md "역할/권한 정보"). 부여·회수 **승인 흐름**은 approval-service. 교집합 모델이 auth 범위를 넘으면 `access-control-service` 분리 재검토 `[BO-Q01]`.
-- `config-service`는 환경 설정 전용. 업무 정책값은 각 도메인 서비스가 소유하고 approval-service는 참조만.
+- 업무 정책값은 각 도메인 서비스가 소유하고 approval-service는 참조만. (`config-service`는 2026-10-23 제거, Kubernetes ConfigMap 사용.)
 - `backoffice-bff`는 그대로 상태 없음. 조회 조합(원천별 asOf·신선도)과 명령 전달(멱등키)만.
 
 ## 대안
@@ -23,5 +23,5 @@ CLAUDE.md의 `backoffice-bff`는 "관리자 화면별 조회 조합·도메인 �
 - 센터 마스터를 `delivery-serviceability`나 `mfc-location`에 두기 — CDC와 TMS가 같은 센터 정보를 쓰므로 Delivery/MFC 전용 서비스에 둘 수 없음.
 
 ## 결과
-- 총 서비스 53개. CLAUDE.md §8 표 갱신 제안.
+- 총 서비스 51개(원안 50 − config/discovery 2 + 추가 3). 서비스 목록 정본은 `service-map.md`.
 - 승인 발효는 "approval → ApprovalDecided(이벤트) → 정본 반영 → Receipt 회신" 순. 2 hop 규칙 때문에 approval이 정본을 거쳐 3자를 동기 호출하지 않는다.

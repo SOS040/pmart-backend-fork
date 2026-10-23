@@ -169,7 +169,7 @@ paths:
         '409':
           description: INVALID_STATE / OPEN_OBLIGATIONS (미해소 의무 존재) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /cases/{caseId}/reopenings:
@@ -264,7 +264,7 @@ paths:
         '409':
           description: INVALID_STATE (이미 해소) / QTY_EXCEEDS_OBLIGATION / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /cases/{caseId}/action-requests:
@@ -296,7 +296,7 @@ paths:
         '422':
           description: UNSUPPORTED_ACTION / APPROVAL_REQUIRED (보상 실행에 approvalRef 없음)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /cases/{caseId}/action-requests/{actionRequestId}:

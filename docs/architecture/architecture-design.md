@@ -12,9 +12,9 @@
 
 | 항목 | 내용 |
 |---|---|
-| 목표 구성 | 업무 서비스 42개 + 플랫폼·지원 8개 = **50개** `[CLAUDE.md 확정]`. 여기에 BackOffice 문서가 요구하는 원장 3개(`approval-service`, `case-service`, `center-master-service`)를 **추가 제안** (§4.8, ADR-0004). |
+| 목표 구성 | 업무 서비스 42개 + 플랫폼·지원 6개 = **48개**(원안 50개에서 `config-service`·`discovery-service` 제거, 2026-10-23 결정: Kubernetes Service DNS + ConfigMap 사용). 여기에 BackOffice 문서가 요구하는 원장 3개(`approval-service`, `case-service`, `center-master-service`)를 **추가 제안** (§4.8, ADR-0004) → **51개**. |
 | 1차 범위 | 문서가 1차 제외한 영역(쿠폰·프로모션, 공급사·구매발주, CDC 외부 입고/ASN, MFC 간 이관, 예정재고 예약판매)은 서비스 경계만 확보하고 **기능은 비활성** (§8 단계 계획). |
-| 기술 스택 | CLAUDE.md "Tech Stack" 절이 비어 있음 `[결정 필요]`. 이 설계는 이전 버전의 Java 21 / Spring Boot 3.x / Gradle Kotlin DSL / Spring Cloud Gateway / OpenFeign / Resilience4j / Kafka / PostgreSQL / Flyway / Micrometer+OTel / Docker Compose를 **가정**하고, Delivery·TMS 문서의 Python 최적화 서비스(OR-Tools, GreedRL/RouteFinder)는 별도 런타임으로 둔다. |
+| 기술 스택 | `docs/architecture/tech-stack.md`와 `.claude/rules/` 기준(2026-10-23). Java 21 / Spring Boot / Gradle Kotlin DSL / Spring MVC + RestClient / Spring Cloud Gateway / Resilience4j / Kafka(KRaft) + Schema Registry(JSON Schema) / PostgreSQL + Flyway / Redis / Kubernetes + Helm / Jenkins. 최적화는 OR-Tools Java 바인딩을 해당 서비스 내부에서 사용(별도 Python 런타임 없음). 오류 응답은 RFC 9457. |
 | 통신 규칙 | 동기 호출은 timeout/retry/circuit breaker 필수, 체인 최대 2 hop, 상태 전파는 이벤트, Outbox, consumer 멱등 `[CLAUDE.md 확정]`. |
 | 트랜잭션 | 2PC 금지. Saga + 보상 `[CLAUDE.md 확정]`. 주문 사가는 orchestration으로 한다 (ADR-0003). |
 | 데이터 | 서비스별 독립 DB. 다른 서비스 DB 직접 접근 금지 `[CLAUDE.md 확정]`. 재고 수량을 바꾸는 서비스는 센터 유형별 **하나** (`cdc-inventory`, `mfc-inventory`). |
@@ -32,8 +32,8 @@
           └──────┬──────┘                                                              └────────┬────────┘
                  │                                                                                │
  ┌───────────────┴──────────────┐  ┌────────────────────────┐  ┌────────────────────────┐  ┌──────┴───────────────────────────┐
- │ 1. Commerce (9)              │  │ 2. Order & Payment (5) │  │ 7. Last-mile Delivery  │  │ 8. Platform & Support (8 + 3)    │
- │ product · product-content    │◄─┤ order · orchestration  ├─►│ serviceability·capacity│  │ auth · config · discovery        │
+ │ 1. Commerce (9)              │  │ 2. Order & Payment (5) │  │ 7. Last-mile Delivery  │  │ 8. Platform & Support (6 + 3)    │
+ │ product · product-content    │◄─┤ order · orchestration  ├─►│ serviceability·capacity│  │ auth · notification · audit      │
  │ customer · cart · review     │  │ fulfillment-routing    │  │ rider · dispatch       │  │ notification · audit · ai-assist │
  │ search · storefront          │  │ claim · payment ──► PG │  │ execution · tracking   │  │ [+] approval · case · center-mst │
  │ pricing · promotion(1차 X)   │  └──────────┬─────────────┘  └───────────┬────────────┘  └──────────────────────────────────┘
@@ -204,14 +204,13 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 - **`delivery-tracking-service`**: 위치 수집(좌표·시각·정확도), 이동 이력, 고객용/점원용 ETA, WebSocket/SSE 푸시, 위치 단절 표시.
 - QR 인계: 라이더앱 스캔 → `api-gateway` → `mfc-fulfillment`(fence·commit) → `mfc-inventory`. `delivery-execution`은 `PackageHandedOver` 이벤트로 픽업 완료를 반영한다 (동기 체인 2 hop 유지).
 
-### 4.8 Platform & Support (8 + 추가 3)
+### 4.8 Platform & Support (6 + 추가 3)
 
 | 서비스 | 역할 | 비고 |
 |---|---|---|
-| `api-gateway` | 라우팅, 토큰 검증(auth 공개키), rate limit, traceId 발급 | 비즈니스 로직 없음 |
+| `api-gateway` | 라우팅, 토큰 검증(auth 공개키), rate limit, traceId 발급 | 비즈니스 로직 없음. `platform-services/` |
 | `auth-service` | 고객/라이더/운영자/서비스 신원, 토큰, **유효 RoleGrant·Delegation·긴급권한 정본**, 행위 시점 검증 API | BackOffice 3장. 권한 **부여 승인 흐름**은 approval-service |
-| `config-service` | 환경별 애플리케이션 설정 | 업무 정책값 아님 |
-| `discovery-service` | 서비스 등록·조회 | |
+| ~~`config-service`~~ ~~`discovery-service`~~ | **제거** (2026-10-23). Kubernetes Service DNS + ConfigMap + Secret Manager로 대체. 로컬은 docker compose DNS | `.claude/rules/security-config.md` |
 | `backoffice-bff` | 관리자 화면별 조회 조합(원천별 `asOf`·신선도 표시), 명령 전달(멱등키 부착) | **상태 없음** `[CLAUDE.md 확정]` |
 | `notification-service` | 고객·라이더·운영 알림, 채널, 발송 이력·재시도, 읽음 | 알림 실패는 통지만 복구 |
 | `audit-service` | 감사 사건 수집·조회·보존(추가만) | |
@@ -228,7 +227,7 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 
 | 사용 | 방식 | 요구 |
 |---|---|---|
-| 사가 단계 명령(예약, 점유, 결제, 작업 요청, 중지, 인계 승인) | **동기 REST(Feign)** | timeout·retry(멱등 보장 시만)·circuit breaker 필수. 응답에 `ACCEPTED/APPLIED/REJECTED/UNKNOWN_RESULT`. 불명 시 조회 API로 복구 |
+| 사가 단계 명령(예약, 점유, 결제, 작업 요청, 중지, 인계 승인) | **동기 REST(Spring RestClient)** | timeout·retry(멱등 보장 시만)·circuit breaker 필수. 응답에 `ACCEPTED/APPLIED/REJECTED/UNKNOWN_RESULT`. 불명 시 조회 API로 복구 |
 | 원결과 조회(원요청·원거래·원예약·원수령) | 동기 REST | 모든 명령 API는 짝이 되는 `GET …/{requestId}` 조회를 가진다 (P3) |
 | 마스터·참조 조회(상품, 가격, 권역, 센터, 권한) | 동기 REST + 로컬 캐시(버전 포함) | 캐시로 성공을 확정하지 않음. 조회 실패≠0 |
 | 상태 전파·사실 통지(확정, 출발, 수령, 인계, 전달, 품질 차단) | **Kafka 이벤트 + Outbox** | consumer inbox 멱등, 순서는 aggregate 버전으로 판단 |
@@ -260,7 +259,7 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 
 - `(sourceSystem, eventId)`가 멱등 키. 하위 호환은 필드 추가만, 삭제/rename은 `V2`.
 - 토픽: `{domain}.{aggregate}.v{n}` (예: `order.order.v1`, `mfc.inventory.v1`). 파티션 키 = aggregateId.
-- Outbox 테이블은 서비스마다 동일 스키마(`libs/common-outbox` — 기술 코드만). 릴레이는 polling publisher(1차) → Debezium(2차) `[결정 필요]`.
+- Outbox 테이블은 서비스마다 동일 스키마(`libraries/common-messaging` — 기술 코드만). 릴레이는 polling publisher(1차) → Debezium(2차) `[결정 필요]`.
 - Inbox 테이블 `(sourceSystem, eventId)` unique로 중복 차단. 역순 수신은 `aggregateVersion` 비교로 폐기하되 **실물 사실(출발·인계·수령)은 폐기하지 않고 정정 경로로 수용**.
 
 ### 5.3 명령 API 규약
@@ -268,7 +267,7 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 - 경로 `/api/v1/{resources}` 복수형 kebab-case. 명령은 `POST /api/v1/orders/{orderId}/cancellations` 처럼 하위 리소스로.
 - 헤더 `Idempotency-Key`(=requestId), `X-Source-System`, `X-Expected-Version`(낙관적 잠금), `traceparent`.
 - 응답 본문 공통: `{ "status": "ACCEPTED|APPLIED|REJECTED|UNKNOWN_RESULT", "requestId", "resultId", "appliedQty"?, "version", "retryable", "nextAction"? }`. `resultId`는 commitId/reservationId/holdId 등 소유 서비스가 발급한 결과 식별자.
-- 오류: `{ "code": "ORDER_NOT_FOUND", "message", "traceId", "requestId", "retryable" }`. 공통 코드: `VALIDATION_FAILED, FORBIDDEN, INVALID_STATE, VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, CONFIG_REQUIRED, INSUFFICIENT_STOCK, CAPACITY_EXCEEDED, DEPENDENCY_UNAVAILABLE, UNKNOWN_RESULT, UNSUPPORTED_ACTION`.
+- 오류: **RFC 9457 Problem Details** (`application/problem+json`): `{ type, title, status, detail, instance }` + 확장 `{ code: "ORDER_NOT_FOUND", traceId, requestId, retryable, details[] }`. 공통 코드: `VALIDATION_FAILED, FORBIDDEN, INVALID_STATE, VERSION_CONFLICT, IDEMPOTENCY_CONFLICT, CONFIG_REQUIRED, INSUFFICIENT_STOCK, CAPACITY_EXCEEDED, DEPENDENCY_UNAVAILABLE, UNKNOWN_RESULT, UNSUPPORTED_ACTION`.
 
 ---
 
@@ -326,11 +325,11 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 
 ## 8. 단계별 도입 계획 `[제안]`
 
-50개를 한 번에 세우지 않는다. **경계는 처음부터 50개로 설계**(Gradle 모듈·DB 스키마·contracts 분리)하되, 배포·활성은 세 단계로 나눈다.
+51개를 한 번에 세우지 않는다. **경계는 처음부터 51개로 설계**(Gradle 모듈·DB 스키마·contracts 분리)하되, 배포·활성은 세 단계로 나눈다.
 
 | 단계 | 목표 | 활성 서비스 | 비활성(경계만 예약) |
 |---|---|---|---|
-| **1단계 (핵심 판매 루프)** | 지정 MFC 재고로 주문→결제→피킹→QR 인계→전달 완료, 전체 취소, 부분 품절 PG 부분취소 | product, product-content, customer, cart, search(기본), storefront(기본), pricing / order, order-orchestration, fulfillment-routing(얇게), claim(취소·반품 접수), payment / mfc-inventory, mfc-fulfillment, mfc-capacity, mfc-location, mfc-quality(최소), mfc-inbound(초기 보유·회수 반입) / delivery-serviceability, delivery-capacity, rider, delivery-dispatch, delivery-execution, delivery-tracking / api-gateway, auth, config, discovery, notification, audit, backoffice-bff, approval(상품·가격·권역·권한), case(CS 접수), center-master | promotion, review, supplier, procurement, demand-planning(수동 입력만), cdc-*, transport-*, fleet, cold-chain, ai-assistant |
+| **1단계 (핵심 판매 루프)** | 지정 MFC 재고로 주문→결제→피킹→QR 인계→전달 완료, 전체 취소, 부분 품절 PG 부분취소 | product, product-content, customer, cart, search(기본), storefront(기본), pricing / order, order-orchestration, fulfillment-routing(얇게), claim(취소·반품 접수), payment / mfc-inventory, mfc-fulfillment, mfc-capacity, mfc-location, mfc-quality(최소), mfc-inbound(초기 보유·회수 반입) / delivery-serviceability, delivery-capacity, rider, delivery-dispatch, delivery-execution, delivery-tracking / api-gateway, auth, notification, audit, backoffice-bff, approval(상품·가격·권역·권한), case(CS 접수), center-master | promotion, review, supplier, procurement, demand-planning(수동 입력만), cdc-*, transport-*, fleet, cold-chain, ai-assistant |
 | **2단계 (공급 루프)** | CDC 초기 보유→SCM 보충 계산·사업승인→CDC 확보·피킹·상차→TMS 운행·실제 출발(TOUT)→MFC TIN→Transit 대사 | replenishment, demand-planning / cdc-inventory, cdc-location, cdc-outbound, cdc-inbound(적치·MOV), cdc-quality / transport-planning, transport-routing, fleet, transport-execution, cold-chain / mfc-inbound 완성 / review | supplier, procurement, ai-assistant |
 | **3단계 (확장)** | 쿠폰·프로모션, 공급사·구매발주·ASN, 다중 MFC 라우팅, AI 배차, AI 어시스턴트, 26개 MFC | promotion, supplier, procurement, cdc-inbound(ASN), fulfillment-routing 완성, ai-assistant | — |
 
@@ -338,32 +337,36 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 
 ---
 
-## 9. 저장소·빌드 구조 `[제안]`
+## 9. 저장소·빌드 구조 (CLAUDE.md 2026-10-23 기준)
 
 ```
 /
-├── services/
-│   ├── commerce/   product-service, product-content-service, customer-service, cart-service, review-service, search-service, storefront-service, pricing-service, promotion-service
-│   ├── order/      order-service, order-orchestration-service, fulfillment-routing-service, claim-service, payment-service
-│   ├── scm/        supplier-service, procurement-service, demand-planning-service, replenishment-service
-│   ├── cdc/        cdc-inventory-service, cdc-inbound-service, cdc-location-service, cdc-outbound-service, cdc-quality-service
-│   ├── mfc/        mfc-inventory-service, mfc-inbound-service, mfc-location-service, mfc-fulfillment-service, mfc-capacity-service, mfc-quality-service
-│   ├── tms/        transport-planning-service, transport-routing-service, fleet-service, transport-execution-service, cold-chain-service
-│   ├── delivery/   delivery-serviceability-service, delivery-capacity-service, rider-service, delivery-dispatch-service, delivery-execution-service, delivery-tracking-service
-│   └── platform/   api-gateway, auth-service, config-service, discovery-service, backoffice-bff, notification-service, audit-service, ai-assistant-service, approval-service, case-service, center-master-service
-├── libs/           common-error, common-event(봉투·직렬화), common-outbox, common-inbox, common-idempotency, common-web(헤더·traceId), common-test   <- 기술 코드만
-├── contracts/
-│   ├── openapi/{service}.yaml
-│   ├── events/{EventType}.v{n}.json  (JSON Schema)
-│   └── states/{aggregate}-states.md  (상태표 공유, 코드 아님)
-├── infra/          docker-compose(Kafka, PostgreSQL x N, Redis, OTel collector), k8s/
-├── optimizers/     python: routing-solver(OR-Tools), dispatch-model(GreedRL/RouteFinder 어댑터)  <- 별도 런타임 [결정 필요]
+├── settings.gradle.kts, build.gradle.kts, gradle.properties, gradlew(.bat)
+├── gradle/libs.versions.toml, gradle/wrapper/        # 의존성 좌표 중앙 관리
+├── build-logic/                                      # convention plugin (included build)
+├── services/                                         # 업무 마이크로서비스 (평면, 서비스당 1 디렉토리, bootJar)
+│   ├── product-service/ product-content-service/ customer-service/ cart-service/ review-service/ search-service/ storefront-service/ pricing-service/ promotion-service/
+│   ├── order-service/ order-orchestration-service/ fulfillment-routing-service/ claim-service/ payment-service/
+│   ├── supplier-service/ procurement-service/ demand-planning-service/ replenishment-service/
+│   ├── cdc-inventory-service/ cdc-inbound-service/ cdc-location-service/ cdc-outbound-service/ cdc-quality-service/
+│   ├── mfc-inventory-service/ mfc-inbound-service/ mfc-location-service/ mfc-fulfillment-service/ mfc-capacity-service/ mfc-quality-service/
+│   ├── transport-planning-service/ transport-routing-service/ fleet-service/ transport-execution-service/ cold-chain-service/
+│   ├── delivery-serviceability-service/ delivery-capacity-service/ rider-service/ delivery-dispatch-service/ delivery-execution-service/ delivery-tracking-service/
+│   └── auth-service/ notification-service/ audit-service/ backoffice-bff/ approval-service/ case-service/ center-master-service/ ai-assistant-service/
+├── platform-services/
+│   └── api-gateway/                                  # Spring Cloud Gateway
+├── libraries/                                        # 기술 코드만 (jar, Spring Boot 진입점·업무 규칙 금지)
+│   ├── common-observability/  common-security/  common-messaging/(이벤트 봉투·Outbox·Inbox)  common-web/(헤더·Problem Details)  common-test/
+├── contracts/openapi/, contracts/events/, contracts/states/
+├── deploy/helm/
+├── Jenkinsfile
 └── docs/
 ```
 
-각 서비스는 `services/{group}/{name}/CLAUDE.md`에 서비스 내부 규칙을 둔다(루트 CLAUDE.md 주석). Gradle 경로는 `:services:order:order-service` 형태 `[결정 필요: CLAUDE.md Commands 절 표기와 맞출 것]`.
-
----
+- 각 서비스는 `services/{name}/CLAUDE.md`에 내부 규칙을 둔다. Gradle 경로는 `:services:{name}`, 플랫폼 앱은 `:platform-services:api-gateway`.
+- 패키지: `com.pmart.<domain>.{api, application, domain, infrastructure}` (`.claude/rules/service-architecture.md`).
+- 최적화 라이브러리(OR-Tools Java)는 `transport-routing-service`, `mfc-capacity-service`의 `infrastructure` 어댑터로만 의존한다. 검색(OpenSearch)은 `search-service`, AI(Spring AI + pgvector)는 `ai-assistant-service`에만.
+- `[가정]` `platform-services/`에는 api-gateway만 둔다. auth·notification·audit·approval·case·center-master·backoffice-bff는 업무 데이터를 가지므로 `services/`. 다르게 정하면 이 절만 고친다.
 
 ## 10. 횡단 관심사
 
@@ -401,16 +404,16 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 
 | 항목 | 영향 | 출처 |
 |---|---|---|
-| Tech Stack 확정(CLAUDE.md 공란), Python 런타임 허용 여부 | 전체 | CLAUDE.md, Delivery 2.1, TMS 24 |
+| ~~Tech Stack 확정, Python 런타임~~ → 확정(tech-stack.md, OR-Tools Java). Python 전용 AI 배차 모델은 3단계 별도 승인 | 전체 | tech-stack.md |
 | 정식 서비스명(PMart/바로픽) | 로그·이벤트 sourceSystem | Commerce, BackOffice |
-| 초기 배포 단위(50개 개별 vs 모듈러 묶음) | 인프라·팀 | §8 |
+| 초기 배포 단위(51개 개별 vs 모듈러 묶음) | 인프라·팀 | §8 |
 | IAM 실제 배치(auth-service 범위, 센터×업무×행위 교집합 모델) | auth, approval | BackOffice BO-Q01/02 |
 | LPN(BOX/PLT) 정본 서비스 | cdc-outbound vs cdc-inventory | WMS F-007, SEP |
 | cdc-inbound 1차 범위 재정의(적치·MOV) 수용 여부 | cdc | WMS 1.1 |
 | mfc-capacity에 작업 배정·OR-Tools 포함 여부 | mfc | MFC WK-02/09/10 |
 | 고객 슬롯 정원 산정식(08/09시 개시, 시간대별 정원) | delivery-capacity | OMS 6, MFC Q-18 |
 | 첫 구매 자격 점유 위치(order vs promotion) | order | Commerce 8.8 |
-| Outbox 릴레이 방식(polling vs CDC) | libs | §5.2 |
+| Outbox 릴레이 방식(polling vs CDC) | libraries/common-messaging | §5.2 |
 | 고객센터·재입고 알림·BI 원천 사건의 서비스 배치 | case/notification | Commerce 14, 6.13, 1.2 |
 | 회계·지급 연계(라이더 수행료, 운송비) | 외부 어댑터 | Delivery 7.2, TMS 20, BO-21 |
 | 문서 내 깨진 링크(`시스템 책임 경계.md`, `MFC-business-logic/02_*.md`, `문서_책임정리_20261020/` 등 10건)와 Delivery 이미지 | docs | grep 결과 |

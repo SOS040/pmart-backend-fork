@@ -216,7 +216,7 @@
 - **API**: `CapacitySnapshot`/`HoldCapacity`/확정/해제(orchestration), 수령창·수용량 조회(SCM/TMS), 하차면 예약(TMS), 배정 조회(fulfillment), 운영 제한.
 - **발행**: `CapacityHoldResult`, `CapacityReduced`(영향 주문 포함), `ReceivingCapabilityChanged`, `AssignmentPublished`, `OperationRestrictionApplied/Lifted`(MFC).
 - **구독**: `TaskProgressed`, `ApprovalDecided`(운영 중지·재개 BO-08), `CenterMasterChanged`.
-- **의존**: optimizers(OR-Tools) `[결정 필요]`.
+- **의존**: OR-Tools Java 바인딩(서비스 내부 `infrastructure` 어댑터).
 
 ### mfc-quality-service `[1단계 최소 / 2단계 완성]`
 - **소유**: 품질 판정(PENDING→NORMAL/QUARANTINED), 격리 해제 승인, 회수품 검수(상온 미개봉 적격만 재판매, 신선·냉장·냉동 재판매 금지), 폐기 승인(REQUESTED→APPROVED/REJECTED→부분 실행→COMPLETED; 요청자/승인자 분리), 품질 사건, 리콜 영향 LOT 추적(MFC 측).
@@ -243,7 +243,7 @@
 - **소유하지 않음**: 후보 채택·배정(planning).
 - **API**: 행렬 조회, 후보 계산.
 - **발행**: `RoadMatrixRefreshed`.
-- **의존**: 외부 경로 API, optimizers.
+- **의존**: 외부 경로 API, OR-Tools Java 바인딩(서비스 내부).
 
 ### fleet-service `[2단계]`
 - **소유**: 실차(ID·위치·가용·정비·중량·부피·구획·예냉·진입 제한), 간선기사(ID·자격·가용·근무/휴게 조건 승인값), 점유 예약(`[시작,종료)` 겹침; 차량·기사 분리 검증), 다음 가용 시각.
@@ -314,7 +314,7 @@
 
 ---
 
-## 8. Platform & Support (8 + 추가 3)
+## 8. Platform & Support (6 + 추가 3)
 
 ### api-gateway `[1단계]`
 - 라우팅, JWT 검증(auth 공개키), rate limit, `traceId` 발급·전파, 앱별(고객/라이더/점원/기사/관리자) 경로 분리. 비즈니스 로직 없음.
@@ -326,8 +326,8 @@
 - **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`.
 - **구독**: `ApprovalDecided`(BO-01/02), `CustomerWithdrawalCompleted`(세션·소셜 연결 삭제).
 
-### config-service / discovery-service `[1단계]`
-- 환경 설정 배포 / 서비스 등록·조회. 업무 정책값은 여기에 두지 않는다.
+### ~~config-service / discovery-service~~ — 제거 (2026-10-23)
+- Kubernetes Service DNS + ConfigMap + Secret Manager로 대체(`.claude/rules/security-config.md`). 로컬 개발은 docker compose 서비스명 DNS. 업무 정책값은 각 도메인 서비스 소유.
 
 ### backoffice-bff `[1단계]` — **상태 없음**
 - 관리자 화면별 조회 조합(원천별 `asOf`·`postedAt`·신선도·직접확인/사본/불명 표시, 기준시각 다른 수량 합산 금지), 명령 전달(멱등키·expected version 부착, 응답 ACK≠성공 그대로 표시), 화면: 통합 조회, 승인함, 사건함, 보충 현황, 운행 관제, 실시간 배송 현황, 포장 인계 현황, 지표(분모 보존). 금지: 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
@@ -376,7 +376,7 @@
 | 토스페이먼츠 | payment-service | 거래 사실 정본. 비밀 로그 금지 |
 | 소셜 OAuth 제공자 | auth-service | 제공자 인증 성공≠계정 이용 가능 |
 | 카카오모빌리티 길찾기 / 카카오맵 | delivery-tracking(거리·경로), transport-routing(간선 행렬) | `[결정 필요]` |
-| OR-Tools / GreedRL·RouteFinder | optimizers(Python) ← mfc-capacity, transport-routing, delivery-dispatch(3차) | 별도 런타임 `[결정 필요]` |
+| OR-Tools(Java) | transport-routing, mfc-capacity 내부 라이브러리 | 확정(2026-10-23). GreedRL·RouteFinder(Python)는 3단계 별도 승인 |
 | 알림 채널(푸시·알림톡) | notification-service | |
 | 회계·지급 | 없음(1차 수동) | 라이더 수행료·운송비 지급, BO-21 `[결정 필요]` |
 | 가상 설비·센서 | cdc-inbound/outbound, cold-chain | `source=SIMULATED` |

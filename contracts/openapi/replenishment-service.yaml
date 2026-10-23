@@ -207,12 +207,12 @@ paths:
         '409':
           description: INVALID_STATE (출발 후·작업 중) / VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED (변경은 심사 대상)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /transfers/{trfId}/cancellations:
@@ -240,7 +240,7 @@ paths:
         '409':
           description: INVALID_STATE (실제 출발 후 취소 불가) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /transfers/{trfId}/residual-closures:
@@ -272,12 +272,12 @@ paths:
         '409':
           description: INVALID_STATE (출발 전·잔량 0) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED (approvalRef 무효)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /transfers/{trfId}/requests/{requestId}:
@@ -369,7 +369,7 @@ paths:
         '422':
           description: 검증 거절 (SKU_NOT_HANDLED, MULTIPLE_VIOLATION, DEADLINE_MEANING_INVALID, CONFIG_REQUIRED)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/transfer-approvals:
@@ -406,12 +406,12 @@ paths:
         '409':
           description: INVALID_STATE (요청 이미 종료) / IDEMPOTENCY_CONFLICT / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: 검증 거절 (APPROVED_QTY_EXCEEDS_REQUEST, APPROVER_SELF_APPROVAL, MULTIPLE_VIOLATION)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/supply-status:

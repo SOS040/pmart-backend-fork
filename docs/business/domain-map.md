@@ -13,7 +13,7 @@
 | MFC-business-logic.md | v2.0 통합 2026-10-23 | 5. MFC (6) | "WMS 재고 책임 모듈"의 MFC 몫 = `mfc-inventory-service` |
 | TMS-business-logic.md | v1.1, 2026-10-20 | 6. Middle-mile TMS (5) | 간선만. 라이더·고객 배송은 Delivery |
 | Delivery-business-logic.md | Draft, Notion export 2026-10-19 | 7. Last-mile Delivery (6) | 외부 브랜드(B마트·배민커넥트) 참고값 다수. 확정 정책 아님. 이미지 링크 깨짐 |
-| BackOffice-business-logic.md | v2.0, 2026-10-21 | 8. Platform & Support (8) + **추가 제안** approval/case/center-master | `backoffice-bff`만으로는 승인·사건 원장을 담을 수 없음 (ADR-0004) |
+| BackOffice-business-logic.md | v2.0, 2026-10-21 | 8. Platform & Support (6, config·discovery 제거) + **추가 제안** approval/case/center-master | `backoffice-bff`만으로는 승인·사건 원장을 담을 수 없음 (ADR-0004) |
 
 ## 2. 용어 대응
 

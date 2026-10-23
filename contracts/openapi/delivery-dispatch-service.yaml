@@ -46,12 +46,12 @@ paths:
         '409':
           description: INVALID_STATE (이미 배정·완료) / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: ORDER_CANCELLED (신규 배차 차단) / CONFIG_REQUIRED (요율·반경 미설정)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /dispatch-requests/{requestId}:
@@ -170,7 +170,7 @@ paths:
         '422':
           description: PICKED_UP_CASE_REQUIRED (픽업 후) / APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /deliveries/{deliveryId}/assignment-cancellations/{requestId}:
@@ -224,7 +224,7 @@ paths:
         '422':
           description: ORDER_CANCELLED / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/deliveries/{deliveryId}/assignment:

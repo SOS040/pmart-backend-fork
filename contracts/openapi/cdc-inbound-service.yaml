@@ -43,7 +43,7 @@ paths:
         '422':
           description: 거절 (NO_ELIGIBLE_LOCATION, TEMPERATURE_MISMATCH, CAPACITY_EXCEEDED, LOT_INVALID, CONFIG_REQUIRED)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -106,7 +106,7 @@ paths:
         '409':
           description: INVALID_STATE (COMPLETED/CANCELLED) / VERSION_CONFLICT / EXECUTION_EXCEEDS_REMAINING (C 누계 > Q)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -136,7 +136,7 @@ paths:
         '409':
           description: INVALID_STATE (이미 COMPLETED) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /replenishment-moves:
@@ -174,12 +174,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / MOVE_IN_PROGRESS (같은 피킹 위치·SKU 미완료 보충 존재)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: 거절 (NO_SOURCE_STOCK, CONFIG_REQUIRED 보충 목표·최소량 미설정, LOCATION_NOT_PICK_FACE)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /replenishment-moves/{moveId}:
@@ -243,7 +243,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / WORK_RESULT_EXCEEDS_TASK / INVALID_STATE
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/work-results/{eventId}:

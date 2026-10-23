@@ -22,18 +22,18 @@ contracts/
 - **모든 변경 요청**은 헤더 `Idempotency-Key`(=requestId), `X-Source-System`, `traceparent`를 필수로 받는다. 상태 변경은 `X-Expected-Version` 낙관적 잠금.
 - **모든 명령은 짝이 되는 조회를 가진다**: `GET …/{resource}/requests/{requestId}` 또는 결과 ID 조회. 타임아웃은 실패가 아니다.
 - 응답 본문은 `CommandResponse`(`status: ACCEPTED|APPLIED|REJECTED|UNKNOWN_RESULT`) 또는 리소스 표현. ACK ≠ 업무 성공.
-- 오류는 `ErrorResponse { code, message, traceId, requestId, retryable, details? }`. 공통 코드는 `_common.yaml` `ErrorCode`.
+- 오류는 **RFC 9457 Problem Details**(`application/problem+json`): 표준 `type, title, status, detail, instance` + 확장 `code, traceId, requestId, retryable, details[]`. 스키마는 `_common.yaml#/components/schemas/ErrorResponse`, 공통 코드는 `ErrorCode`.
 - 시각은 ISO-8601 UTC(`date-time`). 날짜형 기한은 `date` + `timezone`(기본 Asia/Seoul). 금액은 정수 KRW. 수량은 정수(기준 판매 단위).
 - 개인정보 원문·PG 비밀·출입 비밀번호는 응답·로그·이벤트에 넣지 않는다(참조 ID).
 
 ### 1.2 이벤트
-- 봉투 `_envelope.v1.json`. 각 이벤트 스키마는 `allOf: [envelope, {payload}]`.
+- 형식은 JSON Schema draft 2020-12(2026-10-23 확정, Avro 아님). Schema Registry는 JSON Schema 모드. 봉투 `_envelope.v1.json`. 각 이벤트 스키마는 `allOf: [envelope, {payload}]`.
 - 토픽 `{domain}.{aggregate}.v{n}`, 파티션 키 `aggregateId`. 멱등 키 `(sourceSystem, eventId)`.
 - 하위 호환: **필드 추가만** 허용(`additionalProperties: true` 유지). 삭제·타입 변경·rename은 `{EventType}.v2.json` + 새 토픽.
 - 이벤트는 확정된 사실만 싣는다. 요청은 명령 API.
 
 ### 1.3 버전·변경 절차
-1. `contracts/` 수정 → 2. 영향 consumer 목록 작성(events.md 구독자 열) → 3. `./gradlew contractTest` → 4. 서비스 구현.
+1. `contracts/` 수정 → 2. 영향 consumer 목록 작성(events.md 구독자 열) → 3. `./gradlew :services:<name>:check`(계약 검증은 convention plugin이 check에 연결) → 4. 서비스 구현.
 - 필드 추가: 같은 버전, `x-added-in` 주석.
 - 그 외: 새 버전 파일 추가, 구버전은 `deprecated: true` + 제거 예정일.
 
@@ -41,7 +41,7 @@ contracts/
 
 | 구분 | 수량 | 상태 |
 |---|---|---|
-| OpenAPI | 53개 서비스(1·2단계 전체 엔드포인트, 3단계 4개는 `x-stage: 3` placeholder) + `_common.yaml` | redocly lint 오류 0 |
+| OpenAPI | 51개 서비스(1·2단계 전체 엔드포인트, 3단계 4개는 `x-stage: 3` placeholder) + `_common.yaml` | redocly lint 오류 0. 오류 응답 RFC 9457 |
 | 이벤트 JSON Schema | 177개 + `_envelope`/`_defs` | ajv(draft2020, strict) 전부 컴파일 |
 | 상태표 | 9개(`states/`) | — |
 

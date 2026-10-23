@@ -85,7 +85,7 @@ paths:
         '422':
           description: HANDOVER_NOT_CONFIRMED (일부 포장 인계 미확정) / HANDOVER_RIDER_MISMATCH
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /deliveries/{deliveryId}/customer-arrivals:
@@ -134,7 +134,7 @@ paths:
         '422':
           description: EVIDENCE_REQUIRED (사진 참조 없음·업로드 미완료) / EVIDENCE_INVALID
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /deliveries/{deliveryId}/failures:
@@ -357,7 +357,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / EVIDENCE_REQUIRED / UNSUPPORTED_ACTION (COMPLETED 되돌리기)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/deliveries/{deliveryId}/status-corrections/{requestId}:

@@ -14,6 +14,7 @@
 - 변경 요청: `IdempotencyKey`, `SourceSystem` 파라미터 $ref 필수. 상태 변경은 `ExpectedVersion`.
 - 명령마다 짝 조회 엔드포인트(`GET …/{requestId}` 또는 결과 ID 조회).
 - 응답: 202/200 `_common.yaml#/components/responses/Accepted`, 4xx/5xx는 공통 responses.
+- 오류 본문은 반드시 `application/problem+json` + `ErrorResponse`(RFC 9457). `application/json`으로 오류를 내보내지 않는다.
 - 서비스별 오류 코드는 해당 응답 `description`에 나열 (예 `SKU_NOT_SALEABLE`).
 
 ## 이벤트 JSON Schema

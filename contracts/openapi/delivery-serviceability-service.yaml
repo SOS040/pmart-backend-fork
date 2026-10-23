@@ -48,7 +48,7 @@ paths:
         '422':
           description: ADDRESS_NORMALIZATION_FAILED / CONFIG_REQUIRED (발효 매핑 버전 없음)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 

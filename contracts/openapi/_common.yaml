@@ -88,17 +88,43 @@ components:
         - PARTIAL_APPLIED
     ErrorResponse:
       type: object
-      required: [code, message, traceId]
+      description: |
+        RFC 9457 Problem Details. Content-Type은 application/problem+json.
+        표준 멤버(type, title, status, detail, instance) + PMart 확장 멤버(code, traceId, requestId, retryable, details).
+      required: [type, title, status, code, traceId]
       properties:
+        type:
+          type: string
+          format: uri
+          description: 문제 유형 URI. 기본 about:blank. 서비스별 유형은 https://problems.pmart.local/{code}.
+          default: about:blank
+        title:
+          type: string
+          description: 사람이 읽는 짧은 요약(동일 type이면 동일).
+        status:
+          type: integer
+          description: HTTP 상태 코드와 동일.
+        detail:
+          type: string
+          description: 이 발생 건의 설명. 개인정보·비밀 금지.
+        instance:
+          type: string
+          description: 발생 건 식별 URI(예 /api/v1/orders/123/cancellations/req-9).
         code:
           type: string
-          description: 공통 코드(ErrorCode) 또는 서비스별 코드(예 ORDER_NOT_FOUND, SKU_NOT_SALEABLE).
-        message: { type: string }
-        traceId: { type: string }
-        requestId: { type: string }
-        retryable: { type: boolean }
+          description: 확장. 공통 코드(ErrorCode) 또는 서비스별 코드(예 ORDER_NOT_FOUND, SKU_NOT_SALEABLE).
+        traceId:
+          type: string
+          description: 확장. 분산 추적 ID.
+        requestId:
+          type: string
+          description: 확장. 요청 멱등 키.
+        retryable:
+          type: boolean
+          description: 확장. 같은 요청을 재시도해도 되는지.
         details:
           type: array
+          description: 확장. 필드별 검증 오류 등.
           items:
             type: object
             properties:
@@ -153,32 +179,32 @@ components:
     BadRequest:
       description: VALIDATION_FAILED
       content:
-        application/json:
+        application/problem+json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     Forbidden:
       description: FORBIDDEN (행위 시점 권한 검증 실패)
       content:
-        application/json:
+        application/problem+json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     NotFound:
       description: NOT_FOUND
       content:
-        application/json:
+        application/problem+json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     Conflict:
       description: VERSION_CONFLICT / IDEMPOTENCY_CONFLICT / INVALID_STATE
       content:
-        application/json:
+        application/problem+json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     UnprocessableConfig:
       description: CONFIG_REQUIRED (정책값 미설정 → 해당 신규 실행 보류)
       content:
-        application/json:
+        application/problem+json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     DependencyUnavailable:
       description: DEPENDENCY_UNAVAILABLE / UNKNOWN_RESULT (원결과 조회로 해소)
       content:
-        application/json:
+        application/problem+json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   securitySchemes:

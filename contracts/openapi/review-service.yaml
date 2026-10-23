@@ -64,7 +64,7 @@ paths:
         '422':
           description: NOT_ELIGIBLE (배송완료 사실 없음) / ELIGIBILITY_EXPIRED (14일 경과) / ALREADY_REVIEWED / REWRITE_AFTER_DELETE_FORBIDDEN
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -113,7 +113,7 @@ paths:
         '409':
           description: INVALID_STATE (LOCKED 3일 경과 또는 DELETED) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
     delete:
       tags: [reviews]

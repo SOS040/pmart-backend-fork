@@ -56,7 +56,7 @@ paths:
         '409':
           description: VERSION_CONFLICT / INVALID_STATE (WITHDRAW_PENDING 이후 변경 불가)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /me/profile-changes/{requestId}:
@@ -124,7 +124,7 @@ paths:
         '422':
           description: REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN / CONSENT_VERSION_OUTDATED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /me/consent-changes/{requestId}:
@@ -180,7 +180,7 @@ paths:
         '422':
           description: ADDRESS_LIMIT_EXCEEDED (주소록 최대 건수 정책값) / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -340,7 +340,7 @@ paths:
         '409':
           description: INVALID_STATE (이미 WITHDRAW_PENDING/COMPLETED) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /me/withdrawals/{withdrawalId}:
@@ -373,7 +373,7 @@ paths:
         '409':
           description: INVALID_STATE (이미 완료된 탈퇴는 철회 불가)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- internal (서비스 토큰) ----------

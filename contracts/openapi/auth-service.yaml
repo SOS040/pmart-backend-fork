@@ -53,18 +53,18 @@ paths:
         '401':
           description: PROVIDER_REJECTED (제공자 검증 명확 실패. 실패 횟수 가산)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '423':
           description: AUTH_RESTRICTED (15분 내 5회 실패 → 10분 제한. retryAfterSeconds 포함)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/RestrictedError' }
         '503':
           description: PROVIDER_UNAVAILABLE / UNKNOWN_RESULT (GET /auth/social-logins/{authRequestId}로 해소. 실패 횟수 미가산)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /auth/social-logins/{authRequestId}:
@@ -115,12 +115,12 @@ paths:
         '409':
           description: INVALID_STATE (AUTH_CONSENT 아님) / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: REQUIRED_CONSENT_MISSING / ACCOUNT_NOT_PURCHASABLE (WITHDRAW_PENDING 등)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -152,7 +152,7 @@ paths:
         '401':
           description: TOKEN_INVALID / TOKEN_REUSED (세션 폐기됨, 재로그인)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /auth/logouts:
@@ -188,7 +188,7 @@ paths:
         '401':
           description: TOKEN_INVALID / SESSION_EXPIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- internal (서비스 토큰) ----------
@@ -220,7 +220,7 @@ paths:
         '503':
           description: DEPENDENCY_UNAVAILABLE (판정 불가. 호출자는 허용으로 해석하지 않는다)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/authorizations/{decisionId}:
@@ -260,7 +260,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / APPROVAL_SCOPE_MISMATCH / DELEGATION_EXCEEDS_GRANTOR / PRINCIPAL_NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/grant-applications/{requestId}:

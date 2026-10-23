@@ -46,7 +46,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (RELEASE 에 approverId 없음) / SELF_APPROVAL (판정자=승인자) / INSUFFICIENT_STOCK
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -92,12 +92,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INVALID_STATE (반입 미등록·이미 검수)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: RESALE_NOT_ALLOWED (신선·냉장·냉동·개봉) / QTY_EXCEEDS_RECEIVED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /return-inspections/{returnInspectionId}:
@@ -143,7 +143,7 @@ paths:
         '422':
           description: SELF_APPROVAL / APPROVAL_REQUIRED (approvalRef 없음) / QTY_EXCEEDS_QUARANTINED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /disposal-approvals/{disposalApprovalId}:

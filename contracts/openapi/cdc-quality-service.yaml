@@ -46,7 +46,7 @@ paths:
         '422':
           description: EVIDENCE_REQUIRED (온도 이탈·사건 근거 없음) / LOT_NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /holds/{holdId}:
@@ -103,17 +103,17 @@ paths:
         '403':
           description: FORBIDDEN (승인 권한 없음 / 자기승인)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409':
           description: INVALID_STATE (이미 해제·폐기) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /recalls:
@@ -152,7 +152,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /recalls/{recallId}:
@@ -217,7 +217,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / EVIDENCE_REQUIRED / QTY_NOT_HELD (보류되지 않은 수량 폐기 불가)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /disposal-approvals/{disposalApprovalId}:
@@ -276,7 +276,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / SAME_APPROVER (1차·2차 동일인) / LOT_NOT_SHORT_DATED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /fefo-exceptions/{fefoExceptionId}:
@@ -322,7 +322,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /operation-restrictions/{restrictionId}:
@@ -367,12 +367,12 @@ paths:
         '409':
           description: INVALID_STATE (이미 재개) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /lot-traces:

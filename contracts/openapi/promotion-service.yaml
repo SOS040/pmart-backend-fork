@@ -113,7 +113,7 @@ components:
     NotActive:
       description: UNSUPPORTED_ACTION (1차 비활성 서비스)
       content:
-        application/json:
+        application/problem+json:
           schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
   schemas:
     CouponPlaceholder:

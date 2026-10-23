@@ -43,12 +43,12 @@ paths:
         '409':
           description: DUPLICATE_RIDER (전화·면허·주민번호 중복) / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: PHONE_NOT_VERIFIED (auth 본인확인 미완료)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /riders/signups/{requestId}:
@@ -106,7 +106,7 @@ paths:
         '409':
           description: INVALID_STATE (배송 중 수단 변경) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /riders/me/state:
@@ -169,7 +169,7 @@ paths:
         '422':
           description: AI_DISPATCH_NOT_AVAILABLE (3단계 전)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
     get:
       tags: [me]
@@ -203,7 +203,7 @@ paths:
         '409':
           description: INVALID_STATE (진행 중 배송 / 미정산 / 제한 조사 중)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /riders/me/withdrawals/{requestId}:

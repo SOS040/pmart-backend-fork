@@ -48,7 +48,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT (같은 trfId·version·다른 본문) / INVALID_STATE (출발 후 변경)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
 
@@ -160,7 +160,7 @@ paths:
         '409':
           description: INVALID_STATE (후보 만료·이미 배정됨) / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -211,7 +211,7 @@ paths:
         '409':
           description: INVALID_STATE (실제 출발 이후) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 

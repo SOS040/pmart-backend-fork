@@ -63,7 +63,7 @@ paths:
         '403':
           description: FORBIDDEN_OWNER (현재 고객/기기의 장바구니 아님)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
@@ -100,22 +100,22 @@ paths:
         '403':
           description: FORBIDDEN_OWNER
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409':
           description: CART_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: QUANTITY_LIMIT_EXCEEDED / INSUFFICIENT_AVAILABLE_QUANTITY / SKU_NOT_SALEABLE / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/CartChangeError' }
         '503':
           description: REQUEST_RESULT_UNKNOWN (하위 의존 응답 불명. GET change-requests/{requestId}로 해소) / DEPENDENCY_UNAVAILABLE
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /carts/{cartId}/items/{itemId}:
@@ -156,23 +156,23 @@ paths:
         '403':
           description: FORBIDDEN_OWNER
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
           description: CART_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: QUANTITY_LIMIT_EXCEEDED / INSUFFICIENT_AVAILABLE_QUANTITY / SKU_NOT_SALEABLE
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '#/components/schemas/CartChangeError' }
         '503':
           description: REQUEST_RESULT_UNKNOWN / DEPENDENCY_UNAVAILABLE
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
     delete:
       tags: [items]
@@ -193,12 +193,12 @@ paths:
         '403':
           description: FORBIDDEN_OWNER
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409':
           description: CART_VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /carts/{cartId}/change-requests/{requestId}:
@@ -218,7 +218,7 @@ paths:
         '404':
           description: NOT_FOUND (해당 키로 접수된 변경 없음 → 미적용으로 판단)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /carts/{cartId}/merges:
@@ -272,17 +272,17 @@ paths:
         '403':
           description: FORBIDDEN_OWNER (대상 또는 원본 장바구니 소유 불일치)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409':
           description: CART_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503':
           description: REQUEST_RESULT_UNKNOWN (GET merges/{mergeId}로 원결과 확인. 전체 재합산 금지)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /carts/{cartId}/merges/{mergeId}:

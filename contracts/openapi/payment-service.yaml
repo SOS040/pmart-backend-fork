@@ -45,7 +45,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / PAYMENT_ALREADY_APPROVED (같은 orderId로 승인 완료 시도 존재)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -141,12 +141,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INVALID_STATE (미승인 거래) / REFUND_INTENT_ALREADY_USED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: REFUND_LIMIT_EXCEEDED (remainingLimit 초과) / PG_REJECTED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -221,7 +221,7 @@ paths:
         '401':
           description: WEBHOOK_SIGNATURE_INVALID
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
 components:

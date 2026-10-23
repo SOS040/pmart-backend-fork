@@ -36,7 +36,7 @@ paths:
         '404':
           description: NOT_FOUND / CONTENT_NOT_PUBLISHED (승인 콘텐츠 없음)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /product-contents:
@@ -109,7 +109,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / DRAFT_NOT_FOUND / PRODUCT_VERSION_MISMATCH (초안이 참조한 product 버전이 현재와 다름)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /product-contents/{productId}/publications/{requestId}:

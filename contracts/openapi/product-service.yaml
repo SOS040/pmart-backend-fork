@@ -140,7 +140,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / APPROVAL_SCOPE_MISMATCH (승인 범위와 요청 불일치) / BASE_PRODUCT_NOT_FOUND
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /sku-issuances/{requestId}:
@@ -201,7 +201,7 @@ paths:
         '404':
           description: BARCODE_NOT_MAPPED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- internal (서비스 토큰) ----------

@@ -41,7 +41,7 @@ paths:
         '422':
           description: OUT_OF_SERVICE_AREA / SERVICE_AREA_OVERLAP / MFC_RESTRICTED / SKU_NOT_HANDLED / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 

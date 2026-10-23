@@ -198,7 +198,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / CAPACITY_EXCEEDED (겹치는 예약 존재) / INVALID_STATE (정비 중)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/reservations/{reservationId}:

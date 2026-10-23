@@ -39,7 +39,7 @@ paths:
         '422':
           description: CONFIG_REQUIRED (안전량 S 미설정 → 가용량 계산 보류) / SKU_NOT_HANDLED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/allocations:
@@ -88,7 +88,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발 전기된 TRF) / ALLOCATION_EXISTS
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
 
@@ -143,7 +143,7 @@ paths:
         '409':
           description: INVALID_STATE (출발 전기 완료분) / VERSION_CONFLICT / RELEASE_EXCEEDS_ALLOCATED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/departure-postings:
@@ -197,7 +197,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INVALID_STATE (같은 TRF 2회 출발) / DEPARTURE_EXCEEDS_ALLOCATED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -256,12 +256,12 @@ paths:
         '404':
           description: NOT_FOUND / DEPARTURE_NOT_POSTED (해당 departureId의 TOUT 없음)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409':
           description: IDEMPOTENCY_CONFLICT / RECEIPT_EXCEEDS_TRANSIT (r > 잔여 Transit)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/move-postings:
@@ -303,7 +303,7 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INSUFFICIENT_STOCK (원위치 수량 부족) / LOCATION_BLOCKED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/quality-postings:
@@ -348,7 +348,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED (DISPOSE에 approvalRef 없음) / EVIDENCE_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/loss-postings:
@@ -389,12 +389,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / LOSS_EXCEEDS_UNRECONCILED (l > t)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/adjustments:
@@ -435,12 +435,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INSUFFICIENT_STOCK (감소가 미예약 현물 초과)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/initial-balances:
@@ -482,12 +482,12 @@ paths:
         '409':
           description: IDEMPOTENCY_CONFLICT / INITIAL_BALANCE_EXISTS
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/commits/{commitId}:

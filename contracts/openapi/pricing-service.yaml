@@ -34,7 +34,7 @@ paths:
         '404':
           description: PRICE_NOT_SET (유효 가격 버전 없음. 0원이 아니며 판매 불가로 취급)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /prices:
@@ -123,7 +123,7 @@ paths:
         '422':
           description: APPROVAL_REQUIRED / APPROVAL_SCOPE_MISMATCH / EFFECTIVE_FROM_IN_PAST
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /price-version-applications/{requestId}:
@@ -183,7 +183,7 @@ paths:
         '422':
           description: PRICE_NOT_SET (SKU별 nextAction=RE_QUOTE 불가. 품목 제거 필요) / CONFIG_REQUIRED
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/quotes/{quoteId}:

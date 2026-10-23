@@ -51,7 +51,7 @@ paths:
         '422':
           description: WORK_REJECTED (OPERATION_RESTRICTED 접수 중지 / RESERVATION_BLOCKED / CAPACITY_EXCEEDED)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/work-orders/{fulfillmentId}:
@@ -157,7 +157,7 @@ paths:
         '409':
           description: INVALID_STATE (Task가 ASSIGNED/IN_PROGRESS 아님) / NOT_ASSIGNEE (활성 담당자 불일치) / VERSION_CONFLICT
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -217,7 +217,7 @@ paths:
         '409':
           description: INVALID_STATE (Shipment CANCELLED/HANDED_OVER) / CONTENT_MISMATCH (패킹 완료 수량 초과)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /packages/{packageId}:
@@ -269,13 +269,13 @@ paths:
         '403':
           description: FORBIDDEN (배정 라이더 불일치·제한 라이더)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
           description: INVALID_STATE (중지 확정·SEALED 아님) / ALREADY_HANDED_OVER / PACKAGE_INVALIDATED (구 라벨) / DELIVERY_MISMATCH (타 주문·타 배송) / FENCE_ACTIVE (다른 승인 진행 중)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /packages/{packageId}/handover-commits:
@@ -312,7 +312,7 @@ paths:
         '409':
           description: INVALID_STATE (fence 없음·만료) / FENCE_VERSION_MISMATCH / ALREADY_HANDED_OVER
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
@@ -365,7 +365,7 @@ paths:
         '409':
           description: INVALID_STATE (HANDED_OVER / fence 진행 중)
           content:
-            application/json:
+            application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
 components:

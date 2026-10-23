@@ -17,5 +17,5 @@ CLAUDE.md는 choreography를 기본으로 하면서 동시에 `order-orchestrati
 - 전부 orchestration — 단순 전파까지 조정자에 몰려 결합도 증가.
 
 ## 결과
-- 조정자 명령은 동기(Feign, 멱등키, 2 hop)이고 결과 수신은 동기 응답 + 이벤트 둘 다 허용(응답 유실 시 이벤트/조회로 복구).
+- 조정자 명령은 동기(Spring RestClient + Resilience4j, 멱등키, 2 hop)이고 결과 수신은 동기 응답 + 이벤트 둘 다 허용(응답 유실 시 이벤트/조회로 복구).
 - 사가 상태 테이블과 보상 로그는 `order-orchestration` DB. `backoffice-bff`는 조회만.
