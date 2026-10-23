@@ -57,13 +57,19 @@ public record GatewayProperties(
    *
    * @param replenishRate 초당 보충 토큰 수(지속 허용 처리율)
    * @param burstCapacity 버킷 크기(순간 허용량)
+   * @param requestedTokens 요청 1건이 쓰는 토큰 수(기본 1). 초당 1건 미만 제한에 쓴다: rate 1·burst 60·requested 60 = 분당
+   *     1건.
    */
-  public record Bucket(int replenishRate, int burstCapacity) {
+  public record Bucket(int replenishRate, int burstCapacity, Integer requestedTokens) {
 
     public Bucket {
-      if (replenishRate < 1 || burstCapacity < replenishRate) {
+      requestedTokens = requestedTokens == null ? 1 : requestedTokens;
+      if (replenishRate < 1
+          || burstCapacity < replenishRate
+          || requestedTokens < 1
+          || requestedTokens > burstCapacity) {
         throw new IllegalArgumentException(
-            "replenishRate >= 1, burstCapacity >= replenishRate 이어야 한다");
+            "replenishRate >= 1, burstCapacity >= replenishRate, 1 <= requestedTokens <= burstCapacity 이어야 한다");
       }
     }
   }

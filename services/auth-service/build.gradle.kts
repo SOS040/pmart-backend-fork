@@ -18,4 +18,5 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(project(":libraries:common-security")) // ServiceTokenIT 가 호출 측 ServiceTokenProvider 를 그대로 쓴다
 }

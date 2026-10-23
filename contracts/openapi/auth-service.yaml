@@ -16,6 +16,7 @@ tags:
   - { name: logins, description: 소셜 로그인·원인증 결과 조회 }
   - { name: tokens, description: 토큰 갱신·로그아웃·세션 }
   - { name: internal, description: 행위 시점 검증·grant 반영/조회(서비스 토큰) }
+  - { name: keys, description: "서비스 신원: JWKS 공개키·서비스 토큰 발급 (클러스터 내부 전용, ADR-0011)" }
 
 paths:
   /auth/social-logins:
@@ -191,6 +192,60 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  # ---------- keys (서비스 신원, ADR-0011). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  /internal/jwks:
+    get:
+      tags: [keys]
+      summary: "[전 서비스·게이트웨이→auth] 토큰 검증 공개키 (JWK Set, RFC 7517)"
+      description: |
+        활성 서명키와 교체 중인 이전 키의 공개키를 모두 싣는다. 검증 측은 토큰 헤더 kid 로 키를 고른다.
+        리소스 서버 설정 spring.security.oauth2.resourceserver.jwt.jwk-set-uri 가 이 주소를 가리킨다.
+      operationId: getJwks
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JwkSet' }
+
+  /internal/service-tokens:
+    post:
+      tags: [keys]
+      summary: "[전 서비스→auth] 서비스 신원 토큰 발급 (OAuth 2.0 client_credentials, RFC 6749 4.4)"
+      description: |
+        클라이언트 인증은 HTTP Basic(client_secret_basic): clientId=서비스명, secret 은 Secret Manager 주입값.
+        발급 토큰 claim: sub=src=서비스명, typ=SERVICE, 짧은 수명(기본 5분). /internal/** 호출에만 쓴다.
+        호출 측은 만료 전까지 캐시한다(common-security ServiceTokenProvider). 응답·오류 형식은 RFC 6749 5.1/5.2.
+      operationId: issueServiceToken
+      security:
+        - serviceClientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type: { type: string, enum: [client_credentials] }
+      responses:
+        '200':
+          description: 발급 (Cache-Control no-store)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceTokenResponse' }
+        '400':
+          description: unsupported_grant_type / invalid_request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthError' }
+        '401':
+          description: invalid_client (클라이언트 미등록·secret 불일치. WWW-Authenticate Basic)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OAuthError' }
+
   # ---------- internal (서비스 토큰) ----------
   /internal/authorizations:
     post:
@@ -310,6 +365,31 @@ paths:
 
 components:
   schemas:
+    JwkSet:
+      type: object
+      required: [keys]
+      description: RFC 7517 JWK Set. 공개키만(RSA n/e, kid, alg=RS256, use=sig).
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ServiceTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      description: RFC 6749 5.1
+      properties:
+        access_token: { type: string, description: 로그 금지 }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, description: 초 }
+    OAuthError:
+      type: object
+      required: [error]
+      description: RFC 6749 5.2
+      properties:
+        error: { type: string, enum: [invalid_request, invalid_client, unsupported_grant_type] }
+        error_description: { type: string }
     Provider:
       type: string
       enum: [KAKAO, NAVER, APPLE, GOOGLE]
@@ -444,3 +524,7 @@ components:
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'
+    serviceClientBasic:
+      type: http
+      scheme: basic
+      description: 서비스 클라이언트 인증(client_secret_basic). 사용자 이름=서비스명, 비밀번호=서비스 secret.

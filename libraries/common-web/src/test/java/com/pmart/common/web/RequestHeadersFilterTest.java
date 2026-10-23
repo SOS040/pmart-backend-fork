@@ -66,6 +66,25 @@ class RequestHeadersFilterTest {
   }
 
   @Test
+  void excludedPathsSkipTheCheckButOthersStillGuarded() throws ServletException, IOException {
+    properties.setExcludedPaths(java.util.List.of("/api/v1/internal/service-tokens"));
+
+    MockHttpServletResponse excluded = new MockHttpServletResponse();
+    filter.doFilter(
+        new MockHttpServletRequest("POST", "/api/v1/internal/service-tokens"),
+        excluded,
+        new MockFilterChain());
+    assertThat(excluded.getStatus()).isEqualTo(200);
+
+    MockHttpServletResponse other = new MockHttpServletResponse();
+    filter.doFilter(
+        new MockHttpServletRequest("POST", "/api/v1/internal/authorizations"),
+        other,
+        new MockFilterChain());
+    assertThat(other.getStatus()).isEqualTo(400);
+  }
+
+  @Test
   void invalidExpectedVersionIsIgnoredNotRejected() throws ServletException, IOException {
     MockHttpServletRequest req = new MockHttpServletRequest("PATCH", "/internal/x");
     req.addHeader(RequestHeaders.IDEMPOTENCY_KEY, "k");

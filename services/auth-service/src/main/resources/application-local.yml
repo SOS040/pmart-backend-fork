@@ -1,10 +1,5 @@
 # 로컬 개발 프로파일 (deploy/local/docker-compose.yml). 로컬 컨테이너 전용 고정값이며 운영은 Secret Manager.
 spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          jwk-set-uri: ${PMART_JWKS_URI:http://localhost:8501/.well-known/jwks.json}
   datasource:
     url: jdbc:postgresql://localhost:15432/auth_service
     username: pmart
@@ -14,3 +9,41 @@ spring:
 logging:
   level:
     com.pmart: DEBUG
+pmart:
+  auth:
+    issuer: http://localhost:8501
+    signing:
+      ephemeral: true # 로컬 전용 임시 키. 재시작하면 기존 토큰 무효
+    # 로컬 전용: 모든 서비스의 secret 은 pmart-local (해시만 둔다). 운영은 서비스별 secret + Secret Manager.
+    service-clients:
+      - { client-id: approval-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: audit-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: auth-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: backoffice-bff, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: cart-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: case-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: center-master-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: claim-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: customer-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: delivery-capacity-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: delivery-dispatch-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: delivery-execution-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: delivery-serviceability-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: delivery-tracking-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: fulfillment-routing-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: mfc-capacity-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: mfc-fulfillment-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: mfc-inbound-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: mfc-inventory-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: mfc-location-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: mfc-quality-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: notification-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: order-orchestration-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: order-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: payment-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: pricing-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: product-content-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: product-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: rider-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: search-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }
+      - { client-id: storefront-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }

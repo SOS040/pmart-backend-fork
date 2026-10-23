@@ -3,6 +3,7 @@ package com.pmart.common.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -62,7 +63,8 @@ class ActionAuthorizerTest {
         .expect(requestTo("http://auth/internal/authorizations"))
         .andExpect(method(HttpMethod.POST))
         .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-        .andExpect(jsonPath("$.actor.id").value("op-1"))
+        .andExpect(jsonPath("$.actor.principalId").value("op-1"))
+        .andExpect(header("Idempotency-Key", org.hamcrest.Matchers.notNullValue()))
         .andExpect(jsonPath("$.action").value("APPROVE_PRICE"))
         .andExpect(jsonPath("$.target.id").value("pc-1"))
         .andExpect(jsonPath("$.centerScope[0]").value("MFC-BSN-01"))
@@ -77,6 +79,30 @@ class ActionAuthorizerTest {
 
     assertThat(d.allowed()).isTrue();
     assertThat(d.decisionId()).isEqualTo("d-9");
+    server.verify();
+  }
+
+  @Test
+  void denyCarriesFirstReasonFromContract() {
+    loginAs("op-1", "OPERATOR");
+    RestClient.Builder builder = RestClient.builder().baseUrl("http://auth");
+    MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+    server
+        .expect(requestTo("http://auth/internal/authorizations"))
+        .andExpect(jsonPath("$.target.requesterPrincipalId").value("op-1"))
+        .andRespond(
+            withSuccess(
+                "{\"decision\":\"DENY\",\"decisionId\":\"d-2\",\"reasons\":[\"SELF_APPROVAL\"]}",
+                MediaType.APPLICATION_JSON));
+    ActionAuthorizer authz = new ActionAuthorizer(builder.build());
+
+    ActionAuthorizer.Decision d =
+        authz.decide(
+            new ActionAuthorizer.Request("APPROVE", "APPROVAL", "ap-1", null, null, "op-1"));
+
+    assertThat(d.allowed()).isFalse();
+    assertThat(d.reasonCode()).isEqualTo("SELF_APPROVAL");
+    assertThat(d.decisionId()).isEqualTo("d-2");
     server.verify();
   }
 

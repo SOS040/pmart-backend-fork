@@ -124,7 +124,7 @@ function applicationLocalYml(s) {
     `    oauth2:`,
     `      resourceserver:`,
     `        jwt:`,
-    `          jwk-set-uri: \${PMART_JWKS_URI:http://localhost:8501/.well-known/jwks.json}`,
+    `          jwk-set-uri: \${PMART_JWKS_URI:http://localhost:8501/api/v1/internal/jwks}`,
   ];
   if (f.has("data")) {
     y.push(

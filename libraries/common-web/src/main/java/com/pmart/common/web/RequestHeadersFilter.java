@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
@@ -19,6 +20,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RequestHeadersFilter extends OncePerRequestFilter {
 
   private static final Set<String> MUTATING = Set.of("POST", "PUT", "PATCH", "DELETE");
+  private static final AntPathMatcher PATHS = new AntPathMatcher();
 
   private final CommonWebProperties properties;
   private final ProblemDetailWriter writer;
@@ -66,6 +68,11 @@ public class RequestHeadersFilter extends OncePerRequestFilter {
   }
 
   private boolean isGuardedPath(String uri) {
+    for (String excluded : properties.getExcludedPaths()) {
+      if (PATHS.match(excluded, uri)) {
+        return false;
+      }
+    }
     for (String prefix : properties.getGuardedPathPrefixes()) {
       if (uri.startsWith(prefix)) {
         return true;

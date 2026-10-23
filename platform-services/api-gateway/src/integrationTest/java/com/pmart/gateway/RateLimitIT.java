@@ -24,8 +24,8 @@ import org.wiremock.spring.EnableWireMock;
 import org.wiremock.spring.InjectWireMock;
 
 /**
- * 처리율 제한: 실제 Redis 위의 토큰 버킷. 버킷 크기를 2 로 줄여 세 번째 요청이 429 Problem 인지, 버킷이 IP·subject 단위로 분리되는지, 예외
- * 경로는 제한하지 않는지 확인한다. 클라이언트 IP 는 {@code X-Forwarded-For}(trusted-proxies=1) 로 구분한다.
+ * 처리율 제한: 실제 Redis 위의 토큰 버킷. 버킷을 요청 2건 분량으로 줄여 세 번째 요청이 429 Problem 인지, 버킷이 IP·subject 단위로 분리되는지,
+ * 예외 경로는 제한하지 않는지 확인한다. 클라이언트 IP 는 {@code X-Forwarded-For}(trusted-proxies=1) 로 구분한다.
  */
 // MOCK: mockJwt() 가 동작하려면 WebTestClient 가 컨텍스트에 바인딩돼야 한다(GatewayRoutingSecurityTest 와 같음).
 @SpringBootTest(
@@ -35,12 +35,15 @@ import org.wiremock.spring.InjectWireMock;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "spring.data.redis.url=",
       "management.tracing.enabled=false",
+      // 요청 1건 = 토큰 30, 버킷 60, 초당 1 보충 → 2건 뒤 30초간 거부. 부하로 테스트가 느려져도 결과가 같다.
       "pmart.gateway.rate-limit.anonymous.replenish-rate=1",
-      "pmart.gateway.rate-limit.anonymous.burst-capacity=2",
+      "pmart.gateway.rate-limit.anonymous.burst-capacity=60",
+      "pmart.gateway.rate-limit.anonymous.requested-tokens=30",
       "pmart.gateway.rate-limit.authenticated.replenish-rate=1",
-      "pmart.gateway.rate-limit.authenticated.burst-capacity=2"
+      "pmart.gateway.rate-limit.authenticated.burst-capacity=60",
+      "pmart.gateway.rate-limit.authenticated.requested-tokens=30"
     })
-@AutoConfigureWebTestClient
+@AutoConfigureWebTestClient(timeout = "30s") // 전체 빌드 병렬 실행 시 첫 요청이 느릴 수 있다
 @Testcontainers
 @EnableWireMock(
     @ConfigureWireMock(
@@ -76,7 +79,7 @@ class RateLimitIT {
         .expectStatus()
         .isOk()
         .expectHeader()
-        .valueEquals("X-RateLimit-Remaining", "1");
+        .valueEquals("X-RateLimit-Remaining", "30");
     anonymousHome(ip).expectStatus().isOk();
     anonymousHome(ip)
         .expectStatus()

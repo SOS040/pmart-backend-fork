@@ -46,7 +46,7 @@ class SecurityChainTest {
         return "ok";
       }
 
-      @PostMapping("/internal/reservations")
+      @PostMapping({"/internal/reservations", "/api/v1/internal/reservations"})
       String reserve() {
         return "reserved";
       }
@@ -78,6 +78,30 @@ class SecurityChainTest {
   void authenticatedCustomerCanCallApi() throws Exception {
     mvc.perform(
             get("/api/v1/orders").with(jwt().jwt(j -> j.subject("acc-1").claim("typ", "CUSTOMER"))))
+        .andExpect(status().isOk());
+  }
+
+  /** 계약 servers.url 이 /api/v1 이라 실제 내부 경로는 /api/v1/internal/**. 사용자 토큰은 403. */
+  @Test
+  void versionedInternalPathAlsoRequiresServiceToken() throws Exception {
+    mvc.perform(
+            post("/api/v1/internal/reservations")
+                .with(
+                    jwt()
+                        .jwt(j -> j.subject("acc-1").claim("typ", "CUSTOMER"))
+                        .authorities(
+                            j ->
+                                new PmartJwtAuthenticationConverter().convert(j).getAuthorities())))
+        .andExpect(status().isForbidden());
+
+    mvc.perform(
+            post("/api/v1/internal/reservations")
+                .with(
+                    jwt()
+                        .jwt(j -> j.subject("order-service").claim("typ", "SERVICE"))
+                        .authorities(
+                            j ->
+                                new PmartJwtAuthenticationConverter().convert(j).getAuthorities())))
         .andExpect(status().isOk());
   }
 

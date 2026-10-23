@@ -20,5 +20,11 @@
 ```
 로컬 포트 8501.
 
+## 서비스 신원 (ADR-0011)
+- `GET /api/v1/internal/jwks`(공개키), `POST /api/v1/internal/service-tokens`(client_credentials, Basic). 둘 다 permit-path, 게이트웨이 비노출.
+- 서명키 `pmart.auth.signing.keys` (Secret Manager, PKCS#8 PEM, 첫 키가 활성). 없으면 기동 실패. local/test 만 `ephemeral=true`.
+- 클라이언트 등록부 `pmart.auth.service-clients` 는 bcrypt 해시만. 토큰·secret 로그 금지.
+- 자기 토큰 검증은 `KeyConfig` 의 JwtDecoder(같은 키 묶음) — `jwk-set-uri` 없음.
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+3단계 스캐폴딩(2026-10-23). 서비스 신원 토큰·JWKS 구현(2026-10-23). 그 외 엔드포인트(소셜 로그인·토큰 갱신·행위 검증·grant)는 501 UNSUPPORTED_ACTION.

@@ -31,7 +31,10 @@ import tools.jackson.databind.ObjectMapper;
  *       Security 기본 체인이 모든 요청을 막는다).
  *   <li>{@code permit-paths} 는 익명, {@code internal-paths} 는 TYPE_SERVICE, 나머지는 인증 필요.
  *   <li>401/403 은 application/problem+json.
- *   <li>RestClient 에 X-Source-System·X-Correlation-Id·Bearer 전파.
+ *   <li>RestClient 에 X-Source-System·X-Correlation-Id·Bearer. {@code /internal/} 호출은 서비스 신원
+ *       토큰(ADR-0011), 그 외는 사용자 토큰 전파.
+ *   <li>{@code pmart.security.service-token.token-uri} 가 있으면 {@link ServiceTokenProvider} 등록(secret
+ *       필수).
  *   <li>{@code pmart.security.authz.base-url} 이 있으면 {@link ActionAuthorizer} 등록(fail-closed).
  * </ul>
  */
@@ -92,8 +95,42 @@ public class CommonSecurityAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean(name = "serviceCallHeadersCustomizer")
-  public RestClientCustomizer serviceCallHeadersCustomizer(Environment env) {
-    return new ServiceCallHeadersCustomizer(env.getProperty("spring.application.name", "unknown"));
+  public RestClientCustomizer serviceCallHeadersCustomizer(
+      Environment env, ObjectProvider<ServiceTokenProvider> serviceTokens) {
+    return new ServiceCallHeadersCustomizer(
+        env.getProperty("spring.application.name", "unknown"), serviceTokens);
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnProperty(prefix = "pmart.security.service-token", name = "token-uri")
+  static class ServiceTokenClient {
+    @Bean
+    @ConditionalOnMissingBean
+    public ServiceTokenProvider serviceTokenProvider(
+        SecurityProperties props, Environment env, ObjectProvider<RestClient.Builder> builders) {
+      SecurityProperties.ServiceToken t = props.getServiceToken();
+      if (t.getClientSecret() == null || t.getClientSecret().isBlank()) {
+        throw new IllegalStateException(
+            "pmart.security.service-token.client-secret 이 비어 있다(PMART_SERVICE_CLIENT_SECRET, Secret Manager).");
+      }
+      String clientId =
+          t.getClientId() == null || t.getClientId().isBlank()
+              ? env.getRequiredProperty("spring.application.name")
+              : t.getClientId();
+      JdkClientHttpRequestFactory factory =
+          new JdkClientHttpRequestFactory(
+              java.net.http.HttpClient.newBuilder().connectTimeout(t.getConnectTimeout()).build());
+      factory.setReadTimeout(t.getReadTimeout());
+      RestClient client =
+          builders.getIfAvailable(RestClient::builder).clone().requestFactory(factory).build();
+      return new ServiceTokenProvider(
+          client,
+          t.getTokenUri(),
+          clientId,
+          t.getClientSecret(),
+          t.getRefreshSkew(),
+          java.time.Clock.systemUTC());
+    }
   }
 
   @Configuration(proxyBeanMethods = false)
@@ -104,13 +141,15 @@ public class CommonSecurityAutoConfiguration {
     public ActionAuthorizer actionAuthorizer(
         SecurityProperties props, ObjectProvider<RestClient.Builder> builderProvider) {
       SecurityProperties.Authz a = props.getAuthz();
-      JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory();
-      factory.setReadTimeout(a.getReadTimeout());
-      RestClient.Builder builder = builderProvider.getIfAvailable(RestClient::builder);
-      RestClient client = builder.clone().baseUrl(a.getBaseUrl()).requestFactory(factory).build();
       if (a.getConnectTimeout().compareTo(Duration.ZERO) <= 0) {
         throw new IllegalStateException("pmart.security.authz.connect-timeout 은 양수여야 합니다.");
       }
+      JdkClientHttpRequestFactory factory =
+          new JdkClientHttpRequestFactory(
+              java.net.http.HttpClient.newBuilder().connectTimeout(a.getConnectTimeout()).build());
+      factory.setReadTimeout(a.getReadTimeout());
+      RestClient.Builder builder = builderProvider.getIfAvailable(RestClient::builder);
+      RestClient client = builder.clone().baseUrl(a.getBaseUrl()).requestFactory(factory).build();
       return new ActionAuthorizer(client);
     }
   }

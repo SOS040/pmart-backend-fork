@@ -13,7 +13,7 @@ import org.springframework.web.client.RestClient;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "pmart.auth.signing.ephemeral=true" // 자기 서명키로 검증(KeyConfig). 운영 키는 Secret Manager
     })
 class ServiceBootIT extends PostgresKafkaContainerSupport {
 

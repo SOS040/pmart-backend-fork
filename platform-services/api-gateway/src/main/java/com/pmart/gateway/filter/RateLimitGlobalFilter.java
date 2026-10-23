@@ -116,7 +116,7 @@ public class RateLimitGlobalFilter implements GlobalFilter, Ordered {
     return new RedisRateLimiter.Config()
         .setReplenishRate(bucket.replenishRate())
         .setBurstCapacity(bucket.burstCapacity())
-        .setRequestedTokens(1);
+        .setRequestedTokens(bucket.requestedTokens());
   }
 
   @Override
