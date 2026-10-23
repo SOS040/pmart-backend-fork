@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ChangeRequestSubmitted.v1.json",
+  "title": "ChangeRequestSubmitted",
+  "description": "초안 제출. 발행 approval. 구독 해당 정본(검증용), notification(승인자). 토픽 platform.approval.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ChangeRequestSubmitted"
+        },
+        "aggregateType": {
+          "const": "ChangeRequest"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "changeRequestId",
+            "type",
+            "targetRef",
+            "payloadRef"
+          ],
+          "properties": {
+            "changeRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "description": "변경 요청 유형"
+            },
+            "targetRef": {
+              "type": "object",
+              "required": [
+                "targetType",
+                "targetId"
+              ],
+              "properties": {
+                "targetType": {
+                  "type": "string",
+                  "description": "정본 aggregate 종류 (Product, Price, Center 등)"
+                },
+                "targetId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                }
+              },
+              "additionalProperties": true
+            },
+            "expectedVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "payloadRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "submittedBy": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "submittedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

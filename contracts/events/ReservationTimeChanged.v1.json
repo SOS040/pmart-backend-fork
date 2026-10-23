@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReservationTimeChanged.v1.json",
+  "title": "ReservationTimeChanged",
+  "description": "S4 성공. 발행 order-service. 구독 mfc-fulfillment, delivery-capacity, notification. 토픽 order.order.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReservationTimeChanged"
+        },
+        "aggregateType": {
+          "const": "Order"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "oldWindow",
+            "newWindow",
+            "version"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "oldWindow": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "newWindow": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "newSlotHoldId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

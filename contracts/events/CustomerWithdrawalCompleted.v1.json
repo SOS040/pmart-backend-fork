@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerWithdrawalCompleted.v1.json",
+  "title": "CustomerWithdrawalCompleted",
+  "description": "미결 의무 종결 확인 후 완료. 발행 customer-service. 구독 auth, cart, notification, audit. 토픽 commerce.customer.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerWithdrawalCompleted"
+        },
+        "aggregateType": {
+          "const": "Customer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "accountId",
+            "completedAt"
+          ],
+          "properties": {
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "completedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

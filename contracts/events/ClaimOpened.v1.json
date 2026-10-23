@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ClaimOpened.v1.json",
+  "title": "ClaimOpened",
+  "description": "접수. 발행 claim-service. 구독 notification, case. 토픽 order.claim.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ClaimOpened"
+        },
+        "aggregateType": {
+          "const": "Claim"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "claimId",
+            "orderId",
+            "type",
+            "lines",
+            "reason"
+          ],
+          "properties": {
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "CANCEL",
+                "RETURN",
+                "EXCHANGE"
+              ]
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "claimLineId",
+                  "orderLineId",
+                  "qty"
+                ],
+                "properties": {
+                  "claimLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "orderLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "접수 사유 코드"
+            },
+            "openedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

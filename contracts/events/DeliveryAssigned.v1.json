@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryAssigned.v1.json",
+  "title": "DeliveryAssigned",
+  "description": "유효 수락 1건 확정. 발행 delivery-dispatch. 구독 delivery-execution, delivery-tracking, mfc-fulfillment, order, notification. 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DeliveryAssigned"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "riderId",
+            "assignmentVersion",
+            "acceptedAt"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "offerId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "assignmentVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "acceptedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

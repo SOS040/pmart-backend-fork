@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PolicyVersionApproved.v1.json",
+  "title": "PolicyVersionApproved",
+  "description": "정책 승인(소유 서비스가 발효 후 결과 회신). 발행 approval. 구독 정책 소유 서비스(replenishment, mfc-capacity, delivery-capacity, cdc-*, claim 등). 토픽 platform.approval.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PolicyVersionApproved"
+        },
+        "aggregateType": {
+          "const": "Policy"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "policyRef",
+            "ownerService",
+            "version",
+            "effectiveFrom"
+          ],
+          "properties": {
+            "policyRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "ownerService": {
+              "type": "string"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "effectiveFrom": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

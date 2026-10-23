@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ProductVersionPublished.v1.json",
+  "title": "ProductVersionPublished",
+  "description": "승인된 상품/SKU 버전 발효. 발행 product-service. 구독 product-content, search, storefront, pricing, cdc-inventory, mfc-inventory, order, cart. 토픽 commerce.product.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ProductVersionPublished"
+        },
+        "aggregateType": {
+          "const": "Product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "productId",
+            "baseProductId",
+            "skus",
+            "version"
+          ],
+          "properties": {
+            "productId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "baseProductId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "skus": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "unitsPerSku",
+                  "weightG"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "unitsPerSku": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "weightG": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "단위 중량(g)"
+                  },
+                  "packagingSpec": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "packagingType": {
+                        "type": "string"
+                      },
+                      "requiresBag": {
+                        "type": "boolean"
+                      },
+                      "fragile": {
+                        "type": "boolean"
+                      },
+                      "temperatureZone": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": true,
+                    "description": "포장 규격"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "categoryPaths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "description": "categoryId 경로 (루트→리프, / 구분)"
+              }
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

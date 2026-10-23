@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/AssignmentPublished.v1.json",
+  "title": "AssignmentPublished",
+  "description": "작업 배정 계획이 COMMITTED 되어 발행된 사실. 발행 mfc-capacity. 구독 mfc-fulfillment, mfc-inbound. 토픽 mfc.capacity.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "AssignmentPublished"
+        },
+        "aggregateType": {
+          "const": "AssignmentPlan"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "planVersion",
+            "assignments"
+          ],
+          "properties": {
+            "planId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "planVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "assignments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "taskId",
+                  "workerId",
+                  "assignmentVersion"
+                ],
+                "properties": {
+                  "taskId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "workerId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "assignmentVersion": {
+                    "$ref": "_defs.v1.json#/$defs/Version"
+                  }
+                }
+              }
+            },
+            "publishedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

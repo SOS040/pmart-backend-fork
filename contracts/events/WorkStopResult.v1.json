@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/WorkStopResult.v1.json",
+  "title": "WorkStopResult",
+  "description": "작업 중지 요청에 대한 포장별 판정 결과. 발행 mfc-fulfillment. 구독 order-orchestration, claim. 토픽 mfc.fulfillment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "WorkStopResult"
+        },
+        "aggregateType": {
+          "const": "Fulfillment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "stopRequestId",
+            "perPackage"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fulfillmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "stopRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "perPackage": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "packageId",
+                  "state"
+                ],
+                "properties": {
+                  "packageId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "STOPPED",
+                      "HANDOVER_IN_PROGRESS",
+                      "HANDED_OVER"
+                    ]
+                  },
+                  "stoppedLines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "orderLineId",
+                        "qty"
+                      ],
+                      "properties": {
+                        "orderLineId": {
+                          "$ref": "_defs.v1.json#/$defs/Ref"
+                        },
+                        "qty": {
+                          "$ref": "_defs.v1.json#/$defs/Qty"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "decidedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryFailed.v1.json",
+  "title": "DeliveryFailed",
+  "description": "전달 실패·중단(자동 환불 없음). 발행 delivery-execution. 구독 order, claim, case, notification. 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DeliveryFailed"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "reason",
+            "custody",
+            "failedAt"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "reason": {
+              "type": "string",
+              "description": "실패 사유 코드"
+            },
+            "custody": {
+              "type": "string",
+              "enum": [
+                "RIDER",
+                "STORE"
+              ]
+            },
+            "failedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

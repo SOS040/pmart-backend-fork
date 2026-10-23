@@ -1,0 +1,250 @@
+openapi: 3.1.0
+info:
+  title: storefront-service
+  version: 0.1.0
+  description: |
+    홈 진열·배너·일반 테마·홈/랭킹/신상품 탭 구성과 발효 버전의 정본. 추천은 3차. (docs/architecture/service-map.md §1, 1단계 기본)
+    비정본: 상품·가격·재고 정본. 같은 상품을 여러 진열에 보여도 다른 SKU·독립 재고를 만들지 않는다. 특가·기간 할인·할인 탭은 1차 제외.
+    구독: ApprovalDecided(전시 승인 BO-05), ProductVersionPublished, PriceVersionEffective.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: storefront, description: 고객 홈·탭·진열 영역·배너 조회 }
+  - { name: layouts, description: 전시 구성 발효 명령(승인 결과 참조) }
+  - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+
+paths:
+  /storefront/home:
+    get:
+      tags: [storefront]
+      summary: 홈 화면 구성 (탭·진열 영역 목록·배너. 영역별 첫 묶음 포함)
+      description: |
+        영역별 조회는 독립적으로 실패할 수 있다. 실패 영역은 sections[].state=UNAVAILABLE로 표시하고 성공 영역은 유지한다.
+        가격·판매 상태는 사본이며 영역별 asOf를 표시한다.
+      operationId: getHome
+      security: []
+      parameters:
+        - { name: mfcId, in: query, description: 현재 쇼핑 주소 담당 센터, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: tab, in: query, schema: { $ref: '#/components/schemas/TabKey' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HomeLayout' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /storefront/tabs/{tabKey}:
+    get:
+      tags: [storefront]
+      summary: 탭별 진열 (HOME/RANKING/NEW. 신규 판정기간·순위 집계기간은 승인 설정)
+      operationId: getTab
+      security: []
+      parameters:
+        - { name: tabKey, in: path, required: true, schema: { $ref: '#/components/schemas/TabKey' } }
+        - { name: mfcId, in: query, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HomeLayout' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /storefront/sections/{sectionId}/items:
+    get:
+      tags: [storefront]
+      summary: 진열 영역의 다음 상품 묶음 (가로 넘기기·전체보기. 같은 응답 재수신 시 중복 추가 없음)
+      operationId: listSectionItems
+      security: []
+      parameters:
+        - { name: sectionId, in: path, required: true, schema: { type: string } }
+        - { name: mfcId, in: query, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: layoutVersion, in: query, description: 홈 응답의 layoutVersion. 다르면 LAYOUT_VERSION_CHANGED, schema: { type: integer } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sectionId: { type: string }
+                  items: { type: array, items: { $ref: '#/components/schemas/DisplayItem' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: LAYOUT_VERSION_CHANGED (새 구성 발효. 홈 재조회)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /storefront/banners:
+    get:
+      tags: [storefront]
+      summary: 일반 배너 목록 (쿠폰·행사 배너는 1차 제외)
+      operationId: listBanners
+      security: []
+      parameters:
+        - { name: placement, in: query, schema: { type: string, enum: [HOME_TOP, HOME_MIDDLE, CATEGORY] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layoutVersion: { type: integer }
+                  items: { type: array, items: { $ref: '#/components/schemas/Banner' } }
+
+  /storefront/layout-publications:
+    post:
+      tags: [layouts]
+      summary: 전시 구성 발효 (approval BO-05 승인 결과 참조)
+      description: |
+        승인된 전시 초안(draftId)을 새 layoutVersion으로 발효한다. 참조 상품은 product 승인 버전·판매 상태를 재확인하며 판매중지 상품은 진열에서 제외한다.
+        테마 진열을 새 공식 카테고리·독립 SKU로 전환하지 않는다.
+      operationId: publishLayout
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approvalId, draftId]
+              properties:
+                approvalId: { type: string }
+                draftId: { type: string }
+                effectiveFrom: { type: string, format: date-time, description: 생략 시 즉시 }
+                scope: { type: string, enum: [HOME, RANKING, NEW, BANNERS, ALL], default: ALL }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED / DRAFT_NOT_FOUND / PRODUCT_NOT_PUBLISHED (초안 참조 상품의 승인 버전 없음)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /storefront/layout-publications/{requestId}:
+    get:
+      tags: [layouts]
+      summary: 전시 발효 결과 조회 (발효 layoutVersion·제외된 상품)
+      operationId: getLayoutPublication
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+                  layoutVersion: { type: integer }
+                  effectiveFrom: { type: string, format: date-time }
+                  excludedProducts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        productId: { type: string }
+                        reason: { type: string }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  # ---------- internal (서비스 토큰) ----------
+  /internal/storefront/layout-versions/current:
+    get:
+      tags: [internal]
+      summary: '[approval/bff→storefront] 현재 발효 구성 버전·원승인 참조·반영 상태'
+      operationId: getCurrentLayoutVersionInternal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layoutVersion: { type: integer }
+                  approvalId: { type: string }
+                  effectiveFrom: { type: string, format: date-time }
+                  scheduled:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        layoutVersion: { type: integer }
+                        effectiveFrom: { type: string, format: date-time }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+
+components:
+  schemas:
+    TabKey:
+      type: string
+      description: 할인 탭(DEAL)은 1차 제외
+      enum: [HOME, RANKING, NEW]
+    DisplayItem:
+      type: object
+      properties:
+        productId: { type: string }
+        name: { type: string }
+        imageUrl: { type: string, format: uri }
+        representativeSku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        basePrice: { $ref: '_common.yaml#/components/schemas/Money', description: pricing 사본 }
+        priceVersion: { type: integer }
+        saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
+        carried: { type: [boolean, 'null'], description: mfcId 지정 시 취급 여부. 불명이면 null }
+        rating: { type: number }
+        reviewCount: { type: integer }
+        badge: { type: string, enum: [NEW, RANK, NONE] }
+        rank: { type: integer }
+    Banner:
+      type: object
+      properties:
+        bannerId: { type: string }
+        placement: { type: string }
+        imageUrl: { type: string, format: uri }
+        altText: { type: string }
+        linkType: { type: string, enum: [SECTION, CATEGORY, PRODUCT, NOTICE, NONE] }
+        linkRef: { type: string }
+        sortOrder: { type: integer }
+    Section:
+      type: object
+      properties:
+        sectionId: { type: string }
+        kind: { type: string, enum: [THEME, SEASON, WEEKLY_PICK, NEW, RANKING, HIGH_RATING, IN_PROGRESS_ORDER] }
+        title: { type: string }
+        subtitle: { type: string }
+        banner: { $ref: '#/components/schemas/Banner' }
+        state: { type: string, enum: [OK, UNAVAILABLE], description: 영역 조회 실패 시 UNAVAILABLE. 홈 전체를 비우지 않는다 }
+        items: { type: array, items: { $ref: '#/components/schemas/DisplayItem' } }
+        nextCursor: { type: [string, 'null'] }
+        viewAllRef: { type: string, description: 전체보기 연결(같은 조건의 일반 상품 목록) }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    HomeLayout:
+      type: object
+      required: [layoutVersion, sections]
+      properties:
+        layoutVersion: { type: integer }
+        effectiveFrom: { type: string, format: date-time }
+        tab: { $ref: '#/components/schemas/TabKey' }
+        tabs: { type: array, items: { $ref: '#/components/schemas/TabKey' } }
+        banners: { type: array, items: { $ref: '#/components/schemas/Banner' } }
+        sections: { type: array, items: { $ref: '#/components/schemas/Section' } }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InventoryAdjustmentPosted.v1.json",
+  "title": "InventoryAdjustmentPosted",
+  "description": "승인 범위 내 재고 조정(ADJ)을 집행한 사실. 발행 cdc-inventory / mfc-inventory (centerType으로 구분). 구독 approval, audit, replenishment. 토픽 cdc.inventory.v1(CDC) / mfc.inventory.v1(MFC)",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "InventoryAdjustmentPosted"
+        },
+        "aggregateType": {
+          "const": "InventoryAdjustment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "centerType",
+            "centerId",
+            "adjId",
+            "approvalRef",
+            "lines",
+            "executedQty"
+          ],
+          "properties": {
+            "centerType": {
+              "type": "string",
+              "enum": [
+                "CDC",
+                "MFC"
+              ]
+            },
+            "centerId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "adjId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "postingId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "executedDeltaQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "locCode": {
+                    "type": "string"
+                  },
+                  "approvedDeltaQty": {
+                    "type": "integer",
+                    "description": "승인된 증감 수량"
+                  },
+                  "executedDeltaQty": {
+                    "type": "integer",
+                    "description": "집행된 증감 수량(음수 허용)"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "executedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "집행 수량 합(절대값)"
+            },
+            "executedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

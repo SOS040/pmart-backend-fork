@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransportIncidentResolved.v1.json",
+  "title": "TransportIncidentResolved",
+  "description": "운송 사건이 해소된 사실. 발행 transport-execution. 구독 replenishment, mfc-inbound, cdc-quality, case, notification. 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransportIncidentResolved"
+        },
+        "aggregateType": {
+          "const": "TransportIncident"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "incidentId",
+            "tripId",
+            "resolvedAt"
+          ],
+          "properties": {
+            "incidentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "DELAY",
+                "BREAKDOWN",
+                "GPS_LOST",
+                "TEMP",
+                "QTY"
+              ]
+            },
+            "affectedTrfs": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "custodyLocation": {
+              "type": "string"
+            },
+            "resolution": {
+              "type": "string"
+            },
+            "resolvedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

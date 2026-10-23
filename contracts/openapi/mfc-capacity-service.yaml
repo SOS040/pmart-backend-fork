@@ -1,0 +1,496 @@
+openapi: 3.1.0
+info:
+  title: mfc-capacity-service
+  version: 0.1.0
+  description: |
+    MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
+    비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
+    CapacitySnapshot = 피킹·패킹대(기본 4·최대 8)·보관 공간·인력을 같은 수용 단위로 환산한 최소값.
+    CapacityHold: HELD→CONFIRMED/RELEASED/EXPIRED. CONFIRMED 해제는 근거(reason) 필수.
+    AssignmentPlan: PROPOSED→COMMITTED / NO_SOLUTION / STALE / RECOVERY_REQUIRED. 활성 담당 1명.
+    조회 실패·미설정은 0/무제한이 아니라 CONFIG_REQUIRED/503.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: capacity, description: 여력 스냅샷·CapacityHold (orchestration) }
+  - { name: receiving, description: 수령창·수용량·하차면 (SCM/TMS) }
+  - { name: assignments, description: 작업 배정·OR-Tools 계획 }
+  - { name: restrictions, description: 운영 제한 (접수 중지·용량 축소) }
+
+paths:
+  /internal/capacity-snapshots:
+    get:
+      tags: [capacity]
+      summary: '[orchestration/delivery-capacity→capacity] 여력 스냅샷 (시간창별 환산 최소값·점유)'
+      operationId: getCapacitySnapshot
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: window, in: query, required: true, schema: { type: string, description: 'ISO-8601 interval 예 2026-10-23T13:00:00Z/2026-10-23T14:00:00Z' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapacitySnapshot' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/capacity-holds:
+    post:
+      tags: [capacity]
+      summary: '[orchestration→capacity] HoldCapacity — 결제 전 작업 여력 확보 (S1)'
+      description: 수용 단위 부족 시 CAPACITY_EXCEEDED. 재고가 충분해도 여력 없으면 접수 실패(IV-05). TTL 기본 10분.
+      operationId: holdCapacity
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, mfcId, window, demand]
+              properties:
+                orderId: { type: string }
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                window: { type: string, description: ISO-8601 interval }
+                ttlMinutes: { type: integer, minimum: 1, maximum: 60, default: 10 }
+                demand: { $ref: '#/components/schemas/CapacityDemand' }
+      responses:
+        '201':
+          description: HELD (resultId = holdId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: CAPACITY_EXCEEDED / CONFIG_REQUIRED / OPERATION_RESTRICTED (접수 중지)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/capacity-holds/{holdId}:
+    get:
+      tags: [capacity]
+      summary: CapacityHold 조회
+      operationId: getCapacityHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CapacityHold' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/capacity-holds/{holdId}/confirmations:
+    post:
+      tags: [capacity]
+      summary: '[orchestration→capacity] Hold 확정 (HELD→CONFIRMED)'
+      operationId: confirmCapacityHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId]
+              properties:
+                orderId: { type: string }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE (EXPIRED/RELEASED) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/capacity-holds/{holdId}/releases:
+    post:
+      tags: [capacity]
+      summary: '[orchestration→capacity] Hold 해제 (CONFIRMED 해제는 reason 필수)'
+      operationId: releaseCapacityHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, enum: [SAGA_COMPENSATION, ORDER_CANCELLED, SHORTAGE, RESCHEDULED, OPERATOR], description: CONFIRMED 상태 해제 시 필수 }
+                sourceRef: { type: string, description: sagaId / stopRequestId / approvalRef }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400':
+          description: VALIDATION_FAILED (CONFIRMED 해제에 reason 없음)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/receiving-capabilities:
+    get:
+      tags: [receiving]
+      summary: '[SCM/TMS→capacity] 수령창·수용량 조회 (일자별 창·1회 입고 상한·잔여)'
+      operationId: getReceivingCapabilities
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date, description: Asia/Seoul } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mfcId: { type: string }
+                  date: { type: string, format: date }
+                  version: { $ref: '_common.yaml#/components/schemas/Version' }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  windows: { type: array, items: { $ref: '#/components/schemas/ReceivingWindow' } }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /internal/unloading-bay-reservations:
+    post:
+      tags: [receiving]
+      summary: '[TMS→capacity] 하차면 예약 (수령창 내, 1회 입고 상한 검증)'
+      operationId: reserveUnloadingBay
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, tripId, window, loadUnits]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                tripId: { type: string }
+                trfIds: { type: array, items: { type: string } }
+                window: { type: string, description: ISO-8601 interval }
+                vehicleType: { type: string }
+                loadUnits: { type: integer, minimum: 1, description: 박스/팔레트 환산 단위 }
+      responses:
+        '201':
+          description: 예약 (resultId = bayReservationId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: CAPACITY_EXCEEDED (1회 입고 상한·창 외) / CONFIG_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/unloading-bay-reservations/{bayReservationId}:
+    get:
+      tags: [receiving]
+      summary: 하차면 예약 조회
+      operationId: getUnloadingBayReservation
+      parameters:
+        - { name: bayReservationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bayReservationId: { type: string }
+                  mfcId: { type: string }
+                  tripId: { type: string }
+                  bayCode: { type: string }
+                  window: { type: string }
+                  state: { type: string, enum: [RESERVED, ARRIVED, COMPLETED, CANCELLED] }
+                  version: { type: integer }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    delete:
+      tags: [receiving]
+      summary: 하차면 예약 취소
+      operationId: cancelUnloadingBayReservation
+      parameters:
+        - { name: bayReservationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /assignments:
+    get:
+      tags: [assignments]
+      summary: 작업 배정 조회 (fulfillment·점원 단말; 활성 담당 1명, assignment_version)
+      operationId: listAssignments
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - { name: workerId, in: query, schema: { type: string } }
+        - { name: taskId, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
+
+  /assignment-plans:
+    post:
+      tags: [assignments]
+      summary: OR-Tools 배정 계획 생성·확정 요청 (PROPOSED→COMMITTED, AssignmentPublished)
+      description: 입력 스냅샷 버전이 바뀌면 STALE, 해 없음은 NO_SOLUTION, 실행 중 불일치는 RECOVERY_REQUIRED. optimizers 의존 `[결정 필요]`.
+      operationId: createAssignmentPlan
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, window, mode]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                window: { type: string, description: ISO-8601 interval }
+                mode: { type: string, enum: [PROPOSE_ONLY, PROPOSE_AND_COMMIT] }
+                inputSnapshotVersion: { type: integer }
+                constraints:
+                  type: object
+                  properties:
+                    maxPackingStations: { type: integer, minimum: 1, maximum: 8, default: 4 }
+                    respectQualifications: { type: boolean, default: true }
+      responses:
+        '202':
+          description: 접수 (resultId = planId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /assignment-plans/{planId}:
+    get:
+      tags: [assignments]
+      summary: 배정 계획 조회
+      operationId: getAssignmentPlan
+      parameters:
+        - { name: planId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssignmentPlan' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /operation-restrictions:
+    get:
+      tags: [restrictions]
+      summary: 운영 제한 조회 (활성·이력)
+      operationId: listOperationRestrictions
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: activeOnly, in: query, schema: { type: boolean, default: true } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/OperationRestriction' } }
+    post:
+      tags: [restrictions]
+      summary: 운영 제한 적용 (INTAKE_STOP / CAPACITY_REDUCE, approvalRef 필수, OperationRestrictionApplied)
+      description: CAPACITY_REDUCE 는 기존 약속을 삭제하지 않고 영향 주문 목록을 CapacityReduced 로 발행한다. delivery-capacity 정원의 입력이지 자동 변경이 아니다.
+      operationId: applyOperationRestriction
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, restrictionType, approvalRef, effectiveFrom]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                restrictionType: { type: string, enum: [INTAKE_STOP, CAPACITY_REDUCE] }
+                approvalRef: { type: string, description: approval-service approvalId (BO-08) }
+                reason: { type: string, maxLength: 500 }
+                effectiveFrom: { type: string, format: date-time }
+                effectiveTo: { type: [string, 'null'], format: date-time }
+                reducedCapacityUnits: { type: integer, minimum: 0, description: CAPACITY_REDUCE 시 축소 후 수용 단위 }
+      responses:
+        '201':
+          description: 적용 (resultId = restrictionId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED (승인 참조 없음·불일치)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /operation-restrictions/{restrictionId}:
+    get:
+      tags: [restrictions]
+      summary: 운영 제한 조회
+      operationId: getOperationRestriction
+      parameters:
+        - { name: restrictionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationRestriction' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    delete:
+      tags: [restrictions]
+      summary: 운영 제한 해제·재개 (approvalRef 필수, OperationRestrictionLifted)
+      operationId: liftOperationRestriction
+      parameters:
+        - { name: restrictionId, in: path, required: true, schema: { type: string } }
+        - { name: approvalRef, in: query, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+components:
+  schemas:
+    CapacityDemand:
+      type: object
+      description: 주문 1건이 소비하는 수용 단위 입력
+      properties:
+        lineCount: { type: integer, minimum: 1 }
+        itemCount: { type: integer, minimum: 1 }
+        weightG: { type: integer, minimum: 0 }
+        plannedShipments: { type: integer, minimum: 1 }
+        temperatureZones: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
+    CapacitySnapshot:
+      type: object
+      properties:
+        mfcId: { type: string }
+        window: { type: string }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        capacityUnits: { type: integer, description: 단계별 환산 최소값 }
+        heldUnits: { type: integer }
+        confirmedUnits: { type: integer }
+        availableUnits: { type: integer, description: capacityUnits − held − confirmed }
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              stage: { type: string, enum: [PICKING, PACKING, STORAGE, WORKFORCE] }
+              rawCapacity: { type: integer }
+              convertedUnits: { type: integer }
+        activeRestrictions: { type: array, items: { type: string } }
+    CapacityHold:
+      type: object
+      properties:
+        holdId: { type: string }
+        orderId: { type: string }
+        mfcId: { type: string }
+        window: { type: string }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        state: { type: string, enum: [HELD, CONFIRMED, RELEASED, EXPIRED] }
+        units: { type: integer }
+        expiresAt: { type: [string, 'null'], format: date-time }
+        releaseReason: { type: [string, 'null'] }
+    ReceivingWindow:
+      type: object
+      properties:
+        windowId: { type: string }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        maxLoadUnitsPerArrival:
+          type: integer
+          description: 1회 입고 상한 (가정)
+        totalLoadUnits: { type: integer }
+        reservedLoadUnits: { type: integer }
+        bayCount: { type: integer }
+        state: { type: string, enum: [OPEN, FULL, CLOSED] }
+    Assignment:
+      type: object
+      properties:
+        assignmentId: { type: string }
+        taskId: { type: string }
+        workerId: { type: string }
+        assignmentVersion: { type: integer }
+        state: { type: string, enum: [ACTIVE, SUPERSEDED, RELEASED] }
+        planId: { type: [string, 'null'] }
+        assignedAt: { type: string, format: date-time }
+    AssignmentPlan:
+      type: object
+      properties:
+        planId: { type: string }
+        mfcId: { type: string }
+        window: { type: string }
+        state: { type: string, enum: [PROPOSED, COMMITTED, NO_SOLUTION, STALE, RECOVERY_REQUIRED] }
+        inputSnapshotVersion: { type: integer }
+        assignments: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
+        objective: { type: object, properties: { makespanSec: { type: integer }, utilization: { type: number } } }
+        createdAt: { type: string, format: date-time }
+        committedAt: { type: [string, 'null'], format: date-time }
+    OperationRestriction:
+      type: object
+      properties:
+        restrictionId: { type: string }
+        mfcId: { type: string }
+        restrictionType: { type: string, enum: [INTAKE_STOP, CAPACITY_REDUCE] }
+        state: { type: string, enum: [ACTIVE, LIFTED] }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        approvalRef: { type: string }
+        liftApprovalRef: { type: [string, 'null'] }
+        reason: { type: string }
+        effectiveFrom: { type: string, format: date-time }
+        effectiveTo: { type: [string, 'null'], format: date-time }
+        reducedCapacityUnits: { type: [integer, 'null'] }
+        affectedOrderIds: { type: array, items: { type: string } }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

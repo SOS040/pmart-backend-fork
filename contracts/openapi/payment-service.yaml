@@ -1,0 +1,370 @@
+openapi: 3.1.0
+info:
+  title: payment-service
+  version: 0.1.0
+  description: |
+    결제 시도(paymentAttemptId)·PG 거래(pgTransactionId)·승인액·취소/환불 거래·멱등키·추가 환불 가능 한도·원거래 조회 이력·보상 취소의 정본. (docs/architecture/service-map.md §2, ADR-0005)
+    실제 승인·취소 사실의 정본은 PG(토스페이먼츠)다. 콜백·결제창 복귀만으로 승인을 확정하지 않고 원거래 조회로 대사한다.
+    환불 의도·금액 산정은 claim/order가 하며 payment는 한도·멱등·원거래 적격만 검증한다.
+    BackOffice는 payment에 독자 PG 명령을 보내지 않는다(BO-13). 카드 번호·PG 비밀은 어떤 요청·응답·이벤트·로그에도 포함하지 않는다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: payments, description: 결제 시도·승인 조회 (orchestration S1) }
+  - { name: cancellations, description: 전체/부분 취소·보상 취소 (claim / orchestration) }
+  - { name: webhooks, description: PG 콜백 (외부 → payment · 서명 검증) }
+
+paths:
+  /internal/payments:
+    post:
+      tags: [payments]
+      summary: "[orchestration→payment] 결제 시작 (결제 시도 생성, PG 결제창 진입 정보 반환)"
+      description: |
+        같은 orderId+Idempotency-Key 재전송은 기존 결제 시도 반환(같은 키 다른 본문은 409).
+        응답은 "결제 시도 생성"이며 승인이 아니다. 승인은 PaymentApproved 이벤트 또는 GET /internal/payments/{paymentAttemptId}로 확인한다.
+        주류 포함 주문은 토스페이먼츠 결제 인증(성인 인증 통합)을 요구한다.
+      operationId: startPayment
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartPaymentRequest' }
+      responses:
+        '201':
+          description: 결제 시도 생성 또는 기존 시도 반환
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartPaymentResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / PAYMENT_ALREADY_APPROVED (같은 orderId로 승인 완료 시도 존재)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/payments/{paymentAttemptId}:
+    get:
+      tags: [payments]
+      summary: 결제 시도 조회 (상태·승인액·취소 누적·추가 환불 가능 한도)
+      operationId: getPayment
+      parameters:
+        - { name: paymentAttemptId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK (asOf는 마지막 PG 대사 시각)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/payments/{paymentAttemptId}/inquiries:
+    post:
+      tags: [payments]
+      summary: "[orchestration/claim→payment] 원거래 조회 (PG에 승인·취소 상태 재확인)"
+      description: |
+        결과 불명(PaymentResultUnknown / RefundResult UNKNOWN) 해소용. PG 원거래를 조회해 원장을 대사하고 결과를 기록한다.
+        조회 자체는 상태를 바꾸지 않으며, 대사 결과가 다르면 PaymentMismatch 또는 ReconciliationRequired 대상이 된다.
+      operationId: createPaymentInquiry
+      parameters:
+        - { name: paymentAttemptId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, enum: [RESULT_UNKNOWN, PERIODIC_RECONCILIATION, OPERATOR_REQUEST] }
+                cancellationRequestId: { type: string, description: 특정 취소 거래 불명 해소 시 }
+      responses:
+        '200':
+          description: 조회 완료 (PG 응답 반영)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentInquiry' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/payments/{paymentAttemptId}/inquiries/{requestId}:
+    get:
+      tags: [payments]
+      summary: 원거래 조회 이력 조회
+      operationId: getPaymentInquiry
+      parameters:
+        - { name: paymentAttemptId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentInquiry' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/payments/{paymentAttemptId}/cancellations:
+    post:
+      tags: [cancellations]
+      summary: "[claim→payment] 전체/부분 취소 (환불 실행)"
+      description: |
+        refundIntentId(claim-service 환불 의도)·amount·Idempotency-Key 필수. 금액 산정 근거는 검증하지 않는다.
+        한도 검증은 remainingLimit = approvedAmount − succeededCancelAmount − unknownHeldAmount 이며 초과 요청은 422 REFUND_LIMIT_EXCEEDED.
+        같은 Idempotency-Key 재전송은 기존 거래 결과 반환(새 금액 취소 중복 실행 금지). 결과 불명이면 UNKNOWN_RESULT로 응답하고 해당 금액을 불명 점유로 잡는다.
+        PG 취소 성공 전 "환불 완료" 표시는 호출자 책임으로 금지한다.
+      operationId: createCancellation
+      parameters:
+        - { name: paymentAttemptId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancellationRequest' }
+      responses:
+        '202':
+          description: 취소 접수/반영 결과 (resultId = cancellationRequestId, status UNKNOWN_RESULT 가능)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / INVALID_STATE (미승인 거래) / REFUND_INTENT_ALREADY_USED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: REFUND_LIMIT_EXCEEDED (remainingLimit 초과) / PG_REJECTED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/payments/{paymentAttemptId}/compensation-cancellations:
+    post:
+      tags: [cancellations]
+      summary: "[orchestration→payment] 보상 취소 (승인 후 주문 확정 실패·자원 소멸 시 승인 전액 취소)"
+      description: |
+        S1 j단계. 환불 의도 없이 사가 보상으로 승인 전액을 취소한다. sagaId·단계·사유를 근거로 기록하며 CompensationCancelResult 이벤트로 결과를 발행한다.
+        부분 취소 누적이 있는 거래에는 허용하지 않는다(INVALID_STATE). 결과 불명은 원거래 조회로만 해소.
+      operationId: createCompensationCancellation
+      parameters:
+        - { name: paymentAttemptId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompensationCancellationRequest' }
+      responses:
+        '202':
+          description: 보상 취소 접수/반영 결과 (resultId = cancellationRequestId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/payments/{paymentAttemptId}/cancellations/{requestId}:
+    get:
+      tags: [cancellations]
+      summary: 취소/보상 취소 거래 조회 (requestId = Idempotency-Key)
+      operationId: getCancellation
+      parameters:
+        - { name: paymentAttemptId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cancellation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /webhooks/toss:
+    post:
+      tags: [webhooks]
+      summary: "[토스페이먼츠→payment] 결제 상태 콜백"
+      description: |
+        서명·출처 검증 후 접수. 콜백만으로 승인을 확정하지 않으며 반드시 원거래 조회로 대사한 뒤 PaymentApproved/Failed/Unknown을 발행한다.
+        같은 eventId 재수신은 무시(멱등). 본문은 PG 규격이며 카드 정보는 저장하지 않는다.
+      operationId: receiveTossWebhook
+      security: []
+      parameters:
+        - name: Toss-Signature
+          in: header
+          required: true
+          description: PG 서명. 검증 실패 시 401
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TossWebhookPayload' }
+      responses:
+        '200':
+          description: 접수 (중복 포함). PG 재전송을 막기 위해 처리 결과와 무관하게 200
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '401':
+          description: WEBHOOK_SIGNATURE_INVALID
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+components:
+  schemas:
+    PaymentState:
+      type: string
+      description: |
+        CREATED 결제 시도 생성(결제창 진입 전). PENDING 결제창 진입·승인 대기. APPROVED PG 승인 대사 일치.
+        FAILED 승인 실패 확정. UNKNOWN 결과 불명(원거래 조회로 해소). MISMATCH 승인액·통화·주문 참조 불일치(확정 차단).
+        CANCELLED 전액 취소(보상 취소 포함). PARTIALLY_CANCELLED 부분 취소 누적.
+      enum: [CREATED, PENDING, APPROVED, FAILED, UNKNOWN, MISMATCH, CANCELLED, PARTIALLY_CANCELLED]
+    StartPaymentRequest:
+      type: object
+      required: [orderId, sagaId, amount, currency, method, customerRef]
+      properties:
+        orderId: { type: string }
+        draftId: { type: string }
+        sagaId: { type: string }
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        currency: { type: string, enum: [KRW] }
+        method: { type: string, enum: [TOSS_PAYMENTS] }
+        customerRef: { type: string, description: customer-service 식별자(개인정보 아님) }
+        orderName: { type: string, maxLength: 100, description: 결제창 표시용 주문명 }
+        requiresAdultVerification: { type: boolean, description: 주류 포함 시 true → PG 결제 인증 요구 }
+        successUrl: { type: string, format: uri }
+        failUrl: { type: string, format: uri }
+    StartPaymentResponse:
+      type: object
+      required: [paymentAttemptId, state, checkout]
+      properties:
+        paymentAttemptId: { type: string }
+        state: { $ref: '#/components/schemas/PaymentState' }
+        orderId: { type: string }
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        checkout:
+          type: object
+          description: PG 결제창 진입 정보 (비밀값 없음)
+          properties:
+            provider: { type: string, enum: [TOSS_PAYMENTS] }
+            pgOrderId: { type: string, description: PG에 전달한 주문 참조 }
+            clientKey: { type: string, description: 공개 클라이언트 키 }
+            checkoutUrl: { type: string, format: uri }
+            expiresAt: { type: string, format: date-time, description: 결제창 유효시각 (가격 동결·재고 예약 중 더 이른 만료 이하) }
+    Payment:
+      type: object
+      properties:
+        paymentAttemptId: { type: string }
+        orderId: { type: string }
+        sagaId: { type: string }
+        state: { $ref: '#/components/schemas/PaymentState' }
+        version: { type: integer }
+        method: { type: string }
+        pgTransactionId: { type: string }
+        approvedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        currency: { type: string }
+        approvedAt: { type: string, format: date-time }
+        adultVerified: { type: boolean, description: PG 결제 인증 결과 (주류) }
+        mismatch:
+          type: object
+          description: MISMATCH일 때 상세
+          properties:
+            expectedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+            pgAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+            field: { type: string, enum: [AMOUNT, CURRENCY, ORDER_REF] }
+        limits: { $ref: '#/components/schemas/RefundLimits' }
+        cancellations: { type: array, items: { $ref: '#/components/schemas/Cancellation' } }
+        lastInquiryAt: { type: string, format: date-time }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    RefundLimits:
+      type: object
+      description: remainingLimit = approvedAmount − succeededCancelAmount − unknownHeldAmount
+      properties:
+        approvedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        succeededCancelAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 성공 누적 }
+        inProgressCancelAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 진행 중(접수·PG 응답 대기) }
+        unknownHeldAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 불명 점유 }
+        remainingLimit: { $ref: '_common.yaml#/components/schemas/Money' }
+    CancellationRequest:
+      type: object
+      required: [refundIntentId, claimId, amount, scope, reason]
+      properties:
+        refundIntentId: { type: string, description: claim-service 환불 의도 ID. 의도당 1회 }
+        claimId: { type: string }
+        orderId: { type: string }
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        scope: { type: string, enum: [FULL, PARTIAL] }
+        reason: { type: string, enum: [CANCEL_BEFORE_SHIP, SHORTAGE, RETURN, EXCHANGE_DIFF, DISPATCH_FAILED, OPERATOR] }
+        evidenceRef: { type: string, description: 금액 산정 근거(claim 환불 명세) 참조 }
+    CompensationCancellationRequest:
+      type: object
+      required: [sagaId, step, reason]
+      properties:
+        sagaId: { type: string }
+        step: { type: string, description: 보상을 유발한 사가 단계 (예 CONFIRM_ORDER) }
+        reason: { type: string, enum: [ORDER_CONFIRM_FAILED, RESERVATION_LOST, OPERATION_RESTRICTED, AMOUNT_MISMATCH, OPERATOR_APPROVED] }
+        approvalRef: { type: string, description: 운영자 수동 보상일 때 승인 건 ID }
+    Cancellation:
+      type: object
+      properties:
+        requestId: { type: string, description: Idempotency-Key }
+        paymentAttemptId: { type: string }
+        kind: { type: string, enum: [REFUND, COMPENSATION] }
+        refundIntentId: { type: string }
+        sagaId: { type: string }
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        scope: { type: string, enum: [FULL, PARTIAL] }
+        state:
+          type: string
+          description: UNKNOWN은 원거래 조회(inquiries)로만 SUCCEEDED/FAILED로 해소
+          enum: [ACCEPTED, REQUESTED, SUCCEEDED, FAILED, UNKNOWN, REJECTED]
+        pgCancelTransactionId: { type: string }
+        pgResultCode: { type: string }
+        requestedAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time }
+        resolvedBy: { type: string, enum: [PG_RESPONSE, WEBHOOK, INQUIRY] }
+    PaymentInquiry:
+      type: object
+      properties:
+        requestId: { type: string }
+        paymentAttemptId: { type: string }
+        reason: { type: string }
+        inquiredAt: { type: string, format: date-time }
+        pgStatus: { type: string, description: PG가 보고한 거래 상태 원문 코드 }
+        pgApprovedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        pgCancelledAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        ledgerMatched: { type: boolean, description: 원장과 PG 상태 일치 여부 }
+        resultingState: { $ref: '#/components/schemas/PaymentState' }
+        resolvedCancellationIds: { type: array, items: { type: string } }
+    TossWebhookPayload:
+      type: object
+      description: PG 규격 본문(요약). 카드 정보·비밀키는 포함되지 않는다.
+      required: [eventType, createdAt, data]
+      properties:
+        eventType: { type: string, description: PG 이벤트 종류 (예 PAYMENT_STATUS_CHANGED) }
+        createdAt: { type: string, format: date-time }
+        data:
+          type: object
+          properties:
+            paymentKey: { type: string, description: PG 거래 키 }
+            orderId: { type: string, description: pgOrderId }
+            status: { type: string }
+            totalAmount: { type: integer }
+          additionalProperties: true
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

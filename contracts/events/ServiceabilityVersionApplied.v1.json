@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ServiceabilityVersionApplied.v1.json",
+  "title": "ServiceabilityVersionApplied",
+  "description": "권역 매핑 발효(기존 주문 불변). 발행 delivery-serviceability. 구독 order, customer, cart, approval. 토픽 delivery.serviceability.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ServiceabilityVersionApplied"
+        },
+        "aggregateType": {
+          "const": "ServiceabilityMapping"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mappingVersion",
+            "effectiveAt",
+            "changedZones"
+          ],
+          "properties": {
+            "mappingVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "changedZones": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "zoneId"
+                ],
+                "properties": {
+                  "zoneId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "mfcId": {
+                    "$ref": "_defs.v1.json#/$defs/CenterId"
+                  },
+                  "change": {
+                    "type": "string",
+                    "description": "변경 종류"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

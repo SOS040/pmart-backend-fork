@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/FleetReservationResult.v1.json",
+  "title": "FleetReservationResult",
+  "description": "차량·간선기사 점유 예약 요청의 결과. 발행 fleet. 구독 transport-planning. 토픽 tms.fleet.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "FleetReservationResult"
+        },
+        "aggregateType": {
+          "const": "FleetReservation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reservationId",
+            "result"
+          ],
+          "properties": {
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "requestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "resourceType": {
+              "type": "string",
+              "enum": [
+                "VEHICLE",
+                "DRIVER"
+              ]
+            },
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "driverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "window": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

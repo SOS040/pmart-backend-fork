@@ -1,0 +1,433 @@
+openapi: 3.1.0
+info:
+  title: cart-service
+  version: 0.1.0
+  description: |
+    장바구니·품목·선택·cartVersion(마지막 변경 후 30일 보존), 비회원 장바구니, 로그인 병합 이관(MERGE_PENDING/PARTIAL/CONFIRMED)의 정본. (docs/architecture/service-map.md §1)
+    비정본: 재고 예약(장바구니는 예약하지 않음), 견적 확정(order), 가격 정본(pricing), 구매 상한 정책(product).
+    담기 성공은 재고 확보·가격 보장·주문 확정이 아니다. 모든 수량 변경은 절대값 설정 명령이며 Idempotency-Key + expectedVersion으로 충돌을 판정한다.
+    의존(동기): product(구매 상한·판매 상태), mfc-inventory(가용 A 조회. 조회 실패는 0이 아님), pricing(표시 가격).
+    발행: CartItemChangeApplied. 구독: OrderConfirmed(확정 포함분만 1회 정리), ProductSaleStateChanged.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: carts, description: 장바구니 조회·생성 }
+  - { name: items, description: 품목 담기·수량/선택 변경·삭제 (절대값 설정 명령) }
+  - { name: merges, description: 주문서 로그인 후 비회원→회원 병합 이관 }
+  - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+
+paths:
+  /carts:
+    post:
+      tags: [carts]
+      summary: 장바구니 생성 또는 현재 장바구니 반환 (회원은 accountId, 비회원은 X-Device-Id 기준)
+      operationId: createOrGetCart
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: false, schema: { type: string, maxLength: 128 }, description: 비회원 장바구니 식별 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shoppingAddressId: { type: string }
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+      responses:
+        '201':
+          description: 생성 또는 기존 장바구니 반환
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /carts/{cartId}:
+    get:
+      tags: [carts]
+      summary: 장바구니 조회 (cartVersion·품목·표시 가격/가용 사본 포함)
+      description: |
+        가격·가용·판매 상태는 각 정본의 사본이며 sources에 asOf를 표시한다. 가용 조회 실패는 UNKNOWN이지 0이 아니다.
+      operationId: getCart
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '403':
+          description: FORBIDDEN_OWNER (현재 고객/기기의 장바구니 아님)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /carts/{cartId}/items:
+    post:
+      tags: [items]
+      summary: 품목 담기 (같은 SKU는 합산이 아니라 절대 수량 설정으로 통일)
+      description: |
+        같은 SKU가 이미 있으면 그 품목의 수량을 quantity로 설정한다(증가 명령 아님). 검증 순서는 판매 상태 → 구매 상한(product) → 현재 PPC 가용(mfc-inventory).
+      operationId: addCartItem
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, quantity, expectedVersion]
+              properties:
+                sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                selected: { type: boolean, default: true }
+                expectedVersion: { $ref: '_common.yaml#/components/schemas/Version' }
+      responses:
+        '200':
+          description: 반영됨 (status APPLIED, resultId=cartItemId, version=새 cartVersion)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartChangeResult' }
+        '403':
+          description: FORBIDDEN_OWNER
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: CART_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: QUANTITY_LIMIT_EXCEEDED / INSUFFICIENT_AVAILABLE_QUANTITY / SKU_NOT_SALEABLE / CONFIG_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartChangeError' }
+        '503':
+          description: REQUEST_RESULT_UNKNOWN (하위 의존 응답 불명. GET change-requests/{requestId}로 해소) / DEPENDENCY_UNAVAILABLE
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /carts/{cartId}/items/{itemId}:
+    patch:
+      tags: [items]
+      summary: 품목 수량·선택 변경 (절대값, Idempotency-Key + expectedVersion)
+      description: |
+        같은 Idempotency-Key·같은 본문 재전송은 기존 결과 반환이며 수량 증가가 아니다. 버전 충돌은 최신 목록을 다시 조회해 고객이 재확정한다.
+        quantity 0은 허용하지 않는다(삭제는 DELETE).
+      operationId: changeCartItem
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedVersion]
+              minProperties: 2
+              properties:
+                quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                selected: { type: boolean }
+                expectedVersion:
+                  type: integer
+                  minimum: 0
+                  description: 고객이 마지막으로 확인한 cartVersion. 헤더 X-Expected-Version과 같이 보내면 두 값이 일치해야 한다.
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartChangeResult' }
+        '403':
+          description: FORBIDDEN_OWNER
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: CART_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: QUANTITY_LIMIT_EXCEEDED / INSUFFICIENT_AVAILABLE_QUANTITY / SKU_NOT_SALEABLE
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartChangeError' }
+        '503':
+          description: REQUEST_RESULT_UNKNOWN / DEPENDENCY_UNAVAILABLE
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [items]
+      summary: 품목 삭제
+      operationId: deleteCartItem
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      responses:
+        '200':
+          description: 삭제됨 (이미 없으면 멱등 성공)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartChangeResult' }
+        '403':
+          description: FORBIDDEN_OWNER
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: CART_VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /carts/{cartId}/change-requests/{requestId}:
+    get:
+      tags: [items]
+      summary: 변경 요청 원결과 조회 (REQUEST_RESULT_UNKNOWN 해소. 변경을 중복 적용하지 않음)
+      operationId: getCartChangeRequest
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartChangeResult' }
+        '404':
+          description: NOT_FOUND (해당 키로 접수된 변경 없음 → 미적용으로 판단)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /carts/{cartId}/merges:
+    post:
+      tags: [merges]
+      summary: 비회원 장바구니 병합 이관 (주문서 로그인 후 고객 확인분만 1회)
+      description: |
+        cartId는 대상 회원 장바구니. 고객이 확인한 원항목 집합만 이관하며 항목별로 상한·현재 가용·판매 상태·가격 조건을 재검증한다.
+        성공분만 회원에 합산하고 비회원 장바구니에서 비운다. 일부 실패는 실패분·이유를 보존하며 전체 재합산하지 않는다.
+        같은 Idempotency-Key 재전송은 기존 병합 결과 반환(중복 합산 없음). 일반 로그인은 이 API를 호출하지 않는다(자동 병합 금지).
+      operationId: mergeCart
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 }, description: 비회원 장바구니 소유 기기 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceCartId, expectedVersion, items]
+              properties:
+                sourceCartId: { type: string, description: 비회원 장바구니 }
+                sourceCartVersion: { type: integer }
+                expectedVersion: { type: integer, description: 대상 회원 장바구니의 cartVersion }
+                items:
+                  type: array
+                  minItems: 1
+                  description: 고객이 확인한 이관 항목 집합 (절대 수량)
+                  items:
+                    type: object
+                    required: [sourceItemId, sku, quantity]
+                    properties:
+                      sourceItemId: { type: string }
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+      responses:
+        '200':
+          description: 병합 결과 (MERGE_CONFIRMED 또는 MERGE_PARTIAL)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MergeResult' }
+        '202':
+          description: MERGE_PENDING (비회원 비움 등 후속 정리 대기. GET merges/{mergeId}로 확인)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MergeResult' }
+        '403':
+          description: FORBIDDEN_OWNER (대상 또는 원본 장바구니 소유 불일치)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: CART_VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503':
+          description: REQUEST_RESULT_UNKNOWN (GET merges/{mergeId}로 원결과 확인. 전체 재합산 금지)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /carts/{cartId}/merges/{mergeId}:
+    get:
+      tags: [merges]
+      summary: 병합 결과 조회 (항목별 이관 성공·실패, 비회원 비움 결과)
+      operationId: getCartMerge
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+        - { name: mergeId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MergeResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  # ---------- internal (서비스 토큰) ----------
+  /internal/carts/{cartId}/selected-items:
+    get:
+      tags: [internal]
+      summary: '[order→cart] 주문 초안 생성용 선택 품목·cartVersion 조회'
+      operationId: getSelectedItemsInternal
+      parameters:
+        - { name: cartId, in: path, required: true, schema: { type: string } }
+        - { name: accountId, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cartId: { type: string }
+                  cartVersion: { type: integer }
+                  mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        cartItemId: { type: string }
+                        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                        quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    CartItem:
+      type: object
+      required: [cartItemId, sku, quantity, selected]
+      properties:
+        cartItemId: { type: string }
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        productId: { type: string }
+        quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        selected: { type: boolean }
+        addedAt: { type: string, format: date-time }
+        display:
+          type: object
+          description: 표시용 사본 (content/pricing/product/mfc-inventory). 구매 보장 아님.
+          properties:
+            name: { type: string }
+            optionLabel: { type: string }
+            imageUrl: { type: string, format: uri }
+            unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
+            priceVersion: { type: integer }
+            saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
+            availability: { type: string, enum: [AVAILABLE, LOW, SOLD_OUT, NOT_CARRIED, UNKNOWN] }
+            availableQty: { type: [integer, 'null'], description: 공개 범위 내 가용 수량. UNKNOWN이면 null }
+    Cart:
+      type: object
+      required: [cartId, cartVersion, ownerType, items]
+      properties:
+        cartId: { type: string }
+        cartVersion: { $ref: '_common.yaml#/components/schemas/Version' }
+        ownerType: { type: string, enum: [MEMBER, GUEST] }
+        accountId: { type: [string, 'null'] }
+        shoppingAddressId: { type: [string, 'null'] }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
+        selectedItemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 선택 품목 표시 합계. 견적 아님 }
+        lastChangedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: 마지막 변경 + 30일 }
+        pendingMergeId: { type: [string, 'null'] }
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              system: { type: string }
+              asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    CartChangeResult:
+      allOf:
+        - $ref: '_common.yaml#/components/schemas/CommandResponse'
+        - type: object
+          properties:
+            cartId: { type: string }
+            cartItemId: { type: string }
+            sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+            quantity: { type: integer, description: 반영된 절대 수량. 삭제면 0 }
+            selected: { type: boolean }
+            cartVersion: { type: integer, description: 새 cartVersion (=version) }
+            appliedRequestId: { type: string }
+    CartChangeError:
+      allOf:
+        - $ref: '_common.yaml#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            cartVersion: { type: integer, description: 현재 cartVersion }
+            limit:
+              type: object
+              description: QUANTITY_LIMIT_EXCEEDED일 때 기초상품 환산 합계와 상한
+              properties:
+                baseProductId: { type: string }
+                totalUnits: { type: integer }
+                limitUnits: { type: integer }
+                suggestedQuantity: { type: integer }
+            availableQty: { type: [integer, 'null'], description: INSUFFICIENT_AVAILABLE_QUANTITY일 때 확인된 가용. 불명이면 null }
+    MergeResult:
+      type: object
+      required: [mergeId, state, targetCartId, sourceCartId]
+      properties:
+        mergeId: { type: string }
+        state: { type: string, enum: [MERGE_PENDING, MERGE_PARTIAL, MERGE_CONFIRMED, MERGE_REJECTED, UNKNOWN] }
+        targetCartId: { type: string }
+        targetCartVersion: { type: integer }
+        sourceCartId: { type: string }
+        sourceCleared: { type: string, enum: [NOT_STARTED, PARTIAL, DONE, UNKNOWN], description: 비회원 장바구니 비움 결과(성공분만) }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceItemId: { type: string }
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              requestedQuantity: { type: integer }
+              result: { type: string, enum: [MERGED, REJECTED, UNKNOWN] }
+              targetCartItemId: { type: [string, 'null'] }
+              mergedQuantity: { type: [integer, 'null'] }
+              reasonCode: { type: [string, 'null'], description: QUANTITY_LIMIT_EXCEEDED / INSUFFICIENT_AVAILABLE_QUANTITY / SKU_NOT_SALEABLE 등 }
+        occurredAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

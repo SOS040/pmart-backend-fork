@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CenterMasterChanged.v1.json",
+  "title": "CenterMasterChanged",
+  "description": "센터 기준정보 발효. 발행 center-master. 구독 order, replenishment, transport-planning, delivery-serviceability, mfc-location, mfc-capacity, cdc-location. 토픽 platform.center.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CenterMasterChanged"
+        },
+        "aggregateType": {
+          "const": "Center"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "centerId",
+            "version",
+            "changedFields"
+          ],
+          "properties": {
+            "centerId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "changedFields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReplenishmentRecommended.v1.json",
+  "title": "ReplenishmentRecommended",
+  "description": "SCM-D04/D05 보충 계산 완료 후 추천을 산출한 사실(요청·승인 아님). 발행 replenishment. 구독 mfc-inbound(요청함), backoffice-bff, notification. 토픽 scm.replenishment.v1. N = max(0, S − IP), W = m·ceil(N/m), K = m·floor(B/m), Q = min(W, K). 조회 실패는 H0/SS0로 대체하지 않고 INPUT_PENDING",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReplenishmentRecommended"
+        },
+        "aggregateType": {
+          "const": "PlanRun"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "planRunId",
+            "mfcId",
+            "sku",
+            "netRequirementQty",
+            "roundedQty",
+            "supplyCapQty",
+            "recommendedQty",
+            "unmetQty",
+            "state"
+          ],
+          "properties": {
+            "planRunId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "asOf": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "E",
+                "B"
+              ],
+              "description": "낱개(E) / 밀봉 묶음(B). 전환·합산하지 않음"
+            },
+            "netRequirementQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "N = max(0, S − IP)"
+            },
+            "roundedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "W = m·ceil(N/m)"
+            },
+            "supplyCapQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "K = m·floor(B/m). B = min(CDC 신규공급가능량, MFC 추가수용량, TMS 상한)"
+            },
+            "recommendedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "Q = min(W, K)"
+            },
+            "unmetQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "원수요 미충족 = max(0, N − Q)"
+            },
+            "bufferQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "배수 완충 = max(0, Q − N)"
+            },
+            "multiple": {
+              "$ref": "_defs.v1.json#/$defs/PositiveQty",
+              "description": "배수 m"
+            },
+            "inputs": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "onHandQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "H(적격 현물, 예약 차감 전, 격리 제외)"
+                },
+                "commitmentQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "C(유효 미이행 약속, BLOCKED 포함)"
+                },
+                "inboundQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "I(기한 내 사용준비 가능한 미수령 잔량)"
+                },
+                "pendingReadyQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "P(t)(기수령 준비대기)"
+                },
+                "forecastQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "F = max(0, 남은 전체예측 − 예측에 포함된 C)"
+                },
+                "safetyStockQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "SS"
+                },
+                "targetQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "S = F + SS"
+                },
+                "inventoryPositionQty": {
+                  "type": "integer",
+                  "description": "IP = H − C + I (+P(t)). 음수 가능"
+                },
+                "supplyCapBasis": {
+                  "type": "object",
+                  "required": [],
+                  "properties": {
+                    "cdcSupplyableQty": {
+                      "$ref": "_defs.v1.json#/$defs/Qty"
+                    },
+                    "mfcAcceptableQty": {
+                      "$ref": "_defs.v1.json#/$defs/Qty"
+                    },
+                    "tmsCapQty": {
+                      "$ref": "_defs.v1.json#/$defs/Qty"
+                    }
+                  }
+                }
+              }
+            },
+            "firstShortageAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "maxShortageQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "recoveryAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "snapshotRefs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "source",
+                  "refId"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "description": "원천 서비스/정본 (mfc-inventory, order, demand-planning 등)"
+                  },
+                  "refId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "version": {
+                    "$ref": "_defs.v1.json#/$defs/Version"
+                  },
+                  "asOf": {
+                    "$ref": "_defs.v1.json#/$defs/DateTime"
+                  }
+                }
+              }
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "RECOMMENDED",
+                "INPUT_PENDING"
+              ]
+            },
+            "pendingInputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

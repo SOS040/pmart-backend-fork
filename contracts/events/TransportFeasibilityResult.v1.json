@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransportFeasibilityResult.v1.json",
+  "title": "TransportFeasibilityResult",
+  "description": "운송 가능성·상한(TMS 상한 B 입력)을 회신한 사실. 발행 transport-planning. 구독 replenishment. 토픽 tms.transport-request.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransportFeasibilityResult"
+        },
+        "aggregateType": {
+          "const": "TransportRequest"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "feasible"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "transportRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "feasible": {
+              "type": "boolean"
+            },
+            "candidateRuns": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "runId"
+                ],
+                "properties": {
+                  "runId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "runType": {
+                    "type": "string",
+                    "description": "직송/순회/회차 등"
+                  },
+                  "departAt": {
+                    "$ref": "_defs.v1.json#/$defs/DateTime"
+                  },
+                  "arriveAt": {
+                    "$ref": "_defs.v1.json#/$defs/DateTime"
+                  },
+                  "capacityQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "tempZones": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "capacityLimit": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "TMS 상한"
+            },
+            "earliestReadyAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "evaluatedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

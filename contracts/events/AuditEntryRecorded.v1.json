@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/AuditEntryRecorded.v1.json",
+  "title": "AuditEntryRecorded",
+  "description": "운영자 변경 명령. 발행 전 서비스. 구독 audit. 토픽 platform.audit.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "AuditEntryRecorded"
+        },
+        "aggregateType": {
+          "const": "AuditEntry"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "actor",
+            "action",
+            "targetRef",
+            "result"
+          ],
+          "properties": {
+            "auditEntryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "actor": {
+              "type": "object",
+              "required": [
+                "type",
+                "id"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "SYSTEM",
+                    "OPERATOR",
+                    "CUSTOMER",
+                    "RIDER",
+                    "DRIVER",
+                    "WORKER"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            },
+            "action": {
+              "type": "string",
+              "description": "명령/행위 코드"
+            },
+            "targetRef": {
+              "type": "object",
+              "required": [
+                "targetType",
+                "targetId"
+              ],
+              "properties": {
+                "targetType": {
+                  "type": "string",
+                  "description": "정본 aggregate 종류 (Product, Price, Center 등)"
+                },
+                "targetId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                }
+              },
+              "additionalProperties": true
+            },
+            "beforeRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "afterRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "recordedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

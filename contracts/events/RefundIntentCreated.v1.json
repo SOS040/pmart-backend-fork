@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RefundIntentCreated.v1.json",
+  "title": "RefundIntentCreated",
+  "description": "환불 의도·금액 산정(원가격·원안분). 발행 claim-service. 구독 payment(명령은 동기; 이벤트는 기록), audit. 토픽 order.claim.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RefundIntentCreated"
+        },
+        "aggregateType": {
+          "const": "Claim"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "refundIntentId",
+            "orderId",
+            "amount",
+            "paymentAttemptId"
+          ],
+          "properties": {
+            "refundIntentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "amount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "basis": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "itemAmount": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "discountShare": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "bagFee": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "deliveryTip": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "orderLineId",
+                      "qty",
+                      "amount"
+                    ],
+                    "properties": {
+                      "orderLineId": {
+                        "$ref": "_defs.v1.json#/$defs/Ref"
+                      },
+                      "qty": {
+                        "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                      },
+                      "amount": {
+                        "$ref": "_defs.v1.json#/$defs/Money"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "additionalProperties": true,
+              "description": "원가격·할인 안분 근거"
+            },
+            "createdAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

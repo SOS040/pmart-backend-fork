@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InboundArrivalRecorded.v1.json",
+  "title": "InboundArrivalRecorded",
+  "description": "차량 도착이 기록된 사실(수령 아님). 발행 mfc-inbound. 구독 transport-execution, replenishment. 토픽 mfc.inbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "InboundArrivalRecorded"
+        },
+        "aggregateType": {
+          "const": "Inbound"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "mfcId",
+            "arrivedAt"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "stopId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "arrivedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

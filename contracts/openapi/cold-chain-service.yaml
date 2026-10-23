@@ -1,0 +1,179 @@
+openapi: 3.1.0
+info:
+  title: cold-chain-service
+  version: 0.1.0
+  description: |
+    온도 데이터(차량 구획·센터 구역)·허용 범위 사본·이탈 사건·누적 이력의 정본. (docs/architecture/service-map.md §6)
+    품질 정상/폐기 판정은 cdc-quality/mfc-quality, 재고는 inventory. 누적 이력은 차량 교체로 초기화하지 않는다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: excursions, description: 온도 이탈 사건 조회 }
+  - { name: internal, description: 센서 게이트웨이·서비스 간 호출 }
+
+paths:
+  /internal/temperature-readings:
+    post:
+      tags: [internal]
+      summary: '[sensor-gateway→cold-chain] 온도 측정값 일괄 등록 (멱등)'
+      description: 같은 sensorId·measuredAt 조합은 중복 무시. 허용 범위 밖이 지속되면 이탈 사건을 열고 TemperatureExcursion을 발행한다.
+      operationId: ingestTemperatureReadings
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [readings]
+              properties:
+                readings:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: { $ref: '#/components/schemas/TemperatureReading' }
+      responses:
+        '202':
+          description: 접수 결과 (건수·중복·열린 이탈 사건)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batchId: { type: string }
+                  accepted: { type: integer }
+                  duplicates: { type: integer }
+                  rejected: { type: integer }
+                  openedExcursionIds: { type: array, items: { type: string } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/temperature-readings/{batchId}:
+    get:
+      tags: [internal]
+      summary: 일괄 등록 결과 조회
+      operationId: getTemperatureReadingBatch
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  batchId: { type: string }
+                  state: { type: string, enum: [PROCESSING, APPLIED, PARTIAL, REJECTED] }
+                  accepted: { type: integer }
+                  duplicates: { type: integer }
+                  rejected: { type: integer }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /excursions:
+    get:
+      tags: [excursions]
+      summary: 이탈 사건 목록 (tripId 또는 centerId 중 하나 필수)
+      operationId: listExcursions
+      parameters:
+        - { name: tripId, in: query, schema: { type: string } }
+        - { name: centerId, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/ExcursionState' } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/Excursion' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /excursions/{excursionId}:
+    get:
+      tags: [excursions]
+      summary: 이탈 사건 상세 (구획·기간·영향 화물·측정 이력)
+      operationId: getExcursion
+      parameters:
+        - { name: excursionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Excursion' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    SensorScope:
+      type: object
+      required: [kind]
+      description: 센서가 대표하는 범위. 차량 전체·차량 구획·센터 구역 중 하나.
+      properties:
+        kind: { type: string, enum: [VEHICLE, COMPARTMENT, ZONE] }
+        vehicleId: { type: string }
+        compartmentId: { type: string }
+        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        zoneId: { type: string }
+    TemperatureReading:
+      type: object
+      required: [sensorId, sensorScope, measuredAt, temperatureC]
+      properties:
+        sensorId: { type: string }
+        sensorScope: { $ref: '#/components/schemas/SensorScope' }
+        measuredAt: { type: string, format: date-time }
+        temperatureC: { type: number }
+        humidityPct: { type: number }
+        tripId: { type: string, description: 운행 중이면 감시 대상 운행 }
+        quality: { type: string, enum: [OK, SUSPECT, SENSOR_FAULT] }
+    ExcursionState:
+      type: string
+      enum: [OPEN, RESTORED, UNDER_REVIEW, CLOSED]
+    Excursion:
+      type: object
+      required: [excursionId, state, sensorScope, startedAt]
+      properties:
+        excursionId: { type: string }
+        state: { $ref: '#/components/schemas/ExcursionState' }
+        sensorScope: { $ref: '#/components/schemas/SensorScope' }
+        tripId: { type: [string, 'null'] }
+        tempClass: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+        allowedRange:
+          type: object
+          description: 상품별 승인값 사본
+          properties:
+            minC: { type: number }
+            maxC: { type: number }
+            policyVersion: { type: integer }
+        startedAt: { type: string, format: date-time }
+        restoredAt: { type: [string, 'null'], format: date-time }
+        durationSec: { type: integer }
+        peakTemperatureC: { type: number }
+        affectedCargo:
+          type: array
+          description: 이탈 구간에 해당 구획/구역에 있던 화물 (사본)
+          items:
+            type: object
+            properties:
+              trfId: { type: string }
+              lpn: { type: string }
+              sku: { type: string }
+              lot: { type: string }
+        qualityDecisionRef: { type: [string, 'null'], description: quality 판정 참조 (판정 자체는 여기 없음) }
+        cumulativeExposureSec: { type: integer, description: 화물 기준 누적 이탈 시간(차량 교체로 초기화 안 함) }
+        readings: { type: array, items: { $ref: '#/components/schemas/TemperatureReading' } }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

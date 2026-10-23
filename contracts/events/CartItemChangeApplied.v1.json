@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CartItemChangeApplied.v1.json",
+  "title": "CartItemChangeApplied",
+  "description": "장바구니 변경 확정. 발행 cart-service. 구독 BI. 토픽 commerce.cart.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CartItemChangeApplied"
+        },
+        "aggregateType": {
+          "const": "Cart"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "cartId",
+            "cartItemId",
+            "sku",
+            "qty",
+            "cartVersion",
+            "appliedRequestId"
+          ],
+          "properties": {
+            "cartId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "cartItemId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "qty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "cartVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "appliedRequestId": {
+              "type": "string",
+              "description": "적용된 변경 요청 ID(멱등 키)"
+            },
+            "appliedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

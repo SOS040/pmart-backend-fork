@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryAssignmentChanged.v1.json",
+  "title": "DeliveryAssignmentChanged",
+  "description": "재배정·배차 취소. 발행 delivery-dispatch. 구독 delivery-execution, mfc-fulfillment(이전 기사 인계 차단). 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DeliveryAssignmentChanged"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "assignmentVersion",
+            "reason"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "oldRiderId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "이전 기사. 없으면 null"
+            },
+            "newRiderId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "새 기사. 배차 취소면 null"
+            },
+            "assignmentVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "reason": {
+              "type": "string",
+              "description": "변경 사유 코드"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

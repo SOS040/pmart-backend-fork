@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TripInstructionIssued.v1.json",
+  "title": "TripInstructionIssued",
+  "description": "운행 지시서가 발행된 사실(구버전 무효). 발행 transport-planning. 구독 transport-execution(기사 단말). 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TripInstructionIssued"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "instructionVersion"
+          ],
+          "properties": {
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "instructionVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "assignmentVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "supersededInstructionVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "issuedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

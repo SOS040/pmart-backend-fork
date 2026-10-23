@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/LocStateChanged.v1.json",
+  "title": "LocStateChanged",
+  "description": "CDC LOC 상태가 변경된 사실. 발행 cdc-location. 구독 cdc-inbound, cdc-outbound. 토픽 cdc.location.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "LocStateChanged"
+        },
+        "aggregateType": {
+          "const": "Location"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "locCode",
+            "state"
+          ],
+          "properties": {
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "locCode": {
+              "type": "string",
+              "description": "7구간 코드 센터-온도-구역-랙-베이-단-포지션"
+            },
+            "state": {
+              "type": "string"
+            },
+            "previousState": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

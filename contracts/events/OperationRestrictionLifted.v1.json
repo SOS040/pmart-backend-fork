@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OperationRestrictionLifted.v1.json",
+  "title": "OperationRestrictionLifted",
+  "description": "종류별 운영 제한이 재개(해제)된 사실(같은 종류의 제한만 해제, 다른 종류는 유지). 발행 cdc-quality(CDC) / mfc-capacity(MFC) / rider(라이더) — scope.centerType으로 구분. 구독 order, replenishment, transport-planning, delivery-dispatch, approval, backoffice-bff. 토픽 cdc.quality.v1(CDC) / mfc.capacity.v1(MFC) / delivery 라이더 토픽(RIDER)",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OperationRestrictionLifted"
+        },
+        "aggregateType": {
+          "const": "OperationRestriction"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "restrictionId",
+            "restrictionType",
+            "scope",
+            "liftedAt"
+          ],
+          "properties": {
+            "restrictionId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "restrictionType": {
+              "type": "string",
+              "enum": [
+                "INTAKE_STOP",
+                "WORK_STOP",
+                "QUALITY",
+                "LINEHAUL",
+                "RIDER"
+              ]
+            },
+            "scope": {
+              "type": "object",
+              "required": [
+                "centerType"
+              ],
+              "properties": {
+                "centerType": {
+                  "type": "string",
+                  "enum": [
+                    "CDC",
+                    "MFC",
+                    "RIDER"
+                  ],
+                  "description": "제한 대상 종류"
+                },
+                "centerId": {
+                  "$ref": "_defs.v1.json#/$defs/CenterId"
+                },
+                "riderId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                },
+                "areas": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "구역/존 등 세부 범위"
+                },
+                "skus": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  }
+                },
+                "lots": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            },
+            "liftedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PriceVersionEffective.v1.json",
+  "title": "PriceVersionEffective",
+  "description": "가격 승인 발효(확정 주문 소급 없음). 발행 pricing-service. 구독 cart, storefront, order, approval. 토픽 commerce.pricing.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PriceVersionEffective"
+        },
+        "aggregateType": {
+          "const": "Price"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sku",
+            "price",
+            "priceVersion",
+            "effectiveAt"
+          ],
+          "properties": {
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "price": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "previousPrice": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "priceVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

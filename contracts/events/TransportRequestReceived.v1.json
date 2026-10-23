@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransportRequestReceived.v1.json",
+  "title": "TransportRequestReceived",
+  "description": "TMS-D01 운송 요청을 접수한 결과(PLAN_READY/DATA_PENDING/TIME_INFEASIBLE). 발행 transport-planning. 구독 replenishment. 토픽 tms.transport-request.v1. 같은 TRF 반복 전송 시 운송 의무 1건",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransportRequestReceived"
+        },
+        "aggregateType": {
+          "const": "TransportRequest"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "trfVersion",
+            "transportRequestId",
+            "state"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "transportRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "PLAN_READY",
+                "DATA_PENDING",
+                "TIME_INFEASIBLE"
+              ]
+            },
+            "missing": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "누락 데이터 항목"
+            },
+            "fromCdc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "toMfc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "dueAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "deadlineMeaning": {
+              "type": "string",
+              "enum": [
+                "ARRIVAL",
+                "HANDOVER",
+                "READY"
+              ],
+              "description": "기한의 의미"
+            },
+            "receivedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

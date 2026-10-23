@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InventoryHoldExpired.v1.json",
+  "title": "InventoryHoldExpired",
+  "description": "예약이 10분 만료된 사실(PG 불명이면 결제 확인 대기 점유로 전환되므로 만료 아님). 발행 mfc-inventory. 구독 order-orchestration. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "InventoryHoldExpired"
+        },
+        "aggregateType": {
+          "const": "Reservation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reservationId"
+          ],
+          "properties": {
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "expiredAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

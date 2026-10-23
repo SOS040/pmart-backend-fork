@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OrderCompleted.v1.json",
+  "title": "OrderCompleted",
+  "description": "모든 유효 배송 전달 완료 + 미전달분 해소 (시간 경과 자동완료 없음). 발행 order-service. 구독 review, notification, BI. 토픽 order.order.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OrderCompleted"
+        },
+        "aggregateType": {
+          "const": "Order"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "completedAt"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "deliveryIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "completedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

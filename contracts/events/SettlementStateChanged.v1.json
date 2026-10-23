@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SettlementStateChanged.v1.json",
+  "title": "SettlementStateChanged",
+  "description": "정산 상태. 발행 delivery-execution. 구독 notification. 토픽 delivery.delivery.v1. 단계 ②",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SettlementStateChanged"
+        },
+        "aggregateType": {
+          "const": "Settlement"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "riderId",
+            "periodId",
+            "state"
+          ],
+          "properties": {
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "periodId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "state": {
+              "type": "string",
+              "description": "정산 상태 코드"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

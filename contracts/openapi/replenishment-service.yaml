@@ -1,0 +1,657 @@
+openapi: 3.1.0
+info:
+  title: replenishment-service
+  version: 0.1.0
+  description: |
+    보충 계획(planRun 스냅샷·수량 사전 H/C/I/P/F/SS/S/IP/N)·추천·공급 요청 접수·배분 후보·사업승인 TRF·실행 추적의 정본. (docs/architecture/service-map.md §3)
+    재고 수량(cdc/mfc-inventory)·운송 편성(transport-planning)·현장 수령(mfc-inbound)·예측 모델(demand-planning)·승인 워크플로(approval-service)는 비정본.
+    SCM은 재고 수량을 직접 바꾸지 않는다(직접 수량 전기 0). 보존식 A0 = D + Cpre + Uclosed + Uopen. 흐름은 docs/business/flows/replenishment-transfer.md.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: planning, description: 보충 현황·계획 실행·추천 }
+  - { name: supply-requests, description: MFC 공급 요청 접수·조회 }
+  - { name: transfers, description: 사업승인 TRF 정본·실행 추적·변경/취소/잔량 종료 }
+  - { name: policies, description: 공급 정책값 조회 }
+  - { name: internal, description: 서비스 간 호출(서비스 토큰) }
+
+paths:
+  /replenishment-status:
+    get:
+      tags: [planning]
+      summary: 보충 현황 조회 (수량 사전 H/C/I/P/F/SS/S/IP/N + 원천 스냅샷 참조)
+      description: |
+        최신 CALCULABLE planRun 기준. 조회 실패 원천은 H0/SS0로 대체하지 않으며 state INPUT_PENDING으로 표시한다.
+        시간대별 최초 부족시각(firstShortageAt)·최대 부족·회복시각을 함께 반환한다.
+      operationId: getReplenishmentStatus
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReplenishmentStatus' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /plan-runs:
+    post:
+      tags: [planning]
+      summary: 계획 실행 트리거 (planRun 스냅샷 생성 → 추천 산출)
+      description: |
+        입력 스냅샷(asOf·원천 버전)을 고정한 뒤 S/IP/N/W/B/K/Q를 계산한다.
+        응답 state가 CALCULABLE일 때만 ReplenishmentRecommended를 발행한다. 추천은 요청·승인이 아니다.
+      operationId: createPlanRun
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                skus:
+                  type: array
+                  description: 비우면 센터 취급 전 SKU
+                  items: { $ref: '_common.yaml#/components/schemas/Sku' }
+                horizonHours: { type: integer, minimum: 1, description: 보호기간(미지정 시 정책값) }
+                trigger: { type: string, enum: [SCHEDULED, MANUAL, EVENT] }
+      responses:
+        '202':
+          description: 계획 실행 접수. resultId = planRunId
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+                  - type: object
+                    properties:
+                      planRunId: { type: string }
+                      state: { $ref: '#/components/schemas/PlanRunState' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /plan-runs/{planRunId}:
+    get:
+      tags: [planning]
+      summary: 계획 실행 결과 조회 (스냅샷 원천·버전·상태·SKU별 결과)
+      operationId: getPlanRun
+      parameters:
+        - { name: planRunId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanRun' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /recommendations:
+    get:
+      tags: [planning]
+      summary: 보충 추천 조회 (W/B/K/Q, 원수요 미충족·배수 완충)
+      operationId: listRecommendations
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: planRunId, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/Recommendation' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /supply-requests/{supplyRequestId}:
+    get:
+      tags: [supply-requests]
+      summary: 공급 요청 접수 결과 조회 (ACCEPTED/CONFLICT/PENDING, 연결 TRF)
+      operationId: getSupplyRequest
+      parameters:
+        - { name: supplyRequestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupplyRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /allocation-candidates:
+    get:
+      tags: [transfers]
+      summary: 심사 후보 조회 (같은 CDC 재고를 두고 센터별 요청 비교 — 수동/요청순/위험/비례)
+      description: 정책 미승인 시 수동 심사 대상으로 등록된다. 후보는 승인이 아니다.
+      operationId: listAllocationCandidates
+      parameters:
+        - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  cdcAvailableQty: { type: integer, description: cdc-inventory 공급가능량 사본 }
+                  allocationMethod: { type: string, enum: [MANUAL, FIFO_REQUEST, RISK, PROPORTIONAL] }
+                  items: { type: array, items: { $ref: '#/components/schemas/AllocationCandidate' } }
+
+  /transfers/{trfId}:
+    get:
+      tags: [transfers]
+      summary: 승인 TRF 정본·실행 추적 조회 (확보/편성/출발/수령/준비 상태, 보존식 A0 = D + Cpre + Uclosed + Uopen)
+      operationId: getTransfer
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /transfers/{trfId}/changes:
+    post:
+      tags: [transfers]
+      summary: 승인 TRF 변경 요청 (승인·미확보 또는 확보 중지 후만) → 심사 → TransferChanged
+      description: |
+        WMS/TMS 실제 미실행을 확인한 뒤 적용한다. SCM이 예약을 직접 해제하거나 실물을 삭제하지 않는다.
+        실제 출발 후에는 변경 불가(INVALID_STATE).
+      operationId: requestTransferChange
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, lines]
+              properties:
+                reason: { type: string }
+                dueAt: { type: string, format: date-time }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, newApprovedQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      newApprovedQty: { type: integer, minimum: 0 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (출발 후·작업 중) / VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED (변경은 심사 대상)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /transfers/{trfId}/cancellations:
+    post:
+      tags: [transfers]
+      summary: 승인 TRF 취소 요청 (실제 출발 전만) → TransferCancelled
+      operationId: requestTransferCancellation
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+                approvalRef: { type: string, description: approval-service approvalId }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (실제 출발 후 취소 불가) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /transfers/{trfId}/residual-closures:
+    post:
+      tags: [transfers]
+      summary: 미출발 잔량 종료 (SCM-D10, 수동 승인) → TransferResidualClosed
+      description: |
+        승인 60·실출발 48이면 미출발 12를 같은 TRF로 보내지 않고 잔량 종료한다(60 = 48 + 12).
+        추가 공급은 별도 요청·승인(SCM-D11). approvalRef 필수.
+      operationId: closeTransferResidual
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approvalRef, reason]
+              properties:
+                approvalRef: { type: string }
+                reason: { type: string, enum: [SHORT_ALLOCATION, TRANSPORT_CAPACITY, PICK_SHORTAGE, QUALITY_BLOCKED, OTHER] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (출발 전·잔량 0) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED (approvalRef 무효)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /transfers/{trfId}/requests/{requestId}:
+    get:
+      tags: [transfers]
+      summary: 변경/취소/잔량 종료 요청 결과 조회 (PENDING/APPLIED/REJECTED/UNKNOWN)
+      operationId: getTransferRequest
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  kind: { type: string, enum: [CHANGE, CANCELLATION, RESIDUAL_CLOSURE] }
+                  state: { type: string, enum: [PENDING, APPLIED, REJECTED, UNKNOWN] }
+                  reason: { type: string }
+                  newTrfVersion: { type: integer }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /policies:
+    get:
+      tags: [policies]
+      summary: 공급 정책값 조회 (우선순위 센터+SKU → 그룹 → 전역, 3값 응답)
+      description: NOT_SET은 0/무제한이 아니다. 정책 미설정 SKU의 신규 계획 실행은 CONFIG_REQUIRED로 보류한다.
+      operationId: getPolicies
+      parameters:
+        - { name: centerId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  centerId: { type: string }
+                  sku: { type: string }
+                  resolvedLevel: { type: string, enum: [CENTER_SKU, GROUP, GLOBAL] }
+                  protectionHours: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+                  safetyStock: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+                  minLevel: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+                  maxLevel: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+                  multiple: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+                  supplyCap: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+                  allocationMethod: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+
+  # ---------- internal (서비스 토큰) ----------
+  /internal/supply-requests:
+    post:
+      tags: [internal]
+      summary: '[mfc-inbound→replenishment] 공급 요청 접수 (SupplyRequest) → SupplyRequestReceived'
+      description: |
+        권한·센터·단위·배수·기한 의미를 검증하고 같은 원수요의 미해결 요청 중복을 검사한다.
+        같은 키·다른 본문은 409 IDEMPOTENCY_CONFLICT. 고객 구매 상한 10개는 센터 간 공급에 적용하지 않는다.
+        접수(ACCEPTED)는 승인이 아니다.
+      operationId: receiveSupplyRequest
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplyRequestInput' }
+      responses:
+        '202':
+          description: 접수 결과. resultId = supplyRequestId
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+                  - type: object
+                    properties:
+                      supplyRequestId: { type: string }
+                      receiptState: { $ref: '#/components/schemas/SupplyRequestReceiptState' }
+                      conflictWith: { type: string, description: CONFLICT일 때 중복된 기존 요청 ID }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: 검증 거절 (SKU_NOT_HANDLED, MULTIPLE_VIOLATION, DEADLINE_MEANING_INVALID, CONFIG_REQUIRED)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/transfer-approvals:
+    post:
+      tags: [internal]
+      summary: '[approval→replenishment] ApprovalDecided 수신 → 사업승인 TRF 정본 확정 → TransferApproved'
+      description: |
+        승인 결과는 replenishment만 생성하며 approval-service는 참조(approvalRef)다.
+        요청 100·승인 60이면 미승인 40 사유를 기록한다. REJECTED이면 TRF를 만들지 않고 요청을 종료한다.
+        resultId = trfId.
+      operationId: applyTransferApproval
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferApprovalInput' }
+      responses:
+        '200':
+          description: TRF 생성/갱신 결과. resultId = trfId
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+                  - type: object
+                    properties:
+                      trfId: { type: string }
+                      trfVersion: { type: integer }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE (요청 이미 종료) / IDEMPOTENCY_CONFLICT / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: 검증 거절 (APPROVED_QTY_EXCEEDS_REQUEST, APPROVER_SELF_APPROVAL, MULTIPLE_VIOLATION)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/supply-status:
+    get:
+      tags: [internal]
+      summary: '[order→replenishment] 공급 상태 조회 (OMS A.2.4 — 예정 공급·도착 예정, 예약판매 근거 아님)'
+      description: 예정 공급으로 고객 주문을 예약판매하지 않는다. 표시 목적의 사본이며 asOf를 포함한다.
+      operationId: getSupplyStatus
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupplyStatus' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    PlanRunState:
+      type: string
+      description: |
+        CALCULABLE: 모든 원천 CURRENT → 추천 산출. REFERENCE_ONLY: 일부 STALE → 참고용(추천 발행 안 함).
+        INPUT_PENDING: 원천 조회 실패 → H0/SS0 대체 없이 보류.
+      enum: [CALCULABLE, REFERENCE_ONLY, INPUT_PENDING]
+    SnapshotRef:
+      type: object
+      description: planRun이 고정한 원천 스냅샷 참조
+      required: [source, asOf]
+      properties:
+        source: { type: string, enum: [MFC_INVENTORY, ORDER, REPLENISHMENT, DEMAND_PLANNING, POLICY, CDC_INVENTORY, MFC_CAPACITY, TRANSPORT_PLANNING] }
+        snapshotId: { type: string }
+        sourceVersion: { type: integer }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    QuantityDictionary:
+      type: object
+      description: |
+        H 적격 현물(예약 차감 전, 격리 제외) · C 유효 미이행 약속(BLOCKED 포함) · I 기한 내 사용준비 가능한 미수령 잔량 · P 기수령 준비대기
+        F = max(0, 남은 전체예측 − 예측에 포함된 C) · SS 안전량 · S = F + SS · IP = H − C + I + P · N = max(0, S − IP)
+      properties:
+        h: { type: integer, minimum: 0 }
+        c: { type: integer, minimum: 0 }
+        i: { type: integer, minimum: 0 }
+        p: { type: integer, minimum: 0 }
+        f: { type: integer, minimum: 0 }
+        ss: { type: integer, minimum: 0 }
+        s: { type: integer, minimum: 0 }
+        ip: { type: integer }
+        n: { type: integer, minimum: 0 }
+    ShortageProfile:
+      type: object
+      description: 보호기간 내 시간대별 부족
+      properties:
+        firstShortageAt: { type: [string, 'null'], format: date-time }
+        maxShortageQty: { type: integer, minimum: 0 }
+        maxShortageAt: { type: [string, 'null'], format: date-time }
+        recoveryAt: { type: [string, 'null'], format: date-time, description: 예정 공급 도착으로 회복되는 시각 }
+    ReplenishmentStatus:
+      type: object
+      properties:
+        mfcId: { type: string }
+        sku: { type: string }
+        planRunId: { type: string }
+        state: { $ref: '#/components/schemas/PlanRunState' }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        snapshots: { type: array, items: { $ref: '#/components/schemas/SnapshotRef' } }
+        quantities: { $ref: '#/components/schemas/QuantityDictionary' }
+        shortage: { $ref: '#/components/schemas/ShortageProfile' }
+        protectionHours: { type: integer }
+        openTransfers:
+          type: array
+          description: 이 센터·SKU로 향하는 미완료 TRF
+          items: { type: object, properties: { trfId: { type: string }, approvedQty: { type: integer }, executionState: { $ref: '#/components/schemas/ExecutionState' } } }
+    PlanRun:
+      type: object
+      properties:
+        planRunId: { type: string }
+        mfcId: { type: string }
+        state: { $ref: '#/components/schemas/PlanRunState' }
+        trigger: { type: string, enum: [SCHEDULED, MANUAL, EVENT] }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+        snapshots: { type: array, items: { $ref: '#/components/schemas/SnapshotRef' } }
+        pendingSources: { type: array, items: { type: string }, description: INPUT_PENDING 원인 원천 }
+        results: { type: array, items: { $ref: '#/components/schemas/Recommendation' } }
+    Recommendation:
+      type: object
+      description: |
+        W = m·ceil(N/m) · B = min(CDC 신규공급가능량, MFC 추가수용량, TMS 상한) · K = m·floor(B/m) · Q = min(W, K)
+        원수요 미충족 = max(0, N − Q) · 배수 완충 = max(0, Q − N). 추천은 요청·승인이 아니다.
+      properties:
+        recommendationId: { type: string }
+        planRunId: { type: string }
+        mfcId: { type: string }
+        cdcId: { type: string }
+        sku: { type: string }
+        quantities: { $ref: '#/components/schemas/QuantityDictionary' }
+        multiple: { type: integer, description: 배수 m }
+        w: { type: integer, minimum: 0 }
+        b: { type: integer, minimum: 0 }
+        k: { type: integer, minimum: 0 }
+        q: { type: integer, minimum: 0, description: 추천 수량 }
+        unmetDemandQty: { type: integer, minimum: 0 }
+        multipleBufferQty: { type: integer, minimum: 0 }
+        boundingFactor: { type: string, enum: [NONE, CDC_AVAILABILITY, MFC_CAPACITY, TMS_CAP] }
+        shortage: { $ref: '#/components/schemas/ShortageProfile' }
+        suggestedDueAt: { type: string, format: date-time }
+    DeadlineMeaning:
+      type: string
+      description: 기한 의미. ARRIVAL=MFC 도착, HANDOVER=하차 인계, READY=사용 준비(적치 완료)
+      enum: [ARRIVAL, HANDOVER, READY]
+    SupplyRequestReceiptState:
+      type: string
+      enum: [ACCEPTED, CONFLICT, PENDING]
+    SupplyRequestInput:
+      type: object
+      required: [supplyRequestId, mfcId, sku, requestedQty, deadlineMeaning, dueAt, urgency, requesterId]
+      properties:
+        supplyRequestId: { type: string, description: mfc-inbound 로컬 요청 ID }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        requestedQty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        recommendationId: { type: string, description: 근거 추천(원수요 식별) }
+        deadlineMeaning: { $ref: '#/components/schemas/DeadlineMeaning' }
+        dueAt: { type: string, format: date-time, description: 희망 사용준비 시각 }
+        urgency: { type: string, enum: [NORMAL, URGENT] }
+        reason: { type: string, maxLength: 500 }
+        requesterId: { type: string }
+        requestVersion: { type: integer, minimum: 1 }
+    SupplyRequest:
+      allOf:
+        - { $ref: '#/components/schemas/SupplyRequestInput' }
+        - type: object
+          properties:
+            receiptState: { $ref: '#/components/schemas/SupplyRequestReceiptState' }
+            lifecycle: { type: string, enum: [RECEIVED, UNDER_REVIEW, APPROVED, PARTIALLY_APPROVED, REJECTED, WITHDRAWN, CLOSED] }
+            conflictWith: { type: string }
+            trfId: { type: string, description: 승인 시 연결된 TRF }
+            receivedAt: { type: string, format: date-time }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+    AllocationCandidate:
+      type: object
+      properties:
+        supplyRequestId: { type: string }
+        mfcId: { type: string }
+        requestedQty: { type: integer }
+        candidateQty: { type: integer, description: 배분 후보 수량(승인 아님) }
+        riskScore: { type: number, description: 위험 기준 배분 시 점수 }
+        firstShortageAt: { type: [string, 'null'], format: date-time }
+        urgency: { type: string, enum: [NORMAL, URGENT] }
+        reviewState: { type: string, enum: [AUTO_ELIGIBLE, MANUAL_REVIEW, SUBMITTED_FOR_APPROVAL] }
+        changeRequestId: { type: string, description: approval-service ChangeRequest }
+    TransferApprovalInput:
+      type: object
+      required: [approvalRef, supplyRequestId, decision, approverId, decidedAt]
+      properties:
+        approvalRef: { type: string, description: approval-service approvalId }
+        changeRequestId: { type: string }
+        supplyRequestId: { type: string }
+        decision: { type: string, enum: [APPROVED, PARTIALLY_APPROVED, REJECTED] }
+        approverId: { type: string }
+        delegatedFrom: { type: string, description: 대행 승인 시 원승인자 }
+        decidedAt: { type: string, format: date-time }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [sku, approvedQty]
+            properties:
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              approvedQty: { type: integer, minimum: 0 }
+              unapprovedQty: { type: integer, minimum: 0 }
+              unapprovedReason: { type: string }
+        conditions:
+          type: array
+          description: 추가승인 조건·실행 조건(예 온도대·차량 유형)
+          items: { type: object, properties: { kind: { type: string }, value: { type: string } } }
+        deadlineMeaning: { $ref: '#/components/schemas/DeadlineMeaning' }
+        dueAt: { type: string, format: date-time }
+    ExecutionState:
+      type: string
+      description: 확보/편성/출발/수령/준비 결과를 종합한 실행 상태. 승인 ≠ 확보 ≠ 출발 ≠ 수령 ≠ 사용 준비.
+      enum: [APPROVED, ALLOCATING, READY, PARTIALLY_ALLOCATED, TRANSPORT_PENDING, EXECUTION_HOLD, DEPARTED, RECEIVED, PARTIALLY_RECEIVED, READY_FOR_USE, RESIDUAL_CLOSED, CANCELLED, CLOSED]
+    TransferLine:
+      type: object
+      description: 보존식 A0 = D + Cpre + Uclosed + Uopen (승인량 = 출발 + 출발 전 취소 + 종료 잔량 + 미결 잔량)
+      properties:
+        sku: { type: string }
+        approvedQty: { type: integer, description: A0 }
+        allocatedQty: { type: integer, description: cdc-inventory AllocationResult 사본 }
+        shortQty:
+          type: integer
+          description: 승인미확보. 승인 60 · 확보 48 → 12. 사업승인을 48로 덮지 않는다.
+        departedQty: { type: integer, description: D }
+        cancelledPreDepartureQty: { type: integer, description: Cpre }
+        residualClosedQty: { type: integer, description: Uclosed }
+        residualOpenQty: { type: integer, description: Uopen }
+        receivedQty: { type: integer, description: r (정상 n + 격리 h) }
+        quarantinedQty: { type: integer }
+        readyQty: { type: integer, description: MFC 적치 완료(사용 준비) }
+    Transfer:
+      type: object
+      properties:
+        trfId: { type: string }
+        trfVersion: { type: integer }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        supplyRequestId: { type: string }
+        approvalRef: { type: string }
+        approverId: { type: string }
+        cdcId: { type: string }
+        mfcId: { type: string }
+        deadlineMeaning: { $ref: '#/components/schemas/DeadlineMeaning' }
+        dueAt: { type: string, format: date-time }
+        conditions: { type: array, items: { type: object, properties: { kind: { type: string }, value: { type: string } } } }
+        executionState: { $ref: '#/components/schemas/ExecutionState' }
+        lines: { type: array, items: { $ref: '#/components/schemas/TransferLine' } }
+        tracking:
+          type: object
+          description: 각 정본 결과의 사본 (asOf 포함)
+          properties:
+            allocation: { type: object, properties: { state: { type: string, enum: [NOT_REQUESTED, ALLOCATED, PARTIAL, FAILED, RELEASED, UNKNOWN] }, allocationId: { type: string }, asOf: { $ref: '_common.yaml#/components/schemas/AsOf' } } }
+            transport: { type: object, properties: { state: { type: string, enum: [NOT_REQUESTED, FEASIBLE, INFEASIBLE, ASSIGNED, IN_TRANSIT, ENDED, UNKNOWN] }, tripId: { type: string }, asOf: { $ref: '_common.yaml#/components/schemas/AsOf' } } }
+            departure: { type: object, properties: { state: { type: string, enum: [NOT_DEPARTED, DEPARTED, UNKNOWN] }, departureId: { type: string }, departedAt: { type: string, format: date-time }, asOf: { $ref: '_common.yaml#/components/schemas/AsOf' } } }
+            receipt: { type: object, properties: { state: { type: string, enum: [NOT_RECEIVED, RECEIVED, PARTIAL, AWAITING_CDC_ACK, RECONCILED, UNKNOWN] }, receiptId: { type: string }, asOf: { $ref: '_common.yaml#/components/schemas/AsOf' } } }
+            readiness: { type: object, properties: { state: { type: string, enum: [NOT_READY, PARTIAL, READY, UNKNOWN] }, readyAt: { type: string, format: date-time }, asOf: { $ref: '_common.yaml#/components/schemas/AsOf' } } }
+        approvedAt: { type: string, format: date-time }
+        closedAt: { type: string, format: date-time }
+    SupplyStatus:
+      type: object
+      properties:
+        mfcId: { type: string }
+        sku: { type: string }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        state: { type: string, enum: [NONE, PLANNED, REQUESTED, APPROVED, IN_TRANSIT, ARRIVED, READY] }
+        expectedQty: { type: integer, minimum: 0, description: 미수령 승인·출발 수량 합 (예약판매 근거 아님) }
+        expectedArrivalAt: { type: [string, 'null'], format: date-time }
+        transfers: { type: array, items: { type: object, properties: { trfId: { type: string }, executionState: { $ref: '#/components/schemas/ExecutionState' }, dueAt: { type: string, format: date-time } } } }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

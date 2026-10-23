@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/AllocationResult.v1.json",
+  "title": "AllocationResult",
+  "description": "TRF 재고 확보(FEFO 다LOT) 요청의 결과. 발행 cdc-inventory. 구독 replenishment, cdc-outbound. 토픽 cdc.inventory.v1. 승인 60 / 확보 48 → 사업승인을 48로 덮지 않음. 승인미확보는 별도 추적",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "AllocationResult"
+        },
+        "aggregateType": {
+          "const": "Allocation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "trfVersion",
+            "allocationId",
+            "lines",
+            "result"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "allocationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "requestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "확보 전기 커밋 ID(SUCCESS 시)"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "allocatedQty",
+                  "shortQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "allocatedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "shortQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "expiryDate": {
+                    "$ref": "_defs.v1.json#/$defs/Date"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "totalAllocatedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "totalShortQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "allocatedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

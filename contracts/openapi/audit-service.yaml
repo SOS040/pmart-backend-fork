@@ -1,0 +1,212 @@
+openapi: 3.1.0
+info:
+  title: audit-service
+  version: 0.1.0
+  description: |
+    감사 사건(운영자 명령·사유·전후 값·대상·실행·보상 결과)과 개인정보 열람·다운로드 기록(BO-25)의 정본. (docs/architecture/service-map.md §8)
+    추가만 허용, 수정·삭제 없음. 보존 정책은 결정 필요. 각 도메인 정본은 소유 서비스에 있으며 여기 값은 기록 시점 사본이다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: audit-entries, description: 감사 사건 조회 }
+  - { name: internal, description: 서비스 간 기록(서비스 토큰) }
+
+paths:
+  /internal/audit-entries:
+    post:
+      tags: [internal]
+      summary: '[전 서비스→audit] 감사 사건 기록 (추가만; 멱등)'
+      description: 같은 Idempotency-Key·같은 본문은 기존 auditEntryId 반환. 기록 실패가 원명령을 막지 않도록 호출자는 Outbox 이벤트(AuditEntryRecorded)를 기본으로 하고 이 API는 동기 보조.
+      operationId: recordAuditEntry
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuditEntryInput' }
+      responses:
+        '201':
+          description: 기록됨 (auditEntryId 발급)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auditEntryId: { type: string }
+                  recordedAt: { type: string, format: date-time }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /audit-entries:
+    get:
+      tags: [audit-entries]
+      summary: 감사 사건 목록 (행위자·대상·명령·기간 필터)
+      operationId: listAuditEntries
+      parameters:
+        - { name: actorId, in: query, schema: { type: string } }
+        - { name: targetType, in: query, schema: { type: string } }
+        - { name: targetId, in: query, schema: { type: string } }
+        - { name: sourceSystem, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: outcome, in: query, schema: { $ref: '#/components/schemas/AuditOutcome' } }
+        - { name: centerId, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: traceId, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /audit-entries/{auditEntryId}:
+    get:
+      tags: [audit-entries]
+      summary: 감사 사건 상세 (전후 값 포함)
+      operationId: getAuditEntry
+      parameters:
+        - { name: auditEntryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditEntry' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/pii-access-logs:
+    post:
+      tags: [internal]
+      summary: '[bff/customer/claim→audit] 개인정보 열람·다운로드 기록 (BO-25; 추가만)'
+      operationId: recordPiiAccessLog
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PiiAccessLogInput' }
+      responses:
+        '201':
+          description: 기록됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  piiAccessLogId: { type: string }
+                  recordedAt: { type: string, format: date-time }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/pii-access-logs/{piiAccessLogId}:
+    get:
+      tags: [internal]
+      summary: 개인정보 접근 기록 조회 (기록 요청의 짝 조회)
+      operationId: getPiiAccessLog
+      parameters:
+        - { name: piiAccessLogId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PiiAccessLog' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    AuditOutcome:
+      type: string
+      description: 명령 결과 사본. UNKNOWN_RESULT도 그대로 기록한다.
+      enum: [ACCEPTED, APPLIED, REJECTED, UNKNOWN_RESULT, COMPENSATED, COMPENSATION_FAILED]
+    Actor:
+      type: object
+      required: [actorId, actorType]
+      properties:
+        actorId: { type: string }
+        actorType: { type: string, enum: [OPERATOR, SERVICE, CUSTOMER, RIDER, DRIVER, SYSTEM] }
+        onBehalfOf: { type: [string, 'null'], description: 대행(Delegation) 시 원권한자 }
+        roleGrantRef: { type: [string, 'null'], description: auth RoleGrant/긴급권한 참조 }
+        centerScope: { type: array, items: { type: string } }
+    AuditEntryInput:
+      type: object
+      required: [occurredAt, actor, action, target, outcome, sourceSystem]
+      properties:
+        occurredAt: { type: string, format: date-time }
+        actor: { $ref: '#/components/schemas/Actor' }
+        action: { type: string, description: 예 approval.decide / inventory.adjust / delivery.correct-status }
+        sourceSystem: { type: string }
+        target:
+          type: object
+          required: [targetType, targetId]
+          properties:
+            targetType: { type: string }
+            targetId: { type: string }
+            versionBefore: { type: [integer, 'null'] }
+            versionAfter: { type: [integer, 'null'] }
+            centerId: { type: [string, 'null'] }
+        reason: { type: string, maxLength: 1000 }
+        approvalRef: { type: [string, 'null'], description: 승인 근거(approval-service dossier) }
+        requestId: { type: string, description: 원명령 Idempotency-Key }
+        traceId: { type: string }
+        outcome: { $ref: '#/components/schemas/AuditOutcome' }
+        before: { type: object, additionalProperties: true, description: 변경 전 값 사본 }
+        after: { type: object, additionalProperties: true, description: 변경 후 값 사본 }
+        compensation:
+          type: object
+          properties:
+            attempted: { type: boolean }
+            outcome: { type: string }
+            ref: { type: string }
+        evidenceRefs: { type: array, items: { type: string } }
+    AuditEntry:
+      allOf:
+        - $ref: '#/components/schemas/AuditEntryInput'
+        - type: object
+          required: [auditEntryId, recordedAt]
+          properties:
+            auditEntryId: { type: string }
+            recordedAt: { type: string, format: date-time }
+            sequence: { type: integer, description: 추가 전용 단조 증가 번호 }
+    PiiAccessLogInput:
+      type: object
+      required: [occurredAt, actor, subjectRef, accessType, fields, purpose]
+      properties:
+        occurredAt: { type: string, format: date-time }
+        actor: { $ref: '#/components/schemas/Actor' }
+        subjectRef: { type: string, description: 정보주체 참조(고객 ID 등; 원문 PII 금지) }
+        accessType: { type: string, enum: [VIEW, DOWNLOAD, EXPORT, SEARCH] }
+        fields: { type: array, minItems: 1, items: { type: string }, description: 열람 항목 코드(PHONE / ADDRESS / NAME …) }
+        purpose: { type: string, maxLength: 500 }
+        screen: { type: string, description: 백오피스 화면 식별자 }
+        caseRef: { type: [string, 'null'] }
+        recordCount: { type: integer, minimum: 1, default: 1 }
+        traceId: { type: string }
+    PiiAccessLog:
+      allOf:
+        - $ref: '#/components/schemas/PiiAccessLogInput'
+        - type: object
+          required: [piiAccessLogId, recordedAt]
+          properties:
+            piiAccessLogId: { type: string }
+            recordedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OrderDraftCreated.v1.json",
+  "title": "OrderDraftCreated",
+  "description": "초안 생성·가격 동결 시작. 발행 order-service. 구독 BI. 토픽 order.order.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OrderDraftCreated"
+        },
+        "aggregateType": {
+          "const": "OrderDraft"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "draftId",
+            "purchaseIntentId",
+            "accountId",
+            "mfcId",
+            "quoteVersion",
+            "quoteExpiresAt"
+          ],
+          "properties": {
+            "draftId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "purchaseIntentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "quoteVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "quoteExpiresAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "createdAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

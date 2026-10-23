@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PreparationStarted.v1.json",
+  "title": "PreparationStarted",
+  "description": "실제 상품 준비 시작이 확정된 사실(이후 예약 시간 변경 차단). 발행 mfc-fulfillment. 구독 order, delivery-dispatch(준비 예상). 토픽 mfc.fulfillment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PreparationStarted"
+        },
+        "aggregateType": {
+          "const": "Fulfillment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "fulfillmentId",
+            "startedAt"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fulfillmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "startedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "estimatedPackDurationSec": {
+              "type": "integer",
+              "description": "예상 포장 소요(초)"
+            },
+            "estimatedReadyAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

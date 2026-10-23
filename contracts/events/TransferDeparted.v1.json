@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransferDeparted.v1.json",
+  "title": "TransferDeparted",
+  "description": "출발 검증 후 TOUT 전기 \"CDC 현물 −q, 예약 −q, Transit +q\"를 한 거래로 1회 반영한 사실. 발행 cdc-inventory. 구독 mfc-inbound, mfc-inventory(T 참조), replenishment, transport-execution, transport-planning. 토픽 cdc.inventory.v1. 실물 사실: 역순 수신 시 폐기하지 않고 대사. 같은 departureId는 1회 효과. 합차 시 TRF별 TOUT 각각",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransferDeparted"
+        },
+        "aggregateType": {
+          "const": "Transit"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "departureId",
+            "departureLineIds",
+            "lines",
+            "departedQty",
+            "departedAt",
+            "commitId"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "차량의 실제 출발 사실 ID(exact-once 키)"
+            },
+            "departureLineIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              },
+              "minItems": 1
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "TOUT 전기 커밋 ID"
+            },
+            "postingId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromCdc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "toMfc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuLotLpnQty"
+              },
+              "minItems": 1
+            },
+            "departedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "q(출발 총수량)"
+            },
+            "departedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "REAL",
+                "SIMULATED"
+              ],
+              "description": "실물 사실 여부(봉투 source와 동일 의미)"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,711 @@
+openapi: 3.1.0
+info:
+  title: cdc-inventory-service
+  version: 0.1.0
+  description: |
+    CDC 재고 단일 쓰기 주체. 위치·LOT·품질상태별 On-hand, 이관 예약 R(0 ≤ R ≤ E ≤ 장부), Held, 안전량 S, 가용 max(0, E−R−S),
+    LOT 식별/소비기한/FEFO, 초기 보유 INITIAL_BALANCE, 승인 TRF 다LOT FEFO 할당, TOUT 1회 전기, Transit 소유·대사(q = r + l + t),
+    승인 손실/폐기/ADJ 집행, 일일 수불 대사의 정본. (docs/architecture/service-map.md §4, docs/adr/0002)
+    LOC 마스터·공간(cdc-location), 작업(cdc-inbound/outbound), 품질 판단(cdc-quality), MFC 재고(mfc-inventory), 승인(replenishment/approval)은 비정본.
+    모든 변경 요청은 commitId를 발급하며 호출자는 자체 사본으로 성공을 판단하지 않는다. 모든 경로는 서비스 간(internal)이다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: availability, description: 공급가능량·예약·Transit·스냅샷 조회 }
+  - { name: allocations, description: 승인 TRF 할당/해제 (cdc-outbound) }
+  - { name: postings, description: 수량 전기 명령 (TOUT·TIN 확인·MOV·품질·손실·조정·초기 보유) }
+  - { name: commits, description: 원결과 조회 }
+  - { name: reconciliation, description: Transit 대사·일일 수불 대사 }
+
+paths:
+  /internal/availability:
+    get:
+      tags: [availability]
+      summary: '[replenishment/outbound→cdc-inventory] 공급가능량 조회 (available = max(0, E−R−S))'
+      description: 조회 사본이며 할당 성공을 보장하지 않는다. E는 적격 현물(품질 RELEASED·LOT VERIFIED·FEFO 최소 잔여일수 충족).
+      operationId: getAvailability
+      parameters:
+        - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Availability' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: CONFIG_REQUIRED (안전량 S 미설정 → 가용량 계산 보류) / SKU_NOT_HANDLED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/allocations:
+    post:
+      tags: [allocations]
+      summary: '[cdc-outbound→cdc-inventory] 승인 TRF 할당 (FEFO 다LOT, 예약 R +allocated) → AllocationResult'
+      description: |
+        trfId·trfVersion당 1회. 부분 할당 허용(allocated 48 / short 12). 승인량을 넘는 할당 요청은 거절.
+        resultId = allocationId. 같은 키·다른 본문은 409 IDEMPOTENCY_CONFLICT.
+      operationId: createAllocation
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, trfId, trfVersion, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                trfId: { type: string }
+                trfVersion: { type: integer }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, requestedQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      requestedQty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      minRemainingDays: { type: integer, description: FEFO 최소 잔여일수 (미지정 시 정책값) }
+      responses:
+        '200':
+          description: 할당 결과
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+                  - { $ref: '#/components/schemas/Allocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발 전기된 TRF) / ALLOCATION_EXISTS
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /internal/allocations/{allocationId}:
+    get:
+      tags: [allocations]
+      summary: 할당 조회 (LOT별 할당 수량·해제 이력)
+      operationId: getAllocation
+      parameters:
+        - { name: allocationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Allocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/allocations/{allocationId}/releases:
+    post:
+      tags: [allocations]
+      summary: '[cdc-outbound→cdc-inventory] 할당 해제 (전부/일부, 예약 R −q). 출발 전기된 수량은 해제 불가'
+      operationId: releaseAllocation
+      parameters:
+        - { name: allocationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [TRANSFER_CANCELLED, TRANSFER_CHANGED, PICK_SHORTAGE, PRE_DEPARTURE_CANCEL, RESIDUAL_CLOSED, QUALITY_BLOCKED] }
+                sourceRef: { type: string, description: 취소/변경 요청 ID }
+                lines:
+                  type: array
+                  description: 비우면 전량 해제
+                  items:
+                    type: object
+                    required: [sku, qty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE (출발 전기 완료분) / VERSION_CONFLICT / RELEASE_EXCEEDS_ALLOCATED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/departure-postings:
+    post:
+      tags: [postings]
+      summary: '[cdc-outbound→cdc-inventory] TOUT 전기 (TruckDepartureValidated 후) → TransferDeparted'
+      description: |
+        현물 −q · 예약 −q · Transit +q 를 한 거래로 반영한다. departureLineId당 정확히 1회(재전송은 기존 commitId 반환).
+        한 차량에 TRF A/B 합차 시 TRF별로 각각 호출한다. A 성공·B 불명이면 B만 GET /internal/commits/{commitId}로 해소하고 A를 재차감하지 않는다.
+        할당 R보다 큰 q는 거절(DEPARTURE_EXCEEDS_ALLOCATED). resultId = commitId.
+      operationId: postDeparture
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, departureId, trfId, trfVersion, allocationId, departedAt, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                departureId: { type: string, description: transport-execution TruckActuallyDeparted }
+                departureSource: { type: string, enum: [REAL, SIMULATED] }
+                trfId: { type: string }
+                trfVersion: { type: integer }
+                allocationId: { type: string }
+                shipmentManifestId: { type: string }
+                departedAt: { type: string, format: date-time }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [departureLineId, sku, lot, qty]
+                    properties:
+                      departureLineId: { type: string, description: 전기 멱등 단위 }
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      locationCode: { type: string }
+                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      lpns: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: 전기 결과 (APPLIED 또는 기존 commitId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / INVALID_STATE (같은 TRF 2회 출발) / DEPARTURE_EXCEEDS_ALLOCATED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/receipt-acks:
+    post:
+      tags: [postings]
+      summary: '[MfcReceiptPosted 소비→cdc-inventory] MFC 수령 확인 (receiptId 1회 → Transit −r) → TransitReconciled / TransferAckStatus'
+      description: |
+        r = 정상 n + 격리 h. 같은 receiptId 재수신은 기존 commitId 반환(재차감 없음).
+        대사 후 미정산 t = q − r − l 이 0보다 크면 state RECEIPT_POSTED_AWAITING_ACK → 조사 대상. 자동 손실 전기 금지.
+        정정 δr은 ReceiptCorrectionPosted의 correctionId로 별도 1회.
+      operationId: acknowledgeReceipt
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receiptId, trfId, departureId, mfcId, mfcCommitId, lines]
+              properties:
+                receiptId: { type: string }
+                correctionId: { type: string, description: 정정(δr)일 때만 }
+                trfId: { type: string }
+                departureId: { type: string }
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                mfcCommitId: { type: string, description: mfc-inventory TIN commitId }
+                receivedAt: { type: string, format: date-time }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, normalQty, quarantinedQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      normalQty: { type: integer, minimum: 0 }
+                      quarantinedQty: { type: integer, minimum: 0 }
+                      pendingQty: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: 대사 결과 (APPLIED 또는 기존 commitId)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+                  - type: object
+                    properties:
+                      transitState: { $ref: '#/components/schemas/TransitState' }
+                      unreconciledQty: { type: integer, minimum: 0, description: t }
+        '404':
+          description: NOT_FOUND / DEPARTURE_NOT_POSTED (해당 departureId의 TOUT 없음)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / RECEIPT_EXCEEDS_TRANSIT (r > 잔여 Transit)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/move-postings:
+    post:
+      tags: [postings]
+      summary: '[cdc-inbound→cdc-inventory] 내부 이동 반영 (MOV·적치 — 위치 간 On-hand 이동, 수량 합 불변)'
+      description: S7 사가 2단계. location 공간 선점(spaceReservationId) 후 호출. 실패 시 inbound가 이번 선점분만 해제한다.
+      operationId: postMove
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, moveKind, sourceRef, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                moveKind: { type: string, enum: [PUTAWAY, REPLENISHMENT_MOVE, RELOCATION] }
+                sourceRef: { type: string, description: putawayTaskId / moveId }
+                spaceReservationId: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot, fromLocationCode, toLocationCode, qty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      fromLocationCode: { type: string }
+                      toLocationCode: { type: string }
+                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / INSUFFICIENT_STOCK (원위치 수량 부족) / LOCATION_BLOCKED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/quality-postings:
+    post:
+      tags: [postings]
+      summary: '[cdc-quality→cdc-inventory] 품질 상태 전환 (HOLD / RELEASE / DISPOSE) → LotBlocked / InventoryAdjustmentPosted'
+      description: |
+        HOLD: E → Held (유효 예약 R에 걸린 수량은 QUALITY_BLOCKED로 outbound에 통지). RELEASE: Held → E. DISPOSE: Held −q (장부 차감, approvalRef 필수).
+        판단은 quality가 하고 수량 변경은 여기서만 한다.
+      operationId: postQualityChange
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, action, sourceRef, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                action: { type: string, enum: [HOLD, RELEASE, DISPOSE] }
+                sourceRef: { type: string, description: holdId / recallId / disposalApprovalId }
+                approvalRef: { type: string, description: DISPOSE 필수 }
+                reason: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      locationCode: { type: string, description: 비우면 LOT 전체 }
+                      qty: { type: integer, minimum: 1, description: 비우면 해당 범위 전량 }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED (DISPOSE에 approvalRef 없음) / EVIDENCE_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/loss-postings:
+    post:
+      tags: [postings]
+      summary: '[replenishment/backoffice→cdc-inventory] 승인 운송 손실 l 반영 (Transit −l) → q = r + l + t 종결'
+      description: 자동 손실 전기 금지. 본사 손실 승인(approvalRef)이 있어야 한다. 손실은 MFC 재고가 아니며 CDC로 복원하지 않는다.
+      operationId: postTransportLoss
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trfId, departureId, approvalRef, lines]
+              properties:
+                trfId: { type: string }
+                departureId: { type: string }
+                approvalRef: { type: string }
+                incidentRef: { type: string, description: TransportIncidentRaised }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot, lossQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      lossQty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      lossReason: { type: string, enum: [DAMAGE, MISSING, TEMPERATURE, OTHER] }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / LOSS_EXCEEDS_UNRECONCILED (l > t)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/adjustments:
+    post:
+      tags: [postings]
+      summary: '[backoffice→cdc-inventory] 승인 재고 조정 ADJ / 실사 차이 CNT 집행 → InventoryAdjustmentPosted'
+      operationId: postAdjustment
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, adjustmentKind, approvalRef, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                adjustmentKind: { type: string, enum: [ADJ, CNT] }
+                approvalRef: { type: string }
+                countSessionId: { type: string, description: CNT일 때 실사 회차 }
+                reason: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot, locationCode, deltaQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      locationCode: { type: string }
+                      deltaQty: { type: integer, description: 양수 증가·음수 감소 (0 금지) }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / INSUFFICIENT_STOCK (감소가 미예약 현물 초과)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/initial-balances:
+    post:
+      tags: [postings]
+      summary: '[backoffice→cdc-inventory] 초기 보유 INITIAL_BALANCE 전기 (센터·SKU·LOT당 승인 1회)'
+      description: 이미 수불 이력이 있는 센터·SKU·LOT에는 거절(INITIAL_BALANCE_EXISTS). 이후 변경은 ADJ로만.
+      operationId: postInitialBalance
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, approvalRef, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                approvalRef: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot, locationCode, qty, qualityState]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      lotIdentification: { $ref: '#/components/schemas/LotIdentification' }
+                      expiresAt: { type: string, format: date }
+                      locationCode: { type: string }
+                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      qualityState: { $ref: '#/components/schemas/QualityState' }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / INITIAL_BALANCE_EXISTS
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/commits/{commitId}:
+    get:
+      tags: [commits]
+      summary: 원결과 조회 (모든 전기 명령의 짝 조회 — UNKNOWN_RESULT 해소 경로)
+      operationId: getCommit
+      parameters:
+        - { name: commitId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Commit' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/transits:
+    get:
+      tags: [reconciliation]
+      summary: '[replenishment→cdc-inventory] Transit 조회 (q·r·l·t, 상태)'
+      operationId: listTransits
+      parameters:
+        - { name: trfId, in: query, schema: { type: string } }
+        - { name: departureId, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/TransitState' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/Transit' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /internal/snapshots:
+    get:
+      tags: [availability]
+      summary: '[replenishment→cdc-inventory] 재고 스냅샷 조회 (InventorySnapshotPublished와 같은 내용·버전)'
+      operationId: getSnapshot
+      parameters:
+        - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: snapshotId, in: query, schema: { type: string }, description: 미지정 시 최신 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshotId: { type: string }
+                  cdcId: { type: string }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/Availability' } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/daily-reconciliations:
+    get:
+      tags: [reconciliation]
+      summary: 일일 수불 대사 조회 (시작 + 조정증가 − 출발 − 폐기 − 조정감소 = 종료)
+      operationId: getDailyReconciliation
+      parameters:
+        - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date }, description: Asia/Seoul 기준 영업일 }
+        - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cdcId: { type: string }
+                  date: { type: string, format: date }
+                  state: { type: string, enum: [BALANCED, DISCREPANCY, IN_PROGRESS] }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/DailyReconciliationLine' } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    QualityState:
+      type: string
+      enum: [RELEASED, HELD, QUARANTINED, DISPOSED]
+    LotIdentification:
+      type: string
+      description: LOT 식별 신뢰도. INVALID는 적격 현물 E에서 제외.
+      enum: [UNVERIFIED, VERIFIED, INVALID]
+    TransitState:
+      type: string
+      description: |
+        TRANSIT_OPEN: TOUT 전기됨·수령 확인 없음. RECEIPT_POSTED_AWAITING_ACK: MFC TIN 수신 후 미정산 t > 0 (조사 대상).
+        TRANSIT_RECONCILED: q = r + l + t 로 종결(t = 0 또는 승인 손실 반영).
+      enum: [TRANSIT_OPEN, RECEIPT_POSTED_AWAITING_ACK, TRANSIT_RECONCILED]
+    Availability:
+      type: object
+      description: available = max(0, E − R − S). 0 ≤ R ≤ E ≤ onHand.
+      properties:
+        cdcId: { type: string }
+        sku: { type: string }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        onHand: { type: integer, minimum: 0, description: 장부 현물 (품질 상태 무관) }
+        eligible: { type: integer, minimum: 0, description: E 적격 현물 }
+        reserved: { type: integer, minimum: 0, description: R 이관 예약 }
+        held: { type: integer, minimum: 0 }
+        safety: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+        available: { type: integer, minimum: 0 }
+        transit: { type: integer, minimum: 0, description: 출발·미대사 Transit 합 }
+        handlingActive: { type: boolean, description: 센터 취급 활성 }
+        lots:
+          type: array
+          items:
+            type: object
+            properties:
+              lot: { type: string }
+              expiresAt: { type: string, format: date }
+              remainingDays: { type: integer }
+              identification: { $ref: '#/components/schemas/LotIdentification' }
+              eligible: { type: integer }
+              reserved: { type: integer }
+              held: { type: integer }
+    Allocation:
+      type: object
+      properties:
+        allocationId: { type: string }
+        trfId: { type: string }
+        trfVersion: { type: integer }
+        state: { type: string, enum: [ALLOCATED, PARTIAL, RELEASED, DEPARTED, FAILED] }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        commitId: { type: string }
+        allocatedAt: { type: string, format: date-time }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              requestedQty: { type: integer }
+              allocatedQty: { type: integer, description: 할당 48 }
+              shortQty: { type: integer, description: 부족 12 }
+              releasedQty: { type: integer }
+              departedQty: { type: integer }
+              lots:
+                type: array
+                description: FEFO 순
+                items:
+                  type: object
+                  properties:
+                    lot: { type: string }
+                    locationCode: { type: string }
+                    qty: { type: integer }
+                    expiresAt: { type: string, format: date }
+    Transit:
+      type: object
+      description: 출발 q = MFC 확정수령 r + 승인 운송손실 l + 미정산 t
+      properties:
+        trfId: { type: string }
+        departureId: { type: string }
+        mfcId: { type: string }
+        state: { $ref: '#/components/schemas/TransitState' }
+        departedAt: { type: string, format: date-time }
+        reconciledAt: { type: [string, 'null'], format: date-time }
+        receiptIds: { type: array, items: { type: string } }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              lot: { type: string }
+              q: { type: integer, description: 출발 수량 }
+              r: { type: integer, description: 확정 수령 (정상 + 격리) }
+              normalQty: { type: integer }
+              quarantinedQty: { type: integer }
+              l: { type: integer, description: 승인 손실 }
+              t: { type: integer, description: 미정산 }
+    Commit:
+      type: object
+      properties:
+        commitId: { type: string }
+        requestId: { type: string }
+        postingKind: { type: string, enum: [ALLOCATION, RELEASE, TOUT, RECEIPT_ACK, MOVE, QUALITY, LOSS, ADJ, CNT, INITIAL_BALANCE] }
+        status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+        sourceSystem: { type: string }
+        sourceRef: { type: string }
+        appliedAt: { type: string, format: date-time }
+        deltas:
+          type: array
+          description: 한 거래로 반영된 수량 변화
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              lot: { type: string }
+              locationCode: { type: string }
+              bucket: { type: string, enum: [ON_HAND, RESERVED, HELD, TRANSIT] }
+              delta: { type: integer }
+        rejectReason: { type: string }
+    DailyReconciliationLine:
+      type: object
+      properties:
+        sku: { type: string }
+        opening: { type: integer }
+        adjustmentIn: { type: integer }
+        departed: { type: integer }
+        disposed: { type: integer }
+        adjustmentOut: { type: integer }
+        closing: { type: integer }
+        computedClosing: { type: integer }
+        discrepancy: { type: integer, description: closing − computedClosing (0이어야 함) }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

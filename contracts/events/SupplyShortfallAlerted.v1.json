@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SupplyShortfallAlerted.v1.json",
+  "title": "SupplyShortfallAlerted",
+  "description": "CDC 전체 공급 부족이 판정된 사실. 발행 replenishment. 구독 notification, case. 토픽 scm.replenishment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SupplyShortfallAlerted"
+        },
+        "aggregateType": {
+          "const": "PlanRun"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "cdcId",
+            "sku",
+            "shortfallQty",
+            "affectedMfcs"
+          ],
+          "properties": {
+            "planRunId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "shortfallQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "affectedMfcs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "mfcId"
+                ],
+                "properties": {
+                  "mfcId": {
+                    "$ref": "_defs.v1.json#/$defs/CenterId"
+                  },
+                  "shortfallQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "firstShortageAt": {
+                    "$ref": "_defs.v1.json#/$defs/DateTime"
+                  }
+                }
+              }
+            },
+            "firstShortageAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "detectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

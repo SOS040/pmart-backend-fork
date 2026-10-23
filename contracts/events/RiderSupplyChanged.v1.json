@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderSupplyChanged.v1.json",
+  "title": "RiderSupplyChanged",
+  "description": "수급 참고. 발행 rider. 구독 delivery-capacity. 토픽 delivery.rider.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderSupplyChanged"
+        },
+        "aggregateType": {
+          "const": "RiderSupply"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "zoneId",
+            "activeRiders"
+          ],
+          "properties": {
+            "zoneId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "activeRiders": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "observedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

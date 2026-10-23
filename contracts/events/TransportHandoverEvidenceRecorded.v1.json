@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransportHandoverEvidenceRecorded.v1.json",
+  "title": "TransportHandoverEvidenceRecorded",
+  "description": "현장 인계 증빙(정차·TRF·LPN·수량·인계자/인수자·사진)이 기록된 사실(TIN 아님). 발행 transport-execution. 구독 mfc-inbound, cdc-inventory(대사 참조). 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransportHandoverEvidenceRecorded"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "stopId",
+            "trfId",
+            "departureId",
+            "lines",
+            "recordedAt"
+          ],
+          "properties": {
+            "handoverEvidenceId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "stopId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuLotLpnQty"
+              },
+              "minItems": 1
+            },
+            "handedByRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "인계자(기사) 참조 ID"
+            },
+            "receivedByRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "인수자(MFC 작업자) 참조 ID"
+            },
+            "evidenceRef": {
+              "$ref": "_defs.v1.json#/$defs/EvidenceRef"
+            },
+            "recordedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

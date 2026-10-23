@@ -1,0 +1,96 @@
+openapi: 3.1.0
+info:
+  title: ai-assistant-service
+  version: 0.1.0
+  x-stage: 3
+  description: |
+    RAG(정책 문서)·정책 설명·권한 있는 도메인 API 호출(읽기 우선). 정본 없음, 비즈니스 문서 요구 없음. (docs/architecture/service-map.md §8)
+    3단계 서비스이며 이 계약은 자리 표시용 초안이다. 도메인 변경 명령은 직접 수행하지 않고 backoffice-bff 명령 프록시로만 위임한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: ops, description: 운영 정보 }
+  - { name: assistant, description: 정책 질의(읽기 전용) }
+
+paths:
+  /actuator/health:
+    get:
+      tags: [ops]
+      summary: 헬스 (인증 불필요)
+      operationId: getAssistantHealth
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [UP, DOWN, OUT_OF_SERVICE] }
+
+  /assistant/policy-questions:
+    post:
+      tags: [assistant]
+      summary: 정책 질의 (읽기 전용; 답변은 근거 문서·정책 버전을 함께 반환)
+      operationId: askPolicyQuestion
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, maxLength: 2000 }
+                context: { type: object, additionalProperties: true, description: 화면·센터·대상 식별자 등 }
+      responses:
+        '200':
+          description: 답변 (근거 없는 답변은 state=NO_GROUNDING)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answerId: { type: string }
+                  state: { type: string, enum: [ANSWERED, NO_GROUNDING, FORBIDDEN_SCOPE] }
+                  answer: { type: string }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        docRef: { type: string }
+                        policyVersion: { type: [integer, 'null'] }
+                        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /assistant/policy-questions/{answerId}:
+    get:
+      tags: [assistant]
+      summary: 답변 조회 (질의 요청의 짝 조회)
+      operationId: getPolicyAnswer
+      parameters:
+        - { name: answerId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answerId: { type: string }
+                  state: { type: string, enum: [ANSWERED, NO_GROUNDING, FORBIDDEN_SCOPE] }
+                  answer: { type: string }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

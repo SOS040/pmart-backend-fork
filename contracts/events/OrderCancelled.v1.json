@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OrderCancelled.v1.json",
+  "title": "OrderCancelled",
+  "description": "취소 확정(환불 완료와 별개). 발행 order-service. 구독 delivery-dispatch(신규 배차 차단), notification, demand-planning, replenishment, BI. 토픽 order.order.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OrderCancelled"
+        },
+        "aggregateType": {
+          "const": "Order"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "scope",
+            "lines",
+            "reason"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "FULL",
+                "PARTIAL"
+              ]
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "orderLineId",
+                  "qty"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "취소 사유 코드"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "cancelledAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderRestricted.v1.json",
+  "title": "RiderRestricted",
+  "description": "계정 제한(증빙 기반). 발행 rider. 구독 delivery-dispatch, mfc-fulfillment(인계 차단), audit. 토픽 delivery.rider.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderRestricted"
+        },
+        "aggregateType": {
+          "const": "Rider"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "riderId",
+            "restriction",
+            "from",
+            "basis"
+          ],
+          "properties": {
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "restriction": {
+              "type": "string",
+              "description": "제한 종류 코드"
+            },
+            "from": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time",
+              "description": "무기한이면 null"
+            },
+            "basis": {
+              "type": "string",
+              "description": "근거(사건·증빙 참조)"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/EvidenceRef"
+              }
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,702 @@
+openapi: 3.1.0
+info:
+  title: cdc-outbound-service
+  version: 0.1.0
+  description: |
+    승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
+    가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
+    수량 전기는 cdc-inventory(할당/해제/TOUT), 차량·운행은 TMS(transport-*), 승인은 replenishment가 정본.
+    불변식: 상차 ≤ 검품합격 ≤ 분류 ≤ 실피킹 ≤ 유효할당 ≤ 승인. 같은 TRF의 후속 분할 출발 금지.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: waves, description: Wave 생성·릴리스 (DRAFT→PLANNED→RELEASED→IN_PROGRESS→WORK_DONE→CLOSED) }
+  - { name: tasks, description: 작업·실피킹 결과 }
+  - { name: results, description: 분류·검품·상차 결과 등록 }
+  - { name: transfers, description: 미출발 취소 }
+  - { name: internal, description: 서비스 간 호출 (replenishment / transport / cdc-inventory / mfc-inbound) }
+
+paths:
+  /internal/transfer-intakes:
+    post:
+      tags: [internal]
+      summary: '[TransferApproved 소비→cdc-outbound] 승인 TRF 인수 → cdc-inventory 할당 요청 → AllocationResult'
+      description: |
+        trfId·trfVersion당 1건. 같은 버전·다른 본문은 409 TRANSFER_INTAKE_CONFLICT. 새 버전(TransferChanged)은 기존 인수를 대체한다.
+        인수(ACCEPTED)는 확보가 아니다. 확보 결과는 GET /internal/transfer-intakes/{trfId}.
+      operationId: intakeTransfer
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferIntakeInput' }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: TRANSFER_INTAKE_CONFLICT (같은 버전 다른 본문) / IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /internal/transfer-intakes/{trfId}:
+    get:
+      tags: [internal]
+      summary: TRF 인수·확보·작업 진행 조회 (불변식 단계별 수량)
+      operationId: getTransferIntake
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferIntake' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /waves:
+    post:
+      tags: [waves]
+      summary: Wave 생성 (여러 TRF 묶음, 출발 창·차량 유형 기준)
+      operationId: createWave
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, trfIds]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                trfIds: { type: array, minItems: 1, items: { type: string } }
+                plannedDepartureWindow:
+                  type: object
+                  properties:
+                    start: { type: string, format: date-time }
+                    end: { type: string, format: date-time }
+                temperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+      responses:
+        '201':
+          description: Wave 생성 또는 기존 반환(같은 키·같은 본문)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wave' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / TRF_ALREADY_IN_WAVE / INVALID_STATE (미확보 TRF)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /waves/{waveId}:
+    get:
+      tags: [waves]
+      summary: Wave 조회 (상태·TRF·작업 요약)
+      operationId: getWave
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wave' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /waves/{waveId}/releases:
+    post:
+      tags: [waves]
+      summary: Wave 릴리스 (PLANNED→RELEASED, 피킹 Task 생성) → WaveStateChanged
+      operationId: releaseWave
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / OPERATION_RESTRICTED (cdc-quality 운영 제한)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /tasks:
+    get:
+      tags: [tasks]
+      summary: 작업 목록 (Wave·상태·작업자 기준)
+      operationId: listTasks
+      parameters:
+        - { name: waveId, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/TaskState' } }
+        - { name: assigneeId, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Task' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /tasks/{taskId}:
+    get:
+      tags: [tasks]
+      summary: 작업 상세 (피킹 결과·부족 포함)
+      operationId: getTask
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /tasks/{taskId}/pick-results:
+    post:
+      tags: [tasks]
+      summary: 실피킹 결과 등록 (부족 보고 → PickShortageReported → 재할당 또는 축소)
+      description: 실피킹 ≤ 유효할당. 부족분은 cdc-inventory 해제 후 재할당을 시도하며 불가하면 TRF 축소 대상으로 replenishment에 통지한다.
+      operationId: reportPickResult
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId, lines]
+              properties:
+                workerId: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot, locationCode, pickedQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      locationCode: { type: string }
+                      pickedQty: { type: integer, minimum: 0 }
+                      shortQty: { type: integer, minimum: 0 }
+                      shortReason: { type: string, enum: [NOT_FOUND, DAMAGED, EXPIRED, LOCATION_BLOCKED, OTHER] }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / PICK_EXCEEDS_ALLOCATION
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /sorting-results:
+    post:
+      tags: [results]
+      summary: 분류 결과 등록 (BOX SEALED / PLT READY, LPN 구성·계보)
+      description: 분류 ≤ 실피킹. LPN은 물류 취급 단위이며 상품 수량과 별도다. 한 LPN은 하나의 TRF에만 속한다.
+      operationId: reportSortingResult
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [waveId, trfId, workerId, lpns]
+              properties:
+                waveId: { type: string }
+                trfId: { type: string }
+                workerId: { type: string }
+                lpns:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/LpnComposition' }
+      responses:
+        '202':
+          description: 접수. resultId = workResultId
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / SORT_EXCEEDS_PICKED / LPN_ALREADY_SEALED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /inspection-results:
+    post:
+      tags: [results]
+      summary: 검품 결과 등록 (LPN 단위 합격/불합격, 온도·봉인 확인)
+      description: 검품합격 ≤ 분류. 불합격 LPN은 재분류 또는 cdc-quality 보류 대상.
+      operationId: reportInspectionResult
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trfId, inspectorId, items]
+              properties:
+                trfId: { type: string }
+                inspectorId: { type: string }
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [lpn, result]
+                    properties:
+                      lpn: { type: string }
+                      result: { type: string, enum: [PASSED, FAILED] }
+                      failReason: { type: string, enum: [QTY_MISMATCH, SEAL_BROKEN, TEMPERATURE, DAMAGE, WRONG_TRF, OTHER] }
+                      temperatureC: { type: number }
+                      evidenceRef: { type: string }
+      responses:
+        '202':
+          description: 접수. resultId = workResultId
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /loading-results:
+    post:
+      tags: [results]
+      summary: 가상 상차 결과 등록 (LOADED ≠ 출발, 차량·구획별 LPN)
+      description: |
+        상차 ≤ 검품합격. LOADED는 출발 사실이 아니며 수량 전기를 일으키지 않는다.
+        출발 전 하차(UNLOADED)도 같은 경로로 등록한다. 출발 준비 적격은 TMS 창·MFC 수령창 조건을 소비한다.
+      operationId: reportLoadingResult
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trfId, tripId, vehicleId, workerId, action, lpns]
+              properties:
+                trfId: { type: string }
+                tripId: { type: string, description: TMS TripAssigned }
+                vehicleId: { type: string }
+                dockCode: { type: string }
+                workerId: { type: string }
+                action: { type: string, enum: [LOADED, UNLOADED] }
+                lpns:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [lpn]
+                    properties:
+                      lpn: { type: string }
+                      compartment: { type: string, description: 차량 구획 (온도대) }
+                      sealNo: { type: string }
+      responses:
+        '202':
+          description: 접수. resultId = workResultId
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / LOAD_EXCEEDS_INSPECTED / LPN_NOT_PASSED / TRIP_MISMATCH
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /work-results/{workResultId}:
+    get:
+      tags: [results]
+      summary: 분류/검품/상차 결과 조회 (명령 짝 조회)
+      operationId: getWorkResult
+      parameters:
+        - { name: workResultId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workResultId: { type: string }
+                  kind: { type: string, enum: [SORTING, INSPECTION, LOADING] }
+                  trfId: { type: string }
+                  status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+                  rejectReason: { type: string }
+                  recordedAt: { type: string, format: date-time }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/departure-validations:
+    post:
+      tags: [internal]
+      summary: '[TruckActuallyDeparted 소비→cdc-outbound] 출발 사실 검증 (상차 대조) → TruckDepartureValidated → cdc-inventory TOUT 요청'
+      description: |
+        TMS 출발 구성(trfCompositions)과 상차 LOADED를 LPN 단위로 대조한다. 타 MFC 혼입·누락·봉인 불일치는 mismatches로 반환하고
+        OutboundDiscrepancyRaised를 발행한다. 일치 TRF만 cdc-inventory POST /internal/departure-postings를 호출한다.
+        departureId당 1회. 승인 60·실출발 48이면 출발 구성 48을 동결하고 미출발 12는 replenishment 잔량 정리 대상이다.
+      operationId: validateDeparture
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [departureId, tripId, vehicleId, departedAt, source, trfCompositions]
+              properties:
+                departureId: { type: string }
+                tripId: { type: string }
+                vehicleId: { type: string }
+                departedAt: { type: string, format: date-time }
+                source: { type: string, enum: [REAL, SIMULATED] }
+                evidenceRef: { type: string }
+                trfCompositions:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [trfId, lpns]
+                    properties:
+                      trfId: { type: string }
+                      mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                      lpns: { type: array, items: { type: string } }
+                      sealNos: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: 검증 결과 (TRF별 일치 여부·cdc-inventory 전기 상태)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepartureValidation' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / DEPARTURE_ALREADY_VALIDATED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/departure-validations/{departureId}:
+    get:
+      tags: [internal]
+      summary: 출발 검증 결과 조회 (TRF별 TOUT commitId·불일치)
+      operationId: getDepartureValidation
+      parameters:
+        - { name: departureId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepartureValidation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/shipment-manifests/{trfId}:
+    get:
+      tags: [internal]
+      summary: '[mfc-inbound/transport→cdc-outbound] 출발 매니페스트 조회 (TransferShipmentManifestIssued와 동일 내용)'
+      operationId: getShipmentManifest
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShipmentManifest' }
+        '404':
+          description: NOT_FOUND / NOT_DEPARTED (아직 출발 검증 전)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /transfers/{trfId}/pre-departure-cancellations:
+    post:
+      tags: [transfers]
+      summary: 미출발 취소·축소 (실물 하차·복귀, cdc-inventory 할당 해제, TMS 배정 대사)
+      description: |
+        TransferCancelled/Changed 수신 또는 현장 결정으로 호출. 실제 출발 후에는 불가(INVALID_STATE).
+        상차된 LPN은 하차 결과(UNLOADED) 등록 후 해제가 완료된다. 출발 경합·불명은 결과 조회로 해소한다.
+      operationId: cancelBeforeDeparture
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, scope]
+              properties:
+                reason: { type: string, enum: [TRANSFER_CANCELLED, TRANSFER_CHANGED, PICK_SHORTAGE, TRANSPORT_UNAVAILABLE, QUALITY_BLOCKED, OTHER] }
+                scope: { type: string, enum: [FULL, PARTIAL] }
+                sourceRef: { type: string, description: replenishment 요청 ID }
+                lines:
+                  type: array
+                  description: PARTIAL일 때 축소 수량
+                  items:
+                    type: object
+                    required: [sku, reduceQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      reduceQty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (실제 출발 후) / VERSION_CONFLICT / DEPARTURE_IN_PROGRESS (결과 조회로 해소)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /transfers/{trfId}/pre-departure-cancellations/{requestId}:
+    get:
+      tags: [transfers]
+      summary: 미출발 취소 요청 결과 조회 (PENDING/APPLIED/REJECTED/UNKNOWN)
+      operationId: getPreDepartureCancellation
+      parameters:
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  state: { type: string, enum: [PENDING, APPLIED, REJECTED, UNKNOWN] }
+                  releasedQty: { type: integer }
+                  unloadedLpns: { type: array, items: { type: string } }
+                  releaseCommitId: { type: string }
+                  reason: { type: string }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/outbound-readiness:
+    get:
+      tags: [internal]
+      summary: '[transport-planning→cdc-outbound] 출발 준비 적격 조회 (TMS 편성 조건)'
+      operationId: getOutboundReadiness
+      parameters:
+        - { name: trfId, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trfId: { type: string }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  readiness: { type: string, enum: [NOT_STARTED, PICKING, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED] }
+                  readyLpnCount: { type: integer }
+                  readyQty: { type: integer }
+                  totalWeightG: { type: integer }
+                  temperatureZones: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
+                  earliestReadyAt: { type: [string, 'null'], format: date-time }
+                  blockers: { type: array, items: { type: string } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    WaveState:
+      type: string
+      enum: [DRAFT, PLANNED, RELEASED, IN_PROGRESS, WORK_DONE, CLOSED, CANCELLED]
+    TaskState:
+      type: string
+      enum: [CREATED, ASSIGNED, ACCEPTED, IN_PROGRESS, PARTIAL, DONE, EXCEPTION, CANCELLED]
+    TransferIntakeInput:
+      type: object
+      required: [trfId, trfVersion, cdcId, mfcId, approvalRef, deadlineMeaning, dueAt, lines]
+      properties:
+        trfId: { type: string }
+        trfVersion: { type: integer }
+        cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        approvalRef: { type: string }
+        deadlineMeaning: { type: string, enum: [ARRIVAL, HANDOVER, READY] }
+        dueAt: { type: string, format: date-time }
+        conditions: { type: array, items: { type: object, properties: { kind: { type: string }, value: { type: string } } } }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, approvedQty]
+            properties:
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              approvedQty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+    TransferIntake:
+      allOf:
+        - { $ref: '#/components/schemas/TransferIntakeInput' }
+        - type: object
+          properties:
+            state: { type: string, enum: [RECEIVED, ALLOCATING, ALLOCATED, PARTIALLY_ALLOCATED, ALLOCATION_FAILED, IN_WAVE, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED] }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            allocationId: { type: string }
+            waveId: { type: string }
+            tripId: { type: string }
+            departureId: { type: string }
+            shipmentManifestId: { type: string }
+            progress:
+              type: array
+              description: 불변식 단계별 수량. 상차 ≤ 검품합격 ≤ 분류 ≤ 실피킹 ≤ 유효할당 ≤ 승인
+              items:
+                type: object
+                properties:
+                  sku: { type: string }
+                  approvedQty: { type: integer }
+                  allocatedQty: { type: integer }
+                  pickedQty: { type: integer }
+                  sortedQty: { type: integer }
+                  inspectedQty: { type: integer }
+                  loadedQty: { type: integer }
+                  departedQty: { type: integer }
+            inventoryAsOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    Wave:
+      type: object
+      properties:
+        waveId: { type: string }
+        cdcId: { type: string }
+        state: { $ref: '#/components/schemas/WaveState' }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        trfIds: { type: array, items: { type: string } }
+        plannedDepartureWindow: { type: object, properties: { start: { type: string, format: date-time }, end: { type: string, format: date-time } } }
+        taskSummary: { type: object, properties: { total: { type: integer }, done: { type: integer }, exception: { type: integer } } }
+        createdAt: { type: string, format: date-time }
+        releasedAt: { type: string, format: date-time }
+    Task:
+      type: object
+      properties:
+        taskId: { type: string }
+        waveId: { type: string }
+        trfId: { type: string }
+        kind: { type: string, enum: [PICK, SORT, INSPECT, LOAD] }
+        state: { $ref: '#/components/schemas/TaskState' }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        assigneeId: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              lot: { type: string }
+              locationCode: { type: string }
+              plannedQty: { type: integer }
+              pickedQty: { type: integer }
+              shortQty: { type: integer }
+              shortReason: { type: string }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    LpnComposition:
+      type: object
+      description: LPN(BOX/PLT) 구성·계보. PLT는 하위 BOX를 가질 수 있다.
+      required: [lpn, unitType, state, contents]
+      properties:
+        lpn: { type: string }
+        unitType: { type: string, enum: [BOX, PLT] }
+        state: { type: string, enum: [SEALED, READY] }
+        parentLpn: { type: [string, 'null'] }
+        sealNo: { type: string }
+        temperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+        weightG: { type: integer }
+        contents:
+          type: array
+          items:
+            type: object
+            required: [sku, lot, qty]
+            properties:
+              sku: { type: string }
+              lot: { type: string }
+              qty: { type: integer, minimum: 1 }
+    DepartureValidation:
+      type: object
+      properties:
+        departureId: { type: string }
+        tripId: { type: string }
+        vehicleId: { type: string }
+        source: { type: string, enum: [REAL, SIMULATED] }
+        validatedAt: { type: string, format: date-time }
+        overallResult: { type: string, enum: [MATCHED, PARTIALLY_MATCHED, MISMATCHED] }
+        transfers:
+          type: array
+          items:
+            type: object
+            properties:
+              trfId: { type: string }
+              result: { type: string, enum: [MATCHED, MISMATCHED] }
+              departedQty: { type: integer }
+              postingStatus: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+              commitId: { type: string, description: cdc-inventory TOUT commitId }
+              shipmentManifestId: { type: string }
+        mismatches:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [LPN_NOT_LOADED, LPN_NOT_IN_DEPARTURE, WRONG_TRF, WRONG_MFC, SEAL_MISMATCH, COMPARTMENT_MISMATCH] }
+              lpn: { type: string }
+              trfId: { type: string }
+              detail: { type: string }
+    ShipmentManifest:
+      type: object
+      properties:
+        shipmentManifestId: { type: string }
+        trfId: { type: string }
+        trfVersion: { type: integer }
+        departureId: { type: string }
+        tripId: { type: string }
+        vehicleId: { type: string }
+        cdcId: { type: string }
+        mfcId: { type: string }
+        departedAt: { type: string, format: date-time }
+        lpns: { type: array, items: { $ref: '#/components/schemas/LpnComposition' } }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              lot: { type: string }
+              expiresAt: { type: string, format: date }
+              qty: { type: integer }
+        issuedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

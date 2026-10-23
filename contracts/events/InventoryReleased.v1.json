@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InventoryReleased.v1.json",
+  "title": "InventoryReleased",
+  "description": "예약 해제가 확인된 사실. 발행 mfc-inventory. 구독 order-orchestration, cart. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "InventoryReleased"
+        },
+        "aggregateType": {
+          "const": "Reservation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reservationId",
+            "reason"
+          ],
+          "properties": {
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuQty"
+              }
+            },
+            "releasedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

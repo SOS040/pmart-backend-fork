@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/MfcLocationStateChanged.v1.json",
+  "title": "MfcLocationStateChanged",
+  "description": "MFC 보관 위치가 폐쇄·활성 등으로 상태 변경된 사실. 발행 mfc-location. 구독 mfc-inventory, mfc-fulfillment. 토픽 mfc.location.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "MfcLocationStateChanged"
+        },
+        "aggregateType": {
+          "const": "Location"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "locationId",
+            "state"
+          ],
+          "properties": {
+            "locationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "state": {
+              "type": "string"
+            },
+            "previousState": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SlotCapacityReduced.v1.json",
+  "title": "SlotCapacityReduced",
+  "description": "정원 축소. 발행 delivery-capacity. 구독 order, notification. 토픽 delivery.slot.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SlotCapacityReduced"
+        },
+        "aggregateType": {
+          "const": "Slot"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mfcId",
+            "window",
+            "affectedOrders"
+          ],
+          "properties": {
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "window": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "previousCapacity": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "newCapacity": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "affectedOrders": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "reason": {
+              "type": "string"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

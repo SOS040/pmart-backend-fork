@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InventoryExecutionApplied.v1.json",
+  "title": "InventoryExecutionApplied",
+  "description": "작업 실행(피킹·적치·격리·해제·폐기 등) 수량 반영 요청의 결과. 발행 mfc-inventory. 구독 mfc-fulfillment, mfc-inbound, mfc-quality. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "InventoryExecutionApplied"
+        },
+        "aggregateType": {
+          "const": "InventoryExecution"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "requestId",
+            "executionType",
+            "result"
+          ],
+          "properties": {
+            "requestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "멱등 키 (sourceSystem, requestId)의 requestId"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "성공 시 커밋 ID"
+            },
+            "executionType": {
+              "type": "string"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "appliedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuLotLpnQty"
+              }
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "failureCode": {
+              "type": "string"
+            },
+            "appliedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

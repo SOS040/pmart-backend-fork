@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryCreated.v1.json",
+  "title": "DeliveryCreated",
+  "description": "배송 단위 생성(이행 계획 기준; 10,000g 초과 분할은 order-service 결정). 주소 원문 없음. 발행 delivery-dispatch. 구독 delivery-execution, delivery-tracking, order, commerce. 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DeliveryCreated"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "orderId",
+            "shipmentId",
+            "type",
+            "mfcId",
+            "dropAddressRef"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shipmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "NORMAL",
+                "SPLIT",
+                "RETURN",
+                "RESHIP"
+              ]
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "dropAddressRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "deliveryMode": {
+              "$ref": "_defs.v1.json#/$defs/DeliveryMode"
+            },
+            "arrivalWindow": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "packageIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "createdAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

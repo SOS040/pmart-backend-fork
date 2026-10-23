@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReturnInspected.v1.json",
+  "title": "ReturnInspected",
+  "description": "회수품 검수가 완료된 사실(상온 미개봉만 재판매). 발행 mfc-quality. 구독 claim, mfc-inventory. 토픽 mfc.quality.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReturnInspected"
+        },
+        "aggregateType": {
+          "const": "ReturnInspection"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "claimId",
+            "lines",
+            "inspectedAt"
+          ],
+          "properties": {
+            "inspectionId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "returnReceiptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "qty",
+                  "disposition"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "disposition": {
+                    "type": "string",
+                    "enum": [
+                      "RESALE",
+                      "DISPOSE"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "inspectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

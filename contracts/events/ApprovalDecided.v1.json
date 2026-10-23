@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ApprovalDecided.v1.json",
+  "title": "ApprovalDecided",
+  "description": "심사 확정(정본 반영은 별도 Receipt). 발행 approval. 구독 product, pricing, storefront, product-content, center-master, delivery-serviceability, auth, replenishment, claim, cdc-quality, mfc-quality, mfc-capacity, rider, cdc-inventory, mfc-inventory, notification, audit. 토픽 platform.approval.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ApprovalDecided"
+        },
+        "aggregateType": {
+          "const": "Approval"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "approvalId",
+            "type",
+            "decision",
+            "targetRef",
+            "approverId",
+            "dossierVersion"
+          ],
+          "properties": {
+            "approvalId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "changeRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "description": "승인 유형"
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "APPROVED",
+                "PARTIALLY_APPROVED",
+                "REJECTED"
+              ]
+            },
+            "targetRef": {
+              "type": "object",
+              "required": [
+                "targetType",
+                "targetId"
+              ],
+              "properties": {
+                "targetType": {
+                  "type": "string",
+                  "description": "정본 aggregate 종류 (Product, Price, Center 등)"
+                },
+                "targetId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                }
+              },
+              "additionalProperties": true
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "lineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "amount": {
+                    "$ref": "_defs.v1.json#/$defs/Money"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVED",
+                      "REJECTED"
+                    ]
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "conditions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "effectiveFrom": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "expiresAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "approverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "dossierVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "decidedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

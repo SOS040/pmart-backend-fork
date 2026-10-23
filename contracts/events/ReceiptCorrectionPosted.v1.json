@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReceiptCorrectionPosted.v1.json",
+  "title": "ReceiptCorrectionPosted",
+  "description": "수령 정정(δr)을 전기한 사실. 발행 mfc-inventory. 구독 cdc-inventory. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReceiptCorrectionPosted"
+        },
+        "aggregateType": {
+          "const": "Receipt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "receiptId",
+            "correctionId",
+            "deltaQty",
+            "reason"
+          ],
+          "properties": {
+            "receiptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "correctionId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "postingId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "deltaQty": {
+              "type": "integer",
+              "description": "δr(음수 허용)"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "deltaNormalQty": {
+                    "type": "integer"
+                  },
+                  "deltaQuarantinedQty": {
+                    "type": "integer"
+                  },
+                  "deltaPendingQty": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "reason": {
+              "type": "string"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "postedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

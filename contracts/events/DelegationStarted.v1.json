@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DelegationStarted.v1.json",
+  "title": "DelegationStarted",
+  "description": "대행 시작. 발행 auth. 구독 approval, audit. 토픽 platform.auth.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DelegationStarted"
+        },
+        "aggregateType": {
+          "const": "Delegation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "delegationId",
+            "fromOperatorId",
+            "toOperatorId",
+            "scope",
+            "until"
+          ],
+          "properties": {
+            "delegationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromOperatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "toOperatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "scope": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "centerScope": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "_defs.v1.json#/$defs/CenterId"
+                  }
+                }
+              },
+              "additionalProperties": true,
+              "description": "위임 범위(양측 권한의 교집합)"
+            },
+            "until": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "startedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ProductSaleStateChanged.v1.json",
+  "title": "ProductSaleStateChanged",
+  "description": "전사 판매 상태 변경. 발행 product-service. 구독 cart, search, storefront, order, demand-planning. 토픽 commerce.product.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ProductSaleStateChanged"
+        },
+        "aggregateType": {
+          "const": "Product"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sku",
+            "state",
+            "effectiveAt"
+          ],
+          "properties": {
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "productId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ON_SALE",
+                "TEMP_OUT",
+                "DISCONTINUED"
+              ]
+            },
+            "previousState": {
+              "type": "string",
+              "enum": [
+                "ON_SALE",
+                "TEMP_OUT",
+                "DISCONTINUED"
+              ]
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+openapi: 3.1.0
+info:
+  title: fulfillment-routing-service
+  version: 0.1.0
+  description: |
+    이행 후보 MFC 평가 결과·배정 계획의 정본. (docs/architecture/service-map.md §2) 1단계는 "배송지 → 담당 MFC 1곳 + 운영 제한·취급 적격 사유" 판정 함수이며 3단계에서 재배정 계획을 완성한다.
+    권역 매핑 정본(delivery-serviceability)·재고(mfc-inventory)는 소유하지 않는다. 타 MFC 재배정은 1단계에 없다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: internal, description: 서비스 간 판정 (order-service) }
+
+paths:
+  /internal/fulfillment-decisions:
+    post:
+      tags: [internal]
+      summary: "[order→routing] 이행 MFC 판정 (주소 판정 + 운영 제한 + 취급 적격)"
+      description: |
+        delivery-serviceability의 주소 판정 결과(mfcId·mappingVersion)와 center-master 운영 제한, mfc-inventory 취급·제한 조회를 조합해 이행 MFC 1곳을 판정한다.
+        조회형 판정이므로 자원 확보가 아니다. 결과는 decisionId로 재조회할 수 있으며 초안 스냅샷에 기록된다.
+        정본 조회 불명(UNKNOWN)은 판정 실패이며 다른 MFC로 임의 대체하지 않는다.
+      operationId: createFulfillmentDecision
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FulfillmentDecisionRequest' }
+      responses:
+        '200':
+          description: 판정 결과 (ELIGIBLE 또는 사유 포함 거절)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FulfillmentDecision' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '422':
+          description: OUT_OF_SERVICE_AREA / SERVICE_AREA_OVERLAP / MFC_RESTRICTED / SKU_NOT_HANDLED / CONFIG_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/fulfillment-decisions/{decisionId}:
+    get:
+      tags: [internal]
+      summary: 판정 결과 재조회
+      operationId: getFulfillmentDecision
+      parameters:
+        - { name: decisionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FulfillmentDecision' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    FulfillmentDecisionRequest:
+      type: object
+      required: [draftId, address, items]
+      properties:
+        draftId: { type: string }
+        address:
+          type: object
+          required: [addressId]
+          properties:
+            addressId: { type: string, description: customer-service 주소록 ID }
+            roadAddress: { type: string }
+            detail: { type: string }
+            lat: { type: number }
+            lng: { type: number }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, quantity]
+            properties:
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        deliveryMode: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED] }
+        requestedAt: { type: string, format: date-time }
+    FulfillmentDecision:
+      type: object
+      properties:
+        decisionId: { type: string }
+        draftId: { type: string }
+        result: { type: string, enum: [ELIGIBLE, OUT_OF_SERVICE_AREA, SERVICE_AREA_OVERLAP, MFC_RESTRICTED, SKU_NOT_HANDLED, UNKNOWN] }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        mappingVersion: { type: integer, description: delivery-serviceability 매핑 버전 }
+        restriction:
+          type: object
+          description: MFC 운영 제한 상태 (center-master)
+          properties:
+            state: { type: string, enum: [NORMAL, ACCEPTANCE_SUSPENDED, CLOSED] }
+            reason: { type: string }
+            effectiveFrom: { type: string, format: date-time }
+        itemEligibility:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              handled: { type: boolean }
+              reason: { type: string, enum: [OK, NOT_HANDLED, TEMP_RESTRICTED, LOT_INELIGIBLE] }
+        evaluatedAt: { type: string, format: date-time }
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              system: { type: string }
+              asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ApprovalSuperseded.v1.json",
+  "title": "ApprovalSuperseded",
+  "description": "대체. 발행 approval. 구독 해당 정본, audit. 토픽 platform.approval.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ApprovalSuperseded"
+        },
+        "aggregateType": {
+          "const": "Approval"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "approvalId",
+            "reason"
+          ],
+          "properties": {
+            "approvalId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "supersededBy": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "supersededAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

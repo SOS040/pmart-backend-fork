@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerCommitmentChanged.v1.json",
+  "title": "CustomerCommitmentChanged",
+  "description": "확정·취소·결품으로 C 변동(취소 신청만으로는 아님). 발행 order-service. 구독 replenishment. 토픽 order.order.v1. 단계 ②",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerCommitmentChanged"
+        },
+        "aggregateType": {
+          "const": "Order"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mfcId",
+            "sku",
+            "orderLineId",
+            "committedQty",
+            "dueAt",
+            "state",
+            "version"
+          ],
+          "properties": {
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderLineId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "committedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "dueAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "VALID",
+                "BLOCKED",
+                "CANCELLED"
+              ]
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

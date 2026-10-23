@@ -1,0 +1,231 @@
+openapi: 3.1.0
+info:
+  title: demand-planning-service
+  version: 0.1.0
+  description: |
+    예측 버전·버킷·기준(주문확정/실제인계/전달)·신뢰도·품절 구간 표시·승인 수동 수요의 정본. (docs/architecture/service-map.md §3)
+    확정 고객 약속 C는 order-service, 보충량 계산은 replenishment-service가 정본. 초기 모델은 이동평균.
+    ForecastVersionPublished를 발행하며 replenishment는 F = max(0, 남은 전체예측 − 예측에 포함된 C)로 소비한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: forecasts, description: 예측 버전·버킷 조회 }
+  - { name: manual-demands, description: 승인된 수동 수요 입력 }
+  - { name: forecast-runs, description: 예측 실행 트리거·결과 }
+
+paths:
+  /forecasts:
+    get:
+      tags: [forecasts]
+      summary: 예측 조회 (버킷·기준·신뢰도·품절 구간 플래그)
+      description: |
+        최신 발행 버전을 반환한다. 품절 구간(stockoutFlags)은 실적이 수요를 과소 반영했음을 표시하며 모델이 보정한 값이 아니다.
+        예측에 포함된 확정 약속(committedQtyInForecast)을 함께 반환해 replenishment가 F를 계산할 수 있게 한다.
+      operationId: getForecasts
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: forecastVersion, in: query, schema: { type: integer }, description: 미지정 시 최신 발행 버전 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Forecast' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404':
+          description: NOT_FOUND / FORECAST_NOT_PUBLISHED (해당 센터·SKU 발행 버전 없음)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /manual-demands:
+    post:
+      tags: [manual-demands]
+      summary: 승인된 수동 수요 입력 (행사·프로모션 등 모델 외 수요)
+      description: |
+        approvalRef가 있어야 다음 예측 버전에 반영된다. 승인 없는 입력은 PENDING_APPROVAL로 보관만 한다.
+        수동 수요는 확정 약속 C가 아니며 재고 예약 근거가 아니다.
+      operationId: createManualDemand
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualDemandInput' }
+      responses:
+        '201':
+          description: 수동 수요 생성 또는 기존 반환(같은 키·같은 본문). resultId = manualDemandId
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManualDemand' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: 검증 거절 (SKU_NOT_HANDLED, PERIOD_IN_PAST, APPROVAL_REQUIRED)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /manual-demands/{manualDemandId}:
+    get:
+      tags: [manual-demands]
+      summary: 수동 수요 조회 (반영된 예측 버전 포함)
+      operationId: getManualDemand
+      parameters:
+        - { name: manualDemandId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManualDemand' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /forecast-runs:
+    post:
+      tags: [forecast-runs]
+      summary: 예측 실행 트리거 → 완료 시 ForecastVersionPublished
+      description: 접수(ACCEPTED)는 발행이 아니다. 결과는 GET /forecast-runs/{forecastRunId}로 조회한다.
+      operationId: createForecastRun
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, basis]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                skus:
+                  type: array
+                  description: 비우면 센터 취급 전 SKU
+                  items: { $ref: '_common.yaml#/components/schemas/Sku' }
+                basis: { $ref: '#/components/schemas/ForecastBasis' }
+                model: { type: string, enum: [MOVING_AVERAGE], default: MOVING_AVERAGE }
+                horizonHours: { type: integer, minimum: 1 }
+                bucketMinutes: { type: integer, enum: [60, 240, 1440], default: 60 }
+                trigger: { type: string, enum: [SCHEDULED, MANUAL, EVENT] }
+      responses:
+        '202':
+          description: 예측 실행 접수. resultId = forecastRunId
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+                  - type: object
+                    properties:
+                      forecastRunId: { type: string }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /forecast-runs/{forecastRunId}:
+    get:
+      tags: [forecast-runs]
+      summary: 예측 실행 결과 조회 (RUNNING/PUBLISHED/FAILED, 발행 버전)
+      operationId: getForecastRun
+      parameters:
+        - { name: forecastRunId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ForecastRun' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    ForecastBasis:
+      type: string
+      description: 실적 기준. ORDER_CONFIRMED=주문확정, HANDED_OVER=실제 인계, DELIVERED=전달 완료
+      enum: [ORDER_CONFIRMED, HANDED_OVER, DELIVERED]
+    ForecastBucket:
+      type: object
+      required: [bucketStart, bucketEnd, forecastQty]
+      properties:
+        bucketStart: { type: string, format: date-time }
+        bucketEnd: { type: string, format: date-time }
+        forecastQty: { type: integer, minimum: 0, description: 버킷 전체 예측(확정 약속 포함) }
+        committedQtyInForecast: { type: integer, minimum: 0, description: 예측에 포함된 확정 약속 C 사본 }
+        manualDemandQty: { type: integer, minimum: 0 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        lowerQty: { type: integer, minimum: 0 }
+        upperQty: { type: integer, minimum: 0 }
+        stockoutFlag: { type: boolean, description: 학습 구간에 품절이 있어 실적이 과소 반영됨 }
+    Forecast:
+      type: object
+      properties:
+        mfcId: { type: string }
+        sku: { type: string }
+        forecastVersion: { type: integer }
+        forecastRunId: { type: string }
+        basis: { $ref: '#/components/schemas/ForecastBasis' }
+        model: { type: string }
+        bucketMinutes: { type: integer }
+        publishedAt: { type: string, format: date-time }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        buckets: { type: array, items: { $ref: '#/components/schemas/ForecastBucket' } }
+        stockoutFlags:
+          type: array
+          description: 학습 기간 내 품절 구간
+          items:
+            type: object
+            properties:
+              from: { type: string, format: date-time }
+              to: { type: string, format: date-time }
+              sourceRef: { type: string, description: ProductSaleStateChanged 등 근거 }
+    ManualDemandInput:
+      type: object
+      required: [mfcId, sku, from, to, qty, reason, requesterId]
+      properties:
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        distribution: { type: string, enum: [EVEN, FRONT_LOADED, SINGLE_BUCKET], default: EVEN }
+        reason: { type: string, enum: [PROMOTION, EVENT, NEW_LISTING, WEATHER, OTHER] }
+        note: { type: string, maxLength: 500 }
+        requesterId: { type: string }
+        approvalRef: { type: string, description: approval-service approvalId }
+    ManualDemand:
+      allOf:
+        - { $ref: '#/components/schemas/ManualDemandInput' }
+        - type: object
+          properties:
+            manualDemandId: { type: string }
+            state: { type: string, enum: [PENDING_APPROVAL, APPROVED, APPLIED, REJECTED, EXPIRED] }
+            appliedForecastVersion: { type: [integer, 'null'] }
+            createdAt: { type: string, format: date-time }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+    ForecastRun:
+      type: object
+      properties:
+        forecastRunId: { type: string }
+        mfcId: { type: string }
+        basis: { $ref: '#/components/schemas/ForecastBasis' }
+        model: { type: string }
+        state: { type: string, enum: [RUNNING, PUBLISHED, FAILED] }
+        forecastVersion: { type: [integer, 'null'], description: PUBLISHED일 때 발행 버전 }
+        skuCount: { type: integer }
+        failureReason: { type: string }
+        inputAsOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        startedAt: { type: string, format: date-time }
+        publishedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

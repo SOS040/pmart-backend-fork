@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ForecastVersionPublished.v1.json",
+  "title": "ForecastVersionPublished",
+  "description": "수요 예측 버전이 발행된 사실. 발행 demand-planning. 구독 replenishment. 토픽 scm.forecast.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ForecastVersionPublished"
+        },
+        "aggregateType": {
+          "const": "ForecastVersion"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "forecastVersionId",
+            "mfcId",
+            "sku",
+            "buckets"
+          ],
+          "properties": {
+            "forecastVersionId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "buckets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "window",
+                  "forecastQty"
+                ],
+                "properties": {
+                  "window": {
+                    "$ref": "_defs.v1.json#/$defs/TimeWindow"
+                  },
+                  "forecastQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "includedCommitmentQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "예측에 포함된 C"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "basis": {
+              "type": "string",
+              "description": "예측 근거/모델"
+            },
+            "confidence": {
+              "type": "number",
+              "description": "0~1",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "publishedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

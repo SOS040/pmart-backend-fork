@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerWithdrawalRequested.v1.json",
+  "title": "CustomerWithdrawalRequested",
+  "description": "탈퇴 접수(신규 구매·마케팅 중단). 발행 customer-service. 구독 order, cart, notification. 토픽 commerce.customer.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerWithdrawalRequested"
+        },
+        "aggregateType": {
+          "const": "Customer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "accountId"
+          ],
+          "properties": {
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "requestedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

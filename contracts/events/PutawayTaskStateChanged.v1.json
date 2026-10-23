@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PutawayTaskStateChanged.v1.json",
+  "title": "PutawayTaskStateChanged",
+  "description": "적치 작업 상태가 전이된 사실. 발행 cdc-inbound. 구독 backoffice-bff. 토픽 cdc.inbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PutawayTaskStateChanged"
+        },
+        "aggregateType": {
+          "const": "PutawayTask"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "taskId",
+            "state"
+          ],
+          "properties": {
+            "taskId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "state": {
+              "type": "string"
+            },
+            "previousState": {
+              "type": "string"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "lpn": {
+              "type": "string"
+            },
+            "fromLoc": {
+              "type": "string"
+            },
+            "toLoc": {
+              "type": "string"
+            },
+            "qty": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "completedQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "C"
+                },
+                "uncompletedQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "U"
+                },
+                "cancelledQty": {
+                  "$ref": "_defs.v1.json#/$defs/Qty",
+                  "description": "K"
+                }
+              },
+              "description": "C/U/K 수량"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PickShortageReported.v1.json",
+  "title": "PickShortageReported",
+  "description": "실피킹에서 부족이 발생한 사실. 발행 cdc-outbound. 구독 replenishment, cdc-inventory. 토픽 cdc.outbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PickShortageReported"
+        },
+        "aggregateType": {
+          "const": "OutboundTransfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "sku",
+            "shortQty"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "allocationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "waveId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "pickTaskId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "locCode": {
+              "type": "string"
+            },
+            "shortQty": {
+              "$ref": "_defs.v1.json#/$defs/PositiveQty"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "reportedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ObligationCreated.v1.json",
+  "title": "ObligationCreated",
+  "description": "의무 등록. 발행 case. 구독 backoffice-bff. 토픽 platform.case.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ObligationCreated"
+        },
+        "aggregateType": {
+          "const": "Obligation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "obligationId",
+            "caseId",
+            "kind",
+            "ownerService"
+          ],
+          "properties": {
+            "obligationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "kind": {
+              "type": "string",
+              "description": "의무 종류"
+            },
+            "qty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "amount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "ownerService": {
+              "type": "string"
+            },
+            "dueAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "createdAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

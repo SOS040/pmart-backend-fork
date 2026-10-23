@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/_envelope.v1.json",
+  "title": "EventEnvelope",
+  "description": "모든 도메인 이벤트의 공통 봉투. (sourceSystem, eventId)가 멱등 키. 필드 추가만 허용.",
+  "type": "object",
+  "required": ["eventId", "eventType", "schemaVersion", "sourceSystem", "aggregateType", "aggregateId", "aggregateVersion", "occurredAt", "traceId", "payload"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]+$" },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "sourceSystem": { "type": "string", "description": "발행 서비스명 (order-service 등)" },
+    "aggregateType": { "type": "string" },
+    "aggregateId": { "type": "string" },
+    "aggregateVersion": { "type": "integer", "minimum": 0, "description": "같은 aggregate의 역순 수신 판정용" },
+    "occurredAt": { "type": "string", "format": "date-time", "description": "UTC" },
+    "timezone": { "type": "string", "default": "Asia/Seoul" },
+    "traceId": { "type": "string" },
+    "correlationId": { "type": "string", "description": "사가/사건 ID" },
+    "causationId": { "type": "string", "description": "이 이벤트를 유발한 요청 또는 이벤트 ID" },
+    "actor": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["SYSTEM", "OPERATOR", "CUSTOMER", "RIDER", "DRIVER", "WORKER"] },
+        "id": { "type": "string" }
+      }
+    },
+    "source": { "type": "string", "enum": ["REAL", "SIMULATED"], "default": "REAL", "description": "실물 센서·차량·설비 없이 모의 입력한 사실이면 SIMULATED" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": true
+}

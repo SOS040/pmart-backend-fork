@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/StopArrived.v1.json",
+  "title": "StopArrived",
+  "description": "정차지에 도착한 사실(수량 증거 아님). 발행 transport-execution. 구독 mfc-inbound. 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "StopArrived"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "stopId",
+            "mfcId",
+            "arrivedAt"
+          ],
+          "properties": {
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "stopId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sequence": {
+              "type": "integer"
+            },
+            "arrivedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "arrivalBasis": {
+              "type": "string",
+              "enum": [
+                "GPS",
+                "DRIVER_INPUT",
+                "GATE_SCAN"
+              ],
+              "description": "도착 판정 근거"
+            },
+            "trfIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

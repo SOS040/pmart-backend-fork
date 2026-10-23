@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/GrantApplied.v1.json",
+  "title": "GrantApplied",
+  "description": "권한 반영 확인. 발행 auth. 구독 approval(Receipt), audit. 토픽 platform.auth.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "GrantApplied"
+        },
+        "aggregateType": {
+          "const": "Grant"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "grantId",
+            "approvalRef",
+            "operatorId",
+            "roles",
+            "centerScope",
+            "effective"
+          ],
+          "properties": {
+            "grantId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "operatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "centerScope": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/CenterId"
+              }
+            },
+            "effective": {
+              "type": "object",
+              "required": [
+                "from"
+              ],
+              "properties": {
+                "from": {
+                  "$ref": "_defs.v1.json#/$defs/DateTime"
+                },
+                "to": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                }
+              },
+              "additionalProperties": true,
+              "description": "유효 기간"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

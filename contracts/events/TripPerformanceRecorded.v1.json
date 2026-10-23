@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TripPerformanceRecorded.v1.json",
+  "title": "TripPerformanceRecorded",
+  "description": "운행 실적·비용 근거가 기록된 사실(산정불가 포함). 발행 transport-execution. 구독 BI. 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TripPerformanceRecorded"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "plannedVsActual",
+            "costBasis"
+          ],
+          "properties": {
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "plannedVsActual": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "plannedDepartureAt": {
+                  "$ref": "_defs.v1.json#/$defs/DateTime"
+                },
+                "actualDepartureAt": {
+                  "$ref": "_defs.v1.json#/$defs/DateTime"
+                },
+                "plannedEndAt": {
+                  "$ref": "_defs.v1.json#/$defs/DateTime"
+                },
+                "actualEndAt": {
+                  "$ref": "_defs.v1.json#/$defs/DateTime"
+                },
+                "plannedDistanceKm": {
+                  "type": "number"
+                },
+                "actualDistanceKm": {
+                  "type": "number"
+                },
+                "stops": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "stopId"
+                    ],
+                    "properties": {
+                      "stopId": {
+                        "$ref": "_defs.v1.json#/$defs/Ref"
+                      },
+                      "plannedArrival": {
+                        "$ref": "_defs.v1.json#/$defs/DateTime"
+                      },
+                      "actualArrival": {
+                        "$ref": "_defs.v1.json#/$defs/DateTime"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "costBasis": {
+              "type": "object",
+              "required": [
+                "state"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "CALCULATED",
+                    "NOT_CALCULABLE"
+                  ]
+                },
+                "amount": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "basis": {
+                  "type": "string"
+                },
+                "missing": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "recordedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderLocationStale.v1.json",
+  "title": "RiderLocationStale",
+  "description": "위치 단절. 발행 delivery-tracking. 구독 delivery-dispatch, case. 토픽 delivery.tracking.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderLocationStale"
+        },
+        "aggregateType": {
+          "const": "Rider"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "riderId",
+            "lastSeenAt"
+          ],
+          "properties": {
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "lastSeenAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "detectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

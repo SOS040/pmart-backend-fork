@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerConsentChanged.v1.json",
+  "title": "CustomerConsentChanged",
+  "description": "약관/마케팅 동의 변경. 발행 customer-service. 구독 notification, audit. 토픽 commerce.customer.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerConsentChanged"
+        },
+        "aggregateType": {
+          "const": "Customer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "accountId",
+            "consentType",
+            "version",
+            "granted",
+            "changedAt"
+          ],
+          "properties": {
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "consentType": {
+              "type": "string",
+              "description": "약관/마케팅 등 동의 항목 코드"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "granted": {
+              "type": "boolean"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

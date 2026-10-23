@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ShiftHandoverCompleted.v1.json",
+  "title": "ShiftHandoverCompleted",
+  "description": "교대. 발행 case. 구독 audit. 토픽 platform.case.v1. 단계 ②",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ShiftHandoverCompleted"
+        },
+        "aggregateType": {
+          "const": "ShiftHandover"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "handoverId",
+            "fromOperatorId",
+            "toOperatorId",
+            "openCases"
+          ],
+          "properties": {
+            "handoverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromOperatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "toOperatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "openCases": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "completedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

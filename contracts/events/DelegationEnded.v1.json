@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DelegationEnded.v1.json",
+  "title": "DelegationEnded",
+  "description": "대행 종료. 발행 auth. 구독 approval, audit. 토픽 platform.auth.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DelegationEnded"
+        },
+        "aggregateType": {
+          "const": "Delegation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "delegationId",
+            "endedAt"
+          ],
+          "properties": {
+            "delegationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromOperatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "toOperatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "endedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

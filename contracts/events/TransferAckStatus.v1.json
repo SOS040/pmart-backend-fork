@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransferAckStatus.v1.json",
+  "title": "TransferAckStatus",
+  "description": "TIN(MfcReceiptPosted) 확인 처리 결과(ACKED/PENDING/CONFLICT). 발행 cdc-inventory. 구독 mfc-inventory, replenishment. 토픽 cdc.inventory.v1. 같은 receiptId는 1회 확인. ACK 유실 시 원receiptId로 복구",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransferAckStatus"
+        },
+        "aggregateType": {
+          "const": "Transit"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "receiptId",
+            "ackState"
+          ],
+          "properties": {
+            "receiptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "ackState": {
+              "type": "string",
+              "enum": [
+                "ACKED",
+                "PENDING",
+                "CONFLICT"
+              ]
+            },
+            "ackedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "conflictReason": {
+              "type": "string"
+            },
+            "ackedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

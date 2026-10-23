@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReturnPickedUp.v1.json",
+  "title": "ReturnPickedUp",
+  "description": "고객 수거. 발행 delivery-execution. 구독 claim, mfc-inbound. 토픽 delivery.delivery.v1. 단계 ②",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReturnPickedUp"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "returnPickupId",
+            "claimId",
+            "lines",
+            "pickedUpAt"
+          ],
+          "properties": {
+            "returnPickupId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "orderLineId",
+                  "qty"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "evidenceRef": {
+              "$ref": "_defs.v1.json#/$defs/EvidenceRef"
+            },
+            "pickedUpAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

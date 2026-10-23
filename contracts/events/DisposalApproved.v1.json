@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DisposalApproved.v1.json",
+  "title": "DisposalApproved",
+  "description": "폐기가 승인된 사실(실행은 inventory). 발행 cdc-quality / mfc-quality (centerType으로 구분). 구독 cdc-inventory / mfc-inventory. 토픽 cdc.quality.v1(CDC) / mfc.quality.v1(MFC)",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DisposalApproved"
+        },
+        "aggregateType": {
+          "const": "Disposal"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "centerType",
+            "centerId",
+            "disposalId",
+            "lines",
+            "approverRef"
+          ],
+          "properties": {
+            "centerType": {
+              "type": "string",
+              "enum": [
+                "CDC",
+                "MFC"
+              ]
+            },
+            "centerId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "disposalId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "qty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "reason": {
+              "type": "string"
+            },
+            "approverRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "approvedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

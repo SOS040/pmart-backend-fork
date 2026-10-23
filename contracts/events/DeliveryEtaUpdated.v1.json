@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryEtaUpdated.v1.json",
+  "title": "DeliveryEtaUpdated",
+  "description": "ETA 갱신. 발행 delivery-tracking. 구독 order(고객 조회), mfc-fulfillment(점원), notification(지연). 토픽 delivery.tracking.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DeliveryEtaUpdated"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "etaDrop",
+            "basis",
+            "staleness"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "etaPickup": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "etaDrop": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "basis": {
+              "type": "string",
+              "description": "산정 근거 코드"
+            },
+            "staleness": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "기준 위치 수신 후 경과 초"
+            },
+            "computedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

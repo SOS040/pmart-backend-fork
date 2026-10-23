@@ -1,0 +1,646 @@
+openapi: 3.1.0
+info:
+  title: case-service
+  version: 0.1.0
+  description: |
+    Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
+    비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
+    사건 상태: OPEN / ASSIGNED / ACTION_PENDING / MONITORING / RESOLUTION_REVIEW / CLOSED / REOPENED. **시간 경과 자동 종결 없음** — 종결은 모든 Obligation 해소 후 명시적 closures 명령으로만.
+    접수 ≠ 명령: CS 접수·도움요청은 사건을 만들 뿐 도메인 상태를 바꾸지 않는다. 도메인 행위는 ActionRequest 로 요청하고 상대 commit/거래 ID 로 결과를 연결한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: cases, description: 사건 생성·배정·이관·종결·재개 }
+  - { name: obligations, description: 의무 등록·해소 }
+  - { name: action-requests, description: 도메인 행위 요청 연결 }
+  - { name: intakes, description: CS 접수·라이더 도움요청·교대 인수인계 }
+
+paths:
+  /cases:
+    post:
+      tags: [cases]
+      summary: 사건 생성 (OPEN, CaseOpened; 도메인 이벤트 자동 생성과 같은 경로)
+      description: 같은 sourceEventId 재전송은 기존 caseId 반환. parentCaseId 지정 시 SubCase. 병합 시 원 ID 는 보존된다.
+      operationId: createCase
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCaseRequest' }
+      responses:
+        '201':
+          description: 생성 또는 기존 사건 반환
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Case' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+    get:
+      tags: [cases]
+      summary: 사건함 (종류·상태·센터·담당·우선순위 필터)
+      operationId: listCases
+      parameters:
+        - { name: kind, in: query, schema: { $ref: '#/components/schemas/CaseKind' } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/CaseState' } }
+        - { name: centerId, in: query, schema: { type: string } }
+        - { name: assigneeId, in: query, schema: { type: string } }
+        - { name: priority, in: query, schema: { $ref: '#/components/schemas/Priority' } }
+        - { name: subjectRef, in: query, schema: { type: string, description: orderId / deliveryId / claimId 등 } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CaseSummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /cases/{caseId}:
+    get:
+      tags: [cases]
+      summary: 사건 상세 (의무·행위 요청·증빙·하위 사건·이력)
+      operationId: getCase
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Case' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cases/{caseId}/assignments:
+    post:
+      tags: [cases]
+      summary: 담당 배정 (→ ASSIGNED, CaseAssigned)
+      operationId: assignCase
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigneeId]
+              properties:
+                assigneeId: { type: string }
+                assigneeGroup: { type: string, enum: [CS, MFC_OPS, DELIVERY_OPS, SCM, FINANCE, QUALITY, SECURITY] }
+                priority: { $ref: '#/components/schemas/Priority' }
+                slaDueAt: { type: string, format: date-time, description: 승인된 SLA 입력 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cases/{caseId}/transfers:
+    post:
+      tags: [cases]
+      summary: 이관 (담당 그룹·센터 변경, CaseTransferred; 원 ID 보존)
+      operationId: transferCase
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toGroup, reason]
+              properties:
+                toGroup: { type: string, enum: [CS, MFC_OPS, DELIVERY_OPS, SCM, FINANCE, QUALITY, SECURITY] }
+                toCenterId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                reason: { type: string, maxLength: 500 }
+                mergeIntoCaseId: { type: string, description: 병합 대상. 지정 시 본 사건은 SubCase 로 연결 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cases/{caseId}/closures:
+    post:
+      tags: [cases]
+      summary: 종결 (RESOLUTION_REVIEW→CLOSED, CaseClosed; 열린 Obligation 있으면 거절)
+      description: 귀책·비용 결정을 기록한다(지급은 회계). CloseSnapshot 을 남긴다. 시간 경과 자동 종결은 없다.
+      operationId: closeCase
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution, summary]
+              properties:
+                resolution: { type: string, enum: [RESOLVED, NOT_REPRODUCIBLE, DUPLICATE, NO_ACTION_REQUIRED, ESCALATED_EXTERNAL] }
+                summary: { type: string, maxLength: 2000 }
+                liability:
+                  type: object
+                  description: 귀책·비용 결정 기록
+                  properties:
+                    party: { type: string, enum: [PMART, MFC, RIDER, CARRIER, CUSTOMER, SUPPLIER, UNDETERMINED] }
+                    amount: { $ref: '_common.yaml#/components/schemas/Money' }
+                    approvalRef: { type: string }
+                duplicateOfCaseId: { type: string }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE / OPEN_OBLIGATIONS (미해소 의무 존재) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cases/{caseId}/reopenings:
+    post:
+      tags: [cases]
+      summary: 재개 (CLOSED→REOPENED, CaseReopened)
+      operationId: reopenCase
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 500 }
+                sourceEventId: { type: string }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cases/{caseId}/obligations:
+    post:
+      tags: [obligations]
+      summary: 의무 등록 (종류별 수량/금액 분리, ObligationCreated)
+      operationId: createObligation
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ObligationBody' }
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Obligation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /obligations/{obligationId}:
+    get:
+      tags: [obligations]
+      summary: 의무 조회
+      operationId: getObligation
+      parameters:
+        - { name: obligationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Obligation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /obligations/{obligationId}/resolutions:
+    post:
+      tags: [obligations]
+      summary: 의무 해소 (도메인 결과 참조 필수, ObligationResolved; 부분 해소 가능)
+      operationId: resolveObligation
+      parameters:
+        - { name: obligationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome, evidence]
+              properties:
+                outcome: { type: string, enum: [FULFILLED, WAIVED, FAILED] }
+                resolvedQty: { type: integer, minimum: 0 }
+                resolvedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+                evidence: { $ref: '#/components/schemas/EvidenceReference' }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE (이미 해소) / QTY_EXCEEDS_OBLIGATION / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cases/{caseId}/action-requests:
+    post:
+      tags: [action-requests]
+      summary: 도메인 행위 요청 기록 (원결과 재조회·미전달 재전송·승인된 보상 실행; 상대 commit/거래 ID 연결)
+      description: |
+        사건 서비스는 도메인 명령을 대신 실행하지 않는다. 요청 사실과 대상 서비스·명령·멱등키·결과 ID 를 기록한다.
+        "강제 성공"·"잔고 덮어쓰기" 종류의 행위는 UNSUPPORTED_ACTION.
+      operationId: createActionRequest
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActionRequestBody' }
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActionRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: UNSUPPORTED_ACTION / APPROVAL_REQUIRED (보상 실행에 approvalRef 없음)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cases/{caseId}/action-requests/{actionRequestId}:
+    get:
+      tags: [action-requests]
+      summary: 행위 요청 조회 (대상 서비스 결과 ID·상태)
+      operationId: getActionRequest
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: actionRequestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActionRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cs-intakes:
+    post:
+      tags: [intakes]
+      summary: CS 접수 (접수 ≠ 명령; 동의는 별도 기록) → 사건 생성·연결
+      operationId: createCsIntake
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, category, subjectRef, summary]
+              properties:
+                channel: { type: string, enum: [APP, PHONE, CHAT, EMAIL, RIDER_APP, STAFF_APP] }
+                category: { type: string, enum: [ORDER, DELIVERY, PAYMENT, REFUND, PRODUCT, ACCOUNT, RIDER, OTHER] }
+                customerRef: { type: string, description: accountId (안심번호 등 원문 저장 금지) }
+                subjectRef: { type: string, description: orderId / deliveryId / claimId }
+                summary: { type: string, maxLength: 2000 }
+                consent:
+                  type: object
+                  description: 고객 동의 기록 (결품 처리·대체 등)
+                  properties:
+                    consentType: { type: string }
+                    given: { type: boolean }
+                    recordedAt: { type: string, format: date-time }
+                linkCaseId: { type: string, description: 기존 사건에 연결 }
+      responses:
+        '201':
+          description: 접수 (resultId = intakeId, caseId 포함)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Intake' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cs-intakes/{intakeId}:
+    get:
+      tags: [intakes]
+      summary: CS 접수 조회
+      operationId: getCsIntake
+      parameters:
+        - { name: intakeId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Intake' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /help-requests:
+    post:
+      tags: [intakes]
+      summary: 라이더 도움요청 (배송 중 문제·고객 연락 기록) → 사건 생성·연결
+      operationId: createHelpRequest
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [riderId, deliveryId, kind]
+              properties:
+                riderId: { type: string }
+                deliveryId: { type: string }
+                kind: { type: string, enum: [CUSTOMER_UNREACHABLE, ADDRESS_ISSUE, PACKAGE_DAMAGED, ACCESS_DENIED, VEHICLE_ISSUE, SAFETY, OTHER] }
+                note: { type: string, maxLength: 1000 }
+                location: { type: object, properties: { lat: { type: number }, lng: { type: number } } }
+                contactAttempts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      attemptedAt: { type: string, format: date-time }
+                      method: { type: string, enum: [SAFE_NUMBER_CALL, APP_MESSAGE] }
+                      result: { type: string, enum: [ANSWERED, NO_ANSWER, FAILED] }
+                evidenceRefs: { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: 접수 (caseId 포함)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Intake' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /help-requests/{intakeId}:
+    get:
+      tags: [intakes]
+      summary: 도움요청 조회
+      operationId: getHelpRequest
+      parameters:
+        - { name: intakeId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Intake' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /shift-handovers:
+    post:
+      tags: [intakes]
+      summary: 교대 인수인계 기록 (BO-27; 열린 사건·의무 스냅샷, ShiftHandoverCompleted)
+      operationId: createShiftHandover
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [centerId, fromOperatorId, toOperatorId]
+              properties:
+                centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                group: { type: string, enum: [CS, MFC_OPS, DELIVERY_OPS] }
+                fromOperatorId: { type: string }
+                toOperatorId: { type: string }
+                caseIds: { type: array, items: { type: string }, description: 생략 시 담당 열린 사건 전부 }
+                note: { type: string, maxLength: 2000 }
+      responses:
+        '201':
+          description: 기록 (resultId = shiftHandoverId)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShiftHandover' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /shift-handovers/{shiftHandoverId}:
+    get:
+      tags: [intakes]
+      summary: 교대 인수인계 조회
+      operationId: getShiftHandover
+      parameters:
+        - { name: shiftHandoverId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShiftHandover' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    CaseKind:
+      type: string
+      enum: [RECONCILIATION, PAYMENT_UNKNOWN, DISPATCH_FAILED, DELIVERY_INCIDENT, TRANSPORT_INCIDENT, LINE_SHORTAGE, RECEIPT_DISCREPANCY, OUTBOUND_DISCREPANCY, QUALITY_RECALL, CS_INTAKE, RIDER_HELP, MFC_ISSUE, SECURITY, OTHER]
+    CaseState:
+      type: string
+      enum: [OPEN, ASSIGNED, ACTION_PENDING, MONITORING, RESOLUTION_REVIEW, CLOSED, REOPENED]
+    Priority:
+      type: string
+      enum: [P1, P2, P3, P4]
+    EvidenceReference:
+      type: object
+      required: [system, ref]
+      properties:
+        system: { type: string, description: 결과를 보유한 서비스 }
+        ref: { type: string, description: commitId / pgTransactionId / handoverId / receiptId 등 }
+        kind: { type: string, enum: [COMMIT, TRANSACTION, EVENT, DOCUMENT, PHOTO, LOG] }
+        asOf: { type: string, format: date-time }
+    CreateCaseRequest:
+      type: object
+      required: [kind, subjectRef, summary]
+      properties:
+        kind: { $ref: '#/components/schemas/CaseKind' }
+        sourceEventId: { type: string, description: 도메인 이벤트 eventId (멱등) }
+        sourceEventType: { type: string }
+        subjectRef: { type: string }
+        subjectType: { type: string, enum: [ORDER, DELIVERY, CLAIM, PAYMENT, TRANSFER, TRIP, PACKAGE, RECEIPT, LOT, ACCOUNT, RIDER, OTHER] }
+        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        parentCaseId: { type: string }
+        priority: { $ref: '#/components/schemas/Priority' }
+        summary: { type: string, maxLength: 2000 }
+        evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceReference' } }
+        initialObligations: { type: array, items: { $ref: '#/components/schemas/ObligationBody' } }
+    CaseSummary:
+      type: object
+      properties:
+        caseId: { type: string }
+        parentCaseId: { type: [string, 'null'] }
+        kind: { $ref: '#/components/schemas/CaseKind' }
+        state: { $ref: '#/components/schemas/CaseState' }
+        priority: { $ref: '#/components/schemas/Priority' }
+        subjectRef: { type: string }
+        subjectType: { type: string }
+        centerId: { type: [string, 'null'] }
+        assigneeId: { type: [string, 'null'] }
+        assigneeGroup: { type: [string, 'null'] }
+        openObligationCount: { type: integer }
+        slaDueAt: { type: [string, 'null'], format: date-time }
+        openedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Case:
+      allOf:
+        - $ref: '#/components/schemas/CaseSummary'
+        - type: object
+          properties:
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            summary: { type: string }
+            sourceEventId: { type: [string, 'null'] }
+            subCaseIds: { type: array, items: { type: string } }
+            mergedFromCaseIds: { type: array, items: { type: string }, description: 병합 시 원 ID 보존 }
+            obligations: { type: array, items: { $ref: '#/components/schemas/Obligation' } }
+            actionRequests: { type: array, items: { $ref: '#/components/schemas/ActionRequest' } }
+            evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceReference' } }
+            closure:
+              type: object
+              properties:
+                resolution: { type: string }
+                summary: { type: string }
+                liability: { type: object, additionalProperties: true }
+                closedBy: { type: string }
+                closedAt: { type: string, format: date-time }
+            history:
+              type: array
+              items:
+                type: object
+                properties:
+                  at: { type: string, format: date-time }
+                  actorId: { type: string }
+                  action: { type: string }
+                  fromState: { type: string }
+                  toState: { type: string }
+                  note: { type: string }
+    ObligationBody:
+      type: object
+      required: [kind, owner]
+      properties:
+        kind: { type: string, enum: [REFUND, RETURN_PICKUP, REDELIVERY, INVENTORY_RECOVERY, RECONCILIATION, CUSTOMER_CONTACT, EVIDENCE_COLLECTION, COMPENSATION, DISPOSAL, SUPPLIER_CLAIM, OTHER] }
+        owner: { type: string, description: 해소 책임 서비스/그룹 }
+        targetRef: { type: string }
+        qty: { type: integer, minimum: 0, description: 수량 의무. 금액과 분리 }
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        dueAt: { type: string, format: date-time }
+        note: { type: string, maxLength: 1000 }
+    Obligation:
+      allOf:
+        - $ref: '#/components/schemas/ObligationBody'
+        - type: object
+          properties:
+            obligationId: { type: string }
+            caseId: { type: string }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            state: { type: string, enum: [OPEN, PARTIALLY_RESOLVED, RESOLVED, WAIVED, FAILED] }
+            resolvedQty: { type: integer }
+            resolvedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+            resolutions:
+              type: array
+              items:
+                type: object
+                properties:
+                  outcome: { type: string }
+                  qty: { type: integer }
+                  amount: { type: integer }
+                  evidence: { $ref: '#/components/schemas/EvidenceReference' }
+                  resolvedBy: { type: string }
+                  resolvedAt: { type: string, format: date-time }
+            createdAt: { type: string, format: date-time }
+    ActionRequestBody:
+      type: object
+      required: [actionType, targetService, command]
+      properties:
+        actionType: { type: string, enum: [REQUERY_RESULT, RESEND_UNDELIVERED, EXECUTE_APPROVED_COMPENSATION, REQUEST_DOMAIN_REVIEW] }
+        targetService: { type: string }
+        command: { type: string, description: 대상 서비스 operationId }
+        targetRef: { type: string }
+        idempotencyKey: { type: string, description: 대상 명령에 사용한 멱등키 }
+        approvalRef: { type: string, description: EXECUTE_APPROVED_COMPENSATION 시 필수 }
+        payloadSummary: { type: object, additionalProperties: true }
+    ActionRequest:
+      allOf:
+        - $ref: '#/components/schemas/ActionRequestBody'
+        - type: object
+          properties:
+            actionRequestId: { type: string }
+            caseId: { type: string }
+            state: { type: string, enum: [REQUESTED, SENT, ACCEPTED, APPLIED, REJECTED, UNKNOWN_RESULT] }
+            resultRef: { $ref: '#/components/schemas/EvidenceReference' }
+            requestedBy: { type: string }
+            requestedAt: { type: string, format: date-time }
+            resultAt: { type: [string, 'null'], format: date-time }
+    Intake:
+      type: object
+      properties:
+        intakeId: { type: string }
+        intakeType: { type: string, enum: [CS, RIDER_HELP] }
+        caseId: { type: string }
+        channel: { type: string }
+        category: { type: string }
+        subjectRef: { type: string }
+        summary: { type: string }
+        consentRecorded: { type: boolean }
+        receivedBy: { type: string }
+        receivedAt: { type: string, format: date-time }
+    ShiftHandover:
+      type: object
+      properties:
+        shiftHandoverId: { type: string }
+        centerId: { type: string }
+        group: { type: string }
+        fromOperatorId: { type: string }
+        toOperatorId: { type: string }
+        snapshot:
+          type: array
+          description: CloseSnapshot — 인계 시점 열린 사건·의무 요약
+          items:
+            type: object
+            properties:
+              caseId: { type: string }
+              state: { $ref: '#/components/schemas/CaseState' }
+              priority: { $ref: '#/components/schemas/Priority' }
+              openObligationCount: { type: integer }
+              nextAction: { type: string }
+        note: { type: string }
+        completedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

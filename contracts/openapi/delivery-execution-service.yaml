@@ -1,0 +1,490 @@
+openapi: 3.1.0
+info:
+  title: delivery-execution-service
+  version: 0.1.0
+  description: |
+    배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
+    배정(dispatch), 인계 fence·재고(mfc), 주문 완료 판단(order), 환불(claim/payment), 위치(tracking)는 소유하지 않는다.
+    시간 경과 자동완료 없음 [확정]. 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 [확정]. GPS·버튼만으로 픽업 확정 금지(PackageHandedOver 근거 필요).
+    완료 후 사고 신고는 기존 완료를 유지하고 사건을 별도로 올린다. 지급 실행은 외부 회계.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: execution, description: 라이더 상태 전이 (라이더 앱) }
+  - { name: returns, description: 회수 수행 }
+  - { name: me, description: 라이더 본인 이력·수행료 }
+  - { name: internal, description: 운영자 정정 (승인 필요) }
+
+paths:
+  /deliveries/{deliveryId}:
+    get:
+      tags: [execution]
+      summary: 배송 수행 상태 조회 (라이더·점원·운영자)
+      operationId: getDeliveryExecution
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryExecution' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/store-arrivals:
+    post:
+      tags: [execution]
+      summary: 가게 도착 (ASSIGNED → ARRIVED_AT_STORE)
+      operationId: reportStoreArrival
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransitionRequest' }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /deliveries/{deliveryId}/pickups:
+    post:
+      tags: [execution]
+      summary: 픽업 완료 (ARRIVED_AT_STORE → PICKED_UP; 인계 확정 handoverIds 필수)
+      description: |
+        mfc-fulfillment의 CommitPackageHandover로 발급된 handoverId(=PackageHandedOver)가 배송의 모든 포장에 대해 확인되어야 한다.
+        미확인 포장이 있으면 422 HANDOVER_NOT_CONFIRMED. QR 스캔·GPS·버튼만으로 픽업 처리하지 않는다(ADR-0006).
+      operationId: reportPickup
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/TransitionRequest'
+                - type: object
+                  required: [handoverIds]
+                  properties:
+                    handoverIds: { type: array, minItems: 1, items: { type: string } }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: HANDOVER_NOT_CONFIRMED (일부 포장 인계 미확정) / HANDOVER_RIDER_MISMATCH
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /deliveries/{deliveryId}/customer-arrivals:
+    post:
+      tags: [execution]
+      summary: 고객 도착 (PICKED_UP → ARRIVED_AT_CUSTOMER)
+      operationId: reportCustomerArrival
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransitionRequest' }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /deliveries/{deliveryId}/completions:
+    post:
+      tags: [execution]
+      summary: 전달 완료 (ARRIVED_AT_CUSTOMER → COMPLETED; 증빙 사진 필수)
+      description: |
+        대면(FACE)·비대면(CONTACTLESS) 모두 사진 업로드 성공 후에만 완료 가능. 업로드 실패 시 재시도 또는 지원센터 대체 증빙(substituteEvidenceCaseId).
+        시간 경과 자동완료는 없다. 주류 포함 배송도 현장 신분증 절차 없음(PG 인증 통합).
+        완료 시 DeliveryCompleted(배송 단위, 증빙 참조) 발행 → order 완료 집계·review 자격·claim 기한 기산.
+      operationId: reportCompletion
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompletionRequest' }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: EVIDENCE_REQUIRED (사진 참조 없음·업로드 미완료) / EVIDENCE_INVALID
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /deliveries/{deliveryId}/failures:
+    post:
+      tags: [execution]
+      summary: 전달 실패 (고객 부재·주소 오류·연락 두절 등; 자동 환불 없음)
+      description: 실패 후 처리(고객 연락·보관·회수)는 case-service 판단. 재배송은 교환 승인 건만.
+      operationId: reportFailure
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/TransitionRequest'
+                - type: object
+                  required: [reason]
+                  properties:
+                    reason: { type: string, enum: [CUSTOMER_ABSENT, ADDRESS_ERROR, UNREACHABLE, REFUSED, DAMAGED, RIDER_INCIDENT, OTHER] }
+                    detail: { type: string, maxLength: 500 }
+                    evidenceRefs: { type: array, items: { type: string } }
+                    goodsLocation: { type: string, enum: [WITH_RIDER, RETURNED_TO_STORE, LEFT_AT_DOOR, UNKNOWN] }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /deliveries/{deliveryId}/help-requests:
+    post:
+      tags: [execution]
+      summary: 도움요청 (→ case-service 지원센터)
+      operationId: createHelpRequest
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category]
+              properties:
+                category: { type: string, enum: [CUSTOMER_UNREACHABLE, ADDRESS_ISSUE, GOODS_ISSUE, PHOTO_UPLOAD_FAILED, ACCIDENT, APP_ERROR, OTHER] }
+                detail: { type: string, maxLength: 500 }
+                evidenceRefs: { type: array, items: { type: string } }
+      responses:
+        '202':
+          description: 접수 (resultId = caseId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/help-requests/{requestId}:
+    get:
+      tags: [execution]
+      summary: 도움요청 상태 조회
+      operationId: getHelpRequest
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  caseId: { type: string }
+                  state: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED] }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/returns/pickups:
+    post:
+      tags: [returns]
+      summary: 회수 고객 수거 (type RETURN; → ReturnPickedUp)
+      operationId: reportReturnPickup
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/TransitionRequest'
+                - type: object
+                  required: [items, evidenceRefs]
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          claimLineId: { type: string }
+                          qty: { type: integer, minimum: 0 }
+                    evidenceRefs: { type: array, minItems: 1, items: { type: string } }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /deliveries/{deliveryId}/returns/store-deliveries:
+    post:
+      tags: [returns]
+      summary: 회수품 점포 반납 (→ ReturnDelivered; 점원 수령 확인은 mfc-inbound)
+      operationId: reportReturnStoreDelivery
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/TransitionRequest'
+                - type: object
+                  properties:
+                    evidenceRefs: { type: array, items: { type: string } }
+                    receivedByStaffRef: { type: string, description: 점원 확인 참조(있으면) }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /riders/me/deliveries:
+    get:
+      tags: [me]
+      summary: 내 배송 이력·오늘 내역 (진행 중 포함)
+      operationId: listMyDeliveries
+      parameters:
+        - { name: date, in: query, schema: { type: string, format: date, description: Asia/Seoul } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/ExecutionState' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/DeliveryExecution' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /riders/me/earnings:
+    get:
+      tags: [me]
+      summary: 수행료·정산 조회 (요율표 버전·할증·보상·공제; 요율 미등록=산정 불가)
+      operationId: listMyEarnings
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: settlementState, in: query, schema: { $ref: '#/components/schemas/SettlementState' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Earning' } }
+                  totals:
+                    type: object
+                    properties:
+                      estimated: { $ref: '_common.yaml#/components/schemas/Money' }
+                      confirmed: { $ref: '_common.yaml#/components/schemas/Money' }
+                      paid: { $ref: '_common.yaml#/components/schemas/Money' }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+
+  /internal/deliveries/{deliveryId}/status-corrections:
+    post:
+      tags: [internal]
+      summary: "[bo→execution] 운영자 상태 정정 (처리자·근거·approvalRef 필수)"
+      description: |
+        정정은 새 사실 기록이며 기존 이력을 삭제하지 않는다. COMPLETED를 되돌리는 정정은 허용하지 않고 사고 사건(DeliveryIncidentRaised)으로 처리한다.
+        픽업 정정은 handoverIds 근거가 있어야 한다.
+      operationId: createStatusCorrection
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetState, reason, approvalRef, evidenceRefs]
+              properties:
+                targetState: { $ref: '#/components/schemas/ExecutionState' }
+                reason: { type: string, maxLength: 500 }
+                approvalRef: { type: string }
+                evidenceRefs: { type: array, minItems: 1, items: { type: string } }
+                handoverIds: { type: array, items: { type: string } }
+                occurredAt: { type: string, format: date-time, description: 실제 발생 시각 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED / EVIDENCE_REQUIRED / UNSUPPORTED_ACTION (COMPLETED 되돌리기)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/deliveries/{deliveryId}/status-corrections/{requestId}:
+    get:
+      tags: [internal]
+      summary: 상태 정정 결과 조회
+      operationId: getStatusCorrection
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  state: { type: string, enum: [ACCEPTED, APPLIED, REJECTED] }
+                  fromState: { $ref: '#/components/schemas/ExecutionState' }
+                  toState: { $ref: '#/components/schemas/ExecutionState' }
+                  operatorId: { type: string }
+                  approvalRef: { type: string }
+                  appliedAt: { type: string, format: date-time }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    ExecutionState:
+      type: string
+      enum: [ASSIGNED, ARRIVED_AT_STORE, PICKED_UP, ARRIVED_AT_CUSTOMER, COMPLETED, FAILED, SUSPENDED, RETURN_IN_PROGRESS, RETURN_PICKED_UP, RETURNED_TO_STORE, CANCELLED]
+    SettlementState:
+      type: string
+      description: 지급 실행은 외부 회계. PAID는 회계 결과 반영
+      enum: [ESTIMATED, PENDING_CONFIRMATION, CONFIRMED, PAYING, PAID, PAYMENT_FAILED, ADJUSTED]
+    TransitionRequest:
+      type: object
+      properties:
+        occurredAt: { type: string, format: date-time, description: 단말 시각(참고). 정본 시각은 서버 수신 }
+        location:
+          type: object
+          description: 참고용 좌표. 상태 확정 근거로 쓰지 않는다
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+            accuracyM: { type: number }
+        note: { type: string, maxLength: 300 }
+    CompletionRequest:
+      allOf:
+        - $ref: '#/components/schemas/TransitionRequest'
+        - type: object
+          required: [method, evidence]
+          properties:
+            method: { type: string, enum: [FACE, CONTACTLESS] }
+            evidence:
+              type: object
+              required: [photoRefs, takenAt]
+              properties:
+                photoRefs: { type: array, minItems: 1, items: { type: string }, description: file-service 업로드 완료 참조 }
+                takenAt: { type: string, format: date-time }
+                placement: { type: string, enum: [HANDED_TO_CUSTOMER, FRONT_DOOR, SECURITY_OFFICE, DELIVERY_BOX, OTHER], description: 보관 장소 }
+                placementDetail: { type: string, maxLength: 200 }
+                substituteEvidenceCaseId: { type: string, description: 업로드 불가 시 지원센터 대체 증빙 사건 }
+    Evidence:
+      type: object
+      properties:
+        evidenceRef: { type: string }
+        method: { type: string }
+        photoRefs: { type: array, items: { type: string } }
+        takenAt: { type: string, format: date-time }
+        placement: { type: string }
+        substituteEvidenceCaseId: { type: string }
+    StatusHistoryEntry:
+      type: object
+      properties:
+        state: { $ref: '#/components/schemas/ExecutionState' }
+        occurredAt: { type: string, format: date-time }
+        recordedAt: { type: string, format: date-time }
+        actor: { type: string, enum: [RIDER, SYSTEM_EVENT, OPERATOR] }
+        sourceRef: { type: string, description: handoverId / correction requestId / case }
+    DeliveryExecution:
+      type: object
+      properties:
+        deliveryId: { type: string }
+        version: { type: integer }
+        type: { type: string, enum: [FORWARD, RETURN, RESHIPMENT] }
+        orderId: { type: string }
+        riderId: { type: string }
+        mfcId: { type: string }
+        state: { $ref: '#/components/schemas/ExecutionState' }
+        handoverIds: { type: array, items: { type: string } }
+        packageIds: { type: array, items: { type: string } }
+        evidence: { $ref: '#/components/schemas/Evidence' }
+        failure:
+          type: object
+          properties:
+            reason: { type: string }
+            goodsLocation: { type: string }
+            caseId: { type: string }
+        incidents: { type: array, items: { type: object, properties: { incidentId: { type: string }, raisedAt: { type: string, format: date-time } } } }
+        history: { type: array, items: { $ref: '#/components/schemas/StatusHistoryEntry' } }
+        earning: { $ref: '#/components/schemas/Earning' }
+        assignedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    Earning:
+      type: object
+      properties:
+        earningId: { type: string }
+        deliveryId: { type: string }
+        riderId: { type: string }
+        calculable: { type: boolean, description: false면 요율표 미등록 등으로 산정 불가 }
+        rateTableVersion: { type: integer }
+        basis:
+          type: object
+          properties:
+            vehicleType: { type: string }
+            distanceBandKm: { type: string }
+            cancelStage: { type: string, description: 취소 시점별 기준 }
+        baseFee: { $ref: '_common.yaml#/components/schemas/Money' }
+        surcharge: { $ref: '_common.yaml#/components/schemas/Money', description: 할증 }
+        compensation: { $ref: '_common.yaml#/components/schemas/Money', description: 보상 }
+        deduction: { $ref: '_common.yaml#/components/schemas/Money', description: 공제 }
+        total: { $ref: '_common.yaml#/components/schemas/Money' }
+        settlementState: { $ref: '#/components/schemas/SettlementState' }
+        adjustmentRef: { type: string }
+        recordedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

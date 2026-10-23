@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CapacityHoldResult.v1.json",
+  "title": "CapacityHoldResult",
+  "description": "HoldCapacity(작업 여력 점유) 요청의 결과. 발행 mfc-capacity. 구독 order-orchestration. 토픽 mfc.capacity.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CapacityHoldResult"
+        },
+        "aggregateType": {
+          "const": "CapacityHold"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "holdId",
+            "orderId",
+            "result"
+          ],
+          "properties": {
+            "holdId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "requestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "window": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

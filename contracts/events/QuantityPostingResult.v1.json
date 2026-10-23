@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/QuantityPostingResult.v1.json",
+  "title": "QuantityPostingResult",
+  "description": "수량 반영 요청(적치·피킹·보류·해제·폐기·조정 등)의 처리 결과. 발행 cdc-inventory. 구독 cdc-inbound, cdc-outbound, cdc-quality. 토픽 cdc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "QuantityPostingResult"
+        },
+        "aggregateType": {
+          "const": "QuantityPosting"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "requestId",
+            "postingType",
+            "result"
+          ],
+          "properties": {
+            "requestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "멱등 키 (sourceSystem, requestId)의 requestId"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "성공 시 커밋 ID"
+            },
+            "postingId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "postingType": {
+              "type": "string",
+              "description": "전기 종류"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "appliedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuLotLpnQty"
+              }
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "failureCode": {
+              "type": "string"
+            },
+            "postedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

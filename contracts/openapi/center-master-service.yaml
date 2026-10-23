@@ -1,0 +1,252 @@
+openapi: 3.1.0
+info:
+  title: center-master-service
+  version: 0.1.0
+  description: |
+    센터 코드·유형(CDC/MFC)·명칭·주소·좌표·진입/하차/인계 위치·층수·반입 조건·취급 온도대·영업 캘린더(다섯 시간표)·휴폐점 의무 목록(BO-06)의 정본. (docs/architecture/service-map.md §8, ADR-0004)
+    비정본: 센터 내부 LOC(cdc/mfc-location), 현장 용량(mfc-capacity), 권역(delivery-serviceability).
+    변경은 approval-service 승인(ApprovalDecided, BO-06)으로만 반영되며 버전이 증가하고 CenterMasterChanged / CenterCalendarChanged 를 발행한다.
+    다섯 시간표: CUSTOMER_ORDER(고객 주문 운영) / STAFF(직원 근무) / VEHICLE_ACCESS(차량 진입) / UNLOADING(하차·인계) / PUTAWAY(검수·적치). 영업일 기준은 Asia/Seoul (ADR-0010).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: centers, description: 센터 조회 }
+  - { name: calendars, description: 영업 캘린더 조회 }
+  - { name: internal, description: 승인 결과 반영 }
+
+paths:
+  /centers:
+    get:
+      tags: [centers]
+      summary: 센터 목록 (유형·상태·온도대 필터)
+      operationId: listCenters
+      parameters:
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/CenterType' } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/CenterState' } }
+        - { name: temperatureZone, in: query, schema: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Center' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /centers/{centerId}:
+    get:
+      tags: [centers]
+      summary: 센터 조회 (버전 포함; version 쿼리로 과거 버전)
+      operationId: getCenter
+      parameters:
+        - { name: centerId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: version, in: query, schema: { type: integer, minimum: 0 }, description: 생략 시 현재 버전 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Center' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /centers/{centerId}/calendar:
+    get:
+      tags: [calendars]
+      summary: 영업 캘린더 조회 (일자·시간표 종류; 휴일·임시 제한·버전·승인자)
+      operationId: getCenterCalendar
+      parameters:
+        - { name: centerId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date, description: Asia/Seoul 영업일 } }
+        - { name: kind, in: query, required: true, schema: { $ref: '#/components/schemas/TimetableKind' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarDay' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /internal/centers:
+    post:
+      tags: [internal]
+      summary: '[approval→center-master] ApprovalDecided(BO-06) 반영 — 센터 생성/변경/캘린더/휴폐점 (approvalRef 필수)'
+      description: 이벤트 구독과 같은 반영 경로의 동기 형태. 반영 후 ApplicationReceipt 를 approval-service 에 회신한다. 같은 approvalRef 재전송은 기존 결과 반환.
+      operationId: applyCenterChange
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApplyCenterChangeRequest' }
+      responses:
+        '202':
+          description: 반영 (resultId = centerId, version = 새 버전)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED (approvalRef 없음·미승인) / CLOSURE_OBLIGATIONS_OPEN (휴폐점 의무 미완료)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/centers/{centerId}/changes/{requestId}:
+    get:
+      tags: [internal]
+      summary: 반영 요청 결과 조회
+      operationId: getCenterChange
+      parameters:
+        - { name: centerId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  approvalRef: { type: string }
+                  status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+                  newVersion: { type: integer }
+                  appliedAt: { type: string, format: date-time }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    CenterType:
+      type: string
+      enum: [CDC, MFC]
+    CenterState:
+      type: string
+      enum: [PLANNED, ACTIVE, TEMPORARILY_CLOSED, CLOSING, CLOSED]
+    TimetableKind:
+      type: string
+      enum: [CUSTOMER_ORDER, STAFF, VEHICLE_ACCESS, UNLOADING, PUTAWAY]
+    TimeRange:
+      type: object
+      required: [start, end]
+      properties:
+        start: { type: string, example: '08:00' }
+        end: { type: string, example: '23:00' }
+    Center:
+      type: object
+      properties:
+        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        type: { $ref: '#/components/schemas/CenterType' }
+        name: { type: string }
+        state: { $ref: '#/components/schemas/CenterState' }
+        address: { type: string }
+        coordinates: { type: object, properties: { lat: { type: number }, lng: { type: number } } }
+        accessPoints:
+          type: array
+          description: 진입·하차·인계 위치
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [VEHICLE_ENTRY, UNLOADING_BAY, HANDOVER_POINT, STAFF_ENTRY] }
+              label: { type: string }
+              coordinates: { type: object, properties: { lat: { type: number }, lng: { type: number } } }
+              note: { type: string }
+        floors: { type: integer }
+        inboundConditions:
+          type: object
+          properties:
+            maxVehicleType: { type: string }
+            liftAvailable: { type: boolean }
+            maxLoadUnitsPerArrival: { type: integer }
+            note: { type: string }
+        temperatureZones: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
+        closureObligations:
+          type: array
+          description: 휴폐점 의무 목록 (BO-06)
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [OPEN_ORDERS_SETTLED, INVENTORY_TRANSFERRED, RETURNS_SETTLED, STAFF_NOTIFIED, SERVICEABILITY_UPDATED] }
+              state: { type: string, enum: [PENDING, DONE, WAIVED] }
+              ref: { type: string }
+        approvedBy: { type: string }
+        approvalRef: { type: string }
+        effectiveFrom: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CalendarDay:
+      type: object
+      properties:
+        centerId: { type: string }
+        date: { type: string, format: date }
+        kind: { $ref: '#/components/schemas/TimetableKind' }
+        calendarVersion: { $ref: '_common.yaml#/components/schemas/Version' }
+        isHoliday: { type: boolean }
+        open: { type: boolean }
+        ranges: { type: array, items: { $ref: '#/components/schemas/TimeRange' } }
+        temporaryRestrictions:
+          type: array
+          items:
+            type: object
+            properties:
+              range: { $ref: '#/components/schemas/TimeRange' }
+              reason: { type: string }
+              approvalRef: { type: string }
+        approvedBy: { type: string }
+        approvalRef: { type: string }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    ApplyCenterChangeRequest:
+      type: object
+      required: [approvalRef, changeType, centerId]
+      properties:
+        approvalRef: { type: string, description: approval-service approvalId }
+        changeType: { type: string, enum: [CREATE, UPDATE_PROFILE, UPDATE_CALENDAR, TEMPORARY_CLOSE, REOPEN, CLOSE] }
+        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        effectiveFrom: { type: string, format: date-time }
+        profile:
+          type: object
+          description: CREATE / UPDATE_PROFILE 시 변경 내용 (Center 의 부분)
+          additionalProperties: true
+        calendar:
+          type: object
+          description: UPDATE_CALENDAR 시
+          properties:
+            kind: { $ref: '#/components/schemas/TimetableKind' }
+            weekly:
+              type: array
+              items:
+                type: object
+                properties:
+                  dayOfWeek: { type: string, enum: [MON, TUE, WED, THU, FRI, SAT, SUN] }
+                  ranges: { type: array, items: { $ref: '#/components/schemas/TimeRange' } }
+            holidays: { type: array, items: { type: string, format: date } }
+            temporaryRestrictions:
+              type: array
+              items:
+                type: object
+                properties:
+                  date: { type: string, format: date }
+                  range: { $ref: '#/components/schemas/TimeRange' }
+                  reason: { type: string }
+        closureObligations:
+          type: array
+          description: TEMPORARY_CLOSE / CLOSE 시 의무 목록 상태
+          items:
+            type: object
+            properties:
+              kind: { type: string }
+              state: { type: string, enum: [PENDING, DONE, WAIVED] }
+              ref: { type: string }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryStatusCorrected.v1.json",
+  "title": "DeliveryStatusCorrected",
+  "description": "관리자 정정. 발행 delivery-execution. 구독 order, audit, notification. 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DeliveryStatusCorrected"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "from",
+            "to",
+            "operatorId",
+            "basis"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "from": {
+              "type": "string",
+              "description": "정정 전 상태"
+            },
+            "to": {
+              "type": "string",
+              "description": "정정 후 상태"
+            },
+            "operatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "basis": {
+              "type": "string",
+              "description": "정정 근거"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/EvidenceRef"
+              }
+            },
+            "correctedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

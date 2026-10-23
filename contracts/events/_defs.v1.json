@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/_defs.v1.json",
+  "title": "CommonDefs",
+  "$defs": {
+    "Sku": { "type": "string", "pattern": "^[EB]-[0-9]{8}$" },
+    "CenterId": { "type": "string" },
+    "Money": { "type": "integer", "minimum": 0, "description": "KRW" },
+    "Qty": { "type": "integer", "minimum": 0 },
+    "PositiveQty": { "type": "integer", "minimum": 1 },
+    "Version": { "type": "integer", "minimum": 0 },
+    "DateTime": { "type": "string", "format": "date-time" },
+    "Date": { "type": "string", "format": "date" },
+    "Ref": { "type": "string", "description": "다른 aggregate 식별자(참조)" },
+    "ResultState": { "type": "string", "enum": ["SUCCESS", "FAILED", "UNKNOWN"] },
+    "OrderLineRef": {
+      "type": "object",
+      "required": ["orderId", "orderLineId"],
+      "properties": {
+        "orderId": { "$ref": "#/$defs/Ref" },
+        "orderLineId": { "$ref": "#/$defs/Ref" }
+      }
+    },
+    "SkuQty": {
+      "type": "object",
+      "required": ["sku", "qty"],
+      "properties": {
+        "sku": { "$ref": "#/$defs/Sku" },
+        "lot": { "type": "string" },
+        "qty": { "$ref": "#/$defs/Qty" }
+      }
+    },
+    "SkuLotLpnQty": {
+      "type": "object",
+      "required": ["sku", "qty"],
+      "properties": {
+        "sku": { "$ref": "#/$defs/Sku" },
+        "lot": { "type": "string" },
+        "lpn": { "type": "string" },
+        "qty": { "$ref": "#/$defs/Qty" },
+        "expiryDate": { "$ref": "#/$defs/Date" },
+        "expiryAt": { "$ref": "#/$defs/DateTime" }
+      }
+    },
+    "QualitySplit": {
+      "type": "object",
+      "required": ["sku", "normalQty", "quarantinedQty", "pendingQty"],
+      "properties": {
+        "sku": { "$ref": "#/$defs/Sku" },
+        "lot": { "type": "string" },
+        "normalQty": { "$ref": "#/$defs/Qty" },
+        "quarantinedQty": { "$ref": "#/$defs/Qty" },
+        "pendingQty": { "$ref": "#/$defs/Qty" }
+      }
+    },
+    "TimeWindow": {
+      "type": "object",
+      "required": ["start", "end"],
+      "description": "[start, end) 반열림 구간",
+      "properties": {
+        "start": { "$ref": "#/$defs/DateTime" },
+        "end": { "$ref": "#/$defs/DateTime" },
+        "meaning": { "type": "string", "enum": ["ARRIVAL", "HANDOVER", "WORK", "READY"] }
+      }
+    },
+    "EvidenceRef": {
+      "type": "object",
+      "properties": {
+        "evidenceId": { "type": "string" },
+        "kind": { "type": "string", "enum": ["PHOTO", "SIGNATURE", "SEAL", "SCAN", "DOCUMENT"] },
+        "capturedAt": { "$ref": "#/$defs/DateTime" }
+      }
+    },
+    "ApprovalRef": {
+      "type": "object",
+      "required": ["approvalId"],
+      "properties": {
+        "approvalId": { "type": "string" },
+        "dossierVersion": { "$ref": "#/$defs/Version" },
+        "approverId": { "type": "string" }
+      }
+    },
+    "DeliveryMode": { "type": "string", "enum": ["SINGLE", "BUNDLED", "SCHEDULED"], "description": "한집배달 / 알뜰배달 / 예약배달" },
+    "OutOfStockPreference": { "type": "string", "enum": ["CANCEL_OOS_ONLY", "CANCEL_ALL"] }
+  }
+}

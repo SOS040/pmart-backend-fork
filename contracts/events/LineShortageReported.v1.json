@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/LineShortageReported.v1.json",
+  "title": "LineShortageReported",
+  "description": "피킹 중 결품·파손·차단으로 라인 부족이 보고된 사실. 발행 mfc-fulfillment. 구독 order-orchestration, case(동의 없음 시), mfc-quality(파손). 토픽 mfc.fulfillment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "LineShortageReported"
+        },
+        "aggregateType": {
+          "const": "Fulfillment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "orderLineId",
+            "shortQty",
+            "reason",
+            "alreadyHandedOverQty"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fulfillmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderLineId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "shortQty": {
+              "$ref": "_defs.v1.json#/$defs/PositiveQty"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "SHORT",
+                "DAMAGED",
+                "BLOCKED"
+              ]
+            },
+            "alreadyHandedOverQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "reportedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

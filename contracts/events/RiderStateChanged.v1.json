@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderStateChanged.v1.json",
+  "title": "RiderStateChanged",
+  "description": "운행 시작/종료·신규배차 ON/OFF. 발행 rider. 구독 delivery-dispatch, delivery-tracking. 토픽 delivery.rider.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderStateChanged"
+        },
+        "aggregateType": {
+          "const": "Rider"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "riderId",
+            "operatingState",
+            "newDispatchEnabled"
+          ],
+          "properties": {
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "operatingState": {
+              "type": "string",
+              "description": "운행 상태 코드"
+            },
+            "newDispatchEnabled": {
+              "type": "boolean"
+            },
+            "vehicleType": {
+              "type": "string",
+              "description": "운송 수단 코드"
+            },
+            "zoneId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

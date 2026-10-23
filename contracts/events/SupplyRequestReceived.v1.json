@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SupplyRequestReceived.v1.json",
+  "title": "SupplyRequestReceived",
+  "description": "SCM-D06 MFC 공급 요청을 접수·검증한 결과(ACCEPTED/CONFLICT/PENDING). 발행 replenishment. 구독 mfc-inbound(ACK), approval. 토픽 scm.replenishment.v1. 같은 키 다른 본문 = CONFLICT",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SupplyRequestReceived"
+        },
+        "aggregateType": {
+          "const": "SupplyRequest"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "supplyRequestId",
+            "version",
+            "mfcId",
+            "lines",
+            "result"
+          ],
+          "properties": {
+            "supplyRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "requestedQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "requestedQty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "E",
+                      "B"
+                    ],
+                    "description": "낱개(E) / 밀봉 묶음(B). 전환·합산하지 않음"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "requestedReadyAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "urgency": {
+              "type": "string",
+              "enum": [
+                "NORMAL",
+                "URGENT"
+              ],
+              "description": "일반 / 긴급"
+            },
+            "recommendationRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "참조한 planRunId"
+            },
+            "result": {
+              "type": "string",
+              "enum": [
+                "ACCEPTED",
+                "CONFLICT",
+                "PENDING"
+              ]
+            },
+            "reasonCode": {
+              "type": "string",
+              "description": "CONFLICT/PENDING 사유 코드"
+            },
+            "receivedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

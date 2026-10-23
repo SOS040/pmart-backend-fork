@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReservationBlocked.v1.json",
+  "title": "ReservationBlocked",
+  "description": "품질 격리로 예약이 BLOCKED 된 사실(고객 약속은 유지). 발행 mfc-inventory. 구독 order-orchestration, replenishment. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReservationBlocked"
+        },
+        "aggregateType": {
+          "const": "Reservation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reservationId",
+            "orderId",
+            "sku",
+            "blockedQty",
+            "reason"
+          ],
+          "properties": {
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "blockedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "qualityDecisionId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "blockedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

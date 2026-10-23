@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TripStateChanged.v1.json",
+  "title": "TripStateChanged",
+  "description": "운행 상태가 전이된 사실(IN_TRANSIT 삭제 없음). 발행 transport-execution. 구독 transport-planning, backoffice-bff. 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TripStateChanged"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "state"
+          ],
+          "properties": {
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "state": {
+              "type": "string"
+            },
+            "previousState": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

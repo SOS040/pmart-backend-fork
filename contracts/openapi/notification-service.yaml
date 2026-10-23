@@ -1,0 +1,336 @@
+openapi: 3.1.0
+info:
+  title: notification-service
+  version: 0.1.0
+  description: |
+    알림 요청·채널(앱 푸시·카카오 알림톡 [결정 필요])·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록, 지연 안내의 정본. (docs/architecture/service-map.md §8)
+    비정본: 원사건(주문·배송·환불·배차 제안은 각 소유 서비스), 마케팅 동의(customer), OS 알림 권한(단말).
+    같은 원사건 재전달은 알림을 중복 생성하지 않는다. 알림 실패로 주문·배송·환불을 재실행하지 않는다. 알림함 저장·단말 도달·고객 읽음은 별개 상태다.
+    구독: OrderConfirmed, PaymentFailed/Unknown, PreparationStarted, DeliveryAssigned, PickupCompleted, DeliveryEtaUpdated, DeliveryCompleted, ClaimDecided, RefundResult,
+    DispatchOfferSent, DispatchDelayed, CaseAssigned, NotificationRequested. 발행: NotificationDelivered, NotificationFailed.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: inbox, description: 본인 알림함·읽음 }
+  - { name: settings, description: 본인 수신 설정(앱 채널 설정. 마케팅 동의·OS 권한과 별개) }
+  - { name: internal, description: 범용 알림 요청·발송 이력·배차 알림 기록(서비스 토큰) }
+
+paths:
+  /me/notifications:
+    get:
+      tags: [inbox]
+      summary: 알림함 목록 (본인만. 발송 문구는 당시 사실 보존, 최신 상태는 목적지에서 조회)
+      operationId: listMyNotifications
+      parameters:
+        - { name: unreadOnly, in: query, schema: { type: boolean, default: false } }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/Category' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+                  unreadCount: { type: integer }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /me/notifications/{notificationId}:
+    get:
+      tags: [inbox]
+      summary: 알림 상세 (목적지 참조 포함. 접근 불가 주문은 내용 미노출)
+      operationId: getMyNotification
+      parameters:
+        - { name: notificationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/notifications/{notificationId}/reads:
+    post:
+      tags: [inbox]
+      summary: 읽음 처리 (NOTICE_UNREAD → NOTICE_READ. 배송 수령·거래 확정 근거가 아님)
+      operationId: markNotificationRead
+      parameters:
+        - { name: notificationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 반영됨 (이미 읽음이면 멱등 성공)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/notification-settings:
+    get:
+      tags: [settings]
+      summary: 앱 수신 설정 조회 (채널·카테고리별. 마케팅 동의·OS 권한 상태는 참조만)
+      operationId: getMyNotificationSettings
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationSettings' }
+
+  /me/notification-setting-changes:
+    post:
+      tags: [settings]
+      summary: 앱 수신 설정 변경 (거래 안내는 끌 수 없음. 마케팅은 customer 동의와 함께 확인)
+      operationId: changeMyNotificationSettings
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changes]
+              properties:
+                changes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [category, channel, enabled]
+                    properties:
+                      category: { $ref: '#/components/schemas/Category' }
+                      channel: { $ref: '#/components/schemas/Channel' }
+                      enabled: { type: boolean }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: TRANSACTIONAL_CANNOT_DISABLE / CHANNEL_NOT_APPROVED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /me/notification-setting-changes/{requestId}:
+    get:
+      tags: [settings]
+      summary: 수신 설정 변경 결과 조회
+      operationId: getMyNotificationSettingChange
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  # ---------- internal (서비스 토큰) ----------
+  /internal/notification-requests:
+    post:
+      tags: [internal]
+      summary: '[전 서비스→notification] 범용 알림 요청 (NotificationRequested 이벤트의 동기 대안)'
+      description: |
+        sourceEventId 기준으로 중복 생성을 막는다(같은 원사건은 1건). 수신자 동의·앱 설정·채널 승인 조건을 발송 시점에 확인하고 조건 미충족은 SUPPRESSED로 기록한다.
+        승인되지 않은 채널(알림톡 [결정 필요])은 CHANNEL_NOT_APPROVED로 거절한다.
+      operationId: requestNotification
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationRequest' }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: CHANNEL_NOT_APPROVED / TEMPLATE_NOT_FOUND / RECIPIENT_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/notification-requests/{requestId}:
+    get:
+      tags: [internal]
+      summary: 알림 요청 상태 조회 (알림함 저장·채널별 발송·읽음을 분리 표시)
+      operationId: getNotificationRequest
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationRequestStatus' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/notification-requests/{requestId}/deliveries:
+    get:
+      tags: [internal]
+      summary: 채널별 발송 이력·재시도 기록
+      operationId: listNotificationDeliveries
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/DeliveryAttempt' } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/dispatch-notification-records:
+    get:
+      tags: [internal]
+      summary: '[dispatch/bff→notification] 라이더 배차 제안 알림 전송 기록 (제안 자체는 dispatch 정본)'
+      operationId: listDispatchNotificationRecords
+      parameters:
+        - { name: offerId, in: query, schema: { type: string } }
+        - { name: riderId, in: query, schema: { type: string } }
+        - { name: deliveryId, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        recordId: { type: string }
+                        offerId: { type: string }
+                        riderId: { type: string }
+                        deliveryId: { type: string }
+                        channel: { $ref: '#/components/schemas/Channel' }
+                        state: { $ref: '#/components/schemas/DeliveryState' }
+                        sentAt: { type: string, format: date-time }
+                        deliveredAt: { type: [string, 'null'], format: date-time }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+components:
+  schemas:
+    Channel:
+      type: string
+      description: KAKAO_ALIMTALK은 [결정 필요] 승인 전 거절
+      enum: [APP_PUSH, IN_APP, KAKAO_ALIMTALK, SMS]
+    Category:
+      type: string
+      enum: [ORDER, PAYMENT, DELIVERY, CLAIM, REFUND, DISPATCH, CASE, MARKETING, SYSTEM]
+    DeliveryState:
+      type: string
+      description: SUPPRESSED는 동의·설정·권한 조건 미충족으로 발송하지 않음
+      enum: [QUEUED, SENT, DELIVERED, FAILED, RETRY_PENDING, SUPPRESSED, UNKNOWN]
+    Recipient:
+      type: object
+      required: [principalType, principalId]
+      properties:
+        principalType: { type: string, enum: [CUSTOMER, RIDER, OPERATOR] }
+        principalId: { type: string }
+    Destination:
+      type: object
+      description: 알림을 열 때 이동할 최신 목적지 (원사건 참조)
+      properties:
+        type: { type: string, enum: [ORDER, DELIVERY, CLAIM, REFUND, DISPATCH_OFFER, CASE, NOTICE, NONE] }
+        ref: { type: string }
+    Notification:
+      type: object
+      required: [notificationId, category, title, state, createdAt]
+      properties:
+        notificationId: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        title: { type: string }
+        body: { type: string, description: 발송 당시 사실. 최신 상태와 구분 }
+        destination: { $ref: '#/components/schemas/Destination' }
+        sourceEventId: { type: string }
+        sourceEventType: { type: string }
+        state: { type: string, enum: [NOTICE_UNREAD, NOTICE_READ] }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: [string, 'null'], format: date-time }
+    NotificationSettings:
+      type: object
+      properties:
+        accountId: { type: string }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              category: { $ref: '#/components/schemas/Category' }
+              channel: { $ref: '#/components/schemas/Channel' }
+              enabled: { type: boolean }
+              locked: { type: boolean, description: 거래 안내는 true }
+        marketingConsent: { type: string, enum: [AGREED, WITHDRAWN, UNKNOWN], description: customer 사본 }
+        osPermission: { type: string, enum: [GRANTED, DENIED, UNKNOWN], description: 단말이 마지막으로 보고한 값 }
+    NotificationRequest:
+      type: object
+      required: [recipient, category, templateKey, sourceEventId, sourceEventType]
+      properties:
+        recipient: { $ref: '#/components/schemas/Recipient' }
+        category: { $ref: '#/components/schemas/Category' }
+        templateKey: { type: string, maxLength: 64 }
+        templateParams: { type: object, additionalProperties: { type: string } }
+        channels: { type: array, items: { $ref: '#/components/schemas/Channel' }, description: 생략 시 템플릿 기본 채널 }
+        destination: { $ref: '#/components/schemas/Destination' }
+        sourceEventId: { type: string, description: 중복 생성 방지 키 }
+        sourceEventType: { type: string }
+        correlationId: { type: string, description: 사가·사건 ID }
+        occurredAt: { type: string, format: date-time, description: 원사건 시각 (역순 안내 방지) }
+        expiresAt: { type: string, format: date-time, description: 이 시각 이후 미발송분은 폐기 (배차 제안 1분 등) }
+    DeliveryAttempt:
+      type: object
+      properties:
+        attemptId: { type: string }
+        channel: { $ref: '#/components/schemas/Channel' }
+        attemptNo: { type: integer }
+        state: { $ref: '#/components/schemas/DeliveryState' }
+        providerRef: { type: string }
+        failureReason: { type: string }
+        sentAt: { type: string, format: date-time }
+        deliveredAt: { type: [string, 'null'], format: date-time }
+        nextRetryAt: { type: [string, 'null'], format: date-time }
+    NotificationRequestStatus:
+      type: object
+      properties:
+        requestId: { type: string }
+        status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+        notificationId: { type: [string, 'null'], description: 알림함 저장 결과 }
+        inboxStored: { type: boolean }
+        channels:
+          type: array
+          items:
+            type: object
+            properties:
+              channel: { $ref: '#/components/schemas/Channel' }
+              state: { $ref: '#/components/schemas/DeliveryState' }
+              attempts: { type: integer }
+        readAt: { type: [string, 'null'], format: date-time }
+        duplicateOf: { type: [string, 'null'], description: 같은 sourceEventId로 이미 생성된 요청 ID }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

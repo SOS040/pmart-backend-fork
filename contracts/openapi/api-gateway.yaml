@@ -1,0 +1,62 @@
+openapi: 3.1.0
+info:
+  title: api-gateway
+  version: 0.1.0
+  description: |
+    라우팅·JWT 검증(auth 공개키)·rate limit·traceId 발급/전파·앱별 경로 분리. 비즈니스 로직 없음, 정본 없음. (docs/architecture/service-map.md §8)
+    업무 엔드포인트는 각 서비스 계약을 본다. 이 문서는 게이트웨이 자체의 운영 경로만 정의한다.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - { name: ops, description: 게이트웨이 운영 정보 }
+
+paths:
+  /actuator/health:
+    get:
+      tags: [ops]
+      summary: 게이트웨이 헬스 (인증 불필요)
+      operationId: getGatewayHealth
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [UP, DOWN, OUT_OF_SERVICE] }
+                  components: { type: object, additionalProperties: true }
+
+  /gateway/routes:
+    get:
+      tags: [ops]
+      summary: 등록 라우트 목록 (앱별 경로 접두어·대상 서비스; 운영자 토큰)
+      operationId: listGatewayRoutes
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        routeId: { type: string }
+                        app: { type: string, enum: [CUSTOMER, RIDER, STORE, DRIVER, ADMIN, INTERNAL] }
+                        pathPrefix: { type: string, example: /api/v1/orders }
+                        targetService: { type: string }
+                        authRequired: { type: boolean }
+                        rateLimitPerMin: { type: [integer, 'null'] }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

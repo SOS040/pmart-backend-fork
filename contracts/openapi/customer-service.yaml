@@ -1,0 +1,532 @@
+openapi: 3.1.0
+info:
+  title: customer-service
+  version: 0.1.0
+  description: |
+    고객 계정·프로필·이용 상태(ACTIVE/WITHDRAW_PENDING/WITHDRAW_COMPLETED), 약관·마케팅 동의(버전·시점·철회), 주소록·현재 쇼핑 주소(shoppingContextVersion),
+    비회원 배송지, 첫 구매 중복혜택 대조값(소셜 식별, 5년)의 정본. (docs/architecture/service-map.md §1)
+    비정본: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
+    발행: CustomerConsentChanged, CustomerWithdrawalRequested, CustomerWithdrawalCompleted, ShoppingAddressChanged. 구독: CustomerAuthenticated(auth).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: profile, description: 본인 프로필 }
+  - { name: consents, description: 약관·마케팅 동의 }
+  - { name: addresses, description: 주소록·현재 쇼핑 주소·비회원 배송지 }
+  - { name: withdrawals, description: 탈퇴 접수·철회·완료 }
+  - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+
+paths:
+  /me:
+    get:
+      tags: [profile]
+      summary: 본인 프로필·계정 상태 조회
+      operationId: getMyProfile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /me/profile-changes:
+    post:
+      tags: [profile]
+      summary: 프로필 변경 (닉네임·연락처). 확정 주문의 배송정보는 소급 수정하지 않음
+      operationId: changeMyProfile
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string, maxLength: 30 }
+                phone: { type: string, maxLength: 20 }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: VERSION_CONFLICT / INVALID_STATE (WITHDRAW_PENDING 이후 변경 불가)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /me/profile-changes/{requestId}:
+    get:
+      tags: [profile]
+      summary: 프로필 변경 결과 조회
+      operationId: getMyProfileChange
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/consents:
+    get:
+      tags: [consents]
+      summary: 현재 동의 상태 (항목별 버전·동의 시각·철회 시각)
+      operationId: listMyConsents
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Consent' } }
+
+  /me/consent-changes:
+    post:
+      tags: [consents]
+      summary: 동의·철회 반영 (필수 약관 재동의·마케팅 수신 변경)
+      description: |
+        마케팅 동의 철회는 주문 조회를 막지 않는다. 탈퇴 철회 시 마케팅 동의를 자동 복원하지 않는다. 반영 시 CustomerConsentChanged 발행.
+      operationId: changeMyConsents
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changes]
+              properties:
+                changes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [consentType, version, agreed]
+                    properties:
+                      consentType: { $ref: '#/components/schemas/ConsentType' }
+                      version: { type: string }
+                      agreed: { type: boolean }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN / CONSENT_VERSION_OUTDATED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /me/consent-changes/{requestId}:
+    get:
+      tags: [consents]
+      summary: 동의 변경 결과 조회
+      operationId: getMyConsentChange
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/addresses:
+    get:
+      tags: [addresses]
+      summary: 주소록 조회 (권역 판정 결과 사본 포함)
+      operationId: listMyAddresses
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Address' } }
+                  shoppingContext: { $ref: '#/components/schemas/ShoppingContext' }
+    post:
+      tags: [addresses]
+      summary: 주소 추가 (delivery-serviceability 권역 판정 동기 조회)
+      operationId: addMyAddress
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '201':
+          description: 추가됨 (권역 밖이어도 저장은 되며 serviceability로 구분)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: ADDRESS_LIMIT_EXCEEDED (주소록 최대 건수 정책값) / CONFIG_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /me/addresses/{addressId}:
+    get:
+      tags: [addresses]
+      summary: 주소 단건 조회
+      operationId: getMyAddress
+      parameters:
+        - { name: addressId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    patch:
+      tags: [addresses]
+      summary: 주소 수정 (확정 주문의 주소는 변경되지 않음)
+      operationId: updateMyAddress
+      parameters:
+        - { name: addressId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+    delete:
+      tags: [addresses]
+      summary: 주소 삭제 (현재 쇼핑 주소면 INVALID_STATE)
+      operationId: deleteMyAddress
+      parameters:
+        - { name: addressId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '204': { description: 삭제됨 }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /me/shopping-address-selections:
+    post:
+      tags: [addresses]
+      summary: 현재 쇼핑 주소 선택 (shoppingContextVersion 증가, ShoppingAddressChanged 발행)
+      operationId: selectShoppingAddress
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [addressId]
+              properties:
+                addressId: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppingContext' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /me/shopping-context:
+    get:
+      tags: [addresses]
+      summary: 현재 쇼핑 주소·담당 MFC·컨텍스트 버전 조회
+      operationId: getShoppingContext
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShoppingContext' }
+
+  /guest-delivery-addresses:
+    post:
+      tags: [addresses]
+      summary: 비회원 배송지 등록 (기기 비회원 영역에서만 사용)
+      operationId: createGuestDeliveryAddress
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '201':
+          description: 등록됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /guest-delivery-addresses/{guestAddressId}:
+    get:
+      tags: [addresses]
+      summary: 비회원 배송지 조회 (같은 기기만)
+      operationId: getGuestDeliveryAddress
+      security: []
+      parameters:
+        - { name: guestAddressId, in: path, required: true, schema: { type: string } }
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/withdrawals:
+    post:
+      tags: [withdrawals]
+      summary: 탈퇴 접수 (ACTIVE → WITHDRAW_PENDING, 신규 구매 차단)
+      description: |
+        접수 즉시 신규 구매를 차단하고 CustomerWithdrawalRequested를 발행한다. 완료는 order-service 미결 의무(미결 주문·불명 결제·환불·회수·분쟁) 조회가
+        eligible=true일 때만 비동기로 진행되며, 완료 시 CustomerWithdrawalCompleted 발행(auth가 세션·소셜 연결 삭제). 완료된 탈퇴는 되돌리지 않는다.
+      operationId: requestWithdrawal
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reasonCode: { type: string }
+                reasonText: { type: string, maxLength: 500 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (이미 WITHDRAW_PENDING/COMPLETED) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /me/withdrawals/{withdrawalId}:
+    get:
+      tags: [withdrawals]
+      summary: 탈퇴 진행 상태 조회 (남은 의무 포함)
+      operationId: getWithdrawal
+      parameters:
+        - { name: withdrawalId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Withdrawal' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/withdrawals/{withdrawalId}/revocations:
+    post:
+      tags: [withdrawals]
+      summary: 탈퇴 철회 (WITHDRAW_PENDING에서만, 마케팅 동의는 자동 복원하지 않음)
+      operationId: revokeWithdrawal
+      parameters:
+        - { name: withdrawalId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE (이미 완료된 탈퇴는 철회 불가)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  # ---------- internal (서비스 토큰) ----------
+  /internal/accounts/{accountId}/status:
+    get:
+      tags: [internal]
+      summary: '[order/cart/auth→customer] 계정 이용 상태 조회 (구매 가능 여부 판단 근거)'
+      operationId: getAccountStatusInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accountId, status, purchasable]
+                properties:
+                  accountId: { type: string }
+                  status: { $ref: '#/components/schemas/AccountStatus' }
+                  purchasable: { type: boolean, description: ACTIVE이고 필수 동의 최신 버전이면 true }
+                  requiredConsentOutdated: { type: boolean }
+                  version: { $ref: '_common.yaml#/components/schemas/Version' }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/accounts/{accountId}/shopping-context:
+    get:
+      tags: [internal]
+      summary: '[order→customer] 주문 초안 스냅샷용 현재 쇼핑 주소·연락처'
+      operationId: getShoppingContextInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+        - { name: shoppingAddressId, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ShoppingContext'
+                  - type: object
+                    properties:
+                      address: { $ref: '#/components/schemas/Address' }
+                      phoneRef: { type: string, description: 원문 아님. 안심번호·마스킹 참조 }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/accounts/{accountId}/first-purchase-checks:
+    get:
+      tags: [internal]
+      summary: '[order→customer] 첫 구매 중복혜택 대조 (소셜 식별 5년 보존값 기준)'
+      operationId: checkFirstPurchaseInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId: { type: string }
+                  firstPurchaseCandidate: { type: boolean, description: 대조값에 과거 첫 구매 기록이 없으면 true. 자격 점유는 order가 수행 }
+                  matchedBy: { type: string, enum: [NONE, SOCIAL_IDENTITY, PHONE] }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+
+components:
+  schemas:
+    AccountStatus:
+      type: string
+      enum: [ACTIVE, WITHDRAW_PENDING, WITHDRAW_COMPLETED]
+    ConsentType:
+      type: string
+      enum: [TERMS_OF_SERVICE, PRIVACY_POLICY, AGE_OVER_14, MARKETING_PUSH, MARKETING_SMS, NIGHT_MARKETING]
+    Consent:
+      type: object
+      properties:
+        consentType: { $ref: '#/components/schemas/ConsentType' }
+        required: { type: boolean }
+        agreed: { type: boolean }
+        version: { type: string }
+        latestVersion: { type: string }
+        agreedAt: { type: [string, 'null'], format: date-time }
+        withdrawnAt: { type: [string, 'null'], format: date-time }
+    Profile:
+      type: object
+      properties:
+        accountId: { type: string }
+        status: { $ref: '#/components/schemas/AccountStatus' }
+        nickname: { type: string }
+        phoneMasked: { type: string }
+        socialProvider: { type: string, enum: [KAKAO, NAVER, APPLE, GOOGLE] }
+        joinedAt: { type: string, format: date-time }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+    AddressInput:
+      type: object
+      required: [roadAddress, detailAddress, receiverName, receiverPhone]
+      properties:
+        label: { type: string, maxLength: 20 }
+        roadAddress: { type: string, maxLength: 200 }
+        detailAddress: { type: string, maxLength: 200 }
+        postalCode: { type: string, maxLength: 10 }
+        receiverName: { type: string, maxLength: 50 }
+        receiverPhone: { type: string, maxLength: 20 }
+        entranceMethod: { type: string, enum: [FREE, PASSWORD, CALL, OTHER] }
+        entranceNote: { type: string, maxLength: 100, description: 출입 비밀번호 원문은 로그 금지 }
+        geo:
+          type: object
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+    Address:
+      allOf:
+        - $ref: '#/components/schemas/AddressInput'
+        - type: object
+          properties:
+            addressId: { type: string }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            serviceability:
+              type: object
+              description: delivery-serviceability 판정 사본
+              properties:
+                state: { type: string, enum: [SERVICEABLE, OUT_OF_SERVICE_AREA, UNKNOWN] }
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                serviceabilityVersion: { type: integer }
+                asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    ShoppingContext:
+      type: object
+      properties:
+        accountId: { type: string }
+        shoppingAddressId: { type: [string, 'null'] }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        shoppingContextVersion: { type: integer }
+        changedAt: { type: string, format: date-time }
+    Withdrawal:
+      type: object
+      properties:
+        withdrawalId: { type: string }
+        state: { type: string, enum: [PENDING, CHECKING_OBLIGATIONS, BLOCKED_BY_OBLIGATIONS, COMPLETING, COMPLETED, REVOKED, UNKNOWN] }
+        requestedAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        openObligations:
+          type: array
+          description: order-service 조회 사본
+          items:
+            type: object
+            properties:
+              kind: { type: string }
+              ref: { type: string }
+        obligationsAsOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

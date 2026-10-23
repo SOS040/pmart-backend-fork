@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PaymentResultUnknown.v1.json",
+  "title": "PaymentResultUnknown",
+  "description": "타임아웃·응답 유실(1분×5→상신→15분). 발행 payment-service. 구독 order-orchestration, case(장기). 토픽 order.payment.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PaymentResultUnknown"
+        },
+        "aggregateType": {
+          "const": "PaymentAttempt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "paymentAttemptId",
+            "inquiryCount"
+          ],
+          "properties": {
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "inquiryCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "원거래 조회 누적 횟수"
+            },
+            "nextInquiryAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "escalated": {
+              "type": "boolean",
+              "description": "case-service 상신 여부"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

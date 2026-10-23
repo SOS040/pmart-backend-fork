@@ -1,0 +1,254 @@
+openapi: 3.1.0
+info:
+  title: product-content-service
+  version: 0.1.0
+  description: |
+    고객용 상품명·사진·설명·보관/반품 안내·판매 옵션 해석과 평점·리뷰 수 집계 투영의 정본. (docs/architecture/service-map.md §1)
+    비정본: 상품 정본·판매 상태(product), 리뷰 원문(review), 가격(pricing), 재고(각 inventory).
+    구독: ProductVersionPublished, ReviewPublished/Deleted, ApprovalDecided(콘텐츠 승인 BO-05). 발행: ProductContentPublished.
+    승인 변경은 5분 내 고객 노출 반영을 목표로 하며, 투영 지연은 projection-status로 드러낸다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: product-contents, description: 고객용 상품 상세 조회 }
+  - { name: publications, description: 콘텐츠 게시 명령(승인 결과 참조) }
+  - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+
+paths:
+  /product-contents/{productId}:
+    get:
+      tags: [product-contents]
+      summary: 상품 상세 조회 (고객용 명칭·사진·설명·옵션·평점 집계)
+      description: |
+        판매 상태·가격·현재 PPC 가용은 각 정본의 사본이며 asOf를 함께 반환한다. 이 응답으로 구매 가능을 확정하지 않는다.
+      operationId: getProductContent
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - { name: mfcId, in: query, description: 현재 쇼핑 주소의 담당 센터. 취급 여부 표시용, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductContent' }
+        '404':
+          description: NOT_FOUND / CONTENT_NOT_PUBLISHED (승인 콘텐츠 없음)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /product-contents:
+    get:
+      tags: [product-contents]
+      summary: 상품 카드 일괄 조회 (목록·장바구니·진열용, 최대 100건)
+      operationId: listProductContents
+      parameters:
+        - name: productIds
+          in: query
+          required: true
+          style: form
+          explode: false
+          schema: { type: array, maxItems: 100, items: { type: string } }
+      responses:
+        '200':
+          description: OK (미게시 상품은 items에서 제외하고 missing에 나열)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ProductCard' } }
+                  missing: { type: array, items: { type: string } }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+
+  /product-contents/{productId}/rating-summary:
+    get:
+      tags: [product-contents]
+      summary: 평점·리뷰 수 집계 (review 이벤트 투영)
+      operationId: getRatingSummary
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RatingSummary' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /product-contents/{productId}/publications:
+    post:
+      tags: [publications]
+      summary: 콘텐츠 게시 (approval BO-05 승인 결과 참조)
+      description: |
+        승인된 콘텐츠 초안을 고객 노출 버전으로 게시한다. 반영 시 ProductContentPublished 발행.
+        과거 주문의 상품 설명·규격은 덮어쓰지 않는다(order 스냅샷 별도).
+      operationId: publishProductContent
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approvalId, draftId]
+              properties:
+                approvalId: { type: string }
+                draftId: { type: string, description: 승인된 콘텐츠 초안 ID }
+                effectiveFrom: { type: string, format: date-time, description: 생략 시 즉시 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED / DRAFT_NOT_FOUND / PRODUCT_VERSION_MISMATCH (초안이 참조한 product 버전이 현재와 다름)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /product-contents/{productId}/publications/{requestId}:
+    get:
+      tags: [publications]
+      summary: 게시 요청 결과 조회
+      operationId: getPublication
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+                  contentVersion: { type: integer }
+                  publishedAt: { type: string, format: date-time }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  # ---------- internal (서비스 토큰) ----------
+  /internal/product-contents/{productId}/snapshot:
+    get:
+      tags: [internal]
+      summary: '[order/cart→content] 주문 스냅샷용 표시 정보 (상품명·대표 이미지·옵션 라벨)'
+      operationId: getContentSnapshotInternal
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentSnapshot' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/product-contents/{productId}/projection-status:
+    get:
+      tags: [internal]
+      summary: '[approval/bff→content] 승인 변경 반영 상태 (원승인 버전 vs 고객 노출 버전)'
+      operationId: getProjectionStatusInternal
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  productId: { type: string }
+                  exposedProductVersion: { type: integer, description: 현재 고객에게 노출 중인 product 버전 }
+                  latestProductVersion: { type: integer, description: 수신한 최신 ProductVersionPublished 버전 }
+                  contentVersion: { type: integer }
+                  lag: { type: string, enum: [IN_SYNC, PENDING, DELAYED, FAILED] }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+
+components:
+  schemas:
+    Image:
+      type: object
+      properties:
+        imageId: { type: string }
+        url: { type: string, format: uri }
+        role: { type: string, enum: [MAIN, DETAIL, DESCRIPTION] }
+        sortOrder: { type: integer }
+    SaleOption:
+      type: object
+      description: 고객 화면의 판매 옵션 해석. 실제 구매 단위는 sku.
+      properties:
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        label: { type: string, example: 1팩(6입) }
+        unitType: { type: string, enum: [E, B] }
+        unitsPerSku: { type: integer }
+        capacityLabel: { type: string, example: 500ml }
+        saleState: { type: string, description: product 사본 }
+        price:
+          type: object
+          description: pricing 사본. 견적 확정은 order 초안.
+          properties:
+            basePrice: { $ref: '_common.yaml#/components/schemas/Money' }
+            priceVersion: { type: integer }
+        availability:
+          type: object
+          description: 현재 센터 취급·가용 사본. 조회 실패는 0이 아니다.
+          properties:
+            carried: { type: boolean }
+            state: { type: string, enum: [AVAILABLE, LOW, SOLD_OUT, UNKNOWN] }
+    ProductCard:
+      type: object
+      properties:
+        productId: { type: string }
+        name: { type: string, description: 고객용 상품명 }
+        mainImage: { $ref: '#/components/schemas/Image' }
+        rating: { $ref: '#/components/schemas/RatingSummary' }
+        options: { type: array, items: { $ref: '#/components/schemas/SaleOption' } }
+        contentVersion: { type: integer }
+    ProductContent:
+      allOf:
+        - $ref: '#/components/schemas/ProductCard'
+        - type: object
+          properties:
+            productVersion: { type: integer, description: 이 콘텐츠가 참조하는 product 승인 버전 }
+            description: { type: string }
+            images: { type: array, items: { $ref: '#/components/schemas/Image' } }
+            storageGuide: { type: string }
+            returnGuide: { type: string }
+            notices: { type: array, items: { type: string } }
+            categoryPath: { type: array, items: { type: string }, description: 대표 노출 경로 }
+            sources:
+              type: array
+              description: 사본 원천별 기준시각
+              items:
+                type: object
+                properties:
+                  system: { type: string }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    RatingSummary:
+      type: object
+      properties:
+        productId: { type: string }
+        averageRating: { type: number, minimum: 0, maximum: 5 }
+        reviewCount: { type: integer, minimum: 0 }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    ContentSnapshot:
+      type: object
+      properties:
+        productId: { type: string }
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        name: { type: string }
+        optionLabel: { type: string }
+        mainImageUrl: { type: string, format: uri }
+        contentVersion: { type: integer }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

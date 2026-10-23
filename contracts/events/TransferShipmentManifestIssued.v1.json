@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransferShipmentManifestIssued.v1.json",
+  "title": "TransferShipmentManifestIssued",
+  "description": "출발 매니페스트가 발행된 사실. 발행 cdc-outbound. 구독 mfc-inbound, transport-execution. 토픽 cdc.outbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransferShipmentManifestIssued"
+        },
+        "aggregateType": {
+          "const": "ShipmentManifest"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "shipmentManifestId",
+            "trfId",
+            "departureId",
+            "lines"
+          ],
+          "properties": {
+            "shipmentManifestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromCdc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "toMfc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuLotLpnQty"
+              },
+              "minItems": 1
+            },
+            "totalQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "issuedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

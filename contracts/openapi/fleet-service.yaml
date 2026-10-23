@@ -1,0 +1,334 @@
+openapi: 3.1.0
+info:
+  title: fleet-service
+  version: 0.1.0
+  description: |
+    간선 실차·간선기사·점유 예약·다음 가용 시각의 정본. (docs/architecture/service-map.md §6)
+    라이더는 rider-service, 운행 실행은 transport-execution-service, 배정 결정은 transport-planning-service.
+    점유 예약은 [시작,종료) 반열림 구간 겹침으로 판정하며 차량과 기사는 분리 검증한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: vehicles, description: 실차 정본 조회 }
+  - { name: drivers, description: 간선기사 정본 조회 }
+  - { name: internal, description: 서비스 간 호출(planning 전용) }
+
+paths:
+  /vehicles:
+    get:
+      tags: [vehicles]
+      summary: 실차 목록 (상태·차종·온도대·거점)
+      operationId: listVehicles
+      parameters:
+        - { name: depot, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/VehicleStatus' } }
+        - { name: tempClass, in: query, schema: { $ref: '#/components/schemas/TempClass' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Vehicle' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /vehicles/{vehicleId}:
+    get:
+      tags: [vehicles]
+      summary: 실차 상세
+      operationId: getVehicle
+      parameters:
+        - { name: vehicleId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vehicle' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /vehicles/{vehicleId}/next-availability:
+    get:
+      tags: [vehicles]
+      summary: 다음 가용 시각 (복귀 + 준비 시간; 기사 가용은 별도)
+      operationId: getVehicleNextAvailability
+      parameters:
+        - { name: vehicleId, in: path, required: true, schema: { type: string } }
+        - { name: after, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vehicleId: { type: string }
+                  state: { type: string, enum: [AVAILABLE_AT, UNKNOWN, OUT_OF_SERVICE] }
+                  availableAt: { type: [string, 'null'], format: date-time }
+                  basis: { type: string, description: 예 TripPhysicallyEnded+prep / RESERVATION_END / MAINTENANCE_END }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /drivers:
+    get:
+      tags: [drivers]
+      summary: 간선기사 목록 (자격·가용 상태)
+      operationId: listDrivers
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/DriverStatus' } }
+        - { name: licenseClass, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Driver' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /drivers/{driverId}:
+    get:
+      tags: [drivers]
+      summary: 간선기사 상세
+      operationId: getDriver
+      parameters:
+        - { name: driverId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Driver' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/eligible-vehicles:
+    get:
+      tags: [internal]
+      summary: '[planning→fleet] 적격 차량(+기사) 조회 (창·온도대·중량·부피·진입 제한)'
+      description: 결과는 조회 시점 사본이며 점유를 보장하지 않는다. 점유는 POST /internal/reservations.
+      operationId: findEligibleVehicles
+      parameters:
+        - { name: windowStart, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: windowEnd, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: depot, in: query, schema: { type: string } }
+        - name: temp
+          in: query
+          description: 필요한 온도대(쉼표 구분, 복수 가능)
+          schema: { type: array, items: { $ref: '#/components/schemas/TempClass' } }
+          style: form
+          explode: false
+        - { name: weight, in: query, schema: { type: number, minimum: 0 }, description: 필요 적재 중량 kg }
+        - { name: volume, in: query, schema: { type: number, minimum: 0 }, description: 필요 적재 부피 m3 }
+        - name: accessConstraints
+          in: query
+          description: 목적지 진입 제한 코드(쉼표 구분)
+          schema: { type: array, items: { type: string } }
+          style: form
+          explode: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  vehicles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        vehicle: { $ref: '#/components/schemas/Vehicle' }
+                        freeWindows: { type: array, items: { $ref: '#/components/schemas/TimeWindow' } }
+                        eligibleDriverIds: { type: array, items: { type: string } }
+                  excluded:
+                    type: array
+                    description: 제외 차량과 사유(차량 부족 원인 분류용)
+                    items:
+                      type: object
+                      properties:
+                        vehicleId: { type: string }
+                        reason: { type: string, enum: [RESERVED, MAINTENANCE, TEMP_CLASS, CAPACITY, ACCESS, NO_DRIVER, PRECOOL_NOT_READY] }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /internal/reservations:
+    post:
+      tags: [internal]
+      summary: '[planning→fleet] 점유 예약 (차량 및/또는 기사; [start,end) 겹침 검증)'
+      description: |
+        vehicleId와 driverId 중 하나 이상 필수. 차량·기사는 분리 검증하며 응답 results[]에 항목별 결과를 준다.
+        하나라도 실패하면 이번 요청에서 새로 잡은 항목은 모두 해제하고 REJECTED(CAPACITY_EXCEEDED)로 응답한다.
+      operationId: createFleetReservation
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [window, purposeRef]
+              properties:
+                vehicleId: { type: string }
+                driverId: { type: string }
+                window: { $ref: '#/components/schemas/TimeWindow' }
+                purposeRef: { type: string, description: assignmentId 또는 tripId }
+                purposeType: { type: string, enum: [ASSIGNMENT, MAINTENANCE, TRAINING] }
+      responses:
+        '201':
+          description: 예약 결과 (항목별 상태)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FleetReservation' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / CAPACITY_EXCEEDED (겹치는 예약 존재) / INVALID_STATE (정비 중)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/reservations/{reservationId}:
+    get:
+      tags: [internal]
+      summary: 점유 예약 조회
+      operationId: getFleetReservation
+      parameters:
+        - { name: reservationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FleetReservation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/reservations/{reservationId}/releases:
+    post:
+      tags: [internal]
+      summary: '[planning→fleet] 점유 예약 해제 (보상 트랜잭션; 멱등)'
+      description: 이미 RELEASED면 같은 결과를 돌려준다. 실제 출발 이후 운행 중 예약은 해제 불가(INVALID_STATE).
+      operationId: releaseFleetReservation
+      parameters:
+        - { name: reservationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, enum: [SAGA_COMPENSATION, ASSIGNMENT_CANCELLED, ASSIGNMENT_SUPERSEDED, MANUAL] }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+components:
+  schemas:
+    TempClass:
+      type: string
+      enum: [AMBIENT, CHILLED, FROZEN]
+    VehicleStatus:
+      type: string
+      enum: [AVAILABLE, RESERVED, IN_TRIP, MAINTENANCE, OUT_OF_SERVICE]
+    DriverStatus:
+      type: string
+      enum: [AVAILABLE, RESERVED, ON_DUTY, RESTING, OFF_DUTY, SUSPENDED]
+    TimeWindow:
+      type: object
+      required: [start, end]
+      description: "[start, end) 반열림 구간. UTC 저장."
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+    Compartment:
+      type: object
+      properties:
+        compartmentId: { type: string }
+        tempClass: { $ref: '#/components/schemas/TempClass' }
+        maxWeightKg: { type: number }
+        maxVolumeM3: { type: number }
+        precoolRequiredMin: { type: integer, description: 출발 전 예냉 필요 시간(분) }
+    Vehicle:
+      type: object
+      required: [vehicleId, vehicleClass, status, version]
+      properties:
+        vehicleId: { type: string }
+        plateNo: { type: string }
+        vehicleClass: { type: string, enum: [VAN_1T, TRUCK_2_5T, TRUCK_3_5T, TRUCK_5T, TRUCK_11T] }
+        status: { $ref: '#/components/schemas/VehicleStatus' }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        depot: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        maxWeightKg: { type: number }
+        maxVolumeM3: { type: number }
+        compartments: { type: array, items: { $ref: '#/components/schemas/Compartment' } }
+        accessLimits: { type: array, items: { type: string }, description: 진입 불가 제한 코드 }
+        heightM: { type: number }
+        lastKnownLocation:
+          type: object
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+            asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        maintenanceUntil: { type: [string, 'null'], format: date-time }
+    Driver:
+      type: object
+      required: [driverId, status, version]
+      properties:
+        driverId: { type: string }
+        displayName: { type: string }
+        status: { $ref: '#/components/schemas/DriverStatus' }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        licenseClasses: { type: array, items: { type: string } }
+        qualifications: { type: array, items: { type: string }, description: 예 HAZMAT / COLD_CHAIN / FORKLIFT }
+        dutyRule:
+          type: object
+          description: 근무/휴게 조건 승인값 사본
+          properties:
+            maxDrivingSecPerDay: { type: integer }
+            minRestSecBetweenTrips: { type: integer }
+            policyVersion: { type: integer }
+        homeDepot: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        availableFrom: { type: [string, 'null'], format: date-time }
+    FleetReservation:
+      type: object
+      required: [reservationId, state, window, version]
+      properties:
+        reservationId: { type: string }
+        state: { type: string, enum: [HELD, REJECTED, RELEASED, EXPIRED] }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        window: { $ref: '#/components/schemas/TimeWindow' }
+        purposeRef: { type: string }
+        results:
+          type: array
+          description: 차량·기사 분리 검증 결과
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [VEHICLE, DRIVER] }
+              resourceId: { type: string }
+              state: { type: string, enum: [HELD, REJECTED, RELEASED] }
+              conflictWith: { type: [string, 'null'], description: 겹친 기존 reservationId }
+              reason: { type: string }
+        createdAt: { type: string, format: date-time }
+        releasedAt: { type: [string, 'null'], format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

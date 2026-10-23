@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReviewPublished.v1.json",
+  "title": "ReviewPublished",
+  "description": "리뷰 등록. 발행 review-service. 구독 product-content, audit. 토픽 commerce.review.v1. 단계 ②",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReviewPublished"
+        },
+        "aggregateType": {
+          "const": "Review"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reviewId",
+            "orderLineId",
+            "productId",
+            "rating"
+          ],
+          "properties": {
+            "reviewId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderLineId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "productId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "rating": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "publishedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

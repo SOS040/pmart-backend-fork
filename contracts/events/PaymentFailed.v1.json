@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PaymentFailed.v1.json",
+  "title": "PaymentFailed",
+  "description": "승인 실패 확정. 발행 payment-service. 구독 order-orchestration, notification. 토픽 order.payment.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PaymentFailed"
+        },
+        "aggregateType": {
+          "const": "PaymentAttempt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "paymentAttemptId",
+            "code"
+          ],
+          "properties": {
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "code": {
+              "type": "string",
+              "description": "실패 코드"
+            },
+            "message": {
+              "type": "string"
+            },
+            "failedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

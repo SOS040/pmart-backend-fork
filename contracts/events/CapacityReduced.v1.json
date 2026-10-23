@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CapacityReduced.v1.json",
+  "title": "CapacityReduced",
+  "description": "MFC 작업 용량이 축소된 사실(기존 약속 삭제 없음). 발행 mfc-capacity. 구독 delivery-capacity, order, notification. 토픽 mfc.capacity.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CapacityReduced"
+        },
+        "aggregateType": {
+          "const": "Capacity"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mfcId",
+            "window",
+            "oldCapacity",
+            "newCapacity"
+          ],
+          "properties": {
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "window": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "oldCapacity": {
+              "type": "integer"
+            },
+            "newCapacity": {
+              "type": "integer"
+            },
+            "affectedOrders": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "reason": {
+              "type": "string"
+            },
+            "reducedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

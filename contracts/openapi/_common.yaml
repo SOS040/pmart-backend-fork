@@ -1,0 +1,189 @@
+openapi: 3.1.0
+info:
+  title: PMart Common Components
+  version: 0.1.0
+  description: |
+    모든 서비스 OpenAPI가 $ref로 참조하는 공통 헤더·응답·오류·페이지 컴포넌트.
+    이 파일 자체는 엔드포인트를 갖지 않는다.
+servers:
+  - url: /
+paths: {}
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 요청 멱등 키(=requestId). 같은 키·같은 본문은 기존 결과, 같은 키·다른 본문은 409 IDEMPOTENCY_CONFLICT.
+      schema: { type: string, maxLength: 128 }
+    SourceSystem:
+      name: X-Source-System
+      in: header
+      required: true
+      description: 호출 서비스/채널 식별자 (예 order-orchestration-service, customer-app).
+      schema: { type: string, maxLength: 64 }
+    ExpectedVersion:
+      name: X-Expected-Version
+      in: header
+      required: false
+      description: 낙관적 잠금. 대상 aggregate의 현재 버전과 다르면 409 VERSION_CONFLICT.
+      schema: { type: integer, minimum: 0 }
+    Traceparent:
+      name: traceparent
+      in: header
+      required: false
+      description: W3C Trace Context. 게이트웨이가 발급, 모든 hop에 전파.
+      schema: { type: string }
+    PageSize:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    PageCursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+
+  schemas:
+    CommandStatus:
+      type: string
+      description: |
+        ACCEPTED: 접수됨(업무 성공 아님). APPLIED: 정본 반영 완료. REJECTED: 명시적 거절.
+        UNKNOWN_RESULT: 하위 의존 응답 불명. 호출자는 원결과 조회로만 해소한다.
+      enum: [ACCEPTED, APPLIED, REJECTED, UNKNOWN_RESULT]
+    CommandResponse:
+      type: object
+      required: [status, requestId]
+      properties:
+        status: { $ref: '#/components/schemas/CommandStatus' }
+        requestId: { type: string }
+        resultId:
+          type: string
+          description: 소유 서비스가 발급한 결과 식별자 (commitId / reservationId / holdId 등)
+        appliedQty: { type: integer, description: 수량 명령일 때 실제 반영 수량 }
+        version: { type: integer, description: 대상 aggregate의 새 버전 }
+        retryable: { type: boolean }
+        nextAction:
+          type: string
+          description: 호출자가 다음에 할 일 (예 QUERY_RESULT, RE_QUOTE, WAIT_FENCE)
+        occurredAt: { type: string, format: date-time }
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_FAILED
+        - FORBIDDEN
+        - NOT_FOUND
+        - INVALID_STATE
+        - VERSION_CONFLICT
+        - IDEMPOTENCY_CONFLICT
+        - CONFIG_REQUIRED
+        - INSUFFICIENT_STOCK
+        - CAPACITY_EXCEEDED
+        - DEPENDENCY_UNAVAILABLE
+        - UNKNOWN_RESULT
+        - UNSUPPORTED_ACTION
+        - APPROVAL_REQUIRED
+        - EVIDENCE_REQUIRED
+        - STALE_VERSION
+        - DOMAIN_REJECTED
+        - PARTIAL_APPLIED
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:
+          type: string
+          description: 공통 코드(ErrorCode) 또는 서비스별 코드(예 ORDER_NOT_FOUND, SKU_NOT_SALEABLE).
+        message: { type: string }
+        traceId: { type: string }
+        requestId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              reason: { type: string }
+    Page:
+      type: object
+      properties:
+        nextCursor: { type: [string, 'null'] }
+        size: { type: integer }
+    Money:
+      type: integer
+      description: KRW 정수. 음수 금지.
+      minimum: 0
+    Quantity:
+      type: integer
+      description: 기준 판매 단위 수량. 양의 정수.
+      minimum: 1
+    Sku:
+      type: string
+      pattern: '^[EB]-[0-9]{8}$'
+      description: 전역 공통 SKU. E-=낱개, B-=밀봉 묶음.
+    CenterId:
+      type: string
+      description: 센터 코드 (CDC01, MFC-BSN-01 …). center-master-service 정본.
+    Version:
+      type: integer
+      minimum: 0
+    AsOf:
+      type: object
+      description: 조회 사본의 기준시각·신선도. 조회 결과로 성공을 확정하지 않는다.
+      properties:
+        asOf: { type: string, format: date-time }
+        sourceVersion: { type: integer }
+        freshness: { type: string, enum: [CURRENT, STALE, UNAVAILABLE] }
+    PolicyValue:
+      type: object
+      description: 정책값 3값 응답. NOT_SET은 0/무제한이 아니다.
+      required: [state]
+      properties:
+        state: { type: string, enum: [VALUE, NOT_SET, UNAVAILABLE] }
+        value: {}
+        policyVersion: { type: integer }
+        effectiveFrom: { type: string, format: date-time }
+
+  responses:
+    Accepted:
+      description: 명령 접수/반영 결과
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CommandResponse' }
+    BadRequest:
+      description: VALIDATION_FAILED
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: FORBIDDEN (행위 시점 권한 검증 실패)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: VERSION_CONFLICT / IDEMPOTENCY_CONFLICT / INVALID_STATE
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UnprocessableConfig:
+      description: CONFIG_REQUIRED (정책값 미설정 → 해당 신규 실행 보류)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    DependencyUnavailable:
+      description: DEPENDENCY_UNAVAILABLE / UNKNOWN_RESULT (원결과 조회로 해소)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 사용자 토큰(게이트웨이 검증) 또는 서비스 신원 토큰.

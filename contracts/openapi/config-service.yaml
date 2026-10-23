@@ -1,0 +1,65 @@
+openapi: 3.1.0
+info:
+  title: config-service
+  version: 0.1.0
+  description: |
+    환경 설정(기술 설정) 배포. 업무 정책값은 여기에 두지 않는다(각 소유 서비스 PolicyValue). 정본 아님. (docs/architecture/service-map.md §8)
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - { name: ops, description: 설정 서버 운영 정보 }
+
+paths:
+  /actuator/health:
+    get:
+      tags: [ops]
+      summary: 설정 서버 헬스 (인증 불필요)
+      operationId: getConfigHealth
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [UP, DOWN, OUT_OF_SERVICE] }
+
+  /{application}/{profile}:
+    get:
+      tags: [ops]
+      summary: 서비스·프로파일별 기술 설정 조회 (Spring Cloud Config 호환; 서비스 토큰)
+      operationId: getConfigProperties
+      parameters:
+        - { name: application, in: path, required: true, schema: { type: string } }
+        - { name: profile, in: path, required: true, schema: { type: string, example: local } }
+        - { name: label, in: query, schema: { type: string }, description: git 브랜치/태그 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  profiles: { type: array, items: { type: string } }
+                  label: { type: [string, 'null'] }
+                  version: { type: [string, 'null'] }
+                  propertySources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        source: { type: object, additionalProperties: true }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

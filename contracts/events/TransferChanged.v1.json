@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransferChanged.v1.json",
+  "title": "TransferChanged",
+  "description": "승인 후 TRF 변경이 확정된 사실(실출발 전만). 발행 replenishment. 구독 cdc-outbound, transport-planning, mfc-inbound. 토픽 scm.replenishment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransferChanged"
+        },
+        "aggregateType": {
+          "const": "Transfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "fromVersion",
+            "toVersion",
+            "scope",
+            "reason"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "toVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "scope": {
+              "type": "string",
+              "description": "변경 범위(수량/기한/우선순위 등)"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "approvedQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "requestedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "approvedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "unapprovedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "unapprovedReason": {
+                    "type": "string"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "E",
+                      "B"
+                    ],
+                    "description": "낱개(E) / 밀봉 묶음(B). 전환·합산하지 않음"
+                  }
+                }
+              },
+              "description": "변경 후 라인(해당 시)"
+            },
+            "deadlineMeaning": {
+              "type": "string",
+              "enum": [
+                "ARRIVAL",
+                "HANDOVER",
+                "READY"
+              ],
+              "description": "기한의 의미"
+            },
+            "dueAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "priority": {
+              "type": "string"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

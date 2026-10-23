@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/MfcStockAvailable.v1.json",
+  "title": "MfcStockAvailable",
+  "description": "정상 판정·판매 준비 후 A>0으로 전환된 사실(3단계). 발행 mfc-inventory. 구독 notification(재입고 알림). 토픽 mfc.inventory.v1 [단계 ③ — 1차 비활성]",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "MfcStockAvailable"
+        },
+        "aggregateType": {
+          "const": "StockPosition"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mfcId",
+            "sku",
+            "availableQty"
+          ],
+          "properties": {
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "availableQty": {
+              "$ref": "_defs.v1.json#/$defs/PositiveQty"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TripPhysicallyEnded.v1.json",
+  "title": "TripPhysicallyEnded",
+  "description": "마지막 정차 후 복귀로 승인 운행 구간이 물리적으로 종료된 사실(사건은 남을 수 있음). 발행 transport-execution. 구독 fleet, cold-chain, transport-planning. 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TripPhysicallyEnded"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "endedAt"
+          ],
+          "properties": {
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "driverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "endedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "endLocation": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "locationCode": {
+                  "type": "string"
+                },
+                "centerId": {
+                  "$ref": "_defs.v1.json#/$defs/CenterId"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            },
+            "openObligations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "obligationId",
+                  "type"
+                ],
+                "properties": {
+                  "obligationId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "refId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PackageHandedOver.v1.json",
+  "title": "PackageHandedOver",
+  "description": "QR 전수 스캔·fence 확인·inventory 커밋 후 포장을 라이더에게 실제 인계한 사실. 발행 mfc-fulfillment. 구독 order, delivery-execution, delivery-dispatch, claim, demand-planning, BI. 토픽 mfc.fulfillment.v1. 실물 사실: 역순 수신 시 폐기하지 않고 대사. 같은 handoverId는 1회 효과. 이 시점에 MFC 현물 차감",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PackageHandedOver"
+        },
+        "aggregateType": {
+          "const": "Package"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "shipmentId",
+            "deliveryId",
+            "packageId",
+            "riderId",
+            "handoverId",
+            "inventoryCommitId",
+            "lines",
+            "handedAt"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shipmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "packageId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "handoverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "인계 사실 ID(exact-once 키)"
+            },
+            "inventoryCommitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "PackageHandedOverPosted.commitId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "orderLineId",
+                  "sku",
+                  "qty"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "evidenceRef": {
+              "$ref": "_defs.v1.json#/$defs/EvidenceRef"
+            },
+            "handedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

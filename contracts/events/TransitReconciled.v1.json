@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransitReconciled.v1.json",
+  "title": "TransitReconciled",
+  "description": "Transit 대사 \"q = r + l + t\" 결과(RECONCILED/PENDING/CONFLICT). 발행 cdc-inventory. 구독 mfc-inbound, replenishment, backoffice-bff. 토픽 cdc.inventory.v1. 자동 손실 전기 금지. l은 본사 손실 승인 후에만 반영",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransitReconciled"
+        },
+        "aggregateType": {
+          "const": "Transit"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "departureId",
+            "departedQty",
+            "receivedQty",
+            "approvedLossQty",
+            "unreconciledQty",
+            "state"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "receiptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "Transit −r 전기 커밋 ID"
+            },
+            "departedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "q"
+            },
+            "receivedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "r = 정상 n + 격리 h"
+            },
+            "approvedLossQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "l(승인 운송손실)"
+            },
+            "unreconciledQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "t(미정산)"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "RECONCILED",
+                "PENDING",
+                "CONFLICT"
+              ]
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "departedQty",
+                  "receivedQty",
+                  "approvedLossQty",
+                  "unreconciledQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "departedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "receivedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "approvedLossQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "unreconciledQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  }
+                }
+              }
+            },
+            "conflictReason": {
+              "type": "string"
+            },
+            "reconciledAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

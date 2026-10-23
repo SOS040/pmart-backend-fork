@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TemperatureExcursion.v1.json",
+  "title": "TemperatureExcursion",
+  "description": "온도가 허용 범위를 이탈한 사실. 발행 cold-chain. 구독 cdc-quality, mfc-quality, transport-execution. 토픽 tms.cold-chain.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TemperatureExcursion"
+        },
+        "aggregateType": {
+          "const": "ColdChainMonitor"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "excursionId",
+            "sensorScope",
+            "from",
+            "allowedRange",
+            "affectedLpns"
+          ],
+          "properties": {
+            "excursionId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sensorScope": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "VEHICLE",
+                    "COMPARTMENT",
+                    "ZONE"
+                  ]
+                },
+                "vehicleId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                },
+                "compartmentId": {
+                  "type": "string"
+                },
+                "zoneId": {
+                  "type": "string"
+                },
+                "sensorId": {
+                  "type": "string"
+                }
+              }
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "from": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "이탈 시작"
+            },
+            "to": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "이탈 종료(진행 중이면 없음)"
+            },
+            "allowedRange": {
+              "type": "object",
+              "required": [
+                "minC",
+                "maxC"
+              ],
+              "properties": {
+                "minC": {
+                  "type": "number"
+                },
+                "maxC": {
+                  "type": "number"
+                }
+              },
+              "description": "허용 범위(℃)"
+            },
+            "observedRange": {
+              "type": "object",
+              "required": [
+                "minC",
+                "maxC"
+              ],
+              "properties": {
+                "minC": {
+                  "type": "number"
+                },
+                "maxC": {
+                  "type": "number"
+                }
+              },
+              "description": "관측 범위(℃)"
+            },
+            "affectedLpns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "affectedTrfs": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

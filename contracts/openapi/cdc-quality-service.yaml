@@ -1,0 +1,570 @@
+openapi: 3.1.0
+info:
+  title: cdc-quality-service
+  version: 0.1.0
+  description: |
+    CDC 품질 보류·격리·해제·리콜 판단과 승인 기록(본사 품질 책임자)·폐기 승인·FEFO 예외 이중 승인·온도 이탈 판정·LOT 계보·
+    CDC 운영 제한(CDC-F-031)의 정본. (docs/architecture/service-map.md §4)
+    수량 변경은 cdc-inventory(품질 전기·폐기 차감), 상품 마스터는 product-service가 정본. 판단은 여기서, 수량은 inventory에서.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: holds, description: 품질 보류·격리·해제 }
+  - { name: recalls, description: 리콜 }
+  - { name: disposals, description: 폐기 승인 (실행은 cdc-inventory) }
+  - { name: fefo-exceptions, description: FEFO 예외 이중 승인 }
+  - { name: operation-restrictions, description: CDC 운영 제한·재개 }
+  - { name: lot-traces, description: LOT 계보 추적 }
+
+paths:
+  /holds:
+    post:
+      tags: [holds]
+      summary: 품질 보류 요청 (LOT·위치 범위) → HoldRequested → cdc-inventory HOLD 전기
+      description: |
+        온도 이탈(TemperatureExcursion)·운송 사건·검품 불합격·수동 판단으로 생성. 유효 예약에 걸린 수량은 inventory가 QUALITY_BLOCKED로 outbound에 통지한다.
+        보류는 수량 변경이 아니며 inventory commitId로 반영이 확정된다.
+      operationId: createHold
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HoldInput' }
+      responses:
+        '201':
+          description: 보류 생성 또는 기존 반환(같은 키·같은 본문). inventory 반영 상태는 GET /holds/{holdId}
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Hold' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: EVIDENCE_REQUIRED (온도 이탈·사건 근거 없음) / LOT_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /holds/{holdId}:
+    get:
+      tags: [holds]
+      summary: 보류 조회 (범위·사유·inventory 반영 commitId·해제 이력)
+      operationId: getHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Hold' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /holds/{holdId}/releases:
+    post:
+      tags: [holds]
+      summary: 보류 해제 (본사 품질 책임자 승인) → HoldReleased → cdc-inventory RELEASE 전기
+      description: 요청자와 승인자 분리. 부분 해제 허용. 해제되지 않은 잔량은 폐기 승인 또는 리콜 대상.
+      operationId: releaseHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approverId, approvalRef, decision]
+              properties:
+                approverId: { type: string }
+                approvalRef: { type: string, description: approval-service approvalId (BO-15) }
+                decision: { type: string, enum: [RELEASE_ALL, RELEASE_PARTIAL, KEEP_HELD] }
+                note: { type: string, maxLength: 500 }
+                lines:
+                  type: array
+                  description: RELEASE_PARTIAL일 때
+                  items:
+                    type: object
+                    required: [sku, lot, qty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      locationCode: { type: string }
+                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403':
+          description: FORBIDDEN (승인 권한 없음 / 자기승인)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: INVALID_STATE (이미 해제·폐기) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /recalls:
+    post:
+      tags: [recalls]
+      summary: 리콜 발령 (SKU·LOT 범위, 전 센터) → RecallIssued → 해당 LOT 보류 생성
+      description: 리콜은 CDC 보류와 함께 MFC(mfc-inventory)·운송 중 Transit에도 통지 대상이 된다. 수량 회수는 각 정본이 처리한다.
+      operationId: issueRecall
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, lots, reason, issuerId, approvalRef]
+              properties:
+                sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                lots: { type: array, minItems: 1, items: { type: string } }
+                reason: { type: string, enum: [SAFETY, LABELING, CONTAMINATION, SUPPLIER_NOTICE, OTHER] }
+                severity: { type: string, enum: [CLASS_1, CLASS_2, CLASS_3] }
+                issuerId: { type: string }
+                approvalRef: { type: string }
+                externalRef: { type: string, description: 공급사·기관 리콜 번호 }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        '201':
+          description: 리콜 생성 또는 기존 반환(같은 키·같은 본문)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recall' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /recalls/{recallId}:
+    get:
+      tags: [recalls]
+      summary: 리콜 조회 (연결 보류·센터별 처리 상태)
+      operationId: getRecall
+      parameters:
+        - { name: recallId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Recall' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /disposal-approvals:
+    post:
+      tags: [disposals]
+      summary: 폐기 승인 기록 (보류 잔량·소비기한 경과) → DisposalApproved → cdc-inventory DISPOSE 전기
+      description: 승인은 여기서 기록하고 장부 차감은 inventory가 approvalRef를 참조해 집행한다. 승인 없이 폐기 전기는 불가.
+      operationId: approveDisposal
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, approverId, approvalRef, reason, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                holdId: { type: string }
+                recallId: { type: string }
+                approverId: { type: string }
+                approvalRef: { type: string }
+                reason: { type: string, enum: [EXPIRED, DAMAGED, RECALL, TEMPERATURE, CONTAMINATION, OTHER] }
+                evidenceRef: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot, qty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      locationCode: { type: string }
+                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+      responses:
+        '201':
+          description: 폐기 승인 기록. inventory 집행 상태는 GET /disposal-approvals/{disposalApprovalId}
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisposalApproval' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED / EVIDENCE_REQUIRED / QTY_NOT_HELD (보류되지 않은 수량 폐기 불가)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /disposal-approvals/{disposalApprovalId}:
+    get:
+      tags: [disposals]
+      summary: 폐기 승인 조회 (inventory 집행 commitId)
+      operationId: getDisposalApproval
+      parameters:
+        - { name: disposalApprovalId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisposalApproval' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /fefo-exceptions:
+    post:
+      tags: [fefo-exceptions]
+      summary: FEFO 예외 요청 (최소 잔여일수 미달 LOT 출고 허용, 이중 승인)
+      description: |
+        1차 승인(센터 품질 담당) + 2차 승인(본사 품질 책임자) 모두 기록돼야 APPROVED. 같은 사람이 둘 다 할 수 없다.
+        승인된 예외는 TRF·LOT·수량·유효기간으로 한정되며 cdc-inventory 할당 시 참조된다.
+      operationId: createFefoException
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, sku, lot, qty, trfId, reason, requesterId]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                lot: { type: string }
+                qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                trfId: { type: string }
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                reason: { type: string, maxLength: 500 }
+                requesterId: { type: string }
+                validUntil: { type: string, format: date-time }
+                firstApproval: { $ref: '#/components/schemas/ApprovalRecord' }
+                secondApproval: { $ref: '#/components/schemas/ApprovalRecord' }
+      responses:
+        '201':
+          description: 예외 요청 생성 또는 기존 반환(같은 키·같은 본문)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FefoException' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED / SAME_APPROVER (1차·2차 동일인) / LOT_NOT_SHORT_DATED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /fefo-exceptions/{fefoExceptionId}:
+    get:
+      tags: [fefo-exceptions]
+      summary: FEFO 예외 조회 (승인 단계·사용 수량)
+      operationId: getFefoException
+      parameters:
+        - { name: fefoExceptionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FefoException' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /operation-restrictions:
+    post:
+      tags: [operation-restrictions]
+      summary: CDC 운영 제한 설정 (CDC-F-031, approvalRef) → OperationRestrictionApplied
+      description: |
+        범위(센터 전체·온도대·구역·SKU)와 제한 동작(출고 중지·입고 중지·전체 중지)을 기록한다.
+        cdc-outbound Wave 릴리스·cdc-inbound 적치 생성은 활성 제한을 조회해 OPERATION_RESTRICTED로 거절한다. 운영 제한은 수량 변경이 아니다.
+      operationId: applyOperationRestriction
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OperationRestrictionInput' }
+      responses:
+        '201':
+          description: 제한 생성 또는 기존 반환(같은 키·같은 본문)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationRestriction' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /operation-restrictions/{restrictionId}:
+    get:
+      tags: [operation-restrictions]
+      summary: 운영 제한 조회 (범위·동작·활성 여부·재개 이력)
+      operationId: getOperationRestriction
+      parameters:
+        - { name: restrictionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationRestriction' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /operation-restrictions/{restrictionId}/resumes:
+    post:
+      tags: [operation-restrictions]
+      summary: 운영 제한 재개 (approval 승인 결과 참조) → OperationRestrictionLifted
+      operationId: resumeOperation
+      parameters:
+        - { name: restrictionId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approverId, approvalRef]
+              properties:
+                approverId: { type: string }
+                approvalRef: { type: string }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: INVALID_STATE (이미 재개) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /lot-traces:
+    get:
+      tags: [lot-traces]
+      summary: LOT 계보 추적 (입고·적치·할당·출발·수령·보류·폐기 이력, 센터·TRF·LPN 연결)
+      description: 각 정본의 사건 사본을 시간순으로 조합한 읽기 전용 보고서. 원천별 asOf를 포함한다.
+      operationId: getLotTrace
+      parameters:
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: lot, in: query, required: true, schema: { type: string } }
+        - { name: centerId, in: query, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LotTrace' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    QuantityScope:
+      type: object
+      required: [sku, lot]
+      properties:
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        lot: { type: string }
+        locationCode: { type: string, description: 비우면 LOT 전체 }
+        qty: { type: integer, minimum: 1, description: 비우면 범위 전량 }
+    ApprovalRecord:
+      type: object
+      required: [approverId, approvalRef, decidedAt]
+      properties:
+        approverId: { type: string }
+        approverRole: { type: string, enum: [CENTER_QUALITY, HQ_QUALITY_OFFICER] }
+        approvalRef: { type: string }
+        decision: { type: string, enum: [APPROVED, REJECTED] }
+        decidedAt: { type: string, format: date-time }
+    HoldInput:
+      type: object
+      required: [cdcId, reason, requesterId, lines]
+      properties:
+        cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        reason: { type: string, enum: [TEMPERATURE_EXCURSION, TRANSPORT_INCIDENT, INSPECTION_FAILED, RECALL, SUSPECTED_CONTAMINATION, MANUAL] }
+        sourceRef: { type: string, description: excursionId / incidentId / workResultId / recallId }
+        evidenceRef: { type: string }
+        requesterId: { type: string }
+        note: { type: string, maxLength: 1000 }
+        lines: { type: array, minItems: 1, items: { $ref: '#/components/schemas/QuantityScope' } }
+    Hold:
+      allOf:
+        - { $ref: '#/components/schemas/HoldInput' }
+        - type: object
+          properties:
+            holdId: { type: string }
+            state: { type: string, enum: [REQUESTED, APPLIED, PARTIALLY_RELEASED, RELEASED, DISPOSED, FAILED] }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            inventoryPosting:
+              type: object
+              properties:
+                status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+                commitId: { type: string }
+                heldQty: { type: integer }
+                blockedReservedQty: { type: integer, description: 유효 예약에 걸려 outbound에 통지된 수량 }
+            releases:
+              type: array
+              items:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  approval: { $ref: '#/components/schemas/ApprovalRecord' }
+                  releasedQty: { type: integer }
+                  commitId: { type: string }
+            createdAt: { type: string, format: date-time }
+    Recall:
+      type: object
+      properties:
+        recallId: { type: string }
+        sku: { type: string }
+        lots: { type: array, items: { type: string } }
+        reason: { type: string }
+        severity: { type: string }
+        state: { type: string, enum: [ISSUED, IN_PROGRESS, CLOSED] }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        approvalRef: { type: string }
+        holdIds: { type: array, items: { type: string } }
+        centerStatus:
+          type: array
+          items:
+            type: object
+            properties:
+              centerId: { type: string }
+              centerType: { type: string, enum: [CDC, MFC, TRANSIT] }
+              affectedQty: { type: integer }
+              state: { type: string, enum: [NOTIFIED, HELD, DISPOSED, UNKNOWN] }
+              asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        issuedAt: { type: string, format: date-time }
+    DisposalApproval:
+      type: object
+      properties:
+        disposalApprovalId: { type: string }
+        cdcId: { type: string }
+        holdId: { type: string }
+        recallId: { type: string }
+        reason: { type: string }
+        approval: { $ref: '#/components/schemas/ApprovalRecord' }
+        lines: { type: array, items: { $ref: '#/components/schemas/QuantityScope' } }
+        state: { type: string, enum: [APPROVED, EXECUTING, EXECUTED, FAILED] }
+        inventoryPosting:
+          type: object
+          properties:
+            status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+            commitId: { type: string }
+            disposedQty: { type: integer }
+        createdAt: { type: string, format: date-time }
+    FefoException:
+      type: object
+      properties:
+        fefoExceptionId: { type: string }
+        cdcId: { type: string }
+        sku: { type: string }
+        lot: { type: string }
+        qty: { type: integer }
+        trfId: { type: string }
+        mfcId: { type: string }
+        remainingDays: { type: integer }
+        minRemainingDaysPolicy: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+        state: { type: string, enum: [REQUESTED, FIRST_APPROVED, APPROVED, REJECTED, EXPIRED, CONSUMED] }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        firstApproval: { $ref: '#/components/schemas/ApprovalRecord' }
+        secondApproval: { $ref: '#/components/schemas/ApprovalRecord' }
+        validUntil: { type: string, format: date-time }
+        consumedQty: { type: integer, description: cdc-inventory 할당에 사용된 수량 }
+        createdAt: { type: string, format: date-time }
+    OperationRestrictionInput:
+      type: object
+      required: [cdcId, scope, action, reason, approvalRef, requesterId]
+      properties:
+        cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        scope:
+          type: object
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [CENTER, TEMPERATURE_ZONE, AREA, SKU] }
+            temperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+            area: { type: string }
+            skus: { type: array, items: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        action: { type: string, enum: [STOP_OUTBOUND, STOP_INBOUND, STOP_ALL] }
+        reason: { type: string, enum: [TEMPERATURE_FAILURE, CONTAMINATION, FACILITY_INCIDENT, AUDIT, OTHER] }
+        approvalRef: { type: string }
+        requesterId: { type: string }
+        plannedUntil: { type: string, format: date-time }
+        note: { type: string, maxLength: 1000 }
+    OperationRestriction:
+      allOf:
+        - { $ref: '#/components/schemas/OperationRestrictionInput' }
+        - type: object
+          properties:
+            restrictionId: { type: string }
+            state: { type: string, enum: [ACTIVE, LIFTED] }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            appliedAt: { type: string, format: date-time }
+            liftedAt: { type: [string, 'null'], format: date-time }
+            liftApproval: { $ref: '#/components/schemas/ApprovalRecord' }
+    LotTrace:
+      type: object
+      properties:
+        sku: { type: string }
+        lot: { type: string }
+        expiresAt: { type: string, format: date }
+        lotIdentification: { type: string, enum: [UNVERIFIED, VERIFIED, INVALID] }
+        activeHolds: { type: array, items: { type: string } }
+        recallIds: { type: array, items: { type: string } }
+        sources: { type: array, items: { type: object, properties: { system: { type: string }, asOf: { $ref: '_common.yaml#/components/schemas/AsOf' } } } }
+        events:
+          type: array
+          description: 시간순
+          items:
+            type: object
+            properties:
+              occurredAt: { type: string, format: date-time }
+              kind: { type: string, enum: [INITIAL_BALANCE, RECEIVED, PUTAWAY, MOVE, ALLOCATED, RELEASED, DEPARTED, MFC_RECEIVED, HELD, HOLD_RELEASED, DISPOSED, ADJUSTED, RECALLED] }
+              centerId: { type: string }
+              locationCode: { type: string }
+              qty: { type: integer }
+              trfId: { type: string }
+              lpn: { type: string }
+              sourceSystem: { type: string }
+              sourceRef: { type: string, description: commitId / holdId / departureId 등 }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

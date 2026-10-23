@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CompensationCancelResult.v1.json",
+  "title": "CompensationCancelResult",
+  "description": "승인 후 확정 실패 보상 취소 결과. 발행 payment-service. 구독 order-orchestration. 토픽 order.payment.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CompensationCancelResult"
+        },
+        "aggregateType": {
+          "const": "PaymentAttempt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "paymentAttemptId",
+            "result"
+          ],
+          "properties": {
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sagaId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "pgTransactionId": {
+              "type": "string"
+            },
+            "amount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "failureCode": {
+              "type": "string"
+            },
+            "resultAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OrderLineQuantityChanged.v1.json",
+  "title": "OrderLineQuantityChanged",
+  "description": "부분 취소·결품 반영. 불변식 originalQty = unfulfilledQty + handedOverQty + cancelledBeforeShipQty. 발행 order-service. 구독 claim, demand-planning, replenishment, commerce. 토픽 order.order.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OrderLineQuantityChanged"
+        },
+        "aggregateType": {
+          "const": "Order"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "orderLineId",
+            "originalQty",
+            "unfulfilledQty",
+            "handedOverQty",
+            "cancelledBeforeShipQty",
+            "reason",
+            "version"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderLineId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "originalQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "unfulfilledQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "handedOverQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "cancelledBeforeShipQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "reason": {
+              "type": "string",
+              "description": "변경 사유 코드 (부분 취소, 결품 등)"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "FULL",
+                "PARTIAL"
+              ]
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

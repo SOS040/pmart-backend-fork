@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CancellationRequested.v1.json",
+  "title": "CancellationRequested",
+  "description": "고객/CS 취소 접수(S3 시작). 발행 claim-service. 구독 order-orchestration. 토픽 order.claim.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CancellationRequested"
+        },
+        "aggregateType": {
+          "const": "Claim"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "claimId",
+            "orderId",
+            "lines",
+            "reason"
+          ],
+          "properties": {
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "stopRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "orderLineId",
+                  "qty"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "취소 사유 코드"
+            },
+            "requestedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

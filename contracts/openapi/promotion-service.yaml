@@ -1,0 +1,128 @@
+openapi: 3.1.0
+info:
+  title: promotion-service
+  version: 0.1.0
+  x-stage: 3
+  description: |
+    [3단계 — 1차 비활성] 할인 규칙·오퍼·기간 프로모션·쿠폰 발급/점유/사용 확정/복원, 행사 한도(승인 총한도 − 사용 확정 − 유효 점유)의 정본(목표). (docs/architecture/service-map.md §1)
+    1차에서는 서비스 경계·이벤트 이름만 예약한다. 아래 경로는 자리표시자이며 구현·호출 대상이 아니다.
+    첫 구매 무료배달 자격 점유는 1차 order-service가 담당 [결정 필요]. 견적 적용 순서(오퍼→프로모션→상품쿠폰→장바구니쿠폰)는 pricing-service 계약 참조.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: coupons, description: '[3단계] 쿠폰 발급·보유 조회' }
+  - { name: internal, description: '[3단계] 사가 S1-e 쿠폰 점유·확정·복원(서비스 토큰)' }
+
+paths:
+  /me/coupons:
+    get:
+      x-stage: 3
+      tags: [coupons]
+      summary: '[3단계·1차 비활성] 본인 보유 쿠폰 조회'
+      description: 1차 비활성. 호출 시 UNSUPPORTED_ACTION.
+      operationId: listMyCoupons
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CouponPlaceholder' } }
+        '501': { $ref: '#/components/responses/NotActive' }
+
+  /internal/coupon-holds:
+    post:
+      x-stage: 3
+      tags: [internal]
+      summary: '[3단계·1차 비활성] 쿠폰·행사 한도 점유 (S1-e. 실패 시 b~d 보상)'
+      description: 1차 비활성. 호출 시 UNSUPPORTED_ACTION. 점유 TTL·한도 계산식은 3단계 설계에서 확정.
+      operationId: holdCoupon
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                orderId: { type: string }
+                couponIds: { type: array, items: { type: string } }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '501': { $ref: '#/components/responses/NotActive' }
+
+  /internal/coupon-holds/{holdId}:
+    get:
+      x-stage: 3
+      tags: [internal]
+      summary: '[3단계·1차 비활성] 쿠폰 점유 상태 조회 (HELD/CONFIRMED/RELEASED/UNKNOWN)'
+      description: 1차 비활성.
+      operationId: getCouponHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  holdId: { type: string }
+                  state: { type: string, enum: [HELD, CONFIRMED, RELEASED, UNKNOWN] }
+        '501': { $ref: '#/components/responses/NotActive' }
+
+  /internal/coupon-holds/{holdId}/confirmations:
+    post:
+      x-stage: 3
+      tags: [internal]
+      summary: '[3단계·1차 비활성] 쿠폰 사용 확정 (주문 확정 후 S1-i)'
+      description: 1차 비활성.
+      operationId: confirmCouponHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '501': { $ref: '#/components/responses/NotActive' }
+
+  /internal/coupon-holds/{holdId}/releases:
+    post:
+      x-stage: 3
+      tags: [internal]
+      summary: '[3단계·1차 비활성] 쿠폰 점유 복원 (보상. 이번 시도 신규 점유만)'
+      description: 1차 비활성.
+      operationId: releaseCouponHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '501': { $ref: '#/components/responses/NotActive' }
+
+components:
+  responses:
+    NotActive:
+      description: UNSUPPORTED_ACTION (1차 비활성 서비스)
+      content:
+        application/json:
+          schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+  schemas:
+    CouponPlaceholder:
+      type: object
+      description: 3단계 설계에서 확정. 필드는 자리표시자.
+      properties:
+        couponId: { type: string }
+        kind: { type: string, enum: [PRODUCT, CART, FREE_DELIVERY] }
+        state: { type: string, enum: [ISSUED, HELD, USED, EXPIRED, RESTORED] }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -1,0 +1,241 @@
+openapi: 3.1.0
+info:
+  title: mfc-location-service
+  version: 0.1.0
+  description: |
+    MFC 센터 내부 Area/Location 마스터·온도구역·격리/출하대기 구역·위치 상태의 정본. (docs/architecture/service-map.md §5)
+    비정본: 수량·공간 예약 잔여량 V(mfc-inventory), 센터 마스터(center-master).
+    로케이션 코드 문법 `[Q-03 결정 필요]` — 현재는 자유 문자열(maxLength 32)로 두고 문법 확정 시 pattern 추가(하위 호환).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: locations, description: 위치 마스터 CRUD·상태 }
+
+paths:
+  /locations:
+    get:
+      tags: [locations]
+      summary: 위치 목록 (센터·구역·온도대·상태)
+      operationId: listLocations
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: zone, in: query, schema: { $ref: '#/components/schemas/ZoneKind' } }
+        - { name: temperatureZone, in: query, schema: { $ref: '#/components/schemas/TemperatureZone' } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/LocationState' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Location' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+    post:
+      tags: [locations]
+      summary: 위치 등록
+      operationId: createLocation
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationBody' }
+      responses:
+        '201':
+          description: 생성
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / LOCATION_CODE_DUPLICATE
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /locations/{locationId}:
+    get:
+      tags: [locations]
+      summary: 위치 조회
+      operationId: getLocation
+      parameters:
+        - { name: locationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [locations]
+      summary: 위치 속성 변경 (치수·슬롯 수·온도대·구역; 코드 변경 불가)
+      operationId: updateLocation
+      parameters:
+        - { name: locationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationBody' }
+      responses:
+        '200':
+          description: 변경됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+    delete:
+      tags: [locations]
+      summary: 위치 폐지 (재고 잔량 0·예약 없음일 때만, 논리 삭제 RETIRED)
+      operationId: retireLocation
+      parameters:
+        - { name: locationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (잔량·공간 예약 존재 — mfc-inventory 확인 결과)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /locations/{locationId}/state-changes:
+    post:
+      tags: [locations]
+      summary: 위치 상태 변경 (ACTIVE/CLOSED/COUNT_LOCKED, MfcLocationStateChanged)
+      description: COUNT_LOCKED 는 실사 잠금 협업용. CLOSED 위치에는 mfc-inventory 가 PUTAWAY/MOVE 를 거절한다(LOCATION_CLOSED).
+      operationId: changeLocationState
+      parameters:
+        - { name: locationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetState, reason]
+              properties:
+                targetState: { $ref: '#/components/schemas/LocationState' }
+                reason: { type: string, maxLength: 200 }
+                countSessionId: { type: string, description: COUNT_LOCKED 시 실사 세션 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /locations/{locationId}/state-changes/{requestId}:
+    get:
+      tags: [locations]
+      summary: 상태 변경 요청 결과 조회
+      operationId: getLocationStateChange
+      parameters:
+        - { name: locationId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+                  fromState: { $ref: '#/components/schemas/LocationState' }
+                  toState: { $ref: '#/components/schemas/LocationState' }
+                  newVersion: { type: integer }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /putaway-candidates:
+    get:
+      tags: [locations]
+      summary: 적치 후보 위치 (온도대·구역 적합, 공간 잔여 V는 mfc-inventory 사본)
+      operationId: listPutawayCandidates
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: temperatureZone, in: query, schema: { $ref: '#/components/schemas/TemperatureZone' } }
+        - { name: qty, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        locationId: { type: string }
+                        locationCode: { type: string }
+                        zone: { $ref: '#/components/schemas/ZoneKind' }
+                        remainingSpace: { type: [integer, 'null'], description: V 사본. null은 불명 }
+                        rank: { type: integer }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+components:
+  schemas:
+    ZoneKind:
+      type: string
+      enum: [RECEIVING, STORAGE, PICKING, PACKING, QUARANTINE, DISPATCH_STAGING, RETURN, DISPOSAL]
+    TemperatureZone:
+      type: string
+      enum: [AMBIENT, CHILLED, FROZEN]
+    LocationState:
+      type: string
+      enum: [ACTIVE, CLOSED, COUNT_LOCKED, RETIRED]
+    LocationBody:
+      type: object
+      required: [mfcId, locationCode, zone, temperatureZone]
+      properties:
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        locationCode: { type: string, maxLength: 32, description: 문법 Q-03 미결 }
+        areaCode: { type: string }
+        zone: { $ref: '#/components/schemas/ZoneKind' }
+        temperatureZone: { $ref: '#/components/schemas/TemperatureZone' }
+        dimensions:
+          type: object
+          description: 공간 잔여 계산 입력
+          properties:
+            widthMm: { type: integer, minimum: 0 }
+            depthMm: { type: integer, minimum: 0 }
+            heightMm: { type: integer, minimum: 0 }
+            slotCount: { type: integer, minimum: 0 }
+            maxWeightG: { type: integer, minimum: 0 }
+        pickSequence: { type: integer, description: 피킹 동선 순서 }
+    Location:
+      allOf:
+        - $ref: '#/components/schemas/LocationBody'
+        - type: object
+          properties:
+            locationId: { type: string }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            state: { $ref: '#/components/schemas/LocationState' }
+            stateReason: { type: [string, 'null'] }
+            updatedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

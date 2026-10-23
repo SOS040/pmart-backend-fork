@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CheckoutSagaStateChanged.v1.json",
+  "title": "CheckoutSagaStateChanged",
+  "description": "사가 단계 전이. 발행 order-orchestration. 구독 backoffice-bff, BI. 토픽 order.saga.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CheckoutSagaStateChanged"
+        },
+        "aggregateType": {
+          "const": "CheckoutSaga"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sagaId",
+            "orderId",
+            "step",
+            "state"
+          ],
+          "properties": {
+            "sagaId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "step": {
+              "type": "string",
+              "description": "사가 단계 코드 (S1 a~j 등)"
+            },
+            "state": {
+              "type": "string",
+              "description": "단계 상태"
+            },
+            "lastError": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            },
+            "transitionedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

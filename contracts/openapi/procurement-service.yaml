@@ -1,0 +1,103 @@
+openapi: 3.1.0
+info:
+  title: procurement-service
+  version: 0.1.0
+  description: |
+    발주(PO)·ASN 수신·공급사 납품 추적의 정본(예정). (docs/architecture/service-map.md §3)
+    3단계 — 1차 제외 (SCM 문서 0.1). 경계·계약명만 예약: PurchaseOrderIssued, AsnReceived.
+    CDC 실입고 확정은 SCM이 하지 않는다(cdc-inbound 3단계). 아래 경로는 자리표시자이며 구현 대상이 아니다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: purchase-orders, description: 발주 (3단계 자리표시자) }
+  - { name: internal, description: 서비스 간 호출 (3단계 자리표시자) }
+
+paths:
+  /purchase-orders:
+    post:
+      tags: [purchase-orders]
+      summary: 발주 생성 → PurchaseOrderIssued
+      description: 1차 제외 (SCM 문서 0.1)
+      operationId: createPurchaseOrder
+      x-stage: 3
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+
+  /purchase-orders/{purchaseOrderId}:
+    get:
+      tags: [purchase-orders]
+      summary: 발주 상세 조회
+      description: 1차 제외 (SCM 문서 0.1)
+      operationId: getPurchaseOrder
+      x-stage: 3
+      parameters:
+        - { name: purchaseOrderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK (3단계 정의 예정)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Placeholder' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /purchase-orders/{purchaseOrderId}/cancellations:
+    post:
+      tags: [purchase-orders]
+      summary: 발주 취소 요청
+      description: 1차 제외 (SCM 문서 0.1)
+      operationId: cancelPurchaseOrder
+      x-stage: 3
+      parameters:
+        - { name: purchaseOrderId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+
+  /internal/asn-receipts:
+    post:
+      tags: [internal]
+      summary: '[supplier EDI→procurement] ASN 수신 → AsnReceived (cdc-inbound 3단계로 전달)'
+      description: 1차 제외 (SCM 문서 0.1)
+      operationId: receiveAsn
+      x-stage: 3
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+
+  /internal/asn-receipts/{asnId}:
+    get:
+      tags: [internal]
+      summary: ASN 수신 결과 조회
+      description: 1차 제외 (SCM 문서 0.1)
+      operationId: getAsnReceipt
+      x-stage: 3
+      parameters:
+        - { name: asnId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK (3단계 정의 예정)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Placeholder' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    Placeholder:
+      type: object
+      description: 3단계에서 정의. 1차 제외 (SCM 문서 0.1)
+      properties:
+        id: { type: string }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

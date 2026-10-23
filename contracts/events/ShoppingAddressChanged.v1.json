@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ShoppingAddressChanged.v1.json",
+  "title": "ShoppingAddressChanged",
+  "description": "현재 쇼핑 주소 변경(늦은 응답 폐기 기준). 주소 원문 없음, 참조 ID만. 발행 customer-service. 구독 cart. 토픽 commerce.customer.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ShoppingAddressChanged"
+        },
+        "aggregateType": {
+          "const": "Customer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "accountId",
+            "shoppingAddressId",
+            "shoppingContextVersion"
+          ],
+          "properties": {
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shoppingAddressId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shoppingContextVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "zoneId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "serviceable": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

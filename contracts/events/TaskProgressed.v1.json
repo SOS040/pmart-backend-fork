@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TaskProgressed.v1.json",
+  "title": "TaskProgressed",
+  "description": "MFC 작업 상태가 전이된 사실. 발행 mfc-fulfillment / mfc-inbound. 구독 mfc-capacity, backoffice-bff. 토픽 mfc.fulfillment.v1(mfc-fulfillment) / mfc.inbound.v1(mfc-inbound)",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TaskProgressed"
+        },
+        "aggregateType": {
+          "const": "Task"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "taskId",
+            "type",
+            "state"
+          ],
+          "properties": {
+            "taskId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "type": {
+              "type": "string",
+              "description": "작업 종류(PICK/PACK/RECEIVE/PUTAWAY 등)"
+            },
+            "state": {
+              "type": "string"
+            },
+            "previousState": {
+              "type": "string"
+            },
+            "qty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "workerId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "assignmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "assignmentVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "progressedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

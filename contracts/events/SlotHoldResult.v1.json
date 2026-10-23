@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SlotHoldResult.v1.json",
+  "title": "SlotHoldResult",
+  "description": "HoldSlot 결과. 발행 delivery-capacity. 구독 order-orchestration. 토픽 delivery.slot.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SlotHoldResult"
+        },
+        "aggregateType": {
+          "const": "SlotHold"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "slotHoldId",
+            "orderId",
+            "window",
+            "result"
+          ],
+          "properties": {
+            "slotHoldId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "window": {
+              "$ref": "_defs.v1.json#/$defs/TimeWindow"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "expiresAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "failureReason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

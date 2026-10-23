@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DispatchOfferSent.v1.json",
+  "title": "DispatchOfferSent",
+  "description": "제안 전송(1분 만료). 발행 delivery-dispatch. 구독 notification(라이더 알림). 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DispatchOfferSent"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "offerId",
+            "attemptId",
+            "deliveryId",
+            "riderId",
+            "expiresAt",
+            "fee"
+          ],
+          "properties": {
+            "offerId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "attemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "expiresAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "fee": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "sentAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

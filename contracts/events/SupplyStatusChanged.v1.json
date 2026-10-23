@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SupplyStatusChanged.v1.json",
+  "title": "SupplyStatusChanged",
+  "description": "공급이 지연·축소된 사실. 발행 replenishment. 구독 order(영향 주문 조사). 토픽 scm.replenishment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SupplyStatusChanged"
+        },
+        "aggregateType": {
+          "const": "Transfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mfcId",
+            "sku",
+            "expectedQty",
+            "state"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "expectedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "expectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "previousExpectedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "previousExpectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "DELAYED",
+                "REDUCED"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

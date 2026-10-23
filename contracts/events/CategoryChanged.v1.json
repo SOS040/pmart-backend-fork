@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CategoryChanged.v1.json",
+  "title": "CategoryChanged",
+  "description": "분류 승인 발효. 발행 product-service. 구독 search, storefront, product-content. 토픽 commerce.product.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CategoryChanged"
+        },
+        "aggregateType": {
+          "const": "Category"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "categoryId",
+            "state",
+            "version"
+          ],
+          "properties": {
+            "categoryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "parentCategoryId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "상위 분류. 최상위면 null"
+            },
+            "state": {
+              "type": "string",
+              "description": "분류 상태"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

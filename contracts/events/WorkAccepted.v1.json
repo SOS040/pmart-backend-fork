@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/WorkAccepted.v1.json",
+  "title": "WorkAccepted",
+  "description": "ConfirmOrder 작업을 수락한 사실(수락≠완료). 발행 mfc-fulfillment. 구독 order-orchestration. 토픽 mfc.fulfillment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "WorkAccepted"
+        },
+        "aggregateType": {
+          "const": "Fulfillment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "fulfillmentId",
+            "taskIds"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fulfillmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "shipmentIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "taskIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "acceptedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

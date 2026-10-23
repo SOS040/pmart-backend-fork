@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/QualityDecisionMade.v1.json",
+  "title": "QualityDecisionMade",
+  "description": "품질 판정·승인이 이루어진 사실(수량 실행은 mfc-inventory). 발행 mfc-quality. 구독 mfc-inventory, case(리콜), order(참조). 토픽 mfc.quality.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "QualityDecisionMade"
+        },
+        "aggregateType": {
+          "const": "QualityDecision"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sku",
+            "lot",
+            "decision",
+            "qty"
+          ],
+          "properties": {
+            "decisionId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "lpns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "QUARANTINE",
+                "RELEASE",
+                "DISPOSAL_PENDING"
+              ]
+            },
+            "qty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recallId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "approverRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "decidedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

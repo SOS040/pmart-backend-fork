@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransportUnplannedReported.v1.json",
+  "title": "TransportUnplannedReported",
+  "description": "TRF 운송이 미편성된 사실(차량 없음/시간/데이터). 발행 transport-planning. 구독 replenishment, notification. 토픽 tms.transport-request.v1. 재고 확보 권리는 유지. 새 TRF를 만들어 재확보하지 않음",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransportUnplannedReported"
+        },
+        "aggregateType": {
+          "const": "TransportRequest"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "qty",
+            "reason"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "transportRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "qty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "NO_VEHICLE",
+                "TIME",
+                "DATA"
+              ]
+            },
+            "alternatives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "earliestAt": {
+                    "$ref": "_defs.v1.json#/$defs/DateTime"
+                  },
+                  "capacityQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  }
+                }
+              }
+            },
+            "reportedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

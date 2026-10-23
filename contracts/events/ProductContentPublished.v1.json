@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ProductContentPublished.v1.json",
+  "title": "ProductContentPublished",
+  "description": "콘텐츠 발효(5분 내 반영 목표). 발행 product-content. 구독 search. 토픽 commerce.product.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ProductContentPublished"
+        },
+        "aggregateType": {
+          "const": "ProductContent"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "productId",
+            "contentVersion"
+          ],
+          "properties": {
+            "productId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "contentVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "publishedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

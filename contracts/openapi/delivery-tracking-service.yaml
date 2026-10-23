@@ -1,0 +1,242 @@
+openapi: 3.1.0
+info:
+  title: delivery-tracking-service
+  version: 0.1.0
+  description: |
+    라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 어댑터 [결정 필요]), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
+    배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
+    ETA 노출 범위는 점원 픽업지·배달지 둘 다, 고객 본인 배송지만. 타 고객 주소·전체 동선은 비노출. 산출 불가 시 "위치 확인 중/ETA 확인 중" 상태로 응답한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: locations, description: 라이더 위치 수신 }
+  - { name: eta, description: ETA 조회·실시간 구독 }
+  - { name: internal, description: 거리 행렬 (dispatch) }
+
+paths:
+  /riders/me/locations:
+    post:
+      tags: [locations]
+      summary: 위치 배치 수신 (라이더 앱; 다건 업로드)
+      description: |
+        단말 시각 순으로 정렬해 저장. 정확도 불량·권역 밖·시간 역전은 기록하되 폐기하지 않는다(gpsQuality에 표기).
+        갱신 지연이 임계를 넘으면 RiderLocationStale 발행. 위치 수신은 배송 상태를 바꾸지 않는다.
+      operationId: uploadMyLocations
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationBatch' }
+      responses:
+        '202':
+          description: 접수 (appliedQty = 저장된 점 수)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /riders/me/locations/latest:
+    get:
+      tags: [locations]
+      summary: 내 마지막 수신 위치·품질 조회 (업로드 확인용)
+      operationId: getMyLatestLocation
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderLocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/eta:
+    get:
+      tags: [eta]
+      summary: ETA 조회 (고객 drop만 / 점원 pickup+drop)
+      description: |
+        호출자 역할에 따라 범위가 다르다. 고객 토큰은 본인 주문 배송의 dropEta만, 점포 직원·운영자는 pickupEta·dropEta 모두.
+        라이더 미배정·위치 미수신·행렬 조회 실패면 status LOCATING / ETA_PENDING 으로 응답하고 수치는 비운다. 라이더 좌표는 고객에게 주지 않는다.
+      operationId: getDeliveryEta
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryEta' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/stream:
+    get:
+      tags: [eta]
+      summary: 실시간 ETA·진행 구독 (SSE; WebSocket 동등 채널)
+      x-stream: true
+      x-stream-protocols: [SSE, WEBSOCKET]
+      description: |
+        text/event-stream 으로 DeliveryEta 갱신과 진행 단계(execution 이벤트 사본)를 푸시한다. WebSocket은 같은 경로에 Upgrade 요청으로 접속하며 메시지 본문은 동일한 StreamEvent.
+        노출 범위는 GET /eta와 같다(고객은 drop만, 라이더 좌표 비노출). 연결 끊김 시 Last-Event-ID로 재개. 배송 종료(COMPLETED/FAILED/CANCELLED) 이벤트 후 서버가 닫는다.
+      operationId: streamDeliveryTracking
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: 이벤트 스트림
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/StreamEvent' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/distance-matrix:
+    get:
+      tags: [internal]
+      summary: "[dispatch→tracking] 거리·이동시간 행렬 (출발지 × 도착지)"
+      description: |
+        카카오모빌리티 어댑터 [결정 필요]. 외부 조회 실패 시 freshness UNAVAILABLE과 함께 직선거리 폴백(fallback=true)을 반환하며 dispatch는 이를 참고값으로만 쓴다.
+        origins/destinations는 "lat,lng" 쌍을 세미콜론으로 구분한 문자열이며 각각 최대 25개.
+      operationId: getDistanceMatrix
+      parameters:
+        - name: origins
+          in: query
+          required: true
+          description: 예 37.5665,126.9780;37.5651,126.9895
+          schema: { type: string }
+        - name: destinations
+          in: query
+          required: true
+          schema: { type: string }
+        - { name: vehicleType, in: query, schema: { type: string, enum: [MOTORCYCLE, BICYCLE, CAR, WALK] } }
+        - { name: departAt, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DistanceMatrix' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/riders/{riderId}/location:
+    get:
+      tags: [internal]
+      summary: "[dispatch/case→tracking] 라이더 현재 위치·품질 조회 (서비스 토큰)"
+      operationId: getRiderLocationInternal
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderLocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    LocationPoint:
+      type: object
+      required: [lat, lng, recordedAt]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+        accuracyM: { type: number, minimum: 0 }
+        speedMps: { type: number }
+        headingDeg: { type: number }
+        recordedAt: { type: string, format: date-time, description: 단말 시각 }
+        deliveryId: { type: string, description: 진행 중 배송 연결(선택) }
+    LocationBatch:
+      type: object
+      required: [points]
+      properties:
+        deviceId: { type: string }
+        points: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/LocationPoint' } }
+    GpsQuality:
+      type: string
+      enum: [GOOD, LOW_ACCURACY, OUT_OF_ZONE, TIME_SKEW, STALE, UNKNOWN]
+    RiderLocation:
+      type: object
+      properties:
+        riderId: { type: string }
+        lat: { type: number }
+        lng: { type: number }
+        accuracyM: { type: number }
+        recordedAt: { type: string, format: date-time }
+        receivedAt: { type: string, format: date-time }
+        quality: { $ref: '#/components/schemas/GpsQuality' }
+        inServiceZone: { type: boolean }
+        staleSinceSeconds: { type: integer, description: 마지막 수신 이후 경과 초 }
+    EtaStatus:
+      type: string
+      description: AVAILABLE 산출됨. LOCATING 위치 확인 중. ETA_PENDING ETA 확인 중(행렬 조회 실패·미배정). FINAL 배송 종료
+      enum: [AVAILABLE, LOCATING, ETA_PENDING, FINAL]
+    EtaLeg:
+      type: object
+      properties:
+        status: { $ref: '#/components/schemas/EtaStatus' }
+        etaAt: { type: string, format: date-time }
+        remainingDistanceM: { type: integer }
+        remainingSeconds: { type: integer }
+        delayedBySeconds: { type: integer, description: 약속 시간 대비 지연(양수면 지연) }
+        calculatedAt: { type: string, format: date-time }
+    DeliveryEta:
+      type: object
+      properties:
+        deliveryId: { type: string }
+        stage: { type: string, enum: [UNASSIGNED, TO_STORE, AT_STORE, TO_CUSTOMER, AT_CUSTOMER, DONE] }
+        pickupEta: { $ref: '#/components/schemas/EtaLeg', description: 점원·운영자에게만 }
+        dropEta: { $ref: '#/components/schemas/EtaLeg' }
+        arrivalWindow:
+          type: object
+          properties:
+            date: { type: string, format: date }
+            start: { type: string }
+            end: { type: string }
+        delayAlertTriggered: { type: boolean }
+        riderLocationQuality: { $ref: '#/components/schemas/GpsQuality', description: 좌표 자체는 고객에게 비노출 }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    StreamEvent:
+      type: object
+      description: SSE 각 event의 data 본문 (event 필드는 type과 동일)
+      required: [type, deliveryId, sentAt]
+      properties:
+        id: { type: string, description: Last-Event-ID 재개용 }
+        type: { type: string, enum: [ETA_UPDATED, STAGE_CHANGED, LOCATION_STALE, DELAY_ALERT, STREAM_END, HEARTBEAT] }
+        deliveryId: { type: string }
+        sentAt: { type: string, format: date-time }
+        eta: { $ref: '#/components/schemas/DeliveryEta' }
+        stage: { type: string }
+    DistanceMatrix:
+      type: object
+      properties:
+        provider: { type: string, enum: [KAKAO_MOBILITY, STRAIGHT_LINE] }
+        fallback: { type: boolean, description: true면 직선거리 폴백 }
+        vehicleType: { type: string }
+        rows:
+          type: array
+          description: origins 순서. 각 row의 elements는 destinations 순서
+          items:
+            type: object
+            properties:
+              elements:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    distanceM: { type: integer }
+                    durationSeconds: { type: integer }
+                    status: { type: string, enum: [OK, NO_ROUTE, UNAVAILABLE] }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReceivingCapabilityChanged.v1.json",
+  "title": "ReceivingCapabilityChanged",
+  "description": "MFC 수령창·수용량·인력이 변경된 사실. 발행 mfc-capacity. 구독 replenishment, transport-planning. 토픽 mfc.capacity.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReceivingCapabilityChanged"
+        },
+        "aggregateType": {
+          "const": "ReceivingCapability"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mfcId",
+            "windows"
+          ],
+          "properties": {
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "windows": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/TimeWindow"
+              }
+            },
+            "maxPerArrival": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "1회 도착당 최대 수용량"
+            },
+            "staff": {
+              "type": "integer",
+              "description": "수령 가용 인원"
+            },
+            "unloadingBays": {
+              "type": "integer",
+              "description": "하차면 수"
+            },
+            "effectiveFrom": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "effectiveTo": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

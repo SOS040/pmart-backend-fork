@@ -1,0 +1,459 @@
+openapi: 3.1.0
+info:
+  title: order-service
+  version: 0.1.0
+  description: |
+    주문 초안·주문 원장·스냅샷·상태·이행 계획의 정본. (docs/architecture/service-map.md §2)
+    사가 진행은 order-orchestration-service, PG 거래는 payment-service, 클레임 심사는 claim-service.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: drafts, description: 주문 초안(가격 동결 10분) }
+  - { name: orders, description: 확정 주문 조회·변경 }
+  - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+
+paths:
+  /order-drafts:
+    post:
+      tags: [drafts]
+      summary: "주문 초안 생성 (멱등: purchaseIntentId + Idempotency-Key)"
+      operationId: createOrderDraft
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDraftRequest' }
+      responses:
+        '201':
+          description: 초안 생성 또는 기존 초안 반환(같은 키·같은 본문)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderDraft' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: 검증 거절 (SKU_NOT_SALEABLE, QUANTITY_LIMIT_EXCEEDED, OUT_OF_SERVICE_AREA, MIN_ORDER_AMOUNT, WEIGHT_UNSPLITTABLE, CONFIG_REQUIRED)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /order-drafts/{draftId}:
+    get:
+      tags: [drafts]
+      summary: 초안 조회 (견적·유효시간·자원 확보 상태)
+      operationId: getOrderDraft
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderDraft' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /order-drafts/{draftId}/checkouts:
+    post:
+      tags: [drafts]
+      summary: 결제 진입 요청 → order-orchestration S1 시작
+      description: |
+        가격 동결(quoteExpiresAt)과 acceptedQuoteVersion을 검증한 뒤 사가를 시작한다.
+        응답 ACCEPTED는 "사가 시작"이지 재고·슬롯·결제 성공이 아니다. 진행은 GET /order-drafts/{draftId}로 조회.
+      operationId: startCheckout
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [acceptedQuoteVersion, paymentMethod]
+              properties:
+                acceptedQuoteVersion: { type: integer }
+                paymentMethod: { type: string, enum: [TOSS_PAYMENTS] }
+                consents:
+                  type: array
+                  items: { type: object, properties: { consentType: { type: string }, version: { type: string } } }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: RE_QUOTE_REQUIRED (10분 경과·가격 변경) / DRAFT_EXPIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /orders:
+    get:
+      tags: [orders]
+      summary: 본인 주문 목록 (조회 기간은 정책값)
+      operationId: listOrders
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/OrderStatus' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/OrderSummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /orders/{orderId}:
+    get:
+      tags: [orders]
+      summary: 주문 상세 (스냅샷 + 소유 시스템 확정 결과의 조합, 원천별 asOf 표시)
+      operationId: getOrder
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /orders/{orderId}/reservation-time-changes:
+    post:
+      tags: [orders]
+      summary: 예약배달 시간 변경 (상품준비 진입 전만) → S4
+      operationId: requestReservationTimeChange
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newArrivalWindow]
+              properties:
+                newArrivalWindow: { $ref: '#/components/schemas/ArrivalWindow' }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (이미 상품준비 진입) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /orders/{orderId}/reservation-time-changes/{requestId}:
+    get:
+      tags: [orders]
+      summary: 시간 변경 요청 결과 조회 (PENDING/CONFIRMED/REJECTED/UNKNOWN)
+      operationId: getReservationTimeChange
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  state: { type: string, enum: [PENDING, CONFIRMED, REJECTED, UNKNOWN] }
+                  reason: { type: string }
+                  newVersion: { type: integer }
+
+  # ---------- internal (서비스 토큰) ----------
+  /internal/orders/{orderId}/confirmation:
+    post:
+      tags: [internal]
+      summary: '[orchestration→order] 주문 확정 (PG 승인 대사 일치 + 자원 확정 후)'
+      operationId: confirmOrder
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentAttemptId, pgTransactionId, approvedAmount, reservationId]
+              properties:
+                paymentAttemptId: { type: string }
+                pgTransactionId: { type: string }
+                approvedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+                reservationId: { type: string }
+                capacityHoldId: { type: string }
+                slotHoldId: { type: string }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: AMOUNT_MISMATCH → 확정 차단, 대사 대상
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/orders/{orderId}/line-quantity-changes:
+    post:
+      tags: [internal]
+      summary: '[orchestration/claim→order] 주문행 수량 변경 (결품·출고 전 취소·인계 누계·반품 수량 반영)'
+      operationId: applyLineQuantityChange
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changes]
+              properties:
+                reason: { type: string, enum: [SHORTAGE, CANCEL_BEFORE_SHIP, HANDOVER, RETURN, EXCHANGE] }
+                sourceRef: { type: string, description: stopRequestId / handoverId / claimId }
+                changes:
+                  type: array
+                  items:
+                    type: object
+                    required: [orderLineId, qty]
+                    properties:
+                      orderLineId: { type: string }
+                      qty: { type: integer, minimum: 1 }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: 불변식 위반 (원수량 ≠ 미이행 + 인계 누계 + 출고 전 취소 누계)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/accounts/{accountId}/withdrawal-eligibility:
+    get:
+      tags: [internal]
+      summary: '[customer→order] 탈퇴 가능 여부 (미결 주문·불명 결제·환불·회수·분쟁)'
+      operationId: getWithdrawalEligibility
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  eligible: { type: boolean }
+                  openObligations:
+                    type: array
+                    items: { type: object, properties: { kind: { type: string }, ref: { type: string } } }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+
+  /internal/order-lines/{orderLineId}/delivery-facts:
+    get:
+      tags: [internal]
+      summary: '[review/claim→order] 품목별 실제 배송완료 시각·수량 (리뷰 14일·반품 기한 근거)'
+      operationId: getOrderLineDeliveryFacts
+      parameters:
+        - { name: orderLineId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderLineId: { type: string }
+                  deliveredQty: { type: integer }
+                  deliveredAt: { type: string, format: date-time }
+                  deliveryId: { type: string }
+                  evidenceRef: { type: string }
+
+  /internal/customer-commitments:
+    get:
+      tags: [internal]
+      summary: '[replenishment→order] 확정 미이행 고객 약속 C (센터·SKU·기간)'
+      operationId: listCustomerCommitments
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { type: string } }
+        - { name: sku, in: query, schema: { type: string } }
+        - { name: dueBefore, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        orderId: { type: string }
+                        orderLineId: { type: string }
+                        sku: { type: string }
+                        committedQty: { type: integer }
+                        dueAt: { type: string, format: date-time }
+                        state: { type: string, enum: [VALID, BLOCKED] }
+                        version: { type: integer }
+
+components:
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [DRAFT, RESOURCE_PENDING, PAYMENT_PENDING, PAYMENT_UNKNOWN, CONFIRMED, PREPARING, PARTIALLY_HANDED_OVER, IN_DELIVERY, PARTIALLY_DELIVERED, COMPLETED, CANCELLED, EXPIRED]
+    ArrivalWindow:
+      type: object
+      required: [date, start, end]
+      properties:
+        date: { type: string, format: date, description: Asia/Seoul }
+        start: { type: string, example: '13:00' }
+        end: { type: string, example: '14:00' }
+    CreateDraftRequest:
+      type: object
+      required: [purchaseIntentId, items, shoppingAddressId, deliveryMode, outOfStockPreference]
+      properties:
+        purchaseIntentId: { type: string, description: 동일 주문 의도 식별 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [cartItemId, sku, quantity]
+            properties:
+              cartItemId: { type: string }
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        shoppingAddressId: { type: string }
+        expectedMfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        deliveryMode: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED] }
+        arrivalWindow: { $ref: '#/components/schemas/ArrivalWindow' }
+        outOfStockPreference: { type: string, enum: [CANCEL_OOS_ONLY, CANCEL_ALL] }
+        contact: { type: object, properties: { phoneRef: { type: string } } }
+        deliveryNote: { type: string, maxLength: 200 }
+        bagOptOut: { type: boolean, description: 봉투 미사용 선택이어도 봉투값 100원은 청구 }
+    Quote:
+      type: object
+      properties:
+        quoteVersion: { type: integer }
+        quoteExpiresAt: { type: string, format: date-time, description: 초안 생성 + 10분 }
+        priceVersion: { type: integer }
+        itemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 오퍼·프로모션 후, 쿠폰 전 상품액 }
+        deliveryTip: { $ref: '_common.yaml#/components/schemas/Money' }
+        deliveryTipReason: { type: string, enum: [STANDARD, OVER_30000, FIRST_PURCHASE, NONE] }
+        bagFee: { $ref: '_common.yaml#/components/schemas/Money', example: 100 }
+        totalAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        minOrderSatisfied:
+          type: boolean
+          description: 최소 주문금액 15000원은 쿠폰 전 상품액 기준
+        weightG: { type: integer }
+        plannedShipments:
+          type: integer
+          description: 총 상품중량 10000g 초과 시 2 이상
+    ResourceState:
+      type: object
+      properties:
+        inventoryReservation: { type: string, enum: [NOT_REQUESTED, HELD, FAILED, RELEASED, UNKNOWN, PAYMENT_PENDING_HOLD] }
+        capacityHold: { type: string, enum: [NOT_REQUESTED, HELD, FAILED, RELEASED, UNKNOWN] }
+        slotHold: { type: string, enum: [NOT_REQUIRED, HELD, FAILED, RELEASED, UNKNOWN] }
+        payment: { type: string, enum: [NOT_STARTED, STARTED, APPROVED, FAILED, UNKNOWN, MISMATCH] }
+        reservationExpiresAt: { type: string, format: date-time }
+    OrderDraft:
+      type: object
+      properties:
+        draftId: { type: string }
+        purchaseIntentId: { type: string }
+        version: { type: integer }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        mfcId: { type: string }
+        quote: { $ref: '#/components/schemas/Quote' }
+        resources: { $ref: '#/components/schemas/ResourceState' }
+        nextAction: { type: string, enum: [REVIEW, RE_QUOTE, PAY, WAIT, DONE, EXPIRED] }
+        orderId: { type: string, description: 확정 시 발급 }
+    OrderLine:
+      type: object
+      properties:
+        orderLineId: { type: string }
+        sku: { type: string }
+        productName: { type: string, description: 주문 당시 스냅샷 }
+        unitsPerSku: { type: integer }
+        unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
+        discountShare: { $ref: '_common.yaml#/components/schemas/Money' }
+        originalQty: { type: integer }
+        unfulfilledQty: { type: integer }
+        handedOverQty: { type: integer }
+        cancelledBeforeShipQty: { type: integer }
+        deliveredQty: { type: integer }
+        returnedQty: { type: integer }
+    Shipment:
+      type: object
+      properties:
+        shipmentId: { type: string }
+        deliveryId: { type: string }
+        lines: { type: array, items: { type: object, properties: { orderLineId: { type: string }, qty: { type: integer } } } }
+        weightG: { type: integer }
+        state: { type: string, enum: [PLANNED, PREPARING, READY, HANDED_OVER, IN_DELIVERY, DELIVERED, FAILED, CANCELLED] }
+        eta: { type: string, format: date-time }
+    Order:
+      type: object
+      properties:
+        orderId: { type: string }
+        version: { type: integer }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        mfcId: { type: string }
+        deliveryMode: { type: string }
+        arrivalWindow: { $ref: '#/components/schemas/ArrivalWindow' }
+        quote: { $ref: '#/components/schemas/Quote' }
+        lines: { type: array, items: { $ref: '#/components/schemas/OrderLine' } }
+        shipments: { type: array, items: { $ref: '#/components/schemas/Shipment' } }
+        payment:
+          type: object
+          properties:
+            paymentAttemptId: { type: string }
+            state: { type: string }
+            refundedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        claims: { type: array, items: { type: object, properties: { claimId: { type: string }, type: { type: string }, state: { type: string } } } }
+        sources:
+          type: array
+          description: 조합한 원천별 기준시각
+          items:
+            type: object
+            properties:
+              system: { type: string }
+              asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    OrderSummary:
+      type: object
+      properties:
+        orderId: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        orderedAt: { type: string, format: date-time }
+        totalAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        itemCount: { type: integer }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

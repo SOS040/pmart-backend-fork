@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PackageInvalidated.v1.json",
+  "title": "PackageInvalidated",
+  "description": "재포장으로 구 포장 라벨이 무효화된 사실. 발행 mfc-fulfillment. 구독 delivery-dispatch, delivery-execution. 토픽 mfc.fulfillment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PackageInvalidated"
+        },
+        "aggregateType": {
+          "const": "Package"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "packageId",
+            "reason"
+          ],
+          "properties": {
+            "packageId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "newPackageId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shipmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "invalidatedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

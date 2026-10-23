@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/VehicleAvailabilityChanged.v1.json",
+  "title": "VehicleAvailabilityChanged",
+  "description": "차량 재가용 시각이 계산된 사실(복귀 + 준비 시간. 기사 가용은 별도). 발행 fleet. 구독 transport-planning. 토픽 tms.fleet.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "VehicleAvailabilityChanged"
+        },
+        "aggregateType": {
+          "const": "Vehicle"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "vehicleId",
+            "nextAvailableAt"
+          ],
+          "properties": {
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "nextAvailableAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "basis": {
+              "type": "string",
+              "description": "계산 근거"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

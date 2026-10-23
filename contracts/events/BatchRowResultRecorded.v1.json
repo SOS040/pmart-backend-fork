@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/BatchRowResultRecorded.v1.json",
+  "title": "BatchRowResultRecorded",
+  "description": "대량 변경 행별 결과. 발행 approval. 구독 backoffice-bff, audit. 토픽 platform.approval.v1. 단계 ②",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "BatchRowResultRecorded"
+        },
+        "aggregateType": {
+          "const": "Batch"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "batchId",
+            "fileHash",
+            "rowNo",
+            "result"
+          ],
+          "properties": {
+            "batchId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fileHash": {
+              "type": "string"
+            },
+            "rowNo": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "errorCode": {
+              "type": "string"
+            },
+            "recordedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

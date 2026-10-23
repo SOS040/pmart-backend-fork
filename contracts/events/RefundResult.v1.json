@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RefundResult.v1.json",
+  "title": "RefundResult",
+  "description": "전체/부분 취소 결과. remainingLimit = 승인액 − 성공 누적 − 불명 점유. 발행 payment-service. 구독 claim, order, notification, audit. 토픽 order.payment.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RefundResult"
+        },
+        "aggregateType": {
+          "const": "PaymentAttempt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "refundRequestId",
+            "refundIntentId",
+            "amount",
+            "result"
+          ],
+          "properties": {
+            "refundRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "refundIntentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "pgTransactionId": {
+              "type": "string"
+            },
+            "amount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "failureCode": {
+              "type": "string"
+            },
+            "cumulativeRefunded": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "remainingLimit": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "resultAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

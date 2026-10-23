@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SupplyRequestSubmitted.v1.json",
+  "title": "SupplyRequestSubmitted",
+  "description": "MFC 공급 요청이 로컬 DRAFT→SUBMITTED 로 제출된 사실(WK-14). 발행 mfc-inbound. 구독 replenishment. 토픽 mfc.inbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SupplyRequestSubmitted"
+        },
+        "aggregateType": {
+          "const": "SupplyRequest"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "supplyRequestId",
+            "version",
+            "mfcId",
+            "lines",
+            "requestedReadyAt",
+            "urgency"
+          ],
+          "properties": {
+            "supplyRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "requestedQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "requestedQty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "E",
+                      "B"
+                    ],
+                    "description": "낱개(E) / 밀봉 묶음(B). 전환·합산하지 않음"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "requestedReadyAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "urgency": {
+              "type": "string",
+              "enum": [
+                "NORMAL",
+                "URGENT"
+              ],
+              "description": "일반 / 긴급"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "recommendationRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "참조한 planRunId"
+            },
+            "submittedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

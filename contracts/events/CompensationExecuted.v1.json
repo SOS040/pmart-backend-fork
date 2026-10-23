@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CompensationExecuted.v1.json",
+  "title": "CompensationExecuted",
+  "description": "이번 시도 신규 자원 보상 해제. 발행 order-orchestration. 구독 audit, case. 토픽 order.saga.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CompensationExecuted"
+        },
+        "aggregateType": {
+          "const": "CheckoutSaga"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sagaId",
+            "resourceType",
+            "resourceId",
+            "result"
+          ],
+          "properties": {
+            "sagaId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "resourceType": {
+              "type": "string",
+              "enum": [
+                "INVENTORY_RESERVATION",
+                "CAPACITY_HOLD",
+                "SLOT_HOLD",
+                "COUPON_HOLD",
+                "PAYMENT_APPROVAL"
+              ]
+            },
+            "resourceId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "executedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OutboundReadinessChanged.v1.json",
+  "title": "OutboundReadinessChanged",
+  "description": "TRF 출고 준비 상태(예상/확정 준비 시각, 보류, 화물 구성)가 변경된 사실. 발행 cdc-outbound. 구독 transport-planning. 토픽 cdc.outbound.v1. 불변식: 상차 ≤ 검품합격 ≤ 분류 ≤ 실피킹 ≤ 유효할당 ≤ 승인",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OutboundReadinessChanged"
+        },
+        "aggregateType": {
+          "const": "OutboundTransfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "hold"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "readyAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "readyAtMeaning": {
+              "type": "string",
+              "enum": [
+                "ESTIMATED",
+                "CONFIRMED"
+              ],
+              "description": "예상 / 확정"
+            },
+            "hold": {
+              "type": "boolean",
+              "description": "출고 보류 여부"
+            },
+            "holdReason": {
+              "type": "string"
+            },
+            "cargo": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "lpn"
+                ],
+                "properties": {
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "unitType": {
+                    "type": "string",
+                    "enum": [
+                      "BOX",
+                      "PLT"
+                    ]
+                  },
+                  "weightKg": {
+                    "type": "number"
+                  },
+                  "volumeM3": {
+                    "type": "number"
+                  },
+                  "tempZone": {
+                    "type": "string",
+                    "description": "온도 구획"
+                  }
+                }
+              }
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

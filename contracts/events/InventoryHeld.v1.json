@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InventoryHeld.v1.json",
+  "title": "InventoryHeld",
+  "description": "결제 진입 직전 지정 MFC 전품목 예약(R+)이 성공한 사실(10분 유효). 발행 mfc-inventory. 구독 order-orchestration. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "InventoryHeld"
+        },
+        "aggregateType": {
+          "const": "Reservation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reservationId",
+            "orderId",
+            "mfcId",
+            "lines",
+            "expiresAt"
+          ],
+          "properties": {
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuQty"
+              },
+              "minItems": 1
+            },
+            "expiresAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "heldAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

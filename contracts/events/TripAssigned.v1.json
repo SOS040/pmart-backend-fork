@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TripAssigned.v1.json",
+  "title": "TripAssigned",
+  "description": "운행 배정이 CONFIRMED 된 사실. 발행 transport-planning. 구독 cdc-outbound, mfc-inbound, transport-execution, cold-chain, fleet. 토픽 tms.trip.v1. 실차 같은 시간 두 운행 확정 최대 1개",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TripAssigned"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "assignmentVersion",
+            "vehicleId",
+            "driverId",
+            "stops",
+            "cargo"
+          ],
+          "properties": {
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "assignmentVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "driverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromCdc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "plannedDepartureAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "stops": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "stopId",
+                  "mfcId",
+                  "plannedArrival"
+                ],
+                "properties": {
+                  "stopId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "mfcId": {
+                    "$ref": "_defs.v1.json#/$defs/CenterId"
+                  },
+                  "sequence": {
+                    "type": "integer"
+                  },
+                  "plannedArrival": {
+                    "$ref": "_defs.v1.json#/$defs/DateTime"
+                  },
+                  "window": {
+                    "$ref": "_defs.v1.json#/$defs/TimeWindow"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "cargo": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "trfId"
+                ],
+                "properties": {
+                  "trfId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "lpns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "compartment": {
+                    "type": "string",
+                    "description": "차량 구획"
+                  },
+                  "tempZone": {
+                    "type": "string"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "assignedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

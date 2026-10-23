@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CapacityReservationResult.v1.json",
+  "title": "CapacityReservationResult",
+  "description": "LOC 공간 예약 요청의 결과. 발행 cdc-location. 구독 cdc-inbound. 토픽 cdc.location.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CapacityReservationResult"
+        },
+        "aggregateType": {
+          "const": "CapacityReservation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reservationId",
+            "locCode",
+            "result"
+          ],
+          "properties": {
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "requestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "locCode": {
+              "type": "string"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

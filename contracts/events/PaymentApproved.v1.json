@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PaymentApproved.v1.json",
+  "title": "PaymentApproved",
+  "description": "PG 승인 사실 확인. PG 비밀 미포함. 발행 payment-service. 구독 order-orchestration, audit. 토픽 order.payment.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PaymentApproved"
+        },
+        "aggregateType": {
+          "const": "PaymentAttempt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "paymentAttemptId",
+            "pgTransactionId",
+            "orderRef",
+            "amount",
+            "currency",
+            "approvedAt"
+          ],
+          "properties": {
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "pgTransactionId": {
+              "type": "string",
+              "description": "PG 원거래 식별자"
+            },
+            "orderRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "amount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 (KRW)"
+            },
+            "method": {
+              "type": "string",
+              "description": "결제 수단 코드"
+            },
+            "approvedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

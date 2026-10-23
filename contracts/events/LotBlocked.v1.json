@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/LotBlocked.v1.json",
+  "title": "LotBlocked",
+  "description": "quality 보류/리콜 요청을 반영하여 LOT을 차단한 사실. 발행 cdc-inventory. 구독 cdc-outbound, replenishment, mfc-quality(리콜 참조), order(영향 참조). 토픽 cdc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "LotBlocked"
+        },
+        "aggregateType": {
+          "const": "Lot"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sku",
+            "lot",
+            "reason",
+            "blockedQty"
+          ],
+          "properties": {
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string",
+              "description": "차단 범위(센터/LOC/LPN 등)"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "blockedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "holdRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "recallId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "blockedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

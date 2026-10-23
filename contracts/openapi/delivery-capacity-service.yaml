@@ -1,0 +1,252 @@
+openapi: 3.1.0
+info:
+  title: delivery-capacity-service
+  version: 0.1.0
+  description: |
+    고객 도착 시간대 슬롯 정의(1시간 단위, 07시 도착 없음, 08/09시 개시 [결정 필요])·슬롯 정원(승인값, 1차 수동 설정)·슬롯 점유(HELD→CONFIRMED/RELEASED/EXPIRED)의 정본. (docs/architecture/service-map.md §7, ADR-0008)
+    MFC 작업 여력(mfc-capacity)·라이더 배정(dispatch)은 소유하지 않는다. CapacityReduced·RiderSupplyChanged는 입력이지 자동 정원 변경이 아니다.
+    주문당 슬롯 1건(분할배송도 1건), 마지막 정원 1주문. 조회 실패·미설정은 정원 0/무제한이 아니라 CONFIG_REQUIRED로 해당 신규 결제를 보류한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: slots, description: 슬롯 조회 (API-DELIVERY-OPTIONS-001 입력) }
+  - { name: holds, description: 슬롯 점유·확정·해제 (orchestration S1·S4) }
+
+paths:
+  /slots:
+    get:
+      tags: [slots]
+      summary: 날짜별 슬롯 목록 (잔여 정원·선택 가능 여부)
+      description: |
+        date는 Asia/Seoul 기준. 정원 NOT_SET 슬롯은 availability CONFIG_REQUIRED로 표시되어 선택 불가(0도 무제한도 아님).
+        잔여 정원은 조회 사본이며 선택 성공을 보장하지 않는다. 확보는 POST /internal/slot-holds로만.
+      operationId: listSlots
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { type: string } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mfcId: { type: string }
+                  date: { type: string, format: date }
+                  slots: { type: array, items: { $ref: '#/components/schemas/Slot' } }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/slot-holds:
+    post:
+      tags: [holds]
+      summary: "[orchestration→capacity] 슬롯 임시 점유 HoldSlot (S1 d단계 / S4 새 슬롯)"
+      description: |
+        같은 orderId+Idempotency-Key 재전송은 기존 hold 반환. 같은 orderId의 활성 hold가 있으면 409 (S4는 newSlotFor 지정으로 예외 허용).
+        정원 NOT_SET·조회 실패 → 422 CONFIG_REQUIRED(신규 결제 보류). 정원 소진 → 422 CAPACITY_EXCEEDED.
+        TTL 경과 시 EXPIRED. 결제 결과 불명이면 orchestration이 확인 전 해제하지 않는다.
+      operationId: createSlotHold
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SlotHoldRequest' }
+      responses:
+        '201':
+          description: 점유 성공 (HELD) 또는 기존 hold 반환
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SlotHold' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / HOLD_ALREADY_ACTIVE (주문당 1건)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONFIG_REQUIRED (정원 NOT_SET·조회 실패) / CAPACITY_EXCEEDED / SLOT_NOT_SELECTABLE (과거·07시·미개시)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/slot-holds/{holdId}:
+    get:
+      tags: [holds]
+      summary: 점유 조회 (HELD / CONFIRMED / RELEASED / EXPIRED)
+      operationId: getSlotHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SlotHold' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/slot-holds/{holdId}/confirmations:
+    post:
+      tags: [holds]
+      summary: "[orchestration→capacity] 점유 확정 (주문 확정 후 S1 i단계)"
+      description: HELD → CONFIRMED. 이미 CONFIRMED면 멱등 성공. EXPIRED·RELEASED면 409 INVALID_STATE(재확보 필요).
+      operationId: confirmSlotHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId]
+              properties:
+                orderId: { type: string }
+                sagaId: { type: string }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/slot-holds/{holdId}/releases:
+    post:
+      tags: [holds]
+      summary: "[orchestration/order→capacity] 점유 해제 (보상 / 취소 / S4 기존 슬롯 해제)"
+      description: |
+        HELD 또는 CONFIRMED → RELEASED. 이미 RELEASED·EXPIRED면 멱등 성공. 해제는 정원을 되돌리며 기존 다른 약속에 영향 없음.
+        보상 해제는 이번 시도에서 새로 확보한 hold만 대상이다(orchestration 보상 로그 기준).
+      operationId: releaseSlotHold
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [SAGA_COMPENSATION, ORDER_CANCELLED, ORDER_EXPIRED, TIME_CHANGED, OPERATOR] }
+                sagaId: { type: string }
+                approvalRef: { type: string, description: OPERATOR 사유일 때 필수 }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED (OPERATOR 사유에 approvalRef 없음)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/slot-holds/{holdId}/confirmations/{requestId}:
+    get:
+      tags: [holds]
+      summary: 확정 명령 결과 조회
+      operationId: getSlotHoldConfirmation
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HoldCommandResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/slot-holds/{holdId}/releases/{requestId}:
+    get:
+      tags: [holds]
+      summary: 해제 명령 결과 조회
+      operationId: getSlotHoldRelease
+      parameters:
+        - { name: holdId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HoldCommandResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    ArrivalWindow:
+      type: object
+      required: [date, start, end]
+      properties:
+        date: { type: string, format: date, description: Asia/Seoul }
+        start: { type: string, example: '13:00' }
+        end: { type: string, example: '14:00' }
+    Slot:
+      type: object
+      properties:
+        slotId: { type: string }
+        window: { $ref: '#/components/schemas/ArrivalWindow' }
+        capacity: { $ref: '_common.yaml#/components/schemas/PolicyValue', description: 승인된 정원 (state NOT_SET이면 선택 불가) }
+        heldCount: { type: integer, description: HELD 점유 수 }
+        confirmedCount: { type: integer }
+        remaining: { type: [integer, 'null'], description: 정원 − 점유. NOT_SET이면 null }
+        availability: { type: string, enum: [AVAILABLE, FULL, CLOSED, CONFIG_REQUIRED, UNAVAILABLE] }
+        cutoffAt: { type: string, format: date-time, description: 선택 마감 시각 }
+    SlotHoldState:
+      type: string
+      enum: [HELD, CONFIRMED, RELEASED, EXPIRED]
+    SlotHoldRequest:
+      type: object
+      required: [orderId, mfcId, window]
+      properties:
+        orderId: { type: string }
+        draftId: { type: string }
+        sagaId: { type: string }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        window: { $ref: '#/components/schemas/ArrivalWindow' }
+        ttlSeconds: { type: integer, minimum: 60, maximum: 1800, default: 600, description: 기본 10분 (OMS 확정 정책) }
+        newSlotFor:
+          type: string
+          description: S4 예약 시간 변경 시 교체 대상 기존 holdId. 지정 시 주문당 1건 규칙의 임시 예외
+    SlotHold:
+      type: object
+      properties:
+        holdId: { type: string }
+        version: { type: integer }
+        orderId: { type: string }
+        mfcId: { type: string }
+        slotId: { type: string }
+        window: { $ref: '#/components/schemas/ArrivalWindow' }
+        state: { $ref: '#/components/schemas/SlotHoldState' }
+        heldAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: HELD일 때 만료 시각 }
+        confirmedAt: { type: string, format: date-time }
+        releasedAt: { type: string, format: date-time }
+        releaseReason: { type: string }
+        replaces: { type: string, description: S4에서 교체한 기존 holdId }
+    HoldCommandResult:
+      type: object
+      properties:
+        requestId: { type: string }
+        holdId: { type: string }
+        status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+        resultingState: { $ref: '#/components/schemas/SlotHoldState' }
+        version: { type: integer }
+        occurredAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransferResidualClosed.v1.json",
+  "title": "TransferResidualClosed",
+  "description": "미출발 잔량을 수동 승인으로 종료한 사실(SCM-D10). 발행 replenishment. 구독 cdc-outbound, backoffice-bff, BI. 토픽 scm.replenishment.v1. A0 = D + Cpre + Uclosed + Uopen (승인 = 실출발 + 출발 전 취소 + 종료 잔량 + 미결 잔량)",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransferResidualClosed"
+        },
+        "aggregateType": {
+          "const": "Transfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "closedQty",
+            "approvalRef",
+            "basis"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "closedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "Uclosed"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "basis": {
+              "type": "string",
+              "description": "종료 근거"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "approvedQty",
+                  "departedQty",
+                  "closedQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "approvedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "A0"
+                  },
+                  "departedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "D"
+                  },
+                  "cancelledBeforeDepartureQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "Cpre"
+                  },
+                  "closedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "Uclosed"
+                  },
+                  "openQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "Uopen"
+                  }
+                }
+              }
+            },
+            "closedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

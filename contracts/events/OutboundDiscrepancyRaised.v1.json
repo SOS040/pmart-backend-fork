@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OutboundDiscrepancyRaised.v1.json",
+  "title": "OutboundDiscrepancyRaised",
+  "description": "출발 전 불일치(혼입/누락/초과/봉인)가 확인된 사실. 발행 cdc-outbound. 구독 case, replenishment. 토픽 cdc.outbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OutboundDiscrepancyRaised"
+        },
+        "aggregateType": {
+          "const": "OutboundTransfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "type"
+          ],
+          "properties": {
+            "discrepancyId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "MIXED",
+                "MISSING",
+                "EXCESS",
+                "SEAL"
+              ]
+            },
+            "details": {
+              "type": "string"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "expectedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "actualQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "otherTrfId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref",
+                    "description": "MIXED 시 혼입된 타 TRF"
+                  }
+                }
+              }
+            },
+            "raisedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

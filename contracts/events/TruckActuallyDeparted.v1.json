@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TruckActuallyDeparted.v1.json",
+  "title": "TruckActuallyDeparted",
+  "description": "차량이 실제로 출발한 사실(TOUT 아님. TOUT은 cdc-inventory TransferDeparted). 발행 transport-execution. 구독 cdc-outbound(검증), replenishment, mfc-inbound(예고). 토픽 tms.trip.v1. 같은 departureId는 1회 효과. 수량·차량이 다르면 충돌 사건",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TruckActuallyDeparted"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "departureId",
+            "tripId",
+            "vehicleId",
+            "driverId",
+            "departedAt",
+            "trfCompositions"
+          ],
+          "properties": {
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "차량의 실제 출발 사실 ID"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "driverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromCdc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "departedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "evidenceRef": {
+              "$ref": "_defs.v1.json#/$defs/EvidenceRef"
+            },
+            "sealIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "REAL",
+                "SIMULATED"
+              ],
+              "description": "실물 사실 여부(봉투 source와 동일 의미)"
+            },
+            "trfCompositions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "trfId",
+                  "lines"
+                ],
+                "properties": {
+                  "trfId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "toMfc": {
+                    "$ref": "_defs.v1.json#/$defs/CenterId"
+                  },
+                  "compartment": {
+                    "type": "string"
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "_defs.v1.json#/$defs/SkuLotLpnQty"
+                    }
+                  }
+                }
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

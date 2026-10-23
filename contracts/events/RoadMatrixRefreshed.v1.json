@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RoadMatrixRefreshed.v1.json",
+  "title": "RoadMatrixRefreshed",
+  "description": "도로 시간 행렬이 갱신된 사실. 발행 transport-routing. 구독 transport-planning, transport-execution. 토픽 tms.routing.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RoadMatrixRefreshed"
+        },
+        "aggregateType": {
+          "const": "RoadMatrix"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "matrixVersion",
+            "asOf"
+          ],
+          "properties": {
+            "matrixVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "asOf": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "scope": {
+              "type": "string",
+              "description": "갱신 범위(전체/권역)"
+            },
+            "refreshedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

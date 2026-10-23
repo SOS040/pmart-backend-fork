@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ClaimDecided.v1.json",
+  "title": "ClaimDecided",
+  "description": "심사 결과(일부 승인 가능). 발행 claim-service. 구독 order, delivery-execution(회수), mfc-quality, notification, backoffice. 토픽 order.claim.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ClaimDecided"
+        },
+        "aggregateType": {
+          "const": "Claim"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "claimId",
+            "orderId",
+            "decisions"
+          ],
+          "properties": {
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "decisions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "claimLineId",
+                  "decision",
+                  "qty"
+                ],
+                "properties": {
+                  "claimLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "orderLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "APPROVED",
+                      "REJECTED"
+                    ]
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "refundIntentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "decidedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

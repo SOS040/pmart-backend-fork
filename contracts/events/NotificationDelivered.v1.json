@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/NotificationDelivered.v1.json",
+  "title": "NotificationDelivered",
+  "description": "발송 성공(읽음≠동의). 수신자는 참조 ID만. 발행 notification. 구독 audit, BI. 토픽 platform.notification.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "NotificationDelivered"
+        },
+        "aggregateType": {
+          "const": "Notification"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "notificationId",
+            "channel",
+            "recipientRef",
+            "result"
+          ],
+          "properties": {
+            "notificationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "channel": {
+              "type": "string",
+              "description": "발송 채널 코드"
+            },
+            "recipientRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "templateId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "deliveredAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

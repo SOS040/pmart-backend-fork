@@ -1,0 +1,487 @@
+openapi: 3.1.0
+info:
+  title: transport-planning-service
+  version: 0.1.0
+  description: |
+    간선(CDC→MFC) 운송 요청·후보·배정·지시서·미편성 목록의 정본. (docs/architecture/service-map.md §6)
+    차량·기사 정본은 fleet-service, 도로시간은 transport-routing-service, 실제 출발·인계 사실은 transport-execution-service,
+    도크/하차면 정본은 cdc-location/mfc-capacity, 보충량·승인은 replenishment-service. 이 서비스는 그 값들의 사본만 가진다.
+    사가 S8(자원 예약): fleet 점유 → cdc-location 도크 → mfc-capacity 하차면 → CONFIRMED. 일부 성공은 RESERVED, 이번 시도 신규 예약만 보상.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: transport-requests, description: 운송 요청(TRF당 1건) }
+  - { name: plan-candidates, description: 직송/순회/회차 후보 계산 }
+  - { name: assignments, description: 배정(S8 자원 예약) 및 출발 전 변경 }
+  - { name: instructions, description: 기사 지시서 }
+  - { name: unplanned, description: 미편성 목록 }
+  - { name: internal, description: 서비스 간 호출(서비스 토큰) }
+
+paths:
+  /internal/transport-requests:
+    post:
+      tags: [internal]
+      summary: '[replenishment→planning] 운송 요청 접수 (TransferApproved 기반, TMS-D01)'
+      description: |
+        trfId + version이 멱등 키 역할을 한다. 같은 trfId·같은 version·다른 본문은 409 IDEMPOTENCY_CONFLICT.
+        접수 결과 state는 RECEIVED(접수만) / DATA_PENDING(missing[]에 부족 입력) / PLAN_READY / TIME_INFEASIBLE(dueAt 내 도달 불가 확정).
+        ACCEPTED는 "요청 접수"이지 운송 편성 성공이 아니다.
+      operationId: receiveTransportRequest
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransportRequestInput' }
+      responses:
+        '202':
+          description: 접수 결과 (state·missing 포함)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransportRequestReceipt' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT (같은 trfId·version·다른 본문) / INVALID_STATE (출발 후 변경)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /transport-requests/{transportRequestId}:
+    get:
+      tags: [transport-requests]
+      summary: 운송 요청 조회 (상태·보류 사유·현재 배정)
+      operationId: getTransportRequest
+      parameters:
+        - { name: transportRequestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransportRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/transport-feasibility:
+    get:
+      tags: [internal]
+      summary: '[replenishment→planning] 운송 가능성 회신 (TransportFeasibility)'
+      description: feasible=false는 "현재 사본 기준 불가"이며 차량 부족·주소 불명·시간 불가를 reasonCode로 구분한다.
+      operationId: getTransportFeasibility
+      parameters:
+        - { name: trfId, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransportFeasibility' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /plan-candidates:
+    post:
+      tags: [plan-candidates]
+      summary: 운송 후보 계산 (직송/순회/회차; routing 후보 계산 호출)
+      description: |
+        계산 결과는 정본 변경이 아니다. 채택은 POST /assignments. 편성 불가 요청은 unplanned[]에 사유와 함께 돌려준다.
+        적재 계획 제약 — 실차 총한도+구획별 한도 동시, 혼적·하차 접근·반입 적합성, 상위PLT/하위BOX 중복 금지.
+      operationId: computePlanCandidates
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transportRequestIds]
+              properties:
+                transportRequestIds: { type: array, minItems: 1, items: { type: string } }
+                planDate: { type: string, format: date, description: Asia/Seoul 기준 운행일 }
+                strategies:
+                  type: array
+                  items: { type: string, enum: [DIRECT, MULTI_STOP, WAVE] }
+                timeLimitSec: { type: integer, minimum: 1, maximum: 600 }
+      responses:
+        '200':
+          description: 후보 집합
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanCandidateSet' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /plan-candidates/{candidateSetId}:
+    get:
+      tags: [plan-candidates]
+      summary: 후보 집합 조회 (계산 요청의 짝 조회)
+      operationId: getPlanCandidateSet
+      parameters:
+        - { name: candidateSetId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlanCandidateSet' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /assignments:
+    post:
+      tags: [assignments]
+      summary: 후보 채택 → 배정 생성 및 S8 자원 예약 시작
+      description: |
+        S8 순서 — fleet 차량·기사 점유 → cdc-location 도크 → mfc-capacity 하차면. 전부 성공 시 CONFIRMED, 일부 성공은 RESERVED로 머무르며
+        이번 시도에서 새로 잡은 예약만 보상한다. 응답 ACCEPTED는 배정 확정이 아니다. 진행은 GET /assignments/{assignmentId}.
+      operationId: createAssignment
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [candidateSetId, candidateId]
+              properties:
+                candidateSetId: { type: string }
+                candidateId: { type: string }
+                adoptedBy: { type: string, description: 운영자 또는 자동 편성기 식별자 }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (후보 만료·이미 배정됨) / IDEMPOTENCY_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /assignments/{assignmentId}:
+    get:
+      tags: [assignments]
+      summary: 배정 조회 (상태·버전·자원 예약별 결과)
+      operationId: getAssignment
+      parameters:
+        - { name: assignmentId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /assignments/{assignmentId}/changes:
+    post:
+      tags: [assignments]
+      summary: 출발 전 배정 변경 (TMS-D06; 실제 출발 사실 선확인)
+      description: |
+        execution의 실제 출발(departureId)이 존재하면 409 INVALID_STATE. 출발 여부 불명이면 UNKNOWN_RESULT로 보류하고 원결과 조회로 해소한다.
+        변경 성공 시 이전 배정 버전은 SUPERSEDED, 이전 지시서 버전은 무효.
+      operationId: requestAssignmentChange
+      parameters:
+        - { name: assignmentId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changeType, reason]
+              properties:
+                changeType: { type: string, enum: [REPLACE_VEHICLE, REPLACE_DRIVER, RESCHEDULE, REMOVE_STOP, ADD_STOP, CANCEL] }
+                reason: { type: string, maxLength: 500 }
+                newCandidateId: { type: string }
+                newVehicleId: { type: string }
+                newDriverId: { type: string }
+                newPlannedDepartAt: { type: string, format: date-time }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '409':
+          description: INVALID_STATE (실제 출발 이후) / VERSION_CONFLICT
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /assignments/{assignmentId}/changes/{requestId}:
+    get:
+      tags: [assignments]
+      summary: 배정 변경 요청 결과 조회
+      operationId: getAssignmentChange
+      parameters:
+        - { name: assignmentId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  state: { type: string, enum: [PENDING, APPLIED, REJECTED, UNKNOWN] }
+                  reason: { type: string }
+                  newAssignmentVersion: { type: integer }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /trips/{tripId}/instructions:
+    get:
+      tags: [instructions]
+      summary: 기사 지시서 조회 (최신 버전만 유효; SUPERSEDED 버전은 무효)
+      operationId: getTripInstructions
+      parameters:
+        - { name: tripId, in: path, required: true, schema: { type: string } }
+        - { name: version, in: query, schema: { type: integer }, description: 생략 시 최신 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripInstruction' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /unplanned:
+    get:
+      tags: [unplanned]
+      summary: 미편성 운송 요청 목록 (일자별, 사유 분류)
+      operationId: listUnplanned
+      parameters:
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - { name: fromCdc, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/UnplannedItem' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+components:
+  schemas:
+    TransportRequestState:
+      type: string
+      enum: [RECEIVED, DATA_PENDING, PLAN_READY, TIME_INFEASIBLE, ASSIGNED, IN_PROGRESS, OBLIGATION_PENDING, CLOSED, CANCELLED_BEFORE_DEPARTURE]
+    HoldReasonCode:
+      type: string
+      description: 보류 사유 분류. 주소 불명과 차량 부족은 구분한다.
+      enum: [ADDRESS_UNKNOWN, NO_VEHICLE, NO_DRIVER, NO_DOCK, NO_UNLOADING_BAY, TIME_INFEASIBLE, MODEL_INPUT_PENDING, CAPACITY_EXCEEDED, TEMP_CLASS_UNSUPPORTED, ACCESS_RESTRICTED]
+    CargoLine:
+      type: object
+      required: [sku, qty]
+      properties:
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        tempClass: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+        handlingUnit: { type: string, enum: [PLT, BOX], description: 상위PLT/하위BOX 중복 계상 금지 }
+    ExpectedCargo:
+      type: object
+      properties:
+        weightKg: { type: number, minimum: 0 }
+        volumeM3: { type: number, minimum: 0 }
+        palletCount: { type: integer, minimum: 0 }
+        boxCount: { type: integer, minimum: 0 }
+        tempClasses: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
+    TransportRequestInput:
+      type: object
+      required: [trfId, version, fromCdc, toMfc, lines, deadlineMeaning, dueAt]
+      properties:
+        trfId: { type: string }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        fromCdc: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        toMfc: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        lines: { type: array, minItems: 1, items: { $ref: '#/components/schemas/CargoLine' } }
+        deadlineMeaning:
+          type: string
+          description: dueAt의 의미. ARRIVAL=MFC 도착 기한, READY_FOR_SALE=사용준비 완료 기한.
+          enum: [ARRIVAL, READY_FOR_SALE]
+        dueAt: { type: string, format: date-time }
+        expectedCargo: { $ref: '#/components/schemas/ExpectedCargo' }
+        approvalRef: { type: string, description: 사업승인 참조(approval-service) }
+    TransportRequestReceipt:
+      type: object
+      required: [transportRequestId, trfId, version, state]
+      properties:
+        transportRequestId: { type: string }
+        trfId: { type: string }
+        version: { type: integer }
+        state: { $ref: '#/components/schemas/TransportRequestState' }
+        missing:
+          type: array
+          description: DATA_PENDING일 때 부족한 입력 항목
+          items: { type: string, enum: [DESTINATION_ADDRESS, DESTINATION_COORDINATES, RECEIVING_WINDOW, TEMP_CLASS, CARGO_DIMENSIONS, ROAD_MATRIX, VEHICLE_CLASS] }
+        holdReasons: { type: array, items: { $ref: '#/components/schemas/HoldReasonCode' } }
+    TransportRequest:
+      allOf:
+        - $ref: '#/components/schemas/TransportRequestReceipt'
+        - type: object
+          properties:
+            fromCdc: { type: string }
+            toMfc: { type: string }
+            dueAt: { type: string, format: date-time }
+            deadlineMeaning: { type: string }
+            lines: { type: array, items: { $ref: '#/components/schemas/CargoLine' } }
+            currentAssignmentId: { type: [string, 'null'] }
+            tripId: { type: [string, 'null'] }
+            departureId: { type: [string, 'null'], description: execution 실제 출발 사실 사본 }
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  system: { type: string }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    TransportFeasibility:
+      type: object
+      required: [trfId, feasible, asOf]
+      properties:
+        trfId: { type: string }
+        feasible: { type: boolean }
+        reasonCode: { $ref: '#/components/schemas/HoldReasonCode' }
+        candidateRuns:
+          type: array
+          items:
+            type: object
+            properties:
+              plannedDepartAt: { type: string, format: date-time }
+              plannedArriveAt: { type: string, format: date-time }
+              vehicleClass: { type: string }
+              strategy: { type: string, enum: [DIRECT, MULTI_STOP, WAVE] }
+        capacityLimit:
+          type: object
+          description: 현재 사본 기준 운송 가능 상한
+          properties:
+            weightKg: { type: number }
+            volumeM3: { type: number }
+            palletCount: { type: integer }
+        earliestReadyAt: { type: string, format: date-time }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    StopSchedule:
+      type: object
+      description: "§10.1 정차 시간표: A=도착, S=하차 시작, H=인계, D=출차, R=복귀"
+      properties:
+        stopId: { type: string }
+        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        sequence: { type: integer }
+        arriveAt: { type: string, format: date-time }
+        unloadStartAt: { type: string, format: date-time }
+        handoverAt: { type: string, format: date-time }
+        departAt: { type: string, format: date-time }
+        receivingWindow:
+          type: object
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        trfIds: { type: array, items: { type: string } }
+    LoadPlan:
+      type: object
+      properties:
+        totalWeightKg: { type: number }
+        totalVolumeM3: { type: number }
+        compartments:
+          type: array
+          items:
+            type: object
+            properties:
+              compartmentId: { type: string }
+              tempClass: { type: string }
+              weightKg: { type: number }
+              volumeM3: { type: number }
+              trfIds: { type: array, items: { type: string } }
+    PlanCandidate:
+      type: object
+      required: [candidateId, strategy, transportRequestIds]
+      properties:
+        candidateId: { type: string }
+        strategy: { type: string, enum: [DIRECT, MULTI_STOP, WAVE] }
+        transportRequestIds: { type: array, items: { type: string } }
+        vehicleId: { type: string }
+        driverId: { type: string }
+        vehicleClass: { type: string }
+        plannedDepartAt: { type: string, format: date-time }
+        returnAt: { type: string, format: date-time }
+        stops: { type: array, items: { $ref: '#/components/schemas/StopSchedule' } }
+        loadPlan: { $ref: '#/components/schemas/LoadPlan' }
+        routingResultId: { type: string }
+        matrixVersion: { type: string }
+        expiresAt: { type: string, format: date-time, description: 후보 유효 시한(이후 채택 불가) }
+    UnplannedItem:
+      type: object
+      properties:
+        transportRequestId: { type: string }
+        trfId: { type: string }
+        toMfc: { type: string }
+        dueAt: { type: string, format: date-time }
+        reasons: { type: array, items: { $ref: '#/components/schemas/HoldReasonCode' } }
+        missing: { type: array, items: { type: string } }
+    PlanCandidateSet:
+      type: object
+      required: [candidateSetId, state]
+      properties:
+        candidateSetId: { type: string }
+        state: { type: string, enum: [COMPUTING, READY, PARTIAL, NO_SOLUTION, FAILED] }
+        routingState: { type: string, enum: [FOUND, NO_SOLUTION, TIME_LIMIT, INFEASIBLE, MODEL_INPUT_PENDING] }
+        candidates: { type: array, items: { $ref: '#/components/schemas/PlanCandidate' } }
+        unplanned: { type: array, items: { $ref: '#/components/schemas/UnplannedItem' } }
+        computedAt: { type: string, format: date-time }
+    ResourceReservation:
+      type: object
+      properties:
+        kind: { type: string, enum: [VEHICLE, DRIVER, CDC_DOCK, MFC_UNLOADING_BAY] }
+        ownerService: { type: string, description: fleet-service / cdc-location-service / mfc-capacity-service }
+        reservationId: { type: [string, 'null'] }
+        state: { type: string, enum: [NOT_REQUESTED, REQUESTED, HELD, FAILED, RELEASED, UNKNOWN] }
+        createdThisAttempt: { type: boolean, description: true인 예약만 보상 대상 }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    Assignment:
+      type: object
+      required: [assignmentId, assignmentVersion, state]
+      properties:
+        assignmentId: { type: string }
+        assignmentVersion: { $ref: '_common.yaml#/components/schemas/Version' }
+        state: { type: string, enum: [PROPOSED, RESERVED, CONFIRMED, SUPERSEDED, CANCELLED] }
+        tripId: { type: string, description: CONFIRMED 시 발급 }
+        candidate: { $ref: '#/components/schemas/PlanCandidate' }
+        reservations: { type: array, items: { $ref: '#/components/schemas/ResourceReservation' } }
+        supersededBy: { type: [string, 'null'] }
+        departureId: { type: [string, 'null'], description: 실제 출발 사실이 있으면 변경 불가 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TripInstruction:
+      type: object
+      required: [tripId, version, state]
+      properties:
+        tripId: { type: string }
+        version: { type: integer }
+        state: { type: string, enum: [ISSUED, ACKNOWLEDGED, SUPERSEDED, CANCELLED] }
+        assignmentId: { type: string }
+        assignmentVersion: { type: integer }
+        vehicleId: { type: string }
+        driverId: { type: string }
+        plannedDepartAt: { type: string, format: date-time }
+        stops: { type: array, items: { $ref: '#/components/schemas/StopSchedule' } }
+        loadPlan: { $ref: '#/components/schemas/LoadPlan' }
+        notes: { type: string }
+        issuedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

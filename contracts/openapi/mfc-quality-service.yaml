@@ -1,0 +1,356 @@
+openapi: 3.1.0
+info:
+  title: mfc-quality-service
+  version: 0.1.0
+  description: |
+    MFC 품질 판정(PENDING→NORMAL/QUARANTINED)·격리 해제 승인·회수품 검수·폐기 승인·품질 사건·리콜 영향 LOT 추적의 정본. (docs/architecture/service-map.md §5)
+    비정본: 수량 반영(mfc-inventory에 quality-postings 요청 후 commitId 수신), 손실 회계 승인(approval-service/본사).
+    규칙: RELEASE(격리 해제)는 승인자 필수. 회수품은 상온 미개봉 적격만 RESALE, **신선·냉장·냉동은 항상 DISPOSE**.
+    폐기: REQUESTED→APPROVED/REJECTED→(부분 실행)→COMPLETED, 요청자/승인자 분리.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: decisions, description: 격리·해제 판정 }
+  - { name: return-inspections, description: 회수품 검수 }
+  - { name: disposals, description: 폐기 승인 }
+  - { name: incidents, description: 품질 사건 }
+
+paths:
+  /quality-decisions:
+    post:
+      tags: [decisions]
+      summary: 품질 판정 등록 (QUARANTINE / RELEASE) → mfc-inventory quality-postings, QualityDecisionMade
+      description: |
+        QUARANTINE 은 검수자 단독 가능. RELEASE 는 approverId 필수이며 decidedBy ≠ approverId.
+        수량 반영 성공은 inventory commitId 로만 확정. 영향 예약은 inventory 가 BLOCKED 처리하고 ReservationBlocked 를 발행한다.
+      operationId: createQualityDecision
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QualityDecisionRequest' }
+      responses:
+        '202':
+          description: 접수 (resultId = qualityDecisionId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED (RELEASE 에 approverId 없음) / SELF_APPROVAL (판정자=승인자) / INSUFFICIENT_STOCK
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /quality-decisions/{qualityDecisionId}:
+    get:
+      tags: [decisions]
+      summary: 판정 조회 (inventory 반영 상태·commitId)
+      operationId: getQualityDecision
+      parameters:
+        - { name: qualityDecisionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QualityDecision' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /return-inspections:
+    post:
+      tags: [return-inspections]
+      summary: 회수품 검수 결과 등록 (RESALE / DISPOSE, ReturnInspected)
+      description: |
+        ReturnItemReceived(inbound) 이후 수행. 행별 판정 RESALE 은 상온(AMBIENT)·미개봉·적격일 때만 허용.
+        temperatureZone 이 CHILLED/FROZEN 또는 신선 카테고리이면 RESALE 요청은 422 RESALE_NOT_ALLOWED.
+        RESALE 은 inventory 에 RELEASE(Q−q, E+q), DISPOSE 는 폐기 승인 요청(disposal-approvals)으로 이어진다.
+      operationId: createReturnInspection
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReturnInspectionRequest' }
+      responses:
+        '202':
+          description: 접수 (resultId = returnInspectionId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / INVALID_STATE (반입 미등록·이미 검수)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: RESALE_NOT_ALLOWED (신선·냉장·냉동·개봉) / QTY_EXCEEDS_RECEIVED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /return-inspections/{returnInspectionId}:
+    get:
+      tags: [return-inspections]
+      summary: 회수품 검수 조회
+      operationId: getReturnInspection
+      parameters:
+        - { name: returnInspectionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReturnInspection' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /disposal-approvals:
+    post:
+      tags: [disposals]
+      summary: 폐기 승인 요청/결정 (REQUESTED→APPROVED/REJECTED, 요청자·승인자 분리, DisposalApproved)
+      description: |
+        action REQUEST 는 폐기 요청 생성. action APPROVE/REJECT 는 disposalApprovalId 대상 결정이며 requesterId ≠ approverId.
+        손실 회계 영향은 approval-service(BO-15) 승인 참조(approvalRef)를 요구한다. 실행은 inventory DISPOSE 전기(승인 잔량 내 부분 실행 가능).
+      operationId: decideDisposal
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisposalApprovalRequest' }
+      responses:
+        '202':
+          description: 접수 (resultId = disposalApprovalId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: SELF_APPROVAL / APPROVAL_REQUIRED (approvalRef 없음) / QTY_EXCEEDS_QUARANTINED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /disposal-approvals/{disposalApprovalId}:
+    get:
+      tags: [disposals]
+      summary: 폐기 승인 조회 (승인량·집행 누계·잔량)
+      operationId: getDisposalApproval
+      parameters:
+        - { name: disposalApprovalId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisposalApproval' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /quality-incidents:
+    get:
+      tags: [incidents]
+      summary: 품질 사건 목록 (온도 이탈·파손·리콜 영향 LOT)
+      operationId: listQualityIncidents
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: kind, in: query, schema: { $ref: '#/components/schemas/IncidentKind' } }
+        - { name: state, in: query, schema: { type: string, enum: [OPEN, DECIDED, CLOSED] } }
+        - { name: lotId, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/QualityIncident' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /quality-incidents/{incidentId}:
+    get:
+      tags: [incidents]
+      summary: 품질 사건 조회
+      operationId: getQualityIncident
+      parameters:
+        - { name: incidentId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QualityIncident' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    IncidentKind:
+      type: string
+      enum: [TEMPERATURE_EXCURSION, DAMAGE, RECALL, EXPIRY, CONTAMINATION, OTHER]
+    InventoryApplyStatus:
+      type: string
+      enum: [NOT_REQUESTED, SUBMITTED, APPLIED, REJECTED, UNKNOWN_RESULT]
+    QualityLine:
+      type: object
+      required: [sku, qty]
+      properties:
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        lotId: { type: string }
+        locationCode: { type: string }
+        qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+    QualityDecisionRequest:
+      type: object
+      required: [mfcId, decisionType, decidedBy, reason, lines]
+      properties:
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        decisionType: { type: string, enum: [QUARANTINE, RELEASE] }
+        decidedBy: { type: string }
+        approverId: { type: string, description: RELEASE 시 필수. decidedBy 와 달라야 함 }
+        reason: { type: string, enum: [TEMPERATURE, DAMAGE, EXPIRY, RECALL, INSPECTION_FAIL, INSPECTION_PASS, OTHER] }
+        incidentId: { type: string }
+        note: { type: string, maxLength: 500 }
+        evidenceRefs: { type: array, items: { type: string } }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/QualityLine' }
+    QualityDecision:
+      allOf:
+        - $ref: '#/components/schemas/QualityDecisionRequest'
+        - type: object
+          properties:
+            qualityDecisionId: { type: string }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            inventoryApplyStatus: { $ref: '#/components/schemas/InventoryApplyStatus' }
+            inventoryCommitId: { type: [string, 'null'] }
+            appliedQty: { type: integer }
+            affectedOrderIds: { type: array, items: { type: string }, description: inventory ReservationBlocked 투영 }
+            decidedAt: { type: string, format: date-time }
+    ReturnInspectionRequest:
+      type: object
+      required: [mfcId, claimId, returnReceiptId, inspectedBy, lines]
+      properties:
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        claimId: { type: string }
+        returnReceiptId: { type: string, description: inbound 회수품 반입 ID }
+        inspectedBy: { type: string }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, qty, verdict, temperatureZone, opened]
+            properties:
+              orderLineId: { type: string }
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              lotId: { type: string }
+              qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+              verdict: { type: string, enum: [RESALE, DISPOSE] }
+              temperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+              fresh: { type: boolean, description: 신선 카테고리 여부. true 면 RESALE 불가 }
+              opened: { type: boolean, description: 개봉 여부. true 면 RESALE 불가 }
+              disposeReason: { type: string, enum: [TEMPERATURE_ZONE, FRESH, OPENED, DAMAGED, EXPIRED, OTHER] }
+              evidenceRef: { type: string }
+    ReturnInspection:
+      allOf:
+        - $ref: '#/components/schemas/ReturnInspectionRequest'
+        - type: object
+          properties:
+            returnInspectionId: { type: string }
+            version: { $ref: '_common.yaml#/components/schemas/Version' }
+            resaleQty: { type: integer }
+            disposeQty: { type: integer }
+            inventoryApplyStatus: { $ref: '#/components/schemas/InventoryApplyStatus' }
+            inventoryCommitId: { type: [string, 'null'], description: RESALE 분 RELEASE commitId }
+            disposalApprovalId: { type: [string, 'null'], description: DISPOSE 분 폐기 승인 요청 }
+            inspectedAt: { type: string, format: date-time }
+    DisposalApprovalRequest:
+      type: object
+      required: [action, mfcId, actorId]
+      properties:
+        action: { type: string, enum: [REQUEST, APPROVE, REJECT] }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        disposalApprovalId: { type: string, description: APPROVE/REJECT 시 필수 }
+        actorId:
+          type: string
+          description: REQUEST 시 requesterId / APPROVE·REJECT 시 approverId
+        approvalRef: { type: string, description: approval-service approvalId (BO-15 손실 회계). APPROVE 시 필수 }
+        reason: { type: string, maxLength: 500 }
+        sourceRef: { type: string, description: qualityDecisionId / returnInspectionId / incidentId }
+        lines:
+          type: array
+          description: REQUEST 시 필수. APPROVE 시 생략하면 전량, 지정하면 부분 승인
+          items: { $ref: '#/components/schemas/QualityLine' }
+    DisposalApproval:
+      type: object
+      properties:
+        disposalApprovalId: { type: string }
+        mfcId: { type: string }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        state: { type: string, enum: [REQUESTED, APPROVED, REJECTED, PARTIALLY_EXECUTED, COMPLETED] }
+        requesterId: { type: string }
+        approverId: { type: [string, 'null'] }
+        approvalRef: { type: [string, 'null'] }
+        sourceRef: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              lotId: { type: string }
+              requestedQty: { type: integer }
+              approvedQty: { type: integer }
+              executedQty: { type: integer, description: inventory DISPOSE 누계 }
+              remainingQty: { type: integer, description: approvedQty − executedQty }
+        executions:
+          type: array
+          items:
+            type: object
+            properties:
+              inventoryCommitId: { type: string }
+              qty: { type: integer }
+              executedAt: { type: string, format: date-time }
+        requestedAt: { type: string, format: date-time }
+        decidedAt: { type: [string, 'null'], format: date-time }
+    QualityIncident:
+      type: object
+      properties:
+        incidentId: { type: string }
+        mfcId: { type: string }
+        kind: { $ref: '#/components/schemas/IncidentKind' }
+        state: { type: string, enum: [OPEN, DECIDED, CLOSED] }
+        sourceEvent: { type: string, description: TemperatureExcursion / LineShortageReported / RecallIssued }
+        sourceRef: { type: string }
+        affectedLots:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              lotId: { type: string }
+              qty: { type: integer }
+        decisionIds: { type: array, items: { type: string } }
+        caseId: { type: [string, 'null'], description: case-service 연결 }
+        openedAt: { type: string, format: date-time }
+        closedAt: { type: [string, 'null'], format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

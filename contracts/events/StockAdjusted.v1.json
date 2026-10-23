@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/StockAdjusted.v1.json",
+  "title": "StockAdjusted",
+  "description": "실사(CNT) 결과 승인 조정(ADJ)을 집행한 사실. 발행 mfc-inventory. 구독 approval, audit, replenishment. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "StockAdjusted"
+        },
+        "aggregateType": {
+          "const": "InventoryAdjustment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "adjId",
+            "mfcId",
+            "lines",
+            "approvalRef"
+          ],
+          "properties": {
+            "adjId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "countId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "실사 ID"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "deltaQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "locCode": {
+                    "type": "string"
+                  },
+                  "deltaQty": {
+                    "type": "integer",
+                    "description": "증감 수량(음수 허용)"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "executedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

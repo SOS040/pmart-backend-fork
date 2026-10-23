@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TruckDepartureValidated.v1.json",
+  "title": "TruckDepartureValidated",
+  "description": "TruckActuallyDeparted와 실상차 내역의 대조가 완료된 사실. 발행 cdc-outbound. 구독 cdc-inventory(전기 요청), transport-execution. 토픽 cdc.outbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TruckDepartureValidated"
+        },
+        "aggregateType": {
+          "const": "Departure"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "departureId",
+            "trfId",
+            "validatedLines"
+          ],
+          "properties": {
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "vehicleId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "validatedLines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuLotLpnQty"
+              }
+            },
+            "mismatches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "MIXED",
+                      "MISSING",
+                      "EXCESS",
+                      "SEAL"
+                    ]
+                  },
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "expectedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "actualQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "result": {
+              "$ref": "_defs.v1.json#/$defs/ResultState"
+            },
+            "validatedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

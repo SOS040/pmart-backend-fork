@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryIncidentRaised.v1.json",
+  "title": "DeliveryIncidentRaised",
+  "description": "도움요청·사고. 발행 delivery-execution. 구독 case, rider, claim. 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DeliveryIncidentRaised"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "incidentId",
+            "deliveryId",
+            "type"
+          ],
+          "properties": {
+            "incidentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "DAMAGE",
+                "MISDELIVERY",
+                "ABSENT",
+                "UNSAFE",
+                "STATUS_FIX"
+              ]
+            },
+            "evidenceRef": {
+              "$ref": "_defs.v1.json#/$defs/EvidenceRef"
+            },
+            "raisedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

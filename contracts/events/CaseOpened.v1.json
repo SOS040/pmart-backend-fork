@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CaseOpened.v1.json",
+  "title": "CaseOpened",
+  "description": "사건 생성. 발행 case. 구독 notification, audit, backoffice-bff. 토픽 platform.case.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CaseOpened"
+        },
+        "aggregateType": {
+          "const": "Case"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "caseId",
+            "type"
+          ],
+          "properties": {
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "description": "사건 유형"
+            },
+            "refs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "refType",
+                  "refId"
+                ],
+                "properties": {
+                  "refType": {
+                    "type": "string",
+                    "description": "orderId/trfId/deliveryId 등 참조 종류"
+                  },
+                  "refId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "assignee": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "담당자"
+            },
+            "priority": {
+              "type": "string",
+              "description": "우선순위"
+            },
+            "openedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

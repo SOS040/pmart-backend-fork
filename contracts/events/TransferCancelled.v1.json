@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransferCancelled.v1.json",
+  "title": "TransferCancelled",
+  "description": "승인 후 TRF 취소가 확정된 사실(실출발 전만. 출발 후 원TRF 취소 없음). 발행 replenishment. 구독 cdc-outbound, transport-planning, mfc-inbound. 토픽 scm.replenishment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransferCancelled"
+        },
+        "aggregateType": {
+          "const": "Transfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "fromVersion",
+            "toVersion",
+            "scope",
+            "reason"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fromVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "toVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "scope": {
+              "type": "string",
+              "description": "취소 범위(전체/일부 라인)"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "cancelledLines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "cancelledQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "cancelledQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  }
+                }
+              }
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "cancelledAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

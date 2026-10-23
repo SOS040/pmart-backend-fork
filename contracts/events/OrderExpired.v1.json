@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OrderExpired.v1.json",
+  "title": "OrderExpired",
+  "description": "10분 만료·미승인 확정. draftId 또는 orderId 중 하나 이상. 발행 order-service. 구독 cart, BI. 토픽 order.order.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OrderExpired"
+        },
+        "aggregateType": {
+          "const": "Order"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "properties": {
+            "draftId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "PRICE_EXPIRED",
+                "RESERVATION_EXPIRED",
+                "PAYMENT_FAILED"
+              ]
+            },
+            "expiredAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true,
+          "anyOf": [
+            {
+              "required": [
+                "draftId"
+              ],
+              "properties": {
+                "draftId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                }
+              }
+            },
+            {
+              "required": [
+                "orderId"
+              ],
+              "properties": {
+                "orderId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

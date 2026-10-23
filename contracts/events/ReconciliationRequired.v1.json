@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReconciliationRequired.v1.json",
+  "title": "ReconciliationRequired",
+  "description": "대사 불일치·자동 복구 한도 초과. 발행 order-orchestration. 구독 case, backoffice-bff. 토픽 order.saga.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReconciliationRequired"
+        },
+        "aggregateType": {
+          "const": "CheckoutSaga"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sagaId",
+            "orderId",
+            "mismatchType"
+          ],
+          "properties": {
+            "sagaId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mismatchType": {
+              "type": "string",
+              "enum": [
+                "AMOUNT",
+                "QTY",
+                "STATE"
+              ]
+            },
+            "details": {
+              "type": "object",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true,
+              "description": "불일치 상세(원천별 값·시각)"
+            },
+            "detectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

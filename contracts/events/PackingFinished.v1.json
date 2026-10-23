@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PackingFinished.v1.json",
+  "title": "PackingFinished",
+  "description": "포장이 완료된 사실(인계 아님). 발행 mfc-fulfillment. 구독 delivery-dispatch, commerce. 토픽 mfc.fulfillment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PackingFinished"
+        },
+        "aggregateType": {
+          "const": "Shipment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "shipmentId",
+            "packages"
+          ],
+          "properties": {
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fulfillmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shipmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "packages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "packageId"
+                ],
+                "properties": {
+                  "packageId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "bagCount": {
+                    "type": "integer"
+                  },
+                  "weightG": {
+                    "type": "integer",
+                    "description": "총 중량(g)"
+                  },
+                  "volumeCm3": {
+                    "type": "integer"
+                  },
+                  "alcohol": {
+                    "type": "boolean",
+                    "description": "주류 포함 여부(성인 확인 필요)"
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "orderLineId",
+                        "qty"
+                      ],
+                      "properties": {
+                        "orderLineId": {
+                          "$ref": "_defs.v1.json#/$defs/Ref"
+                        },
+                        "sku": {
+                          "$ref": "_defs.v1.json#/$defs/Sku"
+                        },
+                        "qty": {
+                          "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "minItems": 1
+            },
+            "finishedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

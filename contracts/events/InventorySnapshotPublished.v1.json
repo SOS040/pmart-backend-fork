@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InventorySnapshotPublished.v1.json",
+  "title": "InventorySnapshotPublished",
+  "description": "주기/사건 재고 스냅샷을 발행한 사실. 발행 cdc-inventory / mfc-inventory (centerType으로 구분). 구독 replenishment, BI. 토픽 cdc.inventory.v1(CDC) / mfc.inventory.v1(MFC). H=현물, Q=격리(⊂H), E=판매적합, R=유효 예약, A=판매 예약 가능량. CDC Available = max(0, E−R−S)",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "InventorySnapshotPublished"
+        },
+        "aggregateType": {
+          "const": "InventorySnapshot"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "centerType",
+            "centerId",
+            "asOf",
+            "version",
+            "lines"
+          ],
+          "properties": {
+            "centerType": {
+              "type": "string",
+              "enum": [
+                "CDC",
+                "MFC"
+              ]
+            },
+            "centerId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "snapshotId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "asOf": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "trigger": {
+              "type": "string",
+              "enum": [
+                "PERIODIC",
+                "EVENT"
+              ]
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "onHandQty",
+                  "reservedQty",
+                  "heldQty",
+                  "availableQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "onHandQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "H / On-hand"
+                  },
+                  "saleableQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "E(판매적합)"
+                  },
+                  "reservedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "R / Reserved"
+                  },
+                  "heldQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "Q / Held(격리)"
+                  },
+                  "availableQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "A / Available"
+                  },
+                  "safetyQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty",
+                    "description": "S(안전량)"
+                  },
+                  "expiryDate": {
+                    "$ref": "_defs.v1.json#/$defs/Date"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RecallIssued.v1.json",
+  "title": "RecallIssued",
+  "description": "리콜이 발령된 사실. 발행 cdc-quality. 구독 cdc-inventory, cdc-outbound, mfc-quality, replenishment, order(참조), case. 토픽 cdc.quality.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RecallIssued"
+        },
+        "aggregateType": {
+          "const": "Recall"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "recallId",
+            "sku",
+            "lots",
+            "scope"
+          ],
+          "properties": {
+            "recallId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lots": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "scope": {
+              "type": "string",
+              "description": "리콜 범위(전 센터/특정 센터 등)"
+            },
+            "centerIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/CenterId"
+              }
+            },
+            "reason": {
+              "type": "string"
+            },
+            "issuerRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "issuedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

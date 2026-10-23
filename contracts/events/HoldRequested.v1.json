@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/HoldRequested.v1.json",
+  "title": "HoldRequested",
+  "description": "품질 판단으로 보류가 요청된 사실(수량 실행은 cdc-inventory). 발행 cdc-quality. 구독 cdc-inventory. 토픽 cdc.quality.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "HoldRequested"
+        },
+        "aggregateType": {
+          "const": "QualityHold"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "holdRequestId",
+            "sku",
+            "lot",
+            "qty",
+            "reason"
+          ],
+          "properties": {
+            "holdRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "cdcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "lpns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "qty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "approverRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "requestedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

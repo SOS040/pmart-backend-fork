@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/MfcReceiptPosted.v1.json",
+  "title": "MfcReceiptPosted",
+  "description": "ConfirmReceipt COMMITTED 후 TIN 전기 \"MFC 현물 H +r (정상+격리)\"를 반영한 사실. 발행 mfc-inventory. 구독 cdc-inventory, replenishment, mfc-inbound, transport-execution. 토픽 mfc.inventory.v1. 실물 사실: 역순 수신 시 폐기하지 않고 대사. 같은 receiptId는 1회 효과. r = 정상 n + 격리 h",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "MfcReceiptPosted"
+        },
+        "aggregateType": {
+          "const": "Receipt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "receiptId",
+            "postingId",
+            "commitId",
+            "trfId",
+            "departureId",
+            "mfcId",
+            "lines",
+            "receivedQty"
+          ],
+          "properties": {
+            "receiptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "수령 확정 ID(exact-once 키)"
+            },
+            "postingId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "TIN 전기 커밋 ID"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "fromCdc": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/QualitySplit"
+              },
+              "minItems": 1
+            },
+            "receivedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "r = normal + quarantined + pending 합"
+            },
+            "postedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

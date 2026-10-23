@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReturnItemReceived.v1.json",
+  "title": "ReturnItemReceived",
+  "description": "회수품을 점포에서 수령한 사실(검수 대기, 판매 재고 아님). 발행 mfc-inbound. 구독 mfc-quality, claim. 토픽 mfc.inbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReturnItemReceived"
+        },
+        "aggregateType": {
+          "const": "ReturnReceipt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "claimId",
+            "returnPickupId",
+            "mfcId",
+            "lines",
+            "receivedAt"
+          ],
+          "properties": {
+            "returnReceiptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "returnPickupId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuQty"
+              },
+              "minItems": 1
+            },
+            "receivedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PackageHandedOverPosted.v1.json",
+  "title": "PackageHandedOverPosted",
+  "description": "라이더 인계 전기 \"H−q, E−q, R−q\"를 반영한 사실. 발행 mfc-inventory. 구독 mfc-fulfillment, BI. 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PackageHandedOverPosted"
+        },
+        "aggregateType": {
+          "const": "Package"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "commitId",
+            "packageId",
+            "mfcId",
+            "lines"
+          ],
+          "properties": {
+            "commitId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "인계 전기 커밋 ID(PackageHandedOver.inventoryCommitId와 동일)"
+            },
+            "postingId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "packageId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "handoverId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "인계 사실 ID(exact-once 키)"
+            },
+            "shipmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/SkuQty"
+              },
+              "minItems": 1
+            },
+            "postedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

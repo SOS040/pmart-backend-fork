@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransportEtaUpdated.v1.json",
+  "title": "TransportEtaUpdated",
+  "description": "정차지 ETA가 갱신된 사실(최초 약속 보존). 발행 transport-execution. 구독 mfc-inbound, replenishment. 토픽 tms.trip.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransportEtaUpdated"
+        },
+        "aggregateType": {
+          "const": "Trip"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "tripId",
+            "stopId",
+            "originalPromise",
+            "latestEta"
+          ],
+          "properties": {
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "stopId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "originalPromise": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "최초 약속 도착 시각(변경되지 않음)"
+            },
+            "previousEta": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "latestEta": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "basis": {
+              "type": "string",
+              "description": "갱신 근거(GPS/도로시간/사건 등)"
+            },
+            "updatedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

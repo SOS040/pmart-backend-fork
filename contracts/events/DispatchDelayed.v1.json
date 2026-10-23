@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DispatchDelayed.v1.json",
+  "title": "DispatchDelayed",
+  "description": "지연 임계 초과. 발행 delivery-dispatch. 구독 notification(점포·CS·고객), case. 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DispatchDelayed"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "delayedMinutes",
+            "threshold"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "delayedMinutes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "threshold": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "임계(분)"
+            },
+            "detectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

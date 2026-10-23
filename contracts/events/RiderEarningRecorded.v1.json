@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderEarningRecorded.v1.json",
+  "title": "RiderEarningRecorded",
+  "description": "수행료 근거(환불과 독립). 발행 delivery-execution. 구독 BI, (회계 어댑터). 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderEarningRecorded"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "riderId",
+            "feeBasis",
+            "rateVersion",
+            "status"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "earningId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "feeBasis": {
+              "type": "object",
+              "required": [],
+              "properties": {
+                "baseFee": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "distanceFee": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "surcharge": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                },
+                "totalFee": {
+                  "$ref": "_defs.v1.json#/$defs/Money"
+                }
+              },
+              "additionalProperties": true,
+              "description": "수행료 산정 근거"
+            },
+            "rateVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "status": {
+              "type": "string",
+              "description": "수행료 상태 코드"
+            },
+            "recordedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OrderConfirmed.v1.json",
+  "title": "OrderConfirmed",
+  "description": "PG 승인 대사 일치 + 재고/여력/슬롯 확정 후 주문이 확정된 사실. 발행 order-service. 구독 cart, mfc-fulfillment, notification, demand-planning, replenishment, delivery-dispatch, BI. 토픽 order.order.v1",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "OrderConfirmed" },
+        "aggregateType": { "const": "Order" },
+        "payload": {
+          "type": "object",
+          "required": ["orderId", "orderVersion", "accountId", "mfcId", "lines", "deliveryMode", "outOfStockPreference", "reservationId", "paymentAttemptId", "totalAmount"],
+          "properties": {
+            "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "orderVersion": { "$ref": "_defs.v1.json#/$defs/Version" },
+            "accountId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "mfcId": { "$ref": "_defs.v1.json#/$defs/CenterId" },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["orderLineId", "sku", "qty", "unitsPerSku", "unitPrice", "discountShare"],
+                "properties": {
+                  "orderLineId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+                  "sku": { "$ref": "_defs.v1.json#/$defs/Sku" },
+                  "qty": { "$ref": "_defs.v1.json#/$defs/PositiveQty" },
+                  "unitsPerSku": { "type": "integer", "minimum": 1 },
+                  "weightG": { "type": "integer", "minimum": 0 },
+                  "unitPrice": { "$ref": "_defs.v1.json#/$defs/Money" },
+                  "discountShare": { "$ref": "_defs.v1.json#/$defs/Money" },
+                  "lotConstraint": { "type": "object", "properties": { "allowedLots": { "type": "array", "items": { "type": "string" } }, "minExpiryDate": { "$ref": "_defs.v1.json#/$defs/Date" } } }
+                }
+              }
+            },
+            "deliveryMode": { "$ref": "_defs.v1.json#/$defs/DeliveryMode" },
+            "arrivalWindow": { "$ref": "_defs.v1.json#/$defs/TimeWindow" },
+            "outOfStockPreference": { "$ref": "_defs.v1.json#/$defs/OutOfStockPreference" },
+            "reservationId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "capacityHoldId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "slotHoldId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "paymentAttemptId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "itemAmount": { "$ref": "_defs.v1.json#/$defs/Money" },
+            "deliveryTip": { "$ref": "_defs.v1.json#/$defs/Money" },
+            "bagFee": { "$ref": "_defs.v1.json#/$defs/Money" },
+            "totalAmount": { "$ref": "_defs.v1.json#/$defs/Money" },
+            "firstPurchase": { "type": "boolean" },
+            "shipments": {
+              "type": "array",
+              "description": "이행 계획. 총 상품중량 10,000g 초과 시 2건 이상",
+              "items": {
+                "type": "object",
+                "required": ["shipmentId", "lines"],
+                "properties": {
+                  "shipmentId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+                  "weightG": { "type": "integer" },
+                  "lines": { "type": "array", "items": { "type": "object", "required": ["orderLineId", "qty"], "properties": { "orderLineId": { "type": "string" }, "qty": { "$ref": "_defs.v1.json#/$defs/PositiveQty" } } } }
+                }
+              }
+            },
+            "confirmedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

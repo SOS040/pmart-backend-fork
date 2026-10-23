@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReceiptDiscrepancyReported.v1.json",
+  "title": "ReceiptDiscrepancyReported",
+  "description": "수령 수량이 출발/매니페스트와 차이가 난 사실. 발행 mfc-inbound. 구독 cdc-inventory, transport-execution, replenishment, case. 토픽 mfc.inbound.v1. 미수령분은 조사 대상. 자동 손실 전기 금지",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReceiptDiscrepancyReported"
+        },
+        "aggregateType": {
+          "const": "Inbound"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "departureId",
+            "expectedQty",
+            "receivedQty",
+            "missingQty",
+            "excessQty"
+          ],
+          "properties": {
+            "discrepancyId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "departureId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "receiptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shipmentManifestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "expectedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "receivedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "missingQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "excessQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sku",
+                  "expectedQty",
+                  "receivedQty"
+                ],
+                "properties": {
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku"
+                  },
+                  "lot": {
+                    "type": "string"
+                  },
+                  "lpn": {
+                    "type": "string"
+                  },
+                  "expectedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "receivedQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "missingQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "excessQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  }
+                }
+              }
+            },
+            "reportedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

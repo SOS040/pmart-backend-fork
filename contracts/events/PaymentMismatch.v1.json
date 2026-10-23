@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PaymentMismatch.v1.json",
+  "title": "PaymentMismatch",
+  "description": "금액·통화·주문 불일치. 발행 payment-service. 구독 order-orchestration, case. 토픽 order.payment.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PaymentMismatch"
+        },
+        "aggregateType": {
+          "const": "PaymentAttempt"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "paymentAttemptId",
+            "expectedAmount",
+            "approvedAmount"
+          ],
+          "properties": {
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "pgTransactionId": {
+              "type": "string"
+            },
+            "mismatchType": {
+              "type": "string",
+              "enum": [
+                "AMOUNT",
+                "CURRENCY",
+                "ORDER_REF"
+              ]
+            },
+            "expectedAmount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "approvedAmount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "expectedCurrency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 (KRW)"
+            },
+            "approvedCurrency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 (KRW)"
+            },
+            "detectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

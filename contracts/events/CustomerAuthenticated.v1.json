@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerAuthenticated.v1.json",
+  "title": "CustomerAuthenticated",
+  "description": "소셜 인증 성공(이용 가능≠). 발행 auth. 구독 customer. 토픽 platform.auth.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerAuthenticated"
+        },
+        "aggregateType": {
+          "const": "Account"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "accountId",
+            "provider",
+            "authenticatedAt"
+          ],
+          "properties": {
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "provider": {
+              "type": "string",
+              "description": "소셜 제공자 코드"
+            },
+            "authenticatedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

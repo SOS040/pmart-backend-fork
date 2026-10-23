@@ -1,0 +1,254 @@
+openapi: 3.1.0
+info:
+  title: transport-routing-service
+  version: 0.1.0
+  description: |
+    시간대·차종별 도로시간/거리 행렬과 OR-Tools VRPTW 후보 계산 결과의 정본. (docs/architecture/service-map.md §6)
+    후보 채택·배정은 transport-planning-service. 외부 경로 API는 어댑터로 감싸며 행렬 버전·신선도를 함께 돌려준다.
+    계산 상태는 해 없음(NO_SOLUTION)·제한시간 종료(TIME_LIMIT)·불가 확정(INFEASIBLE)·입력 부족(MODEL_INPUT_PENDING)을 구분한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: internal, description: 서비스 간 호출(planning 전용) }
+
+paths:
+  /internal/road-matrix:
+    get:
+      tags: [internal]
+      summary: '[planning→routing] 도로시간/거리 행렬 조회 (출발 시각대·차종별)'
+      description: 행렬은 외부 경로 API 사본이다. freshness=STALE이면 planning은 후보에 표시하고 UNAVAILABLE이면 MODEL_INPUT_PENDING 처리.
+      operationId: getRoadMatrix
+      parameters:
+        - name: origins
+          in: query
+          required: true
+          description: 출발지 센터 코드 목록(쉼표 구분)
+          schema: { type: array, items: { type: string } }
+          style: form
+          explode: false
+        - name: destinations
+          in: query
+          required: true
+          description: 도착지 센터 코드 목록(쉼표 구분)
+          schema: { type: array, items: { type: string } }
+          style: form
+          explode: false
+        - { name: departAt, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: vehicleClass, in: query, required: true, schema: { $ref: '#/components/schemas/VehicleClass' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoadMatrix' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/route-candidates:
+    post:
+      tags: [internal]
+      summary: '[planning→routing] VRPTW 후보 계산 (시간창·구획·TRF당 단일 출발 제약)'
+      description: |
+        동기 응답이 기본이나 timeLimitSec 초과 시 state=TIME_LIMIT과 함께 지금까지의 최선해를 돌려준다.
+        결과는 정본 변경이 아니며 채택은 planning이 한다. 같은 Idempotency-Key·같은 본문은 기존 routingResultId를 반환.
+      operationId: computeRouteCandidates
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteCandidateInput' }
+      responses:
+        '200':
+          description: 계산 결과 (state로 성공/불가 구분)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteCandidateResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/route-candidates/{routingResultId}:
+    get:
+      tags: [internal]
+      summary: 후보 계산 결과 조회 (계산 요청의 짝 조회)
+      operationId: getRouteCandidateResult
+      parameters:
+        - { name: routingResultId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteCandidateResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+components:
+  schemas:
+    VehicleClass:
+      type: string
+      description: 차종. 도로 제한(톤수·높이)과 행렬 선택에 쓰인다.
+      enum: [VAN_1T, TRUCK_2_5T, TRUCK_3_5T, TRUCK_5T, TRUCK_11T]
+    TempClass:
+      type: string
+      enum: [AMBIENT, CHILLED, FROZEN]
+    RoadMatrix:
+      type: object
+      required: [matrixVersion, asOf, cells]
+      properties:
+        matrixVersion: { type: string }
+        vehicleClass: { $ref: '#/components/schemas/VehicleClass' }
+        departAt: { type: string, format: date-time }
+        timeBand: { type: string, description: 행렬이 대표하는 시간대 식별자 }
+        provider: { type: string, description: 외부 경로 API 식별자 }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        cells:
+          type: array
+          items:
+            type: object
+            required: [origin, destination, durationSec, distanceM]
+            properties:
+              origin: { $ref: '_common.yaml#/components/schemas/CenterId' }
+              destination: { $ref: '_common.yaml#/components/schemas/CenterId' }
+              durationSec: { type: integer, minimum: 0 }
+              distanceM: { type: integer, minimum: 0 }
+              reliability: { type: string, enum: [MEASURED, ESTIMATED, FALLBACK] }
+    TimeWindow:
+      type: object
+      required: [start, end]
+      description: "[start, end) 반열림 구간"
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+    RouteStopInput:
+      type: object
+      required: [stopId, centerId, demands]
+      properties:
+        stopId: { type: string }
+        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        windows:
+          type: array
+          description: 하차·인계 가능 시간창(센터 캘린더 사본). 여러 창 허용.
+          items: { $ref: '#/components/schemas/TimeWindow' }
+        serviceTimeSec: { type: integer, minimum: 0, description: 하차+인계 소요 시간 }
+        demands:
+          type: array
+          description: TRF별 수요. 같은 TRF는 한 차량·한 출발로만 배정된다(단일 출발 제약).
+          items:
+            type: object
+            required: [trfId, tempClass, weightKg, volumeM3]
+            properties:
+              trfId: { type: string }
+              tempClass: { $ref: '#/components/schemas/TempClass' }
+              weightKg: { type: number, minimum: 0 }
+              volumeM3: { type: number, minimum: 0 }
+              palletCount: { type: integer, minimum: 0 }
+        accessConstraints:
+          type: array
+          items: { type: string, description: 예 MAX_HEIGHT_3M / NO_TRAILER / LIFTGATE_REQUIRED }
+    RouteVehicleInput:
+      type: object
+      required: [vehicleId, vehicleClass, depot, available, compartments]
+      properties:
+        vehicleId: { type: string }
+        vehicleClass: { $ref: '#/components/schemas/VehicleClass' }
+        depot: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        available: { $ref: '#/components/schemas/TimeWindow' }
+        maxWeightKg: { type: number }
+        maxVolumeM3: { type: number }
+        compartments:
+          type: array
+          items:
+            type: object
+            required: [compartmentId, tempClass, maxWeightKg, maxVolumeM3]
+            properties:
+              compartmentId: { type: string }
+              tempClass: { $ref: '#/components/schemas/TempClass' }
+              maxWeightKg: { type: number }
+              maxVolumeM3: { type: number }
+        driverId: { type: string }
+        driverDutyWindow: { $ref: '#/components/schemas/TimeWindow' }
+        maxDrivingSec: { type: integer, description: 근무/휴게 승인값 사본 }
+    RouteCandidateInput:
+      type: object
+      required: [stops, vehicles, departAtRange]
+      properties:
+        planRef: { type: string, description: planning 후보 집합 식별자 }
+        departAtRange: { $ref: '#/components/schemas/TimeWindow' }
+        stops: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RouteStopInput' } }
+        vehicles: { type: array, minItems: 1, items: { $ref: '#/components/schemas/RouteVehicleInput' } }
+        objective: { type: string, enum: [MIN_VEHICLES, MIN_DURATION, MIN_LATENESS], default: MIN_LATENESS }
+        timeLimitSec: { type: integer, minimum: 1, maximum: 600, default: 30 }
+        matrixVersion: { type: string, description: 지정 시 해당 버전으로 고정 계산 }
+    RouteCandidateResult:
+      type: object
+      required: [routingResultId, state]
+      properties:
+        routingResultId: { type: string }
+        state:
+          type: string
+          description: FOUND=해 있음. NO_SOLUTION=탐색 실패. TIME_LIMIT=제한시간 종료(부분해 포함 가능). INFEASIBLE=제약상 불가 확정. MODEL_INPUT_PENDING=입력 부족.
+          enum: [FOUND, NO_SOLUTION, TIME_LIMIT, INFEASIBLE, MODEL_INPUT_PENDING]
+        missingInputs: { type: array, items: { type: string } }
+        infeasibleReasons:
+          type: array
+          items:
+            type: object
+            properties:
+              stopId: { type: string }
+              trfId: { type: string }
+              reason: { type: string, enum: [WINDOW_UNREACHABLE, CAPACITY, TEMP_CLASS, ACCESS, DRIVER_DUTY, NO_VEHICLE] }
+        matrixVersion: { type: string }
+        matrixAsOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        routes:
+          type: array
+          items:
+            type: object
+            properties:
+              vehicleId: { type: string }
+              departAt: { type: string, format: date-time }
+              returnAt: { type: string, format: date-time }
+              totalDurationSec: { type: integer }
+              totalDistanceM: { type: integer }
+              stops:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    sequence: { type: integer }
+                    stopId: { type: string }
+                    arriveAt: { type: string, format: date-time }
+                    departAt: { type: string, format: date-time }
+                    waitSec: { type: integer }
+                    trfIds: { type: array, items: { type: string } }
+              compartmentLoads:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    compartmentId: { type: string }
+                    weightKg: { type: number }
+                    volumeM3: { type: number }
+        unassigned:
+          type: array
+          items:
+            type: object
+            properties:
+              stopId: { type: string }
+              trfId: { type: string }
+              reason: { type: string }
+        solverStats:
+          type: object
+          properties:
+            elapsedMs: { type: integer }
+            objectiveValue: { type: number }
+            solver: { type: string, example: or-tools }
+        computedAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

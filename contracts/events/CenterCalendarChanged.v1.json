@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CenterCalendarChanged.v1.json",
+  "title": "CenterCalendarChanged",
+  "description": "센터 캘린더 발효. 발행 center-master. 구독 order, replenishment, transport-planning, delivery-serviceability, mfc-location, mfc-capacity, cdc-location. 토픽 platform.center.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CenterCalendarChanged"
+        },
+        "aggregateType": {
+          "const": "Center"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "centerId",
+            "calendarVersion",
+            "windows"
+          ],
+          "properties": {
+            "centerId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "calendarVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "windows": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/TimeWindow"
+              }
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

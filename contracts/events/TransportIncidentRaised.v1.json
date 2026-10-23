@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/TransportIncidentRaised.v1.json",
+  "title": "TransportIncidentRaised",
+  "description": "운송 사건(지연/고장/GPS 유실/온도/수량)이 발생한 사실. 발행 transport-execution. 구독 replenishment, mfc-inbound, cdc-quality, case, notification. 토픽 tms.trip.v1. 환적·재출발 자동 없음. 고장은 안전 보관·case 이관",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "TransportIncidentRaised"
+        },
+        "aggregateType": {
+          "const": "TransportIncident"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "incidentId",
+            "tripId",
+            "type"
+          ],
+          "properties": {
+            "incidentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "tripId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "stopId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "DELAY",
+                "BREAKDOWN",
+                "GPS_LOST",
+                "TEMP",
+                "QTY"
+              ]
+            },
+            "affectedTrfs": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "custodyLocation": {
+              "type": "string",
+              "description": "현재 화물 보관 위치(코드/설명)"
+            },
+            "description": {
+              "type": "string"
+            },
+            "raisedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

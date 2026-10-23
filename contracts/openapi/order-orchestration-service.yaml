@@ -1,0 +1,389 @@
+openapi: 3.1.0
+info:
+  title: order-orchestration-service
+  version: 0.1.0
+  description: |
+    사가 인스턴스·단계·타임아웃·재시도·보상 로그·결과 불명 추적·운영자 수동 개입 기록의 정본. (docs/architecture/service-map.md §2)
+    주문 상태(order), 결제·재고·슬롯·작업의 성공 확정(각 정본)은 소유하지 않는다.
+    사가: S1 결제 진입·확정, S2 이행·결품·부분취소, S3 취소 vs 인계, S4 예약 시간 변경 (docs/business/flows/).
+    모든 엔드포인트는 서비스 간 전용(/internal). BackOffice BO-12는 승인 건(approvalRef)을 동반해야 수동 개입할 수 있다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: sagas, description: 사가 조회·수동 개입 }
+  - { name: checkout, description: S1 시작 (order-service) }
+  - { name: cancellation, description: S3 시작 (claim-service) }
+
+paths:
+  /internal/sagas:
+    get:
+      tags: [sagas]
+      summary: "[bo/order→orchestration] 원요청 ID로 사가 목록 조회"
+      operationId: listSagas
+      parameters:
+        - { name: orderId, in: query, schema: { type: string } }
+        - { name: draftId, in: query, schema: { type: string } }
+        - { name: stopRequestId, in: query, schema: { type: string } }
+        - { name: sagaType, in: query, schema: { $ref: '#/components/schemas/SagaType' } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/SagaState' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK (orderId·draftId·stopRequestId 중 하나 이상 필수)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/SagaSummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /internal/sagas/{sagaId}:
+    get:
+      tags: [sagas]
+      summary: 사가 상세 (단계·타임아웃·재시도·보상 로그·불명 추적·수동 개입 기록)
+      description: |
+        조회 결과는 orchestration이 기록한 진행 사본이다. 결제·재고·슬롯의 성공 여부는 각 정본(payment, mfc-inventory, delivery-capacity)의 원결과 조회로만 확정한다.
+      operationId: getSaga
+      parameters:
+        - { name: sagaId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Saga' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/sagas/{sagaId}/manual-actions:
+    post:
+      tags: [sagas]
+      summary: "[bo→orchestration] 수동 재처리 (원결과 재조회 / 미전달 재전송 / 승인된 보상 실행)"
+      description: |
+        BO-12 운영자 동작. 세 가지 동작은 각각 분리되며 모두 approvalRef(approval-service 승인 건)가 필요하다.
+        "강제 취소 성공", "예약 강제 해제" 같은 동작은 존재하지 않는다(UNSUPPORTED_ACTION).
+        - REQUERY_RESULT 지정 단계의 원결과를 소유 서비스에 재조회해 사가 상태를 갱신한다.
+        - RESEND_NOTIFICATION 미전달 고객 통지만 재전송한다(상태 변경 없음).
+        - EXECUTE_COMPENSATION 보상 로그에 기록된 이번 시도 신규 확보 자원만 해제한다. 해제 응답 불명은 원예약 조회로 확인 전 "해제 완료" 표시 금지.
+      operationId: createManualAction
+      parameters:
+        - { name: sagaId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualActionRequest' }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED (approvalRef 누락·미승인·만료) / UNSUPPORTED_ACTION / STEP_NOT_COMPENSABLE
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/sagas/{sagaId}/manual-actions/{requestId}:
+    get:
+      tags: [sagas]
+      summary: 수동 재처리 결과 조회
+      operationId: getManualAction
+      parameters:
+        - { name: sagaId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManualAction' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/checkout-sagas:
+    post:
+      tags: [checkout]
+      summary: "[order→orchestration] S1 시작 (결제 진입 요청)"
+      description: |
+        order-service가 가격 동결·acceptedQuoteVersion 검증 후 호출. 같은 draftId+Idempotency-Key 재전송은 기존 사가 반환.
+        S1 단계는 재고 예약(ttl 10분) → 작업 여력 Hold → 슬롯 Hold(예약배달만) → 결제 시작 → 승인 대사 → 주문 확정 → 자원 확정 순서다.
+        ACCEPTED는 "사가 시작"이며 재고·슬롯·결제 성공이 아니다.
+      operationId: startCheckoutSaga
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartCheckoutSagaRequest' }
+      responses:
+        '202':
+          description: 사가 시작 접수 (resultId = sagaId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / SAGA_ALREADY_ACTIVE (같은 draftId의 진행 중 사가 존재)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: RE_QUOTE_REQUIRED (quoteExpiresAt 경과) / CONFIG_REQUIRED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/cancellation-sagas:
+    post:
+      tags: [cancellation]
+      summary: "[claim→orchestration] S3 시작 (취소 접수 → 현장 중지 vs 인계 판정)"
+      description: |
+        claim-service가 자격·대상 수량 심사 후 CancellationRequested와 함께 호출. stopRequestId가 멱등 단위.
+        S3 단계는 mfc-fulfillment.StopWork → 포장별 STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER → 배차 취소(전 포장 STOPPED일 때만) → 재고 복귀 확인 → order 수량 반영 → claim에 확정 수량 회신 순서다.
+        취소 접수시각은 우선순위 근거가 아니다(ADR-0006). HANDED_OVER 수량은 S6(회수)로 분기.
+      operationId: startCancellationSaga
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartCancellationSagaRequest' }
+      responses:
+        '202':
+          description: 사가 시작 접수 (resultId = sagaId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT / SAGA_ALREADY_ACTIVE (같은 stopRequestId 진행 중)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: ORDER_NOT_CANCELLABLE (전량 인계·이미 취소·만료)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+components:
+  schemas:
+    SagaType:
+      type: string
+      enum: [S1_CHECKOUT, S2_FULFILLMENT, S3_CANCELLATION, S4_RESERVATION_TIME_CHANGE]
+    SagaState:
+      type: string
+      description: |
+        RUNNING 단계 진행 중. WAITING_RESULT 하위 정본 결과 대기(타임아웃 감시). UNKNOWN_TRACKING 결과 불명 추적(1분×5회→상신→15분).
+        COMPENSATING 보상 실행 중. COMPLETED 정상 종료. COMPENSATED 보상 완료 종료. ESCALATED case-service 상신(수동 개입 대기).
+        RECONCILIATION_REQUIRED 대사 불일치(강제 출고·강제 취소 금지).
+      enum: [RUNNING, WAITING_RESULT, UNKNOWN_TRACKING, COMPENSATING, COMPLETED, COMPENSATED, ESCALATED, RECONCILIATION_REQUIRED]
+    StepName:
+      type: string
+      enum:
+        - VALIDATE_QUOTE
+        - RESERVE_INVENTORY
+        - HOLD_CAPACITY
+        - HOLD_SLOT
+        - START_PAYMENT
+        - AWAIT_PAYMENT_RESULT
+        - RECONCILE_PAYMENT
+        - CONFIRM_ORDER
+        - CONFIRM_RESOURCES
+        - REQUEST_FULFILLMENT
+        - STOP_WORK
+        - CANCEL_ASSIGNMENT
+        - RELEASE_INVENTORY
+        - APPLY_LINE_QUANTITY
+        - NOTIFY_CLAIM
+        - HOLD_NEW_SLOT
+        - RELEASE_OLD_SLOT
+    StepState:
+      type: string
+      enum: [PENDING, IN_PROGRESS, SUCCEEDED, FAILED, UNKNOWN, SKIPPED, COMPENSATED, TIMED_OUT]
+    SagaStep:
+      type: object
+      properties:
+        step: { $ref: '#/components/schemas/StepName' }
+        state: { $ref: '#/components/schemas/StepState' }
+        targetSystem: { type: string, description: 명령을 보낸 정본 서비스 }
+        requestId: { type: string, description: 하위 명령 멱등 키 }
+        resultId:
+          type: string
+          description: 정본이 발급한 결과 ID (reservationId / holdId / paymentAttemptId 등)
+        attempt: { type: integer, description: 재시도 횟수(1부터) }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        timeoutAt: { type: string, format: date-time }
+        lastErrorCode: { type: string }
+        lastErrorMessage: { type: string }
+    CompensationLogEntry:
+      type: object
+      description: 이번 시도에서 새로 확보한 자원만 기록. 기존 약속 자원은 보상 대상이 아니다.
+      properties:
+        resourceType:
+          type: string
+          enum: [INVENTORY_RESERVATION, CAPACITY_HOLD, SLOT_HOLD, PAYMENT_APPROVAL, FULFILLMENT_WORK, DISPATCH_ASSIGNMENT]
+        resourceId: { type: string }
+        ownerSystem: { type: string }
+        acquiredAt: { type: string, format: date-time }
+        releaseState: { type: string, enum: [NOT_REQUESTED, RELEASE_REQUESTED, RELEASED, RELEASE_UNKNOWN, RELEASE_FAILED] }
+        releaseRequestId: { type: string }
+        releaseVerifiedAt:
+          type: string
+          format: date-time
+          description: 원예약 조회로 해제를 확인한 시각. 확인 전에는 RELEASED로 표시하지 않는다
+    UnknownTracking:
+      type: object
+      description: 결과 불명 추적 (1분 간격 5회 → case 상신 → 15분 간격)
+      properties:
+        step: { $ref: '#/components/schemas/StepName' }
+        phase: { type: string, enum: [FAST_RETRY, ESCALATED, SLOW_RETRY, RESOLVED] }
+        attempts: { type: integer }
+        nextQueryAt: { type: string, format: date-time }
+        caseId: { type: string, description: case-service 상신 건 }
+        resolvedState: { type: string, enum: [SUCCEEDED, FAILED] }
+        resolvedEvidenceRef: { type: string, description: PG 원거래 등 정본 증거 참조 }
+    ManualActionType:
+      type: string
+      enum: [REQUERY_RESULT, RESEND_NOTIFICATION, EXECUTE_COMPENSATION]
+    ManualActionRequest:
+      type: object
+      required: [action, approvalRef, reason]
+      properties:
+        action: { $ref: '#/components/schemas/ManualActionType' }
+        approvalRef:
+          type: string
+          description: approval-service 승인 건 ID. 미승인·만료 시 APPROVAL_REQUIRED
+        reason: { type: string, maxLength: 500 }
+        step: { $ref: '#/components/schemas/StepName' }
+        compensationResourceIds:
+          type: array
+          description: EXECUTE_COMPENSATION일 때 해제 대상(보상 로그에 있는 ID만 허용)
+          items: { type: string }
+        notificationRef: { type: string, description: RESEND_NOTIFICATION 대상 통지 ID }
+    ManualAction:
+      type: object
+      properties:
+        requestId: { type: string }
+        sagaId: { type: string }
+        action: { $ref: '#/components/schemas/ManualActionType' }
+        approvalRef: { type: string }
+        operatorId: { type: string }
+        state: { type: string, enum: [ACCEPTED, EXECUTING, SUCCEEDED, FAILED, UNKNOWN] }
+        resultSummary: { type: string }
+        requestedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    SagaSummary:
+      type: object
+      properties:
+        sagaId: { type: string }
+        sagaType: { $ref: '#/components/schemas/SagaType' }
+        state: { $ref: '#/components/schemas/SagaState' }
+        orderId: { type: string }
+        draftId: { type: string }
+        currentStep: { $ref: '#/components/schemas/StepName' }
+        startedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Saga:
+      type: object
+      properties:
+        sagaId: { type: string }
+        sagaType: { $ref: '#/components/schemas/SagaType' }
+        state: { $ref: '#/components/schemas/SagaState' }
+        version: { type: integer }
+        orderId: { type: string }
+        draftId: { type: string }
+        originRequestId:
+          type: string
+          description: 시작 명령의 Idempotency-Key (checkout requestId / stopRequestId)
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        currentStep: { $ref: '#/components/schemas/StepName' }
+        steps: { type: array, items: { $ref: '#/components/schemas/SagaStep' } }
+        compensationLog: { type: array, items: { $ref: '#/components/schemas/CompensationLogEntry' } }
+        unknownTracking: { type: array, items: { $ref: '#/components/schemas/UnknownTracking' } }
+        reconciliation:
+          type: object
+          description: 대사 불일치 사건 (승인액 ≠ 청구액, WorkStopResult vs PackageHandedOver 충돌 등)
+          properties:
+            kind: { type: string, enum: [AMOUNT_MISMATCH, HANDOVER_CONFLICT, RELEASE_UNVERIFIED, RESULT_CONFLICT] }
+            caseId: { type: string }
+            detectedAt: { type: string, format: date-time }
+        manualActions: { type: array, items: { $ref: '#/components/schemas/ManualAction' } }
+        timers:
+          type: object
+          properties:
+            quoteExpiresAt: { type: string, format: date-time, description: 가격 동결 10분 }
+            reservationExpiresAt: { type: string, format: date-time, description: 재고 예약 10분 }
+            paymentPendingHold: { type: boolean, description: 불명 시 결제 확인 대기 점유로 전환(해제 금지) }
+        startedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    StartCheckoutSagaRequest:
+      type: object
+      required: [draftId, purchaseIntentId, acceptedQuoteVersion, quoteExpiresAt, mfcId, deliveryMode, amount, lines]
+      properties:
+        draftId: { type: string }
+        purchaseIntentId: { type: string }
+        acceptedQuoteVersion: { type: integer }
+        quoteExpiresAt: { type: string, format: date-time }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        deliveryMode: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED] }
+        arrivalWindow:
+          type: object
+          description: SCHEDULED일 때 필수 (date는 Asia/Seoul)
+          properties:
+            date: { type: string, format: date }
+            start: { type: string, example: '13:00' }
+            end: { type: string, example: '14:00' }
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        currency: { type: string, enum: [KRW], default: KRW }
+        paymentMethod: { type: string, enum: [TOSS_PAYMENTS] }
+        containsAlcohol: { type: boolean, description: 주류 포함 시 PG 결제 인증 결과 확인 필수 }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [orderLineId, sku, quantity]
+            properties:
+              orderLineId: { type: string }
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+    StartCancellationSagaRequest:
+      type: object
+      required: [claimId, stopRequestId, orderId, scope, lines]
+      properties:
+        claimId: { type: string }
+        stopRequestId: { type: string, description: StopWork 멱등 키. 같은 ID 재전송은 기존 사가 }
+        orderId: { type: string }
+        scope: { type: string, enum: [FULL, PARTIAL] }
+        reason: { type: string, enum: [CUSTOMER_REQUEST, SHORTAGE_CANCEL_ALL, DISPATCH_FAILED, OPERATION_RESTRICTED] }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [orderLineId, qty]
+            properties:
+              orderLineId: { type: string }
+              qty:
+                type: integer
+                minimum: 1
+                description: 취소 요청 수량 (원수량 − 기취소 − 인계 − 진행 클레임 이내)
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

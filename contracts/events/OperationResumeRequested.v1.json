@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/OperationResumeRequested.v1.json",
+  "title": "OperationResumeRequested",
+  "description": "재개 요청(적용은 정본). centerId 또는 riderId 중 하나 이상. 발행 approval. 구독 cdc-quality, mfc-capacity, rider, delivery-dispatch. 토픽 platform.approval.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "OperationResumeRequested"
+        },
+        "aggregateType": {
+          "const": "OperationRestriction"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "restrictionType",
+            "approvalRef"
+          ],
+          "properties": {
+            "centerId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "restrictionType": {
+              "type": "string",
+              "description": "제한 종류 코드"
+            },
+            "scope": {
+              "type": "object",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true,
+              "description": "적용 범위"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "requestedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true,
+          "anyOf": [
+            {
+              "required": [
+                "centerId"
+              ],
+              "properties": {
+                "centerId": {
+                  "$ref": "_defs.v1.json#/$defs/CenterId"
+                }
+              }
+            },
+            {
+              "required": [
+                "riderId"
+              ],
+              "properties": {
+                "riderId": {
+                  "$ref": "_defs.v1.json#/$defs/Ref"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
