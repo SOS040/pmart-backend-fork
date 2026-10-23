@@ -164,7 +164,9 @@ class GatewayRoutingSecurityTest {
     assertRoutedTo("/api/v1/deliveries/d-1/eta", "delivery-tracking-service-rider");
     assertRoutedTo(
         "/api/v1/deliveries/d-1/assignment-cancellations", "delivery-dispatch-service-deliveries");
+    assertRoutedTo("/api/v1/deliveries/d-1/dispatch", "delivery-dispatch-service-deliveries");
     assertRoutedTo("/api/v1/deliveries/d-1/pickups", "delivery-execution-service-deliveries");
+    assertRoutedTo("/api/v1/deliveries/d-1", "delivery-execution-service-deliveries");
     assertRoutedTo("/api/v1/backoffice/views/case-inbox", "backoffice-bff");
   }
 

@@ -119,11 +119,13 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
-  /deliveries/{deliveryId}:
+  /deliveries/{deliveryId}/dispatch:
     get:
       tags: [deliveries]
-      summary: 배송 조회 (배차 상태·배정 라이더·시도 이력; 점원·라이더·운영자)
-      operationId: getDelivery
+      summary: 배송 배차 조회 (배차 상태·배정 라이더·시도 이력; 점원·라이더·운영자)
+      description: |
+        배송 수행 상태(GET /deliveries/{deliveryId})는 delivery-execution-service 소유. 이 작업은 배차 관점만 반환한다.
+      operationId: getDeliveryDispatch
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
       responses:

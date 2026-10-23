@@ -52,7 +52,7 @@ spring:
             - id: delivery-dispatch-service-deliveries
               uri: ${pmart.gateway.upstream.delivery-dispatch-service}
               predicates:
-                - Path=/api/v1/deliveries/*/assignment-cancellations/**
+                - Path=/api/v1/deliveries/*/dispatch,/api/v1/deliveries/*/assignment-cancellations/**
               order: -95
             - id: delivery-execution-service-deliveries
               uri: ${pmart.gateway.upstream.delivery-execution-service}
