@@ -35,6 +35,7 @@ dependencyResolutionManagement {
 // ---------------------------------------------------------------------------
 
 val libraries = listOf<String>(
+    "common-web",
     // 2단계에서 추가: "common-web", "common-messaging", "common-security", "common-observability", "common-test"
 )
 
