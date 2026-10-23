@@ -48,6 +48,7 @@ val platformServices = listOf<String>(
 )
 
 val services = listOf<String>(
+    "order-service",
     // 3단계에서 추가. 1단계 서비스 목록은 docs/architecture/architecture-design.md §8
 )
 

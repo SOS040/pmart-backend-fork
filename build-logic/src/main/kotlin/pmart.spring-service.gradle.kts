@@ -10,6 +10,7 @@ plugins {
     id("pmart.java-conventions")
     id("pmart.contract-check")
     id("pmart.container-image")
+    id("pmart.openapi-server")
 }
 
 dependencies {
@@ -21,10 +22,13 @@ dependencies {
 
     // 모든 서비스 공통 최소 집합. 데이터·Kafka·관측은 각 서비스 build.gradle.kts에서 bundle로 추가한다.
     implementation(libs.bundles.service.core)
+    implementation(libs.springdoc.openapi.webmvc.ui) // 생성 코드의 @Operation 등 + /v3/api-docs
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)
     "integrationTestImplementation"(libs.bundles.test.integration)
+    // integrationTest 는 project() 의 런타임 산출물에만 의존하므로 컴파일에 필요한 starter 를 다시 선언한다
+    "integrationTestImplementation"(libs.bundles.service.core)
 }
 
 springBoot {

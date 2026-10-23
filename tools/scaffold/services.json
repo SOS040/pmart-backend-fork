@@ -1,0 +1,40 @@
+{
+  "_comment": "3단계 스캐폴딩 대상. group=저장소 디렉토리, domain=토픽 접두사(pmart.messaging.domain), db=로컬 DB 이름, port=로컬 포트. features: data(JPA+JDBC+Flyway+PostgreSQL), kafka(common-messaging), redis. 변경 시 tools/scaffold/scaffold-services.mjs 를 다시 실행한다(기존 파일은 덮어쓰지 않는다).",
+  "services": [
+    { "name": "product-service",               "group": "commerce", "domain": "commerce", "port": 8101, "features": ["data", "kafka"] },
+    { "name": "product-content-service",       "group": "commerce", "domain": "commerce", "port": 8102, "features": ["data", "kafka"] },
+    { "name": "customer-service",              "group": "commerce", "domain": "commerce", "port": 8103, "features": ["data", "kafka"] },
+    { "name": "cart-service",                  "group": "commerce", "domain": "commerce", "port": 8104, "features": ["data", "kafka"] },
+    { "name": "search-service",                "group": "commerce", "domain": "commerce", "port": 8105, "features": ["kafka"] },
+    { "name": "storefront-service",            "group": "commerce", "domain": "commerce", "port": 8106, "features": ["data", "kafka"] },
+    { "name": "pricing-service",               "group": "commerce", "domain": "commerce", "port": 8107, "features": ["data", "kafka"] },
+
+    { "name": "order-service",                 "group": "order",    "domain": "order",    "port": 8201, "features": ["data", "kafka"] },
+    { "name": "order-orchestration-service",   "group": "order",    "domain": "order",    "port": 8202, "features": ["data", "kafka"] },
+    { "name": "fulfillment-routing-service",   "group": "order",    "domain": "order",    "port": 8203, "features": ["kafka"] },
+    { "name": "claim-service",                 "group": "order",    "domain": "order",    "port": 8204, "features": ["data", "kafka"] },
+    { "name": "payment-service",               "group": "order",    "domain": "order",    "port": 8205, "features": ["data", "kafka"] },
+
+    { "name": "mfc-inventory-service",         "group": "mfc",      "domain": "mfc",      "port": 8301, "features": ["data", "kafka"] },
+    { "name": "mfc-fulfillment-service",       "group": "mfc",      "domain": "mfc",      "port": 8302, "features": ["data", "kafka"] },
+    { "name": "mfc-capacity-service",          "group": "mfc",      "domain": "mfc",      "port": 8303, "features": ["data", "kafka"] },
+    { "name": "mfc-location-service",          "group": "mfc",      "domain": "mfc",      "port": 8304, "features": ["data", "kafka"] },
+    { "name": "mfc-quality-service",           "group": "mfc",      "domain": "mfc",      "port": 8305, "features": ["data", "kafka"] },
+    { "name": "mfc-inbound-service",           "group": "mfc",      "domain": "mfc",      "port": 8306, "features": ["data", "kafka"] },
+
+    { "name": "delivery-serviceability-service","group": "delivery", "domain": "delivery", "port": 8401, "features": ["data", "kafka"] },
+    { "name": "delivery-capacity-service",     "group": "delivery", "domain": "delivery", "port": 8402, "features": ["data", "kafka"] },
+    { "name": "rider-service",                 "group": "delivery", "domain": "delivery", "port": 8403, "features": ["data", "kafka"] },
+    { "name": "delivery-dispatch-service",     "group": "delivery", "domain": "delivery", "port": 8404, "features": ["data", "kafka"] },
+    { "name": "delivery-execution-service",    "group": "delivery", "domain": "delivery", "port": 8405, "features": ["data", "kafka"] },
+    { "name": "delivery-tracking-service",     "group": "delivery", "domain": "delivery", "port": 8406, "features": ["data", "kafka", "redis"] },
+
+    { "name": "auth-service",                  "group": "platform", "domain": "platform", "port": 8501, "features": ["data", "kafka"] },
+    { "name": "notification-service",          "group": "platform", "domain": "platform", "port": 8502, "features": ["data", "kafka"] },
+    { "name": "audit-service",                 "group": "platform", "domain": "platform", "port": 8503, "features": ["data", "kafka"] },
+    { "name": "backoffice-bff",                "group": "platform", "domain": "platform", "port": 8504, "features": [] },
+    { "name": "approval-service",              "group": "platform", "domain": "platform", "port": 8505, "features": ["data", "kafka"] },
+    { "name": "case-service",                  "group": "platform", "domain": "platform", "port": 8506, "features": ["data", "kafka"] },
+    { "name": "center-master-service",         "group": "platform", "domain": "platform", "port": 8507, "features": ["data", "kafka"] }
+  ]
+}
