@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: product-content-service
+  mvc:
+    problemdetails:
+      enabled: true # Spring MVC 자체 예외도 RFC 9457
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${PMART_JWKS_URI}
+  datasource:
+    url: ${PMART_DB_URL}
+    username: ${PMART_DB_USERNAME}
+    password: ${PMART_DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate # 스키마 변경은 Flyway 만 (service-architecture.md)
+  flyway:
+    locations: classpath:db/migration # common-messaging 이 classpath:db/migration/common 을 추가한다
+  kafka:
+    bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
+server:
+  port: 8102
+pmart:
+  messaging:
+    domain: commerce
+management:
+  zipkin:
+    tracing:
+      endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

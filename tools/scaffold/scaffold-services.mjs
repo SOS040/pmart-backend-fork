@@ -17,7 +17,10 @@ const phase = args.includes("--phase") ? args[args.indexOf("--phase") + 1] : "al
 const table = JSON.parse(fs.readFileSync(path.join(here, "services.json"), "utf8")).services;
 const services = only.length ? table.filter((s) => only.includes(s.name)) : table;
 
-const pkgOf = (name) => "com.pmart." + name.replace(/-service$/, "").replace(/-/g, ".");
+// Java 예약어(case 등)와 충돌하면 services.json 의 package 로 재정의한다.
+const pkgOverride = Object.fromEntries(table.filter((s) => s.package).map((s) => [s.name, s.package]));
+const pkgOf = (name) => pkgOverride[name] ?? "com.pmart." + name.replace(/-service$/, "").replace(/-/g, ".");
+
 const dbOf = (name) => name.replace(/-/g, "_");
 const classOf = (name) =>
   name
@@ -183,27 +186,32 @@ function bootIT(s) {
   const base = f.has("kafka") ? "PostgresKafkaContainerSupport" : "PostgresContainerSupport";
   const props = [`"spring.main.banner-mode=off"`, `"spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"`];
   if (!f.has("data")) props.push(`"spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration"`);
-  if (f.has("redis")) props.push(`"spring.data.redis.url=redis://localhost:1"`);
+  // redis 기능: Redis health indicator 가 포함되므로 더미 주소면 health DOWN(503). 실제 Redis 컨테이너(@ServiceConnection)를 쓴다.
+  // Boot 는 ConnectionDetails 가 있어도 spring.data.redis.url 을 파싱하므로(urlUsesSsl) 미해결 플레이스홀더를 빈 값으로 덮는다.
+  if (f.has("redis")) props.push(`"spring.data.redis.url="`);
+  const redisImports = f.has("redis")
+    ? "import org.springframework.boot.testcontainers.service.connection.ServiceConnection;\nimport org.testcontainers.containers.GenericContainer;\nimport org.testcontainers.junit.jupiter.Container;\n"
+    : "";
+  const redisField = f.has("redis")
+    ? "  /** Redis health indicator 가 포함되므로 실제 Redis 컨테이너를 쓴다. */\n  @Container @ServiceConnection(name = \"redis\")\n  static final GenericContainer<?> REDIS = new GenericContainer<>(\"redis:7-alpine\").withExposedPorts(6379);\n\n"
+    : "";
   return `package ${pkg};
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.pmart.common.test.${base};
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.web.client.RestClient;
+${redisImports}import org.springframework.web.client.RestClient;
 
-/**
- * 기동 검증: 실제 PostgreSQL(Flyway 공통+서비스 마이그레이션)${f.has("kafka") ? "·Kafka" : ""} 위에서 컨텍스트가 뜨고 /actuator/health 가 200.
- */
+/** 기동 검증: 실제 PostgreSQL(Flyway 공통+서비스 마이그레이션)·Kafka 위에서 컨텍스트가 뜨고 /actuator/health 가 200. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {${props.join(", ")}})
 class ServiceBootIT extends ${base} {
 
-  @LocalServerPort int port;
+${redisField}  @LocalServerPort int port;
 
   @Test
   void healthIsUpWithoutAuthentication() {
@@ -213,7 +221,7 @@ class ServiceBootIT extends ${base} {
             .uri("http://localhost:" + port + "/actuator/health")
             .retrieve()
             .body(String.class);
-    assertThat(body).contains("\\"status\\":\\"UP\\"");
+    assertThat(body).contains("\"status\":\"UP\"");
   }
 }
 `;

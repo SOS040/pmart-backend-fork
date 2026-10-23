@@ -1,5 +1,5 @@
 {
-  "_comment": "3단계 스캐폴딩 대상. group=저장소 디렉토리, domain=토픽 접두사(pmart.messaging.domain), db=로컬 DB 이름, port=로컬 포트. features: data(JPA+JDBC+Flyway+PostgreSQL), kafka(common-messaging), redis. 변경 시 tools/scaffold/scaffold-services.mjs 를 다시 실행한다(기존 파일은 덮어쓰지 않는다).",
+  "_comment": "3단계 스캐폴딩 대상. group=저장소 디렉토리, domain=토픽 접두사(pmart.messaging.domain), db=로컬 DB 이름, port=로컬 포트. features: data(JPA+JDBC+Flyway+PostgreSQL), kafka(common-messaging), redis. package: 기본 com.pmart.<이름> 이 Java 예약어와 충돌할 때 재정의(case-service → com.pmart.cases). 변경 시 tools/scaffold/scaffold-services.mjs 를 다시 실행한다(기존 파일은 덮어쓰지 않는다).",
   "services": [
     { "name": "product-service",               "group": "commerce", "domain": "commerce", "port": 8101, "features": ["data", "kafka"] },
     { "name": "product-content-service",       "group": "commerce", "domain": "commerce", "port": 8102, "features": ["data", "kafka"] },
@@ -34,7 +34,7 @@
     { "name": "audit-service",                 "group": "platform", "domain": "platform", "port": 8503, "features": ["data", "kafka"] },
     { "name": "backoffice-bff",                "group": "platform", "domain": "platform", "port": 8504, "features": [] },
     { "name": "approval-service",              "group": "platform", "domain": "platform", "port": 8505, "features": ["data", "kafka"] },
-    { "name": "case-service",                  "group": "platform", "domain": "platform", "port": 8506, "features": ["data", "kafka"] },
+    { "name": "case-service",                  "group": "platform", "domain": "platform", "port": 8506, "features": ["data", "kafka"], "package": "com.pmart.cases" },
     { "name": "center-master-service",         "group": "platform", "domain": "platform", "port": 8507, "features": ["data", "kafka"] }
   ]
 }

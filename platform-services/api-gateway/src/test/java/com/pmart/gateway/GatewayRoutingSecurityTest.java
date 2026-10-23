@@ -1,0 +1,198 @@
+package com.pmart.gateway;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.any;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockJwt;
+
+import com.github.tomakehurst.wiremock.WireMockServer;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
+import org.springframework.cloud.gateway.route.Route;
+import org.springframework.cloud.gateway.route.RouteLocator;
+import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
+import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.reactive.server.WebTestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
+import reactor.core.publisher.Mono;
+
+/**
+ * 게이트웨이 라우팅·보안 검증. 업스트림은 WireMock 서버 하나가 대신한다(아래 서비스들의 pmart.gateway.upstream.* 가 같은 주소). 어느 서비스로
+ * 갔는지는 매칭된 라우트 ID 와 업스트림이 받은 경로로 확인한다.
+ */
+// MOCK: WebTestClient 를 애플리케이션 컨텍스트에 바인딩해야 mockJwt() 가 동작한다. 라우트의 업스트림 호출은 실제 HTTP(WireMock).
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureWebTestClient
+@ActiveProfiles("test")
+@EnableWireMock(
+    @ConfigureWireMock(
+        name = "upstream",
+        baseUrlProperties = {
+          "pmart.gateway.upstream.storefront-service",
+          "pmart.gateway.upstream.order-service",
+          "pmart.gateway.upstream.customer-service",
+          "pmart.gateway.upstream.notification-service",
+          "pmart.gateway.upstream.search-service",
+          "pmart.gateway.upstream.rider-service",
+          "pmart.gateway.upstream.delivery-tracking-service",
+          "pmart.gateway.upstream.delivery-execution-service",
+          "pmart.gateway.upstream.delivery-dispatch-service",
+          "pmart.gateway.upstream.backoffice-bff"
+        }))
+class GatewayRoutingSecurityTest {
+
+  /** 계약이 /internal 만 노출하는 서비스: 외부 라우트가 없는 것이 정상. */
+  private static final List<String> INTERNAL_ONLY =
+      List.of(
+          "order-orchestration-service", "fulfillment-routing-service", "mfc-inventory-service");
+
+  @Autowired WebTestClient client;
+  @Autowired RouteLocator routeLocator;
+  @Autowired GatewayProperties properties;
+
+  @InjectWireMock("upstream")
+  WireMockServer upstream;
+
+  @BeforeEach
+  void stubUpstream() {
+    upstream.stubFor(
+        any(anyUrl())
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"ok\":true}")));
+  }
+
+  @Test
+  void everyScaffoldedServiceHasAnUpstreamAndAtLeastOneRoute() {
+    List<String> routeIds = routeLocator.getRoutes().map(Route::getId).collectList().block();
+    assertThat(properties.upstream()).hasSize(31);
+    for (String service : properties.upstream().keySet()) {
+      if (INTERNAL_ONLY.contains(service)) {
+        continue;
+      }
+      assertThat(routeIds).as("route for " + service).anyMatch(id -> id.startsWith(service));
+    }
+  }
+
+  @Test
+  void missingTokenIsRejectedWithProblemDetails() {
+    client
+        .get()
+        .uri("/api/v1/orders/ord-1")
+        .exchange()
+        .expectStatus()
+        .isUnauthorized()
+        .expectHeader()
+        .contentType("application/problem+json")
+        .expectHeader()
+        .exists("X-Request-Id")
+        .expectBody()
+        .jsonPath("$.status")
+        .isEqualTo(401)
+        .jsonPath("$.code")
+        .isEqualTo("UNAUTHENTICATED")
+        .jsonPath("$.requestId")
+        .isNotEmpty();
+    upstream.verify(0, getRequestedFor(anyUrl()));
+  }
+
+  @Test
+  void internalPathsNeverPassEvenWithValidToken() {
+    client
+        .mutateWith(mockJwt())
+        .post()
+        .uri("/api/v1/internal/reservations")
+        .exchange()
+        .expectStatus()
+        .isForbidden()
+        .expectHeader()
+        .contentType("application/problem+json")
+        .expectBody()
+        .jsonPath("$.code")
+        .isEqualTo("FORBIDDEN");
+    upstream.verify(0, postRequestedFor(anyUrl()));
+  }
+
+  @Test
+  void contractPublicOperationPassesWithoutToken() {
+    client.get().uri("/api/v1/storefront/home").exchange().expectStatus().isOk();
+    upstream.verify(getRequestedFor(urlPathEqualTo("/api/v1/storefront/home")));
+    // 같은 리소스라도 계약에 없는 메서드는 공개가 아니다
+    client.post().uri("/api/v1/storefront/home").exchange().expectStatus().isUnauthorized();
+  }
+
+  @Test
+  void authenticatedRequestIsForwardedWithRequestId() {
+    client
+        .mutateWith(mockJwt())
+        .get()
+        .uri("/api/v1/orders/ord-1")
+        .header("X-Request-Id", "req-123")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .valueEquals("X-Request-Id", "req-123");
+    upstream.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/orders/ord-1"))
+            .withHeader("X-Request-Id", equalTo("req-123")));
+  }
+
+  @Test
+  void sharedSegmentsResolveToTheMostSpecificRoute() {
+    assertRoutedTo("/api/v1/me/recent-searches", "search-service-me");
+    assertRoutedTo("/api/v1/me/notifications", "notification-service-me");
+    assertRoutedTo("/api/v1/me/addresses", "customer-service-me");
+    assertRoutedTo("/api/v1/me", "customer-service-me");
+    assertRoutedTo("/api/v1/riders/me/locations/latest", "delivery-tracking-service-rider");
+    assertRoutedTo("/api/v1/riders/me/deliveries", "delivery-execution-service-rider");
+    assertRoutedTo("/api/v1/riders/me", "rider-service-riders");
+    assertRoutedTo("/api/v1/deliveries/d-1/eta", "delivery-tracking-service-rider");
+    assertRoutedTo(
+        "/api/v1/deliveries/d-1/assignment-cancellations", "delivery-dispatch-service-deliveries");
+    assertRoutedTo("/api/v1/deliveries/d-1/pickups", "delivery-execution-service-deliveries");
+    assertRoutedTo("/api/v1/backoffice/views/case-inbox", "backoffice-bff");
+  }
+
+  @Test
+  void unknownPathIsNotFoundProblem() {
+    client
+        .mutateWith(mockJwt())
+        .get()
+        .uri("/api/v1/no-such-resource")
+        .exchange()
+        .expectStatus()
+        .isNotFound()
+        .expectHeader()
+        .contentType("application/problem+json");
+  }
+
+  private void assertRoutedTo(String path, String expectedRouteId) {
+    MockServerWebExchange exchange =
+        MockServerWebExchange.from(MockServerHttpRequest.get(path).build());
+    Route route =
+        routeLocator
+            .getRoutes()
+            .filterWhen(r -> Mono.from(r.getPredicate().apply(exchange)))
+            .next()
+            .block();
+    assertThat(route).as("route for " + path).isNotNull();
+    assertThat(route.getId()).as(path).isEqualTo(expectedRouteId);
+    client.mutateWith(mockJwt()).get().uri(path).exchange().expectStatus().isOk();
+    upstream.verify(getRequestedFor(urlPathEqualTo(path)));
+  }
+}

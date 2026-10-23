@@ -23,6 +23,7 @@ deploy/local/register-connector.sh order-service order_service
 | PostgreSQL | `localhost:15432`(호스트 PostgreSQL 5432와 충돌 방지), user `pmart` / `pmart-local`, DB는 `init-db.sql` |
 | Kafka | `localhost:9092` (컨테이너 내부 `kafka:19092`) |
 | Kafka Connect REST | `http://localhost:8083` |
+| Redis | `localhost:6379` (delivery-tracking-service 캐시) |
 | Zipkin | `http://localhost:9411` |
 
 서비스 `application-local.yml` 예:

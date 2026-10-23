@@ -1,0 +1,14 @@
+# 테스트: JWKS 는 조회하지 않는다(mockJwt 사용). 업스트림은 WireMock 이 pmart.gateway.upstream.* 를 덮어쓴다.
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:1/jwks
+management:
+  tracing:
+    enabled: false
+  zipkin:
+    tracing:
+      export:
+        enabled: false

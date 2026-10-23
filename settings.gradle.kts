@@ -44,10 +44,40 @@ val libraries = listOf<String>(
 )
 
 val platformServices = listOf<String>(
-    // "api-gateway"
+    "api-gateway",
 )
 
 val services = listOf<String>(
+    "center-master-service",
+    "case-service",
+    "approval-service",
+    "backoffice-bff",
+    "audit-service",
+    "notification-service",
+    "auth-service",
+    "delivery-tracking-service",
+    "delivery-execution-service",
+    "delivery-dispatch-service",
+    "rider-service",
+    "delivery-capacity-service",
+    "delivery-serviceability-service",
+    "mfc-inbound-service",
+    "mfc-quality-service",
+    "mfc-location-service",
+    "mfc-capacity-service",
+    "mfc-fulfillment-service",
+    "mfc-inventory-service",
+    "payment-service",
+    "claim-service",
+    "fulfillment-routing-service",
+    "order-orchestration-service",
+    "pricing-service",
+    "storefront-service",
+    "search-service",
+    "cart-service",
+    "customer-service",
+    "product-content-service",
+    "product-service",
     "order-service",
     // 3단계에서 추가. 1단계 서비스 목록은 docs/architecture/architecture-design.md §8
 )

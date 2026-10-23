@@ -1,0 +1,18 @@
+// backoffice-bff: docs/architecture/service-map.md 참조. 업무 규칙은 domain/application 패키지에.
+plugins {
+    id("pmart.spring-service")
+}
+
+pmartOpenApi {
+    basePackage.set("com.pmart.backoffice.bff")
+}
+
+dependencies {
+    implementation(project(":libraries:common-web"))
+    implementation(project(":libraries:common-observability"))
+    implementation(project(":libraries:common-security"))
+    implementation(libs.bundles.service.observability)
+
+    testImplementation(project(":libraries:common-test"))
+    "integrationTestImplementation"(project(":libraries:common-test"))
+}

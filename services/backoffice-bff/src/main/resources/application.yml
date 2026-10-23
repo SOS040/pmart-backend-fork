@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: backoffice-bff
+  mvc:
+    problemdetails:
+      enabled: true # Spring MVC 자체 예외도 RFC 9457
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${PMART_JWKS_URI}
+server:
+  port: 8504
+management:
+  zipkin:
+    tracing:
+      endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
