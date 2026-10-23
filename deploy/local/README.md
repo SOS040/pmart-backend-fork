@@ -20,7 +20,7 @@ deploy/local/register-connector.sh order-service order_service
 ## 접속 정보 (로컬 전용)
 | 구성 | 주소 |
 |---|---|
-| PostgreSQL | `localhost:5432`, user `pmart` / `pmart-local`, DB는 `init-db.sql` |
+| PostgreSQL | `localhost:15432`(호스트 PostgreSQL 5432와 충돌 방지), user `pmart` / `pmart-local`, DB는 `init-db.sql` |
 | Kafka | `localhost:9092` (컨테이너 내부 `kafka:19092`) |
 | Kafka Connect REST | `http://localhost:8083` |
 | Zipkin | `http://localhost:9411` |
@@ -29,7 +29,7 @@ deploy/local/register-connector.sh order-service order_service
 ```yaml
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/order_service
+    url: jdbc:postgresql://localhost:15432/order_service
     username: pmart
     password: pmart-local
   kafka:

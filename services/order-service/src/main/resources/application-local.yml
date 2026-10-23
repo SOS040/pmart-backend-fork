@@ -6,7 +6,7 @@ spring:
         jwt:
           jwk-set-uri: ${PMART_JWKS_URI:http://localhost:8501/.well-known/jwks.json}
   datasource:
-    url: jdbc:postgresql://localhost:5432/order_service
+    url: jdbc:postgresql://localhost:15432/order_service
     username: pmart
     password: ${PMART_DB_PASSWORD:pmart-local}
   kafka:

@@ -12,7 +12,8 @@ services:
       POSTGRES_USER: pmart
       POSTGRES_PASSWORD: pmart-local
       POSTGRES_DB: pmart
-    ports: ["5432:5432"]
+    # 호스트 포트 15432: 개발 PC에 설치된 PostgreSQL(5432)과 충돌 방지. 컨테이너 내부·Debezium 은 postgres:5432 그대로.
+    ports: ["15432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/10-init-db.sql:ro

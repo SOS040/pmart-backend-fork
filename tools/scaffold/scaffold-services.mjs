@@ -126,7 +126,7 @@ function applicationLocalYml(s) {
   if (f.has("data")) {
     y.push(
       `  datasource:`,
-      `    url: jdbc:postgresql://localhost:5432/${dbOf(s.name)}`,
+      `    url: jdbc:postgresql://localhost:15432/${dbOf(s.name)}`, // deploy/local 은 15432 (호스트 PostgreSQL 충돌 방지)
       `    username: pmart`,
       `    password: \${PMART_DB_PASSWORD:pmart-local}`,
     );
