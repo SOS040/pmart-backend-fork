@@ -14,6 +14,11 @@ paths:
 - 변경 요청은 멱등키와 처리 결과 조회 계약을 고려한다.
 - 오류 응답은 Problem Details(RFC 9457) 형식.
 - 시간 초과를 상대 서비스의 업무 실패로 단정하지 않는다 (결과 조회로 확인).
+- **동기 호출 체인은 최대 2 hop.** 그 이상이 필요하면 이벤트 기반으로 설계한다 (ADR-0006, 승인 발효 이벤트화가 이 규칙의 결과).
+- 경로는 `/api/v1/{resources}` 복수형 kebab-case. 명령은 하위 리소스 POST (`POST /api/v1/orders/{id}/cancellations`). 서비스 간 전용 경로는 `/internal/...`.
+- 변경 요청 헤더: `Idempotency-Key`, `X-Source-System` 필수, 상태 변경은 `X-Expected-Version`. 응답 `status`는 ACCEPTED/APPLIED/REJECTED/UNKNOWN_RESULT (ACK ≠ 업무 성공).
+- `traceId`(W3C `traceparent`)는 게이트웨이가 발급하고 모든 동기 호출·이벤트 봉투·로그에 전파한다. `correlationId`는 사가/사건 ID.
+- 시각은 UTC `Instant`로 저장·전송한다. 기한·영업일·달력 판정만 Asia/Seoul (ADR-0010).
 - REST 계약은 `contracts/openapi/`가 정본. springdoc으로 문서화.
 
 ## 비동기 통신 (Kafka)
