@@ -1,6 +1,6 @@
 # 로컬 개발 인프라: PostgreSQL(논리 복제) + Kafka(KRaft) + Kafka Connect(Debezium) + Redis + Zipkin
 # 실행: docker compose -f deploy/local/docker-compose.yml up -d
-# 커넥터 등록: deploy/local/register-connector.sh <service-name> <db-name>
+# 커넥터 등록: connector-registrar 컨테이너가 자동으로(서비스 첫 기동 후 10초 내). 설정 갱신은 register-connector.sh <service-name> <db-name>
 # 비밀정보는 로컬 개발 전용 고정값. 운영에서는 Secret Manager.
 name: pmart-local
 
@@ -71,6 +71,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+
+  connector-registrar:
+    # Outbox 커넥터 자동 등록: 서비스가 처음 기동해 publication pmart_outbox 가 생기면 커넥터를 만든다(connector-registrar.sh).
+    image: postgres:17-alpine
+    depends_on:
+      connect: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "/registrar/connector-registrar.sh"]
+    environment:
+      CONNECT_URL: http://connect:8083
+      DB_HOST: postgres
+      DB_USER: pmart
+      DB_PASSWORD: pmart-local
+      INTERVAL: "10"
+    volumes:
+      - ./connector-registrar.sh:/registrar/connector-registrar.sh:ro
+      - ./connectors:/connectors:ro
+    restart: unless-stopped
 
   redis:
     # delivery-tracking-service(라이더 위치 최신값 캐시) 용. 원장 용도 금지(service-architecture.md).

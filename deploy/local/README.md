@@ -13,7 +13,12 @@ Debezium 기반 Outbox 발행을 로컬에서 그대로 재현한다. 애플리�
 ## 시작
 ```bash
 docker compose -f deploy/local/docker-compose.yml up -d
-# 서비스마다 커넥터 1개 (DB 1개 = 커넥터 1개 = 복제 슬롯 1개)
+```
+서비스마다 커넥터 1개(DB 1개 = 커넥터 1개 = 복제 슬롯 1개). **등록은 자동**: `connector-registrar` 컨테이너(`connector-registrar.sh`)가 10초마다 서비스 DB 를 훑어, 서비스가 처음 기동해 Flyway 가 publication `pmart_outbox` 를 만든 DB 에 `outbox-<service>` 커넥터를 만든다(이미 있으면 그대로). 서비스 목록은 DB 이름 규칙(`order_service` → `order-service`)에서 얻는다.
+
+```bash
+docker compose -f deploy/local/docker-compose.yml logs -f connector-registrar   # created outbox-... 확인
+# 커넥터 설정(템플릿)을 바꿨을 때만 수동 갱신(PUT)
 deploy/local/register-connector.sh order-service order_service
 ```
 
@@ -50,6 +55,7 @@ docker compose -f deploy/local/docker-compose.yml exec kafka /opt/kafka/bin/kafk
 ```
 
 ## 주의
-- 공통 마이그레이션 `V0_0_1__pmart_outbox_inbox.sql`(common-messaging)이 `outbox_event`·`inbox_event`·publication을 만든다. 커넥터는 테이블이 생긴 뒤 등록한다(`snapshot.mode=no_data`).
+- 공통 마이그레이션 `V0_0_1__pmart_outbox_inbox.sql`(common-messaging)이 `outbox_event`·`inbox_event`·publication을 만든다. 커넥터는 publication 이 생긴 뒤에만 등록된다(`snapshot.mode=no_data`, `publication.autocreate.mode=disabled`).
+- `init-db.sql` 은 볼륨이 처음 만들어질 때만 실행된다. 서비스 DB 가 추가된 뒤 기존 볼륨을 쓰고 있다면 `docker compose ... down -v` 로 새로 만들거나 `CREATE DATABASE <db>` 를 직접 실행한다.
 - 운영에서는 DB 사용자에 `REPLICATION` 권한, publication 생성 권한이 필요하다. 비밀정보는 Secret Manager.
 - Schema Registry는 두지 않는다(2026-10-23). 계약 적합성은 발행 전 `EventSchemaValidator`(ENFORCE)로 보장하고, 소비자는 WARN 권장.
