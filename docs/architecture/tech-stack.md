@@ -1,0 +1,71 @@
+# PMart Backend — Tech Stack
+
+공통 스택은 사용 기준이다. 모든 서비스에 모든 의존성을 추가하지 않는다.
+실제 버전의 정본은 `gradle/libs.versions.toml`과 빌드 파일이다.
+
+| 영역 | 기본 기술 | 적용 기준 |
+|---|---|---|
+| 개발 언어 | Java 21 | Gradle Java Toolchain으로 통일 |
+| 애플리케이션 | Spring Boot | 서비스별 독립 애플리케이션 |
+| 빌드 | Gradle Wrapper | 시스템 Gradle 대신 Wrapper 사용 |
+| 빌드 스크립트 | Gradle Kotlin DSL | `build.gradle.kts`, `settings.gradle.kts` |
+| 프로젝트 구성 | Gradle Multi-Project | 서비스·공통 라이브러리를 서브프로젝트로 관리 |
+| HTTP API | Spring MVC | 일반 업무 서비스의 기본 웹 스택 |
+| API Gateway | Spring Cloud Gateway | 라우팅·요청 제한·공통 접근 제어 |
+| 인증·인가 | Spring Security + OAuth2/OIDC | 서비스별 토큰·권한 검증 |
+| 데이터베이스 | PostgreSQL | 서비스별 데이터 소유권과 계정 분리 |
+| 영속성 | Spring Data JPA + JDBC | 일반 엔티티 처리와 명시적 SQL 처리 구분 |
+| DB 마이그레이션 | Flyway | 서비스별 스키마 변경 이력 |
+| 캐시 | Redis + Spring Data Redis | 캐시·임시 데이터·위치 최신값 |
+| 메시징 | Apache Kafka, KRaft | 도메인 이벤트·비동기 처리 |
+| Kafka 연동 | Spring for Apache Kafka | 발행·소비·재시도·오류 처리 |
+| 이벤트 스키마 | Schema Registry + Avro | 계약 버전과 호환성 관리 |
+| 배치 | Spring Batch | 대사·집계·계획 계산 등 필요 서비스에 적용 |
+| API 명세 | OpenAPI + springdoc-openapi | REST API 계약 문서화 |
+| 입력 검증 | Jakarta Bean Validation | 요청 형식과 기본 제약 검증 |
+| 장애 제어 | Resilience4j | 타임아웃·제한적 재시도·서킷 브레이커 |
+| 로그 | SLF4J + Logback | 구조화 로그와 추적 식별자 |
+| 메트릭 | Actuator + Micrometer | 서비스·업무 상태 관측 |
+| 모니터링 | Prometheus + Grafana | 수집·대시보드·알림 |
+| 분산 추적 | Micrometer Tracing + OpenTelemetry + Zipkin | HTTP·Kafka 추적 연결 |
+| 단위 테스트 | JUnit Jupiter + Mockito + AssertJ | 빠른 업무 규칙 검증 |
+| 통합 테스트 | Spring Boot Test + Testcontainers | PostgreSQL·Kafka 등 실제 의존 기술 검증 |
+| 외부 API 테스트 | WireMock | 외부 시스템 응답·오류·지연 재현 |
+| 커버리지 | JaCoCo | 테스트 커버리지 보고서 |
+| 품질 분석 | SonarQube | 정적 분석·보안·품질 게이트 |
+| 형식 검사 | Spotless | Java·빌드 파일 형식 일관성 |
+| 소스 관리 | Git + GitHub | PR·리뷰·보호 브랜치 |
+| CI/CD | Jenkins | 빌드·검증·이미지 발행·배포 조정 |
+| CI 알림 | Slack | Jenkins가 CI 단계 결과 공지 |
+| 컨테이너 | Docker / OCI image | 서비스별 실행 이미지 |
+| 이미지 저장소 | Private Docker Registry | 접근 통제·이미지 버전·digest 관리 |
+| 실행 플랫폼 | Kubernetes | 서비스별 배포·확장·상태 확인 |
+| 배포 정의 | Helm | 환경별 배포 설정 |
+| 비밀정보 | Vault 또는 Cloud Secret Manager | 토큰·PG 키·DB 자격증명 관리 |
+
+## 선택적 스택
+- 검색 서비스: OpenSearch
+- AI 서비스: Spring AI + pgvector
+- 일반 업무 서비스에 검색·AI 의존성을 일괄 적용하지 않는다.
+
+## 전체 구조 예시
+```
+pmart-backend/
+├── CLAUDE.md
+├── settings.gradle.kts, build.gradle.kts, gradle.properties
+├── gradlew, gradlew.bat
+├── gradle/ (libs.versions.toml, wrapper/)
+├── build-logic/            # convention plugins
+├── services/
+│   ├── product-service/  customer-service/  cart-service/
+│   ├── order-service/  payment-service/
+│   ├── cdc-inventory-service/  mfc-inventory-service/
+│   └── ...
+├── platform-services/api-gateway/
+├── libraries/
+│   ├── common-observability/  common-security/
+│   ├── common-messaging/  common-test/
+├── contracts/ (openapi/, events/)
+├── deploy/helm/
+└── Jenkinsfile
+```
