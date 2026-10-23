@@ -1,0 +1,27 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!**/src/**/build/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 로컬 환경 (비밀정보는 애초에 저장소에 넣지 않는다)
+.env
+.env.*
+*.local.yml
+*.local.yaml
+
+# 테스트·리포트 산출물
+out/
+reports/
+*.log
