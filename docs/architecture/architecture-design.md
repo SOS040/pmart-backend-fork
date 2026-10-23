@@ -33,7 +33,7 @@
                  │                                                                                │
  ┌───────────────┴──────────────┐  ┌────────────────────────┐  ┌────────────────────────┐  ┌──────┴───────────────────────────┐
  │ 1. Commerce (9)              │  │ 2. Order & Payment (5) │  │ 7. Last-mile Delivery  │  │ 8. Platform & Support (6 + 3)    │
- │ product · product-content    │◄─┤ order · orchestration  ├─►│ serviceability·capacity│  │ auth · notification · audit      │
+ │ product · product-content    │◄─┤ order · orchestration  ├─►│ serviceability·capacity│  │ auth · backoffice-bff            │
  │ customer · cart · review     │  │ fulfillment-routing    │  │ rider · dispatch       │  │ notification · audit · ai-assist │
  │ search · storefront          │  │ claim · payment ──► PG │  │ execution · tracking   │  │ [+] approval · case · center-mst │
  │ pricing · promotion(1차 X)   │  └──────────┬─────────────┘  └───────────┬────────────┘  └──────────────────────────────────┘
