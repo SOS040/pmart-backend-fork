@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PMart 공통 로그 설정. ObservabilityDefaultsPostProcessor 가 logging.config 기본값으로 지정한다.
+  서비스가 자체 logback-spring.xml 을 두거나 logging.config 를 바꾸면 그쪽이 우선한다.
+
+  - 기본: JSON 한 줄 (logstash-logback-encoder). traceId/spanId/correlationId/sourceSystem 은 MDC 에서 자동 포함.
+  - 프로파일 local: 사람이 읽는 평문.
+  - 마스킹: 전화번호·이메일·카드번호 패턴, 그리고 키 이름이 password/token/secret/authorization 인 값.
+    개인정보·토큰은 애초에 로그에 넣지 않는 것이 원칙이고, 마스킹은 마지막 방어선이다.
+-->
+<configuration scan="false">
+  <springProperty scope="context" name="serviceName" source="spring.application.name" defaultValue="unknown"/>
+
+  <springProfile name="local">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <charset>UTF-8</charset>
+        <pattern>%d{HH:mm:ss.SSS} %-5level [${serviceName},%X{traceId:-},%X{spanId:-}] [cid=%X{correlationId:-}] %logger{36} - %msg%n%ex</pattern>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <springProfile name="!local">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <timeZone>UTC</timeZone>
+        <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
+        <customFields>{"service":"${serviceName}"}</customFields>
+        <fieldNames>
+          <timestamp>timestamp</timestamp>
+          <version>[ignore]</version>
+          <levelValue>[ignore]</levelValue>
+        </fieldNames>
+        <includeMdcKeyName>traceId</includeMdcKeyName>
+        <includeMdcKeyName>spanId</includeMdcKeyName>
+        <includeMdcKeyName>correlationId</includeMdcKeyName>
+        <includeMdcKeyName>sourceSystem</includeMdcKeyName>
+        <decorator class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator">
+          <defaultMask>***</defaultMask>
+          <!-- 키 이름 기준 -->
+          <path>password</path>
+          <path>*password*</path>
+          <path>*secret*</path>
+          <path>*token*</path>
+          <path>authorization</path>
+          <path>cardNumber</path>
+          <!-- 값 패턴 기준: 한국 휴대전화, 이메일, 카드번호(13~19자리) -->
+          <value>01[016789]-?\d{3,4}-?\d{4}</value>
+          <value>[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}</value>
+          <value>\b(?:\d[ -]?){13,19}\b</value>
+        </decorator>
+        <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+          <maxDepthPerThrowable>30</maxDepthPerThrowable>
+          <rootCauseFirst>true</rootCauseFirst>
+          <exclude>^sun\.reflect\..*</exclude>
+          <exclude>^java\.lang\.reflect\..*</exclude>
+          <exclude>^org\.springframework\.(cglib|aop)\..*</exclude>
+        </throwableConverter>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <logger name="org.apache.kafka" level="WARN"/>
+  <logger name="org.hibernate.SQL" level="INFO"/>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>
