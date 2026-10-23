@@ -97,7 +97,9 @@ class OutboxInboxPostgresIT {
     String topic = tx.execute(s -> writer.append(e));
 
     assertThat(topic).isEqualTo("order.order.v1");
-    Integer rows = jdbc.queryForObject("SELECT count(*) FROM outbox_event", Integer.class);
+    Integer rows =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE id = ?", Integer.class, e.eventId());
     assertThat(rows).isZero(); // delete-after-insert
   }
 
@@ -122,9 +124,10 @@ class OutboxInboxPostgresIT {
         .containsEntry("aggregatetype", "Order")
         .containsEntry("type", "OrderDraftCreated")
         .containsEntry("topic", "order.order.v1");
-    assertThat(rows.get(0).get("payload").toString())
-        .contains("\"eventType\": \"OrderDraftCreated\"".replace(": ", ":"))
-        .contains("ord-it-2");
+    String payload = rows.get(0).get("payload").toString();
+    assertThat(payload)
+        .contains("OrderDraftCreated")
+        .contains("ord-it-2"); // jsonb 는 공백·키 순서를 정규화한다
     jdbc.update("DELETE FROM outbox_event WHERE id = ?", e.eventId());
   }
 

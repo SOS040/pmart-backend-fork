@@ -14,3 +14,10 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
 }
+
+dependencies {
+    // 베이스 클래스 자체 검증용(@ServiceConnection 주입): 서비스에는 영향 없음
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc)
+    "integrationTestImplementation"(libs.spring.boot.starter.kafka)
+    "integrationTestImplementation"(libs.postgresql)
+}
