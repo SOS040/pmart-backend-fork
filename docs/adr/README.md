@@ -14,5 +14,6 @@
 | [0010](0010-time-utc-storage-seoul-business-dates.md) | UTC 저장, Asia/Seoul 기한 판정 | 제안 |
 | [0011](0011-service-identity-tokens.md) | 서비스 신원 토큰: auth-service client_credentials, /internal 호출에만 | 제안 |
 | [0012](0012-image-registry-docker-hub-public.md) | 이미지 저장소: Docker Hub 개인 계정 공개 저장소 `<계정>/pmart-<service>` | 제안 |
+| [0013](0013-deployment-lan-compose-and-helm.md) | 배포 정의: LAN 은 배치 파일 + compose 생성, Kubernetes 는 공통 Helm 차트 | 제안 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

@@ -19,7 +19,7 @@
 | 캐시 | Redis + Spring Data Redis | 캐시·임시 데이터·위치 최신값 |
 | 메시징 | Apache Kafka, KRaft | 도메인 이벤트·비동기 처리 |
 | Kafka 연동 | Spring for Apache Kafka | 발행·소비·재시도·오류 처리 |
-| 이벤트 스키마 | JSON Schema(draft 2020-12) + Schema Registry(JSON Schema 모드) | `contracts/events/` 정본. 봉투 allOf 구조, 필드 추가만 허용 |
+| 이벤트 스키마 | JSON Schema(draft 2020-12). Schema Registry 없음(ADR-0009) — 발행 전 `EventSchemaValidator` 로 검증 | `contracts/events/` 정본. 봉투 allOf 구조, 필드 추가만 허용 |
 | 배치 | Spring Batch | 대사·집계·계획 계산 등 필요 서비스에 적용 |
 | API 명세 | OpenAPI + springdoc-openapi | REST API 계약 문서화 |
 | 입력 검증 | Jakarta Bean Validation | 요청 형식과 기본 제약 검증 |

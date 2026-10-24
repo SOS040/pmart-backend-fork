@@ -14,7 +14,7 @@
 |---|---|
 | 목표 구성 | **49개** = 업무 서비스 40개(Commerce 9, Order·Payment 5, SCM 4, CDC WMS 5, MFC 6, Middle-mile TMS 5, Last-mile 6) + 플랫폼·지원 6개 + BackOffice 문서가 요구하는 원장 3개(`approval-service`, `case-service`, `center-master-service`, §4.8, ADR-0004). `config-service`·`discovery-service` 는 제거(2026-10-23 결정: Kubernetes Service DNS + ConfigMap). 정본은 `service-map.md`. (2026-10-24 정정: 이전 표기 "업무 42 + 플랫폼 6 = 48, +3 → 51"은 service-map 과 맞지 않았음) |
 | 1차 범위 | 문서가 1차 제외한 영역(쿠폰·프로모션, 공급사·구매발주, CDC 외부 입고/ASN, MFC 간 이관, 예정재고 예약판매)은 서비스 경계만 확보하고 **기능은 비활성** (§8 단계 계획). |
-| 기술 스택 | `docs/architecture/tech-stack.md`와 `.claude/rules/` 기준(2026-10-23). Java 21 / Spring Boot / Gradle Kotlin DSL / Spring MVC + RestClient / Spring Cloud Gateway / Resilience4j / Kafka(KRaft) + Schema Registry(JSON Schema) / PostgreSQL + Flyway / Redis / Kubernetes + Helm / Jenkins. 최적화는 OR-Tools Java 바인딩을 해당 서비스 내부에서 사용(별도 Python 런타임 없음). 오류 응답은 RFC 9457. |
+| 기술 스택 | `docs/architecture/tech-stack.md`와 `.claude/rules/` 기준(2026-10-23). Java 21 / Spring Boot / Gradle Kotlin DSL / Spring MVC + RestClient / Spring Cloud Gateway / Resilience4j / Kafka(KRaft) + JSON Schema 계약 검증(Schema Registry 없음, ADR-0009) / PostgreSQL + Flyway / Redis / Kubernetes + Helm / Jenkins. 최적화는 OR-Tools Java 바인딩을 해당 서비스 내부에서 사용(별도 Python 런타임 없음). 오류 응답은 RFC 9457. |
 | 통신 규칙 | 동기 호출은 timeout/retry/circuit breaker 필수, 체인 최대 2 hop, 상태 전파는 이벤트, Outbox, consumer 멱등 `[CLAUDE.md 확정]`. |
 | 트랜잭션 | 2PC 금지. Saga + 보상 `[CLAUDE.md 확정]`. 주문 사가는 orchestration으로 한다 (ADR-0003). |
 | 데이터 | 서비스별 독립 DB. 다른 서비스 DB 직접 접근 금지 `[CLAUDE.md 확정]`. 재고 수량을 바꾸는 서비스는 센터 유형별 **하나** (`cdc-inventory`, `mfc-inventory`). |

@@ -10,7 +10,7 @@ libraries/          # 공통 기술 라이브러리 (jar, 업무 로직 금지)
 contracts/          # openapi/, events/ — 서비스 간 계약의 정본
 build-logic/        # convention plugin (included build)
 gradle/libs.versions.toml  # 의존성 좌표 중앙 관리
-deploy/helm/, Jenkinsfile
+deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 실행기·Helm 차트 (Jenkinsfile 은 아직 없음)
 ```
 서비스 내부: `com.pmart.<domain>.{api, application, domain, infrastructure}`
 
