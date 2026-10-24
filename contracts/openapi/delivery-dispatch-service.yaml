@@ -78,6 +78,7 @@ paths:
         state 를 생략하면 SENT 이면서 expiresAt 이 지나지 않은 제안만 반환한다. state 를 지정하면 만료 여부로 거르지 않는다.
         판정은 서버 시각 기준이므로 남은 시간은 remainingSec 또는 serverTime 과 expiresAt 의 차이로 표시한다.
         이 조회는 푸시 수신 여부와 무관하게 offerId 를 얻는 기준 경로다(알림 유실·앱 재실행 시 복구).
+        폴링 간격은 응답 pollAfterSec 을 따른다. 게이트웨이 처리율 제한은 JWT subject 단위 단일 버킷(전 경로 공용)이며, 초과 시 429 + Retry-After 다.
         푸시·SSE 전달 채널과 일반배차모드 대기 목록(Delivery-business-logic :126 대기목록화면)은 이 경로에 포함하지 않는다(BR-06 보류 항목).
       x-added-in: '2026-10-24'
       operationId: listMyOffers
@@ -99,6 +100,13 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Offer' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
                   serverTime: { type: string, format: date-time, description: 응답 생성 시 서버 시각 }
+                  pollAfterSec:
+                    type: [integer, 'null']
+                    minimum: 1
+                    description: |
+                      다음 조회까지 권장 대기(초). 서버 설정값이며 잠정 기본 5초다(부하 시험 후 조정).
+                      null 이면 지금은 제안을 받을 수 없는 상태(운행 종료·신규배차 OFF·하나씩 배달 진행 중·계정 제한)이므로 상태가 바뀔 때까지 폴링을 멈춘다.
+                    x-added-in: '2026-10-24'
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
