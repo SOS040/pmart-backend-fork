@@ -201,7 +201,12 @@ paths:
         유효 담당은 투영이 아니라 mfc-capacity GET /assignments?taskId= 동기 조회로 판정한다(1 hop). 조회 불가면 503 으로 거절하고 시작하지 않는다.
         옛 배정 버전 요청은 VERSION_CONFLICT 이며 details 로 assignmentVersion / taskVersion 을 구분한다(:928).
         본문 workerId 가 인증 문맥의 작업자와 다르면 403 이다.
-        같은 Idempotency-Key 재전송은 기존 판정을 반환한다. 응답을 받지 못하면 GET …/starts/{requestId} 로 확인한다.
+        판정 순서는 담당 조회 → 판정 기록이다. 담당 조회가 실패하면 아무것도 기록하지 않고 503 DEPENDENCY_UNAVAILABLE 을 반환한다(시작 안 됨 확정).
+        이 명령은 UNKNOWN_RESULT 를 반환하지 않는다. 결과가 불명인 경우는 응답을 받지 못한 경우(타임아웃·연결 끊김)뿐이다.
+        같은 Idempotency-Key 재전송은 기록된 판정(STARTED/REJECTED)을 반환한다. 503 은 기록되지 않으므로 같은 키 재전송은 처음부터 다시 판정한다.
+        응답을 받지 못하면 같은 키로 재전송하는 것이 기본 확정 방법이다. GET …/starts/{requestId} 는 조회 전용 보조 수단이다.
+        같은 키의 앞선 요청이 아직 처리 중이면 409 IDEMPOTENCY_CONFLICT(retryable=true)이며, 잠시 뒤 같은 키로 다시 보낸다.
+        같은 키에 다른 본문이면 409 IDEMPOTENCY_CONFLICT(retryable=false)이다.
         키를 잃었으면 GET /tasks/{taskId} 의 activeStart 로 본인 시작 여부를 확인한다(새 키 재시작은 ALREADY_STARTED).
         성공 시 Task 는 IN_PROGRESS 가 되고 TaskProgressed 를 발행한다(새 이벤트 없음).
         Q-09 결정 전 잠정: 시작 점유는 자동 만료하지 않는다. 점유는 실행 완료·WK-04 종결(BLOCKED/FAILED/CANCELLED/CLOSED_PARTIAL)·WK-05 재배정으로 끝난다.
@@ -237,13 +242,20 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+        '503':
+          description: DEPENDENCY_UNAVAILABLE (mfc-capacity 배정 조회 불가). 판정을 기록하지 않았으므로 시작 안 됨이 확정이다. 같은 키로 재전송할 수 있다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /tasks/{taskId}/starts/{requestId}:
     get:
       tags: [tasks]
       summary: 시작 점유 판정 조회 (requestId = Idempotency-Key)
-      description: 요청한 작업자 본인과 같은 센터 권한자만 조회할 수 있다.
+      description: |
+        요청한 작업자 본인과 같은 센터 권한자만 조회할 수 있다.
+        기록된 판정(STARTED/REJECTED)만 조회된다. 503 으로 끝난 요청, 서버에 도달하지 않은 요청, 아직 처리 중인 요청은 모두 404 이다.
+        따라서 404 만으로 시작 안 됨을 확정하지 않는다. 같은 Idempotency-Key 로 재전송해 판정을 받는다.
       x-added-in: '2026-10-24'
       operationId: getTaskStart
       parameters:
@@ -256,7 +268,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TaskStart' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '404':
+          description: 기록된 판정 없음 (미도달·503·처리 중). 시작 안 됨의 확정이 아니다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /tasks/{taskId}/executions:
     post:
