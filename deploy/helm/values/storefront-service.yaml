@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: storefront-service
+port: 8106
+image:
+  repository: docker.io/heeji4445/pmart-storefront-service
+secretEnvFrom:
+  - pmart-storefront-service-db

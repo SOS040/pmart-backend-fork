@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: rider-service
+port: 8403
+image:
+  repository: docker.io/heeji4445/pmart-rider-service
+secretEnvFrom:
+  - pmart-rider-service-db

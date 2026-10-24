@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: case-service
+port: 8506
+image:
+  repository: docker.io/heeji4445/pmart-case-service
+secretEnvFrom:
+  - pmart-case-service-db

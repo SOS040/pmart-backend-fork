@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: notification-service
+port: 8502
+image:
+  repository: docker.io/heeji4445/pmart-notification-service
+secretEnvFrom:
+  - pmart-notification-service-db

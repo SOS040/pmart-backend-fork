@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: delivery-dispatch-service
+port: 8404
+image:
+  repository: docker.io/heeji4445/pmart-delivery-dispatch-service
+secretEnvFrom:
+  - pmart-delivery-dispatch-service-db

@@ -1,0 +1,10 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: auth-service
+port: 8501
+image:
+  repository: docker.io/heeji4445/pmart-auth-service
+secretEnvFrom:
+  - pmart-auth-service-db
+  - pmart-auth-signing
+env:
+  PMART_AUTH_ISSUER: http://auth-service:8501

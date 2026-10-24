@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: delivery-tracking-service
+port: 8406
+image:
+  repository: docker.io/heeji4445/pmart-delivery-tracking-service
+secretEnvFrom:
+  - pmart-delivery-tracking-service-db

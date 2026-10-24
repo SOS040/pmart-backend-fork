@@ -1,0 +1,7 @@
+# 모든 서비스 공통 값(환경별 파일로 덮어쓴다). 주소는 같은 네임스페이스의 Service DNS 를 가정한다.
+# Kafka·Redis·Zipkin 을 클러스터 안에 둘지 관리형으로 쓸지는 플랫폼 결정 [팀 확인 필요] — 환경별 values 에서 바꾼다.
+env:
+  PMART_KAFKA_BOOTSTRAP: kafka:9092
+  PMART_JWKS_URI: http://auth-service:8501/api/v1/internal/jwks
+  PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+  PMART_REDIS_URL: redis://redis:6379

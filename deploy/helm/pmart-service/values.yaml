@@ -1,0 +1,78 @@
+# pmart-service 차트 기본값. 서비스별 값은 deploy/helm/values/<service>.yaml, 환경 공통은 values/common.yaml.
+# 설치 예(CD): helm upgrade --install product-service deploy/helm/pmart-service \
+#   -f deploy/helm/values/common.yaml -f deploy/helm/values/product-service.yaml --set image.digest=sha256:...
+
+# 서비스 이름(spring.application.name). 리소스 이름·Service DNS 가 된다(게이트웨이 업스트림 http://<name>:<port>).
+name: ""
+# server.port. 컨테이너·Service 포트 동일.
+port: 0
+
+image:
+  repository: docker.io/heeji4445/pmart-SERVICE # values/<service>.yaml 에서 지정
+  # 배포는 태그가 아니라 push 결과 digest 로 한다(ci-cd.md). 비어 있으면 렌더링 실패.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+# 평문 환경변수(비밀 아님). common.yaml 과 서비스 values 가 합쳐진다.
+env: {}
+
+# 비밀 환경변수: 이 이름의 Secret 의 모든 키를 환경변수로 주입(envFrom). Secret 은 Secret Manager 연동으로 만든다(차트가 만들지 않음).
+secretEnvFrom: []
+
+resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits: { memory: 768Mi }
+
+# Spring Boot probe(common-observability 가 liveness/readiness 그룹을 켠다)
+probes:
+  startup: { path: /actuator/health/liveness, periodSeconds: 5, failureThreshold: 36 }
+  liveness: { path: /actuator/health/liveness, periodSeconds: 10, failureThreshold: 3 }
+  readiness: { path: /actuator/health/readiness, periodSeconds: 5, failureThreshold: 3 }
+
+# 이미지 기본 사용자 nonroot(uid 65532, distroless)
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+
+# readOnlyRootFilesystem 이라 내장 Tomcat·임시 파일용 /tmp 를 emptyDir 로 둔다
+tmpVolume:
+  sizeLimit: 256Mi
+
+terminationGracePeriodSeconds: 40
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceAccount:
+  create: false
+  name: ""
+
+# 외부 노출은 api-gateway 만(값 파일에서 켬). 호스트·TLS·IngressClass 는 플랫폼 결정 [팀 확인 필요].
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

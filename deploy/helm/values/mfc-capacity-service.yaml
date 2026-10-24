@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: mfc-capacity-service
+port: 8303
+image:
+  repository: docker.io/heeji4445/pmart-mfc-capacity-service
+secretEnvFrom:
+  - pmart-mfc-capacity-service-db

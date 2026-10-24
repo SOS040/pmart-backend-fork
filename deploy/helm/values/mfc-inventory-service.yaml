@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: mfc-inventory-service
+port: 8301
+image:
+  repository: docker.io/heeji4445/pmart-mfc-inventory-service
+secretEnvFrom:
+  - pmart-mfc-inventory-service-db

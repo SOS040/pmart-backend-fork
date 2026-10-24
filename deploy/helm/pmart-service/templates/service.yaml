@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # 이름 = 서비스 이름 → 클러스터 DNS http://<name>:<port> (게이트웨이 업스트림 기본값과 일치)
+  name: {{ include "pmart.name" . }}
+  labels:
+    {{- include "pmart.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "pmart.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: http

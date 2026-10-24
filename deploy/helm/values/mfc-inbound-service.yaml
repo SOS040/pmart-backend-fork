@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: mfc-inbound-service
+port: 8306
+image:
+  repository: docker.io/heeji4445/pmart-mfc-inbound-service
+secretEnvFrom:
+  - pmart-mfc-inbound-service-db

@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: claim-service
+port: 8204
+image:
+  repository: docker.io/heeji4445/pmart-claim-service
+secretEnvFrom:
+  - pmart-claim-service-db

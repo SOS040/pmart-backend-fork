@@ -1,0 +1,6 @@
+apiVersion: v2
+name: pmart-service
+description: "PMart Spring Boot 서비스 공통 차트(서비스마다 values 로 구분). Deployment + Service (+ 선택: Ingress, HPA, PDB)"
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

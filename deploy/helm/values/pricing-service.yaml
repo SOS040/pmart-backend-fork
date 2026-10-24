@@ -1,0 +1,7 @@
+# 생성 파일(deploy/helm/gen-values.sh). 환경 공통 값은 common.yaml.
+name: pricing-service
+port: 8107
+image:
+  repository: docker.io/heeji4445/pmart-pricing-service
+secretEnvFrom:
+  - pmart-pricing-service-db
