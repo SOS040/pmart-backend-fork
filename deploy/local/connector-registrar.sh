@@ -4,11 +4,14 @@
 # 커넥터 outbox-<service> 가 없으면 만든다. 서비스 목록을 따로 관리하지 않는다(DB 이름 규칙 order_service → order-service).
 # - 이미 있는 커넥터는 건드리지 않는다. 설정을 바꿨으면 register-connector.sh 로 갱신(PUT).
 # - RUN_ONCE=true 면 한 바퀴만 돈다.
+# - DB_HOSTS="host1:port1 host2:port2" 면 여러 PostgreSQL 을 차례로 훑는다(LAN 배포: PC마다 DB). 없으면 DB_HOST:DB_PORT 하나.
+#   DB 이름(=서비스)은 전체에서 유일해야 한다(커넥터·슬롯 이름이 DB 이름에서 나온다).
 # busybox sh/wget 만 쓴다(postgres:alpine 이미지).
 set -u
 CONNECT_URL="${CONNECT_URL:-http://connect:8083}"
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
+DB_HOSTS="${DB_HOSTS:-${DB_HOST}:${DB_PORT}}"
 DB_USER="${DB_USER:-pmart}"
 export PGPASSWORD="${DB_PASSWORD:-pmart-local}"
 INTERVAL="${INTERVAL:-10}"
@@ -34,10 +37,13 @@ register() {
   fi
 }
 
-echo "connector-registrar: ${CONNECT_URL}, ${DB_HOST}:${DB_PORT}, 주기 ${INTERVAL}s"
+echo "connector-registrar: ${CONNECT_URL}, ${DB_HOSTS}, 주기 ${INTERVAL}s"
 while :; do
-  for db in $(psql_q postgres "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname NOT IN ('postgres','pmart') ORDER BY 1"); do
-    [ "$(psql_q "$db" "SELECT 1 FROM pg_publication WHERE pubname = 'pmart_outbox'")" = "1" ] && register "$db"
+  for hp in $DB_HOSTS; do
+    DB_HOST="${hp%:*}"; DB_PORT="${hp##*:}"
+    for db in $(psql_q postgres "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname NOT IN ('postgres','pmart') ORDER BY 1"); do
+      [ "$(psql_q "$db" "SELECT 1 FROM pg_publication WHERE pubname = 'pmart_outbox'")" = "1" ] && register "$db"
+    done
   done
   [ "$RUN_ONCE" = "true" ] && break
   sleep "$INTERVAL"

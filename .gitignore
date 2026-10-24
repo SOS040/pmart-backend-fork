@@ -32,3 +32,6 @@ replay_pid*.log
 
 # Claude Code 개인 설정 (권한 허용 규칙 등)
 .claude/settings.local.json
+
+# LAN 배포 비밀정보 (deploy/lan/init-secrets.sh 가 생성)
+deploy/lan/.secrets/

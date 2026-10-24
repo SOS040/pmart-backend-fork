@@ -1,6 +1,11 @@
 spring:
   application:
     name: fulfillment-routing-service
+  autoconfigure:
+    # 상태를 갖지 않는 서비스(DB 없음). common-messaging 이 spring-jdbc 를 끌어와 DataSource 자동구성이 켜지므로 끈다.
+    # DB(색인·inbox 등)가 생기면 이 제외를 지우고 PMART_DB_* 를 받는다.
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
   mvc:
     problemdetails:
       enabled: true # Spring MVC 자체 예외도 RFC 9457
