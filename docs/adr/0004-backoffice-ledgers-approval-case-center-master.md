@@ -24,4 +24,5 @@ CLAUDE.md의 `backoffice-bff`는 "관리자 화면별 조회 조합·도메인 �
 
 ## 결과
 - 총 서비스 51개(원안 50 − config/discovery 2 + 추가 3). 서비스 목록 정본은 `service-map.md`.
+  - 2026-10-24 정정: service-map 기준 **49개**(업무 40 + 플랫폼·지원 6 + 추가 3). 위 "51개"는 셈 오류이며 결정 내용은 바뀌지 않는다.
 - 승인 발효는 "approval → ApprovalDecided(이벤트) → 정본 반영 → Receipt 회신" 순. 2 hop 규칙 때문에 approval이 정본을 거쳐 3자를 동기 호출하지 않는다.

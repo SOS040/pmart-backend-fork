@@ -12,7 +12,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 목표 구성 | 업무 서비스 42개 + 플랫폼·지원 6개 = **48개**(원안 50개에서 `config-service`·`discovery-service` 제거, 2026-10-23 결정: Kubernetes Service DNS + ConfigMap 사용). 여기에 BackOffice 문서가 요구하는 원장 3개(`approval-service`, `case-service`, `center-master-service`)를 **추가 제안** (§4.8, ADR-0004) → **51개**. |
+| 목표 구성 | **49개** = 업무 서비스 40개(Commerce 9, Order·Payment 5, SCM 4, CDC WMS 5, MFC 6, Middle-mile TMS 5, Last-mile 6) + 플랫폼·지원 6개 + BackOffice 문서가 요구하는 원장 3개(`approval-service`, `case-service`, `center-master-service`, §4.8, ADR-0004). `config-service`·`discovery-service` 는 제거(2026-10-23 결정: Kubernetes Service DNS + ConfigMap). 정본은 `service-map.md`. (2026-10-24 정정: 이전 표기 "업무 42 + 플랫폼 6 = 48, +3 → 51"은 service-map 과 맞지 않았음) |
 | 1차 범위 | 문서가 1차 제외한 영역(쿠폰·프로모션, 공급사·구매발주, CDC 외부 입고/ASN, MFC 간 이관, 예정재고 예약판매)은 서비스 경계만 확보하고 **기능은 비활성** (§8 단계 계획). |
 | 기술 스택 | `docs/architecture/tech-stack.md`와 `.claude/rules/` 기준(2026-10-23). Java 21 / Spring Boot / Gradle Kotlin DSL / Spring MVC + RestClient / Spring Cloud Gateway / Resilience4j / Kafka(KRaft) + Schema Registry(JSON Schema) / PostgreSQL + Flyway / Redis / Kubernetes + Helm / Jenkins. 최적화는 OR-Tools Java 바인딩을 해당 서비스 내부에서 사용(별도 Python 런타임 없음). 오류 응답은 RFC 9457. |
 | 통신 규칙 | 동기 호출은 timeout/retry/circuit breaker 필수, 체인 최대 2 hop, 상태 전파는 이벤트, Outbox, consumer 멱등 `[CLAUDE.md 확정]`. |
@@ -325,7 +325,7 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 
 ## 8. 단계별 도입 계획 `[제안]`
 
-51개를 한 번에 세우지 않는다. **경계는 처음부터 51개로 설계**(Gradle 모듈·DB 스키마·contracts 분리)하되, 배포·활성은 세 단계로 나눈다.
+49개를 한 번에 세우지 않는다. **경계는 처음부터 49개로 설계**(Gradle 모듈·DB 스키마·contracts 분리)하되, 배포·활성은 세 단계로 나눈다.
 
 | 단계 | 목표 | 활성 서비스 | 비활성(경계만 예약) |
 |---|---|---|---|
@@ -406,7 +406,7 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 |---|---|---|
 | ~~Tech Stack 확정, Python 런타임~~ → 확정(tech-stack.md, OR-Tools Java). Python 전용 AI 배차 모델은 3단계 별도 승인 | 전체 | tech-stack.md |
 | 정식 서비스명(PMart/바로픽) | 로그·이벤트 sourceSystem | Commerce, BackOffice |
-| 초기 배포 단위(51개 개별 vs 모듈러 묶음) | 인프라·팀 | §8 |
+| 초기 배포 단위(49개 개별 vs 모듈러 묶음) | 인프라·팀 | §8 |
 | IAM 실제 배치(auth-service 범위, 센터×업무×행위 교집합 모델) | auth, approval | BackOffice BO-Q01/02 |
 | LPN(BOX/PLT) 정본 서비스 | cdc-outbound vs cdc-inventory | WMS F-007, SEP |
 | cdc-inbound 1차 범위 재정의(적치·MOV) 수용 여부 | cdc | WMS 1.1 |
