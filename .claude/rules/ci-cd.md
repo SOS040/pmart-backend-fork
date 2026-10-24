@@ -13,7 +13,7 @@ paths:
 3. 단위·통합 테스트
 4. 테스트 직후 Slack에 결과 공지 (Slack 공지 범위는 CI까지)
 5. 성공 시 SonarQube 분석·Quality Gate, 실패 시 중단
-6. 승인된 main 빌드만 이미지 생성 → Private Registry. 이미지는 **Jib**으로 만든다: `./gradlew :services:<name>:jib -PcontainerRegistry=<host> -PimageTag=<git-sha> -PgitRevision=<git-sha>`. Dockerfile·Docker 데몬을 쓰지 않는다.
+6. 승인된 main 빌드만 이미지 생성 → Docker Hub 공개 저장소(ADR-0012). 이미지는 **Jib**으로 만든다: `./gradlew :services:<name>:jib -PcontainerRegistry=docker.io/<계정> -PimageTag=<git-sha> -PgitRevision=<git-sha>` → `docker.io/<계정>/pmart-<name>:<git-sha>`. Dockerfile·Docker 데몬을 쓰지 않는다.
 
 ## CD
 1. 검증된 이미지 digest 선택
@@ -27,7 +27,8 @@ paths:
 - 설정은 convention plugin `pmart.container-image` 한 곳. 서비스 build.gradle.kts에서는 `jib.container.mainClass` 지정 정도만 허용.
 - 베이스 이미지는 digest 고정(`gcr.io/distroless/java21-debian12:nonroot@sha256:…`). 갱신은 PR로, 태그만 바꾸지 않는다.
 - 태그는 git SHA 하나. `latest` 태그를 만들지 않는다. 배포는 push 결과의 digest로 한다.
-- 레지스트리 인증은 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 환경변수(Jenkins credentials)로만. 저장소·이미지·로그에 넣지 않는다.
+- 레지스트리 인증은 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 환경변수(Jenkins credentials)로만. 저장소·이미지·로그에 넣지 않는다. 비밀번호 대신 Docker Hub 액세스 토큰(push용 읽기·쓰기, 실행 PC용 읽기 전용).
+- 이미지는 **공개**된다. 비밀정보·실데이터를 넣지 않고, 운영 설정값은 기본값 없는 환경변수(`${PMART_...}`)로만 받는다. `application-local.yml`의 로컬 고정값도 이미지에 포함되므로 로컬 밖에서 local 프로파일을 쓰지 않는다.
 - `jib*` 태스크는 Gradle configuration cache와 호환되지 않으므로 CI의 이미지 단계는 다른 단계와 분리해 실행한다.
 - 로컬 확인은 `jibBuildTar`(데몬 불필요) 또는 `jibDockerBuild`(Docker 데몬).
 

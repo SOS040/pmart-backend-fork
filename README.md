@@ -11,7 +11,7 @@
 ./gradlew check -PskipIntegration=true  # Docker 없는 환경
 ./gradlew :services:<name>:jibBuildTar  # 컨테이너 이미지 tar (Docker 데몬 불필요)
 ./gradlew :services:<name>:jibDockerBuild  # 로컬 Docker 데몬에 이미지 생성
-./gradlew :services:<name>:jib -PcontainerRegistry=<host> -PimageTag=<tag>  # 레지스트리 push (CI, 인증은 REGISTRY_USERNAME/PASSWORD 환경변수)
+./gradlew :services:<name>:jib -PcontainerRegistry=docker.io/<계정> -PimageTag=<tag>  # Docker Hub push → <계정>/pmart-<name> (CI, 인증은 REGISTRY_USERNAME/PASSWORD 환경변수)
 ```
 
 ## 구조

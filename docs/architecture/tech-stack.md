@@ -38,7 +38,7 @@
 | CI/CD | Jenkins | 빌드·검증·이미지 발행·배포 조정 |
 | CI 알림 | Slack | Jenkins가 CI 단계 결과 공지 |
 | 컨테이너 | Docker / OCI image | 서비스별 실행 이미지 |
-| 이미지 저장소 | Private Docker Registry | 접근 통제·이미지 버전·digest 관리 |
+| 이미지 저장소 | Docker Hub 개인 계정, 공개 저장소 (ADR-0012) | 서비스별 저장소 `<계정>/pmart-<service>`, git SHA 태그, digest 배포 |
 | 실행 플랫폼 | Kubernetes | 서비스별 배포·확장·상태 확인 |
 | 배포 정의 | Helm | 환경별 배포 설정 |
 | 비밀정보 | Vault 또는 Cloud Secret Manager | 토큰·PG 키·DB 자격증명 관리 |

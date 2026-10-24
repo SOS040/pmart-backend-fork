@@ -37,7 +37,9 @@ jib {
     }
     to {
         // 태그는 imageTag 하나만. (to.image에 태그를 넣지 않으면 Jib이 latest를 추가로 붙인다 → 운영 digest 기반 배포와 충돌)
-        image = "${containerRegistry.get()}/pmart/${project.name}:${imageTag.get()}"
+        // 이름은 {registry}/pmart-{service}. Docker Hub는 namespace/repository 두 단계만 허용하므로
+        // containerRegistry=docker.io/<계정> → docker.io/<계정>/pmart-<service> (ADR-0012)
+        image = "${containerRegistry.get()}/pmart-${project.name}:${imageTag.get()}"
         if (registryUsername.isPresent && registryPassword.isPresent) {
             auth {
                 username = registryUsername.get()
