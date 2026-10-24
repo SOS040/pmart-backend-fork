@@ -74,10 +74,12 @@ paths:
       tags: [offers]
       summary: 라이더 본인 활성 제안 목록 (응답 대기 중인 제안·남은 응답 시간)
       description: |
-        x-added-in 2026-10-24 (pmart-clients BR-06). 호출자 라이더 본인의 제안만 반환한다(riderId 파라미터 없음).
-        기본값은 state=SENT 이고 expiresAt 이 지나지 않은 제안이다. 판정은 서버 시각 기준이므로 남은 시간은 remainingSec 또는 serverTime 과 expiresAt 의 차이로 표시한다.
+        pmart-clients BR-06. 호출자 라이더 본인의 제안만 반환한다(riderId 파라미터 없음). 토큰 주체 → riderId 대응은 라이더 로그인(BR-02) 결정을 따른다.
+        state 를 생략하면 SENT 이면서 expiresAt 이 지나지 않은 제안만 반환한다. state 를 지정하면 만료 여부로 거르지 않는다.
+        판정은 서버 시각 기준이므로 남은 시간은 remainingSec 또는 serverTime 과 expiresAt 의 차이로 표시한다.
         이 조회는 푸시 수신 여부와 무관하게 offerId 를 얻는 기준 경로다(알림 유실·앱 재실행 시 복구).
-        푸시·SSE 전달 채널과 일반배차모드 대기 목록은 이 경로에 포함하지 않는다(BR-06 보류 항목).
+        푸시·SSE 전달 채널과 일반배차모드 대기 목록(Delivery-business-logic :126 대기목록화면)은 이 경로에 포함하지 않는다(BR-06 보류 항목).
+      x-added-in: '2026-10-24'
       operationId: listMyOffers
       parameters:
         - name: state
@@ -97,6 +99,7 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Offer' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
                   serverTime: { type: string, format: date-time, description: 응답 생성 시 서버 시각 }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /offers/{offerId}/responses:
@@ -335,7 +338,8 @@ components:
         remainingSec:
           type: integer
           minimum: 0
-          description: x-added-in 2026-10-24. 응답 생성 시점 서버 기준 남은 응답 시간(초). SENT 가 아니면 0
+          description: 응답 생성 시점 서버 기준 남은 응답 시간(초). SENT 가 아니면 0
+          x-added-in: '2026-10-24'
         state: { type: string, enum: [SENT, ACCEPTED, REJECTED, EXPIRED, LATE, SEND_FAILED, SUPERSEDED] }
         summary:
           type: object

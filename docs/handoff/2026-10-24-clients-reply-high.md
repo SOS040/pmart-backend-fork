@@ -1,7 +1,7 @@
 # [pmart-backend → pmart-clients] 계약 공백 요청 회신 (우선순위 높음 6건)
 
 - 회신 대상: `pmart-clients/docs/handoff/2026-10-24-backend-requests-high.md`
-- 계약 반영 커밋: pmart-backend `d3ce55c` (2026-10-24, main push 완료)
+- 계약 반영 커밋: pmart-backend `d3ce55c` (2026-10-24, main push 완료) + 독립 검토 후 수정 커밋(아래 "검증 상태")
 - 요약: 수용 1 (BR-05), 부분 수용 1 (BR-06), 보류 4 (BR-01·02·03·07)
 - 반영한 경로도 서버 구현 전까지는 501을 반환한다. 연동 테스트는 구현 완료 공지 후에 한다.
 - 이 회신에 대한 추가 질문은 `pmart-clients/docs/handoff/` 에 새 파일로 남긴다. 항목 번호(BR-xx)는 그대로 쓴다.
@@ -11,25 +11,28 @@
 ## BR-05 MFC 작업 목록·작업 상세 — 수용 (`d3ce55c`, mfc-fulfillment-service.yaml)
 | 경로 | 내용 |
 |---|---|
-| `GET /tasks?mfcId=&assignee=me&type=&state=` | 내 작업 목록. state 생략 시 ASSIGNED, IN_PROGRESS, BLOCKED. 응답 `asOf`는 담당자 정보의 기준시각 |
-| `GET /tasks/{taskId}` | 작업 상세. `lines[]`는 taskLineId, orderLineId, sku, barcode, locationId, lotId, expiresOn, plannedQty, completedQty, cancelledQty, remainingQty. 그 외 `assignment.assignmentVersion`, `activeStart` |
+| `GET /tasks?mfcId=&assignee=me&type=&state=` | 내 작업 목록. state 생략 시 ASSIGNED, IN_PROGRESS(화면 기본값). 응답 `asOf`는 담당자 정보의 기준시각 |
+| `GET /tasks/{taskId}` | 작업 상세. `lines[]`는 taskLineId, orderLineId, sku, barcode, locationId, lotId, expiresOn, plannedQty, completedQty, cancelledQty, remainingQty, pendingQty. 그 외 `assignment.assignmentVersion`, `activeStart`, `pendingExecutions` |
 | `POST /tasks/{taskId}/starts` | 작업 시작(WK-03 한 요청만 성공). 본문 `workerId`, `assignmentVersion`, `deviceId`. 헤더 Idempotency-Key, X-Source-System, X-Expected-Version |
-| `GET /tasks/{taskId}/starts/{requestId}` | 시작 판정 조회(requestId = Idempotency-Key). outcome STARTED / REJECTED / UNKNOWN |
+| `GET /tasks/{taskId}/starts/{requestId}` | 시작 판정 조회(requestId = Idempotency-Key). outcome STARTED / REJECTED |
 
-시작 거절 코드(409): `ALREADY_STARTED`, `NOT_ASSIGNEE`, `ASSIGNMENT_VERSION_MISMATCH`, `PREDECESSOR_NOT_COMPLETED`, `INVALID_STATE`, `VERSION_CONFLICT`
+시작 거절 코드(409): `ALREADY_STARTED`, `NOT_ASSIGNEE`, `PREDECESSOR_NOT_COMPLETED`, `INVALID_STATE`, `VERSION_CONFLICT`(배정 버전·Task 버전은 `details`로 구분), `IDEMPOTENCY_CONFLICT`. 담당 확인 불가 시 503, 본문 workerId가 로그인 작업자와 다르면 403.
 
 **클라이언트 참고**
-- 시작 응답을 받지 못하면 같은 키로 재전송하거나 짝 조회로 확정한다. 새 키로 다시 시작하지 않는다.
-- 완료 표시는 실행 결과가 APPLIED가 된 뒤에만 한다(기존 `/tasks/{taskId}/executions`).
+- 요청서의 `status=` 파라미터는 계약에서 `state=`다.
+- 목록의 담당자 정보는 늦을 수 있다. 시작 가능 여부는 `POST …/starts` 판정만 믿는다.
+- 시작 응답을 받지 못하면 같은 키로 재전송하거나 짝 조회로 확정한다. 키를 잃었으면 `GET /tasks/{taskId}`의 `activeStart`로 본인 시작인지 확인한다. 새 키로 다시 시작하면 `ALREADY_STARTED`가 난다.
+- 완료 표시는 실행 결과가 APPLIED가 된 뒤에만 한다(기존 `/tasks/{taskId}/executions`). 그 전의 접수분은 `pendingQty`·`pendingExecutions`로 "확정 대기"를 표시한다.
+- 목록 정렬은 표시용이며 실행 우선순위가 아니다. 우선순위 규칙은 Q-08 결정 대기다.
 - 미정 사항:
-  - 시작 점유 만료(MFC Q-09): 지금 계약에서는 만료되지 않는다.
-  - 목록 우선순위·동선 순서: 현재는 생성시각 오름차순이다.
+  - 시작 점유 만료(MFC Q-09): 결정 전까지는 자동 만료하지 않는다. 점유는 실행 완료, 작업 종결(BLOCKED·FAILED·CANCELLED·CLOSED_PARTIAL), 재배정으로 끝난다.
   - `assignee=me`는 작업자 로그인 방식(BR-02)이 정해져야 실제로 동작한다.
+  - 1단계 배정은 권한자 수동 지정만 허용되는데(MFC :866), 수동 배정 계약이 아직 없다. 그 전까지는 실제 배정 데이터가 생기지 않을 수 있으니 목으로 진행한다.
 
 ## BR-06 라이더 배차 제안 수신 — 부분 수용 (`d3ce55c`, delivery-dispatch-service.yaml)
 **수용**
 - `GET /offers?state=`
-  - 라이더 본인의 제안만 반환한다. state 생략 시 SENT이고 만료 전 제안만 나온다.
+  - 라이더 본인의 제안만 반환한다. state 생략 시 SENT이고 만료 전 제안만 나온다. state를 지정하면 만료 여부로 거르지 않는다.
   - 응답 `serverTime`과 각 Offer의 `remainingSec`(서버 기준 남은 응답 시간, 초)이 추가됐다.
 - 요청 예시 경로 `/riders/me/offers` 대신 `/offers`로 정했다. 게이트웨이에서 `/riders/**`가 rider-service로 라우팅되기 때문이다.
 - 푸시를 받았든 못 받았든 이 조회가 offerId를 얻는 기준 경로다. 알림 유실이나 앱 재실행 때도 이 조회로 복구한다.
@@ -72,7 +75,21 @@
 
 ---
 
+## 검증 상태 (BR-05·BR-06 계약)
+| 확인 | 결과 |
+|---|---|
+| OpenAPI 문법 (redocly lint) | 통과 |
+| 업무 문서 근거 대조 | 독립 검토 완료. 지적 사항(담당 판정 근거, 문서와 다른 오류 코드, 재고 확정 대기 표시 누락, 문서에 없는 해제 규칙 등)을 수정 커밋에 반영 |
+| 게이트웨이 라우팅 | `/api/v1/tasks`, `/api/v1/offers`가 각각 mfc-fulfillment, delivery-dispatch로 가는 것 확인 |
+| 서비스 빌드 (`check`) | **미실행** (백엔드 개발 PC 메모리 부족). 실행 후 이 문서에 결과를 추가한다 |
+| 팀 리뷰 | 없음 |
+
+목 구현에는 써도 되지만, 빌드 검증과 서버 구현 과정에서 필드가 조정될 수 있다.
+
 ## 백엔드 측 남은 일
+- 서비스 빌드 검증 후 결과 추가
+- mfc-capacity 수동 배정·재배정 계약 (BR-05 실제 동작의 전제)
+- `/api/v1/tasks` 경로가 cdc-outbound(2단계)와 겹치는 문제 정리 (지금은 mfc-fulfillment로만 라우팅되어 영향 없음)
 - BR-01 설계안이 승인되면 계약에 반영하고 커밋 SHA를 회신
 - BR-02·03·07 팀 결정 후 반영
 - 중간·낮음 6건(BR-04, BR-08~12)은 별도로 회신

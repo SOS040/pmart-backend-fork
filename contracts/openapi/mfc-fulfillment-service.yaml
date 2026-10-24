@@ -134,10 +134,12 @@ paths:
       tags: [tasks]
       summary: 점원 단말 작업 목록 (내 작업·유형·상태 필터)
       description: |
-        x-added-in 2026-10-24 (pmart-clients BR-05). MFC-business-logic §2-2 Task, WK-01~05, 단말 표시 항목(:1183).
+        pmart-clients BR-05. MFC-business-logic §2-2 Task, WK-01~05, 단말 표시 항목(:1183).
         assignee=me 는 인증된 작업자 주체로 해석한다(작업자 로그인 방식은 BR-02 결정 대기).
-        담당자는 mfc-capacity 배정 정본(AssignmentPublished)의 fulfillment 투영으로 판정하며, 응답 asOf 가 투영 기준시각이다.
-        목록 순서는 생성시각 오름차순이다. 작업 우선순위·동선 순서 규칙은 미정이다.
+        목록의 담당자는 mfc-capacity 배정 정본(AssignmentPublished)의 fulfillment 투영이며, 응답 asOf 가 투영 기준시각이다.
+        투영은 늦을 수 있으므로 시작 가능 여부는 POST …/starts 판정만 믿는다.
+        정렬은 생성시각 오름차순의 표시 정렬이며 실행 우선순위가 아니다(우선순위는 Q-08 결정 대기, :866).
+      x-added-in: '2026-10-24'
       operationId: listTasks
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
@@ -148,7 +150,7 @@ paths:
         - { name: type, in: query, schema: { $ref: '#/components/schemas/TaskType' } }
         - name: state
           in: query
-          description: 여러 값은 반복 파라미터. 생략 시 ASSIGNED, IN_PROGRESS, BLOCKED
+          description: 여러 값은 반복 파라미터. 생략 시 ASSIGNED, IN_PROGRESS (화면 기본값)
           style: form
           explode: true
           schema: { type: array, items: { $ref: '#/components/schemas/TaskState' } }
@@ -173,8 +175,10 @@ paths:
       tags: [tasks]
       summary: 작업 상세 (지시 행·확정·잔량·담당 버전)
       description: |
-        x-added-in 2026-10-24 (pmart-clients BR-05). 행 정의는 MFC-business-logic §2-2 TaskLine(계획 = 확정완료 + 승인취소 + 잔량).
+        pmart-clients BR-05. 행 정의는 MFC-business-logic §2-2 TaskLine(계획 = 확정완료 + 승인취소 + 잔량).
         수량은 이 서비스의 작업 실적 기준이며 재고 수량 정본은 mfc-inventory 이다. 완료 표시는 서버 확정(실행 결과 APPLIED) 후에만 한다.
+        재고 확정 대기는 업무 진행 상태와 별도 필드다(:808) — 행의 pendingQty, 상세의 pendingExecutions.
+      x-added-in: '2026-10-24'
       operationId: getTask
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
@@ -192,11 +196,16 @@ paths:
       tags: [tasks]
       summary: 작업 시작 점유 (WK-03, ASSIGNED→IN_PROGRESS, 한 요청만 성공)
       description: |
-        x-added-in 2026-10-24 (pmart-clients BR-05). WK-03 "시작 점유 한 요청만 성공", TC-11(동일 작업 시작 2건 경합 → 활성 시작 1건).
+        pmart-clients BR-05. WK-03 "시작 점유 한 요청만 성공", TC-11(동일 작업 시작 2건 경합 → 활성 시작 1건).
         사전 조건은 유효 담당·최신 버전·선행 완료·허용 상태(ASSIGNED, 또는 WK-05 재개로 ASSIGNED 복귀한 작업)이다.
+        유효 담당은 투영이 아니라 mfc-capacity GET /assignments?taskId= 동기 조회로 판정한다(1 hop). 조회 불가면 503 으로 거절하고 시작하지 않는다.
+        옛 배정 버전 요청은 VERSION_CONFLICT 이며 details 로 assignmentVersion / taskVersion 을 구분한다(:928).
+        본문 workerId 가 인증 문맥의 작업자와 다르면 403 이다.
         같은 Idempotency-Key 재전송은 기존 판정을 반환한다. 응답을 받지 못하면 GET …/starts/{requestId} 로 확인한다.
+        키를 잃었으면 GET /tasks/{taskId} 의 activeStart 로 본인 시작 여부를 확인한다(새 키 재시작은 ALREADY_STARTED).
         성공 시 Task 는 IN_PROGRESS 가 되고 TaskProgressed 를 발행한다(새 이벤트 없음).
-        시작 점유의 만료·자동 해제는 미정(MFC Q-09)이며, 이 계약에서는 만료하지 않는다. 해제는 WK-05 재배정으로만 일어난다.
+        Q-09 결정 전 잠정: 시작 점유는 자동 만료하지 않는다. 점유는 실행 완료·WK-04 종결(BLOCKED/FAILED/CANCELLED/CLOSED_PARTIAL)·WK-05 재배정으로 끝난다.
+      x-added-in: '2026-10-24'
       operationId: startTask
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
@@ -220,18 +229,22 @@ paths:
           content:
             application/json:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
-          description: ALREADY_STARTED (다른 시작 점유가 이미 성공) / NOT_ASSIGNEE (활성 담당자 불일치) / ASSIGNMENT_VERSION_MISMATCH / PREDECESSOR_NOT_COMPLETED / INVALID_STATE / VERSION_CONFLICT
+          description: ALREADY_STARTED (다른 시작 점유가 이미 성공) / NOT_ASSIGNEE (활성 담당자 불일치) / PREDECESSOR_NOT_COMPLETED / INVALID_STATE / VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /tasks/{taskId}/starts/{requestId}:
     get:
       tags: [tasks]
       summary: 시작 점유 판정 조회 (requestId = Idempotency-Key)
+      description: 요청한 작업자 본인과 같은 센터 권한자만 조회할 수 있다.
+      x-added-in: '2026-10-24'
       operationId: getTaskStart
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
@@ -242,6 +255,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskStart' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /tasks/{taskId}/executions:
@@ -535,20 +549,34 @@ components:
         completedQty: { type: integer, description: 서버 확정 실적 }
         cancelledQty: { type: integer, description: 승인 취소 }
         remainingQty: { type: integer, description: 계획 - 확정 - 취소 }
+        pendingQty:
+          type: integer
+          description: 접수됐지만 재고 확정 대기인 실적 (remainingQty 에 아직 반영 안 됨)
+    TaskActiveStart:
+      type: object
+      description: 성공한 시작 점유. IN_PROGRESS 일 때만 응답에 포함
+      properties:
+        requestId: { type: string }
+        workerId: { type: string }
+        deviceId: { type: [string, 'null'] }
+        startedAt: { type: string, format: date-time }
+    TaskPendingExecution:
+      type: object
+      properties:
+        executionId: { type: string }
+        state: { type: string, enum: [RECORDED, INVENTORY_PENDING, UNKNOWN_RESULT] }
+        recordedAt: { type: string, format: date-time }
     TaskDetail:
       allOf:
         - $ref: '#/components/schemas/TaskSummary'
         - type: object
           properties:
             lines: { type: array, items: { $ref: '#/components/schemas/TaskLine' } }
-            activeStart:
-              type: [object, 'null']
-              description: 성공한 시작 점유 (IN_PROGRESS 일 때)
-              properties:
-                requestId: { type: string }
-                workerId: { type: string }
-                deviceId: { type: [string, 'null'] }
-                startedAt: { type: string, format: date-time }
+            activeStart: { $ref: '#/components/schemas/TaskActiveStart' }
+            pendingExecutions:
+              type: array
+              description: 재고 확정 전 실행 결과. 상세는 GET …/executions/{executionId}
+              items: { $ref: '#/components/schemas/TaskPendingExecution' }
             blockReason: { type: [string, 'null'] }
             asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     TaskStart:
@@ -556,10 +584,10 @@ components:
       properties:
         requestId: { type: string }
         taskId: { type: string }
-        outcome: { type: string, enum: [STARTED, REJECTED, UNKNOWN] }
+        outcome: { type: string, enum: [STARTED, REJECTED] }
         rejectCode:
           type: [string, 'null']
-          description: ALREADY_STARTED / NOT_ASSIGNEE / ASSIGNMENT_VERSION_MISMATCH / PREDECESSOR_NOT_COMPLETED / INVALID_STATE
+          description: ALREADY_STARTED / NOT_ASSIGNEE / PREDECESSOR_NOT_COMPLETED / INVALID_STATE / VERSION_CONFLICT
         workerId: { type: string }
         assignmentVersion: { type: integer }
         taskVersion: { type: integer }
