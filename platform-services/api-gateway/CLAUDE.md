@@ -14,6 +14,7 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 ## 보안
 - 공개 작업(`pmart.gateway.public-paths`)은 계약의 `security: []` 인 작업과 1:1. 임의 추가 금지.
 - 그 외 `/api/**` 는 유효한 JWT 필수(401/403 Problem). 역할·센터·행위 시점 검증은 각 서비스 책임.
+- 서비스 신원 토큰(`typ=SERVICE`, ADR-0011)은 외부 경로에서 403. 서비스 간 호출은 게이트웨이를 거치지 않는다.
 
 ## 처리율 제한 (`filter/RateLimitGlobalFilter`, `pmart.gateway.rate-limit`)
 - Redis 토큰 버킷(`RedisRateLimiter`). 유효한 JWT → subject 단위, 그 외 → 클라이언트 IP 단위(`trusted-proxies` 만큼 `X-Forwarded-For` 신뢰). 초과 시 429 Problem `RATE_LIMITED`(retryable) + `Retry-After`.

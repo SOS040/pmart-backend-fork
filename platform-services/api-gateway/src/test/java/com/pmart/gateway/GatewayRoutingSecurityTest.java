@@ -128,6 +128,23 @@ class GatewayRoutingSecurityTest {
   }
 
   @Test
+  void serviceIdentityTokenIsRejectedOnExternalPaths() {
+    client
+        .mutateWith(mockJwt().jwt(jwt -> jwt.subject("order-service").claim("typ", "SERVICE")))
+        .get()
+        .uri("/api/v1/orders/o-1")
+        .exchange()
+        .expectStatus()
+        .isForbidden()
+        .expectHeader()
+        .contentType("application/problem+json")
+        .expectBody()
+        .jsonPath("$.code")
+        .isEqualTo("FORBIDDEN");
+    upstream.verify(0, getRequestedFor(anyUrl()));
+  }
+
+  @Test
   void contractPublicOperationPassesWithoutToken() {
     client.get().uri("/api/v1/storefront/home").exchange().expectStatus().isOk();
     upstream.verify(getRequestedFor(urlPathEqualTo("/api/v1/storefront/home")));
