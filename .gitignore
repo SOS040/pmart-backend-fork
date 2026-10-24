@@ -29,3 +29,6 @@ reports/
 # JVM 크래시 로그
 hs_err_pid*.log
 replay_pid*.log
+
+# Claude Code 개인 설정 (권한 허용 규칙 등)
+.claude/settings.local.json
