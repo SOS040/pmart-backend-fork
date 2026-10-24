@@ -27,4 +27,4 @@
 - 즉시 조회 시점(앱 실행·포그라운드 복귀·알림 탭·운행 시작)과 지수 백오프, 실패를 "연결 확인 중"으로 표시하는 처리는 그대로 유지한다. 신규배차 ON 전환 시점도 즉시 조회에 넣는다.
 
 ## 검증 상태
-redocly lint 통과. 서비스 빌드(`check`)는 아직 미실행이다(백엔드 개발 PC 메모리 부족). 서버 구현 전까지 `GET /offers` 는 501이다.
+redocly lint 통과. 서비스 빌드: 2026-10-24 재실행, `3916354` 기준: `:services:mfc-fulfillment-service:check`, `:services:delivery-dispatch-service:check` **통과** (단위·통합 테스트 각 1건, 아직 골격 테스트만 있음). 서버 구현 전까지 `GET /offers` 는 501이다.

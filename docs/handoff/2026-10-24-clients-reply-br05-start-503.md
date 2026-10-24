@@ -30,4 +30,4 @@
 확정 전에 피킹 화면으로 넘어가지 않는 원칙은 그대로 유지한다.
 
 ## 검증 상태
-redocly lint 통과. 서비스 빌드(`check`)는 아직 미실행이다(백엔드 개발 PC 메모리 부족).
+redocly lint 통과. 서비스 빌드: 2026-10-24 재실행, `3916354` 기준: `:services:mfc-fulfillment-service:check`, `:services:delivery-dispatch-service:check` **통과** (단위·통합 테스트 각 1건, 아직 골격 테스트만 있음).

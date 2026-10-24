@@ -81,13 +81,13 @@
 | OpenAPI 문법 (redocly lint) | 통과 |
 | 업무 문서 근거 대조 | 독립 검토 완료. 지적 사항(담당 판정 근거, 문서와 다른 오류 코드, 재고 확정 대기 표시 누락, 문서에 없는 해제 규칙 등)을 수정 커밋에 반영 |
 | 게이트웨이 라우팅 | `/api/v1/tasks`, `/api/v1/offers`가 각각 mfc-fulfillment, delivery-dispatch로 가는 것 확인 |
-| 서비스 빌드 (`check`) | **미실행** (백엔드 개발 PC 메모리 부족). 실행 후 이 문서에 결과를 추가한다 |
+| 서비스 빌드 (`check`) | 2026-10-24 재실행, `3916354` 기준: `:services:mfc-fulfillment-service:check`, `:services:delivery-dispatch-service:check` **통과** (단위·통합 테스트 각 1건, 아직 골격 테스트만 있음) |
 | 팀 리뷰 | 없음 |
 
 목 구현에는 써도 되지만, 빌드 검증과 서버 구현 과정에서 필드가 조정될 수 있다.
 
 ## 백엔드 측 남은 일
-- 서비스 빌드 검증 후 결과 추가
+- ~~서비스 빌드 검증 후 결과 추가~~ — 완료 (위 "검증 상태")
 - mfc-capacity 수동 배정·재배정 계약 (BR-05 실제 동작의 전제)
 - `/api/v1/tasks` 경로가 cdc-outbound(2단계)와 겹치는 문제 정리 (지금은 mfc-fulfillment로만 라우팅되어 영향 없음)
 - BR-01 설계안이 승인되면 계약에 반영하고 커밋 SHA를 회신

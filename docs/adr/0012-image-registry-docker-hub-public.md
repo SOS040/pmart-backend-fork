@@ -10,7 +10,7 @@
 1. 이미지는 Docker Hub **개인 계정의 공개 저장소**에 올린다. 서비스마다 저장소 하나를 쓴다.
 2. 이미지 이름은 `{registry}/pmart-{service}:{git-sha}`로 바꾼다. Docker Hub에서는 `-PcontainerRegistry=docker.io/<계정>` → `docker.io/<계정>/pmart-<service>:<git-sha>`.
 3. 태그·배포 원칙은 그대로 둔다. 태그는 git SHA 하나, `latest` 없음, 배포는 push 결과 digest.
-4. 인증은 계정 비밀번호 대신 Docker Hub 액세스 토큰을 쓴다. push하는 곳(PC 1·Jenkins)은 읽기·쓰기, 실행만 하는 PC는 읽기 전용. 주입 경로는 지금처럼 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 환경변수다.
+4. 인증은 계정 비밀번호 대신 Docker Hub 액세스 토큰을 쓴다. push용 `pmart-ci-push`는 Read & Write(삭제 없음), 실행 PC용 `pmart-runtime-pull`은 Public Repo Read-only. 비공개 저장소로 바꾸면 pull 토큰을 Read-only로 다시 만든다. 주입 경로는 지금처럼 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 환경변수다.
 5. 실행 PC는 공개 이미지라도 **로그인한 상태로 pull**한다. 같은 공인 IP를 쓰는 PC들이 익명 pull 횟수 제한을 함께 소진하기 때문이다.
 
 ## 대안
