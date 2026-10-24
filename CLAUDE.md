@@ -22,6 +22,7 @@ deploy/helm/, Jenkinsfile
 - 사가·보상 흐름: `docs/business/flows/` — 새 saga를 만들거나 수정하면 같은 커밋에서 갱신한다
 - 아키텍처 결정 기록: `docs/adr/` — 결정을 바꾸면 새 ADR로 대체한다
 - 공통 용어: `docs/business/glossary.md`, 문서↔서비스 대응: `docs/business/domain-map.md`
+- 클라이언트(pmart-clients)와의 요청·회신: `docs/handoff/` — 회신은 여기에만 쓰고 `../pmart-clients` 는 읽기만 한다
 - 업무 원문: `docs/business/*-business-logic.md` (확정 정책은 설계가 바꾸지 않는다. 문서에 없는 비즈니스 규칙은 추측하지 말고 질문)
 
 ## 상세 규칙 (작업 영역에 따라 자동 로드)
