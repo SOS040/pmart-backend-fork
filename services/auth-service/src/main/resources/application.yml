@@ -47,6 +47,7 @@ pmart:
     # signing.keys[n].kid / private-key, service-clients[n].client-id / secret-hash 는 Secret Manager 에서 환경변수로 주입한다
     # (PMART_AUTH_SIGNING_KEYS_0_KID, PMART_AUTH_SIGNING_KEYS_0_PRIVATEKEY, PMART_AUTH_SERVICECLIENTS_0_CLIENTID ...). 키가 없으면 기동 실패.
 management:
-  zipkin:
-    tracing:
-      endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  tracing:
+    export:
+      zipkin:
+        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

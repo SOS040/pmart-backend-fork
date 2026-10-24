@@ -67,6 +67,9 @@ jackson-databind = { module = "tools.jackson.core:jackson-databind" }
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
 micrometer-tracing-bridge-otel = { module = "io.micrometer:micrometer-tracing-bridge-otel" }
 opentelemetry-exporter-zipkin = { module = "io.opentelemetry:opentelemetry-exporter-zipkin" }
+# Boot 4 는 추적 자동구성이 별도 모듈: 없으면 Tracer·span 생성·Zipkin 전송이 모두 꺼진다(2026-10-24 LAN 배포에서 확인)
+spring-boot-micrometer-tracing-opentelemetry = { module = "org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry" }
+spring-boot-zipkin = { module = "org.springframework.boot:spring-boot-zipkin" }
 logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version = "9.0" }
 
 # --- 외부 라이브러리 (버전 고정) ---
@@ -97,7 +100,7 @@ plugin-openapi-generator = { module = "org.openapitools:openapi-generator-gradle
 service-core = ["spring-boot-starter-webmvc", "spring-boot-starter-validation", "spring-boot-starter-actuator", "spring-boot-starter-restclient", "jspecify"]
 service-data = ["spring-boot-starter-data-jpa", "spring-boot-starter-jdbc", "spring-boot-starter-flyway", "flyway-postgresql", "postgresql"]
 service-kafka = ["spring-boot-starter-kafka", "spring-kafka"]
-service-observability = ["micrometer-registry-prometheus", "micrometer-tracing-bridge-otel", "opentelemetry-exporter-zipkin", "logstash-logback-encoder"]
+service-observability = ["micrometer-registry-prometheus", "micrometer-tracing-bridge-otel", "opentelemetry-exporter-zipkin", "spring-boot-micrometer-tracing-opentelemetry", "spring-boot-zipkin", "logstash-logback-encoder"]
 test-unit = ["junit-jupiter", "mockito-core", "assertj-core"]
 test-integration = ["spring-boot-starter-test", "spring-boot-testcontainers", "testcontainers-junit-jupiter", "testcontainers-postgresql", "testcontainers-kafka", "spring-kafka-test"]
 

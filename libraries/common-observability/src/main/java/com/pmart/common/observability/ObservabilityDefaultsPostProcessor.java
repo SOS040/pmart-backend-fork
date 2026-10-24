@@ -28,14 +28,15 @@ public class ObservabilityDefaultsPostProcessor implements EnvironmentPostProces
     Map<String, Object> defaults = new LinkedHashMap<>();
     defaults.put("logging.config", "classpath:pmart-logback.xml");
 
-    defaults.put("management.tracing.enabled", "true");
+    // Boot 4: management.tracing.enabled·management.zipkin.tracing.* 는 바인딩되지 않는다(export.* 로 대체)
+    defaults.put("management.tracing.export.enabled", "true");
     defaults.put("management.tracing.propagation.type", "W3C");
     defaults.put("management.tracing.sampling.probability", "1.0");
     defaults.put("management.tracing.baggage.enabled", "true");
     defaults.put("management.tracing.baggage.remote-fields", "correlationId,X-Source-System");
     defaults.put("management.tracing.baggage.correlation.enabled", "true");
     defaults.put("management.tracing.baggage.correlation.fields", "correlationId,X-Source-System");
-    defaults.put("management.zipkin.tracing.export.enabled", "true");
+    defaults.put("management.tracing.export.zipkin.enabled", "true");
 
     defaults.put("management.prometheus.metrics.export.enabled", "true");
     defaults.put("management.metrics.tags.application", "${spring.application.name:unknown}");

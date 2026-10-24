@@ -27,6 +27,7 @@ pmart:
   messaging:
     domain: order
 management:
-  zipkin:
-    tracing:
-      endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  tracing:
+    export:
+      zipkin:
+        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

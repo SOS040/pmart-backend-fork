@@ -34,7 +34,7 @@ import org.wiremock.spring.InjectWireMock;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "spring.data.redis.url=",
-      "management.tracing.enabled=false",
+      "management.tracing.export.enabled=false",
       // 요청 1건 = 토큰 30, 버킷 60, 초당 1 보충 → 2건 뒤 30초간 거부. 부하로 테스트가 느려져도 결과가 같다.
       "pmart.gateway.rate-limit.anonymous.replenish-rate=1",
       "pmart.gateway.rate-limit.anonymous.burst-capacity=60",
