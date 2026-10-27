@@ -9,6 +9,8 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
 | `render.sh` | 배치 → `build/<pc>/compose.yml`, `.env`, `init-db.sql` 생성 |
 | `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키 생성. 있으면 유지 |
 | `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` |
+| `watch.sh` | 감시: 각 PC 구성요소를 LAN 에서 실제 프로토콜로 점검, 연속 실패 시 그 PC 에서 재시작 |
+| `watch-install.ps1` | PC 1 작업 스케줄러에 `watch.sh` 5분 간격 등록(`-Remove` 로 해제) |
 
 ## 주소 규칙
 - 서비스 포트는 서비스마다 고유(gateway 8080, 8101~8507)라 **호스트 포트 = 컨테이너 포트**.
@@ -30,6 +32,15 @@ deploy/lan/lan.sh status all
 deploy/lan/lan.sh logs pc2 order-service 200
 ```
 이미지는 태그가 아니라 **digest** 로 지정한다(ci-cd.md). push 하지 않은 서비스가 배치에 있으면 render 가 중단된다.
+
+## 장애 대비 (2026-10-27, `docs/worklog/2026-10-27.md`)
+- **컨테이너 고정 IP**: compose 네트워크 `172.28.0.0/24`, 구성요소는 배치 순서대로 `.10~`, 자동 배정은 `.192/26`.
+  Docker Desktop VM 이 리셋되면 새 VM 이 이전 포트 전달 규칙(옛 컨테이너 IP)을 복원하는데, IP 가 바뀌면 LAN 포트가 엉뚱한 컨테이너로 간다.
+  네트워크 설정을 바꾼 뒤에는 `lan.sh down <pc>` → `lan.sh deploy <pc>` (볼륨은 남는다).
+- **Connect 로그**: 파일 appender 를 끄고 stdout 만(json-file 20MB×3 제한). `org.apache.kafka.clients.admin.internals` 는 WARN.
+- **감시**: `deploy/lan/watch.sh [--dry-run]`. 앱 health, PostgreSQL SSLRequest, Kafka ApiVersions, Redis PING, Zipkin, Connect 커넥터·작업 RUNNING 을
+  PC 1 에서 점검한다. 같은 구성요소가 2회 연속 실패하면 `lan.sh restart`(PC 당 10분 쿨다운), 전부 실패면 'PMart Docker Desktop Start' 예약 작업부터.
+  상태·로그는 `~/.pmart-lan-watch/` (`watch.log`, `last-<pc>`).
 
 ## 주의
 - 원격 작업 폴더 `%USERPROFILE%\pmart-lan`, compose 프로젝트 `pmart-lan`. 같은 PC 의 다른 프로젝트 컨테이너는 건드리지 않는다.

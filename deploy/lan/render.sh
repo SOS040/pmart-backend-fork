@@ -4,12 +4,16 @@
 # - 이미지: docker.io/heeji4445/pmart-<service>@<digest>. digest 는 jib push 결과(build/jib-image.digest). 없으면 중단.
 # - 다른 PC 의 구성요소는 extra_hosts(<이름>:<IP>)로 가리킨다. 호스트 포트 = 컨테이너 포트라 주소가 어디서나 같다.
 # - 비밀정보(.env)는 deploy/lan/.secrets 에서 읽어 build/ 에만 쓴다(둘 다 git 제외).
+# - 컨테이너 IP 고정(SUBNET, 배치 순서대로 .10~): Docker Desktop VM 이 리셋되면 새 VM 이 이전 포트 전달 규칙(옛 컨테이너 IP)을
+#   복원하는데 컨테이너는 IP 를 새로 받아 LAN 포트가 엉뚱한 컨테이너로 간다(docs/worklog/2026-10-27.md). IP 가 같으면 복원 규칙이 맞는다.
+#   자동 배정은 IP_RANGE 로 몰아 고정 IP 와 겹치지 않게 한다. 네트워크 설정이 바뀌면 deploy 전에 down 이 필요하다.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 LAN=deploy/lan
 OUT=$LAN/build
 SECRETS=$LAN/.secrets
 REGISTRY="${PMART_IMAGE_REGISTRY:-docker.io/heeji4445}"
+SUBNET_PREFIX=172.28.0   # 각 PC 의 기존 Docker 네트워크(172.17~19)와 겹치지 않는 대역
 
 [ -f "$SECRETS/db-password" ] || { echo "비밀정보 없음: $LAN/init-secrets.sh 먼저 실행" >&2; exit 1; }
 
@@ -69,7 +73,9 @@ for pc in "${PCS[@]}"; do
     echo
     echo "services:"
 
+    n=10
     for c in ${COMPS[$pc]}; do
+      ip_addr="$SUBNET_PREFIX.$n"; n=$((n + 1))
       case "$c" in
       postgres)
         cat <<EOF
@@ -83,7 +89,7 @@ for pc in "${PCS[@]}"; do
       POSTGRES_PASSWORD: \${PMART_DB_PASSWORD}
       POSTGRES_DB: pmart
     ports: ["15432:15432"]
-    networks: { default: { aliases: [postgres-$pc] } }
+    networks: { default: { aliases: [postgres-$pc], ipv4_address: $ip_addr } }
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/10-init-db.sql:ro
@@ -101,6 +107,7 @@ EOF
     <<: *common
     image: apache/kafka:4.1.1
     ports: ["9092:9092"]
+    networks: { default: { ipv4_address: $ip_addr } }
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -135,7 +142,13 @@ EOF
     <<: *common
     image: quay.io/debezium/connect:3.7
     ports: ["8083:8083"]
+    networks: { default: { ipv4_address: $ip_addr } }
     environment:
+      # 로그는 stdout 만(파일 appender 끔) → 위 json-file 크기 제한을 받는다. 파일 appender 는 회전만 하고 지우지 않아
+      # Kafka 불통 때 AdminClient rebootstrap 반복 로그로 /kafka/logs 가 142GB 까지 찼다(2026-10-25~26).
+      CONNECT_LOG4J_LOGGERS: "INFO, stdout"
+      # 같은 반복 로그(AdminMetadataManager "Rebootstrapping …")의 출처. 이름은 소문자 패키지만 가능(엔트리포인트가 소문자로 바꾼다)
+      CONNECT_LOG4J_LOGGER_ORG_APACHE_KAFKA_CLIENTS_ADMIN_INTERNALS: WARN
       BOOTSTRAP_SERVERS: kafka:9092
       GROUP_ID: pmart-connect
       CONFIG_STORAGE_TOPIC: _connect.configs
@@ -178,6 +191,7 @@ EOF
     # 게이트웨이 처리율 제한·delivery-tracking 위치 캐시. 원장 용도 금지.
     image: redis:7-alpine
     ports: ["6379:6379"]
+    networks: { default: { ipv4_address: $ip_addr } }
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -192,6 +206,7 @@ EOF
     <<: *common
     image: openzipkin/zipkin:3
     ports: ["9411:9411"]
+    networks: { default: { ipv4_address: $ip_addr } }
 
 EOF
         ;;
@@ -201,6 +216,7 @@ EOF
         echo "    <<: *common"
         echo "    image: $REGISTRY/pmart-$c@$(digest_of "$c")"
         echo "    ports: [\"$port:$port\"]"
+        echo "    networks: { default: { ipv4_address: $ip_addr } }"
         echo "    mem_limit: 768m"
         if needs "$c" PMART_DB_URL && [[ "$comps" == *" postgres "* ]]; then
           echo "    depends_on:"
@@ -228,6 +244,14 @@ EOF
         ;;
       esac
     done
+
+    echo "networks:"
+    echo "  default:"
+    echo "    ipam:"
+    echo "      config:"
+    echo "        - subnet: $SUBNET_PREFIX.0/24"
+    echo "          ip_range: $SUBNET_PREFIX.192/26 # 자동 배정(connector-registrar 등)은 여기서만"
+    echo
 
     vols=""
     [[ "$comps" == *" postgres "* ]] && vols+="  pgdata:"$'\n'
