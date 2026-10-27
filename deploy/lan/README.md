@@ -10,7 +10,7 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
 | `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키 생성. 있으면 유지 |
 | `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` |
 | `watch.sh` | 감시: 각 PC 구성요소를 LAN 에서 실제 프로토콜로 점검, 연속 실패 시 그 PC 에서 재시작 |
-| `watch-install.ps1` | PC 1 작업 스케줄러에 `watch.sh` 5분 간격 등록(`-Remove` 로 해제) |
+| `watch-install.ps1` | PC 1 작업 스케줄러에 `watch.sh` 5분 간격 등록(로그온 중 실행, `-S4U` 는 관리자 필요, `-Remove` 로 해제) |
 
 ## 주소 규칙
 - 서비스 포트는 서비스마다 고유(gateway 8080, 8101~8507)라 **호스트 포트 = 컨테이너 포트**.
@@ -40,7 +40,7 @@ deploy/lan/lan.sh logs pc2 order-service 200
 - **Connect 로그**: 파일 appender 를 끄고 stdout 만(json-file 20MB×3 제한). `org.apache.kafka.clients.admin.internals` 는 WARN.
 - **감시**: `deploy/lan/watch.sh [--dry-run]`. 앱 health, PostgreSQL SSLRequest, Kafka ApiVersions, Redis PING, Zipkin, Connect 커넥터·작업 RUNNING 을
   PC 1 에서 점검한다. 같은 구성요소가 2회 연속 실패하면 `lan.sh restart`(PC 당 10분 쿨다운), 전부 실패면 'PMart Docker Desktop Start' 예약 작업부터.
-  상태·로그는 `~/.pmart-lan-watch/` (`watch.log`, `last-<pc>`).
+  상태·로그는 `~/.pmart-lan-watch/` (`watch.log`, `last-<pc>`). Kafka 가 재시작되면 Connect 작업이 UNASSIGNED 로 남는데(재배정 안 됨), 이것도 감시가 Connect 재시작으로 복구한다.
 
 ## 주의
 - 원격 작업 폴더 `%USERPROFILE%\pmart-lan`, compose 프로젝트 `pmart-lan`. 같은 PC 의 다른 프로젝트 컨테이너는 건드리지 않는다.
