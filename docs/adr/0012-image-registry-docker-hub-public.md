@@ -11,6 +11,7 @@
 2. 이미지 이름은 `{registry}/pmart-{service}:{git-sha}`로 바꾼다. Docker Hub에서는 `-PcontainerRegistry=docker.io/<계정>` → `docker.io/<계정>/pmart-<service>:<git-sha>`.
 3. 태그·배포 원칙은 그대로 둔다. 태그는 git SHA 하나, `latest` 없음, 배포는 push 결과 digest.
 4. 인증은 계정 비밀번호 대신 Docker Hub 액세스 토큰을 쓴다. push용 `pmart-ci-push`는 Read & Write(삭제 없음), 실행 PC용 `pmart-runtime-pull`은 Public Repo Read-only. 비공개 저장소로 바꾸면 pull 토큰을 Read-only로 다시 만든다. 주입 경로는 지금처럼 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 환경변수다.
+   - 보완(2026-10-28): 빌드 PC(PC 1)는 push 토큰을 환경변수 대신 `docker login` 으로 Windows 자격 증명 관리자(`credsStore: desktop`, 사용자별 암호화)에 둔다. `pmart.container-image` 는 두 환경변수가 모두 있을 때만 명시 인증을 쓰고, 없으면 Jib 이 Docker 설정의 자격 증명 도우미를 읽으므로 코드 변경은 없다. CI(Jenkins)는 환경변수 그대로. 그래서 PC 1 의 `docker login` 에는 읽기 전용 토큰이 아니라 push 토큰이 들어간다.
 5. 실행 PC는 공개 이미지라도 **로그인한 상태로 pull**한다. 같은 공인 IP를 쓰는 PC들이 익명 pull 횟수 제한을 함께 소진하기 때문이다.
 
 ## 대안

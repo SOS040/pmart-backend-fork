@@ -28,6 +28,7 @@ paths:
 - 베이스 이미지는 digest 고정(`gcr.io/distroless/java21-debian12:nonroot@sha256:…`). 갱신은 PR로, 태그만 바꾸지 않는다.
 - 태그는 git SHA 하나. `latest` 태그를 만들지 않는다. 배포는 push 결과의 digest로 한다.
 - 레지스트리 인증은 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 환경변수(Jenkins credentials)로만. 저장소·이미지·로그에 넣지 않는다. 비밀번호 대신 Docker Hub 액세스 토큰(push용 읽기·쓰기, 실행 PC용 읽기 전용).
+  - 예외: 빌드 PC(PC 1)는 환경변수 대신 `docker login`(Windows 자격 증명 관리자, `credsStore: desktop`)을 쓴다. 환경변수가 없으면 Jib 이 Docker 설정의 자격 증명 도우미를 읽는다(ADR-0012).
 - 이미지는 **공개**된다. 비밀정보·실데이터를 넣지 않고, 운영 설정값은 기본값 없는 환경변수(`${PMART_...}`)로만 받는다. `application-local.yml`의 로컬 고정값도 이미지에 포함되므로 로컬 밖에서 local 프로파일을 쓰지 않는다.
 - `jib*` 태스크는 Gradle configuration cache와 호환되지 않으므로 CI의 이미지 단계는 다른 단계와 분리해 실행한다.
 - 로컬 확인은 `jibBuildTar`(데몬 불필요) 또는 `jibDockerBuild`(Docker 데몬).
