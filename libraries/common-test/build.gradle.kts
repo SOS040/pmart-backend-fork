@@ -11,8 +11,11 @@ dependencies {
     api(libs.spring.boot.starter.test)
     api(project(":libraries:common-messaging"))
     implementation(libs.jackson.databind)
+    // TestJwt: 서비스는 common-security 로 resource server(nimbus)를 이미 가진다
+    compileOnly(libs.spring.boot.starter.oauth2.resource.server)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.starter.oauth2.resource.server)
 }
 
 dependencies {

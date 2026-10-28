@@ -73,6 +73,14 @@ public class CommonMessagingAutoConfiguration {
     return new InboxGuard(jdbc, new TransactionTemplate(txManager));
   }
 
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnBean({JdbcTemplate.class, PlatformTransactionManager.class})
+  public RequestIdempotency requestIdempotency(
+      JdbcTemplate jdbc, PlatformTransactionManager txManager, EventEnvelopeCodec codec) {
+    return new RequestIdempotency(jdbc, new TransactionTemplate(txManager), codec.mapper());
+  }
+
   /** 봉투 생성 시 sourceSystem 기본값 = spring.application.name. */
   @Bean
   @ConditionalOnMissingBean

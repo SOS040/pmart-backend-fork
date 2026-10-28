@@ -17,6 +17,11 @@ paths:
 - **동기 호출 체인은 최대 2 hop.** 그 이상이 필요하면 이벤트 기반으로 설계한다 (ADR-0006, 승인 발효 이벤트화가 이 규칙의 결과).
 - 경로는 `/api/v1/{resources}` 복수형 kebab-case. 명령은 하위 리소스 POST (`POST /api/v1/orders/{id}/cancellations`). 서비스 간 전용 경로는 `/internal/...`.
 - 변경 요청 헤더: `Idempotency-Key`, `X-Source-System` 필수, 상태 변경은 `X-Expected-Version`. 응답 `status`는 ACCEPTED/APPLIED/REJECTED/UNKNOWN_RESULT (ACK ≠ 업무 성공).
+- 공통 구현(슬라이스 0, 2026-10-28):
+  - 변경 명령은 `RequestIdempotency.execute(...)`(common-messaging, 표 `request_record`) 안에서 처리한다. 같은 키·같은 본문은 저장 결과 재생, 다르면 `IDEMPOTENCY_CONFLICT`. 예외로 끝난 요청은 기록되지 않으므로, 재생해야 할 업무 거절은 결과(`CommandResponse.rejected`)로 돌려준다.
+  - 서비스 간 동기 호출은 `Downstream.call(target, ...)`(common-web)로 감싼다. 미전달·503 → `DEPENDENCY_UNAVAILABLE`, 응답 시간 초과·그 밖의 5xx → `UNKNOWN_RESULT`(보상 금지, 원결과 조회), 4xx 는 그대로. 기본 타임아웃 연결 1초·응답 5초(`spring.http.clients.*`).
+  - 낙관적 잠금: `RequestHeaders.checkExpectedVersion(current)` 선검사 + 엔티티 `@Version`. 저장 시 충돌은 자동으로 `VERSION_CONFLICT`.
+  - 시험 토큰: common-test `TestJwt`(customer/rider/operator/service) + `@Import(TestJwtConfiguration.class)`.
 - `traceId`(W3C `traceparent`)는 게이트웨이가 발급하고 모든 동기 호출·이벤트 봉투·로그에 전파한다. `correlationId`는 사가/사건 ID.
 - 시각은 UTC `Instant`로 저장·전송한다. 기한·영업일·달력 판정만 Asia/Seoul (ADR-0010).
 - REST 계약은 `contracts/openapi/`가 정본. springdoc으로 문서화.

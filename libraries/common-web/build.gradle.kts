@@ -8,8 +8,11 @@ dependencies {
     api(libs.spring.boot.starter.webmvc)
     api(libs.spring.boot.starter.validation)
     implementation(libs.jackson.databind)
+    // OptimisticLockAdvice: spring-tx(OptimisticLockingFailureException)가 있는 서비스에서만 등록(@ConditionalOnClass)
+    compileOnly(libs.spring.boot.starter.jdbc)
     annotationProcessor(platform(libs.spring.boot.bom))
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.starter.jdbc)
 }

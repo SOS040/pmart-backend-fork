@@ -47,4 +47,30 @@ public record RequestHeaders(
   public Optional<Integer> expectedVersionIfPresent() {
     return Optional.ofNullable(expectedVersion);
   }
+
+  /** 상태 변경 명령에서 필수인 기대 버전. 없으면 VALIDATION_FAILED. */
+  public int requireExpectedVersion() {
+    if (expectedVersion == null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "헤더 " + EXPECTED_VERSION + " 가 필요합니다.");
+    }
+    return expectedVersion;
+  }
+
+  /**
+   * 낙관적 잠금 선검사: 헤더가 있고 현재 버전과 다르면 VERSION_CONFLICT. 헤더가 없으면 통과(필수 여부는 {@link
+   * #requireExpectedVersion()}).
+   *
+   * <p>읽은 뒤 저장 사이의 경합은 이 검사로 막지 못한다. 저장은 엔티티 {@code @Version}(또는 {@code WHERE version = ?} 조건부
+   * 갱신)으로 하고, 그 실패도 VERSION_CONFLICT 로 바꾼다.
+   */
+  public void checkExpectedVersion(long currentVersion) {
+    if (expectedVersion != null && expectedVersion.longValue() != currentVersion) {
+      throw PmartException.versionConflict(
+          "대상이 이미 바뀌었습니다(기대 버전 "
+              + expectedVersion
+              + ", 현재 "
+              + currentVersion
+              + "). 다시 조회한 뒤 요청하세요.");
+    }
+  }
 }

@@ -23,6 +23,8 @@
 
 `libraries/` 변경이므로 영향 서비스(32개 전부 — 자동 구성이라 새 표가 생김)를 확인·보고한다.
 
+**상태(2026-10-28)**: 구현 — `RequestIdempotency` + `V0_0_2__pmart_request_record.sql`(common-messaging), `Downstream`·`HttpClientDefaultsPostProcessor`·`RequestHeaders.checkExpectedVersion`·`OptimisticLockAdvice`(common-web), `TestJwt`·`TestJwtConfiguration`(common-test). 사용 규약은 `.claude/rules/api-and-events.md`. 요청 기록 보존 기간은 운영 결정 대기(정리 작업은 이후).
+
 ## 3. 슬라이스 순서 (1단계)
 | # | 슬라이스 | 서비스 | 끝나면 되는 것 | 주 근거 |
 |---|---|---|---|---|

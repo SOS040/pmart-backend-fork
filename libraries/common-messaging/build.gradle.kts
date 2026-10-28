@@ -8,6 +8,8 @@ dependencies {
     api(libs.spring.boot.starter.kafka)
     api(libs.spring.kafka)
     api(libs.jackson.databind)
+    // RequestIdempotency 가 충돌을 PmartException(IDEMPOTENCY_CONFLICT)으로 던진다(공개 API) → common-web 이 RFC 9457 로 응답
+    api(project(":libraries:common-web"))
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.json.schema.validator)
     // Flyway 위치 추가(FlywayConfigurationCustomizer)는 서비스가 Flyway starter를 쓸 때만 활성화

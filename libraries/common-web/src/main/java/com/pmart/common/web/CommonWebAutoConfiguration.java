@@ -2,11 +2,13 @@ package com.pmart.common.web;
 
 import java.util.List;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -31,6 +33,17 @@ public class CommonWebAutoConfiguration {
   @ConditionalOnMissingBean
   public ProblemDetailAdvice problemDetailAdvice(ProblemDetailWriter writer) {
     return new ProblemDetailAdvice(writer);
+  }
+
+  /** spring-tx(JPA·JDBC)가 있을 때만: 저장 시 낙관적 잠금 실패 → VERSION_CONFLICT. */
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(name = "org.springframework.dao.OptimisticLockingFailureException")
+  static class OptimisticLockConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    OptimisticLockAdvice optimisticLockAdvice(ProblemDetailAdvice delegate) {
+      return new OptimisticLockAdvice(delegate);
+    }
   }
 
   @Bean
