@@ -2,7 +2,7 @@
 #   powershell -ExecutionPolicy Bypass -File deploy/lan/watch-install.ps1            등록(현재 사용자, 로그온 중일 때 실행)
 #   powershell -ExecutionPolicy Bypass -File deploy/lan/watch-install.ps1 -S4U       로그온 여부와 무관하게 실행(관리자 PowerShell 필요)
 #   powershell -ExecutionPolicy Bypass -File deploy/lan/watch-install.ps1 -Remove    해제
-# 창이 뜨지 않게 conhost --headless 로 Git Bash 를 띄운다. ssh 키(~/.ssh/pmart_lan)는 같은 사용자 프로필에서 읽는다.
+# 창이 뜨지 않게 conhost --headless 로 Git Bash 를 띄운다. ssh 키(~/.ssh/pmart_lan.pem, RSA PEM)는 같은 사용자 프로필에서 읽는다.
 param([switch]$Remove, [switch]$S4U, [int]$IntervalMinutes = 5)
 $ErrorActionPreference = 'Stop'
 $name = 'PMart LAN Watch'

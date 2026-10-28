@@ -31,6 +31,9 @@ val basePackageProvider: Provider<String> = ext.basePackage
 tasks.named<GenerateTask>("openApiGenerate") {
     val enabledValue = generationEnabled.get()
     onlyIf("pmartOpenApi.enabled") { enabledValue }
+    // 생성기를 별도 워커 프로세스에서 실행: 기본(classloader)은 생성기 클래스가 데몬 Metaspace 에 쌓여
+    // 32개 서비스 전체 빌드에서 Gradle 데몬이 Metaspace OOM 으로 죽는다 (2026-10-28 재현)
+    workerIsolation.set("process")
     generatorName.set("spring")
     library.set("spring-boot")
     inputSpec.set(specFile.asFile.path)
