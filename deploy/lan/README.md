@@ -9,7 +9,8 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
 | `render.sh` | 배치 → `build/<pc>/compose.yml`, `.env`, `init-db.sql` 생성 |
 | `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키 생성. 있으면 유지 |
 | `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` |
-| `watch.sh` | 감시: 각 PC 구성요소를 LAN 에서 실제 프로토콜로 점검, 연속 실패 시 그 PC 에서 재시작 |
+| `watch.sh` | 감시: 각 PC 구성요소를 LAN 에서 실제 프로토콜로 점검, 연속 실패 시 그 PC 에서 재시작. PC IP 변경 감지 |
+| `ipcheck.sh` | PC 의 실제 LAN IP 와 `placement.conf` IP 비교(`watch.sh` 가 사용, 단독 실행 가능) |
 | `watch-install.ps1` | PC 1 작업 스케줄러에 `watch.sh` 5분 간격 등록(로그온 중 실행, `-S4U` 는 관리자 필요, `-Remove` 로 해제) |
 
 ## 주소 규칙
@@ -41,6 +42,33 @@ deploy/lan/lan.sh logs pc2 order-service 200
 - **감시**: `deploy/lan/watch.sh [--dry-run]`. 앱 health, PostgreSQL SSLRequest, Kafka ApiVersions, Redis PING, Zipkin, Connect 커넥터·작업 RUNNING 을
   PC 1 에서 점검한다. 같은 구성요소가 2회 연속 실패하면 `lan.sh restart`(PC 당 10분 쿨다운), 전부 실패면 'PMart Docker Desktop Start' 예약 작업부터.
   상태·로그는 `~/.pmart-lan-watch/` (`watch.log`, `last-<pc>`). Kafka 가 재시작되면 Connect 작업이 UNASSIGNED 로 남는데(재배정 안 됨), 이것도 감시가 Connect 재시작으로 복구한다.
+
+## IP 변경 시 복구 (2026-10-28)
+PC 2·3·4 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수 없음, 지금까지는 같은 IP 가 나왔다). 반면 `placement.conf` 의 IP 는
+각 PC compose 의 `extra_hosts`·Kafka 광고 주소·Connect 의 DB 주소에 그대로 들어가므로, 한 PC 의 IP 가 바뀌면 **모든 PC** 를 다시 배포해야 한다.
+
+- **SSH 는 컴퓨터 이름으로 접속**한다(PC 1 `~/.ssh/config`: `HostName DS603-12`/`D603-15`/`D603-16`, `AddressFamily inet`).
+  호스트 키는 `HostKeyAlias`(`pmart-pc2` 등) 이름으로 `known_hosts` 에 있어 IP 가 바뀌어도 같은 키로 검증한다(검증은 끄지 않는다).
+  그래서 IP 가 바뀌어도 `lan.sh`·`run-ps.sh` 는 그대로 접속된다.
+- **감지**: `watch.sh` 가 5분마다 이름으로 IP 를 조회한다(`ipcheck.sh`). 판정이 바뀔 때만 `~/.pmart-lan-watch/watch.log` 에 남고, 현재 판정은 `ip-<pc>` 파일.
+
+  | 판정 | 뜻 | 감시 동작 |
+  |---|---|---|
+  | `OK` | 조회된 LAN 주소 중 배치 IP 가 있음 | 평소대로 |
+  | `LOOKUP_FAIL` / `NO_LAN_ADDR` | 이름 조회 실패 / LAN 서브넷 주소 없음(IPv6 링크 로컬·WSL 가상 어댑터만) — **IP 변경 아님** | 평소대로 |
+  | `UNVERIFIED <ip>` | 이름이 다른 LAN 주소를 가리키나 그 주소의 SSH 호스트 키가 이 PC 와 다르거나 응답 없음 | 평소대로, 사람이 확인 |
+  | `AMBIGUOUS <ip들>` | 호스트 키가 일치하는 LAN 주소가 여럿 | 평소대로, 사람이 확인 |
+  | `CHANGED <새 ip>` | 다른 LAN 주소에서 **이 PC 의 호스트 키가 확인됨** = IP 변경 확정 | **모든 재시작 보류**(재시작으로는 복구 안 됨) |
+- 수동 확인: `deploy/lan/ipcheck.sh pmart-pc4 192.168.0.40` → 판정 한 줄.
+
+### 절차 (`CHANGED` 가 떴을 때)
+1. 확인: `cat ~/.pmart-lan-watch/ip-*`, `deploy/lan/ipcheck.sh <별칭> <배치 IP>`, `ssh <별칭> hostname`(이름으로 접속되는지).
+2. `deploy/lan/placement.conf` 에서 그 PC 의 IP 만 새 IP 로 고친다(감시는 이 파일을 고치지 않는다).
+3. `deploy/lan/lan.sh render` → `grep -rn <옛 IP> deploy/lan/build/` 결과가 비어 있는지 확인.
+4. `deploy/lan/lan.sh deploy all` — 바뀐 PC 뿐 아니라 **전체**(다른 PC 의 `extra_hosts` 도 바뀜). 컨테이너는 다시 만들어지지만 볼륨(DB·Kafka 데이터)은 남는다.
+5. 확인: `deploy/lan/watch.sh --dry-run` 이 PC 마다 OK, `ip-<pc>` 가 `OK`, Connect 커넥터 전부 RUNNING(`curl http://<pc3 IP>:8083/connectors?expand=status`),
+   게이트웨이 `http://<pc4 IP>:8080` 응답.
+6. `placement.conf` 변경을 커밋하고 worklog 에 남긴다.
 
 ## 주의
 - 원격 작업 폴더 `%USERPROFILE%\pmart-lan`, compose 프로젝트 `pmart-lan`. 같은 PC 의 다른 프로젝트 컨테이너는 건드리지 않는다.

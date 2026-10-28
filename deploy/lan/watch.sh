@@ -6,6 +6,9 @@
 #   앱 /actuator/health, PostgreSQL SSLRequest, Kafka ApiVersions, Redis PING, Zipkin /health, Connect 커넥터·작업 RUNNING.
 # - 같은 구성요소가 연속 FAIL_LIMIT 회 실패하면 그 PC 에서 재시작한다(lan.sh restart). PC 마다 COOLDOWN 초 안에는 다시 재시작하지 않는다.
 #   PC 의 구성요소가 전부 실패하면 Docker Desktop 이 꺼진 것으로 보고 예약 작업 'PMart Docker Desktop Start' 를 먼저 실행한다.
+# - PC 마다 컴퓨터 이름(~/.ssh/config HostName)으로 실제 LAN IP 를 조회해 placement.conf 와 비교한다(ipcheck.sh, 판정이 바뀔 때만 로그).
+#   IP 변경이 확정(CHANGED)되면 재시작으로는 복구되지 않으므로(다른 PC 들이 옛 IP 를 가리킴) 모든 재시작을 보류하고 알리기만 한다.
+#   placement.conf 수정·재배포는 하지 않는다 — README "IP 변경 시 복구" 절차로 사람이 한다.
 # - 배경: Docker Desktop VM 리셋 후 LAN 포트가 옛 컨테이너 IP 로 전달돼 47시간 불통이었다(docs/worklog/2026-10-27.md).
 # - 상태·로그: $PMART_WATCH_DIR (기본 ~/.pmart-lan-watch). build/ 는 render 때 지워지므로 쓰지 않는다.
 set -uo pipefail
@@ -48,6 +51,36 @@ check() {
   esac
 }
 
+# IP 변경 감지: 이름은 한 번에 조회하고, 판정이 이전과 달라질 때만 로그를 남긴다
+source "$LAN/ipcheck.sh"
+declare -A IPNAME=() IPSTAT=()
+names=()
+for pc in $(ls "$OUT"); do
+  read -r _ ip alias < "$OUT/$pc/target"
+  n="$(ipcheck_hostname "$alias")"
+  if [ -z "$n" ] || is_ipv4 "$n"; then IPSTAT[$pc]=SKIP; else IPNAME[$pc]="$n"; names+=("$n"); fi
+done
+resolved=""; [ ${#names[@]} -gt 0 ] && resolved="$(ipcheck_resolve "${names[@]}")"
+lan="$(awk '$1=="LAN"{print $2}' <<<"$resolved")"
+ip_changed=false
+for pc in $(ls "$OUT"); do
+  read -r _ ip alias < "$OUT/$pc/target"
+  [ -n "${IPNAME[$pc]:-}" ] && IPSTAT[$pc]="$(ipcheck_classify "$alias" "$ip" "$(awk -v n="${IPNAME[$pc]}" '$1=="NAME" && $2==n {print $3}' <<<"$resolved")" "$lan")"
+  st="${IPSTAT[$pc]}"; detail="${st#* }"
+  if [ "$st" != "$(cat "$STATE/ip-$pc" 2>/dev/null || echo OK)" ]; then
+    case "$st" in
+      OK)            log "$pc IP 정상($ip)" ;;
+      LOOKUP_FAIL)   log "$pc 이름 조회 실패(${IPNAME[$pc]}) — IP 변경이 아니라 이름 해석 문제" ;;
+      NO_LAN_ADDR*)  log "$pc 이름 조회 결과에 LAN 주소 없음($detail) — IP 변경이 아니라 이름 해석 문제" ;;
+      CHANGED*)      log "$pc IP 변경 확인: $ip → $detail (호스트 키 일치). placement.conf 수정·render·전체 재배포 필요(README 'IP 변경 시 복구')" ;;
+      UNVERIFIED*)   log "$pc 이름이 배치와 다른 LAN 주소($detail)를 가리키나 같은 PC 인지 확인 안 됨(호스트 키 불일치·응답 없음)" ;;
+      AMBIGUOUS*)    log "$pc 호스트 키가 일치하는 LAN 주소가 여러 개($detail) — 직접 확인 필요" ;;
+    esac
+    echo "$st" > "$STATE/ip-$pc"
+  fi
+  [[ "$st" == CHANGED* ]] && ip_changed=true
+done
+
 for pc in $(ls "$OUT"); do
   read -r _ ip alias < "$OUT/$pc/target"
   comps="$(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | awk -v p="$pc" '$1==p { for (i=4;i<=NF;i++) print $i }')"
@@ -67,6 +100,7 @@ for pc in $(ls "$OUT"); do
 
   last=$(cat "$STATE/restart-$pc" 2>/dev/null || echo 0); now=$(date +%s)
   if [ $((now - last)) -lt "$COOLDOWN" ]; then log "$pc 재시작 보류(마지막 재시작 후 $((now - last))초 < ${COOLDOWN}초): ${due[*]}"; continue; fi
+  if $ip_changed; then log "$pc 재시작 보류 — IP 변경이 확인돼 재시작으로는 복구되지 않음: ${due[*]}"; continue; fi
   if $DRY_RUN; then log "$pc (dry-run) 재시작 대상: ${due[*]}"; continue; fi
 
   if [ ${#failed[@]} -eq "$total" ]; then
