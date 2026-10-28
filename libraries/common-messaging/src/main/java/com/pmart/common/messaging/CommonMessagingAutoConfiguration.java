@@ -31,7 +31,16 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>Kafka 리스너 공통 오류 처리: 지수 백오프 재시도 후 {topic}.DLT (원 헤더·eventId 보존)
  * </ul>
  */
-@AutoConfiguration
+// JdbcTemplate·트랜잭션 매니저가 먼저 만들어져야 @ConditionalOnBean 이 맞게
+// 판정된다(OutboxWriter·InboxGuard·RequestIdempotency).
+// 이름으로 지정: jdbc/jpa 모듈이 없는 서비스에서도 클래스 로딩 없이 동작한다.
+@AutoConfiguration(
+    afterName = {
+      "org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration",
+      "org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration",
+      "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration",
+      "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration"
+    })
 @EnableConfigurationProperties(MessagingProperties.class)
 public class CommonMessagingAutoConfiguration {
 

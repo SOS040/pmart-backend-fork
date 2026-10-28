@@ -21,4 +21,7 @@
 로컬 포트 8505.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+- 3단계 스캐폴딩(2026-10-23).
+- 슬라이스 1 최소 범위(2026-10-28, ADR-0014): 변경 요청 생성·조회, 제출(승인 단위 확정·이중 발급 금지 `DUPLICATE_APPROVAL`), 승인함·상세, 결정(APPROVE/REJECT) → `ApprovalDecided`(`platform.approval.v1`). 저장은 JDBC(`ApprovalStore`, 본문 jsonb 스냅샷), 명령은 `RequestIdempotency` 안에서.
+- 승인자 권한: `pmart.approval.approver-roles.<종류>=<역할>` 설정값 + 자기승인 금지. 미설정 종류는 `CONFIG_REQUIRED`. auth-service 행위 시점 검증(대행·센터 범위)은 auth 구현 후 `ActionAuthorizer` 로 교체.
+- 미구현(501): 철회, 부분 승인·증빙 요청, 재심사, 반영 회신(`/internal/application-receipts`), 일괄 변경, 정책 참조.

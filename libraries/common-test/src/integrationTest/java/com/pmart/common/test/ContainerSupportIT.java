@@ -14,7 +14,11 @@ import org.springframework.kafka.core.KafkaAdmin;
 /** 베이스 클래스가 실제 PostgreSQL(wal_level=logical)·Kafka 를 띄우고 @ServiceConnection 으로 연결 정보를 주입하는지. */
 @SpringBootTest(
     classes = ContainerSupportIT.App.class,
-    properties = {"spring.main.banner-mode=off", "spring.application.name=container-support-it"})
+    properties = {
+      "spring.main.banner-mode=off",
+      "spring.application.name=container-support-it",
+      "pmart.messaging.domain=test" // OutboxWriter 는 domain 없이 만들지 않는다
+    })
 class ContainerSupportIT extends PostgresKafkaContainerSupport {
 
   @SpringBootApplication
