@@ -78,6 +78,14 @@
       "name": "[시험] 3겹 화장지 30롤", "unitType": "B", "unitsPerSku": 30, "weightG": 4200, "storageType": "AMBIENT",
       "price": 12900, "color": "#9FB8D9",
       "description": "시험용 합성 상품입니다. 3겹 롤 화장지 30롤 묶음.",
+      "storageGuide": "직사광선을 피해 실온 보관", "notices": ["제조국: 시험 데이터"],
+      "_comment": "구성 낱개 30 이라 구매 상한(같은 기초상품 10개)을 1개만 담아도 넘는다 — 상한 거절 시험용으로 남긴다"
+    },
+    {
+      "key": "SEED-007", "barcode": "2990000000073", "categoryId": "t03-c01",
+      "name": "[시험] 3겹 화장지 6롤", "unitType": "B", "unitsPerSku": 6, "weightG": 840, "storageType": "AMBIENT",
+      "price": 4900, "color": "#B7CBE6",
+      "description": "시험용 합성 상품입니다. 3겹 롤 화장지 6롤 묶음(구매 상한 안에서 담을 수 있는 묶음).",
       "storageGuide": "직사광선을 피해 실온 보관", "notices": ["제조국: 시험 데이터"]
     }
   ]
