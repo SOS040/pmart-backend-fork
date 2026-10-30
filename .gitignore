@@ -42,3 +42,5 @@ local-reference/
 # OAuth 제공자 클라이언트 파일(Google client_secret_*.json 등). 원본은 deploy/lan/.secrets/google-oauth/ 에 둔다
 client_secret_*.json
 **/google-oauth/
+# 문서 폴더에 같이 들어온 키 파일(예: docs/toss/env). 키는 deploy/lan/.secrets/ 에 둔다
+/docs/**/env

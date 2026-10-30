@@ -32,7 +32,7 @@
 | 2 | **고객·장바구니** | auth(고객 로그인), customer(배송지·쇼핑 주소), cart | 로그인 고객이 주소를 정하고 장바구니에 담는다(구매 상한·판매 상태 검증) | Commerce 4~7장 |
 | 3 | **주문 초안·견적** | order | 초안 생성·조회: 판매/상한/권역/중량 검증, pricing 견적, 배달팁 4,000/3,000/0, 봉투 100, 최소 15,000, 10kg 분할, 첫 구매 점유, 10분 동결, `purchaseIntentId` 멱등 | S1 (1), Commerce 8·10장, OMS |
 | 4 | **자원 확보(S1 a~d)** | order-orchestration, mfc-inventory, mfc-capacity, delivery-capacity, mfc-inbound(초기 보유) | 결제 진입 시 재고 R·작업 여력·슬롯 확보와 실패 보상(이번 시도분만 해제), 10분 만료 | S1 b~d·1.3, ADR-0002·0003·0008 |
-| 5 | **결제·확정(S1 f~j)** | payment(토스 어댑터), order, orchestration, cart | PG 승인→금액 대사→`OrderConfirmed`→자원 확정·장바구니 정리. 불명 1분×5→case, 승인 후 확정 실패 시 보상 취소 | S1 f~j, ADR-0005 |
+| 5 | **결제·확정(S1 f~j)** | payment(토스 어댑터), order, orchestration, cart | PG 승인→금액 대사→`OrderConfirmed`→자원 확정·장바구니 정리. 불명 1분×5→case, 승인 후 확정 실패 시 보상 취소 | S1 f~j, ADR-0005, 결제 구현 명세 `payment-system-spec.md`(2026-10-30 입력, 착수 때 기존 설계와 대조) |
 | 6 | **이행(S2)** | fulfillment-routing(얇게), mfc-fulfillment, mfc-location, mfc-quality(최소) | 작업 생성·배정(수동)·피킹·포장·결품(`LineShortageReported`)·QR 인계 fence | S2, ADR-0006, MFC |
 | 7 | **배송** | rider, delivery-dispatch, delivery-execution, delivery-tracking | 배차 제안·수락, 픽업, 전달 완료/실패, 주문 부분/전체 전달 | S2 §3, ADR-0007 |
 | 8 | **취소·반품·부분취소** | claim, orchestration(S3), payment(부분취소) | 출고 전 취소 vs 인계 경합, 결품 PG 부분취소, 반품 접수 | cancel-vs-handover, return-exchange-refund |
@@ -49,7 +49,7 @@
 | D2 | MFC 초기 재고를 어떻게 넣는가 | 4 | **결정** — mfc-inbound 초기 보유 반입 → 검수 → mfc-inventory 전기. 조정 집행으로 적재하지 않음. ADR-0014 |
 | D3 | 재고 예약 TTL(`Q-04`), 슬롯 08/09시 개시 | 4 | **잠정** — TTL 10분(흐름 문서 값, 설정값으로 둠). 슬롯 개시는 설정 미등록이면 `CONFIG_REQUIRED`. 업무 결정 나면 설정만 바꾼다 |
 | D4 | 고객 결제 흐름(BR-01) | 5 | **결정** — 10/24 제안안(초안 `nextAction=PAY` 에 결제 진입 정보, 인증 결과는 payment 고객 명령, success/fail URL 서버 고정). 모바일 복귀 방식만 미정. 슬라이스 5 시작 때 계약 반영 |
-| D5 | 토스페이먼츠 시험 환경 | 5 | **결정** — 통합 시험은 WireMock 고정, LAN 시나리오만 토스 테스트 키(비밀은 `.secrets/`) |
+| D5 | 토스페이먼츠 시험 환경 | 5 | **결정** — 통합 시험은 WireMock 고정, LAN 시나리오만 토스 테스트 키(`deploy/lan/.secrets/toss-secret-key`·`toss-client-key`, Git 제외. 2026-10-30 받은 키는 토스 공식 문서 공개 테스트 키 `test_g…_docs_`) |
 | D6 | 고객 소셜 로그인 제공자·방식 | 2 | **결정(2026-10-30, ADR-0019)** — Google 먼저. 고객 앱이 Google Sign-In 으로 받은 ID 토큰을 auth-service 가 Google 공개키로 검증(aud = 앱·웹 클라이언트 ID). 신규 가입 필수 약관 동의 단계는 사용자 결정으로 지금 생략(`require-consent=false`). 카카오·네이버·애플은 이후 |
 | D7 | BR-14 초안 브랜치의 `Quote` 필드 | 3 | **결정** — 3번은 현재 main 계약으로 구현, 초안이 합쳐지면 필드 추가 |
 | D8 | 인증 방식·게이트웨이 CORS | 2 | **운영자 로그인·CORS 구현(2026-10-30, ADR-0018)** — 운영자는 auth-service 운영자 계정(아이디·비밀번호)으로 로그인해 JWT·refresh(회전)를 받는다. 고객 쪽은 방향만: auth-service 는 자체 JWT 로그인과 OAuth(소셜/OIDC) 로그인을 **둘 다** 지원한다(D6 의 제공자 선택과 함께 구현). 게이트웨이 CORS 는 **웹(브라우저) 클라이언트용**으로 연다(2026-10-30 사용자 정정: 처음 기록한 "모바일 앱용"은 잘못 말한 것). 네이티브 앱은 CORS 와 무관하다. 허용 출처 목록(React 백오피스 등)은 구현 때 설정값으로 둔다. CSRF 토큰은 지금 하지 않는다(사용자, 2026-10-30) |
