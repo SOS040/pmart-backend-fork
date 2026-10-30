@@ -16,7 +16,7 @@
 5. **실패 제한**: 기기(`X-Device-Id`)별 15분 내 5회 명확 실패(`PROVIDER_REJECTED`) → 10분 `AUTH_RESTRICTED`(423, `retryAfterSeconds`·`restrictedUntil`). Google 공개키를 못 받는 등 제공자 장애(`PROVIDER_UNAVAILABLE`, 503)는 세지 않는다. 제한 중 시도는 기간을 늘리지 않는다.
 6. **재전송·조회**: 같은 Idempotency-Key 재전송은 원인증 결과를 따른다(회원이면 새 세션 토큰, 실패면 같은 실패). `GET /auth/social-logins/{id}` 는 로그인을 시작한 기기만, 토큰은 주지 않는다.
 7. **이벤트**: 회원이 되면 `CustomerAuthenticated`(토픽 `platform.auth.v1`).
-8. **비밀정보**: Google 클라이언트 파일 원본은 `deploy/lan/.secrets/google-oauth/`(Git 제외). 배포에는 클라이언트 ID 만 넘긴다(`PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS`).
+8. **비밀정보**: 백엔드는 client secret 을 쓰지 않으므로 Google 클라이언트 파일 원본을 두지 않는다(고객 앱 쪽이 보관, 2026-10-30). 허용할 클라이언트 ID(공개 식별자)만 `deploy/lan/google-client-ids.conf` 에 두고 배포 때 `PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS` 로 넘긴다.
 
 ## 대안
 - **인가 코드 + 서버 교환(client secret 사용)**: 웹 로그인에는 맞지만 앱에서는 ID 토큰 검증으로 충분하고 비밀값을 서버에 둘 필요가 없다. 웹 고객 로그인이 생기면 다시 본다.
