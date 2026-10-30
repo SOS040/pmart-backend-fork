@@ -46,6 +46,26 @@
             },
             "approvalRef": {
               "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "NODE",
+                "TREE"
+              ],
+              "description": "TREE = 트리·필터 전체 버전이 발효됨(categoryId 는 \"category-tree\")"
+            },
+            "treeVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "nodeCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "filterGroupCount": {
+              "type": "integer",
+              "minimum": 0
             }
           },
           "additionalProperties": true

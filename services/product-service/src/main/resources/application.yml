@@ -4,6 +4,10 @@ spring:
   mvc:
     problemdetails:
       enabled: true # Spring MVC 자체 예외도 RFC 9457
+  servlet:
+    multipart:
+      max-file-size: 300MB # seed-v1 묶음(이미지 포함). 이 서비스는 product.json 만 읽는다
+      max-request-size: 300MB
   security:
     oauth2:
       resourceserver:

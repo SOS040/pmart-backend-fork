@@ -1,0 +1,526 @@
+package com.pmart.product.application;
+
+import com.pmart.common.messaging.RequestIdempotency;
+import com.pmart.common.messaging.RequestIdempotency.Outcome;
+import com.pmart.common.web.ErrorCode;
+import com.pmart.common.web.PmartException;
+import com.pmart.product.domain.CatalogLookup;
+import com.pmart.product.domain.DraftFacts;
+import com.pmart.product.domain.DraftProblem;
+import com.pmart.product.domain.DraftRules;
+import com.pmart.product.domain.Hashes;
+import com.pmart.product.infrastructure.CatalogStore;
+import com.pmart.product.infrastructure.CategoryStore;
+import com.pmart.product.infrastructure.DraftStore;
+import com.pmart.product.infrastructure.DraftStore.BatchRow;
+import com.pmart.product.infrastructure.DraftStore.DraftRow;
+import com.pmart.product.infrastructure.SeedBundleReader;
+import com.pmart.product.infrastructure.SeedBundleReader.SeedProduct;
+import java.io.ByteArrayInputStream;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+
+/**
+ * 상품 등록 초안(개별·seed-v1 배치)과 제출 준비. 초안은 승인 전까지 정본이 아니며, 승인 반영은 {@link ApprovalApplier} 가 한다. 원천
+ * 키(sourceSystem, sourceKey) 가 있으면 그 키의 열린 초안을 갱신(upsert)해 다시 올려도 상품 수가 늘지 않는다.
+ */
+@Service
+public class ProductDraftService {
+
+  public static final String DRAFT_PREFIX = "productDraft:";
+  public static final String BATCH_PREFIX = "productImportBatch:";
+
+  /** 제출 준비 결과(계약 SubmissionResult). */
+  public record Submission(
+      List<String> submittedDraftIds,
+      List<String> excludedDraftIds,
+      Map<String, Object> approvalRequest) {}
+
+  private final DraftStore drafts;
+  private final CatalogStore catalog;
+  private final CategoryStore categories;
+  private final SeedBundleReader bundles;
+  private final RequestIdempotency idempotency;
+  private final ObjectMapper mapper;
+  private final Clock clock;
+
+  public ProductDraftService(
+      DraftStore drafts,
+      CatalogStore catalog,
+      CategoryStore categories,
+      SeedBundleReader bundles,
+      RequestIdempotency idempotency,
+      ObjectMapper mapper,
+      Clock clock) {
+    this.drafts = drafts;
+    this.catalog = catalog;
+    this.categories = categories;
+    this.bundles = bundles;
+    this.idempotency = idempotency;
+    this.mapper = mapper;
+    this.clock = clock;
+  }
+
+  // ---------- 개별 초안 ----------
+
+  public Outcome<DraftRow> create(String requestId, Operator op, JsonNode input) {
+    return idempotency.execute(
+        op.key(requestId, "createProductDraft"),
+        input,
+        DraftRow.class,
+        () -> upsert(op, input, null));
+  }
+
+  public Outcome<DraftRow> update(
+      String requestId,
+      Operator op,
+      String draftId,
+      @Nullable Integer expectedVersion,
+      JsonNode input) {
+    return idempotency.execute(
+        op.key(requestId, "updateProductDraft"),
+        Map.of("draftId", draftId, "input", input),
+        DraftRow.class,
+        () -> {
+          DraftRow d = get(draftId);
+          if (expectedVersion != null && expectedVersion != d.version()) {
+            throw PmartException.versionConflict(
+                "초안이 이미 바뀌었습니다(기대 " + expectedVersion + ", 현재 " + d.version() + ").");
+          }
+          requireEditable(d);
+          Validated v = validate(input, d.sourceSystem(), d.sourceKey());
+          drafts.replaceInput(
+              draftId,
+              d.version(),
+              null,
+              v.state(),
+              v.problemsJson(),
+              json(input),
+              v.categoriesJson(),
+              now());
+          return get(draftId);
+        });
+  }
+
+  public DraftRow get(String draftId) {
+    return drafts
+        .find(draftId)
+        .orElseThrow(() -> PmartException.notFound("DRAFT_NOT_FOUND", "초안이 없습니다: " + draftId));
+  }
+
+  public Outcome<Submission> submit(String requestId, Operator op, String draftId) {
+    return idempotency.execute(
+        op.key(requestId, "submitProductDraft"),
+        Map.of("draftId", draftId),
+        Submission.class,
+        () -> {
+          DraftRow d = get(draftId);
+          if ("SUBMITTED".equals(d.state())) {
+            return submission(DRAFT_PREFIX + draftId, List.of(d), List.of(), "상품 등록 1건");
+          }
+          requireEditable(d);
+          if (!"VALID".equals(d.validationState())) {
+            throw new PmartException(
+                "DRAFT_INVALID",
+                ErrorCode.DOMAIN_REJECTED.status(),
+                "검증을 통과하지 않은 초안은 제출할 수 없습니다.",
+                false,
+                List.of());
+          }
+          lock(d);
+          return submission(
+              DRAFT_PREFIX + draftId, List.of(get(draftId)), List.of(), "상품 등록 1건: " + name(d));
+        });
+  }
+
+  // ---------- 배치(seed-v1) ----------
+
+  public Outcome<BatchRow> uploadBatch(
+      String requestId, Operator op, byte[] zip, @Nullable String fileName) {
+    return idempotency.execute(
+        op.key(requestId, "uploadProductImportBatch"),
+        Map.of("sha256", Hashes.sha256(zip)),
+        BatchRow.class,
+        () -> {
+          if (categories.effective().isEmpty()) {
+            throw new PmartException(
+                "CATEGORY_TREE_NOT_EFFECTIVE",
+                ErrorCode.DOMAIN_REJECTED.status(),
+                "발효된 카테고리 트리가 없습니다. 트리를 먼저 승인하세요.",
+                false,
+                List.of());
+          }
+          List<SeedProduct> products = bundles.read(new ByteArrayInputStream(zip));
+          String batchId = "IB-" + UUID.randomUUID();
+          Instant at = now();
+          drafts.insert(
+              new BatchRow(
+                  batchId,
+                  "SEED_V1",
+                  SeedBundleReader.DEFAULT_SOURCE_SYSTEM,
+                  fileName,
+                  "VALIDATED",
+                  0,
+                  0,
+                  0,
+                  op.id(),
+                  at));
+          int valid = 0;
+          int invalid = 0;
+          for (SeedProduct p : products) {
+            DraftRow d = upsert(op, seedToInput(p), batchId);
+            if ("VALID".equals(d.validationState())) {
+              valid++;
+            } else {
+              invalid++;
+            }
+          }
+          drafts.updateBatchCounts(batchId, products.size(), valid, invalid);
+          return drafts.findBatch(batchId).orElseThrow();
+        });
+  }
+
+  public BatchRow batch(String batchId) {
+    return drafts
+        .findBatch(batchId)
+        .orElseThrow(() -> PmartException.notFound("BATCH_NOT_FOUND", "배치가 없습니다: " + batchId));
+  }
+
+  public List<DraftRow> batchDrafts(String batchId) {
+    return drafts.ofBatch(batchId);
+  }
+
+  public Outcome<Submission> submitBatch(String requestId, Operator op, String batchId) {
+    return idempotency.execute(
+        op.key(requestId, "submitProductImportBatch"),
+        Map.of("batchId", batchId),
+        Submission.class,
+        () -> {
+          batch(batchId);
+          List<DraftRow> submitted = new ArrayList<>();
+          List<String> excluded = new ArrayList<>();
+          for (DraftRow d : drafts.ofBatch(batchId)) {
+            if ("DRAFT".equals(d.state()) && "VALID".equals(d.validationState())) {
+              lock(d);
+              submitted.add(get(d.draftId()));
+            } else if ("SUBMITTED".equals(d.state())) {
+              submitted.add(d);
+            } else {
+              excluded.add(d.draftId());
+            }
+          }
+          if (submitted.isEmpty()) {
+            throw new PmartException(
+                "NOTHING_TO_SUBMIT",
+                ErrorCode.DOMAIN_REJECTED.status(),
+                "제출할 수 있는(VALID) 초안이 없습니다.",
+                false,
+                List.of());
+          }
+          drafts.updateBatchState(batchId, "SUBMITTED");
+          return submission(
+              BATCH_PREFIX + batchId,
+              submitted,
+              excluded,
+              "상품 일괄 등록 " + submitted.size() + "건 (배치 " + batchId + ")");
+        });
+  }
+
+  /** id-map.json: seedProductId → productId·sku. */
+  public List<Map<String, Object>> idMap(String batchId) {
+    batch(batchId);
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (DraftRow d : drafts.ofBatch(batchId)) {
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("seedProductId", d.sourceKey());
+      m.put("pmartProductId", d.resultProductId());
+      JsonNode skus = mapper.readTree(d.resultSkus());
+      m.put("sku", skus.isArray() && !skus.isEmpty() ? skus.get(0).asString() : null);
+      m.put("state", d.state());
+      out.add(m);
+    }
+    return out;
+  }
+
+  // ---------- 내부 ----------
+
+  private DraftRow upsert(Operator op, JsonNode input, @Nullable String batchId) {
+    String system = text(input, "sourceSystem");
+    String key = text(input, "sourceKey");
+    Validated v = validate(input, system, key);
+    Instant at = now();
+    if (system != null && key != null) {
+      Optional<DraftRow> open = drafts.findOpen(system, key);
+      if (open.isPresent()) {
+        DraftRow d = open.get();
+        if ("SUBMITTED".equals(d.state())) {
+          return d; // 심사 중이면 바꾸지 않는다(승인 범위 고정)
+        }
+        drafts.replaceInput(
+            d.draftId(),
+            d.version(),
+            batchId,
+            v.state(),
+            v.problemsJson(),
+            json(input),
+            v.categoriesJson(),
+            at);
+        return get(d.draftId());
+      }
+    }
+    DraftRow row =
+        new DraftRow(
+            "PD-" + UUID.randomUUID(),
+            batchId,
+            system,
+            key,
+            "DRAFT",
+            v.state(),
+            v.problemsJson(),
+            json(input),
+            v.categoriesJson(),
+            null,
+            null,
+            null,
+            "[]",
+            1,
+            op.id(),
+            at,
+            at);
+    drafts.insert(row);
+    return row;
+  }
+
+  private record Validated(String state, String problemsJson, String categoriesJson) {}
+
+  private Validated validate(JsonNode input, @Nullable String system, @Nullable String key) {
+    Set<String> ownSkus = new HashSet<>();
+    if (system != null && key != null) {
+      catalog
+          .sourceLink(system, key)
+          .ifPresent(l -> mapper.readTree(l.skus()).forEach(s -> ownSkus.add(s.asString())));
+    }
+    DraftRules.Result r = DraftRules.validate(facts(input), lookup(), ownSkus);
+    return new Validated(
+        r.valid() ? "VALID" : "INVALID",
+        mapper.writeValueAsString(r.problems()),
+        mapper.writeValueAsString(r.categoryIds()));
+  }
+
+  /** 발효 트리 기준 조회. 발효 트리가 없으면 카테고리는 모두 없음으로 본다. */
+  CatalogLookup lookup() {
+    Integer version = categories.effective().map(CategoryStore.VersionRow::version).orElse(null);
+    return new CatalogLookup() {
+      @Override
+      public boolean categoryExists(String categoryId) {
+        return version != null && categories.nodeExists(version, categoryId);
+      }
+
+      @Override
+      public Optional<String> categoryByPath(String path) {
+        return version == null
+            ? Optional.empty()
+            : categories.nodeByPath(version, DraftRules.normalizePath(path));
+      }
+
+      @Override
+      public boolean filterOptionExists(String filterGroupId, String option) {
+        return version != null && categories.optionExists(version, filterGroupId, option);
+      }
+
+      @Override
+      public Optional<String> activeBarcodeOwner(String barcode) {
+        return catalog.activeBarcodeOwner(barcode);
+      }
+
+      @Override
+      public boolean baseProductExists(String baseProductId) {
+        return catalog.baseProductExists(baseProductId);
+      }
+    };
+  }
+
+  /** 계약 ProductDraftInput(JSON) → 검증 입력. */
+  DraftFacts facts(JsonNode in) {
+    JsonNode p = in.path("product");
+    JsonNode s = in.path("skus").path(0);
+    List<String> barcodes = new ArrayList<>();
+    s.path("barcodes").forEach(b -> barcodes.add(b.asString()));
+    List<String> ids = new ArrayList<>();
+    p.path("categoryIds").forEach(c -> ids.add(c.asString()));
+    List<String> paths = new ArrayList<>();
+    p.path("categoryPaths").forEach(c -> paths.add(c.asString()));
+    List<DraftFacts.FilterOptionRef> options = new ArrayList<>();
+    in.path("filterOptions")
+        .forEach(
+            o ->
+                options.add(
+                    new DraftFacts.FilterOptionRef(
+                        o.path("filterGroupId").asString(), o.path("option").asString())));
+    return new DraftFacts(
+        text(p, "internalName"),
+        text(p, "baseProductId"),
+        text(s, "unitType"),
+        s.hasNonNull("unitsPerSku") ? s.get("unitsPerSku").asInt() : null,
+        s.hasNonNull("weightG") ? s.get("weightG").asInt() : null,
+        text(s, "storageType"),
+        barcodes,
+        text(p, "primaryCategoryId"),
+        ids,
+        paths,
+        options);
+  }
+
+  /**
+   * seed-v1 product.json → ProductDraftInput. B마트 경로(구간 배열)는 " > " 로 이어 이름 경로로 둔다(자동 매핑). sku 는 항상
+   * 비어 있고(승인 후 발급), 이름에서 읽은 추정값은 derivedFields 로 표시한다. 주류 여부가 비어 있으면 false 로 두고 추정값으로 표시한다.
+   */
+  ObjectNode seedToInput(SeedProduct p) {
+    JsonNode root = p.json();
+    JsonNode prod = root.path("product");
+    JsonNode sku = root.path("skus").path(0);
+    ObjectNode in = mapper.createObjectNode();
+    in.put(
+        "sourceSystem",
+        root.path("source").path("system").asString(SeedBundleReader.DEFAULT_SOURCE_SYSTEM));
+    in.put("sourceKey", p.seedProductId());
+    ObjectNode product = in.putObject("product");
+    copyText(prod, product, "baseProductKey");
+    copyText(prod, product, "internalName");
+    copyText(prod, product, "saleState");
+    ArrayNode paths = product.putArray("categoryPaths");
+    if (prod.path("primaryCategory").isArray()) {
+      paths.add(joinPath(prod.get("primaryCategory")));
+    }
+    for (JsonNode c : prod.path("categories")) {
+      String path = c.isArray() ? joinPath(c) : c.asString();
+      boolean dup = false;
+      for (JsonNode existing : paths) {
+        dup |= existing.asString().equals(path);
+      }
+      if (!dup && !path.isBlank()) {
+        paths.add(path);
+      }
+    }
+    ObjectNode s = in.putArray("skus").addObject();
+    copyText(sku, s, "unitType");
+    copyInt(sku, s, "unitsPerSku");
+    copyInt(sku, s, "weightG");
+    copyInt(sku, s, "volumeMl");
+    copyText(sku, s, "storageType");
+    ArrayNode derived = in.putArray("derivedFields");
+    root.path("source").path("derived").forEach(derived::add);
+    if (sku.hasNonNull("alcohol")) {
+      s.put("alcohol", sku.get("alcohol").asBoolean());
+    } else {
+      s.put("alcohol", false);
+      derived.add("alcohol");
+    }
+    ArrayNode barcodes = s.putArray("barcodes");
+    sku.path("barcodes").forEach(barcodes::add);
+    return in;
+  }
+
+  private void lock(DraftRow d) {
+    String hash = Hashes.sha256(d.input(), d.resolvedCategories());
+    if (!drafts.lock(d.draftId(), hash, now())) {
+      throw PmartException.versionConflict("초안이 이미 바뀌었습니다. 다시 조회하세요.");
+    }
+  }
+
+  private Submission submission(
+      String targetRef, List<DraftRow> locked, List<String> excluded, String summary) {
+    List<Map<String, Object>> lines = new ArrayList<>();
+    for (DraftRow d : locked) {
+      Map<String, Object> attrs = new LinkedHashMap<>();
+      attrs.put("draftId", d.draftId());
+      attrs.put("draftHash", d.draftHash());
+      if (d.sourceKey() != null) {
+        attrs.put("sourceKey", d.sourceKey());
+      }
+      attrs.put("internalName", name(d));
+      lines.add(
+          Map.of(
+              "lineKey",
+              d.draftId(),
+              "targetRef",
+              DRAFT_PREFIX + d.draftId(),
+              "attributes",
+              attrs));
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("type", "PRODUCT");
+    body.put("targetService", "product-service");
+    body.put("targetRef", targetRef);
+    body.put("allowedActions", List.of("ISSUE_SKU", "PUBLISH_PRODUCT_VERSION"));
+    body.put("summary", summary);
+    body.put("lines", lines);
+    return new Submission(locked.stream().map(DraftRow::draftId).toList(), excluded, body);
+  }
+
+  private static void requireEditable(DraftRow d) {
+    if (!"DRAFT".equals(d.state())) {
+      throw new PmartException(
+          "DRAFT_NOT_EDITABLE",
+          ErrorCode.DOMAIN_REJECTED.status(),
+          "제출·반영된 초안은 바꿀 수 없습니다(상태 " + d.state() + ").",
+          false,
+          List.of());
+    }
+  }
+
+  private String name(DraftRow d) {
+    return mapper.readTree(d.input()).path("product").path("internalName").asString("");
+  }
+
+  private String json(JsonNode n) {
+    return mapper.writeValueAsString(n);
+  }
+
+  private static String joinPath(JsonNode segments) {
+    List<String> parts = new ArrayList<>();
+    segments.forEach(x -> parts.add(x.asString()));
+    return DraftRules.normalizePath(String.join(" > ", parts));
+  }
+
+  private static void copyText(JsonNode from, ObjectNode to, String field) {
+    if (from.hasNonNull(field)) {
+      to.put(field, from.get(field).asString());
+    }
+  }
+
+  private static void copyInt(JsonNode from, ObjectNode to, String field) {
+    if (from.hasNonNull(field)) {
+      to.put(field, from.get(field).asInt());
+    }
+  }
+
+  private static @Nullable String text(JsonNode n, String field) {
+    return n.hasNonNull(field) && !n.get(field).asString().isBlank()
+        ? n.get(field).asString()
+        : null;
+  }
+
+  private Instant now() {
+    return clock.instant();
+  }
+
+  /** 문제 목록(JSON) → 객체. */
+  public List<DraftProblem> problems(DraftRow d) {
+    return List.of(mapper.readValue(d.problems(), DraftProblem[].class));
+  }
+}

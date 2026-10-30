@@ -1,11 +1,25 @@
 package com.pmart.product.api;
 
 import com.pmart.product.api.generated.BarcodesApi;
+import com.pmart.product.api.generated.model.BarcodeResolution;
+import com.pmart.product.application.ProductQueries;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 계약 BarcodesApi 의 구현 진입점. 아직 구현하지 않은 메서드는 인터페이스 default 가 501 을 돌려준다. 업무 규칙은 application/domain 에
- * 두고 여기서는 요청·응답 변환만 한다.
- */
+/** 계약 BarcodesApi — 활성 바코드 → SKU 해석(선행 0 보존, 연결 없으면 BARCODE_NOT_MAPPED). */
 @RestController
-public class BarcodesController implements BarcodesApi {}
+public class BarcodesController implements BarcodesApi {
+
+  private final ProductQueries queries;
+  private final RegistrationMapping mapping;
+
+  public BarcodesController(ProductQueries queries, RegistrationMapping mapping) {
+    this.queries = queries;
+    this.mapping = mapping;
+  }
+
+  @Override
+  public ResponseEntity<BarcodeResolution> resolveBarcode(String barcode) {
+    return ResponseEntity.ok(mapping.convert(queries.barcode(barcode), BarcodeResolution.class));
+  }
+}

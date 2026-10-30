@@ -11,7 +11,7 @@
 ## 1. Commerce (9)
 
 ### product-service `[1단계]`
-- **소유**: 기초상품·상품·SKU(`E-`/`B-` 8자리 발급·재사용 금지), 구성 낱개 수, 카테고리(상위 30·하위 141·노출 경로 151, 대표 경로 1개), 바코드↔SKU, 판매 단위·중량(g)·물류 규격(BOX/PLT 환산·Ti/Hi), 전사 판매 상태(판매중/일시품절/판매중지), 승인 버전.
+- **소유**: 기초상품·상품·SKU(`E-`/`B-` 8자리 발급·재사용 금지), 구성 낱개 수, 카테고리(4단계 상위>하위>칩1>칩2·노드별 필터 패널, 대표 1개 — ADR-0015), 바코드↔SKU, 판매 단위·중량(g)·물류 규격(BOX/PLT 환산·Ti/Hi), 전사 판매 상태(판매중/일시품절/판매중지), 승인 버전.
 - **소유하지 않음**: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
 - **API**: 상품/SKU 조회(버전 포함), 구매 상한 검증(`Σ 수량×구성 낱개 수 ≤ 10` per 기초상품), 바코드 해석, SKU 발급 명령(approval 승인 결과 참조), 카테고리 트리.
 - **발행**: `ProductVersionPublished`, `ProductSaleStateChanged`, `CategoryChanged`, `SkuIssued`.

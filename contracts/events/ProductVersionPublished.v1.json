@@ -72,6 +72,64 @@
                     },
                     "additionalProperties": true,
                     "description": "포장 규격"
+                  },
+                  "unitType": {
+                    "type": "string",
+                    "enum": [
+                      "E",
+                      "B"
+                    ]
+                  },
+                  "storageType": {
+                    "type": "string",
+                    "enum": [
+                      "AMBIENT",
+                      "CHILLED",
+                      "FROZEN"
+                    ]
+                  },
+                  "alcohol": {
+                    "type": "boolean"
+                  },
+                  "volumeMl": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "barcodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "활성 바코드(선행 0 보존)"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "ACTIVE",
+                      "INACTIVE"
+                    ]
+                  },
+                  "logistics": {
+                    "type": "object",
+                    "properties": {
+                      "unitsPerBox": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "boxesPerPallet": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "ti": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "hi": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": true
                   }
                 },
                 "additionalProperties": true
@@ -93,6 +151,49 @@
             },
             "approvalRef": {
               "$ref": "_defs.v1.json#/$defs/ApprovalRef"
+            },
+            "internalName": {
+              "type": "string",
+              "description": "관리용 명칭(고객용 명칭은 product-content)"
+            },
+            "saleState": {
+              "type": "string",
+              "enum": [
+                "ON_SALE",
+                "TEMPORARILY_SOLD_OUT",
+                "SALE_STOPPED"
+              ]
+            },
+            "primaryCategoryId": {
+              "type": "string",
+              "description": "대표 카테고리 노드 id (ADR-0015)"
+            },
+            "categoryIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "노출 카테고리 노드 id 전체"
+            },
+            "sources": {
+              "type": "array",
+              "description": "외부 원천 키(seed-v1 등). product-content 가 초안을 이 키로 연결",
+              "items": {
+                "type": "object",
+                "required": [
+                  "system",
+                  "key"
+                ],
+                "properties": {
+                  "system": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
             }
           },
           "additionalProperties": true
