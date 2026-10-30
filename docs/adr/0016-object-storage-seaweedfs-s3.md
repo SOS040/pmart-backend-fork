@@ -10,7 +10,7 @@
 - product-content-service 는 이미지 파일을 **S3 API** 로 저장하고 DB 에는 버킷·키·메타(크기·해시·역할)만 둔다.
 - 로컬(`deploy/local`)·LAN(`deploy/lan`)에서는 수집 저장소와 **같은 구성**으로 띄운다.
   - 이미지 `chrislusf/seaweedfs:4.48`, `mini` 모드, S3 포트 8333, path-style 주소, 리전 `us-east-1`.
-  - 자격 증명은 `.env`/`.secrets/` 에서 넣고(소스·compose 파일에 값 없음), 시작 시 S3 설정 파일로 쓴다.
+  - 자격 증명은 시작 시 S3 설정 파일로 쓴다. 로컬(`deploy/local`)은 postgres(`pmart-local`)와 같이 로컬 전용 고정 기본값을 두고 환경변수로 바꿀 수 있게 한다(compose 가 값 없이 멈추지 않게). LAN·운영 값은 `.secrets/`·비밀 저장소에서만 받는다.
   - 버킷은 비공개. 버킷 이름은 서비스 설정값.
 - 클라이언트: AWS SDK for Java v2 `software.amazon.awssdk:s3`, BOM **2.55.11**(수집 저장소와 동일), `forcePathStyle(true)` + `endpointOverride`. `netty-nio-client` 는 제외(동기 클라이언트만). 좌표는 `gradle/libs.versions.toml` 에 등록한다.
 - 운영 대상 S3(AWS 등)로 바꿀 때는 endpoint·자격 증명 설정만 바꾼다.

@@ -7,6 +7,9 @@ info:
     비정본: 상품 정본·판매 상태(product), 리뷰 원문(review), 가격(pricing), 재고(각 inventory).
     구독: ProductVersionPublished, ReviewPublished/Deleted, ApprovalDecided(콘텐츠 승인 BO-05). 발행: ProductContentPublished.
     승인 변경은 5분 내 고객 노출 반영을 목표로 하며, 투영 지연은 projection-status로 드러낸다.
+    임시 백오피스 등록(docs/architecture/product-registration-design.md): 콘텐츠 초안(개별·seed-v1 배치)과 이미지(S3 호환 저장소, ADR-0016)를
+    받고, product-service 의 ProductVersionPublished.sources 로 상품에 연결한 뒤, DISPLAY 승인(ApprovalDecided)으로만 게시한다(ADR-0014).
+    ProductContentPublished 는 상품 이벤트와 같은 토픽 commerce.product.v1(키 productId)로 낸다.
 servers:
   - url: /api/v1
 security:
@@ -15,6 +18,8 @@ tags:
   - { name: product-contents, description: 고객용 상품 상세 조회 }
   - { name: publications, description: 콘텐츠 게시 명령(승인 결과 참조) }
   - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+  - { name: registration, description: 임시 백오피스 콘텐츠 초안·이미지·배치·제출 준비(승인은 approval-service) }
+  - { name: content-images, description: 상품 이미지 본문(비공개 버킷을 이 서비스가 대신 읽어 준다) }
 
 paths:
   /product-contents/{productId}:
@@ -134,6 +139,238 @@ paths:
                   publishedAt: { type: string, format: date-time }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  # ---------- 등록(임시 백오피스, 운영자) ----------
+  /content-drafts:
+    post:
+      tags: [registration]
+      summary: 콘텐츠 초안 1건 (고객용 상품명·설명·안내·옵션)
+      description: |
+        seed-v1 product.json 의 content 블록과 같은 모양. sourceSystem·sourceKey 가 있으면 그 키의 열린 초안을 갱신(upsert)한다.
+        productId 를 생략하면 같은 원천 키로 발행된 ProductVersionPublished.sources 를 받을 때(이미 받았으면 지금) 연결된다.
+        이미지는 POST /content-drafts/{draftId}/images 로 따로 올린다.
+      operationId: createContentDraft
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContentDraftInput' }
+      responses:
+        '201':
+          description: 초안 생성(또는 원천 키의 열린 초안 갱신)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentDraft' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: PRODUCT_NOT_FOUND (productId 가 아직 수신한 상품이 아님) / DRAFT_NOT_EDITABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /content-drafts/{draftId}:
+    get:
+      tags: [registration]
+      summary: 콘텐츠 초안 조회 (이미지·제출 가능 여부 포함)
+      operationId: getContentDraft
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentDraft' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [registration]
+      summary: 콘텐츠 초안 수정 (제출 전 DRAFT 만, 이미지는 그대로)
+      operationId: updateContentDraft
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContentDraftInput' }
+      responses:
+        '200':
+          description: 수정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentDraft' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: DRAFT_NOT_EDITABLE / PRODUCT_NOT_FOUND
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /content-drafts/{draftId}/images:
+    post:
+      tags: [registration]
+      summary: 초안 이미지 업로드 (MAIN=대표, DESCRIPTION=상세설명, DETAIL=상세정보 표)
+      description: |
+        파일 본체는 S3 호환 저장소(비공개 버킷)에, DB 에는 키·메타만 둔다. 같은 (role, sortOrder) 자리에 다시 올리면 바꾼다.
+        같은 내용(sha256)의 파일은 저장소에 다시 올리지 않는다. MAIN 은 1장(sortOrder 0). 허용 형식 JPEG·PNG·WebP(파일 앞부분으로 판정).
+      operationId: uploadContentImage
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, role]
+              properties:
+                file: { type: string, format: binary }
+                role: { $ref: '#/components/schemas/ImageRole' }
+                sortOrder: { type: integer, minimum: 0, description: 같은 role 안의 순서(0부터). 생략 시 0 }
+      responses:
+        '201':
+          description: 저장
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentImage' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: IMAGE_INVALID (형식·크기·자리) / DRAFT_NOT_EDITABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /content-drafts/{draftId}/submissions:
+    post:
+      tags: [registration]
+      summary: 초안 1건 제출 준비 — 잠그고 DISPLAY 승인 요청 본문을 돌려준다
+      description: |
+        상품에 연결되고(productId) 상품명·대표 이미지가 있는 DRAFT 를 SUBMITTED 로 잠그고 draftHash 를 확정한다. 응답의 approvalRequest 를
+        approval-service 에 그대로 보내면(POST /change-requests → /submissions) 승인자가 결정한다. 승인되면 ApprovalDecided 를 받아
+        새 콘텐츠 버전을 게시하고 ProductContentPublished 를 발행한다. 승인 행의 draftHash 가 잠근 값과 다르면 APPROVAL_SCOPE_MISMATCH 로 반영하지 않는다.
+      operationId: submitContentDraft
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 잠금 완료
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentSubmissionResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: PRODUCT_NOT_LINKED (상품 승인 전) / DRAFT_INVALID (상품명·대표 이미지 누락 등, details 에 사유) / DRAFT_NOT_EDITABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /content-import-batches:
+    post:
+      tags: [registration]
+      summary: 콘텐츠 일괄 등록 — seed-v1 묶음(zip) 업로드
+      description: |
+        수집 저장소(code-and-pick/product-data) 형식 seed-v1. products/*/product.json 의 content 블록과 images/ 만 읽는다
+        (product·skus 는 product-service 가 같은 묶음을 따로 받는다). (source.system, seedProductId) 로 초안을 갱신(upsert)하고,
+        이미지 role 은 content.images[] 를 따르되 없으면 파일 이름(main.jpg=MAIN, description_NN.jpg=DESCRIPTION, info.jpg=DETAIL)으로 정한다.
+        같은 묶음을 다시 올리면 초안·이미지가 늘지 않는다(바뀐 것이 없으면 UNCHANGED).
+      operationId: uploadContentImportBatch
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: seed-v1.zip }
+      responses:
+        '201':
+          description: 업로드 완료
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentImportBatch' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '422':
+          description: BUNDLE_INVALID / IMAGE_INVALID
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /content-import-batches/{batchId}:
+    get:
+      tags: [registration]
+      summary: 배치 상태·상품별 결과
+      operationId: getContentImportBatch
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentImportBatch' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /content-import-batches/{batchId}/submissions:
+    post:
+      tags: [registration]
+      summary: 배치의 제출 가능한 초안을 잠그고 DISPLAY 승인 요청 본문(행 N개)을 돌려준다
+      operationId: submitContentImportBatch
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 잠금 완료 (상품 미연결·누락이 있는 초안은 빠지고 excludedDraftIds 에 나열)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentSubmissionResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: NOTHING_TO_SUBMIT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /content-images/{imageId}:
+    get:
+      tags: [content-images]
+      summary: 이미지 본문 (버킷이 비공개라 이 서비스가 대신 읽어 준다)
+      description: |
+        내용 주소(sha256) 기반이라 같은 imageId 의 본문은 바뀌지 않는다(긴 캐시, ETag=sha256). 고객·운영자 토큰으로 읽는다.
+      operationId: getContentImage
+      parameters:
+        - { name: imageId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 이미지 바이트
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   # ---------- internal (서비스 토큰) ----------
   /internal/product-contents/{productId}/snapshot:
     get:
@@ -179,9 +416,120 @@ components:
       type: object
       properties:
         imageId: { type: string }
-        url: { type: string, format: uri }
+        url: { type: string, format: uri, description: '이미지 본문 경로 (상대 경로 /api/v1/content-images/{imageId})' }
         role: { type: string, enum: [MAIN, DETAIL, DESCRIPTION] }
         sortOrder: { type: integer }
+    ImageRole:
+      type: string
+      description: MAIN=대표(카드), DESCRIPTION=상세설명(롱이미지 조각), DETAIL=상세정보 표
+      enum: [MAIN, DESCRIPTION, DETAIL]
+    ContentOption:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string, maxLength: 100, example: 1팩(6입) }
+        capacityLabel: { type: [string, 'null'], maxLength: 100, example: 500ml }
+    ContentDraftInput:
+      type: object
+      description: seed-v1 product.json 의 content 블록 (+ 원천 키·상품 연결)
+      properties:
+        sourceSystem: { type: string, maxLength: 64, description: '외부 원천 (예: bmart-capture). 개별 입력은 생략' }
+        sourceKey: { type: string, maxLength: 128, description: '원천 키 (seedProductId). sourceSystem 과 함께 upsert·상품 연결 기준' }
+        productId: { type: string, maxLength: 40, description: 이미 승인된 상품에 붙일 때. 생략하면 원천 키로 연결 }
+        name: { type: string, maxLength: 200, description: 고객용 상품명 (제출 시 필수) }
+        description: { type: [string, 'null'], description: 상세설명 (seed 의 OCR 초안이면 검수 필요) }
+        storageGuide: { type: [string, 'null'] }
+        returnGuide: { type: [string, 'null'] }
+        notices: { type: array, items: { type: string, maxLength: 500 }, description: '"항목: 값" 고시 정보' }
+        options: { type: array, items: { $ref: '#/components/schemas/ContentOption' } }
+    ContentImage:
+      type: object
+      required: [imageId, role, sortOrder]
+      properties:
+        imageId: { type: string }
+        role: { $ref: '#/components/schemas/ImageRole' }
+        sortOrder: { type: integer }
+        url: { type: string, description: '이미지 본문 경로 (/api/v1/content-images/{imageId})' }
+        contentType: { type: string }
+        width: { type: [integer, 'null'] }
+        height: { type: [integer, 'null'] }
+        bytes: { type: integer, format: int64 }
+        sha256: { type: string }
+    ContentDraftProblem:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, description: 'NAME_REQUIRED / MAIN_IMAGE_REQUIRED / PRODUCT_NOT_LINKED / APPROVAL_REJECTED / APPROVAL_SCOPE_MISMATCH' }
+        field: { type: [string, 'null'] }
+        detail: { type: [string, 'null'] }
+    ContentDraft:
+      type: object
+      required: [draftId, state, version]
+      properties:
+        draftId: { type: string }
+        sourceSystem: { type: [string, 'null'] }
+        sourceKey: { type: [string, 'null'] }
+        productId: { type: [string, 'null'], description: 연결된 상품 (상품 승인 후) }
+        state: { type: string, enum: [DRAFT, SUBMITTED, PUBLISHED, REJECTED] }
+        input: { $ref: '#/components/schemas/ContentDraftInput' }
+        images: { type: array, items: { $ref: '#/components/schemas/ContentImage' } }
+        problems: { type: array, items: { $ref: '#/components/schemas/ContentDraftProblem' }, description: 지금 제출하면 막히는 사유(DRAFT) 또는 반려 사유 }
+        submittable: { type: boolean }
+        draftHash: { type: [string, 'null'] }
+        approvalId: { type: [string, 'null'] }
+        contentVersion: { type: [integer, 'null'], description: 게시된 버전 (PUBLISHED) }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        updatedAt: { type: string, format: date-time }
+    ContentImportBatch:
+      type: object
+      required: [batchId, state, productCount]
+      properties:
+        batchId: { type: string }
+        format: { type: string, enum: [SEED_V1] }
+        sourceSystem: { type: string }
+        state: { type: string, enum: [UPLOADED, SUBMITTED, PUBLISHED, PARTIALLY_PUBLISHED, REJECTED] }
+        productCount: { type: integer }
+        createdCount: { type: integer }
+        updatedCount: { type: integer }
+        unchangedCount: { type: integer }
+        imageCount: { type: integer, description: 묶음의 이미지 수 }
+        uploadedImageCount: { type: integer, description: 저장소에 새로 올린 이미지 수 (같은 sha256 은 다시 올리지 않음) }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceKey: { type: string }
+              draftId: { type: string }
+              outcome: { type: string, enum: [CREATED, UPDATED, UNCHANGED, LOCKED] }
+              draft: { $ref: '#/components/schemas/ContentDraft' }
+        createdAt: { type: string, format: date-time }
+    ContentApprovalRequestBody:
+      type: object
+      description: approval-service ChangeRequestBody 와 같은 모양. 그대로 POST /change-requests 본문으로 쓴다.
+      required: [type, targetService, targetRef, allowedActions, summary]
+      properties:
+        type: { type: string, enum: [DISPLAY] }
+        targetService: { type: string, enum: [product-content-service] }
+        targetRef: { type: string, description: 'contentDraft:{draftId} / contentImportBatch:{batchId}' }
+        allowedActions: { type: array, items: { type: string } }
+        summary: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [lineKey]
+            properties:
+              lineKey: { type: string, description: draftId }
+              targetRef: { type: string }
+              attributes: { type: object, additionalProperties: true, description: 'draftId·draftHash·productId·name 등 잠근 값' }
+    ContentSubmissionResult:
+      type: object
+      required: [submittedDraftIds, approvalRequest]
+      properties:
+        submittedDraftIds: { type: array, items: { type: string } }
+        excludedDraftIds: { type: array, items: { type: string } }
+        approvalRequest: { $ref: '#/components/schemas/ContentApprovalRequestBody' }
     SaleOption:
       type: object
       description: 고객 화면의 판매 옵션 해석. 실제 구매 단위는 sku.

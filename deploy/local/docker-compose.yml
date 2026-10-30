@@ -2,6 +2,7 @@
 # 실행: docker compose -f deploy/local/docker-compose.yml up -d
 # 커넥터 등록: connector-registrar 컨테이너가 자동으로(서비스 첫 기동 후 10초 내). 설정 갱신은 register-connector.sh <service-name> <db-name>
 # 비밀정보는 로컬 개발 전용 고정값. 운영에서는 Secret Manager.
+# 예외: s3(SeaweedFS) 자격 증명은 고정값 없이 deploy/local/.env(Git 제외)의 S3_ACCESS_KEY/S3_SECRET_KEY 가 필요하다(README 참조).
 name: pmart-local
 
 services:
@@ -104,6 +105,35 @@ services:
     image: openzipkin/zipkin:3
     ports: ["9411:9411"]
 
+  s3:
+    # 상품 이미지 저장소(S3 호환, ADR-0016). 수집 저장소(code-and-pick/product-data)와 같은 이미지·mini 모드.
+    # 자격 증명은 postgres(pmart-local)처럼 로컬 전용 고정값이 기본이고 S3_ACCESS_KEY/S3_SECRET_KEY 로 바꿀 수 있다. 시작 시 파일로 쓴다.
+    # LAN·운영 값은 .secrets/ 에서만 받는다(ADR-0016).
+    # 호스트에서 bootRun 하는 서비스용으로 127.0.0.1:8333 만 연다. 버킷은 비공개(product-content-service 가 대신 읽어 준다).
+    image: chrislusf/seaweedfs:4.48
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-pmart-local-s3}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-pmart-local-s3-secret}
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        umask 077 &&
+        printf '{"identities":[{"name":"app","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","List","Tagging","Write"]}]}'
+        "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+        chown seaweed /tmp/s3.json &&
+        exec /entrypoint.sh mini -dir=/data -s3.config=/tmp/s3.json -admin.ui=false
+        -s3.port.iceberg=0 -s3.port.lance=0 -bucket=pmart-product-content
+    ports: ["127.0.0.1:8333:8333"]
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8333/"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
 volumes:
   pgdata:
   kafkadata:
+  s3data:

@@ -16,6 +16,7 @@ ortools = "9.15.6755"            # Java 바인딩. transport-routing·mfc-capaci
 confluent = "8.3.2"              # Schema Registry client + JSON Schema serializer (common-messaging에만)
 jspecify = "1.0.0"
 json-schema-validator = "3.0.8"  # networknt, Jackson 3. contracts/events JSON Schema 검증
+aws-sdk = "2.55.11"              # AWS SDK for Java v2 BOM. S3 클라이언트(product-content 이미지, ADR-0016). 수집 저장소와 같은 버전
 # 플러그인
 spotless = "8.10.4"
 sonarqube = "7.5.0.8588"
@@ -79,6 +80,8 @@ ortools-java = { module = "com.google.ortools:ortools-java", version.ref = "orto
 confluent-json-schema-serializer = { module = "io.confluent:kafka-json-schema-serializer", version.ref = "confluent" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
+aws-sdk-s3 = { module = "software.amazon.awssdk:s3" }  # 버전은 aws-sdk-bom. product-content-service 에만
 
 # --- 테스트 (BOM 관리 + 일부 고정) ---
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

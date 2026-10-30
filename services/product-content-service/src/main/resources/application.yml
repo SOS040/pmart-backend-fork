@@ -4,6 +4,10 @@ spring:
   mvc:
     problemdetails:
       enabled: true # Spring MVC 자체 예외도 RFC 9457
+  servlet:
+    multipart:
+      max-file-size: 300MB # seed-v1 묶음(이미지 포함). 이미지 1장 상한은 ContentRules.MAX_IMAGE_BYTES
+      max-request-size: 300MB
   security:
     oauth2:
       resourceserver:
@@ -26,6 +30,16 @@ server:
 pmart:
   messaging:
     domain: commerce
+  storage:
+    # 상품 이미지 저장소(S3 호환, ADR-0016). 값은 환경변수로만 — 자격 증명을 이 파일·이미지에 넣지 않는다.
+    s3:
+      endpoint: ${PMART_S3_ENDPOINT:}          # 비우면 AWS 기본. SeaweedFS 는 http://<host>:8333
+      region: ${PMART_S3_REGION:us-east-1}
+      bucket: ${PMART_S3_BUCKET}
+      access-key: ${PMART_S3_ACCESS_KEY}
+      secret-key: ${PMART_S3_SECRET_KEY}
+      path-style: ${PMART_S3_PATH_STYLE:true}
+      create-bucket: ${PMART_S3_CREATE_BUCKET:false}
 management:
   tracing:
     export:

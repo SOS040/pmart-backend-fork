@@ -15,7 +15,18 @@ dependencies {
     implementation(libs.bundles.service.kafka)
     implementation(libs.bundles.service.data)
     implementation(libs.bundles.service.observability)
+    // 이미지 저장소: S3 호환(로컬·LAN SeaweedFS). 동기 클라이언트만 쓰므로 netty 는 뺀다(ADR-0016)
+    implementation(platform(libs.aws.sdk.bom))
+    implementation(libs.aws.sdk.s3) {
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+    }
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox·이미지 행 확인
+    "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 ProductVersionPublished·ApprovalDecided 를 토픽에 흘림
+    "integrationTestImplementation"(platform(libs.aws.sdk.bom))
+    "integrationTestImplementation"(libs.aws.sdk.s3) { // 시험에서 버킷 내용 확인
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+    }
 }

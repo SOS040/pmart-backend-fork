@@ -30,6 +30,9 @@ deploy/local/register-connector.sh order-service order_service
 | Kafka Connect REST | `http://localhost:8083` |
 | Redis | `localhost:6379` (delivery-tracking-service 캐시) |
 | Zipkin | `http://localhost:9411` |
+| S3(SeaweedFS `mini`) | `http://localhost:8333`(127.0.0.1 만), path-style, 리전 `us-east-1`, 버킷 `pmart-product-content`(비공개), 키는 로컬 전용 기본값(`S3_ACCESS_KEY`/`S3_SECRET_KEY` 로 변경) |
+
+product-content-service 는 local 프로파일에서 `http://localhost:8333`·`pmart-product-content` 를 쓰고, 자격 증명은 compose 와 같은 로컬 기본값을 쓰고, 바꿨으면 `PMART_S3_ACCESS_KEY`/`PMART_S3_SECRET_KEY` 로 덮어쓴다.
 
 서비스 `application-local.yml` 예:
 ```yaml

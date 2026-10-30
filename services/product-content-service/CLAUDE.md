@@ -20,5 +20,12 @@
 ```
 로컬 포트 8102.
 
+## 이미지 저장소
+- 본체는 S3 호환 저장소(로컬·LAN SeaweedFS, ADR-0016), DB 에는 버킷·키·메타만. 키 `products/{productId 또는 draft-{draftId}}/{role}/{sha256}.{ext}`, 같은 sha256 은 다시 올리지 않는다.
+- 설정 `pmart.storage.s3.*` ← `PMART_S3_ENDPOINT/REGION/BUCKET/ACCESS_KEY/SECRET_KEY/PATH_STYLE/CREATE_BUCKET`. 버킷·키가 없으면 기동 실패.
+- 버킷은 비공개. 클라이언트는 `GET /content-images/{imageId}` 로 받는다(고객은 게시된 이미지만). presigned URL 을 내주지 않는다.
+- 시험 묶음·이미지는 합성 바이트만. seed-v1 캡처 원본을 저장소에 넣지 않는다.
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+2026-10-30 임시 백오피스 등록 구현: 콘텐츠 초안(개별·seed-v1 배치 upsert)·이미지 업로드·제출 준비(DISPLAY 승인 본문), ProductVersionPublished 투영·원천 키 연결, ApprovalDecided(DISPLAY) → 게시(`product_content` 불변 버전) + ProductContentPublished(commerce.product.v1), 고객 조회(상세·카드·스냅샷·projection-status).
+미구현(501): `/product-contents/{id}/publications`(게시는 승인 이벤트로만), `rating-summary`(review 투영 전). 가격·가용 필드는 채우지 않는다.

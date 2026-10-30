@@ -11,6 +11,15 @@ spring:
     password: ${PMART_DB_PASSWORD:pmart-local}
   kafka:
     bootstrap-servers: localhost:9092
+pmart:
+  storage:
+    s3:
+      # deploy/local 의 s3(SeaweedFS). 버킷은 compose 가 -bucket= 으로 만든다.
+      # deploy/local compose 의 로컬 전용 기본 자격 증명(postgres pmart-local 과 같은 취급). 바꿨으면 환경변수로 덮어쓴다.
+      endpoint: ${PMART_S3_ENDPOINT:http://localhost:8333}
+      bucket: ${PMART_S3_BUCKET:pmart-product-content}
+      access-key: ${PMART_S3_ACCESS_KEY:pmart-local-s3}
+      secret-key: ${PMART_S3_SECRET_KEY:pmart-local-s3-secret}
 logging:
   level:
     com.pmart: DEBUG
