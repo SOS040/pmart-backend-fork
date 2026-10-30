@@ -48,7 +48,7 @@
 | D1 | 상품·가격·센터·권역 기준정보를 넣는 경로 | 1 | **결정** — approval 최소 구현(변경요청→단일 승인→`ApprovalDecided`)을 먼저 만들고 정식 경로로만 넣는다. 적재는 그 API 를 부르는 스크립트. ADR-0014 |
 | D2 | MFC 초기 재고를 어떻게 넣는가 | 4 | **결정** — mfc-inbound 초기 보유 반입 → 검수 → mfc-inventory 전기. 조정 집행으로 적재하지 않음. ADR-0014 |
 | D3 | 재고 예약 TTL(`Q-04`), 슬롯 08/09시 개시 | 4 | **잠정** — TTL 10분(흐름 문서 값, 설정값으로 둠). 슬롯 개시는 설정 미등록이면 `CONFIG_REQUIRED`. 업무 결정 나면 설정만 바꾼다 |
-| D4 | 고객 결제 흐름(BR-01) | 5 | **결정** — 10/24 제안안(초안 `nextAction=PAY` 에 결제 진입 정보, 인증 결과는 payment 고객 명령, success/fail URL 서버 고정). 모바일 복귀 방식만 미정. 슬라이스 5 시작 때 계약 반영 |
+| D4 | 고객 결제 흐름(BR-01) | 5 | **결정** — 10/24 제안안(초안 `nextAction=PAY` 에 결제 진입 정보, 인증 결과는 payment 고객 명령, success/fail URL 서버 고정). 모바일 복귀 방식만 미정. **결제 쪽 계약 반영·구현(2026-10-30, ADR-0020)**: 고객 승인 요청 `POST /payment-confirmations`·실패 보고·상태 조회, 결제 시도 ID = 토스 orderId. 주문 초안 `nextAction=PAY` 는 order 구현 때 |
 | D5 | 토스페이먼츠 시험 환경 | 5 | **결정** — 통합 시험은 WireMock 고정, LAN 시나리오만 토스 테스트 키(`deploy/lan/.secrets/toss-secret-key`·`toss-client-key`, Git 제외. 2026-10-30 받은 키는 토스 공식 문서 공개 테스트 키 `test_g…_docs_`) |
 | D6 | 고객 소셜 로그인 제공자·방식 | 2 | **결정(2026-10-30, ADR-0019)** — Google 먼저. 고객 앱이 Google Sign-In 으로 받은 ID 토큰을 auth-service 가 Google 공개키로 검증(aud = 앱·웹 클라이언트 ID). 신규 가입 필수 약관 동의 단계는 사용자 결정으로 지금 생략(`require-consent=false`). 카카오·네이버·애플은 이후 |
 | D7 | BR-14 초안 브랜치의 `Quote` 필드 | 3 | **결정** — 3번은 현재 main 계약으로 구현, 초안이 합쳐지면 필드 추가 |

@@ -15,6 +15,7 @@ tags:
   - { name: payments, description: 결제 시도·승인 조회 (orchestration S1) }
   - { name: cancellations, description: 전체/부분 취소·보상 취소 (claim / orchestration) }
   - { name: webhooks, description: PG 콜백 (외부 → payment · 서명 검증) }
+  - { name: checkout, description: "고객 앱 결제 인증 결과 전달·상태 조회 (D4, 결제 명세 §6.2~6.4). 결제 건은 orderId(= paymentAttemptId) 하나로 가리킨다" }
 
 paths:
   /internal/payments:
@@ -194,6 +195,99 @@ paths:
               schema: { $ref: '#/components/schemas/Cancellation' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  # ---------- checkout (고객 앱, D4) ----------
+  /payment-confirmations:
+    post:
+      tags: [checkout]
+      summary: 승인 요청 (결제창 인증 성공 후 — orderId·paymentKey·amount 만)
+      description: |
+        결제 명세 §6.3 순서로 처리한다: 형식 → orderId 로 결제 시도 조회(본인 것만, 아니면 404) → 저장된 paymentKey 와 다르면 409 PAYMENT_KEY_MISMATCH
+        → amount 불일치면 400 AMOUNT_MISMATCH(토스 호출 없음) → 상태(APPROVED 면 기존 결과, 진행 중이면 현재 상태) → 예약 만료면 승인 API 를 부르지 않고
+        EXPIRED + 422 RESERVATION_EXPIRED → READY→CONFIRMING 조건부 갱신과 paymentKey 저장 → 토스 승인 API(시도별 고정 Idempotency-Key).
+        "인증 성공"은 결제 완료가 아니다. stage=APPROVED 를 받은 뒤에만 완료로 표시한다. 응답을 놓치면 다시 보내지 말고 GET /payments/{orderId} 로 확인한다.
+      operationId: confirmPayment
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, paymentKey, amount]
+              properties:
+                orderId: { type: string, pattern: '^[A-Za-z0-9_=-]{6,64}$', description: 결제 시작 응답의 pgOrderId(= paymentAttemptId). 가공하지 않는다 }
+                paymentKey: { type: string, minLength: 1, maxLength: 200, description: 토스 인증 결과 그대로 }
+                amount: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 처리 결과(승인·진행 중·실패·불일치)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutPayment' }
+        '400':
+          description: VALIDATION_FAILED / AMOUNT_MISMATCH
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: PAYMENT_KEY_MISMATCH / INVALID_STATE(종결된 결제 시도)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: RESERVATION_EXPIRED (재고 예약·슬롯 만료 — 승인하지 않음) / CONFIG_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /payment-authorization-failures:
+    post:
+      tags: [checkout]
+      summary: 결제창 인증 실패·사용자 취소 보고 (앱이 보관한 orderId 로)
+      description: |
+        READY 인 결제 시도만 바꾼다. errorCode=PAY_PROCESS_CANCELED 면 CANCELED_BY_USER, 그 밖은 AUTH_FAILED. 이미 다른 상태면 현재 상태를 돌려준다(멱등).
+        토스 실패 결과의 orderId 는 빈 값일 수 있으므로 앱이 보관한 값을 보낸다.
+      operationId: reportAuthorizationFailure
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, errorCode]
+              properties:
+                orderId: { type: string, pattern: '^[A-Za-z0-9_=-]{6,64}$' }
+                errorCode: { type: string, maxLength: 100 }
+                errorMessage: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutPayment' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /payments/{orderId}:
+    get:
+      tags: [checkout]
+      summary: 결제 상태 조회 (본인 결제 시도만)
+      operationId: getCheckoutPayment
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutPayment' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /webhooks/toss:
     post:
       tags: [webhooks]
@@ -235,7 +329,7 @@ components:
       enum: [CREATED, PENDING, APPROVED, FAILED, UNKNOWN, MISMATCH, CANCELLED, PARTIALLY_CANCELLED]
     StartPaymentRequest:
       type: object
-      required: [orderId, sagaId, amount, currency, method, customerRef]
+      required: [orderId, sagaId, amount, currency, method, customerRef, resourceExpiresAt]
       properties:
         orderId: { type: string }
         draftId: { type: string }
@@ -248,6 +342,8 @@ components:
         requiresAdultVerification: { type: boolean, description: 주류 포함 시 true → PG 결제 인증 요구 }
         successUrl: { type: string, format: uri }
         failUrl: { type: string, format: uri }
+        resourceExpiresAt: { type: string, format: date-time, description: "재고 예약·슬롯 점유 중 가장 이른 만료(결제 명세 §8). 이 시각이 지나면 승인 API 를 호출하지 않고 EXPIRED" }
+        priceValidUntil: { type: string, format: date-time, description: 가격 동결 만료(안내용) }
     StartPaymentResponse:
       type: object
       required: [paymentAttemptId, state, checkout]
@@ -272,6 +368,11 @@ components:
         orderId: { type: string }
         sagaId: { type: string }
         state: { $ref: '#/components/schemas/PaymentState' }
+        stage: { $ref: '#/components/schemas/PaymentStage' }
+        pgOrderId: { type: string, description: '토스 orderId (= paymentAttemptId)' }
+        amount: { $ref: '_common.yaml#/components/schemas/Money', description: 결제 요청 금액(확정 청구액) }
+        isPartialCancelable: { type: boolean }
+        balanceAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 토스 취소 가능 잔액 }
         version: { type: integer }
         method: { type: string }
         pgTransactionId: { type: string }
@@ -350,6 +451,30 @@ components:
         ledgerMatched: { type: boolean, description: 원장과 PG 상태 일치 여부 }
         resultingState: { $ref: '#/components/schemas/PaymentState' }
         resolvedCancellationIds: { type: array, items: { type: string } }
+    PaymentStage:
+      type: string
+      description: |
+        결제 시도 세부 단계(결제 명세 §5). state 는 이것을 요약한 값이다.
+        READY→CREATED, CONFIRMING→PENDING, CONFIRM_UNKNOWN·MANUAL_REVIEW→UNKNOWN, APPROVED→APPROVED, MISMATCH_HOLD→MISMATCH,
+        AUTH_FAILED·CANCELED_BY_USER·CONFIRM_FAILED·EXPIRED→FAILED, PARTIAL_CANCELED→PARTIALLY_CANCELLED, CANCELED→CANCELLED.
+      enum: [READY, AUTH_FAILED, CANCELED_BY_USER, CONFIRMING, CONFIRM_UNKNOWN, APPROVED, CONFIRM_FAILED, EXPIRED, MISMATCH_HOLD, MANUAL_REVIEW, PARTIAL_CANCELED, CANCELED]
+    CheckoutPayment:
+      type: object
+      required: [orderId, state, stage, amount]
+      description: 고객 앱용 결제 상태. 비밀값·카드 정보 없음
+      properties:
+        orderId: { type: string, description: "= paymentAttemptId = 토스 orderId" }
+        state: { $ref: '#/components/schemas/PaymentState' }
+        stage: { $ref: '#/components/schemas/PaymentStage' }
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        method: { type: string, description: 토스 결제수단(승인 시) }
+        approvedAt: { type: string, format: date-time }
+        failure:
+          type: object
+          properties:
+            stage: { type: string, enum: [AUTH, CONFIRM, EXPIRE] }
+            code: { type: string }
+            message: { type: string }
     TossWebhookPayload:
       type: object
       description: PG 규격 본문(요약). 카드 정보·비밀키는 포함되지 않는다.

@@ -6,7 +6,7 @@
 >
 > 작성일: 2026-10-30 · 근거: 토스페이먼츠 공식 문서·Flutter SDK 2.3.0 소스, `OMS-business-logic.md`(실제 프로젝트), 이 저장소의 결제 사전 테스트 결과
 >
-> **pmart-backend 메모(2026-10-30)**: 외부에서 받은 결제 구현 입력이다. 이 저장소 설계와 다른 전제가 있어 슬라이스 5 착수 때 사용자와 정한다 — (1) 명세는 결제를 "OMS 내부 모듈"로 보지만 여기서는 독립 서비스 `payment-service`(ADR-0005, `contracts/openapi/payment-service.yaml`), (2) 명세는 웹훅을 범위 밖으로 두지만 계약·게이트웨이에 토스 웹훅 공개 경로가 있다. 키는 `deploy/lan/.secrets/toss-*`(Git 제외).
+> **pmart-backend 메모(2026-10-30)**: 외부에서 받은 결제 구현 입력이다. 이 저장소에서는 사용자 결정으로 결제를 독립 서비스 `payment-service`(ADR-0005)로 두고 웹훅은 기존 계약대로 하며, 미결정 사항(§12)은 구현하지 않았다. 이 명세를 어떻게 옮겼는지는 ADR-0020. 키는 `deploy/lan/.secrets/toss-*`(Git 제외).
 
 ---
 

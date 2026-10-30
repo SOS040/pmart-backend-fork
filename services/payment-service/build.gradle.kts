@@ -18,4 +18,6 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // 토스 API 를 WireMock 으로 고정(D5)
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox·원장 행 확인
 }
