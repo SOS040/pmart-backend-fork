@@ -8,7 +8,7 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
 | `placement.conf` | 배치 정보 — PC 이름·IP·ssh 별칭·구성요소. PC 수는 가변 |
 | `cors-origins.conf` | 게이트웨이 웹 CORS 허용 출처(한 줄에 하나). render 가 api-gateway 의 `PMART_GATEWAY_CORS_ALLOWEDORIGINS` 로 넣는다 |
 | `render.sh` | 배치 → `build/<pc>/compose.yml`, `.env`, `init-db.sql` 생성 |
-| `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키 생성. 있으면 유지 |
+| `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키·S3 자격 증명·첫 운영자 관리자(아이디 `operator-admin-login`, 비밀번호 원문 `operator-admin-password`, bcrypt 해시 `operator-admin-hash`) 생성. 있으면 유지 |
 | `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` |
 | `watch.sh` | 감시: 각 PC 구성요소를 LAN 에서 실제 프로토콜로 점검, 연속 실패 시 그 PC 에서 재시작. PC IP 변경 감지 |
 | `ipcheck.sh` | PC 의 실제 LAN IP 와 `placement.conf` IP 비교(`watch.sh` 가 사용, 단독 실행 가능) |
