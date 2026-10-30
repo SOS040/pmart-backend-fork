@@ -57,7 +57,19 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: |
+            ACCOUNT_NOT_AVAILABLE — 제공자 인증은 맞지만 연결된 PMart 계정으로 로그인할 수 없음(내부 제한·탈퇴 완료). 토큰을 주지 않는다.
+            구매만 막히는 상태(ACCOUNT_NOT_PURCHASABLE, 탈퇴 대기 등)는 로그인은 되고 주문 단계에서 따로 판정한다(BR-27).
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '501':
+          description: UNSUPPORTED_ACTION — 아직 지원하지 않는 제공자(지금은 GOOGLE 만). 결과 불명이 아니라 확정 거절
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '423':
           description: AUTH_RESTRICTED (15분 내 5회 실패 → 10분 제한. retryAfterSeconds 포함)
           content:

@@ -45,7 +45,7 @@
 | 503 `PROVIDER_UNAVAILABLE` | Google 확인 장애(실패 횟수에 넣지 않음) | 잠시 뒤 재시도 |
 | 501 `UNSUPPORTED_ACTION` | Google 외 제공자 | 버튼 숨김 |
 | 422 `CONFIG_REQUIRED` | 서버에 Google 클라이언트 ID 미설정 | 백엔드에 알림 |
-| 403 `ACCOUNT_NOT_AVAILABLE` | 이용할 수 없는 계정 | 안내 |
+| 403 `ACCOUNT_NOT_AVAILABLE` | 연결된 계정으로 로그인할 수 없음(내부 제한·탈퇴 완료). 구매만 막힌 상태(422 `ACCOUNT_NOT_PURCHASABLE`)와 다름(BR-27) | 안내 |
 
 - 사용자가 Google 창에서 취소한 경우는 앱 안에서 처리하고 서버를 부르지 않는다(실패 횟수에 넣지 않는 것이 정책).
 - 로그인 성공은 구매 자격 확정이 아니다(배송지·주문 검증은 각 단계에서 따로).
