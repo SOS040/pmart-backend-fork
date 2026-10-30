@@ -111,7 +111,7 @@ function applicationYml(s) {
   if (f.has("redis")) y.push(`  data:`, `    redis:`, `      url: \${PMART_REDIS_URL}`);
   y.push(`server:`, `  port: ${s.port}`);
   if (f.has("kafka")) y.push(`pmart:`, `  messaging:`, `    domain: ${s.domain}`);
-  y.push(`management:`, `  zipkin:`, `    tracing:`, `      endpoint: \${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}`);
+  y.push(`management:`, `  tracing:`, `    export:`, `      zipkin:`, `        endpoint:\${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}`);
   return y.join("\n") + "\n";
 }
 
@@ -221,7 +221,7 @@ ${redisField}  @LocalServerPort int port;
             .uri("http://localhost:" + port + "/actuator/health")
             .retrieve()
             .body(String.class);
-    assertThat(body).contains("\"status\":\"UP\"");
+    assertThat(body).contains("\\"status\\":\\"UP\\"");
   }
 }
 `;

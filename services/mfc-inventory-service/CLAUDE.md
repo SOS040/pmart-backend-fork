@@ -21,4 +21,6 @@
 로컬 포트 8301.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+- 3단계 스캐폴딩(2026-10-23).
+- 상품 등록 슬라이스(2026-10-30): `commerce.product.v1` 의 SkuIssued·ProductVersionPublished → `sku_projection`(오래된 product_version 무시). 센터 취급 `center_sku_handling` — **레코드 없음 = OFF**, 이벤트로 만들지 않고 자기 센터 운영자(`centers` 클레임)가 `/mfcs/{mfcId}/sku-handlings`(단건·일괄 500행 전부 또는 전무)로 켠다. 켜기는 ACTIVE SKU 만. 이력 `center_sku_handling_history`. 취급 변경 이벤트는 스키마가 없어 발행하지 않는다.
+- `/internal/availability` 는 `handlingEnabled` 만 실제 값, 수량은 null(원장은 슬라이스 4). 그 밖의 엔드포인트는 501.

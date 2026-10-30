@@ -30,3 +30,4 @@ CREATE DATABASE audit_service;
 CREATE DATABASE approval_service;
 CREATE DATABASE case_service;
 CREATE DATABASE center_master_service;
+CREATE DATABASE cdc_inventory_service;

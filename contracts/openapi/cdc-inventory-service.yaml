@@ -18,6 +18,8 @@ tags:
   - { name: postings, description: 수량 전기 명령 (TOUT·TIN 확인·MOV·품질·손실·조정·초기 보유) }
   - { name: commits, description: 원결과 조회 }
   - { name: reconciliation, description: Transit 대사·일일 수불 대사 }
+  - { name: sku-handlings, description: 센터 SKU 취급 ON·OFF (운영자 — 자기 센터) }
+  - { name: skus, description: 상품 SKU 투영 조회 }
 
 paths:
   /internal/availability:
@@ -575,6 +577,117 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/DailyReconciliationLine' } }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /cdcs/{cdcId}/sku-handlings:
+    get:
+      tags: [sku-handlings]
+      summary: '[운영자] CDC SKU 취급 ON/OFF 목록 (취급 레코드가 없으면 OFF)'
+      description: |
+        상품 SKU 투영(SkuIssued/ProductVersionPublished)에 있는 SKU 전체를 이 센터의 취급 여부와 함께 돌려준다.
+        취급 레코드가 없으면 OFF(handlingEnabled=false, version 0)이다(사용자 결정 2026-10-30: 기본 OFF, 센터 운영자가 켬).
+        토큰의 centers 클레임에 cdcId 가 없으면 403.
+      operationId: listSkuHandlings
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: enabled, in: query, required: false, description: 'true=ON 만, false=OFF(레코드 없음 포함)만, 생략=전체', schema: { type: boolean } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: OK (SKU 오름차순, 커서 = 마지막 SKU)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkuHandlingPage' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [sku-handlings]
+      summary: '[운영자] CDC SKU 취급 ON/OFF 변경 (자기 센터만)'
+      description: |
+        켜기(enabled=true)는 SKU 투영이 있고 state=ACTIVE 일 때만(INACTIVE → 422 SKU_INACTIVE). 끄기는 항상 허용.
+        현재 값과 같으면 변경·이력 없이 현재 상태를 돌려준다(changed=false). 바뀌면 이력을 남기고 version +1.
+        X-Expected-Version 은 이 센터·SKU 취급 레코드의 version(레코드가 없으면 0).
+      operationId: changeSkuHandling
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkuHandlingChange' }
+      responses:
+        '200':
+          description: 반영(같은 키·같은 본문 재요청은 저장된 결과 재생)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkuHandlingResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: SKU_NOT_FOUND (SKU 투영이 아직 없음 — 상품 승인 이벤트 수신 전)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: SKU_INACTIVE (비활성 SKU 는 켤 수 없음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/sku-handling-batches:
+    post:
+      tags: [sku-handlings]
+      summary: '[운영자] CDC SKU 취급 일괄 변경 (최대 500행, 전부 또는 전무)'
+      description: |
+        모든 행을 먼저 검증하고 하나라도 실패하면 아무것도 바꾸지 않는다(422 SKU_HANDLING_BATCH_REJECTED, details[].field = items[i]).
+        행 규칙은 단건과 같다. 같은 SKU 가 두 번 나오면 400 VALIDATION_FAILED.
+      operationId: changeSkuHandlingBatch
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkuHandlingBatchRequest' }
+      responses:
+        '200':
+          description: 전 행 반영
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkuHandlingBatchResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: SKU_HANDLING_BATCH_REJECTED (행별 SKU_NOT_FOUND / SKU_INACTIVE / VERSION_CONFLICT 를 details 에)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/skus/{sku}:
+    get:
+      tags: [skus]
+      summary: '[서비스→cdc-inventory] SKU 투영 조회 (product-service 이벤트 사본)'
+      description: 조회 사본이다. 상품 정본은 product-service.
+      operationId: getSkuProjection
+      parameters:
+        - { name: sku, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkuProjection' }
+        '404':
+          description: SKU_NOT_FOUND
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
 components:
   schemas:
     QualityState:
@@ -706,6 +819,91 @@ components:
         closing: { type: integer }
         computedClosing: { type: integer }
         discrepancy: { type: integer, description: closing − computedClosing (0이어야 함) }
+    SkuHandling:
+      type: object
+      required: [sku, handlingEnabled, version]
+      properties:
+        sku: { type: string }
+        handlingEnabled: { type: boolean, description: 레코드가 없으면 false }
+        version: { type: integer, description: 취급 레코드 version (레코드 없음 = 0) }
+        skuState: { type: string, enum: [ACTIVE, INACTIVE] }
+        productId: { type: [string, 'null'] }
+        changedBy: { type: [string, 'null'] }
+        reason: { type: [string, 'null'] }
+        updatedAt: { type: [string, 'null'], format: date-time }
+    SkuHandlingPage:
+      type: object
+      properties:
+        centerId: { type: string }
+        items: { type: array, items: { $ref: '#/components/schemas/SkuHandling' } }
+        page: { $ref: '_common.yaml#/components/schemas/Page' }
+    SkuHandlingChange:
+      type: object
+      required: [sku, enabled]
+      properties:
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        enabled: { type: boolean }
+        reason: { type: string, maxLength: 500 }
+    SkuHandlingResult:
+      type: object
+      required: [status, requestId, occurredAt, handling]
+      properties:
+        status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+        requestId: { type: string }
+        changed: { type: boolean, description: false 면 이미 같은 값이라 바뀐 것이 없음 }
+        occurredAt: { type: string, format: date-time }
+        handling: { $ref: '#/components/schemas/SkuHandling' }
+    SkuHandlingBatchRequest:
+      type: object
+      required: [items]
+      properties:
+        reason: { type: string, maxLength: 500, description: 행에 reason 이 없을 때 쓰는 공통 사유 }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: '#/components/schemas/SkuHandlingBatchItem' }
+    SkuHandlingBatchItem:
+      type: object
+      required: [sku, enabled]
+      properties:
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        enabled: { type: boolean }
+        reason: { type: string, maxLength: 500 }
+        expectedVersion: { type: integer, minimum: 0, description: 행별 낙관적 잠금(선택) }
+    SkuHandlingBatchResult:
+      type: object
+      required: [status, requestId, occurredAt, items]
+      properties:
+        status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+        requestId: { type: string }
+        changedCount: { type: integer }
+        occurredAt: { type: string, format: date-time }
+        items: { type: array, items: { $ref: '#/components/schemas/SkuHandling' } }
+    SkuProjection:
+      type: object
+      required: [sku, state, productVersion]
+      properties:
+        sku: { type: string }
+        productId: { type: [string, 'null'] }
+        baseProductId: { type: [string, 'null'] }
+        unitType: { type: [string, 'null'] }
+        unitsPerSku: { type: [integer, 'null'] }
+        weightG: { type: [integer, 'null'] }
+        volumeMl: { type: [integer, 'null'] }
+        storageType: { type: [string, 'null'], description: AMBIENT / CHILLED / FROZEN }
+        alcohol: { type: [boolean, 'null'] }
+        state: { type: string, enum: [ACTIVE, INACTIVE] }
+        productVersion: { type: integer, description: 마지막으로 반영한 상품 버전(이보다 오래된 이벤트는 무시) }
+        logistics:
+          type: [object, 'null']
+          description: 승인된 물류 규격(CDC-F-002). 미등록 항목은 null
+          properties:
+            unitsPerBox: { type: [integer, 'null'] }
+            boxesPerPallet: { type: [integer, 'null'] }
+            ti: { type: [integer, 'null'] }
+            hi: { type: [integer, 'null'] }
+        updatedAt: { type: string, format: date-time }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

@@ -35,6 +35,8 @@
     { "name": "backoffice-bff",                "group": "platform", "domain": "platform", "port": 8504, "features": [] },
     { "name": "approval-service",              "group": "platform", "domain": "platform", "port": 8505, "features": ["data", "kafka"] },
     { "name": "case-service",                  "group": "platform", "domain": "platform", "port": 8506, "features": ["data", "kafka"], "package": "com.pmart.cases" },
-    { "name": "center-master-service",         "group": "platform", "domain": "platform", "port": 8507, "features": ["data", "kafka"] }
+    { "name": "center-master-service",         "group": "platform", "domain": "platform", "port": 8507, "features": ["data", "kafka"] },
+
+    { "name": "cdc-inventory-service",         "group": "cdc",      "domain": "cdc",      "port": 8601, "features": ["data", "kafka"] }
   ]
 }
