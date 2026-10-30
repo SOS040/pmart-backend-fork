@@ -3,6 +3,9 @@ name: api-gateway
 port: 8080
 image:
   repository: docker.io/heeji4445/pmart-api-gateway
+# 웹(브라우저) CORS 허용 출처(쉼표 구분, ADR-0018). 운영 백오피스 도메인이 정해지면 환경별 values 에서 넣는다. 비면 CORS 헤더 없음.
+env:
+  PMART_GATEWAY_CORS_ALLOWEDORIGINS: ""
 # 외부 진입점. 호스트·TLS·IngressClass 는 플랫폼 결정 후 환경별 values 에서 켠다 [팀 확인 필요].
 ingress:
   enabled: false

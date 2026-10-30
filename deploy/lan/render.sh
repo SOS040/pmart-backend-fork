@@ -47,6 +47,11 @@ for c in kafka redis zipkin auth-service; do
 done
 
 secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
+# 게이트웨이 웹 CORS 허용 출처(cors-origins.conf → 쉼표 목록). 파일이 없거나 비면 빈 값(CORS 헤더 없음)
+cors_origins() {
+  [ -f "$LAN/cors-origins.conf" ] || return 0
+  sed -e 's/#.*//' -e 's/[[:space:]]//g' "$LAN/cors-origins.conf" | grep -v '^$' | paste -sd, - || true
+}
 DB_PASSWORD="$(secret db-password)"
 rm -rf "$OUT"
 for pc in "${PCS[@]}"; do
@@ -239,6 +244,9 @@ EOF
           echo "      PMART_AUTH_ISSUER: http://auth-service:$(port_of auth-service)"
           echo "      PMART_AUTH_SIGNING_KEYS_0_KID: \${PMART_AUTH_SIGNING_KID}"
           echo "      PMART_AUTH_SIGNING_KEYS_0_PRIVATEKEY: \${PMART_AUTH_SIGNING_KEY}"
+        fi
+        if [ "$c" = api-gateway ]; then
+          echo "      PMART_GATEWAY_CORS_ALLOWEDORIGINS: \"$(cors_origins)\""
         fi
         echo
         ;;

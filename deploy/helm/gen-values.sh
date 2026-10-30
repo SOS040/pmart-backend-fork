@@ -30,6 +30,9 @@ for s in $names; do
       echo "  PMART_AUTH_ISSUER: http://auth-service:$port"
     fi
     if [ "$s" = api-gateway ]; then
+      echo "# 웹(브라우저) CORS 허용 출처(쉼표 구분, ADR-0018). 운영 백오피스 도메인이 정해지면 환경별 values 에서 넣는다. 비면 CORS 헤더 없음."
+      echo "env:"
+      echo "  PMART_GATEWAY_CORS_ALLOWEDORIGINS: \"\""
       echo "# 외부 진입점. 호스트·TLS·IngressClass 는 플랫폼 결정 후 환경별 values 에서 켠다 [팀 확인 필요]."
       echo "ingress:"
       echo "  enabled: false"

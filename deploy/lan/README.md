@@ -6,6 +6,7 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
 | 파일 | 역할 |
 |---|---|
 | `placement.conf` | 배치 정보 — PC 이름·IP·ssh 별칭·구성요소. PC 수는 가변 |
+| `cors-origins.conf` | 게이트웨이 웹 CORS 허용 출처(한 줄에 하나). render 가 api-gateway 의 `PMART_GATEWAY_CORS_ALLOWEDORIGINS` 로 넣는다 |
 | `render.sh` | 배치 → `build/<pc>/compose.yml`, `.env`, `init-db.sql` 생성 |
 | `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키 생성. 있으면 유지 |
 | `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` |
