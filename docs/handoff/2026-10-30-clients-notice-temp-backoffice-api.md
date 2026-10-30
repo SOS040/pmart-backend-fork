@@ -2,17 +2,17 @@
 
 - 작성: pmart-backend, 2026-10-30
 - 대상: pmart-clients 임시 백오피스(React)
-- 기준 커밋: pmart-backend `main` 86e156e
+- 기준 커밋: pmart-backend `main` (운영자 로그인 반영 커밋, 2026-10-30)
 - 계약 정본: `pmart-backend/contracts/openapi/*.yaml`. 이 문서는 화면 흐름과 호출 순서를 안내한다. 요청·응답 필드는 계약 파일을 따른다.
 
 ## 0. 먼저 알아 둘 것 (막히는 부분)
 
 | # | 항목 | 현재 상태 | 프론트 쪽 대응 |
 |---|---|---|---|
-| 1 | **운영자 로그인 API** | 없다. auth-service 에는 고객 소셜 로그인만 있다. 자체 JWT 로그인은 방향만 정했다(D8). | 백엔드가 운영자 로그인이나 개발용 토큰 발급 방법을 정할 때까지 막힌다. 별도 공지로 알린다. |
-| 2 | **CORS** | 게이트웨이 CORS 를 아직 열지 않았다(웹 클라이언트용으로 열기로 결정, D8). | 개발 서버 프록시(예: Vite `server.proxy` 의 `/api` → 게이트웨이)로 같은 출처처럼 호출한다. |
+| 1 | **운영자 로그인** | **구현됨**(ADR-0018). 아이디·비밀번호 → JWT. 1.1절 참고. | 로컬 첫 관리자 `admin` / `pmart-local` 로 로그인한 뒤 계정을 만든다. |
+| 2 | **CORS** | **구현됨**. 게이트웨이가 허용 출처에만 연다. 로컬 기본값은 `http://localhost:5173`, `http://localhost:3000`. LAN 출처는 배포 때 설정한다. | 다른 포트를 쓰면 백엔드에 알려 준다. 프록시를 써도 된다. |
 | 3 | **이미지 표시** | `GET /api/v1/content-images/{imageId}` 도 인증이 필요하다. `<img src>` 는 JWT 를 보내지 못한다. | 당분간 `fetch` 에 Bearer 헤더를 붙여 받고 `URL.createObjectURL(blob)` 으로 표시한다. 백엔드 방식이 정해지면 바꾼다. |
-| 4 | **LAN 배포** | 2026-10-30 작업(상품 등록·콘텐츠·가격·판매 상태 등)은 아직 LAN 에 배포하지 않았다. | 배포되면 따로 알린다. 그 전에는 로컬(`deploy/local`) 백엔드로 개발한다. |
+| 4 | **LAN 배포** | 2026-10-30 작업(운영자 로그인·상품 등록·콘텐츠·가격·판매 상태 등)은 아직 LAN 에 배포하지 않았다. | 배포되면 따로 알린다. 그 전에는 로컬(`deploy/local`) 백엔드로 개발한다. |
 
 ## 1. 공통 규칙
 
@@ -28,6 +28,32 @@
 - **명령 응답 `status`**: `APPLIED`(반영됨), `ACCEPTED`(접수만 됨), `REJECTED`, `UNKNOWN_RESULT`(결과 불명, 조회 API 로 확인). 접수를 성공으로 표시하지 않는다.
 - **승인은 비동기다**: 승인 결정 뒤 정본 서비스 반영까지 수 초 걸린다. 결과 화면은 조회 API 를 짧게 폴링한다(예: 1초 간격, 최대 30초).
 
+## 1.1 로그인·토큰 (auth-service, ADR-0018)
+
+| 할 일 | API |
+|---|---|
+| 로그인 | `POST /auth/operator-logins` `{loginId, password}` + `X-Source-System`, `X-Device-Id`(선택) → `{tokens: {accessToken, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt, sessionId}, operator: {...}}`. **Idempotency-Key 를 보내지 않아도 된다** |
+| 토큰 갱신 | `POST /auth/tokens` `{refreshToken}` + `Idempotency-Key`, `X-Source-System`, `X-Device-Id`(필수. 로그인 때 보낸 값과 같아야 한다) → 새 `TokenPair` |
+| 로그아웃 | `POST /auth/logouts` `{allDevices?}` → 204 |
+| 내 정보·역할 | `GET /auth/sessions/current` → `{principalId, roles, centerScope, ...}` |
+| 내 비밀번호 변경 | `POST /auth/password-changes` `{currentPassword, newPassword}` → 204 |
+| 계정 목록·생성 (`OPERATOR_ADMIN`) | `GET` / `POST /operator-accounts` `{loginId, displayName, initialPassword, roles[], centers[]}` |
+| 계정 조회·수정 | `GET` / `PUT /operator-accounts/{operatorId}` `{displayName, roles, centers, state}` + `X-Expected-Version` |
+| 비밀번호 초기화 | `POST /operator-accounts/{operatorId}/password-resets` `{temporaryPassword}` → 204 |
+
+토큰 규칙:
+- access token 수명은 15분이다. 만료 전에(또는 401 을 받으면) refresh 로 새로 받는다.
+- **refresh token 은 한 번만 쓴다.** 갱신할 때마다 새 refresh token 이 오므로 저장된 값을 바꿔 둔다. 이미 쓴 refresh token 을 다시 보내면 세션이 끊긴다(`TOKEN_REUSED`). 이때와 `TOKEN_INVALID` 일 때는 로그인 화면으로 보낸다.
+- 탭 여러 개가 동시에 갱신하면 하나만 성공하고 나머지는 세션을 끊는다. 갱신은 한 곳에서만 하고(예: 단일 Promise 공유) 결과를 나눠 쓴다.
+- 세션은 로그인부터 최대 12시간이다. 지나면 다시 로그인한다.
+- `X-Device-Id` 는 브라우저마다 한 번 만든 UUID 를 저장해 두고 계속 쓴다.
+
+로그인 실패 코드:
+- `LOGIN_FAILED`(401): 아이디·비밀번호 불일치. 둘 중 무엇이 틀렸는지는 알려 주지 않는다.
+- `ACCOUNT_LOCKED`(423): 연속 5회 실패하면 15분 잠긴다. 관리자가 비밀번호를 초기화하면 풀린다.
+- 응답의 `operator.passwordChangeRequired` 가 true 면 비밀번호 변경 화면으로 안내한다(서버가 다른 API 를 막지는 않는다).
+- 비밀번호는 10자 이상이고 아이디와 같으면 안 된다(`PASSWORD_POLICY`).
+
 ## 2. 역할(JWT `roles`)
 
 | 역할 | 할 수 있는 일 |
@@ -37,6 +63,7 @@
 | `DISPLAY_APPROVER` | DISPLAY 승인: 고객용 상품명·설명·이미지 게시 |
 | `PRICE_APPROVER` | PRICE 승인: 기본 판매가격 |
 | 센터 운영자(`centers` 클레임) | 자기 센터의 SKU 취급 ON/OFF |
+| `OPERATOR_ADMIN` | 운영자 계정 생성·역할·센터·비활성화·비밀번호 초기화 |
 
 - 발의자와 승인자는 **다른 사람**이어야 한다. 자기 요청을 승인하면 `FORBIDDEN` 이다.
 - 승인자 역할 이름은 백엔드 설정값이라 바뀔 수 있다.
@@ -178,7 +205,7 @@ approval-service 화면에 필요한 API:
 
 ## 5. 백오피스 메뉴 제안 (구현 순서)
 
-1. 로그인(0장 1번이 정해진 뒤) / 공통 레이아웃·오류 표시·멱등 키 처리
+1. 로그인·토큰 갱신(1.1절) / 공통 레이아웃·오류 표시·멱등 키 처리
 2. 승인함·승인 상세(3장) — 모든 흐름이 이걸 거친다
 3. 카테고리 트리 조회·등록
 4. 상품 등록: 개별 입력, seed-v1 일괄 업로드, 검증 결과, 제출, id-map 내려받기
@@ -189,7 +216,7 @@ approval-service 화면에 필요한 API:
 
 ## 6. 아직 없는 것
 
-- 운영자 로그인(0장), CORS(0장), 이미지 인증 방식(0장)
+- 이미지 인증 방식(0장)
 - 승인 부분 승인·증빙 요청·재심사·철회 등 확장 결정
 - 구매 상한 예외 승인, 프로모션·쿠폰(1차 제외)
 - 센터 마스터(MFC 목록·달력)는 다음 작업(center-master-service). 그 전까지 센터 ID 는 고정값으로 입력한다.

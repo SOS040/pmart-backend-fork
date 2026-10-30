@@ -10,6 +10,9 @@ spring:
       url: redis://localhost:6379
 pmart:
   gateway:
+    cors:
+      # 로컬 프론트 개발 서버(Vite 5173, CRA 3000)
+      allowed-origins: http://localhost:5173,http://localhost:3000
     upstream:
       product-service: http://localhost:8101
       product-content-service: http://localhost:8102

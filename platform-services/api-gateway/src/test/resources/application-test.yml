@@ -12,6 +12,8 @@ pmart:
   gateway:
     rate-limit:
       enabled: false
+    cors:
+      allowed-origins: http://localhost:5173
 management:
   tracing:
     enabled: false

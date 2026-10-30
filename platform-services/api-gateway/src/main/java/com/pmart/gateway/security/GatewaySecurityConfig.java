@@ -1,6 +1,8 @@
 package com.pmart.gateway.security;
 
 import com.pmart.gateway.GatewayProperties;
+import java.time.Duration;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -17,6 +19,9 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.authorization.AuthorizationContext;
 import org.springframework.security.web.server.authorization.ServerAccessDeniedHandler;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsConfigurationSource;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
 /**
  * 게이트웨이 보안 체인 (security-config.md).
@@ -27,6 +32,7 @@ import org.springframework.security.web.server.authorization.ServerAccessDeniedH
  *   <li>서비스 신원 토큰({@code typ=SERVICE})은 외부 경로에서 403 — 내부 호출 전용(ADR-0011).
  *   <li>공개 작업은 {@code pmart.gateway.public-paths} 에만(계약의 {@code security: []}).
  *   <li>Actuator 는 health/info/prometheus 만. 나머지 actuator 는 인증 필요.
+ *   <li>웹(브라우저) CORS 는 {@code pmart.gateway.cors.allowed-origins} 출처에만. 사전 요청(OPTIONS)은 토큰 없이 통과한다.
  *   <li>세부 인가(역할·센터·행위 시점 검증)는 각 서비스가 한다. 게이트웨이는 "토큰이 유효한가"까지만.
  * </ul>
  */
@@ -60,7 +66,8 @@ public class GatewaySecurityConfig {
         (exchange, ex) ->
             problems.write(exchange, HttpStatus.FORBIDDEN, "FORBIDDEN", "접근이 허용되지 않은 경로입니다.");
 
-    http.csrf(ServerHttpSecurity.CsrfSpec::disable)
+    http.cors(cors -> cors.configurationSource(corsSource(properties.cors())))
+        .csrf(ServerHttpSecurity.CsrfSpec::disable)
         .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
         .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
         .logout(ServerHttpSecurity.LogoutSpec::disable)
@@ -87,5 +94,31 @@ public class GatewaySecurityConfig {
             handling ->
                 handling.authenticationEntryPoint(entryPoint).accessDeniedHandler(deniedHandler));
     return http.build();
+  }
+
+  /** 허용 출처가 없으면 어떤 경로에도 CORS 설정을 걸지 않는다(브라우저 교차 출처 호출은 거부). */
+  static CorsConfigurationSource corsSource(GatewayProperties.Cors cors) {
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    if (cors.allowedOrigins().isEmpty()) {
+      return source;
+    }
+    CorsConfiguration c = new CorsConfiguration();
+    c.setAllowedOrigins(cors.allowedOrigins());
+    c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
+    c.setAllowedHeaders(
+        List.of(
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Source-System",
+            "X-Expected-Version",
+            "X-Device-Id",
+            "X-Request-Id",
+            "traceparent"));
+    c.setExposedHeaders(List.of("X-Request-Id", "Location", "Retry-After"));
+    c.setAllowCredentials(false);
+    c.setMaxAge(Duration.ofMinutes(30));
+    source.registerCorsConfiguration("/api/**", c);
+    return source;
   }
 }

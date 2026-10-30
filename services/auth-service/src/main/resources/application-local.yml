@@ -14,6 +14,12 @@ pmart:
     issuer: http://localhost:8501
     signing:
       ephemeral: true # 로컬 전용 임시 키. 재시작하면 기존 토큰 무효
+    # 로컬 전용 첫 관리자: admin / pmart-local (해시만 둔다. 첫 로그인 뒤 비밀번호 변경 표시가 켜져 있다)
+    operator:
+      bootstrap:
+        login-id: admin
+        display-name: 로컬 관리자
+        password-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG"
     # 로컬 전용: 모든 서비스의 secret 은 pmart-local (해시만 둔다). 운영은 서비스별 secret + Secret Manager.
     service-clients:
       - { client-id: approval-service, secret-hash: "{bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG" }

@@ -322,7 +322,7 @@
 ### auth-service `[1단계]`
 - **소유**: 고객(소셜 OAuth 제공자 검증, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 라이더·운영자·서비스 신원, 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
 - **소유하지 않음**: 권한 **부여 승인 흐름**(approval BO-01/02), 고객 프로필(customer).
-- **API**: 로그인/토큰, 행위 검증(`authorize(actor, action, target, centerScope)`), grant 반영(approval 승인 결과), grant 조회.
+- **API**: 로그인/토큰(운영자 아이디·비밀번호 로그인과 운영자 계정 관리 — ADR-0018), 행위 검증(`authorize(actor, action, target, centerScope)`), grant 반영(approval 승인 결과), grant 조회.
 - **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`.
 - **구독**: `ApprovalDecided`(BO-01/02), `CustomerWithdrawalCompleted`(세션·소셜 연결 삭제).
 

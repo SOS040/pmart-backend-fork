@@ -10,15 +10,35 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param upstream 서비스 이름 → 업스트림 기본 URL (라우트 uri 플레이스홀더가 참조)
  * @param publicPaths 인증 없이 통과시키는 작업. 계약(contracts/openapi)에서 {@code security: []} 인 것만.
  * @param rateLimit 요청 처리율 제한(Redis 토큰 버킷). 없으면 비활성.
+ * @param cors 브라우저 CORS. 허용 출처가 비면 CORS 헤더를 내지 않는다.
  */
 @ConfigurationProperties(prefix = "pmart.gateway")
 public record GatewayProperties(
-    Map<String, String> upstream, List<PublicPath> publicPaths, RateLimit rateLimit) {
+    Map<String, String> upstream, List<PublicPath> publicPaths, RateLimit rateLimit, Cors cors) {
 
   public GatewayProperties {
     upstream = upstream == null ? Map.of() : Map.copyOf(upstream);
     publicPaths = publicPaths == null ? List.of() : List.copyOf(publicPaths);
     rateLimit = rateLimit == null ? RateLimit.DISABLED : rateLimit;
+    cors = cors == null ? new Cors(null) : cors;
+  }
+
+  /**
+   * 웹(브라우저) 클라이언트 CORS(D8). 쿠키를 쓰지 않고 Bearer 토큰만 쓰므로 자격 증명 허용은 하지 않는다.
+   *
+   * @param allowedOrigins 허용 출처(정확히 일치. 와일드카드 없음)
+   */
+  public record Cors(List<String> allowedOrigins) {
+    public Cors {
+      allowedOrigins =
+          allowedOrigins == null
+              ? List.of()
+              : allowedOrigins.stream().map(String::strip).filter(s -> !s.isEmpty()).toList();
+      if (allowedOrigins.contains("*")) {
+        throw new IllegalArgumentException(
+            "pmart.gateway.cors.allowed-origins 에 * 를 쓰지 않는다(출처를 나열한다)");
+      }
+    }
   }
 
   /** HTTP 메서드 + Ant 경로 패턴. */

@@ -49,7 +49,8 @@ import reactor.core.publisher.Mono;
           "pmart.gateway.upstream.delivery-tracking-service",
           "pmart.gateway.upstream.delivery-execution-service",
           "pmart.gateway.upstream.delivery-dispatch-service",
-          "pmart.gateway.upstream.backoffice-bff"
+          "pmart.gateway.upstream.backoffice-bff",
+          "pmart.gateway.upstream.auth-service"
         }))
 class GatewayRoutingSecurityTest {
 
@@ -212,5 +213,56 @@ class GatewayRoutingSecurityTest {
     assertThat(route.getId()).as(path).isEqualTo(expectedRouteId);
     client.mutateWith(mockJwt()).get().uri(path).exchange().expectStatus().isOk();
     upstream.verify(getRequestedFor(urlPathEqualTo(path)));
+  }
+
+  @Test
+  void operatorLoginIsPublicAndAccountsRouteToAuth() {
+    client
+        .post()
+        .uri("/api/v1/auth/operator-logins")
+        .header("Content-Type", "application/json")
+        .bodyValue("{}")
+        .exchange()
+        .expectStatus()
+        .isOk();
+    upstream.verify(postRequestedFor(urlPathEqualTo("/api/v1/auth/operator-logins")));
+    assertRoutedTo("/api/v1/operator-accounts/OP-1", "auth-service");
+    // 계정 관리는 공개가 아니다
+    client.get().uri("/api/v1/operator-accounts").exchange().expectStatus().isUnauthorized();
+  }
+
+  @Test
+  void corsPreflightAllowsOnlyConfiguredWebOrigin() {
+    // 실제 요청처럼 호스트를 붙인다(호스트 없는 모의 요청은 Origin 비교가 "malformed" 로 거절된다)
+    client
+        .options()
+        .uri("http://gateway.test/api/v1/products")
+        .header("Origin", "http://localhost:5173")
+        .header("Access-Control-Request-Method", "POST")
+        .header("Access-Control-Request-Headers", "authorization,idempotency-key,x-source-system")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .valueEquals("Access-Control-Allow-Origin", "http://localhost:5173");
+    client
+        .options()
+        .uri("http://gateway.test/api/v1/products")
+        .header("Origin", "http://evil.example")
+        .header("Access-Control-Request-Method", "POST")
+        .exchange()
+        .expectStatus()
+        .isForbidden();
+    // 실제 요청에도 허용 출처 헤더가 붙는다
+    client
+        .mutateWith(mockJwt())
+        .get()
+        .uri("http://gateway.test/api/v1/orders/ord-1")
+        .header("Origin", "http://localhost:5173")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .valueEquals("Access-Control-Allow-Origin", "http://localhost:5173");
   }
 }
