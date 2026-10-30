@@ -44,6 +44,7 @@ public class SessionService {
   private final SessionTokens tokens;
   private final OperatorProperties operators;
   private final CustomerProperties customerProps;
+  private final GuestProperties guestProps;
   private final TransactionTemplate tx;
   private final Clock clock;
 
@@ -53,6 +54,7 @@ public class SessionService {
       SessionTokens tokens,
       OperatorProperties operators,
       CustomerProperties customerProps,
+      GuestProperties guestProps,
       TransactionTemplate tx,
       Clock clock) {
     this.store = store;
@@ -60,6 +62,7 @@ public class SessionService {
     this.tokens = tokens;
     this.operators = operators;
     this.customerProps = customerProps;
+    this.guestProps = guestProps;
     this.tx = tx;
     this.clock = clock;
   }
@@ -140,6 +143,16 @@ public class SessionService {
                   customerProps.refreshTokenTtl(),
                   now)
               : null;
+      // 비회원은 정본 상태(제한·탈퇴)가 없다 — 세션이 살아 있으면 다시 발급
+      case GuestSessionService.TYPE ->
+          tokens.issue(
+              new SessionTokens.Principal(
+                  s.principalId(), GuestSessionService.TYPE, List.of(), List.of()),
+              s.sessionId(),
+              s.expiresAt(),
+              guestProps.accessTokenTtl(),
+              guestProps.refreshTokenTtl(),
+              now);
       default -> null;
     };
   }

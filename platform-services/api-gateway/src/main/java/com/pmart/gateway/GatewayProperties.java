@@ -11,16 +11,23 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param publicPaths 인증 없이 통과시키는 작업. 계약(contracts/openapi)에서 {@code security: []} 인 것만.
  * @param rateLimit 요청 처리율 제한(Redis 토큰 버킷). 없으면 비활성.
  * @param cors 브라우저 CORS. 허용 출처가 비면 CORS 헤더를 내지 않는다.
+ * @param guestPaths 비회원 토큰(typ=GUEST)을 통과시키는 경로. 그 밖에서는 유효해도 403(서비스도 같은 규칙, common-security
+ *     guest-paths).
  */
 @ConfigurationProperties(prefix = "pmart.gateway")
 public record GatewayProperties(
-    Map<String, String> upstream, List<PublicPath> publicPaths, RateLimit rateLimit, Cors cors) {
+    Map<String, String> upstream,
+    List<PublicPath> publicPaths,
+    RateLimit rateLimit,
+    Cors cors,
+    List<String> guestPaths) {
 
   public GatewayProperties {
     upstream = upstream == null ? Map.of() : Map.copyOf(upstream);
     publicPaths = publicPaths == null ? List.of() : List.copyOf(publicPaths);
     rateLimit = rateLimit == null ? RateLimit.DISABLED : rateLimit;
     cors = cors == null ? new Cors(null) : cors;
+    guestPaths = guestPaths == null ? List.of() : List.copyOf(guestPaths);
   }
 
   /**

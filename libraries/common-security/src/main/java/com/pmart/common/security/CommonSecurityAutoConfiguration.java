@@ -15,10 +15,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.security.authorization.AuthenticatedAuthorizationManager;
+import org.springframework.security.authorization.AuthorityAuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManagers;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
@@ -29,7 +34,8 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>Stateless JWT 리소스 서버. {@code spring.security.oauth2.resourceserver.jwt.jwk-set-uri}(또는
  *       issuer-uri)는 서비스/환경 설정. JwtDecoder 가 없으면 체인을 만들지 않는다(설정 누락을 조용히 허용하지 않음 — 기동 시 Spring
  *       Security 기본 체인이 모든 요청을 막는다).
- *   <li>{@code permit-paths} 는 익명, {@code internal-paths} 는 TYPE_SERVICE, 나머지는 인증 필요.
+ *   <li>{@code permit-paths} 는 익명, {@code internal-paths} 는 TYPE_SERVICE, {@code guest-paths} 는 비회원
+ *       토큰도 허용, 나머지는 인증 필요이고 비회원(TYPE_GUEST) 토큰은 403.
  *   <li>401/403 은 application/problem+json.
  *   <li>RestClient 에 X-Source-System·X-Correlation-Id·Bearer. {@code /internal/} 호출은 서비스 신원
  *       토큰(ADR-0011), 그 외는 사용자 토큰 전파.
@@ -47,6 +53,12 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnClass(SecurityFilterChain.class)
 @EnableConfigurationProperties(SecurityProperties.class)
 public class CommonSecurityAutoConfiguration {
+
+  /** 인증됐고 비회원(TYPE_GUEST)이 아님. */
+  static final AuthorizationManager<RequestAuthorizationContext> NOT_GUEST =
+      AuthorizationManagers.allOf(
+          AuthenticatedAuthorizationManager.authenticated(),
+          AuthorizationManagers.not(AuthorityAuthorizationManager.hasAuthority("TYPE_GUEST")));
 
   @Bean
   @ConditionalOnMissingBean
@@ -71,6 +83,7 @@ public class CommonSecurityAutoConfiguration {
       throws Exception {
     String[] permit = props.getPermitPaths().toArray(String[]::new);
     String[] internal = props.getInternalPaths().toArray(String[]::new);
+    String[] guest = props.getGuestPaths().toArray(String[]::new);
     http.csrf(csrf -> csrf.disable())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .formLogin(f -> f.disable())
@@ -80,7 +93,11 @@ public class CommonSecurityAutoConfiguration {
             auth -> {
               auth.requestMatchers(permit).permitAll();
               auth.requestMatchers(internal).hasAuthority("TYPE_SERVICE");
-              auth.anyRequest().authenticated();
+              if (guest.length > 0) {
+                auth.requestMatchers(guest).authenticated();
+              }
+              // 비회원 토큰(typ=GUEST)은 guest-paths 밖에서 403(회원 전용 API 보호)
+              auth.anyRequest().access(NOT_GUEST);
             })
         .oauth2ResourceServer(
             rs ->

@@ -25,7 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @SpringBootTest(
     classes = SecurityChainTest.App.class,
-    properties = {"spring.application.name=sec-test", "spring.main.banner-mode=off"})
+    properties = {
+      "spring.application.name=sec-test",
+      "spring.main.banner-mode=off",
+      "pmart.security.guest-paths=/api/v1/carts/**"
+    })
 @AutoConfigureMockMvc
 class SecurityChainTest {
 
@@ -49,6 +53,11 @@ class SecurityChainTest {
       @PostMapping({"/internal/reservations", "/api/v1/internal/reservations"})
       String reserve() {
         return "reserved";
+      }
+
+      @GetMapping("/api/v1/carts/{id}")
+      String cart() {
+        return "cart";
       }
 
       @GetMapping("/actuator/health")
@@ -131,5 +140,26 @@ class SecurityChainTest {
                             j ->
                                 new PmartJwtAuthenticationConverter().convert(j).getAuthorities())))
         .andExpect(status().isOk());
+  }
+
+  /** 비회원 토큰(typ=GUEST)은 guest-paths 에서만. 그 밖은 403(회원 전용 API 보호). 회원 토큰은 둘 다 된다. */
+  @Test
+  void guestTokenOnlyOnGuestPaths() throws Exception {
+    mvc.perform(get("/api/v1/carts/C-1").with(token("GST-1", "GUEST"))).andExpect(status().isOk());
+    mvc.perform(get("/api/v1/orders").with(token("GST-1", "GUEST")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(post("/api/v1/internal/reservations").with(token("GST-1", "GUEST")))
+        .andExpect(status().isForbidden());
+    mvc.perform(get("/api/v1/carts/C-1").with(token("acc-1", "CUSTOMER")))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/v1/carts/C-1")).andExpect(status().isUnauthorized());
+  }
+
+  static org.springframework.test.web.servlet.request.RequestPostProcessor token(
+      String subject, String typ) {
+    return jwt()
+        .jwt(j -> j.subject(subject).claim("typ", typ))
+        .authorities(j -> new PmartJwtAuthenticationConverter().convert(j).getAuthorities());
   }
 }

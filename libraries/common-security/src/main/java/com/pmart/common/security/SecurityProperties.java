@@ -18,6 +18,12 @@ public class SecurityProperties {
    */
   private List<String> internalPaths = List.of("/internal/**", "/api/*/internal/**");
 
+  /**
+   * 비회원 토큰(typ=GUEST)을 받는 경로. 기본은 없음 — GUEST 토큰은 다른 모든 인증 경로에서 403(회원 전용 API 를 비회원이 부르지 못하게). 예:
+   * cart-service 의 /api/v1/carts/**.
+   */
+  private List<String> guestPaths = List.of();
+
   /** 행위 시점 검증(auth-service) 클라이언트 설정. */
   private Authz authz = new Authz();
 
@@ -131,6 +137,14 @@ public class SecurityProperties {
 
   public List<String> getInternalPaths() {
     return internalPaths;
+  }
+
+  public List<String> getGuestPaths() {
+    return guestPaths;
+  }
+
+  public void setGuestPaths(List<String> guestPaths) {
+    this.guestPaths = guestPaths;
   }
 
   public void setInternalPaths(List<String> internalPaths) {

@@ -20,6 +20,34 @@ tags:
   - { name: keys, description: "서비스 신원: JWKS 공개키·서비스 토큰 발급 (클러스터 내부 전용, ADR-0011)" }
 
 paths:
+  /auth/guest-sessions:
+    post:
+      tags: [logins]
+      summary: 비회원 세션 시작 (비회원 장바구니용 토큰, typ=GUEST)
+      description: |
+        기기마다 새 비회원 주체(GST-…)와 토큰 쌍을 발급한다. 개인정보를 받지 않는다. 갱신은 POST /auth/tokens(같은 X-Device-Id),
+        종료는 POST /auth/logouts. 비회원 토큰은 장바구니처럼 비회원을 허용한 API 에서만 쓰인다(그 밖은 403).
+        토큰을 잃으면 새 세션을 시작한다(이전 비회원 장바구니는 되찾지 않는다). 로그인 후 이관은 cart 병합(X-Guest-Token).
+        같은 Idempotency-Key 재전송은 같은 비회원 주체로 새 토큰을 준다.
+      operationId: startGuestSession
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      responses:
+        '201':
+          description: 발급
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [guestId, tokens]
+                properties:
+                  guestId: { type: string, description: 비회원 주체(토큰 sub) }
+                  tokens: { $ref: '#/components/schemas/TokenPair' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
   /auth/social-logins:
     post:
       tags: [logins]
@@ -677,7 +705,7 @@ components:
       properties:
         sessionId: { type: string }
         principalId: { type: string }
-        principalType: { type: string, enum: [CUSTOMER, RIDER, OPERATOR, SERVICE] }
+        principalType: { type: string, enum: [CUSTOMER, RIDER, OPERATOR, SERVICE, GUEST] }
         accountId: { type: string }
         roles: { type: array, items: { type: string } }
         centerScope: { type: array, items: { $ref: '_common.yaml#/components/schemas/CenterId' } }

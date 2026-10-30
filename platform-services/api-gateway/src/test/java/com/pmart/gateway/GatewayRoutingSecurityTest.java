@@ -41,6 +41,7 @@ import reactor.core.publisher.Mono;
         name = "upstream",
         baseUrlProperties = {
           "pmart.gateway.upstream.storefront-service",
+          "pmart.gateway.upstream.cart-service",
           "pmart.gateway.upstream.order-service",
           "pmart.gateway.upstream.customer-service",
           "pmart.gateway.upstream.notification-service",
@@ -142,6 +143,27 @@ class GatewayRoutingSecurityTest {
         .jsonPath("$.code")
         .isEqualTo("FORBIDDEN");
     upstream.verify(0, getRequestedFor(anyUrl()));
+  }
+
+  /** 비회원 토큰(typ=GUEST)은 guest-paths(장바구니 등)에서만. 회원 전용 경로는 403(업스트림에 가지 않음). */
+  @Test
+  void guestTokenOnlyOnGuestPaths() {
+    client
+        .mutateWith(mockJwt().jwt(jwt -> jwt.subject("GST-1").claim("typ", "GUEST")))
+        .get()
+        .uri("/api/v1/me/addresses")
+        .exchange()
+        .expectStatus()
+        .isForbidden();
+    upstream.verify(0, getRequestedFor(anyUrl()));
+    client
+        .mutateWith(mockJwt().jwt(jwt -> jwt.subject("GST-1").claim("typ", "GUEST")))
+        .get()
+        .uri("/api/v1/carts/C-1")
+        .exchange()
+        .expectStatus()
+        .isOk();
+    upstream.verify(getRequestedFor(urlPathEqualTo("/api/v1/carts/C-1")));
   }
 
   @Test

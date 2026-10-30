@@ -30,6 +30,7 @@ import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
  *   <li>JWT(auth-service JWKS) 검증. 토큰 없음·무효 → 401 Problem, 권한 없음 → 403 Problem.
  *   <li>{@code /api/{v}/internal/**} 는 서비스 간 전용 — 외부에서 절대 통과하지 않는다(denyAll).
  *   <li>서비스 신원 토큰({@code typ=SERVICE})은 외부 경로에서 403 — 내부 호출 전용(ADR-0011).
+ *   <li>비회원 토큰({@code typ=GUEST})은 {@code pmart.gateway.guest-paths} 에서만, 그 밖은 403.
  *   <li>공개 작업은 {@code pmart.gateway.public-paths} 에만(계약의 {@code security: []}).
  *   <li>Actuator 는 health/info/prometheus 만. 나머지 actuator 는 인증 필요.
  *   <li>웹(브라우저) CORS 는 {@code pmart.gateway.cors.allowed-origins} 출처에만. 사전 요청(OPTIONS)은 토큰 없이 통과한다.
@@ -40,13 +41,29 @@ import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 @EnableWebFluxSecurity
 public class GatewaySecurityConfig {
 
-  /** 인증됐고 서비스 신원 토큰이 아닐 때만 허용. 서비스 토큰으로 외부 경로를 부르면 403. */
+  /** 인증됐고 서비스 신원·비회원 토큰이 아닐 때만 허용. 서비스 토큰으로 외부 경로를 부르면 403, 비회원은 guest-paths 에서만. */
   static final ReactiveAuthorizationManager<AuthorizationContext> USER_TOKEN_ONLY =
+      (authentication, context) ->
+          authentication
+              .filter(Authentication::isAuthenticated)
+              .map(
+                  a ->
+                      (AuthorizationResult)
+                          new AuthorizationDecision(!isServiceToken(a) && !isGuestToken(a)))
+              .defaultIfEmpty(new AuthorizationDecision(false));
+
+  /** 비회원 경로: 회원·비회원 토큰 모두(서비스 토큰은 아님). */
+  static final ReactiveAuthorizationManager<AuthorizationContext> USER_OR_GUEST_TOKEN =
       (authentication, context) ->
           authentication
               .filter(Authentication::isAuthenticated)
               .map(a -> (AuthorizationResult) new AuthorizationDecision(!isServiceToken(a)))
               .defaultIfEmpty(new AuthorizationDecision(false));
+
+  static boolean isGuestToken(Authentication authentication) {
+    return authentication.getPrincipal() instanceof Jwt jwt
+        && "GUEST".equals(jwt.getClaimAsString("typ"));
+  }
 
   static boolean isServiceToken(Authentication authentication) {
     return authentication.getPrincipal() instanceof Jwt jwt
@@ -80,6 +97,10 @@ public class GatewaySecurityConfig {
               exchanges.pathMatchers("/internal/**", "/api/*/internal/**").denyAll();
               for (GatewayProperties.PublicPath p : properties.publicPaths()) {
                 exchanges.pathMatchers(HttpMethod.valueOf(p.method()), p.path()).permitAll();
+              }
+              // 비회원 토큰(typ=GUEST)은 비회원을 허용한 경로(장바구니 등)에서만
+              for (String p : properties.guestPaths()) {
+                exchanges.pathMatchers(p).access(USER_OR_GUEST_TOKEN);
               }
               // 서비스 신원 토큰(typ=SERVICE)은 /internal 전용(ADR-0011) — 외부 경로에서는 유효해도 거부(방어 심화)
               exchanges.anyExchange().access(USER_TOKEN_ONLY);

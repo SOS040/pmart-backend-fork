@@ -31,6 +31,10 @@ public record PmartPrincipal(
     RIDER,
     OPERATOR,
     SERVICE,
+    /**
+     * 비회원 세션(auth-service guest-sessions). 기본은 모든 API 거절 — 서비스가 pmart.security.guest-paths 로 연 경로만.
+     */
+    GUEST,
     UNKNOWN
   }
 
