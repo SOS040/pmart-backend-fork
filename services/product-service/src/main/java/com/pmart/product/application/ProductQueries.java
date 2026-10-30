@@ -42,6 +42,10 @@ public class ProductQueries {
             .orElseThrow(
                 () -> PmartException.notFound("PRODUCT_VERSION_NOT_FOUND", "상품 버전이 없습니다: " + v));
     Map<String, Object> snap = mapper.readValue(json, LinkedHashMap.class);
+    if (version == null) {
+      // 판매 상태는 승인 버전과 별개로 바뀐다(판매 상태 변경 명령) — 현재 조회는 현재 상태
+      snap.put("saleState", p.saleState());
+    }
     List<Map<String, Object>> skus = new ArrayList<>();
     for (Object o : (List<Object>) snap.getOrDefault("skus", List.of())) {
       skus.add(skuDetail((Map<String, Object>) o, snap, v));

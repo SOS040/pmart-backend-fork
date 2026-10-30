@@ -106,7 +106,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /** approval-service 가 내는 ApprovalDecided 를 흉내 낸다(제출 준비가 돌려준 본문의 행 그대로). */
-  void decide(JsonNode approvalRequest, String decision) {
+  String decide(JsonNode approvalRequest, String decision) {
     String approvalId = "AP-" + UUID.randomUUID();
     List<Map<String, Object>> lines = new ArrayList<>();
     for (JsonNode l : approvalRequest.path("lines")) {
@@ -142,6 +142,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
             .payload(payload)
             .buildJson();
     kafka.send("platform.approval.v1", approvalId, json).join();
+    return approvalId;
   }
 
   static Map<String, Object> tree() {
@@ -465,5 +466,166 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class))
         .isEqualTo(skusBefore);
     assertThat(get("/barcodes/0000").status()).isEqualTo(404);
+  }
+
+  static final String ORDER = TestJwt.service("order-service");
+  static final String CLERK = TestJwt.operator("clerk-1", List.of("CS"), List.of());
+
+  Res send(String token, String path, Object body) {
+    var e =
+        http.post()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "backoffice-web");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /** 판매중지 승인(targetRef SALE-STATE:{productId}) 을 흉내 낸다. */
+  String saleStopApproval(String productId) {
+    String approvalId = "AP-" + UUID.randomUUID();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("approvalId", approvalId);
+    payload.put("type", "PRODUCT");
+    payload.put("decision", "APPROVED");
+    payload.put(
+        "targetRef",
+        Map.of(
+            "targetType",
+            "Product",
+            "targetId",
+            "SALE-STATE:" + productId,
+            "targetService",
+            "product-service"));
+    payload.put(
+        "lines",
+        List.of(
+            Map.of(
+                "lineId",
+                productId,
+                "decision",
+                "APPROVED",
+                "attributes",
+                Map.of("saleState", "SALE_STOPPED"))));
+    payload.put("approverId", "lead-1");
+    payload.put("dossierVersion", 2);
+    String json =
+        EventEnvelopeFixtures.envelope("ApprovalDecided")
+            .from("approval-service")
+            .aggregate("Approval", approvalId, 2)
+            .payload(payload)
+            .buildJson();
+    kafka.send("platform.approval.v1", approvalId, json).join();
+    return approvalId;
+  }
+
+  @Test
+  void skuIssuanceConfirmationPurchaseLimitAndSaleState() throws Exception {
+    ensureTree();
+    Res a = post("/product-drafts", water("1" + (System.nanoTime() % 1_000_000_000_000L)));
+    String aId = a.body().path("draftId").asString();
+    String approvalId =
+        decide(
+            post("/product-drafts/" + aId + "/submissions", null).body().path("approvalRequest"),
+            "APPROVED");
+    JsonNode applied =
+        await("/product-drafts/" + aId, b -> "APPLIED".equals(b.path("state").asString())).body();
+    String sku = applied.path("resultSkus").path(0).asString();
+    String productId = applied.path("resultProductId").asString();
+    String baseProductId = get("/skus/" + sku).body().path("baseProductId").asString();
+
+    // SkuIssued 는 계약 토픽 commerce.product.v1 로 나간다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT topic FROM outbox_event WHERE type = 'SkuIssued' AND aggregateid = ?",
+                String.class,
+                sku))
+        .isEqualTo("commerce.product.v1");
+
+    // 1) SKU 발급 확인: 같은 판매 단위면 그 승인으로 발급된 SKU, 다르면 범위 불일치, 모르는 승인은 승인 필요
+    Map<String, Object> issue = new LinkedHashMap<>();
+    issue.put("approvalId", approvalId);
+    issue.put("baseProductId", baseProductId);
+    issue.put("unitType", "E");
+    issue.put("unitsPerSku", 1);
+    Res ok = post("/sku-issuances", issue);
+    assertThat(ok.status()).isEqualTo(202);
+    assertThat(ok.body().path("resultId").asString()).isEqualTo(sku);
+    Map<String, Object> wrong = new LinkedHashMap<>(issue);
+    wrong.put("unitsPerSku", 6);
+    assertThat(post("/sku-issuances", wrong).body().path("code").asString())
+        .isEqualTo("APPROVAL_SCOPE_MISMATCH");
+    Map<String, Object> unknown = new LinkedHashMap<>(issue);
+    unknown.put("approvalId", "AP-none");
+    assertThat(post("/sku-issuances", unknown).body().path("code").asString())
+        .isEqualTo("APPROVAL_REQUIRED");
+
+    // 2) 구매 상한: 같은 기초상품 낱개 합 10 은 통과, 11 은 위반
+    Res pass =
+        send(
+            ORDER,
+            "/internal/purchase-limit-checks",
+            Map.of("items", List.of(Map.of("sku", sku, "quantity", 10))));
+    assertThat(pass.status()).isEqualTo(200);
+    assertThat(pass.body().path("passed").asBoolean()).isTrue();
+    assertThat(pass.body().path("limitPerBaseProduct").path("value").asInt()).isEqualTo(10);
+    Res over =
+        send(
+            ORDER,
+            "/internal/purchase-limit-checks",
+            Map.of("items", List.of(Map.of("sku", sku, "quantity", 11))));
+    assertThat(over.body().path("passed").asBoolean()).isFalse();
+    assertThat(over.body().path("violations").path(0).path("totalUnits").asInt()).isEqualTo(11);
+
+    // 3) 판매 상태: MD 만, 일시품절은 바로, 판매중지는 승인 필요·승인은 한 번만
+    String path = "/products/" + productId + "/sale-state-changes";
+    assertThat(
+            send(CLERK, path, Map.of("saleState", "TEMPORARILY_SOLD_OUT", "reason", "x")).status())
+        .isEqualTo(403);
+    Res soldOut = post(path, Map.of("saleState", "TEMPORARILY_SOLD_OUT", "reason", "입고 지연"));
+    assertThat(soldOut.status()).isEqualTo(200);
+    assertThat(soldOut.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(get("/products/" + productId).body().path("saleState").asString())
+        .isEqualTo("TEMPORARILY_SOLD_OUT");
+    String changed =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'ProductSaleStateChanged'"
+                + " AND aggregateid = ? ORDER BY created_at DESC LIMIT 1",
+            String.class,
+            productId);
+    assertThat(mapper.readTree(changed).path("payload").path("state").asString())
+        .isEqualTo("TEMP_OUT");
+
+    Res noApproval = post(path, Map.of("saleState", "SALE_STOPPED", "reason", "단종"));
+    assertThat(noApproval.status()).isEqualTo(422);
+    assertThat(noApproval.body().path("code").asString()).isEqualTo("APPROVAL_REQUIRED");
+
+    String stop = saleStopApproval(productId);
+    Instant until = Instant.now().plus(Duration.ofSeconds(30));
+    while (Instant.now().isBefore(until)
+        && jdbc.queryForObject(
+                "SELECT COUNT(*) FROM sale_state_grant WHERE approval_id = ?", Integer.class, stop)
+            == 0) {
+      Thread.sleep(200);
+    }
+    Res stopped =
+        post(path, Map.of("saleState", "SALE_STOPPED", "reason", "단종", "approvalId", stop));
+    assertThat(stopped.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(get("/products/" + productId).body().path("saleState").asString())
+        .isEqualTo("SALE_STOPPED");
+    Res reuse =
+        post(path, Map.of("saleState", "SALE_STOPPED", "reason", "재사용", "approvalId", stop));
+    assertThat(reuse.status()).isEqualTo(409);
+
+    String requestId = soldOut.body().path("requestId").asString();
+    assertThat(get(path + "/" + requestId).body().path("status").asString()).isEqualTo("APPLIED");
   }
 }

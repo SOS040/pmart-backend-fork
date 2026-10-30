@@ -1,6 +1,7 @@
 package com.pmart.product.application;
 
 import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.messaging.EventEnvelopeCodec;
 import com.pmart.common.messaging.EventPublisher;
 import com.pmart.product.domain.BarcodeType;
 import com.pmart.product.domain.DraftFacts;
@@ -10,6 +11,7 @@ import com.pmart.product.infrastructure.CatalogStore;
 import com.pmart.product.infrastructure.CatalogStore.LogisticsRow;
 import com.pmart.product.infrastructure.CatalogStore.ProductRow;
 import com.pmart.product.infrastructure.CatalogStore.SkuRow;
+import com.pmart.product.infrastructure.CommandStore;
 import com.pmart.product.infrastructure.DraftStore;
 import com.pmart.product.infrastructure.DraftStore.DraftRow;
 import java.time.Clock;
@@ -38,12 +40,17 @@ public class ApprovalApplier {
 
   private static final Logger log = LoggerFactory.getLogger(ApprovalApplier.class);
 
+  /** 상품 사건 토픽(SkuIssued·ProductVersionPublished·ProductSaleStateChanged). */
+  public static final String PRODUCT_TOPIC = "commerce.product.v1";
+
   private final CategoryTreeService trees;
   private final ProductDraftService draftService;
   private final DraftStore drafts;
   private final CatalogStore catalog;
   private final ProductSnapshots snapshots;
   private final EventPublisher events;
+  private final EventEnvelopeCodec codec;
+  private final CommandStore commands;
   private final ObjectMapper mapper;
   private final Clock clock;
 
@@ -54,6 +61,8 @@ public class ApprovalApplier {
       CatalogStore catalog,
       ProductSnapshots snapshots,
       EventPublisher events,
+      EventEnvelopeCodec codec,
+      CommandStore commands,
       ObjectMapper mapper,
       Clock clock) {
     this.trees = trees;
@@ -62,6 +71,8 @@ public class ApprovalApplier {
     this.catalog = catalog;
     this.snapshots = snapshots;
     this.events = events;
+    this.codec = codec;
+    this.commands = commands;
     this.mapper = mapper;
     this.clock = clock;
   }
@@ -90,6 +101,8 @@ public class ApprovalApplier {
           Integer.parseInt(targetId.substring(CategoryTreeService.TARGET_PREFIX.length()));
       String hash = p.path("lines").path(0).path("attributes").path("draftHash").asString(null);
       result = trees.applyDecision(version, decision, approvalId, hash, at);
+    } else if (targetId.startsWith(SaleStateService.TARGET_PREFIX)) {
+      result = recordSaleStateGrant(p, approvalId, decision, targetId, at);
     } else if (targetId.startsWith(ProductDraftService.DRAFT_PREFIX)
         || targetId.startsWith(ProductDraftService.BATCH_PREFIX)) {
       result = applyDrafts(p, approvalId, decision, at, detail);
@@ -150,7 +163,7 @@ public class ApprovalApplier {
     List<String> categoryIds = new ArrayList<>();
     mapper.readTree(d.resolvedCategories()).forEach(c -> categoryIds.add(c.asString()));
     JsonNode skuIn = in.path("skus").path(0);
-    String saleState = in.path("product").path("saleState").asString("ON_SALE");
+    @Nullable String requestedSaleState = in.path("product").path("saleState").asString(null);
 
     Optional<CatalogStore.SourceLinkRow> link =
         d.sourceSystem() == null || d.sourceKey() == null
@@ -194,7 +207,14 @@ public class ApprovalApplier {
       productId = e.productId();
       version = e.currentVersion() + 1;
       catalog.updateProduct(
-          productId, e.rowVersion(), f.internalName(), categoryIds.get(0), saleState, version, at);
+          productId,
+          e.rowVersion(),
+          f.internalName(),
+          categoryIds.get(0),
+          // 재적재 승인이 판매 상태를 말하지 않으면 현재 상태 유지(판매중지를 몰래 풀지 않는다)
+          requestedSaleState != null ? requestedSaleState : e.saleState(),
+          version,
+          at);
       sku = current.sku();
       catalog.updateSkuAttributes(
           sku,
@@ -217,7 +237,7 @@ public class ApprovalApplier {
               baseProductId,
               f.internalName(),
               categoryIds.get(0),
-              saleState,
+              requestedSaleState != null ? requestedSaleState : "ON_SALE",
               version,
               1,
               at,
@@ -281,7 +301,19 @@ public class ApprovalApplier {
       payload.put("version", version);
       payload.put("issuedAt", at.toString());
       payload.put("approvalRef", Map.of("approvalId", approvalId));
-      events.publish("SkuIssued", 1, "Sku", s, 1, null, payload);
+      // 계약 토픽은 commerce.product.v1 (집합 이름 Sku 의 기본 토픽 commerce.sku.v1 이 아님)
+      events.publish(
+          codec.create(
+              events.sourceSystem(),
+              "SkuIssued",
+              1,
+              "Sku",
+              s,
+              1,
+              null,
+              EventEnvelope.EventSource.REAL,
+              payload),
+          PRODUCT_TOPIC);
     }
     Map<String, Object> published = new LinkedHashMap<>(snapshot);
     published.put("effectiveAt", at.toString());
@@ -293,6 +325,18 @@ public class ApprovalApplier {
     published.remove("publishedAt");
     events.publish("ProductVersionPublished", 1, "Product", productId, version, null, published);
     return Optional.empty();
+  }
+
+  /**
+   * 판매 상태 변경 승인(targetRef {@code SALE-STATE:{productId}}, 행 attributes {@code {saleState}}) 수신 기록.
+   * 반영은 판매 상태 변경 명령이 이 승인을 참조할 때 한다({@link SaleStateService}).
+   */
+  private String recordSaleStateGrant(
+      JsonNode p, String approvalId, String decision, String targetId, Instant at) {
+    String productId = targetId.substring(SaleStateService.TARGET_PREFIX.length());
+    String state = p.path("lines").path(0).path("attributes").path("saleState").asString("");
+    commands.insertGrant(approvalId, productId, state, decision, at);
+    return "APPROVED".equals(decision) ? "GRANTED" : "REJECTED";
   }
 
   private String baseProduct(JsonNode in, DraftFacts f, Instant at) {

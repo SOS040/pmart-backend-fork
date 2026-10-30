@@ -3,28 +3,33 @@ package com.pmart.product.api;
 import com.pmart.product.api.generated.InternalApi;
 import com.pmart.product.api.generated.model.ListSkusInternal200Response;
 import com.pmart.product.api.generated.model.Product;
+import com.pmart.product.api.generated.model.PurchaseLimitCheckRequest;
+import com.pmart.product.api.generated.model.PurchaseLimitCheckResult;
 import com.pmart.product.api.generated.model.SkuDetail;
 import com.pmart.product.application.ProductQueries;
+import com.pmart.product.application.PurchaseLimitService;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 계약 InternalApi(서비스 토큰). 구매 상한 검증은 아직 구현하지 않았다(인터페이스 default 501, 정책값 등록 후 슬라이스 2). 업무 규칙은
- * application 에 둔다.
- */
+/** 계약 InternalApi(서비스 토큰). 업무 규칙은 application 에 둔다. */
 @RestController
 public class InternalController implements InternalApi {
 
   private final ProductQueries queries;
   private final RegistrationMapping mapping;
+  private final PurchaseLimitService limits;
 
-  public InternalController(ProductQueries queries, RegistrationMapping mapping) {
+  public InternalController(
+      ProductQueries queries, RegistrationMapping mapping, PurchaseLimitService limits) {
     this.queries = queries;
+    this.limits = limits;
     this.mapping = mapping;
   }
 
@@ -53,5 +58,21 @@ public class InternalController implements InternalApi {
   @Override
   public ResponseEntity<Product> getProductVersionInternal(String productId, Integer version) {
     return ResponseEntity.ok(mapping.convert(queries.product(productId, version), Product.class));
+  }
+
+  @Override
+  public ResponseEntity<PurchaseLimitCheckResult> checkPurchaseLimit(
+      String xSourceSystem, PurchaseLimitCheckRequest body, @Nullable String traceparent) {
+    PurchaseLimitService.Result r =
+        limits.check(
+            body.getItems().stream()
+                .map(i -> new PurchaseLimitService.Item(i.getSku(), i.getQuantity()))
+                .toList());
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("passed", r.violations().isEmpty());
+    out.put("limitPerBaseProduct", Map.of("state", "VALUE", "value", r.limitUnits()));
+    out.put("violations", r.violations());
+    out.put("asOf", Map.of("asOf", r.asOf().toString(), "freshness", "CURRENT"));
+    return ResponseEntity.ok(mapping.convert(out, PurchaseLimitCheckResult.class));
   }
 }

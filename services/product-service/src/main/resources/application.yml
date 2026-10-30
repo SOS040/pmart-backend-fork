@@ -30,6 +30,11 @@ server:
 pmart:
   messaging:
     domain: commerce
+  product:
+    # 구매 상한: 같은 기초상품 Σ 수량×구성 낱개 수 (Commerce 2장 [확정] 기본 10). 비우면 CONFIG_REQUIRED
+    purchase-limit-units: 10
+    # 전사 판매 상태를 바꿀 수 있는 운영자 역할(사용자 결정 2026-10-30). 판매중지는 PRODUCT 승인도 필요
+    sale-state-change-role: MD
 management:
   tracing:
     export:
