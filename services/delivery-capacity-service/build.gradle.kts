@@ -18,4 +18,5 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // center-master 캘린더·auth 서비스 토큰 응답 고정
 }

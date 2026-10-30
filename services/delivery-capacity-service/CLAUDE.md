@@ -20,5 +20,11 @@
 ```
 로컬 포트 8402.
 
+## 예약 슬롯 (2026-10-31)
+- `GET /slots?mfcId&date`: 오늘·내일(Asia/Seoul)만. 운영 구간은 center-master `GET /internal/centers/{id}/calendar?kind=CUSTOMER_ORDER`(서비스 토큰), 그 안에 온전히 들어가는 1시간 시간대. [확정] 00:00~08:00 실제 배송 없음 → 08시 전 시간대는 만들지 않는다.
+- 정원 `pmart.capacity.slot-capacity`(정책값, env `PMART_CAPACITY_SLOTCAPACITY`). 비우면 CONFIG_REQUIRED(선택 불가). 센터 없음 404, 시간표 미승인 422.
+- 선택 마감 선행시간은 정책이 없어 시간대 시작 시각(`cutoffAt`)에 마감한다 — 정책이 정해지면 바꾼다.
+- 점유(held·confirmed)는 슬롯 홀드(자원 확보 사가) 구현 전이라 0. 비회원 토큰도 조회 가능(guest-paths).
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+예약 슬롯 조회 구현(2026-10-31). 슬롯 홀드(`/internal/slot-holds/**`)는 501(자원 확보 단계).
