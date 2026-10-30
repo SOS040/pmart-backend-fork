@@ -55,8 +55,7 @@ class GatewayRoutingSecurityTest {
 
   /** 계약이 /internal 만 노출하는 서비스: 외부 라우트가 없는 것이 정상. */
   private static final List<String> INTERNAL_ONLY =
-      List.of(
-          "order-orchestration-service", "fulfillment-routing-service", "mfc-inventory-service");
+      List.of("order-orchestration-service", "fulfillment-routing-service");
 
   @Autowired WebTestClient client;
   @Autowired RouteLocator routeLocator;
@@ -79,7 +78,7 @@ class GatewayRoutingSecurityTest {
   @Test
   void everyScaffoldedServiceHasAnUpstreamAndAtLeastOneRoute() {
     List<String> routeIds = routeLocator.getRoutes().map(Route::getId).collectList().block();
-    assertThat(properties.upstream()).hasSize(31);
+    assertThat(properties.upstream()).hasSize(32);
     for (String service : properties.upstream().keySet()) {
       if (INTERNAL_ONLY.contains(service)) {
         continue;

@@ -26,6 +26,13 @@ server:
 pmart:
   messaging:
     domain: platform
+  approval:
+    # 승인 종류 → 결정할 수 있는 역할(JWT roles). 입력자와 승인자는 달라야 한다(자기승인 금지).
+    # 여기 없는 종류는 CONFIG_REQUIRED. 환경별로 바꿀 때는 PMART_APPROVAL_APPROVERROLES_<종류> 로 덮어쓴다.
+    approver-roles:
+      PRODUCT: PRODUCT_APPROVER # 상품·SKU·바코드·카테고리 트리 (BO-03)
+      DISPLAY: DISPLAY_APPROVER # 고객용 상품명·설명·이미지 게시 (BO-05)
+      PRICE: PRICE_APPROVER # 기본 판매가격 (BO-04)
 management:
   tracing:
     export:

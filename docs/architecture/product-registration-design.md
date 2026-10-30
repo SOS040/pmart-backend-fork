@@ -24,8 +24,8 @@
 | **product-service** | 상품 등록 초안(개별·배치) 접수·검증, 승인 요청 생성, 승인 후 SKU 발급·바코드·카테고리 매핑·버전 발행(`SkuIssued`, `ProductVersionPublished`, `CategoryChanged`) |
 | **product-content-service** | 고객용 상품명·상세설명·이미지(대표·상세설명·상세정보) 초안과 게시(`ProductContentPublished`) |
 | **approval-service** | 변경 요청(PRODUCT / DISPLAY)·승인 결정 → `ApprovalDecided` (이미 구현됨, 슬라이스 1) |
-| **mfc-inventory-service** | `SkuIssued`/`ProductVersionPublished` 구독 → MFC 별 SKU 취급 레코드를 **OFF 로 생성**, MFC 운영자가 켠다. 고객 가용 조회(`/internal/availability`)의 정본 |
-| **cdc-inventory-service** | 같은 이벤트 구독 → CDC SKU 취급(OFF 로 생성, CDC 운영자가 켬)·물류 규격 반영(CDC-F-002). 고객 가용에는 쓰이지 않음. 이번에 이 부분만 먼저 구현(사용자 결정 2026-10-30) |
+| **mfc-inventory-service** | `SkuIssued`/`ProductVersionPublished` 구독 → SKU 투영. MFC 별 취급은 **기본 OFF**(레코드 없음), MFC 운영자가 켠다. 고객 가용 조회(`/internal/availability`)의 정본 |
+| **cdc-inventory-service** | 같은 이벤트 구독 → CDC SKU 취급(기본 OFF, CDC 운영자가 켬)·물류 규격 반영(CDC-F-002). 고객 가용에는 쓰이지 않음. 이번에 이 부분만 먼저 구현(사용자 결정 2026-10-30) |
 | 이미지 저장소 | S3 호환 오브젝트 저장소. 로컬·LAN 은 **SeaweedFS `chrislusf/seaweedfs:4.48`**(수집 저장소 `code-and-pick/product-data` 와 같은 버전), 클라이언트 AWS SDK v2 `s3`(BOM 2.55.11). ADR-0016 |
 | center-master-service | MFC·CDC 목록의 정본(`CenterMasterChanged`). 재고 서비스가 "어느 센터에 적용할지"를 여기서 안다 |
 
@@ -125,12 +125,12 @@ seed-v1/
 ### 5.3 mfc-inventory-service / cdc-inventory-service (이번에는 취급 레코드만)
 | 테이블 | 핵심 열 | 메모 |
 |---|---|---|
-| `center_projection` | `center_id` PK, `center_type`, `state` | `CenterMasterChanged` 투영. 적용 대상 센터 목록 |
-| `sku_projection` | `sku` PK, `product_id`, `unit_type`, `units_per_sku`, `weight_g`, `storage_type`, `product_version`, `state` | `SkuIssued`/`ProductVersionPublished` 투영. CDC 는 물류 규격도 |
-| `center_sku_handling` | (`center_id`, `sku`) PK, `handling_enabled`(기본 **false**), `changed_by`, `reason`, `updated_at`, `row_version` | 센터 취급 ON/OFF(센터별 정본). SKU 승인 시 OFF 로 생성, 센터 운영자가 켬(사용자 결정 2026-10-30) |
+| ~~`center_projection`~~ | `center_id` PK, `center_type`, `state` | **보류(2026-10-30)**: center-master 미구현이라 만들지 않았다. 취급은 레코드 없음 = OFF 라서 센터 목록 없이 같은 동작이 된다 |
+| `sku_projection` | `sku` PK, `product_id`, `base_product_id`, `unit_type`, `units_per_sku`, `weight_g`, `volume_ml`, `storage_type`, `alcohol`, `product_version`, `state`, `updated_at` | `SkuIssued`/`ProductVersionPublished` 투영. 오래된 `product_version` 이벤트는 무시. CDC 는 물류 규격(`units_per_box`·`boxes_per_pallet`·`ti`·`hi`)도 |
+| `center_sku_handling` | (`center_id`, `sku`) PK, `handling_enabled`(기본 **false**), `changed_by`, `reason`, `updated_at`, `row_version` | 센터 취급 ON/OFF(센터별 정본). 기본 OFF, 센터 운영자가 켬(사용자 결정 2026-10-30). **구현: 미리 OFF 행을 만들지 않고 레코드 없음 = OFF**, 운영자가 바꿀 때 행이 생긴다(이벤트로는 만들지 않음) |
 | `center_sku_handling_history` | `history_id` PK, `center_id`, `sku`, `from_enabled`, `to_enabled`, `changed_by`, `reason`, `changed_at` | 취급 변경 이력 |
 
-센터 취급 변경 API(두 서비스 같은 모양): `POST /centers/{centerId}/sku-handlings`(본문 `sku`, `enabled`, `reason`; `Idempotency-Key`·`X-Expected-Version`) · `GET /centers/{centerId}/sku-handlings?enabled=` · 일괄 `POST /centers/{centerId}/sku-handling-batches`. 권한은 그 센터 운영자(자기 센터 범위).
+센터 취급 변경 API(두 서비스 같은 모양, 경로는 `/mfcs/{mfcId}/…`·`/cdcs/{cdcId}/…`): `POST …/sku-handlings`(본문 `sku`, `enabled`, `reason`; `Idempotency-Key`·`X-Expected-Version`(레코드 없음 = 0)) · `GET …/sku-handlings?enabled=` · 일괄 `POST …/sku-handling-batches`(500행, 전부 또는 전무). 권한은 그 센터 운영자(토큰 `centers` 클레임). 켜기는 ACTIVE SKU 만(`SKU_INACTIVE`), 투영 전이면 `SKU_NOT_FOUND`. 서비스 간 `GET /internal/skus/{sku}`(투영 조회).
 - 재고 수량 테이블(Balance·Ledger·Reservation)은 슬라이스 4(mfc)에서 만든다. 상품 등록만으로 수량은 생기지 않는다(초기 재고는 mfc-inbound 반입 → 검수, ADR-0014).
 
 ## 6. 참고 자료와의 대응 (local-reference, Git 제외)

@@ -25,6 +25,7 @@ pmart:
       payment-service: http://localhost:8205
       mfc-inventory-service: http://localhost:8301
       mfc-fulfillment-service: http://localhost:8302
+      cdc-inventory-service: http://localhost:8601
       mfc-capacity-service: http://localhost:8303
       mfc-location-service: http://localhost:8304
       mfc-quality-service: http://localhost:8305
