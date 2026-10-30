@@ -38,7 +38,7 @@ java deploy/lan/seed/Seed.java
 ```
 이미지는 태그가 아니라 **digest** 로 지정한다(ci-cd.md). push 하지 않은 서비스가 배치에 있으면 render 가 중단된다.
 
-`jib` 이 Docker Hub 매니페스트 PUT 에서 401 로 실패하면(2026-10-30 발생, 로그인은 정상) 같은 Jib 로 데몬에 만들고 Docker CLI 로 올린 뒤 그 digest 를 적는다:
+`jib` 이 Docker Hub 매니페스트 PUT 에서 401 로 실패하면(2026-10-30 발생 — Docker Desktop 재로그인으로 해결됨. 먼저 재로그인해 본다) 같은 Jib 로 데몬에 만들고 Docker CLI 로 올린 뒤 그 digest 를 적는다:
 ```bash
 ./gradlew :services:<name>:jibDockerBuild -PcontainerRegistry=docker.io/heeji4445 -PimageTag=<sha> -PgitRevision=<sha> --no-configuration-cache
 docker push heeji4445/pmart-<name>:<sha>                  # 출력 끝의 digest: sha256:… 를
