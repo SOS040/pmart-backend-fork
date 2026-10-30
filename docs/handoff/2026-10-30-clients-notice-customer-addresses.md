@@ -27,3 +27,8 @@
 
 ## 4. LAN 상태
 - 배포 후 이 문서 아래에 결과를 적는다. **지금 LAN 에는 발효된 권역 매핑이 없어 판정이 `UNKNOWN`** 으로 나온다. ② 시험 데이터 적재 때 서울 시험 권역 1개(승인 경로)를 넣고 좌표 예시를 알린다.
+
+### LAN 배포 결과 (2026-10-30 19:20, 이미지 4041c14)
+- customer-service(pc2)·delivery-serviceability-service(pc3)·approval-service·api-gateway(pc4) 배포, customer V2 마이그레이션 적용
+- 게이트웨이 `http://192.168.0.40:8080` 확인: `/me/**` 토큰 없이 401, 비회원 배송지 201(판정 `UNKNOWN`, 권역 미설정)·같은 기기 200·다른 기기 403, 익명 `POST /serviceability-checks` 는 인증 통과 후 422 `CONFIG_REQUIRED`(발효 권역 없음 — ② 에서 해소)
+- 회원 API 는 실제 고객 토큰(Google 로그인)이 필요해 앱에서 확인 부탁
