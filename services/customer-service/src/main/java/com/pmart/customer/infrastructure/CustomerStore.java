@@ -99,6 +99,16 @@ public class CustomerStore {
         .findFirst();
   }
 
+  /** 첫 구매 혜택을 이미 쓴 계정인가(대조값). */
+  public boolean firstPurchaseUsed(String accountId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM first_purchase_used WHERE account_id = ?",
+            Integer.class,
+            accountId);
+    return n != null && n > 0;
+  }
+
   // ---------- 주소 ----------
 
   public int countAddresses(String ownerType, String ownerId) {

@@ -312,6 +312,13 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     Res status = get(svc, "/internal/accounts/" + cu + "/status");
     assertThat(status.status()).isEqualTo(200);
     assertThat(status.body().path("purchasable").asBoolean()).isTrue();
+    // 첫 구매 대조: 사용 기록 없음 → 후보
+    assertThat(
+            get(svc, "/internal/accounts/" + cu + "/first-purchase-checks")
+                .body()
+                .path("firstPurchaseCandidate")
+                .asBoolean())
+        .isTrue();
     Res internalCtx = get(svc, "/internal/accounts/" + cu + "/shopping-context");
     assertThat(internalCtx.body().path("address").path("addressId").asString()).isEqualTo(inId);
     assertThat(internalCtx.body().path("phoneRef").asString()).isEqualTo("010-****-5678");

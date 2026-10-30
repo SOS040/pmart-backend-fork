@@ -41,6 +41,11 @@ public class ProfileService {
         .orElseThrow(() -> PmartException.notFound("ACCOUNT_NOT_FOUND", "고객 계정이 없습니다."));
   }
 
+  /** 첫 구매 무료배달 후보 — 혜택 사용 기록이 없으면 true. 자격 점유는 order 가 한다. */
+  public boolean firstPurchaseCandidate(String accountId) {
+    return !store.firstPurchaseUsed(accountId);
+  }
+
   public boolean purchasable(ProfileRow p) {
     return "ACTIVE".equals(p.status());
   }

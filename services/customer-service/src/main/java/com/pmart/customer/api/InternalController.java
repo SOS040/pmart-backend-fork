@@ -2,6 +2,7 @@ package com.pmart.customer.api;
 
 import com.pmart.customer.api.generated.InternalApi;
 import com.pmart.customer.api.generated.model.AccountStatus;
+import com.pmart.customer.api.generated.model.CheckFirstPurchaseInternal200Response;
 import com.pmart.customer.api.generated.model.GetAccountStatusInternal200Response;
 import com.pmart.customer.api.generated.model.GetShoppingContextInternal200Response;
 import com.pmart.customer.application.AddressService;
@@ -15,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 InternalApi — 계정 상태·쇼핑 컨텍스트(서비스 토큰). 첫 구매 대조는 주문 단계에서(501). */
+/** 계약 InternalApi — 계정 상태·쇼핑 컨텍스트·첫 구매 대조(서비스 토큰). */
 @RestController
 public class InternalController implements InternalApi {
 
@@ -25,6 +26,18 @@ public class InternalController implements InternalApi {
   public InternalController(ProfileService profiles, AddressService addresses) {
     this.profiles = profiles;
     this.addresses = addresses;
+  }
+
+  /** 첫 구매 무료배달 후보(계정 기준 사용 기록). 자격 점유는 order. 소셜 식별 대조(탈퇴 재가입)는 이후 — 지금은 NONE. */
+  @Override
+  public ResponseEntity<CheckFirstPurchaseInternal200Response> checkFirstPurchaseInternal(
+      String accountId) {
+    return ResponseEntity.ok(
+        new CheckFirstPurchaseInternal200Response()
+            .accountId(accountId)
+            .firstPurchaseCandidate(profiles.firstPurchaseCandidate(accountId))
+            .matchedBy(CheckFirstPurchaseInternal200Response.MatchedByEnum.NONE)
+            .asOf(CustomerMapping.asOf(Instant.now(), null, true)));
   }
 
   @Override
