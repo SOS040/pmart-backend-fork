@@ -29,7 +29,12 @@ import tools.jackson.databind.ObjectMapper;
 public class Upstreams {
 
   public record Sku(
-      String sku, String productId, String baseProductId, int weightG, String saleState) {}
+      String sku,
+      String productId,
+      String baseProductId,
+      int weightG,
+      String saleState,
+      int unitsPerSku) {}
 
   public record PricedLine(String sku, long unitPrice, long lineAmount) {}
 
@@ -127,7 +132,8 @@ public class Upstreams {
               s.path("productId").asString(),
               s.path("baseProductId").asString(),
               s.path("weightG").asInt(0),
-              s.path("saleState").asString("UNKNOWN")));
+              s.path("saleState").asString("UNKNOWN"),
+              s.path("unitsPerSku").asInt(1)));
     }
     return out;
   }

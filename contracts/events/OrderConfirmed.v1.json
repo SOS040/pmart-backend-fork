@@ -17,6 +17,7 @@
             "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
             "orderVersion": { "$ref": "_defs.v1.json#/$defs/Version" },
             "accountId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "draftId": { "$ref": "_defs.v1.json#/$defs/Ref", "description": "주문으로 옮긴 주문 초안(2026-10-31 추가)" },
             "mfcId": { "$ref": "_defs.v1.json#/$defs/CenterId" },
             "lines": {
               "type": "array",
@@ -29,7 +30,8 @@
                   "sku": { "$ref": "_defs.v1.json#/$defs/Sku" },
                   "qty": { "$ref": "_defs.v1.json#/$defs/PositiveQty" },
                   "unitsPerSku": { "type": "integer", "minimum": 1 },
-                  "weightG": { "type": "integer", "minimum": 0 },
+                  "weightG": { "type": "integer", "minimum": 0, "description": "행 전체 중량(단위 중량 × qty)" },
+                  "cartItemId": { "$ref": "_defs.v1.json#/$defs/Ref", "description": "주문 대상이던 장바구니 품목 — cart 가 주문분만 정리한다(2026-10-31 추가)" },
                   "unitPrice": { "$ref": "_defs.v1.json#/$defs/Money" },
                   "discountShare": { "$ref": "_defs.v1.json#/$defs/Money" },
                   "lotConstraint": { "type": "object", "properties": { "allowedLots": { "type": "array", "items": { "type": "string" } }, "minExpiryDate": { "$ref": "_defs.v1.json#/$defs/Date" } } }
@@ -45,9 +47,11 @@
             "paymentAttemptId": { "$ref": "_defs.v1.json#/$defs/Ref" },
             "itemAmount": { "$ref": "_defs.v1.json#/$defs/Money" },
             "deliveryTip": { "$ref": "_defs.v1.json#/$defs/Money" },
+            "deliveryTipReason": { "type": "string", "enum": ["STANDARD", "OVER_30000", "FIRST_PURCHASE", "NONE"], "description": "배달팁 무료 사유(2026-10-31 추가)" },
             "bagFee": { "$ref": "_defs.v1.json#/$defs/Money" },
             "totalAmount": { "$ref": "_defs.v1.json#/$defs/Money" },
-            "firstPurchase": { "type": "boolean" },
+            "firstPurchase": { "type": "boolean", "description": "첫 구매 무료배달을 실제 적용한 주문(deliveryTipReason = FIRST_PURCHASE). customer 가 첫 구매 사용 기록을 남긴다" },
+            "plannedShipments": { "type": "integer", "minimum": 1, "description": "계획 배송 수(10,000g 단위, 2026-10-31 추가). shipments[] 는 이행 계획 단계에서 채운다" },
             "shipments": {
               "type": "array",
               "description": "이행 계획. 총 상품중량 10,000g 초과 시 2건 이상",

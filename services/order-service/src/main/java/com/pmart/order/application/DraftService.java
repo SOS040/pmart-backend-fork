@@ -58,7 +58,9 @@ public class DraftService {
       int quantity,
       long unitPrice,
       long lineAmount,
-      int weightG) {}
+      int weightG,
+      // 2026-10-31 결제 확정 단계에서 추가(OrderConfirmed 필수 값). 그 전 초안은 null — 확정 때 product 로 채운다
+      @Nullable Integer unitsPerSku) {}
 
   public record Delivery(
       String deliveryMode,
@@ -219,7 +221,8 @@ public class DraftService {
               i.quantity(),
               p == null ? 0 : p.unitPrice(),
               p == null ? 0 : p.lineAmount(),
-              s.weightG() * i.quantity()));
+              s.weightG() * i.quantity(),
+              s.unitsPerSku()));
     }
     Snapshot snapshot =
         new Snapshot(

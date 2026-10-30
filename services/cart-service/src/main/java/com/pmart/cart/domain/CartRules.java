@@ -88,4 +88,9 @@ public final class CartRules {
             new PmartException.Detail(
                 "baseProductId:" + baseProductId, totalUnits + ">" + limitUnits)));
   }
+
+  /** 주문 확정 후 남길 수량. 주문한 만큼만 빼고(그 뒤 더 담았으면 남는다), 0 이하면 품목 삭제. */
+  public static int remainingAfterOrder(int cartQuantity, int orderedQuantity) {
+    return Math.max(0, cartQuantity - Math.max(0, orderedQuantity));
+  }
 }

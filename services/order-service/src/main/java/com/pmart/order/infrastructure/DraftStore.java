@@ -81,6 +81,34 @@ public class DraftStore {
         .findFirst();
   }
 
+  /** 주문 ID 로 초안 행 잠금(주문 확정 — 같은 주문의 확정을 한 번에 하나만). */
+  public Optional<DraftRow> lockByOrderId(String orderId) {
+    return jdbc
+        .query(
+            "SELECT *, snapshot::text AS snap FROM order_draft WHERE order_id = ? FOR UPDATE",
+            (rs, i) -> row(rs),
+            orderId)
+        .stream()
+        .findFirst();
+  }
+
+  public Optional<DraftRow> byOrderId(String orderId) {
+    return jdbc
+        .query(
+            "SELECT *, snapshot::text AS snap FROM order_draft WHERE order_id = ?",
+            (rs, i) -> row(rs),
+            orderId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 주문 확정 — 초안을 CONFIRMED 로 닫는다(다시 결제 진입하지 않는다). */
+  public void confirmed(String draftId) {
+    jdbc.update(
+        "UPDATE order_draft SET status = 'CONFIRMED', version = version + 1 WHERE draft_id = ?",
+        draftId);
+  }
+
   /** 같은 구매 의도의 가장 최근 초안. */
   public Optional<DraftRow> latestByIntent(String accountId, String purchaseIntentId) {
     return jdbc

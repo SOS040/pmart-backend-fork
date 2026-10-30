@@ -68,4 +68,26 @@ public class ProfileService {
         accountId, p.path("provider").asString("GOOGLE"), at, clock.instant());
     log.info("고객 인증 반영 {}", accountId);
   }
+
+  /**
+   * OrderConfirmed(order.order.v1) 반영 — inbox 트랜잭션 안. 첫 구매 무료배달을 실제 적용한 주문(payload.firstPurchase)이면
+   * 사용 기록을 남겨 이후 first-purchase-checks 가 후보가 아니라고 답하게 한다. 이미 기록이 있으면 그대로.
+   */
+  public void applyOrderEvent(EventEnvelope e) {
+    if (!"OrderConfirmed".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String accountId = p.path("accountId").asString("");
+    if (accountId.isBlank() || !p.path("firstPurchase").asBoolean(false)) {
+      return;
+    }
+    String orderId = p.path("orderId").asString(e.aggregateId());
+    Instant at =
+        p.hasNonNull("confirmedAt")
+            ? Instant.parse(p.get("confirmedAt").asString())
+            : e.occurredAt();
+    boolean marked = store.markFirstPurchaseUsed(accountId, orderId, at);
+    log.info("첫 구매 혜택 사용 {} 주문 {} ({})", accountId, orderId, marked ? "기록" : "이미 있음");
+  }
 }

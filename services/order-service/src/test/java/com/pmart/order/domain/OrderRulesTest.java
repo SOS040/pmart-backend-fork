@@ -60,4 +60,24 @@ class OrderRulesTest {
                 new OrderRules.Blocker("MIN_ORDER_AMOUNT", null)));
     assertThat(ordered.get(0).code()).isEqualTo("MIN_ORDER_AMOUNT");
   }
+
+  @Test
+  void confirmationRules() {
+    // 주문행 ID 는 사가에 보낸 값과 같아야 한다
+    assertThat(OrderRules.orderLineId("ORD-1", 2)).isEqualTo("ORD-1-L2");
+    // 첫 구매 혜택은 FIRST_PURCHASE 로 무료가 된 주문만 — 30,000 이상 무료는 혜택을 쓰지 않는다
+    assertThat(OrderRules.firstPurchaseApplied("FIRST_PURCHASE")).isTrue();
+    assertThat(OrderRules.firstPurchaseApplied("OVER_30000")).isFalse();
+    assertThat(OrderRules.firstPurchaseApplied("STANDARD")).isFalse();
+    // 승인 금액은 동결 총액과 정확히 같아야 한다(부분·초과 모두 차단)
+    assertThat(OrderRules.amountMatches(22_100, 22_100)).isTrue();
+    assertThat(OrderRules.amountMatches(22_000, 22_100)).isFalse();
+    assertThat(OrderRules.amountMatches(22_200, 22_100)).isFalse();
+    // 도착 구간: 서울 2026-11-01 10:00~11:00 → UTC 01:00~02:00, 24:00 은 다음 날 0시
+    Instant[] w = OrderRules.windowInstants(java.time.LocalDate.of(2026, 11, 1), "10:00", "11:00");
+    assertThat(w[0]).isEqualTo(Instant.parse("2026-11-01T01:00:00Z"));
+    assertThat(w[1]).isEqualTo(Instant.parse("2026-11-01T02:00:00Z"));
+    assertThat(OrderRules.windowInstants(java.time.LocalDate.of(2026, 11, 1), "23:00", "24:00")[1])
+        .isEqualTo(Instant.parse("2026-11-01T15:00:00Z"));
+  }
 }

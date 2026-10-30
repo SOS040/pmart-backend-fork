@@ -71,8 +71,10 @@ public class SagaStore {
       @Nullable String releaseRequestId,
       @Nullable Instant releaseVerifiedAt) {}
 
+  /** 같은 초안에 새 결제 진입을 막는 상태(CheckoutRules.OPEN_STATES, V3 유일 색인과 같다). */
   private static final String OPEN =
-      "('RUNNING', 'WAITING_RESULT', 'UNKNOWN_TRACKING', 'COMPENSATING')";
+      "('RUNNING', 'WAITING_RESULT', 'UNKNOWN_TRACKING', 'COMPENSATING',"
+          + " 'RECONCILIATION_REQUIRED', 'COMPLETED')";
 
   private final JdbcTemplate jdbc;
   private final ObjectMapper mapper;
@@ -111,14 +113,31 @@ public class SagaStore {
         ts(s.quoteExpiresAt()),
         ts(s.startedAt()),
         ts(s.updatedAt()));
+    ensureSteps(s.sagaId());
+  }
+
+  /** 단계 행(없는 것만). 단계가 늘어난 뒤 이전 사가도 이어서 진행할 수 있게. */
+  public void ensureSteps(String sagaId) {
     int seq = 0;
     for (String step : CheckoutRules.STEPS) {
       jdbc.update(
-          "INSERT INTO saga_step (saga_id, step, seq, state) VALUES (?, ?, ?, 'PENDING')",
-          s.sagaId(),
+          "INSERT INTO saga_step (saga_id, step, seq, state) VALUES (?, ?, ?, 'PENDING')"
+              + " ON CONFLICT (saga_id, step) DO NOTHING",
+          sagaId,
           step,
           seq++);
     }
+  }
+
+  /** 결제 시도 → 사가(결제 사건 소비용). */
+  public Optional<String> sagaIdByPaymentAttempt(String paymentAttemptId) {
+    return jdbc
+        .queryForList(
+            "SELECT saga_id FROM checkout_saga WHERE payment ->> 'paymentAttemptId' = ?",
+            String.class,
+            paymentAttemptId)
+        .stream()
+        .findFirst();
   }
 
   public Optional<SagaRow> find(String sagaId) {
@@ -170,12 +189,13 @@ public class SagaStore {
     return jdbc.queryForList(
         "SELECT saga_id FROM checkout_saga WHERE"
             + " (state IN ('RUNNING', 'COMPENSATING') AND updated_at < ?)"
-            + " OR (state = 'WAITING_RESULT' AND resource_expires_at < ?)"
+            + " OR (state = 'WAITING_RESULT' AND (resource_expires_at < ? OR updated_at < ?))"
             + " OR (state = 'UNKNOWN_TRACKING' AND updated_at < ?)"
             + " ORDER BY updated_at LIMIT 50",
         String.class,
         ts(stuckBefore),
         ts(now),
+        ts(stuckBefore),
         ts(stuckBefore));
   }
 

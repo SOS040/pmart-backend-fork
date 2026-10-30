@@ -34,11 +34,13 @@ public class Participants {
   public static final String CAPACITY = "mfc-capacity-service";
   public static final String SLOT = "delivery-capacity-service";
   public static final String PAYMENT = "payment-service";
+  public static final String ORDER = "order-service";
 
   private final RestClient inventory;
   private final RestClient capacity;
   private final RestClient slot;
   private final RestClient payment;
+  private final RestClient order;
   private final ObjectMapper mapper;
 
   public Participants(
@@ -47,6 +49,7 @@ public class Participants {
     this.capacity = builder.clone().baseUrl(props.mfcCapacityBaseUrl()).build();
     this.slot = builder.clone().baseUrl(props.deliveryCapacityBaseUrl()).build();
     this.payment = builder.clone().baseUrl(props.paymentBaseUrl()).build();
+    this.order = builder.clone().baseUrl(props.orderBaseUrl()).build();
     this.mapper = mapper;
   }
 
@@ -155,6 +158,8 @@ public class Participants {
             case "CAPACITY_HOLD" ->
                 query(capacity, CAPACITY, "/api/v1/internal/capacity-holds/{id}", resourceId);
             case "SLOT_HOLD" -> query(slot, SLOT, "/api/v1/internal/slot-holds/{id}", resourceId);
+            case "PAYMENT_APPROVAL" ->
+                query(payment, PAYMENT, "/api/v1/internal/payments/{id}", resourceId);
             default -> throw new IllegalArgumentException(resourceType);
           };
       return n.path("state").asString(null);
@@ -165,13 +170,84 @@ public class Participants {
 
   /** 결제 시도 상태(조회 실패면 null). */
   public @Nullable String paymentState(String paymentAttemptId) {
+    JsonNode p = payment(paymentAttemptId);
+    return p == null ? null : p.path("state").asString(null);
+  }
+
+  /** 결제 시도 원결과(상태·승인액·PG 거래 ID). 조회 실패면 null — 확인 전에는 아무것도 단정하지 않는다. */
+  public @Nullable JsonNode payment(String paymentAttemptId) {
     try {
-      return query(payment, PAYMENT, "/api/v1/internal/payments/{id}", paymentAttemptId)
-          .path("state")
-          .asString(null);
+      return query(payment, PAYMENT, "/api/v1/internal/payments/{id}", paymentAttemptId);
     } catch (PmartException | HttpClientErrorException e) {
       return null;
     }
+  }
+
+  // ---------- 승인 뒤 확정·보상 ----------
+
+  /** 점유 확정(HELD → CONFIRMED). 이미 확정이면 정본이 멱등 성공을 준다. */
+  public Result confirm(
+      String resourceType,
+      String resourceId,
+      String requestId,
+      String sagaId,
+      String orderId,
+      String paymentAttemptId) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("orderId", orderId);
+    return switch (resourceType) {
+      case "INVENTORY_RESERVATION" -> {
+        body.put("paymentAttemptId", paymentAttemptId);
+        yield post(
+            inventory,
+            INVENTORY + " confirmations",
+            "/api/v1/internal/reservations/" + resourceId + "/confirmations",
+            requestId,
+            body);
+      }
+      case "CAPACITY_HOLD" ->
+          post(
+              capacity,
+              CAPACITY + " confirmations",
+              "/api/v1/internal/capacity-holds/" + resourceId + "/confirmations",
+              requestId,
+              body);
+      case "SLOT_HOLD" -> {
+        body.put("sagaId", sagaId);
+        yield post(
+            slot,
+            SLOT + " confirmations",
+            "/api/v1/internal/slot-holds/" + resourceId + "/confirmations",
+            requestId,
+            body);
+      }
+      default -> throw new IllegalArgumentException("확정할 수 없는 자원: " + resourceType);
+    };
+  }
+
+  /** 주문 확정(order-service). 금액 불일치는 422 AMOUNT_MISMATCH. */
+  public Result confirmOrder(String orderId, String requestId, Map<String, Object> body) {
+    return post(
+        order,
+        ORDER + " confirmation",
+        "/api/v1/internal/orders/" + orderId + "/confirmation",
+        requestId,
+        body);
+  }
+
+  /** 승인 후 보상 취소(전액). 결과는 결제 시도 조회(CANCELLED)로 확인한다. */
+  public Result compensationCancel(
+      String paymentAttemptId, String requestId, String sagaId, String step, String reason) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("sagaId", sagaId);
+    body.put("step", step);
+    body.put("reason", reason);
+    return post(
+        payment,
+        PAYMENT + " compensation-cancellations",
+        "/api/v1/internal/payments/" + paymentAttemptId + "/compensation-cancellations",
+        requestId,
+        body);
   }
 
   // ---------- 공통 ----------

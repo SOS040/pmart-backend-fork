@@ -109,6 +109,17 @@ public class CustomerStore {
     return n != null && n > 0;
   }
 
+  /** 첫 구매 혜택 사용 기록. 이미 있으면 그대로(먼저 쓴 주문을 남긴다). */
+  public boolean markFirstPurchaseUsed(String accountId, String orderId, Instant usedAt) {
+    return jdbc.update(
+            "INSERT INTO first_purchase_used (account_id, order_id, used_at) VALUES (?,?,?)"
+                + " ON CONFLICT (account_id) DO NOTHING",
+            accountId,
+            orderId,
+            Timestamp.from(usedAt))
+        > 0;
+  }
+
   // ---------- 주소 ----------
 
   public int countAddresses(String ownerType, String ownerId) {

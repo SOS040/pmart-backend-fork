@@ -3,6 +3,7 @@ package com.pmart.order.application;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.web.PmartException;
+import com.pmart.order.domain.OrderRules;
 import com.pmart.order.infrastructure.DraftStore;
 import com.pmart.order.infrastructure.DraftStore.DraftRow;
 import com.pmart.order.infrastructure.OrchestrationClient;
@@ -35,12 +36,23 @@ public class CheckoutService {
       @Nullable JsonNode payment,
       @Nullable JsonNode failure) {}
 
+  /**
+   * 새 결제 진입을 만들지 않는 사가 상태. 진행 중뿐 아니라 확정(COMPLETED)·대사 필요(RECONCILIATION_REQUIRED, 승인됐지만 금액·상태 불일치)도
+   * 같은 초안의 새 청구를 막는다.
+   */
   private static final List<String> OPEN =
-      List.of("RUNNING", "WAITING_RESULT", "UNKNOWN_TRACKING", "COMPENSATING");
+      List.of(
+          "RUNNING",
+          "WAITING_RESULT",
+          "UNKNOWN_TRACKING",
+          "COMPENSATING",
+          "RECONCILIATION_REQUIRED",
+          "COMPLETED");
 
   private final DraftService drafts;
   private final DraftStore store;
   private final OrchestrationClient orchestration;
+  private final OrderService orders;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
@@ -48,11 +60,13 @@ public class CheckoutService {
       DraftService drafts,
       DraftStore store,
       OrchestrationClient orchestration,
+      OrderService orders,
       RequestIdempotency idempotency,
       Clock clock) {
     this.drafts = drafts;
     this.store = store;
     this.orchestration = orchestration;
+    this.orders = orders;
     this.idempotency = idempotency;
     this.clock = clock;
   }
@@ -80,6 +94,9 @@ public class CheckoutService {
                       .orElseThrow(() -> PmartException.notFound("DRAFT_NOT_FOUND", "주문서가 없습니다."));
               if (expectedVersion != null && expectedVersion != row.version()) {
                 throw PmartException.versionConflict("주문서가 이미 바뀌었습니다. 다시 조회한 뒤 결제하세요.");
+              }
+              if (orders.confirmed(row.orderId())) {
+                return row.orderId(); // 이미 확정된 주문 — 같은 초안으로 다시 청구하지 않는다
               }
               if (row.sagaId() != null && row.orderId() != null) {
                 JsonNode saga = orchestration.saga(row.sagaId());
@@ -116,6 +133,10 @@ public class CheckoutService {
     if (row.sagaId() == null) {
       return null;
     }
+    // 확정 주문이 있으면 사가를 묻지 않는다(주문 원장이 정본)
+    if (orders.confirmed(row.orderId())) {
+      return confirmed(scheduled);
+    }
     JsonNode saga = orchestration.saga(row.sagaId());
     if (saga == null) {
       Map<String, String> unknown = new LinkedHashMap<>();
@@ -141,12 +162,27 @@ public class CheckoutService {
           new Progress("PAYMENT_UNKNOWN", "WAIT", resources, expires, null, null);
       case "COMPENSATING" ->
           new Progress("RESOURCE_PENDING", "WAIT", resources, null, null, failure);
+      // 사가 완료 = 주문 확정까지 끝남(확정 주문 조회보다 사가 사본이 먼저 보일 수 있다)
+      case "COMPLETED" -> confirmed(scheduled);
+      // 승인됐지만 금액·상태 불일치 — 조사 중. 다시 결제하게 하지 않는다
+      case "RECONCILIATION_REQUIRED" ->
+          new Progress("PAYMENT_UNKNOWN", "WAIT", resources, null, null, null);
       default ->
           // 보상 종료: 이번 시도분은 해제됐다. 견적이 유효하면 다시 결제 진입할 수 있다
           draftExpired
               ? new Progress("EXPIRED", "RE_QUOTE", resources, null, null, failure)
               : new Progress("DRAFT", "REVIEW", resources, null, null, failure);
     };
+  }
+
+  /** 확정된 주문 — 자원은 확보 완료, 결제는 승인. */
+  private static Progress confirmed(boolean scheduled) {
+    Map<String, String> r = new LinkedHashMap<>();
+    r.put("inventoryReservation", "HELD");
+    r.put("capacityHold", "HELD");
+    r.put("slotHold", scheduled ? "HELD" : "NOT_REQUIRED");
+    r.put("payment", "APPROVED");
+    return new Progress("CONFIRMED", "DONE", r, null, null, null);
   }
 
   /** 단계·보상 로그 → 계약 ResourceState 값. */
@@ -179,9 +215,13 @@ public class CheckoutService {
     String pay = steps.get("START_PAYMENT");
     out.put(
         "payment",
-        "SUCCEEDED".equals(pay)
-            ? "STARTED"
-            : "FAILED".equals(pay) ? "FAILED" : "UNKNOWN".equals(pay) ? "UNKNOWN" : "NOT_STARTED");
+        "APPROVED".equals(saga.path("payment").path("state").asString(null))
+            ? "APPROVED"
+            : "SUCCEEDED".equals(pay)
+                ? "STARTED"
+                : "FAILED".equals(pay)
+                    ? "FAILED"
+                    : "UNKNOWN".equals(pay) ? "UNKNOWN" : "NOT_STARTED");
     return out;
   }
 
@@ -225,7 +265,13 @@ public class CheckoutService {
     int items = 0;
     for (DraftService.Line l : s.lines()) {
       lines.add(
-          Map.of("orderLineId", orderId + "-L" + i++, "sku", l.sku(), "quantity", l.quantity()));
+          Map.of(
+              "orderLineId",
+              OrderRules.orderLineId(orderId, i++),
+              "sku",
+              l.sku(),
+              "quantity",
+              l.quantity()));
       items += l.quantity();
     }
     b.put("lines", lines);

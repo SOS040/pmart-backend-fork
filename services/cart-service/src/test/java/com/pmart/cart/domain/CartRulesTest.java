@@ -32,4 +32,12 @@ class CartRulesTest {
     assertThat(CartRules.mergeState(1, 2)).isEqualTo("MERGE_PARTIAL");
     assertThat(CartRules.mergeState(0, 2)).isEqualTo("MERGE_REJECTED");
   }
+
+  @Test
+  void remainingAfterOrderRemovesOnlyOrderedQuantity() {
+    assertThat(CartRules.remainingAfterOrder(3, 3)).isZero(); // 주문분 그대로 → 삭제
+    assertThat(CartRules.remainingAfterOrder(5, 3)).isEqualTo(2); // 주문 뒤 더 담은 2개는 남긴다
+    assertThat(CartRules.remainingAfterOrder(2, 3)).isZero(); // 주문 뒤 줄였으면 삭제
+    assertThat(CartRules.remainingAfterOrder(2, 0)).isEqualTo(2);
+  }
 }

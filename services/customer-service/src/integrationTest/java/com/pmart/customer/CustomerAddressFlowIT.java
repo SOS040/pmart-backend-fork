@@ -364,4 +364,61 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
                 .status())
         .isEqualTo(403);
   }
+
+  void orderConfirmed(UUID eventId, String accountId, String orderId, boolean firstPurchase)
+      throws InterruptedException {
+    String json =
+        EventEnvelopeFixtures.envelope("OrderConfirmed")
+            .eventId(eventId)
+            .from("order-service")
+            .aggregate("Order", orderId, 1)
+            .payload(
+                Map.of(
+                    "orderId",
+                    orderId,
+                    "accountId",
+                    accountId,
+                    "firstPurchase",
+                    firstPurchase,
+                    "confirmedAt",
+                    "2026-10-31T01:00:00Z"))
+            .buildJson();
+    kafka.send("order.order.v1", orderId, json).join();
+    Instant until = Instant.now().plus(Duration.ofSeconds(30));
+    while (Instant.now().isBefore(until)) {
+      Integer n =
+          jdbc.queryForObject(
+              "SELECT COUNT(*) FROM inbox_event WHERE event_id = ?", Integer.class, eventId);
+      if (n != null && n > 0) {
+        return;
+      }
+      Thread.sleep(200);
+    }
+    throw new AssertionError("OrderConfirmed 미반영 " + eventId);
+  }
+
+  /**
+   * OrderConfirmed: 첫 구매 무료를 적용한 주문만 사용 기록 → first-purchase-checks 후보 아님. 재전달·다른 주문은 기록을 바꾸지 않는다.
+   */
+  @Test
+  void orderConfirmedMarksFirstPurchaseUsed() throws Exception {
+    String cu = "CU-" + UUID.randomUUID();
+    String svc = TestJwt.service("order-service");
+    String check = "/internal/accounts/" + cu + "/first-purchase-checks";
+
+    // 첫 구매 무료를 쓰지 않은 주문(30,000 이상 등) → 여전히 후보
+    orderConfirmed(UUID.randomUUID(), cu, "ORD-A", false);
+    assertThat(get(svc, check).body().path("firstPurchaseCandidate").asBoolean()).isTrue();
+
+    // 첫 구매 무료 적용 주문 → 후보 아님
+    UUID used = UUID.randomUUID();
+    orderConfirmed(used, cu, "ORD-B", true);
+    assertThat(get(svc, check).body().path("firstPurchaseCandidate").asBoolean()).isFalse();
+    // 다른 주문이 또 첫 구매로 와도(동시 주문 경합) 처음 쓴 주문을 남긴다
+    orderConfirmed(UUID.randomUUID(), cu, "ORD-C", true);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT order_id FROM first_purchase_used WHERE account_id = ?", String.class, cu))
+        .isEqualTo("ORD-B");
+  }
 }

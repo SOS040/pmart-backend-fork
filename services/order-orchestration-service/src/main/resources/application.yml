@@ -36,6 +36,7 @@ pmart:
     mfc-capacity-base-url: ${PMART_MFC_CAPACITY_BASE_URL:http://mfc-capacity-service:8303}
     delivery-capacity-base-url: ${PMART_DELIVERY_CAPACITY_BASE_URL:http://delivery-capacity-service:8402}
     payment-base-url: ${PMART_PAYMENT_BASE_URL:http://payment-service:8205}
+    order-base-url: ${PMART_ORDER_BASE_URL:http://order-service:8201} # 주문 확정(S1 h)
     stuck-after: PT30S # RUNNING·COMPENSATING 이 이만큼 멈추면 sweep 이 같은 키로 이어서 진행
     sweep-interval: PT10S
 management:

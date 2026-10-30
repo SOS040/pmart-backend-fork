@@ -28,7 +28,8 @@
 - product 내부 호출은 서비스 신원 토큰(`pmart.security.service-token.*`, secret `PMART_SERVICE_CLIENT_SECRET`). 콘텐츠 카드·가격은 공개 API.
 - 조회 화면의 이름·이미지·가격·판매 상태는 사본 — 출처마다 실패하면 비우고 `sources[].asOf.freshness=UNAVAILABLE`. 가격 모르는 선택 품목이 있으면 `selectedItemAmount` null.
 - 병합: 회원 토큰 + `X-Guest-Token`(비회원 access token, JWKS 검증)으로 원본 소유 증명. 항목별 재검증(원본 그대로·판매 상태·상한 누적), 성공분만 대상에 더하고 원본에서 뺀다(한 트랜잭션). CONFIRMED/PARTIAL/REJECTED, mergeId 는 (회원, 키)에서 결정적.
-- 사건: `CartItemChangeApplied`(토픽 `commerce.cart.v1` 명시, 담기·변경·삭제). 병합은 아직 사건을 내지 않는다. 구독(OrderConfirmed·ProductSaleStateChanged)은 주문 단계에서.
+- 사건: `CartItemChangeApplied`(토픽 `commerce.cart.v1` 명시, 담기·변경·삭제·주문 정리). 병합은 아직 사건을 내지 않는다.
+- 구독 `OrderConfirmed`(order.order.v1, InboxGuard, 2026-10-31): 주문 계정의 진행 중 장바구니에서 주문분만 뺀다 — 줄의 cartItemId(없을 때만 SKU)로 찾고 주문 수량만큼 감소(`CartRules.remainingAfterOrder`, 0이면 삭제). 품목마다 cartVersion +1·`CartItemChangeApplied`(appliedRequestId `OrderConfirmed:<orderId>`). cart_change 는 남기지 않는다. ProductSaleStateChanged 구독은 아직.
 
 ## 상태
-장바구니 열기·조회·담기·수량/선택 변경·삭제·변경 결과 조회·병합·주문용 내부 조회 구현(2026-10-30).
+장바구니 열기·조회·담기·수량/선택 변경·삭제·변경 결과 조회·병합·주문용 내부 조회 구현(2026-10-30), 주문 확정 후 정리(2026-10-31).

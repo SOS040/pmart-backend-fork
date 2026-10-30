@@ -30,7 +30,7 @@
 - **소유하지 않음**: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
 - **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(완료 전 order-service 미결 의무 조회), 계정 상태 조회.
 - **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`.
-- **구독**: `CustomerAuthenticated`(auth).
+- **구독**: `CustomerAuthenticated`(auth), `OrderConfirmed`(order — 첫 구매 무료 사용 기록, 2026-10-31).
 - **의존**: order(탈퇴 가능 여부), delivery-serviceability(주소 판정).
 
 ### cart-service `[1단계]`

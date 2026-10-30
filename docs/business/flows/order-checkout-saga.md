@@ -64,7 +64,7 @@ PG 진입 전 두 타이머 모두 유효해야 하며 더 이른 만료를 고�
 - 해제 응답 불명은 원예약 조회로 확인. 확인 전 "해제 완료" 표시 금지.
 - PG 승인 후 보상은 `CompensationCancel`이며 그 결과(`CompensationCancelResult`)까지 대사해야 사가 종료.
 
-### 1.4 구현 상태 (2026-10-31, 슬라이스 4 — a~f)
+### 1.4 구현 상태 (2026-10-31, 슬라이스 4·5 — a~j)
 
 | 단계 | 구현 | 비고 |
 |---|---|---|
@@ -76,11 +76,15 @@ PG 진입 전 두 타이머 모두 유효해야 하며 더 이른 만료를 고�
 | d | HOLD_SLOT | 예약배달만(그 밖 SKIPPED). delivery-capacity 정원 20 |
 | e | (쿠폰) | 1차 생략 |
 | f | START_PAYMENT | payment 결제 시도 생성, `resourceExpiresAt` = 자원 만료·가격 동결 중 이른 것 → 사가 WAITING_RESULT, 초안 `nextAction=PAY` 와 결제창 정보 |
-| g~j | 다음 단계 | 승인 대사·주문 확정·자원 확정·보상 취소 |
+| g | AWAIT_PAYMENT_RESULT | 결제 사건(order.payment.v1)은 깨우는 신호, 정본은 결제 시도 조회. 승인 → 보상 로그에 PAYMENT_APPROVAL. 실패 → 즉시 해제. 불명 → UNKNOWN_TRACKING. 불일치 → RECONCILIATION_REQUIRED |
+| h | RECONCILE_PAYMENT | 승인액·통화 = 청구액(KRW). 다르면 RECONCILIATION_REQUIRED + `ReconciliationRequired`(확정·취소·해제 모두 멈춤, 강제 출고 금지) |
+| i | CONFIRM_RESOURCES | 재고 예약·여력·슬롯 HELD → CONFIRMED(키 `sagaId:CONFIRM:자원`). **흐름 원문(h 주문 확정 → i 자원 확정)과 순서를 바꿨다**: `OrderConfirmed` 는 자원 확정 뒤 발행(사건 카탈로그 조건) |
+| (h) | CONFIRM_ORDER | order `/internal/orders/{id}/confirmation` → 주문 저장·`OrderConfirmed` → 사가 COMPLETED. 금액 불일치 422 → 대사 |
+| j | 보상 취소 | 확정 실패(점유 소멸 RESERVATION_LOST·주문 확정 거절 ORDER_CONFIRM_FAILED) → payment 보상 취소(전액) → **CANCELLED 확인 뒤에만** 재고·여력·슬롯 해제 → COMPENSATED |
 
 - 단계 명령 Idempotency-Key = `sagaId:단계`, 해제 = `sagaId:RELEASE:자원종류`. 중단·불명이면 sweep(10초)이 30초 멈춘 사가를 같은 키로 이어서 진행한다.
 - 거절 → 보상 로그의 자원만 역순 해제 → 원예약 조회로 RELEASED·EXPIRED 확인 뒤에만 RELEASED → 모두 확인되면 COMPENSATED. 초안은 `DRAFT`·`REVIEW` + `checkoutFailure`(견적이 유효하면 다시 결제 진입 가능, 새 주문 ID).
-- 자원 만료가 지나면 결제 시도를 조회: 승인(이후 취소 포함) → 보존(다음 단계가 확정), 불명·불일치 → `UNKNOWN_TRACKING`(해제 금지, 상신은 다음 단계), 그 밖(CREATED·PENDING·FAILED) → 해제·`RESOURCE_EXPIRED`. 조회 실패면 해제하지 않고 다시 확인. payment 는 `resourceExpiresAt` 뒤 승인 API 를 부르지 않는다.
+- 결제 대기 중 sweep 이 30초마다 결제 시도를 조회한다(사건 유실 대비). 미승인(CREATED·PENDING)은 자원 만료 뒤에만 해제(`RESOURCE_EXPIRED`), 조회 실패면 해제하지 않고 다시 확인. payment 는 `resourceExpiresAt` 뒤 승인 API 를 부르지 않는다. 불명 1분×5 재조회·상신은 payment 가 하고(`PaymentResultUnknown.escalated`), case 사건 연결은 슬라이스 9.
 - 각 정본도 자체 TTL 로 HELD 를 EXPIRED 처리한다(재고·여력·슬롯). 초기 재고는 INITIAL_STOCK 승인 → mfc-inbound 초기 보유 반입 → mfc-inventory 전기(D2).
 
 ## 2. 확정 후: 이행 요청 (S2 시작)

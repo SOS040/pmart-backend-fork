@@ -32,5 +32,12 @@
 - `POST /order-drafts/{id}/checkouts`: 견적 버전·동결·차단 사유(`CHECKOUT_BLOCKED`) 확인 → orderId(초안+요청 키로 결정적) → orchestration S1 시작. 진행 중이면 기존 주문 ID.
 - 초안 조회가 사가 사본을 읽어 status(RESOURCE_PENDING·PAYMENT_PENDING·PAYMENT_UNKNOWN·DRAFT)·nextAction(WAIT·PAY·REVIEW)·resources·`payment`(결제창 정보)·`checkoutFailure` 를 채운다. 사가 조회 실패면 WAIT·UNKNOWN.
 
+## 주문 확정·조회 (2026-10-31, 슬라이스 5 S1 g~j)
+- `POST /internal/orders/{orderId}/confirmation`(서비스 토큰, orchestration): orderId 로 초안 잠금 → 승인 금액 = 동결 `quote.totalAmount` 확인(`OrderRules.amountMatches`, 아니면 422 `AMOUNT_MISMATCH`, 기록 안 함) → 초안 스냅샷을 `customer_order`/`customer_order_line`(V4)로 옮기고 초안 CONFIRMED → `OrderConfirmed`(토픽 `order.order.v1` 명시, correlationId = 사가 ID)를 한 트랜잭션에. 초안 없음 404, 같은 초안이 다른 주문으로 확정됨 409. 이미 확정이면 다른 키도 200(사건 한 번).
+- 주문행 ID `<orderId>-L<n>`(`OrderRules.orderLineId`, 사가 시작 때 보낸 값과 같음). 수량: originalQty = unfulfilledQty = 주문 수량, 나머지 0. 첫 구매 적용 = 배달팁 사유 FIRST_PURCHASE → 사건 `firstPurchase`.
+- 초안 스냅샷 품목에 `unitsPerSku`(product `/internal/skus`) 추가. 그 전 초안은 확정 때 트랜잭션 밖에서 product 로 채운다.
+- `GET /orders/{id}`·`GET /orders`(고객 본인, 남의 것 404, 최근 확정 순 keyset cursor). 원천은 order 원장만(shipments·claims 빈 배열).
+- 초안 조회: 확정 주문이 있거나 사가 COMPLETED → CONFIRMED·DONE. RECONCILIATION_REQUIRED → PAYMENT_UNKNOWN·WAIT, COMPENSATED → DRAFT·REVIEW(만료면 EXPIRED·RE_QUOTE). 결제 진입은 확정·COMPLETED·RECONCILIATION_REQUIRED 면 기존 주문 ID(새 사가 없음).
+
 ## 상태
-주문 초안·배송 방식 안내·결제 진입 구현(2026-10-31). 주문 확정·주문 조회·내부 API 는 501(결제 확정 단계).
+주문 초안·배송 방식 안내·결제 진입(2026-10-31)·주문 확정·주문 조회 구현. 예약 시간 변경·그 밖 내부 API(수량 변경·탈퇴 확인·배송 사실·고객 약속)는 501.

@@ -52,6 +52,7 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.orchestration.mfc-capacity-base-url=${parts.url}",
       "pmart.orchestration.delivery-capacity-base-url=${parts.url}",
       "pmart.orchestration.payment-base-url=${parts.url}",
+      "pmart.orchestration.order-base-url=${parts.url}",
       "pmart.orchestration.sweep-interval=PT1H" // 시험이 sweep 을 직접 부른다
     })
 @Import(TestJwtConfiguration.class)
@@ -419,5 +420,210 @@ class CheckoutSagaIT extends PostgresKafkaContainerSupport {
             .retrieve()
             .toEntity(String.class);
     assertThat(e.getStatusCode().value()).isEqualTo(403);
+  }
+
+  // ---------- 승인 뒤(g~j) ----------
+
+  /** 결제 시도 조회 응답(우선순위 1 — participants 의 PENDING 을 덮는다). */
+  void paymentIs(String orderId, String state, long approvedAmount) {
+    parts.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/payments/PAY-" + orderId))
+            .atPriority(1)
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "paymentAttemptId",
+                        "PAY-" + orderId,
+                        "state",
+                        state,
+                        "approvedAmount",
+                        approvedAmount,
+                        "pgTransactionId",
+                        "tpk_" + orderId,
+                        "currency",
+                        "KRW"))));
+  }
+
+  void confirmations(String orderId, int inventoryStatus) {
+    parts.stubFor(
+        WireMock.post(
+                urlPathEqualTo("/api/v1/internal/reservations/RSV-" + orderId + "/confirmations"))
+            .willReturn(
+                inventoryStatus == 200
+                    ? json(200, Map.of("status", "APPLIED", "requestId", "x"))
+                    : json(
+                        inventoryStatus,
+                        Map.of(
+                            "code",
+                            "INVALID_STATE",
+                            "detail",
+                            "예약이 만료되었습니다.",
+                            "status",
+                            inventoryStatus))));
+    parts.stubFor(
+        WireMock.post(
+                urlPathEqualTo("/api/v1/internal/capacity-holds/CH-" + orderId + "/confirmations"))
+            .willReturn(json(200, Map.of("status", "APPLIED", "requestId", "x"))));
+    parts.stubFor(
+        WireMock.post(
+                urlPathEqualTo("/api/v1/internal/slot-holds/SH-" + orderId + "/confirmations"))
+            .willReturn(json(200, Map.of("status", "APPLIED", "requestId", "x"))));
+    parts.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/orders/" + orderId + "/confirmation"))
+            .willReturn(
+                json(200, Map.of("status", "APPLIED", "requestId", "x", "resultId", orderId))));
+  }
+
+  String waitingSaga(String orderId, String mode) throws Exception {
+    String sagaId =
+        start(
+                UUID.randomUUID().toString(),
+                request(orderId, mode, Instant.now().plus(9, ChronoUnit.MINUTES)))
+            .body()
+            .path("resultId")
+            .asString();
+    await(sagaId, x -> "WAITING_RESULT".equals(x.path("state").asString()));
+    return sagaId;
+  }
+
+  @Test
+  void approvedPaymentConfirmsResourcesThenOrder() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    participants(orderId, Instant.now().plus(10, ChronoUnit.MINUTES), "HELD", capacityOk(orderId));
+    confirmations(orderId, 200);
+    String sagaId = waitingSaga(orderId, "SCHEDULED");
+
+    paymentIs(orderId, "APPROVED", 18100);
+    sagas.advance(sagaId); // 결제 사건이 깨우는 것과 같다
+    JsonNode s = await(sagaId, x -> "COMPLETED".equals(x.path("state").asString()));
+    assertThat(s.path("state").asString()).as(s.toString()).isEqualTo("COMPLETED");
+    assertThat(step(s, "RECONCILE_PAYMENT").path("state").asString()).isEqualTo("SUCCEEDED");
+    assertThat(step(s, "CONFIRM_RESOURCES").path("state").asString()).isEqualTo("SUCCEEDED");
+    assertThat(step(s, "CONFIRM_ORDER").path("resultId").asString()).isEqualTo(orderId);
+    assertThat(s.hasNonNull("finishedAt")).isTrue();
+    parts.verify(
+        postRequestedFor(
+                urlPathEqualTo("/api/v1/internal/reservations/RSV-" + orderId + "/confirmations"))
+            .withHeader(
+                "Idempotency-Key", WireMock.equalTo(sagaId + ":CONFIRM:INVENTORY_RESERVATION"))
+            .withRequestBody(
+                matchingJsonPath("$.paymentAttemptId", WireMock.equalTo("PAY-" + orderId))));
+    parts.verify(
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/slot-holds/SH-" + orderId + "/confirmations")));
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/orders/" + orderId + "/confirmation"))
+            .withHeader("Idempotency-Key", WireMock.equalTo(sagaId + ":CONFIRM_ORDER"))
+            .withRequestBody(matchingJsonPath("$.approvedAmount", WireMock.equalTo("18100")))
+            .withRequestBody(
+                matchingJsonPath("$.pgTransactionId", WireMock.equalTo("tpk_" + orderId)))
+            .withRequestBody(
+                matchingJsonPath("$.reservationId", WireMock.equalTo("RSV-" + orderId)))
+            .withRequestBody(matchingJsonPath("$.slotHoldId", WireMock.equalTo("SH-" + orderId))));
+    parts.verify(0, postRequestedFor(WireMock.urlMatching(".*/compensation-cancellations")));
+
+    // 완료된 초안에는 새 결제 진입을 만들지 않는다
+    assertThat(
+            start(
+                    UUID.randomUUID().toString(),
+                    request(orderId, "SCHEDULED", Instant.now().plusSeconds(300)))
+                .status())
+        .isEqualTo(409);
+  }
+
+  @Test
+  void lostReservationAfterApprovalCancelsPaymentBeforeReleasingResources() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    participants(
+        orderId, Instant.now().plus(10, ChronoUnit.MINUTES), "RELEASED", capacityOk(orderId));
+    confirmations(orderId, 409); // 지연 승인 — 재고 예약이 이미 만료
+    String sagaId = waitingSaga(orderId, "BUNDLED");
+    // 결제: 승인 → 보상 취소 요청 뒤 CANCELLED
+    String scenario = "pay-" + orderId;
+    parts.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/payments/PAY-" + orderId))
+            .atPriority(1)
+            .inScenario(scenario)
+            .whenScenarioStateIs(com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED)
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "paymentAttemptId",
+                        "PAY-" + orderId,
+                        "state",
+                        "APPROVED",
+                        "approvedAmount",
+                        18100,
+                        "pgTransactionId",
+                        "tpk"))));
+    parts.stubFor(
+        WireMock.post(
+                urlPathEqualTo(
+                    "/api/v1/internal/payments/PAY-" + orderId + "/compensation-cancellations"))
+            .inScenario(scenario)
+            .willSetStateTo("cancelled")
+            .willReturn(json(202, Map.of("status", "ACCEPTED", "requestId", "x"))));
+    parts.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/payments/PAY-" + orderId))
+            .atPriority(1)
+            .inScenario(scenario)
+            .whenScenarioStateIs("cancelled")
+            .willReturn(
+                json(200, Map.of("paymentAttemptId", "PAY-" + orderId, "state", "CANCELLED"))));
+
+    sagas.advance(sagaId);
+    JsonNode s = await(sagaId, x -> "COMPENSATED".equals(x.path("state").asString()));
+    assertThat(s.path("state").asString()).isEqualTo("COMPENSATED");
+    assertThat(s.path("lastError").path("code").asString()).isEqualTo("RESERVATION_LOST");
+    assertThat(s.path("lastError").path("step").asString()).isEqualTo("CONFIRM_RESOURCES");
+    assertThat(s.path("compensationLog")).hasSize(3); // 결제 승인·재고·여력(알뜰은 슬롯 없음)
+    for (JsonNode c : s.path("compensationLog")) {
+      assertThat(c.path("releaseState").asString()).as(c.toString()).isEqualTo("RELEASED");
+    }
+    parts.verify(
+        postRequestedFor(
+                urlPathEqualTo(
+                    "/api/v1/internal/payments/PAY-" + orderId + "/compensation-cancellations"))
+            .withHeader("Idempotency-Key", WireMock.equalTo(sagaId + ":RELEASE:PAYMENT_APPROVAL"))
+            .withRequestBody(matchingJsonPath("$.reason", WireMock.equalTo("RESERVATION_LOST"))));
+    parts.verify(
+        0,
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/orders/" + orderId + "/confirmation")));
+  }
+
+  @Test
+  void approvedAmountMismatchStopsForReconciliation() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    participants(orderId, Instant.now().plus(10, ChronoUnit.MINUTES), "HELD", capacityOk(orderId));
+    confirmations(orderId, 200);
+    String sagaId = waitingSaga(orderId, "SINGLE");
+
+    paymentIs(orderId, "APPROVED", 9_999);
+    sagas.advance(sagaId);
+    JsonNode s = await(sagaId, x -> "RECONCILIATION_REQUIRED".equals(x.path("state").asString()));
+    assertThat(s.path("state").asString()).isEqualTo("RECONCILIATION_REQUIRED");
+    assertThat(step(s, "RECONCILE_PAYMENT").path("state").asString()).isEqualTo("FAILED");
+    // 확정·출고·자동 취소·해제 모두 하지 않는다
+    parts.verify(0, postRequestedFor(WireMock.urlMatching(".*/confirmations")));
+    parts.verify(0, postRequestedFor(WireMock.urlMatching(".*/confirmation")));
+    parts.verify(0, postRequestedFor(WireMock.urlMatching(".*/compensation-cancellations")));
+    parts.verify(0, postRequestedFor(WireMock.urlMatching(".*/releases")));
+  }
+
+  @Test
+  void failedPaymentReleasesResourcesWithoutWaitingForExpiry() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    participants(
+        orderId, Instant.now().plus(10, ChronoUnit.MINUTES), "RELEASED", capacityOk(orderId));
+    String sagaId = waitingSaga(orderId, "SINGLE");
+
+    paymentIs(orderId, "FAILED", 0);
+    sagas.advance(sagaId);
+    JsonNode s = await(sagaId, x -> "COMPENSATED".equals(x.path("state").asString()));
+    assertThat(s.path("lastError").path("code").asString()).isEqualTo("PAYMENT_FAILED");
+    assertThat(s.path("compensationLog")).hasSize(2);
+    parts.verify(0, postRequestedFor(WireMock.urlMatching(".*/compensation-cancellations")));
   }
 }

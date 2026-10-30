@@ -26,7 +26,8 @@
 - 판정 호출은 트랜잭션 밖에서 먼저. 회원은 본인 토큰 전파, 비회원 배송지는 익명(판정 경로는 계약 `security: []`).
 - 쇼핑 주소 선택은 다시 판정하고 `shoppingContextVersion` +1, `ShoppingAddressChanged`(토픽 `commerce.customer.v1` 명시). 현재 쇼핑 주소를 고치면 컨텍스트도 +1. 현재 쇼핑 주소는 삭제 불가(INVALID_STATE).
 - 주소록 최대 건수 `pmart.customer.address-limit`(설계값 20, 비우면 CONFIG_REQUIRED). 비회원 배송지는 기기(`X-Device-Id`)별 같은 한도, 다른 기기 조회는 403.
+- 구독 `OrderConfirmed`(order.order.v1, InboxGuard, 2026-10-31): `firstPurchase=true` 면 `first_purchase_used` 에 (계정, 주문) 기록(ON CONFLICT DO NOTHING — 처음 쓴 주문 유지) → first-purchase-checks 후보 아님. 주문 취소 시 복원은 아직 없다.
 - 약관 동의는 아직 받지 않는다(ADR-0019) — 내부 계정 상태의 `purchasable` 은 ACTIVE 여부만, `requiredConsentOutdated=false`.
 
 ## 상태
-프로필 조회·주소록·쇼핑 주소·비회원 배송지·내부 계정 상태/쇼핑 컨텍스트 구현(2026-10-30). 동의·프로필 변경·탈퇴·첫 구매 대조는 501.
+프로필 조회·주소록·쇼핑 주소·비회원 배송지·내부 계정 상태/쇼핑 컨텍스트 구현(2026-10-30). 첫 구매 사용 기록(OrderConfirmed). 동의·프로필 변경·탈퇴·소셜 식별 기준 첫 구매 대조는 501.

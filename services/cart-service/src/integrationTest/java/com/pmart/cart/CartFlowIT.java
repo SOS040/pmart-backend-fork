@@ -10,9 +10,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +31,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.client.RestClient;
 import org.wiremock.spring.ConfigureWireMock;
 import org.wiremock.spring.EnableWireMock;
@@ -64,6 +68,7 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired KafkaTemplate<String, String> kafka;
 
   @InjectWireMock("deps")
   WireMockServer deps;
@@ -398,6 +403,75 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 guestCart))
         .isEqualTo(3);
+  }
+
+  void orderConfirmed(UUID eventId, String accountId, String orderId, Map<String, Object> line) {
+    String json =
+        EventEnvelopeFixtures.envelope("OrderConfirmed")
+            .eventId(eventId)
+            .from("order-service")
+            .aggregate("Order", orderId, 1)
+            .payload(Map.of("orderId", orderId, "accountId", accountId, "lines", List.of(line)))
+            .buildJson();
+    kafka.send("order.order.v1", orderId, json).join();
+  }
+
+  void awaitInbox(UUID eventId) throws InterruptedException {
+    Instant until = Instant.now().plus(Duration.ofSeconds(30));
+    while (Instant.now().isBefore(until)) {
+      Integer n =
+          jdbc.queryForObject(
+              "SELECT COUNT(*) FROM inbox_event WHERE event_id = ?", Integer.class, eventId);
+      if (n != null && n > 0) {
+        return;
+      }
+      Thread.sleep(200);
+    }
+    throw new AssertionError("OrderConfirmed 미반영 " + eventId);
+  }
+
+  /** OrderConfirmed → 주문분만 장바구니에서 뺀다(cartItemId, 없으면 SKU). 같은 사건 재전달은 한 번만. */
+  @Test
+  void orderConfirmedRemovesOrderedItems() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String member = TestJwt.customer(account);
+    String cartId = post("/carts", member, null).body().path("cartId").asString();
+    Res added = add(member, cartId, "E-00000001", 5, 0, null);
+    assertThat(added.status()).as(added.body().toString()).isEqualTo(200);
+    String itemId = added.body().path("cartItemId").asString();
+
+    // 주문 3개(cartItemId) → 2개 남음, 버전 +1
+    UUID e1 = UUID.randomUUID();
+    String order1 = "ORD-" + UUID.randomUUID();
+    orderConfirmed(
+        e1, account, order1, Map.of("cartItemId", itemId, "sku", "E-00000001", "qty", 3));
+    awaitInbox(e1);
+    JsonNode cart = get("/carts/" + cartId, member).body();
+    assertThat(cart.path("cartVersion").asInt()).isEqualTo(2);
+    assertThat(cart.path("items").path(0).path("quantity").asInt()).isEqualTo(2);
+    // 같은 사건 재전달 → inbox 가 막는다(수량·버전 그대로). 같은 키(같은 파티션)의 표지 사건으로 처리 순서를 확인
+    orderConfirmed(
+        e1, account, order1, Map.of("cartItemId", itemId, "sku", "E-00000001", "qty", 3));
+    UUID marker = UUID.randomUUID();
+    orderConfirmed(marker, account, order1, Map.of("sku", "E-00000404", "qty", 1));
+    awaitInbox(marker);
+    JsonNode same = get("/carts/" + cartId, member).body();
+    assertThat(same.path("cartVersion").asInt()).isEqualTo(2);
+    assertThat(same.path("items").path(0).path("quantity").asInt()).isEqualTo(2);
+    // 다음 주문(cartItemId 없음 → SKU) 2개 → 삭제
+    UUID e2 = UUID.randomUUID();
+    String order2 = "ORD-" + UUID.randomUUID();
+    orderConfirmed(e2, account, order2, Map.of("sku", "E-00000001", "qty", 2));
+    awaitInbox(e2);
+    JsonNode after = get("/carts/" + cartId, member).body();
+    assertThat(after.path("items")).isEmpty();
+    assertThat(after.path("cartVersion").asInt()).isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'CartItemChangeApplied'"
+                    + " AND aggregateid = ? AND payload->'payload'->>'appliedRequestId' LIKE 'OrderConfirmed:%'",
+                Integer.class, cartId))
+        .isEqualTo(2);
   }
 
   String subject(String jwt) {

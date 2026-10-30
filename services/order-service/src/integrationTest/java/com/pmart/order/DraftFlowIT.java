@@ -30,6 +30,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.RestClient;
 import org.wiremock.spring.ConfigureWireMock;
 import org.wiremock.spring.EnableWireMock;
@@ -47,6 +48,7 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.security.service-token.client-secret=it-secret",
+      "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.security.service-token.token-uri=${pmart.order.customer-base-url}/api/v1/internal/service-tokens"
     })
 @Import(TestJwtConfiguration.class)
@@ -69,6 +71,7 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired JdbcTemplate jdbc;
 
   @InjectWireMock("deps")
   WireMockServer deps;
@@ -635,5 +638,221 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
 
   static List<String> codes(Res r) {
     return r.body().path("blockers").findValuesAsString("code");
+  }
+
+  String startSaga(String sagaId) {
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/checkout-sagas"))
+            .willReturn(
+                aResponse()
+                    .withStatus(202)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of("status", "ACCEPTED", "requestId", "k", "resultId", sagaId)))));
+    return sagaId;
+  }
+
+  Res confirm(String token, String orderId, String key, long amount) {
+    var e =
+        http.post()
+            .uri("/internal/orders/{id}/confirmation", orderId)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "order-orchestration-service");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(
+                Map.of(
+                    "paymentAttemptId",
+                    "PAY-1",
+                    "pgTransactionId",
+                    "tgen_1",
+                    "approvedAmount",
+                    amount,
+                    "reservationId",
+                    "RSV-1",
+                    "capacityHoldId",
+                    "CH-1",
+                    "slotHoldId",
+                    "SH-1"))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /**
+   * 주문 확정(orchestration → order): 승인 금액 대조 → 주문 원장 + OrderConfirmed(한 번) → 주문 조회(본인만) → 초안
+   * CONFIRMED/DONE. 사가 상태 COMPLETED·RECONCILIATION_REQUIRED 의 초안 표시와 새 결제 진입 차단도 확인한다.
+   */
+  @Test
+  void confirmOrderCreatesOrderAndSingleEvent() {
+    String first = TestJwt.customer(FIRST);
+    String svc = TestJwt.service("order-orchestration-service");
+    // 첫 구매 회원, 예약 내일 10~11시, 10개(19,000원) → 첫 구매 무료, 총액 19,100
+    Res d =
+        create(
+            first,
+            draft(
+                "PI-" + UUID.randomUUID(),
+                "E-00000001",
+                10,
+                "ADR-IN",
+                "SCHEDULED",
+                window("10:00", "11:00")));
+    assertThat(d.body().path("blockers")).as(d.body().toString()).isEmpty();
+    assertThat(d.body().path("quote").path("deliveryTipReason").asString())
+        .isEqualTo("FIRST_PURCHASE");
+    long total = d.body().path("quote").path("totalAmount").asLong();
+    assertThat(total).isEqualTo(19_100);
+    String draftId = d.body().path("draftId").asString();
+    int quoteVersion = d.body().path("quote").path("quoteVersion").asInt();
+    String sagaId = startSaga("SAGA-" + UUID.randomUUID());
+    Res c = checkout(first, draftId, UUID.randomUUID().toString(), quoteVersion);
+    assertThat(c.status()).as(c.body().toString()).isEqualTo(202);
+    String orderId = c.body().path("resultId").asString();
+
+    // 승인됐지만 대사 필요 → 결제 확인 중(WAIT), 새 결제 진입은 같은 주문 ID(사가를 새로 만들지 않음)
+    saga(
+        sagaId,
+        Map.of(
+            "sagaId",
+            sagaId,
+            "state",
+            "RECONCILIATION_REQUIRED",
+            "currentStep",
+            "CONFIRM_ORDER",
+            "steps",
+            List.of(step("RESERVE_INVENTORY", "SUCCEEDED"), step("START_PAYMENT", "SUCCEEDED")),
+            "payment",
+            Map.of("paymentAttemptId", "PAY-1", "state", "APPROVED")));
+    JsonNode recon = get(first, "/order-drafts/" + draftId).body();
+    assertThat(recon.path("status").asString()).isEqualTo("PAYMENT_UNKNOWN");
+    assertThat(recon.path("nextAction").asString()).isEqualTo("WAIT");
+    assertThat(recon.path("resources").path("payment").asString()).isEqualTo("APPROVED");
+    assertThat(
+            checkout(first, draftId, UUID.randomUUID().toString(), quoteVersion)
+                .body()
+                .path("resultId")
+                .asString())
+        .isEqualTo(orderId);
+    deps.verify(1, WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/checkout-sagas")));
+
+    // 확정 전에는 주문 조회 대상이 아니다
+    assertThat(get(first, "/orders/" + orderId).status()).isEqualTo(404);
+    // 고객 토큰으로 내부 확정 불가, 모르는 주문 404, 금액 불일치 422(확정 안 함)
+    assertThat(confirm(first, orderId, UUID.randomUUID().toString(), total).status())
+        .isEqualTo(403);
+    assertThat(confirm(svc, "ORD-NOPE", UUID.randomUUID().toString(), total).status())
+        .isEqualTo(404);
+    Res mismatch = confirm(svc, orderId, UUID.randomUUID().toString(), total - 100);
+    assertThat(mismatch.status()).isEqualTo(422);
+    assertThat(code(mismatch)).isEqualTo("AMOUNT_MISMATCH");
+    assertThat(get(first, "/orders/" + orderId).status()).isEqualTo(404);
+
+    // 확정 → 같은 키 재전송·다른 키 모두 200, 사건은 한 번
+    String key = sagaId + ":CONFIRM_ORDER";
+    Res ok = confirm(svc, orderId, key, total);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(ok.body().path("resultId").asString()).isEqualTo(orderId);
+    assertThat(confirm(svc, orderId, key, total).status()).isEqualTo(200);
+    Res other = confirm(svc, orderId, UUID.randomUUID().toString(), total);
+    assertThat(other.status()).isEqualTo(200);
+    assertThat(other.body().path("resultId").asString()).isEqualTo(orderId);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'OrderConfirmed' AND aggregateid = ?",
+                Integer.class,
+                orderId))
+        .isEqualTo(1);
+    Map<String, Object> outbox =
+        jdbc.queryForMap(
+            "SELECT topic, correlation_id, payload::text AS payload FROM outbox_event"
+                + " WHERE type = 'OrderConfirmed' AND aggregateid = ?",
+            orderId);
+    assertThat(outbox.get("topic")).isEqualTo("order.order.v1");
+    assertThat(outbox.get("correlation_id")).isEqualTo(sagaId);
+    JsonNode p = mapper.readTree((String) outbox.get("payload")).path("payload");
+    assertThat(p.path("accountId").asString()).isEqualTo(FIRST);
+    assertThat(p.path("firstPurchase").asBoolean()).isTrue();
+    assertThat(p.path("totalAmount").asLong()).isEqualTo(total);
+    assertThat(p.path("lines").path(0).path("orderLineId").asString()).isEqualTo(orderId + "-L1");
+    assertThat(p.path("lines").path(0).path("cartItemId").asString()).isEqualTo("CI-1");
+    assertThat(p.path("lines").path(0).path("unitsPerSku").asInt()).isEqualTo(1);
+    assertThat(p.path("slotHoldId").asString()).isEqualTo("SH-1");
+    assertThat(p.path("arrivalWindow").path("start").asString()).endsWith("T01:00:00Z");
+
+    // 주문 조회: 본인 200, 남 404
+    Res mine = get(first, "/orders/" + orderId);
+    assertThat(mine.status()).as(mine.body().toString()).isEqualTo(200);
+    JsonNode o = mine.body();
+    assertThat(o.path("status").asString()).isEqualTo("CONFIRMED");
+    assertThat(o.path("version").asInt()).isEqualTo(1);
+    assertThat(o.path("deliveryMode").asString()).isEqualTo("SCHEDULED");
+    assertThat(o.path("arrivalWindow").path("start").asString()).isEqualTo("10:00");
+    assertThat(o.path("quote").path("totalAmount").asLong()).isEqualTo(total);
+    assertThat(o.path("quote").path("firstPurchaseBenefit").asString()).isEqualTo("CONFIRMED");
+    assertThat(o.path("lines").path(0).path("orderLineId").asString()).isEqualTo(orderId + "-L1");
+    assertThat(o.path("lines").path(0).path("originalQty").asInt()).isEqualTo(10);
+    assertThat(o.path("lines").path(0).path("unfulfilledQty").asInt()).isEqualTo(10);
+    assertThat(o.path("lines").path(0).path("deliveredQty").asInt()).isZero();
+    assertThat(o.path("payment").path("paymentAttemptId").asString()).isEqualTo("PAY-1");
+    String repeat = TestJwt.customer(REPEAT);
+    assertThat(get(repeat, "/orders/" + orderId).status()).isEqualTo(404);
+    JsonNode list = get(first, "/orders?size=1").body();
+    assertThat(list.path("items").path(0).path("orderId").asString()).isEqualTo(orderId);
+    assertThat(list.path("items").path(0).path("itemCount").asInt()).isEqualTo(10);
+    assertThat(get(repeat, "/orders").body().path("items").findValuesAsString("orderId"))
+        .doesNotContain(orderId);
+
+    // 초안: 확정 주문이 사가 사본보다 우선(CONFIRMED/DONE), 다시 결제 진입해도 같은 주문
+    saga(sagaId, Map.of("sagaId", sagaId, "state", "COMPENSATED", "steps", List.of()));
+    JsonNode done = get(first, "/order-drafts/" + draftId).body();
+    assertThat(done.path("status").asString()).isEqualTo("CONFIRMED");
+    assertThat(done.path("nextAction").asString()).isEqualTo("DONE");
+    assertThat(done.path("orderId").asString()).isEqualTo(orderId);
+    assertThat(done.path("resources").path("payment").asString()).isEqualTo("APPROVED");
+    assertThat(
+            checkout(first, draftId, UUID.randomUUID().toString(), quoteVersion)
+                .body()
+                .path("resultId")
+                .asString())
+        .isEqualTo(orderId);
+    deps.verify(1, WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/checkout-sagas")));
+
+    // 사가 COMPLETED(확정 주문이 아직 안 보여도) → CONFIRMED/DONE, 새 결제 진입 없음
+    Res d2 =
+        create(
+            repeat,
+            draft(
+                "PI-" + UUID.randomUUID(),
+                "E-00000001",
+                10,
+                "ADR-IN",
+                "SCHEDULED",
+                window("10:00", "11:00")));
+    String saga2 = startSaga("SAGA-" + UUID.randomUUID());
+    String draft2 = d2.body().path("draftId").asString();
+    int qv2 = d2.body().path("quote").path("quoteVersion").asInt();
+    String order2 =
+        checkout(repeat, draft2, UUID.randomUUID().toString(), qv2)
+            .body()
+            .path("resultId")
+            .asString();
+    saga(saga2, Map.of("sagaId", saga2, "state", "COMPLETED", "steps", List.of()));
+    JsonNode completed = get(repeat, "/order-drafts/" + draft2).body();
+    assertThat(completed.path("status").asString()).isEqualTo("CONFIRMED");
+    assertThat(completed.path("nextAction").asString()).isEqualTo("DONE");
+    assertThat(
+            checkout(repeat, draft2, UUID.randomUUID().toString(), qv2)
+                .body()
+                .path("resultId")
+                .asString())
+        .isEqualTo(order2);
+    deps.verify(2, WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/checkout-sagas")));
   }
 }

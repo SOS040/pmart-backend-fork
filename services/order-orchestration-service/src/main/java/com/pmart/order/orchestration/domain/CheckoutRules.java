@@ -29,11 +29,33 @@ public final class CheckoutRules {
           "HOLD_CAPACITY",
           "HOLD_SLOT",
           "START_PAYMENT",
-          "AWAIT_PAYMENT_RESULT");
+          "AWAIT_PAYMENT_RESULT",
+          "RECONCILE_PAYMENT",
+          "CONFIRM_RESOURCES",
+          "CONFIRM_ORDER");
 
-  /** 사가가 아직 끝나지 않은 상태(같은 초안에 하나만). */
+  /** 결제 시작 전 단계(가격 동결이 지나면 진행하지 않는다). 승인 뒤 단계는 동결과 무관하다. */
+  public static final List<String> PRE_PAYMENT_STEPS =
+      List.of("VALIDATE_QUOTE", "RESERVE_INVENTORY", "HOLD_CAPACITY", "HOLD_SLOT", "START_PAYMENT");
+
+  /** 같은 초안에 새 결제 진입을 막는 상태(진행 중·대사 대기·완료). */
   public static final List<String> OPEN_STATES =
-      List.of("RUNNING", "WAITING_RESULT", "UNKNOWN_TRACKING", "COMPENSATING");
+      List.of(
+          "RUNNING",
+          "WAITING_RESULT",
+          "UNKNOWN_TRACKING",
+          "COMPENSATING",
+          "RECONCILIATION_REQUIRED",
+          "COMPLETED");
+
+  /** 승인 후 보상 취소 사유(payment CompensationCancellationRequest.reason). */
+  public static String cancelReason(@Nullable String failedStep) {
+    return "CONFIRM_RESOURCES".equals(failedStep) ? "RESERVATION_LOST" : "ORDER_CONFIRM_FAILED";
+  }
+
+  public static String confirmRequestId(String sagaId, String resourceType) {
+    return sagaId + ":CONFIRM:" + resourceType;
+  }
 
   private CheckoutRules() {}
 

@@ -118,6 +118,10 @@ paths:
     get:
       tags: [orders]
       summary: 본인 주문 목록 (조회 기간은 정책값)
+      description: |
+        고객 토큰만(그 밖 403). 본인의 확정 주문만 최근 확정 순(confirmedAt 내림차순). 결제 진입 전·확정 전 주문 ID 는 나오지 않는다 — 진행은 초안 조회로.
+        page.nextCursor 는 불투명 문자열(다음 쪽 cursor 로 그대로). 조회 기간 정책값은 아직 없어 기간으로 자르지 않는다.
+        itemCount 는 주문행 수량 합.
       operationId: listOrders
       parameters:
         - $ref: '_common.yaml#/components/parameters/PageSize'
@@ -138,6 +142,11 @@ paths:
     get:
       tags: [orders]
       summary: 주문 상세 (스냅샷 + 소유 시스템 확정 결과의 조합, 원천별 asOf 표시)
+      description: |
+        고객 토큰만(그 밖 403). 남의 주문·확정 전 주문 ID 는 404(존재를 드러내지 않음).
+        현재(결제 확정 단계)는 order 원장만 조합한다: 확정 스냅샷(품목·배송·견적 금액)·주문행 수량(originalQty = unfulfilledQty = 주문 수량, 나머지 0)·
+        payment{paymentAttemptId, state=APPROVED}. shipments·claims 는 빈 배열, sources 는 order-service 하나(CURRENT).
+        quote.firstPurchaseBenefit 는 첫 구매 무료를 실제 적용했으면 CONFIRMED, 아니면 NOT_ELIGIBLE. productName 은 아직 비운다.
       operationId: getOrder
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string } }
@@ -205,6 +214,13 @@ paths:
       tags: [internal]
       summary: '[orchestration→order] 주문 확정 (PG 승인 대사 일치 + 자원 확정 후)'
       operationId: confirmOrder
+      description: |
+        서비스 토큰만. orderId 는 결제 진입(checkouts) 때 초안에 발급한 ID. 초안 스냅샷(품목·배송·동결 견적)을 주문 원장으로 옮겨 status=CONFIRMED, version=1 로 만들고
+        같은 트랜잭션에서 OrderConfirmed(토픽 order.order.v1)를 Outbox 에 쓴다. 주문행 ID 는 `<orderId>-L<n>`(초안 품목 순서, 사가 시작 때 보낸 값과 같음).
+        - 200 APPLIED, resultId = orderId, version = 주문 버전. 같은 Idempotency-Key 는 저장 결과 재생. 이미 확정된 주문은 다른 키로 와도 200(사건은 다시 내지 않음).
+        - 404 ORDER_NOT_FOUND: 이 orderId 를 가진 초안이 없음(다른 결제 진입으로 바뀐 옛 orderId 포함).
+        - 422 AMOUNT_MISMATCH: approvedAmount ≠ 초안 quote.totalAmount. 확정하지 않는다(사가가 대사 대상으로 넘긴다). 기록하지 않으므로 같은 키 재시도도 다시 판정.
+        - 409 INVALID_STATE: 같은 초안이 이미 다른 orderId 로 확정됨 / SKU 구성 수를 확인하지 못함. VERSION_CONFLICT: X-Expected-Version ≠ 초안 버전.
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -226,6 +242,7 @@ paths:
                 slotHoldId: { type: string }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
           description: AMOUNT_MISMATCH → 확정 차단, 대사 대상
@@ -502,6 +519,9 @@ components:
         orderLineId: { type: string }
         sku: { type: string }
         productName: { type: string, description: 주문 당시 스냅샷 }
+        productId: { type: string }
+        cartItemId: { type: string, description: 주문 대상이던 장바구니 품목(장바구니 정리용) }
+        lineAmount: { $ref: '_common.yaml#/components/schemas/Money' }
         unitsPerSku: { type: integer }
         unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
         discountShare: { $ref: '_common.yaml#/components/schemas/Money' }
@@ -529,6 +549,10 @@ components:
         mfcId: { type: string }
         deliveryMode: { type: string }
         arrivalWindow: { $ref: '#/components/schemas/ArrivalWindow' }
+        confirmedAt: { type: string, format: date-time, description: 주문 확정 시각 }
+        outOfStockPreference: { type: string, enum: [CANCEL_OOS_ONLY, CANCEL_ALL] }
+        shoppingAddressId: { type: string }
+        deliveryNote: { type: string }
         quote: { $ref: '#/components/schemas/Quote' }
         lines: { type: array, items: { $ref: '#/components/schemas/OrderLine' } }
         shipments: { type: array, items: { $ref: '#/components/schemas/Shipment' } }

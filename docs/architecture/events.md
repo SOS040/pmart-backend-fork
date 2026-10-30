@@ -34,7 +34,7 @@
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
 | `OrderDraftCreated` | order-service | BI | draftId, purchaseIntentId, accountId, mfcId, quoteVersion, quoteExpiresAt | 초안 생성·가격 동결 시작 | ① |
-| `OrderConfirmed` | order-service | cart, mfc-fulfillment(또는 동기), notification, demand-planning, replenishment, delivery-dispatch(이행 계획), BI | orderId, orderVersion, accountId, mfcId, lines[{orderLineId, sku, qty, unitsPerSku, weightG, unitPrice, discountShare}], deliveryMode, arrivalWindow, outOfStockPreference, reservationIds, slotHoldId, paymentAttemptId, shipments[] | PG 승인 대사 일치 + 자원 확정 후 | ① |
+| `OrderConfirmed` | order-service | cart(주문분 정리), customer(첫 구매 사용 기록), mfc-fulfillment(또는 동기), notification, demand-planning, replenishment, delivery-dispatch(이행 계획), BI | orderId, orderVersion, accountId, draftId, mfcId, lines[{orderLineId, sku, qty, unitsPerSku, weightG, unitPrice, discountShare, cartItemId}], deliveryMode, arrivalWindow, outOfStockPreference, reservationId, capacityHoldId, slotHoldId, paymentAttemptId, 금액(itemAmount·deliveryTip·deliveryTipReason·bagFee·totalAmount), firstPurchase(첫 구매 무료 적용 → customer 사용 기록), plannedShipments, shipments[](이행 계획 단계), confirmedAt. 토픽 `order.order.v1` | PG 승인 대사 일치 + 자원 확정 후 | ① |
 | `OrderPreparationStarted` | order-service | commerce(조회), notification | orderId, startedAt | MFC `PreparationStarted` 반영. 이후 예약 시간 변경 차단 | ① |
 | `OrderLineQuantityChanged` | order-service | claim, demand-planning, replenishment, commerce | orderId, orderLineId, originalQty, unfulfilledQty, handedOverQty, cancelledBeforeShipQty, reason, version | 부분 취소·결품 반영 | ① |
 | `OrderPartiallyDelivered` | order-service | notification, commerce | orderId, deliveryId, deliveredLines[] | 분할배송 일부 완료 | ① |

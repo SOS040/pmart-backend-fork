@@ -7,7 +7,6 @@ import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.web.PmartException;
 import com.pmart.order.orchestration.domain.CheckoutRules;
-import com.pmart.order.orchestration.domain.CheckoutRules.PaymentVerdict;
 import com.pmart.order.orchestration.domain.CheckoutRules.Window;
 import com.pmart.order.orchestration.infrastructure.Participants;
 import com.pmart.order.orchestration.infrastructure.Participants.Ok;
@@ -24,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +33,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -222,7 +224,7 @@ public class CheckoutSagaService {
           switch (s.state()) {
             case "RUNNING" -> run(s);
             case "COMPENSATING" -> compensate(s);
-            case "WAITING_RESULT", "UNKNOWN_TRACKING" -> checkExpiry(s);
+            case "WAITING_RESULT", "UNKNOWN_TRACKING" -> checkPayment(s);
             default -> {
               // 종료 상태
             }
@@ -231,14 +233,24 @@ public class CheckoutSagaService {
   }
 
   private void run(SagaRow s) {
+    store.ensureSteps(s.sagaId());
     for (StepRow step : store.steps(s.sagaId())) {
       if (List.of("SUCCEEDED", "SKIPPED").contains(step.state())) {
         continue;
       }
       s = store.find(s.sagaId()).orElseThrow();
+      if (!"RUNNING".equals(s.state())) {
+        return; // 앞 단계가 대기·보상·대사로 넘겼다
+      }
       Instant now = clock.instant();
       if ("AWAIT_PAYMENT_RESULT".equals(step.step())) {
-        return; // START_PAYMENT 에서 WAITING_RESULT 로 넘어간다
+        return; // START_PAYMENT 에서 WAITING_RESULT 로 넘어간다. 승인은 checkPayment 가 반영
+      }
+      if (!CheckoutRules.PRE_PAYMENT_STEPS.contains(step.step())) {
+        if (!afterApproval(s, step.step(), now)) {
+          return;
+        }
+        continue;
       }
       if (!now.isBefore(s.quoteExpiresAt())) {
         // 가격 동결이 끝났다 — 불명 단계를 기다리지 않고 이번 시도분을 해제(불명 자원은 정본 TTL 로 소멸)
@@ -357,38 +369,28 @@ public class CheckoutSagaService {
         s.sagaId(), s.orderId(), "AWAIT_PAYMENT_RESULT", "WAITING_RESULT", null, null, now);
   }
 
-  /** 자원 만료가 지난 결제 대기 사가. 미승인 확정일 때만 해제한다. */
-  private void checkExpiry(SagaRow s) {
+  /**
+   * 결제 대기·불명 사가: 결제 시도 원결과를 조회해 반영한다(결제 사건은 이 조회를 앞당기는 신호일 뿐). 승인이면 대사·확정으로, 실패면 해제, 불명·불일치면 해제하지
+   * 않는다. 미승인(CREATED·PENDING)은 자원 만료가 지날 때만 해제한다.
+   */
+  private void checkPayment(SagaRow s) {
     Instant now = clock.instant();
-    if (s.resourceExpiresAt() != null && now.isBefore(s.resourceExpiresAt())) {
-      return;
-    }
     String attemptId =
         s.payment() == null ? null : s.payment().path("paymentAttemptId").asString(null);
-    String state = attemptId == null ? null : participants.paymentState(attemptId);
-    if (attemptId != null && state == null) {
+    JsonNode p = attemptId == null ? null : participants.payment(attemptId);
+    if (attemptId != null && p == null) {
       store.touch(s.sagaId(), now); // 조회 실패 — 확인 전 해제 금지
       return;
     }
-    PaymentVerdict v = CheckoutRules.verdict(state);
-    switch (v) {
+    String state = p == null ? null : p.path("state").asString(null);
+    if ("MISMATCH".equals(state)) {
+      reconciliation(s, "AWAIT_PAYMENT_RESULT", "AMOUNT", "결제 정본이 금액·주문 불일치를 보고했습니다.", now);
+      return;
+    }
+    switch (CheckoutRules.verdict(state)) {
       case APPROVED -> {
-        // 승인 대사·주문 확정은 다음 단계(S1 g~j). 자원 만료 감시만 끝낸다
-        store.stepFinished(
-            s.sagaId(), "AWAIT_PAYMENT_RESULT", "SUCCEEDED", attemptId, null, null, now);
-        store.update(
-            s.sagaId(),
-            "WAITING_RESULT",
-            "RECONCILE_PAYMENT",
-            null,
-            s.payment(),
-            null,
-            null,
-            null,
-            now,
-            false);
-        stateChanged(
-            s.sagaId(), s.orderId(), "RECONCILE_PAYMENT", "WAITING_RESULT", null, null, now);
+        approved(s, Objects.requireNonNull(p), now);
+        run(store.find(s.sagaId()).orElseThrow());
       }
       case UNRESOLVED -> {
         if (!"UNKNOWN_TRACKING".equals(s.state())) {
@@ -412,17 +414,202 @@ public class CheckoutSagaService {
         }
       }
       case NOT_APPROVED -> {
-        store.stepFinished(
-            s.sagaId(),
-            "AWAIT_PAYMENT_RESULT",
-            "TIMED_OUT",
-            attemptId,
-            "RESOURCE_EXPIRED",
-            null,
-            now);
-        fail(s, "AWAIT_PAYMENT_RESULT", "RESOURCE_EXPIRED", "결제 가능 시간이 지났습니다. 다시 결제를 시작하세요.", now);
+        if ("FAILED".equals(state)) {
+          store.stepFinished(
+              s.sagaId(), "AWAIT_PAYMENT_RESULT", "FAILED", attemptId, "PAYMENT_FAILED", null, now);
+          fail(s, "AWAIT_PAYMENT_RESULT", "PAYMENT_FAILED", "결제가 승인되지 않았습니다.", now);
+        } else if (s.resourceExpiresAt() != null && now.isBefore(s.resourceExpiresAt())) {
+          store.touch(s.sagaId(), now); // 아직 결제창 유효 — 기다린다
+        } else {
+          store.stepFinished(
+              s.sagaId(),
+              "AWAIT_PAYMENT_RESULT",
+              "TIMED_OUT",
+              attemptId,
+              "RESOURCE_EXPIRED",
+              null,
+              now);
+          fail(
+              s, "AWAIT_PAYMENT_RESULT", "RESOURCE_EXPIRED", "결제 가능 시간이 지났습니다. 다시 결제를 시작하세요.", now);
+        }
       }
     }
+  }
+
+  /** 승인 사실 반영: 결제 사본에 승인액·PG 거래 ID, 보상 로그에 승인(보상 취소 대상), 대사 단계로. */
+  private void approved(SagaRow s, JsonNode p, Instant now) {
+    ObjectNode payment =
+        s.payment() == null ? mapper.createObjectNode() : (ObjectNode) s.payment().deepCopy();
+    payment.put("state", "APPROVED");
+    payment.put("approvedAmount", p.path("approvedAmount").asLong(-1));
+    putIfPresent(payment, "pgTransactionId", p.path("pgTransactionId").asString(null));
+    putIfPresent(payment, "approvedCurrency", p.path("currency").asString(null));
+    String attemptId = payment.path("paymentAttemptId").asString();
+    store.stepFinished(s.sagaId(), "AWAIT_PAYMENT_RESULT", "SUCCEEDED", attemptId, null, null, now);
+    store.acquired(s.sagaId(), "PAYMENT_APPROVAL", attemptId, Participants.PAYMENT, now);
+    store.update(
+        s.sagaId(), "RUNNING", "RECONCILE_PAYMENT", null, payment, null, null, null, now, false);
+    stateChanged(s.sagaId(), s.orderId(), "RECONCILE_PAYMENT", "RUNNING", null, null, now);
+  }
+
+  /** 승인 뒤 단계(g~j). 다음 단계로 넘어가도 되면 true. 가격 동결과 무관하다(이미 승인된 금액). */
+  private boolean afterApproval(SagaRow s, String step, Instant now) {
+    JsonNode pay = Objects.requireNonNull(s.payment());
+    String attemptId = pay.path("paymentAttemptId").asString();
+    switch (step) {
+      case "RECONCILE_PAYMENT" -> {
+        long approvedAmount = pay.path("approvedAmount").asLong(-1);
+        String currency = pay.path("approvedCurrency").asString("KRW");
+        if (approvedAmount != s.amount() || !"KRW".equals(currency)) {
+          store.stepFinished(s.sagaId(), step, "FAILED", attemptId, "AMOUNT_MISMATCH", null, now);
+          reconciliation(
+              s,
+              step,
+              "AMOUNT",
+              "승인액 " + approvedAmount + " ≠ 청구액 " + s.amount() + " (" + currency + ")",
+              now);
+          return false;
+        }
+        store.stepFinished(s.sagaId(), step, "SUCCEEDED", attemptId, null, null, now);
+        store.update(
+            s.sagaId(), "RUNNING", "CONFIRM_RESOURCES", null, pay, null, null, null, now, false);
+        return true;
+      }
+      case "CONFIRM_RESOURCES" -> {
+        store.stepStarted(
+            s.sagaId(), step, "mfc-inventory/mfc-capacity/delivery-capacity", null, now, null);
+        for (CompensationRow c : store.compensations(s.sagaId())) {
+          if ("PAYMENT_APPROVAL".equals(c.resourceType())) {
+            continue;
+          }
+          String requestId = CheckoutRules.confirmRequestId(s.sagaId(), c.resourceType());
+          Result r =
+              participants.confirm(
+                  c.resourceType(), c.resourceId(), requestId, s.sagaId(), s.orderId(), attemptId);
+          Instant done = clock.instant();
+          if (r instanceof Rejected rej) {
+            // 점유가 만료·해제됐다(지연 승인) — 승인을 보상 취소하고 나머지를 해제한다
+            store.stepFinished(s.sagaId(), step, "FAILED", null, rej.code(), rej.message(), done);
+            fail(s, step, "RESERVATION_LOST", c.resourceType() + ": " + rej.message(), done);
+            return false;
+          }
+          if (r instanceof Participants.Unknown u) {
+            store.stepFinished(s.sagaId(), step, "UNKNOWN", null, u.code(), u.message(), done);
+            store.touch(s.sagaId(), done);
+            return false;
+          }
+        }
+        Instant done = clock.instant();
+        store.stepFinished(s.sagaId(), step, "SUCCEEDED", null, null, null, done);
+        store.update(
+            s.sagaId(), "RUNNING", "CONFIRM_ORDER", null, pay, null, null, null, done, false);
+        return true;
+      }
+      case "CONFIRM_ORDER" -> {
+        String requestId = CheckoutRules.requestId(s.sagaId(), step);
+        store.stepStarted(s.sagaId(), step, Participants.ORDER, requestId, now, null);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("paymentAttemptId", attemptId);
+        body.put("pgTransactionId", pay.path("pgTransactionId").asString(""));
+        body.put("approvedAmount", pay.path("approvedAmount").asLong());
+        for (CompensationRow c : store.compensations(s.sagaId())) {
+          switch (c.resourceType()) {
+            case "INVENTORY_RESERVATION" -> body.put("reservationId", c.resourceId());
+            case "CAPACITY_HOLD" -> body.put("capacityHoldId", c.resourceId());
+            case "SLOT_HOLD" -> body.put("slotHoldId", c.resourceId());
+            default -> {
+              // 결제 승인은 위에서
+            }
+          }
+        }
+        Result r = participants.confirmOrder(s.orderId(), requestId, body);
+        Instant done = clock.instant();
+        return switch (r) {
+          case Ok ok -> {
+            store.stepFinished(s.sagaId(), step, "SUCCEEDED", s.orderId(), null, null, done);
+            store.update(s.sagaId(), "COMPLETED", step, null, pay, null, null, null, done, true);
+            stateChanged(s.sagaId(), s.orderId(), step, "COMPLETED", null, null, done);
+            yield false;
+          }
+          case Rejected rej -> {
+            store.stepFinished(s.sagaId(), step, "FAILED", null, rej.code(), rej.message(), done);
+            if ("AMOUNT_MISMATCH".equals(rej.code())) {
+              reconciliation(s, step, "AMOUNT", rej.message(), done);
+            } else {
+              fail(s, step, rej.code(), rej.message(), done);
+            }
+            yield false;
+          }
+          case Participants.Unknown u -> {
+            store.stepFinished(s.sagaId(), step, "UNKNOWN", null, u.code(), u.message(), done);
+            store.touch(s.sagaId(), done);
+            yield false;
+          }
+        };
+      }
+      default -> throw new IllegalStateException("알 수 없는 단계 " + step);
+    }
+  }
+
+  /** 대사 불일치 — 확정·출고·자동 보상 모두 멈추고 사건으로 넘긴다(강제 출고·강제 취소 금지). */
+  private void reconciliation(SagaRow s, String step, String type, String details, Instant now) {
+    store.update(
+        s.sagaId(),
+        "RECONCILIATION_REQUIRED",
+        step,
+        s.resourceExpiresAt(),
+        s.payment(),
+        step,
+        "RECONCILIATION_REQUIRED",
+        details,
+        now,
+        false);
+    stateChanged(
+        s.sagaId(),
+        s.orderId(),
+        step,
+        "RECONCILIATION_REQUIRED",
+        "RECONCILIATION_REQUIRED",
+        details,
+        now);
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("sagaId", s.sagaId());
+    payload.put("orderId", s.orderId());
+    if (s.payment() != null) {
+      payload.put("paymentAttemptId", s.payment().path("paymentAttemptId").asString());
+    }
+    payload.put("mismatchType", type);
+    payload.put("details", Map.of("message", details));
+    payload.put("detectedAt", now.toString());
+    publish("ReconciliationRequired", s.sagaId(), payload);
+  }
+
+  /** 결제 사건(order.payment.v1) — inbox 트랜잭션 안. 원결과는 조회로 확인하므로 커밋 뒤 사가를 깨우기만 한다. */
+  public void onPaymentEvent(EventEnvelope e) {
+    if (!List.of(
+            "PaymentApproved",
+            "PaymentFailed",
+            "PaymentResultUnknown",
+            "PaymentMismatch",
+            "CompensationCancelResult")
+        .contains(e.eventType())) {
+      return;
+    }
+    String attemptId = e.payload().path("paymentAttemptId").asString(null);
+    if (attemptId == null) {
+      return;
+    }
+    store
+        .sagaIdByPaymentAttempt(attemptId)
+        .ifPresent(
+            sagaId ->
+                TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                      @Override
+                      public void afterCommit() {
+                        kick(sagaId);
+                      }
+                    }));
   }
 
   // ---------- 보상 ----------
@@ -443,7 +630,10 @@ public class CheckoutSagaService {
     compensate(store.find(s.sagaId()).orElseThrow());
   }
 
-  /** 이번 시도분 자원만 역순(확보 늦은 것부터) 해제. 모두 확인되면 COMPENSATED. */
+  /**
+   * 이번 시도분 자원만 역순(확보 늦은 것부터) 해제. 모두 확인되면 COMPENSATED. 승인된 결제가 있으면 보상 취소(전액)가 CANCELLED 로 확인될 때까지
+   * 재고·여력·슬롯을 풀지 않는다(승인취소 성공 전 재판매 금지, 흐름 §1.2).
+   */
   private void compensate(SagaRow s) {
     boolean allReleased = true;
     for (CompensationRow c : store.compensations(s.sagaId())) {
@@ -451,10 +641,27 @@ public class CheckoutSagaService {
         continue;
       }
       String requestId = CheckoutRules.releaseRequestId(s.sagaId(), c.resourceType());
-      Result r = participants.release(c.resourceType(), c.resourceId(), requestId, s.sagaId());
+      boolean payment = "PAYMENT_APPROVAL".equals(c.resourceType());
+      Result r =
+          payment
+              ? participants.compensationCancel(
+                  c.resourceId(),
+                  requestId,
+                  s.sagaId(),
+                  String.valueOf(s.lastErrorStep()),
+                  CheckoutRules.cancelReason(s.lastErrorStep()))
+              : participants.release(c.resourceType(), c.resourceId(), requestId, s.sagaId());
       Instant now = clock.instant();
       String state = participants.resourceState(c.resourceType(), c.resourceId());
-      boolean verified = "RELEASED".equals(state) || "EXPIRED".equals(state);
+      boolean verified =
+          payment ? "CANCELLED".equals(state) : "RELEASED".equals(state) || "EXPIRED".equals(state);
+      if (!verified && payment) {
+        String next = r instanceof Rejected ? "RELEASE_FAILED" : "RELEASE_UNKNOWN";
+        store.releaseState(s.sagaId(), c.resourceType(), next, requestId, null);
+        store.touch(s.sagaId(), now);
+        log.warn("사가 {} 결제 {} 보상 취소 미확인({}) — 자원 해제 보류", s.sagaId(), c.resourceId(), state);
+        return;
+      }
       if (verified) {
         store.releaseState(s.sagaId(), c.resourceType(), "RELEASED", requestId, now);
         compensationExecuted(s, c, "SUCCESS", now);

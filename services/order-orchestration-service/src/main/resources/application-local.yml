@@ -24,3 +24,4 @@ pmart:
     mfc-capacity-base-url: http://localhost:8303
     delivery-capacity-base-url: http://localhost:8402
     payment-base-url: http://localhost:8205
+    order-base-url: http://localhost:8201

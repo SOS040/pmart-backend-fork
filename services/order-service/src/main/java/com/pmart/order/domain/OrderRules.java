@@ -138,6 +138,30 @@ public final class OrderRules {
     return createdAt.plus(QUOTE_TTL);
   }
 
+  /** 주문행 ID — 초안 품목 순서(1부터). 결제 진입 때 사가에 보낸 값과 주문 확정 때 만드는 행이 같아야 한다. */
+  public static String orderLineId(String orderId, int lineNo) {
+    return orderId + "-L" + lineNo;
+  }
+
+  /** 첫 구매 무료배달을 실제로 적용한 주문인가(30,000원 이상 무료는 첫 구매 혜택을 쓰지 않는다). */
+  public static boolean firstPurchaseApplied(String deliveryTipReason) {
+    return "FIRST_PURCHASE".equals(deliveryTipReason);
+  }
+
+  /** 주문 확정 가능 금액인가 — PG 승인 금액이 초안의 동결 총액과 정확히 같아야 한다(부분·초과 승인 모두 차단). */
+  public static boolean amountMatches(long approvedAmount, long frozenTotalAmount) {
+    return approvedAmount == frozenTotalAmount;
+  }
+
+  /** 도착 구간(Asia/Seoul 날짜 + "HH:mm") → UTC 시각 [시작, 끝). 24:00 은 다음 날 00:00. */
+  public static Instant[] windowInstants(java.time.LocalDate date, String start, String end) {
+    return new Instant[] {at(date, start), at(date, end)};
+  }
+
+  private static Instant at(java.time.LocalDate date, String hhmm) {
+    return date.atStartOfDay(SEOUL).plusMinutes(minutes(hhmm)).toInstant();
+  }
+
   /** "HH:mm" → 분(24:00 = 1440). */
   public static int minutes(String hhmm) {
     if ("24:00".equals(hhmm)) {

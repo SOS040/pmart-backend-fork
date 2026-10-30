@@ -28,4 +28,4 @@
 - 발행: `CheckoutSagaStateChanged`·`CompensationExecuted` (order.saga.v1).
 
 ## 상태
-S1 a~f(결제 시작까지) 구현. 승인 대사·확정(g~j), S2~S4, 수동 개입(BO-12)은 501.
+S1 a~j 구현(결제 사건 구독 order.payment.v1 → 대사 → 자원 확정 → 주문 확정, 실패 시 보상 취소 확인 뒤 해제). S2~S4, 수동 개입(BO-12), case 상신은 501·미구현.

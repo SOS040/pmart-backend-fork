@@ -15,6 +15,7 @@ public record OrchestrationProperties(
     String mfcCapacityBaseUrl,
     String deliveryCapacityBaseUrl,
     String paymentBaseUrl,
+    String orderBaseUrl,
     @Nullable Duration stuckAfter) {
 
   public OrchestrationProperties {
@@ -22,6 +23,7 @@ public record OrchestrationProperties(
     mfcCapacityBaseUrl = or(mfcCapacityBaseUrl, "http://mfc-capacity-service:8303");
     deliveryCapacityBaseUrl = or(deliveryCapacityBaseUrl, "http://delivery-capacity-service:8402");
     paymentBaseUrl = or(paymentBaseUrl, "http://payment-service:8205");
+    orderBaseUrl = or(orderBaseUrl, "http://order-service:8201");
     stuckAfter = stuckAfter == null ? Duration.ofSeconds(30) : stuckAfter;
   }
 

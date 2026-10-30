@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -272,6 +273,76 @@ public class CartService {
               return applied(cart, owner, requestId, itemId, item.sku(), 0, false, now);
             })
         .value();
+  }
+
+  // ---------- 주문 확정 후 정리 ----------
+
+  /**
+   * {@code OrderConfirmed}(order.order.v1) — 그 주문에 실제 포함된 장바구니 대상만 한 번 정리한다(Commerce 7장 "주문 확정 후
+   * 처리"). InboxGuard 트랜잭션 안에서 부른다.
+   *
+   * <ul>
+   *   <li>대상: 주문 계정(MEMBER)의 진행 중 장바구니. 없으면(만료·새로 연 장바구니 없음) 할 일 없음.
+   *   <li>품목: 줄의 cartItemId 로 찾는다. cartItemId 가 없는 줄만 같은 SKU 로 찾는다(이미 지운 품목에 새로 담은 같은 SKU 를 지우지
+   *       않는다).
+   *   <li>수량: 주문 수량만큼 뺀다 — 남으면 그 수량으로, 아니면 삭제({@link CartRules#remainingAfterOrder}).
+   *   <li>바뀐 품목마다 cartVersion +1, {@code CartItemChangeApplied}(qty = 남은 수량, appliedRequestId =
+   *       {@code OrderConfirmed:<orderId>}). 변경 결과(cart_change)는 고객 요청이 아니라 남기지 않는다.
+   * </ul>
+   */
+  public int applyOrderConfirmed(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String accountId = p.path("accountId").asString("");
+    String orderId = p.path("orderId").asString(e.aggregateId());
+    if (accountId.isBlank()) {
+      return 0;
+    }
+    CartRow cart = store.activeCart(CartRules.MEMBER, accountId).orElse(null);
+    if (cart == null) {
+      log.info("주문 {} 확정 — 정리할 진행 중 장바구니 없음", orderId);
+      return 0;
+    }
+    cart = store.cart(cart.cartId(), true).orElseThrow();
+    Owner owner = new Owner(CartRules.MEMBER, accountId);
+    String requestId = "OrderConfirmed:" + orderId;
+    Instant now = clock.instant();
+    int changed = 0;
+    for (JsonNode line : p.path("lines")) {
+      String sku = line.path("sku").asString("");
+      String cartItemId = line.path("cartItemId").asString(null);
+      ItemRow item =
+          (cartItemId != null && !cartItemId.isBlank()
+                  ? store.item(cart.cartId(), cartItemId)
+                  : store.itemBySku(cart.cartId(), sku))
+              .filter(i -> i.sku().equals(sku))
+              .orElse(null);
+      if (item == null) {
+        continue; // 이미 지웠거나 다른 장바구니의 품목 — 주문분만 정리하므로 건너뛴다
+      }
+      int remaining = CartRules.remainingAfterOrder(item.quantity(), line.path("qty").asInt(0));
+      if (remaining > 0) {
+        store.updateItem(item.cartItemId(), remaining, item.selected(), now);
+      } else {
+        store.deleteItem(item.cartItemId());
+      }
+      int version = store.bump(cart.cartId(), now);
+      publish(
+          cart,
+          owner,
+          new ChangeResult(
+              "APPLIED",
+              requestId,
+              cart.cartId(),
+              item.cartItemId(),
+              sku,
+              remaining,
+              remaining > 0 && item.selected(),
+              version,
+              now));
+      changed++;
+    }
+    log.info("주문 {} 확정 — 장바구니 {} 품목 {}건 정리", orderId, cart.cartId(), changed);
+    return changed;
   }
 
   public ChangeResult changeResult(String cartId, Owner owner, String requestId) {
