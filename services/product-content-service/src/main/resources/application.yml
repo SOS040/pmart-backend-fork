@@ -30,6 +30,16 @@ server:
 pmart:
   messaging:
     domain: commerce
+  security:
+    # 계약 security: [] 작업(비회원 둘러보기, 게시본만). 기본 목록을 덮어쓰므로 actuator·error 도 다시 적는다. 세 경로 모두 GET 하나뿐이라 경로 단위 허용이 계약과 일치.
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus
+      - /error
+      - /api/v1/product-contents
+      - /api/v1/product-contents/*
+      - /api/v1/content-images/*
   storage:
     # 상품 이미지 저장소(S3 호환, ADR-0016). 값은 환경변수로만 — 자격 증명을 이 파일·이미지에 넣지 않는다.
     s3:

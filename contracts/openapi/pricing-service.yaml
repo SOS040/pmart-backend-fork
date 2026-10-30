@@ -22,6 +22,7 @@ paths:
       tags: [prices]
       summary: SKU 현재 유효 가격 조회 (표시용. 견적 확정은 order 초안)
       operationId: getPrice
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - { name: sku, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
         - { name: at, in: query, description: 기준 시각. 생략 시 현재, schema: { type: string, format: date-time } }
@@ -42,6 +43,7 @@ paths:
       tags: [prices]
       summary: SKU 일괄 가격 조회 (최대 100건)
       operationId: listPrices
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - name: skus
           in: query

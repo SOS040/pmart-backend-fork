@@ -30,6 +30,15 @@ server:
 pmart:
   messaging:
     domain: commerce
+  security:
+    # 계약 security: [] 작업(비회원 둘러보기). 기본 목록을 덮어쓰므로 actuator·error 도 다시 적는다. 두 경로 모두 GET 하나뿐이라 경로 단위 허용이 계약과 일치.
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus
+      - /error
+      - /api/v1/categories/tree
+      - /api/v1/categories/*/filters
   product:
     # 구매 상한: 같은 기초상품 Σ 수량×구성 낱개 수 (Commerce 2장 [확정] 기본 10). 비우면 CONFIG_REQUIRED
     purchase-limit-units: 10

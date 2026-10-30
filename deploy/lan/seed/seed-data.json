@@ -1,0 +1,84 @@
+{
+  "_comment": "LAN·로컬 시험 데이터(합성). local-reference/ 의 캡처 자료는 쓰지 않는다. 상품명은 모두 [시험] 으로 시작한다.",
+  "mfcId": "MFC-SEED-01",
+  "categoryTree": {
+    "sourceNote": "pmart-seed 합성 시험 트리 (deploy/lan/seed/seed-data.json)",
+    "categories": [
+      {
+        "id": "t01", "name": "신선식품", "level": "top", "section": "맛있는것", "filters": ["seed-storage"],
+        "children": [
+          { "id": "t01-c01", "name": "채소", "level": "sub" },
+          { "id": "t01-c02", "name": "두부·계란", "level": "sub" }
+        ]
+      },
+      {
+        "id": "t02", "name": "간편식", "level": "top", "section": "맛있는것", "filters": ["seed-storage"],
+        "children": [
+          { "id": "t02-c01", "name": "국·탕·찌개", "level": "sub" },
+          { "id": "t02-c02", "name": "밀키트·냉동", "level": "sub" }
+        ]
+      },
+      {
+        "id": "t03", "name": "생활용품", "level": "top", "section": "편리한것",
+        "children": [
+          { "id": "t03-c01", "name": "휴지·물티슈", "level": "sub" }
+        ]
+      }
+    ],
+    "filters": [
+      { "id": "seed-storage", "group": "보관방법", "selectionMode": "multiple", "options": ["냉장", "냉동", "실온"] }
+    ]
+  },
+  "serviceability": {
+    "_comment": "서울 서초·강남 일부를 덮는 사각형 시험 권역. 좌표는 [경도, 위도].",
+    "zoneId": "Z-SEED-SEOCHO",
+    "name": "시험 권역(서초·강남 일부)",
+    "box": { "minLng": 127.00, "minLat": 37.47, "maxLng": 127.06, "maxLat": 37.53 },
+    "inside": { "label": "서초역 부근", "lat": 37.4918, "lng": 127.0076 },
+    "outside": { "label": "광화문 부근", "lat": 37.5759, "lng": 126.9768 }
+  },
+  "products": [
+    {
+      "key": "SEED-001", "barcode": "2990000000011", "categoryId": "t01-c02",
+      "name": "[시험] 국산콩 두부 300g", "unitType": "E", "unitsPerSku": 1, "weightG": 320, "storageType": "CHILLED",
+      "price": 1900, "color": "#F2E8CF",
+      "description": "시험용 합성 상품입니다. 국산콩으로 만든 부침용 두부.",
+      "storageGuide": "0~10℃ 냉장 보관", "notices": ["원산지: 시험 데이터", "내용량: 300g"]
+    },
+    {
+      "key": "SEED-002", "barcode": "2990000000028", "categoryId": "t01-c01",
+      "name": "[시험] 친환경 애호박 1개", "unitType": "E", "unitsPerSku": 1, "weightG": 300, "storageType": "CHILLED",
+      "price": 1500, "color": "#8DB580",
+      "description": "시험용 합성 상품입니다. 볶음·찌개용 애호박.",
+      "storageGuide": "냉장 보관", "notices": ["원산지: 시험 데이터"]
+    },
+    {
+      "key": "SEED-003", "barcode": "2990000000035", "categoryId": "t02-c01",
+      "name": "[시험] 소고기 미역국 500g", "unitType": "E", "unitsPerSku": 1, "weightG": 520, "storageType": "CHILLED",
+      "price": 4900, "color": "#6B4E3D",
+      "description": "시험용 합성 상품입니다. 데우기만 하면 되는 미역국.",
+      "storageGuide": "0~10℃ 냉장 보관, 개봉 후 바로 드세요", "notices": ["원산지: 시험 데이터", "내용량: 500g"]
+    },
+    {
+      "key": "SEED-004", "barcode": "2990000000042", "categoryId": "t02-c02",
+      "name": "[시험] 차돌 된장찌개 밀키트 2인분", "unitType": "E", "unitsPerSku": 1, "weightG": 750, "storageType": "CHILLED",
+      "price": 8900, "color": "#C08B4F",
+      "description": "시험용 합성 상품입니다. 재료가 손질된 2인분 밀키트.",
+      "storageGuide": "0~10℃ 냉장 보관", "notices": ["원산지: 시험 데이터", "내용량: 2인분"]
+    },
+    {
+      "key": "SEED-005", "barcode": "2990000000059", "categoryId": "t02-c02",
+      "name": "[시험] 고기 왕만두 1kg", "unitType": "E", "unitsPerSku": 1, "weightG": 1020, "storageType": "FROZEN",
+      "price": 7900, "color": "#E4D6C3",
+      "description": "시험용 합성 상품입니다. 찌거나 구워 먹는 냉동 만두.",
+      "storageGuide": "-18℃ 이하 냉동 보관", "notices": ["원산지: 시험 데이터", "내용량: 1kg"]
+    },
+    {
+      "key": "SEED-006", "barcode": "2990000000066", "categoryId": "t03-c01",
+      "name": "[시험] 3겹 화장지 30롤", "unitType": "B", "unitsPerSku": 30, "weightG": 4200, "storageType": "AMBIENT",
+      "price": 12900, "color": "#9FB8D9",
+      "description": "시험용 합성 상품입니다. 3겹 롤 화장지 30롤 묶음.",
+      "storageGuide": "직사광선을 피해 실온 보관", "notices": ["제조국: 시험 데이터"]
+    }
+  ]
+}

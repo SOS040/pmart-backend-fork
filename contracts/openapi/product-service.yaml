@@ -172,6 +172,7 @@ paths:
       tags: [categories]
       summary: 카테고리 트리 (상위>하위>칩1>칩2 4단계, ADR-0015)
       operationId: getCategoryTree
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - { name: version, in: query, description: 생략 시 현재 발효 버전, schema: { type: integer } }
       responses:
@@ -192,6 +193,7 @@ paths:
       tags: [categories]
       summary: 카테고리 노드의 필터 패널 (그룹·선택 방식·옵션, 화면 순서)
       operationId: getCategoryFilters
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - { name: categoryId, in: path, required: true, schema: { type: string } }
         - { name: version, in: query, description: 생략 시 현재 발효 버전, schema: { type: integer } }

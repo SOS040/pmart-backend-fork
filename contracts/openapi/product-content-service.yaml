@@ -29,6 +29,7 @@ paths:
       description: |
         판매 상태·가격·현재 PPC 가용은 각 정본의 사본이며 asOf를 함께 반환한다. 이 응답으로 구매 가능을 확정하지 않는다.
       operationId: getProductContent
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - { name: productId, in: path, required: true, schema: { type: string } }
         - { name: mfcId, in: query, description: 현재 쇼핑 주소의 담당 센터. 취급 여부 표시용, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
@@ -49,6 +50,7 @@ paths:
       tags: [product-contents]
       summary: 상품 카드 일괄 조회 (목록·장바구니·진열용, 최대 100건)
       operationId: listProductContents
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - name: productIds
           in: query
@@ -354,8 +356,9 @@ paths:
       tags: [content-images]
       summary: 이미지 본문 (버킷이 비공개라 이 서비스가 대신 읽어 준다)
       description: |
-        내용 주소(sha256) 기반이라 같은 imageId 의 본문은 바뀌지 않는다(긴 캐시, ETag=sha256). 고객·운영자 토큰으로 읽는다.
+        내용 주소(sha256) 기반이라 같은 imageId 의 본문은 바뀌지 않는다(긴 캐시, ETag=sha256). 게시된 이미지는 토큰 없이 읽는다(`<img src>` 가능). 초안 이미지는 운영자·서비스 토큰만.
       operationId: getContentImage
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - { name: imageId, in: path, required: true, schema: { type: string } }
       responses:

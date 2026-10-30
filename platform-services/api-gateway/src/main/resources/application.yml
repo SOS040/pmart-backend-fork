@@ -217,6 +217,20 @@ pmart:
         path: /api/v1/guest-delivery-addresses # customer-service
       - method: GET
         path: /api/v1/guest-delivery-addresses/* # customer-service
+      - method: GET
+        path: /api/v1/categories/tree # product-service
+      - method: GET
+        path: /api/v1/categories/*/filters # product-service
+      - method: GET
+        path: /api/v1/product-contents # product-content-service
+      - method: GET
+        path: /api/v1/product-contents/* # product-content-service
+      - method: GET
+        path: /api/v1/content-images/* # product-content-service
+      - method: GET
+        path: /api/v1/prices # pricing-service
+      - method: GET
+        path: /api/v1/prices/* # pricing-service
       - method: POST
         path: /api/v1/serviceability-checks # delivery-serviceability-service
       - method: GET

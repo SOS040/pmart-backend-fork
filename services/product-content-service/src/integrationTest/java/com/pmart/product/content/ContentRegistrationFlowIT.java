@@ -115,9 +115,19 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
   }
 
+  /** token 이 null 이면 비회원(토큰 없음). */
   Res get(String path, String token) {
     var e =
-        http.get().uri(path).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
+        http.get()
+            .uri(path)
+            .headers(
+                h -> {
+                  if (token != null) {
+                    h.setBearerAuth(token);
+                  }
+                })
+            .retrieve()
+            .toEntity(String.class);
     return new Res(
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
   }
@@ -137,7 +147,9 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
             .uri("http://localhost:" + port + url)
             .headers(
                 h -> {
-                  h.setBearerAuth(token);
+                  if (token != null) {
+                    h.setBearerAuth(token);
+                  }
                   h.set("Accept", "*/*");
                 })
             .retrieve()
@@ -455,6 +467,12 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(served.contentType()).isEqualTo("image/jpeg");
     String draftBImage = draftB.path("images").path(0).path("url").asString();
     assertThat(image(draftBImage, CUSTOMER).status()).isEqualTo(404);
+    // 비회원(토큰 없음)도 게시본만: 상세·카드·게시 이미지 200, 초안 이미지 404
+    assertThat(get("/product-contents/" + productId, null).status()).isEqualTo(200);
+    assertThat(get("/product-contents?productIds=" + productId, null).body().path("items"))
+        .hasSize(1);
+    assertThat(image(mainUrl, null).body()).isEqualTo(main);
+    assertThat(image(draftBImage, null).status()).isEqualTo(404);
     assertThat(image(draftBImage, MD).body()).isEqualTo(d1);
 
     // 8) 발행: ProductContentPublished 가 commerce.product.v1 로 Outbox 에
