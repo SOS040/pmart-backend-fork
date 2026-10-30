@@ -30,7 +30,7 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin "
+INFRA=" postgres kafka connect redis zipkin s3 "
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
 yml() { echo "$(src_dir "$1")/src/main/resources/application.yml"; }
 port_of() { awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$(yml "$1")"; }
@@ -205,6 +205,37 @@ EOF
 
 EOF
         ;;
+      s3)
+        # 상품 이미지 저장소(SeaweedFS mini, ADR-0016). deploy/local 과 같은 이미지·설정. 자격 증명은 .secrets 에서, 시작 시 파일로 쓴다.
+        cat <<EOF
+  s3:
+    <<: *common
+    image: chrislusf/seaweedfs:4.48
+    environment:
+      S3_ACCESS_KEY: \${PMART_S3_ACCESS_KEY}
+      S3_SECRET_KEY: \${PMART_S3_SECRET_KEY}
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        umask 077 &&
+        printf '{"identities":[{"name":"app","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","List","Tagging","Write"]}]}'
+        "\$\$S3_ACCESS_KEY" "\$\$S3_SECRET_KEY" > /tmp/s3.json &&
+        chown seaweed /tmp/s3.json &&
+        exec /entrypoint.sh mini -dir=/data -s3.config=/tmp/s3.json -admin.ui=false
+        -s3.port.iceberg=0 -s3.port.lance=0 -bucket=pmart-product-content
+    ports: ["8333:8333"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8333/"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+EOF
+        ;;
       zipkin)
         cat <<EOF
   zipkin:
@@ -244,6 +275,16 @@ EOF
           echo "      PMART_AUTH_ISSUER: http://auth-service:$(port_of auth-service)"
           echo "      PMART_AUTH_SIGNING_KEYS_0_KID: \${PMART_AUTH_SIGNING_KID}"
           echo "      PMART_AUTH_SIGNING_KEYS_0_PRIVATEKEY: \${PMART_AUTH_SIGNING_KEY}"
+          # 첫 관리자(ADR-0018). 해시만 넘긴다(원문은 .secrets/operator-admin-password)
+          echo "      PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID: \${PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID}"
+          echo "      PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH: \${PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH}"
+        fi
+        if needs "$c" PMART_S3_BUCKET; then
+          [ -n "${WHERE[s3]:-}" ] || { echo "$c 는 s3 가 필요한데 배치에 s3 가 없음" >&2; exit 1; }
+          echo "      PMART_S3_ENDPOINT: http://s3:8333"
+          echo "      PMART_S3_BUCKET: pmart-product-content"
+          echo "      PMART_S3_ACCESS_KEY: \${PMART_S3_ACCESS_KEY}"
+          echo "      PMART_S3_SECRET_KEY: \${PMART_S3_SECRET_KEY}"
         fi
         if [ "$c" = api-gateway ]; then
           echo "      PMART_GATEWAY_CORS_ALLOWEDORIGINS: \"$(cors_origins)\""
@@ -264,6 +305,7 @@ EOF
     vols=""
     [[ "$comps" == *" postgres "* ]] && vols+="  pgdata:"$'\n'
     [[ "$comps" == *" kafka "* ]] && vols+="  kafkadata:"$'\n'
+    [[ "$comps" == *" s3 "* ]] && vols+="  s3data:"$'\n'
     [ -n "$vols" ] && printf 'volumes:\n%s' "$vols"
   } > "$dir/compose.yml"
 
@@ -286,6 +328,13 @@ EOF
     if [[ "$comps" == *" auth-service "* ]]; then
       echo "PMART_AUTH_SIGNING_KID=$(secret signing-kid)"
       echo "PMART_AUTH_SIGNING_KEY=$(grep -v -- '-----' "$SECRETS/signing-key.pem" | tr -d '\r\n')"
+      echo "PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID=$(secret operator-admin-login)"
+      # bcrypt 해시에 $ 가 있어 작은따옴표(compose .env 의 리터럴 값)
+      echo "PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH='$(secret operator-admin-hash)'"
+    fi
+    if [[ "$comps" == *" s3 "* || "$comps" == *" product-content-service "* ]]; then
+      echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
+      echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"
     fi
   } > "$dir/.env"
 
