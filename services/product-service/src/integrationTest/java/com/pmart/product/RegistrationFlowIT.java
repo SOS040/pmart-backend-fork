@@ -577,6 +577,20 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(pass.status()).isEqualTo(200);
     assertThat(pass.body().path("passed").asBoolean()).isTrue();
     assertThat(pass.body().path("limitPerBaseProduct").path("value").asInt()).isEqualTo(10);
+    // 계약대로 Idempotency-Key 없이(조회성 검증) — cart 가 이렇게 부른다(2026-10-30 LAN 에서 400 으로 발견)
+    var noKey =
+        http.post()
+            .uri("/internal/purchase-limit-checks")
+            .headers(
+                h -> {
+                  h.setBearerAuth(ORDER);
+                  h.set("X-Source-System", "cart-service");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of("items", List.of(Map.of("sku", sku, "quantity", 1))))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(noKey.getStatusCode().value()).isEqualTo(200);
     Res over =
         send(
             ORDER,
