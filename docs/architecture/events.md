@@ -17,7 +17,7 @@
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
 | `ProductVersionPublished` | product-service | product-content, search, storefront, pricing, cdc-inventory, mfc-inventory, order, cart | productId, baseProductId, sku[], unitsPerSku, weightG, packagingSpec, categoryPaths, version | 승인된 상품/SKU 버전 발효 | ① |
-| `SkuIssued` | product-service | cdc-inventory, mfc-inventory, approval | sku(E-/B-), baseProductId, version | 본사 승인 후 SKU 발급 | ① |
+| `SkuIssued` | product-service | cdc-inventory, mfc-inventory, approval, pricing | sku(E-/B-), baseProductId, version | 본사 승인 후 SKU 발급 | ① |
 | `ProductSaleStateChanged` | product-service | cart, search, storefront, order, demand-planning | sku, state(ON_SALE/TEMP_OUT/DISCONTINUED), effectiveAt | 전사 판매 상태 변경 | ① |
 | `CategoryChanged` | product-service | search, storefront, product-content | categoryId, parent, state, version | 분류 승인 발효 | ① |
 | `ProductContentPublished` | product-content | search | productId, contentVersion | 콘텐츠 발효(5분 내 반영 목표) | ① |

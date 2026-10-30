@@ -89,8 +89,9 @@ paths:
       tags: [price-versions]
       summary: 가격 버전 반영 (approval BO-04 승인 결과 참조)
       description: |
-        승인된 가격 변경(approvalId)을 SKU별 새 가격 버전으로 등록한다. 효력 시각 도달 시 PriceVersionEffective 발행.
-        승인 범위(SKU·금액·효력일)와 요청이 다르면 APPROVAL_SCOPE_MISMATCH. 같은 approvalId 재전송은 기존 결과 반환.
+        가격 버전은 ApprovalDecided(PRICE) 수신 때 SKU별로 만들어진다(효력 시각 도달 시 PriceVersionEffective 발행).
+        이 명령은 요청이 그 승인 범위(SKU·금액·효력일)와 같은지 대조하고 반영 결과를 requestId 로 묶는다.
+        다르면 APPROVAL_SCOPE_MISMATCH, 승인을 아직 받지 못했거나 반려된 승인이면 APPROVAL_REQUIRED(같은 키로 재시도 가능).
       operationId: applyPriceVersion
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

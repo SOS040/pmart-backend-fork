@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/SkuIssued.v1.json",
   "title": "SkuIssued",
-  "description": "본사 승인 후 SKU 발급. 발행 product-service. 구독 cdc-inventory, mfc-inventory, approval. 토픽 commerce.product.v1. 단계 ①",
+  "description": "본사 승인 후 SKU 발급. 발행 product-service. 구독 cdc-inventory, mfc-inventory, approval, pricing. 토픽 commerce.product.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
