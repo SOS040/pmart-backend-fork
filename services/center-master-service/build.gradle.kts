@@ -18,4 +18,5 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox·반영 결과 행 확인
 }

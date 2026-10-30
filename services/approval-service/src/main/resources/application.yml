@@ -34,6 +34,7 @@ pmart:
       DISPLAY: DISPLAY_APPROVER # 고객용 상품명·설명·이미지 게시 (BO-05)
       PRICE: PRICE_APPROVER # 기본 판매가격 (BO-04)
       SERVICEABILITY: SERVICEABILITY_APPROVER # 고객 배송 권역·담당 MFC 매핑 (BO-07)
+      CENTER_MASTER: CENTER_MASTER_APPROVER # 센터 기준정보·영업 캘린더 (BO-06)
 management:
   tracing:
     export:

@@ -73,6 +73,27 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
 
+  /internal/centers/{centerId}/calendar:
+    get:
+      tags: [internal]
+      summary: '[capacity/order→center-master] 영업 캘린더 조회 (서비스 토큰) — 공개 조회와 같은 응답'
+      description: |
+        슬롯 생성(delivery-capacity)·즉시 배송 가능 판정(order)이 고객·비회원 요청 처리 중에 부른다. 사용자 토큰(비회원 포함)을 전파하지 않도록
+        서비스 토큰 경로를 둔다. 시간표가 승인되지 않았으면 422 CONFIG_REQUIRED(0·상시 영업으로 바꾸지 않음).
+      operationId: getCenterCalendarInternal
+      parameters:
+        - { name: centerId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date, description: Asia/Seoul 영업일 } }
+        - { name: kind, in: query, required: true, schema: { $ref: '#/components/schemas/TimetableKind' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CalendarDay' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
   /internal/centers:
     post:
       tags: [internal]
