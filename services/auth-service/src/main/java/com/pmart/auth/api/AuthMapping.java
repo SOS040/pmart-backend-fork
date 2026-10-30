@@ -2,7 +2,7 @@ package com.pmart.auth.api;
 
 import com.pmart.auth.api.generated.model.OperatorAccount;
 import com.pmart.auth.api.generated.model.TokenPair;
-import com.pmart.auth.application.OperatorAuthService;
+import com.pmart.auth.application.SessionTokens;
 import com.pmart.auth.domain.OperatorRules;
 import com.pmart.auth.infrastructure.OperatorStore.AccountRow;
 import java.time.Instant;
@@ -15,7 +15,7 @@ final class AuthMapping {
 
   private AuthMapping() {}
 
-  static TokenPair tokens(OperatorAuthService.Tokens t) {
+  static TokenPair tokens(SessionTokens.Tokens t) {
     return new TokenPair()
         .accessToken(t.accessToken())
         .accessTokenExpiresAt(odt(t.accessTokenExpiresAt()))

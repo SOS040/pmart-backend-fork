@@ -56,6 +56,18 @@ pmart:
       lock-duration: PT15M
       password-min-length: 10
       admin-role: OPERATOR_ADMIN
+    # 고객 소셜 로그인(D6: Google 먼저, 2026-10-30). 수명·제한 수치는 보안 설정값(제한은 Commerce 4.9: 15분 5회 → 10분)
+    customer:
+      access-token-ttl: PT30M
+      refresh-token-ttl: P30D
+      session-max-age: P30D
+      require-consent: false # 사용자 결정(2026-10-30): 필수 약관 동의 단계는 지금 쓰지 않는다. customer-service 동의가 생기면 true
+      failure-window: PT15M
+      max-failures: 5
+      restriction: PT10M
+      google:
+        # 허용할 ID 토큰 aud = Google OAuth 클라이언트 ID(고객 앱·웹 서버 클라이언트, 쉼표 구분). 비면 Google 로그인은 CONFIG_REQUIRED
+        client-ids: ${PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS:}
     # signing.keys[n].kid / private-key, service-clients[n].client-id / secret-hash 는 Secret Manager 에서 환경변수로 주입한다
     # (PMART_AUTH_SIGNING_KEYS_0_KID, PMART_AUTH_SIGNING_KEYS_0_PRIVATEKEY, PMART_AUTH_SERVICECLIENTS_0_CLIENTID ...). 키가 없으면 기동 실패.
 management:

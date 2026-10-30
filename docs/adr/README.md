@@ -20,5 +20,6 @@
 | [0016](0016-object-storage-seaweedfs-s3.md) | 상품 이미지는 S3 호환 저장소, 로컬·LAN 은 SeaweedFS 4.48 + AWS SDK v2 2.55.11 (수집 저장소와 동일) | 제안 |
 | [0017](0017-production-db-servers-five.md) | 운영 PostgreSQL 은 도메인별 DB 서버 5대, 서비스별 논리 DB·계정 분리 | 제안 |
 | [0018](0018-operator-accounts-and-jwt-login.md) | 운영자는 auth-service 운영자 계정(아이디·비밀번호)으로 로그인, JWT·refresh 회전, 게이트웨이 웹 CORS | 제안 |
+| [0019](0019-customer-google-login-id-token.md) | 고객 소셜 로그인은 Google 먼저 — 앱 ID 토큰을 auth-service 가 검증, 필수 동의 단계 임시 생략 | 제안 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

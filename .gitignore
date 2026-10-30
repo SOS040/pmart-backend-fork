@@ -38,3 +38,7 @@ deploy/lan/.secrets/
 
 # 외부 참고 자료 원본 (저작권 문제로 저장소에 올리지 않는다: 상품·카테고리·이미지 등)
 local-reference/
+
+# OAuth 제공자 클라이언트 파일(Google client_secret_*.json 등). 원본은 deploy/lan/.secrets/google-oauth/ 에 둔다
+client_secret_*.json
+**/google-oauth/

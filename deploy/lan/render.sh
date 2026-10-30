@@ -47,6 +47,11 @@ for c in kafka redis zipkin auth-service; do
 done
 
 secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
+# Google OAuth 클라이언트 ID 목록(.secrets/google-oauth/*.json 의 client_id, 쉼표). 없으면 빈 값 → Google 로그인 CONFIG_REQUIRED
+google_client_ids() {
+  ls "$SECRETS"/google-oauth/*.json >/dev/null 2>&1 || return 0
+  grep -ho '"client_id" *: *"[^"]*"' "$SECRETS"/google-oauth/*.json | sed 's/.*: *"\(.*\)"/\1/' | paste -sd, - || true
+}
 # 게이트웨이 웹 CORS 허용 출처(cors-origins.conf → 쉼표 목록). 파일이 없거나 비면 빈 값(CORS 헤더 없음)
 cors_origins() {
   [ -f "$LAN/cors-origins.conf" ] || return 0
@@ -278,6 +283,8 @@ EOF
           # 첫 관리자(ADR-0018). 해시만 넘긴다(원문은 .secrets/operator-admin-password)
           echo "      PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID: \${PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID}"
           echo "      PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH: \${PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH}"
+          # 고객 Google 로그인 허용 aud(.secrets/google-oauth/*.json 의 client_id). 클라이언트 ID 는 비밀이 아니고 secret 은 넘기지 않는다
+          echo "      PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS: \"$(google_client_ids)\""
         fi
         if needs "$c" PMART_S3_BUCKET; then
           [ -n "${WHERE[s3]:-}" ] || { echo "$c 는 s3 가 필요한데 배치에 s3 가 없음" >&2; exit 1; }
