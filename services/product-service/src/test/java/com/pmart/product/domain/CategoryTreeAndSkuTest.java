@@ -23,6 +23,24 @@ class CategoryTreeAndSkuTest {
           new SourceFilter("f2", "품목", "multiple", false, List.of("국", "탕")));
 
   @Test
+  void optionalSourceFieldsMayBeMissing() {
+    // 계약상 선택인 filters·children·common 이 JSON 에 없으면 null 로 들어온다 → 빈 목록·false
+    var tree =
+        CategoryTree.parse(
+            List.of(
+                new SourceNode(
+                    "t01",
+                    "간편식",
+                    "top",
+                    "맛있는것",
+                    List.of("g1"),
+                    List.of(new SourceNode("t01-c01", "국", "sub", null, null, null)))),
+            List.of(new SourceFilter("g1", "보관방법", "multiple", null, List.of("냉장"))));
+    assertThat(tree.nodes()).hasSize(2);
+    assertThat(tree.filterGroups().get(0).common()).isFalse();
+  }
+
+  @Test
   void parsesFourLevelsWithNamePathsAndFilterOrder() {
     var tree =
         CategoryTree.parse(

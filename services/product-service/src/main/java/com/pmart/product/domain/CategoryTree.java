@@ -44,11 +44,31 @@ public final class CategoryTree {
       String level,
       @Nullable String section,
       List<String> filters,
-      List<SourceNode> children) {}
+      List<SourceNode> children) {
 
-  /** 원천 필터 그룹(참고 자료 filters.json definitions). */
+    /** 계약상 filters·children 은 선택이다(잎 노드는 보통 없다). */
+    public SourceNode {
+      filters = filters == null ? List.of() : filters;
+      children = children == null ? List.of() : children;
+    }
+  }
+
+  /** 원천 필터 그룹(참고 자료 filters.json definitions). common 은 계약상 선택(없으면 false). */
   public record SourceFilter(
-      String id, String group, String selectionMode, boolean common, List<String> options) {}
+      String id,
+      String group,
+      String selectionMode,
+      @Nullable Boolean common,
+      List<String> options) {
+
+    public SourceFilter {
+      options = options == null ? List.of() : options;
+    }
+
+    public boolean isCommon() {
+      return Boolean.TRUE.equals(common);
+    }
+  }
 
   public record Node(
       String categoryId,
@@ -110,7 +130,7 @@ public final class CategoryTree {
         errors.add("선택 방식 오류 " + f.id() + ": " + f.selectionMode());
         continue;
       }
-      groups.add(new FilterGroup(f.id(), f.group(), mode, f.common(), List.copyOf(f.options())));
+      groups.add(new FilterGroup(f.id(), f.group(), mode, f.isCommon(), List.copyOf(f.options())));
     }
 
     List<Node> nodes = new ArrayList<>();

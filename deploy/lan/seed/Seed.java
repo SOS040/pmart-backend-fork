@@ -36,6 +36,8 @@ import javax.imageio.ImageIO;
  * java deploy/lan/seed/Seed.java --gateway http://localhost:8080   # 로컬(관리자 비밀번호는 PMART_SEED_ADMIN_PASSWORD)
  * </pre>
  *
+ * 조회도 MD 토큰으로 한다(공개 경로가 배포되기 전 게이트웨이에서도 동작).
+ *
  * 순서: 관리자 로그인 → 시험 운영자(seed-md: MD·센터, seed-approver: 승인 역할 4종) 보장 → 카테고리 트리(PRODUCT 승인) → 배송 권역
  * (SERVICEABILITY 승인) → 상품(PRODUCT 승인, 바코드로 이미 있는지 확인) → 콘텐츠·대표 이미지(DISPLAY 승인) → 기본가(PRICE 승인) →
  * MFC 취급 ON. 각 단계는 결과가 이미 있으면 건너뛴다(다시 돌려도 안전).
@@ -218,7 +220,7 @@ public class Seed {
   // ---------- 카테고리 트리 ----------
 
   void categoryTree() throws Exception {
-    Res current = send("GET", "/categories/tree", null, null, null);
+    Res current = send("GET", "/categories/tree", md, null, null);
     if (current.status() == 200) {
       say("카테고리 트리: 발효 버전 " + current.map().get("version") + " 있음 → 건너뜀");
       return;
@@ -228,7 +230,7 @@ public class Seed {
     draft.expect("카테고리 트리 초안", 201);
     say("카테고리 트리 초안 버전 " + draft.map().get("version"));
     approve(map(draft.map(), "approvalRequest"), "카테고리 트리");
-    await("카테고리 트리 발효", () -> send("GET", "/categories/tree", null, null, null).status() == 200);
+    await("카테고리 트리 발효", () -> send("GET", "/categories/tree", md, null, null).status() == 200);
   }
 
   // ---------- 배송 권역 ----------
@@ -350,7 +352,7 @@ public class Seed {
 
   void content(Map<String, Object> p, String productId) throws Exception {
     String key = str(p, "key");
-    if (send("GET", "/product-contents/" + productId, null, null, null).status() == 200) {
+    if (send("GET", "/product-contents/" + productId, md, null, null).status() == 200) {
       say("콘텐츠 " + key + ": 게시본 있음 → 건너뜀");
       return;
     }
@@ -374,7 +376,7 @@ public class Seed {
     approve(map(sub.map(), "approvalRequest"), "콘텐츠 " + key);
     await(
         "콘텐츠 " + key + " 게시",
-        () -> send("GET", "/product-contents/" + productId, null, null, null).status() == 200);
+        () -> send("GET", "/product-contents/" + productId, md, null, null).status() == 200);
     say("콘텐츠 " + key + ": 게시");
   }
 
@@ -433,7 +435,7 @@ public class Seed {
       List<Map<String, Object>> missing = new ArrayList<>();
       for (Map<String, Object> p : products) {
         String sku = ids.get(str(p, "key"))[1];
-        if (send("GET", "/prices/" + sku, null, null, null).status() != 200) {
+        if (send("GET", "/prices/" + sku, md, null, null).status() != 200) {
           missing.add(p);
         }
       }
@@ -466,7 +468,7 @@ public class Seed {
             "기본가 발효",
             () -> {
               for (Map<String, Object> p : missing) {
-                if (send("GET", "/prices/" + ids.get(str(p, "key"))[1], null, null, null).status() != 200) {
+                if (send("GET", "/prices/" + ids.get(str(p, "key"))[1], md, null, null).status() != 200) {
                   return false;
                 }
               }

@@ -7,26 +7,26 @@
       {
         "id": "t01", "name": "신선식품", "level": "top", "section": "맛있는것", "filters": ["seed-storage"],
         "children": [
-          { "id": "t01-c01", "name": "채소", "level": "sub" },
-          { "id": "t01-c02", "name": "두부·계란", "level": "sub" }
+          { "id": "t01-c01", "name": "채소", "level": "sub", "filters": [], "children": [] },
+          { "id": "t01-c02", "name": "두부·계란", "level": "sub", "filters": [], "children": [] }
         ]
       },
       {
         "id": "t02", "name": "간편식", "level": "top", "section": "맛있는것", "filters": ["seed-storage"],
         "children": [
-          { "id": "t02-c01", "name": "국·탕·찌개", "level": "sub" },
-          { "id": "t02-c02", "name": "밀키트·냉동", "level": "sub" }
+          { "id": "t02-c01", "name": "국·탕·찌개", "level": "sub", "filters": [], "children": [] },
+          { "id": "t02-c02", "name": "밀키트·냉동", "level": "sub", "filters": [], "children": [] }
         ]
       },
       {
-        "id": "t03", "name": "생활용품", "level": "top", "section": "편리한것",
+        "id": "t03", "name": "생활용품", "level": "top", "section": "편리한것", "filters": [],
         "children": [
-          { "id": "t03-c01", "name": "휴지·물티슈", "level": "sub" }
+          { "id": "t03-c01", "name": "휴지·물티슈", "level": "sub", "filters": [], "children": [] }
         ]
       }
     ],
     "filters": [
-      { "id": "seed-storage", "group": "보관방법", "selectionMode": "multiple", "options": ["냉장", "냉동", "실온"] }
+      { "id": "seed-storage", "group": "보관방법", "selectionMode": "multiple", "common": false, "options": ["냉장", "냉동", "실온"] }
     ]
   },
   "serviceability": {

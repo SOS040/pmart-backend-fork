@@ -27,12 +27,14 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
 ## 사용
 ```bash
 # 1) 이미지 push (서비스마다; digest 가 build/jib-image.digest 에 남는다)
-./gradlew :services:<name>:jib -PcontainerRegistry=docker.io/heeji4445 -PimageTag=<sha> -PgitRevision=<sha>
+./gradlew :services:<name>:jib -PcontainerRegistry=docker.io/heeji4445 -PimageTag=<sha> -PgitRevision=<sha> --no-configuration-cache   # jib 은 구성 캐시와 호환되지 않음(ci-cd.md)
 # 2) 파일 생성·배포
 deploy/lan/lan.sh render
 deploy/lan/lan.sh deploy all            # 또는 deploy pc3 delivery-tracking-service
 deploy/lan/lan.sh status all
 deploy/lan/lan.sh logs pc2 order-service 200
+# 3) 시험 데이터(승인 API 경로, 다시 돌려도 안전) — deploy/lan/seed/README.md
+java deploy/lan/seed/Seed.java
 ```
 이미지는 태그가 아니라 **digest** 로 지정한다(ci-cd.md). push 하지 않은 서비스가 배치에 있으면 render 가 중단된다.
 
