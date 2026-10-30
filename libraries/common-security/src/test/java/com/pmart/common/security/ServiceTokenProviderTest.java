@@ -107,7 +107,10 @@ class ServiceTokenProviderTest {
             Clock.systemUTC());
 
     assertThatThrownBy(provider::token)
-        .isInstanceOf(ServiceTokenProvider.ServiceTokenUnavailableException.class);
+        .isInstanceOf(ServiceTokenProvider.ServiceTokenUnavailableException.class)
+        // 대상 서비스로는 요청이 나가지 않았다 — Downstream 이 DEPENDENCY_UNAVAILABLE 로 분류
+        .isInstanceOf(org.springframework.web.client.ResourceAccessException.class)
+        .hasCauseInstanceOf(java.net.ConnectException.class);
   }
 
   @Test

@@ -191,18 +191,31 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
         awaitHome(
             h ->
                 h.path("sections").path(0).path("items").size() == 10
-                    && h.path("sections").path(0).path("nextCursor").isString());
+                    && h.path("sections").path(0).path("nextCursor").isString()
+                    // 12개 모두 반영(마지막에 게시한 H12 가 맨 앞)될 때까지 — 10개가 먼저 보일 수 있다
+                    && "PRD-H12"
+                        .equals(
+                            h.path("sections")
+                                .path(0)
+                                .path("items")
+                                .path(0)
+                                .path("productId")
+                                .asString()));
     JsonNode section = home.path("sections").path(0);
     assertThat(home.path("tabs").path(0).asString()).isEqualTo("HOME");
     assertThat(section.path("state").asString()).isEqualTo("OK");
     assertThat(section.path("kind").asString()).isEqualTo("THEME");
     assertThat(ids(section.path("items")).get(0)).isEqualTo("PRD-H12"); // 최근 게시 순
 
-    // 섹션 다음 묶음
-    JsonNode next =
-        get(
-            "/storefront/sections/S-ALL/items?layoutVersion=0&size=10&cursor="
-                + section.path("nextCursor").asString());
+    // 섹션 다음 묶음(가격은 다른 토픽 — 반영될 때까지)
+    String nextPath =
+        "/storefront/sections/S-ALL/items?layoutVersion=0&size=10&cursor="
+            + section.path("nextCursor").asString();
+    JsonNode next = get(nextPath);
+    for (int i = 0; i < 100 && next.path("items").path(1).path("basePrice").asInt() != 1900; i++) {
+      Thread.sleep(300);
+      next = get(nextPath);
+    }
     assertThat(ids(next.path("items"))).containsExactly("PRD-H2", "PRD-H1");
     JsonNode h1 = next.path("items").path(1);
     assertThat(h1.path("basePrice").asInt()).as("상품보다 먼저 온 가격").isEqualTo(1900);

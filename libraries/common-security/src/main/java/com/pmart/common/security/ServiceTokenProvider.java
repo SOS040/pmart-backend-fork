@@ -1,5 +1,6 @@
 package com.pmart.common.security;
 
+import java.net.ConnectException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -24,10 +26,24 @@ import org.springframework.web.client.RestClientException;
  */
 public class ServiceTokenProvider {
 
-  /** 서비스 토큰을 얻지 못함. 호출 측은 상대 서비스 업무 실패로 단정하지 않는다(의존성 장애). */
-  public static class ServiceTokenUnavailableException extends RuntimeException {
+  /**
+   * 서비스 토큰을 얻지 못함. 호출 측은 상대 서비스 업무 실패로 단정하지 않는다(의존성 장애).
+   *
+   * <p>대상 서비스로는 요청이 나가지 않았으므로 원인을 {@link ConnectException} 으로 둔 {@link ResourceAccessException} 이다
+   * — common-web {@code Downstream} 이 미전달(DEPENDENCY_UNAVAILABLE, 재시도 가능)로 분류한다. 그렇지 않으면 처리되지 않은
+   * 예외(500)가 된다(2026-10-30 cart 통합 시험에서 발견).
+   */
+  public static class ServiceTokenUnavailableException extends ResourceAccessException {
     public ServiceTokenUnavailableException(String message, @Nullable Throwable cause) {
-      super(message, cause);
+      super(message, notSent(message, cause));
+    }
+
+    private static ConnectException notSent(String message, @Nullable Throwable cause) {
+      ConnectException e = new ConnectException("요청을 보내기 전에 실패: " + message);
+      if (cause != null) {
+        e.initCause(cause);
+      }
+      return e;
     }
   }
 

@@ -204,7 +204,11 @@ class SearchFlowIT extends KafkaContainerSupport {
             "",
             r ->
                 r.path("total").asInt() == 3
-                    && r.path("items").findValues("basePrice").size() == 3);
+                    // null 도 값으로 세지 않도록 숫자만(가격 사건은 다른 토픽이라 늦을 수 있다)
+                    && r.path("items").findValues("basePrice").stream()
+                            .filter(JsonNode::isNumber)
+                            .count()
+                        == 3);
     assertThat(ids(all)).containsExactly("PRD-3", "PRD-2", "PRD-1"); // 검색어 없으면 최근 게시 순
     JsonNode tofu = all.path("items").path(1);
     assertThat(tofu.path("name").asString()).isEqualTo("[시험] 국산콩 두부 300g");

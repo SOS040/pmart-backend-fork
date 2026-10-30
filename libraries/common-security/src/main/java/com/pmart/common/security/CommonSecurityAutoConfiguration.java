@@ -136,7 +136,12 @@ public class CommonSecurityAutoConfiguration {
               : t.getClientId();
       JdkClientHttpRequestFactory factory =
           new JdkClientHttpRequestFactory(
-              java.net.http.HttpClient.newBuilder().connectTimeout(t.getConnectTimeout()).build());
+              java.net.http.HttpClient.newBuilder()
+                  // 내부 호출은 HTTP/1.1 — 평문 h2c 업그레이드 시도가 일부 서버(Jetty)에서 연결을 끊는다(payment TossClient 와
+                  // 같은 이유)
+                  .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                  .connectTimeout(t.getConnectTimeout())
+                  .build());
       factory.setReadTimeout(t.getReadTimeout());
       RestClient client =
           builders.getIfAvailable(RestClient::builder).clone().requestFactory(factory).build();
@@ -163,7 +168,10 @@ public class CommonSecurityAutoConfiguration {
       }
       JdkClientHttpRequestFactory factory =
           new JdkClientHttpRequestFactory(
-              java.net.http.HttpClient.newBuilder().connectTimeout(a.getConnectTimeout()).build());
+              java.net.http.HttpClient.newBuilder()
+                  .version(java.net.http.HttpClient.Version.HTTP_1_1)
+                  .connectTimeout(a.getConnectTimeout())
+                  .build());
       factory.setReadTimeout(a.getReadTimeout());
       RestClient.Builder builder = builderProvider.getIfAvailable(RestClient::builder);
       RestClient client = builder.clone().baseUrl(a.getBaseUrl()).requestFactory(factory).build();

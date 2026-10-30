@@ -113,11 +113,11 @@ public class ActionAuthorizer {
       }
       log.warn("auth-service {} → fail-closed", e.getStatusCode());
       return Decision.deny("DEPENDENCY_UNAVAILABLE");
-    } catch (ResourceAccessException e) {
-      log.warn("auth-service 접근 불가 → fail-closed: {}", e.getMessage());
-      return Decision.deny("DEPENDENCY_UNAVAILABLE");
     } catch (ServiceTokenProvider.ServiceTokenUnavailableException e) {
       log.warn("서비스 토큰 없음 → fail-closed");
+      return Decision.deny("DEPENDENCY_UNAVAILABLE");
+    } catch (ResourceAccessException e) {
+      log.warn("auth-service 접근 불가 → fail-closed: {}", e.getMessage());
       return Decision.deny("DEPENDENCY_UNAVAILABLE");
     }
   }

@@ -30,7 +30,7 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 opensearch "
+INFRA=" postgres kafka connect redis zipkin s3 opensearch backoffice-web "
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
 yml() { echo "$(src_dir "$1")/src/main/resources/application.yml"; }
 port_of() { awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$(yml "$1")"; }
@@ -57,6 +57,17 @@ cors_origins() {
   [ -f "$LAN/cors-origins.conf" ] || return 0
   sed -e 's/#.*//' -e 's/[[:space:]]//g' "$LAN/cors-origins.conf" | grep -v '^$' | paste -sd, - || true
 }
+# 서비스 신원 토큰 클라이언트(ADR-0011): 배치된 서비스 중 PMART_SERVICE_CLIENT_SECRET 을 받는 것. env 이름용 대문자 변환
+env_name() { echo "$1" | tr 'a-z-' 'A-Z_'; }
+SERVICE_CLIENTS=""
+for c in "${!WHERE[@]}"; do
+  [[ "$INFRA" == *" $c "* ]] && continue
+  needs "$c" PMART_SERVICE_CLIENT_SECRET || continue
+  [ -f "$SECRETS/service-clients/$c.secret" ] && [ -f "$SECRETS/service-clients/$c.hash" ] \
+    || { echo "서비스 클라이언트 비밀 없음: $c ($LAN/init-secrets.sh 먼저 실행)" >&2; exit 1; }
+  SERVICE_CLIENTS+="$c "
+done
+SERVICE_CLIENTS="$(echo $SERVICE_CLIENTS | tr ' ' '\n' | sort | tr '\n' ' ')"
 DB_PASSWORD="$(secret db-password)"
 rm -rf "$OUT"
 for pc in "${PCS[@]}"; do
@@ -241,6 +252,25 @@ EOF
 
 EOF
         ;;
+      backoffice-web)
+        # 임시 백오피스(React SPA) 정적 서빙 — CORS 출처 http://d603-16(cors-origins.conf)과 같은 PC·80. 파일은 render 가 backoffice/ 에 둔다
+        cat <<EOF
+  backoffice-web:
+    <<: *common
+    image: nginx:1.27-alpine
+    ports: ["80:80"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./backoffice:/usr/share/nginx/html:ro
+      - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+EOF
+        ;;
       opensearch)
         # 상품 검색 색인(search-service 전용). deploy/local 과 같은 이미지·설정. 다른 PC 의 search-service 가 부르므로 9200 을 연다
         # (보안 플러그인 끔 — LAN 시험망, 공개 상품 정보만 색인).
@@ -300,6 +330,9 @@ EOF
         needs "$c" PMART_JWKS_URI && echo "      PMART_JWKS_URI: http://auth-service:$(port_of auth-service)/api/v1/internal/jwks"
         needs "$c" PMART_REDIS_URL && echo "      PMART_REDIS_URL: redis://redis:6379"
         needs "$c" PMART_OPENSEARCH_URL && echo "      PMART_OPENSEARCH_URL: http://opensearch:9200"
+        # 서비스 신원 토큰 secret(.env, 서비스마다 다른 값). 발급 주소는 서비스 기본값(http://auth-service:8501/...)
+        needs "$c" PMART_SERVICE_CLIENT_SECRET \
+          && echo "      PMART_SERVICE_CLIENT_SECRET: \${PMART_SERVICE_CLIENT_SECRET_$(env_name "$c")}"
         echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
         if [ "$c" = auth-service ]; then
           echo "      PMART_AUTH_ISSUER: http://auth-service:$(port_of auth-service)"
@@ -310,6 +343,13 @@ EOF
           echo "      PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH: \${PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH}"
           # 고객 Google 로그인 허용 aud(google-client-ids.conf). 클라이언트 ID 는 비밀이 아니고 secret 은 넘기지 않는다
           echo "      PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS: \"$(google_client_ids)\""
+          # 서비스 신원 클라이언트 등록부(ADR-0011): client-id = 서비스 이름, bcrypt 해시만(.env)
+          i=0
+          for s in $SERVICE_CLIENTS; do
+            echo "      PMART_AUTH_SERVICECLIENTS_${i}_CLIENTID: $s"
+            echo "      PMART_AUTH_SERVICECLIENTS_${i}_SECRETHASH: \${PMART_SERVICE_CLIENT_HASH_$(env_name "$s")}"
+            i=$((i + 1))
+          done
         fi
         if needs "$c" PMART_S3_BUCKET; then
           [ -n "${WHERE[s3]:-}" ] || { echo "$c 는 s3 가 필요한데 배치에 s3 가 없음" >&2; exit 1; }
@@ -362,6 +402,17 @@ EOF
     mkdir -p "$dir/connectors" && cp deploy/local/connectors/*.json "$dir/connectors/"
   fi
 
+  # 임시 백오피스 정적 파일: lan.sh publish-backoffice 가 둔 빌드(backoffice-dist, git 제외). 없으면 안내 페이지
+  if [[ "$comps" == *" backoffice-web "* ]]; then
+    cp "$LAN/backoffice/nginx.conf" "$dir/backoffice-nginx.conf"
+    mkdir -p "$dir/backoffice"
+    if [ -f "$LAN/backoffice-dist/index.html" ]; then
+      cp -r "$LAN/backoffice-dist/." "$dir/backoffice/"
+    else
+      cp "$LAN/backoffice/placeholder.html" "$dir/backoffice/index.html"
+    fi
+  fi
+
   {
     echo "PMART_DB_PASSWORD=$DB_PASSWORD"
     if [[ "$comps" == *" auth-service "* ]]; then
@@ -370,7 +421,13 @@ EOF
       echo "PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID=$(secret operator-admin-login)"
       # bcrypt 해시에 $ 가 있어 작은따옴표(compose .env 의 리터럴 값)
       echo "PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH='$(secret operator-admin-hash)'"
+      for s in $SERVICE_CLIENTS; do
+        echo "PMART_SERVICE_CLIENT_HASH_$(env_name "$s")='$(secret "service-clients/$s.hash")'"
+      done
     fi
+    for s in $SERVICE_CLIENTS; do
+      [[ "$comps" == *" $s "* ]] && echo "PMART_SERVICE_CLIENT_SECRET_$(env_name "$s")=$(secret "service-clients/$s.secret")"
+    done
     if [[ "$comps" == *" s3 "* || "$comps" == *" product-content-service "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
       echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"

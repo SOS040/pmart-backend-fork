@@ -44,3 +44,6 @@ client_secret_*.json
 **/google-oauth/
 # 문서 폴더에 같이 들어온 키 파일(예: docs/toss/env). 키는 deploy/lan/.secrets/ 에 둔다
 /docs/**/env
+
+# LAN 임시 백오피스 빌드 산출물(pmart-clients web/backoffice dist 사본, lan.sh publish-backoffice)
+/deploy/lan/backoffice-dist/

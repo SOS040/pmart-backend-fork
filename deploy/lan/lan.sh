@@ -6,6 +6,7 @@
 #   deploy/lan/lan.sh logs <pc> <서비스> [줄수]     최근 로그(기본 100줄)
 #   deploy/lan/lan.sh restart <pc> <서비스...>
 #   deploy/lan/lan.sh down <pc|all>               컨테이너 정지·삭제(볼륨은 남긴다)
+#   deploy/lan/lan.sh publish-backoffice <dist>    임시 백오피스 빌드(npm run build:lan 결과)를 올리고 backoffice-web 만 다시 배포
 # 원격 실행: deploy/remote/run-ps.sh (원격 docker 는 %USERPROFILE%\.docker-pmart 설정 — 읽기 전용 pull 토큰)
 # 원격 작업 폴더: %USERPROFILE%\pmart-lan. PMart 이외 컨테이너는 건드리지 않는다(compose 프로젝트 pmart-lan 만).
 set -euo pipefail
@@ -65,8 +66,17 @@ case "$cmd" in
   restart)
     pc="${1:?pc}"; shift
     remote_compose "$pc" restart "$@" ;;
+  publish-backoffice)
+    src="${1:?dist 경로(index.html 이 있는 폴더)}"
+    [ -f "$src/index.html" ] || { echo "index.html 없음: $src" >&2; exit 1; }
+    # 줄 끝 \ 로 이어 쓴 배치: 들여쓰지 않은 줄이 PC, backoffice-web 이 나온 블록의 PC 를 고른다
+    pc="$(awk '/^[^#[:space:]]/ {cur = $1} {for (i = 1; i <= NF; i++) if ($i == "backoffice-web") {print cur; exit}}' "$LAN/placement.conf")"
+    [ -n "$pc" ] || { echo "placement.conf 에 backoffice-web 없음" >&2; exit 1; }
+    rm -rf "$LAN/backoffice-dist" && mkdir -p "$LAN/backoffice-dist" && cp -r "$src/." "$LAN/backoffice-dist/"
+    echo "백오피스 빌드 $(find "$LAN/backoffice-dist" -type f | wc -l)개 파일 → $pc"
+    "$0" deploy "$pc" backoffice-web ;;
   down)
     for pc in $(pcs "${1:?pc|all}"); do echo "=== $pc"; remote_compose "$pc" down; done ;;
   *)
-    sed -n '2,9p' "$0"; exit 2 ;;
+    sed -n '2,10p' "$0"; exit 2 ;;
 esac

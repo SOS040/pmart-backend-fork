@@ -22,12 +22,15 @@ paths:
   /carts:
     post:
       tags: [carts]
-      summary: 장바구니 생성 또는 현재 장바구니 반환 (회원은 accountId, 비회원은 X-Device-Id 기준)
+      summary: 장바구니 생성 또는 현재 장바구니 반환 (회원 토큰은 accountId, 비회원 토큰(typ=GUEST)은 비회원 주체 기준)
+      description: |
+        비회원은 먼저 auth POST /auth/guest-sessions 로 비회원 토큰을 받는다. 마지막 변경 후 30일이 지난 장바구니는 새로 만든다.
+        X-Device-Id 는 기록용(선택)이며 소유 판정에 쓰지 않는다.
       operationId: createOrGetCart
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - { name: X-Device-Id, in: header, required: false, schema: { type: string, maxLength: 128 }, description: 비회원 장바구니 식별 }
+        - { name: X-Device-Id, in: header, required: false, schema: { type: string, maxLength: 128 }, description: 기록용(선택). 소유는 토큰 주체로 판정 }
       requestBody:
         required: false
         content:
@@ -235,7 +238,7 @@ paths:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 }, description: 비회원 장바구니 소유 기기 }
+        - { name: X-Guest-Token, in: header, required: true, schema: { type: string, maxLength: 4096 }, description: 비회원 장바구니 소유 증명 — 로그인 전에 쓰던 비회원 access token(만료 전). 로그 금지 }
       requestBody:
         required: true
         content:

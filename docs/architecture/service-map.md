@@ -39,7 +39,7 @@
 - **API**: `PATCH /api/v1/carts/{cartId}/items/{itemId}` 등(`Idempotency-Key`, `expectedVersion`; 절대값 설정 명령으로 통일 `[제안]`), 병합, 조회.
 - **발행**: `CartItemChangeApplied`.
 - **구독**: `OrderConfirmed`(확정 포함분만 1회 정리), `ProductSaleStateChanged`.
-- **의존**: product(구매 상한·판매 상태), mfc-inventory(가용 A 조회; 조회 실패≠0), pricing(표시 가격).
+- **의존**: product(구매 상한·판매 상태 — 내부 API, 서비스 토큰), mfc-inventory(가용 A 조회; 조회 실패≠0 — 재고 전이라 지금은 불명), pricing(표시 가격), product-content(표시 이름·이미지). 비회원은 auth 비회원 토큰(ADR-0022).
 
 ### review-service `[2단계]`
 - **소유**: 리뷰·사진·평점, 작성/수정/삭제 이력(`REV_ELIGIBLE→SUBMIT_PENDING→PUBLISHED→LOCKED(3일)` / `DELETED`), 자격(품목별 배송완료 후 14일 1건).
