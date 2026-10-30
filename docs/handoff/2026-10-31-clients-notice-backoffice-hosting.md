@@ -21,3 +21,4 @@
 - 클라이언트 빌드(`web/backoffice/dist`, 2026-10-30 21:15, LAN 모드 — API `http://D603-16:8080/api/v1` 포함)를 `lan.sh publish-backoffice` 로 PC4 에 올렸다.
 - 확인: `http://D603-16/` 200(새 빌드 `index-D_wk4-ZR.js`), 라우터 경로(`/products`) 200, `assets/` 1년 캐시·`index.html` no-cache, 게이트웨이 CORS 사전 요청(Origin `http://d603-16`) 200 + `Access-Control-Allow-Origin: http://d603-16`.
 - 다음 빌드도 같은 방법: 빌드 후 알려 주면 백엔드가 다시 게시한다.
+- 2026-10-31 재게시: 21:29 빌드(`index-yzSVis8b.js`) — `http://D603-16/` 200, 라우터 경로 200.
