@@ -51,5 +51,5 @@
 - 로그인 성공은 구매 자격 확정이 아니다(배송지·주문 검증은 각 단계에서 따로).
 
 ## 5. 환경
-- LAN 게이트웨이: `http://D603-16:8080/api/v1`. 이 기능은 아직 LAN 에 배포하지 않았다(배포되면 알린다).
+- LAN 게이트웨이: `http://D603-16:8080/api/v1`. **배포됨**(2026-10-30, auth-service 이미지 2f507dc).
 - 로컬: auth-service 를 `PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS=<위 두 ID, 쉼표>` 로 띄운다.
