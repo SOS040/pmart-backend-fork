@@ -170,6 +170,20 @@ public class ServiceabilityService {
             () -> PmartException.notFound("MAPPING_VERSION_NOT_ACTIVE", "발효된 매핑 버전이 없습니다."));
   }
 
+  /**
+   * 배송 가능 조건을 줄 수 있는 MFC 인가 — 발효 매핑 버전의 권역 담당 MFC. 아니면 404(권역 밖 센터의 조건을 만들지 않는다).
+   *
+   * @return 발효 매핑 버전
+   */
+  public int servingVersion(String mfcId) {
+    VersionRow v = current();
+    boolean serves = store.zones(v.version()).stream().anyMatch(z -> z.mfcId().equals(mfcId));
+    if (!serves) {
+      throw PmartException.notFound("MFC_NOT_SERVED", "발효 권역 매핑에 없는 MFC 입니다: " + mfcId);
+    }
+    return v.version();
+  }
+
   public List<ZoneRow> zones(int version) {
     return store.zones(version);
   }

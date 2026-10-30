@@ -35,6 +35,9 @@ pmart:
       - /error
       - /api/v1/serviceability-checks
       - /api/v1/serviceability-checks/*
+    # 비회원 토큰(typ=GUEST)도 배송 가능 조건 조회는 된다(읽기 전용)
+    guest-paths:
+      - /api/v1/delivery-conditions
 management:
   tracing:
     export:

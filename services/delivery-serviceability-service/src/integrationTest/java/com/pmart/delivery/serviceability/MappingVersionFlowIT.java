@@ -234,6 +234,23 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(inside.body().path("result").asString()).isEqualTo("SERVICEABLE");
     assertThat(inside.body().path("mfcId").asString()).isEqualTo("MFC-BSN-01");
     assertThat(inside.body().path("mappingVersion").asInt()).isEqualTo(version);
+
+    // 배송 가능 조건: 발효 권역의 MFC 만, 확정값만(나머지 NOT_SET)
+    Res conditions = get(CUSTOMER, "/delivery-conditions?mfcId=MFC-BSN-01");
+    assertThat(conditions.status()).isEqualTo(200);
+    assertThat(conditions.body().path("deliveryModes").toString())
+        .isEqualTo("[\"SINGLE\",\"BUNDLED\",\"SCHEDULED\"]");
+    assertThat(conditions.body().path("maxWeightG").path("value").asInt()).isEqualTo(10000);
+    assertThat(conditions.body().path("maxVolumeL").path("state").asString()).isEqualTo("NOT_SET");
+    assertThat(conditions.body().path("timeRestriction").path("end").asString()).isEqualTo("08:00");
+    assertThat(
+            get(
+                    TestJwt.token("GST-1", "GUEST", List.of(), List.of(), "it"),
+                    "/delivery-conditions?mfcId=MFC-BSN-01")
+                .status())
+        .as("비회원도 조회")
+        .isEqualTo(200);
+    assertThat(get(CUSTOMER, "/delivery-conditions?mfcId=MFC-NONE").status()).isEqualTo(404);
     assertThat(check(37.60, 127.02).body().path("result").asString()).isEqualTo("OUT_OF_AREA");
     // 비회원(토큰 없음)도 판정 가능(계약 security: [])
     var anonymous =
