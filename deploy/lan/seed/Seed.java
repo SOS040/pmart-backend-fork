@@ -50,7 +50,12 @@ public class Seed {
   static final String MD_LOGIN = "seed-md";
   static final String APPROVER_LOGIN = "seed-approver";
   static final List<String> APPROVER_ROLES =
-      List.of("PRODUCT_APPROVER", "DISPLAY_APPROVER", "PRICE_APPROVER", "SERVICEABILITY_APPROVER");
+      List.of(
+          "PRODUCT_APPROVER",
+          "DISPLAY_APPROVER",
+          "PRICE_APPROVER",
+          "SERVICEABILITY_APPROVER",
+          "CENTER_MASTER_APPROVER");
 
   final HttpClient http =
       HttpClient.newBuilder()
@@ -103,6 +108,7 @@ public class Seed {
     md = ensureOperator(admin, MD_LOGIN, "시험 MD", List.of("MD"), List.of(mfcId));
     approver = ensureOperator(admin, APPROVER_LOGIN, "시험 승인권자", APPROVER_ROLES, List.of());
 
+    center(mfcId);
     categoryTree();
     serviceability(mfcId);
     List<Map<String, Object>> products = list(data, "products");
@@ -215,6 +221,49 @@ public class Seed {
         .expect(what + " 승인", 200, 201, 202);
     say("  승인 " + what + " → " + approvalId);
     return approvalId;
+  }
+
+  // ---------- 센터(center-master, CENTER_MASTER 승인) ----------
+
+  /** MFC 와 고객 주문 운영 시간표. 없을 때만 넣는다(있는 센터의 다른 시간표는 바꾸지 않는다). */
+  void center(String mfcId) throws Exception {
+    Map<String, Object> c = map(data, "center");
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    String calendarPath = "/centers/" + mfcId + "/calendar?date=" + today + "&kind=CUSTOMER_ORDER";
+    boolean exists = send("GET", "/centers/" + mfcId, md, null, null).status() == 200;
+    if (exists && send("GET", calendarPath, md, null, null).status() == 200) {
+      say("센터 " + mfcId + ": 있음(고객 주문 시간표 승인됨) → 건너뜀");
+      return;
+    }
+    List<Object> lines = new ArrayList<>();
+    if (!exists) {
+      lines.add(
+          Map.of(
+              "lineKey", mfcId + ":CREATE",
+              "attributes", Map.of("changeType", "CREATE", "centerId", mfcId, "profile", map(c, "profile"))));
+    }
+    List<Object> weekly = new ArrayList<>();
+    for (String d : List.of("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")) {
+      weekly.add(Map.of("dayOfWeek", d, "ranges", list(c, "customerOrderHours")));
+    }
+    lines.add(
+        Map.of(
+            "lineKey", mfcId + ":CALENDAR",
+            "attributes",
+                Map.of(
+                    "changeType", "UPDATE_CALENDAR",
+                    "centerId", mfcId,
+                    "calendar", Map.of("kind", "CUSTOMER_ORDER", "weekly", weekly, "holidays", List.of()))));
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("type", "CENTER_MASTER");
+    body.put("targetService", "center-master-service");
+    body.put("targetRef", "CENTER-" + mfcId + "-" + System.currentTimeMillis());
+    body.put("allowedActions", List.of("APPLY_CENTER_CHANGE"));
+    body.put("summary", "pmart-seed 시험 센터 " + mfcId + (exists ? " 시간표" : " 생성·시간표"));
+    body.put("lines", lines);
+    approve(body, "센터 " + mfcId);
+    await("센터 시간표 발효", () -> send("GET", calendarPath, md, null, null).status() == 200);
+    say("센터 " + mfcId + ": 고객 주문 " + list(c, "customerOrderHours"));
   }
 
   // ---------- 카테고리 트리 ----------
