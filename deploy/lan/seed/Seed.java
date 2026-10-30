@@ -55,7 +55,8 @@ public class Seed {
           "DISPLAY_APPROVER",
           "PRICE_APPROVER",
           "SERVICEABILITY_APPROVER",
-          "CENTER_MASTER_APPROVER");
+          "CENTER_MASTER_APPROVER",
+          "INVENTORY_APPROVER");
 
   final HttpClient http =
       HttpClient.newBuilder()
@@ -66,6 +67,9 @@ public class Seed {
   final Map<String, Object> data;
   String md;
   String approver;
+  /** --initial-stock: 초기 재고 반입(한 번만 — 다시 돌리면 그만큼 더 들어간다). 추가 SKU 는 --initial-stock-skus a,b */
+  boolean initialStock;
+  List<String> extraStockSkus = List.of();
 
   Seed(String gateway, Map<String, Object> data) {
     this.api = gateway.replaceAll("/+$", "") + "/api/v1";
@@ -76,10 +80,14 @@ public class Seed {
     Path root = Path.of(".").toAbsolutePath().normalize();
     String gateway = null;
     String adminLogin = null;
+    boolean initialStock = false;
+    List<String> extraSkus = List.of();
     for (int i = 0; i < args.length; i++) {
       switch (args[i]) {
         case "--gateway" -> gateway = args[++i];
         case "--admin-login" -> adminLogin = args[++i];
+        case "--initial-stock" -> initialStock = true;
+        case "--initial-stock-skus" -> extraSkus = List.of(args[++i].split(","));
         default -> throw new IllegalArgumentException("알 수 없는 인자: " + args[i]);
       }
     }
@@ -98,6 +106,8 @@ public class Seed {
             Json.parse(
                 Files.readString(root.resolve("deploy/lan/seed/seed-data.json"), StandardCharsets.UTF_8));
     Seed s = new Seed(gateway, data);
+    s.initialStock = initialStock;
+    s.extraStockSkus = extraSkus;
     say("게이트웨이 " + s.api);
     s.run(adminLogin, adminPassword);
   }
@@ -121,6 +131,9 @@ public class Seed {
     }
     prices(products, ids);
     handling(mfcId, ids);
+    if (initialStock) {
+      initialStock(mfcId, ids);
+    }
 
     say("");
     say("완료. 시험 상품:");
@@ -550,6 +563,48 @@ public class Seed {
           return true;
         });
     say("MFC 취급: " + mfcId + " 에 " + items.size() + "개 ON");
+  }
+
+  // ---------- 초기 재고(INITIAL_STOCK 승인 → mfc-inbound 초기 보유 반입 → mfc-inventory 전기, D2) ----------
+
+  /** 시험 SKU 마다 initialStockPerSku 개. 조정(ADJ)으로 넣지 않는다. 반영 확인은 mfc-inbound 반입 결과로. */
+  void initialStock(String mfcId, Map<String, String[]> ids) throws Exception {
+    long qty = num(data, "initialStockPerSku");
+    List<String> skus = new ArrayList<>();
+    ids.values().forEach(id -> skus.add(id[1]));
+    skus.addAll(extraStockSkus);
+    List<Object> lines = new ArrayList<>();
+    for (String sku : skus) {
+      lines.add(
+          Map.of(
+              "lineKey", sku,
+              "requestedAmount", qty,
+              "attributes", Map.of("mfcId", mfcId, "sku", sku, "qty", qty)));
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("type", "INITIAL_STOCK");
+    body.put("targetService", "mfc-inbound-service");
+    body.put("targetRef", "INITIAL-" + mfcId + "-" + System.currentTimeMillis());
+    body.put("allowedActions", List.of("APPLY_INITIAL_STOCK"));
+    body.put("summary", "pmart-seed 시험 초기 재고 " + mfcId + " SKU " + skus.size() + "개 × " + qty);
+    body.put("lines", lines);
+    String approvalId = approve(body, "초기 재고 " + skus.size() + "건");
+    String[] state = new String[1];
+    await(
+        "초기 재고 반입",
+        () -> {
+          Res r = send("GET", "/initial-stock-loads?approvalId=" + enc(approvalId), md, null, null);
+          List<Map<String, Object>> items = r.status() == 200 ? list(r.map(), "items") : List.of();
+          if (items.isEmpty()) {
+            return false;
+          }
+          state[0] = str(items.getFirst(), "state");
+          if ("REJECTED".equals(state[0])) {
+            throw new IllegalStateException("초기 재고 거절: " + items.getFirst().get("rejectReason"));
+          }
+          return "APPLIED".equals(state[0]);
+        });
+    say("초기 재고: " + mfcId + " SKU " + skus.size() + "개 × " + qty + " 반영");
   }
 
   // ---------- HTTP ----------

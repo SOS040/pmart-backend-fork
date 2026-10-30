@@ -365,6 +365,10 @@ EOF
           # 예약 슬롯 1시간당 정원 — LAN 시험 설정값(사용자 결정 2026-10-31). 운영은 승인된 정책값
           echo "      PMART_CAPACITY_SLOTCAPACITY: \"20\""
         fi
+        if [ "$c" = mfc-capacity-service ]; then
+          # MFC 작업 여력: 주문 1건 = 1단위, 1시간 30단위 — LAN 시험 설정값(사용자 결정 2026-10-30). 운영은 승인된 정책값
+          echo "      PMART_CAPACITY_UNITSPERHOUR: \"30\""
+        fi
         if [ "$c" = payment-service ]; then
           # 토스 결제위젯 테스트 키(D5, .secrets/toss-*). 운영 키(live_)는 서비스가 기동을 거부한다
           echo "      PMART_TOSS_SECRET_KEY: \${PMART_TOSS_SECRET_KEY}"

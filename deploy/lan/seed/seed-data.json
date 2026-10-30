@@ -1,6 +1,8 @@
 {
   "_comment": "LAN·로컬 시험 데이터(합성). local-reference/ 의 캡처 자료는 쓰지 않는다. 상품명은 모두 [시험] 으로 시작한다.",
   "mfcId": "MFC-SEED-01",
+  "_initialStockComment": "--initial-stock 일 때 SKU 마다 넣는 시험 초기 재고(사용자 결정 2026-10-30, INITIAL_STOCK 승인 경로)",
+  "initialStockPerSku": 10,
   "center": {
     "_comment": "시험 MFC. 고객 주문 운영 08:00~24:00 매일(사용자 결정 2026-10-31 LAN 시험값 — 00~08 실제 배송 없음은 확정 정책)",
     "profile": {
