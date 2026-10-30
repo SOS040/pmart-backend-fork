@@ -64,6 +64,25 @@ PG 진입 전 두 타이머 모두 유효해야 하며 더 이른 만료를 고�
 - 해제 응답 불명은 원예약 조회로 확인. 확인 전 "해제 완료" 표시 금지.
 - PG 승인 후 보상은 `CompensationCancel`이며 그 결과(`CompensationCancelResult`)까지 대사해야 사가 종료.
 
+### 1.4 구현 상태 (2026-10-31, 슬라이스 4 — a~f)
+
+| 단계 | 구현 | 비고 |
+|---|---|---|
+| (2) 결제 진입 | order `POST /order-drafts/{id}/checkouts` | 견적 버전·10분 동결·차단 사유 확인 → orderId 발급(같은 진입 요청은 같은 ID) → orchestration 시작. 진행 중이면 기존 주문 ID 반환 |
+| 시작 | orchestration `POST /internal/checkout-sagas` 202 | 사가만 저장하고 단계는 비동기(동기 체인 2 hop 규칙). 같은 초안의 진행 중 사가는 하나 |
+| a | VALIDATE_QUOTE | 동결 경과 → RE_QUOTE_REQUIRED |
+| b | RESERVE_INVENTORY | mfc-inventory 전부 또는 전무, TTL 10분, 부족 → INSUFFICIENT_STOCK, 취급 OFF → SKU_NOT_HANDLED |
+| c | HOLD_CAPACITY | mfc-capacity 1시간 창(예약배달은 도착 슬롯, 즉시는 지금 시간 KST). LAN 시험값 주문 1건=1단위·시간당 30 |
+| d | HOLD_SLOT | 예약배달만(그 밖 SKIPPED). delivery-capacity 정원 20 |
+| e | (쿠폰) | 1차 생략 |
+| f | START_PAYMENT | payment 결제 시도 생성, `resourceExpiresAt` = 자원 만료·가격 동결 중 이른 것 → 사가 WAITING_RESULT, 초안 `nextAction=PAY` 와 결제창 정보 |
+| g~j | 다음 단계 | 승인 대사·주문 확정·자원 확정·보상 취소 |
+
+- 단계 명령 Idempotency-Key = `sagaId:단계`, 해제 = `sagaId:RELEASE:자원종류`. 중단·불명이면 sweep(10초)이 30초 멈춘 사가를 같은 키로 이어서 진행한다.
+- 거절 → 보상 로그의 자원만 역순 해제 → 원예약 조회로 RELEASED·EXPIRED 확인 뒤에만 RELEASED → 모두 확인되면 COMPENSATED. 초안은 `DRAFT`·`REVIEW` + `checkoutFailure`(견적이 유효하면 다시 결제 진입 가능, 새 주문 ID).
+- 자원 만료가 지나면 결제 시도를 조회: 승인(이후 취소 포함) → 보존(다음 단계가 확정), 불명·불일치 → `UNKNOWN_TRACKING`(해제 금지, 상신은 다음 단계), 그 밖(CREATED·PENDING·FAILED) → 해제·`RESOURCE_EXPIRED`. 조회 실패면 해제하지 않고 다시 확인. payment 는 `resourceExpiresAt` 뒤 승인 API 를 부르지 않는다.
+- 각 정본도 자체 TTL 로 HELD 를 EXPIRED 처리한다(재고·여력·슬롯). 초기 재고는 INITIAL_STOCK 승인 → mfc-inbound 초기 보유 반입 → mfc-inventory 전기(D2).
+
 ## 2. 확정 후: 이행 요청 (S2 시작)
 
 ```

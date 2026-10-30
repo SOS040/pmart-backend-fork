@@ -28,5 +28,9 @@
 - `GET /delivery-options`(회원·비회원): 방식별 가능 여부·사유·예상시간(NOT_SET — 사용자 결정)·배달팁(기본/적용/사유)·가장 빠른 예약 슬롯.
 - 의존: customer·product·pricing·center-master 는 `/internal`(서비스 토큰), 예약 슬롯은 capacity `/slots`(사용자 토큰 전파).
 
+## 결제 진입 (2026-10-31, 슬라이스 4)
+- `POST /order-drafts/{id}/checkouts`: 견적 버전·동결·차단 사유(`CHECKOUT_BLOCKED`) 확인 → orderId(초안+요청 키로 결정적) → orchestration S1 시작. 진행 중이면 기존 주문 ID.
+- 초안 조회가 사가 사본을 읽어 status(RESOURCE_PENDING·PAYMENT_PENDING·PAYMENT_UNKNOWN·DRAFT)·nextAction(WAIT·PAY·REVIEW)·resources·`payment`(결제창 정보)·`checkoutFailure` 를 채운다. 사가 조회 실패면 WAIT·UNKNOWN.
+
 ## 상태
-주문 초안 생성·조회, 배송 방식 안내 구현(2026-10-31). 결제 진입(`checkouts`)·주문·내부 API 는 501(자원 확보 사가 단계).
+주문 초안·배송 방식 안내·결제 진입 구현(2026-10-31). 주문 확정·주문 조회·내부 API 는 501(결제 확정 단계).

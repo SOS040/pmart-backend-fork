@@ -26,6 +26,18 @@ server:
 pmart:
   messaging:
     domain: order
+  security:
+    # 참여 정본(mfc-inventory·mfc-capacity·delivery-capacity·payment) /internal 호출용 서비스 신원 토큰(ADR-0011). secret 은 Secret Manager(PMART_SERVICE_CLIENT_SECRET)
+    service-token:
+      token-uri: ${PMART_SERVICE_TOKEN_URI:http://auth-service:8501/api/v1/internal/service-tokens}
+      client-secret: ${PMART_SERVICE_CLIENT_SECRET}
+  orchestration:
+    mfc-inventory-base-url: ${PMART_MFC_INVENTORY_BASE_URL:http://mfc-inventory-service:8301}
+    mfc-capacity-base-url: ${PMART_MFC_CAPACITY_BASE_URL:http://mfc-capacity-service:8303}
+    delivery-capacity-base-url: ${PMART_DELIVERY_CAPACITY_BASE_URL:http://delivery-capacity-service:8402}
+    payment-base-url: ${PMART_PAYMENT_BASE_URL:http://payment-service:8205}
+    stuck-after: PT30S # RUNNING·COMPENSATING 이 이만큼 멈추면 sweep 이 같은 키로 이어서 진행
+    sweep-interval: PT10S
 management:
   tracing:
     export:

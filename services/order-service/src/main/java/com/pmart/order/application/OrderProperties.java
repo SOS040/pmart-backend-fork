@@ -9,7 +9,8 @@ public record OrderProperties(
     String productBaseUrl,
     String pricingBaseUrl,
     String centerMasterBaseUrl,
-    String capacityBaseUrl) {
+    String capacityBaseUrl,
+    String orchestrationBaseUrl) {
 
   public OrderProperties {
     customerBaseUrl = or(customerBaseUrl, "http://customer-service:8103");
@@ -17,6 +18,7 @@ public record OrderProperties(
     pricingBaseUrl = or(pricingBaseUrl, "http://pricing-service:8107");
     centerMasterBaseUrl = or(centerMasterBaseUrl, "http://center-master-service:8507");
     capacityBaseUrl = or(capacityBaseUrl, "http://delivery-capacity-service:8402");
+    orchestrationBaseUrl = or(orchestrationBaseUrl, "http://order-orchestration-service:8202");
   }
 
   private static String or(String v, String d) {

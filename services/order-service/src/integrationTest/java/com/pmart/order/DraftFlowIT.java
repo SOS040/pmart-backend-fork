@@ -58,7 +58,8 @@ import tools.jackson.databind.ObjectMapper;
           "pmart.order.product-base-url",
           "pmart.order.pricing-base-url",
           "pmart.order.center-master-base-url",
-          "pmart.order.capacity-base-url"
+          "pmart.order.capacity-base-url",
+          "pmart.order.orchestration-base-url"
         }))
 class DraftFlowIT extends PostgresKafkaContainerSupport {
 
@@ -468,6 +469,164 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
                 .path("applied")
                 .isNull())
         .isTrue();
+  }
+
+  Res checkout(String token, String draftId, String key, int quoteVersion) {
+    var e =
+        http.post()
+            .uri("/order-drafts/{id}/checkouts", draftId)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "customer-app");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of("acceptedQuoteVersion", quoteVersion, "paymentMethod", "TOSS_PAYMENTS"))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  void saga(String sagaId, Map<String, Object> body) {
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/sagas/" + sagaId)).willReturn(json(body)));
+  }
+
+  static Map<String, Object> step(String step, String state) {
+    return Map.of("step", step, "state", state);
+  }
+
+  /** 결제 진입: 견적·차단 사유 확인 → 사가 시작(202) → 사가 사본으로 진행·결제창 정보·실패 반영. 사가는 WireMock. */
+  @Test
+  void checkoutStartsSagaAndReflectsProgress() {
+    String repeat = TestJwt.customer(REPEAT);
+    // 재구매 회원, 예약 내일 10~11시, 10개(19,000원) → 차단 사유 없음
+    Res d =
+        create(
+            repeat,
+            draft(
+                "PI-" + UUID.randomUUID(),
+                "E-00000001",
+                10,
+                "ADR-IN",
+                "SCHEDULED",
+                window("10:00", "11:00")));
+    assertThat(d.body().path("blockers")).as(d.body().toString()).isEmpty();
+    String draftId = d.body().path("draftId").asString();
+    int quoteVersion = d.body().path("quote").path("quoteVersion").asInt();
+    String sagaId = "SAGA-" + UUID.randomUUID();
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/checkout-sagas"))
+            .willReturn(
+                aResponse()
+                    .withStatus(202)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of("status", "ACCEPTED", "requestId", "k", "resultId", sagaId)))));
+    saga(
+        sagaId,
+        Map.of(
+            "sagaId",
+            sagaId,
+            "state",
+            "WAITING_RESULT",
+            "currentStep",
+            "AWAIT_PAYMENT_RESULT",
+            "steps",
+            List.of(
+                step("RESERVE_INVENTORY", "SUCCEEDED"),
+                step("HOLD_CAPACITY", "SUCCEEDED"),
+                step("HOLD_SLOT", "SUCCEEDED"),
+                step("START_PAYMENT", "SUCCEEDED")),
+            "timers",
+            Map.of("reservationExpiresAt", "2026-10-31T01:10:00Z"),
+            "payment",
+            Map.of(
+                "paymentAttemptId",
+                "PAY-1",
+                "amount",
+                22_100,
+                "pgOrderId",
+                "PAY-1",
+                "clientKey",
+                "test_ck_docs",
+                "expiresAt",
+                "2026-10-31T01:09:00Z")));
+
+    // 견적 버전이 다르면 다시 견적
+    assertThat(code(checkout(repeat, draftId, UUID.randomUUID().toString(), quoteVersion + 1)))
+        .isEqualTo("RE_QUOTE_REQUIRED");
+
+    String key = UUID.randomUUID().toString();
+    Res c = checkout(repeat, draftId, key, quoteVersion);
+    assertThat(c.status()).as(c.body().toString()).isEqualTo(202);
+    String orderId = c.body().path("resultId").asString();
+    assertThat(orderId).startsWith("ORD-");
+    // 같은 키 재전송, 진행 중 다른 키 → 같은 주문(새 사가 없음)
+    assertThat(checkout(repeat, draftId, key, quoteVersion).body().path("resultId").asString())
+        .isEqualTo(orderId);
+    assertThat(
+            checkout(repeat, draftId, UUID.randomUUID().toString(), quoteVersion)
+                .body()
+                .path("resultId")
+                .asString())
+        .isEqualTo(orderId);
+    deps.verify(
+        1,
+        WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/checkout-sagas"))
+            .withRequestBody(matchingJsonPath("$.orderId", equalTo(orderId)))
+            .withRequestBody(matchingJsonPath("$.customerRef", equalTo(REPEAT)))
+            .withRequestBody(matchingJsonPath("$.amount", equalTo("22100")))
+            .withRequestBody(matchingJsonPath("$.arrivalWindow.start", equalTo("10:00")))
+            .withRequestBody(matchingJsonPath("$.lines[0].quantity", equalTo("10"))));
+
+    JsonNode g = get(repeat, "/order-drafts/" + draftId).body();
+    assertThat(g.path("status").asString()).isEqualTo("PAYMENT_PENDING");
+    assertThat(g.path("nextAction").asString()).isEqualTo("PAY");
+    assertThat(g.path("orderId").asString()).isEqualTo(orderId);
+    assertThat(g.path("payment").path("clientKey").asString()).isEqualTo("test_ck_docs");
+    assertThat(g.path("payment").path("pgOrderId").asString()).isEqualTo("PAY-1");
+    assertThat(g.path("resources").path("inventoryReservation").asString()).isEqualTo("HELD");
+    assertThat(g.path("resources").path("slotHold").asString()).isEqualTo("HELD");
+    assertThat(g.path("resources").path("payment").asString()).isEqualTo("STARTED");
+
+    // 사가가 재고 부족으로 보상 종료 → 초안은 다시 검토, 실패 사유 표시
+    saga(
+        sagaId,
+        Map.of(
+            "sagaId",
+            sagaId,
+            "state",
+            "COMPENSATED",
+            "currentStep",
+            "RESERVE_INVENTORY",
+            "steps",
+            List.of(step("RESERVE_INVENTORY", "FAILED")),
+            "lastError",
+            Map.of("step", "RESERVE_INVENTORY", "code", "INSUFFICIENT_STOCK", "message", "재고 부족")));
+    JsonNode failed = get(repeat, "/order-drafts/" + draftId).body();
+    assertThat(failed.path("status").asString()).isEqualTo("DRAFT");
+    assertThat(failed.path("nextAction").asString()).isEqualTo("REVIEW");
+    assertThat(failed.path("checkoutFailure").path("code").asString())
+        .isEqualTo("INSUFFICIENT_STOCK");
+    assertThat(failed.path("resources").path("inventoryReservation").asString())
+        .isEqualTo("FAILED");
+
+    // 차단 사유가 남은 초안(최소주문 미달)은 결제 진입 불가
+    Res blocked =
+        create(
+            repeat, draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-IN", "BUNDLED", null));
+    assertThat(
+            code(
+                checkout(
+                    repeat,
+                    blocked.body().path("draftId").asString(),
+                    UUID.randomUUID().toString(),
+                    blocked.body().path("quote").path("quoteVersion").asInt())))
+        .isEqualTo("CHECKOUT_BLOCKED");
   }
 
   static String code(Res r) {

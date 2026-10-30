@@ -264,7 +264,9 @@ public class DraftService {
                           mapper.writeValueAsString(snapshot),
                           1,
                           now,
-                          OrderRules.quoteExpiresAt(now)));
+                          OrderRules.quoteExpiresAt(now),
+                          null,
+                          null));
                   return id;
                 })
             .value();

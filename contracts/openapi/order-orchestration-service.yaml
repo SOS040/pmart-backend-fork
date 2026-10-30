@@ -114,7 +114,9 @@ paths:
       description: |
         order-service가 가격 동결·acceptedQuoteVersion 검증 후 호출. 같은 draftId+Idempotency-Key 재전송은 기존 사가 반환.
         S1 단계는 재고 예약(ttl 10분) → 작업 여력 Hold → 슬롯 Hold(예약배달만) → 결제 시작 → 승인 대사 → 주문 확정 → 자원 확정 순서다.
-        ACCEPTED는 "사가 시작"이며 재고·슬롯·결제 성공이 아니다.
+        ACCEPTED는 "사가 시작"이며 재고·슬롯·결제 성공이 아니다. 단계는 응답 뒤 비동기로 진행하고(동기 체인 2 hop 규칙) GET /internal/sagas/{sagaId} 로 조회한다.
+        단계 명령의 Idempotency-Key 는 sagaId:단계 로 고정이라 중단 후 재개해도 정본에 한 번만 반영된다.
+        2026-10-31 단계: START_PAYMENT 까지(WAITING_RESULT). 자원 만료 시각까지 결제 승인이 없으면 이번 시도분 자원을 해제하고 COMPENSATED(RESOURCE_EXPIRED).
       operationId: startCheckoutSaga
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -329,15 +331,45 @@ components:
             quoteExpiresAt: { type: string, format: date-time, description: 가격 동결 10분 }
             reservationExpiresAt: { type: string, format: date-time, description: 재고 예약 10분 }
             paymentPendingHold: { type: boolean, description: 불명 시 결제 확인 대기 점유로 전환(해제 금지) }
+        payment:
+          type: object
+          description: START_PAYMENT 성공 후 결제창 진입 정보(payment-service 응답 사본, 비밀값 없음). order-service 가 초안 nextAction=PAY 로 고객에게 준다
+          properties:
+            paymentAttemptId: { type: string }
+            amount: { $ref: '_common.yaml#/components/schemas/Money' }
+            orderName: { type: string }
+            provider: { type: string, enum: [TOSS_PAYMENTS] }
+            pgOrderId: { type: string }
+            clientKey: { type: string }
+            checkoutUrl: { type: string }
+            expiresAt: { type: string, format: date-time }
+        lastError:
+          type: object
+          description: 실패·보상으로 끝난 사가의 원인(첫 실패 단계의 정본 오류 코드)
+          properties:
+            step: { $ref: '#/components/schemas/StepName' }
+            code: { type: string, description: '예 INSUFFICIENT_STOCK, CAPACITY_EXCEEDED, SLOT_NOT_SELECTABLE, CONFIG_REQUIRED, RE_QUOTE_REQUIRED, RESOURCE_EXPIRED' }
+            message: { type: string }
         startedAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
     StartCheckoutSagaRequest:
       type: object
-      required: [draftId, purchaseIntentId, acceptedQuoteVersion, quoteExpiresAt, mfcId, deliveryMode, amount, lines]
+      required: [draftId, orderId, purchaseIntentId, acceptedQuoteVersion, quoteExpiresAt, mfcId, deliveryMode, amount, customerRef, lines]
       properties:
         draftId: { type: string }
+        orderId: { type: string, description: order-service 가 결제 진입 때 발급한 주문 ID(재고 예약·슬롯·결제의 orderId) }
         purchaseIntentId: { type: string }
+        customerRef: { type: string, description: 고객 계정 ID(결제 시도 소유 확인용) }
+        orderName: { type: string, maxLength: 100, description: 결제창 표시용 주문명 }
+        demand:
+          type: object
+          description: 작업 여력 환산 입력(mfc-capacity CapacityDemand 사본)
+          properties:
+            lineCount: { type: integer }
+            itemCount: { type: integer }
+            weightG: { type: integer }
+            plannedShipments: { type: integer }
         acceptedQuoteVersion: { type: integer }
         quoteExpiresAt: { type: string, format: date-time }
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }

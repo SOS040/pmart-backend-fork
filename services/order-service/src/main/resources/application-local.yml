@@ -25,3 +25,4 @@ pmart:
     pricing-base-url: http://localhost:8107
     center-master-base-url: http://localhost:8507
     capacity-base-url: http://localhost:8402
+    orchestration-base-url: http://localhost:8202

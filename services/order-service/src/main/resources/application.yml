@@ -40,6 +40,7 @@ pmart:
     pricing-base-url: ${PMART_PRICING_BASE_URL:http://pricing-service:8107}
     center-master-base-url: ${PMART_CENTER_MASTER_BASE_URL:http://center-master-service:8507}
     capacity-base-url: ${PMART_CAPACITY_BASE_URL:http://delivery-capacity-service:8402}
+    orchestration-base-url: ${PMART_ORCHESTRATION_BASE_URL:http://order-orchestration-service:8202} # 결제 진입 사가(내부, 서비스 토큰)
 management:
   tracing:
     export:

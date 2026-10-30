@@ -18,4 +18,5 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // 참여 정본(재고·여력·슬롯·결제)·auth 서비스 토큰 응답 고정
 }

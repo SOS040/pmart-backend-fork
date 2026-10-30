@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -21,7 +22,9 @@ public class DraftStore {
       String snapshot,
       int version,
       Instant createdAt,
-      Instant quoteExpiresAt) {}
+      Instant quoteExpiresAt,
+      @Nullable String orderId,
+      @Nullable String sagaId) {}
 
   private final JdbcTemplate jdbc;
 
@@ -54,6 +57,30 @@ public class DraftStore {
         .findFirst();
   }
 
+  /** 결제 진입 시작 — 주문 ID·사가 참조를 남기고 버전을 올린다. */
+  public void checkoutStarted(
+      String draftId, String orderId, String sagaId, String requestId, Instant at) {
+    jdbc.update(
+        "UPDATE order_draft SET order_id = ?, saga_id = ?, checkout_request_id = ?, checkout_at = ?,"
+            + " status = 'RESOURCE_PENDING', version = version + 1 WHERE draft_id = ?",
+        orderId,
+        sagaId,
+        requestId,
+        Timestamp.from(at),
+        draftId);
+  }
+
+  /** 행 잠금(같은 초안의 결제 진입을 한 번에 하나만). */
+  public Optional<DraftRow> lock(String draftId) {
+    return jdbc
+        .query(
+            "SELECT *, snapshot::text AS snap FROM order_draft WHERE draft_id = ? FOR UPDATE",
+            (rs, i) -> row(rs),
+            draftId)
+        .stream()
+        .findFirst();
+  }
+
   /** 같은 구매 의도의 가장 최근 초안. */
   public Optional<DraftRow> latestByIntent(String accountId, String purchaseIntentId) {
     return jdbc
@@ -77,6 +104,8 @@ public class DraftStore {
         rs.getString("snap"),
         rs.getInt("version"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("quote_expires_at").toInstant());
+        rs.getTimestamp("quote_expires_at").toInstant(),
+        rs.getString("order_id"),
+        rs.getString("saga_id"));
   }
 }

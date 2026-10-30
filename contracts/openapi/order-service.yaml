@@ -83,7 +83,9 @@ paths:
       summary: 결제 진입 요청 → order-orchestration S1 시작
       description: |
         가격 동결(quoteExpiresAt)과 acceptedQuoteVersion을 검증한 뒤 사가를 시작한다.
-        응답 ACCEPTED는 "사가 시작"이지 재고·슬롯·결제 성공이 아니다. 진행은 GET /order-drafts/{draftId}로 조회.
+        응답 ACCEPTED는 "사가 시작"이지 재고·슬롯·결제 성공이 아니다. 진행은 GET /order-drafts/{draftId}로 조회(resultId = orderId).
+        진행 중이면 status RESOURCE_PENDING·nextAction WAIT, 결제창을 열 수 있으면 PAYMENT_PENDING·PAY 와 payment, 실패하면 DRAFT·REVIEW 와 checkoutFailure.
+        같은 초안에 진행 중인 결제 진입이 있으면 그 진입을 그대로 돌려준다(409 아님). 2026-10-31 단계: 결제 시작까지(승인 대사·주문 확정은 다음 단계).
       operationId: startCheckout
       parameters:
         - { name: draftId, in: path, required: true, schema: { type: string } }
@@ -107,7 +109,7 @@ paths:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: RE_QUOTE_REQUIRED (10분 경과·가격 변경) / DRAFT_EXPIRED
+          description: RE_QUOTE_REQUIRED (10분 경과·acceptedQuoteVersion 불일치) / CHECKOUT_BLOCKED (초안 blockers 가 남음) / CONFIG_REQUIRED
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -470,7 +472,26 @@ components:
         quote: { $ref: '#/components/schemas/Quote' }
         resources: { $ref: '#/components/schemas/ResourceState' }
         nextAction: { type: string, enum: [REVIEW, RE_QUOTE, PAY, WAIT, DONE, EXPIRED] }
-        orderId: { type: string, description: 확정 시 발급 }
+        orderId: { type: string, description: 결제 진입(checkouts) 때 발급. 결제·재고 예약·슬롯이 이 ID 를 쓴다. 확정 전에는 주문 조회 대상이 아니다 }
+        payment:
+          type: object
+          description: nextAction=PAY 일 때만. 결제창(토스 결제위젯) 진입 정보 — 비밀값 없음. 결제창의 orderId 는 pgOrderId
+          properties:
+            paymentAttemptId: { type: string }
+            amount: { $ref: '_common.yaml#/components/schemas/Money' }
+            orderName: { type: string }
+            provider: { type: string, enum: [TOSS_PAYMENTS] }
+            pgOrderId: { type: string }
+            clientKey: { type: string }
+            checkoutUrl: { type: string }
+            expiresAt: { type: string, format: date-time, description: 이 시각까지 결제창 인증을 끝내야 한다(재고 예약·슬롯·가격 동결 중 가장 이른 만료) }
+        checkoutFailure:
+          type: object
+          description: 마지막 결제 진입이 자원 확보·결제 시작에서 실패했을 때. 확보했던 자원은 해제된다(이번 시도분만). 견적이 유효하면 다시 결제 진입할 수 있다
+          properties:
+            step: { type: string, description: 실패 단계(RESERVE_INVENTORY·HOLD_CAPACITY·HOLD_SLOT·START_PAYMENT·AWAIT_PAYMENT_RESULT 등) }
+            code: { type: string, description: 예 INSUFFICIENT_STOCK·SKU_NOT_HANDLED·CAPACITY_EXCEEDED·SLOT_NOT_SELECTABLE·CONFIG_REQUIRED·RESOURCE_EXPIRED }
+            message: { type: string }
         lines: { type: array, items: { $ref: '#/components/schemas/DraftLine' } }
         delivery: { $ref: '#/components/schemas/DraftDelivery' }
         blockers: { type: array, items: { $ref: '#/components/schemas/DraftBlocker' } }
