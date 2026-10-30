@@ -38,6 +38,13 @@ java deploy/lan/seed/Seed.java
 ```
 이미지는 태그가 아니라 **digest** 로 지정한다(ci-cd.md). push 하지 않은 서비스가 배치에 있으면 render 가 중단된다.
 
+`jib` 이 Docker Hub 매니페스트 PUT 에서 401 로 실패하면(2026-10-30 발생, 로그인은 정상) 같은 Jib 로 데몬에 만들고 Docker CLI 로 올린 뒤 그 digest 를 적는다:
+```bash
+./gradlew :services:<name>:jibDockerBuild -PcontainerRegistry=docker.io/heeji4445 -PimageTag=<sha> -PgitRevision=<sha> --no-configuration-cache
+docker push heeji4445/pmart-<name>:<sha>                  # 출력 끝의 digest: sha256:… 를
+printf %s 'sha256:…' > services/<name>/build/jib-image.digest
+```
+
 ## 장애 대비 (2026-10-27, `docs/worklog/2026-10-27.md`)
 - **컨테이너 고정 IP**: compose 네트워크 `172.28.0.0/24`, 구성요소는 배치 순서대로 `.10~`, 자동 배정은 `.192/26`.
   Docker Desktop VM 이 리셋되면 새 VM 이 이전 포트 전달 규칙(옛 컨테이너 IP)을 복원하는데, IP 가 바뀌면 LAN 포트가 엉뚱한 컨테이너로 간다.
