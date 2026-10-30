@@ -35,3 +35,6 @@ replay_pid*.log
 
 # LAN 배포 비밀정보 (deploy/lan/init-secrets.sh 가 생성)
 deploy/lan/.secrets/
+
+# 외부 참고 자료 원본 (저작권 문제로 저장소에 올리지 않는다: 상품·카테고리·이미지 등)
+local-reference/
