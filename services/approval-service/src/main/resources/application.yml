@@ -33,6 +33,7 @@ pmart:
       PRODUCT: PRODUCT_APPROVER # 상품·SKU·바코드·카테고리 트리 (BO-03)
       DISPLAY: DISPLAY_APPROVER # 고객용 상품명·설명·이미지 게시 (BO-05)
       PRICE: PRICE_APPROVER # 기본 판매가격 (BO-04)
+      SERVICEABILITY: SERVICEABILITY_APPROVER # 고객 배송 권역·담당 MFC 매핑 (BO-07)
 management:
   tracing:
     export:

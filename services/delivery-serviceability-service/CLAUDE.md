@@ -20,5 +20,10 @@
 ```
 로컬 포트 8401.
 
+## 권역 매핑·판정 (2026-10-30)
+- 권역 = GeoJSON Polygon/MultiPolygon([경도, 위도]), `ZoneMatcher` 레이 캐스팅. 중첩은 우선순위가 가장 큰 권역이 하나일 때만, 아니면 OVERLAP(임의 선택 금지).
+- 매핑 버전: `POST /serviceability-versions`(운영자 초안, 내용 해시) → approval SERVICEABILITY(역할 `SERVICEABILITY_APPROVER`) → ApprovalDecided → 시험 주소 검증 → ACTIVE + `ServiceabilityVersionApplied`(토픽 `delivery.serviceability.v1` 명시). 해시 불일치·시험 주소 불일치는 REJECTED.
+- 판정은 좌표로만(지오코딩 없음). 좌표 없으면 NEEDS_INPUT(geo), 발효 버전 없으면 CONFIG_REQUIRED.
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+권역 매핑 버전·좌표 판정 구현(2026-10-30). 배송 가능 조건(`/delivery-conditions`)은 501(주문서 단계에서).

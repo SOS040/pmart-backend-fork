@@ -141,7 +141,7 @@ spring:
             - id: delivery-serviceability-service
               uri: ${pmart.gateway.upstream.delivery-serviceability-service}
               predicates:
-                - Path=/api/v1/serviceability-checks/**,/api/v1/delivery-conditions/**
+                - Path=/api/v1/serviceability-checks/**,/api/v1/delivery-conditions/**,/api/v1/serviceability-versions/**
             - id: delivery-capacity-service
               uri: ${pmart.gateway.upstream.delivery-capacity-service}
               predicates:

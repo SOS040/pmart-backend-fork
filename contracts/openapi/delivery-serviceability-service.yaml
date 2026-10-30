@@ -14,8 +14,53 @@ tags:
   - { name: serviceability, description: 주소 판정 (API-SERVICEAREA-001) }
   - { name: conditions, description: 배송 가능 조건 조회 }
   - { name: internal, description: 매핑 버전 조회 (order / routing / bo) }
+  - { name: mapping-versions, description: "권역·담당 MFC 매핑 버전 등록(임시 백오피스·seed) — 초안 → SERVICEABILITY 승인(BO-07) → 발효" }
 
 paths:
+  /serviceability-versions:
+    post:
+      tags: [mapping-versions]
+      summary: 권역 매핑 버전 초안 등록 (운영자) — 승인 요청 본문을 돌려준다
+      description: |
+        권역(GeoJSON Polygon/MultiPolygon, 경도·위도 순)·담당 MFC·중첩 우선순위를 버전으로 등록한다. 형식이 맞으면 DRAFT 로 저장하고 내용을 잠근 해시를 붙인
+        approvalRequest(approval-service ChangeRequestBody 모양)를 돌려준다. 그대로 approval-service POST /change-requests 에 보내 제출·승인하면
+        ApprovalDecided(SERVICEABILITY) 를 받아 발효(ACTIVE)하고 ServiceabilityVersionApplied 를 발행한다. 이전 발효 버전은 SUPERSEDED.
+        시험 주소(testAddresses)를 주면 발효 직전에 기대 판정과 비교하고, 하나라도 다르면 발효하지 않는다(BO-07).
+      operationId: createServiceabilityVersion
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ServiceabilityVersionDraft' }
+      responses:
+        '201':
+          description: 초안 저장
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { $ref: '#/components/schemas/ServiceabilityVersion' }
+                  approvalRequest: { type: object, additionalProperties: true, description: approval-service ChangeRequestBody }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+  /serviceability-versions/{version}:
+    get:
+      tags: [mapping-versions]
+      summary: 매핑 버전 조회 (운영자, 권역 경계 포함)
+      operationId: getServiceabilityVersionForOperator
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceabilityVersion' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
   /serviceability-checks:
     post:
       tags: [serviceability]
@@ -189,6 +234,42 @@ components:
             start: { type: string, example: '00:00' }
             end: { type: string, example: '08:00' }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    ServiceabilityVersionDraft:
+      type: object
+      required: [zones]
+      properties:
+        zones:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [zoneId, mfcId, geometry]
+            properties:
+              zoneId: { type: string, pattern: '^[A-Za-z0-9_-]{1,40}$' }
+              mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+              name: { type: string, maxLength: 100 }
+              priority: { type: integer, description: 중첩 시 큰 값이 우선. 같거나 없으면 OVERLAP(주문 진행 불가) }
+              geometry:
+                type: object
+                required: [type, coordinates]
+                description: GeoJSON Polygon/MultiPolygon. 좌표는 [경도, 위도]
+                properties:
+                  type: { type: string, enum: [Polygon, MultiPolygon] }
+                  coordinates: { type: array, items: {} }
+        effectiveFrom: { type: string, format: date-time, description: 생략 시 승인 반영 즉시 }
+        changeSummary: { type: string, maxLength: 500 }
+        testAddresses:
+          type: array
+          description: 발효 전 검증할 시험 주소와 기대 판정
+          items:
+            type: object
+            required: [lat, lng, expectedResult]
+            properties:
+              label: { type: string }
+              lat: { type: number }
+              lng: { type: number }
+              expectedResult: { $ref: '#/components/schemas/ServiceabilityResult' }
+              expectedMfcId: { type: string }
     ServiceabilityVersion:
       type: object
       properties:
