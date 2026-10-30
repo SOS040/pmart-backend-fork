@@ -18,4 +18,7 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // delivery-serviceability 판정 응답 고정
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox·프로필 행 확인
+    "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 CustomerAuthenticated 를 토픽에 흘림
 }

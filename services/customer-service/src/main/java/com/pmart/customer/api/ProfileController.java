@@ -1,11 +1,24 @@
 package com.pmart.customer.api;
 
 import com.pmart.customer.api.generated.ProfileApi;
+import com.pmart.customer.api.generated.model.Profile;
+import com.pmart.customer.application.ProfileService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 계약 ProfileApi 의 구현 진입점. 아직 구현하지 않은 메서드는 인터페이스 default 가 501 을 돌려준다. 업무 규칙은 application/domain 에
- * 두고 여기서는 요청·응답 변환만 한다.
- */
+/** 계약 ProfileApi — 본인 프로필 조회. 프로필 변경은 아직 501(인터페이스 default). */
 @RestController
-public class ProfileController implements ProfileApi {}
+public class ProfileController implements ProfileApi {
+
+  private final ProfileService profiles;
+
+  public ProfileController(ProfileService profiles) {
+    this.profiles = profiles;
+  }
+
+  @Override
+  public ResponseEntity<Profile> getMyProfile() {
+    return ResponseEntity.ok(
+        CustomerMapping.profile(profiles.me(CustomerMapping.currentCustomer())));
+  }
+}

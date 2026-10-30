@@ -20,5 +20,13 @@
 ```
 로컬 포트 8103.
 
+## 주소록·쇼핑 주소 (2026-10-30)
+- 프로필은 auth `CustomerAuthenticated`(platform.auth.v1) 로 생기고, 이벤트보다 `/me` 가 먼저 와도 만든다(제공자는 이벤트가 채움).
+- 주소 추가·수정은 delivery-serviceability `POST /serviceability-checks` 로 판정한 **사본**을 함께 저장한다. 판정 실패·불명·발효 버전 없음이어도 주소는 저장하고 `UNKNOWN`(Commerce 5.1: 저장 ≠ 배송 가능). OVERLAP·NEEDS_INPUT 도 UNKNOWN(임의 MFC 금지).
+- 판정 호출은 트랜잭션 밖에서 먼저. 회원은 본인 토큰 전파, 비회원 배송지는 익명(판정 경로는 계약 `security: []`).
+- 쇼핑 주소 선택은 다시 판정하고 `shoppingContextVersion` +1, `ShoppingAddressChanged`(토픽 `commerce.customer.v1` 명시). 현재 쇼핑 주소를 고치면 컨텍스트도 +1. 현재 쇼핑 주소는 삭제 불가(INVALID_STATE).
+- 주소록 최대 건수 `pmart.customer.address-limit`(설계값 20, 비우면 CONFIG_REQUIRED). 비회원 배송지는 기기(`X-Device-Id`)별 같은 한도, 다른 기기 조회는 403.
+- 약관 동의는 아직 받지 않는다(ADR-0019) — 내부 계정 상태의 `purchasable` 은 ACTIVE 여부만, `requiredConsentOutdated=false`.
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+프로필 조회·주소록·쇼핑 주소·비회원 배송지·내부 계정 상태/쇼핑 컨텍스트 구현(2026-10-30). 동의·프로필 변경·탈퇴·첫 구매 대조는 501.

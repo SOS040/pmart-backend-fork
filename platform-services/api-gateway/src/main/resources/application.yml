@@ -217,6 +217,10 @@ pmart:
         path: /api/v1/guest-delivery-addresses # customer-service
       - method: GET
         path: /api/v1/guest-delivery-addresses/* # customer-service
+      - method: POST
+        path: /api/v1/serviceability-checks # delivery-serviceability-service
+      - method: GET
+        path: /api/v1/serviceability-checks/* # delivery-serviceability-service
       - method: GET
         path: /api/v1/search/products # search-service
       - method: GET

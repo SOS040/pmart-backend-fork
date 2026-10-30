@@ -24,6 +24,7 @@
 - 권역 = GeoJSON Polygon/MultiPolygon([경도, 위도]), `ZoneMatcher` 레이 캐스팅. 중첩은 우선순위가 가장 큰 권역이 하나일 때만, 아니면 OVERLAP(임의 선택 금지).
 - 매핑 버전: `POST /serviceability-versions`(운영자 초안, 내용 해시) → approval SERVICEABILITY(역할 `SERVICEABILITY_APPROVER`) → ApprovalDecided → 시험 주소 검증 → ACTIVE + `ServiceabilityVersionApplied`(토픽 `delivery.serviceability.v1` 명시). 해시 불일치·시험 주소 불일치는 REJECTED.
 - 판정은 좌표로만(지오코딩 없음). 좌표 없으면 NEEDS_INPUT(geo), 발효 버전 없으면 CONFIG_REQUIRED.
+- 판정(`POST/GET /serviceability-checks`)은 공개(계약 `security: []`): 비회원 둘러보기·비회원 배송지(customer-service 익명 호출). 좌표 판정만 하고 주소 원문은 저장하지 않는다.
 
 ## 상태
 권역 매핑 버전·좌표 판정 구현(2026-10-30). 배송 가능 조건(`/delivery-conditions`)은 501(주문서 단계에서).

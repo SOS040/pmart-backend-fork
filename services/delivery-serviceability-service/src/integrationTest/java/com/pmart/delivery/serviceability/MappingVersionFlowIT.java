@@ -235,6 +235,27 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(inside.body().path("mfcId").asString()).isEqualTo("MFC-BSN-01");
     assertThat(inside.body().path("mappingVersion").asInt()).isEqualTo(version);
     assertThat(check(37.60, 127.02).body().path("result").asString()).isEqualTo("OUT_OF_AREA");
+    // 비회원(토큰 없음)도 판정 가능(계약 security: [])
+    var anonymous =
+        http.post()
+            .uri("/serviceability-checks")
+            .headers(
+                h -> {
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "customer-service");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(
+                Map.of(
+                    "address",
+                    Map.of("roadAddress", "서울", "lat", 37.50, "lng", 127.02),
+                    "purpose",
+                    "ADDRESS_BOOK"))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(anonymous.getStatusCode().value()).isEqualTo(200);
+    assertThat(mapper.readTree(anonymous.getBody()).path("result").asString())
+        .isEqualTo("SERVICEABLE");
     Res noGeo = check(null, null);
     assertThat(noGeo.body().path("result").asString()).isEqualTo("NEEDS_INPUT");
     assertThat(noGeo.body().path("missingFields").path(0).asString()).isEqualTo("geo");

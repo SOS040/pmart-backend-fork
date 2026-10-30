@@ -74,6 +74,7 @@ paths:
         - UNKNOWN 정본 조회 불명 → 재시도. 임의 MFC 배정 금지
         배송 시간 제한 00:00~08:00 없음 등 조건은 conditions에 포함된다.
       operationId: createServiceabilityCheck
+      security: []   # 비회원도 배송 가능 지역 확인(좌표 판정만, 개인정보 저장 없음). customer-service 비회원 배송지가 익명으로 호출
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -102,6 +103,7 @@ paths:
       tags: [serviceability]
       summary: 판정 결과 재조회
       operationId: getServiceabilityCheck
+      security: []   # 비회원 주소 판정 결과 재조회(checkId 는 추측 불가 UUID)
       parameters:
         - { name: checkId, in: path, required: true, schema: { type: string } }
       responses:
