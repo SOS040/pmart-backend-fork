@@ -1,0 +1,35 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "tokenizer": {
+        "name_ngram": { "type": "ngram", "min_gram": 1, "max_gram": 2, "token_chars": ["letter", "digit"] }
+      },
+      "analyzer": {
+        "name_ngram": { "type": "custom", "tokenizer": "name_ngram", "filter": ["lowercase"] }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "productId": { "type": "keyword" },
+      "productVersion": { "type": "integer" },
+      "name": { "type": "text", "analyzer": "name_ngram" },
+      "imageUrl": { "type": "keyword", "index": false },
+      "contentVersion": { "type": "integer" },
+      "contentPublishedAtMs": { "type": "date", "format": "epoch_millis" },
+      "primaryCategoryId": { "type": "keyword" },
+      "categoryIds": { "type": "keyword" },
+      "categoryScope": { "type": "keyword" },
+      "representativeSku": { "type": "keyword" },
+      "saleState": { "type": "keyword" },
+      "saleStateAtMs": { "type": "date", "format": "epoch_millis" },
+      "basePrice": { "type": "long" },
+      "priceVersion": { "type": "integer" },
+      "updatedAtMs": { "type": "date", "format": "epoch_millis" }
+    }
+  },
+  "aliases": { "products": {} }
+}

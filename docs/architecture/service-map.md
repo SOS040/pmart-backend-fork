@@ -52,12 +52,14 @@
 - **소유**: 검색 색인, 키워드·자동완성·필터 속성, 최근 검색어.
 - **소유하지 않음**: 판매 가능 판단(색인 지연≠재고 있음).
 - **API**: 검색/필터.
-- **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `CategoryChanged`.
+- **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`(표시 가격·가격순), `CategoryChanged`.
+- **의존**: OpenSearch(색인, ADR-0021), product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강).
 
 ### storefront-service `[1단계 기본]`
 - **소유**: 홈 진열·배너·테마·랭킹/신상품 탭 구성과 발효 버전, 추천(3차).
 - **소유하지 않음**: 상품·가격·재고 정본.
-- **구독**: `ApprovalDecided`(전시 승인 BO-05), `ProductVersionPublished`, `PriceVersionEffective`.
+- **구독**: `ApprovalDecided`(전시 승인 BO-05), `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`.
+- **의존**: product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강, ADR-0021).
 
 ### pricing-service `[1단계]`
 - **소유**: SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음), 효력일, 견적 계산(기본가·선택 오퍼→기간 프로모션→상품쿠폰→장바구니쿠폰 순서; 1차는 기본가만).

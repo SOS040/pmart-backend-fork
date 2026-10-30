@@ -30,7 +30,7 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 "
+INFRA=" postgres kafka connect redis zipkin s3 opensearch "
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
 yml() { echo "$(src_dir "$1")/src/main/resources/application.yml"; }
 port_of() { awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$(yml "$1")"; }
@@ -241,6 +241,30 @@ EOF
 
 EOF
         ;;
+      opensearch)
+        # 상품 검색 색인(search-service 전용). deploy/local 과 같은 이미지·설정. 다른 PC 의 search-service 가 부르므로 9200 을 연다
+        # (보안 플러그인 끔 — LAN 시험망, 공개 상품 정보만 색인).
+        cat <<EOF
+  opensearch:
+    <<: *common
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["9200:9200"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - osdata:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9200/"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+EOF
+        ;;
       zipkin)
         cat <<EOF
   zipkin:
@@ -275,6 +299,7 @@ EOF
         needs "$c" PMART_KAFKA_BOOTSTRAP && echo "      PMART_KAFKA_BOOTSTRAP: kafka:9092"
         needs "$c" PMART_JWKS_URI && echo "      PMART_JWKS_URI: http://auth-service:$(port_of auth-service)/api/v1/internal/jwks"
         needs "$c" PMART_REDIS_URL && echo "      PMART_REDIS_URL: redis://redis:6379"
+        needs "$c" PMART_OPENSEARCH_URL && echo "      PMART_OPENSEARCH_URL: http://opensearch:9200"
         echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
         if [ "$c" = auth-service ]; then
           echo "      PMART_AUTH_ISSUER: http://auth-service:$(port_of auth-service)"
@@ -318,6 +343,7 @@ EOF
     [[ "$comps" == *" postgres "* ]] && vols+="  pgdata:"$'\n'
     [[ "$comps" == *" kafka "* ]] && vols+="  kafkadata:"$'\n'
     [[ "$comps" == *" s3 "* ]] && vols+="  s3data:"$'\n'
+    [[ "$comps" == *" opensearch "* ]] && vols+="  osdata:"$'\n'
     [ -n "$vols" ] && printf 'volumes:\n%s' "$vols"
   } > "$dir/compose.yml"
 

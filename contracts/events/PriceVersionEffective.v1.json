@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/PriceVersionEffective.v1.json",
   "title": "PriceVersionEffective",
-  "description": "가격 승인 발효(확정 주문 소급 없음). 발행 pricing-service. 구독 cart, storefront, order, approval. 토픽 commerce.pricing.v1. 단계 ①",
+  "description": "가격 승인 발효(확정 주문 소급 없음). 발행 pricing-service. 구독 cart, storefront, search, order, approval. 토픽 commerce.pricing.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

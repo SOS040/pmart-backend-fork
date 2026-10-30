@@ -1,0 +1,13 @@
+{
+  "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "sku": { "type": "keyword" },
+      "price": { "type": "long" },
+      "priceVersion": { "type": "integer" },
+      "effectiveAtMs": { "type": "date", "format": "epoch_millis" }
+    }
+  },
+  "aliases": { "sku-prices": {} }
+}

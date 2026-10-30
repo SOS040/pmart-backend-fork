@@ -21,6 +21,11 @@ server:
 pmart:
   messaging:
     domain: commerce
+  search:
+    # 상품 검색 색인(OpenSearch, tech-stack 선택적 스택). 색인 이름은 별칭(products) → 실제 인덱스 products-v1
+    opensearch-url: ${PMART_OPENSEARCH_URL}
+    # 콘텐츠 사건에 상품명·이미지가 없어 공개 카드 API 로 보강한다(product-content-service, Service DNS)
+    content-base-url: ${PMART_PRODUCT_CONTENT_BASE_URL:http://product-content-service:8102}
   security:
     # 계약 security: [] 작업(익명). 기본 목록을 덮어쓰므로 actuator·error 도 다시 적는다. 경로마다 메서드가 하나뿐이라 경로 단위 허용이 계약과 일치.
     permit-paths:

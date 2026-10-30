@@ -18,4 +18,6 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // product-content 공개 카드 응답 고정
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 투영 행 확인
 }

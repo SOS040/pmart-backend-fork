@@ -20,5 +20,11 @@
 ```
 로컬 포트 8106.
 
+## 기본 진열 (2026-10-30)
+- 진열 편성 승인(BO-05, `/storefront/layout-publications`)이 아직 없어 **기본 진열(layoutVersion 0)** 만 있다: HOME 탭 하나, 섹션 `S-ALL`("전체 상품", 최근 게시 순, 첫 묶음 10개). 배너 없음, RANKING·NEW 탭 404 `TAB_NOT_CONFIGURED`. 편성 버전이 생기면 이것을 대체한다.
+- 투영(V2): `display_product`(상품 버전·대표 SKU·판매 상태·이름·이미지·처음 게시 시각), `display_sku_price`. 구독 commerce.product.v1·commerce.pricing.v1, InboxGuard + 버전·시각 비교(옛 사건 무시). 가격은 조회 때 대표 SKU 로 붙인다.
+- 콘텐츠 사건에는 이름·이미지가 없어 product-content 공개 카드 API(`pmart.storefront.content-base-url`)로 보강한다(ADR-0021).
+- 진열 대상: 게시 콘텐츠·상품 버전이 모두 있고 판매중지가 아닌 상품. carried 는 null(MFC 취급 사건 없음).
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+기본 진열 홈·섹션 다음 묶음·배너(빈 목록) 구현(2026-10-30). 편성 게시·내부 발효 버전 조회는 501.

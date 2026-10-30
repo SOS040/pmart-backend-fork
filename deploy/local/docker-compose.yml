@@ -133,7 +133,26 @@ services:
       timeout: 3s
       retries: 30
 
+  opensearch:
+    # 상품 검색 색인(search-service 전용, tech-stack 선택적 스택). 단일 노드·보안 플러그인 끔(로컬 전용, 공개 상품 정보만 색인).
+    # 한국어 부분 일치는 내장 cjk_bigram 으로 한다(플러그인 없음). 호스트 bootRun 용으로 127.0.0.1:9200 만 연다.
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["127.0.0.1:9200:9200"]
+    volumes:
+      - osdata:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9200/"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
 volumes:
   pgdata:
   kafkadata:
   s3data:
+  osdata:

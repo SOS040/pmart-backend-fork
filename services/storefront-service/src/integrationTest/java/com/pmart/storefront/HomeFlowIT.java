@@ -1,0 +1,262 @@
+package com.pmart.storefront;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
+import com.pmart.common.test.EventEnvelopeFixtures;
+import com.pmart.common.test.PostgresKafkaContainerSupport;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * 상품·콘텐츠·판매 상태·가격 사건(Kafka) → 진열 투영(PostgreSQL) → 홈·섹션 API(토큰 없이). 공개 카드 API 는 WireMock. 같은 사건 재전달은
+ * inbox, 늦게 온 옛 사건은 버전·시각 비교로 무시한다.
+ */
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+      "spring.main.banner-mode=off",
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+    })
+@EnableWireMock(
+    @ConfigureWireMock(name = "content", baseUrlProperties = "pmart.storefront.content-base-url"))
+class HomeFlowIT extends PostgresKafkaContainerSupport {
+
+  @LocalServerPort int port;
+  @Autowired ObjectMapper mapper;
+  @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired JdbcTemplate jdbc;
+
+  @InjectWireMock("content")
+  WireMockServer content;
+
+  RestClient http;
+
+  @BeforeEach
+  void setUp() {
+    http =
+        RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1")
+            .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+            .build();
+    content.resetAll();
+    for (int i = 1; i <= 12; i++) {
+      card("PRD-H" + i, "[시험] 상품 " + i, 1);
+    }
+  }
+
+  void card(String productId, String name, int version) {
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/product-contents"))
+            .withQueryParam("productIds", equalTo(productId))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "items",
+                                List.of(
+                                    Map.of(
+                                        "productId", productId,
+                                        "name", name,
+                                        "contentVersion", version,
+                                        "mainImage",
+                                            Map.of(
+                                                "url",
+                                                "/api/v1/content-images/IMG-" + productId))))))));
+  }
+
+  void send(String type, String id, long version, Map<String, Object> payload) {
+    String topic =
+        type.equals("PriceVersionEffective") ? "commerce.pricing.v1" : "commerce.product.v1";
+    kafka
+        .send(
+            topic,
+            id,
+            EventEnvelopeFixtures.envelope(type)
+                .from("it")
+                .aggregate(
+                    type.equals("PriceVersionEffective") ? "PriceVersion" : "Product", id, version)
+                .payload(payload)
+                .buildJson())
+        .join();
+  }
+
+  void product(String id, int version, String sku) {
+    send(
+        "ProductVersionPublished",
+        id,
+        version,
+        Map.of(
+            "productId",
+            id,
+            "version",
+            version,
+            "saleState",
+            "ON_SALE",
+            "categoryIds",
+            List.of("t01-c01"),
+            "skus",
+            List.of(Map.of("sku", sku)),
+            "effectiveAt",
+            "2026-10-30T01:00:00Z"));
+  }
+
+  void published(String id, int version, String at) {
+    send(
+        "ProductContentPublished",
+        id,
+        version,
+        Map.of("productId", id, "contentVersion", version, "publishedAt", at));
+  }
+
+  JsonNode get(String path) {
+    String body = http.get().uri(path).retrieve().body(String.class);
+    return mapper.readTree(body == null ? "{}" : body);
+  }
+
+  int status(String path) {
+    return http.get().uri(path).retrieve().toBodilessEntity().getStatusCode().value();
+  }
+
+  static List<String> ids(JsonNode items) {
+    List<String> ids = new ArrayList<>();
+    items.forEach(i -> ids.add(i.path("productId").asString()));
+    return ids;
+  }
+
+  JsonNode awaitHome(Predicate<JsonNode> until) throws InterruptedException {
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(60));
+    JsonNode last = null;
+    while (Instant.now().isBefore(deadline)) {
+      last = get("/storefront/home");
+      if (until.test(last)) {
+        return last;
+      }
+      Thread.sleep(300);
+    }
+    throw new AssertionError("홈 조건 미충족: " + last);
+  }
+
+  @Test
+  void homeShowsPublishedProductsNewestFirst() throws Exception {
+    // 빈 투영이어도 홈은 200(섹션 OK, 상품 0)
+    JsonNode empty = get("/storefront/home");
+    assertThat(empty.path("layoutVersion").asInt()).isZero();
+    assertThat(empty.path("sections").path(0).path("sectionId").asString()).isEqualTo("S-ALL");
+
+    send(
+        "PriceVersionEffective",
+        "E-H1",
+        1,
+        Map.of(
+            "sku",
+            "E-H1",
+            "price",
+            1900,
+            "priceVersion",
+            1,
+            "effectiveAt",
+            "2026-10-30T00:00:00Z"));
+    for (int i = 1; i <= 12; i++) {
+      product("PRD-H" + i, 1, "E-H" + i);
+      published("PRD-H" + i, 1, "2026-10-30T02:%02d:00Z".formatted(i));
+    }
+    product("PRD-NOCONTENT", 1, "E-X"); // 콘텐츠 없음 → 진열 안 함
+
+    JsonNode home =
+        awaitHome(
+            h ->
+                h.path("sections").path(0).path("items").size() == 10
+                    && h.path("sections").path(0).path("nextCursor").isString());
+    JsonNode section = home.path("sections").path(0);
+    assertThat(home.path("tabs").path(0).asString()).isEqualTo("HOME");
+    assertThat(section.path("state").asString()).isEqualTo("OK");
+    assertThat(section.path("kind").asString()).isEqualTo("THEME");
+    assertThat(ids(section.path("items")).get(0)).isEqualTo("PRD-H12"); // 최근 게시 순
+
+    // 섹션 다음 묶음
+    JsonNode next =
+        get(
+            "/storefront/sections/S-ALL/items?layoutVersion=0&size=10&cursor="
+                + section.path("nextCursor").asString());
+    assertThat(ids(next.path("items"))).containsExactly("PRD-H2", "PRD-H1");
+    JsonNode h1 = next.path("items").path(1);
+    assertThat(h1.path("basePrice").asInt()).as("상품보다 먼저 온 가격").isEqualTo(1900);
+    assertThat(h1.path("name").asString()).isEqualTo("[시험] 상품 1");
+    assertThat(h1.path("imageUrl").asString()).isEqualTo("/api/v1/content-images/IMG-PRD-H1");
+    assertThat(next.path("page").path("nextCursor").isNull()).isTrue();
+
+    // 판매중지 → 빠짐, 옛 시각의 상태·옛 콘텐츠 버전·같은 사건 재전달은 무시
+    send(
+        "ProductSaleStateChanged",
+        "PRD-H12",
+        2,
+        Map.of(
+            "productId", "PRD-H12",
+            "sku", "E-H12",
+            "state", "DISCONTINUED",
+            "effectiveAt", "2026-10-30T03:00:00Z"));
+    send(
+        "ProductSaleStateChanged",
+        "PRD-H12",
+        1,
+        Map.of(
+            "productId", "PRD-H12",
+            "sku", "E-H12",
+            "state", "ON_SALE",
+            "effectiveAt", "2026-10-30T02:59:00Z"));
+    card("PRD-H11", "[시험] 이름 바뀐 상품 11", 2);
+    published("PRD-H11", 2, "2026-10-30T04:00:00Z");
+    published("PRD-H11", 1, "2026-10-30T02:11:00Z");
+    JsonNode after =
+        awaitHome(
+            h ->
+                !ids(h.path("sections").path(0).path("items")).contains("PRD-H12")
+                    && h.path("sections")
+                        .path(0)
+                        .path("items")
+                        .path(0)
+                        .path("name")
+                        .asString()
+                        .contains("이름 바뀐"));
+    assertThat(ids(after.path("sections").path(0).path("items")).get(0))
+        .as("게시 시각은 처음 게시 기준")
+        .isEqualTo("PRD-H11");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT content_version FROM display_product WHERE product_id = 'PRD-H11'",
+                Integer.class))
+        .isEqualTo(2);
+
+    // 오류·미구성
+    assertThat(status("/storefront/tabs/RANKING")).isEqualTo(404);
+    assertThat(status("/storefront/sections/S-NONE/items")).isEqualTo(404);
+    assertThat(status("/storefront/sections/S-ALL/items?layoutVersion=3")).isEqualTo(409);
+    assertThat(status("/storefront/sections/S-ALL/items?cursor=garbage")).isEqualTo(400);
+    assertThat(get("/storefront/banners").path("items")).isEmpty();
+  }
+}

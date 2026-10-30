@@ -1,0 +1,80 @@
+package com.pmart.storefront.application;
+
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.storefront.domain.DefaultLayout;
+import com.pmart.storefront.infrastructure.ContentCardClient;
+import com.pmart.storefront.infrastructure.DisplayStore;
+import java.time.Clock;
+import java.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+
+/**
+ * 상품·콘텐츠·판매 상태·가격 사건 → 진열 투영. inbox 트랜잭션 안에서 실행된다. 콘텐츠 사건에는 이름·이미지가 없어 공개 카드 API 로 보강하고(실패하면 예외 →
+ * 재처리), 게시본이 없으면 건너뛴다.
+ */
+@Service
+public class DisplayProjector {
+
+  private static final Logger log = LoggerFactory.getLogger(DisplayProjector.class);
+
+  private final DisplayStore store;
+  private final ContentCardClient cards;
+  private final Clock clock;
+
+  public DisplayProjector(DisplayStore store, ContentCardClient cards, Clock clock) {
+    this.store = store;
+    this.cards = cards;
+    this.clock = clock;
+  }
+
+  public void apply(EventEnvelope e) {
+    JsonNode p = e.payload();
+    switch (e.eventType()) {
+      case "ProductVersionPublished" ->
+          store.upsertProduct(
+              p.path("productId").asString(),
+              p.path("version").asInt(),
+              p.path("skus").path(0).path("sku").asString(null),
+              p.path("saleState").asString("ON_SALE"),
+              at(p.path("effectiveAt"), e),
+              clock.instant());
+      case "ProductContentPublished" -> {
+        String productId = p.path("productId").asString();
+        cards
+            .card(productId)
+            .ifPresentOrElse(
+                c ->
+                    store.upsertContent(
+                        productId,
+                        Math.max(c.contentVersion(), p.path("contentVersion").asInt()),
+                        c.name(),
+                        c.imageUrl(),
+                        at(p.path("publishedAt"), e),
+                        clock.instant()),
+                () -> log.warn("콘텐츠 사건을 받았지만 게시본이 없다 {} — 건너뜀", productId));
+      }
+      case "ProductSaleStateChanged" ->
+          store.upsertSaleState(
+              p.path("productId").asString(),
+              DefaultLayout.saleStateFromEvent(p.path("state").asString("ON_SALE")),
+              at(p.path("effectiveAt"), e),
+              clock.instant());
+      case "PriceVersionEffective" ->
+          store.upsertPrice(
+              p.path("sku").asString(),
+              p.path("price").asLong(),
+              p.path("priceVersion").asInt(),
+              at(p.path("effectiveAt"), e));
+      default -> {
+        // 진열에 쓰지 않는 사건(SkuIssued·CategoryChanged 등)
+      }
+    }
+  }
+
+  private static Instant at(JsonNode n, EventEnvelope e) {
+    return n.isString() ? Instant.parse(n.asString()) : e.occurredAt();
+  }
+}

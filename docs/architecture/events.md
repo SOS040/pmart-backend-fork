@@ -20,8 +20,8 @@
 | `SkuIssued` | product-service | cdc-inventory, mfc-inventory, approval, pricing | sku(E-/B-), baseProductId, version | 본사 승인 후 SKU 발급 | ① |
 | `ProductSaleStateChanged` | product-service | cart, search, storefront, order, demand-planning | sku, state(ON_SALE/TEMP_OUT/DISCONTINUED), effectiveAt | 전사 판매 상태 변경 | ① |
 | `CategoryChanged` | product-service | search, storefront, product-content | categoryId, parent, state, version | 분류 승인 발효 | ① |
-| `ProductContentPublished` | product-content | search | productId, contentVersion | 콘텐츠 발효(5분 내 반영 목표) | ① |
-| `PriceVersionEffective` | pricing-service | cart, storefront, order, approval | sku, price, priceVersion, effectiveAt | 가격 승인 발효(확정 주문 소급 없음) | ① |
+| `ProductContentPublished` | product-content | search, storefront | productId, contentVersion | 콘텐츠 발효(5분 내 반영 목표) | ① |
+| `PriceVersionEffective` | pricing-service | cart, storefront, search, order, approval | sku, price, priceVersion, effectiveAt | 가격 승인 발효(확정 주문 소급 없음) | ① |
 | `CustomerConsentChanged` | customer-service | notification, audit | accountId, consentType, version, granted, at | 약관/마케팅 동의 변경 | ① |
 | `CustomerWithdrawalRequested` | customer-service | order, cart, notification | accountId | 탈퇴 접수(신규 구매·마케팅 중단) | ① |
 | `CustomerWithdrawalCompleted` | customer-service | auth, cart, notification, audit | accountId, completedAt | 미결 의무 종결 확인 후 완료 | ① |

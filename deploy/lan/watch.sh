@@ -44,6 +44,7 @@ check() {
     redis)    [ "$(tcp_probe "$ip" 6379 'PING\r\n' 5)" = 2b504f4e47 ] ;;                         # +PONG
     zipkin)   curl -sf -m 5 "http://$ip:9411/health" >/dev/null ;;
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
+    opensearch) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;;    # 단일 노드라 yellow 도 정상
     connect)
       body="$(curl -sf -m 8 "http://$ip:8083/connectors?expand=status")" || return 1
       # 커넥터가 하나 이상 있고 RUNNING 이 아닌 상태(UNASSIGNED·FAILED·PAUSED)가 없어야 한다
