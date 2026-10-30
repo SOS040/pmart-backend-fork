@@ -48,6 +48,11 @@ case "$cmd" in
     for pc in $(pcs "$target"); do
       echo "=== $pc deploy $*"
       copy_files "$pc"
+      # 기존 볼륨에는 init-db.sql 이 다시 돌지 않으므로, 서비스보다 먼저 새 서비스 DB 를 만든다(없는 것만, \gexec)
+      if grep -q '^  postgres:' "$OUT/$pc/compose.yml"; then
+        remote_compose "$pc" up -d --wait postgres
+        remote_compose "$pc" exec -T postgres psql -U pmart -p 15432 -d pmart -q -f /docker-entrypoint-initdb.d/10-init-db.sql
+      fi
       remote_compose "$pc" up -d --remove-orphans "$@"
     done ;;
   status)

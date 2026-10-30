@@ -311,10 +311,11 @@ EOF
 
   # init-db.sql: 이 PC 서비스 중 DB 가 필요한 것만
   {
-    echo "-- 생성 파일(deploy/lan/render.sh). 볼륨이 처음 만들어질 때만 실행된다."
+    echo "-- 생성 파일(deploy/lan/render.sh). 볼륨이 처음 만들어질 때 실행되고, lan.sh deploy 가 매번 다시 실행한다(없는 DB 만 만든다)."
     for c in ${COMPS[$pc]}; do
       [[ "$INFRA" == *" $c "* ]] && continue
-      needs "$c" PMART_DB_URL && echo "CREATE DATABASE $(db_of "$c");"
+      needs "$c" PMART_DB_URL \
+        && echo "SELECT 'CREATE DATABASE $(db_of "$c")' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '$(db_of "$c")')\\gexec"
     done
   } > "$dir/init-db.sql"
 

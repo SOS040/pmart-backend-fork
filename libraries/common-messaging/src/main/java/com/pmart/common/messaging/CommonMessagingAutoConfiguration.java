@@ -117,6 +117,10 @@ public class CommonMessagingAutoConfiguration {
         merged[existing.length] =
             new org.flywaydb.core.api.Location("classpath:db/migration/common");
         configuration.locations(merged);
+        // 공통 마이그레이션은 V0_x 라 서비스 V1 이후보다 항상 낮다. 이미 V1 이 적용된 DB 에 새 공통 마이그레이션(V0_0_2 등)이
+        // 생기면 Flyway 가 "ignored" 로 보고 기동을 거부한다(2026-10-30 LAN). 공통 마이그레이션은 서로 독립된 새 표만 만드므로
+        // 순서가 어긋난 적용을 허용한다.
+        configuration.outOfOrder(true);
       };
     }
   }
