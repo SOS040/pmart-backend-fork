@@ -33,6 +33,12 @@ paths:
       description: |
         행별 요청량 ≤ A 를 검증하고 동일 SKU는 합산한다. 한 행이라도 부족하면 전체 거절(INSUFFICIENT_STOCK, 부족 행 details 포함).
         TTL 기본 10분 `[Q-04]`. 만료 시 InventoryHoldExpired 발행, R−q.
+
+        슬라이스 4 구현(2026-10-30): 원장은 센터·SKU 한 행(LOT·위치·품질 차원 없음). 예약 SKU 행을 SKU 오름차순으로 잠가(`FOR UPDATE`)
+        직렬화하므로 마지막 수량 경합에서 총 성공량 ≤ A 다. 거절은 기록하지 않으므로 같은 키 재요청은 다시 판정한다.
+        - INSUFFICIENT_STOCK details: `field` = sku, `reason` = `requestedQty=<합산 요청량>;availableQty=<A>`
+        - SKU_NOT_HANDLED details: `field` = sku, `reason` = `HANDLING_OFF`
+        - lotConstraint 는 아직 지원하지 않는다(400 VALIDATION_FAILED).
       operationId: reserveInventory
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -77,6 +83,10 @@ paths:
     post:
       tags: [reservations]
       summary: '[orchestration→inventory] 예약 확정 (PG 승인 후, HELD→CONFIRMED, TTL 해제)'
+      description: |
+        이미 CONFIRMED 면 변경 없이 성공(appliedQty 0). EXPIRED/RELEASED 는 409 INVALID_STATE. orderId 가 예약과 다르면 409 INVALID_STATE.
+        만료 시각이 지났어도 만료 작업이 아직 EXPIRED 로 바꾸기 전(HELD, 수량 점유 중)이면 확정한다.
+        X-Expected-Version 은 상태가 바뀔 때만 비교한다.
       operationId: confirmReservation
       parameters:
         - { name: reservationId, in: path, required: true, schema: { type: string } }
@@ -110,6 +120,10 @@ paths:
         피킹 전: R−q, A+q 즉시. 피킹 후(PICKED/PACKED 업무상태): E−q, R−q 후 CANCEL_RETURN_PENDING,
         복귀·적격 확인(CommitTaskExecution MOVE)으로만 E/A+q. 검증 없이 판매가능 복구 금지.
         부분 해제는 lines 지정. lines 생략 시 전량.
+
+        슬라이스 4 구현: 피킹 업무상태가 아직 없어 모든 해제는 R−q 즉시. 부분 해제는 지원하지 않는다 — lines 가 예약 전량과 다르면
+        422 PARTIAL_RELEASE_NOT_SUPPORTED. 이미 RELEASED/EXPIRED 면 변경 없이 성공(appliedQty 0).
+        X-Expected-Version 은 상태가 바뀔 때만 비교한다.
       operationId: releaseReservation
       parameters:
         - { name: reservationId, in: path, required: true, schema: { type: string } }
@@ -133,6 +147,11 @@ paths:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: PARTIAL_RELEASE_NOT_SUPPORTED (lines 가 예약 전량과 다름)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/receipts:
     post:
@@ -141,6 +160,11 @@ paths:
       description: |
         receiptId·departureId 유일성으로 중복 계상 방지. normalQty는 PENDING_INSPECTION으로 H+q,
         quarantinedQty는 Q+q, pendingQty는 미판정 보류. MfcReceiptPosted 발행 → cdc-inventory가 같은 receiptId로 Transit 대사.
+
+        슬라이스 4 구현(2026-10-30): 검수 단계(INSPECT)가 아직 없어 normalQty 는 H+q·E+q 로 바로 판매가능이 된다.
+        quarantinedQty 는 H+q·Q+q, pendingQty 는 H+q 만. 같은 receiptId·같은 내용은 처음 commitId 를 그대로 돌려주고(이중 계상 없음,
+        Idempotency-Key 가 달라도), 다른 내용이면 409 RECEIPT_ALREADY_POSTED. 수량 합이 0 이면 400.
+        MfcReceiptPosted 는 아직 발행하지 않는다(TRF 경로 구현 시).
       operationId: confirmReceipt
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -367,6 +391,10 @@ paths:
     get:
       tags: [queries]
       summary: 원결과 조회 — requestId(=Idempotency-Key)로 inventory_apply_status 확인 (UNKNOWN_RESULT 해소)
+      description: |
+        호출 서비스(X-Source-System = 토큰 주체)의 요청만 찾는다. 전기(commit)를 만든 요청은 APPLIED + commitId.
+        기록됐지만 수량 변화가 없던 요청(이미 확정·해제된 예약 등)은 APPLIED, commitId null.
+        거절(4xx)로 끝난 요청은 기록되지 않으므로 404 — 반영되지 않았다는 뜻이다(같은 키로 다시 보내면 다시 판정).
       operationId: getRequestResult
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
@@ -681,7 +709,8 @@ components:
     Availability:
       type: object
       description: |
-        수량 원장(Balance·Reservation)은 슬라이스 4 에서 구현한다. 그 전에는 수량 필드가 null 이다 — null 을 0 으로 읽지 않는다(재고 미산출).
+        수량은 원장(센터·SKU 한 행, 슬라이스 4)에서 읽는다. 원장 행이 없는 SKU(한 번도 입고되지 않음)는 0 이다. A = E − R.
+        handlingEnabled=false 인 SKU 는 수량이 있어도 예약할 수 없다(SKU_NOT_HANDLED). version 은 원장 행 version(행 없음 = 0).
       properties:
         sku: { type: string }
         onHand: { type: [integer, 'null'], description: H }
@@ -709,7 +738,7 @@ components:
       properties:
         commitId: { type: string }
         requestId: { type: string }
-        commitType: { type: string, enum: [RESERVE, CONFIRM, RELEASE, TIN, TASK_EXECUTION, HANDOVER, QUALITY, ADJUSTMENT] }
+        commitType: { type: string, enum: [RESERVE, CONFIRM, RELEASE, EXPIRE, TIN, TASK_EXECUTION, HANDOVER, QUALITY, ADJUSTMENT], description: EXPIRE = 예약 TTL 만료 작업의 R−q }
         mfcId: { type: string }
         sourceSystem: { type: string }
         sourceRef: { type: string, description: receiptId / packageId / taskId / approvalRef }

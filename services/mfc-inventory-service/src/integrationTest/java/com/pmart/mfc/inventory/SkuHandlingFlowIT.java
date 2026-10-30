@@ -315,12 +315,12 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
                 .status())
         .isEqualTo(200);
 
-    // 8) 가용 조회의 handlingEnabled 는 취급 레코드에서(다른 센터는 OFF). 수량은 아직 없음(null)
+    // 8) 가용 조회의 handlingEnabled 는 취급 레코드에서(다른 센터는 OFF). 입고 전이라 수량 0(원장 행 없음)
     Res avail =
         get(SERVICE, "/internal/availability?mfcId=" + CENTER + "&sku=" + sku + "&sku=" + inactive);
     assertThat(avail.status()).isEqualTo(200);
     assertThat(item(avail.body(), sku).path("handlingEnabled").asBoolean()).isTrue();
-    assertThat(item(avail.body(), sku).path("available").isNull()).isTrue();
+    assertThat(item(avail.body(), sku).path("available").asInt(-1)).isZero();
     assertThat(item(avail.body(), inactive).path("handlingEnabled").asBoolean()).isFalse();
     Res otherAvail = get(SERVICE, "/internal/availability?mfcId=" + OTHER + "&sku=" + sku);
     assertThat(item(otherAvail.body(), sku).path("handlingEnabled").asBoolean()).isFalse();

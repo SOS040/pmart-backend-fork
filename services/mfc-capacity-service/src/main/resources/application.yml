@@ -26,6 +26,11 @@ server:
 pmart:
   messaging:
     domain: mfc
+  capacity:
+    # (MFC, 1시간 창)당 수용 단위(정책값). 주문 1건 = 1 단위(시험 정책 2026-10-30). 비우면 Hold·스냅샷은 CONFIG_REQUIRED.
+    # LAN 시험값 30 은 env PMART_CAPACITY_UNITSPERHOUR
+    units-per-hour: ${PMART_CAPACITY_UNITSPERHOUR:}
+    expiry-interval: ${PMART_CAPACITY_EXPIRYINTERVAL:PT30S} # TTL 지난 HELD 정리 주기
 management:
   tracing:
     export:

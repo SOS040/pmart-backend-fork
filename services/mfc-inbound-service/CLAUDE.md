@@ -21,4 +21,5 @@
 로컬 포트 8306.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+- 3단계 스캐폴딩(2026-10-23).
+- 초기 보유 반입(슬라이스 4, 결정 D2, 2026-10-30): `platform.approval.v1` 의 ApprovalDecided 중 `type=INITIAL_STOCK`·`targetService=mfc-inbound-service`·APPROVED 만 InboxGuard 안에서 센터별 `initial_stock_load`(PENDING) 로 만든다(행 attributes `{mfcId, sku, qty}`, 한 행이라도 틀리면 승인 전체 REJECTED `INVALID: …`). `InitialStockPoster` 가 트랜잭션 밖에서 mfc-inventory `POST /internal/receipts`(서비스 토큰, Idempotency-Key = receiptId, trfId `INITIAL-<approvalId>`, departureId `INITIAL`)로 전기하고, 미전달·응답 불명은 같은 receiptId 로 5초부터 두 배(최대 5분) 재시도, 4xx 는 REJECTED. 조회: `/internal/initial-stock-loads/{receiptId}`(서비스), `/initial-stock-loads?approvalId=`(운영자). `POST /internal/initial-stock-loads` 와 그 밖의 엔드포인트는 501.

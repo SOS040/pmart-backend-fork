@@ -21,4 +21,8 @@
 로컬 포트 8303.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+- 구현(슬라이스 4, 2026-10-30): CapacityHold(확보·조회·확정·해제·TTL 만료 정리)와 여력 스냅샷.
+  - [시험 정책, 사용자 결정 2026-10-30] 주문 1건 = 수용 단위 1, (MFC, Asia/Seoul 정시 1시간 창)당 수용 단위는 `pmart.capacity.units-per-hour`(env `PMART_CAPACITY_UNITSPERHOUR`, LAN 30). 비우면 Hold·스냅샷 422 CONFIG_REQUIRED.
+  - 점유 판정은 `capacity_window` 행 FOR UPDATE 후 활성 Hold 합계(만료 시각 지난 HELD 제외). 잠금 순서 Hold 행 → 창 행. 주문당 활성 Hold 1개(부분 유일 인덱스).
+  - 스냅샷 stages 는 WORKFORCE 1개(단계별 환산 전). activeRestrictions 는 항상 빈 목록.
+- 미구현(501): 운영 제한, 배정·계획, 수령창·하차면. 이벤트(CapacityHoldResult 등) 미발행.

@@ -77,6 +77,7 @@ public final class ApprovalRules {
       case "DISPLAY" -> "Display";
       case "CENTER_MASTER" -> "Center";
       case "SERVICEABILITY" -> "ServiceabilityVersion";
+      case "INITIAL_STOCK" -> "InitialStockLoad";
       default -> type;
     };
   }

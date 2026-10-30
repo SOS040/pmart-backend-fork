@@ -14,3 +14,11 @@ spring:
 logging:
   level:
     com.pmart: DEBUG
+pmart:
+  security:
+    service-token:
+      token-uri: http://localhost:8501/api/v1/internal/service-tokens
+      # auth-service local 등록부에 mfc-inbound-service 클라이언트가 있어야 한다(해시는 auth-service application-local.yml)
+      client-secret: ${PMART_SERVICE_CLIENT_SECRET:pmart-local-inbound}
+  inbound:
+    mfc-inventory-base-url: http://localhost:8301

@@ -14,3 +14,6 @@ spring:
 logging:
   level:
     com.pmart: DEBUG
+pmart:
+  capacity:
+    units-per-hour: 30

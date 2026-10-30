@@ -196,7 +196,7 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
   void unconfiguredApprovalTypeCannotBeDecided() {
     Map<String, Object> body =
         Map.of(
-            "type", "CENTER_MASTER", // 승인자 역할을 설정하지 않은 종류
+            "type", "POLICY", // 승인자 역할을 설정하지 않은 종류(CENTER_MASTER 는 2026-10-31 설정됨)
             "targetService", "center-master-service",
             "targetRef", "MFC-" + UUID.randomUUID(),
             "allowedActions", List.of("APPLY_CENTER_CHANGE"),

@@ -35,6 +35,7 @@ pmart:
       PRICE: PRICE_APPROVER # 기본 판매가격 (BO-04)
       SERVICEABILITY: SERVICEABILITY_APPROVER # 고객 배송 권역·담당 MFC 매핑 (BO-07)
       CENTER_MASTER: CENTER_MASTER_APPROVER # 센터 기준정보·영업 캘린더 (BO-06)
+      INITIAL_STOCK: INVENTORY_APPROVER # MFC 초기 보유 반입(오픈 시 초기 재고, D2 — mfc-inbound → mfc-inventory 전기)
 management:
   tracing:
     export:

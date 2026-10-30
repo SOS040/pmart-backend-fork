@@ -15,6 +15,7 @@ tags:
   - { name: supply-requests, description: 로컬 공급 요청 WK-14 }
   - { name: return-receipts, description: 회수품 실물 반입 }
   - { name: internal, description: 서비스 간 (초기 보유 반입) }
+  - { name: initial-stock-loads, description: 초기 보유 반입 결과 (운영자 조회) }
 
 paths:
   /inbound-promises:
@@ -296,7 +297,13 @@ paths:
     post:
       tags: [internal]
       summary: '[backoffice→inbound] 1차 초기 보유 반입 (오픈 시 초기 재고, approvalRef 필수)'
-      description: TRF 없이 센터 초기 재고를 반입한다. 내부적으로 receiptId를 발급해 mfc-inventory.ConfirmReceipt 로 전기한다.
+      description: |
+        TRF 없이 센터 초기 재고를 반입한다. 내부적으로 receiptId를 발급해 mfc-inventory.ConfirmReceipt 로 전기한다.
+
+        **미구현(501)**: 초기 보유 반입은 이 경로가 아니라 approval-service 의 INITIAL_STOCK 승인(ApprovalDecided, 토픽
+        platform.approval.v1, targetService=mfc-inbound-service)으로 들어온다(결정 D2, 2026-10-30). 승인 행 attributes =
+        `{ mfcId, sku, qty }`. 승인된 내용을 센터별 반입 기록(PENDING)으로 만들고 mfc-inventory ConfirmReceipt
+        (trfId = INITIAL-<approvalId>, departureId = INITIAL, normalQty = qty)로 전기한다. 결과는 아래 조회 경로로 확인한다.
       operationId: loadInitialStock
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -340,7 +347,7 @@ paths:
   /internal/initial-stock-loads/{receiptId}:
     get:
       tags: [internal]
-      summary: 초기 보유 반입 결과 조회
+      summary: '[서비스] 초기 보유 반입 결과 조회 (receiptId)'
       operationId: getInitialStockLoad
       parameters:
         - { name: receiptId, in: path, required: true, schema: { type: string } }
@@ -349,8 +356,30 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Receipt' }
+              schema: { $ref: '#/components/schemas/InitialStockLoad' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /initial-stock-loads:
+    get:
+      tags: [initial-stock-loads]
+      summary: '[운영자] 초기 보유 반입 결과 조회 (INITIAL_STOCK 승인 ID 로)'
+      description: |
+        INITIAL_STOCK 승인 하나는 센터(mfcId)별 반입 기록 하나 이상이 된다. 승인 내용이 올바르지 않으면 반입 기록 하나가 REJECTED(사유)로 남는다.
+        승인 이벤트 수신 전이면 items 가 비어 있다(404 아님). 운영자 토큰이면 조회할 수 있다.
+      operationId: listInitialStockLoads
+      parameters:
+        - { name: approvalId, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/InitialStockLoad' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
 components:
   schemas:
@@ -433,6 +462,31 @@ components:
               reason: { type: string }
         receivedAt: { type: string, format: date-time }
         postedAt: { type: [string, 'null'], format: date-time }
+    InitialStockLoad:
+      type: object
+      description: |
+        초기 보유 반입(INITIAL_STOCK 승인 → mfc-inventory ConfirmReceipt). PENDING: 전기 대기·재시도 중(inventory 일시 장애 포함),
+        APPLIED: 전기 완료(inventoryCommitId), REJECTED: 승인 내용 오류 또는 inventory 의 명시적 거절(rejectReason).
+      required: [receiptId, approvalId, state, lines]
+      properties:
+        receiptId: { type: string, description: 이 서비스가 발급한 수령 ID (mfc-inventory 중복 계상 방지 키) }
+        approvalId: { type: string }
+        mfcId: { type: [string, 'null'], description: 승인 내용이 올바르지 않아 센터를 정할 수 없으면 null }
+        state: { type: string, enum: [PENDING, APPLIED, REJECTED] }
+        rejectReason: { type: [string, 'null'] }
+        inventoryCommitId: { type: [string, 'null'] }
+        attempts: { type: integer, description: mfc-inventory 전기 시도 횟수 }
+        lastError: { type: [string, 'null'], description: 마지막 일시 실패 사유(재시도 중) }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [sku, qty]
+            properties:
+              sku: { type: string }
+              qty: { type: integer }
+        createdAt: { type: string, format: date-time }
+        appliedAt: { type: [string, 'null'], format: date-time }
     SupplyRequestBody:
       type: object
       required: [mfcId, lines, requestedReadyAt, urgency, reason]

@@ -18,4 +18,7 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // mfc-inventory ConfirmReceipt·auth 서비스 토큰 응답 고정
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 반입 기록 확인
+    "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 ApprovalDecided 를 토픽에 흘림
 }

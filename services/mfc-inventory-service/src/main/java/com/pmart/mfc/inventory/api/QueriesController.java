@@ -2,47 +2,97 @@ package com.pmart.mfc.inventory.api;
 
 import com.pmart.mfc.inventory.api.generated.QueriesApi;
 import com.pmart.mfc.inventory.api.generated.model.Availability;
+import com.pmart.mfc.inventory.api.generated.model.Commit;
+import com.pmart.mfc.inventory.api.generated.model.CommitEntriesInner;
 import com.pmart.mfc.inventory.api.generated.model.GetAvailability200Response;
 import com.pmart.mfc.inventory.api.generated.model.GetAvailability200ResponseAsOf;
-import com.pmart.mfc.inventory.application.SkuHandlingService;
+import com.pmart.mfc.inventory.api.generated.model.GetRequestResult200Response;
+import com.pmart.mfc.inventory.api.generated.model.InventoryApplyStatus;
+import com.pmart.mfc.inventory.application.StockQueryService;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 QueriesApi. 가용 조회는 취급 여부(center_sku_handling, 레코드 없음 = OFF)만 실제 값이다. 수량 원장은 슬라이스 4 에서 만들므로 그
- * 전에는 수량 필드를 비워 둔다(0 으로 채우지 않는다). 나머지 조회는 인터페이스 default 의 501.
+ * 계약 QueriesApi — 가용(A = E − R, 원장 행 없음 = 0, 취급 여부 함께), 전기 조회(commitId), 원결과 조회(requestId). 스냅샷은
+ * 인터페이스 default 의 501.
  */
 @RestController
 public class QueriesController implements QueriesApi {
 
-  private final SkuHandlingService handlings;
+  private final StockQueryService queries;
 
-  public QueriesController(SkuHandlingService handlings) {
-    this.handlings = handlings;
+  public QueriesController(StockQueryService queries) {
+    this.queries = queries;
   }
 
   @Override
   public ResponseEntity<GetAvailability200Response> getAvailability(
       String mfcId, List<String> sku) {
-    Map<String, Boolean> flags = handlings.enabledFlags(mfcId, sku.stream().distinct().toList());
-    List<Availability> items = new ArrayList<>();
-    flags.forEach(
-        (s, enabled) -> {
-          var a = new Availability();
-          a.setSku(s);
-          a.setHandlingEnabled(enabled);
-          items.add(a);
-        });
+    List<Availability> items =
+        queries.availability(mfcId, sku.stream().distinct().toList()).stream()
+            .map(
+                v -> {
+                  var a = new Availability();
+                  a.setSku(v.sku());
+                  a.setOnHand(v.balance().onHand());
+                  a.setQuarantined(v.balance().quarantined());
+                  a.setSellable(v.balance().sellable());
+                  a.setReserved(v.balance().reserved());
+                  a.setAvailable(v.balance().available());
+                  a.setHandlingEnabled(v.handlingEnabled());
+                  a.setVersion((int) v.balance().version());
+                  return a;
+                })
+            .toList();
     var asOf = new GetAvailability200ResponseAsOf();
     asOf.setAsOf(SkuHandlingsController.time(Instant.now()));
+    asOf.setFreshness(GetAvailability200ResponseAsOf.FreshnessEnum.CURRENT);
     var out = new GetAvailability200Response();
     out.setMfcId(mfcId);
     out.setAsOf(asOf);
     out.setItems(items);
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<Commit> getCommit(String commitId) {
+    var v = queries.commit(commitId);
+    var c = v.commit();
+    var out = new Commit();
+    out.setCommitId(c.commitId());
+    out.setRequestId(c.requestId());
+    out.setCommitType(Commit.CommitTypeEnum.fromValue(c.commitType()));
+    out.setMfcId(c.mfcId());
+    out.setSourceSystem(c.sourceSystem());
+    out.setSourceRef(c.sourceRef());
+    out.setAppliedQty(c.appliedQty());
+    out.setOccurredAt(SkuHandlingsController.time(c.occurredAt()));
+    out.setEntries(
+        v.entries().stream()
+            .map(
+                e -> {
+                  var d = new CommitEntriesInner();
+                  d.setSku(e.sku());
+                  d.setSymbol(CommitEntriesInner.SymbolEnum.fromValue(e.symbol()));
+                  d.setDelta(e.delta());
+                  d.setBalanceVersion((int) e.balanceVersion());
+                  return d;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<GetRequestResult200Response> getRequestResult(String requestId) {
+    var v = queries.request(requestId);
+    var out = new GetRequestResult200Response();
+    out.setRequestId(v.requestId());
+    out.setApplyStatus(InventoryApplyStatus.APPLIED);
+    out.setCommitId(v.commit() == null ? null : v.commit().commitId());
+    out.setAppliedQty(v.commit() == null ? 0 : v.commit().appliedQty());
+    out.setOccurredAt(SkuHandlingsController.time(v.occurredAt()));
     return ResponseEntity.ok(out);
   }
 }

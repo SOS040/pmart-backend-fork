@@ -13,7 +13,8 @@ import org.springframework.web.client.RestClient;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      "pmart.security.service-token.client-secret=boot-test"
     })
 class ServiceBootIT extends PostgresKafkaContainerSupport {
 

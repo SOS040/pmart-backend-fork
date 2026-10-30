@@ -23,4 +23,4 @@
 ## 상태
 - 3단계 스캐폴딩(2026-10-23).
 - 상품 등록 슬라이스(2026-10-30): `commerce.product.v1` 의 SkuIssued·ProductVersionPublished → `sku_projection`(오래된 product_version 무시). 센터 취급 `center_sku_handling` — **레코드 없음 = OFF**, 이벤트로 만들지 않고 자기 센터 운영자(`centers` 클레임)가 `/mfcs/{mfcId}/sku-handlings`(단건·일괄 500행 전부 또는 전무)로 켠다. 켜기는 ACTIVE SKU 만. 이력 `center_sku_handling_history`. 취급 변경 이벤트는 스키마가 없어 발행하지 않는다.
-- `/internal/availability` 는 `handlingEnabled` 만 실제 값, 수량은 null(원장은 슬라이스 4). 그 밖의 엔드포인트는 501.
+- 재고 원장·예약(슬라이스 4 S1, 2026-10-30): 센터·SKU 한 행 `stock_balance`(H/Q/E/R, CHECK 0≤R≤E≤H), 확정 단위 `stock_commit`·`stock_ledger_entry`, 수령 중복 방지 `stock_receipt`(receiptId+내용 지문). ConfirmReceipt 는 검수 단계가 없어 정상=H+E. 예약은 SKU 합산·취급 OFF 거절·잔량 행 SKU 오름차순 `FOR UPDATE` 후 all-or-nothing, 거절(422)은 멱등 기록 없음. 확정·해제(전량만, 이미 끝난 예약 해제는 변화 없는 성공), 만료 작업 `HoldExpiry`(`pmart.inventory.hold-expiry-interval`, SKIP LOCKED) → EXPIRED·R−q·InventoryHoldExpired(`mfc.inventory.v1`). 잠금 순서 예약 행 → 잔량 행. `/internal/availability`·`commits`·`requests` 구현. 작업 실행·인계·품질·조정·스냅샷은 501.

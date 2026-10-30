@@ -64,6 +64,37 @@ public final class SlotRules {
     return capacity - held - confirmed <= 0 ? "FULL" : "AVAILABLE";
   }
 
+  /** 슬롯 식별자(조회·점유 공통). */
+  public static String slotId(String mfcId, Window w) {
+    return mfcId + ":" + w.date() + ":" + w.start();
+  }
+
+  /** 예약 가능 날짜: 오늘·내일(Asia/Seoul). */
+  public static boolean bookableDate(LocalDate date, Instant now) {
+    LocalDate today = LocalDate.ofInstant(now, SEOUL);
+    return !date.isBefore(today) && !date.isAfter(today.plusDays(1));
+  }
+
+  /**
+   * 점유 요청 시간대가 선택 가능한지 — 조회 목록과 같은 규칙: 운영 구간 안의 정시 1시간 시간대(08시 전 없음)이고 선택 마감(시작 시각) 전. 날짜 범위·정원은 따로
+   * 본다.
+   */
+  public static boolean selectable(Window w, List<int[]> openRanges, Instant now) {
+    return now.isBefore(w.startAt()) && windows(w.date(), openRanges).contains(w);
+  }
+
+  /** "HH:mm" 시작·끝 → 시간대. 형식이 틀리면 IllegalArgumentException(1시간·정시 여부는 {@link #selectable}). */
+  public static Window parseWindow(LocalDate date, String start, String end) {
+    if (!isTime(start) || !isTime(end) || "24:00".equals(start)) {
+      throw new IllegalArgumentException("시간대는 HH:mm 형식이어야 합니다: " + start + "~" + end);
+    }
+    return new Window(date, minutes(start), minutes(end));
+  }
+
+  private static boolean isTime(@Nullable String hhmm) {
+    return hhmm != null && hhmm.matches("([01]\\d|2[0-3]):[0-5]\\d|24:00");
+  }
+
   /** "HH:mm" → 분(끝 24:00 = 1440). */
   public static int minutes(String hhmm) {
     if ("24:00".equals(hhmm)) {
