@@ -270,20 +270,37 @@ public class ContentQueries {
     return m;
   }
 
-  /**
-   * 옵션 라벨 + product 사본. SKU 가 1개이고 옵션도 1개일 때만 그 SKU 를 붙인다(여러 개면 대응 규칙이 없어 붙이지 않는다). 가격은 pricing 의
-   * 것이라 넣지 않는다. 가용은 withAvailability 가 붙인다.
-   */
   private List<Map<String, Object>> options(ContentRow c, @Nullable ProjectionRow p) {
+    return options(
+        mapper.readTree(c.options()),
+        p == null ? mapper.createArrayNode() : mapper.readTree(p.skus()),
+        p == null ? null : p.saleState());
+  }
+
+  /**
+   * 옵션 라벨 + product 사본. 가격은 pricing 의 것이라 넣지 않는다. 가용은 withAvailability 가 붙인다.
+   *
+   * <ul>
+   *   <li>옵션 1개·SKU 1개면 그 SKU 를 붙인다. 여러 개면 대응 규칙이 없어 붙이지 않는다.
+   *   <li>콘텐츠에 옵션이 없고 SKU 가 1개면 그 SKU 하나를 옵션으로 낸다(판매 단위는 product 정본). 라벨은 콘텐츠에 없으니 비운다(지어내지 않는다).
+   * </ul>
+   */
+  static List<Map<String, Object>> options(
+      JsonNode opts, JsonNode skus, @Nullable String saleState) {
     List<Map<String, Object>> out = new ArrayList<>();
-    JsonNode opts = mapper.readTree(c.options());
-    JsonNode skus = p == null ? mapper.createArrayNode() : mapper.readTree(p.skus());
-    boolean oneToOne = opts.size() == 1 && skus.size() == 1;
-    for (JsonNode o : opts) {
+    boolean oneToOne = skus.size() == 1 && opts.size() <= 1;
+    List<JsonNode> labels = new ArrayList<>();
+    opts.forEach(labels::add);
+    if (labels.isEmpty() && oneToOne) {
+      labels.add(null);
+    }
+    for (JsonNode o : labels) {
       Map<String, Object> m = new LinkedHashMap<>();
-      m.put("label", o.path("label").asString(null));
-      if (o.hasNonNull("capacityLabel")) {
-        m.put("capacityLabel", o.get("capacityLabel").asString());
+      if (o != null) {
+        m.put("label", o.path("label").asString(null));
+        if (o.hasNonNull("capacityLabel")) {
+          m.put("capacityLabel", o.get("capacityLabel").asString());
+        }
       }
       if (oneToOne) {
         JsonNode s = skus.get(0);
@@ -297,8 +314,8 @@ public class ContentQueries {
           m.put("unitsPerSku", s.get("unitsPerSku").asInt());
         }
       }
-      if (p != null && p.saleState() != null) {
-        m.put("saleState", p.saleState());
+      if (saleState != null) {
+        m.put("saleState", saleState);
       }
       out.add(m);
     }

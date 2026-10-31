@@ -536,10 +536,11 @@ components:
         approvalRequest: { $ref: '#/components/schemas/ContentApprovalRequestBody' }
     SaleOption:
       type: object
-      description: 고객 화면의 판매 옵션 해석. 실제 구매 단위는 sku.
+      description: |
+        고객 화면의 판매 옵션 해석. 실제 구매 단위는 sku. 콘텐츠에 옵션이 없고 상품 SKU 가 1개면 그 SKU 하나를 옵션으로 낸다(label 없음).
       properties:
         sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-        label: { type: string, example: 1팩(6입) }
+        label: { type: string, example: 1팩(6입), description: 콘텐츠의 옵션 이름. 없을 수 있다 — 그때는 상품명만 보이면 된다(SKU 코드를 라벨로 쓰지 말 것) }
         unitType: { type: string, enum: [E, B] }
         unitsPerSku: { type: integer }
         capacityLabel: { type: string, example: 500ml }
