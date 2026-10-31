@@ -66,6 +66,22 @@ class ProblemDetailAdviceTest {
   }
 
   @Test
+  void queryConstraintViolationIs400NotInternalError() {
+    record Query(@jakarta.validation.constraints.Size(min = 1) String query) {}
+    try (var factory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+      var violations = factory.getValidator().validate(new Query(""));
+      ProblemDetail pd =
+          advice.handleConstraintViolation(
+              new jakarta.validation.ConstraintViolationException(violations),
+              new MockHttpServletRequest("GET", "/api/v1/address-geocodes"));
+      assertThat(pd.getStatus()).isEqualTo(400);
+      assertThat(pd.getProperties()).containsEntry("code", "VALIDATION_FAILED");
+      assertThat(pd.getProperties()).containsEntry("retryable", false);
+      assertThat(pd.getProperties().get("details").toString()).contains("query");
+    }
+  }
+
+  @Test
   void configRequiredIs422AndNotRetryable() {
     ProblemDetail pd =
         advice.handlePmart(

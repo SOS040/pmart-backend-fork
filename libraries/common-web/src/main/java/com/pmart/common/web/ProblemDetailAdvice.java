@@ -1,6 +1,7 @@
 package com.pmart.common.web;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -57,6 +58,24 @@ public class ProblemDetailAdvice {
         ErrorCode.VALIDATION_FAILED.name(),
         HttpStatus.BAD_REQUEST,
         "요청 본문 검증 실패",
+        false,
+        details,
+        requestId(request),
+        request.getRequestURI());
+  }
+
+  /** 계약의 쿼리·경로 파라미터 제약(@Size·@DecimalMin 등, 생성 인터페이스의 메서드 검증) 위반. 본문 검증과 같은 400. */
+  @ExceptionHandler(ConstraintViolationException.class)
+  public ProblemDetail handleConstraintViolation(
+      ConstraintViolationException e, HttpServletRequest request) {
+    List<PmartException.Detail> details =
+        e.getConstraintViolations().stream()
+            .map(v -> new PmartException.Detail(v.getPropertyPath().toString(), v.getMessage()))
+            .toList();
+    return writer.toProblemDetail(
+        ErrorCode.VALIDATION_FAILED.name(),
+        HttpStatus.BAD_REQUEST,
+        "요청 값 검증 실패",
         false,
         details,
         requestId(request),
