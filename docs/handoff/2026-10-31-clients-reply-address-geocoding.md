@@ -49,4 +49,7 @@
 - 카카오 콘솔의 "호출 허용 IP" 등록은 LAN 서버 외부 IP 를 확인해 사용자에게 따로 안내한다.
 
 ## 5. LAN 상태
-- 미배포(2026-10-31). 배포 뒤 갱신한다.
+- 배포됨(2026-10-31): delivery-serviceability(3fb1e6c), api-gateway(6f5b931). 게이트웨이에서 토큰 없음 401, 빈 query 400 확인.
+- **카카오 호출은 아직 안 된다.** 카카오가 403 "App(PMart) disabled OPEN_MAP_AND_LOCAL service." 를 준다. 카카오 개발자 콘솔에서 PMart 앱의 카카오맵 사용 설정이 꺼져 있다. 사용자가 켜야 한다.
+  - 그동안 `/address-geocodes`·`/address-reverse-geocodes` 와 고객 주소 판정은 422 `CONFIG_REQUIRED` 다. 주소 저장은 되고 판정은 UNKNOWN 이다.
+- 켜진 뒤 실제 판정으로 확인한 시험 도로명주소를 여기에 적는다.
