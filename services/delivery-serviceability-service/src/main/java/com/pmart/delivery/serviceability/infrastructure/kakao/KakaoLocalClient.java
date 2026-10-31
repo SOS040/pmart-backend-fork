@@ -128,7 +128,12 @@ public class KakaoLocalClient implements Geocoder {
           List.of());
     }
     if (status == 401 || status == 403) {
-      log.error("카카오 로컬 키 거절({}) — REST API 키·허용 IP 설정을 확인한다", status);
+      // 카카오의 거절 사유(예: 카카오맵 사용 설정 꺼짐 OPEN_MAP_AND_LOCAL, 허용 IP)는 비밀이 아니라 남긴다
+      log.error(
+          "카카오 로컬 키 거절({} {}: {}) — 앱의 카카오맵 사용 설정·REST API 키·허용 IP 를 확인한다",
+          status,
+          e.getBody() == null ? "" : e.getBody().path("errorType").asString(""),
+          e.getBody() == null ? "" : e.getBody().path("message").asString(""));
       throw PmartException.configRequired("pmart.serviceability.kakao.rest-api-key");
     }
     if (status == 400) {
