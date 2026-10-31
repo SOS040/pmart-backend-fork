@@ -24,6 +24,13 @@ spring:
 server:
   port: 8401
 pmart:
+  serviceability:
+    # 카카오 로컬(주소 ↔ 좌표, ADR-0023). 키는 환경변수로만 — 비면 주소 변환·판정이 CONFIG_REQUIRED
+    kakao:
+      base-url: ${PMART_KAKAO_BASE_URL:https://dapi.kakao.com}
+      rest-api-key: ${PMART_KAKAO_REST_API_KEY:}
+      connect-timeout: PT1S
+      read-timeout: PT3S
   messaging:
     domain: delivery
   security:
@@ -35,9 +42,11 @@ pmart:
       - /error
       - /api/v1/serviceability-checks
       - /api/v1/serviceability-checks/*
-    # 비회원 토큰(typ=GUEST)도 배송 가능 조건 조회는 된다(읽기 전용)
+    # 비회원 토큰(typ=GUEST)도 배송 가능 조건 조회·주소 ↔ 좌표 변환은 된다(읽기 전용, 비회원 배송지 등록에 필요)
     guest-paths:
       - /api/v1/delivery-conditions
+      - /api/v1/address-geocodes
+      - /api/v1/address-reverse-geocodes
 management:
   tracing:
     export:

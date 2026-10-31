@@ -405,7 +405,7 @@ public class Seed {
     address.put("lat", point.get("lat"));
     address.put("lng", point.get("lng"));
     return send(
-        "POST", "/serviceability-checks", null, Map.of("address", address, "purpose", "TEST_ADDRESS"), null);
+        "POST", "/serviceability-checks", md, Map.of("address", address, "purpose", "TEST_ADDRESS"), null);
   }
 
   // ---------- 상품 ----------

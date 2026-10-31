@@ -40,7 +40,9 @@ import tools.jackson.databind.ObjectMapper;
  * <ul>
  *   <li>초안은 운영자만. 내용(권역·발효 시각·시험 주소)을 해시로 잠가 승인 요청 본문에 싣고, 승인 때 같은 해시만 발효한다.
  *   <li>시험 주소가 있으면 발효 직전에 기대 판정과 비교하고, 다르면 발효하지 않는다(TEST_ADDRESS_MISMATCH).
- *   <li>판정은 좌표로만 한다(주소 정규화·지오코딩 없음). 좌표가 없으면 NEEDS_INPUT(geo). 발효 버전이 없으면 CONFIG_REQUIRED.
+ *   <li>판정 좌표는 roadAddress 를 카카오 주소 검색(정확 일치)으로 바꾼 값이다(ADR-0023). 요청 좌표(고객 지도 핀)는 판정에 쓰지 않고, 운영자
+ *       TEST_ADDRESS 만 예외. 0건·여러 곳이면 NEEDS_INPUT(roadAddress), 검색 장애면 UNKNOWN. 발효 버전이 없으면
+ *       CONFIG_REQUIRED.
  *   <li>발효해도 기존 주문의 MFC·버전은 바꾸지 않는다(주문이 당시 버전을 고정).
  * </ul>
  */
@@ -54,6 +56,7 @@ public class ServiceabilityService {
 
   /** 판정 입력. */
   public record CheckInput(
+      @Nullable String roadAddress,
       @Nullable Double lat,
       @Nullable Double lng,
       @Nullable Integer mappingVersion,
@@ -66,6 +69,7 @@ public class ServiceabilityService {
   private final ObjectMapper mapper;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final Geocoder geocoder;
 
   public ServiceabilityService(
       MappingStore store,
@@ -74,7 +78,8 @@ public class ServiceabilityService {
       EventEnvelopeCodec codec,
       ObjectMapper mapper,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      Geocoder geocoder) {
     this.store = store;
     this.idempotency = idempotency;
     this.events = events;
@@ -82,6 +87,7 @@ public class ServiceabilityService {
     this.mapper = mapper;
     this.tx = tx;
     this.clock = clock;
+    this.geocoder = geocoder;
   }
 
   // ---------- 매핑 버전 ----------
@@ -236,17 +242,71 @@ public class ServiceabilityService {
 
   // ---------- 판정 ----------
 
-  /** 판정 → checkId. 같은 키 재전송은 같은 판정. */
+  /** 판정 → checkId. 같은 키 재전송은 같은 판정. 판정 좌표는 트랜잭션 밖에서 먼저 정한다(외부 호출을 DB 트랜잭션에 넣지 않는다). */
   public String check(String requestId, String sourceSystem, CheckInput in, Object body) {
-    String actor =
-        PmartPrincipal.current().map(PmartPrincipal::subject).orElse(RequestIdempotency.ANONYMOUS);
+    PmartPrincipal principal = PmartPrincipal.current().orElse(null);
+    String actor = principal == null ? RequestIdempotency.ANONYMOUS : principal.subject();
+    Location at = locate(in, principal);
     return idempotency
         .execute(
             new RequestKey(sourceSystem, requestId, "createServiceabilityCheck", actor),
             body,
             String.class,
-            () -> evaluate(in))
+            () -> evaluate(in, at))
         .value();
+  }
+
+  /** 판정 좌표 결과. lat·lng 가 있으면 판정, missing 이면 NEEDS_INPUT, lookupFailed 면 UNKNOWN. */
+  record Location(
+      @Nullable Double lat, @Nullable Double lng, @Nullable String missing, boolean lookupFailed) {
+
+    static Location of(double lat, double lng) {
+      return new Location(lat, lng, null, false);
+    }
+
+    static Location missing(String field) {
+      return new Location(null, null, field, false);
+    }
+
+    static Location unknown() {
+      return new Location(null, null, null, true);
+    }
+  }
+
+  /**
+   * 판정 좌표(ADR-0023): roadAddress 를 정확 일치로 변환한 좌표. 요청 좌표는 고객 지도 핀이라 쓰지 않는다. TEST_ADDRESS 는 운영자만 요청
+   * 좌표로 판정한다.
+   */
+  Location locate(CheckInput in, @Nullable PmartPrincipal principal) {
+    if ("TEST_ADDRESS".equals(in.purpose())) {
+      if (principal == null || principal.type() != PmartPrincipal.PrincipalType.OPERATOR) {
+        throw new PmartException(ErrorCode.FORBIDDEN, "시험 좌표 판정(TEST_ADDRESS)은 운영자만 할 수 있습니다.");
+      }
+      return in.lat() == null || in.lng() == null
+          ? Location.missing("geo")
+          : Location.of(in.lat(), in.lng());
+    }
+    String road = in.roadAddress() == null ? "" : in.roadAddress().strip();
+    if (road.isEmpty()) {
+      return Location.missing("roadAddress");
+    }
+    List<Geocoder.Place> found;
+    try {
+      found = geocoder.search(road, true);
+    } catch (PmartException e) {
+      if (ErrorCode.CONFIG_REQUIRED.name().equals(e.code())) {
+        throw e;
+      }
+      log.warn("판정 주소 변환 실패({}) — UNKNOWN", e.code()); // 주소 원문은 남기지 않는다
+      return Location.unknown();
+    }
+    // 같은 좌표의 중복 결과는 하나로 본다. 0건·서로 다른 여러 곳이면 임의로 고르지 않는다
+    Set<String> distinct = new HashSet<>();
+    found.forEach(p -> distinct.add(Math.round(p.lat() * 1e6) + ":" + Math.round(p.lng() * 1e6)));
+    if (distinct.size() != 1) {
+      return Location.missing("roadAddress");
+    }
+    return Location.of(found.getFirst().lat(), found.getFirst().lng());
   }
 
   public CheckRow result(String checkId) {
@@ -255,13 +315,28 @@ public class ServiceabilityService {
         .orElseThrow(() -> PmartException.notFound("CHECK_NOT_FOUND", "판정 결과가 없습니다."));
   }
 
-  private String evaluate(CheckInput in) {
+  private String evaluate(CheckInput in, Location at) {
     Instant now = clock.instant();
     String checkId = "SC-" + UUID.randomUUID();
-    if (in.lat() == null || in.lng() == null) {
+    if (at.lookupFailed()) {
+      store.insertCheck(
+          new CheckRow(checkId, "UNKNOWN", null, null, null, "[]", "[]", null, null, now),
+          in.purpose());
+      return checkId;
+    }
+    if (at.lat() == null || at.lng() == null) {
       store.insertCheck(
           new CheckRow(
-              checkId, "NEEDS_INPUT", null, null, null, "[]", "[\"geo\"]", null, null, now),
+              checkId,
+              "NEEDS_INPUT",
+              null,
+              null,
+              null,
+              "[]",
+              mapper.writeValueAsString(List.of(at.missing() == null ? "geo" : at.missing())),
+              null,
+              null,
+              now),
           in.purpose());
       return checkId;
     }
@@ -273,7 +348,7 @@ public class ServiceabilityService {
                 .orElseThrow(
                     () ->
                         PmartException.configRequired("serviceability.mapping-version(발효 버전 없음)"));
-    ZoneMatcher.Match m = ZoneMatcher.match(toZones(store.zones(v.version())), in.lat(), in.lng());
+    ZoneMatcher.Match m = ZoneMatcher.match(toZones(store.zones(v.version())), at.lat(), at.lng());
     List<Map<String, String>> overlapping = new ArrayList<>();
     m.overlapping().forEach(z -> overlapping.add(Map.of("zoneId", z.zoneId(), "mfcId", z.mfcId())));
     store.insertCheck(
@@ -285,11 +360,25 @@ public class ServiceabilityService {
             v.version(),
             mapper.writeValueAsString(overlapping),
             "[]",
-            in.lat(),
-            in.lng(),
+            at.lat(),
+            at.lng(),
             now),
         in.purpose());
     return checkId;
+  }
+
+  // ---------- 주소 ↔ 좌표(화면용, 저장 없음) ----------
+
+  public List<Geocoder.Place> geocode(String query) {
+    String q = query.strip();
+    if (q.isEmpty() || q.length() > 200) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "query 는 1~200자입니다.");
+    }
+    return geocoder.search(q, false);
+  }
+
+  public List<Geocoder.Place> reverseGeocode(double lat, double lng) {
+    return geocoder.reverse(lat, lng);
   }
 
   // ---------- 내부 ----------

@@ -485,6 +485,9 @@ components:
         entranceNote: { type: string, maxLength: 100, description: 출입 비밀번호 원문은 로그 금지 }
         geo:
           type: object
+          description: |
+            고객이 지도 핀으로 맞춘 배달 위치(참고). 배송 가능 판정에는 쓰지 않는다 — 판정은 delivery-serviceability 가 roadAddress 를
+            카카오 주소 검색으로 바꾼 좌표로 한다(ADR-0023). 그래서 roadAddress 는 주소 검색에서 고른 실제 도로명주소여야 한다.
           properties:
             lat: { type: number }
             lng: { type: number }

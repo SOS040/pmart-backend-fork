@@ -274,7 +274,8 @@
 ### delivery-serviceability-service `[1단계]`
 - **소유**: 배송 권역(폴리곤)·담당 MFC 매핑 **버전**(본사 BO-07 승인→발효; 시험 주소 검증; 기존 주문 불변), 주소 정규화·판정(담당 MFC/서비스 밖/입력 보완/정본 조회 불명/중첩 충돌), 배송 가능 조건(방식·수단·중량·부피·보냉·시간 제한 00:00~08:00 없음).
 - **소유하지 않음**: 센터 마스터(center-master), 슬롯(delivery-capacity), 고객 주소록(customer).
-- **API**: 주소 판정(`API-SERVICEAREA-001`), 매핑 버전 조회, 배송 가능 조건 조회.
+- **API**: 주소 판정(`API-SERVICEAREA-001` — 판정 좌표는 roadAddress 를 서버가 변환한 값, 지도 핀은 쓰지 않음, ADR-0023), 주소 ↔ 좌표 변환(카카오 로컬, 고객·비회원), 매핑 버전 조회, 배송 가능 조건 조회.
+- **의존**: 카카오 로컬 API(외부, REST API 키 서버 보관).
 - **발행**: `ServiceabilityVersionApplied`.
 - **구독**: `ApprovalDecided`(BO-07), `CenterMasterChanged`.
 
@@ -377,6 +378,8 @@
 |---|---|---|
 | 토스페이먼츠 | payment-service | 거래 사실 정본. 비밀 로그 금지 |
 | 소셜 OAuth 제공자 | auth-service | 제공자 인증 성공≠계정 이용 가능 |
+| 카카오 로컬(주소 검색·좌표→주소) | delivery-serviceability | 확정(2026-10-31, ADR-0023). REST API 키 서버 전용, 주소 원문 로그 금지 |
+| 카카오 로컬(주소 검색·좌표→주소) | delivery-serviceability | 확정(2026-10-31, ADR-0023). REST API 키 서버 전용, 주소 원문 로그 금지 |
 | 카카오모빌리티 길찾기 / 카카오맵 | delivery-tracking(거리·경로), transport-routing(간선 행렬) | `[결정 필요]` |
 | OR-Tools(Java) | transport-routing, mfc-capacity 내부 라이브러리 | 확정(2026-10-23). GreedRL·RouteFinder(Python)는 3단계 별도 승인 |
 | 알림 채널(푸시·알림톡) | notification-service | |

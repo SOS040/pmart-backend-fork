@@ -20,4 +20,5 @@ dependencies {
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox 행 확인
     "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 ApprovalDecided 를 토픽에 흘림
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // 카카오 로컬 응답·오류 재현
 }

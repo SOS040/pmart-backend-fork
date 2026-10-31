@@ -369,6 +369,10 @@ EOF
           # MFC 작업 여력: 주문 1건 = 1단위, 1시간 30단위 — LAN 시험 설정값(사용자 결정 2026-10-30). 운영은 승인된 정책값
           echo "      PMART_CAPACITY_UNITSPERHOUR: \"30\""
         fi
+        if [ "$c" = delivery-serviceability-service ]; then
+          # 카카오 로컬 REST API 키(주소 ↔ 좌표, ADR-0023, .secrets/kakao-rest-api-key). 없으면 주소 변환·판정이 CONFIG_REQUIRED
+          echo "      PMART_KAKAO_REST_API_KEY: \${PMART_KAKAO_REST_API_KEY}"
+        fi
         if [ "$c" = payment-service ]; then
           # 토스 결제위젯 테스트 키(D5, .secrets/toss-*). 운영 키(live_)는 서비스가 기동을 거부한다
           echo "      PMART_TOSS_SECRET_KEY: \${PMART_TOSS_SECRET_KEY}"
@@ -439,6 +443,9 @@ EOF
     if [[ "$comps" == *" s3 "* || "$comps" == *" product-content-service "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
       echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"
+    fi
+    if [[ "$comps" == *" delivery-serviceability-service "* ]]; then
+      echo "PMART_KAKAO_REST_API_KEY=$([ -f "$SECRETS/kakao-rest-api-key" ] && secret kakao-rest-api-key)"
     fi
     if [[ "$comps" == *" payment-service "* ]]; then
       # 키 파일이 없으면 빈 값 → 결제 시작은 CONFIG_REQUIRED(서비스는 뜬다)

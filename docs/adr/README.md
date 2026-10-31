@@ -24,5 +24,6 @@
 | [0020](0020-payment-spec-mapping-toss-widget.md) | 결제 명세를 payment-service 에 반영 — 결제 시도 ID = 토스 orderId, 고객 승인 요청 API, 웹훅은 대사 신호 | 제안 |
 | [0021](0021-search-index-opensearch-projection.md) | 상품 검색 색인은 OpenSearch 사건 투영 — REST·n-gram, 버전 비교 멱등(inbox 없음), 콘텐츠 카드 보강 | 제안 |
 | [0022](0022-guest-session-token-and-guest-paths.md) | 비회원 세션 토큰(typ=GUEST)은 guest-paths 에서만, 장바구니 병합은 X-Guest-Token 으로 소유 증명 | 제안 |
+| [0023](0023-address-geocoding-kakao-local.md) | 주소 ↔ 좌표는 카카오 로컬(서버 호출, 고객·비회원), 판정은 도로명주소 좌표 — 지도 핀은 배달 위치 참고 | 제안 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

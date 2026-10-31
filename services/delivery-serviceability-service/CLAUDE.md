@@ -23,8 +23,13 @@
 ## 권역 매핑·판정 (2026-10-30)
 - 권역 = GeoJSON Polygon/MultiPolygon([경도, 위도]), `ZoneMatcher` 레이 캐스팅. 중첩은 우선순위가 가장 큰 권역이 하나일 때만, 아니면 OVERLAP(임의 선택 금지).
 - 매핑 버전: `POST /serviceability-versions`(운영자 초안, 내용 해시) → approval SERVICEABILITY(역할 `SERVICEABILITY_APPROVER`) → ApprovalDecided → 시험 주소 검증 → ACTIVE + `ServiceabilityVersionApplied`(토픽 `delivery.serviceability.v1` 명시). 해시 불일치·시험 주소 불일치는 REJECTED.
-- 판정은 좌표로만(지오코딩 없음). 좌표 없으면 NEEDS_INPUT(geo), 발효 버전 없으면 CONFIG_REQUIRED.
-- 판정(`POST/GET /serviceability-checks`)은 공개(계약 `security: []`): 비회원 둘러보기·비회원 배송지(customer-service 익명 호출). 좌표 판정만 하고 주소 원문은 저장하지 않는다.
+- 판정(`POST/GET /serviceability-checks`)은 공개(계약 `security: []`): 비회원 둘러보기·비회원 배송지(customer-service 익명 호출). 주소 원문은 저장하지 않는다.
+
+## 주소 ↔ 좌표·판정 좌표 (2026-10-31, ADR-0023)
+- 카카오 로컬 어댑터 `infrastructure/kakao/KakaoLocalClient`(포트 `application/Geocoder`). 키 `PMART_KAKAO_REST_API_KEY`(없으면 CONFIG_REQUIRED). 429 → QUOTA_EXCEEDED, 401·403 → CONFIG_REQUIRED, 5xx·시간 초과 → DEPENDENCY_UNAVAILABLE, 400 → 0건.
+- `GET /address-geocodes`(유사 검색)·`/address-reverse-geocodes` — 고객·비회원(guest-paths), 저장 없음. 주소 질의·결과는 로그 금지.
+- 판정 좌표 = roadAddress 를 정확 일치로 변환한 좌표(판정 트랜잭션 밖에서). 요청 lat·lng(지도 핀)는 쓰지 않는다. 없음·0건·여러 곳 → NEEDS_INPUT(roadAddress), 검색 장애 → UNKNOWN. `TEST_ADDRESS` 만 운영자 토큰으로 요청 좌표 사용(아니면 403).
+- 쿼리 파라미터 제약 위반은 `api/QueryValidationAdvice` 가 400(공통 라이브러리는 아직 500).
 
 ## 상태
-권역 매핑 버전·좌표 판정 구현(2026-10-30). 배송 가능 조건(`/delivery-conditions`, 2026-10-31): 발효 권역의 MFC 만(아니면 404), 확정값만 — 방식 3가지·배송당 10,000g·00:00~08:00 제한, 부피·보냉·수단은 NOT_SET·빈 목록(`DeliveryPolicy`). 비회원 조회 허용.
+권역 매핑 버전·좌표 판정 구현(2026-10-30), 카카오 주소 변환·도로명 좌표 판정(2026-10-31). 배송 가능 조건(`/delivery-conditions`, 2026-10-31): 발효 권역의 MFC 만(아니면 404), 확정값만 — 방식 3가지·배송당 10,000g·00:00~08:00 제한, 부피·보냉·수단은 NOT_SET·빈 목록(`DeliveryPolicy`). 비회원 조회 허용.

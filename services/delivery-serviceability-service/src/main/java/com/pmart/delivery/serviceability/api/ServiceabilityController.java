@@ -42,6 +42,7 @@ public class ServiceabilityController implements ServiceabilityApi {
             idempotencyKey,
             xSourceSystem,
             new ServiceabilityService.CheckInput(
+                a.getRoadAddress(),
                 a.getLat() == null ? null : a.getLat().doubleValue(),
                 a.getLng() == null ? null : a.getLng().doubleValue(),
                 body.getMappingVersion(),
