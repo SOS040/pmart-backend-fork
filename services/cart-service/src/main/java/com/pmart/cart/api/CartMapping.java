@@ -66,9 +66,9 @@ final class CartMapping {
                 .unitPrice(l.unitPrice() == null ? null : Math.toIntExact(l.unitPrice()))
                 .priceVersion(l.priceVersion())
                 .saleState(CartItemDisplay.SaleStateEnum.fromValue(l.saleState()))
-                // 재고(가용) 서비스 전 — 불명(0 아님). 담기를 막지 않는다
-                .availability(CartItemDisplay.AvailabilityEnum.UNKNOWN)
-                .availableQty(null));
+                // 담당 MFC 가용 사본(불명은 UNKNOWN, 0 아님). 담기를 막지 않는다
+                .availability(CartItemDisplay.AvailabilityEnum.fromValue(l.availability().state()))
+                .availableQty(l.availability().exposedQty()));
   }
 
   static CartChangeResult change(ChangeResult r) {

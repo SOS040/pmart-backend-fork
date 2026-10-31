@@ -11,6 +11,20 @@ import org.junit.jupiter.api.Test;
 class CartRulesTest {
 
   @Test
+  void availabilityFromMfcStock() {
+    assertThat(CartRules.availability(5, false, 1).state()).isEqualTo("NOT_CARRIED");
+    assertThat(CartRules.availability(null, true, 1)).isEqualTo(CartRules.Availability.UNKNOWN);
+    assertThat(CartRules.availability(0, true, 1).state()).isEqualTo("SOLD_OUT");
+    assertThat(CartRules.availability(-1, true, 1).state()).isEqualTo("SOLD_OUT");
+    CartRules.Availability low = CartRules.availability(2, true, 5);
+    assertThat(low.state()).isEqualTo("LOW");
+    assertThat(low.exposedQty()).as("살 수 있는 최대 수량").isEqualTo(2);
+    CartRules.Availability enough = CartRules.availability(5, true, 5);
+    assertThat(enough.state()).isEqualTo("AVAILABLE");
+    assertThat(enough.exposedQty()).as("잔여 수량 노출 임계값 미정 — 비공개").isNull();
+  }
+
+  @Test
   void expiresThirtyDaysAfterLastChange() {
     Instant last = Instant.parse("2026-10-01T00:00:00Z");
     Duration d = Duration.ofDays(30);

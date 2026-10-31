@@ -18,8 +18,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 장바구니가 쓰는 정본 조회. product 내부 API(SKU·구매 상한)는 서비스 토큰(공용 RestClient 가 {@code /internal/} 에 붙인다), 콘텐츠
- * 카드·가격은 공개 API. 조회 실패는 0·판매중지로 바꾸지 않고 예외(검증) 또는 불명(표시)으로 다룬다.
+ * 장바구니가 쓰는 정본 조회. product 내부 API(SKU·구매 상한)·mfc-inventory 내부 가용은 서비스 토큰(공용 RestClient 가 {@code
+ * /internal/} 에 붙인다), 콘텐츠 카드·가격은 공개 API. 조회 실패는 0·판매중지로 바꾸지 않고 예외(검증) 또는 불명(표시)으로 다룬다.
  */
 @Component
 public class CatalogClient {
@@ -38,16 +38,52 @@ public class CatalogClient {
 
   public record Line(String sku, int quantity) {}
 
+  /** mfc-inventory Availability 중 장바구니가 쓰는 것. available 은 A = E − R(산출 못 하면 null). */
+  public record Stock(@Nullable Integer available, boolean handlingEnabled) {}
+
   private final RestClient product;
   private final RestClient content;
   private final RestClient pricing;
+  private final RestClient inventory;
   private final ObjectMapper mapper;
 
   public CatalogClient(RestClient.Builder builder, CartProperties props, ObjectMapper mapper) {
     this.product = builder.clone().baseUrl(props.productBaseUrl()).build();
     this.content = builder.clone().baseUrl(props.contentBaseUrl()).build();
     this.pricing = builder.clone().baseUrl(props.pricingBaseUrl()).build();
+    this.inventory = builder.clone().baseUrl(props.inventoryBaseUrl()).build();
     this.mapper = mapper;
+  }
+
+  /** 담당 MFC 의 SKU 별 가용(표시용, 내부 API·서비스 토큰). 응답에 없는 SKU 는 빠진다. 실패는 예외 — 호출자가 불명으로 둔다. */
+  public Map<String, Stock> stock(String mfcId, List<String> skus) {
+    if (skus.isEmpty()) {
+      return Map.of();
+    }
+    String raw =
+        Downstream.call(
+            "mfc-inventory-service availability",
+            () ->
+                inventory
+                    .get()
+                    .uri(
+                        u -> {
+                          u.path("/api/v1/internal/availability").queryParam("mfcId", mfcId);
+                          skus.forEach(s -> u.queryParam("sku", s));
+                          return u.build();
+                        })
+                    .retrieve()
+                    .body(String.class));
+    Map<String, Stock> out = new HashMap<>();
+    for (JsonNode a : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
+      JsonNode available = a.path("available");
+      out.put(
+          a.path("sku").asString(),
+          new Stock(
+              available.isNumber() ? available.asInt() : null,
+              a.path("handlingEnabled").asBoolean(false)));
+    }
+    return out;
   }
 
   /** 없는 SKU 면 empty. */

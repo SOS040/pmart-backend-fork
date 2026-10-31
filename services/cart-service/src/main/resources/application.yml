@@ -40,6 +40,7 @@ pmart:
     product-base-url: ${PMART_PRODUCT_BASE_URL:http://product-service:8101}
     content-base-url: ${PMART_PRODUCT_CONTENT_BASE_URL:http://product-content-service:8102}
     pricing-base-url: ${PMART_PRICING_BASE_URL:http://pricing-service:8107}
+    inventory-base-url: ${PMART_MFC_INVENTORY_BASE_URL:http://mfc-inventory-service:8301} # 표시용 가용(서비스 토큰)
 management:
   tracing:
     export:

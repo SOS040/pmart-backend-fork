@@ -357,8 +357,14 @@ components:
             unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
             priceVersion: { type: integer }
             saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
-            availability: { type: string, enum: [AVAILABLE, LOW, SOLD_OUT, NOT_CARRIED, UNKNOWN] }
-            availableQty: { type: [integer, 'null'], description: 공개 범위 내 가용 수량. UNKNOWN이면 null }
+            availability:
+              type: string
+              enum: [AVAILABLE, LOW, SOLD_OUT, NOT_CARRIED, UNKNOWN]
+              description: |
+                장바구니 mfcId(담당 MFC) 기준 mfc-inventory 가용 사본. 구매·예약 보장이 아니다(결제 진입 때 재고를 다시 잡는다).
+                AVAILABLE 담은 수량 이상, LOW 0 < 가용 < 담은 수량(부족), SOLD_OUT 가용 0, NOT_CARRIED 담당 MFC 취급 안 함,
+                UNKNOWN mfcId 없음·재고 조회 실패(0 아님). "N개 남음" 노출 임계값은 운영 설정이라 아직 쓰지 않는다.
+            availableQty: { type: [integer, 'null'], description: "LOW 일 때 살 수 있는 최대 수량, SOLD_OUT 이면 0. 그 밖은 null(수량 비공개)" }
     Cart:
       type: object
       required: [cartId, cartVersion, ownerType, items]

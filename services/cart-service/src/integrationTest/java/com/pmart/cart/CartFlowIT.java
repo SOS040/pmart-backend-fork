@@ -41,7 +41,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 장바구니: 비회원 토큰으로 열기·담기(절대 수량·멱등·버전 충돌·판매 상태·구매 상한) → 표시 사본 → 회원 장바구니 → 병합(X-Guest-Token, 항목별 재검증·부분
- * 성공·재전송) → 주문용 내부 조회. 실제 PostgreSQL, product·content·pricing·auth(서비스 토큰)는 WireMock.
+ * 성공·재전송) → 주문용 내부 조회. 실제 PostgreSQL, product·content·pricing·mfc-inventory·auth(서비스 토큰)는 WireMock.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -59,7 +59,8 @@ import tools.jackson.databind.ObjectMapper;
         baseUrlProperties = {
           "pmart.cart.product-base-url",
           "pmart.cart.content-base-url",
-          "pmart.cart.pricing-base-url"
+          "pmart.cart.pricing-base-url",
+          "pmart.cart.inventory-base-url"
         }))
 class CartFlowIT extends PostgresKafkaContainerSupport {
 
@@ -147,6 +148,27 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     json(
         WireMock.get(urlPathEqualTo("/api/v1/internal/skus/" + sku)),
         detail(sku, productId, base, saleState));
+  }
+
+  /** mfc-inventory 가용(MFC-SEED-01). */
+  void stock(String sku, int available, boolean handlingEnabled) {
+    json(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .withQueryParam("mfcId", equalTo("MFC-SEED-01")),
+        Map.of(
+            "mfcId",
+            "MFC-SEED-01",
+            "items",
+            List.of(
+                Map.of(
+                    "sku",
+                    sku,
+                    "available",
+                    available,
+                    "handlingEnabled",
+                    handlingEnabled,
+                    "version",
+                    1))));
   }
 
   void json(com.github.tomakehurst.wiremock.client.MappingBuilder b, Object body) {
@@ -275,7 +297,50 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     assertThat(display.path("name").asString()).isEqualTo("[시험] 국산콩 두부 300g");
     assertThat(display.path("unitPrice").asInt()).isEqualTo(1900);
     assertThat(display.path("saleState").asString()).isEqualTo("ON_SALE");
-    assertThat(display.path("availability").asString()).as("재고 전: 불명, 0 아님").isEqualTo("UNKNOWN");
+    // 가용: 담당 MFC(열 때 준 MFC-SEED-01) 기준 사본. 담은 5개보다 적으면 부족(LOW, 수량 공개)
+    stock("E-00000001", 3, true);
+    display = get("/carts/" + guestCart, guest).body().path("items").path(0).path("display");
+    assertThat(display.path("availability").asString()).isEqualTo("LOW");
+    assertThat(display.path("availableQty").asInt()).isEqualTo(3);
+    deps.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/internal/availability"))
+            .withQueryParam("mfcId", equalTo("MFC-SEED-01"))
+            .withQueryParam("sku", equalTo("E-00000001"))
+            .withHeader("Authorization", equalTo("Bearer " + SERVICE_TOKEN)));
+    stock("E-00000001", 10, true);
+    display = get("/carts/" + guestCart, guest).body().path("items").path(0).path("display");
+    assertThat(display.path("availability").asString()).isEqualTo("AVAILABLE");
+    assertThat(display.path("availableQty").isNull()).as("충분하면 수량 비공개").isTrue();
+    stock("E-00000001", 0, true);
+    assertThat(
+            get("/carts/" + guestCart, guest)
+                .body()
+                .path("items")
+                .path(0)
+                .path("display")
+                .path("availability")
+                .asString())
+        .isEqualTo("SOLD_OUT");
+    stock("E-00000001", 10, false);
+    assertThat(
+            get("/carts/" + guestCart, guest)
+                .body()
+                .path("items")
+                .path(0)
+                .path("display")
+                .path("availability")
+                .asString())
+        .isEqualTo("NOT_CARRIED");
+    // 재고 조회 실패 → 불명(0 아님), 출처 UNAVAILABLE. 화면 전체는 실패시키지 않는다
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .willReturn(aResponse().withStatus(503)));
+    cart = get("/carts/" + guestCart, guest).body();
+    display = cart.path("items").path(0).path("display");
+    assertThat(display.path("availability").asString()).as("불명, 0 아님").isEqualTo("UNKNOWN");
+    assertThat(display.path("name").asString()).isEqualTo("[시험] 국산콩 두부 300g");
+    assertThat(cart.path("sources").toString()).contains("mfc-inventory-service", "UNAVAILABLE");
+    stock("E-00000001", 10, true);
     assertThat(cart.path("selectedItemAmount").asInt()).isEqualTo(9500);
     assertThat(cart.path("expiresAt").asString()).isNotBlank();
     // 변경 원결과 조회

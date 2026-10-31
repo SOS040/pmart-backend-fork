@@ -22,6 +22,37 @@ public final class CartRules {
 
   private CartRules() {}
 
+  /** 표시용 가용(계약 CartItemDisplay.availability). availableQty 는 LOW 일 때만(살 수 있는 최대 수량 안내). */
+  public record Availability(String state, @Nullable Integer exposedQty) {
+    public static final Availability UNKNOWN = new Availability("UNKNOWN", null);
+  }
+
+  /**
+   * 담당 MFC 가용(A = E − R)을 장바구니 표시로(Commerce 6.11·7장). 담기·구매 보장이 아니다.
+   *
+   * <ul>
+   *   <li>취급 OFF → NOT_CARRIED. 수량 불명 → UNKNOWN(0 아님).
+   *   <li>A ≤ 0 → SOLD_OUT, 0 < A < 담은 수량 → LOW(부족, 수량 공개), 그 밖 AVAILABLE.
+   *   <li>"N개 남음" 같은 잔여 수량 노출 임계값은 운영 설정이라(Commerce 6.11) 정하지 않는다 — 충분할 때는 수량을 공개하지 않는다.
+   * </ul>
+   */
+  public static Availability availability(
+      @Nullable Integer available, boolean handlingEnabled, int quantity) {
+    if (!handlingEnabled) {
+      return new Availability("NOT_CARRIED", null);
+    }
+    if (available == null) {
+      return Availability.UNKNOWN;
+    }
+    if (available <= 0) {
+      return new Availability("SOLD_OUT", 0);
+    }
+    if (available < quantity) {
+      return new Availability("LOW", available);
+    }
+    return new Availability("AVAILABLE", null);
+  }
+
   /** 마지막 변경 후 보존 기간(Commerce [채택 설계] 30일)이 지났는가. */
   public static boolean expired(Instant lastChangedAt, Duration retention, Instant now) {
     return !lastChangedAt.plus(retention).isAfter(now);

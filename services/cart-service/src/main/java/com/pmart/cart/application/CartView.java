@@ -1,5 +1,6 @@
 package com.pmart.cart.application;
 
+import com.pmart.cart.domain.CartRules;
 import com.pmart.cart.infrastructure.CartStore;
 import com.pmart.cart.infrastructure.CartStore.CartRow;
 import com.pmart.cart.infrastructure.CartStore.ItemRow;
@@ -18,7 +19,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * 장바구니 조회 화면. 이름·이미지(콘텐츠)·가격(pricing)·판매 상태(product)는 각 정본의 사본이며, 출처마다 따로 실패할 수 있다 — 실패한 출처는 비우고
- * sources 의 freshness 를 UNAVAILABLE 로 알린다(0원·판매중지로 바꾸지 않음). 가용은 재고 서비스 전이라 UNKNOWN.
+ * sources 의 freshness 를 UNAVAILABLE 로 알린다(0원·판매중지로 바꾸지 않음). 가용은 장바구니의 담당 MFC 기준 mfc-inventory
+ * 사본(MFC 를 모르거나 조회 실패면 UNKNOWN, 0 아님 — CartRules.availability).
  */
 @Service
 public class CartView {
@@ -31,7 +33,8 @@ public class CartView {
       @Nullable String imageUrl,
       @Nullable Long unitPrice,
       @Nullable Integer priceVersion,
-      String saleState) {}
+      String saleState,
+      CartRules.Availability availability) {}
 
   public record Source(String system, boolean available, Instant asOf) {}
 
@@ -67,6 +70,11 @@ public class CartView {
         fetch("product-content-service", () -> catalog.cards(productIds), sources, now);
     Map<String, CatalogClient.Price> prices =
         fetch("pricing-service", () -> catalog.prices(skus), sources, now);
+    // 담당 MFC 를 모르면(쇼핑 주소 미선택) 가용은 불명 — 조회하지 않는다
+    Map<String, CatalogClient.Stock> stock =
+        cart.mfcId() == null
+            ? Map.of()
+            : fetch("mfc-inventory-service", () -> catalog.stock(cart.mfcId(), skus), sources, now);
     boolean pricingOk =
         sources.stream().anyMatch(s -> s.system().equals("pricing-service") && s.available());
 
@@ -77,6 +85,7 @@ public class CartView {
       CatalogClient.Card card = i.productId() == null ? null : cards.get(i.productId());
       CatalogClient.Price price = prices.get(i.sku());
       CatalogClient.Sku d = details.get(i.sku());
+      CatalogClient.Stock s = stock.get(i.sku());
       lines.add(
           new Line(
               i,
@@ -84,7 +93,10 @@ public class CartView {
               card == null ? null : card.imageUrl(),
               price == null ? null : price.amount(),
               price == null ? null : price.version(),
-              d == null ? "UNKNOWN" : d.saleState()));
+              d == null ? "UNKNOWN" : d.saleState(),
+              s == null
+                  ? CartRules.Availability.UNKNOWN
+                  : CartRules.availability(s.available(), s.handlingEnabled(), i.quantity())));
       if (i.selected()) {
         if (price == null) {
           amountKnown = false;
