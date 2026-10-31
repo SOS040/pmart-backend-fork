@@ -32,7 +32,7 @@
 - **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(완료 전 order-service 미결 의무 조회), 계정 상태 조회.
 - **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`.
 - **구독**: `CustomerAuthenticated`(auth), `OrderConfirmed`(order — 첫 구매 무료 사용 기록, 2026-10-31).
-- **의존**: order(탈퇴 가능 여부), delivery-serviceability(주소 판정).
+- **의존**: order(탈퇴 가능 여부), delivery-serviceability(주소 판정), S3 버킷 pmart-customer(프로필 사진 사본), 로그인 제공자 사진 호스트(googleusercontent.com — 로그인 뒤 사본 한 번, ADR-0024).
 
 ### cart-service `[1단계]`
 - **소유**: 장바구니·품목·선택·`cartVersion`(30일 보존), 비회원 장바구니, 로그인 병합 이관(`MERGE_PENDING/PARTIAL/CONFIRMED`), 찜(3차).

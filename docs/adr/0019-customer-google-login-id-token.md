@@ -10,7 +10,7 @@
 
 ## 결정
 1. **방식**: 고객 앱이 Google Sign-In 으로 ID 토큰을 받아 `POST /auth/social-logins {provider: GOOGLE, providerToken: <ID 토큰>}` 으로 보낸다. auth-service 는 Google 공개키(JWKS)로 서명을 확인하고 `iss`(accounts.google.com), `aud`(허용 클라이언트 ID: 앱·웹), 만료를 본다. 인가 코드 교환을 하지 않으므로 **client secret 을 쓰지 않는다**.
-2. **계정 연결**: 제공자 계정 식별자(`sub`)로 내부 고객 계정(`CU-…`)을 찾고, 없으면 만든다. 제공자 토큰·이메일은 저장하지 않는다.
+2. **계정 연결**: 제공자 계정 식별자(`sub`)로 내부 고객 계정(`CU-…`)을 찾고, 없으면 만든다. 제공자 토큰·이메일은 저장하지 않는다. (프로필은 버리지 않고 customer-service 로 넘긴다 — ADR-0024)
 3. **필수 동의 단계는 지금 생략한다**(사용자 결정, `pmart.auth.customer.require-consent=false`): 신규 가입도 바로 `AUTH_MEMBER`. 동의 기능(customer-service)이 생기면 켜서 `AUTH_CONSENT` → 동의 → 완료 흐름으로 돌린다. 확정 정책과 다른 임시 상태임을 명시한다.
 4. **토큰**: ADR-0018 의 세션·refresh 회전을 그대로 쓴다. 고객 access token 은 `typ=CUSTOMER, sub=accountId, sid`, 30분. refresh·세션은 30일(보안 설정값).
 5. **실패 제한**: 기기(`X-Device-Id`)별 15분 내 5회 명확 실패(`PROVIDER_REJECTED`) → 10분 `AUTH_RESTRICTED`(423, `retryAfterSeconds`·`restrictedUntil`). Google 공개키를 못 받는 등 제공자 장애(`PROVIDER_UNAVAILABLE`, 503)는 세지 않는다. 제한 중 시도는 기간을 늘리지 않는다.

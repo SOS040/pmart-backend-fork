@@ -32,6 +32,30 @@ paths:
               schema: { $ref: '#/components/schemas/Profile' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /me/profile-image:
+    get:
+      tags: [profile]
+      summary: 본인 프로필 사진(로그인 제공자 사진의 우리 사본, ADR-0024)
+      description: |
+        제공자(Google) 사진 URL 을 그대로 주지 않는다. 로그인 뒤 서버가 한 번 받아 비공개 저장소에 둔 사본이다. 본인 토큰이 있어야 읽는다
+        (`Authorization` 헤더 — `<img src>` 만으로는 안 된다). 주소는 `Profile.profileImageUrl` 을 쓴다(사본이 바뀌면 `v` 가 바뀐다).
+      operationId: getMyProfileImage
+      responses:
+        '200':
+          description: 이미지 바이트
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   /me/profile-changes:
     post:
       tags: [profile]
@@ -467,6 +491,10 @@ components:
         accountId: { type: string }
         status: { $ref: '#/components/schemas/AccountStatus' }
         nickname: { type: string }
+        name: { type: string, description: 로그인 제공자(Google) 프로필 이름. 로그인마다 최신 값(ADR-0024). 없을 수 있다 }
+        email: { type: string, description: 로그인 제공자가 준 이메일. 없을 수 있다 }
+        emailVerified: { type: boolean, description: 제공자가 이메일을 확인했는지 }
+        profileImageUrl: { type: string, description: '프로필 사진 사본 경로(게이트웨이 상대 경로 `/api/v1/me/profile-image?v=…`, 본인 토큰 필요). 사본이 없으면 비어 있다' }
         phoneMasked: { type: string }
         socialProvider: { type: string, enum: [KAKAO, NAVER, APPLE, GOOGLE] }
         joinedAt: { type: string, format: date-time }

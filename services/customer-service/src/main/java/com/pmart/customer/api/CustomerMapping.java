@@ -11,6 +11,7 @@ import com.pmart.customer.api.generated.model.AddressInputGeo;
 import com.pmart.customer.api.generated.model.GetAccountStatusInternal200ResponseAsOf;
 import com.pmart.customer.api.generated.model.Profile;
 import com.pmart.customer.api.generated.model.ShoppingContext;
+import com.pmart.customer.application.ProfileImageService;
 import com.pmart.customer.domain.AddressData;
 import com.pmart.customer.domain.Serviceability;
 import com.pmart.customer.infrastructure.CustomerStore.AddressRow;
@@ -95,6 +96,10 @@ final class CustomerMapping {
         .accountId(p.accountId())
         .status(AccountStatus.fromValue(p.status()))
         .nickname(p.nickname())
+        .name(p.name())
+        .email(p.email())
+        .emailVerified(p.emailVerified())
+        .profileImageUrl(ProfileImageService.url(p.profileImageSha256()))
         .socialProvider(
             p.socialProvider() == null
                 ? null

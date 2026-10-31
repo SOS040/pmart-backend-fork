@@ -21,7 +21,9 @@
 로컬 포트 8103.
 
 ## 주소록·쇼핑 주소 (2026-10-30)
-- 고객(회원) 기준 테이블은 `customer`(account_id 한 행, V4 에서 customer_profile 이름 변경 + name·email·phone 추가 — 채우는 경로는 아직 없음, 개인정보 로그 금지).
+- 고객(회원) 기준 테이블은 `customer`(account_id 한 행, V4 에서 customer_profile 이름 변경 + name·email·phone, V5 email_verified·profile_image_*). 개인정보 로그 금지.
+- name·email·email_verified·profile_image_source_url 은 `CustomerAuthenticated` 의 Google 프로필로 채운다(ADR-0024): 로그인마다 최신 값, 사건에 없는 값은 유지, 인증 시각이 가장 최근인 사건만 덮어씀. `GET /me` 가 돌려준다. phone·nickname 은 프로필 변경(501) 구현 때.
+- 프로필 사진(ADR-0024): 제공자 URL 을 앱에 주지 않는다. `ProfileImageService` 가 커밋 뒤(가상 스레드) 원본이 바뀌었을 때만 받아(`ProfileImageRules`: 허용 호스트 https·리다이렉트 안 따름·256px·1MB·본문 머리로 형식) S3 `pmart-customer` 의 `profile-images/<accountId>/<sha256>` 에 둔다. `GET /me/profile-image`(본인), `profileImageUrl=/api/v1/me/profile-image?v=…`. 받기 실패는 다음 로그인 때 다시, 허용 밖·이미지 아님은 건너뜀. 버킷(`PMART_S3_BUCKET`) 미설정이면 사본 기능만 꺼짐. 설정 `pmart.customer.profile-image.*`.
 - 회원 행은 auth `CustomerAuthenticated`(platform.auth.v1) 로 생기고, 이벤트보다 `/me` 가 먼저 와도 만든다(제공자는 이벤트가 채움).
 - 주소 추가·수정은 delivery-serviceability `POST /serviceability-checks` 로 판정한 **사본**을 함께 저장한다. 판정 실패·불명·발효 버전 없음이어도 주소는 저장하고 `UNKNOWN`(Commerce 5.1: 저장 ≠ 배송 가능). OVERLAP·NEEDS_INPUT 도 UNKNOWN(임의 MFC 금지).
 - 판정 호출은 트랜잭션 밖에서 먼저. 회원은 본인 토큰 전파, 비회원 배송지는 익명(판정 경로는 계약 `security: []`).

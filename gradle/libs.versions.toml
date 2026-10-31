@@ -81,7 +81,7 @@ confluent-json-schema-serializer = { module = "io.confluent:kafka-json-schema-se
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
 aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
-aws-sdk-s3 = { module = "software.amazon.awssdk:s3" }  # 버전은 aws-sdk-bom. product-content-service 에만
+aws-sdk-s3 = { module = "software.amazon.awssdk:s3" }  # 버전은 aws-sdk-bom. product-content(상품 이미지)·customer(프로필 사진 사본)
 
 # --- 테스트 (BOM 관리 + 일부 고정) ---
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

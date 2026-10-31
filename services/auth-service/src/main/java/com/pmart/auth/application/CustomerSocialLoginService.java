@@ -12,6 +12,7 @@ import com.pmart.common.web.PmartException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -188,7 +189,7 @@ public class CustomerSocialLoginService {
               SessionTokens.Tokens t = null;
               if ("AUTH_MEMBER".equals(authState)) {
                 t = openSession(accountId, deviceId, sourceSystem, now);
-                publishAuthenticated(accountId, provider, now);
+                publishAuthenticated(accountId, provider, now, identity);
               }
               return new Result(
                   authRequestId,
@@ -295,7 +296,17 @@ public class CustomerSocialLoginService {
         now);
   }
 
-  private void publishAuthenticated(String accountId, String provider, Instant at) {
+  /** Google 이 준 프로필(이름·이메일·사진)은 저장하지 않고 사건으로 customer-service 에 넘긴다(ADR-0024). 없는 값은 싣지 않는다. */
+  private void publishAuthenticated(
+      String accountId, String provider, Instant at, GoogleIdTokenVerifier.Identity identity) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("accountId", accountId);
+    payload.put("provider", provider);
+    payload.put("authenticatedAt", at.toString());
+    putIfPresent(payload, "email", identity.email());
+    putIfPresent(payload, "emailVerified", identity.emailVerified());
+    putIfPresent(payload, "name", identity.name());
+    putIfPresent(payload, "pictureUrl", identity.pictureUrl());
     EventEnvelope envelope =
         codec.create(
             events.sourceSystem(),
@@ -306,9 +317,15 @@ public class CustomerSocialLoginService {
             1,
             new EventEnvelope.Actor(EventEnvelope.ActorType.CUSTOMER, accountId),
             EventEnvelope.EventSource.REAL,
-            Map.of("accountId", accountId, "provider", provider, "authenticatedAt", at.toString()));
+            payload);
     // 계약 토픽(집합 이름 Account 의 기본 토픽이 아님)
     events.publish(envelope, TOPIC);
+  }
+
+  private static void putIfPresent(Map<String, Object> m, String key, @Nullable Object v) {
+    if (v != null) {
+      m.put(key, v);
+    }
   }
 
   /** DB(timestamptz, 마이크로초)에 저장한 값과 응답 값이 같도록 마이크로초로 자른다. */

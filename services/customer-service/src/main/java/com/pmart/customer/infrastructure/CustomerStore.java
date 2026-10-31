@@ -24,8 +24,19 @@ public class CustomerStore {
       String status,
       @Nullable String socialProvider,
       @Nullable String nickname,
+      @Nullable String name,
+      @Nullable String email,
+      @Nullable Boolean emailVerified,
+      @Nullable String profileImageSha256,
       Instant joinedAt,
       int version) {}
+
+  /** 로그인 제공자가 준 프로필(CustomerAuthenticated, ADR-0024). 값은 scope 에 따라 없을 수 있다. 개인정보 — 로그 금지. */
+  public record ProviderProfile(
+      @Nullable String name,
+      @Nullable String email,
+      @Nullable Boolean emailVerified,
+      @Nullable String pictureUrl) {}
 
   public record AddressRow(
       String addressId,
@@ -54,20 +65,46 @@ public class CustomerStore {
 
   // ---------- 프로필 ----------
 
-  /** CustomerAuthenticated 반영. 제공자는 처음 값을 유지하고 인증 시각만 갱신한다. */
-  public void upsertFromAuthentication(String accountId, String provider, Instant at, Instant now) {
+  /**
+   * CustomerAuthenticated 반영. 제공자는 처음 값을 유지하고 인증 시각은 더 늦은 쪽. 제공자 프로필(이름·이메일·사진)은 그 로그인이 지금까지 중 가장
+   * 최근일 때만 덮어쓰고(늦게 도착한 옛 사건이 최신 값을 되돌리지 않게), 사건에 없는 값은 기존 값을 유지한다.
+   */
+  public void upsertFromAuthentication(
+      String accountId, String provider, Instant at, ProviderProfile p, Instant now) {
+    String latest =
+        "(customer.last_authenticated_at IS NULL"
+            + " OR EXCLUDED.last_authenticated_at >= customer.last_authenticated_at)";
     jdbc.update(
         "INSERT INTO customer (account_id, status, social_provider, joined_at,"
-            + " last_authenticated_at, version, updated_at) VALUES (?,'ACTIVE',?,?,?,0,?)"
+            + " last_authenticated_at, name, email, email_verified, profile_image_source_url, version,"
+            + " updated_at) VALUES (?,'ACTIVE',?,?,?,?,?,?,?,0,?)"
             + " ON CONFLICT (account_id) DO UPDATE SET"
             + " social_provider = COALESCE(customer.social_provider, EXCLUDED.social_provider),"
             + " joined_at = LEAST(customer.joined_at, EXCLUDED.joined_at),"
+            + " name = CASE WHEN "
+            + latest
+            + " THEN COALESCE(EXCLUDED.name, customer.name) ELSE customer.name END,"
+            + " email = CASE WHEN "
+            + latest
+            + " THEN COALESCE(EXCLUDED.email, customer.email) ELSE customer.email END,"
+            + " email_verified = CASE WHEN "
+            + latest
+            + " THEN COALESCE(EXCLUDED.email_verified, customer.email_verified)"
+            + " ELSE customer.email_verified END,"
+            + " profile_image_source_url = CASE WHEN "
+            + latest
+            + " THEN COALESCE(EXCLUDED.profile_image_source_url, customer.profile_image_source_url)"
+            + " ELSE customer.profile_image_source_url END,"
             + " last_authenticated_at = GREATEST(customer.last_authenticated_at,"
             + " EXCLUDED.last_authenticated_at), updated_at = EXCLUDED.updated_at",
         accountId,
         provider,
         ts(at),
         ts(at),
+        p.name(),
+        p.email(),
+        p.emailVerified(),
+        p.pictureUrl(),
         ts(now));
   }
 
@@ -84,19 +121,92 @@ public class CustomerStore {
   public Optional<ProfileRow> profile(String accountId) {
     return jdbc
         .query(
-            "SELECT account_id, status, social_provider, nickname, joined_at, version"
-                + " FROM customer WHERE account_id = ?",
+            "SELECT account_id, status, social_provider, nickname, name, email, email_verified,"
+                + " profile_image_sha256, joined_at, version FROM customer WHERE account_id = ?",
             (rs, i) ->
                 new ProfileRow(
                     rs.getString("account_id"),
                     rs.getString("status"),
                     rs.getString("social_provider"),
                     rs.getString("nickname"),
+                    rs.getString("name"),
+                    rs.getString("email"),
+                    rs.getObject("email_verified", Boolean.class),
+                    rs.getString("profile_image_sha256"),
                     rs.getTimestamp("joined_at").toInstant(),
                     rs.getInt("version")),
             accountId)
         .stream()
         .findFirst();
+  }
+
+  // ---------- 프로필 사진 사본 (ADR-0024) ----------
+
+  /** 받을 원본·저장된 사본. 개인정보(원본 URL)는 로그 금지. */
+  public record ProfileImageRow(
+      @Nullable String sourceUrl,
+      @Nullable String copiedFrom,
+      @Nullable String key,
+      @Nullable String contentType,
+      @Nullable String sha256) {}
+
+  public Optional<ProfileImageRow> profileImage(String accountId) {
+    return jdbc
+        .query(
+            "SELECT profile_image_source_url, profile_image_copied_from, profile_image_key,"
+                + " profile_image_content_type, profile_image_sha256 FROM customer WHERE account_id = ?",
+            (rs, i) ->
+                new ProfileImageRow(
+                    rs.getString("profile_image_source_url"),
+                    rs.getString("profile_image_copied_from"),
+                    rs.getString("profile_image_key"),
+                    rs.getString("profile_image_content_type"),
+                    rs.getString("profile_image_sha256")),
+            accountId)
+        .stream()
+        .findFirst();
+  }
+
+  /**
+   * 사본 반영. 받는 동안 원본이 바뀌지 않았을 때만(= 지금 원본이 copiedFrom) 바꾸고 이전 사본 키를 돌려준다. 바뀌었으면 빈 값 — 새 원본은 다음 복사가
+   * 처리한다.
+   */
+  public Optional<Optional<String>> recordProfileImage(
+      String accountId,
+      String copiedFrom,
+      String key,
+      String contentType,
+      String sha256,
+      Instant now) {
+    List<Optional<String>> old =
+        jdbc.query(
+            "UPDATE customer c SET profile_image_key = ?, profile_image_content_type = ?,"
+                + " profile_image_sha256 = ?, profile_image_copied_from = ?,"
+                + " profile_image_updated_at = ?"
+                + " FROM (SELECT profile_image_key AS old_key FROM customer WHERE account_id = ?"
+                + " FOR UPDATE) o"
+                + " WHERE c.account_id = ? AND c.profile_image_source_url = ? RETURNING o.old_key",
+            (rs, i) -> Optional.ofNullable(rs.getString("old_key")),
+            key,
+            contentType,
+            sha256,
+            copiedFrom,
+            ts(now),
+            accountId,
+            accountId,
+            copiedFrom);
+    return old.stream().findFirst();
+  }
+
+  /** 받을 수 없는 원본(허용 밖·이미지 아님)은 다시 시도하지 않도록 표시만 한다(사본은 그대로). */
+  public void markProfileImageSkipped(String accountId, String sourceUrl, Instant now) {
+    jdbc.update(
+        "UPDATE customer SET profile_image_copied_from = ?, profile_image_updated_at = ?"
+            + " WHERE account_id = ? AND profile_image_source_url = ?",
+        sourceUrl,
+        ts(now),
+        accountId,
+        sourceUrl);
   }
 
   /** 첫 구매 혜택을 이미 쓴 계정인가(대조값). */

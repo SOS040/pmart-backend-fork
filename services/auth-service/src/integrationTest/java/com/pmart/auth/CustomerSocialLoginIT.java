@@ -102,6 +102,9 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
             .issuedAt(now)
             .expiresAt(now.plusSeconds(600))
             .claim("email", sub + "@gmail.com")
+            .claim("email_verified", true)
+            .claim("name", "홍길동")
+            .claim("picture", "https://lh3.googleusercontent.com/a/" + sub)
             .build();
     return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(GOOGLE_KEY)))
         .encode(
@@ -182,6 +185,27 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
                 String.class,
                 accountId))
         .isEqualTo("platform.auth.v1");
+    // Google 이 준 프로필은 버리지 않고 사건으로 customer 에 넘긴다(ADR-0024)
+    JsonNode payload =
+        mapper
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE type = 'CustomerAuthenticated'"
+                        + " AND aggregateid = ? LIMIT 1",
+                    String.class,
+                    accountId))
+            .path("payload");
+    assertThat(payload.path("email").asString()).isEqualTo(sub + "@gmail.com");
+    assertThat(payload.path("emailVerified").asBoolean()).isTrue();
+    assertThat(payload.path("name").asString()).isEqualTo("홍길동");
+    assertThat(payload.path("pictureUrl").asString()).endsWith(sub);
+    // auth 는 제공자 sub 만 저장한다(이메일·이름 컬럼 없음)
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_name IN"
+                    + " ('customer_account','social_identity') AND column_name IN ('email','name')",
+                Integer.class))
+        .isZero();
 
     // 같은 키 재전송: 같은 원인증, 새 토큰
     Res replay = login(key1, device, "GOOGLE", google(sub));

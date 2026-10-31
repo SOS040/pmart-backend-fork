@@ -192,7 +192,7 @@
 
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
-| `CustomerAuthenticated` | auth | customer | accountId, provider, at | 소셜 인증 성공(이용 가능≠) | ① |
+| `CustomerAuthenticated` | auth | customer | accountId, provider, at, (email, emailVerified, name, pictureUrl — ADR-0024) | 소셜 인증 성공(이용 가능≠) | ① |
 | `GrantApplied` | auth | approval(Receipt), audit | grantId, approvalRef, operatorId, roles[], centerScope[], effective | 권한 반영 확인 | ① |
 | `DelegationStarted` / `DelegationEnded` | auth | approval, audit | delegationId, from, to, scope(교집합), until | 대행 | ① |
 | `ChangeRequestSubmitted` | approval | 해당 정본(검증용), notification(승인자) | changeRequestId, type, targetRef, expectedVersion, payloadRef | 초안 제출 | ① |

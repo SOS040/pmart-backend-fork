@@ -154,6 +154,12 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
   }
 
   void authenticated(String accountId) throws InterruptedException {
+    authenticated(accountId, "2026-10-30T00:00:00Z", "홍길동", accountId + "@gmail.com");
+  }
+
+  /** Google 프로필(ADR-0024)을 실은 CustomerAuthenticated 를 보내고 그 인증 시각까지 반영되기를 기다린다. */
+  void authenticated(String accountId, String at, String name, String email)
+      throws InterruptedException {
     String json =
         EventEnvelopeFixtures.envelope("CustomerAuthenticated")
             .from("auth-service")
@@ -165,22 +171,59 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
                     "provider",
                     "GOOGLE",
                     "authenticatedAt",
-                    "2026-10-30T00:00:00Z"))
+                    at,
+                    "email",
+                    email,
+                    "emailVerified",
+                    true,
+                    "name",
+                    name,
+                    "pictureUrl",
+                    "https://lh3.googleusercontent.com/a/" + accountId))
             .buildJson();
     kafka.send("platform.auth.v1", accountId, json).join();
     Instant until = Instant.now().plus(Duration.ofSeconds(30));
     while (Instant.now().isBefore(until)) {
       Integer n =
           jdbc.queryForObject(
-              "SELECT COUNT(*) FROM customer WHERE account_id = ? AND social_provider = 'GOOGLE'",
+              "SELECT COUNT(*) FROM inbox_event WHERE aggregate_id = ? AND event_type ="
+                  + " 'CustomerAuthenticated' AND event_id = ?::uuid",
               Integer.class,
-              accountId);
+              accountId,
+              mapper.readTree(json).path("eventId").asString());
       if (n != null && n > 0) {
         return;
       }
       Thread.sleep(200);
     }
     throw new AssertionError("CustomerAuthenticated 미반영");
+  }
+
+  @Test
+  void googleProfileIsKeptAndLateOldLoginDoesNotRollBack() throws Exception {
+    String cu = "CU-" + UUID.randomUUID();
+    String me = TestJwt.customer(cu);
+    authenticated(cu, "2026-10-30T00:00:00Z", "홍길동", "old@gmail.com");
+    Res first = get(me, "/me");
+    assertThat(first.body().path("name").asString()).isEqualTo("홍길동");
+    assertThat(first.body().path("email").asString()).isEqualTo("old@gmail.com");
+    assertThat(first.body().path("emailVerified").asBoolean()).isTrue();
+    // 사진 사본은 저장소(S3)가 있을 때만 — 이 시험엔 버킷이 없어 제공자 URL 을 그대로 내주지 않는다(ProfileImageIT)
+    assertThat(
+            first.body().path("profileImageUrl").isMissingNode()
+                || first.body().path("profileImageUrl").isNull())
+        .isTrue();
+
+    // 다음 로그인: 구글에서 바뀐 이름·이메일로 갱신
+    authenticated(cu, "2026-10-31T00:00:00Z", "홍길순", "new@gmail.com");
+    assertThat(get(me, "/me").body().path("name").asString()).isEqualTo("홍길순");
+
+    // 늦게 도착한 옛 로그인 사건은 최신 값을 되돌리지 않는다
+    authenticated(cu, "2026-10-29T00:00:00Z", "옛이름", "older@gmail.com");
+    Res after = get(me, "/me");
+    assertThat(after.body().path("name").asString()).isEqualTo("홍길순");
+    assertThat(after.body().path("email").asString()).isEqualTo("new@gmail.com");
+    assertThat(after.body().path("joinedAt").asString()).startsWith("2026-10-29");
   }
 
   @Test

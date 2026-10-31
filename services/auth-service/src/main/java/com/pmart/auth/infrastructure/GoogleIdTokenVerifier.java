@@ -3,6 +3,7 @@ package com.pmart.auth.infrastructure;
 import com.pmart.auth.application.CustomerProperties;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -25,8 +26,16 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
  */
 public class GoogleIdTokenVerifier {
 
-  /** 검증된 제공자 계정. */
-  public record Identity(String subject) {}
+  /**
+   * 검증된 제공자 계정과 Google 이 준 프로필(ADR-0024). auth 는 subject 만 저장하고, 프로필은 CustomerAuthenticated 로
+   * customer-service(고객 정보 정본)에 넘긴다. 프로필 값은 앱이 요청한 scope 에 따라 없을 수 있다. 개인정보 — 로그 금지.
+   */
+  public record Identity(
+      String subject,
+      @Nullable String email,
+      @Nullable Boolean emailVerified,
+      @Nullable String name,
+      @Nullable String pictureUrl) {}
 
   public static class Rejected extends RuntimeException {
     public Rejected(String message) {
@@ -87,6 +96,15 @@ public class GoogleIdTokenVerifier {
     if (jwt.getSubject() == null || jwt.getSubject().isBlank()) {
       throw new Rejected("sub 없음");
     }
-    return new Identity(jwt.getSubject());
+    return new Identity(
+        jwt.getSubject(),
+        blankToNull(jwt.getClaimAsString("email")),
+        jwt.hasClaim("email_verified") ? jwt.getClaimAsBoolean("email_verified") : null,
+        blankToNull(jwt.getClaimAsString("name")),
+        blankToNull(jwt.getClaimAsString("picture")));
+  }
+
+  private static @Nullable String blankToNull(@Nullable String v) {
+    return v == null || v.isBlank() ? null : v;
   }
 }

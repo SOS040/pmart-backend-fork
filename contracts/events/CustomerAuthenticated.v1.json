@@ -33,6 +33,23 @@
             },
             "authenticatedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 254,
+              "description": "제공자가 준 이메일(ADR-0024). scope 에 따라 없을 수 있다. 개인정보 — 로그 금지"
+            },
+            "emailVerified": {
+              "type": "boolean",
+              "description": "제공자가 이메일을 확인했는지(Google email_verified)"
+            },
+            "name": {
+              "type": "string",
+              "description": "제공자 프로필 이름"
+            },
+            "pictureUrl": {
+              "type": "string",
+              "description": "제공자 프로필 사진 URL"
             }
           },
           "additionalProperties": true

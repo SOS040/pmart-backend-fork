@@ -239,7 +239,7 @@ EOF
         "\$\$S3_ACCESS_KEY" "\$\$S3_SECRET_KEY" > /tmp/s3.json &&
         chown seaweed /tmp/s3.json &&
         exec /entrypoint.sh mini -dir=/data -s3.config=/tmp/s3.json -admin.ui=false
-        -s3.port.iceberg=0 -s3.port.lance=0 -bucket=pmart-product-content
+        -s3.port.iceberg=0 -s3.port.lance=0 -bucket=pmart-product-content,pmart-customer
     ports: ["8333:8333"]
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
@@ -354,7 +354,8 @@ EOF
         if needs "$c" PMART_S3_BUCKET; then
           [ -n "${WHERE[s3]:-}" ] || { echo "$c 는 s3 가 필요한데 배치에 s3 가 없음" >&2; exit 1; }
           echo "      PMART_S3_ENDPOINT: http://s3:8333"
-          echo "      PMART_S3_BUCKET: pmart-product-content"
+          # 서비스마다 버킷 하나: pmart-<서비스 이름에서 -service 뺀 것> (product-content·customer). s3 의 -bucket= 목록과 맞춘다
+          echo "      PMART_S3_BUCKET: pmart-${c%-service}"
           echo "      PMART_S3_ACCESS_KEY: \${PMART_S3_ACCESS_KEY}"
           echo "      PMART_S3_SECRET_KEY: \${PMART_S3_SECRET_KEY}"
         fi
@@ -440,7 +441,7 @@ EOF
     for s in $SERVICE_CLIENTS; do
       [[ "$comps" == *" $s "* ]] && echo "PMART_SERVICE_CLIENT_SECRET_$(env_name "$s")=$(secret "service-clients/$s.secret")"
     done
-    if [[ "$comps" == *" s3 "* || "$comps" == *" product-content-service "* ]]; then
+    if [[ "$comps" == *" s3 "* || "$comps" == *" product-content-service "* || "$comps" == *" customer-service "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
       echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"
     fi
