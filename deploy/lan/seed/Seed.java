@@ -238,14 +238,21 @@ public class Seed {
 
   // ---------- 센터(center-master, CENTER_MASTER 승인) ----------
 
-  /** MFC 와 고객 주문 운영 시간표. 없을 때만 넣는다(있는 센터의 다른 시간표는 바꾸지 않는다). */
+  /**
+   * MFC 와 고객 주문 운영 시간표. 없으면 만들고, 이름·주소·좌표가 시험 데이터와 다르면 UPDATE_PROFILE 로 맞춘다(시험 위치 이전).
+   * 시간표는 없을 때만 넣는다(있는 센터의 다른 시간표는 바꾸지 않는다).
+   */
   void center(String mfcId) throws Exception {
     Map<String, Object> c = map(data, "center");
+    Map<String, Object> profile = map(c, "profile");
     String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
     String calendarPath = "/centers/" + mfcId + "/calendar?date=" + today + "&kind=CUSTOMER_ORDER";
-    boolean exists = send("GET", "/centers/" + mfcId, md, null, null).status() == 200;
-    if (exists && send("GET", calendarPath, md, null, null).status() == 200) {
-      say("센터 " + mfcId + ": 있음(고객 주문 시간표 승인됨) → 건너뜀");
+    Res current = send("GET", "/centers/" + mfcId, md, null, null);
+    boolean exists = current.status() == 200;
+    boolean profileStale = exists && !sameLocation(current.map(), profile);
+    boolean calendarMissing = !exists || send("GET", calendarPath, md, null, null).status() != 200;
+    if (exists && !profileStale && !calendarMissing) {
+      say("센터 " + mfcId + ": 있음(위치 같음, 고객 주문 시간표 승인됨) → 건너뜀");
       return;
     }
     List<Object> lines = new ArrayList<>();
@@ -253,7 +260,35 @@ public class Seed {
       lines.add(
           Map.of(
               "lineKey", mfcId + ":CREATE",
-              "attributes", Map.of("changeType", "CREATE", "centerId", mfcId, "profile", map(c, "profile"))));
+              "attributes", Map.of("changeType", "CREATE", "centerId", mfcId, "profile", profile)));
+    } else if (profileStale) {
+      Map<String, Object> change = new LinkedHashMap<>();
+      for (String k : List.of("name", "address", "coordinates")) {
+        change.put(k, profile.get(k));
+      }
+      lines.add(
+          Map.of(
+              "lineKey", mfcId + ":PROFILE",
+              "attributes", Map.of("changeType", "UPDATE_PROFILE", "centerId", mfcId, "profile", change)));
+      say("센터 " + mfcId + ": " + current.map().get("name") + " → " + profile.get("name") + " 로 정보 변경");
+    }
+    if (!calendarMissing) {
+      Map<String, Object> body = new LinkedHashMap<>();
+      body.put("type", "CENTER_MASTER");
+      body.put("targetService", "center-master-service");
+      body.put("targetRef", "CENTER-" + mfcId + "-" + System.currentTimeMillis());
+      body.put("allowedActions", List.of("APPLY_CENTER_CHANGE"));
+      body.put("summary", "pmart-seed 시험 센터 " + mfcId + " 위치 변경");
+      body.put("lines", lines);
+      approve(body, "센터 " + mfcId);
+      await(
+          "센터 정보 반영",
+          () -> {
+            Res r = send("GET", "/centers/" + mfcId, md, null, null);
+            return r.status() == 200 && sameLocation(r.map(), profile);
+          });
+      say("센터 " + mfcId + ": " + profile.get("address") + " " + profile.get("coordinates"));
+      return;
     }
     List<Object> weekly = new ArrayList<>();
     for (String d : List.of("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")) {
@@ -279,6 +314,17 @@ public class Seed {
     say("센터 " + mfcId + ": 고객 주문 " + list(c, "customerOrderHours"));
   }
 
+  /** 이름·주소·좌표가 시험 데이터와 같은가. */
+  static boolean sameLocation(Map<String, Object> center, Map<String, Object> profile) {
+    Map<String, Object> a = map(center, "coordinates");
+    Map<String, Object> b = map(profile, "coordinates");
+    return java.util.Objects.equals(center.get("name"), profile.get("name"))
+        && java.util.Objects.equals(center.get("address"), profile.get("address"))
+        && a != null
+        && Math.abs(dbl(a, "lat") - dbl(b, "lat")) < 1e-6
+        && Math.abs(dbl(a, "lng") - dbl(b, "lng")) < 1e-6;
+  }
+
   // ---------- 카테고리 트리 ----------
 
   void categoryTree() throws Exception {
@@ -302,15 +348,25 @@ public class Seed {
     Map<String, Object> in = map(z, "inside");
     Res probe = check(in);
     if (probe.status() == 200) {
+      Object version = probe.map().get("mappingVersion");
       if ("SERVICEABLE".equals(probe.map().get("result")) && mfcId.equals(probe.map().get("mfcId"))) {
-        say("배송 권역: 발효 버전 " + probe.map().get("mappingVersion") + " 에 시험 권역 있음 → 건너뜀");
-      } else {
-        // 다른 권역 매핑이 이미 발효 중이면 덮어쓰지 않는다(매핑 버전은 전체 교체라 기존 권역이 사라진다)
-        say("배송 권역: 다른 매핑(버전 " + probe.map().get("mappingVersion") + ")이 발효 중 → 시험 권역을 넣지 않음");
+        say("배송 권역: 발효 버전 " + version + " 에 시험 권역 있음 → 건너뜀");
+        return;
       }
-      return;
+      // 매핑 버전은 전체 교체라 기존 권역이 사라진다. 발효 중인 권역이 모두 seed 권역(Z-SEED-*)일 때만 바꾼다(시험 위치 이전).
+      Res active = send("GET", "/serviceability-versions/" + version, md, null, null);
+      active.expect("발효 중 매핑 조회", 200);
+      List<Map<String, Object>> zones = list(active.map(), "zones");
+      boolean seedOnly =
+          !zones.isEmpty() && zones.stream().allMatch(zz -> str(zz, "zoneId").startsWith("Z-SEED-"));
+      if (!seedOnly) {
+        say("배송 권역: 다른 매핑(버전 " + version + ")이 발효 중 → 시험 권역을 넣지 않음");
+        return;
+      }
+      say("배송 권역: 발효 버전 " + version + " 의 seed 권역 → " + str(z, "name") + " 로 교체");
+    } else {
+      probe.expect("배송 판정(발효 버전 없음 확인)", 422);
     }
-    probe.expect("배송 판정(발효 버전 없음 확인)", 422);
     Map<String, Object> box = map(z, "box");
     double x0 = dbl(box, "minLng"), y0 = dbl(box, "minLat"), x1 = dbl(box, "maxLng"), y1 = dbl(box, "maxLat");
     List<Object> ring =

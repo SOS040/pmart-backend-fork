@@ -6,8 +6,8 @@
   "center": {
     "_comment": "시험 MFC. 고객 주문 운영 08:00~24:00 매일(사용자 결정 2026-10-31 LAN 시험값 — 00~08 실제 배송 없음은 확정 정책)",
     "profile": {
-      "type": "MFC", "name": "[시험] 서초 MFC", "state": "ACTIVE", "address": "서울 서초구 (시험)",
-      "coordinates": { "lat": 37.4918, "lng": 127.0076 },
+      "type": "MFC", "name": "[시험] 부산진구 MFC", "state": "ACTIVE", "address": "부산 부산진구 서면 부근 (시험 좌표, 실제 주소 수집 중)",
+      "coordinates": { "lat": 35.1578, "lng": 129.0597 },
       "temperatureZones": ["AMBIENT", "CHILLED", "FROZEN"], "floors": 1
     },
     "customerOrderHours": [ { "start": "08:00", "end": "24:00" } ]
@@ -41,12 +41,12 @@
     ]
   },
   "serviceability": {
-    "_comment": "서울 서초·강남 일부를 덮는 사각형 시험 권역. 좌표는 [경도, 위도].",
-    "zoneId": "Z-SEED-SEOCHO",
-    "name": "시험 권역(서초·강남 일부)",
-    "box": { "minLng": 127.00, "minLat": 37.47, "maxLng": 127.06, "maxLat": 37.53 },
-    "inside": { "label": "서초역 부근", "lat": 37.4918, "lng": 127.0076 },
-    "outside": { "label": "광화문 부근", "lat": 37.5759, "lng": 126.9768 }
+    "_comment": "부산진구 일대를 덮는 사각형 시험 권역(업무 문서: 초기 부산 MFC 5곳 중 부산진구, TMS 4.2 — 실제 주소·권역 경계는 수집 중). 좌표는 [경도, 위도].",
+    "zoneId": "Z-SEED-BUSANJIN",
+    "name": "시험 권역(부산진구 일대)",
+    "box": { "minLng": 129.02, "minLat": 35.14, "maxLng": 129.08, "maxLat": 35.19 },
+    "inside": { "label": "서면역 부근", "lat": 35.1578, "lng": 129.0597 },
+    "outside": { "label": "해운대해수욕장 부근", "lat": 35.1587, "lng": 129.1604 }
   },
   "products": [
     {
