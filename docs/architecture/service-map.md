@@ -21,7 +21,8 @@
 ### product-content-service `[1단계]`
 - **소유**: 고객용 상품명·사진·설명·보관/반품 안내·판매 옵션 해석, 평점·리뷰 수 집계 투영.
 - **소유하지 않음**: 상품 정본·판매 상태(product), 리뷰 원문(review).
-- **API**: 상품 상세 조회(승인 변경 5분 내 반영 목표).
+- **API**: 상품 상세 조회(승인 변경 5분 내 반영 목표). `mfcId` 를 주면 옵션별 취급·가용 사본(2026-10-31).
+- **의존**: mfc-inventory(담당 센터 가용 표시 조회 — 내부 API·서비스 토큰, 조회 실패≠0).
 - **발행**: `ProductContentPublished`.
 - **구독**: `ProductVersionPublished`, `ReviewPublished/Deleted`, `ApprovalDecided`(콘텐츠 승인 BO-05).
 

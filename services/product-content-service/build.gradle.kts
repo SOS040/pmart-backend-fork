@@ -25,6 +25,7 @@ dependencies {
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox·이미지 행 확인
     "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 ProductVersionPublished·ApprovalDecided 를 토픽에 흘림
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // mfc-inventory 가용·auth 서비스 토큰 응답 고정
     "integrationTestImplementation"(platform(libs.aws.sdk.bom))
     "integrationTestImplementation"(libs.aws.sdk.s3) { // 시험에서 버킷 내용 확인
         exclude(group = "software.amazon.awssdk", module = "netty-nio-client")

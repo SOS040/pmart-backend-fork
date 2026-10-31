@@ -14,6 +14,17 @@ class ContentRulesTest {
   static final byte[] JPEG = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 1, 2, 3};
 
   @Test
+  void availabilityForProductScreens() {
+    assertThat(ContentRules.availability(5, false))
+        .isEqualTo(new ContentRules.Availability(false, "UNKNOWN"));
+    assertThat(ContentRules.availability(null, true).state()).isEqualTo("UNKNOWN");
+    assertThat(ContentRules.availability(0, true).state()).isEqualTo("SOLD_OUT");
+    assertThat(ContentRules.availability(1, true))
+        .as("잔여 수량 노출 임계값 미정 — LOW 를 쓰지 않는다")
+        .isEqualTo(new ContentRules.Availability(true, "AVAILABLE"));
+  }
+
+  @Test
   void submittableOnlyWithNameMainImageAndLinkedProduct() {
     var main = new ImageSlot(ImageRole.MAIN, 0, SHA_A);
     assertThat(ContentRules.submissionProblems("호밍스 부대찌개", "PRD-1", List.of(main))).isEmpty();

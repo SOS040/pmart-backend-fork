@@ -1,7 +1,13 @@
 package com.pmart.product.content;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
 import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
@@ -33,6 +39,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -50,10 +59,18 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.messaging.outbox.delete-after-insert=false"
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.security.service-token.token-uri=${pmart.content.inventory-base-url}/api/v1/internal/service-tokens"
     })
 @Import(TestJwtConfiguration.class)
+@EnableWireMock(
+    @ConfigureWireMock(name = "deps", baseUrlProperties = "pmart.content.inventory-base-url"))
 class ContentRegistrationFlowIT extends ContentContainerSupport {
+
+  static final String SERVICE_TOKEN = TestJwt.service("product-content-service");
+
+  @InjectWireMock("deps")
+  WireMockServer deps;
 
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
@@ -91,6 +108,46 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
             .baseUrl("http://localhost:" + port + "/api/v1")
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/service-tokens"))
+            .willReturn(
+                okJson(
+                    Map.of(
+                        "access_token",
+                        SERVICE_TOKEN,
+                        "token_type",
+                        "Bearer",
+                        "expires_in",
+                        300))));
+  }
+
+  /** mfc-inventory 가용(MFC-1). */
+  void stock(String sku, int available, boolean handlingEnabled) {
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .withQueryParam("mfcId", equalTo("MFC-1"))
+            .willReturn(
+                okJson(
+                    Map.of(
+                        "mfcId",
+                        "MFC-1",
+                        "items",
+                        List.of(
+                            Map.of(
+                                "sku",
+                                sku,
+                                "available",
+                                available,
+                                "handlingEnabled",
+                                handlingEnabled,
+                                "version",
+                                1))))));
+  }
+
+  com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder okJson(Object body) {
+    return aResponse()
+        .withHeader("Content-Type", "application/json")
+        .withBody(mapper.writeValueAsString(body));
   }
 
   record Res(int status, JsonNode body) {}
@@ -447,7 +504,7 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(c.path("categoryPath").toString()).isEqualTo("[\"p03\",\"p03-c02\"]");
     assertThat(c.path("options").path(0).path("sku").asString()).isEqualTo(sku);
     assertThat(c.path("options").path(0).path("capacityLabel").asString()).isEqualTo("180g");
-    // 가격·가용은 pricing·inventory 사본을 아직 받지 않으므로 값을 채우지 않는다(null/없음)
+    // 가격은 pricing 사본을 아직 받지 않는다. 가용은 mfcId 를 줄 때만(없으면 채우지 않는다)
     JsonNode opt = c.path("options").path(0);
     assertThat(opt.path("price").isNull() || opt.path("price").isMissingNode()).isTrue();
     assertThat(opt.path("availability").isNull() || opt.path("availability").isMissingNode())
@@ -459,6 +516,60 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     Res cards = get("/product-contents?productIds=" + productId + ",PRD-none", CUSTOMER);
     assertThat(cards.body().path("items")).hasSize(1);
     assertThat(cards.body().path("missing").path(0).asString()).isEqualTo("PRD-none");
+
+    // 담당 센터(mfcId) 가용 사본 — mfc-inventory 내부 API(서비스 토큰)
+    stock(sku, 7, true);
+    JsonNode av =
+        get("/product-contents/" + productId + "?mfcId=MFC-1", null)
+            .body()
+            .path("options")
+            .path(0)
+            .path("availability");
+    assertThat(av.path("carried").asBoolean()).isTrue();
+    assertThat(av.path("state").asString()).isEqualTo("AVAILABLE");
+    deps.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/internal/availability"))
+            .withQueryParam("mfcId", equalTo("MFC-1"))
+            .withQueryParam("sku", equalTo(sku))
+            .withHeader("Authorization", equalTo("Bearer " + SERVICE_TOKEN)));
+    assertThat(
+            get("/product-contents?productIds=" + productId + "&mfcId=MFC-1", null)
+                .body()
+                .path("items")
+                .path(0)
+                .path("options")
+                .path(0)
+                .path("availability")
+                .path("state")
+                .asString())
+        .isEqualTo("AVAILABLE");
+    stock(sku, 0, true);
+    assertThat(
+            get("/product-contents/" + productId + "?mfcId=MFC-1", CUSTOMER)
+                .body()
+                .path("options")
+                .path(0)
+                .path("availability")
+                .path("state")
+                .asString())
+        .isEqualTo("SOLD_OUT");
+    stock(sku, 5, false);
+    av =
+        get("/product-contents/" + productId + "?mfcId=MFC-1", CUSTOMER)
+            .body()
+            .path("options")
+            .path(0)
+            .path("availability");
+    assertThat(av.path("carried").asBoolean(true)).as("센터 취급 안 함").isFalse();
+    // 재고 조회 실패 → 화면은 그대로, 가용 불명(0·품절 아님), 출처 UNAVAILABLE
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .willReturn(aResponse().withStatus(503)));
+    JsonNode failed = get("/product-contents/" + productId + "?mfcId=MFC-1", CUSTOMER).body();
+    assertThat(failed.path("name").asString()).isEqualTo("[냉동]호밍스 부대찌개 180g");
+    assertThat(failed.path("options").path(0).path("availability").path("state").asString())
+        .isEqualTo("UNKNOWN");
+    assertThat(failed.path("sources").toString()).contains("mfc-inventory-service", "UNAVAILABLE");
 
     // 7) 이미지 본문: 고객은 게시된 이미지만, 운영자는 초안 이미지도
     Bytes served = image(mainUrl, CUSTOMER);

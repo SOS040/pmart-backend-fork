@@ -29,4 +29,9 @@
 
 ## 상태
 2026-10-30 임시 백오피스 등록 구현: 콘텐츠 초안(개별·seed-v1 배치 upsert)·이미지 업로드·제출 준비(DISPLAY 승인 본문), ProductVersionPublished 투영·원천 키 연결, ApprovalDecided(DISPLAY) → 게시(`product_content` 불변 버전) + ProductContentPublished(commerce.product.v1), 고객 조회(상세·카드·스냅샷·projection-status).
-미구현(501): `/product-contents/{id}/publications`(게시는 승인 이벤트로만), `rating-summary`(review 투영 전). 가격·가용 필드는 채우지 않는다.
+미구현(501): `/product-contents/{id}/publications`(게시는 승인 이벤트로만), `rating-summary`(review 투영 전). 가격 필드는 채우지 않는다.
+
+## 옵션 가용 (2026-10-31)
+- 상세·카드에 `mfcId` 를 주면 SKU 옵션마다 mfc-inventory `/internal/availability`(서비스 신원 토큰, `PMART_SERVICE_CLIENT_SECRET`) 사본을 붙인다(`ContentRules.availability`): 취급 OFF carried=false·UNKNOWN, A≤0 SOLD_OUT, 그 밖 AVAILABLE. LOW("N개 남음")는 노출 임계값이 운영 설정이라 안 쓴다.
+- 재고 조회 실패는 화면을 실패시키지 않고 UNKNOWN(0·품절 아님), 상세 sources 에 mfc-inventory-service UNAVAILABLE. mfcId 가 없으면 채우지 않는다.
+

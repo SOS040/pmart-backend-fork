@@ -53,5 +53,7 @@ public abstract class ContentContainerSupport extends PostgresKafkaContainerSupp
     registry.add("pmart.storage.s3.access-key", () -> S3_KEY);
     registry.add("pmart.storage.s3.secret-key", () -> S3_SECRET);
     registry.add("pmart.storage.s3.create-bucket", () -> "true");
+    // 서비스 신원 토큰(mfc-inventory 내부 가용 호출). 값은 시험용
+    registry.add("pmart.security.service-token.client-secret", () -> "it-secret");
   }
 }

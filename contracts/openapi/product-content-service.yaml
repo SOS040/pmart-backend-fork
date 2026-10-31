@@ -58,6 +58,7 @@ paths:
           style: form
           explode: false
           schema: { type: array, maxItems: 100, items: { type: string } }
+        - { name: mfcId, in: query, description: 현재 쇼핑 주소의 담당 센터. 주면 옵션별 취급·가용(availability)을 채운다, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
       responses:
         '200':
           description: OK (미게시 상품은 items에서 제외하고 missing에 나열)
@@ -551,7 +552,10 @@ components:
             priceVersion: { type: integer }
         availability:
           type: object
-          description: 현재 센터 취급·가용 사본. 조회 실패는 0이 아니다.
+          description: |
+            요청 mfcId(담당 센터) 기준 mfc-inventory 취급·가용 사본. mfcId 를 주고 옵션에 sku 가 있을 때만 채운다. 구매·예약 보장이 아니다.
+            carried=false 면 그 센터가 취급하지 않는다(state UNKNOWN). 취급하면 가용 0 이하 SOLD_OUT, 그 밖 AVAILABLE.
+            재고 조회 실패는 carried 없음 + UNKNOWN(0 아님). LOW("N개 남음")는 노출 임계값이 운영 설정이라 아직 쓰지 않는다.
           properties:
             carried: { type: boolean }
             state: { type: string, enum: [AVAILABLE, LOW, SOLD_OUT, UNKNOWN] }

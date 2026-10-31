@@ -2,11 +2,13 @@ package com.pmart.product.content.application;
 
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.PmartException;
+import com.pmart.product.content.domain.ContentRules;
 import com.pmart.product.content.infrastructure.CatalogStore;
 import com.pmart.product.content.infrastructure.CatalogStore.ContentRow;
 import com.pmart.product.content.infrastructure.CatalogStore.ProjectionRow;
 import com.pmart.product.content.infrastructure.DraftStore;
 import com.pmart.product.content.infrastructure.DraftStore.ImageRow;
+import com.pmart.product.content.infrastructure.InventoryClient;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,13 +19,15 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 고객용 조회: 최신 게시본(product_content) + product 사본(판매 상태·대표 카테고리·SKU). 가격·재고·평점은 다른 정본의 사본이라 아직 받지 않으므로
- * 응답에 넣지 않는다(지어내지 않는다). 결과는 계약 필드 이름의 Map 이고 api 가 DTO 로 바꾼다.
+ * 고객용 조회: 최신 게시본(product_content) + product 사본(판매 상태·대표 카테고리·SKU) + mfcId 를 주면 mfc-inventory 가용 사본.
+ * 가격·평점은 아직 받지 않으므로 응답에 넣지 않는다(지어내지 않는다). 결과는 계약 필드 이름의 Map 이고 api 가 DTO 로 바꾼다.
  */
 @Service
 public class ContentQueries {
@@ -33,9 +37,14 @@ public class ContentQueries {
 
   public static final String SYSTEM = "product-content-service";
 
+  public static final String INVENTORY = "mfc-inventory-service";
+
+  private static final Logger log = LoggerFactory.getLogger(ContentQueries.class);
+
   private final CatalogStore catalog;
   private final DraftStore drafts;
   private final ImageStorage storage;
+  private final InventoryClient inventory;
   private final ObjectMapper mapper;
   private final Clock clock;
 
@@ -43,19 +52,27 @@ public class ContentQueries {
       CatalogStore catalog,
       DraftStore drafts,
       ImageStorage storage,
+      InventoryClient inventory,
       ObjectMapper mapper,
       Clock clock) {
     this.catalog = catalog;
     this.drafts = drafts;
     this.storage = storage;
+    this.inventory = inventory;
     this.mapper = mapper;
     this.clock = clock;
   }
 
   public Map<String, Object> content(String productId) {
+    return content(productId, null);
+  }
+
+  /** 상품 상세. mfcId 를 주면 옵션별 취급·가용 사본을 붙인다(재고 조회 실패는 UNKNOWN + sources UNAVAILABLE). */
+  public Map<String, Object> content(String productId, @Nullable String mfcId) {
     ContentRow c = latest(productId);
     Optional<ProjectionRow> p = catalog.projection(productId);
     Map<String, Object> m = card(c, p.orElse(null));
+    Boolean stockOk = withAvailability(List.of(m), mfcId);
     m.put("productVersion", c.productVersion());
     m.put("description", c.description());
     m.put("images", images(c));
@@ -70,12 +87,28 @@ public class ContentQueries {
             sources.add(
                 source(
                     "product-service", x.receivedAt().toString(), x.latestProductVersion(), null)));
+    if (stockOk != null) {
+      sources.add(
+          Map.of(
+              "system",
+              INVENTORY,
+              "asOf",
+              Map.of(
+                  "asOf",
+                  clock.instant().toString(),
+                  "freshness",
+                  stockOk ? "CURRENT" : "UNAVAILABLE")));
+    }
     m.put("sources", sources);
     return m;
   }
 
-  /** 상품 카드 일괄. 미게시 상품은 missing. */
   public Map<String, Object> cards(List<String> productIds) {
+    return cards(productIds, null);
+  }
+
+  /** 상품 카드 일괄. 미게시 상품은 missing. mfcId 를 주면 옵션별 취급·가용 사본을 붙인다. */
+  public Map<String, Object> cards(List<String> productIds, @Nullable String mfcId) {
     List<String> ids = productIds.stream().distinct().toList();
     Map<String, ContentRow> contents =
         catalog.latestContents(ids).stream()
@@ -93,6 +126,7 @@ public class ContentQueries {
         items.add(card(c, projections.get(id)));
       }
     }
+    withAvailability(items, mfcId);
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("items", items);
     out.put("missing", missing);
@@ -169,6 +203,53 @@ public class ContentQueries {
 
   // ---------- 내부 ----------
 
+  /**
+   * 카드들의 SKU 옵션에 담당 센터 가용 사본(availability)을 붙인다. mfcId 가 없거나 SKU 옵션이 없으면 아무것도 안 하고 null. 재고 조회가
+   * 실패하면 화면을 실패시키지 않고 UNKNOWN 을 붙이고 false(0·품절로 바꾸지 않는다).
+   */
+  @SuppressWarnings("unchecked")
+  private @Nullable Boolean withAvailability(
+      List<Map<String, Object>> cards, @Nullable String mfcId) {
+    if (mfcId == null || mfcId.isBlank()) {
+      return null;
+    }
+    List<Map<String, Object>> options = new ArrayList<>();
+    cards.forEach(c -> options.addAll((List<Map<String, Object>>) c.get("options")));
+    List<String> skus =
+        options.stream().map(o -> (String) o.get("sku")).filter(s -> s != null).toList();
+    if (skus.isEmpty()) {
+      return null;
+    }
+    Map<String, InventoryClient.Stock> stock;
+    boolean ok;
+    try {
+      stock = inventory.stock(mfcId, skus);
+      ok = true;
+    } catch (PmartException | org.springframework.web.client.RestClientException e) {
+      log.warn("상품 화면 가용 조회 실패 — 불명으로 표시");
+      stock = Map.of();
+      ok = false;
+    }
+    for (Map<String, Object> o : options) {
+      String sku = (String) o.get("sku");
+      if (sku == null) {
+        continue;
+      }
+      InventoryClient.Stock s = stock.get(sku);
+      ContentRules.Availability a =
+          s == null
+              ? ContentRules.Availability.UNKNOWN
+              : ContentRules.availability(s.available(), s.handlingEnabled());
+      Map<String, Object> view = new LinkedHashMap<>();
+      if (a.carried() != null) {
+        view.put("carried", a.carried());
+      }
+      view.put("state", a.state());
+      o.put("availability", view);
+    }
+    return ok;
+  }
+
   private ContentRow latest(String productId) {
     return catalog
         .latestContent(productId)
@@ -190,8 +271,8 @@ public class ContentQueries {
   }
 
   /**
-   * 옵션 라벨 + product 사본. SKU 가 1개이고 옵션도 1개일 때만 그 SKU 를 붙인다(여러 개면 대응 규칙이 없어 붙이지 않는다). 가격·가용은
-   * pricing·inventory 의 것이라 넣지 않는다.
+   * 옵션 라벨 + product 사본. SKU 가 1개이고 옵션도 1개일 때만 그 SKU 를 붙인다(여러 개면 대응 규칙이 없어 붙이지 않는다). 가격은 pricing 의
+   * 것이라 넣지 않는다. 가용은 withAvailability 가 붙인다.
    */
   private List<Map<String, Object>> options(ContentRow c, @Nullable ProjectionRow p) {
     List<Map<String, Object>> out = new ArrayList<>();

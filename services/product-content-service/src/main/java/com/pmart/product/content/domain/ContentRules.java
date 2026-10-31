@@ -24,6 +24,25 @@ public final class ContentRules {
 
   private ContentRules() {}
 
+  /** 옵션 표시 가용(계약 SaleOption.availability). carried 가 null 이면 취급 여부도 모른다. */
+  public record Availability(@Nullable Boolean carried, String state) {
+    public static final Availability UNKNOWN = new Availability(null, "UNKNOWN");
+  }
+
+  /**
+   * 담당 센터 가용(A = E − R) → 상품 화면 표시. 취급 OFF → carried=false(UNKNOWN), A 불명 → UNKNOWN(0 아님), A ≤ 0 →
+   * SOLD_OUT, 그 밖 AVAILABLE. "N개 남음"(LOW) 노출 임계값은 운영 설정이라(Commerce 6.11) 쓰지 않는다.
+   */
+  public static Availability availability(@Nullable Integer available, boolean handlingEnabled) {
+    if (!handlingEnabled) {
+      return new Availability(false, "UNKNOWN");
+    }
+    if (available == null) {
+      return new Availability(true, "UNKNOWN");
+    }
+    return new Availability(true, available <= 0 ? "SOLD_OUT" : "AVAILABLE");
+  }
+
   /** 저장된(또는 올릴) 이미지의 자리와 내용. */
   public record ImageSlot(ImageRole role, int sortOrder, String sha256) {}
 

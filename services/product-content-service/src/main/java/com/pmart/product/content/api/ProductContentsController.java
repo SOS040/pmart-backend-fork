@@ -28,13 +28,15 @@ public class ProductContentsController implements ProductContentsApi {
   @Override
   public ResponseEntity<ProductContent> getProductContent(
       String productId, @Nullable String mfcId) {
-    return ResponseEntity.ok(mapper.convertValue(queries.content(productId), ProductContent.class));
+    return ResponseEntity.ok(
+        mapper.convertValue(queries.content(productId, mfcId), ProductContent.class));
   }
 
   @Override
   public ResponseEntity<ListProductContents200Response> listProductContents(
-      List<String> productIds) {
+      List<String> productIds, @Nullable String mfcId) {
     return ResponseEntity.ok(
-        mapper.convertValue(queries.cards(productIds), ListProductContents200Response.class));
+        mapper.convertValue(
+            queries.cards(productIds, mfcId), ListProductContents200Response.class));
   }
 }
