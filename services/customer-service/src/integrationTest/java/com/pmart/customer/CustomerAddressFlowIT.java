@@ -172,7 +172,7 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     while (Instant.now().isBefore(until)) {
       Integer n =
           jdbc.queryForObject(
-              "SELECT COUNT(*) FROM customer_profile WHERE account_id = ? AND social_provider = 'GOOGLE'",
+              "SELECT COUNT(*) FROM customer WHERE account_id = ? AND social_provider = 'GOOGLE'",
               Integer.class,
               accountId);
       if (n != null && n > 0) {

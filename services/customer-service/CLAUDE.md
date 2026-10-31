@@ -21,7 +21,8 @@
 로컬 포트 8103.
 
 ## 주소록·쇼핑 주소 (2026-10-30)
-- 프로필은 auth `CustomerAuthenticated`(platform.auth.v1) 로 생기고, 이벤트보다 `/me` 가 먼저 와도 만든다(제공자는 이벤트가 채움).
+- 고객(회원) 기준 테이블은 `customer`(account_id 한 행, V4 에서 customer_profile 이름 변경 + name·email·phone 추가 — 채우는 경로는 아직 없음, 개인정보 로그 금지).
+- 회원 행은 auth `CustomerAuthenticated`(platform.auth.v1) 로 생기고, 이벤트보다 `/me` 가 먼저 와도 만든다(제공자는 이벤트가 채움).
 - 주소 추가·수정은 delivery-serviceability `POST /serviceability-checks` 로 판정한 **사본**을 함께 저장한다. 판정 실패·불명·발효 버전 없음이어도 주소는 저장하고 `UNKNOWN`(Commerce 5.1: 저장 ≠ 배송 가능). OVERLAP·NEEDS_INPUT 도 UNKNOWN(임의 MFC 금지).
 - 판정 호출은 트랜잭션 밖에서 먼저. 회원은 본인 토큰 전파, 비회원 배송지는 익명(판정 경로는 계약 `security: []`).
 - 쇼핑 주소 선택은 다시 판정하고 `shoppingContextVersion` +1, `ShoppingAddressChanged`(토픽 `commerce.customer.v1` 명시). 현재 쇼핑 주소를 고치면 컨텍스트도 +1. 현재 쇼핑 주소는 삭제 불가(INVALID_STATE).

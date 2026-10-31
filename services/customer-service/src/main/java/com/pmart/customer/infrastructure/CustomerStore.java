@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** 프로필·주소·쇼핑 컨텍스트 저장(JDBC). */
+/** 회원(customer)·주소·쇼핑 컨텍스트 저장(JDBC). */
 @Repository
 public class CustomerStore {
 
@@ -57,12 +57,12 @@ public class CustomerStore {
   /** CustomerAuthenticated 반영. 제공자는 처음 값을 유지하고 인증 시각만 갱신한다. */
   public void upsertFromAuthentication(String accountId, String provider, Instant at, Instant now) {
     jdbc.update(
-        "INSERT INTO customer_profile (account_id, status, social_provider, joined_at,"
+        "INSERT INTO customer (account_id, status, social_provider, joined_at,"
             + " last_authenticated_at, version, updated_at) VALUES (?,'ACTIVE',?,?,?,0,?)"
             + " ON CONFLICT (account_id) DO UPDATE SET"
-            + " social_provider = COALESCE(customer_profile.social_provider, EXCLUDED.social_provider),"
-            + " joined_at = LEAST(customer_profile.joined_at, EXCLUDED.joined_at),"
-            + " last_authenticated_at = GREATEST(customer_profile.last_authenticated_at,"
+            + " social_provider = COALESCE(customer.social_provider, EXCLUDED.social_provider),"
+            + " joined_at = LEAST(customer.joined_at, EXCLUDED.joined_at),"
+            + " last_authenticated_at = GREATEST(customer.last_authenticated_at,"
             + " EXCLUDED.last_authenticated_at), updated_at = EXCLUDED.updated_at",
         accountId,
         provider,
@@ -74,7 +74,7 @@ public class CustomerStore {
   /** 이벤트보다 API 가 먼저 와도 프로필이 있도록(가입 시각은 이벤트가 오면 더 이른 쪽으로). */
   public void ensureProfile(String accountId, Instant now) {
     jdbc.update(
-        "INSERT INTO customer_profile (account_id, status, joined_at, version, updated_at)"
+        "INSERT INTO customer (account_id, status, joined_at, version, updated_at)"
             + " VALUES (?,'ACTIVE',?,0,?) ON CONFLICT (account_id) DO NOTHING",
         accountId,
         ts(now),
@@ -85,7 +85,7 @@ public class CustomerStore {
     return jdbc
         .query(
             "SELECT account_id, status, social_provider, nickname, joined_at, version"
-                + " FROM customer_profile WHERE account_id = ?",
+                + " FROM customer WHERE account_id = ?",
             (rs, i) ->
                 new ProfileRow(
                     rs.getString("account_id"),
