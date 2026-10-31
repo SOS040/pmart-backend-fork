@@ -1,3 +1,4 @@
+| `.secrets/registry.env` | Docker Hub 액세스 토큰(읽기·쓰기, 사용자가 발급 — 저장소 밖). `set -a; . deploy/lan/.secrets/registry.env; set +a` 로 `REGISTRY_USERNAME`·`REGISTRY_PASSWORD` 를 넣으면 Jib 이 Docker Desktop 로그인 대신 이 값으로 push 한다(401 회피) |
 # LAN 공유 개발 환경 (deploy/lan)
 
 사내 LAN PC 여러 대에 PMart 서비스를 나눠 띄운다. Kubernetes(Helm) 이전 단계의 통합 확인용이며 운영 환경이 아니다.
