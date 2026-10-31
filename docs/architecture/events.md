@@ -39,7 +39,7 @@
 | `OrderLineQuantityChanged` | order-service | claim, demand-planning, replenishment, commerce | orderId, orderLineId, originalQty, unfulfilledQty, handedOverQty, cancelledBeforeShipQty, reason, version | 부분 취소·결품 반영 | ① |
 | `OrderPartiallyDelivered` | order-service | notification, commerce | orderId, deliveryId, deliveredLines[] | 분할배송 일부 완료 | ① |
 | `OrderCompleted` | order-service | review, notification, BI | orderId, completedAt | 모든 유효 배송 전달 완료 + 미전달분 해소 | ① |
-| `OrderCancelled` | order-service | delivery-dispatch(신규 배차 차단), notification, demand-planning, replenishment, BI | orderId, scope(FULL/PARTIAL), lines[], reason | 취소 확정(환불 완료와 별개) | ① |
+| `OrderCancelled` | order-service | claim(취소 확정 → 환불 의도), customer(첫 구매 혜택 복원, FULL), delivery-dispatch(신규 배차 차단), notification, demand-planning, replenishment, BI | orderId, scope(FULL/PARTIAL), lines[], reason, claimId, accountId, firstPurchase | 취소 확정(환불 완료와 별개) | ① |
 | `OrderExpired` | order-service | cart, BI | draftId/orderId, reason(PRICE_EXPIRED/RESERVATION_EXPIRED/PAYMENT_FAILED) | 10분 만료·미승인 확정 | ① |
 | `ReservationTimeChanged` | order-service | mfc-fulfillment, delivery-capacity, notification | orderId, oldWindow, newWindow, version | S4 성공 | ① |
 | `CustomerCommitmentChanged` | order-service | replenishment | mfcId, sku, orderLineId, committedQty, dueAt, state(VALID/BLOCKED/CANCELLED), version | 확정·취소·결품으로 C 변동(취소 신청만으로는 아님) | ② |
@@ -120,7 +120,7 @@
 | `PackingFinished` | mfc-fulfillment | delivery-dispatch, commerce | shipmentId, packages[{packageId, bagCount, weight, volume, alcohol}] | 포장 완료(인계 아님) | ① |
 | `ShipmentReady` | mfc-fulfillment | delivery-dispatch, order | orderId, shipmentId, mfcId, readyAt, packages[], pickupLocation | 출하 대기(배차 요청 트리거) | ① |
 | `PackageHandedOver` | mfc-fulfillment | order, delivery-execution, delivery-dispatch, claim, demand-planning, BI | orderId, shipmentId, deliveryId, packageId, riderId, handoverId, inventoryCommitId, lines[], handedAt | QR 전수 스캔·fence·inventory 커밋 후 | ① |
-| `WorkStopResult` | mfc-fulfillment | order-orchestration, claim | orderId, stopRequestId, perPackage[{packageId, STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER}] | 중지 요청 판정 | ① |
+| `WorkStopResult` | mfc-fulfillment | order-orchestration, claim | orderId, stopRequestId, perPackage[{packageId, STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER}], notStartedLines[] (작업 지시 전 중지), claimId | 중지 요청 판정 | ① |
 | `PackageInvalidated` | mfc-fulfillment | delivery-dispatch, delivery-execution | packageId, newPackageId, reason | 재포장(구 라벨 무효) | ① |
 | `TaskProgressed` | mfc-fulfillment / mfc-inbound | mfc-capacity, backoffice-bff | taskId, type, state, qty | 작업 전이 | ① |
 | `SupplyRequestSubmitted` | mfc-inbound | replenishment | supplyRequestId, version, mfcId, lines[], requestedReadyAt, urgency, reason, recommendationRef | 로컬 DRAFT→SUBMITTED | ② |

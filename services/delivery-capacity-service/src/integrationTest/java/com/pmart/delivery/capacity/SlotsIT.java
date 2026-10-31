@@ -130,7 +130,8 @@ class SlotsIT extends PostgresKafkaContainerSupport {
     // center-master 는 서비스 토큰으로(고객 토큰 전파 아님)
     center.verify(
         getRequestedFor(urlPathEqualTo("/api/v1/internal/centers/MFC-1/calendar"))
-            .withHeader("Authorization", equalTo("Bearer " + SERVICE_TOKEN)));
+            .withoutHeader("Authorization") // 서비스 간 인증 없음(ADR-0026)
+            .withHeader("X-Source-System", equalTo("delivery-capacity-service")));
 
     // 비회원도 조회, 오늘 지난 시간대는 CLOSED
     Res guest = get(GUEST, "/slots?mfcId=MFC-1&date=" + today);

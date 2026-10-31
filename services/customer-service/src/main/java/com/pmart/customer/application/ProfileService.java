@@ -92,6 +92,10 @@ public class ProfileService {
    * 사용 기록을 남겨 이후 first-purchase-checks 가 후보가 아니라고 답하게 한다. 이미 기록이 있으면 그대로.
    */
   public void applyOrderEvent(EventEnvelope e) {
+    if ("OrderCancelled".equals(e.eventType())) {
+      releaseFirstPurchase(e);
+      return;
+    }
     if (!"OrderConfirmed".equals(e.eventType())) {
       return;
     }
@@ -107,5 +111,22 @@ public class ProfileService {
             : e.occurredAt();
     boolean marked = store.markFirstPurchaseUsed(accountId, orderId, at);
     log.info("첫 구매 혜택 사용 {} 주문 {} ({})", accountId, orderId, marked ? "기록" : "이미 있음");
+  }
+
+  /**
+   * OrderCancelled(scope FULL) — 출고 전 전체 취소는 첫 구매 자격을 소진하지 않는다(OMS 175행). 그 주문이 첫 구매 혜택을 썼으면 사용 기록을
+   * 지운다(다른 주문의 기록은 건드리지 않는다). 부분 취소는 주문이 유지되므로 그대로.
+   */
+  private void releaseFirstPurchase(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String accountId = p.path("accountId").asString("");
+    if (accountId.isBlank()
+        || !p.path("firstPurchase").asBoolean(false)
+        || !"FULL".equals(p.path("scope").asString())) {
+      return;
+    }
+    String orderId = p.path("orderId").asString(e.aggregateId());
+    boolean released = store.releaseFirstPurchaseUse(accountId, orderId);
+    log.info("첫 구매 혜택 복원 {} 주문 {} ({})", accountId, orderId, released ? "복원" : "기록 없음");
   }
 }

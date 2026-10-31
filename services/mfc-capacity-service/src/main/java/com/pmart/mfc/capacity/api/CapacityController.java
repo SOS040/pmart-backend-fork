@@ -22,7 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 CapacityApi — 여력 스냅샷·CapacityHold(서비스 토큰, /internal). 업무 규칙은 application/domain 에 있고 여기서는 변환만
+ * 계약 CapacityApi — 여력 스냅샷·CapacityHold(내부 호출, /internal). 업무 규칙은 application/domain 에 있고 여기서는 변환만
  * 한다.
  */
 @RestController

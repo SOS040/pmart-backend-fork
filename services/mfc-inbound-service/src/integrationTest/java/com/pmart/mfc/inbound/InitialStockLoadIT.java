@@ -232,7 +232,7 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
     // ConfirmReceipt: 서비스 토큰, Idempotency-Key = receiptId, TRF 없는 초기 반입 표기, 정상 수량만
     inventory.verify(
         postRequestedFor(urlPathEqualTo(RECEIPTS))
-            .withHeader("Authorization", equalTo("Bearer " + SERVICE_TOKEN))
+            .withoutHeader("Authorization") // 서비스 간 인증 없음(ADR-0026)
             .withHeader("Idempotency-Key", equalTo(receiptId))
             .withHeader("X-Source-System", equalTo("mfc-inbound-service"))
             .withRequestBody(matchingJsonPath("$.receiptId", equalTo(receiptId)))

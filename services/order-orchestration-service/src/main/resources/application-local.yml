@@ -15,13 +15,10 @@ logging:
   level:
     com.pmart: DEBUG
 pmart:
-  security:
-    service-token:
-      token-uri: http://localhost:8501/api/v1/internal/service-tokens
-      client-secret: ${PMART_SERVICE_CLIENT_SECRET:pmart-local-orchestration}
   orchestration:
     mfc-inventory-base-url: http://localhost:8301
     mfc-capacity-base-url: http://localhost:8303
     delivery-capacity-base-url: http://localhost:8402
     payment-base-url: http://localhost:8205
     order-base-url: http://localhost:8201
+    mfc-fulfillment-base-url: http://localhost:8302

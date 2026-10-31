@@ -129,6 +129,64 @@ paths:
               schema: { $ref: '#/components/schemas/StopRequestResult' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /internal/stop-requests:
+    post:
+      tags: [work-orders]
+      summary: '[orchestration→fulfillment] StopWork (주문 단위) — 작업 지시 ID 를 모르는 취소(S3-a)'
+      description: |
+        orchestration 이 주문 ID 로 중지를 요청한다(작업 지시가 아직 없거나 fulfillmentId 를 모를 때). 판정은 …/work-orders/{fulfillmentId}/stop-requests 와 같다.
+        작업 지시가 없는 주문은 요청 수량 전부 STOPPED(notStartedLines)로 확정하고 **중지 기록을 남긴다** — 이후 같은 주문의 작업 요청(ConfirmOrder)은
+        중지된 수량을 빼고 받는다(슬라이스 6). 같은 stopRequestId 재전송은 기존 판정을 반환한다(다른 본문이면 409 IDEMPOTENCY_CONFLICT).
+        판정 결과는 WorkStopResult(토픽 mfc.fulfillment.v1)로도 발행한다.
+      operationId: stopOrderWork
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stopRequestId, orderId, scope, lines]
+              properties:
+                stopRequestId: { type: string, description: claim-service 발급 }
+                orderId: { type: string }
+                claimId: { type: string }
+                scope: { type: string, enum: [FULL, PARTIAL] }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [orderLineId, qty]
+                    properties:
+                      orderLineId: { type: string }
+                      qty: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 판정 (state RESOLVED 면 확정, PENDING 이면 GET 으로 재조회)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StopRequestResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/stop-requests/{stopRequestId}:
+    get:
+      tags: [work-orders]
+      summary: 주문 단위 중지 요청 판정 재조회
+      operationId: getOrderStopRequest
+      parameters:
+        - { name: stopRequestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StopRequestResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /tasks:
     get:
       tags: [tasks]
@@ -679,7 +737,16 @@ components:
       properties:
         stopRequestId: { type: string }
         fulfillmentId: { type: string }
+        orderId: { type: string }
         state: { type: string, enum: [PENDING, RESOLVED, UNKNOWN] }
+        notStartedLines:
+          type: array
+          description: 작업 지시가 생기기 전에 중지된 수량(포장 없음 — 전부 STOPPED)
+          items:
+            type: object
+            properties:
+              orderLineId: { type: string }
+              qty: { type: integer }
         packages:
           type: array
           items:

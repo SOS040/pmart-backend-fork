@@ -66,3 +66,32 @@ S3 단계
 - PG 취소 결과 확정(불명 아님)
 - 배차 취소/회수 의무 결정
 - 고객 안내 전송(실패 시 통지만 재시도)
+
+## 6. 구현 (2026-10-31, 슬라이스 8 첫 단계: 피킹 전 전체 취소)
+
+범위: 고객 앱의 **주문 전체 취소**만. 이행(슬라이스 6)·배송(슬라이스 7)이 아직 없어 확정 주문은 모두 작업 지시 전이다. 부분 취소(고객 임의 — OMS 8.4 로 열지 않음)·품절 부분 취소(S2)·회수(S6)·운영자 개입(BO-12)·쿠폰 복원(1차 제외)은 범위 밖.
+
+```
+고객앱 POST /claims {type: CANCEL, lines: 모든 행 × 미이행 수량}
+ → claim-service: order /internal/orders/{id} 로 본인·CONFIRMED·수량 심사(부분 → 422 PARTIAL_CANCEL_NOT_ALLOWED, 진행 중 클레임 → DUPLICATE_CLAIM)
+   클레임 STOP_PENDING + stopRequestId 발급, ClaimOpened·CancellationRequested(order.claim.v1) 한 트랜잭션
+ → order-orchestration S3(사건 구독, stopRequestId 하나에 사가 하나 — POST /internal/cancellation-sagas 도 같은 시작)
+   a. STOP_WORK: mfc-fulfillment POST /internal/stop-requests(주문 단위). 작업 지시 전 → 전량 STOPPED(notStartedLines) + 중지 기록 + WorkStopResult
+      · PENDING·HANDOVER_IN_PROGRESS → WAITING_RESULT(GET …/stop-requests/{id} 재조회) · HANDED_OVER → ESCALATED(해제·주문 반영 없음)
+   b. (배차 취소 — 배송 기능이 없어 단계 없음)
+   c. RELEASE_RESOURCES: S1 이 확정한 슬롯·작업 여력·재고 예약 해제(사유 ORDER_CANCELLED / CANCEL_BEFORE_PICK, sourceRef=stopRequestId).
+      원예약 조회가 RELEASED·EXPIRED 일 때만 해제로 기록, 미확인은 같은 키로 재시도. 업무 거절은 ESCALATED
+   d. APPLY_ORDER_CANCEL: order /internal/orders/{id}/line-quantity-changes(CANCEL_BEFORE_SHIP, claimId)
+      → 주문 CANCELLED, OrderLineQuantityChanged·OrderCancelled(accountId·firstPurchase·claimId) → 사가 COMPLETED
+ → claim-service: OrderCancelled(claimId) → 행 APPROVED·IN_PROGRESS → 환불 의도(원 승인액 전액 = 상품액+봉투값+확정 배달팁, 사용자 결정 2026-10-31)
+   + RefundIntentCreated → payment POST /internal/payments/{id}/cancellations(멱등키 REFUND-<의도 ID>)
+   e. RefundResult SUCCESS(또는 원거래 조회 SUCCEEDED) → 환불 COMPLETED·클레임 CLOSED·ClaimClosed. FAILED → 환불 FAILED(클레임 IN_PROGRESS, 운영자 확인)
+ → customer-service: OrderCancelled(FULL, firstPurchase) → 그 주문의 첫 구매 사용 기록 삭제(OMS 175행 — 출고 전 전체 취소는 자격을 소진하지 않는다)
+ → claim-service: WorkStopResult 에 HANDED_OVER 가 있으면 클레임 REJECTED(HANDED_OVER)
+```
+
+- 단계 명령 키는 `sagaId:단계`(해제는 `sagaId:RELEASE:<자원>`), 환불은 의도마다 고정 키 — 재개·재전송이 정본에 한 번만 반영된다.
+- 응답 불명·미전달은 실패로 단정하지 않는다(사가 sweep·환불 sweep 이 같은 키로 재전송·원결과 조회).
+- 사가 상신(ESCALATED)은 자동으로 되돌리지 않는다. 운영자 개입(BO-12)·case 상신은 아직 없다 — 사가 행의 last_error 로 확인.
+- 재고 해제는 현장 중지 확정 뒤에만, 환불은 주문 취소 반영 뒤에만. 재판매 가능(재고 해제)과 환불 완료는 서로 독립(§3).
+- 후속(슬라이스 6~): 작업 지시가 생기면 STOPPED 포장별 판정·피킹 후 복귀(CANCEL_RETURN_PENDING)·fence 대기, 작업 요청이 중지 기록을 반영. 배차 취소(b)는 슬라이스 7.

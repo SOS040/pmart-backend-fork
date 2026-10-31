@@ -11,7 +11,7 @@ import com.pmart.cart.infrastructure.CartStore.CartRow;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 InternalApi — 주문 초안용 선택 품목(서비스 토큰). accountId 가 장바구니 주인이 아니면 403. */
+/** 계약 InternalApi — 주문 초안용 선택 품목(내부 호출). accountId 가 장바구니 주인이 아니면 403. */
 @RestController
 public class InternalController implements InternalApi {
 

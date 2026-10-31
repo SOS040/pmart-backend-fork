@@ -57,17 +57,6 @@ cors_origins() {
   [ -f "$LAN/cors-origins.conf" ] || return 0
   sed -e 's/#.*//' -e 's/[[:space:]]//g' "$LAN/cors-origins.conf" | grep -v '^$' | paste -sd, - || true
 }
-# 서비스 신원 토큰 클라이언트(ADR-0011): 배치된 서비스 중 PMART_SERVICE_CLIENT_SECRET 을 받는 것. env 이름용 대문자 변환
-env_name() { echo "$1" | tr 'a-z-' 'A-Z_'; }
-SERVICE_CLIENTS=""
-for c in "${!WHERE[@]}"; do
-  [[ "$INFRA" == *" $c "* ]] && continue
-  needs "$c" PMART_SERVICE_CLIENT_SECRET || continue
-  [ -f "$SECRETS/service-clients/$c.secret" ] && [ -f "$SECRETS/service-clients/$c.hash" ] \
-    || { echo "서비스 클라이언트 비밀 없음: $c ($LAN/init-secrets.sh 먼저 실행)" >&2; exit 1; }
-  SERVICE_CLIENTS+="$c "
-done
-SERVICE_CLIENTS="$(echo $SERVICE_CLIENTS | tr ' ' '\n' | sort | tr '\n' ' ')"
 DB_PASSWORD="$(secret db-password)"
 rm -rf "$OUT"
 for pc in "${PCS[@]}"; do
@@ -330,9 +319,6 @@ EOF
         needs "$c" PMART_JWKS_URI && echo "      PMART_JWKS_URI: http://auth-service:$(port_of auth-service)/api/v1/internal/jwks"
         needs "$c" PMART_REDIS_URL && echo "      PMART_REDIS_URL: redis://redis:6379"
         needs "$c" PMART_OPENSEARCH_URL && echo "      PMART_OPENSEARCH_URL: http://opensearch:9200"
-        # 서비스 신원 토큰 secret(.env, 서비스마다 다른 값). 발급 주소는 서비스 기본값(http://auth-service:8501/...)
-        needs "$c" PMART_SERVICE_CLIENT_SECRET \
-          && echo "      PMART_SERVICE_CLIENT_SECRET: \${PMART_SERVICE_CLIENT_SECRET_$(env_name "$c")}"
         echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
         if [ "$c" = auth-service ]; then
           echo "      PMART_AUTH_ISSUER: http://auth-service:$(port_of auth-service)"
@@ -343,13 +329,6 @@ EOF
           echo "      PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH: \${PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH}"
           # 고객 Google 로그인 허용 aud(google-client-ids.conf). 클라이언트 ID 는 비밀이 아니고 secret 은 넘기지 않는다
           echo "      PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS: \"$(google_client_ids)\""
-          # 서비스 신원 클라이언트 등록부(ADR-0011): client-id = 서비스 이름, bcrypt 해시만(.env)
-          i=0
-          for s in $SERVICE_CLIENTS; do
-            echo "      PMART_AUTH_SERVICECLIENTS_${i}_CLIENTID: $s"
-            echo "      PMART_AUTH_SERVICECLIENTS_${i}_SECRETHASH: \${PMART_SERVICE_CLIENT_HASH_$(env_name "$s")}"
-            i=$((i + 1))
-          done
         fi
         if needs "$c" PMART_S3_BUCKET; then
           [ -n "${WHERE[s3]:-}" ] || { echo "$c 는 s3 가 필요한데 배치에 s3 가 없음" >&2; exit 1; }
@@ -434,13 +413,7 @@ EOF
       echo "PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID=$(secret operator-admin-login)"
       # bcrypt 해시에 $ 가 있어 작은따옴표(compose .env 의 리터럴 값)
       echo "PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH='$(secret operator-admin-hash)'"
-      for s in $SERVICE_CLIENTS; do
-        echo "PMART_SERVICE_CLIENT_HASH_$(env_name "$s")='$(secret "service-clients/$s.hash")'"
-      done
     fi
-    for s in $SERVICE_CLIENTS; do
-      [[ "$comps" == *" $s "* ]] && echo "PMART_SERVICE_CLIENT_SECRET_$(env_name "$s")=$(secret "service-clients/$s.secret")"
-    done
     if [[ "$comps" == *" s3 "* || "$comps" == *" product-content-service "* || "$comps" == *" customer-service "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
       echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"

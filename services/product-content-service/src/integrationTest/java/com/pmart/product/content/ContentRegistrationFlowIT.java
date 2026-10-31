@@ -531,7 +531,8 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
         getRequestedFor(urlPathEqualTo("/api/v1/internal/availability"))
             .withQueryParam("mfcId", equalTo("MFC-1"))
             .withQueryParam("sku", equalTo(sku))
-            .withHeader("Authorization", equalTo("Bearer " + SERVICE_TOKEN)));
+            .withoutHeader("Authorization") // 서비스 간 인증 없음(ADR-0026)
+            .withHeader("X-Source-System", equalTo("product-content-service")));
     assertThat(
             get("/product-contents?productIds=" + productId + "&mfcId=MFC-1", null)
                 .body()

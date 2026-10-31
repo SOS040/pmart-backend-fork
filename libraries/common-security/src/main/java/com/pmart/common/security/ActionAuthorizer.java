@@ -17,8 +17,8 @@ import org.springframework.web.client.RestClientResponseException;
  * (contracts/openapi/auth-service.yaml). BackOffice 3.2: 로그인·조회·제출·승인·실행·재처리·내보내기는 별도 행위이며 서버가 매
  * 행위마다 역할·센터 범위·대행 기간·대상 소유권을 검증한다.
  *
- * <p>호출은 {@code /internal/} 이므로 서비스 신원 토큰으로 나간다({@link ServiceCallHeadersCustomizer}). 행위자는 현재 사용자
- * 토큰의 주체를 본문 actor 로 보낸다. {@code pmart.security.authz.base-url} 은 {@code /api/v1} 까지 포함한다(예:
+ * <p>호출은 {@code /internal/} 이므로 토큰 없이 나간다({@link ServiceCallHeadersCustomizer}, ADR-0026). 행위자는 현재
+ * 사용자 토큰의 주체를 본문 actor 로 보낸다. {@code pmart.security.authz.base-url} 은 {@code /api/v1} 까지 포함한다(예:
  * http://auth-service:8501/api/v1).
  *
  * <p><b>fail-closed</b>: auth-service 응답 불명(타임아웃·5xx)이면 DENY(DEPENDENCY_UNAVAILABLE). 권한을 추정하지 않는다.
@@ -112,9 +112,6 @@ public class ActionAuthorizer {
         return Decision.deny("DENIED_" + e.getStatusCode().value());
       }
       log.warn("auth-service {} → fail-closed", e.getStatusCode());
-      return Decision.deny("DEPENDENCY_UNAVAILABLE");
-    } catch (ServiceTokenProvider.ServiceTokenUnavailableException e) {
-      log.warn("서비스 토큰 없음 → fail-closed");
       return Decision.deny("DEPENDENCY_UNAVAILABLE");
     } catch (ResourceAccessException e) {
       log.warn("auth-service 접근 불가 → fail-closed: {}", e.getMessage());

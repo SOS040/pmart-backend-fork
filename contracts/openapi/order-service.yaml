@@ -250,10 +250,32 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /internal/orders/{orderId}:
+    get:
+      tags: [internal]
+      summary: '[claim→order] 주문 원장 조회 (서비스 토큰) — 클레임 심사·환불 근거'
+      description: |
+        서비스 토큰만. 고객 조회와 달리 소유자(accountId)·결제 시도·승인액·행별 수량 누계를 돌려준다. 확정 전 주문 ID 는 404.
+      operationId: getInternalOrder
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InternalOrder' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /internal/orders/{orderId}/line-quantity-changes:
     post:
       tags: [internal]
       summary: '[orchestration/claim→order] 주문행 수량 변경 (결품·출고 전 취소·인계 누계·반품 수량 반영)'
+      description: |
+        2026-10-31 구현 범위는 reason=CANCEL_BEFORE_SHIP(출고 전 취소) 만. 그 밖의 사유는 422 UNSUPPORTED_ACTION.
+        행마다 unfulfilledQty −= qty, cancelledBeforeShipQty += qty(qty > unfulfilledQty 면 409 INVALID_STATE, 아무것도 바꾸지 않음).
+        모든 행의 unfulfilledQty·handedOverQty 가 0 이 되면 주문 status=CANCELLED. 같은 트랜잭션에서 행마다 OrderLineQuantityChanged,
+        주문에 OrderCancelled(scope FULL/PARTIAL, claimId) 를 Outbox 에 쓴다(토픽 order.order.v1). 같은 Idempotency-Key 는 저장 결과 재생.
       operationId: applyLineQuantityChange
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string } }
@@ -270,6 +292,7 @@ paths:
               properties:
                 reason: { type: string, enum: [SHORTAGE, CANCEL_BEFORE_SHIP, HANDOVER, RETURN, EXCHANGE] }
                 sourceRef: { type: string, description: stopRequestId / handoverId / claimId }
+                claimId: { type: string, description: 취소·반품 클레임(사건 OrderLineQuantityChanged·OrderCancelled 에 싣는다) }
                 changes:
                   type: array
                   items:
@@ -361,6 +384,40 @@ paths:
 
 components:
   schemas:
+    InternalOrder:
+      type: object
+      description: 서비스 간 주문 원장 사본(claim 심사·환불 근거). 금액은 주문 당시 동결 견적, 승인액은 PG 승인 사실.
+      required: [orderId, accountId, status, version, mfcId, paymentAttemptId, approvedAmount, totalAmount, lines, confirmedAt]
+      properties:
+        orderId: { type: string }
+        accountId: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        version: { type: integer }
+        mfcId: { type: string }
+        paymentAttemptId: { type: string }
+        approvedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        itemAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        deliveryTip: { $ref: '_common.yaml#/components/schemas/Money' }
+        bagFee: { $ref: '_common.yaml#/components/schemas/Money' }
+        totalAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        firstPurchase: { type: boolean }
+        confirmedAt: { type: string, format: date-time }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [orderLineId, sku, quantity, unitPrice, lineAmount, originalQty, unfulfilledQty, handedOverQty, cancelledBeforeShipQty]
+            properties:
+              orderLineId: { type: string }
+              sku: { type: string }
+              quantity: { type: integer }
+              unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
+              lineAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+              discountShare: { $ref: '_common.yaml#/components/schemas/Money' }
+              originalQty: { type: integer }
+              unfulfilledQty: { type: integer }
+              handedOverQty: { type: integer }
+              cancelledBeforeShipQty: { type: integer }
     OrderStatus:
       type: string
       enum: [DRAFT, RESOURCE_PENDING, PAYMENT_PENDING, PAYMENT_UNKNOWN, CONFIRMED, PREPARING, PARTIALLY_HANDED_OVER, IN_DELIVERY, PARTIALLY_DELIVERED, COMPLETED, CANCELLED, EXPIRED]

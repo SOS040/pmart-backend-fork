@@ -41,7 +41,7 @@ import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 @EnableWebFluxSecurity
 public class GatewaySecurityConfig {
 
-  /** 인증됐고 서비스 신원·비회원 토큰이 아닐 때만 허용. 서비스 토큰으로 외부 경로를 부르면 403, 비회원은 guest-paths 에서만. */
+  /** 인증됐고 서비스 신원·비회원 토큰이 아닐 때만 허용. 내부 호출(토큰 없음)으로 외부 경로를 부르면 403, 비회원은 guest-paths 에서만. */
   static final ReactiveAuthorizationManager<AuthorizationContext> USER_TOKEN_ONLY =
       (authentication, context) ->
           authentication
@@ -52,7 +52,7 @@ public class GatewaySecurityConfig {
                           new AuthorizationDecision(!isServiceToken(a) && !isGuestToken(a)))
               .defaultIfEmpty(new AuthorizationDecision(false));
 
-  /** 비회원 경로: 회원·비회원 토큰 모두(서비스 토큰은 아님). */
+  /** 비회원 경로: 회원·비회원 토큰 모두(내부 호출(토큰 없음)은 아님). */
   static final ReactiveAuthorizationManager<AuthorizationContext> USER_OR_GUEST_TOKEN =
       (authentication, context) ->
           authentication

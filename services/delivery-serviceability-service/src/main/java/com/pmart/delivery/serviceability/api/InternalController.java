@@ -6,7 +6,7 @@ import com.pmart.delivery.serviceability.application.ServiceabilityService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 InternalApi — 현재·지정 매핑 버전 조회(서비스 토큰). 변환만 한다. */
+/** 계약 InternalApi — 현재·지정 매핑 버전 조회(내부 호출). 변환만 한다. */
 @RestController
 public class InternalController implements InternalApi {
 

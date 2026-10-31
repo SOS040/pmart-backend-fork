@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 InternalApi — 계정 상태·쇼핑 컨텍스트·첫 구매 대조(서비스 토큰). */
+/** 계약 InternalApi — 계정 상태·쇼핑 컨텍스트·첫 구매 대조(내부 호출). */
 @RestController
 public class InternalController implements InternalApi {
 

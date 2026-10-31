@@ -42,4 +42,5 @@
   - Android `serverAuthCode` 교환 시 `redirect_uri` 값(빈 문자열로 알려져 있음 — Google 문서·실기기로 확인).
   - **추가 동의 화면 없음(필수 조건, 사용자 결정 2026-10-31)**: 계정 선택(`authenticate()`) 뒤 `authorizeServer` 단계에서 Google OAuth 동의 화면이 한 번 더 뜨면 안 된다. 그래서 scope 는 로그인 때 이미 공유되는 `openid email profile` 로만 한정하고 오프라인 접근(refresh token)은 요청하지 않는다(결정 4) — 이미 허용된 기본 scope 라 화면 없이 코드가 나올 것으로 예상하지만, 실기기(신규 계정·기존 계정)로 확인한다. 화면이 뜨면 이 ADR 은 승인하지 않고 방식을 다시 정한다.
   - `authorizeServer` 가 재로그인 때 null 을 주는지(`google_sign_in` 7.2.0 설명: 일부 플랫폼은 첫 로그인 때만 서버 인가 코드를 준다). null 이면 로그인할 수 없으므로 위 조건과 함께 확인한다.
+- **실기기 확인 결과(2026-10-31, SM A536N · Android 16, 시험 플래그 디버그 빌드)**: Google 로그인 3회 모두 `serverAuthCode` 발급(길이 73), 예외 없음. 동의 화면은 계정 선택 흐름의 하나만 떴고 `authorizeServer` 단계의 추가 화면은 없었다(사용자 확인). 기존 ID 토큰 로그인도 3회 모두 200. 남은 확인: 실제 코드 교환(서버 구현·client secret 필요)과 그때의 `redirect_uri` 값.
 - 대상 플랫폼은 Android 만이다(iOS 는 개발하지 않는다 — 사용자 결정 2026-10-31). iOS 클라이언트 등록·흐름은 두지 않는다.

@@ -1,6 +1,7 @@
 package com.pmart.order.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.List;
@@ -79,5 +80,41 @@ class OrderRulesTest {
     assertThat(w[1]).isEqualTo(Instant.parse("2026-11-01T02:00:00Z"));
     assertThat(OrderRules.windowInstants(java.time.LocalDate.of(2026, 11, 1), "23:00", "24:00")[1])
         .isEqualTo(Instant.parse("2026-11-01T15:00:00Z"));
+  }
+
+  @Test
+  void cancelBeforeShipRules() {
+    var a = new OrderRules.LineQty("L1", 3, 3, 0, 0);
+    var b = new OrderRules.LineQty("L2", 2, 2, 0, 0);
+    // 일부 행만 → 그 행만 바뀌고 주문은 아직 취소 아님
+    var partial =
+        OrderRules.cancelBeforeShip(List.of(a, b), List.of(new OrderRules.Change("L1", 3)));
+    assertThat(partial.get(0)).isEqualTo(new OrderRules.LineQty("L1", 3, 0, 0, 3));
+    assertThat(partial.get(1)).isEqualTo(b);
+    assertThat(OrderRules.fullyCancelled(partial)).isFalse();
+    // 전량 → 취소, 불변식 원수량 = 미이행 + 인계 + 출고 전 취소 유지
+    var full = OrderRules.cancelBeforeShip(partial, List.of(new OrderRules.Change("L2", 2)));
+    assertThat(OrderRules.fullyCancelled(full)).isTrue();
+    assertThat(full)
+        .allMatch(
+            l ->
+                l.originalQty()
+                    == l.unfulfilledQty() + l.handedOverQty() + l.cancelledBeforeShipQty());
+    // 인계된 수량이 남으면 취소 아님
+    assertThat(OrderRules.fullyCancelled(List.of(new OrderRules.LineQty("L1", 3, 0, 1, 2))))
+        .isFalse();
+    // 미이행보다 많이·없는 행·같은 행 두 번 → 거절
+    assertThatThrownBy(
+            () -> OrderRules.cancelBeforeShip(List.of(a), List.of(new OrderRules.Change("L1", 4))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () -> OrderRules.cancelBeforeShip(List.of(a), List.of(new OrderRules.Change("LX", 1))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(
+            () ->
+                OrderRules.cancelBeforeShip(
+                    List.of(a),
+                    List.of(new OrderRules.Change("L1", 1), new OrderRules.Change("L1", 1))))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 InternalApi(서비스 토큰). 업무 규칙은 application 에 둔다. */
+/** 계약 InternalApi(내부 호출). 업무 규칙은 application 에 둔다. */
 @RestController
 public class InternalController implements InternalApi {
 

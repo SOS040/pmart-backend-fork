@@ -22,7 +22,7 @@
 - **소유**: 고객용 상품명·사진·설명·보관/반품 안내·판매 옵션 해석, 평점·리뷰 수 집계 투영.
 - **소유하지 않음**: 상품 정본·판매 상태(product), 리뷰 원문(review).
 - **API**: 상품 상세 조회(승인 변경 5분 내 반영 목표). `mfcId` 를 주면 옵션별 취급·가용 사본(2026-10-31).
-- **의존**: mfc-inventory(담당 센터 가용 표시 조회 — 내부 API·서비스 토큰, 조회 실패≠0).
+- **의존**: mfc-inventory(담당 센터 가용 표시 조회 — 내부 API, 조회 실패≠0).
 - **발행**: `ProductContentPublished`.
 - **구독**: `ProductVersionPublished`, `ReviewPublished/Deleted`, `ApprovalDecided`(콘텐츠 승인 BO-05).
 
@@ -31,7 +31,7 @@
 - **소유하지 않음**: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
 - **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(완료 전 order-service 미결 의무 조회), 계정 상태 조회.
 - **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`.
-- **구독**: `CustomerAuthenticated`(auth), `OrderConfirmed`(order — 첫 구매 무료 사용 기록, 2026-10-31).
+- **구독**: `CustomerAuthenticated`(auth), `OrderConfirmed`(order — 첫 구매 무료 사용 기록, 2026-10-31), `OrderCancelled`(order — 첫 구매 주문의 전체 취소면 사용 기록 복원, 2026-10-31).
 - **의존**: order(탈퇴 가능 여부), delivery-serviceability(주소 판정), S3 버킷 pmart-customer(프로필 사진 사본), 로그인 제공자 사진 호스트(googleusercontent.com — 로그인 뒤 사본 한 번, ADR-0024).
 
 ### cart-service `[1단계]`
@@ -40,7 +40,7 @@
 - **API**: `PATCH /api/v1/carts/{cartId}/items/{itemId}` 등(`Idempotency-Key`, `expectedVersion`; 절대값 설정 명령으로 통일 `[제안]`), 병합, 조회.
 - **발행**: `CartItemChangeApplied`.
 - **구독**: `OrderConfirmed`(확정 포함분만 1회 정리), `ProductSaleStateChanged`.
-- **의존**: product(구매 상한·판매 상태 — 내부 API, 서비스 토큰), mfc-inventory(장바구니 담당 MFC 의 가용 A 표시 조회 — 내부 API·서비스 토큰, 조회 실패≠0, 2026-10-31 연결), pricing(표시 가격), product-content(표시 이름·이미지). 비회원은 auth 비회원 토큰(ADR-0022).
+- **의존**: product(구매 상한·판매 상태 — 내부 API), mfc-inventory(장바구니 담당 MFC 의 가용 A 표시 조회 — 내부 API, 조회 실패≠0, 2026-10-31 연결), pricing(표시 가격), product-content(표시 이름·이미지). 비회원은 auth 비회원 토큰(ADR-0022).
 
 ### review-service `[2단계]`
 - **소유**: 리뷰·사진·평점, 작성/수정/삭제 이력(`REV_ELIGIBLE→SUBMIT_PENDING→PUBLISHED→LOCKED(3일)` / `DELETED`), 자격(품목별 배송완료 후 14일 1건).
@@ -194,7 +194,7 @@
 ### mfc-fulfillment-service `[1단계]`
 - **소유**: PICK/PACK/DISPATCH Task(WAITING→READY→ASSIGNED→IN_PROGRESS→COMPLETED / BLOCKED / FAILED / CANCELLED / CLOSED_PARTIAL; `계획 = 완료 + 취소 + 잔량`), Shipment(SHP: PREPARING→READY→PARTIALLY_HANDED_OVER→HANDED_OVER / CANCELLED / CLOSED_PARTIAL, `hold_reason`), Package(PKG: OPEN→SEALED→HANDED_OVER / INVALIDATED / VOIDED), PackageContent, HandoverFact(HOV), **인계 fence**(`AuthorizePackageHandover` → `HANDOVER_IN_PROGRESS` + `handover_authorization_id/fence_version`; `CommitPackageHandover` → inventory 커밋 후 HANDED_OVER), 포장 QR, 결품·파손 보고(EXC), 작업 중지 요청 처리(포장별 중지 가능/인계 진행/인계 확정 판정 회신), 준비 시작 확정(→order `상품준비`), 패킹 소요시간·봉투 수·주류 여부·부피/무게(배차 요청 정보), 점원 화면용 ETA 투영.
 - **소유하지 않음**: 수량(inventory), 취소 판단(orchestration/claim), 배차(delivery-dispatch), 작업자 배정 정본(capacity), 주문 상태(order).
-- **API**: `ConfirmOrder`(작업 요청 수락/거절; 재전달 시 중복 생성 없음), `StopWork`(포장별 판정), `AuthorizePackageHandover`/`CommitPackageHandover`(라이더 QR; 배정 라이더·배송번호·포장번호 일치, 중복 스캔·타 주문·타 라이더·기인계 차단), 피킹/패킹 결과 등록, `QueryHandoverResolution`, 재포장(새 버전·구 라벨 무효).
+- **API**: `ConfirmOrder`(작업 요청 수락/거절; 재전달 시 중복 생성 없음), `StopWork`(포장별 판정; 작업 지시 ID 를 모를 때는 주문 단위 `/internal/stop-requests` — 작업 지시 전이면 전량 STOPPED·중지 기록, 2026-10-31), `AuthorizePackageHandover`/`CommitPackageHandover`(라이더 QR; 배정 라이더·배송번호·포장번호 일치, 중복 스캔·타 주문·타 라이더·기인계 차단), 피킹/패킹 결과 등록, `QueryHandoverResolution`, 재포장(새 버전·구 라벨 무효).
 - **발행**: `WorkAccepted`, `WorkRejected`, `PreparationStarted`, `LineShortageReported`, `PackingFinished`, `ShipmentReady`, `PackageHandedOver`, `WorkStopResult`, `PackageInvalidated`, `TaskProgressed`.
 - **구독**: `OrderConfirmed`(또는 동기 ConfirmOrder), `InventoryExecutionApplied`, `DeliveryAssigned/AssignmentChanged`, `ReservationBlocked`, `OperationRestrictionApplied`.
 - **의존(동기)**: mfc-inventory(커밋), mfc-capacity(배정 조회), auth.
@@ -324,7 +324,7 @@
 - 라우팅, JWT 검증(auth 공개키), rate limit, `traceId` 발급·전파, 앱별(고객/라이더/점원/기사/관리자) 경로 분리. 비즈니스 로직 없음.
 
 ### auth-service `[1단계]`
-- **소유**: 고객(소셜 OAuth 제공자 검증, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 라이더·운영자·서비스 신원, 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
+- **소유**: 고객(소셜 OAuth 제공자 검증, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 라이더·운영자 신원(서비스 간은 인증 없음 — ADR-0026), 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
 - **소유하지 않음**: 권한 **부여 승인 흐름**(approval BO-01/02), 고객 프로필(customer).
 - **API**: 로그인/토큰(운영자 아이디·비밀번호 로그인과 운영자 계정 관리 — ADR-0018), 행위 검증(`authorize(actor, action, target, centerScope)`), grant 반영(approval 승인 결과), grant 조회.
 - **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`.

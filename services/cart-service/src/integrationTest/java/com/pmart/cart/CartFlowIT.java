@@ -260,7 +260,8 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     // 서비스 토큰으로 product 내부 API 를 불렀다
     deps.verify(
         getRequestedFor(urlPathMatching("/api/v1/internal/skus/E-00000001"))
-            .withHeader("Authorization", equalTo("Bearer " + SERVICE_TOKEN)));
+            .withoutHeader("Authorization") // 서비스 간 인증 없음(ADR-0026)
+            .withHeader("X-Source-System", equalTo("cart-service")));
 
     // 판매 상태·상한
     assertThat(add(guest, guestCart, "E-00000002", 1, 1, null).body().path("code").asString())
@@ -306,7 +307,8 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
         getRequestedFor(urlPathEqualTo("/api/v1/internal/availability"))
             .withQueryParam("mfcId", equalTo("MFC-SEED-01"))
             .withQueryParam("sku", equalTo("E-00000001"))
-            .withHeader("Authorization", equalTo("Bearer " + SERVICE_TOKEN)));
+            .withoutHeader("Authorization") // 서비스 간 인증 없음(ADR-0026)
+            .withHeader("X-Source-System", equalTo("cart-service")));
     stock("E-00000001", 10, true);
     display = get("/carts/" + guestCart, guest).body().path("items").path(0).path("display");
     assertThat(display.path("availability").asString()).isEqualTo("AVAILABLE");

@@ -76,6 +76,21 @@
             },
             "decidedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "notStartedLines": {
+              "type": "array",
+              "description": "작업 지시가 생기기 전에 중지된 수량(포장 없음 — 전부 STOPPED)",
+              "items": {
+                "type": "object",
+                "required": ["orderLineId", "qty"],
+                "properties": {
+                  "orderLineId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+                  "qty": { "$ref": "_defs.v1.json#/$defs/Qty" }
+                }
+              }
             }
           },
           "additionalProperties": true

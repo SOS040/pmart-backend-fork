@@ -464,4 +464,62 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT order_id FROM first_purchase_used WHERE account_id = ?", String.class, cu))
         .isEqualTo("ORD-B");
   }
+
+  void orderCancelled(String accountId, String orderId, String scope, boolean firstPurchase)
+      throws InterruptedException {
+    UUID eventId = UUID.randomUUID();
+    String json =
+        EventEnvelopeFixtures.envelope("OrderCancelled")
+            .eventId(eventId)
+            .from("order-service")
+            .aggregate("Order", orderId, 2)
+            .payload(
+                Map.of(
+                    "orderId",
+                    orderId,
+                    "scope",
+                    scope,
+                    "lines",
+                    List.of(Map.of("orderLineId", orderId + "-L1", "qty", 1)),
+                    "reason",
+                    "CANCEL_BEFORE_SHIP",
+                    "accountId",
+                    accountId,
+                    "firstPurchase",
+                    firstPurchase))
+            .buildJson();
+    kafka.send("order.order.v1", orderId, json).join();
+    Instant until = Instant.now().plus(Duration.ofSeconds(30));
+    while (Instant.now().isBefore(until)) {
+      Integer n =
+          jdbc.queryForObject(
+              "SELECT COUNT(*) FROM inbox_event WHERE event_id = ?", Integer.class, eventId);
+      if (n != null && n > 0) {
+        return;
+      }
+      Thread.sleep(200);
+    }
+    throw new AssertionError("OrderCancelled 미반영 " + eventId);
+  }
+
+  /**
+   * OrderCancelled: 첫 구매 혜택을 쓴 주문이 출고 전 전체 취소되면 자격을 되돌린다(OMS 175행). 부분 취소·다른 주문의 취소는 기록을 지우지 않는다.
+   */
+  @Test
+  void fullCancelRestoresFirstPurchase() throws Exception {
+    String cu = "CU-" + UUID.randomUUID();
+    String svc = TestJwt.service("order-service");
+    String check = "/internal/accounts/" + cu + "/first-purchase-checks";
+    orderConfirmed(UUID.randomUUID(), cu, "ORD-FP", true);
+    assertThat(get(svc, check).body().path("firstPurchaseCandidate").asBoolean()).isFalse();
+
+    // 다른 주문 취소·부분 취소 → 그대로
+    orderCancelled(cu, "ORD-OTHER", "FULL", true);
+    orderCancelled(cu, "ORD-FP", "PARTIAL", true);
+    assertThat(get(svc, check).body().path("firstPurchaseCandidate").asBoolean()).isFalse();
+
+    // 첫 구매 주문의 전체 취소 → 다시 후보
+    orderCancelled(cu, "ORD-FP", "FULL", true);
+    assertThat(get(svc, check).body().path("firstPurchaseCandidate").asBoolean()).isTrue();
+  }
 }

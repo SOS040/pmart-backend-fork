@@ -10,8 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 InternalApi — 서비스 토큰 캘린더 조회(capacity·order). 센터 변경 동기 반영(applyCenterChange)·결과 조회는 승인 사건 경로로만
- * 해서 아직 501.
+ * 계약 InternalApi — 내부 호출(토큰 없음) 캘린더 조회(capacity·order). 센터 변경 동기 반영(applyCenterChange)·결과 조회는 승인 사건
+ * 경로로만 해서 아직 501.
  */
 @RestController
 public class InternalController implements InternalApi {

@@ -4,7 +4,7 @@ import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.security.PmartPrincipal;
 
-/** 서비스 간 명령 호출자(서비스 토큰 주체). /internal 경로는 보안 체인이 TYPE_SERVICE 만 들인다. */
+/** 서비스 간 명령 호출자(호출 서비스(X-Source-System)). /internal 은 토큰 없이 들어온다(ADR-0026). */
 final class Callers {
 
   private Callers() {}

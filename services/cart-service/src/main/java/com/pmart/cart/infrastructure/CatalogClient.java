@@ -18,8 +18,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 장바구니가 쓰는 정본 조회. product 내부 API(SKU·구매 상한)·mfc-inventory 내부 가용은 서비스 토큰(공용 RestClient 가 {@code
- * /internal/} 에 붙인다), 콘텐츠 카드·가격은 공개 API. 조회 실패는 0·판매중지로 바꾸지 않고 예외(검증) 또는 불명(표시)으로 다룬다.
+ * 장바구니가 쓰는 정본 조회. product 내부 API(SKU·구매 상한)·mfc-inventory 내부 가용은 내부 호출(토큰 없음)(공용 RestClient 가
+ * {@code /internal/} 에 붙인다), 콘텐츠 카드·가격은 공개 API. 조회 실패는 0·판매중지로 바꾸지 않고 예외(검증) 또는 불명(표시)으로 다룬다.
  */
 @Component
 public class CatalogClient {
@@ -55,7 +55,7 @@ public class CatalogClient {
     this.mapper = mapper;
   }
 
-  /** 담당 MFC 의 SKU 별 가용(표시용, 내부 API·서비스 토큰). 응답에 없는 SKU 는 빠진다. 실패는 예외 — 호출자가 불명으로 둔다. */
+  /** 담당 MFC 의 SKU 별 가용(표시용, 내부 API). 응답에 없는 SKU 는 빠진다. 실패는 예외 — 호출자가 불명으로 둔다. */
   public Map<String, Stock> stock(String mfcId, List<String> skus) {
     if (skus.isEmpty()) {
       return Map.of();

@@ -18,7 +18,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 HoldsApi — 슬롯 점유·확정·해제(서비스 토큰 전용 /internal). 업무 규칙은 {@link SlotHoldService}, 여기서는 변환만 한다. */
+/**
+ * 계약 HoldsApi — 슬롯 점유·확정·해제(내부 호출(토큰 없음) 전용 /internal). 업무 규칙은 {@link SlotHoldService}, 여기서는 변환만
+ * 한다.
+ */
 @RestController
 public class HoldsController implements HoldsApi {
 

@@ -30,10 +30,6 @@ pmart:
     # 비회원 토큰(typ=GUEST)도 슬롯 조회는 된다(읽기 전용, 비회원 장바구니·배송 안내)
     guest-paths:
       - /api/v1/slots
-    # center-master 내부 캘린더 호출용 서비스 신원 토큰(ADR-0011). secret 은 Secret Manager(PMART_SERVICE_CLIENT_SECRET)
-    service-token:
-      token-uri: ${PMART_SERVICE_TOKEN_URI:http://auth-service:8501/api/v1/internal/service-tokens}
-      client-secret: ${PMART_SERVICE_CLIENT_SECRET}
   capacity:
     # 1시간 슬롯당 정원(승인 정책값 — 운영 입력). 비우면 슬롯은 CONFIG_REQUIRED. LAN 시험값은 env PMART_CAPACITY_SLOTCAPACITY
     slot-capacity: ${PMART_CAPACITY_SLOTCAPACITY:}

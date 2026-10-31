@@ -23,9 +23,15 @@
 ## S1 결제 진입 사가 (2026-10-31, 슬라이스 4 a~f)
 - 흐름·보상·만료 규칙의 정본: `docs/business/flows/order-checkout-saga.md` §1.4. 규칙은 `domain/CheckoutRules`, 실행은 `application/CheckoutSagaService`.
 - 시작 명령은 사가만 저장(202)하고 단계는 가상 스레드에서 진행. 단계 명령 키 `sagaId:단계` — 재개·재전송이 정본에 한 번만 반영된다. `sweep()` 이 멈춘 사가·자원 만료를 처리.
-- 단계 실행 중 사가 행을 `FOR UPDATE` 로 잡는다(같은 사가를 두 실행자가 진행하지 않음). 하위 호출은 `Participants` 한 곳(서비스 토큰).
+- 단계 실행 중 사가 행을 `FOR UPDATE` 로 잡는다(같은 사가를 두 실행자가 진행하지 않음). 하위 호출은 `Participants` 한 곳(내부 호출).
 - 해제는 원예약 조회로 RELEASED·EXPIRED 를 본 뒤에만 RELEASED. 결제 불명·불일치면 자원을 풀지 않는다.
 - 발행: `CheckoutSagaStateChanged`·`CompensationExecuted` (order.saga.v1).
 
+## S3 취소 사가 (2026-10-31, 피킹 전 전체 취소)
+- 정본: `docs/business/flows/cancel-vs-handover.md` §6. 규칙 `domain/CancellationRules`, 실행 `application/CancellationSagaService`, 표 `cancellation_saga`(V4).
+- 시작: `CancellationRequested`(order.claim.v1, inbox) 또는 `POST /internal/cancellation-sagas`(FULL 만). stopRequestId 하나에 사가 하나.
+- 단계: STOP_WORK(mfc-fulfillment `/internal/stop-requests`, 전부 STOPPED 일 때만 진행·대기는 WAITING_RESULT 재조회·인계됨은 ESCALATED) → RELEASE_RESOURCES(주문을 확정한 S1 사가의 보상 로그에서 슬롯·여력·재고를 찾아 취소 사유로 해제, 원예약 조회로 확인) → APPLY_ORDER_CANCEL(order 수량 변경) → COMPLETED. 환불은 claim 이 한다.
+- 업무 거절은 ESCALATED(자동 보상 없음, 수동 개입 BO-12 미구현). 설정 `pmart.orchestration.mfc-fulfillment-base-url`.
+
 ## 상태
-S1 a~j 구현(결제 사건 구독 order.payment.v1 → 대사 → 자원 확정 → 주문 확정, 실패 시 보상 취소 확인 뒤 해제). S2~S4, 수동 개입(BO-12), case 상신은 501·미구현.
+S1 a~j 구현(결제 사건 구독 order.payment.v1 → 대사 → 자원 확정 → 주문 확정, 실패 시 보상 취소 확인 뒤 해제). S3 피킹 전 전체 취소(2026-10-31). S2·S4·S3 의 피킹 후/인계·배차 취소, 수동 개입(BO-12), case 상신은 501·미구현. 사가 조회(`/internal/sagas`)는 S1 만.

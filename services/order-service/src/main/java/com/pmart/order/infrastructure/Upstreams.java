@@ -21,7 +21,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 주문 초안이 부르는 정본들. {@code /internal/} 은 서비스 토큰(공용 RestClient 가 붙인다):
+ * 주문 초안이 부르는 정본들. {@code /internal/} 은 내부 호출(토큰 없음)(공용 RestClient 가 붙인다):
  * customer·product·pricing·center-master. 예약 슬롯은 공개 경로(capacity {@code /slots})라 요청한 사용자 토큰이
  * 전파된다(비회원도 허용 경로).
  */

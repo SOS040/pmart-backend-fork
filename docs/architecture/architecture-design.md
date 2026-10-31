@@ -372,7 +372,7 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 
 | 관심사 | 설계 |
 |---|---|
-| 인증·인가 | gateway가 JWT 검증, 서비스는 `auth-service`의 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권)를 **변경 명령마다** 호출(BackOffice 3.2). 서비스 간 호출은 서비스 신원 토큰. |
+| 인증·인가 | gateway가 JWT 검증, 서비스는 `auth-service`의 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권)를 **변경 명령마다** 호출(BackOffice 3.2). 서비스 간 호출은 인증하지 않는다(private subnet 이 신뢰 경계, ADR-0026). |
 | 추적 | `traceId`는 gateway 발급, 모든 동기 헤더·이벤트 봉투·로그에 전파. `correlationId`=사가/사건 ID. |
 | 로그 | 구조화 JSON. PG 비밀·주소 원문·출입 비밀번호·신분증 금지. |
 | 개인정보 | 최소 노출(담당 주문 범위), 다운로드 시 현권한 재검사, 보존기간 `[결정 필요]`. |

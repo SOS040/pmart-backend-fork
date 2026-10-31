@@ -26,6 +26,10 @@ server:
 pmart:
   messaging:
     domain: order
+  claim:
+    order-base-url: ${PMART_ORDER_BASE_URL:http://order-service:8201} # 주문 원장(심사·환불 근거)
+    payment-base-url: ${PMART_PAYMENT_BASE_URL:http://payment-service:8205} # 환불 실행
+    refund-retry-after: PT30S # 실행 대기·PG 결과 대기·불명 환불 재실행·원거래 조회
 management:
   tracing:
     export:

@@ -24,6 +24,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
@@ -34,13 +35,12 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>Stateless JWT 리소스 서버. {@code spring.security.oauth2.resourceserver.jwt.jwk-set-uri}(또는
  *       issuer-uri)는 서비스/환경 설정. JwtDecoder 가 없으면 체인을 만들지 않는다(설정 누락을 조용히 허용하지 않음 — 기동 시 Spring
  *       Security 기본 체인이 모든 요청을 막는다).
- *   <li>{@code permit-paths} 는 익명, {@code internal-paths} 는 TYPE_SERVICE, {@code guest-paths} 는 비회원
- *       토큰도 허용, 나머지는 인증 필요이고 비회원(TYPE_GUEST) 토큰은 403.
+ *   <li>{@code permit-paths} 는 익명, {@code internal-paths} 는 토큰 없이 서비스 주체로 들어온다({@link
+ *       InternalCallerFilter}, ADR-0026 — 사용자 토큰이면 403), {@code guest-paths} 는 비회원 토큰도 허용, 나머지는 인증
+ *       필요이고 비회원(TYPE_GUEST) 토큰은 403.
  *   <li>401/403 은 application/problem+json.
- *   <li>RestClient 에 X-Source-System·X-Correlation-Id·Bearer. {@code /internal/} 호출은 서비스 신원
- *       토큰(ADR-0011), 그 외는 사용자 토큰 전파.
- *   <li>{@code pmart.security.service-token.token-uri} 가 있으면 {@link ServiceTokenProvider} 등록(secret
- *       필수).
+ *   <li>RestClient 에 X-Source-System·X-Correlation-Id. {@code /internal/} 호출은 토큰 없이(ADR-0026), 그 외는
+ *       사용자 토큰 전파.
  *   <li>{@code pmart.security.authz.base-url} 이 있으면 {@link ActionAuthorizer} 등록(fail-closed).
  * </ul>
  */
@@ -106,53 +106,17 @@ public class CommonSecurityAutoConfiguration {
                     .accessDeniedHandler(handlers))
         .exceptionHandling(
             ex -> ex.authenticationEntryPoint(handlers).accessDeniedHandler(handlers))
+        // 토큰 없는 내부 호출 → X-Source-System 이름의 서비스 주체(ADR-0026). JWT 인증 뒤·익명 처리 전에
+        .addFilterBefore(
+            new InternalCallerFilter(props.getInternalPaths()), AnonymousAuthenticationFilter.class)
         .cors(Customizer.withDefaults());
     return http.build();
   }
 
   @Bean
   @ConditionalOnMissingBean(name = "serviceCallHeadersCustomizer")
-  public RestClientCustomizer serviceCallHeadersCustomizer(
-      Environment env, ObjectProvider<ServiceTokenProvider> serviceTokens) {
-    return new ServiceCallHeadersCustomizer(
-        env.getProperty("spring.application.name", "unknown"), serviceTokens);
-  }
-
-  @Configuration(proxyBeanMethods = false)
-  @ConditionalOnProperty(prefix = "pmart.security.service-token", name = "token-uri")
-  static class ServiceTokenClient {
-    @Bean
-    @ConditionalOnMissingBean
-    public ServiceTokenProvider serviceTokenProvider(
-        SecurityProperties props, Environment env, ObjectProvider<RestClient.Builder> builders) {
-      SecurityProperties.ServiceToken t = props.getServiceToken();
-      if (t.getClientSecret() == null || t.getClientSecret().isBlank()) {
-        throw new IllegalStateException(
-            "pmart.security.service-token.client-secret 이 비어 있다(PMART_SERVICE_CLIENT_SECRET, Secret Manager).");
-      }
-      String clientId =
-          t.getClientId() == null || t.getClientId().isBlank()
-              ? env.getRequiredProperty("spring.application.name")
-              : t.getClientId();
-      JdkClientHttpRequestFactory factory =
-          new JdkClientHttpRequestFactory(
-              java.net.http.HttpClient.newBuilder()
-                  // 내부 호출은 HTTP/1.1 — 평문 h2c 업그레이드 시도가 일부 서버(Jetty)에서 연결을 끊는다(payment TossClient 와
-                  // 같은 이유)
-                  .version(java.net.http.HttpClient.Version.HTTP_1_1)
-                  .connectTimeout(t.getConnectTimeout())
-                  .build());
-      factory.setReadTimeout(t.getReadTimeout());
-      RestClient client =
-          builders.getIfAvailable(RestClient::builder).clone().requestFactory(factory).build();
-      return new ServiceTokenProvider(
-          client,
-          t.getTokenUri(),
-          clientId,
-          t.getClientSecret(),
-          t.getRefreshSkew(),
-          java.time.Clock.systemUTC());
-    }
+  public RestClientCustomizer serviceCallHeadersCustomizer(Environment env) {
+    return new ServiceCallHeadersCustomizer(env.getProperty("spring.application.name", "unknown"));
   }
 
   @Configuration(proxyBeanMethods = false)

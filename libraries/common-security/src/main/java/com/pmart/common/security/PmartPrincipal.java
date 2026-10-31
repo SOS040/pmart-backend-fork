@@ -73,11 +73,17 @@ public record PmartPrincipal(
         jwt.getClaimAsString(CLAIM_SOURCE));
   }
 
-  /** 현재 요청의 주체. 인증되지 않았거나 JWT 가 아니면 empty. */
+  /**
+   * 현재 요청의 주체. 사용자·서비스 JWT 이면 그 토큰, 토큰 없는 내부 호출이면 X-Source-System 이름의 서비스 주체(ADR-0026). 인증되지 않았으면
+   * empty.
+   */
   public static Optional<PmartPrincipal> current() {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
     if (auth instanceof JwtAuthenticationToken token) {
       return Optional.of(fromJwt(token.getToken()));
+    }
+    if (auth instanceof InternalCallerFilter.InternalCallerAuthentication internal) {
+      return Optional.of(internal.getPrincipal());
     }
     return Optional.empty();
   }

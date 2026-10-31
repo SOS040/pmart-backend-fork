@@ -140,6 +140,18 @@ public class SagaStore {
         .findFirst();
   }
 
+  /** 주문을 확정한 결제 진입 사가(COMPLETED) — 취소 사가가 확정 자원(재고·여력·슬롯)을 찾는다. */
+  public Optional<String> completedSagaIdByOrder(String orderId) {
+    return jdbc
+        .queryForList(
+            "SELECT saga_id FROM checkout_saga WHERE order_id = ? AND state = 'COMPLETED'"
+                + " ORDER BY finished_at DESC",
+            String.class,
+            orderId)
+        .stream()
+        .findFirst();
+  }
+
   public Optional<SagaRow> find(String sagaId) {
     return jdbc.query("SELECT * FROM checkout_saga WHERE saga_id = ?", this::saga, sagaId).stream()
         .findFirst();

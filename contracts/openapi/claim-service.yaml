@@ -31,6 +31,8 @@ paths:
         분할배송은 신청 품목의 실제 수령시각(delivery-execution DeliveryCompleted) 기준. 신선 24h 경과라도 사유가 하자이면 특례로 심사한다.
         신청 가능 수량 = 실제 전달량 − 완료/진행 클레임 점유. CANCEL은 원수량 − 기취소 − 인계 − 진행 클레임.
         회수·재배달 주소는 원주문 주소 고정. 단순 변심 교환은 왕복 9,000원 청구, 상품/배달 문제는 0원.
+        [2026-10-31 구현] CANCEL 만, 고객 본인 주문(CONFIRMED)의 전체 취소만 받는다(모든 행 × 미이행 수량). 접수와 함께 stopRequestId 를 발급하고
+        ClaimOpened·CancellationRequested(order.claim.v1)를 발행해 orchestration S3 를 시작한다. 상태 OPENED → STOP_PENDING → IN_PROGRESS(취소 확정·환불 실행) → CLOSED(PG 환불 성공) / REJECTED(인계됨).
       operationId: createClaim
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -51,7 +53,7 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: CLAIM_WINDOW_EXPIRED / QUANTITY_EXCEEDS_AVAILABLE / DUPLICATE_CLAIM / NOT_DELIVERED_YET / EVIDENCE_REQUIRED / ORDER_NOT_CANCELLABLE
+          description: CLAIM_WINDOW_EXPIRED / QUANTITY_EXCEEDS_AVAILABLE / DUPLICATE_CLAIM / NOT_DELIVERED_YET / EVIDENCE_REQUIRED / ORDER_NOT_CANCELLABLE / PARTIAL_CANCEL_NOT_ALLOWED (고객 취소는 주문 전체만) / UNSUPPORTED_ACTION (RETURN·EXCHANGE — 아직 미구현)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

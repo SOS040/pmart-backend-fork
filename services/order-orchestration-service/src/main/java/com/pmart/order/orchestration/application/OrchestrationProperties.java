@@ -5,7 +5,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * {@code pmart.orchestration.*}. 참여 정본 주소(모두 {@code /internal}, 서비스 토큰).
+ * {@code pmart.orchestration.*}. 참여 정본 주소(모두 {@code /internal}).
  *
  * @param stuckAfter RUNNING·COMPENSATING 사가를 멈춘 것으로 보고 재개할 시간(같은 키 재전송이라 안전)
  */
@@ -16,6 +16,7 @@ public record OrchestrationProperties(
     String deliveryCapacityBaseUrl,
     String paymentBaseUrl,
     String orderBaseUrl,
+    String mfcFulfillmentBaseUrl,
     @Nullable Duration stuckAfter) {
 
   public OrchestrationProperties {
@@ -24,6 +25,7 @@ public record OrchestrationProperties(
     deliveryCapacityBaseUrl = or(deliveryCapacityBaseUrl, "http://delivery-capacity-service:8402");
     paymentBaseUrl = or(paymentBaseUrl, "http://payment-service:8205");
     orderBaseUrl = or(orderBaseUrl, "http://order-service:8201");
+    mfcFulfillmentBaseUrl = or(mfcFulfillmentBaseUrl, "http://mfc-fulfillment-service:8302");
     stuckAfter = stuckAfter == null ? Duration.ofSeconds(30) : stuckAfter;
   }
 

@@ -3,7 +3,7 @@ info:
   title: auth-service
   version: 0.1.0
   description: |
-    고객 소셜 OAuth 제공자 검증·인증 상태(AUTH_GUEST→PENDING→(CONSENT)→MEMBER, AUTH_UNKNOWN, AUTH_RESTRICTED 15분 5회→10분), 라이더·운영자·서비스 신원,
+    고객 소셜 OAuth 제공자 검증·인증 상태(AUTH_GUEST→PENDING→(CONSENT)→MEMBER, AUTH_UNKNOWN, AUTH_RESTRICTED 15분 5회→10분), 라이더·운영자 신원,
     토큰/세션, 유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한, 행위 시점 검증, 보안 기록 90일의 정본. (docs/architecture/service-map.md §8)
     비정본: 권한 부여 승인 흐름(approval BO-01/02), 고객 프로필·동의(customer).
     발행: CustomerAuthenticated, GrantApplied, DelegationStarted/Ended. 구독: ApprovalDecided(BO-01/02), CustomerWithdrawalCompleted(세션·소셜 연결 삭제).
@@ -16,8 +16,8 @@ tags:
   - { name: logins, description: 소셜 로그인·원인증 결과 조회 }
   - { name: tokens, description: 토큰 갱신·로그아웃·세션 }
   - { name: operators, description: "운영자 계정·로그인(아이디/비밀번호 → JWT, ADR-0018)" }
-  - { name: internal, description: 행위 시점 검증·grant 반영/조회(서비스 토큰) }
-  - { name: keys, description: "서비스 신원: JWKS 공개키·서비스 토큰 발급 (클러스터 내부 전용, ADR-0011)" }
+  - { name: internal, description: "행위 시점 검증·grant 반영/조회 (서비스 간, 토큰 없음 — ADR-0026)" }
+  - { name: keys, description: "JWKS 공개키 — 사용자 토큰 검증용 (클러스터 내부 전용, ADR-0011·0026)" }
 
 paths:
   /auth/guest-sessions:
@@ -440,7 +440,7 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
-  # ---------- keys (서비스 신원, ADR-0011). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  # ---------- keys (JWKS — 사용자 토큰 검증, ADR-0011). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
   /internal/jwks:
     get:
       tags: [keys]
@@ -457,44 +457,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JwkSet' }
 
-  /internal/service-tokens:
-    post:
-      tags: [keys]
-      summary: "[전 서비스→auth] 서비스 신원 토큰 발급 (OAuth 2.0 client_credentials, RFC 6749 4.4)"
-      description: |
-        클라이언트 인증은 HTTP Basic(client_secret_basic): clientId=서비스명, secret 은 Secret Manager 주입값.
-        발급 토큰 claim: sub=src=서비스명, typ=SERVICE, 짧은 수명(기본 5분). /internal/** 호출에만 쓴다.
-        호출 측은 만료 전까지 캐시한다(common-security ServiceTokenProvider). 응답·오류 형식은 RFC 6749 5.1/5.2.
-      operationId: issueServiceToken
-      security:
-        - serviceClientBasic: []
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              required: [grant_type]
-              properties:
-                grant_type: { type: string, enum: [client_credentials] }
-      responses:
-        '200':
-          description: 발급 (Cache-Control no-store)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ServiceTokenResponse' }
-        '400':
-          description: unsupported_grant_type / invalid_request
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OAuthError' }
-        '401':
-          description: invalid_client (클라이언트 미등록·secret 불일치. WWW-Authenticate Basic)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OAuthError' }
-
-  # ---------- internal (서비스 토큰) ----------
+  # ---------- internal (서비스 간, 토큰 없음 — ADR-0026) ----------
   /internal/authorizations:
     post:
       tags: [internal]
@@ -623,21 +586,6 @@ components:
           items:
             type: object
             additionalProperties: true
-    ServiceTokenResponse:
-      type: object
-      required: [access_token, token_type, expires_in]
-      description: RFC 6749 5.1
-      properties:
-        access_token: { type: string, description: 로그 금지 }
-        token_type: { type: string, enum: [Bearer] }
-        expires_in: { type: integer, description: 초 }
-    OAuthError:
-      type: object
-      required: [error]
-      description: RFC 6749 5.2
-      properties:
-        error: { type: string, enum: [invalid_request, invalid_client, unsupported_grant_type] }
-        error_description: { type: string }
     Provider:
       type: string
       enum: [KAKAO, NAVER, APPLE, GOOGLE]
@@ -798,7 +746,3 @@ components:
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'
-    serviceClientBasic:
-      type: http
-      scheme: basic
-      description: 서비스 클라이언트 인증(client_secret_basic). 사용자 이름=서비스명, 비밀번호=서비스 secret.

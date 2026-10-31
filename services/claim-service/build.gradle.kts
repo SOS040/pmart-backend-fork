@@ -18,4 +18,7 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // order·payment·auth 응답 고정
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox·환불 행 확인
+    "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 OrderCancelled·RefundResult·WorkStopResult 를 토픽에 흘림
 }

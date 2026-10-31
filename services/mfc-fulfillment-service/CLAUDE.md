@@ -20,5 +20,9 @@
 ```
 로컬 포트 8302.
 
+## 주문 단위 작업 중지 (2026-10-31, S3 a)
+- `POST /internal/stop-requests`·`GET /internal/stop-requests/{id}`(내부 호출): 작업 지시가 아직 없어 요청 수량 전부 STOPPED(`notStartedLines`, packages 빈 배열)·`order_work_stop`(V2) 기록·`WorkStopResult`(mfc.fulfillment.v1) 한 트랜잭션. 같은 stopRequestId 는 기존 판정, 다른 주문·수량이면 409 IDEMPOTENCY_CONFLICT.
+- **슬라이스 6 할 일**: 작업 요청(ConfirmOrder)이 이 중지 기록의 수량을 빼고 받기, 작업 지시가 있으면 포장별 판정(PENDING·fence).
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+주문 단위 작업 중지만 구현(2026-10-31). 작업 지시·Task·Shipment·인계 fence 는 501 UNSUPPORTED_ACTION.

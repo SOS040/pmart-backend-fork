@@ -155,6 +155,37 @@ public class OrderStore {
         .findFirst();
   }
 
+  /** 수량 변경 전 주문 행 잠금(같은 주문의 변경을 줄 세운다). */
+  public Optional<OrderRow> lock(String orderId) {
+    return jdbc
+        .query(
+            "SELECT * FROM customer_order WHERE order_id = ? FOR UPDATE",
+            (rs, i) -> row(rs),
+            orderId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 주문행 수량 누계 갱신(불변식은 호출자가 확인 — 원수량 = 미이행 + 인계 + 출고 전 취소). */
+  public void updateLineQuantities(
+      String orderLineId, int unfulfilledQty, int cancelledBeforeShipQty) {
+    jdbc.update(
+        "UPDATE customer_order_line SET unfulfilled_qty = ?, cancelled_before_ship_qty = ?"
+            + " WHERE order_line_id = ?",
+        unfulfilledQty,
+        cancelledBeforeShipQty,
+        orderLineId);
+  }
+
+  /** 주문 상태·버전 갱신. */
+  public void updateStatus(String orderId, String status, int version) {
+    jdbc.update(
+        "UPDATE customer_order SET status = ?, version = ? WHERE order_id = ?",
+        status,
+        version,
+        orderId);
+  }
+
   public Optional<OrderRow> byDraft(String draftId) {
     return jdbc
         .query("SELECT * FROM customer_order WHERE draft_id = ?", (rs, i) -> row(rs), draftId)

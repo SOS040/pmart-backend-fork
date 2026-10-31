@@ -162,6 +162,61 @@ public final class OrderRules {
     return date.atStartOfDay(SEOUL).plusMinutes(minutes(hhmm)).toInstant();
   }
 
+  // ---------- 주문행 수량 (출고 전 취소) ----------
+
+  /** 주문행 수량 누계. 불변식 원수량 = 미이행 + 인계 + 출고 전 취소. */
+  public record LineQty(
+      String orderLineId,
+      int originalQty,
+      int unfulfilledQty,
+      int handedOverQty,
+      int cancelledBeforeShipQty) {}
+
+  /**
+   * 출고 전 취소 반영. 행마다 미이행 −q, 출고 전 취소 +q. 없는 행·미이행보다 큰 수량·같은 행 중복이면 {@link IllegalArgumentException}
+   * (아무것도 바꾸지 않는다 — 호출자가 409 로).
+   */
+  public static List<LineQty> cancelBeforeShip(List<LineQty> lines, List<Change> changes) {
+    java.util.Map<String, Integer> req = new java.util.LinkedHashMap<>();
+    for (Change c : changes) {
+      if (req.put(c.orderLineId(), c.qty()) != null) {
+        throw new IllegalArgumentException("같은 주문행이 두 번 왔습니다: " + c.orderLineId());
+      }
+    }
+    List<LineQty> out = new ArrayList<>();
+    for (LineQty l : lines) {
+      Integer q = req.remove(l.orderLineId());
+      if (q == null) {
+        out.add(l);
+        continue;
+      }
+      if (q < 1 || q > l.unfulfilledQty()) {
+        throw new IllegalArgumentException(
+            "주문행 " + l.orderLineId() + " 미이행 " + l.unfulfilledQty() + " 보다 많이 취소할 수 없습니다: " + q);
+      }
+      out.add(
+          new LineQty(
+              l.orderLineId(),
+              l.originalQty(),
+              l.unfulfilledQty() - q,
+              l.handedOverQty(),
+              l.cancelledBeforeShipQty() + q));
+    }
+    if (!req.isEmpty()) {
+      throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());
+    }
+    return out;
+  }
+
+  /** 취소 요청 한 줄(주문행·수량). */
+  public record Change(String orderLineId, int qty) {}
+
+  /** 모든 행이 미이행·인계 0 — 출고 전에 전부 취소됐다(주문 CANCELLED). */
+  public static boolean fullyCancelled(List<LineQty> lines) {
+    return !lines.isEmpty()
+        && lines.stream().allMatch(l -> l.unfulfilledQty() == 0 && l.handedOverQty() == 0);
+  }
+
   /** "HH:mm" → 분(24:00 = 1440). */
   public static int minutes(String hhmm) {
     if ("24:00".equals(hhmm)) {

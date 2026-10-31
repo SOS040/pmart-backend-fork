@@ -230,6 +230,15 @@ public class CustomerStore {
         > 0;
   }
 
+  /** 첫 구매 혜택 사용 기록 되돌리기(그 주문이 쓴 기록만). 출고 전 전체 취소는 자격을 소진하지 않는다(OMS 175행). 지웠으면 true. */
+  public boolean releaseFirstPurchaseUse(String accountId, String orderId) {
+    return jdbc.update(
+            "DELETE FROM first_purchase_used WHERE account_id = ? AND order_id = ?",
+            accountId,
+            orderId)
+        > 0;
+  }
+
   // ---------- 주소 ----------
 
   public int countAddresses(String ownerType, String ownerId) {

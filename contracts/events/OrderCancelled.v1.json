@@ -65,6 +65,14 @@
             "claimId": {
               "$ref": "_defs.v1.json#/$defs/Ref"
             },
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "주문 고객 계정(첫 구매 혜택 복원 대상 — customer-service)"
+            },
+            "firstPurchase": {
+              "type": "boolean",
+              "description": "이 주문이 첫 구매 무료배달을 적용했는가. scope FULL 이면 customer-service 가 사용 기록을 되돌린다(OMS 175행)"
+            },
             "cancelledAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
             }

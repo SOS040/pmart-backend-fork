@@ -19,4 +19,6 @@ dependencies {
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(libs.wiremock.spring.boot) // 참여 정본(재고·여력·슬롯·결제)·auth 서비스 토큰 응답 고정
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 S1 확정 사가(점유) 행 준비
+    "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 CancellationRequested 를 토픽에 흘림
 }

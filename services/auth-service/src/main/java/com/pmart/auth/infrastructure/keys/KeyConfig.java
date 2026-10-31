@@ -46,8 +46,9 @@ public class KeyConfig {
     return new NimbusJwtDecoder(processor);
   }
 
+  /** 운영자 비밀번호 해시(bcrypt, DelegatingPasswordEncoder). */
   @Bean
-  PasswordEncoder serviceClientSecretEncoder() {
+  PasswordEncoder passwordEncoder() {
     return PasswordEncoderFactories.createDelegatingPasswordEncoder();
   }
 

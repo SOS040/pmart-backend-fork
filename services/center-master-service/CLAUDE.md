@@ -24,7 +24,7 @@
 - 변경은 approval-service `CENTER_MASTER` 승인(역할 `CENTER_MASTER_APPROVER`)으로만. 승인 행 attributes = 계약 ApplyCenterChangeRequest 모양(`changeType`·`centerId`·`profile`·`calendar`). 지원: CREATE, UPDATE_PROFILE, UPDATE_CALENDAR(휴폐점은 이후).
 - 승인된 내용이 잘못되면(시각 형식·겹침·없는 센터) 반영하지 않고 `approval_application.result` 에 `INVALID:` 사유(재처리 반복 없음).
 - 시간표는 종류별(다섯 가지) 요일 시간대 + 휴일 + 임시 제한, 시각 "HH:mm"·끝 "24:00"까지, Asia/Seoul. 승인 안 된 종류는 422 CONFIG_REQUIRED(상시 영업으로 보지 않음).
-- `GET /internal/centers/{id}/calendar`(서비스 토큰): capacity·order 가 고객·비회원 요청 중 부른다(사용자 토큰 전파 방지).
+- `GET /internal/centers/{id}/calendar`(내부 호출): capacity·order 가 고객·비회원 요청 중 부른다(사용자 토큰 전파 방지).
 - 사건 CenterMasterChanged·CenterCalendarChanged(앞으로 7일 영업 구간 windows) → `platform.center.v1` 명시.
 
 ## 상태

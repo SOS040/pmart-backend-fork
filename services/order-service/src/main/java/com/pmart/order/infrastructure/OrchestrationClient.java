@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * order-orchestration 결제 진입 사가(S1). 시작은 202(사가 시작 ≠ 자원·결제 성공), 진행은 사가 조회로 반영한다. {@code /internal} 은
- * 서비스 토큰(공용 RestClient).
+ * 토큰 없이 내부 호출(공용 RestClient, ADR-0026).
  */
 @Component
 public class OrchestrationClient {

@@ -14,8 +14,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * center-master 고객 주문 운영 캘린더(서비스 토큰 내부 조회 — 공용 RestClient 가 {@code /internal/} 에 서비스 토큰을 붙인다). 센터
- * 없음 404, 시간표 미승인 422 CONFIG_REQUIRED 를 그대로 올린다.
+ * center-master 고객 주문 운영 캘린더(내부 호출(토큰 없음) 내부 조회 — 공용 RestClient 가 {@code /internal/} 에 내부 호출(토큰
+ * 없음)을 붙인다). 센터 없음 404, 시간표 미승인 422 CONFIG_REQUIRED 를 그대로 올린다.
  */
 @Component
 public class CenterCalendarClient {

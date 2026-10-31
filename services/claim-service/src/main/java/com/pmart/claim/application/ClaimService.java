@@ -1,0 +1,298 @@
+package com.pmart.claim.application;
+
+import com.pmart.claim.domain.ClaimRules;
+import com.pmart.claim.infrastructure.ClaimStore;
+import com.pmart.claim.infrastructure.ClaimStore.ClaimRow;
+import com.pmart.claim.infrastructure.ClaimStore.LineRow;
+import com.pmart.claim.infrastructure.ClaimStore.RefundRow;
+import com.pmart.claim.infrastructure.Upstreams;
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.messaging.RequestIdempotency;
+import com.pmart.common.messaging.RequestIdempotency.RequestKey;
+import com.pmart.common.security.PmartPrincipal;
+import com.pmart.common.web.PmartException;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.JsonNode;
+
+/**
+ * 클레임 접수·조회와 취소 흐름의 사건 반영(docs/business/flows/cancel-vs-handover.md). 2026-10-31 범위: 고객의 주문 전체
+ * 취소(피킹 전).
+ *
+ * <ol>
+ *   <li>접수: order 원장으로 본인·상태·수량 심사({@link ClaimRules}) → 클레임 STOP_PENDING + stopRequestId 발급 →
+ *       ClaimOpened· CancellationRequested(order.claim.v1, 한 트랜잭션). orchestration 이 그 사건으로 S3 를
+ *       시작한다.
+ *   <li>WorkStopResult 에 인계됨이 있으면 REJECTED(출고 전 취소 불가 — 회수 경로).
+ *   <li>OrderCancelled(claimId) → 행 승인·IN_PROGRESS → 환불 의도(원 승인액 전액) → 커밋 뒤 payment 취소 실행({@link
+ *       RefundService}).
+ *   <li>RefundResult SUCCESS → 환불 완료·클레임 CLOSED. PG 성공 전에는 완료로 표시하지 않는다.
+ * </ol>
+ */
+@Service
+public class ClaimService {
+
+  public static final String TOPIC = "order.claim.v1";
+
+  private static final Logger log = LoggerFactory.getLogger(ClaimService.class);
+
+  /** 접수 명령(계약 CreateClaimRequest). */
+  public record CreateCommand(
+      String orderId,
+      String type,
+      List<ClaimRules.Requested> lines,
+      String reason,
+      @Nullable String reasonDetail,
+      String channel) {}
+
+  public record ClaimView(ClaimRow claim, List<LineRow> lines, List<RefundRow> refunds) {}
+
+  private final ClaimStore store;
+  private final Upstreams upstreams;
+  private final RequestIdempotency idempotency;
+  private final ClaimEvents events;
+  private final RefundService refunds;
+  private final Clock clock;
+
+  public ClaimService(
+      ClaimStore store,
+      Upstreams upstreams,
+      RequestIdempotency idempotency,
+      ClaimEvents events,
+      RefundService refunds,
+      Clock clock) {
+    this.store = store;
+    this.upstreams = upstreams;
+    this.idempotency = idempotency;
+    this.events = events;
+    this.refunds = refunds;
+    this.clock = clock;
+  }
+
+  // ---------- 접수 ----------
+
+  public ClaimView create(
+      String idempotencyKey, String sourceSystem, PmartPrincipal who, CreateCommand in) {
+    if (who.type() != PmartPrincipal.PrincipalType.CUSTOMER) {
+      throw unsupported("지금은 고객 앱의 취소 접수만 받습니다(운영자·CS 접수는 아직 없습니다).");
+    }
+    if (!"CANCEL".equals(in.type())) {
+      throw unsupported("반품·교환 접수는 아직 준비 중입니다.");
+    }
+    JsonNode order = upstreams.order(in.orderId());
+    if (order == null || !who.subject().equals(order.path("accountId").asString())) {
+      throw PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다.");
+    }
+    List<ClaimRules.OrderLine> lines = new ArrayList<>();
+    Map<String, JsonNode> byLine = new LinkedHashMap<>();
+    for (JsonNode l : order.path("lines")) {
+      lines.add(
+          new ClaimRules.OrderLine(
+              l.path("orderLineId").asString(),
+              l.path("sku").asString(),
+              l.path("unitPrice").asLong(),
+              l.path("originalQty").asInt(),
+              l.path("unfulfilledQty").asInt()));
+      byLine.put(l.path("orderLineId").asString(), l);
+    }
+    try {
+      ClaimRules.checkFullCancel(order.path("status").asString(), lines, in.lines());
+    } catch (ClaimRules.Rejection r) {
+      throw new PmartException(
+          r.code(), HttpStatus.UNPROCESSABLE_CONTENT, r.getMessage(), false, List.of());
+    }
+    String claimId =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, idempotencyKey, "createClaim", who.subject()),
+                in,
+                String.class,
+                () -> open(who.subject(), in, order, byLine))
+            .value();
+    return view(claimId);
+  }
+
+  private String open(
+      String accountId, CreateCommand in, JsonNode order, Map<String, JsonNode> byLine) {
+    if (store.activeCancel(in.orderId()).isPresent()) {
+      throw new PmartException(
+          "DUPLICATE_CLAIM",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "이미 진행 중인 취소 요청이 있습니다.",
+          false,
+          List.of());
+    }
+    Instant now = clock.instant();
+    String claimId = "CLM-" + UUID.randomUUID();
+    String stopRequestId = "STOP-" + UUID.randomUUID();
+    ClaimRow c =
+        new ClaimRow(
+            claimId,
+            in.orderId(),
+            accountId,
+            in.type(),
+            "STOP_PENDING",
+            in.reason(),
+            in.reasonDetail(),
+            in.channel(),
+            stopRequestId,
+            1,
+            order.path("paymentAttemptId").asString(),
+            order.path("approvedAmount").asLong(),
+            order.path("itemAmount").asLong(),
+            order.path("bagFee").asLong(),
+            order.path("deliveryTip").asLong(),
+            null,
+            now,
+            null,
+            null,
+            now);
+    List<LineRow> rows = new ArrayList<>();
+    int n = 1;
+    for (ClaimRules.Requested r : in.lines()) {
+      JsonNode l = byLine.get(r.orderLineId());
+      long unitPrice = l == null ? 0 : l.path("unitPrice").asLong();
+      rows.add(
+          new LineRow(
+              claimId + "-L" + n++,
+              claimId,
+              r.orderLineId(),
+              l == null ? "" : l.path("sku").asString(),
+              r.qty(),
+              null,
+              "PENDING",
+              unitPrice * r.qty()));
+    }
+    store.insert(c, rows);
+    events.claimOpened(c, rows);
+    events.cancellationRequested(c, rows);
+    log.info("취소 접수 {} 주문 {} 중지 요청 {}", claimId, in.orderId(), stopRequestId);
+    return claimId;
+  }
+
+  // ---------- 조회 ----------
+
+  /** 고객은 본인 것만(남의 것 404), 운영자·서비스는 모두. */
+  public ClaimView get(PmartPrincipal who, String claimId) {
+    ClaimRow c =
+        store
+            .find(claimId)
+            .filter(x -> canSee(who, x))
+            .orElseThrow(() -> PmartException.notFound("CLAIM_NOT_FOUND", "클레임이 없습니다."));
+    return new ClaimView(c, store.lines(claimId), store.refunds(claimId));
+  }
+
+  public List<ClaimRow> list(
+      PmartPrincipal who,
+      @Nullable String orderId,
+      @Nullable String type,
+      @Nullable String state,
+      int size) {
+    String account = who.type() == PmartPrincipal.PrincipalType.CUSTOMER ? who.subject() : null;
+    if (account == null
+        && who.type() != PmartPrincipal.PrincipalType.OPERATOR
+        && who.type() != PmartPrincipal.PrincipalType.SERVICE) {
+      throw new PmartException(com.pmart.common.web.ErrorCode.FORBIDDEN, "클레임을 볼 수 없습니다.");
+    }
+    return store.list(account, orderId, type, state, Math.max(1, Math.min(size, 100)));
+  }
+
+  private ClaimView view(String claimId) {
+    ClaimRow c = store.find(claimId).orElseThrow();
+    return new ClaimView(c, store.lines(claimId), store.refunds(claimId));
+  }
+
+  private static boolean canSee(PmartPrincipal who, ClaimRow c) {
+    return switch (who.type()) {
+      case CUSTOMER -> who.subject().equals(c.accountId());
+      case OPERATOR, SERVICE -> true;
+      default -> false;
+    };
+  }
+
+  // ---------- 사건 반영 (inbox 트랜잭션 안) ----------
+
+  /** order.order.v1 — OrderCancelled(claimId) 로 취소 확정·환불 의도. */
+  public void onOrderEvent(EventEnvelope e) {
+    if (!"OrderCancelled".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String claimId = p.path("claimId").asString(null);
+    if (claimId == null || claimId.isBlank()) {
+      return; // 클레임 없는 취소(결품 등)는 이 단계에서 다루지 않는다
+    }
+    ClaimRow c = store.lock(claimId).orElse(null);
+    if (c == null || !"STOP_PENDING".equals(c.state())) {
+      return; // 이미 반영됐거나 모르는 클레임
+    }
+    if (!"FULL".equals(p.path("scope").asString())) {
+      log.warn("클레임 {} 부분 취소 확정은 아직 다루지 않는다 — 진행 중으로 둔다", claimId);
+      return;
+    }
+    Instant now = clock.instant();
+    for (JsonNode l : p.path("lines")) {
+      store.decideLine(
+          claimId, l.path("orderLineId").asString(), l.path("qty").asInt(), "APPROVED");
+    }
+    store.updateState(claimId, "IN_PROGRESS", null, now, null, now);
+    RefundRow refund = refunds.createFullRefund(c, now);
+    if ("PENDING_EXECUTION".equals(refund.state())) {
+      String id = refund.refundIntentId();
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              refunds.executeAsync(id);
+            }
+          });
+    }
+    log.info("클레임 {} 취소 확정 — 환불 {} {}원", claimId, refund.refundIntentId(), refund.amount());
+  }
+
+  /** mfc.fulfillment.v1 — WorkStopResult 에 인계됨이 있으면 출고 전 취소 불가(REJECTED). */
+  public void onFulfillmentEvent(EventEnvelope e) {
+    if (!"WorkStopResult".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String stopRequestId = p.path("stopRequestId").asString(null);
+    if (stopRequestId == null) {
+      return;
+    }
+    boolean handedOver = false;
+    for (JsonNode pkg : p.path("perPackage")) {
+      if ("HANDED_OVER".equals(pkg.path("state").asString())) {
+        handedOver = true;
+      }
+    }
+    if (!handedOver) {
+      return; // 중지 확정·대기 — 주문 취소 확정(OrderCancelled)을 기다린다
+    }
+    ClaimRow c = store.lockByStopRequest(stopRequestId).orElse(null);
+    if (c == null || !"STOP_PENDING".equals(c.state())) {
+      return;
+    }
+    Instant now = clock.instant();
+    store.updateState(c.claimId(), "REJECTED", "HANDED_OVER", now, now, now);
+    events.claimClosed(c, "REJECTED_HANDED_OVER", now);
+    log.info("클레임 {} 인계된 포장이 있어 출고 전 취소 불가", c.claimId());
+  }
+
+  private static PmartException unsupported(String message) {
+    return new PmartException(
+        "UNSUPPORTED_ACTION", HttpStatus.UNPROCESSABLE_CONTENT, message, false, List.of());
+  }
+}

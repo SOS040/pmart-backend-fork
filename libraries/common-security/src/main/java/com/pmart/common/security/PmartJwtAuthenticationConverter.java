@@ -18,7 +18,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
  *   <li>{@code scope}/{@code scp} → {@code SCOPE_x} (Spring 기본)
  *   <li>{@code roles} → {@code ROLE_x}
  *   <li>{@code typ} → {@code TYPE_x} (CUSTOMER/RIDER/OPERATOR/SERVICE). {@code /internal/**} 는
- *       TYPE_SERVICE 필요.
+ *       TYPE_SERVICE — 토큰 없는 내부 호출은 {@link InternalCallerFilter} 가 채운다(ADR-0026).
  * </ul>
  */
 public class PmartJwtAuthenticationConverter

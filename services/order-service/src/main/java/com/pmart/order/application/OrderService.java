@@ -157,6 +157,170 @@ public class OrderService {
         .value();
   }
 
+  // ---------- 주문행 수량 변경 (출고 전 취소, 2026-10-31) ----------
+
+  /** 수량 변경 명령(계약 ApplyLineQuantityChangeRequest). */
+  public record QuantityChange(
+      String reason,
+      @Nullable String sourceRef,
+      @Nullable String claimId,
+      List<OrderRules.Change> changes) {}
+
+  public static final String CANCEL_BEFORE_SHIP = "CANCEL_BEFORE_SHIP";
+
+  /**
+   * 출고 전 취소 반영. 주문 행 잠금 → 행별 미이행 −q·출고 전 취소 +q → 전부 0 이면 CANCELLED → 행마다 OrderLineQuantityChanged,
+   * 주문에 OrderCancelled(같은 트랜잭션, Outbox). 같은 키는 저장 결과 재생. 수량 초과·없는 행은 409 INVALID_STATE(바꾸지 않음).
+   */
+  public CommandResponse changeQuantities(
+      String orderId,
+      String requestId,
+      String sourceSystem,
+      QuantityChange in,
+      @Nullable Integer expectedVersion) {
+    if (!CANCEL_BEFORE_SHIP.equals(in.reason())) {
+      throw new PmartException(
+          "UNSUPPORTED_ACTION",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "지금은 출고 전 취소(CANCEL_BEFORE_SHIP)만 반영합니다: " + in.reason(),
+          false,
+          List.of());
+    }
+    Map<String, Object> request = new LinkedHashMap<>();
+    request.put("orderId", orderId);
+    request.put("change", in);
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "applyLineQuantityChange", actor()),
+            request,
+            CommandResponse.class,
+            () -> {
+              Instant now = clock.instant();
+              OrderRow o =
+                  orders
+                      .lock(orderId)
+                      .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
+              if (expectedVersion != null && expectedVersion != o.version()) {
+                throw PmartException.versionConflict("주문이 이미 바뀌었습니다.");
+              }
+              if ("CANCELLED".equals(o.status())) {
+                throw PmartException.invalidState("이미 취소된 주문입니다.");
+              }
+              List<LineRow> rows = orders.lines(orderId);
+              List<OrderRules.LineQty> before = rows.stream().map(OrderService::qty).toList();
+              List<OrderRules.LineQty> after;
+              try {
+                after = OrderRules.cancelBeforeShip(before, in.changes());
+              } catch (IllegalArgumentException e) {
+                throw PmartException.invalidState(e.getMessage());
+              }
+              boolean full = OrderRules.fullyCancelled(after);
+              int version = o.version() + 1;
+              for (int i = 0; i < after.size(); i++) {
+                OrderRules.LineQty b = before.get(i);
+                OrderRules.LineQty a = after.get(i);
+                if (a.equals(b)) {
+                  continue;
+                }
+                orders.updateLineQuantities(
+                    a.orderLineId(), a.unfulfilledQty(), a.cancelledBeforeShipQty());
+                publishLineChanged(o, rows.get(i), a, in, full, version, now);
+              }
+              String status = full ? "CANCELLED" : o.status();
+              orders.updateStatus(orderId, status, version);
+              publishCancelled(o, in, full, version, now);
+              log.info(
+                  "주문 {} 출고 전 취소 반영 {}행 → {} (근거 {})",
+                  orderId,
+                  in.changes().size(),
+                  status,
+                  in.sourceRef());
+              return applied(requestId, orderId, version, now);
+            })
+        .value();
+  }
+
+  /** 서비스 간 주문 원장 조회(claim 심사·환불 근거). 확정 전 주문 ID 는 404. */
+  public OrderView internal(String orderId) {
+    OrderRow o =
+        orders
+            .order(orderId)
+            .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
+    return new OrderView(o, orders.lines(orderId));
+  }
+
+  private static OrderRules.LineQty qty(LineRow l) {
+    return new OrderRules.LineQty(
+        l.orderLineId(),
+        l.originalQty(),
+        l.unfulfilledQty(),
+        l.handedOverQty(),
+        l.cancelledBeforeShipQty());
+  }
+
+  private void publishLineChanged(
+      OrderRow o,
+      LineRow line,
+      OrderRules.LineQty a,
+      QuantityChange in,
+      boolean full,
+      int version,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("orderId", o.orderId());
+    p.put("orderLineId", a.orderLineId());
+    p.put("sku", line.sku());
+    p.put("originalQty", a.originalQty());
+    p.put("unfulfilledQty", a.unfulfilledQty());
+    p.put("handedOverQty", a.handedOverQty());
+    p.put("cancelledBeforeShipQty", a.cancelledBeforeShipQty());
+    p.put("reason", in.reason());
+    p.put("scope", full ? "FULL" : "PARTIAL");
+    if (in.claimId() != null) {
+      p.put("claimId", in.claimId());
+    }
+    p.put("version", version);
+    p.put("changedAt", at.toString());
+    publishOrderEvent("OrderLineQuantityChanged", o.orderId(), version, p);
+  }
+
+  private void publishCancelled(
+      OrderRow o, QuantityChange in, boolean full, int version, Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("orderId", o.orderId());
+    p.put("orderVersion", version);
+    p.put("scope", full ? "FULL" : "PARTIAL");
+    List<Map<String, Object>> ls = new ArrayList<>();
+    for (OrderRules.Change c : in.changes()) {
+      ls.add(Map.of("orderLineId", c.orderLineId(), "qty", c.qty()));
+    }
+    p.put("lines", ls);
+    p.put("reason", in.reason());
+    if (in.claimId() != null) {
+      p.put("claimId", in.claimId());
+    }
+    p.put("accountId", o.accountId());
+    p.put("firstPurchase", o.firstPurchaseApplied());
+    p.put("cancelledAt", at.toString());
+    publishOrderEvent("OrderCancelled", o.orderId(), version, p);
+  }
+
+  private void publishOrderEvent(
+      String type, String orderId, int version, Map<String, Object> payload) {
+    EventEnvelope e =
+        codec.create(
+            events.sourceSystem(),
+            type,
+            1,
+            "Order",
+            orderId,
+            version,
+            new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+            EventEnvelope.EventSource.REAL,
+            payload);
+    events.publish(e, TOPIC);
+  }
+
   /** 확정 주문이 있는가(초안 조회·결제 진입이 사가보다 먼저 본다). */
   public boolean confirmed(@Nullable String orderId) {
     return orderId != null && orders.exists(orderId);

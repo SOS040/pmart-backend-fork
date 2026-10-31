@@ -9,7 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.ObjectMapper;
 
-/** 계약 InternalApi — 서비스 간 조회(서비스 토큰). 업무 규칙은 application 에 두고 여기서는 변환만 한다. */
+/** 계약 InternalApi — 서비스 간 조회(내부 호출). 업무 규칙은 application 에 두고 여기서는 변환만 한다. */
 @RestController
 public class InternalController implements InternalApi {
 

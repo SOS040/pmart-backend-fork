@@ -11,6 +11,10 @@ spring:
     password: ${PMART_DB_PASSWORD:pmart-local}
   kafka:
     bootstrap-servers: localhost:9092
+pmart:
+  claim:
+    order-base-url: http://localhost:8201
+    payment-base-url: http://localhost:8205
 logging:
   level:
     com.pmart: DEBUG

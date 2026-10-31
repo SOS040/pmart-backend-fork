@@ -13,8 +13,9 @@ public class SecurityProperties {
       List.of("/actuator/health/**", "/actuator/info", "/actuator/prometheus", "/error");
 
   /**
-   * 서비스 간 전용 경로. TYPE_SERVICE 권한(서비스 토큰) 필요. 계약의 servers.url 이 /api/v1 이므로 실제 경로는
-   * /api/v1/internal/**.
+   * 서비스 간 전용 경로. 서비스 토큰 없이 들어온다(ADR-0026 — private subnet·게이트웨이 차단을 신뢰 경계로). 토큰이 없으면 {@link
+   * InternalCallerFilter} 가 X-Source-System 이름의 서비스 주체(TYPE_SERVICE)로 채운다. 사용자 토큰(고객·운영자 등)이 오면
+   * 403. 계약의 servers.url 이 /api/v1 이므로 실제 경로는 /api/v1/internal/**.
    */
   private List<String> internalPaths = List.of("/internal/**", "/api/*/internal/**");
 
@@ -26,74 +27,6 @@ public class SecurityProperties {
 
   /** 행위 시점 검증(auth-service) 클라이언트 설정. */
   private Authz authz = new Authz();
-
-  /** 이 서비스의 신원 토큰(client_credentials) 설정. token-uri 가 비어 있으면 서비스 토큰을 쓰지 않는다. */
-  private ServiceToken serviceToken = new ServiceToken();
-
-  public static class ServiceToken {
-    /** auth-service 발급 주소. 예: http://auth-service:8501/api/v1/internal/service-tokens */
-    private String tokenUri = "";
-
-    /** 비우면 spring.application.name. */
-    private String clientId = "";
-
-    /** Secret Manager 주입(PMART_SERVICE_CLIENT_SECRET). 저장소·로그 금지. */
-    private String clientSecret = "";
-
-    /** 만료 이만큼 전에 새로 받는다. */
-    private Duration refreshSkew = Duration.ofSeconds(30);
-
-    private Duration connectTimeout = Duration.ofMillis(500);
-    private Duration readTimeout = Duration.ofSeconds(2);
-
-    public String getTokenUri() {
-      return tokenUri;
-    }
-
-    public void setTokenUri(String tokenUri) {
-      this.tokenUri = tokenUri;
-    }
-
-    public String getClientId() {
-      return clientId;
-    }
-
-    public void setClientId(String clientId) {
-      this.clientId = clientId;
-    }
-
-    public String getClientSecret() {
-      return clientSecret;
-    }
-
-    public void setClientSecret(String clientSecret) {
-      this.clientSecret = clientSecret;
-    }
-
-    public Duration getRefreshSkew() {
-      return refreshSkew;
-    }
-
-    public void setRefreshSkew(Duration refreshSkew) {
-      this.refreshSkew = refreshSkew;
-    }
-
-    public Duration getConnectTimeout() {
-      return connectTimeout;
-    }
-
-    public void setConnectTimeout(Duration connectTimeout) {
-      this.connectTimeout = connectTimeout;
-    }
-
-    public Duration getReadTimeout() {
-      return readTimeout;
-    }
-
-    public void setReadTimeout(Duration readTimeout) {
-      this.readTimeout = readTimeout;
-    }
-  }
 
   public static class Authz {
     /** auth-service 기본 URL. 비우면 ActionAuthorizer 를 등록하지 않는다. */
@@ -149,14 +82,6 @@ public class SecurityProperties {
 
   public void setInternalPaths(List<String> internalPaths) {
     this.internalPaths = internalPaths;
-  }
-
-  public ServiceToken getServiceToken() {
-    return serviceToken;
-  }
-
-  public void setServiceToken(ServiceToken serviceToken) {
-    this.serviceToken = serviceToken;
   }
 
   public Authz getAuthz() {

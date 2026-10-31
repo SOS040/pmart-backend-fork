@@ -1,6 +1,6 @@
 # ADR-0011 서비스 신원 토큰: auth-service 가 client_credentials 로 발급, /internal 호출에만 사용
 
-- 상태: 제안 (2026-10-23)
+- 상태: 일부 대체됨 by ADR-0026 (2026-10-31) — 서비스 토큰 발급·호출 측 서비스 토큰·/internal TYPE_SERVICE 토큰 요구는 폐지, 서명키·JWKS 는 유지. 원래: 제안 (2026-10-23)
 - 관련: architecture-design §10 "인증·인가", service-map.md `auth-service`, `.claude/rules/security-config.md`, `contracts/openapi/auth-service.yaml`(tag `keys`)
 
 ## 배경

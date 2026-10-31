@@ -15,10 +15,6 @@ logging:
   level:
     com.pmart: DEBUG
 pmart:
-  security:
-    service-token:
-      token-uri: http://localhost:8501/api/v1/internal/service-tokens
-      client-secret: ${PMART_SERVICE_CLIENT_SECRET:pmart-local-order}
   order:
     customer-base-url: http://localhost:8103
     product-base-url: http://localhost:8101

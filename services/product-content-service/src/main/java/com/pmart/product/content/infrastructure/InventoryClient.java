@@ -13,8 +13,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * mfc-inventory 가용 조회({@code /internal/availability}, 서비스 토큰 — 공용 RestClient 가 {@code /internal/} 에
- * 붙인다). 상품 화면 표시용 사본이다. 실패는 예외 — 호출자가 불명으로 둔다(0·품절로 바꾸지 않는다).
+ * mfc-inventory 가용 조회({@code /internal/availability}, 토큰 없음(ADR-0026) — 공용 RestClient 가 {@code
+ * /internal/} 에 붙인다). 상품 화면 표시용 사본이다. 실패는 예외 — 호출자가 불명으로 둔다(0·품절로 바꾸지 않는다).
  */
 @Component
 public class InventoryClient {

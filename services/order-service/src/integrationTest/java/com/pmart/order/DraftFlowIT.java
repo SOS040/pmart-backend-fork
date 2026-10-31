@@ -855,4 +855,148 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(order2);
     deps.verify(2, WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/checkout-sagas")));
   }
+
+  Res changeQuantity(String token, String orderId, String key, Map<String, Object> body) {
+    var e =
+        http.post()
+            .uri("/internal/orders/{id}/line-quantity-changes", orderId)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "order-orchestration-service");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /**
+   * 출고 전 취소(S3 d): 내부 주문 조회(서비스만) → 미이행보다 많은 수량 409·지원 안 하는 사유 422(바뀌지 않음) → 전량 취소 시 CANCELLED, 행
+   * 사건 OrderLineQuantityChanged·주문 사건 OrderCancelled(claimId·accountId·firstPurchase) 한 번 → 같은 키
+   * 재생, 다시 취소는 409.
+   */
+  @Test
+  void cancelBeforeShipCancelsWholeOrder() {
+    String repeat = TestJwt.customer(REPEAT);
+    String svc = TestJwt.service("order-orchestration-service");
+    Res d =
+        create(
+            repeat,
+            draft(
+                "PI-" + UUID.randomUUID(),
+                "E-00000001",
+                10,
+                "ADR-IN",
+                "SCHEDULED",
+                window("10:00", "11:00")));
+    long total = d.body().path("quote").path("totalAmount").asLong();
+    startSaga("SAGA-" + UUID.randomUUID());
+    String orderId =
+        checkout(
+                repeat,
+                d.body().path("draftId").asString(),
+                UUID.randomUUID().toString(),
+                d.body().path("quote").path("quoteVersion").asInt())
+            .body()
+            .path("resultId")
+            .asString();
+    assertThat(confirm(svc, orderId, UUID.randomUUID().toString(), total).status()).isEqualTo(200);
+
+    // 내부 주문 조회: 서비스만, 소유자·결제·행 수량
+    assertThat(get(repeat, "/internal/orders/" + orderId).status()).isEqualTo(403);
+    assertThat(get(svc, "/internal/orders/ORD-NOPE").status()).isEqualTo(404);
+    Res internal = get(svc, "/internal/orders/" + orderId);
+    assertThat(internal.status()).as(internal.body().toString()).isEqualTo(200);
+    assertThat(internal.body().path("accountId").asString()).isEqualTo(REPEAT);
+    assertThat(internal.body().path("paymentAttemptId").asString()).isEqualTo("PAY-1");
+    assertThat(internal.body().path("approvedAmount").asLong()).isEqualTo(total);
+    assertThat(internal.body().path("status").asString()).isEqualTo("CONFIRMED");
+    String line = orderId + "-L1";
+    assertThat(internal.body().path("lines").path(0).path("unfulfilledQty").asInt()).isEqualTo(10);
+
+    // 미이행보다 많이 → 409, 지원 안 하는 사유 → 422, 고객 토큰 → 403 (모두 바뀌지 않음)
+    Res over =
+        changeQuantity(
+            svc,
+            orderId,
+            UUID.randomUUID().toString(),
+            Map.of(
+                "reason",
+                "CANCEL_BEFORE_SHIP",
+                "changes",
+                List.of(Map.of("orderLineId", line, "qty", 11))));
+    assertThat(over.status()).isEqualTo(409);
+    assertThat(code(over)).isEqualTo("INVALID_STATE");
+    Res shortage =
+        changeQuantity(
+            svc,
+            orderId,
+            UUID.randomUUID().toString(),
+            Map.of(
+                "reason", "SHORTAGE", "changes", List.of(Map.of("orderLineId", line, "qty", 1))));
+    assertThat(shortage.status()).isEqualTo(422);
+    assertThat(code(shortage)).isEqualTo("UNSUPPORTED_ACTION");
+    assertThat(
+            changeQuantity(
+                    repeat,
+                    orderId,
+                    UUID.randomUUID().toString(),
+                    Map.of(
+                        "reason",
+                        "CANCEL_BEFORE_SHIP",
+                        "changes",
+                        List.of(Map.of("orderLineId", line, "qty", 10))))
+                .status())
+        .isEqualTo(403);
+    assertThat(get(svc, "/internal/orders/" + orderId).body().path("version").asInt()).isEqualTo(1);
+
+    // 전량 취소 → CANCELLED, 같은 키 재생
+    Map<String, Object> cancel =
+        Map.of(
+            "reason",
+            "CANCEL_BEFORE_SHIP",
+            "sourceRef",
+            "STOP-1",
+            "claimId",
+            "CLM-1",
+            "changes",
+            List.of(Map.of("orderLineId", line, "qty", 10)));
+    String key = "SAGA-C:APPLY_ORDER_CANCEL";
+    Res ok = changeQuantity(svc, orderId, key, cancel);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(ok.body().path("version").asInt()).isEqualTo(2);
+    assertThat(changeQuantity(svc, orderId, key, cancel).status()).isEqualTo(200);
+    JsonNode o = get(repeat, "/orders/" + orderId).body();
+    assertThat(o.path("status").asString()).isEqualTo("CANCELLED");
+    assertThat(o.path("lines").path(0).path("unfulfilledQty").asInt()).isZero();
+    assertThat(o.path("lines").path(0).path("cancelledBeforeShipQty").asInt()).isEqualTo(10);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'OrderLineQuantityChanged'"
+                    + " AND aggregateid = ?",
+                Integer.class,
+                orderId))
+        .isEqualTo(1);
+    Map<String, Object> ev =
+        jdbc.queryForMap(
+            "SELECT topic, payload::text AS payload FROM outbox_event"
+                + " WHERE type = 'OrderCancelled' AND aggregateid = ?",
+            orderId);
+    assertThat(ev.get("topic")).isEqualTo("order.order.v1");
+    JsonNode p = mapper.readTree((String) ev.get("payload")).path("payload");
+    assertThat(p.path("scope").asString()).isEqualTo("FULL");
+    assertThat(p.path("claimId").asString()).isEqualTo("CLM-1");
+    assertThat(p.path("accountId").asString()).isEqualTo(REPEAT);
+    assertThat(p.path("lines").path(0).path("qty").asInt()).isEqualTo(10);
+
+    // 다시 취소(다른 키) → 409
+    Res again = changeQuantity(svc, orderId, UUID.randomUUID().toString(), cancel);
+    assertThat(again.status()).isEqualTo(409);
+  }
 }

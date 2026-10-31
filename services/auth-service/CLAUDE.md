@@ -20,10 +20,10 @@
 ```
 로컬 포트 8501.
 
-## 서비스 신원 (ADR-0011)
-- `GET /api/v1/internal/jwks`(공개키), `POST /api/v1/internal/service-tokens`(client_credentials, Basic). 둘 다 permit-path, 게이트웨이 비노출.
+## 서명키·JWKS (ADR-0011, 서비스 토큰은 ADR-0026 으로 폐지)
+- `GET /api/v1/internal/jwks`(공개키, permit-path, 게이트웨이 비노출) — 모든 서비스·게이트웨이가 사용자 토큰을 이 공개키로 검증한다.
 - 서명키 `pmart.auth.signing.keys` (Secret Manager, PKCS#8 PEM, 첫 키가 활성). 없으면 기동 실패. local/test 만 `ephemeral=true`.
-- 클라이언트 등록부 `pmart.auth.service-clients` 는 bcrypt 해시만. 토큰·secret 로그 금지.
+- 서비스 토큰 발급(`/internal/service-tokens`)·서비스 클라이언트 등록부는 없다(서비스 간 호출은 인증하지 않음, ADR-0026). 토큰 로그 금지.
 - 자기 토큰 검증은 `KeyConfig` 의 JwtDecoder(같은 키 묶음) — `jwk-set-uri` 없음.
 
 ## 운영자 로그인 (ADR-0018)
@@ -45,4 +45,4 @@
 - 갱신은 `/auth/tokens`(세션 기기만), `SessionService` 의 GUEST 분기(정본 상태 없음). 자기 세션 조회·종료는 guest-paths.
 
 ## 상태
-서비스 신원 토큰·JWKS(2026-10-23), 운영자 로그인·계정 관리·토큰 갱신·로그아웃·현재 세션(2026-10-30), 고객 Google 로그인(2026-10-30). 동의 완료(completions)는 INVALID_STATE, 행위 검증·grant 는 501 UNSUPPORTED_ACTION.
+JWKS(2026-10-23, 서비스 토큰은 2026-10-31 폐지 — ADR-0026), 운영자 로그인·계정 관리·토큰 갱신·로그아웃·현재 세션(2026-10-30), 고객 Google 로그인(2026-10-30). 동의 완료(completions)는 INVALID_STATE, 행위 검증·grant 는 501 UNSUPPORTED_ACTION.

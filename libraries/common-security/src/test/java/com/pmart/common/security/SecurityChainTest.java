@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -21,7 +20,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 기본 SecurityFilterChain: permit / internal(TYPE_SERVICE) / authenticated, 401·403 problem+json.
+ * 기본 SecurityFilterChain: permit / internal(토큰 없이 서비스 주체, ADR-0026) / authenticated, 401·403
+ * problem+json.
  */
 @SpringBootTest(
     classes = SecurityChainTest.App.class,
@@ -52,7 +52,8 @@ class SecurityChainTest {
 
       @PostMapping({"/internal/reservations", "/api/v1/internal/reservations"})
       String reserve() {
-        return "reserved";
+        // 호출자 = 서비스 주체(토큰 없는 내부 호출은 X-Source-System)
+        return PmartPrincipal.current().map(p -> p.type() + ":" + p.subject()).orElse("none");
       }
 
       @GetMapping("/api/v1/carts/{id}")
@@ -90,32 +91,34 @@ class SecurityChainTest {
         .andExpect(status().isOk());
   }
 
-  /** 계약 servers.url 이 /api/v1 이라 실제 내부 경로는 /api/v1/internal/**. 사용자 토큰은 403. */
+  /**
+   * 내부 경로(ADR-0026): 토큰 없이 들어오고 호출자는 X-Source-System 이름의 서비스 주체. 헤더가 없으면 "internal". 계약 servers.url
+   * 이 /api/v1 이라 실제 경로는 /api/v1/internal/**.
+   */
   @Test
-  void versionedInternalPathAlsoRequiresServiceToken() throws Exception {
+  void internalPathNeedsNoTokenAndUsesSourceSystem() throws Exception {
+    mvc.perform(post("/api/v1/internal/reservations").header("X-Source-System", "order-service"))
+        .andExpect(status().isOk())
+        .andExpect(content().string("SERVICE:order-service"));
+    mvc.perform(post("/internal/reservations"))
+        .andExpect(status().isOk())
+        .andExpect(content().string("SERVICE:internal"));
+    // 기존 서비스 토큰도 그대로 받는다(호출자 = 토큰 주체)
     mvc.perform(
-            post("/api/v1/internal/reservations")
+            post("/internal/reservations")
                 .with(
                     jwt()
-                        .jwt(j -> j.subject("acc-1").claim("typ", "CUSTOMER"))
+                        .jwt(j -> j.subject("order-orchestration-service").claim("typ", "SERVICE"))
                         .authorities(
                             j ->
                                 new PmartJwtAuthenticationConverter().convert(j).getAuthorities())))
-        .andExpect(status().isForbidden());
-
-    mvc.perform(
-            post("/api/v1/internal/reservations")
-                .with(
-                    jwt()
-                        .jwt(j -> j.subject("order-service").claim("typ", "SERVICE"))
-                        .authorities(
-                            j ->
-                                new PmartJwtAuthenticationConverter().convert(j).getAuthorities())))
-        .andExpect(status().isOk());
+        .andExpect(status().isOk())
+        .andExpect(content().string("SERVICE:order-orchestration-service"));
   }
 
+  /** 사용자 토큰(고객 등)으로 내부 경로를 부르면 403 — 내부 API 는 서비스 사이 전용이다. */
   @Test
-  void internalRequiresServiceToken() throws Exception {
+  void userTokenOnInternalPathIsForbidden() throws Exception {
     mvc.perform(
             post("/internal/reservations")
                 .with(
@@ -126,20 +129,6 @@ class SecurityChainTest {
                                 new PmartJwtAuthenticationConverter().convert(j).getAuthorities())))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-
-    mvc.perform(
-            post("/internal/reservations")
-                .with(
-                    jwt()
-                        .jwt(
-                            j ->
-                                j.subject("order-orchestration-service")
-                                    .claim("typ", "SERVICE")
-                                    .claim("roles", List.of("internal")))
-                        .authorities(
-                            j ->
-                                new PmartJwtAuthenticationConverter().convert(j).getAuthorities())))
-        .andExpect(status().isOk());
   }
 
   /** 비회원 토큰(typ=GUEST)은 guest-paths 에서만. 그 밖은 403(회원 전용 API 보호). 회원 토큰은 둘 다 된다. */

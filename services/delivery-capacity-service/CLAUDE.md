@@ -21,7 +21,7 @@
 로컬 포트 8402.
 
 ## 예약 슬롯 (2026-10-31)
-- `GET /slots?mfcId&date`: 오늘·내일(Asia/Seoul)만. 운영 구간은 center-master `GET /internal/centers/{id}/calendar?kind=CUSTOMER_ORDER`(서비스 토큰), 그 안에 온전히 들어가는 1시간 시간대. [확정] 00:00~08:00 실제 배송 없음 → 08시 전 시간대는 만들지 않는다.
+- `GET /slots?mfcId&date`: 오늘·내일(Asia/Seoul)만. 운영 구간은 center-master `GET /internal/centers/{id}/calendar?kind=CUSTOMER_ORDER`(내부 호출), 그 안에 온전히 들어가는 1시간 시간대. [확정] 00:00~08:00 실제 배송 없음 → 08시 전 시간대는 만들지 않는다.
 - 정원 `pmart.capacity.slot-capacity`(정책값, env `PMART_CAPACITY_SLOTCAPACITY`). 비우면 CONFIG_REQUIRED(선택 불가). 센터 없음 404, 시간표 미승인 422.
 - 선택 마감 선행시간은 정책이 없어 시간대 시작 시각(`cutoffAt`)에 마감한다 — 정책이 정해지면 바꾼다.
 - 잔여 = 정원 − 점유(만료 전 HELD + CONFIRMED). 0이면 FULL. 비회원 토큰도 조회 가능(guest-paths).
@@ -29,7 +29,7 @@
 ## 상태
 예약 슬롯 조회·슬롯 점유 구현(2026-10-31). S4 교체 점유(newSlotFor)는 미지원(422 UNSUPPORTED_ACTION). SlotHoldResult 이벤트는 아직 발행하지 않는다(동기 응답으로 대신).
 
-## 슬롯 점유 (2026-10-31, `/internal/slot-holds/**`, 서비스 토큰)
+## 슬롯 점유 (2026-10-31, `/internal/slot-holds/**`)
 - 점유 판정은 조회와 같은 규칙(`SlotRules.selectable`) → 아니면 422 SLOT_NOT_SELECTABLE. 정원 미설정·캘린더 조회 실패(센터 없음·미승인·장애 모두) → 422 CONFIG_REQUIRED(계약 문구대로, 503 아님). 정원 소진 → 422 CAPACITY_EXCEEDED.
 - 같은 슬롯 점유는 `slot_lock` 행 FOR UPDATE 로 직렬화한 뒤 `slot_hold` 를 센다(별도 집계 열 없음). 주문당 활성 1건은 부분 유일 색인 `ux_slot_hold_active_order` 가 최종 방어선(409 HOLD_ALREADY_ACTIVE).
 - TTL(기본 600초) 지난 HELD 는 정리 전에도 정원에서 빠지고 EXPIRED 로 보인다(확정 불가). `HoldExpirySweeper` 가 `pmart.capacity.hold-sweep-interval`(기본 PT30S)마다 SKIP LOCKED 로 EXPIRED 저장.

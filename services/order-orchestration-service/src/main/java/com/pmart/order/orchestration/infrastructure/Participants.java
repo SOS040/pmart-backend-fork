@@ -15,8 +15,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * S1 참여 정본들의 {@code /internal} 명령(서비스 토큰은 공용 RestClient 가 붙인다). 결과는 세 가지로만 나눈다: 성공(정본 결과 ID), 업무
- * 거절(4xx — 보상 대상), 불명·미전달(재전송·원결과 조회 대상 — 실패로 단정하지 않는다).
+ * S1 참여 정본들의 {@code /internal} 명령(서비스 간 인증 없음 — ADR-0026). 결과는 세 가지로만 나눈다: 성공(정본 결과 ID), 업무 거절(4xx
+ * — 보상 대상), 불명·미전달(재전송·원결과 조회 대상 — 실패로 단정하지 않는다).
  */
 @Component
 public class Participants {
@@ -35,12 +35,14 @@ public class Participants {
   public static final String SLOT = "delivery-capacity-service";
   public static final String PAYMENT = "payment-service";
   public static final String ORDER = "order-service";
+  public static final String FULFILLMENT = "mfc-fulfillment-service";
 
   private final RestClient inventory;
   private final RestClient capacity;
   private final RestClient slot;
   private final RestClient payment;
   private final RestClient order;
+  private final RestClient fulfillment;
   private final ObjectMapper mapper;
 
   public Participants(
@@ -50,6 +52,7 @@ public class Participants {
     this.slot = builder.clone().baseUrl(props.deliveryCapacityBaseUrl()).build();
     this.payment = builder.clone().baseUrl(props.paymentBaseUrl()).build();
     this.order = builder.clone().baseUrl(props.orderBaseUrl()).build();
+    this.fulfillment = builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build();
     this.mapper = mapper;
   }
 
@@ -246,6 +249,79 @@ public class Participants {
         payment,
         PAYMENT + " compensation-cancellations",
         "/api/v1/internal/payments/" + paymentAttemptId + "/compensation-cancellations",
+        requestId,
+        body);
+  }
+
+  // ---------- S3 취소 ----------
+
+  /** 주문 단위 작업 중지(mfc-fulfillment). 응답 본문이 판정(StopRequestResult). */
+  public Result stopOrderWork(String requestId, Map<String, Object> body) {
+    return post(
+        fulfillment,
+        FULFILLMENT + " stop-requests",
+        "/api/v1/internal/stop-requests",
+        requestId,
+        body);
+  }
+
+  /** 중지 판정 재조회. 조회 실패면 null(확인 전 — 아무것도 단정하지 않는다). */
+  public @Nullable JsonNode stopRequest(String stopRequestId) {
+    try {
+      return query(fulfillment, FULFILLMENT, "/api/v1/internal/stop-requests/{id}", stopRequestId);
+    } catch (PmartException | HttpClientErrorException e) {
+      return null;
+    }
+  }
+
+  /** 확정된 점유를 취소로 해제(정본별 취소 사유). */
+  public Result releaseForCancel(
+      String resourceType,
+      String resourceId,
+      String requestId,
+      String sagaId,
+      String stopRequestId,
+      String reason) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("reason", reason);
+    return switch (resourceType) {
+      case "INVENTORY_RESERVATION" -> {
+        body.put("sourceRef", stopRequestId);
+        yield post(
+            inventory,
+            INVENTORY + " releases",
+            "/api/v1/internal/reservations/" + resourceId + "/releases",
+            requestId,
+            body);
+      }
+      case "CAPACITY_HOLD" -> {
+        body.put("sourceRef", stopRequestId);
+        yield post(
+            capacity,
+            CAPACITY + " releases",
+            "/api/v1/internal/capacity-holds/" + resourceId + "/releases",
+            requestId,
+            body);
+      }
+      case "SLOT_HOLD" -> {
+        body.put("sagaId", sagaId);
+        yield post(
+            slot,
+            SLOT + " releases",
+            "/api/v1/internal/slot-holds/" + resourceId + "/releases",
+            requestId,
+            body);
+      }
+      default -> throw new IllegalArgumentException("해제할 수 없는 자원: " + resourceType);
+    };
+  }
+
+  /** 주문행 수량 변경(order-service, 출고 전 취소). */
+  public Result applyOrderCancel(String orderId, String requestId, Map<String, Object> body) {
+    return post(
+        order,
+        ORDER + " line-quantity-changes",
+        "/api/v1/internal/orders/" + orderId + "/line-quantity-changes",
         requestId,
         body);
   }

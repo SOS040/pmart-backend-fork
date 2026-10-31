@@ -16,8 +16,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * mfc-inventory ConfirmReceipt 호출(서비스 토큰 — 공용 RestClient 가 {@code /internal/} 에 서비스 토큰을 붙인다).
- * Idempotency-Key = receiptId 라서 재시도해도 inventory 는 한 번만 계상한다.
+ * mfc-inventory ConfirmReceipt 호출(토큰 없음(ADR-0026) — 공용 RestClient 가 {@code /internal/} 에 내부 호출(토큰
+ * 없음)을 붙인다). Idempotency-Key = receiptId 라서 재시도해도 inventory 는 한 번만 계상한다.
  *
  * <p>결과 해석: 2xx → 전기됨(commitId), 4xx(401·403 제외) → inventory 의 명시적 거절, 그 밖(미전달·503·응답 불명·인증 설정 문제)
  * → 같은 receiptId 로 다시 보낸다(응답 불명을 실패로 단정하지 않는다).
@@ -93,7 +93,7 @@ public class InventoryReceiptClient {
       int status = e.getStatusCode().value();
       String code = code(e.getResponseBodyAsString());
       if (status == 401 || status == 403) {
-        // 서비스 토큰·권한 설정 문제 — 내용 거절이 아니므로 설정이 고쳐지면 다시 보낸다
+        // 권한·설정 문제 — 내용 거절이 아니므로 설정이 고쳐지면 다시 보낸다
         return new Result.Retry("HTTP " + status + " " + code);
       }
       return new Result.Rejected("INVENTORY_REJECTED:" + code + " (HTTP " + status + ")");

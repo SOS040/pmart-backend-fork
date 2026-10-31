@@ -3,7 +3,6 @@
 # - db-password: 각 PC postgres 의 pmart 사용자 비밀번호
 # - signing-key.pem / signing-kid: auth-service RS256 서명키(PKCS#8). 재생성하면 발급된 토큰이 모두 무효
 # - s3-access-key / s3-secret-key: s3(SeaweedFS) 자격 증명(ADR-0016)
-# - service-clients/<서비스>.secret|.hash: 서비스 신원 토큰 클라이언트(ADR-0011). PMART_SERVICE_CLIENT_SECRET 을 받는 서비스마다
 # - operator-admin-login / operator-admin-password / operator-admin-hash: auth-service 첫 관리자(ADR-0018).
 #   비밀번호 원문은 이 파일에만 있다(사용자가 읽어 로그인). 서비스에는 해시만 넘긴다. 해시는 BcryptHash.java(spring-security-crypto) 로 만든다.
 # 이 값들은 LAN 개발 환경 전용이다. 운영은 Secret Manager.
@@ -28,20 +27,4 @@ if [ ! -f .secrets/operator-admin-hash ]; then
   grep -q '^{bcrypt}\$2' .secrets/operator-admin-hash || { rm -f .secrets/operator-admin-hash; echo "bcrypt 해시 생성 실패" >&2; exit 1; }
   echo "created operator-admin-hash"
 fi
-# 서비스 신원 클라이언트(ADR-0011): application.yml 이 PMART_SERVICE_CLIENT_SECRET 을 받는 서비스마다 secret(원문, 그 서비스 env)과
-# bcrypt 해시(auth-service 등록부). 없는 것만 만든다.
-mkdir -p .secrets/service-clients
-for yml in ../../services/*/src/main/resources/application.yml ../../platform-services/*/src/main/resources/application.yml; do
-  grep -q '\${PMART_SERVICE_CLIENT_SECRET' "$yml" || continue
-  svc="$(basename "$(dirname "$(dirname "$(dirname "$(dirname "$yml")")")")")"
-  f=".secrets/service-clients/$svc"
-  [ -f "$f.secret" ] || { openssl rand -hex 24 > "$f.secret"; echo "created service-clients/$svc.secret"; }
-  if [ ! -f "$f.hash" ]; then
-    jar="$(find "$HOME/.gradle/caches/modules-2" -name 'spring-security-crypto-*.jar' ! -name '*sources*' 2>/dev/null | sort | tail -1)"
-    [ -n "$jar" ] || { echo "spring-security-crypto jar 없음: 먼저 ./gradlew :services:auth-service:compileJava" >&2; exit 1; }
-    tr -d '\r\n' < "$f.secret" | java -cp "$jar" BcryptHash.java > "$f.hash"
-    grep -q '^{bcrypt}\$2' "$f.hash" || { rm -f "$f.hash"; echo "bcrypt 해시 생성 실패($svc)" >&2; exit 1; }
-    echo "created service-clients/$svc.hash"
-  fi
-done
 echo "secrets: $(pwd)/.secrets"
