@@ -84,6 +84,89 @@ public class CategoryTreeService {
         });
   }
 
+  /** 추가 초안 결과. 응답에 그대로 쓰고 재생(멱등)에도 쓴다. */
+  public record AdditionCreated(
+      int version,
+      @Nullable Integer baseVersion,
+      List<String> addedCategoryIds,
+      List<String> skippedPaths) {}
+
+  /**
+   * 발효 트리(없으면 빈 트리)를 복사해 없는 노드만 더한 DRAFT 버전. 기존 노드·필터 패널은 그대로 둔다. 발효는 다른 트리 버전과 같이 PRODUCT 승인으로만
+   * 일어난다.
+   */
+  public Outcome<AdditionCreated> createAddition(
+      String requestId,
+      Operator op,
+      @Nullable String note,
+      List<CategoryTree.Addition> additions,
+      List<String> skippedPaths,
+      Object requestBody) {
+    return idempotency.execute(
+        op.key(requestId, "createCategoryTreeAddition"),
+        requestBody,
+        AdditionCreated.class,
+        () -> {
+          Integer base = store.effective().map(VersionRow::version).orElse(null);
+          List<CategoryTree.Node> nodes =
+              base == null
+                  ? List.of()
+                  : store.nodes(base).stream()
+                      .map(
+                          n ->
+                              new CategoryTree.Node(
+                                  n.categoryId(),
+                                  n.parentId(),
+                                  CategoryTree.Level.valueOf(n.level()),
+                                  n.section(),
+                                  n.name(),
+                                  n.path(),
+                                  n.sortOrder()))
+                      .toList();
+          CategoryTree.Added added;
+          try {
+            added =
+                CategoryTree.withAdditions(
+                    nodes,
+                    base == null ? List.of() : store.nodeFilters(base),
+                    base == null ? List.of() : store.groups(base),
+                    additions);
+          } catch (CategoryTree.InvalidTreeException e) {
+            throw new PmartException(
+                "CATEGORY_CONFLICT",
+                ErrorCode.VALIDATION_FAILED.status(),
+                e.getMessage(),
+                false,
+                List.of());
+          }
+          if (added.addedIds().isEmpty()) {
+            throw new PmartException(
+                "NOTHING_TO_ADD",
+                ErrorCode.DOMAIN_REJECTED.status(),
+                "더할 카테고리가 없습니다(모두 발효 트리에 있습니다).",
+                false,
+                List.of());
+          }
+          int version = store.nextVersion();
+          String hash = Hashes.sha256(mapper.writeValueAsString(added.tree()));
+          String sourceNote =
+              (note == null || note.isBlank() ? "" : note.strip() + " / ")
+                  + "카테고리 추가 "
+                  + added.addedIds().size()
+                  + "개 (기준 버전 "
+                  + (base == null ? "없음" : base)
+                  + ")";
+          store.insert(
+              version,
+              added.tree(),
+              sourceNote.length() > 500 ? sourceNote.substring(0, 500) : sourceNote,
+              hash,
+              op.id(),
+              clock.instant());
+          return new AdditionCreated(version, base, added.addedIds(), List.copyOf(skippedPaths));
+        });
+  }
+
   public VersionRow version(int version) {
     return store
         .find(version)

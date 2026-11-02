@@ -236,6 +236,41 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /category-tree-additions:
+    post:
+      tags: [registration]
+      summary: 발효 트리에 없는 카테고리만 더한 새 트리 초안 (승인 대상)
+      description: |
+        seed-v1 묶음의 categories.json(categories[] 의 pmartCategoryIdLevels·bmartPath)을 그대로 받는다. 현재 발효 트리(없으면 빈 트리)를
+        복사하고, 없는 노드만 단계별로 더해 DRAFT 버전을 만든다. 기존 노드·필터 패널은 그대로 둔다(지우거나 이름을 바꾸지 않음).
+        - id 규칙: 하위 id 는 "상위 id + '-'" 로 시작. 단계는 1~4(TOP·SUB·CHIP1·CHIP2).
+        - 같은 id 가 다른 이름으로 이미 있으면, 또는 같은 이름 경로가 다른 id 로 이미 있으면 400(CATEGORY_CONFLICT, 고치지 않음).
+        - 더할 노드가 없으면 422 NOTHING_TO_ADD.
+        발효는 기존과 같이 응답의 approvalRequest 로 PRODUCT 승인(targetRef = categoryTreeVersion:{version}). 승인 전에 다른 트리 버전이
+        발효되면 이 초안은 그 변경을 담지 않으므로 다시 만든다(baseVersion 으로 확인).
+      operationId: createCategoryTreeAddition
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryAdditionRequest' }
+      responses:
+        '201':
+          description: DRAFT 생성 (addedCategoryIds = 새로 더한 노드, 상위부터)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryTreeVersion' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: NOTHING_TO_ADD
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /category-tree-versions/{version}:
     get:
       tags: [registration]
@@ -649,6 +684,26 @@ components:
         approvalId: { type: [string, 'null'] }
         effectiveFrom: { type: [string, 'null'], format: date-time }
         approvalRequest: { $ref: '#/components/schemas/ApprovalRequestBody' }
+        baseVersion: { type: [integer, 'null'], description: 추가 초안이 복사한 발효 버전(/category-tree-additions 응답만) }
+        addedCategoryIds: { type: array, items: { type: string }, description: 추가 초안에서 새로 더한 노드(/category-tree-additions 응답만) }
+        skippedPaths: { type: array, items: { type: string }, description: id 가 없어 건너뛴 이름 경로(/category-tree-additions 응답만) }
+    CategoryAdditionRequest:
+      type: object
+      required: [categories]
+      description: seed-v1 categories.json 모양. 다른 필드(format·rule·products·reason 등)는 무시한다
+      properties:
+        sourceNote: { type: string, maxLength: 500 }
+        categories:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items:
+            type: object
+            required: [bmartPath]
+            properties:
+              pmartCategoryIdLevels: { type: [array, 'null'], maxItems: 4, items: { type: string, maxLength: 64 }, description: '단계별 id, 상위부터 (p09, p09-c01, p09-c01-l01). null(묶음에서 매핑 못 한 경로)이면 그 항목은 건너뛴다' }
+              bmartPath: { type: array, minItems: 1, maxItems: 4, items: { type: string, maxLength: 100 }, description: 단계별 이름, 상위부터. 길이는 pmartCategoryIdLevels 와 같아야 한다 }
+              pmartCategoryId: { type: [string, 'null'], description: 참고(마지막 단계 id 와 같아야 함) }
     ApprovalRequestBody:
       type: object
       description: approval-service ChangeRequestBody 와 같은 모양. 그대로 POST /change-requests 본문으로 쓴다.
@@ -760,18 +815,28 @@ components:
         approvalRequest: { $ref: '#/components/schemas/ApprovalRequestBody' }
     IdMap:
       type: object
+      description: seed-v1 묶음의 id-map.json 과 같은 모양(format·sourceSystem·entries·note). 그대로 id-map.json 으로 저장해 수집 저장소에 돌려준다.
       properties:
+        format: { type: string, enum: [seed-v1] }
         batchId: { type: string }
         sourceSystem: { type: string }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/IdMapEntry' }
         products:
           type: array
-          items:
-            type: object
-            properties:
-              seedProductId: { type: string }
-              pmartProductId: { type: [string, 'null'] }
-              sku: { type: [string, 'null'] }
-              state: { type: string }
+          deprecated: true
+          description: entries 와 같은 목록(2026-11-02 이전 응답 호환). entries 를 쓴다
+          items: { $ref: '#/components/schemas/IdMapEntry' }
+        note: { type: string }
+    IdMapEntry:
+      type: object
+      properties:
+        seedProductId: { type: string }
+        identityKey: { type: [string, 'null'], description: 묶음 product.baseProductKey (= seed-v1 identityKey) }
+        pmartProductId: { type: [string, 'null'] }
+        sku: { type: [string, 'null'] }
+        state: { type: string, description: 'DRAFT / SUBMITTED / APPLIED / REJECTED' }
     BarcodeResolution:
       type: object
       properties:

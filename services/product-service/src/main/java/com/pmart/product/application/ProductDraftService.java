@@ -240,13 +240,18 @@ public class ProductDraftService {
         });
   }
 
-  /** id-map.json: seedProductId → productId·sku. */
+  /**
+   * id-map.json 항목: seedProductId(·identityKey) → productId·sku. identityKey 는 묶음의
+   * product.baseProductKey(seed-v1 에서 identityKey 와 같은 값)다.
+   */
   public List<Map<String, Object>> idMap(String batchId) {
     batch(batchId);
     List<Map<String, Object>> out = new ArrayList<>();
     for (DraftRow d : drafts.ofBatch(batchId)) {
       Map<String, Object> m = new LinkedHashMap<>();
       m.put("seedProductId", d.sourceKey());
+      JsonNode key = mapper.readTree(d.input()).path("product").path("baseProductKey");
+      m.put("identityKey", key.isString() ? key.asString() : null);
       m.put("pmartProductId", d.resultProductId());
       JsonNode skus = mapper.readTree(d.resultSkus());
       m.put("sku", skus.isArray() && !skus.isEmpty() ? skus.get(0).asString() : null);
@@ -402,6 +407,19 @@ public class ProductDraftService {
     copyText(prod, product, "baseProductKey");
     copyText(prod, product, "internalName");
     copyText(prod, product, "saleState");
+    // 묶음이 준 P마트 카테고리 id(B마트 트리 id 와 같음)가 있으면 그것으로 연결하고, 이름 경로는 id 가 없을 때만 쓰인다(DraftRules).
+    copyText(prod, product, "primaryCategoryId");
+    ArrayNode ids = mapper.createArrayNode();
+    prod.path("categoryIds")
+        .forEach(
+            c -> {
+              if (c.isString() && !c.asString().isBlank()) {
+                ids.add(c.asString());
+              }
+            });
+    if (!ids.isEmpty()) {
+      product.set("categoryIds", ids);
+    }
     ArrayNode paths = product.putArray("categoryPaths");
     if (prod.path("primaryCategory").isArray()) {
       paths.add(joinPath(prod.get("primaryCategory")));

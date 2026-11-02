@@ -264,6 +264,41 @@ public class CategoryStore {
         .toList();
   }
 
+  /** 버전의 필터 그룹 전체(옵션 화면 순서 포함) — 트리 복사용. */
+  public List<CategoryTree.FilterGroup> groups(int version) {
+    Map<String, List<String>> options = new java.util.HashMap<>();
+    jdbc.query(
+        "SELECT filter_group_id, name FROM filter_option WHERE version = ? ORDER BY filter_group_id, option_seq",
+        rs -> {
+          options
+              .computeIfAbsent(rs.getString("filter_group_id"), k -> new java.util.ArrayList<>())
+              .add(rs.getString("name"));
+        },
+        version);
+    return jdbc.query(
+        "SELECT * FROM filter_group WHERE version = ? ORDER BY filter_group_id",
+        (rs, n) ->
+            new CategoryTree.FilterGroup(
+                rs.getString("filter_group_id"),
+                rs.getString("name"),
+                CategoryTree.SelectionMode.valueOf(rs.getString("selection_mode")),
+                rs.getBoolean("common"),
+                List.copyOf(options.getOrDefault(rs.getString("filter_group_id"), List.of()))),
+        version);
+  }
+
+  /** 버전의 노드별 필터 패널 전체 — 트리 복사용. */
+  public List<CategoryTree.NodeFilter> nodeFilters(int version) {
+    return jdbc.query(
+        "SELECT * FROM category_filter WHERE version = ? ORDER BY category_id, sort_order",
+        (rs, n) ->
+            new CategoryTree.NodeFilter(
+                rs.getString("category_id"),
+                rs.getString("filter_group_id"),
+                rs.getInt("sort_order")),
+        version);
+  }
+
   private static VersionRow version(ResultSet rs) throws SQLException {
     Timestamp eff = rs.getTimestamp("effective_from");
     return new VersionRow(

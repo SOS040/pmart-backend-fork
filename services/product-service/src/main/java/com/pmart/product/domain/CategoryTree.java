@@ -150,6 +150,99 @@ public final class CategoryTree {
     return new Parsed(List.copyOf(nodes), List.copyOf(nodeFilters), List.copyOf(groups), counts);
   }
 
+  /** 더할 경로 하나: 단계별 id 와 이름(상위부터, 1~4단계). */
+  public record Addition(List<String> ids, List<String> names) {}
+
+  /** 추가 결과: 기존 + 새 노드로 된 트리와 새로 더한 id(상위부터). */
+  public record Added(Parsed tree, List<String> addedIds) {}
+
+  /**
+   * 기존 트리(노드·필터 패널·필터 그룹)에 없는 노드만 더한다. 기존 노드는 바꾸지 않는다. 같은 id 가 다른 이름·부모·단계로 있거나, 같은 이름 경로가 다른 id 로
+   * 있으면 충돌로 모아 {@link InvalidTreeException}. 이름 비교는 공백을 빼고 한다(seed-v1 규칙).
+   */
+  public static Added withAdditions(
+      List<Node> base,
+      List<NodeFilter> baseFilters,
+      List<FilterGroup> groups,
+      List<Addition> additions) {
+    List<String> errors = new ArrayList<>();
+    Map<String, Node> byId = new HashMap<>();
+    Map<String, String> idByPath = new HashMap<>();
+    Map<String, Integer> nextOrder = new HashMap<>();
+    List<Node> nodes = new ArrayList<>(base);
+    for (Node n : base) {
+      byId.put(n.categoryId(), n);
+      idByPath.put(squash(n.path()), n.categoryId());
+      nextOrder.merge(String.valueOf(n.parentId()), n.sortOrder() + 1, Math::max);
+    }
+    List<String> added = new ArrayList<>();
+    for (Addition a : additions) {
+      List<String> ids = a.ids();
+      List<String> names = a.names();
+      if (ids.isEmpty() || ids.size() > Level.values().length || ids.size() != names.size()) {
+        errors.add("단계 수 오류(id " + ids.size() + "개, 이름 " + names.size() + "개): " + names);
+        continue;
+      }
+      String parent = null;
+      String parentPath = null;
+      for (int i = 0; i < ids.size(); i++) {
+        String id = ids.get(i) == null ? "" : ids.get(i).strip();
+        String name = names.get(i) == null ? "" : names.get(i).strip();
+        Level level = Level.values()[i];
+        if (id.isEmpty() || name.isEmpty()) {
+          errors.add("id·이름 없는 단계: " + names);
+          break;
+        }
+        if (parent != null && !id.startsWith(parent + "-")) {
+          errors.add("id 가 상위 id 로 시작하지 않습니다: " + id + " (상위 " + parent + ")");
+          break;
+        }
+        String path = parentPath == null ? name : parentPath + " > " + name;
+        Node existing = byId.get(id);
+        if (existing != null) {
+          if (!squash(existing.name()).equals(squash(name))) {
+            errors.add(
+                "같은 id 의 이름이 다릅니다: " + id + " (기존 " + existing.name() + ", 받은 " + name + ")");
+            break;
+          }
+          if (existing.level() != level || !java.util.Objects.equals(existing.parentId(), parent)) {
+            errors.add("같은 id 의 위치가 다릅니다: " + id + " (기존 부모 " + existing.parentId() + ")");
+            break;
+          }
+          path = existing.path();
+        } else {
+          String other = idByPath.get(squash(path));
+          if (other != null) {
+            errors.add("같은 이름 경로가 다른 id 로 있습니다: " + path + " (기존 " + other + ", 받은 " + id + ")");
+            break;
+          }
+          String parentKey = String.valueOf(parent);
+          int order = nextOrder.getOrDefault(parentKey, 0);
+          nextOrder.put(parentKey, order + 1);
+          Node n = new Node(id, parent, level, null, name, path, order);
+          nodes.add(n);
+          byId.put(id, n);
+          idByPath.put(squash(path), id);
+          added.add(id);
+        }
+        parent = id;
+        parentPath = path;
+      }
+    }
+    if (!errors.isEmpty()) {
+      throw new InvalidTreeException(errors);
+    }
+    Map<Level, Integer> counts = new EnumMap<>(Level.class);
+    nodes.forEach(n -> counts.merge(n.level(), 1, Integer::sum));
+    return new Added(
+        new Parsed(List.copyOf(nodes), List.copyOf(baseFilters), List.copyOf(groups), counts),
+        List.copyOf(added));
+  }
+
+  private static String squash(String s) {
+    return s.replaceAll("\\s+", "");
+  }
+
   private static void walk(
       SourceNode n,
       @Nullable String parentId,

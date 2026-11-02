@@ -3,6 +3,7 @@ package com.pmart.product.api;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.product.api.generated.RegistrationApi;
+import com.pmart.product.api.generated.model.CategoryAdditionRequest;
 import com.pmart.product.api.generated.model.CategoryTreeDraftRequest;
 import com.pmart.product.api.generated.model.CategoryTreeVersion;
 import com.pmart.product.api.generated.model.IdMap;
@@ -11,6 +12,7 @@ import com.pmart.product.api.generated.model.ProductDraft;
 import com.pmart.product.api.generated.model.ProductDraftInput;
 import com.pmart.product.api.generated.model.SubmissionResult;
 import com.pmart.product.application.CategoryTreeService;
+import com.pmart.product.application.CategoryTreeService.AdditionCreated;
 import com.pmart.product.application.CategoryTreeService.DraftCreated;
 import com.pmart.product.application.Operator;
 import com.pmart.product.application.ProductDraftService;
@@ -18,6 +20,7 @@ import com.pmart.product.domain.CategoryTree;
 import com.pmart.product.infrastructure.CategoryStore.VersionRow;
 import com.pmart.product.infrastructure.DraftStore.BatchRow;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +79,43 @@ public class RegistrationController implements RegistrationApi {
                 raw)
             .value();
     return ResponseEntity.status(HttpStatus.CREATED).body(treeVersion(trees.version(c.version())));
+  }
+
+  @Override
+  public ResponseEntity<CategoryTreeVersion> createCategoryTreeAddition(
+      String idempotencyKey, String xSourceSystem, CategoryAdditionRequest body) {
+    JsonNode raw = mapper.valueToTree(body);
+    List<CategoryTree.Addition> additions = new ArrayList<>();
+    List<String> skipped = new ArrayList<>();
+    for (JsonNode c : raw.path("categories")) {
+      List<String> names = strings(c.path("bmartPath"));
+      if (!c.path("pmartCategoryIdLevels").isArray()) {
+        skipped.add(String.join(" > ", names));
+        continue;
+      }
+      additions.add(new CategoryTree.Addition(strings(c.get("pmartCategoryIdLevels")), names));
+    }
+    AdditionCreated a =
+        trees
+            .createAddition(
+                idempotencyKey,
+                Operator.current(xSourceSystem),
+                body.getSourceNote(),
+                additions,
+                skipped,
+                raw)
+            .value();
+    CategoryTreeVersion v = treeVersion(trees.version(a.version()));
+    v.setBaseVersion(a.baseVersion());
+    v.setAddedCategoryIds(a.addedCategoryIds());
+    v.setSkippedPaths(a.skippedPaths());
+    return ResponseEntity.status(HttpStatus.CREATED).body(v);
+  }
+
+  private static List<String> strings(JsonNode arr) {
+    List<String> out = new ArrayList<>();
+    arr.forEach(x -> out.add(x.isNull() ? null : x.asString()));
+    return out;
   }
 
   @Override
@@ -155,9 +195,13 @@ public class RegistrationController implements RegistrationApi {
   public ResponseEntity<IdMap> getProductImportIdMap(String batchId) {
     BatchRow b = drafts.batch(batchId);
     Map<String, Object> m = new LinkedHashMap<>();
+    List<Map<String, Object>> entries = drafts.idMap(batchId);
+    m.put("format", "seed-v1");
     m.put("batchId", batchId);
     m.put("sourceSystem", b.sourceSystem());
-    m.put("products", drafts.idMap(batchId));
+    m.put("entries", entries);
+    m.put("products", entries);
+    m.put("note", "PMart filled pmartProductId/sku after loading (null = not issued yet)");
     return ResponseEntity.ok(mapping.convert(m, IdMap.class));
   }
 

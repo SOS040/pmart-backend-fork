@@ -77,6 +77,77 @@ class CategoryTreeAndSkuTest {
   }
 
   @Test
+  void additionsAddOnlyMissingNodesAndKeepExistingOnes() {
+    var base =
+        CategoryTree.parse(
+            List.of(
+                node(
+                    "p03",
+                    "국·탕·찌개",
+                    "top",
+                    List.of("f1"),
+                    node("p03-c01", "국·국밥", "sub", List.of("f2")))),
+            FILTERS);
+    var added =
+        CategoryTree.withAdditions(
+            base.nodes(),
+            base.nodeFilters(),
+            base.filterGroups(),
+            List.of(
+                new CategoryTree.Addition(List.of("p03", "p03-c02"), List.of("국·탕·찌개", "탕 · 찌개")),
+                new CategoryTree.Addition(
+                    List.of("p09", "p09-c01", "p09-c01-l01"),
+                    List.of("음료·커피·생수", "탄산음료", "콜라·사이다")),
+                new CategoryTree.Addition(
+                    List.of("p09", "p09-c01", "p09-c01-l01"),
+                    List.of("음료·커피·생수", "탄산음료", "콜라·사이다"))));
+    assertThat(added.addedIds()).containsExactly("p03-c02", "p09", "p09-c01", "p09-c01-l01");
+    var c02 =
+        added.tree().nodes().stream()
+            .filter(n -> n.categoryId().equals("p03-c02"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(c02.parentId()).isEqualTo("p03");
+    assertThat(c02.level()).isEqualTo(Level.SUB);
+    assertThat(c02.sortOrder()).isEqualTo(1); // 기존 형제(p03-c01) 다음
+    assertThat(c02.path()).isEqualTo("국·탕·찌개 > 탕 · 찌개");
+    assertThat(added.tree().nodeFilters()).isEqualTo(base.nodeFilters());
+    assertThat(added.tree().countsByLevel())
+        .containsEntry(Level.CHIP1, 1)
+        .containsEntry(Level.TOP, 2);
+  }
+
+  @Test
+  void additionsRejectRenamedIdsSamePathOtherIdAndBadPrefix() {
+    var base =
+        CategoryTree.parse(
+            List.of(
+                node("p03", "국·탕·찌개", "top", List.of(), node("p03-c01", "국·국밥", "sub", List.of()))),
+            FILTERS);
+    assertThatThrownBy(
+            () ->
+                CategoryTree.withAdditions(
+                    base.nodes(),
+                    base.nodeFilters(),
+                    base.filterGroups(),
+                    List.of(
+                        new CategoryTree.Addition(
+                            List.of("p03", "p03-c01"), List.of("국·탕·찌개", "다른 이름")),
+                        new CategoryTree.Addition(
+                            List.of("p03", "p03-c09"), List.of("국 · 탕 · 찌개", "국·국밥")),
+                        new CategoryTree.Addition(List.of("p09", "x01"), List.of("음료", "탄산")),
+                        new CategoryTree.Addition(List.of("p09"), List.of("음료", "탄산")))))
+        .isInstanceOf(CategoryTree.InvalidTreeException.class)
+        .satisfies(
+            e ->
+                assertThat(((CategoryTree.InvalidTreeException) e).errors())
+                    .anyMatch(s -> s.contains("이름이 다릅니다"))
+                    .anyMatch(s -> s.contains("같은 이름 경로가 다른 id"))
+                    .anyMatch(s -> s.contains("상위 id 로 시작하지"))
+                    .anyMatch(s -> s.contains("단계 수 오류")));
+  }
+
+  @Test
   void rejectsWrongLevelOrderUnknownFilterAndDuplicateIds() {
     assertThatThrownBy(
             () ->

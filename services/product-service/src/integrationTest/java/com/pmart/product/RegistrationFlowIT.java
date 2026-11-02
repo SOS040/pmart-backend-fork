@@ -401,6 +401,90 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
         b -> "EFFECTIVE".equals(b.path("state").asString()));
   }
 
+  @Test
+  void categoryAdditionFromSeedCategoriesThenSeedLinksByCategoryId() throws Exception {
+    ensureTree();
+    int base = get("/categories/tree").body().path("version").asInt();
+
+    // seed-v1 categories.json 모양 그대로(다른 필드는 무시). 매핑 못 한 경로(id null)는 건너뛴다
+    Map<String, Object> cola = new LinkedHashMap<>();
+    cola.put("bmartPath", List.of("음료·커피·생수", "탄산음료", "콜라·사이다"));
+    cola.put("products", 10);
+    cola.put("pmartCategoryId", "p09-c01-l01");
+    cola.put("pmartCategoryIdLevels", List.of("p09", "p09-c01", "p09-c01-l01"));
+    Map<String, Object> fruit = new LinkedHashMap<>();
+    fruit.put("bmartPath", List.of("음료·커피·생수", "탄산음료", "과일·기타탄산음료"));
+    fruit.put("pmartCategoryIdLevels", List.of("p09", "p09-c01", "p09-c01-l02"));
+    Map<String, Object> existing = new LinkedHashMap<>();
+    existing.put("bmartPath", List.of("국·탕·찌개", "국·국밥"));
+    existing.put("pmartCategoryIdLevels", List.of("p03", "p03-c01"));
+    Map<String, Object> unmapped = new LinkedHashMap<>();
+    unmapped.put("bmartPath", List.of("비웰"));
+    unmapped.put("pmartCategoryIdLevels", null);
+    Map<String, Object> body =
+        Map.of("format", "seed-v1", "categories", List.of(cola, fruit, existing, unmapped));
+
+    // 같은 id 를 다른 이름으로 주면 충돌(고치지 않음)
+    Map<String, Object> renamed = new LinkedHashMap<>();
+    renamed.put("bmartPath", List.of("국·탕·찌개", "다른 이름"));
+    renamed.put("pmartCategoryIdLevels", List.of("p03", "p03-c01"));
+    Res conflict = post("/category-tree-additions", Map.of("categories", List.of(renamed)));
+    assertThat(conflict.status()).isEqualTo(400);
+    assertThat(conflict.body().path("code").asString()).isEqualTo("CATEGORY_CONFLICT");
+
+    Res draft = post("/category-tree-additions", body);
+    assertThat(draft.status()).isEqualTo(201);
+    assertThat(draft.body().path("state").asString()).isEqualTo("DRAFT");
+    assertThat(draft.body().path("baseVersion").asInt()).isEqualTo(base);
+    assertThat(mapper.convertValue(draft.body().path("addedCategoryIds"), List.class))
+        .containsExactly("p09", "p09-c01", "p09-c01-l01", "p09-c01-l02");
+    assertThat(draft.body().path("skippedPaths").path(0).asString()).isEqualTo("비웰");
+    int version = draft.body().path("version").asInt();
+
+    decide(draft.body().path("approvalRequest"), "APPROVED");
+    await(
+        "/category-tree-versions/" + version, b -> "EFFECTIVE".equals(b.path("state").asString()));
+    JsonNode tree = get("/categories/tree").body();
+    assertThat(tree.path("version").asInt()).isEqualTo(version);
+    assertThat(tree.toString())
+        .contains("\"categoryId\":\"p09-c01-l01\"")
+        .contains("음료·커피·생수 > 탄산음료 > 콜라·사이다")
+        .contains("\"categoryId\":\"p03-c02\"");
+    // 기존 노드의 필터 패널은 그대로 복사된다
+    assertThat(get("/categories/p03-c02/filters").body().path("groups")).hasSize(1);
+
+    // 모두 이미 있으면 NOTHING_TO_ADD
+    assertThat(post("/category-tree-additions", body).body().path("code").asString())
+        .isEqualTo("NOTHING_TO_ADD");
+
+    // seed-v1 상품: 이름 경로가 트리와 달라도 primaryCategoryId·categoryIds 로 연결된다
+    Map<String, Object> seed =
+        seedProduct(
+            "bm-cola-" + UUID.randomUUID(),
+            "코카콜라 500ml",
+            List.of(List.of("음료 커피 생수", "탄산", "콜라")),
+            520);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> product = (Map<String, Object>) seed.get("product");
+    product.put("primaryCategoryId", "p09-c01-l01");
+    product.put("categoryIds", List.of("p09-c01-l01"));
+    String seedId = (String) product.get("seedProductId");
+    Res batch = post("/product-import-batches", form(seedZip(Map.of(seedId, seed))));
+    assertThat(batch.body().path("validCount").asInt()).isEqualTo(1);
+    assertThat(batch.body().path("drafts").path(0).path("resolvedCategoryIds").path(0).asString())
+        .isEqualTo("p09-c01-l01");
+
+    // id-map: seed-v1 id-map.json 모양(entries·identityKey)
+    JsonNode idMap =
+        get("/product-import-batches/" + batch.body().path("batchId").asString() + "/id-map")
+            .body();
+    assertThat(idMap.path("format").asString()).isEqualTo("seed-v1");
+    assertThat(idMap.path("entries").path(0).path("seedProductId").asString()).isEqualTo(seedId);
+    assertThat(idMap.path("entries").path(0).path("identityKey").asString())
+        .isEqualTo("코카콜라 500ml|180g");
+    assertThat(idMap.path("entries").path(0).path("pmartProductId").isNull()).isTrue();
+  }
+
   static Map<String, Object> water(String barcode) {
     return Map.of(
         "product", Map.of("internalName", "삼다수 500mL", "categoryPaths", List.of("국·탕·찌개")),

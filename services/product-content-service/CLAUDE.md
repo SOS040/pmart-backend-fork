@@ -25,7 +25,8 @@
 - 설정 `pmart.storage.s3.*` ← pmart-config `product-content-service-<프로필>.yml`(자격 증명은 {cipher}). 버킷·키가 없으면 기동 실패.
 - 버킷은 비공개. 클라이언트는 `GET /content-images/{imageId}` 로 받는다. 게시된 이미지는 토큰 없이(비회원·`<img src>`), 초안 이미지는 운영자·서비스만. presigned URL 을 내주지 않는다.
 - 상품 상세·카드·게시 이미지는 공개(계약 `security: []`, 비회원 둘러보기 2026-10-30).
-- 시험 묶음·이미지는 합성 바이트만. seed-v1 캡처 원본을 저장소에 넣지 않는다.
+- 자동 시험(테스트 코드·Git 에 들어가는 자료)의 묶음·이미지는 합성 바이트만.
+- seed-v1 묶음(B마트 화면 캡처)의 `images/`(main·description_NN·info)는 **LAN·로컬 저장소(SeaweedFS)에 내부 확인용으로 올려도 된다**(사용자 결정 2026-11-02). 묶음 zip·`captures/` 는 Git·컨테이너 이미지·공개 저장소·외부 공개 화면에 넣지 않는다(묶음 README 의 재배포 금지). 운영(prod)에는 올리지 않는다.
 
 ## 상태
 2026-10-30 임시 백오피스 등록 구현: 콘텐츠 초안(개별·seed-v1 배치 upsert)·이미지 업로드·제출 준비(DISPLAY 승인 본문), ProductVersionPublished 투영·원천 키 연결, ApprovalDecided(DISPLAY) → 게시(`product_content` 불변 버전) + ProductContentPublished(commerce.product.v1), 고객 조회(상세·카드·스냅샷·projection-status).
