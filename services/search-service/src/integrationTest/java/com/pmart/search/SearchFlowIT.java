@@ -8,7 +8,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.pmart.common.test.EventEnvelopeFixtures;
-import com.pmart.common.test.KafkaContainerSupport;
+import com.pmart.common.test.PostgresKafkaContainerSupport;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,14 +21,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.kafka.KafkaContainer;
+import org.testcontainers.utility.MountableFile;
 import org.wiremock.spring.ConfigureWireMock;
 import org.wiremock.spring.EnableWireMock;
 import org.wiremock.spring.InjectWireMock;
@@ -35,8 +41,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 상품·콘텐츠·판매 상태·가격 사건(Kafka) → OpenSearch 색인 → 검색 API. 실제 Kafka·OpenSearch, 공개 카드 API 는 WireMock. 사건
- * 순서 뒤바뀜(가격이 상품보다 먼저)·재전달·옛 버전도 확인한다.
+ * 상품·콘텐츠·판매 상태·가격 사건(Kafka) → <b>Logstash</b>(search-index.conf) → Elasticsearch(nori) → 검색 API
+ * (ADR-0031). 실제 Kafka·Elasticsearch·Logstash 를 한 네트워크에 띄우고, 공개 카드·카테고리 트리·가용 조회는 WireMock(호스트). 사건
+ * 순서 뒤바뀜(가격이 상품보다 먼저)·재전달·옛 버전·한국어 형태소/부분 일치도 확인한다. Elasticsearch 는 시작 때 nori 를 설치한다(인터넷 필요).
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -47,30 +54,76 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock(
     @ConfigureWireMock(
         name = "content",
-        // 카드·카테고리 트리·가용 조회를 한 WireMock 이 맡는다(경로가 서로 다르다)
-        baseUrlProperties = {
-          "pmart.search.content-base-url",
-          "pmart.search.product-base-url",
-          "pmart.search.inventory-base-url"
-        }))
-class SearchFlowIT extends KafkaContainerSupport {
+        // 카드(Logstash 가 부름)·카테고리 트리·가용 조회(서비스가 부름)를 한 WireMock 이 맡는다(경로가 서로 다르다)
+        baseUrlProperties = {"pmart.search.product-base-url", "pmart.search.inventory-base-url"}))
+@Testcontainers
+class SearchFlowIT {
 
-  /** deploy/local·LAN 과 같은 이미지(render.sh·docker-compose.yml). */
+  static final Network NET = Network.newNetwork();
+
+  @Container @ServiceConnection
+  static final KafkaContainer KAFKA =
+      new KafkaContainer(PostgresKafkaContainerSupport.KAFKA_IMAGE)
+          .withNetwork(NET)
+          .withListener("kafka:19092");
+
+  /** deploy/lan 과 같은 이미지·nori 설치 방식(ADR-0031). */
   @Container
-  static final GenericContainer<?> OPENSEARCH =
-      new GenericContainer<>("opensearchproject/opensearch:2.19.1")
+  static final GenericContainer<?> ES =
+      new GenericContainer<>("docker.elastic.co/elasticsearch/elasticsearch:8.18.0")
+          .withNetwork(NET)
+          .withNetworkAliases("elasticsearch")
           .withEnv("discovery.type", "single-node")
-          .withEnv("DISABLE_SECURITY_PLUGIN", "true")
-          .withEnv("DISABLE_INSTALL_DEMO_CONFIG", "true")
-          .withEnv("OPENSEARCH_JAVA_OPTS", "-Xms512m -Xmx512m")
+          .withEnv("xpack.security.enabled", "false")
+          .withEnv("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
+          .withCommand(
+              "sh",
+              "-c",
+              "bin/elasticsearch-plugin list | grep -q analysis-nori"
+                  + " || bin/elasticsearch-plugin install --batch analysis-nori;"
+                  + " exec /usr/local/bin/docker-entrypoint.sh eswrapper")
           .withExposedPorts(9200)
-          .waitingFor(Wait.forHttp("/").forPort(9200).withStartupTimeout(Duration.ofMinutes(3)));
+          .waitingFor(Wait.forHttp("/").forPort(9200).withStartupTimeout(Duration.ofMinutes(5)));
+
+  /** WireMock(호스트) 포트를 안 뒤에 띄운다 — 카드 API 주소가 필요하다. */
+  static GenericContainer<?> logstash;
 
   @DynamicPropertySource
-  static void opensearch(DynamicPropertyRegistry r) {
+  static void elasticsearch(DynamicPropertyRegistry r) {
     r.add(
-        "pmart.search.opensearch-url",
-        () -> "http://" + OPENSEARCH.getHost() + ":" + OPENSEARCH.getMappedPort(9200));
+        "pmart.search.elasticsearch-url",
+        () -> "http://" + ES.getHost() + ":" + ES.getMappedPort(9200));
+  }
+
+  void startLogstash() {
+    if (logstash != null) {
+      return;
+    }
+    org.testcontainers.Testcontainers.exposeHostPorts(content.port());
+    logstash =
+        new GenericContainer<>("docker.elastic.co/logstash/logstash:8.18.0")
+            .withNetwork(NET)
+            .withEnv("PMART_KAFKA_BOOTSTRAP", "kafka:19092")
+            .withEnv("PMART_ES_URL", "http://elasticsearch:9200")
+            .withEnv(
+                "PMART_CONTENT_BASE_URL", "http://host.testcontainers.internal:" + content.port())
+            .withEnv("XPACK_MONITORING_ENABLED", "false")
+            .withEnv("LS_JAVA_OPTS", "-Xms256m -Xmx256m")
+            .withCopyFileToContainer(
+                MountableFile.forHostPath(Path.of("src/main/logstash/search-index.conf")),
+                "/usr/share/logstash/pipeline/logstash.conf")
+            .withCommand(
+                "logstash",
+                "-f",
+                "/usr/share/logstash/pipeline/logstash.conf",
+                "--pipeline.workers",
+                "1",
+                "--pipeline.batch.size",
+                "1")
+            .waitingFor(
+                Wait.forLogMessage(".*Pipelines running.*", 1)
+                    .withStartupTimeout(Duration.ofMinutes(3)));
+    logstash.start();
   }
 
   @LocalServerPort int port;
@@ -90,6 +143,9 @@ class SearchFlowIT extends KafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     content.resetAll();
+    // 색인은 Logstash 가 쓰므로 먼저 만든다(LAN 은 es-init — 같은 정의 파일)
+    search("");
+    startLogstash();
     card("PRD-1", "[시험] 소고기 미역국 500g", 1);
     card("PRD-2", "[시험] 국산콩 두부 300g", 1);
     card("PRD-3", "[시험] 고기 왕만두 1kg", 1);
@@ -217,7 +273,7 @@ class SearchFlowIT extends KafkaContainerSupport {
   }
 
   JsonNode await(String query, Predicate<JsonNode> until) throws InterruptedException {
-    Instant deadline = Instant.now().plus(Duration.ofSeconds(60));
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(90));
     JsonNode last = null;
     while (Instant.now().isBefore(deadline)) {
       last = search(query);
@@ -273,6 +329,9 @@ class SearchFlowIT extends KafkaContainerSupport {
 
     // 한국어 부분 일치(n-gram) · 카테고리 조상 · 가격 정렬
     assertThat(ids(search("?q=미역"))).containsExactly("PRD-1");
+    // 형태소(nori): 조사가 붙은 검색어 — 조각 일치로는 "를" 이 없어 못 찾는다
+    assertThat(ids(search("?q=두부를"))).containsExactly("PRD-2");
+    assertThat(ids(search("?q=국산콩으로"))).containsExactly("PRD-2");
     assertThat(ids(search("?q=두부 300g"))).containsExactly("PRD-2");
     assertThat(ids(search("?q=없는상품명"))).isEmpty();
     assertThat(ids(search("?categoryId=t02"))).containsExactlyInAnyOrder("PRD-1", "PRD-3");

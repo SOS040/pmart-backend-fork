@@ -1,6 +1,6 @@
 # ADR-0021: 상품 검색 색인 — OpenSearch 사건 투영, 버전 비교 멱등(inbox 없음), 콘텐츠 카드 보강
 
-- 상태: 제안
+- 상태: 제안 — **2026-11-03 ADR-0031 로 일부 대체**(Elasticsearch·Logstash·Filebeat·Kibana)
 - 날짜: 2026-10-30
 - 관련: tech-stack.md(선택적 스택 "검색 서비스: OpenSearch"), ADR-0009(이벤트 계약), service-map `search-service`
 

@@ -46,7 +46,11 @@ check() {
     zipkin)   curl -sf -m 5 "http://$ip:9411/health" >/dev/null ;;
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
     backoffice-web) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip/")" = 200 ] ;;    # 임시 백오피스(Nginx)
-    opensearch) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;;    # 단일 노드라 yellow 도 정상
+    elasticsearch) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031)
+    kibana)   [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:5601/api/status")" = 200 ] ;;
+    logstash) [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "http://$ip:5044/")" != 000 ] ;;   # beats 포트가 열려 있으면 됨
+    prometheus|alertmanager) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:$([ "$c" = prometheus ] && echo 9090 || echo 9093)/-/ready")" = 200 ] ;;
+    grafana)  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:3000/api/health")" = 200 ] ;;
     connect)
       body="$(curl -sf -m 8 "http://$ip:8083/connectors?expand=status")" || return 1
       # 커넥터가 하나 이상 있고 RUNNING 이 아닌 상태(UNASSIGNED·FAILED·PAUSED)가 없어야 한다

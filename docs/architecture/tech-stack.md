@@ -24,7 +24,7 @@
 | API 명세 | OpenAPI + springdoc-openapi | REST API 계약 문서화 |
 | 입력 검증 | Jakarta Bean Validation | 요청 형식과 기본 제약 검증 |
 | 장애 제어 | Resilience4j | 타임아웃·제한적 재시도·서킷 브레이커 |
-| 로그 | SLF4J + Logback(JSON stdout) → Fluent Bit → OpenSearch + OpenSearch Dashboards (ADR-0030) | 구조화 로그와 추적 식별자, 전 서비스 로그 한곳 검색(LAN 보존 3일) |
+| 로그 | SLF4J + Logback(JSON stdout) → Filebeat → Logstash → Elasticsearch + Kibana (ADR-0031, Elastic Stack) | 구조화 로그와 추적 식별자, 전 서비스 로그 한곳 검색(LAN 3일·색인 1GB·전체 4GB) |
 | 메트릭 | Actuator + Micrometer | 서비스·업무 상태 관측 |
 | 모니터링 | Prometheus + Grafana + Alertmanager (ADR-0030) | 수집·대시보드·알림(전송 채널은 아직 없음) |
 | 분산 추적 | Micrometer Tracing + OpenTelemetry + Zipkin | HTTP·Kafka 추적 연결 |
@@ -44,7 +44,7 @@
 | 비밀정보 | Vault 또는 Cloud Secret Manager | 토큰·PG 키·DB 자격증명 관리 |
 
 ## 선택적 스택
-- 검색 서비스: OpenSearch
+- 검색 서비스: Elasticsearch 8.18 + nori(한국어 형태소) + n-gram, 색인은 Logstash 가 도메인 이벤트로(ADR-0031 — 2026-11-03 OpenSearch 에서 변경)
 - AI 서비스: Spring AI + pgvector
 - 경로·배정 최적화: Google OR-Tools **Java 바인딩** (`transport-routing-service`, `mfc-capacity-service`에만). 별도 Python 런타임은 두지 않는다. GreedRL·RouteFinder 등 Python 전용 모델은 3단계에 별도 승인 후 검토.
 - 설정: Spring Cloud Config Server(`platform-services/config-server`). 정본은 GitHub `code-and-pick/pmart-config`, 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod), 비밀은 `{cipher}`(ADR-0027·0029). 서비스 검색: 이름(LAN compose 서비스명, 운영은 미정) — Eureka 는 두지 않는다.

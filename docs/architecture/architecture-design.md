@@ -365,7 +365,7 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 
 - 각 서비스는 `services/{name}/CLAUDE.md`에 내부 규칙을 둔다. Gradle 경로는 `:services:{name}`, 플랫폼 앱은 `:platform-services:api-gateway`.
 - 패키지: `com.pmart.<domain>.{api, application, domain, infrastructure}` (`.claude/rules/service-architecture.md`).
-- 최적화 라이브러리(OR-Tools Java)는 `transport-routing-service`, `mfc-capacity-service`의 `infrastructure` 어댑터로만 의존한다. 검색(OpenSearch)은 `search-service`, AI(Spring AI + pgvector)는 `ai-assistant-service`에만.
+- 최적화 라이브러리(OR-Tools Java)는 `transport-routing-service`, `mfc-capacity-service`의 `infrastructure` 어댑터로만 의존한다. 검색(Elasticsearch, ADR-0031)은 `search-service`, AI(Spring AI + pgvector)는 `ai-assistant-service`에만.
 - `[가정]` `platform-services/`에는 api-gateway만 둔다. auth·notification·audit·approval·case·center-master·backoffice-bff는 업무 데이터를 가지므로 `services/`. 다르게 정하면 이 절만 고친다.
 
 ## 10. 횡단 관심사

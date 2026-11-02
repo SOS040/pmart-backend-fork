@@ -20,7 +20,7 @@ paths:
 - 공통 빌드 규칙은 `build-logic`의 convention plugin으로. 루트 `allprojects`/`subprojects` 일괄 설정은 피한다.
 - 실행 서비스는 `bootJar`, 라이브러리는 일반 `jar`. 라이브러리에 Spring Boot 진입점 금지.
 - 루트 프로젝트는 집계·품질 검증 전용. 업무 코드 없음.
-- 모든 서비스에 모든 의존성을 추가하지 않는다. 검색(OpenSearch)·AI(Spring AI, pgvector)는 해당 서비스에만.
+- 모든 서비스에 모든 의존성을 추가하지 않는다. 검색(Elasticsearch — 라이브러리 없이 REST, ADR-0031)·AI(Spring AI, pgvector)는 해당 서비스에만.
 
 ## 프로젝트 의존성
 허용: 서비스 → 공통 기술 라이브러리 / 버전 관리된 계약, 테스트 → common-test

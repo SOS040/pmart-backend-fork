@@ -1,6 +1,6 @@
 # ADR-0030 관측: 지표는 Prometheus·Grafana·Alertmanager, 로그는 Fluent Bit → OpenSearch, 미처리 메시지는 서비스별 dead_letter 표
 
-- 상태: 승인 (2026-11-02, 사용자 요청 "1단계부터 3단계까지 진행" — 1단계 = 모니터링·DLQ 운영·로그 수집)
+- 상태: 승인 (2026-11-02, 사용자 요청 "1단계부터 3단계까지 진행" — 1단계 = 모니터링·DLQ 운영·로그 수집) — **2026-11-03 ADR-0031 로 일부 대체**(Elasticsearch·Logstash·Filebeat·Kibana)
 - 관련: `docs/architecture/tech-stack.md`(모니터링 Prometheus + Grafana), ADR-0009(봉투·inbox), ADR-0021(OpenSearch), ADR-0026(내부 호출 무인증), `deploy/lan/README.md`
 
 ## 배경

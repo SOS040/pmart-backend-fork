@@ -9,8 +9,7 @@ spring:
     bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
 pmart:
   search:
-    opensearch-url: ${PMART_OPENSEARCH_URL}
-    content-base-url: ${PMART_PRODUCT_CONTENT_BASE_URL:http://product-content-service:8102}
+    elasticsearch-url: ${PMART_ELASTICSEARCH_URL}
 management:
   tracing:
     export:

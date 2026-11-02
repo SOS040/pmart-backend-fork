@@ -4,10 +4,15 @@
     "number_of_replicas": 0,
     "analysis": {
       "tokenizer": {
-        "name_ngram": { "type": "ngram", "min_gram": 1, "max_gram": 2, "token_chars": ["letter", "digit"] }
+        "name_nori": { "type": "nori_tokenizer", "decompound_mode": "mixed" },
+        "name_ngram": { "type": "ngram", "min_gram": 1, "max_gram": 2, "token_chars": ["letter", "digit"] },
+        "name_edge": { "type": "edge_ngram", "min_gram": 1, "max_gram": 10, "token_chars": ["letter", "digit"] }
       },
       "analyzer": {
-        "name_ngram": { "type": "custom", "tokenizer": "name_ngram", "filter": ["lowercase"] }
+        "name_nori": { "type": "custom", "tokenizer": "name_nori", "filter": ["nori_part_of_speech", "lowercase"] },
+        "name_ngram": { "type": "custom", "tokenizer": "name_ngram", "filter": ["lowercase"] },
+        "name_edge": { "type": "custom", "tokenizer": "name_edge", "filter": ["lowercase"] },
+        "name_edge_search": { "type": "custom", "tokenizer": "standard", "filter": ["lowercase"] }
       }
     }
   },
@@ -16,7 +21,14 @@
     "properties": {
       "productId": { "type": "keyword" },
       "productVersion": { "type": "integer" },
-      "name": { "type": "text", "analyzer": "name_ngram" },
+      "name": {
+        "type": "text",
+        "analyzer": "name_nori",
+        "fields": {
+          "edge": { "type": "text", "analyzer": "name_edge", "search_analyzer": "name_edge_search" },
+          "partial": { "type": "text", "analyzer": "name_ngram" }
+        }
+      },
       "imageUrl": { "type": "keyword", "index": false },
       "contentVersion": { "type": "integer" },
       "contentPublishedAtMs": { "type": "date", "format": "epoch_millis" },

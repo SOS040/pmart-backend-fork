@@ -133,26 +133,58 @@ services:
       timeout: 3s
       retries: 30
 
-  opensearch:
-    # 상품 검색 색인(search-service 전용, tech-stack 선택적 스택). 단일 노드·보안 플러그인 끔(로컬 전용, 공개 상품 정보만 색인).
-    # 한국어 부분 일치는 내장 cjk_bigram 으로 한다(플러그인 없음). 호스트 bootRun 용으로 127.0.0.1:9200 만 연다.
-    image: opensearchproject/opensearch:2.19.1
+  elasticsearch:
+    # 상품 검색 색인(search-service 는 조회만, ADR-0031). 단일 노드·보안 끔(로컬 전용). nori 는 시작 때 없으면 설치(인터넷 필요).
+    # 색인은 es-init 이 만들고 Logstash 가 채운다(자동 생성 금지 — 매핑 없는 색인 방지). 호스트 bootRun 용으로 127.0.0.1:9200 만 연다.
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    command: ["sh", "-c", "bin/elasticsearch-plugin list | grep -q analysis-nori || bin/elasticsearch-plugin install --batch analysis-nori; exec /usr/local/bin/docker-entrypoint.sh eswrapper"]
     environment:
       discovery.type: single-node
-      DISABLE_SECURITY_PLUGIN: "true"
-      DISABLE_INSTALL_DEMO_CONFIG: "true"
-      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      xpack.security.enabled: "false"
+      action.auto_create_index: "+pmart-logs-*,+.*,-*"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports: ["127.0.0.1:9200:9200"]
     volumes:
-      - osdata:/usr/share/opensearch/data
+      - esdata:/usr/share/elasticsearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9200/"]
       interval: 5s
       timeout: 3s
-      retries: 60
+      retries: 120
+
+  es-init:
+    # 검색 색인(products-v2·sku-prices-v1)을 search-service 의 정의 파일로 만든다(LAN 과 같은 스크립트, Kibana 단계는 건너뜀)
+    image: curlimages/curl:8.14.1
+    restart: "no"
+    entrypoint: ["sh", "/init/es-init.sh"]
+    environment:
+      PMART_KIBANA_WAIT: "0"
+      PMART_KIBANA_URL: http://kibana-absent:1
+    volumes:
+      - ../lan/elastic/es-init.sh:/init/es-init.sh:ro
+      - ../../services/search-service/src/main/resources/elasticsearch:/init/indices:ro
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+
+  logstash:
+    # 상품 검색 색인 파이프라인만(search-service 소유 search-index.conf). 콘텐츠 카드는 호스트의 product-content-service(bootRun 8102)
+    image: docker.elastic.co/logstash/logstash:8.18.0
+    command: ["logstash", "-f", "/usr/share/logstash/pipeline/search-index.conf", "--pipeline.workers", "1", "--pipeline.batch.size", "1"]
+    environment:
+      PMART_KAFKA_BOOTSTRAP: kafka:19092
+      PMART_ES_URL: http://elasticsearch:9200
+      PMART_CONTENT_BASE_URL: http://host.docker.internal:8102
+      XPACK_MONITORING_ENABLED: "false"
+      LS_JAVA_OPTS: -Xms256m -Xmx256m
+    volumes:
+      - ../../services/search-service/src/main/logstash/search-index.conf:/usr/share/logstash/pipeline/search-index.conf:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      kafka: { condition: service_healthy }
+      es-init: { condition: service_completed_successfully }
 
 volumes:
   pgdata:
   kafkadata:
   s3data:
-  osdata:
+  esdata:

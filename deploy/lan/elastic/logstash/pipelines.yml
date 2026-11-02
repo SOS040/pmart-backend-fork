@@ -1,0 +1,10 @@
+# Logstash 파이프라인(ADR-0031)
+# search-index: 도메인 이벤트 → 상품 검색 색인. 사건 하나씩 필터·출력까지 끝낸다(작업자 1·배치 1 — 가격·상품 경합 방지)
+- pipeline.id: search-index
+  path.config: /usr/share/logstash/pipeline/search-index.conf
+  pipeline.workers: 1
+  pipeline.batch.size: 1
+# logs: Filebeat(앱 JSON 로그만, PC 마다) → pmart-logs-YYYY.MM.DD
+- pipeline.id: logs
+  path.config: /usr/share/logstash/pipeline/logs.conf
+  pipeline.workers: 1

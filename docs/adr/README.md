@@ -22,7 +22,7 @@
 | [0018](0018-operator-accounts-and-jwt-login.md) | 운영자는 auth-service 운영자 계정(아이디·비밀번호)으로 로그인, JWT·refresh 회전, 게이트웨이 웹 CORS | 제안 |
 | [0019](0019-customer-google-login-id-token.md) | 고객 소셜 로그인은 Google 먼저 — 앱 ID 토큰을 auth-service 가 검증, 필수 동의 단계 임시 생략 | 제안 |
 | [0020](0020-payment-spec-mapping-toss-widget.md) | 결제 명세를 payment-service 에 반영 — 결제 시도 ID = 토스 orderId, 고객 승인 요청 API, 웹훅은 대사 신호 | 제안 |
-| [0021](0021-search-index-opensearch-projection.md) | 상품 검색 색인은 OpenSearch 사건 투영 — REST·n-gram, 버전 비교 멱등(inbox 없음), 콘텐츠 카드 보강 | 제안 |
+| [0021](0021-search-index-opensearch-projection.md) | 상품 검색 색인은 OpenSearch 사건 투영 — REST·n-gram, 버전 비교 멱등(inbox 없음), 콘텐츠 카드 보강 | 제안 (결정 1~4 는 ADR-0031 로 대체) |
 | [0022](0022-guest-session-token-and-guest-paths.md) | 비회원 세션 토큰(typ=GUEST)은 guest-paths 에서만, 장바구니 병합은 X-Guest-Token 으로 소유 증명 | 제안 |
 | [0023](0023-address-geocoding-kakao-local.md) | 주소 ↔ 좌표는 카카오 로컬(서버 호출, 고객·비회원), 판정은 도로명주소 좌표 — 지도 핀은 배달 위치 참고 | 제안 |
 | [0024](0024-provider-profile-to-customer-service.md) | 로그인 제공자(Google) 프로필(이름·이메일·사진)은 auth 에 저장하지 않고 CustomerAuthenticated 로 customer-service 에 넘긴다 | 제안 |
@@ -31,6 +31,7 @@
 | [0027](0027-config-server-github-cipher.md) | LAN 설정은 Spring Cloud Config Server(GitHub 저장소, {cipher})로 부팅 때 받는다 — 클라이언트 기본 꺼짐, 운영 Kubernetes 는 그대로 | 승인 (결정 2·3·5 는 ADR-0029 로 대체) |
 | [0028](0028-dev-base-image-temurin-jdk.md) | 개발 단계 컨테이너 베이스는 eclipse-temurin:21-jdk(Exec 탭 셸·JVM 진단, 비루트 ubuntu) — 운영은 GraalVM Native 로 따로 정한다 | 승인 |
 | [0029](0029-config-repo-as-source-of-truth.md) | 설정의 정본은 설정 저장소(pmart-config) — 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod). ADR-0027 결정 2·3·5 대체 | 승인 |
-| [0030](0030-observability-metrics-logs-dead-letters.md) | 관측 — 지표 Prometheus·Grafana·Alertmanager, 로그 Fluent Bit → OpenSearch(Dashboards), 미처리 메시지는 서비스별 dead_letter 표·재처리 API | 승인 |
+| [0030](0030-observability-metrics-logs-dead-letters.md) | 관측 — 지표 Prometheus·Grafana·Alertmanager, 로그 Fluent Bit → OpenSearch(Dashboards), 미처리 메시지는 서비스별 dead_letter 표·재처리 API | 승인 (결정 2·4 는 ADR-0031 로 대체) |
+| [0031](0031-elastic-stack-search-and-logs.md) | 검색·로그를 Elastic Stack 으로 — Elasticsearch 8.18(nori+n-gram), 검색 색인은 Logstash 가 도메인 이벤트로, 로그는 Filebeat → Logstash → ES → Kibana(상한 유지) | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

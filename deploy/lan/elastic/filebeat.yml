@@ -1,0 +1,46 @@
+# PC 마다 하나: Docker 컨테이너 로그 → Logstash(5044) (ADR-0031). 디스크 보호는 ADR-0030 그대로:
+# - 앱 JSON 로그(serviceName 있는 것)만 보낸다 — kafka·connect·elasticsearch·수집기 자신의 로그는 docker logs(20MB×3)로만
+#   (장애 때 인프라 로그 폭주가 들어오지 않고, 검색엔진 오류 로그가 검색엔진으로 되돌아가는 순환이 없다)
+# - 초당 500건 상한(넘는 것은 버림, 원본은 docker logs)
+# - 큐는 메모리만(디스크 버퍼 없음). Logstash 가 멈추면 읽기를 멈추고 위치(registry)만 기억한다
+filebeat.inputs:
+  - type: filestream
+    id: docker-containers
+    paths: ["/var/lib/docker/containers/*/*.log"]
+    parsers:
+      - container: ~
+    ignore_older: 24h
+    prospector.scanner.check_interval: 10s
+    processors:
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+          overwrite_keys: true
+          add_error_key: false
+      - drop_event:
+          when:
+            not:
+              has_fields: ["serviceName"]
+      - rate_limit:
+          limit: "500/s"
+      - add_fields:
+          target: ""
+          fields:
+            pc: ${PMART_PC}
+      - drop_fields:
+          fields: ["host", "log.offset", "stream"]
+          ignore_missing: true
+
+queue.mem:
+  events: 4096
+  flush.min_events: 512
+  flush.timeout: 5s
+
+output.logstash:
+  hosts: ["${PMART_LOGSTASH_HOST}:5044"]
+
+setup.ilm.enabled: false
+setup.template.enabled: false
+monitoring.enabled: false
+logging.level: warning
+logging.metrics.enabled: false

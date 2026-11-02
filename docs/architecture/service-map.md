@@ -53,8 +53,8 @@
 - **소유**: 검색 색인, 키워드·자동완성·필터 속성, 최근 검색어.
 - **소유하지 않음**: 판매 가능 판단(색인 지연≠재고 있음).
 - **API**: 검색/필터.
-- **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`(표시 가격·가격순), `CategoryChanged`.
-- **의존**: OpenSearch(색인, ADR-0021), product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강).
+- **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`(표시 가격·가격순) — **search 소유 Logstash 파이프라인**(`services/search-service/src/main/logstash/search-index.conf`, 소비 그룹 `search-index-logstash`)이 받아 색인한다. 서비스 자체는 조회만(ADR-0031). `CategoryChanged` 는 아직 쓰지 않는다(이름 경로는 공개 트리 조회).
+- **의존**: Elasticsearch 8.18 + nori(색인, ADR-0031), Logstash(색인 주체), product-content(공개 카드 API — Logstash 가 이름·이미지 보강), product(공개 카테고리 트리), mfc-inventory(취급 여부).
 
 ### storefront-service `[1단계 기본]`
 - **소유**: 홈 진열·배너·테마·랭킹/신상품 탭 구성과 발효 버전, 추천(3차).

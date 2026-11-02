@@ -30,9 +30,9 @@ for s in $names; do
       echo "  PMART_AUTH_ISSUER: http://auth-service:$port"
     fi
     if [ "$s" = search-service ]; then
-      echo "# 상품 검색 색인(OpenSearch, ADR-0021). 클러스터 안에 둘지 관리형으로 쓸지는 플랫폼 결정 [팀 확인 필요]."
+      echo "# 상품 검색(Elasticsearch 8.18 + nori, ADR-0031 — 색인은 Logstash). 클러스터 안에 둘지 관리형(Elastic Cloud)으로 쓸지는 플랫폼 결정 [팀 확인 필요]."
       echo "env:"
-      echo "  PMART_OPENSEARCH_URL: http://opensearch:9200"
+      echo "  PMART_SEARCH_ELASTICSEARCHURL: http://elasticsearch:9200"
     fi
     if [ "$s" = api-gateway ]; then
       echo "# 웹(브라우저) CORS 허용 출처(쉼표 구분, ADR-0018). 운영 백오피스 도메인이 정해지면 환경별 values 에서 넣는다. 비면 CORS 헤더 없음."

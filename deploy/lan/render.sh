@@ -30,19 +30,23 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 opensearch backoffice-web prometheus alertmanager grafana opensearch-dashboards log-shipper logs-init host-disk "
+INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor "
+ELASTIC=$LAN/elastic
+SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
-# 로그 수집(ADR-0030): opensearch 가 배치돼 있으면 모든 PC 에 log-shipper(Fluent Bit), opensearch PC 에 logs-init(색인 준비, 1회)을
-# 자동으로 붙인다. 줄 끝에 붙여 기존 구성요소의 고정 IP 가 바뀌지 않는다.
-if [ -n "${WHERE[opensearch]:-}" ]; then
+# 로그 수집(ADR-0031): elasticsearch 가 배치돼 있으면 모든 PC 에 log-shipper(Filebeat), elasticsearch PC 에 es-init(색인·보존 준비, 1회)을
+# 자동으로 붙인다(log-janitor 는 아래 host-disk 뒤). 줄 끝에 붙여 기존 구성요소의 고정 IP 가 바뀌지 않는다.
+if [ -n "${WHERE[elasticsearch]:-}" ]; then
   for pc in "${PCS[@]}"; do COMPS[$pc]+=" log-shipper"; done
-  COMPS[${WHERE[opensearch]}]+=" logs-init"
+  COMPS[${WHERE[elasticsearch]}]+=" es-init"
 fi
 # 디스크 감시(ADR-0030): prometheus 가 있으면 모든 PC 에 host-disk(node-exporter). Docker Desktop 이 마운트한 Windows C: 의
-# 실제 여유 공간을 잰다 — 컨테이너·OpenSearch 가 보는 디스크는 1TB 가상 디스크라 실제 C: 보다 먼저 차지 않는다.
+# 실제 여유 공간을 잰다 — 컨테이너·Elasticsearch 가 보는 디스크는 1TB 가상 디스크라 실제 C: 보다 먼저 차지 않는다.
 if [ -n "${WHERE[prometheus]:-}" ]; then
   for pc in "${PCS[@]}"; do COMPS[$pc]+=" host-disk"; done
 fi
+# 로그 색인 크기 상한(색인 1GB·전체 4GB — ILM 은 기간만 지운다)
+if [ -n "${WHERE[elasticsearch]:-}" ]; then COMPS[${WHERE[elasticsearch]}]+=" log-janitor"; fi
 # Prometheus 수집 대상: 배치된 모든 Spring 앱(인프라 제외) <PC IP>:<포트>/actuator/prometheus
 apps_all() { for c in "${!WHERE[@]}"; do [[ "$c" == postgres-* || "$INFRA" == *" $c "* ]] || echo "$c"; done | sort; }
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
@@ -281,27 +285,29 @@ EOF
 
 EOF
         ;;
-      opensearch)
-        # 상품 검색 색인(search-service 전용). deploy/local 과 같은 이미지·설정. 다른 PC 의 search-service 가 부르므로 9200 을 연다
-        # (보안 플러그인 끔 — LAN 시험망, 공개 상품 정보만 색인).
+      elasticsearch)
+        # 상품 검색 색인 + 앱 로그(ADR-0031, Eum 과 같은 판). nori 는 시작 때 없으면 설치(인터넷 필요). 보안 끔(LAN 시험망).
+        # 색인을 자동으로 만들지 않는다(로그 색인과 시스템 색인만 허용) — 매핑 없는 products 가 생기지 않게
         cat <<EOF
-  opensearch:
+  elasticsearch:
     <<: *common
-    image: opensearchproject/opensearch:2.19.1
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    command: ["sh", "-c", "bin/elasticsearch-plugin list | grep -q analysis-nori || bin/elasticsearch-plugin install --batch analysis-nori; exec /usr/local/bin/docker-entrypoint.sh eswrapper"]
     environment:
       discovery.type: single-node
-      DISABLE_SECURITY_PLUGIN: "true"
-      DISABLE_INSTALL_DEMO_CONFIG: "true"
-      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      xpack.security.enabled: "false"
+      action.auto_create_index: "+pmart-logs-*,+.*,-*"
+      ES_JAVA_OPTS: -Xms768m -Xmx768m
     ports: ["9200:9200"]
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
-      - osdata:/usr/share/opensearch/data
+      - esdata:/usr/share/elasticsearch/data
+    mem_limit: 1536m
     healthcheck:
       test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9200/"]
       interval: 5s
       timeout: 3s
-      retries: 60
+      retries: 120
 
 EOF
         ;;
@@ -356,36 +362,61 @@ EOF
 
 EOF
         ;;
-      opensearch-dashboards)
-        # 로그 화면(ADR-0030). 보안 플러그인 끔(opensearch 와 같음 — LAN 시험망)
+      kibana)
+        # 로그 화면(ADR-0031, OpenSearch Dashboards 대체)
         cat <<EOF
-  opensearch-dashboards:
+  kibana:
     <<: *common
-    image: opensearchproject/opensearch-dashboards:2.19.1
+    image: docker.elastic.co/kibana/kibana:8.18.0
     ports: ["5601:5601"]
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
-      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
-      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      TELEMETRY_OPTIN: "false"
     mem_limit: 1g
 
 EOF
         ;;
+      logstash)
+        # 검색 색인(도메인 이벤트 → ES, search-service 소유 파이프라인) + 로그(Filebeat 5044 → ES). 디스크: 영구 큐 256MB·DLQ 64MB
+        cat <<EOF
+  logstash:
+    <<: *common
+    image: docker.elastic.co/logstash/logstash:8.18.0
+    ports: ["5044:5044"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      PMART_KAFKA_BOOTSTRAP: kafka:9092
+      PMART_ES_URL: http://elasticsearch:9200
+      PMART_CONTENT_BASE_URL: http://product-content-service:$(port_of product-content-service)
+      LS_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - ./elastic/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./elastic/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - ./elastic/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - lsdata:/usr/share/logstash/data
+    mem_limit: 1536m
+    depends_on:
+      es-init: { condition: service_completed_successfully }
+
+EOF
+        ;;
       log-shipper)
-        # PC 마다 하나: Docker Desktop VM 안의 컨테이너 로그 파일을 읽어 OpenSearch 로(ADR-0030)
+        # PC 마다 하나: Docker Desktop VM 안의 컨테이너 로그 파일 → Logstash(ADR-0031). 앱 로그만·초당 500건·메모리 큐
         cat <<EOF
   log-shipper:
     <<: *common
-    image: fluent/fluent-bit:4.0.3
+    image: docker.elastic.co/beats/filebeat:8.18.0
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
       PMART_PC: $pc
-      PMART_OPENSEARCH_HOST: opensearch
+      PMART_LOGSTASH_HOST: logstash
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - ./monitoring/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
-      - ./monitoring/parsers.conf:/fluent-bit/etc/parsers.conf:ro
-      - flbstate:/fluent-bit/state
+      - ./elastic/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - fbdata:/usr/share/filebeat/data
     mem_limit: 256m
 
 EOF
@@ -405,19 +436,34 @@ EOF
 
 EOF
         ;;
-      logs-init)
-        # 한 번 돌고 끝난다(보존 정책·색인 틀·Dashboards 색인 패턴). 배포 때마다 다시 돌아도 같은 결과
+      es-init)
+        # 한 번 돌고 끝난다(검색 색인·로그 보존·Kibana 데이터 뷰). 배포 때마다 다시 돌아도 같은 결과. Logstash 는 이것 뒤에 뜬다
         cat <<EOF
-  logs-init:
+  es-init:
     image: curlimages/curl:8.14.1
     restart: "no"
     logging: { driver: json-file, options: { max-size: "1m", max-file: "1" } }
-    entrypoint: ["sh", "/init/logs-init.sh"]
+    entrypoint: ["sh", "/init/es-init.sh"]
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
-      - ./monitoring/logs-init.sh:/init/logs-init.sh:ro
+      - ./elastic/es-init.sh:/init/es-init.sh:ro
+      - ./elastic/indices:/init/indices:ro
     depends_on:
-      opensearch: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
+
+EOF
+        ;;
+      log-janitor)
+        # 로그 색인 크기 상한(색인 1GB·전체 4GB, 5분마다)
+        cat <<EOF
+  log-janitor:
+    <<: *common
+    image: curlimages/curl:8.14.1
+    entrypoint: ["sh", "/init/log-janitor.sh"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./elastic/log-janitor.sh:/init/log-janitor.sh:ro
+    mem_limit: 32m
 
 EOF
         ;;
@@ -485,22 +531,38 @@ EOF
     [[ "$comps" == *" postgres "* ]] && vols+="  pgdata:"$'\n'
     [[ "$comps" == *" kafka "* ]] && vols+="  kafkadata:"$'\n'
     [[ "$comps" == *" s3 "* ]] && vols+="  s3data:"$'\n'
-    [[ "$comps" == *" opensearch "* ]] && vols+="  osdata:"$'\n'
+    [[ "$comps" == *" elasticsearch "* ]] && vols+="  esdata:"$'\n'
+    [[ "$comps" == *" logstash "* ]] && vols+="  lsdata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" prometheus "* ]] && vols+="  promdata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" grafana "* ]] && vols+="  grafanadata:"$'\n'
-    [[ " ${COMPS[$pc]} " == *" log-shipper "* ]] && vols+="  flbstate:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" log-shipper "* ]] && vols+="  fbdata:"$'\n'
     [ -n "$vols" ] && printf 'volumes:\n%s' "$vols"
   } > "$dir/compose.yml"
 
+  # Elastic 구성 파일(ADR-0031): 이 PC 에 있는 것만. 검색 색인 파이프라인·색인 정의는 search-service 소유(정본) — 복사한다
+  allc=" ${COMPS[$pc]} "
+  if [[ "$allc" =~ \ (logstash|log-shipper|es-init|log-janitor)\  ]]; then
+    mkdir -p "$dir/elastic"
+    [[ "$allc" == *" log-shipper "* ]] && cp "$ELASTIC/filebeat.yml" "$dir/elastic/"
+    if [[ "$allc" == *" logstash "* ]]; then
+      mkdir -p "$dir/elastic/logstash/pipeline"
+      cp "$ELASTIC/logstash/logstash.yml" "$ELASTIC/logstash/pipelines.yml" "$dir/elastic/logstash/"
+      cp "$ELASTIC/logstash/logs.conf" "$SEARCH_SVC/src/main/logstash/search-index.conf" "$dir/elastic/logstash/pipeline/"
+    fi
+    if [[ "$allc" == *" es-init "* ]]; then
+      tr -d '\r' < "$ELASTIC/es-init.sh" > "$dir/elastic/es-init.sh"
+      mkdir -p "$dir/elastic/indices" && cp "$SEARCH_SVC"/src/main/resources/elasticsearch/*.json "$dir/elastic/indices/"
+    fi
+    [[ "$allc" == *" log-janitor "* ]] && tr -d '\r' < "$ELASTIC/log-janitor.sh" > "$dir/elastic/log-janitor.sh"
+  fi
+
   # 관측 구성 파일(ADR-0030): 이 PC 에 있는 것만
   allc=" ${COMPS[$pc]} "
-  if [[ "$allc" =~ \ (prometheus|alertmanager|grafana|log-shipper|logs-init)\  ]]; then
+  if [[ "$allc" =~ \ (prometheus|alertmanager|grafana)\  ]]; then
     mkdir -p "$dir/monitoring"
     [[ "$allc" == *" prometheus "* ]] && cp "$MON/alert-rules.yml" "$dir/monitoring/"
     [[ "$allc" == *" alertmanager "* ]] && cp "$MON/alertmanager.yml" "$dir/monitoring/"
     [[ "$allc" == *" grafana "* ]] && cp -r "$MON/grafana" "$dir/monitoring/"
-    [[ "$allc" == *" log-shipper "* ]] && cp "$MON/fluent-bit.conf" "$MON/parsers.conf" "$dir/monitoring/"
-    [[ "$allc" == *" logs-init "* ]] && tr -d '\r' < "$MON/logs-init.sh" > "$dir/monitoring/logs-init.sh"
     if [[ "$allc" == *" prometheus "* ]]; then
       {
         echo "# 생성 파일(deploy/lan/render.sh) — 대상은 placement.conf 의 Spring 앱. ADR-0030"

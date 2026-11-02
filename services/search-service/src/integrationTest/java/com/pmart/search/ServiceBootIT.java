@@ -17,7 +17,7 @@ import org.springframework.web.client.RestClient;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.search.opensearch-url=http://localhost:1"
+      "pmart.search.elasticsearch-url=http://localhost:1"
     })
 class ServiceBootIT extends KafkaContainerSupport {
 

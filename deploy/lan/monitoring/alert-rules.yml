@@ -42,7 +42,7 @@ groups:
   - name: pmart-host
     rules:
       # Windows C: 실제 여유(host-disk = node-exporter, Docker Desktop 마운트). Docker 가상 디스크와 모든 컨테이너 데이터가 C: 에 있다.
-      # OpenSearch·컨테이너 안의 df 는 1TB 가상 디스크라 믿지 않는다(ADR-0030). 2026-10-25 pc3 디스크 고갈 재발 방지
+      # Elasticsearch·컨테이너 안의 df 는 1TB 가상 디스크라 믿지 않는다(ADR-0030). 2026-10-25 pc3 디스크 고갈 재발 방지
       - alert: HostDiskLow
         expr: |
           node_filesystem_avail_bytes{job="host-disk", mountpoint="/host/windows-c"}

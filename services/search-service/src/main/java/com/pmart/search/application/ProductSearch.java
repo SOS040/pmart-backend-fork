@@ -4,7 +4,7 @@ import com.pmart.search.domain.SearchRules;
 import com.pmart.search.domain.SearchRules.Sort;
 import com.pmart.search.infrastructure.AvailabilityClient;
 import com.pmart.search.infrastructure.CategoryTreeClient;
-import com.pmart.search.infrastructure.OpenSearchIndex;
+import com.pmart.search.infrastructure.SearchIndex;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -16,8 +16,8 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 
 /**
- * 상품 검색·자동완성. 게시 콘텐츠(이름)와 상품 버전이 모두 색인된 상품만, 판매중지는 제외. 이름은 1~2글자 n-gram 이라 "미역" 으로 "미역국" 이 걸리고 검색어의
- * 모든 글자 조각이 있어야 한다(AND).
+ * 상품 검색·자동완성(Elasticsearch, ADR-0031). 게시 콘텐츠(이름)와 상품 버전이 모두 색인된 상품만, 판매중지는 제외. 이름은 nori 형태소가 모두
+ * 맞거나 1~2글자 n-gram 조각이 모두 있으면 걸린다("두부를"→두부, "미역"→미역국, 붙임말 "나랑드사이다제로"). 순위는 형태소 > 앞부분 > 조각 일치.
  *
  * <p>가격·판매 상태는 색인 시점 사본이다. 카테고리 이름 경로는 product-service 공개 트리 사본(5분), 취급 여부(carried)는 mfcId 를 줄 때만
  * mfc-inventory 사본으로 붙인다(대표 SKU 기준, 조회 실패·응답 없음은 불명 null — false 로 채우지 않는다).
@@ -43,12 +43,12 @@ public class ProductSearch {
   public record Result(
       List<Hit> items, long total, @Nullable String nextCursor, Sort appliedSort) {}
 
-  private final OpenSearchIndex index;
+  private final SearchIndex index;
   private final CategoryTreeClient categories;
   private final AvailabilityClient availability;
 
   public ProductSearch(
-      OpenSearchIndex index, CategoryTreeClient categories, AvailabilityClient availability) {
+      SearchIndex index, CategoryTreeClient categories, AvailabilityClient availability) {
     this.index = index;
     this.categories = categories;
     this.availability = availability;
@@ -79,7 +79,7 @@ public class ProductSearch {
     req.put("track_total_hits", true);
     req.put("query", query(query, categoryId));
     req.put("sort", sort(sort, query != null));
-    JsonNode res = index.search(OpenSearchIndex.PRODUCTS, req);
+    JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Hit> hits = new ArrayList<>();
     for (JsonNode h : res.path("hits").path("hits")) {
       hits.add(hit(h.path("_source")));
@@ -140,7 +140,7 @@ public class ProductSearch {
     req.put("size", limit * 2);
     req.put("_source", List.of("name"));
     req.put("query", query(query, null));
-    JsonNode res = index.search(OpenSearchIndex.PRODUCTS, req);
+    JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     Set<String> names = new LinkedHashSet<>();
     for (JsonNode h : res.path("hits").path("hits")) {
       names.add(h.path("_source").path("name").asString());
@@ -159,11 +159,31 @@ public class ProductSearch {
       filter.add(Map.of("term", Map.of("categoryScope", categoryId)));
     }
     Map<String, Object> bool = new LinkedHashMap<>();
-    bool.put(
-        "must",
-        q == null
-            ? List.of(Map.of("match_all", Map.of()))
-            : List.of(Map.of("match", Map.of("name", Map.of("query", q, "operator", "and")))));
+    if (q == null) {
+      bool.put("must", List.of(Map.of("match_all", Map.of())));
+    } else {
+      // 찾는 조건: 형태소(nori)가 모두 맞거나("두부를"→두부), 1~2글자 조각이 모두 있거나(붙임말 "나랑드사이다제로"·부분 "미역")
+      bool.put(
+          "must",
+          List.of(
+              Map.of(
+                  "bool",
+                  Map.of(
+                      "should",
+                      List.of(
+                          Map.of("match", Map.of("name", Map.of("query", q, "operator", "and"))),
+                          Map.of(
+                              "match",
+                              Map.of("name.partial", Map.of("query", q, "operator", "and")))),
+                      "minimum_should_match",
+                      1))));
+      // 순위: 형태소 일치 > 앞부분 일치 > 조각 일치
+      bool.put(
+          "should",
+          List.of(
+              Map.of("match", Map.of("name", Map.of("query", q, "boost", 3))),
+              Map.of("match", Map.of("name.edge", Map.of("query", q, "boost", 2)))));
+    }
     bool.put("filter", filter);
     bool.put("must_not", List.of(Map.of("term", Map.of("saleState", SearchRules.SALE_STOPPED))));
     return Map.of("bool", bool);
