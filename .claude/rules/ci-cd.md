@@ -25,7 +25,7 @@ paths:
 
 ## 컨테이너 이미지 (Jib)
 - 설정은 convention plugin `pmart.container-image` 한 곳. 서비스 build.gradle.kts에서는 `jib.container.mainClass` 지정 정도만 허용.
-- 베이스 이미지는 digest 고정(`gcr.io/distroless/java21-debian12:nonroot@sha256:…`). 갱신은 PR로, 태그만 바꾸지 않는다.
+- 베이스 이미지는 digest 고정(`eclipse-temurin:21-jdk@sha256:…`, ADR-0028 — 개발 단계: Exec 탭 셸·JVM 진단 도구. 운영은 GraalVM Native 로 따로 정한다). 갱신은 PR로, 태그만 바꾸지 않는다. 실행 사용자는 비루트 `ubuntu`(1000).
 - 태그는 git SHA 하나. `latest` 태그를 만들지 않는다. 배포는 push 결과의 digest로 한다.
 - 레지스트리 인증은 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 환경변수(Jenkins credentials)로만. 저장소·이미지·로그에 넣지 않는다. 비밀번호 대신 Docker Hub 액세스 토큰(push용 읽기·쓰기, 실행 PC용 읽기 전용).
   - 예외: 빌드 PC(PC 1)는 환경변수 대신 `docker login`(Windows 자격 증명 관리자, `credsStore: desktop`)을 쓴다. 환경변수가 없으면 Jib 이 Docker 설정의 자격 증명 도우미를 읽는다(ADR-0012).

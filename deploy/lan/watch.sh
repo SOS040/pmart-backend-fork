@@ -27,7 +27,8 @@ log() { echo "$(date '+%F %T') $*" | tee -a "$LOG"; }
 [ -d "$OUT" ] || { log "build/ 없음 — deploy/lan/lan.sh render 먼저"; exit 1; }
 
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; }
-port_of() { awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$(src_dir "$1")/src/main/resources/application.yml"; }
+# 포트: 서비스 yml, 없으면 설정 저장소 정본 <앱>.yml(ADR-0029 로 옮긴 앱)
+port_of() { local y p; y="$(src_dir "$1")/src/main/resources/application.yml"; p="$(awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$y")"; [ -z "$p" ] && [ -f "$LAN/.config-repo/$1.yml" ] && p="$(awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$LAN/.config-repo/$1.yml")"; echo "$p"; }
 
 # host port 요청(printf 형식) 읽을바이트 → 응답 앞부분 16진수(타임아웃·거부면 빈 문자열).
 # 바이트 수만 보면 엉뚱한 서버(HTTP 400 등)도 통과하므로 호출 쪽에서 내용을 확인한다.

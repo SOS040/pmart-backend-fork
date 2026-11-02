@@ -28,6 +28,8 @@
 | [0024](0024-provider-profile-to-customer-service.md) | 로그인 제공자(Google) 프로필(이름·이메일·사진)은 auth 에 저장하지 않고 CustomerAuthenticated 로 customer-service 에 넘긴다 | 제안 |
 | [0025](0025-customer-google-login-server-auth-code.md) | 고객 Google 로그인 하이브리드 — 앱은 서버 인가 코드, auth-service 가 OAuth 클라이언트로 교환(ADR-0019 결정 1·8 대체) | 제안 |
 | [0026](0026-no-service-to-service-authentication.md) | 서비스 간 호출은 인증하지 않는다 — 신뢰 경계는 private subnet 과 API Gateway(ADR-0011 서비스 토큰 대체) | 승인 |
-| [0027](0027-config-server-github-cipher.md) | LAN 설정은 Spring Cloud Config Server(GitHub 저장소, {cipher})로 부팅 때 받는다 — 클라이언트 기본 꺼짐, 운영 Kubernetes 는 그대로 | 승인 |
+| [0027](0027-config-server-github-cipher.md) | LAN 설정은 Spring Cloud Config Server(GitHub 저장소, {cipher})로 부팅 때 받는다 — 클라이언트 기본 꺼짐, 운영 Kubernetes 는 그대로 | 승인 (결정 2·3·5 는 ADR-0029 로 대체) |
+| [0028](0028-dev-base-image-temurin-jdk.md) | 개발 단계 컨테이너 베이스는 eclipse-temurin:21-jdk(Exec 탭 셸·JVM 진단, 비루트 ubuntu) — 운영은 GraalVM Native 로 따로 정한다 | 승인 |
+| [0029](0029-config-repo-as-source-of-truth.md) | 설정의 정본은 설정 저장소(pmart-config) — 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod). ADR-0027 결정 2·3·5 대체 | 승인 · 진행 중 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

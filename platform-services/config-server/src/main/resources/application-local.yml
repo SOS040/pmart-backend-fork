@@ -1,0 +1,24 @@
+# config-server local 프로필 — 개발자 PC. 서비스를 --spring.profiles.active=local 로 띄우기 전에 먼저 띄운다:
+#   ./gradlew :platform-services:config-server:bootRun --args='--spring.profiles.active=local'
+# local 은 native(파일) 저장소를 쓴다(application.yml 의 profiles.group). git 저장소로 읽지 않는 이유: 작업 중인 clone 을 가리키면
+# force-pull 이 그 clone 을 origin/main 으로 되돌려 커밋하지 않은/올리지 않은 변경을 지운다(2026-11-02 재현). native 는 파일만 읽는다.
+# 위치: pmart-config clone(커밋하지 않은 수정도 바로 보인다). 기본 deploy/lan/.config-repo(lan.sh 가 쓰는 사본), 다르면 PMART_CONFIG_LOCAL_DIR.
+# local 프로필 설정에는 비밀값이 없어 암호화 키·SSH 키가 필요 없다. 비밀번호는 서비스 부트스트랩 기본값과 같은 pmart-local.
+spring:
+  config:
+    import: "" # configtree(LAN 비밀 디렉터리)를 읽지 않는다
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: file:${PMART_CONFIG_LOCAL_DIR:${user.dir}/../../deploy/lan/.config-repo}/
+        git:
+          ignore-local-ssh-settings: false # git 은 쓰지 않지만 설정 검증이 SSH 키를 요구하지 않게
+  security:
+    user:
+      password: pmart-local
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: http://localhost:9411/api/v2/spans

@@ -31,12 +31,12 @@ probes:
   liveness: { path: /actuator/health/liveness, periodSeconds: 10, failureThreshold: 3 }
   readiness: { path: /actuator/health/readiness, periodSeconds: 5, failureThreshold: 3 }
 
-# 이미지 기본 사용자 nonroot(uid 65532, distroless)
+# 이미지 기본 사용자 ubuntu(uid 1000, eclipse-temurin 21 JDK 베이스 — ADR-0028)
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 65532
-  runAsGroup: 65532
-  fsGroup: 65532
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
   seccompProfile: { type: RuntimeDefault }
 securityContext:
   allowPrivilegeEscalation: false

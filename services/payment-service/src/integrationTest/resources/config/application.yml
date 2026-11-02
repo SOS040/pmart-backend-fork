@@ -1,0 +1,41 @@
+# 통합 시험 전용(ADR-0029). 시험은 config-server 없이 돈다 → pmart-config 의 공통·서비스 고유 설정을 여기 사본으로 둔다.
+# 원본: pmart-config application.yml + payment-service.yml. 원본을 바꾸면 이 사본도 같이 바꾼다.
+# DB·Kafka 주소는 Testcontainers(@ServiceConnection), 토스 키·JWKS 는 각 시험의 properties 가 준다.
+spring:
+  cloud:
+    config:
+      enabled: false # 시험만 config-server 를 부르지 않는다
+  # ---- pmart-config application.yml ----
+  mvc:
+    problemdetails:
+      enabled: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+# ---- pmart-config payment-service.yml ----
+server:
+  port: 8205
+pmart:
+  messaging:
+    domain: order
+  web:
+    excluded-paths:
+      - /api/v1/webhooks/toss
+  payment:
+    reconcile-interval: PT15S
+    toss:
+      base-url: https://api.tosspayments.com
+      allow-live-keys: false
+      connect-timeout: PT3S
+      read-timeout: PT15S
+      webhook-secret: ""
+  security:
+    permit-paths:
+      - /actuator/health/**
+      - /actuator/info
+      - /actuator/prometheus
+      - /error
+      - /api/v1/webhooks/toss

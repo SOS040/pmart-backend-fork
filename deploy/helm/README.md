@@ -26,7 +26,7 @@ helm upgrade --install product-service deploy/helm/pmart-service \
 | `pmart-auth-signing` | `PMART_AUTH_SIGNING_KEYS_0_KID`, `PMART_AUTH_SIGNING_KEYS_0_PRIVATEKEY` | auth-service |
 
 ## 기본 보안·운영 설정
-- 비루트(uid 65532, distroless nonroot), 읽기 전용 루트 파일시스템(`/tmp` 만 emptyDir), capability 전부 제거, seccomp RuntimeDefault, SA 토큰 미마운트
+- 비루트(uid 1000, eclipse-temurin 베이스의 ubuntu — ADR-0028), 읽기 전용 루트 파일시스템(`/tmp` 만 emptyDir), capability 전부 제거, seccomp RuntimeDefault, SA 토큰 미마운트
 - 무중단 롤링(maxUnavailable 0), graceful shutdown + preStop sleep 5초(`sleep` 액션: Kubernetes 1.30+)
 - 메모리 limit 768Mi(JVM `MaxRAMPercentage=75`), PDB minAvailable 1, replica 2
 

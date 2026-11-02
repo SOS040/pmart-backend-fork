@@ -17,7 +17,8 @@ LAN=deploy/lan
 OUT=$LAN/build
 TMP="${TMPDIR:-${TEMP:-/tmp}}/pmart-lan"; mkdir -p "$TMP"
 
-pcs() { if [ "$1" = all ]; then ls "$OUT"; else [ -d "$OUT/$1" ] || { echo "PC 없음: $1 (render 했는지 확인)" >&2; exit 1; }; echo "$1"; fi; }
+# PC 폴더 = target 파일이 있는 build/<pc> (build/config-repo 등 다른 생성물은 PC 가 아니다)
+pcs() { if [ "$1" = all ]; then for d in "$OUT"/*/; do [ -f "$d/target" ] && basename "$d"; done; else [ -f "$OUT/$1/target" ] || { echo "PC 없음: $1 (render 했는지 확인)" >&2; exit 1; }; echo "$1"; fi; }
 alias_of() { awk '{print $3}' "$OUT/$1/target"; }
 
 # 원격에서 docker compose <args> 실행
@@ -43,20 +44,29 @@ copy_files() {
 # ---- 설정 저장소(ADR-0027) ----
 CFG_CLONE=$LAN/.config-repo  # GitHub pmart-config 로컬 사본(git 제외). PC 1 의 사용자 GitHub 자격 증명으로 push 한다
 CFG_URL="${PMART_CONFIG_REPO_URL:-https://github.com/code-and-pick/pmart-config.git}"
-config_sync() { # 사본을 원격 최신으로
+config_sync() { # 사본을 원격 최신으로 — 사람이 고친 내용(커밋·미커밋)은 절대 버리지 않는다(ADR-0029: 저장소가 정본)
   # autocrlf 를 끈다: PC 1 Git 은 core.autocrlf=true 라 체크아웃이 CRLF 가 되어 render 결과(LF)와 늘 달라 보인다
   if [ ! -d "$CFG_CLONE/.git" ]; then git clone -q -c core.autocrlf=false "$CFG_URL" "$CFG_CLONE"; fi
   git -C "$CFG_CLONE" config core.autocrlf false
   git -C "$CFG_CLONE" fetch -q origin
-  if git -C "$CFG_CLONE" rev-parse -q --verify origin/main >/dev/null; then
+  git -C "$CFG_CLONE" rev-parse -q --verify origin/main >/dev/null || return 0 # 빈 원격(첫 push 전)
+  if git -C "$CFG_CLONE" rev-parse -q --verify HEAD >/dev/null; then
+    # 앞서 있으면 그대로 둔다(올리지 않은 커밋), 뒤처졌으면 fast-forward, 갈라졌으면 멈춘다
+    git -C "$CFG_CLONE" merge -q --ff-only origin/main 2>/dev/null \
+      || git -C "$CFG_CLONE" merge-base --is-ancestor origin/main HEAD \
+      || { echo "설정 저장소 사본($CFG_CLONE)이 원격과 갈라졌다 — 직접 정리한 뒤 다시" >&2; exit 1; }
+  else
     git -C "$CFG_CLONE" checkout -q -B main origin/main
   fi
 }
-config_check() { # render 결과가 원격 main 의 lan/ 과 같은지
+config_check() { # 배포 전: render 결과(lan/) = 사본, 사본에 미커밋·미push 가 없다(config-server 는 GitHub 를 읽는다)
   config_sync
-  if ! git -C "$CFG_CLONE" rev-parse -q --verify origin/main >/dev/null \
+  local dirty ahead
+  dirty="$(git -C "$CFG_CLONE" status --porcelain)"
+  ahead="$(git -C "$CFG_CLONE" rev-list --count origin/main..HEAD 2>/dev/null || echo 1)"
+  if [ -n "$dirty" ] || [ "$ahead" != 0 ] \
     || ! diff -r -q "$OUT/config-repo/lan" "$CFG_CLONE/lan" >/dev/null 2>&1; then
-    echo "설정 저장소가 render 결과와 다르다: 먼저 deploy/lan/lan.sh config-push" >&2
+    echo "설정 저장소가 GitHub 에 반영되지 않았다(미커밋 ${dirty:+있음}, 미push ${ahead}개, lan/ 차이) — 먼저 deploy/lan/lan.sh config-push" >&2
     diff -r -q "$OUT/config-repo/lan" "$CFG_CLONE/lan" 2>&1 | sed 's/^/  /' >&2 || true
     exit 1
   fi

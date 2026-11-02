@@ -33,8 +33,16 @@ done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n
 INFRA=" postgres kafka connect redis zipkin s3 opensearch backoffice-web "
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
 yml() { echo "$(src_dir "$1")/src/main/resources/application.yml"; }
-port_of() { awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$(yml "$1")"; }
+# 설정 저장소 정본(ADR-0029)으로 옮긴 앱: 저장소 최상위에 <앱>-lan.yml 이 있다. 포트 등 서비스 고유 설정은 <앱>.yml 에 있다
+migrated() { [ -f "$LAN/.config-repo/$1-lan.yml" ]; }
+port_of() {
+  local p; p="$(awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$(yml "$1")")"
+  [ -z "$p" ] && [ -f "$LAN/.config-repo/$1.yml" ] && p="$(awk '/^server:/{s=1;next} /^[^ ]/{s=0} s&&/^  port:/{print $2; exit}' "$LAN/.config-repo/$1.yml")"
+  echo "$p"
+}
 needs() { grep -q "\${$2" "$(yml "$1")"; }
+# DB 가 필요한 앱 = Flyway 마이그레이션 폴더가 있는 앱(옮긴 앱의 yml 에는 ${PMART_DB_URL} 이 없다)
+needs_db() { needs "$1" PMART_DB_URL || [ -d "$(src_dir "$1")/src/main/resources/db/migration" ]; }
 db_of() { echo "${1//-/_}"; }
 digest_of() {
   local f; f="$(src_dir "$1")/build/jib-image.digest"
@@ -341,7 +349,7 @@ EOF
         echo "    ports: [\"$port:$port\"]"
         echo "    networks: { default: { ipv4_address: $ip_addr } }"
         echo "    mem_limit: 768m"
-        if needs "$c" PMART_DB_URL && [[ "$comps" == *" postgres "* ]]; then
+        if needs_db "$c" && [[ "$comps" == *" postgres "* ]]; then
           echo "    depends_on:"
           echo "      postgres: { condition: service_healthy }"
         fi
@@ -360,9 +368,15 @@ EOF
         echo "      SPRING_CLOUD_CONFIG_FAIL_FAST: \"true\""
         echo "      SPRING_CLOUD_CONFIG_USERNAME: pmart"
         echo "      SPRING_CLOUD_CONFIG_PASSWORD: \${PMART_CONFIG_PASSWORD}"
+        if migrated "$c"; then
+          # 저장소 정본으로 옮긴 앱(ADR-0029): lan 프로필로 <앱>-lan.yml·application-lan.yml 을 받는다. lan/<앱>.yml 은 만들지 않는다
+          echo "      SPRING_PROFILES_ACTIVE: lan"
+          echo
+          continue
+        fi
         echo
 
-        # ---- 이 앱의 설정 파일(lan/<앱>.yml). 공통값은 lan/application.yml ----
+        # ---- (옮기기 전 앱만) 이 앱의 설정 파일(lan/<앱>.yml). 공통값은 lan/application.yml — ADR-0027 방식 ----
         f="$c.yml"; cfg_header "$f"
         if needs "$c" PMART_DB_URL; then
           [ -n "${WHERE[postgres-$pc]:-}" ] || { echo "$c 는 DB 가 필요한데 $pc 에 postgres 가 없음" >&2; exit 1; }
@@ -451,7 +465,7 @@ EOF
     echo "-- 생성 파일(deploy/lan/render.sh). 볼륨이 처음 만들어질 때 실행되고, lan.sh deploy 가 매번 다시 실행한다(없는 DB 만 만든다)."
     for c in ${COMPS[$pc]}; do
       [[ "$INFRA" == *" $c "* ]] && continue
-      needs "$c" PMART_DB_URL \
+      needs_db "$c" \
         && echo "SELECT 'CREATE DATABASE $(db_of "$c")' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '$(db_of "$c")')\\gexec"
     done
   } > "$dir/init-db.sql"
