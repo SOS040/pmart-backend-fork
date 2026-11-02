@@ -12,6 +12,7 @@
 1. **지표**: LAN 에 Prometheus(15초 수집) · Alertmanager · Grafana 를 둔다(pc4). 대상은 `placement.conf` 의 모든 Spring 앱 `<PC IP>:<포트>/actuator/prometheus` 를 render.sh 가 생성한다. 서비스 코드는 바꾸지 않는다.
    - **보존: 7일 또는 2GB 중 먼저 닿는 쪽**(`--storage.tsdb.retention.time=7d --storage.tsdb.retention.size=2GB`, 실행 중 `/api/v1/status/runtimeinfo` = "1w or 2GiB" 확인). 2GB 는 **이 Prometheus 저장소 전체**(블록 + WAL + 메모리 매핑 청크)이며 지우는 것은 영속 블록만이다. 블록 단위(가장 오래된 것부터 통째로)로 지우고 정리는 백그라운드라, 압축 중에는 잠깐 넘을 수 있다(공식 문서 storage — 2GB 는 디스크 여유의 80~85% 이하로 두라는 권고, pc4 C: 여유 약 100GB 라 충분).
    - **디스크 감시**: PC 마다 `host-disk`(node-exporter v1.9.1, filesystem 수집기만)가 Docker Desktop 이 마운트한 Windows C:(`/run/desktop/mnt/host/c`, 9p, 읽기 전용)의 실제 크기·여유를 낸다(PC1 에서 Windows 값과 일치 확인). render 가 prometheus 배치 시 모든 PC 에 자동으로 붙인다.
+   - config-server 는 actuator 를 health·info 만 연다(나머지 denyAll) — 지표를 열기 전까지 수집 대상에서 뺀다.
    - 알림 규칙(`deploy/lan/monitoring/alert-rules.yml`): 앱 응답 없음, 미처리 메시지(dead letter) 열림, 소비 지연(lag), HTTP 5xx 비율, **C: 여유 15% 미만(10분) · 10GB 미만(5분)**.
    - **알림 전송 채널은 아직 두지 않는다**(Slack 등은 사용자 요청 때). Alertmanager·Grafana 화면에서 본다.
 2. **로그**: 앱은 지금처럼 stdout JSON 만 낸다(앱에서 로그 서버로 직접 보내지 않는다 — 수집 서버 장애가 앱에 번지지 않게). **PC 마다 Fluent Bit** 가 Docker 컨테이너 로그 파일을 읽어 **기존 OpenSearch**(ADR-0021 과 같은 노드)의 `pmart-logs-YYYY.MM.DD` 에 넣고, **OpenSearch Dashboards** 로 본다.
@@ -28,7 +29,7 @@
    - 지표: `pmart_messaging_dead_letters_open`(열린 건수, DB 기준 — 재기동해도 유지) · `pmart_messaging_dead_letters_total`(기록 수).
    - API(서비스마다, `/api/v1/internal/dead-letters`): 목록·상세, **재처리**(원래 토픽에 같은 키·헤더·본문으로 다시 발행 — 다른 구독자는 inbox 가 같은 eventId 를 버린다), **폐기**(사유 필수). 상태 `OPEN → REPLAYED / DISCARDED`. 재처리해도 다시 실패하면 새 행이 생긴다(원 행 id 를 `replay_of` 로 잇는다).
    - 내부 경로라 게이트웨이를 거치지 않는다(ADR-0026). 백오피스 화면은 backoffice-bff 가 조합해 나중에 붙인다.
-4. **단일 노드 OpenSearch 의 복제본**: 우리 색인(products·sku-prices·pmart-logs)은 복제본 0 으로 만든다. OpenSearch 2.19 에 기본으로 켜진 Query Insights 가 매일 `top_queries-날짜` 색인을 **복제본 1 로 직접 지정해** 만들어(색인 틀로는 덮을 수 없음 — 로컬 확인) 복제본이 UNASSIGNED, 클러스터 yellow 였다(2026-11-02 LAN: 3개). `logs-init` 이 `search.insights.top_queries.exporter.type=none` 으로 기록 색인을 만들지 않게 하고(상위 쿼리는 메모리에서 계속 조회 가능), 남은 `top_queries-*` 는 복제본 0 으로 바꾼다.
+4. **단일 노드 OpenSearch 의 복제본**: 우리 색인(products·sku-prices·pmart-logs)은 복제본 0 으로 만든다. OpenSearch 2.19 에 기본으로 켜진 Query Insights 가 매일 `top_queries-날짜` 색인을 **복제본 1 로 직접 지정해** 만들어(색인 틀로는 덮을 수 없음 — 로컬 확인) 복제본이 UNASSIGNED, 클러스터 yellow 였다(2026-11-02 LAN: 3개). `logs-init` 이 `search.insights.top_queries.exporter.type=none` 으로 기록 색인을 만들지 않게 하고(상위 쿼리는 메모리에서 계속 조회 가능), 남은 `top_queries-*` 는 복제본 0 으로 바꾼다. ISM·작업 스케줄러가 처음 쓰일 때 만드는 시스템 색인(`.opendistro-ism-config`, 날마다 생기는 `.opendistro-ism-managed-index-history-*`, `.opendistro-job-scheduler-lock`)도 복제본 1 이라(LAN 배포 때 확인) 이력은 `plugins.index_state_management.history.number_of_replicas=0`, 이미 있는 `.opendistro-*` 는 복제본 0 으로 바꾼다. LAN: yellow(3) → green(0).
 5. 구성 이미지(버전 고정): `prom/prometheus:v3.5.0`, `prom/alertmanager:v0.28.1`, `grafana/grafana:12.0.2`, `opensearchproject/opensearch-dashboards:2.19.1`, `fluent/fluent-bit:4.0.3`, `prom/node-exporter:v1.9.1`, `curlimages/curl:8.14.1`.
 
 ## 대안

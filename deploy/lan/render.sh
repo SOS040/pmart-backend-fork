@@ -516,6 +516,8 @@ EOF
         echo "    static_configs:"
         for p in "${PCS[@]}"; do echo "      - { targets: [\"${IP[$p]}:9100\"], labels: { pc: $p } }"; done
         for a in $(apps_all); do
+          # config-server 는 actuator 를 health·info 만 연다(SecurityConfig: 나머지 denyAll) — 지표를 열기 전까지 수집하지 않는다
+          [ "$a" = config-server ] && continue
           ap="$(port_of "$a")"; [ -n "$ap" ] || continue
           echo "  - job_name: $a"
           echo "    metrics_path: /actuator/prometheus"
