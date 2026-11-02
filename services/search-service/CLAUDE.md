@@ -25,7 +25,9 @@
 - 구독: commerce.product.v1(ProductVersionPublished·ProductContentPublished·ProductSaleStateChanged), commerce.pricing.v1(PriceVersionEffective). 갱신은 Painless 스크립트가 버전·시각을 비교(재전달·옛 사건 무시). 실패 → Kafka 재시도 → DLT.
 - 콘텐츠 사건에는 이름·이미지가 없어 product-content 공개 카드 API(`pmart.search.content-base-url`)로 보강한다(게시본만).
 - 검색 대상: 이름·상품 버전이 모두 있고 판매중지가 아닌 상품. 이름은 1~2글자 n-gram, 검색어 조각 모두 일치(AND). 카테고리는 구조 id 조상 범위.
-- 아직 없음: carried(null — MFC 취급 사건 없음), 인기·평점 정렬(관련도로 대체, appliedSort 로 알림), 승인 속성 필터(빈 목록), categoryPath(빈 목록), 최근 검색어·재색인 API(501).
+- categoryPath: 대표 카테고리의 이름 경로 — product-service 공개 트리(`pmart.search.product-base-url`)를 5분 사본으로 둔다. 조회 실패면 이전 사본, 없으면 빈 목록(검색은 실패하지 않음). (2026-11-02)
+- carried: mfcId 를 줄 때만 대표 SKU 의 mfc-inventory `/internal/availability` handlingEnabled 사본(`pmart.search.inventory-base-url`). 응답 없음·실패는 null. includeNotCarried=false(기본)면 false 가 확인된 상품만 그 페이지에서 뺀다(total 은 빼기 전 색인 건수). (2026-11-02)
+- 아직 없음: 인기·평점 정렬(관련도로 대체, appliedSort 로 알림), 승인 속성 필터(빈 목록), 최근 검색어·재색인 API(501), 한국어 형태소 분석(nori — 플러그인을 모든 OpenSearch(LAN·시험 컨테이너)에 설치해야 해서 보류, 지금은 1~2글자 n-gram).
 
 ## 상태
 상품 검색·자동완성·필터(빈 목록) 구현(2026-10-30).

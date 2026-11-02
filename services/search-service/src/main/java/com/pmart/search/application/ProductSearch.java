@@ -2,6 +2,8 @@ package com.pmart.search.application;
 
 import com.pmart.search.domain.SearchRules;
 import com.pmart.search.domain.SearchRules.Sort;
+import com.pmart.search.infrastructure.AvailabilityClient;
+import com.pmart.search.infrastructure.CategoryTreeClient;
 import com.pmart.search.infrastructure.OpenSearchIndex;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,7 +19,9 @@ import tools.jackson.databind.JsonNode;
  * 상품 검색·자동완성. 게시 콘텐츠(이름)와 상품 버전이 모두 색인된 상품만, 판매중지는 제외. 이름은 1~2글자 n-gram 이라 "미역" 으로 "미역국" 이 걸리고 검색어의
  * 모든 글자 조각이 있어야 한다(AND).
  *
- * <p>가격·판매 상태는 색인 시점 사본이다. 취급 여부(carried)는 MFC 취급 사건이 아직 없어 늘 불명(null) — 0 이나 false 로 채우지 않는다.
+ * <p>가격·판매 상태는 색인 시점 사본이다. 카테고리 이름 경로는 product-service 공개 트리 사본(5분), 취급 여부(carried)는 mfcId 를 줄 때만
+ * mfc-inventory 사본으로 붙인다(대표 SKU 기준, 조회 실패·응답 없음은 불명 null — false 로 채우지 않는다).
+ * includeNotCarried=false 면 취급하지 않음(false)이 확인된 상품만 이 페이지에서 뺀다(불명은 남긴다). 그래서 total 은 빼기 전 색인 건수다.
  */
 @Service
 public class ProductSearch {
@@ -31,20 +35,39 @@ public class ProductSearch {
       @Nullable Long basePrice,
       @Nullable Integer priceVersion,
       String saleState,
-      @Nullable Integer productVersion) {}
+      @Nullable Integer productVersion,
+      @Nullable String primaryCategoryId,
+      List<String> categoryPath,
+      @Nullable Boolean carried) {}
 
   public record Result(
       List<Hit> items, long total, @Nullable String nextCursor, Sort appliedSort) {}
 
   private final OpenSearchIndex index;
+  private final CategoryTreeClient categories;
+  private final AvailabilityClient availability;
 
-  public ProductSearch(OpenSearchIndex index) {
+  public ProductSearch(
+      OpenSearchIndex index, CategoryTreeClient categories, AvailabilityClient availability) {
     this.index = index;
+    this.categories = categories;
+    this.availability = availability;
   }
 
   public Result search(
       @Nullable String q,
       @Nullable String categoryId,
+      Sort sort,
+      int size,
+      @Nullable String cursor) {
+    return search(q, categoryId, null, true, sort, size, cursor);
+  }
+
+  public Result search(
+      @Nullable String q,
+      @Nullable String categoryId,
+      @Nullable String mfcId,
+      boolean includeNotCarried,
       Sort sort,
       int size,
       @Nullable String cursor) {
@@ -62,11 +85,49 @@ public class ProductSearch {
       hits.add(hit(h.path("_source")));
     }
     long total = res.path("hits").path("total").path("value").asLong(0);
-    String next =
-        from + hits.size() < total && !hits.isEmpty()
-            ? SearchRules.cursor(from + hits.size())
-            : null;
-    return new Result(hits, total, next, sort);
+    int fetched = hits.size();
+    String next = from + fetched < total && fetched > 0 ? SearchRules.cursor(from + fetched) : null;
+    return new Result(enrich(hits, mfcId, includeNotCarried), total, next, sort);
+  }
+
+  /** 이름 경로(대표 카테고리)·취급 여부를 붙인다. 취급하지 않음이 확인된 상품은 includeNotCarried=false 면 뺀다. */
+  private List<Hit> enrich(List<Hit> hits, @Nullable String mfcId, boolean includeNotCarried) {
+    Map<String, Boolean> carried = Map.of();
+    if (mfcId != null && !mfcId.isBlank()) {
+      List<String> skus =
+          hits.stream()
+              .map(Hit::representativeSku)
+              .filter(java.util.Objects::nonNull)
+              .distinct()
+              .toList();
+      carried = skus.isEmpty() ? Map.of() : availability.carried(mfcId, skus);
+    }
+    List<Hit> out = new ArrayList<>();
+    for (Hit h : hits) {
+      String primary =
+          h.primaryCategoryId() != null
+              ? h.primaryCategoryId()
+              : (h.categoryIds().isEmpty() ? null : h.categoryIds().get(0));
+      Boolean c = h.representativeSku() == null ? null : carried.get(h.representativeSku());
+      if (!includeNotCarried && Boolean.FALSE.equals(c)) {
+        continue;
+      }
+      out.add(
+          new Hit(
+              h.productId(),
+              h.name(),
+              h.imageUrl(),
+              h.categoryIds(),
+              h.representativeSku(),
+              h.basePrice(),
+              h.priceVersion(),
+              h.saleState(),
+              h.productVersion(),
+              primary,
+              primary == null ? List.of() : categories.path(primary),
+              c));
+    }
+    return out;
   }
 
   /** 검색어를 포함하는 상품명(중복 제거, 관련도 순). */
@@ -136,6 +197,9 @@ public class ProductSearch {
         s.hasNonNull("basePrice") ? s.get("basePrice").asLong() : null,
         s.hasNonNull("priceVersion") ? s.get("priceVersion").asInt() : null,
         s.path("saleState").asString(SearchRules.ON_SALE),
-        s.hasNonNull("productVersion") ? s.get("productVersion").asInt() : null);
+        s.hasNonNull("productVersion") ? s.get("productVersion").asInt() : null,
+        s.hasNonNull("primaryCategoryId") ? s.get("primaryCategoryId").asString() : null,
+        List.of(),
+        null);
   }
 }

@@ -50,7 +50,13 @@ public class SearchController implements SearchApi {
     try {
       r =
           search.search(
-              q, categoryId, SearchRules.sort(sort == null ? null : sort.getValue()), size, cursor);
+              q,
+              categoryId,
+              mfcId,
+              includeNotCarried == null || includeNotCarried,
+              SearchRules.sort(sort == null ? null : sort.getValue()),
+              size,
+              cursor);
     } catch (SearchRules.InvalidCursorException e) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "잘못된 커서입니다. 처음부터 다시 조회하세요.");
     }
@@ -86,12 +92,12 @@ public class SearchController implements SearchApi {
         .productId(h.productId())
         .name(h.name())
         .imageUrl(h.imageUrl() == null ? null : URI.create(h.imageUrl()))
-        .categoryPath(List.of()) // 이름 경로는 CategoryChanged 투영 후. id 를 이름 자리에 넣지 않는다
+        .categoryPath(h.categoryPath()) // 대표 카테고리 이름 경로(product-service 트리 사본). 모르면 빈 목록
         .representativeSku(h.representativeSku())
         .basePrice(h.basePrice() == null ? null : Math.toIntExact(h.basePrice()))
         .priceVersion(h.priceVersion())
         .saleState(SearchHit.SaleStateEnum.fromValue(h.saleState()))
-        .carried(null)
+        .carried(h.carried())
         .productVersion(h.productVersion());
   }
 

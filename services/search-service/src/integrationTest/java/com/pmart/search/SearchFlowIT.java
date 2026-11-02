@@ -45,7 +45,14 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
     })
 @EnableWireMock(
-    @ConfigureWireMock(name = "content", baseUrlProperties = "pmart.search.content-base-url"))
+    @ConfigureWireMock(
+        name = "content",
+        // 카드·카테고리 트리·가용 조회를 한 WireMock 이 맡는다(경로가 서로 다르다)
+        baseUrlProperties = {
+          "pmart.search.content-base-url",
+          "pmart.search.product-base-url",
+          "pmart.search.inventory-base-url"
+        }))
 class SearchFlowIT extends KafkaContainerSupport {
 
   /** deploy/local·LAN 과 같은 이미지(render.sh·docker-compose.yml). */
@@ -86,6 +93,43 @@ class SearchFlowIT extends KafkaContainerSupport {
     card("PRD-1", "[시험] 소고기 미역국 500g", 1);
     card("PRD-2", "[시험] 국산콩 두부 300g", 1);
     card("PRD-3", "[시험] 고기 왕만두 1kg", 1);
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/categories/tree"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "version",
+                                1,
+                                "nodes",
+                                List.of(
+                                    Map.of("categoryId", "t01", "path", "신선식품"),
+                                    Map.of("categoryId", "t01-c02", "path", "신선식품 > 두부·계란"),
+                                    Map.of("categoryId", "t02", "path", "간편식"),
+                                    Map.of("categoryId", "t02-c01", "path", "간편식 > 국·탕·찌개"),
+                                    Map.of("categoryId", "t02-c02", "path", "간편식 > 만두")))))));
+    // MFC-1: E-1 취급, E-3 취급 안 함, E-2 는 응답에 없음(불명)
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .withQueryParam("mfcId", equalTo("MFC-1"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "items",
+                                List.of(
+                                    Map.of("sku", "E-1", "available", 3, "handlingEnabled", true),
+                                    Map.of(
+                                        "sku",
+                                        "E-3",
+                                        "available",
+                                        0,
+                                        "handlingEnabled",
+                                        false)))))));
   }
 
   void card(String productId, String name, int contentVersion) {
@@ -216,6 +260,16 @@ class SearchFlowIT extends KafkaContainerSupport {
     assertThat(tofu.path("imageUrl").asString()).isEqualTo("/api/v1/content-images/IMG-PRD-2");
     assertThat(tofu.path("saleState").asString()).isEqualTo("ON_SALE");
     assertThat(tofu.path("carried").isNull() || tofu.path("carried").isMissingNode()).isTrue();
+    assertThat(tofu.path("categoryPath").toString()).isEqualTo("[\"신선식품\",\"두부·계란\"]");
+
+    // 센터 취급 여부: 취급 안 함이 확인된 상품(PRD-3)은 기본으로 빠지고, 불명(PRD-2)은 남는다
+    JsonNode atMfc = search("?mfcId=MFC-1");
+    assertThat(ids(atMfc)).containsExactly("PRD-2", "PRD-1");
+    assertThat(atMfc.path("items").path(1).path("carried").asBoolean()).isTrue();
+    assertThat(atMfc.path("items").path(0).path("carried").isNull()).isTrue();
+    JsonNode withNotCarried = search("?mfcId=MFC-1&includeNotCarried=true");
+    assertThat(ids(withNotCarried)).containsExactly("PRD-3", "PRD-2", "PRD-1");
+    assertThat(withNotCarried.path("items").path(0).path("carried").asBoolean()).isFalse();
 
     // 한국어 부분 일치(n-gram) · 카테고리 조상 · 가격 정렬
     assertThat(ids(search("?q=미역"))).containsExactly("PRD-1");
