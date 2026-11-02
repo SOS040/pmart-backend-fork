@@ -18,6 +18,7 @@ import org.springframework.web.client.RestClient;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
     })
+@org.springframework.context.annotation.Import(com.pmart.common.test.TestJwtConfiguration.class)
 class ServiceBootIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
@@ -44,5 +45,23 @@ class ServiceBootIT extends PostgresKafkaContainerSupport {
             .uri("http://localhost:" + port + op[1])
             .exchange((request, response) -> response.getStatusCode().value());
     assertThat(status).as(operation).isNotEqualTo(401);
+  }
+
+  /** 결제위젯 클라이언트 키가 없으면 위젯을 열지 않는다(422 CONFIG_REQUIRED) — 빈 키로 결제를 열지 않음. */
+  @Test
+  void widgetConfigWithoutClientKeyIsConfigRequired() {
+    var res =
+        RestClient.create()
+            .get()
+            .uri("http://localhost:" + port + "/api/v1/payment-widget-config")
+            .headers(h -> h.setBearerAuth(com.pmart.common.test.TestJwt.customer("CU-boot-1")))
+            .exchange(
+                (request, response) ->
+                    response.getStatusCode().value()
+                        + " "
+                        + new String(
+                            response.getBody().readAllBytes(),
+                            java.nio.charset.StandardCharsets.UTF_8));
+    assertThat(res).startsWith("422").contains("CONFIG_REQUIRED");
   }
 }

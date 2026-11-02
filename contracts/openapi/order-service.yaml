@@ -109,7 +109,7 @@ paths:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: RE_QUOTE_REQUIRED (10분 경과·acceptedQuoteVersion 불일치) / CHECKOUT_BLOCKED (초안 blockers 가 남음) / CONFIG_REQUIRED
+          description: RE_QUOTE_REQUIRED (10분 경과·acceptedQuoteVersion 불일치) / CHECKOUT_BLOCKED (초안 blockers 가 남음) / ACCOUNT_NOT_PURCHASABLE (초안 뒤 계정이 구매 불가로 바뀜 — 결제 진입 때 다시 확인, BR-37) / CONFIG_REQUIRED
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

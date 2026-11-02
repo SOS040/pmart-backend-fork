@@ -533,4 +533,29 @@ class PaymentFlowIT extends PostgresKafkaContainerSupport {
       Thread.currentThread().interrupt();
     }
   }
+
+  /** 결제위젯 설정(BR-34): 회원만, clientKey = 설정값, customerKey = 본인 accountId, 세션 재사용용 private 캐시. */
+  @Test
+  void widgetConfigForMembersOnly() {
+    var e =
+        http.get()
+            .uri("/payment-widget-config")
+            .headers(h -> h.setBearerAuth(TestJwt.customer("CU-widget-1")))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(e.getStatusCode().value()).as(e.getBody()).isEqualTo(200);
+    JsonNode b = mapper.readTree(e.getBody());
+    assertThat(b.path("provider").asString()).isEqualTo("TOSS_PAYMENTS");
+    assertThat(b.path("clientKey").asString()).isEqualTo("test_gck_docs_it");
+    assertThat(b.path("customerKey").asString()).isEqualTo("CU-widget-1");
+    assertThat(e.getHeaders().getCacheControl()).contains("private").contains("max-age=3600");
+    // 회원이 아닌 토큰(운영자·서비스)은 403 — 비회원 결제 없음(OMS §4)
+    assertThat(
+            get(
+                    TestJwt.operator("OP-1", java.util.List.of("CS_AGENT"), java.util.List.of()),
+                    "/payment-widget-config")
+                .status())
+        .isEqualTo(403);
+    assertThat(get(ORCH, "/payment-widget-config").status()).isEqualTo(403);
+  }
 }

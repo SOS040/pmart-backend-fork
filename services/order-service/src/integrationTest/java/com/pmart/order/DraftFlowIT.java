@@ -530,6 +530,19 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(d.body().path("blockers")).as(d.body().toString()).isEmpty();
     String draftId = d.body().path("draftId").asString();
     int quoteVersion = d.body().path("quote").path("quoteVersion").asInt();
+
+    // 초안 뒤 계정이 구매 불가로 바뀌면 결제 진입을 거절한다(사가를 시작하지 않음) — BR-37 질문 4
+    stub(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/accounts/" + REPEAT + "/status")),
+        Map.of("accountId", REPEAT, "status", "WITHDRAW_PENDING", "purchasable", false));
+    Res notPurchasable = checkout(repeat, draftId, UUID.randomUUID().toString(), quoteVersion);
+    assertThat(notPurchasable.status()).as(notPurchasable.body().toString()).isEqualTo(422);
+    assertThat(notPurchasable.body().path("code").asString()).isEqualTo("ACCOUNT_NOT_PURCHASABLE");
+    deps.verify(0, WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/checkout-sagas")));
+    stub(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/accounts/" + REPEAT + "/status")),
+        Map.of("accountId", REPEAT, "status", "ACTIVE", "purchasable", true));
+
     String sagaId = "SAGA-" + UUID.randomUUID();
     deps.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/checkout-sagas"))

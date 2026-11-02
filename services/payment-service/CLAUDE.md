@@ -28,6 +28,7 @@
 - `TossClient` 는 HTTP/1.1 고정(JDK 클라이언트의 h2c 업그레이드를 끊는 서버가 있다 — WireMock 시험에서 EOF).
 - 웹훅은 대사를 앞당기는 신호일 뿐. 서명 방식(HMAC-SHA256 Base64)은 가정 — 웹훅을 켤 때 토스 방식과 맞춘다.
 - 미결정(명세 §12 D1~D8)은 구현하지 않는다: 안전한 기본 동작만(ADR-0020 목록).
+- 결제위젯 설정 `GET /payment-widget-config`(BR-34, `WidgetConfigService`): 회원 토큰만(그 밖 403), `{provider, clientKey, customerKey = 토큰 subject(accountId, 명세 D6)}`, `Cache-Control: private, max-age=3600`(앱은 세션마다 한 번). clientKey 없으면 422 CONFIG_REQUIRED.
 - 키: `pmart.payment.toss.*`(pmart-config `payment-service-<프로필>.yml`, 비밀은 {cipher}). `live_` 키는 `allow-live-keys=true` 일 때만. 시크릿 키·Authorization·카드 정보 로그 금지.
 
 ## 상태

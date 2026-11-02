@@ -29,7 +29,7 @@
 - 의존: customer·product·pricing·center-master 는 `/internal`(내부 호출), 예약 슬롯은 capacity `/slots`(사용자 토큰 전파).
 
 ## 결제 진입 (2026-10-31, 슬라이스 4)
-- `POST /order-drafts/{id}/checkouts`: 견적 버전·동결·차단 사유(`CHECKOUT_BLOCKED`) 확인 → orderId(초안+요청 키로 결정적) → orchestration S1 시작. 진행 중이면 기존 주문 ID.
+- `POST /order-drafts/{id}/checkouts`: 견적 버전·동결·차단 사유(`CHECKOUT_BLOCKED`)·계정 구매 가능(customer `/internal/accounts/{id}/status`, 아니면 422 `ACCOUNT_NOT_PURCHASABLE` — 2026-11-02) 확인 → orderId(초안+요청 키로 결정적) → orchestration S1 시작. 진행 중이면 기존 주문 ID.
 - 초안 조회가 사가 사본을 읽어 status(RESOURCE_PENDING·PAYMENT_PENDING·PAYMENT_UNKNOWN·DRAFT)·nextAction(WAIT·PAY·REVIEW)·resources·`payment`(결제창 정보)·`checkoutFailure` 를 채운다. 사가 조회 실패면 WAIT·UNKNOWN.
 
 ## 주문 확정·조회 (2026-10-31, 슬라이스 5 S1 g~j)

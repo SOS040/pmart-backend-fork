@@ -51,7 +51,8 @@ import reactor.core.publisher.Mono;
           "pmart.gateway.upstream.delivery-execution-service",
           "pmart.gateway.upstream.delivery-dispatch-service",
           "pmart.gateway.upstream.backoffice-bff",
-          "pmart.gateway.upstream.auth-service"
+          "pmart.gateway.upstream.auth-service",
+          "pmart.gateway.upstream.payment-service"
         }))
 class GatewayRoutingSecurityTest {
 
@@ -207,6 +208,8 @@ class GatewayRoutingSecurityTest {
     assertRoutedTo("/api/v1/deliveries/d-1/pickups", "delivery-execution-service-deliveries");
     assertRoutedTo("/api/v1/deliveries/d-1", "delivery-execution-service-deliveries");
     assertRoutedTo("/api/v1/backoffice/views/case-inbox", "backoffice-bff");
+    // 결제위젯 설정(BR-34) — payment-service
+    assertRoutedTo("/api/v1/payment-widget-config", "payment-service");
   }
 
   @Test

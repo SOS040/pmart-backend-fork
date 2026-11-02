@@ -7,6 +7,7 @@ import com.pmart.order.domain.OrderRules;
 import com.pmart.order.infrastructure.DraftStore;
 import com.pmart.order.infrastructure.DraftStore.DraftRow;
 import com.pmart.order.infrastructure.OrchestrationClient;
+import com.pmart.order.infrastructure.Upstreams;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -53,6 +54,7 @@ public class CheckoutService {
   private final DraftStore store;
   private final OrchestrationClient orchestration;
   private final OrderService orders;
+  private final Upstreams upstreams;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
@@ -61,12 +63,14 @@ public class CheckoutService {
       DraftStore store,
       OrchestrationClient orchestration,
       OrderService orders,
+      Upstreams upstreams,
       RequestIdempotency idempotency,
       Clock clock) {
     this.drafts = drafts;
     this.store = store;
     this.orchestration = orchestration;
     this.orders = orders;
+    this.upstreams = upstreams;
     this.idempotency = idempotency;
     this.clock = clock;
   }
@@ -113,6 +117,10 @@ public class CheckoutService {
                 throw reject(
                     "CHECKOUT_BLOCKED",
                     "결제할 수 없는 사유가 남아 있습니다: " + v.snapshot().blockers().getFirst().code());
+              }
+              // 계정 상태는 초안 이후 바뀔 수 있다(정지·탈퇴 진행) — 청구 직전에 한 번 더 본다(BR-37 질문 4, 사용자 결정 2026-11-02)
+              if (!upstreams.purchasable(accountId)) {
+                throw reject("ACCOUNT_NOT_PURCHASABLE", "지금 주문할 수 없는 계정 상태입니다.");
               }
               // 같은 진입 요청의 재시도가 같은 주문 ID·사가 키를 쓰도록 결정적으로 만든다
               String orderId =

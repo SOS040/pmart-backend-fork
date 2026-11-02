@@ -288,6 +288,32 @@ paths:
               schema: { $ref: '#/components/schemas/CheckoutPayment' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /payment-widget-config:
+    get:
+      tags: [checkout]
+      summary: 결제위젯 설정 (주문서형 — 결제 진입 전에 위젯을 그리기 위한 clientKey·customerKey, BR-34)
+      description: |
+        회원(고객 토큰)만. 결제마다 바뀌는 값(금액·orderId)은 여기 없다 — 결제 진입 응답 payment 로 받는다.
+        자주 바뀌지 않는 값이라 앱은 **로그인 세션마다 한 번 받아 재사용**한다(Cache-Control: private, max-age=3600).
+        다시 받을 때: 다른 계정으로 로그인했을 때, 위젯이 키 오류를 낼 때.
+        customerKey 는 지금 회원 accountId 와 같다(결제 명세 D6) — 앱은 이 값을 그대로 쓴다.
+      operationId: getPaymentWidgetConfig
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'private, max-age=3600' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentWidgetConfig' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: CONFIG_REQUIRED (결제위젯 클라이언트 키 미설정 — 결제를 열지 않는다)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /webhooks/toss:
     post:
       tags: [webhooks]
@@ -458,6 +484,13 @@ components:
         READY→CREATED, CONFIRMING→PENDING, CONFIRM_UNKNOWN·MANUAL_REVIEW→UNKNOWN, APPROVED→APPROVED, MISMATCH_HOLD→MISMATCH,
         AUTH_FAILED·CANCELED_BY_USER·CONFIRM_FAILED·EXPIRED→FAILED, PARTIAL_CANCELED→PARTIALLY_CANCELLED, CANCELED→CANCELLED.
       enum: [READY, AUTH_FAILED, CANCELED_BY_USER, CONFIRMING, CONFIRM_UNKNOWN, APPROVED, CONFIRM_FAILED, EXPIRED, MISMATCH_HOLD, MANUAL_REVIEW, PARTIAL_CANCELED, CANCELED]
+    PaymentWidgetConfig:
+      type: object
+      required: [provider, clientKey, customerKey]
+      properties:
+        provider: { type: string, enum: [TOSS_PAYMENTS] }
+        clientKey: { type: string, description: '결제위젯 클라이언트 키(gck, 공개 키). 테스트 키는 test_ 로 시작' }
+        customerKey: { type: string, description: '토스 customerKey(22~50자). 지금은 회원 accountId — 로그·분석 이벤트에 넣지 않는다' }
     CheckoutPayment:
       type: object
       required: [orderId, state, stage, amount]
