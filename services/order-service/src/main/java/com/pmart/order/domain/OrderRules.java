@@ -225,4 +225,31 @@ public final class OrderRules {
     String[] p = hhmm.split(":");
     return Integer.parseInt(p[0]) * 60 + Integer.parseInt(p[1]);
   }
+
+  /** 토스 orderName 최대 길이(결제 명세 — 100자). */
+  public static final int ORDER_NAME_MAX = 100;
+
+  /**
+   * 결제창 주문명(BR-35). 품목 순서대로 상품명 사본을 보고, 첫 이름 있는 품목 + "외 N건"(N = 나머지 품목 수). 한 품목이면 이름만. 이름이 하나도
+   * 없으면(사본 조회 실패·옛 초안) "PMart 장보기 N개 상품". 100자를 넘으면 상품명을 줄여 "…" 를 붙인다.
+   */
+  public static String orderName(
+      java.util.List<? extends @org.jspecify.annotations.Nullable String> names) {
+    int n = names.size();
+    String first =
+        names.stream()
+            .filter(x -> x != null && !x.isBlank())
+            .map(String::strip)
+            .findFirst()
+            .orElse(null);
+    if (first == null) {
+      return n == 1 ? "PMart 장보기 1개 상품" : "PMart 장보기 " + n + "개 상품";
+    }
+    String suffix = n > 1 ? " 외 " + (n - 1) + "건" : "";
+    int room = ORDER_NAME_MAX - suffix.length();
+    if (first.length() > room) {
+      first = first.substring(0, room - 1) + "…";
+    }
+    return first + suffix;
+  }
 }

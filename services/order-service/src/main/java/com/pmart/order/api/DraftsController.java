@@ -238,6 +238,8 @@ public class DraftsController implements DraftsApi {
                             .cartItemId(l.cartItemId())
                             .sku(l.sku())
                             .productId(l.productId())
+                            .productName(l.productName())
+                            .optionLabel(l.optionLabel())
                             .quantity(l.quantity())
                             .unitPrice((int) l.unitPrice())
                             .lineAmount((int) l.lineAmount())

@@ -29,6 +29,8 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class Upstreams {
 
+  private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(Upstreams.class);
+
   public record Sku(
       String sku,
       String productId,
@@ -55,6 +57,7 @@ public class Upstreams {
   private final RestClient pricing;
   private final RestClient center;
   private final RestClient capacity;
+  private final RestClient content;
   private final ObjectMapper mapper;
 
   public Upstreams(RestClient.Builder builder, OrderProperties props, ObjectMapper mapper) {
@@ -63,6 +66,7 @@ public class Upstreams {
     this.pricing = builder.clone().baseUrl(props.pricingBaseUrl()).build();
     this.center = builder.clone().baseUrl(props.centerMasterBaseUrl()).build();
     this.capacity = builder.clone().baseUrl(props.capacityBaseUrl()).build();
+    this.content = builder.clone().baseUrl(props.contentBaseUrl()).build();
     this.mapper = mapper;
   }
 
@@ -291,6 +295,36 @@ public class Upstreams {
               s.path("availability").asString("UNAVAILABLE")));
     }
     return out;
+  }
+
+  // ---------- product-content ----------
+
+  /** 고객용 상품명·옵션 라벨(주문 당시 사본, BR-35). */
+  public record ContentName(@Nullable String productName, @Nullable String optionLabel) {
+    public static final ContentName NONE = new ContentName(null, null);
+  }
+
+  /**
+   * product-content 주문 스냅샷의 상품명·옵션 라벨. 조회 실패(없음·장애·시간 초과)면 {@link ContentName#NONE} — 이름을 지어내지 않고,
+   * 초안 생성을 막지 않는다(앱은 이름이 없을 때만 SKU 로 대신 보인다).
+   */
+  public ContentName contentName(@Nullable String productId, String sku) {
+    if (productId == null) {
+      return ContentName.NONE;
+    }
+    try {
+      JsonNode n =
+          get(
+              content,
+              "product-content-service snapshot",
+              "/api/v1/internal/product-contents/{id}/snapshot?sku={sku}",
+              productId,
+              sku);
+      return new ContentName(text(n, "name"), text(n, "optionLabel"));
+    } catch (RuntimeException e) {
+      log.warn("상품명 사본 조회 실패 productId={} sku={} — 이름 없이 진행: {}", productId, sku, e.toString());
+      return ContentName.NONE;
+    }
   }
 
   private JsonNode get(RestClient client, String target, String uri, Object... vars) {

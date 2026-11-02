@@ -117,4 +117,24 @@ class OrderRulesTest {
                     List.of(new OrderRules.Change("L1", 1), new OrderRules.Change("L1", 1))))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  /** 결제창 주문명(BR-35): 첫 이름 있는 품목 + 외 N건, 이름이 없으면 품목 수, 100자 상한. */
+  @Test
+  void orderNameFromProductNameSnapshots() {
+    assertThat(OrderRules.orderName(List.of("국산콩 두부 300g"))).isEqualTo("국산콩 두부 300g");
+    assertThat(OrderRules.orderName(List.of("국산콩 두부 300g", "대파 1단", "우유 1L")))
+        .isEqualTo("국산콩 두부 300g 외 2건");
+    // 첫 품목 이름이 비면 다음 이름 있는 품목, N 은 나머지 품목 수
+    assertThat(OrderRules.orderName(java.util.Arrays.asList(null, "대파 1단")))
+        .isEqualTo("대파 1단 외 1건");
+    // 이름이 하나도 없으면(사본 조회 실패·옛 초안) 품목 수로
+    assertThat(OrderRules.orderName(java.util.Arrays.asList(null, " ")))
+        .isEqualTo("PMart 장보기 2개 상품");
+    assertThat(OrderRules.orderName(java.util.Arrays.asList((String) null)))
+        .isEqualTo("PMart 장보기 1개 상품");
+    // 100자 상한: 상품명을 줄이고 … 를 붙인다(외 N건은 남긴다)
+    String longName = "가".repeat(150);
+    String name = OrderRules.orderName(List.of(longName, "대파"));
+    assertThat(name).hasSize(OrderRules.ORDER_NAME_MAX).endsWith("… 외 1건");
+  }
 }

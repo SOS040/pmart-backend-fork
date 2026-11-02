@@ -61,7 +61,8 @@ import tools.jackson.databind.ObjectMapper;
           "pmart.order.pricing-base-url",
           "pmart.order.center-master-base-url",
           "pmart.order.capacity-base-url",
-          "pmart.order.orchestration-base-url"
+          "pmart.order.orchestration-base-url",
+          "pmart.order.content-base-url"
         }))
 class DraftFlowIT extends PostgresKafkaContainerSupport {
 
@@ -107,6 +108,15 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     }
     shoppingContext("ADR-IN", "SERVICEABLE", "MFC-1");
     shoppingContext("ADR-OUT", "OUT_OF_SERVICE_AREA", null);
+    // 상품명·옵션 라벨 사본(BR-35) — E-00000001 만 이름이 있다(그 밖은 404 → 이름 없음)
+    stub(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/product-contents/PRD-E-00000001/snapshot")),
+        Map.of(
+            "productId", "PRD-E-00000001",
+            "sku", "E-00000001",
+            "name", "국산콩 두부 300g",
+            "optionLabel", "300g",
+            "contentVersion", 1));
     stub(
         WireMock.get(urlPathEqualTo("/api/v1/internal/skus")),
         Map.of(
@@ -608,7 +618,9 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.customerRef", equalTo(REPEAT)))
             .withRequestBody(matchingJsonPath("$.amount", equalTo("22100")))
             .withRequestBody(matchingJsonPath("$.arrivalWindow.start", equalTo("10:00")))
-            .withRequestBody(matchingJsonPath("$.lines[0].quantity", equalTo("10"))));
+            .withRequestBody(matchingJsonPath("$.lines[0].quantity", equalTo("10")))
+            // 결제창 주문명 = 상품명 사본(BR-35). 한 품목이라 "외 N건" 없음
+            .withRequestBody(matchingJsonPath("$.orderName", equalTo("국산콩 두부 300g"))));
 
     JsonNode g = get(repeat, "/order-drafts/" + draftId).body();
     assertThat(g.path("status").asString()).isEqualTo("PAYMENT_PENDING");
@@ -732,6 +744,10 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("FIRST_PURCHASE");
     long total = d.body().path("quote").path("totalAmount").asLong();
     assertThat(total).isEqualTo(19_100);
+    // 상품명·옵션 라벨 사본(BR-35)
+    assertThat(d.body().path("lines").path(0).path("productName").asString())
+        .isEqualTo("국산콩 두부 300g");
+    assertThat(d.body().path("lines").path(0).path("optionLabel").asString()).isEqualTo("300g");
     // 주문 당시 배송지 사본(BR-37): 초안을 만들 때 customer 배송지를 복사해 고정한다
     JsonNode ship = d.body().path("delivery").path("shippingAddress");
     assertThat(ship.path("roadAddress").asString()).isEqualTo("부산광역시 부산진구 중앙대로 708");
@@ -833,6 +849,8 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(o.path("quote").path("firstPurchaseBenefit").asString()).isEqualTo("CONFIRMED");
     assertThat(o.path("lines").path(0).path("orderLineId").asString()).isEqualTo(orderId + "-L1");
     assertThat(o.path("lines").path(0).path("originalQty").asInt()).isEqualTo(10);
+    assertThat(o.path("lines").path(0).path("productName").asString()).isEqualTo("국산콩 두부 300g");
+    assertThat(o.path("lines").path(0).path("optionLabel").asString()).isEqualTo("300g");
     assertThat(o.path("lines").path(0).path("unfulfilledQty").asInt()).isEqualTo(10);
     assertThat(o.path("lines").path(0).path("deliveredQty").asInt()).isZero();
     assertThat(o.path("payment").path("paymentAttemptId").asString()).isEqualTo("PAY-1");
@@ -1040,5 +1058,30 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     // 다시 취소(다른 키) → 409
     Res again = changeQuantity(svc, orderId, UUID.randomUUID().toString(), cancel);
     assertThat(again.status()).isEqualTo(409);
+  }
+
+  /** 상품명 사본 조회가 실패해도 초안은 만든다 — 이름은 지어내지 않고 비운다(BR-35, 앱은 그때만 SKU 로). */
+  @Test
+  void productNameStaysEmptyWhenContentLookupFails() {
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/product-contents/PRD-E-00000001/snapshot"))
+            .atPriority(1)
+            .willReturn(aResponse().withStatus(500)));
+    Res d =
+        create(
+            TestJwt.customer(REPEAT),
+            draft(
+                "PI-" + UUID.randomUUID(),
+                "E-00000001",
+                10,
+                "ADR-IN",
+                "SCHEDULED",
+                window("10:00", "11:00")));
+    assertThat(d.status()).as(d.body().toString()).isIn(200, 201);
+    JsonNode line = d.body().path("lines").path(0);
+    assertThat(line.path("sku").asString()).isEqualTo("E-00000001");
+    assertThat(line.path("productName").isNull() || line.path("productName").isMissingNode())
+        .as(line.toString())
+        .isTrue();
   }
 }

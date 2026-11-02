@@ -293,10 +293,9 @@ public class CheckoutService {
     return b;
   }
 
-  /** 결제창 주문명. 상품명 사본은 초안에 없어 품목 수로 만든다. */
+  /** 결제창 주문명(BR-35): 첫 품목의 상품명 사본 + "외 N건". 사본이 없으면 품목 수로. */
   private static String orderName(DraftService.Snapshot s) {
-    int n = s.lines().size();
-    return n == 1 ? "PMart 장보기 1개 상품" : "PMart 장보기 " + n + "개 상품";
+    return OrderRules.orderName(s.lines().stream().map(DraftService.Line::productName).toList());
   }
 
   private static @Nullable Instant instant(JsonNode n) {

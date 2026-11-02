@@ -61,7 +61,10 @@ public class DraftService {
       long lineAmount,
       int weightG,
       // 2026-10-31 결제 확정 단계에서 추가(OrderConfirmed 필수 값). 그 전 초안은 null — 확정 때 product 로 채운다
-      @Nullable Integer unitsPerSku) {}
+      @Nullable Integer unitsPerSku,
+      // 고객용 상품명·옵션 라벨의 주문 당시 사본(BR-35, 2026-11-02). 조회 실패·그 전 초안은 null(지어내지 않음)
+      @Nullable String productName,
+      @Nullable String optionLabel) {}
 
   /**
    * @param shippingAddress 주문 당시 배송지·수령 연락처 사본(BR-37). 2026-11-02 이전 초안은 null(JSON 에 없음)
@@ -218,6 +221,7 @@ public class DraftService {
     for (Item i : req.items()) {
       Upstreams.PricedLine p = priced.lines().get(i.sku());
       Upstreams.Sku s = skus.get(i.sku());
+      Upstreams.ContentName name = upstreams.contentName(s.productId(), i.sku());
       lines.add(
           new Line(
               i.cartItemId(),
@@ -227,7 +231,9 @@ public class DraftService {
               p == null ? 0 : p.unitPrice(),
               p == null ? 0 : p.lineAmount(),
               s.weightG() * i.quantity(),
-              s.unitsPerSku()));
+              s.unitsPerSku(),
+              name.productName(),
+              name.optionLabel()));
     }
     Snapshot snapshot =
         new Snapshot(

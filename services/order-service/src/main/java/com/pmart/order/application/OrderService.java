@@ -471,7 +471,9 @@ public class OrderService {
               0,
               0,
               0,
-              0));
+              0,
+              l.productName(), // 초안 때 뜬 사본(BR-35) — 확정 때 다시 조회하지 않는다
+              l.optionLabel()));
     }
     return out;
   }

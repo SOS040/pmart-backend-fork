@@ -10,7 +10,8 @@ public record OrderProperties(
     String pricingBaseUrl,
     String centerMasterBaseUrl,
     String capacityBaseUrl,
-    String orchestrationBaseUrl) {
+    String orchestrationBaseUrl,
+    String contentBaseUrl) {
 
   public OrderProperties {
     customerBaseUrl = or(customerBaseUrl, "http://customer-service:8103");
@@ -19,6 +20,8 @@ public record OrderProperties(
     centerMasterBaseUrl = or(centerMasterBaseUrl, "http://center-master-service:8507");
     capacityBaseUrl = or(capacityBaseUrl, "http://delivery-capacity-service:8402");
     orchestrationBaseUrl = or(orchestrationBaseUrl, "http://order-orchestration-service:8202");
+    // 상품명·옵션 라벨 사본(BR-35) — product-content 주문 스냅샷 조회
+    contentBaseUrl = or(contentBaseUrl, "http://product-content-service:8102");
   }
 
   private static String or(String v, String d) {

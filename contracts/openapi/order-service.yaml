@@ -146,7 +146,7 @@ paths:
         고객 토큰만(그 밖 403). 남의 주문·확정 전 주문 ID 는 404(존재를 드러내지 않음).
         현재(결제 확정 단계)는 order 원장만 조합한다: 확정 스냅샷(품목·배송·견적 금액)·주문행 수량(originalQty = unfulfilledQty = 주문 수량, 나머지 0)·
         payment{paymentAttemptId, state=APPROVED}. shipments·claims 는 빈 배열, sources 는 order-service 하나(CURRENT).
-        quote.firstPurchaseBenefit 는 첫 구매 무료를 실제 적용했으면 CONFIRMED, 아니면 NOT_ELIGIBLE. productName 은 아직 비운다.
+        quote.firstPurchaseBenefit 는 첫 구매 무료를 실제 적용했으면 CONFIRMED, 아니면 NOT_ELIGIBLE. productName·optionLabel 은 초안 때 뜬 주문 당시 사본(BR-35, 2026-11-02 이전 주문은 비어 있음).
       operationId: getOrder
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string } }
@@ -483,6 +483,8 @@ components:
         cartItemId: { type: string }
         sku: { $ref: '_common.yaml#/components/schemas/Sku' }
         productId: { type: string }
+        productName: { type: [string, 'null'], description: 고객용 상품명 사본(BR-35). 조회 실패면 null }
+        optionLabel: { type: [string, 'null'], description: 옵션 라벨 사본. 단일 옵션 상품은 null 일 수 있다 }
         quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
         unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
         lineAmount: { $ref: '_common.yaml#/components/schemas/Money' }
@@ -597,7 +599,8 @@ components:
       properties:
         orderLineId: { type: string }
         sku: { type: string }
-        productName: { type: string, description: 주문 당시 스냅샷 }
+        productName: { type: [string, 'null'], description: 고객용 상품명의 주문 당시 사본(BR-35, 초안 때 고정). 조회 실패·2026-11-02 이전 주문은 null — 앱은 그때만 sku 로 대신 }
+        optionLabel: { type: [string, 'null'], description: 옵션 라벨의 주문 당시 사본(BR-35) }
         productId: { type: string }
         cartItemId: { type: string, description: 주문 대상이던 장바구니 품목(장바구니 정리용) }
         lineAmount: { $ref: '_common.yaml#/components/schemas/Money' }

@@ -87,6 +87,8 @@ public class OrdersController implements OrdersApi {
                                 .orderLineId(l.orderLineId())
                                 .sku(l.sku())
                                 .productId(l.productId())
+                                .productName(l.productName())
+                                .optionLabel(l.optionLabel())
                                 .cartItemId(l.cartItemId())
                                 .unitsPerSku(l.unitsPerSku())
                                 .unitPrice((int) l.unitPrice())

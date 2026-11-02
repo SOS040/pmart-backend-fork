@@ -69,7 +69,9 @@ public class OrderStore {
       int handedOverQty,
       int cancelledBeforeShipQty,
       int deliveredQty,
-      int returnedQty) {}
+      int returnedQty,
+      @Nullable String productName,
+      @Nullable String optionLabel) {}
 
   /** 목록 한 줄(주문 요약). */
   public record Summary(
@@ -169,8 +171,8 @@ public class OrderStore {
           "INSERT INTO customer_order_line (order_line_id, order_id, line_no, cart_item_id, sku,"
               + " product_id, units_per_sku, quantity, unit_price, line_amount, discount_share,"
               + " weight_g, original_qty, unfulfilled_qty, handed_over_qty,"
-              + " cancelled_before_ship_qty, delivered_qty, returned_qty)"
-              + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              + " cancelled_before_ship_qty, delivered_qty, returned_qty, product_name, option_label)"
+              + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           l.orderLineId(),
           l.orderId(),
           l.lineNo(),
@@ -188,7 +190,9 @@ public class OrderStore {
           l.handedOverQty(),
           l.cancelledBeforeShipQty(),
           l.deliveredQty(),
-          l.returnedQty());
+          l.returnedQty(),
+          l.productName(),
+          l.optionLabel());
     }
   }
 
@@ -266,7 +270,9 @@ public class OrderStore {
                 rs.getInt("handed_over_qty"),
                 rs.getInt("cancelled_before_ship_qty"),
                 rs.getInt("delivered_qty"),
-                rs.getInt("returned_qty")),
+                rs.getInt("returned_qty"),
+                rs.getString("product_name"),
+                rs.getString("option_label")),
         orderId);
   }
 
