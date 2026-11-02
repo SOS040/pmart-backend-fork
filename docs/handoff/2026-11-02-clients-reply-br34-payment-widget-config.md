@@ -38,4 +38,5 @@ GET /api/v1/payment-widget-config        (회원 고객 토큰, 게이트웨이 
 - 결제 진입 때 계정 상태도 다시 본다 — 구매 불가로 바뀌었으면 `422 ACCOUNT_NOT_PURCHASABLE`(BR-37 회신 4번).
 
 ## 5. LAN 반영
-- 반영되면 이 절에 커밋·배포 시각을 적는다.
+- **LAN 반영 2026-11-02 08:18 KST** — pmart-backend `312a51b`(order·payment·api-gateway 이미지), pmart-config `275f84a`. order-service V5(`customer_order_shipping`) 적용, 세 서비스 UP. 게이트웨이 확인: `/api/v1/payment-widget-config` 토큰 없음 401·비회원 403. 회원 토큰 200 은 앱에서 확인 부탁(Google 로그인 필요).
+- 이 배포 전에 만든 초안·주문은 `shippingAddress` 가 `null` 이다.

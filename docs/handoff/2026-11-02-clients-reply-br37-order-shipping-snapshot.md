@@ -39,4 +39,5 @@
 - 주문서 화면은 초안의 `delivery.shippingAddress` 로 "이 주소로 배달" 을 보여 줄 수 있다. 주소를 바꾸려면 지금처럼 새 초안을 만든다(사본은 초안마다 고정).
 
 ## 4. LAN 반영
-- 반영되면 이 절에 커밋·배포 시각을 적는다.
+- **LAN 반영 2026-11-02 08:18 KST** — pmart-backend `312a51b`(order·payment·api-gateway 이미지), pmart-config `275f84a`. order-service V5(`customer_order_shipping`) 적용, 세 서비스 UP. 게이트웨이 확인: `/api/v1/payment-widget-config` 토큰 없음 401·비회원 403. 회원 토큰 200 은 앱에서 확인 부탁(Google 로그인 필요).
+- 이 배포 전에 만든 초안·주문은 `shippingAddress` 가 `null` 이다.
