@@ -1,0 +1,18 @@
+# Grafana 데이터 원본 (ADR-0030). 같은 PC 의 컨테이너 이름으로 닿는다.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: pmart-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+  - name: Alertmanager
+    uid: pmart-alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:
+      implementation: prometheus

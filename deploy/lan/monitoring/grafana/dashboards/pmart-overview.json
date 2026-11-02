@@ -1,0 +1,523 @@
+{
+ "uid": "pmart-overview",
+ "title": "PMart 개요",
+ "tags": [
+  "pmart"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 41,
+ "refresh": "30s",
+ "time": {
+  "from": "now-1h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "job",
+    "label": "서비스",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "pmart-prometheus"
+    },
+    "query": {
+     "query": "label_values(up, job)",
+     "refId": "job"
+    },
+    "definition": "label_values(up, job)",
+    "multi": true,
+    "includeAll": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2,
+    "sort": 1
+   }
+  ]
+ },
+ "panels": [
+  {
+   "id": 13,
+   "title": "Windows C: 여유 (PC별)",
+   "type": "bargauge",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 6
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     },
+     "expr": "node_filesystem_avail_bytes{job=\"host-disk\",mountpoint=\"/host/windows-c\"} / node_filesystem_size_bytes{job=\"host-disk\",mountpoint=\"/host/windows-c\"}",
+     "legendFormat": "{{pc}}",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "min": 0,
+     "max": 1,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 0.08
+       },
+       {
+        "color": "green",
+        "value": 0.15
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "showUnfilled": true
+   }
+  },
+  {
+   "id": 1,
+   "title": "앱 UP",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 6,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "count(up{job=~\"$job\"} == 1)",
+     "legendFormat": "UP",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "options": {
+    "colorMode": "value",
+    "graphMode": "none"
+   }
+  },
+  {
+   "id": 2,
+   "title": "앱 DOWN",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 4,
+    "y": 6,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "count(up{job=~\"$job\"} == 0) or vector(0)",
+     "legendFormat": "DOWN",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none"
+   }
+  },
+  {
+   "id": 3,
+   "title": "미처리 메시지(OPEN)",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 6,
+    "w": 4,
+    "h": 4
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum(pmart_messaging_dead_letters_open{job=~\"$job\"}) or vector(0)",
+     "legendFormat": "OPEN",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none"
+   }
+  },
+  {
+   "id": 4,
+   "title": "미처리 메시지 — 서비스·토픽",
+   "type": "table",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 6,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (job, topic) (pmart_messaging_dead_letters_open{job=~\"$job\"}) > 0",
+     "legendFormat": "",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     },
+     "format": "table",
+     "instant": true
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "job": "서비스",
+       "topic": "토픽",
+       "Value": "OPEN"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "title": "앱 상태",
+   "type": "state-timeline",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 12,
+    "h": 10
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "up{job=~\"$job\"}",
+     "legendFormat": "{{job}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "DOWN",
+         "color": "red"
+        },
+        "1": {
+         "text": "UP",
+         "color": "green"
+        }
+       }
+      }
+     ]
+    },
+    "overrides": []
+   },
+   "options": {
+    "showValue": "never"
+   }
+  },
+  {
+   "id": 6,
+   "title": "HTTP 요청/초",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 14,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (job) (rate(http_server_requests_seconds_count{job=~\"$job\",uri!~\"/actuator.*\"}[2m]))",
+     "legendFormat": "{{job}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 7,
+   "title": "HTTP 5xx/초",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (job, uri) (rate(http_server_requests_seconds_count{job=~\"$job\",status=~\"5..\"}[2m])) > 0",
+     "legendFormat": "{{job}} {{uri}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 8,
+   "title": "HTTP 평균 응답 시간",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 22,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (job) (rate(http_server_requests_seconds_sum{job=~\"$job\",uri!~\"/actuator.*\"}[2m])) / sum by (job) (rate(http_server_requests_seconds_count{job=~\"$job\",uri!~\"/actuator.*\"}[2m]))",
+     "legendFormat": "{{job}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 9,
+   "title": "Kafka 소비 지연(최대)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (job, topic) (kafka_consumer_fetch_manager_records_lag_max{job=~\"$job\"}) > 0",
+     "legendFormat": "{{job}} {{topic}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ]
+  },
+  {
+   "id": 10,
+   "title": "미처리 메시지 기록(누적 증가)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 30,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (job, topic) (increase(pmart_messaging_dead_letters_total{job=~\"$job\"}[15m])) > 0",
+     "legendFormat": "{{job}} {{topic}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ]
+  },
+  {
+   "id": 11,
+   "title": "JVM 힙 사용",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 36,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (job) (jvm_memory_used_bytes{job=~\"$job\",area=\"heap\"})",
+     "legendFormat": "{{job}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "id": 12,
+   "title": "DB 커넥션(사용 중)",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "pmart-prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 38,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (job) (hikaricp_connections_active{job=~\"$job\"})",
+     "legendFormat": "{{job}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "pmart-prometheus"
+     }
+    }
+   ]
+  }
+ ]
+}

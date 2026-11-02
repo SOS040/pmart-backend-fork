@@ -30,7 +30,21 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 opensearch backoffice-web "
+INFRA=" postgres kafka connect redis zipkin s3 opensearch backoffice-web prometheus alertmanager grafana opensearch-dashboards log-shipper logs-init host-disk "
+MON=$LAN/monitoring
+# 로그 수집(ADR-0030): opensearch 가 배치돼 있으면 모든 PC 에 log-shipper(Fluent Bit), opensearch PC 에 logs-init(색인 준비, 1회)을
+# 자동으로 붙인다. 줄 끝에 붙여 기존 구성요소의 고정 IP 가 바뀌지 않는다.
+if [ -n "${WHERE[opensearch]:-}" ]; then
+  for pc in "${PCS[@]}"; do COMPS[$pc]+=" log-shipper"; done
+  COMPS[${WHERE[opensearch]}]+=" logs-init"
+fi
+# 디스크 감시(ADR-0030): prometheus 가 있으면 모든 PC 에 host-disk(node-exporter). Docker Desktop 이 마운트한 Windows C: 의
+# 실제 여유 공간을 잰다 — 컨테이너·OpenSearch 가 보는 디스크는 1TB 가상 디스크라 실제 C: 보다 먼저 차지 않는다.
+if [ -n "${WHERE[prometheus]:-}" ]; then
+  for pc in "${PCS[@]}"; do COMPS[$pc]+=" host-disk"; done
+fi
+# Prometheus 수집 대상: 배치된 모든 Spring 앱(인프라 제외) <PC IP>:<포트>/actuator/prometheus
+apps_all() { for c in "${!WHERE[@]}"; do [[ "$c" == postgres-* || "$INFRA" == *" $c "* ]] || echo "$c"; done | sort; }
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
 yml() { echo "$(src_dir "$1")/src/main/resources/application.yml"; }
 # 설정 저장소 정본(ADR-0029)으로 옮긴 앱: 저장소 최상위에 <앱>-lan.yml 이 있다. 포트 등 서비스 고유 설정은 <앱>.yml 에 있다
@@ -291,6 +305,122 @@ EOF
 
 EOF
         ;;
+      prometheus)
+        # 지표 수집(ADR-0030). 대상은 아래에서 monitoring/prometheus.yml 로 생성.
+        # 보존: 7일 또는 2GB 중 먼저 닿는 쪽(디스크 상한 — 2026-10-25 pc3 Connect 로그 142GB 사고 교훈)
+        cat <<EOF
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d", "--storage.tsdb.retention.size=2GB", "--web.enable-lifecycle"]
+    ports: ["9090:9090"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - promdata:/prometheus
+    mem_limit: 1g
+
+EOF
+        ;;
+      alertmanager)
+        cat <<EOF
+  alertmanager:
+    <<: *common
+    image: prom/alertmanager:v0.28.1
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    ports: ["9093:9093"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+EOF
+        ;;
+      grafana)
+        cat <<EOF
+  grafana:
+    <<: *common
+    image: grafana/grafana:12.0.2
+    ports: ["3000:3000"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: \${PMART_GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DEFAULT_LOCALE: ko-KR
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+
+EOF
+        ;;
+      opensearch-dashboards)
+        # 로그 화면(ADR-0030). 보안 플러그인 끔(opensearch 와 같음 — LAN 시험망)
+        cat <<EOF
+  opensearch-dashboards:
+    <<: *common
+    image: opensearchproject/opensearch-dashboards:2.19.1
+    ports: ["5601:5601"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    mem_limit: 1g
+
+EOF
+        ;;
+      log-shipper)
+        # PC 마다 하나: Docker Desktop VM 안의 컨테이너 로그 파일을 읽어 OpenSearch 로(ADR-0030)
+        cat <<EOF
+  log-shipper:
+    <<: *common
+    image: fluent/fluent-bit:4.0.3
+    networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      PMART_PC: $pc
+      PMART_OPENSEARCH_HOST: opensearch
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./monitoring/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./monitoring/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - flbstate:/fluent-bit/state
+    mem_limit: 256m
+
+EOF
+        ;;
+      host-disk)
+        # Windows C: 여유 공간(9p drvfs 마운트, 읽기 전용) → node_filesystem_avail_bytes{mountpoint="/host/windows-c"}
+        cat <<EOF
+  host-disk:
+    <<: *common
+    image: prom/node-exporter:v1.9.1
+    command: ["--collector.disable-defaults", "--collector.filesystem", "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|etc)(\$\$|/)"]
+    ports: ["9100:9100"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - /run/desktop/mnt/host/c:/host/windows-c:ro
+    mem_limit: 64m
+
+EOF
+        ;;
+      logs-init)
+        # 한 번 돌고 끝난다(보존 정책·색인 틀·Dashboards 색인 패턴). 배포 때마다 다시 돌아도 같은 결과
+        cat <<EOF
+  logs-init:
+    image: curlimages/curl:8.14.1
+    restart: "no"
+    logging: { driver: json-file, options: { max-size: "1m", max-file: "1" } }
+    entrypoint: ["sh", "/init/logs-init.sh"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./monitoring/logs-init.sh:/init/logs-init.sh:ro
+    depends_on:
+      opensearch: { condition: service_healthy }
+
+EOF
+        ;;
       zipkin)
         cat <<EOF
   zipkin:
@@ -356,8 +486,44 @@ EOF
     [[ "$comps" == *" kafka "* ]] && vols+="  kafkadata:"$'\n'
     [[ "$comps" == *" s3 "* ]] && vols+="  s3data:"$'\n'
     [[ "$comps" == *" opensearch "* ]] && vols+="  osdata:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" prometheus "* ]] && vols+="  promdata:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" grafana "* ]] && vols+="  grafanadata:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" log-shipper "* ]] && vols+="  flbstate:"$'\n'
     [ -n "$vols" ] && printf 'volumes:\n%s' "$vols"
   } > "$dir/compose.yml"
+
+  # 관측 구성 파일(ADR-0030): 이 PC 에 있는 것만
+  allc=" ${COMPS[$pc]} "
+  if [[ "$allc" =~ \ (prometheus|alertmanager|grafana|log-shipper|logs-init)\  ]]; then
+    mkdir -p "$dir/monitoring"
+    [[ "$allc" == *" prometheus "* ]] && cp "$MON/alert-rules.yml" "$dir/monitoring/"
+    [[ "$allc" == *" alertmanager "* ]] && cp "$MON/alertmanager.yml" "$dir/monitoring/"
+    [[ "$allc" == *" grafana "* ]] && cp -r "$MON/grafana" "$dir/monitoring/"
+    [[ "$allc" == *" log-shipper "* ]] && cp "$MON/fluent-bit.conf" "$MON/parsers.conf" "$dir/monitoring/"
+    [[ "$allc" == *" logs-init "* ]] && tr -d '\r' < "$MON/logs-init.sh" > "$dir/monitoring/logs-init.sh"
+    if [[ "$allc" == *" prometheus "* ]]; then
+      {
+        echo "# 생성 파일(deploy/lan/render.sh) — 대상은 placement.conf 의 Spring 앱. ADR-0030"
+        echo "global: { scrape_interval: 15s, evaluation_interval: 15s }"
+        echo "rule_files: [/etc/prometheus/alert-rules.yml]"
+        if [ -n "${WHERE[alertmanager]:-}" ]; then
+          echo "alerting: { alertmanagers: [ { static_configs: [ { targets: [\"${IP[${WHERE[alertmanager]}]}:9093\"] } ] } ] }"
+        fi
+        echo "scrape_configs:"
+        echo "  - job_name: prometheus"
+        echo "    static_configs: [ { targets: [\"localhost:9090\"] } ]"
+        echo "  - job_name: host-disk"
+        echo "    static_configs:"
+        for p in "${PCS[@]}"; do echo "      - { targets: [\"${IP[$p]}:9100\"], labels: { pc: $p } }"; done
+        for a in $(apps_all); do
+          ap="$(port_of "$a")"; [ -n "$ap" ] || continue
+          echo "  - job_name: $a"
+          echo "    metrics_path: /actuator/prometheus"
+          echo "    static_configs: [ { targets: [\"${IP[${WHERE[$a]}]}:$ap\"], labels: { pc: ${WHERE[$a]} } } ]"
+        done
+      } > "$dir/monitoring/prometheus.yml"
+    fi
+  fi
 
   # init-db.sql: 이 PC 서비스 중 DB 가 필요한 것만
   {
@@ -390,6 +556,7 @@ EOF
   {
     echo "PMART_DB_PASSWORD=$DB_PASSWORD"
     echo "PMART_CONFIG_PASSWORD=$(secret config-password)"
+    [[ "$comps" == *" grafana "* ]] && echo "PMART_GRAFANA_ADMIN_PASSWORD=$(secret grafana-admin-password)"
     if [[ "$comps" == *" s3 "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
       echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"

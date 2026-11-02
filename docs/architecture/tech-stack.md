@@ -18,15 +18,15 @@
 | DB 마이그레이션 | Flyway | 서비스별 스키마 변경 이력 |
 | 캐시 | Redis + Spring Data Redis | 캐시·임시 데이터·위치 최신값 |
 | 메시징 | Apache Kafka, KRaft | 도메인 이벤트·비동기 처리 |
-| Kafka 연동 | Spring for Apache Kafka | 발행·소비·재시도·오류 처리 |
+| Kafka 연동 | Spring for Apache Kafka | 발행·소비·재시도·오류 처리. 재시도 소진 → `{topic}.DLT` + 서비스 DB `dead_letter`(재처리·폐기 API, ADR-0030) |
 | 이벤트 스키마 | JSON Schema(draft 2020-12). Schema Registry 없음(ADR-0009) — 발행 전 `EventSchemaValidator` 로 검증 | `contracts/events/` 정본. 봉투 allOf 구조, 필드 추가만 허용 |
 | 배치 | Spring Batch | 대사·집계·계획 계산 등 필요 서비스에 적용 |
 | API 명세 | OpenAPI + springdoc-openapi | REST API 계약 문서화 |
 | 입력 검증 | Jakarta Bean Validation | 요청 형식과 기본 제약 검증 |
 | 장애 제어 | Resilience4j | 타임아웃·제한적 재시도·서킷 브레이커 |
-| 로그 | SLF4J + Logback | 구조화 로그와 추적 식별자 |
+| 로그 | SLF4J + Logback(JSON stdout) → Fluent Bit → OpenSearch + OpenSearch Dashboards (ADR-0030) | 구조화 로그와 추적 식별자, 전 서비스 로그 한곳 검색(LAN 보존 3일) |
 | 메트릭 | Actuator + Micrometer | 서비스·업무 상태 관측 |
-| 모니터링 | Prometheus + Grafana | 수집·대시보드·알림 |
+| 모니터링 | Prometheus + Grafana + Alertmanager (ADR-0030) | 수집·대시보드·알림(전송 채널은 아직 없음) |
 | 분산 추적 | Micrometer Tracing + OpenTelemetry + Zipkin | HTTP·Kafka 추적 연결 |
 | 단위 테스트 | JUnit Jupiter + Mockito + AssertJ | 빠른 업무 규칙 검증 |
 | 통합 테스트 | Spring Boot Test + Testcontainers | PostgreSQL·Kafka 등 실제 의존 기술 검증 |

@@ -66,6 +66,24 @@ printf %s 'sha256:…' > services/<name>/build/jib-image.digest
 3. 저장소 Settings → Deploy keys → `deploy/lan/.secrets/config-deploy-key.pub` 를 **읽기 전용**(Allow write access 끔)으로 등록.
 4. config-server 이미지 push 후 `deploy/lan/lan.sh deploy all`.
 
+## 관측 (ADR-0030)
+| 화면 | 주소 | 내용 |
+|---|---|---|
+| Grafana | `http://192.168.0.40:3000` (admin / `.secrets/grafana-admin-password`) | 대시보드 **PMart 개요**: PC별 Windows C: 여유(`host-disk`, :9100), 앱 UP/DOWN, 미처리 메시지, HTTP 요청·5xx·응답 시간, Kafka 소비 지연, JVM 힙, DB 커넥션 |
+| Prometheus | `http://192.168.0.40:9090` | 수집 대상 = `placement.conf` 의 모든 Spring 앱(render 가 `monitoring/prometheus.yml` 생성), 보존 7일 또는 2GB |
+| Alertmanager | `http://192.168.0.40:9093` | 알림 규칙 `monitoring/alert-rules.yml`(앱 DOWN·미처리 메시지·소비 지연·5xx·**Windows C: 여유 15%/10GB 미만**). **전송 채널 없음** — 화면에서 본다 |
+| OpenSearch Dashboards | `http://192.168.0.40:5601` | 앱 로그(Discover, 색인 패턴 `pmart-logs-*`). `traceId:"…"` 로 한 요청을 전 서비스에서 따라간다. 3일 또는 색인 1GB 에서 삭제(전체 약 4GB 이하). 인프라(kafka·connect 등) 로그와 초당 500건을 넘는 폭주 구간은 빠진다 — `lan.sh logs` 로 본다 |
+
+- 로그 수집: PC 마다 `log-shipper`(Fluent Bit)가 Docker Desktop VM 의 `/var/lib/docker/containers` 를 읽는다(render 가 모든 PC 에 자동으로 붙인다). `logs-init` 은 색인 보존 정책·틀·Dashboards 색인 패턴을 만들고 끝난다(배포마다 다시 돌아도 같다).
+- 미처리 메시지: 재시도(3회)를 다 쓴 Kafka 메시지는 `{topic}.DLT` 와 그 서비스 DB `dead_letter` 에 남는다. 원인을 고친 뒤
+  ```bash
+  curl -s http://<PC IP>:<포트>/api/v1/internal/dead-letters?status=OPEN            # 목록
+  curl -s http://<PC IP>:<포트>/api/v1/internal/dead-letters/<id>                   # 본문·헤더
+  curl -s -X POST -H 'Content-Type: application/json' -d '{"actor":"이름"}' http://<PC IP>:<포트>/api/v1/internal/dead-letters/<id>/replays
+  curl -s -X POST -H 'Content-Type: application/json' -d '{"actor":"이름","reason":"사유"}' http://<PC IP>:<포트>/api/v1/internal/dead-letters/<id>/discards
+  ```
+  DB 가 없는 search-service 는 `dead_letter` 없이 `{topic}.DLT` 에만 남는다(색인은 버전 비교로 멱등 — 다시 넣으면 된다).
+
 ## 장애 대비 (2026-10-27, `docs/worklog/2026-10-27.md`)
 - **컨테이너 고정 IP**: compose 네트워크 `172.28.0.0/24`, 구성요소는 배치 순서대로 `.10~`, 자동 배정은 `.192/26`.
   Docker Desktop VM 이 리셋되면 새 VM 이 이전 포트 전달 규칙(옛 컨테이너 IP)을 복원하는데, IP 가 바뀌면 LAN 포트가 엉뚱한 컨테이너로 간다.

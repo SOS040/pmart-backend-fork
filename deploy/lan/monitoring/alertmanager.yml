@@ -1,0 +1,10 @@
+# Alertmanager (ADR-0030). 전송 채널은 아직 없다 — 사용자 요청 전에는 Slack·메일로 보내지 않는다(CLAUDE.md).
+# 알림은 http://<pc4>:9093 과 Grafana(Alerting → Alertmanager)에서 본다. 채널을 붙일 때 receivers 에 추가한다.
+route:
+  receiver: none
+  group_by: [alertname, job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: none
