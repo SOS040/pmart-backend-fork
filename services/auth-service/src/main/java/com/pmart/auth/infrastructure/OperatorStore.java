@@ -231,6 +231,15 @@ public class OperatorStore {
         principalId);
   }
 
+  /** 세션 만료 시각을 늦춘다(고객 세션 — 마지막 사용 기준 연장, 2026-11-02). 앞당기지는 않는다. */
+  public void extendSession(String sessionId, Instant expiresAt) {
+    jdbc.update(
+        "UPDATE auth_session SET expires_at = ? WHERE session_id = ? AND expires_at < ?",
+        Timestamp.from(expiresAt),
+        sessionId,
+        Timestamp.from(expiresAt));
+  }
+
   public void markRefreshed(String sessionId, Instant at) {
     jdbc.update(
         "UPDATE auth_session SET last_refreshed_at = ? WHERE session_id = ?",

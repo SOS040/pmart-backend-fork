@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param accessTokenTtl access token 수명
  * @param refreshTokenTtl refresh token 수명(회전)
- * @param sessionMaxAge 세션 절대 수명(앱 재로그인 주기)
+ * @param sessionMaxAge 세션 유휴 수명 — 마지막 갱신(사용)부터 이 기간 안 쓰면 재로그인(2026-11-02, 슬라이딩)
  * @param requireConsent 신규 가입에 필수 약관 동의 단계(AUTH_CONSENT)를 둘지. 사용자 결정(2026-10-30)으로 지금은 false — 동의
  *     기능 (customer-service)이 생기면 켠다
  * @param failureWindow 실패 집계 창(Commerce 4.9: 15분)

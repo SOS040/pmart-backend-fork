@@ -132,17 +132,23 @@ public class SessionService {
                 operators.refreshTokenTtl(),
                 now);
       }
-      case CustomerSocialLoginService.TYPE ->
-          "ACTIVE".equals(customers.accountState(s.principalId()).orElse(null))
-              ? tokens.issue(
-                  new SessionTokens.Principal(
-                      s.principalId(), CustomerSocialLoginService.TYPE, List.of(), List.of()),
-                  s.sessionId(),
-                  s.expiresAt(),
-                  customerProps.accessTokenTtl(),
-                  customerProps.refreshTokenTtl(),
-                  now)
-              : null;
+      case CustomerSocialLoginService.TYPE -> {
+        if (!"ACTIVE".equals(customers.accountState(s.principalId()).orElse(null))) {
+          yield null;
+        }
+        // 고객 세션은 마지막 사용 기준으로 연장한다(사용자 결정 2026-11-02): 갱신할 때마다 만료 = 지금 + session-max-age.
+        // 그래서 session-max-age 동안 앱을 쓰지 않아야 다시 로그인한다. 운영자 세션은 절대 수명 그대로(보안).
+        Instant extended = now.plus(customerProps.sessionMaxAge());
+        store.extendSession(s.sessionId(), extended);
+        yield tokens.issue(
+            new SessionTokens.Principal(
+                s.principalId(), CustomerSocialLoginService.TYPE, List.of(), List.of()),
+            s.sessionId(),
+            extended,
+            customerProps.accessTokenTtl(),
+            customerProps.refreshTokenTtl(),
+            now);
+      }
       // 비회원은 정본 상태(제한·탈퇴)가 없다 — 세션이 살아 있으면 다시 발급
       case GuestSessionService.TYPE ->
           tokens.issue(

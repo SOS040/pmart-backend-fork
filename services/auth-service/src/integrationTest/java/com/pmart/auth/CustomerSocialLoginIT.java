@@ -235,6 +235,10 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
     Res session = get("/auth/sessions/current", null, access);
     assertThat(session.body().path("principalType").asString()).isEqualTo("CUSTOMER");
     assertThat(session.body().path("principalId").asString()).isEqualTo(accountId);
+    // 마지막 사용 기준 연장(2026-11-02): 세션이 이틀 남았어도 갱신하면 지금 + 30일로 늘어난다
+    String sid = session.body().path("sessionId").asString();
+    jdbc.update(
+        "UPDATE auth_session SET expires_at = now() + interval '2 days' WHERE session_id = ?", sid);
     var refreshed =
         http.post()
             .uri("/auth/tokens")
@@ -254,6 +258,17 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
             decode(mapper.readTree(refreshed.getBody()).path("accessToken").asString())
                 .getSubject())
         .isEqualTo(accountId);
+    java.sql.Timestamp extended =
+        jdbc.queryForObject(
+            "SELECT expires_at FROM auth_session WHERE session_id = ?",
+            java.sql.Timestamp.class,
+            sid);
+    assertThat(extended.toInstant())
+        .isAfter(java.time.Instant.now().plus(java.time.Duration.ofDays(29)));
+    assertThat(
+            java.time.Instant.parse(
+                mapper.readTree(refreshed.getBody()).path("refreshTokenExpiresAt").asString()))
+        .isAfter(java.time.Instant.now().plus(java.time.Duration.ofDays(29)));
 
     // 다른 제공자는 아직 없음
     assertThat(login(UUID.randomUUID().toString(), device, "KAKAO", "x").status()).isEqualTo(501);
