@@ -52,4 +52,5 @@ seed-v1/
 - 묶음 이미지는 화면 캡처라 `main.jpg` 에 B마트 담기 버튼(＋)이, `info.jpg`·고시 글자에 B마트 판매자·고객센터 정보가 들어 있다. 내부 확인용으로만 보이고 외부 공개 화면에 쓰지 않는다.
 
 ## 5. LAN 반영
-- 아직 LAN 에 배포하지 않았다(product-service·api-gateway 이미지 필요). 배포하면 이 절에 기록한다.
+- **LAN 반영 2026-11-02 20:47 KST** — pmart-backend `82fafc9`(product-service 이미지), pmart-config `159f2ab`(게이트웨이 경로, api-gateway 재기동). 게이트웨이 경유 `POST /category-tree-additions` 응답 확인(빈 추가 → 422 NOTHING_TO_ADD, 데이터 변화 없음).
+- LAN 트리에는 아직 기준파일 카테고리를 넣지 않았다. 백오피스에서 1단계부터 진행하면 된다.
