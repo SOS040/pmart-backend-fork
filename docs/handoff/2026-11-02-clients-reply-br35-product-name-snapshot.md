@@ -26,4 +26,4 @@
 - `ClaimLine` 에는 이름이 없다. 클레임 품목은 `orderLineId` 로 주문 상세(`GET /orders/{orderId}`)의 `lines[].productName` 과 맞춰 보인다. 클레임 응답에 이름을 직접 넣어야 하면 따로 요청해 달라.
 
 ## 4. LAN 반영
-- 반영되면 이 절에 커밋·배포 시각을 적는다.
+- **LAN 반영 2026-11-02 19:00 KST** — pmart-backend `00205b0`(order-service 이미지), pmart-config `180d34d`. order-service V6(`customer_order_line.product_name`·`option_label`) 적용, UP. 이 배포 전 초안·주문의 품목은 이름이 `null` 이다.
