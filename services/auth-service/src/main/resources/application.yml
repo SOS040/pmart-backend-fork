@@ -1,88 +1,13 @@
+# 부트스트랩만 둔다. 나머지 설정은 config-server 가 준다(ADR-0029):
+#   code-and-pick/pmart-config 의 application.yml · application-<프로필>.yml · auth-service.yml · auth-service-<프로필>.yml
+# 프로필(SPRING_PROFILES_ACTIVE): local(개발자 PC, config-server 를 local 프로필로 띄움) · lan · prod
 spring:
-  # Config 서버(ADR-0027): 기본 꺼짐. LAN 은 SPRING_CLOUD_CONFIG_ENABLED=true·URI·fail-fast 를 환경변수로 켠다
-  config:
-    import: "optional:configserver:"
-  cloud:
-    config:
-      enabled: false
   application:
     name: auth-service
-  mvc:
-    problemdetails:
-      enabled: true # Spring MVC 자체 예외도 RFC 9457
-  datasource:
-    url: ${PMART_DB_URL}
-    username: ${PMART_DB_USERNAME}
-    password: ${PMART_DB_PASSWORD}
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate # 스키마 변경은 Flyway 만 (service-architecture.md)
-  flyway:
-    locations: classpath:db/migration # common-messaging 이 classpath:db/migration/common 을 추가한다
-  kafka:
-    bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
-server:
-  port: 8501
-pmart:
-  messaging:
-    domain: platform
-  web:
-    excluded-paths:
-      - /api/v1/auth/operator-logins # 로그인은 상태를 남기는 명령이 아니다(계약에 Idempotency-Key 없음)
-  security:
-    # JWT 검증은 자기 서명키로(KeyConfig 의 JwtDecoder) — jwk-set-uri 를 두지 않는다.
-    # 공개키는 토큰 없이 접근. /internal 이라 게이트웨이로는 노출되지 않는다.
-    permit-paths:
-      - /actuator/health/**
-      - /actuator/info
-      - /actuator/prometheus
-      - /error
-      - /api/v1/internal/jwks
-      # 계약 security: [] 작업(로그인·토큰 발급). 경로마다 메서드가 하나뿐이라 경로 단위 허용이 계약과 일치.
-      - /api/v1/auth/social-logins
-      - /api/v1/auth/social-logins/*
-      - /api/v1/auth/social-logins/*/completions
-      - /api/v1/auth/tokens
-      - /api/v1/auth/operator-logins
-      - /api/v1/auth/guest-sessions
-    # 비회원 토큰(typ=GUEST)이 쓸 수 있는 경로: 자기 세션 종료·조회(갱신 /auth/tokens 는 공개)
-    guest-paths:
-      - /api/v1/auth/logouts
-      - /api/v1/auth/sessions/current
-  auth:
-    issuer: ${PMART_AUTH_ISSUER:http://auth-service:8501}
-    # 운영자 로그인(ADR-0018). 수치는 보안 설정값. 첫 관리자 계정은 bootstrap.login-id/password-hash(bcrypt)가 있을 때만 만든다
-    # (운영: Secret Manager → 환경변수 PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID / _PASSWORDHASH. LAN: config-server(ADR-0027). 원문 비밀번호는 두지 않는다)
-    operator:
-      access-token-ttl: PT15M
-      refresh-token-ttl: PT12H
-      session-max-age: PT12H
-      max-failed-attempts: 5
-      lock-duration: PT15M
-      password-min-length: 10
-      admin-role: OPERATOR_ADMIN
-    # 비회원 세션(typ=GUEST, 비회원 장바구니). 장바구니 보존 30일에 맞춘 보안 설정값
-    guest:
-      access-token-ttl: PT1H
-      refresh-token-ttl: P30D
-      session-max-age: P30D
-    # 고객 소셜 로그인(D6: Google 먼저, 2026-10-30). 수명·제한 수치는 보안 설정값(제한은 Commerce 4.9: 15분 5회 → 10분)
-    customer:
-      access-token-ttl: PT30M
-      refresh-token-ttl: P30D
-      session-max-age: P30D
-      require-consent: false # 사용자 결정(2026-10-30): 필수 약관 동의 단계는 지금 쓰지 않는다. customer-service 동의가 생기면 true
-      failure-window: PT15M
-      max-failures: 5
-      restriction: PT10M
-      google:
-        # 허용할 ID 토큰 aud = Google OAuth 클라이언트 ID(고객 앱·웹 서버 클라이언트, 쉼표 구분). 비면 Google 로그인은 CONFIG_REQUIRED
-        client-ids: ${PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS:}
-    # signing.keys[n].kid / private-key 는 운영은 Secret Manager 에서 환경변수로, LAN 은 config-server(ADR-0027)가 준다
-    # (PMART_AUTH_SIGNING_KEYS_0_KID, PMART_AUTH_SIGNING_KEYS_0_PRIVATEKEY). 키가 없으면 기동 실패.
-management:
-  tracing:
-    export:
-      zipkin:
-        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  config:
+    import: "optional:configserver:" # 주소 spring.cloud.config.uri(기본 http://localhost:8888, LAN·운영은 환경변수)
+  cloud:
+    config:
+      fail-fast: true # 설정을 못 받으면 기동하지 않는다(시험만 spring.cloud.config.enabled=false)
+      username: pmart
+      password: pmart-local # 로컬 config-server 기본값. LAN·운영은 환경변수 SPRING_CLOUD_CONFIG_PASSWORD

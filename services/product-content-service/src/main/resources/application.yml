@@ -1,65 +1,13 @@
+# 부트스트랩만 둔다. 나머지 설정은 config-server 가 준다(ADR-0029):
+#   code-and-pick/pmart-config 의 application.yml · application-<프로필>.yml · product-content-service.yml · product-content-service-<프로필>.yml
+# 프로필(SPRING_PROFILES_ACTIVE): local(개발자 PC, config-server 를 local 프로필로 띄움) · lan · prod
 spring:
-  # Config 서버(ADR-0027): 기본 꺼짐. LAN 은 SPRING_CLOUD_CONFIG_ENABLED=true·URI·fail-fast 를 환경변수로 켠다
-  config:
-    import: "optional:configserver:"
-  cloud:
-    config:
-      enabled: false
   application:
     name: product-content-service
-  mvc:
-    problemdetails:
-      enabled: true # Spring MVC 자체 예외도 RFC 9457
-  servlet:
-    multipart:
-      max-file-size: 300MB # seed-v1 묶음(이미지 포함). 이미지 1장 상한은 ContentRules.MAX_IMAGE_BYTES
-      max-request-size: 300MB
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          jwk-set-uri: ${PMART_JWKS_URI}
-  datasource:
-    url: ${PMART_DB_URL}
-    username: ${PMART_DB_USERNAME}
-    password: ${PMART_DB_PASSWORD}
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate # 스키마 변경은 Flyway 만 (service-architecture.md)
-  flyway:
-    locations: classpath:db/migration # common-messaging 이 classpath:db/migration/common 을 추가한다
-  kafka:
-    bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
-server:
-  port: 8102
-pmart:
-  messaging:
-    domain: commerce
-  security:
-    # 계약 security: [] 작업(비회원 둘러보기, 게시본만). 기본 목록을 덮어쓰므로 actuator·error 도 다시 적는다. 세 경로 모두 GET 하나뿐이라 경로 단위 허용이 계약과 일치.
-    permit-paths:
-      - /actuator/health/**
-      - /actuator/info
-      - /actuator/prometheus
-      - /error
-      - /api/v1/product-contents
-      - /api/v1/product-contents/*
-      - /api/v1/content-images/*
-  content:
-    inventory-base-url: ${PMART_MFC_INVENTORY_BASE_URL:http://mfc-inventory-service:8301} # 옵션별 취급·가용 표시
-  storage:
-    # 상품 이미지 저장소(S3 호환, ADR-0016). 값은 환경변수(LAN 은 config-server, 자격 증명은 {cipher} — ADR-0027)로만 — 자격 증명을 이 파일·이미지에 넣지 않는다.
-    s3:
-      endpoint: ${PMART_S3_ENDPOINT:}          # 비우면 AWS 기본. SeaweedFS 는 http://<host>:8333
-      region: ${PMART_S3_REGION:us-east-1}
-      bucket: ${PMART_S3_BUCKET}
-      access-key: ${PMART_S3_ACCESS_KEY}
-      secret-key: ${PMART_S3_SECRET_KEY}
-      path-style: ${PMART_S3_PATH_STYLE:true}
-      create-bucket: ${PMART_S3_CREATE_BUCKET:false}
-management:
-  tracing:
-    export:
-      zipkin:
-        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  config:
+    import: "optional:configserver:" # 주소 spring.cloud.config.uri(기본 http://localhost:8888, LAN·운영은 환경변수)
+  cloud:
+    config:
+      fail-fast: true # 설정을 못 받으면 기동하지 않는다(시험만 spring.cloud.config.enabled=false)
+      username: pmart
+      password: pmart-local # 로컬 config-server 기본값. LAN·운영은 환경변수 SPRING_CLOUD_CONFIG_PASSWORD

@@ -1,60 +1,13 @@
+# 부트스트랩만 둔다. 나머지 설정은 config-server 가 준다(ADR-0029):
+#   code-and-pick/pmart-config 의 application.yml · application-<프로필>.yml · delivery-serviceability-service.yml · delivery-serviceability-service-<프로필>.yml
+# 프로필(SPRING_PROFILES_ACTIVE): local(개발자 PC, config-server 를 local 프로필로 띄움) · lan · prod
 spring:
-  # Config 서버(ADR-0027): 기본 꺼짐. LAN 은 SPRING_CLOUD_CONFIG_ENABLED=true·URI·fail-fast 를 환경변수로 켠다
-  config:
-    import: "optional:configserver:"
-  cloud:
-    config:
-      enabled: false
   application:
     name: delivery-serviceability-service
-  mvc:
-    problemdetails:
-      enabled: true # Spring MVC 자체 예외도 RFC 9457
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          jwk-set-uri: ${PMART_JWKS_URI}
-  datasource:
-    url: ${PMART_DB_URL}
-    username: ${PMART_DB_USERNAME}
-    password: ${PMART_DB_PASSWORD}
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate # 스키마 변경은 Flyway 만 (service-architecture.md)
-  flyway:
-    locations: classpath:db/migration # common-messaging 이 classpath:db/migration/common 을 추가한다
-  kafka:
-    bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
-server:
-  port: 8401
-pmart:
-  serviceability:
-    # 카카오 로컬(주소 ↔ 좌표, ADR-0023). 키는 환경변수(LAN 은 config-server {cipher}, ADR-0027)로만 — 비면 주소 변환·판정이 CONFIG_REQUIRED
-    kakao:
-      base-url: ${PMART_KAKAO_BASE_URL:https://dapi.kakao.com}
-      rest-api-key: ${PMART_KAKAO_REST_API_KEY:}
-      connect-timeout: PT1S
-      read-timeout: PT3S
-  messaging:
-    domain: delivery
-  security:
-    # 계약 security: [] 작업(익명 판정). 기본 목록을 덮어쓰므로 actuator·error 도 다시 적는다. 경로마다 메서드가 하나뿐이라 경로 단위 허용이 계약과 일치.
-    permit-paths:
-      - /actuator/health/**
-      - /actuator/info
-      - /actuator/prometheus
-      - /error
-      - /api/v1/serviceability-checks
-      - /api/v1/serviceability-checks/*
-    # 비회원 토큰(typ=GUEST)도 배송 가능 조건 조회·주소 ↔ 좌표 변환은 된다(읽기 전용, 비회원 배송지 등록에 필요)
-    guest-paths:
-      - /api/v1/delivery-conditions
-      - /api/v1/address-geocodes
-      - /api/v1/address-reverse-geocodes
-management:
-  tracing:
-    export:
-      zipkin:
-        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  config:
+    import: "optional:configserver:" # 주소 spring.cloud.config.uri(기본 http://localhost:8888, LAN·운영은 환경변수)
+  cloud:
+    config:
+      fail-fast: true # 설정을 못 받으면 기동하지 않는다(시험만 spring.cloud.config.enabled=false)
+      username: pmart
+      password: pmart-local # 로컬 config-server 기본값. LAN·운영은 환경변수 SPRING_CLOUD_CONFIG_PASSWORD

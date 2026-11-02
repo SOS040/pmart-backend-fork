@@ -1,49 +1,13 @@
+# 부트스트랩만 둔다. 나머지 설정은 config-server 가 준다(ADR-0029):
+#   code-and-pick/pmart-config 의 application.yml · application-<프로필>.yml · approval-service.yml · approval-service-<프로필>.yml
+# 프로필(SPRING_PROFILES_ACTIVE): local(개발자 PC, config-server 를 local 프로필로 띄움) · lan · prod
 spring:
-  # Config 서버(ADR-0027): 기본 꺼짐. LAN 은 SPRING_CLOUD_CONFIG_ENABLED=true·URI·fail-fast 를 환경변수로 켠다
-  config:
-    import: "optional:configserver:"
-  cloud:
-    config:
-      enabled: false
   application:
     name: approval-service
-  mvc:
-    problemdetails:
-      enabled: true # Spring MVC 자체 예외도 RFC 9457
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          jwk-set-uri: ${PMART_JWKS_URI}
-  datasource:
-    url: ${PMART_DB_URL}
-    username: ${PMART_DB_USERNAME}
-    password: ${PMART_DB_PASSWORD}
-  jpa:
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate # 스키마 변경은 Flyway 만 (service-architecture.md)
-  flyway:
-    locations: classpath:db/migration # common-messaging 이 classpath:db/migration/common 을 추가한다
-  kafka:
-    bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
-server:
-  port: 8505
-pmart:
-  messaging:
-    domain: platform
-  approval:
-    # 승인 종류 → 결정할 수 있는 역할(JWT roles). 입력자와 승인자는 달라야 한다(자기승인 금지).
-    # 여기 없는 종류는 CONFIG_REQUIRED. 환경별로 바꿀 때는 PMART_APPROVAL_APPROVERROLES_<종류> 로 덮어쓴다.
-    approver-roles:
-      PRODUCT: PRODUCT_APPROVER # 상품·SKU·바코드·카테고리 트리 (BO-03)
-      DISPLAY: DISPLAY_APPROVER # 고객용 상품명·설명·이미지 게시 (BO-05)
-      PRICE: PRICE_APPROVER # 기본 판매가격 (BO-04)
-      SERVICEABILITY: SERVICEABILITY_APPROVER # 고객 배송 권역·담당 MFC 매핑 (BO-07)
-      CENTER_MASTER: CENTER_MASTER_APPROVER # 센터 기준정보·영업 캘린더 (BO-06)
-      INITIAL_STOCK: INVENTORY_APPROVER # MFC 초기 보유 반입(오픈 시 초기 재고, D2 — mfc-inbound → mfc-inventory 전기)
-management:
-  tracing:
-    export:
-      zipkin:
-        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  config:
+    import: "optional:configserver:" # 주소 spring.cloud.config.uri(기본 http://localhost:8888, LAN·운영은 환경변수)
+  cloud:
+    config:
+      fail-fast: true # 설정을 못 받으면 기동하지 않는다(시험만 spring.cloud.config.enabled=false)
+      username: pmart
+      password: pmart-local # 로컬 config-server 기본값. LAN·운영은 환경변수 SPRING_CLOUD_CONFIG_PASSWORD

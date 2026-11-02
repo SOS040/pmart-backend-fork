@@ -47,7 +47,7 @@
 - 검색 서비스: OpenSearch
 - AI 서비스: Spring AI + pgvector
 - 경로·배정 최적화: Google OR-Tools **Java 바인딩** (`transport-routing-service`, `mfc-capacity-service`에만). 별도 Python 런타임은 두지 않는다. GreedRL·RouteFinder 등 Python 전용 모델은 3단계에 별도 승인 후 검토.
-- 설정·서비스 검색: 운영(Kubernetes)은 Service DNS + ConfigMap + Secret Manager. Eureka 는 두지 않는다. LAN(compose)은 Spring Cloud Config Server(`platform-services/config-server`, GitHub 저장소, `{cipher}`)로 부팅 때 설정을 받는다(ADR-0027). 클라이언트는 기본 꺼짐.
+- 설정: Spring Cloud Config Server(`platform-services/config-server`). 정본은 GitHub `code-and-pick/pmart-config`, 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod), 비밀은 `{cipher}`(ADR-0027·0029). 서비스 검색: 이름(LAN compose 서비스명, 운영은 미정) — Eureka 는 두지 않는다.
 - 일반 업무 서비스에 검색·AI 의존성을 일괄 적용하지 않는다.
 
 ## 전체 구조 예시

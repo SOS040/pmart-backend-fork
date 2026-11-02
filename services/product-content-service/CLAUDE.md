@@ -22,7 +22,7 @@
 
 ## 이미지 저장소
 - 본체는 S3 호환 저장소(로컬·LAN SeaweedFS, ADR-0016), DB 에는 버킷·키·메타만. 키 `products/{productId 또는 draft-{draftId}}/{role}/{sha256}.{ext}`, 같은 sha256 은 다시 올리지 않는다.
-- 설정 `pmart.storage.s3.*` ← `PMART_S3_ENDPOINT/REGION/BUCKET/ACCESS_KEY/SECRET_KEY/PATH_STYLE/CREATE_BUCKET`. 버킷·키가 없으면 기동 실패.
+- 설정 `pmart.storage.s3.*` ← pmart-config `product-content-service-<프로필>.yml`(자격 증명은 {cipher}). 버킷·키가 없으면 기동 실패.
 - 버킷은 비공개. 클라이언트는 `GET /content-images/{imageId}` 로 받는다. 게시된 이미지는 토큰 없이(비회원·`<img src>`), 초안 이미지는 운영자·서비스만. presigned URL 을 내주지 않는다.
 - 상품 상세·카드·게시 이미지는 공개(계약 `security: []`, 비회원 둘러보기 2026-10-30).
 - 시험 묶음·이미지는 합성 바이트만. seed-v1 캡처 원본을 저장소에 넣지 않는다.

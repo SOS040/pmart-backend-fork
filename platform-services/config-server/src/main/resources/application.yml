@@ -1,7 +1,5 @@
-# config-server (ADR-0027). LAN 의 Spring 앱들이 부팅할 때 GET /{application}/default 로 설정을 받는다.
+# config-server (ADR-0027·0029). Spring 앱들이 부팅할 때 GET /{application}/{프로필} 로 설정을 받는다(프로필: local·lan·prod).
 # - 설정 저장소: GitHub code-and-pick/pmart-config (private). 저장소 최상위의 application(-<프로필>).yml·<앱>(-<프로필>).yml 이 정본(ADR-0029).
-#   전환 중: 아직 옮기지 않은 앱은 lan/ 폴더(render.sh 생성, ADR-0027 방식)를 읽는다 — 다 옮기면 search-paths 를 지운다.
-#   lan/application.yml = 모든 앱 공통, lan/<spring.application.name>.yml = 앱별. 값은 대부분 기존 ${PMART_*} 자리표시자 이름이다.
 # - 비밀값은 '{cipher}…'(AES, encrypt.key·salt)로 저장소에 두고 여기서 복호화해 내려준다(server-side decryption).
 # - 서버 자신의 비밀(encrypt.key·salt, Basic 인증 비밀번호, GitHub Deploy key)은 파일 디렉터리로 받는다(configtree,
 #   파일 이름 = 속성 이름). 여러 줄 PEM 키를 환경변수로 넘기지 않기 위해서다. 저장소·이미지·application.yml 에 두지 않는다.
@@ -23,7 +21,6 @@ spring:
         git:
           uri: ${PMART_CONFIG_GIT_URI:git@github.com:code-and-pick/pmart-config.git}
           default-label: main
-          search-paths: ${PMART_CONFIG_SEARCH_PATHS:lan} # 최상위는 항상 함께 읽는다
           clone-on-start: true # 저장소에 닿지 못하면 기동 실패(조용히 빈 설정을 주지 않는다)
           force-pull: true # 로컬 사본이 더러워져도 원격 기준
           timeout: 10 # 초

@@ -46,8 +46,6 @@ needs_db() { needs "$1" PMART_DB_URL || [ -d "$(src_dir "$1")/src/main/resources
 db_of() { echo "${1//-/_}"; }
 digest_of() {
   local f; f="$(src_dir "$1")/build/jib-image.digest"
-  # config-push 는 설정 저장소 내용만 쓰므로 digest 없이 렌더한다(PMART_RENDER_NO_DIGEST=1). deploy 는 지금처럼 멈춘다
-  if [ ! -f "$f" ] && [ "${PMART_RENDER_NO_DIGEST:-}" = 1 ]; then echo "sha256:not-pushed"; return; fi
   [ -f "$f" ] || { echo "digest 없음: $f (먼저 jib push)" >&2; exit 1; }
   cat "$f"
 }
@@ -57,55 +55,17 @@ for c in kafka redis zipkin auth-service; do
 done
 
 secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
-# Google OAuth 클라이언트 ID 목록(google-client-ids.conf → 쉼표). 없거나 비면 빈 값 → Google 로그인 CONFIG_REQUIRED
-google_client_ids() {
-  [ -f "$LAN/google-client-ids.conf" ] || return 0
-  sed -e 's/#.*//' -e 's/[[:space:]]//g' "$LAN/google-client-ids.conf" | grep -v '^$' | paste -sd, - || true
-}
-# 게이트웨이 웹 CORS 허용 출처(cors-origins.conf → 쉼표 목록). 파일이 없거나 비면 빈 값(CORS 헤더 없음)
-cors_origins() {
-  [ -f "$LAN/cors-origins.conf" ] || return 0
-  sed -e 's/#.*//' -e 's/[[:space:]]//g' "$LAN/cors-origins.conf" | grep -v '^$' | paste -sd, - || true
-}
 DB_PASSWORD="$(secret db-password)"
 rm -rf "$OUT"
 
-# ---- 설정 저장소(ADR-0027) ----
-# Spring 앱의 설정값은 compose 환경변수가 아니라 config-server(GitHub code-and-pick/pmart-config, lan/)에서 받는다.
-# 여기서 그 내용을 $CFG_OUT 에 만든다: application.yml(모든 앱 공통) + <앱>.yml. 키는 대부분 기존 ${PMART_*} 자리표시자 이름이다.
-# 비밀값은 '{cipher}…'. 같은 평문의 기존 암호문($CFG_CLONE 사본)은 그대로 써서 저장소에 의미 없는 변경을 만들지 않는다.
-# 저장소 반영은 lan.sh config-push(사람이 확인), deploy 는 반영 안 된 내용이 있으면 멈춘다.
+# ---- 설정 저장소(ADR-0029) ----
+# Spring 앱의 설정은 config-server 가 GitHub code-and-pick/pmart-config 에서 준다. 정본은 그 저장소(사람이 고친다) — 여기서 만들지 않는다.
+# 이 스크립트는 compose·.env·config-server 비밀만 만들고, 배치(placement.conf)와 저장소가 어긋나지 않는지만 확인한다.
 for f in config-encrypt-key config-encrypt-salt config-password config-deploy-key; do
   [ -f "$SECRETS/$f" ] || { echo "비밀정보 없음: $SECRETS/$f ($LAN/init-secrets.sh 먼저)" >&2; exit 1; }
 done
-CFG_OUT=$OUT/config-repo/lan
 CFG_CLONE=$LAN/.config-repo
-mkdir -p "$CFG_OUT"
-CIPHER_IN=$OUT/.cipher-in.tsv; CIPHER_OUT=$OUT/.cipher-out.tsv; : > "$CIPHER_IN"
-cipher_n=0
-yquote() { local v="$1"; printf "'%s'" "${v//\'/\'\'}"; } # YAML 작은따옴표 문자열
-# cfg <파일> <들여쓰기+키> <값>: 평문 한 줄
-cfg() { echo "$2: $(yquote "$3")" >> "$CFG_OUT/$1"; }
-# cfg_secret <파일> <들여쓰기+키> <평문>: 자리표시자를 쓰고 암호화 목록에 넣는다(평문은 build/ 임시 파일에만, 끝나면 지운다)
-cfg_secret() {
-  local file="$1" key="$2" plain="$3" prev=""
-  cipher_n=$((cipher_n + 1))
-  # 기존 암호문: 같은 파일에서 먼저, 없으면 다른 파일의 같은 키(키를 다른 파일로 옮겨도 재사용 — 같은 평문일 때만 쓰인다)
-  if [ -d "$CFG_CLONE/lan" ]; then
-    prev="$( { [ -f "$CFG_CLONE/lan/$file" ] && grep -hF -- "$key: '{cipher}" "$CFG_CLONE/lan/$file"; \
-      grep -hF -- "$(echo "$key" | sed 's/^ *//'): '{cipher}" "$CFG_CLONE"/lan/*.yml; } 2>/dev/null \
-      | head -1 | sed -e "s/^.*'{cipher}//" -e "s/'.*$//" || true)"
-  fi
-  printf '%s\t%s\t%s\n' "S$cipher_n" "$(printf '%s' "$plain" | base64 -w0)" "$prev" >> "$CIPHER_IN"
-  echo "$key: '{cipher}@@S$cipher_n@@'" >> "$CFG_OUT/$file"
-}
-cfg_header() { echo "# 생성 파일(pmart-backend deploy/lan/render.sh) — 여기서 고치지 말고 render.sh·placement.conf·.secrets 를 고친다. ADR-0027" > "$CFG_OUT/$1"; }
-
-# 공통 파일에는 거의 모든 앱이 쓰는 비밀 아닌 값만. DB·Redis·OpenSearch 처럼 일부만 쓰는 값(특히 비밀)은 쓰는 앱 파일에만 둔다
-cfg_header application.yml
-cfg application.yml PMART_KAFKA_BOOTSTRAP kafka:9092
-cfg application.yml PMART_JWKS_URI "http://auth-service:$(port_of auth-service)/api/v1/internal/jwks"
-cfg application.yml PMART_ZIPKIN_ENDPOINT http://zipkin:9411/api/v2/spans
+[ -f "$CFG_CLONE/application.yml" ] || { echo "설정 저장소 사본 없음: $CFG_CLONE (lan.sh deploy·config-push 가 clone 한다)" >&2; exit 1; }
 for pc in "${PCS[@]}"; do
   dir=$OUT/$pc; mkdir -p "$dir"
   comps=" ${COMPS[$pc]} "
@@ -289,7 +249,7 @@ EOF
 EOF
         ;;
       backoffice-web)
-        # 임시 백오피스(React SPA) 정적 서빙 — CORS 출처 http://d603-16(cors-origins.conf)과 같은 PC·80. 파일은 render 가 backoffice/ 에 둔다
+        # 임시 백오피스(React SPA) 정적 서빙 — CORS 출처 http://d603-16(pmart-config api-gateway-lan.yml)과 같은 PC·80. 파일은 render 가 backoffice/ 에 둔다
         cat <<EOF
   backoffice-web:
     <<: *common
@@ -355,90 +315,29 @@ EOF
         fi
         echo "    environment:"
         if [ "$c" = config-server ]; then
-          # 서버 자신의 비밀은 configtree 디렉터리(파일 이름 = 속성 이름). 저장소 주소·폴더는 application.yml 기본값(GitHub, lan)
+          # 서버 자신의 비밀은 configtree 디렉터리(파일 이름 = 속성 이름). 저장소 주소는 application.yml 기본값(GitHub)
           echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
           echo "    volumes:"
           echo "      - ./config-server-secrets:/run/secrets/config-server:ro"
           echo
           continue
         fi
-        # 설정은 config-server 에서(ADR-0027). 받지 못하면 기동하지 않는다(fail-fast → restart 로 다시 시도)
+        # 설정은 config-server 에서(ADR-0027·0029). 받지 못하면 기동하지 않는다(fail-fast → restart 로 다시 시도)
         echo "      SPRING_CLOUD_CONFIG_ENABLED: \"true\""
         echo "      SPRING_CLOUD_CONFIG_URI: http://config-server:$(port_of config-server)"
         echo "      SPRING_CLOUD_CONFIG_FAIL_FAST: \"true\""
         echo "      SPRING_CLOUD_CONFIG_USERNAME: pmart"
         echo "      SPRING_CLOUD_CONFIG_PASSWORD: \${PMART_CONFIG_PASSWORD}"
-        if migrated "$c"; then
-          # 저장소 정본으로 옮긴 앱(ADR-0029): lan 프로필로 <앱>-lan.yml·application-lan.yml 을 받는다. lan/<앱>.yml 은 만들지 않는다
-          echo "      SPRING_PROFILES_ACTIVE: lan"
-          echo
-          continue
-        fi
+        # 서비스 설정은 설정 저장소의 <앱>.yml · <앱>-lan.yml (lan 프로필). 없으면 뜰 수 없다
+        migrated "$c" || { echo "설정 저장소에 $c-lan.yml 이 없음($CFG_CLONE)" >&2; exit 1; }
+        echo "      SPRING_PROFILES_ACTIVE: lan"
         echo
-
-        # ---- (옮기기 전 앱만) 이 앱의 설정 파일(lan/<앱>.yml). 공통값은 lan/application.yml — ADR-0027 방식 ----
-        f="$c.yml"; cfg_header "$f"
-        if needs "$c" PMART_DB_URL; then
+        # 배치 대조: DB 를 쓰는 앱의 lan DB 주소가 이 PC 의 postgres 인가(placement.conf 를 바꾸면 저장소도 바꿔야 한다)
+        if needs_db "$c"; then
           [ -n "${WHERE[postgres-$pc]:-}" ] || { echo "$c 는 DB 가 필요한데 $pc 에 postgres 가 없음" >&2; exit 1; }
-          cfg "$f" PMART_DB_URL "jdbc:postgresql://postgres-$pc:15432/$(db_of "$c")"
-          cfg "$f" PMART_DB_USERNAME pmart
-          cfg_secret "$f" PMART_DB_PASSWORD "$DB_PASSWORD"
-          {
-            echo "spring:"
-            echo "  datasource:"
-            echo "    hikari:"
-            echo "      maximum-pool-size: 5 # PC 하나의 PostgreSQL 을 서비스 십여 개가 나눠 쓴다(max_connections 200)"
-          } >> "$CFG_OUT/$f"
-        fi
-        needs "$c" PMART_REDIS_URL && cfg "$f" PMART_REDIS_URL redis://redis:6379
-        needs "$c" PMART_OPENSEARCH_URL && cfg "$f" PMART_OPENSEARCH_URL http://opensearch:9200
-        if [ "$c" = auth-service ]; then
-          cfg "$f" PMART_AUTH_ISSUER "http://auth-service:$(port_of auth-service)"
-          # 고객 Google 로그인 허용 aud(google-client-ids.conf). 클라이언트 ID 는 비밀이 아니고 secret 은 넘기지 않는다
-          cfg "$f" PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS "$(google_client_ids)"
-          # 서명키·첫 관리자는 자리표시자가 아니라 속성 바인딩이라 정식 속성 이름으로 둔다(첫 관리자는 해시만, ADR-0018)
-          {
-            echo "pmart:"
-            echo "  auth:"
-            echo "    signing:"
-            echo "      keys:"
-          } >> "$CFG_OUT/$f"
-          cfg "$f" "        - kid" "$(secret signing-kid)"
-          cfg_secret "$f" "          private-key" "$(grep -v -- '-----' "$SECRETS/signing-key.pem" | tr -d '\r\n')"
-          { echo "    operator:"; echo "      bootstrap:"; } >> "$CFG_OUT/$f"
-          cfg "$f" "        login-id" "$(secret operator-admin-login)"
-          cfg_secret "$f" "        password-hash" "$(secret operator-admin-hash)"
-        fi
-        if needs "$c" PMART_S3_BUCKET; then
-          [ -n "${WHERE[s3]:-}" ] || { echo "$c 는 s3 가 필요한데 배치에 s3 가 없음" >&2; exit 1; }
-          cfg "$f" PMART_S3_ENDPOINT http://s3:8333
-          # 서비스마다 버킷 하나: pmart-<서비스 이름에서 -service 뺀 것> (product-content·customer). s3 의 -bucket= 목록과 맞춘다
-          cfg "$f" PMART_S3_BUCKET "pmart-${c%-service}"
-          cfg_secret "$f" PMART_S3_ACCESS_KEY "$(secret s3-access-key)"
-          cfg_secret "$f" PMART_S3_SECRET_KEY "$(secret s3-secret-key)"
-        fi
-        [ "$c" = api-gateway ] && cfg "$f" PMART_GATEWAY_CORS_ALLOWEDORIGINS "$(cors_origins)"
-        # 예약 슬롯 1시간당 정원 — LAN 시험 설정값(사용자 결정 2026-10-31). 운영은 승인된 정책값
-        [ "$c" = delivery-capacity-service ] && cfg "$f" PMART_CAPACITY_SLOTCAPACITY 20
-        # MFC 작업 여력: 주문 1건 = 1단위, 1시간 30단위 — LAN 시험 설정값(사용자 결정 2026-10-30). 운영은 승인된 정책값
-        [ "$c" = mfc-capacity-service ] && cfg "$f" PMART_CAPACITY_UNITSPERHOUR 30
-        if [ "$c" = delivery-serviceability-service ]; then
-          # 카카오 로컬 REST API 키(ADR-0023). 파일이 없으면 빈 값 → 주소 변환·판정이 CONFIG_REQUIRED
-          if [ -f "$SECRETS/kakao-rest-api-key" ]; then
-            cfg_secret "$f" PMART_KAKAO_REST_API_KEY "$(secret kakao-rest-api-key)"
-          else
-            cfg "$f" PMART_KAKAO_REST_API_KEY ""
-          fi
-        fi
-        if [ "$c" = payment-service ]; then
-          # 토스 결제위젯 테스트 키(D5). 키 파일이 없으면 빈 값 → 결제 시작 CONFIG_REQUIRED. 운영 키(live_)는 서비스가 기동을 거부한다
-          if [ -f "$SECRETS/toss-secret-key" ]; then
-            cfg_secret "$f" PMART_TOSS_SECRET_KEY "$(secret toss-secret-key)"
-          else
-            cfg "$f" PMART_TOSS_SECRET_KEY ""
-          fi
-          # 클라이언트 키(gck)는 공개 키라 평문
-          cfg "$f" PMART_TOSS_CLIENT_KEY "$([ -f "$SECRETS/toss-client-key" ] && secret toss-client-key)"
+          want="jdbc:postgresql://postgres-$pc:15432/$(db_of "$c")"
+          grep -qF "$want" "$CFG_CLONE/$c-lan.yml" \
+            || { echo "배치와 설정 저장소가 다름: $c 는 $pc 인데 $c-lan.yml 의 DB 주소가 $want 가 아니다" >&2; exit 1; }
         fi
         ;;
       esac
@@ -487,7 +386,7 @@ EOF
   fi
 
   # .env: Spring 이 아닌 컨테이너(postgres·connector-registrar·s3)의 비밀 + config-server 접속 비밀번호만.
-  # Spring 앱의 설정·비밀은 config-server 에서 받는다(ADR-0027).
+  # Spring 앱의 설정·비밀은 config-server 에서 받는다(ADR-0029, 설정 저장소).
   {
     echo "PMART_DB_PASSWORD=$DB_PASSWORD"
     echo "PMART_CONFIG_PASSWORD=$(secret config-password)"
@@ -512,26 +411,3 @@ EOF
   echo "$pc ${IP[$pc]} ${SSH[$pc]}" > "$dir/target"
   echo "rendered $dir ($(echo ${COMPS[$pc]} | wc -w) components)"
 done
-
-# ---- 설정 저장소 비밀값 암호화: 자리표시자 @@S<n>@@ → 암호문 ----
-# 서버와 같은 EncryptorFactory(ConfigCipherTool). 경로는 Windows Java 가 읽는 형식으로 넘긴다(Git Bash pwd -W)
-root_w="$(pwd -W 2>/dev/null || pwd)"
-./gradlew -q :platform-services:config-server:configCipher \
-  -PcipherIn="$root_w/$CIPHER_IN" -PcipherOut="$root_w/$CIPHER_OUT" \
-  -PcipherKeyFile="$root_w/$SECRETS/config-encrypt-key" -PcipherSaltFile="$root_w/$SECRETS/config-encrypt-salt"
-rm -f "$CIPHER_IN"
-while IFS=$'\t' read -r id c; do
-  c="${c%$'\r'}"; [ -n "$id" ] || continue # Windows 줄 끝 방어
-  # 암호문은 16진수라 sed 구분자와 겹치지 않는다
-  sed -i "s|{cipher}@@$id@@|{cipher}$c|" "$CFG_OUT"/*.yml
-done < "$CIPHER_OUT"
-rm -f "$CIPHER_OUT"
-if grep -l '@@S[0-9]*@@' "$CFG_OUT"/*.yml >/dev/null 2>&1; then
-  echo "설정 저장소 암호화 누락: $(grep -l '@@S[0-9]*@@' "$CFG_OUT"/*.yml)" >&2; exit 1
-fi
-# 앱별 설정이 없으면 파일을 두지 않는다(서버는 공통 파일만 돌려준다)
-for f in "$CFG_OUT"/*.yml; do
-  [ "$(basename "$f")" = application.yml ] && continue
-  grep -qv '^#' "$f" || rm -f "$f"
-done
-echo "rendered $CFG_OUT ($(ls "$CFG_OUT" | wc -l) files) — 저장소 반영: deploy/lan/lan.sh config-push"

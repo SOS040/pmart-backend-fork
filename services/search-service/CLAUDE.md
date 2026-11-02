@@ -21,7 +21,7 @@
 로컬 포트 8105.
 
 ## 검색 색인 (2026-10-30, ADR-0021)
-- OpenSearch 2.19.1(`PMART_OPENSEARCH_URL`). RestClient 로 REST 호출 — 공용 Builder(사용자 토큰 전파)를 쓰지 않는다.
+- OpenSearch 2.19.1(주소는 pmart-config `search-service-<프로필>.yml`). RestClient 로 REST 호출 — 공용 Builder(사용자 토큰 전파)를 쓰지 않는다.
 - 구독: commerce.product.v1(ProductVersionPublished·ProductContentPublished·ProductSaleStateChanged), commerce.pricing.v1(PriceVersionEffective). 갱신은 Painless 스크립트가 버전·시각을 비교(재전달·옛 사건 무시). 실패 → Kafka 재시도 → DLT.
 - 콘텐츠 사건에는 이름·이미지가 없어 product-content 공개 카드 API(`pmart.search.content-base-url`)로 보강한다(게시본만).
 - 검색 대상: 이름·상품 버전이 모두 있고 판매중지가 아닌 상품. 이름은 1~2글자 n-gram, 검색어 조각 모두 일치(AND). 카테고리는 구조 id 조상 범위.

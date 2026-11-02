@@ -25,5 +25,5 @@ paths:
 ## 설정·서비스 검색
 - Eureka 환경: Spring Cloud Config + Eureka
 - Kubernetes 환경: Service DNS + ConfigMap + Secret Manager
-- LAN(compose) 환경: Spring Cloud Config Server(`platform-services/config-server`) + compose 서비스명 DNS(ADR-0027). 클라이언트는 기본 꺼짐이라 로컬·시험·Kubernetes 는 영향 없음
+- 지금 방식(ADR-0029): Spring Cloud Config Server — 정본은 설정 저장소(pmart-config), 서비스 yml 은 부트스트랩만, 환경은 프로필. 시험만 config-server 를 끈다
 - 두 체계를 이유 없이 중복 도입하지 않는다. 현재 환경의 방식을 먼저 확인한다.

@@ -26,7 +26,7 @@
 - 판정(`POST/GET /serviceability-checks`)은 공개(계약 `security: []`): 비회원 둘러보기·비회원 배송지(customer-service 익명 호출). 주소 원문은 저장하지 않는다.
 
 ## 주소 ↔ 좌표·판정 좌표 (2026-10-31, ADR-0023)
-- 카카오 로컬 어댑터 `infrastructure/kakao/KakaoLocalClient`(포트 `application/Geocoder`). 키 `PMART_KAKAO_REST_API_KEY`(없으면 CONFIG_REQUIRED). 429 → QUOTA_EXCEEDED, 401·403 → CONFIG_REQUIRED, 5xx·시간 초과 → DEPENDENCY_UNAVAILABLE, 400 → 0건.
+- 카카오 로컬 어댑터 `infrastructure/kakao/KakaoLocalClient`(포트 `application/Geocoder`). 키 `pmart.serviceability.kakao.rest-api-key`(pmart-config `delivery-serviceability-service-<프로필>.yml`, {cipher}. 없으면 CONFIG_REQUIRED). 429 → QUOTA_EXCEEDED, 401·403 → CONFIG_REQUIRED, 5xx·시간 초과 → DEPENDENCY_UNAVAILABLE, 400 → 0건.
 - `GET /address-geocodes`(유사 검색)·`/address-reverse-geocodes` — 고객·비회원(guest-paths), 저장 없음. 주소 질의·결과는 로그 금지.
 - 판정 좌표 = roadAddress 를 정확 일치로 변환한 좌표(판정 트랜잭션 밖에서). 요청 lat·lng(지도 핀)는 쓰지 않는다. 없음·0건·여러 곳 → NEEDS_INPUT(roadAddress), 검색 장애 → UNKNOWN. `TEST_ADDRESS` 만 운영자 토큰으로 요청 좌표 사용(아니면 403).
 - 쿼리 파라미터 제약 위반은 공통 ProblemDetailAdvice 가 400 VALIDATION_FAILED(2026-10-31 추가).

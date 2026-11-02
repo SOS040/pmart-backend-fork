@@ -43,6 +43,8 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 ```
 Windows는 `.\gradlew.bat`. 실행 전 프로젝트 경로와 task 존재 여부를 먼저 확인한다.
 
+설정(ADR-0029): 서비스 `application.yml` 은 부트스트랩만. 설정의 정본은 GitHub `code-and-pick/pmart-config`(로컬 사본 `deploy/lan/.config-repo`, 프로필 local·lan·prod) — 설정을 바꾸면 그 저장소와 각 서비스의 시험 사본(`src/integrationTest/resources/pmart-config/`)을 같이 고친다. 로컬 `bootRun` 전에 `./gradlew :platform-services:config-server:bootRun --args='--spring.profiles.active=local'`.
+
 ## 절대 규칙
 - 다른 서비스의 구현 클래스·DB·JPA 엔티티에 직접 접근하지 않는다. API 또는 이벤트만.
 - 요청 없이 서비스 경계 병합, 새 프레임워크 도입, 프레임워크 주 버전 변경 금지.

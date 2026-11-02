@@ -27,8 +27,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 로컬 Git 저장소(file://)로 띄운 config-server 시험: 환경 폴더(lan/) 선택, 공통·앱별 파일 병합, {cipher} 서버 복호화, Basic 인증,
- * /encrypt·/decrypt 차단, configtree 로 받은 서버 비밀.
+ * 로컬 Git 저장소(file://)로 띄운 config-server 시험(ADR-0029): 프로필별 파일 병합(다른 프로필·하위 폴더는 섞이지 않음), {cipher} 서버
+ * 복호화, Basic 인증, /encrypt·/decrypt 차단, configtree 로 받은 서버 비밀.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class ConfigServerIT {
@@ -43,15 +43,21 @@ class ConfigServerIT {
     try {
       ROOT = Files.createTempDirectory("config-server-it");
       CIPHER = new EncryptorFactory(SALT).create(KEY).encrypt("db-secret-value");
-      Path repo = Files.createDirectories(ROOT.resolve("repo/lan"));
+      Path repo = Files.createDirectories(ROOT.resolve("repo"));
+      Files.writeString(repo.resolve("application.yml"), "spring.jpa.open-in-view: false\n");
       Files.writeString(
-          repo.resolve("application.yml"),
-          "PMART_KAFKA_BOOTSTRAP: kafka:9092\nPMART_DB_PASSWORD: '{cipher}" + CIPHER + "'\n");
+          repo.resolve("application-lan.yml"), "spring.kafka.bootstrap-servers: kafka:9092\n");
+      Files.writeString(repo.resolve("payment-service.yml"), "server.port: 8205\n");
       Files.writeString(
-          repo.resolve("payment-service.yml"),
-          "PMART_DB_URL: jdbc:postgresql://postgres-pc2:15432/payment_service\n");
-      Files.createDirectories(ROOT.resolve("repo/other"));
-      Files.writeString(ROOT.resolve("repo/other/payment-service.yml"), "PMART_DB_URL: wrong\n");
+          repo.resolve("payment-service-lan.yml"),
+          "spring.datasource.url: jdbc:postgresql://postgres-pc2:15432/payment_service\n"
+              + "spring.datasource.password: '{cipher}"
+              + CIPHER
+              + "'\n");
+      Files.writeString(
+          repo.resolve("payment-service-local.yml"), "spring.datasource.url: wrong-local\n");
+      Files.createDirectories(repo.resolve("other"));
+      Files.writeString(repo.resolve("other/payment-service-lan.yml"), "server.port: wrong\n");
       try (Git git =
           Git.init().setDirectory(ROOT.resolve("repo").toFile()).setInitialBranch("main").call()) {
         git.add().addFilepattern(".").call();
@@ -90,8 +96,8 @@ class ConfigServerIT {
   private final ObjectMapper mapper = new ObjectMapper();
 
   @Test
-  void 인증한_앱은_환경_폴더의_공통과_앱별_설정을_복호화해_받는다() {
-    JsonNode env = mapper.readTree(get("/payment-service/default", true).body());
+  void 인증한_앱은_프로필의_공통과_앱별_설정을_복호화해_받는다() {
+    JsonNode env = mapper.readTree(get("/payment-service/lan", true).body());
     Map<String, String> merged = new HashMap<>();
     // propertySources 는 우선순위 높은 것(앱별)부터. 낮은 것부터 덮어써서 병합한다
     JsonNode sources = env.path("propertySources");
@@ -103,9 +109,13 @@ class ConfigServerIT {
           .forEach(e -> merged.put(e.getKey(), e.getValue().asString()));
     }
     assertThat(merged)
-        .containsEntry("PMART_KAFKA_BOOTSTRAP", "kafka:9092")
-        .containsEntry("PMART_DB_PASSWORD", "db-secret-value")
-        .containsEntry("PMART_DB_URL", "jdbc:postgresql://postgres-pc2:15432/payment_service");
+        .containsEntry("spring.jpa.open-in-view", "false")
+        .containsEntry("spring.kafka.bootstrap-servers", "kafka:9092")
+        .containsEntry("server.port", "8205")
+        .containsEntry("spring.datasource.password", "db-secret-value")
+        .containsEntry(
+            "spring.datasource.url", "jdbc:postgresql://postgres-pc2:15432/payment_service");
+    // 다른 프로필(local)·하위 폴더(other/)는 섞이지 않는다
     assertThat(env.toString()).doesNotContain("{cipher}").doesNotContain("wrong");
   }
 
@@ -188,8 +198,9 @@ class ConfigServerIT {
             "--spring.cloud.config.fail-fast=true",
             "--spring.cloud.config.username=pmart",
             "--spring.cloud.config.password=" + password,
-            "--x.db-password=${PMART_DB_PASSWORD:local-default}",
-            "--x.db-url=${PMART_DB_URL:local-default}");
+            "--spring.profiles.active=lan",
+            "--x.db-password=${spring.datasource.password:local-default}",
+            "--x.db-url=${spring.datasource.url:local-default}");
   }
 
   // @Configuration 을 붙이면 @SpringBootTest 가 이 중첩 클래스를 시험 설정으로 잡아 서버 대신 띄운다

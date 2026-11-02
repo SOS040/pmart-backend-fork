@@ -7,8 +7,8 @@
 #   deploy/lan/lan.sh restart <pc> <서비스...>
 #   deploy/lan/lan.sh down <pc|all>               컨테이너 정지·삭제(볼륨은 남긴다)
 #   deploy/lan/lan.sh publish-backoffice <dist>    임시 백오피스 빌드(npm run build:lan 결과)를 올리고 backoffice-web 만 다시 배포
-#   deploy/lan/lan.sh config-push                 설정 저장소(GitHub pmart-config, lan/)에 render 결과 반영(변경 표시 후 commit·push, ADR-0027)
-# deploy 는 설정 저장소가 render 결과와 다르면 멈추고(config-push 먼저), config-server 를 먼저 띄운 뒤 나머지를 올린다.
+#   deploy/lan/lan.sh config-push [메시지]        설정 저장소 사본(deploy/lan/.config-repo, 사람이 고친 내용)을 GitHub pmart-config 에 commit·push(ADR-0029)
+# deploy 는 설정 저장소 사본에 미커밋·미push 가 있으면 멈추고(config-push 먼저), config-server 를 먼저 띄운 뒤 나머지를 올린다.
 # 원격 실행: deploy/remote/run-ps.sh (원격 docker 는 %USERPROFILE%\.docker-pmart 설정 — 읽기 전용 pull 토큰)
 # 원격 작업 폴더: %USERPROFILE%\pmart-lan. PMart 이외 컨테이너는 건드리지 않는다(compose 프로젝트 pmart-lan 만).
 set -euo pipefail
@@ -59,15 +59,13 @@ config_sync() { # 사본을 원격 최신으로 — 사람이 고친 내용(커�
     git -C "$CFG_CLONE" checkout -q -B main origin/main
   fi
 }
-config_check() { # 배포 전: render 결과(lan/) = 사본, 사본에 미커밋·미push 가 없다(config-server 는 GitHub 를 읽는다)
+config_check() { # 배포 전: 사본에 미커밋·미push 가 없다(config-server 는 GitHub 를 읽는다 — 로컬에만 있는 수정은 반영되지 않는다)
   config_sync
   local dirty ahead
   dirty="$(git -C "$CFG_CLONE" status --porcelain)"
   ahead="$(git -C "$CFG_CLONE" rev-list --count origin/main..HEAD 2>/dev/null || echo 1)"
-  if [ -n "$dirty" ] || [ "$ahead" != 0 ] \
-    || ! diff -r -q "$OUT/config-repo/lan" "$CFG_CLONE/lan" >/dev/null 2>&1; then
-    echo "설정 저장소가 GitHub 에 반영되지 않았다(미커밋 ${dirty:+있음}, 미push ${ahead}개, lan/ 차이) — 먼저 deploy/lan/lan.sh config-push" >&2
-    diff -r -q "$OUT/config-repo/lan" "$CFG_CLONE/lan" 2>&1 | sed 's/^/  /' >&2 || true
+  if [ -n "$dirty" ] || [ "$ahead" != 0 ]; then
+    echo "설정 저장소 사본($CFG_CLONE)이 GitHub 에 반영되지 않았다(미커밋 ${dirty:+있음}, 미push ${ahead}개) — 먼저 deploy/lan/lan.sh config-push" >&2
     exit 1
   fi
 }
@@ -91,6 +89,7 @@ case "$cmd" in
     config_sync # 기존 암호문을 재사용하려면 render 전에 사본이 최신이어야 한다
     bash $LAN/render.sh >/dev/null
     config_check
+    bash $LAN/config-copies.sh check >/dev/null || { echo "시험용 설정 사본이 정본과 다르다 — deploy/lan/config-copies.sh sync 후 시험·커밋" >&2; exit 1; }
     # config-server 먼저: 다른 앱은 부팅할 때 설정을 받아야 뜬다(fail-fast)
     cpc="$(config_server_pc)"
     if [ -n "$cpc" ] && { [ "$target" = all ] || [ "$target" = "$cpc" ]; } \
@@ -130,16 +129,17 @@ case "$cmd" in
     echo "백오피스 빌드 $(find "$LAN/backoffice-dist" -type f | wc -l)개 파일 → $pc"
     "$0" deploy "$pc" backoffice-web ;;
   config-push)
+    # 설정 저장소 사본(사람이 고친 내용)을 commit·push. 메시지는 인자로(없으면 기본). 값은 출력하지 않고 바뀐 키만 보인다
     config_sync
-    PMART_RENDER_NO_DIGEST=1 bash $LAN/render.sh >/dev/null # 설정 내용만 필요(이미지 digest 무관)
-    rm -rf "$CFG_CLONE/lan" && cp -r "$OUT/config-repo/lan" "$CFG_CLONE/lan"
-    git -C "$CFG_CLONE" add -A lan
-    if git -C "$CFG_CLONE" diff --cached --quiet; then echo "설정 저장소 변경 없음"; exit 0; fi
-    # 값이 아니라 바뀐 키만 보인다(암호문·평문 모두 출력하지 않음)
-    git -C "$CFG_CLONE" diff --cached --stat
-    git -C "$CFG_CLONE" diff --cached -U0 | grep -E '^[+-][^+-]' | sed -E 's/^([+-][^:]*):.*/\1/' | sort -u | sed 's/^/  /'
-    git -C "$CFG_CLONE" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
-      commit -q -m "lan: render (pmart-backend $(git rev-parse --short HEAD))"
+    git -C "$CFG_CLONE" add -A
+    if git -C "$CFG_CLONE" diff --cached --quiet; then
+      [ "$(git -C "$CFG_CLONE" rev-list --count origin/main..HEAD)" = 0 ] && { echo "설정 저장소 변경 없음"; exit 0; }
+    else
+      git -C "$CFG_CLONE" diff --cached --stat
+      git -C "$CFG_CLONE" diff --cached -U0 | grep -E '^[+-][^+-]' | sed -E 's/^([+-][^:]*):.*/\1/' | sort -u | sed 's/^/  /'
+      git -C "$CFG_CLONE" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
+        commit -q -m "${1:-설정 변경 (pmart-backend $(git rev-parse --short HEAD))}"
+    fi
     git -C "$CFG_CLONE" push -q origin HEAD:main
     echo "pushed $(git -C "$CFG_CLONE" rev-parse --short HEAD) → $CFG_URL" ;;
   down)
