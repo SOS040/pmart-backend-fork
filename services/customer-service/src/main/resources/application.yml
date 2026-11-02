@@ -42,7 +42,7 @@ pmart:
       size-px: 256
       max-bytes: 1048576
   storage:
-    # 프로필 사진 사본 저장소(S3 호환, ADR-0016·0024). 버킷을 비우면 사본 기능만 꺼진다. 자격 증명은 환경변수로만.
+    # 프로필 사진 사본 저장소(S3 호환, ADR-0016·0024). 버킷을 비우면 사본 기능만 꺼진다. 자격 증명은 환경변수(LAN 은 config-server {cipher}, ADR-0027)로만.
     s3:
       endpoint: ${PMART_S3_ENDPOINT:}
       region: ${PMART_S3_REGION:us-east-1}

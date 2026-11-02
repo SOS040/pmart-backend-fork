@@ -50,7 +50,7 @@ printf %s 'sha256:…' > services/<name>/build/jib-image.digest
 
 ## 설정 서버 (config-server, ADR-0027)
 - 모든 Spring 앱(33개)은 부팅할 때 pc4 의 `config-server:8888` 에서 설정을 받는다. **받지 못하면 뜨지 않는다**(fail-fast, compose `restart` 로 다시 시도). 이미 떠 있는 앱은 config-server 가 내려가도 영향이 없다.
-- 설정 저장소: GitHub `code-and-pick/pmart-config`(private) 의 `lan/` — `application.yml`(공통: Kafka·JWKS·Redis·OpenSearch·Zipkin·DB 사용자/비밀번호) + `<앱>.yml`(DB URL·auth 서명키·S3·토스·카카오 등).
+- 설정 저장소: GitHub `code-and-pick/pmart-config`(private) 의 `lan/` — `application.yml`(공통: 거의 모든 앱이 쓰는 비밀 아닌 값 — Kafka·JWKS·Zipkin) + `<앱>.yml`(그 앱만 쓰는 값 — DB URL·사용자·비밀번호·풀 크기, Redis·OpenSearch, auth 서명키, S3, 토스, 카카오 등). 앱별 값이 없으면 파일을 만들지 않는다.
   **직접 고치지 않는다.** 정본은 지금처럼 `placement.conf`·`render.sh`·`.secrets/` 이고 render 가 `build/config-repo/lan/` 을 만든다.
 - 비밀값은 `{cipher}…` 암호문(키 `.secrets/config-encrypt-key`·`-salt`, 저장소에는 없음). 같은 값이면 기존 암호문을 그대로 써서 저장소에 변경이 생기지 않는다. 암호화 키를 바꾸면 모든 값이 다시 암호화된다.
 - `.env` 에는 Spring 이 아닌 컨테이너(postgres·connector-registrar·s3)의 비밀과 config-server 접속 비밀번호(`PMART_CONFIG_PASSWORD`)만 남는다.

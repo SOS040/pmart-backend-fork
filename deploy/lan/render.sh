@@ -82,28 +82,22 @@ cfg() { echo "$2: $(yquote "$3")" >> "$CFG_OUT/$1"; }
 cfg_secret() {
   local file="$1" key="$2" plain="$3" prev=""
   cipher_n=$((cipher_n + 1))
-  if [ -f "$CFG_CLONE/lan/$file" ]; then
-    prev="$(grep -F -- "$key: '{cipher}" "$CFG_CLONE/lan/$file" | head -1 | sed -e "s/^.*'{cipher}//" -e "s/'.*$//" || true)"
+  # 기존 암호문: 같은 파일에서 먼저, 없으면 다른 파일의 같은 키(키를 다른 파일로 옮겨도 재사용 — 같은 평문일 때만 쓰인다)
+  if [ -d "$CFG_CLONE/lan" ]; then
+    prev="$( { [ -f "$CFG_CLONE/lan/$file" ] && grep -hF -- "$key: '{cipher}" "$CFG_CLONE/lan/$file"; \
+      grep -hF -- "$(echo "$key" | sed 's/^ *//'): '{cipher}" "$CFG_CLONE"/lan/*.yml; } 2>/dev/null \
+      | head -1 | sed -e "s/^.*'{cipher}//" -e "s/'.*$//" || true)"
   fi
   printf '%s\t%s\t%s\n' "S$cipher_n" "$(printf '%s' "$plain" | base64 -w0)" "$prev" >> "$CIPHER_IN"
   echo "$key: '{cipher}@@S$cipher_n@@'" >> "$CFG_OUT/$file"
 }
 cfg_header() { echo "# 생성 파일(pmart-backend deploy/lan/render.sh) — 여기서 고치지 말고 render.sh·placement.conf·.secrets 를 고친다. ADR-0027" > "$CFG_OUT/$1"; }
 
+# 공통 파일에는 거의 모든 앱이 쓰는 비밀 아닌 값만. DB·Redis·OpenSearch 처럼 일부만 쓰는 값(특히 비밀)은 쓰는 앱 파일에만 둔다
 cfg_header application.yml
 cfg application.yml PMART_KAFKA_BOOTSTRAP kafka:9092
 cfg application.yml PMART_JWKS_URI "http://auth-service:$(port_of auth-service)/api/v1/internal/jwks"
-cfg application.yml PMART_REDIS_URL redis://redis:6379
-cfg application.yml PMART_OPENSEARCH_URL http://opensearch:9200
 cfg application.yml PMART_ZIPKIN_ENDPOINT http://zipkin:9411/api/v2/spans
-cfg application.yml PMART_DB_USERNAME pmart
-cfg_secret application.yml PMART_DB_PASSWORD "$DB_PASSWORD"
-{
-  echo "spring:"
-  echo "  datasource:"
-  echo "    hikari:"
-  echo "      maximum-pool-size: 5 # PC 하나의 PostgreSQL 을 서비스 십여 개가 나눠 쓴다(max_connections 200)"
-} >> "$CFG_OUT/application.yml"
 for pc in "${PCS[@]}"; do
   dir=$OUT/$pc; mkdir -p "$dir"
   comps=" ${COMPS[$pc]} "
@@ -373,7 +367,17 @@ EOF
         if needs "$c" PMART_DB_URL; then
           [ -n "${WHERE[postgres-$pc]:-}" ] || { echo "$c 는 DB 가 필요한데 $pc 에 postgres 가 없음" >&2; exit 1; }
           cfg "$f" PMART_DB_URL "jdbc:postgresql://postgres-$pc:15432/$(db_of "$c")"
+          cfg "$f" PMART_DB_USERNAME pmart
+          cfg_secret "$f" PMART_DB_PASSWORD "$DB_PASSWORD"
+          {
+            echo "spring:"
+            echo "  datasource:"
+            echo "    hikari:"
+            echo "      maximum-pool-size: 5 # PC 하나의 PostgreSQL 을 서비스 십여 개가 나눠 쓴다(max_connections 200)"
+          } >> "$CFG_OUT/$f"
         fi
+        needs "$c" PMART_REDIS_URL && cfg "$f" PMART_REDIS_URL redis://redis:6379
+        needs "$c" PMART_OPENSEARCH_URL && cfg "$f" PMART_OPENSEARCH_URL http://opensearch:9200
         if [ "$c" = auth-service ]; then
           cfg "$f" PMART_AUTH_ISSUER "http://auth-service:$(port_of auth-service)"
           # 고객 Google 로그인 허용 aud(google-client-ids.conf). 클라이언트 ID 는 비밀이 아니고 secret 은 넘기지 않는다
@@ -511,4 +515,9 @@ rm -f "$CIPHER_OUT"
 if grep -l '@@S[0-9]*@@' "$CFG_OUT"/*.yml >/dev/null 2>&1; then
   echo "설정 저장소 암호화 누락: $(grep -l '@@S[0-9]*@@' "$CFG_OUT"/*.yml)" >&2; exit 1
 fi
+# 앱별 설정이 없으면 파일을 두지 않는다(서버는 공통 파일만 돌려준다)
+for f in "$CFG_OUT"/*.yml; do
+  [ "$(basename "$f")" = application.yml ] && continue
+  grep -qv '^#' "$f" || rm -f "$f"
+done
 echo "rendered $CFG_OUT ($(ls "$CFG_OUT" | wc -l) files) — 저장소 반영: deploy/lan/lan.sh config-push"

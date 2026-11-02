@@ -38,7 +38,7 @@ pmart:
       - /api/v1/webhooks/toss
   payment:
     reconcile-interval: PT15S # 불명 재조회·만료 정리 주기
-    # 토스페이먼츠 결제위젯(결제 명세 §7). 키는 Secret Manager·환경변수로만. 비어 있으면 결제 시작은 CONFIG_REQUIRED
+    # 토스페이먼츠 결제위젯(결제 명세 §7). 키는 Secret Manager·환경변수(LAN 은 config-server {cipher}, ADR-0027)로만 — 이 파일·이미지에 넣지 않는다. 비어 있으면 결제 시작은 CONFIG_REQUIRED
     toss:
       base-url: ${PMART_TOSS_BASE_URL:https://api.tosspayments.com}
       secret-key: ${PMART_TOSS_SECRET_KEY:}

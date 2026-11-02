@@ -53,7 +53,7 @@ pmart:
   auth:
     issuer: ${PMART_AUTH_ISSUER:http://auth-service:8501}
     # 운영자 로그인(ADR-0018). 수치는 보안 설정값. 첫 관리자 계정은 bootstrap.login-id/password-hash(bcrypt)가 있을 때만 만든다
-    # (PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID / PMART_AUTH_OPERATOR_BOOTSTRAP_PASSWORDHASH — Secret Manager. 원문 비밀번호는 두지 않는다)
+    # (운영: Secret Manager → 환경변수 PMART_AUTH_OPERATOR_BOOTSTRAP_LOGINID / _PASSWORDHASH. LAN: config-server(ADR-0027). 원문 비밀번호는 두지 않는다)
     operator:
       access-token-ttl: PT15M
       refresh-token-ttl: PT12H
@@ -79,7 +79,7 @@ pmart:
       google:
         # 허용할 ID 토큰 aud = Google OAuth 클라이언트 ID(고객 앱·웹 서버 클라이언트, 쉼표 구분). 비면 Google 로그인은 CONFIG_REQUIRED
         client-ids: ${PMART_AUTH_CUSTOMER_GOOGLE_CLIENTIDS:}
-    # signing.keys[n].kid / private-key 는 Secret Manager 에서 환경변수로 주입한다
+    # signing.keys[n].kid / private-key 는 운영은 Secret Manager 에서 환경변수로, LAN 은 config-server(ADR-0027)가 준다
     # (PMART_AUTH_SIGNING_KEYS_0_KID, PMART_AUTH_SIGNING_KEYS_0_PRIVATEKEY). 키가 없으면 기동 실패.
 management:
   tracing:

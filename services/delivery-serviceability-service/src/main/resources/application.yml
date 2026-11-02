@@ -31,7 +31,7 @@ server:
   port: 8401
 pmart:
   serviceability:
-    # 카카오 로컬(주소 ↔ 좌표, ADR-0023). 키는 환경변수로만 — 비면 주소 변환·판정이 CONFIG_REQUIRED
+    # 카카오 로컬(주소 ↔ 좌표, ADR-0023). 키는 환경변수(LAN 은 config-server {cipher}, ADR-0027)로만 — 비면 주소 변환·판정이 CONFIG_REQUIRED
     kakao:
       base-url: ${PMART_KAKAO_BASE_URL:https://dapi.kakao.com}
       rest-api-key: ${PMART_KAKAO_REST_API_KEY:}

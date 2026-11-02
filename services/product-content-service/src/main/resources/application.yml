@@ -49,7 +49,7 @@ pmart:
   content:
     inventory-base-url: ${PMART_MFC_INVENTORY_BASE_URL:http://mfc-inventory-service:8301} # 옵션별 취급·가용 표시
   storage:
-    # 상품 이미지 저장소(S3 호환, ADR-0016). 값은 환경변수로만 — 자격 증명을 이 파일·이미지에 넣지 않는다.
+    # 상품 이미지 저장소(S3 호환, ADR-0016). 값은 환경변수(LAN 은 config-server, 자격 증명은 {cipher} — ADR-0027)로만 — 자격 증명을 이 파일·이미지에 넣지 않는다.
     s3:
       endpoint: ${PMART_S3_ENDPOINT:}          # 비우면 AWS 기본. SeaweedFS 는 http://<host>:8333
       region: ${PMART_S3_REGION:us-east-1}
