@@ -330,8 +330,12 @@
 - **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`.
 - **구독**: `ApprovalDecided`(BO-01/02), `CustomerWithdrawalCompleted`(세션·소셜 연결 삭제).
 
-### ~~config-service / discovery-service~~ — 제거 (2026-10-23)
-- Kubernetes Service DNS + ConfigMap + Secret Manager로 대체(`.claude/rules/security-config.md`). 로컬 개발은 docker compose 서비스명 DNS. 업무 정책값은 각 도메인 서비스 소유.
+### config-server `[LAN]` — 설정 배포만 (ADR-0027, 2026-11-02)
+- Spring Cloud Config Server. LAN(compose)의 Spring 앱이 부팅할 때 GitHub `code-and-pick/pmart-config`(`lan/`)의 설정을 받는다. 비밀값은 `{cipher}` 를 서버가 복호화. 저장소 내용은 `deploy/lan/render.sh` 가 만든다.
+- **소유하지 않음**: 업무 정책값(각 도메인 서비스 소유 — 설정 파일로 옮기지 않는다), 운영(Kubernetes) 설정(ConfigMap·Secret Manager).
+
+### ~~discovery-service~~ — 제거 (2026-10-23)
+- Kubernetes Service DNS 로 대체(`.claude/rules/security-config.md`). LAN·로컬 개발은 docker compose 서비스명 DNS(+ `extra_hosts`).
 
 ### backoffice-bff `[1단계]` — **상태 없음**
 - 관리자 화면별 조회 조합(원천별 `asOf`·`postedAt`·신선도·직접확인/사본/불명 표시, 기준시각 다른 수량 합산 금지), 명령 전달(멱등키·expected version 부착, 응답 ACK≠성공 그대로 표시), 화면: 통합 조회, 승인함, 사건함, 보충 현황, 운행 관제, 실시간 배송 현황, 포장 인계 현황, 지표(분모 보존). 금지: 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.

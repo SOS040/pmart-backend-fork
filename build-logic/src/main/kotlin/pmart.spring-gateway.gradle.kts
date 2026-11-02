@@ -21,6 +21,8 @@ dependencies {
     "integrationTestImplementation"(platform(libs.spring.boot.bom))
 
     implementation(libs.spring.cloud.starter.gateway)
+    // Config 서버 클라이언트(ADR-0027). application.yml 이 optional:configserver: + enabled=false 로 기본 꺼 둔다(LAN 만 켬)
+    implementation(libs.spring.cloud.starter.config)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.oauth2.resource.server)
     implementation(libs.jspecify)

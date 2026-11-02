@@ -45,6 +45,7 @@ val libraries = listOf<String>(
 
 val platformServices = listOf<String>(
     "api-gateway",
+    "config-server", // ADR-0027
 )
 
 val services = listOf<String>(

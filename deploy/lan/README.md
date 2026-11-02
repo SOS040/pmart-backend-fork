@@ -11,7 +11,9 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
 | `render.sh` | 배치 → `build/<pc>/compose.yml`, `.env`, `init-db.sql` 생성 |
 | `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키·S3 자격 증명·첫 운영자 관리자(아이디 `operator-admin-login`, 비밀번호 원문 `operator-admin-password`, bcrypt 해시 `operator-admin-hash`) 생성. 있으면 유지. **재생성하면 LAN 과 값이 달라지므로** 잃어버렸으면 PC 1 백업(`%USERPROFILE%\.pmart-lan-secrets-backup\`, 저장소 밖)에서 되돌린다 |
 | `.secrets/registry.env` | Docker Hub 액세스 토큰(읽기·쓰기, 사용자가 발급 — 저장소 밖). `set -a; . deploy/lan/.secrets/registry.env; set +a` 로 `REGISTRY_USERNAME`·`REGISTRY_PASSWORD` 를 넣으면 Jib 이 Docker Desktop 로그인 대신 이 값으로 push 한다(401 회피) |
-| `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` |
+| `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` / `config-push` |
+| `config-server/github-host-key.conf` | config-server 가 GitHub 에 SSH 로 붙을 때 확인하는 호스트 키(공개 지문과 대조함, 비밀 아님) |
+| `.config-repo/` | 설정 저장소 GitHub `code-and-pick/pmart-config` 의 로컬 사본(git 제외). `config-push` 가 관리 |
 | `watch.sh` | 감시: 각 PC 구성요소를 LAN 에서 실제 프로토콜로 점검, 연속 실패 시 그 PC 에서 재시작. PC IP 변경 감지 |
 | `ipcheck.sh` | PC 의 실제 LAN IP 와 `placement.conf` IP 비교(`watch.sh` 가 사용, 단독 실행 가능) |
 | `watch-install.ps1` | PC 1 작업 스케줄러에 `watch.sh` 5분 간격 등록(로그온 중 실행, `-S4U` 는 관리자 필요, `-Remove` 로 해제) |
@@ -23,7 +25,7 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
   게이트웨이 업스트림 기본값(`http://<service>:<port>`)도 그대로 맞는다.
 - PostgreSQL 은 DB 가 필요한 서비스가 있는 PC 마다 하나(컨테이너 안에서도 15432). 그 PC 서비스의 DB 만 만든다.
 - Debezium Connect 는 한 곳. `connector-registrar` 가 모든 PC 의 PostgreSQL(`DB_HOSTS`)을 훑어 커넥터를 만든다.
-- 설정은 각 서비스 `application.yml` 의 `${PMART_...}` 환경변수로만 준다. `local` 프로파일은 쓰지 않는다(이미지에 로컬 고정값이 들어 있음).
+- 설정은 각 서비스 `application.yml` 의 `${PMART_...}` 자리표시자로 받는다. LAN 에서는 그 값을 **config-server** 가 준다(아래 절). `local` 프로파일은 쓰지 않는다(이미지에 로컬 고정값이 들어 있음).
 
 ## 사용
 ```bash
@@ -45,6 +47,22 @@ java deploy/lan/seed/Seed.java
 docker push heeji4445/pmart-<name>:<sha>                  # 출력 끝의 digest: sha256:… 를
 printf %s 'sha256:…' > services/<name>/build/jib-image.digest
 ```
+
+## 설정 서버 (config-server, ADR-0027)
+- 모든 Spring 앱(33개)은 부팅할 때 pc4 의 `config-server:8888` 에서 설정을 받는다. **받지 못하면 뜨지 않는다**(fail-fast, compose `restart` 로 다시 시도). 이미 떠 있는 앱은 config-server 가 내려가도 영향이 없다.
+- 설정 저장소: GitHub `code-and-pick/pmart-config`(private) 의 `lan/` — `application.yml`(공통: Kafka·JWKS·Redis·OpenSearch·Zipkin·DB 사용자/비밀번호) + `<앱>.yml`(DB URL·auth 서명키·S3·토스·카카오 등).
+  **직접 고치지 않는다.** 정본은 지금처럼 `placement.conf`·`render.sh`·`.secrets/` 이고 render 가 `build/config-repo/lan/` 을 만든다.
+- 비밀값은 `{cipher}…` 암호문(키 `.secrets/config-encrypt-key`·`-salt`, 저장소에는 없음). 같은 값이면 기존 암호문을 그대로 써서 저장소에 변경이 생기지 않는다. 암호화 키를 바꾸면 모든 값이 다시 암호화된다.
+- `.env` 에는 Spring 이 아닌 컨테이너(postgres·connector-registrar·s3)의 비밀과 config-server 접속 비밀번호(`PMART_CONFIG_PASSWORD`)만 남는다.
+- 설정을 바꾸면: `render`(또는 `deploy` 가 함께) → `lan.sh config-push`(바뀐 **키 이름**만 보여 주고 commit·push) → 해당 앱 재시작(`lan.sh restart <pc> <앱>`). 실행 중 갱신은 하지 않는다.
+- `lan.sh deploy` 는 render 결과가 저장소 main 과 다르면 멈추고, config-server 를 먼저 올려 UP 을 확인한 뒤 나머지를 올린다.
+
+### 처음 한 번 (사용자 GitHub 권한)
+1. `deploy/lan/lan.sh render` — `init-secrets.sh` 가 `config-encrypt-key`·`config-encrypt-salt`·`config-password`·`config-deploy-key`(ed25519) 를 만든다.
+2. GitHub 에 **private** 저장소 `code-and-pick/pmart-config` 를 만든다(빈 저장소).
+3. 저장소 Settings → Deploy keys → `deploy/lan/.secrets/config-deploy-key.pub` 를 **읽기 전용**(Allow write access 끔)으로 등록.
+4. `deploy/lan/lan.sh config-push` — 첫 내용 push(PC 1 의 GitHub 자격 증명).
+5. config-server 이미지 push 후 `deploy/lan/lan.sh deploy all`.
 
 ## 장애 대비 (2026-10-27, `docs/worklog/2026-10-27.md`)
 - **컨테이너 고정 IP**: compose 네트워크 `172.28.0.0/24`, 구성요소는 배치 순서대로 `.10~`, 자동 배정은 `.192/26`.

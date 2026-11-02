@@ -1,4 +1,10 @@
 spring:
+  # Config 서버(ADR-0027): 기본 꺼짐. LAN 은 SPRING_CLOUD_CONFIG_ENABLED=true·URI·fail-fast 를 환경변수로 켠다
+  config:
+    import: "optional:configserver:"
+  cloud:
+    config:
+      enabled: false
   application:
     name: mfc-inbound-service
   mvc:

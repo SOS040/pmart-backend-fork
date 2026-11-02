@@ -23,6 +23,8 @@ dependencies {
     // 모든 서비스 공통 최소 집합. 데이터·Kafka·관측은 각 서비스 build.gradle.kts에서 bundle로 추가한다.
     implementation(libs.bundles.service.core)
     implementation(libs.springdoc.openapi.webmvc.ui) // 생성 코드의 @Operation 등 + /v3/api-docs
+    // Config 서버 클라이언트(ADR-0027). 각 application.yml 이 optional:configserver: + enabled=false 로 기본 꺼 둔다(LAN 만 켬)
+    implementation(libs.spring.cloud.starter.config)
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)

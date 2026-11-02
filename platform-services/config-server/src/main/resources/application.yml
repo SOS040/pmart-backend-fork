@@ -1,0 +1,50 @@
+# config-server (ADR-0027). LAN 의 Spring 앱들이 부팅할 때 GET /{application}/default 로 설정을 받는다.
+# - 설정 저장소: GitHub code-and-pick/pmart-config (private). 환경별 폴더(lan/)만 읽는다(search-paths).
+#   lan/application.yml = 모든 앱 공통, lan/<spring.application.name>.yml = 앱별. 값은 대부분 기존 ${PMART_*} 자리표시자 이름이다.
+# - 비밀값은 '{cipher}…'(AES, encrypt.key·salt)로 저장소에 두고 여기서 복호화해 내려준다(server-side decryption).
+# - 서버 자신의 비밀(encrypt.key·salt, Basic 인증 비밀번호, GitHub Deploy key)은 파일 디렉터리로 받는다(configtree,
+#   파일 이름 = 속성 이름). 여러 줄 PEM 키를 환경변수로 넘기지 않기 위해서다. 저장소·이미지·application.yml 에 두지 않는다.
+spring:
+  application:
+    name: config-server
+  config:
+    import: "optional:configtree:${PMART_CONFIG_SECRETS_DIR:/run/secrets/config-server}/"
+  cloud:
+    config:
+      enabled: false # 서버 자신은 config client 로 동작하지 않는다
+      server:
+        # /{app}/{profile} 응답의 비밀값을 복호화해서 내려준다. 복호화 실패 값은 invalid.<key> 로 표시된다
+        encrypt:
+          enabled: true
+        git:
+          uri: ${PMART_CONFIG_GIT_URI:git@github.com:code-and-pick/pmart-config.git}
+          default-label: main
+          search-paths: ${PMART_CONFIG_SEARCH_PATHS:lan}
+          clone-on-start: true # 저장소에 닿지 못하면 기동 실패(조용히 빈 설정을 주지 않는다)
+          force-pull: true # 로컬 사본이 더러워져도 원격 기준
+          timeout: 10 # 초
+          ignore-local-ssh-settings: true
+          # private-key·host-key·host-key-algorithm 은 configtree 파일로 받는다(GitHub ed25519 호스트 키, 지문 확인 후 기록)
+          strict-host-key-checking: true
+  security:
+    user:
+      name: ${PMART_CONFIG_USERNAME:pmart}
+      # password 는 configtree 파일 spring.security.user.password. 없으면 기동 시 무작위 값(아무도 못 읽음)
+server:
+  port: 8888
+# 업무 API 가 없다 — convention 이 넣는 springdoc 문서 엔드포인트를 끈다
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+# encrypt.key·encrypt.salt 는 configtree 파일로만 받는다. 없으면 {cipher} 값은 복호화되지 않는다(invalid.*)
+management:
+  endpoint:
+    health:
+      show-details: never
+  tracing:
+    export:
+      zipkin:
+        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+# /encrypt·/decrypt 는 SecurityConfig 가 막는다. 암호화는 configCipher 태스크(ConfigCipherTool)로 한다

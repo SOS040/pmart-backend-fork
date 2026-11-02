@@ -7,6 +7,8 @@
 #   deploy/lan/lan.sh restart <pc> <서비스...>
 #   deploy/lan/lan.sh down <pc|all>               컨테이너 정지·삭제(볼륨은 남긴다)
 #   deploy/lan/lan.sh publish-backoffice <dist>    임시 백오피스 빌드(npm run build:lan 결과)를 올리고 backoffice-web 만 다시 배포
+#   deploy/lan/lan.sh config-push                 설정 저장소(GitHub pmart-config, lan/)에 render 결과 반영(변경 표시 후 commit·push, ADR-0027)
+# deploy 는 설정 저장소가 render 결과와 다르면 멈추고(config-push 먼저), config-server 를 먼저 띄운 뒤 나머지를 올린다.
 # 원격 실행: deploy/remote/run-ps.sh (원격 docker 는 %USERPROFILE%\.docker-pmart 설정 — 읽기 전용 pull 토큰)
 # 원격 작업 폴더: %USERPROFILE%\pmart-lan. PMart 이외 컨테이너는 건드리지 않는다(compose 프로젝트 pmart-lan 만).
 set -euo pipefail
@@ -38,6 +40,37 @@ copy_files() {
   (cd "$OUT/$pc" && scp -q -o BatchMode=yes -r $(ls -A | grep -v '^target$') "$host:pmart-lan/") 2>&1 | grep -v -E 'post-quantum|store now|pq.html' || true
 }
 
+# ---- 설정 저장소(ADR-0027) ----
+CFG_CLONE=$LAN/.config-repo  # GitHub pmart-config 로컬 사본(git 제외). PC 1 의 사용자 GitHub 자격 증명으로 push 한다
+CFG_URL="${PMART_CONFIG_REPO_URL:-https://github.com/code-and-pick/pmart-config.git}"
+config_sync() { # 사본을 원격 최신으로
+  # autocrlf 를 끈다: PC 1 Git 은 core.autocrlf=true 라 체크아웃이 CRLF 가 되어 render 결과(LF)와 늘 달라 보인다
+  if [ ! -d "$CFG_CLONE/.git" ]; then git clone -q -c core.autocrlf=false "$CFG_URL" "$CFG_CLONE"; fi
+  git -C "$CFG_CLONE" config core.autocrlf false
+  git -C "$CFG_CLONE" fetch -q origin
+  if git -C "$CFG_CLONE" rev-parse -q --verify origin/main >/dev/null; then
+    git -C "$CFG_CLONE" checkout -q -B main origin/main
+  fi
+}
+config_check() { # render 결과가 원격 main 의 lan/ 과 같은지
+  config_sync
+  if ! git -C "$CFG_CLONE" rev-parse -q --verify origin/main >/dev/null \
+    || ! diff -r -q "$OUT/config-repo/lan" "$CFG_CLONE/lan" >/dev/null 2>&1; then
+    echo "설정 저장소가 render 결과와 다르다: 먼저 deploy/lan/lan.sh config-push" >&2
+    diff -r -q "$OUT/config-repo/lan" "$CFG_CLONE/lan" 2>&1 | sed 's/^/  /' >&2 || true
+    exit 1
+  fi
+}
+config_server_pc() { grep -l '^  config-server:' "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename; }
+wait_config_server() {
+  local pc="$1" ip; ip="$(awk '{print $2}' "$OUT/$pc/target")"
+  for _ in $(seq 1 60); do
+    curl -sf -m 3 "http://$ip:8888/actuator/health" | grep -q '"UP"' && { echo "config-server UP ($pc)"; return 0; }
+    sleep 3
+  done
+  echo "config-server 가 UP 이 아니다($pc) — lan.sh logs $pc config-server" >&2; exit 1
+}
+
 cmd="${1:-}"; shift || true
 case "$cmd" in
   render)
@@ -45,7 +78,18 @@ case "$cmd" in
     bash $LAN/render.sh ;;
   deploy)
     target="${1:?pc|all}"; shift
+    config_sync # 기존 암호문을 재사용하려면 render 전에 사본이 최신이어야 한다
     bash $LAN/render.sh >/dev/null
+    config_check
+    # config-server 먼저: 다른 앱은 부팅할 때 설정을 받아야 뜬다(fail-fast)
+    cpc="$(config_server_pc)"
+    if [ -n "$cpc" ] && { [ "$target" = all ] || [ "$target" = "$cpc" ]; } \
+      && { [ $# -eq 0 ] || [[ " $* " == *" config-server "* ]]; }; then
+      echo "=== $cpc deploy config-server"
+      copy_files "$cpc"
+      remote_compose "$cpc" up -d config-server
+      wait_config_server "$cpc"
+    fi
     for pc in $(pcs "$target"); do
       echo "=== $pc deploy $*"
       copy_files "$pc"
@@ -75,6 +119,19 @@ case "$cmd" in
     rm -rf "$LAN/backoffice-dist" && mkdir -p "$LAN/backoffice-dist" && cp -r "$src/." "$LAN/backoffice-dist/"
     echo "백오피스 빌드 $(find "$LAN/backoffice-dist" -type f | wc -l)개 파일 → $pc"
     "$0" deploy "$pc" backoffice-web ;;
+  config-push)
+    config_sync
+    PMART_RENDER_NO_DIGEST=1 bash $LAN/render.sh >/dev/null # 설정 내용만 필요(이미지 digest 무관)
+    rm -rf "$CFG_CLONE/lan" && cp -r "$OUT/config-repo/lan" "$CFG_CLONE/lan"
+    git -C "$CFG_CLONE" add -A lan
+    if git -C "$CFG_CLONE" diff --cached --quiet; then echo "설정 저장소 변경 없음"; exit 0; fi
+    # 값이 아니라 바뀐 키만 보인다(암호문·평문 모두 출력하지 않음)
+    git -C "$CFG_CLONE" diff --cached --stat
+    git -C "$CFG_CLONE" diff --cached -U0 | grep -E '^[+-][^+-]' | sed -E 's/^([+-][^:]*):.*/\1/' | sort -u | sed 's/^/  /'
+    git -C "$CFG_CLONE" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
+      commit -q -m "lan: render (pmart-backend $(git rev-parse --short HEAD))"
+    git -C "$CFG_CLONE" push -q origin HEAD:main
+    echo "pushed $(git -C "$CFG_CLONE" rev-parse --short HEAD) → $CFG_URL" ;;
   down)
     for pc in $(pcs "${1:?pc|all}"); do echo "=== $pc"; remote_compose "$pc" down; done ;;
   *)

@@ -19,9 +19,11 @@ paths:
 
 ## 비밀정보·로그
 - 비밀정보를 Git, `application.yml`, 컨테이너 이미지에 저장하지 않는다 (Vault 또는 Cloud Secret Manager).
+  - 예외(ADR-0027): LAN 설정 저장소(GitHub `pmart-config`)에는 `{cipher}` 암호문만 둔다. 암호화 키·salt 는 Git·이미지·application.yml 밖(`deploy/lan/.secrets/`, config-server 컨테이너). 키가 새면 키와 비밀값을 함께 바꾼다.
 - 개인정보, 인증 토큰, PG 자격증명을 로그에 남기지 않는다.
 
 ## 설정·서비스 검색
 - Eureka 환경: Spring Cloud Config + Eureka
 - Kubernetes 환경: Service DNS + ConfigMap + Secret Manager
+- LAN(compose) 환경: Spring Cloud Config Server(`platform-services/config-server`) + compose 서비스명 DNS(ADR-0027). 클라이언트는 기본 꺼짐이라 로컬·시험·Kubernetes 는 영향 없음
 - 두 체계를 이유 없이 중복 도입하지 않는다. 현재 환경의 방식을 먼저 확인한다.

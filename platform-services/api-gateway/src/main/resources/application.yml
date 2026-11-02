@@ -5,6 +5,9 @@
 # - 공개 경로(pmart.gateway.public-paths)는 계약에서 security: [] 인 작업만. 그 외 모든 /api/** 는 JWT 필수.
 # - 처리율 제한(pmart.gateway.rate-limit): JWT subject / 클라이언트 IP 단위 Redis 토큰 버킷. Redis 장애 시 허용(fail-open).
 spring:
+  # Config 서버(ADR-0027): 기본 꺼짐. LAN 은 SPRING_CLOUD_CONFIG_ENABLED=true·URI·fail-fast 를 환경변수로 켠다
+  config:
+    import: "optional:configserver:"
   application:
     name: api-gateway
   webflux:
@@ -19,6 +22,8 @@ spring:
     redis:
       url: ${PMART_REDIS_URL} # 처리율 제한 토큰 버킷 상태만 둔다(원장 아님)
   cloud:
+    config:
+      enabled: false
     gateway:
       server:
         webflux:
