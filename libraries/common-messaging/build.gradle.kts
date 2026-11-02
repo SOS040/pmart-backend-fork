@@ -11,6 +11,8 @@ dependencies {
     // RequestIdempotency 가 충돌을 PmartException(IDEMPOTENCY_CONFLICT)으로 던진다(공개 API) → common-web 이 RFC 9457 로 응답
     api(project(":libraries:common-web"))
     implementation(libs.spring.boot.starter.jdbc)
+    // 미처리 메시지 지표(ADR-0030). 서비스는 actuator 로 이미 갖고 있다
+    implementation(libs.micrometer.core)
     implementation(libs.json.schema.validator)
     // Flyway 위치 추가(FlywayConfigurationCustomizer)는 서비스가 Flyway starter를 쓸 때만 활성화
     compileOnly(libs.spring.boot.starter.flyway)
@@ -24,6 +26,7 @@ dependencies {
     "integrationTestImplementation"(libs.spring.boot.starter.flyway)
     "integrationTestImplementation"(libs.flyway.postgresql)
     "integrationTestImplementation"(libs.postgresql)
+    "integrationTestImplementation"(libs.micrometer.core)
 }
 
 // contracts/events 의 JSON Schema 를 jar 에 포함해 런타임 검증에 쓴다 (정본은 contracts/, 여기는 사본).

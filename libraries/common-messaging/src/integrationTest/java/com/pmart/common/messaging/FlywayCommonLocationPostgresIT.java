@@ -64,7 +64,7 @@ class FlywayCommonLocationPostgresIT {
             jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank",
                 String.class))
-        .containsExactly("1", "0.0.1", "0.0.2");
+        .containsExactly("1", "0.0.1", "0.0.2", "0.0.3");
     assertThat(
             jdbc.queryForObject("SELECT to_regclass('request_record') IS NOT NULL", Boolean.class))
         .isTrue();

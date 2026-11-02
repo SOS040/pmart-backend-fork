@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -28,7 +29,8 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>{@link EventEnvelopeCodec}, {@link EventSchemaValidator}
  *   <li>{@link OutboxWriter}(JdbcTemplate 있을 때), {@link InboxGuard}(트랜잭션 매니저 있을 때)
  *   <li>Flyway 위치에 {@code classpath:db/migration/common} 추가(outbox/inbox 테이블)
- *   <li>Kafka 리스너 공통 오류 처리: 지수 백오프 재시도 후 {topic}.DLT (원 헤더·eventId 보존)
+ *   <li>Kafka 리스너 공통 오류 처리: 지수 백오프 재시도 후 {topic}.DLT (원 헤더·eventId 보존) + 서비스 DB dead_letter 기록
+ *       ({@link DeadLetters}, 내부 API {@link DeadLetterController} — ADR-0030)
  * </ul>
  */
 // JdbcTemplate·트랜잭션 매니저가 먼저 만들어져야 @ConditionalOnBean 이 맞게
@@ -39,7 +41,8 @@ import tools.jackson.databind.ObjectMapper;
       "org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration",
       "org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration",
       "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration",
-      "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration"
+      "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration",
+      "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration"
     })
 @EnableConfigurationProperties(MessagingProperties.class)
 public class CommonMessagingAutoConfiguration {
@@ -125,17 +128,57 @@ public class CommonMessagingAutoConfiguration {
     }
   }
 
-  /** Spring Kafka 리스너 컨테이너 기본 오류 처리. 서비스가 CommonErrorHandler 빈을 정의하면 그쪽이 우선. */
+  /** 미처리 메시지 기록·재처리(ADR-0030). DB(JdbcTemplate)와 Kafka 가 있는 서비스만. */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnBean({JdbcTemplate.class, KafkaOperations.class})
+  public DeadLetters pmartDeadLetters(
+      JdbcTemplate jdbc,
+      EventEnvelopeCodec codec,
+      KafkaOperations<Object, Object> kafka,
+      ObjectProvider<java.time.Clock> clock,
+      ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meters) {
+    return new DeadLetters(
+        jdbc,
+        codec.mapper(),
+        kafka,
+        clock.getIfAvailable(java.time.Clock::systemUTC),
+        meters.getIfAvailable(),
+        true);
+  }
+
+  /** 내부 API(서블릿 서비스만). 같은 클래스의 앞선 빈(DeadLetters)으로 조건을 판정한다. */
+  @Bean
+  @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+  @ConditionalOnBean(DeadLetters.class)
+  public DeadLetterController pmartDeadLetterController(DeadLetters deadLetters) {
+    return new DeadLetterController(deadLetters);
+  }
+
+  /**
+   * Spring Kafka 리스너 컨테이너 기본 오류 처리. 서비스가 CommonErrorHandler 빈을 정의하면 그쪽이 우선. 재시도를 다 쓰면 {topic}.DLT 로
+   * 보내고(실패하면 다시 시도), 이어서 dead_letter 에 기록한다(기록 실패는 삼킨다 — DLT 사본이 있다).
+   */
   @Bean
   @ConditionalOnMissingBean(CommonErrorHandler.class)
   @ConditionalOnBean(KafkaOperations.class)
   public CommonErrorHandler pmartKafkaErrorHandler(
-      KafkaOperations<Object, Object> template, MessagingProperties props) {
-    DeadLetterPublishingRecoverer recoverer =
+      KafkaOperations<Object, Object> template,
+      MessagingProperties props,
+      ObjectProvider<DeadLetters> deadLetters) {
+    DeadLetterPublishingRecoverer dlt =
         new DeadLetterPublishingRecoverer(
             template,
             (record, ex) ->
                 new TopicPartition(Topics.deadLetter(record.topic()), record.partition()));
+    org.springframework.kafka.listener.ConsumerRecordRecoverer recoverer =
+        (record, ex) -> {
+          dlt.accept(record, ex);
+          DeadLetters d = deadLetters.getIfAvailable();
+          if (d != null) {
+            d.record(record, ex);
+          }
+        };
     ExponentialBackOff backOff =
         new ExponentialBackOff(props.getConsumer().getInitialBackoffMs(), 2.0);
     backOff.setMaxInterval(props.getConsumer().getMaxBackoffMs());

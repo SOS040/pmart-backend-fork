@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: PMart 미처리 메시지(dead letter) 내부 API
+  version: 0.1.0
+  description: |
+    ADR-0030. common-messaging 이 DB·Kafka 를 쓰는 **모든 서비스**에 같은 경로로 연다(서비스별 계약에 따로 적지 않는다).
+    Kafka 소비가 재시도(기본 3회)를 다 쓰면 `{topic}.DLT` 로 보내고 그 서비스 DB 의 `dead_letter` 에도 남긴다.
+    - 상태: `OPEN → REPLAYED`(원래 토픽에 같은 키·본문·헤더로 다시 발행, 헤더 `pmart-replay-of` 추가) / `DISCARDED`(사유 필수).
+    - 재처리는 원래 토픽의 모든 구독자에게 다시 간다 — 구독자는 inbox(같은 eventId)로 중복을 버린다(ADR-0009).
+    - 다시 실패하면 새 행이 생기고 `replayOf` 가 원 행을 가리킨다.
+    - 내부 경로(게이트웨이 경유 없음, ADR-0026). 본문(payload)은 상세 조회에서만 준다.
+    - 지표: `pmart_messaging_dead_letters_open{topic}`(OPEN 건수), `pmart_messaging_dead_letters_total{topic}`(기록 수).
+servers:
+  - url: /api/v1
+paths:
+  /internal/dead-letters:
+    get:
+      tags: [dead-letters]
+      summary: 미처리 메시지 목록 (최근 실패 순, 본문 없음)
+      operationId: listDeadLetters
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/DeadLetterStatus' } }
+        - { name: topic, in: query, description: 원래 토픽, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/DeadLetterSummary' } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+  /internal/dead-letters/{id}:
+    get:
+      tags: [dead-letters]
+      summary: 미처리 메시지 상세 (본문·헤더 포함)
+      operationId: getDeadLetter
+      parameters:
+        - $ref: '#/components/parameters/DeadLetterId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeadLetterDetail' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /internal/dead-letters/{id}/replays:
+    post:
+      tags: [dead-letters]
+      summary: 원래 토픽에 다시 발행 (OPEN 만, 이미 REPLAYED 면 그대로 돌려줌)
+      operationId: replayDeadLetter
+      parameters:
+        - $ref: '#/components/parameters/DeadLetterId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeadLetterAction' }
+      responses:
+        '200':
+          description: REPLAYED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeadLetterSummary' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503':
+          description: DEPENDENCY_UNAVAILABLE — 발행 실패(상태는 OPEN 으로 남는다)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+  /internal/dead-letters/{id}/discards:
+    post:
+      tags: [dead-letters]
+      summary: 사유와 함께 폐기 (OPEN 만, 이미 DISCARDED 면 그대로 돌려줌)
+      operationId: discardDeadLetter
+      parameters:
+        - $ref: '#/components/parameters/DeadLetterId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/DeadLetterAction'
+                - required: [reason]
+      responses:
+        '200':
+          description: DISCARDED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeadLetterSummary' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+components:
+  parameters:
+    DeadLetterId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    DeadLetterStatus:
+      type: string
+      enum: [OPEN, REPLAYED, DISCARDED]
+    DeadLetterAction:
+      type: object
+      properties:
+        actor: { type: [string, 'null'], maxLength: 128, description: 처리한 사람(기록용) }
+        reason: { type: [string, 'null'], maxLength: 500, description: 폐기 사유 }
+    DeadLetterSummary:
+      type: object
+      required: [id, topic, partition, offset, exceptionClass, status, failedAt]
+      properties:
+        id: { type: string, format: uuid }
+        topic: { type: string, description: 원래 토픽(DLT 아님) }
+        partition: { type: integer }
+        offset: { type: integer, format: int64 }
+        key: { type: [string, 'null'] }
+        eventId: { type: [string, 'null'] }
+        eventType: { type: [string, 'null'] }
+        sourceSystem: { type: [string, 'null'] }
+        exceptionClass: { type: string, description: 근본 원인 예외 }
+        exceptionMessage: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/DeadLetterStatus' }
+        failedAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        resolvedBy: { type: [string, 'null'] }
+        resolutionNote: { type: [string, 'null'] }
+        replayOf: { type: [string, 'null'], format: uuid }
+    DeadLetterDetail:
+      type: object
+      required: [summary, headers]
+      properties:
+        summary: { $ref: '#/components/schemas/DeadLetterSummary' }
+        payload: { type: [string, 'null'], description: 원래 값(봉투 JSON) }
+        headers: { type: object, additionalProperties: { type: string }, description: '이름 → base64 값 (DLT 진단 헤더 제외)' }

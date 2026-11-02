@@ -35,6 +35,7 @@ paths:
 - 순서가 필요한 사건은 안정적인 파티션 키 사용 (보통 aggregateId).
 - Retry topic은 처리 순서를 바꿀 수 있음을 고려.
 - 재시도·DLT·재처리 시 원이벤트 식별자 유지.
+- 재시도를 다 쓴 메시지는 `{topic}.DLT` 와 그 서비스 DB `dead_letter` 에 남는다(common-messaging, ADR-0030). 원인을 고친 뒤 `POST /api/v1/internal/dead-letters/{id}/replays`(원래 토픽에 다시 발행) 또는 사유와 함께 `…/discards`. 재처리는 모든 구독자에게 다시 가므로 소비자는 반드시 멱등(inbox·버전 비교)이어야 한다.
 - Kafka 보장을 외부 DB·PG까지의 exactly-once로 확대 해석하지 않는다.
 
 ## 이벤트 스키마

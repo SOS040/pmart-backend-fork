@@ -67,6 +67,7 @@ spring-kafka-test = { module = "org.springframework.kafka:spring-kafka-test" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind" }
 
 # --- 관측 (BOM 관리) ---
+micrometer-core = { module = "io.micrometer:micrometer-core" }
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
 micrometer-tracing-bridge-otel = { module = "io.micrometer:micrometer-tracing-bridge-otel" }
 opentelemetry-exporter-zipkin = { module = "io.opentelemetry:opentelemetry-exporter-zipkin" }
