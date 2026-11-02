@@ -248,6 +248,7 @@ public class DraftsController implements DraftsApi {
                 .deliveryMode(DraftDelivery.DeliveryModeEnum.fromValue(s.delivery().deliveryMode()))
                 .arrivalWindow(window(s.delivery().arrivalWindow()))
                 .shoppingAddressId(s.delivery().shoppingAddressId())
+                .shippingAddress(ShippingMapping.of(s.delivery().shippingAddress()))
                 .deliveryNote(s.delivery().deliveryNote())
                 .outOfStockPreference(
                     DraftDelivery.OutOfStockPreferenceEnum.fromValue(

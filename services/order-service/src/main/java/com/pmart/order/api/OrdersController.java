@@ -61,6 +61,7 @@ public class OrdersController implements OrdersApi {
             .outOfStockPreference(
                 Order.OutOfStockPreferenceEnum.fromValue(o.outOfStockPreference()))
             .shoppingAddressId(o.shoppingAddressId())
+            .shippingAddress(ShippingMapping.of(v.shipping()))
             .deliveryNote(o.deliveryNote())
             .quote(
                 new Quote()

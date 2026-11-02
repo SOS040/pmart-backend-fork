@@ -4,6 +4,7 @@ import com.pmart.common.web.Downstream;
 import com.pmart.common.web.PmartException;
 import com.pmart.order.application.OrderProperties;
 import com.pmart.order.domain.OrderRules;
+import com.pmart.order.domain.ShippingAddress;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -40,7 +41,9 @@ public class Upstreams {
 
   public record Priced(int priceVersion, long itemAmount, Map<String, PricedLine> lines) {}
 
-  public record Address(String serviceability, @Nullable String mfcId) {}
+  /** 쇼핑 주소 판정 사본 + 주문 당시 배송지 사본(BR-37). 필수 필드가 비어 오면 shipping 은 null. */
+  public record Address(
+      String serviceability, @Nullable String mfcId, @Nullable ShippingAddress shipping) {}
 
   /** 운영 캘린더 결과: configRequired 면 ranges 는 비어 있다. */
   public record CenterDay(boolean configRequired, boolean open, List<int[]> ranges) {}
@@ -80,7 +83,8 @@ public class Upstreams {
     }
   }
 
-  public Address shoppingAddress(String accountId, String shoppingAddressId) {
+  public Address shoppingAddress(
+      String accountId, String shoppingAddressId, java.time.Instant now) {
     JsonNode n;
     try {
       n =
@@ -98,10 +102,41 @@ public class Upstreams {
           false,
           List.of());
     }
-    JsonNode svc = n.path("address").path("serviceability");
+    JsonNode a = n.path("address");
+    JsonNode svc = a.path("serviceability");
     return new Address(
         svc.path("state").asString("UNKNOWN"),
-        svc.hasNonNull("mfcId") ? svc.get("mfcId").asString() : null);
+        svc.hasNonNull("mfcId") ? svc.get("mfcId").asString() : null,
+        shipping(a, now));
+  }
+
+  /** customer 배송지 → 주문 당시 사본. 필수(도로명·상세·수령인·연락처)가 하나라도 없으면 null(지어내지 않는다). */
+  private static @Nullable ShippingAddress shipping(JsonNode a, java.time.Instant now) {
+    String road = text(a, "roadAddress");
+    String detail = text(a, "detailAddress");
+    String name = text(a, "receiverName");
+    String phone = text(a, "receiverPhone");
+    if (road == null || detail == null || name == null || phone == null) {
+      return null;
+    }
+    JsonNode geo = a.path("geo");
+    return new ShippingAddress(
+        road,
+        detail,
+        text(a, "postalCode"),
+        name,
+        phone,
+        text(a, "entranceMethod"),
+        text(a, "entranceNote"),
+        geo.hasNonNull("lat") ? geo.get("lat").asDouble() : null,
+        geo.hasNonNull("lng") ? geo.get("lng").asDouble() : null,
+        now);
+  }
+
+  private static @Nullable String text(JsonNode n, String field) {
+    return n.hasNonNull(field) && !n.get(field).asString().isBlank()
+        ? n.get(field).asString()
+        : null;
   }
 
   public boolean firstPurchaseCandidate(String accountId) {

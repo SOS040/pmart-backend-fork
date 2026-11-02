@@ -224,7 +224,7 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
     patch:
       tags: [addresses]
-      summary: 주소 수정 (확정 주문의 주소는 변경되지 않음)
+      summary: 주소 수정 (초안·확정 주문은 주문 당시 사본을 써서 바뀌지 않음 — order-service shippingAddress, BR-37)
       operationId: updateMyAddress
       parameters:
         - { name: addressId, in: path, required: true, schema: { type: string } }
@@ -246,7 +246,7 @@ paths:
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
     delete:
       tags: [addresses]
-      summary: 주소 삭제 (현재 쇼핑 주소면 INVALID_STATE)
+      summary: 주소 삭제 (현재 쇼핑 주소면 INVALID_STATE. 초안·주문은 사본을 가져 영향 없음 — BR-37)
       operationId: deleteMyAddress
       parameters:
         - { name: addressId, in: path, required: true, schema: { type: string } }

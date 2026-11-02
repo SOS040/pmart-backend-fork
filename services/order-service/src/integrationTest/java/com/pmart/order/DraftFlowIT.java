@@ -167,22 +167,33 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
   }
 
   void shoppingContext(String addressId, String state, String mfcId) {
+    shoppingContext(addressId, state, mfcId, "101동 1001호", "01012345678");
+  }
+
+  /** customer 배송지(주문 당시 사본 BR-37 의 원천). detail·phone 을 바꿔 "주소록 수정"을 흉내 낸다. */
+  void shoppingContext(
+      String addressId, String state, String mfcId, String detailAddress, String receiverPhone) {
     Map<String, Object> svc = new LinkedHashMap<>();
     svc.put("state", state);
     if (mfcId != null) {
       svc.put("mfcId", mfcId);
     }
+    Map<String, Object> address = new LinkedHashMap<>();
+    address.put("addressId", addressId);
+    address.put("roadAddress", "부산광역시 부산진구 중앙대로 708");
+    address.put("detailAddress", detailAddress);
+    address.put("postalCode", "47296");
+    address.put("receiverName", "홍길동");
+    address.put("receiverPhone", receiverPhone);
+    address.put("entranceMethod", "PASSWORD");
+    address.put("entranceNote", "#1234");
+    address.put("geo", Map.of("lat", 35.1577, "lng", 129.0599));
+    address.put("serviceability", svc);
     for (String acc : List.of(FIRST, REPEAT)) {
       deps.stubFor(
           WireMock.get(urlPathEqualTo("/api/v1/internal/accounts/" + acc + "/shopping-context"))
               .withQueryParam("shoppingAddressId", equalTo(addressId))
-              .willReturn(
-                  json(
-                      Map.of(
-                          "accountId",
-                          acc,
-                          "address",
-                          Map.of("addressId", addressId, "serviceability", svc)))));
+              .willReturn(json(Map.of("accountId", acc, "address", address))));
     }
   }
 
@@ -708,6 +719,17 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("FIRST_PURCHASE");
     long total = d.body().path("quote").path("totalAmount").asLong();
     assertThat(total).isEqualTo(19_100);
+    // 주문 당시 배송지 사본(BR-37): 초안을 만들 때 customer 배송지를 복사해 고정한다
+    JsonNode ship = d.body().path("delivery").path("shippingAddress");
+    assertThat(ship.path("roadAddress").asString()).isEqualTo("부산광역시 부산진구 중앙대로 708");
+    assertThat(ship.path("detailAddress").asString()).isEqualTo("101동 1001호");
+    assertThat(ship.path("receiverName").asString()).isEqualTo("홍길동");
+    assertThat(ship.path("receiverPhone").asString()).isEqualTo("01012345678");
+    assertThat(ship.path("entranceMethod").asString()).isEqualTo("PASSWORD");
+    assertThat(ship.path("geo").path("lat").asDouble()).isEqualTo(35.1577);
+    assertThat(ship.path("capturedAt").asString()).isNotBlank();
+    // 고객이 주소록을 고쳐도(상세·연락처) 이 초안과 주문은 사본을 쓴다
+    shoppingContext("ADR-IN", "SERVICEABLE", "MFC-1", "202동 2002호", "01099998888");
     String draftId = d.body().path("draftId").asString();
     int quoteVersion = d.body().path("quote").path("quoteVersion").asInt();
     String sagaId = startSaga("SAGA-" + UUID.randomUUID());
@@ -801,6 +823,13 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(o.path("lines").path(0).path("unfulfilledQty").asInt()).isEqualTo(10);
     assertThat(o.path("lines").path(0).path("deliveredQty").asInt()).isZero();
     assertThat(o.path("payment").path("paymentAttemptId").asString()).isEqualTo("PAY-1");
+    // 주문 당시 배송지(BR-37): 초안 이후 주소록을 고쳤어도 주문은 초안 때 사본 그대로
+    JsonNode os = o.path("shippingAddress");
+    assertThat(os.path("detailAddress").asString()).isEqualTo("101동 1001호");
+    assertThat(os.path("receiverPhone").asString()).isEqualTo("01012345678");
+    assertThat(os.path("entranceNote").asString()).isEqualTo("#1234");
+    // 개인정보는 사건에 싣지 않는다(ADR-0009)
+    assertThat(p.toString()).doesNotContain("01012345678").doesNotContain("홍길동");
     String repeat = TestJwt.customer(REPEAT);
     assertThat(get(repeat, "/orders/" + orderId).status()).isEqualTo(404);
     JsonNode list = get(first, "/orders?size=1").body();

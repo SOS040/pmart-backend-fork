@@ -1,5 +1,6 @@
 package com.pmart.order.infrastructure;
 
+import com.pmart.order.domain.ShippingAddress;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -78,6 +79,49 @@ public class OrderStore {
 
   public OrderStore(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
+  }
+
+  /** 주문 당시 배송지 사본(BR-37). 주문 확정과 같은 트랜잭션에서 쓴다. */
+  public void insertShipping(String orderId, ShippingAddress s) {
+    jdbc.update(
+        "INSERT INTO customer_order_shipping (order_id, road_address, detail_address, postal_code,"
+            + " receiver_name, receiver_phone, entrance_method, entrance_note, lat, lng, captured_at)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        orderId,
+        s.roadAddress(),
+        s.detailAddress(),
+        s.postalCode(),
+        s.receiverName(),
+        s.receiverPhone(),
+        s.entranceMethod(),
+        s.entranceNote(),
+        s.lat(),
+        s.lng(),
+        Timestamp.from(s.capturedAt()));
+  }
+
+  /** 주문 당시 배송지 사본. 2026-11-02 이전 주문은 없다. */
+  public Optional<ShippingAddress> shipping(String orderId) {
+    return jdbc
+        .query(
+            "SELECT road_address, detail_address, postal_code, receiver_name, receiver_phone,"
+                + " entrance_method, entrance_note, lat, lng, captured_at"
+                + " FROM customer_order_shipping WHERE order_id = ?",
+            (rs, i) ->
+                new ShippingAddress(
+                    rs.getString("road_address"),
+                    rs.getString("detail_address"),
+                    rs.getString("postal_code"),
+                    rs.getString("receiver_name"),
+                    rs.getString("receiver_phone"),
+                    rs.getString("entrance_method"),
+                    rs.getString("entrance_note"),
+                    rs.getObject("lat", Double.class),
+                    rs.getObject("lng", Double.class),
+                    rs.getTimestamp("captured_at").toInstant()),
+            orderId)
+        .stream()
+        .findFirst();
   }
 
   public void insert(OrderRow o, List<LineRow> lines) {

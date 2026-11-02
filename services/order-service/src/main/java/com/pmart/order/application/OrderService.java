@@ -11,6 +11,7 @@ import com.pmart.common.web.CommandStatus;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.order.domain.OrderRules;
+import com.pmart.order.domain.ShippingAddress;
 import com.pmart.order.infrastructure.DraftStore;
 import com.pmart.order.infrastructure.DraftStore.DraftRow;
 import com.pmart.order.infrastructure.OrderStore;
@@ -59,7 +60,9 @@ public class OrderService {
       @Nullable String capacityHoldId,
       @Nullable String slotHoldId) {}
 
-  public record OrderView(OrderRow order, List<LineRow> lines) {}
+  /** shipping: 주문 당시 배송지 사본(BR-37) — 본인 조회만 채운다(내부 조회는 null). */
+  public record OrderView(
+      OrderRow order, List<LineRow> lines, @Nullable ShippingAddress shipping) {}
 
   public record Page(List<OrderStore.Summary> items, @Nullable String nextCursor, int size) {}
 
@@ -144,6 +147,9 @@ public class OrderService {
               OrderRow order = order(row, s, orderId, c, now);
               List<LineRow> lines = lines(orderId, s, unitsPerSku);
               orders.insert(order, lines);
+              if (s.delivery().shippingAddress() != null) {
+                orders.insertShipping(orderId, s.delivery().shippingAddress());
+              }
               drafts.confirmed(row.draftId());
               publish(order, lines, row.sagaId());
               log.info(
@@ -246,7 +252,7 @@ public class OrderService {
         orders
             .order(orderId)
             .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
-    return new OrderView(o, orders.lines(orderId));
+    return new OrderView(o, orders.lines(orderId), null);
   }
 
   private static OrderRules.LineQty qty(LineRow l) {
@@ -335,7 +341,7 @@ public class OrderService {
             .order(orderId)
             .filter(x -> x.accountId().equals(accountId))
             .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
-    return new OrderView(o, orders.lines(orderId));
+    return new OrderView(o, orders.lines(orderId), orders.shipping(orderId).orElse(null));
   }
 
   /** 내 주문 목록(최근 확정 순). 조회 기간 정책값은 아직 없어 기간으로 자르지 않는다. */

@@ -6,6 +6,7 @@ import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.order.domain.OrderRules;
+import com.pmart.order.domain.ShippingAddress;
 import com.pmart.order.infrastructure.DraftStore;
 import com.pmart.order.infrastructure.DraftStore.DraftRow;
 import com.pmart.order.infrastructure.Upstreams;
@@ -62,12 +63,16 @@ public class DraftService {
       // 2026-10-31 결제 확정 단계에서 추가(OrderConfirmed 필수 값). 그 전 초안은 null — 확정 때 product 로 채운다
       @Nullable Integer unitsPerSku) {}
 
+  /**
+   * @param shippingAddress 주문 당시 배송지·수령 연락처 사본(BR-37). 2026-11-02 이전 초안은 null(JSON 에 없음)
+   */
   public record Delivery(
       String deliveryMode,
       DeliveryEvaluator.@Nullable Window arrivalWindow,
       String shoppingAddressId,
       @Nullable String deliveryNote,
-      String outOfStockPreference) {}
+      String outOfStockPreference,
+      @Nullable ShippingAddress shippingAddress) {}
 
   public record Quote(
       int quoteVersion,
@@ -129,7 +134,7 @@ public class DraftService {
     if (!upstreams.purchasable(accountId)) {
       throw reject("ACCOUNT_NOT_PURCHASABLE", "지금 주문할 수 없는 계정 상태입니다.");
     }
-    Upstreams.Address address = upstreams.shoppingAddress(accountId, req.shoppingAddressId());
+    Upstreams.Address address = upstreams.shoppingAddress(accountId, req.shoppingAddressId(), now);
     if (!"SERVICEABLE".equals(address.serviceability()) || address.mfcId() == null) {
       throw "OUT_OF_SERVICE_AREA".equals(address.serviceability())
           ? reject("OUT_OF_SERVICE_AREA", "배송할 수 없는 지역입니다.")
@@ -232,7 +237,8 @@ public class DraftService {
                 req.arrivalWindow(),
                 req.shoppingAddressId(),
                 req.deliveryNote(),
-                req.outOfStockPreference()),
+                req.outOfStockPreference(),
+                address.shipping()),
             new Quote(
                 1,
                 priced.priceVersion(),

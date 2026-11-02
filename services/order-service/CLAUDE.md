@@ -36,6 +36,7 @@
 - `POST /internal/orders/{orderId}/confirmation`(내부 호출, orchestration): orderId 로 초안 잠금 → 승인 금액 = 동결 `quote.totalAmount` 확인(`OrderRules.amountMatches`, 아니면 422 `AMOUNT_MISMATCH`, 기록 안 함) → 초안 스냅샷을 `customer_order`/`customer_order_line`(V4)로 옮기고 초안 CONFIRMED → `OrderConfirmed`(토픽 `order.order.v1` 명시, correlationId = 사가 ID)를 한 트랜잭션에. 초안 없음 404, 같은 초안이 다른 주문으로 확정됨 409. 이미 확정이면 다른 키도 200(사건 한 번).
 - 주문행 ID `<orderId>-L<n>`(`OrderRules.orderLineId`, 사가 시작 때 보낸 값과 같음). 수량: originalQty = unfulfilledQty = 주문 수량, 나머지 0. 첫 구매 적용 = 배달팁 사유 FIRST_PURCHASE → 사건 `firstPurchase`.
 - 초안 스냅샷 품목에 `unitsPerSku`(product `/internal/skus`) 추가. 그 전 초안은 확정 때 트랜잭션 밖에서 product 로 채운다.
+- **주문 당시 배송지 사본(BR-37, 2026-11-02)**: 초안 생성 때 customer `shopping-context` 의 배송지(도로명·상세·우편번호·수령인·연락처·출입·핀)를 `domain.ShippingAddress` 로 초안 스냅샷 `delivery.shippingAddress` 에 고정 → 확정 트랜잭션에서 `customer_order_shipping`(V5, 개인정보라 원장과 분리)으로 옮김. 본인 초안·주문 응답에만 싣고(내부 조회·사건·로그 제외, `toString` 가림), 주소록 수정·삭제와 무관. 필수값이 없으면 사본 없음(null, 지어내지 않음). 그 전 초안·주문은 null.
 - `GET /orders/{id}`·`GET /orders`(고객 본인, 남의 것 404, 최근 확정 순 keyset cursor). 원천은 order 원장만(shipments·claims 빈 배열).
 - 초안 조회: 확정 주문이 있거나 사가 COMPLETED → CONFIRMED·DONE. RECONCILIATION_REQUIRED → PAYMENT_UNKNOWN·WAIT, COMPENSATED → DRAFT·REVIEW(만료면 EXPIRED·RE_QUOTE). 결제 진입은 확정·COMPLETED·RECONCILIATION_REQUIRED 면 기존 주문 ID(새 사가 없음).
 
