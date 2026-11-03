@@ -6,5 +6,10 @@
 set -eu
 case "$1" in pmart-pc[0-9]) ;; *) echo "unknown host alias: $1" >&2; exit 2 ;; esac
 enc=$( (printf '[Console]::OutputEncoding=[Text.Encoding]::UTF8\n'; cat "$2") | iconv -f UTF-8 -t UTF-16LE | base64 -w0)
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$1" "powershell -NoProfile -NonInteractive -EncodedCommand $enc" 2>&1 \
-  | grep -v -E 'post-quantum|store now|pq.html|^#< CLIXML|^<Objs'
+# 종료 코드 = ssh(원격 PowerShell)의 종료 코드. sh 에는 pipefail 이 없어 파이프 끝(grep)의 코드가 나가던 것을 파일로 넘긴다
+# (2026-11-03: 호스트 이름 해석 실패로 아무것도 배포되지 않았는데 lan.sh deploy 가 0 으로 끝남)
+rcf=$(mktemp)
+{ ssh -o BatchMode=yes -o ConnectTimeout=10 "$1" "powershell -NoProfile -NonInteractive -EncodedCommand $enc" 2>&1; echo $? > "$rcf"; } \
+  | grep -v -E 'post-quantum|store now|pq.html|^#< CLIXML|^<Objs' || true
+rc=$(cat "$rcf"); rm -f "$rcf"
+exit "${rc:-1}"

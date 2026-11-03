@@ -30,15 +30,23 @@ remote_compose() {
 \$env:PATH = ((\$env:PATH -split ';') | Where-Object { \$_ -ne \$bin }) -join ';'
 Set-Location "\$env:USERPROFILE\pmart-lan"
 & "\$bin\docker.exe" --config "\$env:USERPROFILE\.docker-pmart" compose -f compose.yml --env-file .env $* 2>&1 | ForEach-Object { "\$_" }
-"exit=\$LASTEXITCODE"
+exit \$LASTEXITCODE
 EOF
-  sh deploy/remote/run-ps.sh "$(alias_of "$pc")" "$TMP/$pc.ps1"
+  sh deploy/remote/run-ps.sh "$(alias_of "$pc")" "$TMP/$pc.ps1" \
+    || { echo "원격 docker compose 실패($pc: $*) — 위 출력 확인(접속 실패면 ssh $(alias_of "$pc"))" >&2; return 1; }
 }
 
+# 실패하면 멈춘다(2026-11-03: 접속 실패를 삼켜 아무것도 복사·배포하지 않고 0 으로 끝났다)
 copy_files() {
-  local pc="$1" host; host="$(alias_of "$pc")"
-  ssh -o BatchMode=yes "$host" 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force $env:USERPROFILE\pmart-lan | Out-Null"' >/dev/null 2>&1
-  (cd "$OUT/$pc" && scp -q -o BatchMode=yes -r $(ls -A | grep -v '^target$') "$host:pmart-lan/") 2>&1 | grep -v -E 'post-quantum|store now|pq.html' || true
+  local pc="$1" host out; host="$(alias_of "$pc")"
+  if ! out="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force $env:USERPROFILE\pmart-lan | Out-Null"' 2>&1)"; then
+    printf '%s\n' "$out" | grep -v -E 'post-quantum|store now|pq.html' >&2
+    echo "$pc($host) 접속 실패 — 배포 중단" >&2; return 1
+  fi
+  if ! out="$(cd "$OUT/$pc" && scp -q -o BatchMode=yes -o ConnectTimeout=10 -r $(ls -A | grep -v '^target$') "$host:pmart-lan/" 2>&1)"; then
+    printf '%s\n' "$out" | grep -v -E 'post-quantum|store now|pq.html' >&2
+    echo "$pc($host) 파일 복사 실패 — 배포 중단(실행 중인 컨테이너가 바인드 파일을 잡고 있는지 확인)" >&2; return 1
+  fi
 }
 
 # ---- 설정 저장소(ADR-0027) ----
