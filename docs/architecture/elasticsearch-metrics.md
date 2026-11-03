@@ -1,6 +1,6 @@
 # Elasticsearch 지표 수집 (LAN)
 
-작성 2026-11-03 (커밋 239b54f). **LAN 미배포** — 아래 지표 이름은 설정과 elasticsearch-exporter 문서 기준이며, 실제 수집은 배포 후 확인한다.
+작성 2026-11-03 (커밋 239b54f). **LAN 배포 2026-11-03 23:30 KST** — 실제 지표로 확인했다(아래 5절). 처음 문서의 `elasticsearch_cluster_health_up` 은 v1.10.0 에 없어 경보식을 고쳤다.
 구성 정본: `deploy/lan/render.sh`(es-exporter 컴포넌트·Prometheus job), `deploy/lan/monitoring/alert-rules.yml`.
 
 ## 1. 수집 경로
@@ -23,7 +23,8 @@ Prometheus (scrape 15s, 규칙 평가 15s)
 ### 클러스터 상태 (`_cluster/health`)
 | 지표 | 의미 |
 |---|---|
-| `elasticsearch_cluster_health_up` | exporter 가 ES 에 접속되는지 |
+| `elasticsearch_scrape_success{collector}` | 수집 성공 여부. ES 가 멈추면 0. v1.10.0 에는 `elasticsearch_cluster_health_up` 이 없다 |
+| `elasticsearch_clusterinfo_up` | 클러스터 정보 조회 — ES 가 멈춰도 1 로 남는다(옛 값)라 경보에 쓰지 않는다 |
 | `elasticsearch_cluster_health_status{color}` | green·yellow·red |
 | `elasticsearch_cluster_health_number_of_nodes` | 노드 수 |
 | `elasticsearch_cluster_health_active_shards` 외 `unassigned_shards`·`relocating_shards`·`initializing_shards` | 샤드 상태 |
@@ -47,10 +48,10 @@ Prometheus (scrape 15s, 규칙 평가 15s)
 
 | 경보 | 조건 | 등급 |
 |---|---|---|
-| ElasticsearchUnreachable | `elasticsearch_cluster_health_up == 0` 2분 | critical |
+| ElasticsearchUnreachable | `absent(health_status{green·yellow}==1)` 또는 `elasticsearch_scrape_success == 0` 2분 — ES 가 멈추면 상태 지표가 사라진다(가짜 ES 로 재현) | critical |
 | ElasticsearchClusterRed | `elasticsearch_cluster_health_status{color="red"} == 1` 5분 | critical |
 | ElasticsearchHeapHigh | 힙 사용률 > 90% 10분 | warning |
-| AppDown(기존) | `up{job="elasticsearch"} == 0` — exporter 자체가 죽음 | 기존 규칙 |
+| AppDown(기존) | `up{job="elasticsearch"} == 0` — exporter 자체가 죽음. ES 가 처음부터 없으면 exporter 가 수집 포트를 열지 않아 이 경보가 뜬다 | 기존 규칙 |
 
 - 단일 노드라 복제본을 둘 수 없으므로 **yellow 는 정상** → 경보 없음.
 - 디스크는 기존 HostDiskLow·HostDiskCritical(host-disk, PC 단위)이 맡는다.
@@ -60,13 +61,15 @@ Prometheus (scrape 15s, 규칙 평가 15s)
 1. **알림이 어디로도 가지 않는다.** `alertmanager.yml` receiver 가 `none` — 경보는 Prometheus·Alertmanager 화면에서만 보인다. Slack 등 발송은 명시 요청 시에만 설정한다(CLAUDE.md).
 2. **Grafana ES 대시보드 없음.** 현재 `pmart-overview.json` 하나. Explore 에서 직접 조회는 가능. 필요하면 상태·힙·디스크·검색 지연 패널을 추가한다.
 
-## 5. 배포 후 확인
+## 5. 배포 결과 (2026-11-03)
+
+- `lan.sh deploy pc4 es-exporter` → pc4 에서 `es-exporter` 하나만 생겼다(다른 28개 컨테이너 그대로). Prometheus 는 재시작 없이 `POST /-/reload`.
+- `http://192.168.0.40:9114/metrics`: `cluster_health_status{color="green"} 1`, 노드 1, 힙 약 535MB / 768MB.
+- Prometheus: `elasticsearch` job UP, 전체 대상 39개 모두 UP, 경보 규칙 16개 로드, 발생 중인 경보 없음.
 
 ```bash
 curl -s http://192.168.0.40:9114/metrics | grep cluster_health_status
 ```
-- Prometheus → Status → Targets 에서 `elasticsearch` job UP
-- Prometheus → Alerts 에 Elasticsearch* 규칙 3개 로드
 
 ## 관련
 - `docs/architecture/search-comparison.md` — 검색 메모 대비 상태(운영 항목)

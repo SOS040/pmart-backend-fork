@@ -42,8 +42,10 @@ groups:
   - name: pmart-host
     rules:
       # Elasticsearch(검색·로그, ADR-0031) — es-exporter. 검색 색인 신선도는 search-service GET /api/v1/internal/index-status
+      # exporter v1.10.0 에는 elasticsearch_cluster_health_up 이 없다. ES 가 멈추면 cluster_health_status 가 사라지고
+      # scrape_success 가 0 이 된다(clusterinfo_up 은 1 로 남는다 — 2026-11-03 재현). exporter 자체가 멈추면 AppDown 이 잡는다
       - alert: ElasticsearchUnreachable
-        expr: elasticsearch_cluster_health_up == 0
+        expr: absent(elasticsearch_cluster_health_status{color=~"green|yellow"} == 1) or elasticsearch_scrape_success == 0
         for: 2m
         labels: { severity: critical }
         annotations:

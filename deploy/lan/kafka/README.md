@@ -116,6 +116,10 @@ ssh pmart-pc2 "docker exec pmart-lan-kafka-1 /opt/kafka/bin/kafka-consumer-group
 1. baseline 백업을 빈 임시 Kafka 에 복원했다(87·29건). 다시 내보내 비교하니 파티션·오프셋·헤더·키·값이 **모두 일치**했다. 비어 있지 않은 토픽에 복원을 시도하면 거부됐다.
 2. 임시 ES(nori) + Logstash(`search-index.conf`, 콘텐츠는 LAN product-content API)로 색인을 다시 만들었다. LAN 색인과 **상품 29·가격 29 문서가 전부 같았고**(updatedAtMs 제외), 원천 DB(상품 29, EFFECTIVE 가격 29)와도 맞았다.
 
+## LAN 배포 기록
+- 2026-11-03 23:25 KST `lan.sh deploy pc2 host-disk`: pc2 컨테이너 17개 중 `host-disk` 만 재생성. Kafka·Postgres 는 그대로(`topics-init` 은 멱등 재실행). `:9100` 에 `pmart_kafka_topic_*` 노출, `node_textfile_scrape_error 0`.
+- 같은 날 `lan.sh deploy pc4 es-exporter`: pc4 에 `es-exporter` 만 추가(다른 28개 그대로). Prometheus 는 `POST /-/reload` 로 반영. 대상 39개 모두 UP, 경보 규칙 16개, 발생 중인 경보 없음.
+
 ## 배포할 때 (스크립트와 LAN 배포는 따로)
 - `lan.sh deploy pc2` 를 하면 Kafka 를 `--no-recreate` 로 먼저 올리고 `topics-init.sh` 를 실행한다. 이번 변경으로 **pc2 `host-disk` 만 재생성**된다(textfile 인자·`./metrics` 마운트).
 - pc3 은 바뀌지 않는다.
