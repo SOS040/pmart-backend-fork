@@ -79,11 +79,11 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
 #### 처음 한 번 (사용자 GitHub 권한)
 1. `deploy/lan/init-secrets.sh` — `config-webhook-secret`(서명 비밀)과 `smee-url`(smee.io 새 채널) 을 만든다. 둘 다 `.secrets/`(git 제외).
 2. GitHub `code-and-pick/pmart-config` → Settings → Webhooks → Add webhook:
-   - Payload URL: `.secrets/smee-url` 의 주소 · Content type: **application/json** · Secret: `.secrets/config-webhook-secret` 의 값
+   - Payload URL: `.secrets/smee-url` 의 주소(config-server 주소가 아니다) · Content type: **application/json**(기본 form 이면 /monitor 가 못 읽는다) · Secret: `.secrets/config-webhook-secret` 의 값(앞뒤 공백·줄바꿈 없이) · SSL verification: Enable
    - Which events: **Just the push event** · Active
    - 값은 파일을 메모장으로 열어 복사한다(이 대화의 `!` 명령으로 출력하지 않는다).
 3. config-server 이미지 push 후 `lan.sh render` → `lan.sh deploy pc4`(config-server·config-relay) → 나머지 앱 재배포(새 이미지에 Bus 가 들어 있다).
-4. 등록 직후 GitHub 의 `ping` 은 403 으로 보인다(push 만 받는다). 설정 파일 하나를 push 해서 위 '확인'으로 본다.
+4. GitHub Recent Deliveries 는 언제나 200 이다 — GitHub 가 보내는 곳은 smee.io 이고 smee.io 는 받기만 하면 200 을 준다. config-server 의 결과(200·403)는 `lan.sh logs pc4 config-relay` 의 `POST http://config-server:8888/monitor - <상태>` 로만 보인다(ping 은 push 가 아니라 403). 설정 파일 하나를 push 해서 위 '확인'으로 본다. push 가 403 이면 Secret 불일치 또는 smee 재직렬화(ADR-0033 '결과').
 
 ## 서비스 등록·조회 (Eureka, ADR-0032)
 - pc4 의 `eureka-server:8761`. 대시보드 `http://192.168.0.40:8761` — 사용자 `pmart`, 비밀번호 `deploy/lan/.secrets/eureka-password`(`init-secrets.sh` 가 만든다).

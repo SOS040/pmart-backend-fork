@@ -37,7 +37,7 @@
 ## 결과
 - 영향: 모든 Spring 앱 35개(convention 의존성 bus-kafka — Spring Cloud Stream·Spring Integration 이 클래스패스에 들어온다), `libraries/common-observability`(새 후처리기), `libraries/common-messaging`(후처리기 순서), config-server(`config-monitor`, `/monitor`, 보안), 설정 저장소 `application-lan.yml`, LAN 스크립트(`init-secrets.sh`·`render.sh`·`placement.conf` 주석).
 - 웹훅 서명은 config-server 가 **smee 가 다시 직렬화한 본문**으로 검사한다. smee.io 서버는 JSON 을 파싱해 전달하고 클라이언트가 `JSON.stringify` 로 다시 만든다 — GitHub 원본 바이트와 다르면(이스케이프 차이) 403 이 된다. LAN 배포 때 실제 push 로 확인한다. 403 이면 재시작으로 반영되는 지금 방식이 그대로 남는다(앱은 영향 없음).
-- GitHub 의 웹훅 등록 확인(`ping`)은 403 으로 보인다(`push` 만 받는다). 정상이다.
+- GitHub 의 Recent Deliveries 는 언제나 200 이다(받는 곳이 smee.io). 서명 검사 결과는 `config-relay` 로그(`POST …/monitor - 200|403`)로만 보인다. `ping` 은 `push` 가 아니라 403 — 정상이다.
 - smee.io 는 외부 무료 서비스다. 내려가면 실행 중 갱신만 멈추고, 재시작으로는 언제나 반영된다.
 - `config-relay` 는 컨테이너가 뜰 때 npm 에서 `smee-client` 를 받는다(인터넷 필요, 고정 버전).
 - 웹훅 등록·smee 채널 생성은 사용자가 한다(`deploy/lan/README.md`).
