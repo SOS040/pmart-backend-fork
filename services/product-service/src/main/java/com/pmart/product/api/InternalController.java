@@ -2,6 +2,8 @@ package com.pmart.product.api;
 
 import com.pmart.product.api.generated.InternalApi;
 import com.pmart.product.api.generated.model.ListSkusInternal200Response;
+import com.pmart.product.api.generated.model.LookupSourceLinks200Response;
+import com.pmart.product.api.generated.model.LookupSourceLinksRequest;
 import com.pmart.product.api.generated.model.Product;
 import com.pmart.product.api.generated.model.PurchaseLimitCheckRequest;
 import com.pmart.product.api.generated.model.PurchaseLimitCheckResult;
@@ -53,6 +55,15 @@ public class InternalController implements InternalApi {
             "asOf",
             Map.of("asOf", Instant.now().toString(), "freshness", "CURRENT"));
     return ResponseEntity.ok(mapping.convert(body, ListSkusInternal200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<LookupSourceLinks200Response> lookupSourceLinks(
+      String xSourceSystem, LookupSourceLinksRequest body) {
+    return ResponseEntity.ok(
+        mapping.convert(
+            queries.sourceLinks(body.getSourceSystem(), body.getSourceKeys()),
+            LookupSourceLinks200Response.class));
   }
 
   @Override

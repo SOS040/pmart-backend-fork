@@ -31,6 +31,7 @@
 - P마트 카테고리 = B마트 트리(id `p09`, `p09-c01`, `p09-c01-l01`, …). 묶음 `product.json` 의 `primaryCategoryId`·`categoryIds` 가 있으면 그 id 로 연결하고, 없을 때만 이름 경로로 자동 매핑한다(`seedToInput` → `DraftRules`).
 - `POST /category-tree-additions`: 묶음 `categories.json` 을 받아 **발효 트리 + 없는 노드만** 새 DRAFT 버전(기존 노드·필터 패널 유지, 이름·위치 충돌은 400 CATEGORY_CONFLICT, 더할 것 없으면 422 NOTHING_TO_ADD). 발효는 PRODUCT 승인. 승인 전 다른 버전이 발효되면 그 초안은 낡으므로 다시 만든다(`baseVersion`).
 - 중량·보관 온도가 묶음에 없으면(대부분) 추정하지 않는다 → INVALID 초안, 운영자가 백오피스에서 채운다(사용자 결정 2026-11-02).
+- `POST /internal/source-link-lookups`(2026-11-03, pricing 가격 일괄 등록용): (sourceSystem, seedProductId 목록) → `product_source_link` 의 발급된 상품·SKU, 발급 전·모르는 키는 `missing`. 서비스 주체만(internal-paths).
 - `GET /product-import-batches/{id}/id-map` 은 묶음 `id-map.json` 모양(format·entries[seedProductId, identityKey, pmartProductId, sku]). `products` 는 호환용(같은 목록).
 
 ## 상태

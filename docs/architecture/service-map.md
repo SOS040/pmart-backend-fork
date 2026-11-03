@@ -65,7 +65,7 @@
 ### pricing-service `[1단계]`
 - **소유**: SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음), 효력일, 견적 계산(기본가·선택 오퍼→기간 프로모션→상품쿠폰→장바구니쿠폰 순서; 1차는 기본가만).
 - **소유하지 않음**: 최종 청구액·동결(order 초안), 배달팁·봉투값·최소주문(order), 할인 권리(promotion).
-- **API**: 가격 버전 조회, 견적 계산(품목 금액·안분).
+- **API**: 가격 버전 조회, 견적 계산(품목 금액·안분), 가격 일괄 등록(seed-v1 basePrice → 운영자 설정 → PRICE 승인 요청 본문, 2026-11-03). 원천 키 → SKU 는 product-service `/internal/source-link-lookups` 로 조회한다.
 - **발행**: `PriceVersionEffective`.
 - **구독**: `ApprovalDecided`(가격 승인 BO-04: MD팀장 발의→가격/영업총괄 승인).
 

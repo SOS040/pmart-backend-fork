@@ -36,13 +36,19 @@ public class PriceApprovalApplier {
   private final PriceStore prices;
   private final SkuProjectionStore skus;
   private final PriceActivator activator;
+  private final PriceImportService imports;
   private final Clock clock;
 
   public PriceApprovalApplier(
-      PriceStore prices, SkuProjectionStore skus, PriceActivator activator, Clock clock) {
+      PriceStore prices,
+      SkuProjectionStore skus,
+      PriceActivator activator,
+      PriceImportService imports,
+      Clock clock) {
     this.prices = prices;
     this.skus = skus;
     this.activator = activator;
+    this.imports = imports;
     this.clock = clock;
   }
 
@@ -153,6 +159,8 @@ public class PriceApprovalApplier {
     }
     String result = applied == 0 ? "REJECTED" : rejected == 0 ? "APPLIED" : "PARTIAL";
     prices.insertApproval(approvalId, changeRequestId, decision, result, at);
+    // 가격 일괄 등록 배치에서 온 승인이면 결과를 배치에 연결한다(같은 트랜잭션)
+    imports.onApprovalApplied(text(p.path("targetRef"), "targetId"), approvalId, result);
     log.info(
         "price approval {} → {} (applied {}, rejected {})", approvalId, result, applied, rejected);
   }

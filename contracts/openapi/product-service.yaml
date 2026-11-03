@@ -522,6 +522,46 @@ paths:
                   missing: { type: array, items: { type: string } }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
 
+  /internal/source-link-lookups:
+    post:
+      tags: [internal]
+      summary: '[pricing→product] 원천 키(sourceSystem, seedProductId) → 발급된 상품·SKU (최대 2000건)'
+      description: |
+        조회성 POST(키가 많아 본문으로 받는다)이며 상태를 바꾸지 않는다. 승인되어 상품이 발급된 원천 키만 items 에 있고,
+        아직 발급 전(초안·심사 중·반려)이거나 모르는 키는 missing 에 나열한다. id-map.json 과 같은 원천(product_source_link).
+      operationId: lookupSourceLinks
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceSystem, sourceKeys]
+              properties:
+                sourceSystem: { type: string, maxLength: 64, description: '예 bmart-capture' }
+                sourceKeys: { type: array, minItems: 1, maxItems: 2000, items: { type: string, maxLength: 128 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [sourceKey, productId, skus]
+                      properties:
+                        sourceKey: { type: string }
+                        productId: { type: string }
+                        skus: { type: array, items: { $ref: '_common.yaml#/components/schemas/Sku' } }
+                  missing: { type: array, items: { type: string } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
   /internal/purchase-limit-checks:
     post:
       tags: [internal]

@@ -356,6 +356,24 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
                 .toString())
         .contains(sku)
         .contains("bm-ok");
+    // 원천 키 → SKU (pricing 가격 일괄 등록이 부른다): 발급된 키만 items, 나머지는 missing
+    assertThat(
+            post(
+                    "/internal/source-link-lookups",
+                    Map.of("sourceSystem", "bmart-capture", "sourceKeys", List.of("bm-ok")))
+                .status())
+        .isEqualTo(403); // 운영자 토큰은 내부 경로를 못 쓴다
+    JsonNode links =
+        send(
+                ORDER,
+                "/internal/source-link-lookups",
+                Map.of("sourceSystem", "bmart-capture", "sourceKeys", List.of("bm-ok", "bm-none")))
+            .body();
+    assertThat(links.path("items")).hasSize(1);
+    assertThat(links.path("items").path(0).path("sourceKey").asString()).isEqualTo("bm-ok");
+    assertThat(links.path("items").path(0).path("productId").asString()).isEqualTo(productId);
+    assertThat(links.path("items").path(0).path("skus").path(0).asString()).isEqualTo(sku);
+    assertThat(links.path("missing").toString()).contains("bm-none");
     assertThat(get("/products?categoryId=p03-c02").body().path("items")).hasSize(1);
 
     Integer published =

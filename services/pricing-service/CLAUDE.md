@@ -28,5 +28,12 @@
 - `/price-version-applications` 는 새 버전을 만들지 않는다. 요청이 받은 승인 범위와 같은지 대조하고 반영 결과를 requestId 로 묶는다. 승인을 아직 못 받았으면 `APPROVAL_REQUIRED`(같은 키로 재시도).
 - 견적(`/internal/quotes`)은 1차 기본가만(`BASE`). 가격 없는 SKU 가 하나라도 있으면 `PRICE_NOT_SET` 전체 거절. 결과는 `price_quote` 에 보존.
 
+## 가격 일괄 등록 (2026-11-03, 사용자 결정)
+- `/price-import-batches`: seed-v1 묶음(zip, 상품 일괄 등록과 같은 파일)의 `product.json` 에서 seedProductId·name·`price.basePrice`·`source.system` 만 읽는다(`SeedPriceReader`). 원천 키 → SKU 는 product-service `POST /api/v1/internal/source-link-lookups`(`ProductLinks`, `pmart.pricing.product-base-url`). 조회는 트랜잭션 밖, 저장은 `RequestIdempotency` 안.
+- 행 분류(`PriceImportRules`): SKU 없음 → `SKU_NOT_FOUND`, 뒤에 다시 나온 SKU → `DUPLICATE_SKU`, 가격 없음·0 이하 → `PRICE_REQUIRED`, 그 밖에는 현재 유효 가격과 비교해 NEW(가격 없던 SKU)·CHANGE(다름)·UNCHANGED(같음 → 제출 제외). 운영자 설정은 행 가격 고치기·빼기·공통 효력 시각(A안)만.
+- 제출(`…/submissions`)은 다시 대조한 뒤 READY 행을 잠그고(배치 SUBMITTED, 이후 수정 409 `BATCH_LOCKED`) approval-service `POST /change-requests` 본문(type PRICE, targetRef `priceImportBatch:{batchId}`, 행 attributes `{sku, basePrice, effectiveFrom?, previousPrice, changeType, seedProductId, productName}`)을 돌려준다. 가격 버전은 여기서 만들지 않는다.
+- `PriceApprovalApplier` 가 반영 뒤 targetRef 가 이 배치면 `PriceImportService.onApprovalApplied` 로 배치 상태(APPLIED / PARTIALLY_APPLIED / REJECTED)와 approvalId 를 연결한다. 행별 결과는 조회 때 `price_approval_line` 에서 읽는다.
+- 업로드 상한 300MB(pmart-config `pricing-service.yml` multipart).
+
 ## 상태
 가격 버전·승인 반영·발효·조회·기본가 견적 구현(2026-10-30). 오퍼·프로모션·쿠폰 단계는 미구현(promotion 비활성).

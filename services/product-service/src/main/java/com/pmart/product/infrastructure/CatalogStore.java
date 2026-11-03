@@ -370,6 +370,30 @@ public class CatalogStore {
         .findFirst();
   }
 
+  /** 원천 키 여러 개의 연결(발급된 것만). 순서는 원천 키 순. */
+  public List<SourceLinkRow> sourceLinks(String system, List<String> keys) {
+    if (keys.isEmpty()) {
+      return List.of();
+    }
+    return jdbc.query(
+        con -> {
+          var ps =
+              con.prepareStatement(
+                  "SELECT * FROM product_source_link WHERE source_system = ? AND source_key = ANY(?)"
+                      + " ORDER BY source_key");
+          ps.setString(1, system);
+          ps.setArray(2, con.createArrayOf("varchar", keys.toArray()));
+          return ps;
+        },
+        (rs, n) ->
+            new SourceLinkRow(
+                rs.getString("source_system"),
+                rs.getString("source_key"),
+                rs.getString("product_id"),
+                rs.getString("skus"),
+                rs.getString("last_draft_id")));
+  }
+
   public void upsertSourceLink(
       String system, String key, String productId, String skusJson, String draftId, Instant at) {
     jdbc.update(

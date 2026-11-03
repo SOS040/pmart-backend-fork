@@ -62,6 +62,25 @@ public class ProductQueries {
     return catalog.listProducts(categoryId, saleState, afterId, limit);
   }
 
+  /** 원천 키 → 발급된 상품·SKU(계약 lookupSourceLinks 모양의 Map). 발급 전·모르는 키는 missing. */
+  public Map<String, Object> sourceLinks(String system, List<String> keys) {
+    List<String> distinct = keys.stream().distinct().toList();
+    List<Map<String, Object>> items = new ArrayList<>();
+    java.util.Set<String> found = new java.util.HashSet<>();
+    for (CatalogStore.SourceLinkRow r : catalog.sourceLinks(system, distinct)) {
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("sourceKey", r.sourceKey());
+      m.put("productId", r.productId());
+      m.put("skus", mapper.readValue(r.skus(), List.class));
+      items.add(m);
+      found.add(r.sourceKey());
+    }
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("items", items);
+    out.put("missing", distinct.stream().filter(k -> !found.contains(k)).toList());
+    return out;
+  }
+
   public Map<String, Object> sku(String sku) {
     return detail(
         catalog

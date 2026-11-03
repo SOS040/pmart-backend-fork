@@ -20,4 +20,5 @@ dependencies {
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox·승인 행 확인
     "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 ApprovalDecided·상품 사건을 토픽에 흘림
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // 가격 일괄 등록: product-service 원천 키 조회 고정
 }
