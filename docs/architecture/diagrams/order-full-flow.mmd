@@ -1,0 +1,307 @@
+%% PMart 주문 전체 흐름 — 구현된 코드 기준 (2026-11-03, main dae7b8c)
+%% 렌더: npx @mermaid-js/mermaid-cli -i order-full-flow.mmd -o order-full-flow.png -s 2
+%% 미구현(설계만): 이행 사가 S2(작업 요청→피킹·패킹→출고), 배차·인계, 쿠폰, 알림 반응, 픽 시작 후 취소
+sequenceDiagram
+    autonumber
+    participant APP  as customer_app (Flutter)
+    participant GW   as api-gateway
+    participant ORD  as order-service
+    participant UP   as customer · product ·<br/>pricing · center-master ·<br/>product-content
+    participant ORCH as order-orchestration
+    participant INV  as mfc-inventory
+    participant CAP  as mfc-capacity
+    participant DCAP as delivery-capacity
+    participant PAY  as payment-service
+    participant Toss as Toss API
+    participant OB   as outbox_event (각 서비스 DB)
+    participant DEB  as Debezium (Kafka Connect)
+    participant K    as Kafka
+    participant CART as cart-service
+    participant CLM  as claim-service
+    participant FUL  as mfc-fulfillment
+
+    %%─────────────────────────────────────────
+    Note over APP,FUL: [Phase 1] 주문서(draft) 만들기 — 동기 HTTP<br/>JWT 는 그대로 전달, 각 서비스가 PmartPrincipal 로 읽음 · gateway 는 X-Request-Id·Redis rate limit
+    %%─────────────────────────────────────────
+
+    APP->>GW: GET /delivery-options?mfcId&itemAmount · GET /slots (예약배송)
+    GW->>ORD: forward (Bearer JWT)
+    ORD-->>APP: 배송 방식·시간대
+
+    APP->>GW: POST /order-drafts (Idempotency-Key)<br/>{ purchaseIntentId, items[{cartItemId, sku, quantity}],<br/>shoppingAddressId, deliveryMode SINGLE|BUNDLED|SCHEDULED,<br/>arrivalWindow?, outOfStockPreference }
+    GW->>ORD: forward
+
+    rect rgb(220, 240, 255)
+        Note over ORD,UP: DraftService.create — /api/v1/internal 조회 (Downstream.call: 4xx 그대로 · 503→DEPENDENCY_UNAVAILABLE · timeout→UNKNOWN_RESULT)
+        ORD->>UP: customer: /accounts/{id}/status · /shopping-context (배송 가능·mfcId)
+        ORD->>UP: product: /skus · POST /purchase-limit-checks
+        ORD->>UP: pricing: POST /quotes { accountId, mfcId, items }
+        ORD->>UP: customer: /first-purchase-checks · center-master: /centers/{id}/calendar
+        ORD->>DCAP: GET /api/v1/slots (사용자 토큰)
+        ORD->>UP: product-content: /product-contents/{id}/snapshot
+        UP-->>ORD: 상태·가격·한도·달력·스냅샷
+        ORD->>ORD: draft 저장 status=DRAFT<br/>quoteVersion, quoteExpiresAt = now + 10분
+    end
+
+    ORD-->>APP: 201 OrderDraft { blockers, nextAction }
+    Note over APP: nextAction=WAIT 이면 GET /order-drafts/{id} 2초 × 10회
+
+    %%─────────────────────────────────────────
+    Note over APP,FUL: [Phase 2] 결제 진입 — 주문서 → 결제 사가(S1) 시작
+    %%─────────────────────────────────────────
+
+    APP->>GW: POST /order-drafts/{draftId}/checkouts<br/>Idempotency-Key, X-Expected-Version?<br/>{ acceptedQuoteVersion, paymentMethod: TOSS_PAYMENTS }
+    GW->>ORD: forward
+
+    rect rgb(220, 240, 255)
+        Note over ORD: CheckoutService — RequestIdempotency 안, draft 행 잠금
+        ORD->>ORD: 소유자·버전 확인 · 이미 확정/사가 진행 중이면 기존 orderId 반환
+        ORD->>ORD: 견적 만료·버전 불일치 → 422 RE_QUOTE_REQUIRED<br/>blockers → 422 CHECKOUT_BLOCKED
+        ORD->>UP: customer /accounts/{id}/status 재확인
+        ORD->>ORD: orderId = "ORD-" + nameUUID(draftId:requestId)
+        ORD->>ORCH: POST /internal/checkout-sagas (Idempotency-Key CHK-draftId:requestId)<br/>{ draftId, orderId, amount, mfcId, deliveryMode, arrivalWindow?,<br/>lines[{orderLineId, sku, quantity}], demand{lineCount, itemCount, weightG, plannedShipments} }
+        ORCH->>ORCH: 견적 만료 재확인 · draft 당 열린 사가 1개 (409 SAGA_ALREADY_ACTIVE)<br/>checkout_saga INSERT state=RUNNING step=VALIDATE_QUOTE
+        ORCH->>OB: CheckoutSagaStateChanged (order.saga.v1)
+        ORCH-->>ORD: 202 { sagaId }
+        ORD->>ORD: checkoutStarted(draftId, orderId, sagaId)
+    end
+
+    ORD-->>APP: 202 { status: ACCEPTED, resultId: orderId, nextAction: QUERY_RESULT }
+
+    %%─────────────────────────────────────────
+    Note over ORCH,PAY: [S1 a~f] 자원 확보 → 결제 시작 — 가상 스레드에서 단계별 advance()<br/>각 단계 = 한 트랜잭션 + saga 행 SELECT FOR UPDATE · 단계 키 sagaId:STEP
+    %%─────────────────────────────────────────
+
+    rect rgb(245, 245, 245)
+        ORCH->>ORCH: a. VALIDATE_QUOTE (로컬) → SUCCEEDED
+
+        rect rgb(235, 245, 235)
+            ORCH->>INV: b. POST /internal/reservations<br/>{ orderId, mfcId, ttlMinutes: 10, lines[{orderLineId, sku, qty}] }
+            INV->>INV: SKU 별 합산 · 잔고 행 잠금 · 전량 아니면 전부 거절<br/>RSV-… HELD, reserved += qty (ledger RESERVE)
+            INV-->>ORCH: APPLIED { reservationId } (+ GET 으로 expiresAt)
+
+            ORCH->>CAP: c. POST /internal/capacity-holds<br/>{ orderId, mfcId, window(1시간 KST), ttlMinutes: 10, demand }
+            CAP-->>ORCH: CapacityHold HELD { holdId, expiresAt }
+
+            opt deliveryMode = SCHEDULED (아니면 SKIPPED)
+                ORCH->>DCAP: d. POST /internal/slot-holds<br/>{ orderId, draftId, sagaId, mfcId, window{date,start,end}, ttlSeconds: 600 }
+                DCAP-->>ORCH: SlotHold HELD { holdId, expiresAt }
+            end
+            ORCH->>ORCH: 확보한 자원을 saga_compensation 에 기록<br/>resource_expires_at = 가장 이른 만료
+
+            Note over ORCH: e. 쿠폰 — 미구현
+        end
+
+        alt 참여자 거절 (INSUFFICIENT_STOCK · SKU_NOT_HANDLED · CAPACITY_EXCEEDED · SLOT_NOT_SELECTABLE · CONFIG_REQUIRED …)
+            ORCH->>ORCH: fail() → COMPENSATING (Phase 5 의 j 로)
+        else 결과 불명 (timeout · 5xx)
+            ORCH->>ORCH: step UNKNOWN — 같은 키로 재전송 (실패로 보지 않음)
+        end
+
+        ORCH->>PAY: f. POST /internal/payments<br/>{ orderId, sagaId, amount, method TOSS_PAYMENTS, orderName,<br/>resourceExpiresAt = min(자원 만료, quoteExpiresAt) }
+        PAY->>PAY: payment_attempt stage=READY (진행 중 시도 있으면 재사용)
+        PAY-->>ORCH: 201 { paymentAttemptId, state CREATED,<br/>checkout{ pgOrderId = paymentAttemptId, clientKey, expiresAt } }
+        ORCH->>ORCH: state = WAITING_RESULT · step = AWAIT_PAYMENT_RESULT
+        ORCH->>OB: CheckoutSagaStateChanged (order.saga.v1)
+    end
+
+    %%─────────────────────────────────────────
+    Note over APP,Toss: [Phase 3] Toss 결제 위젯 — 앱 안 (successUrl 리다이렉트 없음)
+    %%─────────────────────────────────────────
+
+    APP->>GW: GET /payment-widget-config
+    GW->>PAY: forward
+    PAY-->>APP: { clientKey, customerKey = accountId }
+    loop 1초 × 30회 — nextAction=PAY 까지
+        APP->>ORD: GET /order-drafts/{id}
+        ORD-->>APP: RESOURCE_PENDING/WAIT … → PAYMENT_PENDING/PAY + payment{ pgOrderId, amount, clientKey }
+    end
+    APP->>Toss: renderPaymentMethods → requestPayment({ orderId: pgOrderId, amount, orderName })
+    Note over APP,Toss: 사용자가 결제수단 선택·인증 — SDK 가 결과를 앱으로 돌려줌
+
+    alt 인증 실패 · 사용자 취소
+        Toss-->>APP: fail { code, message }
+        APP->>GW: POST /payment-authorization-failures { orderId, errorCode }
+        GW->>PAY: forward
+        PAY->>PAY: READY → AUTH_FAILED | CANCELED_BY_USER
+        PAY->>OB: PaymentFailed (order.payment.v1)
+    else 인증 성공
+        Toss-->>APP: success { paymentKey, orderId, amount }
+
+    %%─────────────────────────────────────────
+    Note over APP,Toss: [Phase 4] 결제 승인 — Toss 호출은 트랜잭션 밖
+    %%─────────────────────────────────────────
+
+        APP->>GW: POST /payment-confirmations (Idempotency-Key)<br/>{ orderId: pgOrderId, paymentKey, amount }
+        GW->>PAY: forward
+
+        rect rgb(220, 240, 255)
+            Note over PAY: 짧은 TX — 검증 후 상태만 바꿈
+            PAY->>PAY: 소유자 · paymentKey 불일치 → 409 · 금액 불일치 → 400 AMOUNT_MISMATCH (Toss 미호출)
+            PAY->>PAY: resourceExpiresAt 지남 → EXPIRED + PaymentFailed, 422 RESERVATION_EXPIRED
+            PAY->>PAY: READY → CONFIRMING, paymentKey 저장
+        end
+
+        rect rgb(255, 245, 200)
+            PAY->>Toss: POST /v1/payments/confirm (Idempotency-Key = 시도 키)
+            alt DONE · 금액·주문 일치
+                Toss-->>PAY: 200 DONE
+                rect rgb(220, 255, 220)
+                    PAY->>PAY: PaymentLedger.applyConfirm (행 잠금)<br/>CONFIRMING → APPROVED
+                    PAY->>OB: PaymentApproved (order.payment.v1)
+                end
+            else 거절
+                Toss-->>PAY: 4xx
+                rect rgb(255, 220, 220)
+                    PAY->>PAY: → CONFIRM_FAILED
+                    PAY->>OB: PaymentFailed
+                end
+            else timeout · 5xx
+                PAY->>PAY: → CONFIRM_UNKNOWN
+                PAY->>OB: PaymentResultUnknown
+            else 응답 필드 불일치
+                PAY->>PAY: → MISMATCH_HOLD
+                PAY->>OB: PaymentMismatch
+            end
+        end
+        PAY-->>APP: CheckoutPayment { state } — 앱은 이것을 "완료"로 보지 않음
+    end
+
+    Note over PAY,Toss: 대사 sweep 15초 — READY 만료 → EXPIRED · 불명 재조회 즉시 후 1분 × 5 → MANUAL_REVIEW, 이후 15분<br/>POST /webhooks/toss — HMAC 확인·중복 제거 후 재조회만 앞당김 (상태 변경 없음)
+
+    %%─────────────────────────────────────────
+    Note over APP,FUL: [S1 g~j] 결제 결과 → 주문 확정 — 이벤트는 깨우는 신호일 뿐, 결과는 조회로 확인<br/>백업 sweep 10초 (30초 이상 멈춘 사가, 자원 만료 지난 WAITING_RESULT)
+    %%─────────────────────────────────────────
+
+    rect rgb(245, 245, 245)
+        OB->>DEB: WAL — outbox_event INSERT 감지 (같은 TX 에서 삭제)
+        DEB->>K: EventRouter → topic 열 · key = aggregateid<br/>headers eventType, traceId, correlationId
+        K->>ORCH: @KafkaListener order.payment.v1 (InboxGuard) → 커밋 후 kick()
+
+        ORCH->>PAY: g. GET /internal/payments/{id}
+        PAY-->>ORCH: { state, approvedAmount, pgTransactionId }
+
+        alt APPROVED
+            ORCH->>ORCH: PAYMENT_APPROVAL 을 보상 기록에 추가 · step RECONCILE_PAYMENT
+            ORCH->>ORCH: h1. 승인 금액 = 사가 금액, 통화 KRW 확인
+
+            alt 금액 불일치
+                ORCH->>ORCH: → RECONCILIATION_REQUIRED (확정·해제·취소 모두 멈춤)
+                ORCH->>OB: ReconciliationRequired (order.saga.v1)
+            else 일치
+                rect rgb(235, 245, 235)
+                    ORCH->>INV: i. POST /internal/reservations/{id}/confirmations
+                    ORCH->>CAP: POST /internal/capacity-holds/{id}/confirmations
+                    opt SCHEDULED
+                        ORCH->>DCAP: POST /internal/slot-holds/{id}/confirmations
+                    end
+                    Note over INV,DCAP: HELD → CONFIRMED (이미 CONFIRMED 면 성공 · RELEASED/EXPIRED 면 INVALID_STATE → RESERVATION_LOST)
+                end
+
+                rect rgb(220, 240, 255)
+                    ORCH->>ORD: h2. POST /internal/orders/{orderId}/confirmation<br/>{ paymentAttemptId, pgTransactionId, approvedAmount, reservationId, capacityHoldId?, slotHoldId? }
+                    Note over ORD,OB: 한 TX — draft 잠금 · 승인 금액 ≠ 고정 견적이면 422 AMOUNT_MISMATCH
+                    ORD->>ORD: customer_order status=CONFIRMED v1<br/>customer_order_line (unfulfilledQty = qty) · customer_order_shipping<br/>draft → CONFIRMED
+                    ORD->>OB: OrderConfirmed (order.order.v1, correlationId = sagaId)
+                    ORD-->>ORCH: APPLIED
+                end
+                ORCH->>ORCH: → COMPLETED
+                ORCH->>OB: CheckoutSagaStateChanged
+            end
+        else UNKNOWN
+            ORCH->>ORCH: → UNKNOWN_TRACKING (해제하지 않음 — 자원은 10분 TTL 로 만료)
+        else CREATED · PENDING
+            ORCH->>ORCH: resourceExpiresAt 까지 대기, 지나면 TIMED_OUT → fail(RESOURCE_EXPIRED)
+        else FAILED
+            ORCH->>ORCH: fail(PAYMENT_FAILED) → COMPENSATING
+        end
+    end
+
+    rect rgb(255, 240, 240)
+        Note over ORCH,PAY: j. 보상 — 이번 시도에서 확보한 것만, 해제된 줄은 건너뜀
+        opt PAYMENT_APPROVAL 있음 (RESERVATION_LOST · ORDER_CONFIRM_FAILED)
+            ORCH->>PAY: POST /internal/payments/{id}/compensation-cancellations
+            PAY->>Toss: 전액 취소
+            PAY->>OB: CompensationCancelResult
+            ORCH->>PAY: GET 으로 CANCELLED 확인 (아니면 다음 sweep 에서 재시도, 자원 해제 보류)
+        end
+        ORCH->>INV: POST /internal/reservations/{id}/releases
+        ORCH->>CAP: POST /internal/capacity-holds/{id}/releases
+        ORCH->>DCAP: POST /internal/slot-holds/{id}/releases
+        ORCH->>ORCH: 각각 GET 으로 RELEASED/EXPIRED 확인 → CompensationExecuted<br/>전부 해제 → COMPENSATED
+    end
+
+    loop 1초 × 30회 — 확정될 때까지
+        APP->>ORD: GET /order-drafts/{id}
+        ORD-->>APP: CONFIRMED / DONE · 또는 DRAFT / REVIEW + checkoutFailure
+    end
+
+    %%─────────────────────────────────────────
+    Note over APP,FUL: [Phase 6] 확정 후 전파 — choreography (Debezium → Kafka, 소비자는 InboxGuard)
+    %%─────────────────────────────────────────
+
+    rect rgb(245, 245, 245)
+        DEB->>K: OrderConfirmed (order.order.v1)
+        K->>CART: cart-service 소비
+        CART->>CART: cartItemId(없으면 sku) 로 장바구니 삭제·수량 감소
+        CART->>OB: CartItemChangeApplied (commerce.cart.v1)
+        K->>UP: customer-service 소비 — firstPurchase 이면 첫 구매 사용 기록
+        Note over K,FUL: 미구현 — 이행 사가 S2(FUL 작업 요청·피킹·패킹), 배차, 알림
+    end
+
+    %%─────────────────────────────────────────
+    Note over APP,FUL: [Phase 7] 주문 취소 S3 — 피킹 전 전체 취소만 구현
+    %%─────────────────────────────────────────
+
+    APP->>GW: POST /claims { type: CANCEL, orderId, lines: 전 품목 × 미이행 수량 }
+    GW->>CLM: forward
+
+    rect rgb(255, 245, 220)
+        CLM->>ORD: GET /internal/orders/{id}
+        ORD-->>CLM: status, lines
+        CLM->>CLM: 소유자 · CONFIRMED · 전 품목 · 수량 · 진행 중 클레임 없음 확인<br/>claim STOP_PENDING, stopRequestId = "STOP-" + UUID
+        CLM->>OB: ClaimOpened + CancellationRequested (order.claim.v1)
+    end
+    CLM-->>APP: 201 claim
+
+    rect rgb(245, 245, 245)
+        DEB->>K: CancellationRequested
+        K->>ORCH: @KafkaListener order.claim.v1
+        ORCH->>ORCH: cancellation_saga SAGA-C-… RUNNING step=STOP_WORK
+
+        ORCH->>FUL: POST /internal/stop-requests { stopRequestId, orderId, claimId, scope, lines }
+        FUL->>FUL: 작업 지시가 아직 없음 → RESOLVED, notStartedLines = 전부<br/>order_work_stop 기록
+        FUL->>OB: WorkStopResult (mfc.fulfillment.v1)
+        FUL-->>ORCH: RESOLVED
+
+        alt 전부 STOPPED
+            Note over ORCH,DCAP: RELEASE_RESOURCES — S1 의 보상 기록 사용, 슬롯 → 여력 → 재고 순
+            ORCH->>DCAP: POST /internal/slot-holds/{id}/releases (ORDER_CANCELLED)
+            ORCH->>CAP: POST /internal/capacity-holds/{id}/releases (ORDER_CANCELLED)
+            ORCH->>INV: POST /internal/reservations/{id}/releases (CANCEL_BEFORE_PICK)
+            ORCH->>ORD: APPLY_ORDER_CANCEL — POST /internal/orders/{id}/line-quantity-changes<br/>{ reason: CANCEL_BEFORE_SHIP, sourceRef: stopRequestId, claimId, changes }
+            ORD->>ORD: unfulfilled −q · 전부 0 → status CANCELLED, version +1
+            ORD->>OB: OrderLineQuantityChanged × 줄 + OrderCancelled (order.order.v1)
+            ORCH->>ORCH: → COMPLETED
+        else 미결 · 일부 진행 중
+            ORCH->>ORCH: → WAITING_RESULT (GET /internal/stop-requests/{id} 재확인)
+        else HANDED_OVER 포함 · 4xx
+            ORCH->>ORCH: → ESCALATED
+        end
+    end
+
+    rect rgb(235, 245, 235)
+        DEB->>K: OrderCancelled
+        K->>CLM: claim-service 소비 (STOP_PENDING · FULL 일 때만)
+        CLM->>CLM: claim IN_PROGRESS · refund_intent 생성 (승인 금액 전액)
+        CLM->>OB: RefundIntentCreated (order.claim.v1)
+        CLM->>PAY: 커밋 후 POST /internal/payments/{id}/cancellations (Idempotency-Key REFUND-intentId)
+        PAY->>Toss: POST /v1/payments/{paymentKey}/cancel
+        Toss-->>PAY: CANCELED
+        PAY->>OB: RefundResult (order.payment.v1)
+        DEB->>K: RefundResult
+        K->>CLM: 소비 — SUCCESS
+        CLM->>CLM: refund COMPLETED · claim CLOSED
+        CLM->>OB: ClaimClosed (CANCELLED_REFUNDED)
+        K->>UP: customer-service: OrderCancelled FULL → 첫 구매 기록 삭제
+    end
