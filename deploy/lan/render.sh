@@ -206,7 +206,8 @@ EOF
     image: postgres:17-alpine
     depends_on:
       connect: { condition: service_healthy }
-    entrypoint: ["/bin/sh", "/registrar/connector-registrar.sh"]
+    # 마운트한 스크립트를 셸이 계속 열고 있으면 Windows(Docker Desktop)가 호스트 파일 덮어쓰기를 막는다(배포 scp 실패, 2026-11-03) → 복사해서 실행
+    entrypoint: ["/bin/sh", "-c", "cp /registrar/connector-registrar.sh /tmp/r.sh && exec /bin/sh /tmp/r.sh"]
     environment:
       CONNECT_URL: http://connect:8083
       DB_HOSTS: "${db_hosts% }"
@@ -459,7 +460,7 @@ EOF
   log-janitor:
     <<: *common
     image: curlimages/curl:8.14.1
-    entrypoint: ["sh", "/init/log-janitor.sh"]
+    entrypoint: ["sh", "-c", "cp /init/log-janitor.sh /tmp/j.sh && exec sh /tmp/j.sh"] # 호스트 파일을 잠그지 않게 복사해서 실행(위 connector-registrar 와 같음)
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./elastic/log-janitor.sh:/init/log-janitor.sh:ro
