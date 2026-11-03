@@ -250,6 +250,11 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     assertThat(added.body().path("status").asString()).isEqualTo("APPLIED");
     assertThat(added.body().path("cartVersion").asInt()).isEqualTo(1);
     String guestItem = added.body().path("cartItemId").asString();
+    // BR-43: 변경 응답에 그 시점의 장바구니(GET 과 같은 모양) — 앱이 다시 조회하지 않아도 된다
+    JsonNode addedCart = added.body().path("cart");
+    assertThat(addedCart.path("cartVersion").asInt()).isEqualTo(1);
+    assertThat(addedCart.path("items").path(0).path("cartItemId").asString()).isEqualTo(guestItem);
+    assertThat(addedCart.path("items").path(0).path("quantity").asInt()).isEqualTo(2);
     Res replay = add(guest, guestCart, "E-00000001", 2, 0, key);
     assertThat(replay.body().path("cartVersion").asInt()).as("같은 키 재전송은 같은 결과").isEqualTo(1);
     assertThat(add(guest, guestCart, "E-00000001", 3, 0, key).body().path("code").asString())
@@ -282,6 +287,7 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
             null,
             Map.of());
     assertThat(unselect.body().path("cartVersion").asInt()).isEqualTo(2);
+    assertThat(unselect.body().path("cart").path("selectedItemAmount").asInt()).isZero();
     assertThat(get("/carts/" + guestCart, guest).body().path("selectedItemAmount").asInt())
         .isZero();
     String patchKey = UUID.randomUUID().toString();
@@ -294,6 +300,14 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
         Map.of());
     JsonNode cart = get("/carts/" + guestCart, guest).body();
     assertThat(cart.path("cartVersion").asInt()).isEqualTo(3);
+    // 결과 조회도 지금의 장바구니를 준다
+    assertThat(
+            get("/carts/" + guestCart + "/change-requests/" + patchKey, guest)
+                .body()
+                .path("cart")
+                .path("cartVersion")
+                .asInt())
+        .isEqualTo(3);
     JsonNode display = cart.path("items").path(0).path("display");
     assertThat(display.path("name").asString()).isEqualTo("[시험] 국산콩 두부 300g");
     assertThat(display.path("unitPrice").asInt()).isEqualTo(1900);

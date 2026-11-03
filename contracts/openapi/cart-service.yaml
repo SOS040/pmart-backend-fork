@@ -398,6 +398,12 @@ components:
             quantity: { type: integer, description: 반영된 절대 수량. 삭제면 0 }
             selected: { type: boolean }
             cartVersion: { type: integer, description: 새 cartVersion (=version) }
+            cart:
+              description: |
+                응답 시점의 장바구니 전체(GET /carts/{cartId} 와 같은 모양 — 표시용 사본·selectedItemAmount·sources 포함).
+                앱은 이 값으로 화면을 끝내고 다시 조회하지 않아도 된다(BR-43, 2026-11-03). 결과 조회(GET …/change-requests/{id})도
+                지금의 장바구니를 준다(그 변경 직후 상태가 아닐 수 있다 — cartVersion 으로 비교).
+              allOf: [{ $ref: '#/components/schemas/Cart' }]
             appliedRequestId: { type: string }
     CartChangeError:
       allOf:
