@@ -245,7 +245,7 @@ class PriceImportFlowIT extends PostgresKafkaContainerSupport {
         zip.putNextEntry(new ZipEntry("seed-v1/products/" + e.getKey() + "/product.json"));
         zip.write(
             """
-            {"format":"seed-v1","product":{"seedProductId":"%s","name":"상품 %s"},
+            {"format":"seed-v1","product":{"seedProductId":"%s","internalName":"상품 %s"},
              "price":{"basePrice":%d},"source":{"system":"bmart-capture"}}
             """
                 .formatted(e.getKey(), e.getKey(), e.getValue())

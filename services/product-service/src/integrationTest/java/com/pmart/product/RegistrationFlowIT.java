@@ -363,12 +363,18 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
                     Map.of("sourceSystem", "bmart-capture", "sourceKeys", List.of("bm-ok")))
                 .status())
         .isEqualTo(403); // 운영자 토큰은 내부 경로를 못 쓴다
-    JsonNode links =
-        send(
-                ORDER,
-                "/internal/source-link-lookups",
+    // pricing 이 부르는 그대로: 토큰·Idempotency-Key 없이(내부 경로, 조회성 POST — excluded-paths)
+    var lookup =
+        http.post()
+            .uri("/internal/source-link-lookups")
+            .header("X-Source-System", "pricing-service")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(
                 Map.of("sourceSystem", "bmart-capture", "sourceKeys", List.of("bm-ok", "bm-none")))
-            .body();
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(lookup.getStatusCode().value()).isEqualTo(200);
+    JsonNode links = mapper.readTree(lookup.getBody());
     assertThat(links.path("items")).hasSize(1);
     assertThat(links.path("items").path(0).path("sourceKey").asString()).isEqualTo("bm-ok");
     assertThat(links.path("items").path(0).path("productId").asString()).isEqualTo(productId);

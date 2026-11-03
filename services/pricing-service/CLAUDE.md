@@ -29,7 +29,7 @@
 - 견적(`/internal/quotes`)은 1차 기본가만(`BASE`). 가격 없는 SKU 가 하나라도 있으면 `PRICE_NOT_SET` 전체 거절. 결과는 `price_quote` 에 보존.
 
 ## 가격 일괄 등록 (2026-11-03, 사용자 결정)
-- `/price-import-batches`: seed-v1 묶음(zip, 상품 일괄 등록과 같은 파일)의 `product.json` 에서 seedProductId·name·`price.basePrice`·`source.system` 만 읽는다(`SeedPriceReader`). 원천 키 → SKU 는 product-service `POST /api/v1/internal/source-link-lookups`(`ProductLinks`, `pmart.pricing.product-base-url`). 조회는 트랜잭션 밖, 저장은 `RequestIdempotency` 안.
+- `/price-import-batches`: seed-v1 묶음(zip, 상품 일괄 등록과 같은 파일)의 `product.json` 에서 seedProductId·`product.internalName`(없으면 `content.name`)·`price.basePrice`·`source.system` 만 읽는다(`SeedPriceReader`). 원천 키 → SKU 는 product-service `POST /api/v1/internal/source-link-lookups`(`ProductLinks`, `pmart.pricing.product-base-url`). 조회는 트랜잭션 밖, 저장은 `RequestIdempotency` 안.
 - 행 분류(`PriceImportRules`): SKU 없음 → `SKU_NOT_FOUND`, 뒤에 다시 나온 SKU → `DUPLICATE_SKU`, 가격 없음·0 이하 → `PRICE_REQUIRED`, 그 밖에는 현재 유효 가격과 비교해 NEW(가격 없던 SKU)·CHANGE(다름)·UNCHANGED(같음 → 제출 제외). 운영자 설정은 행 가격 고치기·빼기·공통 효력 시각(A안)만.
 - 제출(`…/submissions`)은 다시 대조한 뒤 READY 행을 잠그고(배치 SUBMITTED, 이후 수정 409 `BATCH_LOCKED`) approval-service `POST /change-requests` 본문(type PRICE, targetRef `priceImportBatch:{batchId}`, 행 attributes `{sku, basePrice, effectiveFrom?, previousPrice, changeType, seedProductId, productName}`)을 돌려준다. 가격 버전은 여기서 만들지 않는다.
 - `PriceApprovalApplier` 가 반영 뒤 targetRef 가 이 배치면 `PriceImportService.onApprovalApplied` 로 배치 상태(APPLIED / PARTIALLY_APPLIED / REJECTED)와 approvalId 를 연결한다. 행별 결과는 조회 때 `price_approval_line` 에서 읽는다.

@@ -19,7 +19,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * seed-v1 묶음(zip)에서 가격에 필요한 값만 읽는다: {@code products/{seedProductId}/product.json} 의
- * product.seedProductId·product.name·price.basePrice·source.system. 이미지는 건너뛴다(상품·콘텐츠 일괄 등록과 같은 파일).
+ * product.seedProductId·product.internalName(없으면 content.name)·price.basePrice·source.system. 이미지는
+ * 건너뛴다(상품·콘텐츠 일괄 등록과 같은 파일).
  */
 @Component
 public class SeedPriceReader {
@@ -74,12 +75,16 @@ public class SeedPriceReader {
           continue;
         }
         JsonNode price = json.path("price").path("basePrice");
-        JsonNode name = json.path("product").path("name");
+        // 관리용 명칭(product.internalName), 없으면 고객용 명칭(content.name)
+        String name = text(json.path("product").path("internalName"));
+        if (name == null) {
+          name = text(json.path("content").path("name"));
+        }
         out.add(
             new SeedPrice(
                 id,
                 json.path("source").path("system").asString(DEFAULT_SOURCE_SYSTEM),
-                name.isString() && !name.asString().isBlank() ? name.asString() : null,
+                name,
                 price.isIntegralNumber() ? price.asLong() : null));
       }
     } catch (IOException ex) {
@@ -91,6 +96,10 @@ public class SeedPriceReader {
       throw invalid("묶음에 products/*/product.json 이 없습니다.");
     }
     return out;
+  }
+
+  private static @Nullable String text(JsonNode n) {
+    return n.isString() && !n.asString().isBlank() ? n.asString() : null;
   }
 
   private static PmartException invalid(String message) {

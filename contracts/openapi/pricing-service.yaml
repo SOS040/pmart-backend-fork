@@ -164,7 +164,7 @@ paths:
       tags: [registration]
       summary: 가격 일괄 등록 — seed-v1 묶음(zip) 업로드
       description: |
-        products/*/product.json 의 product.seedProductId·product.name·price.basePrice·source.system 만 읽는다(이미지는 건너뛴다).
+        products/*/product.json 의 product.seedProductId·product.internalName(없으면 content.name)·price.basePrice·source.system 만 읽는다(이미지는 건너뛴다).
         원천 키(sourceSystem, seedProductId)로 product-service 에서 SKU 를 찾고(상품 승인 전이면 SKU_NOT_FOUND), 현재 유효 가격과 비교해
         행을 만든다: 가격이 없던 SKU = NEW, 현재 가격과 다른 SKU = CHANGE, 같으면 UNCHANGED(제출에서 빠진다).
         basePrice 는 묶음 값으로 미리 채우고 운영자가 행마다 고치거나 뺄 수 있다(PUT …/lines/{seedProductId}).
@@ -482,7 +482,7 @@ components:
       required: [seedProductId, status, excluded, edited]
       properties:
         seedProductId: { type: string }
-        productName: { type: [string, 'null'], description: 묶음 product.name (표시용) }
+        productName: { type: [string, 'null'], description: 묶음 product.internalName, 없으면 content.name (표시용) }
         productId: { type: [string, 'null'] }
         sku: { type: [string, 'null'], description: 원천 키로 찾은 SKU. 상품 승인 전이면 null }
         bundlePrice: { type: [integer, 'null'], minimum: 0, description: 묶음 price.basePrice 원래 값 }
