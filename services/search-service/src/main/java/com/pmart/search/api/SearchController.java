@@ -44,8 +44,16 @@ public class SearchController implements SearchApi {
       SortKey sort,
       @Nullable List<String> filters,
       Boolean includeNotCarried,
+      @Nullable Long minPrice,
+      @Nullable Long maxPrice,
       Integer size,
       @Nullable String cursor) {
+    ProductSearch.PriceRange price;
+    try {
+      price = new ProductSearch.PriceRange(minPrice, maxPrice);
+    } catch (IllegalArgumentException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "최저 가격이 최고 가격보다 큽니다.");
+    }
     ProductSearch.Result r;
     try {
       r =
@@ -54,6 +62,7 @@ public class SearchController implements SearchApi {
               categoryId,
               mfcId,
               includeNotCarried == null || includeNotCarried,
+              price,
               SearchRules.sort(sort == null ? null : sort.getValue()),
               size,
               cursor);

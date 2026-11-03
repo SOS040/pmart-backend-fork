@@ -337,6 +337,19 @@ class SearchFlowIT {
     assertThat(ids(search("?categoryId=t02"))).containsExactlyInAnyOrder("PRD-1", "PRD-3");
     assertThat(ids(search("?categoryId=t02-c02"))).containsExactly("PRD-3");
     assertThat(ids(search("?sort=PRICE_ASC"))).containsExactly("PRD-2", "PRD-1", "PRD-3");
+    // 가격 범위(기본가, 양 끝 포함) — PRD-2 1900 · PRD-1 4900 · PRD-3 7900
+    assertThat(ids(search("?minPrice=2000"))).containsExactlyInAnyOrder("PRD-1", "PRD-3");
+    assertThat(ids(search("?minPrice=2000&maxPrice=5000"))).containsExactly("PRD-1");
+    assertThat(ids(search("?maxPrice=1900"))).containsExactly("PRD-2");
+    assertThat(ids(search("?q=두부&minPrice=2000"))).isEmpty();
+    assertThat(
+            http.get()
+                .uri("/search/products?minPrice=5000&maxPrice=1000")
+                .retrieve()
+                .toBodilessEntity()
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
     assertThat(search("?sort=POPULAR").path("appliedSort").asString()).isEqualTo("RELEVANCE");
 
     // 쪽 나누기

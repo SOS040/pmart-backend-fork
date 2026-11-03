@@ -43,6 +43,21 @@ public class ProductSearch {
   public record Result(
       List<Hit> items, long total, @Nullable String nextCursor, Sort appliedSort) {}
 
+  /** 기본가 범위(원, 양 끝 포함). 둘 다 null 이면 거르지 않는다. 가격 사본이 없는 상품은 범위를 주면 빠진다. */
+  public record PriceRange(@Nullable Long min, @Nullable Long max) {
+    public static final PriceRange ANY = new PriceRange(null, null);
+
+    public PriceRange {
+      if (min != null && max != null && min > max) {
+        throw new IllegalArgumentException("minPrice > maxPrice");
+      }
+    }
+
+    boolean any() {
+      return min == null && max == null;
+    }
+  }
+
   private final SearchIndex index;
   private final CategoryTreeClient categories;
   private final AvailabilityClient availability;
@@ -60,7 +75,7 @@ public class ProductSearch {
       Sort sort,
       int size,
       @Nullable String cursor) {
-    return search(q, categoryId, null, true, sort, size, cursor);
+    return search(q, categoryId, null, true, PriceRange.ANY, sort, size, cursor);
   }
 
   public Result search(
@@ -68,6 +83,7 @@ public class ProductSearch {
       @Nullable String categoryId,
       @Nullable String mfcId,
       boolean includeNotCarried,
+      PriceRange price,
       Sort sort,
       int size,
       @Nullable String cursor) {
@@ -77,7 +93,7 @@ public class ProductSearch {
     req.put("from", from);
     req.put("size", size);
     req.put("track_total_hits", true);
-    req.put("query", query(query, categoryId));
+    req.put("query", query(query, categoryId, price));
     req.put("sort", sort(sort, query != null));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Hit> hits = new ArrayList<>();
@@ -139,7 +155,7 @@ public class ProductSearch {
     Map<String, Object> req = new LinkedHashMap<>();
     req.put("size", limit * 2);
     req.put("_source", List.of("name"));
-    req.put("query", query(query, null));
+    req.put("query", query(query, null, PriceRange.ANY));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     Set<String> names = new LinkedHashSet<>();
     for (JsonNode h : res.path("hits").path("hits")) {
@@ -151,12 +167,23 @@ public class ProductSearch {
     return List.copyOf(names);
   }
 
-  static Map<String, Object> query(@Nullable String q, @Nullable String categoryId) {
+  static Map<String, Object> query(
+      @Nullable String q, @Nullable String categoryId, PriceRange price) {
     List<Object> filter = new ArrayList<>();
     filter.add(Map.of("exists", Map.of("field", "name")));
     filter.add(Map.of("exists", Map.of("field", "productVersion")));
     if (categoryId != null && !categoryId.isBlank()) {
       filter.add(Map.of("term", Map.of("categoryScope", categoryId)));
+    }
+    if (!price.any()) {
+      Map<String, Object> range = new LinkedHashMap<>();
+      if (price.min() != null) {
+        range.put("gte", price.min());
+      }
+      if (price.max() != null) {
+        range.put("lte", price.max());
+      }
+      filter.add(Map.of("range", Map.of("basePrice", range)));
     }
     Map<String, Object> bool = new LinkedHashMap<>();
     if (q == null) {

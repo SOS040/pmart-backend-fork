@@ -38,6 +38,8 @@ paths:
           explode: true
           schema: { type: array, items: { type: string, maxLength: 100 } }
         - { name: includeNotCarried, in: query, schema: { type: boolean, default: false } }
+        - { name: minPrice, in: query, description: '기본가 하한(원, 이상). 가격이 아직 없는 상품은 가격 범위를 주면 빠진다(2026-11-03)', schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: maxPrice, in: query, description: '기본가 상한(원, 이하). minPrice 보다 작으면 400', schema: { type: integer, format: int64, minimum: 0 } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
