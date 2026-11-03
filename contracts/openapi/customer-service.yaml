@@ -60,6 +60,11 @@ paths:
     post:
       tags: [profile]
       summary: 프로필 변경 (닉네임·연락처). 확정 주문의 배송정보는 소급 수정하지 않음
+      description: |
+        즉시 반영(status APPLIED, version +1). 같은 닉네임이면 버전을 올리지 않는다.
+        nickname 은 앞뒤 공백을 떼고 1~30자, 줄바꿈·제어 문자 불가.
+        phone(연락처) 변경은 본인 확인 방식을 정한 뒤에 연다 — 지금은 phone 이 오면 400 VALIDATION_FAILED (2026-11-03).
+        결과는 GET /me/profile-changes/{requestId}(= Idempotency-Key)로 다시 본다.
       operationId: changeMyProfile
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -73,7 +78,7 @@ paths:
               type: object
               properties:
                 nickname: { type: string, maxLength: 30 }
-                phone: { type: string, maxLength: 20 }
+                phone: { type: string, maxLength: 20, description: '아직 지원하지 않음 — 보내면 400' }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }

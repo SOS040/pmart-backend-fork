@@ -140,6 +140,36 @@ public class CustomerStore {
         .findFirst();
   }
 
+  /** 프로필 변경 직렬화 — 같은 계정의 변경·탈퇴 신청이 겹치지 않게 행을 잠그고 상태·버전을 본다. */
+  public Optional<ProfileRow> lockProfile(String accountId) {
+    jdbc.queryForList("SELECT 1 FROM customer WHERE account_id = ? FOR UPDATE", accountId);
+    return profile(accountId);
+  }
+
+  /** 닉네임 변경(버전 확인). 개인정보 — 값은 로그 금지. 바뀐 행 수(0 = 버전 충돌). */
+  public int updateNickname(String accountId, int expectedVersion, String nickname, Instant now) {
+    return jdbc.update(
+        "UPDATE customer SET nickname = ?, version = version + 1, updated_at = ?"
+            + " WHERE account_id = ? AND version = ?",
+        nickname,
+        ts(now),
+        accountId,
+        expectedVersion);
+  }
+
+  /** 프로필 변경 결과(멱등 기록 request_record 의 결과). 본인(actor) 것만. */
+  public Optional<String> profileChangeResult(String accountId, String requestId) {
+    return jdbc
+        .queryForList(
+            "SELECT result::text FROM request_record"
+                + " WHERE request_id = ? AND actor = ? AND operation = 'changeMyProfile'",
+            String.class,
+            requestId,
+            accountId)
+        .stream()
+        .findFirst();
+  }
+
   // ---------- 프로필 사진 사본 (ADR-0024) ----------
 
   /** 받을 원본·저장된 사본. 개인정보(원본 URL)는 로그 금지. */

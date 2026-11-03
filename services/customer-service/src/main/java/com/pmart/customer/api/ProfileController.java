@@ -1,10 +1,15 @@
 package com.pmart.customer.api;
 
 import com.pmart.customer.api.generated.ProfileApi;
+import com.pmart.customer.api.generated.model.ChangeMyProfile200Response;
+import com.pmart.customer.api.generated.model.ChangeMyProfileRequest;
 import com.pmart.customer.api.generated.model.Profile;
+import com.pmart.customer.application.ProfileChangeService;
 import com.pmart.customer.application.ProfileImageService;
 import com.pmart.customer.application.ProfileService;
 import java.time.Duration;
+import java.time.Instant;
+import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
@@ -12,16 +17,50 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 ProfileApi — 본인 프로필·프로필 사진 사본 조회. 프로필 변경은 아직 501(인터페이스 default). */
+/** 계약 ProfileApi — 본인 프로필·프로필 사진 사본 조회, 프로필 변경(닉네임). */
 @RestController
 public class ProfileController implements ProfileApi {
 
   private final ProfileService profiles;
   private final ProfileImageService profileImages;
+  private final ProfileChangeService changes;
 
-  public ProfileController(ProfileService profiles, ProfileImageService profileImages) {
+  public ProfileController(
+      ProfileService profiles, ProfileImageService profileImages, ProfileChangeService changes) {
     this.profiles = profiles;
     this.profileImages = profileImages;
+    this.changes = changes;
+  }
+
+  @Override
+  public ResponseEntity<ChangeMyProfile200Response> changeMyProfile(
+      String idempotencyKey,
+      String xSourceSystem,
+      ChangeMyProfileRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        response(
+            changes.change(
+                CustomerMapping.currentCustomer(),
+                idempotencyKey,
+                xSourceSystem,
+                xExpectedVersion,
+                body.getNickname(),
+                body.getPhone())));
+  }
+
+  @Override
+  public ResponseEntity<ChangeMyProfile200Response> getMyProfileChange(String requestId) {
+    return ResponseEntity.ok(
+        response(changes.result(CustomerMapping.currentCustomer(), requestId)));
+  }
+
+  private static ChangeMyProfile200Response response(ProfileChangeService.Result r) {
+    return new ChangeMyProfile200Response()
+        .status(ChangeMyProfile200Response.StatusEnum.APPLIED)
+        .requestId(r.requestId())
+        .version(r.version())
+        .occurredAt(CustomerMapping.time(Instant.parse(r.occurredAt())));
   }
 
   @Override
