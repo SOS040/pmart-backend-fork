@@ -1,7 +1,6 @@
 package com.pmart.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -90,21 +89,16 @@ class LoadBalancedInterceptorTest {
   }
 
   @Test
-  void noRegisteredInstanceIsDependencyUnavailable() {
-    RestClient client = builder().build();
+  void unregisteredHostGoesToOriginalAddress() {
+    // Eureka 클라이언트 자신의 eureka-server 호출·기동 직후 빈 등록부: 원래 주소(LAN 은 이름 + extra_hosts)로 보낸다
+    RestClient.Builder b = builder();
+    MockRestServiceServer server = MockRestServiceServer.bindTo(b).build();
+    server
+        .expect(requestTo("http://eureka-server:8761/eureka/apps/"))
+        .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-    assertThatThrownBy(
-            () ->
-                Downstream.call(
-                    "pricing quotes",
-                    () ->
-                        client
-                            .get()
-                            .uri("http://pricing-service:8107/x")
-                            .retrieve()
-                            .body(String.class)))
-        .isInstanceOfSatisfying(
-            PmartException.class,
-            e -> assertThat(e.code()).isEqualTo(ErrorCode.DEPENDENCY_UNAVAILABLE.name()));
+    b.build().get().uri("http://eureka-server:8761/eureka/apps/").retrieve().toBodilessEntity();
+
+    server.verify();
   }
 }

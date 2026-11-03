@@ -15,8 +15,9 @@
 3. **모든 앱이 Eureka 클라이언트**(`spring-cloud-starter-netflix-eureka-client`, convention `pmart.spring-service`·`pmart.spring-gateway`). 설정 저장소 `application.yml` 이 **기본 끄고**(`eureka.client.enabled: false` — local·prod·통합 시험) `application-lan.yml` 만 켠다. config-server 는 등록하지 않는다(다른 앱보다 먼저 떠야 하고 설정 저장소를 읽지 않는다).
 4. **등록 주소 = 그 PC 의 LAN IP + 공개 포트**: 컨테이너 IP(172.28.0.x)는 다른 PC 에서 닿지 않는다. `eureka.instance.prefer-ip-address: true`, `ip-address: ${PMART_HOST_IP}`(render.sh 가 compose 환경변수로 넣는다). 공개 포트 = 컨테이너 포트 = `server.port` 라 포트는 따로 주지 않는다. `instance-id` 는 `<앱>:<IP>:<포트>` — 나중에 같은 서비스를 더 띄워도 겹치지 않는다. 갱신 10초·만료 30초, 조회 10초.
 5. **게이트웨이**: lan 프로필의 업스트림을 `lb://<서비스 이름>`(api-gateway-lan.yml). 등록이 없으면 503. local·prod 는 지금처럼 `http://<호스트>:<포트>`.
-6. **서비스 간 호출**: common-web 의 `LoadBalancedRestClientAutoConfiguration`(`eureka.client.enabled=true` 일 때만)이 Boot 자동 구성 `RestClient.Builder`(서비스가 주입받는 것)에 인터셉터를 붙인다. 주소의 **호스트를 서비스 이름**으로 보고 등록된 인스턴스의 IP·포트로 바꾼다 — 그래서 `*-base-url` 설정(`http://product-service:8101`)은 local·LAN·prod 가 같은 모양 그대로다. 등록된 인스턴스가 없으면 `UnknownHostException` → `Downstream` 이 `DEPENDENCY_UNAVAILABLE`(요청 미전달, 재시도 가능)로 해석한다(Spring Cloud 기본 인터셉터의 `IllegalStateException` 은 알 수 없는 500 이 된다). 외부 API(Toss·Kakao)·Elasticsearch 는 `RestClient.builder()` 로 따로 만들어 영향이 없다.
-7. **운영(Kubernetes)은 쓰지 않는다**: prod 프로필은 `application.yml` 기본값(꺼짐)을 따르고, eureka-server 를 Helm 차트에 넣지 않는다.
+6. **서비스 간 호출**: common-web 의 `LoadBalancedRestClientAutoConfiguration`(`eureka.client.enabled=true` 일 때만)이 Boot 자동 구성 `RestClient.Builder`(서비스가 주입받는 것)에 인터셉터를 붙인다. 주소의 **호스트를 서비스 이름**으로 보고 등록된 인스턴스의 IP·포트로 바꾼다 — 그래서 `*-base-url` 설정(`http://product-service:8101`)은 local·LAN·prod 가 같은 모양 그대로다. 등록되지 않은 호스트는 **원래 주소 그대로** 보낸다 — Eureka 클라이언트 자신도 같은 빌더로 `eureka-server` 를 부르고(처음엔 "등록 없음 → 실패"로 만들었다가 LAN 에서 등록 자체가 막혔다, 2026-11-03), 기동 직후 빈 등록부에서도 LAN 은 이름 + `extra_hosts` 로 닿는다. 상대가 없으면 연결 거부 → `Downstream` 이 `DEPENDENCY_UNAVAILABLE`. 외부 API(Toss·Kakao)·Elasticsearch 는 `RestClient.builder()` 로 따로 만들어 영향이 없다.
+7. **비밀번호를 로그에 남기지 않는다**: Netflix `RetryableEurekaHttpClient`(WARN)·`RedirectingEurekaHttpClient`(INFO)는 접속 실패 때 `defaultZone` 주소를 사용자·비밀번호째 찍는다(2026-11-03 첫 LAN 배포에서 Elasticsearch 로그까지 갔다 → 비밀번호 교체). lan 프로필에서 두 로거를 끈다. 실패는 `DiscoveryClient` 가 주소 없이 남긴다.
+8. **운영(Kubernetes)은 쓰지 않는다**: prod 프로필은 `application.yml` 기본값(꺼짐)을 따르고, eureka-server 를 Helm 차트에 넣지 않는다.
 
 ## 대안
 - **계속 두지 않음**(compose 이름 + `extra_hosts`): 이미 동작하지만 사용자 결정으로 제외.
@@ -26,6 +27,6 @@
 
 ## 결과
 - LAN 에서 Eureka 대시보드(`http://<pc4>:8761`, Basic 인증)로 어느 서비스가 어느 PC·포트에 떠 있는지 본다. 게이트웨이·서비스 간 호출은 등록부에서 주소를 찾는다.
-- 인스턴스가 하나라 장애 조치 효과는 없다 — 그 서비스가 죽으면 호출은 여전히 실패한다(등록이 빠지면 연결 거부 대신 503·`DEPENDENCY_UNAVAILABLE`).
+- 인스턴스가 하나라 장애 조치 효과는 없다 — 그 서비스가 죽으면 호출은 여전히 실패한다(게이트웨이는 등록이 빠지면 503, 서비스 간 호출은 원래 주소로 가서 연결 거부 → `DEPENDENCY_UNAVAILABLE`).
 - 대가: (1) LAN 기동 직후·재배포 직후 등록·조회 주기(최대 약 10~20초) 동안 호출이 503 일 수 있다. (2) eureka-server 가 죽으면 클라이언트는 받아 둔 등록부로 계속 호출하지만 새 주소는 받지 못한다. (3) PC IP 가 바뀌면(ipcheck) render·재배포가 필요하다 — `extra_hosts` 와 같다. (4) Kafka·PostgreSQL·Redis·Zipkin·Elasticsearch·JWKS(리소스 서버 자체 클라이언트) 주소는 Eureka 를 거치지 않고 지금처럼 이름·`extra_hosts` 다.
 - 로컬에서 시험하려면 eureka-server 를 local 프로필로 띄우고 서비스를 `--eureka.client.enabled=true --eureka.client.service-url.defaultZone=http://pmart:pmart-local@localhost:8761/eureka/` 로 띄운다.
