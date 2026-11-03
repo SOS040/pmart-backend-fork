@@ -2,6 +2,7 @@
 
 - 상태: 승인 (2026-11-03, 사용자 결정 "엘라스틱서치 쓰는 쪽으로 바꾸는 게 나을 것 같다, Eum 쪽을 참고해서" — 검색 데이터는 "이벤트 유지 + Logstash", 로그는 "Eum 구성 + 상한 유지")
 - 대체: ADR-0021 결정 1(OpenSearch)·2(search-service 가 직접 색인 — 색인 주체만 Logstash 로)·3(n-gram 만, nori 없음)·4(search-service 의 Painless 갱신 — 같은 스크립트를 Logstash 가 실행). ADR-0030 결정 2(Fluent Bit → OpenSearch, OpenSearch Dashboards)·4(OpenSearch 단일 노드 복제본). ADR-0021 결정 5~8, ADR-0030 결정 1·3(지표·디스크 감시·dead_letter)은 유지.
+- 보완: ADR-0034(2026-11-03) — 결정 3·8 의 "이벤트는 Kafka 에 보존"을 `commerce.product.v1`·`commerce.pricing.v1` 무제한 보관으로 보장하고, 재색인 방식(전체 재생)·선행 조건을 정한다
 - 관련: Eum(`Eum-main/eum_backend/docker-compose`) 비교 `docs/architecture/toss-payment-eum-comparison.md` 와 2026-11-02 대화, ADR-0009(이벤트 계약), CLAUDE.md 절대 규칙(다른 서비스 DB 직접 접근 금지)
 
 ## 배경

@@ -65,6 +65,59 @@ groups:
           summary: "Elasticsearch 힙 {{ $value | humanizePercentage }}"
           description: "로그 색인이 커졌는지(log-janitor 상한) 확인."
 
+      # Kafka 이벤트 이력 토픽(ADR-0034 — commerce.product.v1·commerce.pricing.v1 두 개만 무제한 보관). 지표는 watch.sh(PC 1)가
+      # Kafka PC 의 host-disk textfile 로 낸다. 크기는 커지는 게 정상이라 고정 크기 경보는 두지 않고, 풀림·삭제·급증·멈춤만 본다
+      - alert: KafkaEventRetentionNotUnlimited
+        expr: pmart_kafka_topic_retention_unlimited == 0
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.topic }} 무제한 보관이 풀렸다"
+          description: "Kafka 를 새로 만들었거나 설정이 바뀌었다. lan.sh deploy <Kafka PC> 가 topics-init 을 다시 적용한다. 두면 7일 뒤 이력이 지워져 전체 재생 재색인이 불가능해진다."
+      - alert: KafkaEventHistoryTruncated
+        expr: pmart_kafka_topic_start_offset > 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.topic }} 앞 사건이 지워졌다(시작 오프셋 {{ $value }})"
+          description: "이력만으로 검색 색인을 다시 만들 수 없다. deploy/lan/kafka/README.md 의 백업·복원 절차를 본다."
+      - alert: KafkaEventBurst
+        expr: delta(pmart_kafka_topic_end_offset[1h]) > 5000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.topic }} 1시간에 사건 {{ $value | humanize }}건"
+          description: "상품 400개 대량 등록이 약 1,600건이다. 그보다 훨씬 많으면 발행 반복(재처리 폭주·버그)을 의심한다."
+      - alert: KafkaEventTopicGrowthFast
+        expr: delta(pmart_kafka_topic_size_bytes[24h]) > 200 * 1024 * 1024
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.topic }} 하루 {{ $value | humanize1024 }}B 증가"
+          description: "예상은 상품 1만 개 기준 하루 수 MB. 무제한 보관이라 이 속도가 이어지면 Kafka PC 디스크를 압박한다."
+      - alert: KafkaTopicMetricsStale
+        expr: time() - pmart_kafka_topic_metrics_timestamp_seconds > 1800
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Kafka 토픽 지표가 {{ $value | humanizeDuration }} 째 갱신되지 않는다"
+          description: "PC 1 의 'PMart LAN Watch' 예약 작업(watch.sh)이 멈췄거나 Kafka PC 접속 실패. ~/.pmart-lan-watch/watch.log 확인."
+      - alert: KafkaTopicMetricsMissing
+        expr: absent(pmart_kafka_topic_metrics_timestamp_seconds)
+        for: 2h
+        labels: { severity: warning }
+        annotations:
+          summary: "Kafka 토픽 지표가 없다"
+          description: "Kafka PC 의 host-disk 가 textfile 수집기 없이 떠 있거나(lan.sh deploy <Kafka PC> host-disk 필요) watch.sh 가 한 번도 쓰지 못했다."
+      - alert: HostDiskFillPredicted
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{job="host-disk", mountpoint="/host/windows-c"}[6h], 7 * 86400) < 10 * 1024 * 1024 * 1024
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.pc }} C: 가 지금 속도면 7일 안에 10GB 아래로"
+          description: "Docker 가상디스크(docker_data.vhdx)는 안에서 지워도 줄지 않는다 — 정리 후에도 C: 가 안 늘면 vhdx 압축(Docker 정지 필요)."
+
       # Windows C: 실제 여유(host-disk = node-exporter, Docker Desktop 마운트). Docker 가상 디스크와 모든 컨테이너 데이터가 C: 에 있다.
       # Elasticsearch·컨테이너 안의 df 는 1TB 가상 디스크라 믿지 않는다(ADR-0030). 2026-10-25 pc3 디스크 고갈 재발 방지
       - alert: HostDiskLow

@@ -121,3 +121,24 @@ for pc in $(ls "$OUT"); do
   echo "$now" > "$STATE/restart-$pc"
   for c in "${due[@]}"; do rm -f "$STATE/fail-$pc-$c"; done
 done
+
+# ---- Kafka 이벤트 이력 토픽 지표(ADR-0034) ----
+# Kafka PC 에서 토픽 크기·오프셋·보관 설정을 재서 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓴다(host-disk 가 내보낸다).
+# 읽기만 한다(재시작·설정 변경 없음). 실패해도 위 점검·복구에는 영향이 없다 — 멈추면 Prometheus 의 KafkaTopicMetricsStale 이 알린다.
+kafka_metrics() {
+  local kpc host tmp
+  kpc="$(grep -l '^  kafka:' "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename)"
+  [ -n "$kpc" ] || return 0
+  host="$(awk '{print $3}' "$OUT/$kpc/target")"
+  tmp="$STATE/kafka_topics.prom"
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1 sh" \
+    < "$LAN/kafka/topic-metrics.sh" 2>/dev/null > "$tmp.new" || { log "$kpc Kafka 토픽 지표 측정 실패"; return 0; }
+  grep -q '^pmart_kafka_topic_metrics_timestamp_seconds ' "$tmp.new" || { log "$kpc Kafka 토픽 지표 형식 이상 — 쓰지 않음"; return 0; }
+  mv -f "$tmp.new" "$tmp"
+  # .tmp 로 올린 뒤 이름을 바꾼다(node-exporter 는 *.prom 만 읽는다 — 반쯤 쓴 파일을 읽지 않게)
+  scp -q -o BatchMode=yes -o ConnectTimeout=10 "$tmp" "$host:pmart-lan/metrics/kafka_topics.prom.tmp" 2>/dev/null \
+    && ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
+      'powershell -NoProfile -Command "Move-Item -Force $env:USERPROFILE\pmart-lan\metrics\kafka_topics.prom.tmp $env:USERPROFILE\pmart-lan\metrics\kafka_topics.prom"' >/dev/null 2>&1 \
+    || log "$kpc Kafka 토픽 지표 전송 실패(pmart-lan/metrics 가 없으면 lan.sh deploy $kpc 후 생긴다)"
+}
+kafka_metrics

@@ -31,6 +31,8 @@ while read -r name ip ssh comps; do
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
 INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor config-relay es-exporter "
+# extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
+NO_EXTRA_HOST=" es-exporter "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -103,6 +105,9 @@ for pc in "${PCS[@]}"; do
   hosts=""
   for c in "${!WHERE[@]}"; do
     [ "${WHERE[$c]}" = "$pc" ] && continue
+    # 다른 PC 가 이름으로 부르지 않는 구성요소(Prometheus 는 IP 로 수집)는 넣지 않는다 — 넣으면 다른 PC 의 x-common 이 바뀌어
+    # 그 PC 의 컨테이너(Kafka·Postgres 포함)가 전부 재생성된다(2026-11-03). 이미 배포된 이름은 같은 이유로 그대로 둔다
+    [[ " $NO_EXTRA_HOST " == *" $c "* ]] && continue
     hosts+="      - \"$c:${IP[${WHERE[$c]}]}\""$'\n'
   done
   hosts="$(printf '%s' "$hosts" | sort)"
@@ -435,15 +440,21 @@ EOF
         ;;
       host-disk)
         # Windows C: 여유 공간(9p drvfs 마운트, 읽기 전용) → node_filesystem_avail_bytes{mountpoint="/host/windows-c"}
+        # Kafka 가 있는 PC 만: watch.sh 가 쓰는 metrics/kafka_topics.prom(토픽 크기·오프셋·보관 설정, ADR-0034)도 내보낸다(textfile)
+        textfile_args=""; textfile_vol=""
+        if [[ " ${COMPS[$pc]} " == *" kafka "* ]]; then
+          textfile_args=', "--collector.textfile", "--collector.textfile.directory=/textfile"'
+          textfile_vol=$'\n      - ./metrics:/textfile:ro'
+        fi
         cat <<EOF
   host-disk:
     <<: *common
     image: prom/node-exporter:v1.9.1
-    command: ["--collector.disable-defaults", "--collector.filesystem", "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|etc)(\$\$|/)"]
+    command: ["--collector.disable-defaults", "--collector.filesystem", "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|etc)(\$\$|/)"$textfile_args]
     ports: ["9100:9100"]
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
-      - /run/desktop/mnt/host/c:/host/windows-c:ro
+      - /run/desktop/mnt/host/c:/host/windows-c:ro$textfile_vol
     mem_limit: 64m
 
 EOF
@@ -603,6 +614,14 @@ EOF
       mkdir -p "$dir/elastic/indices" && cp "$SEARCH_SVC"/src/main/resources/elasticsearch/*.json "$dir/elastic/indices/"
     fi
     [[ "$allc" == *" log-janitor "* ]] && tr -d '\r' < "$ELASTIC/log-janitor.sh" > "$dir/elastic/log-janitor.sh"
+  fi
+
+  # Kafka 이벤트 이력 토픽 보관 정책(ADR-0034): lan.sh deploy 가 kafka 를 (재생성 없이) 먼저 올린 뒤 컨테이너 안에서 실행한다.
+  # metrics/ = watch.sh 가 쓰는 토픽 크기 지표(textfile) — 같은 PC 의 host-disk 가 읽는다
+  if [[ " ${COMPS[$pc]} " == *" kafka "* ]]; then
+    mkdir -p "$dir/kafka" "$dir/metrics"
+    tr -d '\r' < "$LAN/kafka/topics-init.sh" > "$dir/kafka/topics-init.sh"
+    echo "watch.sh(PC 1)가 kafka_topics.prom 을 쓴다. host-disk(node-exporter textfile)가 읽는다 — ADR-0034" > "$dir/metrics/README.txt"
   fi
 
   # 관측 구성 파일(ADR-0030): 이 PC 에 있는 것만

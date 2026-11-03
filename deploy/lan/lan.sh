@@ -115,6 +115,13 @@ case "$cmd" in
         remote_compose "$pc" up -d --wait postgres
         remote_compose "$pc" exec -T postgres psql -U pmart -p 15432 -d pmart -q -f /docker-entrypoint-initdb.d/10-init-db.sql
       fi
+      # 이벤트 이력 토픽 보관 정책(ADR-0034): 생산자(Debezium·앱)보다 먼저. 실행 중인 kafka 는 재생성하지 않는다(--no-recreate)
+      # 없으면 만들고 healthy 까지 기다린 뒤, 컨테이너 안에서 멱등 스크립트를 실행한다(다른 토픽은 건드리지 않음)
+      if grep -q '^  kafka:' "$OUT/$pc/compose.yml"; then
+        remote_compose "$pc" up -d --no-recreate --wait kafka
+        remote_compose "$pc" cp kafka/topics-init.sh kafka:/tmp/pmart-topics-init.sh
+        remote_compose "$pc" exec -T kafka sh /tmp/pmart-topics-init.sh
+      fi
       remote_compose "$pc" up -d --remove-orphans "$@"
     done ;;
   status)
