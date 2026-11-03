@@ -41,6 +41,30 @@ groups:
 
   - name: pmart-host
     rules:
+      # Elasticsearch(검색·로그, ADR-0031) — es-exporter. 검색 색인 신선도는 search-service GET /api/v1/internal/index-status
+      - alert: ElasticsearchUnreachable
+        expr: elasticsearch_cluster_health_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Elasticsearch 응답 없음 ({{ $labels.instance }})"
+          description: "상품 검색·로그 수집이 멈춘다. lan.sh logs pc4 elasticsearch."
+      - alert: ElasticsearchClusterRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Elasticsearch 클러스터 RED"
+          description: "주 샤드가 없는 색인이 있다(검색 결과 누락). 단일 노드라 YELLOW 는 정상(복제본 없음)."
+      - alert: ElasticsearchHeapHigh
+        expr: |
+          elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"} > 0.9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Elasticsearch 힙 {{ $value | humanizePercentage }}"
+          description: "로그 색인이 커졌는지(log-janitor 상한) 확인."
+
       # Windows C: 실제 여유(host-disk = node-exporter, Docker Desktop 마운트). Docker 가상 디스크와 모든 컨테이너 데이터가 C: 에 있다.
       # Elasticsearch·컨테이너 안의 df 는 1TB 가상 디스크라 믿지 않는다(ADR-0030). 2026-10-25 pc3 디스크 고갈 재발 방지
       - alert: HostDiskLow

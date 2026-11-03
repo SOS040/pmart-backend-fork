@@ -30,7 +30,7 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor config-relay "
+INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor config-relay es-exporter "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -50,6 +50,10 @@ if [ -n "${WHERE[elasticsearch]:-}" ]; then COMPS[${WHERE[elasticsearch]}]+=" lo
 # GitHub 웹훅 중계(ADR-0033): config-server PC 에 config-relay. 맨 뒤에 붙여 기존 구성요소의 고정 IP 가 바뀌지 않는다
 if [ -n "${WHERE[config-server]:-}" ]; then
   COMPS[${WHERE[config-server]}]+=" config-relay"; WHERE[config-relay]=${WHERE[config-server]}
+fi
+# Elasticsearch 지표(2026-11-03): elasticsearch·prometheus 가 있으면 ES PC 에 es-exporter. 맨 뒤에 붙여 고정 IP 유지
+if [ -n "${WHERE[elasticsearch]:-}" ] && [ -n "${WHERE[prometheus]:-}" ]; then
+  COMPS[${WHERE[elasticsearch]}]+=" es-exporter"; WHERE[es-exporter]=${WHERE[elasticsearch]}
 fi
 # Prometheus 수집 대상: 배치된 모든 Spring 앱(인프라 제외) <PC IP>:<포트>/actuator/prometheus
 apps_all() { for c in "${!WHERE[@]}"; do [[ "$c" == postgres-* || "$INFRA" == *" $c "* ]] || echo "$c"; done | sort; }
@@ -475,6 +479,20 @@ EOF
 
 EOF
         ;;
+      es-exporter)
+        # Elasticsearch 지표 → Prometheus(클러스터 상태·노드 JVM·디스크). 색인별 지표는 끔(시계열 수)
+        cat <<EOF
+  es-exporter:
+    <<: *common
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.10.0
+    command: ["--es.uri=http://elasticsearch:9200", "--es.timeout=5s"]
+    ports: ["9114:9114"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    mem_limit: 64m
+    depends_on: [elasticsearch]
+
+EOF
+        ;;
       config-relay)
         # GitHub 웹훅 중계(ADR-0033): smee.io 채널에 먼저 연결해 두고(나가는 연결만) 받은 push 웹훅을 config-server /monitor 로 넘긴다.
         # 서명(X-Hub-Signature-256)은 config-server 가 검사한다. 채널 주소는 .env 의 PMART_SMEE_URL(.secrets/smee-url)
@@ -608,6 +626,10 @@ EOF
         echo "  - job_name: host-disk"
         echo "    static_configs:"
         for p in "${PCS[@]}"; do echo "      - { targets: [\"${IP[$p]}:9100\"], labels: { pc: $p } }"; done
+        if [ -n "${WHERE[es-exporter]:-}" ]; then
+          echo "  - job_name: elasticsearch"
+          echo "    static_configs: [ { targets: [\"${IP[${WHERE[es-exporter]}]}:9114\"], labels: { pc: ${WHERE[es-exporter]} } } ]"
+        fi
         for a in $(apps_all); do
           # config-server 는 actuator 를 health·info 만 연다(SecurityConfig: 나머지 denyAll) — 지표를 열기 전까지 수집하지 않는다
           [ "$a" = config-server ] && continue
