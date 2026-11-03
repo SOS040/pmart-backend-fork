@@ -32,6 +32,8 @@
 - `POST /category-tree-additions`: 묶음 `categories.json` 을 받아 **발효 트리 + 없는 노드만** 새 DRAFT 버전(기존 노드·필터 패널 유지, 이름·위치 충돌은 400 CATEGORY_CONFLICT, 더할 것 없으면 422 NOTHING_TO_ADD). 발효는 PRODUCT 승인. 승인 전 다른 버전이 발효되면 그 초안은 낡으므로 다시 만든다(`baseVersion`).
 - 중량·보관 온도가 묶음에 없으면(대부분) 추정하지 않는다 → INVALID 초안, 운영자가 백오피스에서 채운다(사용자 결정 2026-11-02).
 - `POST /internal/source-link-lookups`(2026-11-03, pricing 가격 일괄 등록용): (sourceSystem, seedProductId 목록) → `product_source_link` 의 발급된 상품·SKU, 발급 전·모르는 키는 `missing`. 서비스 주체만(internal-paths).
+- `POST /category-tree-addition-uploads`(2026-11-03): 같은 일을 seed-v1 zip 으로 — 묶음의 `categories.json`(최상위·`seed-v1/` 아래)을 꺼내 위 경로와 같은 요청으로 처리(`SeedBundleReader.readCategories`). 없으면 422 BUNDLE_INVALID.
+- 재업로드(BR-39, 2026-11-03): 이미 등록된 seed 상품 ID 를 다시 올리면 새 DRAFT 가 생기지만, 승인 반영은 `product_source_link` 로 기존 상품을 찾아 **새 버전**으로 갱신한다(SKU 유지, 판매 단위·구성 수가 다르면 SKU_IDENTITY_CHANGED). 심사 전 초안 응답의 `registration`(NEW/UPDATE)·`existingProductId`·`existingSkus` 와 승인 행 attributes 로 이를 드러낸다(`ProductDraftService.existingProduct`).
 - `GET /product-import-batches/{id}/id-map` 은 묶음 `id-map.json` 모양(format·entries[seedProductId, identityKey, pmartProductId, sku]). `products` 는 호환용(같은 목록).
 
 ## 상태

@@ -42,6 +42,14 @@ class RegistrationMapping {
     m.put("approvalId", d.approvalId());
     m.put("resultProductId", d.resultProductId());
     m.put("resultSkus", mapper.readTree(d.resultSkus()));
+    // BR-39: 심사 전 초안이 기존 상품을 갱신하는지
+    if ("DRAFT".equals(d.state()) || "SUBMITTED".equals(d.state())) {
+      var existing = drafts.existingProduct(d);
+      m.put("registration", existing.isPresent() ? "UPDATE" : "NEW");
+      m.put("existingProductId", existing.map(l -> l.productId()).orElse(null));
+      m.put(
+          "existingSkus", existing.map(l -> (Object) mapper.readTree(l.skus())).orElse(List.of()));
+    }
     m.put("version", d.version());
     m.put("updatedAt", d.updatedAt().toString());
     return convert(m, ProductDraft.class);

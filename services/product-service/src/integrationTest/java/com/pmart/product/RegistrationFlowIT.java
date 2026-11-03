@@ -326,6 +326,8 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
       }
     }
     assertThat(okDraft.path("resolvedCategoryIds").path(0).asString()).isEqualTo("p03-c02");
+    assertThat(okDraft.path("registration").asString()).isEqualTo("NEW"); // BR-39: 처음 올린 상품
+    assertThat(okDraft.path("existingProductId").isNull()).isTrue();
     assertThat(okDraft.path("input").path("derivedFields").toString()).contains("alcohol");
 
     // 3) 제출 준비 → 승인
@@ -399,13 +401,26 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     Integer products = jdbc.queryForObject("SELECT COUNT(*) FROM product", Integer.class);
 
     // 4) 같은 묶음을 다시 올려도 같은 상품(원천 키 upsert) — 승인하면 새 버전, SKU 재발급 없음
+    //    BR-39: 다시 올린 초안은 registration=UPDATE + 갱신될 상품·SKU 를 보여 주고, 승인 행에도 같은 표시
     Res again = post("/product-import-batches", form(zip));
     String againBatch = again.body().path("batchId").asString();
-    decide(
+    JsonNode againOk = null;
+    for (JsonNode d : again.body().path("drafts")) {
+      if ("bm-ok".equals(d.path("sourceKey").asString())) {
+        againOk = d;
+      }
+    }
+    assertThat(againOk.path("registration").asString()).isEqualTo("UPDATE");
+    assertThat(againOk.path("existingProductId").asString()).isEqualTo(productId);
+    assertThat(againOk.path("existingSkus").path(0).asString()).isEqualTo(sku);
+    JsonNode againRequest =
         post("/product-import-batches/" + againBatch + "/submissions", null)
             .body()
-            .path("approvalRequest"),
-        "APPROVED");
+            .path("approvalRequest");
+    JsonNode againLine = againRequest.path("lines").path(0).path("attributes");
+    assertThat(againLine.path("registration").asString()).isEqualTo("UPDATE");
+    assertThat(againLine.path("existingProductId").asString()).isEqualTo(productId);
+    decide(againRequest, "APPROVED");
     await("/products/" + productId, b -> b.path("version").asInt() == 2);
     assertThat(get("/products/" + productId).body().path("version").asInt()).isEqualTo(2);
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class)).isEqualTo(skus);
@@ -507,6 +522,39 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(idMap.path("entries").path(0).path("identityKey").asString())
         .isEqualTo("코카콜라 500ml|180g");
     assertThat(idMap.path("entries").path(0).path("pmartProductId").isNull()).isTrue();
+  }
+
+  /** 카테고리 추가를 seed-v1 묶음(zip)으로(2026-11-03): 묶음의 categories.json 을 꺼내 JSON 경로와 같게 처리한다. */
+  @Test
+  void categoryAdditionFromSeedZip() throws Exception {
+    ensureTree();
+    String top = "pz" + (System.nanoTime() % 1_000_000);
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("bmartPath", List.of("묶음시험 " + top, "하위"));
+    node.put("pmartCategoryId", top + "-c01");
+    node.put("pmartCategoryIdLevels", List.of(top, top + "-c01"));
+    node.put("reason", "same category as B마트");
+
+    var out = new ByteArrayOutputStream();
+    try (var zip = new ZipOutputStream(out)) {
+      zip.putNextEntry(new ZipEntry("seed-v1/manifest.json"));
+      zip.write("{\"format\":\"seed-v1\"}".getBytes(StandardCharsets.UTF_8));
+      zip.putNextEntry(new ZipEntry("seed-v1/categories.json"));
+      zip.write(mapper.writeValueAsBytes(Map.of("format", "seed-v1", "categories", List.of(node))));
+      zip.putNextEntry(new ZipEntry("seed-v1/products/bm-x/product.json"));
+      zip.write("{\"format\":\"seed-v1\"}".getBytes(StandardCharsets.UTF_8));
+    }
+    Res draft = post("/category-tree-addition-uploads", form(out.toByteArray()));
+    assertThat(draft.status()).isEqualTo(201);
+    assertThat(draft.body().path("state").asString()).isEqualTo("DRAFT");
+    assertThat(mapper.convertValue(draft.body().path("addedCategoryIds"), List.class))
+        .containsExactly(top, top + "-c01");
+    assertThat(draft.body().path("approvalRequest").path("type").asString()).isEqualTo("PRODUCT");
+
+    // categories.json 이 없는 묶음은 422 BUNDLE_INVALID
+    Res none = post("/category-tree-addition-uploads", form(seedZip(Map.of())));
+    assertThat(none.status()).isEqualTo(422);
+    assertThat(none.body().path("code").asString()).isEqualTo("BUNDLE_INVALID");
   }
 
   static Map<String, Object> water(String barcode) {

@@ -81,6 +81,28 @@ public class RegistrationController implements RegistrationApi {
     return ResponseEntity.status(HttpStatus.CREATED).body(treeVersion(trees.version(c.version())));
   }
 
+  /**
+   * 카테고리 추가 — seed-v1 묶음(zip) 업로드(2026-11-03). 묶음의 categories.json 을 JSON 경로와 같은 요청으로 바꿔 같은 규칙으로
+   * 처리한다.
+   */
+  @Override
+  public ResponseEntity<CategoryTreeVersion> uploadCategoryTreeAddition(
+      String idempotencyKey, String xSourceSystem, MultipartFile file) {
+    byte[] bytes;
+    try {
+      bytes = file.getBytes();
+    } catch (IOException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "업로드 파일을 읽을 수 없습니다.");
+    }
+    CategoryAdditionRequest body =
+        mapper.convertValue(trees.bundleCategories(bytes), CategoryAdditionRequest.class);
+    if (body.getSourceNote() == null && file.getOriginalFilename() != null) {
+      String name = file.getOriginalFilename();
+      body.setSourceNote(name.length() > 500 ? name.substring(0, 500) : name);
+    }
+    return createCategoryTreeAddition(idempotencyKey, xSourceSystem, body);
+  }
+
   @Override
   public ResponseEntity<CategoryTreeVersion> createCategoryTreeAddition(
       String idempotencyKey, String xSourceSystem, CategoryAdditionRequest body) {

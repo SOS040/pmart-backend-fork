@@ -74,6 +74,38 @@ public class SeedBundleReader {
     return out;
   }
 
+  private static final Pattern CATEGORIES_JSON = Pattern.compile("^(?:[^/]+/)?categories\\.json$");
+
+  /**
+   * 묶음의 categories.json(최상위 또는 한 단계 아래 폴더, 예 {@code seed-v1/categories.json}) — 카테고리 추가 업로드용. 다른
+   * 파일은 읽지 않는다.
+   */
+  public JsonNode readCategories(InputStream zip) {
+    try (ZipInputStream in = new ZipInputStream(zip)) {
+      ZipEntry e;
+      while ((e = in.getNextEntry()) != null) {
+        String name = e.getName().replace('\\', '/');
+        if (e.isDirectory() || name.contains("..") || !CATEGORIES_JSON.matcher(name).matches()) {
+          continue;
+        }
+        byte[] body = in.readNBytes((int) MAX_JSON_BYTES + 1);
+        if (body.length > MAX_JSON_BYTES) {
+          throw invalid("categories.json 이 너무 큽니다.");
+        }
+        JsonNode json = mapper.readTree(body);
+        if (!json.path("categories").isArray() || json.path("categories").isEmpty()) {
+          throw invalid("categories.json 에 categories 배열이 없습니다.");
+        }
+        return json;
+      }
+    } catch (IOException ex) {
+      throw invalid("zip 을 읽을 수 없습니다: " + ex.getMessage());
+    } catch (tools.jackson.core.JacksonException ex) {
+      throw invalid("categories.json 을 해석할 수 없습니다: " + ex.getOriginalMessage());
+    }
+    throw invalid("묶음에 categories.json 이 없습니다.");
+  }
+
   private static PmartException invalid(String message) {
     return new PmartException(
         "BUNDLE_INVALID", ErrorCode.DOMAIN_REJECTED.status(), message, false, List.of());

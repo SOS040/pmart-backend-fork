@@ -271,6 +271,41 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /category-tree-addition-uploads:
+    post:
+      tags: [registration]
+      summary: 없는 카테고리만 더한 트리 초안 — seed-v1 묶음(zip) 업로드
+      description: |
+        POST /category-tree-additions 와 같지만 본문 대신 seed-v1 묶음(zip)을 받는다. 서버가 묶음 최상위(또는 한 단계 아래 폴더)의
+        categories.json 을 꺼내 같은 규칙으로 처리한다 — 상품·콘텐츠·가격 일괄 등록과 같은 파일을 그대로 올릴 수 있게(2026-11-03).
+        categories.json 이 없거나 형식이 다르면 422 BUNDLE_INVALID. 응답·승인 흐름은 /category-tree-additions 와 같다.
+      operationId: uploadCategoryTreeAddition
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: seed-v1.zip }
+      responses:
+        '201':
+          description: DRAFT 생성 (addedCategoryIds = 새로 더한 노드, 상위부터)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryTreeVersion' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: BUNDLE_INVALID / NOTHING_TO_ADD
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /category-tree-versions/{version}:
     get:
       tags: [registration]
@@ -831,6 +866,16 @@ components:
         approvalId: { type: [string, 'null'] }
         resultProductId: { type: [string, 'null'] }
         resultSkus: { type: array, items: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        registration:
+          type: [string, 'null']
+          enum: [NEW, UPDATE, null]
+          description: |
+            심사 전 초안(DRAFT·SUBMITTED)만. 이 원천 키(sourceSystem, sourceKey)가 이미 상품으로 등록돼 있으면 UPDATE —
+            승인하면 새 상품이 아니라 그 상품의 새 버전이 된다(이름·카테고리·중량·보관 온도·바코드 갱신, SKU 유지,
+            판매 단위·구성 낱개 수가 다르면 SKU_IDENTITY_CHANGED 로 반영 거절). 원천 키가 없거나 아직 등록 전이면 NEW.
+            반영·반려된 초안은 null(결과는 resultProductId·resultSkus). (BR-39, 2026-11-03)
+        existingProductId: { type: [string, 'null'], description: registration=UPDATE 일 때 갱신될 상품 }
+        existingSkus: { type: array, items: { $ref: '_common.yaml#/components/schemas/Sku' }, description: registration=UPDATE 일 때 그 상품의 SKU(유지된다) }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
         updatedAt: { type: string, format: date-time }
     ImportBatch:

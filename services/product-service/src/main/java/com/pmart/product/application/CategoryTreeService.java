@@ -11,6 +11,8 @@ import com.pmart.product.infrastructure.CategoryStore;
 import com.pmart.product.infrastructure.CategoryStore.GroupRow;
 import com.pmart.product.infrastructure.CategoryStore.NodeRow;
 import com.pmart.product.infrastructure.CategoryStore.VersionRow;
+import com.pmart.product.infrastructure.SeedBundleReader;
+import java.io.ByteArrayInputStream;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -18,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -42,18 +45,26 @@ public class CategoryTreeService {
   private final EventPublisher events;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final SeedBundleReader bundles;
 
   public CategoryTreeService(
       CategoryStore store,
       RequestIdempotency idempotency,
       EventPublisher events,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      SeedBundleReader bundles) {
     this.store = store;
     this.idempotency = idempotency;
     this.events = events;
     this.mapper = mapper;
     this.clock = clock;
+    this.bundles = bundles;
+  }
+
+  /** seed-v1 묶음(zip)의 categories.json — 카테고리 추가 업로드(2026-11-03). 없거나 형식이 다르면 422 BUNDLE_INVALID. */
+  public JsonNode bundleCategories(byte[] zip) {
+    return bundles.readCategories(new ByteArrayInputStream(zip));
   }
 
   public Outcome<DraftCreated> createDraft(

@@ -471,6 +471,14 @@ public class ProductDraftService {
         attrs.put("sourceKey", d.sourceKey());
       }
       attrs.put("internalName", name(d));
+      // 승인자가 새 등록인지 기존 상품 갱신인지 알 수 있게(BR-39)
+      Optional<CatalogStore.SourceLinkRow> existing = existingProduct(d);
+      attrs.put("registration", existing.isPresent() ? "UPDATE" : "NEW");
+      existing.ifPresent(
+          l -> {
+            attrs.put("existingProductId", l.productId());
+            attrs.put("existingSkus", mapper.readTree(l.skus()));
+          });
       lines.add(
           Map.of(
               "lineKey",
@@ -538,6 +546,19 @@ public class ProductDraftService {
   }
 
   /** 문제 목록(JSON) → 객체. */
+  /**
+   * 심사 전 초안이 기존 상품을 갱신하는지(BR-39): 원천 키가 이미 상품으로 등록돼 있으면 그 연결. 승인 반영(ApprovalApplier)이 같은 연결을 찾아 새
+   * 상품 대신 그 상품의 새 버전을 만든다. 반영·반려된 초안은 비어 있다(결과는 resultProductId).
+   */
+  public Optional<CatalogStore.SourceLinkRow> existingProduct(DraftRow d) {
+    if (d.sourceSystem() == null
+        || d.sourceKey() == null
+        || !("DRAFT".equals(d.state()) || "SUBMITTED".equals(d.state()))) {
+      return Optional.empty();
+    }
+    return catalog.sourceLink(d.sourceSystem(), d.sourceKey());
+  }
+
   public List<DraftProblem> problems(DraftRow d) {
     return List.of(mapper.readValue(d.problems(), DraftProblem[].class));
   }
