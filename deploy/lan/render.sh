@@ -68,7 +68,7 @@ digest_of() {
   cat "$f"
 }
 
-for c in kafka redis zipkin auth-service; do
+for c in kafka redis zipkin auth-service eureka-server; do
   [ -n "${WHERE[$c]:-}" ] || echo "경고: $c 가 배치되지 않음" >&2
 done
 
@@ -79,7 +79,7 @@ rm -rf "$OUT"
 # ---- 설정 저장소(ADR-0029) ----
 # Spring 앱의 설정은 config-server 가 GitHub code-and-pick/pmart-config 에서 준다. 정본은 그 저장소(사람이 고친다) — 여기서 만들지 않는다.
 # 이 스크립트는 compose·.env·config-server 비밀만 만들고, 배치(placement.conf)와 저장소가 어긋나지 않는지만 확인한다.
-for f in config-encrypt-key config-encrypt-salt config-password config-deploy-key; do
+for f in config-encrypt-key config-encrypt-salt config-password config-deploy-key eureka-password; do
   [ -f "$SECRETS/$f" ] || { echo "비밀정보 없음: $SECRETS/$f ($LAN/init-secrets.sh 먼저)" >&2; exit 1; }
 done
 CFG_CLONE=$LAN/.config-repo
@@ -507,6 +507,9 @@ EOF
         # 서비스 설정은 설정 저장소의 <앱>.yml · <앱>-lan.yml (lan 프로필). 없으면 뜰 수 없다
         migrated "$c" || { echo "설정 저장소에 $c-lan.yml 이 없음($CFG_CLONE)" >&2; exit 1; }
         echo "      SPRING_PROFILES_ACTIVE: lan"
+        # Eureka(ADR-0032): 이 PC 의 LAN IP 로 등록한다(컨테이너 IP 는 다른 PC 에서 닿지 않는다). 설정은 application-lan.yml
+        echo "      PMART_HOST_IP: ${IP[$pc]}"
+        echo "      PMART_EUREKA_PASSWORD: \${PMART_EUREKA_PASSWORD}"
         echo
         # 배치 대조: DB 를 쓰는 앱의 lan DB 주소가 이 PC 의 postgres 인가(placement.conf 를 바꾸면 저장소도 바꿔야 한다)
         if needs_db "$c"; then
@@ -615,11 +618,12 @@ EOF
     fi
   fi
 
-  # .env: Spring 이 아닌 컨테이너(postgres·connector-registrar·s3)의 비밀 + config-server 접속 비밀번호만.
+  # .env: Spring 이 아닌 컨테이너(postgres·connector-registrar·s3)의 비밀 + config-server·eureka-server 접속 비밀번호만.
   # Spring 앱의 설정·비밀은 config-server 에서 받는다(ADR-0029, 설정 저장소).
   {
     echo "PMART_DB_PASSWORD=$DB_PASSWORD"
     echo "PMART_CONFIG_PASSWORD=$(secret config-password)"
+    echo "PMART_EUREKA_PASSWORD=$(secret eureka-password)"
     [[ "$comps" == *" grafana "* ]] && echo "PMART_GRAFANA_ADMIN_PASSWORD=$(secret grafana-admin-password)"
     if [[ "$comps" == *" s3 "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"

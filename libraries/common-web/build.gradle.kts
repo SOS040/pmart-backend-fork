@@ -10,9 +10,16 @@ dependencies {
     implementation(libs.jackson.databind)
     // OptimisticLockAdvice: spring-tx(OptimisticLockingFailureException)가 있는 서비스에서만 등록(@ConditionalOnClass)
     compileOnly(libs.spring.boot.starter.jdbc)
+    // LoadBalancedRestClientAutoConfiguration(ADR-0032): Eureka 클라이언트(spring-cloud-starter-netflix-eureka-client)가 있는 서비스에서만
+    compileOnly(platform(libs.spring.cloud.bom))
+    compileOnly(libs.spring.cloud.commons)
+    compileOnly(libs.spring.boot.starter.restclient)
     annotationProcessor(platform(libs.spring.boot.bom))
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.jdbc)
+    testImplementation(platform(libs.spring.cloud.bom))
+    testImplementation(libs.spring.cloud.commons)
+    testImplementation(libs.spring.boot.starter.restclient)
 }

@@ -12,7 +12,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 목표 구성 | **49개** = 업무 서비스 40개(Commerce 9, Order·Payment 5, SCM 4, CDC WMS 5, MFC 6, Middle-mile TMS 5, Last-mile 6) + 플랫폼·지원 6개 + BackOffice 문서가 요구하는 원장 3개(`approval-service`, `case-service`, `center-master-service`, §4.8, ADR-0004). `config-service`·`discovery-service` 는 제거(2026-10-23 결정: Kubernetes Service DNS + ConfigMap). 정본은 `service-map.md`. (2026-10-24 정정: 이전 표기 "업무 42 + 플랫폼 6 = 48, +3 → 51"은 service-map 과 맞지 않았음) |
+| 목표 구성 | **49개** = 업무 서비스 40개(Commerce 9, Order·Payment 5, SCM 4, CDC WMS 5, MFC 6, Middle-mile TMS 5, Last-mile 6) + 플랫폼·지원 6개 + BackOffice 문서가 요구하는 원장 3개(`approval-service`, `case-service`, `center-master-service`, §4.8, ADR-0004). `config-service`·`discovery-service` 는 제거(2026-10-23 결정: Kubernetes Service DNS + ConfigMap). 단 LAN 은 `config-server`(ADR-0027·0029)와 local·LAN 전용 `eureka-server`(ADR-0032)를 플랫폼 앱으로 둔다(49개에 넣지 않음). 정본은 `service-map.md`. (2026-10-24 정정: 이전 표기 "업무 42 + 플랫폼 6 = 48, +3 → 51"은 service-map 과 맞지 않았음) |
 | 1차 범위 | 문서가 1차 제외한 영역(쿠폰·프로모션, 공급사·구매발주, CDC 외부 입고/ASN, MFC 간 이관, 예정재고 예약판매)은 서비스 경계만 확보하고 **기능은 비활성** (§8 단계 계획). |
 | 기술 스택 | `docs/architecture/tech-stack.md`와 `.claude/rules/` 기준(2026-10-23). Java 21 / Spring Boot / Gradle Kotlin DSL / Spring MVC + RestClient / Spring Cloud Gateway / Resilience4j / Kafka(KRaft) + JSON Schema 계약 검증(Schema Registry 없음, ADR-0009) / PostgreSQL + Flyway / Redis / Kubernetes + Helm / Jenkins. 최적화는 OR-Tools Java 바인딩을 해당 서비스 내부에서 사용(별도 Python 런타임 없음). 오류 응답은 RFC 9457. |
 | 통신 규칙 | 동기 호출은 timeout/retry/circuit breaker 필수, 체인 최대 2 hop, 상태 전파는 이벤트, Outbox, consumer 멱등 `[CLAUDE.md 확정]`. |
@@ -210,7 +210,7 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 |---|---|---|
 | `api-gateway` | 라우팅, 토큰 검증(auth 공개키), rate limit, traceId 발급 | 비즈니스 로직 없음. `platform-services/` |
 | `auth-service` | 고객/라이더/운영자/서비스 신원, 토큰, **유효 RoleGrant·Delegation·긴급권한 정본**, 행위 시점 검증 API | BackOffice 3장. 권한 **부여 승인 흐름**은 approval-service |
-| ~~`config-service`~~ ~~`discovery-service`~~ | **제거** (2026-10-23). Kubernetes Service DNS + ConfigMap + Secret Manager로 대체. 로컬은 docker compose DNS | `.claude/rules/security-config.md` |
+| ~~`config-service`~~ ~~`discovery-service`~~ | **제거** (2026-10-23). Kubernetes Service DNS + ConfigMap + Secret Manager로 대체. local·LAN 은 `config-server`(ADR-0027·0029)·`eureka-server`(ADR-0032) | `.claude/rules/security-config.md` |
 | `backoffice-bff` | 관리자 화면별 조회 조합(원천별 `asOf`·신선도 표시), 명령 전달(멱등키 부착) | **상태 없음** `[CLAUDE.md 확정]` |
 | `notification-service` | 고객·라이더·운영 알림, 채널, 발송 이력·재시도, 읽음 | 알림 실패는 통지만 복구 |
 | `audit-service` | 감사 사건 수집·조회·보존(추가만) | |

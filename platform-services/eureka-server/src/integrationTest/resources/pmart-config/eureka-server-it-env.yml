@@ -1,0 +1,2 @@
+# 시험 전용 환경값(LAN 은 compose 환경변수). config-copies.sh 가 비교하지 않는다
+PMART_EUREKA_PASSWORD: it-eureka-password

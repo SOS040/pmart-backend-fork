@@ -47,7 +47,7 @@
 - 검색 서비스: Elasticsearch 8.18 + nori(한국어 형태소) + n-gram, 색인은 Logstash 가 도메인 이벤트로(ADR-0031 — 2026-11-03 OpenSearch 에서 변경)
 - AI 서비스: Spring AI + pgvector
 - 경로·배정 최적화: Google OR-Tools **Java 바인딩** (`transport-routing-service`, `mfc-capacity-service`에만). 별도 Python 런타임은 두지 않는다. GreedRL·RouteFinder 등 Python 전용 모델은 3단계에 별도 승인 후 검토.
-- 설정: Spring Cloud Config Server(`platform-services/config-server`). 정본은 GitHub `code-and-pick/pmart-config`, 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod), 비밀은 `{cipher}`(ADR-0027·0029). 서비스 검색: 이름(LAN compose 서비스명, 운영은 미정) — Eureka 는 두지 않는다.
+- 설정: Spring Cloud Config Server(`platform-services/config-server`). 정본은 GitHub `code-and-pick/pmart-config`, 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod), 비밀은 `{cipher}`(ADR-0027·0029). 서비스 검색: local·LAN 은 Eureka(`platform-services/eureka-server`, 클라이언트는 lan 프로필만 켬, ADR-0032), 운영(Kubernetes)은 Service DNS.
 - 일반 업무 서비스에 검색·AI 의존성을 일괄 적용하지 않는다.
 
 ## 전체 구조 예시

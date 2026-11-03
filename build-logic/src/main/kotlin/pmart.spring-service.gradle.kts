@@ -25,6 +25,8 @@ dependencies {
     implementation(libs.springdoc.openapi.webmvc.ui) // 생성 코드의 @Operation 등 + /v3/api-docs
     // Config 서버 클라이언트(ADR-0027). 각 application.yml 이 optional:configserver: + enabled=false 로 기본 꺼 둔다(LAN 만 켬)
     implementation(libs.spring.cloud.starter.config)
+    // Eureka 클라이언트 + Spring Cloud LoadBalancer(ADR-0032). 설정 저장소 application.yml 이 기본 끄고 lan 프로필만 켠다
+    implementation(libs.spring.cloud.starter.eureka.client)
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)

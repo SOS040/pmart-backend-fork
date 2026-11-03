@@ -9,6 +9,7 @@
 #   salt 는 16진수여야 한다(Encryptors.text).
 # - config-password: 서비스 → config-server Basic 인증 비밀번호(사용자 pmart)
 # - config-deploy-key(.pub): config-server 가 GitHub 설정 저장소를 읽는 SSH 키(ed25519). 공개키를 저장소 Deploy key(읽기 전용)로 등록한다
+# - eureka-password: 서비스 → eureka-server Basic 인증 비밀번호(사용자 pmart, ADR-0032). 대시보드(http://<pc4>:8761) 로그인도 이것
 # - grafana-admin-password: Grafana 관리자(admin) 비밀번호(ADR-0030). 원문은 이 파일에만 있다
 # 이 값들은 LAN 개발 환경 전용이다. 운영은 Secret Manager.
 set -euo pipefail
@@ -39,5 +40,6 @@ if [ ! -f .secrets/config-deploy-key ]; then
   ssh-keygen -q -t ed25519 -N "" -C "pmart-config-server-lan" -f .secrets/config-deploy-key
   echo "created config-deploy-key — 공개키(.secrets/config-deploy-key.pub)를 GitHub pmart-config 저장소 Deploy key(읽기 전용)로 등록"
 fi
+[ -f .secrets/eureka-password ] || { openssl rand -hex 24 > .secrets/eureka-password; echo "created eureka-password"; }
 [ -f .secrets/grafana-admin-password ] || { openssl rand -base64 18 | tr -d '\r\n/+=' > .secrets/grafana-admin-password; echo "created grafana-admin-password"; }
 echo "secrets: $(pwd)/.secrets"

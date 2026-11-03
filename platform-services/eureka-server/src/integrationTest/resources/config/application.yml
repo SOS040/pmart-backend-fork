@@ -1,0 +1,7 @@
+# 시험 전용(ADR-0029). 시험은 config-server 없이 돈다 — pmart-config 정본의 사본(pmart-config/)을 읽는다.
+spring:
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: "classpath:pmart-config/application.yml,classpath:pmart-config/eureka-server.yml,classpath:pmart-config/eureka-server-it-env.yml"

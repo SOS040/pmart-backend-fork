@@ -1,1 +1,2 @@
 com.pmart.common.web.CommonWebAutoConfiguration
+com.pmart.common.web.LoadBalancedRestClientAutoConfiguration

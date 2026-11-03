@@ -335,7 +335,11 @@
 - **소유하지 않음**: 업무 정책값(각 도메인 서비스 소유 — 설정 파일로 옮기지 않는다), 운영(Kubernetes) 설정(ConfigMap·Secret Manager).
 
 ### ~~discovery-service~~ — 제거 (2026-10-23)
-- Kubernetes Service DNS 로 대체(`.claude/rules/security-config.md`). LAN·로컬 개발은 docker compose 서비스명 DNS(+ `extra_hosts`).
+- 운영은 Kubernetes Service DNS 로 대체(`.claude/rules/security-config.md`). local·LAN 은 아래 eureka-server(ADR-0032).
+
+### eureka-server `[LAN]` — 서비스 등록·조회만 (ADR-0032, 2026-11-03)
+- Spring Cloud Netflix Eureka Server(8761, Basic 인증). LAN 의 Spring 앱이 자기 PC IP + 포트로 등록하고, 게이트웨이(`lb://`)·서비스 간 호출(common-web)이 주소를 찾는다. 서비스당 인스턴스 1개.
+- **소유하지 않음**: 업무 데이터 일체, 운영(Kubernetes) 서비스 검색(Service DNS). Kafka·DB 등 인프라 주소.
 
 ### backoffice-bff `[1단계]` — **상태 없음**
 - 관리자 화면별 조회 조합(원천별 `asOf`·`postedAt`·신선도·직접확인/사본/불명 표시, 기준시각 다른 수량 합산 금지), 명령 전달(멱등키·expected version 부착, 응답 ACK≠성공 그대로 표시), 화면: 통합 조회, 승인함, 사건함, 보충 현황, 운행 관제, 실시간 배송 현황, 포장 인계 현황, 지표(분모 보존). 금지: 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.

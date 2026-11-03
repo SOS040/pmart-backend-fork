@@ -57,6 +57,9 @@ spring-boot-configuration-processor = { module = "org.springframework.boot:sprin
 spring-cloud-starter-gateway = { module = "org.springframework.cloud:spring-cloud-starter-gateway-server-webflux" } # api-gateway
 spring-cloud-config-server = { module = "org.springframework.cloud:spring-cloud-config-server" }  # config-server (ADR-0027)
 spring-cloud-starter-config = { module = "org.springframework.cloud:spring-cloud-starter-config" } # 모든 서비스의 config client (기본 꺼짐, LAN 만 켬)
+spring-cloud-starter-eureka-server = { module = "org.springframework.cloud:spring-cloud-starter-netflix-eureka-server" } # eureka-server (ADR-0032)
+spring-cloud-starter-eureka-client = { module = "org.springframework.cloud:spring-cloud-starter-netflix-eureka-client" } # 모든 앱의 Eureka client (기본 꺼짐, LAN 만 켬. LoadBalancer 포함)
+spring-cloud-commons = { module = "org.springframework.cloud:spring-cloud-commons" } # common-web 의 RestClient 로드밸런서 연결(compileOnly)
 
 # --- 데이터·메시징 (BOM 관리) ---
 postgresql = { module = "org.postgresql:postgresql" }

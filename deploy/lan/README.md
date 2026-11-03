@@ -66,6 +66,12 @@ printf %s 'sha256:…' > services/<name>/build/jib-image.digest
 3. 저장소 Settings → Deploy keys → `deploy/lan/.secrets/config-deploy-key.pub` 를 **읽기 전용**(Allow write access 끔)으로 등록.
 4. config-server 이미지 push 후 `deploy/lan/lan.sh deploy all`.
 
+## 서비스 등록·조회 (Eureka, ADR-0032)
+- pc4 의 `eureka-server:8761`. 대시보드 `http://192.168.0.40:8761` — 사용자 `pmart`, 비밀번호 `deploy/lan/.secrets/eureka-password`(`init-secrets.sh` 가 만든다).
+- 모든 Spring 앱(config-server 제외)은 lan 프로필에서 **자기 PC 의 LAN IP + 포트**로 등록한다(`PMART_HOST_IP`, render.sh 가 placement.conf 의 IP 로 넣는다). 설정은 저장소 `application-lan.yml` 의 `eureka.*`.
+- 게이트웨이는 `lb://<서비스>`(api-gateway-lan.yml), 서비스 간 호출은 common-web 이 주소의 호스트(서비스 이름)를 등록된 인스턴스로 바꾼다. 등록이 없으면 503·`DEPENDENCY_UNAVAILABLE` — 재배포 직후 10~20초는 그럴 수 있다.
+- Kafka·PostgreSQL·Redis·Zipkin·Elasticsearch 주소는 Eureka 와 상관없이 이름 + `extra_hosts` 그대로.
+
 ## 관측 (ADR-0030·0031)
 | 화면 | 주소 | 내용 |
 |---|---|---|
