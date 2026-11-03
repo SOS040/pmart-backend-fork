@@ -342,6 +342,21 @@ class SearchFlowIT {
     assertThat(ids(search("?minPrice=2000&maxPrice=5000"))).containsExactly("PRD-1");
     assertThat(ids(search("?maxPrice=1900"))).containsExactly("PRD-2");
     assertThat(ids(search("?q=두부&minPrice=2000"))).isEmpty();
+
+    // 색인 신선도(내부): 문서 수, 마지막 반영(ANY)·가격 사건 시각
+    JsonNode status =
+        mapper.readTree(
+            http.get()
+                .uri("/internal/index-status")
+                .header("X-Source-System", "backoffice-bff")
+                .retrieve()
+                .body(String.class));
+    assertThat(status.path("documents").asInt()).isGreaterThanOrEqualTo(3);
+    List<String> types = new ArrayList<>();
+    status.path("sources").forEach(x -> types.add(x.path("eventType").asString()));
+    assertThat(types).contains("ANY", "ProductContentPublished", "PriceVersionEffective");
+    assertThat(status.path("sources").path(0).path("lagSeconds").asLong())
+        .isGreaterThanOrEqualTo(0);
     assertThat(
             http.get()
                 .uri("/search/products?minPrice=5000&maxPrice=1000")
