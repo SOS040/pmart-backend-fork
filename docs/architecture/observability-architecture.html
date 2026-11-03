@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>PMart Observability</title>
+<!-- PNG: msedge --headless --screenshot=observability-architecture.png --window-size=1800,1160 이 파일 (docs/architecture/observability-architecture.png) -->
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  svg { display: block; font-family: "Malgun Gothic", "맑은 고딕", sans-serif; }
+  .t  { font-size: 15px; fill: #1f2937; }
+  .s  { font-size: 13px; fill: #4b5563; }
+  .h  { font-size: 17px; font-weight: 700; fill: #111827; }
+  .lane { font-size: 14px; font-weight: 700; }
+  .lbl { font-size: 12.5px; fill: #374151; }
+</style>
+</head>
+<body>
+<svg width="1800" height="1160" viewBox="0 0 1800 1160" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="aM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d97706"/></marker>
+    <marker id="aT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+    <marker id="aL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0d9488"/></marker>
+    <marker id="aK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+  </defs>
+
+  <!-- 제목 -->
+  <text x="40" y="52" font-size="28" font-weight="700" fill="#111827">PMart MSA Observability 아키텍처</text>
+  <text x="40" y="82" class="s">LAN(pc2·pc3·pc4 docker compose) 기준 · ADR-0030·0031 · 지표 / 추적 / 로그 세 갈래를 traceId 하나로 잇는다 · 2026-11-03</text>
+
+  <!-- ===== 앱 ===== -->
+  <rect x="40" y="110" width="480" height="820" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="62" y="142" class="h">Spring Boot 앱 35개 (pc2·pc3·pc4)</text>
+  <text x="62" y="164" class="s">업무 서비스 32 + api-gateway · config-server · eureka-server</text>
+  <text x="62" y="183" class="s">공통 설정은 libraries/common-observability 한 곳</text>
+
+  <rect x="62" y="200" width="436" height="78" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="78" y="226" class="t" font-weight="700">api-gateway (외부 요청의 첫 span)</text>
+  <text x="78" y="248" class="s">traceId 시작 또는 traceparent 이어 받기 · X-Request-Id</text>
+  <text x="78" y="268" class="s">오류 응답(RFC 9457 Problem)에 traceId·requestId</text>
+
+  <rect x="62" y="300" width="436" height="120" rx="10" fill="#fff7ed" stroke="#d97706"/>
+  <text x="78" y="326" class="t" font-weight="700" fill="#b45309">지표 — Micrometer</text>
+  <text x="78" y="350" class="s">/actuator/prometheus (노출: health·info·prometheus·metrics)</text>
+  <text x="78" y="372" class="s">HTTP·JVM·Hikari·Kafka observation, application 태그</text>
+  <text x="78" y="394" class="s">liveness·readiness probe</text>
+
+  <rect x="62" y="440" width="436" height="130" rx="10" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="78" y="466" class="t" font-weight="700" fill="#6d28d9">추적 — Micrometer Tracing + OTel bridge</text>
+  <text x="78" y="490" class="s">W3C traceparent 전파 (HTTP · Kafka), 샘플링 100%</text>
+  <text x="78" y="512" class="s">baggage: correlationId · X-Source-System</text>
+  <text x="78" y="534" class="s">RestClient·Gateway 가 다음 서비스로 자식 span 전파</text>
+  <text x="78" y="556" class="s">OTel Zipkin exporter</text>
+
+  <rect x="62" y="590" width="436" height="150" rx="10" fill="#f0fdfa" stroke="#0d9488"/>
+  <text x="78" y="616" class="t" font-weight="700" fill="#0f766e">로그 — SLF4J + Logback (pmart-logback.xml)</text>
+  <text x="78" y="640" class="s">logstash-logback-encoder: JSON 한 줄 → stdout</text>
+  <text x="78" y="662" class="s">MDC 자동: traceId · spanId · correlationId · service</text>
+  <text x="78" y="684" class="s">마스킹: 전화·이메일·카드번호, password/token/secret 키</text>
+  <text x="78" y="706" class="s">local 프로필만 평문</text>
+  <text x="78" y="728" class="s">파일로 쓰지 않는다 (Docker 가 json-file 로 남김)</text>
+
+  <rect x="62" y="760" width="436" height="150" rx="10" fill="#f1f5f9" stroke="#64748b"/>
+  <text x="78" y="786" class="t" font-weight="700" fill="#334155">이벤트 — Outbox · Inbox</text>
+  <text x="78" y="810" class="s">업무 변경 + outbox_event 를 한 트랜잭션에</text>
+  <text x="78" y="832" class="s">Debezium 이 Kafka 헤더에 traceId · correlationId</text>
+  <text x="78" y="854" class="s">→ 구독 서비스에서 같은 trace 로 이어진다</text>
+  <text x="78" y="876" class="s">처리 실패 메시지: 서비스별 dead_letter 표 + 재처리 API</text>
+  <text x="78" y="898" class="s">(ADR-0030 결정 3)</text>
+
+  <!-- ===== 레인 이름 ===== -->
+  <text x="560" y="292" class="lane" fill="#b45309">● 지표 Metrics</text>
+  <text x="560" y="456" class="lane" fill="#6d28d9">● 추적 Traces</text>
+  <text x="560" y="600" class="lane" fill="#0f766e">● 로그 Logs</text>
+  <text x="560" y="770" class="lane" fill="#334155">● 이벤트 Events</text>
+
+  <!-- ===== 지표 ===== -->
+  <rect x="640" y="170" width="260" height="76" rx="10" fill="#ffffff" stroke="#d97706"/>
+  <text x="656" y="196" class="t" font-weight="700">host-disk (node-exporter)</text>
+  <text x="656" y="218" class="s">모든 PC · Windows C: 실제 여유 공간</text>
+  <text x="656" y="237" class="s">:9100 (ADR-0030)</text>
+
+  <rect x="640" y="304" width="260" height="104" rx="10" fill="#fff7ed" stroke="#d97706" stroke-width="2"/>
+  <text x="656" y="332" class="h">Prometheus</text>
+  <text x="656" y="354" class="s">pc4 :9090 · 수집(pull)</text>
+  <text x="656" y="374" class="s">대상 37 = 앱 34 + host-disk 3</text>
+  <text x="656" y="394" class="s">(config-server 는 actuator 막음)</text>
+
+  <rect x="1000" y="290" width="260" height="70" rx="10" fill="#fff7ed" stroke="#d97706"/>
+  <text x="1016" y="318" class="h">Grafana</text>
+  <text x="1016" y="342" class="s">pc4 :3000 · 대시보드 pmart-overview</text>
+
+  <rect x="1000" y="372" width="260" height="70" rx="10" fill="#fff7ed" stroke="#d97706"/>
+  <text x="1016" y="400" class="h">Alertmanager</text>
+  <text x="1016" y="424" class="s">pc4 :9093 · alert-rules.yml</text>
+
+  <line x1="520" y1="356" x2="636" y2="356" stroke="#d97706" stroke-width="2.2" marker-end="url(#aM)"/>
+  <text x="528" y="347" class="lbl">scrape</text>
+  <line x1="770" y1="246" x2="770" y2="300" stroke="#d97706" stroke-width="2" marker-end="url(#aM)"/>
+  <line x1="900" y1="340" x2="996" y2="325" stroke="#d97706" stroke-width="2" marker-end="url(#aM)"/>
+  <text x="918" y="322" class="lbl">조회</text>
+  <line x1="900" y1="380" x2="996" y2="402" stroke="#d97706" stroke-width="2" marker-end="url(#aM)"/>
+  <text x="918" y="408" class="lbl">경보</text>
+
+  <!-- ===== 추적 ===== -->
+  <rect x="640" y="468" width="260" height="96" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="656" y="496" class="h">Zipkin</text>
+  <text x="656" y="518" class="s">pc4 :9411 · 서비스 35개 수신</text>
+  <text x="656" y="540" class="s">요청 하나의 서비스 간 경로·지연</text>
+  <line x1="520" y1="505" x2="636" y2="505" stroke="#7c3aed" stroke-width="2.2" marker-end="url(#aT)"/>
+  <text x="528" y="496" class="lbl">POST spans</text>
+
+  <!-- ===== 로그 ===== -->
+  <rect x="600" y="612" width="190" height="110" rx="10" fill="#ffffff" stroke="#0d9488"/>
+  <text x="614" y="640" class="t" font-weight="700">Docker json-file</text>
+  <text x="614" y="662" class="s">컨테이너 stdout</text>
+  <text x="614" y="682" class="s">20MB × 3 회전</text>
+  <text x="614" y="702" class="s">각 PC</text>
+
+  <rect x="830" y="612" width="200" height="110" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="2"/>
+  <text x="844" y="640" class="h">Filebeat</text>
+  <text x="844" y="662" class="s">log-shipper · PC마다 1개</text>
+  <text x="844" y="682" class="s">filestream 입력</text>
+  <text x="844" y="702" class="s">컨테이너 정보 추가</text>
+
+  <rect x="1070" y="612" width="190" height="110" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="2"/>
+  <text x="1084" y="640" class="h">Logstash</text>
+  <text x="1084" y="662" class="s">pc4 :5044 (Beats)</text>
+  <text x="1084" y="682" class="s">JSON 풀기 · 필드 정리</text>
+  <text x="1084" y="702" class="s">(검색 색인 파이프라인도)</text>
+
+  <rect x="1300" y="612" width="210" height="110" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="2"/>
+  <text x="1314" y="640" class="h">Elasticsearch</text>
+  <text x="1314" y="662" class="s">pc4 :9200 · 8.18</text>
+  <text x="1314" y="682" class="s">pmart-logs-YYYY.MM.DD</text>
+  <text x="1314" y="702" class="s">ILM 기간 + 크기 상한</text>
+
+  <rect x="1550" y="612" width="210" height="110" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="2"/>
+  <text x="1564" y="640" class="h">Kibana</text>
+  <text x="1564" y="662" class="s">pc4 :5601</text>
+  <text x="1564" y="682" class="s">데이터 뷰 pmart-logs-*</text>
+  <text x="1564" y="702" class="s">traceId 로 검색</text>
+
+  <rect x="1300" y="740" width="210" height="58" rx="8" fill="#ffffff" stroke="#0d9488" stroke-dasharray="5 4"/>
+  <text x="1314" y="764" class="s">log-janitor (5분마다)</text>
+  <text x="1314" y="784" class="s">색인 1GB · 전체 4GB 상한</text>
+  <line x1="1405" y1="740" x2="1405" y2="726" stroke="#0d9488" stroke-width="1.6" marker-end="url(#aL)"/>
+
+  <line x1="520" y1="664" x2="596" y2="664" stroke="#0d9488" stroke-width="2.2" marker-end="url(#aL)"/>
+  <text x="528" y="655" class="lbl">stdout</text>
+  <line x1="790" y1="667" x2="826" y2="667" stroke="#0d9488" stroke-width="2.2" marker-end="url(#aL)"/>
+  <line x1="1030" y1="667" x2="1066" y2="667" stroke="#0d9488" stroke-width="2.2" marker-end="url(#aL)"/>
+  <line x1="1260" y1="667" x2="1296" y2="667" stroke="#0d9488" stroke-width="2.2" marker-end="url(#aL)"/>
+  <line x1="1510" y1="667" x2="1546" y2="667" stroke="#0d9488" stroke-width="2.2" marker-end="url(#aL)"/>
+
+  <!-- ===== 이벤트 ===== -->
+  <rect x="640" y="790" width="260" height="96" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+  <text x="656" y="818" class="h">Debezium → Kafka</text>
+  <text x="656" y="840" class="s">Connect pc3 :8083 · Kafka pc2 :9092</text>
+  <text x="656" y="862" class="s">헤더: traceId · correlationId</text>
+  <line x1="520" y1="836" x2="636" y2="836" stroke="#64748b" stroke-width="2.2" marker-end="url(#aK)"/>
+  <text x="528" y="827" class="lbl">WAL</text>
+
+  <!-- ===== 감시 ===== -->
+  <rect x="1300" y="110" width="460" height="160" rx="12" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="1320" y="140" class="h">상태 감시 · 자동 복구 (PC1)</text>
+  <text x="1320" y="166" class="s">watch.sh — 구성요소별 점검 후 연속 실패 시 재시작</text>
+  <text x="1320" y="188" class="s">· 앱: /actuator/health UP</text>
+  <text x="1320" y="210" class="s">· Kafka·Postgres·Redis: 프로토콜 응답 · Logstash: TCP 5044</text>
+  <text x="1320" y="232" class="s">· Debezium: 커넥터 RUNNING</text>
+  <text x="1320" y="254" class="s">· PC IP 변경 감지(재시작 보류·알림)</text>
+
+  <!-- ===== traceId 연결 ===== -->
+  <rect x="40" y="960" width="1720" height="170" rx="14" fill="#fefce8" stroke="#ca8a04" stroke-width="1.5"/>
+  <text x="62" y="992" class="h">traceId 하나로 잇기</text>
+  <text x="62" y="1022" class="t">① 클라이언트가 받은 오류 응답의 traceId (gateway Problem)  →  ② Kibana 에서 traceId 로 모든 서비스 로그  →  ③ Zipkin 에서 같은 traceId 의 서비스 간 경로·지연</text>
+  <text x="62" y="1050" class="t">→  ④ Kafka 를 건너도 헤더로 이어짐 (Outbox → Debezium → 구독 서비스)  →  ⑤ Grafana 에서 그 시각의 오류율·지연·DB 풀 지표</text>
+  <text x="62" y="1084" class="s">배치: pc4 = Prometheus · Grafana · Alertmanager · Zipkin · Logstash · Elasticsearch · Kibana · log-janitor   |   모든 PC = Filebeat · node-exporter   |   pc3 = Debezium Connect   |   pc2 = Kafka</text>
+  <text x="62" y="1108" class="s">Loki·Fluent Bit·OpenSearch 는 쓰지 않는다 (ADR-0030 의 로그 결정은 ADR-0031 Elastic Stack 으로 대체). 운영(Kubernetes)은 별도 결정.</text>
+</svg>
+</body>
+</html>
