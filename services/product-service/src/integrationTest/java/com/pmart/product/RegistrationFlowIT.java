@@ -335,6 +335,12 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(submission.status()).isEqualTo(200);
     assertThat(submission.body().path("submittedDraftIds")).hasSize(1);
     assertThat(submission.body().path("excludedDraftIds")).hasSize(1);
+    // BR-41: 승인 대기 동안 배치 조회가 제출 결과(같은 승인 요청 본문)를 다시 준다
+    JsonNode pending = get("/product-import-batches/" + batchId).body().path("pendingSubmission");
+    assertThat(pending.path("approvalRequest"))
+        .isEqualTo(submission.body().path("approvalRequest"));
+    assertThat(pending.path("submittedDraftIds"))
+        .isEqualTo(submission.body().path("submittedDraftIds"));
     decide(submission.body().path("approvalRequest"), "APPROVED");
 
     String draftId = okDraft.path("draftId").asString();

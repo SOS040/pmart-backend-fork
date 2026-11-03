@@ -120,6 +120,14 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
     assertThat(submitted.status()).isEqualTo(202);
     String approvalId = submitted.body().get("resultId").asString();
 
+    // BR-41: 대상 참조로 그 승인을 찾는다(정본 화면이 배치의 승인 ID 를 되찾을 때)
+    Res byTarget = get("/approvals?targetRef=" + sku, LEAD);
+    assertThat(byTarget.status()).isEqualTo(200);
+    assertThat(byTarget.body().get("items")).hasSize(1);
+    assertThat(byTarget.body().get("items").get(0).get("approvalId").asString())
+        .isEqualTo(approvalId);
+    assertThat(get("/approvals?targetRef=" + sku + "-none", LEAD).body().get("items")).isEmpty();
+
     // 같은 대상 두 번째 제출 → 이중 발급 금지
     String cr2 =
         post("/change-requests", MD, UUID.randomUUID().toString(), priceChange(sku))

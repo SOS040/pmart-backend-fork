@@ -197,6 +197,9 @@ class PriceImportFlowIT extends PostgresKafkaContainerSupport {
     assertThat(lb.get("attributes").get("previousPrice").asLong()).isEqualTo(2000);
     assertThat(lb.get("attributes").get("basePrice").asLong()).isEqualTo(2500);
     assertThat(sub.body().get("batch").get("state").asString()).isEqualTo("SUBMITTED");
+    // BR-41: 승인 대기 동안 배치 조회가 제출 응답과 같은 승인 요청 본문을 다시 준다
+    assertThat(get("/price-import-batches/" + batchId).body().get("approvalRequest"))
+        .isEqualTo(req);
     // 같은 키 재전송 = 같은 결과, 제출 뒤 수정은 잠김
     Res again =
         post("/price-import-batches/" + batchId + "/submissions", submitKey, Map.of(), null);

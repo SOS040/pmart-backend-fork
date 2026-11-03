@@ -131,6 +131,7 @@ paths:
         - { name: centerId, in: query, schema: { type: string } }
         - { name: assigneeId, in: query, schema: { type: string } }
         - { name: requesterId, in: query, schema: { type: string } }
+        - { name: targetRef, in: query, description: '대상 참조와 정확히 일치(예 productImportBatch:{batchId}) — 정본 화면이 자기 대상의 승인을 찾을 때(BR-41, 2026-11-03)', schema: { type: string, maxLength: 128 } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:

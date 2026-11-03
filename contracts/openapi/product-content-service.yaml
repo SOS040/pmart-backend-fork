@@ -498,6 +498,9 @@ components:
         unchangedCount: { type: integer }
         imageCount: { type: integer, description: 묶음의 이미지 수 }
         uploadedImageCount: { type: integer, description: 저장소에 새로 올린 이미지 수 (같은 sha256 은 다시 올리지 않음) }
+        pendingSubmission:
+          description: '제출 뒤 승인 대기(SUBMITTED) 동안만. 제출 응답과 같은 본문을 잠긴 행으로 다시 만든다 — 화면을 떠났다 와도 승인 요청을 이어서 올릴 수 있게(BR-41, 2026-11-03). 승인 ID 는 approval-service GET /approvals?targetRef=… (targetRef contentImportBatch:{batchId})'
+          allOf: [{ $ref: '#/components/schemas/ContentSubmissionResult' }]
         items:
           type: array
           items:

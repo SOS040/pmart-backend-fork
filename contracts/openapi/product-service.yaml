@@ -890,6 +890,9 @@ components:
         validCount: { type: integer, description: '이 배치 행들의 현재 검증 결과 VALID 수 — 조회할 때 행에서 센다(행을 고치면 바로 반영, BR-38 2026-11-03)' }
         invalidCount: { type: integer, description: 이 배치 행들의 현재 검증 결과 INVALID 수(조회 때 계산) }
         drafts: { type: array, items: { $ref: '#/components/schemas/ProductDraft' } }
+        pendingSubmission:
+          description: '제출 뒤 승인 대기(SUBMITTED) 동안만. 제출 응답과 같은 본문을 잠긴 행으로 다시 만든다 — 화면을 떠났다 와도 승인 요청을 이어서 올릴 수 있게(BR-41, 2026-11-03). 승인 ID 는 approval-service GET /approvals?targetRef=… (targetRef productImportBatch:{batchId})'
+          allOf: [{ $ref: '#/components/schemas/SubmissionResult' }]
         createdAt: { type: string, format: date-time }
     SubmissionResult:
       type: object

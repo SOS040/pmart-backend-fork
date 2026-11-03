@@ -475,6 +475,11 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(body.path("targetRef").asString()).isEqualTo("contentImportBatch:" + againBatch);
     assertThat(body.path("lines").path(0).path("attributes").path("draftHash").asString())
         .hasSize(64);
+    // BR-41: 승인 대기 동안 배치 조회가 제출 결과(같은 승인 요청 본문)를 다시 준다
+    JsonNode pending =
+        get("/content-import-batches/" + againBatch).body().path("pendingSubmission");
+    assertThat(pending.path("approvalRequest")).isEqualTo(body);
+    assertThat(pending.path("submittedDraftIds").path(0).asString()).isEqualTo(draftAId);
     assertThat(get("/product-contents/" + productId, CUSTOMER).status()).isEqualTo(404);
 
     // 6) 승인 → 게시

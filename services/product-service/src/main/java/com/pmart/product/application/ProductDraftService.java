@@ -233,11 +233,36 @@ public class ProductDraftService {
           }
           drafts.updateBatchState(batchId, "SUBMITTED");
           return submission(
-              BATCH_PREFIX + batchId,
-              submitted,
-              excluded,
-              "상품 일괄 등록 " + submitted.size() + "건 (배치 " + batchId + ")");
+              BATCH_PREFIX + batchId, submitted, excluded, batchSummary(submitted.size(), batchId));
         });
+  }
+
+  /** 승인 대기 중인 배치의 제출 결과(BR-41): 잠긴(SUBMITTED) 초안으로 제출 응답과 같은 본문을 다시 만든다. 승인 대기가 아니면 비어 있다. */
+  public Optional<Submission> pendingSubmission(String batchId) {
+    if (!"SUBMITTED".equals(batch(batchId).state())) {
+      return Optional.empty();
+    }
+    List<DraftRow> submitted = new ArrayList<>();
+    List<String> excluded = new ArrayList<>();
+    for (DraftRow d : drafts.ofBatch(batchId)) {
+      if ("SUBMITTED".equals(d.state())) {
+        submitted.add(d);
+      } else {
+        excluded.add(d.draftId());
+      }
+    }
+    return submitted.isEmpty()
+        ? Optional.empty()
+        : Optional.of(
+            submission(
+                BATCH_PREFIX + batchId,
+                submitted,
+                excluded,
+                batchSummary(submitted.size(), batchId)));
+  }
+
+  private static String batchSummary(int count, String batchId) {
+    return "상품 일괄 등록 " + count + "건 (배치 " + batchId + ")";
   }
 
   /**

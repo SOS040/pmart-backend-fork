@@ -328,11 +328,41 @@ public class ContentDraftService {
           }
           drafts.updateBatchState(batchId, "SUBMITTED");
           return submission(
-              BATCH_PREFIX + batchId,
-              submitted,
-              excluded,
-              "상품 콘텐츠 일괄 게시 " + submitted.size() + "건 (배치 " + batchId + ")");
+              BATCH_PREFIX + batchId, submitted, excluded, batchSummary(submitted.size(), batchId));
         });
+  }
+
+  /** 승인 대기 중인 배치의 제출 결과(BR-41): 잠긴(SUBMITTED) 초안으로 제출 응답과 같은 본문을 다시 만든다. */
+  public Optional<Submission> pendingSubmission(String batchId) {
+    if (!"SUBMITTED".equals(batch(batchId).state())) {
+      return Optional.empty();
+    }
+    List<DraftRow> submitted = new ArrayList<>();
+    List<String> excluded = new ArrayList<>();
+    Set<String> seen = new HashSet<>();
+    for (ItemRow item : drafts.items(batchId)) {
+      if (!seen.add(item.draftId())) {
+        continue;
+      }
+      DraftRow d = get(item.draftId());
+      if ("SUBMITTED".equals(d.state())) {
+        submitted.add(d);
+      } else {
+        excluded.add(d.draftId());
+      }
+    }
+    return submitted.isEmpty()
+        ? Optional.empty()
+        : Optional.of(
+            submission(
+                BATCH_PREFIX + batchId,
+                submitted,
+                excluded,
+                batchSummary(submitted.size(), batchId)));
+  }
+
+  private static String batchSummary(int count, String batchId) {
+    return "상품 콘텐츠 일괄 게시 " + count + "건 (배치 " + batchId + ")";
   }
 
   // ---------- 상품 연결 (ProductVersionPublished) ----------

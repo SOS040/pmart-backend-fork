@@ -89,6 +89,8 @@ class RegistrationMapping {
     m.put("imageCount", b.imageCount());
     m.put("uploadedImageCount", b.uploadedImageCount());
     m.put("createdAt", b.createdAt().toString());
+    // BR-41: 승인 대기 중이면 제출 결과(승인 요청 본문)를 다시 준다
+    drafts.pendingSubmission(b.batchId()).ifPresent(s -> m.put("pendingSubmission", s));
     ContentImportBatch out = convert(m, ContentImportBatch.class);
     List<com.pmart.product.content.api.generated.model.ContentImportBatchItemsInner> rows =
         new ArrayList<>();

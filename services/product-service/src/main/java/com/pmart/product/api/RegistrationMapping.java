@@ -67,6 +67,8 @@ class RegistrationMapping {
     m.put("validCount", rows.isEmpty() ? b.validCount() : (int) valid);
     m.put("invalidCount", rows.isEmpty() ? b.invalidCount() : rows.size() - (int) valid);
     m.put("createdAt", b.createdAt().toString());
+    // BR-41: 승인 대기 중이면 제출 결과(승인 요청 본문)를 다시 준다
+    drafts.pendingSubmission(b.batchId()).ifPresent(s -> m.put("pendingSubmission", s));
     ImportBatch out = convert(m, ImportBatch.class);
     return out.drafts(rows.stream().map(this::draft).toList());
   }

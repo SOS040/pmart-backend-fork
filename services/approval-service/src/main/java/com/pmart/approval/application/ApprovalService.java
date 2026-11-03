@@ -194,11 +194,19 @@ public class ApprovalService {
       @Nullable String reviewState,
       @Nullable String executionState,
       @Nullable String requesterId,
+      @Nullable String targetRef,
       @Nullable Instant afterSubmittedAt,
       @Nullable String afterId,
       int limit) {
     return store.list(
-        type, reviewState, executionState, requesterId, afterSubmittedAt, afterId, limit);
+        type,
+        reviewState,
+        executionState,
+        requesterId,
+        targetRef,
+        afterSubmittedAt,
+        afterId,
+        limit);
   }
 
   /** 심사 결정(APPROVE / REJECT) → ApprovalDecided. */

@@ -202,6 +202,7 @@ public class ApprovalStore {
       @Nullable String reviewState,
       @Nullable String executionState,
       @Nullable String requesterId,
+      @Nullable String targetRef,
       @Nullable Instant afterSubmittedAt,
       @Nullable String afterId,
       int limit) {
@@ -222,6 +223,10 @@ public class ApprovalStore {
     if (requesterId != null) {
       sql.append(" AND requester_id = ?");
       args.add(requesterId);
+    }
+    if (targetRef != null) {
+      sql.append(" AND target_ref = ?");
+      args.add(targetRef);
     }
     if (afterSubmittedAt != null && afterId != null) {
       sql.append(" AND (submitted_at, approval_id) < (?, ?)");

@@ -46,6 +46,7 @@ public class ApprovalsController implements ApprovalsApi {
       @Nullable String centerId,
       @Nullable String assigneeId,
       @Nullable String requesterId,
+      @Nullable String targetRef,
       Integer size,
       @Nullable String cursor) {
     ApiMapping.operator("backoffice-web");
@@ -56,6 +57,7 @@ public class ApprovalsController implements ApprovalsApi {
             reviewState == null ? null : reviewState.getValue(),
             executionState == null ? null : executionState.getValue(),
             requesterId,
+            targetRef,
             after == null ? null : after.submittedAt(),
             after == null ? null : after.approvalId(),
             size + 1);

@@ -300,6 +300,13 @@ public class PriceImportService {
     m.put("effectiveFrom", str(b.effectiveFrom()));
     m.put("approvalTargetRef", b.approvalTargetRef());
     m.put("approvalId", b.approvalId());
+    // BR-41: 승인 대기 중이면 제출 응답과 같은 승인 요청 본문(잠긴 READY 행·제출 때 효력 시각)
+    if ("SUBMITTED".equals(b.state()) && b.approvalTargetRef() != null) {
+      List<LineRow> ready = lines.stream().filter(l -> "READY".equals(l.status())).toList();
+      if (!ready.isEmpty()) {
+        m.put("approvalRequest", approvalRequest(b.approvalTargetRef(), ready, b.effectiveFrom()));
+      }
+    }
     m.put("checkedAt", b.checkedAt().toString());
     List<Map<String, Object>> out = new ArrayList<>();
     for (LineRow l : lines) {
