@@ -49,6 +49,11 @@ paths:
     get:
       tags: [views]
       summary: 승인함 (BO-10; approval-service 읽기 + 원정본 반영 상태)
+      description: |
+        approval-service GET /approvals 를 운영자 본인 토큰으로 읽어 화면용으로 묶는다(2026-11-03, BR-40). 정렬은 제출 최신순.
+        dossierId = approvalId(approval-service 승인 ID) — 승인 상세·결정은 approval-service /approvals/{approvalId}.
+        approval-service 가 응답하지 않으면 200 + 빈 items + unavailableSources=[approval-service](추정하지 않음). 운영자가 아니면 403.
+        centerId 는 아직 approval-service 가 거르지 않는다(넘기기만 함).
       operationId: getApprovalInboxView
       parameters:
         - { name: approvalType, in: query, schema: { type: string } }
@@ -71,8 +76,14 @@ paths:
                         items:
                           type: object
                           properties:
-                            dossierId: { type: string }
+                            dossierId: { type: string, description: '= approvalId' }
+                            approvalId: { type: string }
+                            changeRequestId: { type: string }
                             approvalType: { type: string }
+                            targetService: { type: string }
+                            summary: { type: string }
+                            caseId: { type: [string, 'null'] }
+                            expiresAt: { type: [string, 'null'], format: date-time }
                             requestState: { type: string }
                             reviewState: { type: string }
                             executionState: { type: string }
