@@ -290,6 +290,10 @@ public class ServiceabilityService {
     if (road.isEmpty()) {
       return Location.missing("roadAddress");
     }
+    // 판정할 매핑 버전이 없으면 주소 변환(외부 호출·쿼터)을 하지 않고 바로 CONFIG_REQUIRED. 변환을 먼저 하면 검색이 느리거나 실패할 때
+    // UNKNOWN 이 나와 "발효 버전 없음"이 가려진다(부하가 큰 전체 시험에서 MappingVersionFlowIT 가 가끔 200 을 받던 원인,
+    // 2026-11-03)
+    judgingVersion(in);
     List<Geocoder.Place> found;
     try {
       found = geocoder.search(road, true);
@@ -313,6 +317,16 @@ public class ServiceabilityService {
     return store
         .check(checkId)
         .orElseThrow(() -> PmartException.notFound("CHECK_NOT_FOUND", "판정 결과가 없습니다."));
+  }
+
+  /** 판정에 쓸 매핑 버전: 요청이 지정한 버전, 아니면 발효 버전. 발효 버전이 없으면 CONFIG_REQUIRED. */
+  private VersionRow judgingVersion(CheckInput in) {
+    return in.mappingVersion() != null
+        ? version(in.mappingVersion())
+        : store
+            .active()
+            .orElseThrow(
+                () -> PmartException.configRequired("serviceability.mapping-version(발효 버전 없음)"));
   }
 
   private String evaluate(CheckInput in, Location at) {
@@ -340,14 +354,7 @@ public class ServiceabilityService {
           in.purpose());
       return checkId;
     }
-    VersionRow v =
-        in.mappingVersion() != null
-            ? version(in.mappingVersion())
-            : store
-                .active()
-                .orElseThrow(
-                    () ->
-                        PmartException.configRequired("serviceability.mapping-version(발효 버전 없음)"));
+    VersionRow v = judgingVersion(in);
     ZoneMatcher.Match m = ZoneMatcher.match(toZones(store.zones(v.version())), at.lat(), at.lng());
     List<Map<String, String>> overlapping = new ArrayList<>();
     m.overlapping().forEach(z -> overlapping.add(Map.of("zoneId", z.zoneId(), "mfcId", z.mfcId())));

@@ -250,6 +250,17 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
             "SELECT COUNT(*) FROM mapping_version WHERE state = 'ACTIVE'", Integer.class)
         == 0) {
       assertThat(check("IN-ROAD", null, null).status()).isEqualTo(422);
+      // 주소 검색이 시간 초과(읽기 3초)보다 느려도 발효 버전이 없으면 검색 전에 422 — 예전에는 검색을 먼저 해
+      // UNKNOWN(200)이 나와 부하가 큰 전체 시험에서 이 단계가 가끔 실패했다(2026-11-03)
+      kakao.stubFor(
+          WireMock.get(urlPathEqualTo("/v2/local/search/address.json"))
+              .withQueryParam("query", equalTo("SLOW-ROAD"))
+              .willReturn(json(200, Map.of("documents", List.of())).withFixedDelay(4_000)));
+      assertThat(check("SLOW-ROAD", null, null).status()).isEqualTo(422);
+      kakao.verify(
+          0,
+          WireMock.getRequestedFor(urlPathEqualTo("/v2/local/search/address.json"))
+              .withQueryParam("query", equalTo("SLOW-ROAD")));
     }
     // 고객은 초안을 만들 수 없다
     Map<String, Object> draft =
