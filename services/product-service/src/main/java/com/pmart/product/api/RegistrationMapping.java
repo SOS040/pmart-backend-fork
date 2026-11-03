@@ -62,8 +62,10 @@ class RegistrationMapping {
     m.put("sourceSystem", b.sourceSystem());
     m.put("state", b.state());
     m.put("productCount", b.productCount());
-    m.put("validCount", b.validCount());
-    m.put("invalidCount", b.invalidCount());
+    // BR-38: 저장된 수는 업로드 때 값이라 행을 고친(PUT) 뒤 맞지 않는다 — 현재 행의 검증 결과로 센다
+    long valid = rows.stream().filter(r -> "VALID".equals(r.validationState())).count();
+    m.put("validCount", rows.isEmpty() ? b.validCount() : (int) valid);
+    m.put("invalidCount", rows.isEmpty() ? b.invalidCount() : rows.size() - (int) valid);
     m.put("createdAt", b.createdAt().toString());
     ImportBatch out = convert(m, ImportBatch.class);
     return out.drafts(rows.stream().map(this::draft).toList());

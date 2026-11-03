@@ -524,6 +524,47 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(idMap.path("entries").path(0).path("pmartProductId").isNull()).isTrue();
   }
 
+  /** BR-38: 배치의 유효·오류 수는 행의 현재 검증 결과 — 빠진 중량을 채워 저장하면 바로 반영된다. */
+  @Test
+  void batchCountsFollowDraftEdits() throws Exception {
+    ensureTree();
+    String id = "bm-w-" + UUID.randomUUID();
+    Map<String, Object> seed =
+        seedProduct(id, "중량 없는 상품", List.of(List.of("국·탕·찌개", "탕·찌개")), null);
+    Res batch = post("/product-import-batches", form(seedZip(Map.of(id, seed))));
+    String batchId = batch.body().path("batchId").asString();
+    assertThat(batch.body().path("validCount").asInt()).isZero();
+    assertThat(batch.body().path("invalidCount").asInt()).isEqualTo(1);
+    JsonNode draft = batch.body().path("drafts").path(0);
+    assertThat(draft.path("problems").toString()).contains("WEIGHT_REQUIRED");
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> input = mapper.convertValue(draft.path("input"), Map.class);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> sku = ((List<Map<String, Object>>) input.get("skus")).get(0);
+    sku.put("weightG", 180);
+    var e =
+        http.put()
+            .uri("/product-drafts/" + draft.path("draftId").asString())
+            .headers(
+                h -> {
+                  h.setBearerAuth(MD);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "backoffice-web");
+                  h.set("X-Expected-Version", draft.path("version").asString());
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(input)
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(e.getStatusCode().value()).isEqualTo(200);
+
+    JsonNode after = get("/product-import-batches/" + batchId).body();
+    assertThat(after.path("validCount").asInt()).isEqualTo(1);
+    assertThat(after.path("invalidCount").asInt()).isZero();
+    assertThat(after.path("productCount").asInt()).isEqualTo(1);
+  }
+
   /** 카테고리 추가를 seed-v1 묶음(zip)으로(2026-11-03): 묶음의 categories.json 을 꺼내 JSON 경로와 같게 처리한다. */
   @Test
   void categoryAdditionFromSeedZip() throws Exception {

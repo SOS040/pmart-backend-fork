@@ -886,9 +886,9 @@ components:
         format: { type: string, enum: [SEED_V1] }
         sourceSystem: { type: string }
         state: { type: string, enum: [VALIDATED, SUBMITTED, APPLIED, PARTIALLY_APPLIED, REJECTED] }
-        productCount: { type: integer }
-        validCount: { type: integer }
-        invalidCount: { type: integer }
+        productCount: { type: integer, description: 묶음의 상품 수(업로드 때) }
+        validCount: { type: integer, description: '이 배치 행들의 현재 검증 결과 VALID 수 — 조회할 때 행에서 센다(행을 고치면 바로 반영, BR-38 2026-11-03)' }
+        invalidCount: { type: integer, description: 이 배치 행들의 현재 검증 결과 INVALID 수(조회 때 계산) }
         drafts: { type: array, items: { $ref: '#/components/schemas/ProductDraft' } }
         createdAt: { type: string, format: date-time }
     SubmissionResult:

@@ -1,6 +1,6 @@
-# [pmart-backend → pmart-clients] 회신: BR-39(재업로드 = 기존 상품 갱신 표시) · 카테고리 추가 zip 업로드 (2026-11-03)
+# [pmart-backend → pmart-clients] 회신: BR-38(배치 수) · BR-39(재업로드 = 기존 상품 갱신 표시) · 카테고리 추가 zip 업로드 (2026-11-03)
 
-- 요청: `pmart-clients/docs/handoff/2026-11-03-backend-product-import-batch.md` §2(BR-39). BR-38(배치 수 갱신)은 이번 회신에 없다 — 백오피스의 행 기준 집계를 유지해 달라(따로 회신).
+- 요청: `pmart-clients/docs/handoff/2026-11-03-backend-product-import-batch.md` §1(BR-38)·§2(BR-39).
 - 계약: `contracts/openapi/product-service.yaml` — `ProductDraft` 필드 추가(`registration`·`existingProductId`·`existingSkus`), 새 경로 `POST /category-tree-addition-uploads`. 기존 필드·경로는 바뀌지 않는다.
 - 게이트웨이: pmart-config `api-gateway.yml` 에 `/api/v1/category-tree-addition-uploads` 추가.
 
@@ -37,5 +37,11 @@
 - 응답·오류·승인 흐름이 같다: `201 CategoryTreeVersion`(`addedCategoryIds`·`skippedPaths`·`approvalRequest`), `400 CATEGORY_CONFLICT`, `422 NOTHING_TO_ADD`. 추가로 `categories.json` 이 없거나 형식이 다르면 `422 BUNDLE_INVALID`.
 - 기존 JSON 경로는 그대로다. 화면은 파일 선택에서 `.zip`·`.json` 을 둘 다 받고, 확장자로 경로를 고르면 된다.
 
-## 4. LAN
+## 4. BR-38 — 배치 유효·오류 수 (요청서 (a)안)
+- `GET /product-import-batches/{batchId}` 와 업로드 응답의 `validCount`·`invalidCount` 를 **조회할 때 그 배치 행들의 현재 검증 결과로 센다.** `PUT /product-drafts/{id}` 로 고친 행이 바로 반영된다. `productCount` 는 묶음의 상품 수(업로드 때) 그대로.
+- 같은 seed 를 다른 배치로 다시 올리면 그 초안은 새 배치로 옮겨 가므로, 옛 배치의 수에서는 빠진다(행 목록 `drafts[]` 와 같은 기준).
+- 백오피스의 행 기준 집계(`batchCounts`)는 그대로 두어도 같은 값이 나온다.
+- 콘텐츠 일괄 등록 배치의 수(`createdCount`·`updatedCount`·`unchangedCount`·`imageCount`)는 **업로드가 한 일의 기록**이라 성격이 달라 바꾸지 않았다.
+
+## 5. LAN
 - 백엔드 배포 후 쓸 수 있다(배포 시점은 별도 안내).
