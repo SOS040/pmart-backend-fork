@@ -91,7 +91,7 @@ printf %s 'sha256:…' > services/<name>/build/jib-image.digest
   Docker Desktop VM 이 리셋되면 새 VM 이 이전 포트 전달 규칙(옛 컨테이너 IP)을 복원하는데, IP 가 바뀌면 LAN 포트가 엉뚱한 컨테이너로 간다.
   네트워크 설정을 바꾼 뒤에는 `lan.sh down <pc>` → `lan.sh deploy <pc>` (볼륨은 남는다).
 - **Connect 로그**: 파일 appender 를 끄고 stdout 만(json-file 20MB×3 제한). `org.apache.kafka.clients.admin.internals` 는 WARN.
-- **감시**: `deploy/lan/watch.sh [--dry-run]`. 앱 health, PostgreSQL SSLRequest, Kafka ApiVersions, Redis PING, Zipkin, Connect 커넥터·작업 RUNNING 을
+- **감시**: `deploy/lan/watch.sh [--dry-run]`. 앱 health, PostgreSQL SSLRequest, Kafka ApiVersions, Redis PING, Logstash Beats 포트 TCP 연결(HTTP 아님), Zipkin, Connect 커넥터·작업 RUNNING 을
   PC 1 에서 점검한다. 같은 구성요소가 2회 연속 실패하면 `lan.sh restart`(PC 당 10분 쿨다운), 전부 실패면 'PMart Docker Desktop Start' 예약 작업부터.
   상태·로그는 `~/.pmart-lan-watch/` (`watch.log`, `last-<pc>`). Kafka 가 재시작되면 Connect 작업이 UNASSIGNED 로 남는데(재배정 안 됨), 이것도 감시가 Connect 재시작으로 복구한다.
 
