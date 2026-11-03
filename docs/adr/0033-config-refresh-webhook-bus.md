@@ -22,7 +22,9 @@
    - 반대로 바인더의 `KafkaBinderEnvironmentPostProcessor` 가 `spring.kafka.*` 직렬화 기본값을 ByteArray 로 넣는다 — `MessagingDefaultsPostProcessor` 를 그보다 먼저 돌려 앱의 KafkaTemplate·리스너는 String 그대로 둔다(2026-11-03 통합 시험에서 Kafka 흐름 29건 실패로 발견).
 6. **config-server 는 보내기만**: 받은 갱신으로 자신을 갱신하지 않고(`spring.cloud.bus.refresh.enabled=false`), ack 를 보내지 않는다(`ack.enabled=false` — 자기 `*` 알림을 Kafka 에서 다시 받아 ack 를 보내는 동안 `/monitor` 스레드의 StreamBridge 가 채널을 닫으며 ConcurrentModificationException → 500, 시험에서 재현).
 7. **다시 읽히는 것과 재시작이 필요한 것**:
-   - 다시 읽힌다: setter 형 `@ConfigurationProperties`(게이트웨이 라우트 `spring.cloud.gateway.*` 포함), `logging.level.*`, `@RefreshScope` 빈(지금 없음).
+   - 다시 읽힌다: setter 형 `@ConfigurationProperties`(게이트웨이 라우트 `spring.cloud.gateway.*` 포함), `logging.level.*`, `@RefreshScope` 빈.
+   - `@RefreshScope` 설정(2026-11-03): 정책·운영값이 든 `pmart.*` 설정 8개 — `pmart.cart`(retention), `pmart.customer`(addressLimit), 배송 `pmart.capacity`(slotCapacity), MFC `pmart.capacity`(unitsPerHour), `pmart.claim`(refundRetryAfter), `pmart.orchestration`(stuckAfter), `pmart.auth.customer`·`guest`·`operator`(토큰 수명·로그인 실패 제한·잠금). record 는 final 이라 refresh 프록시를 못 만들어 같은 생성자·접근자의 클래스로 바꿨고, 쓰는 쪽이 호출마다 읽어 그대로 적용된다. 같은 클래스 안의 주소(*BaseUrl)·Google 검증 설정·첫 관리자는 시작할 때 한 번 쓰여 재시작 대상이다.
+   - 갱신 뒤 값이 잘못되면(형식 오류) 시작 때가 아니라 그 설정을 처음 쓰는 요청에서 실패한다 — 바꾼 뒤 해당 기능을 한 번 확인한다.
    - 재시작: DB·Kafka·Redis 주소, 빈 생성 조건(`*.enabled`), record(생성자 바인딩) 형 설정, `eureka.*`(갱신 때 Eureka 클라이언트를 다시 만들지 않는다 — `eureka.client.refresh.enable=false`, 다시 만들면 등록 해제~재등록 사이 게이트웨이 503). DataSource(Hikari)는 Spring Cloud 기본값으로 다시 만들지 않는다.
    - 설정을 바꿀 때 어느 쪽인지 모르면 재시작한다(`lan.sh restart`).
 8. **local·운영**: local 은 Bus 꺼짐(설정 저장소 `application-local.yml` 이 켜지 않는다) — 지금처럼 재시작. 운영(Kubernetes)은 범위 밖(ConfigMap).

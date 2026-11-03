@@ -3,6 +3,7 @@ package com.pmart.auth.application;
 import java.time.Duration;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 
 /**
  * {@code pmart.auth.operator.*} — 운영자 로그인(ADR-0018). 수치는 보안 설정값이며 업무 정책이 아니다.
@@ -15,19 +16,31 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param passwordMinLength 비밀번호 최소 길이
  * @param adminRole 계정 관리 역할
  * @param bootstrap 첫 관리자 계정(없을 때만 만든다). 비밀번호는 해시만 받는다(Secret Manager)
+ *     <p>실행 중 갱신(ADR-0033): {@code @RefreshScope} — Bus 갱신 뒤 다음 사용 때 새 값으로 다시 만든다(record 는 final 이라
+ *     refresh 프록시를 못 만들어 클래스). 쓰는 쪽은 호출마다 읽는다. 주소(*BaseUrl)는 클라이언트를 만들 때 한 번 읽으므로 바꾸면 재시작.
  */
+@RefreshScope
 @ConfigurationProperties(prefix = "pmart.auth.operator")
-public record OperatorProperties(
-    Duration accessTokenTtl,
-    Duration refreshTokenTtl,
-    Duration sessionMaxAge,
-    int maxFailedAttempts,
-    Duration lockDuration,
-    int passwordMinLength,
-    String adminRole,
-    @Nullable Bootstrap bootstrap) {
+public class OperatorProperties {
 
-  public OperatorProperties {
+  private final Duration accessTokenTtl;
+  private final Duration refreshTokenTtl;
+  private final Duration sessionMaxAge;
+  private final int maxFailedAttempts;
+  private final Duration lockDuration;
+  private final int passwordMinLength;
+  private final String adminRole;
+  private final @Nullable Bootstrap bootstrap;
+
+  public OperatorProperties(
+      Duration accessTokenTtl,
+      Duration refreshTokenTtl,
+      Duration sessionMaxAge,
+      int maxFailedAttempts,
+      Duration lockDuration,
+      int passwordMinLength,
+      String adminRole,
+      @Nullable Bootstrap bootstrap) {
     accessTokenTtl = accessTokenTtl == null ? Duration.ofMinutes(15) : accessTokenTtl;
     refreshTokenTtl = refreshTokenTtl == null ? Duration.ofHours(12) : refreshTokenTtl;
     sessionMaxAge = sessionMaxAge == null ? Duration.ofHours(12) : sessionMaxAge;
@@ -35,6 +48,46 @@ public record OperatorProperties(
     lockDuration = lockDuration == null ? Duration.ofMinutes(15) : lockDuration;
     passwordMinLength = passwordMinLength <= 0 ? 10 : passwordMinLength;
     adminRole = adminRole == null || adminRole.isBlank() ? "OPERATOR_ADMIN" : adminRole;
+    this.accessTokenTtl = accessTokenTtl;
+    this.refreshTokenTtl = refreshTokenTtl;
+    this.sessionMaxAge = sessionMaxAge;
+    this.maxFailedAttempts = maxFailedAttempts;
+    this.lockDuration = lockDuration;
+    this.passwordMinLength = passwordMinLength;
+    this.adminRole = adminRole;
+    this.bootstrap = bootstrap;
+  }
+
+  public Duration accessTokenTtl() {
+    return accessTokenTtl;
+  }
+
+  public Duration refreshTokenTtl() {
+    return refreshTokenTtl;
+  }
+
+  public Duration sessionMaxAge() {
+    return sessionMaxAge;
+  }
+
+  public int maxFailedAttempts() {
+    return maxFailedAttempts;
+  }
+
+  public Duration lockDuration() {
+    return lockDuration;
+  }
+
+  public int passwordMinLength() {
+    return passwordMinLength;
+  }
+
+  public String adminRole() {
+    return adminRole;
+  }
+
+  public @Nullable Bootstrap bootstrap() {
+    return bootstrap;
   }
 
   /**
