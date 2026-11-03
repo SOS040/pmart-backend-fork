@@ -30,7 +30,7 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor "
+INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor config-relay "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -47,6 +47,10 @@ if [ -n "${WHERE[prometheus]:-}" ]; then
 fi
 # 로그 색인 크기 상한(색인 1GB·전체 4GB — ILM 은 기간만 지운다)
 if [ -n "${WHERE[elasticsearch]:-}" ]; then COMPS[${WHERE[elasticsearch]}]+=" log-janitor"; fi
+# GitHub 웹훅 중계(ADR-0033): config-server PC 에 config-relay. 맨 뒤에 붙여 기존 구성요소의 고정 IP 가 바뀌지 않는다
+if [ -n "${WHERE[config-server]:-}" ]; then
+  COMPS[${WHERE[config-server]}]+=" config-relay"; WHERE[config-relay]=${WHERE[config-server]}
+fi
 # Prometheus 수집 대상: 배치된 모든 Spring 앱(인프라 제외) <PC IP>:<포트>/actuator/prometheus
 apps_all() { for c in "${!WHERE[@]}"; do [[ "$c" == postgres-* || "$INFRA" == *" $c "* ]] || echo "$c"; done | sort; }
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
@@ -71,6 +75,9 @@ digest_of() {
 for c in kafka redis zipkin auth-service eureka-server; do
   [ -n "${WHERE[$c]:-}" ] || echo "경고: $c 가 배치되지 않음" >&2
 done
+if [ -n "${WHERE[config-relay]:-}" ] && [ ! -f "$SECRETS/smee-url" ]; then
+  echo "비밀정보 없음: $SECRETS/smee-url ($LAN/init-secrets.sh 먼저 — 웹훅 중계 채널, ADR-0033)" >&2; exit 1
+fi
 
 secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
 DB_PASSWORD="$(secret db-password)"
@@ -79,7 +86,7 @@ rm -rf "$OUT"
 # ---- 설정 저장소(ADR-0029) ----
 # Spring 앱의 설정은 config-server 가 GitHub code-and-pick/pmart-config 에서 준다. 정본은 그 저장소(사람이 고친다) — 여기서 만들지 않는다.
 # 이 스크립트는 compose·.env·config-server 비밀만 만들고, 배치(placement.conf)와 저장소가 어긋나지 않는지만 확인한다.
-for f in config-encrypt-key config-encrypt-salt config-password config-deploy-key eureka-password; do
+for f in config-encrypt-key config-encrypt-salt config-password config-deploy-key config-webhook-secret eureka-password; do
   [ -f "$SECRETS/$f" ] || { echo "비밀정보 없음: $SECRETS/$f ($LAN/init-secrets.sh 먼저)" >&2; exit 1; }
 done
 CFG_CLONE=$LAN/.config-repo
@@ -468,6 +475,23 @@ EOF
 
 EOF
         ;;
+      config-relay)
+        # GitHub 웹훅 중계(ADR-0033): smee.io 채널에 먼저 연결해 두고(나가는 연결만) 받은 push 웹훅을 config-server /monitor 로 넘긴다.
+        # 서명(X-Hub-Signature-256)은 config-server 가 검사한다. 채널 주소는 .env 의 PMART_SMEE_URL(.secrets/smee-url)
+        cat <<EOF
+  config-relay:
+    <<: *common
+    image: node:22.23.4-alpine
+    user: node
+    command: ["sh", "-c", "exec npx -y smee-client@5.0.0 --url \"\$\$PMART_SMEE_URL\" --target http://config-server:$(port_of config-server)/monitor"]
+    environment:
+      PMART_SMEE_URL: \${PMART_SMEE_URL}
+    networks: { default: { ipv4_address: $ip_addr } }
+    mem_limit: 128m
+    depends_on: [config-server]
+
+EOF
+        ;;
       zipkin)
         cat <<EOF
   zipkin:
@@ -494,6 +518,9 @@ EOF
         if [ "$c" = config-server ]; then
           # 서버 자신의 비밀은 configtree 디렉터리(파일 이름 = 속성 이름). 저장소 주소는 application.yml 기본값(GitHub)
           echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
+          # /monitor 가 받은 웹훅을 Bus(Kafka springCloudBus)로 알린다(ADR-0033). 서버는 설정 저장소를 읽지 않아 환경변수로 켠다
+          echo "      SPRING_CLOUD_BUS_ENABLED: \"true\""
+          echo "      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092"
           echo "    volumes:"
           echo "      - ./config-server-secrets:/run/secrets/config-server:ro"
           echo
@@ -625,6 +652,7 @@ EOF
     echo "PMART_DB_PASSWORD=$DB_PASSWORD"
     echo "PMART_CONFIG_PASSWORD=$(secret config-password)"
     echo "PMART_EUREKA_PASSWORD=$(secret eureka-password)"
+    [[ "$comps" == *" config-relay "* ]] && echo "PMART_SMEE_URL=$(secret smee-url)"
     [[ "$comps" == *" grafana "* ]] && echo "PMART_GRAFANA_ADMIN_PASSWORD=$(secret grafana-admin-password)"
     if [[ "$comps" == *" s3 "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
@@ -638,6 +666,7 @@ EOF
     secret config-encrypt-key > "$d/encrypt.key"
     secret config-encrypt-salt > "$d/encrypt.salt"
     secret config-password > "$d/spring.security.user.password"
+    secret config-webhook-secret > "$d/spring.cloud.config.server.monitor.github.webhook-secret" # GitHub 웹훅 서명 비밀(ADR-0033)
     tr -d '\r' < "$SECRETS/config-deploy-key" > "$d/spring.cloud.config.server.git.private-key"
     hk="$(sed -e 's/#.*//' "$LAN/config-server/github-host-key.conf" | grep -v '^[[:space:]]*$' | head -1)"
     printf '%s' "${hk%% *}" > "$d/spring.cloud.config.server.git.host-key-algorithm"

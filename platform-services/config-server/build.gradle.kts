@@ -1,5 +1,6 @@
 // config-server: Spring Cloud Config Server (ADR-0027). LAN 의 모든 Spring 앱이 부팅할 때 설정을 받는다.
-// - 저장소: GitHub code-and-pick/pmart-config (private, 읽기 전용 Deploy key). 환경별 폴더(lan/)를 search-paths 로 고른다.
+// - 저장소: GitHub code-and-pick/pmart-config (private, 읽기 전용 Deploy key). 최상위 파일을 프로필로 고른다(ADR-0029).
+// - /monitor: GitHub push 웹훅(smee.io 중계)을 받아 바뀐 파일의 앱에 Bus 로 갱신을 알린다(ADR-0033).
 // - 비밀값은 {cipher}(AES, encrypt.key)로 저장소에 두고 서버가 복호화해 내려준다. /encrypt·/decrypt 엔드포인트는 막는다.
 // - 업무 로직·업무 API 없음 → OpenAPI 생성·계약 검증을 끈다.
 plugins {
@@ -17,6 +18,7 @@ tasks.named<com.pmart.buildlogic.ContractCheckTask>("contractCheck") {
 dependencies {
     implementation(libs.spring.cloud.config.server)
     implementation(libs.spring.boot.starter.security) // 클라이언트 Basic 인증
+    implementation(libs.spring.cloud.config.monitor) // /monitor: GitHub 웹훅 → Bus(convention 의 bus-kafka) (ADR-0033)
     implementation(project(":libraries:common-observability"))
     implementation(libs.bundles.service.observability)
 

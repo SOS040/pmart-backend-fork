@@ -1,1 +1,3 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\ncom.pmart.common.observability.ObservabilityDefaultsPostProcessor
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.pmart.common.observability.ObservabilityDefaultsPostProcessor,\
+com.pmart.common.observability.ConfigBusDefaultsPostProcessor

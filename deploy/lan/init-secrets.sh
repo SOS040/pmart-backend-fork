@@ -9,6 +9,9 @@
 #   salt 는 16진수여야 한다(Encryptors.text).
 # - config-password: 서비스 → config-server Basic 인증 비밀번호(사용자 pmart)
 # - config-deploy-key(.pub): config-server 가 GitHub 설정 저장소를 읽는 SSH 키(ed25519). 공개키를 저장소 Deploy key(읽기 전용)로 등록한다
+# - config-webhook-secret: GitHub 웹훅 서명 비밀(ADR-0033). pmart-config 저장소 웹훅 설정의 Secret 에 같은 값을 넣는다
+# - smee-url: 웹훅 중계 채널 주소(https://smee.io/<채널>, ADR-0033). 저장소 웹훅의 Payload URL. 주소를 아는 사람은 웹훅 내용(파일 이름·커밋 메시지)을
+#   볼 수 있어 비밀로 둔다(서명 비밀은 웹훅에 실리지 않는다). 새 채널은 smee.io 에 HEAD 요청 한 번으로 만든다
 # - eureka-password: 서비스 → eureka-server Basic 인증 비밀번호(사용자 pmart, ADR-0032). 대시보드(http://<pc4>:8761) 로그인도 이것
 # - grafana-admin-password: Grafana 관리자(admin) 비밀번호(ADR-0030). 원문은 이 파일에만 있다
 # 이 값들은 LAN 개발 환경 전용이다. 운영은 Secret Manager.
@@ -39,6 +42,13 @@ fi
 if [ ! -f .secrets/config-deploy-key ]; then
   ssh-keygen -q -t ed25519 -N "" -C "pmart-config-server-lan" -f .secrets/config-deploy-key
   echo "created config-deploy-key — 공개키(.secrets/config-deploy-key.pub)를 GitHub pmart-config 저장소 Deploy key(읽기 전용)로 등록"
+fi
+[ -f .secrets/config-webhook-secret ] || { openssl rand -hex 32 > .secrets/config-webhook-secret; echo "created config-webhook-secret — GitHub pmart-config 웹훅 Secret 에 이 값"; }
+if [ ! -f .secrets/smee-url ]; then
+  url="$(curl -sfI -m 15 https://smee.io/new | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}')"
+  [[ "$url" =~ ^https://smee\.io/[A-Za-z0-9_-]+$ ]] || { echo "smee.io 채널 생성 실패(응답: ${url:-없음})" >&2; exit 1; }
+  echo "$url" > .secrets/smee-url
+  echo "created smee-url — GitHub pmart-config 웹훅 Payload URL 에 이 주소(README '설정 실행 중 갱신')"
 fi
 [ -f .secrets/eureka-password ] || { openssl rand -hex 24 > .secrets/eureka-password; echo "created eureka-password"; }
 [ -f .secrets/grafana-admin-password ] || { openssl rand -base64 18 | tr -d '\r\n/+=' > .secrets/grafana-admin-password; echo "created grafana-admin-password"; }

@@ -52,7 +52,7 @@ printf %s 'sha256:…' > services/<name>/build/jib-image.digest
   - `<앱>.yml` 서비스 고유(포트·permit-paths·토픽 도메인 등) · `<앱>-<프로필>.yml` 환경별(DB·다른 서비스 주소·키)
 - 모든 Spring 앱(33개)은 부팅할 때 pc4 의 `config-server:8888` 에서 `lan` 프로필(`SPRING_PROFILES_ACTIVE=lan`)로 설정을 받는다. **받지 못하면 뜨지 않는다**(fail-fast, compose `restart` 로 다시 시도). 이미 떠 있는 앱은 config-server 가 내려가도 영향이 없다.
 - 비밀값은 `{cipher}…` 암호문(키 `.secrets/config-encrypt-key`·`-salt`, 저장소에는 없음). `.env` 에는 Spring 이 아닌 컨테이너(postgres·connector-registrar·s3)의 비밀과 config-server 접속 비밀번호(`PMART_CONFIG_PASSWORD`)만 남는다.
-- **설정을 바꾸려면**: `deploy/lan/.config-repo/` 에서 파일을 고친다 → `deploy/lan/lan.sh config-push "메시지"`(바뀐 **키 이름**만 보여 주고 commit·push) → 해당 앱 재시작(`lan.sh restart <pc> <앱>`). 실행 중 갱신은 하지 않는다.
+- **설정을 바꾸려면**: `deploy/lan/.config-repo/` 에서 파일을 고친다 → `deploy/lan/lan.sh config-push "메시지"`(바뀐 **키 이름**만 보여 주고 commit·push) → 웹훅이 연결돼 있으면 바뀐 파일의 앱이 **스스로 다시 받는다**(아래 '설정 실행 중 갱신'). 재시작이 필요한 설정이거나 웹훅이 없으면 `lan.sh restart <pc> <앱>`.
   - 비밀값을 넣거나 바꿀 때: 평문을 저장소에 쓰지 않는다. 한 줄 `키<TAB>평문Base64` 파일을 만들어
     `./gradlew -q :platform-services:config-server:configCipher -PcipherIn=… -PcipherOut=… -PcipherKeyFile=deploy/lan/.secrets/config-encrypt-key -PcipherSaltFile=deploy/lan/.secrets/config-encrypt-salt`
     로 암호문을 받아 `'{cipher}<암호문>'` 으로 넣는다(입력 파일은 바로 지운다).
@@ -65,6 +65,25 @@ printf %s 'sha256:…' > services/<name>/build/jib-image.digest
 2. GitHub 에 **private** 저장소 `code-and-pick/pmart-config` 를 만든다.
 3. 저장소 Settings → Deploy keys → `deploy/lan/.secrets/config-deploy-key.pub` 를 **읽기 전용**(Allow write access 끔)으로 등록.
 4. config-server 이미지 push 후 `deploy/lan/lan.sh deploy all`.
+
+### 설정 실행 중 갱신 (웹훅 + Bus, ADR-0033)
+```
+pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) → config-server POST /monitor(서명 검사)
+  → Kafka springCloudBus → 바뀐 파일의 앱(<앱>*.yml → 그 앱, application*.yml → 모든 앱)이 config-server 에서 다시 받는다
+```
+- **다시 읽히는 것**: `logging.level.*`, 게이트웨이 라우트, setter 형 `@ConfigurationProperties`. **재시작해야 하는 것**: DB·Kafka·Redis 주소, `*.enabled` 처럼 켜고 끄는 값, record 형 설정, `eureka.*`. 모르면 재시작.
+- 확인: `lan.sh logs pc4 config-server` 에 `Refresh for: <앱>`, 해당 앱 로그에 `Keys refreshed [...]`.
+- `config-relay` 는 `render.sh` 가 config-server PC 에 자동으로 붙인다(placement.conf 에 적지 않는다, 포트 없음). 뜰 때 npm 에서 `smee-client` 를 받는다.
+- 웹훅이 403 이면(서명 불일치) 갱신만 안 되고 앱은 그대로다 — 재시작으로 반영한다. ADR-0033 '결과'(smee 재직렬화) 참고.
+
+#### 처음 한 번 (사용자 GitHub 권한)
+1. `deploy/lan/init-secrets.sh` — `config-webhook-secret`(서명 비밀)과 `smee-url`(smee.io 새 채널) 을 만든다. 둘 다 `.secrets/`(git 제외).
+2. GitHub `code-and-pick/pmart-config` → Settings → Webhooks → Add webhook:
+   - Payload URL: `.secrets/smee-url` 의 주소 · Content type: **application/json** · Secret: `.secrets/config-webhook-secret` 의 값
+   - Which events: **Just the push event** · Active
+   - 값은 파일을 메모장으로 열어 복사한다(이 대화의 `!` 명령으로 출력하지 않는다).
+3. config-server 이미지 push 후 `lan.sh render` → `lan.sh deploy pc4`(config-server·config-relay) → 나머지 앱 재배포(새 이미지에 Bus 가 들어 있다).
+4. 등록 직후 GitHub 의 `ping` 은 403 으로 보인다(push 만 받는다). 설정 파일 하나를 push 해서 위 '확인'으로 본다.
 
 ## 서비스 등록·조회 (Eureka, ADR-0032)
 - pc4 의 `eureka-server:8761`. 대시보드 `http://192.168.0.40:8761` — 사용자 `pmart`, 비밀번호 `deploy/lan/.secrets/eureka-password`(`init-secrets.sh` 가 만든다).

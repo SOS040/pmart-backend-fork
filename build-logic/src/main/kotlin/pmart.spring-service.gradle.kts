@@ -27,6 +27,8 @@ dependencies {
     implementation(libs.spring.cloud.starter.config)
     // Eureka 클라이언트 + Spring Cloud LoadBalancer(ADR-0032). 설정 저장소 application.yml 이 기본 끄고 lan 프로필만 켠다
     implementation(libs.spring.cloud.starter.eureka.client)
+    // 설정 변경 알림(Spring Cloud Bus, Kafka 토픽 springCloudBus — ADR-0033). common-observability 가 기본 끄고 lan 프로필만 켠다
+    implementation(libs.spring.cloud.starter.bus.kafka)
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)

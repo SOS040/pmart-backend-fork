@@ -3,6 +3,7 @@
 # - 비밀값은 '{cipher}…'(AES, encrypt.key·salt)로 저장소에 두고 여기서 복호화해 내려준다(server-side decryption).
 # - 서버 자신의 비밀(encrypt.key·salt, Basic 인증 비밀번호, GitHub Deploy key)은 파일 디렉터리로 받는다(configtree,
 #   파일 이름 = 속성 이름). 여러 줄 PEM 키를 환경변수로 넘기지 않기 위해서다. 저장소·이미지·application.yml 에 두지 않는다.
+# - 실행 중 갱신(ADR-0033): GitHub push 웹훅(smee.io 중계) → POST /monitor → Bus(Kafka springCloudBus) → 바뀐 파일의 앱이 다시 받아 간다.
 spring:
   application:
     name: config-server
@@ -12,9 +13,32 @@ spring:
   config:
     import: "optional:configtree:${PMART_CONFIG_SECRETS_DIR:/run/secrets/config-server}/"
   cloud:
+    bus:
+      # Bus 는 기본 꺼짐(common-observability). LAN 은 compose 환경변수 SPRING_CLOUD_BUS_ENABLED·SPRING_KAFKA_BOOTSTRAP_SERVERS 로 켠다.
+      # 서버는 알림을 보내기만 한다 — 자기 설정은 저장소에서 오지 않으니 받은 갱신 요청으로 자신을 갱신하지 않는다
+      refresh:
+        enabled: false
+      # 받은 알림에 ack 를 보내지 않는다. 서버는 자기가 보낸 '*'(모든 앱) 알림도 Kafka 에서 다시 받는데, 그 ack 를 소비 스레드에서
+      # StreamBridge 로 보내는 동안 /monitor 요청 스레드의 StreamBridge 가 RefreshRemoteApplicationEvent 마다 채널을 닫으며 같은
+      # 맵을 돌아 ConcurrentModificationException → /monitor 500(2026-11-03 MonitorBusIT 에서 재현). ack 는 추적(trace)용이라 쓰지 않는다
+      ack:
+        enabled: false
     config:
       enabled: false # 서버 자신은 config client 로 동작하지 않는다
       server:
+        monitor:
+          # 바뀐 파일 이름 → 갱신할 앱: cart-service-lan.yml → cart-service, application*.yml → 모든 앱(*)
+          max-paths: 100 # 한 push 의 파일 수 상한(기본 20 — 넘으면 뒤 파일의 앱이 빠진다)
+          github:
+            # webhook-secret 은 configtree 파일 spring.cloud.config.server.monitor.github.webhook-secret(GitHub 웹훅 설정과 같은 값).
+            # 서명(X-Hub-Signature-256)이 맞지 않거나 비밀이 없으면 /monitor 는 403(WebhookValidatorFilter, Security 보다 먼저)
+            validation-enabled: true
+          # GitHub 만 받는다
+          gitlab: { enabled: false }
+          bitbucket: { enabled: false }
+          gitea: { enabled: false }
+          gitee: { enabled: false }
+          gogs: { enabled: false }
         # /{app}/{profile} 응답의 비밀값을 복호화해서 내려준다. 복호화 실패 값은 invalid.<key> 로 표시된다
         encrypt:
           enabled: true

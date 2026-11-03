@@ -26,4 +26,5 @@ paths:
 - Eureka 환경: Spring Cloud Config + Eureka
 - Kubernetes 환경: Service DNS + ConfigMap + Secret Manager
 - 지금 방식(ADR-0029): Spring Cloud Config Server — 정본은 설정 저장소(pmart-config), 서비스 yml 은 부트스트랩만, 환경은 프로필. 시험만 config-server 를 끈다
+- LAN 실행 중 갱신(ADR-0033): 웹훅 `/monitor` 는 GitHub 서명(`X-Hub-Signature-256`)으로만 지킨다 — 서명 검증을 끄지 않는다. Bus 는 기본 꺼짐, lan 프로필만 켠다
 - 두 체계를 이유 없이 중복 도입하지 않는다. 현재 환경의 방식을 먼저 확인한다.

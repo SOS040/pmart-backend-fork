@@ -332,6 +332,7 @@
 
 ### config-server `[LAN]` — 설정 배포만 (ADR-0027, 2026-11-02)
 - Spring Cloud Config Server. LAN(compose)의 Spring 앱이 부팅할 때 GitHub `code-and-pick/pmart-config`(`lan/`)의 설정을 받는다. 비밀값은 `{cipher}` 를 서버가 복호화. 저장소 내용은 `deploy/lan/render.sh` 가 만든다.
+- 실행 중 갱신 알림(ADR-0033): GitHub push 웹훅(smee.io 중계, `config-relay`)을 `POST /monitor` 로 받아 서명을 검사하고, 바뀐 파일의 앱에 Spring Cloud Bus(Kafka `springCloudBus`)로 "다시 받아 가라"를 보낸다.
 - **소유하지 않음**: 업무 정책값(각 도메인 서비스 소유 — 설정 파일로 옮기지 않는다), 운영(Kubernetes) 설정(ConfigMap·Secret Manager).
 
 ### ~~discovery-service~~ — 제거 (2026-10-23)

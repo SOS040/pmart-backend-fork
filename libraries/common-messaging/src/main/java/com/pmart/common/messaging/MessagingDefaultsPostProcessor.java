@@ -16,6 +16,11 @@ import org.springframework.core.env.MapPropertySource;
  *   <li>consumer: 수동 커밋(리스너 정상 반환 후), earliest, String 역직렬화(봉투는 코드에서 decode)
  *   <li>consumer group = spring.application.name
  * </ul>
+ *
+ * <p>Spring Cloud Stream Kafka 바인더(Bus, ADR-0033)의 {@code KafkaBinderEnvironmentPostProcessor} 도 가장
+ * 낮은 우선순위에 {@code spring.kafka.producer/consumer} 직렬화기를 {@code ByteArray*} 로 넣는다. 둘 다 맨 뒤에 붙이므로
+ * <b>먼저 도는 쪽이 이긴다</b> — 바인더보다 먼저 돌아 String 직렬화를 지킨다(그러지 않으면 Boot 의 KafkaTemplate·리스너가 byte[] 로 바뀐다,
+ * 2026-11-03 통합 시험에서 발견). 바인더 자신은 Bus 용 클라이언트에 ByteArray 를 직접 지정해 영향이 없다.
  */
 public class MessagingDefaultsPostProcessor implements EnvironmentPostProcessor, Ordered {
 
@@ -51,6 +56,7 @@ public class MessagingDefaultsPostProcessor implements EnvironmentPostProcessor,
 
   @Override
   public int getOrder() {
-    return Ordered.LOWEST_PRECEDENCE;
+    return Ordered.LOWEST_PRECEDENCE
+        - 10; // KafkaBinderEnvironmentPostProcessor(순서 없음 = LOWEST)보다 먼저
   }
 }

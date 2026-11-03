@@ -34,5 +34,6 @@
 | [0030](0030-observability-metrics-logs-dead-letters.md) | 관측 — 지표 Prometheus·Grafana·Alertmanager, 로그 Fluent Bit → OpenSearch(Dashboards), 미처리 메시지는 서비스별 dead_letter 표·재처리 API | 승인 (결정 2·4 는 ADR-0031 로 대체) |
 | [0031](0031-elastic-stack-search-and-logs.md) | 검색·로그를 Elastic Stack 으로 — Elasticsearch 8.18(nori+n-gram), 검색 색인은 Logstash 가 도메인 이벤트로, 로그는 Filebeat → Logstash → ES → Kibana(상한 유지) | 승인 |
 | [0032](0032-eureka-service-discovery-local-lan.md) | local·LAN 서비스 등록·조회는 Eureka(Basic 인증, PC IP+포트로 등록, 게이트웨이 lb://·RestClient 로드밸런서) — 인스턴스는 하나씩, 운영 Kubernetes 는 Service DNS | 승인 |
+| [0033](0033-config-refresh-webhook-bus.md) | LAN 설정 실행 중 갱신 — GitHub 웹훅(smee.io 중계) → config-server /monitor(서명 검증) → Spring Cloud Bus(Kafka springCloudBus) → 바뀐 파일의 앱이 다시 받음. ADR-0027 결정 6 대체 | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.
