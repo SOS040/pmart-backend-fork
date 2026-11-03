@@ -1,15 +1,17 @@
 package com.pmart.gateway.security;
 
 import com.pmart.gateway.filter.RequestIdWebFilter;
-import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.handler.TracingObservationHandler;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.beans.factory.ObjectProvider;
+import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.http.server.reactive.observation.ServerRequestObservationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -26,11 +28,9 @@ public class ProblemResponseWriter {
   static final String TYPE_BASE = "https://problems.pmart.local/";
 
   private final JsonMapper mapper;
-  private final ObjectProvider<Tracer> tracer;
 
-  public ProblemResponseWriter(JsonMapper mapper, ObjectProvider<Tracer> tracer) {
+  public ProblemResponseWriter(JsonMapper mapper) {
     this.mapper = mapper;
-    this.tracer = tracer;
   }
 
   public Mono<Void> write(
@@ -63,12 +63,28 @@ public class ProblemResponseWriter {
     if (requestId != null) {
       body.put("requestId", requestId);
     }
-    Tracer t = tracer.getIfAvailable();
-    if (t != null && t.currentSpan() != null) {
-      body.put("traceId", t.currentSpan().context().traceId());
+    String traceId = traceId(exchange);
+    if (traceId != null) {
+      body.put("traceId", traceId);
     }
     byte[] bytes = mapper.writeValueAsString(body).getBytes(StandardCharsets.UTF_8);
     DataBuffer buffer = response.bufferFactory().wrap(bytes);
     return response.writeWith(Mono.just(buffer));
+  }
+
+  /**
+   * 이 요청의 서버 관측(span)에서 traceId 를 읽는다. {@code Tracer.currentSpan()}(ThreadLocal)은 WebFlux 에서 비어 있거나
+   * 같은 스레드가 앞서 처리한 다른 요청의 span 이 남아 있을 수 있다(2026-11-03 시험에서 엉뚱한 traceId 확인).
+   */
+  private static @Nullable String traceId(ServerWebExchange exchange) {
+    ServerRequestObservationContext context =
+        ServerRequestObservationContext.findCurrent(exchange.getAttributes()).orElse(null);
+    if (context == null) {
+      return null;
+    }
+    TracingObservationHandler.TracingContext tracing =
+        context.get(TracingObservationHandler.TracingContext.class);
+    Span span = tracing == null ? null : tracing.getSpan();
+    return span == null ? null : span.context().traceId();
   }
 }
