@@ -19,6 +19,8 @@ import sys
 import time
 
 P = "search-index"
+# Windows(PC 1) 기본 표준출력은 cp949·CRLF 다 — node-exporter textfile 수집기가 파일 전체를 거부한다(2026-11-04 node_textfile_scrape_error 1)
+sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
 
 def load(path):
