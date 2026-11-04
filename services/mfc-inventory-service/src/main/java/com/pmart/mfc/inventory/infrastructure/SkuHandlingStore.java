@@ -201,4 +201,38 @@ public class SkuHandlingStore {
         },
         args.toArray());
   }
+
+  /** 재발행용 취급 레코드(센터·SKU 오름차순). 상품 id 는 SKU 투영에서(없으면 null). */
+  public record RepublishRow(
+      String centerId,
+      String sku,
+      @Nullable String productId,
+      boolean enabled,
+      int version,
+      Instant updatedAt) {}
+
+  /**
+   * 취급 레코드 전체(또는 한 센터). 레코드 없음(= OFF, 버전 0)은 알릴 상태 변경이 없으므로 넣지 않는다.
+   *
+   * @param limit 최대 행 수(상한 초과 판단은 호출자가 limit+1 로)
+   */
+  public List<RepublishRow> forRepublish(@Nullable String centerId, int limit) {
+    String sql =
+        "SELECT h.center_id, h.sku, p.product_id, h.handling_enabled, h.row_version, h.updated_at"
+            + " FROM center_sku_handling h LEFT JOIN sku_projection p ON p.sku = h.sku"
+            + (centerId == null ? "" : " WHERE h.center_id = ?")
+            + " ORDER BY h.center_id, h.sku LIMIT ?";
+    Object[] args = centerId == null ? new Object[] {limit} : new Object[] {centerId, limit};
+    return jdbc.query(
+        sql,
+        (rs, i) ->
+            new RepublishRow(
+                rs.getString("center_id"),
+                rs.getString("sku"),
+                rs.getString("product_id"),
+                rs.getBoolean("handling_enabled"),
+                rs.getInt("row_version"),
+                rs.getTimestamp("updated_at").toInstant()),
+        args);
+  }
 }

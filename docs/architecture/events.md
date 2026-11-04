@@ -114,6 +114,7 @@
 | `InventoryExecutionApplied` | mfc-inventory | mfc-fulfillment, mfc-inbound, mfc-quality | requestId, commitId, executionType, appliedQty, result | 작업 실행 반영 결과 | ① |
 | `StockAdjusted` | mfc-inventory | approval, audit, replenishment | adjId, lines[], approvalRef | 실사 ADJ | ② |
 | `MfcStockAvailable` | mfc-inventory | notification(재입고 알림) | mfcId, sku, availableQty | 정상 판정·판매 준비 후 A>0 전환 | ③ |
+| `SkuHandlingChanged` | mfc-inventory | search(Logstash — 상품 carriedMfcIds) | mfcId, sku, productId?, handlingEnabled, version, changedAt, republished? | 센터 취급 ON/OFF 변경(바뀔 때만). 토픽 `mfc.sku-handling.v1`(무제한 보관 — 재색인 재생). `/internal/sku-handling-republications` 가 지금 상태를 같은 버전으로 다시 알림 (2026-11-05) | ① |
 | `WorkAccepted` / `WorkRejected` | mfc-fulfillment | order-orchestration | orderId, fulfillmentId, taskIds[], rejectReason? | ConfirmOrder 결과(수락≠완료) | ① |
 | `PreparationStarted` | mfc-fulfillment | order, delivery-dispatch(준비 예상) | orderId, fulfillmentId, startedAt, estimatedPackDuration | 실제 준비 시작 확정 | ① |
 | `LineShortageReported` | mfc-fulfillment | order-orchestration, case(동의 없음 시), mfc-quality(파손) | orderId, orderLineId, shortQty, reason(SHORT/DAMAGED/BLOCKED), alreadyHandedOverQty | 피킹 결품·파손 | ① |

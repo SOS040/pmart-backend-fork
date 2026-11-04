@@ -55,6 +55,16 @@ queue() {
   quiet_ssh "$(host_of "$LPC")" "docker exec pmart-lan-logstash-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" \
     | json "(lambda q: q.get('events_count', q.get('events', 0)))(d['pipelines']['search-index'].get('queue', {}))" 2>/dev/null || echo -
 }
+# Logstash 가 구독할 토픽(search-index.conf 의 topics) 중 Kafka 에 없는 것. 없는 토픽은 소비자가 메타데이터 갱신(5분)까지 못 읽고,
+# 이력 토픽이면 무제한 보관 설정도 없다 — Kafka PC 를 lan.sh deploy 하면 topics-init 이 만든다
+missing_topics() {
+  local want
+  want="$(sed -n 's/^ *topics => \[\(.*\)\]/\1/p' services/search-service/src/main/logstash/search-index.conf | tr -d '" ' | tr ',' ' ')"
+  [ -n "$want" ] || { echo "(search-index.conf 에서 topics 를 읽지 못함)"; return; }
+  printf '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list\n' | kx | tr -d '\r' > "${TMPDIR:-/tmp}/pmart-topics.$$"
+  for t in $want; do grep -qx "$t" "${TMPDIR:-/tmp}/pmart-topics.$$" || printf '%s ' "$t"; done
+  rm -f "${TMPDIR:-/tmp}/pmart-topics.$$"
+}
 firing() { # 재색인 전에 풀려 있어야 하는 경보(이력 보관이 깨졌으면 전체 재생이 불완전하다)
   [ -n "$PPC" ] || return 0
   curl -sf -m 10 "http://$(ip_of "$PPC"):9090/api/v1/alerts" \
@@ -130,6 +140,7 @@ case "$cmd" in
     note "사전 확인"
     [ "$(es /_cluster/health | json "d['status']")" = green ] || die "Elasticsearch 가 green 이 아니다"
     f="$(firing)"; [ -z "$f" ] || die "경보 울리는 중: $f"
+    m="$(missing_topics)"; [ -z "$m" ] || die "Kafka 에 없는 구독 토픽: $m — 먼저 deploy/lan/lan.sh deploy $KPC kafka(topics-init)"
     l="$(lag "$OLD_GROUP")"; q="$(queue)"
     [ "$l" = 0 ] && [ "$q" = 0 ] || die "지금 파이프라인이 밀려 있다(지연 $l, 큐 $q) — 따라잡은 뒤 다시"
     note "$OLD_INDEX $(count "$OLD_INDEX")건, 그룹 $OLD_GROUP 지연 0, 큐 0 → $NEW_INDEX · $NEW_GROUP 로 재색인할 수 있다"

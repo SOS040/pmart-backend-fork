@@ -105,6 +105,27 @@ public final class SearchRules {
     return t.isEmpty() ? null : t;
   }
 
+  /**
+   * 초성만 된 검색어인가 — 공백을 빼고 한글 자음(ㄱ~ㅎ)만 2자 이상(2026-11-05). 1자는 너무 많이 걸려 일반 검색으로 둔다. 초성과 완성 글자가 섞인
+   * 검색어("ㄷ부")는 아니다.
+   */
+  public static boolean isChosungQuery(@Nullable String normalizedQuery) {
+    if (normalizedQuery == null) {
+      return false;
+    }
+    String t = normalizedQuery.replace(" ", "");
+    if (t.length() < 2) {
+      return false;
+    }
+    for (int i = 0; i < t.length(); i++) {
+      char c = t.charAt(i);
+      if (c < 'ㄱ' || c > 'ㅎ') {
+        return false;
+      }
+    }
+    return true;
+  }
+
   public static final class InvalidCursorException extends RuntimeException {
     public InvalidCursorException() {
       super("잘못된 커서");

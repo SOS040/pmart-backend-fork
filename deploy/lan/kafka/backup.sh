@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 LAN=deploy/lan
 OUT=$LAN/build
-TOPICS="commerce.product.v1 commerce.pricing.v1"
+TOPICS="commerce.product.v1 commerce.pricing.v1 mfc.sku-handling.v1"
 ROOT="${1:-${PMART_KAFKA_BACKUP_DIR:-/d/pmart-backups/kafka}}"
 REASON="${2:-manual}"
 

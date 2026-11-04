@@ -2,6 +2,7 @@ package com.pmart.mfc.inventory.api;
 
 import com.pmart.mfc.inventory.api.generated.SkuHandlingsApi;
 import com.pmart.mfc.inventory.api.generated.model.GetSnapshot200ResponsePage;
+import com.pmart.mfc.inventory.api.generated.model.RepublishSkuHandlings200Response;
 import com.pmart.mfc.inventory.api.generated.model.SkuHandling;
 import com.pmart.mfc.inventory.api.generated.model.SkuHandlingBatchRequest;
 import com.pmart.mfc.inventory.api.generated.model.SkuHandlingBatchResult;
@@ -28,6 +29,15 @@ public class SkuHandlingsController implements SkuHandlingsApi {
 
   public SkuHandlingsController(SkuHandlingService service) {
     this.service = service;
+  }
+
+  @Override
+  public ResponseEntity<RepublishSkuHandlings200Response> republishSkuHandlings(
+      String idempotencyKey, String xSourceSystem, @Nullable String mfcId) {
+    // 상태를 바꾸지 않고 지금 상태를 다시 알릴 뿐이라 같은 키 재요청도 다시 발행한다(구독자가 같은 버전을 무시 — 계약 설명)
+    return ResponseEntity.ok(
+        new RepublishSkuHandlings200Response()
+            .publishedCount(service.republish(mfcId == null || mfcId.isBlank() ? null : mfcId)));
   }
 
   @Override

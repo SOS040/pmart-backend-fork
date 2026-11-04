@@ -44,4 +44,18 @@ class SearchRulesTest {
     assertThat(SearchRules.normalizeQuery("  국산콩   두부 ")).isEqualTo("국산콩 두부");
     assertThat(SearchRules.normalizeQuery("   ")).isNull();
   }
+
+  @Test
+  void chosungQueryIsOnlyConsonantsTwoOrMore() {
+    assertThat(SearchRules.isChosungQuery("ㄷㅂ")).isTrue();
+    assertThat(SearchRules.isChosungQuery("ㅅㅋㄹ")).isTrue();
+    assertThat(SearchRules.isChosungQuery("ㅁㅅ ㅇㅇㅍ")).isTrue(); // 띄어 써도 초성만이면
+    assertThat(SearchRules.isChosungQuery("ㄲㅂ")).isTrue(); // 겹자음
+    assertThat(SearchRules.isChosungQuery("ㄷ")).isFalse(); // 1자는 일반 검색
+    assertThat(SearchRules.isChosungQuery("ㄷ부")).isFalse(); // 섞인 검색어
+    assertThat(SearchRules.isChosungQuery("두부")).isFalse();
+    assertThat(SearchRules.isChosungQuery("ㅏㅓ")).isFalse(); // 모음
+    assertThat(SearchRules.isChosungQuery("ab")).isFalse();
+    assertThat(SearchRules.isChosungQuery(null)).isFalse();
+  }
 }

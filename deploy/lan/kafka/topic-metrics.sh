@@ -4,8 +4,8 @@
 set -eu
 B=/opt/kafka/bin
 S=localhost:9092
-TOPICS="commerce.product.v1 commerce.pricing.v1"
-LIST="commerce.product.v1,commerce.pricing.v1"
+TOPICS="commerce.product.v1 commerce.pricing.v1 mfc.sku-handling.v1"
+LIST="commerce.product.v1,commerce.pricing.v1,mfc.sku-handling.v1"
 
 echo "# HELP pmart_kafka_topic_size_bytes 토픽 로그 크기(모든 파티션 합, kafka-log-dirs)"
 echo "# TYPE pmart_kafka_topic_size_bytes gauge"

@@ -1,5 +1,7 @@
 package com.pmart.mfc.inventory.application;
 
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.messaging.EventPublisher;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.Outcome;
 import com.pmart.common.web.ErrorCode;
@@ -10,6 +12,7 @@ import com.pmart.mfc.inventory.domain.SkuProjection;
 import com.pmart.mfc.inventory.infrastructure.SkuHandlingStore;
 import com.pmart.mfc.inventory.infrastructure.SkuHandlingStore.HandlingRow;
 import com.pmart.mfc.inventory.infrastructure.SkuHandlingStore.ListedRow;
+import com.pmart.mfc.inventory.infrastructure.SkuHandlingStore.RepublishRow;
 import com.pmart.mfc.inventory.infrastructure.SkuProjectionStore;
 import java.time.Clock;
 import java.time.Instant;
@@ -27,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 센터 SKU 취급 ON/OFF(사용자 결정 2026-10-30: 기본 OFF, 센터 운영자가 켬). 레코드 없음 = OFF. 변경은 {@link
- * RequestIdempotency} 안에서 하고, 바뀔 때만 이력을 남긴다. 취급 변경 이벤트 스키마가 contracts/events 에 아직 없어 발행하지 않는다.
+ * RequestIdempotency} 안에서 하고, 바뀔 때만 이력을 남기고 같은 트랜잭션에서 SkuHandlingChanged 를 발행한다(토픽
+ * mfc.sku-handling.v1 — 검색 색인의 센터 취급 목록, 2026-11-05).
  */
 @Service
 public class SkuHandlingService {
@@ -71,16 +75,27 @@ public class SkuHandlingService {
   private final SkuProjectionStore projections;
   private final SkuHandlingStore handlings;
   private final RequestIdempotency idempotency;
+  private final EventPublisher events;
   private final Clock clock;
+
+  /** 사건 이름·집합 이름. 집합 SkuHandling → 기본 토픽 mfc.sku-handling.v1(pmart.messaging.domain=mfc). */
+  public static final String EVENT = "SkuHandlingChanged";
+
+  static final String AGGREGATE = "SkuHandling";
+
+  /** 재발행 한 번의 최대 건수(넘으면 센터를 나눠 부른다). */
+  public static final int MAX_REPUBLISH = 20_000;
 
   public SkuHandlingService(
       SkuProjectionStore projections,
       SkuHandlingStore handlings,
       RequestIdempotency idempotency,
+      EventPublisher events,
       Clock clock) {
     this.projections = projections;
     this.handlings = handlings;
     this.idempotency = idempotency;
+    this.events = events;
     this.clock = clock;
   }
 
@@ -245,10 +260,71 @@ public class SkuHandlingService {
     int newVersion = current.version() + 1;
     handlings.insertHistory(
         centerId, p.sku(), current.enabled(), enable, op.id(), reason, requestId, newVersion, at);
+    publish(
+        centerId,
+        p.sku(),
+        p.productId(),
+        enable,
+        newVersion,
+        at,
+        false,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, op.id()));
     return new Applied(
         true,
         new HandlingView(
             p.sku(), enable, newVersion, p.state().name(), p.productId(), op.id(), reason, at));
+  }
+
+  /**
+   * 지금 취급 상태를 SkuHandlingChanged(republished=true)로 다시 알린다 — 상태는 바꾸지 않는다. 사건 발행 전부터 있던 취급을 검색 색인에
+   * 처음 연결하거나 구독 쪽 사본을 복구할 때. 같은 버전은 구독자가 무시하므로 여러 번 불러도 결과가 같다.
+   */
+  @Transactional
+  public int republish(@Nullable String centerId) {
+    List<RepublishRow> rows = handlings.forRepublish(centerId, MAX_REPUBLISH + 1);
+    if (rows.size() > MAX_REPUBLISH) {
+      throw new PmartException(
+          ErrorCode.DOMAIN_REJECTED,
+          "취급 레코드가 " + MAX_REPUBLISH + "건을 넘습니다. 센터(mfcId)를 나눠 다시 요청하세요.");
+    }
+    EventEnvelope.Actor actor =
+        new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem());
+    for (RepublishRow r : rows) {
+      publish(
+          r.centerId(),
+          r.sku(),
+          r.productId(),
+          r.enabled(),
+          r.version(),
+          r.updatedAt(),
+          true,
+          actor);
+    }
+    return rows.size();
+  }
+
+  private void publish(
+      String centerId,
+      String sku,
+      @Nullable String productId,
+      boolean enabled,
+      int version,
+      Instant at,
+      boolean republished,
+      EventEnvelope.Actor actor) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("mfcId", centerId);
+    payload.put("sku", sku);
+    if (productId != null) {
+      payload.put("productId", productId);
+    }
+    payload.put("handlingEnabled", enabled);
+    payload.put("version", version);
+    payload.put("changedAt", at.toString());
+    if (republished) {
+      payload.put("republished", true);
+    }
+    events.publish(EVENT, 1, AGGREGATE, centerId + ":" + sku, version, actor, payload);
   }
 
   private static Current current(Optional<HandlingRow> row) {

@@ -1,6 +1,6 @@
 # Kafka 이벤트 이력 — 보관·감시·백업·복원 (ADR-0034)
 
-대상은 **`commerce.product.v1`·`commerce.pricing.v1` 두 토픽뿐**이다(검색 색인의 정본 이력). 다른 토픽은 브로커 기본(7일)이다.
+대상은 **`commerce.product.v1`·`commerce.pricing.v1`·`mfc.sku-handling.v1` 세 토픽뿐**이다(검색 색인의 정본 이력 — 센터 취급 토픽은 2026-11-05 추가). 다른 토픽은 브로커 기본(7일)이다.
 
 | 파일 | 어디서 | 하는 일 |
 |---|---|---|
@@ -86,12 +86,12 @@ B=/d/pmart-backups/kafka/<백업 폴더>
 ssh pmart-pc2 "docker exec -i pmart-lan-kafka-1 sh" < deploy/lan/kafka/topics-init.sh        # 토픽·보관 정책(파티션 수는 MANIFEST 와 같게)
 scp deploy/lan/kafka/restore-topic.sh pmart-pc2:pmart-lan/kafka/
 ssh pmart-pc2 "docker cp pmart-lan/kafka/restore-topic.sh pmart-lan-kafka-1:/tmp/restore-topic.sh"
-for t in commerce.product.v1 commerce.pricing.v1; do
+for t in commerce.product.v1 commerce.pricing.v1 mfc.sku-handling.v1; do
   ssh pmart-pc2 "docker exec -i -e T=$t -e PARTITIONS=1 pmart-lan-kafka-1 sh /tmp/restore-topic.sh" < $B/$t.records
 done
 deploy/lan/kafka/backup.sh /d/pmart-backups/kafka restore-check   # 다시 내보낸다
 R=$(ls -d /d/pmart-backups/kafka/*-restore-check | tail -1)
-for t in commerce.product.v1 commerce.pricing.v1; do                 # 첫 필드(CreateTime)만 빼고 비교 — 파티션·오프셋·헤더·키·값이 같아야 한다
+for t in commerce.product.v1 commerce.pricing.v1 mfc.sku-handling.v1; do                 # 첫 필드(CreateTime)만 빼고 비교 — 파티션·오프셋·헤더·키·값이 같아야 한다
   cmp <(cut -d $'\037' -f2- $B/$t.records) <(cut -d $'\037' -f2- $R/$t.records) && echo "$t 일치"
 done
 ```

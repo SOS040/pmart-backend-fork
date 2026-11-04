@@ -2,7 +2,6 @@ package com.pmart.search.application;
 
 import com.pmart.search.domain.SearchRules;
 import com.pmart.search.domain.SearchRules.Sort;
-import com.pmart.search.infrastructure.AvailabilityClient;
 import com.pmart.search.infrastructure.CategoryTreeClient;
 import com.pmart.search.infrastructure.SearchIndex;
 import java.util.ArrayList;
@@ -19,10 +18,12 @@ import tools.jackson.databind.JsonNode;
  * 상품 검색·자동완성(Elasticsearch, ADR-0031). 게시 콘텐츠(이름)와 상품 버전이 모두 색인된 상품만, 판매중지는 제외. 이름은 nori 형태소가 모두
  * 맞거나 1~2글자 n-gram 조각이 모두 있으면 걸린다("두부를"→두부, "미역"→미역국, 붙임말 "나랑드사이다제로"). 순위는 형태소 > 앞부분 > 조각 일치.
  *
- * <p>가격·판매 상태는 색인 시점 사본이다. 카테고리 이름 경로는 product-service 공개 트리 사본(5분), 취급 여부(carried)는 mfcId 를 줄 때만
- * mfc-inventory 사본으로 붙인다(대표 SKU 기준, 조회 실패·응답 없음은 불명 null — false 로 채우지 않는다).
- * includeNotCarried=false 면 취급하지 않음(false)이 확인된 상품만 빼고(불명은 남긴다), 모자란 만큼 다음 문서를 더 읽어 페이지를
- * 채운다(BR-47). total 은 색인 일치 건수(미취급 포함)이고, 처음부터 끝까지 한 번에 다 읽은 경우만 실제 건수로 맞춘다.
+ * <p>가격·판매 상태는 색인 시점 사본이다. 카테고리 이름 경로는 product-service 공개 트리 사본(5분). 취급 여부(carried)는 mfcId 를 줄 때만,
+ * 색인의 {@code carriedMfcIds}(대표 SKU 를 켠 센터 목록 — mfc-inventory SkuHandlingChanged, 2026-11-05)로 정한다.
+ * 취급 레코드가 없으면 OFF(mfc-inventory 규칙)라 false 다. includeNotCarried=false 면 색인에서 바로 거르므로 페이지 크기·total 이
+ * 정확하다 (이전의 실시간 가용 조회와 "더 읽어 채우기"는 없앴다). 품절은 색인하지 않는다(화면 표시 때 실시간 확인 — 사용자 결정 2026-11-05).
+ *
+ * <p>검색어가 초성으로만 된 경우(2자 이상, 예 "ㄷㅂ")는 상품명 초성 필드({@code nameChosung})에서 찾는다.
  */
 @Service
 public class ProductSearch {
@@ -68,13 +69,10 @@ public class ProductSearch {
 
   private final SearchIndex index;
   private final CategoryTreeClient categories;
-  private final AvailabilityClient availability;
 
-  public ProductSearch(
-      SearchIndex index, CategoryTreeClient categories, AvailabilityClient availability) {
+  public ProductSearch(SearchIndex index, CategoryTreeClient categories) {
     this.index = index;
     this.categories = categories;
-    this.availability = availability;
   }
 
   public Result search(
@@ -98,98 +96,45 @@ public class ProductSearch {
       @Nullable String cursor) {
     int from = SearchRules.offset(cursor);
     String query = SearchRules.normalizeQuery(q);
-    boolean filtering = mfcId != null && !mfcId.isBlank() && !includeNotCarried;
+    String center = mfcId == null || mfcId.isBlank() ? null : mfcId;
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("from", from);
+    req.put("size", size);
+    req.put("track_total_hits", true);
+    req.put("query", query(query, categoryId, price, filters, includeNotCarried ? null : center));
+    req.put("sort", sort(sort, query != null));
+    JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Hit> out = new ArrayList<>();
-    int pos = from;
-    long total = 0;
-    int rounds = 0;
-    // BR-47: 미취급을 빼서 모자라면 다음 문서를 더 읽어 채운다(최대 FILL_ROUNDS 번). 다음 커서는 실제로 읽은 위치 뒤
-    while (true) {
-      Map<String, Object> req = new LinkedHashMap<>();
-      req.put("from", pos);
-      req.put("size", size);
-      req.put("track_total_hits", true);
-      req.put("query", query(query, categoryId, price, filters));
-      req.put("sort", sort(sort, query != null));
-      JsonNode res = index.search(SearchIndex.PRODUCTS, req);
-      List<Hit> hits = new ArrayList<>();
-      for (JsonNode h : res.path("hits").path("hits")) {
-        hits.add(hit(h.path("_source")));
-      }
-      total = res.path("hits").path("total").path("value").asLong(0);
-      List<@Nullable Hit> enriched = enrich(hits, mfcId, includeNotCarried);
-      for (Hit h : enriched) {
-        pos++;
-        if (h != null) {
-          out.add(h);
-          if (out.size() >= size) {
-            break;
-          }
-        }
-      }
-      rounds++;
-      if (hits.isEmpty()
-          || out.size() >= size
-          || pos >= total
-          || !filtering
-          || rounds > FILL_ROUNDS) {
-        break;
-      }
+    for (JsonNode h : res.path("hits").path("hits")) {
+      out.add(withPath(hit(h.path("_source"), center)));
     }
-    String next = pos < total ? SearchRules.cursor(pos) : null;
-    // 처음부터 끝까지 한 번에 다 읽었으면 total 을 실제 건수로 맞춘다. 아니면 색인 일치 건수(미취급 포함, 계약 설명)
-    long shownTotal = filtering && from == 0 && next == null ? out.size() : total;
+    long total = res.path("hits").path("total").path("value").asLong(0);
+    int pos = from + out.size();
+    String next = !out.isEmpty() && pos < total ? SearchRules.cursor(pos) : null;
     List<String> applied = new ArrayList<>();
     filters.forEach((k, vs) -> vs.forEach(v -> applied.add(k + "." + v)));
-    return new Result(out, shownTotal, next, sort, List.copyOf(applied));
+    return new Result(out, total, next, sort, List.copyOf(applied));
   }
 
-  /** 미취급을 빼고 페이지를 채우려고 더 읽는 최대 횟수(한 번에 size 개). */
-  static final int FILL_ROUNDS = 5;
-
-  /**
-   * 이름 경로(대표 카테고리)·취급 여부를 붙인다. 입력과 같은 순서·길이로 돌려주고, 취급하지 않음이 확인된 상품은 includeNotCarried=false 면
-   * null(뺌)이다 — 호출자가 읽은 위치를 셀 수 있게.
-   */
-  private List<@Nullable Hit> enrich(
-      List<Hit> hits, @Nullable String mfcId, boolean includeNotCarried) {
-    Map<String, Boolean> carried = Map.of();
-    if (mfcId != null && !mfcId.isBlank()) {
-      List<String> skus =
-          hits.stream()
-              .map(Hit::representativeSku)
-              .filter(java.util.Objects::nonNull)
-              .distinct()
-              .toList();
-      carried = skus.isEmpty() ? Map.of() : availability.carried(mfcId, skus);
-    }
-    List<@Nullable Hit> out = new ArrayList<>();
-    for (Hit h : hits) {
-      String primary =
-          h.primaryCategoryId() != null
-              ? h.primaryCategoryId()
-              : (h.categoryIds().isEmpty() ? null : h.categoryIds().get(0));
-      Boolean c = h.representativeSku() == null ? null : carried.get(h.representativeSku());
-      if (!includeNotCarried && Boolean.FALSE.equals(c)) {
-        out.add(null);
-        continue;
-      }
-      out.add(
-          new Hit(
-              h.productId(),
-              h.name(),
-              h.imageUrl(),
-              h.categoryIds(),
-              h.representativeSku(),
-              h.basePrice(),
-              h.priceVersion(),
-              h.saleState(),
-              h.productVersion(),
-              primary,
-              primary == null ? List.of() : categories.path(primary),
-              c));
-    }
-    return out;
+  /** 이름 경로(대표 카테고리 — 없으면 첫 카테고리)를 붙인다. */
+  private Hit withPath(Hit h) {
+    String primary =
+        h.primaryCategoryId() != null
+            ? h.primaryCategoryId()
+            : (h.categoryIds().isEmpty() ? null : h.categoryIds().get(0));
+    return new Hit(
+        h.productId(),
+        h.name(),
+        h.imageUrl(),
+        h.categoryIds(),
+        h.representativeSku(),
+        h.basePrice(),
+        h.priceVersion(),
+        h.saleState(),
+        h.productVersion(),
+        primary,
+        primary == null ? List.of() : categories.path(primary),
+        h.carried());
   }
 
   /** 검색어를 포함하는 상품명(중복 제거, 관련도 순). */
@@ -238,7 +183,22 @@ public class ProductSearch {
       @Nullable String categoryId,
       PriceRange price,
       Map<String, List<String>> filters) {
+    return query(q, categoryId, price, filters, null);
+  }
+
+  /**
+   * @param carriedAt 이 센터가 대표 SKU 를 취급하는 상품만(색인 carriedMfcIds). null 이면 거르지 않는다
+   */
+  static Map<String, Object> query(
+      @Nullable String q,
+      @Nullable String categoryId,
+      PriceRange price,
+      Map<String, List<String>> filters,
+      @Nullable String carriedAt) {
     List<Object> filter = new ArrayList<>();
+    if (carriedAt != null) {
+      filter.add(Map.of("term", Map.of("carriedMfcIds", carriedAt)));
+    }
     // 승인 속성 필터: 같은 그룹 안의 값은 OR(terms), 그룹끼리는 AND(2026-11-04)
     filters.forEach(
         (group, values) ->
@@ -264,6 +224,11 @@ public class ProductSearch {
     Map<String, Object> bool = new LinkedHashMap<>();
     if (q == null) {
       bool.put("must", List.of(Map.of("match_all", Map.of())));
+    } else if (SearchRules.isChosungQuery(q)) {
+      // 초성만 된 검색어: 상품명 초성(공백을 뺀 1~2글자 조각)이 모두 있으면 걸린다("ㅅㅋㄹ" → 생크림·생 크림)
+      bool.put(
+          "must",
+          List.of(Map.of("match", Map.of("nameChosung", Map.of("query", q, "operator", "and")))));
     } else {
       // 찾는 조건: 형태소(nori)가 모두 맞거나("두부를"→두부), 1~2글자 조각이 모두 있거나(붙임말 "나랑드사이다제로"·부분 "미역"),
       // 공백을 모두 뺀 이름·검색어의 조각이 모두 있거나(붙여 쓴 "생크림" ↔ 띄어 쓴 "생 크림", products-v4 name.compact)
@@ -312,7 +277,18 @@ public class ProductSearch {
     };
   }
 
-  private static Hit hit(JsonNode s) {
+  /** 색인 문서 → Hit. carried 는 센터를 줄 때만(그 센터가 carriedMfcIds 에 있는지), 아니면 null. */
+  private static Hit hit(JsonNode s, @Nullable String center) {
+    Boolean carried = null;
+    if (center != null) {
+      carried = false;
+      for (JsonNode m : s.path("carriedMfcIds")) {
+        if (center.equals(m.asString())) {
+          carried = true;
+          break;
+        }
+      }
+    }
     List<String> categories = new ArrayList<>();
     s.path("categoryIds").forEach(c -> categories.add(c.asString()));
     return new Hit(
@@ -327,6 +303,6 @@ public class ProductSearch {
         s.hasNonNull("productVersion") ? s.get("productVersion").asInt() : null,
         s.hasNonNull("primaryCategoryId") ? s.get("primaryCategoryId").asString() : null,
         List.of(),
-        null);
+        carried);
   }
 }

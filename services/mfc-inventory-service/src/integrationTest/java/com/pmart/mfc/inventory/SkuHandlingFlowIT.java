@@ -38,7 +38,9 @@ import tools.jackson.databind.ObjectMapper;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      // 발행된 사건(outbox 행)을 시험에서 읽는다 — 운영은 INSERT 직후 DELETE(Debezium 은 WAL 의 INSERT 를 읽음)
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 @Import(TestJwtConfiguration.class)
 class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
@@ -397,6 +399,106 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
 
     assertThat(
             post(OTHER_OPERATOR, path, UUID.randomUUID().toString(), Map.of("items", bad)).status())
+        .isEqualTo(403);
+  }
+
+  /** 이 센터·SKU 의 SkuHandlingChanged outbox 행(오래된 것부터): [topic, payload]. */
+  List<JsonNode> handlingEvents(String center, String sku) {
+    return jdbc
+        .queryForList(
+            "SELECT topic, payload::text AS p FROM outbox_event WHERE type = 'SkuHandlingChanged'"
+                + " AND aggregateid = ? ORDER BY created_at, id",
+            center + ":" + sku)
+        .stream()
+        .map(
+            r -> {
+              JsonNode env = read((String) r.get("p"));
+              assertThat(r.get("topic")).isEqualTo("mfc.sku-handling.v1");
+              assertThat(env.path("aggregateType").asString()).isEqualTo("SkuHandling");
+              return env.path("payload");
+            })
+        .toList();
+  }
+
+  @Test
+  void handlingChangePublishesEventAndCanBeRepublished() throws Exception {
+    String productId = "PRD-" + UUID.randomUUID();
+    String sku = newSku("E");
+    skuIssued(sku, productId, 1);
+    published(productId, 1, List.of(skuSnapshot(sku, 300, "ACTIVE")));
+    assertThat(awaitProjection(sku, b -> b.path("weightG").asInt() == 300).status()).isEqualTo(200);
+    assertThat(handlingEvents(CENTER, sku)).isEmpty();
+
+    // 켬 → 사건 1건(버전 1, 상품 id 는 투영에서). 같은 키 재전송은 다시 발행하지 않는다
+    String key = UUID.randomUUID().toString();
+    assertThat(
+            post(OPERATOR, "/mfcs/" + CENTER + "/sku-handlings", key, change(sku, true)).status())
+        .isEqualTo(200);
+    post(OPERATOR, "/mfcs/" + CENTER + "/sku-handlings", key, change(sku, true));
+    List<JsonNode> events = handlingEvents(CENTER, sku);
+    assertThat(events).hasSize(1);
+    JsonNode on = events.get(0);
+    assertThat(on.path("mfcId").asString()).isEqualTo(CENTER);
+    assertThat(on.path("sku").asString()).isEqualTo(sku);
+    assertThat(on.path("productId").asString()).isEqualTo(productId);
+    assertThat(on.path("handlingEnabled").asBoolean()).isTrue();
+    assertThat(on.path("version").asInt()).isEqualTo(1);
+    assertThat(on.has("republished")).isFalse();
+
+    // 바뀌지 않는 요청(이미 켬)은 발행하지 않고, 끄면 버전 2
+    post(
+        OPERATOR,
+        "/mfcs/" + CENTER + "/sku-handlings",
+        UUID.randomUUID().toString(),
+        change(sku, true));
+    assertThat(handlingEvents(CENTER, sku)).hasSize(1);
+    post(
+        OPERATOR,
+        "/mfcs/" + CENTER + "/sku-handlings",
+        UUID.randomUUID().toString(),
+        change(sku, false));
+    events = handlingEvents(CENTER, sku);
+    assertThat(events).hasSize(2);
+    assertThat(events.get(1).path("handlingEnabled").asBoolean()).isFalse();
+    assertThat(events.get(1).path("version").asInt()).isEqualTo(2);
+
+    // 재발행(내부 경로, 토큰 없이 서비스 주체): 상태는 그대로, 지금 버전으로 republished=true
+    var e =
+        http.post()
+            .uri("/internal/sku-handling-republications?mfcId=" + CENTER)
+            .header("X-Source-System", "pmart-ops")
+            .header("Idempotency-Key", UUID.randomUUID().toString())
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(e.getStatusCode().value()).isEqualTo(200);
+    assertThat(read(e.getBody()).path("publishedCount").asInt()).isGreaterThanOrEqualTo(1);
+    events = handlingEvents(CENTER, sku);
+    assertThat(events).hasSize(3);
+    JsonNode again = events.get(2);
+    assertThat(again.path("republished").asBoolean()).isTrue();
+    assertThat(again.path("version").asInt()).isEqualTo(2);
+    assertThat(again.path("handlingEnabled").asBoolean()).isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT handling_enabled FROM center_sku_handling WHERE center_id = ? AND sku = ?",
+                Boolean.class,
+                CENTER,
+                sku))
+        .isFalse();
+    // 사용자 토큰으로 내부 경로를 부르면 403
+    assertThat(
+            http.post()
+                .uri("/internal/sku-handling-republications")
+                .headers(
+                    h -> {
+                      h.setBearerAuth(OPERATOR);
+                      h.set("X-Source-System", "backoffice-web");
+                      h.set("Idempotency-Key", UUID.randomUUID().toString());
+                    })
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
         .isEqualTo(403);
   }
 }

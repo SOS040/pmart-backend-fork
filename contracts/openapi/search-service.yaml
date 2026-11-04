@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.1.1
+  version: 0.1.2
   description: |
     검색 색인·키워드 검색·자동완성·필터 속성·최근 검색어의 정본. (docs/architecture/service-map.md §1, 1단계 기본)
     비정본: 판매 가능 판단(색인 지연은 재고 있음이 아니다), 상품·가격·재고 정본.
@@ -27,9 +27,13 @@ paths:
       operationId: searchProducts
       security: []
       parameters:
-        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - name: q
+          in: query
+          description: |
+            검색어. 띄어쓰기가 달라도 찾는다("생크림" ↔ "생 크림"). 한글 자음만 2자 이상이면 초성 검색이다(예 "ㄷㅂ" → 두부, 2026-11-05).
+          schema: { type: string, maxLength: 100 }
         - { name: categoryId, in: query, schema: { type: string } }
-        - { name: mfcId, in: query, description: 현재 쇼핑 주소 담당 센터. 취급 여부 표시용, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: mfcId, in: query, description: '현재 쇼핑 주소 담당 센터. 취급 여부(carried) 표시·거르기용', schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sort, in: query, schema: { $ref: '#/components/schemas/SortKey' } }
         - name: filters
           in: query
@@ -40,10 +44,10 @@ paths:
         - name: includeNotCarried
           in: query
           description: |
-            mfcId 를 줄 때만 의미가 있다. false(기본)면 그 센터가 취급하지 않음(carried=false)이 확인된 상품을 빼고, 모자란 만큼 서버가
-            다음 문서를 더 읽어 페이지를 채운다(최대 5번, BR-47). 그래도 items 가 비거나 size 보다 적은데 page.nextCursor 가 있으면
-            "더 있음"이므로 계속 조회한다. true 면 미취급도 carried=false 로 돌려준다 — 업무 문서(Commerce 6장·수용 기준)는 미취급을
-            품절·판매중지와 구분해 표시하라고 하므로, 화면이 구분 표시를 하려면 true 로 받는다.
+            mfcId 를 줄 때만 의미가 있다. false(기본)면 그 센터가 대표 SKU 를 취급하지 않는 상품을 검색 색인에서 바로 거른다 — 페이지는
+            size 만큼 차고 total 도 거른 뒤 건수다(2026-11-05, 이전의 "더 읽어 채우기"·빈 페이지 + 다음 커서는 없어졌다). true 면 미취급도
+            carried=false 로 돌려준다 — 업무 문서(Commerce 6장·수용 기준)는 미취급을 품절·판매중지와 구분해 표시하라고 하므로, 화면이 구분
+            표시를 하려면 true 로 받는다. 취급 여부는 mfc-inventory 취급 변경 사건의 색인 사본이라 변경 뒤 몇 초 늦을 수 있다.
           schema: { type: boolean, default: false }
         - { name: minPrice, in: query, description: '기본가 하한(원, 이상). 가격이 아직 없는 상품은 가격 범위를 주면 빠진다(2026-11-03)', schema: { type: integer, format: int64, minimum: 0 } }
         - { name: maxPrice, in: query, description: '기본가 상한(원, 이하). minPrice 보다 작으면 400', schema: { type: integer, format: int64, minimum: 0 } }
@@ -240,7 +244,7 @@ components:
         basePrice: { $ref: '_common.yaml#/components/schemas/Money', description: pricing 사본 }
         priceVersion: { type: integer }
         saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
-        carried: { type: [boolean, 'null'], description: mfcId 지정 시 취급 여부 사본. 불명이면 null }
+        carried: { type: [boolean, 'null'], description: 'mfcId 지정 시 그 센터의 대표 SKU 취급 여부(색인 사본, 취급 레코드 없음 = false). mfcId 가 없으면 null' }
         rating: { type: number }
         reviewCount: { type: integer }
         productVersion: { type: integer, description: 색인된 product 버전 }
@@ -253,8 +257,7 @@ components:
         total:
           type: integer
           description: |
-            검색 조건에 맞는 색인 건수. mfcId + includeNotCarried=false 면 미취급을 빼기 전 값이라 실제로 받는 건수보다 클 수 있다
-            (처음 페이지에서 끝까지 다 받은 경우만 실제 건수로 맞춘다). 정확한 건수가 필요하면 includeNotCarried=true 로 받아 구분해 센다(BR-47).
+            검색 조건에 맞는 건수. mfcId + includeNotCarried=false 면 미취급을 거른 뒤 건수다(2026-11-05부터 정확).
         page: { $ref: '_common.yaml#/components/schemas/Page' }
         appliedSort: { $ref: '#/components/schemas/SortKey' }
         appliedFilters: { type: array, items: { type: string } }

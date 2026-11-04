@@ -36,9 +36,13 @@ public class SearchIndex {
   public static final String PRODUCTS = "products";
   public static final String SKU_PRICES = "sku-prices";
 
+  /** SKU 별 센터 취급(SkuHandlingChanged, 2026-11-05) — Logstash 만 쓰고 읽는다(상품 문서 carriedMfcIds 의 원천). */
+  public static final String SKU_HANDLINGS = "sku-handlings";
+
   /** 별칭 → 실제 색인(정의 파일 이름). 매핑을 바꾸면 새 버전 파일을 만들고 여기를 바꾼다. */
   public static final Map<String, String> INDICES =
-      Map.of(PRODUCTS, "products-v4", SKU_PRICES, "sku-prices-v1");
+      Map.of(
+          PRODUCTS, "products-v4", SKU_PRICES, "sku-prices-v1", SKU_HANDLINGS, "sku-handlings-v1");
 
   private static final String TARGET = "elasticsearch";
   private static final Logger log = LoggerFactory.getLogger(SearchIndex.class);

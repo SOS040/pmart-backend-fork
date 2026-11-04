@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SkuHandlingChanged.v1.json",
+  "title": "SkuHandlingChanged",
+  "description": "센터 SKU 취급 ON/OFF 가 바뀐 사실(레코드 없음 = OFF, 센터 운영자가 켬). 발행 mfc-inventory. 구독 search(색인 Logstash — 상품 대표 SKU 를 취급하는 센터 목록 carriedMfcIds). 토픽 mfc.sku-handling.v1(무제한 보관 — 검색 재색인 재생, ADR-0034). 지금 상태를 다시 알리는 재발행(republished=true)도 같은 사건이며 version 이 같으면 구독자가 무시한다. 2026-11-05",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SkuHandlingChanged"
+        },
+        "aggregateType": {
+          "const": "SkuHandling"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "mfcId",
+            "sku",
+            "handlingEnabled",
+            "version",
+            "changedAt"
+          ],
+          "properties": {
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "productId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "센터가 아는 SKU 의 상품(sku_projection). 모르면 생략"
+            },
+            "handlingEnabled": {
+              "type": "boolean"
+            },
+            "version": {
+              "$ref": "_defs.v1.json#/$defs/Version",
+              "description": "센터·SKU 취급 행 버전(바뀔 때마다 1 증가, 처음 바뀐 값 1). 구독자는 큰 것만 반영"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "republished": {
+              "type": "boolean",
+              "description": "상태 변경이 아니라 지금 상태를 다시 알린 것(최초 연결·복구용 /internal/sku-handling-republications)"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

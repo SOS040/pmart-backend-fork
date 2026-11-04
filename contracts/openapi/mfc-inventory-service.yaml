@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.1.0
+  version: 0.1.1
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -501,6 +501,35 @@ paths:
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
           description: SKU_HANDLING_BATCH_REJECTED (행별 SKU_NOT_FOUND / SKU_INACTIVE / VERSION_CONFLICT 를 details 에)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/sku-handling-republications:
+    post:
+      tags: [sku-handlings]
+      summary: '[운영 도구→mfc-inventory] 지금 취급 상태를 SkuHandlingChanged 로 다시 알린다'
+      description: |
+        취급 레코드마다 현재 상태(켬·끔, 행 버전)를 SkuHandlingChanged(republished=true)로 다시 발행한다(mfc.sku-handling.v1).
+        상태는 바꾸지 않으므로 같은 Idempotency-Key 로 다시 불러도 다시 발행한다. 사건 발행 전부터 있던 취급(2026-11-05 이전)을 검색 색인에 처음 연결할 때, 구독 쪽 사본을 복구할 때 쓴다.
+        같은 버전을 다시 받은 구독자는 무시하므로 여러 번 불러도 결과가 같다. mfcId 를 주면 그 센터만. 한 번에 최대 20000건(넘으면 422).
+      operationId: republishSkuHandlings
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: mfcId, in: query, required: false, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: 다시 발행한 건수
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [publishedCount]
+                properties:
+                  publishedCount: { type: integer, minimum: 0 }
+        '422':
+          description: DOMAIN_REJECTED — 건수 상한 초과, 센터를 나눠 부른다
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

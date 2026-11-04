@@ -34,6 +34,7 @@
           "compact": { "type": "text", "analyzer": "name_compact" }
         }
       },
+      "nameChosung": { "type": "text", "analyzer": "name_compact" },
       "imageUrl": { "type": "keyword", "index": false },
       "contentVersion": { "type": "integer" },
       "contentPublishedAtMs": { "type": "date", "format": "epoch_millis" },
@@ -41,6 +42,7 @@
       "categoryIds": { "type": "keyword" },
       "categoryScope": { "type": "keyword" },
       "representativeSku": { "type": "keyword" },
+      "carriedMfcIds": { "type": "keyword" },
       "saleState": { "type": "keyword" },
       "saleStateAtMs": { "type": "date", "format": "epoch_millis" },
       "saleStateRowVersion": { "type": "integer" },

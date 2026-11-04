@@ -36,7 +36,7 @@
 | 명령 | 하는 일 |
 |---|---|
 | `reindex.sh status` | 별칭·색인 건수·소비 그룹 지연·영구 큐·DLT 를 보여 준다 |
-| `reindex.sh check products-vN` | 1 의 사전 확인만 한다(바꾸는 것 없음). 확인 항목: 정의 파일, 새 색인·그룹이 없음, ES green, 보관·ES 경보 없음, 지연 0·큐 0 |
+| `reindex.sh check products-vN` | 1 의 사전 확인만 한다(바꾸는 것 없음). 확인 항목: 정의 파일, 새 색인·그룹이 없음, ES green, 보관·ES 경보 없음, Logstash 구독 토픽이 Kafka 에 모두 있음(없으면 `lan.sh deploy <Kafka PC> kafka` — topics-init), 지연 0·큐 0 |
 | `reindex.sh start products-vN` | 사전 확인 → 백업 → env 변경(render 전) → es-init·logstash 재배포 |
 | `reindex.sh wait [초]` | 4 의 조건(지연 0·큐 0·DLT 증가 없음·건수 ≥ 이전 색인)을 기다린 뒤 전 문서를 대조한다(`updatedAtMs` 제외, 재생 중 새로 생긴 상품은 따로 표시) |
 | `reindex.sh switch` | 조건을 다시 확인한 뒤 5 의 별칭 교체 |
@@ -45,6 +45,7 @@
 | `reindex.sh drop products-vM` | 옛 색인 삭제. 별칭이나 Logstash 가 쓰지 않을 때만 |
 
 - 진행 상태는 `deploy/lan/.reindex.state`(git 제외)에 둔다.
+- `sku-prices`·`sku-handlings`(SKU 별 가격·센터 취급)는 별칭 그대로 둔다. 새 그룹이 같은 사건을 다시 읽어도 버전 비교로 바뀌지 않고, 새 상품 색인은 상품 사건을 받을 때 두 문서를 찾아 붙인다.
 - search-service 새 이미지는 switch 뒤에 배포한다.
 - finish 뒤 바뀐 그룹 값을 `search-index.env` 에 커밋한다.
 1. **사전 확인**

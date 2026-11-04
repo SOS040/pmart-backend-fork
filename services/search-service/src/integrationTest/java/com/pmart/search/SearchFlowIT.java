@@ -40,8 +40,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 상품·콘텐츠·판매 상태·가격 사건(Kafka) → <b>Logstash</b>(search-index.conf) → Elasticsearch(nori) → 검색 API
- * (ADR-0031). 실제 Kafka·Elasticsearch·Logstash 를 한 네트워크에 띄우고, 공개 카드·카테고리 트리·가용 조회는 WireMock(호스트). 사건
+ * 상품·콘텐츠·판매 상태·가격·센터 취급 사건(Kafka) → <b>Logstash</b>(search-index.conf) → Elasticsearch(nori) → 검색
+ * API (ADR-0031). 실제 Kafka·Elasticsearch·Logstash 를 한 네트워크에 띄우고, 공개 카드·카테고리 트리는 WireMock(호스트). 사건
  * 순서 뒤바뀜(가격이 상품보다 먼저)·재전달·옛 버전·한국어 형태소/부분 일치도 확인한다. Elasticsearch 는 시작 때 nori 를 설치한다(인터넷 필요).
  */
 @SpringBootTest(
@@ -53,8 +53,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock(
     @ConfigureWireMock(
         name = "content",
-        // 카드(Logstash 가 부름)·카테고리 트리·가용 조회(서비스가 부름)를 한 WireMock 이 맡는다(경로가 서로 다르다)
-        baseUrlProperties = {"pmart.search.product-base-url", "pmart.search.inventory-base-url"}))
+        // 카드(Logstash 가 부름)·카테고리 트리(서비스가 부름)를 한 WireMock 이 맡는다(경로가 서로 다르다)
+        baseUrlProperties = {"pmart.search.product-base-url"}))
 @Testcontainers
 @org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation.class)
 class SearchFlowIT {
@@ -95,9 +95,23 @@ class SearchFlowIT {
         () -> "http://" + ES.getHost() + ":" + ES.getMappedPort(9200));
   }
 
-  void startLogstash() {
+  void startLogstash() throws Exception {
     if (logstash != null) {
       return;
+    }
+    // 구독 토픽을 Logstash 보다 먼저 만든다 — 없는 토픽은 소비자 메타데이터 갱신(기본 5분)까지 못 읽는다. LAN 은 topics-init 이 만든다
+    try (var admin =
+        org.apache.kafka.clients.admin.AdminClient.create(
+            Map.of("bootstrap.servers", KAFKA.getBootstrapServers()))) {
+      var existing = admin.listTopics().names().get();
+      var wanted =
+          java.util.stream.Stream.of("commerce.product.v1", "commerce.pricing.v1", HANDLING_TOPIC)
+              .filter(t -> !existing.contains(t))
+              .map(t -> new org.apache.kafka.clients.admin.NewTopic(t, 1, (short) 1))
+              .toList();
+      if (!wanted.isEmpty()) {
+        admin.createTopics(wanted).all().get();
+      }
     }
     org.testcontainers.Testcontainers.exposeHostPorts(content.port());
     logstash =
@@ -136,7 +150,7 @@ class SearchFlowIT {
   RestClient http;
 
   @BeforeEach
-  void setUp() {
+  void setUp() throws Exception {
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1")
@@ -196,26 +210,6 @@ class SearchFlowIT {
                                         "MULTIPLE",
                                         "options",
                                         List.of("1L", "500ml"))))))));
-    // MFC-1: E-1 취급, E-3 취급 안 함, E-2 는 응답에 없음(불명)
-    content.stubFor(
-        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
-            .withQueryParam("mfcId", equalTo("MFC-1"))
-            .willReturn(
-                aResponse()
-                    .withHeader("Content-Type", "application/json")
-                    .withBody(
-                        mapper.writeValueAsString(
-                            Map.of(
-                                "items",
-                                List.of(
-                                    Map.of("sku", "E-1", "available", 3, "handlingEnabled", true),
-                                    Map.of(
-                                        "sku",
-                                        "E-3",
-                                        "available",
-                                        0,
-                                        "handlingEnabled",
-                                        false)))))));
   }
 
   void card(String productId, String name, int contentVersion) {
@@ -243,10 +237,19 @@ class SearchFlowIT {
 
   void send(String type, String aggregate, String id, long version, Map<String, Object> payload) {
     String topic =
-        type.equals("PriceVersionEffective") ? "commerce.pricing.v1" : "commerce.product.v1";
+        switch (type) {
+          case "PriceVersionEffective" -> "commerce.pricing.v1";
+          case "SkuHandlingChanged" -> HANDLING_TOPIC;
+          default -> "commerce.product.v1";
+        };
     String json =
         EventEnvelopeFixtures.envelope(type)
-            .from(topic.startsWith("commerce.pricing") ? "pricing-service" : "product-service")
+            .from(
+                switch (topic) {
+                  case "commerce.pricing.v1" -> "pricing-service";
+                  case HANDLING_TOPIC -> "mfc-inventory-service";
+                  default -> "product-service";
+                })
             .aggregate(aggregate, id, version)
             .payload(payload)
             .buildJson();
@@ -291,6 +294,22 @@ class SearchFlowIT {
             "effectiveAt", "2026-10-30T00:00:00Z"));
   }
 
+  static final String HANDLING_TOPIC = "mfc.sku-handling.v1";
+
+  /** mfc-inventory SkuHandlingChanged(센터·SKU 행 버전). */
+  void handling(String mfcId, String sku, boolean enabled, int version, boolean republished) {
+    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("mfcId", mfcId);
+    payload.put("sku", sku);
+    payload.put("handlingEnabled", enabled);
+    payload.put("version", version);
+    payload.put("changedAt", "2026-11-05T00:00:00Z");
+    if (republished) {
+      payload.put("republished", true);
+    }
+    send("SkuHandlingChanged", "SkuHandling", mfcId + ":" + sku, version, payload);
+  }
+
   JsonNode search(String query) {
     String body = http.get().uri("/search/products" + query).retrieve().body(String.class);
     return mapper.readTree(body == null ? "{}" : body);
@@ -318,8 +337,9 @@ class SearchFlowIT {
   @Test
   @org.junit.jupiter.api.Order(1) // 색인이 비어 있다고 가정한다(건수 단정) — 다른 시험보다 먼저
   void eventsBecomeSearchableAndStayConsistent() throws Exception {
-    // 가격이 상품보다 먼저 온 경우(E-2)
+    // 가격이 상품보다 먼저 온 경우(E-2), 센터 취급이 상품보다 먼저 온 경우(MFC-1 의 E-1)
     price("E-2", 1900, 1);
+    handling("MFC-1", "E-1", true, 1, false);
     product("PRD-1", 1, "E-1", "t02-c01", "2026-10-30T01:00:00Z");
     product("PRD-2", 1, "E-2", "t01-c02", "2026-10-30T01:00:00Z");
     product("PRD-3", 1, "E-3", "t02-c02", "2026-10-30T01:00:00Z");
@@ -329,6 +349,12 @@ class SearchFlowIT {
     contentPublished("PRD-3", 1, "2026-10-30T02:02:00Z");
     price("E-1", 4900, 1);
     price("E-3", 7900, 1);
+    // 상품 뒤에 온 취급: E-3 켬(1) → 끔(2) → 늦게 온 옛 사건 켬(1, 무시) → 재발행 끔(2, 같은 버전 — 바뀌지 않음). MFC-2 는 E-1 만 켬
+    handling("MFC-1", "E-3", true, 1, false);
+    handling("MFC-1", "E-3", false, 2, false);
+    handling("MFC-1", "E-3", true, 1, false);
+    handling("MFC-1", "E-3", false, 2, true);
+    handling("MFC-2", "E-1", true, 1, false);
 
     JsonNode all =
         await(
@@ -349,27 +375,27 @@ class SearchFlowIT {
     assertThat(tofu.path("carried").isNull() || tofu.path("carried").isMissingNode()).isTrue();
     assertThat(tofu.path("categoryPath").toString()).isEqualTo("[\"신선식품\",\"두부·계란\"]");
 
-    // 센터 취급 여부: 취급 안 함이 확인된 상품(PRD-3)은 기본으로 빠지고, 불명(PRD-2)은 남는다
-    JsonNode atMfc = search("?mfcId=MFC-1");
-    assertThat(ids(atMfc)).containsExactly("PRD-2", "PRD-1");
-    assertThat(atMfc.path("items").path(1).path("carried").asBoolean()).isTrue();
-    assertThat(atMfc.path("items").path(0).path("carried").isNull()).isTrue();
-    // BR-47: 한 번에 끝까지 읽었으면 total 도 뺀 뒤 기준
-    assertThat(atMfc.path("total").asInt()).isEqualTo(2);
-    // BR-47: 미취급(PRD-3)을 빼면 다음 문서로 채운다 — 빈 페이지 + 다음 커서가 아니다
-    JsonNode page1 = search("?mfcId=MFC-1&size=1");
-    assertThat(ids(page1)).containsExactly("PRD-2");
-    String fillCursor = page1.path("page").path("nextCursor").asString();
-    assertThat(fillCursor).isNotBlank();
-    JsonNode page2 = search("?mfcId=MFC-1&size=1&cursor=" + fillCursor);
-    assertThat(ids(page2)).containsExactly("PRD-1");
+    // 센터 취급 여부(색인 carriedMfcIds, 대표 SKU 기준 — 2026-11-05). 취급 레코드 없음(E-2)은 OFF, 끈 E-3 도 미취급.
+    // 기본(includeNotCarried=false)은 색인에서 거르므로 total 이 정확하고 다음 커서가 없다
+    JsonNode atMfc =
+        await("?mfcId=MFC-1", r -> ids(r).equals(List.of("PRD-1")) && r.path("total").asInt() == 1);
+    assertThat(atMfc.path("items").path(0).path("carried").asBoolean()).isTrue();
     assertThat(
-            page2.path("page").path("nextCursor").isNull()
-                || page2.path("page").path("nextCursor").isMissingNode())
+            atMfc.path("page").path("nextCursor").isNull()
+                || atMfc.path("page").path("nextCursor").isMissingNode())
         .isTrue();
     JsonNode withNotCarried = search("?mfcId=MFC-1&includeNotCarried=true");
     assertThat(ids(withNotCarried)).containsExactly("PRD-3", "PRD-2", "PRD-1");
+    assertThat(withNotCarried.path("total").asInt()).isEqualTo(3);
     assertThat(withNotCarried.path("items").path(0).path("carried").asBoolean()).isFalse();
+    assertThat(withNotCarried.path("items").path(1).path("carried").asBoolean()).isFalse();
+    assertThat(withNotCarried.path("items").path(2).path("carried").asBoolean()).isTrue();
+    assertThat(ids(await("?mfcId=MFC-2", r -> r.path("total").asInt() == 1)))
+        .containsExactly("PRD-1");
+    // 모르는 센터: 아무 상품도 취급하지 않음(빈 결과, total 0)
+    JsonNode unknown = search("?mfcId=MFC-NONE");
+    assertThat(ids(unknown)).isEmpty();
+    assertThat(unknown.path("total").asInt()).isZero();
 
     // 한국어 부분 일치(n-gram) · 카테고리 조상 · 가격 정렬
     assertThat(ids(search("?q=미역"))).containsExactly("PRD-1");
@@ -679,5 +705,14 @@ class SearchFlowIT {
     assertThat(ids(search("?q=생크림"))).contains("PRD-S3", "PRD-S4");
     assertThat(ids(search("?q=휘핑생크림"))).contains("PRD-S4").doesNotContain("PRD-S3");
     assertThat(ids(search("?q=블루투스무선이어폰"))).contains("PRD-S1").doesNotContain("PRD-S2");
+
+    // 초성 검색(2자 이상, 상품명 초성 nameChosung — 공백을 뺀 조각): "ㅅㅋㄹ" → 생크림·생 크림, "ㅎㅍ" → 휘핑만
+    assertThat(ids(search("?q=ㅅㅋㄹ"))).contains("PRD-S3", "PRD-S4");
+    assertThat(ids(search("?q=ㅎㅍ"))).contains("PRD-S4").doesNotContain("PRD-S3");
+    assertThat(ids(search("?q=ㅁㅅ ㅇㅇㅍ"))).contains("PRD-S1", "PRD-S2");
+    assertThat(ids(search("?q=ㅂㄹㅌㅅ"))).contains("PRD-S1").doesNotContain("PRD-S2");
+    // 자동완성도 같은 조건
+    String suggest = http.get().uri("/search/suggestions?q=ㅅㅋㄹ").retrieve().body(String.class);
+    assertThat(suggest).contains("생 크림").contains("생크림");
   }
 }
