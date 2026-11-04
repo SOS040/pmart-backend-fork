@@ -37,6 +37,8 @@
 | [platform-capabilities-code-map.md](platform-capabilities-code-map.md) | MSA 공통 기능 코드 지도 — 게이트웨이·디스커버리·설정·Resilience·모니터링·트레이싱·메시징·검색 | 현재 구현 |
 | [trace-correlation-plan.md](trace-correlation-plan.md) | 사가 하나를 traceId·correlationId 로 끝까지 따라가기(작업 A·B·C) — 구현·LAN 확인 완료 | 현재 구현 |
 | [observability-architecture.html](observability-architecture.html) · [.png](observability-architecture.png) | 관측 구성 한 장 그림(로그·지표·추적) | 현재 구현 |
+| [elk-in-pmart.md](elk-in-pmart.md) | ELK 를 상품 검색·로그 모니터링 두 용도로 쓰는 방식, 같은 ES 를 쓰는 대가 | 현재 구현 |
+| [../operations/lan-monitoring-and-backup.md](../operations/lan-monitoring-and-backup.md) | LAN 운영 설정 — watch.sh·Prometheus·경보 22개·Zipkin·로그 보존·Kafka 백업·메모리 상한 | 현재 구현 |
 | [elasticsearch-metrics.md](elasticsearch-metrics.md) | Elasticsearch 지표 수집(es-exporter → Prometheus)·경보 | 현재 구현 |
 | [debezium-usage-vs-eum.md](debezium-usage-vs-eum.md) | Debezium 사용 방식 — pmart(Outbox CDC) vs Eum(테이블 CDC 혼용) | 비교·참고 |
 
