@@ -532,6 +532,12 @@ EOF
     image: openzipkin/zipkin:3
     ports: ["9411:9411"]
     networks: { default: { ipv4_address: $ip_addr } }
+    # 메모리 저장소. 기본(힙 160m·span 50만)은 힙이 차서 OOM 재시작을 반복했다(2026-11-05 확인: 약 20시간 113번).
+    # span 상한을 줄이고 힙을 조금 늘린다. 대가: 오래된 추적은 먼저 지워진다. mem_limit 으로 다른 컨테이너를 보호
+    mem_limit: 512m
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m -XX:+ExitOnOutOfMemoryError"
+      MEM_MAX_SPANS: "50000"
 
 EOF
         ;;
