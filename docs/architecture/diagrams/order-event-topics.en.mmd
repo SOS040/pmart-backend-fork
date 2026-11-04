@@ -1,0 +1,83 @@
+%% PMart order · payment · cancellation event topic map — as implemented (2026-11-04, main 4342c58)
+%% English version of order-event-topics.mmd (keep both in sync)
+%% Render: npx @mermaid-js/mermaid-cli -i order-event-topics.en.mmd -o order-event-topics.en.png -s 2
+%% Synchronous HTTP (saga step calls) is in order-full-flow.mmd. This map shows only outbox → Debezium → Kafka → consumers.
+%% Topic name {domain}.{aggregate}.v{n} · key = aggregateId (same order/attempt stays ordered in one partition) · consumers = Spring Cloud Stream function bindings (ADR-0035), group = service name, per-record commit (RECORD)
+flowchart LR
+    classDef svc fill:#dbeafe,stroke:#1e40af,color:#0f172a
+    classDef deb fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+    classDef topic fill:#dcfce7,stroke:#15803d,color:#0f172a
+    classDef dlt fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    classDef none fill:#f1f5f9,stroke:#94a3b8,color:#475569,stroke-dasharray: 4 3
+
+    subgraph PUB["① Publish · outbox_event in the same TX"]
+        direction TB
+        ORD["order-service"]:::svc
+        PAY["payment-service"]:::svc
+        ORCH_P["order-orchestration"]:::svc
+        CLM_P["claim-service"]:::svc
+        FUL["mfc-fulfillment"]:::svc
+        CART_P["cart-service"]:::svc
+    end
+
+    subgraph CDC["② Debezium · Kafka Connect (PC3)"]
+        direction TB
+        DEB["One connector per service: outbox-&lt;service&gt;<br/>PostgresConnector · pgoutput<br/>publication pmart_outbox · slot pmart_outbox_&lt;service&gt;<br/>table public.outbox_event only · snapshot no_data<br/>── EventRouter SMT ──<br/>topic = outbox.topic column · key = aggregateid<br/>headers eventType · aggregateType · traceId · correlationId<br/>DELETE ignored · errors.tolerance=none"]:::deb
+    end
+
+    ORD --> DEB
+    PAY --> DEB
+    ORCH_P --> DEB
+    CLM_P --> DEB
+    FUL --> DEB
+    CART_P --> DEB
+
+    subgraph KAFKA["③ Kafka topics (PC2)"]
+        direction TB
+        T_ORDER["order.order.v1<br/>OrderConfirmed · OrderLineQuantityChanged<br/>OrderCancelled …"]:::topic
+        T_PAY["order.payment.v1<br/>PaymentApproved · PaymentFailed · PaymentResultUnknown<br/>PaymentMismatch · CompensationCancelResult · RefundResult"]:::topic
+        T_SAGA["order.saga.v1<br/>CheckoutSagaStateChanged · CompensationExecuted<br/>ReconciliationRequired"]:::topic
+        T_CLAIM["order.claim.v1<br/>ClaimOpened · CancellationRequested<br/>RefundIntentCreated · ClaimClosed"]:::topic
+        T_FUL["mfc.fulfillment.v1<br/>WorkStopResult"]:::topic
+        T_CART["commerce.cart.v1<br/>CartItemChangeApplied"]:::topic
+    end
+
+    DEB -- "order-service" --> T_ORDER
+    DEB -- "payment-service" --> T_PAY
+    DEB -- "order-orchestration" --> T_SAGA
+    DEB -- "claim-service" --> T_CLAIM
+    DEB -- "mfc-fulfillment" --> T_FUL
+    DEB -- "cart-service" --> T_CART
+
+    subgraph SUB["④ Consume · Spring Cloud Stream binding + InboxGuard"]
+        direction TB
+        C_ORCH["order-orchestration<br/>order.payment.v1 → kick() checkout saga, then re-check payment via GET<br/>order.claim.v1 → CancellationRequested starts cancellation saga S3"]:::svc
+        C_CLM["claim-service<br/>order.order.v1 → OrderCancelled: confirm cancel · create refund intent<br/>order.payment.v1 → RefundResult: refund outcome<br/>mfc.fulfillment.v1 → WorkStopResult: handed over = cannot cancel"]:::svc
+        C_CART["cart-service<br/>order.order.v1 → OrderConfirmed: remove ordered items from cart"]:::svc
+        C_CUST["customer-service<br/>order.order.v1 → OrderConfirmed: record first-purchase use<br/>OrderCancelled FULL: delete that record"]:::svc
+        C_NONE["No subscriber yet<br/>order.saga.v1 (catalog: backoffice-bff · BI · audit · case)<br/>commerce.cart.v1"]:::none
+    end
+
+    T_PAY --> C_ORCH
+    T_CLAIM --> C_ORCH
+    T_ORDER --> C_CLM
+    T_PAY --> C_CLM
+    T_FUL --> C_CLM
+    T_ORDER --> C_CART
+    T_ORDER --> C_CUST
+    T_SAGA -.-> C_NONE
+    T_CART -.-> C_NONE
+
+    subgraph DLQ["⑤ Processing failure · binder DLQ"]
+        direction TB
+        DLT["{original topic}.DLT<br/>e.g. order.payment.v1.DLT<br/>same partition · original headers and eventId kept"]:::dlt
+        DLROW["dead_letter table in each service DB<br/>status OPEN → REPLAYED / DISCARDED"]:::dlt
+        ALERT["Prometheus pmart_messaging_dead_letters_open{topic}<br/>→ alert DeadLetterOpen"]:::dlt
+    end
+
+    C_ORCH -. "3 retries exhausted" .-> DLT
+    C_CLM -. "3 retries exhausted" .-> DLT
+    C_CART -. "3 retries exhausted" .-> DLT
+    C_CUST -. "3 retries exhausted" .-> DLT
+    DLT --- DLROW
+    DLROW --> ALERT

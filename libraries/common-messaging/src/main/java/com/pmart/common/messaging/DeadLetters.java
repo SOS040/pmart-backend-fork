@@ -22,19 +22,19 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Header;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.kafka.core.KafkaOperations;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 미처리 메시지(dead letter) 기록·재처리·폐기 (ADR-0030). Kafka 오류 처리가 재시도를 다 쓰면 {@link #record} 로 이 서비스 DB 의
- * {@code dead_letter} 에 남긴다({@code {topic}.DLT} 발행과 별개). 같은 레코드(토픽·파티션·오프셋)는 한 번만 남는다.
+ * 미처리 메시지(dead letter) 기록·재처리·폐기 (ADR-0030, ADR-0035). Kafka 바인더가 재시도를 다 쓰면 DLQ 목적지를 정하는 {@link
+ * PmartDlqDestinationResolver} 가 {@link #record} 로 이 서비스 DB 의 {@code dead_letter} 에 남기고, 바인더가
+ * {@code {topic}.DLT} 로 보낸다. 같은 레코드(토픽·파티션·오프셋)는 한 번만 남는다. 재처리는 {@link
+ * DeadLetterRepublisher}(StreamBridge).
  *
  * <p>지표: {@code pmart.messaging.dead.letters.open{topic}}(DB 의 OPEN 건수 — 30초마다 다시 센다, 재기동해도 유지),
  * {@code pmart.messaging.dead.letters{topic}}(기록 수). 본문은 로그에 찍지 않는다.
@@ -84,7 +84,7 @@ public final class DeadLetters implements AutoCloseable {
 
   private final JdbcTemplate jdbc;
   private final ObjectMapper mapper;
-  private final KafkaOperations<Object, Object> kafka;
+  private final DeadLetterRepublisher republisher;
   private final Clock clock;
   private final @Nullable MeterRegistry meters;
   private final @Nullable MultiGauge openGauge;
@@ -93,13 +93,13 @@ public final class DeadLetters implements AutoCloseable {
   public DeadLetters(
       JdbcTemplate jdbc,
       ObjectMapper mapper,
-      KafkaOperations<Object, Object> kafka,
+      DeadLetterRepublisher republisher,
       Clock clock,
       @Nullable MeterRegistry meters,
       boolean refreshGauge) {
     this.jdbc = Objects.requireNonNull(jdbc);
     this.mapper = Objects.requireNonNull(mapper);
-    this.kafka = Objects.requireNonNull(kafka);
+    this.republisher = Objects.requireNonNull(republisher);
     this.clock = Objects.requireNonNull(clock);
     this.meters = meters;
     this.openGauge =
@@ -135,7 +135,7 @@ public final class DeadLetters implements AutoCloseable {
           .increment();
     }
     try {
-      String payload = record.value() == null ? null : record.value().toString();
+      String payload = text(record.value());
       Map<String, String> headers = new LinkedHashMap<>();
       String replayOf = null;
       for (Header h : record.headers()) {
@@ -159,7 +159,7 @@ public final class DeadLetters implements AutoCloseable {
               topic,
               record.partition(),
               record.offset(),
-              record.key() == null ? null : record.key().toString(),
+              text(record.key()),
               payload,
               mapper.writeValueAsString(headers),
               text(env, "eventId"),
@@ -245,17 +245,20 @@ public final class DeadLetters implements AutoCloseable {
       return find(id).orElseThrow().summary();
     }
     try {
-      ProducerRecord<Object, Object> out =
-          new ProducerRecord<>(d.summary().topic(), d.summary().key(), d.payload());
+      Map<String, byte[]> headers = new LinkedHashMap<>();
       d.headers()
           .forEach(
               (k, v) -> {
                 if (!REPLAY_OF_HEADER.equals(k)) {
-                  out.headers().add(k, Base64.getDecoder().decode(v));
+                  headers.put(k, Base64.getDecoder().decode(v));
                 }
               });
-      out.headers().add(REPLAY_OF_HEADER, id.toString().getBytes(StandardCharsets.UTF_8));
-      kafka.send(out).get(10, TimeUnit.SECONDS);
+      headers.put(REPLAY_OF_HEADER, id.toString().getBytes(StandardCharsets.UTF_8));
+      republisher.send(
+          d.summary().topic(),
+          d.summary().key(),
+          d.payload() == null ? null : d.payload().getBytes(StandardCharsets.UTF_8),
+          headers);
     } catch (Exception e) {
       jdbc.update(
           "UPDATE dead_letter SET status = 'OPEN', resolved_at = NULL, resolved_by = NULL, resolution_note = NULL"
@@ -347,6 +350,17 @@ public final class DeadLetters implements AutoCloseable {
     Map<String, String> out = new LinkedHashMap<>();
     mapper.readTree(json).properties().forEach(e -> out.put(e.getKey(), e.getValue().asString()));
     return out;
+  }
+
+  /** 바인더 레코드는 byte[](UTF-8), 그 밖은 문자열 표현. */
+  private static @Nullable String text(@Nullable Object value) {
+    if (value == null) {
+      return null;
+    }
+    if (value instanceof byte[] bytes) {
+      return new String(bytes, StandardCharsets.UTF_8);
+    }
+    return value.toString();
   }
 
   private @Nullable JsonNode envelope(@Nullable String payload) {

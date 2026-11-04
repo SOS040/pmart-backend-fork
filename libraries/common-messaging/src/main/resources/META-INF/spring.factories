@@ -1,1 +1,3 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\ncom.pmart.common.messaging.MessagingDefaultsPostProcessor
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.pmart.common.messaging.MessagingDefaultsPostProcessor,\
+com.pmart.common.messaging.StreamBindingDefaultsPostProcessor

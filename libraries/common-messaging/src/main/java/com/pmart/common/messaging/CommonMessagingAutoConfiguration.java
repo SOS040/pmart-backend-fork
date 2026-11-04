@@ -1,6 +1,5 @@
 package com.pmart.common.messaging;
 
-import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -9,17 +8,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
+import org.springframework.cloud.stream.binder.kafka.utils.DlqDestinationResolver;
+import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.kafka.core.KafkaOperations;
-import org.springframework.kafka.listener.CommonErrorHandler;
-import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
-import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.util.backoff.ExponentialBackOff;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -29,8 +25,12 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>{@link EventEnvelopeCodec}, {@link EventSchemaValidator}
  *   <li>{@link OutboxWriter}(JdbcTemplate 있을 때), {@link InboxGuard}(트랜잭션 매니저 있을 때)
  *   <li>Flyway 위치에 {@code classpath:db/migration/common} 추가(outbox/inbox 테이블)
- *   <li>Kafka 리스너 공통 오류 처리: 지수 백오프 재시도 후 {topic}.DLT (원 헤더·eventId 보존) + 서비스 DB dead_letter 기록
- *       ({@link DeadLetters}, 내부 API {@link DeadLetterController} — ADR-0030)
+ *   <li>업무 이벤트 소비(Spring Cloud Stream, ADR-0035): {@link EventConsumers}(→ {@link
+ *       PmartEventConsumer} 빈), 바인딩 기본값은 {@link StreamBindingDefaultsPostProcessor}, 설정 누락 검사
+ *       {@link ConsumerBindingVerifier}
+ *   <li>재시도를 다 쓴 메시지: Kafka 바인더 DLQ → {topic}.DLT({@link PmartDlqDestinationResolver}) + 서비스 DB
+ *       dead_letter 기록, 재처리는 StreamBridge({@link DeadLetters}, 내부 API {@link DeadLetterController}
+ *       — ADR-0030)
  * </ul>
  */
 // JdbcTemplate·트랜잭션 매니저가 먼저 만들어져야 @ConditionalOnBean 이 맞게
@@ -42,7 +42,8 @@ import tools.jackson.databind.ObjectMapper;
       "org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration",
       "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration",
       "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration",
-      "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration"
+      "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration",
+      "org.springframework.cloud.stream.function.FunctionConfiguration"
     })
 @EnableConfigurationProperties(MessagingProperties.class)
 public class CommonMessagingAutoConfiguration {
@@ -128,20 +129,27 @@ public class CommonMessagingAutoConfiguration {
     }
   }
 
-  /** 미처리 메시지 기록·재처리(ADR-0030). DB(JdbcTemplate)와 Kafka 가 있는 서비스만. */
+  /**
+   * 미처리 메시지 기록·재처리(ADR-0030). DB(JdbcTemplate)와 Spring Cloud Stream 이 있는 서비스만. 재처리는 StreamBridge.
+   */
   @Bean
   @ConditionalOnMissingBean
-  @ConditionalOnBean({JdbcTemplate.class, KafkaOperations.class})
+  @ConditionalOnBean(JdbcTemplate.class)
+  @ConditionalOnClass(StreamBridge.class)
   public DeadLetters pmartDeadLetters(
       JdbcTemplate jdbc,
       EventEnvelopeCodec codec,
-      KafkaOperations<Object, Object> kafka,
+      ObjectProvider<StreamBridge> bridge,
       ObjectProvider<java.time.Clock> clock,
       ObjectProvider<io.micrometer.core.instrument.MeterRegistry> meters) {
+    // StreamBridge 는 재처리할 때 꺼낸다(바인더 구성 순서와 무관하게)
+    DeadLetterRepublisher republisher =
+        (topic, key, payload, headers) ->
+            new StreamBridgeRepublisher(bridge.getObject()).send(topic, key, payload, headers);
     return new DeadLetters(
         jdbc,
         codec.mapper(),
-        kafka,
+        republisher,
         clock.getIfAvailable(java.time.Clock::systemUTC),
         meters.getIfAvailable(),
         true);
@@ -155,38 +163,26 @@ public class CommonMessagingAutoConfiguration {
     return new DeadLetterController(deadLetters);
   }
 
-  /**
-   * Spring Kafka 리스너 컨테이너 기본 오류 처리. 서비스가 CommonErrorHandler 빈을 정의하면 그쪽이 우선. 재시도를 다 쓰면 {topic}.DLT 로
-   * 보내고(실패하면 다시 시도), 이어서 dead_letter 에 기록한다(기록 실패는 삼킨다 — DLT 사본이 있다).
-   */
+  /** 업무 이벤트 소비 함수 공장(ADR-0035). */
   @Bean
-  @ConditionalOnMissingBean(CommonErrorHandler.class)
-  @ConditionalOnBean(KafkaOperations.class)
-  public CommonErrorHandler pmartKafkaErrorHandler(
-      KafkaOperations<Object, Object> template,
-      MessagingProperties props,
+  @ConditionalOnMissingBean
+  @ConditionalOnBean(InboxGuard.class)
+  public EventConsumers pmartEventConsumers(EventEnvelopeCodec codec, InboxGuard inbox) {
+    return new EventConsumers(codec, inbox);
+  }
+
+  /** Kafka 바인더 DLQ 목적지 = {topic}.DLT + dead_letter 기록(ADR-0030·0035). DLQ 가 켜진 업무 바인딩에만 쓰인다. */
+  @Bean
+  @ConditionalOnMissingBean(DlqDestinationResolver.class)
+  @ConditionalOnClass(DlqDestinationResolver.class)
+  public DlqDestinationResolver pmartDlqDestinationResolver(
       ObjectProvider<DeadLetters> deadLetters) {
-    DeadLetterPublishingRecoverer dlt =
-        new DeadLetterPublishingRecoverer(
-            template,
-            (record, ex) ->
-                new TopicPartition(Topics.deadLetter(record.topic()), record.partition()));
-    org.springframework.kafka.listener.ConsumerRecordRecoverer recoverer =
-        (record, ex) -> {
-          dlt.accept(record, ex);
-          DeadLetters d = deadLetters.getIfAvailable();
-          if (d != null) {
-            d.record(record, ex);
-          }
-        };
-    ExponentialBackOff backOff =
-        new ExponentialBackOff(props.getConsumer().getInitialBackoffMs(), 2.0);
-    backOff.setMaxInterval(props.getConsumer().getMaxBackoffMs());
-    backOff.setMaxAttempts(props.getConsumer().getMaxRetries());
-    DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
-    handler.setCommitRecovered(true);
-    handler.addNotRetryableExceptions(
-        EventSchemaValidator.EventSchemaViolation.class, IllegalArgumentException.class);
-    return handler;
+    return new PmartDlqDestinationResolver(deadLetters);
+  }
+
+  /** {@link PmartEventConsumer} 빈이 설정 저장소 바인딩에 빠져 있으면 기동을 멈춘다(조용히 소비하지 않는 일을 막는다). */
+  @Bean
+  public ConsumerBindingVerifier pmartConsumerBindingVerifier() {
+    return new ConsumerBindingVerifier();
   }
 }

@@ -1,0 +1,23 @@
+package com.pmart.storefront.infrastructure;
+
+import com.pmart.common.messaging.EventConsumers;
+import com.pmart.common.messaging.PmartEventConsumer;
+import com.pmart.storefront.application.DisplayProjector;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * 상품(commerce.product.v1)·가격(commerce.pricing.v1) 사건 구독 → 진열 투영.
+ *
+ * <p>Spring Cloud Stream 함수 바인딩(ADR-0035): 토픽·함수 이름은 설정 저장소 {@code <서비스>.yml}, 그룹·재시도·DLQ 는
+ * common-messaging 기본값.
+ */
+@Configuration(proxyBeanMethods = false)
+class CatalogEventConsumers {
+
+  /** commerce.product.v1,commerce.pricing.v1 — 바인딩 catalogEvents-in-0(설정 저장소). */
+  @Bean
+  PmartEventConsumer catalogEvents(EventConsumers consumers, DisplayProjector projector) {
+    return consumers.of(projector::apply);
+  }
+}

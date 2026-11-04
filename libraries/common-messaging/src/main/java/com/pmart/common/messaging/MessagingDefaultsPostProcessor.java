@@ -12,9 +12,11 @@ import org.springframework.core.env.MapPropertySource;
  * Kafka 기본값 (가장 낮은 우선순위). 서비스 설정이 항상 이긴다.
  *
  * <ul>
- *   <li>producer: 멱등, acks=all (DLT·직접 발행용. 도메인 이벤트 발행은 Debezium)
- *   <li>consumer: 수동 커밋(리스너 정상 반환 후), earliest, String 역직렬화(봉투는 코드에서 decode)
- *   <li>consumer group = spring.application.name
+ *   <li>producer: 멱등, acks=all, String 직렬화 (Boot KafkaTemplate — 운영 코드는 쓰지 않고 통합 시험이 이벤트를 넣을 때 쓴다.
+ *       도메인 이벤트 발행은 Debezium, DLT·재처리는 Spring Cloud Stream 바인더 — ADR-0035)
+ *   <li>consumer: 수동 커밋, earliest, String 역직렬화, group = spring.application.name. Kafka 바인더가 이 값을 자기
+ *       클라이언트에 합치지만, 업무 바인딩의 직렬화·offset·그룹은 {@link StreamBindingDefaultsPostProcessor} 가 바인딩마다 다시
+ *       정한다
  * </ul>
  *
  * <p>Spring Cloud Stream Kafka 바인더(Bus, ADR-0033)의 {@code KafkaBinderEnvironmentPostProcessor} 도 가장

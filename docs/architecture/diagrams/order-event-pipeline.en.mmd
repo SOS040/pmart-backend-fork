@@ -1,0 +1,86 @@
+%% PMart delivery path of one event (consume · DLT · replay = Spring Cloud Stream, ADR-0035) — outbox → Debezium → Kafka → consumer, retry · DLT · replay (2026-11-04, main 4342c58)
+%% English version of order-event-pipeline.mmd (keep both in sync)
+%% Render: npx @mermaid-js/mermaid-cli -i order-event-pipeline.en.mmd -o order-event-pipeline.en.png -s 2
+%% Example event: payment-service PaymentApproved → order-orchestration (other topics/services use the same shared-library path)
+sequenceDiagram
+    autonumber
+    participant SVC  as payment-service<br/>(business TX)
+    participant PDB  as payment DB<br/>outbox_event · WAL
+    participant DEB  as Debezium connector<br/>outbox-payment-service
+    participant K    as Kafka<br/>order.payment.v1
+    participant LIS  as order-orchestration<br/>Stream binding paymentEvents
+    participant IDB  as orchestration DB<br/>inbox_event · dead_letter
+    participant EH   as Kafka binder<br/>retry · DLQ
+    participant DLT  as Kafka<br/>order.payment.v1.DLT
+    participant OPS  as Prometheus ·<br/>Alertmanager · operator
+
+    %%─────────────────────────────────────────
+    Note over SVC,PDB: ① Publish — OutboxWriter.append (IllegalStateException outside an active transaction)
+    %%─────────────────────────────────────────
+    rect rgb(255, 248, 220)
+        SVC->>SVC: EventSchemaValidator — rejects events that do not match the contract (contracts/events, ENFORCE)
+        SVC->>PDB: BEGIN · payment_attempt CONFIRMING → APPROVED
+        SVC->>PDB: INSERT outbox_event (id=eventId, aggregatetype, aggregateid,<br/>type, topic='order.payment.v1', payload jsonb, trace_id, correlation_id)
+        SVC->>PDB: DELETE outbox_event WHERE id = eventId (delete-after-insert, table stays empty)
+        SVC->>PDB: COMMIT — business change and event commit together or not at all
+    end
+
+    %%─────────────────────────────────────────
+    Note over PDB,K: ② Capture and route — Kafka Connect (PC3)
+    %%─────────────────────────────────────────
+    rect rgb(237, 233, 254)
+        PDB-->>DEB: logical replication (pgoutput, publication pmart_outbox, slot pmart_outbox_{service DB})
+        DEB->>DEB: uses INSERT only · DELETE ignored (no tombstone)
+        DEB->>DEB: EventRouter — topic ← topic column, key ← aggregateid,<br/>value ← payload (string as is), headers ← eventType · aggregateType · traceId · correlationId
+        DEB->>K: produce (key = paymentAttemptId → same attempt, same partition, order kept)
+        Note over DEB: on failure errors.tolerance=none → task FAILED (never skips)<br/>slot position is kept, so it resumes after recovery · watch.sh monitors Connect
+    end
+
+    %%─────────────────────────────────────────
+    Note over K,IDB: ③ Consume — group order-orchestration-service · read_committed · ack-mode RECORD
+    %%─────────────────────────────────────────
+    K->>LIS: poll (byte[] → EventConsumers: UTF-8 → EventEnvelopeCodec.decode)
+    rect rgb(220, 240, 255)
+        LIS->>IDB: InboxGuard.process — BEGIN · INSERT inbox_event (source_system, event_id)
+        alt already present (DuplicateKeyException)
+            IDB-->>LIS: duplicate → roll back, handler not called
+        else first time
+            LIS->>LIS: sagas.onPaymentEvent → kick(sagaId) after commit
+            LIS->>IDB: COMMIT (inbox row + business change)
+        end
+        LIS-->>K: listener returns normally → offset commit (after the business change)
+        Note over LIS: the saga does not trust event values — it re-checks with GET /internal/payments/{id}<br/>if the event is late or lost, the saga sweep (10 s) reaches the same result
+    end
+
+    %%─────────────────────────────────────────
+    Note over LIS,OPS: ④ Processing failure — retry → DLT → dead_letter → alert (ADR-0030)
+    %%─────────────────────────────────────────
+    rect rgb(255, 230, 230)
+        LIS--xEH: handler throws (inbox row rolls back too → can be processed again)
+        alt not retryable (IllegalArgumentException)
+            EH->>EH: go straight to recovery
+        else anything else
+            loop exponential backoff 1 s → 2 s → 4 s (max 10 s, at most 3 retries)
+                EH->>LIS: redeliver the same record
+            end
+        end
+        EH->>IDB: PmartDlqDestinationResolver → DeadLetters.record → INSERT dead_letter status=OPEN<br/>(topic · partition · offset · eventId · eventType · exception) — errors swallowed
+        EH->>DLT: binder DLQ → order.payment.v1.DLT ({topic}.DLT chosen by the resolver)<br/>(original partition · key and body bytes as is + exception headers)
+        EH-->>K: recovery done → offset commit, move to next record (partition not blocked)
+        IDB-->>OPS: gauge pmart_messaging_dead_letters_open{topic} (every 30 s) · counter pmart_messaging_dead_letters
+        OPS->>OPS: DeadLetterOpen alert (OPEN > 0)
+    end
+
+    %%─────────────────────────────────────────
+    Note over OPS,K: ⑤ Operator action — internal API /api/v1/internal/dead-letters (in each service)
+    %%─────────────────────────────────────────
+    rect rgb(235, 245, 235)
+        OPS->>IDB: GET ?status=OPEN · GET /{id} (body and headers)
+        alt fix the cause, then replay
+            OPS->>IDB: POST /{id}/replays → status REPLAYED
+            IDB->>K: StreamBridge (sync) → republish to original topic order.payment.v1 with same key, body, headers + pmart-replay-of header
+            Note over K,LIS: other subscribers that already handled it (claim-service, etc.) skip it via InboxGuard (same eventId)<br/>if the replay fails again, a new dead_letter row is created (replay_of = original id)
+        else do not process
+            OPS->>IDB: POST /{id}/discards { reason } → status DISCARDED
+        end
+    end

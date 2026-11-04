@@ -1,0 +1,85 @@
+%% PMart 이벤트 한 건의 전달 경로 (소비·DLT·재처리 = Spring Cloud Stream, ADR-0035) — outbox → Debezium → Kafka → 소비자, 재시도·DLT·재처리 (2026-11-04, main 4342c58)
+%% 렌더: npx @mermaid-js/mermaid-cli -i order-event-pipeline.mmd -o order-event-pipeline.png -s 2
+%% 예시 사건: payment-service PaymentApproved → order-orchestration (다른 토픽·서비스도 같은 공통 라이브러리 경로)
+sequenceDiagram
+    autonumber
+    participant SVC  as payment-service<br/>(업무 TX)
+    participant PDB  as payment DB<br/>outbox_event · WAL
+    participant DEB  as Debezium connector<br/>outbox-payment-service
+    participant K    as Kafka<br/>order.payment.v1
+    participant LIS  as order-orchestration<br/>Stream 바인딩 paymentEvents
+    participant IDB  as orchestration DB<br/>inbox_event · dead_letter
+    participant EH   as Kafka 바인더<br/>재시도·DLQ
+    participant DLT  as Kafka<br/>order.payment.v1.DLT
+    participant OPS  as Prometheus ·<br/>Alertmanager · 운영자
+
+    %%─────────────────────────────────────────
+    Note over SVC,PDB: ① 발행 — OutboxWriter.append (활성 트랜잭션 밖이면 IllegalStateException)
+    %%─────────────────────────────────────────
+    rect rgb(255, 248, 220)
+        SVC->>SVC: EventSchemaValidator — 계약(contracts/events)에 안 맞으면 저장 거부 (ENFORCE)
+        SVC->>PDB: BEGIN · payment_attempt CONFIRMING → APPROVED
+        SVC->>PDB: INSERT outbox_event (id=eventId, aggregatetype, aggregateid,<br/>type, topic='order.payment.v1', payload jsonb, trace_id, correlation_id)
+        SVC->>PDB: DELETE outbox_event WHERE id = eventId (delete-after-insert, 표는 비어 있음)
+        SVC->>PDB: COMMIT — 업무 변경과 이벤트가 함께 확정되거나 함께 사라짐
+    end
+
+    %%─────────────────────────────────────────
+    Note over PDB,K: ② 캡처·라우팅 — Kafka Connect (PC3)
+    %%─────────────────────────────────────────
+    rect rgb(237, 233, 254)
+        PDB-->>DEB: 논리 복제 (pgoutput, publication pmart_outbox, slot pmart_outbox_{서비스 DB})
+        DEB->>DEB: INSERT 만 사용 · DELETE 무시 (tombstone 없음)
+        DEB->>DEB: EventRouter — topic ← topic 열, key ← aggregateid,<br/>value ← payload(문자열 그대로), headers ← eventType · aggregateType · traceId · correlationId
+        DEB->>K: produce (key = paymentAttemptId → 같은 시도는 같은 파티션, 순서 유지)
+        Note over DEB: 실패 시 errors.tolerance=none → task FAILED (건너뛰지 않음)<br/>slot 위치가 남아 있어 복구 후 이어서 보냄 · watch.sh 가 connect 상태 감시
+    end
+
+    %%─────────────────────────────────────────
+    Note over K,IDB: ③ 소비 — group order-orchestration-service · read_committed · ack-mode RECORD
+    %%─────────────────────────────────────────
+    K->>LIS: poll (byte[] → EventConsumers: UTF-8 → EventEnvelopeCodec.decode)
+    rect rgb(220, 240, 255)
+        LIS->>IDB: InboxGuard.process — BEGIN · INSERT inbox_event (source_system, event_id)
+        alt 이미 있음 (DuplicateKeyException)
+            IDB-->>LIS: 중복 → 롤백, 핸들러 호출 안 함
+        else 처음
+            LIS->>LIS: sagas.onPaymentEvent → 커밋 후 kick(sagaId)
+            LIS->>IDB: COMMIT (inbox 기록 + 업무 반영)
+        end
+        LIS-->>K: 리스너 정상 반환 → offset 커밋 (업무 반영 뒤)
+        Note over LIS: 사가는 이벤트 값을 믿지 않고 GET /internal/payments/{id} 로 재확인<br/>이벤트가 늦거나 없어도 사가 sweep(10초)이 같은 결과에 도달
+    end
+
+    %%─────────────────────────────────────────
+    Note over LIS,OPS: ④ 처리 실패 — 재시도 → DLT → dead_letter → 경보 (ADR-0030)
+    %%─────────────────────────────────────────
+    rect rgb(255, 230, 230)
+        LIS--xEH: 핸들러 예외 (inbox 기록도 함께 롤백 → 다시 처리 가능)
+        alt 재시도 불가 (IllegalArgumentException)
+            EH->>EH: 바로 복구 단계로
+        else 그 외
+            loop 지수 백오프 1초 → 2초 → 4초 (최대 10초, 최대 3회)
+                EH->>LIS: 같은 레코드 다시 전달
+            end
+        end
+        EH->>IDB: PmartDlqDestinationResolver → DeadLetters.record → dead_letter INSERT status=OPEN<br/>(topic · partition · offset · eventId · eventType · 예외) — 실패해도 삼킴
+        EH->>DLT: 바인더 DLQ → order.payment.v1.DLT (리졸버가 정한 {topic}.DLT)<br/>(원래 파티션 · key·본문 바이트 그대로 + 예외 헤더)
+        EH-->>K: 복구 끝 → offset 커밋, 다음 레코드로 진행 (파티션 막힘 없음)
+        IDB-->>OPS: gauge pmart_messaging_dead_letters_open{topic} (30초마다) · counter pmart_messaging_dead_letters
+        OPS->>OPS: DeadLetterOpen 경보 (OPEN > 0)
+    end
+
+    %%─────────────────────────────────────────
+    Note over OPS,K: ⑤ 운영자 처리 — 내부 API /api/v1/internal/dead-letters (각 서비스)
+    %%─────────────────────────────────────────
+    rect rgb(235, 245, 235)
+        OPS->>IDB: GET ?status=OPEN · GET /{id} (본문·헤더)
+        alt 원인 수정 후 재처리
+            OPS->>IDB: POST /{id}/replays → status REPLAYED
+            IDB->>K: StreamBridge(sync) → 원 토픽 order.payment.v1 에 같은 key·본문·헤더 + pmart-replay-of 헤더로 재발행
+            Note over K,LIS: 이미 처리한 다른 구독자(claim-service 등)는 같은 eventId 라 InboxGuard 가 건너뜀<br/>재처리가 또 실패하면 새 dead_letter 행(replay_of = 원래 id)
+        else 처리하지 않음
+            OPS->>IDB: POST /{id}/discards { reason } → status DISCARDED
+        end
+    end

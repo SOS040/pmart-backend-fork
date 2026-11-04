@@ -2,37 +2,32 @@ package com.pmart.common.messaging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.pmart.common.messaging.DeadLetters.Status;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.listener.ListenerExecutionFailedException;
-import org.springframework.kafka.support.SendResult;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.json.JsonMapper;
 
-/** 실제 PostgreSQL 에서 미처리 메시지 기록(V0_0_3)·조회·재처리·폐기·지표를 검증한다(ADR-0030). Kafka 발행은 대역. Docker 필요. */
+/**
+ * 실제 PostgreSQL 에서 미처리 메시지 기록(V0_0_3)·조회·재처리·폐기·지표를 검증한다(ADR-0030). 재발행은 대역({@link
+ * DeadLetterRepublisher} — 운영은 StreamBridge, {@code StreamConsumerDlqIT} 가 실제로 확인). Docker 필요.
+ */
 @Testcontainers
 class DeadLettersPostgresIT {
 
@@ -45,8 +40,18 @@ class DeadLettersPostgresIT {
 
   static JdbcTemplate jdbc;
 
-  @SuppressWarnings("unchecked")
-  final KafkaOperations<Object, Object> kafka = mock(KafkaOperations.class);
+  /** 보낸 것을 모으는 대역. failNext 면 예외. */
+  record Sent(String topic, String key, byte[] payload, Map<String, byte[]> headers) {}
+
+  final List<Sent> sent = new ArrayList<>();
+  boolean failNext;
+  final DeadLetterRepublisher republisher =
+      (topic, key, payload, headers) -> {
+        if (failNext) {
+          throw new RuntimeException("broker down");
+        }
+        sent.add(new Sent(topic, key, payload, headers));
+      };
 
   final SimpleMeterRegistry meters = new SimpleMeterRegistry();
   DeadLetters deadLetters;
@@ -64,10 +69,11 @@ class DeadLettersPostgresIT {
   @BeforeEach
   void setUp() {
     jdbc.update("DELETE FROM dead_letter");
-    reset(kafka);
+    sent.clear();
+    failNext = false;
     deadLetters =
         new DeadLetters(
-            jdbc, JsonMapper.builder().build(), kafka, Clock.systemUTC(), meters, false);
+            jdbc, JsonMapper.builder().build(), republisher, Clock.systemUTC(), meters, false);
   }
 
   static ConsumerRecord<String, String> record(String topic, long offset, String eventId) {
@@ -126,8 +132,6 @@ class DeadLettersPostgresIT {
 
   @Test
   void replayRepublishesSameKeyBodyHeadersAndIsIdempotent() {
-    when(kafka.send(any(ProducerRecord.class)))
-        .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
     deadLetters.record(record("order.payment.v1", 8, UUID.randomUUID().toString()), failure());
     UUID id = deadLetters.list(Status.OPEN, null, 50).get(0).id();
 
@@ -136,25 +140,19 @@ class DeadLettersPostgresIT {
     assertThat(replayed.resolvedBy()).isEqualTo("ops-1");
     assertThat(openGauge("order.payment.v1")).isZero();
 
-    @SuppressWarnings("unchecked")
-    ArgumentCaptor<ProducerRecord<Object, Object>> sent =
-        ArgumentCaptor.forClass(ProducerRecord.class);
-    verify(kafka).send(sent.capture());
-    ProducerRecord<Object, Object> out = sent.getValue();
+    assertThat(sent).hasSize(1);
+    Sent out = sent.get(0);
     assertThat(out.topic()).isEqualTo("order.payment.v1");
     assertThat(out.key()).isEqualTo("ORD-1");
-    assertThat(new String(out.headers().lastHeader("traceparent").value(), StandardCharsets.UTF_8))
+    assertThat(new String(out.payload(), StandardCharsets.UTF_8)).contains("RefundResult");
+    assertThat(new String(out.headers().get("traceparent"), StandardCharsets.UTF_8))
         .isEqualTo("00-abc-def-01");
-    assertThat(
-            new String(
-                out.headers().lastHeader(DeadLetters.REPLAY_OF_HEADER).value(),
-                StandardCharsets.UTF_8))
+    assertThat(new String(out.headers().get(DeadLetters.REPLAY_OF_HEADER), StandardCharsets.UTF_8))
         .isEqualTo(id.toString());
 
     // 두 번째 재처리는 다시 보내지 않는다
-    reset(kafka);
     assertThat(deadLetters.replay(id, "ops-2").resolvedBy()).isEqualTo("ops-1");
-    verify(kafka, never()).send(any(ProducerRecord.class));
+    assertThat(sent).hasSize(1);
 
     // 재처리한 메시지가 다시 실패하면 새 행이 원 행을 가리킨다
     ConsumerRecord<String, String> again =
@@ -168,8 +166,7 @@ class DeadLettersPostgresIT {
 
   @Test
   void failedPublishLeavesItOpen() {
-    when(kafka.send(any(ProducerRecord.class)))
-        .thenReturn(CompletableFuture.failedFuture(new RuntimeException("broker down")));
+    failNext = true;
     deadLetters.record(record("order.claim.v1", 1, UUID.randomUUID().toString()), failure());
     UUID id = deadLetters.list(null, "order.claim.v1", 50).get(0).id();
 
@@ -189,6 +186,27 @@ class DeadLettersPostgresIT {
     assertThat(deadLetters.discard(id, "again", "ops-2").resolvedBy()).isEqualTo("ops-1");
     assertThatThrownBy(() -> deadLetters.replay(id, "ops-1"))
         .isInstanceOf(DeadLetters.StateConflict.class);
+  }
+
+  @Test
+  void byteArrayRecordFromBinderIsDecodedAsUtf8() {
+    String eventId = UUID.randomUUID().toString();
+    String json =
+        "{\"eventId\":\""
+            + eventId
+            + "\",\"eventType\":\"OrderCancelled\",\"sourceSystem\":\"order-service\"}";
+    deadLetters.record(
+        new ConsumerRecord<byte[], byte[]>(
+            "order.order.v1",
+            0,
+            5L,
+            "ORD-9".getBytes(StandardCharsets.UTF_8),
+            json.getBytes(StandardCharsets.UTF_8)),
+        failure());
+    var s = deadLetters.list(Status.OPEN, "order.order.v1", 50).get(0);
+    assertThat(s.key()).isEqualTo("ORD-9");
+    assertThat(s.eventId()).isEqualTo(eventId);
+    assertThat(deadLetters.find(s.id()).orElseThrow().payload()).isEqualTo(json);
   }
 
   @Test

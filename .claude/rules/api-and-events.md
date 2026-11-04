@@ -30,6 +30,7 @@ paths:
 - 확정된 도메인 사건만 이벤트로 발행.
 - 업무 변경과 Outbox 저장은 같은 로컬 트랜잭션.
 - 소비자는 Inbox 또는 동등한 멱등 처리 기록을 유지.
+- 소비자는 Spring Cloud Stream 함수 바인딩(ADR-0035): `EventConsumers.of(...)` 로 만든 `PmartEventConsumer` 빈 + 설정 저장소 `<서비스>.yml` 의 `spring.cloud.function.definition`·`spring.cloud.stream.bindings.<fn>-in-0.destination`(그 뒤 `config-copies.sh sync`). 그룹·재시도·DLQ·커밋은 common-messaging 이 넣는다. `@KafkaListener` 와 운영 코드의 KafkaTemplate 은 쓰지 않는다(발행은 outbox → Debezium, 재처리는 StreamBridge).
 - 업무 반영 후 offset 커밋. 재전달을 안전하게 처리.
 - 필수 메타데이터: `eventId`, `aggregateId`, `aggregateVersion`, `schemaVersion`, `occurredAt`, `correlationId`.
 - 순서가 필요한 사건은 안정적인 파티션 키 사용 (보통 aggregateId).

@@ -1,0 +1,83 @@
+%% PMart 주문·결제·취소 이벤트 토픽 지도 — 구현된 코드 기준 (2026-11-04, main 4342c58)
+%% 렌더: npx @mermaid-js/mermaid-cli -i order-event-topics.mmd -o order-event-topics.png -s 2
+%% 동기 HTTP(사가 단계 호출)는 order-full-flow.mmd 참고. 여기는 outbox → Debezium → Kafka → 소비자 경로만.
+%% 토픽 이름 {domain}.{aggregate}.v{n} · key = aggregateId (같은 주문·시도는 한 파티션에서 순서 유지) · 소비자 = Spring Cloud Stream 함수 바인딩(ADR-0035), group = 서비스 이름, 한 건씩 커밋(RECORD)
+flowchart LR
+    classDef svc fill:#dbeafe,stroke:#1e40af,color:#0f172a
+    classDef ob fill:#fef3c7,stroke:#b45309,color:#0f172a
+    classDef deb fill:#ede9fe,stroke:#6d28d9,color:#0f172a
+    classDef topic fill:#dcfce7,stroke:#15803d,color:#0f172a
+    classDef dlt fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    classDef none fill:#f1f5f9,stroke:#94a3b8,color:#475569,stroke-dasharray: 4 3
+
+    subgraph PUB["① 발행 · 같은 TX 에 outbox_event"]
+        direction TB
+        ORD["order-service"]:::svc
+        PAY["payment-service"]:::svc
+        ORCH_P["order-orchestration"]:::svc
+        CLM_P["claim-service"]:::svc
+        FUL["mfc-fulfillment"]:::svc
+        CART_P["cart-service"]:::svc
+    end
+
+    subgraph CDC["② Debezium · Kafka Connect (PC3)"]
+        direction TB
+        DEB["서비스마다 커넥터 1개 outbox-&lt;서비스&gt;<br/>PostgresConnector · pgoutput<br/>publication pmart_outbox · slot pmart_outbox_&lt;서비스&gt;<br/>table public.outbox_event만 · snapshot no_data<br/>── EventRouter SMT ──<br/>topic = outbox.topic 열 · key = aggregateid<br/>headers eventType · aggregateType · traceId · correlationId<br/>DELETE 는 무시 · errors.tolerance=none"]:::deb
+    end
+
+    ORD --> DEB
+    PAY --> DEB
+    ORCH_P --> DEB
+    CLM_P --> DEB
+    FUL --> DEB
+    CART_P --> DEB
+
+    subgraph KAFKA["③ Kafka 토픽 (PC2)"]
+        direction TB
+        T_ORDER["order.order.v1<br/>OrderConfirmed · OrderLineQuantityChanged<br/>OrderCancelled …"]:::topic
+        T_PAY["order.payment.v1<br/>PaymentApproved · PaymentFailed · PaymentResultUnknown<br/>PaymentMismatch · CompensationCancelResult · RefundResult"]:::topic
+        T_SAGA["order.saga.v1<br/>CheckoutSagaStateChanged · CompensationExecuted<br/>ReconciliationRequired"]:::topic
+        T_CLAIM["order.claim.v1<br/>ClaimOpened · CancellationRequested<br/>RefundIntentCreated · ClaimClosed"]:::topic
+        T_FUL["mfc.fulfillment.v1<br/>WorkStopResult"]:::topic
+        T_CART["commerce.cart.v1<br/>CartItemChangeApplied"]:::topic
+    end
+
+    DEB -- "order-service" --> T_ORDER
+    DEB -- "payment-service" --> T_PAY
+    DEB -- "order-orchestration" --> T_SAGA
+    DEB -- "claim-service" --> T_CLAIM
+    DEB -- "mfc-fulfillment" --> T_FUL
+    DEB -- "cart-service" --> T_CART
+
+    subgraph SUB["④ 구독 · Spring Cloud Stream 바인딩 + InboxGuard"]
+        direction TB
+        C_ORCH["order-orchestration<br/>order.payment.v1 → 결제 사가 kick() 후 결제를 GET 으로 재확인<br/>order.claim.v1 → CancellationRequested 로 취소 사가 S3 시작"]:::svc
+        C_CLM["claim-service<br/>order.order.v1 → OrderCancelled: 취소 확정·환불 의도<br/>order.payment.v1 → RefundResult: 환불 결과<br/>mfc.fulfillment.v1 → WorkStopResult: 인계됨이면 취소 불가"]:::svc
+        C_CART["cart-service<br/>order.order.v1 → OrderConfirmed: 주문분 장바구니 정리"]:::svc
+        C_CUST["customer-service<br/>order.order.v1 → OrderConfirmed: 첫 구매 사용 기록<br/>OrderCancelled FULL: 기록 삭제"]:::svc
+        C_NONE["구독자 미구현<br/>order.saga.v1 (카탈로그: backoffice-bff · BI · audit · case)<br/>commerce.cart.v1"]:::none
+    end
+
+    T_PAY --> C_ORCH
+    T_CLAIM --> C_ORCH
+    T_ORDER --> C_CLM
+    T_PAY --> C_CLM
+    T_FUL --> C_CLM
+    T_ORDER --> C_CART
+    T_ORDER --> C_CUST
+    T_SAGA -.-> C_NONE
+    T_CART -.-> C_NONE
+
+    subgraph DLQ["⑤ 처리 실패 · 바인더 DLQ"]
+        direction TB
+        DLT["{원 토픽}.DLT<br/>예: order.payment.v1.DLT<br/>같은 파티션 · 원 헤더·eventId 보존"]:::dlt
+        DLROW["각 서비스 DB dead_letter<br/>status OPEN → REPLAYED / DISCARDED"]:::dlt
+        ALERT["Prometheus pmart_messaging_dead_letters_open{topic}<br/>→ 경보 DeadLetterOpen"]:::dlt
+    end
+
+    C_ORCH -. "재시도 3회 소진" .-> DLT
+    C_CLM -. "재시도 3회 소진" .-> DLT
+    C_CART -. "재시도 3회 소진" .-> DLT
+    C_CUST -. "재시도 3회 소진" .-> DLT
+    DLT --- DLROW
+    DLROW --> ALERT

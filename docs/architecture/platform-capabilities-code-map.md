@@ -211,8 +211,9 @@
 | `libraries/common-web/.../RequestHeaders.java`, `RequestHeadersFilter.java` | 변경 요청 필수 헤더(`Idempotency-Key`·`X-Source-System`·`X-Expected-Version`). `checkExpectedVersion` |
 | `libraries/common-web/.../OptimisticLockAdvice.java` | JPA `@Version` 충돌 → `VERSION_CONFLICT` |
 | `libraries/common-messaging/.../RequestIdempotency.java` + `db/migration/common/V0_0_2__pmart_request_record.sql` | `request_record`. 같은 키·같은 본문이면 저장된 결과를 재생하고, 본문이 다르면 `IDEMPOTENCY_CONFLICT`. 업무 변경과 한 트랜잭션 |
-| `libraries/common-messaging/.../CommonMessagingAutoConfiguration.java` | Kafka `DefaultErrorHandler`: 재시도 → `{topic}.DLT` → `dead_letter` |
-| `libraries/common-messaging/.../DeadLetters.java`, `DeadLetterController.java`, `V0_0_3__pmart_dead_letter.sql` | 미처리 메시지 기록·재처리·폐기. 계약은 `contracts/openapi/_internal-dead-letters.yaml` |
+| `libraries/common-messaging/.../StreamBindingDefaultsPostProcessor.java`, `PmartDlqDestinationResolver.java` | Spring Cloud Stream 바인딩 기본값(그룹·재시도 3회·DLQ·RECORD 커밋) → 바인더 DLQ `{topic}.DLT` + `dead_letter`(ADR-0035) |
+| `libraries/common-messaging/.../EventConsumers.java`, `PmartEventConsumer.java`, `ConsumerBindingVerifier.java` | 소비 함수 공장(byte[] → 봉투 → InboxGuard), 설정 누락 시 기동 실패 |
+| `libraries/common-messaging/.../DeadLetters.java`, `DeadLetterController.java`, `StreamBridgeRepublisher.java`, `V0_0_3__pmart_dead_letter.sql` | 미처리 메시지 기록·재처리(StreamBridge)·폐기. 계약은 `contracts/openapi/_internal-dead-letters.yaml` |
 | `services/order-orchestration-service/.../application/CheckoutSagaService.java`, `CancellationSagaService.java`, `infrastructure/Participants.java` | 주문 사가: 단계별 멱등 키, UNKNOWN 재전송, 보상 |
 | `services/payment-service/.../infrastructure/toss/TossClient.java`, `application/PaymentLedger.java`, `ReconciliationService.java`, `domain/PaymentRules.java` | Toss 시간 초과 → UNKNOWN → 주기 재조회(대사) |
 | `platform-services/api-gateway/.../filter/RateLimitGlobalFilter.java` | 속도 제한(1번) |
@@ -403,7 +404,8 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 | 소비자 기본값 | `group-id=${spring.application.name}`, `enable-auto-commit=false`, `auto-offset-reset=earliest`, `isolation.level=read_committed`, `ack-mode=RECORD` |
 | `pmart.messaging.domain` | 필수(예: pricing `commerce`, payment `order`). 각 `.config-repo/<app>.yml` |
 | `pmart.messaging.outbox.delete-after-insert` / `schema-validation` | true / ENFORCE |
-| `pmart.messaging.consumer.*` | 재시도 3회, 1s·2s·4s(최대 10s) |
+| `pmart.messaging.consumer.*` | 재시도 3회, 1s·2s·4s(최대 10s) — Stream 바인딩 `max-attempts`·`back-off-*` 로 들어간다 |
+| `spring.cloud.function.definition`, `spring.cloud.stream.bindings.<fn>-in-0.destination` | 서비스별 소비 함수·토픽(설정 저장소 `<서비스>.yml`, ADR-0035) |
 | 토픽 보관 | `commerce.product.v1`·`commerce.pricing.v1` 무제한, 그 외 7일(ADR-0034, `deploy/lan/kafka/topics-init.sh`) |
 
 ### 흐름
@@ -412,20 +414,21 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 ② 커밋 → WAL 에 INSERT 가 남음
 ③ Debezium(서비스 DB 마다 커넥터·슬롯 하나): EventRouter → 토픽(topic 열), 키 = aggregateId(같은 집합은 같은 파티션 → 순서 보장),
    값 = 봉투 JSON, 헤더 eventType·aggregateType·traceId·correlationId
-④ 소비: @KafkaListener → codec.decode → InboxGuard.process(봉투, 처리기) — inbox INSERT 와 업무 반영이 한 트랜잭션, 중복은 건너뜀
+④ 소비: Spring Cloud Stream 바인딩(PmartEventConsumer 빈, 그룹 = 서비스 이름) → byte[] → codec.decode → InboxGuard.process(봉투, 처리기)
+   — inbox INSERT 와 업무 반영이 한 트랜잭션, 중복은 건너뜀
 ⑤ 정상 반환 → 오프셋 커밋(RECORD)
 ⑥ 예외 → 롤백 → 재시도 3회(1·2·4s)
-⑦ 그래도 실패 → {topic}.DLT(같은 파티션, 원 헤더) + dead_letter(OPEN) + 지표 → 오프셋 커밋
-   → 원인 수정 후 POST /api/v1/internal/dead-letters/{id}/replays(원 토픽에 다시, 헤더 pmart-replay-of) 또는 …/discards(사유)
+⑦ 그래도 실패 → 바인더 DLQ: dead_letter(OPEN) + 지표 → {topic}.DLT(같은 파티션, 원 바이트) → 오프셋 커밋
+   → 원인 수정 후 POST /api/v1/internal/dead-letters/{id}/replays(StreamBridge 로 원 토픽에 다시, 헤더 pmart-replay-of) 또는 …/discards(사유)
 ```
 
 ### 업무 예
 | 흐름 | 발행 → 토픽 → 구독 |
 |---|---|
-| 상품 등록 승인 | approval-service `ApprovalDecided` → `platform.approval.v1` → product-service·product-content·center-master·delivery-serviceability·mfc-inbound 의 `ApprovalDecidedListener` |
+| 상품 등록 승인 | approval-service `ApprovalDecided` → `platform.approval.v1` → product-service·product-content·center-master·delivery-serviceability·mfc-inbound 의 `approvalEvents` 소비 함수(`ApprovalEventConsumers`) |
 | 상품 게시 | product-service `SkuIssued`·`ProductVersionPublished`·`ProductSaleStateChanged` → `commerce.product.v1` → pricing `SkuProjector`, storefront `DisplayProjector`, mfc/cdc-inventory, product-content, 검색 Logstash |
 | 가격 발효 | pricing-service `PriceVersionEffective`(`PriceActivator`, 발효 시점) → `commerce.pricing.v1` → storefront, cart, 검색 Logstash |
-| 결제 | payment-service `PaymentApproved`·`PaymentFailed`·`PaymentResultUnknown`·`PaymentMismatch` → `order.payment.v1` → order-orchestration `PaymentEventsListener` → `CheckoutSagaService.onPaymentEvent` |
+| 결제 | payment-service `PaymentApproved`·`PaymentFailed`·`PaymentResultUnknown`·`PaymentMismatch` → `order.payment.v1` → order-orchestration `paymentEvents`(`PaymentEventConsumers`) → `CheckoutSagaService.onPaymentEvent` |
 | 사가 상태 | order-orchestration `CheckoutSagaStateChanged`·`CompensationExecuted` → `order.saga.v1` |
 | 취소 사가(S3) | `CancellationRequested`(`order.claim.v1`) → orchestration `ClaimEventsListener` → STOP_WORK → RELEASE_RESOURCES → APPLY_ORDER_CANCEL |
 

@@ -1,10 +1,14 @@
 // common-messaging: 이벤트 봉투, Outbox(Debezium이 발행) / Inbox(멱등 소비), Kafka 기본 설정·DLT, contracts/events JSON Schema 검증.
 // 업무 규칙 금지. 발행 릴레이는 애플리케이션에 없다 — Debezium PostgreSQL 커넥터 + Outbox Event Router (deploy/local 참조).
+// 소비·DLT·재처리는 Spring Cloud Stream Kafka 바인더(ADR-0035).
 plugins {
     id("pmart.java-library")
 }
 
 dependencies {
+    // 이 라이브러리를 쓰는 쪽(common-test 등)도 Stream 좌표의 버전을 받도록 Cloud BOM 을 같이 내보낸다
+    api(platform(libs.spring.cloud.bom))
+    api(libs.spring.cloud.starter.stream.kafka)
     api(libs.spring.boot.starter.kafka)
     api(libs.spring.kafka)
     api(libs.jackson.databind)
@@ -19,9 +23,12 @@ dependencies {
     annotationProcessor(platform(libs.spring.boot.bom))
     annotationProcessor(libs.spring.boot.configuration.processor)
 
+    testImplementation(platform(libs.spring.cloud.bom))
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.kafka.test)
 
+    "integrationTestImplementation"(platform(libs.spring.cloud.bom))
+    "integrationTestImplementation"(libs.spring.cloud.starter.stream.kafka)
     "integrationTestImplementation"(libs.bundles.test.integration)
     "integrationTestImplementation"(libs.spring.boot.starter.flyway)
     "integrationTestImplementation"(libs.flyway.postgresql)

@@ -176,7 +176,7 @@ sequenceDiagram
     rect rgb(245, 245, 245)
         OB->>DEB: WAL — outbox_event INSERT 감지 (같은 TX 에서 삭제)
         DEB->>K: EventRouter → topic 열 · key = aggregateid<br/>headers eventType, traceId, correlationId
-        K->>ORCH: @KafkaListener order.payment.v1 (InboxGuard) → 커밋 후 kick()
+        K->>ORCH: Stream 바인딩 paymentEvents ← order.payment.v1 (InboxGuard) → 커밋 후 kick()
 
         ORCH->>PAY: g. GET /internal/payments/{id}
         PAY-->>ORCH: { state, approvedAmount, pgTransactionId }
@@ -266,7 +266,7 @@ sequenceDiagram
 
     rect rgb(245, 245, 245)
         DEB->>K: CancellationRequested
-        K->>ORCH: @KafkaListener order.claim.v1
+        K->>ORCH: Stream 바인딩 claimEvents ← order.claim.v1
         ORCH->>ORCH: cancellation_saga SAGA-C-… RUNNING step=STOP_WORK
 
         ORCH->>FUL: POST /internal/stop-requests { stopRequestId, orderId, claimId, scope, lines }

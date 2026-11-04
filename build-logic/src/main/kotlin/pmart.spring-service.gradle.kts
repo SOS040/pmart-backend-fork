@@ -29,6 +29,8 @@ dependencies {
     implementation(libs.spring.cloud.starter.eureka.client)
     // 설정 변경 알림(Spring Cloud Bus, Kafka 토픽 springCloudBus — ADR-0033). common-observability 가 기본 끄고 lan 프로필만 켠다
     implementation(libs.spring.cloud.starter.bus.kafka)
+    // 업무 이벤트 소비·DLT·재처리(Spring Cloud Stream Kafka 바인더, ADR-0035). common-messaging 이 바인딩 기본값을 넣는다
+    implementation(libs.spring.cloud.starter.stream.kafka)
     annotationProcessor(libs.spring.boot.configuration.processor)
 
     testImplementation(libs.spring.boot.starter.test)

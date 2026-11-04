@@ -4,6 +4,10 @@
 - 기준: 그림을 만든 시점에 **구현된 코드**(main `dae7b8c`, 2026-11-03). 이 문서의 상태값·타이머·키는 코드(`CheckoutRules`, `PaymentStage`, 계약 `order-service.yaml`)와 흐름 문서에서 확인한 것이다. 이후의 Eureka(ADR-0032)·설정 실행 중 갱신(ADR-0033)은 주문 흐름을 바꾸지 않는다.
 - 업무 규칙의 정본: [`docs/business/flows/order-checkout-saga.md`](../business/flows/order-checkout-saga.md)(S1·S2), [`cancel-vs-handover.md`](../business/flows/cancel-vs-handover.md)(S3). 이 문서는 **그림을 읽기 위한 해설**이고 규칙을 새로 정하지 않는다.
 - 관련 ADR: 0003(사가는 orchestration 이 조정, 확정 사실은 이벤트로 전파), 0006(동기 체인 2 hop), 0020(Toss 결제), 0026(서비스 간 호출 인증 없음)
+- 이벤트 경로 그림(2026-11-04, main `4342c58`): 이 그림은 동기 호출 위주라 Debezium·토픽·DLT 가 잘 안 보인다. 따로 그렸다.
+  - [`diagrams/order-event-topics.png`](diagrams/order-event-topics.png) — 발행 서비스 → Debezium 커넥터(EventRouter 설정) → 토픽(이벤트 종류) → 구독 서비스(처리하는 이벤트) → `{토픽}.DLT`·`dead_letter`·경보
+  - [`diagrams/order-event-pipeline.png`](diagrams/order-event-pipeline.png) — 이벤트 한 건(PaymentApproved)의 outbox 저장 → WAL 캡처·라우팅 → InboxGuard 소비·offset 커밋 → 재시도 3회(1·2·4초) → DLT·`dead_letter`·`DeadLetterOpen` 경보 → 운영자 재처리(`POST /api/v1/internal/dead-letters/{id}/replays`)·폐기 (ADR-0030)
+  - 영문판: [`order-event-topics.en.png`](diagrams/order-event-topics.en.png) · [`order-event-pipeline.en.png`](diagrams/order-event-pipeline.en.png) (원본 `*.en.mmd`, 한글판과 같은 내용 — 고칠 때 둘 다 고친다)
 
 ![주문 전체 흐름](diagrams/order-full-flow.png)
 
@@ -132,7 +136,7 @@
 
 ### S1 g~j. 결제 결과 → 주문 확정 (비동기)
 
-**깨우기**: payment 의 outbox → Debezium → Kafka `order.payment.v1` → orchestration `@KafkaListener`(InboxGuard) → 커밋 뒤 `kick()`. 이벤트가 유실돼도 **백업 sweep(10초)** 이 30초 넘게 멈춘 사가와 자원 마감이 지난 `WAITING_RESULT` 를 처리한다.
+**깨우기**: payment 의 outbox → Debezium → Kafka `order.payment.v1` → orchestration `paymentEvents` 소비 함수(Spring Cloud Stream, InboxGuard — ADR-0035) → 커밋 뒤 `kick()`. 이벤트가 유실돼도 **백업 sweep(10초)** 이 30초 넘게 멈춘 사가와 자원 마감이 지난 `WAITING_RESULT` 를 처리한다.
 
 **g. 결과 확인 — 이벤트가 아니라 조회로**: `GET /internal/payments/{id}` → `{ state, approvedAmount, pgTransactionId }`
 
