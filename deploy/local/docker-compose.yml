@@ -153,7 +153,10 @@ services:
       retries: 120
 
   es-init:
-    # 검색 색인(products-v2·sku-prices-v1)을 search-service 의 정의 파일로 만든다(LAN 과 같은 스크립트, Kibana 단계는 건너뜀)
+    # 검색 색인(products-v3·sku-prices-v1)을 search-service 의 정의 파일로 만든다(LAN 과 같은 스크립트, Kibana 단계는 건너뜀)
+    # 별칭은 없을 때만 붙인다. 2026-11-04 이전 esdata 볼륨이 남아 있으면 products 별칭이 옛 products-v2 를 가리켜
+    # 새 Logstash 설정(filters·saleStateRowVersion)의 쓰기가 strict 매핑에 막힌다 → 볼륨을 지우고 새로 띄운다
+    # (docker compose -f deploy/local/docker-compose.yml down -v 는 다른 볼륨도 지운다 — esdata 만: docker volume rm <프로젝트>_esdata)
     image: curlimages/curl:8.14.1
     restart: "no"
     entrypoint: ["sh", "/init/es-init.sh"]
