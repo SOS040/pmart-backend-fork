@@ -82,4 +82,4 @@
 ## 5. 실행 기록
 | 날짜 | 전환 | 결과 |
 |---|---|---|
-| 2026-11-04 22:42~22:52 KST | `products-v2` → `products-v3`, 그룹 `search-index-logstash` → `-v3` (커밋 0013eb7, 백업 `/d/pmart-backups/kafka/20261104T134205Z-before-reindex-v3`) | 사건 1162건(product 887·pricing 275)을 약 15초에 재생해 상품 275건. 지연 0, 영구 큐 0, DLT 0, 건수 275 = 275, 전 문서 필드 대조 결과 `updatedAtMs`(색인 시각)만 다름. `filters` 는 0건 — LAN 상품에 필터 옵션이 하나도 없음(`product_filter_option` 0행), `saleStateRowVersion` 은 판매 상태 사건이 있던 7건 |
+| 2026-11-04 22:42~22:52 KST | `products-v2` → `products-v3`, 그룹 `search-index-logstash` → `-v3` (커밋 0013eb7, 백업 `/d/pmart-backups/kafka/20261104T134205Z-before-reindex-v3`) | 사건 1162건(product 887·pricing 275)을 약 15초에 재생해 상품 275건. 지연 0, 영구 큐 0, DLT 0, 건수 275 = 275, 전 문서 필드 대조 결과 `updatedAtMs`(색인 시각)만 다름. `filters` 는 0건 — LAN 상품에 필터 옵션이 하나도 없음(`product_filter_option` 0행), `saleStateRowVersion` 은 판매 상태 사건이 있던 7건. LAN 확인(판매 상태·필터) 뒤 같은 날 `products-v2` 삭제(되돌림은 v2 대신 새 색인 재생 — 15초) |
