@@ -42,7 +42,14 @@ public class ProductSearch {
       @Nullable Boolean carried) {}
 
   public record Result(
-      List<Hit> items, long total, @Nullable String nextCursor, Sort appliedSort) {}
+      List<Hit> items,
+      long total,
+      @Nullable String nextCursor,
+      Sort appliedSort,
+      List<String> appliedFilters) {}
+
+  /** 선택 가능한 필터 값과 현재 조건의 건수(색인 집계). */
+  public record Facet(String key, String value, long count) {}
 
   /** 기본가 범위(원, 양 끝 포함). 둘 다 null 이면 거르지 않는다. 가격 사본이 없는 상품은 범위를 주면 빠진다. */
   public record PriceRange(@Nullable Long min, @Nullable Long max) {
@@ -76,7 +83,7 @@ public class ProductSearch {
       Sort sort,
       int size,
       @Nullable String cursor) {
-    return search(q, categoryId, null, true, PriceRange.ANY, sort, size, cursor);
+    return search(q, categoryId, null, true, PriceRange.ANY, Map.of(), sort, size, cursor);
   }
 
   public Result search(
@@ -85,6 +92,7 @@ public class ProductSearch {
       @Nullable String mfcId,
       boolean includeNotCarried,
       PriceRange price,
+      Map<String, List<String>> filters,
       Sort sort,
       int size,
       @Nullable String cursor) {
@@ -101,7 +109,7 @@ public class ProductSearch {
       req.put("from", pos);
       req.put("size", size);
       req.put("track_total_hits", true);
-      req.put("query", query(query, categoryId, price));
+      req.put("query", query(query, categoryId, price, filters));
       req.put("sort", sort(sort, query != null));
       JsonNode res = index.search(SearchIndex.PRODUCTS, req);
       List<Hit> hits = new ArrayList<>();
@@ -131,7 +139,9 @@ public class ProductSearch {
     String next = pos < total ? SearchRules.cursor(pos) : null;
     // 처음부터 끝까지 한 번에 다 읽었으면 total 을 실제 건수로 맞춘다. 아니면 색인 일치 건수(미취급 포함, 계약 설명)
     long shownTotal = filtering && from == 0 && next == null ? out.size() : total;
-    return new Result(out, shownTotal, next, sort);
+    List<String> applied = new ArrayList<>();
+    filters.forEach((k, vs) -> vs.forEach(v -> applied.add(k + "." + v)));
+    return new Result(out, shownTotal, next, sort, List.copyOf(applied));
   }
 
   /** 미취급을 빼고 페이지를 채우려고 더 읽는 최대 횟수(한 번에 size 개). */
@@ -183,6 +193,26 @@ public class ProductSearch {
   }
 
   /** 검색어를 포함하는 상품명(중복 제거, 관련도 순). */
+  /** 현재 조건(검색어·카테고리, 판매중지 제외)에서 선택 가능한 승인 속성 값과 건수 — 색인 {@code filters}("그룹.옵션") 집계(2026-11-04). */
+  public List<Facet> facets(@Nullable String q, @Nullable String categoryId) {
+    String query = SearchRules.normalizeQuery(q);
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("size", 0);
+    req.put("query", query(query, categoryId, PriceRange.ANY, Map.of()));
+    req.put("aggs", Map.of("f", Map.of("terms", Map.of("field", "filters", "size", 500))));
+    JsonNode res = index.search(SearchIndex.PRODUCTS, req);
+    List<Facet> out = new ArrayList<>();
+    for (JsonNode b : res.path("aggregations").path("f").path("buckets")) {
+      String key = b.path("key").asString("");
+      int dot = key.indexOf('.');
+      if (dot > 0 && dot < key.length() - 1) {
+        out.add(
+            new Facet(key.substring(0, dot), key.substring(dot + 1), b.path("doc_count").asLong()));
+      }
+    }
+    return out;
+  }
+
   public List<String> suggestions(String q, int limit) {
     String query = SearchRules.normalizeQuery(q);
     if (query == null) {
@@ -191,7 +221,7 @@ public class ProductSearch {
     Map<String, Object> req = new LinkedHashMap<>();
     req.put("size", limit * 2);
     req.put("_source", List.of("name"));
-    req.put("query", query(query, null, PriceRange.ANY));
+    req.put("query", query(query, null, PriceRange.ANY, Map.of()));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     Set<String> names = new LinkedHashSet<>();
     for (JsonNode h : res.path("hits").path("hits")) {
@@ -204,8 +234,18 @@ public class ProductSearch {
   }
 
   static Map<String, Object> query(
-      @Nullable String q, @Nullable String categoryId, PriceRange price) {
+      @Nullable String q,
+      @Nullable String categoryId,
+      PriceRange price,
+      Map<String, List<String>> filters) {
     List<Object> filter = new ArrayList<>();
+    // 승인 속성 필터: 같은 그룹 안의 값은 OR(terms), 그룹끼리는 AND(2026-11-04)
+    filters.forEach(
+        (group, values) ->
+            filter.add(
+                Map.of(
+                    "terms",
+                    Map.of("filters", values.stream().map(v -> group + "." + v).toList()))));
     filter.add(Map.of("exists", Map.of("field", "name")));
     filter.add(Map.of("exists", Map.of("field", "productVersion")));
     if (categoryId != null && !categoryId.isBlank()) {

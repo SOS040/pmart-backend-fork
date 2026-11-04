@@ -34,17 +34,33 @@ public class DisplayStore {
       int version,
       @Nullable String sku,
       String saleState,
+      @Nullable Integer saleStateRowVersion,
       Instant at,
       Instant now) {
     jdbc.update(
         "INSERT INTO display_product (product_id, product_version, representative_sku, sale_state,"
-            + " sale_state_at, updated_at) VALUES (?,?,?,?,?,?)"
+            + " sale_state_row_version, sale_state_at, updated_at) VALUES (?,?,?,?,?,?,?)"
             + " ON CONFLICT (product_id) DO UPDATE SET product_version = EXCLUDED.product_version,"
             + " representative_sku = EXCLUDED.representative_sku,"
-            + " sale_state = CASE WHEN display_product.sale_state_at IS NULL"
-            + "   OR EXCLUDED.sale_state_at >= display_product.sale_state_at"
+            + " sale_state = CASE WHEN (CASE WHEN EXCLUDED.sale_state_row_version IS NOT NULL"
+            + "   THEN display_product.sale_state_row_version IS NULL"
+            + "     OR EXCLUDED.sale_state_row_version > display_product.sale_state_row_version"
+            + "   ELSE display_product.sale_state_row_version IS NULL AND (display_product.sale_state_at IS NULL"
+            + "     OR EXCLUDED.sale_state_at >= display_product.sale_state_at) END)"
             + "   THEN EXCLUDED.sale_state ELSE display_product.sale_state END,"
-            + " sale_state_at = GREATEST(display_product.sale_state_at, EXCLUDED.sale_state_at),"
+            + " sale_state_at = CASE WHEN (CASE WHEN EXCLUDED.sale_state_row_version IS NOT NULL"
+            + "   THEN display_product.sale_state_row_version IS NULL"
+            + "     OR EXCLUDED.sale_state_row_version > display_product.sale_state_row_version"
+            + "   ELSE display_product.sale_state_row_version IS NULL AND (display_product.sale_state_at IS NULL"
+            + "     OR EXCLUDED.sale_state_at >= display_product.sale_state_at) END)"
+            + "   THEN EXCLUDED.sale_state_at ELSE display_product.sale_state_at END,"
+            + " sale_state_row_version = CASE WHEN (CASE WHEN EXCLUDED.sale_state_row_version IS NOT NULL"
+            + "   THEN display_product.sale_state_row_version IS NULL"
+            + "     OR EXCLUDED.sale_state_row_version > display_product.sale_state_row_version"
+            + "   ELSE display_product.sale_state_row_version IS NULL AND (display_product.sale_state_at IS NULL"
+            + "     OR EXCLUDED.sale_state_at >= display_product.sale_state_at) END)"
+            + "   THEN COALESCE(EXCLUDED.sale_state_row_version, display_product.sale_state_row_version)"
+            + "   ELSE display_product.sale_state_row_version END,"
             + " updated_at = EXCLUDED.updated_at"
             + " WHERE display_product.product_version IS NULL"
             + "   OR EXCLUDED.product_version > display_product.product_version",
@@ -52,6 +68,7 @@ public class DisplayStore {
         version,
         sku,
         saleState,
+        saleStateRowVersion,
         ts(at),
         ts(now));
   }
@@ -81,16 +98,23 @@ public class DisplayStore {
         ts(now));
   }
 
-  public void upsertSaleState(String productId, String saleState, Instant at, Instant now) {
+  /** 판매 상태 사건. 상품 행 버전이 큰 것만(없으면 옛 사건 규칙 — 행 버전 기준 상태가 없을 때만 시각 비교). */
+  public void upsertSaleState(
+      String productId, String saleState, @Nullable Integer rowVersion, Instant at, Instant now) {
     jdbc.update(
-        "INSERT INTO display_product (product_id, sale_state, sale_state_at, updated_at)"
-            + " VALUES (?,?,?,?)"
+        "INSERT INTO display_product (product_id, sale_state, sale_state_row_version, sale_state_at, updated_at)"
+            + " VALUES (?,?,?,?,?)"
             + " ON CONFLICT (product_id) DO UPDATE SET sale_state = EXCLUDED.sale_state,"
+            + " sale_state_row_version = COALESCE(EXCLUDED.sale_state_row_version, display_product.sale_state_row_version),"
             + " sale_state_at = EXCLUDED.sale_state_at, updated_at = EXCLUDED.updated_at"
-            + " WHERE display_product.sale_state_at IS NULL"
-            + "   OR EXCLUDED.sale_state_at >= display_product.sale_state_at",
+            + " WHERE (CASE WHEN EXCLUDED.sale_state_row_version IS NOT NULL"
+            + "   THEN display_product.sale_state_row_version IS NULL"
+            + "     OR EXCLUDED.sale_state_row_version > display_product.sale_state_row_version"
+            + "   ELSE display_product.sale_state_row_version IS NULL AND (display_product.sale_state_at IS NULL"
+            + "     OR EXCLUDED.sale_state_at >= display_product.sale_state_at) END)",
         productId,
         saleState,
+        rowVersion,
         ts(at),
         ts(now));
   }

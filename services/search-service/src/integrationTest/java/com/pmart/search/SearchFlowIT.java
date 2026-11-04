@@ -57,6 +57,7 @@ import tools.jackson.databind.ObjectMapper;
         // 카드(Logstash 가 부름)·카테고리 트리·가용 조회(서비스가 부름)를 한 WireMock 이 맡는다(경로가 서로 다르다)
         baseUrlProperties = {"pmart.search.product-base-url", "pmart.search.inventory-base-url"}))
 @Testcontainers
+@org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation.class)
 class SearchFlowIT {
 
   static final Network NET = Network.newNetwork();
@@ -286,6 +287,7 @@ class SearchFlowIT {
   }
 
   @Test
+  @org.junit.jupiter.api.Order(1) // 색인이 비어 있다고 가정한다(건수 단정) — 다른 시험보다 먼저
   void eventsBecomeSearchableAndStayConsistent() throws Exception {
     // 가격이 상품보다 먼저 온 경우(E-2)
     price("E-2", 1900, 1);
@@ -442,5 +444,164 @@ class SearchFlowIT {
     JsonNode soup = search("?q=미역").path("items").path(0);
     assertThat(soup.path("basePrice").asInt()).isEqualTo(4900);
     assertThat(ids(search("?categoryId=t02"))).as("재전달된 같은 버전의 카테고리 무시").containsExactly("PRD-1");
+  }
+
+  void productWith(
+      String productId,
+      int version,
+      int rowVersion,
+      String sku,
+      String saleState,
+      String at,
+      List<Map<String, Object>> filterOptions) {
+    send(
+        "ProductVersionPublished",
+        "Product",
+        productId,
+        version,
+        Map.of(
+            "productId", productId,
+            "version", version,
+            "rowVersion", rowVersion,
+            "primaryCategoryId", "t09",
+            "categoryIds", List.of("t09"),
+            "saleState", saleState,
+            "filterOptions", filterOptions,
+            "skus", List.of(Map.of("sku", sku, "unitType", "E", "unitsPerSku", 1)),
+            "effectiveAt", at));
+  }
+
+  void saleState(String productId, String sku, String state, int rowVersion, String at) {
+    send(
+        "ProductSaleStateChanged",
+        "Product",
+        productId,
+        rowVersion,
+        Map.of(
+            "sku",
+            sku,
+            "productId",
+            productId,
+            "state",
+            state,
+            "effectiveAt",
+            at,
+            "version",
+            rowVersion));
+  }
+
+  /**
+   * 2026-11-04 검색 마무리: 승인 속성 필터(filters), 판매 상태를 시각이 아니라 상품 행 버전으로 비교, 콘텐츠 카드 실패는 재시도 뒤
+   * search-index.DLT 로.
+   */
+  @Test
+  @org.junit.jupiter.api.Order(2)
+  void filtersRowVersionSaleStateAndContentDeadLetter() throws Exception {
+    productWith(
+        "PRD-F1",
+        1,
+        1,
+        "E-F1",
+        "ON_SALE",
+        "2026-11-04T01:00:00Z",
+        List.of(
+            Map.of("filterGroupId", "capacity", "option", "500ml"),
+            Map.of("filterGroupId", "pack", "option", "1개")));
+    productWith(
+        "PRD-F2",
+        1,
+        1,
+        "E-F2",
+        "ON_SALE",
+        "2026-11-04T01:00:00Z",
+        List.of(
+            Map.of("filterGroupId", "capacity", "option", "1L"),
+            Map.of("filterGroupId", "pack", "option", "1개")));
+    card("PRD-F1", "[시험] 필터 생수 500ml", 1);
+    card("PRD-F2", "[시험] 필터 생수 1L", 1);
+    contentPublished("PRD-F1", 1, "2026-11-04T01:01:00Z");
+    contentPublished("PRD-F2", 1, "2026-11-04T01:01:00Z");
+    await("?categoryId=t09", r -> r.path("total").asInt() == 2);
+
+    // 같은 그룹 안은 OR, 그룹끼리는 AND. 형식이 틀린 값은 무시하고 appliedFilters 로 알린다
+    JsonNode one = search("?categoryId=t09&filters=capacity.500ml");
+    assertThat(ids(one)).containsExactly("PRD-F1");
+    assertThat(one.path("appliedFilters").toString()).isEqualTo("[\"capacity.500ml\"]");
+    assertThat(ids(search("?categoryId=t09&filters=capacity.500ml&filters=capacity.1L")))
+        .hasSize(2);
+    assertThat(ids(search("?categoryId=t09&filters=capacity.1L&filters=pack.1개")))
+        .containsExactly("PRD-F2");
+    assertThat(ids(search("?categoryId=t09&filters=capacity.2L"))).isEmpty();
+    assertThat(search("?categoryId=t09&filters=nodot").path("appliedFilters").size()).isZero();
+    // 선택 가능한 필터(현재 조건의 건수)
+    JsonNode attrs =
+        mapper.readTree(
+            http.get().uri("/search/filters?categoryId=t09").retrieve().body(String.class));
+    JsonNode capacity = null;
+    for (JsonNode a : attrs.path("attributes")) {
+      if ("capacity".equals(a.path("key").asString())) {
+        capacity = a;
+      }
+    }
+    assertThat(capacity).isNotNull();
+    assertThat(capacity.path("values").toString()).contains("\"500ml\"").contains("\"1L\"");
+
+    // 판매 상태: 행 버전이 큰 사건만. 시각이 더 이른 재적재(PVP rowVersion 3)가 일시품절(rv 2)을 풀고, 늦은 시각의 옛 사건(rv 2)은 무시
+    saleState("PRD-F1", "E-F1", "TEMP_OUT", 2, "2026-11-04T05:00:00Z");
+    await(
+        "?categoryId=t09&filters=capacity.500ml",
+        r -> "TEMPORARILY_SOLD_OUT".equals(r.path("items").path(0).path("saleState").asString()));
+    productWith(
+        "PRD-F1",
+        2,
+        3,
+        "E-F1",
+        "ON_SALE",
+        "2026-11-04T04:00:00Z",
+        List.of(Map.of("filterGroupId", "capacity", "option", "500ml")));
+    await(
+        "?categoryId=t09&filters=capacity.500ml",
+        r -> "ON_SALE".equals(r.path("items").path(0).path("saleState").asString()));
+    saleState("PRD-F1", "E-F1", "TEMP_OUT", 2, "2026-11-04T06:00:00Z");
+    // 표시용 마지막 사건(같은 파티션 순서): F2 콘텐츠 v2 가 반영되면 앞 사건은 모두 처리됐다
+    card("PRD-F2", "[시험] 필터 생수 1L 새 이름", 2);
+    contentPublished("PRD-F2", 2, "2026-11-04T06:01:00Z");
+    await("?categoryId=t09", r -> r.toString().contains("새 이름"));
+    assertThat(
+            search("?categoryId=t09&filters=capacity.500ml")
+                .path("items")
+                .path(0)
+                .path("saleState")
+                .asString())
+        .as("옛 행 버전의 늦은 사건은 무시")
+        .isEqualTo("ON_SALE");
+
+    // 콘텐츠 카드가 없으면(게시본 없음) 재시도 뒤 DLT — 조용히 건너뛰지 않는다
+    productWith("PRD-F3", 1, 1, "E-F3", "ON_SALE", "2026-11-04T01:00:00Z", List.of());
+    contentPublished("PRD-F3", 1, "2026-11-04T01:02:00Z"); // card 스텁 없음 → 404
+    java.util.Properties props = new java.util.Properties();
+    props.put("bootstrap.servers", KAFKA.getBootstrapServers());
+    props.put("group.id", "it-dlt-" + java.util.UUID.randomUUID());
+    props.put("auto.offset.reset", "earliest");
+    props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+    props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+    String dead = null;
+    try (var consumer =
+        new org.apache.kafka.clients.consumer.KafkaConsumer<String, String>(props)) {
+      consumer.subscribe(List.of("search-index.DLT"));
+      Instant deadline = Instant.now().plus(Duration.ofSeconds(90));
+      while (dead == null && Instant.now().isBefore(deadline)) {
+        for (var rec : consumer.poll(Duration.ofSeconds(1))) {
+          if ("PRD-F3".equals(rec.key())) {
+            dead = rec.value();
+          }
+        }
+      }
+    }
+    assertThat(dead).as("search-index.DLT 레코드").isNotNull();
+    JsonNode dl = mapper.readTree(dead).path("pmartDeadLetter");
+    assertThat(dl.path("op").asString()).isEqualTo("content");
+    assertThat(dl.path("topic").asString()).isEqualTo("commerce.product.v1");
+    assertThat(dl.path("offset").isMissingNode()).isFalse();
   }
 }

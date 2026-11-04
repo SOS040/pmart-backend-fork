@@ -145,7 +145,7 @@
             },
             "version": {
               "$ref": "_defs.v1.json#/$defs/Version"
-            },
+            }, "rowVersion": {"$ref": "_defs.v1.json#/$defs/Version", "description": "반영 뒤 상품 행 버전(row_version). ProductSaleStateChanged.payload.version 과 같은 카운터 — 소비자는 판매 상태를 시각이 아니라 이 값으로 비교한다(2026-11-04 추가, 없으면 옛 사건)"}, "filterOptions": {"type": "array", "description": "승인 속성(필터 옵션). 검색이 filters 파라미터(그룹 id.옵션)로 거르는 데 쓴다(2026-11-04 추가, 없으면 옛 사건)", "items": {"type": "object", "required": ["filterGroupId", "option"], "properties": {"filterGroupId": {"type": "string"}, "option": {"type": "string"}}}},
             "effectiveAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
             },

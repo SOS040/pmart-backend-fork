@@ -78,4 +78,40 @@ public class CategoryTreeClient {
       return s;
     }
   }
+
+  /** 카테고리 필터 패널의 그룹 하나(이름·선택 방식·옵션 순서). */
+  public record FilterGroup(String id, String name, boolean multiSelect, List<String> options) {}
+
+  /**
+   * product-service 공개 {@code GET /categories/{id}/filters} — 필터 이름·선택 방식·옵션 순서. 실패하면 빈 목록(필터 이름 대신
+   * 그룹 id 를 보여 준다, 검색을 실패시키지 않는다).
+   */
+  public List<FilterGroup> filterGroups(String categoryId) {
+    try {
+      String raw =
+          Downstream.call(
+              "product-service category filters",
+              () ->
+                  http.get()
+                      .uri("/api/v1/categories/{id}/filters", categoryId)
+                      .retrieve()
+                      .onStatus(s -> s.value() == 404, (q, r) -> {})
+                      .body(String.class));
+      List<FilterGroup> out = new java.util.ArrayList<>();
+      for (JsonNode g : mapper.readTree(raw == null || raw.isBlank() ? "{}" : raw).path("groups")) {
+        List<String> options = new java.util.ArrayList<>();
+        g.path("options").forEach(o -> options.add(o.asString()));
+        out.add(
+            new FilterGroup(
+                g.path("filterGroupId").asString(),
+                g.path("name").asString(g.path("filterGroupId").asString()),
+                !"TOGGLE".equals(g.path("selectionMode").asString()),
+                List.copyOf(options)));
+      }
+      return out;
+    } catch (RuntimeException e) {
+      log.warn("카테고리 필터 조회 실패 — 그룹 id 로 표시: {}", e.toString());
+      return List.of();
+    }
+  }
 }

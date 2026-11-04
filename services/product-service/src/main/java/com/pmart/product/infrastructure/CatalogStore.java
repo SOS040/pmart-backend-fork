@@ -179,6 +179,15 @@ public class CatalogStore {
         productId);
   }
 
+  /** 상품의 승인 속성(필터 옵션) — (그룹 id, 옵션 이름), 그룹·옵션 순. 검색 필터용으로 사건에 싣는다. */
+  public List<String[]> filterOptionsOf(String productId) {
+    return jdbc.query(
+        "SELECT filter_group_id, option_name FROM product_filter_option WHERE product_id = ?"
+            + " ORDER BY filter_group_id, option_name",
+        (rs, n) -> new String[] {rs.getString(1), rs.getString(2)},
+        productId);
+  }
+
   public void replaceFilterOptions(String productId, List<String[]> groupAndOption) {
     jdbc.update("DELETE FROM product_filter_option WHERE product_id = ?", productId);
     for (String[] go : groupAndOption) {

@@ -25,3 +25,12 @@ for t in $TOPICS; do
   parts="$($B/kafka-topics.sh --bootstrap-server $S --describe --topic "$t" | sed -n 's/.*PartitionCount: \([0-9]*\).*/\1/p' | head -1)"
   echo "kafka-topics-init: $t OK (partitions=$parts, $CONFIGS)"
 done
+
+# 검색 색인 DLT(search-index.conf — 콘텐츠 보강이 재시도 뒤에도 실패한 사건). 이력 토픽이 아니라 30일 보관(2026-11-04)
+DLT="search-index.DLT"
+if ! $B/kafka-topics.sh --bootstrap-server $S --describe --topic "$DLT" >/dev/null 2>&1; then
+  $B/kafka-topics.sh --bootstrap-server $S --create --if-not-exists --topic "$DLT"     --partitions 1 --replication-factor 1 --config retention.ms=2592000000 >/dev/null
+  echo "kafka-topics-init: $DLT 생성(30일 보관)"
+fi
+echo "kafka-topics-init: $DLT OK"
+

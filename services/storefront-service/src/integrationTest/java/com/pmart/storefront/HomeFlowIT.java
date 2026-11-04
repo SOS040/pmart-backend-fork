@@ -265,11 +265,99 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class))
         .isEqualTo(2);
 
+    // 2026-11-04: 판매 상태는 상품 행 버전으로 비교 — 시각이 더 이른 재적재(rowVersion 6)가 일시품절(rv 5)을 풀고,
+    // 늦은 시각의 옛 행 버전(rv 5) 사건은 무시
+    send(
+        "ProductSaleStateChanged",
+        "PRD-H11",
+        5,
+        Map.of(
+            "productId",
+            "PRD-H11",
+            "sku",
+            "E-H11",
+            "state",
+            "TEMP_OUT",
+            "version",
+            5,
+            "effectiveAt",
+            "2026-10-30T06:00:00Z"));
+    awaitSaleState("PRD-H11", "TEMPORARILY_SOLD_OUT");
+    send(
+        "ProductVersionPublished",
+        "PRD-H11",
+        3,
+        Map.of(
+            "productId",
+            "PRD-H11",
+            "version",
+            3,
+            "rowVersion",
+            6,
+            "saleState",
+            "ON_SALE",
+            "categoryIds",
+            List.of("t01-c01"),
+            "skus",
+            List.of(Map.of("sku", "E-H11")),
+            "effectiveAt",
+            "2026-10-30T05:00:00Z"));
+    awaitSaleState("PRD-H11", "ON_SALE");
+    send(
+        "ProductSaleStateChanged",
+        "PRD-H11",
+        5,
+        Map.of(
+            "productId",
+            "PRD-H11",
+            "sku",
+            "E-H11",
+            "state",
+            "TEMP_OUT",
+            "version",
+            5,
+            "effectiveAt",
+            "2026-10-30T07:00:00Z"));
+    // 순서 표시: 같은 토픽·파티션의 다음 사건(콘텐츠 v3)이 반영되면 앞 사건도 처리됐다
+    card("PRD-H11", "[시험] 이름 또 바뀐 상품 11", 3);
+    published("PRD-H11", 3, "2026-10-30T07:01:00Z");
+    for (int i = 0;
+        i < 100
+            && !Integer.valueOf(3)
+                .equals(
+                    jdbc.queryForObject(
+                        "SELECT content_version FROM display_product WHERE product_id = 'PRD-H11'",
+                        Integer.class));
+        i++) {
+      Thread.sleep(300);
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT sale_state FROM display_product WHERE product_id = 'PRD-H11'",
+                String.class))
+        .as("옛 행 버전의 늦은 사건은 무시")
+        .isEqualTo("ON_SALE");
+
     // 오류·미구성
     assertThat(status("/storefront/tabs/RANKING")).isEqualTo(404);
     assertThat(status("/storefront/sections/S-NONE/items")).isEqualTo(404);
     assertThat(status("/storefront/sections/S-ALL/items?layoutVersion=3")).isEqualTo(409);
     assertThat(status("/storefront/sections/S-ALL/items?cursor=garbage")).isEqualTo(400);
     assertThat(get("/storefront/banners").path("items")).isEmpty();
+  }
+
+  void awaitSaleState(String productId, String state) throws InterruptedException {
+    for (int i = 0; i < 150; i++) {
+      String now =
+          jdbc.queryForObject(
+              "SELECT sale_state FROM display_product WHERE product_id = ?",
+              String.class,
+              productId);
+      if (state.equals(now)) {
+        return;
+      }
+      Thread.sleep(300);
+    }
+    throw new AssertionError(productId + " 판매 상태가 " + state + " 가 되지 않음");
   }
 }

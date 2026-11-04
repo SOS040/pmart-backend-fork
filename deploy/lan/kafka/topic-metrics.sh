@@ -30,6 +30,10 @@ for t in $TOPICS; do
   echo "pmart_kafka_topic_retention_unlimited{topic=\"$t\"} $u"
 done
 
+# 검색 색인 DLT(search-index.DLT) 끝 오프셋 — 늘면 경보 SearchIndexDeadLetter. 이력 토픽 경보(보관·시작 오프셋)는 대상이 아니라 끝만
+dlt=$($B/kafka-get-offsets.sh --bootstrap-server $S --topic search-index.DLT --time -1 2>/dev/null | awk -F: '{s += $3} END {print s + 0}')
+echo "pmart_kafka_topic_end_offset{topic=\"search-index.DLT\"} ${dlt:-0}"
+
 echo "# HELP pmart_kafka_topic_metrics_timestamp_seconds 이 파일을 만든 시각(멈춤 감지)"
 echo "# TYPE pmart_kafka_topic_metrics_timestamp_seconds gauge"
 echo "pmart_kafka_topic_metrics_timestamp_seconds $(date +%s)"

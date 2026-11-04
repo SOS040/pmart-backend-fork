@@ -38,10 +38,11 @@
       "representativeSku": { "type": "keyword" },
       "saleState": { "type": "keyword" },
       "saleStateAtMs": { "type": "date", "format": "epoch_millis" },
+      "saleStateRowVersion": { "type": "integer" },
+      "filters": { "type": "keyword" },
       "basePrice": { "type": "long" },
       "priceVersion": { "type": "integer" },
       "updatedAtMs": { "type": "date", "format": "epoch_millis" }
     }
-  },
-  "aliases": { "products": {} }
+  }
 }

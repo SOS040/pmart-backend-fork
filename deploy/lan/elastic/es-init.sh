@@ -1,6 +1,6 @@
 #!/bin/sh
 # Elasticsearch 준비(ADR-0031). elasticsearch 와 같은 PC 에서 한 번 돌고 끝난다(다시 돌려도 같은 결과). Logstash 는 이것이 끝난 뒤 뜬다.
-# 1) 상품 검색 색인(products-v2·sku-prices-v1 + 별칭) — 정의는 search-service 의 elasticsearch/*.json(render 가 복사). 없을 때만 만든다
+# 1) 상품 검색 색인(products-v3·sku-prices-v1 + 별칭이 없을 때만) — 정의는 search-service 의 elasticsearch/*.json(render 가 복사). 없을 때만 만든다
 # 2) 로그 보존: ILM pmart-logs(3일 뒤 삭제) + 색인 틀 pmart-logs-*(복제본 0, 잘못된 형식 필드는 버리고 문서는 남김)
 #    크기 상한(색인 1GB·전체 4GB)은 ILM 이 못 하므로 log-janitor 가 한다. OpenSearch 때와 같이 ES 의 디스크 경고는 1TB 가상 디스크
 #    기준이라 실제 C: 보호가 아니다(ADR-0030) — 이 상한들이 보호 장치다
@@ -19,6 +19,14 @@ for f in /init/indices/*.json; do
     curl -s -o /dev/null -w "index $idx %{http_code}\n" -X PUT "$ES/$idx" -H 'Content-Type: application/json' --data-binary @"$f"
   else
     echo "index $idx exists"
+  fi
+  # 별칭(이름에서 -vN 을 뗀 것)이 아직 없을 때만 붙인다. 이전 버전을 가리키고 있으면 두고, 전환은 재색인 절차(REINDEX.md)가 한다
+  alias="${idx%-v[0-9]*}"
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' -I "$ES/_alias/$alias")" = 404 ]; then
+    curl -s -o /dev/null -w "alias $alias -> $idx %{http_code}\n" -X POST "$ES/_aliases" -H 'Content-Type: application/json' \
+      -d "{\"actions\":[{\"add\":{\"index\":\"$idx\",\"alias\":\"$alias\"}}]}"
+  else
+    echo "alias $alias exists"
   fi
 done
 

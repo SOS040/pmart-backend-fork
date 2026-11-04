@@ -39,6 +39,7 @@ public class DisplayProjector {
               p.path("version").asInt(),
               p.path("skus").path(0).path("sku").asString(null),
               p.path("saleState").asString("ON_SALE"),
+              rowVersion(p.path("rowVersion")),
               at(p.path("effectiveAt"), e),
               clock.instant());
       case "ProductContentPublished" -> {
@@ -60,6 +61,7 @@ public class DisplayProjector {
           store.upsertSaleState(
               p.path("productId").asString(),
               DefaultLayout.saleStateFromEvent(p.path("state").asString("ON_SALE")),
+              rowVersion(p.path("version")),
               at(p.path("effectiveAt"), e),
               clock.instant());
       case "PriceVersionEffective" ->
@@ -72,6 +74,11 @@ public class DisplayProjector {
         // 진열에 쓰지 않는 사건(SkuIssued·CategoryChanged 등)
       }
     }
+  }
+
+  /** 상품 행 버전(PVP rowVersion·PSSC version). 옛 사건에는 없다(null). */
+  private static @org.jspecify.annotations.Nullable Integer rowVersion(JsonNode n) {
+    return n.isNumber() ? n.asInt() : null;
   }
 
   private static Instant at(JsonNode n, EventEnvelope e) {

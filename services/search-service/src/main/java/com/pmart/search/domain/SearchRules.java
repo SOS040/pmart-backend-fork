@@ -110,4 +110,38 @@ public final class SearchRules {
       super("잘못된 커서");
     }
   }
+
+  /** 한 요청의 승인 속성 필터 값 상한. */
+  public static final int MAX_FILTERS = 30;
+
+  /**
+   * 계약 filters(attributeKey.value, 예 capacity.500ml) → 그룹별 값. 첫 '.' 앞이 그룹, 뒤가 옵션(옵션에 '.' 이 있어도 된다).
+   * 형식이 틀린 값·빈 값은 버린다(appliedFilters 에 안 나온다). 순서 유지.
+   */
+  public static java.util.Map<String, java.util.List<String>> parseFilters(
+      java.util.@org.jspecify.annotations.Nullable List<String> raw) {
+    java.util.Map<String, java.util.List<String>> out = new java.util.LinkedHashMap<>();
+    if (raw == null) {
+      return out;
+    }
+    int n = 0;
+    for (String f : raw) {
+      if (f == null || n >= MAX_FILTERS) {
+        continue;
+      }
+      String v = f.strip();
+      int dot = v.indexOf('.');
+      if (dot <= 0 || dot >= v.length() - 1) {
+        continue;
+      }
+      java.util.List<String> values =
+          out.computeIfAbsent(v.substring(0, dot), k -> new java.util.ArrayList<>());
+      String option = v.substring(dot + 1);
+      if (!values.contains(option)) {
+        values.add(option);
+        n++;
+      }
+    }
+    return out;
+  }
 }

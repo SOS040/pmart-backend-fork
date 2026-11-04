@@ -98,7 +98,7 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
 | Prometheus | `http://192.168.0.40:9090` | 수집 대상 = `placement.conf` 의 모든 Spring 앱(render 가 `monitoring/prometheus.yml` 생성), 보존 7일 또는 2GB |
 | Alertmanager | `http://192.168.0.40:9093` | 알림 규칙 `monitoring/alert-rules.yml`(앱 DOWN·미처리 메시지·소비 지연·5xx·**Windows C: 여유 15%/10GB 미만**). **전송 채널 없음** — 화면에서 본다 |
 | Kibana | `http://192.168.0.40:5601` | 앱 로그(Discover, 데이터 뷰 `pmart-logs`). `traceId:"…"` 로 한 요청을 전 서비스에서 따라간다. 3일(ILM) 또는 색인 1GB·전체 4GB(log-janitor)에서 삭제. 인프라(kafka·connect 등) 로그와 초당 500건을 넘는 폭주 구간은 빠진다 — `lan.sh logs` 로 본다 |
-| Elasticsearch | `http://192.168.0.40:9200` | 상품 검색 색인(`products`→`products-v2`, nori+n-gram)과 앱 로그(`pmart-logs-*`), ADR-0031 |
+| Elasticsearch | `http://192.168.0.40:9200` | 상품 검색 색인(`products`→`products-v2`, v3 전환은 `elastic/REINDEX.md`, nori+n-gram)과 앱 로그(`pmart-logs-*`), ADR-0031 |
 
 - 로그 수집(Elastic Stack, ADR-0031): PC 마다 `log-shipper`(Filebeat)가 Docker Desktop VM 의 `/var/lib/docker/containers` 를 읽어(앱 JSON 로그만, 초당 500건, 메모리 큐) pc4 `logstash:5044` 로 보낸다 → `pmart-logs-YYYY.MM.DD`. render 가 모든 PC 에 자동으로 붙인다. `es-init` 은 검색 색인·로그 ILM·색인 틀·Kibana 데이터 뷰를 만들고 끝나며(배포마다 다시 돌아도 같다) Logstash 는 그 뒤에 뜬다. `log-janitor` 가 5분마다 크기 상한을 지킨다.
 - 상품 검색 색인: Logstash 파이프라인 `search-index`(search-service 소유 `src/main/logstash/search-index.conf`)가 `commerce.product.v1`·`commerce.pricing.v1` 을 읽어 색인한다(소비 그룹 `search-index-logstash`). 색인을 다시 만들려면 색인을 지우고 es-init 을 다시 돌린 뒤 소비 그룹 오프셋을 처음으로 돌린다(Logstash 를 멈춘 상태에서 `kafka-consumer-groups.sh --reset-offsets --to-earliest --group search-index-logstash --all-topics --execute`). **ADR-0034: 판매상태 rowVersion 비교·콘텐츠 보강 실패 처리를 고치기 전에는 운영 절차로 실행하지 않는다.**

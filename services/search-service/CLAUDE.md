@@ -22,13 +22,16 @@
 
 ## 검색 색인 (ADR-0031 — 2026-11-03 OpenSearch → Elasticsearch)
 - **Elasticsearch 8.18.0 + analysis-nori**(주소 pmart-config `pmart.search.elasticsearch-url`). RestClient 로 REST 호출 — 공용 Builder(사용자 토큰 전파)를 쓰지 않는다. **이 서비스는 조회만** 한다.
-- **색인은 Logstash**(`src/main/logstash/search-index.conf`, 이 서비스 소유 — 배포가 Logstash 에 복사): commerce.product.v1(ProductVersionPublished·ProductContentPublished·ProductSaleStateChanged)·commerce.pricing.v1(PriceVersionEffective) → products·sku-prices. Painless 스크립트가 버전·시각을 비교(재전달·옛 사건 무시). 콘텐츠는 product-content 공개 카드 API 로 이름·이미지 보강(게시본만, 없으면 건너뛰고 stdout 기록). 작업자 1·배치 1(가격·상품 경합 방지). 재처리 = 소비 그룹 `search-index-logstash` 오프셋 되돌림. 파이프라인을 바꾸면 `SearchFlowIT`(실제 Kafka·ES·Logstash)로 확인한다.
+- **색인은 Logstash**(`src/main/logstash/search-index.conf`, 이 서비스 소유 — 배포가 Logstash 에 복사): commerce.product.v1(ProductVersionPublished·ProductContentPublished·ProductSaleStateChanged)·commerce.pricing.v1(PriceVersionEffective) → products·sku-prices. Painless 스크립트가 버전을 비교(재전달·옛 사건 무시). 콘텐츠는 product-content 공개 카드 API 로 이름·이미지 보강(게시본만, 실패는 재시도 뒤 DLT). 작업자 1·배치 1(가격·상품 경합 방지). 재처리 = 소비 그룹 `search-index-logstash` 오프셋 되돌림. 파이프라인을 바꾸면 `SearchFlowIT`(실제 Kafka·ES·Logstash)로 확인한다.
 - 이름 = `name`(nori) · `name.edge`(앞부분) · `name.partial`(1~2글자 n-gram). 찾기: nori 형태소가 모두 맞거나("두부를"→두부) n-gram 조각이 모두 있거나(붙임말 "나랑드사이다제로"·"미역"→미역국). 순위: 형태소 > 앞부분 > 조각. 카테고리는 구조 id 조상 범위.
 - 검색 대상: 이름·상품 버전이 모두 있고 판매중지가 아닌 상품.
 - categoryPath: 대표 카테고리의 이름 경로 — product-service 공개 트리(`pmart.search.product-base-url`)를 5분 사본으로 둔다. 조회 실패면 이전 사본, 없으면 빈 목록(검색은 실패하지 않음). (2026-11-02)
 - carried: mfcId 를 줄 때만 대표 SKU 의 mfc-inventory `/internal/availability` handlingEnabled 사본(`pmart.search.inventory-base-url`). 응답 없음·실패는 null. includeNotCarried=false(기본)면 false 가 확인된 상품을 빼고 모자란 만큼 다음 문서를 더 읽어 채운다(최대 5번, BR-47 2026-11-04). total 은 색인 일치 건수(미취급 포함), 처음 페이지에서 끝까지 다 읽은 경우만 실제 건수. (2026-11-02)
-- 아직 없음: 인기·평점 정렬(관련도로 대체, appliedSort 로 알림), 승인 속성 필터(빈 목록), 최근 검색어·재색인 API(501).
-- 재색인(ADR-0034): Kafka 전체 재생(두 토픽 무제한 보관). 스냅샷 API 없음. 선행: 판매상태 비교를 rowVersion 으로(지금 effectiveAt — `ProductVersionPublished` 에 rowVersion 없음, storefront 도 같은 문제), 콘텐츠 보강 실패 시 skip → 재시도·DLQ·경보. 두 가지를 고치기 전에는 재색인을 운영 절차로 실행하지 않는다.
+- 승인 속성 필터(2026-11-04): PVP `filterOptions` → 색인 `filters`("그룹.옵션"), 검색 `filters` 같은 그룹 OR·그룹끼리 AND, `appliedFilters` 는 실제 적용 값. `/search/filters` = 색인 집계 건수 + (categoryId 면) product-service 필터 패널 이름·선택 방식·옵션 순서.
+- 아직 없음: 인기·평점 정렬(관련도로 대체, appliedSort 로 알림), 최근 검색어·재색인 API(501 — 재색인은 `deploy/lan/elastic/REINDEX.md` 절차).
+- 재색인(ADR-0034): Kafka 전체 재생 → 별칭 교체, 절차 `deploy/lan/elastic/REINDEX.md`. 색인 정의(`products-v3`)에는 별칭을 넣지 않는다 — 별칭이 없을 때만 붙이고(새 환경) 전환은 절차가 한다. Logstash 대상 색인·소비 그룹은 `deploy/lan/elastic/search-index.env`.
+- 판매 상태(2026-11-04): 상품 행 버전(PVP `rowVersion`·PSSC `version`)이 큰 것만. 행 버전 없는 옛 사건은 행 버전 기준 상태가 없을 때만 시각 비교. storefront 도 같은 규칙.
+- 콘텐츠 보강 실패(2026-11-04): 2초 간격 2번 더 시도 → 그래도 실패면 색인하지 않고 `search-index.DLT`(원래 토픽·파티션·오프셋) + 경보 `SearchIndexDeadLetter`.
 
 ## 상태
 상품 검색·자동완성·필터(빈 목록) 구현(2026-10-30).

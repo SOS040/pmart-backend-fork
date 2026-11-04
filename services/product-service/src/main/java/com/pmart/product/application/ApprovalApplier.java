@@ -191,6 +191,7 @@ public class ApprovalApplier {
 
     String productId;
     int version;
+    int rowVersion;
     List<String> issued = new ArrayList<>();
     String sku;
     if (existing.isPresent()) {
@@ -206,6 +207,7 @@ public class ApprovalApplier {
       }
       productId = e.productId();
       version = e.currentVersion() + 1;
+      rowVersion = e.rowVersion() + 1;
       catalog.updateProduct(
           productId,
           e.rowVersion(),
@@ -231,6 +233,7 @@ public class ApprovalApplier {
       String baseProductId = baseProduct(in, f, at);
       productId = "PRD-" + UUID.randomUUID();
       version = 1;
+      rowVersion = 1;
       catalog.insertProduct(
           new ProductRow(
               productId,
@@ -317,6 +320,8 @@ public class ApprovalApplier {
     }
     Map<String, Object> published = new LinkedHashMap<>(snapshot);
     published.put("effectiveAt", at.toString());
+    // 판매 상태 비교용 행 버전 — ProductSaleStateChanged.version 과 같은 카운터(소비자가 시각 대신 이 값으로 비교)
+    published.put("rowVersion", rowVersion);
     published.put("approvalRef", Map.of("approvalId", approvalId));
     if (d.sourceSystem() != null && d.sourceKey() != null) {
       published.put("sources", List.of(Map.of("system", d.sourceSystem(), "key", d.sourceKey())));

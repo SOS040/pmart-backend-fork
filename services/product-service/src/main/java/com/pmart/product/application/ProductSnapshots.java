@@ -59,6 +59,12 @@ public class ProductSnapshots {
     out.put("primaryCategoryId", p.primaryCategoryId());
     out.put("categoryIds", catalog.categoriesOf(productId));
     out.put("saleState", p.saleState());
+    // 승인 속성(필터 옵션) — 검색이 filters(그룹.옵션)로 거른다(2026-11-04)
+    List<Map<String, Object>> filterOptions = new ArrayList<>();
+    for (String[] go : catalog.filterOptionsOf(productId)) {
+      filterOptions.add(Map.of("filterGroupId", go[0], "option", go[1]));
+    }
+    out.put("filterOptions", filterOptions);
     out.put("skus", skus);
     out.put("version", version);
     out.put("approvalId", approvalId);

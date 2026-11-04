@@ -22,17 +22,23 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 SearchApi — 상품 검색·자동완성·필터. 업무 규칙은 application/domain 에 있고 변환만 한다. 승인 속성 필터(filters)는 원천(승인
- * 속성)이 아직 없어 적용하지 않고 appliedFilters 를 비워 알린다.
+ * 계약 SearchApi — 상품 검색·자동완성·필터. 업무 규칙은 application/domain 에 있고 변환만 한다. 승인 속성 필터(filters, "그룹.옵션")는
+ * 색인의 filters(ProductVersionPublished.filterOptions)로 거르고, 실제로 적용한 값을 appliedFilters 로
+ * 알린다(2026-11-04).
  */
 @RestController
 public class SearchController implements SearchApi {
 
   private final ProductSearch search;
+  private final com.pmart.search.infrastructure.CategoryTreeClient categories;
   private final Clock clock;
 
-  public SearchController(ProductSearch search, Clock clock) {
+  public SearchController(
+      ProductSearch search,
+      com.pmart.search.infrastructure.CategoryTreeClient categories,
+      Clock clock) {
     this.search = search;
+    this.categories = categories;
     this.clock = clock;
   }
 
@@ -63,6 +69,7 @@ public class SearchController implements SearchApi {
               mfcId,
               includeNotCarried == null || includeNotCarried,
               price,
+              SearchRules.parseFilters(filters),
               SearchRules.sort(sort == null ? null : sort.getValue()),
               size,
               cursor);
@@ -76,7 +83,7 @@ public class SearchController implements SearchApi {
             .total((int) r.total())
             .page(new SearchResultPage().nextCursor(r.nextCursor()).size(r.items().size()))
             .appliedSort(SortKey.fromValue(r.appliedSort().name()))
-            .appliedFilters(List.of())
+            .appliedFilters(r.appliedFilters())
             .asOf(asOf()));
   }
 
@@ -92,8 +99,51 @@ public class SearchController implements SearchApi {
   @Override
   public ResponseEntity<GetSearchFilters200Response> getSearchFilters(
       @Nullable String q, @Nullable String categoryId, @Nullable String mfcId) {
-    // 승인 속성(용량·개당 수량 등) 원천이 아직 없다 → 빈 목록(0건이 아니라 "필터 없음")
-    return ResponseEntity.ok(new GetSearchFilters200Response().attributes(List.of()).asOf(asOf()));
+    // 색인 집계(현재 조건의 건수) + 카테고리를 주면 product-service 필터 패널의 이름·선택 방식·옵션 순서
+    var facets = search.facets(q, categoryId);
+    var groups =
+        categoryId == null || categoryId.isBlank()
+            ? List.<com.pmart.search.infrastructure.CategoryTreeClient.FilterGroup>of()
+            : categories.filterGroups(categoryId);
+    java.util.Map<String, java.util.List<ProductSearch.Facet>> byKey =
+        new java.util.LinkedHashMap<>();
+    for (var g : groups) {
+      byKey.put(g.id(), new java.util.ArrayList<>());
+    }
+    for (var f : facets) {
+      byKey.computeIfAbsent(f.key(), k -> new java.util.ArrayList<>()).add(f);
+    }
+    List<com.pmart.search.api.generated.model.FilterAttribute> attributes =
+        new java.util.ArrayList<>();
+    byKey.forEach(
+        (key, fs) -> {
+          var group = groups.stream().filter(g -> g.id().equals(key)).findFirst().orElse(null);
+          List<String> order = group == null ? List.of() : group.options();
+          var values =
+              fs.stream()
+                  .sorted(
+                      java.util.Comparator.comparingInt(
+                          (ProductSearch.Facet f) -> {
+                            int i = order.indexOf(f.value());
+                            return i < 0 ? Integer.MAX_VALUE : i;
+                          }))
+                  .map(
+                      f ->
+                          new com.pmart.search.api.generated.model.FilterAttributeValuesInner()
+                              .value(f.value())
+                              .label(f.value())
+                              .count((int) f.count()))
+                  .toList();
+          if (!values.isEmpty()) {
+            attributes.add(
+                new com.pmart.search.api.generated.model.FilterAttribute()
+                    .key(key)
+                    .label(group == null ? key : group.name())
+                    .multiSelect(group == null || group.multiSelect())
+                    .values(values));
+          }
+        });
+    return ResponseEntity.ok(new GetSearchFilters200Response().attributes(attributes).asOf(asOf()));
   }
 
   private static SearchHit hit(ProductSearch.Hit h) {

@@ -1,0 +1,78 @@
+# 검색 색인 재색인 절차 (LAN)
+
+- 근거:
+  - ADR-0031: 색인은 Logstash 만
+  - ADR-0034: commerce.product.v1·commerce.pricing.v1 무제한 보관, 재색인 = Kafka 전체 재생, 스냅샷 API 없음
+  - `docs/architecture/search-comparison.md`
+- 재색인 API(`/internal/reindex`)는 두지 않는다(501). 아래 절차로만 한다.
+- 선행 조건(2026-11-04 충족):
+  - 판매 상태 비교를 상품 행 버전으로 바꿈 — `ProductVersionPublished.rowVersion` 추가, Logstash·storefront 반영
+  - 콘텐츠 보강 실패를 조용히 건너뛰지 않음 — 2번 더 시도한 뒤 `search-index.DLT` + 경보 `SearchIndexDeadLetter`
+
+## 0. 언제 무엇을
+| 상황 | 방법 |
+|---|---|
+| **매핑 변경**(새 필드·분석기) — 예 2026-11-04 `products-v2` → `products-v3` | §2 전체 재생으로 새 색인을 만든 뒤 별칭 교체 |
+| **원천과 어긋남**(버그로 잘못 색인, 원인 수정 뒤) | §2 와 같음(같은 매핑이면 새 이름 `-v(n+1)`) |
+| **일부 사건만 실패**(DLT 에 몇 건) | §3 부분 재처리 |
+| 매핑이 같고 `_source` 만으로 충분한 복사 | ES `_reindex` 는 **Logstash 를 멈춘 동안에만**(쓰기 경합). 보통은 §2 를 쓴다 |
+
+## 1. 바꾸는 곳
+- `deploy/lan/elastic/search-index.env` → `render.sh` 가 logstash 환경변수로 넣는다.
+  - `PMART_SEARCH_PRODUCTS_INDEX`: Logstash 가 쓰는 상품 색인. 평소에는 별칭 `products`.
+  - `PMART_SEARCH_PRICES_INDEX`: 가격 색인. 평소에는 별칭 `sku-prices`.
+  - `PMART_SEARCH_GROUP_ID`: Kafka 소비 그룹.
+  - `PMART_SEARCH_DLT_TOPIC`: 실패 사건 토픽(`search-index.DLT`).
+- 새 색인 정의는 search-service `src/main/resources/elasticsearch/<이름>.json`(별칭을 넣지 않는다).
+  - es-init 과 search-service 는 **별칭이 없을 때만** 붙인다. 이전 버전을 가리키고 있으면 그대로 두고, 전환은 아래 §2-5 에서 사람이 한다.
+- search-service 는 항상 별칭(`products`)을 읽는다. 재색인 중에는 이전 색인을 읽고, 별칭 교체 순간에 새 색인으로 바뀐다.
+
+## 2. 전체 재생으로 새 색인 만들기 (예: products-v3)
+1. **사전 확인**
+   - Kafka 보관이 무제한인지 본다(`KafkaEventRetentionNotUnlimited`·`KafkaEventHistoryTruncated` 경보 없음).
+   - 백업: `deploy/lan/kafka/backup.sh /d/pmart-backups/kafka before-reindex`.
+   - ES green, 지금 소비 그룹 지연 0.
+2. **`search-index.env` 를 먼저 바꾼다**(render 전에. 커밋하지 않는 임시 값, 6단계에서 되돌린다):
+   - `PMART_SEARCH_PRODUCTS_INDEX=products-v3`
+   - `PMART_SEARCH_GROUP_ID=search-index-logstash-v3`
+   - 가격 색인 매핑이 그대로면 `sku-prices` 는 두어도 된다(같은 가격 버전은 그대로 무시).
+   - **순서 주의**: Logstash 설정(search-index.conf)도 render 가 search-service 에서 복사한다. 새 필드를 쓰는 설정이 env 를 바꾸기 전에 배포되면 옛 색인(strict 매핑)에 쓰다가 모두 실패한다.
+3. **새 이미지 배포와 새 색인 채우기**(매핑·사건이 바뀐 경우): product-service(새 사건 필드), storefront, search-service jib.
+   - `lan.sh render` → `deploy pc4`: es-init 이 `products-v3` 를 **빈 채로** 만든 뒤(별칭은 그대로 v2) Logstash 가 뜬다.
+   - 그다음 `deploy pc2 product-service storefront-service search-service`.
+   - 새 그룹은 두 토픽을 처음부터(earliest) 읽는다.
+   - 이 동안 v2 는 새 사건을 받지 않는다(검색 결과가 잠시 이전 상태). 운영에서는 두 파이프라인을 나란히 돌린다(후속 설계).
+4. **반영 완료 확인**(모두 만족해야 다음 단계)
+   - 소비 그룹 `search-index-logstash-v3` 지연 0(kafka-consumer-groups `--describe`).
+   - Logstash 영구 큐 비어 있음: pc4 에서 `docker exec pmart-lan-logstash-1 curl -s localhost:9600/_node/stats/pipelines/search-index` 의 queue events 0(9600 은 외부에 열지 않았다). 영구 큐라 오프셋 커밋이 ES 쓰기보다 먼저 일어나므로 지연 0 만으로는 부족하다.
+   - `search-index.DLT` 새 레코드 없음(있으면 §3 으로 원인부터).
+   - 건수 대조: `GET products-v3/_count` = `GET products/_count`(v2) = product-service 상품 수, 판매중지 제외 기준이 같은지.
+   - 표본 몇 개 상품의 `saleState`·`basePrice`·`name` 이 v2 와 같은지(새 필드 `saleStateRowVersion`·`filters` 는 v3 에만).
+5. **별칭 교체**(원자적, 한 요청)
+   ```bash
+   curl -s -X POST http://192.168.0.40:9200/_aliases -H 'Content-Type: application/json' -d '{
+     "actions": [
+       { "remove": { "index": "products-v2", "alias": "products" } },
+       { "add":    { "index": "products-v3", "alias": "products" } }
+     ] }'
+   ```
+6. **정리**
+   - `search-index.env` 를 `PMART_SEARCH_PRODUCTS_INDEX=products`(다시 별칭)로 되돌리고 `PMART_SEARCH_GROUP_ID=search-index-logstash-v3` 는 그대로 둔다 → render → `deploy pc4 logstash`.
+   - 옛 소비 그룹 `search-index-logstash` 삭제(소비자 없음 확인 뒤).
+   - `products-v2` 는 며칠 두었다가 삭제한다(되돌림용).
+   - search-service `SearchIndex.INDICES`·정의 파일은 이미 v3 다.
+7. **되돌림**: 별칭을 v2 로 다시 교체한다(§2-5 의 remove/add 반대). v2 는 3단계부터 사건을 받지 않았으므로, 되돌린 뒤 원인을 고쳐 다시 §2 를 한다.
+
+## 3. 부분 재처리 (DLT)
+- DLT 레코드: `search-index.DLT`, 키 = 상품 id.
+  - 본문의 `pmartDeadLetter{op, id, tags, topic, partition, offset, at}` 가 원래 위치를 담는다.
+  - 원래 사건은 이력 토픽에 그대로 있다.
+- 원인(예 product-content-service 장애·게시 지연)을 고친 뒤, 방법은 둘 중 하나다:
+  - **그 상품의 사건이 새로 나오게 한다**: 콘텐츠 재게시. 가장 간단하다.
+  - **소비 그룹 오프셋을 DLT 의 가장 이른 offset 으로 되돌린다**: Logstash 를 멈춘 동안 `kafka-consumer-groups --reset-offsets --to-offset <n> --topic commerce.product.v1:<partition>`. 사이 사건이 다시 처리되지만 버전 비교로 멱등이다.
+- DLT 를 다 처리했으면 경보는 30분 뒤 저절로 풀린다(증가 기준).
+
+## 4. 하지 않는 것
+- 적용된 색인의 매핑을 고치지 않는다(새 버전을 만든다, search-service CLAUDE.md).
+- 재생 중 별칭을 미리 옮기지 않는다(빈 색인을 검색하게 된다).
+- Log Compaction 을 켜지 않는다. 같은 키에 사건 종류가 여러 개라 이력이 사라진다(ADR-0034).

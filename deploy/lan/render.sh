@@ -407,6 +407,10 @@ EOF
       PMART_ES_URL: http://elasticsearch:9200
       PMART_CONTENT_BASE_URL: http://product-content-service:$(port_of product-content-service)
       LS_JAVA_OPTS: -Xms512m -Xmx512m
+EOF
+        # 검색 색인 대상 색인·소비 그룹·DLT(elastic/search-index.env — 재색인 때만 바꾼다, elastic/REINDEX.md)
+        grep -E '^PMART_SEARCH_[A-Z_]+=' "$LAN/elastic/search-index.env" | sed 's/^\([^=]*\)=\(.*\)$/      \1: "\2"/'
+        cat <<EOF
     volumes:
       - ./elastic/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./elastic/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro

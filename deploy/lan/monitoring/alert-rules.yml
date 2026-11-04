@@ -83,6 +83,13 @@ groups:
         annotations:
           summary: "{{ $labels.topic }} 앞 사건이 지워졌다(시작 오프셋 {{ $value }})"
           description: "이력만으로 검색 색인을 다시 만들 수 없다. deploy/lan/kafka/README.md 의 백업·복원 절차를 본다."
+      - alert: SearchIndexDeadLetter
+        # 검색 색인 파이프라인이 재시도 뒤에도 처리하지 못한 사건을 search-index.DLT 에 남겼다(콘텐츠 카드 보강 실패 등, 2026-11-04)
+        expr: delta(pmart_kafka_topic_end_offset{topic="search-index.DLT"}[30m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "검색 색인 미처리 사건 {{ $value }}건(search-index.DLT)"
+          description: "해당 상품은 검색에 이름·이미지가 빠졌을 수 있다. DLT 레코드의 pmartDeadLetter(topic·partition·offset·tags)로 원인 확인 → 고친 뒤 deploy/lan/elastic/REINDEX.md '부분 재처리'."
       - alert: KafkaEventBurst
         expr: delta(pmart_kafka_topic_end_offset[1h]) > 5000
         for: 5m
