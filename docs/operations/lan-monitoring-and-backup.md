@@ -14,7 +14,7 @@
 | 살아 있는지 점검·자동 재시작 | `watch.sh` (5분마다) | PC1 작업 스케줄러 "PMart LAN Watch" | `deploy/lan/watch.sh` |
 | 지표 수집 | Prometheus v3.5.0 | pc4 :9090 | `render.sh` (prometheus.yml 생성) |
 | 경보 규칙 22개 | Prometheus → Alertmanager v0.28.1 | pc4 :9093 | `deploy/lan/monitoring/alert-rules.yml`, `alertmanager.yml` |
-| 화면 | Grafana 12.0.2 | pc4 :3000 | `deploy/lan/monitoring/grafana/` (대시보드 `pmart-overview.json`) |
+| 화면 | Grafana 12.0.2 | pc4 :3000 | `deploy/lan/monitoring/grafana/` (대시보드 `pmart-overview.json`, 상품 검색 `pmart-search.json`) |
 | 요청 추적 | Zipkin 3 (메모리 저장) | pc4 :9411 | `render.sh` zipkin 블록 |
 | 앱 로그 | Filebeat → Logstash → Elasticsearch → Kibana | 각 PC → pc4 | `deploy/lan/elastic/` |
 | 디스크 여유 | node-exporter(host-disk) | 각 PC :9100 | `render.sh` host-disk 블록 |

@@ -127,12 +127,13 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 ## 8. 감시
 | 대상 | 있는 것 | 없는 것 |
 |---|---|---|
-| Elasticsearch | es-exporter 지표, 경보 `ElasticsearchUnreachable`·`ElasticsearchClusterRed`·`ElasticsearchHeapHigh` | Grafana 검색 대시보드 |
+| Elasticsearch | es-exporter 지표, 경보 `ElasticsearchUnreachable`·`ElasticsearchClusterRed`·`ElasticsearchHeapHigh` | 색인별 지표(노드 합계만) |
 | 이력 토픽 | 보관 설정·시작 오프셋·증가량 지표와 경보, 측정 멈춤 경보 `KafkaTopicMetricsStale` | 외부 매체 백업 자동화(백업은 수동 `deploy/lan/kafka/backup.sh`) |
 | 색인 파이프라인 | 소비 지연·Logstash 영구 큐·Logstash DLQ·ES 거절·마지막 반영 시각 지표(watch.sh 5분마다, 2026-11-04). 경보 `SearchIndexStalled`(지연 > 0 인데 15분 넘게 반영 없음)·`SearchIndexQueueBacklog`·`SearchIndexLogstashDown`·`SearchIndexRejectedByElasticsearch`·`SearchIndexDeadLetter`·`SearchIndexMetricsStale`. 신선도 API | 5분 표본이라 짧은 멈춤은 못 본다 |
 | search-service | 앱 공통 지표, `AppDown`·`Http5xxRateHigh` | 검색 지연·0건 비율 같은 품질 지표 |
 | 경보 수신 | Prometheus·Alertmanager 화면 | 수신처 없음(Slack 은 명시 요청 때만) |
 
+- 화면: Grafana **PMart 상품 검색**(uid `pmart-search`, `deploy/lan/monitoring/grafana/dashboards/pmart-search.json`, 2026-11-05) — 파이프라인 상태 6개, 토픽별 지연·처리량, 검색 API 요청·응답 시간·오류, ES 쿼리·힙, 이력 토픽 크기.
 - 지표 경로: `deploy/lan/watch.sh`(PC 1, 5분마다) → 소비 지연은 `kafka/topic-metrics.sh`(그룹 = `search-index.env`), Logstash 통계·마지막 반영 시각은 `elastic/search-index-metrics.py` → Kafka PC(pc2) `pmart-lan/metrics/*.prom` → host-disk(node-exporter textfile). 그래서 지표의 `pc` 라벨은 pc2 다.
 - 2026-11-04 사고: 작업 사본 줄바꿈이 CRLF 가 되어 watch.sh 가 컨테이너로 보낸 `topic-metrics.sh` 가 실패, 토픽 지표가 약 1시간 멈춤(`KafkaTopicMetricsStale` 로 발견). 컨테이너로 보내는 스크립트는 LF 여야 한다(`.gitattributes` 가 저장소는 LF 로 지킨다).
 

@@ -1,0 +1,883 @@
+{
+  "uid": "pmart-search",
+  "title": "PMart 상품 검색",
+  "tags": [
+    "pmart",
+    "search"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "refresh": "1m",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "description": "상품 검색 색인 파이프라인(Logstash)·검색 API·Elasticsearch·이력 토픽. 문서: docs/architecture/product-search.md §8",
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "색인 파이프라인 (watch.sh 5분 표본 — 경보 SearchIndex*)",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "title": "소비 지연(건)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "Kafka 이력 토픽에서 Logstash 가 아직 읽지 않은 사건 수(search-index.env 의 소비 그룹)",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "sum(pmart_search_index_consumer_lag) or vector(0)",
+          "legendFormat": "소비 지연(건)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Logstash 영구 큐(건)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "Kafka 에서는 읽었지만 ES 에 아직 못 쓴 사건. 오프셋은 이미 커밋돼 지연에는 안 보인다",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "max(pmart_logstash_queue_events{pipeline=\"search-index\"}) or vector(0)",
+          "legendFormat": "Logstash 영구 큐(건)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "마지막 반영 경과",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "색인 문서 updatedAtMs 최댓값부터 지금까지. 사건이 없으면 커지는 게 정상 — 지연이 0 이 아닌데 크면 멈춤",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "time() - max(pmart_search_index_last_applied_timestamp_seconds)",
+          "legendFormat": "마지막 반영 경과",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "DLT 증가(30분)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "콘텐츠 보강이 재시도 뒤에도 실패해 search-index.DLT 로 간 사건",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "sum(delta(pmart_kafka_topic_end_offset{topic=\"search-index.DLT\"}[30m])) or vector(0)",
+          "legendFormat": "DLT 증가(30분)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "ES 거절(30분)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "Elasticsearch 가 문서를 거절(예 strict 매핑 위반) — Logstash DLQ",
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "(sum(increase(pmart_logstash_es_failures_total{pipeline=\"search-index\"}[30m])) or vector(0)) + (max(pmart_logstash_dlq_dropped_events{pipeline=\"search-index\"}) or vector(0))",
+          "legendFormat": "ES 거절(30분)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Logstash",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "search-index 파이프라인 통계를 읽었으면 1",
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "max(pmart_logstash_up{pipeline=\"search-index\"})",
+          "legendFormat": "Logstash",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "소비 지연(토픽별)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "pmart_search_index_consumer_lag",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Logstash 처리량·영구 큐",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "5분 표본이라 짧은 변화는 안 보인다. 재시작하면 누적값이 0 부터",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "rate(pmart_logstash_events_out_total{pipeline=\"search-index\"}[15m]) * 60",
+          "legendFormat": "내보낸 사건/분"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "pmart_logstash_queue_events{pipeline=\"search-index\"}",
+          "legendFormat": "영구 큐"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "검색 API (search-service)",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "title": "요청 수(분당)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"search-service\",uri=~\"/api/v1/search/.*\"}[5m])) * 60",
+          "legendFormat": "{{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "응답 시간(평균·최대)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "히스토그램이 없어 백분위는 없다",
+      "gridPos": {
+        "x": 8,
+        "y": 14,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_sum{job=\"search-service\",uri=~\"/api/v1/search/.*\"}[5m])) / sum by (uri) (rate(http_server_requests_seconds_count{job=\"search-service\",uri=~\"/api/v1/search/.*\"}[5m]))",
+          "legendFormat": "평균 {{uri}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "max by (uri) (http_server_requests_seconds_max{job=\"search-service\",uri=~\"/api/v1/search/.*\"})",
+          "legendFormat": "최대 {{uri}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "오류(4xx·5xx, 분당)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "sum by (status) (rate(http_server_requests_seconds_count{job=\"search-service\",uri=~\"/api/v1/search/.*\",status=~\"[45]..\"}[5m])) * 60",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Elasticsearch (pc4, es-exporter — 검색 색인과 로그가 같은 노드)",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 15,
+      "title": "검색 쿼리(초당)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "rate(elasticsearch_indices_search_query_total[5m])",
+          "legendFormat": "쿼리/초"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "title": "쿼리 평균 시간",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 8,
+        "y": 23,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "rate(elasticsearch_indices_search_query_time_seconds[5m]) / clamp_min(rate(elasticsearch_indices_search_query_total[5m]), 0.0001)",
+          "legendFormat": "평균"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "title": "힙 사용률",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 16,
+        "y": 23,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "elasticsearch_jvm_memory_used_bytes{area=\"heap\"} / elasticsearch_jvm_memory_max_bytes{area=\"heap\"}",
+          "legendFormat": "힙"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "title": "이력 토픽 (무제한 보관 — 재색인 재생 원천)",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 19,
+      "title": "토픽 사건 수(끝 오프셋)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "pmart_kafka_topic_end_offset",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "title": "토픽 크기",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "pmart-prometheus"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "pmart-prometheus"
+          },
+          "expr": "pmart_kafka_topic_size_bytes",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    }
+  ]
+}
