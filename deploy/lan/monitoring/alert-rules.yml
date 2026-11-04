@@ -90,6 +90,50 @@ groups:
         annotations:
           summary: "검색 색인 미처리 사건 {{ $value }}건(search-index.DLT)"
           description: "해당 상품은 검색에 이름·이미지가 빠졌을 수 있다. DLT 레코드의 pmartDeadLetter(topic·partition·offset·tags)로 원인 확인 → 고친 뒤 deploy/lan/elastic/REINDEX.md '부분 재처리'."
+      # 검색 색인 파이프라인(Logstash) 감시(2026-11-04). 지표는 watch.sh(PC 1, 5분마다)가 만들어 Kafka PC host-disk 가 내보낸다:
+      #   소비 지연 = kafka_topics.prom(topic-metrics.sh), Logstash·마지막 반영 시각 = search_index.prom(elastic/search-index-metrics.py)
+      - alert: SearchIndexStalled
+        # 사건이 쌓였는데(지연 > 0) 색인에 15분 넘게 아무것도 반영되지 않았다. 조용해서 반영이 없는 것(지연 0)과 구분된다
+        expr: |
+          sum(pmart_search_index_consumer_lag) > 0
+          and on() (time() - max(pmart_search_index_last_applied_timestamp_seconds)) > 900
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "검색 색인이 멈췄다(소비 지연 {{ $value }}건, 15분 넘게 반영 없음)"
+          description: "상품·가격·판매 상태 변경이 검색에 반영되지 않는다. lan.sh logs pc4 logstash, ES 상태, product-content 카드 API 확인."
+      - alert: SearchIndexQueueBacklog
+        # 영구 큐에 사건이 남아 있다 — Kafka 에서는 읽었지만 ES 에 쓰지 못하고 있다(오프셋은 이미 커밋돼 지연 지표로는 안 보인다)
+        expr: pmart_logstash_queue_events{pipeline="search-index"} > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Logstash 영구 큐에 {{ $value }}건이 15분 넘게 남아 있다"
+          description: "ES 쓰기 지연·거절 또는 콘텐츠 카드 API 응답 지연. lan.sh logs pc4 logstash 로 원인 확인."
+      - alert: SearchIndexLogstashDown
+        expr: pmart_logstash_up{pipeline="search-index"} == 0
+        for: 15m
+        labels: { severity: critical }
+        annotations:
+          summary: "Logstash search-index 파이프라인 통계를 읽지 못한다"
+          description: "Logstash 컨테이너가 멈췄거나 파이프라인이 뜨지 않았다(설정 오류면 lan.sh logs pc4 logstash 에 Expected one of …). 검색 색인이 갱신되지 않는다."
+      - alert: SearchIndexRejectedByElasticsearch
+        # ES 가 문서를 거절했다(예: strict 매핑에 없는 필드 — 새 색인 없이 Logstash 설정만 바꾼 경우). 거절된 문서는 Logstash DLQ 로 간다
+        expr: |
+          delta(pmart_logstash_dlq_bytes{pipeline="search-index"}[30m]) > 0
+          or increase(pmart_logstash_es_failures_total{pipeline="search-index"}[30m]) > 0
+          or pmart_logstash_dlq_dropped_events{pipeline="search-index"} > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Elasticsearch 가 검색 색인 문서를 거절했다"
+          description: "그 상품은 검색에 반영되지 않았다. lan.sh logs pc4 logstash 의 오류(매핑·필드)를 보고, 매핑 문제면 새 색인 + deploy/lan/elastic/REINDEX.md."
+      - alert: SearchIndexMetricsStale
+        expr: time() - pmart_search_index_metrics_timestamp_seconds > 1800 or absent(pmart_search_index_metrics_timestamp_seconds)
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "검색 색인 지표가 갱신되지 않는다"
+          description: "PC 1 의 'PMart LAN Watch'(watch.sh)가 멈췄거나 python·pc4 접속 실패. ~/.pmart-lan-watch/watch.log 확인."
       - alert: KafkaEventBurst
         expr: delta(pmart_kafka_topic_end_offset[1h]) > 5000
         for: 5m

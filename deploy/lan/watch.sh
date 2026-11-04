@@ -125,20 +125,53 @@ done
 # ---- Kafka 이벤트 이력 토픽 지표(ADR-0034) ----
 # Kafka PC 에서 토픽 크기·오프셋·보관 설정을 재서 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓴다(host-disk 가 내보낸다).
 # 읽기만 한다(재시작·설정 변경 없음). 실패해도 위 점검·복구에는 영향이 없다 — 멈추면 Prometheus 의 KafkaTopicMetricsStale 이 알린다.
+pc_of() { grep -l "^  $1:" "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename; }
+# Kafka PC 의 pmart-lan/metrics/<이름> 으로 올린다(그 PC 의 host-disk 만 textfile 수집기가 있다).
+# .tmp 로 올린 뒤 이름을 바꾼다(node-exporter 는 *.prom 만 읽는다 — 반쯤 쓴 파일을 읽지 않게)
+push_textfile() {
+  local file="$1" name="$2" kpc host
+  kpc="$(pc_of kafka)"; [ -n "$kpc" ] || return 0
+  host="$(awk '{print $3}' "$OUT/$kpc/target")"
+  scp -q -o BatchMode=yes -o ConnectTimeout=10 "$file" "$host:pmart-lan/metrics/$name.tmp" 2>/dev/null \
+    && ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
+      "powershell -NoProfile -Command \"Move-Item -Force \$env:USERPROFILE\\pmart-lan\\metrics\\$name.tmp \$env:USERPROFILE\\pmart-lan\\metrics\\$name\"" >/dev/null 2>&1 \
+    || log "$kpc 지표 $name 전송 실패(pmart-lan/metrics 가 없으면 lan.sh deploy $kpc 후 생긴다)"
+}
+search_group() { sed -n 's/^PMART_SEARCH_GROUP_ID=//p' "$LAN/elastic/search-index.env" 2>/dev/null | head -1; }
+
 kafka_metrics() {
   local kpc host tmp
-  kpc="$(grep -l '^  kafka:' "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename)"
+  kpc="$(pc_of kafka)"
   [ -n "$kpc" ] || return 0
   host="$(awk '{print $3}' "$OUT/$kpc/target")"
   tmp="$STATE/kafka_topics.prom"
-  ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1 sh" \
-    < "$LAN/kafka/topic-metrics.sh" 2>/dev/null > "$tmp.new" || { log "$kpc Kafka 토픽 지표 측정 실패"; return 0; }
+  # 맨 앞에 검색 색인 소비 그룹을 붙여 보낸다(topic-metrics.sh 가 그 그룹 지연을 잰다). CR 은 지운다 — 컨테이너 sh 가 CRLF 를 못 읽는다(2026-11-04 지표 1시간 멈춤)
+  { printf 'SEARCH_GROUP=%s\n' "$(search_group)"; tr -d '\r' < "$LAN/kafka/topic-metrics.sh"; } \
+    | ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1 sh" 2>/dev/null > "$tmp.new" \
+    || { log "$kpc Kafka 토픽 지표 측정 실패"; return 0; }
   grep -q '^pmart_kafka_topic_metrics_timestamp_seconds ' "$tmp.new" || { log "$kpc Kafka 토픽 지표 형식 이상 — 쓰지 않음"; return 0; }
   mv -f "$tmp.new" "$tmp"
-  # .tmp 로 올린 뒤 이름을 바꾼다(node-exporter 는 *.prom 만 읽는다 — 반쯤 쓴 파일을 읽지 않게)
-  scp -q -o BatchMode=yes -o ConnectTimeout=10 "$tmp" "$host:pmart-lan/metrics/kafka_topics.prom.tmp" 2>/dev/null \
-    && ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
-      'powershell -NoProfile -Command "Move-Item -Force $env:USERPROFILE\pmart-lan\metrics\kafka_topics.prom.tmp $env:USERPROFILE\pmart-lan\metrics\kafka_topics.prom"' >/dev/null 2>&1 \
-    || log "$kpc Kafka 토픽 지표 전송 실패(pmart-lan/metrics 가 없으면 lan.sh deploy $kpc 후 생긴다)"
+  push_textfile "$tmp" kafka_topics.prom
 }
 kafka_metrics
+
+# ---- 검색 색인 파이프라인 지표 ----
+# Logstash 통계(9600 은 외부에 열지 않아 컨테이너 안에서 curl)와 ES 의 마지막 반영 시각을 search_index.prom 으로.
+# 읽기만 한다. 가져오기에 실패해도 파일은 쓴다(pmart_logstash_up 0) — 경보가 그것으로 알린다.
+search_index_metrics() {
+  local lpc epc lhost eip tmp py
+  lpc="$(pc_of logstash)"; epc="$(pc_of elasticsearch)"
+  [ -n "$lpc" ] && [ -n "$epc" ] || return 0
+  lhost="$(awk '{print $3}' "$OUT/$lpc/target")"; eip="$(awk '{print $2}' "$OUT/$epc/target")"
+  tmp="$STATE/search_index"
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$lhost" \
+    "docker exec pmart-lan-logstash-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" 2>/dev/null > "$tmp.logstash.json" || : > "$tmp.logstash.json"
+  curl -s -m 10 "http://$eip:9200/products/_search" -H 'Content-Type: application/json' \
+    -d '{"size":0,"aggs":{"last":{"max":{"field":"updatedAtMs"}}}}' > "$tmp.es.json" 2>/dev/null || : > "$tmp.es.json"
+  py="$(command -v python || command -v python3 || command -v py)" || { log "검색 색인 지표: python 없음"; return 0; }
+  "$py" -I "$LAN/elastic/search-index-metrics.py" "$tmp.logstash.json" "$tmp.es.json" > "$tmp.prom.new" 2>>"$LOG" \
+    || { log "검색 색인 지표 변환 실패"; return 0; }
+  mv -f "$tmp.prom.new" "$tmp.prom"
+  push_textfile "$tmp.prom" search_index.prom
+}
+search_index_metrics

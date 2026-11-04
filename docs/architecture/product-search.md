@@ -91,7 +91,7 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 
 ### `GET /search/filters`
 - 지금 조건(`q`·`categoryId`)에 걸리는 상품의 `filters` 를 ES terms 집계로 세어 `attributes[{key, label, multiSelect, values[{value, label, count}]}]` 로 돌려준다.
-- `categoryId` 를 주면 product-service 필터 패널에서 이름(label)·선택 방식(TOGGLE 이면 단일 선택)·옵션 순서를 가져온다. **`categoryId` 없이 부르면 이름을 못 찾아 label 이 키 그대로**다(예 `seed-storage`).
+- 이름(label)·선택 방식(TOGGLE 이면 단일 선택)·옵션 순서는 product-service 필터 패널에서 가져온다. 패널은 노드에 직접 붙은 것만 내려오므로(상속 없음) **그 카테고리와 조상의 패널을 가까운 것부터 합치고, `categoryId` 가 없으면 최상위 노드들의 패널**을 합친다(패널마다 5분 사본). 하위 노드에만 붙은 그룹을 카테고리 없이 부르면 이름을 못 찾아 키 그대로 보인다(2026-11-04).
 - 건수가 0 인 옵션은 나오지 않는다(집계 기반).
 
 ### 그 밖
@@ -122,16 +122,17 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 |---|---|---|
 | Elasticsearch | es-exporter 지표, 경보 `ElasticsearchUnreachable`·`ElasticsearchClusterRed`·`ElasticsearchHeapHigh` | Grafana 검색 대시보드 |
 | 이력 토픽 | 보관 설정·시작 오프셋·증가량 지표와 경보, 측정 멈춤 경보 `KafkaTopicMetricsStale` | 외부 매체 백업 자동화(백업은 수동 `deploy/lan/kafka/backup.sh`) |
-| 색인 파이프라인 | DLT 증가 경보 `SearchIndexDeadLetter`, 신선도 API | **Logstash 자체 지표**(소비 지연·영구 큐·Logstash DLQ)가 Prometheus 에 없다 — `ConsumerLagHigh` 는 Spring 앱만 |
+| 색인 파이프라인 | 소비 지연·Logstash 영구 큐·Logstash DLQ·ES 거절·마지막 반영 시각 지표(watch.sh 5분마다, 2026-11-04). 경보 `SearchIndexStalled`(지연 > 0 인데 15분 넘게 반영 없음)·`SearchIndexQueueBacklog`·`SearchIndexLogstashDown`·`SearchIndexRejectedByElasticsearch`·`SearchIndexDeadLetter`·`SearchIndexMetricsStale`. 신선도 API | 5분 표본이라 짧은 멈춤은 못 본다 |
 | search-service | 앱 공통 지표, `AppDown`·`Http5xxRateHigh` | 검색 지연·0건 비율 같은 품질 지표 |
 | 경보 수신 | Prometheus·Alertmanager 화면 | 수신처 없음(Slack 은 명시 요청 때만) |
 
+- 지표 경로: `deploy/lan/watch.sh`(PC 1, 5분마다) → 소비 지연은 `kafka/topic-metrics.sh`(그룹 = `search-index.env`), Logstash 통계·마지막 반영 시각은 `elastic/search-index-metrics.py` → Kafka PC(pc2) `pmart-lan/metrics/*.prom` → host-disk(node-exporter textfile). 그래서 지표의 `pc` 라벨은 pc2 다.
 - 2026-11-04 사고: 작업 사본 줄바꿈이 CRLF 가 되어 watch.sh 가 컨테이너로 보낸 `topic-metrics.sh` 가 실패, 토픽 지표가 약 1시간 멈춤(`KafkaTopicMetricsStale` 로 발견). 컨테이너로 보내는 스크립트는 LF 여야 한다(`.gitattributes` 가 저장소는 LF 로 지킨다).
 
 ## 9. 시험
 | 시험 | 확인하는 것 |
 |---|---|
-| `SearchFlowIT`(search-service, 실제 Kafka·ES·Logstash) | 이벤트 → 색인 → 검색 전 구간, 형태소·붙임말·부분 검색, 가격 범위, 미취급 채우기, 필터 OR·AND·appliedFilters·`/search/filters`, 행 버전 판매 상태, 콘텐츠 보강 실패 → DLT |
+| `SearchFlowIT`(search-service, 실제 Kafka·ES·Logstash) | 이벤트 → 색인 → 검색 전 구간, 형태소·붙임말·부분 검색, 가격 범위, 미취급 채우기, 필터 OR·AND·appliedFilters·`/search/filters`(조상·최상위 패널 이름), 행 버전 판매 상태, 콘텐츠 보강 실패 → DLT, 띄어쓰기 변형 |
 | `HomeFlowIT`(storefront-service) | 진열 사본의 행 버전 판매 상태 규칙 |
 | search-service 단위 시험 | 정렬·커서·필터 파싱(`SearchRules`) |
 | LAN 확인(2026-11-04) | 생크림 일시품절 → 판매중(ES·검색·storefront, 행 버전 2·3), 두부 필터 옵션 승인 → `filters=seed-storage.냉장` 1건·`냉동` 0건·`/search/filters` 건수 |
@@ -144,6 +145,5 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 | 랭킹(인기·별점·전환율·광고) | 판매량 집계 없음(OrderConfirmed 구독으로 가능), 리뷰 서비스는 2단계, 노출·클릭 로그 없음, 광고 도메인 없음. 집계 기간·가중치는 승인 설정(Commerce 원문 1051·1082행) |
 | 센터 취급을 색인에서 거르기 | mfc-inventory 가 취급 변경 이벤트(예 `SkuHandlingChanged`)를 내지 않는다 — 이벤트 계약·발행 → 색인 필드(예 `carriedMfcIds`) → 새 색인. 품절까지 넣을지는 결정 필요 |
 | SKU 옵션 검색 | 색인에 대표 SKU 하나뿐. SKU 목록(nested)·바코드·규격 색인 필요 |
-| `/search/filters` 카테고리 없는 이름 | 전체 필터 그룹 이름 조회를 추가하면 해결(작은 작업) |
+| 공백 정규화 | 붙여 쓴 검색어가 띄어 쓴 상품명을 못 찾는 경우가 있다("생크림" → "생 크림" 못 찾음, 반대는 찾음 — `SearchFlowIT.spacingVariants` 에 고정). 공백 제거 필드를 넣으면 해결(새 색인) |
 | 부하 시험·검색 품질 평가 | 도구(k6 등)·정답 검색어 세트(_rank_eval) — 새 도구 도입이라 결정 필요 |
-| Logstash 감시 | Logstash 모니터링 API(9600)를 지표로 내보내 소비 지연·큐 경보 |

@@ -166,7 +166,37 @@ class SearchFlowIT {
                                     Map.of("categoryId", "t01-c02", "path", "신선식품 > 두부·계란"),
                                     Map.of("categoryId", "t02", "path", "간편식"),
                                     Map.of("categoryId", "t02-c01", "path", "간편식 > 국·탕·찌개"),
-                                    Map.of("categoryId", "t02-c02", "path", "간편식 > 만두")))))));
+                                    Map.of("categoryId", "t02-c02", "path", "간편식 > 만두"),
+                                    Map.of("categoryId", "t09", "path", "필터시험", "level", "TOP"),
+                                    Map.of(
+                                        "categoryId",
+                                        "t09-c01",
+                                        "parentId",
+                                        "t09",
+                                        "path",
+                                        "필터시험 > 생수")))))));
+    // 필터 패널은 노드에 직접 붙은 것만 내려온다(상속 없음) — t09 에만 붙이고, 하위 t09-c01·카테고리 없음에서도 이름이 나오는지 본다
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/categories/t09/filters"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "categoryId",
+                                "t09",
+                                "groups",
+                                List.of(
+                                    Map.of(
+                                        "filterGroupId",
+                                        "capacity",
+                                        "name",
+                                        "용량",
+                                        "selectionMode",
+                                        "MULTIPLE",
+                                        "options",
+                                        List.of("1L", "500ml"))))))));
     // MFC-1: E-1 취급, E-3 취급 안 함, E-2 는 응답에 없음(불명)
     content.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
@@ -463,8 +493,8 @@ class SearchFlowIT {
             "productId", productId,
             "version", version,
             "rowVersion", rowVersion,
-            "primaryCategoryId", "t09",
-            "categoryIds", List.of("t09"),
+            "primaryCategoryId", "t09-c01",
+            "categoryIds", List.of("t09-c01"),
             "saleState", saleState,
             "filterOptions", filterOptions,
             "skus", List.of(Map.of("sku", sku, "unitType", "E", "unitsPerSku", 1)),
@@ -545,6 +575,18 @@ class SearchFlowIT {
     }
     assertThat(capacity).isNotNull();
     assertThat(capacity.path("values").toString()).contains("\"500ml\"").contains("\"1L\"");
+    assertThat(capacity.path("label").asString()).isEqualTo("용량");
+    // 패널 옵션 순서(1L, 500ml)를 따른다
+    assertThat(capacity.path("values").path(0).path("value").asString()).isEqualTo("1L");
+    // 하위 카테고리(패널 없음)는 조상 t09 의 패널로, 카테고리 없음은 최상위 노드 패널로 이름을 찾는다. 패널에 없는 그룹(pack)은 id 그대로
+    for (String query : List.of("?categoryId=t09-c01", "")) {
+      JsonNode all =
+          mapper.readTree(http.get().uri("/search/filters" + query).retrieve().body(String.class));
+      java.util.Map<String, String> labels = new java.util.HashMap<>();
+      all.path("attributes")
+          .forEach(a -> labels.put(a.path("key").asString(), a.path("label").asString()));
+      assertThat(labels).containsEntry("capacity", "용량").containsEntry("pack", "pack");
+    }
 
     // 판매 상태: 행 버전이 큰 사건만. 시각이 더 이른 재적재(PVP rowVersion 3)가 일시품절(rv 2)을 풀고, 늦은 시각의 옛 사건(rv 2)은 무시
     saleState("PRD-F1", "E-F1", "TEMP_OUT", 2, "2026-11-04T05:00:00Z");
@@ -603,5 +645,38 @@ class SearchFlowIT {
     assertThat(dl.path("op").asString()).isEqualTo("content");
     assertThat(dl.path("topic").asString()).isEqualTo("commerce.product.v1");
     assertThat(dl.path("offset").isMissingNode()).isFalse();
+  }
+
+  /**
+   * 띄어쓰기만 다른 검색어(2026-11-04 고정). 공백 정규화 필드·동의어는 없다 — nori 가 붙임말을 같은 형태소로 나누는 경우만 양쪽으로 찾는다. 알려진 한계:
+   * 붙여 쓴 검색어("생크림")는 띄어 쓴 상품명("생 크림")을 못 찾는다(nori 가 "생" 한 글자를 버리고, n-gram 은 "생크" 가 없다). 공백 제거 필드를
+   * 넣으면 이 단정을 바꾼다.
+   */
+  @Test
+  @org.junit.jupiter.api.Order(3)
+  void spacingVariants() throws Exception {
+    String[][] products = {
+      {"PRD-S1", "E-S1", "[시험] 블루투스 무선 이어폰"},
+      {"PRD-S2", "E-S2", "[시험] 무선이어폰 케이스"},
+      {"PRD-S3", "E-S3", "[시험] 동물성 생 크림 500ml"},
+      {"PRD-S4", "E-S4", "[시험] 휘핑 생크림 250ml"}
+    };
+    for (String[] p : products) {
+      productWith(p[0], 1, 1, p[1], "ON_SALE", "2026-11-04T02:00:00Z", List.of());
+      card(p[0], p[2], 1);
+      contentPublished(p[0], 1, "2026-11-04T02:01:00Z");
+    }
+    await("?q=휘핑", r -> ids(r).contains("PRD-S4"));
+    await("?q=동물성", r -> ids(r).contains("PRD-S3"));
+    await("?q=케이스", r -> ids(r).contains("PRD-S2"));
+    await("?q=블루투스", r -> ids(r).contains("PRD-S1"));
+
+    // 띄어 쓴 검색어 ↔ 붙여 쓴 상품명, 붙여 쓴 검색어 ↔ 띄어 쓴 상품명: nori 형태소(무선·이어폰)가 같아 양쪽 다 찾는다
+    assertThat(ids(search("?q=무선 이어폰"))).contains("PRD-S1", "PRD-S2");
+    assertThat(ids(search("?q=무선이어폰"))).contains("PRD-S1", "PRD-S2");
+    // 띄어 쓴 검색어 "생 크림"(nori: 크림)은 둘 다 찾는다
+    assertThat(ids(search("?q=생 크림"))).contains("PRD-S3", "PRD-S4");
+    // 알려진 한계: 붙여 쓴 "생크림"은 붙여 쓴 상품명만
+    assertThat(ids(search("?q=생크림"))).contains("PRD-S4").doesNotContain("PRD-S3");
   }
 }

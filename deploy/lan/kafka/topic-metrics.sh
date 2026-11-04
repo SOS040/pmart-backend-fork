@@ -34,6 +34,15 @@ done
 dlt=$($B/kafka-get-offsets.sh --bootstrap-server $S --topic search-index.DLT --time -1 2>/dev/null | awk -F: '{s += $3} END {print s + 0}')
 echo "pmart_kafka_topic_end_offset{topic=\"search-index.DLT\"} ${dlt:-0}"
 
+# 검색 색인 소비 그룹 지연(Logstash search-index). watch.sh 가 맨 앞에 SEARCH_GROUP=<그룹>(deploy/lan/elastic/search-index.env)을 붙여 보낸다.
+# 지연 0 만으로 반영 완료는 아니다(영구 큐 — search_index.prom 의 pmart_logstash_queue_events 와 함께 본다). 커밋이 없는 파티션(LAG "-")은 뺀다
+if [ -n "${SEARCH_GROUP:-}" ]; then
+  echo "# HELP pmart_search_index_consumer_lag 검색 색인 소비 그룹의 토픽별 지연(끝 오프셋 - 커밋 오프셋 합)"
+  echo "# TYPE pmart_search_index_consumer_lag gauge"
+  $B/kafka-consumer-groups.sh --bootstrap-server $S --describe --group "$SEARCH_GROUP" 2>/dev/null \
+    | awk -v g="$SEARCH_GROUP" '$1 == g && $6 ~ /^[0-9]+$/ {l[$2] += $6} END {for (t in l) printf "pmart_search_index_consumer_lag{group=\"%s\",topic=\"%s\"} %d\n", g, t, l[t]}'
+fi
+
 echo "# HELP pmart_kafka_topic_metrics_timestamp_seconds 이 파일을 만든 시각(멈춤 감지)"
 echo "# TYPE pmart_kafka_topic_metrics_timestamp_seconds gauge"
 echo "pmart_kafka_topic_metrics_timestamp_seconds $(date +%s)"

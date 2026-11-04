@@ -99,12 +99,9 @@ public class SearchController implements SearchApi {
   @Override
   public ResponseEntity<GetSearchFilters200Response> getSearchFilters(
       @Nullable String q, @Nullable String categoryId, @Nullable String mfcId) {
-    // 색인 집계(현재 조건의 건수) + 카테고리를 주면 product-service 필터 패널의 이름·선택 방식·옵션 순서
+    // 색인 집계(현재 조건의 건수) + product-service 필터 패널의 이름·선택 방식·옵션 순서(그 카테고리와 조상, 없으면 최상위 노드들)
     var facets = search.facets(q, categoryId);
-    var groups =
-        categoryId == null || categoryId.isBlank()
-            ? List.<com.pmart.search.infrastructure.CategoryTreeClient.FilterGroup>of()
-            : categories.filterGroups(categoryId);
+    var groups = categories.filterGroupsFor(categoryId);
     java.util.Map<String, java.util.List<ProductSearch.Facet>> byKey =
         new java.util.LinkedHashMap<>();
     for (var g : groups) {
