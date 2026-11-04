@@ -1,7 +1,8 @@
 # 작업 계획: 사가 하나를 traceId·correlationId 로 끝까지 따라가기
 
 - 상태: **계획(미착수)** — 2026-11-04 작성. 구현 전 사용자 확인.
-- 현재 상태 그림: [`diagrams/trace-correlation-flow.png`](diagrams/trace-correlation-flow.png) (영문 `.en.png`) · 결제 패턴: [`payment-saga-patterns.md`](payment-saga-patterns.md) 7장
+- 현재 상태 그림: [`diagrams/trace-correlation-flow.png`](diagrams/trace-correlation-flow.png) (영문 `.en.png`)
+- **목표 상태 그림(작업 A·B·C 후)**: [`diagrams/trace-correlation-target.svg`](diagrams/trace-correlation-target.svg) (png·영문 `.en.svg` 함께) · 결제 패턴: [`payment-saga-patterns.md`](payment-saga-patterns.md) 7장
 - 관련: ADR-0009(봉투·Outbox), ADR-0030(관측), ADR-0035(Stream 소비), `docs/architecture/platform-capabilities-code-map.md`(개선 과제)
 
 ## 1. 목표와 지금 문제
@@ -41,7 +42,7 @@
 - 시험: `CheckoutSagaIT` — 사가 하나의 모든 outbox 행 `correlation_id` = sagaId, 참여자 WireMock 이 받은 `X-Correlation-Id` = sagaId.
 
 ## 3. 범위 밖 / 정할 것
-- **S3 correlationId 기준**: claimId(고객 요청 단위) vs 취소 sagaId. 권장: claimId — 취소 요청부터 환불 종결까지 claim 이 처음과 끝이다.
+- **S3 correlationId 기준**: **claimId 로 결정**(2026-11-04, 사용자 "추천대로") — 취소 요청부터 환불 종결까지 claim 이 처음과 끝이다. 취소 사가 행에 claimId 를 연결한다.
 - 앱이 `X-Correlation-Id` 를 보내게 할지(클라이언트 요청 필요). 지금 계획은 서버만으로 사가 단위가 이어지게 한다.
 - Logstash 검색 색인 파이프라인(Java 아님)은 trace 대상에서 뺀다.
 - 운영(k8s) 수집기·표본 비율은 이 계획 밖.

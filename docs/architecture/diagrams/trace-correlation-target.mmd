@@ -1,0 +1,68 @@
+%% PMart traceId · correlationId 목표 흐름 — 작업 A·B·C 완료 후 (docs/architecture/trace-correlation-plan.md). **미구현 목표 상태**
+%% 결정(2026-11-04): 결제 사가 correlationId = sagaId, 취소(S3) correlationId = claimId (취소 요청부터 환불 종결까지 claim 이 처음과 끝)
+%% 렌더: npx @mermaid-js/mermaid-cli -i trace-correlation-target.mmd -o trace-correlation-target.svg
+%% trace 는 앱 요청마다 하나(결제 진입 T1, 결제 승인 T2, 고객 취소 T3)가 정상 — 대신 Kafka 를 건너도 끊기지 않고, correlationId 하나로 업무 전체가 묶인다
+sequenceDiagram
+    autonumber
+    participant APP  as customer_app
+    participant GW   as api-gateway
+    participant ORD  as order-service
+    participant ORCH as order-orchestration
+    participant PART as 참여자<br/>mfc-inventory · mfc-capacity ·<br/>delivery-capacity · mfc-fulfillment
+    participant PAY  as payment-service
+    participant OB   as outbox_event<br/>→ Debezium
+    participant K    as Kafka
+    participant CON  as 소비 서비스<br/>cart · customer · claim
+    participant OBS  as Zipkin ·<br/>Kibana
+
+    Note over APP,OBS: 목표(미구현) — 작업 A 사가 실행기 문맥 전달 · B Kafka traceparent + 바인더 observation + MDC 복원 · C correlationId = sagaId / claimId
+
+    %% ───────── 결제 진입: trace T1, correlationId S
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /order-drafts/{id}/checkouts
+        GW->>ORD: traceparent T1 (span gw) · X-Request-Id
+        ORD->>ORCH: RestClient — traceparent T1 (span ord) · baggage
+        ORCH->>ORCH: checkout_saga 생성 sagaId S → MDC·baggage correlationId = S (작업 C)
+        ORCH->>OB: CheckoutSagaStateChanged — traceparent T1 · correlationId S
+        ORCH->>ORCH: advance() — ContextExecutorService 로 T1·S 를 가상 스레드에 넘김 (작업 A)
+        ORCH->>PART: 재고 예약 · 여력 · 슬롯 HTTP — traceparent T1(자식 span) · X-Correlation-Id S
+        ORCH->>PAY: 결제 시작 HTTP — traceparent T1 · X-Correlation-Id S → 결제 시도에 sagaId S
+        Note over ORCH,PAY: sweep(10초)·kick() 으로 다시 진행할 때도 사가가 correlationId S 를 직접 연다 (작업 C)
+    end
+
+    %% ───────── 결제 승인: trace T2 (새 앱 요청), correlationId 는 여전히 S
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /payment-confirmations (새 요청)
+        GW->>PAY: traceparent T2
+        PAY->>PAY: 결제 시도의 sagaId → correlationId = S (작업 C)
+        PAY->>OB: PaymentApproved — outbox traceparent T2(span pay) · correlationId S (작업 B ①)
+        OB->>K: Debezium 헤더 traceparent · traceId · correlationId (작업 B ①)
+        K->>ORCH: paymentEvents — 바인더 observation: 소비 span 이 T2 의 자식 (작업 B ②)<br/>EventConsumers 가 MDC correlationId = S 복원 (작업 B ③)
+        ORCH->>PAY: 결제 조회 · 자원 확정 HTTP — T2 · S
+        ORCH->>ORD: 주문 확정 HTTP — T2 · S
+        ORD->>OB: OrderConfirmed — traceparent T2 · correlationId S
+        OB->>K: 헤더 traceparent T2 · correlationId S
+        K->>CON: cart · customer orderEvents — 소비 span T2 의 자식 · MDC S
+    end
+
+    %% ───────── 고객 취소: trace T3, correlationId = claimId C
+    rect rgb(219, 234, 254)
+        APP->>GW: POST /claims (취소)
+        GW->>CON: claim-service — traceparent T3 · claim 생성 claimId C → correlationId = C
+        CON->>OB: ClaimOpened · CancellationRequested — traceparent T3 · correlationId C
+        OB->>K: 헤더 traceparent T3 · correlationId C
+        K->>ORCH: claimEvents — 소비 span T3 의 자식 · MDC C → 취소 사가 행에 claimId C 연결
+        ORCH->>PART: 작업 중지 · 자원 해제 HTTP — T3 · X-Correlation-Id C
+        ORCH->>ORD: 주문 취소 반영 — T3 · C
+        ORD->>OB: OrderCancelled — T3 · C
+        OB->>K: 헤더 traceparent T3 · correlationId C
+        K->>CON: claim orderEvents — 환불 의도 → payment 취소 HTTP (T3 · C)
+        PAY->>OB: RefundResult — T3 · C
+        OB->>K: 헤더 T3 · C
+        K->>CON: claim paymentEvents — 환불 완료 · ClaimClosed (T3 · C)
+    end
+
+    %% ───────── 보는 법
+    rect rgb(241, 245, 249)
+        Note over K,OBS: Zipkin: T1 = 결제 진입~자원 확보 · T2 = 결제 승인~확정~후속 소비 · T3 = 취소~환불 종결 — Kafka 를 건너도 한 trace<br/>Kibana(pmart-logs): correlationId:S → 결제 사가의 모든 서비스 로그 · correlationId:C → 취소·환불 전체<br/>outbox·dead_letter·inbox 의 correlation_id 로도 같은 묶음을 찾는다
+    end

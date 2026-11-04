@@ -1,0 +1,65 @@
+%% PMart traceId · correlationId target flow — after work items A · B · C (docs/architecture/trace-correlation-plan.md). **Target, not implemented**
+%% English version of trace-correlation-target.mmd (keep both in sync)
+%% Decision (2026-11-04): checkout saga correlationId = sagaId, cancellation (S3) correlationId = claimId (claim owns cancel request through refund close)
+%% Render: npx @mermaid-js/mermaid-cli -i trace-correlation-target.en.mmd -o trace-correlation-target.en.svg
+%% One trace per app request (checkout T1, payment confirm T2, customer cancel T3) is expected — but traces no longer break across Kafka, and one correlationId ties the whole business flow
+sequenceDiagram
+    autonumber
+    participant APP  as customer_app
+    participant GW   as api-gateway
+    participant ORD  as order-service
+    participant ORCH as order-orchestration
+    participant PART as participants<br/>mfc-inventory · mfc-capacity ·<br/>delivery-capacity · mfc-fulfillment
+    participant PAY  as payment-service
+    participant OB   as outbox_event<br/>→ Debezium
+    participant K    as Kafka
+    participant CON  as consuming services<br/>cart · customer · claim
+    participant OBS  as Zipkin ·<br/>Kibana
+
+    Note over APP,OBS: Target (not implemented) — A: saga executor context propagation · B: Kafka traceparent + binder observation + MDC restore · C: correlationId = sagaId / claimId
+
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /order-drafts/{id}/checkouts
+        GW->>ORD: traceparent T1 (gw span) · X-Request-Id
+        ORD->>ORCH: RestClient — traceparent T1 (ord span) · baggage
+        ORCH->>ORCH: create checkout_saga sagaId S → MDC · baggage correlationId = S (C)
+        ORCH->>OB: CheckoutSagaStateChanged — traceparent T1 · correlationId S
+        ORCH->>ORCH: advance() — ContextExecutorService carries T1 · S into the virtual thread (A)
+        ORCH->>PART: reserve stock · capacity · slot over HTTP — traceparent T1 (child span) · X-Correlation-Id S
+        ORCH->>PAY: start payment over HTTP — traceparent T1 · X-Correlation-Id S → attempt keeps sagaId S
+        Note over ORCH,PAY: when resumed by sweep (10 s) or kick(), the saga opens correlationId S itself (C)
+    end
+
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /payment-confirmations (new request)
+        GW->>PAY: traceparent T2
+        PAY->>PAY: attempt's sagaId → correlationId = S (C)
+        PAY->>OB: PaymentApproved — outbox traceparent T2 (pay span) · correlationId S (B ①)
+        OB->>K: Debezium headers traceparent · traceId · correlationId (B ①)
+        K->>ORCH: paymentEvents — binder observation: consumer span is a child of T2 (B ②)<br/>EventConsumers restores MDC correlationId = S (B ③)
+        ORCH->>PAY: query payment · confirm resources over HTTP — T2 · S
+        ORCH->>ORD: confirm order over HTTP — T2 · S
+        ORD->>OB: OrderConfirmed — traceparent T2 · correlationId S
+        OB->>K: headers traceparent T2 · correlationId S
+        K->>CON: cart · customer orderEvents — consumer span child of T2 · MDC S
+    end
+
+    rect rgb(219, 234, 254)
+        APP->>GW: POST /claims (cancel)
+        GW->>CON: claim-service — traceparent T3 · create claim claimId C → correlationId = C
+        CON->>OB: ClaimOpened · CancellationRequested — traceparent T3 · correlationId C
+        OB->>K: headers traceparent T3 · correlationId C
+        K->>ORCH: claimEvents — consumer span child of T3 · MDC C → link claimId C on the cancellation saga row
+        ORCH->>PART: stop work · release resources over HTTP — T3 · X-Correlation-Id C
+        ORCH->>ORD: apply order cancellation — T3 · C
+        ORD->>OB: OrderCancelled — T3 · C
+        OB->>K: headers traceparent T3 · correlationId C
+        K->>CON: claim orderEvents — refund intent → payment cancel over HTTP (T3 · C)
+        PAY->>OB: RefundResult — T3 · C
+        OB->>K: headers T3 · C
+        K->>CON: claim paymentEvents — refund done · ClaimClosed (T3 · C)
+    end
+
+    rect rgb(241, 245, 249)
+        Note over K,OBS: Zipkin: T1 = checkout to resource holds · T2 = payment confirm to order confirmed to follow-ups · T3 = cancel to refund close — one trace each, even across Kafka<br/>Kibana (pmart-logs): correlationId:S → every service log of the checkout saga · correlationId:C → the whole cancellation and refund<br/>the same groups are findable by correlation_id in outbox · dead_letter · inbox
+    end
