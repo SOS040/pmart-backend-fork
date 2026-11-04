@@ -35,4 +35,5 @@
 
 ## LAN 반영 기록
 
-- (재색인 뒤 적는다)
+- 2026-11-05 06:15 KST LAN 반영(pmart-backend 7896f3e, 색인 `products-v4`, search-service·mfc-inventory-service 배포). 게이트웨이로 확인: "생크림" → 생크림 상품 5건, 초성 "ㅅㅋㄹ" 21건, `mfcId=MFC-SEED-01` 275건 모두 `carried=true`, 없는 센터 `total=0`.
+- 알려진 점: 초성 2자는 결과가 많고 순위가 거칠다(예 "ㄷㅂ" 에서 두부가 맨 위가 아님).

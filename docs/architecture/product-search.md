@@ -1,6 +1,6 @@
 # 상품 검색 — 현재 구현 정리
 
-- 기준: 2026-11-04(LAN 색인 `products-v3` 전환·확인 뒤). 지금 어떻게 동작하는지 한곳에 모은 안내서이고, 설계 결정 문서는 아니다.
+- 기준: 2026-11-05(LAN 색인 `products-v4` 전환·확인 뒤 — 띄어쓰기·초성·센터 취급). 지금 어떻게 동작하는지 한곳에 모은 안내서이고, 설계 결정 문서는 아니다.
 - 정본(바뀌면 이 문서보다 우선):
   - 결정: ADR-0031(Elastic Stack, 색인은 Logstash 만), ADR-0034(이력 토픽 무제한 보관, 재색인 = Kafka 전체 재생), ADR-0021(DB 없는 소비자의 버전 비교 멱등)
   - 계약: `contracts/openapi/search-service.yaml`(0.1.1), `contracts/events/ProductVersionPublished.v1.json` 등
@@ -14,20 +14,20 @@
 product-service ─┐  ProductVersionPublished(rowVersion·filterOptions) · ProductSaleStateChanged
 product-content ─┼─▶ outbox ─▶ Debezium ─▶ Kafka commerce.product.v1 ─┐
 pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ (무제한 보관)
+mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handling.v1 ─┤ (무제한 보관, 2026-11-05)
                                                                       ▼
-                                   Logstash search-index 파이프라인(소비 그룹 search-index-logstash-v3)
-                                     ├─ Painless 버전 비교 → ES products(별칭) · sku-prices(별칭)
-                                     ├─ 콘텐츠 카드 보강(product-content 공개 API, 실패 시 재시도)
+                                   Logstash search-index 파이프라인(소비 그룹 search-index-logstash-v4)
+                                     ├─ Painless 버전 비교 → ES products · sku-prices · sku-handlings(모두 별칭)
+                                     ├─ 콘텐츠 카드 보강(product-content 공개 API, 실패 시 재시도) + 상품명 초성
                                      └─ 끝내 실패 → Kafka search-index.DLT + 경보
                                                                       ▼
-고객 앱 ─▶ api-gateway ─▶ search-service(조회만) ─▶ ES 별칭 products ─▶ products-v3
+고객 앱 ─▶ api-gateway ─▶ search-service(조회만) ─▶ ES 별칭 products ─▶ products-v4
                               ├─ 카테고리 이름 경로: product-service 공개 트리(5분 사본)
-                              ├─ 필터 이름·순서: product-service /categories/{id}/filters
-                              └─ 센터 취급 여부: mfc-inventory /internal/availability(mfcId 를 줄 때)
+                              └─ 필터 이름·순서: product-service /categories/{id}/filters
 ```
 
 - **검색 서비스는 DB 가 없고 색인에 쓰지 않는다.** 색인은 Logstash 만 쓴다(ADR-0031).
-- **업무 테이블 CDC 가 아니라 도메인 이벤트**를 받는다. 검색에 새 값(브랜드·판매량·센터 취급 등)을 넣으려면 그 값이 먼저 이벤트에 실려야 한다.
+- **업무 테이블 CDC 가 아니라 도메인 이벤트**를 받는다. 검색에 새 값(브랜드·판매량 등)을 넣으려면 그 값이 먼저 이벤트에 실려야 한다(센터 취급은 2026-11-05 `SkuHandlingChanged` 로 해결).
 
 ## 2. 인프라 (LAN)
 
@@ -35,33 +35,37 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 |---|---|
 | Elasticsearch | 8.18.0, **단일 노드**(복제본 없음), 보안 끔 — LAN 시험망이라 의도. pc4 `192.168.0.40:9200` |
 | 형태소 분석기 | analysis-nori. 컨테이너 시작 때 없으면 설치(새로 만들 때 인터넷 필요) |
-| 색인·별칭 | `products` → **`products-v3`**, `sku-prices` → `sku-prices-v1`. search-service 는 별칭으로만 읽는다. 2026-11-04 v2 → v3 전환, v2 삭제 |
+| 색인·별칭 | `products` → **`products-v4`**, `sku-prices` → `sku-prices-v1`, `sku-handlings` → `sku-handlings-v1`. search-service 는 별칭으로만 읽는다. 2026-11-04 v2 → v3(v2 삭제), 2026-11-05 v3 → v4(v3 은 되돌림용으로 남김) |
 | Logstash | 8.18.0, pc4. 파이프라인 `search-index`(작업자 1·배치 1), 영구 큐 256MB, Logstash DLQ 64MB |
 | 색인 대상·그룹 설정 | `deploy/lan/elastic/search-index.env` → `render.sh` 가 Logstash 환경변수로 넣는다 |
 | 색인 정의 | `services/search-service/src/main/resources/elasticsearch/*.json`. es-init(pc4)과 search-service 가 같은 파일로 만든다. 정의에 별칭을 넣지 않고 **별칭이 없을 때만** 붙인다 |
-| 로컬 | `deploy/local/docker-compose.yml`(ES·es-init). 2026-11-04 이전 `esdata` 볼륨이 있으면 별칭이 v2 에 남는다 — 볼륨을 지우고 새로 띄운다 |
+| 로컬 | `deploy/local/docker-compose.yml`(ES·es-init). 이전 `esdata` 볼륨이 있으면 별칭이 옛 색인(v2·v3)에 남는다 — 볼륨을 지우고 새로 띄운다 |
 
-## 3. 색인 문서 (`products-v3`, strict 매핑)
+## 3. 색인 문서 (`products-v4`, strict 매핑)
 
 | 필드 | 뜻 | 채우는 사건 |
 |---|---|---|
 | `productId` | 문서 id | 모두 |
 | `productVersion` | 상품 버전 — 옛 사건 무시 기준 | ProductVersionPublished |
 | `primaryCategoryId`·`categoryIds`·`categoryScope` | 카테고리(조상 범위 포함 — 상위 카테고리로 찾으면 하위 상품도 나옴) | ProductVersionPublished |
-| `representativeSku` | 대표 SKU 하나 | ProductVersionPublished |
+| `representativeSku` | 대표 SKU 하나(사건의 SKU 목록 첫 번째 — 지금 LAN 상품은 모두 상품 하나에 SKU 하나) | ProductVersionPublished |
+| `carriedMfcIds` | 대표 SKU 를 켠 센터 목록(2026-11-05) | SkuHandlingChanged(`sku-handlings` 갱신 뒤 `_update_by_query`), 상품 사건은 `sku-handlings` 를 찾아 붙임 |
 | `filters` | 승인 속성 필터 `"그룹.옵션"`(keyword) | ProductVersionPublished `filterOptions` |
 | `saleState`·`saleStateAtMs`·`saleStateRowVersion` | 판매 상태와 비교 기준(§4) | ProductVersionPublished·ProductSaleStateChanged |
 | `name`·`imageUrl`·`contentVersion`·`contentPublishedAtMs` | 고객용 이름·이미지(게시본만) | ProductContentPublished → 카드 API 보강 |
+| `nameChosung` | 상품명 초성(한글 음절 → ㄱ~ㅎ, 그 밖의 글자는 공백, 2026-11-05) | ProductContentPublished(Logstash 가 이름에서 계산) |
 | `basePrice`·`priceVersion` | 기본가 | PriceVersionEffective(`sku-prices` 갱신 뒤 `_update_by_query` 로 퍼뜨림) |
 | `updatedAtMs` | Logstash 가 마지막으로 반영한 시각 | 모두 |
 
-- 상품명 분석: `name`(nori 형태소) · `name.edge`(앞부분 일치) · `name.partial`(1~2글자 n-gram).
+- 상품명 분석: `name`(nori 형태소) · `name.edge`(앞부분 일치) · `name.partial`(1~2글자 n-gram) · `name.compact`(공백을 모두 뺀 뒤 1~2글자 n-gram). `nameChosung` 도 공백을 뺀 n-gram.
+- `sku-handlings-v1`(SKU 별): `centers`(센터별 {켬, 행 버전} — 색인하지 않는 객체), `carriedMfcIds`, `updatedAtMs`. 센터별로 버전이 큰 사건만 반영한다.
 - **검색 대상**: 이름과 상품 버전이 모두 있고 판매중지(`SALE_STOPPED`)가 아닌 문서. 콘텐츠가 아직 게시되지 않은 상품은 이름이 없어 검색되지 않는다.
-- 적용된 색인의 매핑은 고치지 않는다. 필드를 더하면 새 색인(`-v4`)을 만들고 재색인한다(§7).
+- 적용된 색인의 매핑은 고치지 않는다. 필드를 더하면 새 색인(`-v5`)을 만들고 재색인한다(§7).
 
 ## 4. 색인 규칙 (Logstash `search-index.conf`)
 
-- **멱등**: 재전달·재생해도 결과가 같다. 문서마다 버전을 비교해 옛 사건은 무시한다(상품 `productVersion`, 가격 `priceVersion`, 콘텐츠 `contentVersion`).
+- **멱등**: 재전달·재생해도 결과가 같다. 문서마다 버전을 비교해 옛 사건은 무시한다(상품 `productVersion`, 가격 `priceVersion`, 콘텐츠 `contentVersion`, 센터 취급은 센터별 행 버전).
+- **센터 취급**(2026-11-05): mfc-inventory 가 취급이 바뀔 때만 `SkuHandlingChanged` 를 낸다(레코드 없음 = OFF). 사건 도입 전 취급은 `POST /internal/sku-handling-republications` 로 같은 버전을 다시 알려 연결했다(LAN 275건). 취급 사건과 상품 사건은 어느 쪽이 먼저 와도 결과가 같다.
 - **판매 상태**(2026-11-04): 상품 행 버전으로 비교한다(행 버전 = product 행이 바뀔 때마다 오르는 카운터 — PVP `rowVersion` 과 PSSC `version` 이 같은 카운터).
   - 사건에 행 버전이 있으면 저장된 것보다 **클 때만** 반영.
   - 행 버전이 없는 옛 사건(전환 전 발행분)은 행 버전 기준 상태가 아직 없을 때만, 시각이 같거나 늦으면 반영(재생 호환).
@@ -78,13 +82,13 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 ### `GET /search/products`
 | 파라미터 | 동작 |
 |---|---|
-| `q` | 상품명 검색(최대 100자). 찾기: nori 형태소가 모두 맞거나("두부를" → 두부) n-gram 조각이 모두 있거나(붙임말 "나랑드사이다제로", "미역" → 미역국). 점수: 형태소(가중 3) > 앞부분(2) > 조각, BM25 |
+| `q` | 상품명 검색(최대 100자). 찾기: nori 형태소가 모두 맞거나("두부를" → 두부) n-gram 조각이 모두 있거나(붙임말 "나랑드사이다제로", "미역" → 미역국) 공백을 뺀 조각이 모두 있거나("생크림" ↔ "생 크림"). 점수: 형태소(가중 3) > 앞부분(2) > 조각, BM25. **한글 자음만 2자 이상이면 초성 검색**(`nameChosung`만, 예 "ㄷㅂ") |
 | `categoryId` | 그 카테고리와 하위 전체 |
 | `minPrice`·`maxPrice` | 기본가 범위(원). 최소 > 최대면 400. 범위를 주면 가격 없는 상품은 빠진다 |
 | `filters` | 반복 파라미터 `그룹.옵션`(예 `seed-storage.냉장`). **같은 그룹 안 OR, 그룹끼리 AND**. 최대 30개, 형식이 틀린 값은 버린다. 응답 `appliedFilters` = 실제로 적용한 값 |
-| `mfcId`·`includeNotCarried` | 센터 취급 여부 `carried` 표시. 기본(`includeNotCarried=false`)은 미취급이 확인된 상품을 빼고 **모자란 만큼 다음 문서로 채운다**(최대 5번, BR-47). 조회 실패는 품절로 단정하지 않고 `carried=null` |
+| `mfcId`·`includeNotCarried` | 센터 취급 여부 `carried`(색인 `carriedMfcIds` 에 그 센터가 있는지, 레코드 없음 = false). 기본(`includeNotCarried=false`)은 **ES 필터로 거른다**(2026-11-05 — 실시간 가용 조회와 BR-47 "더 읽어 채우기"는 없앰). 품절은 색인하지 않는다 |
 | `sort` | RELEVANCE(기본, 검색어 있을 때 점수순)·NEWEST·PRICE_ASC·PRICE_DESC. POPULAR·RATING 은 원천이 없어 관련도로 대신하고 응답 `appliedSort` 로 알린다 |
-| `size`·`cursor` | 커서 페이지. `total` 은 색인 일치 건수(미취급 포함). 미취급을 거를 때는 첫 페이지에서 끝까지 읽은 경우만 실제 건수 |
+| `size`·`cursor` | 커서 페이지. `total` 은 조건(미취급 거르기 포함)에 맞는 정확한 건수 |
 
 - 판매중지는 결과에서 뺀다. 일시품절은 남기고 `saleState` 로 표시한다.
 - 결과의 `categoryPath` 는 대표 카테고리 이름 경로(product-service 공개 트리 5분 사본, 실패해도 검색은 성공 — 빈 목록).
@@ -95,7 +99,7 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 - 건수가 0 인 옵션은 나오지 않는다(집계 기반).
 
 ### 그 밖
-- `GET /search/suggestions?q=&limit=` 자동완성: 상품 검색과 같은 질의로 찾은 상품명을 중복 없이 관련도 순으로(앞부분 일치 덕분에 "두" → 두부). 전용 suggester·인기 검색어는 없다.
+- `GET /search/suggestions?q=&limit=` 자동완성: 상품 검색과 같은 질의로 찾은 상품명을 중복 없이 관련도 순으로(앞부분 일치 덕분에 "두" → 두부, 초성 "ㅅㅋㄹ" → 생크림…). 전용 suggester·인기 검색어는 없다.
 - `GET /internal/index-status` 색인 신선도: 원천 사건별 마지막 반영 시각·지연(사람이 조회 — 경보와 연결되지 않음).
 - 최근 검색어·`/internal/reindex-requests` 는 **501**(재색인은 절차로 한다, §7).
 
@@ -107,7 +111,8 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 - 이전에 발행된 사건에는 `filterOptions` 가 없어서, 재생만으로는 채워지지 않는다. 상품 변경 승인이 새로 나와야 한다.
 
 ## 7. 재색인 (`deploy/lan/elastic/REINDEX.md`)
-- 방법: **새 소비 그룹으로 두 이력 토픽을 처음부터 재생** → 새 색인 채움 → 완료 확인 → 별칭 원자 교체. 이벤트는 사라지지 않고(무제한 보관), 검색은 교체 순간까지 이전 색인을 읽는다.
+- 실행: `deploy/lan/elastic/reindex.sh`(check·start·wait·switch·finish·rollback·drop) — 단계마다 조건을 확인하고 멈춘다(2026-11-05).
+- 방법: **새 소비 그룹으로 세 이력 토픽을 처음부터 재생** → 새 색인 채움 → 완료 확인 → 별칭 원자 교체. 이벤트는 사라지지 않고(무제한 보관), 검색은 교체 순간까지 이전 색인을 읽는다.
 - 완료 조건 4개: 소비 지연 0, Logstash 영구 큐 비어 있음, `search-index.DLT` 새 레코드 없음, 건수 일치(+ 표본 대조).
 - 주의:
   - `search-index.env` 를 **render 전에** 새 색인·새 그룹으로 바꾼다(새 Logstash 설정이 옛 strict 색인에 쓰면 실패).
@@ -115,7 +120,9 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
   - `lan.sh deploy` 의 scp 는 파일을 지우지 않는다 — Elasticsearch PC 의 옛 정의 파일을 지워야 es-init 이 옛 색인을 다시 만들지 않는다.
   - 되돌림은 옛 색인 대신 원인을 고친 뒤 새 색인으로 다시 재생(약 15초)하는 것이 기본이다. 옛 색인은 전환 뒤 사건을 받지 않아 금방 낡는다.
 - 일부만 실패(DLT 몇 건)면 §3 부분 재처리: 콘텐츠 재게시, 또는 Logstash 를 멈추고 오프셋을 DLT 의 원래 offset 으로 되돌림.
-- 실행 기록: 2026-11-04 v2 → v3(사건 1162건 약 15초, 전 문서 대조, 같은 날 v2 삭제).
+- 실행 기록:
+  - 2026-11-04 v2 → v3(사건 1162건 약 15초, 전 문서 대조, 같은 날 v2 삭제)
+  - 2026-11-05 v3 → v4(reindex.sh 첫 실행, 사건 1440건 약 40초, 전 문서 대조 차이 없음, v3 은 남김)
 
 ## 8. 감시
 | 대상 | 있는 것 | 없는 것 |
@@ -132,18 +139,20 @@ pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ 
 ## 9. 시험
 | 시험 | 확인하는 것 |
 |---|---|
-| `SearchFlowIT`(search-service, 실제 Kafka·ES·Logstash) | 이벤트 → 색인 → 검색 전 구간, 형태소·붙임말·부분 검색, 가격 범위, 미취급 채우기, 필터 OR·AND·appliedFilters·`/search/filters`(조상·최상위 패널 이름), 행 버전 판매 상태, 콘텐츠 보강 실패 → DLT, 띄어쓰기 변형 |
+| `SearchFlowIT`(search-service, 실제 Kafka·ES·Logstash) | 이벤트 → 색인 → 검색 전 구간, 형태소·붙임말·부분 검색, 가격 범위, 센터 취급(사건 순서 뒤바뀜·옛 버전·재발행·모르는 센터·total), 필터 OR·AND·appliedFilters·`/search/filters`(조상·최상위 패널 이름), 행 버전 판매 상태, 콘텐츠 보강 실패 → DLT, 띄어쓰기 변형, 초성 |
+| `SkuHandlingFlowIT`(mfc-inventory-service) | 취급 변경 → SkuHandlingChanged(바뀔 때만·버전), 재발행, 내부 경로 권한 |
 | `HomeFlowIT`(storefront-service) | 진열 사본의 행 버전 판매 상태 규칙 |
-| search-service 단위 시험 | 정렬·커서·필터 파싱(`SearchRules`) |
+| search-service 단위 시험 | 정렬·커서·필터 파싱·초성 검색어 판정(`SearchRules`) |
 | LAN 확인(2026-11-04) | 생크림 일시품절 → 판매중(ES·검색·storefront, 행 버전 2·3), 두부 필터 옵션 승인 → `filters=seed-storage.냉장` 1건·`냉동` 0건·`/search/filters` 건수 |
+| LAN 확인(2026-11-05) | "생크림" 5건·"생 크림" 30건(생크림 상품이 상위), 초성 "ㅅㅋㄹ" 21건, MFC-SEED-01 취급 275건 전부 carried=true·다음 커서, 모르는 센터 0건(total 0)·includeNotCarried=true 면 275건 carried=false, mfcId 없으면 carried=null |
 
 ## 10. 아직 없는 것
 | 항목 | 막혀 있는 이유 · 필요한 것 |
 |---|---|
 | 브랜드 필터 | 상품 모델·계약·업무 원문에 브랜드가 없다. product-service 모델·PVP·일괄 등록 양식·백오피스 화면부터(정책 결정 필요) |
-| 초성·동의어·오타 교정·구문 검색 | 색인 설정 변경(새 색인)으로 가능. 동의어 사전을 누가 관리할지 결정 필요. "무선 이어폰/무선이어폰" 같은 사례를 시험으로 고정 |
+| 동의어·오타 교정·구문 검색 | 오타 교정은 자모 분리 필드(새 색인) + "결과가 적을 때만 교정하고 알림"(계약·화면 결정), 구문은 순위 가산(색인 변경 없음). 동의어 사전을 누가 관리할지 결정 필요 |
+| 초성 검색 순위 | 2자 초성은 많이 걸리고 순위가 거칠다(LAN "ㄷㅂ" 28건 — 두부보다 "단백"·"더바른" 이 위). 낱말 앞부분 초성에 가중을 주려면 초성 앞부분 필드(새 색인) |
 | 랭킹(인기·별점·전환율·광고) | 판매량 집계 없음(OrderConfirmed 구독으로 가능), 리뷰 서비스는 2단계, 노출·클릭 로그 없음, 광고 도메인 없음. 집계 기간·가중치는 승인 설정(Commerce 원문 1051·1082행) |
-| 센터 취급을 색인에서 거르기 | mfc-inventory 가 취급 변경 이벤트(예 `SkuHandlingChanged`)를 내지 않는다 — 이벤트 계약·발행 → 색인 필드(예 `carriedMfcIds`) → 새 색인. 품절까지 넣을지는 결정 필요 |
+| 여러 SKU 상품의 취급 판정 | 지금은 대표 SKU 기준. 상품 하나에 SKU 가 여러 개 생기면 "하나라도 취급"으로 바꿀지 결정(`sku-handlings` 는 SKU 별이라 그대로 쓸 수 있다). cdc-inventory 취급도 사건이 없다 |
 | SKU 옵션 검색 | 색인에 대표 SKU 하나뿐. SKU 목록(nested)·바코드·규격 색인 필요 |
-| 공백 정규화 | 붙여 쓴 검색어가 띄어 쓴 상품명을 못 찾는 경우가 있다("생크림" → "생 크림" 못 찾음, 반대는 찾음 — `SearchFlowIT.spacingVariants` 에 고정). 공백 제거 필드를 넣으면 해결(새 색인) |
 | 부하 시험·검색 품질 평가 | 도구(k6 등)·정답 검색어 세트(_rank_eval) — 새 도구 도입이라 결정 필요 |
