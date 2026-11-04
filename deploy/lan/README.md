@@ -1,7 +1,7 @@
 # LAN 공유 개발 환경 (deploy/lan)
 
 사내 LAN PC 여러 대에 PMart 서비스를 나눠 띄운다. Kubernetes(Helm) 이전 단계의 통합 확인용이며 운영 환경이 아니다.
-PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조.
+PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조. 배포 오류와 해결 기록은 `docs/operations/`(예: `2026-11-04-lan-deploy-incidents.md` — config-server 설정 요청 폭주).
 
 | 파일 | 역할 |
 |---|---|
