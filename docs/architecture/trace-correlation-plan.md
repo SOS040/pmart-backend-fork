@@ -1,6 +1,6 @@
 # 작업 계획: 사가 하나를 traceId·correlationId 로 끝까지 따라가기
 
-- 상태: **구현(코드·시험) 2026-11-04, LAN 미배포** — 사용자 지시 "A, C, B 시작해줘". 배포 순서는 6장.
+- 상태: **구현·LAN 배포·확인 2026-11-04**(a1d514c, 결제 1건으로 7장 확인) — 사용자 지시 "A, C, B 시작해줘". 배포 순서는 6장.
 - 현재 상태 그림: [`diagrams/trace-correlation-flow.png`](diagrams/trace-correlation-flow.png) (영문 `.en.png`)
 - **목표 상태 그림(작업 A·B·C 후)**: [`diagrams/trace-correlation-target.svg`](diagrams/trace-correlation-target.svg) (png·영문 `.en.svg` 함께) · 결제 패턴: [`payment-saga-patterns.md`](payment-saga-patterns.md) 7장
 - 관련: ADR-0009(봉투·Outbox), ADR-0030(관측), ADR-0035(Stream 소비), `docs/architecture/platform-capabilities-code-map.md`(개선 과제)
@@ -66,4 +66,11 @@
 - **B**: 공통 마이그레이션 `V0_0_4__pmart_outbox_traceparent.sql`, `OutboxWriter` 가 MDC traceId·spanId 로 traceparent 저장, 커넥터 원본에 `traceparent:header:traceparent`, `spring.cloud.stream.kafka.binder.enable-observation=true`, `EventConsumers` 가 처리 동안 MDC correlationId = 봉투 값. 시험 `OutboxWriterTest`·`OutboxInboxPostgresIT`(traceparent 열)·`EventConsumersTest`(MDC 복원)·`StreamBindingDefaultsPostProcessorTest`.
 - **시험으로 확인하지 못한 것**: Kafka 를 건넌 span 연결(바인더 observation 이 traceparent 헤더로 부모를 잇는지)은 시험 환경에 추적이 없어 LAN Zipkin 으로 확인한다(4장 1).
 - **배포 순서**: ① 모든 앱 이미지(V0_0_4 포함) 배포 → ② `deploy/lan/connectors-add-traceparent.sh apply`(커넥터 29개 설정에 헤더 추가, 열이 없는 DB 에 먼저 넣으면 그 커넥터가 실패) → ③ 4장 확인.
+
+## 7. LAN 확인 (2026-11-04 20:10, 실제 결제 1건)
+- 사가 `SAGA-7feb7eac-…` COMPLETED. Zipkin trace 두 개 — 사용자 요청이 결제 진입·결제 승인 두 번이라 trace 도 두 개다.
+  - 결제 진입(55 span): 사가 실행기 뒤 참여자 호출까지 한 trace(A).
+  - 결제 승인 이후(47 span): `order.payment.v1`·`order.order.v1` 두 Kafka 구간을 건너 orchestration·claim·customer·cart 소비까지 한 trace(B).
+- 두 trace 는 correlationId = sagaId 로 묶인다(C): 로그 질의 `correlationId:SAGA-7feb…` 가 두 trace 의 inventory·capacity·order·cart 로그를 함께 돌려준다.
+- 남은 끊김: 앱 → 결제 승인 요청이 결제 진입 trace 와 이어지지 않는 것은 설계상 맞다(새 사용자 요청). 잇고 싶다면 앱이 `X-Correlation-Id`(sagaId)를 보내야 한다(3장, 클라이언트 요청 필요).
 
