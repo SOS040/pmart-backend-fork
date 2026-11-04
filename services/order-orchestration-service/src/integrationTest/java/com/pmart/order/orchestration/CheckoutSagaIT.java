@@ -46,6 +46,7 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      "pmart.messaging.outbox.delete-after-insert=false", // 사가 사건 봉투의 correlationId 확인(작업 C)
       "pmart.security.service-token.client-secret=it-secret",
       "pmart.security.service-token.token-uri=${parts.url}/api/v1/internal/service-tokens",
       "pmart.orchestration.mfc-inventory-base-url=${parts.url}",
@@ -68,6 +69,9 @@ class CheckoutSagaIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("parts")
   WireMockServer parts;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   RestClient http;
 
@@ -324,6 +328,21 @@ class CheckoutSagaIT extends PostgresKafkaContainerSupport {
         postRequestedFor(urlPathEqualTo("/api/v1/internal/payments"))
             .withRequestBody(matchingJsonPath("$.customerRef", WireMock.equalTo("CU-1")))
             .withRequestBody(matchingJsonPath("$.amount", WireMock.equalTo("18100"))));
+
+    // 작업 A·C: 사가 진행 중 참여자 호출의 X-Correlation-Id = sagaId(실행기 문맥 전달 + 사가 문맥),
+    // 사가 사건(CheckoutSagaStateChanged 등) 봉투의 correlationId = sagaId
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/reservations"))
+            .withHeader("X-Correlation-Id", WireMock.equalTo(sagaId)));
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/payments"))
+            .withHeader("X-Correlation-Id", WireMock.equalTo(sagaId)));
+    java.util.List<String> correlations =
+        jdbc.queryForList(
+            "SELECT DISTINCT correlation_id FROM outbox_event WHERE aggregateid = ?",
+            String.class,
+            sagaId);
+    assertThat(correlations).containsExactly(sagaId);
 
     // 진행 중 같은 초안 → 409
     assertThat(start(UUID.randomUUID().toString(), body).status()).isEqualTo(409);

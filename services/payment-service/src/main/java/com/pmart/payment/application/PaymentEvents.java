@@ -3,12 +3,15 @@ package com.pmart.payment.application;
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.messaging.EventEnvelopeCodec;
 import com.pmart.common.messaging.EventPublisher;
+import com.pmart.common.observability.CorrelationScope;
 import com.pmart.payment.infrastructure.PaymentStore.Attempt;
 import com.pmart.payment.infrastructure.PaymentStore.Cancel;
+import io.micrometer.tracing.Tracer;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,10 +25,13 @@ public class PaymentEvents {
 
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
+  private final ObjectProvider<Tracer> tracer;
 
-  public PaymentEvents(EventPublisher events, EventEnvelopeCodec codec) {
+  public PaymentEvents(
+      EventPublisher events, EventEnvelopeCodec codec, ObjectProvider<Tracer> tracer) {
     this.events = events;
     this.codec = codec;
+    this.tracer = tracer;
   }
 
   public void approved(Attempt a, String method, Instant approvedAt) {
@@ -109,7 +115,18 @@ public class PaymentEvents {
     return p;
   }
 
+  /**
+   * 결제 시도 사건의 correlationId = 시도에 저장된 sagaId(작업 C). 결제 승인은 앱에서 오는 새 요청이라 요청 correlationId 는 사가와
+   * 무관하다. 환불 결과(RefundResult)는 claim 흐름(S3, correlationId = claimId)이라 요청의 값을 그대로 쓴다.
+   */
   private void publish(String type, Attempt a, Map<String, Object> payload) {
+    String correlation = "RefundResult".equals(type) ? null : a.sagaId();
+    try (CorrelationScope c = CorrelationScope.open(tracer.getIfAvailable(), correlation)) {
+      doPublish(type, a, payload);
+    }
+  }
+
+  private void doPublish(String type, Attempt a, Map<String, Object> payload) {
     EventEnvelope e =
         codec.create(
             events.sourceSystem(),

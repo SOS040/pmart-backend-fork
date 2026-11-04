@@ -131,6 +131,33 @@ class OutboxInboxPostgresIT {
     jdbc.update("DELETE FROM outbox_event WHERE id = ?", e.eventId());
   }
 
+  /** 작업 B: V0_0_4 traceparent 열에 지금 span 의 W3C traceparent(MDC traceId·spanId)를 저장한다. */
+  @Test
+  void outboxStoresTraceparentFromCurrentSpan() {
+    EventEnvelopeCodec codec = EventEnvelopeCodec.withDefaultMapper();
+    OutboxWriter writer =
+        new OutboxWriter(
+            jdbc,
+            codec,
+            new EventSchemaValidator(EventSchemaValidator.Mode.OFF, codec),
+            "order",
+            false);
+    EventEnvelope e = envelope(codec, "OrderDraftCreated", "ord-it-tp");
+    org.slf4j.MDC.put("traceId", "4bf92f3577b34da6a3ce929d0e0e4736");
+    org.slf4j.MDC.put("spanId", "00f067aa0ba902b7");
+    try {
+      tx.execute(s -> writer.append(e));
+    } finally {
+      org.slf4j.MDC.remove("traceId");
+      org.slf4j.MDC.remove("spanId");
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT traceparent FROM outbox_event WHERE id = ?", String.class, e.eventId()))
+        .isEqualTo("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+    jdbc.update("DELETE FROM outbox_event WHERE id = ?", e.eventId());
+  }
+
   @Test
   void inboxProcessesOnceAndRollsBackHandlerFailure() {
     EventEnvelopeCodec codec = EventEnvelopeCodec.withDefaultMapper();

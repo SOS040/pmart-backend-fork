@@ -3,6 +3,7 @@ package com.pmart.order.orchestration.application;
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
+import com.pmart.common.observability.CorrelationScope;
 import com.pmart.common.web.PmartException;
 import com.pmart.order.orchestration.domain.CancellationRules;
 import com.pmart.order.orchestration.domain.CancellationRules.StopVerdict;
@@ -14,6 +15,7 @@ import com.pmart.order.orchestration.infrastructure.Participants.Rejected;
 import com.pmart.order.orchestration.infrastructure.Participants.Result;
 import com.pmart.order.orchestration.infrastructure.SagaStore;
 import com.pmart.order.orchestration.infrastructure.SagaStore.CompensationRow;
+import io.micrometer.tracing.Tracer;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -26,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -76,6 +79,7 @@ public class CancellationSagaService {
   private final OrchestrationProperties props;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final ObjectProvider<Tracer> tracer;
 
   public CancellationSagaService(
       CancellationStore store,
@@ -86,7 +90,9 @@ public class CancellationSagaService {
       ExecutorService sagaExecutor,
       OrchestrationProperties props,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      ObjectProvider<Tracer> tracer) {
+    this.tracer = tracer;
     this.store = store;
     this.checkouts = checkouts;
     this.participants = participants;
@@ -224,11 +230,14 @@ public class CancellationSagaService {
           if (s == null) {
             return;
           }
-          switch (s.state()) {
-            case "RUNNING" -> run(s);
-            case "WAITING_RESULT" -> recheckStop(s);
-            default -> {
-              // 종료·상신
+          // S3 의 correlationId = claimId(2026-11-04 결정) — 취소 요청부터 환불 종결까지 claim 이 처음과 끝이다
+          try (CorrelationScope c = CorrelationScope.open(tracer.getIfAvailable(), s.claimId())) {
+            switch (s.state()) {
+              case "RUNNING" -> run(s);
+              case "WAITING_RESULT" -> recheckStop(s);
+              default -> {
+                // 종료·상신
+              }
             }
           }
         });

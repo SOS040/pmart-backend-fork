@@ -567,6 +567,8 @@ EOF
         # Eureka(ADR-0032): 이 PC 의 LAN IP 로 등록한다(컨테이너 IP 는 다른 PC 에서 닿지 않는다). 설정은 application-lan.yml
         echo "      PMART_HOST_IP: ${IP[$pc]}"
         echo "      PMART_EUREKA_PASSWORD: \${PMART_EUREKA_PASSWORD}"
+        # Bus 소비 그룹 이름 고정(bus-<앱>-<PC>, application-lan.yml) — 재시작마다 anonymous.* 그룹이 늘지 않게(2026-11-04)
+        echo "      PMART_BUS_INSTANCE: $pc"
         echo
         # 배치 대조: DB 를 쓰는 앱의 lan DB 주소가 이 PC 의 postgres 인가(placement.conf 를 바꾸면 저장소도 바꿔야 한다)
         if needs_db "$c"; then

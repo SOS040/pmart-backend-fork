@@ -73,4 +73,26 @@ class EventConsumersTest {
 
     assertThat(seen).isEmpty();
   }
+
+  /** 작업 B: 처리기 안에서 MDC correlationId = 봉투 값("c"), 끝나면 이전 값으로. */
+  @Test
+  void handlerSeesEnvelopeCorrelationIdInMdcAndPreviousIsRestored() {
+    List<String> seen = new ArrayList<>();
+    when(inbox.process(any(), any()))
+        .thenAnswer(
+            inv -> {
+              ((Runnable) inv.getArgument(1)).run();
+              return true;
+            });
+    org.slf4j.MDC.put("correlationId", "before");
+    try {
+      consumers
+          .of(e -> seen.add(org.slf4j.MDC.get("correlationId")))
+          .accept(MessageBuilder.withPayload(envelope(UUID.randomUUID())).build());
+      assertThat(seen).containsExactly("c");
+      assertThat(org.slf4j.MDC.get("correlationId")).isEqualTo("before");
+    } finally {
+      org.slf4j.MDC.remove("correlationId");
+    }
+  }
 }

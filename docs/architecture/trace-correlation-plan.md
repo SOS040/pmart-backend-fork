@@ -1,6 +1,6 @@
 # 작업 계획: 사가 하나를 traceId·correlationId 로 끝까지 따라가기
 
-- 상태: **계획(미착수)** — 2026-11-04 작성. 구현 전 사용자 확인.
+- 상태: **구현(코드·시험) 2026-11-04, LAN 미배포** — 사용자 지시 "A, C, B 시작해줘". 배포 순서는 6장.
 - 현재 상태 그림: [`diagrams/trace-correlation-flow.png`](diagrams/trace-correlation-flow.png) (영문 `.en.png`)
 - **목표 상태 그림(작업 A·B·C 후)**: [`diagrams/trace-correlation-target.svg`](diagrams/trace-correlation-target.svg) (png·영문 `.en.svg` 함께) · 결제 패턴: [`payment-saga-patterns.md`](payment-saga-patterns.md) 7장
 - 관련: ADR-0009(봉투·Outbox), ADR-0030(관측), ADR-0035(Stream 소비), `docs/architecture/platform-capabilities-code-map.md`(개선 과제)
@@ -59,3 +59,11 @@
 | A | order-orchestration, claim, customer (실행기) | 3개 서비스 |
 | B | common-messaging(코덱·OutboxWriter·EventConsumers·PP), 공통 마이그레이션 V0_0_4, Debezium 커넥터 설정 | outbox 쓰는 서비스 전부 + 커넥터 재등록 |
 | C | order-orchestration(사가 문맥·사건), payment(사건 correlationId) | 2개 서비스 |
+
+## 6. 구현 결과 (2026-11-04)
+- **A**: `OrchestrationConfig`·`ClaimConfig`·`ProfileImageService` 실행기를 `ContextExecutorService.wrap(...)`. MDC 의 correlationId·sourceSystem 도 넘기도록 `MdcContextPropagation`(common-observability, 자동 구성에서 등록). 시험 `SagaExecutorContextTest`.
+- **C**: `CorrelationScope`(common-observability — MDC + baggage, 끝나면 이전 값). `CheckoutSagaService.advance`·시작 사건 = sagaId, `CancellationSagaService` 진행 = claimId(결정), `PaymentEvents` = 시도의 sagaId(RefundResult 는 요청 값 그대로). 시험 `CorrelationScopeTest`, `CheckoutSagaIT`(참여자 `X-Correlation-Id` = sagaId, 사가 사건 outbox `correlation_id` = sagaId).
+- **B**: 공통 마이그레이션 `V0_0_4__pmart_outbox_traceparent.sql`, `OutboxWriter` 가 MDC traceId·spanId 로 traceparent 저장, 커넥터 원본에 `traceparent:header:traceparent`, `spring.cloud.stream.kafka.binder.enable-observation=true`, `EventConsumers` 가 처리 동안 MDC correlationId = 봉투 값. 시험 `OutboxWriterTest`·`OutboxInboxPostgresIT`(traceparent 열)·`EventConsumersTest`(MDC 복원)·`StreamBindingDefaultsPostProcessorTest`.
+- **시험으로 확인하지 못한 것**: Kafka 를 건넌 span 연결(바인더 observation 이 traceparent 헤더로 부모를 잇는지)은 시험 환경에 추적이 없어 LAN Zipkin 으로 확인한다(4장 1).
+- **배포 순서**: ① 모든 앱 이미지(V0_0_4 포함) 배포 → ② `deploy/lan/connectors-add-traceparent.sh apply`(커넥터 29개 설정에 헤더 추가, 열이 없는 DB 에 먼저 넣으면 그 커넥터가 실패) → ③ 4장 확인.
+

@@ -26,6 +26,9 @@ class StreamBindingDefaultsPostProcessorTest {
     pp.postProcessEnvironment(env, null);
 
     String b = "spring.cloud.stream.bindings.orderEvents-in-0.";
+    // 작업 B: 바인더 observation(traceparent 헤더로 부모 span 잇기)
+    assertThat(env.getProperty("spring.cloud.stream.kafka.binder.enable-observation"))
+        .isEqualTo("true");
     assertThat(env.getProperty(b + "group")).isEqualTo("claim-service");
     assertThat(env.getProperty(b + "consumer.max-attempts")).isEqualTo("4");
     assertThat(env.getProperty(b + "consumer.back-off-initial-interval")).isEqualTo("1000");

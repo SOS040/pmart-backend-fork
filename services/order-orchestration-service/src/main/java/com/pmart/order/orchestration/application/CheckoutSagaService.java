@@ -5,6 +5,7 @@ import com.pmart.common.messaging.EventEnvelopeCodec;
 import com.pmart.common.messaging.EventPublisher;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
+import com.pmart.common.observability.CorrelationScope;
 import com.pmart.common.web.PmartException;
 import com.pmart.order.orchestration.domain.CheckoutRules;
 import com.pmart.order.orchestration.domain.CheckoutRules.Window;
@@ -16,6 +17,7 @@ import com.pmart.order.orchestration.infrastructure.SagaStore;
 import com.pmart.order.orchestration.infrastructure.SagaStore.CompensationRow;
 import com.pmart.order.orchestration.infrastructure.SagaStore.SagaRow;
 import com.pmart.order.orchestration.infrastructure.SagaStore.StepRow;
+import io.micrometer.tracing.Tracer;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -88,6 +91,7 @@ public class CheckoutSagaService {
   private final OrchestrationProperties props;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final ObjectProvider<Tracer> tracer;
 
   public CheckoutSagaService(
       SagaStore store,
@@ -99,7 +103,9 @@ public class CheckoutSagaService {
       ExecutorService sagaExecutor,
       OrchestrationProperties props,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      ObjectProvider<Tracer> tracer) {
+    this.tracer = tracer;
     this.store = store;
     this.participants = participants;
     this.idempotency = idempotency;
@@ -177,8 +183,17 @@ public class CheckoutSagaService {
                           now,
                           now,
                           null));
-                  stateChanged(
-                      id, in.orderId(), CheckoutRules.STEPS.getFirst(), "RUNNING", null, null, now);
+                  // 사가 사건은 처음부터 correlationId = sagaId(작업 C)
+                  try (CorrelationScope c = CorrelationScope.open(tracer.getIfAvailable(), id)) {
+                    stateChanged(
+                        id,
+                        in.orderId(),
+                        CheckoutRules.STEPS.getFirst(),
+                        "RUNNING",
+                        null,
+                        null,
+                        now);
+                  }
                   return id;
                 })
             .value();
@@ -213,8 +228,17 @@ public class CheckoutSagaService {
 
   // ---------- 진행 ----------
 
-  /** 행 잠금 아래에서 끝까지(또는 기다릴 지점까지) 진행한다. */
+  /**
+   * 행 잠금 아래에서 끝까지(또는 기다릴 지점까지) 진행한다. 진입 경로(응답 뒤 kick·sweep·결제 사건)와 상관없이 이 구간의 correlationId =
+   * sagaId(작업 C) — 참여자 호출의 X-Correlation-Id·baggage 와 발행 사건의 봉투가 같은 값을 잇는다.
+   */
   public void advance(String sagaId) {
+    try (CorrelationScope c = CorrelationScope.open(tracer.getIfAvailable(), sagaId)) {
+      advanceLocked(sagaId);
+    }
+  }
+
+  private void advanceLocked(String sagaId) {
     tx.executeWithoutResult(
         status -> {
           SagaRow s = store.lock(sagaId).orElse(null);

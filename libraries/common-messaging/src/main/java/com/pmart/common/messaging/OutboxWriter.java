@@ -2,8 +2,10 @@ package com.pmart.common.messaging;
 
 import java.sql.Timestamp;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -21,8 +23,8 @@ public class OutboxWriter {
 
   private static final String INSERT =
       "INSERT INTO outbox_event "
-          + "(id, aggregatetype, aggregateid, type, topic, payload, trace_id, correlation_id, created_at) "
-          + "VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)";
+          + "(id, aggregatetype, aggregateid, type, topic, payload, trace_id, correlation_id, traceparent,"
+          + " created_at) VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)";
   private static final String DELETE = "DELETE FROM outbox_event WHERE id = ?";
 
   private final JdbcTemplate jdbc;
@@ -67,6 +69,7 @@ public class OutboxWriter {
         json,
         envelope.traceId().isEmpty() ? null : envelope.traceId(),
         envelope.correlationId(),
+        currentTraceparent(),
         Timestamp.from(envelope.occurredAt()));
     if (deleteAfterInsert) {
       jdbc.update(DELETE, envelope.eventId());
@@ -82,4 +85,25 @@ public class OutboxWriter {
     }
     return topic;
   }
+
+  /**
+   * 지금 span 의 W3C traceparent(작업 B). Micrometer Tracing 이 MDC 에 넣는 traceId(32 hex)·spanId(16 hex)로
+   * 만든다 — 이 라이브러리에 추적 의존성을 두지 않기 위해. 표본은 1.0(관측 기본값)이라 sampled 플래그 01. 없거나 형식이 다르면 null.
+   */
+  static @Nullable String currentTraceparent() {
+    String traceId = MDC.get("traceId");
+    String spanId = MDC.get("spanId");
+    if (traceId == null
+        || spanId == null
+        || !HEX32.matcher(traceId).matches()
+        || !HEX16.matcher(spanId).matches()) {
+      return null;
+    }
+    return "00-" + traceId + "-" + spanId + "-01";
+  }
+
+  private static final java.util.regex.Pattern HEX32 =
+      java.util.regex.Pattern.compile("[0-9a-f]{32}");
+  private static final java.util.regex.Pattern HEX16 =
+      java.util.regex.Pattern.compile("[0-9a-f]{16}");
 }

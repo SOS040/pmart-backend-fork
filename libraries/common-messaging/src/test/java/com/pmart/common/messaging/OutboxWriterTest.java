@@ -91,6 +91,7 @@ class OutboxWriterTest {
             any(),
             eq("t-1"),
             eq("c-1"),
+            any(),
             any());
     verify(jdbc).update(eq("DELETE FROM outbox_event WHERE id = ?"), eq(e.eventId()));
   }
@@ -110,5 +111,21 @@ class OutboxWriterTest {
     assertThatThrownBy(() -> w.append(bad))
         .isInstanceOf(EventSchemaValidator.EventSchemaViolation.class);
     verify(jdbc, never()).update(any(String.class), any(Object[].class));
+  }
+
+  @Test
+  void traceparentComesFromMdcTraceAndSpan() {
+    org.slf4j.MDC.put("traceId", "4bf92f3577b34da6a3ce929d0e0e4736");
+    org.slf4j.MDC.put("spanId", "00f067aa0ba902b7");
+    try {
+      org.assertj.core.api.Assertions.assertThat(OutboxWriter.currentTraceparent())
+          .isEqualTo("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+      org.slf4j.MDC.put("spanId", "bad");
+      org.assertj.core.api.Assertions.assertThat(OutboxWriter.currentTraceparent()).isNull();
+    } finally {
+      org.slf4j.MDC.remove("traceId");
+      org.slf4j.MDC.remove("spanId");
+    }
+    org.assertj.core.api.Assertions.assertThat(OutboxWriter.currentTraceparent()).isNull();
   }
 }

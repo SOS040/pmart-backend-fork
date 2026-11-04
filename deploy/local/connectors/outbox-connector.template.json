@@ -30,7 +30,7 @@
     "transforms.outbox.route.by.field": "topic",
     "transforms.outbox.route.topic.replacement": "${routedByValue}",
     "transforms.outbox.table.expand.json.payload": "false",
-    "transforms.outbox.table.fields.additional.placement": "type:header:eventType,aggregatetype:header:aggregateType,trace_id:header:traceId,correlation_id:header:correlationId",
+    "transforms.outbox.table.fields.additional.placement": "type:header:eventType,aggregatetype:header:aggregateType,trace_id:header:traceId,correlation_id:header:correlationId,traceparent:header:traceparent",
     "transforms.outbox.route.tombstone.on.empty.payload": "false",
 
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",

@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import org.slf4j.MDC;
 
 /**
  * 업무 이벤트 소비 함수 공장(ADR-0035). 바인더가 넘긴 byte[] 를 봉투로 풀고 {@link InboxGuard} 안에서 처리기를 부른다 — 이미 받은 이벤트(같은
@@ -16,6 +17,9 @@ import java.util.function.Predicate;
  * }</pre>
  */
 public final class EventConsumers {
+
+  /** common-observability CorrelationIdFilter.MDC_KEY 와 같다(의존성 없이). */
+  static final String CORRELATION_MDC = "correlationId";
 
   private final EventEnvelopeCodec codec;
   private final InboxGuard inbox;
@@ -41,7 +45,22 @@ public final class EventConsumers {
           EventEnvelope envelope =
               codec.decode(new String(message.getPayload(), StandardCharsets.UTF_8));
           if (accept.test(envelope)) {
-            inbox.process(envelope, () -> handler.accept(envelope));
+            // 작업 B: 처리 동안 correlationId = 봉투 값 → 이 반응이 내는 사건·HTTP 호출이 같은 사가·사건 ID 를 잇는다.
+            // traceId 는 바인더 observation(enable-observation)이 traceparent 헤더로 이어 MDC 에 넣는다.
+            String previous = MDC.get(CORRELATION_MDC);
+            String correlation = envelope.correlationId();
+            if (correlation != null && !correlation.isBlank()) {
+              MDC.put(CORRELATION_MDC, correlation);
+            }
+            try {
+              inbox.process(envelope, () -> handler.accept(envelope));
+            } finally {
+              if (previous == null) {
+                MDC.remove(CORRELATION_MDC);
+              } else {
+                MDC.put(CORRELATION_MDC, previous);
+              }
+            }
           }
         });
   }

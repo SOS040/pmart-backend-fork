@@ -15,6 +15,11 @@ import org.springframework.core.Ordered;
 @AutoConfiguration
 public class CommonObservabilityAutoConfiguration {
 
+  static {
+    // 감싼 실행기가 MDC correlationId·sourceSystem 도 넘기게(작업 A)
+    MdcContextPropagation.register();
+  }
+
   /** 서블릿 웹앱에서만 correlationId 필터 등록. 추적 필터(Micrometer)보다 뒤, 공통 헤더 필터보다 앞. */
   @Configuration(proxyBeanMethods = false)
   @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)

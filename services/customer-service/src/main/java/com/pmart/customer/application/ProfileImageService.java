@@ -5,6 +5,8 @@ import com.pmart.customer.domain.ProfileImageRules;
 import com.pmart.customer.infrastructure.CustomerStore;
 import com.pmart.customer.infrastructure.CustomerStore.ProfileImageRow;
 import com.pmart.customer.infrastructure.ProfileImageDownloader;
+import io.micrometer.context.ContextExecutorService;
+import io.micrometer.context.ContextSnapshotFactory;
 import jakarta.annotation.PreDestroy;
 import java.net.URI;
 import java.security.MessageDigest;
@@ -46,7 +48,12 @@ public class ProfileImageService {
   private final ProfileImageDownloader downloader;
   private final ProfileImageProperties props;
   private final Clock clock;
-  private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+  /** 사본 내려받기(비동기). 호출 스레드의 trace·MDC 를 넘긴다(작업 A). */
+  private final ExecutorService executor =
+      ContextExecutorService.wrap(
+          Executors.newVirtualThreadPerTaskExecutor(),
+          () -> ContextSnapshotFactory.builder().build().captureAll());
 
   public ProfileImageService(
       CustomerStore store,

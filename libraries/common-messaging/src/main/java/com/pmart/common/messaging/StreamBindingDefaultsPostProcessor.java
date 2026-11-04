@@ -59,6 +59,10 @@ public class StreamBindingDefaultsPostProcessor implements EnvironmentPostProces
     String binder = "spring.cloud.stream.kafka.binder.";
     d.put(binder + "producer-properties[key.serializer]", BYTES_SERIALIZER);
     d.put(binder + "producer-properties[value.serializer]", BYTES_SERIALIZER);
+    // 작업 B: 바인더 observation — 소비 때 Kafka 헤더 traceparent(Debezium additional.placement)로 부모 span 을
+    // 잇고, 재처리·DLQ
+    // 발행 때 traceparent 를 싣는다. 끄면 소비마다 새 trace 가 된다(trace-correlation-plan.md 끊김 ③)
+    d.put(binder + "enable-observation", "true");
     int retries = environment.getProperty("pmart.messaging.consumer.max-retries", Integer.class, 3);
     long initial =
         environment.getProperty("pmart.messaging.consumer.initial-backoff-ms", Long.class, 1000L);
