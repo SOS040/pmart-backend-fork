@@ -684,7 +684,12 @@ class SearchFlowIT {
       {"PRD-S1", "E-S1", "[시험] 블루투스 무선 이어폰"},
       {"PRD-S2", "E-S2", "[시험] 무선이어폰 케이스"},
       {"PRD-S3", "E-S3", "[시험] 동물성 생 크림 500ml"},
-      {"PRD-S4", "E-S4", "[시험] 휘핑 생크림 250ml"}
+      {"PRD-S4", "E-S4", "[시험] 휘핑 생크림 250ml"},
+      // 구문 순위(낱말 순서), 초성 앞부분 순위
+      {"PRD-P1", "E-P1", "[시험] 콜라 제로 500ml"},
+      {"PRD-P2", "E-P2", "[시험] 제로 슈거 콜라맛 젤리"},
+      {"PRD-C1", "E-C1", "[시험] 국산 두부 300g"},
+      {"PRD-C2", "E-C2", "[시험] 고단백 과자"}
     };
     for (String[] p : products) {
       productWith(p[0], 1, 1, p[1], "ON_SALE", "2026-11-04T02:00:00Z", List.of());
@@ -711,6 +716,13 @@ class SearchFlowIT {
     assertThat(ids(search("?q=ㅎㅍ"))).contains("PRD-S4").doesNotContain("PRD-S3");
     assertThat(ids(search("?q=ㅁㅅ ㅇㅇㅍ"))).contains("PRD-S1", "PRD-S2");
     assertThat(ids(search("?q=ㅂㄹㅌㅅ"))).contains("PRD-S1").doesNotContain("PRD-S2");
+    // 순위(2026-11-05): 낱말이 검색어 순서로 붙은 상품이 위(구문), 초성은 낱말 앞부분이 맞는 상품이 위
+    await("?q=콜라 제로", r -> ids(r).containsAll(List.of("PRD-P1", "PRD-P2")));
+    List<String> phrase = ids(search("?q=콜라 제로"));
+    assertThat(phrase.indexOf("PRD-P1")).isLessThan(phrase.indexOf("PRD-P2"));
+    await("?q=ㄷㅂ", r -> ids(r).containsAll(List.of("PRD-C1", "PRD-C2")));
+    List<String> chosung = ids(search("?q=ㄷㅂ"));
+    assertThat(chosung.indexOf("PRD-C1")).isLessThan(chosung.indexOf("PRD-C2"));
     // 자동완성도 같은 조건
     String suggest = http.get().uri("/search/suggestions?q=ㅅㅋㄹ").retrieve().body(String.class);
     assertThat(suggest).contains("생 크림").contains("생크림");

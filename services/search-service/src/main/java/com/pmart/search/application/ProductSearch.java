@@ -225,10 +225,14 @@ public class ProductSearch {
     if (q == null) {
       bool.put("must", List.of(Map.of("match_all", Map.of())));
     } else if (SearchRules.isChosungQuery(q)) {
-      // 초성만 된 검색어: 상품명 초성(공백을 뺀 1~2글자 조각)이 모두 있으면 걸린다("ㅅㅋㄹ" → 생크림·생 크림)
+      // 초성만 된 검색어: 상품명 초성(공백을 뺀 1~2글자 조각)이 모두 있으면 걸린다("ㅅㅋㄹ" → 생크림·생 크림).
+      // 순위: 낱말 앞부분이 초성과 맞으면 가산("ㄷㅂ" → 두부가 "단백질"·"더바른"보다 위, products-v5 nameChosung.edge)
       bool.put(
           "must",
           List.of(Map.of("match", Map.of("nameChosung", Map.of("query", q, "operator", "and")))));
+      bool.put(
+          "should",
+          List.of(Map.of("match", Map.of("nameChosung.edge", Map.of("query", q, "boost", 3)))));
     } else {
       // 찾는 조건: 형태소(nori)가 모두 맞거나("두부를"→두부), 1~2글자 조각이 모두 있거나(붙임말 "나랑드사이다제로"·부분 "미역"),
       // 공백을 모두 뺀 이름·검색어의 조각이 모두 있거나(붙여 쓴 "생크림" ↔ 띄어 쓴 "생 크림", products-v4 name.compact)
@@ -249,12 +253,14 @@ public class ProductSearch {
                               Map.of("name.compact", Map.of("query", q, "operator", "and")))),
                       "minimum_should_match",
                       1))));
-      // 순위: 형태소 일치 > 앞부분 일치 > 조각 일치
+      // 순위: 형태소 일치 > 앞부분 일치 > 조각 일치. 검색어 낱말이 그 순서로 붙어 있으면(사이 1낱말까지) 가산 — 구문 검색
+      // ("콜라 제로" → "콜라 제로 500ml" 이 "제로 … 콜라맛"보다 위, 2026-11-05). 찾는 조건은 바꾸지 않는다
       bool.put(
           "should",
           List.of(
               Map.of("match", Map.of("name", Map.of("query", q, "boost", 3))),
-              Map.of("match", Map.of("name.edge", Map.of("query", q, "boost", 2)))));
+              Map.of("match", Map.of("name.edge", Map.of("query", q, "boost", 2))),
+              Map.of("match_phrase", Map.of("name", Map.of("query", q, "slop", 1, "boost", 2)))));
     }
     bool.put("filter", filter);
     bool.put("must_not", List.of(Map.of("term", Map.of("saleState", SearchRules.SALE_STOPPED))));

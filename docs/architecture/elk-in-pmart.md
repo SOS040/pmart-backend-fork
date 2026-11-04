@@ -30,10 +30,10 @@
 ## 2. 상품 검색
 
 ```
-product·pricing·product-content 서비스 DB
-  → Outbox → Debezium(pc3) → Kafka(pc2): commerce.product.v1 · commerce.pricing.v1   ← 무제한 보관
+product·pricing·product-content·mfc-inventory 서비스 DB
+  → Outbox → Debezium(pc3) → Kafka(pc2): commerce.product.v1 · commerce.pricing.v1 · mfc.sku-handling.v1   ← 무제한 보관
   → Logstash "search-index"(pc4)
-  → Elasticsearch: products-v3(별칭 products) · sku-prices-v1(별칭 sku-prices)
+  → Elasticsearch: products-v5(별칭 products) · sku-prices-v1 · sku-handlings-v1(SKU 별 센터 취급)
   → search-service(읽기만) → api-gateway → 고객 앱
 ```
 
@@ -53,10 +53,10 @@ product·pricing·product-content 서비스 DB
 | `name` | nori 형태소 | "두부를" → 두부 |
 | `name.edge` | 앞부분 | 자동완성 |
 | `name.partial` | 1~2글자 조각 | 붙임말 "나랑드사이다제로", "미역" → 미역국 |
-| `name.compact` | 공백을 모두 뺀 뒤 1~2글자 조각(products-v4) | "생크림" → "생 크림" |
+| `name.compact` | 공백을 모두 뺀 뒤 1~2글자 조각(products-v4~) | "생크림" → "생 크림" |
+| `nameChosung`(`.edge`) | 상품명 초성, 공백 뺀 조각(+ 낱말 앞부분, v5) | "ㄷㅂ" → 두부 |
 
-- `name.compact` 는 코드에만 있고 LAN 은 아직 v3 다(재색인 뒤 반영).
-- 순위: 형태소 일치 > 앞부분 일치 > 조각 일치.
+- 순위: 형태소 일치 > 앞부분 일치 > 조각 일치, 낱말 순서가 맞으면(구문) 가산.
 
 - **재색인**:
   - 매핑이 바뀌면 새 색인(`products-vN`)을 빈 채로 만든다.
