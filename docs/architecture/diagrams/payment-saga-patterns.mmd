@@ -1,0 +1,70 @@
+%% PMart 결제 흐름의 패턴별 책임 — 구현된 코드 기준 (2026-11-04). 해설: docs/architecture/payment-saga-patterns.md
+%% 렌더: npx @mermaid-js/mermaid-cli -i payment-saga-patterns.mmd -o payment-saga-patterns.png -s 2
+%% 굵은 실선 = 오케스트레이션 명령(동기 HTTP·멱등 키) · 이중선 = Outbox 발행 · 점선 = 이벤트 반응/깨우기
+flowchart TB
+    classDef orch fill:#dbeafe,stroke:#1e40af,color:#0f172a
+    classDef part fill:#e0f2fe,stroke:#0369a1,color:#0f172a
+    classDef chor fill:#dcfce7,stroke:#15803d,color:#0f172a
+    classDef box fill:#fef3c7,stroke:#b45309,color:#0f172a
+    classDef dlt fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
+
+    subgraph ORCH["① 사가 오케스트레이션 — 핵심 사가의 순서·보상 결정"]
+        direction TB
+        O["<b>order-orchestration-service</b><br/>S1 CheckoutSagaService · S3 CancellationSagaService<br/>상태: checkout_saga · cancellation_saga · saga_compensation<br/>단계 키 sagaId:STEP · 백업 sweep 10초<br/>── 오케스트레이터만 결정 ──<br/>재고·여력·슬롯 모두 잡혀야 결제 시작<br/>결제는 GET 으로 재확인 · 금액 대조<br/>자원 확정 → 주문 확정 순서<br/>실패 시 이번 시도 자원만 보상 · 승인 났으면 Toss 보상 취소<br/>불일치 → RECONCILIATION_REQUIRED · 불명 → UNKNOWN_TRACKING"]:::orch
+    end
+
+    subgraph PART["참여자 — 지시받은 일만 (스스로 다음 단계를 시작하지 않음)"]
+        direction TB
+        INV["mfc-inventory<br/>재고 예약·확정·해제 (TTL 10분)"]:::part
+        CAP["mfc-capacity<br/>여력 확보·확정·해제"]:::part
+        DCAP["delivery-capacity<br/>슬롯 확보·확정·해제 (예약 배송)"]:::part
+        PAY["payment-service<br/>결제 시작 · 승인 · 보상 취소 · 환불<br/>결과 불명 → CONFIRM_UNKNOWN<br/>ReconciliationService 대사 15초 · 웹훅은 재조회만"]:::part
+        ORD["order-service<br/>주문 확정 · 미이행 수량·취소 반영"]:::part
+        FUL["mfc-fulfillment<br/>작업 중지 (S3)"]:::part
+    end
+
+    TOSS["Toss Payments<br/>POST /v1/payments/confirm · cancel<br/>트랜잭션 밖 · Idempotency-Key = 시도 키"]:::ext
+
+    O ==>|"HTTP · sagaId:STEP"| INV
+    O ==>|HTTP| CAP
+    O ==>|HTTP| DCAP
+    O ==>|"HTTP 결제 시작·조회·보상 취소"| PAY
+    O ==>|"HTTP 주문 확정·취소 반영"| ORD
+    O ==>|"HTTP 작업 중지"| FUL
+    PAY <-->|"승인 · 취소 · 조회"| TOSS
+
+    subgraph OB["③ Transactional Outbox — 업무 변경 + 사건 저장을 한 로컬 트랜잭션"]
+        direction TB
+        W["OutboxWriter.append (호출자 TX 안에서만)<br/>outbox_event INSERT → DELETE · 계약 ENFORCE"]:::box
+        DEB["Debezium EventRouter<br/>key = aggregateId · 헤더 traceId·correlationId"]:::box
+        K["Kafka 토픽<br/>order.payment.v1 · order.order.v1<br/>order.claim.v1 · order.saga.v1 · mfc.fulfillment.v1"]:::box
+        W --> DEB --> K
+    end
+
+    PAY ===|"PaymentApproved·Failed·ResultUnknown·Mismatch<br/>CompensationCancelResult·RefundResult"| W
+    ORD ===|"OrderConfirmed·OrderLineQuantityChanged·OrderCancelled"| W
+    O ===|"CheckoutSagaStateChanged·CompensationExecuted·ReconciliationRequired"| W
+    FUL ===|WorkStopResult| W
+
+    K -.->|"깨우기: paymentEvents · claimEvents<br/>(이벤트 값은 믿지 않고 조회로 확인)"| O
+
+    subgraph CHOR["② 이벤트 코레오그래피 — 사가 밖 후속 연동 (조정자 없음)"]
+        direction TB
+        CART["cart-service · orderEvents<br/>OrderConfirmed → 주문분 장바구니 정리"]:::chor
+        CUST["customer-service · orderEvents<br/>OrderConfirmed → 첫 구매 기록<br/>OrderCancelled FULL → 기록 삭제"]:::chor
+        CLM["claim-service · orderEvents·paymentEvents·fulfillmentEvents<br/>OrderCancelled → 환불 의도 → payment 취소(REFUND-intentId)<br/>RefundResult → 클레임 종결 · WorkStopResult → 인계면 취소 불가<br/>고객 취소 접수 → CancellationRequested"]:::chor
+    end
+
+    K -.-> CART
+    K -.-> CUST
+    K -.-> CLM
+    CLM ==>|"HTTP 환불 요청"| PAY
+    CLM ===|"ClaimOpened·CancellationRequested<br/>RefundIntentCreated·ClaimClosed"| W
+
+    subgraph FAIL["소비 실패 (모든 구독자 공통, ADR-0030·0035)"]
+        direction TB
+        DLQ["재시도 1+3회(1·2·4초) → Kafka 바인더 DLQ<br/>PmartDlqDestinationResolver: dead_letter 기록 → {토픽}.DLT<br/>DeadLetterOpen 경보 → 재처리 StreamBridge"]:::dlt
+    end
+    CHOR -.->|실패| DLQ
+    O -.->|"소비 실패"| DLQ

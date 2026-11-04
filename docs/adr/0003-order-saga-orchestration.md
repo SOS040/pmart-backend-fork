@@ -1,6 +1,6 @@
 # ADR-0003 주문 계열 사가는 orchestration, 사실 전파는 choreography
 
-- 상태: 제안 (2026-10-23)
+- 상태: 승인 (2026-11-04, 사용자 "유지" 결정 — 핵심 주문 사가는 오케스트레이션, 사가 밖 후속 연동은 코레오그래피. 패턴별 책임은 `docs/architecture/payment-saga-patterns.md`) · 제안 2026-10-23
 - 관련: CLAUDE.md "분산 트랜잭션: Saga(choreography 기본)" 및 `order-orchestration-service`, OMS 3·5.4·7·8·A.1.4·A.1.15·A.4
 
 ## 배경

@@ -1,0 +1,63 @@
+%% PMart traceId · correlationId propagation — as implemented (2026-11-04, main b8e70b7). Kept (green) · broken (red)
+%% English version of trace-correlation-flow.mmd (keep both in sync)
+%% Render: npx @mermaid-js/mermaid-cli -i trace-correlation-flow.en.mmd -o trace-correlation-flow.en.png -s 2
+%% Sources: api-gateway RequestIdWebFilter · common-observability CorrelationIdFilter·ObservabilityDefaultsPostProcessor(baggage)
+%%          common-security ServiceCallHeadersCustomizer · common-messaging EventEnvelopeCodec.create·OutboxWriter·EventConsumers
+%%          order-orchestration OrchestrationConfig (virtual-thread executor) · order-service OrderService (OrderConfirmed correlationId = sagaId)
+sequenceDiagram
+    autonumber
+    participant APP  as customer_app
+    participant GW   as api-gateway
+    participant ORD  as order-service
+    participant ORCH as order-orchestration
+    participant PAY  as payment-service<br/>(same for stock, capacity… participants)
+    participant OB   as outbox_event<br/>→ Debezium
+    participant K    as Kafka
+    participant CON  as consuming service<br/>(orchestration·claim·cart…)
+    participant OBS  as Zipkin (spans) ·<br/>Elasticsearch (logs)
+
+    Note over APP,OBS: Terms — traceId: call chain of one request (Micrometer Tracing, W3C traceparent) · correlationId: business ID linking requests and events (X-Correlation-Id + baggage) · X-Request-Id: gateway request number
+
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /order-drafts/{id}/checkouts (X-Correlation-Id kept if the app sends one)
+        GW->>GW: RequestIdWebFilter → issue X-Request-Id<br/>Micrometer starts trace T1
+        GW->>ORD: traceparent T1 · X-Request-Id · (X-Correlation-Id)
+        ORD->>ORD: CorrelationIdFilter → issue C1 if missing · MDC traceId=T1, correlationId=C1
+        ORD->>ORCH: RestClient — traceparent T1 · X-Correlation-Id C1 (ServiceCallHeadersCustomizer + baggage)
+        ORCH->>ORCH: MDC traceId=T1, correlationId=C1 · INSERT checkout_saga (sagaId S)
+        ORCH->>OB: CheckoutSagaStateChanged — envelope traceId=T1 · correlationId=C1<br/>(EventEnvelopeCodec.create reads MDC → outbox trace_id · correlation_id)
+        ORD-->>OBS: logs (traceId T1 · correlationId C1) · span T1
+    end
+
+    rect rgb(254, 226, 226)
+        ORCH->>ORCH: advance() — the virtual-thread executor (OrchestrationConfig) does not carry trace · MDC
+        ORCH->>PAY: steps b~f over HTTP — new trace T2 · no X-Correlation-Id
+        PAY->>PAY: CorrelationIdFilter → issues a new C2
+        Note over ORCH,PAY: Break ① saga step calls are not linked to T1 · C1 — findable only by step key sagaId:STEP (idempotency key)
+    end
+
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /payment-confirmations (new request)
+        GW->>PAY: traceparent T3 · X-Request-Id
+        PAY->>PAY: MDC traceId=T3, correlationId=C3 (newly issued)
+        PAY->>OB: PaymentApproved — envelope traceId=T3 · correlationId=C3 (same TX)
+        OB->>K: Debezium EventRouter — Kafka headers traceId=T3 · correlationId=C3<br/>(no traceparent header)
+    end
+
+    rect rgb(254, 226, 226)
+        K->>CON: Stream binding — EventConsumers → InboxGuard
+        CON->>CON: new trace T4 · MDC empty<br/>no code restores envelope traceId=T3 · correlationId=C3 into tracing context · MDC
+        CON->>OB: events emitted by this reaction — correlationId = MDC (none) → empty
+        Note over K,CON: Break ② across Kafka the trace does not continue, and correlationId is not passed to the next event
+    end
+
+    rect rgb(219, 234, 254)
+        ORCH->>ORD: h2 confirm order over HTTP (new trace)
+        ORD->>OB: OrderConfirmed — correlationId = sagaId S (set explicitly by OrderService)<br/>→ the only place that links the confirmed fact to the saga
+    end
+
+    rect rgb(241, 245, 249)
+        Note over K,OBS: Zipkin: one trace each (T1 · T2 · T3 · T4) · Kibana (pmart-logs): search by traceId · correlationId fields<br/>to follow one saga today, stitch by orderId · sagaId · eventId (envelope · dead_letter · inbox_event)
+    end
+
+    Note over APP,OBS: To fix (backlog, platform-capabilities-code-map.md): ① context propagation (trace · MDC) in the saga executor ② carry traceparent outbox → Kafka header on publish, restore context from envelope traceId · correlationId on consume ③ correlationId = sagaId for saga events and participant calls

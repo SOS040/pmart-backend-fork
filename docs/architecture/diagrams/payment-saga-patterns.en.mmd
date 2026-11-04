@@ -1,0 +1,71 @@
+%% PMart payment flow — responsibility of each pattern, as implemented (2026-11-04). Explanation: docs/architecture/payment-saga-patterns.md
+%% English version of payment-saga-patterns.mmd (keep both in sync)
+%% Render: npx @mermaid-js/mermaid-cli -i payment-saga-patterns.en.mmd -o payment-saga-patterns.en.png -s 2
+%% thick line = orchestration command (sync HTTP · idempotency key) · double line = outbox publish · dotted = event reaction / wake-up
+flowchart TB
+    classDef orch fill:#dbeafe,stroke:#1e40af,color:#0f172a
+    classDef part fill:#e0f2fe,stroke:#0369a1,color:#0f172a
+    classDef chor fill:#dcfce7,stroke:#15803d,color:#0f172a
+    classDef box fill:#fef3c7,stroke:#b45309,color:#0f172a
+    classDef dlt fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    classDef ext fill:#f1f5f9,stroke:#64748b,color:#0f172a
+
+    subgraph ORCH["① Saga orchestration — order and compensation of the core sagas"]
+        direction TB
+        O["<b>order-orchestration-service</b><br/>S1 CheckoutSagaService · S3 CancellationSagaService<br/>state: checkout_saga · cancellation_saga · saga_compensation<br/>step key sagaId:STEP · backup sweep 10 s<br/>── only the orchestrator decides ──<br/>start payment only when stock, capacity and slot are all held<br/>re-check payment via GET · compare amounts<br/>confirm resources → then confirm order<br/>on failure compensate only this attempt's resources · Toss compensation cancel if approved<br/>mismatch → RECONCILIATION_REQUIRED · unknown → UNKNOWN_TRACKING"]:::orch
+    end
+
+    subgraph PART["Participants — do only what they are told (never start the next step)"]
+        direction TB
+        INV["mfc-inventory<br/>reserve · confirm · release stock (TTL 10 min)"]:::part
+        CAP["mfc-capacity<br/>hold · confirm · release capacity"]:::part
+        DCAP["delivery-capacity<br/>hold · confirm · release slot (scheduled delivery)"]:::part
+        PAY["payment-service<br/>start · approve · compensation cancel · refund<br/>unknown result → CONFIRM_UNKNOWN<br/>ReconciliationService every 15 s · webhook only triggers re-query"]:::part
+        ORD["order-service<br/>confirm order · apply quantity changes and cancellation"]:::part
+        FUL["mfc-fulfillment<br/>stop work (S3)"]:::part
+    end
+
+    TOSS["Toss Payments<br/>POST /v1/payments/confirm · cancel<br/>outside the transaction · Idempotency-Key = attempt key"]:::ext
+
+    O ==>|"HTTP · sagaId:STEP"| INV
+    O ==>|HTTP| CAP
+    O ==>|HTTP| DCAP
+    O ==>|"HTTP start · query · compensation cancel"| PAY
+    O ==>|"HTTP confirm · apply cancel"| ORD
+    O ==>|"HTTP stop work"| FUL
+    PAY <-->|"approve · cancel · query"| TOSS
+
+    subgraph OB["③ Transactional Outbox — business change + event saved in one local transaction"]
+        direction TB
+        W["OutboxWriter.append (only inside the caller's TX)<br/>outbox_event INSERT → DELETE · contract ENFORCE"]:::box
+        DEB["Debezium EventRouter<br/>key = aggregateId · headers traceId · correlationId"]:::box
+        K["Kafka topics<br/>order.payment.v1 · order.order.v1<br/>order.claim.v1 · order.saga.v1 · mfc.fulfillment.v1"]:::box
+        W --> DEB --> K
+    end
+
+    PAY ===|"PaymentApproved·Failed·ResultUnknown·Mismatch<br/>CompensationCancelResult·RefundResult"| W
+    ORD ===|"OrderConfirmed·OrderLineQuantityChanged·OrderCancelled"| W
+    O ===|"CheckoutSagaStateChanged·CompensationExecuted·ReconciliationRequired"| W
+    FUL ===|WorkStopResult| W
+
+    K -.->|"wake-up: paymentEvents · claimEvents<br/>(event values not trusted — re-checked by query)"| O
+
+    subgraph CHOR["② Event choreography — follow-ups after the saga (no coordinator)"]
+        direction TB
+        CART["cart-service · orderEvents<br/>OrderConfirmed → remove ordered items from cart"]:::chor
+        CUST["customer-service · orderEvents<br/>OrderConfirmed → record first purchase<br/>OrderCancelled FULL → delete that record"]:::chor
+        CLM["claim-service · orderEvents·paymentEvents·fulfillmentEvents<br/>OrderCancelled → refund intent → payment cancel (REFUND-intentId)<br/>RefundResult → close claim · WorkStopResult → handed over = cannot cancel<br/>customer cancel request → CancellationRequested"]:::chor
+    end
+
+    K -.-> CART
+    K -.-> CUST
+    K -.-> CLM
+    CLM ==>|"HTTP refund request"| PAY
+    CLM ===|"ClaimOpened·CancellationRequested<br/>RefundIntentCreated·ClaimClosed"| W
+
+    subgraph FAIL["Consumption failure (all subscribers, ADR-0030·0035)"]
+        direction TB
+        DLQ["retry 1+3 (1·2·4 s) → Kafka binder DLQ<br/>PmartDlqDestinationResolver: record dead_letter → {topic}.DLT<br/>DeadLetterOpen alert → replay via StreamBridge"]:::dlt
+    end
+    CHOR -.->|failure| DLQ
+    O -.->|"consumption failure"| DLQ

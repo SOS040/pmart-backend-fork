@@ -3,6 +3,8 @@
 - 그림: [`diagrams/order-full-flow.png`](diagrams/order-full-flow.png) · 원본 [`diagrams/order-full-flow.mmd`](diagrams/order-full-flow.mmd) (커밋 `7e48af9`)
 - 기준: 그림을 만든 시점에 **구현된 코드**(main `dae7b8c`, 2026-11-03). 이 문서의 상태값·타이머·키는 코드(`CheckoutRules`, `PaymentStage`, 계약 `order-service.yaml`)와 흐름 문서에서 확인한 것이다. 이후의 Eureka(ADR-0032)·설정 실행 중 갱신(ADR-0033)은 주문 흐름을 바꾸지 않는다.
 - 업무 규칙의 정본: [`docs/business/flows/order-checkout-saga.md`](../business/flows/order-checkout-saga.md)(S1·S2), [`cancel-vs-handover.md`](../business/flows/cancel-vs-handover.md)(S3). 이 문서는 **그림을 읽기 위한 해설**이고 규칙을 새로 정하지 않는다.
+- 패턴별 책임(오케스트레이션·코레오그래피·Outbox): [`payment-saga-patterns.md`](payment-saga-patterns.md)
+- 2026-11-04 그림 갱신: 소비 지점마다 실패 표시, 맨 아래 **[Phase 8] 소비 실패** — 재시도 1+3회 → 바인더 DLQ(`PmartDlqDestinationResolver`: `dead_letter` 기록 → `{토픽}.DLT`) → `DeadLetterOpen` 경보 → StreamBridge 재처리(ADR-0030·0035)
 - 관련 ADR: 0003(사가는 orchestration 이 조정, 확정 사실은 이벤트로 전파), 0006(동기 체인 2 hop), 0020(Toss 결제), 0026(서비스 간 호출 인증 없음)
 - 이벤트 경로 그림(2026-11-04, main `4342c58`): 이 그림은 동기 호출 위주라 Debezium·토픽·DLT 가 잘 안 보인다. 따로 그렸다.
   - [`diagrams/order-event-topics.png`](diagrams/order-event-topics.png) — 발행 서비스 → Debezium 커넥터(EventRouter 설정) → 토픽(이벤트 종류) → 구독 서비스(처리하는 이벤트) → `{토픽}.DLT`·`dead_letter`·경보

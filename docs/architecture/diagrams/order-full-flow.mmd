@@ -1,4 +1,4 @@
-%% PMart 주문 전체 흐름 — 구현된 코드 기준 (2026-11-03, main dae7b8c)
+%% PMart 주문 전체 흐름 — 구현된 코드 기준 (2026-11-03, main dae7b8c / 2026-11-04 b8e70b7: 소비·DLT·재처리 = Spring Cloud Stream, ADR-0035)
 %% 렌더: npx @mermaid-js/mermaid-cli -i order-full-flow.mmd -o order-full-flow.png -s 2
 %% 미구현(설계만): 이행 사가 S2(작업 요청→피킹·패킹→출고), 배차·인계, 쿠폰, 알림 반응, 픽 시작 후 취소
 sequenceDiagram
@@ -19,6 +19,7 @@ sequenceDiagram
     participant CART as cart-service
     participant CLM  as claim-service
     participant FUL  as mfc-fulfillment
+    participant DLQ  as 바인더 DLQ<br/>{토픽}.DLT · dead_letter
 
     %%─────────────────────────────────────────
     Note over APP,FUL: [Phase 1] 주문서(draft) 만들기 — 동기 HTTP<br/>JWT 는 그대로 전달, 각 서비스가 PmartPrincipal 로 읽음 · gateway 는 X-Request-Id·Redis rate limit
@@ -177,6 +178,7 @@ sequenceDiagram
         OB->>DEB: WAL — outbox_event INSERT 감지 (같은 TX 에서 삭제)
         DEB->>K: EventRouter → topic 열 · key = aggregateid<br/>headers eventType, traceId, correlationId
         K->>ORCH: Stream 바인딩 paymentEvents ← order.payment.v1 (InboxGuard) → 커밋 후 kick()
+        Note right of ORCH: 소비 실패 → 재시도 1+3회 → DLQ ([Phase 8])<br/>이벤트가 늦거나 DLT 로 빠져도 sweep 10초가 결제를 조회해 진행
 
         ORCH->>PAY: g. GET /internal/payments/{id}
         PAY-->>ORCH: { state, approvedAmount, pgTransactionId }
@@ -242,7 +244,8 @@ sequenceDiagram
 
     rect rgb(245, 245, 245)
         DEB->>K: OrderConfirmed (order.order.v1)
-        K->>CART: cart-service 소비
+        K->>CART: cart-service 소비 (orderEvents)
+        Note right of CART: 실패 → 재시도 → DLQ
         CART->>CART: cartItemId(없으면 sku) 로 장바구니 삭제·수량 감소
         CART->>OB: CartItemChangeApplied (commerce.cart.v1)
         K->>UP: customer-service 소비 — firstPurchase 이면 첫 구매 사용 기록
@@ -267,6 +270,7 @@ sequenceDiagram
     rect rgb(245, 245, 245)
         DEB->>K: CancellationRequested
         K->>ORCH: Stream 바인딩 claimEvents ← order.claim.v1
+        Note right of ORCH: 실패 → 재시도 → DLQ
         ORCH->>ORCH: cancellation_saga SAGA-C-… RUNNING step=STOP_WORK
 
         ORCH->>FUL: POST /internal/stop-requests { stopRequestId, orderId, claimId, scope, lines }
@@ -292,7 +296,8 @@ sequenceDiagram
 
     rect rgb(235, 245, 235)
         DEB->>K: OrderCancelled
-        K->>CLM: claim-service 소비 (STOP_PENDING · FULL 일 때만)
+        K->>CLM: claim-service 소비 orderEvents (STOP_PENDING · FULL 일 때만)
+        Note right of CLM: 실패 → 재시도 → DLQ
         CLM->>CLM: claim IN_PROGRESS · refund_intent 생성 (승인 금액 전액)
         CLM->>OB: RefundIntentCreated (order.claim.v1)
         CLM->>PAY: 커밋 후 POST /internal/payments/{id}/cancellations (Idempotency-Key REFUND-intentId)
@@ -304,4 +309,28 @@ sequenceDiagram
         CLM->>CLM: refund COMPLETED · claim CLOSED
         CLM->>OB: ClaimClosed (CANCELLED_REFUNDED)
         K->>UP: customer-service: OrderCancelled FULL → 첫 구매 기록 삭제
+    end
+
+    %%─────────────────────────────────────────
+    Note over K,DLQ: [Phase 8] 소비 실패 — 재시도 → 바인더 DLQ → {토픽}.DLT + dead_letter → 재처리 (ADR-0030·0035, 모든 구독자 공통)<br/>예: claim-service 가 RefundResult 를 처리하다 실패
+    %%─────────────────────────────────────────
+
+    rect rgb(255, 230, 230)
+        K->>CLM: paymentEvents ← order.payment.v1 (RefundResult)
+        CLM--xCLM: 처리기 예외 → inbox 기록도 롤백(다시 처리 가능)
+        loop Kafka 바인더 재시도 — 1초 → 2초 → 4초 (최대 10초, 3회)
+            K->>CLM: 같은 레코드 다시 전달
+        end
+        Note over CLM: IllegalArgumentException 은 재시도 없이 바로 DLQ
+        CLM->>DLQ: PmartDlqDestinationResolver → dead_letter INSERT status=OPEN<br/>(topic · partition · offset · eventId · 예외)
+        CLM->>DLQ: 바인더 DLQ → order.payment.v1.DLT (원래 파티션 · key·본문 바이트 그대로)
+        CLM-->>K: offset 커밋 → 다음 레코드 (파티션 막힘 없음)
+        Note over DLQ: Prometheus pmart_messaging_dead_letters_open{topic} → 경보 DeadLetterOpen
+    end
+
+    rect rgb(235, 245, 235)
+        Note over DLQ: 운영자: GET /api/v1/internal/dead-letters?status=OPEN → 원인 수정
+        DLQ->>K: POST …/dead-letters/{id}/replays → StreamBridge(sync) → 원 토픽 order.payment.v1<br/>같은 key·본문·헤더 + pmart-replay-of · 행 REPLAYED
+        K->>CLM: 다시 소비 — 이번엔 성공 → refund COMPLETED · claim CLOSED
+        Note over K,CLM: 이미 처리한 다른 구독자(order-orchestration 등)는 같은 eventId 라 InboxGuard 가 건너뜀<br/>또 실패하면 새 dead_letter 행(replay_of = 원 행) · 처리하지 않을 거면 POST …/discards { reason }
     end

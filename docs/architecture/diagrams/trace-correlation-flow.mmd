@@ -1,0 +1,68 @@
+%% PMart traceId · correlationId 전파 — 구현된 코드 기준 (2026-11-04, main b8e70b7). 이어지는 곳(초록)·끊기는 곳(빨강)
+%% 렌더: npx @mermaid-js/mermaid-cli -i trace-correlation-flow.mmd -o trace-correlation-flow.png -s 2
+%% 근거: api-gateway RequestIdWebFilter · common-observability CorrelationIdFilter·ObservabilityDefaultsPostProcessor(baggage)
+%%       common-security ServiceCallHeadersCustomizer · common-messaging EventEnvelopeCodec.create·OutboxWriter·EventConsumers
+%%       order-orchestration OrchestrationConfig(가상 스레드 실행기) · order-service OrderService(OrderConfirmed correlationId = sagaId)
+sequenceDiagram
+    autonumber
+    participant APP  as customer_app
+    participant GW   as api-gateway
+    participant ORD  as order-service
+    participant ORCH as order-orchestration
+    participant PAY  as payment-service<br/>(재고·여력 등 참여자도 같음)
+    participant OB   as outbox_event<br/>→ Debezium
+    participant K    as Kafka
+    participant CON  as 소비 서비스<br/>(orchestration·claim·cart…)
+    participant OBS  as Zipkin(span) ·<br/>Elasticsearch(로그)
+
+    Note over APP,OBS: 용어 — traceId: 요청 하나의 호출 사슬(Micrometer Tracing, W3C traceparent) · correlationId: 여러 요청·사건을 잇는 업무 ID(X-Correlation-Id + baggage) · X-Request-Id: 게이트웨이 요청 번호
+
+    %% ───────── ① HTTP 구간: 이어진다
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /order-drafts/{id}/checkouts (X-Correlation-Id 는 앱이 보내면 유지)
+        GW->>GW: RequestIdWebFilter → X-Request-Id 발급<br/>Micrometer 가 trace T1 시작
+        GW->>ORD: traceparent T1 · X-Request-Id · (X-Correlation-Id)
+        ORD->>ORD: CorrelationIdFilter → 없으면 C1 발급 · MDC traceId=T1, correlationId=C1
+        ORD->>ORCH: RestClient — traceparent T1 · X-Correlation-Id C1 (ServiceCallHeadersCustomizer + baggage)
+        ORCH->>ORCH: MDC traceId=T1, correlationId=C1 · checkout_saga INSERT (sagaId S)
+        ORCH->>OB: CheckoutSagaStateChanged — 봉투 traceId=T1 · correlationId=C1<br/>(EventEnvelopeCodec.create 가 MDC 에서 읽음 → outbox trace_id·correlation_id)
+        ORD-->>OBS: 로그(traceId T1 · correlationId C1) · span T1
+    end
+
+    %% ───────── ② 사가 단계: 끊긴다
+    rect rgb(254, 226, 226)
+        ORCH->>ORCH: advance() — 가상 스레드 실행기(OrchestrationConfig)는 trace·MDC 를 넘기지 않음
+        ORCH->>PAY: b~f 단계 HTTP — 새 trace T2 · X-Correlation-Id 없음
+        PAY->>PAY: CorrelationIdFilter → 새 C2 발급
+        Note over ORCH,PAY: 끊김 ① 사가 단계 호출이 T1·C1 과 이어지지 않는다 — 단계 키 sagaId:STEP(멱등 키)로만 찾을 수 있다
+    end
+
+    %% ───────── ③ 결제 승인 → 사건 발행
+    rect rgb(220, 252, 231)
+        APP->>GW: POST /payment-confirmations (새 요청)
+        GW->>PAY: traceparent T3 · X-Request-Id
+        PAY->>PAY: MDC traceId=T3, correlationId=C3(새로 발급)
+        PAY->>OB: PaymentApproved — 봉투 traceId=T3 · correlationId=C3 (같은 TX)
+        OB->>K: Debezium EventRouter — Kafka 헤더 traceId=T3 · correlationId=C3<br/>(traceparent 헤더는 싣지 않음)
+    end
+
+    %% ───────── ④ Kafka 소비: 끊긴다
+    rect rgb(254, 226, 226)
+        K->>CON: Stream 바인딩 — EventConsumers → InboxGuard
+        CON->>CON: 새 trace T4 · MDC 비어 있음<br/>봉투의 traceId=T3·correlationId=C3 를 추적 문맥·MDC 로 되살리는 코드 없음
+        CON->>OB: 이 반응이 내는 사건 — correlationId = MDC(없음) → 비어 감
+        Note over K,CON: 끊김 ② Kafka 를 건너면 trace 가 이어지지 않고, correlationId 도 다음 사건으로 넘어가지 않는다
+    end
+
+    %% ───────── ⑤ 일부러 잇는 곳
+    rect rgb(219, 234, 254)
+        ORCH->>ORD: h2 주문 확정 HTTP (새 trace)
+        ORD->>OB: OrderConfirmed — correlationId = sagaId S (OrderService 가 명시)<br/>→ 확정 사실을 사가에 잇는 유일한 곳
+    end
+
+    %% ───────── ⑥ 지금 추적하는 법
+    rect rgb(241, 245, 249)
+        Note over K,OBS: Zipkin: trace 마다 따로(T1·T2·T3·T4) · Kibana(pmart-logs): traceId·correlationId 필드로 검색<br/>사가 하나를 따라가려면 지금은 orderId·sagaId·eventId(봉투·dead_letter·inbox_event)로 이어 붙인다
+    end
+
+    Note over APP,OBS: 고칠 것(백로그, platform-capabilities-code-map.md): ① 사가 실행기에 context-propagation(trace·MDC) ② 발행 때 traceparent 를 outbox → Kafka 헤더로, 소비 때 봉투 traceId·correlationId 로 문맥 복원 ③ 사가 사건·참여자 호출의 correlationId = sagaId

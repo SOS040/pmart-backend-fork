@@ -1,4 +1,4 @@
-%% PMart 주문·결제·취소 이벤트 토픽 지도 — 구현된 코드 기준 (2026-11-04, main 4342c58)
+%% PMart 주문·결제·취소 이벤트 토픽 지도 — 구현된 코드 기준 (2026-11-04, main b8e70b7 — 소비·DLT·재처리 Spring Cloud Stream, ADR-0035)
 %% 렌더: npx @mermaid-js/mermaid-cli -i order-event-topics.mmd -o order-event-topics.png -s 2
 %% 동기 HTTP(사가 단계 호출)는 order-full-flow.mmd 참고. 여기는 outbox → Debezium → Kafka → 소비자 경로만.
 %% 토픽 이름 {domain}.{aggregate}.v{n} · key = aggregateId (같은 주문·시도는 한 파티션에서 순서 유지) · 소비자 = Spring Cloud Stream 함수 바인딩(ADR-0035), group = 서비스 이름, 한 건씩 커밋(RECORD)
@@ -8,6 +8,7 @@ flowchart LR
     classDef deb fill:#ede9fe,stroke:#6d28d9,color:#0f172a
     classDef topic fill:#dcfce7,stroke:#15803d,color:#0f172a
     classDef dlt fill:#fee2e2,stroke:#b91c1c,color:#0f172a
+    classDef cfg fill:#fef9c3,stroke:#a16207,color:#0f172a
     classDef none fill:#f1f5f9,stroke:#94a3b8,color:#475569,stroke-dasharray: 4 3
 
     subgraph PUB["① 발행 · 같은 TX 에 outbox_event"]
@@ -49,14 +50,16 @@ flowchart LR
     DEB -- "mfc-fulfillment" --> T_FUL
     DEB -- "cart-service" --> T_CART
 
-    subgraph SUB["④ 구독 · Spring Cloud Stream 바인딩 + InboxGuard"]
+    subgraph SUB["④ 구독 · Stream 함수 바인딩 + InboxGuard"]
         direction TB
-        C_ORCH["order-orchestration<br/>order.payment.v1 → 결제 사가 kick() 후 결제를 GET 으로 재확인<br/>order.claim.v1 → CancellationRequested 로 취소 사가 S3 시작"]:::svc
-        C_CLM["claim-service<br/>order.order.v1 → OrderCancelled: 취소 확정·환불 의도<br/>order.payment.v1 → RefundResult: 환불 결과<br/>mfc.fulfillment.v1 → WorkStopResult: 인계됨이면 취소 불가"]:::svc
-        C_CART["cart-service<br/>order.order.v1 → OrderConfirmed: 주문분 장바구니 정리"]:::svc
-        C_CUST["customer-service<br/>order.order.v1 → OrderConfirmed: 첫 구매 사용 기록<br/>OrderCancelled FULL: 기록 삭제"]:::svc
+        CFG["<b>바인딩 정의</b> (ADR-0035)<br/>설정 저장소 &lt;서비스&gt;.yml<br/>spring.cloud.function.definition<br/>bindings.&lt;fn&gt;-in-0.destination<br/>── common-messaging 이 바인딩마다 ──<br/>group · 재시도 1+3회(1·2·4초)<br/>enable-dlq · ack RECORD · earliest<br/>read_committed · ByteArray"]:::cfg
+        C_ORCH["<b>order-orchestration</b> · group order-orchestration-service<br/>paymentEvents-in-0 ← order.payment.v1<br/>→ 결제 사가 kick() 후 결제를 GET 으로 재확인<br/>claimEvents-in-0 ← order.claim.v1<br/>→ CancellationRequested 로 취소 사가 S3 시작"]:::svc
+        C_CLM["<b>claim-service</b> · group claim-service<br/>orderEvents-in-0 ← order.order.v1<br/>→ OrderCancelled: 취소 확정·환불 의도<br/>paymentEvents-in-0 ← order.payment.v1<br/>→ RefundResult: 환불 결과<br/>fulfillmentEvents-in-0 ← mfc.fulfillment.v1<br/>→ WorkStopResult: 인계됨이면 취소 불가"]:::svc
+        C_CART["<b>cart-service</b> · group cart-service<br/>orderEvents-in-0 ← order.order.v1<br/>→ OrderConfirmed: 주문분 장바구니 정리"]:::svc
+        C_CUST["<b>customer-service</b> · group customer-service<br/>orderEvents-in-0 ← order.order.v1<br/>→ OrderConfirmed: 첫 구매 사용 기록<br/>→ OrderCancelled FULL: 기록 삭제"]:::svc
         C_NONE["구독자 미구현<br/>order.saga.v1 (카탈로그: backoffice-bff · BI · audit · case)<br/>commerce.cart.v1"]:::none
     end
+
 
     T_PAY --> C_ORCH
     T_CLAIM --> C_ORCH
@@ -68,16 +71,21 @@ flowchart LR
     T_SAGA -.-> C_NONE
     T_CART -.-> C_NONE
 
-    subgraph DLQ["⑤ 처리 실패 · 바인더 DLQ"]
+    subgraph DLQ["⑤ 처리 실패 · Kafka 바인더 DLQ"]
         direction TB
-        DLT["{원 토픽}.DLT<br/>예: order.payment.v1.DLT<br/>같은 파티션 · 원 헤더·eventId 보존"]:::dlt
+        RES["PmartDlqDestinationResolver<br/>① dead_letter 기록 ② 목적지 = 원 토픽 + .DLT"]:::dlt
+        DLT["{원 토픽}.DLT<br/>예: order.payment.v1.DLT<br/>원래 파티션 · key·본문 바이트 그대로"]:::dlt
         DLROW["각 서비스 DB dead_letter<br/>status OPEN → REPLAYED / DISCARDED"]:::dlt
         ALERT["Prometheus pmart_messaging_dead_letters_open{topic}<br/>→ 경보 DeadLetterOpen"]:::dlt
+        REPLAY["재처리: POST /api/v1/internal/dead-letters/{id}/replays<br/>StreamBridge(sync) → 원 토픽 + pmart-replay-of"]:::dlt
     end
 
-    C_ORCH -. "재시도 3회 소진" .-> DLT
-    C_CLM -. "재시도 3회 소진" .-> DLT
-    C_CART -. "재시도 3회 소진" .-> DLT
-    C_CUST -. "재시도 3회 소진" .-> DLT
-    DLT --- DLROW
+    C_ORCH -. "재시도 3회 소진" .-> RES
+    C_CLM -. "재시도 3회 소진" .-> RES
+    C_CART -. "재시도 3회 소진" .-> RES
+    C_CUST -. "재시도 3회 소진" .-> RES
+    RES --> DLROW
+    RES --> DLT
     DLROW --> ALERT
+    DLROW --> REPLAY
+    REPLAY -. "같은 eventId → 이미 처리한 구독자는 InboxGuard 가 건너뜀" .-> KAFKA
