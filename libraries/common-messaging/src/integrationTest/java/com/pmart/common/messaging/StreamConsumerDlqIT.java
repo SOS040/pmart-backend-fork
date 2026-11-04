@@ -70,7 +70,15 @@ class StreamConsumerDlqIT {
           .withCommand("postgres", "-c", "wal_level=logical");
 
   @Container @ServiceConnection
-  static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.1.1");
+  // common-test KafkaTestContainer 와 같은 시작 명령(이 라이브러리는 common-test 를 쓰지 않는다) — 기본 명령은 시작 스크립트가
+  // 다 복사되기 전에 실행해 부하 때 126 으로 죽는다
+  static final KafkaContainer KAFKA =
+      new KafkaContainer("apache/kafka:4.1.1")
+          .withCommand(
+              "sh",
+              "-c",
+              "until grep -q /etc/kafka/docker/run /tmp/testcontainers_start.sh 2>/dev/null; do sleep 0.1; done;"
+                  + " exec bash /tmp/testcontainers_start.sh");
 
   /** Kafka 바인더는 @ServiceConnection 연결 정보가 아니라 이 속성을 읽는다. */
   @DynamicPropertySource

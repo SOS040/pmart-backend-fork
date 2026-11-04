@@ -15,8 +15,7 @@ import org.testcontainers.kafka.KafkaContainer;
 public abstract class KafkaContainerSupport {
 
   @Container @ServiceConnection
-  protected static final KafkaContainer KAFKA =
-      new KafkaContainer(PostgresKafkaContainerSupport.KAFKA_IMAGE);
+  protected static final KafkaContainer KAFKA = KafkaTestContainer.create();
 
   static {
     KAFKA.withReuse(true);

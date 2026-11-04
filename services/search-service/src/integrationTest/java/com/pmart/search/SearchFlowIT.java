@@ -8,7 +8,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.pmart.common.test.EventEnvelopeFixtures;
-import com.pmart.common.test.PostgresKafkaContainerSupport;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -64,7 +63,7 @@ class SearchFlowIT {
 
   @Container @ServiceConnection
   static final KafkaContainer KAFKA =
-      new KafkaContainer(PostgresKafkaContainerSupport.KAFKA_IMAGE)
+      com.pmart.common.test.KafkaTestContainer.create()
           .withNetwork(NET)
           .withListener("kafka:19092");
 

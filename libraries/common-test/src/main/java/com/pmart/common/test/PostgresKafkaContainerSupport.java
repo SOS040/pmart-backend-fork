@@ -17,10 +17,10 @@ import org.testcontainers.kafka.KafkaContainer;
 @Testcontainers
 public abstract class PostgresKafkaContainerSupport extends PostgresContainerSupport {
 
-  public static final String KAFKA_IMAGE = "apache/kafka:4.1.1";
+  public static final String KAFKA_IMAGE = KafkaTestContainer.IMAGE;
 
   @Container @ServiceConnection
-  protected static final KafkaContainer KAFKA = new KafkaContainer(KAFKA_IMAGE);
+  protected static final KafkaContainer KAFKA = KafkaTestContainer.create();
 
   static {
     KAFKA.withReuse(true);
