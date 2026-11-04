@@ -19,7 +19,7 @@
 |---|---|---|
 | 검색 | `GET /api/v1/search/products?q=&categoryId=&sort=&size=&cursor=` | `total`, `page.nextCursor`, `appliedSort` |
 | 자동완성 | `GET /api/v1/search/suggestions?q=` | `keywords`(상품명), `popular: []` |
-| 필터 | `GET /api/v1/search/filters` | 지금은 `attributes: []`(승인 속성 원천 없음) |
+| 필터 | `GET /api/v1/search/filters` | 지금은 `attributes: []`(승인 속성 원천 없음) — **2026-11-04 부터 값이 나온다: `2026-11-05-clients-notice-search-changes.md`** |
 
 - 검색어: 글자 조각 일치라 "미역" 으로 "소고기 미역국" 이 나온다. 띄어 쓴 단어는 모두 들어 있어야 한다("두부 300g").
 - 카테고리: 상위 id(예 `t02`)를 주면 하위(`t02-c01`, `t02-c02`) 상품까지 나온다.
