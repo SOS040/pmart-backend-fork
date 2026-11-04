@@ -42,7 +42,8 @@ Prometheus (scrape 15s, 규칙 평가 15s)
 
 ### 일부러 끈 것
 - 색인별(`--es.indices`)·샤드별(`--es.shards`) 지표. 같은 ES 에 날짜별 로그 색인이 계속 생겨 켜면 시계열 수가 계속 는다.
-- `products`·`sku-prices` 의 상태는 지표 대신 search-service **`GET /api/v1/internal/index-status`**(문서 수, 원천별 마지막 반영 시각·지연)로 본다.
+- `products`·`sku-prices`·`sku-handlings` 의 상태는 지표 대신 search-service **`GET /api/v1/internal/index-status`**(문서 수, 원천별 마지막 반영 시각·지연)로 본다.
+- 검색 색인 **파이프라인** 상태(소비 지연·Logstash 영구 큐·DLQ·ES 거절·마지막 반영 시각)는 es-exporter 가 아니라 watch.sh(PC1, 5분마다)가 pc2 host-disk textfile 로 내는 지표로 본다(2026-11-05, 경보 SearchIndex* — `alert-rules.yml`).
 
 ## 3. 경보
 
@@ -55,11 +56,13 @@ Prometheus (scrape 15s, 규칙 평가 15s)
 
 - 단일 노드라 복제본을 둘 수 없으므로 **yellow 는 정상** → 경보 없음.
 - 디스크는 기존 HostDiskLow·HostDiskCritical(host-disk, PC 단위)이 맡는다.
+- 검색 색인 파이프라인 경보(SearchIndexDeadLetter·Stalled·QueueBacklog·LogstashDown·RejectedByElasticsearch·MetricsStale)는 이 문서 범위 밖이다 — `docs/operations/lan-monitoring-and-backup.md`. 2026-11-05 기준 경보 규칙은 모두 22개.
 
 ## 4. 현재 빠져 있는 것
 
 1. **알림이 어디로도 가지 않는다.** `alertmanager.yml` receiver 가 `none` — 경보는 Prometheus·Alertmanager 화면에서만 보인다. Slack 등 발송은 명시 요청 시에만 설정한다(CLAUDE.md).
-2. **Grafana ES 대시보드 없음.** 현재 `pmart-overview.json` 하나. Explore 에서 직접 조회는 가능. 필요하면 상태·힙·디스크·검색 지연 패널을 추가한다.
+2. ~~Grafana ES 대시보드 없음.~~ **2026-11-05 됨** — 대시보드 "PMart 상품 검색"(`pmart-search.json`, uid `pmart-search`)의 Elasticsearch 줄에 검색 쿼리(초당)·쿼리 평균 시간·힙 사용률 패널이 있다(색인 파이프라인·검색 API·이력 토픽 패널과 함께). 클러스터 상태·디스크 패널은 아직 없다(Explore 로 조회).
+3. **색인별 지표 없음** — 위 "일부러 끈 것" 그대로. 검색 색인만 골라 보려면 별도 결정이 필요하다.
 
 ## 5. 배포 결과 (2026-11-03)
 

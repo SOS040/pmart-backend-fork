@@ -28,7 +28,7 @@
 | 문서 | 내용 | 구분 |
 |---|---|---|
 | [product-registration-design.md](product-registration-design.md) | 임시 백오피스 상품 등록(개별·일괄) → 승인 → 상품·SKU·바코드 정본 | 초안 |
-| [product-search.md](product-search.md) | **상품 검색 현재 구현 정리** — 색인 문서·색인 규칙·검색 API·필터·재색인·감시·남은 것 | 현재 구현 |
+| [product-search.md](product-search.md) | **상품 검색 현재 구현 정리** — 색인 문서·색인 규칙·검색 API(띄어쓰기·초성·센터 취급)·필터·재색인(reindex.sh)·감시·남은 것 | 현재 구현 |
 | [search-comparison.md](search-comparison.md) | 사용자 메모(검색 구현 7단계)와 현재 구현 대조 | 비교·참고 |
 
 ## 4. 플랫폼·관측

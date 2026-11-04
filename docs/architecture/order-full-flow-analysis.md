@@ -1,7 +1,7 @@
 # 주문 전체 흐름 분석 (order-full-flow)
 
 - 그림: [`diagrams/order-full-flow.png`](diagrams/order-full-flow.png) · 원본 [`diagrams/order-full-flow.mmd`](diagrams/order-full-flow.mmd) (커밋 `7e48af9`)
-- 기준: 그림을 만든 시점에 **구현된 코드**(main `dae7b8c`, 2026-11-03). 이 문서의 상태값·타이머·키는 코드(`CheckoutRules`, `PaymentStage`, 계약 `order-service.yaml`)와 흐름 문서에서 확인한 것이다. 이후의 Eureka(ADR-0032)·설정 실행 중 갱신(ADR-0033)은 주문 흐름을 바꾸지 않는다.
+- 기준: 그림을 만든 시점에 **구현된 코드**(main `dae7b8c`, 2026-11-03). 이 문서의 상태값·타이머·키는 코드(`CheckoutRules`, `PaymentStage`, 계약 `order-service.yaml`)와 흐름 문서에서 확인한 것이다. 이후의 Eureka(ADR-0032)·설정 실행 중 갱신(ADR-0033)은 주문 흐름을 바꾸지 않는다. 2026-11-04 의 이벤트 소비 Spring Cloud Stream 전환(ADR-0035, `b8e70b7`)과 추적 작업 A·C·B(`a1d514c` — 사가 실행기 문맥 전달, correlationId = sagaId/claimId, Kafka `traceparent`)는 소비·추적 방식만 바꾸고 단계·상태·키는 그대로다 — 본문에 반영(2026-11-05 확인).
 - 업무 규칙의 정본: [`docs/business/flows/order-checkout-saga.md`](../business/flows/order-checkout-saga.md)(S1·S2), [`cancel-vs-handover.md`](../business/flows/cancel-vs-handover.md)(S3). 이 문서는 **그림을 읽기 위한 해설**이고 규칙을 새로 정하지 않는다.
 - 패턴별 책임(오케스트레이션·코레오그래피·Outbox): [`payment-saga-patterns.md`](payment-saga-patterns.md)
 - 2026-11-04 그림 갱신: 소비 지점마다 실패 표시, 맨 아래 **[Phase 8] 소비 실패** — 재시도 1+3회 → 바인더 DLQ(`PmartDlqDestinationResolver`: `dead_letter` 기록 → `{토픽}.DLT`) → `DeadLetterOpen` 경보 → StreamBridge 재처리(ADR-0030·0035)
@@ -85,7 +85,7 @@
 5. orchestration `POST /internal/checkout-sagas` (키 `CHK-draftId:requestId`) — 금액, mfcId, 배송 방식, 줄, 수요(줄 수·개수·중량·출고 수).
 
 **orchestration**: 견적 만료 재확인, **초안 하나에 열린 사가 하나**(`409 SAGA_ALREADY_ACTIVE`), `checkout_saga` 를 `RUNNING / VALIDATE_QUOTE` 로 저장하고 `CheckoutSagaStateChanged` 발행 → `202 { sagaId }`.
-**단계는 여기서 돌리지 않는다** — 가상 스레드에서 비동기로 진행한다. 동기로 끝까지 돌리면 앱 → order → orchestration → 참여자 4곳으로 체인이 길어진다(2 hop 규칙).
+**단계는 여기서 돌리지 않는다** — 가상 스레드에서 비동기로 진행한다(실행기가 trace·MDC 를 넘기고, 진행 중 correlationId = sagaId — 2026-11-04). 동기로 끝까지 돌리면 앱 → order → orchestration → 참여자 4곳으로 체인이 길어진다(2 hop 규칙).
 
 **앱이 받는 것**: `202 { status: ACCEPTED, resultId: orderId, nextAction: QUERY_RESULT }` — **접수일 뿐 결제 성공도 주문 확정도 아니다.**
 
@@ -254,7 +254,7 @@
 | mfc.fulfillment.v1 | `WorkStopResult` | mfc-fulfillment | — |
 | commerce.cart.v1 | `CartItemChangeApplied` | cart | — |
 
-모든 이벤트는 **업무 변경과 같은 트랜잭션에 outbox 로 저장**되고 Debezium 이 Kafka 로 보낸다(key = aggregateId, 헤더 traceId·correlationId). 그래서 "DB 는 바뀌었는데 이벤트가 안 나감"이 없다.
+모든 이벤트는 **업무 변경과 같은 트랜잭션에 outbox 로 저장**되고 Debezium 이 Kafka 로 보낸다(key = aggregateId, 헤더 eventType·aggregateType·traceId·correlationId·traceparent — `traceparent` 는 2026-11-04 추가로 소비 span 이 발행 trace 에 이어진다, 그림에는 아직 없음). correlationId 는 S1 사건 = sagaId(참여자 `PaymentApproved` 등 포함), S3 = claimId(2026-11-04). 그래서 "DB 는 바뀌었는데 이벤트가 안 나감"이 없다.
 
 ---
 
@@ -308,6 +308,6 @@
 4. **사람 개입 경로가 없다.** `RECONCILIATION_REQUIRED`·`MANUAL_REVIEW`·`ESCALATED` 로 멈춘 건을 볼 화면·API(BO-12)가 없어서, 지금은 DB·로그로만 확인할 수 있다.
 
 ## 10. 참고
-- 같은 이름의 Eum 그림: `Eum-main/eum_backend/diagrams/order-full-flow.*` (비교 분석은 아직 없음).
+- 같은 이름의 Eum 그림: `Eum-main/eum_backend/diagrams/order-full-flow.*` (주문 전체 그림끼리의 비교 분석은 아직 없음. 부분 비교: 결제 [`toss-payment-eum-comparison.md`](toss-payment-eum-comparison.md), Debezium [`debezium-usage-vs-eum.md`](debezium-usage-vs-eum.md)).
 - 그림 다시 만들기: `docs/architecture/diagrams/` 에서 `npx @mermaid-js/mermaid-cli -i order-full-flow.mmd -o order-full-flow.png -s 2`
 - 서비스별 규칙: `services/order-orchestration-service/CLAUDE.md`(S1·S3), `services/payment-service/CLAUDE.md`, `services/order-service/CLAUDE.md`

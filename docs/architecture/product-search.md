@@ -16,7 +16,7 @@ product-content ─┼─▶ outbox ─▶ Debezium ─▶ Kafka commerce.produc
 pricing-service ─┘                         Kafka commerce.pricing.v1 ─┤ (무제한 보관)
 mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handling.v1 ─┤ (무제한 보관, 2026-11-05)
                                                                       ▼
-                                   Logstash search-index 파이프라인(소비 그룹 search-index-logstash-v4)
+                                   Logstash search-index 파이프라인(소비 그룹 search-index-logstash-v5)
                                      ├─ Painless 버전 비교 → ES products · sku-prices · sku-handlings(모두 별칭)
                                      ├─ 콘텐츠 카드 보강(product-content 공개 API, 실패 시 재시도) + 상품명 초성
                                      └─ 끝내 실패 → Kafka search-index.DLT + 경보
@@ -39,7 +39,7 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 | Logstash | 8.18.0, pc4. 파이프라인 `search-index`(작업자 1·배치 1), 영구 큐 256MB, Logstash DLQ 64MB |
 | 색인 대상·그룹 설정 | `deploy/lan/elastic/search-index.env` → `render.sh` 가 Logstash 환경변수로 넣는다 |
 | 색인 정의 | `services/search-service/src/main/resources/elasticsearch/*.json`. es-init(pc4)과 search-service 가 같은 파일로 만든다. 정의에 별칭을 넣지 않고 **별칭이 없을 때만** 붙인다 |
-| 로컬 | `deploy/local/docker-compose.yml`(ES·es-init). 이전 `esdata` 볼륨이 있으면 별칭이 옛 색인(v2·v3)에 남는다 — 볼륨을 지우고 새로 띄운다 |
+| 로컬 | `deploy/local/docker-compose.yml`(ES·es-init). 이전 `esdata` 볼륨이 있으면 별칭이 옛 색인(v2~v4)에 남는다 — 볼륨을 지우고 새로 띄운다 |
 
 ## 3. 색인 문서 (`products-v5`, strict 매핑)
 
@@ -73,7 +73,7 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 - **콘텐츠 보강 실패**(2026-11-04): 카드 API 를 http 자동 재시도 + 2초 간격 2번 더 시도한다. 그래도 실패하면 **색인하지 않고** `search-index.DLT` 에 남긴다.
   - DLT 레코드 키 = 상품 id, 본문 `pmartDeadLetter{op, id, tags, topic, partition, offset, at}` 이 원래 사건 위치를 담는다. 토픽 보관 30일.
   - 지표 `pmart_kafka_topic_end_offset{topic="search-index.DLT"}`(watch.sh 5분마다), 경보 `SearchIndexDeadLetter`(30분 안에 늘면).
-- **작업자 1·배치 1**: 같은 상품의 상품·가격 사건이 섞여 반영되지 않게 한 건씩 처리한다. 처리량은 낮지만 지금 규모(상품 275개, 전체 재생 약 15초)에서는 문제없다. 상품이 만 건 단위로 늘면 상품 id 파티션 등 순서 보장 설계와 함께 다시 본다.
+- **작업자 1·배치 1**: 같은 상품의 상품·가격 사건이 섞여 반영되지 않게 한 건씩 처리한다. 처리량은 낮지만 지금 규모(상품 275개, 전체 재생 사건 1440건 약 40초)에서는 문제없다. 상품이 만 건 단위로 늘면 상품 id 파티션 등 순서 보장 설계와 함께 다시 본다.
 - **영구 큐**: Kafka 오프셋 커밋이 ES 쓰기보다 먼저 일어난다. 그래서 "소비 지연 0" 만으로 반영 완료를 판단하지 않는다(큐도 비어야 함).
 - 파이프라인을 바꾸면 `SearchFlowIT`(실제 Kafka·ES·Logstash Testcontainers)로 확인하고, 문법은 `logstash -t -f search-index.conf` 로 먼저 검사한다.
 
@@ -100,7 +100,7 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 
 ### 그 밖
 - `GET /search/suggestions?q=&limit=` 자동완성: 상품 검색과 같은 질의로 찾은 상품명을 중복 없이 관련도 순으로(앞부분 일치 덕분에 "두" → 두부, 초성 "ㅅㅋㄹ" → 생크림…). 전용 suggester·인기 검색어는 없다.
-- `GET /internal/index-status` 색인 신선도: 원천 사건별 마지막 반영 시각·지연(사람이 조회 — 경보와 연결되지 않음).
+- `GET /internal/index-status` 색인 신선도: 원천 사건별 마지막 반영 시각·지연(사람이 조회 — 이 API 는 경보와 연결되지 않고, 경보는 watch.sh 지표로 한다 §8). 센터 취급(`sku-handlings`) 원천은 아직 넣지 않았다.
 - 최근 검색어·`/internal/reindex-requests` 는 **501**(재색인은 절차로 한다, §7).
 
 ## 6. 필터 데이터의 흐름
@@ -113,16 +113,19 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 ## 7. 재색인 (`deploy/lan/elastic/REINDEX.md`)
 - 실행: `deploy/lan/elastic/reindex.sh`(check·start·wait·switch·finish·rollback·drop) — 단계마다 조건을 확인하고 멈춘다(2026-11-05).
 - 방법: **새 소비 그룹으로 세 이력 토픽을 처음부터 재생** → 새 색인 채움 → 완료 확인 → 별칭 원자 교체. 이벤트는 사라지지 않고(무제한 보관), 검색은 교체 순간까지 이전 색인을 읽는다.
-- 완료 조건 4개: 소비 지연 0, Logstash 영구 큐 비어 있음, `search-index.DLT` 새 레코드 없음, 건수 일치(+ 표본 대조).
+- 완료 조건(스크립트 `wait` 가 확인): 소비 지연 0, Logstash 영구 큐 비어 있음, `search-index.DLT` 새 레코드 없음, 건수 ≥ 이전 색인(재생 중 생긴 상품은 새 색인에만), 전 문서 대조(`updatedAtMs` 제외).
+- 사전 확인(`check`): 정의 파일·`SearchIndex.INDICES`, 새 색인·그룹 없음, ES green, 보관·ES 경보 없음, Logstash 구독 토픽이 Kafka 에 모두 있음, 지연 0·큐 0. 시작 전에 Kafka 백업을 자동으로 남긴다.
 - 주의:
-  - `search-index.env` 를 **render 전에** 새 색인·새 그룹으로 바꾼다(새 Logstash 설정이 옛 strict 색인에 쓰면 실패).
-  - 전환 뒤 env 의 색인은 별칭으로 되돌리고, 그룹은 새 값으로 커밋한다.
-  - `lan.sh deploy` 의 scp 는 파일을 지우지 않는다 — Elasticsearch PC 의 옛 정의 파일을 지워야 es-init 이 옛 색인을 다시 만들지 않는다.
-  - 되돌림은 옛 색인 대신 원인을 고친 뒤 새 색인으로 다시 재생(약 15초)하는 것이 기본이다. 옛 색인은 전환 뒤 사건을 받지 않아 금방 낡는다.
+  - `search-index.env` 를 **render 전에** 새 색인·새 그룹으로 바꾼다(새 Logstash 설정이 옛 strict 색인에 쓰면 실패) — `start` 가 한다.
+  - 전환 뒤 env 의 색인은 별칭으로 되돌리고(`finish`), 그룹은 새 값으로 **사람이 커밋**한다.
+  - `lan.sh deploy` 의 scp 는 파일을 지우지 않는다 — `finish` 가 Elasticsearch PC 의 옛 정의 파일을 지운다(남으면 es-init 이 옛 색인을 다시 만든다).
+  - search-service 새 이미지는 `switch` 뒤에 배포한다(새 필드를 쓰는 쿼리가 옛 색인에서는 맞지 않는다 — 예 mfcId 거르기).
+  - 되돌림은 `rollback`(별칭만 되돌림)보다, 원인을 고친 뒤 새 색인으로 다시 재생(약 40초)하는 것이 기본이다. 옛 색인은 전환 뒤 사건을 받지 않아 금방 낡는다.
 - 일부만 실패(DLT 몇 건)면 §3 부분 재처리: 콘텐츠 재게시, 또는 Logstash 를 멈추고 오프셋을 DLT 의 원래 offset 으로 되돌림.
 - 실행 기록:
   - 2026-11-04 v2 → v3(사건 1162건 약 15초, 전 문서 대조, 같은 날 v2 삭제)
-  - 2026-11-05 v3 → v4(reindex.sh 첫 실행, 사건 1440건 약 40초, 전 문서 대조 차이 없음, v3 은 남김)
+  - 2026-11-05 v3 → v4(reindex.sh 첫 실행, 사건 1440건 약 40초, 전 문서 대조 차이 없음)
+  - 2026-11-05 v4 → v5(초성 앞부분 필드, 같은 절차로 멈춤 없이). v3·v4 는 삭제 확인 대기
 
 ## 8. 감시
 | 대상 | 있는 것 | 없는 것 |

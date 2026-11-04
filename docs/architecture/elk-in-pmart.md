@@ -39,7 +39,7 @@ product·pricing·product-content·mfc-inventory 서비스 DB
 
 | 단계 | 하는 일 |
 |---|---|
-| **Kafka** | 상품이 바뀐 사실을 사건으로 쌓는다: 버전 공개, 콘텐츠 공개, 판매 상태, 가격 발효. 두 토픽은 지우지 않으므로 처음부터 다시 읽으면 색인을 똑같이 다시 만들 수 있다. |
+| **Kafka** | 상품이 바뀐 사실을 사건으로 쌓는다: 버전 공개, 콘텐츠 공개, 판매 상태, 가격 발효, 센터 취급 변경(`SkuHandlingChanged`). 세 토픽은 지우지 않으므로 처음부터 다시 읽으면 색인을 똑같이 다시 만들 수 있다. |
 | **Logstash search-index** (`services/search-service/src/main/logstash/search-index.conf`, search-service 소유) | 사건을 하나씩 읽어 색인 문서로 바꾼다. 콘텐츠 사건이면 product-content 공개 카드 API 로 이름·이미지를 채운다. 실패하면 2초 간격으로 2번 더 시도하고, 그래도 실패하면 색인하지 않고 `search-index.DLT` 에 남긴다. |
 | | ES 에 쓸 때 Painless 스크립트로 버전을 비교해 더 새로운 것만 반영한다. 판매 상태는 상품 행 버전으로 비교한다. 같은 사건이 다시 오거나 옛 사건이 늦게 와도 결과가 같다. |
 | | 작업자 1·배치 1: 가격 사건과 상품 사건이 서로 덮어쓰지 않게 한다. 영구 큐는 256 MB, ES 가 거절한 문서는 Logstash DLQ(64 MB)로 간다. |
@@ -60,11 +60,12 @@ product·pricing·product-content·mfc-inventory 서비스 DB
 
 - **재색인**:
   - 매핑이 바뀌면 새 색인(`products-vN`)을 빈 채로 만든다.
-  - 새 소비 그룹으로 Kafka 를 처음부터 다시 읽어 채운 뒤, 별칭을 한 요청으로 옮긴다. 1162건 기준 약 15초.
-  - 실행은 `deploy/lan/elastic/reindex.sh` 로 한다(check·start·wait·switch·finish·rollback·drop).
+  - 새 소비 그룹으로 Kafka 를 처음부터 다시 읽어 채운 뒤, 별칭을 한 요청으로 옮긴다. 사건 1440건 기준 약 40초(2026-11-05, v3→v4·v4→v5).
+  - 실행은 `deploy/lan/elastic/reindex.sh` 로 한다(status·check·start·wait·switch·finish·rollback·drop).
 - **감시**: watch.sh 가 5분마다 지표를 만들고 경보 6개가 본다.
   - 지표: 소비 지연, Logstash 영구 큐, DLQ, ES 거절 수, 마지막 반영 시각
   - 경보: SearchIndexStalled·QueueBacklog·LogstashDown·RejectedByElasticsearch·MetricsStale·DeadLetter
+  - 화면: Grafana "PMart 상품 검색"(uid `pmart-search`) — 파이프라인·검색 API·ES·이력 토픽. 경보 발송처(receiver)는 없어 Prometheus·Alertmanager 화면에서만 보인다.
 
 ## 3. 로그 모니터링
 
@@ -99,8 +100,9 @@ product·pricing·product-content·mfc-inventory 서비스 DB
 ## 5. 아직 없는 것
 
 - 검색:
-  - 동의어·초성·오타 교정, 브랜드, 인기·평점 정렬(정책 결정 필요)
-  - Grafana 검색 대시보드
+  - 동의어·오타 교정, 브랜드, 인기·평점 정렬(정책 결정 필요)
+  - SKU 옵션 검색(대표 SKU 만), 부하 시험·품질 평가, 색인별 ES 지표
+  - (됨 2026-11-05: 초성 `nameChosung`, Grafana 검색 대시보드 `pmart-search`)
 - 로그:
   - Kibana 저장 검색·대시보드
   - 로그 기반 경보(지금 경보는 모두 Prometheus 지표 기준)

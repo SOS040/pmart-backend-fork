@@ -1,6 +1,6 @@
 # 결제 흐름의 패턴별 책임 — 사가 오케스트레이션 · 이벤트 코레오그래피 · Transactional Outbox
 
-- 기준: main `b8e70b7`(2026-11-04) **구현된 코드**. 결정은 ADR-0003(주문 사가 오케스트레이션, 2026-11-04 사용자 유지 결정으로 승인).
+- 기준: main `b8e70b7`(2026-11-04) **구현된 코드**, 추적 작업 A·C·B(`a1d514c`, 2026-11-04) 반영 — 2026-11-05 다시 확인(그 뒤 주문·결제·사가 코드 변경 없음). 결정은 ADR-0003(주문 사가 오케스트레이션, 2026-11-04 사용자 유지 결정으로 승인).
 - 관련: ADR-0009(Outbox·Inbox), ADR-0020(Toss 결제), ADR-0030(dead letter), ADR-0035(소비·DLT·재처리 = Spring Cloud Stream)
 - 그림: [`diagrams/order-full-flow.png`](diagrams/order-full-flow.png)(동기 호출 위주 전체 흐름), [`diagrams/order-event-topics.png`](diagrams/order-event-topics.png)(이벤트 경로), [`diagrams/order-event-pipeline.png`](diagrams/order-event-pipeline.png)(이벤트 한 건·DLT·재처리). 해설은 [`order-full-flow-analysis.md`](order-full-flow-analysis.md).
 
@@ -78,8 +78,8 @@ PMart 의 사가는 "하나의 사가가 두 조정 방식을 동시에 쓴다"�
 | 항목 | 구현 |
 |---|---|
 | 저장 | `OutboxWriter.append`(common-messaging) — **호출자 트랜잭션 안에서만**. 계약 검증(ENFORCE) → `outbox_event` INSERT → 즉시 DELETE(표는 비어 있음, WAL 에 INSERT 가 남는다) |
-| 전달 | Debezium(서비스마다 커넥터) EventRouter → 토픽(`topic` 열), key = `aggregateid`(같은 주문·시도는 한 파티션에서 순서 유지), 헤더 eventType·traceId·correlationId |
-| 소비 쪽 짝 | Inbox(`InboxGuard`, `(sourceSystem, eventId)`) — 같은 사건 두 번 처리 방지. 업무 반영 뒤 offset 커밋 |
+| 전달 | Debezium(서비스마다 커넥터) EventRouter → 토픽(`topic` 열), key = `aggregateid`(같은 주문·시도는 한 파티션에서 순서 유지), 헤더 eventType·aggregateType·traceId·correlationId·traceparent(`traceparent` 는 2026-11-04 추가 — outbox `traceparent` 열, 그림에는 아직 없음) |
+| 소비 쪽 짝 | Inbox(`InboxGuard`, `(sourceSystem, eventId)`) — 같은 사건 두 번 처리 방지. 업무 반영 뒤 offset 커밋. 처리 동안 MDC correlationId = 봉투 값(`EventConsumers`, 2026-11-04) |
 | 실패 | 재시도 3회 → 바인더 DLQ `{topic}.DLT` + `dead_letter` → `DeadLetterOpen` 경보 → 재처리(StreamBridge) |
 
 결제 흐름에서 outbox 로 나가는 사건과 같은 트랜잭션의 업무 변경:
@@ -141,6 +141,6 @@ payment-service 가 맡는다(오케스트레이터 아님).
 ## 7. 알려진 약점·확인할 것
 
 - **오케스트레이터는 인스턴스 하나(단일 장애점).** 죽어 있는 동안 새 결제 진입·확정 진행이 멈춘다. 상태는 DB 에 있어 재시작 뒤 sweep 이 잇지만, 자원 TTL 10분을 넘기면 결제 승인 건은 보상 환불로 끝난다.
-- **traceId·correlationId 가 사가 단계와 Kafka 에서 끊긴다** — 그림 [`diagrams/trace-correlation-flow.png`](diagrams/trace-correlation-flow.png)(영문 `.en.png`). HTTP 구간(`traceparent`, `X-Correlation-Id`+baggage)은 이어지지만, 사가 가상 스레드 실행기는 trace·MDC 를 넘기지 않고, Debezium 은 `traceparent` 를 싣지 않으며 소비 쪽은 봉투의 traceId·correlationId 를 되살리지 않는다. correlationId 를 사가 ID 로 잇는 곳은 `OrderConfirmed`(= sagaId) 하나다.
+- ~~traceId·correlationId 가 사가 단계와 Kafka 에서 끊긴다~~ → **고침, 구현·LAN 확인 2026-11-04**(`a1d514c`, [`trace-correlation-plan.md`](trace-correlation-plan.md) 6·7장). 고치기 전: 사가 가상 스레드 실행기가 trace·MDC 를 넘기지 않고, Debezium 이 `traceparent` 를 싣지 않고, 소비 쪽이 봉투 값을 되살리지 않았다(그림 [`diagrams/trace-correlation-flow.png`](diagrams/trace-correlation-flow.png) 은 이 고치기 전 상태 그대로). 지금: 사가 실행기 `ContextExecutorService`(`OrchestrationConfig`), correlationId = sagaId(S1)·claimId(S3, `CorrelationScope`), `PaymentEvents` = 시도의 sagaId, outbox `traceparent` → Debezium 헤더, 바인더 observation, 소비 중 MDC correlationId 복원. LAN 결제 1건 = Zipkin trace 2개(결제 진입·승인 이후 — 사용자 요청이 두 번), 두 trace 를 correlationId = sagaId 로 묶는다. 현재 모습 그림은 [`diagrams/trace-correlation-target.svg`](diagrams/trace-correlation-target.svg).
 - 이 문서는 코드·설계 근거다. **오케스트레이터 중단, Toss 승인 직후 응답 유실을 LAN 에서 재현한 장애 시험은 아직 없다.**
 - 설계만 있고 미구현: S2 이행·결품·부분 취소, S4 예약 시간 변경(오케스트레이터 담당 예정).
