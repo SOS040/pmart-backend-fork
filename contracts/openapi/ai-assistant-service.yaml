@@ -1,18 +1,40 @@
 openapi: 3.1.0
 info:
   title: ai-assistant-service
-  version: 0.1.0
+  version: 1.0.0
   x-stage: 3
+  x-stage-note: 1차(문서 질의응답·근거 표시)를 2026-11-04 앞당겨 구현 — ADR-0036. 도메인 API 호출·명령 위임은 후속.
   description: |
-    RAG(정책 문서)·정책 설명·권한 있는 도메인 API 호출(읽기 우선). 정본 없음, 비즈니스 문서 요구 없음. (docs/architecture/service-map.md §8)
-    3단계 서비스이며 이 계약은 자리 표시용 초안이다. 도메인 변경 명령은 직접 수행하지 않고 backoffice-bff 명령 프록시로만 위임한다.
+    내부 운영자용 정책·업무 절차 질의응답(RAG). 저장소의 명시 목록 문서(업무 명세·흐름·서비스 지도·ADR·상태표)를 검색해
+    근거와 함께 답한다. 정본 없음(문서 사본 색인과 답변 기록만 소유). (docs/architecture/service-map.md §8, ADR-0036)
+
+    **상태**
+    - 특정 주문·재고·결제의 현재 상태는 문서로 추정하지 않는다 → `REALTIME_DATA_REQUIRED`.
+    - 환불·승인·재고 변경 같은 실행 요청은 하지 않는다 → `OUT_OF_SCOPE`.
+    - 근거 부족은 `NO_GROUNDING`(정상 결과). 임베딩·검색·모델 장애는 503 `DEPENDENCY_UNAVAILABLE` 로 구분하고 완료 결과를 저장하지 않는다.
+    - 같은 키가 처리 중이면 202 `PROCESSING`.
+
+    **멱등·재조회**: 범위는 (sourceSystem, 인증 주체 subject, Idempotency-Key). 요청 해시 = sha256(정규화 질문 + "\n" + 정규화 context)
+    — 질문은 NFC·앞뒤 공백 제거·연속 공백 하나로, context 는 허용 키(screen·centerId)만 같은 정규화 후 키 정렬 JSON(없으면 `{}`).
+    같은 키에 다른 해시면 409 `IDEMPOTENCY_CONFLICT`. 최초 응답을 잃으면 `GET /assistant/policy-questions?requestId=` 로 찾는다.
+
+    **출처(X-Source-System)**: 토큰에 `src` 가 있으면 헤더와 같아야 한다. 없으면 1차는 `backoffice-web` 만 허용한다. 아니면 403.
+
+    **인용**: 서버가 검색에 실제로 쓰인 청크의 메타데이터로 만든다(모델이 경로·버전을 지어내지 않는다). 지위(authority)·생애(lifecycleStatus)·
+    구현 기록(implementationEvidence)은 서로 다른 축이다.
+
+    **기준선 표시**: `answerMode=BASELINE_EXTRACTIVE`·`retrievalMode=BASELINE_HASH` 는 외부 모델 없이 동작하는 기준선이다
+    — 파이프라인·계약은 검증되지만 의미 검색·생성 답변 품질은 검증된 것이 아니다.
+
+    **권한**: 운영자(typ=OPERATOR)만. 본문 context 는 화면 힌트일 뿐 권한·검색 범위 근거가 아니다. 저장 답변을 돌려주는 모든 경로에서
+    질문한 본인 + 현재 권한(지금도 운영자, 인용 근거의 접근 범위를 지금도 가짐)을 다시 확인하고, 아니면 404.
 servers:
   - url: /api/v1
 security:
   - bearerAuth: []
 tags:
   - { name: ops, description: 운영 정보 }
-  - { name: assistant, description: 정책 질의(읽기 전용) }
+  - { name: assistant, description: 정책·업무 절차 질의(읽기 전용) }
 
 paths:
   /actuator/health:
@@ -34,7 +56,7 @@ paths:
   /assistant/policy-questions:
     post:
       tags: [assistant]
-      summary: 정책 질의 (읽기 전용; 답변은 근거 문서·정책 버전을 함께 반환)
+      summary: 정책·업무 절차 질의 — 근거와 함께 답한다(같은 Idempotency-Key 재전송은 같은 답)
       operationId: askPolicyQuestion
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -43,37 +65,86 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [question]
-              properties:
-                question: { type: string, maxLength: 2000 }
-                context: { type: object, additionalProperties: true, description: 화면·센터·대상 식별자 등 }
+            schema: { $ref: '#/components/schemas/PolicyQuestion' }
+            example:
+              question: 주문 취소와 라이더 인계가 겹치면 어떤 절차를 따르나요?
       responses:
         '200':
-          description: 답변 (근거 없는 답변은 state=NO_GROUNDING)
+          description: 완료 — ANSWERED · NO_GROUNDING · REALTIME_DATA_REQUIRED · OUT_OF_SCOPE (· FORBIDDEN_SCOPE)
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  answerId: { type: string }
-                  state: { type: string, enum: [ANSWERED, NO_GROUNDING, FORBIDDEN_SCOPE] }
-                  answer: { type: string }
-                  citations:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        docRef: { type: string }
-                        policyVersion: { type: [integer, 'null'] }
-                        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+              schema: { $ref: '#/components/schemas/PolicyAnswer' }
+              examples:
+                answered: { $ref: '#/components/examples/Answered' }
+                noGrounding: { $ref: '#/components/examples/NoGrounding' }
+                realtime: { $ref: '#/components/examples/RealtimeRequired' }
+                outOfScope: { $ref: '#/components/examples/OutOfScope' }
+        '202':
+          description: 같은 키가 다른 요청에서 처리 중 — Retry-After 뒤 GET ?requestId= 로 조회
+          headers:
+            Retry-After: { schema: { type: integer }, description: 초 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyAnswer' }
+              examples:
+                processing: { $ref: '#/components/examples/Processing' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT — 같은 Idempotency-Key 를 다른 질문·context 에 썼다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONFIG_REQUIRED — 활성 문서 색인이 없다(색인 작업 전). 완료 결과 없음, 색인 뒤 같은 키로 다시 보낸다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503':
+          description: DEPENDENCY_UNAVAILABLE — 임베딩·검색·모델 장애 또는 처리 시간 초과. 완료 결과 없음 → 같은 Idempotency-Key 로 다시 보낸다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+    get:
+      tags: [assistant]
+      summary: 요청 키로 답변 찾기 — 최초 응답을 잃어 answerId 를 모를 때(범위 = 출처 + 본인 + 키)
+      operationId: findPolicyAnswerByRequestId
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - name: requestId
+          in: query
+          required: true
+          description: 질의 때 보낸 Idempotency-Key
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: 완료된 답변(현재 권한 재검사 통과)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyAnswer' }
+        '202':
+          description: 처리 중(lease 유효) — Retry-After 뒤 다시 조회
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyAnswer' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: NOT_FOUND — 그 범위에 기록이 없다(처리 전 실패·다른 출처·다른 운영자·현재 권한 없음 포함, 존재를 드러내지 않는다)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: INVALID_STATE(retryable=true) — 직전 시도가 실패했거나 처리 중 lease 가 만료됐다 → 같은 Idempotency-Key·같은 본문으로 POST 를 다시 보낸다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /assistant/policy-questions/{answerId}:
     get:
       tags: [assistant]
-      summary: 답변 조회 (질의 요청의 짝 조회)
+      summary: 답변 다시 보기(근거 포함, 질문한 운영자 본인 + 현재 권한)
       operationId: getPolicyAnswer
       parameters:
         - { name: answerId, in: path, required: true, schema: { type: string } }
@@ -82,15 +153,189 @@ paths:
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  answerId: { type: string }
-                  state: { type: string, enum: [ANSWERED, NO_GROUNDING, FORBIDDEN_SCOPE] }
-                  answer: { type: string }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+              schema: { $ref: '#/components/schemas/PolicyAnswer' }
+        '202':
+          description: 처리 중(lease 유효)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PolicyAnswer' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: NOT_FOUND — 없거나 다른 운영자의 답변이거나 현재 권한이 없다(존재를 드러내지 않는다)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: INVALID_STATE(retryable=true) — 실패했거나 lease 만료 → 같은 키로 POST 재시도
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
 components:
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'
+
+  schemas:
+    PolicyQuestion:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 2000 }
+        context:
+          type: object
+          description: 화면 힌트. 요청 해시에 들어가지만 권한·검색 범위를 넓히지 않는다. 허용 키 밖은 무시한다.
+          properties:
+            screen: { type: string, maxLength: 100 }
+            centerId: { type: string, maxLength: 50 }
+
+    AnswerState:
+      type: string
+      enum: [ANSWERED, NO_GROUNDING, REALTIME_DATA_REQUIRED, OUT_OF_SCOPE, FORBIDDEN_SCOPE, PROCESSING]
+      description: |
+        ANSWERED: 근거로 뒷받침되는 답. NO_GROUNDING: 허용된 문서에서 근거를 찾지 못함(정상 결과).
+        REALTIME_DATA_REQUIRED: 특정 대상의 현재 상태 질문. OUT_OF_SCOPE: 실행 요청.
+        FORBIDDEN_SCOPE: 명시적 접근 요청이 정책상 거부됨(1차 정상 경로에서는 나오지 않는다). PROCESSING: 처리 중(202 에서만).
+
+    AnswerMode:
+      type: string
+      enum: [GENERATIVE, BASELINE_EXTRACTIVE, NONE]
+      description: GENERATIVE=모델 생성, BASELINE_EXTRACTIVE=서버 발췌(생성 없음 — 기준선), NONE=답변 생성 안 함(분류·근거 없음)
+
+    RetrievalMode:
+      type: string
+      enum: [SEMANTIC, BASELINE_HASH, NONE]
+      description: SEMANTIC=의미 임베딩, BASELINE_HASH=로컬 문자 n-gram 해시(기준선), NONE=검색 안 함
+
+    Authority:
+      type: string
+      enum: [CONFIRMED, ADOPTED_DESIGN, PROPOSAL, ASSUMPTION, UNDECIDED, EXTERNAL_REFERENCE]
+      description: 근거의 정책 지위. 문서 기본값을 절·문단 태그가 덮는다([확정 정책]·승인 ADR=CONFIRMED, [채택 설계], [설계안]·[제안]·제안 ADR, [가정], [결정 필요]·[팀 확인 필요], [외부 참고]).
+
+    LifecycleStatus:
+      type: string
+      enum: [ACTIVE, SUPERSEDED, SUPERSESSION_PROPOSED, EXCLUDED_FROM_PHASE1]
+      description: |
+        SUPERSEDED=승인된 문서가 명시한 절·결정을 대체함(현재 정책 질문에서 제외, 이력 질문에서만). SUPERSESSION_PROPOSED=승인 안 된 문서가
+        대체를 선언함(원래 지위 유지, 제안 문서 동반 표시). EXCLUDED_FROM_PHASE1=1차 범위에서 제외된 자료(항상 제외).
+
+    Citation:
+      type: object
+      required: [chunkId, documentId, path, authority, lifecycleStatus, asOf, excerpt]
+      properties:
+        chunkId: { type: string }
+        documentId: { type: string }
+        path: { type: string, description: 저장소 상대 경로 }
+        section: { type: [string, 'null'], description: 절 경로(제목 > 하위 제목) }
+        authority: { $ref: '#/components/schemas/Authority' }
+        lifecycleStatus: { $ref: '#/components/schemas/LifecycleStatus' }
+        supersededBy: { type: [string, 'null'], description: 활성 대체의 근거 문서 ID }
+        proposedSupersededBy: { type: array, items: { type: string }, description: 대체를 제안한(승인 안 된) 문서 ID }
+        implementationEvidence:
+          type: [object, 'null']
+          description: 날짜가 붙은 구현 기록 절일 때만. 그 날짜 기준의 기록이며 현재 구현을 보장하지 않는다.
+          properties:
+            recordDate: { type: string }
+            note: { type: [string, 'null'] }
+        documentVersion: { type: [string, 'null'], description: 원문에 적힌 버전(없으면 null — 지어내지 않는다) }
+        effectiveDate: { type: [string, 'null'], description: 원문에 적힌 기준일·적용일(없으면 null) }
+        asOf:
+          type: object
+          required: [snapshotId, indexedAt]
+          properties:
+            snapshotId: { type: string }
+            sourceRevision: { type: [string, 'null'], description: 색인한 저장소 git revision }
+            sourceDirty: { type: boolean, description: 색인 때 작업 트리에 커밋 안 된 변경이 있었다(파일 해시 목록으로 식별) }
+            indexedAt: { type: string, format: date-time }
+        excerpt: { type: string, description: 근거 청크 본문(온전한 청크 — 자르지 않는다) }
+
+    PolicyAnswer:
+      type: object
+      required: [answerId, requestId, state, answer, citations, answerMode, retrievalMode, askedAt]
+      properties:
+        answerId: { type: string }
+        requestId: { type: string, description: 질의 때의 Idempotency-Key }
+        state: { $ref: '#/components/schemas/AnswerState' }
+        answer: { type: string }
+        citations: { type: array, items: { $ref: '#/components/schemas/Citation' } }
+        answerMode: { $ref: '#/components/schemas/AnswerMode' }
+        retrievalMode: { $ref: '#/components/schemas/RetrievalMode' }
+        indexSnapshotId: { type: [string, 'null'] }
+        askedAt: { type: string, format: date-time }
+        model:
+          type: object
+          properties:
+            chat: { type: [string, 'null'] }
+            embedding: { type: [string, 'null'] }
+
+  examples:
+    Answered:
+      summary: 기준선 모드 — 의미 검색·생성 품질 미검증
+      value:
+        answerId: ANS-2f0c9a1e
+        requestId: 7b1d4c2e-0b5a-4f7e-9d61-1d2b3c4d5e6f
+        state: ANSWERED
+        answer: "확정 정책 근거 없음 — 아래는 설계안·미결정 기준입니다.\n[1] [설계안] docs/business/flows/cancel-vs-handover.md — S3 … > 2. 흐름\n…(근거 청크 본문)"
+        citations:
+          - chunkId: 9f3e1c…
+            documentId: docs/business/flows/cancel-vs-handover.md
+            path: docs/business/flows/cancel-vs-handover.md
+            section: S3 취소 접수 vs 현장 중지·인계 경합 사가 > 2. 흐름
+            authority: PROPOSAL
+            lifecycleStatus: ACTIVE
+            supersededBy: null
+            proposedSupersededBy: []
+            implementationEvidence: null
+            documentVersion: "0.1"
+            effectiveDate: "2026-10-23"
+            asOf: { snapshotId: IDX-20261104-0700, sourceRevision: b409385, sourceDirty: false, indexedAt: "2026-11-04T07:00:00Z" }
+            excerpt: "…"
+        answerMode: BASELINE_EXTRACTIVE
+        retrievalMode: BASELINE_HASH
+        indexSnapshotId: IDX-20261104-0700
+        askedAt: "2026-11-04T07:10:00Z"
+        model: { chat: null, embedding: local-hash-ngram@1/384 }
+    NoGrounding:
+      value:
+        answerId: ANS-0a1b2c3d
+        requestId: 1f2e3d4c-0000-4000-8000-000000000001
+        state: NO_GROUNDING
+        answer: 허용된 문서에서 이 질문을 뒷받침할 근거를 찾지 못했습니다.
+        citations: []
+        answerMode: NONE
+        retrievalMode: BASELINE_HASH
+        indexSnapshotId: IDX-20261104-0700
+        askedAt: "2026-11-04T07:11:00Z"
+    RealtimeRequired:
+      value:
+        answerId: ANS-5e6f7a8b
+        requestId: 2a3b4c5d-0000-4000-8000-000000000002
+        state: REALTIME_DATA_REQUIRED
+        answer: 특정 주문·재고·결제의 현재 상태는 이 기능으로 확인할 수 없습니다. 해당 업무 화면에서 조회하세요.
+        citations: []
+        answerMode: NONE
+        retrievalMode: NONE
+        indexSnapshotId: null
+        askedAt: "2026-11-04T07:12:00Z"
+    OutOfScope:
+      value:
+        answerId: ANS-9c8d7e6f
+        requestId: 3c4d5e6f-0000-4000-8000-000000000003
+        state: OUT_OF_SCOPE
+        answer: 환불·승인·재고 변경 같은 처리는 이 기능이 하지 않습니다. 해당 업무 화면에서 진행하세요.
+        citations: []
+        answerMode: NONE
+        retrievalMode: NONE
+        indexSnapshotId: null
+        askedAt: "2026-11-04T07:13:00Z"
+    Processing:
+      value:
+        answerId: ANS-1a2b3c4d
+        requestId: 4d5e6f70-0000-4000-8000-000000000004
+        state: PROCESSING
+        answer: ""
+        citations: []
+        answerMode: NONE
+        retrievalMode: NONE
+        indexSnapshotId: null
+        askedAt: "2026-11-04T07:14:00Z"

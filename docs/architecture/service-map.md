@@ -354,8 +354,12 @@
 - **소유**: 감사 사건(운영자 명령·사유·전후 값·대상·실행·보상 결과; 추가만, 삭제 없음), 개인정보 열람·다운로드 기록(BO-25), 보존 정책 `[결정 필요]`.
 - **구독**: `AuditEntryRecorded`(전 서비스), `ApprovalDecided`, `GrantApplied`, `CompensationExecuted`, `DeliveryStatusCorrected`, `InventoryAdjustmentPosted`.
 
-### ai-assistant-service `[3단계]`
+### ai-assistant-service `[3단계 — 1차 앞당김(ADR-0036)]`
 - RAG(정책 문서), 정책 설명, 권한 있는 도메인 API 호출(읽기 우선). 비즈니스 문서에 요구 없음.
+- **1차(2026-11-04, ADR-0036)**: 내부 운영자의 정책·업무 절차 질의응답 + 근거 표시만. 실시간 조회·명령 위임은 하지 않는다(`REALTIME_DATA_REQUIRED`·`OUT_OF_SCOPE`).
+- **소유**: 명시 목록 문서의 사본 색인(`index_snapshot`·`doc_chunk`·`embedding_cache`)과 답변 기록(`policy_answer` — 선점·lease·인용). 업무 정본은 없다.
+- **API**: `POST/GET /assistant/policy-questions`, `GET /assistant/policy-questions/{answerId}`(운영자만).
+- **발행·구독**: 없음. **의존(동기)**: 없음 — 다른 서비스 DB·API 를 부르지 않는다.
 
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).

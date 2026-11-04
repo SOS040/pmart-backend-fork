@@ -37,5 +37,6 @@
 | [0034](0034-kafka-event-history-retention-and-reindex.md) | 상품·가격 이벤트 이력(`commerce.product.v1`·`commerce.pricing.v1`)만 무제한 보관(compaction 없음, 배포가 멱등 보정), 감시·백업·복원 절차, 검색 재색인은 Kafka 전체 재생(스냅샷 API 없음, 선행 버그 2건 수정 전 운영 실행 금지). ADR-0031 결정 3·8 보완 | 승인 |
 | [0033](0033-config-refresh-webhook-bus.md) | LAN 설정 실행 중 갱신 — GitHub 웹훅(smee.io 중계) → config-server /monitor(서명 검증) → Spring Cloud Bus(Kafka springCloudBus) → 바뀐 파일의 앱이 다시 받음. ADR-0027 결정 6 대체 | 승인 |
 | [0035](0035-event-consumption-spring-cloud-stream.md) | 업무 이벤트 소비·DLT·재처리는 Spring Cloud Stream(Kafka 바인더) — `PmartEventConsumer` 빈 + 설정 저장소 바인딩, 바인더 DLQ → `{topic}.DLT`+`dead_letter`, 재처리 StreamBridge. 발행은 outbox→Debezium 그대로. ADR-0009 소비 방식·ADR-0030 결정 3 수단 보완 | 승인 |
+| [0036](0036-ai-assistant-phase1-policy-rag.md) | ai-assistant-service 1차(내부 운영자 정책 RAG) 앞당김 — 명시 목록 색인, 지위·생애·구현 기록 세 축, 승인+결정 번호일 때만 대체 활성, 스냅숏 색인(INGEST·SNAPSHOT 잠금 분리), 선점형 처리(조건부 쓰기), 현재 권한 재검사, 외부 모델 없는 기준선 | 제안 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

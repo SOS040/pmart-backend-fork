@@ -54,6 +54,7 @@ val services = listOf<String>(
     "center-master-service",
     "case-service",
     "approval-service",
+    "ai-assistant-service", // 1차 RAG 앞당김(ADR-0036)
     "backoffice-bff",
     "audit-service",
     "notification-service",

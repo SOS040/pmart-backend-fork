@@ -1,0 +1,31 @@
+# 검색 기준선 평가 질문(ADR-0036). 실제 저장소 문서(knowledge/manifest.yml)를 해시 임베딩으로 색인하고 recall@5·MRR 을 잰다.
+# expected: 정답 근거로 인정하는 문서 경로(앞부분 일치). 하나라도 상위 5 안에 있으면 적중.
+# 이 결과는 "기준선(어휘 겹침)"일 뿐 의미 검색 품질이 아니다 — 실제 모델 평가 전까지 의미 검색·생성 품질은 미검증.
+questions:
+  # --- 대표 5 ---
+  - { id: R1, q: "봉투값은 주문당 얼마인가요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+  - { id: R2, q: "주문 취소와 라이더 인계가 겹치면 어떤 절차를 따르나요?", expected: [docs/business/flows/cancel-vs-handover.md] }
+  - { id: R3, q: "서비스 간 내부 호출에 서비스 토큰이 필요한가요?", expected: [docs/adr/0026-] }
+  - { id: R4, q: "분할 배송 기준 무게는 얼마인가요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md] }
+  - { id: R5, q: "고객 분류 카테고리는 몇 단계로 구성하나요?", expected: [docs/business/Commerce-business-logic.md, docs/adr/0015-] }
+  # --- 실제 문서 기반 ---
+  - { id: Q01, q: "한집배달 배달팁은 얼마이고 언제 0원이 되나요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+  - { id: Q02, q: "결제 후 배송 주소와 연락처를 변경할 수 있나요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+  - { id: Q03, q: "같은 기초상품 구매 제한 기본 상한은 몇 개인가요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+  - { id: Q04, q: "배달 완료를 시간이 지나면 자동으로 완료 처리하나요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md, docs/business/Delivery-business-logic.md] }
+  - { id: Q05, q: "MFC 재고는 언제 차감하나요? 인계 시점인가요 출고 시점인가요?", expected: [docs/business/domain-map.md, docs/business/MFC-business-logic.md, docs/adr/0002-] }
+  - { id: Q06, q: "주류 주문의 성인 인증은 어떻게 하나요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+  - { id: Q07, q: "서비스 설정의 정본은 어디에 두나요?", expected: [docs/adr/0029-, docs/adr/0027-] }
+  - { id: Q08, q: "상품 검색 색인은 어떤 엔진과 방식으로 만드나요?", expected: [docs/adr/0031-, docs/adr/0021-] }
+  - { id: Q09, q: "상품 마스터 정본은 어느 서비스가 소유하나요?", expected: [docs/adr/0001-, docs/business/domain-map.md, docs/architecture/service-map.md] }
+  - { id: Q10, q: "MFC 재고 원장의 단일 작성자는 누구인가요?", expected: [docs/adr/0002-, docs/business/domain-map.md] }
+  - { id: Q11, q: "고객 배송 슬롯 정원과 MFC 작업 여력은 누가 관리하나요?", expected: [docs/adr/0008-, docs/business/domain-map.md] }
+  - { id: Q12, q: "주문 결제 사가의 타이머와 재고 예약 만료 규칙은?", expected: [docs/business/flows/order-checkout-saga.md] }
+  - { id: Q13, q: "반품 교환 환불 사가는 어떻게 진행되나요?", expected: [docs/business/flows/return-exchange-refund.md] }
+  - { id: Q14, q: "CDC 출고 간선 운송 MFC 수령 Transit 대사 흐름은?", expected: [docs/business/flows/replenishment-transfer.md] }
+  - { id: Q15, q: "시각은 어떤 기준으로 저장하고 영업일은 어떻게 판정하나요?", expected: [docs/adr/0010-] }
+  - { id: Q16, q: "이벤트 봉투 필수 메타데이터와 outbox 릴레이는?", expected: [docs/adr/0009-] }
+  - { id: Q17, q: "주문 사가는 오케스트레이션인가요 코레오그래피인가요?", expected: [docs/adr/0003-, docs/business/domain-map.md] }
+  - { id: Q18, q: "칠곡 DC에서 몇 개 MFC로 간선 운송하나요?", expected: [docs/business/TMS-business-logic.md, docs/business/overview.md] }
+  - { id: Q19, q: "운영자 계정 로그인과 JWT 발급은 어떻게 하나요?", expected: [docs/adr/0018-] }
+  - { id: Q20, q: "컨테이너 이미지는 어느 레지스트리에 올리나요?", expected: [docs/adr/0012-] }

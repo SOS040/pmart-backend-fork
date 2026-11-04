@@ -21,12 +21,14 @@ aws-sdk = "2.55.11"              # AWS SDK for Java v2 BOM. S3 클라이언트(p
 spotless = "8.10.4"
 sonarqube = "7.5.0.8588"
 jib = "3.5.4"
+spring-ai = "2.0.2"              # Spring AI 2.0.x = Boot 4.0/4.1 대상 GA(2026-06-12). ai-assistant-service 만 (ADR-0036)
 openapi-generator = "7.26.0"   # contracts/openapi → Spring 인터페이스·DTO 생성 (2026-10-23 사용자 승인)                  # 컨테이너 이미지 (Dockerfile 없이 OCI 이미지 생성)
 
 [libraries]
 # --- BOM (platform()으로 적용) ---
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-cloud-bom = { module = "org.springframework.cloud:spring-cloud-dependencies", version.ref = "spring-cloud" }
+spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
 
 # --- Spring Boot starters (BOM 관리) ---
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
@@ -63,6 +65,7 @@ spring-cloud-commons = { module = "org.springframework.cloud:spring-cloud-common
 spring-cloud-config-monitor = { module = "org.springframework.cloud:spring-cloud-config-monitor" } # config-server 의 /monitor (GitHub 웹훅 → Bus, ADR-0033)
 spring-cloud-starter-bus-kafka = { module = "org.springframework.cloud:spring-cloud-starter-bus-kafka" } # 설정 변경 알림(springCloudBus 토픽). 기본 꺼짐, LAN 만 켬 (ADR-0033)
 spring-cloud-starter-stream-kafka = { module = "org.springframework.cloud:spring-cloud-starter-stream-kafka" } # 업무 이벤트 소비·DLT·재처리(Kafka 바인더, ADR-0035)
+spring-ai-model = { module = "org.springframework.ai:spring-ai-model" }             # EmbeddingModel·ChatModel 추상화 (ai-assistant-service 만)
 
 # --- 데이터·메시징 (BOM 관리) ---
 postgresql = { module = "org.postgresql:postgresql" }

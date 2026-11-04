@@ -1,0 +1,24 @@
+# ai-assistant-service 전용 PostgreSQL + pgvector (선택 실행, ADR-0036). 공용 postgres(15432, postgres:17-alpine)에는 pgvector 가 없어 따로 둔다.
+# 공용 docker-compose.yml·init-db.sql 은 바꾸지 않는다. 비밀정보는 로컬 개발 전용 고정값.
+# 실행: docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
+# 색인: ./gradlew :services:ai-assistant-service:ingestKnowledge -Prepo=<저장소 경로>  (config-server local 먼저)
+name: pmart-ai-assistant
+
+services:
+  ai-assistant-postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: pmart
+      POSTGRES_PASSWORD: pmart-local
+      POSTGRES_DB: ai_assistant_service
+    ports: ["15433:5432"]
+    volumes:
+      - ai-assistant-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pmart -d ai_assistant_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  ai-assistant-pgdata:

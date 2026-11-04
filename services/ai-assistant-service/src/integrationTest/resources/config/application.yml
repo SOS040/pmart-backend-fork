@@ -1,0 +1,8 @@
+# 시험 전용(ADR-0029). 시험은 config-server 없이 돈다 — pmart-config 정본의 사본(pmart-config/)을 읽는다.
+# 정본을 바꾸면 deploy/lan/config-copies.sh sync. DB 는 Testcontainers(pgvector/pgvector:pg17).
+spring:
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: "classpath:pmart-config/application.yml,classpath:pmart-config/ai-assistant-service.yml,classpath:pmart-config/ai-assistant-service-it-env.yml"

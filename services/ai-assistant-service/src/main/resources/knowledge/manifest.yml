@@ -1,0 +1,90 @@
+# ai-assistant-service 색인 대상 명시 목록 (ADR-0036). 여기에 없는 파일은 색인하지 않는다.
+# 넣지 않는 것: worklog·handoff·그 밖의 architecture 문서·코드·시험·배포·비밀.
+#
+# precedence (우선순위 등급, 클수록 우선) — docs/business/domain-map.md:35 그대로:
+#   CLAUDE.md 서비스 목록 > 2026-10-20 이후 문서(WMS v8.1, SCM, TMS, MFC v2.0, BackOffice v2.0) > OMS > Commerce > Delivery(Draft)
+#   5 = 서비스 목록(service-map.md 는 CLAUDE.md 서비스 목록의 책임 경계 정본)·ADR(문서 충돌을 해결한 결정 기록 — 지위는 상태 줄이 정한다)
+#   4 = 2026-10-20 이후 업무 문서 + 저장소 설계 문서(overview·domain-map·glossary·flows·states, 2026-10-23 이후)
+#   3 = OMS, 2 = Commerce, 1 = Delivery(Draft)
+#   단 [확정 정책] 은 등급과 무관하게 유지 — 지위(authority) 가중으로 반영한다.
+#
+# authority: 문서 기본 지위. 절·문단 태그([확정 정책]·[채택 설계]·[설계안]·[가정]·[결정 필요]…)가 덮는다.
+#   ADR 은 비워 둔다 — 상태 줄("- 상태: 승인 …")로 판정(승인=CONFIRMED, 그 밖=PROPOSAL).
+version: 1
+defaultAccessScope: operator
+documents:
+  # --- 저장소 설계 문서 ---
+  - { path: docs/business/overview.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: docs/business/domain-map.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: docs/business/glossary.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: docs/architecture/service-map.md, domain: architecture, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 5 }
+  # --- 업무 명세 (대부분 "설계안" — 문단 태그가 지위를 정한다) ---
+  - { path: docs/business/WMS-business-logic.md, domain: wms, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/SCM-business-logic.md, domain: scm, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/TMS-business-logic.md, domain: tms, kind: BUSINESS, authority: ADOPTED_DESIGN, precedence: 4 } # "설계 확정본(수치 일부 가정값)"
+  - { path: docs/business/MFC-business-logic.md, domain: mfc, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/BackOffice-business-logic.md, domain: backoffice, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/OMS-business-logic.md, domain: oms, kind: BUSINESS, authority: PROPOSAL, precedence: 3 }
+  - { path: docs/business/Commerce-business-logic.md, domain: commerce, kind: BUSINESS, authority: PROPOSAL, precedence: 2 }
+  - { path: docs/business/Delivery-business-logic.md, domain: delivery, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  # --- 사가 흐름 (버전 0.1 설계안) ---
+  - { path: docs/business/flows/cancel-vs-handover.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/flows/order-checkout-saga.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/flows/replenishment-transfer.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/flows/return-exchange-refund.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
+  # --- 상태표 ---
+  - { path: contracts/states/cdc-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: contracts/states/claim-refund-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: contracts/states/delivery-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: contracts/states/mfc-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: contracts/states/order-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: contracts/states/platform-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: contracts/states/scm-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  - { path: contracts/states/tms-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
+  # --- ADR 전부 (지위는 상태 줄) ---
+  - { path: docs/adr/0001-product-master-in-product-service.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0002-inventory-single-writer-per-center-type.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0003-order-saga-orchestration.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0004-backoffice-ledgers-approval-case-center-master.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0005-payment-service-and-pg-source-of-truth.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0006-handover-fence-and-cancel-arbitration.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0007-tms-delivery-split-and-serviceability.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0008-slot-capacity-ownership.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0009-outbox-event-envelope-idempotency.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0010-time-utc-storage-seoul-business-dates.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0011-service-identity-tokens.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0012-image-registry-docker-hub-public.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0013-deployment-lan-compose-and-helm.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0014-master-data-and-initial-stock-loading.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0015-category-tree-follows-reference-data.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0016-object-storage-seaweedfs-s3.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0017-production-db-servers-five.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0018-operator-accounts-and-jwt-login.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0019-customer-google-login-id-token.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0020-payment-spec-mapping-toss-widget.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0021-search-index-opensearch-projection.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0022-guest-session-token-and-guest-paths.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0023-address-geocoding-kakao-local.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0024-provider-profile-to-customer-service.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0025-customer-google-login-server-auth-code.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0026-no-service-to-service-authentication.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0027-config-server-github-cipher.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0028-dev-base-image-temurin-jdk.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0029-config-repo-as-source-of-truth.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0030-observability-metrics-logs-dead-letters.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0031-elastic-stack-search-and-logs.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0032-eureka-service-discovery-local-lan.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0033-config-refresh-webhook-bus.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0034-kafka-event-history-retention-and-reindex.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0035-event-consumption-spring-cloud-stream.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0036-ai-assistant-phase1-policy-rag.md, domain: adr, kind: ADR, precedence: 5 }
+
+# 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
+overrides:
+  - path: docs/business/Commerce-business-logic.md
+    contains: "고객 분류는 1·2단계"
+    lifecycle: SUPERSESSION_PROPOSED
+    proposedSupersededBy: [docs/adr/0015-category-tree-follows-reference-data.md]
+    reason: >-
+      ADR-0015(상태: 제안)가 카테고리 트리를 업무 문서 정책 대신 참고 자료 구조로 따르기로 했지만 승인 전이고 대체 선언에
+      결정 번호가 없다 → 대체 제안 표시만, [확정 정책](CONFIRMED) 지위는 유지.

@@ -214,7 +214,7 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 | `backoffice-bff` | 관리자 화면별 조회 조합(원천별 `asOf`·신선도 표시), 명령 전달(멱등키 부착) | **상태 없음** `[CLAUDE.md 확정]` |
 | `notification-service` | 고객·라이더·운영 알림, 채널, 발송 이력·재시도, 읽음 | 알림 실패는 통지만 복구 |
 | `audit-service` | 감사 사건 수집·조회·보존(추가만) | |
-| `ai-assistant-service` | RAG·정책 설명·권한 있는 도메인 API 호출 | 비즈니스 문서에 요구 없음, 3차 |
+| `ai-assistant-service` | RAG·정책 설명·권한 있는 도메인 API 호출 | 비즈니스 문서에 요구 없음, 3차. 1차(정책 문서 질의응답·근거 표시)만 앞당김 — ADR-0036 |
 | **`approval-service`** `[추가 제안]` | ChangeRequest·ApprovalDossier, 5축 상태(요청/심사/실행/전달/사건), 부분 집행 불변식, 통합 승인함(BO-10), 대량 변경(BO-26), 정책 참조 레지스트리(BO-09 PolicyReference) | 승인 **정본은 도메인**(replenishment, claim, quality…). 여기는 워크플로 원장 (ADR-0004) |
 | **`case-service`** `[추가 제안]` | Case/SubCase/Obligation/ActionRequest/ShiftHandover/CloseSnapshot, CS 접수, 문제함(MFC WK-12), 도움요청(Delivery 9장) | 도메인 사고·클레임은 원시스템 유지 |
 | **`center-master-service`** `[추가 제안]` | 센터 코드·유형·주소·좌표·영업 캘린더·취급 온도대·입고창 (BO-06, TMS 2.3~3.1) | 소비자: order, replenishment, transport, delivery, mfc, cdc. 현장 용량·LOC는 각 센터 서비스 |
@@ -331,7 +331,7 @@ Choreography로 처리하는 전파(사가 아님): `OrderConfirmed`→cart 정�
 |---|---|---|---|
 | **1단계 (핵심 판매 루프)** | 지정 MFC 재고로 주문→결제→피킹→QR 인계→전달 완료, 전체 취소, 부분 품절 PG 부분취소 | product, product-content, customer, cart, search(기본), storefront(기본), pricing / order, order-orchestration, fulfillment-routing(얇게), claim(취소·반품 접수), payment / mfc-inventory, mfc-fulfillment, mfc-capacity, mfc-location, mfc-quality(최소), mfc-inbound(초기 보유·회수 반입) / delivery-serviceability, delivery-capacity, rider, delivery-dispatch, delivery-execution, delivery-tracking / api-gateway, auth, notification, audit, backoffice-bff, approval(상품·가격·권역·권한), case(CS 접수), center-master | promotion, review, supplier, procurement, demand-planning(수동 입력만), cdc-*, transport-*, fleet, cold-chain, ai-assistant |
 | **2단계 (공급 루프)** | CDC 초기 보유→SCM 보충 계산·사업승인→CDC 확보·피킹·상차→TMS 운행·실제 출발(TOUT)→MFC TIN→Transit 대사 | replenishment, demand-planning / cdc-inventory, cdc-location, cdc-outbound, cdc-inbound(적치·MOV), cdc-quality / transport-planning, transport-routing, fleet, transport-execution, cold-chain / mfc-inbound 완성 / review | supplier, procurement, ai-assistant |
-| **3단계 (확장)** | 쿠폰·프로모션, 공급사·구매발주·ASN, 다중 MFC 라우팅, AI 배차, AI 어시스턴트, 26개 MFC | promotion, supplier, procurement, cdc-inbound(ASN), fulfillment-routing 완성, ai-assistant | — |
+| **3단계 (확장)** | 쿠폰·프로모션, 공급사·구매발주·ASN, 다중 MFC 라우팅, AI 배차, AI 어시스턴트(1차 문서 질의응답은 앞당김, ADR-0036), 26개 MFC | promotion, supplier, procurement, cdc-inbound(ASN), fulfillment-routing 완성, ai-assistant | — |
 
 **초기 배포 단위에 대한 권고**: 1단계에서도 서비스 수가 30개를 넘는다. 팀 규모가 작다면 같은 그룹 내 서비스를 **하나의 배포 단위(모듈러 모놀리스)** 로 묶되, 모듈 간 호출은 반드시 공개 API/이벤트 인터페이스만 사용해 나중에 분리 가능하게 한다. 묶어도 되는 쌍(같은 트랜잭션 경계·같은 변경 주기): `mfc-fulfillment + mfc-capacity`, `delivery-dispatch + delivery-execution`, `product + product-content`, `cdc-outbound + cdc-inbound`. 묶으면 안 되는 쌍: `*-inventory`와 그 밖의 모든 것(단일 쓰기 경계 보호), `order`와 `order-orchestration`(상태 정본 vs 진행 상태), `payment`와 나머지(PG 비밀·감사 경계).
 

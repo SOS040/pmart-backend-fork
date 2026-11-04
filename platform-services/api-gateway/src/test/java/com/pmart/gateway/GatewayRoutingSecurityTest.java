@@ -81,7 +81,7 @@ class GatewayRoutingSecurityTest {
   @Test
   void everyScaffoldedServiceHasAnUpstreamAndAtLeastOneRoute() {
     List<String> routeIds = routeLocator.getRoutes().map(Route::getId).collectList().block();
-    assertThat(properties.upstream()).hasSize(32);
+    assertThat(properties.upstream()).hasSize(33); // + ai-assistant-service(ADR-0036)
     for (String service : properties.upstream().keySet()) {
       if (INTERNAL_ONLY.contains(service)) {
         continue;
