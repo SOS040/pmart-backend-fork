@@ -550,6 +550,9 @@ EOF
           # /monitor 가 받은 웹훅을 Bus(Kafka springCloudBus)로 알린다(ADR-0033). 서버는 설정 저장소를 읽지 않아 환경변수로 켠다
           echo "      SPRING_CLOUD_BUS_ENABLED: \"true\""
           echo "      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092"
+          # GitHub fetch 는 15초에 한 번만(기본 0 = 요청마다). 앱 35개가 한꺼번에 뜨면 요청마다 fetch(약 10초, 직렬)가 밀려
+          # 30초 시간 초과 → 재시작 → 다시 요청이 반복됐다(2026-11-04 배포). 대가: push 뒤 최대 15초는 이전 설정을 줄 수 있다
+          echo "      SPRING_CLOUD_CONFIG_SERVER_GIT_REFRESH_RATE: \"15\""
           echo "    volumes:"
           echo "      - ./config-server-secrets:/run/secrets/config-server:ro"
           echo
