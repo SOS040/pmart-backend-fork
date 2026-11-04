@@ -60,6 +60,8 @@
    - `search-index.env` 를 `PMART_SEARCH_PRODUCTS_INDEX=products`(다시 별칭)로 되돌리고 `PMART_SEARCH_GROUP_ID=search-index-logstash-v3` 는 그대로 둔다 → render → `deploy pc4 logstash`.
    - 옛 소비 그룹 `search-index-logstash` 삭제(소비자 없음 확인 뒤).
    - `products-v2` 는 며칠 두었다가 삭제한다(되돌림용).
+   - **옛 정의 파일을 지운다**: `lan.sh deploy` 의 scp 는 파일을 더하기만 한다. Elasticsearch PC 의 `pmart-lan\elastic\indices\products-v2.json` 이 남아 있으면 es-init 이 v2 를 지운 뒤에도 다시 만든다(2026-11-04 실제로 남아 있었음 → 삭제).
+   - 바뀐 소비 그룹 값(`search-index-logstash-v3`)은 `search-index.env` 에 커밋한다. 다음 render 가 옛 그룹으로 되돌리면 처음부터 다시 읽는다.
    - search-service `SearchIndex.INDICES`·정의 파일은 이미 v3 다.
 7. **되돌림**: 별칭을 v2 로 다시 교체한다(§2-5 의 remove/add 반대). v2 는 3단계부터 사건을 받지 않았으므로, 되돌린 뒤 원인을 고쳐 다시 §2 를 한다.
 
@@ -76,3 +78,8 @@
 - 적용된 색인의 매핑을 고치지 않는다(새 버전을 만든다, search-service CLAUDE.md).
 - 재생 중 별칭을 미리 옮기지 않는다(빈 색인을 검색하게 된다).
 - Log Compaction 을 켜지 않는다. 같은 키에 사건 종류가 여러 개라 이력이 사라진다(ADR-0034).
+
+## 5. 실행 기록
+| 날짜 | 전환 | 결과 |
+|---|---|---|
+| 2026-11-04 22:42~22:52 KST | `products-v2` → `products-v3`, 그룹 `search-index-logstash` → `-v3` (커밋 0013eb7, 백업 `/d/pmart-backups/kafka/20261104T134205Z-before-reindex-v3`) | 사건 1162건(product 887·pricing 275)을 약 15초에 재생해 상품 275건. 지연 0, 영구 큐 0, DLT 0, 건수 275 = 275, 전 문서 필드 대조 결과 `updatedAtMs`(색인 시각)만 다름. `filters` 는 0건 — LAN 상품에 필터 옵션이 하나도 없음(`product_filter_option` 0행), `saleStateRowVersion` 은 판매 상태 사건이 있던 7건 |
