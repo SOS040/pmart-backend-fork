@@ -28,6 +28,25 @@
 - search-service 는 항상 별칭(`products`)을 읽는다. 재색인 중에는 이전 색인을 읽고, 별칭 교체 순간에 새 색인으로 바뀐다.
 
 ## 2. 전체 재생으로 새 색인 만들기 (예: products-v3)
+
+**스크립트(2026-11-05)**: `deploy/lan/elastic/reindex.sh` 가 아래 1~6 을 단계별로 실행하고, 단계마다 조건을 확인한다. 조건이 어긋나면 그 자리에서 멈춘다.
+- 먼저 새 정의 파일(`products-vN.json`)과 `SearchIndex.INDICES` 를 바꿔 둔다.
+- 새 소비 그룹 이름은 색인 번호에서 만든다(`products-v4` → `search-index-logstash-v4`).
+
+| 명령 | 하는 일 |
+|---|---|
+| `reindex.sh status` | 별칭·색인 건수·소비 그룹 지연·영구 큐·DLT 를 보여 준다 |
+| `reindex.sh check products-vN` | 1 의 사전 확인만 한다(바꾸는 것 없음). 확인 항목: 정의 파일, 새 색인·그룹이 없음, ES green, 보관·ES 경보 없음, 지연 0·큐 0 |
+| `reindex.sh start products-vN` | 사전 확인 → 백업 → env 변경(render 전) → es-init·logstash 재배포 |
+| `reindex.sh wait [초]` | 4 의 조건(지연 0·큐 0·DLT 증가 없음·건수 ≥ 이전 색인)을 기다린 뒤 전 문서를 대조한다(`updatedAtMs` 제외, 재생 중 새로 생긴 상품은 따로 표시) |
+| `reindex.sh switch` | 조건을 다시 확인한 뒤 5 의 별칭 교체 |
+| `reindex.sh finish` | 6: env 를 별칭으로 되돌리고 logstash 재배포, 옛 그룹 삭제, Elasticsearch PC 의 옛 정의 파일 삭제 |
+| `reindex.sh rollback` | 7: 별칭을 이전 색인으로 되돌린다 |
+| `reindex.sh drop products-vM` | 옛 색인 삭제. 별칭이나 Logstash 가 쓰지 않을 때만 |
+
+- 진행 상태는 `deploy/lan/.reindex.state`(git 제외)에 둔다.
+- search-service 새 이미지는 switch 뒤에 배포한다.
+- finish 뒤 바뀐 그룹 값을 `search-index.env` 에 커밋한다.
 1. **사전 확인**
    - Kafka 보관이 무제한인지 본다(`KafkaEventRetentionNotUnlimited`·`KafkaEventHistoryTruncated` 경보 없음).
    - 백업: `deploy/lan/kafka/backup.sh /d/pmart-backups/kafka before-reindex`.

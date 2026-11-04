@@ -265,7 +265,8 @@ public class ProductSearch {
     if (q == null) {
       bool.put("must", List.of(Map.of("match_all", Map.of())));
     } else {
-      // 찾는 조건: 형태소(nori)가 모두 맞거나("두부를"→두부), 1~2글자 조각이 모두 있거나(붙임말 "나랑드사이다제로"·부분 "미역")
+      // 찾는 조건: 형태소(nori)가 모두 맞거나("두부를"→두부), 1~2글자 조각이 모두 있거나(붙임말 "나랑드사이다제로"·부분 "미역"),
+      // 공백을 모두 뺀 이름·검색어의 조각이 모두 있거나(붙여 쓴 "생크림" ↔ 띄어 쓴 "생 크림", products-v4 name.compact)
       bool.put(
           "must",
           List.of(
@@ -277,7 +278,10 @@ public class ProductSearch {
                           Map.of("match", Map.of("name", Map.of("query", q, "operator", "and"))),
                           Map.of(
                               "match",
-                              Map.of("name.partial", Map.of("query", q, "operator", "and")))),
+                              Map.of("name.partial", Map.of("query", q, "operator", "and"))),
+                          Map.of(
+                              "match",
+                              Map.of("name.compact", Map.of("query", q, "operator", "and")))),
                       "minimum_should_match",
                       1))));
       // 순위: 형태소 일치 > 앞부분 일치 > 조각 일치

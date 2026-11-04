@@ -676,7 +676,9 @@ class SearchFlowIT {
     assertThat(ids(search("?q=무선이어폰"))).contains("PRD-S1", "PRD-S2");
     // 띄어 쓴 검색어 "생 크림"(nori: 크림)은 둘 다 찾는다
     assertThat(ids(search("?q=생 크림"))).contains("PRD-S3", "PRD-S4");
-    // 알려진 한계: 붙여 쓴 "생크림"은 붙여 쓴 상품명만
-    assertThat(ids(search("?q=생크림"))).contains("PRD-S4").doesNotContain("PRD-S3");
+    // 붙여 쓴 "생크림"(nori: 생크림 한 낱말)도 띄어 쓴 "생 크림"을 찾는다 — 공백을 뺀 조각 필드(products-v4 name.compact)
+    assertThat(ids(search("?q=생크림"))).contains("PRD-S3", "PRD-S4");
+    assertThat(ids(search("?q=휘핑생크림"))).contains("PRD-S4").doesNotContain("PRD-S3");
+    assertThat(ids(search("?q=블루투스무선이어폰"))).contains("PRD-S1").doesNotContain("PRD-S2");
   }
 }

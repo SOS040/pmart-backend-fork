@@ -3,6 +3,9 @@
     "number_of_shards": 1,
     "number_of_replicas": 0,
     "analysis": {
+      "char_filter": {
+        "strip_spaces": { "type": "pattern_replace", "pattern": "\\s+", "replacement": "" }
+      },
       "tokenizer": {
         "name_nori": { "type": "nori_tokenizer", "decompound_mode": "mixed" },
         "name_ngram": { "type": "ngram", "min_gram": 1, "max_gram": 2, "token_chars": ["letter", "digit"] },
@@ -12,7 +15,8 @@
         "name_nori": { "type": "custom", "tokenizer": "name_nori", "filter": ["nori_part_of_speech", "lowercase"] },
         "name_ngram": { "type": "custom", "tokenizer": "name_ngram", "filter": ["lowercase"] },
         "name_edge": { "type": "custom", "tokenizer": "name_edge", "filter": ["lowercase"] },
-        "name_edge_search": { "type": "custom", "tokenizer": "standard", "filter": ["lowercase"] }
+        "name_edge_search": { "type": "custom", "tokenizer": "standard", "filter": ["lowercase"] },
+        "name_compact": { "type": "custom", "char_filter": ["strip_spaces"], "tokenizer": "name_ngram", "filter": ["lowercase"] }
       }
     }
   },
@@ -26,7 +30,8 @@
         "analyzer": "name_nori",
         "fields": {
           "edge": { "type": "text", "analyzer": "name_edge", "search_analyzer": "name_edge_search" },
-          "partial": { "type": "text", "analyzer": "name_ngram" }
+          "partial": { "type": "text", "analyzer": "name_ngram" },
+          "compact": { "type": "text", "analyzer": "name_compact" }
         }
       },
       "imageUrl": { "type": "keyword", "index": false },

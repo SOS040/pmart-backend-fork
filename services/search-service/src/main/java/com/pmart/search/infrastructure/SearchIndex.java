@@ -24,8 +24,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Elasticsearch REST 어댑터(클라이언트 라이브러리 없이 RestClient, ADR-0031). 이 서비스는 <b>조회만</b> 한다 — 색인은 Logstash
  * 가 도메인 이벤트로 한다({@code src/main/logstash/search-index.conf}). 상품 색인 {@code products}(별칭 → {@code
- * products-v3}, nori·edge·n-gram 다중 필드 + 판매 상태 행 버전·승인 속성 필터, 2026-11-04), SKU 가격 {@code
- * sku-prices}(→ {@code sku-prices-v1}).
+ * products-v4}, nori·edge·n-gram·공백 제거 n-gram 다중 필드 + 판매 상태 행 버전·승인 속성 필터, 2026-11-05), SKU 가격
+ * {@code sku-prices}(→ {@code sku-prices-v1}).
  *
  * <p>색인이 없으면 같은 정의 파일({@code elasticsearch/*.json})로 만든다(로컬·시험용 — LAN 은 es-init 이 먼저 만든다). 공용
  * RestClient.Builder 는 사용자 토큰을 전파하므로 쓰지 않는다(검색엔진에 고객 JWT 를 보내지 않음).
@@ -38,7 +38,7 @@ public class SearchIndex {
 
   /** 별칭 → 실제 색인(정의 파일 이름). 매핑을 바꾸면 새 버전 파일을 만들고 여기를 바꾼다. */
   public static final Map<String, String> INDICES =
-      Map.of(PRODUCTS, "products-v3", SKU_PRICES, "sku-prices-v1");
+      Map.of(PRODUCTS, "products-v4", SKU_PRICES, "sku-prices-v1");
 
   private static final String TARGET = "elasticsearch";
   private static final Logger log = LoggerFactory.getLogger(SearchIndex.class);
