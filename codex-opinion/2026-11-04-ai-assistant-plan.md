@@ -1,4 +1,16 @@
-# ai-assistant-service 1차 — 내부 운영자용 정책·업무 절차 RAG (검토 10개 + 2차 검토 7개 반영판)
+# ai-assistant-service 1차 — 내부 운영자용 정책·업무 절차 RAG (검토 10개 + 2차 7개 + 3차 6개 반영판)
+
+> 3차 검토 반영 요약(아래 본문에 녹임 — 충돌 시 이 요약이 우선)
+> 1. **현재 권한 재검사는 저장 답변을 돌려주는 모든 경로**에 건다: `GET /{answerId}`, `GET ?requestId`, POST 멱등 재응답(COMPLETED 재생), lease 상실 뒤 재조회 응답. 대체 제안 문서를 ID 로 추가 조회할 때도 같은 `access_scope` 필터.
+> 2. **출처**: 토큰에 `src` 가 있으면 헤더와 일치해야 한다. 없으면 **1차는 `backoffice-web` 하나로 고정**한다(설정 목록 아님 — 호출자가 고를 수 없음). 다른 값은 403.
+> 3. **스냅숏 고정·삭제 원자성**: 활성 스냅숏 선택과 PROCESSING 행의 `snapshot_id` 기록을 **한 트랜잭션** 안에서, 스냅숏 전환·삭제와 같은 advisory lock(공유/배타)으로 직렬화한다. 완료 답변의 인용(citations jsonb)에 **청크별 `access_scope` 를 함께 저장**해 스냅숏이 지워진 뒤에도 권한을 재검사한다.
+> 4. **발췌 길이 제한은 온전한 청크 개수를 줄여서** 맞춘다. 청크 앞부분을 자르는 규칙("… 원문 계속")은 없앤다. 너무 큰 절은 색인 단계에서 조건·예외·표·목록 블록을 깨지 않는 경계에서만 나누고, 나눌 수 없으면 통째로 둔다.
+> 5. **이력 질문**은 `SUPERSEDED` 만 포함한다. `EXCLUDED_FROM_PHASE1` 은 이력 질문에서도 계속 제외.
+> 6. 스키마·상태:
+>    - `doc_chunk` 에 `proposed_superseded_by text[]`, `precedence_rank int` 추가.
+>    - 해시 이름은 `request_hash` 로 통일.
+>    - 실패 기록에 `last_error_code` 로 `CONFIG_REQUIRED`(→ 422)·`DEPENDENCY_UNAVAILABLE`(→ 503)를 구분.
+>    - lease 가 **만료된 PROCESSING** 은 GET 에서 202 가 아니라 409 `INVALID_STATE`(retryable, "같은 Idempotency-Key 로 POST 재시도") — 조회만 하는 클라이언트가 무한 대기하지 않는다.
 
 > 2차 검토 반영 요약
 > 1. 재조회 응답 모양과 X-Source-System 검증(토큰 `src` 대조, 없으면 허용 목록)
@@ -53,12 +65,12 @@
   - **식별 범위는 (sourceSystem, 호출자 subject, requestId)** 다.
   - 응답:
     - 200: 완료 — ANSWERED·NO_GROUNDING·REALTIME_DATA_REQUIRED·OUT_OF_SCOPE 본문
-    - 202: `state=PROCESSING` + `Retry-After`
+    - 202: `state=PROCESSING` + `Retry-After`(lease 유효할 때만. 만료됐으면 409 재시도 안내)
     - 409 `INVALID_STATE` + `retryable=true`: 직전 시도 실패(FAILED_RETRYABLE) — 같은 Idempotency-Key 로 POST 를 다시 보내라
     - 404: 그 범위에 행이 없음(처리 전 실패·다른 출처·다른 운영자 포함, 존재를 드러내지 않음)
 - **X-Source-System 검증**(POST·GET 공통): 헤더를 그대로 믿지 않는다.
   - 토큰에 `src` 클레임(`PmartPrincipal.sourceSystem`)이 있으면 헤더와 같아야 한다.
-  - 없으면(지금 운영자 토큰은 `src` 가 없다 — auth-service 확인) `pmart.assistant.allowed-source-systems`(기본 `backoffice-web`)에 있어야 한다.
+  - 없으면(지금 운영자 토큰은 `src` 가 없다 — auth-service 확인) **1차는 `backoffice-web` 하나로 고정**(설정 목록이 아니라 상수 — 호출자가 다른 출처를 고를 수 없음).
   - 아니면 403.
 - **멱등 해시 규칙(계약에 명시)**: `sha256(정규화 질문 + "\n" + 정규화 context)`.
   - 질문: NFC, 앞뒤 공백 제거, 연속 공백 하나로.
@@ -96,7 +108,7 @@
   - ACTIVE 는 하나만(부분 유니크).
 - `index_source_file(snapshot_id, path, sha256, bytes)`: 실제로 읽은 파일 목록. 작업 트리가 더러우면 HEAD 로 재현되지 않는 입력을 식별한다.
 - `doc_chunk`
-  - 열: `snapshot_id, chunk_id, document_id, path, section_path, domain_area, authority, lifecycle_status, superseded_by, impl_record_date, impl_note, document_version, effective_date, stage, access_scope, content, content_hash, embedding vector`
+  - 열: `snapshot_id, chunk_id, document_id, path, section_path, domain_area, authority, lifecycle_status, superseded_by, proposed_superseded_by text[], precedence_rank int, impl_record_date, impl_note, document_version, effective_date, stage, access_scope, content, content_hash, embedding vector`
   - PK `(snapshot_id, chunk_id)`. `pg_trgm` GIN 인덱스를 둔다.
 - `embedding_cache`
   - 키: **(model, model_version, dim, preprocessing_hash, content_hash)**
@@ -109,7 +121,7 @@
 - **스냅숏 수명**: 1차는 RETIRED·FAILED 스냅숏을 자동으로 지우지 않는다. 정리는 수동 작업 `pruneSnapshots` 로만 하고, 유예 시간(lease×2 이상) 경과 + 그 snapshot_id 를 참조하는 PROCESSING 행이 없을 때만 지운다. 처리 중 요청이 고정한 스냅숏은 처리 도중 사라지지 않는다.
 
 ### D. 질의 처리 흐름 (트랜잭션 경계 — 검토 4)
-1. **검증**: 운영자 검사 → 질문 정규화 → `question_hash`.
+1. **검증**: 운영자·출처 검사 → 질문·context 정규화 → `request_hash`.
 2. **선점(짧은 TX)**: `(src, subject, requestId)` 로 INSERT `PROCESSING`(lease 2분, attempt=1) → 커밋.
    - 이미 있으면:
      - COMPLETED + 같은 hash → 저장된 결과(200)
@@ -117,15 +129,15 @@
      - PROCESSING 이고 lease 유효 → 202
      - PROCESSING 인데 lease 만료 또는 FAILED_RETRYABLE → 조건부 UPDATE 로 다시 선점(attempt+1)한다(한 요청만 성공).
 3. **질문 분류**(모델 없음, E) → REALTIME_DATA_REQUIRED·OUT_OF_SCOPE 면 바로 6.
-4. **snapshot 고정**: 활성 snapshotId 를 이 시점에 한 번 읽어 이후 검색·인용·저장에 같은 값을 쓴다. 없으면 선점을 FAILED_RETRYABLE 로 두고 422.
+4. **snapshot 고정(한 TX, 스냅숏 advisory lock 공유)**: 활성 snapshotId 를 읽고 같은 TX 에서 PROCESSING 행에 기록한다 → 이후 검색·인용·저장에 같은 값. 없으면 `FAILED_RETRYABLE` + `last_error_code=CONFIG_REQUIRED` 로 두고 422.
 5. **트랜잭션 밖에서**: 임베딩 → 검색(허용 범위 WHERE) → 답변 생성 → 인용 검증(F).
    - **하드 타임아웃** `pmart.assistant.processing.timeout`(기본 60초)이 lease(`pmart.assistant.processing.lease`, 기본 120초)보다 반드시 짧다. 기동 때 `timeout < lease` 를 검사하고 아니면 기동 실패.
    - 정상 처리는 lease 안에 끝나므로 heartbeat 는 두지 않는다.
    - 시간 초과·장애 → 6-실패.
 6. **완료·실패 기록(짧은 TX, 둘 다 선점 조건부)**:
    - 완료: `UPDATE … SET state='COMPLETED', … WHERE answer_id=? AND attempt=? AND state='PROCESSING'`.
-   - 실패: `UPDATE … SET state='FAILED_RETRYABLE', last_error_code=?, lease_until=NULL WHERE answer_id=? AND attempt=? AND state='PROCESSING'`.
-   - **갱신 0건(다른 작업자가 lease 를 가져감)이면 내가 만든 답·오류를 돌려주지 않는다.** 행을 다시 읽어 현재 상태대로 응답한다(COMPLETED → 200 저장 결과, PROCESSING → 202, FAILED_RETRYABLE → 503 재시도 안내).
+   - 실패: `UPDATE … SET state='FAILED_RETRYABLE', last_error_code=?(CONFIG_REQUIRED|DEPENDENCY_UNAVAILABLE), lease_until=NULL WHERE answer_id=? AND attempt=? AND state='PROCESSING'`.
+   - **갱신 0건(다른 작업자가 lease 를 가져감)이면 내가 만든 답·오류를 돌려주지 않는다.** 행을 다시 읽어 현재 상태대로 응답한다(COMPLETED → 현재 권한 재검사 후 200, 유효 lease PROCESSING → 202, 만료 lease PROCESSING → 409 재시도 안내, FAILED_RETRYABLE → last_error_code 대로 422/503).
    - 내 갱신이 성공했을 때만 200(완료)·503(실패)이다.
 - **시험**:
   - 같은 키 동시 2요청(하나는 202)
@@ -155,14 +167,14 @@
 - **검색**: 고정된 snapshot + `access_scope ∈ 호출자 허용 범위` 를 **SQL WHERE 로 먼저** 건다. 권한 밖 문서는 검색하지도, 모델에 넣지도 않는다. 허용 범위에 근거가 없으면 NO_GROUNDING. 점수는 코사인 + `pg_trgm` 유사도 혼합이고 임계값을 둔다.
 - **우선순위·대체 적용 규칙(2차 검토 5)**:
   - **현재 정책 질문**(기본): `lifecycle_status IN ('SUPERSEDED','EXCLUDED_FROM_PHASE1')` 청크를 검색 WHERE 에서 뺀다.
-  - **이력·과거 질문**("예전에는/이전/과거/변경 전/왜 바뀌었" 의도)일 때만 포함하고, 답변·인용에 [대체됨]·[1차 제외]를 표시한다.
+  - **이력·과거 질문**("예전에는/이전/과거/변경 전/왜 바뀌었" 의도)일 때만 **SUPERSEDED 를** 포함하고 [대체됨]을 표시한다. `EXCLUDED_FROM_PHASE1` 은 이력 질문에서도 제외한다.
   - **순위**: 임계값을 넘은 후보끼리만 `최종 점수 = 유사도 + 지위 가중(확정 > 채택 설계 > 설계안 > 가정 > 미결정·외부 참고) + 우선순위 등급 가중(domain-map:35)` 으로 정렬한다. 가중치는 설정으로 둔다. 임계값 미만 문서를 지위로 끌어올리지 않는다.
   - **제안 문서만 찾은 경우**(확정·채택 근거 0): 답변 맨 앞에 "확정 정책 근거 없음 — 아래는 설계안·미결정 기준"을 붙인다(상태는 ANSWERED 유지, 인용 지위로 구분).
   - **SUPERSESSION_PROPOSED** 근거를 인용할 때 그 `proposedSupersededBy` 문서도 함께 찾아(같은 스냅숏, ID 로) 인용에 붙이고 "대체 제안 있음(미승인)"으로 표시한다.
   - **충돌**: 같은 주제의 확정 근거와 다른 문서의 다른 값이 함께 나오면 합치지 않는다. 각각 지위·우선순위 등급과 함께 나열하고, 저장소 우선순위 규칙에 따른 우선 근거를 표시한다(임의로 하나로 결론 내지 않음).
 - **답변**:
   - GENERATIVE: ChatClient — 근거는 `<doc id authority lifecycle impl_date>` 로 감싸고, 근거 안 지시문은 데이터로 취급하라고 지시한다. 출력은 `{answer, usedIds, grounded}` 구조다.
-  - BASELINE_EXTRACTIVE: 서버가 상위 근거를 **청크 단위**로 보여 준다(문장을 오려 내지 않음 → 조건·예외·표 헤더가 함께 남음, 길면 청크 앞부분 + "… 원문 계속" 표시). 지위·기준일 표시를 붙인다. 생성 없음.
+  - BASELINE_EXTRACTIVE: 서버가 상위 근거를 **온전한 청크 단위**로 보여 준다(조건·예외·표 헤더가 함께 남음). 길이 제한은 청크 개수를 줄여서 맞추고 청크를 자르지 않는다. 지위·기준일 표시를 붙인다. 생성 없음.
 - **인용 검증**:
   - ① `usedIds ⊆ 검색 결과`(ID 유효성 — 확실한 검사)
   - ② **보조 휴리스틱**(뒷받침 근사이지 검증이 아님): 답변 문장별 근거 n-gram 겹침 + **부정어 불일치**(근거 "필요하다" ↔ 답 "필요하지 않다" 류) + **숫자·기간 불일치**(답에 근거에 없는 숫자) 검사
@@ -183,7 +195,7 @@
   - 문서별 경로, 업무 영역, 기본 authority, 우선순위 등급(`domain-map.md:35` 그대로), 적용 단계, 접근 범위, 지위 예외(`overrides`).
   - 넣는다: overview, domain-map, glossary, flows 4개, 업무 명세 8개, service-map, ADR 전부, contracts/states 8개.
   - 넣지 않는다: worklog, handoff, 다른 architecture, 코드·시험·배포·비밀.
-- **청크 분할**(`MarkdownChunker`): 제목 계층, 표 통째(헤더 유지), 조건 문장과 목록을 함께, 규칙 ID 헤딩 단위 유지, 큰 절은 문단 경계. `chunkId = sha256(path + section + 정규화 본문)`.
+- **청크 분할**(`MarkdownChunker`): 제목 계층, 표 통째(헤더 유지), 조건 문장과 목록을 함께, 규칙 ID 헤딩 단위 유지. 큰 절은 표·목록·조건 블록을 깨지 않는 문단 경계에서만 나누고, 그런 경계가 없으면 통째로 둔다. `chunkId = sha256(path + section + 정규화 본문)`.
 - **authority**: 절·문단 태그가 문서 기본값을 덮는다. 문단 시작 태그가 있으면 그 문단을 따로 청크로 만든다. 없는 버전·적용일은 만들지 않는다.
 - **lifecycleStatus — 대체 활성화 규칙(검토 1)**:
   - "대체:" 선언을 파싱해 관계 후보를 만든다.
@@ -254,6 +266,16 @@
   - 재색인 멱등, 변경·삭제 반영, 실패 시 ACTIVE 유지, 동시 색인 차단, 차원 불일치 FAILED, dirty 파일 해시 기록
   - **색인 중 파일 변경 → FAILED·기존 ACTIVE 유지**, 처리 중 요청이 고정한 RETIRED 스냅숏을 `pruneSnapshots` 가 지우지 않음
   - 하드 타임아웃 < lease 기동 검사
+  - **3차 검토 회귀**:
+    - 권한 재검사가 POST 재응답·requestId 조회·lease 상실 재조회·`GET /{answerId}` 모두에 걸림(권한이 사라진 운영자는 저장 답변을 못 받음)
+    - 대체 제안 문서 추가 조회도 access_scope 필터
+    - `src` 없는 토큰이 `backoffice-web` 외 출처를 쓰면 403
+    - 스냅숏 고정과 `pruneSnapshots` 동시 실행 시 고정된 스냅숏이 지워지지 않음
+    - 스냅숏 삭제 뒤에도 완료 답변 권한 재검사가 됨(인용의 access_scope)
+    - 발췌가 청크를 자르지 않음(개수로 제한)
+    - 이력 질문에서도 EXCLUDED_FROM_PHASE1 제외
+    - GET 에서 만료 lease PROCESSING → 409 재시도 안내
+    - 활성 색인 부재 실패 → 422(503 아님)
   - 원문 미저장(기본)·보존 정리
 - **평가**: `src/integrationTest/resources/eval/questions.yml`(대표 5 + 실제 문서 기반 15~20, 정답 근거 path·절). `RetrievalEvalIT` 가 실제 저장소 문서를 해시 임베딩으로 색인해 recall@5·MRR 을 계산하고 `build/reports/eval/` 에 쓴다 — **기준선 결과로만 보고한다.** 답변 충실도와 실제 모델의 환각·주입 방어는 `@Tag("real-model")` 로 기본 빌드에서 제외하고 미검증으로 보고한다.
 - **빌드**: `dependencyInsight`(spring-ai 해석 결과), `:services:ai-assistant-service:check`, 게이트웨이 check, `config-copies.sh check`, 전체 `./gradlew check`.

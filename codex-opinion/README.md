@@ -7,7 +7,8 @@
 |---|---|---|---|
 | 2026-11-04 | [2026-11-04-ai-assistant-review-1.md](2026-11-04-ai-assistant-review-1.md) | ai-assistant-service 1차 계획 검토 10개(대체 관계, 지위·구현 축 분리, 기준선 표시, 트랜잭션 경계, 인용 실패 처리, FORBIDDEN_SCOPE, 질문 분류, 로컬 실행·색인 일관성, 원문 저장, 버전 근거) | 10개 모두 계획에 반영. 4·5·6번은 1차 계획의 결함이었다 |
 | 2026-11-04 | [2026-11-04-ai-assistant-review-2.md](2026-11-04-ai-assistant-review-2.md) | 2차 검토 7개(재조회 계약·X-Source-System 검증, context 포함 해시, lease 상실 처리, n-gram 휴리스틱 한계, 우선순위·대체 적용, 스냅숏 수명·입력 일관성, 계약·스키마 불일치) | 모두 계획에 반영. 1번 재조회 경로·7번 422 는 원 계획에 있었으나 전달 사본이 잘렸음 |
-| 2026-11-04 | [2026-11-04-ai-assistant-plan.md](2026-11-04-ai-assistant-plan.md) | 두 검토를 반영한 ai-assistant-service 1차 계획(Claude 작성, 검토 10개 + 2차 7개 반영판) | 구현 기준 계획 |
+| 2026-11-04 | [2026-11-04-ai-assistant-review-3.md](2026-11-04-ai-assistant-review-3.md) | 3차 검토 6개(모든 반환 경로 권한 재검사, 출처 허용 목록 ≠ 출처 인증, 스냅숏 고정·삭제 원자성, 발췌 자르기 제거, 이력 질문의 1차 제외 문서, 스키마·상태 정리) | 모두 계획에 반영(계획 파일 머리말 '3차 검토 반영 요약') |
+| 2026-11-04 | [2026-11-04-ai-assistant-plan.md](2026-11-04-ai-assistant-plan.md) | 세 검토를 반영한 ai-assistant-service 1차 계획(Claude 작성, 검토 10개 + 2차 7개 + 3차 6개 반영판) | 구현 기준 계획 |
 
 ai-assistant-service 구현은 위 두 검토를 반영한 계획으로 진행한다(외부 모델 호출 없는 local/fake 기준선). 완료 보고는
 "구조·권한·멱등 검증 완료"와 "실제 모델의 검색·답변 품질 미검증"을 구분한다.
