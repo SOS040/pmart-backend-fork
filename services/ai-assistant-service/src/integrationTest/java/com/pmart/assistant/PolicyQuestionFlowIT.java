@@ -393,6 +393,42 @@ class PolicyQuestionFlowIT extends AssistantITBase {
     assertThat(r.text("answer")).contains("2026-10-31 기준 구현 기록 — 현재 상태는 이 기록만으로 확인할 수 없음");
   }
 
+  // ---- 내 질문 목록(BR-46) ----
+
+  @Test
+  void questionHistoryIsOwnScopeNewestFirstPagedAndPermissionRechecked() {
+    ingest();
+    Http a = ask(operator("op-h"), key(), "봉투값은 얼마인가요?");
+    ask(operator("op-h"), key(), "ORD-123 지금 어디까지 왔어?");
+    Http c = ask(operator("op-h"), key(), "분할 배송 기준은 몇 g 인가요?");
+    ask(operator("op-other"), key(), "봉투값은 얼마인가요?");
+
+    Http first = history(operator("op-h"), "backoffice-web", "?size=2");
+    assertThat(first.status()).isEqualTo(200);
+    assertThat(first.body().path("items")).hasSize(2);
+    assertThat(first.body().path("items").get(0).path("answerId").asString())
+        .isEqualTo(c.text("answerId"));
+    assertThat(first.body().path("items").get(1).path("state").asString())
+        .isEqualTo("REALTIME_DATA_REQUIRED");
+    assertThat(first.body().path("items").get(0).path("question").isNull()).isTrue(); // 원문 미저장(기본)
+    assertThat(first.body().path("items").get(0).path("answerPreview").asString()).isNotBlank();
+    String cursor = first.body().path("page").path("nextCursor").asString();
+    Http second = history(operator("op-h"), "backoffice-web", "?size=2&cursor=" + cursor);
+    assertThat(second.body().path("items")).hasSize(1);
+    assertThat(second.body().path("items").get(0).path("answerId").asString())
+        .isEqualTo(a.text("answerId"));
+    assertThat(second.body().path("page").path("nextCursor").isNull()).isTrue();
+
+    // 출처가 다르면 403, 다른 운영자 답변은 안 보인다
+    assertThat(history(operator("op-h"), "ops-console", "").status()).isEqualTo(403);
+    assertThat(history(operator("op-other"), "backoffice-web", "").body().path("items")).hasSize(1);
+    // 권한이 사라진 완료 답변은 목록에서도 빠진다
+    jdbc.update(
+        "UPDATE policy_answer SET citations = regexp_replace(citations::text, '\"accessScope\":\\s*\"operator\"', '\"accessScope\": \"hq-only\"', 'g')::jsonb WHERE answer_id = ?",
+        a.text("answerId"));
+    assertThat(history(operator("op-h"), "backoffice-web", "").body().path("items")).hasSize(2);
+  }
+
   // ---- 보존 ----
 
   @Test

@@ -200,6 +200,18 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
                     res.getStatusCode().value(), res.getBody().readAllBytes(), res.getHeaders()));
   }
 
+  Http history(String token, String source, String query) {
+    return RestClient.create()
+        .get()
+        .uri("http://localhost:" + port + "/api/v1/assistant/question-history" + query)
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+        .header("X-Source-System", source)
+        .exchange(
+            (req, res) ->
+                toHttp(
+                    res.getStatusCode().value(), res.getBody().readAllBytes(), res.getHeaders()));
+  }
+
   Http getAnswer(String token, String answerId) {
     return RestClient.create()
         .get()

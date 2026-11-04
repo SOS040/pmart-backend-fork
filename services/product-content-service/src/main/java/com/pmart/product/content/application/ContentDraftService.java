@@ -20,7 +20,6 @@ import com.pmart.product.content.infrastructure.DraftStore.DraftRow;
 import com.pmart.product.content.infrastructure.DraftStore.ImageRow;
 import com.pmart.product.content.infrastructure.DraftStore.ItemRow;
 import com.pmart.product.content.infrastructure.ImageProbe;
-import java.io.ByteArrayInputStream;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -136,6 +135,34 @@ public class ContentDraftService {
   }
 
   /** 지금 제출하면 막히는 사유(DRAFT) 또는 저장된 반려 사유. */
+  /** 지금 게시돼 있는 콘텐츠(BR-44). */
+  public record Published(int contentVersion, String draftId, Instant publishedAt) {}
+
+  /**
+   * 심사 전 초안이 이미 게시된 콘텐츠를 갱신하는가(BR-44) — 연결 상품의 최신 게시본, 없으면 같은 원천 키의 최근 게시 초안. 게시·반려된 초안은 대상이
+   * 아니다(empty).
+   */
+  public java.util.Optional<Published> existingPublished(DraftRow d) {
+    if (!"DRAFT".equals(d.state()) && !"SUBMITTED".equals(d.state())) {
+      return java.util.Optional.empty();
+    }
+    if (d.productId() != null) {
+      var latest = catalog.latestContent(d.productId());
+      if (latest.isPresent()) {
+        var c = latest.get();
+        return java.util.Optional.of(
+            new Published(c.contentVersion(), c.draftId(), c.publishedAt()));
+      }
+    }
+    if (d.sourceSystem() != null && d.sourceKey() != null) {
+      return drafts
+          .findLatestPublished(d.sourceSystem(), d.sourceKey())
+          .filter(p -> !p.draftId().equals(d.draftId()) && p.contentVersion() != null)
+          .map(p -> new Published(p.contentVersion(), p.draftId(), p.updatedAt()));
+    }
+    return java.util.Optional.empty();
+  }
+
   public List<ContentProblem> problems(DraftRow d) {
     if ("DRAFT".equals(d.state())) {
       return ContentRules.submissionProblems(d.name(), d.productId(), slots(images(d.draftId())));
@@ -218,12 +245,22 @@ public class ContentDraftService {
 
   public Outcome<BatchRow> uploadBatch(
       String requestId, Operator op, byte[] zip, @Nullable String fileName) {
+    return uploadBatch(requestId, op, UploadedBundle.of(zip), fileName);
+  }
+
+  public Outcome<BatchRow> uploadBatch(
+      String requestId, Operator op, UploadedBundle zip, @Nullable String fileName) {
     return idempotency.execute(
         op.key(requestId, "uploadContentImportBatch"),
-        Map.of("sha256", ContentRules.sha256(zip)),
+        Map.of("sha256", zip.sha256()),
         BatchRow.class,
         () -> {
-          List<SeedContent> products = bundles.read(new ByteArrayInputStream(zip));
+          List<SeedContent> products;
+          try (java.io.InputStream in = zip.open()) {
+            products = bundles.read(in);
+          } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+          }
           // 이미지 검사를 먼저 끝내 반쯤 적재된 배치를 만들지 않는다
           for (SeedContent p : products) {
             if (p.images().size() > ContentRules.MAX_IMAGES_PER_DRAFT) {
@@ -251,7 +288,7 @@ public class ContentDraftService {
                   "SEED_V1",
                   system,
                   fileName,
-                  ContentRules.sha256(zip),
+                  zip.sha256(),
                   "UPLOADED",
                   0,
                   0,
@@ -608,6 +645,10 @@ public class ContentDraftService {
         attrs.put("sourceKey", d.sourceKey());
       }
       attrs.put("name", d.name());
+      // BR-44: 승인자가 고객에게 보이던 콘텐츠를 덮어쓰는지 보게
+      var published = existingPublished(d);
+      attrs.put("registration", published.isPresent() ? "UPDATE" : "NEW");
+      published.ifPresent(p -> attrs.put("publishedContentVersion", p.contentVersion()));
       lines.add(
           Map.of(
               "lineKey",

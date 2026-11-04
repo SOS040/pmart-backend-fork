@@ -88,14 +88,8 @@ public class RegistrationController implements RegistrationApi {
   @Override
   public ResponseEntity<CategoryTreeVersion> uploadCategoryTreeAddition(
       String idempotencyKey, String xSourceSystem, MultipartFile file) {
-    byte[] bytes;
-    try {
-      bytes = file.getBytes();
-    } catch (IOException e) {
-      throw new PmartException(ErrorCode.VALIDATION_FAILED, "업로드 파일을 읽을 수 없습니다.");
-    }
     CategoryAdditionRequest body =
-        mapper.convertValue(trees.bundleCategories(bytes), CategoryAdditionRequest.class);
+        mapper.convertValue(trees.bundleCategories(upload(file)), CategoryAdditionRequest.class);
     if (body.getSourceNote() == null && file.getOriginalFilename() != null) {
       String name = file.getOriginalFilename();
       body.setSourceNote(name.length() > 500 ? name.substring(0, 500) : name);
@@ -186,16 +180,13 @@ public class RegistrationController implements RegistrationApi {
   @Override
   public ResponseEntity<ImportBatch> uploadProductImportBatch(
       String idempotencyKey, String xSourceSystem, MultipartFile file) {
-    byte[] bytes;
-    try {
-      bytes = file.getBytes();
-    } catch (IOException e) {
-      throw new PmartException(ErrorCode.VALIDATION_FAILED, "업로드 파일을 읽을 수 없습니다.");
-    }
     BatchRow b =
         drafts
             .uploadBatch(
-                idempotencyKey, Operator.current(xSourceSystem), bytes, file.getOriginalFilename())
+                idempotencyKey,
+                Operator.current(xSourceSystem),
+                upload(file),
+                file.getOriginalFilename())
             .value();
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(mapping.batch(drafts.batch(b.batchId()), drafts.batchDrafts(b.batchId())));
@@ -246,5 +237,14 @@ public class RegistrationController implements RegistrationApi {
       m.put("approvalRequest", trees.approvalRequest(v.version(), v.draftHash(), nodes));
     }
     return mapping.convert(m, CategoryTreeVersion.class);
+  }
+
+  /** 업로드 파일을 메모리에 올리지 않는다 — 해시는 스트림으로, 읽을 때 다시 연다(BR-48: getBytes() 로 100MB+ 묶음 OOM). */
+  private static com.pmart.product.application.UploadedBundle upload(MultipartFile file) {
+    try {
+      return com.pmart.product.application.UploadedBundle.from(file::getInputStream);
+    } catch (IOException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "업로드 파일을 읽을 수 없습니다.");
+    }
   }
 }

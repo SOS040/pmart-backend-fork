@@ -36,4 +36,5 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 로컬 포트 8508.
 
 ## 상태
+- 내 질문 목록 `GET /assistant/question-history`(BR-46, 계약 1.1.0) — 본인·출처 범위, 완료 답변은 현재 권한 재검사 후만.
 - 1차 구현(2026-11-04, ADR-0036): 기준선(해시 임베딩 + 발췌). LAN 배포 안 함. 외부 모델 연결 안 함.

@@ -17,7 +17,6 @@ import com.pmart.pricing.infrastructure.ProductLinks;
 import com.pmart.pricing.infrastructure.ProductLinks.Link;
 import com.pmart.pricing.infrastructure.SeedPriceReader;
 import com.pmart.pricing.infrastructure.SeedPriceReader.SeedPrice;
-import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
@@ -80,8 +79,19 @@ public class PriceImportService {
 
   public String upload(
       String requestId, String sourceSystem, byte[] zip, @Nullable String fileName) {
+    return upload(requestId, sourceSystem, UploadedBundle.of(zip), fileName);
+  }
+
+  /** 업로드 파일 그대로(메모리에 올리지 않고 스트림으로, BR-48). */
+  public String upload(
+      String requestId, String sourceSystem, UploadedBundle zip, @Nullable String fileName) {
     PmartPrincipal op = operator();
-    List<SeedPrice> seeds = reader.read(new ByteArrayInputStream(zip));
+    List<SeedPrice> seeds;
+    try (java.io.InputStream in = zip.open()) {
+      seeds = reader.read(in);
+    } catch (java.io.IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
     String system = seeds.getFirst().sourceSystem();
     Map<String, Link> found =
         links.lookup(system, seeds.stream().map(SeedPrice::seedProductId).toList());
@@ -90,7 +100,7 @@ public class PriceImportService {
     return idempotency
         .execute(
             new RequestKey(sourceSystem, requestId, "uploadPriceImportBatch", op.subject()),
-            Map.of("sha256", sha256(zip)),
+            Map.of("sha256", zip.sha256()),
             String.class,
             () -> {
               String batchId = "PB-" + UUID.randomUUID();

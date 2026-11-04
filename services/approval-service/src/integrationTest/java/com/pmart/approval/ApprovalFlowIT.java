@@ -161,6 +161,11 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
     assertThat(approval.body().get("executionState").asString()).isEqualTo("VALIDATING");
     assertThat(approval.body().get("decisions")).hasSize(1);
     assertThat(approval.body().get("effectiveFrom").asString()).isEqualTo("2026-10-31T15:00:00Z");
+    // BR-45: 값 없는 수량·금액은 null 이 아니라 생략(계약 Money·integer 는 nullable 아님)
+    JsonNode line = approval.body().get("lines").get(0);
+    assertThat(line.get("requestedAmount").asInt()).isEqualTo(3500);
+    assertThat(line.has("requestedQty")).isFalse();
+    assertThat(line.has("approvedAmount")).isFalse();
 
     // 결정된 승인은 다시 결정할 수 없다
     assertThat(

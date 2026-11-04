@@ -287,6 +287,74 @@ public class PolicyQuestionService {
     return stored(row, p, ReadMode.GET);
   }
 
+  /** 내 질문 목록 한 줄(BR-46). */
+  public record HistoryItem(AnswerRow row, int citationCount) {}
+
+  public record HistoryPage(List<HistoryItem> items, @Nullable String nextCursor) {}
+
+  /** 내 질문 목록(BR-46): 출처 + 본인 범위, 최근 순. 완료 답변은 현재 권한을 다시 확인해 볼 수 없는 것은 뺀다(저장 답변 반환 경로와 같은 규칙). */
+  public HistoryPage history(
+      @Nullable PmartPrincipal principal,
+      @Nullable String sourceHeader,
+      int size,
+      @Nullable String cursor) {
+    PmartPrincipal p = requireOperatorAndSource(principal, sourceHeader);
+    Instant beforeAt = null;
+    String beforeId = null;
+    if (cursor != null && !cursor.isBlank()) {
+      try {
+        String raw =
+            new String(
+                java.util.Base64.getUrlDecoder().decode(cursor),
+                java.nio.charset.StandardCharsets.UTF_8);
+        int bar = raw.indexOf('|');
+        beforeAt = Instant.parse(raw.substring(0, bar));
+        beforeId = raw.substring(bar + 1);
+      } catch (RuntimeException e) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
+      }
+    }
+    List<HistoryItem> items = new java.util.ArrayList<>();
+    AnswerRow last = null;
+    boolean more = false;
+    // 권한으로 빠지는 행이 있어도 size 를 채우게 몇 번 더 읽는다
+    for (int round = 0; round < 5 && items.size() < size; round++) {
+      List<AnswerRow> rows =
+          answers.listMine(sourceHeader, p.subject(), beforeAt, beforeId, size + 1);
+      more = rows.size() > size;
+      for (AnswerRow r : rows.subList(0, Math.min(size, rows.size()))) {
+        last = r;
+        if (r.state() == AnswerStore.State.COMPLETED) {
+          List<CitationRecord> cites = citations(r);
+          if (!access.stillAllowed(
+              p, r.askerSubject(), cites.stream().map(CitationRecord::accessScope).toList())) {
+            continue;
+          }
+          items.add(new HistoryItem(r, cites.size()));
+        } else {
+          items.add(new HistoryItem(r, 0));
+        }
+        if (items.size() >= size) {
+          break;
+        }
+      }
+      if (!more || last == null) {
+        break;
+      }
+      beforeAt = last.createdAt();
+      beforeId = last.answerId();
+    }
+    String next =
+        more && last != null
+            ? java.util.Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(
+                    (last.createdAt() + "|" + last.answerId())
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            : null;
+    return new HistoryPage(items, next);
+  }
+
   private Outcome reread(String answerId, PmartPrincipal p, ReadMode mode) {
     return stored(answers.findById(answerId).orElseThrow(PolicyQuestionService::notFound), p, mode);
   }

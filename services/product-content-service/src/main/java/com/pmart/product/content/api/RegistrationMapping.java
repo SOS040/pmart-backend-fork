@@ -70,6 +70,17 @@ class RegistrationMapping {
     m.put("draftHash", d.draftHash());
     m.put("approvalId", d.approvalId());
     m.put("contentVersion", d.contentVersion());
+    // BR-44: 심사 전 초안이면 신규 / 기존 게시 콘텐츠 갱신
+    if ("DRAFT".equals(d.state()) || "SUBMITTED".equals(d.state())) {
+      var published = drafts.existingPublished(d);
+      m.put("registration", published.isPresent() ? "UPDATE" : "NEW");
+      published.ifPresent(
+          p -> {
+            m.put("publishedContentVersion", p.contentVersion());
+            m.put("publishedDraftId", p.draftId());
+            m.put("publishedAt", p.publishedAt().toString());
+          });
+    }
     m.put("version", d.version());
     m.put("updatedAt", d.updatedAt().toString());
     ContentDraft out = convert(m, ContentDraft.class);

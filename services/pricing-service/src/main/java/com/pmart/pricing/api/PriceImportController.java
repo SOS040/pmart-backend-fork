@@ -33,14 +33,15 @@ public class PriceImportController implements RegistrationApi {
   @Override
   public ResponseEntity<PriceImportBatch> uploadPriceImportBatch(
       String idempotencyKey, String xSourceSystem, MultipartFile file) {
-    byte[] bytes;
+    // 업로드 파일을 메모리에 올리지 않는다 — 해시는 스트림으로, 읽을 때 다시 연다(BR-48: getBytes() 로 큰 묶음 OOM)
+    com.pmart.pricing.application.UploadedBundle bundle;
     try {
-      bytes = file.getBytes();
+      bundle = com.pmart.pricing.application.UploadedBundle.from(file::getInputStream);
     } catch (IOException e) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "업로드 파일을 읽을 수 없습니다.");
     }
     String batchId =
-        imports.upload(idempotencyKey, xSourceSystem, bytes, file.getOriginalFilename());
+        imports.upload(idempotencyKey, xSourceSystem, bundle, file.getOriginalFilename());
     return ResponseEntity.status(HttpStatus.CREATED).body(batch(batchId));
   }
 

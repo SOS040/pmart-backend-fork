@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.1.0
+  version: 0.1.1
   description: |
     고객용 상품명·사진·설명·보관/반품 안내·판매 옵션 해석과 평점·리뷰 수 집계 투영의 정본. (docs/architecture/service-map.md §1)
     비정본: 상품 정본·판매 상태(product), 리뷰 원문(review), 가격(pricing), 재고(각 inventory).
@@ -482,6 +482,16 @@ components:
         draftHash: { type: [string, 'null'] }
         approvalId: { type: [string, 'null'] }
         contentVersion: { type: [integer, 'null'], description: 게시된 버전 (PUBLISHED) }
+        registration:
+          type: [string, 'null']
+          enum: [NEW, UPDATE, null]
+          description: |
+            심사 전 초안(DRAFT·SUBMITTED)만. 연결 상품(productId) 또는 같은 원천 키(sourceSystem, sourceKey)에 이미 게시된 콘텐츠가
+            있으면 UPDATE — 승인하면 그 상품의 새 contentVersion 으로 게시되어 고객에게 보이던 이름·이미지·설명을 대체한다. 없으면 NEW.
+            게시·반려된 초안은 null. 승인 요청 행 attributes 에도 같은 값(registration, publishedContentVersion)이 실린다. (BR-44, 2026-11-04)
+        publishedContentVersion: { type: [integer, 'null'], description: registration=UPDATE 일 때 지금 게시돼 있는 콘텐츠 버전 }
+        publishedDraftId: { type: [string, 'null'], description: registration=UPDATE 일 때 지금 게시본을 만든 초안 }
+        publishedAt: { type: [string, 'null'], format: date-time, description: registration=UPDATE 일 때 지금 게시본의 게시 시각 }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
         updatedAt: { type: string, format: date-time }
     ContentImportBatch:

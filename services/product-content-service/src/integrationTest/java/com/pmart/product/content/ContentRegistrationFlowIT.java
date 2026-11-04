@@ -462,6 +462,9 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
             .body();
     assertThat(linked.path("productId").asString()).isEqualTo(productId);
     assertThat(linked.path("submittable").asBoolean()).isTrue();
+    // BR-44: 아직 게시본이 없으니 신규
+    assertThat(linked.path("registration").asString()).isEqualTo("NEW");
+    assertThat(linked.path("publishedContentVersion").isNull()).isTrue();
 
     // 5) 배치 제출 준비 → DISPLAY 승인 본문, 대표 사진 없는 b 는 빠진다
     String againBatch = again.body().path("batchId").asString();
@@ -475,6 +478,8 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(body.path("targetRef").asString()).isEqualTo("contentImportBatch:" + againBatch);
     assertThat(body.path("lines").path(0).path("attributes").path("draftHash").asString())
         .hasSize(64);
+    assertThat(body.path("lines").path(0).path("attributes").path("registration").asString())
+        .isEqualTo("NEW");
     // BR-41: 승인 대기 동안 배치 조회가 제출 결과(같은 승인 요청 본문)를 다시 준다
     JsonNode pending =
         get("/content-import-batches/" + againBatch).body().path("pendingSubmission");
@@ -504,6 +509,19 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(c.path("name").asString()).isEqualTo("[냉동]호밍스 부대찌개 180g");
     assertThat(c.path("contentVersion").asInt()).isEqualTo(1);
     assertThat(c.path("productVersion").asInt()).isEqualTo(1);
+    // BR-44: 게시된 상품에 새 초안을 만들면 기존 게시 콘텐츠 갱신(UPDATE, 지금 게시 버전 1)
+    JsonNode update =
+        post("/content-drafts", Map.of("productId", productId, "name", "[냉동]호밍스 부대찌개 180g(새 설명)"))
+            .body();
+    assertThat(update.path("registration").asString()).isEqualTo("UPDATE");
+    assertThat(update.path("publishedContentVersion").asInt()).isEqualTo(1);
+    assertThat(update.path("publishedDraftId").asString()).isEqualTo(draftAId);
+    assertThat(update.path("publishedAt").asString()).isNotBlank();
+    // 게시된 초안 자신은 대상이 아니다
+    assertThat(
+            published.path("registration").isNull()
+                || published.path("registration").isMissingNode())
+        .isTrue();
     assertThat(c.path("images")).hasSize(4);
     assertThat(c.path("images").path(1).path("role").asString()).isEqualTo("DESCRIPTION");
     assertThat(c.path("categoryPath").toString()).isEqualTo("[\"p03\",\"p03-c02\"]");

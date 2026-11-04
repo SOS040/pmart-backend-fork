@@ -21,7 +21,8 @@ import tools.jackson.databind.JsonNode;
  *
  * <p>가격·판매 상태는 색인 시점 사본이다. 카테고리 이름 경로는 product-service 공개 트리 사본(5분), 취급 여부(carried)는 mfcId 를 줄 때만
  * mfc-inventory 사본으로 붙인다(대표 SKU 기준, 조회 실패·응답 없음은 불명 null — false 로 채우지 않는다).
- * includeNotCarried=false 면 취급하지 않음(false)이 확인된 상품만 이 페이지에서 뺀다(불명은 남긴다). 그래서 total 은 빼기 전 색인 건수다.
+ * includeNotCarried=false 면 취급하지 않음(false)이 확인된 상품만 빼고(불명은 남긴다), 모자란 만큼 다음 문서를 더 읽어 페이지를
+ * 채운다(BR-47). total 은 색인 일치 건수(미취급 포함)이고, 처음부터 끝까지 한 번에 다 읽은 경우만 실제 건수로 맞춘다.
  */
 @Service
 public class ProductSearch {
@@ -89,25 +90,59 @@ public class ProductSearch {
       @Nullable String cursor) {
     int from = SearchRules.offset(cursor);
     String query = SearchRules.normalizeQuery(q);
-    Map<String, Object> req = new LinkedHashMap<>();
-    req.put("from", from);
-    req.put("size", size);
-    req.put("track_total_hits", true);
-    req.put("query", query(query, categoryId, price));
-    req.put("sort", sort(sort, query != null));
-    JsonNode res = index.search(SearchIndex.PRODUCTS, req);
-    List<Hit> hits = new ArrayList<>();
-    for (JsonNode h : res.path("hits").path("hits")) {
-      hits.add(hit(h.path("_source")));
+    boolean filtering = mfcId != null && !mfcId.isBlank() && !includeNotCarried;
+    List<Hit> out = new ArrayList<>();
+    int pos = from;
+    long total = 0;
+    int rounds = 0;
+    // BR-47: 미취급을 빼서 모자라면 다음 문서를 더 읽어 채운다(최대 FILL_ROUNDS 번). 다음 커서는 실제로 읽은 위치 뒤
+    while (true) {
+      Map<String, Object> req = new LinkedHashMap<>();
+      req.put("from", pos);
+      req.put("size", size);
+      req.put("track_total_hits", true);
+      req.put("query", query(query, categoryId, price));
+      req.put("sort", sort(sort, query != null));
+      JsonNode res = index.search(SearchIndex.PRODUCTS, req);
+      List<Hit> hits = new ArrayList<>();
+      for (JsonNode h : res.path("hits").path("hits")) {
+        hits.add(hit(h.path("_source")));
+      }
+      total = res.path("hits").path("total").path("value").asLong(0);
+      List<@Nullable Hit> enriched = enrich(hits, mfcId, includeNotCarried);
+      for (Hit h : enriched) {
+        pos++;
+        if (h != null) {
+          out.add(h);
+          if (out.size() >= size) {
+            break;
+          }
+        }
+      }
+      rounds++;
+      if (hits.isEmpty()
+          || out.size() >= size
+          || pos >= total
+          || !filtering
+          || rounds > FILL_ROUNDS) {
+        break;
+      }
     }
-    long total = res.path("hits").path("total").path("value").asLong(0);
-    int fetched = hits.size();
-    String next = from + fetched < total && fetched > 0 ? SearchRules.cursor(from + fetched) : null;
-    return new Result(enrich(hits, mfcId, includeNotCarried), total, next, sort);
+    String next = pos < total ? SearchRules.cursor(pos) : null;
+    // 처음부터 끝까지 한 번에 다 읽었으면 total 을 실제 건수로 맞춘다. 아니면 색인 일치 건수(미취급 포함, 계약 설명)
+    long shownTotal = filtering && from == 0 && next == null ? out.size() : total;
+    return new Result(out, shownTotal, next, sort);
   }
 
-  /** 이름 경로(대표 카테고리)·취급 여부를 붙인다. 취급하지 않음이 확인된 상품은 includeNotCarried=false 면 뺀다. */
-  private List<Hit> enrich(List<Hit> hits, @Nullable String mfcId, boolean includeNotCarried) {
+  /** 미취급을 빼고 페이지를 채우려고 더 읽는 최대 횟수(한 번에 size 개). */
+  static final int FILL_ROUNDS = 5;
+
+  /**
+   * 이름 경로(대표 카테고리)·취급 여부를 붙인다. 입력과 같은 순서·길이로 돌려주고, 취급하지 않음이 확인된 상품은 includeNotCarried=false 면
+   * null(뺌)이다 — 호출자가 읽은 위치를 셀 수 있게.
+   */
+  private List<@Nullable Hit> enrich(
+      List<Hit> hits, @Nullable String mfcId, boolean includeNotCarried) {
     Map<String, Boolean> carried = Map.of();
     if (mfcId != null && !mfcId.isBlank()) {
       List<String> skus =
@@ -118,7 +153,7 @@ public class ProductSearch {
               .toList();
       carried = skus.isEmpty() ? Map.of() : availability.carried(mfcId, skus);
     }
-    List<Hit> out = new ArrayList<>();
+    List<@Nullable Hit> out = new ArrayList<>();
     for (Hit h : hits) {
       String primary =
           h.primaryCategoryId() != null
@@ -126,6 +161,7 @@ public class ProductSearch {
               : (h.categoryIds().isEmpty() ? null : h.categoryIds().get(0));
       Boolean c = h.representativeSku() == null ? null : carried.get(h.representativeSku());
       if (!includeNotCarried && Boolean.FALSE.equals(c)) {
+        out.add(null);
         continue;
       }
       out.add(

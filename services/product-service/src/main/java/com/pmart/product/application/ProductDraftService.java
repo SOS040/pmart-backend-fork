@@ -16,7 +16,6 @@ import com.pmart.product.infrastructure.DraftStore.BatchRow;
 import com.pmart.product.infrastructure.DraftStore.DraftRow;
 import com.pmart.product.infrastructure.SeedBundleReader;
 import com.pmart.product.infrastructure.SeedBundleReader.SeedProduct;
-import java.io.ByteArrayInputStream;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -151,9 +150,14 @@ public class ProductDraftService {
 
   public Outcome<BatchRow> uploadBatch(
       String requestId, Operator op, byte[] zip, @Nullable String fileName) {
+    return uploadBatch(requestId, op, UploadedBundle.of(zip), fileName);
+  }
+
+  public Outcome<BatchRow> uploadBatch(
+      String requestId, Operator op, UploadedBundle zip, @Nullable String fileName) {
     return idempotency.execute(
         op.key(requestId, "uploadProductImportBatch"),
-        Map.of("sha256", Hashes.sha256(zip)),
+        Map.of("sha256", zip.sha256()),
         BatchRow.class,
         () -> {
           if (categories.effective().isEmpty()) {
@@ -164,7 +168,12 @@ public class ProductDraftService {
                 false,
                 List.of());
           }
-          List<SeedProduct> products = bundles.read(new ByteArrayInputStream(zip));
+          List<SeedProduct> products;
+          try (java.io.InputStream in = zip.open()) {
+            products = bundles.read(in);
+          } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+          }
           String batchId = "IB-" + UUID.randomUUID();
           Instant at = now();
           drafts.insert(

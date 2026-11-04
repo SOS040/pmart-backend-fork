@@ -323,6 +323,19 @@ class SearchFlowIT {
     assertThat(ids(atMfc)).containsExactly("PRD-2", "PRD-1");
     assertThat(atMfc.path("items").path(1).path("carried").asBoolean()).isTrue();
     assertThat(atMfc.path("items").path(0).path("carried").isNull()).isTrue();
+    // BR-47: 한 번에 끝까지 읽었으면 total 도 뺀 뒤 기준
+    assertThat(atMfc.path("total").asInt()).isEqualTo(2);
+    // BR-47: 미취급(PRD-3)을 빼면 다음 문서로 채운다 — 빈 페이지 + 다음 커서가 아니다
+    JsonNode page1 = search("?mfcId=MFC-1&size=1");
+    assertThat(ids(page1)).containsExactly("PRD-2");
+    String fillCursor = page1.path("page").path("nextCursor").asString();
+    assertThat(fillCursor).isNotBlank();
+    JsonNode page2 = search("?mfcId=MFC-1&size=1&cursor=" + fillCursor);
+    assertThat(ids(page2)).containsExactly("PRD-1");
+    assertThat(
+            page2.path("page").path("nextCursor").isNull()
+                || page2.path("page").path("nextCursor").isMissingNode())
+        .isTrue();
     JsonNode withNotCarried = search("?mfcId=MFC-1&includeNotCarried=true");
     assertThat(ids(withNotCarried)).containsExactly("PRD-3", "PRD-2", "PRD-1");
     assertThat(withNotCarried.path("items").path(0).path("carried").asBoolean()).isFalse();

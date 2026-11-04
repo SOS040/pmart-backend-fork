@@ -213,6 +213,37 @@ public class AnswerStore {
         .findFirst();
   }
 
+  /**
+   * 내 질문 목록(BR-46): (출처, 주체) 범위, 최근 순. 커서 = (created_at, answer_id) 이전.
+   *
+   * @param limit 한 번에 읽을 행 수(호출자가 size+1 로 다음 여부를 판단)
+   */
+  public List<AnswerRow> listMine(
+      String sourceSystem,
+      String subject,
+      @Nullable Instant beforeCreatedAt,
+      @Nullable String beforeAnswerId,
+      int limit) {
+    if (beforeCreatedAt == null || beforeAnswerId == null) {
+      return jdbc.query(
+          "SELECT * FROM policy_answer WHERE source_system = ? AND asker_subject = ?"
+              + " ORDER BY created_at DESC, answer_id DESC LIMIT ?",
+          AnswerStore::row,
+          sourceSystem,
+          subject,
+          limit);
+    }
+    return jdbc.query(
+        "SELECT * FROM policy_answer WHERE source_system = ? AND asker_subject = ?"
+            + " AND (created_at, answer_id) < (?, ?) ORDER BY created_at DESC, answer_id DESC LIMIT ?",
+        AnswerStore::row,
+        sourceSystem,
+        subject,
+        Timestamp.from(beforeCreatedAt),
+        beforeAnswerId,
+        limit);
+  }
+
   /** 보존 정리: 오래된 COMPLETED·FAILED_RETRYABLE 만(PROCESSING 은 지우지 않는다). */
   public int deleteFinishedBefore(Instant cutoff) {
     return jdbc.update(

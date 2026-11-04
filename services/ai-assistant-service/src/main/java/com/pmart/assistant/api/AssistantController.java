@@ -64,6 +64,45 @@ public class AssistantController implements AssistantApi {
     return respond(service.getAnswer(PmartPrincipal.current().orElse(null), answerId));
   }
 
+  @Override
+  public ResponseEntity<com.pmart.assistant.api.generated.model.QuestionHistoryPage>
+      listMyPolicyQuestions(
+          String xSourceSystem, Integer size, @org.jspecify.annotations.Nullable String cursor) {
+    var page = service.history(PmartPrincipal.current().orElse(null), xSourceSystem, size, cursor);
+    var items =
+        page.items().stream()
+            .map(
+                i -> {
+                  var r = i.row();
+                  boolean done =
+                      r.state() == com.pmart.assistant.infrastructure.AnswerStore.State.COMPLETED;
+                  String answer = r.answer();
+                  return new com.pmart.assistant.api.generated.model.QuestionHistoryItem()
+                      .answerId(r.answerId())
+                      .requestId(r.requestId())
+                      .state(done ? AnswerState.fromValue(r.resultState()) : AnswerState.PROCESSING)
+                      .question(r.question())
+                      .answerPreview(
+                          done && answer != null
+                              ? (answer.length() > 120 ? answer.substring(0, 120) : answer)
+                              : null)
+                      .answerMode(
+                          done && r.answerMode() != null
+                              ? AnswerMode.fromValue(r.answerMode())
+                              : AnswerMode.NONE)
+                      .citationCount(i.citationCount())
+                      .askedAt(odt(r.createdAt()));
+                })
+            .toList();
+    return ResponseEntity.ok(
+        new com.pmart.assistant.api.generated.model.QuestionHistoryPage()
+            .items(items)
+            .page(
+                new com.pmart.assistant.api.generated.model.QuestionHistoryPagePage()
+                    .nextCursor(page.nextCursor())
+                    .size(items.size())));
+  }
+
   private ResponseEntity<PolicyAnswer> respond(Outcome outcome) {
     PolicyAnswer dto = toDto(outcome);
     if (outcome instanceof Outcome.Processing) {

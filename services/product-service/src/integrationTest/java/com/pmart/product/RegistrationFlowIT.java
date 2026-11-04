@@ -598,6 +598,20 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
         .containsExactly(top, top + "-c01");
     assertThat(draft.body().path("approvalRequest").path("type").asString()).isEqualTo("PRODUCT");
 
+    // BR-48: 발효 트리에 이미 있는 카테고리만 담긴 묶음 → 500 이 아니라 422 NOTHING_TO_ADD
+    Map<String, Object> existing = new LinkedHashMap<>();
+    existing.put("bmartPath", List.of("국·탕·찌개", "국·국밥"));
+    existing.put("pmartCategoryIdLevels", List.of("p03", "p03-c01"));
+    var onlyExisting = new ByteArrayOutputStream();
+    try (var zip = new ZipOutputStream(onlyExisting)) {
+      zip.putNextEntry(new ZipEntry("seed-v1/categories.json"));
+      zip.write(
+          mapper.writeValueAsBytes(Map.of("format", "seed-v1", "categories", List.of(existing))));
+    }
+    Res nothing = post("/category-tree-addition-uploads", form(onlyExisting.toByteArray()));
+    assertThat(nothing.status()).isEqualTo(422);
+    assertThat(nothing.body().path("code").asString()).isEqualTo("NOTHING_TO_ADD");
+
     // categories.json 이 없는 묶음은 422 BUNDLE_INVALID
     Res none = post("/category-tree-addition-uploads", form(seedZip(Map.of())));
     assertThat(none.status()).isEqualTo(422);

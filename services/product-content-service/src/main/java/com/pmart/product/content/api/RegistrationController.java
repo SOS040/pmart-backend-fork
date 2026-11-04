@@ -104,7 +104,7 @@ public class RegistrationController implements RegistrationApi {
             .uploadBatch(
                 idempotencyKey,
                 Operator.current(xSourceSystem),
-                bytes(file),
+                bundle(file),
                 file.getOriginalFilename())
             .value();
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -128,6 +128,16 @@ public class RegistrationController implements RegistrationApi {
     return mapper.convertValue(body, ContentInput.class);
   }
 
+  /** 업로드 파일을 메모리에 올리지 않는다 — 해시는 스트림으로, 읽을 때 다시 연다(BR-48: getBytes() 로 큰 묶음 OOM). */
+  private static com.pmart.product.content.application.UploadedBundle bundle(MultipartFile file) {
+    try {
+      return com.pmart.product.content.application.UploadedBundle.from(file::getInputStream);
+    } catch (IOException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "업로드 파일을 읽을 수 없습니다.");
+    }
+  }
+
+  /** 이미지 한 장(작음, 상한은 multipart 설정). */
   private static byte[] bytes(MultipartFile file) {
     try {
       return file.getBytes();

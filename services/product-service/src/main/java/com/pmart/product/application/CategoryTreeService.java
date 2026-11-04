@@ -67,6 +67,15 @@ public class CategoryTreeService {
     return bundles.readCategories(new ByteArrayInputStream(zip));
   }
 
+  /** 업로드 파일 그대로(메모리에 올리지 않고 스트림으로) — 큰 묶음(BR-48). */
+  public JsonNode bundleCategories(UploadedBundle zip) {
+    try (java.io.InputStream in = zip.open()) {
+      return bundles.readCategories(in);
+    } catch (java.io.IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
+  }
+
   public Outcome<DraftCreated> createDraft(
       String requestId,
       Operator op,
