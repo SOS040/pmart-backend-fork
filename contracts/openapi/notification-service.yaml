@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: notification-service
-  version: 0.1.0
+  version: 0.1.1
   description: |
     알림 요청·채널(앱 푸시·카카오 알림톡 [결정 필요])·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록, 지연 안내의 정본. (docs/architecture/service-map.md §8)
     비정본: 원사건(주문·배송·환불·배차 제안은 각 소유 서비스), 마케팅 동의(customer), OS 알림 권한(단말).
@@ -256,7 +256,12 @@ components:
       description: 알림을 열 때 이동할 최신 목적지 (원사건 참조)
       properties:
         type: { type: string, enum: [ORDER, DELIVERY, CLAIM, REFUND, DISPATCH_OFFER, CASE, NOTICE, NONE] }
-        ref: { type: string }
+        ref:
+          type: string
+          description: |
+            type 별 식별자. ORDER = orderId, DELIVERY = deliveryId, CLAIM = claimId,
+            **REFUND = claimId**(환불은 클레임 아래에서 조회한다 — claim-service `GET /claims/{claimId}/refunds`. 주문 취소 환불도 취소 클레임으로 만들어진다).
+            NONE 이면 비어 있다. (2026-11-05 명시)
     Notification:
       type: object
       required: [notificationId, category, title, state, createdAt]
