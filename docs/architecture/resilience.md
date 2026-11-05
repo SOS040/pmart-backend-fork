@@ -234,4 +234,4 @@ pmart 는 **회로 차단기 라이브러리(Resilience4j) 없이**, 아래 장�
 | 다중 인스턴스 | 서비스당 1개 | 인스턴스 장애 = 그 서비스 중단(compose 재시작까지) |
 | 주기 작업 중복 실행 방지 | 청소 작업은 SKIP LOCKED, 사가는 행 잠금 | 분산 잠금(ShedLock 등)은 없다. 다중 인스턴스로 갈 때 작업별로 다시 본다 |
 | common-web `spring.factories` 형식 | 다른 라이브러리와 키·형식이 다름(1-1) | 등록을 확인하는 시험이 없다. 로딩 여부를 실제 기동으로 확인할 것 |
-| 게이트웨이 `X-Correlation-Id` | 외부 값을 그대로 전달 | 로그 상관 ID 오염 가능(`trace-gateway-checkout-payment.md` 5절) |
+| 게이트웨이 외부 추적·상관 헤더(`X-Correlation-Id`·`baggage`·`traceparent`) | 외부 값을 그대로 전달 | 운영 전 과제 — `baggage` 오염 여부를 시험으로 먼저 확인한 뒤 게이트웨이 필터(`trace-gateway-checkout-payment.md` 5절) |

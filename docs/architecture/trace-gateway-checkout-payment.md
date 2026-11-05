@@ -6,6 +6,7 @@
   - 결제 사가 패턴 → 코드: `payment-saga-patterns.md`
   - 사가 흐름: `docs/business/flows/order-checkout-saga.md`
   - Zipkin·로그 운영: `docs/operations/lan-monitoring-and-backup.md`
+  - traceId 와 sagaId 의 차이(언제 만들어지고 왜 둘 다 쓰나): `trace-id-and-saga-id.md`
 - 용어:
   - **traceId**: 요청 하나의 흐름. 요청마다 바뀐다.
   - **correlationId**: 업무 하나(사가)의 묶음. 여러 요청·사건에 걸쳐 유지된다. 결제 사가에서는 sagaId 다.
@@ -31,7 +32,7 @@
 - **게이트웨이가 하는 일과 하지 않는 일**:
   - `X-Request-Id`(`RequestIdWebFilter`): 클라이언트 값이 있으면 쓰고, 없으면 발급해 응답에도 돌려준다. traceId 와는 별개다.
   - correlationId 는 만들지 않는다. `CorrelationIdFilter` 는 서블릿 필터라 WebFlux 인 게이트웨이에서는 꺼져 있다. 각 서비스가 정한다(2절).
-  - 클라이언트가 보낸 `X-Correlation-Id` 를 지우지 않는다. 기본 필터는 `Cookie` 만 지운다. 그래서 외부 요청이 넣은 값이 서비스까지 그대로 간다 → 운영 전 과제(5절).
+  - 클라이언트가 보낸 `X-Correlation-Id` 를 지우지 않는다. 기본 필터는 `Cookie` 만 지운다. 그래서 외부 요청이 넣은 값이 서비스까지 그대로 간다 → 운영 전 과제(5절, `baggage`·`traceparent` 와 함께 정함).
 
 ## 2. 서비스 안에서 correlationId 가 정해지는 방식
 
@@ -173,7 +174,19 @@ LAN 실측(같은 결제, trace `d3510de7…`, 47 span)
   - 토스 웹훅(`WebhookService`)·대사 작업(`ReconciliationService`) 경로의 로그는 아직 묶지 않았다(사건 발행은 이미 sagaId).
   - 결제 진입 쪽 order-service 로그(사가 시작 전)도 correlationId 가 없다.
 - 묶음 범위: sagaId 는 **결제 진입 사가 한 번**을 묶는다. 재결제는 새 sagaId, 취소·환불은 claimId 다. 주문 하나의 일생은 sagaId·claimId 를 각각 찾는다.
-- **운영 전 과제**: 게이트웨이에서 외부 요청의 `X-Correlation-Id` 를 지운다(미구현). 지금은 외부 값이 서비스까지 그대로 간다(응답 헤더·서비스 간 호출 헤더). 로그에 실제로 섞이는지는 2절의 MDC 동작 때문에 따로 확인해야 한다.
+- **운영 전 과제 — 외부 입구의 추적·상관 헤더 정리(미구현, 2026-11-05 사용자 결정: 지금은 하지 않음)**
+  - 언제: 외부 사용자가 붙는 운영 환경으로 가기 전. LAN 시험망에서는 하지 않는다.
+  - 왜: 게이트웨이는 외부 요청의 유일한 입구다. 외부가 보낸 추적·상관 값을 그대로 믿으면 다른 결제의 로그에 값을 섞거나 추적을 흐릴 수 있다. 입구에서 지우고 서버가 새로 정하는 것이 원칙이다.
+  - 지금 영향이 작은 이유: 요청 필터 값은 로그 MDC 에 남지 않고(2절), 사가 구간은 서버가 정한 sagaId·claimId 로 덮는다. 외부 `X-Correlation-Id` 는 응답 헤더 등으로 그대로 돌아가는 정도로 보인다.
+  - 함께 정할 세 헤더:
+
+    | 외부 요청 헤더 | 처리(안) |
+    |---|---|
+    | `X-Correlation-Id` | 지움 |
+    | `baggage` | 지움(또는 허용 키만) — `correlationId` 가 baggage 원격 필드라(`management.tracing.baggage.remote-fields`) 외부 `baggage: correlationId=…` 가 로그·사건의 correlationId 로 들어갈 **가능성**이 있다(설정에서 추론, 미확인). 실제 위험은 이쪽이 더 클 수 있다 |
+    | `traceparent` | 받을지 결정 — 모바일 추적 SDK 를 쓰면 받고, 아니면 지우고 게이트웨이가 새로 시작 |
+
+  - 순서: ① `baggage` 헤더로 실제 오염이 되는지 **시험으로 먼저 확인** → ② 결과에 맞춰 게이트웨이 필터(`api-gateway.yml` `default-filters` 의 `RemoveRequestHeader` 등)를 넣는다 → ③ 설정 저장소·게이트웨이 시험 사본·시험.
 - 클라이언트 추적(모바일 추적 SDK 의 `traceparent`)은 별개다. 요청 하나를 앱 화면까지 늘려 보는 기능이고, 두 요청을 사가로 묶어 주지 않는다. 운영 준비 때 정한다.
 
 ## 6. 결제 한 건 찾는 법

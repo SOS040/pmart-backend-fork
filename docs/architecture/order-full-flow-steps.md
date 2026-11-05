@@ -3,6 +3,7 @@
 - 그림: [`diagrams/order-full-flow.png`](diagrams/order-full-flow.png) · 원본 [`diagrams/order-full-flow.mmd`](diagrams/order-full-flow.mmd). 번호는 그림의 화살표 번호(1~151)다.
 - 기준: 2026-11-05 그림(추적 반영). 단계·상태의 자세한 해설은 [`order-full-flow-analysis.md`](order-full-flow-analysis.md), 추적은 [`trace-gateway-checkout-payment.md`](trace-gateway-checkout-payment.md).
 - 이 문서는 "번호마다 **누가 누구에게, 어떤 방식으로** 보내는지"만 따라간다.
+- traceId 가 어느 번호에서 생기고 왜 sagaId 로도 묶는지: [`trace-id-and-saga-id.md`](trace-id-and-saga-id.md).
 
 ## 읽는 법
 
