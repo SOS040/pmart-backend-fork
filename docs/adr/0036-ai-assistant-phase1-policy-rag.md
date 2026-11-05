@@ -1,6 +1,6 @@
 # ADR-0036 ai-assistant-service 1차 — 내부 운영자 정책·업무 절차 RAG를 앞당긴다(외부 모델 없이 기준선)
 
-- 상태: 제안 (2026-11-04, 사용자 요청 "3단계로 미뤄 둔 RAG 중 1차 범위를 앞당겨 구현" — 계획은 Codex 검토 1·2·3차 반영, `codex-opinion/2026-11-04-ai-assistant-plan.md`)
+- 상태: 제안 (2026-11-04, 사용자 요청 "3단계로 미뤄 둔 RAG 중 1차 범위를 앞당겨 구현" — 계획은 Codex 검토 1·2·3차 반영, `docs/rag/codex-opinion/2026-11-04-ai-assistant-plan.md`)
 - 관련: `contracts/openapi/ai-assistant-service.yaml`(1.0.0), `services/ai-assistant-service/`, `docs/architecture/service-map.md` §8, ADR-0029(설정 저장소)
 
 ## 배경
