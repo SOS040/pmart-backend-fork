@@ -163,10 +163,11 @@
   - 영향 모듈: 코드 변경은 `search-index.conf` 주석뿐(나머지는 배포 스크립트·설정) — 전체 `check` 는 돌리지 않음
 
 ### 3-8. 문서 (worktree, 전환 이후 상태)
-- [ ] `docs/operations/lan-monitoring-and-backup.md`(Kafka·ES 구성, 경보 표, 메모리 상한)
-- [ ] `docs/architecture/elk-in-pmart.md`(분리 구조)
-- [ ] `deploy/lan/kafka/README.md`, `deploy/lan/elastic/REINDEX.md`
-- [ ] 배치도 `docs/architecture/diagrams/lan-placement.mmd/png`, `resilience.md`, `config.md`, `platform-capabilities-code-map.md`
+- [x] `docs/operations/lan-monitoring-and-backup.md`(Kafka·ES 구성, 경보 표, 메모리 상한)
+- [x] `docs/architecture/elk-in-pmart.md`(분리 구조)
+- [x] `deploy/lan/kafka/README.md`, `deploy/lan/elastic/REINDEX.md`
+- [x] 배치도 `docs/architecture/diagrams/lan-placement.mmd/png`, `resilience.md`, `config.md`, `platform-capabilities-code-map.md`
+- 결과(2026-11-05, worktree): 위 문서 + `deploy/lan/README.md`·`product-search.md`·`elasticsearch-metrics.md`. **남은 것: `lan-placement.png` 다시 렌더**(`.mmd` 는 고쳤다. PC 1 에 mmdc 가 없음 — `mmdc -i lan-placement.mmd -o lan-placement.png -s 3`). REINDEX.md §2·§4 의 옛 이름은 "분리 전 기록" 안내로 둔다.
 
 ## 4. 배포 전 검증 (전환 당일 시작 전)
 
