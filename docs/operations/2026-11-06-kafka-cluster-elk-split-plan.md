@@ -125,18 +125,23 @@
 - 주의: worktree 에서 `config-copies.sh check` 를 돌리면 api-gateway 사본 2개가 "다름"으로 나온다 — 내용은 같고 줄바꿈만 다르다(pmart-config 의 `api-gateway.yml` 이 CRLF 로 커밋돼 있고, worktree 는 LF 로 체크아웃). main 폴더에서는 같게 나온다. **배포는 main 폴더에서** 한다(`lan.sh deploy` 가 이 검사를 한다).
 
 ### 3-6. 관측
-- [ ] **kafka-exporter**(예: `danielqsj/kafka-exporter`, 정확한 버전 고정)를 한 곳에 배치하고 Prometheus 수집 대상에 추가
-- [ ] 새 경보:
+- [x] **kafka-exporter**(예: `danielqsj/kafka-exporter`, 정확한 버전 고정)를 한 곳에 배치하고 Prometheus 수집 대상에 추가
+- [x] 새 경보:
   - 브로커 수 < 3
   - 복제 부족 파티션(under-replicated) > 0
   - 리더 없는 파티션(offline) > 0
   - 컨트롤러 없음
   - 이름·임계값은 alert-rules.yml 규칙에 맞춘다
-- [ ] ES 경보(ElasticsearchUnreachable·ClusterRed·HeapHigh)를 클러스터별(`es-search`·`es-logs`)로
-- [ ] Grafana:
+- [x] ES 경보(ElasticsearchUnreachable·ClusterRed·HeapHigh)를 클러스터별(`es-search`·`es-logs`)로
+- [x] Grafana:
   - [x] 데이터 소스 `Logs (Elasticsearch)` → `http://es-logs:9200`(3-4 때 함께)
   - 검색 대시보드의 ES 패널 → es-search exporter
-- [ ] `promtool check config` / `promtool test rules` 로 검사
+- [x] `promtool check config` / `promtool test rules` 로 검사
+- 구현 메모(2026-11-05, worktree `13c24d4`):
+  - `danielqsj/kafka-exporter:v1.10.0`(pc4, 9308, 128m), `--kafka.version=3.9.0`(기본 2.0.0 은 Kafka 4 가 지운 옛 프로토콜 판). **v1.10.0 이 Kafka 4.1.1 과 붙는지는 확인하지 못했다**(PC 1 에서 이미지 pull·실행 파일 실행 불가) — 전환 12단계에서 `curl http://192.168.0.40:9308/metrics | grep kafka_brokers` 가 3 인지 확인. 안 되면 `kafka.version` 을 바꾸거나 exporter 판을 올린다
+  - exporter 에 컨트롤러 지표가 없다 → 경보는 KafkaBrokerDown(<3), KafkaQuorumAtRisk(<2 또는 조회 불가), KafkaUnderReplicatedPartitions, KafkaPartitionBelowMinIsr(ISR<2 = 쓰기 실패), KafkaOfflinePartitions(리더 지표가 빠진 파티션 — exporter 는 -1 을 내지 않는다)
+  - ES 수집 레이블은 `es`(search·logs) — exporter 자체의 `cluster` 레이블과 겹치지 않게. ElasticsearchUnreachable 은 ES 하나만 멈춘 경우도 잡는다
+  - `deploy/lan/monitoring/alert-rules-test.yml` 추가 — `docker run --rm -v "<저장소>/deploy/lan/monitoring:/m" --entrypoint promtool prom/prometheus:v3.5.0 test rules /m/alert-rules-test.yml`
 
 ### 3-7. 시험 (worktree)
 - [ ] `config-copies.sh check`
@@ -158,6 +163,7 @@
 - [ ] 각 PC 디스크 여유(C:)와 Docker 메모리 여유
 - [ ] 진행 중 사가 건수(남아 있으면 그 주문은 멈춘 채 남는다 — 확인만)
 - [ ] 이미지 빌드·push 준비(Docker Hub 토큰 유효)
+  - 2026-11-05 확인: **PC 1 Docker 에 저장된 Docker Hub 로그인이 무효**(`docker pull` → `incorrect username or password`, 이어 429). 공개 이미지 pull 도 막힌다. 전환 전에 Docker Desktop 에서 다시 로그인(새 토큰)하고, jib push 인증도 확인한다
 
 ## 5. 전환 순서 (2026-11-06)
 
