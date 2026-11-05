@@ -106,7 +106,7 @@
   - 검색: 시스템 색인만
   - 로그: `pmart-logs-*`·시스템 색인
 - [x] Filebeat(log-shipper) 대상 → `logstash-logs`
-- [ ] search-service: ES 주소 → `es-search`(설정 저장소 `search-service*.yml` + 시험 사본) — 3-5 에서
+- [x] search-service: ES 주소 → `es-search`(설정 저장소 `search-service-lan.yml`) — 3-5 에서
 - [x] `search-index.env`(Logstash 그룹·색인 이름), `search-index.conf` 의 ES·Kafka 주소
 - [x] 메모리 상한: 지금 ES·Logstash 상한(각 1.5 GiB) 기준
 - 구현 메모(2026-11-05):
@@ -118,9 +118,11 @@
   - `reindex.sh`: es-search·logstash-search·es-init-search
 
 ### 3-5. 설정 저장소 (worktree `.config-repo`)
-- [ ] `application-lan.yml`: `spring.kafka.bootstrap-servers` 3노드
-- [ ] search-service ES 주소
-- [ ] 바꾼 뒤 `deploy/lan/config-copies.sh sync` → `check`
+- [x] `application-lan.yml`: `spring.kafka.bootstrap-servers` 3노드
+- [x] search-service ES 주소
+- [x] 바꾼 뒤 `deploy/lan/config-copies.sh sync` → `check`
+- 결과(2026-11-05): pmart-config `feature/kafka-cluster` `e54f630`(미push). `-lan.yml` 은 시험 사본 대상이 아니라 사본 변경 없음.
+- 주의: worktree 에서 `config-copies.sh check` 를 돌리면 api-gateway 사본 2개가 "다름"으로 나온다 — 내용은 같고 줄바꿈만 다르다(pmart-config 의 `api-gateway.yml` 이 CRLF 로 커밋돼 있고, worktree 는 LF 로 체크아웃). main 폴더에서는 같게 나온다. **배포는 main 폴더에서** 한다(`lan.sh deploy` 가 이 검사를 한다).
 
 ### 3-6. 관측
 - [ ] **kafka-exporter**(예: `danielqsj/kafka-exporter`, 정확한 버전 고정)를 한 곳에 배치하고 Prometheus 수집 대상에 추가
