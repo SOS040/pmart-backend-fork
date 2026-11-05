@@ -58,30 +58,33 @@
 ## 3. 작업 목록 (다음 세션, worktree)
 
 ### 3-1. 결정 기록 (`main` 폴더)
-- [ ] ADR-0037 Kafka 3노드 KRaft 클러스터(복제 3, min ISR 2) — ADR-0034(이력 보관)·0035(Stream 소비)와 연결. 상태 "제안".
-- [ ] ADR-0038 검색 ES·로그 ES 분리 — ADR-0031 의 "같은 ES 를 두 용도에" 결정을 대체. 상태 "제안".
-- [ ] ADR README 표
+- [x] ADR-0037 Kafka 3노드 KRaft 클러스터(복제 3, min ISR 2) — ADR-0034(이력 보관)·0035(Stream 소비)와 연결. 상태 "제안".
+- [x] ADR-0038 검색 ES·로그 ES 분리 — ADR-0031 의 "같은 ES 를 두 용도에" 결정을 대체. 상태 "제안".
+- [x] ADR README 표
 
 ### 3-2. Kafka 클러스터 (`deploy/lan/render.sh`, `placement.conf`)
-- [ ] 구성요소 `kafka` → `kafka-1`(pc2)·`kafka-2`(pc3)·`kafka-3`(pc4). 각 PC 의 `extra_hosts` 에 다른 노드 이름이 들어가게 한다.
-- [ ] 노드 설정:
+- [x] 구성요소 `kafka` → `kafka-1`(pc2)·`kafka-2`(pc3)·`kafka-3`(pc4). 각 PC 의 `extra_hosts` 에 다른 노드 이름이 들어가게 한다.
+- [x] 노드 설정:
   - `KAFKA_NODE_ID` 1/2/3
   - `KAFKA_PROCESS_ROLES: broker,controller`
-  - `KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093`
-  - `KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093`
+  - `KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9094,2@kafka-2:9094,3@kafka-3:9094`
+  - `KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9094`
   - `KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-N:9092`
-- [ ] **포트 9093(컨트롤러)도 공개**(`ports: ["9092:9092","9093:9093"]`). 지금은 9092 만 열려 있다.
-- [ ] 클러스터 ID: 한 번 만들어 `.secrets/kafka-cluster-id` 에 보관하고 세 노드에 같은 값을 준다(`CLUSTER_ID`). `init-secrets.sh` 에 생성 줄 추가.
-- [ ] 내부 토픽:
+- [x] **포트 9094(컨트롤러)도 공개**(`ports: ["9092:9092","9094:9094"]`). 지금은 9092 만 열려 있다. 9093 은 pc4 Alertmanager 가 호스트 포트로 쓰므로 컨트롤러는 9094(ADR-0037 결정 1).
+- [x] 클러스터 ID: `render.sh` 상수 `KAFKA_CLUSTER_ID`(비밀 아님, `.secrets` 대신 — ADR-0037 결정 2). 볼륨 이름 `kafkacluster`(옛 `kafkadata` 는 롤백용).
+- [x] 내부 토픽:
   - `KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3`
   - `KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3`
   - `KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2`
   - `KAFKA_MIN_INSYNC_REPLICAS: 2`
   - `KAFKA_DEFAULT_REPLICATION_FACTOR: 3`
-- [ ] `KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"`. 필요한 토픽은 `topics-init.sh` 로만 만든다 — 업무 토픽·DLT·Bus 토픽 목록을 빠짐없이 넣을 것.
-- [ ] 메모리 상한: 노드마다 지금 수준(1.3~1.5 GiB), healthcheck 는 지금 방식 유지.
-- [ ] 접속 주소 `kafka:9092` → `kafka-1:9092,kafka-2:9092,kafka-3:9092`: Connect(203줄), Logstash(407줄), `SPRING_KAFKA_BOOTSTRAP_SERVERS`(563줄)
-- [ ] Debezium Connect 내부 토픽(config·offset·status) 복제 3
+- [x] `KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"`. **변경**: 업무·heartbeat 토픽은 Connect(`topic.creation.default.*=-1`, 커넥터 템플릿), DLT·Bus 는 Stream 바인더, 특수 설정 토픽만 `topics-init.sh`(ADR-0037 결정 4).
+- [x] 메모리 상한: `mem_limit: 2g`(기본 힙 1 GiB + 여유. 지금 사용 1.3~1.5 GiB), healthcheck 는 지금 방식 유지.
+- [x] 접속 주소 `kafka:9092` → `kafka-1:9092,kafka-2:9092,kafka-3:9092`: Connect(203줄), Logstash(407줄), `SPRING_KAFKA_BOOTSTRAP_SERVERS`(563줄)
+- [x] Debezium Connect 내부 토픽(config·offset·status) 복제 3
+
+- [x] `lan.sh deploy`: 대상 PC 의 Kafka 노드를 모두 먼저 띄우고 → 기다리고 → 한 노드에서 `topics-init.sh` → config-server → 나머지(한 노드만으로는 과반이 안 돼 healthy 불가).
+- [x] 토픽 지표 textfile·`metrics/` 는 kafka-1(pc2)에만, `topics-init.sh` 는 세 노드 PC 모두에 복사.
 
 ### 3-3. 스크립트 (`deploy/lan/kafka/`, `elastic/`, `watch.sh`)
 - [ ] `topics-init.sh`: `--replication-factor 3`, `min.insync.replicas=2`, 이력 토픽의 무제한 보관 설정 유지
@@ -142,7 +145,7 @@
 
 ## 4. 배포 전 검증 (전환 당일 시작 전)
 
-- [ ] 세 PC 사이 **9092·9093 연결**: Windows 방화벽 인바운드 규칙, Docker 포트 공개. 예: pc3 → pc2:9093, pc4 → pc3:9093 …
+- [ ] 세 PC 사이 **9092·9094 연결**: Windows 방화벽 인바운드 규칙, Docker 포트 공개. 예: pc3 → pc2:9094, pc4 → pc3:9094 …
 - [ ] 각 PC 디스크 여유(C:)와 Docker 메모리 여유
 - [ ] 진행 중 사가 건수(남아 있으면 그 주문은 멈춘 채 남는다 — 확인만)
 - [ ] 이미지 빌드·push 준비(Docker Hub 토큰 유효)
@@ -182,4 +185,5 @@
 ## 7. 남은 결정
 
 - 전환 시간대(전체 중단 수십 분)
-- kafka-exporter 배치 PC(제안: pc4, 관측 도구와 함께)
+- ~~kafka-exporter 배치 PC~~ → **pc4 확정**(2026-11-05)
+- Alertmanager 수신처(지금 `none`): Slack 웹훅 등, **2026-11-06 에 정한다**(사용자 2026-11-05). 붙이면 실제 발송되므로 사용자 확인 후, URL 은 `.secrets` 에 사용자가 직접 입력
