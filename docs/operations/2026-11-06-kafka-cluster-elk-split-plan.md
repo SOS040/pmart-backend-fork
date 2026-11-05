@@ -95,20 +95,27 @@
 - [x] Debezium: 등록 스크립트는 Kafka 주소를 쓰지 않아 변경 없음(템플릿 topic.creation 은 3-2). 슬롯 정리 `deploy/lan/kafka/debezium-slots.sh list|drop [--execute]`(비활성만 삭제, 슬롯 DB 로 접속) — 2026-11-05 LAN `list` 로 29개 확인
 
 ### 3-4. ELK 분리
-- [ ] 구성요소:
+- [x] 구성요소:
   - `elasticsearch` → `es-search`(pc3)·`es-logs`(pc4)
   - `logstash` → `logstash-search`(pc3, 파이프라인 `search-index`)·`logstash-logs`(pc4, 파이프라인 `logs`, 5044)
   - `es-init` 둘(검색 색인·별칭 / 로그 템플릿·ILM·데이터 뷰)
   - `es-exporter` 둘
   - `log-janitor` → es-logs
   - Kibana → es-logs
-- [ ] 각 ES 의 `action.auto_create_index`:
+- [x] 각 ES 의 `action.auto_create_index`:
   - 검색: 시스템 색인만
   - 로그: `pmart-logs-*`·시스템 색인
-- [ ] Filebeat(log-shipper) 대상 → `logstash-logs`
-- [ ] search-service: ES 주소 → `es-search`(설정 저장소 `search-service*.yml` + 시험 사본)
-- [ ] `search-index.env`(Logstash 그룹·색인 이름), `search-index.conf` 의 ES·Kafka 주소
-- [ ] 메모리 상한: 지금 ES·Logstash 상한(각 1.5 GiB) 기준
+- [x] Filebeat(log-shipper) 대상 → `logstash-logs`
+- [ ] search-service: ES 주소 → `es-search`(설정 저장소 `search-service*.yml` + 시험 사본) — 3-5 에서
+- [x] `search-index.env`(Logstash 그룹·색인 이름), `search-index.conf` 의 ES·Kafka 주소
+- [x] 메모리 상한: 지금 ES·Logstash 상한(각 1.5 GiB) 기준
+- 구현 메모(2026-11-05):
+  - 볼륨 새 이름 `essearch`·`eslogs`·`lssearch`·`lslogs`(옛 `esdata`·`lsdata` 는 pc4 에 롤백용으로 남음). ES 마다 `cluster.name` pmart-search·pmart-logs
+  - nori 설치는 es-search 만. `es-init.sh` 는 `PMART_ES_INIT=search|logs|all`(기본 all — 로컬 단일 ES 그대로)
+  - Logstash 파이프라인 목록 `pipelines-search.yml`·`pipelines-logs.yml`(옛 `pipelines.yml` 삭제). logstash-search 는 LAN 포트 없음
+  - Prometheus `elasticsearch` 작업에 대상 2개, 레이블 `cluster: search|logs`. Grafana 로그 데이터 소스 → `es-logs`(3-6 항목 일부)
+  - `watch.sh`: es-search·es-logs 클러스터 상태, logstash-logs 5044, logstash-search 는 SSH 로 API(9600) `status: green`. 검색 지표는 logstash-search·es-search
+  - `reindex.sh`: es-search·logstash-search·es-init-search
 
 ### 3-5. 설정 저장소 (worktree `.config-repo`)
 - [ ] `application-lan.yml`: `spring.kafka.bootstrap-servers` 3노드
@@ -125,7 +132,7 @@
   - 이름·임계값은 alert-rules.yml 규칙에 맞춘다
 - [ ] ES 경보(ElasticsearchUnreachable·ClusterRed·HeapHigh)를 클러스터별(`es-search`·`es-logs`)로
 - [ ] Grafana:
-  - 데이터 소스 `Logs (Elasticsearch)` → `http://es-logs:9200`
+  - [x] 데이터 소스 `Logs (Elasticsearch)` → `http://es-logs:9200`(3-4 때 함께)
   - 검색 대시보드의 ES 패널 → es-search exporter
 - [ ] `promtool check config` / `promtool test rules` 로 검사
 
