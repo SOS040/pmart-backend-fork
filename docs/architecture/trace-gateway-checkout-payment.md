@@ -73,8 +73,30 @@ LAN 실측(2026-11-04 20:10, 사가 `SAGA-7feb7eac-…`, trace `b9f8bad6…`, 55
 
 ### 3-1. 응답 시점 — 사가가 끝나길 기다리지 않는다
 
-1. order-service 는 orchestration 이 사가를 저장하고 202 를 주면 바로 앱에 202 를 돌려준다.
-2. orchestration 은 응답한 뒤 사가 실행기(`CheckoutSagaService.kick` → `executor.execute(advance)`)에서 재고·여력·슬롯·결제 시작을 비동기로 진행한다.
+202 응답이 두 번 있다. 받는 쪽이 다르다.
+
+```
+고객앱 ──POST /order-drafts/{id}/checkouts──▶ api-gateway ──▶ order-service
+                                                                  │ POST /internal/checkout-sagas (동기 HTTP, Kafka 아님)
+                                                                  ▼
+                                                           order-orchestration
+                                                                  │ checkout_saga 저장
+order-service ◀───────── ① 202 { sagaId } ────────────────────────┘
+      │ 주문서에 orderId·sagaId 기록
+      ▼
+고객앱 ◀── api-gateway ◀── ② 202 { status: ACCEPTED, resultId: orderId, nextAction: QUERY_RESULT }
+```
+
+| 응답 | 보내는 쪽 → 받는 쪽 | 값 | 그림 번호(`order-full-flow-steps.md`) |
+|---|---|---|---|
+| ① 202 | orchestration → **order-service** | `resultId` = sagaId | 24 |
+| ② 202 | order-service → api-gateway → **고객앱** | `resultId` = orderId | 26 |
+
+- ①은 `/internal` 경로다. 게이트웨이가 외부에 열지 않아 고객앱은 부를 수 없다.
+- sagaId 는 order-service 주문서에만 저장되고 고객앱에는 가지 않는다(5절의 "앱은 sagaId 를 모른다").
+
+1. order-service 는 ①을 받으면 바로 ②를 돌려준다. 고객앱이 받는 것은 ②뿐이다.
+2. orchestration 은 ①을 보낸 뒤 사가 실행기(`CheckoutSagaService.kick` → `executor.execute(advance)`)에서 재고·여력·슬롯·결제 시작을 비동기로 진행한다.
    - 실행기에서 오류가 나도 주기 작업(sweep)이 사가를 이어서 진행한다.
 3. 그래서 결제 진입 trace 의 span 대부분(참여자 호출)은 앱이 응답을 받은 **뒤에** 끝난다. Zipkin 에서 게이트웨이 span 이 사가 단계 span 보다 먼저 닫혀 보이는 것이 정상이다.
 4. 앱은 계약대로 `GET /order-drafts/{draftId}` 로 진행을 조회한다.
