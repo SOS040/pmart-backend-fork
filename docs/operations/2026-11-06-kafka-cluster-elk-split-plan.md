@@ -87,12 +87,12 @@
 - [x] 토픽 지표 textfile·`metrics/` 는 kafka-1(pc2)에만, `topics-init.sh` 는 세 노드 PC 모두에 복사.
 
 ### 3-3. 스크립트 (`deploy/lan/kafka/`, `elastic/`, `watch.sh`)
-- [ ] `topics-init.sh`: `--replication-factor 3`, `min.insync.replicas=2`, 이력 토픽의 무제한 보관 설정 유지
-- [ ] `topic-metrics.sh`: 토픽 크기를 **리더 복제본 기준**으로. 복제 3이면 `kafka-log-dirs` 합이 3배라 용량 경보가 잘못 울린다.
-- [ ] `backup.sh`·`backup-topic.sh`·`restore-topic.sh`: 접속 주소, 컨테이너 이름(`kafka-1` 등)
-- [ ] `reindex.sh`: Kafka·ES·Logstash 주소(검색 ES 로)
-- [ ] `watch.sh`: Kafka 3노드 각각 ApiVersions 점검
-- [ ] Debezium 커넥터 등록 스크립트(`connector-registrar`·`connectors-add-traceparent.sh` 등)와 복제 슬롯 정리 절차(아래 5장)
+- [x] `topics-init.sh`: 복제 `RF`(기본 3, 기존 토픽 복제 수가 다르면 멈춤), min ISR 은 브로커 기본 2, 이력 토픽 무제한 보관 유지. 대상은 특수 설정 토픽(이력 3 + `search-index.DLT`)만
+- [x] `topic-metrics.sh`: 토픽 크기를 **리더 복제본 기준**으로(파티션마다 가장 큰 복제본, 3브로커 모의 입력으로 확인). 복제 3이면 `kafka-log-dirs` 합이 3배라 용량 경보가 잘못 울린다.
+- [x] `backup.sh`·`backup-topic.sh`·`restore-topic.sh`: 컨테이너 `pmart-lan-kafka-1-1`(compose 서비스 kafka-1), `PMART_KAFKA_NODE` 로 다른 노드 선택. 컨테이너 안 localhost:9092 는 그대로(클러스터 조회). `kafka/README.md` 복원 명령도 새 컨테이너 이름
+- [x] `reindex.sh`: Kafka 부분(kafka-1 노드·컨테이너). ES·Logstash 이름은 3-4 에서
+- [x] `watch.sh`: Kafka 3노드 각각 ApiVersions 점검(placement 구성요소 kafka-1~3), 토픽 지표는 kafka-1
+- [x] Debezium: 등록 스크립트는 Kafka 주소를 쓰지 않아 변경 없음(템플릿 topic.creation 은 3-2). 슬롯 정리 `deploy/lan/kafka/debezium-slots.sh list|drop [--execute]`(비활성만 삭제, 슬롯 DB 로 접속) — 2026-11-05 LAN `list` 로 29개 확인
 
 ### 3-4. ELK 분리
 - [ ] 구성요소:
@@ -156,7 +156,7 @@
 2. **브랜치 합치기**: pmart-backend·pmart-config 의 `feature/kafka-cluster` → `main`, push. 필요한 이미지 jib 빌드·push.
 3. **앱과 Debezium Connect 정지**(config-server·eureka 포함 전체 앱).
 4. **기존 Kafka·Connect·ES·Logstash 종료.** 볼륨은 지우지 않고 남긴다(롤백용).
-5. **PostgreSQL 복제 슬롯(Debezium 슬롯) 삭제**: 서비스 DB 29개(pc2·pc3·pc4 Postgres)의 Debezium 슬롯을 `pg_drop_replication_slot` 으로 지운다. 업무 데이터와 outbox 테이블·publication 은 그대로 둔다. 슬롯 이름은 커넥터 설정을 따른다.
+5. **PostgreSQL 복제 슬롯(Debezium 슬롯) 삭제** — `deploy/lan/kafka/debezium-slots.sh drop` 으로 목록 확인 → `drop --execute` → `list` 가 0개: 서비스 DB 29개(pc2·pc3·pc4 Postgres)의 Debezium 슬롯을 `pg_drop_replication_slot` 으로 지운다. 업무 데이터와 outbox 테이블·publication 은 그대로 둔다. 슬롯 이름은 커넥터 설정을 따른다.
 6. **KRaft 클러스터 기동**: pc2·pc3·pc4 에 kafka-1~3. 컨트롤러 3·브로커 3, 쿼럼 리더 확인(`kafka-metadata-quorum.sh describe --status`).
 7. **토픽 생성·이력 복원**: `topics-init.sh`(복제 3, min ISR 2) → `restore-topic.sh` 로 이력 3개 복원 → 끝 오프셋을 백업과 대조.
 8. **Debezium**: Connect 기동(새 내부 토픽, 복제 3) → 커넥터 29개 재등록(새 슬롯 자동 생성) → 모두 RUNNING 확인.
