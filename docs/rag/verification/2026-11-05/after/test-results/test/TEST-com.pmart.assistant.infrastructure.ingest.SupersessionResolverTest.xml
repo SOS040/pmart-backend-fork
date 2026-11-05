@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.pmart.assistant.infrastructure.ingest.SupersessionResolverTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-11-05T02:25:54.120Z" hostname="DS603-13" time="0.011">
+  <properties/>
+  <testcase name="phase1ExclusionIsNotOverridden()" classname="com.pmart.assistant.infrastructure.ingest.SupersessionResolverTest" time="0.001"/>
+  <testcase name="multipleTargetsAndRanges_0031()" classname="com.pmart.assistant.infrastructure.ingest.SupersessionResolverTest" time="0.002"/>
+  <testcase name="noDecisionNumbersMeansProposedForWholeTarget_0024_to_0019()" classname="com.pmart.assistant.infrastructure.ingest.SupersessionResolverTest" time="0.001"/>
+  <testcase name="approvedWithoutDecisionNumbersIsNotActive()" classname="com.pmart.assistant.infrastructure.ingest.SupersessionResolverTest" time="0.0"/>
+  <testcase name="approvedAdrSupersedesOnlyNamedDecisions_0026_to_0011()" classname="com.pmart.assistant.infrastructure.ingest.SupersessionResolverTest" time="0.001"/>
+  <testcase name="proposedAdrNeverSupersedes_0025_to_0019()" classname="com.pmart.assistant.infrastructure.ingest.SupersessionResolverTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

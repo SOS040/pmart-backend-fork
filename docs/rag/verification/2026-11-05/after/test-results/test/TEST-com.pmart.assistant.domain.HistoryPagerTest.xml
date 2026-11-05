@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.pmart.assistant.domain.HistoryPagerTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-05T02:25:50.584Z" hostname="DS603-13" time="0.104">
+  <properties/>
+  <testcase name="exhaustiveNoGapNoDuplicateAndCursorMatchesNextPage()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.088"/>
+  <testcase name="emptyStore()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.001"/>
+  <testcase name="cursorWhenExactlyOneMoreVisibleRowExists()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.002"/>
+  <testcase name="readsAtMostOneBatchPastTheNeededRow()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.002"/>
+  <testcase name="caseABCD_hiddenNewestDoesNotLoseTheLastRow()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.002"/>
+  <testcase name="allHiddenGivesEmptyPageWithoutCursor()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.001"/>
+  <testcase name="noCursorWhenOnlyHiddenRowsRemain()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.001"/>
+  <testcase name="consecutiveHiddenRowsAreSkippedAcrossBatches()" classname="com.pmart.assistant.domain.HistoryPagerTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

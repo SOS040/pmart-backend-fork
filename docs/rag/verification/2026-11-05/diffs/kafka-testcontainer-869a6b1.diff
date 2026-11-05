@@ -1,0 +1,126 @@
+commit 869a6b1f9261f22af8cf2dd7f01d50e2f01d109d
+Author: heeji <bhj0310@gmail.com>
+Date:   Thu Nov 5 05:43:11 2026 +0900
+
+    fix(test): Kafka 시험 컨테이너가 부하 때 종료 코드 126 으로 죽던 시작 경쟁
+    
+    - Testcontainers 2.0.5 KafkaContainer 기본 명령은 시작 스크립트 파일이 생기자마자 실행한다
+      (while [ ! -f /tmp/testcontainers_start.sh ] ...; /tmp/testcontainers_start.sh). 복사가 끝나기 전(내용·실행 권한)에
+      실행하면 126 — 2026-11-04 전체 check 의 mfc-capacity ServiceBootIT 실패
+    - common-test KafkaTestContainer: 마지막 줄(/etc/kafka/docker/run)까지 쓰인 뒤 bash 로 읽혀 실행. KafkaContainerSupport·
+      PostgresKafkaContainerSupport·SearchFlowIT 가 사용, common-messaging StreamConsumerDlqIT 는 같은 명령(common-test 미사용)
+    - 영향: common-test 를 쓰는 모든 서비스 통합 시험(운영 코드 변경 없음). 전체 check --continue: 통합 시험 38개 작업 실행,
+      실패는 형식 검사(수정)와 auth-service 5건(Testcontainers 가 그 순간 Docker 를 찾지 못함 — 재실행 통과)뿐.
+      재실행: common-test·common-messaging check, auth·mfc-capacity·search integrationTest 통과
+    - MappingVersionFlowIT 간헐 실패는 0c181e6(2026-11-03)에서 이미 고쳤고 이후 전체 실행 2번 통과
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_01NR2tLKDyPAjpZkNmBtua5J
+
+diff --git a/libraries/common-messaging/src/integrationTest/java/com/pmart/common/messaging/StreamConsumerDlqIT.java b/libraries/common-messaging/src/integrationTest/java/com/pmart/common/messaging/StreamConsumerDlqIT.java
+index 69edfb6..1433d35 100644
+--- a/libraries/common-messaging/src/integrationTest/java/com/pmart/common/messaging/StreamConsumerDlqIT.java
++++ b/libraries/common-messaging/src/integrationTest/java/com/pmart/common/messaging/StreamConsumerDlqIT.java
+@@ -70,7 +70,15 @@ class StreamConsumerDlqIT {
+           .withCommand("postgres", "-c", "wal_level=logical");
+ 
+   @Container @ServiceConnection
+-  static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.1.1");
++  // common-test KafkaTestContainer 와 같은 시작 명령(이 라이브러리는 common-test 를 쓰지 않는다) — 기본 명령은 시작 스크립트가
++  // 다 복사되기 전에 실행해 부하 때 126 으로 죽는다
++  static final KafkaContainer KAFKA =
++      new KafkaContainer("apache/kafka:4.1.1")
++          .withCommand(
++              "sh",
++              "-c",
++              "until grep -q /etc/kafka/docker/run /tmp/testcontainers_start.sh 2>/dev/null; do sleep 0.1; done;"
++                  + " exec bash /tmp/testcontainers_start.sh");
+ 
+   /** Kafka 바인더는 @ServiceConnection 연결 정보가 아니라 이 속성을 읽는다. */
+   @DynamicPropertySource
+diff --git a/libraries/common-test/src/main/java/com/pmart/common/test/KafkaContainerSupport.java b/libraries/common-test/src/main/java/com/pmart/common/test/KafkaContainerSupport.java
+index 0ce9a98..1e7054e 100644
+--- a/libraries/common-test/src/main/java/com/pmart/common/test/KafkaContainerSupport.java
++++ b/libraries/common-test/src/main/java/com/pmart/common/test/KafkaContainerSupport.java
+@@ -15,8 +15,7 @@ import org.testcontainers.kafka.KafkaContainer;
+ public abstract class KafkaContainerSupport {
+ 
+   @Container @ServiceConnection
+-  protected static final KafkaContainer KAFKA =
+-      new KafkaContainer(PostgresKafkaContainerSupport.KAFKA_IMAGE);
++  protected static final KafkaContainer KAFKA = KafkaTestContainer.create();
+ 
+   static {
+     KAFKA.withReuse(true);
+diff --git a/libraries/common-test/src/main/java/com/pmart/common/test/KafkaTestContainer.java b/libraries/common-test/src/main/java/com/pmart/common/test/KafkaTestContainer.java
+new file mode 100644
+index 0000000..999498a
+--- /dev/null
++++ b/libraries/common-test/src/main/java/com/pmart/common/test/KafkaTestContainer.java
+@@ -0,0 +1,28 @@
++package com.pmart.common.test;
++
++import org.testcontainers.kafka.KafkaContainer;
++
++/**
++ * 통합 시험용 Kafka 컨테이너(apache/kafka). 모든 시험은 {@code new KafkaContainer(...)} 대신 이것으로 만든다.
++ *
++ * <p>Testcontainers 2.0 의 기본 시작 명령은 {@code while [ ! -f /tmp/testcontainers_start.sh ]; do sleep
++ * 0.1; done; /tmp/testcontainers_start.sh} 다. 스크립트는 컨테이너가 뜬 뒤 복사되는데, 파일이 생기자마자 실행하므로 복사(내용·실행 권한)가
++ * 끝나기 전에 실행하면 셸이 126(실행할 수 없음)으로 끝나고 컨테이너가 죽는다. 부하가 클 때(전체 병렬 시험·다른 컨테이너 동시 실행)만 드러난다 — 2026-11-04
++ * 전체 check 에서 mfc-capacity ServiceBootIT 가 이렇게 실패했다. 여기서는 스크립트 마지막 줄({@code
++ * /etc/kafka/docker/run})까지 쓰인 것을 확인한 뒤 실행 권한이 필요 없게 {@code bash} 로 읽혀 실행한다.
++ */
++public final class KafkaTestContainer {
++
++  public static final String IMAGE = "apache/kafka:4.1.1";
++
++  /** 시작 스크립트가 다 쓰인 뒤 bash 로 실행한다(위 설명). */
++  public static final String SAFE_START =
++      "until grep -q /etc/kafka/docker/run /tmp/testcontainers_start.sh 2>/dev/null; do sleep 0.1; done;"
++          + " exec bash /tmp/testcontainers_start.sh";
++
++  private KafkaTestContainer() {}
++
++  public static KafkaContainer create() {
++    return new KafkaContainer(IMAGE).withCommand("sh", "-c", SAFE_START);
++  }
++}
+diff --git a/libraries/common-test/src/main/java/com/pmart/common/test/PostgresKafkaContainerSupport.java b/libraries/common-test/src/main/java/com/pmart/common/test/PostgresKafkaContainerSupport.java
+index 9021eb8..e628332 100644
+--- a/libraries/common-test/src/main/java/com/pmart/common/test/PostgresKafkaContainerSupport.java
++++ b/libraries/common-test/src/main/java/com/pmart/common/test/PostgresKafkaContainerSupport.java
+@@ -17,10 +17,10 @@ import org.testcontainers.kafka.KafkaContainer;
+ @Testcontainers
+ public abstract class PostgresKafkaContainerSupport extends PostgresContainerSupport {
+ 
+-  public static final String KAFKA_IMAGE = "apache/kafka:4.1.1";
++  public static final String KAFKA_IMAGE = KafkaTestContainer.IMAGE;
+ 
+   @Container @ServiceConnection
+-  protected static final KafkaContainer KAFKA = new KafkaContainer(KAFKA_IMAGE);
++  protected static final KafkaContainer KAFKA = KafkaTestContainer.create();
+ 
+   static {
+     KAFKA.withReuse(true);
+diff --git a/services/search-service/src/integrationTest/java/com/pmart/search/SearchFlowIT.java b/services/search-service/src/integrationTest/java/com/pmart/search/SearchFlowIT.java
+index 436588b..404325b 100644
+--- a/services/search-service/src/integrationTest/java/com/pmart/search/SearchFlowIT.java
++++ b/services/search-service/src/integrationTest/java/com/pmart/search/SearchFlowIT.java
+@@ -8,7 +8,6 @@ import static org.assertj.core.api.Assertions.assertThat;
+ import com.github.tomakehurst.wiremock.WireMockServer;
+ import com.github.tomakehurst.wiremock.client.WireMock;
+ import com.pmart.common.test.EventEnvelopeFixtures;
+-import com.pmart.common.test.PostgresKafkaContainerSupport;
+ import java.nio.file.Path;
+ import java.time.Duration;
+ import java.time.Instant;
+@@ -64,7 +63,7 @@ class SearchFlowIT {
+ 
+   @Container @ServiceConnection
+   static final KafkaContainer KAFKA =
+-      new KafkaContainer(PostgresKafkaContainerSupport.KAFKA_IMAGE)
++      com.pmart.common.test.KafkaTestContainer.create()
+           .withNetwork(NET)
+           .withListener("kafka:19092");
+ 

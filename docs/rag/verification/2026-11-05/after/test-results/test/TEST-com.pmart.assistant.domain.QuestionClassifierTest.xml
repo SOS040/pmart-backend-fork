@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.pmart.assistant.domain.QuestionClassifierTest" tests="29" skipped="0" failures="0" errors="0" timestamp="2026-11-05T02:25:50.689Z" hostname="DS603-13" time="0.235">
+  <properties/>
+  <testcase name="&quot;취소 처리 절차를 알려줘&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.034"/>
+  <testcase name="&quot;재고 몇 개 이하에서 보충하는 정책인가?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;환불 승인은 누가 하나요?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;주문 취소는 언제까지 할 수 있어?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;예약배달 시간 변경 기준이 뭐야&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;라이더 인계 뒤 취소가 들어오면 어떻게 처리해?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.002"/>
+  <testcase name="&quot;ORD-123 같은 주문의 취소 절차를 설명해줘&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;가격 변경 승인선은 어떻게 되나요?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.002"/>
+  <testcase name="&quot;봉투값은 얼마야?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;결품이 나면 고객에게 어떻게 안내해?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;반품 회수 흐름 정리해줘&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.002"/>
+  <testcase name="&quot;ORD-123을 취소해줘&quot; → &quot;OUT_OF_SCOPE&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;CLM-9 환불해&quot; → &quot;OUT_OF_SCOPE&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;재고 줄여줘&quot; → &quot;OUT_OF_SCOPE&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;PA-77 승인해 주세요&quot; → &quot;OUT_OF_SCOPE&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;SKU12345678 가격 올려줘&quot; → &quot;OUT_OF_SCOPE&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;이 주문 배차해줘&quot; → &quot;OUT_OF_SCOPE&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.002"/>
+  <testcase name="&quot;ORD-55 반품 처리해줘&quot; → &quot;OUT_OF_SCOPE&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;ORD-123 지금 어디까지 왔어?&quot; → &quot;REALTIME_DATA_REQUIRED&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;내 주문 상태 알려줘 지금&quot; → &quot;REALTIME_DATA_REQUIRED&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;CLM-9 환불 처리됐어?&quot; → &quot;REALTIME_DATA_REQUIRED&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;SKU12345678 재고 몇 개 남았어&quot; → &quot;REALTIME_DATA_REQUIRED&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="&quot;PAY-1001 결제 현재 상태 확인해줘&quot; → &quot;REALTIME_DATA_REQUIRED&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.0"/>
+  <testcase name="&quot;주문 상태는 어떤 것들이 있어?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.0"/>
+  <testcase name="&quot;현재 정책상 분할 기준은 몇 g이야?&quot; → &quot;POLICY&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="이력 질문: &quot;예전에는 서비스 토큰을 어떻게 발급했어?&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.006"/>
+  <testcase name="이력 질문: &quot;검색 색인 방식이 왜 바뀌었어?&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <testcase name="이력 질문: &quot;변경 전 설정 저장소 규칙은?&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.002"/>
+  <testcase name="이력 질문: &quot;서비스 토큰 정책 알려줘&quot;" classname="com.pmart.assistant.domain.QuestionClassifierTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

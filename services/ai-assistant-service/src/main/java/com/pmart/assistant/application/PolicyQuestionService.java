@@ -1,5 +1,6 @@
 package com.pmart.assistant.application;
 
+import com.pmart.assistant.domain.HistoryPager;
 import com.pmart.assistant.domain.QuestionClassifier;
 import com.pmart.assistant.domain.QuestionClassifier.Classification;
 import com.pmart.assistant.domain.QuestionClassifier.Intent;
@@ -314,45 +315,41 @@ public class PolicyQuestionService {
         throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
       }
     }
-    List<HistoryItem> items = new java.util.ArrayList<>();
-    AnswerRow last = null;
-    boolean more = false;
-    // 권한으로 빠지는 행이 있어도 size 를 채우게 몇 번 더 읽는다
-    for (int round = 0; round < 5 && items.size() < size; round++) {
-      List<AnswerRow> rows =
-          answers.listMine(sourceHeader, p.subject(), beforeAt, beforeId, size + 1);
-      more = rows.size() > size;
-      for (AnswerRow r : rows.subList(0, Math.min(size, rows.size()))) {
-        last = r;
-        if (r.state() == AnswerStore.State.COMPLETED) {
-          List<CitationRecord> cites = citations(r);
-          if (!access.stillAllowed(
-              p, r.askerSubject(), cites.stream().map(CitationRecord::accessScope).toList())) {
-            continue;
-          }
-          items.add(new HistoryItem(r, cites.size()));
-        } else {
-          items.add(new HistoryItem(r, 0));
-        }
-        if (items.size() >= size) {
-          break;
-        }
-      }
-      if (!more || last == null) {
-        break;
-      }
-      beforeAt = last.createdAt();
-      beforeId = last.answerId();
-    }
+    Instant fromAt = beforeAt;
+    String fromId = beforeId;
+    // 권한이 사라진 완료 답변은 건너뛴다. 커서는 다음 페이지에 보이는 행이 있을 때만(HistoryPager)
+    HistoryPager.Page<AnswerRow, HistoryItem> page =
+        HistoryPager.page(
+            size,
+            null,
+            (after, limit) ->
+                after == null
+                    ? answers.listMine(sourceHeader, p.subject(), fromAt, fromId, limit)
+                    : answers.listMine(
+                        sourceHeader, p.subject(), after.createdAt(), after.answerId(), limit),
+            r -> historyItem(r, p));
+    AnswerRow last = page.nextAfter();
     String next =
-        more && last != null
-            ? java.util.Base64.getUrlEncoder()
+        last == null
+            ? null
+            : java.util.Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(
                     (last.createdAt() + "|" + last.answerId())
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            : null;
-    return new HistoryPage(items, next);
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    return new HistoryPage(page.items(), next);
+  }
+
+  /** 목록에 보일 항목. 완료 답변은 현재 권한을 다시 확인해 볼 수 없으면 비어 있다. */
+  private java.util.Optional<HistoryItem> historyItem(AnswerRow r, PmartPrincipal p) {
+    if (r.state() != AnswerStore.State.COMPLETED) {
+      return java.util.Optional.of(new HistoryItem(r, 0));
+    }
+    List<CitationRecord> cites = citations(r);
+    return access.stillAllowed(
+            p, r.askerSubject(), cites.stream().map(CitationRecord::accessScope).toList())
+        ? java.util.Optional.of(new HistoryItem(r, cites.size()))
+        : java.util.Optional.empty();
   }
 
   private Outcome reread(String answerId, PmartPrincipal p, ReadMode mode) {

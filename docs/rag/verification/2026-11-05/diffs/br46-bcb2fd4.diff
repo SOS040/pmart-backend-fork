@@ -1,0 +1,336 @@
+commit bcb2fd4704fb25acbeaad63da3ecc7b5ee25b5d0
+Author: heeji <bhj0310@gmail.com>
+Date:   Wed Nov 4 20:46:29 2026 +0900
+
+    fix: 클라이언트 11-04 요청 BR-44~48 — 큰 업로드 OOM, 검색 미취급 페이지 채우기, 승인 행 null 생략, 콘텐츠 신규/갱신, 질문 목록
+    
+    - BR-48: product·product-content·pricing 일괄 업로드를 UploadedBundle(스트림 해시 + 다시 열기)로 — getBytes() 로 70~220MB
+      묶음을 읽다 direct buffer OOM(500). 이미 있는 카테고리만 → 422 NOTHING_TO_ADD 시험
+    - BR-47: ProductSearch 가 미취급을 뺀 만큼 다음 문서로 채움(최대 5번), 끝까지 읽으면 total 정확. search 계약 0.1.1 설명
+    - BR-45: approval ApprovalLine 의 값 없는 수량·금액은 null 대신 생략(계약 Money·integer 는 nullable 아님)
+    - BR-44: 콘텐츠 초안 registration NEW/UPDATE + publishedContentVersion·publishedDraftId·publishedAt, 승인 행 attributes.
+      product-content 계약 0.1.1
+    - BR-46: GET /assistant/question-history(본인·출처 범위, 현재 권한 재검사). ai-assistant 계약 1.1.0
+    - 회신 docs/handoff/2026-11-04-clients-reply-br44-br48.md. 시험: 6개 서비스 check 통과
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+    Claude-Session: https://claude.ai/code/session_01NR2tLKDyPAjpZkNmBtua5J
+
+diff --git a/contracts/openapi/ai-assistant-service.yaml b/contracts/openapi/ai-assistant-service.yaml
+index 65a181b..a05b572 100644
+--- a/contracts/openapi/ai-assistant-service.yaml
++++ b/contracts/openapi/ai-assistant-service.yaml
+@@ -1,7 +1,7 @@
+ openapi: 3.1.0
+ info:
+   title: ai-assistant-service
+-  version: 1.0.0
++  version: 1.1.0
+   x-stage: 3
+   x-stage-note: 1차(문서 질의응답·근거 표시)를 2026-11-04 앞당겨 구현 — ADR-0036. 도메인 API 호출·명령 위임은 후속.
+   description: |
+@@ -141,6 +141,27 @@ paths:
+             application/problem+json:
+               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+ 
++  /assistant/question-history:
++    get:
++      tags: [assistant]
++      summary: 내 질문 목록(최근 순) — 질문한 운영자 본인 + 출처(X-Source-System) 범위 (BR-46, 2026-11-04)
++      description: |
++        질문 원문은 기본으로 저장하지 않는다(ADR-0036, pmart.assistant.answers.store-question=false) → 그때 `question` 은 null 이고
++        `answerPreview`(답변 앞부분)로 구분한다. 완료 답변은 현재 권한(인용 근거의 접근 범위)을 다시 확인해, 지금 볼 수 없는 답변은 목록에서 뺀다.
++        상세는 `GET /assistant/policy-questions/{answerId}`.
++      operationId: listMyPolicyQuestions
++      parameters:
++        - $ref: '_common.yaml#/components/parameters/SourceSystem'
++        - $ref: '_common.yaml#/components/parameters/PageSize'
++        - $ref: '_common.yaml#/components/parameters/PageCursor'
++      responses:
++        '200':
++          description: OK
++          content:
++            application/json:
++              schema: { $ref: '#/components/schemas/QuestionHistoryPage' }
++        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
++
+   /assistant/policy-questions/{answerId}:
+     get:
+       tags: [assistant]
+@@ -268,6 +289,25 @@ components:
+             chat: { type: [string, 'null'] }
+             embedding: { type: [string, 'null'] }
+ 
++    QuestionHistoryItem:
++      type: object
++      required: [answerId, requestId, state, askedAt]
++      properties:
++        answerId: { type: string }
++        requestId: { type: string }
++        state: { $ref: '#/components/schemas/AnswerState' }
++        question: { type: [string, 'null'], description: 원문 저장 설정일 때만(기본 null) }
++        answerPreview: { type: [string, 'null'], description: 답변 앞부분(최대 120자, 완료 답변만) }
++        answerMode: { $ref: '#/components/schemas/AnswerMode' }
++        citationCount: { type: integer }
++        askedAt: { type: string, format: date-time }
++    QuestionHistoryPage:
++      type: object
++      required: [items, page]
++      properties:
++        items: { type: array, items: { $ref: '#/components/schemas/QuestionHistoryItem' } }
++        page: { $ref: '_common.yaml#/components/schemas/Page' }
++
+   examples:
+     Answered:
+       summary: 기준선 모드 — 의미 검색·생성 품질 미검증
+diff --git a/services/ai-assistant-service/CLAUDE.md b/services/ai-assistant-service/CLAUDE.md
+index e5c0853..77e09dd 100644
+--- a/services/ai-assistant-service/CLAUDE.md
++++ b/services/ai-assistant-service/CLAUDE.md
+@@ -36,4 +36,5 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
+ 로컬 포트 8508.
+ 
+ ## 상태
++- 내 질문 목록 `GET /assistant/question-history`(BR-46, 계약 1.1.0) — 본인·출처 범위, 완료 답변은 현재 권한 재검사 후만.
+ - 1차 구현(2026-11-04, ADR-0036): 기준선(해시 임베딩 + 발췌). LAN 배포 안 함. 외부 모델 연결 안 함.
+diff --git a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/AssistantITBase.java b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/AssistantITBase.java
+index ba74051..540d253 100644
+--- a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/AssistantITBase.java
++++ b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/AssistantITBase.java
+@@ -200,6 +200,18 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
+                     res.getStatusCode().value(), res.getBody().readAllBytes(), res.getHeaders()));
+   }
+ 
++  Http history(String token, String source, String query) {
++    return RestClient.create()
++        .get()
++        .uri("http://localhost:" + port + "/api/v1/assistant/question-history" + query)
++        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
++        .header("X-Source-System", source)
++        .exchange(
++            (req, res) ->
++                toHttp(
++                    res.getStatusCode().value(), res.getBody().readAllBytes(), res.getHeaders()));
++  }
++
+   Http getAnswer(String token, String answerId) {
+     return RestClient.create()
+         .get()
+diff --git a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java
+index 73a364e..85e23d8 100644
+--- a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java
++++ b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java
+@@ -393,6 +393,42 @@ class PolicyQuestionFlowIT extends AssistantITBase {
+     assertThat(r.text("answer")).contains("2026-10-31 기준 구현 기록 — 현재 상태는 이 기록만으로 확인할 수 없음");
+   }
+ 
++  // ---- 내 질문 목록(BR-46) ----
++
++  @Test
++  void questionHistoryIsOwnScopeNewestFirstPagedAndPermissionRechecked() {
++    ingest();
++    Http a = ask(operator("op-h"), key(), "봉투값은 얼마인가요?");
++    ask(operator("op-h"), key(), "ORD-123 지금 어디까지 왔어?");
++    Http c = ask(operator("op-h"), key(), "분할 배송 기준은 몇 g 인가요?");
++    ask(operator("op-other"), key(), "봉투값은 얼마인가요?");
++
++    Http first = history(operator("op-h"), "backoffice-web", "?size=2");
++    assertThat(first.status()).isEqualTo(200);
++    assertThat(first.body().path("items")).hasSize(2);
++    assertThat(first.body().path("items").get(0).path("answerId").asString())
++        .isEqualTo(c.text("answerId"));
++    assertThat(first.body().path("items").get(1).path("state").asString())
++        .isEqualTo("REALTIME_DATA_REQUIRED");
++    assertThat(first.body().path("items").get(0).path("question").isNull()).isTrue(); // 원문 미저장(기본)
++    assertThat(first.body().path("items").get(0).path("answerPreview").asString()).isNotBlank();
++    String cursor = first.body().path("page").path("nextCursor").asString();
++    Http second = history(operator("op-h"), "backoffice-web", "?size=2&cursor=" + cursor);
++    assertThat(second.body().path("items")).hasSize(1);
++    assertThat(second.body().path("items").get(0).path("answerId").asString())
++        .isEqualTo(a.text("answerId"));
++    assertThat(second.body().path("page").path("nextCursor").isNull()).isTrue();
++
++    // 출처가 다르면 403, 다른 운영자 답변은 안 보인다
++    assertThat(history(operator("op-h"), "ops-console", "").status()).isEqualTo(403);
++    assertThat(history(operator("op-other"), "backoffice-web", "").body().path("items")).hasSize(1);
++    // 권한이 사라진 완료 답변은 목록에서도 빠진다
++    jdbc.update(
++        "UPDATE policy_answer SET citations = regexp_replace(citations::text, '\"accessScope\":\\s*\"operator\"', '\"accessScope\": \"hq-only\"', 'g')::jsonb WHERE answer_id = ?",
++        a.text("answerId"));
++    assertThat(history(operator("op-h"), "backoffice-web", "").body().path("items")).hasSize(2);
++  }
++
+   // ---- 보존 ----
+ 
+   @Test
+diff --git a/services/ai-assistant-service/src/main/java/com/pmart/assistant/api/AssistantController.java b/services/ai-assistant-service/src/main/java/com/pmart/assistant/api/AssistantController.java
+index 64eaffa..43546b3 100644
+--- a/services/ai-assistant-service/src/main/java/com/pmart/assistant/api/AssistantController.java
++++ b/services/ai-assistant-service/src/main/java/com/pmart/assistant/api/AssistantController.java
+@@ -64,6 +64,45 @@ public class AssistantController implements AssistantApi {
+     return respond(service.getAnswer(PmartPrincipal.current().orElse(null), answerId));
+   }
+ 
++  @Override
++  public ResponseEntity<com.pmart.assistant.api.generated.model.QuestionHistoryPage>
++      listMyPolicyQuestions(
++          String xSourceSystem, Integer size, @org.jspecify.annotations.Nullable String cursor) {
++    var page = service.history(PmartPrincipal.current().orElse(null), xSourceSystem, size, cursor);
++    var items =
++        page.items().stream()
++            .map(
++                i -> {
++                  var r = i.row();
++                  boolean done =
++                      r.state() == com.pmart.assistant.infrastructure.AnswerStore.State.COMPLETED;
++                  String answer = r.answer();
++                  return new com.pmart.assistant.api.generated.model.QuestionHistoryItem()
++                      .answerId(r.answerId())
++                      .requestId(r.requestId())
++                      .state(done ? AnswerState.fromValue(r.resultState()) : AnswerState.PROCESSING)
++                      .question(r.question())
++                      .answerPreview(
++                          done && answer != null
++                              ? (answer.length() > 120 ? answer.substring(0, 120) : answer)
++                              : null)
++                      .answerMode(
++                          done && r.answerMode() != null
++                              ? AnswerMode.fromValue(r.answerMode())
++                              : AnswerMode.NONE)
++                      .citationCount(i.citationCount())
++                      .askedAt(odt(r.createdAt()));
++                })
++            .toList();
++    return ResponseEntity.ok(
++        new com.pmart.assistant.api.generated.model.QuestionHistoryPage()
++            .items(items)
++            .page(
++                new com.pmart.assistant.api.generated.model.QuestionHistoryPagePage()
++                    .nextCursor(page.nextCursor())
++                    .size(items.size())));
++  }
++
+   private ResponseEntity<PolicyAnswer> respond(Outcome outcome) {
+     PolicyAnswer dto = toDto(outcome);
+     if (outcome instanceof Outcome.Processing) {
+diff --git a/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java b/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java
+index daef685..0de59cc 100644
+--- a/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java
++++ b/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java
+@@ -287,6 +287,74 @@ public class PolicyQuestionService {
+     return stored(row, p, ReadMode.GET);
+   }
+ 
++  /** 내 질문 목록 한 줄(BR-46). */
++  public record HistoryItem(AnswerRow row, int citationCount) {}
++
++  public record HistoryPage(List<HistoryItem> items, @Nullable String nextCursor) {}
++
++  /** 내 질문 목록(BR-46): 출처 + 본인 범위, 최근 순. 완료 답변은 현재 권한을 다시 확인해 볼 수 없는 것은 뺀다(저장 답변 반환 경로와 같은 규칙). */
++  public HistoryPage history(
++      @Nullable PmartPrincipal principal,
++      @Nullable String sourceHeader,
++      int size,
++      @Nullable String cursor) {
++    PmartPrincipal p = requireOperatorAndSource(principal, sourceHeader);
++    Instant beforeAt = null;
++    String beforeId = null;
++    if (cursor != null && !cursor.isBlank()) {
++      try {
++        String raw =
++            new String(
++                java.util.Base64.getUrlDecoder().decode(cursor),
++                java.nio.charset.StandardCharsets.UTF_8);
++        int bar = raw.indexOf('|');
++        beforeAt = Instant.parse(raw.substring(0, bar));
++        beforeId = raw.substring(bar + 1);
++      } catch (RuntimeException e) {
++        throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
++      }
++    }
++    List<HistoryItem> items = new java.util.ArrayList<>();
++    AnswerRow last = null;
++    boolean more = false;
++    // 권한으로 빠지는 행이 있어도 size 를 채우게 몇 번 더 읽는다
++    for (int round = 0; round < 5 && items.size() < size; round++) {
++      List<AnswerRow> rows =
++          answers.listMine(sourceHeader, p.subject(), beforeAt, beforeId, size + 1);
++      more = rows.size() > size;
++      for (AnswerRow r : rows.subList(0, Math.min(size, rows.size()))) {
++        last = r;
++        if (r.state() == AnswerStore.State.COMPLETED) {
++          List<CitationRecord> cites = citations(r);
++          if (!access.stillAllowed(
++              p, r.askerSubject(), cites.stream().map(CitationRecord::accessScope).toList())) {
++            continue;
++          }
++          items.add(new HistoryItem(r, cites.size()));
++        } else {
++          items.add(new HistoryItem(r, 0));
++        }
++        if (items.size() >= size) {
++          break;
++        }
++      }
++      if (!more || last == null) {
++        break;
++      }
++      beforeAt = last.createdAt();
++      beforeId = last.answerId();
++    }
++    String next =
++        more && last != null
++            ? java.util.Base64.getUrlEncoder()
++                .withoutPadding()
++                .encodeToString(
++                    (last.createdAt() + "|" + last.answerId())
++                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))
++            : null;
++    return new HistoryPage(items, next);
++  }
++
+   private Outcome reread(String answerId, PmartPrincipal p, ReadMode mode) {
+     return stored(answers.findById(answerId).orElseThrow(PolicyQuestionService::notFound), p, mode);
+   }
+diff --git a/services/ai-assistant-service/src/main/java/com/pmart/assistant/infrastructure/AnswerStore.java b/services/ai-assistant-service/src/main/java/com/pmart/assistant/infrastructure/AnswerStore.java
+index 1c9fab3..97f5c99 100644
+--- a/services/ai-assistant-service/src/main/java/com/pmart/assistant/infrastructure/AnswerStore.java
++++ b/services/ai-assistant-service/src/main/java/com/pmart/assistant/infrastructure/AnswerStore.java
+@@ -213,6 +213,37 @@ public class AnswerStore {
+         .findFirst();
+   }
+ 
++  /**
++   * 내 질문 목록(BR-46): (출처, 주체) 범위, 최근 순. 커서 = (created_at, answer_id) 이전.
++   *
++   * @param limit 한 번에 읽을 행 수(호출자가 size+1 로 다음 여부를 판단)
++   */
++  public List<AnswerRow> listMine(
++      String sourceSystem,
++      String subject,
++      @Nullable Instant beforeCreatedAt,
++      @Nullable String beforeAnswerId,
++      int limit) {
++    if (beforeCreatedAt == null || beforeAnswerId == null) {
++      return jdbc.query(
++          "SELECT * FROM policy_answer WHERE source_system = ? AND asker_subject = ?"
++              + " ORDER BY created_at DESC, answer_id DESC LIMIT ?",
++          AnswerStore::row,
++          sourceSystem,
++          subject,
++          limit);
++    }
++    return jdbc.query(
++        "SELECT * FROM policy_answer WHERE source_system = ? AND asker_subject = ?"
++            + " AND (created_at, answer_id) < (?, ?) ORDER BY created_at DESC, answer_id DESC LIMIT ?",
++        AnswerStore::row,
++        sourceSystem,
++        subject,
++        Timestamp.from(beforeCreatedAt),
++        beforeAnswerId,
++        limit);
++  }
++
+   /** 보존 정리: 오래된 COMPLETED·FAILED_RETRYABLE 만(PROCESSING 은 지우지 않는다). */
+   public int deleteFinishedBefore(Instant cutoff) {
+     return jdbc.update(

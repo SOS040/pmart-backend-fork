@@ -429,6 +429,37 @@ class PolicyQuestionFlowIT extends AssistantITBase {
     assertThat(history(operator("op-h"), "backoffice-web", "").body().path("items")).hasSize(2);
   }
 
+  /**
+   * BR-46 페이지 회귀(사례 A·B·C·D, 2026-11-05): 최근 답변 A 의 권한이 사라졌을 때 size 2 로 넘기면 [B, C] → [D] 로 끝까지 보이고,
+   * 마지막 쪽에만 nextCursor 가 없다. 고치기 전에는 1쪽 뒤 nextCursor 가 없어 D 가 빠졌다.
+   */
+  @Test
+  void questionHistoryKeepsPagingWhenTheNewestAnswerIsHidden() {
+    ingest();
+    Http d = ask(operator("op-p"), key(), "분할 배송 기준은 몇 g 인가요?");
+    Http c = ask(operator("op-p"), key(), "봉투값은 얼마인가요?");
+    Http b = ask(operator("op-p"), key(), "ORD-123 지금 어디까지 왔어?");
+    Http a = ask(operator("op-p"), key(), "봉투값은 주문당 얼마인가요?");
+    jdbc.update(
+        "UPDATE policy_answer SET citations = regexp_replace(citations::text, '\"accessScope\":\\s*\"operator\"', '\"accessScope\": \"hq-only\"', 'g')::jsonb WHERE answer_id = ?",
+        a.text("answerId"));
+
+    Http first = history(operator("op-p"), "backoffice-web", "?size=2");
+    assertThat(first.body().path("items")).hasSize(2);
+    assertThat(first.body().path("items").get(0).path("answerId").asString())
+        .isEqualTo(b.text("answerId"));
+    assertThat(first.body().path("items").get(1).path("answerId").asString())
+        .isEqualTo(c.text("answerId"));
+    String cursor = first.body().path("page").path("nextCursor").asString(null);
+    assertThat(cursor).as("D 가 남았으므로 커서가 있다").isNotNull();
+
+    Http second = history(operator("op-p"), "backoffice-web", "?size=2&cursor=" + cursor);
+    assertThat(second.body().path("items")).hasSize(1);
+    assertThat(second.body().path("items").get(0).path("answerId").asString())
+        .isEqualTo(d.text("answerId"));
+    assertThat(second.body().path("page").path("nextCursor").isNull()).isTrue();
+  }
+
   // ---- 보존 ----
 
   @Test

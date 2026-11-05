@@ -36,5 +36,6 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 로컬 포트 8508.
 
 ## 상태
-- 내 질문 목록 `GET /assistant/question-history`(BR-46, 계약 1.1.0) — 본인·출처 범위, 완료 답변은 현재 권한 재검사 후만.
+- 내 질문 목록 `GET /assistant/question-history`(BR-46, 계약 1.1.0) — 본인·출처 범위, 완료 답변은 현재 권한 재검사 후만. 쪽 계산은 `domain/HistoryPager`: 보이는 행을 size+1 개째까지 찾아 그때만 nextCursor(2026-11-05 결함 수정 — 숨김 행 뒤 누락).
+- 검색 평가 `RetrievalEvalIT`: 문서 경로 기준(`expected`) + 절 기준(`sections`, 원문을 읽어 정함). 정답 절은 검색 결과에 맞춰 넓히지 않는다.
 - 1차 구현(2026-11-04, ADR-0036): 기준선(해시 임베딩 + 발췌). LAN 배포 안 함. 외부 모델 연결 안 함.

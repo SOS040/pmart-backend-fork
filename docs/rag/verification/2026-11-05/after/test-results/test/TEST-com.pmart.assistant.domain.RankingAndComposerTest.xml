@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.pmart.assistant.domain.RankingAndComposerTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-05T02:25:50.926Z" hostname="DS603-13" time="0.016">
+  <properties/>
+  <testcase name="belowThresholdIsNotLiftedByAuthority()" classname="com.pmart.assistant.domain.RankingAndComposerTest" time="0.003"/>
+  <testcase name="authorityAndPrecedenceOrderCandidatesAboveThreshold()" classname="com.pmart.assistant.domain.RankingAndComposerTest" time="0.001"/>
+  <testcase name="firstChunkIsKeptWholeEvenIfOverLimit()" classname="com.pmart.assistant.domain.RankingAndComposerTest" time="0.001"/>
+  <testcase name="supersessionProposedBringsProposingDocument()" classname="com.pmart.assistant.domain.RankingAndComposerTest" time="0.001"/>
+  <testcase name="proposalOnlyGetsNoSettledPrefix()" classname="com.pmart.assistant.domain.RankingAndComposerTest" time="0.001"/>
+  <testcase name="composerKeepsWholeChunksAndLimitsByCount()" classname="com.pmart.assistant.domain.RankingAndComposerTest" time="0.001"/>
+  <testcase name="supersededAndImplementationLabels()" classname="com.pmart.assistant.domain.RankingAndComposerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

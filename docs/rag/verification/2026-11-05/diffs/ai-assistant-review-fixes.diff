@@ -1,0 +1,637 @@
+diff --git a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java
+index 85e23d8..3ae45ce 100644
+--- a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java
++++ b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/PolicyQuestionFlowIT.java
+@@ -429,6 +429,37 @@ class PolicyQuestionFlowIT extends AssistantITBase {
+     assertThat(history(operator("op-h"), "backoffice-web", "").body().path("items")).hasSize(2);
+   }
+ 
++  /**
++   * BR-46 페이지 회귀(사례 A·B·C·D, 2026-11-05): 최근 답변 A 의 권한이 사라졌을 때 size 2 로 넘기면 [B, C] → [D] 로 끝까지 보이고,
++   * 마지막 쪽에만 nextCursor 가 없다. 고치기 전에는 1쪽 뒤 nextCursor 가 없어 D 가 빠졌다.
++   */
++  @Test
++  void questionHistoryKeepsPagingWhenTheNewestAnswerIsHidden() {
++    ingest();
++    Http d = ask(operator("op-p"), key(), "분할 배송 기준은 몇 g 인가요?");
++    Http c = ask(operator("op-p"), key(), "봉투값은 얼마인가요?");
++    Http b = ask(operator("op-p"), key(), "ORD-123 지금 어디까지 왔어?");
++    Http a = ask(operator("op-p"), key(), "봉투값은 주문당 얼마인가요?");
++    jdbc.update(
++        "UPDATE policy_answer SET citations = regexp_replace(citations::text, '\"accessScope\":\\s*\"operator\"', '\"accessScope\": \"hq-only\"', 'g')::jsonb WHERE answer_id = ?",
++        a.text("answerId"));
++
++    Http first = history(operator("op-p"), "backoffice-web", "?size=2");
++    assertThat(first.body().path("items")).hasSize(2);
++    assertThat(first.body().path("items").get(0).path("answerId").asString())
++        .isEqualTo(b.text("answerId"));
++    assertThat(first.body().path("items").get(1).path("answerId").asString())
++        .isEqualTo(c.text("answerId"));
++    String cursor = first.body().path("page").path("nextCursor").asString(null);
++    assertThat(cursor).as("D 가 남았으므로 커서가 있다").isNotNull();
++
++    Http second = history(operator("op-p"), "backoffice-web", "?size=2&cursor=" + cursor);
++    assertThat(second.body().path("items")).hasSize(1);
++    assertThat(second.body().path("items").get(0).path("answerId").asString())
++        .isEqualTo(d.text("answerId"));
++    assertThat(second.body().path("page").path("nextCursor").isNull()).isTrue();
++  }
++
+   // ---- 보존 ----
+ 
+   @Test
+diff --git a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/RetrievalEvalIT.java b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/RetrievalEvalIT.java
+index cbf0205..e3d1f89 100644
+--- a/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/RetrievalEvalIT.java
++++ b/services/ai-assistant-service/src/integrationTest/java/com/pmart/assistant/RetrievalEvalIT.java
+@@ -25,8 +25,16 @@ import org.yaml.snakeyaml.Yaml;
+ import org.yaml.snakeyaml.constructor.SafeConstructor;
+ 
+ /**
+- * 검색 <b>기준선</b> 평가: 실제 저장소 문서(manifest 전체)를 로컬 해시 임베딩으로 색인해 질문별 상위 5 근거의 recall@5·MRR 을 잰다. 결과는
+- * {@code build/reports/eval/retrieval-baseline.md} 에 쓴다.
++ * 검색 <b>기준선</b> 평가: 실제 저장소 문서(manifest 전체)를 로컬 해시 임베딩으로 색인해 질문별 상위 5 근거의 recall@5·MRR 을 잰다. 지표는 두
++ * 가지다.
++ *
++ * <ul>
++ *   <li><b>문서 경로 기준</b>({@code expected}, 처음부터 쓰던 것): 상위 5 안에 정답 문서의 청크가 있으면 적중 → {@code
++ *       build/reports/eval/retrieval-baseline.md}.
++ *   <li><b>절 기준</b>({@code sections}, 2026-11-05 추가): 정답 문서의 <i>정답 절</i> 청크여야 적중 → {@code
++ *       build/reports/eval/retrieval-section.md}. 정답 절은 검색 결과를 보지 않고 원문을 읽어 정했다(questions.yml 머리
++ *       주석).
++ * </ul>
+  *
+  * <p>이 수치는 어휘 겹침 기준선이다. 의미 검색·생성 답변 품질·환각·주입 방어는 실제 모델 평가 전까지 미검증(ADR-0036).
+  */
+@@ -37,9 +45,15 @@ class RetrievalEvalIT extends AssistantITBase {
+   @Autowired Retriever retriever;
+   @Autowired SnapshotStore snapshots;
+ 
+-  record Q(String id, String q, List<String> expected) {}
++  record Q(String id, String q, List<String> expected, List<List<String>> sections) {}
+ 
+-  record Row(Q q, int rank, List<String> top, int thresholdPassed, List<RetrievedChunk> chunks) {}
++  record Row(
++      Q q,
++      int rank,
++      List<String> top,
++      int thresholdPassed,
++      List<RetrievedChunk> chunks,
++      int sectionRank) {}
+ 
+   @Test
+   void baselineRecallAndMrr() throws IOException {
+@@ -59,13 +73,42 @@ class RetrievalEvalIT extends AssistantITBase {
+           break;
+         }
+       }
+-      rows.add(new Row(q, rank, top, top.size(), r.ranked()));
++      int sectionRank = 0;
++      for (int i = 0; i < r.ranked().size(); i++) {
++        if (sectionHit(q, r.ranked().get(i).path(), r.ranked().get(i).section())) {
++          sectionRank = i + 1;
++          break;
++        }
++      }
++      rows.add(new Row(q, rank, top, top.size(), r.ranked(), sectionRank));
++    }
++    // 정답 절이 색인에 실제로 있는지(오타·제목 변경으로 영원히 못 맞히는 정답을 막는다)
++    List<String[]> indexed =
++        jdbc.query(
++            "SELECT path, section_path FROM doc_chunk WHERE snapshot_id = ?",
++            (rs, i) -> new String[] {rs.getString(1), rs.getString(2)},
++            result.snapshotId());
++    for (Q q : questions()) {
++      for (List<String> sec : q.sections()) {
++        assertThat(
++                indexed.stream()
++                    .anyMatch(c -> c[0].startsWith(sec.get(0)) && segmentStarts(c[1], sec.get(1))))
++            .as("%s 정답 절이 색인에 있다: %s", q.id(), sec)
++            .isTrue();
++      }
+     }
+     double recall = rows.stream().filter(x -> x.rank() > 0).count() / (double) rows.size();
+     double mrr =
+         rows.stream().mapToDouble(x -> x.rank() == 0 ? 0 : 1.0 / x.rank()).average().orElse(0);
+     long noGrounding = rows.stream().filter(x -> x.thresholdPassed() == 0).count();
+     write(result.chunkCount(), result.fileCount(), rows, recall, mrr, noGrounding);
++    double sRecall = rows.stream().filter(x -> x.sectionRank() > 0).count() / (double) rows.size();
++    double sMrr =
++        rows.stream()
++            .mapToDouble(x -> x.sectionRank() == 0 ? 0 : 1.0 / x.sectionRank())
++            .average()
++            .orElse(0);
++    writeSection(rows, sRecall, sMrr, recall, mrr);
+     assertThat(rows).hasSizeGreaterThanOrEqualTo(20);
+     assertThat(recall).as("기준선 recall@5 — 보고용, 품질 보증 아님").isGreaterThan(0.0);
+   }
+@@ -77,18 +120,103 @@ class RetrievalEvalIT extends AssistantITBase {
+       List<Q> out = new ArrayList<>();
+       for (Object o : (List<Object>) root.get("questions")) {
+         Map<String, Object> m = (Map<String, Object>) o;
+-        out.add(new Q((String) m.get("id"), (String) m.get("q"), (List<String>) m.get("expected")));
++        out.add(
++            new Q(
++                (String) m.get("id"),
++                (String) m.get("q"),
++                (List<String>) m.get("expected"),
++                (List<List<String>>) m.getOrDefault("sections", List.of())));
+       }
+       return out;
+     }
+   }
+ 
++  /** 청크가 질문의 정답 절인가: 경로 앞부분 일치 + section 의 한 단계가 정답 절 제목으로 시작. */
++  static boolean sectionHit(Q q, String path, String section) {
++    return q.sections().stream()
++        .anyMatch(s -> path.startsWith(s.get(0)) && segmentStarts(section, s.get(1)));
++  }
++
++  static boolean segmentStarts(String section, String heading) {
++    if (section == null) {
++      return false;
++    }
++    for (String seg : section.split(" > ")) {
++      if (seg.startsWith(heading)) {
++        return true;
++      }
++    }
++    return false;
++  }
++
++  private static void writeSection(
++      List<Row> rows, double recall, double mrr, double docRecall, double docMrr)
++      throws IOException {
++    StringBuilder sb = new StringBuilder();
++    sb.append("# 검색 기준선 평가 — 절 기준 (local-hash-ngram@1/384)\n\n")
++        .append("> 어휘 겹침 기준선 — 의미 검색·생성 품질 미검증(ADR-0036).\n")
++        .append(
++            "> **절 기준**: 상위 5 안에 정답 절(questions.yml `sections` — 원문을 읽어 정함, 검색 결과로 넓히지 않음)의 청크가 있어야"
++                + " 적중.\n\n")
++        .append(
++            String.format(
++                Locale.ROOT,
++                "- 질문 %d · 절 기준 recall@5 **%.2f** · MRR **%.3f** (같은 실행의 문서 경로 기준: recall@5 %.2f · MRR"
++                    + " %.3f)%n%n",
++                rows.size(),
++                recall,
++                mrr,
++                docRecall,
++                docMrr))
++        .append("| id | 문서 기준 순위 | 절 기준 순위 | 정답 절 |\n|---|---|---|---|\n");
++    for (Row r : rows) {
++      sb.append("| ")
++          .append(r.q().id())
++          .append(" | ")
++          .append(r.rank() == 0 ? "—" : r.rank())
++          .append(" | ")
++          .append(r.sectionRank() == 0 ? "—" : r.sectionRank())
++          .append(" | ")
++          .append(
++              String.join(
++                  "<br>",
++                  r.q().sections().stream()
++                      .map(s -> s.get(0).replace("docs/", "") + " § " + s.get(1))
++                      .toList()))
++          .append(" |\n");
++    }
++    sb.append("\n## 문서는 맞혔지만 절은 못 맞힌 질문 — 상위 5 근거\n");
++    for (Row r : rows) {
++      if (r.rank() == 0 || r.sectionRank() != 0) {
++        continue;
++      }
++      sb.append("\n### ").append(r.q().id()).append(" — ").append(r.q().q()).append("\n");
++      int i = 1;
++      for (RetrievedChunk c : r.chunks()) {
++        sb.append(
++            String.format(
++                Locale.ROOT,
++                "%d. %.3f %s — %s%n",
++                i++,
++                c.similarity(),
++                c.path(),
++                c.section() == null ? "(절 없음)" : c.section()));
++      }
++    }
++    Path out = Path.of("build/reports/eval/retrieval-section.md");
++    Files.createDirectories(out.getParent());
++    Files.writeString(out, sb.toString(), StandardCharsets.UTF_8);
++  }
++
+   private static void write(
+       int chunks, int files, List<Row> rows, double recall, double mrr, long noGrounding)
+       throws IOException {
+     StringBuilder sb = new StringBuilder();
+-    sb.append("# 검색 기준선 평가 (local-hash-ngram@1/384)\n\n")
+-        .append("> 어휘 겹침 기준선 — 의미 검색·생성 품질 미검증(ADR-0036).\n\n")
++    sb.append("# 검색 기준선 평가 — 문서 경로 기준 (local-hash-ngram@1/384)\n\n")
++        .append("> 어휘 겹침 기준선 — 의미 검색·생성 품질 미검증(ADR-0036).\n")
++        .append(
++            "> **문서 경로 기준**: 상위 5 안에 정답 문서(경로 앞부분 일치)의 청크가 하나라도 있으면 적중. 그 청크가 답을 담은 절인지는 보지"
++                + " 않는다 — 절 기준은 retrieval-section.md.\n\n")
+         .append(String.format(Locale.ROOT, "- 색인: 파일 %d · 청크 %d%n", files, chunks))
+         .append(
+             String.format(
+diff --git a/services/ai-assistant-service/src/integrationTest/resources/eval/questions.yml b/services/ai-assistant-service/src/integrationTest/resources/eval/questions.yml
+index 4ac77b2..8bfed32 100644
+--- a/services/ai-assistant-service/src/integrationTest/resources/eval/questions.yml
++++ b/services/ai-assistant-service/src/integrationTest/resources/eval/questions.yml
+@@ -1,31 +1,36 @@
+ # 검색 기준선 평가 질문(ADR-0036). 실제 저장소 문서(knowledge/manifest.yml)를 해시 임베딩으로 색인하고 recall@5·MRR 을 잰다.
+-# expected: 정답 근거로 인정하는 문서 경로(앞부분 일치). 하나라도 상위 5 안에 있으면 적중.
++# expected: 정답 근거로 인정하는 문서 경로(앞부분 일치). 하나라도 상위 5 안에 있으면 적중 — "문서 경로 기준" 지표(retrieval-baseline.md).
++# sections: 정답 절 [경로 앞부분, 절 제목 앞부분] — "절 기준" 지표(retrieval-section.md, 2026-11-05 추가).
++#   정하는 규칙: 검색 결과를 보지 않고 원문을 읽어, 그 질문의 답을 직접 적은 절만 고른다. expected 문서 안에서만 고른다(문서를 넓히지 않는다).
++#   절 제목은 청크 section 의 한 단계(" > " 로 나뉜 조각)가 이 값으로 시작하면 적중. ADR 은 "결정" 절과 제목(ADR-NNNN) 청크.
++#   일부러 뺀 것: Q04 Delivery 6.4(5시간 자동 완료 — domain-map 이 폐기한 옛 규칙), Q05 ADR-0002(누가 쓰는지만, 차감 시점 없음),
++#   부록 C(1차 제외)·검증 시나리오·화면 명세(규칙 원문이 아님).
+ # 이 결과는 "기준선(어휘 겹침)"일 뿐 의미 검색 품질이 아니다 — 실제 모델 평가 전까지 의미 검색·생성 품질은 미검증.
+ questions:
+   # --- 대표 5 ---
+-  - { id: R1, q: "봉투값은 주문당 얼마인가요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+-  - { id: R2, q: "주문 취소와 라이더 인계가 겹치면 어떤 절차를 따르나요?", expected: [docs/business/flows/cancel-vs-handover.md] }
+-  - { id: R3, q: "서비스 간 내부 호출에 서비스 토큰이 필요한가요?", expected: [docs/adr/0026-] }
+-  - { id: R4, q: "분할 배송 기준 무게는 얼마인가요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md] }
+-  - { id: R5, q: "고객 분류 카테고리는 몇 단계로 구성하나요?", expected: [docs/business/Commerce-business-logic.md, docs/adr/0015-] }
++  - { id: R1, q: "봉투값은 주문당 얼마인가요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md], sections: [["docs/business/OMS-business-logic.md", "5.2 부대비용과 혜택"], ["docs/business/Commerce-business-logic.md", "8.3 기존 배달팁 정책·봉투값의 유지"], ["docs/business/Commerce-business-logic.md", "2.5 정책·용어의 적용 우선순위와 공식 기준"]] }
++  - { id: R2, q: "주문 취소와 라이더 인계가 겹치면 어떤 절차를 따르나요?", expected: [docs/business/flows/cancel-vs-handover.md], sections: [["docs/business/flows/cancel-vs-handover.md", "0. 원칙"], ["docs/business/flows/cancel-vs-handover.md", "2. 흐름"], ["docs/business/flows/cancel-vs-handover.md", "3. 경합 사례"]] }
++  - { id: R3, q: "서비스 간 내부 호출에 서비스 토큰이 필요한가요?", expected: [docs/adr/0026-], sections: [["docs/adr/0026-", "결정"], ["docs/adr/0026-", "ADR-0026"]] }
++  - { id: R4, q: "분할 배송 기준 무게는 얼마인가요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md], sections: [["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"], ["docs/business/OMS-business-logic.md", "9. 분할배송과 배송 결과"]] }
++  - { id: R5, q: "고객 분류 카테고리는 몇 단계로 구성하나요?", expected: [docs/business/Commerce-business-logic.md, docs/adr/0015-], sections: [["docs/business/Commerce-business-logic.md", "6.6 노출과 구매 가능성"], ["docs/adr/0015-", "결정"], ["docs/adr/0015-", "ADR-0015"]] }
+   # --- 실제 문서 기반 ---
+-  - { id: Q01, q: "한집배달 배달팁은 얼마이고 언제 0원이 되나요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+-  - { id: Q02, q: "결제 후 배송 주소와 연락처를 변경할 수 있나요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+-  - { id: Q03, q: "같은 기초상품 구매 제한 기본 상한은 몇 개인가요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+-  - { id: Q04, q: "배달 완료를 시간이 지나면 자동으로 완료 처리하나요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md, docs/business/Delivery-business-logic.md] }
+-  - { id: Q05, q: "MFC 재고는 언제 차감하나요? 인계 시점인가요 출고 시점인가요?", expected: [docs/business/domain-map.md, docs/business/MFC-business-logic.md, docs/adr/0002-] }
+-  - { id: Q06, q: "주류 주문의 성인 인증은 어떻게 하나요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md] }
+-  - { id: Q07, q: "서비스 설정의 정본은 어디에 두나요?", expected: [docs/adr/0029-, docs/adr/0027-] }
+-  - { id: Q08, q: "상품 검색 색인은 어떤 엔진과 방식으로 만드나요?", expected: [docs/adr/0031-, docs/adr/0021-] }
+-  - { id: Q09, q: "상품 마스터 정본은 어느 서비스가 소유하나요?", expected: [docs/adr/0001-, docs/business/domain-map.md, docs/architecture/service-map.md] }
+-  - { id: Q10, q: "MFC 재고 원장의 단일 작성자는 누구인가요?", expected: [docs/adr/0002-, docs/business/domain-map.md] }
+-  - { id: Q11, q: "고객 배송 슬롯 정원과 MFC 작업 여력은 누가 관리하나요?", expected: [docs/adr/0008-, docs/business/domain-map.md] }
+-  - { id: Q12, q: "주문 결제 사가의 타이머와 재고 예약 만료 규칙은?", expected: [docs/business/flows/order-checkout-saga.md] }
+-  - { id: Q13, q: "반품 교환 환불 사가는 어떻게 진행되나요?", expected: [docs/business/flows/return-exchange-refund.md] }
+-  - { id: Q14, q: "CDC 출고 간선 운송 MFC 수령 Transit 대사 흐름은?", expected: [docs/business/flows/replenishment-transfer.md] }
+-  - { id: Q15, q: "시각은 어떤 기준으로 저장하고 영업일은 어떻게 판정하나요?", expected: [docs/adr/0010-] }
+-  - { id: Q16, q: "이벤트 봉투 필수 메타데이터와 outbox 릴레이는?", expected: [docs/adr/0009-] }
+-  - { id: Q17, q: "주문 사가는 오케스트레이션인가요 코레오그래피인가요?", expected: [docs/adr/0003-, docs/business/domain-map.md] }
+-  - { id: Q18, q: "칠곡 DC에서 몇 개 MFC로 간선 운송하나요?", expected: [docs/business/TMS-business-logic.md, docs/business/overview.md] }
+-  - { id: Q19, q: "운영자 계정 로그인과 JWT 발급은 어떻게 하나요?", expected: [docs/adr/0018-] }
+-  - { id: Q20, q: "컨테이너 이미지는 어느 레지스트리에 올리나요?", expected: [docs/adr/0012-] }
++  - { id: Q01, q: "한집배달 배달팁은 얼마이고 언제 0원이 되나요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md], sections: [["docs/business/OMS-business-logic.md", "5.2 부대비용과 혜택"], ["docs/business/Commerce-business-logic.md", "8.3 기존 배달팁 정책·봉투값의 유지"], ["docs/business/Commerce-business-logic.md", "2.5 정책·용어의 적용 우선순위와 공식 기준"]] }
++  - { id: Q02, q: "결제 후 배송 주소와 연락처를 변경할 수 있나요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md], sections: [["docs/business/OMS-business-logic.md", "4. 주문 초안과 접수 검증"], ["docs/business/Commerce-business-logic.md", "2.5 정책·용어의 적용 우선순위와 공식 기준"]] }
++  - { id: Q03, q: "같은 기초상품 구매 제한 기본 상한은 몇 개인가요?", expected: [docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md], sections: [["docs/business/OMS-business-logic.md", "4. 주문 초안과 접수 검증"], ["docs/business/Commerce-business-logic.md", "2.5 정책·용어의 적용 우선순위와 공식 기준"], ["docs/business/Commerce-business-logic.md", "2.1 상품·SKU·판매 옵션·구매 수량의 차이"]] }
++  - { id: Q04, q: "배달 완료를 시간이 지나면 자동으로 완료 처리하나요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md, docs/business/Delivery-business-logic.md], sections: [["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"], ["docs/business/OMS-business-logic.md", "A.2.6 Delivery ↔ OMS"]] }
++  - { id: Q05, q: "MFC 재고는 언제 차감하나요? 인계 시점인가요 출고 시점인가요?", expected: [docs/business/domain-map.md, docs/business/MFC-business-logic.md, docs/adr/0002-], sections: [["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"], ["docs/business/MFC-business-logic.md", "IV-08 — 인계·취소 직렬 판정"]] }
++  - { id: Q06, q: "주류 주문의 성인 인증은 어떻게 하나요?", expected: [docs/business/domain-map.md, docs/business/OMS-business-logic.md, docs/business/Commerce-business-logic.md], sections: [["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"], ["docs/business/OMS-business-logic.md", "6. MFC 배정·예약·시간대 확보"], ["docs/business/Commerce-business-logic.md", "4.3 인증 검증과 동의"]] }
++  - { id: Q07, q: "서비스 설정의 정본은 어디에 두나요?", expected: [docs/adr/0029-, docs/adr/0027-], sections: [["docs/adr/0029-", "결정"], ["docs/adr/0029-", "ADR-0029"], ["docs/adr/0027-", "결정"], ["docs/adr/0027-", "ADR-0027"]] }
++  - { id: Q08, q: "상품 검색 색인은 어떤 엔진과 방식으로 만드나요?", expected: [docs/adr/0031-, docs/adr/0021-], sections: [["docs/adr/0031-", "결정"], ["docs/adr/0031-", "ADR-0031"], ["docs/adr/0021-", "결정"], ["docs/adr/0021-", "ADR-0021"]] }
++  - { id: Q09, q: "상품 마스터 정본은 어느 서비스가 소유하나요?", expected: [docs/adr/0001-, docs/business/domain-map.md, docs/architecture/service-map.md], sections: [["docs/adr/0001-", "결정"], ["docs/adr/0001-", "ADR-0001"], ["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"], ["docs/architecture/service-map.md", "product-service"]] }
++  - { id: Q10, q: "MFC 재고 원장의 단일 작성자는 누구인가요?", expected: [docs/adr/0002-, docs/business/domain-map.md], sections: [["docs/adr/0002-", "결정"], ["docs/adr/0002-", "ADR-0002"], ["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"]] }
++  - { id: Q11, q: "고객 배송 슬롯 정원과 MFC 작업 여력은 누가 관리하나요?", expected: [docs/adr/0008-, docs/business/domain-map.md], sections: [["docs/adr/0008-", "결정"], ["docs/adr/0008-", "ADR-0008"], ["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"]] }
++  - { id: Q12, q: "주문 결제 사가의 타이머와 재고 예약 만료 규칙은?", expected: [docs/business/flows/order-checkout-saga.md], sections: [["docs/business/flows/order-checkout-saga.md", "1.1 타이머 규칙"]] }
++  - { id: Q13, q: "반품 교환 환불 사가는 어떻게 진행되나요?", expected: [docs/business/flows/return-exchange-refund.md], sections: [["docs/business/flows/return-exchange-refund.md", "1. 흐름"]] }
++  - { id: Q14, q: "CDC 출고 간선 운송 MFC 수령 Transit 대사 흐름은?", expected: [docs/business/flows/replenishment-transfer.md], sections: [["docs/business/flows/replenishment-transfer.md", "5. 출고·실제 출발"], ["docs/business/flows/replenishment-transfer.md", "6. 운송·도착·인계"], ["docs/business/flows/replenishment-transfer.md", "7. 수령·TIN·Transit 대사"]] }
++  - { id: Q15, q: "시각은 어떤 기준으로 저장하고 영업일은 어떻게 판정하나요?", expected: [docs/adr/0010-], sections: [["docs/adr/0010-", "결정"], ["docs/adr/0010-", "ADR-0010"]] }
++  - { id: Q16, q: "이벤트 봉투 필수 메타데이터와 outbox 릴레이는?", expected: [docs/adr/0009-], sections: [["docs/adr/0009-", "결정"], ["docs/adr/0009-", "ADR-0009"]] }
++  - { id: Q17, q: "주문 사가는 오케스트레이션인가요 코레오그래피인가요?", expected: [docs/adr/0003-, docs/business/domain-map.md], sections: [["docs/adr/0003-", "결정"], ["docs/adr/0003-", "ADR-0003"], ["docs/business/domain-map.md", "3. 문서 간 충돌과 적용 우선순위"]] }
++  - { id: Q18, q: "칠곡 DC에서 몇 개 MFC로 간선 운송하나요?", expected: [docs/business/TMS-business-logic.md, docs/business/overview.md], sections: [["docs/business/TMS-business-logic.md", "4.1 운송망"], ["docs/business/TMS-business-logic.md", "TMS 비즈니스 로직"], ["docs/business/overview.md", "1. 한 줄 요약"]] }
++  - { id: Q19, q: "운영자 계정 로그인과 JWT 발급은 어떻게 하나요?", expected: [docs/adr/0018-], sections: [["docs/adr/0018-", "결정"], ["docs/adr/0018-", "ADR-0018"]] }
++  - { id: Q20, q: "컨테이너 이미지는 어느 레지스트리에 올리나요?", expected: [docs/adr/0012-], sections: [["docs/adr/0012-", "결정"], ["docs/adr/0012-", "ADR-0012"]] }
+diff --git a/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java b/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java
+index 0de59cc..605b953 100644
+--- a/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java
++++ b/services/ai-assistant-service/src/main/java/com/pmart/assistant/application/PolicyQuestionService.java
+@@ -1,5 +1,6 @@
+ package com.pmart.assistant.application;
+ 
++import com.pmart.assistant.domain.HistoryPager;
+ import com.pmart.assistant.domain.QuestionClassifier;
+ import com.pmart.assistant.domain.QuestionClassifier.Classification;
+ import com.pmart.assistant.domain.QuestionClassifier.Intent;
+@@ -314,45 +315,41 @@ public class PolicyQuestionService {
+         throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
+       }
+     }
+-    List<HistoryItem> items = new java.util.ArrayList<>();
+-    AnswerRow last = null;
+-    boolean more = false;
+-    // 권한으로 빠지는 행이 있어도 size 를 채우게 몇 번 더 읽는다
+-    for (int round = 0; round < 5 && items.size() < size; round++) {
+-      List<AnswerRow> rows =
+-          answers.listMine(sourceHeader, p.subject(), beforeAt, beforeId, size + 1);
+-      more = rows.size() > size;
+-      for (AnswerRow r : rows.subList(0, Math.min(size, rows.size()))) {
+-        last = r;
+-        if (r.state() == AnswerStore.State.COMPLETED) {
+-          List<CitationRecord> cites = citations(r);
+-          if (!access.stillAllowed(
+-              p, r.askerSubject(), cites.stream().map(CitationRecord::accessScope).toList())) {
+-            continue;
+-          }
+-          items.add(new HistoryItem(r, cites.size()));
+-        } else {
+-          items.add(new HistoryItem(r, 0));
+-        }
+-        if (items.size() >= size) {
+-          break;
+-        }
+-      }
+-      if (!more || last == null) {
+-        break;
+-      }
+-      beforeAt = last.createdAt();
+-      beforeId = last.answerId();
+-    }
++    Instant fromAt = beforeAt;
++    String fromId = beforeId;
++    // 권한이 사라진 완료 답변은 건너뛴다. 커서는 다음 페이지에 보이는 행이 있을 때만(HistoryPager)
++    HistoryPager.Page<AnswerRow, HistoryItem> page =
++        HistoryPager.page(
++            size,
++            null,
++            (after, limit) ->
++                after == null
++                    ? answers.listMine(sourceHeader, p.subject(), fromAt, fromId, limit)
++                    : answers.listMine(
++                        sourceHeader, p.subject(), after.createdAt(), after.answerId(), limit),
++            r -> historyItem(r, p));
++    AnswerRow last = page.nextAfter();
+     String next =
+-        more && last != null
+-            ? java.util.Base64.getUrlEncoder()
++        last == null
++            ? null
++            : java.util.Base64.getUrlEncoder()
+                 .withoutPadding()
+                 .encodeToString(
+                     (last.createdAt() + "|" + last.answerId())
+-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+-            : null;
+-    return new HistoryPage(items, next);
++                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
++    return new HistoryPage(page.items(), next);
++  }
++
++  /** 목록에 보일 항목. 완료 답변은 현재 권한을 다시 확인해 볼 수 없으면 비어 있다. */
++  private java.util.Optional<HistoryItem> historyItem(AnswerRow r, PmartPrincipal p) {
++    if (r.state() != AnswerStore.State.COMPLETED) {
++      return java.util.Optional.of(new HistoryItem(r, 0));
++    }
++    List<CitationRecord> cites = citations(r);
++    return access.stillAllowed(
++            p, r.askerSubject(), cites.stream().map(CitationRecord::accessScope).toList())
++        ? java.util.Optional.of(new HistoryItem(r, cites.size()))
++        : java.util.Optional.empty();
+   }
+ 
+   private Outcome reread(String answerId, PmartPrincipal p, ReadMode mode) {
+diff --git a/services/ai-assistant-service/src/main/java/com/pmart/assistant/domain/HistoryPager.java b/services/ai-assistant-service/src/main/java/com/pmart/assistant/domain/HistoryPager.java
+new file mode 100644
+index 0000000..e23e654
+--- /dev/null
++++ b/services/ai-assistant-service/src/main/java/com/pmart/assistant/domain/HistoryPager.java
+@@ -0,0 +1,85 @@
++package com.pmart.assistant.domain;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Optional;
++import java.util.function.Function;
++import org.jspecify.annotations.Nullable;
++
++/**
++ * 보이지 않는 행이 섞인 목록의 커서 페이지(BR-46 내 질문 목록). 저장 순서(최근 순)로 읽으면서 보이는 행만 모은다.
++ *
++ * <p>규칙:
++ *
++ * <ul>
++ *   <li>한 페이지 = 보이는 행 최대 {@code size} 개. 보이지 않는 행(권한이 사라진 완료 답변)이 몇 개 연속돼도 건너뛰고 계속 읽는다.
++ *   <li>{@code nextAfter} 는 <b>다음 페이지에 보이는 행이 하나라도 있을 때만</b> 준다 — 보이는 행을 {@code size + 1} 개째까지
++ *       찾아본다. 그래서 커서가 있으면 다음 페이지는 비어 있지 않고, 커서가 없으면 더 볼 것이 없다.
++ *   <li>{@code nextAfter} 는 이 페이지의 마지막 보이는 행이다. 그 뒤의 보이지 않는 행은 다음 페이지가 다시 건너뛴다 — 행을 빠뜨리거나 두 번 주지
++ *       않는다.
++ * </ul>
++ *
++ * <p>읽는 양은 그 사용자 행 수를 넘지 않는다(한 번에 {@code batch} 행씩, 끝나면 멈춘다).
++ */
++public final class HistoryPager {
++
++  /** 한 번에 읽는 행 수 기본값(페이지 크기 + 1 보다 작으면 그 값). */
++  public static final int DEFAULT_BATCH = 50;
++
++  /** {@code after} 다음 행부터 최대 {@code limit} 행(저장 순서). {@code after} 가 null 이면 처음부터. */
++  @FunctionalInterface
++  public interface Fetcher<R> {
++    List<R> fetch(@Nullable R after, int limit);
++  }
++
++  /**
++   * @param items 보이는 행에서 만든 항목(최대 size)
++   * @param nextAfter 다음 페이지의 시작 기준 행(이 행 다음부터). 다음에 보이는 행이 없으면 null
++   */
++  public record Page<R, T>(List<T> items, @Nullable R nextAfter) {}
++
++  private HistoryPager() {}
++
++  public static <R, T> Page<R, T> page(
++      int size, @Nullable R start, Fetcher<R> fetcher, Function<R, Optional<T>> visible) {
++    return page(size, start, fetcher, visible, DEFAULT_BATCH);
++  }
++
++  /** 시험용: 읽는 단위를 바꿔 경계(배치 끝)에서의 동작을 확인한다. */
++  static <R, T> Page<R, T> page(
++      int size,
++      @Nullable R start,
++      Fetcher<R> fetcher,
++      Function<R, Optional<T>> visible,
++      int batch) {
++    if (size < 1) {
++      throw new IllegalArgumentException("size 는 1 이상이어야 합니다.");
++    }
++    int limit = Math.max(size + 1, batch);
++    List<R> rows = new ArrayList<>();
++    List<T> items = new ArrayList<>();
++    R after = start;
++    scan:
++    while (true) {
++      List<R> chunk = fetcher.fetch(after, limit);
++      for (R r : chunk) {
++        after = r;
++        Optional<T> item = visible.apply(r);
++        if (item.isPresent()) {
++          rows.add(r);
++          items.add(item.get());
++          if (items.size() > size) {
++            break scan; // size+1 번째 보이는 행 — 다음 페이지가 있다
++          }
++        }
++      }
++      if (chunk.size() < limit) {
++        break; // 더 읽을 행이 없다
++      }
++    }
++    if (items.size() > size) {
++      return new Page<>(List.copyOf(items.subList(0, size)), rows.get(size - 1));
++    }
++    return new Page<>(List.copyOf(items), null);
++  }
++}
+diff --git a/services/ai-assistant-service/src/test/java/com/pmart/assistant/domain/HistoryPagerTest.java b/services/ai-assistant-service/src/test/java/com/pmart/assistant/domain/HistoryPagerTest.java
+new file mode 100644
+index 0000000..ab7259f
+--- /dev/null
++++ b/services/ai-assistant-service/src/test/java/com/pmart/assistant/domain/HistoryPagerTest.java
+@@ -0,0 +1,151 @@
++package com.pmart.assistant.domain;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Optional;
++import java.util.Set;
++import org.jspecify.annotations.Nullable;
++import org.junit.jupiter.api.Test;
++
++/**
++ * BR-46 내 질문 목록 페이지 — 권한 없는 행(보이지 않는 행)이 섞일 때 누락·중복이 없고, nextCursor 유무가 실제 다음 페이지와 일치하는지.
++ *
++ * <p>회귀 사례 A·B·C·D(2026-11-05 보고): 최근 순 [A(권한 없음), B, C, D], size 2. 고치기 전에는 1쪽 [B, C] 뒤 nextCursor
++ * 가 없어 D 를 영영 볼 수 없었다.
++ */
++class HistoryPagerTest {
++
++  /** 저장 순서 목록과 보이지 않는 행 집합으로 만든 가짜 저장소. 읽은 행 수도 센다. */
++  static final class Store implements HistoryPager.Fetcher<String> {
++    final List<String> rows;
++    int reads;
++
++    Store(List<String> rows) {
++      this.rows = rows;
++    }
++
++    @Override
++    public List<String> fetch(@Nullable String after, int limit) {
++      int from = after == null ? 0 : rows.indexOf(after) + 1;
++      List<String> out = rows.subList(from, Math.min(rows.size(), from + limit));
++      reads += out.size();
++      return out;
++    }
++  }
++
++  static HistoryPager.Page<String, String> page(
++      Store store, Set<String> hidden, int size, @Nullable String after, int batch) {
++    return HistoryPager.page(
++        size, after, store, r -> hidden.contains(r) ? Optional.empty() : Optional.of(r), batch);
++  }
++
++  /** 첫 쪽부터 커서를 따라 끝까지 읽은 쪽들. 커서가 있는데 빈 쪽이 오면 실패. */
++  static List<List<String>> allPages(List<String> rows, Set<String> hidden, int size, int batch) {
++    Store store = new Store(rows);
++    List<List<String>> pages = new ArrayList<>();
++    String after = null;
++    for (int guard = 0; guard <= rows.size() + 1; guard++) {
++      HistoryPager.Page<String, String> p = page(store, hidden, size, after, batch);
++      if (after != null) {
++        assertThat(p.items()).as("커서가 있었으면 다음 쪽은 비어 있지 않다").isNotEmpty();
++      }
++      pages.add(p.items());
++      if (p.nextAfter() == null) {
++        return pages;
++      }
++      after = p.nextAfter();
++    }
++    throw new AssertionError("끝나지 않는다");
++  }
++
++  @Test
++  void caseABCD_hiddenNewestDoesNotLoseTheLastRow() {
++    List<List<String>> pages = allPages(List.of("A", "B", "C", "D"), Set.of("A"), 2, 3);
++    assertThat(pages).containsExactly(List.of("B", "C"), List.of("D"));
++    // 실제 크기(기본 읽기 단위)로도 같다
++    assertThat(allPages(List.of("A", "B", "C", "D"), Set.of("A"), 2, HistoryPager.DEFAULT_BATCH))
++        .containsExactly(List.of("B", "C"), List.of("D"));
++  }
++
++  @Test
++  void consecutiveHiddenRowsAreSkippedAcrossBatches() {
++    List<String> rows = List.of("A", "B", "C", "D", "E", "F", "G");
++    Set<String> hidden = Set.of("B", "C", "D", "E");
++    // 읽기 단위 2 — 보이지 않는 행이 배치 경계를 넘어 이어진다
++    assertThat(allPages(rows, hidden, 1, 2))
++        .containsExactly(List.of("A"), List.of("F"), List.of("G"));
++    assertThat(allPages(rows, hidden, 2, 2)).containsExactly(List.of("A", "F"), List.of("G"));
++  }
++
++  @Test
++  void noCursorWhenOnlyHiddenRowsRemain() {
++    Store store = new Store(List.of("A", "B", "C", "D"));
++    HistoryPager.Page<String, String> p = page(store, Set.of("C", "D"), 2, null, 3);
++    assertThat(p.items()).containsExactly("A", "B");
++    assertThat(p.nextAfter()).as("뒤에 보이는 행이 없으면 커서를 주지 않는다").isNull();
++  }
++
++  @Test
++  void cursorWhenExactlyOneMoreVisibleRowExists() {
++    Store store = new Store(List.of("A", "B", "C"));
++    HistoryPager.Page<String, String> p = page(store, Set.of(), 2, null, 3);
++    assertThat(p.items()).containsExactly("A", "B");
++    assertThat(p.nextAfter()).isEqualTo("B");
++    assertThat(page(store, Set.of(), 2, "B", 3).items()).containsExactly("C");
++  }
++
++  @Test
++  void allHiddenGivesEmptyPageWithoutCursor() {
++    HistoryPager.Page<String, String> p =
++        page(new Store(List.of("A", "B", "C")), Set.of("A", "B", "C"), 2, null, 2);
++    assertThat(p.items()).isEmpty();
++    assertThat(p.nextAfter()).isNull();
++  }
++
++  @Test
++  void emptyStore() {
++    HistoryPager.Page<String, String> p = page(new Store(List.of()), Set.of(), 3, null, 2);
++    assertThat(p.items()).isEmpty();
++    assertThat(p.nextAfter()).isNull();
++  }
++
++  /** 행 8개의 모든 보임/숨김 조합(256) × 쪽 크기 1~4 × 읽기 단위 1·2·3·50: 누락·중복 없음, 쪽 크기 지킴, 커서 일치. */
++  @Test
++  void exhaustiveNoGapNoDuplicateAndCursorMatchesNextPage() {
++    List<String> rows = List.of("r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7");
++    for (int mask = 0; mask < (1 << rows.size()); mask++) {
++      Set<String> hidden = new java.util.HashSet<>();
++      List<String> visible = new ArrayList<>();
++      for (int i = 0; i < rows.size(); i++) {
++        if ((mask & (1 << i)) != 0) {
++          hidden.add(rows.get(i));
++        } else {
++          visible.add(rows.get(i));
++        }
++      }
++      for (int size = 1; size <= 4; size++) {
++        for (int batch : new int[] {1, 2, 3, 50}) {
++          List<List<String>> pages = allPages(rows, hidden, size, batch);
++          List<String> seen = new ArrayList<>();
++          pages.forEach(seen::addAll);
++          assertThat(seen)
++              .as("mask=%s size=%s batch=%s", Integer.toBinaryString(mask), size, batch)
++              .isEqualTo(visible); // 순서대로, 빠짐·중복 없음
++          for (int i = 0; i < pages.size() - 1; i++) {
++            assertThat(pages.get(i)).hasSize(size); // 마지막 쪽 전에는 꽉 찬다
++          }
++          assertThat(pages.getLast().size()).isLessThanOrEqualTo(size);
++        }
++      }
++    }
++  }
++
++  @Test
++  void readsAtMostOneBatchPastTheNeededRow() {
++    Store store = new Store(List.of("A", "B", "C", "D", "E", "F", "G", "H"));
++    page(store, Set.of(), 2, null, 3);
++    assertThat(store.reads).isEqualTo(3); // size+1 = 3 행이면 충분
++  }
++}

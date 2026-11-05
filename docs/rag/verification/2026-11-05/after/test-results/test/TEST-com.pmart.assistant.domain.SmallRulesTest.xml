@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.pmart.assistant.domain.SmallRulesTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-11-05T02:25:50.943Z" hostname="DS603-13" time="0.022">
+  <properties/>
+  <testcase name="differentContextChangesHash()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.002"/>
+  <testcase name="historyQuestionsReadmitOnlySuperseded()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.0"/>
+  <testcase name="leadingTagsMapToAuthority()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.003"/>
+  <testcase name="withoutTokenSourceOnlyBackofficeWebIsAccepted()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.003"/>
+  <testcase name="adrStatusLine()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.002"/>
+  <testcase name="contextKeyOrderAndEmptyValuesDoNotMatter()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.001"/>
+  <testcase name="hashIgnoresWhitespaceAndNormalizesNfc()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.002"/>
+  <testcase name="tokenSourceMustMatchHeader()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.0"/>
+  <testcase name="currentQuestionsExcludeSupersededAndPhase1Excluded()" classname="com.pmart.assistant.domain.SmallRulesTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
