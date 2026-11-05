@@ -8,11 +8,15 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import com.pmart.payment.application.PaymentLedger;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
@@ -23,6 +27,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -254,6 +259,36 @@ class PaymentFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(first);
     b.put("amount", 2000);
     assertThat(post(ORCH, "/internal/payments", b, key).status()).isEqualTo(409);
+  }
+
+  /** 승인 요청 처리 중 로그의 correlationId = 결제 시도의 sagaId(앱은 sagaId 를 보내지 않는다 — 요청 필터 값 대신). */
+  @Test
+  void approvalLogsCarryTheAttemptSagaId() {
+    String cu = "CU-" + UUID.randomUUID();
+    String orderId = start(cu, 15000, Instant.now().plusSeconds(600));
+    String sagaId =
+        jdbc.queryForObject(
+            "SELECT saga_id FROM payment_attempt WHERE payment_attempt_id = ?",
+            String.class,
+            orderId);
+    String pk = "tgen_" + UUID.randomUUID();
+    stubConfirm(pk, 200, tossPayment(pk, orderId, 15000, 15000, "DONE", "[]"));
+
+    Logger ledger = (Logger) LoggerFactory.getLogger(PaymentLedger.class);
+    ListAppender<ILoggingEvent> logs = new ListAppender<>();
+    logs.start();
+    ledger.addAppender(logs);
+    try {
+      assertThat(confirm(cu, orderId, pk, 15000).status()).isEqualTo(200);
+    } finally {
+      ledger.detachAppender(logs);
+    }
+    ILoggingEvent approved =
+        logs.list.stream()
+            .filter(e -> e.getFormattedMessage().equals("payment " + orderId + " APPROVED"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(approved.getMDCPropertyMap()).containsEntry("correlationId", sagaId);
   }
 
   @Test

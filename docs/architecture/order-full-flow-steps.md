@@ -121,6 +121,7 @@ orchestration 이 응답(24) 뒤 별도 스레드(가상 스레드 실행기)에
 | 71 | payment → 앱 | HTTP 응답 | 결제 상태 — **앱이 받는 두 번째 응답**. 앱은 이것을 "주문 완료"로 보지 않는다 |
 
 - 71 로 앱과의 HTTP 는 끝난다. trace B 는 72~92 에서 계속된다.
+- 57~71 의 payment 로그는 결제 시도를 찾은 직후부터 correlationId = sagaId 다(2026-11-05, `CheckoutService.correlate`, LAN 미배포). 그 전(55~56, 게이트웨이)은 correlationId 가 없어 traceId B 로 찾는다.
 - 결과가 불명이거나 READY 가 만료되면 payment 대사 작업(15초)이 정리한다. 토스 웹훅은 재조회를 앞당길 뿐 상태를 직접 바꾸지 않는다.
 
 ## S1 g~j — 결제 결과 → 주문 확정 (72~102) 🟩 trace B 계속

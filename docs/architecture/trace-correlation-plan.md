@@ -72,6 +72,6 @@
   - 결제 진입(55 span): 사가 실행기 뒤 참여자 호출까지 한 trace(A).
   - 결제 승인 이후(47 span): `order.payment.v1`·`order.order.v1` 두 Kafka 구간을 건너 orchestration·claim·customer·cart 소비까지 한 trace(B).
 - 두 trace 는 correlationId = sagaId 로 묶인다(C): 로그 질의 `correlationId:SAGA-7feb…` 가 두 trace 의 inventory·capacity·order·cart 로그를 함께 돌려준다.
-- 남은 끊김: 앱 → 결제 승인 요청이 결제 진입 trace 와 이어지지 않는 것은 설계상 맞다(새 사용자 요청). 잇고 싶다면 앱이 `X-Correlation-Id`(sagaId)를 보내야 한다(3장, 클라이언트 요청 필요).
+- 남은 끊김: 앱 → 결제 승인 요청이 결제 진입 trace 와 이어지지 않는 것은 설계상 맞다(새 사용자 요청). 잇고 싶다면 앱이 `X-Correlation-Id`(sagaId)를 보내야 한다(3장, 클라이언트 요청 필요). → 2026-11-05 클라이언트 요청 대신 서버에서 해결: payment-service 가 결제 시도를 찾은 직후 그 시도의 sagaId 로 상관 범위를 연다(`CheckoutService.correlate`, LAN 미배포). 자세한 것은 `trace-gateway-checkout-payment.md` 2·4·5절. 같은 날 확인: 요청 필터의 UUID 는 로그 MDC 에 남지 않는다(같은 문서 2절).
 - Zipkin 보존(2026-11-05, `9f3bfd8`): pc4 Zipkin 은 메모리 저장소라 힙이 차서 OOM 재시작을 반복했다 → 힙 256m·span 상한 5만·mem_limit 512m. trace 는 오래 남지 않으므로 확인할 결제는 바로 찾아본다(운영: `docs/operations/lan-monitoring-and-backup.md`).
 

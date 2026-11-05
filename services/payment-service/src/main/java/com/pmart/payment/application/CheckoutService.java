@@ -1,5 +1,6 @@
 package com.pmart.payment.application;
 
+import com.pmart.common.observability.CorrelationScope;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
@@ -8,10 +9,12 @@ import com.pmart.payment.domain.PaymentStage;
 import com.pmart.payment.infrastructure.PaymentStore;
 import com.pmart.payment.infrastructure.PaymentStore.Attempt;
 import com.pmart.payment.infrastructure.toss.TossClient;
+import io.micrometer.tracing.Tracer;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -19,6 +22,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 고객 앱 결제(결제 명세 §6.2~6.4). 결제 건은 orderId(= 결제 시도 ID) 하나로만 가리키고(R4), 본인 결제 시도만 다룬다(다른 고객 것은 404). 승인
  * 요청은 정해진 순서로 검사하고, 통과한 경우에만 토스 승인 API 를 부른다.
+ *
+ * <p>상관 ID: 결제 시도를 찾은 뒤부터 처리 끝까지 correlationId = 그 시도의 sagaId 다. 앱 요청에는 sagaId 가 없어서(앱은 모른다) 요청 필터가
+ * 새 값을 만들지만, 이 구간의 로그·사건은 결제 진입 사가와 같은 값으로 묶인다(trace-gateway-checkout-payment.md 5절).
  */
 @Service
 public class CheckoutService {
@@ -29,6 +35,7 @@ public class CheckoutService {
   private final TossClient toss;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final ObjectProvider<Tracer> tracer;
 
   public CheckoutService(
       PaymentStore store,
@@ -36,13 +43,15 @@ public class CheckoutService {
       PaymentEvents events,
       TossClient toss,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      ObjectProvider<Tracer> tracer) {
     this.store = store;
     this.ledger = ledger;
     this.events = events;
     this.toss = toss;
     this.tx = tx;
     this.clock = clock;
+    this.tracer = tracer;
   }
 
   public Attempt get(String orderId) {
@@ -61,6 +70,12 @@ public class CheckoutService {
     }
     // 2) 조회(본인 것만)
     Attempt a = own(orderId);
+    try (CorrelationScope c = correlate(a)) {
+      return confirmOwned(a, paymentKey, amount);
+    }
+  }
+
+  private Attempt confirmOwned(Attempt a, String paymentKey, long amount) {
     // 3) 이미 다른 paymentKey
     if (a.paymentKey() != null && !a.paymentKey().equals(paymentKey)) {
       throw new PmartException(
@@ -130,6 +145,12 @@ public class CheckoutService {
   /** §6.2 인증 실패·사용자 취소 보고. READY 만 바꾸고, 아니면 현재 상태(멱등). */
   public Attempt reportFailure(String orderId, String errorCode, String errorMessage) {
     Attempt a = own(orderId);
+    try (CorrelationScope c = correlate(a)) {
+      return reportFailureOwned(a, errorCode, errorMessage);
+    }
+  }
+
+  private Attempt reportFailureOwned(Attempt a, String errorCode, String errorMessage) {
     if (a.stage() != PaymentStage.READY) {
       return a;
     }
@@ -153,6 +174,11 @@ public class CheckoutService {
           }
         });
     return store.find(a.id(), false).orElseThrow();
+  }
+
+  /** 이 결제 시도의 사가로 상관 ID 를 바꾼다(끝나면 요청 값으로 되돌린다). */
+  private CorrelationScope correlate(Attempt a) {
+    return CorrelationScope.open(tracer.getIfAvailable(), a.sagaId());
   }
 
   private Attempt own(String orderId) {
