@@ -2,10 +2,10 @@
 # 검색 색인 재색인(ADR-0034, 절차 REINDEX.md §2) — PC 1 Git Bash 에서. 단계마다 조건을 확인하고, 어긋나면 그 자리에서 멈춘다.
 #   deploy/lan/elastic/reindex.sh status                 별칭·색인 건수·소비 그룹 지연·Logstash 큐·DLT
 #   deploy/lan/elastic/reindex.sh check <새 색인>         start 의 사전 확인만(바꾸는 것 없음)
-#   deploy/lan/elastic/reindex.sh start <새 색인>         사전 확인 → Kafka 백업 → search-index.env 를 새 색인·새 그룹으로 → es-init·logstash 재배포
+#   deploy/lan/elastic/reindex.sh start <새 색인>         사전 확인 → Kafka 백업 → search-index.env 를 새 색인·새 그룹으로 → es-init-search·logstash-search 재배포
 #   deploy/lan/elastic/reindex.sh wait [최대 초]          반영 완료(지연 0·큐 0·DLT 증가 없음·건수 일치)까지 기다린 뒤 전 문서 대조
 #   deploy/lan/elastic/reindex.sh switch                 별칭 products 를 새 색인으로(한 요청, 원자적). 직전에 완료 조건을 다시 본다
-#   deploy/lan/elastic/reindex.sh finish                 env 를 별칭으로 되돌려 logstash 재배포 → 옛 소비 그룹·Elasticsearch PC 의 옛 정의 파일 삭제
+#   deploy/lan/elastic/reindex.sh finish                 env 를 별칭으로 되돌려 logstash-search 재배포 → 옛 소비 그룹·검색 ES PC 의 옛 정의 파일 삭제
 #   deploy/lan/elastic/reindex.sh rollback               별칭을 이전 색인으로 되돌린다(switch 의 반대)
 #   deploy/lan/elastic/reindex.sh drop <색인>            옛 색인 삭제 — 별칭이 가리키지 않을 때만
 # 새 색인 정의 파일(search-service src/main/resources/elasticsearch/<새 색인>.json)과 SearchIndex.INDICES 를 먼저 바꿔 둔다.
@@ -31,8 +31,8 @@ envval() { sed -n "s/^$1=//p" "$ENVF" | tr -d '\r' | head -1; }
 setenv() { sed -i "s|^$1=.*|$1=$2|" "$ENVF"; [ "$(envval "$1")" = "$2" ] || die "$ENVF 의 $1 을 바꾸지 못했다"; }
 
 ls "$OUT"/*/target >/dev/null 2>&1 || die "build/ 가 없다 — deploy/lan/lan.sh render 먼저"
-EPC="$(pc_of elasticsearch)"; LPC="$(pc_of logstash)"; KPC="$(pc_of kafka-1)"; PPC="$(pc_of prometheus)"
-[ -n "$EPC" ] && [ -n "$LPC" ] && [ -n "$KPC" ] || die "elasticsearch·logstash·kafka 배치를 찾지 못했다(render 확인)"
+EPC="$(pc_of es-search)"; LPC="$(pc_of logstash-search)"; KPC="$(pc_of kafka-1)"; PPC="$(pc_of prometheus)"
+[ -n "$EPC" ] && [ -n "$LPC" ] && [ -n "$KPC" ] || die "es-search·logstash-search·kafka-1 배치를 찾지 못했다(render 확인, ADR-0038)"
 ES="http://$(ip_of "$EPC"):9200"
 
 es() { curl -sf -m 30 "$ES$1" "${@:2}"; }
@@ -52,7 +52,7 @@ dlt_end() {
 }
 # Logstash 영구 큐에 남은 사건 수(9600 은 밖에 열지 않았다 — 컨테이너 안에서). 읽지 못하면 '-'
 queue() {
-  quiet_ssh "$(host_of "$LPC")" "docker exec pmart-lan-logstash-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" \
+  quiet_ssh "$(host_of "$LPC")" "docker exec pmart-lan-logstash-search-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" \
     | json "(lambda q: q.get('events_count', q.get('events', 0)))(d['pipelines']['search-index'].get('queue', {}))" 2>/dev/null || echo -
 }
 # Logstash 가 구독할 토픽(search-index.conf 의 topics) 중 Kafka 에 없는 것. 없는 토픽은 소비자가 메타데이터 갱신(5분)까지 못 읽고,
@@ -162,12 +162,12 @@ EOF
     setenv PMART_SEARCH_GROUP_ID "$NEW_GROUP"
     note "search-index.env → $NEW_INDEX · $NEW_GROUP, 배포(es-init 이 빈 $NEW_INDEX 를 만들고 별칭은 그대로)"
     if [ "$EPC" = "$LPC" ]; then
-      bash $LAN/lan.sh deploy "$EPC" --force-recreate es-init logstash
+      bash $LAN/lan.sh deploy "$EPC" --force-recreate es-init-search logstash-search
     else
-      bash $LAN/lan.sh deploy "$EPC" --force-recreate es-init
-      bash $LAN/lan.sh deploy "$LPC" --force-recreate logstash
+      bash $LAN/lan.sh deploy "$EPC" --force-recreate es-init-search
+      bash $LAN/lan.sh deploy "$LPC" --force-recreate logstash-search
     fi
-    exists "$NEW_INDEX" || die "$NEW_INDEX 가 만들어지지 않았다 — lan.sh logs $EPC es-init"
+    exists "$NEW_INDEX" || die "$NEW_INDEX 가 만들어지지 않았다 — lan.sh logs $EPC es-init-search"
     [ "$(alias_target)" = "$OLD_INDEX" ] || die "별칭이 바뀌었다: $(alias_target)"
     note "재생 시작. 다음: $0 wait" ;;
 
@@ -197,7 +197,7 @@ EOF
     [ "$(alias_target)" = "$NEW_INDEX" ] || die "별칭이 $NEW_INDEX 가 아니다 — switch 먼저"
     setenv PMART_SEARCH_PRODUCTS_INDEX "$ALIAS"
     note "search-index.env → 별칭 $ALIAS(그룹 $NEW_GROUP 유지), logstash 재배포"
-    bash $LAN/lan.sh deploy "$LPC" logstash
+    bash $LAN/lan.sh deploy "$LPC" logstash-search
     note "옛 소비 그룹 $OLD_GROUP 삭제"
     printf '/opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --delete --group %s\n' "$OLD_GROUP" | kx || note "삭제 실패(이미 없거나 소비자가 붙어 있음) — 확인 필요"
     # lan.sh deploy 의 scp 는 더하기만 한다 — 남은 정의 파일이 있으면 es-init 이 옛 색인을 지운 뒤에도 다시 만든다

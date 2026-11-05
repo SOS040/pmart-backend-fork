@@ -23,7 +23,7 @@ datasources:
     uid: pmart-logs
     type: elasticsearch
     access: proxy
-    url: http://elasticsearch:9200
+    url: http://es-logs:9200 # 로그 ES(ADR-0038)
     jsonData:
       index: pmart-logs-*
       timeField: "@timestamp"

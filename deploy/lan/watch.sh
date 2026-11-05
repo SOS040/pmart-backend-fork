@@ -46,9 +46,14 @@ check() {
     zipkin)   curl -sf -m 5 "http://$ip:9411/health" >/dev/null ;;
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
     backoffice-web) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip/")" = 200 ] ;;    # 임시 백오피스(Nginx)
-    elasticsearch) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031)
+    es-search|es-logs) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031·0038)
     kibana)   [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:5601/api/status")" = 200 ] ;;
-    logstash) timeout 3 bash -c "exec 3<>/dev/tcp/$ip/5044" 2>/dev/null ;;   # beats 포트는 HTTP 가 아니라(curl 은 항상 000) TCP 연결만 확인
+    logstash-logs) timeout 3 bash -c "exec 3<>/dev/tcp/$ip/5044" 2>/dev/null ;;   # beats 포트는 HTTP 가 아니라(curl 은 항상 000) TCP 연결만 확인
+    # 검색 Logstash 는 LAN 에 여는 포트가 없다(Kafka 를 읽고 ES 에 쓰기만) — 그 PC 에 SSH 로 들어가 API(9600)가 답하는지 본다
+    logstash-search)
+      body="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
+        "docker exec pmart-lan-logstash-search-1 curl -s -m 5 localhost:9600/" 2>/dev/null)" || return 1
+      grep -q '"status":"green"' <<<"$body" ;;
     prometheus|alertmanager) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:$([ "$c" = prometheus ] && echo 9090 || echo 9093)/-/ready")" = 200 ] ;;
     grafana)  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:3000/api/health")" = 200 ] ;;
     connect)
@@ -160,12 +165,12 @@ kafka_metrics
 # 읽기만 한다. 가져오기에 실패해도 파일은 쓴다(pmart_logstash_up 0) — 경보가 그것으로 알린다.
 search_index_metrics() {
   local lpc epc lhost eip tmp py
-  lpc="$(pc_of logstash)"; epc="$(pc_of elasticsearch)"
+  lpc="$(pc_of logstash-search)"; epc="$(pc_of es-search)"
   [ -n "$lpc" ] && [ -n "$epc" ] || return 0
   lhost="$(awk '{print $3}' "$OUT/$lpc/target")"; eip="$(awk '{print $2}' "$OUT/$epc/target")"
   tmp="$STATE/search_index"
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$lhost" \
-    "docker exec pmart-lan-logstash-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" 2>/dev/null > "$tmp.logstash.json" || : > "$tmp.logstash.json"
+    "docker exec pmart-lan-logstash-search-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" 2>/dev/null > "$tmp.logstash.json" || : > "$tmp.logstash.json"
   curl -s -m 10 "http://$eip:9200/products/_search" -H 'Content-Type: application/json' \
     -d '{"size":0,"aggs":{"last":{"max":{"field":"updatedAtMs"}}}}' > "$tmp.es.json" 2>/dev/null || : > "$tmp.es.json"
   py="$(command -v python || command -v python3 || command -v py)" || { log "검색 색인 지표: python 없음"; return 0; }
