@@ -3,20 +3,23 @@
 작성 2026-11-03 (커밋 239b54f). **LAN 배포 2026-11-03 23:30 KST** — 실제 지표로 확인했다(아래 5절). 처음 문서의 `elasticsearch_cluster_health_up` 은 v1.10.0 에 없어 경보식을 고쳤다.
 구성 정본: `deploy/lan/render.sh`(es-exporter 컴포넌트·Prometheus job), `deploy/lan/monitoring/alert-rules.yml`.
 
+> **2026-11-06~ (ADR-0038)**: ES 가 둘로 나뉘어 exporter 도 둘이다 — `es-exporter-search`(pc3 :9114 → es-search)·`es-exporter-logs`(pc4 :9114 → es-logs). Prometheus job 은 그대로 `elasticsearch`, 대상마다 레이블 `es=search|logs`(exporter 자체 레이블 `cluster` = ES cluster.name `pmart-search`·`pmart-logs` 와 겹치지 않게 `es`). 경보 3종은 `es` 레이블로 어느 ES 인지 알리고, ElasticsearchUnreachable 은 둘 중 하나만 멈춰도 잡는다. 아래 1~2절의 pc4 단일 ES·`--es.uri=http://elasticsearch:9200`·5절 확인값은 분리 전 기록이다.
+
 ## 1. 수집 경로
 
 ```
-Elasticsearch (pc4, :9200)
-   ▲ 조회 (exporter 가 ES REST API 호출, 시간 제한 5s)
-es-exporter (pc4, :9114, quay.io/prometheuscommunity/elasticsearch-exporter:v1.10.0, mem 64m)
-   ▲ 15초마다 /metrics 수집 (job: elasticsearch, label pc=pc4)
+es-search (pc3, :9200)                        es-logs (pc4, :9200)
+   ▲ 조회 (ES REST API, 시간 제한 5s)            ▲
+es-exporter-search (pc3, :9114, es=search)    es-exporter-logs (pc4, :9114, es=logs)
+   (quay.io/prometheuscommunity/elasticsearch-exporter:v1.10.0, mem 64m)
+   ▲ 15초마다 /metrics 수집 (job: elasticsearch, label pc·es)
 Prometheus (scrape 15s, 규칙 평가 15s)
    ├─▶ 경보 규칙 → Alertmanager
    └─▶ Grafana (조회)
 ```
 
 - 배치: `render.sh` 가 elasticsearch 와 prometheus 가 모두 있으면 **ES PC 에 es-exporter 를 자동 추가**한다. 자동 구성요소 맨 뒤(config-relay 다음)에 붙여 기존 고정 IP 가 바뀌지 않는다(시험 렌더: `es-exporter 172.28.0.35` 추가만).
-- 실행 옵션: `--es.uri=http://elasticsearch:9200 --es.timeout=5s` 뿐 → exporter 기본 수집기만 켜진다.
+- 실행 옵션: `--es.uri=http://es-<search|logs>:9200 --es.timeout=5s` 뿐(분리 전 `elasticsearch:9200`) → exporter 기본 수집기만 켜진다.
 
 ## 2. 수집 지표
 

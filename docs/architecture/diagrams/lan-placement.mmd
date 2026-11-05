@@ -1,4 +1,4 @@
-%% LAN PC placement (2026-11-05, from deploy/lan/placement.conf and build/<pc>/compose.yml). Numbers are published ports.
+%% LAN PC placement (after 2026-11-06 switch — Kafka 3-node KRaft cluster ADR-0037, search/log ES split ADR-0038; from deploy/lan/placement.conf and build/<pc>/compose.yml). Numbers are published ports.
 %% Render: in docs/architecture/diagrams/ run  mmdc -i lan-placement.mmd -o lan-placement.png -s 3
 %%{init: {"flowchart": {"wrappingWidth": 420, "nodeSpacing": 30, "rankSpacing": 60}}}%%
 flowchart TB
@@ -14,7 +14,7 @@ flowchart TB
         direction TB
         P2C["<b>Commerce</b><br/>product-service :8101<br/>product-content-service :8102<br/>customer-service :8103<br/>cart-service :8104<br/>search-service :8105<br/>storefront-service :8106<br/>pricing-service :8107"]
         P2O["<b>Order & Payment</b><br/>order-service :8201<br/>order-orchestration-service :8202<br/>fulfillment-routing-service :8203<br/>claim-service :8204<br/>payment-service :8205"]
-        P2I[("<b>Infrastructure</b><br/>postgres :15432<br/>kafka :9092<br/>s3 :8333<br/>host-disk :9100 · log-shipper")]
+        P2I[("<b>Infrastructure</b><br/>postgres :15432<br/>kafka-1 :9092 · :9094 (KRaft node 1)<br/>s3 :8333<br/>host-disk :9100 · log-shipper")]
         P2C --- P2O --- P2I
     end
 
@@ -22,16 +22,17 @@ flowchart TB
         direction TB
         P3M["<b>MFC</b><br/>mfc-inventory-service :8301<br/>mfc-fulfillment-service :8302<br/>mfc-capacity-service :8303<br/>mfc-location-service :8304<br/>mfc-quality-service :8305<br/>mfc-inbound-service :8306"]
         P3D["<b>Delivery · CDC</b><br/>delivery-serviceability-service :8401<br/>delivery-capacity-service :8402<br/>rider-service :8403<br/>delivery-dispatch-service :8404<br/>delivery-execution-service :8405<br/>delivery-tracking-service :8406<br/>cdc-inventory-service :8601"]
-        P3I[("<b>Infrastructure</b><br/>postgres :15432<br/>connect (Debezium) :8083<br/>host-disk :9100 · log-shipper")]
-        P3M --- P3D --- P3I
+        P3S["<b>Search index</b><br/>es-search :9200 (product search only)<br/>logstash-search (Kafka → es-search)<br/>es-init-search · es-exporter-search :9114"]
+        P3I[("<b>Infrastructure</b><br/>postgres :15432<br/>kafka-2 :9092 · :9094 (KRaft node 2)<br/>connect (Debezium) :8083<br/>host-disk :9100 · log-shipper")]
+        P3M --- P3D --- P3S --- P3I
     end
 
     subgraph PC4["pc4 · 192.168.0.40 — Edge · Platform · Back office · Observability"]
         direction TB
         P4P["<b>Edge · Platform</b><br/>api-gateway :8080<br/>auth-service :8501<br/>config-server :8888<br/>eureka-server :8761<br/>backoffice-web :80"]
         P4B["<b>Back office · Common</b><br/>notification-service :8502<br/>audit-service :8503<br/>backoffice-bff :8504<br/>approval-service :8505<br/>case-service :8506<br/>center-master-service :8507"]
-        P4O["<b>Observability · Search</b><br/>prometheus :9090 · alertmanager :9093<br/>grafana :3000 · zipkin :9411<br/>elasticsearch :9200 (product search + logs)<br/>logstash :5044 · kibana :5601<br/>es-exporter :9114"]
-        P4I[("<b>Infrastructure · Support</b><br/>postgres :15432 · redis :6379<br/>host-disk :9100 · log-shipper<br/>es-init · log-janitor · config-relay")]
+        P4O["<b>Observability · Logs</b><br/>prometheus :9090 · alertmanager :9093<br/>grafana :3000 · zipkin :9411<br/>es-logs :9200 (app logs only)<br/>logstash-logs :5044 · kibana :5601<br/>es-exporter-logs :9114 · kafka-exporter :9308"]
+        P4I[("<b>Infrastructure · Support</b><br/>postgres :15432 · redis :6379<br/>kafka-3 :9092 · :9094 (KRaft node 3)<br/>host-disk :9100 · log-shipper<br/>es-init-logs · log-janitor · config-relay")]
         P4P --- P4B --- P4O --- P4I
     end
 
@@ -46,7 +47,7 @@ flowchart TB
     classDef pc1 fill:#f2f2f2,stroke:#888,color:#222
     class P2C,P2O,P3M,P3D,P4B svc
     class P2I,P3I,P4I infra
-    class P4O obs
+    class P4O,P3S obs
     class P4P plat
     class P1A,P1B,P1C pc1
-    linkStyle 0,1,2,3,4,5,6,7,8 stroke:transparent
+    linkStyle 0,1,2,3,4,5,6,7,8,9 stroke:transparent

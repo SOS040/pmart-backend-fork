@@ -1,6 +1,6 @@
 # pmart 의 ELK — 상품 검색과 로그 모니터링
 
-- 기준: 2026-11-05. 지금 LAN 에서 돌고 있는 모습을 설명하는 안내서다(결정 문서 아님). 결정은 ADR-0031(Elastic Stack)·ADR-0034(Kafka 이력·재색인).
+- 기준: 2026-11-06 전환 뒤. 지금 LAN 에서 돌고 있는 모습을 설명하는 안내서다(결정 문서 아님). 결정은 ADR-0031(Elastic Stack)·ADR-0034(Kafka 이력·재색인)·ADR-0038(검색 ES·로그 ES 분리)·ADR-0037(Kafka 3노드 클러스터).
 - 자세한 문서:
   - 상품 검색 전체: `product-search.md`
   - 운영 설정(경보·보존·백업·메모리): `docs/operations/lan-monitoring-and-backup.md`
@@ -13,27 +13,28 @@
   - **L**ogstash: 데이터 가공·운반
   - **K**ibana: 화면
 - pmart 는 여기에 PC 마다 로그를 모으는 **Filebeat** 를 붙였다.
-- pmart 는 **pc4 에 Elasticsearch 하나와 Logstash 하나**를 두고, **두 용도에 같이** 쓴다.
-  1. **상품 검색**: 도메인 이벤트 → 검색 색인
-  2. **로그 모니터링**: 앱 로그 → 로그 색인 → Kibana
+- pmart 는 용도마다 **Elasticsearch·Logstash 를 따로** 둔다(ADR-0038, 2026-11-06 전에는 pc4 의 하나를 같이 썼다).
+  1. **상품 검색**(pc3): 도메인 이벤트 → `logstash-search` → `es-search`
+  2. **로그 모니터링**(pc4): 앱 로그 → `logstash-logs` → `es-logs` → Kibana
 - 지표 감시(Prometheus·Grafana)와 요청 추적(Zipkin)은 ELK 가 아니다.
 - 구성요소
 
 | 구성요소 | 버전·위치 | 상품 검색 | 로그 |
 |---|---|---|---|
-| Elasticsearch | 8.18.0 + analysis-nori, pc4 :9200, 단일 노드, 힙 768m, 상한 1.5 GiB | `products`·`sku-prices` 색인 | `pmart-logs-YYYY.MM.DD` 색인 |
-| Logstash | 8.18.0, pc4, 힙 512m, 상한 1.5 GiB | 파이프라인 `search-index` | 파이프라인 `logs`(5044) |
-| Kibana | 8.18.0, pc4 :5601 | 거의 안 씀(Dev Tools 로 색인 확인 정도) | 로그 찾기 화면 |
-| Filebeat | 8.18.0, PC 마다(`log-shipper`) | — | 컨테이너 로그 수집 |
-| es-init | 한 번 실행 | 색인·별칭 생성(없을 때만) | ILM·템플릿·데이터 뷰 |
+| Elasticsearch | 8.18.0, 각각 단일 노드·힙 768m·상한 1.5 GiB | `es-search`(pc3 :9200, analysis-nori): `products`·`sku-prices`·`sku-handlings` 색인 | `es-logs`(pc4 :9200): `pmart-logs-YYYY.MM.DD` 색인 |
+| Logstash | 8.18.0, 각각 힙 512m·상한 1.5 GiB | `logstash-search`(pc3, LAN 포트 없음): 파이프라인 `search-index` | `logstash-logs`(pc4, 5044): 파이프라인 `logs` |
+| Kibana | 8.18.0, pc4 :5601 → es-logs | 쓰지 않는다(검색 색인은 es-search API 로 확인) | 로그 찾기 화면 |
+| Filebeat | 8.18.0, PC 마다(`log-shipper`) | — | 컨테이너 로그 수집 → logstash-logs |
+| es-init | 한 번 실행(`es-init.sh`, `PMART_ES_INIT`) | `es-init-search`: 색인·별칭 생성(없을 때만) | `es-init-logs`: ILM·템플릿·데이터 뷰 |
+| es-exporter | v1.10.0, 각 ES PC :9114 | `es-exporter-search`(레이블 `es=search`) | `es-exporter-logs`(레이블 `es=logs`) |
 
 ## 2. 상품 검색
 
 ```
 product·pricing·product-content·mfc-inventory 서비스 DB
-  → Outbox → Debezium(pc3) → Kafka(pc2): commerce.product.v1 · commerce.pricing.v1 · mfc.sku-handling.v1   ← 무제한 보관
-  → Logstash "search-index"(pc4)
-  → Elasticsearch: products-v5(별칭 products) · sku-prices-v1 · sku-handlings-v1(SKU 별 센터 취급)
+  → Outbox → Debezium(pc3) → Kafka 클러스터(kafka-1~3, 복제 3): commerce.product.v1 · commerce.pricing.v1 · mfc.sku-handling.v1   ← 무제한 보관
+  → logstash-search "search-index"(pc3)
+  → es-search(pc3): products-v5(별칭 products) · sku-prices-v1 · sku-handlings-v1(SKU 별 센터 취급)
   → search-service(읽기만) → api-gateway → 고객 앱
 ```
 
@@ -44,7 +45,7 @@ product·pricing·product-content·mfc-inventory 서비스 DB
 | | ES 에 쓸 때 Painless 스크립트로 버전을 비교해 더 새로운 것만 반영한다. 판매 상태는 상품 행 버전으로 비교한다. 같은 사건이 다시 오거나 옛 사건이 늦게 와도 결과가 같다. |
 | | 작업자 1·배치 1: 가격 사건과 상품 사건이 서로 덮어쓰지 않게 한다. 영구 큐는 256 MB, ES 가 거절한 문서는 Logstash DLQ(64 MB)로 간다. |
 | **Elasticsearch** | `products` 는 strict 매핑이다. 상품명은 아래처럼 여러 방식으로 나눠 저장한다. 그 밖에 카테고리 범위, 승인 속성 필터(`그룹.옵션`), 판매 상태, 기본가를 담는다. |
-| **search-service** | ES 는 별칭으로만 읽는다(색인은 하지 않는다). 결과에 카테고리 이름 경로와 센터 취급 여부를 붙이고, 필터 이름·순서는 product-service 필터 패널에서 가져온다. |
+| **search-service** | es-search 를 별칭으로만 읽는다(색인은 하지 않는다, 주소는 pmart-config `search-service-lan.yml`). 결과에 카테고리 이름 경로와 센터 취급 여부를 붙이고, 필터 이름·순서는 product-service 필터 패널에서 가져온다. |
 
 상품명 필드
 
@@ -70,7 +71,7 @@ product·pricing·product-content·mfc-inventory 서비스 DB
 ## 3. 로그 모니터링
 
 ```
-각 PC 컨테이너 로그 → Filebeat(PC 마다) → Logstash "logs"(:5044) → ES pmart-logs-YYYY.MM.DD → Kibana(:5601)
+각 PC 컨테이너 로그 → Filebeat(PC 마다) → logstash-logs "logs"(pc4 :5044) → es-logs pmart-logs-YYYY.MM.DD → Kibana(:5601)
 ```
 
 | 단계 | 하는 일 |
@@ -82,21 +83,23 @@ product·pricing·product-content·mfc-inventory 서비스 DB
 | **Kibana** | 데이터 뷰 `pmart-logs-*`(시간 필드 `@timestamp`). 서비스·PC·레벨·`traceId`·`correlationId`(사가 ID)로 거른다. |
 
 - Zipkin 에서 본 traceId 로 그 요청이 거친 모든 서비스의 로그를 찾을 수 있다.
-- Grafana(pc4 :3000)에서도 로그를 본다(2026-11-05): 데이터 원본 `Logs (Elasticsearch)`(`pmart-logs-*`, 로그만 — 상품 검색 색인은 넣지 않음)과 `Zipkin` 을 연결했다. Explore 에서 로그 검색, 로그의 traceId 를 누르면 Zipkin 추적, 추적의 span 에서 같은 traceId 로그로 간다. 세밀한 로그 검색은 Kibana 가 더 편하다.
+- Grafana(pc4 :3000)에서도 로그를 본다(2026-11-05): 데이터 원본 `Logs (Elasticsearch)`(`http://es-logs:9200`, `pmart-logs-*`)과 `Zipkin` 을 연결했다. Explore 에서 로그 검색, 로그의 traceId 를 누르면 Zipkin 추적, 추적의 span 에서 같은 traceId 로그로 간다. 세밀한 로그 검색은 Kibana 가 더 편하다.
 - 지표 감시는 ELK 가 아니다.
   - 숫자 지표: Prometheus(15초 수집) → Grafana·Alertmanager
   - 요청 흐름: Zipkin
 - 로그는 "왜 그랬는지"를 보는 용도다.
 
-## 4. 같은 Elasticsearch 를 쓰는 이유와 대가
+## 4. 검색 ES 와 로그 ES 를 나눈 이유 (ADR-0038)
 
-- **이유**: PC 자원이 제한돼 ES 를 하나만 둔다(pc4 메모리 상한 1.5 GiB).
-- **대가**: 로그가 몰리면 검색도 느려질 수 있다. 그래서 다음 장치를 둔다.
+- **이전**(~2026-11-05): pc4 의 ES·Logstash 하나를 두 용도에 같이 썼다(ADR-0031 결정 5). 로그가 몰리면 힙·디스크·Logstash 작업자를 검색과 나눠 쓰고, 디스크 워터마크에 걸리면 검색 색인까지 읽기 전용이 될 수 있었다.
+- **지금**: 검색(pc3)과 로그(pc4)를 따로 둔다. 로그 ES 를 지우거나 재시작해도 검색은 영향이 없고, 검색 재색인이 로그 수집을 막지 않는다.
+- 남은 장치:
   - Filebeat 초당 500건 상한
-  - 로그 보존 3일·색인 1 GB·전체 4 GB
-  - 색인 자동 생성은 `pmart-logs-*` 와 시스템 색인만 허용한다(`action.auto_create_index`). 매핑 없는 `products` 가 실수로 생기지 않게 하려는 것이다.
-  - Logstash 파이프라인을 나눴다: 검색은 작업자 1, 로그는 따로.
-- **보안**: 꺼져 있다(LAN 시험망). 운영으로 가면 인증·TLS 와 검색·로그 분리를 다시 정한다.
+  - 로그 보존 3일·색인 1 GB·전체 4 GB(es-logs 에만)
+  - 색인 자동 생성 범위(`action.auto_create_index`): es-search 는 시스템 색인만, es-logs 는 `pmart-logs-*` 와 시스템 색인만 — 매핑 없는 색인이나 엉뚱한 쪽 색인이 생기지 않게
+  - 검색 파이프라인 작업자 1·배치 1(가격·상품 경합 방지)
+- **대가**: pc3 에 ES·Logstash 메모리(약 3 GiB)가 새로 든다. 컨테이너가 하나씩 늘어 운영 대상이 많아졌다.
+- **보안**: 꺼져 있다(LAN 시험망). 운영으로 가면 인증·TLS 를 다시 정한다.
 
 ## 5. 아직 없는 것
 

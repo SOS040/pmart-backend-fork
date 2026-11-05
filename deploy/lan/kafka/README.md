@@ -1,12 +1,15 @@
-# Kafka 이벤트 이력 — 보관·감시·백업·복원 (ADR-0034)
+# Kafka 이벤트 이력 — 보관·감시·백업·복원 (ADR-0034, 클러스터 ADR-0037)
+
+**Kafka 는 3노드 KRaft 클러스터다**(2026-11-06~): kafka-1(pc2)·kafka-2(pc3)·kafka-3(pc4), 노드마다 브로커+컨트롤러, 복제 3·`min.insync.replicas` 2, 컨트롤러 포트 9094, 브로커 자동 토픽 생성 끔. 아래 명령의 컨테이너는 `pmart-lan-kafka-1-1`(pc2, compose 서비스 kafka-1) — 어느 노드에서 조회해도 클러스터 전체가 보인다. kafka-1 이 꺼져 있으면 `ssh pmart-pc3 ... pmart-lan-kafka-2-1` 처럼 다른 노드를 쓴다.
 
 대상은 **`commerce.product.v1`·`commerce.pricing.v1`·`mfc.sku-handling.v1` 세 토픽뿐**이다(검색 색인의 정본 이력 — 센터 취급 토픽은 2026-11-05 추가). 다른 토픽은 브로커 기본(7일)이다.
 
 | 파일 | 어디서 | 하는 일 |
 |---|---|---|
-| `topics-init.sh` | Kafka 컨테이너 안(`lan.sh deploy` 가 실행) | 두 토픽 무제한 보관(`retention.ms=-1`, `retention.bytes=-1`, `cleanup.policy=delete`). 없으면 파티션 1개로 생성. 멱등 |
-| `topic-metrics.sh` | Kafka 컨테이너 안(`watch.sh` 가 5분마다) | 토픽 크기·시작/끝 오프셋·무제한 여부를 Prometheus textfile 형식으로 |
-| `backup.sh` | PC 1 Git Bash | 두 토픽을 읽기 전용으로 내보내고 검사·MANIFEST(sha256) |
+| `topics-init.sh` | Kafka 노드 컨테이너 안(`lan.sh deploy` 가 세 노드를 띄운 뒤 한 노드에서 실행) | 세 토픽 무제한 보관(`retention.ms=-1`, `retention.bytes=-1`, `cleanup.policy=delete`) + `search-index.DLT`(30일). 없으면 파티션 1개·복제 3으로 생성, 복제 수가 다르면 멈춤. 멱등. 업무·heartbeat·DLT·Bus 토픽은 만들지 않는다(Connect·바인더가 만든다) |
+| `topic-metrics.sh` | kafka-1 컨테이너 안(`watch.sh` 가 5분마다) | 토픽 크기(리더 복제본 기준)·시작/끝 오프셋·무제한 여부를 Prometheus textfile 형식으로 |
+| `backup.sh` | PC 1 Git Bash | 세 토픽을 읽기 전용으로 내보내고 검사·MANIFEST(sha256). 노드는 `PMART_KAFKA_NODE`(기본 kafka-1) |
+| `debezium-slots.sh` | PC 1 Git Bash | Debezium 복제 슬롯(`pmart_outbox_*`) `list` / `drop [--execute]` — Kafka 를 새로 만들 때. 비활성 슬롯만, 슬롯의 DB 로 접속해 지운다 |
 | `backup-topic.sh` | Kafka 컨테이너 안(`backup.sh` 가 넣음) | 토픽 한 개를 줄 단위로 출력(소비 그룹을 만들지 않는다) |
 | `restore-topic.sh` | **복구용** Kafka 컨테이너 안 | 백업 줄을 빈 토픽에 다시 넣는다 |
 
@@ -17,20 +20,20 @@ ssh pmart-pc2 "docker exec pmart-lan-kafka-1-1 /opt/kafka/bin/kafka-configs.sh -
 # → cleanup.policy=delete, retention.bytes=-1, retention.ms=-1 (DYNAMIC_TOPIC_CONFIG)
 ```
 
-- Kafka 를 새로 만들면(볼륨 손실) 다음 `lan.sh deploy pc2` 전까지 7일이 걸린다. `KafkaEventRetentionNotUnlimited` 경보가 알린다.
+- 클러스터를 새로 만들면(세 노드 볼륨 모두 손실) 다음 `lan.sh deploy` 전까지 7일이 걸린다. `KafkaEventRetentionNotUnlimited` 경보가 알린다. 노드 하나의 볼륨만 잃으면 나머지 두 복제본에서 다시 채운다.
 - 배포 없이 바로 고치려면 `ssh pmart-pc2 "docker exec -i pmart-lan-kafka-1-1 sh" < deploy/lan/kafka/topics-init.sh`(재시작 없음)을 실행한다.
 
 ## 감시
 
 **역할**
-- PC 2: 측정 대상이다.
+- kafka-1(PC 2) 컨테이너: 측정을 실행하는 곳이다(클러스터 전체를 본다).
 - PC 1 `watch.sh`: 측정하고, 결과를 `pc2:%USERPROFILE%\pmart-lan\metrics\kafka_topics.prom` 에 쓴다.
 - PC 2 `host-disk`: node-exporter textfile 수집기로 내보낸다.
 - PC 4 Prometheus: 수집하고 경보를 평가한다.
 
 | 지표 | 뜻 |
 |---|---|
-| `pmart_kafka_topic_size_bytes{topic}` | 토픽 로그 크기 |
+| `pmart_kafka_topic_size_bytes{topic}` | 토픽 로그 크기 — 파티션마다 가장 큰 복제본(리더)만 센다. 복제 3이라 `kafka-log-dirs` 를 모두 합하면 3배다 |
 | `pmart_kafka_topic_end_offset{topic}` / `_start_offset` | 쌓인 사건 수 / 0 이 아니면 앞 사건이 지워졌다 |
 | `pmart_kafka_topic_retention_unlimited{topic}` | 1 = 무제한 보관 |
 | `pmart_kafka_topic_metrics_timestamp_seconds` | 측정 시각(멈춤 감지) |
@@ -44,8 +47,10 @@ ssh pmart-pc2 "docker exec pmart-lan-kafka-1-1 /opt/kafka/bin/kafka-configs.sh -
 - `KafkaTopicMetricsMissing`
 - `HostDiskFillPredicted`: C: 가 7일 안에 10GB 아래로 내려갈 예측. 기존 `HostDiskLow`·`HostDiskCritical` 과 함께 본다.
 
+**클러스터 경보** (kafka-exporter, pc4 :9308) — `KafkaBrokerDown`(<3), `KafkaQuorumAtRisk`(<2 또는 조회 불가), `KafkaUnderReplicatedPartitions`, `KafkaPartitionBelowMinIsr`(ISR<2 = 쓰기 실패), `KafkaOfflinePartitions`. 자세한 표는 `docs/operations/lan-monitoring-and-backup.md` 4장.
+
 **디스크**
-- Kafka 데이터는 PC 2 C: 의 Docker 가상디스크(`%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`) 안에 있다.
+- Kafka 데이터는 세 PC 의 C: Docker 가상디스크(`%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`) 안 볼륨 `kafkacluster` 에 하나씩(복제 3) 있다. 단일 노드 때의 `kafkadata`(pc2)는 롤백용으로 남아 있다(확인 뒤 별도 요청으로 삭제).
 - vhdx 는 **안에서 지워도 자동으로 줄지 않는다**. 정리한 뒤에도 C: 여유가 늘지 않으면 vhdx 를 압축해야 한다. 압축하려면 Docker 를 멈춰야 하므로 서비스 중단이 필요하다.
 - 2026-11-03 기준값: vhdx 14.6GB, C: 여유 147GB/300GB, 두 토픽 합 약 130KB.
 
@@ -62,7 +67,7 @@ deploy/lan/kafka/backup.sh /d/pmart-backups/kafka after-bulk-load
 - 줄 형식: `CreateTime:<ms>` US `Partition:<p>` US `Offset:<o>` US `<헤더들>` US `<키>` US `<값>`
   - US = 0x1F, 헤더 사이 = 0x1E. 헤더 이름과 값 사이는 `:` 다(Kafka 4.1 출력기가 고정 — 헤더 이름에 `:` 가 없어야 한다).
   - null = `__PMART_NULL__`(예: 헤더 `correlationId`).
-- **위치는 Kafka PC(PC 2)와 다른 장애 영역에 둔다.** 지금은 PC 1 `D:\pmart-backups\kafka` 다. PC 1 의 C:·D: 는 같은 SSD 라 외부 매체·별도 저장소로 옮기는 것은 미결이다.
+- **위치는 Kafka PC(PC 2·3·4)와 다른 장애 영역에 둔다.** 지금은 PC 1 `D:\pmart-backups\kafka` 다. PC 1 의 C:·D: 는 같은 SSD 라 외부 매체·별도 저장소로 옮기는 것은 미결이다.
 - **시점**: 큰 변경 전, 상품 대량 등록 뒤. 정기 자동화는 미결.
 - **RPO** 는 마지막 백업 시점이다.
 
@@ -121,7 +126,6 @@ ssh pmart-pc2 "docker exec pmart-lan-kafka-1-1 /opt/kafka/bin/kafka-consumer-gro
 - 같은 날 `lan.sh deploy pc4 es-exporter`: pc4 에 `es-exporter` 만 추가(다른 28개 그대로). Prometheus 는 `POST /-/reload` 로 반영. 대상 39개 모두 UP, 경보 규칙 16개, 발생 중인 경보 없음.
 
 ## 배포할 때 (스크립트와 LAN 배포는 따로)
-- `lan.sh deploy pc2` 를 하면 Kafka 를 `--no-recreate` 로 먼저 올리고 `topics-init.sh` 를 실행한다. 이번 변경으로 **pc2 `host-disk` 만 재생성**된다(textfile 인자·`./metrics` 마운트).
-- pc3 은 바뀌지 않는다.
-- pc4 는 `es-exporter` 가 추가되고 Prometheus 설정·경보 규칙이 바뀐다. 파일은 바인드라 Prometheus 를 재시작하지 않고 `curl -X POST http://192.168.0.40:9090/-/reload` 로 반영한다.
-- `es-exporter` 는 다른 PC 의 `extra_hosts` 에 넣지 않는다(`render.sh` `NO_EXTRA_HOST`). 넣으면 pc2·pc3 의 Kafka·Postgres·Connect 까지 모두 재생성된다.
+- (2026-11-03 기록, 단일 노드 때) `lan.sh deploy pc2` 가 Kafka 를 `--no-recreate` 로 먼저 올리고 `topics-init.sh` 를 실행했다. pc4 `es-exporter` 추가는 `curl -X POST http://192.168.0.40:9090/-/reload` 로 반영했다.
+- **지금(클러스터)**: `lan.sh deploy` 는 대상 PC 의 kafka-N 을 모두 `--no-recreate` 로 먼저 띄우고, 다 healthy 가 된 뒤 한 노드에서 `topics-init.sh` 를 실행하고, 그다음 config-server·나머지를 올린다. 노드 하나만으로는 과반이 안 돼 healthy 가 되지 않는다(2026-11-05 로컬 시험).
+- 다른 PC 가 이름으로 부르지 않는 보조 구성요소(`es-exporter-*`·`kafka-exporter`)는 `extra_hosts` 에 넣지 않는다(`render.sh` `NO_EXTRA_HOST`). 넣으면 다른 PC 의 컨테이너가 모두 재생성된다.

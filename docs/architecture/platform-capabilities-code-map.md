@@ -19,10 +19,10 @@
 | 2 | 서비스 디스커버리·로드밸런싱 | Eureka + Spring Cloud LoadBalancer(RestClient 인터셉터) | LAN 운영(ADR-0032) |
 | 3 | config 서버 | Spring Cloud Config(git) + 웹훅 → Bus(Kafka) 실행 중 갱신 | LAN 운영(ADR-0027·0029·0033) |
 | 4 | Resilience | 시간 제한 + 오류 해석(`Downstream`), 멱등 키, 사가 보상, Kafka 재시도·DLT(Stream 바인더 DLQ). **Resilience4j 미사용** | 운영 |
-| 5 | 모니터링 | Prometheus·Alertmanager·Grafana, Elastic(Filebeat→Logstash→ES→Kibana), PC 1 watch | LAN 운영(ADR-0030·0031·0034) |
+| 5 | 모니터링 | Prometheus·Alertmanager·Grafana, Elastic(Filebeat→logstash-logs→es-logs→Kibana), kafka-exporter, PC 1 watch | LAN 운영(ADR-0030·0031·0034·0037·0038) |
 | 6 | 트레이싱 | Micrometer Tracing(OTel 브리지) → Zipkin, W3C traceparent(HTTP + Kafka 헤더) | 운영. Kafka 구간도 이어짐(2026-11-04 LAN 확인, `a1d514c`) |
 | 7 | 메시지 분산 처리 | Outbox → Debezium → Kafka → Spring Cloud Stream → Inbox, 재시도·DLT, 사가 | 운영(ADR-0003·0009·0030·0035) |
-| 8 | 상품 검색 | 도메인 이벤트 → Logstash → Elasticsearch(nori) → search-service | LAN 운영(ADR-0031·0034) |
+| 8 | 상품 검색 | 도메인 이벤트 → logstash-search → es-search(nori, pc3) → search-service | LAN 운영(ADR-0031·0034·0038) |
 
 ---
 
@@ -163,7 +163,7 @@
 | `platform-services/config-server/src/main/resources/application.yml` | git: `uri`(Deploy key SSH), `default-label: main`, `clone-on-start`, `force-pull: true`, `strict-host-key-checking`. `spring.config.import: optional:configtree:${PMART_CONFIG_SECRETS_DIR:/run/secrets/config-server}/`(비밀은 파일 이름 = 속성 이름). `server.encrypt.enabled: true`. monitor: GitHub 만 켬. `bus.refresh.enabled: false`, `bus.ack.enabled: false`(StreamBridge 동시 수정 예외 회피). 프로필 그룹 `local: native` |
 | `.../config-server/src/main/resources/application-local.yml` | `native.search-locations: file:…/deploy/lan/.config-repo/`(로컬은 사본 폴더를 바로 읽음 — force-pull 이 미커밋 작업을 지운 사고 뒤에 바꿈) |
 | 각 서비스 `src/main/resources/application.yml` | `spring.config.import: "optional:configserver:"`, `fail-fast: true`, `username: pmart`. LAN 은 compose 환경변수 `SPRING_CLOUD_CONFIG_URI=http://config-server:8888` |
-| `.config-repo/application-lan.yml` | `spring.cloud.bus.enabled: true`, `spring.kafka.bootstrap-servers: kafka:9092`. Bus 소비 그룹 `springCloudBusInput.group: bus-${spring.application.name}-${PMART_BUS_INSTANCE:…}`, `start-offset: latest`(2026-11-04 — 전에는 재시작마다 빈 `anonymous.*` 그룹이 쌓였다. config-server 는 이 파일을 읽지 않아 anonymous 그대로) |
+| `.config-repo/application-lan.yml` | `spring.cloud.bus.enabled: true`, `spring.kafka.bootstrap-servers: kafka-1:9092,kafka-2:9092,kafka-3:9092`(3노드 클러스터, ADR-0037). Bus 소비 그룹 `springCloudBusInput.group: bus-${spring.application.name}-${PMART_BUS_INSTANCE:…}`, `start-offset: latest`(2026-11-04 — 전에는 재시작마다 빈 `anonymous.*` 그룹이 쌓였다. config-server 는 이 파일을 읽지 않아 anonymous 그대로) |
 | `.config-repo/<app>-lan.yml` | DB 비밀번호 `'{cipher}…'` 등 |
 
 ### `@RefreshScope` 가 걸린 곳 (레코드를 클래스로 바꿈 — 레코드는 프록시를 만들 수 없다)
@@ -261,7 +261,7 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 - **지표**: Prometheus(pc4)가 모든 Spring 앱의 `/actuator/prometheus` 와 exporter 들을 15초마다 수집한다.
 - **경보**: Alertmanager 가 받는다. **전송 채널은 없다**(화면에서만 본다).
 - **화면**: Grafana.
-- **로그**: 앱의 JSON 로그를 Filebeat → Logstash → Elasticsearch 로 모으고 Kibana 에서 본다.
+- **로그**: 앱의 JSON 로그를 Filebeat → logstash-logs → es-logs(pc4, 로그 전용 — ADR-0038) 로 모으고 Kibana 에서 본다.
 - **PC 1 watch**: LAN 전체를 점검하고, 연속으로 실패하면 자동 재시작한다.
 
 ### 코드·구성
@@ -271,18 +271,18 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 | `libraries/common-observability/src/main/resources/pmart-logback.xml` | local 이 아니면 JSON 한 줄 로그(LogstashEncoder: UTC 시각, `service`, MDC traceId·spanId·correlationId·sourceSystem). 비밀번호·토큰·전화·이메일·카드번호는 가린다. local 은 텍스트 |
 | `libraries/common-messaging/.../DeadLetters.java` | 업무 외 지표: `pmart.messaging.dead.letters.open`(30s 갱신), `pmart.messaging.dead.letters{topic}` |
 | `gradle/libs.versions.toml`(bundle `service-observability`) | micrometer-registry-prometheus, tracing-bridge-otel, zipkin exporter, logstash-logback-encoder |
-| `deploy/lan/render.sh` | `prometheus.yml` 생성. job: prometheus, `host-disk`(모든 PC :9100), `elasticsearch`(:9114), 앱마다 하나. config-server 는 actuator 를 막아 빼 둠 |
+| `deploy/lan/render.sh` | `prometheus.yml` 생성. job: prometheus, `host-disk`(모든 PC :9100), `elasticsearch`(es-exporter 2개 :9114, 레이블 `es=search|logs`), `kafka`(kafka-exporter pc4 :9308), 앱마다 하나. config-server 는 actuator 를 막아 빼 둠 |
 | `deploy/lan/monitoring/alert-rules.yml` | 경보 규칙(아래) |
 | `deploy/lan/monitoring/alertmanager.yml` | receiver `none` |
 | `deploy/lan/monitoring/grafana/{provisioning/…, dashboards/pmart-overview.json}` | 데이터 소스와 "PMart 개요" 대시보드(C: 여유, 앱 UP, 미처리 메시지, HTTP 요청·5xx·지연, Kafka 소비 지연, JVM 힙, DB 커넥션) |
 | `deploy/lan/monitoring/grafana/dashboards/pmart-search.json` | "PMart 상품 검색" 대시보드(2026-11-05, `dc70323`): 색인 파이프라인(소비 지연·Logstash 큐·마지막 반영·DLT·ES 거절), 검색 API, Elasticsearch, 이력 토픽 |
-| `deploy/lan/elastic/filebeat.yml` | `log-shipper`(모든 PC): 컨테이너 로그 중 앱 JSON 만, 초당 500건, 메모리 큐 → `logstash:5044` |
-| `deploy/lan/elastic/logstash/{logstash.yml, pipelines.yml, logs.conf}` | `logs` 파이프라인 → `pmart-logs-YYYY.MM.dd`(같은 Logstash 에서 검색 색인 파이프라인도 돈다) |
-| `deploy/lan/elastic/es-init.sh`, `log-janitor.sh` | ILM 3일, 색인 틀, Kibana 데이터 뷰 / 5분마다 크기 상한 강제(한 색인 1GB, 전체 4GB) |
-| `deploy/lan/kafka/topic-metrics.sh` | 이벤트 이력 토픽 지표(ADR-0034), 검색 색인 소비 그룹 지연 |
+| `deploy/lan/elastic/filebeat.yml` | `log-shipper`(모든 PC): 컨테이너 로그 중 앱 JSON 만, 초당 500건, 메모리 큐 → `logstash-logs:5044` |
+| `deploy/lan/elastic/logstash/{logstash.yml, pipelines-logs.yml, logs.conf}` | logstash-logs(pc4)의 `logs` 파이프라인 → es-logs `pmart-logs-YYYY.MM.dd`(검색 색인은 pc3 logstash-search 로 분리, ADR-0038) |
+| `deploy/lan/elastic/es-init.sh`(`PMART_ES_INIT=logs`), `log-janitor.sh` | es-init-logs: ILM 3일, 색인 틀, Kibana 데이터 뷰 / 5분마다 es-logs 크기 상한 강제(한 색인 1GB, 전체 4GB) |
+| `deploy/lan/kafka/topic-metrics.sh` | 이벤트 이력 토픽 지표(ADR-0034, 크기는 리더 기준), 검색 색인 소비 그룹 지연 |
 | `deploy/lan/elastic/search-index-metrics.py` | 검색 색인 파이프라인 지표(Logstash 영구 큐·DLQ·ES 거절·마지막 반영 시각, 2026-11-04) → pc2 textfile |
 | `deploy/lan/watch.sh`, `watch-install.ps1`, `ipcheck.sh` | PC 1 예약 작업 "PMart LAN Watch"(5분) |
-| `docs/operations/lan-monitoring-and-backup.md` | 운영 설정 모음(watch.sh·Prometheus·경보 22개 표·Zipkin·로그 보존·Kafka 백업·메모리 상한) |
+| `docs/operations/lan-monitoring-and-backup.md` | 운영 설정 모음(watch.sh·Prometheus·경보 28개 표·Zipkin·로그 보존·Kafka 백업·메모리 상한) |
 
 ### 설정 (`ObservabilityDefaultsPostProcessor`)
 - `management.endpoints.web.exposure.include=health,info,prometheus,metrics`
@@ -301,14 +301,15 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 | Elasticsearch | ElasticsearchUnreachable, ElasticsearchClusterRed, ElasticsearchHeapHigh |
 | 검색 색인(2026-11-04) | SearchIndexDeadLetter, SearchIndexStalled, SearchIndexQueueBacklog, SearchIndexLogstashDown, SearchIndexRejectedByElasticsearch, SearchIndexMetricsStale |
 | 이벤트 이력(ADR-0034) | KafkaEventRetentionNotUnlimited, KafkaEventHistoryTruncated, KafkaEventBurst, KafkaEventTopicGrowthFast, KafkaTopicMetricsStale, KafkaTopicMetricsMissing |
+| Kafka 클러스터(ADR-0037, kafka-exporter) | KafkaBrokerDown, KafkaQuorumAtRisk, KafkaUnderReplicatedPartitions, KafkaPartitionBelowMinIsr, KafkaOfflinePartitions |
 | 디스크 | HostDiskLow(15%), HostDiskCritical(10GB), HostDiskFillPredicted(7일 예측) |
 
 ### 흐름
 ```
-[지표] 앱 /actuator/prometheus, host-disk(:9100, pc2 는 Kafka 토픽 textfile 포함), es-exporter(:9114)
+[지표] 앱 /actuator/prometheus, host-disk(:9100, pc2 는 Kafka 토픽 textfile 포함), es-exporter-search·logs(:9114), kafka-exporter(pc4 :9308)
         ─15s─▶ Prometheus(pc4:9090) ─▶ 경보 규칙 ─▶ Alertmanager(:9093, 전송 없음) / Grafana(:3000)
-[로그] 앱 stdout JSON ─▶ docker json-file(20MB×3) ─▶ Filebeat(PC 마다) ─▶ Logstash(pc4:5044) ─▶ ES pmart-logs-* ─▶ Kibana(:5601)
-[감시] PC 1 watch.sh(5분): 실제 프로토콜로 점검(Postgres SSLRequest, Kafka ApiVersions, Redis PING, Zipkin, ES health,
+[로그] 앱 stdout JSON ─▶ docker json-file(20MB×3) ─▶ Filebeat(PC 마다) ─▶ logstash-logs(pc4:5044) ─▶ es-logs pmart-logs-* ─▶ Kibana(:5601)
+[감시] PC 1 watch.sh(5분): 실제 프로토콜로 점검(Postgres SSLRequest, Kafka ApiVersions(kafka-1~3), Redis PING, Zipkin, ES health(es-search·es-logs),
         Connect 커넥터 RUNNING, 앱 /actuator/health) → 2번 연속 실패 시 lan.sh restart(PC 별 10분 쿨다운),
         PC 전체 실패면 Docker Desktop 시작 작업 먼저, IP 변경이면 재시작 보류. 이벤트 이력 토픽 지표·검색 색인 파이프라인 지표 측정
 ```
@@ -423,6 +424,7 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 | `pmart.messaging.consumer.*` | 재시도 3회, 1s·2s·4s(최대 10s) — Stream 바인딩 `max-attempts`·`back-off-*` 로 들어간다 |
 | `spring.cloud.function.definition`, `spring.cloud.stream.bindings.<fn>-in-0.destination` | 서비스별 소비 함수·토픽(설정 저장소 `<서비스>.yml`, ADR-0035) |
 | 토픽 보관 | `commerce.product.v1`·`commerce.pricing.v1`·`mfc.sku-handling.v1`(2026-11-05) 무제한, `search-index.DLT` 30일, 그 외 7일(ADR-0034, `deploy/lan/kafka/topics-init.sh`) |
+| 클러스터·복제(LAN) | 3노드 KRaft(kafka-1 pc2·kafka-2 pc3·kafka-3 pc4), 복제 3·`min.insync.replicas` 2, 브로커 자동 토픽 생성 끔 — 업무·heartbeat 토픽은 Connect(`topic.creation.default.*=-1`), DLT·Bus 는 바인더가 만든다(ADR-0037, `deploy/lan/render.sh`) |
 
 ### 흐름
 ```
@@ -478,10 +480,10 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 | `services/search-service/src/main/resources/elasticsearch/{products-v5,sku-prices-v1,sku-handlings-v1}.json` | 색인 정의(nori, `name.edge`, `name.partial`·`name.compact` n-gram, `nameChosung`(.edge), 판매 상태 행 버전, `filters`, `carriedMfcIds`). 별칭은 정의에 넣지 않는다 |
 | `services/search-service/src/main/logstash/search-index.conf` | **색인 파이프라인**(이 서비스 소유, 배포가 Logstash 에 복사) |
 | `contracts/openapi/search-service.yaml` | REST 계약(openApiGenerate → `api.generated`) |
-| `deploy/lan/elastic/es-init.sh` | LAN 에서 같은 정의 파일로 색인과 별칭을 만든다(없을 때만) |
-| `deploy/lan/elastic/search-index.env` | Logstash 대상 색인·소비 그룹(`PMART_SEARCH_GROUP_ID=search-index-logstash-v5`)·DLT 토픽 |
+| `deploy/lan/elastic/es-init.sh` | LAN 에서 같은 정의 파일로 색인과 별칭을 만든다(없을 때만). es-init-search(pc3, `PMART_ES_INIT=search`) |
+| `deploy/lan/elastic/search-index.env` | logstash-search 대상 색인·소비 그룹(`PMART_SEARCH_GROUP_ID=search-index-logstash-v5`)·DLT 토픽 |
 | `deploy/lan/elastic/REINDEX.md`, `reindex.sh` | 재색인 절차와 실행 스크립트(check·start·wait·switch·finish, 2026-11-05) |
-| `deploy/lan/elastic/logstash/pipelines.yml` | `search-index` 파이프라인: 작업자 1, 배치 1 |
+| `deploy/lan/elastic/logstash/pipelines-search.yml` | logstash-search(pc3)의 `search-index` 파이프라인: 작업자 1, 배치 1 |
 | `deploy/lan/kafka/` | 이벤트 이력 무제한 보관·백업·복원(ADR-0034) |
 | 시험 | `services/search-service/src/integrationTest/java/com/pmart/search/SearchFlowIT.java`(실제 Kafka·ES(nori)·Logstash) |
 
@@ -489,19 +491,19 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 | 파일 | 키 |
 |---|---|
 | `.config-repo/search-service.yml` | `server.port: 8105`, `pmart.messaging.domain: commerce`, 익명 허용 경로(`/api/v1/search/products|suggestions|filters`), DataSource 자동구성 제외(DB 없음) |
-| `.config-repo/search-service-lan.yml` | `pmart.search.elasticsearch-url: http://elasticsearch:9200`, `product-base-url: http://product-service:8101`(`inventory-base-url` 은 2026-11-05 삭제) |
+| `.config-repo/search-service-lan.yml` | `pmart.search.elasticsearch-url: http://es-search:9200`(검색 전용 ES, ADR-0038), `product-base-url: http://product-service:8101`(`inventory-base-url` 은 2026-11-05 삭제) |
 | `.config-repo/search-service-local.yml` | 같은 키의 localhost 값 |
 | `.config-repo/api-gateway.yml` | 라우트 `search-service`(`Path=/api/v1/search/**`), `search-service-me`(`/api/v1/me/recent-searches/**`, order -100), public-paths 에 `/api/v1/search/products` |
-| Logstash 환경 | `PMART_KAFKA_BOOTSTRAP`, `PMART_ES_URL`, `PMART_CONTENT_BASE_URL`, `search-index.env` 의 `PMART_SEARCH_*`(render.sh) |
-| 감시 | `es-exporter`(:9114) + Elasticsearch 경보 3종(`docs/architecture/elasticsearch-metrics.md`), 색인 파이프라인 지표 + `SearchIndex*` 경보 6종(2026-11-04), Grafana "PMart 상품 검색" |
+| logstash-search 환경 | `PMART_KAFKA_BOOTSTRAP`(3노드), `PMART_ES_URL`(es-search), `PMART_CONTENT_BASE_URL`, `search-index.env` 의 `PMART_SEARCH_*`(render.sh) |
+| 감시 | `es-exporter-search`(pc3 :9114, `es=search`) + Elasticsearch 경보 3종(`docs/architecture/elasticsearch-metrics.md`), 색인 파이프라인 지표 + `SearchIndex*` 경보 6종(2026-11-04), Grafana "PMart 상품 검색" |
 
 ### 흐름
 ```
-[색인 — Logstash 하나만 쓴다]
+[색인 — logstash-search(pc3) 하나만 쓴다]
  product-service  ProductVersionPublished·ProductSaleStateChanged ┐
  product-content  ProductContentPublished                        ├─ commerce.product.v1 ┐
  pricing-service  PriceVersionEffective ─────────────────────────── commerce.pricing.v1 ┤
- mfc-inventory    SkuHandlingChanged(2026-11-05) ────────────────── mfc.sku-handling.v1 ┴─▶ Logstash search-index
+ mfc-inventory    SkuHandlingChanged(2026-11-05) ────────────────── mfc.sku-handling.v1 ┴─▶ logstash-search search-index
    (소비 그룹 search-index-logstash-v5 — search-index.env, read_committed, 작업자 1·배치 1)
    ProductVersionPublished → 카테고리 조상 범위·대표 SKU·판매상태·filters, 가격·SKU 취급이 먼저 와 있으면 _mget 으로 붙임
    ProductContentPublished → product-content 공개 카드 API 로 이름·이미지 보강(게시본만). 2번 더 실패하면 search-index.DLT + 경보
@@ -509,7 +511,7 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
    PriceVersionEffective   → sku-prices 문서 + 그 SKU 를 대표로 둔 상품(update_by_query)
    SkuHandlingChanged      → sku-handlings 문서(센터별 버전 비교) + 그 SKU 를 대표로 둔 상품의 carriedMfcIds
    모든 갱신은 Painless 스크립트가 버전·시각을 비교 → 재전달·늦게 온 옛 사건은 무시(멱등·순서 안전)
- ─▶ Elasticsearch(pc4) products-v5 / sku-prices-v1 / sku-handlings-v1
+ ─▶ es-search(pc3) products-v5 / sku-prices-v1 / sku-handlings-v1
 
 [조회]
  고객 앱 ─▶ 게이트웨이(/api/v1/search/**, 익명) ─▶ search-service

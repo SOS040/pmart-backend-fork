@@ -5,6 +5,7 @@
   - ADR-0034: commerce.product.v1·commerce.pricing.v1 무제한 보관, 재색인 = Kafka 전체 재생, 스냅샷 API 없음
   - `docs/architecture/search-comparison.md`
 - 재색인 API(`/internal/reindex`)는 두지 않는다(501). 아래 절차로만 한다.
+- **2026-11-06~ 구성(ADR-0038·0037)**: 검색 색인은 **pc3 의 `es-search`(http://192.168.0.222:9200)**, 넣는 주체는 **pc3 `logstash-search`**(컨테이너 `pmart-lan-logstash-search-1`), 색인 준비는 `es-init-search`. Kafka 는 3노드 클러스터(조회 컨테이너 `pmart-lan-kafka-1-1`, pc2). `reindex.sh` 는 이 이름을 쓴다. 아래 §2·§4 의 pc4·`elasticsearch`·`logstash`·`es-init`·`192.168.0.40:9200` 은 분리 전(~2026-11-05) 기록이다 — 지금은 각각 pc3·`es-search`·`logstash-search`·`es-init-search`·`192.168.0.222:9200` 으로 읽는다.
 - 선행 조건(2026-11-04 충족):
   - 판매 상태 비교를 상품 행 버전으로 바꿈 — `ProductVersionPublished.rowVersion` 추가, Logstash·storefront 반영
   - 콘텐츠 보강 실패를 조용히 건너뛰지 않음 — 2번 더 시도한 뒤 `search-index.DLT` + 경보 `SearchIndexDeadLetter`
@@ -18,7 +19,7 @@
 | 매핑이 같고 `_source` 만으로 충분한 복사 | ES `_reindex` 는 **Logstash 를 멈춘 동안에만**(쓰기 경합). 보통은 §2 를 쓴다 |
 
 ## 1. 바꾸는 곳
-- `deploy/lan/elastic/search-index.env` → `render.sh` 가 logstash 환경변수로 넣는다.
+- `deploy/lan/elastic/search-index.env` → `render.sh` 가 logstash-search 환경변수로 넣는다.
   - `PMART_SEARCH_PRODUCTS_INDEX`: Logstash 가 쓰는 상품 색인. 평소에는 별칭 `products`.
   - `PMART_SEARCH_PRICES_INDEX`: 가격 색인. 평소에는 별칭 `sku-prices`.
   - `PMART_SEARCH_GROUP_ID`: Kafka 소비 그룹.
@@ -36,11 +37,11 @@
 | 명령 | 하는 일 |
 |---|---|
 | `reindex.sh status` | 별칭·색인 건수·소비 그룹 지연·영구 큐·DLT 를 보여 준다 |
-| `reindex.sh check products-vN` | 1 의 사전 확인만 한다(바꾸는 것 없음). 확인 항목: 정의 파일, 새 색인·그룹이 없음, ES green, 보관·ES 경보 없음, Logstash 구독 토픽이 Kafka 에 모두 있음(없으면 `lan.sh deploy <Kafka PC> kafka` — topics-init), 지연 0·큐 0 |
-| `reindex.sh start products-vN` | 사전 확인 → 백업 → env 변경(render 전) → es-init·logstash 재배포 |
+| `reindex.sh check products-vN` | 1 의 사전 확인만 한다(바꾸는 것 없음). 확인 항목: 정의 파일, 새 색인·그룹이 없음, ES green, 보관·ES 경보 없음, Logstash 구독 토픽이 Kafka 에 모두 있음(없으면 `lan.sh deploy <Kafka PC>` — Kafka 노드 기동 뒤 topics-init), 지연 0·큐 0 |
+| `reindex.sh start products-vN` | 사전 확인 → 백업 → env 변경(render 전) → es-init-search·logstash-search 재배포(pc3) |
 | `reindex.sh wait [초]` | 4 의 조건(지연 0·큐 0·DLT 증가 없음·건수 ≥ 이전 색인)을 기다린 뒤 전 문서를 대조한다(`updatedAtMs` 제외, 재생 중 새로 생긴 상품은 따로 표시) |
 | `reindex.sh switch` | 조건을 다시 확인한 뒤 5 의 별칭 교체 |
-| `reindex.sh finish` | 6: env 를 별칭으로 되돌리고 logstash 재배포, 옛 그룹 삭제, Elasticsearch PC 의 옛 정의 파일 삭제 |
+| `reindex.sh finish` | 6: env 를 별칭으로 되돌리고 logstash-search 재배포, 옛 그룹 삭제, 검색 ES PC(pc3)의 옛 정의 파일 삭제 |
 | `reindex.sh rollback` | 7: 별칭을 이전 색인으로 되돌린다 |
 | `reindex.sh drop products-vM` | 옛 색인 삭제. 별칭이나 Logstash 가 쓰지 않을 때만 |
 

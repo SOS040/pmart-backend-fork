@@ -19,7 +19,7 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조. 배포 �
 ## 주소 규칙
 - 서비스 포트는 서비스마다 고유(gateway 8080, 8101~8507)라 **호스트 포트 = 컨테이너 포트**.
 - 다른 PC 의 구성요소는 `extra_hosts` 로 가리킨다. 그래서 어느 PC 에서든 주소가 같다:
-  `kafka:9092`, `auth-service:8501`, `redis:6379`, `zipkin:9411`, `postgres-<pc>:15432`, `<service>:<port>`.
+  `kafka-1:9092,kafka-2:9092,kafka-3:9092`(3노드 클러스터, ADR-0037), `auth-service:8501`, `redis:6379`, `zipkin:9411`, `postgres-<pc>:15432`, `es-search:9200`, `<service>:<port>`.
   게이트웨이 업스트림 기본값(`http://<service>:<port>`)도 그대로 맞는다.
 - PostgreSQL 은 DB 가 필요한 서비스가 있는 PC 마다 하나(컨테이너 안에서도 15432). 그 PC 서비스의 DB 만 만든다.
 - Debezium Connect 는 한 곳. `connector-registrar` 가 모든 PC 의 PostgreSQL(`DB_HOSTS`)을 훑어 커넥터를 만든다.
@@ -98,11 +98,14 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
 | Prometheus | `http://192.168.0.40:9090` | 수집 대상 = `placement.conf` 의 모든 Spring 앱(render 가 `monitoring/prometheus.yml` 생성), 보존 7일 또는 2GB |
 | Alertmanager | `http://192.168.0.40:9093` | 알림 규칙 `monitoring/alert-rules.yml`(앱 DOWN·미처리 메시지·소비 지연·5xx·**Windows C: 여유 15%/10GB 미만**). **전송 채널 없음** — 화면에서 본다 |
 | Kibana | `http://192.168.0.40:5601` | 앱 로그(Discover, 데이터 뷰 `pmart-logs`). `traceId:"…"` 로 한 요청을 전 서비스에서 따라간다. 3일(ILM) 또는 색인 1GB·전체 4GB(log-janitor)에서 삭제. 인프라(kafka·connect 등) 로그와 초당 500건을 넘는 폭주 구간은 빠진다 — `lan.sh logs` 로 본다 |
-| Elasticsearch | `http://192.168.0.40:9200` | 상품 검색 색인(`products`→`products-v2`, v3 전환은 `elastic/REINDEX.md`, nori+n-gram)과 앱 로그(`pmart-logs-*`), ADR-0031 |
+| 로그 ES | `http://192.168.0.40:9200` (`es-logs`) | 앱 로그(`pmart-logs-*`)만, ADR-0038 |
+| 검색 ES | `http://192.168.0.222:9200` (`es-search`) | 상품 검색 색인(`products`·`sku-prices`·`sku-handlings` 별칭, 재색인은 `elastic/REINDEX.md`, nori+n-gram)만, ADR-0031·0038 |
+| Kafka 지표 | `http://192.168.0.40:9308/metrics` (`kafka-exporter`) | 브로커 수·파티션 리더·ISR·소비 그룹 지연, ADR-0037 |
 
-- 로그 수집(Elastic Stack, ADR-0031): PC 마다 `log-shipper`(Filebeat)가 Docker Desktop VM 의 `/var/lib/docker/containers` 를 읽어(앱 JSON 로그만, 초당 500건, 메모리 큐) pc4 `logstash:5044` 로 보낸다 → `pmart-logs-YYYY.MM.DD`. render 가 모든 PC 에 자동으로 붙인다. `es-init` 은 검색 색인·로그 ILM·색인 틀·Kibana 데이터 뷰를 만들고 끝나며(배포마다 다시 돌아도 같다) Logstash 는 그 뒤에 뜬다. `log-janitor` 가 5분마다 크기 상한을 지킨다.
-- 상품 검색 색인: Logstash 파이프라인 `search-index`(search-service 소유 `src/main/logstash/search-index.conf`)가 `commerce.product.v1`·`commerce.pricing.v1` 을 읽어 색인한다(소비 그룹 `search-index-logstash`). 색인을 다시 만들려면 색인을 지우고 es-init 을 다시 돌린 뒤 소비 그룹 오프셋을 처음으로 돌린다(Logstash 를 멈춘 상태에서 `kafka-consumer-groups.sh --reset-offsets --to-earliest --group search-index-logstash --all-topics --execute`). **ADR-0034: 판매상태 rowVersion 비교·콘텐츠 보강 실패 처리를 고치기 전에는 운영 절차로 실행하지 않는다.**
-- Kafka 이벤트 이력(ADR-0034): 위 두 토픽만 무제한 보관(`lan.sh deploy` 가 `kafka/topics-init.sh` 로 멱등 보정). 토픽 크기·보관 설정 지표는 `watch.sh` 가 측정해 pc2 `host-disk` 가 내보낸다. 백업·복원·소비 그룹 처리·vhdx 주의는 [`kafka/README.md`](kafka/README.md).
+- 로그 수집(Elastic Stack, ADR-0031): PC 마다 `log-shipper`(Filebeat)가 Docker Desktop VM 의 `/var/lib/docker/containers` 를 읽어(앱 JSON 로그만, 초당 500건, 메모리 큐) pc4 `logstash-logs:5044` 로 보낸다 → es-logs `pmart-logs-YYYY.MM.DD`. render 가 모든 PC 에 자동으로 붙인다. `es-init-logs` 는 로그 ILM·색인 틀·Kibana 데이터 뷰를, `es-init-search`(pc3)는 검색 색인·별칭을 만들고 끝나며(배포마다 다시 돌아도 같다) 같은 쪽 Logstash 는 그 뒤에 뜬다. `log-janitor` 가 5분마다 es-logs 크기 상한을 지킨다(ADR-0038).
+- 상품 검색 색인: pc3 `logstash-search` 의 파이프라인 `search-index`(search-service 소유 `src/main/logstash/search-index.conf`)가 이력 토픽 3개를 읽어 es-search 에 색인한다(소비 그룹은 `elastic/search-index.env` 의 `PMART_SEARCH_GROUP_ID`). 재색인은 `elastic/reindex.sh`·[`elastic/REINDEX.md`](elastic/REINDEX.md)(새 색인 + 새 소비 그룹 + 별칭 교체).
+- Kafka(ADR-0037): 3노드 KRaft 클러스터 kafka-1(pc2)·kafka-2(pc3)·kafka-3(pc4), 복제 3·min ISR 2, 브로커 자동 토픽 생성 끔. `lan.sh deploy` 는 대상 PC 의 Kafka 노드를 모두 먼저 띄우고 기다린 뒤 `kafka/topics-init.sh` 를 실행한다(노드 하나만으로는 healthy 가 되지 않는다).
+- Kafka 이벤트 이력(ADR-0034): 이력 토픽 3개만 무제한 보관(`topics-init.sh` 가 멱등 보정). 토픽 크기(리더 기준)·보관 설정 지표는 `watch.sh` 가 kafka-1 에서 측정해 pc2 `host-disk` 가 내보낸다. 백업·복원·소비 그룹 처리·vhdx 주의는 [`kafka/README.md`](kafka/README.md).
 - 미처리 메시지: 재시도(3회)를 다 쓴 Kafka 메시지는 `{topic}.DLT` 와 그 서비스 DB `dead_letter` 에 남는다. 원인을 고친 뒤
   ```bash
   curl -s http://<PC IP>:<포트>/api/v1/internal/dead-letters?status=OPEN            # 목록
@@ -117,7 +120,7 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
   Docker Desktop VM 이 리셋되면 새 VM 이 이전 포트 전달 규칙(옛 컨테이너 IP)을 복원하는데, IP 가 바뀌면 LAN 포트가 엉뚱한 컨테이너로 간다.
   네트워크 설정을 바꾼 뒤에는 `lan.sh down <pc>` → `lan.sh deploy <pc>` (볼륨은 남는다).
 - **Connect 로그**: 파일 appender 를 끄고 stdout 만(json-file 20MB×3 제한). `org.apache.kafka.clients.admin.internals` 는 WARN.
-- **감시**: `deploy/lan/watch.sh [--dry-run]`. 앱 health, PostgreSQL SSLRequest, Kafka ApiVersions, Redis PING, Logstash Beats 포트 TCP 연결(HTTP 아님), Zipkin, Connect 커넥터·작업 RUNNING 을
+- **감시**: `deploy/lan/watch.sh [--dry-run]`. 앱 health, PostgreSQL SSLRequest, Kafka ApiVersions(kafka-1~3 각각), Redis PING, ES 클러스터 상태(es-search·es-logs), logstash-logs Beats 포트 TCP 연결(HTTP 아님), logstash-search API(SSH, LAN 포트 없음), Zipkin, Connect 커넥터·작업 RUNNING 을
   PC 1 에서 점검한다. 같은 구성요소가 2회 연속 실패하면 `lan.sh restart`(PC 당 10분 쿨다운), 전부 실패면 'PMart Docker Desktop Start' 예약 작업부터.
   상태·로그는 `~/.pmart-lan-watch/` (`watch.log`, `last-<pc>`). Kafka 가 재시작되면 Connect 작업이 UNASSIGNED 로 남는데(재배정 안 됨), 이것도 감시가 Connect 재시작으로 복구한다.
 

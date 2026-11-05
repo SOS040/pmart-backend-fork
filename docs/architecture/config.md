@@ -45,7 +45,7 @@
   - JPA `open-in-view: false`, `ddl-auto: validate`(스키마는 Flyway 만)
   - Eureka 기본 꺼짐
 - LAN 공통(`application-lan.yml`):
-  - Kafka `kafka:9092`
+  - Kafka `kafka-1:9092,kafka-2:9092,kafka-3:9092`(3노드 클러스터, ADR-0037)
   - Bus 켬, Bus 소비 그룹
   - JWKS 주소
   - Hikari `maximum-pool-size: 5`
