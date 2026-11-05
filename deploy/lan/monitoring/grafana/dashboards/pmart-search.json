@@ -658,7 +658,7 @@
             "type": "prometheus",
             "uid": "pmart-prometheus"
           },
-          "expr": "rate(elasticsearch_indices_search_query_total[5m])",
+          "expr": "rate(elasticsearch_indices_search_query_total{es=\"search\"}[5m])",
           "legendFormat": "쿼리/초"
         }
       ],
@@ -704,7 +704,7 @@
             "type": "prometheus",
             "uid": "pmart-prometheus"
           },
-          "expr": "rate(elasticsearch_indices_search_query_time_seconds[5m]) / clamp_min(rate(elasticsearch_indices_search_query_total[5m]), 0.0001)",
+          "expr": "rate(elasticsearch_indices_search_query_time_seconds{es=\"search\"}[5m]) / clamp_min(rate(elasticsearch_indices_search_query_total{es=\"search\"}[5m]), 0.0001)",
           "legendFormat": "평균"
         }
       ],
@@ -750,7 +750,7 @@
             "type": "prometheus",
             "uid": "pmart-prometheus"
           },
-          "expr": "elasticsearch_jvm_memory_used_bytes{area=\"heap\"} / elasticsearch_jvm_memory_max_bytes{area=\"heap\"}",
+          "expr": "elasticsearch_jvm_memory_used_bytes{es=\"search\",area=\"heap\"} / elasticsearch_jvm_memory_max_bytes{es=\"search\",area=\"heap\"}",
           "legendFormat": "힙"
         }
       ],

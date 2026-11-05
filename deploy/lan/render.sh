@@ -46,9 +46,9 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs "
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -563,6 +563,24 @@ EOF
 
 EOF
         ;;
+      kafka-exporter)
+        # Kafka 클러스터 지표 → Prometheus(ADR-0037). 브로커에서 메타데이터·오프셋을 읽기만 한다.
+        # kafka.version: 기본 2.0.0 이면 옛 프로토콜 판으로 요청한다(Kafka 4 는 2.1 미만 판을 지웠다) — 3.9.0 으로 올린다.
+        #   v1.10.0 이 4.x 문자열을 받는지 확인하지 못했다(2026-11-05) — 전환 뒤 /metrics 의 kafka_brokers 로 확인한다
+        # 컨트롤러 지표는 없다 — 과반을 잃으면(2노드 정지) 브로커 수·수집 실패로 드러난다(alert-rules.yml)
+        echo "  kafka-exporter:"
+        echo "    <<: *common"
+        echo "    image: danielqsj/kafka-exporter:v1.10.0"
+        printf '    command: ['
+        for kn in $KAFKA_NODES; do printf '"--kafka.server=%s:9092", ' "$kn"; done
+        echo '"--kafka.version=3.9.0", "--web.listen-address=:9308"]'
+        cat <<EOF
+    ports: ["9308:9308"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    mem_limit: 128m
+
+EOF
+        ;;
       config-relay)
         # GitHub 웹훅 중계(ADR-0033): smee.io 채널에 먼저 연결해 두고(나가는 연결만) 받은 push 웹훅을 config-server /monitor 로 넘긴다.
         # 서명(X-Hub-Signature-256)은 config-server 가 검사한다. 채널 주소는 .env 의 PMART_SMEE_URL(.secrets/smee-url)
@@ -729,13 +747,18 @@ EOF
         echo "  - job_name: host-disk"
         echo "    static_configs:"
         for p in "${PCS[@]}"; do echo "      - { targets: [\"${IP[$p]}:9100\"], labels: { pc: $p } }"; done
-        # ES 마다 exporter 하나(ADR-0038) — cluster 레이블(search·logs)로 구분한다(경보·대시보드)
+        # ES 마다 exporter 하나(ADR-0038) — es 레이블(search·logs)로 구분한다(경보·대시보드). exporter 가 붙이는 cluster 레이블(ES cluster.name)과 겹치지 않게 es
         if [ -n "${WHERE[es-exporter-search]:-}${WHERE[es-exporter-logs]:-}" ]; then
           echo "  - job_name: elasticsearch"
           echo "    static_configs:"
           for k in search logs; do
-            [ -n "${WHERE[es-exporter-$k]:-}" ] && echo "      - { targets: [\"${IP[${WHERE[es-exporter-$k]}]}:9114\"], labels: { pc: ${WHERE[es-exporter-$k]}, cluster: $k } }"
+            [ -n "${WHERE[es-exporter-$k]:-}" ] && echo "      - { targets: [\"${IP[${WHERE[es-exporter-$k]}]}:9114\"], labels: { pc: ${WHERE[es-exporter-$k]}, es: $k } }"
           done
+        fi
+        # Kafka 클러스터 지표(ADR-0037): kafka-exporter(브로커 수·파티션 리더·ISR·소비 그룹 지연)
+        if [ -n "${WHERE[kafka-exporter]:-}" ]; then
+          echo "  - job_name: kafka"
+          echo "    static_configs: [ { targets: [\"${IP[${WHERE[kafka-exporter]}]}:9308\"], labels: { pc: ${WHERE[kafka-exporter]} } } ]"
         fi
         # eureka-server 는 자기 자신을 등록하지 않는다(register-with-eureka: false) — 고정
         if [ -n "${WHERE[eureka-server]:-}" ]; then

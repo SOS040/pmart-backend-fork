@@ -1,0 +1,120 @@
+# promtool 규칙 시험(ADR-0037·0038 경보). 실행(PC 1, 로컬 이미지):
+#   docker run --rm -v "$PWD/deploy/lan/monitoring:/m" --entrypoint promtool prom/prometheus:v3.5.0 test rules /m/alert-rules-test.yml
+rule_files: [alert-rules.yml]
+evaluation_interval: 1m
+tests:
+  # 검색 ES 만 멈춤 — 로그 ES 는 정상. 둘 중 하나만 멈춘 것을 잡아야 한다(absent 로는 못 잡던 경우)
+  - interval: 1m
+    input_series:
+      - series: 'up{job="elasticsearch",es="search",pc="pc3"}'
+        values: '1x10'
+      - series: 'up{job="elasticsearch",es="logs",pc="pc4"}'
+        values: '1x10'
+      - series: 'elasticsearch_cluster_health_status{job="elasticsearch",es="logs",pc="pc4",color="green"}'
+        values: '1x10'
+      - series: 'elasticsearch_scrape_success{job="elasticsearch",es="search",pc="pc3"}'
+        values: '0x10'
+      - series: 'elasticsearch_scrape_success{job="elasticsearch",es="logs",pc="pc4"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ElasticsearchUnreachable
+        exp_alerts:
+          - exp_labels: { severity: critical, es: search, pc: pc3 }
+            exp_annotations:
+              summary: "Elasticsearch(search) 응답 없음 (pc3)"
+              description: "search 면 상품 검색 색인 반영·검색이, logs 면 로그 수집이 멈춘다. lan.sh logs pc3 es-search."
+
+  # 두 ES 모두 정상 — 경보 없음
+  - interval: 1m
+    input_series:
+      - series: 'up{job="elasticsearch",es="search",pc="pc3"}'
+        values: '1x10'
+      - series: 'up{job="elasticsearch",es="logs",pc="pc4"}'
+        values: '1x10'
+      - series: 'elasticsearch_cluster_health_status{job="elasticsearch",es="search",pc="pc3",color="yellow"}'
+        values: '1x10'
+      - series: 'elasticsearch_cluster_health_status{job="elasticsearch",es="logs",pc="pc4",color="green"}'
+        values: '1x10'
+      - series: 'elasticsearch_scrape_success{job="elasticsearch",es="search",pc="pc3"}'
+        values: '1x10'
+      - series: 'elasticsearch_scrape_success{job="elasticsearch",es="logs",pc="pc4"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ElasticsearchUnreachable
+        exp_alerts: []
+
+  # Kafka 노드 하나 정지: 브로커 2, 복제 부족 1, ISR 2(아직 쓰기 가능), 리더 있음
+  - interval: 1m
+    input_series:
+      - series: 'kafka_brokers{job="kafka"}'
+        values: '3 3 2x10'
+      - series: 'kafka_topic_partition_under_replicated_partition{job="kafka",topic="commerce.product.v1",partition="0"}'
+        values: '0 0 1x10'
+      - series: 'kafka_topic_partition_in_sync_replica{job="kafka",topic="commerce.product.v1",partition="0"}'
+        values: '3 3 2x10'
+      - series: 'kafka_topic_partition_replicas{job="kafka",topic="commerce.product.v1",partition="0"}'
+        values: '3x12'
+      - series: 'kafka_topic_partition_leader{job="kafka",topic="commerce.product.v1",partition="0"}'
+        values: '1x12'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: KafkaBrokerDown
+        exp_alerts:
+          - exp_labels: { severity: warning, job: kafka }
+            exp_annotations:
+              summary: "Kafka 브로커 2개(3개 중)"
+              description: "노드 하나가 빠졌다 — 쓰기는 계속되지만 하나 더 빠지면 멈춘다. watch.sh 로그·lan.sh status 로 kafka-1~3 확인."
+      - eval_time: 10m
+        alertname: KafkaUnderReplicatedPartitions
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "복제 부족 파티션 1개"
+              description: "ISR 이 복제 수보다 적다(노드 정지·지연). 노드가 돌아오면 따라잡고 풀린다. 오래가면 디스크·네트워크 확인."
+      - eval_time: 10m
+        alertname: KafkaPartitionBelowMinIsr
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: KafkaOfflinePartitions
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: KafkaQuorumAtRisk
+        exp_alerts: []
+
+  # 두 노드 정지: 브로커 1, ISR 1, 한 파티션은 리더 없음(leader 지표가 빠진다)
+  - interval: 1m
+    input_series:
+      - series: 'kafka_brokers{job="kafka"}'
+        values: '1x10'
+      - series: 'kafka_topic_partition_in_sync_replica{job="kafka",topic="commerce.product.v1",partition="0"}'
+        values: '1x10'
+      - series: 'kafka_topic_partition_replicas{job="kafka",topic="commerce.product.v1",partition="0"}'
+        values: '3x10'
+      - series: 'kafka_topic_partition_replicas{job="kafka",topic="commerce.pricing.v1",partition="0"}'
+        values: '3x10'
+      - series: 'kafka_topic_partition_leader{job="kafka",topic="commerce.product.v1",partition="0"}'
+        values: '3x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: KafkaQuorumAtRisk
+        exp_alerts:
+          - exp_labels: { severity: critical, job: kafka }
+            exp_annotations:
+              summary: "Kafka 클러스터 과반 상실 또는 메타데이터 조회 불가"
+              description: "브로커가 1개 이하이거나 exporter 가 클러스터를 못 읽는다 — 컨트롤러 선출·쓰기(min ISR 2)가 멈춘다. 이벤트 발행·소비·Bus 전체 정지."
+      - eval_time: 5m
+        alertname: KafkaPartitionBelowMinIsr
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "ISR 2 미만 파티션 1개 — 그 파티션 쓰기 실패"
+              description: "min.insync.replicas 2 라 acks=all 쓰기(Debezium·바인더)가 거절된다. 노드 두 개가 그 파티션에서 빠졌다."
+      - eval_time: 5m
+        alertname: KafkaOfflinePartitions
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "리더 없는 파티션 1개"
+              description: "그 파티션은 읽기·쓰기 모두 안 된다. 그 파티션 복제본을 가진 노드가 모두 빠졌다."
