@@ -144,12 +144,23 @@
   - `deploy/lan/monitoring/alert-rules-test.yml` 추가 — `docker run --rm -v "<저장소>/deploy/lan/monitoring:/m" --entrypoint promtool prom/prometheus:v3.5.0 test rules /m/alert-rules-test.yml`
 
 ### 3-7. 시험 (worktree)
-- [ ] `config-copies.sh check`
-- [ ] 영향 모듈 check, 전체 `./gradlew check --continue`(공통 코드 변경이 없으면 영향 모듈만)
-- [ ] `render.sh` 실행 결과(compose 3개) 검토:
+- [x] `config-copies.sh check`
+- [x] 영향 모듈 check, 전체 `./gradlew check --continue`(공통 코드 변경이 없으면 영향 모듈만)
+- [x] `render.sh` 실행 결과(compose 3개) 검토:
   - 노드 ID·투표자·포트
   - `extra_hosts` 에 kafka-1~3·es-search·es-logs·logstash-* 가 들어갔는지
-- [ ] 로컬에서 3노드 KRaft compose 를 띄워 클러스터 형성·복제 3·한 노드 정지 시 쓰기 확인(가능하면)
+- [x] 로컬에서 3노드 KRaft compose 를 띄워 클러스터 형성·복제 3·한 노드 정지 시 쓰기 확인(가능하면)
+- 결과(2026-11-05, PC 1 로컬 — render 결과의 kafka-1~3 정의를 그대로 뽑아 띄움, 호스트 포트 없음·시험용 힙 384m):
+  - 쿼럼: 투표자 3(`kafka-N:9094`), 리더 선출됨. `topics-init.sh` 두 번 실행 — 복제 3·min ISR 2·무제한 보관, 두 번째는 변경 없음
+  - 브로커 자동 생성 끔: 없는 토픽에 발행 → `UNKNOWN_TOPIC_OR_PARTITION`
+  - 백업→복원 왕복: 헤더·키 있는 사건 200건 `backup-topic.sh` → 빈 토픽에 `restore-topic.sh` → 다시 내보내 비교 **일치**. 비어 있지 않은 토픽 복원은 거부
+  - `topic-metrics.sh`: log-dirs 원본은 복제본 3개(15181×3), 지표는 15181(리더 기준)
+  - 1노드 정지(컨트롤러·리더 노드): 컨트롤러·리더가 다른 노드로, ISR 2, acks=all 쓰기 20건 성공, 복제 부족 표시
+  - 2노드 정지: 쓰기 `NOT_ENOUGH_REPLICAS` 로 거절, 오프셋 그대로. **남은 노드 healthcheck(ApiVersions)는 계속 통과** — watch.sh 는 노드마다 점검하므로 멈춘 노드는 잡고, 과반 상실은 KafkaQuorumAtRisk 경보가 본다
+  - 두 노드 재기동: ISR 1,2,3, 복제 부족 0, 세 복제본 크기 같음, 컨트롤러 지연 0
+  - **한 노드만 혼자 띄우면 healthy 가 되지 않는다**(starting, ApiVersions 실패) — `lan.sh deploy` 가 세 노드를 먼저 모두 띄우고 기다리는 이유
+  - search-service `test` 통과. Debezium Connect(topic.creation)·kafka-exporter 는 PC 1 에 이미지가 없어 시험하지 못함 → 전환 8·12단계에서 확인
+  - 영향 모듈: 코드 변경은 `search-index.conf` 주석뿐(나머지는 배포 스크립트·설정) — 전체 `check` 는 돌리지 않음
 
 ### 3-8. 문서 (worktree, 전환 이후 상태)
 - [ ] `docs/operations/lan-monitoring-and-backup.md`(Kafka·ES 구성, 경보 표, 메모리 상한)
