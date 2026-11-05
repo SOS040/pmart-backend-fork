@@ -13,12 +13,12 @@
 ## 보관 설정 확인
 
 ```bash
-ssh pmart-pc2 "docker exec pmart-lan-kafka-1 /opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 --describe --entity-type topics --entity-name commerce.product.v1"
+ssh pmart-pc2 "docker exec pmart-lan-kafka-1-1 /opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 --describe --entity-type topics --entity-name commerce.product.v1"
 # → cleanup.policy=delete, retention.bytes=-1, retention.ms=-1 (DYNAMIC_TOPIC_CONFIG)
 ```
 
 - Kafka 를 새로 만들면(볼륨 손실) 다음 `lan.sh deploy pc2` 전까지 7일이 걸린다. `KafkaEventRetentionNotUnlimited` 경보가 알린다.
-- 배포 없이 바로 고치려면 `ssh pmart-pc2 "docker exec -i pmart-lan-kafka-1 sh" < deploy/lan/kafka/topics-init.sh`(재시작 없음)을 실행한다.
+- 배포 없이 바로 고치려면 `ssh pmart-pc2 "docker exec -i pmart-lan-kafka-1-1 sh" < deploy/lan/kafka/topics-init.sh`(재시작 없음)을 실행한다.
 
 ## 감시
 
@@ -83,11 +83,11 @@ deploy/lan/kafka/backup.sh /d/pmart-backups/kafka after-bulk-load
 
 ```bash
 B=/d/pmart-backups/kafka/<백업 폴더>
-ssh pmart-pc2 "docker exec -i pmart-lan-kafka-1 sh" < deploy/lan/kafka/topics-init.sh        # 토픽·보관 정책(파티션 수는 MANIFEST 와 같게)
+ssh pmart-pc2 "docker exec -i pmart-lan-kafka-1-1 sh" < deploy/lan/kafka/topics-init.sh        # 토픽·보관 정책(파티션 수는 MANIFEST 와 같게)
 scp deploy/lan/kafka/restore-topic.sh pmart-pc2:pmart-lan/kafka/
-ssh pmart-pc2 "docker cp pmart-lan/kafka/restore-topic.sh pmart-lan-kafka-1:/tmp/restore-topic.sh"
+ssh pmart-pc2 "docker cp pmart-lan/kafka/restore-topic.sh pmart-lan-kafka-1-1:/tmp/restore-topic.sh"
 for t in commerce.product.v1 commerce.pricing.v1 mfc.sku-handling.v1; do
-  ssh pmart-pc2 "docker exec -i -e T=$t -e PARTITIONS=1 pmart-lan-kafka-1 sh /tmp/restore-topic.sh" < $B/$t.records
+  ssh pmart-pc2 "docker exec -i -e T=$t -e PARTITIONS=1 pmart-lan-kafka-1-1 sh /tmp/restore-topic.sh" < $B/$t.records
 done
 deploy/lan/kafka/backup.sh /d/pmart-backups/kafka restore-check   # 다시 내보낸다
 R=$(ls -d /d/pmart-backups/kafka/*-restore-check | tail -1)
@@ -105,7 +105,7 @@ done
 | `search-service` | ADR-0031 이전 소비 그룹의 흔적이다(지금 search-service 는 소비하지 않는다). 다시 만들 필요 없다 |
 
 ```bash
-ssh pmart-pc2 "docker exec pmart-lan-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group storefront-service --topic commerce.product.v1 --topic commerce.pricing.v1 --reset-offsets --to-latest --execute"
+ssh pmart-pc2 "docker exec pmart-lan-kafka-1-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group storefront-service --topic commerce.product.v1 --topic commerce.pricing.v1 --reset-offsets --to-latest --execute"
 ```
 
 **알려진 한계**

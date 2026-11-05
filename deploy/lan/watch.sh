@@ -41,7 +41,7 @@ check() {
   local ip="$1" c="$2" body
   case "$c" in
     postgres) [[ "$(tcp_probe "$ip" 15432 '\x00\x00\x00\x08\x04\xd2\x16\x2f' 1)" =~ ^(4e|53)$ ]] ;;  # SSLRequest → 'N'|'S'
-    kafka)    [[ "$(tcp_probe "$ip" 9092 '\x00\x00\x00\x0b\x00\x12\x00\x00\x00\x00\x00\x01\x00\x01\x77' 8)" =~ ^.{8}00000001$ ]] ;; # ApiVersions v0 → 길이 + correlation id 1
+    kafka-[123]) [[ "$(tcp_probe "$ip" 9092 '\x00\x00\x00\x0b\x00\x12\x00\x00\x00\x00\x00\x01\x00\x01\x77' 8)" =~ ^.{8}00000001$ ]] ;; # ApiVersions v0 → 길이 + correlation id 1
     redis)    [ "$(tcp_probe "$ip" 6379 'PING\r\n' 5)" = 2b504f4e47 ] ;;                         # +PONG
     zipkin)   curl -sf -m 5 "http://$ip:9411/health" >/dev/null ;;
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
@@ -123,14 +123,14 @@ for pc in $(ls "$OUT"); do
 done
 
 # ---- Kafka 이벤트 이력 토픽 지표(ADR-0034) ----
-# Kafka PC 에서 토픽 크기·오프셋·보관 설정을 재서 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓴다(host-disk 가 내보낸다).
+# kafka-1(ADR-0037, 한 노드가 클러스터 전체를 본다)에서 토픽 크기·오프셋·보관 설정을 재서 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓴다(host-disk 가 내보낸다).
 # 읽기만 한다(재시작·설정 변경 없음). 실패해도 위 점검·복구에는 영향이 없다 — 멈추면 Prometheus 의 KafkaTopicMetricsStale 이 알린다.
 pc_of() { grep -l "^  $1:" "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename; }
-# Kafka PC 의 pmart-lan/metrics/<이름> 으로 올린다(그 PC 의 host-disk 만 textfile 수집기가 있다).
+# kafka-1 PC 의 pmart-lan/metrics/<이름> 으로 올린다(그 PC 의 host-disk 만 textfile 수집기가 있다).
 # .tmp 로 올린 뒤 이름을 바꾼다(node-exporter 는 *.prom 만 읽는다 — 반쯤 쓴 파일을 읽지 않게)
 push_textfile() {
   local file="$1" name="$2" kpc host
-  kpc="$(pc_of kafka)"; [ -n "$kpc" ] || return 0
+  kpc="$(pc_of kafka-1)"; [ -n "$kpc" ] || return 0
   host="$(awk '{print $3}' "$OUT/$kpc/target")"
   scp -q -o BatchMode=yes -o ConnectTimeout=10 "$file" "$host:pmart-lan/metrics/$name.tmp" 2>/dev/null \
     && ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
@@ -141,13 +141,13 @@ search_group() { sed -n 's/^PMART_SEARCH_GROUP_ID=//p' "$LAN/elastic/search-inde
 
 kafka_metrics() {
   local kpc host tmp
-  kpc="$(pc_of kafka)"
+  kpc="$(pc_of kafka-1)"
   [ -n "$kpc" ] || return 0
   host="$(awk '{print $3}' "$OUT/$kpc/target")"
   tmp="$STATE/kafka_topics.prom"
   # 맨 앞에 검색 색인 소비 그룹을 붙여 보낸다(topic-metrics.sh 가 그 그룹 지연을 잰다). CR 은 지운다 — 컨테이너 sh 가 CRLF 를 못 읽는다(2026-11-04 지표 1시간 멈춤)
   { printf 'SEARCH_GROUP=%s\n' "$(search_group)"; tr -d '\r' < "$LAN/kafka/topic-metrics.sh"; } \
-    | ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1 sh" 2>/dev/null > "$tmp.new" \
+    | ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1-1 sh" 2>/dev/null > "$tmp.new" \
     || { log "$kpc Kafka 토픽 지표 측정 실패"; return 0; }
   grep -q '^pmart_kafka_topic_metrics_timestamp_seconds ' "$tmp.new" || { log "$kpc Kafka 토픽 지표 형식 이상 — 쓰지 않음"; return 0; }
   mv -f "$tmp.new" "$tmp"

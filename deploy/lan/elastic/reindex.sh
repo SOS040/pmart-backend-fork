@@ -31,7 +31,7 @@ envval() { sed -n "s/^$1=//p" "$ENVF" | tr -d '\r' | head -1; }
 setenv() { sed -i "s|^$1=.*|$1=$2|" "$ENVF"; [ "$(envval "$1")" = "$2" ] || die "$ENVF 의 $1 을 바꾸지 못했다"; }
 
 ls "$OUT"/*/target >/dev/null 2>&1 || die "build/ 가 없다 — deploy/lan/lan.sh render 먼저"
-EPC="$(pc_of elasticsearch)"; LPC="$(pc_of logstash)"; KPC="$(pc_of kafka)"; PPC="$(pc_of prometheus)"
+EPC="$(pc_of elasticsearch)"; LPC="$(pc_of logstash)"; KPC="$(pc_of kafka-1)"; PPC="$(pc_of prometheus)"
 [ -n "$EPC" ] && [ -n "$LPC" ] && [ -n "$KPC" ] || die "elasticsearch·logstash·kafka 배치를 찾지 못했다(render 확인)"
 ES="http://$(ip_of "$EPC"):9200"
 
@@ -40,7 +40,7 @@ json() { "$PY" -I -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 alias_target() { es "/_alias/$ALIAS" | json "','.join(sorted(d))" 2>/dev/null || true; }
 exists() { [ "$(curl -s -o /dev/null -w '%{http_code}' -m 10 -I "$ES/$1")" = 200 ]; }
 count() { es "/$1/_count" | json "d['count']"; }
-kx() { quiet_ssh "$(host_of "$KPC")" "docker exec -i pmart-lan-kafka-1 sh"; }
+kx() { quiet_ssh "$(host_of "$KPC")" "docker exec -i pmart-lan-kafka-1-1 sh"; }
 # 그룹 지연 합. 그룹이 없거나 아직 커밋한 오프셋이 없으면 '-'
 lag() {
   printf 'B=/opt/kafka/bin\n$B/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group %s 2>/dev/null || true\n' "$1" | kx \
@@ -140,7 +140,7 @@ case "$cmd" in
     note "사전 확인"
     [ "$(es /_cluster/health | json "d['status']")" = green ] || die "Elasticsearch 가 green 이 아니다"
     f="$(firing)"; [ -z "$f" ] || die "경보 울리는 중: $f"
-    m="$(missing_topics)"; [ -z "$m" ] || die "Kafka 에 없는 구독 토픽: $m — 먼저 deploy/lan/lan.sh deploy $KPC kafka(topics-init)"
+    m="$(missing_topics)"; [ -z "$m" ] || die "Kafka 에 없는 구독 토픽: $m — 먼저 deploy/lan/lan.sh deploy $KPC(Kafka 노드 기동 뒤 topics-init 실행)"
     l="$(lag "$OLD_GROUP")"; q="$(queue)"
     [ "$l" = 0 ] && [ "$q" = 0 ] || die "지금 파이프라인이 밀려 있다(지연 $l, 큐 $q) — 따라잡은 뒤 다시"
     note "$OLD_INDEX $(count "$OLD_INDEX")건, 그룹 $OLD_GROUP 지연 0, 큐 0 → $NEW_INDEX · $NEW_GROUP 로 재색인할 수 있다"
