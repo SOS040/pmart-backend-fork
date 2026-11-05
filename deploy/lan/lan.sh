@@ -98,6 +98,23 @@ case "$cmd" in
     bash $LAN/render.sh >/dev/null
     config_check
     bash $LAN/config-copies.sh check >/dev/null || { echo "시험용 설정 사본이 정본과 다르다 — deploy/lan/config-copies.sh sync 후 시험·커밋" >&2; exit 1; }
+    # Kafka 클러스터 먼저(ADR-0037): config-server(Bus)·Debezium·앱보다 앞. 한 노드만으로는 컨트롤러 과반(2/3)이 안 돼
+    # healthy 가 되지 않으므로, 대상 PC 의 노드를 모두 띄운 뒤에 기다린다. 실행 중인 노드는 재생성하지 않는다(--no-recreate).
+    # 이어서 한 노드 안에서 토픽 준비(이력 토픽 보관 정책 ADR-0034, 복제 3) — 멱등, 다른 토픽은 건드리지 않음
+    knodes=""
+    for pc in $(pcs "$target"); do
+      for n in $(grep -o '^  kafka-[123]:' "$OUT/$pc/compose.yml" | tr -d ' :'); do
+        copy_files "$pc"
+        remote_compose "$pc" up -d --no-recreate "$n"
+        knodes+="$pc:$n "
+      done
+    done
+    for pn in $knodes; do remote_compose "${pn%%:*}" up -d --no-recreate --wait "${pn#*:}"; done
+    if [ -n "$knodes" ]; then
+      pn="${knodes%% *}"; kpc="${pn%%:*}"; kn="${pn#*:}"
+      remote_compose "$kpc" cp kafka/topics-init.sh "$kn:/tmp/pmart-topics-init.sh"
+      remote_compose "$kpc" exec -T "$kn" sh /tmp/pmart-topics-init.sh
+    fi
     # config-server 먼저: 다른 앱은 부팅할 때 설정을 받아야 뜬다(fail-fast)
     cpc="$(config_server_pc)"
     if [ -n "$cpc" ] && { [ "$target" = all ] || [ "$target" = "$cpc" ]; } \
@@ -114,13 +131,6 @@ case "$cmd" in
       if grep -q '^  postgres:' "$OUT/$pc/compose.yml"; then
         remote_compose "$pc" up -d --wait postgres
         remote_compose "$pc" exec -T postgres psql -U pmart -p 15432 -d pmart -q -f /docker-entrypoint-initdb.d/10-init-db.sql
-      fi
-      # 이벤트 이력 토픽 보관 정책(ADR-0034): 생산자(Debezium·앱)보다 먼저. 실행 중인 kafka 는 재생성하지 않는다(--no-recreate)
-      # 없으면 만들고 healthy 까지 기다린 뒤, 컨테이너 안에서 멱등 스크립트를 실행한다(다른 토픽은 건드리지 않음)
-      if grep -q '^  kafka:' "$OUT/$pc/compose.yml"; then
-        remote_compose "$pc" up -d --no-recreate --wait kafka
-        remote_compose "$pc" cp kafka/topics-init.sh kafka:/tmp/pmart-topics-init.sh
-        remote_compose "$pc" exec -T kafka sh /tmp/pmart-topics-init.sh
       fi
       remote_compose "$pc" up -d --remove-orphans "$@"
     done ;;

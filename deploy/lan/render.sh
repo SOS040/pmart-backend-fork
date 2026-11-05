@@ -30,7 +30,23 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor config-relay es-exporter "
+# ---- Kafka KRaft 클러스터(ADR-0037): placement 의 kafka-1·kafka-2·kafka-3 ----
+KAFKA_NODES=""; KAFKA_VOTERS=""; KAFKA_BOOTSTRAP=""
+for c in kafka-1 kafka-2 kafka-3; do
+  [ -n "${WHERE[$c]:-}" ] || continue
+  KAFKA_NODES+="$c "
+  KAFKA_VOTERS+="${KAFKA_VOTERS:+,}${c#kafka-}@$c:9094"
+  KAFKA_BOOTSTRAP+="${KAFKA_BOOTSTRAP:+,}$c:9092"
+done
+[ -n "${WHERE[kafka]:-}" ] && { echo "placement.conf: kafka 대신 kafka-1·kafka-2·kafka-3 (ADR-0037)" >&2; exit 1; }
+[ "$KAFKA_NODES" = "kafka-1 kafka-2 kafka-3 " ] || echo "경고: Kafka 노드가 3개가 아니다($KAFKA_NODES) — 복제 3·min ISR 2 는 3노드 전제" >&2
+KAFKA_RF=3; KAFKA_MIN_ISR=2
+# 클러스터 ID: 세 노드가 같아야 하고 볼륨을 만든 뒤에는 바꾸면 안 된다. 비밀이 아니므로 여기 고정(2026-11-05 생성, base64url 16바이트)
+KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
+# 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
+KAFKA_METRICS_NODE=kafka-1
+
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor config-relay es-exporter "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
 NO_EXTRA_HOST=" es-exporter "
 ELASTIC=$LAN/elastic
@@ -78,7 +94,7 @@ digest_of() {
   cat "$f"
 }
 
-for c in kafka redis zipkin auth-service eureka-server; do
+for c in redis zipkin auth-service eureka-server; do
   [ -n "${WHERE[$c]:-}" ] || echo "경고: $c 가 배치되지 않음" >&2
 done
 if [ -n "${WHERE[config-relay]:-}" ] && [ ! -f "$SECRETS/smee-url" ]; then
@@ -152,31 +168,38 @@ for pc in "${PCS[@]}"; do
 
 EOF
         ;;
-      kafka)
+      kafka-[123])
+        # KRaft 클러스터 노드(ADR-0037): 노드마다 broker+controller. 이름 kafka-N 의 N 이 node id
         cat <<EOF
-  kafka:
+  $c:
     <<: *common
     image: apache/kafka:4.1.1
-    ports: ["9092:9092"]
+    # 9092 = 클라이언트·브로커 사이, 9094 = 컨트롤러 투표(9093 은 Alertmanager 가 쓴다)
+    ports: ["9092:9092", "9094:9094"]
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
-      KAFKA_NODE_ID: 1
+      KAFKA_NODE_ID: ${c#kafka-}
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      # 리스너 하나: 같은 PC 는 컨테이너 DNS, 다른 PC 는 extra_hosts(kafka → ${IP[$pc]}) 로 kafka:9092 에 닿는다
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: $KAFKA_VOTERS
+      # 같은 PC 는 컨테이너 DNS, 다른 PC 는 extra_hosts(kafka-N → 그 PC IP)로 kafka-N:9092·9094 에 닿는다
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://$c:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: $KAFKA_RF
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: $KAFKA_RF
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: $KAFKA_MIN_ISR
+      KAFKA_DEFAULT_REPLICATION_FACTOR: $KAFKA_RF
+      KAFKA_MIN_INSYNC_REPLICAS: $KAFKA_MIN_ISR
+      # 토픽은 topics-init.sh 로만 만든다(ADR-0037 결정 4) — 오타·기본값 토픽이 조용히 생기지 않게
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_DIRS: /var/lib/kafka/data
-      CLUSTER_ID: pmart-lan-cluster-00000000001
+      CLUSTER_ID: $KAFKA_CLUSTER_ID
     volumes:
-      - kafkadata:/var/lib/kafka/data
+      # 단일 노드 때의 kafkadata 와 다른 이름 — 옛 볼륨은 롤백용으로 남는다(계획 6장)
+      - kafkacluster:/var/lib/kafka/data
+    mem_limit: 2g
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
       interval: 10s
@@ -200,14 +223,14 @@ EOF
       CONNECT_LOG4J_LOGGERS: "INFO, stdout"
       # 같은 반복 로그(AdminMetadataManager "Rebootstrapping …")의 출처. 이름은 소문자 패키지만 가능(엔트리포인트가 소문자로 바꾼다)
       CONNECT_LOG4J_LOGGER_ORG_APACHE_KAFKA_CLIENTS_ADMIN_INTERNALS: WARN
-      BOOTSTRAP_SERVERS: kafka:9092
+      BOOTSTRAP_SERVERS: $KAFKA_BOOTSTRAP
       GROUP_ID: pmart-connect
       CONFIG_STORAGE_TOPIC: _connect.configs
       OFFSET_STORAGE_TOPIC: _connect.offsets
       STATUS_STORAGE_TOPIC: _connect.status
-      CONFIG_STORAGE_REPLICATION_FACTOR: 1
-      OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONFIG_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
+      OFFSET_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
+      STATUS_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
       KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       VALUE_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
@@ -404,7 +427,7 @@ EOF
     ports: ["5044:5044"]
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
-      PMART_KAFKA_BOOTSTRAP: kafka:9092
+      PMART_KAFKA_BOOTSTRAP: $KAFKA_BOOTSTRAP
       PMART_ES_URL: http://elasticsearch:9200
       PMART_CONTENT_BASE_URL: http://product-content-service:$(port_of product-content-service)
       LS_JAVA_OPTS: -Xms512m -Xmx512m
@@ -445,9 +468,9 @@ EOF
         ;;
       host-disk)
         # Windows C: 여유 공간(9p drvfs 마운트, 읽기 전용) → node_filesystem_avail_bytes{mountpoint="/host/windows-c"}
-        # Kafka 가 있는 PC 만: watch.sh 가 쓰는 metrics/kafka_topics.prom(토픽 크기·오프셋·보관 설정, ADR-0034)도 내보낸다(textfile)
+        # 토픽 지표 노드(kafka-1)가 있는 PC 만: watch.sh 가 쓰는 metrics/kafka_topics.prom(토픽 크기·오프셋·보관 설정, ADR-0034)도 내보낸다(textfile)
         textfile_args=""; textfile_vol=""
-        if [[ " ${COMPS[$pc]} " == *" kafka "* ]]; then
+        if [[ " ${COMPS[$pc]} " == *" $KAFKA_METRICS_NODE "* ]]; then
           textfile_args=', "--collector.textfile", "--collector.textfile.directory=/textfile"'
           textfile_vol=$'\n      - ./metrics:/textfile:ro'
         fi
@@ -560,7 +583,7 @@ EOF
           echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
           # /monitor 가 받은 웹훅을 Bus(Kafka springCloudBus)로 알린다(ADR-0033). 서버는 설정 저장소를 읽지 않아 환경변수로 켠다
           echo "      SPRING_CLOUD_BUS_ENABLED: \"true\""
-          echo "      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092"
+          echo "      SPRING_KAFKA_BOOTSTRAP_SERVERS: $KAFKA_BOOTSTRAP"
           # GitHub fetch 는 15초에 한 번만(기본 0 = 요청마다). 앱 35개가 한꺼번에 뜨면 요청마다 fetch(약 10초, 직렬)가 밀려
           # 30초 시간 초과 → 재시작 → 다시 요청이 반복됐다(2026-11-04 배포). 대가: push 뒤 최대 15초는 이전 설정을 줄 수 있다
           echo "      SPRING_CLOUD_CONFIG_SERVER_GIT_REFRESH_RATE: \"15\""
@@ -605,7 +628,7 @@ EOF
 
     vols=""
     [[ "$comps" == *" postgres "* ]] && vols+="  pgdata:"$'\n'
-    [[ "$comps" == *" kafka "* ]] && vols+="  kafkadata:"$'\n'
+    [[ "$comps" == *" kafka-"[123]" "* ]] && vols+="  kafkacluster:"$'\n'
     [[ "$comps" == *" s3 "* ]] && vols+="  s3data:"$'\n'
     [[ "$comps" == *" elasticsearch "* ]] && vols+="  esdata:"$'\n'
     [[ "$comps" == *" logstash "* ]] && vols+="  lsdata:"$'\n'
@@ -632,11 +655,14 @@ EOF
     [[ "$allc" == *" log-janitor "* ]] && tr -d '\r' < "$ELASTIC/log-janitor.sh" > "$dir/elastic/log-janitor.sh"
   fi
 
-  # Kafka 이벤트 이력 토픽 보관 정책(ADR-0034): lan.sh deploy 가 kafka 를 (재생성 없이) 먼저 올린 뒤 컨테이너 안에서 실행한다.
-  # metrics/ = watch.sh 가 쓰는 토픽 크기 지표(textfile) — 같은 PC 의 host-disk 가 읽는다
-  if [[ " ${COMPS[$pc]} " == *" kafka "* ]]; then
-    mkdir -p "$dir/kafka" "$dir/metrics"
+  # Kafka 토픽 준비(ADR-0034·0037): lan.sh deploy 가 세 노드를 (재생성 없이) 먼저 올린 뒤 한 노드 컨테이너 안에서 실행한다.
+  # metrics/ = watch.sh 가 쓰는 토픽 크기 지표(textfile) — 지표 노드(kafka-1) PC 의 host-disk 가 읽는다
+  if [[ " ${COMPS[$pc]} " == *" kafka-"[123]" "* ]]; then
+    mkdir -p "$dir/kafka"
     tr -d '\r' < "$LAN/kafka/topics-init.sh" > "$dir/kafka/topics-init.sh"
+  fi
+  if [[ " ${COMPS[$pc]} " == *" $KAFKA_METRICS_NODE "* ]]; then
+    mkdir -p "$dir/metrics"
     echo "watch.sh(PC 1)가 kafka_topics.prom 을 쓴다. host-disk(node-exporter textfile)가 읽는다 — ADR-0034" > "$dir/metrics/README.txt"
   fi
 
