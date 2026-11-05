@@ -341,6 +341,7 @@ EOF
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - ./monitoring/eureka-password:/etc/prometheus/secrets/eureka-password:ro
       - promdata:/prometheus
     mem_limit: 1g
 
@@ -648,7 +649,8 @@ EOF
     [[ "$allc" == *" grafana "* ]] && cp -r "$MON/grafana" "$dir/monitoring/"
     if [[ "$allc" == *" prometheus "* ]]; then
       {
-        echo "# 생성 파일(deploy/lan/render.sh) — 대상은 placement.conf 의 Spring 앱. ADR-0030"
+        echo "# 생성 파일(deploy/lan/render.sh). ADR-0030. 앱 수집 대상은 Eureka 등록부에서 찾는다(eureka_sd, 2026-11-05)."
+        echo "# 인프라(host-disk·es-exporter)와 Eureka 에 등록하지 않는 eureka-server 만 고정 목록"
         echo "global: { scrape_interval: 15s, evaluation_interval: 15s }"
         echo "rule_files: [/etc/prometheus/alert-rules.yml]"
         if [ -n "${WHERE[alertmanager]:-}" ]; then
@@ -664,15 +666,37 @@ EOF
           echo "  - job_name: elasticsearch"
           echo "    static_configs: [ { targets: [\"${IP[${WHERE[es-exporter]}]}:9114\"], labels: { pc: ${WHERE[es-exporter]} } } ]"
         fi
-        for a in $(apps_all); do
-          # config-server 는 actuator 를 health·info 만 연다(SecurityConfig: 나머지 denyAll) — 지표를 열기 전까지 수집하지 않는다
-          [ "$a" = config-server ] && continue
-          ap="$(port_of "$a")"; [ -n "$ap" ] || continue
-          echo "  - job_name: $a"
+        # eureka-server 는 자기 자신을 등록하지 않는다(register-with-eureka: false) — 고정
+        if [ -n "${WHERE[eureka-server]:-}" ]; then
+          echo "  - job_name: eureka-server"
           echo "    metrics_path: /actuator/prometheus"
-          echo "    static_configs: [ { targets: [\"${IP[${WHERE[$a]}]}:$ap\"], labels: { pc: ${WHERE[$a]} } } ]"
-        done
+          echo "    static_configs: [ { targets: [\"${IP[${WHERE[eureka-server]}]}:$(port_of eureka-server)\"], labels: { pc: ${WHERE[eureka-server]} } } ]"
+          # 그 밖의 앱: Eureka 등록부(ADR-0032)에서 찾는다. 앱은 PC 의 LAN IP + 공개 포트로 등록하고(prefer-ip-address),
+          # 지표 포트는 메타데이터 management.port. job = 앱 이름 소문자(전처럼 search-service 등 — 대시보드·경보 그대로).
+          # config-server 는 Eureka 에 등록하지 않는다(eureka.client.enabled: false) — 지표도 열지 않았으므로 수집 대상 아님.
+          # Eureka 를 못 읽으면 Prometheus 는 마지막으로 찾은 대상을 유지한다. 등록부에서 사라진 앱은 AppMissingFromDiscovery 가 잡는다.
+          echo "  - job_name: eureka-apps"
+          echo "    metrics_path: /actuator/prometheus"
+          echo "    eureka_sd_configs:"
+          echo "      - server: http://${IP[${WHERE[eureka-server]}]}:$(port_of eureka-server)/eureka"
+          echo "        refresh_interval: 30s"
+          echo "        basic_auth: { username: pmart, password_file: /etc/prometheus/secrets/eureka-password }"
+          echo "    relabel_configs:"
+          echo "      - { source_labels: [__meta_eureka_app_instance_ip_addr, __meta_eureka_app_instance_metadata_management_port], regex: '(.+);(.+)', target_label: __address__, replacement: '\$1:\$2' }"
+          # instance 는 전처럼 IP:포트(eureka_sd 기본값은 인스턴스 ID — 바꾸면 기존 시계열과 끊긴다)
+          echo "      - { source_labels: [__address__], target_label: instance }"
+          echo "      - { source_labels: [__meta_eureka_app_name], target_label: job, action: lowercase }"
+          # 상태(UP·DOWN 등)는 태그로 붙이지 않는다 — 값이 바뀌면 다른 시계열이 되어 그래프·경보가 끊긴다
+          echo "      - { target_label: discovery, replacement: eureka }"
+          # IP → PC 이름(PC 목록 표, 서비스 배치와 무관). 정규식의 점은 글자 그대로
+          for p in "${PCS[@]}"; do
+            ipre="$(printf '%s' "${IP[$p]}" | sed 's/\./\\./g')"
+            echo "      - { source_labels: [__meta_eureka_app_instance_ip_addr], regex: '$ipre', target_label: pc, replacement: $p }"
+          done
+        fi
       } > "$dir/monitoring/prometheus.yml"
+      # Eureka 조회 비밀번호(basic_auth password_file). build/ 에만 쓴다(git 제외, 설정 파일에 넣지 않는다)
+      secret eureka-password > "$dir/monitoring/eureka-password"
     fi
   fi
 

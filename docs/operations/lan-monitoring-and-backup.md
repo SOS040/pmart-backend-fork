@@ -13,8 +13,8 @@
 |---|---|---|---|
 | 살아 있는지 점검·자동 재시작 | `watch.sh` (5분마다) | PC1 작업 스케줄러 "PMart LAN Watch" | `deploy/lan/watch.sh` |
 | 지표 수집 | Prometheus v3.5.0 | pc4 :9090 | `render.sh` (prometheus.yml 생성) |
-| 경보 규칙 22개 | Prometheus → Alertmanager v0.28.1 | pc4 :9093 | `deploy/lan/monitoring/alert-rules.yml`, `alertmanager.yml` |
-| 화면 | Grafana 12.0.2 | pc4 :3000 | `deploy/lan/monitoring/grafana/` (대시보드 `pmart-overview.json`, 상품 검색 `pmart-search.json`) |
+| 경보 규칙 23개 | Prometheus → Alertmanager v0.28.1 | pc4 :9093 | `deploy/lan/monitoring/alert-rules.yml`, `alertmanager.yml` |
+| 화면 | Grafana 12.0.2 | pc4 :3000 | `deploy/lan/monitoring/grafana/` (대시보드 `pmart-overview.json`, 상품 검색 `pmart-search.json`). 데이터 원본: Prometheus·Alertmanager·**로그(Elasticsearch `pmart-logs-*`)·Zipkin**(2026-11-05 — Explore 에서 로그 검색·추적 보기, 로그 traceId → 추적, 추적 → 같은 traceId 로그) |
 | 요청 추적 | Zipkin 3 (메모리 저장) | pc4 :9411 | `render.sh` zipkin 블록 |
 | 앱 로그 | Filebeat → Logstash → Elasticsearch → Kibana | 각 PC → pc4 | `deploy/lan/elastic/` |
 | 디스크 여유 | node-exporter(host-disk) | 각 PC :9100 | `render.sh` host-disk 블록 |
@@ -59,6 +59,11 @@ PC 배치: `deploy/lan/placement.conf`
 - 수집 주기 15초, 규칙 평가도 15초.
 - 보존은 **7일 또는 2 GB** 중 먼저 닿는 쪽까지(`--storage.tsdb.retention.time=7d`, `retention.size=2GB`). 메모리 상한 1 GiB.
 - 수집 대상 39개: 앱마다 `/actuator/prometheus`, host-disk 3대, es-exporter, Prometheus 자신.
+  - **앱은 Eureka 등록부에서 찾는다**(2026-11-05 변경, LAN 반영 전 — 아래 참고). Prometheus 가 30초마다 Eureka(`http://<eureka PC>:8761/eureka`, 아이디 `pmart`, 비밀번호는 `build/pc4/monitoring/eureka-password` 파일 — Git 제외)에서 앱 목록을 받아, 등록된 IP + 메타데이터 `management.port` 를 수집한다. `job` = 앱 이름 소문자, `instance` = IP:포트, `pc` = IP 로 붙인 PC 이름, `discovery="eureka"`.
+  - 고정 목록으로 남은 것: eureka-server(자기 자신을 등록하지 않음), host-disk·es-exporter(Eureka 클라이언트 아님), Prometheus 자신. Eureka 서버 주소는 render.sh 가 placement.conf 에서 eureka-server 위치를 읽어 적는다.
+  - 서비스를 옮기거나 늘려도 Prometheus 재배포가 필요 없다(Eureka 에 다시 등록하면 30초 안에 반영). Eureka 를 못 읽으면 Prometheus 는 마지막으로 찾은 목록을 유지한다.
+  - 검증(2026-11-05, 로컬 Prometheus 를 LAN Eureka 에 연결): 대상 39개 모두 UP, job·instance·pc 가 그때 LAN Prometheus(고정 목록)와 같음. 설정 `promtool check config` 통과.
+  - 코드: `deploy/lan/render.sh` Prometheus 설정 생성 부분(`eureka_sd_configs`), compose 의 `eureka-password` 마운트.
   - 예외: config-server는 actuator가 health·info만 열려 있어 수집하지 않는다(열지 결정 대기).
 - 규칙 파일 다시 읽기: 배포 뒤 `curl -X POST http://192.168.0.40:9090/-/reload` (`--web.enable-lifecycle`).
 - 직접 만드는 지표:
@@ -68,7 +73,7 @@ PC 배치: `deploy/lan/placement.conf`
   | `kafka_topics.prom` | `deploy/lan/kafka/topic-metrics.sh` (Kafka 컨테이너 안) | 토픽 크기·시작/끝 오프셋·무제한 보관 여부·검색 색인 소비 지연 |
   | `search_index.prom` | `deploy/lan/elastic/search-index-metrics.py` | Logstash 살아 있음·영구 큐·DLQ·ES 거절 수·마지막 색인 반영 시각 |
 
-## 4. 경보 규칙 (22개, `alert-rules.yml`)
+## 4. 경보 규칙 (23개, `alert-rules.yml`)
 
 > **경보는 아직 아무에게도 전달되지 않는다.** `alertmanager.yml`의 받는 곳이 `none`이다. 지금은 Alertmanager(`http://192.168.0.40:9093`)와 Grafana 화면에서만 볼 수 있다.
 >
@@ -77,6 +82,7 @@ PC 배치: `deploy/lan/placement.conf`
 | 묶음 | 경보 | 조건 | 심각도 |
 |---|---|---|---|
 | 앱 | AppDown | 2분 넘게 지표 수집 실패 | critical |
+| | AppMissingFromDiscovery | 최근 1시간 안에 수집하던 앱이 Eureka 등록부에서 사라짐(죽은 앱은 30초 뒤 등록부에서 지워져 AppDown 이 못 잡는다). 1시간 뒤 저절로 풀림, 그 뒤는 watch.sh 가 본다 | critical |
 | | Http5xxRateHigh | 5분간 5xx 비율 > 5% (요청이 있을 때) | warning |
 | 메시징 | DeadLetterOpen | 서비스 DB에 처리 못 한 메시지(OPEN)가 있음 | critical |
 | | ConsumerLagHigh | 소비 지연 > 500건이 10분 | warning |

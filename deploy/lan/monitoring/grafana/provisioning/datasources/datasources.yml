@@ -16,3 +16,36 @@ datasources:
     url: http://alertmanager:9093
     jsonData:
       implementation: prometheus
+  # 앱 로그(ADR-0031): Filebeat → Logstash → pmart-logs-YYYY.MM.DD(3일 보관). 상품 검색 색인(products 등)은 넣지 않는다 — 로그만.
+  # 로그의 traceId 를 누르면 Zipkin 추적으로(derivedFields). 2026-11-05
+  # Grafana 는 provisioning 파일의 ${…} 를 환경변수로 바꾼다 — Grafana 변수는 $${…} 로 적는다(그냥 쓰면 빈 값이 된다, 2026-11-05 확인)
+  - name: Logs (Elasticsearch)
+    uid: pmart-logs
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    jsonData:
+      index: pmart-logs-*
+      timeField: "@timestamp"
+      logMessageField: message
+      logLevelField: level
+      maxConcurrentShardRequests: 3
+      dataLinks:
+        - field: traceId
+          datasourceUid: pmart-zipkin
+          url: "$${__value.raw}"
+  # 요청 추적(Zipkin, 메모리 저장 — span 상한 5만이라 오래된 추적은 없다). span 에서 같은 traceId 로그로(tracesToLogsV2). 2026-11-05
+  - name: Zipkin
+    uid: pmart-zipkin
+    type: zipkin
+    access: proxy
+    url: http://zipkin:9411
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: pmart-logs
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: true
+        query: 'traceId:"$${__trace.traceId}"'

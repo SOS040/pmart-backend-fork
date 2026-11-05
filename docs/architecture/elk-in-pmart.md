@@ -82,6 +82,7 @@ product·pricing·product-content·mfc-inventory 서비스 DB
 | **Kibana** | 데이터 뷰 `pmart-logs-*`(시간 필드 `@timestamp`). 서비스·PC·레벨·`traceId`·`correlationId`(사가 ID)로 거른다. |
 
 - Zipkin 에서 본 traceId 로 그 요청이 거친 모든 서비스의 로그를 찾을 수 있다.
+- Grafana(pc4 :3000)에서도 로그를 본다(2026-11-05): 데이터 원본 `Logs (Elasticsearch)`(`pmart-logs-*`, 로그만 — 상품 검색 색인은 넣지 않음)과 `Zipkin` 을 연결했다. Explore 에서 로그 검색, 로그의 traceId 를 누르면 Zipkin 추적, 추적의 span 에서 같은 traceId 로그로 간다. 세밀한 로그 검색은 Kibana 가 더 편하다.
 - 지표 감시는 ELK 가 아니다.
   - 숫자 지표: Prometheus(15초 수집) → Grafana·Alertmanager
   - 요청 흐름: Zipkin

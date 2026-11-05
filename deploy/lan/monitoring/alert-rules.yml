@@ -11,6 +11,17 @@ groups:
           summary: "{{ $labels.job }} 응답 없음 ({{ $labels.instance }})"
           description: "2분 넘게 /actuator/prometheus 를 읽지 못했다. lan.sh status / logs 로 확인."
 
+      # 앱 수집 대상은 Eureka 등록부에서 찾는다(2026-11-05). 앱이 죽으면 30초 뒤 등록부에서 지워져 수집 대상에서
+      # 사라지므로 up == 0 이 남지 않는다(AppDown 이 못 잡음) — 최근 1시간 안에 있었는데 지금 없는 앱을 잡는다.
+      # 1시간이 지나면 저절로 풀린다. 그 뒤로는 watch.sh(5분마다 실제 health 확인·재시작)가 본다.
+      - alert: AppMissingFromDiscovery
+        expr: (group by (job) (max_over_time(up{discovery="eureka"}[1h]))) unless (group by (job) (up{discovery="eureka"}))
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} 가 Eureka 등록부에서 사라짐"
+          description: "최근 1시간 안에 수집하던 앱이 지금 Eureka 에 없다(죽었거나 등록이 끊김). lan.sh status / logs 로 확인."
+
       - alert: Http5xxRateHigh
         expr: |
           sum by (job) (rate(http_server_requests_seconds_count{status=~"5..", uri!~"/actuator.*"}[5m]))
