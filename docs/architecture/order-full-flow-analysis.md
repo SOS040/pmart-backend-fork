@@ -1,6 +1,7 @@
 # 주문 전체 흐름 분석 (order-full-flow)
 
-- 그림: [`diagrams/order-full-flow.png`](diagrams/order-full-flow.png) · 원본 [`diagrams/order-full-flow.mmd`](diagrams/order-full-flow.mmd) (커밋 `7e48af9`)
+- 그림: [`diagrams/order-full-flow.png`](diagrams/order-full-flow.png) · 원본 [`diagrams/order-full-flow.mmd`](diagrams/order-full-flow.mmd) (커밋 `7e48af9`, 추적 반영 2026-11-05)
+- 번호별 설명(누가 누구에게 어떤 방식으로, 앱이 받는 응답과 trace): [`order-full-flow-steps.md`](order-full-flow-steps.md)
 - 기준: 그림을 만든 시점에 **구현된 코드**(main `dae7b8c`, 2026-11-03). 이 문서의 상태값·타이머·키는 코드(`CheckoutRules`, `PaymentStage`, 계약 `order-service.yaml`)와 흐름 문서에서 확인한 것이다. 이후의 Eureka(ADR-0032)·설정 실행 중 갱신(ADR-0033)은 주문 흐름을 바꾸지 않는다. 2026-11-04 의 이벤트 소비 Spring Cloud Stream 전환(ADR-0035, `b8e70b7`)과 추적 작업 A·C·B(`a1d514c` — 사가 실행기 문맥 전달, correlationId = sagaId/claimId, Kafka `traceparent`)는 소비·추적 방식만 바꾸고 단계·상태·키는 그대로다 — 본문에 반영(2026-11-05 확인).
 - 업무 규칙의 정본: [`docs/business/flows/order-checkout-saga.md`](../business/flows/order-checkout-saga.md)(S1·S2), [`cancel-vs-handover.md`](../business/flows/cancel-vs-handover.md)(S3). 이 문서는 **그림을 읽기 위한 해설**이고 규칙을 새로 정하지 않는다.
 - 패턴별 책임(오케스트레이션·코레오그래피·Outbox): [`payment-saga-patterns.md`](payment-saga-patterns.md)
@@ -254,7 +255,7 @@
 | mfc.fulfillment.v1 | `WorkStopResult` | mfc-fulfillment | — |
 | commerce.cart.v1 | `CartItemChangeApplied` | cart | — |
 
-모든 이벤트는 **업무 변경과 같은 트랜잭션에 outbox 로 저장**되고 Debezium 이 Kafka 로 보낸다(key = aggregateId, 헤더 eventType·aggregateType·traceId·correlationId·traceparent — `traceparent` 는 2026-11-04 추가로 소비 span 이 발행 trace 에 이어진다, 그림에는 아직 없음). correlationId 는 S1 사건 = sagaId(참여자 `PaymentApproved` 등 포함), S3 = claimId(2026-11-04). 그래서 "DB 는 바뀌었는데 이벤트가 안 나감"이 없다.
+모든 이벤트는 **업무 변경과 같은 트랜잭션에 outbox 로 저장**되고 Debezium 이 Kafka 로 보낸다(key = aggregateId, 헤더 eventType·aggregateType·traceId·correlationId·traceparent — `traceparent` 는 2026-11-04 추가로 소비 span 이 발행 trace 에 이어진다 — 그림 반영 2026-11-05). correlationId 는 S1 사건 = sagaId(참여자 `PaymentApproved` 등 포함), S3 = claimId(2026-11-04). 그래서 "DB 는 바뀌었는데 이벤트가 안 나감"이 없다.
 
 ---
 
@@ -309,5 +310,5 @@
 
 ## 10. 참고
 - 같은 이름의 Eum 그림: `Eum-main/eum_backend/diagrams/order-full-flow.*` (주문 전체 그림끼리의 비교 분석은 아직 없음. 부분 비교: 결제 [`toss-payment-eum-comparison.md`](toss-payment-eum-comparison.md), Debezium [`debezium-usage-vs-eum.md`](debezium-usage-vs-eum.md)).
-- 그림 다시 만들기: `docs/architecture/diagrams/` 에서 `npx @mermaid-js/mermaid-cli -i order-full-flow.mmd -o order-full-flow.png -s 2`
+- 그림 다시 만들기: `docs/architecture/diagrams/` 에서 `npx @mermaid-js/mermaid-cli -i order-full-flow.mmd -o order-full-flow.png -s 5` (mermaid-cli 11 기준 약 3900px 폭), svg 는 `-o order-full-flow.svg`
 - 서비스별 규칙: `services/order-orchestration-service/CLAUDE.md`(S1·S3), `services/payment-service/CLAUDE.md`, `services/order-service/CLAUDE.md`

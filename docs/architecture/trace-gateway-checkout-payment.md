@@ -71,6 +71,34 @@ LAN 실측(2026-11-04 20:10, 사가 `SAGA-7feb7eac-…`, trace `b9f8bad6…`, 55
   - 실측에서 sagaId 로 찍힌 것은 mfc-inventory·mfc-capacity 로그였다.
 - 그 뒤 앱이 주문서를 조회하는 요청(`GET /order-drafts/{id}`, 결제창 정보 확인)은 요청마다 별도의 짧은 trace 다.
 
+### 3-1. 응답 시점 — 사가가 끝나길 기다리지 않는다
+
+1. order-service 는 orchestration 이 사가를 저장하고 202 를 주면 바로 앱에 202 를 돌려준다.
+2. orchestration 은 응답한 뒤 사가 실행기(`CheckoutSagaService.kick` → `executor.execute(advance)`)에서 재고·여력·슬롯·결제 시작을 비동기로 진행한다.
+   - 실행기에서 오류가 나도 주기 작업(sweep)이 사가를 이어서 진행한다.
+3. 그래서 결제 진입 trace 의 span 대부분(참여자 호출)은 앱이 응답을 받은 **뒤에** 끝난다. Zipkin 에서 게이트웨이 span 이 사가 단계 span 보다 먼저 닫혀 보이는 것이 정상이다.
+4. 앱은 계약대로 `GET /order-drafts/{draftId}` 로 진행을 조회한다.
+
+| 사가 상태 | `status` / `nextAction` |
+|---|---|
+| 자원 확보 중 | `RESOURCE_PENDING` / `WAIT` |
+| 결제창 정보가 준비됨 | `PAYMENT_PENDING` / `PAY` (응답에 `payment` 가 실림 → 앱이 토스 결제창을 연다) |
+| 실패해서 보상까지 끝남 | `DRAFT` / `REVIEW`, 견적이 만료됐으면 `EXPIRED` / `RE_QUOTE` |
+
+### 3-2. 응답에 실리는 추적 정보
+
+| 응답 | 추적 관련 내용 |
+|---|---|
+| 성공 202 본문 | `{status: ACCEPTED, requestId, resultId(orderId), nextAction: QUERY_RESULT, occurredAt}` — `requestId` 는 앱이 보낸 `Idempotency-Key` 값이다. traceId 는 없다 |
+| 성공 응답 헤더 | `X-Request-Id`(게이트웨이), `X-Correlation-Id`(order-service 가 이 요청에서 만든 UUID — sagaId 아님). `traceparent`·traceId 헤더는 없다 |
+| 오류 4xx·5xx 본문 | `application/problem+json` 에 `traceId` 가 **필수**로 들어간다(계약 `_common.yaml` `ErrorResponse`). 서비스 오류는 `ProblemDetailWriter`, 게이트웨이 거절(401·403 등)은 `ProblemResponseWriter` 가 넣는다 |
+
+- 고객이 오류를 겪으면 그 `traceId` 로 Zipkin·Kibana 에서 바로 그 요청을 찾는다.
+- 성공 응답만으로는 클라이언트가 그 요청의 trace 를 알 수 없다. 서버에서 찾을 단서는 `X-Request-Id`·orderId 다. 성공 응답에도 traceId 를 줄지는 정하지 않았다.
+- 게이트웨이 CORS 설정:
+  - 노출 헤더는 `X-Request-Id`·`Location`·`Retry-After` 뿐이라, 웹 브라우저는 `X-Correlation-Id` 를 읽을 수 없다. 안드로이드 앱은 CORS 제한을 받지 않는다.
+  - 요청 헤더 `traceparent` 는 허용한다. 앱이 보내면 그 trace 를 이어받는데, 지금 고객앱은 보내지 않는다.
+
 ## 4. 결제 승인 trace
 
 LAN 실측(같은 결제, trace `d3510de7…`, 47 span)

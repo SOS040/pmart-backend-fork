@@ -1,5 +1,5 @@
-%% PMart 주문 전체 흐름 — 구현된 코드 기준 (2026-11-03, main dae7b8c / 2026-11-04 b8e70b7: 소비·DLT·재처리 = Spring Cloud Stream, ADR-0035)
-%% 렌더: npx @mermaid-js/mermaid-cli -i order-full-flow.mmd -o order-full-flow.png -s 2
+%% PMart 주문 전체 흐름 — 구현된 코드 기준 (2026-11-03, main dae7b8c / 2026-11-04 b8e70b7: 소비·DLT·재처리 = Spring Cloud Stream, ADR-0035 / 2026-11-04 a1d514c: 추적 잇기 A·B·C)
+%% 렌더: npx @mermaid-js/mermaid-cli -i order-full-flow.mmd -o order-full-flow.png -s 5
 %% 미구현(설계만): 이행 사가 S2(작업 요청→피킹·패킹→출고), 배차·인계, 쿠폰, 알림 반응, 픽 시작 후 취소
 sequenceDiagram
     autonumber
@@ -22,7 +22,7 @@ sequenceDiagram
     participant DLQ  as 바인더 DLQ<br/>{토픽}.DLT · dead_letter
 
     %%─────────────────────────────────────────
-    Note over APP,FUL: [Phase 1] 주문서(draft) 만들기 — 동기 HTTP<br/>JWT 는 그대로 전달, 각 서비스가 PmartPrincipal 로 읽음 · gateway 는 X-Request-Id·Redis rate limit
+    Note over APP,FUL: [Phase 1] 주문서(draft) 만들기 — 동기 HTTP<br/>JWT 는 그대로 전달, 각 서비스가 PmartPrincipal 로 읽음 · gateway 는 trace 시작(W3C traceparent)·X-Request-Id·Redis rate limit — 사용자 요청마다 trace 하나
     %%─────────────────────────────────────────
 
     APP->>GW: GET /delivery-options?mfcId&itemAmount · GET /slots (예약배송)
@@ -70,7 +70,7 @@ sequenceDiagram
     ORD-->>APP: 202 { status: ACCEPTED, resultId: orderId, nextAction: QUERY_RESULT }
 
     %%─────────────────────────────────────────
-    Note over ORCH,PAY: [S1 a~f] 자원 확보 → 결제 시작 — 가상 스레드에서 단계별 advance()<br/>각 단계 = 한 트랜잭션 + saga 행 SELECT FOR UPDATE · 단계 키 sagaId:STEP
+    Note over ORCH,PAY: [S1 a~f] 자원 확보 → 결제 시작 — 가상 스레드에서 단계별 advance()<br/>각 단계 = 한 트랜잭션 + saga 행 SELECT FOR UPDATE · 단계 키 sagaId:STEP<br/>실행기 = ContextExecutorService(결제 진입 trace 이어감) · correlationId = sagaId (참여자 호출 X-Correlation-Id)
     %%─────────────────────────────────────────
 
     rect rgb(245, 245, 245)
@@ -130,7 +130,7 @@ sequenceDiagram
         Toss-->>APP: success { paymentKey, orderId, amount }
 
     %%─────────────────────────────────────────
-    Note over APP,Toss: [Phase 4] 결제 승인 — Toss 호출은 트랜잭션 밖
+    Note over APP,Toss: [Phase 4] 결제 승인 — Toss 호출은 트랜잭션 밖 · 새 사용자 요청이라 새 trace (결제 진입 trace 와는 correlationId = sagaId 로 묶음)
     %%─────────────────────────────────────────
 
         APP->>GW: POST /payment-confirmations (Idempotency-Key)<br/>{ orderId: pgOrderId, paymentKey, amount }
@@ -149,7 +149,7 @@ sequenceDiagram
                 Toss-->>PAY: 200 DONE
                 rect rgb(220, 255, 220)
                     PAY->>PAY: PaymentLedger.applyConfirm (행 잠금)<br/>CONFIRMING → APPROVED
-                    PAY->>OB: PaymentApproved (order.payment.v1)
+                    PAY->>OB: PaymentApproved (order.payment.v1, correlationId = sagaId)
                 end
             else 거절
                 Toss-->>PAY: 4xx
@@ -176,7 +176,7 @@ sequenceDiagram
 
     rect rgb(245, 245, 245)
         OB->>DEB: WAL — outbox_event INSERT 감지 (같은 TX 에서 삭제)
-        DEB->>K: EventRouter → topic 열 · key = aggregateid<br/>headers eventType, traceId, correlationId
+        DEB->>K: EventRouter → topic 열 · key = aggregateid<br/>headers eventType, aggregateType, traceId, correlationId, traceparent<br/>(traceparent → 소비자가 같은 trace 로 이어감)
         K->>ORCH: Stream 바인딩 paymentEvents ← order.payment.v1 (InboxGuard) → 커밋 후 kick()
         Note right of ORCH: 소비 실패 → 재시도 1+3회 → DLQ ([Phase 8])<br/>이벤트가 늦거나 DLT 로 빠져도 sweep 10초가 결제를 조회해 진행
 
@@ -271,7 +271,7 @@ sequenceDiagram
         DEB->>K: CancellationRequested
         K->>ORCH: Stream 바인딩 claimEvents ← order.claim.v1
         Note right of ORCH: 실패 → 재시도 → DLQ
-        ORCH->>ORCH: cancellation_saga SAGA-C-… RUNNING step=STOP_WORK
+        ORCH->>ORCH: cancellation_saga SAGA-C-… RUNNING step=STOP_WORK (correlationId = claimId)
 
         ORCH->>FUL: POST /internal/stop-requests { stopRequestId, orderId, claimId, scope, lines }
         FUL->>FUL: 작업 지시가 아직 없음 → RESOLVED, notStartedLines = 전부<br/>order_work_stop 기록
