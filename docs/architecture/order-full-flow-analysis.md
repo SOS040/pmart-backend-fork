@@ -255,7 +255,7 @@
 | mfc.fulfillment.v1 | `WorkStopResult` | mfc-fulfillment | — |
 | commerce.cart.v1 | `CartItemChangeApplied` | cart | — |
 
-모든 이벤트는 **업무 변경과 같은 트랜잭션에 outbox 로 저장**되고 Debezium 이 Kafka 로 보낸다(key = aggregateId, 헤더 eventType·aggregateType·traceId·correlationId·traceparent — `traceparent` 는 2026-11-04 추가로 소비 span 이 발행 trace 에 이어진다 — 그림 반영 2026-11-05). correlationId 는 S1 사건 = sagaId(참여자 `PaymentApproved` 등 포함), S3 = claimId(2026-11-04). 그래서 "DB 는 바뀌었는데 이벤트가 안 나감"이 없다.
+모든 이벤트는 **업무 변경과 같은 트랜잭션에 outbox 로 저장**되고 Debezium 이 Kafka 로 보낸다(key = aggregateId, 헤더 eventType·aggregateType·traceId·correlationId·traceparent — `traceparent` 는 2026-11-04 추가로 소비 span 이 발행 trace 에 이어진다 — 그림 반영 2026-11-05). correlationId 는 S1 사건 = sagaId(참여자 `PaymentApproved` 등 포함), S3 = claimId(2026-11-04). 로그의 correlationId(2026-11-05): payment 결제 승인·인증 실패 보고는 결제 시도를 찾은 직후부터 sagaId(`CheckoutService.correlate`). 사가가 시작되기 전 구간(order 결제 진입 앞부분, payment 결제 시도 조회 전)은 그 요청의 값 — 이전에는 추적 라이브러리 설정 때문에 비어 있었다([`correlation-id-log-fix.md`](correlation-id-log-fix.md), LAN 미배포). 그래서 "DB 는 바뀌었는데 이벤트가 안 나감"이 없다.
 
 ---
 

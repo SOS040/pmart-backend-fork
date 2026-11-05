@@ -16,4 +16,6 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc)
+    testImplementation(libs.spring.boot.starter.webmvc.test) // MockMvc — 추적이 켜진 요청에서 correlationId·baggage 확인
+    testImplementation(libs.spring.boot.micrometer.tracing.opentelemetry) // 시험에서 Tracer 자동 구성(서비스는 service-observability 묶음으로 받는다)
 }

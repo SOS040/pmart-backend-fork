@@ -1,0 +1,52 @@
+%% LAN PC placement (2026-11-05, from deploy/lan/placement.conf and build/<pc>/compose.yml). Numbers are published ports.
+%% Render: in docs/architecture/diagrams/ run  mmdc -i lan-placement.mmd -o lan-placement.png -s 3
+%%{init: {"flowchart": {"wrappingWidth": 420, "nodeSpacing": 30, "rankSpacing": 60}}}%%
+flowchart TB
+    subgraph PC1["PC1 · 192.168.0.32 — Build · Deploy · Monitor (no LAN services)"]
+        direction LR
+        P1A["<b>Build & Deploy</b><br/>Gradle · Jib image push<br/>lan.sh · render.sh<br/>Claude Code"]
+        P1B["<b>Monitoring</b><br/>watch.sh (every 5 min)<br/>health check · auto restart<br/>Kafka / search metrics export"]
+        P1C["<b>Backup · Local dev</b><br/>Kafka event history backup (D:\pmart-backups)<br/>local dev compose<br/>postgres · kafka · pgvector"]
+        P1A --- P1B --- P1C
+    end
+
+    subgraph PC2["pc2 · 192.168.0.34 — Commerce · Order & Payment"]
+        direction TB
+        P2C["<b>Commerce</b><br/>product-service :8101<br/>product-content-service :8102<br/>customer-service :8103<br/>cart-service :8104<br/>search-service :8105<br/>storefront-service :8106<br/>pricing-service :8107"]
+        P2O["<b>Order & Payment</b><br/>order-service :8201<br/>order-orchestration-service :8202<br/>fulfillment-routing-service :8203<br/>claim-service :8204<br/>payment-service :8205"]
+        P2I[("<b>Infrastructure</b><br/>postgres :15432<br/>kafka :9092<br/>s3 :8333<br/>host-disk :9100 · log-shipper")]
+        P2C --- P2O --- P2I
+    end
+
+    subgraph PC3["pc3 · 192.168.0.222 — MFC · Delivery · CDC"]
+        direction TB
+        P3M["<b>MFC</b><br/>mfc-inventory-service :8301<br/>mfc-fulfillment-service :8302<br/>mfc-capacity-service :8303<br/>mfc-location-service :8304<br/>mfc-quality-service :8305<br/>mfc-inbound-service :8306"]
+        P3D["<b>Delivery · CDC</b><br/>delivery-serviceability-service :8401<br/>delivery-capacity-service :8402<br/>rider-service :8403<br/>delivery-dispatch-service :8404<br/>delivery-execution-service :8405<br/>delivery-tracking-service :8406<br/>cdc-inventory-service :8601"]
+        P3I[("<b>Infrastructure</b><br/>postgres :15432<br/>connect (Debezium) :8083<br/>host-disk :9100 · log-shipper")]
+        P3M --- P3D --- P3I
+    end
+
+    subgraph PC4["pc4 · 192.168.0.40 — Edge · Platform · Back office · Observability"]
+        direction TB
+        P4P["<b>Edge · Platform</b><br/>api-gateway :8080<br/>auth-service :8501<br/>config-server :8888<br/>eureka-server :8761<br/>backoffice-web :80"]
+        P4B["<b>Back office · Common</b><br/>notification-service :8502<br/>audit-service :8503<br/>backoffice-bff :8504<br/>approval-service :8505<br/>case-service :8506<br/>center-master-service :8507"]
+        P4O["<b>Observability · Search</b><br/>prometheus :9090 · alertmanager :9093<br/>grafana :3000 · zipkin :9411<br/>elasticsearch :9200 (product search + logs)<br/>logstash :5044 · kibana :5601<br/>es-exporter :9114"]
+        P4I[("<b>Infrastructure · Support</b><br/>postgres :15432 · redis :6379<br/>host-disk :9100 · log-shipper<br/>es-init · log-janitor · config-relay")]
+        P4P --- P4B --- P4O --- P4I
+    end
+
+    PC1 == "lan.sh deploy<br/>SSH · scp · docker compose" ==> PC2
+    PC1 ==> PC3
+    PC1 ==> PC4
+
+    classDef svc fill:#e3f0ff,stroke:#4a7fc1,color:#222,text-align:left
+    classDef infra fill:#eaf7ea,stroke:#4c9a4c,color:#222
+    classDef obs fill:#fff4d6,stroke:#c9a227,color:#222
+    classDef plat fill:#f3e8ff,stroke:#8a5cc7,color:#222
+    classDef pc1 fill:#f2f2f2,stroke:#888,color:#222
+    class P2C,P2O,P3M,P3D,P4B svc
+    class P2I,P3I,P4I infra
+    class P4O obs
+    class P4P plat
+    class P1A,P1B,P1C pc1
+    linkStyle 0,1,2,3,4,5,6,7,8 stroke:transparent

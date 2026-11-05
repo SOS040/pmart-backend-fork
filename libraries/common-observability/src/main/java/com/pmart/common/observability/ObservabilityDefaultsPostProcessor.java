@@ -13,7 +13,7 @@ import org.springframework.core.env.MapPropertySource;
  *
  * <ul>
  *   <li>로그: {@code logging.config=classpath:pmart-logback.xml} (JSON 구조화, local 프로파일은 평문)
- *   <li>추적: W3C 전파, correlationId 를 baggage 로 원격 전파하고 MDC 에 넣는다
+ *   <li>추적: W3C 전파, correlationId 를 baggage 로 원격 전파한다(MDC 는 우리 코드가 관리 — 아래 correlation.fields 설명)
  *   <li>메트릭: Prometheus 노출, application 태그
  *   <li>Actuator: health/info/prometheus/metrics 만 노출, liveness/readiness probe
  *   <li>Kafka·HTTP 클라이언트 observation 켬 (해당 starter 가 있을 때만 효력)
@@ -35,7 +35,13 @@ public class ObservabilityDefaultsPostProcessor implements EnvironmentPostProces
     defaults.put("management.tracing.baggage.enabled", "true");
     defaults.put("management.tracing.baggage.remote-fields", "correlationId,X-Source-System");
     defaults.put("management.tracing.baggage.correlation.enabled", "true");
-    defaults.put("management.tracing.baggage.correlation.fields", "correlationId,X-Source-System");
+    // correlationId 는 넣지 않는다(2026-11-05): 넣으면 추적 라이브러리가 span 범위를 여닫을 때 MDC correlationId 를 그 span 의
+    // baggage 값으로 덮거나 지운다. 그래서 ① 요청 필터가 넣은 값이 첫 하위 span 이 끝나면 로그에서 사라졌고, ② 요청 값을 baggage 에
+    // 넣으면 사가 구간의 하위 span(참여자 HTTP 호출 등)이 요청 span 의 baggage 를 물려받아 sagaId 를 요청 값으로 덮었다.
+    // MDC correlationId 는 우리 코드가 관리한다:
+    // CorrelationIdFilter(요청)·CorrelationScope(사가·결제)·EventConsumers(소비)·
+    // MdcContextPropagation(스레드). 원격 전파는 X-Correlation-Id 헤더와 baggage(remote-fields) 그대로.
+    defaults.put("management.tracing.baggage.correlation.fields", "X-Source-System");
     defaults.put("management.tracing.export.zipkin.enabled", "true");
 
     defaults.put("management.prometheus.metrics.export.enabled", "true");

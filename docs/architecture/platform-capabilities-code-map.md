@@ -381,7 +381,7 @@ TossClient.confirm(POST /v1/payments/confirm, Idempotency-Key)
 ### 알려진 빈틈
 1. ~~Kafka 를 건너면 trace 가 끊긴다.~~ 2026-11-04 해결(작업 B — outbox `traceparent`, 커넥터 헤더, 바인더 observation). Kafka 헤더 `traceparent` 원문은 직접 보지 못했고, 소비 span 이 같은 trace 에 붙은 것으로 간접 확인했다.
 2. ~~문맥을 넘기지 않는 실행기가 있다(`OrchestrationConfig`·`ClaimConfig`·`ProfileImageService`).~~ 2026-11-04 해결(작업 A — `ContextExecutorService`).
-3. 게이트웨이는 WebFlux 라서 `CorrelationIdFilter`(서블릿)가 돌지 않는다. correlationId 는 첫 서블릿 서비스가 만들고, 사가가 시작되면 sagaId 로 바뀐다. 단 필터가 만든 UUID 는 응답 헤더에만 남고 로그 MDC 에는 남지 않는다(2026-11-05 LAN 로그·시험 확인, 원인 추정은 `trace-gateway-checkout-payment.md` 2절). 결제 승인 요청은 결제 시도를 찾은 직후부터 sagaId(`payment-service` `CheckoutService.correlate`, 2026-11-05, LAN 미배포).
+3. 게이트웨이는 WebFlux 라서 `CorrelationIdFilter`(서블릿)가 돌지 않는다. correlationId 는 첫 서블릿 서비스가 만들고, 사가가 시작되면 sagaId 로 바뀐다. 필터 값이 로그 MDC 에서 사라지던 문제는 2026-11-05 수정(추적 라이브러리의 baggage→MDC 연동 필드에서 correlationId 를 뺌 — `ObservabilityDefaultsPostProcessor`, 시험 `CorrelationIdTracingTest`, LAN 미배포. 자세히는 `trace-gateway-checkout-payment.md` 2절). 결제 승인 요청은 결제 시도를 찾은 직후부터 sagaId(`payment-service` `CheckoutService.correlate`, 2026-11-05, LAN 미배포).
 4. `@Scheduled` 작업(사가 sweep 등)은 각자 새 trace 다. 사가 단계는 correlationId 로 따라간다.
 5. Zipkin 은 메모리 저장소라 재시작하거나 span 상한(5만)을 넘으면 옛 추적이 사라진다.
 

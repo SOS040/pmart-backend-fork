@@ -38,7 +38,7 @@
 
 | 경우 | correlationId | 코드 |
 |---|---|---|
-| HTTP 요청을 받을 때 | `X-Correlation-Id` 헤더 값(길이 128 이하, 제어문자 없음). 없으면 새 UUID. 응답 헤더로 돌려준다. **단 로그에는 남지 않는다**(아래) | `CorrelationIdFilter`(common-observability) |
+| HTTP 요청을 받을 때 | `X-Correlation-Id` 헤더 값(길이 128 이하, 제어문자 없음). 없으면 새 UUID. 응답 헤더로 돌려준다. 로그에도 남는다 — 2026-11-05 수정 전에는 남지 않았다(아래) | `CorrelationIdFilter`(common-observability) |
 | 결제 승인·인증 실패 보고 | 결제 시도를 찾은 직후부터 그 시도의 sagaId(2026-11-05) | `payment-service` `CheckoutService.correlate` |
 | 사가 진행 | sagaId(취소 사가 S3 는 claimId) | `CorrelationScope.open(...)` — `CheckoutSagaService.advance`, `CancellationSagaService` |
 | 결제 시도 사건 발행 | 그 결제 시도에 저장된 sagaId(환불 결과는 요청 값 그대로) | `PaymentEvents.publish` |
@@ -46,11 +46,15 @@
 | Kafka 사건 | 봉투의 `correlationId` 필드. 소비하는 동안 MDC 를 그 값으로 | `OutboxWriter`·`EventConsumers`(common-messaging) |
 
 - 별도 스레드(사가 실행기 등)로 넘어갈 때는 `ContextExecutorService.wrap` 으로 trace 와 MDC 를 함께 넘긴다(작업 A).
-- **요청 필터의 UUID 는 로그에 남지 않는다**(2026-11-05 확인):
-  - LAN 로그: 11-04 결제의 payment `payment pay-… APPROVED` 로그에 traceId 는 있고 correlationId 는 없었다. 이틀치 로그 중 correlationId 가 있는 것은 `CorrelationScope`·Kafka 소비로 sagaId 가 정해진 로그뿐이었다.
-  - 시험: `PaymentFlowIT.approvalLogsCarryTheAttemptSagaId` 를 수정 전 코드로 돌리면 MDC 에 correlationId 키가 아예 없었다.
-  - 추정 원인(미확인): correlationId 가 baggage 연동 필드(`management.tracing.baggage.correlation.fields`)라서, 추적 라이브러리가 MDC 를 baggage 값으로 맞추며 필터가 넣은 값을 지운다.
-  - 그래서 sagaId(또는 claimId)가 정해지기 전 구간의 로그는 correlationId 없이 traceId 로만 찾는다.
+- **요청 필터의 값이 로그에서 사라지던 문제 — 2026-11-05 수정(코드·시험 완료, LAN 미배포)**:
+  - 이 문제만 따로 정리한 문서: [`correlation-id-log-fix.md`](correlation-id-log-fix.md)
+  - 증상: LAN 11-04 결제의 payment `payment pay-… APPROVED` 로그에 traceId 는 있고 correlationId 는 없었다. 이틀치 로그 중 correlationId 가 있는 것은 `CorrelationScope`·Kafka 소비로 sagaId 가 정해진 로그뿐이었다.
+  - 원인(시험으로 확인): correlationId 가 추적 라이브러리의 baggage→MDC 연동 필드(`management.tracing.baggage.correlation.fields`)였다. 라이브러리가 span 범위를 닫을 때 MDC 를 그 span 의 baggage 값으로 되돌려, 요청 안의 첫 하위 span(DB·HTTP 호출 관측 등)이 끝나는 순간 필터가 넣은 값이 지워졌다.
+  - 먼저 시도한 "요청 값을 baggage 에도 넣기"는 되돌렸다: 사가 구간의 하위 span(참여자 HTTP 호출)이 요청 span 의 baggage 를 물려받아, 열릴 때 MDC 의 sagaId 를 요청 값으로 덮었다(`CheckoutSagaIT` 실패 — 참여자 `X-Correlation-Id` 가 요청 UUID).
+  - 수정: 연동 필드에서 correlationId 를 뺐다(`ObservabilityDefaultsPostProcessor`, `X-Source-System` 만 남김). MDC correlationId 는 우리 코드가 관리한다 — `CorrelationIdFilter`(요청)·`CorrelationScope`(사가·결제)·`EventConsumers`(소비)·`MdcContextPropagation`(스레드). 원격 전파(`X-Correlation-Id` 헤더, baggage)는 그대로다.
+  - 요청 값은 baggage 에 넣지 않는다. 다른 서비스로는 `X-Correlation-Id` 헤더로 간다(공통 RestClient 가 MDC 에서 읽음).
+  - 시험: `CorrelationIdTracingTest`(하위 span 전후 요청 값 유지, 사가 구간은 sagaId → 끝나면 요청 값 복귀, 요청 뒤 남지 않음), `CheckoutSagaIT`·`PaymentFlowIT` 통과.
+  - LAN 에 배포하기 전까지는 지금처럼 sagaId(또는 claimId)가 정해지기 전 구간의 로그는 traceId 로만 찾는다.
 
 ## 3. 결제 진입 trace
 
@@ -73,7 +77,7 @@ LAN 실측(2026-11-04 20:10, 사가 `SAGA-7feb7eac-…`, trace `b9f8bad6…`, 55
 
 - 응답 202 는 "사가 시작"이지 결제 성공이 아니다.
 - correlationId:
-  - 게이트웨이 → order → orchestration 시작까지는 로그에 correlationId 가 없다(2절). traceId A 로 찾는다.
+  - 게이트웨이 → order → orchestration 시작까지: 게이트웨이는 없고, order 는 요청 값(이 요청의 UUID — 2절 수정 배포 뒤. 그 전에는 없음). traceId A 로도 찾는다.
   - 사가 실행기부터는 sagaId 다.
   - 실측에서 sagaId 로 찍힌 것은 mfc-inventory·mfc-capacity 로그였다.
 - 그 뒤 앱이 주문서를 조회하는 요청(`GET /order-drafts/{id}`, 결제창 정보 확인)은 요청마다 별도의 짧은 trace 다.
@@ -154,7 +158,7 @@ LAN 실측(같은 결제, trace `d3510de7…`, 47 span)
   2. Debezium 커넥터가 그 값을 Kafka 헤더로 옮긴다.
   3. Stream 바인더 observation 이 그 헤더를 부모로 잇는다.
 - correlationId:
-  - 게이트웨이와 payment 의 결제 시도 조회 전까지는 로그에 correlationId 가 없다(2절). 앱은 sagaId 를 모르므로 보내지 않는다.
+  - 게이트웨이는 없고, payment 의 결제 시도 조회 전까지는 요청 값(이 요청의 UUID — 2절 수정 배포 뒤. 그 전에는 없음)이다. 앱은 sagaId 를 모르므로 보내지 않는다.
   - **결제 시도를 찾은 직후부터 sagaId 다**(2026-11-05, `CheckoutService.correlate` — `CorrelationScope.open(tracer, attempt.sagaId())`). 검사·토스 호출·결과 반영 로그가 모두 sagaId 로 찍힌다. 인증 실패 보고(`reportFailure`)도 같다.
   - 11-04 실측(수정 전)에서 sagaId 로 찍힌 것은 mfc-inventory·order·cart 로그였고, payment 의 `APPROVED` 로그에는 correlationId 가 없었다. LAN 에는 아직 배포하지 않았다.
 
@@ -170,9 +174,9 @@ LAN 실측(같은 결제, trace `d3510de7…`, 47 span)
   - 클라이언트에 요청하지 않은 이유: 앱은 sagaId 를 받은 적이 없다(계약 어디에도 고객용으로 노출되지 않음). 클라이언트가 보낸 상관 ID 는 믿을 수 없다(로그 오염).
   - 결제 시도 행의 sagaId 는 서버가 저장한 값이라, 같은 결제는 어느 경로로 와도 같은 값이다.
 - **남은 공백**:
-  - 게이트웨이 구간과 payment 의 결제 시도 조회 전 몇 줄은 correlationId 가 없다(traceId 로 찾는다).
+  - 게이트웨이 구간은 correlationId 가 없다. payment 의 결제 시도 조회 전 몇 줄은 sagaId 가 아니라 요청 값이다(2절 수정 배포 뒤, 그 전에는 없음). traceId 로 찾는다.
   - 토스 웹훅(`WebhookService`)·대사 작업(`ReconciliationService`) 경로의 로그는 아직 묶지 않았다(사건 발행은 이미 sagaId).
-  - 결제 진입 쪽 order-service 로그(사가 시작 전)도 correlationId 가 없다.
+  - 결제 진입 쪽 order-service 로그(사가 시작 전)도 sagaId 가 아니라 요청 값이다(2절 수정 배포 뒤, 그 전에는 없음).
 - 묶음 범위: sagaId 는 **결제 진입 사가 한 번**을 묶는다. 재결제는 새 sagaId, 취소·환불은 claimId 다. 주문 하나의 일생은 sagaId·claimId 를 각각 찾는다.
 - **운영 전 과제 — 외부 입구의 추적·상관 헤더 정리(미구현, 2026-11-05 사용자 결정: 지금은 하지 않음)**
   - 언제: 외부 사용자가 붙는 운영 환경으로 가기 전. LAN 시험망에서는 하지 않는다.

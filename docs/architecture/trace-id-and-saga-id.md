@@ -72,7 +72,8 @@
   | 결제 실패 뒤 다시 결제 | 새 sagaId(새 결제 진입 요청이라 orderId·사가가 새로 생김) |
   | 주문 취소 → 환불 | claimId(취소 사가는 클레임 기준) |
 
-- sagaId 가 정해지기 전 구간의 로그에는 correlationId 가 없다. traceId 로 찾는다.
-  - 대상: 게이트웨이, order-service 의 사가 시작 전, payment 의 결제 시도 조회 전
-  - 요청 필터가 만드는 UUID 는 응답 헤더에만 남고 로그에는 남지 않는다(`trace-gateway-checkout-payment.md` 2절).
+- sagaId 가 정해지기 전 구간의 로그:
+  - 2026-11-05 수정 전(지금 LAN): correlationId 가 없다. traceId 로 찾는다. 요청 필터가 만든 UUID 가 추적 라이브러리 설정 때문에 로그에서 지워졌다.
+  - 수정 뒤(코드·시험 완료, LAN 미배포): 그 요청의 값(헤더 값 또는 새 UUID)이 남는다. 사가가 시작되면 sagaId 로 바뀌고 끝나면 요청 값으로 돌아온다(`trace-gateway-checkout-payment.md` 2절).
+  - 대상: 게이트웨이(필터가 없어 수정 뒤에도 없음), order-service 의 사가 시작 전, payment 의 결제 시도 조회 전
 - 토스 웹훅·payment 대사 작업 경로의 로그는 아직 sagaId 로 묶지 않았다. 사건 발행은 이미 sagaId 다.
