@@ -32,6 +32,7 @@
                   "unitsPerSku": { "type": "integer", "minimum": 1 },
                   "weightG": { "type": "integer", "minimum": 0, "description": "행 전체 중량(단위 중량 × qty)" },
                   "cartItemId": { "$ref": "_defs.v1.json#/$defs/Ref", "description": "주문 대상이던 장바구니 품목 — cart 가 주문분만 정리한다(2026-10-31 추가)" },
+                  "productName": { "type": "string", "description": "주문 당시 상품명 사본(2026-11-07 추가, 단말 표시)" },
                   "unitPrice": { "$ref": "_defs.v1.json#/$defs/Money" },
                   "discountShare": { "$ref": "_defs.v1.json#/$defs/Money" },
                   "lotConstraint": { "type": "object", "properties": { "allowedLots": { "type": "array", "items": { "type": "string" } }, "minExpiryDate": { "$ref": "_defs.v1.json#/$defs/Date" } } }
@@ -51,10 +52,10 @@
             "bagFee": { "$ref": "_defs.v1.json#/$defs/Money" },
             "totalAmount": { "$ref": "_defs.v1.json#/$defs/Money" },
             "firstPurchase": { "type": "boolean", "description": "첫 구매 무료배달을 실제 적용한 주문(deliveryTipReason = FIRST_PURCHASE). customer 가 첫 구매 사용 기록을 남긴다" },
-            "plannedShipments": { "type": "integer", "minimum": 1, "description": "계획 배송 수(10,000g 단위, 2026-10-31 추가). shipments[] 는 이행 계획 단계에서 채운다" },
+            "plannedShipments": { "type": "integer", "minimum": 1, "description": "계획 배송 수(10,000g 단위, 2026-10-31 추가 — 참고값). 실제 출고 단위는 shipments[]" },
             "shipments": {
               "type": "array",
-              "description": "이행 계획. 총 상품중량 10,000g 초과 시 2건 이상",
+              "description": "이행 계획(2026-11-07부터 채움). 슬라이스 6 D6-2: 주문당 출고 1개(shipmentId = <orderId>-S1, 모든 행). 10,000g 분할은 MFC Q-10 결정 뒤",
               "items": {
                 "type": "object",
                 "required": ["shipmentId", "lines"],

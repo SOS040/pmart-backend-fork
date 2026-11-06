@@ -91,7 +91,7 @@
 - **사가**: S1 결제 진입·확정, S2 이행·결품·부분취소, S3 취소 vs 인계, S4 예약 시간 변경 (`docs/business/flows/`).
 - **API**: 사가 조회(원요청 ID), 수동 재처리(승인 필요: 원결과 재조회/미전달 재전송/보상 실행 — 각각 분리).
 - **발행**: `CheckoutSagaStateChanged`, `CompensationExecuted`, `ReconciliationRequired`.
-- **구독**: `PaymentApproved/Failed/Unknown`, `InventoryHeld/Released/Expired/Blocked`, `CapacityHoldResult`, `SlotHoldResult`, `WorkAccepted/Rejected`, `LineShortageReported`, `PackageHandedOver`, `WorkStopResult`.
+- **구독**: `OrderConfirmed`(S2 시작, 2026-11-07), `PaymentApproved/Failed/Unknown`, `InventoryHeld/Released/Expired/Blocked`, `CapacityHoldResult`, `SlotHoldResult`, `WorkAccepted/Rejected`, `LineShortageReported`, `PackageHandedOver`, `WorkStopResult`.
 - **의존(동기)**: mfc-inventory, mfc-capacity, delivery-capacity, payment, mfc-fulfillment, order, claim, delivery-dispatch.
 
 ### fulfillment-routing-service `[1단계 얇게 / 3단계 완성]`

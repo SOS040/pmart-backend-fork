@@ -15,7 +15,7 @@ tags:
   - { name: claims, description: 고객·CS 클레임 접수·조회·철회 }
   - { name: decisions, description: 운영자 심사 (BO-12~14) }
   - { name: refunds, description: 환불 상태 조회 }
-  - { name: internal, description: 서비스 간 (mfc-inbound 회수 수령) }
+  - { name: internal, description: 서비스 간 (mfc-inbound 회수 수령·orchestration 자동 취소) }
 
 paths:
   /claims:
@@ -215,6 +215,50 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /internal/claims/system-cancellations:
+    post:
+      tags: [internal]
+      summary: "[orchestration→claim] 시스템 자동 전체 취소 접수 (MFC 작업 거절 뒤, D6-4)"
+      description: |
+        슬라이스 6a(2026-11-07). order-orchestration 이 MFC 작업 거절(재시도 대상이 아니거나 재시도가 끝남)을 확인한 뒤 호출한다
+        (docs/business/flows/order-checkout-saga.md §2.0 D6-4). 고객 선택 단계 없이 주문 전체(모든 행 × 미이행 수량)를 취소하고
+        원 승인액 전액을 환불한다 — 접수 뒤 흐름은 고객 취소와 같다(CancellationRequested → S3 → OrderCancelled → 환불).
+        클레임은 channel SYSTEM, reason 은 요청 값(지금은 FULFILLMENT_REJECTED 만).
+        - 주문이 CONFIRMED 가 아니면 422 ORDER_NOT_CANCELLABLE.
+        - 같은 주문에 진행 중인 취소 클레임이 이미 있으면(고객이 먼저 취소 등) 새로 만들지 않고 그 클레임을 200 으로 돌려준다.
+        - 같은 Idempotency-Key·같은 본문은 기존 결과를 재생한다.
+      x-added-in: '2026-11-07'
+      operationId: createSystemCancellation
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SystemCancellationRequest' }
+      responses:
+        '201':
+          description: 접수됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Claim' }
+        '200':
+          description: 이미 진행 중인 취소 클레임 (새로 만들지 않음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Claim' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: ORDER_NOT_CANCELLABLE (CONFIRMED 아님·취소할 미이행 수량 없음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   /internal/claims/{claimId}/return-receipts:
     post:
       tags: [internal]
@@ -275,8 +319,17 @@ components:
       enum: [OPENED, UNDER_REVIEW, STOP_PENDING, DECIDED, IN_PROGRESS, CLOSED, WITHDRAWN, REJECTED]
     ClaimReason:
       type: string
-      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상
-      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER]
+      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED 는 시스템 자동 취소만(2026-11-07, 고객 접수 불가)
+      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED]
+    SystemCancellationRequest:
+      type: object
+      description: 시스템 자동 전체 취소(2026-11-07)
+      required: [orderId, reason]
+      properties:
+        orderId: { type: string }
+        reason: { type: string, enum: [FULFILLMENT_REJECTED] }
+        reasonDetail: { type: string, maxLength: 1000, description: '예 작업 거절 사유 코드·마지막 작업 버전' }
+        sourceRef: { type: string, description: 요청한 사가 ID(추적용) }
     ClaimLineRequest:
       type: object
       required: [orderLineId, qty]

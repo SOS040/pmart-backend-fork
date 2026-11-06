@@ -6,6 +6,9 @@ info:
     사가 인스턴스·단계·타임아웃·재시도·보상 로그·결과 불명 추적·운영자 수동 개입 기록의 정본. (docs/architecture/service-map.md §2)
     주문 상태(order), 결제·재고·슬롯·작업의 성공 확정(각 정본)은 소유하지 않는다.
     사가: S1 결제 진입·확정, S2 이행·결품·부분취소, S3 취소 vs 인계, S4 예약 시간 변경 (docs/business/flows/).
+    S2(2026-11-07, 슬라이스 6a): OrderConfirmed(order.order.v1) 구독으로 시작 → REQUEST_FULFILLMENT(mfc-fulfillment ConfirmOrder) →
+    접수면 COMPLETED. 거절이 재시도 대상이면 AWAIT_RECOVERY(RETRY_WAITING) 뒤 새 작업 버전, 아니거나 끝나면 REQUEST_SYSTEM_CANCEL
+    (claim POST /internal/claims/system-cancellations → S3) 뒤 COMPLETED. 조회는 GET /internal/sagas?orderId=&sagaType=S2_FULFILLMENT.
     모든 엔드포인트는 서비스 간 전용(/internal). BackOffice BO-12는 승인 건(approvalRef)을 동반해야 수동 개입할 수 있다.
 servers:
   - url: /api/v1
@@ -195,7 +198,9 @@ components:
         RUNNING 단계 진행 중. WAITING_RESULT 하위 정본 결과 대기(타임아웃 감시). UNKNOWN_TRACKING 결과 불명 추적(1분×5회→상신→15분).
         COMPENSATING 보상 실행 중. COMPLETED 정상 종료. COMPENSATED 보상 완료 종료. ESCALATED case-service 상신(수동 개입 대기).
         RECONCILIATION_REQUIRED 대사 불일치(강제 출고·강제 취소 금지).
-      enum: [RUNNING, WAITING_RESULT, UNKNOWN_TRACKING, COMPENSATING, COMPLETED, COMPENSATED, ESCALATED, RECONCILIATION_REQUIRED]
+        RETRY_WAITING S2 작업 거절 뒤 같은 MFC 재시도 대기(1분마다 원래 예약 재확인, 처음 거절부터 W분, 2026-11-07).
+        CONFIG_REQUIRED S2 재시도 설정(W·최대 횟수) 미설정 센터 — 그 주문만 보류(자동 취소하지 않음).
+      enum: [RUNNING, WAITING_RESULT, UNKNOWN_TRACKING, COMPENSATING, COMPLETED, COMPENSATED, ESCALATED, RECONCILIATION_REQUIRED, RETRY_WAITING, CONFIG_REQUIRED]
     StepName:
       type: string
       enum:
@@ -214,6 +219,8 @@ components:
         - RELEASE_INVENTORY
         - APPLY_LINE_QUANTITY
         - NOTIFY_CLAIM
+        - AWAIT_RECOVERY
+        - REQUEST_SYSTEM_CANCEL
         - HOLD_NEW_SLOT
         - RELEASE_OLD_SLOT
     StepState:
@@ -406,7 +413,7 @@ components:
         stopRequestId: { type: string, description: StopWork 멱등 키. 같은 ID 재전송은 기존 사가 }
         orderId: { type: string }
         scope: { type: string, enum: [FULL, PARTIAL] }
-        reason: { type: string, enum: [CUSTOMER_REQUEST, SHORTAGE_CANCEL_ALL, DISPATCH_FAILED, OPERATION_RESTRICTED] }
+        reason: { type: string, enum: [CUSTOMER_REQUEST, SHORTAGE_CANCEL_ALL, DISPATCH_FAILED, OPERATION_RESTRICTED, FULFILLMENT_REJECTED] }
         lines:
           type: array
           minItems: 1

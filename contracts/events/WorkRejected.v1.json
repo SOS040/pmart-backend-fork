@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/WorkRejected.v1.json",
   "title": "WorkRejected",
-  "description": "ConfirmOrder 작업을 거절한 사실. 발행 mfc-fulfillment. 구독 order-orchestration. 토픽 mfc.fulfillment.v1",
+  "description": "ConfirmOrder 작업을 거절한 사실. 발행 mfc-fulfillment. 구독 order-orchestration(6a 는 동기 응답으로 진행 — 사건은 기록·BI용). 토픽 mfc.fulfillment.v1",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -33,10 +33,27 @@
               "$ref": "_defs.v1.json#/$defs/CenterId"
             },
             "rejectReason": {
-              "type": "string"
+              "type": "string",
+              "description": "INVENTORY_MISMATCH / OPERATION_RESTRICTED / CAPACITY_EXCEEDED / LOT_INELIGIBLE / ALREADY_STOPPED (contracts/openapi/mfc-fulfillment-service.yaml WorkRejectReason)"
             },
             "rejectedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "workVersion": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "거절된 작업 버전(2026-11-07 추가)"
+            },
+            "sagaId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "요청한 orchestration 사가(2026-11-07 추가)"
+            },
+            "retryable": {
+              "type": "boolean",
+              "description": "같은 MFC 재시도 대상인지(D6-5, 2026-11-07 추가)"
+            },
+            "message": {
+              "type": "string"
             }
           },
           "additionalProperties": true

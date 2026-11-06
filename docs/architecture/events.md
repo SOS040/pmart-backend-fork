@@ -34,7 +34,7 @@
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
 | `OrderDraftCreated` | order-service | BI | draftId, purchaseIntentId, accountId, mfcId, quoteVersion, quoteExpiresAt | 초안 생성·가격 동결 시작 | ① |
-| `OrderConfirmed` | order-service | cart(주문분 정리), customer(첫 구매 사용 기록), mfc-fulfillment(또는 동기), notification, demand-planning, replenishment, delivery-dispatch(이행 계획), BI | orderId, orderVersion, accountId, draftId, mfcId, lines[{orderLineId, sku, qty, unitsPerSku, weightG, unitPrice, discountShare, cartItemId}], deliveryMode, arrivalWindow, outOfStockPreference, reservationId, capacityHoldId, slotHoldId, paymentAttemptId, 금액(itemAmount·deliveryTip·deliveryTipReason·bagFee·totalAmount), firstPurchase(첫 구매 무료 적용 → customer 사용 기록), plannedShipments, shipments[](이행 계획 단계), confirmedAt. 토픽 `order.order.v1` | PG 승인 대사 일치 + 자원 확정 후 | ① |
+| `OrderConfirmed` | order-service | cart(주문분 정리), customer(첫 구매 사용 기록), order-orchestration(S2 시작 — ConfirmOrder 동기 호출, 2026-11-07), mfc-fulfillment(동기 ConfirmOrder 로 받음), notification, demand-planning, replenishment, delivery-dispatch(이행 계획), BI | orderId, orderVersion, accountId, draftId, mfcId, lines[{orderLineId, sku, qty, unitsPerSku, weightG, unitPrice, discountShare, cartItemId, productName}], deliveryMode, arrivalWindow, outOfStockPreference, reservationId, capacityHoldId, slotHoldId, paymentAttemptId, 금액(itemAmount·deliveryTip·deliveryTipReason·bagFee·totalAmount), firstPurchase(첫 구매 무료 적용 → customer 사용 기록), plannedShipments, shipments[](2026-11-07부터 주문당 1개 `<orderId>-S1`, D6-2), confirmedAt. 토픽 `order.order.v1` | PG 승인 대사 일치 + 자원 확정 후 | ① |
 | `OrderPreparationStarted` | order-service | commerce(조회), notification | orderId, startedAt | MFC `PreparationStarted` 반영. 이후 예약 시간 변경 차단 | ① |
 | `OrderLineQuantityChanged` | order-service | claim, demand-planning, replenishment, commerce | orderId, orderLineId, originalQty, unfulfilledQty, handedOverQty, cancelledBeforeShipQty, reason, version | 부분 취소·결품 반영 | ① |
 | `OrderPartiallyDelivered` | order-service | notification, commerce | orderId, deliveryId, deliveredLines[] | 분할배송 일부 완료 | ① |
@@ -46,7 +46,7 @@
 | `CheckoutSagaStateChanged` | order-orchestration | backoffice-bff, BI | sagaId, orderId, step, state, lastError | 사가 단계 전이 | ① |
 | `CompensationExecuted` | order-orchestration | audit, case | sagaId, resourceType, resourceId, result | 이번 시도 신규 자원 보상 해제 | ① |
 | `ReconciliationRequired` | order-orchestration | case, backoffice-bff | sagaId, orderId, mismatchType(AMOUNT/QTY/STATE), details | 대사 불일치·자동 복구 한도 초과 | ① |
-| `CancellationRequested` | claim-service | order-orchestration | claimId, orderId, lines[], reason | 고객/CS 취소 접수(S3 시작) | ① |
+| `CancellationRequested` | claim-service | order-orchestration | claimId, orderId, lines[], reason(FULFILLMENT_REJECTED = 작업 거절 자동 취소), channel(SYSTEM 추가) | 고객/CS 취소 접수·시스템 자동 취소(S3 시작) | ① |
 | `ClaimOpened` | claim-service | notification, case | claimId, orderId, type(CANCEL/RETURN/EXCHANGE), lines[], reason | 접수 | ① |
 | `ClaimDecided` | claim-service | order, delivery-execution(회수), mfc-quality, notification, backoffice | claimId, decisions[{claimLineId, APPROVED/REJECTED, qty}], refundIntentId? | 심사 결과(일부 승인 가능) | ① |
 | `ReturnPickupRequested` | claim-service | delivery-dispatch | claimId, orderId, deliveryId(원), lines[], pickupAddress(원주문 주소 ref) | 회수 승인 | ② |
@@ -115,7 +115,7 @@
 | `StockAdjusted` | mfc-inventory | approval, audit, replenishment | adjId, lines[], approvalRef | 실사 ADJ | ② |
 | `MfcStockAvailable` | mfc-inventory | notification(재입고 알림) | mfcId, sku, availableQty | 정상 판정·판매 준비 후 A>0 전환 | ③ |
 | `SkuHandlingChanged` | mfc-inventory | search(Logstash — 상품 carriedMfcIds) | mfcId, sku, productId?, handlingEnabled, version, changedAt, republished? | 센터 취급 ON/OFF 변경(바뀔 때만). 토픽 `mfc.sku-handling.v1`(무제한 보관 — 재색인 재생). `/internal/sku-handling-republications` 가 지금 상태를 같은 버전으로 다시 알림 (2026-11-05) | ① |
-| `WorkAccepted` / `WorkRejected` | mfc-fulfillment | order-orchestration | orderId, fulfillmentId, taskIds[], rejectReason? | ConfirmOrder 결과(수락≠완료) | ① |
+| `WorkAccepted` / `WorkRejected` | mfc-fulfillment | order-orchestration(6a 는 동기 응답으로 진행, 사건은 기록) | orderId, fulfillmentId, workVersion, sagaId, taskIds[], rejectReason?·retryable? | ConfirmOrder 결과(수락≠완료). 거절 사유 WorkRejectReason | ① |
 | `PreparationStarted` | mfc-fulfillment | order, delivery-dispatch(준비 예상) | orderId, fulfillmentId, startedAt, estimatedPackDuration | 실제 준비 시작 확정 | ① |
 | `LineShortageReported` | mfc-fulfillment | order-orchestration, case(동의 없음 시), mfc-quality(파손) | orderId, orderLineId, shortQty, reason(SHORT/DAMAGED/BLOCKED), alreadyHandedOverQty | 피킹 결품·파손 | ① |
 | `PackingFinished` | mfc-fulfillment | delivery-dispatch, commerce | shipmentId, packages[{packageId, bagCount, weight, volume, alcohol}] | 포장 완료(인계 아님) | ① |
