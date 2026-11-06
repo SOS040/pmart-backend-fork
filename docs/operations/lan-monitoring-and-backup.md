@@ -137,6 +137,7 @@ PC 배치: `deploy/lan/placement.conf`
   - es-logs 가 배치되지 않은 구성에서는 예전처럼 메모리 저장(`MEM_MAX_SPANS` 50,000)으로 렌더한다.
   - Grafana 의 Zipkin 데이터 원본·앱 전송 주소는 그대로다.
 - **양**(2026-11-06 측정): 약 67 span/초 → 하루 약 580만 span. 처음 7,557 span 이 7.1MB 였다(병합 전). 이 비율이면 하루 수 GB 라 **2GB 상한이 3일보다 먼저 걸린다**(대략 반나절~하루치만 남을 수 있음). 늘리려면 상한을 올리거나 수집 비율을 낮춘다.
+- **eureka-server 추적 끔**(2026-11-06, pmart-config 9fb7207): 앱 30여 개의 등록 갱신·목록 조회가 span 의 약 85% 였다. `management.tracing.export.enabled: false` 와 **`export.zipkin.enabled: false` 둘 다** 필요하다 — common-observability 기본값이 `export.zipkin.enabled=true` 를 넣고, 전송 대상별 값이 전체 값보다 먼저라 전체 스위치만으로는 안 꺼졌다. 30초 span 2,011 → 578(-71%). 남은 대부분은 `/actuator/prometheus` 수집(다음 공통 라이브러리 배포 때 `/actuator/**` 관측 제외 예정).
 - 컨테이너: 힙 256m(`-XX:+ExitOnOutOfMemoryError`), 메모리 상한 512 MiB. 메모리 저장을 안 쓰니 2026-11-05 의 힙 부족 재시작(20시간 113번)은 원인이 사라졌다.
 - 확인:
   - `curl http://192.168.0.40:9411/health` → `ElasticsearchStorage … UP`
