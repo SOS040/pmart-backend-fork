@@ -38,7 +38,7 @@
 | [0033](0033-config-refresh-webhook-bus.md) | LAN 설정 실행 중 갱신 — GitHub 웹훅(smee.io 중계) → config-server /monitor(서명 검증) → Spring Cloud Bus(Kafka springCloudBus) → 바뀐 파일의 앱이 다시 받음. ADR-0027 결정 6 대체 | 승인 |
 | [0035](0035-event-consumption-spring-cloud-stream.md) | 업무 이벤트 소비·DLT·재처리는 Spring Cloud Stream(Kafka 바인더) — `PmartEventConsumer` 빈 + 설정 저장소 바인딩, 바인더 DLQ → `{topic}.DLT`+`dead_letter`, 재처리 StreamBridge. 발행은 outbox→Debezium 그대로. ADR-0009 소비 방식·ADR-0030 결정 3 수단 보완 | 승인 |
 | [0036](0036-ai-assistant-phase1-policy-rag.md) | ai-assistant-service 1차(내부 운영자 정책 RAG) 앞당김 — 명시 목록 색인, 지위·생애·구현 기록 세 축, 승인+결정 번호일 때만 대체 활성, 스냅숏 색인(INGEST·SNAPSHOT 잠금 분리), 선점형 처리(조건부 쓰기), 현재 권한 재검사, 외부 모델 없는 기준선 | 제안 |
-| [0037](0037-kafka-three-node-kraft-cluster.md) | LAN Kafka 3노드 KRaft 클러스터(pc2·pc3·pc4, 노드마다 브로커+컨트롤러, 컨트롤러 포트 9094) — 복제 3·min ISR 2, 클러스터 ID 고정, 브로커 자동 토픽 생성 끔(Connect·바인더·`topics-init.sh` 가 명시 생성), kafka-exporter+경보, 크기 측정 리더 기준. ADR-0034·0035 보완 | 제안 |
-| [0038](0038-split-search-and-logs-elasticsearch.md) | 검색 ES·Logstash(pc3)와 로그 ES·Logstash·Kibana(pc4) 분리 — 각 ES 색인 자동 생성 범위 제한, 경보 클러스터별. ADR-0031 결정 5 대체 | 제안 |
+| [0037](0037-kafka-three-node-kraft-cluster.md) | LAN Kafka 3노드 KRaft 클러스터(pc2·pc3·pc4, 노드마다 브로커+컨트롤러, 컨트롤러 포트 9094) — 복제 3·min ISR 2, 클러스터 ID 고정, 브로커 자동 토픽 생성 끔(Connect·바인더·`topics-init.sh` 가 명시 생성), kafka-exporter+경보, 크기 측정 리더 기준. ADR-0034·0035 보완 | 승인 |
+| [0038](0038-split-search-and-logs-elasticsearch.md) | 검색 ES·Logstash(pc3)와 로그 ES·Logstash·Kibana(pc4) 분리 — 각 ES 색인 자동 생성 범위 제한, 경보 클러스터별. ADR-0031 결정 5 대체 | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

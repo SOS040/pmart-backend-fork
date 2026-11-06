@@ -1,6 +1,6 @@
 # ADR-0038 검색용 Elasticsearch 와 로그용 Elasticsearch 를 나눈다 — 검색 ES·Logstash 는 pc3, 로그 ES·Logstash·Kibana 는 pc4
 
-- 상태: 제안 (2026-11-05, 사용자 결정 — Kafka 클러스터 전환과 같은 날 2026-11-06 적용 예정)
+- 상태: 승인 (2026-11-06, 사용자 "승인으로 바꿔줘" — 결정 2026-11-05, LAN 적용 2026-11-06 완료)
 - 대체: ADR-0031 결정 5("검색과 로그는 같은 Elasticsearch 노드 — 로그가 검색에 영향을 주면 그때 나눈다"). ADR-0031 의 나머지 결정(ES 8.18 + nori·n-gram, 색인 주체 Logstash, Filebeat → Logstash → ES → Kibana, 상한 유지)은 그대로다.
 - 관련: ADR-0030(관측·디스크 상한), ADR-0034(재색인 = Kafka 전체 재생), ADR-0037(Kafka 클러스터), `docs/operations/2026-11-06-kafka-cluster-elk-split-plan.md`
 
