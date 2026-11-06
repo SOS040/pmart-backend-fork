@@ -336,13 +336,13 @@ EOF
         ;;
       es-search|es-logs)
         # Elasticsearch(ADR-0031, Eum 과 같은 판). ADR-0038: es-search = 상품 검색 색인만, es-logs = 앱 로그만. 보안 끔(LAN 시험망).
-        # 색인을 자동으로 만들지 않는다 — 검색 ES 는 시스템 색인만, 로그 ES 는 pmart-logs-* 와 시스템 색인만(매핑 없는 색인·엉뚱한 쪽 색인이 생기지 않게).
+        # 색인을 자동으로 만들지 않는다 — 검색 ES 는 시스템 색인만, 로그 ES 는 pmart-logs-*·zipkin-*(추적)와 시스템 색인만(매핑 없는 색인·엉뚱한 쪽 색인이 생기지 않게).
         # nori(한국어 분석)는 검색 ES 에만 — 시작 때 없으면 설치(인터넷 필요). 로그 ES 는 기본 명령
         if [ "$c" = es-search ]; then
           auto_idx="+.*,-*"
           es_cmd='    command: ["sh", "-c", "bin/elasticsearch-plugin list | grep -q analysis-nori || bin/elasticsearch-plugin install --batch analysis-nori; exec /usr/local/bin/docker-entrypoint.sh eswrapper"]'
         else
-          auto_idx="+pmart-logs-*,+.*,-*"; es_cmd=""
+          auto_idx="+pmart-logs-*,+zipkin-*,+.*,-*"; es_cmd="" # zipkin-*: 추적 저장소(2026-11-06)
         fi
         cat <<EOF
   $c:
@@ -603,13 +603,33 @@ EOF
 EOF
         ;;
       zipkin)
-        cat <<EOF
+        if [ -n "${WHERE[es-logs]:-}" ]; then
+          # 추적 저장소 = 로그 ES(es-logs, 2026-11-06 사용자 요청). 색인 zipkin-span-YYYY-MM-DD(하루 하나, 복제본 0).
+          # 보존은 log-janitor 가 로그와 같은 3일(로그의 traceId → 추적이 같은 기간 이어진다) + 전체 2GB 상한.
+          # ES 가 잠깐 끊겨도 zipkin 은 살아 있다(그동안 받은 span 은 버린다).
+          cat <<EOF
   zipkin:
     <<: *common
     image: openzipkin/zipkin:3
     ports: ["9411:9411"]
     networks: { default: { ipv4_address: $ip_addr } }
-    # 메모리 저장소. 기본(힙 160m·span 50만)은 힙이 차서 OOM 재시작을 반복했다(2026-11-05 확인: 약 20시간 113번).
+    mem_limit: 512m
+    environment:
+      JAVA_OPTS: "-Xms256m -Xmx256m -XX:+ExitOnOutOfMemoryError"
+      STORAGE_TYPE: elasticsearch
+      ES_HOSTS: http://es-logs:9200
+      ES_INDEX_SHARDS: "1"
+      ES_INDEX_REPLICAS: "0"
+
+EOF
+        else
+          cat <<EOF
+  zipkin:
+    <<: *common
+    image: openzipkin/zipkin:3
+    ports: ["9411:9411"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    # 메모리 저장소(es-logs 가 배치되지 않았을 때). 기본(힙 160m·span 50만)은 힙이 차서 OOM 재시작을 반복했다(2026-11-05).
     # span 상한을 줄이고 힙을 조금 늘린다. 대가: 오래된 추적은 먼저 지워진다. mem_limit 으로 다른 컨테이너를 보호
     mem_limit: 512m
     environment:
@@ -617,6 +637,7 @@ EOF
       MEM_MAX_SPANS: "50000"
 
 EOF
+        fi
         ;;
       *)
         port="$(port_of "$c")"; [ -n "$port" ] || { echo "포트 없음: $c" >&2; exit 1; }

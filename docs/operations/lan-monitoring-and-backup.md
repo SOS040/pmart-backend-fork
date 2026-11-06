@@ -17,7 +17,7 @@
 | 지표 수집 | Prometheus v3.5.0 | pc4 :9090 | `render.sh` (prometheus.yml 생성) |
 | 경보 규칙 28개 | Prometheus → Alertmanager v0.28.1 | pc4 :9093 | `deploy/lan/monitoring/alert-rules.yml`, `alertmanager.yml` |
 | 화면 | Grafana 12.0.2 | pc4 :3000 | `deploy/lan/monitoring/grafana/` (대시보드 `pmart-overview.json`, 상품 검색 `pmart-search.json`). 데이터 원본: Prometheus·Alertmanager·**로그(로그 ES `es-logs` `pmart-logs-*`)·Zipkin**(2026-11-05 — Explore 에서 로그 검색·추적 보기, 로그 traceId → 추적, 추적 → 같은 traceId 로그) |
-| 요청 추적 | Zipkin 3 (메모리 저장) | pc4 :9411 | `render.sh` zipkin 블록 |
+| 요청 추적 | Zipkin 3 (저장: 로그 ES `zipkin-span-*`, 2026-11-06) | pc4 :9411 | `render.sh` zipkin 블록 |
 | 앱 로그 | Filebeat → logstash-logs → es-logs → Kibana | 각 PC → pc4 | `deploy/lan/elastic/` |
 | 상품 검색 색인 | Kafka → logstash-search → es-search | pc3 | `services/search-service/src/main/logstash/`, `deploy/lan/elastic/` |
 | Kafka 클러스터 지표 | kafka-exporter v1.10.0 | pc4 :9308 | `render.sh` kafka-exporter 블록 |
@@ -130,24 +130,18 @@ PC 배치: `deploy/lan/placement.conf`
 - **수집 비율 100%**: `common-observability`가 기본값 `management.tracing.sampling.probability=1.0`을 넣는다.
 - 앱은 `http://zipkin:9411/api/v2/spans`로 보낸다(pmart-config `application-lan.yml`).
 - 추적은 Kafka 경계를 넘어 이어진다. 결제 한 건이 진입 구간 하나와 승인 뒤 구간 하나, 모두 trace 2개로 남는다. correlationId는 사가 ID다(2026-11-04).
-- **저장은 메모리**다. 재시작하면 쌓인 추적이 모두 사라진다.
-- 설정 (`render.sh` zipkin 블록, 2026-11-05 커밋 9f3bfd8)
-
-  | 항목 | 값 | 이전 |
-  |---|---|---|
-  | 힙 (`JAVA_OPTS`) | `-Xms256m -Xmx256m -XX:+ExitOnOutOfMemoryError` | 160m (이미지 기본) |
-  | 보관 span 수 (`MEM_MAX_SPANS`) | 50,000 | 500,000 (기본) |
-  | 컨테이너 메모리 상한 | 512 MiB | 없음 |
-
-- **2026-11-05 사고**:
-  - 약 20시간 동안 113번 재시작했다(`OutOfMemoryError: Java heap space`).
-  - 메모리 저장소가 160 MB 힙을 채워 죽고, `unless-stopped`로 다시 뜨기를 반복했다.
-  - 컨테이너가 바로 다시 떠서 AppDown·watch.sh에는 잡히지 않았다.
-- **지켜볼 것**:
-  - 재배포 24분 뒤 사용량이 426 / 512 MiB였다.
-  - 힙은 256 MB로 막혀 있다. 그래도 힙 밖 메모리(메타스페이스·스레드·버퍼)까지 512 MiB를 넘으면 Docker가 강제로 종료한다. 이때는 OOM 로그가 남지 않는다.
-  - 확인 명령: `ssh pmart-pc4 "docker inspect pmart-lan-zipkin-1 --format '{{.RestartCount}} {{.State.OOMKilled}}'"`
-  - 재시작 횟수가 다시 늘면 다음 중 하나를 고른다: 상한을 768 MiB로 올림, span 수를 더 줄임, 수집 비율을 낮춤.
+- **저장은 로그 ES**(`es-logs`, 2026-11-06 사용자 요청). 그 전에는 메모리 저장이라 span 5만 개(수십 분)만 남고 재시작하면 모두 사라졌다.
+  - `STORAGE_TYPE=elasticsearch`, `ES_HOSTS=http://es-logs:9200`, 샤드 1·복제본 0. 색인은 하루 하나 `zipkin-span-YYYY-MM-DD`(UTC).
+  - 로그 ES 의 `action.auto_create_index` 에 `+zipkin-*` 를 넣었다(없으면 색인을 못 만들어 span 을 모두 버린다 — `zipkin_collector_spans_dropped_total` 로 보인다).
+  - 보존: `log-janitor` 가 5분마다 **3일**(색인 이름의 날짜, 로그 ILM 과 같은 기간) + **전체 2GB** 상한(오래된 날부터 지움).
+  - es-logs 가 배치되지 않은 구성에서는 예전처럼 메모리 저장(`MEM_MAX_SPANS` 50,000)으로 렌더한다.
+  - Grafana 의 Zipkin 데이터 원본·앱 전송 주소는 그대로다.
+- **양**(2026-11-06 측정): 약 67 span/초 → 하루 약 580만 span. 처음 7,557 span 이 7.1MB 였다(병합 전). 이 비율이면 하루 수 GB 라 **2GB 상한이 3일보다 먼저 걸린다**(대략 반나절~하루치만 남을 수 있음). 늘리려면 상한을 올리거나 수집 비율을 낮춘다.
+- 컨테이너: 힙 256m(`-XX:+ExitOnOutOfMemoryError`), 메모리 상한 512 MiB. 메모리 저장을 안 쓰니 2026-11-05 의 힙 부족 재시작(20시간 113번)은 원인이 사라졌다.
+- 확인:
+  - `curl http://192.168.0.40:9411/health` → `ElasticsearchStorage … UP`
+  - `curl "http://192.168.0.40:9200/_cat/indices/zipkin*?v"`
+  - 버린 span: `curl -s http://192.168.0.40:9411/prometheus | grep spans_dropped`
 
 ## 6. 앱 로그와 검색 색인 — 로그 ES(pc4)·검색 ES(pc3) 분리 (ADR-0038)
 
@@ -253,4 +247,4 @@ Kafka 이력 토픽(kafka-1~3) ─▶ logstash-search(pc3) ─▶ es-search prod
 2. Kafka 백업 외부 보관과 자동화
 3. config-server 지표 열기
 4. 옛 이미지 정리와 vhdx 압축(Docker 정지 필요)
-5. Zipkin을 지금처럼 메모리 저장으로 둘지, ES 같은 저장소로 옮길지(재시작하면 추적이 사라짐)
+5. ~~Zipkin 저장소~~ → 로그 ES(2026-11-06). 남은 결정: 추적 보존 상한(2GB)·수집 비율
