@@ -40,5 +40,6 @@
 | [0036](0036-ai-assistant-phase1-policy-rag.md) | ai-assistant-service 1차(내부 운영자 정책 RAG) 앞당김 — 명시 목록 색인, 지위·생애·구현 기록 세 축, 승인+결정 번호일 때만 대체 활성, 스냅숏 색인(INGEST·SNAPSHOT 잠금 분리), 선점형 처리(조건부 쓰기), 현재 권한 재검사, 외부 모델 없는 기준선 | 제안 |
 | [0037](0037-kafka-three-node-kraft-cluster.md) | LAN Kafka 3노드 KRaft 클러스터(pc2·pc3·pc4, 노드마다 브로커+컨트롤러, 컨트롤러 포트 9094) — 복제 3·min ISR 2, 클러스터 ID 고정, 브로커 자동 토픽 생성 끔(Connect·바인더·`topics-init.sh` 가 명시 생성), kafka-exporter+경보, 크기 측정 리더 기준. ADR-0034·0035 보완 | 승인 |
 | [0038](0038-split-search-and-logs-elasticsearch.md) | 검색 ES·Logstash(pc3)와 로그 ES·Logstash·Kibana(pc4) 분리 — 각 ES 색인 자동 생성 범위 제한, 경보 클러스터별. ADR-0031 결정 5 대체 | 승인 |
+| [0039](0039-approval-application-receipt-event.md) | 승인 반영 회신은 이벤트 `ApplicationReceiptRecorded`(`platform.approval-receipt.v1`) — 정본이 반영 트랜잭션에서 outbox, approval 이 실행 축 갱신(1차 pricing) | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

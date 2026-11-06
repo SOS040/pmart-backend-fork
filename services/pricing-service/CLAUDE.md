@@ -24,6 +24,7 @@
 - 가격 변경은 approval-service 변경 요청(type `PRICE`, targetService `pricing-service`)으로만 들어온다. 승인 행 형식:
   `lineKey`=SKU, `requestedAmount`=기본가, `attributes`=`{sku, basePrice, effectiveFrom?}`. 행 효력 시각이 없으면 승인의 `requestedEffectiveFrom`, 그것도 없으면 반영 시각.
 - `ApprovalDecided` 를 받으면 행마다 독립 반영한다(`PriceApprovalApplier`). 거절 사유: `SKU_INVALID`·`SKU_NOT_FOUND`(product 사건 투영에 없음)·`PRICE_MISSING`·`ZERO_PRICE_UNDECIDED`(0원 허용 미정)·`PRICE_SCHEDULE_CONFLICT`(예약 버전 이전·같은 시각)·`APPROVAL_SCOPE_MISMATCH`(amount ≠ attributes.basePrice)·`DUPLICATE_SKU`. 결과는 `price_approval(_line)`.
+- 반영 회신(ADR-0039): 승인(APPROVED·PARTIALLY_APPROVED)을 반영한 같은 트랜잭션에서 `ApplicationReceiptRecorded`(receiverService `pricing-service`, receiptSeq 1, result APPLIED·PARTIAL·REJECTED, 행별 `lineKey`=ApprovalDecided 의 lineId·`reasonCode`·`domainVersion`)를 `platform.approval-receipt.v1` 로 outbox. 반려된 결정에는 회신하지 않는다.
 - 소급 없음: 요청 효력 시각이 지났으면 반영 시각부터. 효력 시각이 된 버전은 그 트랜잭션에서, 예약 버전은 `PriceActivator` 주기 작업(`pmart.pricing.activation-interval`, 기본 10초)이 발효하고 `PriceVersionEffective` 를 토픽 `commerce.pricing.v1` 로 발행한다(집합 이름 기본 토픽이 아님).
 - `/price-version-applications` 는 새 버전을 만들지 않는다. 요청이 받은 승인 범위와 같은지 대조하고 반영 결과를 requestId 로 묶는다. 승인을 아직 못 받았으면 `APPROVAL_REQUIRED`(같은 키로 재시도).
 - 견적(`/internal/quotes`)은 1차 기본가만(`BASE`). 가격 없는 SKU 가 하나라도 있으면 `PRICE_NOT_SET` 전체 거절. 결과는 `price_quote` 에 보존.

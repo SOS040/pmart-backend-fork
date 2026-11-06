@@ -198,6 +198,7 @@
 | `DelegationStarted` / `DelegationEnded` | auth | approval, audit | delegationId, from, to, scope(교집합), until | 대행 | ① |
 | `ChangeRequestSubmitted` | approval | 해당 정본(검증용), notification(승인자) | changeRequestId, type, targetRef, expectedVersion, payloadRef | 초안 제출 | ① |
 | `ApprovalDecided` | approval | product, pricing, storefront, product-content, center-master, delivery-serviceability, auth, replenishment, claim, cdc-quality, mfc-quality, mfc-capacity, rider, cdc-inventory, mfc-inventory, notification, audit | approvalId, type, decision(APPROVED/PARTIALLY_APPROVED/REJECTED), targetRef, lines[{qty/amount}], conditions, effectiveFrom, expiresAt, approverId, dossierVersion | 심사 확정(정본 반영은 별도 Receipt) | ① |
+| `ApplicationReceiptRecorded` | pricing(1차; 이후 승인 대상 정본) | approval | approvalId, receiverService, receiptSeq, result(ACCEPTED/APPLIED/PARTIAL/REJECTED/UNKNOWN_RESULT), lines[{lineKey, result, reasonCode}] | 승인 반영 결과 회신(토픽 `platform.approval-receipt.v1`, ADR-0039) | ① |
 | `ApprovalWithdrawn` / `Expired` / `Superseded` | approval | 해당 정본, audit | approvalId, reason | 철회·만료·대체 | ① |
 | `PolicyVersionApproved` | approval | 정책 소유 서비스(replenishment, mfc-capacity, delivery-capacity, cdc-*, claim 등) | policyRef, ownerService, version, effectiveFrom | 정책 승인(소유 서비스가 발효 후 결과 회신) | ① |
 | `OperationRestrictionRequested` / `ResumeRequested` | approval | cdc-quality, mfc-capacity, rider, delivery-dispatch | centerId/riderId, restrictionType, scope, approvalRef | 제한/재개 요청(적용은 정본) | ① |

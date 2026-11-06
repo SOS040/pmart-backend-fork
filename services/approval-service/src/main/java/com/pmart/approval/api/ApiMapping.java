@@ -1,5 +1,7 @@
 package com.pmart.approval.api;
 
+import com.pmart.approval.api.generated.model.ApplicationReceipt;
+import com.pmart.approval.api.generated.model.ApplicationReceiptLine;
 import com.pmart.approval.api.generated.model.Approval;
 import com.pmart.approval.api.generated.model.ApprovalSummary;
 import com.pmart.approval.api.generated.model.ApprovalType;
@@ -15,11 +17,13 @@ import com.pmart.approval.domain.ApprovalRules;
 import com.pmart.approval.infrastructure.ApprovalStore.ApprovalRow;
 import com.pmart.approval.infrastructure.ApprovalStore.ChangeRequestRow;
 import com.pmart.approval.infrastructure.ApprovalStore.DecisionRow;
+import com.pmart.approval.infrastructure.ApprovalStore.ReceiptRow;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.CommandResponse;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -55,7 +59,7 @@ class ApiMapping {
         .submittedAt(odt(r.submittedAt()));
   }
 
-  Approval approval(ApprovalRow r, List<DecisionRow> decisions) {
+  Approval approval(ApprovalRow r, List<DecisionRow> decisions, List<ReceiptRow> receipts) {
     Approval dto = mapper.readValue(r.unit(), Approval.class);
     return dto.approvalId(r.approvalId())
         .changeRequestId(r.changeRequestId())
@@ -72,7 +76,25 @@ class ApiMapping {
         .effectiveFrom(odt(r.effectiveFrom()))
         .version(r.version())
         .approvalVersion(1)
-        .decisions(decisions.stream().map(this::decision).toList());
+        .decisions(decisions.stream().map(this::decision).toList())
+        .receipts(receipts.stream().map(this::receipt).toList());
+  }
+
+  /** 반영 회신(ADR-0039). 행별 결과는 저장한 JSON 사본에서 읽는다. */
+  ApplicationReceipt receipt(ReceiptRow r) {
+    return new ApplicationReceipt()
+        .receiptId(r.receiptId())
+        .approvalId(r.approvalId())
+        .receiverService(r.receiverService())
+        .receiptSeq(r.receiptSeq())
+        .result(ApplicationReceipt.ResultEnum.fromValue(r.result()))
+        .domainRef(r.domainRef())
+        .reason(r.reason())
+        .lines(Arrays.asList(mapper.readValue(r.lines(), ApplicationReceiptLine[].class)))
+        .occurredAt(odt(r.occurredAt()))
+        .receivedAt(odt(r.receivedAt()))
+        // 회신이 왔다 = 정본이 승인 사건을 받아 처리했다
+        .deliveryState(DeliveryState.ACKNOWLEDGED);
   }
 
   ApprovalSummary summary(ApprovalRow r) {

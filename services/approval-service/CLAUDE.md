@@ -24,4 +24,5 @@
 - 3단계 스캐폴딩(2026-10-23).
 - 슬라이스 1 최소 범위(2026-10-28, ADR-0014): 변경 요청 생성·조회, 제출(승인 단위 확정·이중 발급 금지 `DUPLICATE_APPROVAL`), 승인함·상세, 결정(APPROVE/REJECT) → `ApprovalDecided`(`platform.approval.v1`). 저장은 JDBC(`ApprovalStore`, 본문 jsonb 스냅샷), 명령은 `RequestIdempotency` 안에서.
 - 승인자 권한: `pmart.approval.approver-roles.<종류>=<역할>` 설정값 + 자기승인 금지. 미설정 종류는 `CONFIG_REQUIRED`. auth-service 행위 시점 검증(대행·센터 범위)은 auth 구현 후 `ActionAuthorizer` 로 교체.
-- 미구현(501): 철회, 부분 승인·증빙 요청, 재심사, 반영 회신(`/internal/application-receipts`), 일괄 변경, 정책 참조.
+- 반영 회신(2026-11-06, ADR-0039): `ApplicationReceiptRecorded`(`platform.approval-receipt.v1`, 바인딩 `receiptEvents-in-0`)를 `ApplicationReceiptRecorder` 가 inbox 안에서 `application_receipt`(V3)에 저장. 같은 승인·수신자·순번은 한 번만. 실행 축 = 그 승인 정본(targetService)의 마지막 순번 회신 결과(`ApprovalRules.executionAfterReceipt`), 전달 축 `ACKNOWLEDGED`. 다른 수신자·반려 승인의 회신은 기록만, 모르는 승인은 경고 후 버림. 상세 `receipts`·`GET /approvals/{id}/receipts`. 1차 회신 정본은 pricing 뿐.
+- 미구현(501): 철회, 부분 승인·증빙 요청, 재심사, 동기 회신(`/internal/application-receipts` — 이벤트로 대신), 일괄 변경, 정책 참조.

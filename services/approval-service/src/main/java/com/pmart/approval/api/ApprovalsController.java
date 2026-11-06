@@ -6,6 +6,7 @@ import com.pmart.approval.api.generated.model.ApprovalType;
 import com.pmart.approval.api.generated.model.Decision;
 import com.pmart.approval.api.generated.model.DecisionRequest;
 import com.pmart.approval.api.generated.model.ExecutionState;
+import com.pmart.approval.api.generated.model.ListApplicationReceipts200Response;
 import com.pmart.approval.api.generated.model.ListApprovals200Response;
 import com.pmart.approval.api.generated.model.ListApprovals200ResponsePage;
 import com.pmart.approval.api.generated.model.ReviewState;
@@ -24,7 +25,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 ApprovalsApi 의 구현 진입점. 최소 범위(승인함·상세·결정·결정 조회). 재심사·반영 회신 목록은 인터페이스 default 501. 업무 규칙은
+ * 계약 ApprovalsApi 의 구현 진입점. 최소 범위(승인함·상세·결정·결정 조회). 재심사는 인터페이스 default 501. 업무 규칙은
  * application/domain 에 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
@@ -77,7 +78,21 @@ public class ApprovalsController implements ApprovalsApi {
   public ResponseEntity<Approval> getApproval(String approvalId) {
     ApiMapping.operator("backoffice-web");
     return ResponseEntity.ok(
-        mapping.approval(service.getApproval(approvalId), service.decisions(approvalId)));
+        mapping.approval(
+            service.getApproval(approvalId),
+            service.decisions(approvalId),
+            service.receipts(approvalId)));
+  }
+
+  @Override
+  public ResponseEntity<ListApplicationReceipts200Response> listApplicationReceipts(
+      String approvalId) {
+    ApiMapping.operator("backoffice-web");
+    service.getApproval(approvalId); // 없으면 404
+    return ResponseEntity.ok(
+        new ListApplicationReceipts200Response()
+            .approvalId(approvalId)
+            .items(service.receipts(approvalId).stream().map(mapping::receipt).toList()));
   }
 
   @Override

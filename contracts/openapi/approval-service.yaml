@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: approval-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     ChangeRequest(초안)·ApprovalDossier(승인 단위·원도메인 승인 ID 참조, 이중 발급 금지)·5축 상태·부분 집행·재심사 계보·통합 승인함(BO-10)·대량 변경(BO-26)·PolicyReference(BO-09)·ApplicationReceipt 의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 승인 결과의 업무 정본(product/pricing/replenishment/claim/quality/serviceability/auth/inventory/center-master), 사건(case-service).
@@ -571,6 +571,19 @@ components:
         domainVersion: { type: integer }
         reason: { type: string }
         occurredAt: { type: string, format: date-time }
+        lines:
+          type: array
+          description: 행별 결과(ADR-0039). 회신 이벤트 ApplicationReceiptRecorded 의 lines 그대로
+          items: { $ref: '#/components/schemas/ApplicationReceiptLine' }
+    ApplicationReceiptLine:
+      type: object
+      required: [lineKey, result]
+      properties:
+        lineKey: { type: string }
+        result: { type: string, enum: [APPLIED, REJECTED] }
+        reasonCode: { type: [string, 'null'], description: '거절 사유 코드(정본 서비스 정의, 예: PRICE_SCHEDULE_CONFLICT)' }
+        domainRef: { type: [string, 'null'] }
+        domainVersion: { type: [integer, 'null'] }
     ApplicationReceipt:
       allOf:
         - $ref: '#/components/schemas/ApplicationReceiptRequest'

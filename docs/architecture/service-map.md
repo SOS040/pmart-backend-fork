@@ -66,7 +66,7 @@
 - **소유**: SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음), 효력일, 견적 계산(기본가·선택 오퍼→기간 프로모션→상품쿠폰→장바구니쿠폰 순서; 1차는 기본가만).
 - **소유하지 않음**: 최종 청구액·동결(order 초안), 배달팁·봉투값·최소주문(order), 할인 권리(promotion).
 - **API**: 가격 버전 조회, 견적 계산(품목 금액·안분), 가격 일괄 등록(seed-v1 basePrice → 운영자 설정 → PRICE 승인 요청 본문, 2026-11-03). 원천 키 → SKU 는 product-service `/internal/source-link-lookups` 로 조회한다.
-- **발행**: `PriceVersionEffective`.
+- **발행**: `PriceVersionEffective`, `ApplicationReceiptRecorded`(가격 승인 반영 회신, ADR-0039).
 - **구독**: `ApprovalDecided`(가격 승인 BO-04: MD팀장 발의→가격/영업총괄 승인).
 
 ### promotion-service `[3단계 — 1차 비활성]`
@@ -367,7 +367,7 @@
 - **승인 종류 → 정본**: 상품/SKU/환산→product · 가격→pricing · 전시→storefront/product-content · 센터 기준정보→center-master · 권역→delivery-serviceability · 운영 중지/재개→cdc-quality/mfc-capacity/rider · 정책→각 소유 서비스 · 공급 사업승인→replenishment · 환불/클레임→claim · 품질/리콜→cdc-quality/mfc-quality · 재고 조정/손실→cdc-inventory/mfc-inventory(승인 참조 집행) · 권한→auth.
 - **API**: 변경 요청 제출/철회, 심사·승인·부분승인·반려, 승인함 조회, 반영 상태 조회, 정책 참조 등록.
 - **발행**: `ChangeRequestSubmitted`, `ApprovalDecided`, `ApprovalWithdrawn/Expired/Superseded`, `PolicyVersionApproved`, `OperationRestrictionRequested/ResumeRequested`, `BatchRowResultRecorded`.
-- **구독**: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
+- **구독**: `ApplicationReceiptRecorded`(정본의 반영 회신 → 실행·전달 축, ADR-0039 — 1차 pricing). 계획: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
 - **의존(동기)**: auth(승인자 권한·대행), 각 정본(명령 전달, 2 hop 초과 시 이벤트).
 
 ### case-service `[1단계 — 추가 제안, ADR-0004]`

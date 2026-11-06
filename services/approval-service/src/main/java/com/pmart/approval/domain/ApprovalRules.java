@@ -5,6 +5,7 @@ import com.pmart.common.web.PmartException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -80,6 +81,27 @@ public final class ApprovalRules {
       case "INITIAL_STOCK" -> "InitialStockLoad";
       default -> type;
     };
+  }
+
+  /** 회신 결과(ApplicationReceiptRecorded.result) — 실행 축 값과 같은 이름. */
+  public static final Set<String> RECEIPT_RESULTS =
+      Set.of("ACCEPTED", "APPLIED", "PARTIAL", "REJECTED", "UNKNOWN_RESULT");
+
+  /**
+   * 회신 → 실행 축(ADR-0039). 승인된(APPROVED·PARTIALLY_APPROVED) 승인만, 그 승인의 정본(targetService)이 보낸 회신만 실행
+   * 축을 바꾼다. 다른 수신자의 회신은 기록만 한다(전달 축의 근거). 반려·심사 중 승인에 온 회신도 기록만 한다.
+   *
+   * @return 새 실행 축 값, 바꾸지 않으면 null
+   */
+  public static @Nullable String executionAfterReceipt(
+      String reviewState, String targetService, String receiverService, String result) {
+    if (!"APPROVED".equals(reviewState) && !"PARTIALLY_APPROVED".equals(reviewState)) {
+      return null;
+    }
+    if (!targetService.equals(receiverService) || !RECEIPT_RESULTS.contains(result)) {
+      return null;
+    }
+    return result;
   }
 
   public static PmartException forbidden(String message) {

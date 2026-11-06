@@ -2,9 +2,13 @@ package com.pmart.approval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +21,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -39,6 +44,7 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
+  @Autowired KafkaTemplate<String, String> kafka;
 
   RestClient http;
 
@@ -243,5 +249,125 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
             UUID.randomUUID().toString(),
             priceChange("E-00000001"));
     assertThat(res.status()).isEqualTo(403);
+  }
+
+  /** 제출 → 승인까지(가격). approvalId. */
+  private String approvedPrice(String sku) {
+    String crId =
+        post("/change-requests", MD, UUID.randomUUID().toString(), priceChange(sku))
+            .body()
+            .get("changeRequestId")
+            .asString();
+    String approvalId =
+        post("/change-requests/" + crId + "/submissions", MD, UUID.randomUUID().toString(), null)
+            .body()
+            .get("resultId")
+            .asString();
+    Res decided =
+        post(
+            "/approvals/" + approvalId + "/decisions",
+            LEAD,
+            UUID.randomUUID().toString(),
+            Map.of("decision", "APPROVE"));
+    assertThat(decided.status()).isEqualTo(202);
+    return approvalId;
+  }
+
+  /** pricing-service 가 내는 반영 회신을 흉내 낸다(ADR-0039). */
+  private void receipt(
+      String approvalId, String receiver, String result, List<Map<String, Object>> lines) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("approvalId", approvalId);
+    payload.put("receiverService", receiver);
+    payload.put("receiptSeq", 1);
+    payload.put("result", result);
+    payload.put("lines", lines);
+    String json =
+        EventEnvelopeFixtures.envelope("ApplicationReceiptRecorded")
+            .from(receiver)
+            .aggregate("ApplicationReceipt", approvalId, 1)
+            .payload(payload)
+            .buildJson();
+    kafka.send("platform.approval-receipt.v1", approvalId, json).join();
+  }
+
+  private int receiptCount(String approvalId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM application_receipt WHERE approval_id = ?",
+            Integer.class,
+            approvalId);
+    return n == null ? 0 : n;
+  }
+
+  private void awaitReceipts(String approvalId, int count) throws InterruptedException {
+    Instant until = Instant.now().plus(Duration.ofSeconds(30));
+    while (receiptCount(approvalId) < count && Instant.now().isBefore(until)) {
+      Thread.sleep(200);
+    }
+    assertThat(receiptCount(approvalId)).isEqualTo(count);
+  }
+
+  @Test
+  void rejectedReceiptFromTargetServiceShowsOnTheApproval() throws Exception {
+    String sku = "E-" + UUID.randomUUID().toString().substring(0, 8);
+    String approvalId = approvedPrice(sku);
+    assertThat(get("/approvals/" + approvalId, LEAD).body().get("receipts")).isEmpty();
+
+    // 정본(pricing-service)이 기간 겹침으로 거절했다고 회신 → 승인은 APPROVED 그대로, 실행 축 REJECTED
+    Map<String, Object> line = new LinkedHashMap<>();
+    line.put("lineKey", sku);
+    line.put("result", "REJECTED");
+    line.put("reasonCode", "PRICE_SCHEDULE_CONFLICT");
+    receipt(approvalId, "pricing-service", "REJECTED", List.of(line));
+    awaitReceipts(approvalId, 1);
+
+    Res approval = get("/approvals/" + approvalId, LEAD);
+    assertThat(approval.body().get("reviewState").asString()).isEqualTo("APPROVED");
+    assertThat(approval.body().get("executionState").asString()).isEqualTo("REJECTED");
+    assertThat(approval.body().get("deliveryState").asString()).isEqualTo("ACKNOWLEDGED");
+    JsonNode r = approval.body().get("receipts").get(0);
+    assertThat(r.get("receiverService").asString()).isEqualTo("pricing-service");
+    assertThat(r.get("result").asString()).isEqualTo("REJECTED");
+    assertThat(r.get("lines").get(0).get("lineKey").asString()).isEqualTo(sku);
+    assertThat(r.get("lines").get(0).get("reasonCode").asString())
+        .isEqualTo("PRICE_SCHEDULE_CONFLICT");
+
+    // 목록 API 와 실행 축 필터
+    Res list = get("/approvals/" + approvalId + "/receipts", LEAD);
+    assertThat(list.status()).isEqualTo(200);
+    assertThat(list.body().get("items")).hasSize(1);
+    assertThat(get("/approvals?executionState=REJECTED&targetRef=" + sku, LEAD).body().get("items"))
+        .hasSize(1);
+    assertThat(get("/approvals/AP-none/receipts", LEAD).status()).isEqualTo(404);
+
+    // 같은 수신자·순번 재전송은 한 번만
+    receipt(approvalId, "pricing-service", "REJECTED", List.of(line));
+    // 다른 수신자의 회신은 기록만 하고 실행 축은 그대로
+    receipt(approvalId, "search-service", "APPLIED", List.of());
+    awaitReceipts(approvalId, 2);
+    Thread.sleep(1000);
+    assertThat(receiptCount(approvalId)).isEqualTo(2);
+    assertThat(get("/approvals/" + approvalId, LEAD).body().get("executionState").asString())
+        .isEqualTo("REJECTED");
+  }
+
+  @Test
+  void appliedReceiptAndUnknownApproval() throws Exception {
+    String sku = "E-" + UUID.randomUUID().toString().substring(0, 8);
+    String approvalId = approvedPrice(sku);
+    // 모르는 승인의 회신은 버린다(소비가 막히지 않아야 뒤 회신이 반영된다)
+    receipt("AP-" + UUID.randomUUID(), "pricing-service", "APPLIED", List.of());
+    receipt(
+        approvalId,
+        "pricing-service",
+        "APPLIED",
+        List.of(Map.of("lineKey", sku, "result", "APPLIED", "domainVersion", 2)));
+    awaitReceipts(approvalId, 1);
+    Res approval = get("/approvals/" + approvalId, LEAD);
+    assertThat(approval.body().get("executionState").asString()).isEqualTo("APPLIED");
+    assertThat(
+            approval.body().get("receipts").get(0).get("lines").get(0).get("domainVersion").asInt())
+        .isEqualTo(2);
   }
 }

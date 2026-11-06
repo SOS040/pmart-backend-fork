@@ -55,6 +55,20 @@ public class ApprovalStore {
       String body,
       Instant decidedAt) {}
 
+  /** 반영 회신(ADR-0039). {@code lines} 는 행별 결과 JSON 배열. */
+  public record ReceiptRow(
+      String receiptId,
+      String approvalId,
+      String receiverService,
+      int receiptSeq,
+      String result,
+      @Nullable String domainRef,
+      @Nullable String reason,
+      String lines,
+      Instant occurredAt,
+      Instant receivedAt,
+      String eventId) {}
+
   private final JdbcTemplate jdbc;
 
   public ApprovalStore(JdbcTemplate jdbc) {
@@ -196,6 +210,58 @@ public class ApprovalStore {
         .findFirst();
   }
 
+  /** 회신 저장. 같은 승인·수신자·순번이 이미 있으면 저장하지 않고 false(재전송 멱등). */
+  public boolean insert(ReceiptRow r) {
+    return jdbc.update(
+            "INSERT INTO application_receipt (receipt_id, approval_id, receiver_service, receipt_seq,"
+                + " result, domain_ref, reason, lines, occurred_at, received_at, event_id)"
+                + " VALUES (?,?,?,?,?,?,?,?::jsonb,?,?,?)"
+                + " ON CONFLICT (approval_id, receiver_service, receipt_seq) DO NOTHING",
+            r.receiptId(),
+            r.approvalId(),
+            r.receiverService(),
+            r.receiptSeq(),
+            r.result(),
+            r.domainRef(),
+            r.reason(),
+            r.lines(),
+            ts(r.occurredAt()),
+            ts(r.receivedAt()),
+            r.eventId())
+        == 1;
+  }
+
+  public List<ReceiptRow> receipts(String approvalId) {
+    return jdbc.query(
+        "SELECT * FROM application_receipt WHERE approval_id = ?"
+            + " ORDER BY received_at, receiver_service, receipt_seq",
+        (rs, n) -> receipt(rs),
+        approvalId);
+  }
+
+  /** 수신자의 가장 큰 순번 회신(실행 축은 정본의 마지막 회신을 따른다). */
+  public Optional<ReceiptRow> latestReceipt(String approvalId, String receiverService) {
+    return jdbc
+        .query(
+            "SELECT * FROM application_receipt WHERE approval_id = ? AND receiver_service = ?"
+                + " ORDER BY receipt_seq DESC LIMIT 1",
+            (rs, n) -> receipt(rs),
+            approvalId,
+            receiverService)
+        .stream()
+        .findFirst();
+  }
+
+  /** 실행·전달 축 갱신(회신 반영). 심사 축·승인 단위는 바꾸지 않는다. */
+  public void markExecution(String approvalId, String executionState, String deliveryState) {
+    jdbc.update(
+        "UPDATE approval SET execution_state = ?, delivery_state = ?, version = version + 1"
+            + " WHERE approval_id = ?",
+        executionState,
+        deliveryState,
+        approvalId);
+  }
+
   /** 승인함: 최근 제출 순, (submitted_at, approval_id) 키셋 페이지. */
   public List<ApprovalRow> list(
       @Nullable String type,
@@ -279,6 +345,21 @@ public class ApprovalStore {
         rs.getString("approver_id"),
         rs.getString("body"),
         instant(rs, "decided_at"));
+  }
+
+  private static ReceiptRow receipt(ResultSet rs) throws SQLException {
+    return new ReceiptRow(
+        rs.getString("receipt_id"),
+        rs.getString("approval_id"),
+        rs.getString("receiver_service"),
+        rs.getInt("receipt_seq"),
+        rs.getString("result"),
+        rs.getString("domain_ref"),
+        rs.getString("reason"),
+        rs.getString("lines"),
+        instant(rs, "occurred_at"),
+        instant(rs, "received_at"),
+        rs.getString("event_id"));
   }
 
   private static @Nullable Timestamp ts(@Nullable Instant i) {

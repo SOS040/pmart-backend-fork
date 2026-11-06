@@ -63,4 +63,34 @@ class ApprovalRulesTest {
     assertThat(ApprovalRules.decidedState("REJECT")).isEqualTo("REJECTED");
     assertThat(ApprovalRules.targetType("PRICE")).isEqualTo("Price");
   }
+
+  @Test
+  void receiptFromTargetServiceSetsExecutionOnlyForApprovedApprovals() {
+    // 정본의 회신이 실행 축을 정한다(ADR-0039)
+    assertThat(
+            ApprovalRules.executionAfterReceipt(
+                "APPROVED", "pricing-service", "pricing-service", "REJECTED"))
+        .isEqualTo("REJECTED");
+    assertThat(
+            ApprovalRules.executionAfterReceipt(
+                "PARTIALLY_APPROVED", "pricing-service", "pricing-service", "PARTIAL"))
+        .isEqualTo("PARTIAL");
+    // 다른 수신자의 회신, 반려·심사 중 승인, 모르는 결과는 기록만 한다
+    assertThat(
+            ApprovalRules.executionAfterReceipt(
+                "APPROVED", "pricing-service", "search-service", "APPLIED"))
+        .isNull();
+    assertThat(
+            ApprovalRules.executionAfterReceipt(
+                "REJECTED", "pricing-service", "pricing-service", "APPLIED"))
+        .isNull();
+    assertThat(
+            ApprovalRules.executionAfterReceipt(
+                "REVIEW_PENDING", "pricing-service", "pricing-service", "APPLIED"))
+        .isNull();
+    assertThat(
+            ApprovalRules.executionAfterReceipt(
+                "APPROVED", "pricing-service", "pricing-service", "DONE"))
+        .isNull();
+  }
 }

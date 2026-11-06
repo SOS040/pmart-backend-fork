@@ -183,6 +183,11 @@ public class ApprovalService {
     return store.decisions(approvalId);
   }
 
+  /** 반영 회신(ADR-0039), 받은 순. */
+  public List<ApprovalStore.ReceiptRow> receipts(String approvalId) {
+    return store.receipts(approvalId);
+  }
+
   public DecisionRow getDecision(String approvalId, String decisionId) {
     return store
         .findDecision(approvalId, decisionId)

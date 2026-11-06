@@ -178,6 +178,18 @@ class PriceVersionFlowIT extends PostgresKafkaContainerSupport {
     return n == null ? 0 : n;
   }
 
+  /** 반영 회신(ADR-0039) Outbox 기록. 없으면 null. */
+  JsonNode receipt(String approvalId) {
+    List<String> rows =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'ApplicationReceiptRecorded'"
+                + " AND aggregateid = ? AND topic = 'platform.approval-receipt.v1'",
+            String.class,
+            approvalId);
+    assertThat(rows).hasSizeLessThanOrEqualTo(1);
+    return rows.isEmpty() ? null : mapper.readTree(rows.get(0)).path("payload");
+  }
+
   static Map<String, Object> row(String sku, long price, Instant effectiveFrom) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("sku", sku);
@@ -231,6 +243,16 @@ class PriceVersionFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT result FROM price_approval WHERE approval_id = ?", String.class, ap1))
         .isEqualTo("PARTIAL");
+    // 반영 회신: 같은 트랜잭션에서 Outbox — 전체 PARTIAL, 행별 결과·사유
+    JsonNode r1 = receipt(ap1);
+    assertThat(r1.path("receiverService").asString()).isEqualTo("pricing-service");
+    assertThat(r1.path("receiptSeq").asInt()).isEqualTo(1);
+    assertThat(r1.path("result").asString()).isEqualTo("PARTIAL");
+    assertThat(r1.path("lines")).hasSize(3);
+    assertThat(r1.path("lines").path(0).path("lineKey").asString()).isEqualTo(sku);
+    assertThat(r1.path("lines").path(0).path("result").asString()).isEqualTo("APPLIED");
+    assertThat(r1.path("lines").path(0).path("domainVersion").asInt()).isEqualTo(1);
+    assertThat(r1.path("lines").path(1).path("reasonCode").asString()).isEqualTo("SKU_NOT_FOUND");
 
     // 2) 예약 발효: 3초 뒤 효력 → 그 전엔 예약(nextChange), 지나면 주기 작업이 발효
     Instant later = Instant.now().plusSeconds(3).truncatedTo(ChronoUnit.MILLIS);
@@ -248,6 +270,10 @@ class PriceVersionFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT reason_code FROM price_approval_line WHERE approval_id = ?",
                 String.class,
                 ap3))
+        .isEqualTo("PRICE_SCHEDULE_CONFLICT");
+    JsonNode r3 = receipt(ap3);
+    assertThat(r3.path("result").asString()).isEqualTo("REJECTED");
+    assertThat(r3.path("lines").path(0).path("reasonCode").asString())
         .isEqualTo("PRICE_SCHEDULE_CONFLICT");
 
     Res after =
@@ -353,5 +379,7 @@ class PriceVersionFlowIT extends PostgresKafkaContainerSupport {
     awaitApproval(rejected);
     assertThat(get(MD, "/prices/" + sku).status()).isEqualTo(404);
     assertThat(effectiveEvents(sku)).isZero();
+    // 반려된 결정은 반영 요청이 아니라 회신하지 않는다
+    assertThat(receipt(rejected)).isNull();
   }
 }
