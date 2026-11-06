@@ -1,10 +1,21 @@
-# Alertmanager (ADR-0030). 전송 채널은 아직 없다 — 사용자 요청 전에는 Slack·메일로 보내지 않는다(CLAUDE.md).
-# 알림은 http://<pc4>:9093 과 Grafana(Alerting → Alertmanager)에서 본다. 채널을 붙일 때 receivers 에 추가한다.
+# Alertmanager (ADR-0030). 받는 곳: Slack Incoming Webhook(2026-11-06 사용자 요청).
+# 웹훅 주소는 deploy/lan/.secrets/slack-alert-webhook 에만 둔다(Git·이 파일·이미지에 넣지 않는다).
+# render.sh 가 그 파일이 있으면 pc4 에 읽기 전용으로 넣고, 없으면 receiver 를 none 으로 바꾼다.
+# 알림은 http://<pc4>:9093 과 Grafana(Alerting → Alertmanager)에서도 본다.
 route:
-  receiver: none
+  receiver: slack
   group_by: [alertname, job]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
 receivers:
   - name: none
+  - name: slack
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack-alert-webhook
+        send_resolved: true
+        title: '{{ if eq .Status "firing" }}[{{ .CommonLabels.severity | toUpper }}]{{ else }}[해제]{{ end }} {{ .CommonLabels.alertname }}{{ if gt (len .Alerts) 1 }} ×{{ len .Alerts }}{{ end }}'
+        text: >-
+          {{ range .Alerts }}• {{ if .Labels.pc }}`{{ .Labels.pc }}` {{ end }}{{ if .Labels.instance }}`{{ .Labels.instance }}` {{ end }}{{ with .Annotations.summary }}{{ . }}{{ else }}{{ .Annotations.description }}{{ end }}
+          {{ end }}
+        color: '{{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}'

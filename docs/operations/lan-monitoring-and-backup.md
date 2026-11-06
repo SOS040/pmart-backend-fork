@@ -84,9 +84,12 @@ PC 배치: `deploy/lan/placement.conf`
 
 ## 4. 경보 규칙 (28개, `alert-rules.yml`, 시험 `alert-rules-test.yml`)
 
-> **경보는 아직 아무에게도 전달되지 않는다.** `alertmanager.yml`의 받는 곳이 `none`이다. 지금은 Alertmanager(`http://192.168.0.40:9093`)와 Grafana 화면에서만 볼 수 있다.
+> **경보는 Slack 으로 간다**(2026-11-06 사용자 요청). Alertmanager(pc4 `http://192.168.0.40:9093`) → Slack Incoming Webhook(앱 `PMart Alerts`). Alertmanager 와 Grafana 화면에서도 볼 수 있다.
 >
-> 채널을 붙이려면 Slack(또는 Discord) Incoming Webhook 주소를 `deploy/lan/.secrets/` 에 파일로 두고 Alertmanager가 그 파일을 읽게 한다. 주소는 Git·설정 파일·이미지에 넣지 않는다. 결정 대기.
+> - 웹훅 주소는 `deploy/lan/.secrets/slack-alert-webhook`(한 줄, Git 제외)에만 둔다. `render.sh` 가 이 파일을 pc4 `monitoring/alertmanager-secrets/` 로 넣고 Alertmanager 는 `api_url_file` 로 읽는다. 파일이 없으면 받는 곳을 `none` 으로 바꿔 렌더한다.
+> - 보내는 것: critical·warning 모두, 해제 알림 포함, 멘션 없음. 묶음 `alertname`·`job`, 반복 4시간. 제목 `[CRITICAL|WARNING|해제] 경보 이름`, 본문은 경보마다 PC·instance·summary.
+> - 주소를 바꾸려면 파일만 고치고 `lan.sh deploy pc4 alertmanager`. 주소가 새면 Slack 앱 설정에서 그 웹훅을 지우고 새로 만든다.
+> - 시험: `POST :9093/api/v2/alerts` 로 `alertname=PmartSlackTest` 경보(endsAt 몇 분 뒤) → 채널에 경보·해제. 전송 수는 `alertmanager_notifications_total{integration="slack"}`, 실패는 `alertmanager_notifications_failed_total`.
 
 | 묶음 | 경보 | 조건 | 심각도 |
 |---|---|---|---|
@@ -246,7 +249,7 @@ Kafka 이력 토픽(kafka-1~3) ─▶ logstash-search(pc3) ─▶ es-search prod
 
 ## 10. 결정 대기 (운영)
 
-1. 경보를 받을 곳: Slack·Discord·이메일 또는 지금처럼 화면만
+1. ~~경보를 받을 곳~~ → Slack(2026-11-06)
 2. Kafka 백업 외부 보관과 자동화
 3. config-server 지표 열기
 4. 옛 이미지 정리와 vhdx 압축(Docker 정지 필요)

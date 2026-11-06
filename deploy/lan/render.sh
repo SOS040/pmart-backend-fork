@@ -398,6 +398,8 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Slack 웹훅 주소(.secrets/slack-alert-webhook) — 없으면 빈 폴더, 경보 받는 곳은 none
+      - ./monitoring/alertmanager-secrets:/etc/alertmanager/secrets:ro
 
 EOF
         ;;
@@ -732,7 +734,16 @@ EOF
   if [[ "$allc" =~ \ (prometheus|alertmanager|grafana)\  ]]; then
     mkdir -p "$dir/monitoring"
     [[ "$allc" == *" prometheus "* ]] && cp "$MON/alert-rules.yml" "$dir/monitoring/"
-    [[ "$allc" == *" alertmanager "* ]] && cp "$MON/alertmanager.yml" "$dir/monitoring/"
+    if [[ "$allc" == *" alertmanager "* ]]; then
+      cp "$MON/alertmanager.yml" "$dir/monitoring/"
+      mkdir -p "$dir/monitoring/alertmanager-secrets"
+      # 경보 받는 곳(Slack): 웹훅 주소 파일이 있을 때만. 없으면 none(어디에도 보내지 않음)
+      if [ -s "$SECRETS/slack-alert-webhook" ]; then
+        secret slack-alert-webhook > "$dir/monitoring/alertmanager-secrets/slack-alert-webhook"
+      else
+        sed -i 's/^  receiver: slack$/  receiver: none/' "$dir/monitoring/alertmanager.yml"
+      fi
+    fi
     [[ "$allc" == *" grafana "* ]] && cp -r "$MON/grafana" "$dir/monitoring/"
     if [[ "$allc" == *" prometheus "* ]]; then
       {
