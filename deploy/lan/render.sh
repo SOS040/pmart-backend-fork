@@ -235,9 +235,11 @@ EOF
       CONFIG_STORAGE_TOPIC: _connect.configs
       OFFSET_STORAGE_TOPIC: _connect.offsets
       STATUS_STORAGE_TOPIC: _connect.status
-      CONFIG_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
-      OFFSET_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
-      STATUS_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
+      # 내부 토픽 복제 수는 CONNECT_ 접두어로만 들어간다 — Debezium 엔트리포인트는 *_STORAGE_TOPIC 만 옮기고,
+      # 접두어 없는 *_STORAGE_REPLICATION_FACTOR 는 무시해 이미지 기본 파일의 1 로 만들었다(2026-11-06 전환, 재배치로 3 복구)
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
       KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       VALUE_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
