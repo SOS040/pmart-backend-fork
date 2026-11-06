@@ -836,6 +836,14 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(p.path("lines").path(0).path("unitsPerSku").asInt()).isEqualTo(1);
     assertThat(p.path("slotHoldId").asString()).isEqualTo("SH-1");
     assertThat(p.path("arrivalWindow").path("start").asString()).endsWith("T01:00:00Z");
+    // 이행 계획(슬라이스 6a D6-2): 주문당 출고 1개, 모든 행
+    assertThat(p.path("shipments")).hasSize(1);
+    assertThat(p.path("shipments").path(0).path("shipmentId").asString())
+        .isEqualTo(orderId + "-S1");
+    assertThat(p.path("shipments").path(0).path("lines").path(0).path("orderLineId").asString())
+        .isEqualTo(orderId + "-L1");
+    assertThat(p.path("shipments").path(0).path("lines").size()).isEqualTo(p.path("lines").size());
+    assertThat(p.path("lines").path(0).path("productName").asString()).isEqualTo("국산콩 두부 300g");
 
     // 주문 조회: 본인 200, 남 404
     Res mine = get(first, "/orders/" + orderId);

@@ -34,6 +34,7 @@
 
 ## 주문 확정·조회 (2026-10-31, 슬라이스 5 S1 g~j)
 - `POST /internal/orders/{orderId}/confirmation`(내부 호출, orchestration): orderId 로 초안 잠금 → 승인 금액 = 동결 `quote.totalAmount` 확인(`OrderRules.amountMatches`, 아니면 422 `AMOUNT_MISMATCH`, 기록 안 함) → 초안 스냅샷을 `customer_order`/`customer_order_line`(V4)로 옮기고 초안 CONFIRMED → `OrderConfirmed`(토픽 `order.order.v1` 명시, correlationId = 사가 ID)를 한 트랜잭션에. 초안 없음 404, 같은 초안이 다른 주문으로 확정됨 409. 이미 확정이면 다른 키도 200(사건 한 번).
+- **이행 계획(슬라이스 6a, 2026-11-07)**: `OrderConfirmed.shipments` = 출고 1개(`<orderId>-S1`, 모든 행·수량, D6-2), 행에 `productName` 사본. orchestration 이 이 사건으로 S2(작업 요청)를 시작한다.
 - 주문행 ID `<orderId>-L<n>`(`OrderRules.orderLineId`, 사가 시작 때 보낸 값과 같음). 수량: originalQty = unfulfilledQty = 주문 수량, 나머지 0. 첫 구매 적용 = 배달팁 사유 FIRST_PURCHASE → 사건 `firstPurchase`.
 - 초안 스냅샷 품목에 `unitsPerSku`(product `/internal/skus`) 추가. 그 전 초안은 확정 때 트랜잭션 밖에서 product 로 채운다.
 - **상품명·옵션 라벨 사본(BR-35, 2026-11-02)**: 초안 생성 때 품목마다 product-content `/internal/product-contents/{productId}/snapshot?sku=`(`pmart.order.content-base-url`)에서 이름·옵션 라벨을 받아 초안 `Line` 에 고정 → 확정 때 `customer_order_line.product_name`·`option_label`(V6)로 옮김(다시 조회 안 함). 조회 실패는 null(지어내지 않음, 초안은 계속). 결제창 주문명 `OrderRules.orderName`: 첫 이름 + "외 N건", 이름 없으면 "PMart 장보기 N개 상품", 100자 상한.

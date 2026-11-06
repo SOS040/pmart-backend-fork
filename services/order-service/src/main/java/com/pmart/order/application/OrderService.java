@@ -498,9 +498,13 @@ public class OrderService {
       if (l.cartItemId() != null) {
         m.put("cartItemId", l.cartItemId());
       }
+      if (l.productName() != null) {
+        m.put("productName", l.productName()); // 단말 표시용 사본(슬라이스 6a)
+      }
       ls.add(m);
     }
     p.put("lines", ls);
+    p.put("shipments", List.of(singleShipment(o.orderId(), lines)));
     p.put("deliveryMode", o.deliveryMode());
     if (o.arrivalDate() != null && o.arrivalStart() != null && o.arrivalEnd() != null) {
       Instant[] w = OrderRules.windowInstants(o.arrivalDate(), o.arrivalStart(), o.arrivalEnd());
@@ -558,6 +562,27 @@ public class OrderService {
     }
     // 계약 토픽 명시(order.order.v1 — OrderConfirmed.v1.json)
     events.publish(e, TOPIC);
+  }
+
+  /**
+   * 이행 계획 — 주문당 출고 1개(슬라이스 6 D6-2, MFC Q-10 기준선). 모든 행·미이행 수량 전부. 분할은 Q-10 결정 뒤 출고를 늘린다. shipmentId
+   * 는 주문에서 결정적으로 만든다(재발행·재처리에도 같은 값).
+   */
+  static Map<String, Object> singleShipment(String orderId, List<LineRow> lines) {
+    List<Map<String, Object>> ls = new ArrayList<>();
+    int weight = 0;
+    for (LineRow l : lines) {
+      if (l.quantity() <= 0) {
+        continue;
+      }
+      ls.add(Map.of("orderLineId", l.orderLineId(), "qty", l.quantity()));
+      weight += l.weightG();
+    }
+    Map<String, Object> s = new LinkedHashMap<>();
+    s.put("shipmentId", orderId + "-S1");
+    s.put("weightG", weight);
+    s.put("lines", ls);
+    return s;
   }
 
   private static CommandResponse applied(
