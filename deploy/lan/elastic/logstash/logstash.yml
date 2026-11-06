@@ -1,4 +1,4 @@
-# Logstash 설정(ADR-0031). 파이프라인 목록은 pipelines.yml. 디스크 상한: 영구 큐 256MB, dead letter queue 64MB
+# Logstash 설정(ADR-0031). 파이프라인 목록은 pipelines-search.yml(logstash-search)·pipelines-logs.yml(logstash-logs), ADR-0038. 디스크 상한(각각): 영구 큐 256MB, dead letter queue 64MB
 api.http.host: 0.0.0.0
 xpack.monitoring.enabled: false
 queue.type: persisted

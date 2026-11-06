@@ -30,33 +30,56 @@ while read -r name ip ssh comps; do
   done
 done < <(sed -e 's/#.*//' "$LAN/placement.conf" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta' | tr -s ' \t' ' ')
 
-INFRA=" postgres kafka connect redis zipkin s3 elasticsearch backoffice-web prometheus alertmanager grafana kibana logstash log-shipper es-init host-disk log-janitor config-relay es-exporter "
+# ---- Kafka KRaft 클러스터(ADR-0037): placement 의 kafka-1·kafka-2·kafka-3 ----
+KAFKA_NODES=""; KAFKA_VOTERS=""; KAFKA_BOOTSTRAP=""
+for c in kafka-1 kafka-2 kafka-3; do
+  [ -n "${WHERE[$c]:-}" ] || continue
+  KAFKA_NODES+="$c "
+  KAFKA_VOTERS+="${KAFKA_VOTERS:+,}${c#kafka-}@$c:9094"
+  KAFKA_BOOTSTRAP+="${KAFKA_BOOTSTRAP:+,}$c:9092"
+done
+[ -n "${WHERE[kafka]:-}" ] && { echo "placement.conf: kafka 대신 kafka-1·kafka-2·kafka-3 (ADR-0037)" >&2; exit 1; }
+[ "$KAFKA_NODES" = "kafka-1 kafka-2 kafka-3 " ] || echo "경고: Kafka 노드가 3개가 아니다($KAFKA_NODES) — 복제 3·min ISR 2 는 3노드 전제" >&2
+KAFKA_RF=3; KAFKA_MIN_ISR=2
+# 클러스터 ID: 세 노드가 같아야 하고 볼륨을 만든 뒤에는 바꾸면 안 된다. 비밀이 아니므로 여기 고정(2026-11-05 생성, base64url 16바이트)
+KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
+# 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
+KAFKA_METRICS_NODE=kafka-1
+
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
-NO_EXTRA_HOST=" es-exporter "
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
-# 로그 수집(ADR-0031): elasticsearch 가 배치돼 있으면 모든 PC 에 log-shipper(Filebeat), elasticsearch PC 에 es-init(색인·보존 준비, 1회)을
+# 검색 ES 와 로그 ES 분리(ADR-0038): es-search·logstash-search(검색 색인) / es-logs·logstash-logs·kibana(로그)
+for c in elasticsearch logstash; do
+  [ -n "${WHERE[$c]:-}" ] && { echo "placement.conf: $c 대신 es-search·es-logs / logstash-search·logstash-logs (ADR-0038)" >&2; exit 1; }
+done
+# 로그 수집(ADR-0031): es-logs 가 배치돼 있으면 모든 PC 에 log-shipper(Filebeat), 각 ES PC 에 es-init-<종류>(색인·보존 준비, 1회)을
 # 자동으로 붙인다(log-janitor 는 아래 host-disk 뒤). 줄 끝에 붙여 기존 구성요소의 고정 IP 가 바뀌지 않는다.
-if [ -n "${WHERE[elasticsearch]:-}" ]; then
+if [ -n "${WHERE[es-logs]:-}" ]; then
   for pc in "${PCS[@]}"; do COMPS[$pc]+=" log-shipper"; done
-  COMPS[${WHERE[elasticsearch]}]+=" es-init"
+  COMPS[${WHERE[es-logs]}]+=" es-init-logs"
 fi
+if [ -n "${WHERE[es-search]:-}" ]; then COMPS[${WHERE[es-search]}]+=" es-init-search"; fi
 # 디스크 감시(ADR-0030): prometheus 가 있으면 모든 PC 에 host-disk(node-exporter). Docker Desktop 이 마운트한 Windows C: 의
 # 실제 여유 공간을 잰다 — 컨테이너·Elasticsearch 가 보는 디스크는 1TB 가상 디스크라 실제 C: 보다 먼저 차지 않는다.
 if [ -n "${WHERE[prometheus]:-}" ]; then
   for pc in "${PCS[@]}"; do COMPS[$pc]+=" host-disk"; done
 fi
 # 로그 색인 크기 상한(색인 1GB·전체 4GB — ILM 은 기간만 지운다)
-if [ -n "${WHERE[elasticsearch]:-}" ]; then COMPS[${WHERE[elasticsearch]}]+=" log-janitor"; fi
+if [ -n "${WHERE[es-logs]:-}" ]; then COMPS[${WHERE[es-logs]}]+=" log-janitor"; fi
 # GitHub 웹훅 중계(ADR-0033): config-server PC 에 config-relay. 맨 뒤에 붙여 기존 구성요소의 고정 IP 가 바뀌지 않는다
 if [ -n "${WHERE[config-server]:-}" ]; then
   COMPS[${WHERE[config-server]}]+=" config-relay"; WHERE[config-relay]=${WHERE[config-server]}
 fi
-# Elasticsearch 지표(2026-11-03): elasticsearch·prometheus 가 있으면 ES PC 에 es-exporter. 맨 뒤에 붙여 고정 IP 유지
-if [ -n "${WHERE[elasticsearch]:-}" ] && [ -n "${WHERE[prometheus]:-}" ]; then
-  COMPS[${WHERE[elasticsearch]}]+=" es-exporter"; WHERE[es-exporter]=${WHERE[elasticsearch]}
-fi
+# Elasticsearch 지표(2026-11-03, ADR-0038 로 ES 마다): es-<종류>·prometheus 가 있으면 그 ES PC 에 es-exporter-<종류>. 맨 뒤에 붙여 고정 IP 유지
+for k in search logs; do
+  if [ -n "${WHERE[es-$k]:-}" ] && [ -n "${WHERE[prometheus]:-}" ]; then
+    COMPS[${WHERE[es-$k]}]+=" es-exporter-$k"; WHERE[es-exporter-$k]=${WHERE[es-$k]}
+  fi
+done
 # Prometheus 수집 대상: 배치된 모든 Spring 앱(인프라 제외) <PC IP>:<포트>/actuator/prometheus
 apps_all() { for c in "${!WHERE[@]}"; do [[ "$c" == postgres-* || "$INFRA" == *" $c "* ]] || echo "$c"; done | sort; }
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
@@ -78,7 +101,7 @@ digest_of() {
   cat "$f"
 }
 
-for c in kafka redis zipkin auth-service eureka-server; do
+for c in redis zipkin auth-service eureka-server; do
   [ -n "${WHERE[$c]:-}" ] || echo "경고: $c 가 배치되지 않음" >&2
 done
 if [ -n "${WHERE[config-relay]:-}" ] && [ ! -f "$SECRETS/smee-url" ]; then
@@ -152,31 +175,38 @@ for pc in "${PCS[@]}"; do
 
 EOF
         ;;
-      kafka)
+      kafka-[123])
+        # KRaft 클러스터 노드(ADR-0037): 노드마다 broker+controller. 이름 kafka-N 의 N 이 node id
         cat <<EOF
-  kafka:
+  $c:
     <<: *common
     image: apache/kafka:4.1.1
-    ports: ["9092:9092"]
+    # 9092 = 클라이언트·브로커 사이, 9094 = 컨트롤러 투표(9093 은 Alertmanager 가 쓴다)
+    ports: ["9092:9092", "9094:9094"]
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
-      KAFKA_NODE_ID: 1
+      KAFKA_NODE_ID: ${c#kafka-}
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      # 리스너 하나: 같은 PC 는 컨테이너 DNS, 다른 PC 는 extra_hosts(kafka → ${IP[$pc]}) 로 kafka:9092 에 닿는다
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: $KAFKA_VOTERS
+      # 같은 PC 는 컨테이너 DNS, 다른 PC 는 extra_hosts(kafka-N → 그 PC IP)로 kafka-N:9092·9094 에 닿는다
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://$c:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: $KAFKA_RF
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: $KAFKA_RF
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: $KAFKA_MIN_ISR
+      KAFKA_DEFAULT_REPLICATION_FACTOR: $KAFKA_RF
+      KAFKA_MIN_INSYNC_REPLICAS: $KAFKA_MIN_ISR
+      # 브로커 자동 생성 끔(ADR-0037 결정 4) — 토픽은 Connect·Stream 바인더·topics-init.sh 가 명시적으로 만든다(메타데이터 요청만으로 생기지 않게)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_DIRS: /var/lib/kafka/data
-      CLUSTER_ID: pmart-lan-cluster-00000000001
+      CLUSTER_ID: $KAFKA_CLUSTER_ID
     volumes:
-      - kafkadata:/var/lib/kafka/data
+      # 단일 노드 때의 kafkadata 와 다른 이름 — 옛 볼륨은 롤백용으로 남는다(계획 6장)
+      - kafkacluster:/var/lib/kafka/data
+    mem_limit: 2g
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
       interval: 10s
@@ -200,14 +230,14 @@ EOF
       CONNECT_LOG4J_LOGGERS: "INFO, stdout"
       # 같은 반복 로그(AdminMetadataManager "Rebootstrapping …")의 출처. 이름은 소문자 패키지만 가능(엔트리포인트가 소문자로 바꾼다)
       CONNECT_LOG4J_LOGGER_ORG_APACHE_KAFKA_CLIENTS_ADMIN_INTERNALS: WARN
-      BOOTSTRAP_SERVERS: kafka:9092
+      BOOTSTRAP_SERVERS: $KAFKA_BOOTSTRAP
       GROUP_ID: pmart-connect
       CONFIG_STORAGE_TOPIC: _connect.configs
       OFFSET_STORAGE_TOPIC: _connect.offsets
       STATUS_STORAGE_TOPIC: _connect.status
-      CONFIG_STORAGE_REPLICATION_FACTOR: 1
-      OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONFIG_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
+      OFFSET_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
+      STATUS_STORAGE_REPLICATION_FACTOR: $KAFKA_RF
       KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       VALUE_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
@@ -302,23 +332,32 @@ EOF
 
 EOF
         ;;
-      elasticsearch)
-        # 상품 검색 색인 + 앱 로그(ADR-0031, Eum 과 같은 판). nori 는 시작 때 없으면 설치(인터넷 필요). 보안 끔(LAN 시험망).
-        # 색인을 자동으로 만들지 않는다(로그 색인과 시스템 색인만 허용) — 매핑 없는 products 가 생기지 않게
+      es-search|es-logs)
+        # Elasticsearch(ADR-0031, Eum 과 같은 판). ADR-0038: es-search = 상품 검색 색인만, es-logs = 앱 로그만. 보안 끔(LAN 시험망).
+        # 색인을 자동으로 만들지 않는다 — 검색 ES 는 시스템 색인만, 로그 ES 는 pmart-logs-* 와 시스템 색인만(매핑 없는 색인·엉뚱한 쪽 색인이 생기지 않게).
+        # nori(한국어 분석)는 검색 ES 에만 — 시작 때 없으면 설치(인터넷 필요). 로그 ES 는 기본 명령
+        if [ "$c" = es-search ]; then
+          auto_idx="+.*,-*"
+          es_cmd='    command: ["sh", "-c", "bin/elasticsearch-plugin list | grep -q analysis-nori || bin/elasticsearch-plugin install --batch analysis-nori; exec /usr/local/bin/docker-entrypoint.sh eswrapper"]'
+        else
+          auto_idx="+pmart-logs-*,+.*,-*"; es_cmd=""
+        fi
         cat <<EOF
-  elasticsearch:
+  $c:
     <<: *common
     image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
-    command: ["sh", "-c", "bin/elasticsearch-plugin list | grep -q analysis-nori || bin/elasticsearch-plugin install --batch analysis-nori; exec /usr/local/bin/docker-entrypoint.sh eswrapper"]
-    environment:
+${es_cmd:+$es_cmd
+}    environment:
       discovery.type: single-node
+      cluster.name: pmart-${c#es-}
       xpack.security.enabled: "false"
-      action.auto_create_index: "+pmart-logs-*,+.*,-*"
+      action.auto_create_index: "$auto_idx"
       ES_JAVA_OPTS: -Xms768m -Xmx768m
     ports: ["9200:9200"]
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
-      - esdata:/usr/share/elasticsearch/data
+      # 분리 전 ES 의 esdata 와 다른 이름 — 옛 볼륨은 롤백용으로 남는다
+      - es${c#es-}:/usr/share/elasticsearch/data
     mem_limit: 1536m
     healthcheck:
       test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9200/"]
@@ -389,37 +428,42 @@ EOF
     ports: ["5601:5601"]
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
-      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      ELASTICSEARCH_HOSTS: '["http://es-logs:9200"]'
       TELEMETRY_OPTIN: "false"
     mem_limit: 1g
 
 EOF
         ;;
-      logstash)
-        # 검색 색인(도메인 이벤트 → ES, search-service 소유 파이프라인) + 로그(Filebeat 5044 → ES). 디스크: 영구 큐 256MB·DLQ 64MB
+      logstash-search|logstash-logs)
+        # ADR-0038: logstash-search = 검색 색인(도메인 이벤트 Kafka → es-search, search-service 소유 파이프라인),
+        #           logstash-logs = 로그(Filebeat 5044 → es-logs). 디스크: 영구 큐 256MB·DLQ 64MB(각각)
+        k="${c#logstash-}"
+        echo "  $c:"
+        echo "    <<: *common"
+        echo "    image: docker.elastic.co/logstash/logstash:8.18.0"
+        [ "$k" = logs ] && echo '    ports: ["5044:5044"]'
         cat <<EOF
-  logstash:
-    <<: *common
-    image: docker.elastic.co/logstash/logstash:8.18.0
-    ports: ["5044:5044"]
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
-      PMART_KAFKA_BOOTSTRAP: kafka:9092
-      PMART_ES_URL: http://elasticsearch:9200
-      PMART_CONTENT_BASE_URL: http://product-content-service:$(port_of product-content-service)
+      PMART_ES_URL: http://es-$k:9200
       LS_JAVA_OPTS: -Xms512m -Xmx512m
 EOF
-        # 검색 색인 대상 색인·소비 그룹·DLT(elastic/search-index.env — 재색인 때만 바꾼다, elastic/REINDEX.md)
-        grep -E '^PMART_SEARCH_[A-Z_]+=' "$LAN/elastic/search-index.env" | sed 's/^\([^=]*\)=\(.*\)$/      \1: "\2"/'
+        if [ "$k" = search ]; then
+          echo "      PMART_KAFKA_BOOTSTRAP: $KAFKA_BOOTSTRAP"
+          echo "      PMART_CONTENT_BASE_URL: http://product-content-service:$(port_of product-content-service)"
+          # 검색 색인 대상 색인·소비 그룹·DLT(elastic/search-index.env — 재색인 때만 바꾼다, elastic/REINDEX.md)
+          grep -E '^PMART_SEARCH_[A-Z_]+=' "$LAN/elastic/search-index.env" | sed 's/^\([^=]*\)=\(.*\)$/      \1: "\2"/'
+        fi
         cat <<EOF
     volumes:
       - ./elastic/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
-      - ./elastic/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - ./elastic/logstash/pipelines-$k.yml:/usr/share/logstash/config/pipelines.yml:ro
       - ./elastic/logstash/pipeline:/usr/share/logstash/pipeline:ro
-      - lsdata:/usr/share/logstash/data
+      # 분리 전 logstash 의 lsdata 와 다른 이름(영구 큐·DLQ) — 옛 볼륨은 롤백용으로 남는다
+      - ls$k:/usr/share/logstash/data
     mem_limit: 1536m
     depends_on:
-      es-init: { condition: service_completed_successfully }
+      es-init-$k: { condition: service_completed_successfully }
 
 EOF
         ;;
@@ -434,7 +478,7 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
       PMART_PC: $pc
-      PMART_LOGSTASH_HOST: logstash
+      PMART_LOGSTASH_HOST: logstash-logs
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - ./elastic/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
@@ -445,9 +489,9 @@ EOF
         ;;
       host-disk)
         # Windows C: 여유 공간(9p drvfs 마운트, 읽기 전용) → node_filesystem_avail_bytes{mountpoint="/host/windows-c"}
-        # Kafka 가 있는 PC 만: watch.sh 가 쓰는 metrics/kafka_topics.prom(토픽 크기·오프셋·보관 설정, ADR-0034)도 내보낸다(textfile)
+        # 토픽 지표 노드(kafka-1)가 있는 PC 만: watch.sh 가 쓰는 metrics/kafka_topics.prom(토픽 크기·오프셋·보관 설정, ADR-0034)도 내보낸다(textfile)
         textfile_args=""; textfile_vol=""
-        if [[ " ${COMPS[$pc]} " == *" kafka "* ]]; then
+        if [[ " ${COMPS[$pc]} " == *" $KAFKA_METRICS_NODE "* ]]; then
           textfile_args=', "--collector.textfile", "--collector.textfile.directory=/textfile"'
           textfile_vol=$'\n      - ./metrics:/textfile:ro'
         fi
@@ -464,20 +508,27 @@ EOF
 
 EOF
         ;;
-      es-init)
-        # 한 번 돌고 끝난다(검색 색인·로그 보존·Kibana 데이터 뷰). 배포 때마다 다시 돌아도 같은 결과. Logstash 는 이것 뒤에 뜬다
+      es-init-search|es-init-logs)
+        # 한 번 돌고 끝난다. 배포 때마다 다시 돌아도 같은 결과. 같은 종류의 Logstash 는 이것 뒤에 뜬다(ADR-0038)
+        #   search: 상품 검색 색인·별칭 / logs: 로그 ILM·색인 틀·Kibana 데이터 뷰
+        k="${c#es-init-}"
         cat <<EOF
-  es-init:
+  $c:
     image: curlimages/curl:8.14.1
     restart: "no"
     logging: { driver: json-file, options: { max-size: "1m", max-file: "1" } }
     entrypoint: ["sh", "/init/es-init.sh"]
     networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      PMART_ES_INIT: $k
+      PMART_ES_URL: http://es-$k:9200
     volumes:
       - ./elastic/es-init.sh:/init/es-init.sh:ro
-      - ./elastic/indices:/init/indices:ro
+EOF
+        [ "$k" = search ] && echo "      - ./elastic/indices:/init/indices:ro"
+        cat <<EOF
     depends_on:
-      elasticsearch: { condition: service_healthy }
+      es-$k: { condition: service_healthy }
 
 EOF
         ;;
@@ -489,23 +540,44 @@ EOF
     image: curlimages/curl:8.14.1
     entrypoint: ["sh", "-c", "cp /init/log-janitor.sh /tmp/j.sh && exec sh /tmp/j.sh"] # 호스트 파일을 잠그지 않게 복사해서 실행(위 connector-registrar 와 같음)
     networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      PMART_ES_URL: http://es-logs:9200
     volumes:
       - ./elastic/log-janitor.sh:/init/log-janitor.sh:ro
     mem_limit: 32m
 
 EOF
         ;;
-      es-exporter)
-        # Elasticsearch 지표 → Prometheus(클러스터 상태·노드 JVM·디스크). 색인별 지표는 끔(시계열 수)
+      es-exporter-search|es-exporter-logs)
+        # Elasticsearch 지표 → Prometheus(클러스터 상태·노드 JVM·디스크). 색인별 지표는 끔(시계열 수). ES 마다 하나(ADR-0038)
+        k="${c#es-exporter-}"
         cat <<EOF
-  es-exporter:
+  $c:
     <<: *common
     image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.10.0
-    command: ["--es.uri=http://elasticsearch:9200", "--es.timeout=5s"]
+    command: ["--es.uri=http://es-$k:9200", "--es.timeout=5s"]
     ports: ["9114:9114"]
     networks: { default: { ipv4_address: $ip_addr } }
     mem_limit: 64m
-    depends_on: [elasticsearch]
+    depends_on: [es-$k]
+
+EOF
+        ;;
+      kafka-exporter)
+        # Kafka 클러스터 지표 → Prometheus(ADR-0037). 브로커에서 메타데이터·오프셋을 읽기만 한다.
+        # kafka.version: 기본 2.0.0 이면 옛 프로토콜 판으로 요청한다(Kafka 4 는 2.1 미만 판을 지웠다) — 3.9.0 으로 올린다.
+        #   v1.10.0 이 4.x 문자열을 받는지 확인하지 못했다(2026-11-05) — 전환 뒤 /metrics 의 kafka_brokers 로 확인한다
+        # 컨트롤러 지표는 없다 — 과반을 잃으면(2노드 정지) 브로커 수·수집 실패로 드러난다(alert-rules.yml)
+        echo "  kafka-exporter:"
+        echo "    <<: *common"
+        echo "    image: danielqsj/kafka-exporter:v1.10.0"
+        printf '    command: ['
+        for kn in $KAFKA_NODES; do printf '"--kafka.server=%s:9092", ' "$kn"; done
+        echo '"--kafka.version=3.9.0", "--web.listen-address=:9308"]'
+        cat <<EOF
+    ports: ["9308:9308"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    mem_limit: 128m
 
 EOF
         ;;
@@ -560,7 +632,7 @@ EOF
           echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
           # /monitor 가 받은 웹훅을 Bus(Kafka springCloudBus)로 알린다(ADR-0033). 서버는 설정 저장소를 읽지 않아 환경변수로 켠다
           echo "      SPRING_CLOUD_BUS_ENABLED: \"true\""
-          echo "      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092"
+          echo "      SPRING_KAFKA_BOOTSTRAP_SERVERS: $KAFKA_BOOTSTRAP"
           # GitHub fetch 는 15초에 한 번만(기본 0 = 요청마다). 앱 35개가 한꺼번에 뜨면 요청마다 fetch(약 10초, 직렬)가 밀려
           # 30초 시간 초과 → 재시작 → 다시 요청이 반복됐다(2026-11-04 배포). 대가: push 뒤 최대 15초는 이전 설정을 줄 수 있다
           echo "      SPRING_CLOUD_CONFIG_SERVER_GIT_REFRESH_RATE: \"15\""
@@ -605,10 +677,12 @@ EOF
 
     vols=""
     [[ "$comps" == *" postgres "* ]] && vols+="  pgdata:"$'\n'
-    [[ "$comps" == *" kafka "* ]] && vols+="  kafkadata:"$'\n'
+    [[ "$comps" == *" kafka-"[123]" "* ]] && vols+="  kafkacluster:"$'\n'
     [[ "$comps" == *" s3 "* ]] && vols+="  s3data:"$'\n'
-    [[ "$comps" == *" elasticsearch "* ]] && vols+="  esdata:"$'\n'
-    [[ "$comps" == *" logstash "* ]] && vols+="  lsdata:"$'\n'
+    for k in search logs; do
+      [[ "$comps" == *" es-$k "* ]] && vols+="  es$k:"$'\n'
+      [[ "$comps" == *" logstash-$k "* ]] && vols+="  ls$k:"$'\n'
+    done
     [[ " ${COMPS[$pc]} " == *" prometheus "* ]] && vols+="  promdata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" grafana "* ]] && vols+="  grafanadata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" log-shipper "* ]] && vols+="  fbdata:"$'\n'
@@ -617,26 +691,37 @@ EOF
 
   # Elastic 구성 파일(ADR-0031): 이 PC 에 있는 것만. 검색 색인 파이프라인·색인 정의는 search-service 소유(정본) — 복사한다
   allc=" ${COMPS[$pc]} "
-  if [[ "$allc" =~ \ (logstash|log-shipper|es-init|log-janitor)\  ]]; then
+  if [[ "$allc" =~ \ (logstash-search|logstash-logs|log-shipper|es-init-search|es-init-logs|log-janitor)\  ]]; then
     mkdir -p "$dir/elastic"
     [[ "$allc" == *" log-shipper "* ]] && cp "$ELASTIC/filebeat.yml" "$dir/elastic/"
-    if [[ "$allc" == *" logstash "* ]]; then
+    # Logstash(ADR-0038): 종류마다 파이프라인 목록(pipelines-<종류>.yml)과 그 파이프라인 파일만
+    if [[ "$allc" == *" logstash-search "* ]]; then
       mkdir -p "$dir/elastic/logstash/pipeline"
-      cp "$ELASTIC/logstash/logstash.yml" "$ELASTIC/logstash/pipelines.yml" "$dir/elastic/logstash/"
-      cp "$ELASTIC/logstash/logs.conf" "$SEARCH_SVC/src/main/logstash/search-index.conf" "$dir/elastic/logstash/pipeline/"
+      cp "$ELASTIC/logstash/logstash.yml" "$ELASTIC/logstash/pipelines-search.yml" "$dir/elastic/logstash/"
+      cp "$SEARCH_SVC/src/main/logstash/search-index.conf" "$dir/elastic/logstash/pipeline/"
     fi
-    if [[ "$allc" == *" es-init "* ]]; then
+    if [[ "$allc" == *" logstash-logs "* ]]; then
+      mkdir -p "$dir/elastic/logstash/pipeline"
+      cp "$ELASTIC/logstash/logstash.yml" "$ELASTIC/logstash/pipelines-logs.yml" "$dir/elastic/logstash/"
+      cp "$ELASTIC/logstash/logs.conf" "$dir/elastic/logstash/pipeline/"
+    fi
+    if [[ "$allc" =~ \ es-init-(search|logs)\  ]]; then
       tr -d '\r' < "$ELASTIC/es-init.sh" > "$dir/elastic/es-init.sh"
+    fi
+    if [[ "$allc" == *" es-init-search "* ]]; then
       mkdir -p "$dir/elastic/indices" && cp "$SEARCH_SVC"/src/main/resources/elasticsearch/*.json "$dir/elastic/indices/"
     fi
     [[ "$allc" == *" log-janitor "* ]] && tr -d '\r' < "$ELASTIC/log-janitor.sh" > "$dir/elastic/log-janitor.sh"
   fi
 
-  # Kafka 이벤트 이력 토픽 보관 정책(ADR-0034): lan.sh deploy 가 kafka 를 (재생성 없이) 먼저 올린 뒤 컨테이너 안에서 실행한다.
-  # metrics/ = watch.sh 가 쓰는 토픽 크기 지표(textfile) — 같은 PC 의 host-disk 가 읽는다
-  if [[ " ${COMPS[$pc]} " == *" kafka "* ]]; then
-    mkdir -p "$dir/kafka" "$dir/metrics"
+  # Kafka 토픽 준비(ADR-0034·0037): lan.sh deploy 가 세 노드를 (재생성 없이) 먼저 올린 뒤 한 노드 컨테이너 안에서 실행한다.
+  # metrics/ = watch.sh 가 쓰는 토픽 크기 지표(textfile) — 지표 노드(kafka-1) PC 의 host-disk 가 읽는다
+  if [[ " ${COMPS[$pc]} " == *" kafka-"[123]" "* ]]; then
+    mkdir -p "$dir/kafka"
     tr -d '\r' < "$LAN/kafka/topics-init.sh" > "$dir/kafka/topics-init.sh"
+  fi
+  if [[ " ${COMPS[$pc]} " == *" $KAFKA_METRICS_NODE "* ]]; then
+    mkdir -p "$dir/metrics"
     echo "watch.sh(PC 1)가 kafka_topics.prom 을 쓴다. host-disk(node-exporter textfile)가 읽는다 — ADR-0034" > "$dir/metrics/README.txt"
   fi
 
@@ -662,9 +747,18 @@ EOF
         echo "  - job_name: host-disk"
         echo "    static_configs:"
         for p in "${PCS[@]}"; do echo "      - { targets: [\"${IP[$p]}:9100\"], labels: { pc: $p } }"; done
-        if [ -n "${WHERE[es-exporter]:-}" ]; then
+        # ES 마다 exporter 하나(ADR-0038) — es 레이블(search·logs)로 구분한다(경보·대시보드). exporter 가 붙이는 cluster 레이블(ES cluster.name)과 겹치지 않게 es
+        if [ -n "${WHERE[es-exporter-search]:-}${WHERE[es-exporter-logs]:-}" ]; then
           echo "  - job_name: elasticsearch"
-          echo "    static_configs: [ { targets: [\"${IP[${WHERE[es-exporter]}]}:9114\"], labels: { pc: ${WHERE[es-exporter]} } } ]"
+          echo "    static_configs:"
+          for k in search logs; do
+            [ -n "${WHERE[es-exporter-$k]:-}" ] && echo "      - { targets: [\"${IP[${WHERE[es-exporter-$k]}]}:9114\"], labels: { pc: ${WHERE[es-exporter-$k]}, es: $k } }"
+          done
+        fi
+        # Kafka 클러스터 지표(ADR-0037): kafka-exporter(브로커 수·파티션 리더·ISR·소비 그룹 지연)
+        if [ -n "${WHERE[kafka-exporter]:-}" ]; then
+          echo "  - job_name: kafka"
+          echo "    static_configs: [ { targets: [\"${IP[${WHERE[kafka-exporter]}]}:9308\"], labels: { pc: ${WHERE[kafka-exporter]} } } ]"
         fi
         # eureka-server 는 자기 자신을 등록하지 않는다(register-with-eureka: false) — 고정
         if [ -n "${WHERE[eureka-server]:-}" ]; then

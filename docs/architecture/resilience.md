@@ -179,6 +179,7 @@ pmart 는 **회로 차단기 라이브러리(Resilience4j) 없이**, 아래 장�
 | Outbox | `libraries/common-messaging/.../OutboxWriter.java:20,50,55` | 업무 변경과 같은 TX 에 `outbox_event` INSERT(trace_id·correlation_id·traceparent 포함, `:26`). 앱이 Kafka 에 직접 보내지 않는다 |
 | Debezium | `deploy/local/connectors/outbox-connector.template.json:33` (LAN 은 render 산출물) | WAL 로 읽어 Kafka 로. 앱이 죽어도 커밋된 이벤트는 나간다 |
 | Kafka 프로듀서 기본값 | `MessagingDefaultsPostProcessor.java:34-35` | `acks=all`, `enable.idempotence=true` |
+| Kafka 복제(LAN) | `deploy/lan/render.sh` kafka-N 블록, ADR-0037 | 3노드 KRaft 클러스터, 모든 토픽 복제 3·`min.insync.replicas` 2 — `acks=all` 과 함께 노드 1대가 죽어도 쓰기가 계속되고, 확인된 쓰기는 두 노드 이상에 있다. 2대가 죽으면 쓰기가 `NOT_ENOUGH_REPLICAS` 로 거절된다(2026-11-05 로컬 시험) |
 | 소비자 기본값 | `MessagingDefaultsPostProcessor.java:43-54` | 자동 커밋 끔, `earliest`, `read_committed`, `ack-mode RECORD` |
 | Inbox | `InboxGuard.java:21,39` | `inbox_event` INSERT(`:24-25`)와 처리기를 한 TX 로. 이미 있으면 건너뛴다. 처리기가 실패하면 inbox 도 롤백돼 다시 처리할 수 있다 |
 | 소비 바인딩 기본값 | `StreamBindingDefaultsPostProcessor.java:73-84` | 그룹 = 앱 이름, `max-attempts = 1 + max-retries`(3), 백오프 1s×2 최대 10s, `enable-dlq`, `ack-mode RECORD` |
@@ -218,7 +219,7 @@ pmart 는 **회로 차단기 라이브러리(Resilience4j) 없이**, 아래 장�
 |---|---|---|
 | 재시작 | `deploy/lan/render.sh:121` | 모든 컨테이너 `restart: unless-stopped` |
 | 헬스체크 | `render.sh:147` 등 | 인프라 컨테이너 healthcheck, 앱은 actuator liveness·readiness(`ObservabilityDefaultsPostProcessor`) |
-| 메모리 상한 | `render.sh:322` 등 | ES·Logstash 1.5 GiB, Zipkin 512m(+ `-XX:+ExitOnOutOfMemoryError`) 등 — 한 구성요소가 PC 메모리를 다 쓰지 않게 |
+| 메모리 상한 | `render.sh` 각 블록 | Kafka 노드 2 GiB, ES·Logstash 각 1.5 GiB(검색·로그 따로, ADR-0038), Zipkin 512m(+ `-XX:+ExitOnOutOfMemoryError`) 등 — 한 구성요소가 PC 메모리를 다 쓰지 않게 |
 | DB 연결 상한 | 설정 `application-lan.yml` | Hikari `maximum-pool-size: 5`(PC 하나의 Postgres 를 여러 서비스가 나눔) |
 | 설정 fail-fast | 각 서비스 `application.yml` `spring.cloud.config.fail-fast: true` | 설정을 못 받으면 기동하지 않는다 → compose 재시작 |
 | 기동 순서 | `deploy/lan/lan.sh` | config-server 를 먼저 올리고 health UP 을 기다린다 |

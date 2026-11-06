@@ -41,14 +41,19 @@ check() {
   local ip="$1" c="$2" body
   case "$c" in
     postgres) [[ "$(tcp_probe "$ip" 15432 '\x00\x00\x00\x08\x04\xd2\x16\x2f' 1)" =~ ^(4e|53)$ ]] ;;  # SSLRequest → 'N'|'S'
-    kafka)    [[ "$(tcp_probe "$ip" 9092 '\x00\x00\x00\x0b\x00\x12\x00\x00\x00\x00\x00\x01\x00\x01\x77' 8)" =~ ^.{8}00000001$ ]] ;; # ApiVersions v0 → 길이 + correlation id 1
+    kafka-[123]) [[ "$(tcp_probe "$ip" 9092 '\x00\x00\x00\x0b\x00\x12\x00\x00\x00\x00\x00\x01\x00\x01\x77' 8)" =~ ^.{8}00000001$ ]] ;; # ApiVersions v0 → 길이 + correlation id 1
     redis)    [ "$(tcp_probe "$ip" 6379 'PING\r\n' 5)" = 2b504f4e47 ] ;;                         # +PONG
     zipkin)   curl -sf -m 5 "http://$ip:9411/health" >/dev/null ;;
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
     backoffice-web) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip/")" = 200 ] ;;    # 임시 백오피스(Nginx)
-    elasticsearch) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031)
+    es-search|es-logs) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031·0038)
     kibana)   [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:5601/api/status")" = 200 ] ;;
-    logstash) timeout 3 bash -c "exec 3<>/dev/tcp/$ip/5044" 2>/dev/null ;;   # beats 포트는 HTTP 가 아니라(curl 은 항상 000) TCP 연결만 확인
+    logstash-logs) timeout 3 bash -c "exec 3<>/dev/tcp/$ip/5044" 2>/dev/null ;;   # beats 포트는 HTTP 가 아니라(curl 은 항상 000) TCP 연결만 확인
+    # 검색 Logstash 는 LAN 에 여는 포트가 없다(Kafka 를 읽고 ES 에 쓰기만) — 그 PC 에 SSH 로 들어가 API(9600)가 답하는지 본다
+    logstash-search)
+      body="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
+        "docker exec pmart-lan-logstash-search-1 curl -s -m 5 localhost:9600/" 2>/dev/null)" || return 1
+      grep -q '"status":"green"' <<<"$body" ;;
     prometheus|alertmanager) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:$([ "$c" = prometheus ] && echo 9090 || echo 9093)/-/ready")" = 200 ] ;;
     grafana)  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:3000/api/health")" = 200 ] ;;
     connect)
@@ -123,14 +128,14 @@ for pc in $(ls "$OUT"); do
 done
 
 # ---- Kafka 이벤트 이력 토픽 지표(ADR-0034) ----
-# Kafka PC 에서 토픽 크기·오프셋·보관 설정을 재서 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓴다(host-disk 가 내보낸다).
+# kafka-1(ADR-0037, 한 노드가 클러스터 전체를 본다)에서 토픽 크기·오프셋·보관 설정을 재서 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓴다(host-disk 가 내보낸다).
 # 읽기만 한다(재시작·설정 변경 없음). 실패해도 위 점검·복구에는 영향이 없다 — 멈추면 Prometheus 의 KafkaTopicMetricsStale 이 알린다.
 pc_of() { grep -l "^  $1:" "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename; }
-# Kafka PC 의 pmart-lan/metrics/<이름> 으로 올린다(그 PC 의 host-disk 만 textfile 수집기가 있다).
+# kafka-1 PC 의 pmart-lan/metrics/<이름> 으로 올린다(그 PC 의 host-disk 만 textfile 수집기가 있다).
 # .tmp 로 올린 뒤 이름을 바꾼다(node-exporter 는 *.prom 만 읽는다 — 반쯤 쓴 파일을 읽지 않게)
 push_textfile() {
   local file="$1" name="$2" kpc host
-  kpc="$(pc_of kafka)"; [ -n "$kpc" ] || return 0
+  kpc="$(pc_of kafka-1)"; [ -n "$kpc" ] || return 0
   host="$(awk '{print $3}' "$OUT/$kpc/target")"
   scp -q -o BatchMode=yes -o ConnectTimeout=10 "$file" "$host:pmart-lan/metrics/$name.tmp" 2>/dev/null \
     && ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
@@ -141,13 +146,13 @@ search_group() { sed -n 's/^PMART_SEARCH_GROUP_ID=//p' "$LAN/elastic/search-inde
 
 kafka_metrics() {
   local kpc host tmp
-  kpc="$(pc_of kafka)"
+  kpc="$(pc_of kafka-1)"
   [ -n "$kpc" ] || return 0
   host="$(awk '{print $3}' "$OUT/$kpc/target")"
   tmp="$STATE/kafka_topics.prom"
   # 맨 앞에 검색 색인 소비 그룹을 붙여 보낸다(topic-metrics.sh 가 그 그룹 지연을 잰다). CR 은 지운다 — 컨테이너 sh 가 CRLF 를 못 읽는다(2026-11-04 지표 1시간 멈춤)
   { printf 'SEARCH_GROUP=%s\n' "$(search_group)"; tr -d '\r' < "$LAN/kafka/topic-metrics.sh"; } \
-    | ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1 sh" 2>/dev/null > "$tmp.new" \
+    | ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1-1 sh" 2>/dev/null > "$tmp.new" \
     || { log "$kpc Kafka 토픽 지표 측정 실패"; return 0; }
   grep -q '^pmart_kafka_topic_metrics_timestamp_seconds ' "$tmp.new" || { log "$kpc Kafka 토픽 지표 형식 이상 — 쓰지 않음"; return 0; }
   mv -f "$tmp.new" "$tmp"
@@ -160,12 +165,12 @@ kafka_metrics
 # 읽기만 한다. 가져오기에 실패해도 파일은 쓴다(pmart_logstash_up 0) — 경보가 그것으로 알린다.
 search_index_metrics() {
   local lpc epc lhost eip tmp py
-  lpc="$(pc_of logstash)"; epc="$(pc_of elasticsearch)"
+  lpc="$(pc_of logstash-search)"; epc="$(pc_of es-search)"
   [ -n "$lpc" ] && [ -n "$epc" ] || return 0
   lhost="$(awk '{print $3}' "$OUT/$lpc/target")"; eip="$(awk '{print $2}' "$OUT/$epc/target")"
   tmp="$STATE/search_index"
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$lhost" \
-    "docker exec pmart-lan-logstash-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" 2>/dev/null > "$tmp.logstash.json" || : > "$tmp.logstash.json"
+    "docker exec pmart-lan-logstash-search-1 curl -s -m 10 localhost:9600/_node/stats/pipelines/search-index" 2>/dev/null > "$tmp.logstash.json" || : > "$tmp.logstash.json"
   curl -s -m 10 "http://$eip:9200/products/_search" -H 'Content-Type: application/json' \
     -d '{"size":0,"aggs":{"last":{"max":{"field":"updatedAtMs"}}}}' > "$tmp.es.json" 2>/dev/null || : > "$tmp.es.json"
   py="$(command -v python || command -v python3 || command -v py)" || { log "검색 색인 지표: python 없음"; return 0; }

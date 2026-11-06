@@ -33,12 +33,12 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 
 | 항목 | 값 |
 |---|---|
-| Elasticsearch | 8.18.0, **단일 노드**(복제본 없음), 보안 끔 — LAN 시험망이라 의도. pc4 `192.168.0.40:9200` |
+| Elasticsearch | `es-search` — 검색 전용(ADR-0038, 로그 ES 와 분리). 8.18.0, **단일 노드**(복제본 없음), 보안 끔 — LAN 시험망이라 의도. pc3 `192.168.0.222:9200` |
 | 형태소 분석기 | analysis-nori. 컨테이너 시작 때 없으면 설치(새로 만들 때 인터넷 필요) |
 | 색인·별칭 | `products` → **`products-v5`**, `sku-prices` → `sku-prices-v1`, `sku-handlings` → `sku-handlings-v1`. search-service 는 별칭으로만 읽는다. 2026-11-04 v2 → v3(v2 삭제), 2026-11-05 v3 → v4 → v5(초성 앞부분 필드, 같은 날) |
-| Logstash | 8.18.0, pc4. 파이프라인 `search-index`(작업자 1·배치 1), 영구 큐 256MB, Logstash DLQ 64MB |
+| Logstash | `logstash-search` — 8.18.0, pc3, LAN 포트 없음. 파이프라인 `search-index`(작업자 1·배치 1), 영구 큐 256MB, Logstash DLQ 64MB |
 | 색인 대상·그룹 설정 | `deploy/lan/elastic/search-index.env` → `render.sh` 가 Logstash 환경변수로 넣는다 |
-| 색인 정의 | `services/search-service/src/main/resources/elasticsearch/*.json`. es-init(pc4)과 search-service 가 같은 파일로 만든다. 정의에 별칭을 넣지 않고 **별칭이 없을 때만** 붙인다 |
+| 색인 정의 | `services/search-service/src/main/resources/elasticsearch/*.json`. es-init-search(pc3)과 search-service 가 같은 파일로 만든다. 정의에 별칭을 넣지 않고 **별칭이 없을 때만** 붙인다 |
 | 로컬 | `deploy/local/docker-compose.yml`(ES·es-init). 이전 `esdata` 볼륨이 있으면 별칭이 옛 색인(v2~v4)에 남는다 — 볼륨을 지우고 새로 띄운다 |
 
 ## 3. 색인 문서 (`products-v5`, strict 매핑)

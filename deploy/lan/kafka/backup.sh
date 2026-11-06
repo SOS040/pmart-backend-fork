@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 이벤트 이력 토픽 백업(ADR-0034) — PC 1 Git Bash 에서. 운영 Kafka 는 읽기만 한다(소비 그룹도 만들지 않는다).
 #   deploy/lan/kafka/backup.sh [저장 폴더] [사유]
-#   저장 폴더 기본: $PMART_KAFKA_BACKUP_DIR 또는 /d/pmart-backups/kafka — Kafka PC(pc2)와 다른 장애 영역에 둔다.
+#   저장 폴더 기본: $PMART_KAFKA_BACKUP_DIR 또는 /d/pmart-backups/kafka — Kafka PC(pc2·pc3·pc4)와 다른 장애 영역에 둔다.
 #   결과: <폴더>/<UTC시각>-<사유>/{토픽}.records + MANIFEST.yml(오프셋·건수·sha256). 복원은 README.md.
 # 검사(하나라도 어긋나면 실패로 끝난다): 줄 수 = 오프셋 범위, 파티션마다 오프셋이 끊김 없이 이어짐, 필드 6개, 헤더 이름에 ':' 없음.
 set -euo pipefail
@@ -12,10 +12,12 @@ TOPICS="commerce.product.v1 commerce.pricing.v1 mfc.sku-handling.v1"
 ROOT="${1:-${PMART_KAFKA_BACKUP_DIR:-/d/pmart-backups/kafka}}"
 REASON="${2:-manual}"
 
-kpc="$(grep -l '^  kafka:' "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename)"
-[ -n "$kpc" ] || { echo "Kafka PC 를 찾지 못했다 — lan.sh render 먼저" >&2; exit 1; }
+KNODE="${PMART_KAFKA_NODE:-kafka-1}"  # 클러스터(ADR-0037) — 어느 노드에서 읽어도 같다. 그 노드가 꺼져 있으면 PMART_KAFKA_NODE=kafka-2 등
+KC="pmart-lan-$KNODE-1"
+kpc="$(grep -l "^  $KNODE:" "$OUT"/*/compose.yml 2>/dev/null | head -1 | xargs -r dirname | xargs -r basename)"
+[ -n "$kpc" ] || { echo "$KNODE 의 PC 를 찾지 못했다 — lan.sh render 먼저" >&2; exit 1; }
 host="$(awk '{print $3}' "$OUT/$kpc/target")"
-kx() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i pmart-lan-kafka-1 sh" 2> >(grep -av -E "post-quantum|store now|pq.html" >&2); }
+kx() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" "docker exec -i $KC sh" 2> >(grep -av -E "post-quantum|store now|pq.html" >&2); }
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 dest="$ROOT/$stamp-$REASON"
@@ -23,7 +25,7 @@ mkdir -p "$dest"
 {
   echo "kind: pmart-kafka-topic-backup"
   echo "taken_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "source: $kpc ($host) pmart-lan-kafka-1"
+  echo "source: $kpc ($host) $KC"
   echo "reason: $REASON"
   echo "format: deploy/lan/kafka/backup-topic.sh (US=0x1F fields, RS=0x1E between headers, ':' header name/value, null=__PMART_NULL__)"
   echo "topics:"

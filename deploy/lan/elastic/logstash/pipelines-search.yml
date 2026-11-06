@@ -1,0 +1,6 @@
+# Logstash 파이프라인 — logstash-search(ADR-0031·0038, 검색 ES pc3)
+# search-index: 도메인 이벤트(Kafka) → 상품 검색 색인(es-search). 사건 하나씩 필터·출력까지 끝낸다(작업자 1·배치 1 — 가격·상품 경합 방지)
+- pipeline.id: search-index
+  path.config: /usr/share/logstash/pipeline/search-index.conf
+  pipeline.workers: 1
+  pipeline.batch.size: 1

@@ -1,5 +1,6 @@
 # 이벤트 이력 토픽 지표(ADR-0034) — Kafka 컨테이너 안에서 sh 로 실행, Prometheus textfile 형식을 표준출력으로.
-#   watch.sh(PC 1, 5분마다)가 실행해 Kafka PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓰고, 같은 PC 의 host-disk(node-exporter)가 내보낸다.
+#   watch.sh(PC 1, 5분마다)가 kafka-1 컨테이너에서 실행해 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓰고, 같은 PC 의 host-disk(node-exporter)가 내보낸다.
+#   한 노드에서 클러스터 전체를 본다(오프셋·설정·log-dirs 모두 클러스터 단위 조회).
 # 무제한 보관이라 크기 자체는 커지는 것이 정상 — 경보는 크기가 아니라 증가 속도·보관 설정 풀림·측정 멈춤에 건다(alert-rules.yml).
 set -eu
 B=/opt/kafka/bin
@@ -7,11 +8,15 @@ S=localhost:9092
 TOPICS="commerce.product.v1 commerce.pricing.v1 mfc.sku-handling.v1"
 LIST="commerce.product.v1,commerce.pricing.v1,mfc.sku-handling.v1"
 
-echo "# HELP pmart_kafka_topic_size_bytes 토픽 로그 크기(모든 파티션 합, kafka-log-dirs)"
+# 복제 3(ADR-0037): kafka-log-dirs 는 세 브로커의 복제본을 모두 보여 준다. 그대로 합하면 3배가 되어 증가 경보가 잘못 울린다 —
+# 파티션마다 가장 큰 복제본(리더와 같거나 거의 같다 — 팔로워는 리더보다 앞설 수 없다)만 세어 토픽별로 합한다
+echo "# HELP pmart_kafka_topic_size_bytes 토픽 로그 크기(파티션마다 가장 큰 복제본 = 리더 크기, 그 합. kafka-log-dirs)"
 echo "# TYPE pmart_kafka_topic_size_bytes gauge"
 $B/kafka-log-dirs.sh --bootstrap-server $S --describe --topic-list "$LIST" | grep '^{' | tr '{' '\n' \
-  | sed -n 's/^"partition":"\(.*\)-[0-9]*","size":\([0-9]*\),.*/\1 \2/p' \
-  | awk '{s[$1] += $2} END {for (t in s) printf "pmart_kafka_topic_size_bytes{topic=\"%s\"} %d\n", t, s[t]}'
+  | sed -n 's/^"partition":"\(.*-[0-9]*\)","size":\([0-9]*\),.*/\1 \2/p' \
+  | awk '!($1 in m) || $2 > m[$1] {m[$1] = $2}
+         END {for (p in m) {t = p; sub(/-[0-9]+$/, "", t); s[t] += m[p]}
+              for (t in s) printf "pmart_kafka_topic_size_bytes{topic=\"%s\"} %d\n", t, s[t]}'
 
 echo "# HELP pmart_kafka_topic_end_offset 파티션 끝 오프셋 합(지금까지 쌓인 사건 수)"
 echo "# TYPE pmart_kafka_topic_end_offset gauge"

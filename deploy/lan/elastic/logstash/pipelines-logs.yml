@@ -1,0 +1,5 @@
+# Logstash 파이프라인 — logstash-logs(ADR-0031·0038, 로그 ES pc4)
+# logs: Filebeat(앱 JSON 로그만, PC 마다, 5044) → es-logs pmart-logs-YYYY.MM.DD
+- pipeline.id: logs
+  path.config: /usr/share/logstash/pipeline/logs.conf
+  pipeline.workers: 1

@@ -1,11 +1,13 @@
 # LAN 운영 설정 — 감시·지표·경보·추적·로그·Kafka 백업
 
-- 기준: 2026-11-05. LAN(PC 4대)에서 지금 실제로 돌고 있는 운영 설정을 한곳에 모은 안내서다. 결정 문서가 아니다.
+- 기준: 2026-11-06 전환 뒤(Kafka 3노드 클러스터 ADR-0037, 검색·로그 ES 분리 ADR-0038). LAN(PC 4대)에서 실제로 돌고 있는 운영 설정을 한곳에 모은 안내서다. 결정 문서가 아니다.
 - 정본은 각 설정 파일이다. 값을 바꾸면 그 파일을 고치고, 이 문서도 같은 커밋에서 맞춘다.
 - 관련 결정:
   - ADR-0030: 지표·로그·디스크
   - ADR-0031: Elastic Stack
   - ADR-0034: Kafka 이력 보관
+  - ADR-0037: Kafka 3노드 KRaft 클러스터
+  - ADR-0038: 검색 ES·로그 ES 분리
 
 ## 1. 한눈에
 
@@ -13,17 +15,19 @@
 |---|---|---|---|
 | 살아 있는지 점검·자동 재시작 | `watch.sh` (5분마다) | PC1 작업 스케줄러 "PMart LAN Watch" | `deploy/lan/watch.sh` |
 | 지표 수집 | Prometheus v3.5.0 | pc4 :9090 | `render.sh` (prometheus.yml 생성) |
-| 경보 규칙 23개 | Prometheus → Alertmanager v0.28.1 | pc4 :9093 | `deploy/lan/monitoring/alert-rules.yml`, `alertmanager.yml` |
-| 화면 | Grafana 12.0.2 | pc4 :3000 | `deploy/lan/monitoring/grafana/` (대시보드 `pmart-overview.json`, 상품 검색 `pmart-search.json`). 데이터 원본: Prometheus·Alertmanager·**로그(Elasticsearch `pmart-logs-*`)·Zipkin**(2026-11-05 — Explore 에서 로그 검색·추적 보기, 로그 traceId → 추적, 추적 → 같은 traceId 로그) |
+| 경보 규칙 28개 | Prometheus → Alertmanager v0.28.1 | pc4 :9093 | `deploy/lan/monitoring/alert-rules.yml`, `alertmanager.yml` |
+| 화면 | Grafana 12.0.2 | pc4 :3000 | `deploy/lan/monitoring/grafana/` (대시보드 `pmart-overview.json`, 상품 검색 `pmart-search.json`). 데이터 원본: Prometheus·Alertmanager·**로그(로그 ES `es-logs` `pmart-logs-*`)·Zipkin**(2026-11-05 — Explore 에서 로그 검색·추적 보기, 로그 traceId → 추적, 추적 → 같은 traceId 로그) |
 | 요청 추적 | Zipkin 3 (메모리 저장) | pc4 :9411 | `render.sh` zipkin 블록 |
-| 앱 로그 | Filebeat → Logstash → Elasticsearch → Kibana | 각 PC → pc4 | `deploy/lan/elastic/` |
+| 앱 로그 | Filebeat → logstash-logs → es-logs → Kibana | 각 PC → pc4 | `deploy/lan/elastic/` |
+| 상품 검색 색인 | Kafka → logstash-search → es-search | pc3 | `services/search-service/src/main/logstash/`, `deploy/lan/elastic/` |
+| Kafka 클러스터 지표 | kafka-exporter v1.10.0 | pc4 :9308 | `render.sh` kafka-exporter 블록 |
 | 디스크 여유 | node-exporter(host-disk) | 각 PC :9100 | `render.sh` host-disk 블록 |
 | Kafka 이력 백업 | `backup.sh` (수동) | PC1 `D:\pmart-backups\kafka` | `deploy/lan/kafka/` |
 
 PC 배치: `deploy/lan/placement.conf`
-- pc2 (192.168.0.34): Kafka, 상품·주문·결제 서비스
-- pc3 (192.168.0.222): Connect, 센터·배송 서비스
-- pc4 (192.168.0.40): 게이트웨이, 인증, ES·Logstash·Prometheus·Grafana
+- pc2 (192.168.0.34): kafka-1, 상품·주문·결제 서비스
+- pc3 (192.168.0.222): kafka-2, Connect, 검색 ES·Logstash(es-search·logstash-search), 센터·배송 서비스
+- pc4 (192.168.0.40): kafka-3, 게이트웨이, 인증, 로그 ES·Logstash·Kibana(es-logs·logstash-logs), Prometheus·Grafana, kafka-exporter
 - PC1: 빌드와 감시
 
 ## 2. 감시 — `watch.sh` (PC1, 5분마다)
@@ -34,7 +38,10 @@ PC 배치: `deploy/lan/placement.conf`
   |---|---|
   | 앱 | `/actuator/health` |
   | PostgreSQL | SSLRequest |
-  | Kafka | ApiVersions |
+  | Kafka (kafka-1~3 각각) | ApiVersions |
+  | Elasticsearch (es-search·es-logs) | `_cluster/health` green·yellow |
+  | logstash-logs | 5044 TCP 연결 |
+  | logstash-search | LAN 포트가 없어 SSH 로 그 PC 에 들어가 API(9600) `status: green` |
   | Redis | PING |
   | Zipkin | `/health` |
   | Connect | 커넥터·작업 RUNNING |
@@ -49,6 +56,8 @@ PC 배치: `deploy/lan/placement.conf`
 - **지표 생성**(읽기만 한다):
   - Kafka 토픽 지표 → `kafka_topics.prom`
   - 검색 색인 파이프라인 지표 → `search_index.prom`
+  - Kafka 토픽 지표는 kafka-1(pc2) 컨테이너에서 잰다(한 노드가 클러스터 전체를 본다). 토픽 크기는 리더 복제본 기준이다 — 복제 3이라 모든 복제본을 합하면 3배가 된다.
+  - 검색 지표는 logstash-search(pc3)의 API 와 es-search 에서 읽는다.
   - 두 파일을 pc2의 `pmart-lan/metrics/`에 올리고, pc2의 host-disk(node-exporter textfile 수집기)가 Prometheus로 내보낸다.
   - 파일은 **UTF-8 + LF**여야 한다. Windows 기본값(cp949·CRLF)으로 쓰면 node-exporter가 파일 전체를 거부한다(2026-11-04).
 - **상태·로그**: `~/.pmart-lan-watch/` (`watch.log`)
@@ -58,9 +67,9 @@ PC 배치: `deploy/lan/placement.conf`
 
 - 수집 주기 15초, 규칙 평가도 15초.
 - 보존은 **7일 또는 2 GB** 중 먼저 닿는 쪽까지(`--storage.tsdb.retention.time=7d`, `retention.size=2GB`). 메모리 상한 1 GiB.
-- 수집 대상 39개: 앱마다 `/actuator/prometheus`, host-disk 3대, es-exporter, Prometheus 자신.
+- 수집 대상: 앱마다 `/actuator/prometheus`, host-disk 3대, es-exporter 2개(레이블 `es=search|logs`), kafka-exporter, Prometheus 자신.
   - **앱은 Eureka 등록부에서 찾는다**(2026-11-05 변경, LAN 반영 전 — 아래 참고). Prometheus 가 30초마다 Eureka(`http://<eureka PC>:8761/eureka`, 아이디 `pmart`, 비밀번호는 `build/pc4/monitoring/eureka-password` 파일 — Git 제외)에서 앱 목록을 받아, 등록된 IP + 메타데이터 `management.port` 를 수집한다. `job` = 앱 이름 소문자, `instance` = IP:포트, `pc` = IP 로 붙인 PC 이름, `discovery="eureka"`.
-  - 고정 목록으로 남은 것: eureka-server(자기 자신을 등록하지 않음), host-disk·es-exporter(Eureka 클라이언트 아님), Prometheus 자신. Eureka 서버 주소는 render.sh 가 placement.conf 에서 eureka-server 위치를 읽어 적는다.
+  - 고정 목록으로 남은 것: eureka-server(자기 자신을 등록하지 않음), host-disk·es-exporter·kafka-exporter(Eureka 클라이언트 아님), Prometheus 자신. Eureka 서버 주소는 render.sh 가 placement.conf 에서 eureka-server 위치를 읽어 적는다.
   - 서비스를 옮기거나 늘려도 Prometheus 재배포가 필요 없다(Eureka 에 다시 등록하면 30초 안에 반영). Eureka 를 못 읽으면 Prometheus 는 마지막으로 찾은 목록을 유지한다.
   - 검증(2026-11-05, 로컬 Prometheus 를 LAN Eureka 에 연결): 대상 39개 모두 UP, job·instance·pc 가 그때 LAN Prometheus(고정 목록)와 같음. 설정 `promtool check config` 통과.
   - 코드: `deploy/lan/render.sh` Prometheus 설정 생성 부분(`eureka_sd_configs`), compose 의 `eureka-password` 마운트.
@@ -70,10 +79,10 @@ PC 배치: `deploy/lan/placement.conf`
 
   | 파일 | 만드는 곳 | 지표 |
   |---|---|---|
-  | `kafka_topics.prom` | `deploy/lan/kafka/topic-metrics.sh` (Kafka 컨테이너 안) | 토픽 크기·시작/끝 오프셋·무제한 보관 여부·검색 색인 소비 지연 |
+  | `kafka_topics.prom` | `deploy/lan/kafka/topic-metrics.sh` (kafka-1 컨테이너 안) | 토픽 크기(리더 기준)·시작/끝 오프셋·무제한 보관 여부·검색 색인 소비 지연 |
   | `search_index.prom` | `deploy/lan/elastic/search-index-metrics.py` | Logstash 살아 있음·영구 큐·DLQ·ES 거절 수·마지막 색인 반영 시각 |
 
-## 4. 경보 규칙 (23개, `alert-rules.yml`)
+## 4. 경보 규칙 (28개, `alert-rules.yml`, 시험 `alert-rules-test.yml`)
 
 > **경보는 아직 아무에게도 전달되지 않는다.** `alertmanager.yml`의 받는 곳이 `none`이다. 지금은 Alertmanager(`http://192.168.0.40:9093`)와 Grafana 화면에서만 볼 수 있다.
 >
@@ -86,9 +95,14 @@ PC 배치: `deploy/lan/placement.conf`
 | | Http5xxRateHigh | 5분간 5xx 비율 > 5% (요청이 있을 때) | warning |
 | 메시징 | DeadLetterOpen | 서비스 DB에 처리 못 한 메시지(OPEN)가 있음 | critical |
 | | ConsumerLagHigh | 소비 지연 > 500건이 10분 | warning |
-| Elasticsearch | ElasticsearchUnreachable | 2분 응답 없음 | critical |
+| Elasticsearch (es 레이블로 search·logs 구분) | ElasticsearchUnreachable | 2분 응답 없음(둘 중 하나만 멈춰도) | critical |
 | | ElasticsearchClusterRed | 5분 RED | critical |
 | | ElasticsearchHeapHigh | 힙 > 90%가 10분 | warning |
+| Kafka 클러스터 (kafka-exporter) | KafkaBrokerDown | 브로커 < 3이 2분(쓰기는 계속) | warning |
+| | KafkaQuorumAtRisk | 브로커 < 2 또는 클러스터 조회 불가 1분(과반 상실 — 컨트롤러 지표가 없어 대신) | critical |
+| | KafkaUnderReplicatedPartitions | 복제 부족 파티션 > 0이 5분 | warning |
+| | KafkaPartitionBelowMinIsr | ISR < 2 파티션(그 파티션 쓰기 실패) 2분 | critical |
+| | KafkaOfflinePartitions | 리더 없는 파티션 2분 | critical |
 | Kafka 이력 | KafkaEventRetentionNotUnlimited | 상품·가격 토픽의 무제한 보관이 풀림 | critical |
 | | KafkaEventHistoryTruncated | 앞 사건이 지워짐(시작 오프셋 > 0) | critical |
 | | KafkaEventBurst | 1시간에 사건 > 5000건 | warning |
@@ -132,39 +146,47 @@ PC 배치: `deploy/lan/placement.conf`
   - 확인 명령: `ssh pmart-pc4 "docker inspect pmart-lan-zipkin-1 --format '{{.RestartCount}} {{.State.OOMKilled}}'"`
   - 재시작 횟수가 다시 늘면 다음 중 하나를 고른다: 상한을 768 MiB로 올림, span 수를 더 줄임, 수집 비율을 낮춤.
 
-## 6. 앱 로그 — Filebeat → Logstash → Elasticsearch → Kibana
+## 6. 앱 로그와 검색 색인 — 로그 ES(pc4)·검색 ES(pc3) 분리 (ADR-0038)
 
 ```
-각 PC 컨테이너 로그 ─▶ log-shipper(Filebeat) ─5044─▶ Logstash(logs 파이프라인) ─▶ ES pmart-logs-YYYY.MM.DD ─▶ Kibana(:5601)
+각 PC 컨테이너 로그 ─▶ log-shipper(Filebeat) ─5044─▶ logstash-logs(pc4) ─▶ es-logs pmart-logs-YYYY.MM.DD ─▶ Kibana(:5601)
+Kafka 이력 토픽(kafka-1~3) ─▶ logstash-search(pc3) ─▶ es-search products·sku-prices·sku-handlings ─▶ search-service
 ```
 - **Filebeat** (PC마다, `deploy/lan/elastic/filebeat.yml`):
   - 대상: Docker 컨테이너 로그 파일. `serviceName` 필드가 있는 앱 JSON 로그만 남긴다.
   - 초당 500건 상한, 24시간 지난 파일은 무시, 메모리 큐 4096건.
   - `pc` 필드를 붙인다. 메모리 상한 256 MiB.
-- **Logstash** (pc4, 메모리 상한 1.5 GiB, 힙 512m): 파이프라인 두 개
-  - `logs`: 로그를 `pmart-logs-YYYY.MM.dd`(UTC 날짜)로 보낸다.
-  - `search-index`: 상품 검색 색인. `docs/architecture/product-search.md` 참고.
-  - 영구 큐 256 MB, DLQ 64 MB.
-- **Elasticsearch** (pc4, 8.18.0, 단일 노드):
-  - 힙 768m, 메모리 상한 1.5 GiB. 보안은 꺼져 있다(LAN 시험망).
-  - 색인 자동 생성은 `pmart-logs-*`와 시스템 색인만 허용한다(매핑 없는 products가 생기지 않게).
+- **Logstash** 두 개(각각 메모리 상한 1.5 GiB, 힙 512m, 영구 큐 256 MB, DLQ 64 MB):
+  - `logstash-logs`(pc4, 5044): 파이프라인 `logs` — 로그를 es-logs `pmart-logs-YYYY.MM.dd`(UTC 날짜)로. 목록 `pipelines-logs.yml`
+  - `logstash-search`(pc3, LAN 포트 없음): 파이프라인 `search-index` — 상품 검색 색인을 es-search 로. 목록 `pipelines-search.yml`. `docs/architecture/product-search.md` 참고.
+- **Elasticsearch** 두 개(8.18.0, 각각 단일 노드, 힙 768m, 메모리 상한 1.5 GiB, 보안 꺼짐 — LAN 시험망):
+  - `es-search`(pc3, cluster.name `pmart-search`): 상품 검색 색인만. nori 설치. 색인 자동 생성은 시스템 색인만(검색 색인은 es-init-search 가 매핑과 함께 만든다).
+  - `es-logs`(pc4, cluster.name `pmart-logs`): 앱 로그만. 색인 자동 생성은 `pmart-logs-*`와 시스템 색인만.
+  - 로그 ES 를 지우거나 재시작해도 검색은 영향이 없다. 반대로 검색 재색인이 로그 수집을 막지 않는다.
 - **로그 보존**:
   - ILM `pmart-logs`가 3일 뒤 지운다.
   - `log-janitor`가 5분마다 확인해 색인 하나가 1 GB를 넘으면 지우고, 전체가 4 GB를 넘으면 오래된 것부터 지운다.
-- **준비 작업**: `es-init`(한 번 실행)이 검색 색인, ILM, 로그 색인 템플릿, Kibana 데이터 뷰 `pmart-logs-*`를 만든다.
+- **준비 작업**(한 번 실행, `es-init.sh` 의 `PMART_ES_INIT`):
+  - `es-init-search`(pc3): 검색 색인·별칭
+  - `es-init-logs`(pc4): ILM, 로그 색인 템플릿, Kibana 데이터 뷰 `pmart-logs-*`
 
-## 7. Kafka 이벤트 이력 보관과 백업 (ADR-0034)
+## 7. Kafka 클러스터, 이벤트 이력 보관과 백업 (ADR-0034·0037)
 
+- **클러스터**: KRaft 3노드 — kafka-1(pc2)·kafka-2(pc3)·kafka-3(pc4), 노드마다 브로커+컨트롤러. 9092(클라이언트), 9094(컨트롤러 투표, 9093 은 Alertmanager).
+  - 모든 토픽 복제 3, `min.insync.replicas=2`. 한 노드가 꺼져도 쓰기가 계속되고, 두 노드가 꺼지면 멈춘다(2026-11-05 로컬 시험으로 확인).
+  - 브로커 자동 토픽 생성은 꺼져 있다. 업무·heartbeat 토픽은 Debezium Connect(`topic.creation.default.*=-1`), DLT·Bus 토픽은 Stream 바인더, 특수 설정 토픽은 `topics-init.sh` 가 만든다.
+  - 접속 주소는 세 노드 모두(`kafka-1:9092,kafka-2:9092,kafka-3:9092`). 데이터 볼륨 `kafkacluster`.
+  - 배포: `lan.sh deploy` 는 대상 PC 의 Kafka 노드를 모두 먼저 띄우고 기다린다(한 노드만으로는 과반이 안 돼 healthy 가 되지 않는다).
 - **보관**:
-  - `commerce.product.v1`·`commerce.pricing.v1` 두 토픽만 무제한 보관한다(`retention.ms=-1`, `retention.bytes=-1`, `cleanup.policy=delete`).
-  - 검색 색인을 다시 만드는 방법이 이 두 토픽의 전체 재생이기 때문이다.
-  - `lan.sh deploy <Kafka PC>`가 매번 `kafka/topics-init.sh`로 다시 적용한다. 이미 적용돼 있으면 아무것도 바꾸지 않는다.
+  - 이력 토픽 `commerce.product.v1`·`commerce.pricing.v1`·`mfc.sku-handling.v1` 만 무제한 보관한다(`retention.ms=-1`, `retention.bytes=-1`, `cleanup.policy=delete`).
+  - 검색 색인을 다시 만드는 방법이 이 토픽들의 전체 재생이기 때문이다.
+  - `lan.sh deploy`가 매번 `kafka/topics-init.sh`로 다시 적용한다(복제 3 확인 포함). 이미 적용돼 있으면 아무것도 바꾸지 않는다.
   - 나머지 토픽은 기본 보관(7일)이다.
 - **백업** (수동, PC1 Git Bash):
   ```bash
   deploy/lan/kafka/backup.sh /d/pmart-backups/kafka <사유>
   ```
-  - Kafka는 읽기만 한다. 소비 그룹도 만들지 않는다.
+  - Kafka는 읽기만 한다. 소비 그룹도 만들지 않는다. 기본은 kafka-1 컨테이너(`pmart-lan-kafka-1-1`)에서 읽고, 그 노드가 꺼져 있으면 `PMART_KAFKA_NODE=kafka-2` 처럼 고른다.
   - 결과는 `<폴더>/<UTC시각>-<사유>/`에 `{토픽}.records`와 `MANIFEST.yml`(오프셋·건수·sha256)로 남는다.
   - 검사: 줄 수가 오프셋 범위와 같은지, 파티션마다 오프셋이 끊김 없이 이어지는지 등. 하나라도 어긋나면 실패로 끝난다.
   - 재색인 스크립트(`deploy/lan/elastic/reindex.sh start`)는 시작 전에 자동으로 백업한다(사유 `before-reindex-<색인>`).
@@ -182,27 +204,28 @@ PC 배치: `deploy/lan/placement.conf`
   - `restore-topic.sh`는 대상 토픽이 비어 있지 않거나 파티션 수가 다르면 멈춘다.
   - 먼저 격리된 임시 Kafka에서 시험한다. 2026-11-03에 시험했고, 다시 내보내 비교한 결과가 모두 일치했다.
 - **한계와 결정 대기**:
-  - PC1의 C:와 D:는 **같은 SSD**다. 그 디스크가 고장 나면 원본(pc2 Kafka)과 백업 중 백업만 잃지만, pc2까지 함께 잃으면 복구할 수 없다.
+  - PC1의 C:와 D:는 **같은 SSD**다. 원본은 이제 세 PC 에 복제돼 있어(ADR-0037) PC 한 대를 잃어도 남지만, 백업 자체는 PC1 디스크 하나에만 있다.
   - 외부 매체나 다른 저장소로 옮길지, 정기 백업을 자동화할지는 결정 대기다.
 
-## 8. 컨테이너 메모리 상한 (pc4 중심)
+## 8. 컨테이너 메모리 상한
 
 | 컨테이너 | 상한 | 비고 |
 |---|---|---|
-| elasticsearch | 1.5 GiB | 힙 768m |
-| logstash | 1.5 GiB | 힙 512m |
+| kafka-1~3 | 2 GiB | 힙 1 GiB(기본), PC마다 하나 |
+| es-search(pc3), es-logs(pc4) | 1.5 GiB | 힙 768m |
+| logstash-search(pc3), logstash-logs(pc4) | 1.5 GiB | 힙 512m |
 | kibana | 1 GiB | |
 | prometheus | 1 GiB | |
 | 업무 앱 | 768 MiB | 앱마다 |
 | zipkin | 512 MiB | 힙 256m (2026-11-05) |
 | log-shipper (Filebeat) | 256 MiB | PC마다 |
-| config-relay | 128 MiB | |
-| host-disk, es-exporter | 64 MiB | |
+| config-relay, kafka-exporter | 128 MiB | |
+| host-disk, es-exporter-search·logs | 64 MiB | |
 | log-janitor | 32 MiB | |
 
-- 2026-11-05 측정, pc4:
-  - PC 전체 메모리 31.9 GB, 그중 비어 있는 것 10.0 GB
-  - Docker에 할당된 메모리 23.5 GiB, 컨테이너 사용량 합 약 10.1 GiB
+- 2026-11-05 측정(전환 전): Docker 할당 세 대 모두 23.5 GiB, 컨테이너 사용량 pc2 8.9·pc3 7.9·pc4 10.3 GiB. Windows 여유 pc2 9.5·pc3 16.5·pc4 9.2 GB.
+  - 전환 뒤 예상: pc2 약 9, pc3 약 12, pc4 약 12 GiB(Kafka 노드·검색 ES·Logstash 추가분). 전환 뒤 다시 잰다.
+  - pmart 가 아닌 컨테이너: pc2 `vault-config-study`(약 1.1 GiB), pc4 `cardcapture`(약 1.1 GiB).
 - grafana·alertmanager·redis·postgres에는 상한이 없다.
 
 ## 9. 디스크 (2026-11-05)
@@ -217,8 +240,9 @@ PC 배치: `deploy/lan/placement.conf`
 - 남은 공간이 줄어드는 요인:
   - Prometheus: 2 GB에서 멈춘다.
   - 로그: 4 GB에서 멈춘다.
-  - Kafka 이력: 무제한이지만 하루 수 MB 수준이다.
+  - Kafka 이력: 무제한이지만 하루 수 MB 수준이다. 복제 3이라 세 PC 에 같은 양이 쌓인다.
   - 옛 이미지와 vhdx: 가장 크다. 정리는 결정 대기다.
+  - 전환 때 남긴 롤백용 옛 볼륨: pc2 `kafkadata`, pc4 `esdata`·`lsdata`. 전환 확인 뒤 별도 요청으로 지운다.
 
 ## 10. 결정 대기 (운영)
 
