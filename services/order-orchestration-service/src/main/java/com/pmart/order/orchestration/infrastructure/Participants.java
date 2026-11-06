@@ -36,6 +36,7 @@ public class Participants {
   public static final String PAYMENT = "payment-service";
   public static final String ORDER = "order-service";
   public static final String FULFILLMENT = "mfc-fulfillment-service";
+  public static final String CLAIM = "claim-service";
 
   private final RestClient inventory;
   private final RestClient capacity;
@@ -43,6 +44,7 @@ public class Participants {
   private final RestClient payment;
   private final RestClient order;
   private final RestClient fulfillment;
+  private final RestClient claim;
   private final ObjectMapper mapper;
 
   public Participants(
@@ -53,6 +55,7 @@ public class Participants {
     this.payment = builder.clone().baseUrl(props.paymentBaseUrl()).build();
     this.order = builder.clone().baseUrl(props.orderBaseUrl()).build();
     this.fulfillment = builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build();
+    this.claim = builder.clone().baseUrl(props.claimBaseUrl()).build();
     this.mapper = mapper;
   }
 
@@ -322,6 +325,33 @@ public class Participants {
         order,
         ORDER + " line-quantity-changes",
         "/api/v1/internal/orders/" + orderId + "/line-quantity-changes",
+        requestId,
+        body);
+  }
+
+  // ---------- S2 이행 요청 ----------
+
+  /** 작업 접수(ConfirmOrder). 업무 거절도 201 본문(decision REJECTED)으로 온다 — Ok 의 body 를 본다. */
+  public Result confirmWork(String requestId, Map<String, Object> body) {
+    return post(
+        fulfillment, FULFILLMENT + " work-orders", "/api/v1/internal/work-orders", requestId, body);
+  }
+
+  /** 재고 예약 원본(상태·조각). 조회 실패면 null — 되찾음을 단정하지 않는다. */
+  public @Nullable JsonNode reservation(String reservationId) {
+    try {
+      return query(inventory, INVENTORY, "/api/v1/internal/reservations/{id}", reservationId);
+    } catch (PmartException | HttpClientErrorException e) {
+      return null;
+    }
+  }
+
+  /** 시스템 자동 전체 취소(claim, D6-4). 응답 본문이 클레임(진행 중이던 것이면 200). */
+  public Result systemCancel(String requestId, Map<String, Object> body) {
+    return post(
+        claim,
+        CLAIM + " system-cancellations",
+        "/api/v1/internal/claims/system-cancellations",
         requestId,
         body);
   }

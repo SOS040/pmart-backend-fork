@@ -33,5 +33,11 @@
 - 단계: STOP_WORK(mfc-fulfillment `/internal/stop-requests`, 전부 STOPPED 일 때만 진행·대기는 WAITING_RESULT 재조회·인계됨은 ESCALATED) → RELEASE_RESOURCES(주문을 확정한 S1 사가의 보상 로그에서 슬롯·여력·재고를 찾아 취소 사유로 해제, 원예약 조회로 확인) → APPLY_ORDER_CANCEL(order 수량 변경) → COMPLETED. 환불은 claim 이 한다.
 - 업무 거절은 ESCALATED(자동 보상 없음, 수동 개입 BO-12 미구현). 설정 `pmart.orchestration.mfc-fulfillment-base-url`.
 
+## S2 이행 요청 사가 (2026-11-07, 슬라이스 6a)
+- 정본: `docs/business/flows/order-checkout-saga.md` §2.0·§2.0.1. 규칙 `domain/FulfillmentRules`, 실행 `application/FulfillmentSagaService`, 표 `fulfillment_saga`·`fulfillment_attempt`(V5). 구독 `OrderConfirmed`(order.order.v1, `orderEvents-in-0`).
+- 단계: REQUEST_FULFILLMENT(작업 버전마다 키 `sagaId:REQUEST_FULFILLMENT:v<n>`) → 접수 COMPLETED / 재시도 대상 거절 RETRY_WAITING(AWAIT_RECOVERY, 1분 고정 재확인) / 그 밖 REQUEST_SYSTEM_CANCEL(claim) → COMPLETED. 고객 취소 사가가 있으면 CLOSED_BY_CANCEL.
+- 설정 `pmart.orchestration.fulfillment.*`: `start-orders-confirmed-after`(없으면 S2 시작 안 함), 센터별 `retry-window."[센터]"`·`max-new-versions."[센터]"`(없으면 CONFIG_REQUIRED 보류, 자동 취소 안 함). `claim-base-url`.
+- 대기 마감(처음 거절 + W)·사용한 재시도 수(work_version − 1)는 저장하지 않고 계산 — 설정이 늦게 들어와도 처음 거절 기준.
+
 ## 상태
-S1 a~j 구현(결제 사건 구독 order.payment.v1 → 대사 → 자원 확정 → 주문 확정, 실패 시 보상 취소 확인 뒤 해제). S3 피킹 전 전체 취소(2026-10-31). S2·S4·S3 의 피킹 후/인계·배차 취소, 수동 개입(BO-12), case 상신은 501·미구현. 사가 조회(`/internal/sagas`)는 S1 만.
+S1 a~j 구현(결제 사건 구독 order.payment.v1 → 대사 → 자원 확정 → 주문 확정, 실패 시 보상 취소 확인 뒤 해제). S3 피킹 전 전체 취소(2026-10-31). S2 작업 요청·같은 MFC 재시도·자동 취소(2026-11-07, 6a). S4·S2 의 결품·배차, S3 의 피킹 후/인계·배차 취소, 수동 개입(BO-12), case 상신은 501·미구현. 사가 조회(`/internal/sagas`)는 S1·S2.

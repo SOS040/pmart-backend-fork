@@ -121,6 +121,20 @@ D6-5 세부(사용자 결정 2026-11-07):
 3. 접수 때 패킹대 여력을 다시 검사하지 않는다(결제 진입 때 MFC 여력 점유로 충분).
 4. 이미 `order_work_stop` 이 있는 주문: 부분 중지면 나머지 범위만 작업 생성, 전체 중지면 거절(사유: 이미 중지).
 
+### 2.0.1 구현 상태 (2026-11-07, 슬라이스 6a)
+
+| 단계 | 서비스 | 구현 |
+|---|---|---|
+| 이행 계획 | order | `OrderConfirmed.shipments` = 출고 1개 `<orderId>-S1`(모든 행), 행 `productName` |
+| S2 시작 | order-orchestration | `OrderConfirmed`(order.order.v1, 바인딩 `orderEvents-in-0`) → `fulfillment_saga`(V5, 주문당 1). `pmart.orchestration.fulfillment.start-orders-confirmed-after` 전 확정 주문은 무시(새 구독 그룹이 토픽 처음부터 읽음), 미설정이면 S2 를 시작하지 않는다 |
+| REQUEST_FULFILLMENT | orchestration → mfc-fulfillment | ConfirmOrder(`workVersion`, 키 `sagaId:REQUEST_FULFILLMENT:v<n>`). fulfillment 가 이미 중지된 수량을 빼고(전부면 `ALREADY_STOPPED`), 원래 재고 예약이 확정으로 덮는지 보고(아니면 `INVENTORY_MISMATCH`), 접수면 출고마다 PICK(READY / 예약 주문은 슬롯 시작 − N분까지 WAITING / N 없으면 `CONFIG_REQUIRED` 대기) + PACK(WAITING). 결정은 201 본문, `WorkAccepted`/`WorkRejected` 발행 |
+| AWAIT_RECOVERY | orchestration | 재시도 대상 거절 → `RETRY_WAITING`, 1분마다 mfc-inventory 원래 예약 재확인 → 되찾으면 작업 버전 +1. 처음 거절 + W(센터 `retry-window`), 새 버전 최대 M(`max-new-versions`), 슬롯 시작 경과 → 자동 취소. 센터 설정 없음 → `CONFIG_REQUIRED`(1분마다 재평가, 기준은 처음 거절). 운영 중단은 해제를 알 원천이 없어 재확인 때 바로 새 버전(fulfillment 가 판정) — 6a 에는 그 거절의 원천도 없다 |
+| REQUEST_SYSTEM_CANCEL | orchestration → claim | `POST /internal/claims/system-cancellations`(reason FULFILLMENT_REJECTED, channel SYSTEM) → `CancellationRequested` → 기존 S3(중지 → 해제 → 주문 취소) → 전액 환불. 진행 중 고객 취소가 있으면 claim 이 그것을 돌려준다 |
+| 끝 | orchestration | `COMPLETED` + outcome(`WORK_ACCEPTED` / `CANCEL_REQUESTED` / `CLOSED_BY_CANCEL` — 고객 취소 S3 가 먼저 시작됨). 하위 4xx 는 `ESCALATED`. 조회 `GET /internal/sagas/{id}`, `GET /internal/sagas?orderId=&sagaType=S2_FULFILLMENT` |
+| 접수 뒤 취소 | mfc-fulfillment | 주문 단위 중지가 접수된 작업 행을 취소(잔량 0 작업·출고 CANCELLED). 6a 는 피킹 시작이 없어 판정은 전부 STOPPED |
+
+6b 이후: 작업자 배정·피킹 시작(`PreparationStarted` → order 상품준비)·결품·패킹·출발, 포장별 중지 판정(fence).
+
 ### 2.1 결품(LineShortageReported) 처리
 
 | 고객 사전 선택 | 처리 |

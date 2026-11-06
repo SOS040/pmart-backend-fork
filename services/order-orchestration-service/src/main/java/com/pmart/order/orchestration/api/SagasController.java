@@ -17,6 +17,8 @@ import com.pmart.order.orchestration.api.generated.model.SagaType;
 import com.pmart.order.orchestration.api.generated.model.StepName;
 import com.pmart.order.orchestration.api.generated.model.StepState;
 import com.pmart.order.orchestration.application.CheckoutSagaService;
+import com.pmart.order.orchestration.application.FulfillmentSagaService;
+import com.pmart.order.orchestration.infrastructure.FulfillmentStore;
 import com.pmart.order.orchestration.infrastructure.SagaStore.SagaRow;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -26,18 +28,27 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 
-/** 사가 조회(진행 사본). 결제·재고·슬롯 성공은 각 정본의 원결과 조회로만 확정한다. 수동 개입(BO-12)은 아직 501. */
+/**
+ * 사가 조회(진행 사본) — S1 결제 진입, S2 이행 요청(2026-11-07). 결제·재고·슬롯·작업 성공은 각 정본의 원결과 조회로만 확정한다. 수동 개입(BO-12)은
+ * 아직 501.
+ */
 @RestController
 public class SagasController implements SagasApi {
 
   private final CheckoutSagaService sagas;
+  private final FulfillmentSagaService fulfillments;
 
-  SagasController(CheckoutSagaService sagas) {
+  SagasController(CheckoutSagaService sagas, FulfillmentSagaService fulfillments) {
     this.sagas = sagas;
+    this.fulfillments = fulfillments;
   }
 
   @Override
   public ResponseEntity<Saga> getSaga(String sagaId) {
+    var f = fulfillments.find(sagaId);
+    if (f.isPresent()) {
+      return ResponseEntity.ok(fulfillment(f.get()));
+    }
     SagaRow s =
         sagas
             .find(sagaId)
@@ -132,6 +143,24 @@ public class SagasController implements SagasApi {
     }
     int n = size == null ? 20 : Math.min(Math.max(size, 1), 100);
     ListSagas200Response out = new ListSagas200Response();
+    if (orderId != null
+        && draftId == null
+        && stopRequestId == null
+        && (sagaType == null || sagaType == SagaType.S2_FULFILLMENT)) {
+      fulfillments
+          .list(orderId, state == null ? null : state.getValue(), n)
+          .forEach(
+              s ->
+                  out.addItemsItem(
+                      new SagaSummary()
+                          .sagaId(s.sagaId())
+                          .sagaType(SagaType.S2_FULFILLMENT)
+                          .state(SagaState.fromValue(s.state()))
+                          .orderId(s.orderId())
+                          .currentStep(StepName.fromValue(s.currentStep()))
+                          .startedAt(time(s.startedAt()))
+                          .updatedAt(time(s.updatedAt()))));
+    }
     if (stopRequestId == null && (sagaType == null || sagaType == SagaType.S1_CHECKOUT)) {
       sagas
           .list(orderId, draftId, state == null ? null : state.getValue(), n)
@@ -149,6 +178,73 @@ public class SagasController implements SagasApi {
                           .updatedAt(time(s.updatedAt()))));
     }
     return ResponseEntity.ok(out.page(new ListSagas200ResponsePage().size(n)));
+  }
+
+  /** S2: 작업 버전마다 REQUEST_FULFILLMENT 단계 하나(attempt = 작업 버전), 대기·자동 취소 단계. */
+  private Saga fulfillment(FulfillmentStore.SagaRow s) {
+    Saga out =
+        new Saga()
+            .sagaId(s.sagaId())
+            .sagaType(SagaType.S2_FULFILLMENT)
+            .state(SagaState.fromValue(s.state()))
+            .version(s.version())
+            .orderId(s.orderId())
+            .mfcId(s.mfcId())
+            .currentStep(StepName.fromValue(s.currentStep()))
+            .startedAt(time(s.startedAt()))
+            .updatedAt(time(s.updatedAt()))
+            .finishedAt(time(s.finishedAt()));
+    for (FulfillmentStore.AttemptRow a : fulfillments.attempts(s.sagaId())) {
+      out.addStepsItem(
+          new SagaStep()
+              .step(StepName.REQUEST_FULFILLMENT)
+              .state(
+                  a.decision() == null
+                      ? StepState.UNKNOWN
+                      : "ACCEPTED".equals(a.decision()) ? StepState.SUCCEEDED : StepState.FAILED)
+              .targetSystem("mfc-fulfillment-service")
+              .requestId(a.requestId())
+              .resultId(s.fulfillmentId())
+              .attempt(a.workVersion())
+              .startedAt(time(a.requestedAt()))
+              .finishedAt(time(a.decidedAt()))
+              .lastErrorCode(a.rejectReason()));
+    }
+    if ("RETRY_WAITING".equals(s.state()) || "CONFIG_REQUIRED".equals(s.state())) {
+      out.addStepsItem(
+          new SagaStep()
+              .step(StepName.AWAIT_RECOVERY)
+              .state(StepState.IN_PROGRESS)
+              .targetSystem("mfc-inventory-service")
+              .startedAt(time(s.firstRejectedAt()))
+              .timeoutAt(time(s.nextCheckAt()))
+              .lastErrorCode("CONFIG_REQUIRED".equals(s.state()) ? "CONFIG_REQUIRED" : null));
+    }
+    if (s.claimId() != null || FulfillmentRulesView.SYSTEM_CANCEL.equals(s.currentStep())) {
+      out.addStepsItem(
+          new SagaStep()
+              .step(StepName.REQUEST_SYSTEM_CANCEL)
+              .state(s.claimId() != null ? StepState.SUCCEEDED : StepState.IN_PROGRESS)
+              .targetSystem("claim-service")
+              .resultId(s.claimId()));
+    }
+    if (s.lastErrorCode() != null) {
+      out.lastError(
+          new SagaLastError()
+              .step(s.lastErrorStep() == null ? null : StepName.fromValue(s.lastErrorStep()))
+              .code(s.lastErrorCode())
+              .message(s.lastErrorMessage()));
+    } else if (s.outcome() != null && !"WORK_ACCEPTED".equals(s.outcome())) {
+      // 결과 구분(자동 취소 요청·고객 취소로 닫힘)은 lastError 로 보인다 — 계약에 outcome 필드가 없다
+      out.lastError(new SagaLastError().code(s.outcome()));
+    }
+    return out;
+  }
+
+  /** 단계 이름 상수(domain 의존을 한 곳에). */
+  private static final class FulfillmentRulesView {
+    static final String SYSTEM_CANCEL =
+        com.pmart.order.orchestration.domain.FulfillmentRules.REQUEST_SYSTEM_CANCEL;
   }
 
   private static @Nullable OffsetDateTime time(@Nullable Instant i) {
