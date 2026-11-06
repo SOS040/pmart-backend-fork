@@ -56,6 +56,12 @@ check() {
       grep -q '"status":"green"' <<<"$body" ;;
     prometheus|alertmanager) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:$([ "$c" = prometheus ] && echo 9090 || echo 9093)/-/ready")" = 200 ] ;;
     grafana)  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:3000/api/health")" = 200 ] ;;
+    # Kafka 클러스터 지표(ADR-0037). 브로커 수는 보지 않는다 — 브로커가 죽은 것은 경보(KafkaBrokerDown)가 알리고,
+    # exporter 를 재시작해도 고쳐지지 않는다. 규칙이 없을 때는 기본(actuator)으로 늘 실패해 10분마다 재시작됐다(2026-11-06)
+    # 본문을 먼저 받는다: pipefail 아래 `curl | grep -q` 는 grep 이 먼저 끝나 curl 이 23(쓰기 실패)으로 끝나면 실패가 된다
+    kafka-exporter)
+      body="$(curl -sf -m 8 "http://$ip:9308/metrics")" || return 1
+      grep -q '^kafka_brokers ' <<<"$body" ;;
     connect)
       body="$(curl -sf -m 8 "http://$ip:8083/connectors?expand=status")" || return 1
       # 커넥터가 하나 이상 있고 RUNNING 이 아닌 상태(UNASSIGNED·FAILED·PAUSED)가 없어야 한다
