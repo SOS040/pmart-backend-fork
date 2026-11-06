@@ -404,4 +404,98 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     // 거절 뒤에는 새 취소 접수를 다시 받을 수 있다(중복 접수 제한은 진행 중인 것만)
     assertThat(post(me, UUID.randomUUID().toString(), cancel(orderId, 10)).status()).isEqualTo(201);
   }
+
+  Res system(String key, Map<String, Object> body) {
+    var e =
+        http.post()
+            .uri("/internal/claims/system-cancellations")
+            .headers(
+                h -> {
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "order-orchestration-service");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /** 슬라이스 6a D6-4: MFC 작업 거절 뒤 orchestration 의 자동 전체 취소 — 고객 취소와 같은 흐름, 진행 중 취소가 있으면 그것. */
+  @Test
+  void systemCancellationAfterFulfillmentRejected() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "CONFIRMED");
+    paymentAccepts(orderId);
+    Map<String, Object> body =
+        Map.of(
+            "orderId",
+            orderId,
+            "reason",
+            "FULFILLMENT_REJECTED",
+            "reasonDetail",
+            "INVENTORY_MISMATCH v3",
+            "sourceRef",
+            "S2-1");
+
+    Res r = system("S2-1:REQUEST_SYSTEM_CANCEL", body);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    String claimId = r.body().path("claimId").asString();
+    assertThat(r.body().path("state").asString()).isEqualTo("STOP_PENDING");
+    assertThat(r.body().path("reason").asString()).isEqualTo("FULFILLMENT_REJECTED");
+    assertThat(r.body().path("lines").path(0).path("requestedQty").asInt()).isEqualTo(10);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT channel || ' ' || account_id FROM claim WHERE claim_id = ?",
+                String.class,
+                claimId))
+        .isEqualTo("SYSTEM " + account);
+    JsonNode req =
+        mapper.readTree(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'CancellationRequested'"
+                    + " AND aggregateid = ?",
+                String.class,
+                claimId));
+    assertThat(req.path("payload").path("reason").asString()).isEqualTo("FULFILLMENT_REJECTED");
+    assertThat(req.path("payload").path("channel").asString()).isEqualTo("SYSTEM");
+
+    // 같은 키 재전송 → 같은 클레임(201 재생), 다른 키 → 진행 중 클레임 200(새로 만들지 않음)
+    assertThat(system("S2-1:REQUEST_SYSTEM_CANCEL", body).body().path("claimId").asString())
+        .isEqualTo(claimId);
+    Res again = system("S2-1:other", body);
+    assertThat(again.status()).isEqualTo(200);
+    assertThat(again.body().path("claimId").asString()).isEqualTo(claimId);
+    assertThat(outbox("CancellationRequested", claimId)).isEqualTo(1);
+
+    // 뒤 흐름은 고객 취소와 같다: OrderCancelled → 원 승인액 전액 환불 실행
+    orderCancelled(orderId, claimId);
+    Res done =
+        await(
+            TestJwt.service("order-orchestration-service"),
+            "/claims/" + claimId,
+            b -> "IN_PROGRESS".equals(b.path("state").asString()));
+    assertThat(done.body().path("state").asString()).isEqualTo("IN_PROGRESS");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT amount FROM refund_intent WHERE claim_id = ?", Long.class, claimId))
+        .isEqualTo(19_100L);
+
+    // 확정 아닌 주문 → 422, 없는 주문 → 404
+    String cancelled = "ORD-" + UUID.randomUUID();
+    order(cancelled, account, "CANCELLED");
+    Map<String, Object> b2 = new LinkedHashMap<>(body);
+    b2.put("orderId", cancelled);
+    Res no = system("k-" + cancelled, b2);
+    assertThat(no.status()).isEqualTo(422);
+    assertThat(no.body().path("code").asString()).isEqualTo("ORDER_NOT_CANCELLABLE");
+    Map<String, Object> b3 = new LinkedHashMap<>(body);
+    b3.put("orderId", "ORD-NONE");
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/orders/ORD-NONE"))
+            .willReturn(json(404, Map.of("code", "ORDER_NOT_FOUND"))));
+    assertThat(system("k-none", b3).status()).isEqualTo(404);
+  }
 }

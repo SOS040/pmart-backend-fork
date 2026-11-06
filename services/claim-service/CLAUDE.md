@@ -27,5 +27,9 @@
 - 환불 sweep(`pmart.claim.refund-sweep-interval`, 기본 15초): 실행 대기는 같은 키로 재실행, PG 결과 대기·불명은 `GET …/cancellations/{requestId}` 원거래 조회. 기준 `pmart.claim.refund-retry-after`(30초).
 - 조회: `GET /claims/{id}`·`/claims/{id}/refunds`(고객 본인, 남의 것 404, 운영자·서비스 모두), `GET /claims`(고객은 본인 것, cursor 없음 — 최근 순 size 건).
 
+## 시스템 자동 전체 취소 (2026-11-07, 슬라이스 6a D6-4)
+- `POST /internal/claims/system-cancellations`(orchestration S2, MFC 작업 거절 뒤): order 원장으로 CONFIRMED·미이행 수량 확인(아니면 422 ORDER_NOT_CANCELLABLE, 없으면 404) → 모든 행 × 미이행 수량, channel SYSTEM·reason FULFILLMENT_REJECTED, 계정은 주문의 accountId. 뒤 흐름은 고객 취소와 같다(`CancellationRequested` reason FULFILLMENT_REJECTED·channel → S3 → OrderCancelled → 전액 환불).
+- 진행 중인 취소 클레임이 이미 있으면(고객이 먼저) 새로 만들지 않고 200 으로 그 클레임. 같은 키·같은 본문은 재생(201). sourceRef(사가 ID)는 reasonDetail 끝에 붙인다.
+
 ## 상태
-고객 전체 취소·환불 실행·조회 구현(2026-10-31). 심사·결정·철회·반품·교환·회수 수령은 501.
+고객 전체 취소·환불 실행·조회(2026-10-31), 시스템 자동 전체 취소(2026-11-07). 심사·결정·철회·반품·교환·회수 수령은 501.

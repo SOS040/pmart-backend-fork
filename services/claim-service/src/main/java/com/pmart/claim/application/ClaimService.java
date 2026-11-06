@@ -59,6 +59,13 @@ public class ClaimService {
 
   public record ClaimView(ClaimRow claim, List<LineRow> lines, List<RefundRow> refunds) {}
 
+  /** 시스템 자동 취소 결과. created=false 면 이미 진행 중이던 취소 클레임. */
+  public record SystemCancellation(ClaimView view, boolean created) {}
+
+  private record Opened(String claimId, boolean created) {}
+
+  public static final String SYSTEM_CHANNEL = "SYSTEM";
+
   private final ClaimStore store;
   private final Upstreams upstreams;
   private final RequestIdempotency idempotency;
@@ -122,6 +129,79 @@ public class ClaimService {
                 () -> open(who.subject(), in, order, byLine))
             .value();
     return view(claimId);
+  }
+
+  /**
+   * 시스템 자동 전체 취소(D6-4, 슬라이스 6a). orchestration 이 MFC 작업 거절을 확인한 뒤 부른다. 고객 선택 단계 없이 주문 전체(모든 행 × 미이행
+   * 수량)를 취소 접수 — 뒤 흐름(S3 → OrderCancelled → 원 승인액 전액 환불)은 고객 취소와 같다. 이미 진행 중인 취소 클레임이 있으면 새로 만들지 않고
+   * 그것을 돌려준다(고객이 먼저 취소한 경우).
+   */
+  public SystemCancellation createSystemCancellation(
+      String idempotencyKey,
+      String sourceSystem,
+      String orderId,
+      String reason,
+      @Nullable String reasonDetail) {
+    JsonNode order = upstreams.order(orderId);
+    if (order == null) {
+      throw PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다.");
+    }
+    List<ClaimRules.OrderLine> lines = new ArrayList<>();
+    List<ClaimRules.Requested> all = new ArrayList<>();
+    Map<String, JsonNode> byLine = new LinkedHashMap<>();
+    for (JsonNode l : order.path("lines")) {
+      String id = l.path("orderLineId").asString();
+      int unfulfilled = l.path("unfulfilledQty").asInt();
+      lines.add(
+          new ClaimRules.OrderLine(
+              id,
+              l.path("sku").asString(),
+              l.path("unitPrice").asLong(),
+              l.path("originalQty").asInt(),
+              unfulfilled));
+      if (unfulfilled > 0) {
+        all.add(new ClaimRules.Requested(id, unfulfilled));
+      }
+      byLine.put(id, l);
+    }
+    CreateCommand in =
+        new CreateCommand(orderId, "CANCEL", all, reason, reasonDetail, SYSTEM_CHANNEL);
+    Opened o =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, idempotencyKey, "createSystemCancellation", actor()),
+                in,
+                Opened.class,
+                () -> {
+                  ClaimRow active = store.activeCancel(orderId).orElse(null);
+                  if (active != null) {
+                    log.info(
+                        "주문 {} 에 진행 중인 취소 {} 가 있어 자동 취소를 새로 만들지 않는다", orderId, active.claimId());
+                    return new Opened(active.claimId(), false);
+                  }
+                  if (all.isEmpty()) {
+                    throw new PmartException(
+                        "ORDER_NOT_CANCELLABLE",
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "취소할 미이행 수량이 없습니다.",
+                        false,
+                        List.of());
+                  }
+                  try {
+                    ClaimRules.checkFullCancel(order.path("status").asString(), lines, all);
+                  } catch (ClaimRules.Rejection r) {
+                    throw new PmartException(
+                        r.code(),
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        r.getMessage(),
+                        false,
+                        List.of());
+                  }
+                  return new Opened(
+                      open(order.path("accountId").asString(), in, order, byLine), true);
+                })
+            .value();
+    return new SystemCancellation(view(o.claimId()), o.created());
   }
 
   private String open(
@@ -289,6 +369,12 @@ public class ClaimService {
     store.updateState(c.claimId(), "REJECTED", "HANDED_OVER", now, now, now);
     events.claimClosed(c, "REJECTED_HANDED_OVER", now);
     log.info("클레임 {} 인계된 포장이 있어 출고 전 취소 불가", c.claimId());
+  }
+
+  private static String actor() {
+    return PmartPrincipal.current()
+        .map(PmartPrincipal::subject)
+        .orElse(RequestIdempotency.ANONYMOUS);
   }
 
   private static PmartException unsupported(String message) {
