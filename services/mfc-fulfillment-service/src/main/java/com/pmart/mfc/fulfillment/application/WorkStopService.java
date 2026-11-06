@@ -7,6 +7,8 @@ import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.PmartException;
+import com.pmart.mfc.fulfillment.domain.WorkRules;
+import com.pmart.mfc.fulfillment.infrastructure.WorkOrderStore;
 import com.pmart.mfc.fulfillment.infrastructure.WorkStopStore;
 import com.pmart.mfc.fulfillment.infrastructure.WorkStopStore.StopRow;
 import java.time.Clock;
@@ -26,8 +28,8 @@ import tools.jackson.databind.ObjectMapper;
  * 근거가 아니다(ADR-0006).
  *
  * <ul>
- *   <li>작업 지시가 아직 없는 주문(슬라이스 6 전에는 모든 주문)은 요청 수량 전부를 STOPPED(notStartedLines)로 확정하고 기록을 남긴다. 이 기록은
- *       이후 같은 주문의 작업 요청이 중지된 수량을 빼고 받는 근거다(슬라이스 6에서 연결).
+ *   <li>요청 수량 전부를 STOPPED(notStartedLines)로 확정하고 기록을 남긴다 — 6a 는 피킹 시작이 없다. 이 기록은 이후 같은 주문의 작업
+ *       요청(ConfirmOrder)이 중지된 수량을 빼고 받는 근거다. 이미 접수된 작업 지시가 있으면 그 수량만큼 작업을 취소한다(2026-11-07).
  *   <li>같은 stopRequestId 는 기존 판정(다른 주문·수량이면 409 IDEMPOTENCY_CONFLICT). 판정과 WorkStopResult(Outbox,
  *       토픽 mfc.fulfillment.v1)는 한 트랜잭션.
  * </ul>
@@ -58,6 +60,7 @@ public class WorkStopService {
       Instant resolvedAt) {}
 
   private final WorkStopStore store;
+  private final WorkOrderStore works;
   private final RequestIdempotency idempotency;
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
@@ -66,12 +69,14 @@ public class WorkStopService {
 
   public WorkStopService(
       WorkStopStore store,
+      WorkOrderStore works,
       RequestIdempotency idempotency,
       EventPublisher events,
       EventEnvelopeCodec codec,
       ObjectMapper mapper,
       Clock clock) {
     this.store = store;
+    this.works = works;
     this.idempotency = idempotency;
     this.events = events;
     this.codec = codec;
@@ -86,6 +91,7 @@ public class WorkStopService {
             in,
             Verdict.class,
             () -> {
+              works.lockOrder(in.orderId()); // 같은 주문의 작업 접수와 한 줄로
               StopRow existing = store.find(in.stopRequestId()).orElse(null);
               if (existing != null) {
                 if (!existing.orderId().equals(in.orderId())
@@ -105,14 +111,50 @@ public class WorkStopService {
                       in.scope(),
                       json,
                       "RESOLVED",
-                      json, // 작업 지시가 없다 — 요청 수량 전부 작업 전 중지
+                      json, // 6a: 피킹 시작이 없다 — 요청 수량 전부 작업 전 중지
                       now);
               store.insert(row);
+              boolean cancelled = cancelAcceptedWork(in, now);
               publish(row, in.lines());
-              log.info("주문 {} 작업 중지 {} — 작업 지시 없음, 전량 STOPPED", in.orderId(), in.stopRequestId());
+              log.info(
+                  "주문 {} 작업 중지 {} — 전량 STOPPED{}",
+                  in.orderId(),
+                  in.stopRequestId(),
+                  cancelled ? " (접수된 작업 취소)" : " (작업 지시 없음)");
               return verdict(row);
             })
         .value();
+  }
+
+  /**
+   * 접수된 작업 지시가 있으면 중지 수량만큼 작업 행을 취소하고, 잔량이 없는 작업·출고는 CANCELLED(슬라이스 6a — 피킹 시작 전이라 포장 판정 없음). 거절된
+   * 작업 지시는 작업이 없다.
+   */
+  private boolean cancelAcceptedWork(StopCommand in, Instant now) {
+    WorkOrderStore.WorkOrderRow w = works.findByOrder(in.orderId()).orElse(null);
+    if (w == null || !"ACCEPTED".equals(w.acceptance())) {
+      return false;
+    }
+    List<WorkOrderStore.TaskLineRow> lines = works.taskLines(w.fulfillmentId());
+    Map<String, Integer> remainingByLine = new LinkedHashMap<>();
+    for (WorkOrderStore.TaskLineRow l : lines) {
+      remainingByLine.merge(l.orderLineId(), l.remaining(), Math::max); // PICK·PACK 은 같은 행
+    }
+    Map<String, Integer> cancel =
+        WorkRules.cancelAgainst(
+            remainingByLine,
+            in.lines().stream()
+                .map(l -> new WorkRules.Line(l.orderLineId(), "", l.qty()))
+                .toList());
+    for (WorkOrderStore.TaskLineRow l : lines) {
+      int c = Math.min(l.remaining(), cancel.getOrDefault(l.orderLineId(), 0));
+      if (c > 0) {
+        works.cancelQty(l.taskId(), l.orderLineId(), c);
+      }
+    }
+    works.closeEmptyTasks(w.fulfillmentId(), now);
+    works.touch(w.fulfillmentId(), now);
+    return true;
   }
 
   public Verdict get(String stopRequestId) {

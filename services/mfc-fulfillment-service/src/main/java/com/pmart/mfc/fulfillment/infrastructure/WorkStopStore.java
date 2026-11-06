@@ -4,6 +4,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -51,6 +53,19 @@ public class WorkStopStore {
         r.state(),
         r.notStartedLines(),
         Timestamp.from(r.decidedAt()));
+  }
+
+  /** 주문의 작업 전 중지 수량 합(orderLineId → 수량). 작업 접수가 이 수량을 빼고 받는다. */
+  public Map<String, Integer> stoppedByLine(String orderId) {
+    Map<String, Integer> out = new LinkedHashMap<>();
+    jdbc.query(
+        "SELECT l->>'orderLineId' AS line, SUM((l->>'qty')::int) AS qty FROM order_work_stop w,"
+            + " jsonb_array_elements(w.not_started_lines) l WHERE w.order_id = ? GROUP BY 1",
+        rs -> {
+          out.put(rs.getString("line"), rs.getInt("qty"));
+        },
+        orderId);
+    return out;
   }
 
   private static StopRow row(ResultSet rs) throws SQLException {
