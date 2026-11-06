@@ -92,7 +92,7 @@ PG 진입 전 두 타이머 모두 유효해야 하며 더 이른 만료를 고�
 ```
 OrderConfirmed → order-orchestration → mfc-fulfillment.ConfirmOrder(orderId, fulfillmentId, lines, window, outOfStockPreference, lotConstraints)
   ← WorkAccepted (작업 접수 ≠ 피킹 완료) | WorkRejected(재고 불일치/LOT 부적격/운영 중단/여력 부족)
-WorkRejected → 같은 MFC 내 적격 재고 복구 가능? → 새 작업 버전 재개 : 자동 전체 취소 + 전액 환불(사용자 결정 2026-11-06, 이전 "고객 선택(보류/취소·정산)" 대체). 타 MFC 재배정 없음.
+WorkRejected → 같은 MFC 내 적격 재고 복구 가능?(D6-5: 재고 불일치·운영 중단, 10분·최대 2번) → 새 작업 버전 재개 : 자동 전체 취소 + 전액 환불(사용자 결정 2026-11-06, 이전 "고객 선택(보류/취소·정산)" 대체). 타 MFC 재배정 없음.
 mfc-fulfillment: PreparationStarted → order-service `상품준비`(이후 예약 시간 변경 차단)
 mfc-fulfillment: 피킹 → 패킹 → PackingFinished → ShipmentReady(포장·봉투·중량·주류)
 ```
@@ -105,6 +105,8 @@ mfc-fulfillment: 피킹 → 패킹 → PackingFinished → ShipmentReady(포장�
 | D6-2 | 출고(shipment) 단위 | **주문당 출고 1개**(MFC Q-10 기준선, 10kg 분할 미채택) | `ConfirmOrder.shipments[]` 는 원소 1개. 분할·합배송은 Q-10 결정 뒤 출고 줄 추가로 확장 |
 | D6-3 | 예약 주문 PICK `READY` 시점 | **배송 슬롯 시작 N분 전**. N 은 센터 운영 설정, LAN 값 **90분**. 미설정 센터는 그 작업만 `CONFIG_REQUIRED` 보류(0·즉시로 대체하지 않음) | 즉시 배송(가장 이른 슬롯)은 접수 즉시 READY 와 같아진다 |
 | D6-4 | `WorkRejected` 뒤 | **자동 전체 취소 + 전액 환불**(고객 선택 단계 없음). 타 MFC 재배정 없음 | 취소 사가(S3)와 claim 환불(원 승인액 전액)로 처리. 작업이 없으니 STOP_WORK 는 이미 끝난 것으로 본다 |
+
+| D6-5 | `WorkRejected` 뒤 같은 MFC 재시도(OMS 6장 "적격 재고 복구 → 새 작업 버전") | **6a 에 포함.** 대상 사유는 **재고 불일치·운영 중단**만(여력 부족은 결제 때 여력을 이미 점유했으므로 실제 문제로 보고 바로 D6-4, LOT 부적격은 6a 에 LOT 가 없어 해당 없음). order-orchestration 이 거절 뒤 **W분 동안 1분마다** 재고 원장의 남은 예약·적격 재고를 다시 확인하고, 되찾았으면 **새 작업 버전**으로 ConfirmOrder 를 다시 보낸다. **W = 10분, 주문당 새 작업 버전 최대 2번**(센터 운영 설정 — 미설정이면 재시도 없이 D6-4 가 아니라 그 주문만 `CONFIG_REQUIRED` 보류). 배송 슬롯 시작이 지나면 기다리지 않고 D6-4 | 그동안 고객 자가 취소는 열려 있다(피킹 전, D6-1). 재시도 실패·횟수 초과·창 만료 → D6-4 |
 
 기본값(사용자 확인 2026-11-06):
 1. 작업 접수 때 출고마다 PICK(`READY` — 예약 주문은 D6-3) + PACK(`WAITING`, 피킹 완료 뒤 `READY`) 작업을 만든다. 출발(DISPATCH)은 6c.
