@@ -115,6 +115,12 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
   ```
   DB 가 없는 search-service 는 `dead_letter` 없이 `{topic}.DLT` 에만 남는다(색인은 버전 비교로 멱등 — 다시 넣으면 된다).
 
+## API 문서 (Swagger UI, 2026-11-06)
+- `http://192.168.0.40:8090` — 구성요소 `api-docs`(`swaggerapi/swagger-ui`, api-gateway PC 에 자동으로 붙음). 위쪽 목록에서 서비스를 고른다.
+- 명세는 `contracts/openapi/*.yaml`(계약 정본) 그대로다. render 가 복사하면서 `servers` 만 게이트웨이 절대 주소(`http://<게이트웨이 PC>:8080/api/v1`)로 바꾼다 — 그래서 "Try it out" 은 게이트웨이를 거친다(`/internal/**` 은 게이트웨이가 막는다).
+- 호출하려면 **Authorize** 에 토큰(`Bearer` 없이 값만)을 넣는다. 보기만은 토큰 없이 된다. 게이트웨이 CORS 에 `http://192.168.0.40:8090` 이 있어야 한다(pmart-config `api-gateway-lan.yml`, 바꾸면 게이트웨이 재시작).
+- 계약을 고친 뒤 반영: `lan.sh deploy <게이트웨이 PC> api-docs`(파일만 바뀌면 컨테이너는 그대로 — 브라우저 새로 고침). LAN 전용, 운영에는 띄우지 않는다.
+
 ## 장애 대비 (2026-10-27, `docs/worklog/2026-10-27.md`)
 - **컨테이너 고정 IP**: compose 네트워크 `172.28.0.0/24`, 구성요소는 배치 순서대로 `.10~`, 자동 배정은 `.192/26`.
   Docker Desktop VM 이 리셋되면 새 VM 이 이전 포트 전달 규칙(옛 컨테이너 IP)을 복원하는데, IP 가 바뀌면 LAN 포트가 엉뚱한 컨테이너로 간다.

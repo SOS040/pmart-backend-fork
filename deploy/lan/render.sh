@@ -46,9 +46,9 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter "
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -80,6 +80,11 @@ for k in search logs; do
     COMPS[${WHERE[es-$k]}]+=" es-exporter-$k"; WHERE[es-exporter-$k]=${WHERE[es-$k]}
   fi
 done
+# API 문서(2026-11-06 사용자 요청): api-gateway PC 에 Swagger UI 하나 — contracts/openapi 전체를 목록으로, "Try it out" 은
+# 게이트웨이(8080)로 보낸다. LAN 전용(운영에는 띄우지 않는다). 맨 뒤에 붙여 기존 구성요소의 고정 IP 유지
+if [ -n "${WHERE[api-gateway]:-}" ]; then
+  COMPS[${WHERE[api-gateway]}]+=" api-docs"; WHERE[api-docs]=${WHERE[api-gateway]}
+fi
 # Prometheus 수집 대상: 배치된 모든 Spring 앱(인프라 제외) <PC IP>:<포트>/actuator/prometheus
 apps_all() { for c in "${!WHERE[@]}"; do [[ "$c" == postgres-* || "$INFRA" == *" $c "* ]] || echo "$c"; done | sort; }
 src_dir() { for d in services platform-services; do [ -d "$d/$1" ] && { echo "$d/$1"; return; }; done; echo "서비스 없음: $1" >&2; exit 1; }
@@ -639,6 +644,22 @@ EOF
 EOF
         fi
         ;;
+      api-docs)
+        # Swagger UI(정적 nginx). 명세는 ./api-docs/specs(render 가 contracts/openapi 를 복사하며 servers 를 게이트웨이 주소로 바꾼다)
+        cat <<EOF
+  api-docs:
+    <<: *common
+    image: swaggerapi/swagger-ui:v5.17.14
+    ports: ["8090:8080"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      CONFIG_URL: /specs/swagger-config.json
+    volumes:
+      - ./api-docs/specs:/usr/share/nginx/html/specs:ro
+    mem_limit: 64m
+
+EOF
+        ;;
       *)
         port="$(port_of "$c")"; [ -n "$port" ] || { echo "포트 없음: $c" >&2; exit 1; }
         echo "  $c:"
@@ -748,6 +769,21 @@ EOF
   if [[ " ${COMPS[$pc]} " == *" $KAFKA_METRICS_NODE "* ]]; then
     mkdir -p "$dir/metrics"
     echo "watch.sh(PC 1)가 kafka_topics.prom 을 쓴다. host-disk(node-exporter textfile)가 읽는다 — ADR-0034" > "$dir/metrics/README.txt"
+  fi
+
+  # API 문서(api-docs): 계약 명세 복사 + servers 를 게이트웨이 절대 주소로(상대 주소면 Swagger UI 의 8090 으로 보낸다)
+  if [[ " ${COMPS[$pc]} " == *" api-docs "* ]]; then
+    mkdir -p "$dir/api-docs/specs"
+    gw="http://${IP[${WHERE[api-gateway]}]}:8080"
+    urls=""
+    for f in contracts/openapi/*.yaml; do
+      b="$(basename "$f")"
+      sed -E "s#^(  - url: )(/[^ ]*)#\1$gw\2#" "$f" > "$dir/api-docs/specs/$b"
+      case "$b" in _*|redocly.yaml) continue ;; esac
+      urls+="${urls:+,}{\"url\":\"/specs/$b\",\"name\":\"${b%.yaml}\"}"
+    done
+    printf '{"urls":[%s],"urls.primaryName":"api-gateway","deepLinking":true,"persistAuthorization":true,"displayRequestDuration":true}
+' "$urls" > "$dir/api-docs/specs/swagger-config.json"
   fi
 
   # 관측 구성 파일(ADR-0030): 이 PC 에 있는 것만
