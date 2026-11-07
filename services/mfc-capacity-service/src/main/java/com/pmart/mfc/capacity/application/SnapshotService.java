@@ -22,13 +22,21 @@ public class SnapshotService {
       int capacityUnits,
       int heldUnits,
       int confirmedUnits,
-      int availableUnits) {}
+      int availableUnits,
+      java.util.List<String> activeRestrictions) {}
 
   private final HoldStore store;
   private final CapacityProperties props;
   private final Clock clock;
 
-  public SnapshotService(HoldStore store, CapacityProperties props, Clock clock) {
+  private final com.pmart.mfc.capacity.infrastructure.RestrictionStore restrictions;
+
+  public SnapshotService(
+      HoldStore store,
+      CapacityProperties props,
+      Clock clock,
+      com.pmart.mfc.capacity.infrastructure.RestrictionStore restrictions) {
+    this.restrictions = restrictions;
     this.store = store;
     this.props = props;
     this.clock = clock;
@@ -36,7 +44,12 @@ public class SnapshotService {
 
   public Snapshot snapshot(String mfcId, String windowText) {
     HourWindow window = CapacityRules.window(windowText);
-    int capacity = CapacityRules.requireCapacity(props.unitsPerHour());
+    var active = restrictions.active(mfcId);
+    int capacity =
+        com.pmart.mfc.capacity.domain.RestrictionRules.capacity(
+            CapacityRules.requireCapacity(props.unitsPerHour()), active, window);
+    boolean stopped =
+        com.pmart.mfc.capacity.domain.RestrictionRules.intakeStop(active, window) != null;
     Instant now = clock.instant();
     HoldStore.Occupancy occ = store.occupancy(mfcId, window, now);
     return new Snapshot(
@@ -47,6 +60,7 @@ public class SnapshotService {
         capacity,
         occ.held(),
         occ.confirmed(),
-        CapacityRules.available(capacity, occ.held(), occ.confirmed()));
+        stopped ? 0 : CapacityRules.available(capacity, occ.held(), occ.confirmed()),
+        com.pmart.mfc.capacity.domain.RestrictionRules.applying(active, window));
   }
 }

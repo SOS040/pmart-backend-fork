@@ -127,7 +127,7 @@ public class CapacityController implements CapacityApi {
                         .stage(CapacitySnapshotStagesInner.StageEnum.WORKFORCE)
                         .rawCapacity(s.capacityUnits())
                         .convertedUnits(s.capacityUnits())))
-            .activeRestrictions(List.of()));
+            .activeRestrictions(s.activeRestrictions()));
   }
 
   private static HoldCapacity201Response command(CommandResponse r) {

@@ -11,6 +11,7 @@ import com.pmart.mfc.capacity.domain.CapacityHold;
 import com.pmart.mfc.capacity.domain.CapacityHold.State;
 import com.pmart.mfc.capacity.domain.CapacityRules;
 import com.pmart.mfc.capacity.domain.CapacityRules.HourWindow;
+import com.pmart.mfc.capacity.domain.RestrictionRules;
 import com.pmart.mfc.capacity.infrastructure.HoldStore;
 import java.time.Clock;
 import java.time.Duration;
@@ -55,12 +56,16 @@ public class HoldService {
   private final ObjectMapper mapper;
   private final Clock clock;
 
+  private final com.pmart.mfc.capacity.infrastructure.RestrictionStore restrictions;
+
   public HoldService(
+      com.pmart.mfc.capacity.infrastructure.RestrictionStore restrictions,
       HoldStore store,
       RequestIdempotency idempotency,
       CapacityProperties props,
       ObjectMapper mapper,
       Clock clock) {
+    this.restrictions = restrictions;
     this.store = store;
     this.idempotency = idempotency;
     this.props = props;
@@ -76,7 +81,7 @@ public class HoldService {
             body,
             CommandResponse.class,
             () -> {
-              int capacity = CapacityRules.requireCapacity(props.unitsPerHour());
+              int configured = CapacityRules.requireCapacity(props.unitsPerHour());
               Instant now = clock.instant();
               // 잠금 순서: Hold 행 → 창 행
               for (CapacityHold stale : store.expireStaleForOrder(cmd.orderId(), now)) {
@@ -86,6 +91,18 @@ public class HoldService {
                 throw alreadyActive(cmd.orderId());
               }
               store.lockWindow(cmd.mfcId(), window, now);
+              // 운영 제한(BO-08): 접수 중지면 거절, 축소면 그 창 수용 단위를 줄인다
+              var active = restrictions.active(cmd.mfcId());
+              String stop = RestrictionRules.intakeStop(active, window);
+              if (stop != null) {
+                throw new PmartException(
+                    RestrictionRules.OPERATION_RESTRICTED,
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                    "신규 접수가 중지된 창입니다(" + cmd.mfcId() + " " + window.text() + ", 제한 " + stop + ").",
+                    false,
+                    List.of());
+              }
+              int capacity = RestrictionRules.capacity(configured, active, window);
               HoldStore.Occupancy occ = store.occupancy(cmd.mfcId(), window, now);
               int units = CapacityRules.unitsPerOrder();
               if (!CapacityRules.fits(capacity, occ.held(), occ.confirmed(), units)) {

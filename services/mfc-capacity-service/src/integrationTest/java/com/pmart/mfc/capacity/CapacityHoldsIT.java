@@ -178,6 +178,114 @@ class CapacityHoldsIT extends PostgresKafkaContainerSupport {
         expectedVersion);
   }
 
+  Res restriction(String token, String method, String pathAndQuery, @Nullable Object body) {
+    var spec =
+        RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1")
+            .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+            .build()
+            .method(org.springframework.http.HttpMethod.valueOf(method))
+            .uri(pathAndQuery)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", key());
+                  h.set("X-Source-System", "backoffice");
+                });
+    var e =
+        (body == null
+                ? spec
+                : spec.contentType(MediaType.APPLICATION_JSON)
+                    .body(mapper.writeValueAsString(body)))
+            .retrieve()
+            .toEntity(String.class);
+    return res(e);
+  }
+
+  static String start(String window) {
+    return window.substring(0, window.indexOf('/'));
+  }
+
+  /** 운영 제한(BO-08): 축소는 기존 Hold 유지·넘친 창 주문 표시·신규 판정에 반영, 접수 중지는 신규 Hold 거절, 해제하면 다시 받는다. */
+  @Test
+  void restrictionsStopIntakeAndReduceCapacityWithoutDroppingExistingHolds() {
+    String sup = TestJwt.operator("sup", List.of("MFC_SUPERVISOR"), List.of("MFC-1"));
+    String worker = TestJwt.operator("w", List.of("MFC_WORKER"), List.of("MFC-1"));
+    String w20 = window(20);
+    String w21 = window(21);
+    String a = order();
+    String b = order();
+    assertThat(post("/capacity-holds", holdBody(a, w20)).status()).isEqualTo(201);
+    assertThat(post("/capacity-holds", holdBody(b, w20)).status()).isEqualTo(201);
+
+    Map<String, Object> reduce = new java.util.LinkedHashMap<>();
+    reduce.put("mfcId", "MFC-1");
+    reduce.put("restrictionType", "CAPACITY_REDUCE");
+    reduce.put("approvalRef", "BO8-1");
+    reduce.put("effectiveFrom", start(w20));
+    reduce.put("effectiveTo", start(w21));
+    reduce.put("reducedCapacityUnits", 1);
+    assertThat(restriction(worker, "POST", "/operation-restrictions", reduce).status())
+        .isEqualTo(403);
+    Res r = restriction(sup, "POST", "/operation-restrictions", reduce);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    assertThat(r.body().path("appliedQty").asInt()).isEqualTo(2);
+    String reduceId = r.body().path("resultId").asString();
+    JsonNode got = restriction(sup, "GET", "/operation-restrictions/" + reduceId, null).body();
+    assertThat(got.path("state").asString()).isEqualTo("ACTIVE");
+    assertThat(got.path("affectedOrderIds").size()).isEqualTo(2);
+    // 기존 Hold 는 그대로, 수용 1·남은 0, 신규는 여력 초과
+    JsonNode snap = snapshot(w20).body();
+    assertThat(snap.path("capacityUnits").asInt()).isEqualTo(1);
+    assertThat(snap.path("heldUnits").asInt()).isEqualTo(2);
+    assertThat(snap.path("availableUnits").asInt()).isZero();
+    assertThat(snap.path("activeRestrictions").path(0).asString()).isEqualTo(reduceId);
+    assertThat(post("/capacity-holds", holdBody(order(), w20)).body().path("code").asString())
+        .isEqualTo("CAPACITY_EXCEEDED");
+    // 범위 밖 창은 그대로
+    assertThat(snapshot(w21).body().path("capacityUnits").asInt()).isEqualTo(3);
+
+    // 접수 중지(끝 없음) — 근거 없으면 거절
+    Map<String, Object> stop = new java.util.LinkedHashMap<>();
+    stop.put("mfcId", "MFC-1");
+    stop.put("restrictionType", "INTAKE_STOP");
+    stop.put("approvalRef", " ");
+    stop.put("effectiveFrom", start(w21));
+    assertThat(
+            restriction(sup, "POST", "/operation-restrictions", stop)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("APPROVAL_REQUIRED");
+    stop.put("approvalRef", "BO8-2");
+    String stopId =
+        restriction(sup, "POST", "/operation-restrictions", stop)
+            .body()
+            .path("resultId")
+            .asString();
+    Res refused = post("/capacity-holds", holdBody(order(), w21));
+    assertThat(refused.status()).isEqualTo(422);
+    assertThat(refused.body().path("code").asString()).isEqualTo("OPERATION_RESTRICTED");
+    assertThat(snapshot(w21).body().path("availableUnits").asInt()).isZero();
+    assertThat(
+            restriction(sup, "GET", "/operation-restrictions?mfcId=MFC-1", null)
+                .body()
+                .path("items")
+                .size())
+        .isGreaterThanOrEqualTo(2);
+
+    // 해제하면 다시 받는다(축소는 아직 남음 — 하나 해제해도 나머지 유지)
+    assertThat(
+            restriction(
+                    sup, "DELETE", "/operation-restrictions/" + stopId + "?approvalRef=BO8-3", null)
+                .status())
+        .isEqualTo(202);
+    assertThat(post("/capacity-holds", holdBody(order(), w21)).status()).isEqualTo(201);
+    assertThat(snapshot(w20).body().path("capacityUnits").asInt()).isEqualTo(1);
+    restriction(sup, "DELETE", "/operation-restrictions/" + reduceId + "?approvalRef=BO8-4", null);
+    assertThat(snapshot(w20).body().path("capacityUnits").asInt()).isEqualTo(3);
+  }
+
   @Test
   void holdConfirmRelease() {
     String w = window(10);

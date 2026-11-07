@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -390,7 +390,13 @@ paths:
     post:
       tags: [restrictions]
       summary: 운영 제한 적용 (INTAKE_STOP / CAPACITY_REDUCE, approvalRef 필수, OperationRestrictionApplied)
-      description: CAPACITY_REDUCE 는 기존 약속을 삭제하지 않고 영향 주문 목록을 CapacityReduced 로 발행한다. delivery-capacity 정원의 입력이지 자동 변경이 아니다.
+      description: |
+        CAPACITY_REDUCE 는 기존 약속을 삭제하지 않고 영향 주문 목록을 CapacityReduced 로 발행한다. delivery-capacity 정원의 입력이지 자동 변경이 아니다.
+        구현(0.3.0, 2026-11-08, BO-08): 그 센터 MFC_SUPERVISOR. approvalRef 필수(422 APPROVAL_REQUIRED — BO-08 승인 ID, 존재 확인 없이 기록).
+        범위 = 슬롯 창(1시간)이 [effectiveFrom, effectiveTo) 와 겹치는 것(effectiveTo 없음 = 끝 없음). **시간이 지나도 자동 해제하지 않는다** — 해제(DELETE)로만.
+        INTAKE_STOP: 범위 창의 신규 Hold 422 OPERATION_RESTRICTED(기존 Hold·확정은 그대로) + OperationRestrictionApplied.
+        CAPACITY_REDUCE: reducedCapacityUnits 필수, 범위 창의 수용 단위 = min(설정값, 활성 축소들) — 신규 Hold 판정·스냅샷에 반영. 지금 활성 점유가 새 수용 단위를
+        넘는 창마다 CapacityReduced(그 창의 활성 주문 = affectedOrders, 기존 약속 유지). 제한이 여럿이면 모두 적용(하나 해제돼도 나머지 유지).
       operationId: applyOperationRestriction
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -440,6 +446,7 @@ paths:
     delete:
       tags: [restrictions]
       summary: 운영 제한 해제·재개 (approvalRef 필수, OperationRestrictionLifted)
+      description: '구현(0.3.0): 그 센터 MFC_SUPERVISOR, ACTIVE 만(이미 LIFTED 면 지금 상태 202). INTAKE_STOP 해제는 OperationRestrictionLifted. 다른 제한은 유지.'
       operationId: liftOperationRestriction
       parameters:
         - { name: restrictionId, in: path, required: true, schema: { type: string } }
@@ -488,7 +495,7 @@ components:
               stage: { type: string, enum: [PICKING, PACKING, STORAGE, WORKFORCE] }
               rawCapacity: { type: integer }
               convertedUnits: { type: integer }
-        activeRestrictions: { type: array, items: { type: string } }
+        activeRestrictions: { type: array, items: { type: string }, description: '0.3.0 — 이 창에 걸린 활성 제한 ID' }
     CapacityHold:
       type: object
       properties:
