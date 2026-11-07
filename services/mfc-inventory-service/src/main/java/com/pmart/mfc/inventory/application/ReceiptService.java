@@ -6,14 +6,17 @@ import com.pmart.common.web.CommandStatus;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.inventory.domain.StockRules;
-import com.pmart.mfc.inventory.domain.StockRules.ReceiptDelta;
 import com.pmart.mfc.inventory.domain.StockRules.ReceiptLine;
+import com.pmart.mfc.inventory.domain.StockUnit.Change;
+import com.pmart.mfc.inventory.domain.StockUnit.Key;
+import com.pmart.mfc.inventory.domain.StockUnit.Quality;
+import com.pmart.mfc.inventory.domain.StockUnit.Work;
 import com.pmart.mfc.inventory.infrastructure.StockStore;
-import com.pmart.mfc.inventory.infrastructure.StockStore.CommitRow;
-import com.pmart.mfc.inventory.infrastructure.StockStore.EntryRow;
+import com.pmart.mfc.inventory.infrastructure.StockStore.ReceiptLineRow;
 import com.pmart.mfc.inventory.infrastructure.StockStore.ReceiptRow;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,16 +25,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * ConfirmReceipt(TIN 전기). 같은 receiptId 는 한 번만 계상한다: {@code stock_receipt} 유일 키로 선점하고, 같은 receiptId
- * 가 다시 오면 내용 지문이 같을 때 처음 commitId 를 돌려준다(Idempotency-Key 가 달라도). 검수 단계(INSPECT)가 아직 없어 정상 수량은 바로 E
- * 가 된다(계약 설명 참조). MfcReceiptPosted 는 TRF 경로 구현 때 발행한다.
+ * ConfirmReceipt(TIN 전기, IV-02, ADR-0040 결정 3). 수령 위치에 UNSTOWED 로 넣는다 — 정상·미판정 PENDING_INSPECTION,
+ * 격리 QUARANTINED. H(와 격리분 Q)만 늘고 E 는 검수(INSPECT)·적치(PUTAWAY) 뒤에 생긴다. 줄마다 LOT 을 정한다: 상류 LOT 표기나
+ * 소비기한이 있으면 같은 SKU·표기·기한의 추적 LOT, 둘 다 없으면 추적 미확인 LOT. 같은 receiptId 는 한 번만 계상한다(내용 지문이 같으면 처음
+ * commitId). MfcReceiptPosted 는 TRF 경로 구현 때 발행한다.
  */
 @Service
 public class ReceiptService {
 
   public static final String RECEIPT_ALREADY_POSTED = "RECEIPT_ALREADY_POSTED";
+  public static final String RECEIPT_NOT_FOUND = "RECEIPT_NOT_FOUND";
   static final String OP = "confirmReceipt";
 
   private static final Logger log = LoggerFactory.getLogger(ReceiptService.class);
@@ -46,24 +52,24 @@ public class ReceiptService {
       List<ReceiptLine> lines) {}
 
   private final StockStore stock;
+  private final Ledger ledger;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
-  public ReceiptService(StockStore stock, RequestIdempotency idempotency, Clock clock) {
+  public ReceiptService(
+      StockStore stock, Ledger ledger, RequestIdempotency idempotency, Clock clock) {
     this.stock = stock;
+    this.ledger = ledger;
     this.idempotency = idempotency;
     this.clock = clock;
   }
 
   public CommandResponse confirm(String requestId, String sourceSystem, ReceiptCommand cmd) {
-    List<ReceiptDelta> deltas;
+    int total;
     try {
-      deltas = StockRules.receiptDeltas(cmd.lines());
+      total = StockRules.validateReceipt(cmd.lines());
     } catch (IllegalArgumentException | ArithmeticException e) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, e.getMessage());
-    }
-    if (deltas.isEmpty()) {
-      throw new PmartException(ErrorCode.VALIDATION_FAILED, "수령 수량 합이 0 입니다.");
     }
     String fingerprint =
         StockRules.receiptFingerprint(cmd.mfcId(), cmd.trfId(), cmd.departureId(), cmd.lines());
@@ -74,46 +80,90 @@ public class ReceiptService {
             CommandResponse.class,
             () -> {
               Instant at = clock.instant();
-              int total = deltas.stream().mapToInt(ReceiptDelta::onHand).sum();
-              String commitId = "CMT-" + UUID.randomUUID();
+              String commitId = Ledger.newCommitId();
               if (!stock.claimReceipt(
                   cmd.receiptId(), cmd.mfcId(), fingerprint, commitId, total, at)) {
                 return already(requestId, cmd.receiptId(), fingerprint);
               }
-              stock.insertCommit(
-                  new CommitRow(
-                      commitId,
-                      "TIN",
-                      cmd.mfcId(),
-                      requestId,
-                      sourceSystem,
-                      cmd.receiptId(),
-                      total,
-                      at));
-              for (ReceiptDelta d : deltas) {
-                long v =
-                    stock.addReceipt(
-                        cmd.mfcId(), d.sku(), d.onHand(), d.quarantined(), d.sellable(), at);
-                stock.insertEntry(commitId, cmd.mfcId(), new EntryRow(d.sku(), "H", d.onHand(), v));
-                if (d.sellable() > 0) {
-                  stock.insertEntry(
-                      commitId, cmd.mfcId(), new EntryRow(d.sku(), "E", d.sellable(), v));
+              List<Change> changes = new ArrayList<>();
+              List<ReceiptLineRow> rows = new ArrayList<>();
+              int lineNo = 0;
+              for (ReceiptLine l : cmd.lines()) {
+                lineNo++;
+                String lotId = lotFor(l, cmd.receiptId(), at);
+                Key pending =
+                    new Key(
+                        l.locationCode(),
+                        l.sku(),
+                        lotId,
+                        Quality.PENDING_INSPECTION,
+                        Work.UNSTOWED);
+                int pend = l.normalQty() + l.pendingQty();
+                if (pend > 0) {
+                  changes.add(new Change(pending, pend));
                 }
-                if (d.quarantined() > 0) {
-                  stock.insertEntry(
-                      commitId, cmd.mfcId(), new EntryRow(d.sku(), "Q", d.quarantined(), v));
+                if (l.quarantinedQty() > 0) {
+                  changes.add(
+                      new Change(
+                          pending.with(Quality.QUARANTINED, Work.UNSTOWED), l.quarantinedQty()));
                 }
+                rows.add(
+                    new ReceiptLineRow(
+                        lineNo,
+                        l.sku(),
+                        lotId,
+                        l.locationCode(),
+                        l.normalQty(),
+                        l.quarantinedQty(),
+                        l.pendingQty()));
+              }
+              ledger.postAs(
+                  commitId,
+                  "TIN",
+                  cmd.mfcId(),
+                  requestId,
+                  sourceSystem,
+                  cmd.receiptId(),
+                  total,
+                  changes,
+                  List.of(),
+                  at);
+              for (ReceiptLineRow r : rows) {
+                stock.insertReceiptLine(cmd.receiptId(), r);
               }
               log.info(
-                  "receipt {} posted to {} as {} ({} units)",
+                  "receipt {} posted to {} as {} ({} units, {} lines)",
                   cmd.receiptId(),
                   cmd.mfcId(),
                   commitId,
-                  total);
+                  total,
+                  rows.size());
               return new CommandResponse(
                   CommandStatus.APPLIED, requestId, commitId, total, null, false, null, at);
             })
         .value();
+  }
+
+  private String lotFor(ReceiptLine l, String receiptId, Instant at) {
+    String newId = "LOT-" + UUID.randomUUID();
+    if (l.sourceLotRef() == null && l.expiryDate() == null) {
+      return stock.untrackedLot(l.sku(), newId, receiptId, at);
+    }
+    return stock.trackedLot(l.sku(), l.sourceLotRef(), l.expiryDate(), newId, receiptId, at);
+  }
+
+  /** 수령 결과. */
+  public record ReceiptView(String commitId, List<ReceiptLineRow> lines) {}
+
+  /** 수령 결과(줄별 LOT·위치). inbound 가 검수·적치에 쓴다. */
+  @Transactional(readOnly = true)
+  public ReceiptView result(String receiptId) {
+    ReceiptRow r =
+        stock
+            .receipt(receiptId)
+            .orElseThrow(
+                () -> PmartException.notFound(RECEIPT_NOT_FOUND, "수령 전기가 없습니다: " + receiptId));
+    return new ReceiptView(r.commitId(), stock.receiptLines(receiptId));
   }
 
   /** 같은 receiptId 가 이미 전기됨: 같은 내용이면 처음 commitId, 다르면 409. */

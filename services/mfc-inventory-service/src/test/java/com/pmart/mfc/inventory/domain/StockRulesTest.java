@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.pmart.mfc.inventory.domain.ReservationState.Transition;
 import com.pmart.mfc.inventory.domain.StockRules.Balance;
 import com.pmart.mfc.inventory.domain.StockRules.Line;
-import com.pmart.mfc.inventory.domain.StockRules.ReceiptDelta;
 import com.pmart.mfc.inventory.domain.StockRules.ReceiptLine;
 import com.pmart.mfc.inventory.domain.StockRules.Shortage;
 import java.util.List;
@@ -52,28 +51,39 @@ class StockRulesTest {
         .isEmpty();
   }
 
+  static ReceiptLine line(String sku, String loc, int n, int q, int p) {
+    return new ReceiptLine(sku, null, null, loc, n, q, p);
+  }
+
   @Test
-  void receiptNormalAddsSellableQuarantinedAndPendingOnlyOnHand() {
-    List<ReceiptDelta> d =
-        StockRules.receiptDeltas(
-            List.of(
-                new ReceiptLine(B, 2, 1, 1),
-                new ReceiptLine(A, 5, 0, 0),
-                new ReceiptLine(A, 1, 0, 0)));
-    assertThat(d).containsExactly(new ReceiptDelta(A, 6, 0, 6), new ReceiptDelta(B, 4, 1, 2));
-    assertThat(StockRules.receiptDeltas(List.of(new ReceiptLine(A, 0, 0, 0)))).isEmpty();
-    assertThatThrownBy(() -> StockRules.receiptDeltas(List.of(new ReceiptLine(A, -1, 0, 0))))
+  void receiptValidationNeedsLocationAndPositiveTotal() {
+    assertThat(
+            StockRules.validateReceipt(
+                List.of(line(B, "RCV-1", 2, 1, 1), line(A, "RCV-1", 5, 0, 0))))
+        .isEqualTo(9);
+    assertThatThrownBy(() -> StockRules.validateReceipt(List.of(line(A, "RCV-1", 0, 0, 0))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> StockRules.validateReceipt(List.of(line(A, "RCV-1", -1, 0, 0))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> StockRules.validateReceipt(List.of(line(A, null, 1, 0, 0))))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void receiptFingerprintIgnoresLineOrderButNotQuantities() {
-    var x = List.of(new ReceiptLine(A, 5, 0, 0), new ReceiptLine(B, 1, 0, 0));
-    var y = List.of(new ReceiptLine(B, 1, 0, 0), new ReceiptLine(A, 5, 0, 0));
-    var z = List.of(new ReceiptLine(A, 4, 0, 0), new ReceiptLine(B, 1, 0, 0));
-    assertThat(StockRules.receiptFingerprint("M", "T", "D", x))
-        .isEqualTo(StockRules.receiptFingerprint("M", "T", "D", y))
-        .isNotEqualTo(StockRules.receiptFingerprint("M", "T", "D", z))
+  void receiptFingerprintCoversLotLocationAndQuantities() {
+    var x = List.of(line(A, "RCV-1", 5, 0, 0), line(B, "RCV-1", 1, 0, 0));
+    var lot =
+        List.of(
+            new ReceiptLine(A, "M-LOT-9", java.time.LocalDate.of(2026, 11, 20), "RCV-1", 5, 0, 0),
+            line(B, "RCV-1", 1, 0, 0));
+    var loc = List.of(line(A, "RCV-2", 5, 0, 0), line(B, "RCV-1", 1, 0, 0));
+    var qty = List.of(line(A, "RCV-1", 4, 0, 0), line(B, "RCV-1", 1, 0, 0));
+    String fx = StockRules.receiptFingerprint("M", "T", "D", x);
+    assertThat(fx).isEqualTo(StockRules.receiptFingerprint("M", "T", "D", List.copyOf(x)));
+    assertThat(fx)
+        .isNotEqualTo(StockRules.receiptFingerprint("M", "T", "D", lot))
+        .isNotEqualTo(StockRules.receiptFingerprint("M", "T", "D", loc))
+        .isNotEqualTo(StockRules.receiptFingerprint("M", "T", "D", qty))
         .isNotEqualTo(StockRules.receiptFingerprint("M2", "T", "D", x));
   }
 
@@ -99,5 +109,9 @@ class StockRulesTest {
     assertThat(ReservationState.CONFIRMED.release()).isEqualTo(Transition.APPLY);
     assertThat(ReservationState.RELEASED.release()).isEqualTo(Transition.ALREADY);
     assertThat(ReservationState.EXPIRED.release()).isEqualTo(Transition.ALREADY);
+    assertThat(ReservationState.BLOCKED.confirm()).isEqualTo(Transition.INVALID);
+    assertThat(ReservationState.BLOCKED.release()).isEqualTo(Transition.INVALID);
+    assertThat(ReservationState.CONSUMED.release()).isEqualTo(Transition.INVALID);
+    assertThat(ReservationState.BLOCKED.holdsStock()).isFalse();
   }
 }

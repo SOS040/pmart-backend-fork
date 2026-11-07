@@ -75,6 +75,10 @@ public class QueriesController implements QueriesApi {
                 e -> {
                   var d = new CommitEntriesInner();
                   d.setSku(e.sku());
+                  d.setLotId(e.lotId());
+                  d.setLocationCode(e.locationCode());
+                  d.setQualityState(e.qualityState());
+                  d.setWorkState(e.workState());
                   d.setSymbol(CommitEntriesInner.SymbolEnum.fromValue(e.symbol()));
                   d.setDelta(e.delta());
                   d.setBalanceVersion((int) e.balanceVersion());

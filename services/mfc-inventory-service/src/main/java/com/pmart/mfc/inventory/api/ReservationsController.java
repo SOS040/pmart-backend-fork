@@ -12,6 +12,7 @@ import com.pmart.mfc.inventory.api.generated.model.ReserveInventory201Response;
 import com.pmart.mfc.inventory.api.generated.model.ReserveInventoryRequest;
 import com.pmart.mfc.inventory.application.ReservationService;
 import com.pmart.mfc.inventory.application.ReservationService.ReserveCommand;
+import com.pmart.mfc.inventory.application.ReservationService.ReserveLine;
 import com.pmart.mfc.inventory.domain.StockRules.Line;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -37,19 +38,24 @@ public class ReservationsController implements ReservationsApi {
       String xSourceSystem,
       ReserveInventoryRequest body,
       @Nullable String traceparent) {
-    List<Line> lines = new ArrayList<>();
+    List<ReserveLine> lines = new ArrayList<>();
     for (var l : body.getLines()) {
       if (l.getLotConstraint() != null) {
         throw new PmartException(
-            ErrorCode.VALIDATION_FAILED, "lotConstraint 는 아직 지원하지 않습니다(LOT 차원 없음).");
+            ErrorCode.VALIDATION_FAILED, "lotConstraint 는 아직 지원하지 않습니다(FEFO·최소 잔여일로 배정).");
       }
-      lines.add(new Line(l.getSku(), l.getQty()));
+      lines.add(new ReserveLine(l.getOrderLineId(), l.getSku(), l.getQty()));
     }
     var r =
         service.reserve(
             idempotencyKey,
             xSourceSystem,
-            new ReserveCommand(body.getOrderId(), body.getMfcId(), body.getTtlMinutes(), lines));
+            new ReserveCommand(
+                body.getOrderId(),
+                body.getMfcId(),
+                body.getTtlMinutes(),
+                body.getPromisedDate(),
+                lines));
     return ResponseEntity.status(HttpStatus.CREATED).body(Commands.dto(r));
   }
 
@@ -65,17 +71,18 @@ public class ReservationsController implements ReservationsApi {
     out.setState(ReservationPartState.fromValue(r.state().name()));
     out.setExpiresAt(r.expiresAt() == null ? null : SkuHandlingsController.time(r.expiresAt()));
     List<ReservationPartsInner> parts = new ArrayList<>();
-    v.lines()
-        .forEach(
-            (sku, qty) -> {
-              var p = new ReservationPartsInner();
-              p.setPartId(r.reservationId() + ":" + sku);
-              p.setSku(sku);
-              p.setKind(ReservationPartsInner.KindEnum.HAND);
-              p.setQty(qty);
-              p.setState(ReservationPartState.fromValue(r.state().name()));
-              parts.add(p);
-            });
+    for (var part : v.parts()) {
+      var p = new ReservationPartsInner();
+      p.setPartId(part.partId());
+      p.setOrderLineId(part.orderLineId());
+      p.setSku(part.sku());
+      p.setLotId(part.lotId());
+      p.setKind(ReservationPartsInner.KindEnum.fromValue(part.kind()));
+      p.setQty(part.qty());
+      p.setState(ReservationPartState.fromValue(part.state().name()));
+      p.setBlockedReason(part.blockedReason());
+      parts.add(p);
+    }
     out.setParts(parts);
     var asOf = new com.pmart.mfc.inventory.api.generated.model.GetAvailability200ResponseAsOf();
     asOf.setAsOf(SkuHandlingsController.time(Instant.now()));

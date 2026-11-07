@@ -1,10 +1,15 @@
 package com.pmart.mfc.inventory.infrastructure;
 
 import com.pmart.mfc.inventory.domain.StockRules.Balance;
+import com.pmart.mfc.inventory.domain.StockUnit.Key;
+import com.pmart.mfc.inventory.domain.StockUnit.Quality;
+import com.pmart.mfc.inventory.domain.StockUnit.Work;
+import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -17,8 +22,10 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * 재고 원장 저장(JDBC): 잔량 {@code stock_balance}, 확정 단위 {@code stock_commit}·{@code stock_ledger_entry},
- * 수령 중복 방지 {@code stock_receipt}. 잔량 변경은 호출자가 잡은 행 잠금 안에서 하고, 불변식은 표 CHECK 로도 막는다.
+ * 재고 원장 저장(JDBC, ADR-0040): 단위 행 {@code stock_unit}, LOT {@code stock_lot}, LOT 요약 {@code
+ * stock_lot_balance}, 센터 요약 {@code stock_balance}, 확정 단위 {@code stock_commit}·{@code
+ * stock_ledger_entry}, 수령·실행 중복 방지. 수량 변경은 호출자(application {@code Ledger})가 정한 잠금 순서(센터 요약 → LOT 요약
+ * → 단위 행) 안에서 하고, 불변식은 표 CHECK 로도 막는다.
  */
 @Repository
 public class StockStore {
@@ -34,11 +41,58 @@ public class StockStore {
       int appliedQty,
       Instant occurredAt) {}
 
-  /** 원장 기록 한 줄. */
-  public record EntryRow(String sku, String symbol, int delta, long balanceVersion) {}
+  /** 원장 기록 한 줄. 요약 수준 기록(R)은 위치·상태가 없다. */
+  public record EntryRow(
+      String sku,
+      @Nullable String lotId,
+      @Nullable String locationCode,
+      @Nullable String qualityState,
+      @Nullable String workState,
+      String symbol,
+      int delta,
+      long balanceVersion) {}
 
-  /** 이미 전기된 수령. */
+  /** 이미 전기된 수령·실행. */
   public record ReceiptRow(String receiptId, String contentHash, String commitId, int appliedQty) {}
+
+  /** LOT 요약 + LOT 정보. */
+  public record LotBalance(
+      String sku,
+      String lotId,
+      @Nullable LocalDate expiryDate,
+      String tracking,
+      int onHand,
+      int quarantined,
+      int sellable,
+      int reserved,
+      @Nullable Instant firstNormalAt,
+      long version) {
+
+    public int available() {
+      return sellable - reserved;
+    }
+  }
+
+  /** LOT. */
+  public record LotRow(
+      String lotId,
+      String sku,
+      @Nullable String sourceLotRef,
+      @Nullable LocalDate expiryDate,
+      String tracking) {}
+
+  /** 수령 줄 결과. */
+  public record ReceiptLineRow(
+      int lineNo,
+      String sku,
+      String lotId,
+      String locationCode,
+      int normalQty,
+      int quarantinedQty,
+      int pendingQty) {}
+
+  /** 단위 행. */
+  public record UnitRow(Key key, int qty, long version) {}
 
   private static final String BALANCE_COLUMNS =
       "sku, on_hand, quarantined, sellable, reserved, row_version";
@@ -51,9 +105,21 @@ public class StockStore {
     this.named = named;
   }
 
-  // ---------- 잔량 ----------
+  // ---------- 센터 요약 ----------
 
-  /** 잔량 행을 SKU 오름차순으로 잠근다(모든 수량 변경이 같은 순서로 잠가 교착을 피한다). 행이 없는 SKU 는 결과에 없다(= 0). */
+  /** 없는 센터 요약 행을 0 으로 만든다(수령 등 처음 생기는 SKU). 이미 있으면 그대로. */
+  public void ensureCenterRows(String mfcId, Collection<String> skus, Instant at) {
+    for (String sku : skus) {
+      jdbc.update(
+          "INSERT INTO stock_balance (mfc_id, sku, on_hand, quarantined, sellable, reserved,"
+              + " row_version, updated_at) VALUES (?,?,0,0,0,0,0,?) ON CONFLICT DO NOTHING",
+          mfcId,
+          sku,
+          Timestamp.from(at));
+    }
+  }
+
+  /** 센터 요약 행을 SKU 오름차순으로 잠근다(모든 수량 변경의 첫 잠금). 행이 없는 SKU 는 결과에 없다(= 0). */
   public Map<String, Balance> lockBalances(String mfcId, Collection<String> skus) {
     Map<String, Balance> out = new LinkedHashMap<>();
     if (skus.isEmpty()) {
@@ -88,48 +154,233 @@ public class StockStore {
   }
 
   /**
-   * 수령 전기: 행이 없으면 만들고 있으면 더한다(INSERT ... ON CONFLICT 가 행을 잠근다).
+   * 센터 요약 증감(잠근 행).
    *
    * @return 반영 후 row_version
    */
-  public long addReceipt(
-      String mfcId, String sku, int onHand, int quarantined, int sellable, Instant at) {
+  public long applyCenter(String mfcId, String sku, int dh, int dq, int de, int dr, Instant at) {
     Long v =
         jdbc.queryForObject(
-            "INSERT INTO stock_balance (mfc_id, sku, on_hand, quarantined, sellable, reserved,"
-                + " row_version, updated_at) VALUES (?,?,?,?,?,0,1,?)"
-                + " ON CONFLICT (mfc_id, sku) DO UPDATE SET"
-                + " on_hand = stock_balance.on_hand + EXCLUDED.on_hand,"
-                + " quarantined = stock_balance.quarantined + EXCLUDED.quarantined,"
-                + " sellable = stock_balance.sellable + EXCLUDED.sellable,"
-                + " row_version = stock_balance.row_version + 1, updated_at = EXCLUDED.updated_at"
-                + " RETURNING row_version",
-            Long.class,
-            mfcId,
-            sku,
-            onHand,
-            quarantined,
-            sellable,
-            Timestamp.from(at));
-    return v == null ? 0 : v;
-  }
-
-  /**
-   * 예약 수량 변경(R+delta). 호출자가 {@link #lockBalances} 로 잠근 행이어야 한다.
-   *
-   * @return 반영 후 row_version
-   */
-  public long addReserved(String mfcId, String sku, int delta, Instant at) {
-    Long v =
-        jdbc.queryForObject(
-            "UPDATE stock_balance SET reserved = reserved + ?, row_version = row_version + 1,"
+            "UPDATE stock_balance SET on_hand = on_hand + ?, quarantined = quarantined + ?,"
+                + " sellable = sellable + ?, reserved = reserved + ?, row_version = row_version + 1,"
                 + " updated_at = ? WHERE mfc_id = ? AND sku = ? RETURNING row_version",
             Long.class,
-            delta,
+            dh,
+            dq,
+            de,
+            dr,
             Timestamp.from(at),
             mfcId,
             sku);
     return v == null ? 0 : v;
+  }
+
+  // ---------- LOT ----------
+
+  /** 추적 LOT: 같은 SKU·원문·소비기한이면 같은 LOT. 없으면 만든다(경합 시 유일 인덱스가 하나만 남긴다). */
+  public String trackedLot(
+      String sku,
+      @Nullable String sourceLotRef,
+      @Nullable LocalDate expiryDate,
+      String newLotId,
+      String originRef,
+      Instant at) {
+    jdbc.update(
+        "INSERT INTO stock_lot (lot_id, sku, source_lot_ref, expiry_date, tracking, origin_ref,"
+            + " created_at) VALUES (?,?,?,?,'TRACKED',?,?)"
+            + " ON CONFLICT (sku, source_lot_ref, expiry_date) WHERE tracking = 'TRACKED' DO NOTHING",
+        newLotId,
+        sku,
+        sourceLotRef,
+        expiryDate == null ? null : Date.valueOf(expiryDate),
+        originRef,
+        Timestamp.from(at));
+    return jdbc.queryForObject(
+        "SELECT lot_id FROM stock_lot WHERE tracking = 'TRACKED' AND sku = ?"
+            + " AND source_lot_ref IS NOT DISTINCT FROM ? AND expiry_date IS NOT DISTINCT FROM ?",
+        String.class,
+        sku,
+        sourceLotRef,
+        expiryDate == null ? null : Date.valueOf(expiryDate));
+  }
+
+  /** 추적 미확인 LOT(수령마다 새로). */
+  public String untrackedLot(String sku, String newLotId, String originRef, Instant at) {
+    jdbc.update(
+        "INSERT INTO stock_lot (lot_id, sku, tracking, origin_ref, created_at)"
+            + " VALUES (?,?,'UNTRACKED',?,?)",
+        newLotId,
+        sku,
+        originRef,
+        Timestamp.from(at));
+    return newLotId;
+  }
+
+  public Map<String, LotRow> lots(Collection<String> lotIds) {
+    Map<String, LotRow> out = new LinkedHashMap<>();
+    if (lotIds.isEmpty()) {
+      return out;
+    }
+    named.query(
+        "SELECT lot_id, sku, source_lot_ref, expiry_date, tracking FROM stock_lot"
+            + " WHERE lot_id IN (:ids)",
+        Map.of("ids", lotIds),
+        rs -> {
+          Date d = rs.getDate("expiry_date");
+          out.put(
+              rs.getString("lot_id"),
+              new LotRow(
+                  rs.getString("lot_id"),
+                  rs.getString("sku"),
+                  rs.getString("source_lot_ref"),
+                  d == null ? null : d.toLocalDate(),
+                  rs.getString("tracking")));
+        });
+    return out;
+  }
+
+  // ---------- LOT 요약 ----------
+
+  /** 없는 LOT 요약 행을 0 으로 만든다. */
+  public void ensureLotRow(String mfcId, String sku, String lotId, Instant at) {
+    jdbc.update(
+        "INSERT INTO stock_lot_balance (mfc_id, sku, lot_id, row_version, updated_at)"
+            + " VALUES (?,?,?,0,?) ON CONFLICT DO NOTHING",
+        mfcId,
+        sku,
+        lotId,
+        Timestamp.from(at));
+  }
+
+  private static final String LOT_BALANCE_SELECT =
+      "SELECT b.sku, b.lot_id, l.expiry_date, l.tracking, b.on_hand, b.quarantined, b.sellable,"
+          + " b.reserved, b.first_normal_at, b.row_version"
+          + " FROM stock_lot_balance b JOIN stock_lot l ON l.lot_id = b.lot_id";
+
+  /** SKU 들의 LOT 요약을 (SKU, lot_id) 순으로 잠근다. 센터 요약을 먼저 잠근 뒤에 부른다. */
+  public List<LotBalance> lockLotBalances(String mfcId, Collection<String> skus) {
+    if (skus.isEmpty()) {
+      return List.of();
+    }
+    return named.query(
+        LOT_BALANCE_SELECT
+            + " WHERE b.mfc_id = :mfc AND b.sku IN (:skus) ORDER BY b.sku, b.lot_id"
+            + " FOR UPDATE OF b",
+        Map.of("mfc", mfcId, "skus", skus),
+        (rs, i) -> lotBalance(rs));
+  }
+
+  public List<LotBalance> lotBalances(String mfcId, String sku) {
+    return jdbc.query(
+        LOT_BALANCE_SELECT + " WHERE b.mfc_id = ? AND b.sku = ? ORDER BY b.lot_id",
+        (rs, i) -> lotBalance(rs),
+        mfcId,
+        sku);
+  }
+
+  /**
+   * LOT 요약 증감(잠근 행). E 가 처음 생기면 최초 정상 인수 시각을 남긴다(이후 바꾸지 않음).
+   *
+   * @return 반영 후 row_version
+   */
+  public long applyLot(
+      String mfcId, String sku, String lotId, int dh, int dq, int de, int dr, Instant at) {
+    Long v =
+        jdbc.queryForObject(
+            "UPDATE stock_lot_balance SET on_hand = on_hand + ?, quarantined = quarantined + ?,"
+                + " sellable = sellable + ?, reserved = reserved + ?,"
+                + " first_normal_at = CASE WHEN ? > 0 THEN COALESCE(first_normal_at, ?) ELSE"
+                + " first_normal_at END,"
+                + " row_version = row_version + 1, updated_at = ?"
+                + " WHERE mfc_id = ? AND sku = ? AND lot_id = ? RETURNING row_version",
+            Long.class,
+            dh,
+            dq,
+            de,
+            dr,
+            de,
+            Timestamp.from(at),
+            Timestamp.from(at),
+            mfcId,
+            sku,
+            lotId);
+    return v == null ? 0 : v;
+  }
+
+  // ---------- 단위 행 ----------
+
+  /** 단위 행을 잠그고 수량을 읽는다. 없으면 0. */
+  public int lockUnit(String mfcId, Key k) {
+    List<Integer> q =
+        jdbc.query(
+            "SELECT qty FROM stock_unit WHERE mfc_id = ? AND location_code = ? AND sku = ?"
+                + " AND lot_id = ? AND quality_state = ? AND work_state = ? FOR UPDATE",
+            (rs, i) -> rs.getInt(1),
+            mfcId,
+            k.locationCode(),
+            k.sku(),
+            k.lotId(),
+            k.quality().name(),
+            k.work().name());
+    return q.isEmpty() ? 0 : q.get(0);
+  }
+
+  /** 단위 행 증감(없으면 만든다). 0 이 된 행은 지우지 않는다(위치 이력 조회). */
+  public void applyUnit(String mfcId, Key k, int delta, Instant at) {
+    if (delta < 0) {
+      // 감소는 잠근 기존 행만(INSERT 후보 행의 음수 수량이 CHECK 에 먼저 걸린다)
+      int n =
+          jdbc.update(
+              "UPDATE stock_unit SET qty = qty + ?, row_version = row_version + 1, updated_at = ?"
+                  + " WHERE mfc_id = ? AND location_code = ? AND sku = ? AND lot_id = ?"
+                  + " AND quality_state = ? AND work_state = ?",
+              delta,
+              Timestamp.from(at),
+              mfcId,
+              k.locationCode(),
+              k.sku(),
+              k.lotId(),
+              k.quality().name(),
+              k.work().name());
+      if (n != 1) {
+        throw new IllegalStateException("감소할 단위 행이 없습니다: " + k);
+      }
+      return;
+    }
+    jdbc.update(
+        "INSERT INTO stock_unit (mfc_id, location_code, sku, lot_id, quality_state, work_state,"
+            + " qty, row_version, updated_at) VALUES (?,?,?,?,?,?,?,1,?)"
+            + " ON CONFLICT (mfc_id, location_code, sku, lot_id, quality_state, work_state)"
+            + " DO UPDATE SET qty = stock_unit.qty + EXCLUDED.qty,"
+            + " row_version = stock_unit.row_version + 1, updated_at = EXCLUDED.updated_at",
+        mfcId,
+        k.locationCode(),
+        k.sku(),
+        k.lotId(),
+        k.quality().name(),
+        k.work().name(),
+        delta,
+        Timestamp.from(at));
+  }
+
+  /** 센터·SKU 의 0 이 아닌 단위 행(조회). */
+  public List<UnitRow> units(String mfcId, String sku) {
+    return jdbc.query(
+        "SELECT location_code, sku, lot_id, quality_state, work_state, qty, row_version"
+            + " FROM stock_unit WHERE mfc_id = ? AND sku = ? AND qty > 0"
+            + " ORDER BY lot_id, location_code, quality_state, work_state",
+        (rs, i) ->
+            new UnitRow(
+                new Key(
+                    rs.getString("location_code"),
+                    rs.getString("sku"),
+                    rs.getString("lot_id"),
+                    Quality.valueOf(rs.getString("quality_state")),
+                    Work.valueOf(rs.getString("work_state"))),
+                rs.getInt("qty"),
+                rs.getLong("row_version")),
+        mfcId,
+        sku);
   }
 
   // ---------- 확정 단위 ----------
@@ -150,11 +401,16 @@ public class StockStore {
 
   public void insertEntry(String commitId, String mfcId, EntryRow e) {
     jdbc.update(
-        "INSERT INTO stock_ledger_entry (commit_id, mfc_id, sku, symbol, delta, balance_version)"
-            + " VALUES (?,?,?,?,?,?)",
+        "INSERT INTO stock_ledger_entry (commit_id, mfc_id, sku, lot_id, location_code,"
+            + " quality_state, work_state, symbol, delta, balance_version)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?)",
         commitId,
         mfcId,
         e.sku(),
+        e.lotId(),
+        e.locationCode(),
+        e.qualityState(),
+        e.workState(),
         e.symbol(),
         e.delta(),
         e.balanceVersion());
@@ -187,11 +443,15 @@ public class StockStore {
 
   public List<EntryRow> entries(String commitId) {
     return jdbc.query(
-        "SELECT sku, symbol, delta, balance_version FROM stock_ledger_entry WHERE commit_id = ?"
-            + " ORDER BY entry_id",
+        "SELECT sku, lot_id, location_code, quality_state, work_state, symbol, delta,"
+            + " balance_version FROM stock_ledger_entry WHERE commit_id = ? ORDER BY entry_id",
         (rs, i) ->
             new EntryRow(
                 rs.getString("sku"),
+                rs.getString("lot_id"),
+                rs.getString("location_code"),
+                rs.getString("quality_state"),
+                rs.getString("work_state"),
                 rs.getString("symbol"),
                 rs.getInt("delta"),
                 rs.getLong("balance_version")),
@@ -240,6 +500,71 @@ public class StockStore {
         .findFirst();
   }
 
+  public void insertReceiptLine(String receiptId, ReceiptLineRow l) {
+    jdbc.update(
+        "INSERT INTO stock_receipt_line (receipt_id, line_no, sku, lot_id, location_code,"
+            + " normal_qty, quarantined_qty, pending_qty) VALUES (?,?,?,?,?,?,?,?)",
+        receiptId,
+        l.lineNo(),
+        l.sku(),
+        l.lotId(),
+        l.locationCode(),
+        l.normalQty(),
+        l.quarantinedQty(),
+        l.pendingQty());
+  }
+
+  public List<ReceiptLineRow> receiptLines(String receiptId) {
+    return jdbc.query(
+        "SELECT line_no, sku, lot_id, location_code, normal_qty, quarantined_qty, pending_qty"
+            + " FROM stock_receipt_line WHERE receipt_id = ? ORDER BY line_no",
+        (rs, i) ->
+            new ReceiptLineRow(
+                rs.getInt("line_no"),
+                rs.getString("sku"),
+                rs.getString("lot_id"),
+                rs.getString("location_code"),
+                rs.getInt("normal_qty"),
+                rs.getInt("quarantined_qty"),
+                rs.getInt("pending_qty")),
+        receiptId);
+  }
+
+  /** 작업 실행 선점(execution_id 유일). */
+  public boolean claimExecution(
+      String executionId,
+      String mfcId,
+      String type,
+      String contentHash,
+      String commitId,
+      int appliedQty,
+      Instant at) {
+    return jdbc.update(
+            "INSERT INTO stock_execution (execution_id, mfc_id, execution_type, content_hash,"
+                + " commit_id, applied_qty, posted_at) VALUES (?,?,?,?,?,?,?)"
+                + " ON CONFLICT (execution_id) DO NOTHING",
+            executionId,
+            mfcId,
+            type,
+            contentHash,
+            commitId,
+            appliedQty,
+            Timestamp.from(at))
+        == 1;
+  }
+
+  public Optional<ReceiptRow> execution(String executionId) {
+    return jdbc
+        .query(
+            "SELECT execution_id, content_hash, commit_id, applied_qty FROM stock_execution"
+                + " WHERE execution_id = ?",
+            (rs, i) ->
+                new ReceiptRow(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)),
+            executionId)
+        .stream()
+        .findFirst();
+  }
+
   // ---------- 요청 기록(common-messaging request_record, 같은 서비스 DB) ----------
 
   /** 이 행위자(토큰 주체)가 보낸 요청의 X-Source-System. 없으면 empty. */
@@ -275,6 +600,22 @@ public class StockStore {
         rs.getInt("quarantined"),
         rs.getInt("sellable"),
         rs.getInt("reserved"),
+        rs.getLong("row_version"));
+  }
+
+  private static LotBalance lotBalance(ResultSet rs) throws SQLException {
+    Date d = rs.getDate("expiry_date");
+    Timestamp f = rs.getTimestamp("first_normal_at");
+    return new LotBalance(
+        rs.getString("sku"),
+        rs.getString("lot_id"),
+        d == null ? null : d.toLocalDate(),
+        rs.getString("tracking"),
+        rs.getInt("on_hand"),
+        rs.getInt("quarantined"),
+        rs.getInt("sellable"),
+        rs.getInt("reserved"),
+        f == null ? null : f.toInstant(),
         rs.getLong("row_version"));
   }
 

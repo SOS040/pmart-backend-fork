@@ -33,8 +33,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 재고 원장·예약(S1 a): 수령 전기(receiptId 멱등) → 가용 → 예약 all-or-nothing·동시 경합(TC-09) → 같은 키 재생 → 확정·해제 → 만료
- * 작업(InventoryHoldExpired Outbox). 실제 PostgreSQL·Kafka, 시험 서비스 토큰.
+ * 재고 원장·예약(S1 a, ADR-0040): 수령 전기(receiptId 멱등, E 없음) → 검수·적치(executionId 멱등, 적치 뒤 E) → 가용 → 예약
+ * all-or-nothing·동시 경합(TC-09)·LOT 조각(FEFO·최소 잔여일) → 같은 키 재생 → 확정·해제 → 만료 작업(InventoryHoldExpired
+ * Outbox). 실제 PostgreSQL·Kafka, 시험 서비스 토큰.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -109,12 +110,37 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         sku);
   }
 
-  Map<String, Object> receipt(String receiptId, String sku, int normal, int quarantined) {
+  /** SKU 투영(상품 이벤트 대신 시험 준비) — 보관 유형. */
+  void projection(String sku, String storageType) {
+    jdbc.update(
+        "INSERT INTO sku_projection (sku, unit_type, storage_type, state, product_version, updated_at)"
+            + " VALUES (?, 'E', ?, 'ACTIVE', 1, now())",
+        sku,
+        storageType);
+  }
+
+  static Map<String, Object> line(
+      String sku, int normal, int quarantined, String lotRef, String expiry) {
     Map<String, Object> line = new LinkedHashMap<>();
     line.put("sku", sku);
     line.put("normalQty", normal);
     line.put("quarantinedQty", quarantined);
     line.put("pendingQty", 0);
+    line.put("toLocationCode", "RCV-DOCK");
+    if (lotRef != null) {
+      line.put("sourceLotRef", lotRef);
+    }
+    if (expiry != null) {
+      line.put("expiryDate", expiry);
+    }
+    return line;
+  }
+
+  Map<String, Object> receipt(String receiptId, String sku, int normal, int quarantined) {
+    return receiptOf(receiptId, List.of(line(sku, normal, quarantined, null, null)));
+  }
+
+  Map<String, Object> receiptOf(String receiptId, List<Map<String, Object>> lines) {
     return Map.of(
         "receiptId",
         receiptId,
@@ -125,11 +151,69 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         "mfcId",
         mfc,
         "lines",
-        List.of(line));
+        lines);
   }
 
   Res postReceipt(String key, Map<String, Object> body) {
     return post(INBOUND, "mfc-inbound-service", "/internal/receipts", key, body);
+  }
+
+  Res execute(String type, String fromLoc, String toLoc, List<Map<String, Object>> lines) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("executionType", type);
+    body.put("mfcId", mfc);
+    body.put("taskId", "TSK-" + UUID.randomUUID());
+    body.put("executionId", "EXE-" + UUID.randomUUID());
+    body.put("fromLocation", fromLoc);
+    if (toLoc != null) {
+      body.put("toLocation", toLoc);
+    }
+    body.put("lines", lines);
+    return post(
+        INBOUND,
+        "mfc-inbound-service",
+        "/internal/task-executions",
+        UUID.randomUUID().toString(),
+        body);
+  }
+
+  /** 수령 → 수령 결과의 lotId 로 정상분 검수(NORMAL) → 선반 적치. 적치 뒤에만 판매 가능(E). */
+  void stocked(String receiptId, List<Map<String, Object>> lines) {
+    Res r = postReceipt(UUID.randomUUID().toString(), receiptOf(receiptId, lines));
+    assertThat(r.status()).isEqualTo(201);
+    JsonNode result = get(INBOUND, "/internal/receipts/" + receiptId).body();
+    for (JsonNode l : result.path("lines")) {
+      int normal = l.path("normalQty").asInt();
+      if (normal == 0) {
+        continue;
+      }
+      var el =
+          List.<Map<String, Object>>of(
+              Map.of(
+                  "sku",
+                  l.path("sku").asString(),
+                  "lotId",
+                  l.path("lotId").asString(),
+                  "qty",
+                  normal,
+                  "resultQuality",
+                  "NORMAL"));
+      assertThat(execute("INSPECT", "RCV-DOCK", null, el).status()).isEqualTo(201);
+      var pl =
+          List.<Map<String, Object>>of(
+              Map.of(
+                  "sku",
+                  l.path("sku").asString(),
+                  "lotId",
+                  l.path("lotId").asString(),
+                  "qty",
+                  normal));
+      assertThat(execute("PUTAWAY", "RCV-DOCK", "A-01-01", pl).status()).isEqualTo(201);
+    }
+  }
+
+  void stocked(String sku, int normal) {
+    stocked("RCV-" + UUID.randomUUID(), List.of(line(sku, normal, 0, null, null)));
   }
 
   Map<String, Object> reserveBody(String orderId, Map<String, Integer> lines) {
@@ -177,13 +261,49 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(conflict.status()).isEqualTo(409);
     assertThat(conflict.body().path("code").asString()).isEqualTo("RECEIPT_ALREADY_POSTED");
 
+    // 수령만으로는 판매 가능(E) 0 — 검수·적치 전(IV-02)
     JsonNode a = availability(sku);
     assertThat(a.path("onHand").asInt()).isEqualTo(7);
     assertThat(a.path("quarantined").asInt()).isEqualTo(1);
-    assertThat(a.path("sellable").asInt()).isEqualTo(6);
-    assertThat(a.path("reserved").asInt()).isZero();
-    assertThat(a.path("available").asInt()).isEqualTo(6);
+    assertThat(a.path("sellable").asInt()).isZero();
+    assertThat(a.path("available").asInt()).isZero();
     assertThat(a.path("handlingEnabled").asBoolean()).isFalse();
+
+    // 수령 결과: 줄별 inventory lotId(상류 표기·기한 없음 → 추적 미확인 LOT)
+    Res result = get(INBOUND, "/internal/receipts/" + receiptId);
+    assertThat(result.status()).isEqualTo(200);
+    String lotId = result.body().path("lines").path(0).path("lotId").asString();
+    assertThat(lotId).startsWith("LOT-");
+    assertThat(get(INBOUND, "/internal/receipts/RCV-none").status()).isEqualTo(404);
+
+    // 검수 정상 5 → 아직 E 0(적치 대기), 적치 → E 5
+    var inspectLines =
+        List.<Map<String, Object>>of(
+            Map.of("sku", sku, "lotId", lotId, "qty", 5, "resultQuality", "NORMAL"));
+    Res inspected = execute("INSPECT", "RCV-DOCK", null, inspectLines);
+    assertThat(inspected.status()).isEqualTo(201);
+    assertThat(availability(sku).path("sellable").asInt()).isZero();
+    // 검수 대기 잔량보다 많이 → 422(위치 잔량 부족)
+    var tooMany =
+        List.<Map<String, Object>>of(
+            Map.of("sku", sku, "lotId", lotId, "qty", 1, "resultQuality", "NORMAL"));
+    assertThat(execute("INSPECT", "RCV-DOCK", null, tooMany).status()).isEqualTo(422);
+    var putLines = List.<Map<String, Object>>of(Map.of("sku", sku, "lotId", lotId, "qty", 5));
+    Res put = execute("PUTAWAY", "RCV-DOCK", "A-01-01", putLines);
+    assertThat(put.status()).isEqualTo(201);
+    a = availability(sku);
+    assertThat(a.path("onHand").asInt()).isEqualTo(7);
+    assertThat(a.path("sellable").asInt()).isEqualTo(5);
+    assertThat(a.path("available").asInt()).isEqualTo(5);
+    // 적치 원장: 수령 위치 −5, 선반 +5(E+5)
+    JsonNode putCommit =
+        get(INBOUND, "/internal/commits/" + put.body().path("resultId").asString()).body();
+    assertThat(putCommit.path("commitType").asString()).isEqualTo("TASK_EXECUTION");
+    assertThat(putCommit.path("entries").toString()).contains("A-01-01").contains("STORED");
+    // 다른 SKU 의 lotId → 400, PICK 은 아직 501
+    var wrongLot = List.<Map<String, Object>>of(Map.of("sku", newSku(), "lotId", lotId, "qty", 1));
+    assertThat(execute("PUTAWAY", "RCV-DOCK", "A-01-01", wrongLot).status()).isEqualTo(400);
+    assertThat(execute("PICK", "A-01-01", "WORK-1", putLines).status()).isEqualTo(501);
     // 원장 행이 없는 SKU 는 0
     assertThat(availability(newSku()).path("available").asInt()).isZero();
 
@@ -192,7 +312,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(commit.status()).isEqualTo(200);
     assertThat(commit.body().path("commitType").asString()).isEqualTo("TIN");
     assertThat(commit.body().path("sourceRef").asString()).isEqualTo(receiptId);
-    assertThat(commit.body().path("entries")).hasSize(3); // H+6, E+5, Q+1
+    assertThat(commit.body().path("entries")).hasSize(3); // 검수 대기 H+5, 격리 H+1·Q+1
 
     // 운영자·고객 토큰은 /internal 403
     assertThat(
@@ -211,7 +331,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     String a = newSku();
     String b = newSku();
     handlingOn(a);
-    postReceipt(UUID.randomUUID().toString(), receipt("RCV-" + UUID.randomUUID(), a, 5, 0));
+    stocked(a, 5);
 
     // 취급 OFF SKU 포함 → 422 SKU_NOT_HANDLED
     Res off = reserve(UUID.randomUUID().toString(), reserveBody("ORD-1", Map.of(a, 1, b, 1)));
@@ -258,6 +378,8 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(rv.body().path("state").asString()).isEqualTo("HELD");
     assertThat(rv.body().path("orderId").asString()).isEqualTo("ORD-4");
     assertThat(rv.body().path("parts").path(0).path("qty").asInt()).isEqualTo(4);
+    assertThat(rv.body().path("parts").path(0).path("lotId").asString()).startsWith("LOT-");
+    assertThat(rv.body().path("parts").path(0).path("state").asString()).isEqualTo("HELD");
     assertThat(rv.body().path("expiresAt").isNull()).isFalse();
     assertThat(get(ORCH, "/internal/reservations/RSV-none").status()).isEqualTo(404);
 
@@ -302,6 +424,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     JsonNode afterConfirm = get(ORCH, "/internal/reservations/" + reservationId).body();
     assertThat(afterConfirm.path("state").asString()).isEqualTo("CONFIRMED");
     assertThat(afterConfirm.path("expiresAt").isNull()).isTrue();
+    assertThat(afterConfirm.path("parts").path(0).path("state").asString()).isEqualTo("CONFIRMED");
     assertThat(availability(a).path("reserved").asInt()).isEqualTo(4);
 
     // 부분 해제 → 422, 전량 해제 → A 복구, 재해제 → 변화 없는 성공, 해제 후 확정 → 409
@@ -348,11 +471,68 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   @Test
+  void reservationSplitsLinesAcrossLotsFefoAndRespectsMinimumRemainingDays() {
+    // 냉장 우유(최소 잔여일 2일): 기한 +1일 3개, +3일 2개, +10일 5개 / 배송 약속일 = 오늘
+    String milk = newSku();
+    handlingOn(milk);
+    projection(milk, "CHILLED");
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(
+            line(milk, 3, 0, "M-OLD", today.plusDays(1).toString()),
+            line(milk, 2, 0, "M-MID", today.plusDays(3).toString()),
+            line(milk, 5, 0, "M-NEW", today.plusDays(10).toString())));
+    assertThat(availability(milk).path("available").asInt()).isEqualTo(10);
+
+    // 4개 → 기한 +1일 LOT 은 최소 잔여일 미달로 제외, +3일 2개 + +10일 2개(줄당 LOT 수 제한 없음)
+    Res ok =
+        reserve(
+            UUID.randomUUID().toString(),
+            Map.of(
+                "orderId",
+                "ORD-FEFO",
+                "mfcId",
+                mfc,
+                "lines",
+                List.of(Map.of("orderLineId", "L1", "sku", milk, "qty", 4))));
+    assertThat(ok.status()).isEqualTo(201);
+    JsonNode parts =
+        get(ORCH, "/internal/reservations/" + ok.body().path("resultId").asString())
+            .body()
+            .path("parts");
+    assertThat(parts).hasSize(2);
+    assertThat(parts.path(0).path("qty").asInt() + parts.path(1).path("qty").asInt()).isEqualTo(4);
+    assertThat(parts.path(0).path("orderLineId").asString()).isEqualTo("L1");
+    String midLot = parts.path(0).path("lotId").asString();
+    assertThat(parts.path(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(parts.path(1).path("lotId").asString()).isNotEqualTo(midLot);
+
+    // 센터 가용은 6(기한 임박 3 포함)이지만 적격은 3 → 4개 요청은 NO_ELIGIBLE_LOT
+    assertThat(availability(milk).path("available").asInt()).isEqualTo(6);
+    Res noLot = reserve(UUID.randomUUID().toString(), reserveBody("ORD-FEFO2", Map.of(milk, 4)));
+    assertThat(noLot.status()).isEqualTo(422);
+    assertThat(noLot.body().path("details").path(0).path("reason").asString())
+        .startsWith("NO_ELIGIBLE_LOT")
+        .contains("requestedQty=4;eligibleQty=3");
+
+    // 보관 유형을 모르는 SKU 에 기한 있는 LOT → CONFIG_REQUIRED(0 일로 대체하지 않음)
+    String unknown = newSku();
+    handlingOn(unknown);
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(line(unknown, 2, 0, null, today.plusDays(5).toString())));
+    Res cfg = reserve(UUID.randomUUID().toString(), reserveBody("ORD-CFG", Map.of(unknown, 1)));
+    assertThat(cfg.status()).isEqualTo(422);
+    assertThat(cfg.body().path("code").asString()).isEqualTo("CONFIG_REQUIRED");
+  }
+
+  @Test
   void concurrentReservationsOnLastUnitsOnlyOneSucceeds() throws Exception {
     // TC-09: H5/E5/R0/A5 에 주문 A4·B4 동시 → 하나만 성공(R4/A1)
     String sku = newSku();
     handlingOn(sku);
-    postReceipt(UUID.randomUUID().toString(), receipt("RCV-" + UUID.randomUUID(), sku, 5, 0));
+    stocked(sku, 5);
     int rounds = 2;
     ExecutorService pool = Executors.newFixedThreadPool(rounds);
     try {
@@ -385,7 +565,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   void expiredHoldIsSweptAndPublished() throws Exception {
     String sku = newSku();
     handlingOn(sku);
-    postReceipt(UUID.randomUUID().toString(), receipt("RCV-" + UUID.randomUUID(), sku, 3, 0));
+    stocked(sku, 3);
     Res ok = reserve(UUID.randomUUID().toString(), reserveBody("ORD-EXP", Map.of(sku, 2)));
     assertThat(ok.status()).isEqualTo(201);
     String reservationId = ok.body().path("resultId").asString();
