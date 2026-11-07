@@ -528,10 +528,12 @@ paths:
     get:
       tags: [queries]
       summary: '[SCM/replenishment→inventory] 센터 재고 스냅샷 (H/Q/E/R/A, 위치·LOT·품질상태별)'
+      description: '구현(0.10.0, 2026-11-08): 0 초과 단위 행(위치·SKU·LOT·품질·업무 상태)과 LOT 소비기한, SKU·LOT·위치 순 키셋 페이지(cursor = 앞 페이지 마지막 키). reservedQty 는 비움 — 예약은 LOT 단위라 위치 줄에 나누지 않는다(LOT 합계는 GET /mfcs/{mfcId}/stock).'
       operationId: getSnapshot
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, schema: { type: string } }
+        - { name: locationCode, in: query, schema: { type: string }, description: '0.10.0 — 한 위치만(mfc-location 위치 폐지 전 잔량 확인)' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:

@@ -1069,6 +1069,33 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(av.path("sellable").asInt()).isEqualTo(6);
     assertThat(av.path("available").asInt()).isEqualTo(2);
 
+    // 스냅샷: 단위 행(정상 6·격리 4) 두 줄을 한 줄씩 페이지로
+    JsonNode p1 = get(ORCH, "/internal/snapshots?mfcId=" + mfc + "&sku=" + sku + "&size=1").body();
+    assertThat(p1.path("items").size()).isEqualTo(1);
+    String cursor = p1.path("page").path("nextCursor").asString();
+    assertThat(cursor).isNotBlank();
+    JsonNode p2 =
+        get(ORCH, "/internal/snapshots?mfcId=" + mfc + "&sku=" + sku + "&size=1&cursor=" + cursor)
+            .body();
+    assertThat(p2.path("items").size()).isEqualTo(1);
+    assertThat(p2.path("page").path("nextCursor").asString("")).isEmpty();
+    assertThat(
+            get(ORCH, "/internal/snapshots?mfcId=" + mfc + "&locationCode=NOPE")
+                .body()
+                .path("items")
+                .size())
+        .isZero();
+    assertThat(
+            get(ORCH, "/internal/snapshots?mfcId=" + mfc + "&locationCode=A-01-01")
+                .body()
+                .path("items")
+                .size())
+        .isGreaterThan(0);
+    assertThat(
+            List.of(
+                p1.path("items").path(0).path("qualityState").asString(),
+                p2.path("items").path(0).path("qualityState").asString()))
+        .containsExactlyInAnyOrder("NORMAL", "QUARANTINED");
     // 폐기 4 → H6 Q0, 격리보다 많이 폐기는 거절
     assertThat(quality("DISPOSE", "DSP-1", sku, lot, 5).status()).isEqualTo(422);
     assertThat(quality("DISPOSE", "DSP-1", sku, lot, 4).status()).isEqualTo(201);

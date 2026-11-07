@@ -24,3 +24,5 @@
 - 3단계 스캐폴딩(2026-10-23).
 - 위치 마스터(ADR-0040 2단계, 2026-11-07, 브랜치 `mfc-v2`): V2 `location`(불변 location_id, 센터 안 코드 유일 — 문법 Q-03 미결이라 자유 문자열)·`location_state_change`. 등록·속성 변경(코드·센터 불변, X-Expected-Version)·상태 전이(ACTIVE↔CLOSED·COUNT_LOCKED, RETIRED 는 DELETE)·목록(코드 커서)·적치 후보(온도대 필수, ACTIVE STORAGE/PICKING, 동선 순서, 공간 V 는 null). 쓰기는 그 센터 운영자, 읽기는 그 센터 운영자 또는 서비스 토큰. 바뀔 때마다 같은 트랜잭션에서 `MfcLocationStateChanged`(전체 속성, 토픽 `mfc.location.v1`) — 구독 mfc-inventory 투영. `POST /internal/location-republications[?mfcId]` 는 같은 버전으로 다시 알림(최대 20000). 폐지(DELETE)는 inventory 위치 잔량 조회가 생길 때까지 501.
 - **위치 코드 문법(ADR-0042, Q-03 결정 2026-11-07)**: 새 등록만 `LocationCodes` 로 검사 — 선반·피킹 `{A/C/F}-{구역 영문1+숫자1}-{랙 2}-{단 1~9}-{칸 2}`(온도대 글자 = temperatureZone, 구역 = areaCode, 없으면 코드에서 채움), 그 밖 `{RCV/PAK/QRT/DSP/RTN/DSL}-{A/C/F}-{번호 2}`. 어기면 400 `LOCATION_CODE_INVALID`. 옛 자유 형식 코드는 그대로 쓰고(속성 변경 때 문법 검사 안 함), 새 문법 코드는 속성 변경 때도 온도대·구역 일치 검사.
+
+- 위치 폐지(2026-11-08, 0.3.0): `DELETE /locations/{id}` — 그 센터 운영자, CLOSED 만, mfc-inventory 스냅샷(locationCode)에 재고가 있으면 409·조회 실패 503(`infrastructure/InventoryClient`, `pmart.location.mfc-inventory-base-url`). RETIRED + MfcLocationStateChanged, 되돌리지 않음.

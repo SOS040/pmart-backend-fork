@@ -75,4 +75,15 @@ public class StockQueryService {
             .orElseGet(Instant::now);
     return new RequestView(requestId, c.orElse(null), at);
   }
+
+  /** 센터 재고 스냅샷(SCM·보충 조회, 서비스 호출). 단위 행 그대로 — 예약 R 은 LOT 단위라 줄에 나누지 않는다. */
+  @org.springframework.transaction.annotation.Transactional(readOnly = true)
+  public List<StockStore.SnapshotRow> snapshot(
+      String mfcId,
+      @Nullable String sku,
+      @Nullable String locationCode,
+      @Nullable String cursor,
+      int limit) {
+    return stock.snapshot(mfcId, sku, locationCode, cursor, limit);
+  }
 }

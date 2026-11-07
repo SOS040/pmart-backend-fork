@@ -71,18 +71,21 @@ public class LocationService {
   public record Page(List<LocationView> items, @Nullable String nextCursor) {}
 
   private final LocationStore store;
+  private final com.pmart.mfc.location.infrastructure.InventoryClient inventory;
   private final RequestIdempotency idempotency;
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
   private final Clock clock;
 
   public LocationService(
+      com.pmart.mfc.location.infrastructure.InventoryClient inventory,
       LocationStore store,
       RequestIdempotency idempotency,
       EventPublisher events,
       EventEnvelopeCodec codec,
       Clock clock) {
     this.store = store;
+    this.inventory = inventory;
     this.idempotency = idempotency;
     this.events = events;
     this.codec = codec;
@@ -263,6 +266,68 @@ public class LocationService {
               LocationView v = store.find(locationId).orElseThrow();
               publish(v, from.name(), reason, operator);
               log.info("location {} {} → {} ({})", locationId, from, to, reason);
+              return new CommandResponse(
+                  CommandStatus.APPLIED, requestId, locationId, 1, version, false, null, at);
+            })
+        .value();
+  }
+
+  /**
+   * 위치 폐지(RETIRED, 되돌리지 않음). 먼저 CLOSED 로 닫아 새 적치·수령을 막은 뒤에만 — mfc-inventory 에 그 위치 재고 단위가 하나도 없어야
+   * 한다(조회 실패면 폐지하지 않음 503). 이미 RETIRED 면 지금 상태.
+   */
+  public CommandResponse retire(
+      String requestId, String sourceSystem, String locationId, @Nullable Integer expectedVersion) {
+    LocationView peek =
+        store
+            .find(locationId)
+            .orElseThrow(
+                () -> PmartException.notFound(LOCATION_NOT_FOUND, "위치가 없습니다: " + locationId));
+    String operator = requireOperator(peek.mfcId());
+    if (State.valueOf(peek.state()) == State.CLOSED
+        && inventory.hasStockAt(peek.mfcId(), peek.locationCode())) {
+      throw PmartException.invalidState(peek.locationCode() + " 에 재고가 남아 있습니다 — 옮기거나 정리한 뒤 폐지합니다.");
+    }
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "retireLocation", operator),
+            new StateRequest(locationId, "RETIRED", "RETIRE", null, expectedVersion),
+            CommandResponse.class,
+            () -> {
+              LocationView cur = lockOrThrow(locationId);
+              Instant at = clock.instant();
+              State from = State.valueOf(cur.state());
+              if (from == State.RETIRED) {
+                return new CommandResponse(
+                    CommandStatus.APPLIED,
+                    requestId,
+                    locationId,
+                    0,
+                    cur.version(),
+                    false,
+                    null,
+                    at);
+              }
+              if (from != State.CLOSED) {
+                throw PmartException.invalidState(
+                    "폐지는 CLOSED 위치만 합니다(지금 " + from + ") — 먼저 닫아 새 적치를 막는다.");
+              }
+              checkVersion(cur, expectedVersion);
+              int version = cur.version() + 1;
+              store.updateState(locationId, State.RETIRED.name(), "RETIRE", version, at);
+              store.insertStateChange(
+                  locationId,
+                  requestId,
+                  sourceSystem,
+                  from.name(),
+                  State.RETIRED.name(),
+                  version,
+                  "RETIRE",
+                  null,
+                  operator,
+                  at);
+              publish(store.find(locationId).orElseThrow(), from.name(), "RETIRE", operator);
+              log.info("location {} retired by {}", locationId, operator);
               return new CommandResponse(
                   CommandStatus.APPLIED, requestId, locationId, 1, version, false, null, at);
             })

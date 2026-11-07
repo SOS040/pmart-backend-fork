@@ -17,6 +17,7 @@ import com.pmart.mfc.inventory.application.CorrectionService;
 import com.pmart.mfc.inventory.application.StockQueryService;
 import java.time.Instant;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -144,6 +145,54 @@ public class QueriesController implements QueriesApi {
                   return d;
                 })
             .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.GetSnapshot200Response>
+      getSnapshot(
+          String mfcId,
+          @Nullable String sku,
+          @Nullable String locationCode,
+          @Nullable Integer size,
+          @Nullable String cursor) {
+    int n = size == null ? 50 : size;
+    var rows = queries.snapshot(mfcId, sku, locationCode, cursor, n + 1);
+    boolean more = rows.size() > n;
+    var page = more ? rows.subList(0, n) : rows;
+    var out = new com.pmart.mfc.inventory.api.generated.model.GetSnapshot200Response();
+    var asOf = new com.pmart.mfc.inventory.api.generated.model.GetAvailability200ResponseAsOf();
+    asOf.setAsOf(SkuHandlingsController.time(java.time.Instant.now()));
+    asOf.setFreshness(
+        com.pmart.mfc.inventory.api.generated.model.GetAvailability200ResponseAsOf.FreshnessEnum
+            .CURRENT);
+    out.setAsOf(asOf);
+    out.setItems(
+        page.stream()
+            .map(
+                r -> {
+                  var b = new com.pmart.mfc.inventory.api.generated.model.Balance();
+                  var k = r.unit().key();
+                  b.setMfcId(mfcId);
+                  b.setLocationCode(k.locationCode());
+                  b.setSku(k.sku());
+                  b.setLotId(k.lotId());
+                  b.setExpiryDate(r.expiryDate());
+                  b.setQualityState(QualityState.fromValue(k.quality().name()));
+                  b.setWorkState(WorkState.fromValue(k.work().name()));
+                  b.setQty(r.unit().qty());
+                  b.setVersion((int) r.unit().version());
+                  return b;
+                })
+            .toList());
+    var p = new com.pmart.mfc.inventory.api.generated.model.GetSnapshot200ResponsePage();
+    p.setSize(page.size());
+    if (more) {
+      var k = page.get(page.size() - 1).unit().key();
+      p.setNextCursor(
+          k.sku() + "|" + k.lotId() + "|" + k.locationCode() + "|" + k.quality() + "|" + k.work());
+    }
+    out.setPage(p);
     return ResponseEntity.ok(out);
   }
 }

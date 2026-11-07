@@ -31,7 +31,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 LocationsApi. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다. 폐지(DELETE)는 아직 501. */
+/**
+ * 계약 LocationsApi. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다. 폐지(DELETE)는 CLOSED·재고
+ * 없음만(2026-11-08).
+ */
 @RestController
 public class LocationsController implements LocationsApi {
 
@@ -79,6 +82,16 @@ public class LocationsController implements LocationsApi {
                     body.getReason(),
                     body.getCountSessionId(),
                     xExpectedVersion)));
+  }
+
+  @Override
+  public ResponseEntity<RetireLocation202Response> retireLocation(
+      String locationId,
+      String idempotencyKey,
+      String xSourceSystem,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.status(HttpStatus.ACCEPTED)
+        .body(command(service.retire(idempotencyKey, xSourceSystem, locationId, xExpectedVersion)));
   }
 
   @Override

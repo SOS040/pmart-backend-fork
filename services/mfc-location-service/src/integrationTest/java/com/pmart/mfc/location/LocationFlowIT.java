@@ -33,14 +33,21 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.messaging.outbox.delete-after-insert=false"
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.location.mfc-inventory-base-url=${inv.url}"
     })
 @Import(TestJwtConfiguration.class)
+@org.wiremock.spring.EnableWireMock({
+  @org.wiremock.spring.ConfigureWireMock(name = "inv", baseUrlProperties = "inv.url")
+})
 class LocationFlowIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
+
+  @org.wiremock.spring.InjectWireMock("inv")
+  com.github.tomakehurst.wiremock.WireMockServer inv;
 
   RestClient http;
   String mfc;
@@ -97,6 +104,82 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
       b.put("pickSequence", seq);
     }
     return b;
+  }
+
+  void inventoryItems(int count) {
+    inv.resetAll();
+    List<Map<String, Object>> items = new java.util.ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      items.add(Map.of("locationCode", "A-S9-01-1-01", "qty", 1));
+    }
+    inv.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/snapshots"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(Map.of("items", items)))));
+  }
+
+  /** 폐지: CLOSED 이고 mfc-inventory 에 그 위치 재고가 없을 때만 RETIRED(되돌리지 않음), 재고 조회 실패면 폐지하지 않는다. */
+  @Test
+  void retireOnlyClosedEmptyLocation() {
+    String id =
+        send(
+                HttpMethod.POST,
+                op,
+                "/locations",
+                body("A-S9-01-1-01", "STORAGE", "AMBIENT", null),
+                null)
+            .body()
+            .path("locationId")
+            .asString();
+    // ACTIVE 는 폐지 못 한다
+    assertThat(send(HttpMethod.DELETE, op, "/locations/" + id, null, null).status()).isEqualTo(409);
+    send(
+        HttpMethod.POST,
+        op,
+        "/locations/" + id + "/state-changes",
+        Map.of("targetState", "CLOSED", "reason", "철거"),
+        null);
+    // 재고가 남아 있으면 거절
+    inventoryItems(1);
+    Res left = send(HttpMethod.DELETE, op, "/locations/" + id, null, null);
+    assertThat(left.status()).isEqualTo(409);
+    assertThat(left.body().path("detail").asString()).contains("재고");
+    // 재고 조회 실패 → 폐지 안 함
+    inv.resetAll();
+    inv.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/snapshots"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(503)));
+    assertThat(send(HttpMethod.DELETE, op, "/locations/" + id, null, null).status()).isEqualTo(503);
+    // 비었으면 RETIRED + MfcLocationStateChanged, 다시 해도 같은 상태
+    inventoryItems(0);
+    Res ok = send(HttpMethod.DELETE, op, "/locations/" + id, null, null);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(202);
+    assertThat(get(op, "/locations/" + id).body().path("state").asString()).isEqualTo("RETIRED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'MfcLocationStateChanged'"
+                    + " AND aggregateid = ? AND payload::text LIKE '%RETIRED%'",
+                Integer.class, id))
+        .isEqualTo(1);
+    assertThat(send(HttpMethod.DELETE, op, "/locations/" + id, null, null).status()).isEqualTo(202);
+    // RETIRED 는 되돌리지 않는다
+    assertThat(
+            send(
+                    HttpMethod.POST,
+                    op,
+                    "/locations/" + id + "/state-changes",
+                    Map.of("targetState", "ACTIVE", "reason", "x"),
+                    null)
+                .status())
+        .isEqualTo(409);
   }
 
   @Test

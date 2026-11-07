@@ -433,6 +433,59 @@ public class StockStore {
         Timestamp.from(at));
   }
 
+  /** 스냅샷 한 줄: 단위 행 + LOT 소비기한. */
+  public record SnapshotRow(UnitRow unit, @Nullable LocalDate expiryDate) {}
+
+  /**
+   * 센터 재고 스냅샷(0 초과 단위 행) — SKU·LOT·위치·품질·업무 순, after 키 다음부터 limit 개(키셋 페이지).
+   *
+   * @param after 앞 페이지 마지막 키 "sku|lot|location|quality|work"(없으면 처음)
+   */
+  public List<SnapshotRow> snapshot(
+      String mfcId,
+      @Nullable String sku,
+      @Nullable String locationCode,
+      @Nullable String after,
+      int limit) {
+    String[] a = after == null ? null : after.split(java.util.regex.Pattern.quote("|"), -1);
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("mfc", mfcId);
+    p.put("sku", sku);
+    p.put("loc", locationCode);
+    p.put("limit", limit);
+    String keyset = "";
+    if (a != null && a.length == 5) {
+      keyset =
+          " AND (u.sku, u.lot_id, u.location_code, u.quality_state, u.work_state)"
+              + " > (:a0, :a1, :a2, :a3, :a4)";
+      for (int i = 0; i < 5; i++) {
+        p.put("a" + i, a[i]);
+      }
+    }
+    return named.query(
+        "SELECT u.location_code, u.sku, u.lot_id, u.quality_state, u.work_state, u.qty,"
+            + " u.row_version, l.expiry_date FROM stock_unit u JOIN stock_lot l ON l.lot_id = u.lot_id"
+            + " WHERE u.mfc_id = :mfc AND u.qty > 0 AND (CAST(:sku AS varchar) IS NULL OR u.sku = :sku)"
+            + " AND (CAST(:loc AS varchar) IS NULL OR u.location_code = :loc)"
+            + keyset
+            + " ORDER BY u.sku, u.lot_id, u.location_code, u.quality_state, u.work_state LIMIT :limit",
+        p,
+        (rs, i) -> {
+          Date d = rs.getDate("expiry_date");
+          return new SnapshotRow(
+              new UnitRow(
+                  new Key(
+                      rs.getString("location_code"),
+                      rs.getString("sku"),
+                      rs.getString("lot_id"),
+                      Quality.valueOf(rs.getString("quality_state")),
+                      Work.valueOf(rs.getString("work_state"))),
+                  rs.getInt("qty"),
+                  rs.getLong("row_version")),
+              d == null ? null : d.toLocalDate());
+        });
+  }
+
   /** 위치들의 판매 단위(NORMAL·STORED, 0 초과) — 실사 장부(IV-11). 위치·SKU·LOT 순. */
   public List<UnitRow> storedUnitsAt(String mfcId, Collection<String> locations) {
     if (locations.isEmpty()) {

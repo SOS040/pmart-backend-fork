@@ -21,7 +21,8 @@ class CountRulesTest {
             List.of(
                 new CountLine("A-1", "E-1", "LOT-A", 4), new CountLine("A-1", "E-1", "LOT-C", 1)));
     assertThat(t)
-        .extracting(Difference::lotId, Difference::bookQty, Difference::countedQty, Difference::delta)
+        .extracting(
+            Difference::lotId, Difference::bookQty, Difference::countedQty, Difference::delta)
         .containsExactly(
             org.assertj.core.groups.Tuple.tuple("LOT-A", 5, 4, -1),
             org.assertj.core.groups.Tuple.tuple("LOT-B", 2, 0, -2),
@@ -45,8 +46,11 @@ class CountRulesTest {
   @Test
   void startersAndCountersCannotApprove() {
     assertThat(CountRules.approvalRejection("s", "a", "b", "c")).isNull();
-    assertThat(CountRules.approvalRejection("a", "a", "b", null)).isEqualTo(CountRules.SELF_APPROVAL);
-    assertThat(CountRules.approvalRejection("b", "a", "b", null)).isEqualTo(CountRules.SELF_APPROVAL);
-    assertThat(CountRules.approvalRejection("c", "a", "b", "c")).isEqualTo(CountRules.SELF_APPROVAL);
+    assertThat(CountRules.approvalRejection("a", "a", "b", null))
+        .isEqualTo(CountRules.SELF_APPROVAL);
+    assertThat(CountRules.approvalRejection("b", "a", "b", null))
+        .isEqualTo(CountRules.SELF_APPROVAL);
+    assertThat(CountRules.approvalRejection("c", "a", "b", "c"))
+        .isEqualTo(CountRules.SELF_APPROVAL);
   }
 }
