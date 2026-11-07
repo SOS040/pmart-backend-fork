@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1010" width="100%" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif">
+  <title>PMart RAG customer app path (plan) — 2026-11-07</title>
+  <style>
+    .t  { fill: #1f2933; font-size: 13px; }
+    .tb { fill: #1f2933; font-size: 14px; font-weight: 700; }
+    .th { fill: #1f2933; font-size: 16px; font-weight: 700; }
+    .m  { fill: #52606d; font-size: 11.5px; }
+    .w  { fill: #a33a3a; font-size: 11.5px; font-weight: 700; }
+    .ln { stroke: #52606d; stroke-width: 1.6; fill: none; }
+    .dl { stroke: #52606d; stroke-width: 1.6; fill: none; stroke-dasharray: 6 4; }
+    .ah { fill: #52606d; }
+    .wrap { fill: #2f9e8f; fill-opacity: 0.05; stroke: #2f9e8f; stroke-width: 1.5; }
+    .ing  { fill: #c58a32; fill-opacity: 0.07; stroke: #c58a32; stroke-width: 1.5; stroke-dasharray: 8 5; }
+    .c  { fill: #ddf3ef; stroke: #2f9e8f; }
+    .cd { fill: #ddf3ef; stroke: #2f9e8f; stroke-dasharray: 6 4; }
+    .g  { fill: #e3f3e8; stroke: #4c9a68; }
+    .p  { fill: #efe7fa; stroke: #8a63c0; }
+    .pd { fill: #efe7fa; stroke: #8a63c0; stroke-dasharray: 6 4; }
+    .od { fill: #fcefdc; stroke: #c58a32; stroke-dasharray: 6 4; }
+    .rd { fill: #fde8e8; stroke: #c25454; stroke-dasharray: 6 4; }
+    @media (prefers-color-scheme: dark) {
+      .t, .tb, .th { fill: #e6e9ee; }
+      .m  { fill: #a9b4c0; }
+      .w  { fill: #f08c8c; }
+      .ln, .dl { stroke: #a9b4c0; }
+      .ah { fill: #a9b4c0; }
+      .wrap { stroke: #5cc4b4; fill: #5cc4b4; }
+      .ing  { stroke: #e0a85a; fill: #e0a85a; }
+      .c, .cd { fill: #173a35; stroke: #5cc4b4; }
+      .g  { fill: #1b3527; stroke: #6cc08c; }
+      .p, .pd { fill: #2e2442; stroke: #ab8ae0; }
+      .od { fill: #3a2c17; stroke: #e0a85a; }
+      .rd { fill: #3d1f1f; stroke: #e07a7a; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="ah" d="M0 0L10 5L0 10z"/>
+    </marker>
+  </defs>
+
+  <!-- 범례 -->
+  <text class="tb" x="20" y="26">Customer app path — plan</text>
+  <text class="m" x="20" y="44">Solid = reused as-is from operator path</text>
+  <text class="m" x="20" y="60">Dashed = to build · decision pending</text>
+  <text class="m" x="640" y="26">Operator (backoffice) path:</text>
+  <text class="m" x="640" y="42">2026-11-07-rag-architecture-backoffice.en.svg</text>
+
+  <!-- 클라이언트·게이트웨이 -->
+  <rect class="cd" x="320" y="14" width="260" height="50" rx="9"/>
+  <text class="tb" x="450" y="36" text-anchor="middle">Customer app (Flutter · Android)</text>
+  <text class="m" x="450" y="54" text-anchor="middle">Customer token · guest access pending</text>
+  <path class="ln" d="M450 64V92" marker-end="url(#a)"/>
+  <rect class="c" x="320" y="94" width="260" height="50" rx="9"/>
+  <text class="tb" x="450" y="116" text-anchor="middle">API Gateway</text>
+  <text class="m" x="450" y="134" text-anchor="middle">Customer JWT · per-customer rate limit (pending)</text>
+  <path class="ln" d="M450 144V200" marker-end="url(#a)"/>
+
+  <!-- 서비스 -->
+  <rect class="wrap" x="20" y="170" width="860" height="560" rx="14"/>
+  <text class="th" x="40" y="196">ai-assistant-service — customer question path</text>
+
+  <rect class="cd" x="300" y="202" width="300" height="54" rx="8"/>
+  <text class="tb" x="450" y="224" text-anchor="middle">Customer question API (new contract)</text>
+  <text class="m" x="450" y="243" text-anchor="middle">Own questions only · separate from operator API</text>
+  <text class="m" x="612" y="224">Every stored answer returned</text>
+  <text class="m" x="612" y="240">re-checks owner &amp; access (as operator)</text>
+  <path class="ln" d="M380 256V286" marker-end="url(#a)"/>
+
+  <!-- 처리 순서 -->
+  <rect class="c" x="40" y="288" width="370" height="420" rx="10"/>
+  <text class="tb" x="56" y="312">Steps (same frame as operator path)</text>
+  <text class="t" x="56" y="344">① Claim: request hash · lease</text>
+  <text class="t" x="56" y="380">② Classify intent — customer rules</text>
+  <text class="m" x="76" y="398">· policy (returns, fees, cancelling) → retrieve</text>
+  <text class="m" x="76" y="414">· my order / delivery / stock → realtime path</text>
+  <text class="m" x="76" y="430">· out of scope → reject</text>
+  <text class="t" x="56" y="462">③ Pin active snapshot</text>
+  <text class="tb" x="56" y="498">④ Retrieve — customer-public docs only</text>
+  <text class="tb" x="56" y="540">⑤ Generate — answer only from evidence</text>
+  <text class="t" x="56" y="582">⑥ Verify citations → else NO_GROUNDING</text>
+  <text class="m" x="76" y="600">customer-facing message pending</text>
+  <text class="t" x="56" y="634">⑦ Complete</text>
+  <text class="m" x="76" y="652">question text may be personal data</text>
+  <text class="m" x="76" y="668">whether to store / retention pending</text>
+  <text class="w" x="56" y="696">Internal docs are excluded in SQL, not by prompt</text>
+
+  <!-- ④ 검색 -->
+  <path class="ln" d="M332 493H448" marker-end="url(#a)"/>
+  <rect class="c" x="450" y="290" width="410" height="210" rx="10"/>
+  <text class="tb" x="466" y="314">Retriever (same code as operator)</text>
+  <rect class="g" x="466" y="328" width="170" height="74" rx="7"/>
+  <text class="tb" x="551" y="352" text-anchor="middle">EmbeddingModel</text>
+  <text class="m" x="551" y="370" text-anchor="middle">same model as operator</text>
+  <text class="m" x="551" y="387" text-anchor="middle">(comparison D3)</text>
+  <rect class="g" x="660" y="328" width="184" height="74" rx="7"/>
+  <text class="tb" x="752" y="352" text-anchor="middle">pgvector SQL</text>
+  <text class="m" x="752" y="370" text-anchor="middle">WHERE scope = customer-public</text>
+  <text class="m" x="752" y="387" text-anchor="middle">+ current docs only</text>
+  <path class="ln" d="M551 402V416H752V404" marker-end="url(#a)"/>
+  <text class="m" x="560" y="432">vector passed into one query</text>
+  <text class="m" x="466" y="460">Result = customer-public evidence only</text>
+  <text class="m" x="466" y="478">(manuals, costs, internal procedures never become candidates)</text>
+
+  <!-- 검색 결과 → 생성 -->
+  <path class="ln" d="M655 500V518" marker-end="url(#a)"/>
+  <text class="m" x="664" y="513">evidence + question + rules</text>
+
+  <!-- ⑤ 생성 -->
+  <path class="ln" d="M342 535H360V572H448" marker-end="url(#a)"/>
+  <rect class="c" x="450" y="520" width="410" height="104" rx="10"/>
+  <text class="tb" x="466" y="542">AnswerGenerator</text>
+  <rect class="pd" x="466" y="552" width="200" height="62" rx="7"/>
+  <text class="tb" x="566" y="574" text-anchor="middle">Generative → ChatModel</text>
+  <text class="m" x="566" y="592" text-anchor="middle">customer model pending (D2)</text>
+  <text class="m" x="566" y="606" text-anchor="middle">short, plain-language style</text>
+  <rect class="g" x="680" y="552" width="164" height="62" rx="7"/>
+  <text class="tb" x="762" y="574" text-anchor="middle">Extractive</text>
+  <text class="m" x="762" y="592" text-anchor="middle">baseline before a model</text>
+  <text class="m" x="762" y="606" text-anchor="middle">(quotes, current code)</text>
+
+  <!-- 실시간 경로 -->
+  <path class="dl" d="M310 414H430V676H448" marker-end="url(#a)"/>
+  <rect class="rd" x="450" y="636" width="410" height="80" rx="10"/>
+  <text class="tb" x="466" y="658">Realtime questions (my order / delivery / stock)</text>
+  <text class="m" x="466" y="678">Now: not answered from docs — reject + link order detail</text>
+  <text class="m" x="466" y="696">Later (pending): tool calling with the customer's token,</text>
+  <text class="m" x="466" y="710">read-only order/delivery APIs; they decide access</text>
+
+  <!-- DB -->
+  <rect class="g" x="200" y="756" width="660" height="78" rx="10"/>
+  <text class="tb" x="530" y="780" text-anchor="middle">PostgreSQL + pgvector (same DB as operator)</text>
+  <text class="t" x="530" y="802" text-anchor="middle">doc_chunk — scope per chunk (customer-public / internal) · index_snapshot · embedding_cache</text>
+  <text class="t" x="530" y="822" text-anchor="middle">policy_answer — asker type (customer / operator) · customer retention pending</text>
+  <path class="ln" d="M844 365H870V795H862" marker-end="url(#a)"/>
+  <path class="ln" d="M225 708V754" marker-end="url(#a)"/>
+  <text class="m" x="234" y="746">①⑦ answer record</text>
+
+  <!-- 적재 -->
+  <rect class="ing" x="20" y="860" width="860" height="140" rx="14"/>
+  <text class="th" x="40" y="886">Customer-public document ingestion — to build</text>
+  <rect class="od" x="36" y="900" width="150" height="72" rx="7"/>
+  <text class="tb" x="111" y="922" text-anchor="middle">Customer policies</text>
+  <text class="m" x="111" y="940" text-anchor="middle">none yet · who writes</text>
+  <text class="m" x="111" y="956" text-anchor="middle">&amp; approves: pending</text>
+  <path class="ln" d="M186 936H204" marker-end="url(#a)"/>
+  <rect class="od" x="206" y="900" width="150" height="72" rx="7"/>
+  <text class="tb" x="281" y="922" text-anchor="middle">manifest entry</text>
+  <text class="m" x="281" y="940" text-anchor="middle">access scope per doc</text>
+  <text class="m" x="281" y="956" text-anchor="middle">marked customer-public</text>
+  <path class="ln" d="M356 936H374" marker-end="url(#a)"/>
+  <rect class="od" x="376" y="900" width="150" height="72" rx="7"/>
+  <text class="tb" x="451" y="922" text-anchor="middle">Chunks + metadata</text>
+  <text class="m" x="451" y="940" text-anchor="middle">authority · lifecycle · scope</text>
+  <text class="m" x="451" y="956" text-anchor="middle">(same code as operator)</text>
+  <path class="ln" d="M526 936H544" marker-end="url(#a)"/>
+  <rect class="g" x="546" y="900" width="150" height="72" rx="7"/>
+  <text class="tb" x="621" y="922" text-anchor="middle">EmbeddingModel</text>
+  <text class="m" x="621" y="940" text-anchor="middle">same model as retrieval</text>
+  <text class="m" x="621" y="956" text-anchor="middle">EmbeddingSpec recorded</text>
+  <path class="ln" d="M696 936H714" marker-end="url(#a)"/>
+  <rect class="od" x="716" y="900" width="150" height="72" rx="7"/>
+  <text class="tb" x="791" y="922" text-anchor="middle">Snapshot</text>
+  <text class="m" x="791" y="940" text-anchor="middle">shared with operator /</text>
+  <text class="m" x="791" y="956" text-anchor="middle">separate — pending</text>
+  <path class="ln" d="M791 900V836" marker-end="url(#a)"/>
+  <text class="m" x="36" y="990">Customer-public docs hold only text customers may read. Business specs (internal rules, costs, procedures) are never published as-is.</text>
+</svg>
