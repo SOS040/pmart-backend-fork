@@ -1286,12 +1286,34 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
         call("GET", SVC, "/packages/" + p2.id() + "/handover-resolution", null, null).body();
     assertThat(res.path("verdict").asString()).isEqualTo("HANDOVER_IN_PROGRESS");
     assertThat(res.path("inventoryApplyStatus").asString()).isEqualTo("UNKNOWN_RESULT");
+    // 재고 거절 → REJECTED(자동 재시도·재확정으로 다시 안 감) → 운영자 재시도(D-8)로 같은 인계 ID 다시
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/package-handovers"))
+            .willReturn(json(409, Map.of("code", "HANDOVER_QTY_EXCEEDED", "detail", "포장 잔량 부족"))));
+    Res rejected = commit(RIDER1, p2, a2.body(), "R1");
+    assertThat(rejected.status()).isEqualTo(202);
+    assertThat(rejected.body().path("status").asString()).isEqualTo("REJECTED");
+    assertThat(rejected.body().path("nextAction").asString()).isEqualTo("RECONCILE");
+    assertThat(rejected.body().path("rejectReason").asString()).startsWith("HANDOVER_QTY_EXCEEDED");
+    int sent =
+        inv.findAll(postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers"))).size();
+    assertThat(commit(RIDER1, p2, a2.body(), "R1").body().path("status").asString())
+        .isEqualTo("REJECTED");
+    inv.verify(sent, postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers")));
     inv.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/package-handovers"))
             .willReturn(
                 json(201, Map.of("status", "APPLIED", "resultId", "CMT-H2", "appliedQty", 1))));
-    Res c2 = commit(RIDER1, p2, a2.body(), "R1");
-    assertThat(c2.status()).isEqualTo(201);
+    String hid = rejected.body().path("handoverId").asString();
+    Res c2 =
+        call(
+            "POST",
+            SVC,
+            "/internal/package-handovers/" + hid + "/retries",
+            UUID.randomUUID().toString(),
+            null);
+    assertThat(c2.status()).as(c2.body().toString()).isEqualTo(200);
+    assertThat(c2.body().path("status").asString()).isEqualTo("APPLIED");
     assertThat(c2.body().path("shipmentState").asString()).isEqualTo("HANDED_OVER");
     assertThat(c2.body().path("handoverId").asString())
         .isEqualTo(unknown.body().path("handoverId").asString());

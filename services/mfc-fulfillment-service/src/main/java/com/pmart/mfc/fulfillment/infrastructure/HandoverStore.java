@@ -232,6 +232,25 @@ public class HandoverStore {
         .findFirst();
   }
 
+  public Optional<Handover> handoverById(String handoverId) {
+    return jdbc
+        .query(
+            "SELECT * FROM package_handover WHERE handover_id = ?",
+            (rs, i) -> handover(rs),
+            handoverId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 재고가 거절한 인계를 운영자가 다시 보낼 때 — REJECTED 일 때만 REQUESTED 로(사유 지움). */
+  public int reopenRejected(String handoverId, Instant at) {
+    return jdbc.update(
+        "UPDATE package_handover SET state = 'REQUESTED', reject_reason = NULL, updated_at = ?"
+            + " WHERE handover_id = ? AND state = 'REJECTED'",
+        Timestamp.from(at),
+        handoverId);
+  }
+
   public void insertHandover(Handover h) {
     jdbc.update(
         "INSERT INTO package_handover (handover_id, package_id, shipment_id,"

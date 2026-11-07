@@ -76,7 +76,8 @@ public class HandoverService {
       String packageState,
       String shipmentState,
       @Nullable Instant handedOverAt,
-      @Nullable String nextAction) {}
+      @Nullable String nextAction,
+      @Nullable String rejectReason) {}
 
   /** 조회 판정. */
   public record Resolution(
@@ -348,6 +349,23 @@ public class HandoverService {
         });
   }
 
+  /**
+   * 재고가 거절한 인계를 운영자가 실물 확인·재고 정정 뒤 같은 인계 ID 로 다시 보낸다(D-8). REJECTED 가 아니면 지금 결과 그대로 — 자동 재개는 하지
+   * 않는다(MFC 1551행).
+   */
+  public CommitResult retry(String handoverId) {
+    Handover h =
+        store
+            .handoverById(handoverId)
+            .orElseThrow(
+                () -> PmartException.notFound("HANDOVER_NOT_FOUND", "인계가 없습니다: " + handoverId));
+    if ("REJECTED".equals(h.state()) && store.reopenRejected(handoverId, clock.instant()) == 1) {
+      log.info("포장 {} 인계 {} — 운영자 재시도", h.packageId(), handoverId);
+      post(h.packageId());
+    }
+    return result(h.packageId());
+  }
+
   /** 재고 결과를 모르는 인계를 같은 인계 ID 로 다시. */
   @Scheduled(
       fixedDelayString = "${pmart.fulfillment.handover-sweep-interval:PT15S}",
@@ -384,7 +402,8 @@ public class HandoverService {
         p.state(),
         p.shipmentState(),
         h.handedOverAt(),
-        next);
+        next,
+        h.rejectReason());
   }
 
   // ---------- 조회 ----------

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.0
+  version: 0.4.1
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -652,6 +652,27 @@ paths:
               schema: { $ref: '#/components/schemas/HandoverResolution' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /internal/package-handovers/{handoverId}/retries:
+    post:
+      tags: [handovers]
+      summary: '[운영자·내부] 재고가 거절한 인계 다시 보내기 (0.4.1)'
+      description: |
+        2026-11-08(ADR-0047, 결정 목록 D-8). 인계 확정을 재고가 거절하면 인계 사실은 REJECTED 로 멈추고 자동 재시도·재인계·취소를 모두 막는다
+        (MFC 1551행 — 승인 정정/복구 전 자동 재개 금지). 운영자가 실물을 확인하고 재고를 정정한 뒤 이 요청으로 같은 인계 ID 를 재고에 다시 보낸다.
+        REJECTED 가 아니면 지금 결과를 그대로 돌려준다(여러 번 불러도 안전). 다시 거절되면 새 사유로 REJECTED. 운영자 화면(BO-12)은 아직 없다.
+      operationId: retryPackageHandover
+      parameters:
+        - { name: handoverId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 다시 보낸 뒤 결과 (APPLIED / UNKNOWN_RESULT / REJECTED)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HandoverCommitResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /packages/{packageId}/repackings:
     post:
       tags: [shipments]
@@ -1096,6 +1117,7 @@ components:
         shipmentState: { $ref: '#/components/schemas/ShipmentState' }
         handedOverAt: { type: string, format: date-time }
         nextAction: { type: string }
+        rejectReason: { type: [string, 'null'], description: '0.4.1 — REJECTED 사유(코드: 상세). 운영자가 고친 뒤 POST /internal/package-handovers/{handoverId}/retries' }
     HandoverResolution:
       type: object
       properties:

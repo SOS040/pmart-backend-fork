@@ -79,13 +79,34 @@ public class HandoversController implements HandoversApi {
             .inventoryCommitId(r.inventoryCommitId())
             .packageState(PackageState.fromValue(r.packageState()))
             .shipmentState(ShipmentState.fromValue(r.shipmentState()))
-            .nextAction(r.nextAction());
+            .nextAction(r.nextAction())
+            .rejectReason(r.rejectReason());
     if (r.handedOverAt() != null) {
       out.setHandedOverAt(time(r.handedOverAt()));
     }
     return ResponseEntity.status(
             "APPLIED".equals(r.status()) ? HttpStatus.CREATED : HttpStatus.ACCEPTED)
         .body(out);
+  }
+
+  @Override
+  public ResponseEntity<HandoverCommitResult> retryPackageHandover(
+      String handoverId, String idempotencyKey, String xSourceSystem) {
+    var r = handovers.retry(handoverId);
+    HandoverCommitResult out =
+        new HandoverCommitResult()
+            .status(HandoverCommitResult.StatusEnum.fromValue(r.status()))
+            .requestId(idempotencyKey)
+            .handoverId(r.handoverId())
+            .inventoryCommitId(r.inventoryCommitId())
+            .packageState(PackageState.fromValue(r.packageState()))
+            .shipmentState(ShipmentState.fromValue(r.shipmentState()))
+            .nextAction(r.nextAction())
+            .rejectReason(r.rejectReason());
+    if (r.handedOverAt() != null) {
+      out.setHandedOverAt(time(r.handedOverAt()));
+    }
+    return ResponseEntity.ok(out);
   }
 
   @Override
