@@ -29,9 +29,12 @@ final class InitialStockLoads {
               var l = new InitialStockLoadLinesInner();
               l.setSku(sku);
               l.setQty(qty);
+              l.setReceivedQty(r.received().get(sku));
               lines.add(l);
             });
     d.setLines(lines);
+    d.setReceivingLocation(r.receivingLocation());
+    d.setReceivedAt(r.receivedAt() == null ? null : r.receivedAt().atOffset(ZoneOffset.UTC));
     d.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     d.setAppliedAt(r.appliedAt() == null ? null : r.appliedAt().atOffset(ZoneOffset.UTC));
     return d;

@@ -1,10 +1,12 @@
 package com.pmart.mfc.inbound.application;
 
 import com.pmart.mfc.inbound.domain.InitialStockRules;
+import com.pmart.mfc.inbound.infrastructure.InboundTaskStore;
 import com.pmart.mfc.inbound.infrastructure.InitialStockStore;
 import com.pmart.mfc.inbound.infrastructure.InitialStockStore.LoadRow;
 import com.pmart.mfc.inbound.infrastructure.InventoryReceiptClient;
 import com.pmart.mfc.inbound.infrastructure.InventoryReceiptClient.Receipt;
+import com.pmart.mfc.inbound.infrastructure.InventoryReceiptClient.ReceiptLine;
 import com.pmart.mfc.inbound.infrastructure.InventoryReceiptClient.Result;
 import java.time.Clock;
 import java.time.Duration;
@@ -34,16 +36,19 @@ class InitialStockPoster {
   private static final Logger log = LoggerFactory.getLogger(InitialStockPoster.class);
 
   private final InitialStockStore store;
+  private final InboundTaskStore tasks;
   private final InventoryReceiptClient inventory;
   private final TransactionTemplate tx;
   private final Clock clock;
 
   InitialStockPoster(
       InitialStockStore store,
+      InboundTaskStore tasks,
       InventoryReceiptClient inventory,
       TransactionTemplate tx,
       Clock clock) {
     this.store = store;
+    this.tasks = tasks;
     this.inventory = inventory;
     this.tx = tx;
     this.clock = clock;
@@ -69,7 +74,9 @@ class InitialStockPoster {
   }
 
   private void post(LoadRow load) {
-    if (load.mfcId() == null || load.lines().isEmpty()) {
+    if (load.mfcId() == null
+        || load.receivingLocation() == null
+        || load.received().values().stream().noneMatch(q -> q > 0)) {
       store.markRejected(load.receiptId(), "INVALID: 센터·행 없음", clock.instant());
       return;
     }
@@ -81,11 +88,24 @@ class InitialStockPoster {
                 DEPARTURE,
                 load.mfcId(),
                 load.createdAt(),
-                load.lines()));
+                load.receivingLocation(),
+                positive(load.received())));
     Instant at = clock.instant();
     switch (r) {
       case Result.Posted p -> {
-        store.markApplied(load.receiptId(), p.commitId(), at);
+        List<ReceiptLine> received;
+        try {
+          received = inventory.receiptLines(load.receiptId());
+        } catch (RuntimeException e) {
+          Duration wait = InitialStockRules.backoff(load.attempts());
+          store.markRetry(load.receiptId(), "수령 결과 조회 실패: " + e.getMessage(), at.plus(wait), at);
+          return;
+        }
+        tx.executeWithoutResult(
+            st -> {
+              store.markApplied(load.receiptId(), p.commitId(), at);
+              tasks.inspectionsFor(load.receiptId(), load.mfcId(), received, at);
+            });
         log.info(
             "initial stock {} (approval {}) APPLIED to {} as {}",
             load.receiptId(),
@@ -108,5 +128,16 @@ class InitialStockPoster {
             t.error());
       }
     }
+  }
+
+  private static java.util.Map<String, Integer> positive(java.util.Map<String, Integer> m) {
+    java.util.Map<String, Integer> out = new java.util.TreeMap<>();
+    m.forEach(
+        (k, v) -> {
+          if (v > 0) {
+            out.put(k, v);
+          }
+        });
+    return out;
   }
 }

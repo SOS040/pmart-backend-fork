@@ -124,6 +124,65 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
 
   record Res(int status, JsonNode body) {}
 
+  Res post(String token, String path, String key, Object body) {
+    var e =
+        http.post()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "backoffice-web");
+                })
+            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  static String op(String... centers) {
+    return TestJwt.operator("ops-1", List.of("INVENTORY_APPROVER"), List.of(centers));
+  }
+
+  /** 현장 수령(입고 예정 → PENDING). */
+  Res receive(String mfcId, String receiptId, Map<String, Integer> lines) {
+    List<Map<String, Object>> ls = new java.util.ArrayList<>();
+    lines.forEach((sku, q) -> ls.add(Map.of("sku", sku, "receivedQty", q)));
+    return post(
+        op(mfcId),
+        "/initial-stock-loads/" + receiptId + "/receipts",
+        UUID.randomUUID().toString(),
+        Map.of("toLocationCode", "RCV-DOCK", "lines", ls));
+  }
+
+  /** inventory 수령 결과(줄별 lotId). */
+  void receiptResult(String receiptId, List<Map<String, Object>> lines) {
+    inventory.stubFor(
+        WireMock.get(urlPathEqualTo(RECEIPTS + "/" + receiptId))
+            .willReturn(
+                json(200, Map.of("receiptId", receiptId, "commitId", "CMT-X", "lines", lines))));
+  }
+
+  static Map<String, Object> resultLine(int no, String sku, String lot, int qty) {
+    return Map.of(
+        "lineNo",
+        no,
+        "sku",
+        sku,
+        "lotId",
+        lot,
+        "locationCode",
+        "RCV-DOCK",
+        "normalQty",
+        qty,
+        "quarantinedQty",
+        0,
+        "pendingQty",
+        0);
+  }
+
   Res get(String token, String path) {
     var e =
         http.get().uri(path).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
@@ -220,14 +279,54 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
             List.of(
                 line(m1, "E-00000001", 10), line(m1, "B-00000002", 3), line(m2, "E-00000001", 7)));
 
-    JsonNode items = awaitLoads(approvalId, i -> allIn(i, 2, "APPLIED"));
-    assertThat(allIn(items, 2, "APPLIED")).as(items.toString()).isTrue();
+    // 승인 = 입고 예정(EXPECTED) — 승인만으로 재고를 만들지 않는다
+    JsonNode items = awaitLoads(approvalId, i -> allIn(i, 2, "EXPECTED"));
+    assertThat(allIn(items, 2, "EXPECTED")).as(items.toString()).isTrue();
     JsonNode first =
         items.path(0).path("mfcId").asString().equals(m1) ? items.path(0) : items.path(1);
+    JsonNode second = first == items.path(0) ? items.path(1) : items.path(0);
+    String receiptId = first.path("receiptId").asString();
+    inventory.verify(0, postRequestedFor(urlPathEqualTo(RECEIPTS)));
+
+    // 현장 수령: 승인에 없는 SKU 400, 승인 수량 초과 400, 다른 센터 운영자 403
+    assertThat(receive(m1, receiptId, Map.of("E-00000009", 1)).status()).isEqualTo(400);
+    assertThat(receive(m1, receiptId, Map.of("E-00000001", 11)).status()).isEqualTo(400);
+    List<Map<String, Object>> one = List.of(Map.of("sku", "E-00000001", "receivedQty", 1));
+    assertThat(
+            post(
+                    op(m2),
+                    "/initial-stock-loads/" + receiptId + "/receipts",
+                    UUID.randomUUID().toString(),
+                    Map.of("toLocationCode", "RCV-DOCK", "lines", one))
+                .status())
+        .isEqualTo(403);
+    receiptResult(
+        receiptId,
+        List.of(resultLine(1, "B-00000002", "LOT-B", 3), resultLine(2, "E-00000001", "LOT-E", 8)));
+    receiptResult(
+        second.path("receiptId").asString(), List.of(resultLine(1, "E-00000001", "LOT-E2", 7)));
+    Res received = receive(m1, receiptId, Map.of("E-00000001", 8, "B-00000002", 3));
+    assertThat(received.status()).as(received.body().toString()).isEqualTo(202);
+    assertThat(received.body().path("appliedQty").asInt()).isEqualTo(11);
+    // 한 번만 수령(EXPECTED 아님 → 409)
+    assertThat(receive(m1, receiptId, Map.of("E-00000001", 1)).status()).isEqualTo(409);
+    assertThat(receive(m2, second.path("receiptId").asString(), Map.of("E-00000001", 7)).status())
+        .isEqualTo(202);
+
+    items = awaitLoads(approvalId, i -> allIn(i, 2, "APPLIED"));
+    assertThat(allIn(items, 2, "APPLIED")).as(items.toString()).isTrue();
+    first = items.path(0).path("mfcId").asString().equals(m1) ? items.path(0) : items.path(1);
     assertThat(first.path("inventoryCommitId").asString()).isEqualTo("CMT-1");
     assertThat(first.path("lines")).hasSize(2);
+    assertThat(first.path("receivingLocation").asString()).isEqualTo("RCV-DOCK");
     assertThat(first.path("attempts").asInt()).isEqualTo(1);
-    String receiptId = first.path("receiptId").asString();
+
+    // 수령 줄마다 품질검사 작업(수령 LOT, 수령 위치)
+    JsonNode tasks =
+        get(op(m1), "/inbound-tasks?mfcId=" + m1 + "&taskType=INSPECT").body().path("items");
+    assertThat(tasks).hasSize(2);
+    assertThat(tasks.findValuesAsString("lotId")).containsExactlyInAnyOrder("LOT-B", "LOT-E");
+    assertThat(get(op(m2), "/inbound-tasks?mfcId=" + m1).status()).isEqualTo(403);
 
     // ConfirmReceipt: 서비스 토큰, Idempotency-Key = receiptId, TRF 없는 초기 반입 표기, 정상 수량만
     inventory.verify(
@@ -241,7 +340,8 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.lines[0].sku", equalTo("B-00000002")))
             .withRequestBody(matchingJsonPath("$.lines[0].normalQty", equalTo("3")))
             .withRequestBody(matchingJsonPath("$.lines[0].quarantinedQty", equalTo("0")))
-            .withRequestBody(matchingJsonPath("$.lines[1].normalQty", equalTo("10"))));
+            .withRequestBody(matchingJsonPath("$.lines[0].toLocationCode", equalTo("RCV-DOCK")))
+            .withRequestBody(matchingJsonPath("$.lines[1].normalQty", equalTo("8"))));
 
     // 서비스 조회(receiptId), 운영자 경로는 서비스 토큰 403, 내부 경로는 운영자 403
     Res internal = get(SERVICE_TOKEN, "/internal/initial-stock-loads/" + receiptId);
@@ -261,6 +361,7 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
     String marker = "AP-" + UUID.randomUUID();
     approve(marker, "INITIAL_STOCK", "APPROVED", List.of(line(m1, "E-00000003", 1)));
     awaitLoads(marker, i -> i.size() == 1);
+
     assertThat(
             jdbc.queryForObject(
                 "SELECT count(*) FROM initial_stock_load WHERE approval_id = ?",
@@ -289,6 +390,10 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
                 json(201, Map.of("status", "APPLIED", "requestId", "r", "resultId", "CMT-R"))));
     String approvalId = "AP-" + UUID.randomUUID();
     approve(approvalId, "INITIAL_STOCK", "APPROVED", List.of(line(m, "E-00000001", 4)));
+    String expected =
+        awaitLoads(approvalId, i -> allIn(i, 1, "EXPECTED")).path(0).path("receiptId").asString();
+    receiptResult(expected, List.of(resultLine(1, "E-00000001", "LOT-1", 4)));
+    assertThat(receive(m, expected, Map.of("E-00000001", 4)).status()).isEqualTo(202);
 
     JsonNode items = awaitLoads(approvalId, i -> allIn(i, 1, "APPLIED"));
     assertThat(allIn(items, 1, "APPLIED")).as(items.toString()).isTrue();
@@ -325,6 +430,12 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
                             + "\"code\":\"RECEIPT_ALREADY_POSTED\",\"traceId\":\"t\"}")));
     String rejectedByInventory = "AP-" + UUID.randomUUID();
     approve(rejectedByInventory, "INITIAL_STOCK", "APPROVED", List.of(line(m, "E-00000001", 4)));
+    String exp =
+        awaitLoads(rejectedByInventory, i -> allIn(i, 1, "EXPECTED"))
+            .path(0)
+            .path("receiptId")
+            .asString();
+    assertThat(receive(m, exp, Map.of("E-00000001", 4)).status()).isEqualTo(202);
     JsonNode r1 = awaitLoads(rejectedByInventory, i -> allIn(i, 1, "REJECTED"));
     assertThat(r1.path(0).path("rejectReason").asString())
         .isEqualTo("INVENTORY_REJECTED:RECEIPT_ALREADY_POSTED (HTTP 409)");
@@ -359,5 +470,164 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
         0,
         postRequestedFor(urlPathEqualTo(RECEIPTS))
             .withRequestBody(matchingJsonPath("$.mfcId", equalTo(bad))));
+  }
+
+  @Test
+  void inspectionSplitsLotsAndPutawayCompletesTasks() throws Exception {
+    String m = mfc();
+    inventoryAccepts(m, "CMT-T");
+    String approvalId = "AP-" + UUID.randomUUID();
+    approve(approvalId, "INITIAL_STOCK", "APPROVED", List.of(line(m, "E-00000001", 6)));
+    String receiptId =
+        awaitLoads(approvalId, i -> allIn(i, 1, "EXPECTED")).path(0).path("receiptId").asString();
+    receiptResult(receiptId, List.of(resultLine(1, "E-00000001", "LOT-PEND", 6)));
+    receive(m, receiptId, Map.of("E-00000001", 6));
+    awaitLoads(approvalId, i -> allIn(i, 1, "APPLIED"));
+    JsonNode inspect =
+        get(op(m), "/inbound-tasks?mfcId=" + m + "&taskType=INSPECT").body().path("items").path(0);
+    String taskId = inspect.path("taskId").asString();
+    assertThat(inspect.path("plannedQty").asInt()).isEqualTo(6);
+
+    // 품질검사: inventory 첫 호출은 응답 불명(500) → 503 UNKNOWN_RESULT, 같은 키로 다시 → 같은 실행 ID 로 반영
+    String exec = "/api/v1/internal/task-executions";
+    inventory.stubFor(
+        WireMock.post(urlPathEqualTo(exec))
+            .withRequestBody(matchingJsonPath("$.executionType", equalTo("INSPECT")))
+            .inScenario("ins")
+            .whenScenarioStateIs(Scenario.STARTED)
+            .willReturn(aResponse().withStatus(500))
+            .willSetStateTo("up"));
+    inventory.stubFor(
+        WireMock.post(urlPathEqualTo(exec))
+            .withRequestBody(matchingJsonPath("$.executionType", equalTo("INSPECT")))
+            .inScenario("ins")
+            .whenScenarioStateIs("up")
+            .willReturn(
+                json(201, Map.of("status", "APPLIED", "requestId", "r", "resultId", "CMT-I"))));
+    inventory.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/commits/CMT-I"))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "commitId",
+                        "CMT-I",
+                        "entries",
+                        List.of(
+                            entry("LOT-PEND", "PENDING_INSPECTION", -6),
+                            entry("LOT-A", "NORMAL", 3),
+                            entry("LOT-B", "NORMAL", 2),
+                            entry("LOT-PEND", "QUARANTINED", 1))))));
+    Map<String, Object> a = new LinkedHashMap<>();
+    a.put("qty", 3);
+    a.put("resultQuality", "NORMAL");
+    a.put("sourceLotRef", "MFG-A");
+    a.put("expiryDate", "2026-12-31");
+    Map<String, Object> b = new LinkedHashMap<>(a);
+    b.put("qty", 2);
+    b.put("sourceLotRef", "MFG-B");
+    Map<String, Object> q = Map.of("qty", 1, "resultQuality", "QUARANTINED");
+    String key = UUID.randomUUID().toString();
+    Map<String, Object> body = Map.of("results", List.of(a, b, q));
+    // 잔량 초과 → 409
+    assertThat(
+            post(
+                    op(m),
+                    "/inbound-tasks/" + taskId + "/inspections",
+                    UUID.randomUUID().toString(),
+                    Map.of("results", List.of(Map.of("qty", 7, "resultQuality", "NORMAL"))))
+                .status())
+        .isEqualTo(409);
+    // (시험 HTTP 클라이언트가 503 을 한 번 스스로 다시 보낼 수 있다 — 그때도 같은 키라 같은 실행 ID)
+    Res first = post(op(m), "/inbound-tasks/" + taskId + "/inspections", key, body);
+    assertThat(first.status()).as(first.body().toString()).isIn(200, 503);
+    if (first.status() == 503) {
+      assertThat(first.body().path("code").asString()).isEqualTo("UNKNOWN_RESULT");
+    }
+    Res again = post(op(m), "/inbound-tasks/" + taskId + "/inspections", key, body);
+    assertThat(again.status()).as(again.body().toString()).isEqualTo(200);
+    assertThat(again.body().path("applyStatus").asString()).isEqualTo("APPLIED");
+    assertThat(again.body().path("task").path("state").asString()).isEqualTo("COMPLETED");
+    assertThat(again.body().path("createdTaskIds")).hasSize(2);
+    var calls = inventory.findAll(postRequestedFor(urlPathEqualTo(exec)));
+    assertThat(calls).hasSize(2);
+    assertThat(calls.get(0).getHeader("Idempotency-Key"))
+        .isEqualTo(calls.get(1).getHeader("Idempotency-Key"));
+    assertThat(calls.get(1).getBodyAsString())
+        .contains("\"sourceLotRef\":\"MFG-A\"")
+        .contains("LOT-PEND");
+    // 같은 키 재생 → 같은 결과(다시 호출 안 함)
+    Res replay = post(op(m), "/inbound-tasks/" + taskId + "/inspections", key, body);
+    assertThat(replay.body().path("executionId").asString())
+        .isEqualTo(again.body().path("executionId").asString());
+    assertThat(inventory.findAll(postRequestedFor(urlPathEqualTo(exec)))).hasSize(2);
+
+    // 적치 작업: 나뉜 LOT 마다(3·2), 부분 적치 후 완료
+    JsonNode puts =
+        get(op(m), "/inbound-tasks?mfcId=" + m + "&taskType=PUTAWAY").body().path("items");
+    assertThat(puts).hasSize(2);
+    JsonNode putA =
+        "LOT-A".equals(puts.path(0).path("lotId").asString()) ? puts.path(0) : puts.path(1);
+    assertThat(putA.path("plannedQty").asInt()).isEqualTo(3);
+    inventory.stubFor(
+        WireMock.post(urlPathEqualTo(exec))
+            .withRequestBody(matchingJsonPath("$.executionType", equalTo("PUTAWAY")))
+            .willReturn(
+                json(201, Map.of("status", "APPLIED", "requestId", "r", "resultId", "CMT-P"))));
+    String putPath = "/inbound-tasks/" + putA.path("taskId").asString() + "/putaways";
+    Res p1 =
+        post(
+            op(m),
+            putPath,
+            UUID.randomUUID().toString(),
+            Map.of("toLocationCode", "A-01-01", "qty", 2));
+    assertThat(p1.body().path("task").path("state").asString()).isEqualTo("READY");
+    Res p2 =
+        post(
+            op(m),
+            putPath,
+            UUID.randomUUID().toString(),
+            Map.of("toLocationCode", "A-01-02", "qty", 1));
+    assertThat(p2.body().path("task").path("doneQty").asInt()).isEqualTo(3);
+    assertThat(p2.body().path("task").path("state").asString()).isEqualTo("COMPLETED");
+    inventory.verify(
+        postRequestedFor(urlPathEqualTo(exec))
+            .withRequestBody(matchingJsonPath("$.executionType", equalTo("PUTAWAY")))
+            .withRequestBody(matchingJsonPath("$.fromLocation", equalTo("RCV-DOCK")))
+            .withRequestBody(matchingJsonPath("$.toLocation", equalTo("A-01-02")))
+            .withRequestBody(matchingJsonPath("$.lines[0].lotId", equalTo("LOT-A"))));
+    // inventory 거절(목적지 온도대 등) → REJECTED, 잔량 그대로
+    JsonNode putB = putA == puts.path(0) ? puts.path(1) : puts.path(0);
+    inventory.stubFor(
+        WireMock.post(urlPathEqualTo(exec))
+            .withRequestBody(matchingJsonPath("$.toLocation", equalTo("C-01-01")))
+            .willReturn(
+                aResponse()
+                    .withStatus(409)
+                    .withHeader("Content-Type", "application/problem+json")
+                    .withBody(
+                        "{\"status\":409,\"code\":\"TEMPERATURE_ZONE_MISMATCH\",\"detail\":\"x\"}")));
+    Res rej =
+        post(
+            op(m),
+            "/inbound-tasks/" + putB.path("taskId").asString() + "/putaways",
+            UUID.randomUUID().toString(),
+            Map.of("toLocationCode", "C-01-01", "qty", 2));
+    assertThat(rej.body().path("applyStatus").asString()).isEqualTo("REJECTED");
+    assertThat(rej.body().path("rejectReason").asString()).startsWith("TEMPERATURE_ZONE_MISMATCH");
+    assertThat(rej.body().path("task").path("doneQty").asInt()).isZero();
+  }
+
+  static Map<String, Object> entry(String lot, String quality, int delta) {
+    Map<String, Object> e = new LinkedHashMap<>();
+    e.put("sku", "E-00000001");
+    e.put("lotId", lot);
+    e.put("locationCode", "RCV-DOCK");
+    e.put("qualityState", quality);
+    e.put("workState", "UNSTOWED");
+    e.put("symbol", "H");
+    e.put("delta", delta);
+    e.put("balanceVersion", 1);
+    return e;
   }
 }

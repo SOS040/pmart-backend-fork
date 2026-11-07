@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inbound-service
-  version: 0.1.0
+  version: 0.3.0
   description: |
     MFC 입고 작업(RECEIVE/INSPECT/PUTAWAY Task)·InboundPromise(TRF·TOUT·ETA 투영)·수령 사실·수령 차이·회수품 반입·로컬 공급 요청(WK-14)의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량(mfc-inventory에 ConfirmReceipt 요청 후 commitId 수신), 수령창·수용량(mfc-capacity), 품질 판정(mfc-quality), 공급 승인(replenishment).
@@ -11,6 +11,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - { name: inbound-tasks, description: 입고 작업(품질검사·적치) — 현장 실행 사실 → mfc-inventory 반영(IV-13) }
   - { name: inbound-promises, description: 입고 예정·도착·수령 }
   - { name: supply-requests, description: 로컬 공급 요청 WK-14 }
   - { name: return-receipts, description: 회수품 실물 반입 }
@@ -302,8 +303,10 @@ paths:
 
         **미구현(501)**: 초기 보유 반입은 이 경로가 아니라 approval-service 의 INITIAL_STOCK 승인(ApprovalDecided, 토픽
         platform.approval.v1, targetService=mfc-inbound-service)으로 들어온다(결정 D2, 2026-10-30). 승인 행 attributes =
-        `{ mfcId, sku, qty }`. 승인된 내용을 센터별 반입 기록(PENDING)으로 만들고 mfc-inventory ConfirmReceipt
-        (trfId = INITIAL-<approvalId>, departureId = INITIAL, normalQty = qty)로 전기한다. 결과는 아래 조회 경로로 확인한다.
+        `{ mfcId, sku, qty }`. 승인된 내용은 센터별 **입고 예정(EXPECTED)** 이 된다(2026-11-07 사용자 결정, ADR-0040 3단계 —
+        승인만으로 재고를 만들지 않는다). 현장이 `POST /initial-stock-loads/{receiptId}/receipts` 로 실제 수령 수량·수령 위치를 넣으면
+        PENDING → mfc-inventory ConfirmReceipt(trfId = INITIAL-<approvalId>, departureId = INITIAL, normalQty = 수령 수량)로 전기하고(APPLIED)
+        품질검사(INSPECT) 작업을 만든다. 결과는 아래 조회 경로로 확인한다.
       operationId: loadInitialStock
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -358,6 +361,154 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/InitialStockLoad' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /initial-stock-loads/{receiptId}/receipts:
+    post:
+      tags: [initial-stock-loads]
+      summary: '[운영자·현장] 초기 보유 입고 예정의 실제 수령 — 상품·수량 확인, 수령 위치'
+      description: |
+        입고(수령)는 상품·수량만 확인한다. LOT·소비기한은 품질검사에서 나눈다(사용자 확인 2026-11-07).
+        EXPECTED 인 기록만. SKU 는 승인된 줄이어야 하고 수령 수량 ≤ 승인 수량(초과 실물은 정상 수령에 합산하지 않는다, IV-02). 승인 줄 중
+        빠진 SKU 는 0 으로 본다(미도착 — 차이로 남는다). 합계 0 이면 400. 접수되면 PENDING → 전기 작업이 mfc-inventory 에 수령을 전기하고
+        수령 줄마다 품질검사 작업(INSPECT)을 만든다. 쓰기는 그 센터의 운영자.
+      operationId: receiveInitialStock
+      parameters:
+        - { name: receiptId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toLocationCode, lines]
+              properties:
+                toLocationCode: { type: string, maxLength: 64, description: 수령 위치(mfc-location 수령 구역) }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, receivedQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      receivedQty: { type: integer, minimum: 0 }
+      responses:
+        '202':
+          description: 접수 (resultId = receiptId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE (EXPECTED 아님) / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /inbound-tasks:
+    get:
+      tags: [inbound-tasks]
+      summary: '[운영자·현장] 입고 작업 목록 (품질검사·적치)'
+      operationId: listInboundTasks
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: state, in: query, schema: { type: string, enum: [READY, COMPLETED] } }
+        - { name: taskType, in: query, schema: { type: string, enum: [INSPECT, PUTAWAY] } }
+        - { name: receiptId, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/InboundTask' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /inbound-tasks/{taskId}/inspections:
+    post:
+      tags: [inbound-tasks]
+      summary: '[현장] 품질검사 결과 — 정상/격리 판정과 LOT 분리(제조 LOT 표기·소비기한)'
+      description: |
+        결과 줄마다 수량·판정(NORMAL/QUARANTINED)과, 확인한 제조 LOT 표기·소비기한을 넣는다(같은 표기·기한은 같은 LOT). 합계 ≤ 작업 잔량.
+        현장 사실을 먼저 기록(CAPTURED)하고 mfc-inventory INSPECT 로 반영한다(IV-13). 반영되면(APPLIED) 정상 LOT 마다 적치(PUTAWAY)
+        작업을 만든다. 거절이면 REJECTED(작업 잔량 그대로), 응답 불명이면 503 UNKNOWN_RESULT — 같은 Idempotency-Key 로 다시 보내면 같은
+        실행 ID 로 다시 반영한다(inventory 가 한 번만 반영).
+      operationId: inspectInboundTask
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [results]
+              properties:
+                results:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [qty, resultQuality]
+                    properties:
+                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      resultQuality: { type: string, enum: [NORMAL, QUARANTINED] }
+                      sourceLotRef: { type: string, maxLength: 128 }
+                      expiryDate: { type: string, format: date }
+      responses:
+        '200':
+          description: 반영 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboundTaskExecution' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /inbound-tasks/{taskId}/putaways:
+    post:
+      tags: [inbound-tasks]
+      summary: '[현장] 적치 — 선반 위치·수량(이때부터 판매 가능)'
+      description: |
+        수량 ≤ 작업 잔량. 목적지 검사(등록·ACTIVE·선반/피킹 구역·온도대 = 보관 유형)는 mfc-inventory 가 한다. 처리 방식은 품질검사와 같다
+        (CAPTURED → APPLIED / REJECTED / UNKNOWN_RESULT). 잔량이 0 이 되면 작업 COMPLETED.
+      operationId: putawayInboundTask
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toLocationCode, qty]
+              properties:
+                toLocationCode: { type: string, maxLength: 64 }
+                qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+      responses:
+        '200':
+          description: 반영 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboundTaskExecution' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /initial-stock-loads:
     get:
@@ -465,14 +616,17 @@ components:
     InitialStockLoad:
       type: object
       description: |
-        초기 보유 반입(INITIAL_STOCK 승인 → mfc-inventory ConfirmReceipt). PENDING: 전기 대기·재시도 중(inventory 일시 장애 포함),
-        APPLIED: 전기 완료(inventoryCommitId), REJECTED: 승인 내용 오류 또는 inventory 의 명시적 거절(rejectReason).
+        초기 보유 반입(INITIAL_STOCK 승인 → 입고 예정 → 현장 수령 → mfc-inventory ConfirmReceipt). EXPECTED: 승인됨·현장 수령 전,
+        PENDING: 전기 대기·재시도 중(inventory 일시 장애 포함), APPLIED: 전기 완료(inventoryCommitId, 품질검사 작업 생성),
+        REJECTED: 승인 내용 오류 또는 inventory 의 명시적 거절(rejectReason).
       required: [receiptId, approvalId, state, lines]
       properties:
         receiptId: { type: string, description: 이 서비스가 발급한 수령 ID (mfc-inventory 중복 계상 방지 키) }
         approvalId: { type: string }
         mfcId: { type: [string, 'null'], description: 승인 내용이 올바르지 않아 센터를 정할 수 없으면 null }
-        state: { type: string, enum: [PENDING, APPLIED, REJECTED] }
+        state: { type: string, enum: [EXPECTED, PENDING, APPLIED, REJECTED] }
+        receivingLocation: { type: [string, 'null'], description: 현장 수령 위치 }
+        receivedAt: { type: [string, 'null'], format: date-time }
         rejectReason: { type: [string, 'null'] }
         inventoryCommitId: { type: [string, 'null'] }
         attempts: { type: integer, description: mfc-inventory 전기 시도 횟수 }
@@ -484,9 +638,37 @@ components:
             required: [sku, qty]
             properties:
               sku: { type: string }
-              qty: { type: integer }
+              qty: { type: integer, description: 승인 수량 }
+              receivedQty: { type: [integer, 'null'], description: 현장 수령 수량(수령 전 null) }
         createdAt: { type: string, format: date-time }
         appliedAt: { type: [string, 'null'], format: date-time }
+    InboundTask:
+      type: object
+      required: [taskId, taskType, mfcId, receiptId, sku, lotId, locationCode, plannedQty, doneQty, state, version]
+      properties:
+        taskId: { type: string }
+        taskType: { type: string, enum: [INSPECT, PUTAWAY] }
+        mfcId: { type: string }
+        receiptId: { type: string }
+        parentTaskId: { type: [string, 'null'], description: 적치 작업을 만든 품질검사 작업 }
+        sku: { type: string }
+        lotId: { type: string, description: mfc-inventory lotId(품질검사 = 수령 LOT, 적치 = 나뉜 LOT) }
+        locationCode: { type: string, description: 출발 위치 }
+        plannedQty: { type: integer }
+        doneQty: { type: integer }
+        state: { type: string, enum: [READY, COMPLETED] }
+        version: { type: integer }
+    InboundTaskExecution:
+      type: object
+      required: [executionId, taskId, applyStatus]
+      properties:
+        executionId: { type: string }
+        taskId: { type: string }
+        applyStatus: { type: string, enum: [CAPTURED, APPLIED, REJECTED, UNKNOWN_RESULT] }
+        inventoryCommitId: { type: [string, 'null'] }
+        rejectReason: { type: [string, 'null'] }
+        createdTaskIds: { type: array, items: { type: string }, description: 만든 적치 작업 }
+        task: { $ref: '#/components/schemas/InboundTask' }
     SupplyRequestBody:
       type: object
       required: [mfcId, lines, requestedReadyAt, urgency, reason]

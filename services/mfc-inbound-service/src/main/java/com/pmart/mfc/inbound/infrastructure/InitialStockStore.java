@@ -31,11 +31,14 @@ public class InitialStockStore {
       @Nullable String lastError,
       Instant createdAt,
       @Nullable Instant appliedAt,
-      Map<String, Integer> lines) {}
+      Map<String, Integer> lines,
+      @Nullable String receivingLocation,
+      @Nullable Instant receivedAt,
+      Map<String, Integer> received) {}
 
   private static final String COLUMNS =
       "receipt_id, approval_id, mfc_id, state, reject_reason, inventory_commit_id, attempts,"
-          + " last_error, created_at, applied_at";
+          + " last_error, created_at, applied_at, receiving_location, received_at";
 
   private final JdbcTemplate jdbc;
 
@@ -52,7 +55,7 @@ public class InitialStockStore {
     return n != null && n > 0;
   }
 
-  /** PENDING(바로 전기 대상) 또는 REJECTED(승인 내용 오류) 기록. */
+  /** EXPECTED(입고 예정) 또는 REJECTED(승인 내용 오류) 기록. */
   public void insert(
       String receiptId,
       String approvalId,
@@ -168,18 +171,66 @@ public class InitialStockStore {
         rs.getString("last_error"),
         rs.getTimestamp("created_at").toInstant(),
         applied == null ? null : applied.toInstant(),
-        lines(receiptId));
+        lines(receiptId, "qty"),
+        rs.getString("receiving_location"),
+        rs.getTimestamp("received_at") == null ? null : rs.getTimestamp("received_at").toInstant(),
+        lines(receiptId, "received_qty"));
   }
 
-  private Map<String, Integer> lines(String receiptId) {
+  /** SKU → 수량 열(승인 qty 또는 수령 received_qty). received_qty 가 없는 줄은 빠진다. */
+  private Map<String, Integer> lines(String receiptId, String column) {
     Map<String, Integer> out = new TreeMap<>();
     jdbc.query(
-        "SELECT sku, qty FROM initial_stock_load_line WHERE receipt_id = ? ORDER BY sku",
+        "SELECT sku, "
+            + column
+            + " AS q FROM initial_stock_load_line WHERE receipt_id = ?"
+            + " AND "
+            + column
+            + " IS NOT NULL ORDER BY sku",
         rs -> {
-          out.put(rs.getString("sku"), rs.getInt("qty"));
+          out.put(rs.getString("sku"), rs.getInt("q"));
         },
         receiptId);
     return out;
+  }
+
+  /** 입고 예정 기록을 잠근다. */
+  public Optional<String> lockState(String receiptId) {
+    return jdbc
+        .query(
+            "SELECT state FROM initial_stock_load WHERE receipt_id = ? FOR UPDATE",
+            (rs, i) -> rs.getString(1),
+            receiptId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 현장 수령: EXPECTED → PENDING(곧 전기). 승인 줄 중 빠진 SKU 는 0. */
+  public void markReceived(
+      String receiptId,
+      String location,
+      String receivedBy,
+      Map<String, Integer> received,
+      Instant at) {
+    jdbc.update(
+        "UPDATE initial_stock_load_line SET received_qty = 0 WHERE receipt_id = ?", receiptId);
+    received.forEach(
+        (sku, q) ->
+            jdbc.update(
+                "UPDATE initial_stock_load_line SET received_qty = ? WHERE receipt_id = ? AND sku = ?",
+                q,
+                receiptId,
+                sku));
+    jdbc.update(
+        "UPDATE initial_stock_load SET state = 'PENDING', receiving_location = ?, received_by = ?,"
+            + " received_at = ?, next_attempt_at = ?, updated_at = ? WHERE receipt_id = ?"
+            + " AND state = 'EXPECTED'",
+        location,
+        receivedBy,
+        Timestamp.from(at),
+        Timestamp.from(at),
+        Timestamp.from(at),
+        receiptId);
   }
 
   private static String truncate(String s, int max) {

@@ -24,9 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
 /**
- * 초기 보유 반입(결정 D2): INITIAL_STOCK 승인(ApprovalDecided) → 센터별 반입 기록(PENDING) → {@link
- * InitialStockPoster} 가 mfc-inventory ConfirmReceipt 로 전기. 승인 반영은 InboxGuard 트랜잭션 안에서 기록만 만들고 HTTP
- * 는 부르지 않는다(외부 호출을 이벤트 처리 트랜잭션에 묶지 않음). 승인 내용이 틀리면 예외로 재전달을 반복하지 않고 REJECTED(INVALID: …) 기록을 남긴다.
+ * 초기 보유 반입(결정 D2, 2026-11-07 입고 예정으로 변경 — ADR-0040 3단계): INITIAL_STOCK 승인(ApprovalDecided) → 센터별 입고
+ * 예정(EXPECTED) → 현장 수령({@link InboundTaskService#receive}, PENDING) → {@link InitialStockPoster} 가
+ * mfc-inventory ConfirmReceipt 로 전기하고 품질검사 작업을 만든다. 승인 반영은 InboxGuard 트랜잭션 안에서 기록만 만들고 HTTP 는 부르지
+ * 않는다(외부 호출을 이벤트 처리 트랜잭션에 묶지 않음). 승인 내용이 틀리면 예외로 재전달을 반복하지 않고 REJECTED(INVALID: …) 기록을 남긴다.
  */
 @Service
 public class InitialStockService {
@@ -95,9 +96,9 @@ public class InitialStockService {
         .forEach(
             (mfcId, skus) -> {
               String receiptId = receiptId();
-              store.insert(receiptId, approvalId, mfcId, "PENDING", null, approver, now, skus);
+              store.insert(receiptId, approvalId, mfcId, "EXPECTED", null, approver, now, skus);
               log.info(
-                  "초기 보유 승인 {} → {} 반입 기록 {} ({} SKU)", approvalId, mfcId, receiptId, skus.size());
+                  "초기 보유 승인 {} → {} 입고 예정 {} ({} SKU)", approvalId, mfcId, receiptId, skus.size());
             });
   }
 
