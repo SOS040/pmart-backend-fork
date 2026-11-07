@@ -6,6 +6,10 @@ import com.pmart.mfc.inventory.api.generated.model.ConfirmReceiptRequest;
 import com.pmart.mfc.inventory.api.generated.model.ReceiptResult;
 import com.pmart.mfc.inventory.api.generated.model.ReceiptResultLinesInner;
 import com.pmart.mfc.inventory.api.generated.model.ReserveInventory201Response;
+import com.pmart.mfc.inventory.api.generated.model.StockCorrectionRequest;
+import com.pmart.mfc.inventory.application.CorrectionService;
+import com.pmart.mfc.inventory.application.CorrectionService.CorrectionCommand;
+import com.pmart.mfc.inventory.application.CorrectionService.CorrectionLine;
 import com.pmart.mfc.inventory.application.ReceiptService;
 import com.pmart.mfc.inventory.application.ReceiptService.ReceiptCommand;
 import com.pmart.mfc.inventory.application.TaskExecutionService;
@@ -13,6 +17,7 @@ import com.pmart.mfc.inventory.application.TaskExecutionService.ExecCommand;
 import com.pmart.mfc.inventory.application.TaskExecutionService.ExecLine;
 import com.pmart.mfc.inventory.domain.StockRules.ReceiptLine;
 import com.pmart.mfc.inventory.domain.StockUnit.Quality;
+import com.pmart.mfc.inventory.domain.StockUnit.Work;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,10 +32,13 @@ public class PostingsController implements PostingsApi {
 
   private final ReceiptService receipts;
   private final TaskExecutionService executions;
+  private final CorrectionService corrections;
 
-  public PostingsController(ReceiptService receipts, TaskExecutionService executions) {
+  public PostingsController(
+      ReceiptService receipts, TaskExecutionService executions, CorrectionService corrections) {
     this.receipts = receipts;
     this.executions = executions;
+    this.corrections = corrections;
   }
 
   @Override
@@ -122,6 +130,32 @@ public class PostingsController implements PostingsApi {
                 body.getFromLocation(),
                 body.getToLocation(),
                 lines));
+    return ResponseEntity.status(HttpStatus.CREATED).body(Commands.dto(r));
+  }
+
+  @Override
+  public ResponseEntity<ReserveInventory201Response> correctStock(
+      String mfcId, String idempotencyKey, String xSourceSystem, StockCorrectionRequest body) {
+    var lines =
+        body.getLines().stream()
+            .map(
+                l ->
+                    new CorrectionLine(
+                        l.getSku(),
+                        l.getLotId(),
+                        l.getFromLocation(),
+                        Quality.valueOf(l.getQualityState().getValue()),
+                        Work.valueOf(l.getWorkState().getValue()),
+                        l.getQty(),
+                        l.getToLocation(),
+                        l.getToSourceLotRef(),
+                        l.getToExpiryDate()))
+            .toList();
+    var r =
+        corrections.correct(
+            idempotencyKey,
+            xSourceSystem,
+            new CorrectionCommand(mfcId, body.getReason(), body.getApprovalRef(), lines));
     return ResponseEntity.status(HttpStatus.CREATED).body(Commands.dto(r));
   }
 }

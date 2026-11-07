@@ -2,12 +2,18 @@ package com.pmart.mfc.inventory.api;
 
 import com.pmart.mfc.inventory.api.generated.QueriesApi;
 import com.pmart.mfc.inventory.api.generated.model.Availability;
+import com.pmart.mfc.inventory.api.generated.model.CenterStock;
+import com.pmart.mfc.inventory.api.generated.model.CenterStockLotsInner;
+import com.pmart.mfc.inventory.api.generated.model.CenterStockUnitsInner;
 import com.pmart.mfc.inventory.api.generated.model.Commit;
 import com.pmart.mfc.inventory.api.generated.model.CommitEntriesInner;
 import com.pmart.mfc.inventory.api.generated.model.GetAvailability200Response;
 import com.pmart.mfc.inventory.api.generated.model.GetAvailability200ResponseAsOf;
 import com.pmart.mfc.inventory.api.generated.model.GetRequestResult200Response;
 import com.pmart.mfc.inventory.api.generated.model.InventoryApplyStatus;
+import com.pmart.mfc.inventory.api.generated.model.QualityState;
+import com.pmart.mfc.inventory.api.generated.model.WorkState;
+import com.pmart.mfc.inventory.application.CorrectionService;
 import com.pmart.mfc.inventory.application.StockQueryService;
 import java.time.Instant;
 import java.util.List;
@@ -22,9 +28,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class QueriesController implements QueriesApi {
 
   private final StockQueryService queries;
+  private final CorrectionService corrections;
 
-  public QueriesController(StockQueryService queries) {
+  public QueriesController(StockQueryService queries, CorrectionService corrections) {
     this.queries = queries;
+    this.corrections = corrections;
   }
 
   @Override
@@ -97,6 +105,44 @@ public class QueriesController implements QueriesApi {
     out.setCommitId(v.commit() == null ? null : v.commit().commitId());
     out.setAppliedQty(v.commit() == null ? 0 : v.commit().appliedQty());
     out.setOccurredAt(SkuHandlingsController.time(v.occurredAt()));
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<CenterStock> getCenterStock(String mfcId, String sku) {
+    var v = corrections.stock(mfcId, sku);
+    var out = new CenterStock();
+    out.setMfcId(mfcId);
+    out.setSku(sku);
+    out.setLots(
+        v.lots().stream()
+            .map(
+                b -> {
+                  var l = new CenterStockLotsInner();
+                  l.setLotId(b.lotId());
+                  l.setTracking(CenterStockLotsInner.TrackingEnum.fromValue(b.tracking()));
+                  l.setExpiryDate(b.expiryDate());
+                  l.setOnHand(b.onHand());
+                  l.setQuarantined(b.quarantined());
+                  l.setSellable(b.sellable());
+                  l.setReserved(b.reserved());
+                  l.setAvailable(b.available());
+                  return l;
+                })
+            .toList());
+    out.setUnits(
+        v.units().stream()
+            .map(
+                u -> {
+                  var d = new CenterStockUnitsInner();
+                  d.setLocationCode(u.key().locationCode());
+                  d.setLotId(u.key().lotId());
+                  d.setQualityState(QualityState.fromValue(u.key().quality().name()));
+                  d.setWorkState(WorkState.fromValue(u.key().work().name()));
+                  d.setQty(u.qty());
+                  return d;
+                })
+            .toList());
     return ResponseEntity.ok(out);
   }
 }

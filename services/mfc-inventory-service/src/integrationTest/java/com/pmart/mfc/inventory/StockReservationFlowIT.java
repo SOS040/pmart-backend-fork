@@ -695,6 +695,67 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   @Test
+  void correctionMovesLotAndLocationWithoutChangingTotalsButNotReservedQuantity() {
+    // 이관처럼 추적 미확인 LOT 5개(선반) + 예약 2 → 3개만 정정 가능(R ≤ E)
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 5);
+    assertThat(
+            reserve(UUID.randomUUID().toString(), reserveBody("ORD-COR", Map.of(sku, 2))).status())
+        .isEqualTo(201);
+    String op = TestJwt.operator("op", List.of(), List.of(mfc));
+    JsonNode stock = get(op, "/mfcs/" + mfc + "/stock?sku=" + sku).body();
+    assertThat(stock.path("lots")).hasSize(1);
+    String lot = stock.path("lots").path(0).path("lotId").asString();
+    assertThat(stock.path("lots").path(0).path("tracking").asString()).isEqualTo("UNTRACKED");
+    assertThat(stock.path("lots").path(0).path("available").asInt()).isEqualTo(3);
+    String expiry = java.time.LocalDate.now().plusDays(40).toString();
+    Map<String, Object> line = new LinkedHashMap<>();
+    line.put("sku", sku);
+    line.put("lotId", lot);
+    line.put("fromLocation", "A-01-01");
+    line.put("qualityState", "NORMAL");
+    line.put("workState", "STORED");
+    line.put("qty", 4);
+    line.put("toSourceLotRef", "SEED-LOT-1");
+    line.put("toExpiryDate", expiry);
+    Map<String, Object> body =
+        Map.of("reason", "시드 LOT 정정", "approvalRef", "seed-v2", "lines", List.of(line));
+    String path = "/mfcs/" + mfc + "/stock-corrections";
+    Res tooMuch = post(op, "backoffice-web", path, UUID.randomUUID().toString(), body);
+    assertThat(tooMuch.status()).isEqualTo(409);
+    assertThat(tooMuch.body().path("code").asString()).isEqualTo("INVARIANT_VIOLATION");
+    line.put("qty", 3);
+    Res ok = post(op, "backoffice-web", path, UUID.randomUUID().toString(), body);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(201);
+    JsonNode after = get(op, "/mfcs/" + mfc + "/stock?sku=" + sku).body();
+    assertThat(after.path("lots")).hasSize(2);
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(5);
+    assertThat(av.path("sellable").asInt()).isEqualTo(5);
+    assertThat(av.path("reserved").asInt()).isEqualTo(2);
+    assertThat(
+            get(INBOUND, "/internal/commits/" + ok.body().path("resultId").asString())
+                .body()
+                .path("commitType")
+                .asString())
+        .isEqualTo("CORRECTION");
+    // 다른 센터 운영자·근거 없음
+    String other = TestJwt.operator("op2", List.of(), List.of("MFC-OTHER"));
+    assertThat(post(other, "backoffice-web", path, UUID.randomUUID().toString(), body).status())
+        .isEqualTo(403);
+    assertThat(
+            post(
+                    op,
+                    "backoffice-web",
+                    path,
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "x", "approvalRef", "", "lines", List.of(line)))
+                .status())
+        .isEqualTo(422);
+  }
+
+  @Test
   void concurrentReservationsOnLastUnitsOnlyOneSucceeds() throws Exception {
     // TC-09: H5/E5/R0/A5 에 주문 A4·B4 동시 → 하나만 성공(R4/A1)
     String sku = newSku();

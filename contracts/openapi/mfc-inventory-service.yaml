@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -441,6 +441,56 @@ paths:
                   occurredAt: { type: string, format: date-time }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /mfcs/{mfcId}/stock:
+    get:
+      tags: [queries]
+      summary: '[운영자] 센터 재고 상세 — SKU 의 LOT 별 요약(H/Q/E/R·소비기한)과 위치·상태별 단위 행'
+      operationId: getCenterStock
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CenterStock' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /mfcs/{mfcId}/stock-corrections:
+    post:
+      tags: [postings]
+      summary: '[운영자] LOT·위치 정정(CORRECTION) — 총량 불변, 원장에 정정 사건'
+      description: |
+        이미 있는 재고의 LOT 식별(제조 LOT 표기·소비기한)이나 위치를 바로잡는다(WMS 문서 LOT 식별 정정 — H 증감 0). 줄마다 출발 단위 행
+        (위치·LOT·품질·업무상태)에서 qty 를 빼서, 목적 위치(없으면 같은 위치)·목적 LOT(toSourceLotRef·toExpiryDate 가 있으면 그 추적 LOT,
+        없으면 같은 LOT)으로 옮긴다. 품질·업무상태는 바꾸지 않는다. 목적 위치가 STORED 면 적치와 같은 위치 검사. 예약(R)이 걸린 수량은 옮길 수
+        없다(LOT 의 R ≤ E — 409 INVARIANT_VIOLATION). approvalRef 필수(정정 근거 — 시드는 `seed-v2`). 그 센터의 운영자만.
+      operationId: correctStock
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StockCorrectionRequest' }
+      responses:
+        '201':
+          description: 정정 반영 (resultId = commitId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: INSUFFICIENT_STOCK / LOCATION_NOT_REGISTERED / CONFIG_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /mfcs/{mfcId}/sku-handlings:
     get:
       tags: [sku-handlings]
@@ -844,6 +894,58 @@ components:
               symbol: { type: string, enum: [H, Q, E, R, V] }
               delta: { type: integer }
               balanceVersion: { type: integer }
+    StockCorrectionRequest:
+      type: object
+      required: [reason, approvalRef, lines]
+      properties:
+        reason: { type: string, maxLength: 500 }
+        approvalRef: { type: string, maxLength: 128 }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            required: [sku, lotId, fromLocation, qualityState, workState, qty]
+            properties:
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              lotId: { type: string }
+              fromLocation: { type: string }
+              qualityState: { $ref: '#/components/schemas/QualityState' }
+              workState: { $ref: '#/components/schemas/WorkState' }
+              qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+              toLocation: { type: string }
+              toSourceLotRef: { type: string, maxLength: 128 }
+              toExpiryDate: { type: string, format: date }
+    CenterStock:
+      type: object
+      required: [mfcId, sku, lots, units]
+      properties:
+        mfcId: { type: string }
+        sku: { type: string }
+        lots:
+          type: array
+          items:
+            type: object
+            properties:
+              lotId: { type: string }
+              tracking: { type: string, enum: [TRACKED, UNTRACKED] }
+              expiryDate: { type: [string, 'null'], format: date }
+              onHand: { type: integer }
+              quarantined: { type: integer }
+              sellable: { type: integer }
+              reserved: { type: integer }
+              available: { type: integer }
+        units:
+          type: array
+          items:
+            type: object
+            properties:
+              locationCode: { type: string }
+              lotId: { type: string }
+              qualityState: { $ref: '#/components/schemas/QualityState' }
+              workState: { $ref: '#/components/schemas/WorkState' }
+              qty: { type: integer }
     SkuHandling:
       type: object
       required: [sku, handlingEnabled, version]
