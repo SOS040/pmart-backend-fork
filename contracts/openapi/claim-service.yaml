@@ -259,6 +259,56 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
+  /internal/claims/shortage-refunds:
+    post:
+      tags: [internal]
+      summary: "[orchestration→claim] 결품 부분 환불 (품절 상품만 취소, IV-09 2부)"
+      description: |
+        2026-11-07(ADR-0045). order-orchestration 결품 사가가 고객 사전 선택 CANCEL_OOS_ONLY 인 주문의 결품 수량을 **주문 수량 변경(SHORTAGE) 뒤** 호출한다.
+        - 행마다 요청 수량 ≤ 주문 원장의 출고 전 취소 누계(cancelledBeforeShipQty) − 이미 결품 환불한 수량. 넘으면 422 QUANTITY_EXCEEDS_AVAILABLE.
+        - 환불액 = 원주문 단가 × 수량(1차는 할인 안분 없음 — discountShare 가 0 이 아니면 422 UNSUPPORTED_ACTION). 봉투값·배달팁은 돌려주지 않는다(부분 취소, OMS 10.2).
+        - 클레임은 바로 IN_PROGRESS(type CANCEL, reason OUT_OF_STOCK, channel SYSTEM, 행 APPROVED), 환불 의도 PARTIAL → payment 부분 취소. CancellationRequested 는 내지 않는다(현장 중지는 결품 사가가 이미 했다).
+        - 같은 Idempotency-Key·같은 본문은 재생.
+      x-added-in: '2026-11-07'
+      operationId: createShortageRefund
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, lines]
+              properties:
+                orderId: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [orderLineId, qty]
+                    properties:
+                      orderLineId: { type: string }
+                      qty: { type: integer, minimum: 1 }
+                reasonDetail: { type: string, maxLength: 1000 }
+                sourceRef: { type: string, description: 결품 사가 ID }
+      responses:
+        '201':
+          description: 접수됨(환불 실행은 비동기)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Claim' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: QUANTITY_EXCEEDS_AVAILABLE / UNSUPPORTED_ACTION
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   /internal/claims/{claimId}/return-receipts:
     post:
       tags: [internal]
@@ -319,8 +369,8 @@ components:
       enum: [OPENED, UNDER_REVIEW, STOP_PENDING, DECIDED, IN_PROGRESS, CLOSED, WITHDRAWN, REJECTED]
     ClaimReason:
       type: string
-      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED 는 시스템 자동 취소만(2026-11-07, 고객 접수 불가)
-      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED]
+      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED·OUT_OF_STOCK 는 시스템 접수만(2026-11-07, 고객 접수 불가 — OUT_OF_STOCK 은 결품 부분 환불)
+      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED, OUT_OF_STOCK]
     SystemCancellationRequest:
       type: object
       description: 시스템 자동 전체 취소(2026-11-07)

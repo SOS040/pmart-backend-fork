@@ -356,6 +356,47 @@ public class Participants {
         body);
   }
 
+  // ---------- 결품 사가(IV-09 2부, ADR-0045) ----------
+
+  /** 주문 원장(행별 미이행 수량). 조회 실패면 null. */
+  public @Nullable JsonNode orderLedger(String orderId) {
+    try {
+      return query(order, ORDER, "/api/v1/internal/orders/{id}", orderId);
+    } catch (PmartException | HttpClientErrorException e) {
+      return null;
+    }
+  }
+
+  /** 결품 수량을 작업에서 뺀다(fulfillment). */
+  public Result resolveShortage(String fulfillmentId, String requestId, Map<String, Object> body) {
+    return post(
+        fulfillment,
+        FULFILLMENT + " shortage-resolutions",
+        "/api/v1/internal/work-orders/" + fulfillmentId + "/shortage-resolutions",
+        requestId,
+        body);
+  }
+
+  /** 이행부족(BLOCKED) 해제(inventory). */
+  public Result releaseShortfall(String reservationId, String requestId, Map<String, Object> body) {
+    return post(
+        inventory,
+        INVENTORY + " shortfall-releases",
+        "/api/v1/internal/reservations/" + reservationId + "/shortfall-releases",
+        requestId,
+        body);
+  }
+
+  /** 결품 부분 환불(claim). */
+  public Result shortageRefund(String requestId, Map<String, Object> body) {
+    return post(
+        claim,
+        CLAIM + " shortage-refunds",
+        "/api/v1/internal/claims/shortage-refunds",
+        requestId,
+        body);
+  }
+
   // ---------- 공통 ----------
 
   private Result post(RestClient client, String target, String uri, String requestId, Object body) {

@@ -32,6 +32,32 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class WorkOrdersController implements WorkOrdersApi {
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.pmart.mfc.fulfillment.application.TaskService tasks;
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response>
+      resolveShortage(
+          String fulfillmentId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.fulfillment.api.generated.model.ResolveShortageRequest body) {
+    var r =
+        tasks.resolveShortage(
+            fulfillmentId, idempotencyKey, xSourceSystem, body.getOrderLineId(), body.getQty());
+    var out = new com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response();
+    out.setStatus(
+        com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response.StatusEnum
+            .APPLIED);
+    out.setRequestId(r.requestId());
+    out.setResultId(r.resultId());
+    out.setAppliedQty(r.appliedQty());
+    out.setVersion(r.version());
+    out.setRetryable(false);
+    out.setOccurredAt(TasksController.time(r.occurredAt()));
+    return ResponseEntity.ok(out);
+  }
+
   private final WorkStopService stops;
   private final WorkOrderService works;
 

@@ -159,6 +159,39 @@ paths:
               schema: { $ref: '#/components/schemas/StopRequestResult' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /internal/work-orders/{fulfillmentId}/shortage-resolutions:
+    post:
+      tags: [work-orders]
+      summary: '[orchestration→fulfillment] 결품 해결 — 품절 상품만 취소된 수량을 작업에서 뺀다 (IV-09 2부)'
+      description: |
+        2026-11-07(ADR-0045). 고객 선택 CANCEL_OOS_ONLY 로 결품 수량을 취소할 때. 그 주문 줄의 PICK·PACK 작업 행에서 qty 만큼 취소(cancelledQty)하고,
+        결품으로 BLOCKED 였던 PICK 작업을 다시 진행 상태로(시작한 작업자가 있으면 IN_PROGRESS, 없으면 담당 따라 READY/ASSIGNED). 남은 집품이 0 이면
+        PICK COMPLETED, 포장 작업 준비. PICK 남은 양보다 많으면 409 INVALID_STATE. 같은 Idempotency-Key·같은 본문은 재생.
+      operationId: resolveShortage
+      parameters:
+        - { name: fulfillmentId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderLineId, qty, resolution]
+              properties:
+                orderLineId: { type: string }
+                qty: { type: integer, minimum: 1 }
+                resolution: { type: string, enum: [CANCEL_ITEM] }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /internal/stop-requests:
     post:
       tags: [work-orders]

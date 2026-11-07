@@ -39,6 +39,28 @@ public class InternalController implements InternalApi {
         .body(ClaimMapping.claim(r.view()));
   }
 
+  @Override
+  public ResponseEntity<Claim> createShortageRefund(
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.claim.api.generated.model.CreateShortageRefundRequest body) {
+    var view =
+        claims.createShortageRefund(
+            idempotencyKey,
+            xSourceSystem,
+            new ClaimService.ShortageRefund(
+                body.getOrderId(),
+                body.getLines().stream()
+                    .map(
+                        l ->
+                            new com.pmart.claim.domain.ClaimRules.Requested(
+                                l.getOrderLineId(), l.getQty()))
+                    .toList(),
+                body.getReasonDetail(),
+                body.getSourceRef()));
+    return ResponseEntity.status(HttpStatus.CREATED).body(ClaimMapping.claim(view));
+  }
+
   /** 사유 상세에 요청 사가를 붙여 둔다(추적용, 1000자 상한). */
   private static @Nullable String detail(SystemCancellationRequest b) {
     String d = b.getReasonDetail();

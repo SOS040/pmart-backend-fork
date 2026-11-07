@@ -27,9 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReservationsController implements ReservationsApi {
 
   private final ReservationService service;
+  private final com.pmart.mfc.inventory.application.ShortageService shortages;
 
-  public ReservationsController(ReservationService service) {
+  public ReservationsController(
+      ReservationService service, com.pmart.mfc.inventory.application.ShortageService shortages) {
     this.service = service;
+    this.shortages = shortages;
   }
 
   @Override
@@ -89,6 +92,21 @@ public class ReservationsController implements ReservationsApi {
     asOf.setSourceVersion(r.version());
     out.setAsOf(asOf);
     return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<ReserveInventory201Response> releaseShortfall(
+      String reservationId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.inventory.api.generated.model.ReleaseShortfallRequest body) {
+    var r =
+        shortages.releaseShortfall(
+            idempotencyKey,
+            xSourceSystem,
+            new com.pmart.mfc.inventory.application.ShortageService.ShortfallRelease(
+                reservationId, body.getOrderLineId(), body.getQty(), body.getReason().getValue()));
+    return ResponseEntity.ok(Commands.dto(r));
   }
 
   @Override

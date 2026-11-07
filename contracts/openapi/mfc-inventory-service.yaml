@@ -97,6 +97,38 @@ paths:
               schema: { $ref: '#/components/schemas/PickPlan' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /internal/reservations/{reservationId}/shortfall-releases:
+    post:
+      tags: [reservations]
+      summary: '[orchestration→inventory] 이행부족(BLOCKED) 해제 — 결품 수량을 주문에서 취소했을 때 (IV-09 2부, 0.6.0)'
+      description: |
+        ADR-0045. 그 주문 줄의 BLOCKED 조각을 qty 만큼 RELEASED 로(현물·R 변화 없음 — BLOCKED 는 R 이 아니라 D). BLOCKED 합보다 많으면 409 INVALID_STATE.
+        같은 Idempotency-Key·같은 본문은 재생.
+      operationId: releaseShortfall
+      parameters:
+        - { name: reservationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderLineId, qty, reason]
+              properties:
+                orderLineId: { type: string }
+                qty: { type: integer, minimum: 1 }
+                reason: { type: string, enum: [OUT_OF_STOCK_CANCELLED] }
+      responses:
+        '200':
+          description: 해제됨 (appliedQty)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /internal/reservations/{reservationId}/confirmations:
     post:
       tags: [reservations]

@@ -75,6 +75,7 @@ public class ShortageService {
   private final Ledger ledger;
   private final JdbcTemplate jdbc;
   private final ObjectMapper mapper;
+  private final com.pmart.common.messaging.RequestIdempotency idempotency;
   private final Clock clock;
 
   public ShortageService(
@@ -84,6 +85,7 @@ public class ShortageService {
       Ledger ledger,
       JdbcTemplate jdbc,
       ObjectMapper mapper,
+      com.pmart.common.messaging.RequestIdempotency idempotency,
       Clock clock) {
     this.reservations = reservations;
     this.reservationService = reservationService;
@@ -91,6 +93,7 @@ public class ShortageService {
     this.ledger = ledger;
     this.jdbc = jdbc;
     this.mapper = mapper;
+    this.idempotency = idempotency;
     this.clock = clock;
   }
 
@@ -265,6 +268,81 @@ public class ShortageService {
         resecured,
         blocked);
     return res;
+  }
+
+  /** 이행부족 해제 요청. */
+  public record ShortfallRelease(
+      String reservationId, String orderLineId, int qty, String reason) {}
+
+  /**
+   * 이행부족(BLOCKED 조각) 해제 — 결품 수량을 주문에서 취소했을 때(ADR-0045). BLOCKED 는 R 이 아니라 D 라 현물·요약 변화 없음. 같은 요청은
+   * 재생.
+   */
+  public com.pmart.common.web.CommandResponse releaseShortfall(
+      String requestId, String sourceSystem, ShortfallRelease in) {
+    return idempotency
+        .execute(
+            Callers.key(sourceSystem, requestId, "releaseShortfall"),
+            in,
+            com.pmart.common.web.CommandResponse.class,
+            () -> {
+              ReservationRow r =
+                  reservations
+                      .lock(in.reservationId())
+                      .orElseThrow(
+                          () ->
+                              PmartException.notFound(
+                                  ReservationService.RESERVATION_NOT_FOUND,
+                                  "예약이 없습니다: " + in.reservationId()));
+              List<PickPart> blocked =
+                  reservations.pickParts(in.reservationId(), true).stream()
+                      .filter(
+                          p ->
+                              in.orderLineId().equals(p.orderLineId())
+                                  && p.state() == ReservationState.BLOCKED)
+                      .toList();
+              int total = blocked.stream().mapToInt(PickPart::qty).sum();
+              if (in.qty() > total) {
+                throw PmartException.invalidState(
+                    "주문 줄 "
+                        + in.orderLineId()
+                        + " 의 이행부족은 "
+                        + total
+                        + " 입니다(요청 "
+                        + in.qty()
+                        + ").");
+              }
+              Instant at = clock.instant();
+              int left = in.qty();
+              for (PickPart p : blocked) {
+                int take = Math.min(left, p.qty());
+                if (take == p.qty()) {
+                  reservations.setPartState(p.partId(), ReservationState.RELEASED, in.reason(), at);
+                } else {
+                  reservations.shrinkPart(p.partId(), p.qty() - take, at);
+                }
+                left -= take;
+                if (left == 0) {
+                  break;
+                }
+              }
+              log.info(
+                  "예약 {} 줄 {} 이행부족 {} 해제({})",
+                  r.reservationId(),
+                  in.orderLineId(),
+                  in.qty(),
+                  in.reason());
+              return new com.pmart.common.web.CommandResponse(
+                  com.pmart.common.web.CommandStatus.APPLIED,
+                  requestId,
+                  r.reservationId(),
+                  in.qty(),
+                  r.version(),
+                  false,
+                  null,
+                  at);
+            })
+        .value();
   }
 
   private Optional<Result> find(String reportId, String hash) {

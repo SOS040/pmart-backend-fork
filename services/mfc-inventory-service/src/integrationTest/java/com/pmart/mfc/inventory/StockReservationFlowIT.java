@@ -965,6 +965,27 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 rid))
         .isEqualTo(1);
+
+    // 주문에서 결품 수량을 취소하면 이행부족 해제(ADR-0045) — 현물·R 변화 없음, 더 많이는 409
+    String path = "/internal/reservations/" + rid + "/shortfall-releases";
+    Map<String, Object> rel =
+        Map.of("orderLineId", "L1", "qty", 2, "reason", "OUT_OF_STOCK_CANCELLED");
+    String key = UUID.randomUUID().toString();
+    Res released = post(ORCH, "order-orchestration-service", path, key, rel);
+    assertThat(released.status()).as(released.body().toString()).isEqualTo(200);
+    assertThat(post(ORCH, "order-orchestration-service", path, key, rel).status()).isEqualTo(200);
+    assertThat(get(ORCH, "/internal/reservations/" + rid).body().path("parts").toString())
+        .doesNotContain("\"BLOCKED\"");
+    assertThat(availability(sku).path("quarantined").asInt()).isEqualTo(2);
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    path,
+                    UUID.randomUUID().toString(),
+                    Map.of("orderLineId", "L1", "qty", 1, "reason", "OUT_OF_STOCK_CANCELLED"))
+                .status())
+        .isEqualTo(409);
   }
 
   @Test

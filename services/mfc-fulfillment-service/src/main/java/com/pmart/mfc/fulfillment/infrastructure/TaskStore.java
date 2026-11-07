@@ -40,7 +40,8 @@ public class TaskStore {
       String reservationId,
       @Nullable Instant arrivalStart,
       @Nullable Instant preparationStartedAt,
-      String shipmentState) {}
+      String shipmentState,
+      @Nullable String outOfStockPreference) {}
 
   /** 작업 행 + 출고 행 사본(SKU·상품명). */
   public record LineView(
@@ -104,7 +105,8 @@ public class TaskStore {
 
   private static final String TASK_SELECT =
       "SELECT t.*, s.fulfillment_id, s.state AS shipment_state, w.order_id, w.mfc_id,"
-          + " w.reservation_id, w.arrival_start, w.preparation_started_at FROM task t"
+          + " w.reservation_id, w.arrival_start, w.preparation_started_at, w.out_of_stock_preference"
+          + " FROM task t"
           + " JOIN shipment s ON s.shipment_id = t.shipment_id"
           + " JOIN work_order w ON w.fulfillment_id = s.fulfillment_id";
 
@@ -187,6 +189,15 @@ public class TaskStore {
             taskType)
         .stream()
         .findFirst();
+  }
+
+  /** 행 취소량 증가(결품 해결). */
+  public void addCancelled(String taskId, String orderLineId, int qty) {
+    jdbc.update(
+        "UPDATE task_line SET cancelled_qty = cancelled_qty + ? WHERE task_id = ? AND order_line_id = ?",
+        qty,
+        taskId,
+        orderLineId);
   }
 
   public void addCompleted(String taskId, String orderLineId, int qty) {
@@ -526,7 +537,8 @@ public class TaskStore {
         rs.getString("reservation_id"),
         instant(rs, "arrival_start"),
         instant(rs, "preparation_started_at"),
-        rs.getString("shipment_state"));
+        rs.getString("shipment_state"),
+        rs.getString("out_of_stock_preference"));
   }
 
   private static ExecutionRow execution(ResultSet rs) throws SQLException {

@@ -93,6 +93,8 @@ public class TaskService {
       List<String> packingLocations) {}
 
   private final TaskStore store;
+  private final com.pmart.mfc.fulfillment.infrastructure.WorkOrderStore works;
+  private final com.pmart.common.messaging.RequestIdempotency idempotency;
   private final CapacityClient capacity;
   private final InventoryClient inventory;
   private final FulfillmentEvents events;
@@ -102,6 +104,8 @@ public class TaskService {
 
   public TaskService(
       TaskStore store,
+      com.pmart.mfc.fulfillment.infrastructure.WorkOrderStore works,
+      com.pmart.common.messaging.RequestIdempotency idempotency,
       CapacityClient capacity,
       InventoryClient inventory,
       FulfillmentEvents events,
@@ -109,6 +113,8 @@ public class TaskService {
       PlatformTransactionManager txManager,
       Clock clock) {
     this.store = store;
+    this.works = works;
+    this.idempotency = idempotency;
     this.capacity = capacity;
     this.inventory = inventory;
     this.events = events;
@@ -519,6 +525,73 @@ public class TaskService {
           ErrorCode.DEPENDENCY_UNAVAILABLE, "재고에 반영하지 못했습니다. 같은 Idempotency-Key 로 다시 보내 주세요.");
     }
     return new ExecResult(after, store.find(exec.taskId()).orElseThrow().version());
+  }
+
+  // ---------- 결품 해결(ADR-0045) ----------
+
+  /**
+   * 품절 상품만 취소(CANCEL_OOS_ONLY)된 결품 수량을 PICK·PACK 작업 행에서 뺀다. 결품으로 BLOCKED 였던 PICK 은 다시 진행(시작한 작업자가
+   * 있으면 IN_PROGRESS, 없으면 담당 따라 READY/ASSIGNED). 남은 집품이 0 이면 PICK COMPLETED → 포장 준비. 같은 키는 재생.
+   */
+  public com.pmart.common.web.CommandResponse resolveShortage(
+      String fulfillmentId, String requestId, String sourceSystem, String orderLineId, int qty) {
+    String pickId =
+        works.shipments(fulfillmentId).stream()
+            .filter(s -> !"CANCELLED".equals(s.state()))
+            .findFirst()
+            .map(s -> s.shipmentId() + "-PICK")
+            .orElseThrow(() -> PmartException.notFound("WORK_ORDER_NOT_FOUND", "작업 지시가 없습니다."));
+    return idempotency
+        .execute(
+            new com.pmart.common.messaging.RequestIdempotency.RequestKey(
+                sourceSystem, requestId, "resolveShortage", "system"),
+            java.util.Map.of(
+                "fulfillmentId", fulfillmentId, "orderLineId", orderLineId, "qty", qty),
+            com.pmart.common.web.CommandResponse.class,
+            () -> {
+              TaskInfo t = store.lock(pickId).orElseThrow();
+              Instant now = clock.instant();
+              LineView line =
+                  store.lines(pickId).stream()
+                      .filter(l -> l.orderLineId().equals(orderLineId))
+                      .findFirst()
+                      .orElseThrow(
+                          () -> PmartException.invalidState("작업에 없는 주문 줄: " + orderLineId));
+              if (qty > line.remaining()) {
+                throw PmartException.invalidState(
+                    "주문 줄 " + orderLineId + " 남은 집품 " + line.remaining() + " < 취소 " + qty);
+              }
+              store.addCancelled(pickId, orderLineId, qty);
+              store
+                  .sibling(t.shipmentId(), "PACK")
+                  .ifPresent(p -> store.addCancelled(p.taskId(), orderLineId, qty));
+              boolean done = store.lines(pickId).stream().allMatch(l -> l.remaining() == 0);
+              if (done) {
+                store.setState(pickId, "COMPLETED", null, false, now);
+                events.taskProgressed(
+                    t, "COMPLETED", t.state(), t.version() + 1, t.startedBy(), null, now);
+                store.releasePack(t.shipmentId(), now);
+              } else if ("BLOCKED".equals(t.state())) {
+                String next =
+                    t.startedBy() != null
+                        ? "IN_PROGRESS"
+                        : t.workerId() != null ? "ASSIGNED" : "READY";
+                store.setState(pickId, next, null, false, now);
+                events.taskProgressed(
+                    t, next, "BLOCKED", t.version() + 1, t.startedBy(), null, now);
+              }
+              log.info("작업 {} 줄 {} 결품 {}개 취소(품절 상품만 취소)", pickId, orderLineId, qty);
+              return new com.pmart.common.web.CommandResponse(
+                  com.pmart.common.web.CommandStatus.APPLIED,
+                  requestId,
+                  pickId,
+                  qty,
+                  t.version() + 1,
+                  false,
+                  null,
+                  now);
+            })
+        .value();
   }
 
   // ---------- 배정 투영 ----------

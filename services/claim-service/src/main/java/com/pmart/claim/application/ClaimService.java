@@ -98,6 +98,10 @@ public class ClaimService {
     if (!"CANCEL".equals(in.type())) {
       throw unsupported("반품·교환 접수는 아직 준비 중입니다.");
     }
+    if ("FULFILLMENT_REJECTED".equals(in.reason()) || OUT_OF_STOCK.equals(in.reason())) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "시스템 전용 사유입니다: " + in.reason());
+    }
     JsonNode order = upstreams.order(in.orderId());
     if (order == null || !who.subject().equals(order.path("accountId").asString())) {
       throw PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다.");
@@ -260,6 +264,127 @@ public class ClaimService {
     events.cancellationRequested(c, rows);
     log.info("취소 접수 {} 주문 {} 중지 요청 {}", claimId, in.orderId(), stopRequestId);
     return claimId;
+  }
+
+  // ---------- 결품 부분 환불(ADR-0045) ----------
+
+  public static final String OUT_OF_STOCK = "OUT_OF_STOCK";
+
+  /** 결품 부분 환불 요청 행. */
+  public record ShortageRefund(
+      String orderId,
+      List<ClaimRules.Requested> lines,
+      @Nullable String reasonDetail,
+      @Nullable String sourceRef) {}
+
+  /**
+   * 품절 상품만 취소(CANCEL_OOS_ONLY) 의 부분 환불. 주문 수량 변경(SHORTAGE) 뒤에 부른다 — 요청 수량 ≤ 출고 전 취소 누계 − 이미 결품 환불한
+   * 수량. 환불액 = 단가 × 수량(할인 안분 1차 제외). 클레임은 바로 IN_PROGRESS, 환불 의도 PARTIAL → 커밋 뒤 payment 부분 취소.
+   */
+  public ClaimView createShortageRefund(
+      String idempotencyKey, String sourceSystem, ShortageRefund in) {
+    JsonNode order = upstreams.order(in.orderId());
+    if (order == null) {
+      throw PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다.");
+    }
+    Map<String, JsonNode> byLine = new LinkedHashMap<>();
+    for (JsonNode l : order.path("lines")) {
+      byLine.put(l.path("orderLineId").asString(), l);
+    }
+    String claimId =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, idempotencyKey, "createShortageRefund", actor()),
+                in,
+                String.class,
+                () -> {
+                  long amount = 0;
+                  for (ClaimRules.Requested r : in.lines()) {
+                    JsonNode l = byLine.get(r.orderLineId());
+                    if (l == null) {
+                      throw unprocessable(
+                          "QUANTITY_EXCEEDS_AVAILABLE", "주문에 없는 행입니다: " + r.orderLineId());
+                    }
+                    if (l.path("discountShare").asLong(0) != 0) {
+                      throw unprocessable(
+                          "UNSUPPORTED_ACTION", "할인 안분이 있는 행의 부분 환불은 아직 지원하지 않습니다(1차 할인 제외).");
+                    }
+                    int cancelled = l.path("cancelledBeforeShipQty").asInt(0);
+                    int refunded = store.shortageRefundedQty(in.orderId(), r.orderLineId());
+                    if (r.qty() > cancelled - refunded) {
+                      throw unprocessable(
+                          "QUANTITY_EXCEEDS_AVAILABLE",
+                          "행 "
+                              + r.orderLineId()
+                              + ": 요청 "
+                              + r.qty()
+                              + " > 출고 전 취소 "
+                              + cancelled
+                              + " − 이미 결품 환불 "
+                              + refunded);
+                    }
+                    amount += l.path("unitPrice").asLong() * r.qty();
+                  }
+                  Instant now = clock.instant();
+                  String id = "CLM-" + UUID.randomUUID();
+                  ClaimRow c =
+                      new ClaimRow(
+                          id,
+                          in.orderId(),
+                          order.path("accountId").asString(),
+                          "CANCEL",
+                          "IN_PROGRESS",
+                          OUT_OF_STOCK,
+                          (in.reasonDetail() == null ? "결품" : in.reasonDetail())
+                              + (in.sourceRef() == null ? "" : " [" + in.sourceRef() + "]"),
+                          SYSTEM_CHANNEL,
+                          null,
+                          1,
+                          order.path("paymentAttemptId").asString(),
+                          order.path("approvedAmount").asLong(),
+                          amount,
+                          0,
+                          0,
+                          null,
+                          now,
+                          now,
+                          null,
+                          now);
+                  List<LineRow> rows = new ArrayList<>();
+                  int n = 1;
+                  for (ClaimRules.Requested r : in.lines()) {
+                    JsonNode l = byLine.get(r.orderLineId());
+                    rows.add(
+                        new LineRow(
+                            id + "-L" + n++,
+                            id,
+                            r.orderLineId(),
+                            l.path("sku").asString(),
+                            r.qty(),
+                            r.qty(),
+                            "APPROVED",
+                            l.path("unitPrice").asLong() * r.qty()));
+                  }
+                  store.insert(c, rows);
+                  events.claimOpened(c, rows);
+                  RefundRow refund = refunds.createShortageRefund(c, amount, now);
+                  String refundId = refund.refundIntentId();
+                  TransactionSynchronizationManager.registerSynchronization(
+                      new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                          refunds.executeAsync(refundId);
+                        }
+                      });
+                  log.info("결품 부분 환불 {} 주문 {} {}원", id, in.orderId(), amount);
+                  return id;
+                })
+            .value();
+    return view(claimId);
+  }
+
+  private static PmartException unprocessable(String code, String message) {
+    return new PmartException(code, HttpStatus.UNPROCESSABLE_CONTENT, message, false, List.of());
   }
 
   // ---------- 조회 ----------

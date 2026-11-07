@@ -272,7 +272,7 @@ paths:
       tags: [internal]
       summary: '[orchestration/claim→order] 주문행 수량 변경 (결품·출고 전 취소·인계 누계·반품 수량 반영)'
       description: |
-        2026-10-31 구현 범위는 reason=CANCEL_BEFORE_SHIP(출고 전 취소) 만. 그 밖의 사유는 422 UNSUPPORTED_ACTION.
+        구현 범위는 reason=CANCEL_BEFORE_SHIP(출고 전 취소, 2026-10-31)·SHORTAGE(결품 — 품절 상품만 취소, 2026-11-07 ADR-0045, 같은 수량 규칙·주문 상태 유지) 만. 그 밖의 사유는 422 UNSUPPORTED_ACTION.
         행마다 unfulfilledQty −= qty, cancelledBeforeShipQty += qty(qty > unfulfilledQty 면 409 INVALID_STATE, 아무것도 바꾸지 않음).
         모든 행의 unfulfilledQty·handedOverQty 가 0 이 되면 주문 status=CANCELLED. 같은 트랜잭션에서 행마다 OrderLineQuantityChanged,
         주문에 OrderCancelled(scope FULL/PARTIAL, claimId) 를 Outbox 에 쓴다(토픽 order.order.v1). 같은 Idempotency-Key 는 저장 결과 재생.

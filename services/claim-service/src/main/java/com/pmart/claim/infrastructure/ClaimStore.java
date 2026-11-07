@@ -127,6 +127,19 @@ public class ClaimStore {
     return one("SELECT * FROM claim WHERE stop_request_id = ? FOR UPDATE", stopRequestId);
   }
 
+  /** 이미 결품 환불(OUT_OF_STOCK, 승인 행)한 수량 — 같은 결품을 두 번 환불하지 않게. */
+  public int shortageRefundedQty(String orderId, String orderLineId) {
+    Integer v =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(l.approved_qty), 0) FROM claim_line l JOIN claim c ON c.claim_id = l.claim_id"
+                + " WHERE c.order_id = ? AND c.reason = 'OUT_OF_STOCK' AND l.order_line_id = ?"
+                + " AND l.decision = 'APPROVED'",
+            Integer.class,
+            orderId,
+            orderLineId);
+    return v == null ? 0 : v;
+  }
+
   public Optional<ClaimRow> activeCancel(String orderId) {
     return one(
         "SELECT * FROM claim WHERE order_id = ? AND type = 'CANCEL'"

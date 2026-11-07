@@ -101,6 +101,11 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
 
   /** order 원장: 상품 19,000(10개) + 봉투 100 + 배달팁 0 = 승인 19,100. */
   void order(String orderId, String accountId, String status) {
+    order(orderId, accountId, status, 0);
+  }
+
+  /** cancelled = 출고 전 취소 누계(미이행 = 10 − cancelled). */
+  void order(String orderId, String accountId, String status, int cancelled) {
     Map<String, Object> o = new LinkedHashMap<>();
     o.put("orderId", orderId);
     o.put("accountId", accountId);
@@ -125,9 +130,9 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
                 "unitPrice", 1_900,
                 "lineAmount", 19_000,
                 "originalQty", 10,
-                "unfulfilledQty", 10,
+                "unfulfilledQty", 10 - cancelled,
                 "handedOverQty", 0,
-                "cancelledBeforeShipQty", 0)));
+                "cancelledBeforeShipQty", cancelled)));
     deps.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/internal/orders/" + orderId))
             .willReturn(json(200, o)));
@@ -497,5 +502,79 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
         WireMock.get(urlPathEqualTo("/api/v1/internal/orders/ORD-NONE"))
             .willReturn(json(404, Map.of("code", "ORDER_NOT_FOUND"))));
     assertThat(system("k-none", b3).status()).isEqualTo(404);
+  }
+
+  Res shortageRefund(String key, Map<String, Object> body) {
+    var e =
+        http.post()
+            .uri("/internal/claims/shortage-refunds")
+            .headers(
+                h -> {
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "order-orchestration-service");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /** IV-09 2부(ADR-0045): 결품 부분 환불 — 단가 × 수량, 봉투·배달팁 없음, 출고 전 취소 누계 안에서만, 두 번 환불 안 함. */
+  @Test
+  void shortageRefundIsUnitPriceTimesQtyWithinCancelledQty() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "PREPARING", 2); // 결품 2개가 이미 출고 전 취소(SHORTAGE)로 반영됨
+    paymentAccepts(orderId);
+    Map<String, Object> body =
+        Map.of(
+            "orderId",
+            orderId,
+            "lines",
+            List.of(Map.of("orderLineId", orderId + "-L1", "qty", 1)),
+            "sourceRef",
+            "S4-1");
+    Res r = shortageRefund("S4-1:REFUND", body);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    String claimId = r.body().path("claimId").asString();
+    assertThat(r.body().path("reason").asString()).isEqualTo("OUT_OF_STOCK");
+    assertThat(r.body().path("state").asString()).isEqualTo("IN_PROGRESS");
+    // 환불 의도: 부분, 1,900원(단가 × 1), 봉투·배달팁 0 → payment 부분 취소
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT scope || ' ' || amount || ' ' || bag_fee || ' ' || delivery_tip FROM refund_intent"
+                    + " WHERE claim_id = ?",
+                String.class,
+                claimId))
+        .isEqualTo("PARTIAL 1900 0 0");
+    long until = System.currentTimeMillis() + 15_000;
+    while (System.currentTimeMillis() < until
+        && deps.findAll(
+                postRequestedFor(
+                    urlPathEqualTo("/api/v1/internal/payments/PAY-" + orderId + "/cancellations")))
+            .isEmpty()) {
+      Thread.sleep(100);
+    }
+    deps.verify(
+        postRequestedFor(
+                urlPathEqualTo("/api/v1/internal/payments/PAY-" + orderId + "/cancellations"))
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
+                    "$.amount", com.github.tomakehurst.wiremock.client.WireMock.equalTo("1900")))
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
+                    "$.scope",
+                    com.github.tomakehurst.wiremock.client.WireMock.equalTo("PARTIAL"))));
+    // 같은 키 재생, 남은 1개만 더 환불 가능(2 → 422)
+    assertThat(shortageRefund("S4-1:REFUND", body).body().path("claimId").asString())
+        .isEqualTo(claimId);
+    Map<String, Object> over =
+        Map.of(
+            "orderId", orderId, "lines", List.of(Map.of("orderLineId", orderId + "-L1", "qty", 2)));
+    Res tooMany = shortageRefund("S4-2:REFUND", over);
+    assertThat(tooMany.status()).isEqualTo(422);
+    assertThat(tooMany.body().path("code").asString()).isEqualTo("QUANTITY_EXCEEDS_AVAILABLE");
   }
 }

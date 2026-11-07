@@ -92,6 +92,13 @@ public class FulfillmentEvents {
       p.put("note", s.note());
     }
     p.put("alreadyHandedOverQty", 0);
+    // 결품 사가(orchestration, ADR-0045)가 고객 사전 선택·예약으로 다음 단계를 정한다
+    p.put("mfcId", t.mfcId());
+    p.put("reservationId", t.reservationId());
+    p.put("shipmentId", t.shipmentId());
+    if (t.outOfStockPreference() != null) {
+      p.put("outOfStockPreference", t.outOfStockPreference());
+    }
     p.put("reportedAt", at.toString());
     publish("LineShortageReported", "Fulfillment", t.orderId(), orderVersion(t), t.startedBy(), p);
   }

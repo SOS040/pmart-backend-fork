@@ -44,3 +44,4 @@
 
 ## 상태
 작업 접수·조회·접수 뒤 중지(6a), 점원 단말 작업·피킹·포장(6b). DISPATCH·인계 fence·재포장은 501(6c).
+- 결품 해결(ADR-0045): `POST /internal/work-orders/{id}/shortage-resolutions`(결품 사가, CANCEL_ITEM) — PICK·PACK 행 cancelled +q, BLOCKED PICK 은 시작자 있으면 IN_PROGRESS·없으면 ASSIGNED/READY, 남은 집품 0 이면 COMPLETED·포장 준비. `LineShortageReported` 에 outOfStockPreference·reservationId·mfcId·shipmentId.

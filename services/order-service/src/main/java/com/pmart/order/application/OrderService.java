@@ -184,11 +184,12 @@ public class OrderService {
       String sourceSystem,
       QuantityChange in,
       @Nullable Integer expectedVersion) {
-    if (!CANCEL_BEFORE_SHIP.equals(in.reason())) {
+    // SHORTAGE(결품 — 품절 상품만 취소, ADR-0045)는 출고 전 취소와 같은 수량 규칙(미이행 −q, 출고 전 취소 +q)
+    if (!CANCEL_BEFORE_SHIP.equals(in.reason()) && !"SHORTAGE".equals(in.reason())) {
       throw new PmartException(
           "UNSUPPORTED_ACTION",
           HttpStatus.UNPROCESSABLE_CONTENT,
-          "지금은 출고 전 취소(CANCEL_BEFORE_SHIP)만 반영합니다: " + in.reason(),
+          "지금은 출고 전 취소(CANCEL_BEFORE_SHIP)·결품(SHORTAGE)만 반영합니다: " + in.reason(),
           false,
           List.of());
     }

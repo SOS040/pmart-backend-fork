@@ -42,3 +42,4 @@
 ## 상태
 S1 a~j 구현(결제 사건 구독 order.payment.v1 → 대사 → 자원 확정 → 주문 확정, 실패 시 보상 취소 확인 뒤 해제). S3 피킹 전 전체 취소(2026-10-31). S2 작업 요청·같은 MFC 재시도·자동 취소(2026-11-07, 6a). S4·S2 의 결품·배차, S3 의 피킹 후/인계·배차 취소, 수동 개입(BO-12), case 상신은 501·미구현. 사가 조회(`/internal/sagas`)는 S1·S2.
 - 결제 전 자원 점유 유효시간 `pmart.orchestration.hold-ttl`(ADR-0042, Q-04 결정 10분 — 코드 상수 `HOLD_TTL_MINUTES` 대체). 없으면 새 결제 진입 422 CONFIG_REQUIRED, 진행 중 단계는 예외로 멈추고 sweep 이 값이 들어온 뒤 잇는다.
+- **결품 사가(IV-09 2부, 2026-11-07, ADR-0045, V6)**: `LineShortageReported`(mfc.fulfillment.v1, 바인딩 `fulfillmentEvents-in-0`)마다 `shortage_saga`(사건 ID 유일). `ShortageRules`: CANCEL_OOS_ONLY → CHECK_ORDER(주문 원장 — 전체 결품이면 상신) → RESOLVE_WORK(fulfillment shortage-resolutions) → RELEASE_SHORTFALL(inventory shortfall-releases) → APPLY_ORDER_CHANGE(order SHORTAGE) → REQUEST_REFUND(claim shortage-refunds) → COMPLETED. CANCEL_ALL·선택 없음은 시작 때 ESCALATED. 업무 거절 상신, 결과 모름은 같은 키 sweep. 시작 기준 시각은 `fulfillment.start-orders-confirmed-after`.

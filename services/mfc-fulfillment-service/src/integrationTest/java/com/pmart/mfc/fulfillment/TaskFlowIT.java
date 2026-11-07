@@ -157,6 +157,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     b.put("mfcId", MFC);
     b.put("reservationId", "RSV-" + o);
     b.put("deliveryMode", "SINGLE");
+    b.put("outOfStockPreference", "CANCEL_OOS_ONLY");
     b.put(
         "shipments",
         List.of(
@@ -713,5 +714,49 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT SUM(cancelled_qty) FROM task_line WHERE task_id = ?", Integer.class, pick))
         .isZero();
+    // 결품 사건에 고객 사전 선택·예약이 실린다(결품 사가 ADR-0045)
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'LineShortageReported'"
+                    + " AND aggregateid = ?",
+                String.class,
+                o))
+        .contains("\"outOfStockPreference\": \"CANCEL_OOS_ONLY\"")
+        .contains("RSV-" + o);
+
+    // 품절 상품만 취소 → 작업에서 그 수량을 빼고 BLOCKED 를 풀어 진행(IN_PROGRESS)
+    String fid =
+        call("GET", SVC, "/internal/work-orders?orderId=" + o, null, null)
+            .body()
+            .path("fulfillmentId")
+            .asString();
+    String rkey = UUID.randomUUID().toString();
+    Map<String, Object> res = Map.of("orderLineId", "L2", "qty", 1, "resolution", "CANCEL_ITEM");
+    Res resolved =
+        call("POST", SVC, "/internal/work-orders/" + fid + "/shortage-resolutions", rkey, res);
+    assertThat(resolved.status()).as(resolved.body().toString()).isEqualTo(200);
+    assertThat(
+            call("POST", SVC, "/internal/work-orders/" + fid + "/shortage-resolutions", rkey, res)
+                .status())
+        .isEqualTo(200);
+    JsonNode after = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
+    assertThat(after.path("state").asString()).isEqualTo("IN_PROGRESS");
+    assertThat(after.path("blockReason").isNull()).isTrue();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT cancelled_qty FROM task_line WHERE task_id = ? AND order_line_id = 'L2'",
+                Integer.class,
+                pick))
+        .isEqualTo(1);
+    // 남은 양보다 많이 → 409
+    assertThat(
+            call(
+                    "POST",
+                    SVC,
+                    "/internal/work-orders/" + fid + "/shortage-resolutions",
+                    UUID.randomUUID().toString(),
+                    res)
+                .status())
+        .isEqualTo(409);
   }
 }

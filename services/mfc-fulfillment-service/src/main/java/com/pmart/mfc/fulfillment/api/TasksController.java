@@ -5,7 +5,7 @@ import com.pmart.mfc.fulfillment.api.generated.TasksApi;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200Response;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponseAsOf;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponsePage;
-import com.pmart.mfc.fulfillment.api.generated.model.StartTask201Response;
+import com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response;
 import com.pmart.mfc.fulfillment.api.generated.model.StartTaskRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskActiveStart;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskAssignment;
@@ -160,7 +160,7 @@ public class TasksController implements TasksApi {
   }
 
   @Override
-  public ResponseEntity<StartTask201Response> startTask(
+  public ResponseEntity<ResolveShortage200Response> startTask(
       String taskId,
       String idempotencyKey,
       String xSourceSystem,
@@ -179,8 +179,8 @@ public class TasksController implements TasksApi {
       throw new PmartException(
           code, HttpStatus.CONFLICT, "작업을 시작할 수 없습니다: " + code, false, List.of());
     }
-    var out = new StartTask201Response();
-    out.setStatus(StartTask201Response.StatusEnum.APPLIED);
+    var out = new ResolveShortage200Response();
+    out.setStatus(ResolveShortage200Response.StatusEnum.APPLIED);
     out.setRequestId(idempotencyKey);
     out.setResultId(taskId);
     out.setVersion(r.taskVersion());
@@ -205,7 +205,7 @@ public class TasksController implements TasksApi {
   }
 
   @Override
-  public ResponseEntity<StartTask201Response> recordTaskExecution(
+  public ResponseEntity<ResolveShortage200Response> recordTaskExecution(
       String taskId,
       String idempotencyKey,
       String xSourceSystem,
@@ -238,9 +238,9 @@ public class TasksController implements TasksApi {
                 lines),
             xExpectedVersion);
     ExecutionRow e = r.execution();
-    var out = new StartTask201Response();
+    var out = new ResolveShortage200Response();
     out.setStatus(
-        StartTask201Response.StatusEnum.fromValue(
+        ResolveShortage200Response.StatusEnum.fromValue(
             switch (e.state()) {
               case "APPLIED" -> "APPLIED";
               case "REJECTED" -> "REJECTED";

@@ -44,7 +44,7 @@
 
 ## 출고 전 취소 (2026-10-31, 슬라이스 8 S3 d)
 - `GET /internal/orders/{orderId}`(내부 호출): 주문 원장 사본 — accountId·결제 시도·승인액·금액 구성·행별 수량 누계(claim 심사·환불 근거).
-- `POST /internal/orders/{orderId}/line-quantity-changes`: 지금은 reason=CANCEL_BEFORE_SHIP 만(그 밖 422 UNSUPPORTED_ACTION). 주문 행 잠금 → `OrderRules.cancelBeforeShip`(미이행 −q·출고 전 취소 +q, 초과·없는 행 409 INVALID_STATE, 바뀌지 않음) → 전 행 미이행·인계 0 이면 CANCELLED, version +1 → 행마다 `OrderLineQuantityChanged`, 주문에 `OrderCancelled`(scope·claimId·accountId·firstPurchase) 한 트랜잭션. 이미 CANCELLED 면 409. 같은 키는 재생.
+- `POST /internal/orders/{orderId}/line-quantity-changes`: reason=CANCEL_BEFORE_SHIP·SHORTAGE(결품 사가, 2026-11-07 ADR-0045 — 같은 산식, 주문 상태 유지) 만(그 밖 422 UNSUPPORTED_ACTION). 주문 행 잠금 → `OrderRules.cancelBeforeShip`(미이행 −q·출고 전 취소 +q, 초과·없는 행 409 INVALID_STATE, 바뀌지 않음) → 전 행 미이행·인계 0 이면 CANCELLED, version +1 → 행마다 `OrderLineQuantityChanged`, 주문에 `OrderCancelled`(scope·claimId·accountId·firstPurchase) 한 트랜잭션. 이미 CANCELLED 면 409. 같은 키는 재생.
 
 ## 상태
 주문 초안·배송 방식 안내·결제 진입(2026-10-31)·주문 확정·주문 조회·내부 주문 조회·출고 전 취소 반영 구현. 예약 시간 변경·그 밖 수량 변경 사유(결품·인계·반품)·탈퇴 확인·배송 사실·고객 약속은 501/422.

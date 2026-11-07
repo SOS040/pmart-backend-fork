@@ -103,6 +103,39 @@ public class RefundService {
     return r;
   }
 
+  /**
+   * 결품 부분 환불 의도(ADR-0045, 호출자 트랜잭션 안). 금액 = 원주문 단가 × 수량 합, 봉투값·배달팁 없음(부분 취소). RefundIntentCreated 도
+   * 함께.
+   */
+  RefundRow createShortageRefund(ClaimRow c, long itemAmount, Instant now) {
+    String id = "RFI-" + UUID.randomUUID();
+    RefundRow r =
+        new RefundRow(
+            id,
+            c.claimId(),
+            c.orderId(),
+            c.paymentAttemptId(),
+            "PARTIAL",
+            "OUT_OF_STOCK",
+            itemAmount,
+            itemAmount,
+            0,
+            0,
+            "PENDING_EXECUTION",
+            "REFUND-" + id,
+            null,
+            null,
+            null,
+            0,
+            null,
+            null,
+            now,
+            now);
+    store.insertRefund(r);
+    events.refundIntentCreated(r);
+    return r;
+  }
+
   void executeAsync(String refundIntentId) {
     executor.execute(
         () -> {

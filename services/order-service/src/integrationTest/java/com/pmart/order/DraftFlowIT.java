@@ -1037,9 +1037,18 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
             orderId,
             UUID.randomUUID().toString(),
             Map.of(
-                "reason", "SHORTAGE", "changes", List.of(Map.of("orderLineId", line, "qty", 1))));
+                "reason", "HANDOVER", "changes", List.of(Map.of("orderLineId", line, "qty", 1))));
     assertThat(shortage.status()).isEqualTo(422);
     assertThat(code(shortage)).isEqualTo("UNSUPPORTED_ACTION");
+    // 결품(SHORTAGE, ADR-0045)은 받는다 — 같은 수량 규칙(미이행 초과 409)
+    Res shortageOver =
+        changeQuantity(
+            svc,
+            orderId,
+            UUID.randomUUID().toString(),
+            Map.of(
+                "reason", "SHORTAGE", "changes", List.of(Map.of("orderLineId", line, "qty", 11))));
+    assertThat(shortageOver.status()).isEqualTo(409);
     assertThat(
             changeQuantity(
                     repeat,
