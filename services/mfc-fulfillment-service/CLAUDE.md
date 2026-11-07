@@ -40,8 +40,14 @@
 - 상세 `GET /tasks/{id}`: PICK 은 inventory pick-plan 으로 줄마다 LOT 별 지시(`picks[]`), 조회 실패면 빈 지시·asOf STALE.
 - 실적 `POST /tasks/{id}/executions`(PICK 만, 한 선반): 접수 → inventory PICK(Idempotency-Key = 실행 ID) → 결과. 같은 키는 같은 실행(열려 있으면 다시 보냄). 결품 보고는 집품과 섞지 않은 한 줄(pickedQty 0 + shortage, lotId·fromLocation 필수) → inventory `POST /internal/shortage-reports`(reportId = 실행 ID, ADR-0044) → 재확보 다 되면 작업 계속, 못 잡은 양이 있으면 BLOCKED + `LineShortageReported(shortQty = 못 잡은 양)`. 다 집으면 COMPLETED → 같은 출고 PACK `releasePack`.
 - 포장 `POST /shipments/{id}/packages`: PACK 을 시작한 작업자만. LOT 은 `TaskRules.allocatePacking`(집품−포장 조각, 소비기한 순), 남은 포장량 = PICK 완료 − PACK 완료 − 열린 포장. inventory PACK(실행 ID = 포장 ID) → SEALED·QR, 거절 VOIDED(422 PACK_REJECTED), 모름 OPEN(503 UNKNOWN_RESULT). 다 포장하면 PACK COMPLETED·출고 READY·`PackingFinished`·`ShipmentReady`. `GET /shipments/{id}`·`GET /packages/{id}`.
-- 중지: 피킹이 시작된 주문이면 `PENDING`(작업 유지, 사건 없음).
+- 중지: 피킹이 시작된 주문이면 `PENDING`(작업 유지, 사건 없음). → 2026-11-08 아래 IV-08 로 대체(부분 중지만 PENDING).
+
+## 집품 뒤 취소 (2026-11-08, IV-08 — ADR-0046, V5)
+- `WorkStopService`: 피킹 시작된 주문의 FULL 중지 → PENDING 기록 + (주문 잠금·작업 행 잠금 아래) 진행 중 실적·포장(RECORDED·UNKNOWN_RESULT·OPEN)이 없으면 준비: 남은 PICK·PACK 행 취소, 작업 CLOSED_PARTIAL(완료량 있음)/CANCELLED, 밀봉 포장 INVALIDATED, 출고 CANCELLED, 복귀 대상(`domain/CancelReturnRules` — 반영 PICK 도착 위치 − 같은 위치 밀봉 포장 = PICKED, 포장 = PACKED) → `<출고>-RETURN`(WAITING, `task.returns`), `order_work_stop.cancel_return·package_verdicts`.
+- 커밋 뒤 `finish`: inventory `POST /internal/reservations/{id}/cancel-returns`(키 = stopRequestId) → APPLIED 면 RESOLVED·`resolved_at`·RETURN READY/ASSIGNED·`WorkStopResult`(perPackage 는 포장만). 거절 → `last_error`(PENDING 유지), 모름·미전달·준비 대기 → `sweepPending`(`pmart.fulfillment.stop-sweep-interval`, 기본 PT30S).
+- 판정 응답 `packages[]`: 밀봉 포장마다(PACKED) + 출고의 포장 전 단위(packageId 없음, NOT_PICKED·PICKED). notStartedLines 는 빈 배열.
+- RETURN 실적: `executionType RETURN`(작업 유형과 같아야, 아니면 422 UNSUPPORTED_EXECUTION) — 줄마다 lotId·pickedQty>0, (주문 줄·SKU·LOT·출발 위치) 남은 복귀량 이하(아니면 409 QTY_EXCEEDS_REMAINING) → inventory MOVE(resultQuality 전달) → APPLIED 면 완료량, 모두 0 이면 COMPLETED. 상세 `picks[]` 는 이 서비스 기록(복귀 잔량·포장 위치).
 
 ## 상태
-작업 접수·조회·접수 뒤 중지(6a), 점원 단말 작업·피킹·포장(6b). DISPATCH·인계 fence·재포장은 501(6c).
+작업 접수·조회·접수 뒤 중지(6a), 점원 단말 작업·피킹·포장(6b), 집품 뒤 전체 중지·복귀 작업(IV-08). DISPATCH·인계 fence·재포장은 501(6c). 피킹 뒤 부분 중지는 PENDING.
 - 결품 해결(ADR-0045): `POST /internal/work-orders/{id}/shortage-resolutions`(결품 사가, CANCEL_ITEM) — PICK·PACK 행 cancelled +q, BLOCKED PICK 은 시작자 있으면 IN_PROGRESS·없으면 ASSIGNED/READY, 남은 집품 0 이면 COMPLETED·포장 준비. `LineShortageReported` 에 outOfStockPreference·reservationId·mfcId·shipmentId.

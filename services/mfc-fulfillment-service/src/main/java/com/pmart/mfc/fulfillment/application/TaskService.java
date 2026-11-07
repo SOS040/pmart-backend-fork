@@ -4,6 +4,7 @@ import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.mfc.fulfillment.domain.CancelReturnRules;
 import com.pmart.mfc.fulfillment.domain.TaskRules;
 import com.pmart.mfc.fulfillment.domain.TaskRules.ActiveAssignment;
 import com.pmart.mfc.fulfillment.infrastructure.CapacityClient;
@@ -54,16 +55,30 @@ public class TaskService {
 
   private static final Logger log = LoggerFactory.getLogger(TaskService.class);
   private static final TypeReference<List<ExecLine>> EXEC_LINES = new TypeReference<>() {};
+  private static final TypeReference<List<CancelReturnRules.Return>> RETURNS =
+      new TypeReference<>() {};
 
   /** 실적 줄(요청·저장 모양). */
   public record Shortage(int qty, String reason, @Nullable String note) {}
 
+  /** resultQuality 는 RETURN 만(복귀 중 이상품 QUARANTINED, 기본 NORMAL). */
   public record ExecLine(
       String orderLineId,
       String sku,
       @Nullable String lotId,
       int pickedQty,
-      @Nullable Shortage shortage) {}
+      @Nullable Shortage shortage,
+      @Nullable String resultQuality) {
+
+    public ExecLine(
+        String orderLineId,
+        String sku,
+        @Nullable String lotId,
+        int pickedQty,
+        @Nullable Shortage shortage) {
+      this(orderLineId, sku, lotId, pickedQty, shortage, null);
+    }
+  }
 
   public record ExecCommand(
       String executionType,
@@ -164,6 +179,8 @@ public class TaskService {
         fresh = false; // 지시는 참고 — 실적 판정은 재고가 한다
         log.warn("작업 {} 피킹 지시 조회 실패: {}", taskId, e.getMessage());
       }
+    } else if ("RETURN".equals(t.taskType())) {
+      picks = returnPicks(taskId);
     }
     return new Detail(
         t,
@@ -279,7 +296,7 @@ public class TaskService {
 
   public ExecResult execute(
       String taskId, String requestId, ExecCommand cmd, @Nullable Integer expectedVersion) {
-    if (!"PICK".equals(cmd.executionType())) {
+    if (!"PICK".equals(cmd.executionType()) && !"RETURN".equals(cmd.executionType())) {
       throw new PmartException(
           "UNSUPPORTED_EXECUTION",
           HttpStatus.UNPROCESSABLE_CONTENT,
@@ -288,6 +305,19 @@ public class TaskService {
           List.of());
     }
     TaskInfo t0 = task(taskId);
+    if (!cmd.executionType().equals(t0.taskType())) {
+      throw new PmartException(
+          "UNSUPPORTED_EXECUTION",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          cmd.executionType()
+              + " 실적은 "
+              + cmd.executionType()
+              + " 작업에만 등록합니다(이 작업 "
+              + t0.taskType()
+              + ").",
+          false,
+          List.of());
+    }
     String me = requireWorker(t0.mfcId());
     if (!me.equals(cmd.workerId())) {
       throw new PmartException(ErrorCode.FORBIDDEN, "workerId 가 로그인한 작업자와 다릅니다.");
@@ -316,6 +346,9 @@ public class TaskService {
     }
     if (expectedVersion != null && expectedVersion != t.version()) {
       throw conflict(TaskRules.VERSION_CONFLICT, "작업이 이미 바뀌었습니다(현재 버전 " + t.version() + ").");
+    }
+    if ("RETURN".equals(t.taskType())) {
+      return recordReturn(t, requestId, cmd);
     }
     Map<String, Integer> remaining = new HashMap<>();
     for (LineView l : store.lines(taskId)) {
@@ -388,9 +421,156 @@ public class TaskService {
     return r;
   }
 
+  /** 복귀 실적(IV-08): 한 포장 위치 → 한 선반. 줄마다 주문 줄·LOT·출발 위치의 남은 복귀량 이하. */
+  private ExecutionRow recordReturn(TaskInfo t, String requestId, ExecCommand cmd) {
+    if (blank(cmd.fromLocation()) || blank(cmd.toLocation())) {
+      throw invalid("복귀는 fromLocation(포장 위치)·toLocation(선반)이 필요합니다.");
+    }
+    Map<String, Integer> left = returnRemaining(t.taskId(), true);
+    Map<String, Integer> asked = new HashMap<>();
+    for (ExecLine l : cmd.lines()) {
+      if (l.shortage() != null) {
+        throw invalid("복귀 실적에는 결품 보고가 없습니다.");
+      }
+      if (blank(l.lotId()) || l.pickedQty() <= 0) {
+        throw invalid("복귀 줄은 lotId 와 옮긴 수량(pickedQty > 0)이 필요합니다: " + l.orderLineId());
+      }
+      if (l.resultQuality() != null
+          && !"NORMAL".equals(l.resultQuality())
+          && !"QUARANTINED".equals(l.resultQuality())) {
+        throw invalid("resultQuality 는 NORMAL·QUARANTINED 만: " + l.resultQuality());
+      }
+      String k =
+          CancelReturnRules.key(
+              l.orderLineId(),
+              l.sku(),
+              Objects.requireNonNull(l.lotId()),
+              Objects.requireNonNull(cmd.fromLocation()));
+      int sum = asked.merge(k, l.pickedQty(), Integer::sum);
+      int room = left.getOrDefault(k, 0);
+      if (sum > room) {
+        throw conflict(
+            "QTY_EXCEEDS_REMAINING",
+            "주문 줄 "
+                + l.orderLineId()
+                + " LOT "
+                + l.lotId()
+                + " @"
+                + cmd.fromLocation()
+                + ": 복귀 "
+                + sum
+                + " > 남은 "
+                + room);
+      }
+    }
+    Instant now = clock.instant();
+    ExecutionRow r =
+        new ExecutionRow(
+            "EXE-" + UUID.randomUUID(),
+            t.taskId(),
+            requestId,
+            cmd.workerId(),
+            "RETURN",
+            cmd.fromLocation(),
+            cmd.toLocation(),
+            mapper.writeValueAsString(cmd.lines()),
+            "RECORDED",
+            null,
+            0,
+            null,
+            now);
+    store.insertExecution(r);
+    return r;
+  }
+
+  /** 복귀 잔량(주문 줄·SKU·LOT·출발 위치). withOpen 이면 진행 중 실적도 뺀다. */
+  private Map<String, Integer> returnRemaining(String taskId, boolean withOpen) {
+    List<CancelReturnRules.Return> returns = returnsOf(taskId);
+    List<CancelReturnRules.Unit> moved = new ArrayList<>();
+    List<ExecutionRow> done = new ArrayList<>(store.taskExecutions(taskId, "APPLIED"));
+    if (withOpen) {
+      done.addAll(store.openExecutions(taskId));
+    }
+    for (ExecutionRow e : done) {
+      for (ExecLine l : lines(e)) {
+        moved.add(
+            new CancelReturnRules.Unit(
+                l.orderLineId(),
+                l.sku(),
+                Objects.requireNonNull(l.lotId()),
+                Objects.requireNonNull(e.fromLocation()),
+                l.pickedQty()));
+      }
+    }
+    return CancelReturnRules.remaining(returns, moved);
+  }
+
+  private List<CancelReturnRules.Return> returnsOf(String taskId) {
+    String json = store.returns(taskId);
+    return json == null ? List.of() : mapper.readValue(json, RETURNS);
+  }
+
+  /** RETURN 상세 지시: 주문 줄 → LOT 별 남은 복귀량·포장 위치. */
+  private Map<String, List<Pick>> returnPicks(String taskId) {
+    Map<String, Integer> left = returnRemaining(taskId, false);
+    Map<String, Map<String, Map<String, Integer>>> byLineLot = new LinkedHashMap<>();
+    for (CancelReturnRules.Return r : returnsOf(taskId)) {
+      int q =
+          left.getOrDefault(
+              CancelReturnRules.key(r.orderLineId(), r.sku(), r.lotId(), r.locationCode()), 0);
+      if (q <= 0) {
+        continue;
+      }
+      // 같은 위치의 PICKED·PACKED 는 한 키(잔량이 이미 합)
+      byLineLot
+          .computeIfAbsent(r.orderLineId(), k -> new LinkedHashMap<>())
+          .computeIfAbsent(r.lotId(), k -> new LinkedHashMap<>())
+          .put(r.locationCode(), q);
+    }
+    Map<String, List<Pick>> out = new LinkedHashMap<>();
+    byLineLot.forEach(
+        (line, lots) ->
+            lots.forEach(
+                (lot, locs) ->
+                    out.computeIfAbsent(line, k -> new ArrayList<>())
+                        .add(
+                            new Pick(
+                                lot,
+                                null,
+                                locs.values().stream().mapToInt(Integer::intValue).sum(),
+                                List.copyOf(
+                                    locs.entrySet().stream()
+                                        .map(e -> Map.entry(e.getKey(), e.getValue()))
+                                        .toList())))));
+    return out;
+  }
+
   /** 재고 반영(트랜잭션 밖) → 결과 기록. */
   private ExecResult post(ExecutionRow exec, TaskInfo t0) {
     List<ExecLine> lines = lines(exec);
+    if ("RETURN".equals(exec.executionType())) {
+      List<Map<String, Object>> moveLines = new ArrayList<>();
+      for (ExecLine l : lines) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("sku", l.sku());
+        m.put("lotId", l.lotId());
+        m.put("qty", l.pickedQty());
+        if (l.resultQuality() != null) {
+          m.put("resultQuality", l.resultQuality());
+        }
+        moveLines.add(m);
+      }
+      Map<String, Object> body = new LinkedHashMap<>();
+      body.put("executionType", "MOVE");
+      body.put("mfcId", t0.mfcId());
+      body.put("taskId", exec.taskId());
+      body.put("executionId", exec.executionId());
+      body.put("fromLocation", exec.fromLocation());
+      body.put("toLocation", exec.toLocation());
+      body.put("lines", moveLines);
+      InventoryClient.Commit mc = inventory.commit(exec.executionId(), body);
+      return Objects.requireNonNull(tx.execute(s -> apply(exec, lines, mc, 0)));
+    }
     List<Map<String, Object>> invLines = new ArrayList<>();
     for (ExecLine l : lines) {
       if (l.pickedQty() > 0) {
@@ -492,6 +672,13 @@ public class TaskService {
                 now);
           }
           log.warn("작업 {} 결품 보고 → BLOCKED ({})", t.taskId(), reason);
+        } else if ("RETURN".equals(t.taskType())) {
+          if (store.lines(t.taskId()).stream().allMatch(l -> l.remaining() == 0)) {
+            store.setState(t.taskId(), "COMPLETED", null, false, now);
+            events.taskProgressed(
+                t, "COMPLETED", t.state(), t.version() + 1, exec.workerId(), picked, now);
+            log.info("복귀 작업 {} 완료 — 취소 집품분 선반 복귀", t.taskId());
+          }
         } else if (store.lines(t.taskId()).stream().allMatch(l -> l.remaining() == 0)) {
           store.setState(t.taskId(), "COMPLETED", null, false, now);
           events.taskProgressed(

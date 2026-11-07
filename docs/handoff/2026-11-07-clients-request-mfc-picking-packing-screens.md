@@ -29,6 +29,7 @@
 | W5 | **결품 보고** | 같은 API, **집품과 따로 한 줄**: `fromLocation`(발견한 선반) + `lines:[{orderLineId, sku, lotId(지시의 LOT), pickedQty: 0, shortage: {qty, reason: SHORT(못 찾음)/DAMAGED(파손)/BLOCKED, note}}]` (갱신 2026-11-07, ADR-0044) | 서버가 같은 상품의 다른 LOT 을 자동으로 다시 잡으면 작업은 그대로 진행 — 상세를 새로 불러 새 LOT 지시대로 집는다. 못 잡으면 작업이 BLOCKED(감독자 P2). 섞어 보내면 400 |
 | W6 | **포장 밀봉** | 포장 작업 시작(W2) 후 `POST /api/v1/shipments/{shipmentId}/packages` 본문 `{contents:[{orderLineId, sku, qty}], bagCount, temperatureZone, weightG, containsAlcohol, packingLocation?}` | 포장 하나마다 한 번(냉장·상온 따로 등). LOT 은 비워 두면 서버가 집품분에서 고른다. 201 이면 SEALED + `qrCode`(라벨). 집품보다 많으면 409 `CONTENT_MISMATCH`, 재고 거절 422 `PACK_REJECTED`, 모름 503 `UNKNOWN_RESULT`(같은 키로 다시). 포장대가 둘 이상이면 `packingLocation` 필수(`GET /tasks/{포장작업}` 의 `packingLocations`) |
 | W7 | **출고 상태** | `GET /api/v1/shipments/{id}`, `GET /api/v1/packages/{id}` | 모든 집품분이 포장되면 출고 `READY`, 포장 목록·봉투 수·무게 |
+| W8 | **복귀 작업(추가 2026-11-08, ADR-0046)** | 취소된 주문의 집품·포장분을 선반으로. 작업 유형 `RETURN`(목록 `type=RETURN`) — 배정·시작은 W1·W2 와 같다. 상세 `GET /api/v1/tasks/{id}` 의 `lines[].picks[]` = LOT 별 남은 복귀량과 `locations[]`(지금 놓인 포장 위치·그 위치에서 옮길 양). 실적 `POST /api/v1/tasks/{id}/executions` 본문 `{executionType: "RETURN", workerId, fromLocation(포장 위치), toLocation(돌려놓을 선반), lines:[{orderLineId, sku, lotId, pickedQty(옮긴 양), resultQuality?: NORMAL/QUARANTINED}]}` | 한 번에 한 출발 위치. 선반 온도대가 상품 보관 유형과 다르면 재고가 거절(202 `REJECTED`, 사유). 남은 양 초과 409 `QTY_EXCEEDS_REMAINING`. 이상품(파손 등)은 `resultQuality: QUARANTINED`(격리로 선반에, 판매 제외). 다 옮기면 COMPLETED — 그때 다시 판매 가능 |
 
 공통: 변경 요청은 `Idempotency-Key`·`X-Source-System` 필수. 토큰은 그 작업자(운영자) 토큰.
 
@@ -36,4 +37,5 @@
 - 주문 상태에 `PREPARING`(상품 준비 중)이 실제로 나온다. 이 상태에서 취소 버튼은 숨기거나, 누르면 `ORDER_NOT_CANCELLABLE` 안내.
 
 ## 5. 아직 없는 것
-- 단말 바코드 대조(`TaskLine.barcode` 는 null — 상품 바코드 사본이 아직 없음), 재포장, 배차·라이더 인계(6c), 결품 처리·대체(IV-09), 작업자 전용 로그인(BR-02).
+- 단말 바코드 대조(`TaskLine.barcode` 는 null — 상품 바코드 사본이 아직 없음), 재포장, 배차·라이더 인계(6c), 작업자 전용 로그인(BR-02).
+- 2026-11-08: 피킹 중 주문이 취소되면(결품 전체 취소 포함) 진행 중이던 PICK·PACK 작업이 `CLOSED_PARTIAL`/`CANCELLED` 로 바뀌고 실적은 409 — 화면은 상세를 다시 불러 "취소됨" 안내 후 목록으로. 포장 라벨은 `INVALIDATED`(출고 CANCELLED).

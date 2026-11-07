@@ -20,6 +20,8 @@
 
 구현 메모(2026-11-07, 6b — ADR-0043): 주문이 PREPARING(첫 PICK 시작)이 되면 claim 이 고객 취소를 거절한다. 그 직전 접수된 취소가 피킹 시작 뒤 도착하면 mfc-fulfillment 중지 판정은 `PENDING`(작업 유지)이고, 집품분 판매 제외·복귀(IV-08)가 생길 때까지 S3 는 대기한다.
 
+구현 메모(2026-11-08, ADR-0046 — IV-08): 피킹 뒤 **전체** 중지는 이제 끝까지 간다. fulfillment 가 남은 작업을 취소하고 작업(CLOSED_PARTIAL/CANCELLED)·포장(INVALIDATED)·출고(CANCELLED)를 닫고 RETURN 작업을 만든 뒤, inventory `cancel-returns` 로 집품·포장분을 `CANCEL_RETURN_PENDING`(E−q, H 유지)·예약 R−q·RELEASED → 판정 RESOLVED(포장별·포장 전 단위 STOPPED). S3 의 RELEASE_RESOURCES 는 이미 해제된 예약이라 변화 없는 성공. 판매 가능 복구는 RETURN 작업 실적(inventory MOVE → 선반 STORED, E+q, 이상품은 QUARANTINED)으로만. 재고 결과 모름·진행 중 실적은 sweep 재시도, 재고 거절은 PENDING + last_error(운영자). 시스템 전체 취소(결품 사가)는 PREPARING 주문도 받는다 — 고객 자율 취소는 여전히 CONFIRMED 만.
+
 ## 2. 흐름
 
 ```
@@ -96,4 +98,4 @@ S3 단계
 - 응답 불명·미전달은 실패로 단정하지 않는다(사가 sweep·환불 sweep 이 같은 키로 재전송·원결과 조회).
 - 사가 상신(ESCALATED)은 자동으로 되돌리지 않는다. 운영자 개입(BO-12)·case 상신은 아직 없다 — 사가 행의 last_error 로 확인.
 - 재고 해제는 현장 중지 확정 뒤에만, 환불은 주문 취소 반영 뒤에만. 재판매 가능(재고 해제)과 환불 완료는 서로 독립(§3).
-- 후속(슬라이스 6~): 작업 지시가 생기면 STOPPED 포장별 판정·피킹 후 복귀(CANCEL_RETURN_PENDING)·fence 대기, 작업 요청이 중지 기록을 반영. 배차 취소(b)는 슬라이스 7.
+- 후속(슬라이스 6~): 작업 지시가 생기면 STOPPED 포장별 판정·피킹 후 복귀(CANCEL_RETURN_PENDING — 2026-11-08 ADR-0046 구현)·fence 대기(6c), 작업 요청이 중지 기록을 반영. 피킹 뒤 부분 중지는 아직 없다. 배차 취소(b)는 슬라이스 7.

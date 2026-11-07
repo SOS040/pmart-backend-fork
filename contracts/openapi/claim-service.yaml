@@ -223,8 +223,10 @@ paths:
         슬라이스 6a(2026-11-07). order-orchestration 이 MFC 작업 거절(재시도 대상이 아니거나 재시도가 끝남)을 확인한 뒤 호출한다
         (docs/business/flows/order-checkout-saga.md §2.0 D6-4). 고객 선택 단계 없이 주문 전체(모든 행 × 미이행 수량)를 취소하고
         원 승인액 전액을 환불한다 — 접수 뒤 흐름은 고객 취소와 같다(CancellationRequested → S3 → OrderCancelled → 환불).
-        클레임은 channel SYSTEM, reason 은 요청 값(지금은 FULFILLMENT_REJECTED 만).
-        - 주문이 CONFIRMED 가 아니면 422 ORDER_NOT_CANCELLABLE.
+        클레임은 channel SYSTEM, reason 은 요청 값(FULFILLMENT_REJECTED, 2026-11-08 부터 OUT_OF_STOCK — 결품 전체 취소, ADR-0046).
+        - 주문이 CONFIRMED·PREPARING(피킹 시작 뒤 — 현장 중지가 집품분을 취소 복귀로 돌린다) 이 아니면 422 ORDER_NOT_CANCELLABLE.
+        - 앞서 결품 부분 환불이 있었으면 환불은 원 승인액에서 그 합을 뺀 잔액(봉투값·배달팁 포함).
+        - 진행 중인 결품 부분 환불 클레임(현장 중지 없음)은 "진행 중인 취소" 로 보지 않는다.
         - 같은 주문에 진행 중인 취소 클레임이 이미 있으면(고객이 먼저 취소 등) 새로 만들지 않고 그 클레임을 200 으로 돌려준다.
         - 같은 Idempotency-Key·같은 본문은 기존 결과를 재생한다.
       x-added-in: '2026-11-07'
@@ -377,7 +379,7 @@ components:
       required: [orderId, reason]
       properties:
         orderId: { type: string }
-        reason: { type: string, enum: [FULFILLMENT_REJECTED] }
+        reason: { type: string, enum: [FULFILLMENT_REJECTED, OUT_OF_STOCK], description: 'OUT_OF_STOCK(2026-11-08, ADR-0046) = 결품 사가의 전체 취소(고객 선택 CANCEL_ALL·주문 전체 결품)' }
         reasonDetail: { type: string, maxLength: 1000, description: '예 작업 거절 사유 코드·마지막 작업 버전' }
         sourceRef: { type: string, description: 요청한 사가 ID(추적용) }
     ClaimLineRequest:

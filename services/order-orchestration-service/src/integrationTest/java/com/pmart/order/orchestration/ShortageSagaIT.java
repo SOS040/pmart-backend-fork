@@ -32,7 +32,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 결품 사가(IV-09 2부, ADR-0045): LineShortageReported → 품절 상품만 취소면 작업 수량 취소 → 이행부족 해제 → 주문 수량
- * 변경(SHORTAGE) → 부분 환불 클레임 → 완료. 전체 취소 선택·주문 전체 결품은 상신(수동). 참여 정본은 한 WireMock.
+ * 변경(SHORTAGE) → 부분 환불 클레임 → 완료. 전체 취소 선택·주문 전체 결품은 claim 시스템 전체 취소(ADR-0046), 선택 없음은 상신. 참여 정본은 한
+ * WireMock.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -173,24 +174,50 @@ class ShortageSagaIT extends PostgresKafkaContainerSupport {
     assertThat(sagas.byOrder(o)).hasSize(1);
   }
 
+  void systemCancelAccepts(String o) {
+    parts.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/claims/system-cancellations"))
+            .withRequestBody(matchingJsonPath("$.orderId", WireMock.equalTo(o)))
+            .willReturn(json(201, Map.of("claimId", "CLM-F-" + o, "state", "STOP_PENDING"))));
+  }
+
   @Test
-  void cancelAllAndWholeOrderShortageAreEscalated() throws Exception {
+  void cancelAllAndWholeOrderShortageRequestFullCancel() throws Exception {
+    // 전체 취소 선택 → 바로 claim 시스템 전체 취소(OUT_OF_STOCK), 작업·부분 환불 호출 없음
     String o = order();
+    systemCancelAccepts(o);
     shortage(o, "CANCEL_ALL", 1);
-    ShortageRow s = await(o, "ESCALATED");
-    assertThat(s.lastErrorCode()).isEqualTo("PICKED_CANCEL_NOT_SUPPORTED");
+    ShortageRow s = await(o, "COMPLETED");
+    assertThat(s.claimId()).isEqualTo("CLM-F-" + o);
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/system-cancellations"))
+            .withHeader("Idempotency-Key", WireMock.equalTo(s.sagaId() + ":REQUEST_FULL_CANCEL"))
+            .withRequestBody(matchingJsonPath("$.reason", WireMock.equalTo("OUT_OF_STOCK")))
+            .withRequestBody(
+                matchingJsonPath("$.reasonDetail", WireMock.containing("CANCEL_ALL"))));
     parts.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds")));
 
-    // 남은 수량 전부(5)가 결품 → 주문 확인 단계에서 상신, 작업·환불 호출 없음
+    // 남은 수량 전부(5)가 결품 → 주문 확인 뒤 전체 취소, 작업·부분 환불 호출 없음
     String o2 = order();
     ledger(o2);
     participantsAccept(o2);
+    systemCancelAccepts(o2);
     shortage(o2, "CANCEL_OOS_ONLY", 5);
-    ShortageRow s2 = await(o2, "ESCALATED");
-    assertThat(s2.lastErrorCode()).isEqualTo("WHOLE_ORDER_OUT_OF_STOCK");
+    ShortageRow s2 = await(o2, "COMPLETED");
+    assertThat(s2.claimId()).isEqualTo("CLM-F-" + o2);
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/system-cancellations"))
+            .withRequestBody(
+                matchingJsonPath(
+                    "$.reasonDetail", WireMock.containing("WHOLE_ORDER_OUT_OF_STOCK"))));
     parts.verify(
         0,
         postRequestedFor(
             urlPathEqualTo("/api/v1/internal/work-orders/FUL-" + o2 + "/shortage-resolutions")));
+
+    // 선택 없음 → 상신(CS 이관 미구현)
+    String o3 = order();
+    shortage(o3, null, 1);
+    assertThat(await(o3, "ESCALATED").lastErrorCode()).isEqualTo("NO_PREFERENCE");
   }
 }

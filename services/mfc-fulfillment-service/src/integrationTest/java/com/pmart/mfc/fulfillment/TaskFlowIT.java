@@ -38,7 +38,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 슬라이스 6b 점원 단말 흐름: 배정 투영(AssignmentPublished) → 시작(배정 동기 조회, 첫 PICK = PreparationStarted) → 피킹
  * 실적(재고 PICK) → PICK 완료·PACK 준비 → 포장 밀봉(재고 PACK) → 출고 READY·ShipmentReady. 결품 보고 BLOCKED, 재고 거절, 피킹
- * 뒤 중지 PENDING. 재고·배정 정본은 WireMock.
+ * 뒤 중지(작업 종료·취소 복귀·RETURN 작업, IV-08). 재고·배정 정본은 WireMock.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -587,7 +587,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
   }
 
   @Test
-  void shortageBlocksTaskAndStopAfterPickIsPending() {
+  void shortageBlocksTaskAndResolutionResumesWork() {
     String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
     String s = accept(o);
     String pick = s + "-PICK";
@@ -690,30 +690,6 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.reason", equalTo("DAMAGED"))));
     inv.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/task-executions")));
 
-    // 피킹이 시작된 주문의 중지 → PENDING(작업은 지우지 않는다, IV-08 전)
-    Res stop =
-        call(
-            "POST",
-            SVC,
-            "/internal/stop-requests",
-            UUID.randomUUID().toString(),
-            Map.of(
-                "stopRequestId",
-                "STOP-" + o,
-                "orderId",
-                o,
-                "scope",
-                "FULL",
-                "lines",
-                List.of(
-                    Map.of("orderLineId", "L1", "qty", 2), Map.of("orderLineId", "L2", "qty", 1))));
-    assertThat(stop.body().path("state").asString())
-        .as(stop.body().toString())
-        .isEqualTo("PENDING");
-    assertThat(
-            jdbc.queryForObject(
-                "SELECT SUM(cancelled_qty) FROM task_line WHERE task_id = ?", Integer.class, pick))
-        .isZero();
     // 결품 사건에 고객 사전 선택·예약이 실린다(결품 사가 ADR-0045)
     assertThat(
             jdbc.queryForObject(
@@ -758,5 +734,205 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
                     res)
                 .status())
         .isEqualTo(409);
+  }
+
+  /** 피킹 뒤 전체 중지(IV-08, ADR-0046): 작업 종료·출고 취소 → 재고 취소 복귀 → RESOLVED → RETURN 작업으로 선반 복귀. */
+  @Test
+  void stopAfterPickClosesWorkAndReturnsPickedToShelf() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    String ret = s + "-RETURN";
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    inventoryCommits(
+        "PICK", 201, Map.of("status", "APPLIED", "resultId", "CMT-1", "appliedQty", 1));
+    Res picked =
+        call(
+            "POST",
+            W1,
+            "/tasks/" + pick + "/executions",
+            UUID.randomUUID().toString(),
+            Map.of(
+                "executionType",
+                "PICK",
+                "workerId",
+                "w1",
+                "fromLocation",
+                "A-S1-01-1-01",
+                "toLocation",
+                "PAK-A-01",
+                "lines",
+                List.of(
+                    Map.of(
+                        "orderLineId",
+                        "L1",
+                        "sku",
+                        "E-00000001",
+                        "lotId",
+                        "LOT-A",
+                        "pickedQty",
+                        1))));
+    assertThat(picked.body().path("status").asString()).isEqualTo("APPLIED");
+
+    // 재고 결과 모름(500) → PENDING(작업은 이미 종료, 복귀 작업은 대기)
+    String cancelPath = "/api/v1/internal/reservations/RSV-" + o + "/cancel-returns";
+    inv.stubFor(WireMock.post(urlPathEqualTo(cancelPath)).willReturn(json(500, Map.of())));
+    String key = UUID.randomUUID().toString();
+    Map<String, Object> stopBody =
+        Map.of(
+            "stopRequestId",
+            "STOP-" + o,
+            "orderId",
+            o,
+            "scope",
+            "FULL",
+            "lines",
+            List.of(Map.of("orderLineId", "L1", "qty", 2), Map.of("orderLineId", "L2", "qty", 1)));
+    Res pending = call("POST", SVC, "/internal/stop-requests", key, stopBody);
+    assertThat(pending.status()).as(pending.body().toString()).isEqualTo(200);
+    assertThat(pending.body().path("state").asString()).isEqualTo("PENDING");
+    assertThat(call("GET", VIEWER, "/tasks/" + pick, null, null).body().path("state").asString())
+        .isEqualTo("CLOSED_PARTIAL");
+    assertThat(
+            call("GET", VIEWER, "/tasks/" + s + "-PACK", null, null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("CANCELLED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM shipment WHERE shipment_id = ?", String.class, s))
+        .isEqualTo("CANCELLED");
+    assertThat(jdbc.queryForObject("SELECT state FROM task WHERE task_id = ?", String.class, ret))
+        .isEqualTo("WAITING");
+    assertThat(outbox("WorkStopResult", o)).isZero();
+    // 중지 뒤 집품 실적은 받지 않는다(작업 종료)
+    assertThat(
+            call(
+                    "POST",
+                    W1,
+                    "/tasks/" + pick + "/executions",
+                    UUID.randomUUID().toString(),
+                    Map.of(
+                        "executionType",
+                        "PICK",
+                        "workerId",
+                        "w1",
+                        "fromLocation",
+                        "A-S1-02-1-01",
+                        "toLocation",
+                        "PAK-A-01",
+                        "lines",
+                        List.of(
+                            Map.of(
+                                "orderLineId",
+                                "L1",
+                                "sku",
+                                "E-00000001",
+                                "lotId",
+                                "LOT-B",
+                                "pickedQty",
+                                1))))
+                .status())
+        .isEqualTo(409);
+
+    // 재고 반영 → 같은 키로 다시 → RESOLVED, 포장 전 단위 판정(집지 않은 양·집은 양) STOPPED, RETURN READY
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo(cancelPath))
+            .willReturn(
+                json(200, Map.of("status", "APPLIED", "resultId", "RSV-" + o, "appliedQty", 3))));
+    Res done = call("POST", SVC, "/internal/stop-requests", key, stopBody);
+    assertThat(done.body().path("state").asString())
+        .as(done.body().toString())
+        .isEqualTo("RESOLVED");
+    JsonNode pkg = done.body().path("packages").path(0);
+    assertThat(pkg.path("verdict").asString()).isEqualTo("STOPPED");
+    assertThat(pkg.path("shipmentId").asString()).isEqualTo(s);
+    assertThat(pkg.path("stoppedLines").toString())
+        .contains("NOT_PICKED")
+        .contains("\"workStateAtStop\":\"PICKED\"");
+    assertThat(done.body().path("notStartedLines")).isEmpty();
+    inv.verify(
+        postRequestedFor(urlPathEqualTo(cancelPath))
+            .withHeader("Idempotency-Key", equalTo("STOP-" + o))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("CANCEL_AFTER_PICK")))
+            .withRequestBody(matchingJsonPath("$.returns[0].locationCode", equalTo("PAK-A-01")))
+            .withRequestBody(matchingJsonPath("$.returns[0].workState", equalTo("PICKED")))
+            .withRequestBody(matchingJsonPath("$.returns[0].lotId", equalTo("LOT-A"))));
+    assertThat(outbox("WorkStopResult", o)).isEqualTo(1);
+    assertThat(
+            call("GET", SVC, "/internal/stop-requests/STOP-" + o, null, null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("RESOLVED");
+
+    // 복귀 작업: 배정 → 시작 → 지시(포장 위치·LOT) → 남은 양 초과 409 → 선반으로 옮김(재고 MOVE) → COMPLETED
+    assertThat(jdbc.queryForObject("SELECT state FROM task WHERE task_id = ?", String.class, ret))
+        .isEqualTo("READY");
+    assigned(ret, "w2", 1);
+    assertThat(start(W2, ret, "w2", 1).status()).isEqualTo(201);
+    JsonNode rd = call("GET", VIEWER, "/tasks/" + ret, null, null).body();
+    assertThat(rd.path("taskType").asString()).isEqualTo("RETURN");
+    JsonNode rp = rd.path("lines").path(0).path("picks").path(0);
+    assertThat(rp.path("lotId").asString()).isEqualTo("LOT-A");
+    assertThat(rp.path("remainingQty").asInt()).isEqualTo(1);
+    assertThat(rp.path("locations").path(0).path("locationCode").asString()).isEqualTo("PAK-A-01");
+    // PICK 실적은 RETURN 작업에 못 넣는다
+    assertThat(
+            call(
+                    "POST",
+                    W2,
+                    "/tasks/" + ret + "/executions",
+                    UUID.randomUUID().toString(),
+                    returnBody("PICK", 1))
+                .status())
+        .isEqualTo(422);
+    assertThat(
+            call(
+                    "POST",
+                    W2,
+                    "/tasks/" + ret + "/executions",
+                    UUID.randomUUID().toString(),
+                    returnBody("RETURN", 2))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("QTY_EXCEEDS_REMAINING");
+    inventoryCommits(
+        "MOVE", 201, Map.of("status", "APPLIED", "resultId", "CMT-M1", "appliedQty", 1));
+    Res moved =
+        call(
+            "POST",
+            W2,
+            "/tasks/" + ret + "/executions",
+            UUID.randomUUID().toString(),
+            returnBody("RETURN", 1));
+    assertThat(moved.status()).as(moved.body().toString()).isEqualTo(202);
+    assertThat(moved.body().path("status").asString()).isEqualTo("APPLIED");
+    inv.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/task-executions"))
+            .withRequestBody(matchingJsonPath("$.executionType", equalTo("MOVE")))
+            .withRequestBody(matchingJsonPath("$.fromLocation", equalTo("PAK-A-01")))
+            .withRequestBody(matchingJsonPath("$.toLocation", equalTo("A-S1-01-1-01")))
+            .withRequestBody(matchingJsonPath("$.lines[0].lotId", equalTo("LOT-A"))));
+    assertThat(call("GET", VIEWER, "/tasks/" + ret, null, null).body().path("state").asString())
+        .isEqualTo("COMPLETED");
+  }
+
+  static Map<String, Object> returnBody(String type, int qty) {
+    return Map.of(
+        "executionType",
+        type,
+        "workerId",
+        "w2",
+        "fromLocation",
+        "PAK-A-01",
+        "toLocation",
+        "A-S1-01-1-01",
+        "lines",
+        List.of(
+            Map.of("orderLineId", "L1", "sku", "E-00000001", "lotId", "LOT-A", "pickedQty", qty)));
   }
 }

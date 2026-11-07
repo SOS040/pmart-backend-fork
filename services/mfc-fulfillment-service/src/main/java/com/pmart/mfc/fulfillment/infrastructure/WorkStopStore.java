@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -15,6 +16,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class WorkStopStore {
 
+  /**
+   * @param cancelReturn 집품 뒤 중지(V5)의 inventory cancel-returns 요청 본문. null 이면 준비 전(진행 중 실적 대기) 또는 집품
+   *     전 중지
+   * @param packageVerdicts 포장·출고별 판정 JSON 배열
+   */
   public record StopRow(
       String stopRequestId,
       String orderId,
@@ -23,7 +29,11 @@ public class WorkStopStore {
       String requestedLines,
       String state,
       String notStartedLines,
-      Instant decidedAt) {}
+      Instant decidedAt,
+      @Nullable String cancelReturn,
+      String packageVerdicts,
+      @Nullable String lastError,
+      @Nullable Instant resolvedAt) {}
 
   private final JdbcTemplate jdbc;
 
@@ -44,7 +54,8 @@ public class WorkStopStore {
   public void insert(StopRow r) {
     jdbc.update(
         "INSERT INTO order_work_stop (stop_request_id, order_id, claim_id, scope, requested_lines,"
-            + " state, not_started_lines, decided_at) VALUES (?,?,?,?,?::jsonb,?,?::jsonb,?)",
+            + " state, not_started_lines, decided_at, cancel_return, package_verdicts, resolved_at)"
+            + " VALUES (?,?,?,?,?::jsonb,?,?::jsonb,?,?::jsonb,?::jsonb,?)",
         r.stopRequestId(),
         r.orderId(),
         r.claimId(),
@@ -52,7 +63,45 @@ public class WorkStopStore {
         r.requestedLines(),
         r.state(),
         r.notStartedLines(),
-        Timestamp.from(r.decidedAt()));
+        Timestamp.from(r.decidedAt()),
+        r.cancelReturn(),
+        r.packageVerdicts(),
+        r.resolvedAt() == null ? null : Timestamp.from(r.resolvedAt()));
+  }
+
+  /** 준비 전 PENDING 에 복귀 본문·판정을 넣는다(조건부). 반환 = 바뀐 행 수. */
+  public int prepared(String stopRequestId, String cancelReturn, String packageVerdicts) {
+    return jdbc.update(
+        "UPDATE order_work_stop SET cancel_return = ?::jsonb, package_verdicts = ?::jsonb"
+            + " WHERE stop_request_id = ? AND state = 'PENDING' AND cancel_return IS NULL",
+        cancelReturn,
+        packageVerdicts,
+        stopRequestId);
+  }
+
+  /** PENDING → RESOLVED(조건부). 반환 = 바뀐 행 수. */
+  public int resolve(String stopRequestId, Instant at) {
+    return jdbc.update(
+        "UPDATE order_work_stop SET state = 'RESOLVED', resolved_at = ?, last_error = NULL"
+            + " WHERE stop_request_id = ? AND state = 'PENDING'",
+        Timestamp.from(at),
+        stopRequestId);
+  }
+
+  public void recordError(String stopRequestId, String error) {
+    jdbc.update(
+        "UPDATE order_work_stop SET last_error = ? WHERE stop_request_id = ? AND state = 'PENDING'",
+        error.length() > 300 ? error.substring(0, 300) : error,
+        stopRequestId);
+  }
+
+  /** 오래된 순 PENDING 중지 ID(sweep). */
+  public List<String> pending(int limit) {
+    return jdbc.queryForList(
+        "SELECT stop_request_id FROM order_work_stop WHERE state = 'PENDING' ORDER BY decided_at"
+            + " LIMIT ?",
+        String.class,
+        limit);
   }
 
   /** 주문의 작업 전 중지 수량 합(orderLineId → 수량). 작업 접수가 이 수량을 빼고 받는다. */
@@ -69,6 +118,7 @@ public class WorkStopStore {
   }
 
   private static StopRow row(ResultSet rs) throws SQLException {
+    Timestamp resolved = rs.getTimestamp("resolved_at");
     return new StopRow(
         rs.getString("stop_request_id"),
         rs.getString("order_id"),
@@ -77,6 +127,10 @@ public class WorkStopStore {
         rs.getString("requested_lines"),
         rs.getString("state"),
         rs.getString("not_started_lines"),
-        rs.getTimestamp("decided_at").toInstant());
+        rs.getTimestamp("decided_at").toInstant(),
+        rs.getString("cancel_return"),
+        rs.getString("package_verdicts"),
+        rs.getString("last_error"),
+        resolved == null ? null : resolved.toInstant());
   }
 }

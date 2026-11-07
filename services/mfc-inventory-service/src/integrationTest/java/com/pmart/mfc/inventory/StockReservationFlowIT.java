@@ -374,7 +374,8 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     var wrongLot = List.<Map<String, Object>>of(Map.of("sku", newSku(), "lotId", lotId, "qty", 1));
     assertThat(execute("PUTAWAY", "RCV-DOCK", "A-01-01", wrongLot).status()).isEqualTo(400);
     assertThat(execute("PICK", "A-01-01", "WORK-1", putLines).status()).isEqualTo(400);
-    assertThat(execute("MOVE", "A-01-01", "WORK-1", putLines).status()).isEqualTo(501);
+    // MOVE 는 취소 복귀만(ADR-0046) — 등록 안 된 목적지는 422
+    assertThat(execute("MOVE", "A-01-01", "WORK-1", putLines).status()).isEqualTo(422);
     // 원장 행이 없는 SKU 는 0
     assertThat(availability(newSku()).path("available").asInt()).isZero();
 
@@ -834,6 +835,78 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
             Map.of("reason", "CANCEL_BEFORE_PICK"));
     assertThat(release.status()).isEqualTo(409);
     assertThat(release.body().path("code").asString()).isEqualTo("RESERVATION_PICKED");
+
+    // 집품 뒤 취소(IV-08, ADR-0046): 포장한 3개를 위치와 함께 빠짐없이 — 모자라면 409
+    String cr = "/internal/reservations/" + reservationId + "/cancel-returns";
+    Map<String, Object> partial =
+        Map.of(
+            "reason",
+            "CANCEL_AFTER_PICK",
+            "returns",
+            List.of(
+                Map.of(
+                    "orderLineId",
+                    "L1",
+                    "sku",
+                    sku,
+                    "lotId",
+                    lot,
+                    "locationCode",
+                    "PAK-A-01",
+                    "workState",
+                    "PACKED",
+                    "qty",
+                    2)));
+    Res mismatch =
+        post(INBOUND, "mfc-fulfillment-service", cr, UUID.randomUUID().toString(), partial);
+    assertThat(mismatch.status()).isEqualTo(409);
+    assertThat(mismatch.body().path("code").asString()).isEqualTo("RETURN_MISMATCH");
+    Map<String, Object> all =
+        Map.of(
+            "reason",
+            "CANCEL_AFTER_PICK",
+            "returns",
+            List.of(
+                Map.of(
+                    "orderLineId",
+                    "L1",
+                    "sku",
+                    sku,
+                    "lotId",
+                    lot,
+                    "locationCode",
+                    "PAK-A-01",
+                    "workState",
+                    "PACKED",
+                    "qty",
+                    3)));
+    Res cancelled = post(INBOUND, "mfc-fulfillment-service", cr, UUID.randomUUID().toString(), all);
+    assertThat(cancelled.status()).as(cancelled.body().toString()).isEqualTo(200);
+    assertThat(cancelled.body().path("appliedQty").asInt()).isEqualTo(4); // 집품 3 + 안 집은 1
+    // 포장분은 취소 복귀 대기(판매 제외), 예약 0 — H10/E7/R0/A7
+    JsonNode afterCancel = availability(sku);
+    assertThat(afterCancel.path("onHand").asInt()).isEqualTo(10);
+    assertThat(afterCancel.path("sellable").asInt()).isEqualTo(7);
+    assertThat(afterCancel.path("reserved").asInt()).isZero();
+    assertThat(afterCancel.path("available").asInt()).isEqualTo(7);
+    assertThat(get(ORCH, "/internal/reservations/" + reservationId).body().path("state").asString())
+        .isEqualTo("RELEASED");
+    // 다시 와도 변화 없음
+    assertThat(
+            post(INBOUND, "mfc-fulfillment-service", cr, UUID.randomUUID().toString(), all)
+                .status())
+        .isEqualTo(200);
+
+    // 선반 복귀(MOVE) → 판매 가능 회복 E10/A10
+    Res back =
+        execute(
+            "MOVE",
+            "PAK-A-01",
+            "A-01-01",
+            List.of(Map.of("sku", sku, "lotId", lot, "qty", 3, "resultQuality", "NORMAL")));
+    assertThat(back.status()).as(back.body().toString()).isEqualTo(201);
+    assertThat(availability(sku).path("sellable").asInt()).isEqualTo(10);
+    assertThat(availability(sku).path("available").asInt()).isEqualTo(10);
   }
 
   Res shortage(

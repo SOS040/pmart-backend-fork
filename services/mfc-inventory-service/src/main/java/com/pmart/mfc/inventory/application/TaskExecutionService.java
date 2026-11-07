@@ -173,7 +173,19 @@ public class TaskExecutionService {
 
   private static void validate(ExecCommand cmd) {
     if (cmd.type() == Type.MOVE) {
-      throw new PmartException(ErrorCode.UNSUPPORTED_ACTION, "MOVE 반영은 아직 구현하지 않았습니다.");
+      // 지금은 취소 복귀만(ADR-0046): 포장 위치의 CANCEL_RETURN_PENDING → 선반 STORED
+      if (blank(cmd.toLocation())) {
+        throw new PmartException(
+            ErrorCode.VALIDATION_FAILED, "MOVE(취소 복귀)는 toLocation(선반)이 필요합니다.");
+      }
+      for (ExecLine l : cmd.lines()) {
+        if (l.resultQuality() != null
+            && l.resultQuality() != Quality.NORMAL
+            && l.resultQuality() != Quality.QUARANTINED) {
+          throw new PmartException(
+              ErrorCode.VALIDATION_FAILED, "복귀 판정은 NORMAL/QUARANTINED 입니다: " + l.sku());
+        }
+      }
     }
     if (cmd.type() == Type.PICK || cmd.type() == Type.PACK) {
       if (blank(cmd.reservationId())) {
@@ -229,6 +241,14 @@ public class TaskExecutionService {
     }
     if (cmd.type() == Type.PICK) {
       locations.requirePacking(cmd.mfcId(), cmd.toLocation());
+    }
+    if (cmd.type() == Type.MOVE) {
+      var projections =
+          skus.findAll(cmd.lines().stream().map(ExecLine::sku).collect(Collectors.toSet()));
+      for (String sku : cmd.lines().stream().map(ExecLine::sku).distinct().toList()) {
+        var p = projections.get(sku);
+        locations.requireStorage(cmd.mfcId(), cmd.toLocation(), p == null ? null : p.storageType());
+      }
     }
   }
 
@@ -346,6 +366,20 @@ public class TaskExecutionService {
           Key from = new Key(cmd.fromLocation(), l.sku(), l.lotId(), Quality.NORMAL, Work.STORED);
           out.add(new Change(from, -l.qty()));
           out.add(new Change(from.at(cmd.toLocation(), Work.PICKED), l.qty()));
+        }
+        case MOVE -> {
+          // 취소 복귀(IV-08): 복귀·적격 확인 뒤 선반으로 — NORMAL 이면 E+q, 이상품이면 격리(Q+q)
+          Key from =
+              new Key(
+                  cmd.fromLocation(),
+                  l.sku(),
+                  l.lotId(),
+                  Quality.NORMAL,
+                  Work.CANCEL_RETURN_PENDING);
+          out.add(new Change(from, -l.qty()));
+          Quality q = l.resultQuality() == null ? Quality.NORMAL : l.resultQuality();
+          out.add(
+              new Change(new Key(cmd.toLocation(), l.sku(), l.lotId(), q, Work.STORED), l.qty()));
         }
         case PACK -> {
           Key from = new Key(cmd.fromLocation(), l.sku(), l.lotId(), Quality.NORMAL, Work.PICKED);

@@ -59,10 +59,13 @@ public class ClaimEvents {
       ls.add(Map.of("orderLineId", l.orderLineId(), "qty", l.requestedQty()));
     }
     p.put("lines", ls);
-    // S3 취소 사유: 시스템 자동 취소(D6-4)는 FULFILLMENT_REJECTED, 그 밖(고객 접수)은 CUSTOMER_REQUEST
+    // S3 취소 사유: 시스템 자동 취소는 그 사유(FULFILLMENT_REJECTED D6-4, OUT_OF_STOCK 결품 전체 취소 ADR-0046),
+    // 그 밖(고객 접수)은 CUSTOMER_REQUEST
     p.put(
         "reason",
-        "FULFILLMENT_REJECTED".equals(c.reason()) ? "FULFILLMENT_REJECTED" : "CUSTOMER_REQUEST");
+        "FULFILLMENT_REJECTED".equals(c.reason()) || "OUT_OF_STOCK".equals(c.reason())
+            ? c.reason()
+            : "CUSTOMER_REQUEST");
     p.put("channel", c.channel());
     p.put("requestedAt", c.openedAt().toString());
     publish("CancellationRequested", c.claimId(), c.version(), p);

@@ -223,7 +223,14 @@ public class TasksController implements TasksApi {
                     : l.getShortage().getReason().getValue(),
                 l.getShortage().getNote());
       }
-      lines.add(new ExecLine(l.getOrderLineId(), l.getSku(), l.getLotId(), l.getPickedQty(), s));
+      lines.add(
+          new ExecLine(
+              l.getOrderLineId(),
+              l.getSku(),
+              l.getLotId(),
+              l.getPickedQty(),
+              s,
+              l.getResultQuality() == null ? null : l.getResultQuality().getValue()));
     }
     var r =
         service.execute(

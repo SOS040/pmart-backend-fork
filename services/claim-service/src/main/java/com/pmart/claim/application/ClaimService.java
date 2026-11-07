@@ -192,7 +192,7 @@ public class ClaimService {
                         List.of());
                   }
                   try {
-                    ClaimRules.checkFullCancel(order.path("status").asString(), lines, all);
+                    ClaimRules.checkFullCancel(order.path("status").asString(), lines, all, true);
                   } catch (ClaimRules.Rejection r) {
                     throw new PmartException(
                         r.code(),

@@ -155,6 +155,43 @@ public class InventoryClient {
     }
   }
 
+  /**
+   * 집품 뒤 취소(IV-08) — 집품·포장분 취소 복귀 대기, 나머지 예약·이행부족 해제. 키 = 중지 요청 ID(같은 본문 재생). 결과는 {@link #commit} 과
+   * 같은 모양(appliedQty = 해제한 R).
+   */
+  public Commit cancelReturn(String reservationId, String key, String bodyJson) {
+    try {
+      String raw =
+          Downstream.call(
+              INVENTORY,
+              () ->
+                  inventory
+                      .post()
+                      .uri("/api/v1/internal/reservations/{id}/cancel-returns", reservationId)
+                      .header("Idempotency-Key", key)
+                      .header("X-Source-System", SOURCE)
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .body(bodyJson)
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+      return new Commit(
+          "APPLIED", n.path("resultId").asString(null), n.path("appliedQty").asInt(0), null, null);
+    } catch (HttpClientErrorException e) {
+      JsonNode p = problem(e.getResponseBodyAsString());
+      return new Commit(
+          "REJECTED",
+          null,
+          0,
+          p.path("code").asString("HTTP_" + e.getStatusCode().value()),
+          p.path("detail").asString(null));
+    } catch (PmartException e) {
+      String outcome =
+          ErrorCode.DEPENDENCY_UNAVAILABLE.name().equals(e.code()) ? "NOT_DELIVERED" : "UNKNOWN";
+      return new Commit(outcome, null, 0, e.code(), e.getMessage());
+    }
+  }
+
   /** 결품 보고 결과. commit 은 반영 여부(APPLIED/REJECTED/UNKNOWN/NOT_DELIVERED), blockedQty 는 재확보 못 한 양. */
   public record ShortageOutcome(Commit commit, int blockedQty, int resecuredQty) {}
 

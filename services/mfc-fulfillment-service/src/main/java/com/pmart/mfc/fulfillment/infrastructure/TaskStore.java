@@ -512,6 +512,97 @@ public class TaskStore {
         .orElse(null);
   }
 
+  // ---------- 집품 뒤 중지·복귀(IV-08, V5) ----------
+
+  /** 작업 지시의 모든 작업 행을 잠근다(실적 접수·포장과 중지 준비를 한 줄로). */
+  public void lockTasksOf(String fulfillmentId) {
+    jdbc.query(
+        "SELECT t.task_id FROM task t JOIN shipment s ON s.shipment_id = t.shipment_id"
+            + " WHERE s.fulfillment_id = ? ORDER BY t.task_id FOR UPDATE OF t",
+        rs -> {},
+        fulfillmentId);
+  }
+
+  /** 진행 중(재고 결과 대기) 실적·포장 수 — 있으면 중지 준비를 미룬다. */
+  public int inFlight(String fulfillmentId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT (SELECT COUNT(*) FROM task_execution e JOIN task t ON t.task_id = e.task_id"
+                + " JOIN shipment s ON s.shipment_id = t.shipment_id WHERE s.fulfillment_id = ?"
+                + " AND e.state IN ('RECORDED', 'UNKNOWN_RESULT'))"
+                + " + (SELECT COUNT(*) FROM package p JOIN shipment s ON s.shipment_id = p.shipment_id"
+                + " WHERE s.fulfillment_id = ? AND p.state = 'OPEN')",
+            Integer.class,
+            fulfillmentId,
+            fulfillmentId);
+    return n == null ? 0 : n;
+  }
+
+  /** 출고의 작업 실적(유형·상태). */
+  public List<ExecutionRow> executions(String shipmentId, String executionType, String state) {
+    return jdbc.query(
+        "SELECT e.* FROM task_execution e JOIN task t ON t.task_id = e.task_id"
+            + " WHERE t.shipment_id = ? AND e.execution_type = ? AND e.state = ?"
+            + " ORDER BY e.recorded_at",
+        (rs, i) -> execution(rs),
+        shipmentId,
+        executionType,
+        state);
+  }
+
+  /** 작업 하나의 실적(유형 무관, 상태). */
+  public List<ExecutionRow> taskExecutions(String taskId, String state) {
+    return jdbc.query(
+        "SELECT * FROM task_execution WHERE task_id = ? AND state = ? ORDER BY recorded_at",
+        (rs, i) -> execution(rs),
+        taskId,
+        state);
+  }
+
+  /** 출고의 밀봉 포장 → INVALIDATED. */
+  public void invalidateSealed(String shipmentId, Instant at) {
+    jdbc.update(
+        "UPDATE package SET state = 'INVALIDATED', version = version + 1 WHERE shipment_id = ?"
+            + " AND state = 'SEALED'",
+        shipmentId);
+  }
+
+  /** 출고 → CANCELLED(인계 전 상태만). */
+  public void cancelShipment(String shipmentId, Instant at) {
+    jdbc.update(
+        "UPDATE shipment SET state = 'CANCELLED', version = version + 1, updated_at = ?"
+            + " WHERE shipment_id = ? AND state IN ('PREPARING', 'READY')",
+        ts(at),
+        shipmentId);
+  }
+
+  public void setReturns(String taskId, String returnsJson) {
+    jdbc.update("UPDATE task SET returns = ?::jsonb WHERE task_id = ?", returnsJson, taskId);
+  }
+
+  public @Nullable String returns(String taskId) {
+    return jdbc
+        .query(
+            "SELECT returns FROM task WHERE task_id = ?",
+            (rs, i) -> rs.getString("returns"),
+            taskId)
+        .stream()
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** 복귀 대기(WAITING) RETURN 작업 → READY(담당 있으면 ASSIGNED). 반환 = 바뀐 작업 ID. */
+  public List<String> releaseReturns(String fulfillmentId, Instant at) {
+    return jdbc.queryForList(
+        "UPDATE task t SET state = CASE WHEN t.worker_id IS NULL THEN 'READY' ELSE 'ASSIGNED' END,"
+            + " hold_reason = NULL, version = t.version + 1, updated_at = ? FROM shipment s"
+            + " WHERE s.shipment_id = t.shipment_id AND s.fulfillment_id = ? AND t.task_type = 'RETURN'"
+            + " AND t.state = 'WAITING' RETURNING t.task_id",
+        String.class,
+        ts(at),
+        fulfillmentId);
+  }
+
   // ---------- 변환 ----------
 
   private static TaskInfo info(ResultSet rs) throws SQLException {

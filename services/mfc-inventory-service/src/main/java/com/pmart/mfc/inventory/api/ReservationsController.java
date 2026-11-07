@@ -95,6 +95,33 @@ public class ReservationsController implements ReservationsApi {
   }
 
   @Override
+  public ResponseEntity<ReserveInventory201Response> cancelReturn(
+      String reservationId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.inventory.api.generated.model.CancelReturnRequest body) {
+    var r =
+        service.cancelReturn(
+            idempotencyKey,
+            xSourceSystem,
+            new ReservationService.CancelReturn(
+                reservationId,
+                body.getReason(),
+                body.getReturns().stream()
+                    .map(
+                        l ->
+                            new ReservationService.ReturnLine(
+                                l.getOrderLineId(),
+                                l.getSku(),
+                                l.getLotId(),
+                                l.getLocationCode(),
+                                l.getWorkState().getValue(),
+                                l.getQty()))
+                    .toList()));
+    return ResponseEntity.ok(Commands.dto(r));
+  }
+
+  @Override
   public ResponseEntity<ReserveInventory201Response> releaseShortfall(
       String reservationId,
       String idempotencyKey,

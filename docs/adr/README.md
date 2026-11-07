@@ -46,6 +46,7 @@
 | [0042](0042-mfc-open-decisions-lot-substitution-hold-ttl-location-code-bulk-inbound.md) | MFC 미결 4건 — 다른 LOT 대체 허용(같은 SKU·적격 기한만, IV-09 때 적용), 결제 전 점유 10분 확정·설정값(`hold-ttl`·`default-hold-ttl`), 위치 코드 계층형 고정 문법(`C-S1-03-2-04`, `RCV-C-01`, 새 등록만), 일괄 입고 단계별 파일 | 승인 |
 | [0043](0043-slice-6b-picking-packing.md) | 슬라이스 6b 피킹·포장 — 감독자 수동 배정(mfc-capacity), 작업자 = 운영자 + `MFC_WORKER`, 시작은 배정 동기 조회·첫 PICK 시작 = PreparationStarted(→ 주문 PREPARING), 피킹은 포장 구역으로(예약 조각 집품량, 총량 불변), 포장 밀봉이 PACK 실적, 결품은 BLOCKED 만, 피킹 뒤 중지는 PENDING | 승인 |
 | [0044](0044-pick-shortage-hold-and-resecure.md) | 피킹 결품·파손(IV-09 1부) — 파손은 격리(Q), 못 찾은 물량은 분실 조사 보류(E 만 제외, H 그대로), 아직 집지 않은 예약에서 R−q, 같은 SKU 적격 LOT 자동 재확보, 못 잡은 양은 BLOCKED(D)·ReservationBlocked. 결품 보고는 한 줄짜리 따로 | 승인 |
-| [0045](0045-shortage-saga-cancel-out-of-stock-only.md) | 결품 사가(IV-09 2부) — 품절 상품만 취소는 자동(작업 취소 → 이행부족 해제 → 주문 SHORTAGE → 부분 환불 원단가×수량, 봉투·배달팁 제외), 전체 취소 선택·선택 없음·주문 전체 결품은 상신(수동) | 승인 |
+| [0045](0045-shortage-saga-cancel-out-of-stock-only.md) | 결품 사가(IV-09 2부) — 품절 상품만 취소는 자동(작업 취소 → 이행부족 해제 → 주문 SHORTAGE → 부분 환불 원단가×수량, 봉투·배달팁 제외), 전체 취소 선택·선택 없음·주문 전체 결품은 상신(수동) | 승인 (전체 취소 부분은 0046) |
+| [0046](0046-cancel-after-pick-return.md) | 집품 뒤 취소(IV-08) — 피킹 시작된 주문의 전체 중지는 작업 종료·포장 무효·출고 취소 → inventory cancel-returns(집품·포장분 CANCEL_RETURN_PENDING, 예약 해제) → RESOLVED, RETURN 작업(MOVE)으로 선반 복귀 때 판매 가능. claim 시스템 취소 PREPARING·OUT_OF_STOCK·앞선 환불 뺀 잔액, 결품 사가 CANCEL_ALL·주문 전체 결품 → 시스템 전체 취소 | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

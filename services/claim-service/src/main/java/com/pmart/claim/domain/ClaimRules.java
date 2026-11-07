@@ -40,13 +40,25 @@ public final class ClaimRules {
   }
 
   /**
-   * 전체 취소 요청 심사. 통과하면 아무것도 돌려주지 않고, 아니면 {@link Rejection}.
+   * 고객 전체 취소 요청 심사(CONFIRMED 만). 통과하면 아무것도 돌려주지 않고, 아니면 {@link Rejection}.
    *
-   * @param orderStatus order 원장 상태(CONFIRMED 만 취소 가능)
+   * @param orderStatus order 원장 상태
    */
   public static void checkFullCancel(
       String orderStatus, List<OrderLine> lines, List<Requested> requested) {
-    if (!"CONFIRMED".equals(orderStatus)) {
+    checkFullCancel(orderStatus, lines, requested, false);
+  }
+
+  /**
+   * 전체 취소 요청 심사.
+   *
+   * @param system 시스템 자동 취소면 준비 중(PREPARING — 피킹 시작 뒤)도 받는다. 현장 중지가 집품분을 취소 복귀로 돌린다(IV-08,
+   *     ADR-0046). 고객 접수는 CONFIRMED 만
+   */
+  public static void checkFullCancel(
+      String orderStatus, List<OrderLine> lines, List<Requested> requested, boolean system) {
+    boolean ok = "CONFIRMED".equals(orderStatus) || (system && "PREPARING".equals(orderStatus));
+    if (!ok) {
       throw new Rejection("ORDER_NOT_CANCELLABLE", "지금 상태(" + orderStatus + ")의 주문은 취소할 수 없습니다.");
     }
     Map<String, OrderLine> byId = new HashMap<>();

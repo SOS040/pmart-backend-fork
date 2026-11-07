@@ -576,5 +576,42 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     Res tooMany = shortageRefund("S4-2:REFUND", over);
     assertThat(tooMany.status()).isEqualTo(422);
     assertThat(tooMany.body().path("code").asString()).isEqualTo("QUANTITY_EXCEEDS_AVAILABLE");
+
+    // IV-08(ADR-0046): 이어서 주문 전체 결품 → 결품 사가의 시스템 전체 취소(PREPARING 도 받음). 진행 중 부분 환불 클레임은
+    // "진행 중인 취소" 가 아니다(새 클레임), CancellationRequested 사유 OUT_OF_STOCK, 환불은 앞선 1,900원을 뺀 잔액
+    Res full =
+        system(
+            "S4-9:REQUEST_FULL_CANCEL",
+            Map.of(
+                "orderId",
+                orderId,
+                "reason",
+                "OUT_OF_STOCK",
+                "reasonDetail",
+                "WHOLE_ORDER_OUT_OF_STOCK"));
+    assertThat(full.status()).as(full.body().toString()).isEqualTo(201);
+    String fullId = full.body().path("claimId").asString();
+    assertThat(fullId).isNotEqualTo(claimId);
+    assertThat(full.body().path("lines").path(0).path("requestedQty").asInt()).isEqualTo(8);
+    JsonNode req =
+        mapper.readTree(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'CancellationRequested'"
+                    + " AND aggregateid = ?",
+                String.class,
+                fullId));
+    assertThat(req.path("payload").path("reason").asString()).isEqualTo("OUT_OF_STOCK");
+    orderCancelled(orderId, fullId);
+    await(
+        TestJwt.service("order-orchestration-service"),
+        "/claims/" + fullId,
+        b -> "IN_PROGRESS".equals(b.path("state").asString()));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT scope || ' ' || amount || ' ' || item_amount || ' ' || bag_fee FROM refund_intent"
+                    + " WHERE claim_id = ?",
+                String.class,
+                fullId))
+        .isEqualTo("FULL 17200 17100 100");
   }
 }

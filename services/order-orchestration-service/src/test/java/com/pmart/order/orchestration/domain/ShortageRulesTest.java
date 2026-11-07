@@ -10,8 +10,10 @@ class ShortageRulesTest {
   @Test
   void preferenceDecidesRunOrEscalate() {
     assertThat(ShortageRules.escalationAtStart("CANCEL_OOS_ONLY")).isNull();
-    assertThat(ShortageRules.escalationAtStart("CANCEL_ALL"))
-        .isEqualTo("PICKED_CANCEL_NOT_SUPPORTED");
+    assertThat(ShortageRules.escalationAtStart("CANCEL_ALL")).isNull();
+    assertThat(ShortageRules.firstStep("CANCEL_ALL")).isEqualTo(ShortageRules.REQUEST_FULL_CANCEL);
+    assertThat(ShortageRules.firstStep("CANCEL_OOS_ONLY")).isEqualTo(ShortageRules.CHECK_ORDER);
+    assertThat(ShortageRules.next(ShortageRules.REQUEST_FULL_CANCEL)).isNull();
     assertThat(ShortageRules.escalationAtStart(null)).isEqualTo("NO_PREFERENCE");
   }
 

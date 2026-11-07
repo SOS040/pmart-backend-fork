@@ -142,11 +142,11 @@ D6-5 세부(사용자 결정 2026-11-07):
 - 시작: 작업자(`MFC_WORKER`) `POST /tasks/{id}/starts` — capacity 배정 동기 조회 후 판정 기록. 그 주문의 첫 PICK 시작 = `PreparationStarted`(D6-1) → order CONFIRMED → PREPARING·`OrderPreparationStarted`(이후 고객 자율 취소 거절).
 - 피킹: `POST /tasks/{id}/executions`(PICK, 한 선반) → mfc-inventory PICK(선반 → 포장 구역, 예약 조각 집품량, 총량 불변). 모두 집으면 PICK COMPLETED, PACK READY/ASSIGNED. 결품 보고는 BLOCKED + `LineShortageReported`(2.1 처리는 IV-09 단계).
 - 포장: PACK 시작 후 `POST /shipments/{id}/packages`(LOT 은 집품분에서 소비기한 빠른 순) → mfc-inventory PACK → SEALED·QR. 집품분 전부 포장 → PACK COMPLETED, 출고 READY, `PackingFinished`·`ShipmentReady`(배차 요청은 6c).
-- 피킹이 시작된 주문의 작업 중지는 `PENDING`(작업 유지) — 집품분 판매 제외·복귀(IV-08) 전까지. inventory 는 집품 시작된 예약의 단순 해제를 409 `RESERVATION_PICKED`.
+- 피킹이 시작된 주문의 작업 중지(2026-11-08, ADR-0046 — IV-08): 전체 중지면 남은 작업 취소·작업 종료·포장 INVALIDATED·출고 CANCELLED·RETURN 작업 → inventory `cancel-returns`(집품·포장분 `CANCEL_RETURN_PENDING`, 예약 해제) → RESOLVED(전부 STOPPED). RETURN 실적(MOVE)으로 선반에 돌려놓을 때 판매 가능. 부분 중지는 아직 `PENDING`. inventory 는 집품 시작된 예약의 단순 해제를 여전히 409 `RESERVATION_PICKED`(취소 복귀로만).
 
 ### 2.1 결품(LineShortageReported) 처리
 
-구현(2026-11-07, ADR-0044 — IV-09 1부): 결품·파손은 먼저 MFC 안에서 같은 SKU 적격 LOT 으로 재확보를 시도하고, **재확보 못 한 양만** `LineShortageReported` 로 나온다. 2부(ADR-0045, 결품 사가): `품절 상품만 취소`는 자동 — 작업 수량 취소 → 이행부족 해제 → 주문 수량 변경(SHORTAGE) → 부분 환불(원단가×수량, 봉투·배달팁 제외). `전체 취소`(집품 뒤 취소 IV-08 필요)·선택 없음(CS 미구현)·주문 전체 결품은 상신(수동)으로 두고 작업은 BLOCKED 유지.
+구현(2026-11-07, ADR-0044 — IV-09 1부): 결품·파손은 먼저 MFC 안에서 같은 SKU 적격 LOT 으로 재확보를 시도하고, **재확보 못 한 양만** `LineShortageReported` 로 나온다. 2부(ADR-0045, 결품 사가): `품절 상품만 취소`는 자동 — 작업 수량 취소 → 이행부족 해제 → 주문 수량 변경(SHORTAGE) → 부분 환불(원단가×수량, 봉투·배달팁 제외). 선택 없음(CS 미구현)은 상신(수동)으로 두고 작업은 BLOCKED 유지. `전체 취소`·주문 전체 결품(2026-11-08, ADR-0046)은 결품 사가 REQUEST_FULL_CANCEL → claim 시스템 전체 취소(reason OUT_OF_STOCK, 주문 PREPARING 허용) → S3(현장 중지가 집품분을 취소 복귀로) → 주문 취소 → 환불 = 원 승인액 − 앞선 결품 부분 환불(봉투·배달팁 포함).
 
 | 고객 사전 선택 | 처리 |
 |---|---|

@@ -65,6 +65,14 @@ public class RefundService {
   RefundRow createFullRefund(ClaimRow c, Instant now) {
     ClaimRules.RefundAmount a =
         ClaimRules.fullRefund(c.approvedAmount(), c.itemAmount(), c.bagFee(), c.deliveryTip());
+    // 앞서 결품 부분 환불이 있었으면 남은 금액만(payment FULL 취소 = 남은 잔액, ADR-0046)
+    long[] prior = store.refundedForOrder(c.orderId());
+    if (a != null && prior[0] > 0) {
+      a =
+          new ClaimRules.RefundAmount(
+              a.amount() - prior[0], a.itemAmount() - prior[1], a.bagFee(), a.deliveryTip());
+      log.info("클레임 {} 전체 환불 — 앞선 환불 {}원을 빼고 {}원", c.claimId(), prior[0], a.amount());
+    }
     String id = "RFI-" + UUID.randomUUID();
     RefundRow r =
         new RefundRow(
@@ -75,7 +83,7 @@ public class RefundService {
             "FULL",
             "CANCEL_BEFORE_SHIP",
             a == null ? c.approvedAmount() : a.amount(),
-            c.itemAmount(),
+            a == null ? c.itemAmount() : a.itemAmount(),
             c.bagFee(),
             c.deliveryTip(),
             a == null ? "FAILED" : "PENDING_EXECUTION",

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -123,6 +123,51 @@ paths:
       responses:
         '200':
           description: 해제됨 (appliedQty)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/reservations/{reservationId}/cancel-returns:
+    post:
+      tags: [reservations]
+      summary: '[fulfillment→inventory] 집품 뒤 취소 — 집품·포장분 판매 제외(취소 복귀 대기), 나머지 예약·이행부족 해제 (IV-08, 0.7.0)'
+      description: |
+        ADR-0046. 피킹이 시작된 주문의 작업 중지(취소 선확정) 때 fulfillment 가 부른다. returns 는 이 예약의 **집품했지만 포장 안 한 양(PICKED)과
+        포장한 양(PACKED)을 위치별로 전부** 적어야 한다(조각별 합이 집품·포장량과 다르면 409 RETURN_MISMATCH — 실물을 빠뜨리지 않게).
+        - 단위: 그 위치의 NORMAL·PICKED/PACKED → NORMAL·CANCEL_RETURN_PENDING(E−q, H 그대로). 선반 복귀·적격 확인은 MOVE 실행에서(E+q).
+        - 예약: 모든 HELD·CONFIRMED 조각 R−q(집지 않은 양 포함), BLOCKED(이행부족)까지 조각 전부 RELEASED, 예약 RELEASED(사유 reason).
+        - 이미 RELEASED/EXPIRED 면 변화 없는 성공. 같은 Idempotency-Key·같은 본문은 재생.
+      operationId: cancelReturn
+      parameters:
+        - { name: reservationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, returns]
+              properties:
+                reason: { type: string, maxLength: 32, description: '예 CANCEL_AFTER_PICK' }
+                returns:
+                  type: array
+                  items:
+                    type: object
+                    required: [orderLineId, sku, lotId, locationCode, workState, qty]
+                    properties:
+                      orderLineId: { type: string }
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lotId: { type: string }
+                      locationCode: { type: string }
+                      workState: { type: string, enum: [PICKED, PACKED] }
+                      qty: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 반영됨 (appliedQty = 해제한 R)
           content:
             application/json:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
@@ -276,7 +321,9 @@ paths:
         구현(ADR-0040, 0.2.0): INSPECT(fromLocation 의 PENDING_INSPECTION/UNSTOWED → resultQuality/UNSTOWED)와
         PUTAWAY(fromLocation 의 NORMAL/UNSTOWED → toLocation 의 NORMAL/STORED, 이때 E+q). executionId 필수 — 같은 executionId 는
         요청 ID 가 달라도 한 번(다른 내용이면 409 EXECUTION_ALREADY_POSTED). lines[].lotId 는 inventory lotId.
-        위치 잔량이 모자라면 422 INSUFFICIENT_STOCK. MOVE 는 501 UNSUPPORTED_ACTION.
+        위치 잔량이 모자라면 422 INSUFFICIENT_STOCK.
+        MOVE(0.7.0, ADR-0046) 는 지금 **취소 복귀**만: fromLocation 의 NORMAL·CANCEL_RETURN_PENDING → toLocation(선반·피킹, 온도대 = SKU 보관 유형)의
+        NORMAL·STORED(E+q). resultQuality QUARANTINED 면 복귀 중 이상품 — toLocation 의 QUARANTINED·STORED(Q+q). 일반 선반 이동은 아직 없다.
         위치 검사(mfc-location 투영): 출발 위치가 실사 잠금이면 409 LOCATION_CLOSED. PUTAWAY 목적지는 등록·ACTIVE·구역 STORAGE/PICKING·
         온도대 = SKU 보관 유형 — 아니면 422 LOCATION_NOT_REGISTERED / 409 LOCATION_CLOSED·LOCATION_ZONE_MISMATCH·TEMPERATURE_ZONE_MISMATCH,
         보관 유형을 모르면 422 CONFIG_REQUIRED.

@@ -93,15 +93,11 @@ public class ShortageSagaService {
                 p.path("reason").asString(null),
                 preference,
                 escalate == null ? "RUNNING" : "ESCALATED",
-                ShortageRules.CHECK_ORDER,
+                ShortageRules.firstStep(preference),
                 null,
                 escalate == null ? null : ShortageRules.CHECK_ORDER,
                 escalate,
-                escalate == null
-                    ? null
-                    : "CANCEL_ALL".equals(preference)
-                        ? "집품이 시작된 주문의 전체 취소(IV-08)가 아직 없어 수동 처리"
-                        : "품절 처리 선택이 없어 CS 이관(case-service 미구현 — 수동)",
+                escalate == null ? null : "품절 처리 선택이 없어 CS 이관(case-service 미구현 — 수동)",
                 now,
                 now,
                 escalate == null ? null : now));
@@ -176,9 +172,46 @@ public class ShortageSagaService {
     Instant now = clock.instant();
     String step = s.currentStep();
     String key = ShortageRules.requestId(s.sagaId(), step);
+    if (ShortageRules.CHECK_ORDER.equals(step)) {
+      JsonNode o = participants.orderLedger(s.orderId());
+      if (o == null) {
+        store.touch(s.sagaId(), now); // 조회 실패 — sweep 이 다시
+        return false;
+      }
+      int remaining = 0;
+      for (JsonNode l : o.path("lines")) {
+        remaining += l.path("unfulfilledQty").asInt(0);
+      }
+      boolean whole = ShortageRules.wholeOrder(remaining, s.shortQty());
+      store.step(
+          s.sagaId(), whole ? ShortageRules.REQUEST_FULL_CANCEL : ShortageRules.next(step), now);
+      if (whole) {
+        log.info("결품 사가 {} — 주문 {} 남은 수량 전부 결품, 전체 취소로", s.sagaId(), s.orderId());
+      }
+      return true;
+    }
     Result r =
         switch (step) {
-          case ShortageRules.CHECK_ORDER -> checkOrder(s);
+          case ShortageRules.REQUEST_FULL_CANCEL ->
+              participants.systemCancel(
+                  key,
+                  Map.of(
+                      "orderId",
+                      s.orderId(),
+                      "reason",
+                      "OUT_OF_STOCK",
+                      "reasonDetail",
+                      (ShortageRules.CANCEL_ALL.equals(s.preference())
+                              ? "CANCEL_ALL"
+                              : "WHOLE_ORDER_OUT_OF_STOCK")
+                          + " 결품 "
+                          + s.orderLineId()
+                          + " "
+                          + s.shortQty()
+                          + "개 "
+                          + s.reason(),
+                      "sourceRef",
+                      s.sagaId()));
           case ShortageRules.RESOLVE_WORK ->
               participants.resolveShortage(
                   s.fulfillmentId(),
@@ -224,7 +257,12 @@ public class ShortageSagaService {
         if (next == null) {
           String claimId = ok.body().path("claimId").asString(null);
           store.finish(s.sagaId(), "COMPLETED", claimId, null, null, null, now);
-          log.info("결품 사가 {} 완료 — 주문 {} 부분 환불 클레임 {}", s.sagaId(), s.orderId(), claimId);
+          log.info(
+              "결품 사가 {} 완료 — 주문 {} {} 클레임 {}",
+              s.sagaId(),
+              s.orderId(),
+              ShortageRules.REQUEST_FULL_CANCEL.equals(step) ? "전체 취소" : "부분 환불",
+              claimId);
           yield false;
         }
         store.step(s.sagaId(), next, now);
@@ -240,23 +278,6 @@ public class ShortageSagaService {
         yield false;
       }
     };
-  }
-
-  /** 주문 원장: 결품이 남은 수량 전부면 상신(전체 취소와 같은 환불 규칙이 필요). */
-  private Result checkOrder(ShortageRow s) {
-    JsonNode o = participants.orderLedger(s.orderId());
-    if (o == null) {
-      return new Participants.Unknown("ORDER_UNREACHABLE", "주문 원장 조회 실패");
-    }
-    int remaining = 0;
-    for (JsonNode l : o.path("lines")) {
-      remaining += l.path("unfulfilledQty").asInt(0);
-    }
-    if (ShortageRules.wholeOrder(remaining, s.shortQty())) {
-      return new Rejected(
-          "WHOLE_ORDER_OUT_OF_STOCK", "결품이 주문의 남은 수량 전부입니다(봉투값·배달팁 포함 전체 환불 규칙 — 수동 처리)");
-    }
-    return new Ok("", null, o);
   }
 
   private static @Nullable Instant instant(JsonNode n, String field) {

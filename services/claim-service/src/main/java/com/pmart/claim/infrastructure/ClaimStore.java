@@ -140,10 +140,20 @@ public class ClaimStore {
     return v == null ? 0 : v;
   }
 
+  /** 진행 중인 전체 취소(현장 중지가 있는 것). 결품 부분 환불 클레임(중지 없음)은 아니다. */
   public Optional<ClaimRow> activeCancel(String orderId) {
     return one(
-        "SELECT * FROM claim WHERE order_id = ? AND type = 'CANCEL'"
+        "SELECT * FROM claim WHERE order_id = ? AND type = 'CANCEL' AND stop_request_id IS NOT NULL"
             + " AND state NOT IN ('CLOSED', 'REJECTED', 'WITHDRAWN')",
+        orderId);
+  }
+
+  /** 이 주문에 이미 나간(실패 아닌) 환불 합 — [금액, 상품 금액]. 전체 취소 환불에서 뺀다(결품 부분 환불 뒤 전체 취소). */
+  public long[] refundedForOrder(String orderId) {
+    return jdbc.queryForObject(
+        "SELECT COALESCE(SUM(amount), 0) AS a, COALESCE(SUM(item_amount), 0) AS i FROM refund_intent"
+            + " WHERE order_id = ? AND state <> 'FAILED'",
+        (rs, n) -> new long[] {rs.getLong("a"), rs.getLong("i")},
         orderId);
   }
 

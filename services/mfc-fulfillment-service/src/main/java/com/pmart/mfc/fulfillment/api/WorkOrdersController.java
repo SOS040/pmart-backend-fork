@@ -7,6 +7,8 @@ import com.pmart.mfc.fulfillment.api.generated.model.ShipmentState;
 import com.pmart.mfc.fulfillment.api.generated.model.StopOrderWorkRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.StopRequestResult;
 import com.pmart.mfc.fulfillment.api.generated.model.StopRequestResultNotStartedLinesInner;
+import com.pmart.mfc.fulfillment.api.generated.model.StopRequestResultPackagesInner;
+import com.pmart.mfc.fulfillment.api.generated.model.StopRequestResultPackagesInnerStoppedLinesInner;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskState;
 import com.pmart.mfc.fulfillment.api.generated.model.WorkOrder;
 import com.pmart.mfc.fulfillment.api.generated.model.WorkOrderDecision;
@@ -225,7 +227,31 @@ public class WorkOrdersController implements WorkOrdersApi {
                             .orderLineId(l.orderLineId())
                             .qty(l.qty()))
                 .toList())
-        .packages(List.of())
+        .packages(
+            v.packages() == null
+                ? List.of()
+                : v.packages().stream()
+                    .map(
+                        pv ->
+                            new StopRequestResultPackagesInner()
+                                .packageId(pv.packageId())
+                                .shipmentId(pv.shipmentId())
+                                .verdict(
+                                    StopRequestResultPackagesInner.VerdictEnum.fromValue(
+                                        pv.verdict()))
+                                .stoppedLines(
+                                    pv.stoppedLines().stream()
+                                        .map(
+                                            l ->
+                                                new StopRequestResultPackagesInnerStoppedLinesInner()
+                                                    .orderLineId(l.orderLineId())
+                                                    .qty(l.qty())
+                                                    .workStateAtStop(
+                                                        StopRequestResultPackagesInnerStoppedLinesInner
+                                                            .WorkStateAtStopEnum.fromValue(
+                                                            l.workStateAtStop())))
+                                        .toList()))
+                    .toList())
         .resolvedAt(time(v.resolvedAt()));
   }
 

@@ -553,6 +553,155 @@ public class ReservationService {
     return total;
   }
 
+  // ---------- 집품 뒤 취소(IV-08, ADR-0046) ----------
+
+  /** 취소 복귀 한 줄(fulfillment 가 위치별로 적는다). */
+  public record ReturnLine(
+      String orderLineId,
+      String sku,
+      String lotId,
+      String locationCode,
+      String workState,
+      int qty) {}
+
+  public record CancelReturn(String reservationId, String reason, List<ReturnLine> returns) {}
+
+  /**
+   * 집품 뒤 취소. returns(위치별 PICKED·PACKED)가 조각의 집품·포장량과 정확히 같아야 한다 — 실물을 빠뜨리지 않게. 단위는 취소 복귀 대기(E−q),
+   * 예약은 전부 해제(R−q, BLOCKED 까지 RELEASED). 이미 끝난 예약은 변화 없는 성공.
+   */
+  public CommandResponse cancelReturn(String requestId, String sourceSystem, CancelReturn in) {
+    return idempotency
+        .execute(
+            Callers.key(sourceSystem, requestId, "cancelReturn"),
+            in,
+            CommandResponse.class,
+            () -> {
+              ReservationRow r = lockOrThrow(in.reservationId());
+              Instant at = clock.instant();
+              if (r.state() == ReservationState.RELEASED || r.state() == ReservationState.EXPIRED) {
+                return new CommandResponse(
+                    CommandStatus.APPLIED,
+                    requestId,
+                    r.reservationId(),
+                    0,
+                    r.version(),
+                    false,
+                    null,
+                    at);
+              }
+              List<ReservationStore.PickPart> parts =
+                  reservations.pickParts(r.reservationId(), true);
+              Map<String, Integer> picked = new LinkedHashMap<>();
+              Map<String, Integer> packed = new LinkedHashMap<>();
+              for (ReservationStore.PickPart p : parts) {
+                String k = p.orderLineId() + "|" + p.lotId();
+                picked.merge(k, p.pickedQty() - p.packedQty(), Integer::sum);
+                packed.merge(k, p.packedQty(), Integer::sum);
+              }
+              Map<String, Integer> gotPicked = new LinkedHashMap<>();
+              Map<String, Integer> gotPacked = new LinkedHashMap<>();
+              List<com.pmart.mfc.inventory.domain.StockUnit.Change> units = new ArrayList<>();
+              for (ReturnLine l : in.returns()) {
+                String k = l.orderLineId() + "|" + l.lotId();
+                var work =
+                    "PACKED".equals(l.workState())
+                        ? com.pmart.mfc.inventory.domain.StockUnit.Work.PACKED
+                        : com.pmart.mfc.inventory.domain.StockUnit.Work.PICKED;
+                (work == com.pmart.mfc.inventory.domain.StockUnit.Work.PACKED
+                        ? gotPacked
+                        : gotPicked)
+                    .merge(k, l.qty(), Integer::sum);
+                var from =
+                    new com.pmart.mfc.inventory.domain.StockUnit.Key(
+                        l.locationCode(),
+                        l.sku(),
+                        l.lotId(),
+                        com.pmart.mfc.inventory.domain.StockUnit.Quality.NORMAL,
+                        work);
+                units.add(new com.pmart.mfc.inventory.domain.StockUnit.Change(from, -l.qty()));
+                units.add(
+                    new com.pmart.mfc.inventory.domain.StockUnit.Change(
+                        from.with(
+                            com.pmart.mfc.inventory.domain.StockUnit.Quality.NORMAL,
+                            com.pmart.mfc.inventory.domain.StockUnit.Work.CANCEL_RETURN_PENDING),
+                        l.qty()));
+              }
+              if (!nonZero(picked).equals(nonZero(gotPicked))
+                  || !nonZero(packed).equals(nonZero(gotPacked))) {
+                throw new PmartException(
+                    "RETURN_MISMATCH",
+                    HttpStatus.CONFLICT,
+                    "취소 복귀 수량이 집품·포장량과 다릅니다(집품 "
+                        + nonZero(picked)
+                        + "/보고 "
+                        + nonZero(gotPicked)
+                        + ", 포장 "
+                        + nonZero(packed)
+                        + "/보고 "
+                        + nonZero(gotPacked)
+                        + ").",
+                    false,
+                    List.of());
+              }
+              List<ReservedChange> deltas = new ArrayList<>();
+              int total = 0;
+              for (PartRow p : reservations.parts(r.reservationId())) {
+                if (p.state().holdsStock()) {
+                  deltas.add(new ReservedChange(p.sku(), p.lotId(), -p.qty()));
+                  total += p.qty();
+                }
+              }
+              ledger.post(
+                  "CANCEL_RETURN",
+                  r.mfcId(),
+                  requestId,
+                  sourceSystem,
+                  r.reservationId(),
+                  total,
+                  units,
+                  deltas,
+                  at);
+              int version = r.version() + 1;
+              reservations.transition(
+                  r.reservationId(), ReservationState.RELEASED, in.reason(), version, at);
+              for (ReservationState s :
+                  List.of(
+                      ReservationState.HELD,
+                      ReservationState.CONFIRMED,
+                      ReservationState.BLOCKED)) {
+                reservations.transitionParts(r.reservationId(), s, ReservationState.RELEASED, at);
+              }
+              log.info(
+                  "reservation {} 집품 뒤 취소 — R {} 해제, 복귀 대기 {}줄 ({})",
+                  r.reservationId(),
+                  total,
+                  in.returns().size(),
+                  in.reason());
+              return new CommandResponse(
+                  CommandStatus.APPLIED,
+                  requestId,
+                  r.reservationId(),
+                  total,
+                  version,
+                  false,
+                  null,
+                  at);
+            })
+        .value();
+  }
+
+  private static Map<String, Integer> nonZero(Map<String, Integer> m) {
+    Map<String, Integer> out = new java.util.TreeMap<>();
+    m.forEach(
+        (k, v) -> {
+          if (v != 0) {
+            out.put(k, v);
+          }
+        });
+    return out;
+  }
+
   // ---------- 재확보(IV-09, ADR-0042 결정 1) ----------
 
   /**

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -10,6 +10,12 @@ info:
     PICK 시작(센터에서 그 주문의 첫 시작)이 준비 시작 PreparationStarted(D6-1). 피킹 실적은 mfc-inventory PICK(선반 → 포장 구역)으로, 포장 밀봉은
     PACK(PICKED → PACKED)으로 반영한다. 결품 보고는 작업을 BLOCKED 로 두고 LineShortageReported 만 낸다(재고 처리는 IV-09 단계).
     DISPATCH·인계 fence 는 아직 501(6c).
+
+    0.3.0(2026-11-08, IV-08 집품 뒤 취소, ADR-0046): 피킹이 시작된 주문의 **전체** 작업 중지는 PENDING 으로 받은 뒤 남은 작업 취소·작업 종료
+    (완료량 있으면 CLOSED_PARTIAL)·밀봉 포장 INVALIDATED·출고 CANCELLED·복귀 작업(RETURN) 생성 → mfc-inventory cancel-returns(집품·포장분
+    취소 복귀 대기, 예약 해제)가 반영되면 RESOLVED(packages[] 모두 STOPPED, notStartedLines 빈 배열)·WorkStopResult. RETURN 작업은 그때 READY.
+    점원은 RETURN 을 시작해 executionType RETURN 실적(포장 위치 → 선반, inventory MOVE)으로 복귀한다 — 다 옮기면 COMPLETED, 판매 가능 복귀.
+    진행 중(재고 결과 대기) 실적·포장이 있으면 그 결과가 날 때까지 PENDING(sweep 재시도). 피킹 뒤 부분 중지는 아직 없다(PENDING).
     비정본: 수량(mfc-inventory), 취소 판단(order-orchestration/claim), 배차(delivery-dispatch), 작업자 배정 정본(mfc-capacity), 주문 상태(order).
 
     상태 기계
@@ -641,7 +647,8 @@ components:
       enum: [WAITING, READY, ASSIGNED, IN_PROGRESS, COMPLETED, BLOCKED, FAILED, CANCELLED, CLOSED_PARTIAL]
     TaskType:
       type: string
-      enum: [PICK, PACK, DISPATCH]
+      enum: [PICK, PACK, DISPATCH, RETURN]
+      description: RETURN(0.3.0) = 집품 뒤 취소의 복귀 작업(포장 위치 → 선반)
     TaskAssignment:
       type: object
       description: mfc-capacity 배정 정본의 투영
@@ -687,6 +694,7 @@ components:
           description: |
             PICK 지시(0.2.0) — 한 줄이 여러 LOT 예약 조각으로 나뉠 수 있어(줄당 LOT 수 제한 없음) LOT 마다 남은 집품량과 선반 위치 후보.
             locationId·lotId·expiresOn 은 첫 지시의 사본. 재고 조회가 안 되면 빈 배열(asOf freshness STALE).
+            RETURN(0.3.0): LOT 마다 남은 복귀량과 복귀 대상이 놓인 포장 위치(locations[].qty = 그 위치에서 더 옮길 양) — 이 서비스 기록이라 늘 FRESH.
           items:
             type: object
             properties:
@@ -904,11 +912,11 @@ components:
       type: object
       required: [executionType, workerId, lines]
       properties:
-        executionType: { type: string, enum: [PICK, PACK], description: '0.2.0: PICK 만. PACK 실적은 포장 밀봉(POST /shipments/{id}/packages)으로 — PACK 은 422' }
+        executionType: { type: string, enum: [PICK, PACK, RETURN], description: '0.2.0: PICK 만. PACK 실적은 포장 밀봉(POST /shipments/{id}/packages)으로 — PACK 은 422. RETURN(0.3.0) = 복귀 작업 실적(lines[].pickedQty = 옮긴 양, lotId 필수)' }
         workerId: { type: string }
         assignmentVersion: { type: integer }
-        fromLocation: { type: string, description: PICK — 집은 선반 위치(한 실행 = 한 선반) }
-        toLocation: { type: string, description: PICK — 내려놓은 포장 위치(구역 PACKING) }
+        fromLocation: { type: string, description: 'PICK — 집은 선반 위치(한 실행 = 한 선반). RETURN — 복귀 대상이 놓인 포장 위치(picks[].locations)' }
+        toLocation: { type: string, description: 'PICK — 내려놓은 포장 위치(구역 PACKING). RETURN — 되돌린 선반(온도대 = SKU 보관 유형)' }
         lines:
           type: array
           minItems: 1
@@ -920,6 +928,10 @@ components:
               sku: { $ref: '_common.yaml#/components/schemas/Sku' }
               lotId: { type: string }
               pickedQty: { type: integer, minimum: 0 }
+              resultQuality:
+                type: string
+                enum: [NORMAL, QUARANTINED]
+                description: RETURN 만 — 복귀 중 이상품이면 QUARANTINED(격리로 선반에), 기본 NORMAL(판매 가능)
               shortage:
                 type: object
                 description: 결품·파손·차단 보고 (pickedQty < 계획량일 때)
