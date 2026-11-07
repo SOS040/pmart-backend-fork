@@ -34,11 +34,14 @@ public class ShipmentsController implements ShipmentsApi {
   private final ObjectMapper mapper;
 
   private final com.pmart.mfc.fulfillment.application.RepackService repacks;
+  private final com.pmart.mfc.fulfillment.infrastructure.HandoverStore handovers;
 
   public ShipmentsController(
       PackageService service,
       com.pmart.mfc.fulfillment.application.RepackService repacks,
+      com.pmart.mfc.fulfillment.infrastructure.HandoverStore handovers,
       ObjectMapper mapper) {
+    this.handovers = handovers;
     this.service = service;
     this.repacks = repacks;
     this.mapper = mapper;
@@ -156,6 +159,17 @@ public class ShipmentsController implements ShipmentsApi {
     var fence = new PackageFence();
     fence.setState(FenceState.NONE);
     fence.setFenceVersion(0);
+    handovers
+        .find(p.packageId())
+        .ifPresent(
+            f -> {
+              fence.setState(FenceState.fromValue(f.fenceState()));
+              fence.setFenceVersion(f.fenceVersion());
+              fence.setHandoverAuthorizationId(f.authorizationId());
+              fence.setRiderId(f.fenceRiderId());
+              fence.setExpiresAt(TasksController.time(f.fenceExpiresAt()));
+              out.setHandedOverAt(TasksController.time(f.handedOverAt()));
+            });
     out.setFence(fence);
     out.setSealedAt(TasksController.time(p.sealedAt()));
     out.setInvalidatedReason(

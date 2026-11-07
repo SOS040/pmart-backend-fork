@@ -1407,6 +1407,9 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     Pkg np = new Pkg(newId, newQr);
     Res a = authorize(RIDER1, np, "R1", dlv, newQr);
     assertThat(a.status()).as(a.body().toString()).isEqualTo(201);
+    JsonNode fence = call("GET", W1, "/packages/" + newId, null, null).body().path("fence");
+    assertThat(fence.path("state").asString()).isEqualTo("HANDOVER_IN_PROGRESS");
+    assertThat(fence.path("riderId").asString()).isEqualTo("R1");
     // 허가가 살아 있는 포장·무효 포장은 재포장 거절
     Res live =
         call(
