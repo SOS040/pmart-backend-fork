@@ -10,6 +10,8 @@
 |---|---|
 | [`worklog.md`](worklog.md) | **RAG 작업 일지**(날짜별). 앞으로 RAG 작업은 여기에 쓴다. 일반 일지 `docs/worklog/` 에는 한 줄 안내만 둔다 |
 | [`codex-opinion/`](codex-opinion/README.md) | 붙여 넣은 설계·검토 원문(1~6차)과 1차 계획, 반영 여부 표. 원문은 수정하지 않는다 |
+| [`references/`](references/README.md) | 사용자가 넣은 외부 자료(검토 글·모델 추천·그림)의 **원본**, 날짜별. 수정하지 않는다 |
+| [`planning/`](planning/README.md) | 원본과 현재 구현을 대조한 정리·계획·새 그림. 결정 대기 목록 |
 | [`verification/2026-11-05/`](verification/2026-11-05/README.md) | 2026-11-05 검토 자료: 빌드·시험 로그, diff, 검색 평가 전후, 시험 결과 |
 
 ## 원래 자리에 있는 RAG 문서·코드

@@ -1,0 +1,44 @@
+# 2026-11-07 참고 원문 3개 검토
+
+원문: [`../references/2026-11-07/`](../references/2026-11-07/). 대조 기준: ADR-0036(1차 = 내부 운영자 정책·업무 절차 질의응답), `services/ai-assistant-service` 현재 코드.
+
+## 1. 구성도 `spring ai rag arch.svg`
+그림 구조: Client(Flutter/React/Web) → API Gateway → [ChatController/ChatClient — RAG Orchestrator] → 왼쪽 열 VectorStore → EmbeddingModel → Vector DB(PGVector/Qdrant), 오른쪽 열 ChatModel → LLM API Adapter → LLM Provider(OpenAI/Ollama). 아래 문서 적재 PDF/DB/Web → ETL/Chunking/Embedding → VectorStore 저장 ┄→ Vector DB.
+
+| # | 문제 | 고칠 방향 |
+|---|---|---|
+| 1 | VectorStore → EmbeddingModel → Vector DB 직렬 | VectorStore 가 임베딩 모델과 벡터 DB 를 각각 부른다 |
+| 2 | 검색 결과가 생성으로 가는 선 없음(두 열이 끝까지 따로) | 검색 결과 → 근거 묶기·프롬프트 → 생성 |
+| 3 | 오케스트레이터 화살표 하나가 두 상자 사이를 가리킴 | ① 검색 ② 생성, 순서 있는 화살표 둘 |
+| 4 | 적재의 Embedding 이 위 EmbeddingModel 과 따로 | 같은 모델(스냅숏에 모델 정보 기록)로 잇는다 |
+| 5 | "LLM API Adapter" 는 Spring AI 구성요소가 아님 | ChatModel 구현체(예 `OllamaChatModel`)가 그 역할. 상자 뺀다 |
+| 6 | Controller → Orchestrator 선에 화살표 머리 없음 | 머리 단다 |
+| 7 | 기본 글자색 `rgb(237,237,237)` — 밝은 배경에서 제목·검정 화살표가 안 보임 | 밝은·어두운 화면 둘 다 보이게 |
+
+## 2. 검토 글 `spring_ai_rag_architecture_review.md`
+- 위 1·2(직렬 표현, 검색 → 생성 누락)는 맞다. 적재 단계 세분·메타데이터·권한 통제·검색 실패 처리·Elasticsearch 와 역할 분리도 맞고, **이미 구현돼 있다**: 명시 목록(`manifest.yml`)·스냅숏 단위 적재/전환/정리, 지위·생애·접근 범위 메타데이터, SQL WHERE 로 권한 먼저, 저장 답변 반환 때 권한 재검사, 근거 없음·인용 불일치 거절, 1차는 실시간 조회 안 함(`REALTIME_DATA_REQUIRED`).
+- 받아들이지 않는 것:
+  - `QuestionAnswerAdvisor`/`RetrievalAugmentationAdvisor` 사용 — 접근 범위·생애·인용 검사를 직접 통제해야 해서 지금의 `Retriever` 를 유지한다.
+  - 수정안 다이어그램의 Client "React / Web" — 우리 앱은 Flutter(Android). 원래 그림이 맞다.
+  - `rag-service` 이름 — 서비스 이름은 `ai-assistant-service`("RAG" 는 별칭).
+- 3~6(Retrieval/Context/Generation 분리, 권한 통제)을 빠뜨린 그림 문제로 본 건 맞지만, 우리 구현에서 필요한 장치(인용 검사, 답변 기록·중복 요청, 저장 답변 권한 재검사)는 원문 어디에도 없다 — 새 그림에 넣는다.
+
+## 3. 모델 추천 `baropick_rag_free_models.md`
+- **범위 차이**: 고객앱 + 백오피스 양쪽 챗봇을 가정한다. ADR-0036 1차는 운영자 전용이고, 색인 문서도 내부 문서뿐이다(고객 공개 정책 문서 없음). 고객용은 새 업무 범위 → 결정 대기 D1.
+- **임베딩**: 1순위 Qwen3-Embedding-0.6B, 2순위 BGE-M3. 둘 다 무료·Ollama 제공. 둘 다 `RetrievalEvalIT` 로 우리 문서에서 비교해 고른다(D3). BGE-M3 라이선스는 MIT(원문이 맞음). 어느 쪽이든 차원 384 → 1024(확인 필요) 변경 = 새 마이그레이션 + 재색인.
+- **대화 모델(Qwen3 4B/8B/14B, Gemma3)**: LAN PC 의 GPU·남은 메모리부터 확인해야 한다(CPU 만이면 8B 는 답 하나에 수십 초 가능). Qwen3 는 생각(thinking) 단계를 꺼야 지연이 준다. 모델 서버 Ollama·Spring AI Ollama 모듈은 새 도구 → D2.
+- 고객/내부 문서 분리 저장 제안 — 지금은 같은 표에서 접근 범위를 WHERE 로 거른다. 고객용을 열 때(D1) 다시 본다.
+
+## 4. 결정
+| # | 내용 | 결정 |
+|---|---|---|
+| — | 벡터 DB 는 pgvector 만. Qdrant 는 쓰지 않는다(문서 수천 청크 규모, 권한·키워드·스냅숏을 한 SQL·한 DB 잠금으로 묶고 있음). 수백만 규모나 검색 속도 문제가 생기면 다시 본다 | **결정** 2026-11-07 사용자 |
+
+## 5. 결정 대기
+| # | 내용 | 추천 |
+|---|---|---|
+| D1 | 고객앱에도 RAG 를 열지, 운영자 전용 유지 | 운영자 전용 유지(1차), 고객용은 별도 결정 |
+| D2 | Ollama 도입 여부·둘 PC(GPU·메모리 확인) | 확인 뒤 결정 |
+| D3 | 임베딩 Qwen3-Embedding-0.6B vs BGE-M3 비교 평가부터 | 비교 평가 먼저 |
+| D4 | 새 구성도를 이 폴더에 그릴지(§1 의 1~7 수정 + 우리 장치, pgvector 만) | 그린다 |
+| — | ADR-0036 기존 대기: 외부 모델·외부 전송 범위, LAN pgvector 위치, 답변 보존·질문 원문 저장, 운영자 역할 세분 | — |
