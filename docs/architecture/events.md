@@ -128,7 +128,7 @@
 | `InboundArrivalRecorded` | mfc-inbound | transport-execution, replenishment | trfId, tripId, stopId, arrivedAt | 차량 도착 기록(수령 아님) | ② |
 | `ReceiptDiscrepancyReported` | mfc-inbound | cdc-inventory, transport-execution, replenishment, case | trfId, departureId, expected, received, missingQty, excessQty | 수령 차이 | ② |
 | `ReturnItemReceived` | mfc-inbound | mfc-quality, claim | claimId, returnPickupId, lines[], receivedAt | 회수품 점포 수령(검수 대기, 판매 재고 아님) | ② |
-| `MfcLocationStateChanged` | mfc-location | mfc-inventory, mfc-fulfillment | locationId, state | 위치 폐쇄·활성 | ① |
+| `MfcLocationStateChanged` | mfc-location | mfc-inventory, mfc-fulfillment | locationId, state, locationCode·zone·temperatureZone·version(전체 속성, 2026-11-07) | 위치 등록·속성 변경·폐쇄·활성(투영용 — version 큰 것만) | ① |
 | `CapacityHoldResult` | mfc-capacity | order-orchestration | holdId, orderId, result, expiresAt | HoldCapacity 결과 | ① |
 | `CapacityReduced` | mfc-capacity | delivery-capacity, order, notification | mfcId, window, oldCapacity, newCapacity, affectedOrders[] | 용량 축소(기존 약속 삭제 없음) | ① |
 | `ReceivingCapabilityChanged` | mfc-capacity | replenishment, transport-planning | mfcId, windows[], maxPerArrival, staff | 수령창·수용량 변경 | ② |

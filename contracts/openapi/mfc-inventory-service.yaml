@@ -167,6 +167,8 @@ paths:
         inventory 가 발급한 lotId 는 GET /internal/receipts/{receiptId} 로 조회한다(검수·적치 명령에 쓴다).
         같은 receiptId·같은 내용은 처음 commitId 를 그대로 돌려주고(이중 계상 없음, Idempotency-Key 가 달라도), 다른 내용이면 409
         RECEIPT_ALREADY_POSTED. 수량 합이 0 이면 400. MfcReceiptPosted 는 아직 발행하지 않는다(TRF 경로 구현 시).
+        수령 위치는 mfc-location 투영(MfcLocationStateChanged)으로 검사한다: 미등록 422 LOCATION_NOT_REGISTERED(전파 지연이면 재시도),
+        ACTIVE 아님 409 LOCATION_CLOSED, 수령·회수 구역(RECEIVING·RETURN) 아님 409 LOCATION_ZONE_MISMATCH.
       operationId: confirmReceipt
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -219,6 +221,9 @@ paths:
         PUTAWAY(fromLocation 의 NORMAL/UNSTOWED → toLocation 의 NORMAL/STORED, 이때 E+q). executionId 필수 — 같은 executionId 는
         요청 ID 가 달라도 한 번(다른 내용이면 409 EXECUTION_ALREADY_POSTED). lines[].lotId 는 inventory lotId.
         위치 잔량이 모자라면 422 INSUFFICIENT_STOCK. PICK·PACK·MOVE 는 501 UNSUPPORTED_ACTION(6b 이후).
+        위치 검사(mfc-location 투영): 출발 위치가 실사 잠금이면 409 LOCATION_CLOSED. PUTAWAY 목적지는 등록·ACTIVE·구역 STORAGE/PICKING·
+        온도대 = SKU 보관 유형 — 아니면 422 LOCATION_NOT_REGISTERED / 409 LOCATION_CLOSED·LOCATION_ZONE_MISMATCH·TEMPERATURE_ZONE_MISMATCH,
+        보관 유형을 모르면 422 CONFIG_REQUIRED.
       operationId: commitTaskExecution
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

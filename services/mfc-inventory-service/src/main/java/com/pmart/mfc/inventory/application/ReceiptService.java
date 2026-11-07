@@ -53,13 +53,19 @@ public class ReceiptService {
 
   private final StockStore stock;
   private final Ledger ledger;
+  private final Locations locations;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
   public ReceiptService(
-      StockStore stock, Ledger ledger, RequestIdempotency idempotency, Clock clock) {
+      StockStore stock,
+      Ledger ledger,
+      Locations locations,
+      RequestIdempotency idempotency,
+      Clock clock) {
     this.stock = stock;
     this.ledger = ledger;
+    this.locations = locations;
     this.idempotency = idempotency;
     this.clock = clock;
   }
@@ -80,6 +86,10 @@ public class ReceiptService {
             CommandResponse.class,
             () -> {
               Instant at = clock.instant();
+              cmd.lines().stream()
+                  .map(ReceiptLine::locationCode)
+                  .distinct()
+                  .forEach(loc -> locations.requireReceiving(cmd.mfcId(), loc));
               String commitId = Ledger.newCommitId();
               if (!stock.claimReceipt(
                   cmd.receiptId(), cmd.mfcId(), fingerprint, commitId, total, at)) {

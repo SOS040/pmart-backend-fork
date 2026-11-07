@@ -21,4 +21,5 @@
 로컬 포트 8304.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+- 3단계 스캐폴딩(2026-10-23).
+- 위치 마스터(ADR-0040 2단계, 2026-11-07, 브랜치 `mfc-v2`): V2 `location`(불변 location_id, 센터 안 코드 유일 — 문법 Q-03 미결이라 자유 문자열)·`location_state_change`. 등록·속성 변경(코드·센터 불변, X-Expected-Version)·상태 전이(ACTIVE↔CLOSED·COUNT_LOCKED, RETIRED 는 DELETE)·목록(코드 커서)·적치 후보(온도대 필수, ACTIVE STORAGE/PICKING, 동선 순서, 공간 V 는 null). 쓰기는 그 센터 운영자, 읽기는 그 센터 운영자 또는 서비스 토큰. 바뀔 때마다 같은 트랜잭션에서 `MfcLocationStateChanged`(전체 속성, 토픽 `mfc.location.v1`) — 구독 mfc-inventory 투영. `POST /internal/location-republications[?mfcId]` 는 같은 버전으로 다시 알림(최대 20000). 폐지(DELETE)는 inventory 위치 잔량 조회가 생길 때까지 501.

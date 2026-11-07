@@ -1,0 +1,142 @@
+package com.pmart.mfc.inventory.application;
+
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.web.PmartException;
+import com.pmart.mfc.inventory.infrastructure.LocationProjectionStore;
+import com.pmart.mfc.inventory.infrastructure.LocationProjectionStore.LocationRow;
+import java.time.Clock;
+import java.util.List;
+import java.util.Set;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+
+/**
+ * 위치 투영과 목적지 검증(ADR-0040 2단계, IV-02·IV-03). 위치 정본은 mfc-location 이고, 여기서는 MfcLocationStateChanged
+ * 사본으로 수령·적치 목적지를 판정한다.
+ *
+ * <ul>
+ *   <li>수령 위치: 등록·ACTIVE·구역 RECEIVING(또는 회수품 RETURN).
+ *   <li>적치 위치: 등록·ACTIVE·구역 STORAGE/PICKING, 온도대 = SKU 보관 유형. 보관 유형을 모르면 CONFIG_REQUIRED.
+ *   <li>출발 위치가 실사 잠금(COUNT_LOCKED)이면 거절(IV-11). 출발 위치 존재·잔량은 단위 행으로 검사된다.
+ * </ul>
+ */
+@Service
+public class Locations {
+
+  public static final String LOCATION_NOT_REGISTERED = "LOCATION_NOT_REGISTERED";
+  public static final String LOCATION_CLOSED = "LOCATION_CLOSED";
+  public static final String LOCATION_ZONE_MISMATCH = "LOCATION_ZONE_MISMATCH";
+  public static final String TEMPERATURE_ZONE_MISMATCH = "TEMPERATURE_ZONE_MISMATCH";
+
+  static final Set<String> RECEIVE_ZONES = Set.of("RECEIVING", "RETURN");
+  static final Set<String> STORE_ZONES = Set.of("STORAGE", "PICKING");
+
+  private static final Logger log = LoggerFactory.getLogger(Locations.class);
+
+  private final LocationProjectionStore store;
+  private final Clock clock;
+
+  public Locations(LocationProjectionStore store, Clock clock) {
+    this.store = store;
+    this.clock = clock;
+  }
+
+  /** MfcLocationStateChanged → 투영(InboxGuard 트랜잭션 안). */
+  public void apply(EventEnvelope e) {
+    if (!"MfcLocationStateChanged".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    if (!p.hasNonNull("locationCode")
+        || !p.hasNonNull("zone")
+        || !p.hasNonNull("temperatureZone")) {
+      log.warn("MfcLocationStateChanged {} without attributes ignored", e.eventId());
+      return;
+    }
+    int version = p.path("version").asInt((int) e.aggregateVersion());
+    int n =
+        store.upsert(
+            new LocationRow(
+                p.path("locationId").asString(),
+                p.path("mfcId").asString(),
+                p.path("locationCode").asString(),
+                p.path("zone").asString(),
+                p.path("temperatureZone").asString(),
+                p.path("state").asString(),
+                version),
+            clock.instant());
+    if (n == 0) {
+      log.debug("location {} v{} ignored (older)", p.path("locationId").asString(), version);
+    }
+  }
+
+  public void requireReceiving(String mfcId, String locationCode) {
+    LocationRow r = active(mfcId, locationCode);
+    if (!RECEIVE_ZONES.contains(r.zone())) {
+      throw mismatch(LOCATION_ZONE_MISMATCH, locationCode + " 는 수령 구역이 아닙니다(구역 " + r.zone() + ").");
+    }
+  }
+
+  public void requireStorage(String mfcId, String locationCode, @Nullable String storageType) {
+    LocationRow r = active(mfcId, locationCode);
+    if (!STORE_ZONES.contains(r.zone())) {
+      throw mismatch(
+          LOCATION_ZONE_MISMATCH, locationCode + " 는 선반·피킹 구역이 아닙니다(구역 " + r.zone() + ").");
+    }
+    if (storageType == null) {
+      throw PmartException.configRequired("SKU 보관 유형(상품 정보 storageType)");
+    }
+    if (!storageType.equals(r.temperatureZone())) {
+      throw mismatch(
+          TEMPERATURE_ZONE_MISMATCH,
+          locationCode + " 의 온도대 " + r.temperatureZone() + " ≠ 상품 보관 유형 " + storageType + ".");
+    }
+  }
+
+  /** 출발 위치: 투영에 있고 실사 잠금이면 거절. 투영에 없는 위치(이관 위치 MIGRATION 등)는 단위 행 잔량으로만 판정. */
+  public void requireNotCountLocked(String mfcId, String locationCode) {
+    store
+        .byCode(mfcId, locationCode)
+        .filter(r -> "COUNT_LOCKED".equals(r.state()))
+        .ifPresent(
+            r -> {
+              throw new PmartException(
+                  LOCATION_CLOSED,
+                  HttpStatus.CONFLICT,
+                  locationCode + " 는 실사 잠금 중입니다.",
+                  true,
+                  List.of());
+            });
+  }
+
+  private LocationRow active(String mfcId, String locationCode) {
+    LocationRow r =
+        store
+            .byCode(mfcId, locationCode)
+            .orElseThrow(
+                () ->
+                    new PmartException(
+                        LOCATION_NOT_REGISTERED,
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "등록되지 않은 위치입니다: " + mfcId + "/" + locationCode + " (mfc-location 등록·전파 확인)",
+                        true,
+                        List.of()));
+    if (!"ACTIVE".equals(r.state())) {
+      throw new PmartException(
+          LOCATION_CLOSED,
+          HttpStatus.CONFLICT,
+          locationCode + " 는 " + r.state() + " 상태입니다.",
+          false,
+          List.of());
+    }
+    return r;
+  }
+
+  private static PmartException mismatch(String code, String message) {
+    return new PmartException(code, HttpStatus.CONFLICT, message, false, List.of());
+  }
+}

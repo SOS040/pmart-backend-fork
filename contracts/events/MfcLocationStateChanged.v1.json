@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/MfcLocationStateChanged.v1.json",
   "title": "MfcLocationStateChanged",
-  "description": "MFC 보관 위치가 폐쇄·활성 등으로 상태 변경된 사실. 발행 mfc-location. 구독 mfc-inventory, mfc-fulfillment. 토픽 mfc.location.v1",
+  "description": "MFC 위치가 등록되거나 속성·상태가 바뀐 사실(등록 때 previousState 없음). 발행 mfc-location. 구독 mfc-inventory, mfc-fulfillment. 토픽 mfc.location.v1. 위치 전체 속성을 싣는다(투영용, 2026-11-07 필드 추가) — 같은 locationId 는 version 이 큰 것만 반영",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -40,6 +40,47 @@
             },
             "changedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "locationCode": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "areaCode": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "zone": {
+              "type": "string",
+              "enum": [
+                "RECEIVING",
+                "STORAGE",
+                "PICKING",
+                "PACKING",
+                "QUARANTINE",
+                "DISPATCH_STAGING",
+                "RETURN",
+                "DISPOSAL"
+              ]
+            },
+            "temperatureZone": {
+              "type": "string",
+              "enum": [
+                "AMBIENT",
+                "CHILLED",
+                "FROZEN"
+              ]
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "pickSequence": {
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           },
           "additionalProperties": true

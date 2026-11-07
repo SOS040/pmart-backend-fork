@@ -2,6 +2,7 @@ package com.pmart.mfc.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
@@ -28,6 +29,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -54,6 +56,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
+  @Autowired KafkaTemplate<String, String> kafka;
 
   RestClient http;
   String mfc;
@@ -66,6 +69,51 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     mfc = "MFC-IT-" + UUID.randomUUID().toString().substring(0, 8);
+    // 위치는 mfc-location 사건(MfcLocationStateChanged)으로 들어온다
+    location("RCV-DOCK", "RECEIVING", "AMBIENT", "ACTIVE", 1);
+    location("A-01-01", "STORAGE", "AMBIENT", "ACTIVE", 1);
+    location("C-01-01", "STORAGE", "CHILLED", "ACTIVE", 1);
+    awaitLocations(3);
+  }
+
+  void location(String code, String zone, String temp, String state, int version) {
+    String id = "LOC-" + mfc + "-" + code;
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("locationId", id);
+    payload.put("mfcId", mfc);
+    payload.put("locationCode", code);
+    payload.put("zone", zone);
+    payload.put("temperatureZone", temp);
+    payload.put("state", state);
+    payload.put("version", version);
+    String json =
+        EventEnvelopeFixtures.envelope("MfcLocationStateChanged")
+            .from("mfc-location-service")
+            .aggregate("Location", id, version)
+            .payload(payload)
+            .buildJson();
+    kafka.send("mfc.location.v1", id, json).join();
+  }
+
+  void awaitLocations(int count) {
+    awaitSql("SELECT count(*) FROM location_projection WHERE mfc_id = '" + mfc + "'", count);
+  }
+
+  void awaitSql(String sql, int expected) {
+    Instant until = Instant.now().plus(Duration.ofSeconds(30));
+    while (Instant.now().isBefore(until)) {
+      Integer n = jdbc.queryForObject(sql, Integer.class);
+      if (n != null && n == expected) {
+        return;
+      }
+      try {
+        Thread.sleep(200);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
+    assertThat(jdbc.queryForObject(sql, Integer.class)).isEqualTo(expected);
   }
 
   record Res(int status, JsonNode body) {}
@@ -114,7 +162,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   void projection(String sku, String storageType) {
     jdbc.update(
         "INSERT INTO sku_projection (sku, unit_type, storage_type, state, product_version, updated_at)"
-            + " VALUES (?, 'E', ?, 'ACTIVE', 1, now())",
+            + " VALUES (?, 'E', ?, 'ACTIVE', 1, now()) ON CONFLICT (sku) DO NOTHING",
         sku,
         storageType);
   }
@@ -179,6 +227,9 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
 
   /** 수령 → 수령 결과의 lotId 로 정상분 검수(NORMAL) → 선반 적치. 적치 뒤에만 판매 가능(E). */
   void stocked(String receiptId, List<Map<String, Object>> lines) {
+    for (Map<String, Object> l : lines) {
+      projection((String) l.get("sku"), "AMBIENT");
+    }
     Res r = postReceipt(UUID.randomUUID().toString(), receiptOf(receiptId, lines));
     assertThat(r.status()).isEqualTo(201);
     JsonNode result = get(INBOUND, "/internal/receipts/" + receiptId).body();
@@ -208,7 +259,16 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
                   l.path("lotId").asString(),
                   "qty",
                   normal));
-      assertThat(execute("PUTAWAY", "RCV-DOCK", "A-01-01", pl).status()).isEqualTo(201);
+      String shelf =
+          "CHILLED"
+                  .equals(
+                      jdbc.queryForObject(
+                          "SELECT storage_type FROM sku_projection WHERE sku = ?",
+                          String.class,
+                          l.path("sku").asString()))
+              ? "C-01-01"
+              : "A-01-01";
+      assertThat(execute("PUTAWAY", "RCV-DOCK", shelf, pl).status()).isEqualTo(201);
     }
   }
 
@@ -289,6 +349,16 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
             Map.of("sku", sku, "lotId", lotId, "qty", 1, "resultQuality", "NORMAL"));
     assertThat(execute("INSPECT", "RCV-DOCK", null, tooMany).status()).isEqualTo(422);
     var putLines = List.<Map<String, Object>>of(Map.of("sku", sku, "lotId", lotId, "qty", 5));
+    // 보관 유형을 모르면 적치 CONFIG_REQUIRED, 온도대가 다르면 409, 수령 구역에 적치하면 409
+    Res noType = execute("PUTAWAY", "RCV-DOCK", "A-01-01", putLines);
+    assertThat(noType.status()).isEqualTo(422);
+    assertThat(noType.body().path("code").asString()).isEqualTo("CONFIG_REQUIRED");
+    projection(sku, "AMBIENT");
+    Res wrongTemp = execute("PUTAWAY", "RCV-DOCK", "C-01-01", putLines);
+    assertThat(wrongTemp.status()).isEqualTo(409);
+    assertThat(wrongTemp.body().path("code").asString()).isEqualTo("TEMPERATURE_ZONE_MISMATCH");
+    assertThat(execute("PUTAWAY", "RCV-DOCK", "RCV-DOCK", putLines).body().path("code").asString())
+        .isEqualTo("LOCATION_ZONE_MISMATCH");
     Res put = execute("PUTAWAY", "RCV-DOCK", "A-01-01", putLines);
     assertThat(put.status()).isEqualTo(201);
     a = availability(sku);
@@ -313,6 +383,35 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(commit.body().path("commitType").asString()).isEqualTo("TIN");
     assertThat(commit.body().path("sourceRef").asString()).isEqualTo(receiptId);
     assertThat(commit.body().path("entries")).hasSize(3); // 검수 대기 H+5, 격리 H+1·Q+1
+
+    // 수령 위치: 미등록 422, 선반 구역 409, 폐쇄 409
+    Map<String, Object> badLine = line(sku, 1, 0, null, null);
+    badLine.put("toLocationCode", "NOWHERE");
+    Res unknown =
+        postReceipt(
+            UUID.randomUUID().toString(), receiptOf("RCV-" + UUID.randomUUID(), List.of(badLine)));
+    assertThat(unknown.status()).isEqualTo(422);
+    assertThat(unknown.body().path("code").asString()).isEqualTo("LOCATION_NOT_REGISTERED");
+    badLine.put("toLocationCode", "A-01-01");
+    assertThat(
+            postReceipt(
+                    UUID.randomUUID().toString(),
+                    receiptOf("RCV-" + UUID.randomUUID(), List.of(badLine)))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("LOCATION_ZONE_MISMATCH");
+    location("RCV-DOCK", "RECEIVING", "AMBIENT", "CLOSED", 2);
+    awaitSql(
+        "SELECT count(*) FROM location_projection WHERE mfc_id = '"
+            + mfc
+            + "' AND state = 'CLOSED'",
+        1);
+    location("RCV-DOCK", "RECEIVING", "AMBIENT", "ACTIVE", 1); // 오래된 버전은 무시
+    Res closed =
+        postReceipt(UUID.randomUUID().toString(), receipt("RCV-" + UUID.randomUUID(), sku, 1, 0));
+    assertThat(closed.status()).isEqualTo(409);
+    assertThat(closed.body().path("code").asString()).isEqualTo("LOCATION_CLOSED");
 
     // 운영자·고객 토큰은 /internal 403
     assertThat(
@@ -515,16 +614,6 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(noLot.body().path("details").path(0).path("reason").asString())
         .startsWith("NO_ELIGIBLE_LOT")
         .contains("requestedQty=4;eligibleQty=3");
-
-    // 보관 유형을 모르는 SKU 에 기한 있는 LOT → CONFIG_REQUIRED(0 일로 대체하지 않음)
-    String unknown = newSku();
-    handlingOn(unknown);
-    stocked(
-        "RCV-" + UUID.randomUUID(),
-        List.of(line(unknown, 2, 0, null, today.plusDays(5).toString())));
-    Res cfg = reserve(UUID.randomUUID().toString(), reserveBody("ORD-CFG", Map.of(unknown, 1)));
-    assertThat(cfg.status()).isEqualTo(422);
-    assertThat(cfg.body().path("code").asString()).isEqualTo("CONFIG_REQUIRED");
   }
 
   @Test

@@ -2,6 +2,7 @@ package com.pmart.mfc.inventory.infrastructure;
 
 import com.pmart.common.messaging.EventConsumers;
 import com.pmart.common.messaging.PmartEventConsumer;
+import com.pmart.mfc.inventory.application.Locations;
 import com.pmart.mfc.inventory.application.SkuProjector;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,5 +22,11 @@ class ProductEventConsumers {
   @Bean
   PmartEventConsumer productEvents(EventConsumers consumers, SkuProjector projector) {
     return consumers.of(projector::apply);
+  }
+
+  /** mfc.location.v1 — 바인딩 locationEvents-in-0(설정 저장소). 위치 투영(ADR-0040 2단계). */
+  @Bean
+  PmartEventConsumer locationEvents(EventConsumers consumers, Locations locations) {
+    return consumers.of(locations::apply);
   }
 }

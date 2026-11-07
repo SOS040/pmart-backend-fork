@@ -10,6 +10,7 @@ import com.pmart.mfc.inventory.domain.StockUnit.Change;
 import com.pmart.mfc.inventory.domain.StockUnit.Key;
 import com.pmart.mfc.inventory.domain.StockUnit.Quality;
 import com.pmart.mfc.inventory.domain.StockUnit.Work;
+import com.pmart.mfc.inventory.infrastructure.SkuProjectionStore;
 import com.pmart.mfc.inventory.infrastructure.StockStore;
 import com.pmart.mfc.inventory.infrastructure.StockStore.LotRow;
 import com.pmart.mfc.inventory.infrastructure.StockStore.ReceiptRow;
@@ -37,7 +38,7 @@ import org.springframework.stereotype.Service;
  *   <li>같은 executionId 는 요청 ID 가 달라도 한 번만(내용 지문이 같으면 처음 commitId, 다르면 409).
  * </ul>
  *
- * 위치가 등록·사용 가능·온도구역 일치인지는 위치 투영 구현(2단계) 뒤에 검사한다.
+ * 위치는 mfc-location 투영으로 검사한다({@link Locations}).
  */
 @Service
 public class TaskExecutionService {
@@ -69,13 +70,22 @@ public class TaskExecutionService {
 
   private final StockStore stock;
   private final Ledger ledger;
+  private final Locations locations;
+  private final SkuProjectionStore skus;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
   public TaskExecutionService(
-      StockStore stock, Ledger ledger, RequestIdempotency idempotency, Clock clock) {
+      StockStore stock,
+      Ledger ledger,
+      Locations locations,
+      SkuProjectionStore skus,
+      RequestIdempotency idempotency,
+      Clock clock) {
     this.stock = stock;
     this.ledger = ledger;
+    this.locations = locations;
+    this.skus = skus;
     this.idempotency = idempotency;
     this.clock = clock;
   }
@@ -92,6 +102,7 @@ public class TaskExecutionService {
             () -> {
               Instant at = clock.instant();
               checkLots(cmd);
+              checkLocations(cmd);
               String commitId = Ledger.newCommitId();
               if (!stock.claimExecution(
                   cmd.executionId(),
@@ -155,6 +166,19 @@ public class TaskExecutionService {
         throw new PmartException(
             ErrorCode.VALIDATION_FAILED,
             "INSPECT 는 resultQuality NORMAL/QUARANTINED 가 필요합니다: " + l.sku());
+      }
+    }
+  }
+
+  /** 출발 위치 실사 잠금 아님, 적치 목적지는 등록·ACTIVE·선반 구역·온도대 = SKU 보관 유형. */
+  private void checkLocations(ExecCommand cmd) {
+    locations.requireNotCountLocked(cmd.mfcId(), cmd.fromLocation());
+    if (cmd.type() == Type.PUTAWAY) {
+      var projections =
+          skus.findAll(cmd.lines().stream().map(ExecLine::sku).collect(Collectors.toSet()));
+      for (String sku : cmd.lines().stream().map(ExecLine::sku).distinct().toList()) {
+        var p = projections.get(sku);
+        locations.requireStorage(cmd.mfcId(), cmd.toLocation(), p == null ? null : p.storageType());
       }
     }
   }
