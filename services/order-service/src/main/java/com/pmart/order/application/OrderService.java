@@ -246,6 +246,36 @@ public class OrderService {
         .value();
   }
 
+  /**
+   * MFC 준비 시작(PreparationStarted, mfc.fulfillment.v1 — D6-1 첫 PICK 시작) 반영: CONFIRMED →
+   * PREPARING(+버전), 같은 트랜잭션에서 OrderPreparationStarted. 이후 고객 자율 취소는 받지 않는다(claim 심사가 CONFIRMED 만,
+   * cancel-vs-handover §1). 이미 준비 중·취소된 주문은 그대로. inbox 트랜잭션 안에서 호출된다.
+   */
+  public void preparationStarted(com.pmart.common.messaging.EventEnvelope e) {
+    var p = e.payload();
+    String orderId = p.path("orderId").asString("");
+    OrderRow o = orders.lock(orderId).orElse(null);
+    if (o == null) {
+      log.warn("준비 시작 사건의 주문이 없습니다: {}", orderId);
+      return;
+    }
+    if (!"CONFIRMED".equals(o.status())) {
+      log.info("주문 {} 준비 시작 — 이미 {} 라 상태를 바꾸지 않음", orderId, o.status());
+      return;
+    }
+    int version = o.version() + 1;
+    orders.updateStatus(orderId, "PREPARING", version);
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("orderId", orderId);
+    payload.put("orderVersion", version);
+    if (p.hasNonNull("fulfillmentId")) {
+      payload.put("fulfillmentId", p.get("fulfillmentId").asString());
+    }
+    payload.put("startedAt", p.path("startedAt").asString(clock.instant().toString()));
+    publishOrderEvent("OrderPreparationStarted", orderId, version, payload);
+    log.info("주문 {} 준비 시작 → PREPARING", orderId);
+  }
+
   /** 서비스 간 주문 원장 조회(claim 심사·환불 근거). 확정 전 주문 ID 는 404. */
   public OrderView internal(String orderId) {
     OrderRow o =

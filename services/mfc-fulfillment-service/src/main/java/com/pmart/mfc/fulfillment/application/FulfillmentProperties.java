@@ -19,19 +19,31 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 public class FulfillmentProperties {
 
   private final String mfcInventoryBaseUrl;
+  private final String mfcCapacityBaseUrl;
   private final Map<String, Duration> pickLeadTime;
 
   public FulfillmentProperties(
-      @Nullable String mfcInventoryBaseUrl, @Nullable Map<String, Duration> pickLeadTime) {
+      @Nullable String mfcInventoryBaseUrl,
+      @Nullable String mfcCapacityBaseUrl,
+      @Nullable Map<String, Duration> pickLeadTime) {
     this.mfcInventoryBaseUrl =
         mfcInventoryBaseUrl == null || mfcInventoryBaseUrl.isBlank()
             ? "http://mfc-inventory-service:8301"
             : mfcInventoryBaseUrl;
+    this.mfcCapacityBaseUrl =
+        mfcCapacityBaseUrl == null || mfcCapacityBaseUrl.isBlank()
+            ? "http://mfc-capacity-service:8303"
+            : mfcCapacityBaseUrl;
     this.pickLeadTime = pickLeadTime == null ? Map.of() : Map.copyOf(pickLeadTime);
   }
 
   public String mfcInventoryBaseUrl() {
     return mfcInventoryBaseUrl;
+  }
+
+  /** 배정 조회(6b 작업 시작 판정). */
+  public String mfcCapacityBaseUrl() {
+    return mfcCapacityBaseUrl;
   }
 
   /** 센터 준비 시각 설정. 없으면 null(CONFIG_REQUIRED). */

@@ -1,0 +1,573 @@
+package com.pmart.mfc.fulfillment.application;
+
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.security.PmartPrincipal;
+import com.pmart.common.web.ErrorCode;
+import com.pmart.common.web.PmartException;
+import com.pmart.mfc.fulfillment.domain.TaskRules;
+import com.pmart.mfc.fulfillment.domain.TaskRules.ActiveAssignment;
+import com.pmart.mfc.fulfillment.infrastructure.CapacityClient;
+import com.pmart.mfc.fulfillment.infrastructure.InventoryClient;
+import com.pmart.mfc.fulfillment.infrastructure.InventoryClient.PlanPart;
+import com.pmart.mfc.fulfillment.infrastructure.TaskStore;
+import com.pmart.mfc.fulfillment.infrastructure.TaskStore.ExecutionRow;
+import com.pmart.mfc.fulfillment.infrastructure.TaskStore.LineView;
+import com.pmart.mfc.fulfillment.infrastructure.TaskStore.StartRow;
+import com.pmart.mfc.fulfillment.infrastructure.TaskStore.TaskInfo;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * 점원 단말 작업(슬라이스 6b, WK-03·WK-05·IV-07). 작업자 = 그 센터 운영자 + 역할 {@code MFC_WORKER}(작업자 로그인 BR-02 결정 전
+ * 잠정).
+ *
+ * <ul>
+ *   <li>시작: mfc-capacity 배정 정본을 동기 조회(트랜잭션 밖, 실패면 503·기록 없음) → 작업 행 잠금 → 판정 기록(STARTED/REJECTED).
+ *       같은 키는 기록된 판정. 그 주문의 첫 PICK 시작이면 PreparationStarted(D6-1).
+ *   <li>피킹 실적: 접수(RECORDED) → 트랜잭션 밖에서 mfc-inventory PICK(같은 실행 ID 는 한 번만 반영) → 반영되면 완료량, 거절이면
+ *       REJECTED, 결과 모름이면 UNKNOWN_RESULT(같은 키로 다시). 결품 보고는 작업 BLOCKED + LineShortageReported(재고 처리는
+ *       IV-09 단계).
+ *   <li>PICK 이 모두 끝나면 COMPLETED, 같은 출고의 PACK 이 READY(담당 있으면 ASSIGNED).
+ * </ul>
+ */
+@Service
+public class TaskService {
+
+  public static final String WORKER_ROLE = "MFC_WORKER";
+  public static final String TASK_NOT_FOUND = "TASK_NOT_FOUND";
+
+  private static final Logger log = LoggerFactory.getLogger(TaskService.class);
+  private static final TypeReference<List<ExecLine>> EXEC_LINES = new TypeReference<>() {};
+
+  /** 실적 줄(요청·저장 모양). */
+  public record Shortage(int qty, String reason, @Nullable String note) {}
+
+  public record ExecLine(
+      String orderLineId,
+      String sku,
+      @Nullable String lotId,
+      int pickedQty,
+      @Nullable Shortage shortage) {}
+
+  public record ExecCommand(
+      String executionType,
+      String workerId,
+      @Nullable Integer assignmentVersion,
+      @Nullable String fromLocation,
+      @Nullable String toLocation,
+      List<ExecLine> lines) {}
+
+  /** 실적 결과(상태 APPLIED / REJECTED / UNKNOWN_RESULT / RECORDED). */
+  public record ExecResult(ExecutionRow execution, int taskVersion) {}
+
+  /** 지시 한 LOT. */
+  public record Pick(
+      String lotId,
+      @Nullable String expiresOn,
+      int remainingQty,
+      List<Map.Entry<String, Integer>> locations) {}
+
+  /** 상세 화면. picksByLine 은 PICK 만, planFresh = 재고 지시 조회 성공. */
+  public record Detail(
+      TaskInfo task,
+      List<LineView> lines,
+      Map<String, List<Pick>> picksByLine,
+      boolean planFresh,
+      List<ExecutionRow> pending,
+      List<String> packingLocations) {}
+
+  private final TaskStore store;
+  private final CapacityClient capacity;
+  private final InventoryClient inventory;
+  private final FulfillmentEvents events;
+  private final ObjectMapper mapper;
+  private final TransactionTemplate tx;
+  private final Clock clock;
+
+  public TaskService(
+      TaskStore store,
+      CapacityClient capacity,
+      InventoryClient inventory,
+      FulfillmentEvents events,
+      ObjectMapper mapper,
+      PlatformTransactionManager txManager,
+      Clock clock) {
+    this.store = store;
+    this.capacity = capacity;
+    this.inventory = inventory;
+    this.events = events;
+    this.mapper = mapper;
+    this.tx = new TransactionTemplate(txManager);
+    this.clock = clock;
+  }
+
+  // ---------- 조회 ----------
+
+  public List<TaskInfo> list(
+      String mfcId,
+      @Nullable String assignee,
+      @Nullable String type,
+      @Nullable List<String> states,
+      int size,
+      @Nullable String cursor) {
+    String worker = null;
+    if ("me".equals(assignee)) {
+      worker = requireWorker(mfcId);
+    } else {
+      requireReader(mfcId);
+    }
+    List<String> s =
+        states == null || states.isEmpty() ? List.of("ASSIGNED", "IN_PROGRESS") : states;
+    return store.list(mfcId, worker, type, s, cursor, Math.max(1, Math.min(size, 200)));
+  }
+
+  public Detail detail(String taskId) {
+    TaskInfo t = task(taskId);
+    requireReader(t.mfcId());
+    List<LineView> lines = store.lines(taskId);
+    Map<String, List<Pick>> picks = new LinkedHashMap<>();
+    boolean fresh = true;
+    if ("PICK".equals(t.taskType())) {
+      try {
+        for (PlanPart p : inventory.pickPlan(t.reservationId())) {
+          int remaining = p.qty() - p.pickedQty();
+          if (p.orderLineId() == null || remaining <= 0 || !"CONFIRMED".equals(p.state())) {
+            continue;
+          }
+          picks
+              .computeIfAbsent(p.orderLineId(), k -> new ArrayList<>())
+              .add(new Pick(p.lotId(), p.expiryDate(), remaining, p.locations()));
+        }
+      } catch (PmartException | org.springframework.web.client.RestClientException e) {
+        fresh = false; // 지시는 참고 — 실적 판정은 재고가 한다
+        log.warn("작업 {} 피킹 지시 조회 실패: {}", taskId, e.getMessage());
+      }
+    }
+    return new Detail(
+        t,
+        lines,
+        picks,
+        fresh,
+        store.openExecutions(taskId),
+        "PACK".equals(t.taskType()) ? store.packingLocations(t.shipmentId()) : List.of());
+  }
+
+  public Map<String, Object> getStart(String taskId, String requestId) {
+    TaskInfo t = task(taskId);
+    requireReader(t.mfcId());
+    StartRow r =
+        store
+            .findStart(taskId, requestId)
+            .orElseThrow(
+                () -> PmartException.notFound("START_NOT_FOUND", "기록된 시작 판정이 없습니다(시작 안 됨 확정 아님)."));
+    return startView(r);
+  }
+
+  public ExecutionRow getExecution(String taskId, String executionId) {
+    TaskInfo t = task(taskId);
+    requireReader(t.mfcId());
+    ExecutionRow e =
+        store
+            .execution(executionId)
+            .filter(x -> x.taskId().equals(taskId))
+            .orElseThrow(() -> PmartException.notFound("EXECUTION_NOT_FOUND", "실적이 없습니다."));
+    return e;
+  }
+
+  // ---------- 시작 ----------
+
+  public StartRow start(
+      String taskId,
+      String requestId,
+      String workerId,
+      int assignmentVersion,
+      @Nullable String deviceId,
+      @Nullable Integer expectedVersion) {
+    TaskInfo t0 = task(taskId);
+    String me = requireWorker(t0.mfcId());
+    if (!me.equals(workerId)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "workerId 가 로그인한 작업자와 다릅니다.");
+    }
+    var recorded = store.findStart(taskId, requestId);
+    if (recorded.isPresent()) {
+      return recorded.get();
+    }
+    ActiveAssignment active = capacity.active(t0.mfcId(), taskId); // 실패면 503 — 기록 없음
+    return Objects.requireNonNull(
+        tx.execute(
+            s -> {
+              var again = store.findStart(taskId, requestId);
+              if (again.isPresent()) {
+                return again.get();
+              }
+              TaskInfo t = store.lock(taskId).orElseThrow();
+              Instant now = clock.instant();
+              String reject;
+              if (expectedVersion != null && expectedVersion != t.version()) {
+                reject = TaskRules.VERSION_CONFLICT;
+              } else {
+                boolean predecessorDone =
+                    !"PACK".equals(t.taskType())
+                        || store
+                            .sibling(t.shipmentId(), "PICK")
+                            .map(p -> "COMPLETED".equals(p.state()))
+                            .orElse(true);
+                reject =
+                    TaskRules.startRejection(
+                        t.state(), predecessorDone, active, workerId, assignmentVersion);
+              }
+              if (reject != null) {
+                StartRow r =
+                    new StartRow(
+                        taskId,
+                        requestId,
+                        "REJECTED",
+                        reject,
+                        workerId,
+                        assignmentVersion,
+                        t.version(),
+                        now);
+                store.insertStart(r);
+                return r;
+              }
+              store.markStarted(taskId, requestId, workerId, deviceId, now);
+              StartRow r =
+                  new StartRow(
+                      taskId,
+                      requestId,
+                      "STARTED",
+                      null,
+                      workerId,
+                      assignmentVersion,
+                      t.version() + 1,
+                      now);
+              store.insertStart(r);
+              events.taskProgressed(
+                  t, "IN_PROGRESS", t.state(), t.version() + 1, workerId, null, now);
+              if ("PICK".equals(t.taskType())
+                  && store.markPreparationStarted(t.fulfillmentId(), now)) {
+                events.preparationStarted(t, now);
+              }
+              log.info("작업 {} 시작 by {}", taskId, workerId);
+              return r;
+            }));
+  }
+
+  // ---------- 피킹 실적 ----------
+
+  public ExecResult execute(
+      String taskId, String requestId, ExecCommand cmd, @Nullable Integer expectedVersion) {
+    if (!"PICK".equals(cmd.executionType())) {
+      throw new PmartException(
+          "UNSUPPORTED_EXECUTION",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "PACK 실적은 포장 밀봉(POST /shipments/{id}/packages)으로 등록합니다.",
+          false,
+          List.of());
+    }
+    TaskInfo t0 = task(taskId);
+    String me = requireWorker(t0.mfcId());
+    if (!me.equals(cmd.workerId())) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "workerId 가 로그인한 작업자와 다릅니다.");
+    }
+    ExecutionRow exec =
+        Objects.requireNonNull(tx.execute(s -> record(taskId, requestId, cmd, expectedVersion)));
+    if (!isOpen(exec)) {
+      return new ExecResult(exec, task(taskId).version());
+    }
+    return post(exec, t0);
+  }
+
+  private ExecutionRow record(
+      String taskId, String requestId, ExecCommand cmd, @Nullable Integer expectedVersion) {
+    var existing = store.findExecution(taskId, requestId);
+    if (existing.isPresent()) {
+      return existing.get(); // 같은 키 — 끝났으면 그 결과, 열려 있으면 같은 실행 ID 로 다시 보낸다
+    }
+    TaskInfo t = store.lock(taskId).orElseThrow();
+    if (!"IN_PROGRESS".equals(t.state())) {
+      throw conflict(
+          TaskRules.INVALID_STATE, "작업 " + taskId + " 은 " + t.state() + " 상태입니다(시작한 작업만).");
+    }
+    if (!cmd.workerId().equals(t.startedBy())) {
+      throw conflict(TaskRules.NOT_ASSIGNEE, "이 작업을 시작한 작업자가 아닙니다.");
+    }
+    if (expectedVersion != null && expectedVersion != t.version()) {
+      throw conflict(TaskRules.VERSION_CONFLICT, "작업이 이미 바뀌었습니다(현재 버전 " + t.version() + ").");
+    }
+    Map<String, Integer> remaining = new HashMap<>();
+    for (LineView l : store.lines(taskId)) {
+      remaining.put(l.orderLineId(), l.remaining());
+    }
+    for (ExecutionRow open : store.openExecutions(taskId)) {
+      for (ExecLine l : lines(open)) {
+        remaining.merge(l.orderLineId(), -(l.pickedQty()), Integer::sum);
+      }
+    }
+    boolean anyPick = false;
+    for (ExecLine l : cmd.lines()) {
+      Integer left = remaining.get(l.orderLineId());
+      if (left == null) {
+        throw invalid("작업에 없는 주문 줄입니다: " + l.orderLineId());
+      }
+      int shortQty = l.shortage() == null ? 0 : l.shortage().qty();
+      if (l.pickedQty() < 0 || l.pickedQty() + shortQty > left) {
+        throw conflict(
+            "QTY_EXCEEDS_REMAINING",
+            "주문 줄 "
+                + l.orderLineId()
+                + ": 집품 "
+                + l.pickedQty()
+                + " + 결품 "
+                + shortQty
+                + " > 남은 "
+                + left);
+      }
+      if (l.pickedQty() == 0 && shortQty == 0) {
+        throw invalid("집품도 결품도 없는 줄입니다: " + l.orderLineId());
+      }
+      if (l.pickedQty() > 0 && (l.lotId() == null || l.lotId().isBlank())) {
+        throw invalid("집품 줄은 lotId 가 필요합니다(예약 LOT — 다른 LOT 집품 차단, IV-07): " + l.orderLineId());
+      }
+      remaining.merge(l.orderLineId(), -(l.pickedQty() + shortQty), Integer::sum);
+      anyPick |= l.pickedQty() > 0;
+    }
+    if (anyPick && (blank(cmd.fromLocation()) || blank(cmd.toLocation()))) {
+      throw invalid("집품은 fromLocation(선반)·toLocation(포장 위치)이 필요합니다.");
+    }
+    Instant now = clock.instant();
+    ExecutionRow r =
+        new ExecutionRow(
+            "EXE-" + UUID.randomUUID(),
+            taskId,
+            requestId,
+            cmd.workerId(),
+            "PICK",
+            cmd.fromLocation(),
+            cmd.toLocation(),
+            mapper.writeValueAsString(cmd.lines()),
+            "RECORDED",
+            null,
+            0,
+            null,
+            now);
+    store.insertExecution(r);
+    return r;
+  }
+
+  /** 재고 반영(트랜잭션 밖) → 결과 기록. */
+  private ExecResult post(ExecutionRow exec, TaskInfo t0) {
+    List<ExecLine> lines = lines(exec);
+    List<Map<String, Object>> invLines = new ArrayList<>();
+    for (ExecLine l : lines) {
+      if (l.pickedQty() > 0) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("sku", l.sku());
+        m.put("lotId", l.lotId());
+        m.put("orderLineId", l.orderLineId());
+        m.put("qty", l.pickedQty());
+        invLines.add(m);
+      }
+    }
+    InventoryClient.Commit c;
+    if (invLines.isEmpty()) {
+      c = new InventoryClient.Commit("APPLIED", null, 0, null, null); // 결품 보고만
+    } else {
+      Map<String, Object> body = new LinkedHashMap<>();
+      body.put("executionType", "PICK");
+      body.put("mfcId", t0.mfcId());
+      body.put("taskId", exec.taskId());
+      body.put("executionId", exec.executionId());
+      body.put("reservationId", t0.reservationId());
+      body.put("fromLocation", exec.fromLocation());
+      body.put("toLocation", exec.toLocation());
+      body.put("lines", invLines);
+      c = inventory.commit(exec.executionId(), body);
+    }
+    return Objects.requireNonNull(tx.execute(s -> apply(exec, lines, c)));
+  }
+
+  private ExecResult apply(ExecutionRow exec, List<ExecLine> lines, InventoryClient.Commit c) {
+    TaskInfo t = store.lock(exec.taskId()).orElseThrow();
+    Instant now = clock.instant();
+    switch (c.outcome()) {
+      case "APPLIED" -> {
+        int picked = lines.stream().mapToInt(ExecLine::pickedQty).sum();
+        if (store.finishExecution(exec.executionId(), "APPLIED", c.commitId(), picked, null, now)
+            == 0) {
+          break; // 다른 재시도가 먼저 끝냈다
+        }
+        for (ExecLine l : lines) {
+          if (l.pickedQty() > 0) {
+            store.addCompleted(t.taskId(), l.orderLineId(), l.pickedQty());
+          }
+        }
+        List<ExecLine> shortages = lines.stream().filter(l -> l.shortage() != null).toList();
+        if (!shortages.isEmpty()) {
+          String reason =
+              "결품 보고: "
+                  + String.join(
+                      ", ",
+                      shortages.stream()
+                          .map(
+                              l ->
+                                  l.orderLineId()
+                                      + " "
+                                      + l.shortage().qty()
+                                      + "개 "
+                                      + l.shortage().reason())
+                          .toList());
+          store.setState(t.taskId(), "BLOCKED", reason, false, now);
+          events.taskProgressed(
+              t, "BLOCKED", t.state(), t.version() + 1, exec.workerId(), null, now);
+          for (ExecLine l : shortages) {
+            events.lineShortage(t, l.orderLineId(), l.sku(), l.lotId(), l.shortage(), now);
+          }
+          log.warn("작업 {} 결품 보고 → BLOCKED ({})", t.taskId(), reason);
+        } else if (store.lines(t.taskId()).stream().allMatch(l -> l.remaining() == 0)) {
+          store.setState(t.taskId(), "COMPLETED", null, false, now);
+          events.taskProgressed(
+              t, "COMPLETED", t.state(), t.version() + 1, exec.workerId(), picked, now);
+          store.releasePack(t.shipmentId(), now);
+          store
+              .sibling(t.shipmentId(), "PACK")
+              .ifPresent(
+                  p ->
+                      events.taskProgressed(p, p.state(), "WAITING", p.version(), null, null, now));
+          log.info("작업 {} 피킹 완료 — 포장 작업 준비", t.taskId());
+        }
+      }
+      case "REJECTED" ->
+          store.finishExecution(
+              exec.executionId(),
+              "REJECTED",
+              null,
+              0,
+              c.code() + (c.detail() == null ? "" : ": " + c.detail()),
+              now);
+      case "UNKNOWN" ->
+          store.finishExecution(exec.executionId(), "UNKNOWN_RESULT", null, 0, c.detail(), now);
+      default -> {
+        // NOT_DELIVERED: 재고에 가지 않았다 — RECORDED 그대로, 같은 키로 다시
+      }
+    }
+    ExecutionRow after = store.execution(exec.executionId()).orElseThrow();
+    if ("NOT_DELIVERED".equals(c.outcome())) {
+      throw new PmartException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE, "재고에 반영하지 못했습니다. 같은 Idempotency-Key 로 다시 보내 주세요.");
+    }
+    return new ExecResult(after, store.find(exec.taskId()).orElseThrow().version());
+  }
+
+  // ---------- 배정 투영 ----------
+
+  /**
+   * AssignmentPublished(mfc.capacity.v1) — 더 새 배정 버전만 반영. READY → ASSIGNED, 진행 중에 담당이 바뀌면(WK-05)
+   * ASSIGNED 로 돌리고 시작 점유를 지운다(완료량은 그대로, 후임은 잔량만). inbox 트랜잭션 안에서 호출된다.
+   */
+  public void applyAssignment(EventEnvelope e) {
+    var payload = e.payload();
+    Instant now = clock.instant();
+    for (var a : payload.path("assignments")) {
+      String taskId = a.path("taskId").asString("");
+      var t = store.lock(taskId);
+      if (t.isEmpty()) {
+        continue; // 이 서비스의 작업이 아니다(inbound 작업 등)
+      }
+      String worker = a.path("workerId").asString("");
+      int version = a.path("assignmentVersion").asInt(0);
+      if (store.applyAssignment(taskId, worker, a.path("assignmentId").asString(null), version, now)
+          == 0) {
+        continue;
+      }
+      TaskInfo cur = t.get();
+      if ("READY".equals(cur.state())) {
+        store.setState(taskId, "ASSIGNED", null, false, now);
+      } else if ("IN_PROGRESS".equals(cur.state()) && !worker.equals(cur.startedBy())) {
+        store.setState(taskId, "ASSIGNED", null, true, now);
+        log.info("작업 {} 재배정 {} → {} (진행 중 → ASSIGNED)", taskId, cur.startedBy(), worker);
+      }
+    }
+  }
+
+  // ---------- 내부 ----------
+
+  private TaskInfo task(String taskId) {
+    return store
+        .find(taskId)
+        .orElseThrow(() -> PmartException.notFound(TASK_NOT_FOUND, "작업이 없습니다: " + taskId));
+  }
+
+  private List<ExecLine> lines(ExecutionRow e) {
+    return mapper.readValue(e.lines(), EXEC_LINES);
+  }
+
+  private static boolean isOpen(ExecutionRow e) {
+    return "RECORDED".equals(e.state()) || "UNKNOWN_RESULT".equals(e.state());
+  }
+
+  static Map<String, Object> startView(StartRow r) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("requestId", r.requestId());
+    m.put("taskId", r.taskId());
+    m.put("outcome", r.outcome());
+    m.put("rejectCode", r.rejectCode());
+    m.put("workerId", r.workerId());
+    m.put("assignmentVersion", r.assignmentVersion());
+    m.put("taskVersion", r.taskVersion());
+    m.put("decidedAt", r.decidedAt());
+    return m;
+  }
+
+  static PmartException conflict(String code, String message) {
+    return new PmartException(code, HttpStatus.CONFLICT, message, false, List.of());
+  }
+
+  static PmartException invalid(String message) {
+    return new PmartException(ErrorCode.VALIDATION_FAILED, message);
+  }
+
+  private static boolean blank(@Nullable String s) {
+    return s == null || s.isBlank();
+  }
+
+  /** 그 센터의 작업자(MFC_WORKER). 반환 = 작업자 ID. */
+  static String requireWorker(String mfcId) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "작업자(운영자)만 할 수 있습니다."));
+    if (!p.canAccessCenter(mfcId) || !p.hasRole(WORKER_ROLE)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "이 센터의 " + WORKER_ROLE + " 만 할 수 있습니다.");
+    }
+    return p.subject();
+  }
+
+  static void requireReader(String mfcId) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "토큰이 필요합니다."));
+    if (p.isService()) {
+      return;
+    }
+    if (p.type() != PmartPrincipal.PrincipalType.OPERATOR || !p.canAccessCenter(mfcId)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "이 센터에 대한 권한이 없습니다.");
+    }
+  }
+}

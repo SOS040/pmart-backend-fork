@@ -1,9 +1,15 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
+
+    0.2.0(2026-11-07, 슬라이스 6b): 점원 단말 Task API·포장 밀봉 구현. 작업자 = 운영자 계정(작업자 로그인 BR-02 결정 전 잠정) — 그 센터 권한 +
+    역할 `MFC_WORKER`. 담당은 mfc-capacity 수동 배정(감독자 `MFC_SUPERVISOR`, WK-02 — Q-08 전 수동 지정만)의 투영과 시작 때 동기 조회.
+    PICK 시작(센터에서 그 주문의 첫 시작)이 준비 시작 PreparationStarted(D6-1). 피킹 실적은 mfc-inventory PICK(선반 → 포장 구역)으로, 포장 밀봉은
+    PACK(PICKED → PACKED)으로 반영한다. 결품 보고는 작업을 BLOCKED 로 두고 LineShortageReported 만 낸다(재고 처리는 IV-09 단계).
+    DISPATCH·인계 fence 는 아직 501(6c).
     비정본: 수량(mfc-inventory), 취소 판단(order-orchestration/claim), 배차(delivery-dispatch), 작업자 배정 정본(mfc-capacity), 주문 상태(order).
 
     상태 기계
@@ -643,6 +649,24 @@ components:
           type: [string, 'null']
           description: 예약 로트. 다른 로트 집품은 실적 차단(IV-07)
         expiresOn: { type: [string, 'null'], format: date, description: 로트 유통기한 (Asia/Seoul) }
+        picks:
+          type: array
+          description: |
+            PICK 지시(0.2.0) — 한 줄이 여러 LOT 예약 조각으로 나뉠 수 있어(줄당 LOT 수 제한 없음) LOT 마다 남은 집품량과 선반 위치 후보.
+            locationId·lotId·expiresOn 은 첫 지시의 사본. 재고 조회가 안 되면 빈 배열(asOf freshness STALE).
+          items:
+            type: object
+            properties:
+              lotId: { type: string }
+              expiresOn: { type: [string, 'null'], format: date }
+              remainingQty: { type: integer, description: 이 LOT 조각에서 더 집을 양 }
+              locations:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    locationCode: { type: string }
+                    qty: { type: integer, description: 그 위치의 LOT 선반 잔량(이 주문 몫만이 아님) }
         plannedQty: { type: integer }
         completedQty: { type: integer, description: 서버 확정 실적 }
         cancelledQty: { type: integer, description: 승인 취소 }
@@ -676,6 +700,10 @@ components:
               description: 재고 확정 전 실행 결과. 상세는 GET …/executions/{executionId}
               items: { $ref: '#/components/schemas/TaskPendingExecution' }
             blockReason: { type: [string, 'null'] }
+            packingLocations:
+              type: array
+              description: PACK — 이 출고의 집품분이 놓인 포장 위치(PICK 실적의 도착지, 0.2.0)
+              items: { type: string }
             asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     TaskStart:
       type: object
@@ -843,11 +871,11 @@ components:
       type: object
       required: [executionType, workerId, lines]
       properties:
-        executionType: { type: string, enum: [PICK, PACK] }
+        executionType: { type: string, enum: [PICK, PACK], description: '0.2.0: PICK 만. PACK 실적은 포장 밀봉(POST /shipments/{id}/packages)으로 — PACK 은 422' }
         workerId: { type: string }
         assignmentVersion: { type: integer }
-        fromLocation: { type: string }
-        toLocation: { type: string }
+        fromLocation: { type: string, description: PICK — 집은 선반 위치(한 실행 = 한 선반) }
+        toLocation: { type: string, description: PICK — 내려놓은 포장 위치(구역 PACKING) }
         lines:
           type: array
           minItems: 1
@@ -889,6 +917,7 @@ components:
       type: object
       required: [contents, bagCount]
       properties:
+        packingLocation: { type: string, description: '포장 위치. 없으면 이 출고 집품분의 포장 위치가 하나일 때 그 위치(0.2.0)' }
         contents:
           type: array
           minItems: 1

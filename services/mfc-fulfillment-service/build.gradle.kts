@@ -20,4 +20,5 @@ dependencies {
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 중지 기록·Outbox 행 확인
     "integrationTestImplementation"(libs.wiremock.spring.boot) // mfc-inventory 예약 조회 응답 고정
+    "integrationTestImplementation"(libs.bundles.service.kafka) // 시험에서 배정 사건(AssignmentPublished)을 토픽에 흘림
 }

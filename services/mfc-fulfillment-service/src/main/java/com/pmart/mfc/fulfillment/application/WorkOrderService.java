@@ -100,6 +100,7 @@ public class WorkOrderService {
       List<TaskLineRow> taskLines) {}
 
   private final WorkOrderStore store;
+  private final com.pmart.mfc.fulfillment.infrastructure.TaskStore taskStore;
   private final WorkStopStore stops;
   private final InventoryClient inventory;
   private final FulfillmentProperties props;
@@ -110,6 +111,7 @@ public class WorkOrderService {
 
   public WorkOrderService(
       WorkOrderStore store,
+      com.pmart.mfc.fulfillment.infrastructure.TaskStore taskStore,
       WorkStopStore stops,
       InventoryClient inventory,
       FulfillmentProperties props,
@@ -118,6 +120,7 @@ public class WorkOrderService {
       EventEnvelopeCodec codec,
       Clock clock) {
     this.store = store;
+    this.taskStore = taskStore;
     this.stops = stops;
     this.inventory = inventory;
     this.props = props;
@@ -350,6 +353,10 @@ public class WorkOrderService {
     int n = store.promoteDue(now);
     if (n > 0) {
       log.info("PICK 준비 시각 도래 {}건 READY", n);
+    }
+    int a = taskStore.assignReady(now); // 담당이 먼저 정해진 작업(6b)
+    if (a > 0) {
+      log.info("담당이 있는 READY 작업 {}건 ASSIGNED", a);
     }
   }
 

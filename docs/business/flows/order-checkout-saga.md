@@ -136,6 +136,14 @@ D6-5 세부(사용자 결정 2026-11-07):
 
 6b 이후: 작업자 배정·피킹 시작(`PreparationStarted` → order 상품준비)·결품·패킹·출발, 포장별 중지 판정(fence).
 
+### 2.0.2 구현 상태 (2026-11-07, 슬라이스 6b — ADR-0043)
+
+- 배정: 감독자(`MFC_SUPERVISOR`)가 mfc-capacity `POST /assignments` 로 작업마다 담당 1명(재지정 = 버전 +1) → `AssignmentPublished` → fulfillment 담당 투영(READY → ASSIGNED, 진행 중 재배정은 ASSIGNED 로 돌림).
+- 시작: 작업자(`MFC_WORKER`) `POST /tasks/{id}/starts` — capacity 배정 동기 조회 후 판정 기록. 그 주문의 첫 PICK 시작 = `PreparationStarted`(D6-1) → order CONFIRMED → PREPARING·`OrderPreparationStarted`(이후 고객 자율 취소 거절).
+- 피킹: `POST /tasks/{id}/executions`(PICK, 한 선반) → mfc-inventory PICK(선반 → 포장 구역, 예약 조각 집품량, 총량 불변). 모두 집으면 PICK COMPLETED, PACK READY/ASSIGNED. 결품 보고는 BLOCKED + `LineShortageReported`(2.1 처리는 IV-09 단계).
+- 포장: PACK 시작 후 `POST /shipments/{id}/packages`(LOT 은 집품분에서 소비기한 빠른 순) → mfc-inventory PACK → SEALED·QR. 집품분 전부 포장 → PACK COMPLETED, 출고 READY, `PackingFinished`·`ShipmentReady`(배차 요청은 6c).
+- 피킹이 시작된 주문의 작업 중지는 `PENDING`(작업 유지) — 집품분 판매 제외·복귀(IV-08) 전까지. inventory 는 집품 시작된 예약의 단순 해제를 409 `RESERVATION_PICKED`.
+
 ### 2.1 결품(LineShortageReported) 처리
 
 | 고객 사전 선택 | 처리 |

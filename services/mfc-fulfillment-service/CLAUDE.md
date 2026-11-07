@@ -32,5 +32,15 @@
 - OPERATION_RESTRICTED·CAPACITY_EXCEEDED·LOT_INELIGIBLE 은 계약 값만 — 원천(운영 제한·LOT)이 없어 내지 않는다. 작업자 배정·피킹 시작(PreparationStarted)·DISPATCH 는 6b·6c.
 - 조회 `GET /internal/work-orders/{fulfillmentId}`·`GET /internal/work-orders?orderId=`(마지막 버전 기준, 작업별 계획·완료·취소·잔량·readyAt·holdReason).
 
+## 점원 단말 작업·포장 (2026-11-07, 슬라이스 6b — ADR-0043)
+- V4: `task` 담당 투영(worker_id·assignment_version)·시작 점유(start_request_id·started_by), `task_start`(판정 기록), `task_execution`(PICK 실적 RECORDED → APPLIED/REJECTED/UNKNOWN_RESULT), `package`(OPEN → SEALED/VOIDED), `work_order.preparation_started_at`, `shipment.ready_at`.
+- 작업자 = 그 센터 운영자 + `MFC_WORKER`(`TaskService.requireWorker`). 조회는 그 센터 운영자·서비스.
+- 담당: `AssignmentPublished`(mfc.capacity.v1, 바인딩 `assignmentEvents-in-0`) → `TaskService.applyAssignment`(더 새 버전만, READY → ASSIGNED, 진행 중 재배정은 ASSIGNED·시작 지움). `sweepReady` 가 담당 있는 READY 도 ASSIGNED 로.
+- 시작 `POST /tasks/{id}/starts`: capacity `GET /assignments?taskId=`(작업자 토큰 전달, `CapacityClient`, 실패 503·기록 없음) → 작업 행 잠금 → `TaskRules.startRejection` → 기록. 첫 PICK 시작에 `PreparationStarted`. 거절은 409 + 코드(ALREADY_STARTED·NOT_ASSIGNEE·PREDECESSOR_NOT_COMPLETED·INVALID_STATE·VERSION_CONFLICT).
+- 상세 `GET /tasks/{id}`: PICK 은 inventory pick-plan 으로 줄마다 LOT 별 지시(`picks[]`), 조회 실패면 빈 지시·asOf STALE.
+- 실적 `POST /tasks/{id}/executions`(PICK 만, 한 선반): 접수 → inventory PICK(Idempotency-Key = 실행 ID) → 결과. 같은 키는 같은 실행(열려 있으면 다시 보냄). 결품만 있으면 재고 호출 없이 BLOCKED + `LineShortageReported`. 다 집으면 COMPLETED → 같은 출고 PACK `releasePack`.
+- 포장 `POST /shipments/{id}/packages`: PACK 을 시작한 작업자만. LOT 은 `TaskRules.allocatePacking`(집품−포장 조각, 소비기한 순), 남은 포장량 = PICK 완료 − PACK 완료 − 열린 포장. inventory PACK(실행 ID = 포장 ID) → SEALED·QR, 거절 VOIDED(422 PACK_REJECTED), 모름 OPEN(503 UNKNOWN_RESULT). 다 포장하면 PACK COMPLETED·출고 READY·`PackingFinished`·`ShipmentReady`. `GET /shipments/{id}`·`GET /packages/{id}`.
+- 중지: 피킹이 시작된 주문이면 `PENDING`(작업 유지, 사건 없음).
+
 ## 상태
-작업 접수·조회·접수 뒤 중지(2026-11-07, 6a)와 주문 단위 작업 중지(2026-10-31). 점원 단말 Task API·Shipment·포장·인계 fence 는 501 UNSUPPORTED_ACTION.
+작업 접수·조회·접수 뒤 중지(6a), 점원 단말 작업·피킹·포장(6b). DISPATCH·인계 fence·재포장은 501(6c).

@@ -48,3 +48,4 @@
 
 ## 상태
 주문 초안·배송 방식 안내·결제 진입(2026-10-31)·주문 확정·주문 조회·내부 주문 조회·출고 전 취소 반영 구현. 예약 시간 변경·그 밖 수량 변경 사유(결품·인계·반품)·탈퇴 확인·배송 사실·고객 약속은 501/422.
+- 준비 시작(슬라이스 6b, 2026-11-07, ADR-0043): `PreparationStarted`(mfc.fulfillment.v1, 바인딩 `fulfillmentEvents-in-0`) → CONFIRMED 주문만 PREPARING(+버전)·`OrderPreparationStarted`. 다른 상태면 그대로(재수신·취소 뒤 도착).

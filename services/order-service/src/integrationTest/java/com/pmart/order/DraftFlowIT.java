@@ -73,6 +73,7 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired org.springframework.kafka.core.KafkaTemplate<String, String> kafka;
 
   @InjectWireMock("deps")
   WireMockServer deps;
@@ -725,7 +726,7 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
    * CONFIRMED/DONE. 사가 상태 COMPLETED·RECONCILIATION_REQUIRED 의 초안 표시와 새 결제 진입 차단도 확인한다.
    */
   @Test
-  void confirmOrderCreatesOrderAndSingleEvent() {
+  void confirmOrderCreatesOrderAndSingleEvent() throws Exception {
     String first = TestJwt.customer(FIRST);
     String svc = TestJwt.service("order-orchestration-service");
     // 첫 구매 회원, 예약 내일 10~11시, 10개(19,000원) → 첫 구매 무료, 총액 19,100
@@ -858,6 +859,37 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(o.path("lines").path(0).path("orderLineId").asString()).isEqualTo(orderId + "-L1");
     assertThat(o.path("lines").path(0).path("originalQty").asInt()).isEqualTo(10);
     assertThat(o.path("lines").path(0).path("productName").asString()).isEqualTo("국산콩 두부 300g");
+
+    // MFC 준비 시작(PreparationStarted) → PREPARING·OrderPreparationStarted, 다시 와도 한 번(슬라이스 6b)
+    String prep =
+        com.pmart.common.test.EventEnvelopeFixtures.envelope("PreparationStarted")
+            .from("mfc-fulfillment-service")
+            .aggregate("Fulfillment", orderId, 1)
+            .payload(
+                Map.of(
+                    "orderId",
+                    orderId,
+                    "fulfillmentId",
+                    "FUL-1",
+                    "startedAt",
+                    "2026-11-07T01:00:00Z"))
+            .buildJson();
+    kafka.send("mfc.fulfillment.v1", orderId, prep).join();
+    kafka.send("mfc.fulfillment.v1", orderId, prep).join();
+    long until = System.currentTimeMillis() + 20_000;
+    while (System.currentTimeMillis() < until
+        && !"PREPARING".equals(get(first, "/orders/" + orderId).body().path("status").asString())) {
+      Thread.sleep(200);
+    }
+    assertThat(get(first, "/orders/" + orderId).body().path("status").asString())
+        .isEqualTo("PREPARING");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'OrderPreparationStarted'"
+                    + " AND aggregateid = ?",
+                Integer.class,
+                orderId))
+        .isEqualTo(1);
     assertThat(o.path("lines").path(0).path("optionLabel").asString()).isEqualTo("300g");
     assertThat(o.path("lines").path(0).path("unfulfilledQty").asInt()).isEqualTo(10);
     assertThat(o.path("lines").path(0).path("deliveredQty").asInt()).isZero();

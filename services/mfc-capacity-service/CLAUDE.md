@@ -25,4 +25,5 @@
   - [시험 정책, 사용자 결정 2026-10-30] 주문 1건 = 수용 단위 1, (MFC, Asia/Seoul 정시 1시간 창)당 수용 단위는 `pmart.capacity.units-per-hour`(env `PMART_CAPACITY_UNITSPERHOUR`, LAN 30). 비우면 Hold·스냅샷 422 CONFIG_REQUIRED.
   - 점유 판정은 `capacity_window` 행 FOR UPDATE 후 활성 Hold 합계(만료 시각 지난 HELD 제외). 잠금 순서 Hold 행 → 창 행. 주문당 활성 Hold 1개(부분 유일 인덱스).
   - 스냅샷 stages 는 WORKFORCE 1개(단계별 환산 전). activeRestrictions 는 항상 빈 목록.
-- 미구현(501): 운영 제한, 배정·계획, 수령창·하차면. 이벤트(CapacityHoldResult 등) 미발행.
+- 미구현(501): 운영 제한, 배정 계획(OR-Tools), 수령창·하차면. 이벤트(CapacityHoldResult 등) 미발행(AssignmentPublished 만 발행).
+- **수동 작업 배정(슬라이스 6b, 2026-11-07, ADR-0043)**: V3 `task_assignment`(작업마다 활성 1건 부분 유일 인덱스, `(task_id, assignment_version)` 유일). `POST /assignments` 그 센터 `MFC_SUPERVISOR` 만, X-Expected-Version = 현재 활성 버전(없으면 0), 같은 작업자 재지정은 200 변화 없음, 바뀌면 앞 배정 SUPERSEDED + `AssignmentPublished`(mfc.capacity.v1, 집계 `MANUAL:<taskId>`). `GET /assignments` 그 센터 운영자·서비스, 기본 ACTIVE. 작업 정본은 fulfillment/inbound — 여기서는 작업 존재·상태를 검사하지 않는다(시작 때 fulfillment 가 판정). 계획(OR-Tools)은 501.

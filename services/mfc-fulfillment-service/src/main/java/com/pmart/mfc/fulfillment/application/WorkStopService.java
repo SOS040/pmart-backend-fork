@@ -61,6 +61,7 @@ public class WorkStopService {
 
   private final WorkStopStore store;
   private final WorkOrderStore works;
+  private final com.pmart.mfc.fulfillment.infrastructure.TaskStore tasks;
   private final RequestIdempotency idempotency;
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
@@ -70,6 +71,7 @@ public class WorkStopService {
   public WorkStopService(
       WorkStopStore store,
       WorkOrderStore works,
+      com.pmart.mfc.fulfillment.infrastructure.TaskStore tasks,
       RequestIdempotency idempotency,
       EventPublisher events,
       EventEnvelopeCodec codec,
@@ -77,6 +79,7 @@ public class WorkStopService {
       Clock clock) {
     this.store = store;
     this.works = works;
+    this.tasks = tasks;
     this.idempotency = idempotency;
     this.events = events;
     this.codec = codec;
@@ -103,6 +106,24 @@ public class WorkStopService {
               }
               Instant now = clock.instant();
               String json = mapper.writeValueAsString(in.lines());
+              if (tasks.pickStarted(in.orderId())) {
+                // 피킹이 시작된 주문(6b): 집품분의 판매 제외·복귀(IV-08)와 포장별 판정이 아직 없다 — 작업을 지우지 않고 PENDING 으로
+                // 둔다(S3 는 대기·재조회). 고객 자율 취소는 준비 시작(PREPARING) 뒤 받지 않으므로 드문 경합이다.
+                StopRow pending =
+                    new StopRow(
+                        in.stopRequestId(),
+                        in.orderId(),
+                        in.claimId(),
+                        in.scope(),
+                        json,
+                        "PENDING",
+                        "[]",
+                        now);
+                store.insert(pending);
+                log.warn(
+                    "주문 {} 작업 중지 {} — 피킹 시작 뒤라 PENDING(IV-08 전)", in.orderId(), in.stopRequestId());
+                return verdict(pending);
+              }
               StopRow row =
                   new StopRow(
                       in.stopRequestId(),

@@ -44,5 +44,6 @@
 | [0040](0040-mfc-inventory-model-v2.md) | MFC 재고 모델 v2 — 위치·LOT·품질·업무상태별 단위 행 + LOT·센터 요약, LOT 단위 예약(FEFO·줄당 LOT 수 제한 없음, 최소 잔여일 냉장2/냉동30/상온30), 수령→검수→적치 후에만 판매 가능, 원장에 단위 키. 슬라이스 4 간략 모델 대체 | 승인 |
 | [0041](0041-per-product-shelf-life-guarantee.md) | 상품별 소비기한 보장 — product SKU `shelfLifeGuarantee`(주문일 기준 최소 잔여일·제조 후 최대 경과일), 재고 배정은 상품 값 우선·보관 유형 기본값은 대체값, 보장 확인 못 하는 LOT(기한·제조일 없음) 미배정, LOT 제조일(검수·정정 입력). ADR-0040 결정 5 일부 대체 | 승인 |
 | [0042](0042-mfc-open-decisions-lot-substitution-hold-ttl-location-code-bulk-inbound.md) | MFC 미결 4건 — 다른 LOT 대체 허용(같은 SKU·적격 기한만, IV-09 때 적용), 결제 전 점유 10분 확정·설정값(`hold-ttl`·`default-hold-ttl`), 위치 코드 계층형 고정 문법(`C-S1-03-2-04`, `RCV-C-01`, 새 등록만), 일괄 입고 단계별 파일 | 승인 |
+| [0043](0043-slice-6b-picking-packing.md) | 슬라이스 6b 피킹·포장 — 감독자 수동 배정(mfc-capacity), 작업자 = 운영자 + `MFC_WORKER`, 시작은 배정 동기 조회·첫 PICK 시작 = PreparationStarted(→ 주문 PREPARING), 피킹은 포장 구역으로(예약 조각 집품량, 총량 불변), 포장 밀봉이 PACK 실적, 결품은 BLOCKED 만, 피킹 뒤 중지는 PENDING | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.
