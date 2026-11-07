@@ -317,7 +317,12 @@ class CheckoutSagaIT extends PostgresKafkaContainerSupport {
         postRequestedFor(urlPathEqualTo("/api/v1/internal/reservations"))
             .withHeader("Idempotency-Key", WireMock.equalTo(sagaId + ":RESERVE_INVENTORY"))
             .withRequestBody(matchingJsonPath("$.ttlMinutes", WireMock.equalTo("10")))
-            .withRequestBody(matchingJsonPath("$.lines[0].qty", WireMock.equalTo("2"))));
+            .withRequestBody(matchingJsonPath("$.lines[0].qty", WireMock.equalTo("2")))
+            // 소비기한 적격 기준일 = 예약 배송 슬롯 날짜(ADR-0040 결정 5)
+            .withRequestBody(
+                matchingJsonPath(
+                    "$.promisedDate",
+                    WireMock.equalTo(LocalDate.now(SEOUL).plusDays(1).toString()))));
     String date = LocalDate.now(SEOUL).plusDays(1).toString();
     String windowStart =
         java.time.ZonedDateTime.parse(date + "T13:00:00+09:00[Asia/Seoul]").toInstant().toString();

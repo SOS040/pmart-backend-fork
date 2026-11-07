@@ -71,7 +71,7 @@ PG 진입 전 두 타이머 모두 유효해야 하며 더 이른 만료를 고�
 | (2) 결제 진입 | order `POST /order-drafts/{id}/checkouts` | 견적 버전·10분 동결·차단 사유 확인 → orderId 발급(같은 진입 요청은 같은 ID) → orchestration 시작. 진행 중이면 기존 주문 ID 반환 |
 | 시작 | orchestration `POST /internal/checkout-sagas` 202 | 사가만 저장하고 단계는 비동기(동기 체인 2 hop 규칙). 같은 초안의 진행 중 사가는 하나 |
 | a | VALIDATE_QUOTE | 동결 경과 → RE_QUOTE_REQUIRED |
-| b | RESERVE_INVENTORY | mfc-inventory 전부 또는 전무, TTL 10분, 부족 → INSUFFICIENT_STOCK, 취급 OFF → SKU_NOT_HANDLED |
+| b | RESERVE_INVENTORY | mfc-inventory 전부 또는 전무, TTL 10분, 부족 → INSUFFICIENT_STOCK, 취급 OFF → SKU_NOT_HANDLED. LOT 단위 조각(FEFO, 줄당 LOT 수 제한 없음), 최소 잔여일 기준일 = `promisedDate`(예약 배송 = 슬롯 날짜, 즉시 = 예약 날짜) — 적격 LOT 부족도 INSUFFICIENT_STOCK(NO_ELIGIBLE_LOT), ADR-0040 |
 | c | HOLD_CAPACITY | mfc-capacity 1시간 창(예약배달은 도착 슬롯, 즉시는 지금 시간 KST). LAN 시험값 주문 1건=1단위·시간당 30 |
 | d | HOLD_SLOT | 예약배달만(그 밖 SKIPPED). delivery-capacity 정원 20 |
 | e | (쿠폰) | 1차 생략 |

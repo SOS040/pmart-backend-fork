@@ -749,6 +749,10 @@ public class CheckoutSagaService {
     b.put("orderId", s.orderId());
     b.put("mfcId", s.mfcId());
     b.put("ttlMinutes", CheckoutRules.HOLD_TTL_MINUTES);
+    // 소비기한 적격 기준일(ADR-0040 결정 5): 예약 배송은 슬롯 날짜, 즉시 배송은 보내지 않는다(inventory 가 예약 날짜로 본다)
+    if ("SCHEDULED".equals(s.deliveryMode()) && s.arrivalDate() != null) {
+      b.put("promisedDate", s.arrivalDate().toString());
+    }
     List<Map<String, Object>> lines = new java.util.ArrayList<>();
     for (JsonNode l : s.lines()) {
       Map<String, Object> line = new LinkedHashMap<>();
