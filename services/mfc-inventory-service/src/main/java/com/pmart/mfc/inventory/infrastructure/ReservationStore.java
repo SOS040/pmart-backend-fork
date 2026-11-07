@@ -46,6 +46,17 @@ public class ReservationStore {
       ReservationState state,
       @Nullable String blockedReason) {}
 
+  /** 피킹·포장용 조각(집품·포장한 양 포함, IV-07). */
+  public record PickPart(
+      String partId,
+      @Nullable String orderLineId,
+      String sku,
+      String lotId,
+      ReservationState state,
+      int qty,
+      int pickedQty,
+      int packedQty) {}
+
   private static final String COLUMNS =
       "reservation_id, order_id, mfc_id, state, expires_at, release_reason, row_version,"
           + " promised_date, created_at, updated_at";
@@ -149,6 +160,46 @@ public class ReservationStore {
                 ReservationState.valueOf(rs.getString("state")),
                 rs.getString("blocked_reason")),
         reservationId);
+  }
+
+  /** 피킹·포장 조각(part_id 순). lock 이면 FOR UPDATE — 예약 행을 먼저 잠근 뒤 부른다. */
+  public List<PickPart> pickParts(String reservationId, boolean lock) {
+    return jdbc.query(
+        "SELECT part_id, order_line_id, sku, lot_id, state, qty, picked_qty, packed_qty"
+            + " FROM reservation_part WHERE reservation_id = ? ORDER BY part_id"
+            + (lock ? " FOR UPDATE" : ""),
+        (rs, i) ->
+            new PickPart(
+                rs.getString("part_id"),
+                rs.getString("order_line_id"),
+                rs.getString("sku"),
+                rs.getString("lot_id"),
+                ReservationState.valueOf(rs.getString("state")),
+                rs.getInt("qty"),
+                rs.getInt("picked_qty"),
+                rs.getInt("packed_qty")),
+        reservationId);
+  }
+
+  /** 집품(pick=true)·포장 양 증가. CHECK(packed ≤ picked ≤ qty)가 마지막 방어선. */
+  public void addPicked(String partId, int qty, boolean pick, Instant at) {
+    jdbc.update(
+        "UPDATE reservation_part SET "
+            + (pick ? "picked_qty = picked_qty + ?" : "packed_qty = packed_qty + ?")
+            + ", updated_at = ? WHERE part_id = ?",
+        qty,
+        Timestamp.from(at),
+        partId);
+  }
+
+  /** 집품이 시작된 조각이 있는가(해제 차단 — 집품 후 취소는 IV-08). */
+  public boolean anyPicked(String reservationId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM reservation_part WHERE reservation_id = ? AND picked_qty > 0",
+            Integer.class,
+            reservationId);
+    return n != null && n > 0;
   }
 
   /** SKU 오름차순 SKU → 현물 점유 수량(HELD+CONFIRMED 조각 합). */

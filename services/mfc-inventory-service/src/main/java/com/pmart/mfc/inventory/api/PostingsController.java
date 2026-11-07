@@ -117,7 +117,8 @@ public class PostingsController implements PostingsApi {
                             : Quality.valueOf(l.getResultQuality().getValue()),
                         l.getSourceLotRef(),
                         l.getExpiryDate(),
-                        l.getManufactureDate()))
+                        l.getManufactureDate(),
+                        l.getOrderLineId()))
             .toList();
     var r =
         executions.commit(
@@ -130,7 +131,8 @@ public class PostingsController implements PostingsApi {
                 body.getExecutionId(),
                 body.getFromLocation(),
                 body.getToLocation(),
-                lines));
+                lines,
+                body.getReservationId()));
     return ResponseEntity.status(HttpStatus.CREATED).body(Commands.dto(r));
   }
 

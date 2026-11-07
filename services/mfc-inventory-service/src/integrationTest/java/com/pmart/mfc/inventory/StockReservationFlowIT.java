@@ -370,10 +370,11 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         get(INBOUND, "/internal/commits/" + put.body().path("resultId").asString()).body();
     assertThat(putCommit.path("commitType").asString()).isEqualTo("TASK_EXECUTION");
     assertThat(putCommit.path("entries").toString()).contains("A-01-01").contains("STORED");
-    // 다른 SKU 의 lotId → 400, PICK 은 아직 501
+    // 다른 SKU 의 lotId → 400, 예약 없는 PICK → 400(6b: 예약·주문 줄 필수), MOVE 는 아직 501
     var wrongLot = List.<Map<String, Object>>of(Map.of("sku", newSku(), "lotId", lotId, "qty", 1));
     assertThat(execute("PUTAWAY", "RCV-DOCK", "A-01-01", wrongLot).status()).isEqualTo(400);
-    assertThat(execute("PICK", "A-01-01", "WORK-1", putLines).status()).isEqualTo(501);
+    assertThat(execute("PICK", "A-01-01", "WORK-1", putLines).status()).isEqualTo(400);
+    assertThat(execute("MOVE", "A-01-01", "WORK-1", putLines).status()).isEqualTo(501);
     // 원장 행이 없는 SKU 는 0
     assertThat(availability(newSku()).path("available").asInt()).isZero();
 
@@ -710,6 +711,129 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     String op = TestJwt.operator("op", List.of(), List.of(mfc));
     JsonNode lots = get(op, "/mfcs/" + mfc + "/stock?sku=" + bread).body().path("lots");
     assertThat(lots.toString()).contains(today.minusDays(1).toString());
+  }
+
+  /** PICK·PACK 실행(fulfillment 가 부르는 모양). */
+  Res pickPack(
+      String type, String reservationId, String from, String to, List<Map<String, Object>> lines) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("executionType", type);
+    body.put("mfcId", mfc);
+    body.put("taskId", "TSK-" + UUID.randomUUID());
+    body.put("executionId", "EXE-" + UUID.randomUUID());
+    body.put("reservationId", reservationId);
+    body.put("fromLocation", from);
+    if (to != null) {
+      body.put("toLocation", to);
+    }
+    body.put("lines", lines);
+    return post(
+        INBOUND,
+        "mfc-fulfillment-service",
+        "/internal/task-executions",
+        UUID.randomUUID().toString(),
+        body);
+  }
+
+  @Test
+  void pickAndPackMoveReservedUnitsWithoutChangingTotals() {
+    location("PAK-A-01", "PACKING", "AMBIENT", "ACTIVE", 1);
+    awaitLocations(4);
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 10);
+    Res held =
+        reserve(
+            UUID.randomUUID().toString(),
+            Map.of(
+                "orderId",
+                "ORD-PICK",
+                "mfcId",
+                mfc,
+                "lines",
+                List.of(Map.of("orderLineId", "L1", "sku", sku, "qty", 4))));
+    String reservationId = held.body().path("resultId").asString();
+
+    // 확정 전에는 집품 못 한다
+    JsonNode plan = get(ORCH, "/internal/reservations/" + reservationId + "/pick-plan").body();
+    JsonNode part = plan.path("parts").path(0);
+    String lot = part.path("lotId").asString();
+    assertThat(part.path("qty").asInt()).isEqualTo(4);
+    assertThat(part.path("locations").path(0).path("locationCode").asString()).isEqualTo("A-01-01");
+    assertThat(part.path("locations").path(0).path("qty").asInt()).isEqualTo(10);
+    Map<String, Object> line = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 3);
+    assertThat(pickPack("PICK", reservationId, "A-01-01", "PAK-A-01", List.of(line)).status())
+        .isEqualTo(409);
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    "/internal/reservations/" + reservationId + "/confirmations",
+                    UUID.randomUUID().toString(),
+                    Map.of("orderId", "ORD-PICK", "paymentAttemptId", "PAY-P"))
+                .status())
+        .isEqualTo(200);
+
+    // 포장 구역이 아닌 도착지, 예약에 없는 LOT, 남은 양 초과는 거절
+    assertThat(pickPack("PICK", reservationId, "A-01-01", "C-01-01", List.of(line)).status())
+        .isEqualTo(409);
+    Res wrongLot =
+        pickPack(
+            "PICK",
+            reservationId,
+            "A-01-01",
+            "PAK-A-01",
+            List.of(Map.of("orderLineId", "L1", "sku", sku, "lotId", "LOT-NONE", "qty", 1)));
+    assertThat(wrongLot.status()).isIn(400, 422);
+    Res tooMany =
+        pickPack(
+            "PICK",
+            reservationId,
+            "A-01-01",
+            "PAK-A-01",
+            List.of(Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 5)));
+    assertThat(tooMany.status()).isEqualTo(422);
+    assertThat(tooMany.body().path("code").asString()).isEqualTo("PICK_QTY_EXCEEDED");
+
+    // 3 집품 → 총량 불변(H10/E10/R4/A6), 선반 7·포장대 PICKED 3
+    assertThat(pickPack("PICK", reservationId, "A-01-01", "PAK-A-01", List.of(line)).status())
+        .isEqualTo(201);
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(10);
+    assertThat(av.path("sellable").asInt()).isEqualTo(10);
+    assertThat(av.path("reserved").asInt()).isEqualTo(4);
+    assertThat(av.path("available").asInt()).isEqualTo(6);
+    JsonNode after = get(ORCH, "/internal/reservations/" + reservationId + "/pick-plan").body();
+    assertThat(after.path("parts").path(0).path("pickedQty").asInt()).isEqualTo(3);
+    assertThat(after.path("parts").path(0).path("locations").path(0).path("qty").asInt())
+        .isEqualTo(7);
+
+    // 포장은 집품한 만큼만, 같은 포장대에서 PICKED → PACKED
+    Map<String, Object> pack = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 4);
+    assertThat(pickPack("PACK", reservationId, "PAK-A-01", null, List.of(pack)).status())
+        .isEqualTo(422);
+    assertThat(pickPack("PACK", reservationId, "PAK-A-01", null, List.of(line)).status())
+        .isEqualTo(201);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT qty FROM stock_unit WHERE mfc_id = ? AND sku = ? AND location_code ="
+                    + " 'PAK-A-01' AND work_state = 'PACKED'",
+                Integer.class,
+                mfc,
+                sku))
+        .isEqualTo(3);
+    assertThat(availability(sku).path("available").asInt()).isEqualTo(6);
+
+    // 집품 뒤에는 단순 해제 불가(IV-08 전)
+    Res release =
+        post(
+            ORCH,
+            "order-orchestration-service",
+            "/internal/reservations/" + reservationId + "/releases",
+            UUID.randomUUID().toString(),
+            Map.of("reason", "CANCEL_BEFORE_PICK"));
+    assertThat(release.status()).isEqualTo(409);
+    assertThat(release.body().path("code").asString()).isEqualTo("RESERVATION_PICKED");
   }
 
   @Test

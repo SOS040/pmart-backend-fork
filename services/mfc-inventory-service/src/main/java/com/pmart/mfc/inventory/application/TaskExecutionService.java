@@ -5,11 +5,16 @@ import com.pmart.common.web.CommandResponse;
 import com.pmart.common.web.CommandStatus;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.mfc.inventory.domain.PickRules;
+import com.pmart.mfc.inventory.domain.ReservationState;
 import com.pmart.mfc.inventory.domain.StockRules;
 import com.pmart.mfc.inventory.domain.StockUnit.Change;
 import com.pmart.mfc.inventory.domain.StockUnit.Key;
 import com.pmart.mfc.inventory.domain.StockUnit.Quality;
 import com.pmart.mfc.inventory.domain.StockUnit.Work;
+import com.pmart.mfc.inventory.infrastructure.ReservationStore;
+import com.pmart.mfc.inventory.infrastructure.ReservationStore.PickPart;
+import com.pmart.mfc.inventory.infrastructure.ReservationStore.ReservationRow;
 import com.pmart.mfc.inventory.infrastructure.SkuProjectionStore;
 import com.pmart.mfc.inventory.infrastructure.StockStore;
 import com.pmart.mfc.inventory.infrastructure.StockStore.LotRow;
@@ -18,6 +23,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,10 +71,11 @@ public class TaskExecutionService {
       @Nullable Quality resultQuality,
       @Nullable String sourceLotRef,
       @Nullable LocalDate expiryDate,
-      @Nullable LocalDate manufactureDate) {
+      @Nullable LocalDate manufactureDate,
+      @Nullable String orderLineId) {
 
     public ExecLine(String sku, String lotId, int qty, @Nullable Quality resultQuality) {
-      this(sku, lotId, qty, resultQuality, null, null, null);
+      this(sku, lotId, qty, resultQuality, null, null, null, null);
     }
 
     /** INSPECT 에서 LOT 을 나누는가(제조 LOT 표기·소비기한·제조일을 검수에서 확인). */
@@ -84,12 +91,14 @@ public class TaskExecutionService {
       String executionId,
       @Nullable String fromLocation,
       @Nullable String toLocation,
-      List<ExecLine> lines) {}
+      List<ExecLine> lines,
+      @Nullable String reservationId) {}
 
   private final StockStore stock;
   private final Ledger ledger;
   private final Locations locations;
   private final SkuProjectionStore skus;
+  private final ReservationStore reservations;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
@@ -98,12 +107,14 @@ public class TaskExecutionService {
       Ledger ledger,
       Locations locations,
       SkuProjectionStore skus,
+      ReservationStore reservations,
       RequestIdempotency idempotency,
       Clock clock) {
     this.stock = stock;
     this.ledger = ledger;
     this.locations = locations;
     this.skus = skus;
+    this.reservations = reservations;
     this.idempotency = idempotency;
     this.clock = clock;
   }
@@ -132,6 +143,9 @@ public class TaskExecutionService {
                   at)) {
                 return already(requestId, cmd.executionId(), fingerprint);
               }
+              if (cmd.type() == Type.PICK || cmd.type() == Type.PACK) {
+                linkReservation(cmd, at); // 예약 행 → 조각 잠금 뒤 잔량(센터 → LOT → 단위) — 예약 명령과 같은 잠금 순서
+              }
               ledger.postAs(
                   commitId,
                   "TASK_EXECUTION",
@@ -158,9 +172,23 @@ public class TaskExecutionService {
   }
 
   private static void validate(ExecCommand cmd) {
-    if (cmd.type() == Type.PICK || cmd.type() == Type.PACK || cmd.type() == Type.MOVE) {
-      throw new PmartException(
-          ErrorCode.UNSUPPORTED_ACTION, cmd.type() + " 반영은 아직 구현하지 않았습니다(6b 이후).");
+    if (cmd.type() == Type.MOVE) {
+      throw new PmartException(ErrorCode.UNSUPPORTED_ACTION, "MOVE 반영은 아직 구현하지 않았습니다.");
+    }
+    if (cmd.type() == Type.PICK || cmd.type() == Type.PACK) {
+      if (blank(cmd.reservationId())) {
+        throw new PmartException(
+            ErrorCode.VALIDATION_FAILED, cmd.type() + " 는 reservationId 가 필요합니다.");
+      }
+      if (cmd.type() == Type.PICK && blank(cmd.toLocation())) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "PICK 은 toLocation(포장 위치)이 필요합니다.");
+      }
+      for (ExecLine l : cmd.lines()) {
+        if (blank(l.orderLineId())) {
+          throw new PmartException(
+              ErrorCode.VALIDATION_FAILED, cmd.type() + " 줄은 orderLineId 가 필요합니다: " + l.sku());
+        }
+      }
     }
     if (cmd.executionId() == null || cmd.executionId().isBlank()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "executionId 가 필요합니다.");
@@ -198,6 +226,71 @@ public class TaskExecutionService {
         var p = projections.get(sku);
         locations.requireStorage(cmd.mfcId(), cmd.toLocation(), p == null ? null : p.storageType());
       }
+    }
+    if (cmd.type() == Type.PICK) {
+      locations.requirePacking(cmd.mfcId(), cmd.toLocation());
+    }
+  }
+
+  /**
+   * PICK·PACK 실적을 예약 조각에 붙인다(IV-07). 예약은 이 센터의 CONFIRMED 여야 하고, 줄은 같은 주문 줄·LOT 의 CONFIRMED 조각의 남은 양
+   * 안에서만.
+   */
+  private void linkReservation(ExecCommand cmd, Instant at) {
+    String reservationId = java.util.Objects.requireNonNull(cmd.reservationId());
+    ReservationRow r =
+        reservations
+            .lock(reservationId)
+            .orElseThrow(
+                () ->
+                    PmartException.notFound(
+                        ReservationService.RESERVATION_NOT_FOUND, "예약이 없습니다: " + reservationId));
+    if (!r.mfcId().equals(cmd.mfcId())) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED, "예약 " + reservationId + " 는 센터 " + r.mfcId() + " 의 예약입니다.");
+    }
+    if (r.state() != ReservationState.CONFIRMED) {
+      throw PmartException.invalidState(
+          "예약 " + reservationId + " 는 " + r.state() + " 상태라 집품·포장할 수 없습니다(확정 예약만).");
+    }
+    List<PickPart> parts = reservations.pickParts(reservationId, true);
+    List<PickRules.Part> view =
+        parts.stream()
+            .map(
+                p ->
+                    new PickRules.Part(
+                        p.partId(),
+                        p.orderLineId(),
+                        p.lotId(),
+                        p.state() == ReservationState.CONFIRMED,
+                        p.qty(),
+                        p.pickedQty(),
+                        p.packedQty()))
+            .toList();
+    PickRules.Step step = cmd.type() == Type.PICK ? PickRules.Step.PICK : PickRules.Step.PACK;
+    Map<String, Integer> used = new HashMap<>();
+    List<PickRules.Take> takes = new ArrayList<>();
+    for (ExecLine l : cmd.lines()) {
+      PickRules.Result res =
+          PickRules.allocate(
+              step,
+              java.util.Objects.requireNonNull(l.orderLineId()),
+              l.lotId(),
+              l.qty(),
+              view,
+              used);
+      if (res.error() != null) {
+        throw new PmartException(
+            res.error(),
+            HttpStatus.UNPROCESSABLE_CONTENT,
+            java.util.Objects.requireNonNullElse(res.detail(), res.error()),
+            false,
+            List.of(new PmartException.Detail(l.sku(), res.error())));
+      }
+      takes.addAll(res.takes());
+    }
+    for (PickRules.Take t : takes) {
+      reservations.addPicked(t.partId(), t.qty(), step == PickRules.Step.PICK, at);
     }
   }
 
@@ -248,6 +341,17 @@ public class TaskExecutionService {
           out.add(new Change(from, -l.qty()));
           out.add(new Change(from.at(cmd.toLocation(), Work.STORED), l.qty()));
         }
+        case PICK -> {
+          // 선반 NORMAL·STORED → 포장 위치 NORMAL·PICKED(E 유지, 위치·업무 상태만)
+          Key from = new Key(cmd.fromLocation(), l.sku(), l.lotId(), Quality.NORMAL, Work.STORED);
+          out.add(new Change(from, -l.qty()));
+          out.add(new Change(from.at(cmd.toLocation(), Work.PICKED), l.qty()));
+        }
+        case PACK -> {
+          Key from = new Key(cmd.fromLocation(), l.sku(), l.lotId(), Quality.NORMAL, Work.PICKED);
+          out.add(new Change(from, -l.qty()));
+          out.add(new Change(from.with(Quality.NORMAL, Work.PACKED), l.qty()));
+        }
         default -> throw new IllegalStateException(cmd.type().name());
       }
     }
@@ -264,7 +368,9 @@ public class TaskExecutionService {
         .append('|')
         .append(cmd.fromLocation())
         .append('|')
-        .append(cmd.toLocation());
+        .append(cmd.toLocation())
+        .append('|')
+        .append(cmd.reservationId());
     for (ExecLine l : cmd.lines()) {
       sb.append('|')
           .append(l.sku())
@@ -279,7 +385,9 @@ public class TaskExecutionService {
           .append(':')
           .append(l.expiryDate())
           .append(':')
-          .append(l.manufactureDate());
+          .append(l.manufactureDate())
+          .append(':')
+          .append(l.orderLineId());
     }
     return StockRules.sha256(sb.toString());
   }

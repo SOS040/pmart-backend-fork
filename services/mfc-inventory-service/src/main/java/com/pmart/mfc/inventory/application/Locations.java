@@ -97,6 +97,14 @@ public class Locations {
     }
   }
 
+  /** 피킹 도착 위치(IV-07): 등록·ACTIVE·구역 PACKING. 온도대는 보지 않는다(포장대는 짧게 머무는 작업 위치). */
+  public void requirePacking(String mfcId, String locationCode) {
+    LocationRow r = active(mfcId, locationCode);
+    if (!"PACKING".equals(r.zone())) {
+      throw mismatch(LOCATION_ZONE_MISMATCH, locationCode + " 는 포장 구역이 아닙니다(구역 " + r.zone() + ").");
+    }
+  }
+
   /** 출발 위치: 투영에 있고 실사 잠금이면 거절. 투영에 없는 위치(이관 위치 MIGRATION 등)는 단위 행 잔량으로만 판정. */
   public void requireNotCountLocked(String mfcId, String locationCode) {
     store

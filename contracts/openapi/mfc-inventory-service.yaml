@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -77,6 +77,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Reservation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/reservations/{reservationId}/pick-plan:
+    get:
+      tags: [reservations]
+      summary: '[fulfillment→inventory] 피킹 지시 — 예약 조각(LOT)별 남은 집품량과 선반 위치 후보 (IV-07, 0.5.0)'
+      description: |
+        조각마다 계획(qty)·집품(pickedQty)·포장(packedQty)과, 그 LOT 의 NORMAL·STORED 단위가 있는 위치(코드 순, 위치별 수량)를 준다.
+        위치 수량은 그 LOT 의 선반 잔량이며 이 예약 몫만이 아니다(같은 LOT 을 다른 주문도 잡을 수 있다). 지시는 참고이고, 실제 집품은 CommitTaskExecution PICK 이 판정한다.
+      operationId: getPickPlan
+      parameters:
+        - { name: reservationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PickPlan' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/reservations/{reservationId}/confirmations:
@@ -217,10 +235,16 @@ paths:
         PICK: STORED→PICKED, 위치 변경. PACK: PICKED→PACKED. MOVE: 위치 이동(취소 복귀 포함, CANCEL_RETURN_PENDING→STORED 시 E/A+q).
         appliedQty < 요청량이면 PARTIAL_APPLIED.
 
+        PICK·PACK(IV-07, 0.5.0): reservationId·lines[].orderLineId 필수. 예약이 CONFIRMED 이고 그 줄·LOT 의 CONFIRMED 조각에 남은 양
+        (PICK: qty − pickedQty, PACK: pickedQty − packedQty)이 있어야 한다 — 예약에 없는 LOT 은 422 LOT_MISMATCH, 남은 양 초과는
+        422 PICK_QTY_EXCEEDED. PICK 은 fromLocation(선반)의 NORMAL·STORED → toLocation(등록·ACTIVE·구역 PACKING, 아니면
+        LOCATION_ZONE_MISMATCH)의 NORMAL·PICKED, PACK 은 fromLocation 의 PICKED → 같은 위치 PACKED. H/E/R/A 총량 불변(위치·업무 상태만).
+        피킹·포장 시작으로 출고 차감하지 않는다(인계 IV-08). MOVE 는 아직 501.
+
         구현(ADR-0040, 0.2.0): INSPECT(fromLocation 의 PENDING_INSPECTION/UNSTOWED → resultQuality/UNSTOWED)와
         PUTAWAY(fromLocation 의 NORMAL/UNSTOWED → toLocation 의 NORMAL/STORED, 이때 E+q). executionId 필수 — 같은 executionId 는
         요청 ID 가 달라도 한 번(다른 내용이면 409 EXECUTION_ALREADY_POSTED). lines[].lotId 는 inventory lotId.
-        위치 잔량이 모자라면 422 INSUFFICIENT_STOCK. PICK·PACK·MOVE 는 501 UNSUPPORTED_ACTION(6b 이후).
+        위치 잔량이 모자라면 422 INSUFFICIENT_STOCK. MOVE 는 501 UNSUPPORTED_ACTION.
         위치 검사(mfc-location 투영): 출발 위치가 실사 잠금이면 409 LOCATION_CLOSED. PUTAWAY 목적지는 등록·ACTIVE·구역 STORAGE/PICKING·
         온도대 = SKU 보관 유형 — 아니면 422 LOCATION_NOT_REGISTERED / 409 LOCATION_CLOSED·LOCATION_ZONE_MISMATCH·TEMPERATURE_ZONE_MISMATCH,
         보관 유형을 모르면 422 CONFIG_REQUIRED.
@@ -710,6 +734,35 @@ components:
               state: { $ref: '#/components/schemas/ReservationPartState' }
               blockedReason: { type: string }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    PickPlan:
+      type: object
+      properties:
+        reservationId: { type: string }
+        orderId: { type: string }
+        mfcId: { type: string }
+        state: { $ref: '#/components/schemas/ReservationPartState' }
+        parts:
+          type: array
+          items:
+            type: object
+            properties:
+              partId: { type: string }
+              orderLineId: { type: [string, 'null'] }
+              sku: { type: string }
+              lotId: { type: string }
+              expiryDate: { type: [string, 'null'], format: date }
+              state: { $ref: '#/components/schemas/ReservationPartState' }
+              qty: { type: integer }
+              pickedQty: { type: integer }
+              packedQty: { type: integer }
+              locations:
+                type: array
+                description: 그 LOT 의 NORMAL·STORED 잔량이 있는 위치(코드 순)
+                items:
+                  type: object
+                  properties:
+                    locationCode: { type: string }
+                    qty: { type: integer }
     ConfirmReceiptRequest:
       type: object
       required: [receiptId, trfId, departureId, mfcId, lines]
@@ -773,6 +826,7 @@ components:
             properties:
               sku: { $ref: '_common.yaml#/components/schemas/Sku' }
               lotId: { type: string }
+              orderLineId: { type: string, description: PICK·PACK 필수 — 예약 조각의 주문 줄 }
               qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
               resultQuality: { type: string, enum: [NORMAL, QUARANTINED], description: INSPECT 전용 }
               sourceLotRef: { type: string, maxLength: 128, description: 'INSPECT 전용 — 검수에서 확인한 제조 LOT 표기. sourceLotRef·expiryDate 중 하나라도 있으면 그 추적 LOT 으로 나눈다(같은 위치, 총량 불변)' }

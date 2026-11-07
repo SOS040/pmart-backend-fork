@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -262,12 +262,19 @@ paths:
     get:
       tags: [assignments]
       summary: 작업 배정 조회 (fulfillment·점원 단말; 활성 담당 1명, assignment_version)
+      description: |
+        그 센터 운영자 또는 서비스 토큰. 기본은 ACTIVE 만(작업마다 최대 1건). taskId 로 한 작업의 현재 담당을, workerId 로 한 작업자의 담당 작업을 본다.
+        date 는 배정 시각(Asia/Seoul) 날짜로 거른다(0.2.0 부터 선택).
       operationId: listAssignments
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
-        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - { name: date, in: query, schema: { type: string, format: date } }
         - { name: workerId, in: query, schema: { type: string } }
         - { name: taskId, in: query, schema: { type: string } }
+        - name: state
+          in: query
+          description: 생략 시 ACTIVE
+          schema: { type: string, enum: [ACTIVE, SUPERSEDED, RELEASED] }
       responses:
         '200':
           description: OK
@@ -278,6 +285,40 @@ paths:
                 properties:
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
                   items: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [assignments]
+      summary: 수동 배정·재배정 (WK-02·WK-05 — Q-08 결정 전에는 권한자 수동 지정만)
+      description: |
+        2026-11-07(슬라이스 6b). 그 센터의 `MFC_SUPERVISOR` 운영자만. 작업에 활성 담당을 한 명 정한다 — 이미 담당이 있으면 그 배정은 SUPERSEDED,
+        assignmentVersion 은 작업마다 1부터 1씩 는다. X-Expected-Version = 지금 활성 assignmentVersion(담당이 없으면 0) — 다르면 409 VERSION_CONFLICT.
+        같은 작업자에게 다시 지정하면 바꾸지 않고 현재 배정을 돌려준다(200).
+        작업 상태(시작 가능 여부)는 mfc-fulfillment 가 시작 때 판정한다. 작업자 자격·근무·장비 정본은 아직 없어 검사하지 않는다(WK-02 강제 제약 미구현).
+        바뀌면 같은 트랜잭션에서 AssignmentPublished(planId null, planVersion = assignmentVersion, 항목 1개, 토픽 mfc.capacity.v1).
+      operationId: assignTask
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignTaskRequest' }
+      responses:
+        '200':
+          description: 이미 그 작업자가 담당(변화 없음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+        '201':
+          description: 배정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /assignment-plans:
     post:
@@ -473,15 +514,27 @@ components:
         reservedLoadUnits: { type: integer }
         bayCount: { type: integer }
         state: { type: string, enum: [OPEN, FULL, CLOSED] }
+    AssignTaskRequest:
+      type: object
+      required: [mfcId, taskId, taskType, workerId]
+      properties:
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        taskId: { type: string, maxLength: 96 }
+        taskType: { type: string, enum: [PICK, PACK, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH], description: 표시·집계용(작업 정본은 fulfillment/inbound) }
+        workerId: { type: string, maxLength: 64, description: 작업자 = 운영자 ID(작업자 로그인 BR-02 결정 전 잠정) }
+        reason: { type: string, maxLength: 200 }
     Assignment:
       type: object
       properties:
         assignmentId: { type: string }
+        mfcId: { type: string }
         taskId: { type: string }
+        taskType: { type: string }
         workerId: { type: string }
         assignmentVersion: { type: integer }
         state: { type: string, enum: [ACTIVE, SUPERSEDED, RELEASED] }
-        planId: { type: [string, 'null'] }
+        planId: { type: [string, 'null'], description: 수동 배정은 null }
+        assignedBy: { type: [string, 'null'] }
         assignedAt: { type: string, format: date-time }
     AssignmentPlan:
       type: object

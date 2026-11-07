@@ -65,6 +65,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ReservationService {
 
+  /** 집품이 시작된 예약의 단순 해제(IV-08 전). */
+  public static final String RESERVATION_PICKED = "RESERVATION_PICKED";
+
   public static final String RESERVATION_NOT_FOUND = "RESERVATION_NOT_FOUND";
   public static final String PARTIAL_RELEASE_NOT_SUPPORTED = "PARTIAL_RELEASE_NOT_SUPPORTED";
   public static final String NO_ELIGIBLE_LOT = "NO_ELIGIBLE_LOT";
@@ -445,6 +448,15 @@ public class ReservationService {
                     null,
                     at);
               }
+              if (reservations.anyPicked(reservationId)) {
+                // 집품 뒤 취소는 판매 제외(CANCEL_RETURN_PENDING)·복귀로 처리해야 한다(IV-08) — 단순 해제로 R 만 줄이지 않는다
+                throw new PmartException(
+                    RESERVATION_PICKED,
+                    HttpStatus.CONFLICT,
+                    "예약 " + reservationId + " 는 집품이 시작돼 해제할 수 없습니다(집품 후 취소는 IV-08).",
+                    false,
+                    List.of());
+              }
               Map<String, Integer> held = reservations.heldBySku(reservationId);
               if (!StockRules.isFullRelease(lines, held)) {
                 throw new PmartException(
@@ -542,6 +554,49 @@ public class ReservationService {
   }
 
   // ---------- 조회 ----------
+
+  /** 피킹 지시 한 조각: 예약 조각 + LOT 소비기한 + 그 LOT 의 선반 위치별 잔량(코드 순). */
+  public record PickPlanPart(
+      ReservationStore.PickPart part,
+      @Nullable LocalDate expiryDate,
+      List<Map.Entry<String, Integer>> locations) {}
+
+  public record PickPlan(ReservationRow reservation, List<PickPlanPart> parts) {}
+
+  @Transactional(readOnly = true)
+  public PickPlan pickPlan(String reservationId) {
+    ReservationRow r =
+        reservations
+            .find(reservationId)
+            .orElseThrow(
+                () -> PmartException.notFound(RESERVATION_NOT_FOUND, "예약이 없습니다: " + reservationId));
+    List<ReservationStore.PickPart> parts = reservations.pickParts(reservationId, false);
+    var lots =
+        stock.lots(
+            parts.stream()
+                .map(ReservationStore.PickPart::lotId)
+                .collect(java.util.stream.Collectors.toSet()));
+    Map<String, List<com.pmart.mfc.inventory.infrastructure.StockStore.UnitRow>> unitsBySku =
+        new LinkedHashMap<>();
+    List<PickPlanPart> out = new ArrayList<>();
+    for (ReservationStore.PickPart p : parts) {
+      var units = unitsBySku.computeIfAbsent(p.sku(), s -> stock.units(r.mfcId(), s));
+      Map<String, Integer> byLocation = new java.util.TreeMap<>();
+      for (var u : units) {
+        if (u.key().lotId().equals(p.lotId())
+            && u.key().quality() == com.pmart.mfc.inventory.domain.StockUnit.Quality.NORMAL
+            && u.key().work() == com.pmart.mfc.inventory.domain.StockUnit.Work.STORED
+            && u.qty() > 0) {
+          byLocation.merge(u.key().locationCode(), u.qty(), Integer::sum);
+        }
+      }
+      var lot = lots.get(p.lotId());
+      out.add(
+          new PickPlanPart(
+              p, lot == null ? null : lot.expiryDate(), new ArrayList<>(byLocation.entrySet())));
+    }
+    return new PickPlan(r, out);
+  }
 
   @Transactional(readOnly = true)
   public ReservationView get(String reservationId) {
