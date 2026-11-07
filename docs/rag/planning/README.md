@@ -9,6 +9,8 @@
 | 파일 | 내용 | 상태 |
 |---|---|---|
 | [`2026-11-07-references-review.md`](2026-11-07-references-review.md) | 11-07 원문 3개 검토, 현재 구현 대조, 결정 대기 목록 | 작성 |
+| [`2026-11-07-report-operator-rag.md`](2026-11-07-report-operator-rag.md) | 운영자용 RAG(백오피스) 구성 보고서 — 구현 상태·흐름·권한·기준선·결정 대기 | 작성 |
+| [`2026-11-07-report-customer-rag.md`](2026-11-07-report-customer-rag.md) | 고객용 RAG(고객앱) 구성 보고서 — 계획, 운영자용과 같은 것/새로 만들 것, 결정 대기 C1~C8 | 작성 |
 | [`2026-11-07-rag-architecture-backoffice.svg`](2026-11-07-rag-architecture-backoffice.svg) | 백오피스(운영자) 경로 — 현재 구현 기준(원본 그림 문제 1~7 수정, pgvector 만, 결정 대기는 점선). 밝은·어두운 화면 둘 다 | 작성 |
 | [`2026-11-07-rag-architecture-customer.svg`](2026-11-07-rag-architecture-customer.svg) | 고객앱 경로 — 계획(운영자 경로에서 그대로 쓰는 것은 실선, 새로 만들 것·결정 대기는 점선) | 작성 |
 | [`2026-11-07-rag-architecture-backoffice.en.svg`](2026-11-07-rag-architecture-backoffice.en.svg) · [`2026-11-07-rag-architecture-customer.en.svg`](2026-11-07-rag-architecture-customer.en.svg) | 위 두 그림의 영문판(같은 배치, 글만 영어. 긴 글에 맞춰 화살표 시작점만 옮김) | 작성 |
