@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -435,6 +435,11 @@ paths:
       description: |
         QUARANTINE: Q+q, E−q, 영향 ReservationPart→BLOCKED, ReservationBlocked(영향 orderId 포함) 발행.
         RELEASE: Q−q, E+q. DISPOSE: 승인 잔량 내 H−q, Q−q. 승인 잔량 초과는 APPROVAL_REQUIRED.
+        구현(0.9.0, 2026-11-08): 줄마다 sku·lotId·locationCode·qty 필수, workState STORED(기본)/UNSTOWED — 그 위치·LOT·업무 상태의 단위 행.
+        QUARANTINE = NORMAL → QUARANTINED(E 는 STORED 일 때만 −q). LOT 의 R 이 남은 E 를 넘으면 넘는 양만 그 LOT 의 아직 집지 않은
+        HELD·CONFIRMED 조각을 **나중에 잡은 예약부터** 줄여 BLOCKED 조각(사유 QUALITY_HOLD) + ReservationBlocked. 자동 재배분 없음(MFC Q-13).
+        RELEASE = QUARANTINED → NORMAL(같은 업무 상태 — UNSTOWED 는 적치 뒤 판매). DISPOSE = QUARANTINED −q(승인 잔량은 mfc-quality 가 지킴).
+        집품·포장분(PICKED/PACKED)은 결품·파손 보고(shortage-reports)로. 같은 Idempotency-Key 는 같은 결과. 부족 422 INSUFFICIENT_STOCK.
       operationId: postQualityDecision
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -1027,12 +1032,13 @@ components:
           minItems: 1
           items:
             type: object
-            required: [sku, qty]
+            required: [sku, lotId, locationCode, qty]
             properties:
               sku: { $ref: '_common.yaml#/components/schemas/Sku' }
               lotId: { type: string }
               locationCode: { type: string }
               qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+              workState: { type: string, enum: [STORED, UNSTOWED], description: '0.9.0 — 단위 행 업무 상태(기본 STORED)' }
     AdjustmentRequest:
       type: object
       required: [adjustmentType, mfcId, approvalRef, lines]

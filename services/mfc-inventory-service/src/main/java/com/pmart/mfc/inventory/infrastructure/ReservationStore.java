@@ -162,6 +162,38 @@ public class ReservationStore {
         reservationId);
   }
 
+  /** 한 LOT 에 걸린, 아직 집지 않은 양이 있는 HELD·CONFIRMED 조각. */
+  public record LotPart(
+      String partId,
+      String reservationId,
+      @Nullable String orderLineId,
+      int qty,
+      int pickedQty,
+      ReservationState state) {}
+
+  /**
+   * 센터·SKU·LOT 의 HELD·CONFIRMED 조각 중 아직 집지 않은 양이 있는 것 — 나중에 잡은 예약부터(품질 격리 보류 순서, 기존 약속 우선). 예약 행을
+   * 잠근 뒤 다시 부르면 그 사이 변화가 반영된다.
+   */
+  public List<LotPart> activeLotParts(String mfcId, String sku, String lotId) {
+    return jdbc.query(
+        "SELECT p.part_id, p.reservation_id, p.order_line_id, p.qty, p.picked_qty, p.state"
+            + " FROM reservation_part p JOIN reservation r ON r.reservation_id = p.reservation_id"
+            + " WHERE r.mfc_id = ? AND p.sku = ? AND p.lot_id = ? AND p.state IN ('HELD', 'CONFIRMED')"
+            + " AND p.qty > p.picked_qty ORDER BY r.created_at DESC, p.part_id DESC",
+        (rs, i) ->
+            new LotPart(
+                rs.getString("part_id"),
+                rs.getString("reservation_id"),
+                rs.getString("order_line_id"),
+                rs.getInt("qty"),
+                rs.getInt("picked_qty"),
+                ReservationState.valueOf(rs.getString("state"))),
+        mfcId,
+        sku,
+        lotId);
+  }
+
   /** 피킹·포장 조각(part_id 순). lock 이면 FOR UPDATE — 예약 행을 먼저 잠근 뒤 부른다. */
   public List<PickPart> pickParts(String reservationId, boolean lock) {
     return jdbc.query(

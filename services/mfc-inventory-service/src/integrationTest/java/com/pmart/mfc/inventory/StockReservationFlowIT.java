@@ -993,6 +993,91 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(2);
   }
 
+  static final String QUALITY = TestJwt.service("mfc-quality-service");
+
+  Res quality(String type, String approvalRef, String sku, String lot, int qty) {
+    Map<String, Object> b = new LinkedHashMap<>();
+    b.put("postingType", type);
+    b.put("mfcId", mfc);
+    b.put("qualityDecisionId", "QD-" + UUID.randomUUID());
+    b.put("approvalRef", approvalRef);
+    b.put(
+        "lines", List.of(Map.of("sku", sku, "lotId", lot, "locationCode", "A-01-01", "qty", qty)));
+    return post(
+        QUALITY,
+        "mfc-quality-service",
+        "/internal/quality-postings",
+        UUID.randomUUID().toString(),
+        b);
+  }
+
+  /** 품질 격리 → 넘치는 예약만 나중 예약부터 보류(BLOCKED) → 해제(E+) → 폐기(H−, Q−). */
+  @Test
+  void qualityQuarantineBlocksNewestReservationsThenReleaseAndDispose() {
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 10);
+    String older = confirmedReservation("ORD-Q1", sku, 3);
+    String newer = confirmedReservation("ORD-Q2", sku, 4);
+    String lot =
+        get(ORCH, "/internal/reservations/" + older + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    assertThat(availability(sku).path("available").asInt()).isEqualTo(3);
+
+    // 근거 없으면 거절
+    Res noRef = quality("QUARANTINE", " ", sku, lot, 1);
+    assertThat(noRef.body().path("code").asString()).isEqualTo("APPROVAL_REQUIRED");
+
+    // 격리 6 → E4, R7 이 넘치는 3 은 나중 예약(ORD-Q2)에서 보류 → H10 Q6 E4 R4 A0
+    Res q = quality("QUARANTINE", "QD-1", sku, lot, 6);
+    assertThat(q.status()).as(q.body().toString()).isEqualTo(201);
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(10);
+    assertThat(av.path("quarantined").asInt()).isEqualTo(6);
+    assertThat(av.path("sellable").asInt()).isEqualTo(4);
+    assertThat(av.path("reserved").asInt()).isEqualTo(4);
+    assertThat(av.path("available").asInt()).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COALESCE(SUM(qty), 0) FROM reservation_part WHERE reservation_id = ?"
+                    + " AND state = 'BLOCKED' AND blocked_reason = 'QUALITY_HOLD'",
+                Integer.class,
+                newer))
+        .isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM reservation_part WHERE reservation_id = ? AND state = 'BLOCKED'",
+                Integer.class,
+                older))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'ReservationBlocked'"
+                    + " AND aggregateid = ?",
+                Integer.class,
+                newer))
+        .isEqualTo(1);
+
+    // 해제 2 → Q4 E6 A2 (보류된 예약은 그대로 — 자동 재배분 없음)
+    assertThat(quality("RELEASE", "QD-2", sku, lot, 2).status()).isEqualTo(201);
+    av = availability(sku);
+    assertThat(av.path("quarantined").asInt()).isEqualTo(4);
+    assertThat(av.path("sellable").asInt()).isEqualTo(6);
+    assertThat(av.path("available").asInt()).isEqualTo(2);
+
+    // 폐기 4 → H6 Q0, 격리보다 많이 폐기는 거절
+    assertThat(quality("DISPOSE", "DSP-1", sku, lot, 5).status()).isEqualTo(422);
+    assertThat(quality("DISPOSE", "DSP-1", sku, lot, 4).status()).isEqualTo(201);
+    av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(6);
+    assertThat(av.path("quarantined").asInt()).isZero();
+    assertThat(av.path("sellable").asInt()).isEqualTo(6);
+  }
+
   Res shortage(
       String reportId, String reservationId, String sku, String lot, int qty, String reason) {
     Map<String, Object> b = new LinkedHashMap<>();

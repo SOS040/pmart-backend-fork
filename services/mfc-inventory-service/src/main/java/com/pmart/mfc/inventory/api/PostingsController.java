@@ -24,8 +24,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 PostingsApi. 수령 전기(ConfirmReceipt)·수령 결과 조회·작업 실행(INSPECT·PUTAWAY)을 구현했다. 인계·품질·조정은 인터페이스
- * default 의 501. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
+ * 계약 PostingsApi. 수령 전기(ConfirmReceipt)·수령 결과 조회·작업 실행(INSPECT·PUTAWAY)을 구현했다. 인계·품질 반영도 구현. 조정은
+ * 인터페이스 default 의 501. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
 public class PostingsController implements PostingsApi {
@@ -35,13 +35,45 @@ public class PostingsController implements PostingsApi {
   private final CorrectionService corrections;
   private final com.pmart.mfc.inventory.application.ShortageService shortages;
   private final com.pmart.mfc.inventory.application.HandoverPostingService handovers;
+  private final com.pmart.mfc.inventory.application.QualityPostingService quality;
+
+  @Override
+  public ResponseEntity<ReserveInventory201Response> postQualityDecision(
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.inventory.api.generated.model.QualityPostingRequest body,
+      @Nullable Integer xExpectedVersion) {
+    var r =
+        quality.post(
+            idempotencyKey,
+            xSourceSystem,
+            new com.pmart.mfc.inventory.application.QualityPostingService.Posting(
+                body.getPostingType().getValue(),
+                body.getMfcId(),
+                body.getQualityDecisionId(),
+                body.getApprovalRef(),
+                body.getReason(),
+                body.getLines().stream()
+                    .map(
+                        l ->
+                            new com.pmart.mfc.inventory.application.QualityPostingService.Line(
+                                l.getSku(),
+                                l.getLotId(),
+                                l.getLocationCode(),
+                                l.getQty(),
+                                l.getWorkState() == null ? null : l.getWorkState().getValue()))
+                    .toList()));
+    return ResponseEntity.status(HttpStatus.CREATED).body(Commands.dto(r));
+  }
 
   public PostingsController(
       ReceiptService receipts,
       TaskExecutionService executions,
       CorrectionService corrections,
       com.pmart.mfc.inventory.application.ShortageService shortages,
-      com.pmart.mfc.inventory.application.HandoverPostingService handovers) {
+      com.pmart.mfc.inventory.application.HandoverPostingService handovers,
+      com.pmart.mfc.inventory.application.QualityPostingService quality) {
+    this.quality = quality;
     this.receipts = receipts;
     this.executions = executions;
     this.corrections = corrections;
