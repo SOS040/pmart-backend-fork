@@ -675,6 +675,7 @@ components:
         unitType: { $ref: '#/components/schemas/SaleUnitType' }
         unitsPerSku: { type: integer, minimum: 1, description: 구성 낱개 수 }
         weightG: { type: integer, minimum: 0 }
+        volumeMl: { type: [integer, 'null'], minimum: 0, description: 용량(mL). 없으면 null(2026-11-07 조회에 추가 — 수정 초안이 값을 잃지 않게) }
         saleState: { $ref: '#/components/schemas/SaleState' }
         alcohol: { type: boolean, description: 주류 여부(PG 인증 결과 확인 대상) }
         shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
@@ -814,6 +815,12 @@ components:
       properties:
         sourceSystem: { type: string, description: '외부 원천 (예: bmart-capture). 개별 입력은 생략' }
         sourceKey: { type: string, description: '원천 키 (seedProductId). sourceSystem 과 함께 upsert 기준' }
+        targetProductId:
+          type: string
+          description: |
+            기존 상품 속성 변경(2026-11-07). 원천 키 없이 등록된 상품도 승인으로 새 버전을 만들 수 있게 갱신 대상을 직접 지정한다.
+            있으면 registration=UPDATE(그 상품), SKU 유지(판매 단위·구성 수가 다르면 반영 때 SKU_IDENTITY_CHANGED). 없는 상품이면
+            TARGET_PRODUCT_NOT_FOUND, 원천 키가 다른 상품에 연결돼 있으면 TARGET_CONFLICT. 판매 상태는 product.saleState 를 주지 않으면 유지.
         product:
           type: object
           required: [internalName]
@@ -856,7 +863,7 @@ components:
       type: object
       required: [code]
       properties:
-        code: { type: string, description: 'WEIGHT_REQUIRED / STORAGE_TYPE_REQUIRED / CATEGORY_NOT_MAPPED / CATEGORY_NOT_FOUND / BARCODE_CONFLICT / BARCODE_DUPLICATED_IN_DRAFT / BASE_PRODUCT_NOT_FOUND / FILTER_OPTION_NOT_FOUND' }
+        code: { type: string, description: 'WEIGHT_REQUIRED / STORAGE_TYPE_REQUIRED / CATEGORY_NOT_MAPPED / CATEGORY_NOT_FOUND / BARCODE_CONFLICT / BARCODE_DUPLICATED_IN_DRAFT / BASE_PRODUCT_NOT_FOUND / FILTER_OPTION_NOT_FOUND / SHELF_LIFE_INVALID / TARGET_PRODUCT_NOT_FOUND / TARGET_CONFLICT' }
         field: { type: string }
         detail: { type: string }
     ProductDraft:

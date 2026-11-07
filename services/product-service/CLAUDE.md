@@ -39,3 +39,4 @@
 ## 상태
 상품 등록(초안·배치·카테고리 트리·승인 반영·SKU 발급), 조회, 판매 상태 변경, SKU 발급 확인, 구매 상한 검증 구현(2026-10-30).
 - SKU 소비기한 보장 `shelfLifeGuarantee`(ADR-0041, 2026-11-07, V4): `minRemainingDays`·`maxDaysSinceManufacture`(선택, 0~3650, 벗어나면 `SHELF_LIFE_INVALID`). 초안 → PRODUCT 승인으로 반영, 재적재 승인은 초안 값으로 바꾼다(없으면 보장 없음). `SkuDetail`·`ProductVersionPublished.skus[]` 에 나간다. 고시 문구 해석은 하지 않는다(등록 쪽 몫).
+- 원천 키 없는 상품의 속성 변경(2026-11-07): 초안 `targetProductId` → registration=UPDATE, 승인 반영은 그 상품의 새 버전(SKU 유지, `ProductDraftService.updateTarget` 을 초안 검증·제출 표시·`ApprovalApplier` 가 같이 쓴다). 없는 상품 `TARGET_PRODUCT_NOT_FOUND`, 원천 키가 다른 상품에 연결 `TARGET_CONFLICT`. `SkuDetail.volumeMl` 추가(조회로 만든 수정 초안이 용량을 잃지 않게).

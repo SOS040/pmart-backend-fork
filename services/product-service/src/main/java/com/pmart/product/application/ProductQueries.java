@@ -117,6 +117,7 @@ public class ProductQueries {
     m.put("unitType", s.unitType());
     m.put("unitsPerSku", s.unitsPerSku());
     m.put("weightG", s.weightG());
+    m.put("volumeMl", s.volumeMl());
     m.put("storageType", s.storageType());
     m.put("alcohol", s.alcohol());
     Map<String, Object> guarantee = ProductSnapshots.shelfLifeGuarantee(s);
@@ -153,6 +154,7 @@ public class ProductQueries {
     m.put("unitType", s.get("unitType"));
     m.put("unitsPerSku", s.get("unitsPerSku"));
     m.put("weightG", s.get("weightG"));
+    m.put("volumeMl", s.get("volumeMl"));
     m.put(
         "saleState", "INACTIVE".equals(s.get("state")) ? "SALE_STOPPED" : product.get("saleState"));
     m.put("alcohol", s.get("alcohol"));

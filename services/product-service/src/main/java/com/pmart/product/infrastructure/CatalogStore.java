@@ -51,8 +51,13 @@ public class CatalogStore {
       @Nullable Integer ti,
       @Nullable Integer hi) {}
 
+  /** 원천 키 연결. targetProductId 로 지정한 갱신 대상도 같은 모양으로 쓴다(그때 원천 키·마지막 초안은 비어 있을 수 있다). */
   public record SourceLinkRow(
-      String sourceSystem, String sourceKey, String productId, String skus, String lastDraftId) {}
+      @Nullable String sourceSystem,
+      @Nullable String sourceKey,
+      String productId,
+      String skus,
+      @Nullable String lastDraftId) {}
 
   private final JdbcTemplate jdbc;
 

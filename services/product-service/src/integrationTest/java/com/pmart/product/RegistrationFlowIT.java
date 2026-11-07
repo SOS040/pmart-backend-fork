@@ -697,6 +697,57 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(get("/barcodes/0000").status()).isEqualTo(404);
   }
 
+  @Test
+  void productWithoutSourceKeyIsUpdatedByTargetProductId() throws Exception {
+    ensureTree();
+    String barcode = "0" + (System.nanoTime() % 1_000_000_000_000L);
+    // 원천 키 없이 개별 등록한 상품
+    Res a = post("/product-drafts", water(barcode));
+    String aId = a.body().path("draftId").asString();
+    decide(
+        post("/product-drafts/" + aId + "/submissions", null).body().path("approvalRequest"),
+        "APPROVED");
+    JsonNode applied =
+        await("/product-drafts/" + aId, b -> "APPLIED".equals(b.path("state").asString())).body();
+    String productId = applied.path("resultProductId").asString();
+    String sku = applied.path("resultSkus").path(0).asString();
+
+    // 없는 상품 지정은 INVALID
+    Map<String, Object> unknown = new LinkedHashMap<>(water(barcode));
+    unknown.put("targetProductId", "PRD-none");
+    Res bad = post("/product-drafts", unknown);
+    assertThat(bad.body().path("problems").toString()).contains("TARGET_PRODUCT_NOT_FOUND");
+
+    // 갱신 대상 지정 + 소비기한 보장 추가 → UPDATE, 같은 SKU 의 새 버전
+    Map<String, Object> skuIn =
+        new LinkedHashMap<>((Map<String, Object>) ((List<?>) water(barcode).get("skus")).get(0));
+    skuIn.put("shelfLifeGuarantee", Map.of("maxDaysSinceManufacture", 3));
+    skuIn.put("volumeMl", 500);
+    Map<String, Object> change = new LinkedHashMap<>(water(barcode));
+    change.put("skus", List.of(skuIn));
+    change.put("targetProductId", productId);
+    Res draft = post("/product-drafts", change);
+    assertThat(draft.body().path("validationState").asString()).isEqualTo("VALID");
+    assertThat(draft.body().path("registration").asString()).isEqualTo("UPDATE");
+    assertThat(draft.body().path("existingProductId").asString()).isEqualTo(productId);
+    String dId = draft.body().path("draftId").asString();
+    JsonNode request =
+        post("/product-drafts/" + dId + "/submissions", null).body().path("approvalRequest");
+    assertThat(request.toString()).contains("\"registration\":\"UPDATE\"");
+    decide(request, "APPROVED");
+    JsonNode done =
+        await("/product-drafts/" + dId, b -> "APPLIED".equals(b.path("state").asString())).body();
+    assertThat(done.path("resultProductId").asString()).isEqualTo(productId);
+    assertThat(done.path("resultSkus").path(0).asString()).isEqualTo(sku);
+    JsonNode detail = get("/skus/" + sku).body();
+    assertThat(detail.path("version").asInt()).isEqualTo(2);
+    assertThat(detail.path("shelfLifeGuarantee").path("maxDaysSinceManufacture").asInt())
+        .isEqualTo(3);
+    assertThat(detail.path("volumeMl").asInt()).isEqualTo(500);
+    assertThat(get("/products/" + productId).body().path("skus").path(0).path("volumeMl").asInt())
+        .isEqualTo(500);
+  }
+
   static final String ORDER = TestJwt.service("order-service");
   static final String CLERK = TestJwt.operator("clerk-1", List.of("CS"), List.of());
 

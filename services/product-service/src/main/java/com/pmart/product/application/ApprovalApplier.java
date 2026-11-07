@@ -165,10 +165,9 @@ public class ApprovalApplier {
     JsonNode skuIn = in.path("skus").path(0);
     @Nullable String requestedSaleState = in.path("product").path("saleState").asString(null);
 
+    // 갱신 대상: targetProductId(원천 키 없는 상품 속성 변경) 또는 원천 키 연결(BR-39)
     Optional<CatalogStore.SourceLinkRow> link =
-        d.sourceSystem() == null || d.sourceKey() == null
-            ? Optional.empty()
-            : catalog.sourceLink(d.sourceSystem(), d.sourceKey());
+        draftService.updateTarget(in, d.sourceSystem(), d.sourceKey());
     Optional<ProductRow> existing = link.flatMap(l -> catalog.findProduct(l.productId()));
     List<String> ownSkus =
         existing

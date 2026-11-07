@@ -348,16 +348,59 @@ public class ProductDraftService {
 
   private Validated validate(JsonNode input, @Nullable String system, @Nullable String key) {
     Set<String> ownSkus = new HashSet<>();
-    if (system != null && key != null) {
-      catalog
-          .sourceLink(system, key)
-          .ifPresent(l -> mapper.readTree(l.skus()).forEach(s -> ownSkus.add(s.asString())));
+    List<DraftProblem> targetProblems = new ArrayList<>();
+    String targetId = text(input, "targetProductId");
+    Optional<CatalogStore.SourceLinkRow> link =
+        system != null && key != null ? catalog.sourceLink(system, key) : Optional.empty();
+    Optional<CatalogStore.SourceLinkRow> target = updateTarget(input, system, key);
+    if (targetId != null && target.isEmpty()) {
+      targetProblems.add(
+          DraftProblem.of(
+              "TARGET_PRODUCT_NOT_FOUND", "targetProductId", "갱신할 상품이 없습니다: " + targetId));
     }
+    if (targetId != null && link.isPresent() && !link.get().productId().equals(targetId)) {
+      targetProblems.add(
+          DraftProblem.of(
+              "TARGET_CONFLICT",
+              "targetProductId",
+              "원천 키 " + key + " 는 다른 상품 " + link.get().productId() + " 에 연결돼 있습니다."));
+    }
+    target.ifPresent(l -> mapper.readTree(l.skus()).forEach(s -> ownSkus.add(s.asString())));
     DraftRules.Result r = DraftRules.validate(facts(input), lookup(), ownSkus);
+    List<DraftProblem> problems = new ArrayList<>(targetProblems);
+    problems.addAll(r.problems());
     return new Validated(
-        r.valid() ? "VALID" : "INVALID",
-        mapper.writeValueAsString(r.problems()),
+        problems.isEmpty() ? "VALID" : "INVALID",
+        mapper.writeValueAsString(problems),
         mapper.writeValueAsString(r.categoryIds()));
+  }
+
+  /**
+   * 승인 반영 때 갱신할 기존 상품. {@code targetProductId} 가 있으면 그 상품(원천 키 없이 등록된 상품의 속성 변경, 2026-11-07), 없으면
+   * 원천 키 연결(BR-39). 둘 다 없으면 새 상품.
+   */
+  public Optional<CatalogStore.SourceLinkRow> updateTarget(
+      JsonNode input, @Nullable String system, @Nullable String key) {
+    String targetId = text(input, "targetProductId");
+    if (targetId != null) {
+      return catalog
+          .findProduct(targetId)
+          .map(
+              p ->
+                  new CatalogStore.SourceLinkRow(
+                      system,
+                      key,
+                      p.productId(),
+                      mapper.writeValueAsString(
+                          catalog.skusOf(p.productId()).stream()
+                              .map(CatalogStore.SkuRow::sku)
+                              .toList()),
+                      null));
+    }
+    if (system == null || key == null) {
+      return Optional.empty();
+    }
+    return catalog.sourceLink(system, key);
   }
 
   /** 발효 트리 기준 조회. 발효 트리가 없으면 카테고리는 모두 없음으로 본다. */
@@ -594,12 +637,10 @@ public class ProductDraftService {
    * 상품 대신 그 상품의 새 버전을 만든다. 반영·반려된 초안은 비어 있다(결과는 resultProductId).
    */
   public Optional<CatalogStore.SourceLinkRow> existingProduct(DraftRow d) {
-    if (d.sourceSystem() == null
-        || d.sourceKey() == null
-        || !("DRAFT".equals(d.state()) || "SUBMITTED".equals(d.state()))) {
+    if (!("DRAFT".equals(d.state()) || "SUBMITTED".equals(d.state()))) {
       return Optional.empty();
     }
-    return catalog.sourceLink(d.sourceSystem(), d.sourceKey());
+    return updateTarget(mapper.readTree(d.input()), d.sourceSystem(), d.sourceKey());
   }
 
   public List<DraftProblem> problems(DraftRow d) {
