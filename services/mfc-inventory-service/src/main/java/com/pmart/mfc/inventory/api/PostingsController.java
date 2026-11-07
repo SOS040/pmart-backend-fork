@@ -106,7 +106,9 @@ public class PostingsController implements PostingsApi {
                         l.getQty(),
                         l.getResultQuality() == null
                             ? null
-                            : Quality.valueOf(l.getResultQuality().getValue())))
+                            : Quality.valueOf(l.getResultQuality().getValue()),
+                        l.getSourceLotRef(),
+                        l.getExpiryDate()))
             .toList();
     var r =
         executions.commit(

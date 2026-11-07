@@ -617,6 +617,84 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   @Test
+  void inspectionSplitsTheReceivedLotByManufacturerLotAndExpiry() {
+    // 수령은 상품·수량만(LOT 미확정) → 품질검사에서 제조 LOT·소비기한별로 나누고 격리분을 가른다
+    String sku = newSku();
+    projection(sku, "AMBIENT");
+    String receiptId = "RCV-" + UUID.randomUUID();
+    assertThat(postReceipt(UUID.randomUUID().toString(), receipt(receiptId, sku, 6, 0)).status())
+        .isEqualTo(201);
+    String pending =
+        get(INBOUND, "/internal/receipts/" + receiptId)
+            .body()
+            .path("lines")
+            .path(0)
+            .path("lotId")
+            .asString();
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    Map<String, Object> a = new LinkedHashMap<>();
+    a.put("sku", sku);
+    a.put("lotId", pending);
+    a.put("qty", 3);
+    a.put("resultQuality", "NORMAL");
+    a.put("sourceLotRef", "MFG-A");
+    a.put("expiryDate", today.plusDays(60).toString());
+    Map<String, Object> b = new LinkedHashMap<>(a);
+    b.put("qty", 2);
+    b.put("sourceLotRef", "MFG-B");
+    b.put("expiryDate", today.plusDays(90).toString());
+    Map<String, Object> c = new LinkedHashMap<>();
+    c.put("sku", sku);
+    c.put("lotId", pending);
+    c.put("qty", 1);
+    c.put("resultQuality", "QUARANTINED");
+    Res inspected = execute("INSPECT", "RCV-DOCK", null, List.of(a, b, c));
+    assertThat(inspected.status()).isEqualTo(201);
+    JsonNode entries =
+        get(INBOUND, "/internal/commits/" + inspected.body().path("resultId").asString())
+            .body()
+            .path("entries");
+    java.util.Set<String> normalLots = new java.util.TreeSet<>();
+    for (JsonNode e : entries) {
+      if ("H".equals(e.path("symbol").asString())
+          && e.path("delta").asInt() > 0
+          && "NORMAL".equals(e.path("qualityState").asString())) {
+        normalLots.add(e.path("lotId").asString());
+      }
+    }
+    assertThat(normalLots).hasSize(2).doesNotContain(pending);
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(6);
+    assertThat(av.path("quarantined").asInt()).isEqualTo(1);
+    assertThat(av.path("sellable").asInt()).isZero();
+    // 같은 제조 LOT·기한은 다음 수령에서도 같은 LOT
+    String receipt2 = "RCV-" + UUID.randomUUID();
+    postReceipt(UUID.randomUUID().toString(), receipt(receipt2, sku, 1, 0));
+    String pending2 =
+        get(INBOUND, "/internal/receipts/" + receipt2)
+            .body()
+            .path("lines")
+            .path(0)
+            .path("lotId")
+            .asString();
+    Map<String, Object> again = new LinkedHashMap<>(a);
+    again.put("lotId", pending2);
+    again.put("qty", 1);
+    Res second = execute("INSPECT", "RCV-DOCK", null, List.of(again));
+    JsonNode e2 =
+        get(INBOUND, "/internal/commits/" + second.body().path("resultId").asString())
+            .body()
+            .path("entries");
+    String reused = null;
+    for (JsonNode e : e2) {
+      if (e.path("delta").asInt() > 0) {
+        reused = e.path("lotId").asString();
+      }
+    }
+    assertThat(normalLots).contains(reused);
+  }
+
+  @Test
   void concurrentReservationsOnLastUnitsOnlyOneSucceeds() throws Exception {
     // TC-09: H5/E5/R0/A5 에 주문 A4·B4 동시 → 하나만 성공(R4/A1)
     String sku = newSku();

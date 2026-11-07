@@ -16,6 +16,7 @@ import com.pmart.mfc.inventory.infrastructure.StockStore.LotRow;
 import com.pmart.mfc.inventory.infrastructure.StockStore.ReceiptRow;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +58,23 @@ public class TaskExecutionService {
   }
 
   /** 실행 줄. resultQuality 는 INSPECT 전용. */
-  public record ExecLine(String sku, String lotId, int qty, @Nullable Quality resultQuality) {}
+  public record ExecLine(
+      String sku,
+      String lotId,
+      int qty,
+      @Nullable Quality resultQuality,
+      @Nullable String sourceLotRef,
+      @Nullable LocalDate expiryDate) {
+
+    public ExecLine(String sku, String lotId, int qty, @Nullable Quality resultQuality) {
+      this(sku, lotId, qty, resultQuality, null, null);
+    }
+
+    /** INSPECT 에서 LOT 을 나누는가(제조 LOT 표기·소비기한을 검수에서 확인). */
+    boolean splitsLot() {
+      return sourceLotRef != null || expiryDate != null;
+    }
+  }
 
   public record ExecCommand(
       Type type,
@@ -122,7 +139,7 @@ public class TaskExecutionService {
                   sourceSystem,
                   cmd.taskId(),
                   total,
-                  changes(cmd),
+                  changes(cmd, at),
                   List.of(),
                   at);
               log.info(
@@ -197,7 +214,7 @@ public class TaskExecutionService {
     }
   }
 
-  private static List<Change> changes(ExecCommand cmd) {
+  private List<Change> changes(ExecCommand cmd, Instant at) {
     List<Change> out = new ArrayList<>();
     for (ExecLine l : cmd.lines()) {
       switch (cmd.type()) {
@@ -210,7 +227,19 @@ public class TaskExecutionService {
                   Quality.PENDING_INSPECTION,
                   Work.UNSTOWED);
           out.add(new Change(from, -l.qty()));
-          out.add(new Change(from.with(l.resultQuality(), Work.UNSTOWED), l.qty()));
+          // LOT 분리: 검수에서 확인한 제조 LOT 표기·소비기한의 추적 LOT 으로 옮긴다(같은 위치, 총량 불변)
+          String target =
+              l.splitsLot()
+                  ? stock.trackedLot(
+                      l.sku(),
+                      l.sourceLotRef(),
+                      l.expiryDate(),
+                      "LOT-" + java.util.UUID.randomUUID(),
+                      cmd.executionId(),
+                      at)
+                  : l.lotId();
+          Key to = new Key(cmd.fromLocation(), l.sku(), target, l.resultQuality(), Work.UNSTOWED);
+          out.add(new Change(to, l.qty()));
         }
         case PUTAWAY -> {
           Key from = new Key(cmd.fromLocation(), l.sku(), l.lotId(), Quality.NORMAL, Work.UNSTOWED);
@@ -242,7 +271,11 @@ public class TaskExecutionService {
           .append(':')
           .append(l.qty())
           .append(':')
-          .append(l.resultQuality());
+          .append(l.resultQuality())
+          .append(':')
+          .append(l.sourceLotRef())
+          .append(':')
+          .append(l.expiryDate());
     }
     return StockRules.sha256(sb.toString());
   }

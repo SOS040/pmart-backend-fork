@@ -726,6 +726,8 @@ components:
               lotId: { type: string }
               qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
               resultQuality: { type: string, enum: [NORMAL, QUARANTINED], description: INSPECT 전용 }
+              sourceLotRef: { type: string, maxLength: 128, description: 'INSPECT 전용 — 검수에서 확인한 제조 LOT 표기. sourceLotRef·expiryDate 중 하나라도 있으면 그 추적 LOT 으로 나눈다(같은 위치, 총량 불변)' }
+              expiryDate: { type: string, format: date, description: INSPECT 전용 — 검수에서 확인한 소비기한 }
               targetWorkState: { $ref: '#/components/schemas/WorkState' }
     CommitPackageHandoverRequest:
       type: object
