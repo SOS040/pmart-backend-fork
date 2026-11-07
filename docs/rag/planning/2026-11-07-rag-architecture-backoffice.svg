@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 960" width="100%" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif">
-  <title>PMart RAG(ai-assistant-service) 구성도 — 2026-11-07</title>
+  <title>PMart RAG 백오피스(운영자) 경로 구성도 — 2026-11-07</title>
   <style>
     .t  { fill: #1f2933; font-size: 13px; }
     .tb { fill: #1f2933; font-size: 14px; font-weight: 700; }
@@ -43,7 +43,7 @@
   <!-- 클라이언트·게이트웨이 -->
   <rect class="b" x="320" y="14" width="260" height="50" rx="9"/>
   <text class="tb" x="450" y="36" text-anchor="middle">백오피스 웹 (운영자)</text>
-  <text class="m" x="450" y="54" text-anchor="middle">1차 = 내부 운영자만 · 고객앱은 결정 대기 D1</text>
+  <text class="m" x="450" y="54" text-anchor="middle">운영자 경로 · 고객앱은 별도 그림(-customer.svg)</text>
   <path class="ln" d="M450 64V92" marker-end="url(#a)"/>
   <rect class="b" x="320" y="94" width="260" height="50" rx="9"/>
   <text class="tb" x="450" y="116" text-anchor="middle">API Gateway</text>

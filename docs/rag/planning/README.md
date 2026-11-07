@@ -9,4 +9,5 @@
 | 파일 | 내용 | 상태 |
 |---|---|---|
 | [`2026-11-07-references-review.md`](2026-11-07-references-review.md) | 11-07 원문 3개 검토, 현재 구현 대조, 결정 대기 목록 | 작성 |
-| [`2026-11-07-rag-architecture.svg`](2026-11-07-rag-architecture.svg) | 현재 구현 기준 구성도(원본 그림 문제 1~7 수정, pgvector 만, 결정 대기는 점선). 밝은·어두운 화면 둘 다 | 작성 |
+| [`2026-11-07-rag-architecture-backoffice.svg`](2026-11-07-rag-architecture-backoffice.svg) | 백오피스(운영자) 경로 — 현재 구현 기준(원본 그림 문제 1~7 수정, pgvector 만, 결정 대기는 점선). 밝은·어두운 화면 둘 다 | 작성 |
+| [`2026-11-07-rag-architecture-customer.svg`](2026-11-07-rag-architecture-customer.svg) | 고객앱 경로 — 계획(운영자 경로에서 그대로 쓰는 것은 실선, 새로 만들 것·결정 대기는 점선) | 작성 |

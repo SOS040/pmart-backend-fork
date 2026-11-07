@@ -32,13 +32,21 @@
 ## 4. 결정
 | # | 내용 | 결정 |
 |---|---|---|
-| D4 | 새 구성도 → [`2026-11-07-rag-architecture.svg`](2026-11-07-rag-architecture.svg). 코드(`PolicyQuestionService.ask`·`Retriever`·`KnowledgeIngestor`·`SnapshotStore`)와 대조해 그림 | **결정·완료** 2026-11-07 사용자 |
+| D1 | 고객앱에도 RAG 를 연다. 그림은 운영자 경로와 분리 → [`2026-11-07-rag-architecture-customer.svg`](2026-11-07-rag-architecture-customer.svg)(계획). ADR-0036(운영자 전용 1차)을 넓히는 것이라 구현 전에 새 ADR 이 필요하다 | **결정** 2026-11-07 사용자 |
+| D4 | 새 구성도 → [`2026-11-07-rag-architecture-backoffice.svg`](2026-11-07-rag-architecture-backoffice.svg)(처음 이름 `-architecture.svg`). 코드(`PolicyQuestionService.ask`·`Retriever`·`KnowledgeIngestor`·`SnapshotStore`)와 대조해 그림 | **결정·완료** 2026-11-07 사용자 |
 | — | 벡터 DB 는 pgvector 만. Qdrant 는 쓰지 않는다(문서 수천 청크 규모, 권한·키워드·스냅숏을 한 SQL·한 DB 잠금으로 묶고 있음). 수백만 규모나 검색 속도 문제가 생기면 다시 본다 | **결정** 2026-11-07 사용자 |
 
 ## 5. 결정 대기
 | # | 내용 | 추천 |
 |---|---|---|
-| D1 | 고객앱에도 RAG 를 열지, 운영자 전용 유지 | 운영자 전용 유지(1차), 고객용은 별도 결정 |
+| C1 | 고객 공개 정책 문서: 무엇을, 누가 쓰고 누가 승인하나(지금 없음. 업무 원문을 그대로 고객 공개로 넣지 않는다) | — |
+| C2 | 비회원(GUEST 토큰)도 물을 수 있나 | — |
+| C3 | 고객별 요청 제한 수치 | — |
+| C4 | 근거 없음(NO_GROUNDING)일 때 고객에게 보일 안내 문구·연결(고객센터 등) | — |
+| C5 | 고객 질문 원문 저장 여부·보존 기간(개인정보일 수 있음) — ADR-0036 대기 3 과 같이 | — |
+| C6 | 실시간 질문(내 주문·배송): 지금처럼 거절 + 화면 안내, 나중 Tool Calling 여부 | 1차는 거절 + 안내 |
+| C7 | 스냅숏을 운영자 문서와 함께 둘지 따로 둘지 | 함께(청크별 접근 범위로 거름) |
+| C8 | 고객용 생성 모델(운영자와 같은지) — D2 와 같이 | — |
 | D2 | Ollama 도입 여부·둘 PC(GPU·메모리 확인) | 확인 뒤 결정 |
 | D3 | 임베딩 Qwen3-Embedding-0.6B vs BGE-M3 비교 평가부터 | 비교 평가 먼저 |
 | — | ADR-0036 기존 대기: 외부 모델·외부 전송 범위, LAN pgvector 위치, 답변 보존·질문 원문 저장, 운영자 역할 세분 | — |
