@@ -75,7 +75,6 @@ public class ReservationService {
   /** 날짜 판정은 Asia/Seoul(ADR-0010). */
   static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Seoul");
 
-  static final int DEFAULT_TTL_MINUTES = 10;
   static final String OP_RESERVE = "reserveInventory";
   static final String OP_CONFIRM = "confirmReservation";
   static final String OP_RELEASE = "releaseReservation";
@@ -157,7 +156,7 @@ public class ReservationService {
     if (requested.isEmpty()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "lines 가 비어 있습니다.");
     }
-    int ttl = cmd.ttlMinutes() == null ? DEFAULT_TTL_MINUTES : cmd.ttlMinutes();
+    int ttl = cmd.ttlMinutes() == null ? defaultTtlMinutes() : cmd.ttlMinutes();
     return idempotency
         .execute(
             Callers.key(sourceSystem, requestId, OP_RESERVE),
@@ -259,6 +258,15 @@ public class ReservationService {
                   CommandStatus.APPLIED, requestId, reservationId, total, 1, false, null, at);
             })
         .value();
+  }
+
+  /** 요청에 유효시간이 없을 때(Q-04 결정 2026-11-07: 10분, ADR-0042). 설정이 없으면 CONFIG_REQUIRED. */
+  private int defaultTtlMinutes() {
+    Duration d = properties.getDefaultHoldTtl();
+    if (d == null || d.toMinutes() < 1) {
+      throw PmartException.configRequired("pmart.inventory.default-hold-ttl(예약 유효시간)");
+    }
+    return (int) d.toMinutes();
   }
 
   /**

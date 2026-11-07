@@ -1,7 +1,9 @@
 package com.pmart.mfc.inventory.application;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -15,6 +17,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class InventoryProperties {
 
   private Map<String, Integer> minRemainingDays = new LinkedHashMap<>();
+
+  /**
+   * 요청에 ttlMinutes 가 없을 때의 예약 유효시간(MFC 문서 §6 Q-04 결정 2026-11-07: 10분, ADR-0042). 없으면 그런 요청은
+   * CONFIG_REQUIRED.
+   */
+  private @Nullable Duration defaultHoldTtl;
+
+  public @Nullable Duration getDefaultHoldTtl() {
+    return defaultHoldTtl;
+  }
+
+  public void setDefaultHoldTtl(@Nullable Duration defaultHoldTtl) {
+    this.defaultHoldTtl = defaultHoldTtl;
+  }
 
   public Map<String, Integer> getMinRemainingDays() {
     return minRemainingDays;

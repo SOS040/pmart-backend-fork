@@ -229,8 +229,16 @@ components:
       required: [mfcId, locationCode, zone, temperatureZone]
       properties:
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-        locationCode: { type: string, maxLength: 32, description: 문법 Q-03 미결 }
-        areaCode: { type: string }
+        locationCode:
+          type: string
+          maxLength: 32
+          description: |
+            센터 안 유일, 등록 뒤 바꿀 수 없다. 문법(Q-03 결정 2026-11-07, ADR-0042 — 새 등록에만 검사, 어기면 400 LOCATION_CODE_INVALID):
+            선반·피킹(STORAGE·PICKING) `{온도대 A/C/F}-{구역 영문1+숫자1}-{랙 2자리}-{단 1~9}-{칸 2자리}` 예 `C-S1-03-2-04`
+            (온도대 글자 = temperatureZone, 구역 = areaCode).
+            그 밖의 구역 `{접두}-{온도대}-{번호 2자리}` 예 `RCV-C-01` — 접두 RCV 수령·PAK 포장·QRT 격리·DSP 출고 대기·RTN 회수·DSL 폐기.
+            이 결정 전에 등록된 자유 형식 코드는 그대로 쓴다(바꾸려면 새로 등록하고 옮긴 뒤 닫는다).
+        areaCode: { type: string, description: '구역. 선반·피킹은 코드의 구역과 같아야 하고, 없으면 코드에서 채운다' }
         zone: { $ref: '#/components/schemas/ZoneKind' }
         temperatureZone: { $ref: '#/components/schemas/TemperatureZone' }
         dimensions:

@@ -10,6 +10,7 @@ import com.pmart.common.web.CommandResponse;
 import com.pmart.common.web.CommandStatus;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.mfc.location.domain.LocationCodes;
 import com.pmart.mfc.location.domain.LocationRules;
 import com.pmart.mfc.location.domain.LocationRules.State;
 import com.pmart.mfc.location.domain.LocationRules.Transition;
@@ -98,13 +99,18 @@ public class LocationService {
             b,
             LocationView.class,
             () -> {
+              // 위치 코드 문법(Q-03 결정 2026-11-07, ADR-0042): 새 등록은 계층형 고정 문법만
+              LocationCodes.Checked checked =
+                  LocationCodes.check(
+                      b.locationCode(), b.zone(), b.temperatureZone(), b.areaCode());
+              checked.problem().ifPresent(LocationService::invalidCode);
               Instant at = clock.instant();
               LocationView v =
                   new LocationView(
                       "LOC-" + UUID.randomUUID(),
                       b.mfcId(),
                       b.locationCode(),
-                      b.areaCode(),
+                      checked.areaCode(),
                       b.zone(),
                       b.temperatureZone(),
                       State.ACTIVE.name(),
@@ -155,13 +161,22 @@ public class LocationService {
                 throw PmartException.invalidState("폐지된 위치는 바꿀 수 없습니다: " + locationId);
               }
               checkVersion(cur, expectedVersion);
+              // 새 문법 코드는 온도대·구역·areaCode 가 코드와 어긋나게 바뀌지 않게. 옛 자유 형식 코드는 검사하지 않는다
+              String areaCode = b.areaCode();
+              if (LocationCodes.followsGrammar(cur.locationCode())) {
+                LocationCodes.Checked checked =
+                    LocationCodes.check(
+                        cur.locationCode(), b.zone(), b.temperatureZone(), b.areaCode());
+                checked.problem().ifPresent(LocationService::invalidCode);
+                areaCode = checked.areaCode();
+              }
               Instant at = clock.instant();
               LocationView v =
                   new LocationView(
                       cur.locationId(),
                       cur.mfcId(),
                       cur.locationCode(),
-                      b.areaCode(),
+                      areaCode,
                       b.zone(),
                       b.temperatureZone(),
                       cur.state(),
@@ -179,6 +194,11 @@ public class LocationService {
               return v;
             })
         .value();
+  }
+
+  private static void invalidCode(String why) {
+    throw new PmartException(
+        LocationCodes.LOCATION_CODE_INVALID, HttpStatus.BAD_REQUEST, why, false, List.of());
   }
 
   public CommandResponse changeState(

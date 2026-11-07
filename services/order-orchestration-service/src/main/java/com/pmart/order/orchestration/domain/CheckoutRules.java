@@ -18,9 +18,6 @@ public final class CheckoutRules {
 
   public static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
-  /** 자원 점유 TTL(Q-04 잠정 10분, D3). */
-  public static final int HOLD_TTL_MINUTES = 10;
-
   /** 실행 순서. HOLD_SLOT 은 예약배달만(그 밖은 SKIPPED). */
   public static final List<String> STEPS =
       List.of(

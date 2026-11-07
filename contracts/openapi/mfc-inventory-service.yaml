@@ -669,8 +669,7 @@ components:
           type: integer
           minimum: 1
           maximum: 60
-          default: 10
-          description: 예약 유효 시간. 기본 10분 (Q-04)
+          description: '예약 유효 시간(분). 없으면 설정 pmart.inventory.default-hold-ttl(MFC 문서 §6 Q-04 결정 2026-11-07: 10분, ADR-0042), 설정도 없으면 CONFIG_REQUIRED'
         promisedDate:
           type: string
           format: date

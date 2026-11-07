@@ -122,6 +122,7 @@ public class CheckoutSagaService {
 
   /** sagaId. 같은 키·같은 본문은 같은 사가. */
   public String start(String idempotencyKey, String sourceSystem, String actor, Start in) {
+    holdTtlMinutes(); // Q-04 점유 유효시간 미설정이면 새 결제 진입을 받지 않는다(CONFIG_REQUIRED)
     Instant now = clock.instant();
     if (!now.isBefore(in.quoteExpiresAt())) {
       throw new PmartException(
@@ -199,6 +200,18 @@ public class CheckoutSagaService {
             .value();
     kick(sagaId);
     return sagaId;
+  }
+
+  /**
+   * 결제 전 자원 점유 유효시간(분, Q-04 결정 2026-11-07: 10분, ADR-0042). 설정 {@code pmart.orchestration.hold-ttl}.
+   * 없으면 CONFIG_REQUIRED — 진행 중 단계에서는 예외로 멈추고 sweep 이 값이 들어온 뒤 같은 키로 잇는다(0·무제한으로 대체하지 않음).
+   */
+  int holdTtlMinutes() {
+    Integer v = props.holdTtlMinutes();
+    if (v == null) {
+      throw PmartException.configRequired("pmart.orchestration.hold-ttl(결제 전 자원 점유 유효시간)");
+    }
+    return v;
   }
 
   /** 응답 뒤 비동기로 진행. 실패해도 sweep 이 잇는다. */
@@ -330,8 +343,7 @@ public class CheckoutSagaService {
         Instant expires =
             ok.expiresAt() != null
                 ? ok.expiresAt()
-                : now.plus(
-                    CheckoutRules.HOLD_TTL_MINUTES, ChronoUnit.MINUTES); // 조회 실패 — TTL 로 보수 추정
+                : now.plus(holdTtlMinutes(), ChronoUnit.MINUTES); // 조회 실패 — TTL 로 보수 추정
         store.update(
             s.sagaId(),
             "RUNNING",
@@ -748,7 +760,7 @@ public class CheckoutSagaService {
     Map<String, Object> b = new LinkedHashMap<>();
     b.put("orderId", s.orderId());
     b.put("mfcId", s.mfcId());
-    b.put("ttlMinutes", CheckoutRules.HOLD_TTL_MINUTES);
+    b.put("ttlMinutes", holdTtlMinutes());
     // 소비기한 적격 기준일(ADR-0040 결정 5): 예약 배송은 슬롯 날짜, 즉시 배송은 보내지 않는다(inventory 가 예약 날짜로 본다)
     if ("SCHEDULED".equals(s.deliveryMode()) && s.arrivalDate() != null) {
       b.put("promisedDate", s.arrivalDate().toString());
@@ -772,7 +784,7 @@ public class CheckoutSagaService {
     b.put("orderId", s.orderId());
     b.put("mfcId", s.mfcId());
     b.put("window", w.iso());
-    b.put("ttlMinutes", CheckoutRules.HOLD_TTL_MINUTES);
+    b.put("ttlMinutes", holdTtlMinutes());
     b.put("demand", mapper.convertValue(s.demand(), Map.class));
     return b;
   }
@@ -788,7 +800,7 @@ public class CheckoutSagaService {
     b.put("sagaId", s.sagaId());
     b.put("mfcId", s.mfcId());
     b.put("window", window);
-    b.put("ttlSeconds", CheckoutRules.HOLD_TTL_MINUTES * 60);
+    b.put("ttlSeconds", holdTtlMinutes() * 60);
     return b;
   }
 
@@ -796,7 +808,7 @@ public class CheckoutSagaService {
     Instant resourceExpires =
         s.resourceExpiresAt() != null
             ? s.resourceExpiresAt()
-            : now.plus(CheckoutRules.HOLD_TTL_MINUTES, ChronoUnit.MINUTES);
+            : now.plus(holdTtlMinutes(), ChronoUnit.MINUTES);
     Map<String, Object> b = new LinkedHashMap<>();
     b.put("orderId", s.orderId());
     b.put("draftId", s.draftId());

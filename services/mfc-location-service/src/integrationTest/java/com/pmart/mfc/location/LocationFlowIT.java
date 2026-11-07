@@ -102,7 +102,8 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void registerChangeAndListLocations() {
     Res created =
-        send(HttpMethod.POST, op, "/locations", body("C-01-01", "STORAGE", "CHILLED", 2), null);
+        send(
+            HttpMethod.POST, op, "/locations", body("C-S1-01-1-01", "STORAGE", "CHILLED", 2), null);
     assertThat(created.status()).isEqualTo(201);
     String id = created.body().path("locationId").asString();
     assertThat(id).startsWith("LOC-");
@@ -111,23 +112,48 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
 
     // 같은 센터 같은 코드 → 409, 다른 센터 운영자 → 403
     Res dup =
-        send(HttpMethod.POST, op, "/locations", body("C-01-01", "STORAGE", "AMBIENT", null), null);
+        send(
+            HttpMethod.POST,
+            op,
+            "/locations",
+            body("C-S1-01-1-01", "STORAGE", "CHILLED", null),
+            null);
     assertThat(dup.status()).isEqualTo(409);
     assertThat(dup.body().path("code").asString()).isEqualTo("LOCATION_CODE_DUPLICATE");
+    // 코드 문법(Q-03, ADR-0042): 옛 자유 형식·온도대 불일치 → 400, 구역은 코드에서 채운다
+    Res legacy =
+        send(HttpMethod.POST, op, "/locations", body("C-01-01", "STORAGE", "CHILLED", null), null);
+    assertThat(legacy.status()).isEqualTo(400);
+    assertThat(legacy.body().path("code").asString()).isEqualTo("LOCATION_CODE_INVALID");
+    assertThat(
+            send(
+                    HttpMethod.POST,
+                    op,
+                    "/locations",
+                    body("A-S1-01-1-02", "STORAGE", "CHILLED", null),
+                    null)
+                .status())
+        .isEqualTo(400);
+    assertThat(created.body().path("areaCode").asString()).isEqualTo("S1");
     String other = TestJwt.operator("op-2", List.of(), List.of("MFC-OTHER"));
     assertThat(
             send(
                     HttpMethod.POST,
                     other,
                     "/locations",
-                    body("C-09", "STORAGE", "AMBIENT", null),
+                    body("A-S1-09-1-01", "STORAGE", "AMBIENT", null),
                     null)
                 .status())
         .isEqualTo(403);
 
     // 속성 변경(동선 순서), 코드 변경 → 400, 낡은 버전 → 409
     Res updated =
-        send(HttpMethod.PUT, op, "/locations/" + id, body("C-01-01", "STORAGE", "CHILLED", 1), 1);
+        send(
+            HttpMethod.PUT,
+            op,
+            "/locations/" + id,
+            body("C-S1-01-1-01", "STORAGE", "CHILLED", 1),
+            1);
     assertThat(updated.status()).isEqualTo(200);
     assertThat(updated.body().path("version").asInt()).isEqualTo(2);
     assertThat(updated.body().path("pickSequence").asInt()).isEqualTo(1);
@@ -136,7 +162,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
                     HttpMethod.PUT,
                     op,
                     "/locations/" + id,
-                    body("C-01-02", "STORAGE", "CHILLED", 1),
+                    body("C-S1-01-1-02", "STORAGE", "CHILLED", 1),
                     2)
                 .status())
         .isEqualTo(400);
@@ -145,7 +171,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
                     HttpMethod.PUT,
                     op,
                     "/locations/" + id,
-                    body("C-01-01", "STORAGE", "CHILLED", 3),
+                    body("C-S1-01-1-01", "STORAGE", "CHILLED", 3),
                     1)
                 .status())
         .isEqualTo(409);
@@ -175,14 +201,14 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(202);
 
     // 적치 후보: 냉장·ACTIVE·선반/피킹만, 동선 순서
-    send(HttpMethod.POST, op, "/locations", body("A-01-01", "STORAGE", "AMBIENT", 1), null);
-    send(HttpMethod.POST, op, "/locations", body("C-00-09", "PICKING", "CHILLED", 0), null);
-    send(HttpMethod.POST, op, "/locations", body("RCV-1", "RECEIVING", "CHILLED", null), null);
+    send(HttpMethod.POST, op, "/locations", body("A-S1-01-1-01", "STORAGE", "AMBIENT", 1), null);
+    send(HttpMethod.POST, op, "/locations", body("C-P1-00-1-09", "PICKING", "CHILLED", 0), null);
+    send(HttpMethod.POST, op, "/locations", body("RCV-C-01", "RECEIVING", "CHILLED", null), null);
     Res cand =
         get(op, "/putaway-candidates?mfcId=" + mfc + "&sku=E-00000001&temperatureZone=CHILLED");
     assertThat(cand.status()).isEqualTo(200);
     assertThat(cand.body().path("items").findValuesAsString("locationCode"))
-        .containsExactly("C-00-09", "C-01-01");
+        .containsExactly("C-P1-00-1-09", "C-S1-01-1-01");
     assertThat(get(op, "/putaway-candidates?mfcId=" + mfc + "&sku=E-00000001").status())
         .isEqualTo(400);
 
@@ -205,7 +231,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
             id);
     assertThat(rows).hasSize(4);
     JsonNode last = read(rows.get(3).get("p").toString()).path("payload");
-    assertThat(last.path("locationCode").asString()).isEqualTo("C-01-01");
+    assertThat(last.path("locationCode").asString()).isEqualTo("C-S1-01-1-01");
     assertThat(last.path("zone").asString()).isEqualTo("STORAGE");
     assertThat(last.path("temperatureZone").asString()).isEqualTo("CHILLED");
     assertThat(last.path("state").asString()).isEqualTo("ACTIVE");

@@ -11,6 +11,8 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  * {@code pmart.orchestration.*}. 참여 정본 주소(모두 {@code /internal}).
  *
  * @param stuckAfter RUNNING·COMPENSATING 사가를 멈춘 것으로 보고 재개할 시간(같은 키 재전송이라 안전)
+ * @param holdTtl 결제 전 자원 점유(재고 예약·센터 여력·배송 슬롯) 유효시간(MFC 문서 §6 Q-04 결정 2026-11-07: 10분, ADR-0042).
+ *     없으면 새 결제 진입은 CONFIG_REQUIRED 로 거절하고, 진행 중 사가는 값이 들어올 때까지 재개 대기
  * @param fulfillment S2 이행 요청(슬라이스 6a). {@code start-orders-confirmed-after} = 이 시각 이후 확정된 주문만 S2 를
  *     시작한다(새 구독 그룹이 토픽 처음부터 읽어 옛 주문까지 오므로 — 없으면 S2 를 시작하지 않는다). {@code retry-window}·{@code
  *     max-new-versions} 는 센터별 운영 설정(D6-5, 키 {@code "[MFC-SEED-01]"}) — 없는 센터는 재시도 대상 거절 때
@@ -30,6 +32,7 @@ public class OrchestrationProperties {
   private final String mfcFulfillmentBaseUrl;
   private final String claimBaseUrl;
   private final @Nullable Duration stuckAfter;
+  private final @Nullable Duration holdTtl;
   private final Fulfillment fulfillment;
 
   /** S2 설정. 필드는 모두 선택 — 비면 위 설명대로 보류·미시작. */
@@ -56,6 +59,7 @@ public class OrchestrationProperties {
       String mfcFulfillmentBaseUrl,
       String claimBaseUrl,
       @Nullable Duration stuckAfter,
+      @Nullable Duration holdTtl,
       @Nullable Fulfillment fulfillment) {
     mfcInventoryBaseUrl = or(mfcInventoryBaseUrl, "http://mfc-inventory-service:8301");
     mfcCapacityBaseUrl = or(mfcCapacityBaseUrl, "http://mfc-capacity-service:8303");
@@ -73,6 +77,7 @@ public class OrchestrationProperties {
     this.mfcFulfillmentBaseUrl = mfcFulfillmentBaseUrl;
     this.claimBaseUrl = claimBaseUrl;
     this.stuckAfter = stuckAfter;
+    this.holdTtl = holdTtl;
     this.fulfillment = fulfillment == null ? new Fulfillment(null, null, null) : fulfillment;
   }
 
@@ -110,6 +115,14 @@ public class OrchestrationProperties {
 
   public @Nullable Duration stuckAfter() {
     return stuckAfter;
+  }
+
+  /** 자원 점유 유효시간(분). 없으면 null — 호출자가 CONFIG_REQUIRED. 1분 미만은 설정 오류로 본다. */
+  public @Nullable Integer holdTtlMinutes() {
+    if (holdTtl == null || holdTtl.toMinutes() < 1) {
+      return null;
+    }
+    return (int) holdTtl.toMinutes();
   }
 
   private static String or(@Nullable String v, String fallback) {
