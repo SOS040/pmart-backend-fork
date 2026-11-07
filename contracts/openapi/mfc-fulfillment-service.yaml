@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.1
+  version: 0.4.2
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -677,7 +677,13 @@ paths:
     post:
       tags: [shipments]
       summary: 재포장 — 새 Package 버전 발급, 구 라벨 INVALIDATED (PackageInvalidated)
-      description: 인계 전(SEALED)만 가능. 재포장 후 구 QR 스캔은 PACKAGE_INVALIDATED 로 거절된다.
+      description: |
+        인계 전(SEALED)만 가능. 재포장 후 구 QR 스캔은 PACKAGE_INVALIDATED 로 거절된다.
+        구현(0.4.2, WK-07): 그 센터 작업자(MFC_WORKER). 새 포장 = 새 packageId·packageVersion+1·새 QR, 내용·봉투 수·포장 위치·PACK 확정 ID 는
+        그대로(재고·예약 변화 없음). 이전 포장 INVALIDATED(invalidatedReason = `<reason>→<새 packageId>`) + PackageInvalidated(newPackageId).
+        주문 잠금 아래 — 인계됨(ALREADY_HANDED_OVER)·살아 있는 fence(FENCE_ACTIVE)·결과 대기 인계(HANDOVER_RESULT_PENDING)·중지 기록·SEALED 아님
+        (INVALID_STATE)은 409. contents 는 지금 내용과 같아야 한다 — 포장 사이 재구성·수량 감소는 아직 없음(422 CONTENT_MISMATCH).
+        라벨 재출력은 이 요청이 아니다(기존 QR 그대로). 같은 Idempotency-Key 는 같은 새 포장.
       operationId: repackPackage
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
@@ -704,7 +710,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Package' }
         '409':
-          description: INVALID_STATE (HANDED_OVER / fence 진행 중)
+          description: INVALID_STATE / ALREADY_HANDED_OVER / FENCE_ACTIVE / HANDOVER_RESULT_PENDING
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONTENT_MISMATCH (내용물 변경 — 아직 없음)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

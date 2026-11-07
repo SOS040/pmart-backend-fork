@@ -24,8 +24,8 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 계약 ShipmentsApi — 출고 조회·포장 밀봉(슬라이스 6b). 재포장은 아직 501(인터페이스 default). 업무 규칙은 {@link
- * PackageService}.
+ * 계약 ShipmentsApi — 출고 조회·포장 밀봉(슬라이스 6b)·재포장(WK-07). 업무 규칙은 {@link PackageService}·{@link
+ * com.pmart.mfc.fulfillment.application.RepackService}.
  */
 @RestController
 public class ShipmentsController implements ShipmentsApi {
@@ -33,9 +33,39 @@ public class ShipmentsController implements ShipmentsApi {
   private final PackageService service;
   private final ObjectMapper mapper;
 
-  public ShipmentsController(PackageService service, ObjectMapper mapper) {
+  private final com.pmart.mfc.fulfillment.application.RepackService repacks;
+
+  public ShipmentsController(
+      PackageService service,
+      com.pmart.mfc.fulfillment.application.RepackService repacks,
+      ObjectMapper mapper) {
     this.service = service;
+    this.repacks = repacks;
     this.mapper = mapper;
+  }
+
+  @Override
+  public ResponseEntity<ModelPackage> repackPackage(
+      String packageId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.fulfillment.api.generated.model.RepackPackageRequest body,
+      @Nullable Integer xExpectedVersion) {
+    List<ContentRequest> contents = null;
+    if (body.getContents() != null) {
+      contents = new ArrayList<>();
+      for (PackageContentLine c : body.getContents()) {
+        contents.add(new ContentRequest(c.getOrderLineId(), c.getSku(), c.getLotId(), c.getQty()));
+      }
+    }
+    PackageRow p =
+        repacks.repack(
+            packageId,
+            idempotencyKey,
+            new com.pmart.mfc.fulfillment.application.RepackService.RepackCommand(
+                body.getReason().getValue(), contents));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(dto(p, service.orderIdOf(p.shipmentId())));
   }
 
   @Override
@@ -128,7 +158,8 @@ public class ShipmentsController implements ShipmentsApi {
     fence.setFenceVersion(0);
     out.setFence(fence);
     out.setSealedAt(TasksController.time(p.sealedAt()));
-    out.setInvalidatedReason("VOIDED".equals(p.state()) ? p.rejectReason() : null);
+    out.setInvalidatedReason(
+        "VOIDED".equals(p.state()) || "INVALIDATED".equals(p.state()) ? p.rejectReason() : null);
     return out;
   }
 }

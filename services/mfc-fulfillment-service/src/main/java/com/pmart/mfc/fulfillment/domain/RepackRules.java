@@ -1,0 +1,84 @@
+package com.pmart.mfc.fulfillment.domain;
+
+import com.pmart.mfc.fulfillment.domain.TaskRules.Content;
+import com.pmart.mfc.fulfillment.domain.TaskRules.ContentRequest;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * 재포장 규칙(WK-07). 인계 전(SEALED)만, 인계 진행(살아 있는 fence·결과 대기 인계)·중지 기록이 있는 주문은 거절. 내용물은 바꾸지 않는다 — 포장 사이에
+ * 상품을 옮기거나 줄이는 재구성은 재고 PACK 되돌림이 필요해 아직 없다(CONTENT_MISMATCH).
+ */
+public final class RepackRules {
+
+  public static final Set<String> REASONS =
+      Set.of("DAMAGED_BAG", "CONTENT_CHANGE", "LABEL_UNREADABLE", "SHORTAGE_ADJUST");
+
+  private RepackRules() {}
+
+  /** 거절 코드. null 이면 재포장 가능. */
+  public static @Nullable String rejection(
+      String packageState, boolean fenceLive, boolean handoverRequested, boolean orderStopped) {
+    if ("HANDED_OVER".equals(packageState)) {
+      return HandoverRules.ALREADY_HANDED_OVER;
+    }
+    if (!"SEALED".equals(packageState)) {
+      return HandoverRules.INVALID_STATE;
+    }
+    if (handoverRequested) {
+      return HandoverRules.HANDOVER_RESULT_PENDING;
+    }
+    if (fenceLive) {
+      return HandoverRules.FENCE_ACTIVE;
+    }
+    if (orderStopped) {
+      return HandoverRules.INVALID_STATE;
+    }
+    return null;
+  }
+
+  public static String message(String code, String packageState) {
+    return switch (code) {
+      case HandoverRules.ALREADY_HANDED_OVER -> "이미 인계된 포장은 재포장할 수 없습니다.";
+      case HandoverRules.HANDOVER_RESULT_PENDING -> "인계 확정 결과를 기다리는 포장입니다.";
+      case HandoverRules.FENCE_ACTIVE -> "라이더 인계가 진행 중인 포장입니다(허가 유효).";
+      default -> "재포장할 수 없는 상태입니다(포장 " + packageState + ", 또는 주문 중지).";
+    };
+  }
+
+  /**
+   * 요청 내용물이 지금 내용물과 (주문 줄·SKU·LOT 별 수량으로) 같은지. 생략·빈 목록이면 같은 것으로 본다. LOT 을 생략한 줄은 그 주문 줄·SKU 의 합으로
+   * 비교한다.
+   *
+   * @return 다르면 사유, 같으면 null
+   */
+  public static @Nullable String contentMismatch(
+      List<Content> current, @Nullable List<ContentRequest> requested) {
+    if (requested == null || requested.isEmpty()) {
+      return null;
+    }
+    boolean withLot = requested.stream().allMatch(r -> r.lotId() != null);
+    Map<String, Integer> have = new TreeMap<>();
+    for (Content c : current) {
+      have.merge(key(c.orderLineId(), c.sku(), withLot ? c.lotId() : null), c.qty(), Integer::sum);
+    }
+    Map<String, Integer> want = new TreeMap<>();
+    for (ContentRequest r : requested) {
+      if (r.qty() < 1) {
+        return "수량은 1 이상입니다: " + r.orderLineId();
+      }
+      want.merge(key(r.orderLineId(), r.sku(), withLot ? r.lotId() : null), r.qty(), Integer::sum);
+    }
+    if (!have.equals(want)) {
+      return "재포장은 내용물을 바꾸지 않습니다(지금 " + have + ", 요청 " + want + "). 포장 사이 재구성·수량 감소는 아직 지원하지 않습니다.";
+    }
+    return null;
+  }
+
+  private static String key(String orderLineId, String sku, @Nullable String lotId) {
+    return orderLineId + "|" + sku + (lotId == null ? "" : "|" + lotId);
+  }
+}

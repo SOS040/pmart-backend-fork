@@ -179,6 +179,35 @@ public class FulfillmentEvents {
         WorkStopService.TOPIC);
   }
 
+  /** 재포장으로 이전 포장 라벨 무효(PackageInvalidated, 집계 Package = 이전 포장). */
+  public void packageInvalidated(
+      com.pmart.mfc.fulfillment.infrastructure.HandoverStore.PackageFence p,
+      String newPackageId,
+      String reason,
+      String actorId,
+      Instant at) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("packageId", p.packageId());
+    m.put("newPackageId", newPackageId);
+    m.put("shipmentId", p.shipmentId());
+    m.put("orderId", p.orderId());
+    m.put("mfcId", p.mfcId());
+    m.put("reason", reason);
+    m.put("invalidatedAt", at.toString());
+    events.publish(
+        codec.create(
+            events.sourceSystem(),
+            "PackageInvalidated",
+            1,
+            "Package",
+            p.packageId(),
+            p.version() + 1,
+            new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, actorId),
+            EventEnvelope.EventSource.REAL,
+            m),
+        WorkStopService.TOPIC);
+  }
+
   private int orderVersion(TaskInfo t) {
     return works.find(t.fulfillmentId()).map(WorkOrderStore.WorkOrderRow::version).orElse(1);
   }

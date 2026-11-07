@@ -1320,6 +1320,126 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("PackageHandedOver", p2.id())).isEqualTo(1);
   }
 
+  /** 재포장(WK-07): 새 포장·새 QR, 이전 포장 무효(이전 QR 거절), 인계 진행 중이면 거절, 내용 변경은 아직 없음. */
+  @Test
+  void repackIssuesNewPackageAndInvalidatesOldLabel() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    List<Pkg> pkgs = readyShipment(o);
+    Pkg p1 = pkgs.get(0);
+    Pkg p2 = pkgs.get(1);
+    String dlv = "DLV-" + o;
+    assignRider(o, dlv, "R1", 1);
+
+    // 조회 전용 운영자는 못 한다
+    assertThat(
+            call(
+                    "POST",
+                    VIEWER,
+                    "/packages/" + p1.id() + "/repackings",
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "DAMAGED_BAG"))
+                .status())
+        .isEqualTo(403);
+    // 내용 변경은 아직 없다(같은 줄·LOT 에 수량만 +1)
+    JsonNode c0 =
+        call("GET", W1, "/packages/" + p1.id(), null, null).body().path("contents").get(0);
+    Res changed =
+        call(
+            "POST",
+            W1,
+            "/packages/" + p1.id() + "/repackings",
+            UUID.randomUUID().toString(),
+            Map.of(
+                "reason",
+                "CONTENT_CHANGE",
+                "contents",
+                List.of(
+                    Map.of(
+                        "orderLineId",
+                        c0.path("orderLineId").asString(),
+                        "sku",
+                        c0.path("sku").asString(),
+                        "lotId",
+                        c0.path("lotId").asString(),
+                        "qty",
+                        c0.path("qty").asInt() + 1))));
+    assertThat(changed.status()).as(changed.body().toString()).isEqualTo(422);
+    assertThat(changed.body().path("code").asString()).isEqualTo("CONTENT_MISMATCH");
+
+    String key = UUID.randomUUID().toString();
+    Res r =
+        call(
+            "POST",
+            W1,
+            "/packages/" + p1.id() + "/repackings",
+            key,
+            Map.of("reason", "DAMAGED_BAG"));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    String newId = r.body().path("packageId").asString();
+    assertThat(newId).isNotEqualTo(p1.id());
+    assertThat(r.body().path("packageVersion").asInt()).isEqualTo(2);
+    assertThat(r.body().path("state").asString()).isEqualTo("SEALED");
+    String newQr = r.body().path("qrCode").asString();
+    assertThat(newQr).isEqualTo("PKG:" + newId + ":2");
+    // 같은 키 → 같은 새 포장
+    assertThat(
+            call(
+                    "POST",
+                    W1,
+                    "/packages/" + p1.id() + "/repackings",
+                    key,
+                    Map.of("reason", "DAMAGED_BAG"))
+                .body()
+                .path("packageId")
+                .asString())
+        .isEqualTo(newId);
+    JsonNode old = call("GET", W1, "/packages/" + p1.id(), null, null).body();
+    assertThat(old.path("state").asString()).isEqualTo("INVALIDATED");
+    assertThat(old.path("invalidatedReason").asString()).isEqualTo("DAMAGED_BAG→" + newId);
+    assertThat(outbox("PackageInvalidated", p1.id())).isEqualTo(1);
+    // 출고에는 유효 포장 2개(새 포장 + p2)
+    JsonNode shipment =
+        call("GET", W1, "/shipments/" + old.path("shipmentId").asString(), null, null).body();
+    assertThat(shipment.path("packages").size()).isEqualTo(2);
+    // 이전 QR 은 거절, 새 QR 로 허가
+    assertThat(authorize(RIDER1, p1, "R1", dlv, p1.qr()).body().path("code").asString())
+        .isEqualTo("PACKAGE_INVALIDATED");
+    Pkg np = new Pkg(newId, newQr);
+    Res a = authorize(RIDER1, np, "R1", dlv, newQr);
+    assertThat(a.status()).as(a.body().toString()).isEqualTo(201);
+    // 허가가 살아 있는 포장·무효 포장은 재포장 거절
+    Res live =
+        call(
+            "POST",
+            W1,
+            "/packages/" + newId + "/repackings",
+            UUID.randomUUID().toString(),
+            Map.of("reason", "LABEL_UNREADABLE"));
+    assertThat(live.status()).isEqualTo(409);
+    assertThat(live.body().path("code").asString()).isEqualTo("FENCE_ACTIVE");
+    assertThat(
+            call(
+                    "POST",
+                    W1,
+                    "/packages/" + p1.id() + "/repackings",
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "LABEL_UNREADABLE"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("INVALID_STATE");
+    // 다른 포장은 그대로 재포장 가능
+    assertThat(
+            call(
+                    "POST",
+                    W2,
+                    "/packages/" + p2.id() + "/repackings",
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "LABEL_UNREADABLE"))
+                .status())
+        .isEqualTo(201);
+  }
+
   /** 인계 진행 중이면 중지는 대기 → fence 만료 뒤 중지 완료(취소 복귀). 재배정은 이전 라이더 허가를 끝낸다. */
   @Test
   void stopWaitsForLiveFenceAndReassignmentRevokesOldRider() {

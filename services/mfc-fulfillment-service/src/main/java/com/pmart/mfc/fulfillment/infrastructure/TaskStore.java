@@ -449,6 +449,48 @@ public class TaskStore {
     return out;
   }
 
+  /** 재포장 — 이전 포장의 내용·봉투·위치·PACK 확정 ID 를 그대로 가진 새 SEALED 포장(교체 관계). */
+  public void insertRepack(
+      PackageRow old,
+      String newId,
+      String requestId,
+      int packageVersion,
+      String qrCode,
+      String packedBy,
+      Instant at) {
+    jdbc.update(
+        "INSERT INTO package (package_id, shipment_id, request_id, package_version, state, qr_code,"
+            + " contents, bag_count, contains_alcohol, temperature_zone, weight_g, volume_cm3,"
+            + " packed_by, packing_location, inventory_commit_id, version, created_at, sealed_at,"
+            + " replaces_package_id) VALUES (?,?,?,?,'SEALED',?,?::jsonb,?,?,?,?,?,?,?,?,1,?,?,?)",
+        newId,
+        old.shipmentId(),
+        requestId,
+        packageVersion,
+        qrCode,
+        old.contents(),
+        old.bagCount(),
+        old.containsAlcohol(),
+        old.temperatureZone(),
+        old.weightG(),
+        old.volumeCm3(),
+        packedBy,
+        old.packingLocation(),
+        old.inventoryCommitId(),
+        ts(at),
+        ts(at),
+        old.packageId());
+  }
+
+  /** 재포장된 이전 포장 SEALED → INVALIDATED(사유 = reject_reason). */
+  public int invalidateForRepack(String packageId, String reason) {
+    return jdbc.update(
+        "UPDATE package SET state = 'INVALIDATED', reject_reason = ?, version = version + 1"
+            + " WHERE package_id = ? AND state = 'SEALED'",
+        reason,
+        packageId);
+  }
+
   public void insertPackage(PackageRow p) {
     jdbc.update(
         "INSERT INTO package (package_id, shipment_id, request_id, package_version, state, contents,"
