@@ -29,6 +29,8 @@ public class SkusController implements SkusApi {
     d.setVolumeMl(p.volumeMl());
     d.setStorageType(p.storageType());
     d.setAlcohol(p.alcohol());
+    d.setShelfMinRemainingDays(p.shelfMinRemainingDays());
+    d.setShelfMaxDaysSinceManufacture(p.shelfMaxDaysSinceManufacture());
     d.setState(SkuProjection.StateEnum.fromValue(p.state().name()));
     d.setProductVersion(p.productVersion());
     d.setUpdatedAt(SkuHandlingsController.time(p.updatedAt()));

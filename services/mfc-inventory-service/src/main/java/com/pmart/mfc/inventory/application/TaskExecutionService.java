@@ -64,15 +64,16 @@ public class TaskExecutionService {
       int qty,
       @Nullable Quality resultQuality,
       @Nullable String sourceLotRef,
-      @Nullable LocalDate expiryDate) {
+      @Nullable LocalDate expiryDate,
+      @Nullable LocalDate manufactureDate) {
 
     public ExecLine(String sku, String lotId, int qty, @Nullable Quality resultQuality) {
-      this(sku, lotId, qty, resultQuality, null, null);
+      this(sku, lotId, qty, resultQuality, null, null, null);
     }
 
-    /** INSPECT 에서 LOT 을 나누는가(제조 LOT 표기·소비기한을 검수에서 확인). */
+    /** INSPECT 에서 LOT 을 나누는가(제조 LOT 표기·소비기한·제조일을 검수에서 확인). */
     boolean splitsLot() {
-      return sourceLotRef != null || expiryDate != null;
+      return sourceLotRef != null || expiryDate != null || manufactureDate != null;
     }
   }
 
@@ -234,6 +235,7 @@ public class TaskExecutionService {
                       l.sku(),
                       l.sourceLotRef(),
                       l.expiryDate(),
+                      l.manufactureDate(),
                       "LOT-" + java.util.UUID.randomUUID(),
                       cmd.executionId(),
                       at)
@@ -275,7 +277,9 @@ public class TaskExecutionService {
           .append(':')
           .append(l.sourceLotRef())
           .append(':')
-          .append(l.expiryDate());
+          .append(l.expiryDate())
+          .append(':')
+          .append(l.manufactureDate());
     }
     return StockRules.sha256(sb.toString());
   }

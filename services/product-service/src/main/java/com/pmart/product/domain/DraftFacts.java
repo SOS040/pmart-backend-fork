@@ -15,6 +15,8 @@ public record DraftFacts(
     @Nullable Integer unitsPerSku,
     @Nullable Integer weightG,
     @Nullable String storageType,
+    @Nullable Integer shelfMinRemainingDays,
+    @Nullable Integer shelfMaxDaysSinceManufacture,
     List<String> barcodes,
     @Nullable String primaryCategoryId,
     List<String> categoryIds,

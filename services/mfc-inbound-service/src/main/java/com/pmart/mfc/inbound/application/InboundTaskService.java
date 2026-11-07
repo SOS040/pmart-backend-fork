@@ -52,7 +52,8 @@ public class InboundTaskService {
       int qty,
       String resultQuality,
       @Nullable String sourceLotRef,
-      @Nullable LocalDate expiryDate) {}
+      @Nullable LocalDate expiryDate,
+      @Nullable LocalDate manufactureDate) {}
 
   /** 실행 결과. */
   public record ExecutionView(
@@ -181,6 +182,18 @@ public class InboundTaskService {
       if (!"NORMAL".equals(r.resultQuality()) && !"QUARANTINED".equals(r.resultQuality())) {
         throw new PmartException(
             ErrorCode.VALIDATION_FAILED, "resultQuality 는 NORMAL/QUARANTINED.");
+      }
+      if (r.manufactureDate() != null) {
+        LocalDate today = LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Seoul")));
+        if (r.manufactureDate().isAfter(today)) {
+          throw new PmartException(
+              ErrorCode.VALIDATION_FAILED, "제조일이 오늘 이후입니다: " + r.manufactureDate());
+        }
+        if (r.expiryDate() != null && r.manufactureDate().isAfter(r.expiryDate())) {
+          throw new PmartException(
+              ErrorCode.VALIDATION_FAILED,
+              "제조일 " + r.manufactureDate() + " 이 소비기한 " + r.expiryDate() + " 보다 늦습니다.");
+        }
       }
     }
     int qty = results.stream().mapToInt(InspectResult::qty).sum();
@@ -369,6 +382,9 @@ public class InboundTaskService {
         }
         if (r.hasNonNull("expiryDate")) {
           l.put("expiryDate", r.get("expiryDate").asString());
+        }
+        if (r.hasNonNull("manufactureDate")) {
+          l.put("manufactureDate", r.get("manufactureDate").asString());
         }
         lines.add(l);
       }

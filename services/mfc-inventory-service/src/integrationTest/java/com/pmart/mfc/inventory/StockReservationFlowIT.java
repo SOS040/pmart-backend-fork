@@ -616,6 +616,102 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         .contains("requestedQty=4;eligibleQty=3");
   }
 
+  /** 상품별 소비기한 보장(ADR-0041) — 상품 이벤트 대신 투영 열을 직접 채운다(시험 준비). */
+  void guarantee(String sku, Integer minRemainingDays, Integer maxDaysSinceManufacture) {
+    jdbc.update(
+        "UPDATE sku_projection SET shelf_min_remaining_days = ?, shelf_max_days_since_mfg = ?"
+            + " WHERE sku = ?",
+        minRemainingDays,
+        maxDaysSinceManufacture,
+        sku);
+  }
+
+  /** 수령 → 검수(제조 LOT·소비기한·제조일 확인, LOT 분리) → 선반 적치. */
+  void stockedWithManufacture(String sku, int qty, String lotRef, String expiry, String mfg) {
+    String receiptId = "RCV-" + UUID.randomUUID();
+    assertThat(postReceipt(UUID.randomUUID().toString(), receipt(receiptId, sku, qty, 0)).status())
+        .isEqualTo(201);
+    String pending =
+        get(INBOUND, "/internal/receipts/" + receiptId)
+            .body()
+            .path("lines")
+            .path(0)
+            .path("lotId")
+            .asString();
+    Map<String, Object> l = new LinkedHashMap<>();
+    l.put("sku", sku);
+    l.put("lotId", pending);
+    l.put("qty", qty);
+    l.put("resultQuality", "NORMAL");
+    l.put("sourceLotRef", lotRef);
+    if (expiry != null) {
+      l.put("expiryDate", expiry);
+    }
+    if (mfg != null) {
+      l.put("manufactureDate", mfg);
+    }
+    Res inspected = execute("INSPECT", "RCV-DOCK", null, List.of(l));
+    assertThat(inspected.status()).isEqualTo(201);
+    String lot = null;
+    for (JsonNode e :
+        get(INBOUND, "/internal/commits/" + inspected.body().path("resultId").asString())
+            .body()
+            .path("entries")) {
+      if (e.path("delta").asInt() > 0) {
+        lot = e.path("lotId").asString();
+      }
+    }
+    assertThat(
+            execute(
+                    "PUTAWAY",
+                    "RCV-DOCK",
+                    "C-01-01",
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", qty)))
+                .status())
+        .isEqualTo(201);
+  }
+
+  @Test
+  void productShelfLifeGuaranteeDecidesEligibleLots() {
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    // 1) 냉장이지만 고시 "주문일 기준 7일 이상 남은 상품" → 기본 2일 대신 7일
+    String yogurt = newSku();
+    handlingOn(yogurt);
+    projection(yogurt, "CHILLED");
+    guarantee(yogurt, 7, null);
+    stockedWithManufacture(yogurt, 3, "Y-SHORT", today.plusDays(5).toString(), null);
+    stockedWithManufacture(yogurt, 2, "Y-LONG", today.plusDays(9).toString(), null);
+    Res noLot = reserve(UUID.randomUUID().toString(), reserveBody("ORD-SL1", Map.of(yogurt, 3)));
+    assertThat(noLot.status()).isEqualTo(422);
+    assertThat(noLot.body().path("details").path(0).path("reason").asString())
+        .contains("requestedQty=3;eligibleQty=2");
+    assertThat(
+            reserve(UUID.randomUUID().toString(), reserveBody("ORD-SL2", Map.of(yogurt, 2)))
+                .status())
+        .isEqualTo(201);
+
+    // 2) 고시 "주문일 기준 2일 이내 제조된 상품"(빵): 제조일 확인된 LOT 만, 오래된 제조분 제외
+    String bread = newSku();
+    handlingOn(bread);
+    projection(bread, "CHILLED");
+    guarantee(bread, null, 2);
+    stockedWithManufacture(
+        bread, 4, "B-OLD", today.plusDays(10).toString(), today.minusDays(3).toString());
+    stockedWithManufacture(
+        bread, 1, "B-NEW", today.plusDays(10).toString(), today.minusDays(1).toString());
+    stockedWithManufacture(bread, 5, "B-UNKNOWN", today.plusDays(10).toString(), null);
+    Res bad = reserve(UUID.randomUUID().toString(), reserveBody("ORD-SL3", Map.of(bread, 2)));
+    assertThat(bad.status()).isEqualTo(422);
+    assertThat(bad.body().path("details").path(0).path("reason").asString())
+        .contains("requestedQty=2;eligibleQty=1");
+    Res one = reserve(UUID.randomUUID().toString(), reserveBody("ORD-SL4", Map.of(bread, 1)));
+    assertThat(one.status()).isEqualTo(201);
+    // 센터 재고 상세가 LOT 제조일을 보여 준다
+    String op = TestJwt.operator("op", List.of(), List.of(mfc));
+    JsonNode lots = get(op, "/mfcs/" + mfc + "/stock?sku=" + bread).body().path("lots");
+    assertThat(lots.toString()).contains(today.minusDays(1).toString());
+  }
+
   @Test
   void inspectionSplitsTheReceivedLotByManufacturerLotAndExpiry() {
     // 수령은 상품·수량만(LOT 미확정) → 품질검사에서 제조 LOT·소비기한별로 나누고 격리분을 가른다

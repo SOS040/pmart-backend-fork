@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -778,6 +778,7 @@ components:
               resultQuality: { type: string, enum: [NORMAL, QUARANTINED], description: INSPECT 전용 }
               sourceLotRef: { type: string, maxLength: 128, description: 'INSPECT 전용 — 검수에서 확인한 제조 LOT 표기. sourceLotRef·expiryDate 중 하나라도 있으면 그 추적 LOT 으로 나눈다(같은 위치, 총량 불변)' }
               expiryDate: { type: string, format: date, description: INSPECT 전용 — 검수에서 확인한 소비기한 }
+              manufactureDate: { type: string, format: date, description: 'INSPECT 전용 — 검수에서 확인한 제조일(0.4.0, ADR-0041). 있으면 LOT 정체성에 들어간다. "N일 이내 제조" 보장 상품은 제조일 있는 LOT 만 배정된다' }
               targetWorkState: { $ref: '#/components/schemas/WorkState' }
     CommitPackageHandoverRequest:
       type: object
@@ -917,6 +918,7 @@ components:
               toLocation: { type: string }
               toSourceLotRef: { type: string, maxLength: 128 }
               toExpiryDate: { type: string, format: date }
+              toManufactureDate: { type: string, format: date, description: '정정 대상 LOT 의 제조일(0.4.0, ADR-0041). toSourceLotRef·toExpiryDate·toManufactureDate 중 하나라도 있으면 그 추적 LOT 으로 옮긴다' }
     CenterStock:
       type: object
       required: [mfcId, sku, lots, units]
@@ -931,6 +933,7 @@ components:
               lotId: { type: string }
               tracking: { type: string, enum: [TRACKED, UNTRACKED] }
               expiryDate: { type: [string, 'null'], format: date }
+              manufactureDate: { type: [string, 'null'], format: date, description: 제조일(0.4.0). 모르면 null }
               onHand: { type: integer }
               quarantined: { type: integer }
               sellable: { type: integer }
@@ -1020,6 +1023,8 @@ components:
         volumeMl: { type: [integer, 'null'] }
         storageType: { type: [string, 'null'], description: AMBIENT / CHILLED / FROZEN }
         alcohol: { type: [boolean, 'null'] }
+        shelfMinRemainingDays: { type: [integer, 'null'], description: '상품별 소비기한 보장 — 주문일 기준 최소 잔여일(ADR-0041). null 이면 보장 문구 없음(보관 유형 기본값을 쓴다)' }
+        shelfMaxDaysSinceManufacture: { type: [integer, 'null'], description: '상품별 소비기한 보장 — 주문일 기준 제조 후 최대 경과일(ADR-0041). null 이면 보장 없음' }
         state: { type: string, enum: [ACTIVE, INACTIVE] }
         productVersion: { type: integer, description: 마지막으로 반영한 상품 버전(이보다 오래된 이벤트는 무시) }
         updatedAt: { type: string, format: date-time }

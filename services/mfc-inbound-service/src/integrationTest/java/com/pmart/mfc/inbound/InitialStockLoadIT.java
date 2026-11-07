@@ -523,12 +523,24 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
     a.put("resultQuality", "NORMAL");
     a.put("sourceLotRef", "MFG-A");
     a.put("expiryDate", "2026-12-31");
+    a.put("manufactureDate", "2026-11-01"); // ADR-0041
     Map<String, Object> b = new LinkedHashMap<>(a);
     b.put("qty", 2);
     b.put("sourceLotRef", "MFG-B");
     Map<String, Object> q = Map.of("qty", 1, "resultQuality", "QUARANTINED");
     String key = UUID.randomUUID().toString();
     Map<String, Object> body = Map.of("results", List.of(a, b, q));
+    // 제조일이 소비기한보다 늦으면 400(ADR-0041)
+    Map<String, Object> wrongMfg = new LinkedHashMap<>(a);
+    wrongMfg.put("manufactureDate", "2027-01-01");
+    assertThat(
+            post(
+                    op(m),
+                    "/inbound-tasks/" + taskId + "/inspections",
+                    UUID.randomUUID().toString(),
+                    Map.of("results", List.of(wrongMfg)))
+                .status())
+        .isEqualTo(400);
     // 잔량 초과 → 409
     assertThat(
             post(
@@ -555,6 +567,7 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
         .isEqualTo(calls.get(1).getHeader("Idempotency-Key"));
     assertThat(calls.get(1).getBodyAsString())
         .contains("\"sourceLotRef\":\"MFG-A\"")
+        .contains("\"manufactureDate\":\"2026-11-01\"")
         .contains("LOT-PEND");
     // 같은 키 재생 → 같은 결과(다시 호출 안 함)
     Res replay = post(op(m), "/inbound-tasks/" + taskId + "/inspections", key, body);

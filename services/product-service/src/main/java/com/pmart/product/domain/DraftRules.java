@@ -6,6 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 상품 등록 초안 검증(BO-03). 비어 있는 단위·중량·보관 온도를 0·기본값으로 채우지 않고 문제로 남긴다. 바코드 하나가 다른 SKU 를 이미 가리키면 자동으로 고르지
@@ -55,6 +56,8 @@ public final class DraftRules {
           DraftProblem.of(
               "STORAGE_TYPE_REQUIRED", "skus[0].storageType", "보관 온도(상온/냉장/냉동)가 없습니다."));
     }
+    checkShelfLife(f.shelfMinRemainingDays(), "minRemainingDays", p);
+    checkShelfLife(f.shelfMaxDaysSinceManufacture(), "maxDaysSinceManufacture", p);
     checkBarcodes(f.barcodes(), lookup, ownSkus, p);
     List<String> categories = resolveCategories(f, lookup, p);
     for (DraftFacts.FilterOptionRef o : f.filterOptions()) {
@@ -67,6 +70,17 @@ public final class DraftRules {
       }
     }
     return new Result(List.copyOf(p), categories);
+  }
+
+  /** 소비기한 보장 일수(ADR-0041): 없으면 보장 없음, 있으면 0~3650. */
+  private static void checkShelfLife(@Nullable Integer days, String field, List<DraftProblem> p) {
+    if (days != null && (days < 0 || days > 3650)) {
+      p.add(
+          DraftProblem.of(
+              "SHELF_LIFE_INVALID",
+              "skus[0].shelfLifeGuarantee." + field,
+              "소비기한 보장 일수는 0~3650 입니다: " + days));
+    }
   }
 
   private static void checkBarcodes(

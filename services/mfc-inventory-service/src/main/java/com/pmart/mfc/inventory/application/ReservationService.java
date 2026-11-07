@@ -14,6 +14,7 @@ import com.pmart.mfc.inventory.domain.LotAllocator.Allocation;
 import com.pmart.mfc.inventory.domain.LotAllocator.LineRequest;
 import com.pmart.mfc.inventory.domain.LotAllocator.LineShortage;
 import com.pmart.mfc.inventory.domain.LotAllocator.LotCandidate;
+import com.pmart.mfc.inventory.domain.LotAllocator.ShelfRule;
 import com.pmart.mfc.inventory.domain.ReservationState;
 import com.pmart.mfc.inventory.domain.ReservationState.Transition;
 import com.pmart.mfc.inventory.domain.SkuProjection;
@@ -178,11 +179,16 @@ public class ReservationService {
               for (LotBalance b : stock.lockLotBalances(cmd.mfcId(), requested.keySet())) {
                 lots.add(
                     new LotCandidate(
-                        b.sku(), b.lotId(), b.expiryDate(), b.firstNormalAt(), b.available()));
+                        b.sku(),
+                        b.lotId(),
+                        b.expiryDate(),
+                        b.manufactureDate(),
+                        b.firstNormalAt(),
+                        b.available()));
               }
               Map<String, SkuProjection> projections = skus.findAll(requested.keySet());
-              LotAllocator.MinDays minDays = minDays(requested.keySet(), projections);
-              List<String> missing = LotAllocator.missingPolicy(lots, minDays);
+              LotAllocator.Rules rules = shelfRules(requested.keySet(), projections);
+              List<String> missing = LotAllocator.missingPolicy(lots, rules);
               if (!missing.isEmpty()) {
                 throw PmartException.configRequired(
                     "pmart.inventory.min-remaining-days(보관 유형 "
@@ -198,7 +204,7 @@ public class ReservationService {
                           .toList(),
                       lots,
                       promised,
-                      minDays);
+                      rules);
               if (!result.shortages().isEmpty()) {
                 throw noEligibleLot(result.shortages());
               }
@@ -255,20 +261,30 @@ public class ReservationService {
         .value();
   }
 
-  /** SKU → 최소 잔여일(보관 유형 설정). 보관 유형을 모르거나 설정이 없으면 null(미설정). */
-  private LotAllocator.MinDays minDays(
+  /**
+   * SKU → 소비기한 기준(ADR-0041). 최소 잔여일은 상품 보장(shelfMinRemainingDays)을 먼저 쓰고, 없으면 보관 유형 기본값 ({@code
+   * pmart.inventory.min-remaining-days}). 둘 다 없으면 미설정(null — 기한 있는 LOT 은 CONFIG_REQUIRED). 제조 후
+   * 경과일은 상품 보장만.
+   */
+  private LotAllocator.Rules shelfRules(
       Collection<String> skuIds, Map<String, SkuProjection> projections) {
-    Map<String, Integer> out = new LinkedHashMap<>();
+    Map<String, ShelfRule> out = new LinkedHashMap<>();
     for (String sku : skuIds) {
       SkuProjection p = projections.get(sku);
-      if (p != null && p.storageType() != null) {
-        Integer d = properties.getMinRemainingDays().get(p.storageType());
-        if (d != null) {
-          out.put(sku, d);
-        }
+      if (p == null) {
+        continue;
       }
+      Integer storageDefault =
+          p.storageType() == null ? null : properties.getMinRemainingDays().get(p.storageType());
+      boolean guaranteed = p.shelfMinRemainingDays() != null;
+      out.put(
+          sku,
+          new ShelfRule(
+              guaranteed ? p.shelfMinRemainingDays() : storageDefault,
+              guaranteed,
+              p.shelfMaxDaysSinceManufacture()));
     }
-    return out::get;
+    return sku -> out.getOrDefault(sku, ShelfRule.storageDefault(null));
   }
 
   private static String storageTypes(List<String> skuIds, Map<String, SkuProjection> projections) {

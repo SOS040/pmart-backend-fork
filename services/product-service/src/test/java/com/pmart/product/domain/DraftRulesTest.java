@@ -44,7 +44,19 @@ class DraftRulesTest {
   static DraftFacts facts(
       Integer weight, String storage, List<String> barcodes, List<String> paths) {
     return new DraftFacts(
-        "묵은지부대찌개 180g", null, "E", 1, weight, storage, barcodes, null, List.of(), paths, List.of());
+        "묵은지부대찌개 180g",
+        null,
+        "E",
+        1,
+        weight,
+        storage,
+        null,
+        null,
+        barcodes,
+        null,
+        List.of(),
+        paths,
+        List.of());
   }
 
   @Test
@@ -54,6 +66,33 @@ class DraftRulesTest {
             facts(180, "FROZEN", List.of("0880123"), List.of("국·탕·찌개  >국·국밥")), LOOKUP, Set.of());
     assertThat(r.valid()).isTrue();
     assertThat(r.categoryIds()).containsExactly("p03-c01");
+  }
+
+  @Test
+  void shelfLifeGuaranteeIsOptionalButBounded() {
+    var none =
+        DraftRules.validate(facts(180, "CHILLED", List.of(), List.of("국·탕·찌개")), LOOKUP, Set.of());
+    assertThat(none.valid()).isTrue();
+    var ok =
+        DraftRules.validate(
+            new DraftFacts(
+                "x", null, "E", 1, 100, "CHILLED", 5, 3, List.of(), "p03", List.of(), List.of(),
+                List.of()),
+            LOOKUP,
+            Set.of());
+    assertThat(ok.valid()).isTrue();
+    var bad =
+        DraftRules.validate(
+            new DraftFacts(
+                "x", null, "E", 1, 100, "CHILLED", -1, 4000, List.of(), "p03", List.of(), List.of(),
+                List.of()),
+            LOOKUP,
+            Set.of());
+    assertThat(bad.problems())
+        .extracting(DraftProblem::field)
+        .containsExactlyInAnyOrder(
+            "skus[0].shelfLifeGuarantee.minRemainingDays",
+            "skus[0].shelfLifeGuarantee.maxDaysSinceManufacture");
   }
 
   @Test
@@ -96,8 +135,8 @@ class DraftRulesTest {
     var e6 =
         DraftRules.validate(
             new DraftFacts(
-                "x", null, "E", 6, 100, "AMBIENT", List.of(), "p03", List.of(), List.of(),
-                List.of()),
+                "x", null, "E", 6, 100, "AMBIENT", null, null, List.of(), "p03", List.of(),
+                List.of(), List.of()),
             LOOKUP,
             Set.of());
     assertThat(e6.problems())
@@ -116,6 +155,8 @@ class DraftRulesTest {
                 6,
                 900,
                 "AMBIENT",
+                null,
+                null,
                 List.of(),
                 "p03-c01",
                 List.of("p03", "p03-c01"),
@@ -138,6 +179,8 @@ class DraftRulesTest {
                 1,
                 1,
                 "AMBIENT",
+                null,
+                null,
                 List.of(),
                 "p03",
                 List.of(),

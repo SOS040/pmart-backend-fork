@@ -93,6 +93,8 @@ public class SkuProjector {
               integer(s, "volumeMl"),
               text(s, "storageType"),
               s.hasNonNull("alcohol") ? s.get("alcohol").asBoolean() : null,
+              integer(s.path("shelfLifeGuarantee"), "minRemainingDays"),
+              integer(s.path("shelfLifeGuarantee"), "maxDaysSinceManufacture"),
               "INACTIVE".equals(text(s, "state")) ? SkuState.INACTIVE : SkuState.ACTIVE,
               version,
               at));

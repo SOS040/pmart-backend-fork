@@ -60,6 +60,7 @@ public class StockStore {
       String sku,
       String lotId,
       @Nullable LocalDate expiryDate,
+      @Nullable LocalDate manufactureDate,
       String tracking,
       int onHand,
       int quarantined,
@@ -79,6 +80,7 @@ public class StockStore {
       String sku,
       @Nullable String sourceLotRef,
       @Nullable LocalDate expiryDate,
+      @Nullable LocalDate manufactureDate,
       String tracking) {}
 
   /** 수령 줄 결과. */
@@ -177,31 +179,38 @@ public class StockStore {
 
   // ---------- LOT ----------
 
-  /** 추적 LOT: 같은 SKU·원문·소비기한이면 같은 LOT. 없으면 만든다(경합 시 유일 인덱스가 하나만 남긴다). */
+  /** 추적 LOT: 같은 SKU·원문·소비기한·제조일이면 같은 LOT(제조일은 ADR-0041). 없으면 만든다(경합 시 유일 인덱스가 하나만 남긴다). */
   public String trackedLot(
       String sku,
       @Nullable String sourceLotRef,
       @Nullable LocalDate expiryDate,
+      @Nullable LocalDate manufactureDate,
       String newLotId,
       String originRef,
       Instant at) {
+    Date exp = expiryDate == null ? null : Date.valueOf(expiryDate);
+    Date mfg = manufactureDate == null ? null : Date.valueOf(manufactureDate);
     jdbc.update(
-        "INSERT INTO stock_lot (lot_id, sku, source_lot_ref, expiry_date, tracking, origin_ref,"
-            + " created_at) VALUES (?,?,?,?,'TRACKED',?,?)"
-            + " ON CONFLICT (sku, source_lot_ref, expiry_date) WHERE tracking = 'TRACKED' DO NOTHING",
+        "INSERT INTO stock_lot (lot_id, sku, source_lot_ref, expiry_date, manufacture_date, tracking,"
+            + " origin_ref, created_at) VALUES (?,?,?,?,?,'TRACKED',?,?)"
+            + " ON CONFLICT (sku, source_lot_ref, expiry_date, manufacture_date)"
+            + " WHERE tracking = 'TRACKED' DO NOTHING",
         newLotId,
         sku,
         sourceLotRef,
-        expiryDate == null ? null : Date.valueOf(expiryDate),
+        exp,
+        mfg,
         originRef,
         Timestamp.from(at));
     return jdbc.queryForObject(
         "SELECT lot_id FROM stock_lot WHERE tracking = 'TRACKED' AND sku = ?"
-            + " AND source_lot_ref IS NOT DISTINCT FROM ? AND expiry_date IS NOT DISTINCT FROM ?",
+            + " AND source_lot_ref IS NOT DISTINCT FROM ? AND expiry_date IS NOT DISTINCT FROM ?"
+            + " AND manufacture_date IS NOT DISTINCT FROM ?",
         String.class,
         sku,
         sourceLotRef,
-        expiryDate == null ? null : Date.valueOf(expiryDate));
+        exp,
+        mfg);
   }
 
   /** 추적 미확인 LOT(수령마다 새로). */
@@ -222,11 +231,12 @@ public class StockStore {
       return out;
     }
     named.query(
-        "SELECT lot_id, sku, source_lot_ref, expiry_date, tracking FROM stock_lot"
+        "SELECT lot_id, sku, source_lot_ref, expiry_date, manufacture_date, tracking FROM stock_lot"
             + " WHERE lot_id IN (:ids)",
         Map.of("ids", lotIds),
         rs -> {
           Date d = rs.getDate("expiry_date");
+          Date m = rs.getDate("manufacture_date");
           out.put(
               rs.getString("lot_id"),
               new LotRow(
@@ -234,6 +244,7 @@ public class StockStore {
                   rs.getString("sku"),
                   rs.getString("source_lot_ref"),
                   d == null ? null : d.toLocalDate(),
+                  m == null ? null : m.toLocalDate(),
                   rs.getString("tracking")));
         });
     return out;
@@ -253,7 +264,7 @@ public class StockStore {
   }
 
   private static final String LOT_BALANCE_SELECT =
-      "SELECT b.sku, b.lot_id, l.expiry_date, l.tracking, b.on_hand, b.quarantined, b.sellable,"
+      "SELECT b.sku, b.lot_id, l.expiry_date, l.manufacture_date, l.tracking, b.on_hand, b.quarantined, b.sellable,"
           + " b.reserved, b.first_normal_at, b.row_version"
           + " FROM stock_lot_balance b JOIN stock_lot l ON l.lot_id = b.lot_id";
 
@@ -605,11 +616,13 @@ public class StockStore {
 
   private static LotBalance lotBalance(ResultSet rs) throws SQLException {
     Date d = rs.getDate("expiry_date");
+    Date m = rs.getDate("manufacture_date");
     Timestamp f = rs.getTimestamp("first_normal_at");
     return new LotBalance(
         rs.getString("sku"),
         rs.getString("lot_id"),
         d == null ? null : d.toLocalDate(),
+        m == null ? null : m.toLocalDate(),
         rs.getString("tracking"),
         rs.getInt("on_hand"),
         rs.getInt("quarantined"),

@@ -159,7 +159,7 @@ public class ReceiptService {
     if (l.sourceLotRef() == null && l.expiryDate() == null) {
       return stock.untrackedLot(l.sku(), newId, receiptId, at);
     }
-    return stock.trackedLot(l.sku(), l.sourceLotRef(), l.expiryDate(), newId, receiptId, at);
+    return stock.trackedLot(l.sku(), l.sourceLotRef(), l.expiryDate(), null, newId, receiptId, at);
   }
 
   /** 수령 결과. */

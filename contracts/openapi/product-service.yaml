@@ -657,6 +657,14 @@ components:
         ti: { type: integer, minimum: 1 }
         hi: { type: integer, minimum: 1 }
         storageType: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+    ShelfLifeGuarantee:
+      type: object
+      description: |
+        상품별 소비기한 보장(ADR-0041). 상품 고시 "소비기한 또는 품질유지기한" 의 고객 약속을 구조화한 값이다. 둘 다 선택이고 둘 다 있을 수 있다.
+        없으면(또는 빈 객체) 보장 문구가 없는 상품 — MFC 재고는 보관 유형 기본 최소 잔여일을 쓴다. 0 으로 채우지 않는다.
+      properties:
+        minRemainingDays: { type: integer, minimum: 0, maximum: 3650, description: '주문일 기준 소비기한이 이만큼 이상 남은 상품("주문일 기준 N일 이상 남은 상품")' }
+        maxDaysSinceManufacture: { type: integer, minimum: 0, maximum: 3650, description: '주문일 기준 이 일수 이내에 제조된 상품("주문일 기준 N일 이내 제조된 상품")' }
     SkuDetail:
       type: object
       required: [sku, productId, baseProductId, unitType, unitsPerSku, saleState, version]
@@ -669,6 +677,7 @@ components:
         weightG: { type: integer, minimum: 0 }
         saleState: { $ref: '#/components/schemas/SaleState' }
         alcohol: { type: boolean, description: 주류 여부(PG 인증 결과 확인 대상) }
+        shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
         barcodes: { type: array, items: { type: string } }
         logistics: { $ref: '#/components/schemas/LogisticsSpec' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
@@ -830,6 +839,7 @@ components:
               volumeMl: { type: integer, minimum: 0 }
               storageType: { type: string, enum: [AMBIENT, CHILLED, FROZEN], description: 필수(비면 STORAGE_TYPE_REQUIRED) }
               alcohol: { type: boolean }
+              shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
               barcodes: { type: array, items: { type: string, maxLength: 64 }, description: 선택. 선행 0 보존 }
               logistics: { $ref: '#/components/schemas/LogisticsSpec' }
         filterOptions:

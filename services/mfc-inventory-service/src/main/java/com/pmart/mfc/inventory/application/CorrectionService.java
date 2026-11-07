@@ -48,7 +48,8 @@ public class CorrectionService {
       int qty,
       @Nullable String toLocation,
       @Nullable String toSourceLotRef,
-      @Nullable LocalDate toExpiryDate) {}
+      @Nullable LocalDate toExpiryDate,
+      @Nullable LocalDate toManufactureDate) {}
 
   public record CorrectionCommand(
       String mfcId, String reason, String approvalRef, List<CorrectionLine> lines) {}
@@ -122,11 +123,14 @@ public class CorrectionService {
                   }
                 }
                 String toLot =
-                    l.toSourceLotRef() != null || l.toExpiryDate() != null
+                    l.toSourceLotRef() != null
+                            || l.toExpiryDate() != null
+                            || l.toManufactureDate() != null
                         ? stock.trackedLot(
                             l.sku(),
                             l.toSourceLotRef(),
                             l.toExpiryDate(),
+                            l.toManufactureDate(),
                             "LOT-" + UUID.randomUUID(),
                             "CORRECTION:" + requestId,
                             at)

@@ -37,6 +37,10 @@ public class ProductSnapshots {
       }
       m.put("storageType", s.storageType());
       m.put("alcohol", s.alcohol());
+      Map<String, Object> guarantee = shelfLifeGuarantee(s);
+      if (!guarantee.isEmpty()) {
+        m.put("shelfLifeGuarantee", guarantee);
+      }
       m.put("state", s.state());
       m.put("barcodes", catalog.activeBarcodes(s.sku()));
       catalog
@@ -70,6 +74,14 @@ public class ProductSnapshots {
     out.put("approvalId", approvalId);
     out.put("publishedAt", at.toString());
     return out;
+  }
+
+  /** 소비기한 보장(ADR-0041). 값이 있는 항목만 — 없으면 빈 Map(보장 없음). */
+  static Map<String, Object> shelfLifeGuarantee(SkuRow s) {
+    Map<String, Object> g = new LinkedHashMap<>();
+    putIfNotNull(g, "minRemainingDays", s.shelfMinRemainingDays());
+    putIfNotNull(g, "maxDaysSinceManufacture", s.shelfMaxDaysSinceManufacture());
+    return g;
   }
 
   private static void putIfNotNull(Map<String, Object> m, String k, Object v) {

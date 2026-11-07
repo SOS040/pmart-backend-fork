@@ -417,6 +417,8 @@ public class ProductDraftService {
         s.hasNonNull("unitsPerSku") ? s.get("unitsPerSku").asInt() : null,
         s.hasNonNull("weightG") ? s.get("weightG").asInt() : null,
         text(s, "storageType"),
+        intOrNull(s.path("shelfLifeGuarantee"), "minRemainingDays"),
+        intOrNull(s.path("shelfLifeGuarantee"), "maxDaysSinceManufacture"),
         barcodes,
         text(p, "primaryCategoryId"),
         ids,
@@ -474,6 +476,9 @@ public class ProductDraftService {
     copyInt(sku, s, "weightG");
     copyInt(sku, s, "volumeMl");
     copyText(sku, s, "storageType");
+    if (sku.path("shelfLifeGuarantee").isObject()) {
+      s.set("shelfLifeGuarantee", sku.get("shelfLifeGuarantee").deepCopy());
+    }
     ArrayNode derived = in.putArray("derivedFields");
     root.path("source").path("derived").forEach(derived::add);
     if (sku.hasNonNull("alcohol")) {
@@ -567,6 +572,10 @@ public class ProductDraftService {
     if (from.hasNonNull(field)) {
       to.put(field, from.get(field).asInt());
     }
+  }
+
+  private static @Nullable Integer intOrNull(JsonNode n, String field) {
+    return n.hasNonNull(field) ? n.get(field).asInt() : null;
   }
 
   private static @Nullable String text(JsonNode n, String field) {

@@ -38,3 +38,4 @@
 
 ## 상태
 상품 등록(초안·배치·카테고리 트리·승인 반영·SKU 발급), 조회, 판매 상태 변경, SKU 발급 확인, 구매 상한 검증 구현(2026-10-30).
+- SKU 소비기한 보장 `shelfLifeGuarantee`(ADR-0041, 2026-11-07, V4): `minRemainingDays`·`maxDaysSinceManufacture`(선택, 0~3650, 벗어나면 `SHELF_LIFE_INVALID`). 초안 → PRODUCT 승인으로 반영, 재적재 승인은 초안 값으로 바꾼다(없으면 보장 없음). `SkuDetail`·`ProductVersionPublished.skus[]` 에 나간다. 고시 문구 해석은 하지 않는다(등록 쪽 몫).

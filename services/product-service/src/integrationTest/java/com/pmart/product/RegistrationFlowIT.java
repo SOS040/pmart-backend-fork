@@ -234,6 +234,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     sku.put("unitsPerSku", 1);
     sku.put("weightG", weightG);
     sku.put("storageType", "FROZEN");
+    sku.put("shelfLifeGuarantee", Map.of("minRemainingDays", 91)); // 상품 고시 "주문일 기준 91일 이상"
     sku.put("alcohol", null);
     sku.put("barcodes", List.of());
     Map<String, Object> product = new LinkedHashMap<>();
@@ -357,6 +358,17 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(product.path("skus").path(0).path("logistics").path("storageType").asString())
         .isEqualTo("FROZEN");
     assertThat(get("/skus/" + sku).body().path("weightG").asInt()).isEqualTo(180);
+    // 소비기한 보장(ADR-0041): 묶음 값 그대로, 없는 항목은 비운다(0 으로 채우지 않음)
+    JsonNode guarantee = get("/skus/" + sku).body().path("shelfLifeGuarantee");
+    assertThat(guarantee.path("minRemainingDays").asInt()).isEqualTo(91);
+    assertThat(guarantee.hasNonNull("maxDaysSinceManufacture")).isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'ProductVersionPublished'"
+                    + " AND aggregateid = ?",
+                String.class,
+                productId))
+        .contains("\"shelfLifeGuarantee\"");
     assertThat(
             get("/product-import-batches/" + batchId + "/id-map")
                 .body()

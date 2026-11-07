@@ -119,6 +119,10 @@ public class ProductQueries {
     m.put("weightG", s.weightG());
     m.put("storageType", s.storageType());
     m.put("alcohol", s.alcohol());
+    Map<String, Object> guarantee = ProductSnapshots.shelfLifeGuarantee(s);
+    if (!guarantee.isEmpty()) {
+      m.put("shelfLifeGuarantee", guarantee);
+    }
     m.put("barcodes", catalog.activeBarcodes(s.sku()));
     catalog
         .latestLogistics(s.sku())
@@ -152,6 +156,9 @@ public class ProductQueries {
     m.put(
         "saleState", "INACTIVE".equals(s.get("state")) ? "SALE_STOPPED" : product.get("saleState"));
     m.put("alcohol", s.get("alcohol"));
+    if (s.get("shelfLifeGuarantee") != null) {
+      m.put("shelfLifeGuarantee", s.get("shelfLifeGuarantee"));
+    }
     m.put("barcodes", s.getOrDefault("barcodes", List.of()));
     Map<String, Object> lg =
         new LinkedHashMap<>((Map<String, Object>) s.getOrDefault("logistics", Map.of()));

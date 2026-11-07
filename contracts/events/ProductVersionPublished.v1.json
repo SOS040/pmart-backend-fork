@@ -91,6 +91,24 @@
                   "alcohol": {
                     "type": "boolean"
                   },
+                  "shelfLifeGuarantee": {
+                    "type": "object",
+                    "required": [],
+                    "properties": {
+                      "minRemainingDays": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "주문일 기준 소비기한이 최소 이만큼 남은 상품을 보낸다(상품 고시 '주문일 기준 N일 이상 남은 상품')"
+                      },
+                      "maxDaysSinceManufacture": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "주문일 기준 제조 후 이 일수 이내인 상품을 보낸다(상품 고시 '주문일 기준 N일 이내 제조된 상품')"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "상품별 소비기한 보장(ADR-0041). 없으면 보장 문구가 없는 상품 — 재고는 보관 유형 기본 최소 잔여일을 쓴다"
+                  },
                   "volumeMl": {
                     "type": "integer",
                     "minimum": 0

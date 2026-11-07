@@ -10,11 +10,19 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 예약 LOT 배정(ADR-0040 결정 4·5, MFC 문서 §6 Q-05 결정 2026-11-07). 순수 계산.
+ * 예약 LOT 배정(ADR-0040 결정 4, ADR-0041 상품별 소비기한 보장). 순수 계산.
  *
  * <ul>
- *   <li>적격: LOT 의 가용(E_lot − R_lot) &gt; 0. 소비기한이 있는 LOT 은 {@code 소비기한 − 배송 약속일 ≥ 최소 잔여일}. 소비기한 없는
- *       LOT(UNTRACKED 포함)은 소비기한 관리 대상이 아닌 것으로 본다(상품 정본에 관리 여부 필드가 생기기 전 임시 — ADR-0040 결정 5).
+ *   <li>적격: LOT 의 가용(E_lot − R_lot) &gt; 0 이고 SKU 의 {@link ShelfRule} 을 지킨다. 기준일은 배송 약속일이다(상품 고시는
+ *       "주문일 기준"이고 약속일 ≥ 주문일이라, 약속일로 판정하면 고시 약속을 넘겨 지킨다).
+ *       <ul>
+ *         <li>소비기한 있는 LOT: {@code 소비기한 − 약속일 ≥ minRemainingDays}. 값이 없으면 판정할 수 없다(호출자가
+ *             CONFIG_REQUIRED).
+ *         <li>소비기한 없는 LOT(UNTRACKED 포함): 상품이 잔여일을 보장하면 확인할 수 없으므로 배정하지 않는다. 보장이 없으면 소비기한 관리 대상이 아닌
+ *             것으로 보고 통과.
+ *         <li>제조 후 경과일 보장(maxDaysSinceManufacture)이 있으면 {@code 약속일 − 제조일 ≤ N}. 제조일 모르는 LOT 은 배정하지
+ *             않는다.
+ *       </ul>
  *   <li>순서: 소비기한 빠른 순(없음은 맨 뒤) → 센터 최초 정상 인수 시각 → lot_id.
  *   <li>줄당 LOT 수 제한 없음. 줄은 요청 순서대로 배정하고, 앞 줄이 쓴 수량은 뒤 줄에서 빠진다.
  * </ul>
@@ -28,6 +36,7 @@ public final class LotAllocator {
       String sku,
       String lotId,
       @Nullable LocalDate expiryDate,
+      @Nullable LocalDate manufactureDate,
       @Nullable Instant firstNormalAt,
       int available) {}
 
@@ -44,31 +53,55 @@ public final class LotAllocator {
   /** 결과. shortages 가 비어 있지 않으면 allocations 는 쓰지 않는다(전체 거절). */
   public record Result(List<Allocation> allocations, List<LineShortage> shortages) {}
 
-  /** SKU 의 최소 잔여일. 소비기한 있는 LOT 을 판정할 때만 필요하다. null 이면 미설정. */
+  /**
+   * SKU 의 소비기한 기준.
+   *
+   * @param minRemainingDays 소비기한 있는 LOT 의 최소 잔여일. 상품 보장값, 없으면 보관 유형 기본값. null 이면 미설정
+   * @param remainingGuaranteed 상품이 잔여일을 보장하는가(소비기한 없는 LOT 을 거른다)
+   * @param maxDaysSinceManufacture 상품의 제조 후 경과일 보장. null 이면 없음
+   */
+  public record ShelfRule(
+      @Nullable Integer minRemainingDays,
+      boolean remainingGuaranteed,
+      @Nullable Integer maxDaysSinceManufacture) {
+
+    /** 상품 보장 없이 보관 유형 기본값만. */
+    public static ShelfRule storageDefault(@Nullable Integer minRemainingDays) {
+      return new ShelfRule(minRemainingDays, false, null);
+    }
+  }
+
   @FunctionalInterface
-  public interface MinDays {
-    @Nullable Integer of(String sku);
+  public interface Rules {
+    ShelfRule of(String sku);
   }
 
   /** 소비기한이 있는 LOT 이 있는데 최소 잔여일이 미설정인 SKU — 호출자가 CONFIG_REQUIRED 로 거절한다. */
-  public static List<String> missingPolicy(List<LotCandidate> lots, MinDays minDays) {
+  public static List<String> missingPolicy(List<LotCandidate> lots, Rules rules) {
     return lots.stream()
         .filter(l -> l.expiryDate() != null && l.available() > 0)
         .map(LotCandidate::sku)
         .distinct()
-        .filter(s -> minDays.of(s) == null)
+        .filter(s -> rules.of(s).minRemainingDays() == null)
         .sorted()
         .toList();
   }
 
-  public static boolean eligible(LotCandidate l, LocalDate promisedDate, MinDays minDays) {
+  public static boolean eligible(LotCandidate l, LocalDate promisedDate, Rules rules) {
     if (l.available() <= 0) {
       return false;
     }
-    if (l.expiryDate() == null) {
-      return true;
+    ShelfRule rule = rules.of(l.sku());
+    if (rule.maxDaysSinceManufacture() != null
+        && (l.manufactureDate() == null
+            || l.manufactureDate()
+                .isBefore(promisedDate.minusDays(rule.maxDaysSinceManufacture())))) {
+      return false;
     }
-    Integer min = minDays.of(l.sku());
+    if (l.expiryDate() == null) {
+      return !rule.remainingGuaranteed();
+    }
+    Integer min = rule.minRemainingDays();
     if (min == null) {
       return false;
     }
@@ -83,10 +116,10 @@ public final class LotAllocator {
           .thenComparing(LotCandidate::lotId);
 
   public static Result allocate(
-      List<LineRequest> lines, List<LotCandidate> lots, LocalDate promisedDate, MinDays minDays) {
+      List<LineRequest> lines, List<LotCandidate> lots, LocalDate promisedDate, Rules rules) {
     Map<String, List<LotCandidate>> bySku = new LinkedHashMap<>();
     for (LotCandidate l : lots) {
-      if (eligible(l, promisedDate, minDays)) {
+      if (eligible(l, promisedDate, rules)) {
         bySku.computeIfAbsent(l.sku(), k -> new ArrayList<>()).add(l);
       }
     }

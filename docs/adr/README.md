@@ -42,5 +42,6 @@
 | [0038](0038-split-search-and-logs-elasticsearch.md) | 검색 ES·Logstash(pc3)와 로그 ES·Logstash·Kibana(pc4) 분리 — 각 ES 색인 자동 생성 범위 제한, 경보 클러스터별. ADR-0031 결정 5 대체 | 승인 |
 | [0039](0039-approval-application-receipt-event.md) | 승인 반영 회신은 이벤트 `ApplicationReceiptRecorded`(`platform.approval-receipt.v1`) — 정본이 반영 트랜잭션에서 outbox, approval 이 실행 축 갱신(1차 pricing) | 승인 |
 | [0040](0040-mfc-inventory-model-v2.md) | MFC 재고 모델 v2 — 위치·LOT·품질·업무상태별 단위 행 + LOT·센터 요약, LOT 단위 예약(FEFO·줄당 LOT 수 제한 없음, 최소 잔여일 냉장2/냉동30/상온30), 수령→검수→적치 후에만 판매 가능, 원장에 단위 키. 슬라이스 4 간략 모델 대체 | 승인 |
+| [0041](0041-per-product-shelf-life-guarantee.md) | 상품별 소비기한 보장 — product SKU `shelfLifeGuarantee`(주문일 기준 최소 잔여일·제조 후 최대 경과일), 재고 배정은 상품 값 우선·보관 유형 기본값은 대체값, 보장 확인 못 하는 LOT(기한·제조일 없음) 미배정, LOT 제조일(검수·정정 입력). ADR-0040 결정 5 일부 대체 | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.

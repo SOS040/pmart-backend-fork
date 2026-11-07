@@ -132,6 +132,7 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
     s.put("volumeMl", 500);
     s.put("storageType", "CHILLED");
     s.put("alcohol", false);
+    s.put("shelfLifeGuarantee", Map.of("minRemainingDays", 5, "maxDaysSinceManufacture", 3));
     s.put("state", state);
     s.put("barcodes", List.of("08801234567890"));
     s.put("logistics", Map.of("unitsPerBox", 12, "boxesPerPallet", 40, "ti", 8, "hi", 5));
@@ -199,6 +200,9 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(proj.status()).isEqualTo(200);
     assertThat(proj.body().path("unitType").asString()).isEqualTo("E");
     assertThat(proj.body().path("storageType").asString()).isEqualTo("CHILLED");
+    // 상품별 소비기한 보장(ADR-0041)
+    assertThat(proj.body().path("shelfMinRemainingDays").asInt()).isEqualTo(5);
+    assertThat(proj.body().path("shelfMaxDaysSinceManufacture").asInt()).isEqualTo(3);
     assertThat(proj.body().path("productVersion").asInt()).isEqualTo(1);
     assertThat(
             awaitProjection(inactive, b -> "INACTIVE".equals(b.path("state").asString())).status())

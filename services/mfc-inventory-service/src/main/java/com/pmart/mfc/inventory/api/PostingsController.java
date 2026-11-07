@@ -116,7 +116,8 @@ public class PostingsController implements PostingsApi {
                             ? null
                             : Quality.valueOf(l.getResultQuality().getValue()),
                         l.getSourceLotRef(),
-                        l.getExpiryDate()))
+                        l.getExpiryDate(),
+                        l.getManufactureDate()))
             .toList();
     var r =
         executions.commit(
@@ -149,7 +150,8 @@ public class PostingsController implements PostingsApi {
                         l.getQty(),
                         l.getToLocation(),
                         l.getToSourceLotRef(),
-                        l.getToExpiryDate()))
+                        l.getToExpiryDate(),
+                        l.getToManufactureDate()))
             .toList();
     var r =
         corrections.correct(

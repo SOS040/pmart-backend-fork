@@ -4,6 +4,7 @@
 - 대체: 슬라이스 4 의 간략 모델(V3 주석 "ReservationPart 의 최소형", 센터·SKU 한 행). ADR-0002(단일 쓰기 주체)는 그대로.
 - 정본 규칙: `docs/business/MFC-business-logic.md` §3 재고관리(IV-01~13·상태 축·§6 허용 전이), service-map §5 mfc-inventory, 계약 `contracts/openapi/mfc-inventory-service.yaml`
 - 결정 기록: MFC 문서 §6 Q-05(2026-11-07, 아래 결정 5)
+- 결정 5 일부 대체: [ADR-0041](0041-per-product-shelf-life-guarantee.md) — 소비기한 관리 판단·최소 잔여일을 상품별 보장 값 우선으로(보관 유형 값은 대체값), LOT 제조일
 
 ## 배경
 - 계약은 처음부터 Balance(센터·위치·SKU·LOT·품질·업무상태), ReservationPart(HELD/CONFIRMED/RELEASED/EXPIRED/BLOCKED/CONSUMED), 검수·적치·피킹·인계 전기를 적었지만, 슬라이스 4 구현은 센터·SKU 한 행(H/Q/E/R)과 SKU 합산 예약만 만들었다. 수령하면 바로 판매 가능, LOT·위치·기한 없음.

@@ -46,7 +46,8 @@ public class InboundTasksController implements InboundTasksApi {
                         r.getQty(),
                         r.getResultQuality().getValue(),
                         r.getSourceLotRef(),
-                        r.getExpiryDate()))
+                        r.getExpiryDate(),
+                        r.getManufactureDate()))
             .toList();
     return ResponseEntity.ok(dto(service.inspect(idempotencyKey, xSourceSystem, taskId, results)));
   }
