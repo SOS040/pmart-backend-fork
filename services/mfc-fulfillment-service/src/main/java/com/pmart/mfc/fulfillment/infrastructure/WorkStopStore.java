@@ -95,11 +95,18 @@ public class WorkStopStore {
         stopRequestId);
   }
 
-  /** 오래된 순 PENDING 중지 ID(sweep). */
+  /** 사유를 지운다(운영자 재시도). 반환 = 바뀐 행 수. */
+  public int clearError(String stopRequestId) {
+    return jdbc.update(
+        "UPDATE order_work_stop SET last_error = NULL WHERE stop_request_id = ? AND state = 'PENDING'",
+        stopRequestId);
+  }
+
+  /** 오래된 순 PENDING 중지 ID(sweep). 실패로 멈춘 것(last_error)은 빼다. */
   public List<String> pending(int limit) {
     return jdbc.queryForList(
-        "SELECT stop_request_id FROM order_work_stop WHERE state = 'PENDING' ORDER BY decided_at"
-            + " LIMIT ?",
+        "SELECT stop_request_id FROM order_work_stop WHERE state = 'PENDING' AND last_error IS NULL"
+            + " ORDER BY decided_at LIMIT ?",
         String.class,
         limit);
   }

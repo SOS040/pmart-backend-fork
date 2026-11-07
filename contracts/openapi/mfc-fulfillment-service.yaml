@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.3.0
+  version: 0.3.1
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -240,6 +240,28 @@ paths:
               schema: { $ref: '#/components/schemas/StopRequestResult' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/stop-requests/{stopRequestId}/retries:
+    post:
+      tags: [work-orders]
+      summary: '[운영자·내부] 실패로 멈춘 집품 뒤 중지 다시 시도 (0.3.1)'
+      description: |
+        2026-11-08(ADR-0046). 집품 뒤 중지가 실패로 멈추면(재고가 취소 복귀를 거절 — RETURN_MISMATCH·위치 잔량 부족 등, 또는 이 서비스의 집품·포장 기록
+        불일치 RECORD_MISMATCH) 판정은 PENDING + lastError 로 남고 자동 재시도에서 빠진다(같은 본문은 같은 거절). 원인(재고 보정 등)을 고친 뒤 이 요청으로
+        사유를 지우고 다시 끝까지 진행한다. 다시 실패하면 새 lastError. PENDING 이 아니면 지금 판정을 그대로 돌려준다(여러 번 불러도 안전).
+        결과 모름·미전달은 실패가 아니라 자동 재시도 대상이다. 운영자 화면(BO-12)은 아직 없다.
+      operationId: retryOrderStopRequest
+      parameters:
+        - { name: stopRequestId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 재시도 뒤 판정 (RESOLVED, 또는 PENDING — lastError 가 있으면 다시 실패)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StopRequestResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/stop-requests/{stopRequestId}:
     get:
@@ -908,6 +930,9 @@ components:
                     qty: { type: integer }
                     workStateAtStop: { type: string, enum: [NOT_PICKED, PICKED, PACKED] }
         resolvedAt: { type: string, format: date-time }
+        lastError:
+          type: [string, 'null']
+          description: '0.3.1 — 집품 뒤 중지가 실패로 멈춘 사유(코드: 상세). 있으면 자동 재시도 안 함 — POST …/retries'
     TaskExecutionRequest:
       type: object
       required: [executionType, workerId, lines]

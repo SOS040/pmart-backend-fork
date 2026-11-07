@@ -63,6 +63,9 @@ public class WorkStopService {
   public static final String RETURN_REASON = "CANCEL_AFTER_PICK";
   static final String NOT_PICKED = "NOT_PICKED";
 
+  /** 이 서비스의 집품·포장 기록끼리 맞지 않음(포장이 집품보다 많음 등) — 재고에 보내기 전 멈춤. */
+  public static final String RECORD_MISMATCH = "RECORD_MISMATCH";
+
   private static final Logger log = LoggerFactory.getLogger(WorkStopService.class);
   private static final TypeReference<List<Line>> LINES = new TypeReference<>() {};
   private static final TypeReference<List<PackageVerdict>> VERDICTS = new TypeReference<>() {};
@@ -95,7 +98,8 @@ public class WorkStopService {
       String state,
       List<Line> notStartedLines,
       List<PackageVerdict> packages,
-      Instant resolvedAt) {}
+      Instant resolvedAt,
+      @Nullable String lastError) {}
 
   private final WorkStopStore store;
   private final WorkOrderStore works;
@@ -180,7 +184,13 @@ public class WorkStopService {
               null);
       store.insert(pending);
       if ("FULL".equals(in.scope())) {
-        boolean ready = prepare(pending, now);
+        boolean ready;
+        try {
+          ready = prepare(pending, now);
+        } catch (IllegalStateException mismatch) {
+          markFailed(pending, RECORD_MISMATCH + ": " + mismatch.getMessage());
+          return verdict(store.find(in.stopRequestId()).orElseThrow());
+        }
         log.info(
             "주문 {} 작업 중지 {} — 피킹 시작 뒤, {}",
             in.orderId(),
@@ -264,6 +274,8 @@ public class WorkStopService {
     List<TaskLineRow> taskLines = works.taskLines(fid);
     List<Return> all = new ArrayList<>();
     List<PackageVerdict> verdicts = new ArrayList<>();
+    Map<String, List<Return>> byShipment = new LinkedHashMap<>();
+    // 1) 계산만(기록이 어긋나면 여기서 IllegalStateException — 아무것도 바꾸기 전)
     for (ShipmentRow s : works.shipments(fid)) {
       if ("CANCELLED".equals(s.state())) {
         continue;
@@ -329,15 +341,19 @@ public class WorkStopService {
       if (!loose.isEmpty()) {
         verdicts.add(new PackageVerdict(null, s.shipmentId(), "STOPPED", loose));
       }
-
-      closeShipmentWork(s.shipmentId(), taskRows, taskLines, now);
-      tasks.invalidateSealed(s.shipmentId(), now);
-      tasks.cancelShipment(s.shipmentId(), now);
-      if (!rs.isEmpty()) {
-        createReturnTask(s.shipmentId(), rs, now);
-      }
+      byShipment.put(s.shipmentId(), rs);
       all.addAll(rs);
     }
+    // 2) 반영
+    byShipment.forEach(
+        (shipmentId, rs) -> {
+          closeShipmentWork(shipmentId, taskRows, taskLines, now);
+          tasks.invalidateSealed(shipmentId, now);
+          tasks.cancelShipment(shipmentId, now);
+          if (!rs.isEmpty()) {
+            createReturnTask(shipmentId, rs, now);
+          }
+        });
     works.touch(fid, now);
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("reason", RETURN_REASON);
@@ -396,8 +412,11 @@ public class WorkStopService {
    */
   public void finish(String stopRequestId) {
     StopRow r = store.find(stopRequestId).orElse(null);
-    if (r == null || !"PENDING".equals(r.state()) || !"FULL".equals(r.scope())) {
-      return;
+    if (r == null
+        || !"PENDING".equals(r.state())
+        || !"FULL".equals(r.scope())
+        || r.lastError() != null) {
+      return; // 실패로 멈춘 건은 운영자 재시도(retry)로만
     }
     if (r.cancelReturn() == null) {
       boolean ready =
@@ -409,7 +428,12 @@ public class WorkStopService {
                     if (!"PENDING".equals(again.state()) || again.cancelReturn() != null) {
                       return true;
                     }
-                    return prepare(again, clock.instant());
+                    try {
+                      return prepare(again, clock.instant());
+                    } catch (IllegalStateException mismatch) {
+                      markFailed(again, RECORD_MISMATCH + ": " + mismatch.getMessage());
+                      return false;
+                    }
                   }));
       if (!ready) {
         return;
@@ -440,11 +464,7 @@ public class WorkStopService {
                     stopRequestId,
                     released);
               });
-      case "REJECTED" -> {
-        String err = c.code() + (c.detail() == null ? "" : ": " + c.detail());
-        store.recordError(stopRequestId, err);
-        log.error("주문 {} 작업 중지 {} — 재고가 취소 복귀를 거절: {}", p.orderId(), stopRequestId, err);
-      }
+      case "REJECTED" -> markFailed(p, c.code() + (c.detail() == null ? "" : ": " + c.detail()));
       default ->
           log.warn(
               "주문 {} 작업 중지 {} — 재고 취소 복귀 {}({}), sweep 이 다시",
@@ -456,8 +476,36 @@ public class WorkStopService {
   }
 
   /**
-   * 집품 뒤 중지 PENDING 을 다시(준비 대기·재고 결과 모름·미전달). 재고 거절은 같은 본문이라 다시 보내도 거절이다 — 그대로 다시 보낸다(원인 해소 뒤 통과).
+   * 실패로 멈춤: 사유를 남기고 ERROR 로그 한 번. 자동 재시도(sweep)에서 빠지고 운영자 재시도({@link #retry})로만 다시 간다 — 같은 본문을 다시
+   * 보내도 같은 거절이라 반복 시도·반복 경보가 의미 없다.
    */
+  private void markFailed(StopRow r, String error) {
+    store.recordError(r.stopRequestId(), error);
+    log.error(
+        "주문 {} 작업 중지 {} — 취소 복귀 실패, 운영자 확인 필요(재시도 POST …/stop-requests/{}/retries): {}",
+        r.orderId(),
+        r.stopRequestId(),
+        r.stopRequestId(),
+        error);
+  }
+
+  /**
+   * 운영자 재시도: 실패 사유를 지우고 다시 끝까지(준비 → 재고 반영). 원인(재고 보정 등)을 고친 뒤 부른다. PENDING 이 아니면 그대로 판정. 다시 실패하면 새
+   * 사유로 멈춘다.
+   */
+  public Verdict retry(String stopRequestId) {
+    StopRow r =
+        store
+            .find(stopRequestId)
+            .orElseThrow(() -> PmartException.notFound("STOP_REQUEST_NOT_FOUND", "중지 요청이 없습니다."));
+    if ("PENDING".equals(r.state()) && store.clearError(stopRequestId) == 1) {
+      log.info("주문 {} 작업 중지 {} — 운영자 재시도", r.orderId(), stopRequestId);
+      finish(stopRequestId);
+    }
+    return get(stopRequestId);
+  }
+
+  /** 집품 뒤 중지 PENDING 을 다시(준비 대기·재고 결과 모름·미전달). 실패로 멈춘 건(last_error)은 빼고. */
   @Scheduled(
       fixedDelayString = "${pmart.fulfillment.stop-sweep-interval:PT30S}",
       initialDelayString = "PT25S")
@@ -485,7 +533,8 @@ public class WorkStopService {
         r.state(),
         lines(r.notStartedLines()),
         verdicts(r),
-        r.resolvedAt() == null ? r.decidedAt() : r.resolvedAt());
+        r.resolvedAt() == null ? r.decidedAt() : r.resolvedAt(),
+        r.lastError());
   }
 
   private List<PackageVerdict> verdicts(StopRow r) {

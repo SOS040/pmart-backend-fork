@@ -67,6 +67,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.mfc.fulfillment.application.WorkStopService stops;
 
   @InjectWireMock("inv")
   WireMockServer inv;
@@ -919,6 +920,108 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.lines[0].lotId", equalTo("LOT-A"))));
     assertThat(call("GET", VIEWER, "/tasks/" + ret, null, null).body().path("state").asString())
         .isEqualTo("COMPLETED");
+  }
+
+  /** 재고가 취소 복귀를 거절 → PENDING + lastError, 자동 재시도(sweep)는 다시 보내지 않음 → 운영자 재시도로 RESOLVED. */
+  @Test
+  void rejectedCancelReturnStopsUntilOperatorRetries() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    inventoryCommits(
+        "PICK", 201, Map.of("status", "APPLIED", "resultId", "CMT-1", "appliedQty", 1));
+    assertThat(
+            call(
+                    "POST",
+                    W1,
+                    "/tasks/" + pick + "/executions",
+                    UUID.randomUUID().toString(),
+                    returnLikePick())
+                .body()
+                .path("status")
+                .asString())
+        .isEqualTo("APPLIED");
+
+    String cancelPath = "/api/v1/internal/reservations/RSV-" + o + "/cancel-returns";
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo(cancelPath))
+            .willReturn(json(409, Map.of("code", "RETURN_MISMATCH", "detail", "취소 복귀 수량이 다릅니다"))));
+    Res stop =
+        call(
+            "POST",
+            SVC,
+            "/internal/stop-requests",
+            UUID.randomUUID().toString(),
+            Map.of(
+                "stopRequestId",
+                "STOP-" + o,
+                "orderId",
+                o,
+                "scope",
+                "FULL",
+                "lines",
+                List.of(
+                    Map.of("orderLineId", "L1", "qty", 2), Map.of("orderLineId", "L2", "qty", 1))));
+    assertThat(stop.body().path("state").asString()).isEqualTo("PENDING");
+    assertThat(stop.body().path("lastError").asString()).startsWith("RETURN_MISMATCH");
+    inv.verify(1, postRequestedFor(urlPathEqualTo(cancelPath)));
+
+    // 자동 재시도는 실패로 멈춘 건을 다시 보내지 않는다
+    stops.sweepPending();
+    stops.sweepPending();
+    inv.verify(1, postRequestedFor(urlPathEqualTo(cancelPath)));
+
+    // 원인을 고친 뒤 운영자 재시도 → RESOLVED, 사유 지워짐, 같은 키로 재고에 다시
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo(cancelPath))
+            .willReturn(
+                json(200, Map.of("status", "APPLIED", "resultId", "RSV-" + o, "appliedQty", 3))));
+    Res retried =
+        call(
+            "POST",
+            SVC,
+            "/internal/stop-requests/STOP-" + o + "/retries",
+            UUID.randomUUID().toString(),
+            null);
+    assertThat(retried.status()).as(retried.body().toString()).isEqualTo(200);
+    assertThat(retried.body().path("state").asString()).isEqualTo("RESOLVED");
+    assertThat(retried.body().path("lastError").isNull()).isTrue();
+    inv.verify(
+        2,
+        postRequestedFor(urlPathEqualTo(cancelPath))
+            .withHeader("Idempotency-Key", equalTo("STOP-" + o)));
+    assertThat(outbox("WorkStopResult", o)).isEqualTo(1);
+    // 끝난 뒤 다시 불러도 그대로
+    assertThat(
+            call(
+                    "POST",
+                    SVC,
+                    "/internal/stop-requests/STOP-" + o + "/retries",
+                    UUID.randomUUID().toString(),
+                    null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("RESOLVED");
+    assertThat(call("POST", SVC, "/internal/stop-requests/STOP-NONE/retries", "k", null).status())
+        .isEqualTo(404);
+  }
+
+  static Map<String, Object> returnLikePick() {
+    return Map.of(
+        "executionType",
+        "PICK",
+        "workerId",
+        "w1",
+        "fromLocation",
+        "A-S1-01-1-01",
+        "toLocation",
+        "PAK-A-01",
+        "lines",
+        List.of(
+            Map.of("orderLineId", "L1", "sku", "E-00000001", "lotId", "LOT-A", "pickedQty", 1)));
   }
 
   static Map<String, Object> returnBody(String type, int qty) {

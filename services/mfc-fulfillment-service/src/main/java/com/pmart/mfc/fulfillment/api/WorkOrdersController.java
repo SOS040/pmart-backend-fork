@@ -139,6 +139,12 @@ public class WorkOrdersController implements WorkOrdersApi {
   }
 
   @Override
+  public ResponseEntity<StopRequestResult> retryOrderStopRequest(
+      String stopRequestId, String idempotencyKey, String xSourceSystem) {
+    return ResponseEntity.ok(result(stops.retry(stopRequestId)));
+  }
+
+  @Override
   public ResponseEntity<StopRequestResult> getOrderStopRequest(String stopRequestId) {
     return ResponseEntity.ok(result(stops.get(stopRequestId)));
   }
@@ -252,7 +258,8 @@ public class WorkOrdersController implements WorkOrdersApi {
                                                             l.workStateAtStop())))
                                         .toList()))
                     .toList())
-        .resolvedAt(time(v.resolvedAt()));
+        .resolvedAt(time(v.resolvedAt()))
+        .lastError(v.lastError());
   }
 
   private static OffsetDateTime time(Instant i) {

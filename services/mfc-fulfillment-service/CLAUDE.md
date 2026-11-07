@@ -44,7 +44,7 @@
 
 ## 집품 뒤 취소 (2026-11-08, IV-08 — ADR-0046, V5)
 - `WorkStopService`: 피킹 시작된 주문의 FULL 중지 → PENDING 기록 + (주문 잠금·작업 행 잠금 아래) 진행 중 실적·포장(RECORDED·UNKNOWN_RESULT·OPEN)이 없으면 준비: 남은 PICK·PACK 행 취소, 작업 CLOSED_PARTIAL(완료량 있음)/CANCELLED, 밀봉 포장 INVALIDATED, 출고 CANCELLED, 복귀 대상(`domain/CancelReturnRules` — 반영 PICK 도착 위치 − 같은 위치 밀봉 포장 = PICKED, 포장 = PACKED) → `<출고>-RETURN`(WAITING, `task.returns`), `order_work_stop.cancel_return·package_verdicts`.
-- 커밋 뒤 `finish`: inventory `POST /internal/reservations/{id}/cancel-returns`(키 = stopRequestId) → APPLIED 면 RESOLVED·`resolved_at`·RETURN READY/ASSIGNED·`WorkStopResult`(perPackage 는 포장만). 거절 → `last_error`(PENDING 유지), 모름·미전달·준비 대기 → `sweepPending`(`pmart.fulfillment.stop-sweep-interval`, 기본 PT30S).
+- 커밋 뒤 `finish`: inventory `POST /internal/reservations/{id}/cancel-returns`(키 = stopRequestId) → APPLIED 면 RESOLVED·`resolved_at`·RETURN READY/ASSIGNED·`WorkStopResult`(perPackage 는 포장만). 모름·미전달·준비 대기 → `sweepPending`(`pmart.fulfillment.stop-sweep-interval`, 기본 PT30S). **실패**(재고 거절, 또는 이 서비스 기록 불일치 `RECORD_MISMATCH` — 계산을 먼저 끝내고 그 뒤에만 바꾸므로 부분 반영 없음) → `last_error`·ERROR 로그 한 번, PENDING 유지, sweep 에서 빠짐 → 원인 고친 뒤 `POST /internal/stop-requests/{id}/retries`(사유 지우고 다시 끝까지, 0.3.1). 판정 응답 `lastError`.
 - 판정 응답 `packages[]`: 밀봉 포장마다(PACKED) + 출고의 포장 전 단위(packageId 없음, NOT_PICKED·PICKED). notStartedLines 는 빈 배열.
 - RETURN 실적: `executionType RETURN`(작업 유형과 같아야, 아니면 422 UNSUPPORTED_EXECUTION) — 줄마다 lotId·pickedQty>0, (주문 줄·SKU·LOT·출발 위치) 남은 복귀량 이하(아니면 409 QTY_EXCEEDS_REMAINING) → inventory MOVE(resultQuality 전달) → APPLIED 면 완료량, 모두 0 이면 COMPLETED. 상세 `picks[]` 는 이 서비스 기록(복귀 잔량·포장 위치).
 
