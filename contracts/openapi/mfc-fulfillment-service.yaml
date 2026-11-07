@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.3.1
+  version: 0.4.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -16,6 +16,14 @@ info:
     취소 복귀 대기, 예약 해제)가 반영되면 RESOLVED(packages[] 모두 STOPPED, notStartedLines 빈 배열)·WorkStopResult. RETURN 작업은 그때 READY.
     점원은 RETURN 을 시작해 executionType RETURN 실적(포장 위치 → 선반, inventory MOVE)으로 복귀한다 — 다 옮기면 COMPLETED, 판매 가능 복귀.
     진행 중(재고 결과 대기) 실적·포장이 있으면 그 결과가 날 때까지 PENDING(sweep 재시도). 피킹 뒤 부분 중지는 아직 없다(PENDING).
+
+    0.4.0(2026-11-08, 슬라이스 6c 라이더 인계, ADR-0047 — 인계 계약 정본 docs/business/flows/package-handover-contract.md):
+    배정은 delivery-dispatch 사건(DeliveryCreated·DeliveryAssigned·DeliveryAssignmentChanged·DeliveryCancelledBeforePickup, 토픽
+    delivery.delivery.v1)의 투영. 라이더(토큰 RIDER, 주체 = riderId)가 포장 QR 을 찍으면 인계 허가(fence, 유효시간은 센터 설정
+    `pmart.fulfillment.handover-fence-ttl."[센터]"` — 없으면 422 CONFIG_REQUIRED) → 인계 확정(mfc-inventory 인계 전기 H−q·E−q·R−q) →
+    포장 HANDED_OVER, 출고 PARTIALLY_HANDED_OVER/HANDED_OVER, PackageHandedOver. 중지와 허가·확정은 주문 잠금으로 한 줄 — 중지 기록이 있으면
+    허가 거절, 살아 있는 fence·결과 대기 인계가 있으면 중지는 그 포장 HANDOVER_IN_PROGRESS 로 대기, 인계된 포장이 있으면 전체 중지는 거절
+    (packages[] 에 HANDED_OVER, 작업 그대로 — 인계분 회수는 CS). 만료된 fence 는 확정 요청 전일 때만 끝난 것으로 본다.
     비정본: 수량(mfc-inventory), 취소 판단(order-orchestration/claim), 배차(delivery-dispatch), 작업자 배정 정본(mfc-capacity), 주문 상태(order).
 
     상태 기계
@@ -536,6 +544,11 @@ paths:
       description: |
         배정 라이더·배송번호·포장번호 일치, 기인계·무효 라벨·제한 라이더·중지 확정 포장을 검사한다.
         성공 시 handoverAuthorizationId·fenceVersion·fenceExpiresAt 발급. 만료 후 재스캔 필요(만료 ≠ 취소 성공).
+        구현(0.4.0): 토큰 RIDER 이고 주체 = riderId(아니면 403). scannedCode = 포장 qrCode(`PKG:<id>:<버전>`, 아니면 409 PACKAGE_INVALIDATED).
+        포장 SEALED·출고 READY/PARTIALLY_HANDED_OVER·주문 중지 없음(아니면 409 INVALID_STATE)·배정(deliveryId 가 이 출고의 배송, 상태 ASSIGNED —
+        아니면 409 DELIVERY_MISMATCH / NOT_ASSIGNED)·배정 라이더 = riderId(아니면 403 RIDER_MISMATCH). 같은 라이더·배송이 살아 있는 fence 를
+        다시 찍으면 같은 허가(201), 다른 라이더면 409 FENCE_ACTIVE, 확정 요청 뒤 결과 대기면 409 HANDOVER_RESULT_PENDING. 제한 라이더 검사는
+        rider-service(RiderRestricted) 투영이 생기면.
       operationId: authorizePackageHandover
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
@@ -567,7 +580,12 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
-          description: INVALID_STATE (중지 확정·SEALED 아님) / ALREADY_HANDED_OVER / PACKAGE_INVALIDATED (구 라벨) / DELIVERY_MISMATCH (타 주문·타 배송) / FENCE_ACTIVE (다른 승인 진행 중)
+          description: INVALID_STATE (중지 확정·SEALED 아님) / ALREADY_HANDED_OVER / PACKAGE_INVALIDATED (구 라벨) / DELIVERY_MISMATCH (타 주문·타 배송) / NOT_ASSIGNED (배정 없음·해제) / FENCE_ACTIVE (다른 승인 진행 중) / HANDOVER_RESULT_PENDING (확정 결과 대기)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONFIG_REQUIRED (센터 인계 허가 유효시간 미설정)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -579,6 +597,9 @@ paths:
       description: |
         fence 유효(handoverAuthorizationId·fenceVersion 일치, 미만료)를 확인한 뒤 mfc-inventory.CommitPackageHandover 를 호출한다(2 hop).
         inventory 응답 불명이면 UNKNOWN_RESULT 로 응답하고 fence 유지. 호출자는 GET …/handover-resolution 으로 해소한다.
+        구현(0.4.0): 토큰 RIDER·주체 = riderId = fence 라이더(아니면 403). 인계 ID(handoverId)는 포장당 하나 — 같은 허가로 다시 오면 같은 인계.
+        재고 반영(201 APPLIED) / 결과 모름·미전달(202 UNKNOWN_RESULT, 같은 인계 ID 로 서버가 다시 보냄) / 재고 거절(202 REJECTED — fence 유지,
+        재인계·취소 모두 막고 대사 필요, nextAction RECONCILE). fence 만료 뒤 첫 확정은 409 FENCE_EXPIRED(다시 찍기).
       operationId: commitPackageHandover
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
@@ -603,8 +624,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HandoverCommitResult' }
+        '202':
+          description: 결과 모름(UNKNOWN_RESULT) 또는 재고 거절(REJECTED) — 본문 status·nextAction
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HandoverCommitResult' }
         '409':
-          description: INVALID_STATE (fence 없음·만료) / FENCE_VERSION_MISMATCH / ALREADY_HANDED_OVER
+          description: INVALID_STATE (fence 없음) / FENCE_EXPIRED / FENCE_VERSION_MISMATCH / ALREADY_HANDED_OVER
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -1076,7 +1102,7 @@ components:
         packageId: { type: string }
         packageVersion: { type: integer }
         packageState: { $ref: '#/components/schemas/PackageState' }
-        verdict: { type: string, enum: [STOPPED, HANDOVER_IN_PROGRESS, HANDED_OVER, UNKNOWN] }
+        verdict: { type: string, enum: [READY, STOPPED, HANDOVER_IN_PROGRESS, HANDED_OVER, UNKNOWN], description: 'READY(0.4.0) = 인계 전·중지 없음' }
         fence:
           type: object
           properties:

@@ -170,6 +170,8 @@ ShipmentReady → delivery-dispatch: DeliveryCreated(배송 단위 = order 이�
   → review 자격 시작(품목별 수령 시각), notification(분할은 전량 완료 1회), demand-planning 실적
 ```
 
+구현 메모(2026-11-08, ADR-0047): MFC 쪽(배정 투영·인계 허가 fence·인계 확정·재고 인계 전기·`PackageHandedOver`)은 구현됐다. 서비스 간 약속의 정본은 [package-handover-contract.md](package-handover-contract.md) — 배차·라이더·배송 실행·주문은 그 문서 §5 를 따른다.
+
 ### 3.1 수량 불변식 (order-service가 검증)
 `주문행 원수량 = 미이행 보유 + 유효 인계 누계 + 출고 전 취소 누계`. 인계 후 반품은 별도 회수/검수/환불 수량(과거 인계 삭제 금지).
 

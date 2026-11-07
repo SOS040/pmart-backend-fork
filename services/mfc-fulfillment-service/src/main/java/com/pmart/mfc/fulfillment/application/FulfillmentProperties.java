@@ -21,11 +21,18 @@ public class FulfillmentProperties {
   private final String mfcInventoryBaseUrl;
   private final String mfcCapacityBaseUrl;
   private final Map<String, Duration> pickLeadTime;
+  private final Map<String, Duration> handoverFenceTtl;
 
+  /**
+   * @param handoverFenceTtl 센터별 라이더 인계 허가(fence) 유효시간(ADR-0047, 2026-11-08 사용자 결정 "설정값, 기본 없음"). 없는
+   *     센터는 인계 허가를 422 CONFIG_REQUIRED 로 막는다.
+   */
   public FulfillmentProperties(
       @Nullable String mfcInventoryBaseUrl,
       @Nullable String mfcCapacityBaseUrl,
-      @Nullable Map<String, Duration> pickLeadTime) {
+      @Nullable Map<String, Duration> pickLeadTime,
+      @Nullable Map<String, Duration> handoverFenceTtl) {
+    this.handoverFenceTtl = handoverFenceTtl == null ? Map.of() : Map.copyOf(handoverFenceTtl);
     this.mfcInventoryBaseUrl =
         mfcInventoryBaseUrl == null || mfcInventoryBaseUrl.isBlank()
             ? "http://mfc-inventory-service:8301"
@@ -44,6 +51,11 @@ public class FulfillmentProperties {
   /** 배정 조회(6b 작업 시작 판정). */
   public String mfcCapacityBaseUrl() {
     return mfcCapacityBaseUrl;
+  }
+
+  /** 센터 인계 허가 유효시간. 없으면 null(CONFIG_REQUIRED). */
+  public @Nullable Duration handoverFenceTtl(String mfcId) {
+    return handoverFenceTtl.get(mfcId);
   }
 
   /** 센터 준비 시각 설정. 없으면 null(CONFIG_REQUIRED). */

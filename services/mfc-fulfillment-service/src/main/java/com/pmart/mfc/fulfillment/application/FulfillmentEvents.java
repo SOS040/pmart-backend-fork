@@ -145,6 +145,40 @@ public class FulfillmentEvents {
         "ShipmentReady", "Shipment", pack.shipmentId(), shipmentVersion, pack.startedBy(), ready);
   }
 
+  /** 포장 인계 확정(PackageHandedOver, 집계 키 orderId). handoverId 가 정확히 한 번 키. */
+  public void packageHandedOver(
+      com.pmart.mfc.fulfillment.infrastructure.HandoverStore.PackageFence p,
+      com.pmart.mfc.fulfillment.infrastructure.HandoverStore.Handover h,
+      String commitId,
+      List<Map<String, Object>> lines,
+      Instant at) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("orderId", p.orderId());
+    m.put("fulfillmentId", p.fulfillmentId());
+    m.put("shipmentId", p.shipmentId());
+    m.put("deliveryId", h.deliveryId());
+    m.put("packageId", p.packageId());
+    m.put("mfcId", p.mfcId());
+    m.put("riderId", h.riderId());
+    m.put("handoverId", h.handoverId());
+    m.put("inventoryCommitId", commitId);
+    m.put("lines", lines);
+    m.put("handedAt", at.toString());
+    EventEnvelope.Actor actor = new EventEnvelope.Actor(EventEnvelope.ActorType.RIDER, h.riderId());
+    events.publish(
+        codec.create(
+            events.sourceSystem(),
+            "PackageHandedOver",
+            1,
+            "Package",
+            p.packageId(),
+            p.version() + 1,
+            actor,
+            EventEnvelope.EventSource.REAL,
+            m),
+        WorkStopService.TOPIC);
+  }
+
   private int orderVersion(TaskInfo t) {
     return works.find(t.fulfillmentId()).map(WorkOrderStore.WorkOrderRow::version).orElse(1);
   }

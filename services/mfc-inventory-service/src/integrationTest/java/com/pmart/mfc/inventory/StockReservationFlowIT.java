@@ -909,6 +909,90 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(availability(sku).path("available").asInt()).isEqualTo(10);
   }
 
+  Res handover(String packageId, String authId, int fence, String reservationId, Object line) {
+    Map<String, Object> b = new LinkedHashMap<>();
+    b.put("packageId", packageId);
+    b.put("handoverId", "HOV-" + packageId);
+    b.put("handoverAuthorizationId", authId);
+    b.put("fenceVersion", fence);
+    b.put("mfcId", mfc);
+    b.put("orderId", "ORD-HOV");
+    b.put("reservationId", reservationId);
+    b.put("shipmentId", "ORD-HOV-S1");
+    b.put("deliveryId", "DLV-1");
+    b.put("riderId", "R-1");
+    b.put("locationCode", "PAK-A-01");
+    b.put("lines", List.of(line));
+    return post(
+        INBOUND,
+        "mfc-fulfillment-service",
+        "/internal/package-handovers",
+        UUID.randomUUID().toString(),
+        b);
+  }
+
+  /** 라이더 인계(IV-08 인계, ADR-0047): H10/E10/R4/A6 에서 포장 3+1 인계 → H6/E6/R0/A6, 같은 포장은 한 번. */
+  @Test
+  void handoverPostsPackedUnitsOutOncePerPackage() {
+    location("PAK-A-01", "PACKING", "AMBIENT", "ACTIVE", 1);
+    awaitLocations(4);
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 10);
+    String rid = confirmedReservation("ORD-HOV", sku, 4);
+    String lot =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    Map<String, Object> four = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 4);
+    Map<String, Object> three = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 3);
+    Map<String, Object> one = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 1);
+    assertThat(pickPack("PICK", rid, "A-01-01", "PAK-A-01", List.of(four)).status()).isEqualTo(201);
+    assertThat(pickPack("PACK", rid, "PAK-A-01", null, List.of(three)).status()).isEqualTo(201);
+
+    // 포장 1(3개) 인계 → H7/E7/R1/A6
+    Res first = handover("PKG-1", "HAU-1", 1, rid, three);
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(201);
+    String commitId = first.body().path("resultId").asString();
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(7);
+    assertThat(av.path("sellable").asInt()).isEqualTo(7);
+    assertThat(av.path("reserved").asInt()).isEqualTo(1);
+    assertThat(av.path("available").asInt()).isEqualTo(6);
+    // 같은 포장·같은 fence 는 다른 요청 ID 로도 한 번(처음 commitId), 다른 fence 는 409
+    Res again = handover("PKG-1", "HAU-1", 1, rid, three);
+    assertThat(again.status()).isEqualTo(201);
+    assertThat(again.body().path("resultId").asString()).isEqualTo(commitId);
+    assertThat(availability(sku).path("onHand").asInt()).isEqualTo(7);
+    Res otherFence = handover("PKG-1", "HAU-9", 2, rid, three);
+    assertThat(otherFence.status()).isEqualTo(409);
+    assertThat(otherFence.body().path("code").asString()).isEqualTo("FENCE_VERSION_MISMATCH");
+    // 아직 포장 안 한 양은 인계 못 한다
+    Res notPacked = handover("PKG-2", "HAU-2", 1, rid, one);
+    assertThat(notPacked.status()).isEqualTo(409);
+    assertThat(notPacked.body().path("code").asString()).isEqualTo("HANDOVER_QTY_EXCEEDED");
+
+    // 나머지 1 포장·인계 → H6/E6/R0/A6, 예약 소진
+    assertThat(pickPack("PACK", rid, "PAK-A-01", null, List.of(one)).status()).isEqualTo(201);
+    assertThat(handover("PKG-2", "HAU-2", 1, rid, one).status()).isEqualTo(201);
+    JsonNode done = availability(sku);
+    assertThat(done.path("onHand").asInt()).isEqualTo(6);
+    assertThat(done.path("sellable").asInt()).isEqualTo(6);
+    assertThat(done.path("reserved").asInt()).isZero();
+    assertThat(done.path("available").asInt()).isEqualTo(6);
+    assertThat(get(ORCH, "/internal/reservations/" + rid).body().path("state").asString())
+        .isEqualTo("CONSUMED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'PackageHandedOverPosted'"
+                    + " AND aggregateid IN ('PKG-1', 'PKG-2')",
+                Integer.class))
+        .isEqualTo(2);
+  }
+
   Res shortage(
       String reportId, String reservationId, String sku, String lot, int qty, String reason) {
     Map<String, Object> b = new LinkedHashMap<>();

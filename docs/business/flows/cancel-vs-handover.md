@@ -99,3 +99,4 @@ S3 단계
 - 사가 상신(ESCALATED)은 자동으로 되돌리지 않는다. 운영자 개입(BO-12)·case 상신은 아직 없다 — 사가 행의 last_error 로 확인.
 - 재고 해제는 현장 중지 확정 뒤에만, 환불은 주문 취소 반영 뒤에만. 재판매 가능(재고 해제)과 환불 완료는 서로 독립(§3).
 - 후속(슬라이스 6~): 작업 지시가 생기면 STOPPED 포장별 판정·피킹 후 복귀(CANCEL_RETURN_PENDING — 2026-11-08 ADR-0046 구현)·fence 대기(6c), 작업 요청이 중지 기록을 반영. 피킹 뒤 부분 중지는 아직 없다. 배차 취소(b)는 슬라이스 7.
+- 인계 fence(2026-11-08, ADR-0047 구현): 살아 있는 fence·결과 대기 인계가 있으면 중지 PENDING(그 포장 HANDOVER_IN_PROGRESS) → 확정되면 HANDED_OVER, 확정 요청 없이 만료되면 fence 를 닫고 중지 진행. 인계된 포장이 하나라도 있으면 전체 중지는 RESOLVED + HANDED_OVER 로 거절(작업 유지, S3 ESCALATED·클레임 REJECTED). 중지 기록이 있는 주문은 새 인계 허가를 받지 않는다. 계약 정본 [package-handover-contract.md](package-handover-contract.md).

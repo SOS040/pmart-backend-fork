@@ -34,16 +34,61 @@ public class PostingsController implements PostingsApi {
   private final TaskExecutionService executions;
   private final CorrectionService corrections;
   private final com.pmart.mfc.inventory.application.ShortageService shortages;
+  private final com.pmart.mfc.inventory.application.HandoverPostingService handovers;
 
   public PostingsController(
       ReceiptService receipts,
       TaskExecutionService executions,
       CorrectionService corrections,
-      com.pmart.mfc.inventory.application.ShortageService shortages) {
+      com.pmart.mfc.inventory.application.ShortageService shortages,
+      com.pmart.mfc.inventory.application.HandoverPostingService handovers) {
     this.receipts = receipts;
     this.executions = executions;
     this.corrections = corrections;
     this.shortages = shortages;
+    this.handovers = handovers;
+  }
+
+  @Override
+  public ResponseEntity<ReserveInventory201Response> commitPackageHandover(
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.inventory.api.generated.model.CommitPackageHandoverRequest body,
+      @Nullable Integer xExpectedVersion) {
+    var r =
+        handovers.post(
+            idempotencyKey,
+            xSourceSystem,
+            new com.pmart.mfc.inventory.application.HandoverPostingService.Posting(
+                body.getPackageId(),
+                body.getHandoverId(),
+                body.getHandoverAuthorizationId(),
+                body.getFenceVersion(),
+                body.getMfcId(),
+                body.getOrderId(),
+                body.getReservationId(),
+                body.getShipmentId(),
+                body.getDeliveryId(),
+                body.getRiderId(),
+                body.getLocationCode(),
+                body.getLines().stream()
+                    .map(
+                        l ->
+                            new com.pmart.mfc.inventory.application.HandoverPostingService.Line(
+                                l.getOrderLineId(), l.getSku(), l.getLotId(), l.getQty()))
+                    .toList()));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(
+            Commands.dto(
+                new com.pmart.common.web.CommandResponse(
+                    com.pmart.common.web.CommandStatus.APPLIED,
+                    idempotencyKey,
+                    r.commitId(),
+                    r.qty(),
+                    1,
+                    false,
+                    null,
+                    java.time.Instant.now())));
   }
 
   @Override

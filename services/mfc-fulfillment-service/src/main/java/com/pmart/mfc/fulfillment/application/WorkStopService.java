@@ -10,8 +10,10 @@ import com.pmart.common.web.PmartException;
 import com.pmart.mfc.fulfillment.domain.CancelReturnRules;
 import com.pmart.mfc.fulfillment.domain.CancelReturnRules.Return;
 import com.pmart.mfc.fulfillment.domain.CancelReturnRules.Unit;
+import com.pmart.mfc.fulfillment.domain.HandoverRules;
 import com.pmart.mfc.fulfillment.domain.TaskRules.Content;
 import com.pmart.mfc.fulfillment.domain.WorkRules;
+import com.pmart.mfc.fulfillment.infrastructure.HandoverStore;
 import com.pmart.mfc.fulfillment.infrastructure.InventoryClient;
 import com.pmart.mfc.fulfillment.infrastructure.TaskStore;
 import com.pmart.mfc.fulfillment.infrastructure.TaskStore.ExecutionRow;
@@ -104,6 +106,7 @@ public class WorkStopService {
   private final WorkStopStore store;
   private final WorkOrderStore works;
   private final TaskStore tasks;
+  private final HandoverStore handovers;
   private final InventoryClient inventory;
   private final FulfillmentEvents fulfillmentEvents;
   private final RequestIdempotency idempotency;
@@ -117,6 +120,7 @@ public class WorkStopService {
       WorkStopStore store,
       WorkOrderStore works,
       TaskStore tasks,
+      HandoverStore handovers,
       InventoryClient inventory,
       FulfillmentEvents fulfillmentEvents,
       RequestIdempotency idempotency,
@@ -128,6 +132,7 @@ public class WorkStopService {
     this.store = store;
     this.works = works;
     this.tasks = tasks;
+    this.handovers = handovers;
     this.inventory = inventory;
     this.fulfillmentEvents = fulfillmentEvents;
     this.idempotency = idempotency;
@@ -270,6 +275,46 @@ public class WorkStopService {
     if (tasks.inFlight(fid) > 0) {
       return false;
     }
+    // 라이더 인계(6c, ADR-0047): 인계된 포장이 있으면 전체 중지 거절, 인계 진행 중이면 그 결과까지 대기, 끝난(만료) fence 는 닫는다
+    List<PackageVerdict> handedOver = new ArrayList<>();
+    List<PackageVerdict> inProgress = new ArrayList<>();
+    List<String> expired = new ArrayList<>();
+    for (ShipmentRow s : works.shipments(fid)) {
+      for (HandoverStore.PackageFence pf : handovers.byShipment(s.shipmentId())) {
+        boolean requested = handovers.handover(pf.packageId()).isPresent();
+        boolean live =
+            HandoverRules.fenceLive(pf.fenceState(), pf.fenceExpiresAt(), requested, now);
+        HandoverRules.Verdict v = HandoverRules.verdict(pf.state(), live);
+        if (v == HandoverRules.Verdict.HANDED_OVER) {
+          handedOver.add(
+              new PackageVerdict(pf.packageId(), s.shipmentId(), "HANDED_OVER", List.of()));
+        } else if (v == HandoverRules.Verdict.HANDOVER_IN_PROGRESS) {
+          inProgress.add(
+              new PackageVerdict(
+                  pf.packageId(), s.shipmentId(), "HANDOVER_IN_PROGRESS", List.of()));
+        } else if ("HANDOVER_IN_PROGRESS".equals(pf.fenceState())) {
+          expired.add(pf.packageId());
+        }
+      }
+    }
+    if (!handedOver.isEmpty()) {
+      // 피킹 뒤 부분 중지가 아직 없다 — 작업은 그대로, 인계분은 회수(CS·S6) 경로
+      handedOver.addAll(inProgress);
+      store.refuse(stop.stopRequestId(), mapper.writeValueAsString(handedOver), now);
+      StopRow done = store.find(stop.stopRequestId()).orElseThrow();
+      publish(done, List.of(), handedOver);
+      log.warn(
+          "주문 {} 작업 중지 {} — 인계된 포장 {}개가 있어 전체 중지 거절(작업 유지)",
+          stop.orderId(),
+          stop.stopRequestId(),
+          handedOver.size());
+      return true;
+    }
+    if (!inProgress.isEmpty()) {
+      store.pendingVerdicts(stop.stopRequestId(), mapper.writeValueAsString(inProgress));
+      return false; // 인계 결과(확정 또는 fence 만료) 뒤 sweep 이 다시
+    }
+    expired.forEach(handovers::expireFence);
     List<TaskRow> taskRows = works.tasks(fid);
     List<TaskLineRow> taskLines = works.taskLines(fid);
     List<Return> all = new ArrayList<>();

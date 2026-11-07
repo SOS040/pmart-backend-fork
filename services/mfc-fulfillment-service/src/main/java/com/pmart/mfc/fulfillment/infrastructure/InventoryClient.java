@@ -192,6 +192,43 @@ public class InventoryClient {
     }
   }
 
+  /**
+   * CommitPackageHandover(인계 전기). 키 = 인계 ID(같은 포장은 inventory 가 한 번만 반영). 결과는 {@link #commit} 과 같은
+   * 모양.
+   */
+  public Commit packageHandover(String handoverId, Map<String, Object> body) {
+    try {
+      String raw =
+          Downstream.call(
+              INVENTORY,
+              () ->
+                  inventory
+                      .post()
+                      .uri("/api/v1/internal/package-handovers")
+                      .header("Idempotency-Key", handoverId)
+                      .header("X-Source-System", SOURCE)
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .body(body)
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+      return new Commit(
+          "APPLIED", n.path("resultId").asString(null), n.path("appliedQty").asInt(0), null, null);
+    } catch (HttpClientErrorException e) {
+      JsonNode p = problem(e.getResponseBodyAsString());
+      return new Commit(
+          "REJECTED",
+          null,
+          0,
+          p.path("code").asString("HTTP_" + e.getStatusCode().value()),
+          p.path("detail").asString(null));
+    } catch (PmartException e) {
+      String outcome =
+          ErrorCode.DEPENDENCY_UNAVAILABLE.name().equals(e.code()) ? "NOT_DELIVERED" : "UNKNOWN";
+      return new Commit(outcome, null, 0, e.code(), e.getMessage());
+    }
+  }
+
   /** 결품 보고 결과. commit 은 반영 여부(APPLIED/REJECTED/UNKNOWN/NOT_DELIVERED), blockedQty 는 재확보 못 한 양. */
   public record ShortageOutcome(Commit commit, int blockedQty, int resecuredQty) {}
 

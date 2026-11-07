@@ -95,6 +95,39 @@ public class WorkStopStore {
         stopRequestId);
   }
 
+  /**
+   * 주문에 살아 있는 중지가 있는가 — PENDING, 또는 RESOLVED 중 인계된 포장 때문에 거절한 것(packages 에 HANDED_OVER)이 아닌 것. 있으면
+   * 인계 허가를 막는다.
+   */
+  public boolean orderStopped(String orderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM order_work_stop WHERE order_id = ? AND (state = 'PENDING'"
+                + " OR NOT package_verdicts @> '[{\"verdict\": \"HANDED_OVER\"}]'::jsonb)",
+            Integer.class,
+            orderId);
+    return n != null && n > 0;
+  }
+
+  /** 대기 중 판정만 갱신(인계 진행으로 기다리는 포장 표시). */
+  public void pendingVerdicts(String stopRequestId, String packageVerdicts) {
+    jdbc.update(
+        "UPDATE order_work_stop SET package_verdicts = ?::jsonb WHERE stop_request_id = ?"
+            + " AND state = 'PENDING' AND cancel_return IS NULL",
+        packageVerdicts,
+        stopRequestId);
+  }
+
+  /** 인계된 포장이 있어 전체 중지를 거절(작업 그대로): RESOLVED + 판정. 반환 = 바뀐 행 수. */
+  public int refuse(String stopRequestId, String packageVerdicts, Instant at) {
+    return jdbc.update(
+        "UPDATE order_work_stop SET state = 'RESOLVED', package_verdicts = ?::jsonb, resolved_at = ?,"
+            + " last_error = NULL WHERE stop_request_id = ? AND state = 'PENDING'",
+        packageVerdicts,
+        Timestamp.from(at),
+        stopRequestId);
+  }
+
   /** 사유를 지운다(운영자 재시도). 반환 = 바뀐 행 수. */
   public int clearError(String stopRequestId) {
     return jdbc.update(

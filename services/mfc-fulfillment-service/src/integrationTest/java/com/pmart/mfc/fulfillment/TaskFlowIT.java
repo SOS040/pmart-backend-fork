@@ -48,7 +48,9 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.fulfillment.mfc-inventory-base-url=${inv.url}",
       "pmart.fulfillment.mfc-capacity-base-url=${cap.url}",
-      "pmart.fulfillment.ready-sweep-interval=PT1H"
+      "pmart.fulfillment.ready-sweep-interval=PT1H",
+      "pmart.fulfillment.handover-sweep-interval=PT1H",
+      "pmart.fulfillment.handover-fence-ttl[MFC-T6]=PT2M"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({
@@ -1007,6 +1009,354 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("RESOLVED");
     assertThat(call("POST", SVC, "/internal/stop-requests/STOP-NONE/retries", "k", null).status())
         .isEqualTo(404);
+  }
+
+  // ---------- 라이더 인계(6c, ADR-0047) ----------
+
+  static final String RIDER1 = TestJwt.rider("R1");
+  static final String RIDER2 = TestJwt.rider("R2");
+
+  record Pkg(String id, String qr) {}
+
+  /** 피킹·포장까지 끝난 출고(포장 2개: L1 2개, L2 1개) — 출고 READY. */
+  List<Pkg> readyShipment(String o) {
+    String s = accept(o);
+    String pick = s + "-PICK";
+    String pack = s + "-PACK";
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    inventoryCommits(
+        "PICK", 201, Map.of("status", "APPLIED", "resultId", "CMT-1", "appliedQty", 1));
+    for (var line :
+        List.of(
+            List.of("L1", "E-00000001", "LOT-A", "A-S1-01-1-01"),
+            List.of("L1", "E-00000001", "LOT-B", "A-S1-02-1-01"),
+            List.of("L2", "E-00000002", "LOT-C", "C-S1-01-1-01"))) {
+      Res ok =
+          call(
+              "POST",
+              W1,
+              "/tasks/" + pick + "/executions",
+              UUID.randomUUID().toString(),
+              Map.of(
+                  "executionType",
+                  "PICK",
+                  "workerId",
+                  "w1",
+                  "fromLocation",
+                  line.get(3),
+                  "toLocation",
+                  "PAK-A-01",
+                  "lines",
+                  List.of(
+                      Map.of(
+                          "orderLineId",
+                          line.get(0),
+                          "sku",
+                          line.get(1),
+                          "lotId",
+                          line.get(2),
+                          "pickedQty",
+                          1))));
+      assertThat(ok.body().path("status").asString()).isEqualTo("APPLIED");
+    }
+    assigned(pack, "w2", 1);
+    assertThat(start(W2, pack, "w2", 1).status()).isEqualTo(201);
+    plan(o, 1, 1, 0, 0, 1, 0);
+    inventoryCommits(
+        "PACK", 201, Map.of("status", "APPLIED", "resultId", "CMT-P", "appliedQty", 1));
+    Res p1 =
+        call(
+            "POST",
+            W2,
+            "/shipments/" + s + "/packages",
+            UUID.randomUUID().toString(),
+            Map.of(
+                "bagCount",
+                1,
+                "contents",
+                List.of(Map.of("orderLineId", "L1", "sku", "E-00000001", "qty", 2))));
+    plan(o, 1, 1, 1, 1, 1, 0);
+    Res p2 =
+        call(
+            "POST",
+            W2,
+            "/shipments/" + s + "/packages",
+            UUID.randomUUID().toString(),
+            Map.of(
+                "bagCount",
+                1,
+                "contents",
+                List.of(Map.of("orderLineId", "L2", "sku", "E-00000002", "qty", 1))));
+    assertThat(call("GET", VIEWER, "/shipments/" + s, null, null).body().path("state").asString())
+        .isEqualTo("READY");
+    return List.of(
+        new Pkg(p1.body().path("packageId").asString(), p1.body().path("qrCode").asString()),
+        new Pkg(p2.body().path("packageId").asString(), p2.body().path("qrCode").asString()));
+  }
+
+  void deliveryEvent(String type, String deliveryId, int version, Map<String, Object> payload) {
+    Map<String, Object> pl = new LinkedHashMap<>(payload);
+    pl.put("deliveryId", deliveryId);
+    String json =
+        EventEnvelopeFixtures.envelope(type)
+            .from("delivery-dispatch-service")
+            .aggregate("Delivery", deliveryId, version)
+            .payload(pl)
+            .buildJson();
+    kafka.send("delivery.delivery.v1", deliveryId, json).join();
+  }
+
+  /** 배송 생성 + 라이더 배정(투영 반영까지 기다림). */
+  void assignRider(String o, String deliveryId, String rider, int version) {
+    if (version == 1) {
+      deliveryEvent(
+          "DeliveryCreated",
+          deliveryId,
+          1,
+          Map.of("orderId", o, "shipmentId", o + "-S1", "mfcId", MFC, "type", "NORMAL"));
+      deliveryEvent(
+          "DeliveryAssigned",
+          deliveryId,
+          2,
+          Map.of(
+              "orderId",
+              o,
+              "riderId",
+              rider,
+              "assignmentVersion",
+              1,
+              "acceptedAt",
+              "2026-11-08T01:00:00Z"));
+    } else {
+      deliveryEvent(
+          "DeliveryAssignmentChanged",
+          deliveryId,
+          version + 1,
+          Map.of(
+              "newRiderId",
+              rider,
+              "assignmentVersion",
+              version,
+              "reason",
+              "REASSIGN",
+              "changedAt",
+              "2026-11-08T01:05:00Z"));
+    }
+    await(
+        "SELECT COUNT(*) FROM delivery_assignment WHERE delivery_id = '"
+            + deliveryId
+            + "' AND state = 'ASSIGNED' AND rider_id = '"
+            + rider
+            + "' AND assignment_version = "
+            + version
+            + " AND shipment_id IS NOT NULL");
+  }
+
+  Res authorize(String token, Pkg p, String rider, String deliveryId, String qr) {
+    return call(
+        "POST",
+        token,
+        "/packages/" + p.id() + "/handover-authorizations",
+        UUID.randomUUID().toString(),
+        Map.of("riderId", rider, "deliveryId", deliveryId, "scannedCode", qr));
+  }
+
+  Res commit(String token, Pkg p, JsonNode auth, String rider) {
+    return call(
+        "POST",
+        token,
+        "/packages/" + p.id() + "/handover-commits",
+        UUID.randomUUID().toString(),
+        Map.of(
+            "handoverAuthorizationId",
+            auth.path("handoverAuthorizationId").asString(),
+            "fenceVersion",
+            auth.path("fenceVersion").asInt(),
+            "riderId",
+            rider));
+  }
+
+  Map<String, Object> fullStop(String o) {
+    return Map.of(
+        "stopRequestId",
+        "STOP-" + o,
+        "orderId",
+        o,
+        "scope",
+        "FULL",
+        "lines",
+        List.of(Map.of("orderLineId", "L1", "qty", 2), Map.of("orderLineId", "L2", "qty", 1)));
+  }
+
+  /** 배정 라이더만 QR 인계 → 재고 인계 전기 → 포장 HANDED_OVER·출고 부분/전체 인계, 인계된 주문의 전체 중지는 거절. */
+  @Test
+  void assignedRiderHandsOverPackagesAndStopIsRefusedAfterHandover() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    List<Pkg> pkgs = readyShipment(o);
+    Pkg p1 = pkgs.get(0);
+    Pkg p2 = pkgs.get(1);
+    String dlv = "DLV-" + o;
+
+    // 배정 전에는 그 배송의 포장이 아니다
+    assertThat(authorize(RIDER1, p1, "R1", dlv, p1.qr()).body().path("code").asString())
+        .isEqualTo("DELIVERY_MISMATCH");
+    assignRider(o, dlv, "R1", 1);
+    // 운영자 토큰·다른 라이더·무효 QR 은 막는다
+    assertThat(authorize(W1, p1, "R1", dlv, p1.qr()).status()).isEqualTo(403);
+    Res other = authorize(RIDER2, p1, "R2", dlv, p1.qr());
+    assertThat(other.status()).isEqualTo(403);
+    assertThat(other.body().path("code").asString()).isEqualTo("RIDER_MISMATCH");
+    assertThat(
+            authorize(RIDER1, p1, "R1", dlv, "PKG:" + p1.id() + ":0")
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("PACKAGE_INVALIDATED");
+
+    // 허가 → 같은 라이더가 다시 찍으면 같은 허가
+    Res a1 = authorize(RIDER1, p1, "R1", dlv, p1.qr());
+    assertThat(a1.status()).as(a1.body().toString()).isEqualTo(201);
+    assertThat(a1.body().path("fenceVersion").asInt()).isEqualTo(1);
+    assertThat(
+            authorize(RIDER1, p1, "R1", dlv, p1.qr())
+                .body()
+                .path("handoverAuthorizationId")
+                .asString())
+        .isEqualTo(a1.body().path("handoverAuthorizationId").asString());
+
+    // 확정 → 재고 인계 전기(포장 위치·LOT) → 포장 HANDED_OVER, 출고 PARTIALLY_HANDED_OVER, PackageHandedOver
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/package-handovers"))
+            .willReturn(
+                json(201, Map.of("status", "APPLIED", "resultId", "CMT-H1", "appliedQty", 2))));
+    Res c1 = commit(RIDER1, p1, a1.body(), "R1");
+    assertThat(c1.status()).as(c1.body().toString()).isEqualTo(201);
+    assertThat(c1.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(c1.body().path("packageState").asString()).isEqualTo("HANDED_OVER");
+    assertThat(c1.body().path("shipmentState").asString()).isEqualTo("PARTIALLY_HANDED_OVER");
+    assertThat(c1.body().path("inventoryCommitId").asString()).isEqualTo("CMT-H1");
+    inv.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers"))
+            .withRequestBody(matchingJsonPath("$.locationCode", equalTo("PAK-A-01")))
+            .withRequestBody(matchingJsonPath("$.reservationId", equalTo("RSV-" + o)))
+            .withRequestBody(matchingJsonPath("$.lines[0].lotId", equalTo("LOT-A"))));
+    assertThat(outbox("PackageHandedOver", p1.id())).isEqualTo(1);
+    // 같은 허가로 다시 → 같은 인계(재고 다시 안 감), 다시 찍기 → 이미 인계
+    assertThat(commit(RIDER1, p1, a1.body(), "R1").body().path("handoverId").asString())
+        .isEqualTo(c1.body().path("handoverId").asString());
+    inv.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers")));
+    assertThat(authorize(RIDER1, p1, "R1", dlv, p1.qr()).body().path("code").asString())
+        .isEqualTo("ALREADY_HANDED_OVER");
+    assertThat(
+            call("GET", SVC, "/packages/" + p1.id() + "/handover-resolution", null, null)
+                .body()
+                .path("verdict")
+                .asString())
+        .isEqualTo("HANDED_OVER");
+
+    // 인계된 포장이 있는 주문의 전체 중지 → 거절(RESOLVED + HANDED_OVER), 작업·출고 그대로
+    Res stop =
+        call("POST", SVC, "/internal/stop-requests", UUID.randomUUID().toString(), fullStop(o));
+    assertThat(stop.body().path("state").asString())
+        .as(stop.body().toString())
+        .isEqualTo("RESOLVED");
+    assertThat(stop.body().path("packages").toString()).contains("HANDED_OVER").contains(p1.id());
+    assertThat(
+            call("GET", VIEWER, "/shipments/" + o + "-S1", null, null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("PARTIALLY_HANDED_OVER");
+    inv.verify(
+        0,
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/cancel-returns")));
+
+    // 남은 포장: 재고 결과 모름 → 202 UNKNOWN_RESULT·판정 인계 진행 중 → 같은 허가로 다시 → 확정, 출고 HANDED_OVER
+    Res a2 = authorize(RIDER1, p2, "R1", dlv, p2.qr());
+    assertThat(a2.status()).as(a2.body().toString()).isEqualTo(201);
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/package-handovers"))
+            .willReturn(json(500, Map.of())));
+    Res unknown = commit(RIDER1, p2, a2.body(), "R1");
+    assertThat(unknown.status()).isEqualTo(202);
+    assertThat(unknown.body().path("status").asString()).isEqualTo("UNKNOWN_RESULT");
+    JsonNode res =
+        call("GET", SVC, "/packages/" + p2.id() + "/handover-resolution", null, null).body();
+    assertThat(res.path("verdict").asString()).isEqualTo("HANDOVER_IN_PROGRESS");
+    assertThat(res.path("inventoryApplyStatus").asString()).isEqualTo("UNKNOWN_RESULT");
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/package-handovers"))
+            .willReturn(
+                json(201, Map.of("status", "APPLIED", "resultId", "CMT-H2", "appliedQty", 1))));
+    Res c2 = commit(RIDER1, p2, a2.body(), "R1");
+    assertThat(c2.status()).isEqualTo(201);
+    assertThat(c2.body().path("shipmentState").asString()).isEqualTo("HANDED_OVER");
+    assertThat(c2.body().path("handoverId").asString())
+        .isEqualTo(unknown.body().path("handoverId").asString());
+    assertThat(outbox("PackageHandedOver", p2.id())).isEqualTo(1);
+  }
+
+  /** 인계 진행 중이면 중지는 대기 → fence 만료 뒤 중지 완료(취소 복귀). 재배정은 이전 라이더 허가를 끝낸다. */
+  @Test
+  void stopWaitsForLiveFenceAndReassignmentRevokesOldRider() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    List<Pkg> pkgs = readyShipment(o);
+    Pkg p1 = pkgs.get(0);
+    String dlv = "DLV-" + o;
+    assignRider(o, dlv, "R1", 1);
+    Res old = authorize(RIDER1, p1, "R1", dlv, p1.qr());
+    assertThat(old.status()).isEqualTo(201);
+
+    // 재배정(R1 → R2): R1 의 확정 요청 전 허가는 끝, R2 가 새로 허가
+    assignRider(o, dlv, "R2", 2);
+    assertThat(commit(RIDER1, p1, old.body(), "R1").status()).isEqualTo(409);
+    Res a2 = authorize(RIDER2, p1, "R2", dlv, p1.qr());
+    assertThat(a2.status()).as(a2.body().toString()).isEqualTo(201);
+    assertThat(a2.body().path("fenceVersion").asInt()).isEqualTo(2);
+
+    // 살아 있는 fence → 중지는 PENDING, 그 포장 HANDOVER_IN_PROGRESS, 작업·출고 그대로
+    Res stop =
+        call("POST", SVC, "/internal/stop-requests", UUID.randomUUID().toString(), fullStop(o));
+    assertThat(stop.body().path("state").asString()).isEqualTo("PENDING");
+    assertThat(stop.body().path("packages").toString()).contains("HANDOVER_IN_PROGRESS");
+    assertThat(
+            call("GET", VIEWER, "/shipments/" + o + "-S1", null, null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("READY");
+    // 중지 진행 중에는 다른 포장 허가 안 함
+    assertThat(
+            authorize(RIDER2, pkgs.get(1), "R2", dlv, pkgs.get(1).qr())
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("INVALID_STATE");
+
+    // fence 만료(확정 요청 없음) → 중지 진행: 포장 무효·출고 취소·취소 복귀
+    jdbc.update(
+        "UPDATE package SET fence_expires_at = now() - interval '1 minute' WHERE package_id = ?",
+        p1.id());
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/cancel-returns"))
+            .willReturn(
+                json(200, Map.of("status", "APPLIED", "resultId", "RSV-" + o, "appliedQty", 3))));
+    stops.sweepPending();
+    JsonNode done = call("GET", SVC, "/internal/stop-requests/STOP-" + o, null, null).body();
+    assertThat(done.path("state").asString()).as(done.toString()).isEqualTo("RESOLVED");
+    assertThat(
+            call("GET", VIEWER, "/shipments/" + o + "-S1", null, null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("CANCELLED");
+    // 만료된 허가로 확정 안 됨, 무효 포장은 다시 허가 안 됨
+    assertThat(commit(RIDER2, p1, a2.body(), "R2").status()).isEqualTo(409);
+    assertThat(authorize(RIDER2, p1, "R2", dlv, p1.qr()).body().path("code").asString())
+        .isEqualTo("PACKAGE_INVALIDATED");
+    inv.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers")));
   }
 
   static Map<String, Object> returnLikePick() {

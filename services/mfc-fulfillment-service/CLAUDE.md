@@ -48,6 +48,13 @@
 - 판정 응답 `packages[]`: 밀봉 포장마다(PACKED) + 출고의 포장 전 단위(packageId 없음, NOT_PICKED·PICKED). notStartedLines 는 빈 배열.
 - RETURN 실적: `executionType RETURN`(작업 유형과 같아야, 아니면 422 UNSUPPORTED_EXECUTION) — 줄마다 lotId·pickedQty>0, (주문 줄·SKU·LOT·출발 위치) 남은 복귀량 이하(아니면 409 QTY_EXCEEDS_REMAINING) → inventory MOVE(resultQuality 전달) → APPLIED 면 완료량, 모두 0 이면 COMPLETED. 상세 `picks[]` 는 이 서비스 기록(복귀 잔량·포장 위치).
 
+## 라이더 인계 (2026-11-08, 슬라이스 6c — ADR-0047, V6, 계약 0.4.0)
+- 정본 `docs/business/flows/package-handover-contract.md`. 규칙 `domain/HandoverRules`, 실행 `application/HandoverService`, 표 `delivery_assignment`(배송 배정 투영)·`package` fence 열·`package_handover`(인계 사실, 포장당 하나).
+- 배정: `delivery.delivery.v1`(바인딩 `deliveryEvents-in-0`, `DeliveryEventConsumers`) — DeliveryCreated(shipmentId)·DeliveryAssigned·DeliveryAssignmentChanged·DeliveryCancelledBeforePickup, 더 새 버전만, 바뀌면 확정 요청 전 fence 끝.
+- 허가 `POST /packages/{id}/handover-authorizations`(RIDER 토큰, 주체 = riderId): 주문 잠금 → 포장 잠금 → `HandoverRules.authorize`. 유효시간 `pmart.fulfillment.handover-fence-ttl."[센터]"`(없으면 422 CONFIG_REQUIRED). 같은 라이더·배송 재스캔은 같은 허가.
+- 확정 `POST /packages/{id}/handover-commits`: 주문 잠금 아래 fence 확인·인계 사실 REQUESTED → 밖에서 inventory `/internal/package-handovers`(키 = handoverId) → APPLIED 면 포장 HANDED_OVER·출고 갱신·`PackageHandedOver`(집계 Package). 모름 202 UNKNOWN_RESULT(sweep `pmart.fulfillment.handover-sweep-interval` 기본 PT15S), 거절 202 REJECTED(fence 유지·대사).
+- 판정 `GET /packages/{id}/handover-resolution`. 중지(`WorkStopService.prepare`)는 인계된 포장이 있으면 거절(RESOLVED + HANDED_OVER), 살아 있는 fence 면 PENDING(HANDOVER_IN_PROGRESS), 만료 fence 는 닫고 진행. `WorkStopStore.orderStopped` 가 허가를 막는다.
+
 ## 상태
-작업 접수·조회·접수 뒤 중지(6a), 점원 단말 작업·피킹·포장(6b), 집품 뒤 전체 중지·복귀 작업(IV-08). DISPATCH·인계 fence·재포장은 501(6c). 피킹 뒤 부분 중지는 PENDING.
+작업 접수·조회·접수 뒤 중지(6a), 점원 단말 작업·피킹·포장(6b), 집품 뒤 전체 중지·복귀 작업(IV-08), 라이더 인계(6c). DISPATCH 작업·재포장은 501. 피킹 뒤 부분 중지는 PENDING.
 - 결품 해결(ADR-0045): `POST /internal/work-orders/{id}/shortage-resolutions`(결품 사가, CANCEL_ITEM) — PICK·PACK 행 cancelled +q, BLOCKED PICK 은 시작자 있으면 IN_PROGRESS·없으면 ASSIGNED/READY, 남은 집품 0 이면 COMPLETED·포장 준비. `LineShortageReported` 에 outOfStockPreference·reservationId·mfcId·shipmentId.

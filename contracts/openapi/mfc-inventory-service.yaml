@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -362,6 +362,10 @@ paths:
       description: |
         handoverAuthorizationId + fenceVersion 으로 fence 정합을 검증한다(ADR-0006). 같은 packageId 재전송은 기존 commitId 반환.
         성공 시 PackageHandedOverPosted 발행(commitId로 fulfillment의 PackageHandedOver와 연결).
+        구현(0.8.0, 2026-11-08, ADR-0047): 포장 위치(locationCode)의 NORMAL·PACKED 단위 −q(H−q, E−q, A 불변) + 줄·LOT 의 확정 조각 R−q
+        (`handed_qty` +q, 다 넘긴 조각 CONSUMED, 현물 점유 조각이 없으면 예약 CONSUMED) 한 확정 단위. 같은 packageId 는 요청 ID 가 달라도 한 번 —
+        같은 handoverAuthorizationId·fenceVersion 이면 처음 commitId(201 재생), 다르면 409 FENCE_VERSION_MISMATCH. 예약이 CONFIRMED 가 아니면 409
+        INVALID_STATE, 줄·LOT 의 (포장 − 인계)보다 많으면 409 HANDOVER_QTY_EXCEEDED, 위치에 PACKED 가 모자라면 422 INSUFFICIENT_STOCK.
       operationId: commitPackageHandover
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -982,9 +986,11 @@ components:
               targetWorkState: { $ref: '#/components/schemas/WorkState' }
     CommitPackageHandoverRequest:
       type: object
-      required: [packageId, handoverAuthorizationId, fenceVersion, mfcId, orderId, reservationId, lines]
+      required: [packageId, handoverId, handoverAuthorizationId, fenceVersion, mfcId, orderId, reservationId, locationCode, lines]
       properties:
         packageId: { type: string }
+        handoverId: { type: string, description: 'fulfillment 인계 사실 ID(0.8.0) — PackageHandedOverPosted 에 실린다' }
+        locationCode: { type: string, description: '포장이 놓인 위치 = 밀봉 때 포장 위치(0.8.0). 이 위치의 PACKED 를 뺀다' }
         shipmentId: { type: string }
         handoverAuthorizationId: { type: string }
         fenceVersion: { type: integer, minimum: 0 }
@@ -997,7 +1003,14 @@ components:
         lines:
           type: array
           minItems: 1
-          items: { $ref: '#/components/schemas/SkuQtyLine' }
+          items:
+            type: object
+            required: [orderLineId, sku, lotId, qty]
+            properties:
+              orderLineId: { type: string }
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              lotId: { type: string }
+              qty: { type: integer, minimum: 1 }
     QualityPostingRequest:
       type: object
       required: [postingType, mfcId, approvalRef, lines]
