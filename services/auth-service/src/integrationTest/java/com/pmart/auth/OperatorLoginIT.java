@@ -32,7 +32,11 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.auth.operator.max-failed-attempts=3",
       "pmart.auth.operator.bootstrap.login-id=admin",
       // pmart-local
-      "pmart.auth.operator.bootstrap.password-hash={bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG"
+      "pmart.auth.operator.bootstrap.password-hash={bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG",
+      // 개발 환경 전용 계정(LAN 프로필에만 — 2026-11-07), 같은 시험 비밀번호 pmart-local
+      "pmart.auth.operator.dev-accounts[0].login-id=claude-dev",
+      "pmart.auth.operator.dev-accounts[0].password-hash={bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG",
+      "pmart.auth.operator.dev-accounts[0].roles[0]=OPERATOR_ADMIN"
     })
 class OperatorLoginIT extends PostgresKafkaContainerSupport {
 
@@ -252,6 +256,14 @@ class OperatorLoginIT extends PostgresKafkaContainerSupport {
         .isEqualTo(204);
     assertThat(login(loginId, "init-pass-1234").status()).isEqualTo(401);
     assertThat(login(loginId, "new-pass-5678").status()).isEqualTo(200);
+  }
+
+  @Test
+  void devAccountIsCreatedOnceAndLogsInWithoutPasswordChange() {
+    Res r = login("claude-dev", "pmart-local");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("operator").path("roles").toString()).contains("OPERATOR_ADMIN");
+    assertThat(r.body().path("operator").path("passwordChangeRequired").asBoolean()).isFalse();
   }
 
   @Test

@@ -47,3 +47,4 @@
 
 ## 상태
 JWKS(2026-10-23, 서비스 토큰은 2026-10-31 폐지 — ADR-0026), 운영자 로그인·계정 관리·토큰 갱신·로그아웃·현재 세션(2026-10-30), 고객 Google 로그인(2026-10-30). 동의 완료(completions)는 INVALID_STATE, 행위 검증·grant 는 501 UNSUPPORTED_ACTION.
+- **개발 환경 전용 계정(2026-11-07, 사용자 요청)**: `pmart.auth.operator.dev-accounts[]`(login-id·password-hash bcrypt·display-name·roles·centers) — 기동 때 없을 때만 만들고 비밀번호 변경 요구 없음. **LAN 프로필에만** 둔다(`claude-dev`, OPERATOR_ADMIN — Claude 가 LAN 에서 혼자 시험하려고). 원문 비밀번호는 `deploy/lan/.secrets/claude-dev-password`(git 제외). 운영 설정에 넣지 않는다. 없애려면 설정 항목 삭제 + 계정 비활성화.

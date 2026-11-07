@@ -67,8 +67,46 @@ public class OperatorAccountService {
   }
 
   /** 첫 관리자 계정: 설정에 아이디·비밀번호 해시가 있고 그 아이디가 없을 때만 만든다. */
+  /** 개발 환경 전용 계정(LAN 프로필에만 설정, 2026-11-07). 없을 때만 만든다. */
+  void devAccounts() {
+    for (OperatorProperties.DevAccount d : props.devAccounts()) {
+      if (isBlank(d.loginId()) || isBlank(d.passwordHash())) {
+        continue;
+      }
+      tx.executeWithoutResult(
+          status -> {
+            if (store.loginIdExists(d.loginId())) {
+              return;
+            }
+            Instant now = clock.instant();
+            store.insertAccount(
+                new AccountRow(
+                    "OP-" + UUID.randomUUID(),
+                    d.loginId(),
+                    isBlank(d.displayName()) ? "개발용" : d.displayName(),
+                    d.passwordHash(),
+                    d.roles() == null || d.roles().isEmpty()
+                        ? List.of(props.adminRole())
+                        : d.roles(),
+                    d.centers() == null ? List.of() : d.centers(),
+                    "ACTIVE",
+                    0,
+                    null,
+                    false,
+                    null,
+                    1,
+                    now),
+                "dev-bootstrap");
+            log.warn(
+                "개발 환경 전용 계정 {} 을 만들었습니다(설정값 pmart.auth.operator.dev-accounts — 운영에 두지 않는다)",
+                d.loginId());
+          });
+    }
+  }
+
   @EventListener(ApplicationReadyEvent.class)
   public void bootstrap() {
+    devAccounts();
     OperatorProperties.Bootstrap b = props.bootstrap();
     if (b == null || isBlank(b.loginId()) || isBlank(b.passwordHash())) {
       return;
