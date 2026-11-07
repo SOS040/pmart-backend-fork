@@ -38,7 +38,7 @@
 - 담당: `AssignmentPublished`(mfc.capacity.v1, 바인딩 `assignmentEvents-in-0`) → `TaskService.applyAssignment`(더 새 버전만, READY → ASSIGNED, 진행 중 재배정은 ASSIGNED·시작 지움). `sweepReady` 가 담당 있는 READY 도 ASSIGNED 로.
 - 시작 `POST /tasks/{id}/starts`: capacity `GET /assignments?taskId=`(작업자 토큰 전달, `CapacityClient`, 실패 503·기록 없음) → 작업 행 잠금 → `TaskRules.startRejection` → 기록. 첫 PICK 시작에 `PreparationStarted`. 거절은 409 + 코드(ALREADY_STARTED·NOT_ASSIGNEE·PREDECESSOR_NOT_COMPLETED·INVALID_STATE·VERSION_CONFLICT).
 - 상세 `GET /tasks/{id}`: PICK 은 inventory pick-plan 으로 줄마다 LOT 별 지시(`picks[]`), 조회 실패면 빈 지시·asOf STALE.
-- 실적 `POST /tasks/{id}/executions`(PICK 만, 한 선반): 접수 → inventory PICK(Idempotency-Key = 실행 ID) → 결과. 같은 키는 같은 실행(열려 있으면 다시 보냄). 결품만 있으면 재고 호출 없이 BLOCKED + `LineShortageReported`. 다 집으면 COMPLETED → 같은 출고 PACK `releasePack`.
+- 실적 `POST /tasks/{id}/executions`(PICK 만, 한 선반): 접수 → inventory PICK(Idempotency-Key = 실행 ID) → 결과. 같은 키는 같은 실행(열려 있으면 다시 보냄). 결품 보고는 집품과 섞지 않은 한 줄(pickedQty 0 + shortage, lotId·fromLocation 필수) → inventory `POST /internal/shortage-reports`(reportId = 실행 ID, ADR-0044) → 재확보 다 되면 작업 계속, 못 잡은 양이 있으면 BLOCKED + `LineShortageReported(shortQty = 못 잡은 양)`. 다 집으면 COMPLETED → 같은 출고 PACK `releasePack`.
 - 포장 `POST /shipments/{id}/packages`: PACK 을 시작한 작업자만. LOT 은 `TaskRules.allocatePacking`(집품−포장 조각, 소비기한 순), 남은 포장량 = PICK 완료 − PACK 완료 − 열린 포장. inventory PACK(실행 ID = 포장 ID) → SEALED·QR, 거절 VOIDED(422 PACK_REJECTED), 모름 OPEN(503 UNKNOWN_RESULT). 다 포장하면 PACK COMPLETED·출고 READY·`PackingFinished`·`ShipmentReady`. `GET /shipments/{id}`·`GET /packages/{id}`.
 - 중지: 피킹이 시작된 주문이면 `PENDING`(작업 유지, 사건 없음).
 

@@ -33,12 +33,60 @@ public class PostingsController implements PostingsApi {
   private final ReceiptService receipts;
   private final TaskExecutionService executions;
   private final CorrectionService corrections;
+  private final com.pmart.mfc.inventory.application.ShortageService shortages;
 
   public PostingsController(
-      ReceiptService receipts, TaskExecutionService executions, CorrectionService corrections) {
+      ReceiptService receipts,
+      TaskExecutionService executions,
+      CorrectionService corrections,
+      com.pmart.mfc.inventory.application.ShortageService shortages) {
     this.receipts = receipts;
     this.executions = executions;
     this.corrections = corrections;
+    this.shortages = shortages;
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.ShortageReportResult>
+      reportShortage(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.inventory.api.generated.model.ShortageReportRequest body) {
+    var r =
+        shortages.report(
+            idempotencyKey,
+            xSourceSystem,
+            new com.pmart.mfc.inventory.application.ShortageService.Report(
+                body.getReportId(),
+                body.getMfcId(),
+                body.getReservationId(),
+                body.getOrderLineId(),
+                body.getSku(),
+                body.getLotId(),
+                body.getLocationCode(),
+                body.getQty(),
+                body.getReason().getValue(),
+                body.getTaskId()));
+    var out = new com.pmart.mfc.inventory.api.generated.model.ShortageReportResult();
+    out.setReportId(r.reportId());
+    out.setCommitId(r.commitId());
+    out.setReportedQty(r.reportedQty());
+    out.setQuarantinedQty(r.quarantinedQty());
+    out.setHeldQty(r.heldQty());
+    out.setResecuredQty(r.resecuredQty());
+    out.setBlockedQty(r.blockedQty());
+    var parts =
+        new java.util.ArrayList<
+            com.pmart.mfc.inventory.api.generated.model.ShortageReportResultResecuredPartsInner>();
+    for (var m : r.resecuredParts()) {
+      var pi =
+          new com.pmart.mfc.inventory.api.generated.model.ShortageReportResultResecuredPartsInner();
+      pi.setLotId((String) m.get("lotId"));
+      pi.setQty(((Number) m.get("qty")).intValue());
+      parts.add(pi);
+    }
+    out.setResecuredParts(parts);
+    return ResponseEntity.status(HttpStatus.CREATED).body(out);
   }
 
   @Override

@@ -321,6 +321,17 @@ public class TaskService {
       }
     }
     boolean anyPick = false;
+    boolean anyShortage = cmd.lines().stream().anyMatch(l -> l.shortage() != null);
+    if (anyShortage) {
+      // 결품 보고는 한 줄짜리 따로(집품과 섞으면 일부만 반영되는 경우가 생긴다, ADR-0044)
+      if (cmd.lines().size() != 1 || cmd.lines().get(0).pickedQty() != 0) {
+        throw invalid("결품 보고는 집품과 섞지 않고 한 줄(pickedQty 0 + shortage)로 따로 보냅니다.");
+      }
+      ExecLine l = cmd.lines().get(0);
+      if (blank(l.lotId()) || blank(cmd.fromLocation())) {
+        throw invalid("결품 보고는 lotId(예약 LOT)·fromLocation(발견한 선반)이 필요합니다.");
+      }
+    }
     for (ExecLine l : cmd.lines()) {
       Integer left = remaining.get(l.orderLineId());
       if (left == null) {
@@ -386,8 +397,24 @@ public class TaskService {
       }
     }
     InventoryClient.Commit c;
+    int blocked = 0;
     if (invLines.isEmpty()) {
-      c = new InventoryClient.Commit("APPLIED", null, 0, null, null); // 결품 보고만
+      // 결품 보고(한 줄): 재고가 판매 제외·예약 BLOCKED·같은 SKU 적격 LOT 재확보를 한 번에(IV-09)
+      ExecLine l = lines.get(0);
+      Map<String, Object> body = new LinkedHashMap<>();
+      body.put("reportId", exec.executionId());
+      body.put("mfcId", t0.mfcId());
+      body.put("reservationId", t0.reservationId());
+      body.put("orderLineId", l.orderLineId());
+      body.put("sku", l.sku());
+      body.put("lotId", l.lotId());
+      body.put("locationCode", exec.fromLocation());
+      body.put("qty", l.shortage().qty());
+      body.put("reason", l.shortage().reason());
+      body.put("taskId", exec.taskId());
+      InventoryClient.ShortageOutcome s = inventory.reportShortage(exec.executionId(), body);
+      c = s.commit();
+      blocked = s.blockedQty();
     } else {
       Map<String, Object> body = new LinkedHashMap<>();
       body.put("executionType", "PICK");
@@ -400,10 +427,16 @@ public class TaskService {
       body.put("lines", invLines);
       c = inventory.commit(exec.executionId(), body);
     }
-    return Objects.requireNonNull(tx.execute(s -> apply(exec, lines, c)));
+    InventoryClient.Commit result = c;
+    int blockedQty = blocked;
+    return Objects.requireNonNull(tx.execute(s -> apply(exec, lines, result, blockedQty)));
   }
 
-  private ExecResult apply(ExecutionRow exec, List<ExecLine> lines, InventoryClient.Commit c) {
+  /**
+   * @param blockedQty 결품 보고에서 재확보하지 못한 양(이행부족 D). 0 이면 같은 SKU 적격 LOT 으로 다시 잡혀 작업은 그대로 진행한다
+   */
+  private ExecResult apply(
+      ExecutionRow exec, List<ExecLine> lines, InventoryClient.Commit c, int blockedQty) {
     TaskInfo t = store.lock(exec.taskId()).orElseThrow();
     Instant now = clock.instant();
     switch (c.outcome()) {
@@ -418,8 +451,14 @@ public class TaskService {
             store.addCompleted(t.taskId(), l.orderLineId(), l.pickedQty());
           }
         }
-        List<ExecLine> shortages = lines.stream().filter(l -> l.shortage() != null).toList();
-        if (!shortages.isEmpty()) {
+        List<ExecLine> shortages =
+            lines.stream().filter(l -> l.shortage() != null && blockedQty > 0).toList();
+        if (lines.stream().anyMatch(l -> l.shortage() != null) && blockedQty == 0) {
+          log.info(
+              "작업 {} 결품 {}개 — 같은 SKU 적격 LOT 으로 재확보, 작업 계속",
+              t.taskId(),
+              lines.get(0).shortage().qty());
+        } else if (!shortages.isEmpty()) {
           String reason =
               "결품 보고: "
                   + String.join(
@@ -429,15 +468,22 @@ public class TaskService {
                               l ->
                                   l.orderLineId()
                                       + " "
-                                      + l.shortage().qty()
+                                      + blockedQty
                                       + "개 "
-                                      + l.shortage().reason())
+                                      + l.shortage().reason()
+                                      + "(재확보 못 함)")
                           .toList());
           store.setState(t.taskId(), "BLOCKED", reason, false, now);
           events.taskProgressed(
               t, "BLOCKED", t.state(), t.version() + 1, exec.workerId(), null, now);
           for (ExecLine l : shortages) {
-            events.lineShortage(t, l.orderLineId(), l.sku(), l.lotId(), l.shortage(), now);
+            events.lineShortage(
+                t,
+                l.orderLineId(),
+                l.sku(),
+                l.lotId(),
+                new Shortage(blockedQty, l.shortage().reason(), l.shortage().note()),
+                now);
           }
           log.warn("작업 {} 결품 보고 → BLOCKED ({})", t.taskId(), reason);
         } else if (store.lines(t.taskId()).stream().allMatch(l -> l.remaining() == 0)) {

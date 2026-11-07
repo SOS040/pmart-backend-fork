@@ -561,6 +561,30 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("ShipmentReady", s)).isEqualTo(1);
   }
 
+  static Map<String, Object> shortageBody(String line, String sku, String lot, String reason) {
+    String shelf = "L2".equals(line) ? "C-S1-01-1-01" : "A-S1-01-1-01";
+    return Map.of(
+        "executionType",
+        "PICK",
+        "workerId",
+        "w1",
+        "fromLocation",
+        shelf,
+        "lines",
+        List.of(
+            Map.of(
+                "orderLineId",
+                line,
+                "sku",
+                sku,
+                "lotId",
+                lot,
+                "pickedQty",
+                0,
+                "shortage",
+                Map.of("qty", 1, "reason", reason))));
+  }
+
   @Test
   void shortageBlocksTaskAndStopAfterPickIsPending() {
     String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
@@ -569,34 +593,100 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assigned(pick, "w1", 1);
     assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
 
-    // 결품 보고만(집품 0) → 재고 호출 없이 BLOCKED, LineShortageReported
+    // 결품 보고는 집품과 섞지 않는다(400), 위치·LOT 필수
+    assertThat(
+            call(
+                    "POST",
+                    W1,
+                    "/tasks/" + pick + "/executions",
+                    UUID.randomUUID().toString(),
+                    Map.of(
+                        "executionType",
+                        "PICK",
+                        "workerId",
+                        "w1",
+                        "fromLocation",
+                        "A-S1-01-1-01",
+                        "toLocation",
+                        "PAK-A-01",
+                        "lines",
+                        List.of(
+                            Map.of(
+                                "orderLineId",
+                                "L1",
+                                "sku",
+                                "E-00000001",
+                                "lotId",
+                                "LOT-A",
+                                "pickedQty",
+                                1,
+                                "shortage",
+                                Map.of("qty", 1, "reason", "SHORT")))))
+                .status())
+        .isEqualTo(400);
+
+    // 1) L1 결품 → 재고가 같은 SKU 적격 LOT 으로 재확보(blockedQty 0) → 작업 계속(IN_PROGRESS), 결품 사건 없음
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/shortage-reports"))
+            .withRequestBody(matchingJsonPath("$.orderLineId", equalTo("L1")))
+            .willReturn(
+                json(
+                    201,
+                    Map.of(
+                        "reportId",
+                        "x",
+                        "commitId",
+                        "CMT-S1",
+                        "resecuredQty",
+                        1,
+                        "blockedQty",
+                        0))));
+    Res resecured =
+        call(
+            "POST",
+            W1,
+            "/tasks/" + pick + "/executions",
+            UUID.randomUUID().toString(),
+            shortageBody("L1", "E-00000001", "LOT-A", "SHORT"));
+    assertThat(resecured.status()).as(resecured.body().toString()).isEqualTo(202);
+    assertThat(resecured.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(call("GET", VIEWER, "/tasks/" + pick, null, null).body().path("state").asString())
+        .isEqualTo("IN_PROGRESS");
+    assertThat(outbox("LineShortageReported", o)).isZero();
+
+    // 2) L2 파손 → 재확보 못 함(blockedQty 1) → BLOCKED, LineShortageReported(shortQty 1)
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/shortage-reports"))
+            .withRequestBody(matchingJsonPath("$.orderLineId", equalTo("L2")))
+            .willReturn(
+                json(
+                    201,
+                    Map.of(
+                        "reportId",
+                        "y",
+                        "commitId",
+                        "CMT-S2",
+                        "resecuredQty",
+                        0,
+                        "blockedQty",
+                        1))));
     Res shortage =
         call(
             "POST",
             W1,
             "/tasks/" + pick + "/executions",
             UUID.randomUUID().toString(),
-            Map.of(
-                "executionType",
-                "PICK",
-                "workerId",
-                "w1",
-                "lines",
-                List.of(
-                    Map.of(
-                        "orderLineId",
-                        "L2",
-                        "sku",
-                        "E-00000002",
-                        "pickedQty",
-                        0,
-                        "shortage",
-                        Map.of("qty", 1, "reason", "DAMAGED")))));
+            shortageBody("L2", "E-00000002", "LOT-C", "DAMAGED"));
     assertThat(shortage.status()).as(shortage.body().toString()).isEqualTo(202);
     JsonNode t = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
     assertThat(t.path("state").asString()).isEqualTo("BLOCKED");
     assertThat(t.path("blockReason").asString()).contains("L2").contains("DAMAGED");
     assertThat(outbox("LineShortageReported", o)).isEqualTo(1);
+    inv.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/shortage-reports"))
+            .withRequestBody(matchingJsonPath("$.reservationId", equalTo("RSV-" + o)))
+            .withRequestBody(matchingJsonPath("$.locationCode", equalTo("C-S1-01-1-01")))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("DAMAGED"))));
     inv.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/task-executions")));
 
     // 피킹이 시작된 주문의 중지 → PENDING(작업은 지우지 않는다, IV-08 전)

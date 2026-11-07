@@ -155,6 +155,48 @@ public class InventoryClient {
     }
   }
 
+  /** 결품 보고 결과. commit 은 반영 여부(APPLIED/REJECTED/UNKNOWN/NOT_DELIVERED), blockedQty 는 재확보 못 한 양. */
+  public record ShortageOutcome(Commit commit, int blockedQty, int resecuredQty) {}
+
+  /** ReportShortage(IV-09). reportId 가 같으면 inventory 가 한 번만 반영한다. */
+  public ShortageOutcome reportShortage(String reportId, Map<String, Object> body) {
+    try {
+      String raw =
+          Downstream.call(
+              INVENTORY,
+              () ->
+                  inventory
+                      .post()
+                      .uri("/api/v1/internal/shortage-reports")
+                      .header("Idempotency-Key", reportId)
+                      .header("X-Source-System", SOURCE)
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .body(body)
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+      return new ShortageOutcome(
+          new Commit("APPLIED", n.path("commitId").asString(null), 0, null, null),
+          n.path("blockedQty").asInt(0),
+          n.path("resecuredQty").asInt(0));
+    } catch (HttpClientErrorException e) {
+      JsonNode p = problem(e.getResponseBodyAsString());
+      return new ShortageOutcome(
+          new Commit(
+              "REJECTED",
+              null,
+              0,
+              p.path("code").asString("HTTP_" + e.getStatusCode().value()),
+              p.path("detail").asString(null)),
+          0,
+          0);
+    } catch (PmartException e) {
+      String outcome =
+          ErrorCode.DEPENDENCY_UNAVAILABLE.name().equals(e.code()) ? "NOT_DELIVERED" : "UNKNOWN";
+      return new ShortageOutcome(new Commit(outcome, null, 0, e.code(), e.getMessage()), 0, 0);
+    }
+  }
+
   private JsonNode problem(String raw) {
     try {
       return mapper.readTree(raw == null || raw.isBlank() ? "{}" : raw);

@@ -553,6 +553,115 @@ public class ReservationService {
     return total;
   }
 
+  // ---------- 재확보(IV-09, ADR-0042 결정 1) ----------
+
+  /**
+   * 같은 SKU 의 적격 LOT 에서 신규 가용(A=E−R) 안으로 다시 잡는다 — 처음 배정과 같은 기준(소비기한 보장·보관 유형 최소 잔여일·배송 약속일, FEFO).
+   * 다른 주문 예약은 건드리지 않는다. 다 못 잡으면 잡을 수 있는 만큼. 확정된 주문이라 조각은 바로 CONFIRMED. 호출자 트랜잭션 안(예약 행을 이미 잠근 뒤)에서
+   * 부른다.
+   *
+   * @return 새 조각(LOT·수량). 기준 미설정·적격 없음이면 빈 목록
+   */
+  public List<Allocation> resecure(
+      ReservationRow r,
+      String orderLineId,
+      String sku,
+      int qty,
+      String requestId,
+      String sourceSystem,
+      Instant at) {
+    LocalDate promised =
+        r.promisedDate() != null ? r.promisedDate() : LocalDate.ofInstant(at, BUSINESS_ZONE);
+    List<LotCandidate> lots = new ArrayList<>();
+    for (LotBalance b : stock.lockLotBalances(r.mfcId(), List.of(sku))) {
+      lots.add(
+          new LotCandidate(
+              b.sku(),
+              b.lotId(),
+              b.expiryDate(),
+              b.manufactureDate(),
+              b.firstNormalAt(),
+              b.available()));
+    }
+    LotAllocator.Rules rules = shelfRules(List.of(sku), skus.findAll(List.of(sku)));
+    if (!LotAllocator.missingPolicy(lots, rules).isEmpty()) {
+      log.warn("재확보 {} {}: 소비기한 기준 미설정 — 재확보 안 함", r.reservationId(), sku);
+      return List.of();
+    }
+    LotAllocator.Result res =
+        LotAllocator.allocate(
+            List.of(new LineRequest(orderLineId, sku, qty)), lots, promised, rules);
+    if (!res.shortages().isEmpty()) {
+      int eligible = res.shortages().get(0).eligibleQty();
+      if (eligible <= 0) {
+        return List.of();
+      }
+      res =
+          LotAllocator.allocate(
+              List.of(new LineRequest(orderLineId, sku, Math.min(eligible, qty))),
+              lots,
+              promised,
+              rules);
+    }
+    List<ReservedChange> deltas = new ArrayList<>();
+    int n = 0;
+    for (Allocation al : res.allocations()) {
+      n++;
+      reservations.insertPart(
+          r.reservationId(),
+          new PartRow(
+              r.reservationId() + ":R" + UUID.randomUUID().toString().substring(0, 8) + ":" + n,
+              al.orderLineId(),
+              al.sku(),
+              al.lotId(),
+              "HAND",
+              al.qty(),
+              ReservationState.CONFIRMED,
+              null),
+          at);
+      deltas.add(new ReservedChange(al.sku(), al.lotId(), al.qty()));
+    }
+    if (!deltas.isEmpty()) {
+      ledger.post(
+          "RESECURE",
+          r.mfcId(),
+          requestId,
+          sourceSystem,
+          r.reservationId(),
+          deltas.stream().mapToInt(ReservedChange::delta).sum(),
+          List.of(),
+          deltas,
+          at);
+    }
+    return res.allocations();
+  }
+
+  /** ReservationBlocked(mfc.inventory.v1) — 못 잡은 이행부족 D. 호출자 트랜잭션 안. */
+  public void publishBlocked(
+      ReservationRow r, String sku, String lotId, int blockedQty, String reason, Instant at) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("reservationId", r.reservationId());
+    payload.put("orderId", r.orderId());
+    payload.put("mfcId", r.mfcId());
+    payload.put("sku", sku);
+    payload.put("lot", lotId);
+    payload.put("blockedQty", blockedQty);
+    payload.put("reason", reason);
+    payload.put("blockedAt", at.toString());
+    events.publish(
+        codec.create(
+            events.sourceSystem(),
+            "ReservationBlocked",
+            1,
+            "Reservation",
+            r.reservationId(),
+            r.version(),
+            new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+            EventEnvelope.EventSource.REAL,
+            payload),
+        TOPIC);
+  }
+
   // ---------- 조회 ----------
 
   /** 피킹 지시 한 조각: 예약 조각 + LOT 소비기한 + 그 LOT 의 선반 위치별 잔량(코드 순). */
@@ -581,13 +690,17 @@ public class ReservationService {
     List<PickPlanPart> out = new ArrayList<>();
     for (ReservationStore.PickPart p : parts) {
       var units = unitsBySku.computeIfAbsent(p.sku(), s -> stock.units(r.mfcId(), s));
+      var holds = stock.openHolds(r.mfcId(), p.sku()); // 분실 조사 보류분은 집을 수 없다(ADR-0044)
       Map<String, Integer> byLocation = new java.util.TreeMap<>();
       for (var u : units) {
         if (u.key().lotId().equals(p.lotId())
             && u.key().quality() == com.pmart.mfc.inventory.domain.StockUnit.Quality.NORMAL
             && u.key().work() == com.pmart.mfc.inventory.domain.StockUnit.Work.STORED
             && u.qty() > 0) {
-          byLocation.merge(u.key().locationCode(), u.qty(), Integer::sum);
+          int usable = u.qty() - holds.getOrDefault(u.key(), 0);
+          if (usable > 0) {
+            byLocation.merge(u.key().locationCode(), usable, Integer::sum);
+          }
         }
       }
       var lot = lots.get(p.lotId());

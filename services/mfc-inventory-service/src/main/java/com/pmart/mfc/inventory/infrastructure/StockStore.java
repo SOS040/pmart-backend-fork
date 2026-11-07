@@ -321,6 +321,65 @@ public class StockStore {
   // ---------- 단위 행 ----------
 
   /** 단위 행을 잠그고 수량을 읽는다. 없으면 0. */
+  /** 단위 키의 OPEN 분실 조사 보류 합(ADR-0044). */
+  public int openHold(String mfcId, Key k) {
+    Integer v =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(qty), 0) FROM stock_hold WHERE state = 'OPEN' AND mfc_id = ?"
+                + " AND location_code = ? AND sku = ? AND lot_id = ? AND quality_state = ?"
+                + " AND work_state = ?",
+            Integer.class,
+            mfcId,
+            k.locationCode(),
+            k.sku(),
+            k.lotId(),
+            k.quality().name(),
+            k.work().name());
+    return v == null ? 0 : v;
+  }
+
+  /** SKU 의 OPEN 보류: 단위 키 → 수량(피킹 지시 위치 잔량에서 뺀다). */
+  public Map<Key, Integer> openHolds(String mfcId, String sku) {
+    Map<Key, Integer> out = new LinkedHashMap<>();
+    jdbc.query(
+        "SELECT location_code, lot_id, quality_state, work_state, SUM(qty) AS qty FROM stock_hold"
+            + " WHERE state = 'OPEN' AND mfc_id = ? AND sku = ? GROUP BY 1, 2, 3, 4",
+        rs -> {
+          out.put(
+              new Key(
+                  rs.getString("location_code"),
+                  sku,
+                  rs.getString("lot_id"),
+                  com.pmart.mfc.inventory.domain.StockUnit.Quality.valueOf(
+                      rs.getString("quality_state")),
+                  com.pmart.mfc.inventory.domain.StockUnit.Work.valueOf(
+                      rs.getString("work_state"))),
+              rs.getInt("qty"));
+        },
+        mfcId,
+        sku);
+    return out;
+  }
+
+  public void insertHold(
+      String holdId, String mfcId, Key k, int qty, String reason, String sourceRef, Instant at) {
+    jdbc.update(
+        "INSERT INTO stock_hold (hold_id, mfc_id, location_code, sku, lot_id, quality_state,"
+            + " work_state, qty, reason, state, source_ref, created_at)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,'OPEN',?,?)",
+        holdId,
+        mfcId,
+        k.locationCode(),
+        k.sku(),
+        k.lotId(),
+        k.quality().name(),
+        k.work().name(),
+        qty,
+        reason,
+        sourceRef,
+        Timestamp.from(at));
+  }
+
   public int lockUnit(String mfcId, Key k) {
     List<Integer> q =
         jdbc.query(

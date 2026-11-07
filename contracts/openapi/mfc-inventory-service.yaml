@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -306,6 +306,41 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: INSUFFICIENT_STOCK (PACKED 잔량 < 인계량)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/shortage-reports:
+    post:
+      tags: [postings]
+      summary: '[fulfillment→inventory] 피킹 결품·파손 보고 — 판매 제외·예약 BLOCKED·같은 SKU 적격 LOT 재확보 (IV-09, 0.6.0)'
+      description: |
+        IV-09·ADR-0042 결정 1·ADR-0044. 같은 reportId 는 한 번만 반영(같은 결과 재생, 다른 내용이면 409 IDEMPOTENCY_CONFLICT).
+        1. 판매 제외: DAMAGED 는 실제 있는 이상품 — 그 위치·LOT 의 NORMAL·STORED → QUARANTINED(Q+q, E−q). SHORT·BLOCKED 는 실물을 찾지 못함 —
+           격리 현물을 만들지 않고 **분실 조사 보류**(stock_hold, E−q, H·단위 행 그대로)로 둔다. 확인된 실제 손실은 실사(IV-11)에서.
+           위치 잔량(보류 제외)이 모자라면 422 INSUFFICIENT_STOCK.
+        2. 예약: 그 주문 줄·LOT 의 CONFIRMED 조각 중 아직 집지 않은 양에서 q 만큼 R−q. 남은 양보다 많으면 422 PICK_QTY_EXCEEDED.
+        3. 재확보: 같은 SKU 의 적격 LOT(소비기한 보장·보관 유형 최소 잔여일·배송 약속일, FEFO)에서 신규 가용(A=E−R) 안으로 다시 잡는다 —
+           확정 조각(CONFIRMED)으로 R+r. 다른 주문의 예약은 건드리지 않는다. 다른 SKU 로는 바꾸지 않는다.
+        4. 못 잡은 양 u = q − r 는 BLOCKED 조각(이행부족 D)으로 남기고 ReservationBlocked(mfc.inventory.v1) 발행.
+      operationId: reportShortage
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShortageReportRequest' }
+      responses:
+        '201':
+          description: 반영 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShortageReportResult' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: INSUFFICIENT_STOCK / PICK_QTY_EXCEEDED / LOT_MISMATCH / LINE_NOT_IN_RESERVATION
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -734,6 +769,39 @@ components:
               state: { $ref: '#/components/schemas/ReservationPartState' }
               blockedReason: { type: string }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    ShortageReportRequest:
+      type: object
+      required: [reportId, mfcId, reservationId, orderLineId, sku, lotId, locationCode, qty, reason]
+      properties:
+        reportId: { type: string, maxLength: 128, description: 보고 ID(fulfillment 실행 ID 기반). 한 번만 반영 }
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        reservationId: { type: string }
+        orderLineId: { type: string }
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        lotId: { type: string, description: 결품·파손을 발견한 예약 LOT }
+        locationCode: { type: string, description: 발견한 선반 위치 }
+        qty: { type: integer, minimum: 1 }
+        reason: { type: string, enum: [SHORT, DAMAGED, BLOCKED] }
+        taskId: { type: string }
+        note: { type: string, maxLength: 200 }
+    ShortageReportResult:
+      type: object
+      properties:
+        reportId: { type: string }
+        commitId: { type: string }
+        reportedQty: { type: integer }
+        quarantinedQty: { type: integer, description: DAMAGED 로 격리한 양 }
+        heldQty: { type: integer, description: 분실 조사 보류한 양(SHORT·BLOCKED) }
+        resecuredQty: { type: integer, description: 같은 SKU 적격 LOT 으로 다시 잡은 양 }
+        blockedQty: { type: integer, description: 못 잡아 BLOCKED(이행부족 D)로 남은 양 }
+        resecuredParts:
+          type: array
+          items:
+            type: object
+            properties:
+              partId: { type: string }
+              lotId: { type: string }
+              qty: { type: integer }
     PickPlan:
       type: object
       properties:

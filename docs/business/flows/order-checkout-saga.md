@@ -146,6 +146,8 @@ D6-5 세부(사용자 결정 2026-11-07):
 
 ### 2.1 결품(LineShortageReported) 처리
 
+구현(2026-11-07, ADR-0044 — IV-09 1부): 결품·파손은 먼저 MFC 안에서 같은 SKU 적격 LOT 으로 재확보를 시도하고, **재확보 못 한 양만** `LineShortageReported` 로 나온다. 아래 고객 선택별 처리는 2부(미구현) — 그때까지 해당 작업은 BLOCKED 로 남는다.
+
 | 고객 사전 선택 | 처리 |
 |---|---|
 | `품절 상품만 취소` | 미인계 범위에서 해당 품목 부분 취소 → claim.RefundIntent(원가격·원안분) → payment.PartialCancel → RefundResult → OrderLineQuantityChanged. 남은 주문이 15,000원 미만이어도 유지. 재결제 요구·배달팁 추가 없음 |

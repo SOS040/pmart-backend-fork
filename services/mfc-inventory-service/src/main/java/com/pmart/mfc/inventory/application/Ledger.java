@@ -25,6 +25,9 @@ import org.springframework.stereotype.Component;
 /**
  * 한 사건의 수량 반영(IV-01, ADR-0040 결정 1·6). 단위 행 증감과 예약(R) 증감을 받아 센터 요약 → LOT 요약 → 단위 행 순으로 잠그고, 감소분의
  * 잔량과 불변식(0≤R≤E≤H, 0≤Q≤H, E+Q≤H)을 반영 전에 검사한 뒤 세 표와 원장을 함께 바꾼다. 호출자의 트랜잭션 안에서만 부른다.
+ *
+ * <p>분실 조사 보류(ADR-0044, {@code stock_hold})는 단위 행을 바꾸지 않고 E 에서만 뺀다. 단위 행의 감소·보류 증가는 "단위 수량 − OPEN
+ * 보류" 안에서만 허용한다(보류된 물량은 집품·이동할 수 없다). 보류 행 자체는 호출자가 쓴다.
  */
 @Component
 public class Ledger {
@@ -33,6 +36,9 @@ public class Ledger {
 
   /** LOT 단위 예약 증감. */
   public record ReservedChange(String sku, String lotId, int delta) {}
+
+  /** 분실 조사 보류 증감(단위 키, +q = 보류 — E−q). 판매 가능 키(NORMAL·적치 뒤)만. */
+  public record HoldChange(Key key, int delta) {}
 
   private record LotKey(String sku, String lotId) implements Comparable<LotKey> {
     @Override
@@ -95,11 +101,43 @@ public class Ledger {
       List<Change> units,
       List<ReservedChange> reserved,
       Instant at) {
-    lockAndCheck(mfcId, units, reserved, at);
+    return postWithHolds(
+        commitId,
+        commitType,
+        mfcId,
+        requestId,
+        sourceSystem,
+        sourceRef,
+        appliedQty,
+        units,
+        reserved,
+        List.of(),
+        at);
+  }
+
+  /** 분실 조사 보류 증감을 함께 반영(IV-09). */
+  public String postWithHolds(
+      String commitId,
+      String commitType,
+      String mfcId,
+      @Nullable String requestId,
+      String sourceSystem,
+      @Nullable String sourceRef,
+      int appliedQty,
+      List<Change> units,
+      List<ReservedChange> reserved,
+      List<HoldChange> holds,
+      Instant at) {
+    for (HoldChange h : holds) {
+      if (!h.key().sellable()) {
+        throw new IllegalArgumentException("보류는 판매 가능 단위 키만: " + h.key());
+      }
+    }
+    lockAndCheck(mfcId, units, reserved, holds, at);
     stock.insertCommit(
         new CommitRow(
             commitId, commitType, mfcId, requestId, sourceSystem, sourceRef, appliedQty, at));
-    write(commitId, mfcId, units, reserved, at);
+    write(commitId, mfcId, units, reserved, holds, at);
     return commitId;
   }
 
@@ -120,7 +158,11 @@ public class Ledger {
   }
 
   private void lockAndCheck(
-      String mfcId, List<Change> units, List<ReservedChange> reserved, Instant at) {
+      String mfcId,
+      List<Change> units,
+      List<ReservedChange> reserved,
+      List<HoldChange> holds,
+      Instant at) {
     SortedMap<String, Acc> bySku = new TreeMap<>();
     SortedMap<LotKey, Acc> byLot = new TreeMap<>();
     for (Change c : units) {
@@ -142,6 +184,16 @@ public class Ledger {
           0,
           r.delta());
     }
+    for (HoldChange h : holds) {
+      Key k = h.key();
+      add(bySku.computeIfAbsent(k.sku(), s -> new Acc()), 0, 0, -h.delta(), 0);
+      add(
+          byLot.computeIfAbsent(new LotKey(k.sku(), k.lotId()), s -> new Acc()),
+          0,
+          0,
+          -h.delta(),
+          0);
+    }
     stock.ensureCenterRows(mfcId, bySku.keySet(), at);
     Map<String, Balance> centers = stock.lockBalances(mfcId, bySku.keySet());
     for (LotKey lk : byLot.keySet()) {
@@ -159,10 +211,14 @@ public class Ledger {
     for (Change c : sorted) {
       net.merge(c.key(), c.delta(), Integer::sum);
     }
+    // 보류 증가는 단위에서 빼는 것과 같게 검사(단위 − OPEN 보류 ≥ 0 유지)
+    for (HoldChange h : holds) {
+      net.merge(h.key(), -h.delta(), Integer::sum);
+    }
     List<PmartException.Detail> short_ = new ArrayList<>();
     for (Map.Entry<Key, Integer> e : net.entrySet()) {
       if (e.getValue() < 0) {
-        int have = stock.lockUnit(mfcId, e.getKey());
+        int have = stock.lockUnit(mfcId, e.getKey()) - stock.openHold(mfcId, e.getKey());
         if (have + e.getValue() < 0) {
           Key k = e.getKey();
           short_.add(
@@ -246,6 +302,7 @@ public class Ledger {
       String mfcId,
       List<Change> units,
       List<ReservedChange> reserved,
+      List<HoldChange> holds,
       Instant at) {
     SortedMap<String, Acc> bySku = new TreeMap<>();
     SortedMap<LotKey, Acc> byLot = new TreeMap<>();
@@ -267,6 +324,16 @@ public class Ledger {
           0,
           0,
           r.delta());
+    }
+    for (HoldChange h : holds) {
+      Key k = h.key();
+      add(bySku.computeIfAbsent(k.sku(), s -> new Acc()), 0, 0, -h.delta(), 0);
+      add(
+          byLot.computeIfAbsent(new LotKey(k.sku(), k.lotId()), s -> new Acc()),
+          0,
+          0,
+          -h.delta(),
+          0);
     }
     Map<LotKey, Long> lotVersions = new TreeMap<>();
     byLot.forEach(
@@ -293,6 +360,10 @@ public class Ledger {
       long v = lotVersions.get(new LotKey(r.sku(), r.lotId()));
       stock.insertEntry(
           commitId, mfcId, new EntryRow(r.sku(), r.lotId(), null, null, null, "R", r.delta(), v));
+    }
+    for (HoldChange h : holds) {
+      long v = lotVersions.get(new LotKey(h.key().sku(), h.key().lotId()));
+      entry(commitId, mfcId, h.key(), "E", -h.delta(), v); // 단위 행은 그대로, E 만 — 원장에 보류 위치를 남긴다
     }
   }
 

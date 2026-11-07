@@ -192,6 +192,26 @@ public class ReservationStore {
         partId);
   }
 
+  /** 조각 수량 줄이기(결품 보고 — 아직 집지 않은 양에서만, IV-09). */
+  public void shrinkPart(String partId, int newQty, Instant at) {
+    jdbc.update(
+        "UPDATE reservation_part SET qty = ?, updated_at = ? WHERE part_id = ?",
+        newQty,
+        Timestamp.from(at),
+        partId);
+  }
+
+  /** 조각 상태 바꾸기(결품 보고로 전부 빠진 조각 → RELEASED, 사유 기록). */
+  public void setPartState(
+      String partId, ReservationState state, @Nullable String reason, Instant at) {
+    jdbc.update(
+        "UPDATE reservation_part SET state = ?, blocked_reason = ?, updated_at = ? WHERE part_id = ?",
+        state.name(),
+        reason,
+        Timestamp.from(at),
+        partId);
+  }
+
   /** 집품이 시작된 조각이 있는가(해제 차단 — 집품 후 취소는 IV-08). */
   public boolean anyPicked(String reservationId) {
     Integer n =

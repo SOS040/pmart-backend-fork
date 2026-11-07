@@ -836,6 +836,137 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(release.body().path("code").asString()).isEqualTo("RESERVATION_PICKED");
   }
 
+  Res shortage(
+      String reportId, String reservationId, String sku, String lot, int qty, String reason) {
+    Map<String, Object> b = new LinkedHashMap<>();
+    b.put("reportId", reportId);
+    b.put("mfcId", mfc);
+    b.put("reservationId", reservationId);
+    b.put("orderLineId", "L1");
+    b.put("sku", sku);
+    b.put("lotId", lot);
+    b.put("locationCode", "A-01-01");
+    b.put("qty", qty);
+    b.put("reason", reason);
+    return post(
+        INBOUND,
+        "mfc-fulfillment-service",
+        "/internal/shortage-reports",
+        UUID.randomUUID().toString(),
+        b);
+  }
+
+  String confirmedReservation(String orderId, String sku, int qty) {
+    Res held =
+        reserve(
+            UUID.randomUUID().toString(),
+            Map.of(
+                "orderId",
+                orderId,
+                "mfcId",
+                mfc,
+                "lines",
+                List.of(Map.of("orderLineId", "L1", "sku", sku, "qty", qty))));
+    assertThat(held.status()).as(held.body().toString()).isEqualTo(201);
+    String id = held.body().path("resultId").asString();
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    "/internal/reservations/" + id + "/confirmations",
+                    UUID.randomUUID().toString(),
+                    Map.of("orderId", orderId, "paymentAttemptId", "PAY-" + orderId))
+                .status())
+        .isEqualTo(200);
+    return id;
+  }
+
+  @Test
+  void shortageHoldsMissingUnitsAndResecuresSameSkuEligibleLot() {
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(
+            line(sku, 3, 0, "LOT-X", today.plusDays(60).toString()),
+            line(sku, 5, 0, "LOT-Y", today.plusDays(90).toString())));
+    String rid = confirmedReservation("ORD-SH1", sku, 2);
+    JsonNode part =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan").body().path("parts").path(0);
+    String lotX = part.path("lotId").asString();
+
+    // 남은 예약보다 많이 보고 → 422
+    assertThat(shortage("SR-0", rid, sku, lotX, 3, "SHORT").status()).isEqualTo(422);
+
+    // 1개 못 찾음(SHORT) → 분실 조사 보류(H 그대로, E−1), 같은 SKU 적격 LOT 에서 1개 재확보 → 이행부족 0
+    Res r = shortage("SR-1", rid, sku, lotX, 1, "SHORT");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    assertThat(r.body().path("heldQty").asInt()).isEqualTo(1);
+    assertThat(r.body().path("resecuredQty").asInt()).isEqualTo(1);
+    assertThat(r.body().path("blockedQty").asInt()).isZero();
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(8);
+    assertThat(av.path("quarantined").asInt()).isZero();
+    assertThat(av.path("sellable").asInt()).isEqualTo(7);
+    assertThat(av.path("reserved").asInt()).isEqualTo(2);
+    // 보류분은 피킹 지시 위치 잔량에서 빠진다
+    JsonNode plan = get(ORCH, "/internal/reservations/" + rid + "/pick-plan").body();
+    int lotXAtShelf = 0;
+    int confirmed = 0;
+    for (JsonNode p : plan.path("parts")) {
+      if ("CONFIRMED".equals(p.path("state").asString())) {
+        confirmed += p.path("qty").asInt();
+      }
+      if (lotX.equals(p.path("lotId").asString()) && p.path("locations").size() > 0) {
+        lotXAtShelf = p.path("locations").path(0).path("qty").asInt();
+      }
+    }
+    assertThat(confirmed).isEqualTo(2);
+    assertThat(lotXAtShelf).isEqualTo(2);
+    // 같은 보고 다시 → 같은 결과, 다른 내용 → 409
+    assertThat(shortage("SR-1", rid, sku, lotX, 1, "SHORT").body().path("commitId").asString())
+        .isEqualTo(r.body().path("commitId").asString());
+    assertThat(shortage("SR-1", rid, sku, lotX, 1, "DAMAGED").status()).isEqualTo(409);
+  }
+
+  @Test
+  void damagedWithNothingToResecureBecomesBlockedShortfall() {
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(line(sku, 2, 0, "LOT-D", today.plusDays(60).toString())));
+    String rid = confirmedReservation("ORD-SH2", sku, 2);
+    String lot =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    Res r = shortage("SR-2", rid, sku, lot, 2, "DAMAGED");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    assertThat(r.body().path("quarantinedQty").asInt()).isEqualTo(2);
+    assertThat(r.body().path("resecuredQty").asInt()).isZero();
+    assertThat(r.body().path("blockedQty").asInt()).isEqualTo(2);
+    // 파손은 실제 있는 이상품 — 격리(Q), E·R 에서 빠짐, H 그대로
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(2);
+    assertThat(av.path("quarantined").asInt()).isEqualTo(2);
+    assertThat(av.path("sellable").asInt()).isZero();
+    assertThat(av.path("reserved").asInt()).isZero();
+    JsonNode parts = get(ORCH, "/internal/reservations/" + rid).body().path("parts");
+    assertThat(parts.toString()).contains("\"BLOCKED\"");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'ReservationBlocked' AND aggregateid = ?",
+                Integer.class,
+                rid))
+        .isEqualTo(1);
+  }
+
   @Test
   void inspectionSplitsTheReceivedLotByManufacturerLotAndExpiry() {
     // 수령은 상품·수량만(LOT 미확정) → 품질검사에서 제조 LOT·소비기한별로 나누고 격리분을 가른다
