@@ -21,4 +21,12 @@
 로컬 포트 8305.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+3단계 스캐폴딩(2026-10-23).
+
+## 격리·해제·폐기 (2026-11-08, IV-09·IV-10, 계약 0.2.0, V2)
+- 권한(`application/Actors`, Q-11 결정 전 기본): 그 센터 운영자 + 판정·요청·실행 = MFC_WORKER·MFC_SUPERVISOR, 승인·반려 = MFC_SUPERVISOR(요청자 본인 아님 — 422 SELF_APPROVAL). 행위자 ID = 토큰 주체(본문 decidedBy·actorId 가 다르면 403).
+- 판정 `QualityDecisionService`: QUARANTINE 은 바로 재고 반영, RELEASE 는 요청(REQUESTED) → `POST /quality-decisions/{id}/approvals`(APPROVE → 재고 반영 / REJECT → DECLINED). 계약 원안의 "요청 본문 approverId" 는 승인으로 쓰지 않는다.
+- 폐기 `DisposalService`: REQUEST → APPROVE(approvalRef 필수 — BO-15 승인 ID, 존재 확인 없이 기록, 부분 승인)·REJECT → `POST /disposal-approvals/{id}/executions`(승인 − 실행 누계 − 진행 중 실행 안에서, 키 = Idempotency-Key) → PARTIALLY_EXECUTED / COMPLETED. 승인만으로 현물을 줄이지 않는다.
+- 재고 반영: mfc-inventory `/internal/quality-postings`(`InventoryClient`, 키 = 판정 ID·실행 ID, `pmart.quality.mfc-inventory-base-url`). 결과 모름·미전달은 sweep(`pmart.quality.sweep-interval`, 기본 PT30S)이 같은 키로, 재고 거절은 REJECTED(자동 재시도 없음).
+- 사건(mfc.quality.v1): `QualityDecisionMade`(재고 반영 뒤, 줄마다), `DisposalApproved`(승인 때).
+- 회수품 검수·품질 사건은 아직 501 — 회수품 반입(mfc-inbound return-receipts)·회수 흐름(claim·배송)이 없다.

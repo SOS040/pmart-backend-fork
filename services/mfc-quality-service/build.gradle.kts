@@ -18,4 +18,6 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox 행 확인·sweep 시각 당기기
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // mfc-inventory 품질 반영 응답 고정
 }
