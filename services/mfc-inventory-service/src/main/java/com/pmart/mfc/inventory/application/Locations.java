@@ -121,6 +121,29 @@ public class Locations {
             });
   }
 
+  /** 실사 대상 위치(IV-11): 등록·실사 잠금(COUNT_LOCKED) 이어야 계수를 시작·반영한다. */
+  public void requireCountLocked(String mfcId, String locationCode) {
+    LocationRow r =
+        store
+            .byCode(mfcId, locationCode)
+            .orElseThrow(
+                () ->
+                    new PmartException(
+                        LOCATION_NOT_REGISTERED,
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "등록되지 않은 위치입니다: " + mfcId + "/" + locationCode,
+                        false,
+                        List.of()));
+    if (!"COUNT_LOCKED".equals(r.state())) {
+      throw new PmartException(
+          com.pmart.mfc.inventory.domain.CountRules.LOCATION_NOT_LOCKED,
+          HttpStatus.CONFLICT,
+          locationCode + " 는 실사 잠금 상태가 아닙니다(지금 " + r.state() + ") — mfc-location 에서 먼저 잠근다.",
+          false,
+          List.of());
+    }
+  }
+
   private LocationRow active(String mfcId, String locationCode) {
     LocationRow r =
         store

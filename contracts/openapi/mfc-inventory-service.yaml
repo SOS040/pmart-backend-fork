@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -20,6 +20,7 @@ security:
   - bearerAuth: []
 tags:
   - { name: reservations, description: 예약 ReservationPart (HELD→CONFIRMED/RELEASED/EXPIRED/BLOCKED) }
+  - { name: counts, description: 순환 실사·차이 조정(IV-11) }
   - { name: postings, description: 수량 전기 명령 (수령·작업·인계·품질·조정) }
   - { name: queries, description: 가용·스냅샷·원결과 조회 }
   - { name: sku-handlings, description: 센터 SKU 취급 ON·OFF (운영자 — 자기 센터) }
@@ -638,6 +639,141 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /mfcs/{mfcId}/count-sessions:
+    post:
+      tags: [counts]
+      summary: '[운영자] 순환 실사 시작(IV-11, 0.10.0) — 실사 잠금 위치의 장부 기준 고정'
+      description: |
+        그 센터 운영자 + MFC_WORKER·MFC_SUPERVISOR. 위치마다 mfc-location 에서 실사 잠금(COUNT_LOCKED)이어야 한다(409 LOCATION_NOT_LOCKED —
+        잠금 실패는 계수 시작 차단). 대상 = 그 위치의 판매 단위(NORMAL·STORED) — 위치·SKU·LOT 별 장부 수량과 조사 보류(IV-09 결품 보고)를
+        기준 시각에 고정한다. 응답의 계수표(sheet)에는 수량이 없다(첫 계수 장부 숨김). 같은 위치가 열린 실사에 있으면 409 COUNT_IN_PROGRESS.
+      operationId: createCountSession
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locationCodes]
+              properties:
+                locationCodes: { type: array, minItems: 1, maxItems: 50, items: { type: string } }
+                reason: { type: string, maxLength: 200, description: '순환 실사·차이 조사·확정 오류 정정 등' }
+      responses:
+        '201':
+          description: 실사(COUNTING)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /mfcs/{mfcId}/count-sessions/{sessionId}:
+    get:
+      tags: [counts]
+      summary: '[운영자] 실사 조회 — 계수 중에는 장부·차이를 보이지 않는다'
+      operationId: getCountSession
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /mfcs/{mfcId}/count-sessions/{sessionId}/counts:
+    post:
+      tags: [counts]
+      summary: '[작업자] 계수·재계수 제출'
+      description: |
+        MFC_WORKER·MFC_SUPERVISOR. 줄 = 위치·SKU·LOT·센 수량. 계수표에 있는데 줄이 없으면 0 으로 센 것. 계수표에 없는 SKU·LOT 도 낼 수 있다(찾은 재고).
+        첫 계수가 장부와 같고 조사 보류가 없으면 MATCHED(끝). 다르면 RECOUNT_REQUIRED — **다른 작업자**가 재계수(같은 사람은 409 SAME_COUNTER).
+        재계수가 장부와 같고 보류가 없으면 MATCHED, 아니면 PENDING_APPROVAL(최종 수량 = 재계수). 첫 계수가 같아도 조사 보류가 있으면 PENDING_APPROVAL
+        (보류 해소도 승인 뒤). 계수 단계가 아닌 실사는 409 INVALID_STATE.
+      operationId: submitCount
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lines]
+              properties:
+                lines:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [locationCode, sku, lotId, countedQty]
+                    properties:
+                      locationCode: { type: string }
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lotId: { type: string }
+                      countedQty: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: 제출 뒤 실사
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /mfcs/{mfcId}/count-sessions/{sessionId}/approvals:
+    post:
+      tags: [counts]
+      summary: '[감독자] 실사 차이 승인(조정 ADJ 반영) / 반려'
+      description: |
+        MFC_SUPERVISOR, 실사를 시작·계수한 사람이 아니어야 한다(422 SELF_APPROVAL). PENDING_APPROVAL 만. APPROVE 는 approvalRef 필수(422 APPROVAL_REQUIRED).
+        반영 직전 장부가 기준 시각과 다르면 409 BOOK_CHANGED(다시 실사). 반영 = 한 확정 단위(COUNT_ADJ): 위치·SKU·LOT 별 (최종 − 장부)만큼 NORMAL·STORED
+        증감, 그 위치 조사 보류는 모두 해소(찾은 것은 E 복귀, 없는 것은 손실). E 가 줄어 LOT 의 R 을 넘으면 넘는 양만 나중 예약부터 BLOCKED(COUNT_LOSS) +
+        ReservationBlocked. 증감이 있으면 StockAdjusted. 같은 승인 재요청은 지금 실사(한 번만 반영). REJECT → REJECTED(변화 없음, 보류 그대로).
+        실사 잠금 해제는 mfc-location 에서 따로(시간 만료로 자동 해제하지 않음).
+      operationId: decideCountSession
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [APPROVE, REJECT] }
+                approvalRef: { type: string, maxLength: 128 }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: 결정 뒤 실사
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: SELF_APPROVAL / APPROVAL_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /mfcs/{mfcId}/sku-handlings:
     get:
       tags: [sku-handlings]
@@ -1039,6 +1175,46 @@ components:
               locationCode: { type: string }
               qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
               workState: { type: string, enum: [STORED, UNSTOWED], description: '0.9.0 — 단위 행 업무 상태(기본 STORED)' }
+    CountSession:
+      type: object
+      properties:
+        sessionId: { type: string }
+        mfcId: { type: string }
+        state: { type: string, enum: [COUNTING, RECOUNT_REQUIRED, PENDING_APPROVAL, MATCHED, ADJUSTED, REJECTED] }
+        locationCodes: { type: array, items: { type: string } }
+        reason: { type: [string, 'null'] }
+        createdBy: { type: string }
+        firstCounter: { type: [string, 'null'] }
+        recounter: { type: [string, 'null'] }
+        approverId: { type: [string, 'null'] }
+        approvalRef: { type: [string, 'null'] }
+        baselineAt: { type: string, format: date-time, description: 장부 기준 시각 }
+        sheet:
+          type: array
+          description: 계수표(수량 없음)
+          items:
+            type: object
+            properties:
+              locationCode: { type: string }
+              sku: { type: string }
+              lotId: { type: string }
+              expiryDate: { type: [string, 'null'], format: date }
+        differences:
+          type: [array, 'null']
+          description: 계수가 끝난 뒤(PENDING_APPROVAL·MATCHED·ADJUSTED·REJECTED)에만. 계수 중에는 null
+          items:
+            type: object
+            properties:
+              locationCode: { type: string }
+              sku: { type: string }
+              lotId: { type: string }
+              bookQty: { type: integer }
+              heldQty: { type: integer, description: 조사 보류(결품 보고) }
+              countedQty: { type: integer }
+              deltaQty: { type: integer, description: 최종 − 장부 }
+        commitId: { type: [string, 'null'] }
+        version: { type: integer }
+        updatedAt: { type: string, format: date-time }
     AdjustmentRequest:
       type: object
       required: [adjustmentType, mfcId, approvalRef, lines]

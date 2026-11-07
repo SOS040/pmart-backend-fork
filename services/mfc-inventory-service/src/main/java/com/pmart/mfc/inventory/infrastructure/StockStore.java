@@ -433,6 +433,47 @@ public class StockStore {
         Timestamp.from(at));
   }
 
+  /** 위치들의 판매 단위(NORMAL·STORED, 0 초과) — 실사 장부(IV-11). 위치·SKU·LOT 순. */
+  public List<UnitRow> storedUnitsAt(String mfcId, Collection<String> locations) {
+    if (locations.isEmpty()) {
+      return List.of();
+    }
+    return named.query(
+        "SELECT location_code, sku, lot_id, quality_state, work_state, qty, row_version"
+            + " FROM stock_unit WHERE mfc_id = :mfc AND location_code IN (:locs) AND qty > 0"
+            + " AND quality_state = 'NORMAL' AND work_state = 'STORED'"
+            + " ORDER BY location_code, sku, lot_id",
+        Map.of("mfc", mfcId, "locs", locations),
+        (rs, i) ->
+            new UnitRow(
+                new Key(
+                    rs.getString("location_code"),
+                    rs.getString("sku"),
+                    rs.getString("lot_id"),
+                    Quality.valueOf(rs.getString("quality_state")),
+                    Work.valueOf(rs.getString("work_state"))),
+                rs.getInt("qty"),
+                rs.getLong("row_version")));
+  }
+
+  /** 단위의 열린 조사 보류를 해소(실사 확정, IV-11). 반환 = 해소한 수량. */
+  public int resolveHolds(String mfcId, Key k, String ref, Instant at) {
+    int qty = openHold(mfcId, k);
+    jdbc.update(
+        "UPDATE stock_hold SET state = 'RESOLVED', resolved_at = ?, resolved_ref = ?"
+            + " WHERE state = 'OPEN' AND mfc_id = ? AND location_code = ? AND sku = ? AND lot_id = ?"
+            + " AND quality_state = ? AND work_state = ?",
+        Timestamp.from(at),
+        ref,
+        mfcId,
+        k.locationCode(),
+        k.sku(),
+        k.lotId(),
+        k.quality().name(),
+        k.work().name());
+    return qty;
+  }
+
   /** 센터·SKU 의 0 이 아닌 단위 행(조회). */
   public List<UnitRow> units(String mfcId, String sku) {
     return jdbc.query(

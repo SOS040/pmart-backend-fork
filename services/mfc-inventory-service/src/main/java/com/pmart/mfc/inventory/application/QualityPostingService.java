@@ -5,28 +5,18 @@ import com.pmart.common.web.CommandResponse;
 import com.pmart.common.web.CommandStatus;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
-import com.pmart.mfc.inventory.application.Ledger.ReservedChange;
-import com.pmart.mfc.inventory.domain.ReservationState;
 import com.pmart.mfc.inventory.domain.StockUnit.Change;
 import com.pmart.mfc.inventory.domain.StockUnit.Key;
 import com.pmart.mfc.inventory.domain.StockUnit.Quality;
 import com.pmart.mfc.inventory.domain.StockUnit.Work;
-import com.pmart.mfc.inventory.infrastructure.ReservationStore;
-import com.pmart.mfc.inventory.infrastructure.ReservationStore.LotPart;
-import com.pmart.mfc.inventory.infrastructure.ReservationStore.PartRow;
-import com.pmart.mfc.inventory.infrastructure.ReservationStore.ReservationRow;
 import com.pmart.mfc.inventory.infrastructure.StockStore;
-import com.pmart.mfc.inventory.infrastructure.StockStore.LotBalance;
 import com.pmart.mfc.inventory.infrastructure.StockStore.LotRow;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -63,22 +53,19 @@ public class QualityPostingService {
       List<Line> lines) {}
 
   private final StockStore stock;
-  private final ReservationStore reservations;
-  private final ReservationService reservationService;
+  private final ReservationBlocker blocker;
   private final Ledger ledger;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
   public QualityPostingService(
       StockStore stock,
-      ReservationStore reservations,
-      ReservationService reservationService,
+      ReservationBlocker blocker,
       Ledger ledger,
       RequestIdempotency idempotency,
       Clock clock) {
     this.stock = stock;
-    this.reservations = reservations;
-    this.reservationService = reservationService;
+    this.blocker = blocker;
     this.ledger = ledger;
     this.idempotency = idempotency;
     this.clock = clock;
@@ -144,11 +131,8 @@ public class QualityPostingService {
                   default -> changes.add(new Change(quarantined, -l.qty()));
                 }
               }
-              List<ReservedChange> reserved = new ArrayList<>();
-              List<Blocked> blocked = new ArrayList<>();
-              if (!sellableDrop.isEmpty()) {
-                block(in, sellableDrop, reserved, blocked, at);
-              }
+              ReservationBlocker.Result held =
+                  blocker.block(in.mfcId(), sellableDrop, "QUALITY_HOLD", in.approvalRef(), at);
               String commitId =
                   ledger.post(
                       "QUALITY_" + in.postingType(),
@@ -158,12 +142,9 @@ public class QualityPostingService {
                       in.qualityDecisionId() != null ? in.qualityDecisionId() : in.approvalRef(),
                       total,
                       changes,
-                      reserved,
+                      held.reserved(),
                       at);
-              for (Blocked b : blocked) {
-                reservationService.publishBlocked(
-                    b.reservation(), b.sku(), b.lotId(), b.qty(), "QUALITY_HOLD", at);
-              }
+              blocker.publish(held, "QUALITY_HOLD", at);
               log.info(
                   "품질 반영 {} {} {}개 (근거 {}, 결정 {}) — 예약 보류 {}건",
                   commitId,
@@ -171,90 +152,11 @@ public class QualityPostingService {
                   total,
                   in.approvalRef(),
                   in.qualityDecisionId(),
-                  blocked.size());
+                  held.blocked().size());
               return new CommandResponse(
                   CommandStatus.APPLIED, requestId, commitId, total, null, false, null, at);
             })
         .value();
-  }
-
-  private record Blocked(ReservationRow reservation, String sku, String lotId, int qty) {}
-
-  /**
-   * 격리로 LOT 의 R 이 남은 E 를 넘으면 넘는 양만큼 아직 집지 않은 예약 조각을 나중에 잡은 예약부터 BLOCKED 로. 잠금 순서: 예약 행(ID 순) → 조각 →
-   * 잔량(Ledger).
-   */
-  private void block(
-      Posting in,
-      Map<String, Integer> sellableDrop,
-      List<ReservedChange> reserved,
-      List<Blocked> blocked,
-      Instant at) {
-    Map<String, List<LotPart>> candidates = new LinkedHashMap<>();
-    TreeSet<String> reservationIds = new TreeSet<>();
-    for (String k : sellableDrop.keySet()) {
-      String[] sl = k.split("\\|", 2);
-      List<LotPart> parts = reservations.activeLotParts(in.mfcId(), sl[0], sl[1]);
-      candidates.put(k, parts);
-      parts.forEach(p -> reservationIds.add(p.reservationId()));
-    }
-    Map<String, ReservationRow> locked = new LinkedHashMap<>();
-    for (String id : reservationIds) {
-      reservations.lock(id).ifPresent(r -> locked.put(id, r));
-    }
-    for (var e : sellableDrop.entrySet()) {
-      String[] sl = e.getKey().split("\\|", 2);
-      String sku = sl[0];
-      String lotId = sl[1];
-      LotBalance lb =
-          stock.lockLotBalances(in.mfcId(), List.of(sku)).stream()
-              .filter(b -> b.lotId().equals(lotId))
-              .findFirst()
-              .orElse(null);
-      if (lb == null) {
-        continue; // 잔량 행이 없으면 Ledger 가 부족으로 거절한다
-      }
-      int deficit = lb.reserved() - (lb.sellable() - e.getValue());
-      if (deficit <= 0) {
-        continue;
-      }
-      // 조각을 다시 읽는다(잠근 뒤 — 사이에 집품·해제가 있었을 수 있다)
-      for (LotPart p : reservations.activeLotParts(in.mfcId(), sku, lotId)) {
-        if (deficit == 0) {
-          break;
-        }
-        ReservationRow r = locked.get(p.reservationId());
-        if (r == null) {
-          continue; // 잠그지 못한 새 예약 — 이번에는 건드리지 않는다(남은 부족은 Ledger 가 거절)
-        }
-        int room = p.qty() - p.pickedQty();
-        int take = Math.min(deficit, room);
-        if (take <= 0) {
-          continue;
-        }
-        if (p.qty() - take > 0) {
-          reservations.shrinkPart(p.partId(), p.qty() - take, at);
-        } else {
-          reservations.setPartState(
-              p.partId(), ReservationState.RELEASED, "QUALITY_HOLD:" + in.approvalRef(), at);
-        }
-        reservations.insertPart(
-            r.reservationId(),
-            new PartRow(
-                r.reservationId() + ":Q" + UUID.randomUUID().toString().substring(0, 8),
-                p.orderLineId(),
-                sku,
-                lotId,
-                "HAND",
-                take,
-                ReservationState.BLOCKED,
-                "QUALITY_HOLD"),
-            at);
-        reserved.add(new ReservedChange(sku, lotId, -take));
-        blocked.add(new Blocked(r, sku, lotId, take));
-        deficit -= take;
-      }
-    }
   }
 
   private static Work work(Line l) {

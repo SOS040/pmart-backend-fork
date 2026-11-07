@@ -1078,6 +1078,133 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(av.path("sellable").asInt()).isEqualTo(6);
   }
 
+  Res count(String token, String path, Object body) {
+    return post(token, "mfc-pda", "/mfcs/" + mfc + path, UUID.randomUUID().toString(), body);
+  }
+
+  /** 순환 실사(IV-11): 잠금 위치만, 장부 숨김 → 첫 계수 차이 → 다른 작업자 재계수 → 시작·계수자 아닌 감독자 승인(근거) → 조정 + 조사 보류 해소. */
+  @Test
+  void cycleCountNeedsRecountByAnotherWorkerAndSupervisorApproval() {
+    String w1 = TestJwt.operator("cw1", List.of("MFC_WORKER"), List.of(mfc));
+    String w2 = TestJwt.operator("cw2", List.of("MFC_WORKER"), List.of(mfc));
+    String s1 = TestJwt.operator("cs1", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 10);
+    String rid = confirmedReservation("ORD-CNT", sku, 4);
+    String lot =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    // 결품 보고 2 → 조사 보류(E−2), 같은 LOT 에서 재확보
+    assertThat(shortage("RPT-CNT", rid, sku, lot, 2, "SHORT").status()).isEqualTo(201);
+    assertThat(availability(sku).path("sellable").asInt()).isEqualTo(8);
+
+    // 잠기지 않은 위치는 실사 못 한다
+    Res notLocked = count(w1, "/count-sessions", Map.of("locationCodes", List.of("A-01-01")));
+    assertThat(notLocked.status()).isEqualTo(409);
+    assertThat(notLocked.body().path("code").asString()).isEqualTo("LOCATION_NOT_LOCKED");
+    location("A-01-01", "STORAGE", "AMBIENT", "COUNT_LOCKED", 2);
+    awaitSql(
+        "SELECT count(*) FROM location_projection WHERE mfc_id = '"
+            + mfc
+            + "' AND location_code = 'A-01-01' AND state = 'COUNT_LOCKED'",
+        1);
+
+    Res created = count(w1, "/count-sessions", Map.of("locationCodes", List.of("A-01-01")));
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String sid = created.body().path("sessionId").asString();
+    String base = "/count-sessions/" + sid;
+    assertThat(created.body().path("state").asString()).isEqualTo("COUNTING");
+    assertThat(created.body().path("sheet").path(0).path("lotId").asString()).isEqualTo(lot);
+    assertThat(created.body().path("sheet").path(0).has("qty")).isFalse();
+    assertThat(created.body().path("differences").isNull()).isTrue();
+    // 같은 위치 두 번째 실사는 막는다
+    assertThat(
+            count(w2, "/count-sessions", Map.of("locationCodes", List.of("A-01-01")))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("COUNT_IN_PROGRESS");
+
+    Map<String, Object> seven =
+        Map.of(
+            "lines",
+            List.of(Map.of("locationCode", "A-01-01", "sku", sku, "lotId", lot, "countedQty", 7)));
+    Res first = count(w1, base + "/counts", seven);
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(200);
+    assertThat(first.body().path("state").asString()).isEqualTo("RECOUNT_REQUIRED");
+    assertThat(first.body().path("differences").isNull()).isTrue();
+    // 재계수는 다른 작업자
+    assertThat(count(w1, base + "/counts", seven).body().path("code").asString())
+        .isEqualTo("SAME_COUNTER");
+    Res second = count(w2, base + "/counts", seven);
+    assertThat(second.body().path("state").asString()).isEqualTo("PENDING_APPROVAL");
+    JsonNode diff = second.body().path("differences").path(0);
+    assertThat(diff.path("bookQty").asInt()).isEqualTo(10);
+    assertThat(diff.path("heldQty").asInt()).isEqualTo(2);
+    assertThat(diff.path("countedQty").asInt()).isEqualTo(7);
+    assertThat(diff.path("deltaQty").asInt()).isEqualTo(-3);
+
+    // 작업자·계수자는 승인 못 하고, 근거 없는 승인도 안 된다
+    assertThat(count(w2, base + "/approvals", Map.of("action", "APPROVE")).status()).isEqualTo(403);
+    String w1s = TestJwt.operator("cw1", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    assertThat(
+            count(w1s, base + "/approvals", Map.of("action", "APPROVE", "approvalRef", "A-1"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("SELF_APPROVAL");
+    assertThat(
+            count(s1, base + "/approvals", Map.of("action", "APPROVE"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("APPROVAL_REQUIRED");
+    Res ok = count(s1, base + "/approvals", Map.of("action", "APPROVE", "approvalRef", "ADJ-1"));
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("state").asString()).isEqualTo("ADJUSTED");
+    // H10 → 7, 보류 해소(없는 2 + 찾지 못한 1 손실) → E7, R4 그대로
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(7);
+    assertThat(av.path("sellable").asInt()).isEqualTo(7);
+    assertThat(av.path("reserved").asInt()).isEqualTo(4);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM stock_hold WHERE source_ref = 'RPT-CNT' AND state = 'RESOLVED'"
+                    + " AND resolved_ref = ?",
+                Integer.class,
+                sid))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'StockAdjusted' AND aggregateid = ?",
+                Integer.class,
+                sid))
+        .isEqualTo(1);
+    // 같은 승인 다시 → 한 번만
+    assertThat(
+            count(s1, base + "/approvals", Map.of("action", "APPROVE", "approvalRef", "ADJ-1"))
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("ADJUSTED");
+    assertThat(availability(sku).path("onHand").asInt()).isEqualTo(7);
+
+    // 다음 실사가 장부와 같으면(보류 없음) 승인 없이 끝
+    String sid2 =
+        count(w1, "/count-sessions", Map.of("locationCodes", List.of("A-01-01")))
+            .body()
+            .path("sessionId")
+            .asString();
+    assertThat(
+            count(w1, "/count-sessions/" + sid2 + "/counts", seven).body().path("state").asString())
+        .isEqualTo("MATCHED");
+  }
+
   Res shortage(
       String reportId, String reservationId, String sku, String lot, int qty, String reason) {
     Map<String, Object> b = new LinkedHashMap<>();
