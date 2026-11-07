@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] MFC 입고 현장 화면 요청 — 입고 예정 수령·품질검사(LOT 분리)·적치, 위치 등록 (2026-11-07)
 
-- 상태: **백엔드 구현·시험 완료, LAN 미배포**(브랜치 `mfc-v2`). 배포하면 이 파일에 배포 날짜를 적는다. 그 전에는 화면 설계·목업만 해도 된다.
+- 상태: **LAN 배포 2026-11-07**(backend `b81acec`, pmart-config `5b5f4e4`). 시험 센터 MFC-SEED-01 의 위치·시드 재고는 seed-v2 로 채우는 중.
 - 계약 정본: `contracts/openapi/mfc-inbound-service.yaml`(0.3.0), `mfc-location-service.yaml`(0.2.0), `mfc-inventory-service.yaml`(0.2.0)
 - 결정: ADR-0040(MFC 재고 모델 v2) 결정 5·8, MFC 업무 문서 §3 IV-02·03·13
 - 커밋: `6b06db5`(재고 v2) `63affb3`(위치) `c7f5e48`(검수 LOT 분리) `55b0638`(입고 작업) `2b296de`(약속일)
