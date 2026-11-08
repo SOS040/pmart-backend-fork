@@ -290,6 +290,11 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
                 .path("code")
                 .asString())
         .isEqualTo("WORKER_NOT_ACTIVE");
+    // 기존 배정은 남지만 조회에 "지금은 못 맡음" 이 붙는다 — fulfillment 가 시작을 거절한다
+    JsonNode mine =
+        get(WORKER, "/assignments?mfcId=" + MFC + "&workerId=" + w).body().path("items");
+    assertThat(mine).isNotEmpty();
+    assertThat(mine.path(0).path("workerEligibility").asString()).isEqualTo("WORKER_NOT_ACTIVE");
     assertThat(get(WORKER, path).body().path("stateHistory").path(0).path("toState").asString())
         .isEqualTo("SUSPENDED");
     assertThat(

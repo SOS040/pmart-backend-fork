@@ -25,7 +25,15 @@ public final class TaskRules {
   public static final String VERSION_CONFLICT = "VERSION_CONFLICT";
 
   /** 활성 담당(mfc-capacity 정본 동기 조회). 없으면 null. */
-  public record ActiveAssignment(String workerId, int assignmentVersion) {}
+  /**
+   * @param workerRejection 배정 작업자가 지금 맡을 수 없는 이유(capacity 조회 때 계산 — 정지·퇴사·업무 변경), null 이면 적격
+   */
+  public record ActiveAssignment(
+      String workerId, int assignmentVersion, @Nullable String workerRejection) {
+    public ActiveAssignment(String workerId, int assignmentVersion) {
+      this(workerId, assignmentVersion, null);
+    }
+  }
 
   /**
    * 시작 판정. null = STARTED, 아니면 거절 코드.
@@ -52,6 +60,9 @@ public final class TaskRules {
     }
     if (active.assignmentVersion() != assignmentVersion) {
       return VERSION_CONFLICT;
+    }
+    if (active.workerRejection() != null) {
+      return active.workerRejection(); // 배정 뒤 정지·퇴사·업무 변경 — 감독자가 재배정(2026-11-08 검토 #29·#30)
     }
     return null;
   }

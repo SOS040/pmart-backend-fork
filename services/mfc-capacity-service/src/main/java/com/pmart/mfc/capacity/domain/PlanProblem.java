@@ -13,7 +13,16 @@ import org.jspecify.annotations.Nullable;
  * @param packingStations 동시 PACK 상한(패킹대 수)
  */
 public record PlanProblem(
-    int horizon, int packingStations, List<Task> tasks, List<Worker> workers) {
+    int horizon, int packingStations, List<Task> tasks, List<Worker> workers, Weights weights) {
+
+  /** 목적 가중치(임시 구현값). */
+  public record Weights(long unassigned, long late, long maxLoad) {
+    public static final Weights DEFAULT = new Weights(W_UNASSIGNED, W_LATE, W_MAX_LOAD);
+  }
+
+  public PlanProblem(int horizon, int packingStations, List<Task> tasks, List<Worker> workers) {
+    this(horizon, packingStations, tasks, workers, Weights.DEFAULT);
+  }
 
   /**
    * @param due 약속 준비 시각(분, 음수면 이미 지남). 없으면 null — 지연을 세지 않는다

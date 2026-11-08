@@ -1012,8 +1012,8 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     // 위치별 가용: A-01-01 7 − 배정 6 = 1, A-01-02 3 − 3 = 0
     JsonNode s1 = snapshotLine(sku, "A-01-01");
     assertThat(s1.path("allocatedQty").asInt()).isEqualTo(6);
-    assertThat(s1.path("availableQty").asInt()).isEqualTo(1);
-    assertThat(snapshotLine(sku, "A-01-02").path("availableQty").asInt()).isZero();
+    assertThat(s1.path("pickableQty").asInt()).isEqualTo(1);
+    assertThat(snapshotLine(sku, "A-01-02").path("pickableQty").asInt()).isZero();
 
     // B 가 A-01-01 에서 2개(배정 1 + 남는 1) → 허용, A-01-02 배정은 2 로 줄어든다
     Map<String, Object> two = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 2);
@@ -1041,7 +1041,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     JsonNode s2 = snapshotLine(sku, "A-01-02");
     assertThat(s2.path("qty").asInt()).isEqualTo(3);
     assertThat(s2.path("allocatedQty").asInt()).isEqualTo(2);
-    assertThat(s2.path("availableQty").asInt()).isEqualTo(1);
+    assertThat(s2.path("pickableQty").asInt()).isEqualTo(1);
   }
 
   @Test

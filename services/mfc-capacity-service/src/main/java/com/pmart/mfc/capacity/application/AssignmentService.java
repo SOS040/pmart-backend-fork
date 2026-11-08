@@ -179,6 +179,11 @@ public class AssignmentService {
     return row;
   }
 
+  /** 배정 작업자가 지금도 적격인가(null = 적격). 조회 때 계산 — 배정 뒤 정지·업무 변경을 시작 판정에 쓴다. */
+  public @Nullable String eligibility(AssignmentRow r) {
+    return workers.rejection(r.mfcId(), r.workerId(), r.taskType(), r.temperatureZone());
+  }
+
   @Transactional(readOnly = true)
   public List<AssignmentRow> list(
       String mfcId,

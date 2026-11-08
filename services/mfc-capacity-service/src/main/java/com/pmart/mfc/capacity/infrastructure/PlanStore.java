@@ -31,7 +31,9 @@ public class PlanStore {
       String createdBy,
       Instant createdAt,
       @Nullable String committedBy,
-      @Nullable Instant committedAt) {}
+      @Nullable Instant committedAt,
+      @Nullable String settings,
+      List<String> unverifiedWorkers) {}
 
   public record ItemRow(
       String taskId,
@@ -55,7 +57,8 @@ public class PlanStore {
     jdbc.update(
         "INSERT INTO assignment_plan (plan_id, mfc_id, state, solver_status, horizon_start,"
             + " horizon_minutes, unassigned_count, late_minutes, max_load_minutes, objective_value,"
-            + " wall_time_ms, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            + " wall_time_ms, created_by, created_at, settings, unverified_workers)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         p.planId(),
         p.mfcId(),
         p.state(),
@@ -68,7 +71,9 @@ public class PlanStore {
         p.objectiveValue(),
         p.wallTimeMs(),
         p.createdBy(),
-        Timestamp.from(p.createdAt()));
+        Timestamp.from(p.createdAt()),
+        p.settings(),
+        String.join("\n", p.unverifiedWorkers()));
     for (ItemRow i : items) {
       jdbc.update(
           "INSERT INTO assignment_plan_item (plan_id, task_id, task_type, task_version, worker_id,"
@@ -154,6 +159,7 @@ public class PlanStore {
 
   private static PlanRow plan(ResultSet rs) throws SQLException {
     String stale = rs.getString("stale_reasons");
+    String uw = rs.getString("unverified_workers");
     Timestamp ca = rs.getTimestamp("committed_at");
     return new PlanRow(
         rs.getString("plan_id"),
@@ -171,6 +177,8 @@ public class PlanStore {
         rs.getString("created_by"),
         rs.getTimestamp("created_at").toInstant(),
         rs.getString("committed_by"),
-        ca == null ? null : ca.toInstant());
+        ca == null ? null : ca.toInstant(),
+        rs.getString("settings"),
+        uw == null || uw.isEmpty() ? List.of() : Arrays.asList(uw.split("\n")));
   }
 }

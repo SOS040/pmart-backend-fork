@@ -51,8 +51,11 @@ public class CapacityClient {
     JsonNode items = (raw == null ? mapper.createObjectNode() : mapper.readTree(raw)).path("items");
     for (JsonNode a : items) {
       if ("ACTIVE".equals(a.path("state").asString(""))) {
+        String why = a.path("workerEligibility").asString(null);
         return new ActiveAssignment(
-            a.path("workerId").asString(""), a.path("assignmentVersion").asInt(0));
+            a.path("workerId").asString(""),
+            a.path("assignmentVersion").asInt(0),
+            why == null || why.isBlank() ? null : why);
       }
     }
     return null;

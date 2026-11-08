@@ -11,17 +11,20 @@ class RepackRulesTest {
 
   @Test
   void onlySealedPackageWithoutHandoverOrStopCanBeRepacked() {
-    assertThat(RepackRules.rejection("SEALED", false, false, false)).isNull();
-    assertThat(RepackRules.rejection("HANDED_OVER", false, true, false))
+    assertThat(RepackRules.rejection("SEALED", false, false, false, false)).isNull();
+    assertThat(RepackRules.rejection("HANDED_OVER", false, false, true, false))
         .isEqualTo(HandoverRules.ALREADY_HANDED_OVER);
-    assertThat(RepackRules.rejection("INVALIDATED", false, false, false))
+    assertThat(RepackRules.rejection("INVALIDATED", false, false, false, false))
         .isEqualTo(HandoverRules.INVALID_STATE);
-    assertThat(RepackRules.rejection("SEALED", true, false, false))
+    assertThat(RepackRules.rejection("SEALED", true, true, false, false))
         .isEqualTo(HandoverRules.FENCE_ACTIVE);
-    assertThat(RepackRules.rejection("SEALED", true, true, false))
+    assertThat(RepackRules.rejection("SEALED", true, true, true, false))
         .isEqualTo(HandoverRules.HANDOVER_RESULT_PENDING);
-    assertThat(RepackRules.rejection("SEALED", false, false, true))
+    assertThat(RepackRules.rejection("SEALED", false, false, false, true))
         .isEqualTo(HandoverRules.INVALID_STATE);
+    // 허가 만료 뒤 실제로 안 넘겼다는 확인 전(D-1 미결)에는 재포장하지 않는다
+    assertThat(RepackRules.rejection("SEALED", false, true, false, false))
+        .isEqualTo(RepackRules.FENCE_EXPIRED_UNCONFIRMED);
   }
 
   @Test

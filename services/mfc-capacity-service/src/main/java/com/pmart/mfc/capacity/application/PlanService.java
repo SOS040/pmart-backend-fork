@@ -71,6 +71,7 @@ public class PlanService {
   private final PlanProperties props;
   private final RequestIdempotency idempotency;
   private final Clock clock;
+  private final tools.jackson.databind.ObjectMapper mapper;
 
   public PlanService(
       PlanStore plans,
@@ -81,7 +82,9 @@ public class PlanService {
       CpSatPlanner planner,
       PlanProperties props,
       RequestIdempotency idempotency,
-      Clock clock) {
+      Clock clock,
+      tools.jackson.databind.ObjectMapper mapper) {
+    this.mapper = mapper;
     this.plans = plans;
     this.workers = workers;
     this.assignments = assignments;
@@ -147,6 +150,7 @@ public class PlanService {
       tasks.add(new PlanProblem.Task(t.taskId(), t.taskType(), t.version(), m, due));
     }
     List<PlanProblem.Worker> ws = new ArrayList<>();
+    List<String> unverified = new ArrayList<>();
     Map<String, Integer> dutyVersion = new HashMap<>();
     for (var w : workers.list(mfcId, "ACTIVE")) {
       var d = workers.duty(mfcId, w.workerId(), w.dutyVersion());
@@ -172,6 +176,9 @@ public class PlanService {
                       })
               .toList();
       busy.addAll(PlanProblem.offShift(windows, horizon));
+      if (windows.isEmpty()) {
+        unverified.add(w.workerId()); // 근무 미등록 = 가용성 미확인(구간 전체로 계산, Q-09 미결)
+      }
       ws.add(new PlanProblem.Worker(w.workerId(), d.dutyVersion(), d.taskTypes(), busy));
     }
     // 적격 작업자가 없는 작업은 미리 뺀다(이유가 다르다)
@@ -183,7 +190,32 @@ public class PlanService {
         solvable.add(t);
       }
     }
-    PlanProblem.Result r = planner.solve(new PlanProblem(horizon, stations, solvable, ws), limit);
+    var wt = props.resolvedWeights();
+    PlanProblem.Result r =
+        planner.solve(
+            new PlanProblem(
+                horizon,
+                stations,
+                solvable,
+                ws,
+                new PlanProblem.Weights(wt.unassigned(), wt.late(), wt.maxLoad())),
+            limit);
+    // 이 계산에 쓴 설정(임시 구현값)과 알려진 한계 — 계획마다 남긴다(2026-11-08 검토 #33·#34·#35·#37)
+    Map<String, Object> settings = new LinkedHashMap<>();
+    settings.put("taskMinutes", new java.util.TreeMap<>(minutes));
+    settings.put(
+        "weights",
+        Map.of("UNASSIGNED", wt.unassigned(), "LATE", wt.late(), "MAX_LOAD", wt.maxLoad()));
+    settings.put("packingStations", stations);
+    settings.put("timeLimitMs", limit.toMillis());
+    settings.put("status", "TEMPORARY_IMPLEMENTATION_VALUES"); // 운영 정책 아님
+    List<String> limits =
+        new ArrayList<>(List.of("NO_TRAVEL_TIME", "ZONE_NOT_CHECKED", "FIXED_TASK_MINUTES"));
+    if (!busyMinutes.isEmpty()) {
+      limits.add(0, "IN_PROGRESS_FULL_DURATION");
+    }
+    settings.put("limitations", limits);
+    String settingsJson = mapper.writeValueAsString(settings);
     String planId = "PLN-" + UUID.randomUUID();
     List<ItemRow> items = new ArrayList<>();
     if (r.solved()) {
@@ -226,7 +258,9 @@ public class PlanService {
             me,
             clock.instant(),
             null,
-            null);
+            null,
+            settingsJson,
+            unverified);
     String id =
         idempotency
             .execute(

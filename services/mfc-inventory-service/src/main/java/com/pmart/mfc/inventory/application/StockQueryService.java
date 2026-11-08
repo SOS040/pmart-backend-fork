@@ -36,7 +36,7 @@ public class StockQueryService {
       StockStore.SnapshotRow row,
       @Nullable Integer allocated,
       @Nullable Integer held,
-      @Nullable Integer available) {}
+      @Nullable Integer pickable) {} // 칸에서 집을 수 있는 양 — 판매 가능량 아님(상품 판매 가능량은 availability A = E − R)
 
   private final StockStore stock;
   private final SkuHandlingStore handlings;

@@ -170,6 +170,12 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
     assertThat(plan.path("solverStatus").asString()).isIn("OPTIMAL", "FEASIBLE");
     assertThat(plan.path("items")).hasSize(3);
     assertThat(plan.path("unassigned")).hasSize(1);
+    // 쓴 설정(임시 구현값)·근무 미등록 작업자·한계가 결과에 남는다
+    assertThat(plan.path("settings").path("taskMinutes").path("PICK").asInt()).isEqualTo(7);
+    assertThat(plan.path("settings").path("status").asString())
+        .isEqualTo("TEMPORARY_IMPLEMENTATION_VALUES");
+    assertThat(plan.path("availabilityUnverifiedWorkers").toString()).contains("pk1", "pk2");
+    assertThat(plan.path("limitations").toString()).contains("IN_PROGRESS_FULL_DURATION");
     assertThat(plan.path("unassigned").path(0).path("taskId").asString()).isEqualTo(rx);
     assertThat(plan.path("unassigned").path(0).path("reason").asString())
         .isEqualTo("CONFIG_REQUIRED");

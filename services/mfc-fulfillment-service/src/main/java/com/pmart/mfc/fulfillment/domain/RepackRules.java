@@ -19,9 +19,23 @@ public final class RepackRules {
 
   private RepackRules() {}
 
-  /** 거절 코드. null 이면 재포장 가능. */
+  /**
+   * 인계 허가가 만료됐지만 실제로 넘기지 않았다는 확인이 없는 포장(D-1 미결). 확인 절차가 정해질 때까지 재포장하지 않는다 — MFC 1553행 "실제로 넘어가지
+   * 않았는지 확인한 뒤". 2026-11-08 검토 반영(기본값 #3).
+   */
+  public static final String FENCE_EXPIRED_UNCONFIRMED = "FENCE_EXPIRED_UNCONFIRMED";
+
+  /**
+   * 거절 코드. null 이면 재포장 가능.
+   *
+   * @param fenceOpen 인계 허가 기록이 열려 있음(HANDOVER_IN_PROGRESS — 살아 있든 만료됐든)
+   */
   public static @Nullable String rejection(
-      String packageState, boolean fenceLive, boolean handoverRequested, boolean orderStopped) {
+      String packageState,
+      boolean fenceLive,
+      boolean fenceOpen,
+      boolean handoverRequested,
+      boolean orderStopped) {
     if ("HANDED_OVER".equals(packageState)) {
       return HandoverRules.ALREADY_HANDED_OVER;
     }
@@ -34,6 +48,9 @@ public final class RepackRules {
     if (fenceLive) {
       return HandoverRules.FENCE_ACTIVE;
     }
+    if (fenceOpen) {
+      return FENCE_EXPIRED_UNCONFIRMED;
+    }
     if (orderStopped) {
       return HandoverRules.INVALID_STATE;
     }
@@ -45,6 +62,8 @@ public final class RepackRules {
       case HandoverRules.ALREADY_HANDED_OVER -> "이미 인계된 포장은 재포장할 수 없습니다.";
       case HandoverRules.HANDOVER_RESULT_PENDING -> "인계 확정 결과를 기다리는 포장입니다.";
       case HandoverRules.FENCE_ACTIVE -> "라이더 인계가 진행 중인 포장입니다(허가 유효).";
+      case FENCE_EXPIRED_UNCONFIRMED ->
+          "인계 허가가 만료됐지만 실제로 넘기지 않았다는 확인이 없습니다 — 확인 절차(D-1) 전에는 재포장하지 않습니다.";
       default -> "재포장할 수 없는 상태입니다(포장 " + packageState + ", 또는 주문 중지).";
     };
   }

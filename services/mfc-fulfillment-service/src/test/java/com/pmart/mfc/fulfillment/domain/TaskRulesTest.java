@@ -28,6 +28,11 @@ class TaskRulesTest {
         .isEqualTo(TaskRules.ALREADY_STARTED);
     assertThat(TaskRules.startRejection("WAITING", false, W1, "w1", 2))
         .isEqualTo(TaskRules.PREDECESSOR_NOT_COMPLETED);
+    // 배정 뒤 작업자가 정지·업무 변경 → 시작 거절(capacity 가 조회 때 알려 준 이유 그대로)
+    assertThat(
+            TaskRules.startRejection(
+                "ASSIGNED", true, new ActiveAssignment("w1", 2, "WORKER_NOT_ACTIVE"), "w1", 2))
+        .isEqualTo("WORKER_NOT_ACTIVE");
     assertThat(TaskRules.startRejection("CANCELLED", true, W1, "w1", 2))
         .isEqualTo(TaskRules.INVALID_STATE);
   }

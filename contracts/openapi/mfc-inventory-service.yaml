@@ -1302,7 +1302,7 @@ components:
         reservedQty: { type: integer, description: '비움 — 예약은 LOT 단위라 위치 줄에 나누지 않는다. 위치 몫은 allocatedQty' }
         allocatedQty: { type: integer, description: '(0.11.0) NORMAL·STORED 줄만 — 이 위치·LOT 에 피킹 배정된 남은 양(확정 조각)' }
         heldQty: { type: integer, description: '(0.11.0) NORMAL·STORED 줄만 — 조사 보류(결품 조사·실사) 양' }
-        availableQty: { type: integer, description: '(0.11.0) NORMAL·STORED 줄만 — 위치 가용 = qty − heldQty − allocatedQty (0 미만이면 0). 위치 배정 전 예약(LOT 단위)은 빼지 않는다' }
+        pickableQty: { type: integer, description: '(0.11.1, 0.11.0 의 availableQty 를 이름만 바꿈) NORMAL·STORED 줄만 — 이 칸에서 아직 어느 주문에도 배정되지 않아 집을 수 있는 양 = qty − heldQty − allocatedQty (0 미만이면 0). **판매 가능량이 아니다** — 위치 배정 전 예약(LOT 단위)을 빼지 않으므로 상품 판매 가능량은 /internal/availability(A = E − R)로 본다' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
     Commit:
       type: object

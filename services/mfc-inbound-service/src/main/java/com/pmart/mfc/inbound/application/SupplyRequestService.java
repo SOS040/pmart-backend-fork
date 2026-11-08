@@ -101,6 +101,10 @@ public class SupplyRequestService {
                 b,
                 String.class,
                 () -> {
+                  // 같은 센터의 요청 생성을 줄 세운다 — 미해결 요청이 하나도 없을 때 동시에 온 두 요청은 행 잠금으로 막을 수 없다
+                  // (2026-11-08 검토 반영). 트랜잭션 끝에 풀린다.
+                  jdbc.queryForList(
+                      "SELECT pg_advisory_xact_lock(hashtext(?))", "supply-request:" + b.mfcId());
                   // 같은 센터 미해결 요청을 잠그고 SKU 겹침 확인
                   List<Row> open =
                       jdbc.query(

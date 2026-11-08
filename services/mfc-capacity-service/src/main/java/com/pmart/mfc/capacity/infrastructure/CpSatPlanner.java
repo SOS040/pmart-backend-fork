@@ -86,7 +86,7 @@ public class CpSatPlanner {
       int d = t.minutes();
       // 미배정은 늘 늦게라도 하는 것보다 비싸야 한다 — 급한 작업을 빼서 지연을 피하지 않게, 구간 끝에 끝낸 지연만큼 더한다
       long dropLate = t.due() == null ? 0 : Math.max(0, (long) h + d - t.due());
-      objective.addTerm(u, PlanProblem.W_UNASSIGNED + PlanProblem.W_LATE * dropLate);
+      objective.addTerm(u, p.weights().unassigned() + p.weights().late() * dropLate);
       if (d <= h) {
         for (PlanProblem.Worker w : p.workers()) {
           if (!w.can(t.taskType())) {
@@ -109,7 +109,7 @@ public class CpSatPlanner {
                 .onlyEnforceIf(b);
           }
           m.addEquality(late, 0).onlyEnforceIf(b.not());
-          objective.addTerm(late, PlanProblem.W_LATE);
+          objective.addTerm(late, p.weights().late());
           objective.add(s);
           one.add(b);
           load.get(w.workerId()).addTerm(b, d);
@@ -134,7 +134,7 @@ public class CpSatPlanner {
     for (LinearExprBuilder l : load.values()) {
       m.addGreaterOrEqual(maxLoad, l.build());
     }
-    objective.addTerm(maxLoad, PlanProblem.W_MAX_LOAD);
+    objective.addTerm(maxLoad, p.weights().maxLoad());
     m.minimize(objective.build());
 
     CpSolver solver = new CpSolver();

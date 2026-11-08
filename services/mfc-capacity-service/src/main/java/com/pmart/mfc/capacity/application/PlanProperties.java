@@ -19,9 +19,24 @@ public record PlanProperties(
     @Nullable String mfcFulfillmentBaseUrl,
     @Nullable Map<String, Integer> taskMinutes,
     @Nullable Duration timeLimit,
-    @Nullable Integer packingStations) {
+    @Nullable Integer packingStations,
+    @Nullable Map<String, Long> weights) {
 
   public static final String TASK_MINUTES_KEY = "pmart.capacity.plan.task-minutes";
   public static final String TIME_LIMIT_KEY = "pmart.capacity.plan.time-limit";
   public static final String PACKING_STATIONS_KEY = "pmart.capacity.plan.packing-stations";
+
+  /**
+   * 목적 가중치(임시 구현값, Q-08 전) — 설정 {@code weights.UNASSIGNED·LATE·MAX_LOAD} 가 없으면 기본값. 필수 조건은 가중치가 아니라
+   * 제약이다.
+   */
+  public PlanProblemWeights resolvedWeights() {
+    Map<String, Long> w = weights == null ? Map.of() : weights;
+    return new PlanProblemWeights(
+        w.getOrDefault("UNASSIGNED", 1_000_000L),
+        w.getOrDefault("LATE", 1_000L),
+        w.getOrDefault("MAX_LOAD", 10L));
+  }
+
+  public record PlanProblemWeights(long unassigned, long late, long maxLoad) {}
 }

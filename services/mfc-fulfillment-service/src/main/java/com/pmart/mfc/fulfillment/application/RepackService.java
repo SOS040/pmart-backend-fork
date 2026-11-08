@@ -96,7 +96,11 @@ public class RepackService {
                       p.fenceState(), p.fenceExpiresAt(), handoverRequested, now);
               String reject =
                   RepackRules.rejection(
-                      p.state(), live, handoverRequested, stops.orderStopped(p.orderId()));
+                      p.state(),
+                      live,
+                      "HANDOVER_IN_PROGRESS".equals(p.fenceState()),
+                      handoverRequested,
+                      stops.orderStopped(p.orderId()));
               if (reject != null) {
                 throw new PmartException(
                     reject,

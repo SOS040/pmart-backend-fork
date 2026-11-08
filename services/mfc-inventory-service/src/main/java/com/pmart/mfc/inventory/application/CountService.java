@@ -279,7 +279,18 @@ public class CountService {
     }
     Map<String, Integer> baseline = new TreeMap<>();
     book.forEach(b -> baseline.put(b.key(), b.qty()));
-    if (!current.equals(baseline)) {
+    // 조사 보류도 기준과 같아야 한다 — 승인은 그 단위의 열린 보류를 모두 풀기 때문에, 실사 시작 뒤 생긴 보류(이 실사가 본 적 없는 결품
+    // 조사)를 같이 풀지 않도록(2026-11-08 검토 반영 #12)
+    Map<String, Integer> heldNow = new TreeMap<>();
+    Map<String, Integer> heldBook = new TreeMap<>();
+    for (BookLine b : book) {
+      heldBook.put(b.key(), b.heldQty());
+      heldNow.put(
+          b.key(),
+          stock.openHold(
+              mfcId, new Key(b.locationCode(), b.sku(), b.lotId(), Quality.NORMAL, Work.STORED)));
+    }
+    if (!current.equals(baseline) || !heldNow.equals(heldBook)) {
       throw new PmartException(
           CountRules.BOOK_CHANGED,
           HttpStatus.CONFLICT,

@@ -149,4 +149,25 @@ class SupplyRequestIT extends PostgresKafkaContainerSupport {
         Integer.class,
         id);
   }
+
+  @Test
+  void concurrentRequestsForTheSameSkuCreateOnlyOne() throws Exception {
+    String sku = "E-0000" + (1000 + new java.util.Random().nextInt(8999));
+    var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+    try {
+      List<java.util.concurrent.Future<Integer>> fs = new java.util.ArrayList<>();
+      for (int i = 0; i < 4; i++) {
+        fs.add(
+            pool.submit(() -> call("POST", sup, "/supply-requests", body(sku, 3), null).status()));
+      }
+      List<Integer> codes = new java.util.ArrayList<>();
+      for (var f : fs) {
+        codes.add(f.get());
+      }
+      assertThat(codes).containsOnly(201, 409);
+      assertThat(codes.stream().filter(c -> c == 201).count()).isEqualTo(1);
+    } finally {
+      pool.shutdownNow();
+    }
+  }
 }

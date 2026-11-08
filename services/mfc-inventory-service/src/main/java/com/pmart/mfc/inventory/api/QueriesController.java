@@ -185,7 +185,7 @@ public class QueriesController implements QueriesApi {
                   b.setVersion((int) r.unit().version());
                   b.setAllocatedQty(line.allocated());
                   b.setHeldQty(line.held());
-                  b.setAvailableQty(line.available());
+                  b.setPickableQty(line.pickable());
                   return b;
                 })
             .toList());

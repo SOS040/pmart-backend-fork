@@ -61,3 +61,7 @@
 - 10kg 분할: D6-2 로 지금 주문당 출고 1개. 분할 도입 때 결정.
 - 냉장·냉동 출하대기 한계(MFC Q-05): "인계 직전 단시간 이동"만 있고 한계 시간 없음.
 - 문서 불일치: 취소 포장 상태 VOIDED(문서) vs INVALIDATED(구현, ADR-0046) — 구현명 유지. DeliveryType(사건 NORMAL/SPLIT/… vs API FORWARD/…)·DispatchFailed 사유 enum — 배차 서비스 만들 때 하나로.
+
+## 2026-11-08 갱신 — D-1 결정 전 안전 조치
+- 외부 검토 반영으로 **재포장**은 인계 허가 기록이 열려 있으면(만료됐어도) 거절한다(409 `FENCE_EXPIRED_UNCONFIRMED`) — "실제로 안 넘겼다는 확인" 절차가 D-1 로 정해질 때까지. 만료 뒤 다시 찍기·중지의 취소 복귀는 지금 그대로(D-1 결정 대상).
+- 상태 기록: `docs/business/flows/mfc-defaults-status.md` #3.

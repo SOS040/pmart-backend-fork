@@ -57,6 +57,9 @@ public class AssignmentsController implements AssignmentsApi {
     return ResponseEntity.ok(plan(plans.commit(idempotencyKey, xSourceSystem, planId)));
   }
 
+  private static final tools.jackson.databind.ObjectMapper JSON =
+      tools.jackson.databind.json.JsonMapper.builder().build();
+
   static com.pmart.mfc.capacity.api.generated.model.AssignmentPlan plan(
       com.pmart.mfc.capacity.application.PlanService.PlanView v) {
     var p = v.plan();
@@ -109,6 +112,16 @@ public class AssignmentsController implements AssignmentsApi {
     o.setWallTimeMs(p.wallTimeMs());
     out.setObjective(o);
     out.setStaleReasons(p.staleReasons());
+    if (p.settings() != null) {
+      @SuppressWarnings("unchecked")
+      java.util.Map<String, Object> s = JSON.readValue(p.settings(), java.util.Map.class);
+      Object lim = s.remove("limitations");
+      out.setSettings(s);
+      if (lim instanceof java.util.List<?> l) {
+        out.setLimitations(l.stream().map(String::valueOf).toList());
+      }
+    }
+    out.setAvailabilityUnverifiedWorkers(p.unverifiedWorkers());
     out.setAssignments(v.assignments().stream().map(AssignmentsController::dto).toList());
     out.setCreatedBy(p.createdBy());
     out.setCreatedAt(p.createdAt().atOffset(ZoneOffset.UTC));
@@ -150,7 +163,14 @@ public class AssignmentsController implements AssignmentsApi {
     var out = new ListAssignments200Response();
     out.setItems(
         service.list(mfcId, taskId, workerId, state, date).stream()
-            .map(AssignmentsController::dto)
+            .map(
+                r -> {
+                  Assignment a = dto(r);
+                  if ("ACTIVE".equals(r.state())) {
+                    a.setWorkerEligibility(service.eligibility(r));
+                  }
+                  return a;
+                })
             .toList());
     var asOf = new GetReceivingCapabilities200ResponseAsOf();
     asOf.setAsOf(Instant.now().atOffset(ZoneOffset.UTC));
