@@ -205,9 +205,22 @@ public class FulfillmentEvents {
       String reason,
       String actorId,
       Instant at) {
+    packageInvalidated(p, List.of(newPackageId), reason, actorId, at);
+  }
+
+  /** 재구성(C-12 1부) — 새 포장이 여럿일 수 있다(newPackageId = 첫 번째, newPackageIds = 전부). */
+  public void packageInvalidated(
+      com.pmart.mfc.fulfillment.infrastructure.HandoverStore.PackageFence p,
+      List<String> newPackageIds,
+      String reason,
+      String actorId,
+      Instant at) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("packageId", p.packageId());
-    m.put("newPackageId", newPackageId);
+    m.put("newPackageId", newPackageIds.get(0));
+    if (newPackageIds.size() > 1) {
+      m.put("newPackageIds", newPackageIds);
+    }
     m.put("shipmentId", p.shipmentId());
     m.put("orderId", p.orderId());
     m.put("mfcId", p.mfcId());

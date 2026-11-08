@@ -54,6 +54,35 @@ public class ShipmentsController implements ShipmentsApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.mfc.fulfillment.api.generated.model.RegroupPackages201Response>
+      regroupPackages(
+          String shipmentId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.fulfillment.api.generated.model.RegroupPackagesRequest body) {
+    List<com.pmart.mfc.fulfillment.application.RepackService.NewPackage> pkgs = new ArrayList<>();
+    for (var np : body.getPackages()) {
+      List<ContentRequest> contents = new ArrayList<>();
+      for (PackageContentLine c : np.getContents()) {
+        contents.add(new ContentRequest(c.getOrderLineId(), c.getSku(), c.getLotId(), c.getQty()));
+      }
+      pkgs.add(
+          new com.pmart.mfc.fulfillment.application.RepackService.NewPackage(
+              np.getBagCount(), contents));
+    }
+    List<PackageRow> made =
+        repacks.regroup(
+            shipmentId,
+            idempotencyKey,
+            new com.pmart.mfc.fulfillment.application.RepackService.RegroupCommand(
+                body.getReason().getValue(), body.getPackageIds(), pkgs));
+    String orderId = service.orderIdOf(shipmentId);
+    var out = new com.pmart.mfc.fulfillment.api.generated.model.RegroupPackages201Response();
+    out.setPackages(made.stream().map(p -> dto(p, orderId)).toList());
+    return ResponseEntity.status(HttpStatus.CREATED).body(out);
+  }
+
+  @Override
   public ResponseEntity<ModelPackage> repackPackage(
       String packageId,
       String idempotencyKey,

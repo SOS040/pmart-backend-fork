@@ -36,3 +36,7 @@
 ### 패킹 앱(점원) — 복귀(RETURN) 작업
 - 작업 상세 `lines[].picks[].suggestedToLocations`: 돌려놓을 추천 선반(앞이 우선 — 그 상품이 있던 칸, 없으면 기타 칸). 조회 실패면 빈 배열.
 - 복귀 실적도 진열 규칙을 탄다: 다른 칸에 놓으면 실적 REJECTED(사유 `SKU_ALREADY_SHELVED`·`CATEGORY_MISMATCH`·`LOT_NOT_SHIPPABLE`·`LOCATION_CAPACITY_EXCEEDED` 등) — 추천 칸으로 다시.
+
+## 추가(같은 날, mfc-fulfillment 0.4.7): 포장 사이 재구성
+### 패킹 앱(점원)
+- `POST /api/v1/shipments/{id}/repackings` 본문 `{ "reason": "CONTENT_CHANGE" 등, "packageIds": [이전 포장들], "packages": [{ "bagCount": n, "contents": [{orderLineId, sku, lotId(필수), qty}] }] }` → 201 `{ packages: [새 Package] }`. (주문 줄·SKU·LOT) 합계가 이전과 같아야(422 `CONTENT_MISMATCH`). 이전 QR 은 무효, 새 QR 을 붙인다. 수량을 줄이는 재구성은 아직 없다.

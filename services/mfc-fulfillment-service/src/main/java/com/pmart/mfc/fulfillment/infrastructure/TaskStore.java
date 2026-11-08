@@ -472,6 +472,40 @@ public class TaskStore {
   }
 
   /** 재포장 — 이전 포장의 내용·봉투·위치·PACK 확정 ID 를 그대로 가진 새 SEALED 포장(교체 관계). */
+  /** 재구성 새 포장(C-12 1부): 내용·봉투 수는 요청대로, 무게·부피는 비움, 위치·온도대·PACK 확정 ID 는 이전 포장(첫 번째)에서. */
+  public void insertRegroup(
+      PackageRow template,
+      String newId,
+      String requestId,
+      int packageVersion,
+      String qrCode,
+      String contentsJson,
+      int bagCount,
+      boolean alcohol,
+      String packedBy,
+      Instant at) {
+    jdbc.update(
+        "INSERT INTO package (package_id, shipment_id, request_id, package_version, state, qr_code,"
+            + " contents, bag_count, contains_alcohol, temperature_zone, weight_g, volume_cm3,"
+            + " packed_by, packing_location, inventory_commit_id, version, created_at, sealed_at,"
+            + " replaces_package_id) VALUES (?,?,?,?,'SEALED',?,?::jsonb,?,?,?,NULL,NULL,?,?,?,1,?,?,?)",
+        newId,
+        template.shipmentId(),
+        requestId,
+        packageVersion,
+        qrCode,
+        contentsJson,
+        bagCount,
+        alcohol,
+        template.temperatureZone(),
+        packedBy,
+        template.packingLocation(),
+        template.inventoryCommitId(),
+        ts(at),
+        ts(at),
+        template.packageId());
+  }
+
   public void insertRepack(
       PackageRow old,
       String newId,

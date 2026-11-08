@@ -97,6 +97,38 @@ public final class RepackRules {
     return null;
   }
 
+  /**
+   * 포장 사이 재구성(C-12 1부): 새 포장들의 (주문 줄·SKU·LOT) 합이 이전 포장들의 합과 정확히 같은가. 새 줄은 LOT 필수·수량 1 이상.
+   *
+   * @return 거절 사유, 괜찮으면 null
+   */
+  public static @Nullable String regroupMismatch(
+      List<Content> current, List<List<ContentRequest>> newPackages) {
+    Map<String, Integer> have = new TreeMap<>();
+    for (Content c : current) {
+      have.merge(key(c.orderLineId(), c.sku(), c.lotId()), c.qty(), Integer::sum);
+    }
+    Map<String, Integer> want = new TreeMap<>();
+    for (List<ContentRequest> pkg : newPackages) {
+      if (pkg.isEmpty()) {
+        return "새 포장에 내용물이 없습니다.";
+      }
+      for (ContentRequest r : pkg) {
+        if (r.lotId() == null || r.lotId().isBlank()) {
+          return "재구성은 줄마다 lotId 가 필요합니다: " + r.orderLineId();
+        }
+        if (r.qty() < 1) {
+          return "수량은 1 이상입니다: " + r.orderLineId();
+        }
+        want.merge(key(r.orderLineId(), r.sku(), r.lotId()), r.qty(), Integer::sum);
+      }
+    }
+    if (!have.equals(want)) {
+      return "재구성은 합계를 바꾸지 않습니다(지금 " + have + ", 요청 " + want + "). 수량 감소는 아직 지원하지 않습니다.";
+    }
+    return null;
+  }
+
   private static String key(String orderLineId, String sku, @Nullable String lotId) {
     return orderLineId + "|" + sku + (lotId == null ? "" : "|" + lotId);
   }

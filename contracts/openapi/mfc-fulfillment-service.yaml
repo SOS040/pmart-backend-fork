@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.6
+  version: 0.4.7
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -754,6 +754,65 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HandoverCommitResult' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /shipments/{shipmentId}/repackings:
+    post:
+      tags: [shipments]
+      summary: 포장 사이 재구성 — 같은 출고의 포장 여러 개를 새 포장들로 다시 나눔 (0.4.7, C-12 1부)
+      description: |
+        2026-11-08(남은 일 C-12 1부). 같은 출고의 밀봉 포장들(packageIds)을 새 포장들(packages)로 다시 나눈다 — 봉투가 무겁거나 온도별로 나눌 때.
+        **합계는 그대로**: (주문 줄·SKU·LOT)별 수량 합이 정확히 같아야(아니면 422 CONTENT_MISMATCH). 그래서 재고(포장 위치의 PACKED 단위)·예약은
+        변하지 않는다. 수량을 줄이는 재구성(포장 중 파손 등)은 재고 PACK 되돌림이 필요해 아직 없다.
+        모든 이전 포장이 같은 포장 위치·SEALED·인계 허가 없음(만료·미확인 포함)·결과 대기 인계 없음·중지 없음이어야(409, 단건 재포장과 같은 코드).
+        새 포장은 새 ID·packageVersion(이전 최대+1)·새 QR, 무게·부피는 비움(다시 잴 때까지). 이전 포장은 INVALIDATED + PackageInvalidated
+        (newPackageId = 첫 새 포장, newPackageIds = 전부). 그 센터 MFC_WORKER. 같은 Idempotency-Key 는 같은 새 포장들.
+      operationId: regroupPackages
+      parameters:
+        - { name: shipmentId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, packageIds, packages]
+              properties:
+                reason: { type: string, enum: [DAMAGED_BAG, CONTENT_CHANGE, LABEL_UNREADABLE, SHORTAGE_ADJUST] }
+                packageIds: { type: array, minItems: 1, items: { type: string } }
+                packages:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [bagCount, contents]
+                    properties:
+                      bagCount: { type: integer, minimum: 1 }
+                      contents:
+                        type: array
+                        minItems: 1
+                        items: { $ref: '#/components/schemas/PackageContentLine' }
+      responses:
+        '201':
+          description: 새 포장들
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  packages: { type: array, items: { $ref: '#/components/schemas/Package' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: INVALID_STATE / ALREADY_HANDED_OVER / FENCE_ACTIVE / FENCE_EXPIRED_UNCONFIRMED / HANDOVER_RESULT_PENDING
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONTENT_MISMATCH(합계가 다름·LOT 없음·다른 출고·다른 포장 위치)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /packages/{packageId}/repackings:
     post:

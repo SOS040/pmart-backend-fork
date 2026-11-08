@@ -1756,6 +1756,69 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("DispatchRequested", s2)).isEqualTo(1);
   }
 
+  /** 포장 사이 재구성(C-12 1부): 두 포장 → 다른 묶음의 두 포장, 합계 같아야, 이전 QR 무효. */
+  @Test
+  void packagesAreRegroupedWithinShipmentKeepingTotals() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    List<Pkg> pkgs = readyShipment(o);
+    String s = o + "-S1";
+    Map<String, Object> l1a =
+        Map.of("orderLineId", "L1", "sku", "E-00000001", "lotId", "LOT-A", "qty", 1);
+    Map<String, Object> l1b =
+        Map.of("orderLineId", "L1", "sku", "E-00000001", "lotId", "LOT-B", "qty", 1);
+    Map<String, Object> l2c =
+        Map.of("orderLineId", "L2", "sku", "E-00000002", "lotId", "LOT-C", "qty", 1);
+    List<String> ids = List.of(pkgs.get(0).id(), pkgs.get(1).id());
+    // 합계가 다르면 422
+    Res wrong =
+        call(
+            "POST",
+            W2,
+            "/shipments/" + s + "/repackings",
+            UUID.randomUUID().toString(),
+            Map.of(
+                "reason",
+                "CONTENT_CHANGE",
+                "packageIds",
+                ids,
+                "packages",
+                List.of(Map.of("bagCount", 1, "contents", List.of(l1a, l2c)))));
+    assertThat(wrong.status()).as(wrong.body().toString()).isEqualTo(422);
+    assertThat(wrong.body().path("code").asString()).isEqualTo("CONTENT_MISMATCH");
+    Res ok =
+        call(
+            "POST",
+            W2,
+            "/shipments/" + s + "/repackings",
+            UUID.randomUUID().toString(),
+            Map.of(
+                "reason",
+                "CONTENT_CHANGE",
+                "packageIds",
+                ids,
+                "packages",
+                List.of(
+                    Map.of("bagCount", 1, "contents", List.of(l1a, l2c)),
+                    Map.of("bagCount", 1, "contents", List.of(l1b)))));
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(201);
+    assertThat(ok.body().path("packages")).hasSize(2);
+    assertThat(outbox("PackageInvalidated", pkgs.get(0).id())).isEqualTo(1);
+    assertThat(outbox("PackageInvalidated", pkgs.get(1).id())).isEqualTo(1);
+    JsonNode ship = call("GET", VIEWER, "/shipments/" + s, null, null).body();
+    assertThat(ship.path("packages")).hasSize(2);
+    assertThat(ship.path("packages").findValuesAsString("packageId"))
+        .doesNotContain(pkgs.get(0).id(), pkgs.get(1).id());
+    // 이전 QR 은 무효
+    String dlv = "DLV-" + o;
+    assignRider(o, dlv, "R1", 1);
+    assertThat(
+            authorize(RIDER1, pkgs.get(0), "R1", dlv, pkgs.get(0).qr())
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("PACKAGE_INVALIDATED");
+  }
+
   Res dispatch(String token, String shipmentId, int minutes) {
     return call(
         "POST",

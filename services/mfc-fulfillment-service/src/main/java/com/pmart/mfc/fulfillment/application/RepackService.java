@@ -70,6 +70,142 @@ public class RepackService {
     this.clock = clock;
   }
 
+  public record RegroupCommand(String reason, List<String> packageIds, List<NewPackage> packages) {}
+
+  public record NewPackage(int bagCount, List<ContentRequest> contents) {}
+
+  /**
+   * 포장 사이 재구성(C-12 1부, 0.4.7): 같은 출고·같은 포장 위치의 밀봉 포장들 → 새 포장들, 합계 그대로(재고·예약 변화 없음). 이전 포장마다 단건 재포장과
+   * 같은 거절 규칙. 같은 요청은 같은 새 포장들(request_id = 요청:번호).
+   */
+  public List<PackageRow> regroup(String shipmentId, String requestId, RegroupCommand cmd) {
+    if (!RepackRules.REASONS.contains(cmd.reason())) {
+      throw TaskService.invalid("reason 은 " + RepackRules.REASONS + " 중 하나입니다.");
+    }
+    if (cmd.packageIds().isEmpty() || cmd.packages().isEmpty()) {
+      throw TaskService.invalid("packageIds·packages 가 필요합니다.");
+    }
+    PackageFence first =
+        handovers
+            .find(cmd.packageIds().get(0))
+            .orElseThrow(
+                () ->
+                    PmartException.notFound(
+                        "PACKAGE_NOT_FOUND", "포장이 없습니다: " + cmd.packageIds().get(0)));
+    String me = TaskService.requireWorker(first.mfcId());
+    return Objects.requireNonNull(
+        tx.execute(
+            s -> {
+              var done = store.findPackage(shipmentId, requestId + ":1");
+              if (done.isPresent()) {
+                List<PackageRow> again = new java.util.ArrayList<>();
+                for (int i = 1; i <= cmd.packages().size(); i++) {
+                  store.findPackage(shipmentId, requestId + ":" + i).ifPresent(again::add);
+                }
+                return again;
+              }
+              works.lockOrder(first.orderId());
+              Instant now = clock.instant();
+              List<PackageFence> olds = new java.util.ArrayList<>();
+              List<Content> current = new java.util.ArrayList<>();
+              String location = null;
+              int maxVersion = 0;
+              boolean alcohol = false;
+              for (String id : new java.util.LinkedHashSet<>(cmd.packageIds())) {
+                PackageFence p =
+                    handovers
+                        .lock(id)
+                        .orElseThrow(
+                            () -> PmartException.notFound("PACKAGE_NOT_FOUND", "포장이 없습니다: " + id));
+                if (!shipmentId.equals(p.shipmentId())) {
+                  throw mismatch("포장 " + id + " 는 이 출고(" + shipmentId + ")의 포장이 아닙니다.");
+                }
+                boolean requested = handovers.handover(id).isPresent();
+                boolean live =
+                    HandoverRules.fenceLive(p.fenceState(), p.fenceExpiresAt(), requested, now);
+                String reject =
+                    RepackRules.rejection(
+                        p.state(),
+                        live,
+                        "HANDOVER_IN_PROGRESS".equals(p.fenceState()),
+                        requested,
+                        stops.orderStopped(p.orderId()));
+                if (reject != null) {
+                  throw new PmartException(
+                      reject,
+                      HttpStatus.CONFLICT,
+                      RepackRules.message(reject, p.state()) + " (" + id + ")",
+                      false,
+                      List.of());
+                }
+                PackageRow row = store.pkg(id).orElseThrow();
+                if (location == null) {
+                  location = row.packingLocation();
+                } else if (!java.util.Objects.equals(location, row.packingLocation())) {
+                  throw mismatch(
+                      "포장 위치가 다른 포장은 함께 재구성하지 않습니다("
+                          + location
+                          + ", "
+                          + row.packingLocation()
+                          + ").");
+                }
+                maxVersion = Math.max(maxVersion, row.packageVersion());
+                alcohol |= row.containsAlcohol();
+                current.addAll(mapper.readValue(p.contents(), CONTENTS));
+                olds.add(p);
+              }
+              String bad =
+                  RepackRules.regroupMismatch(
+                      current, cmd.packages().stream().map(NewPackage::contents).toList());
+              if (bad != null) {
+                throw mismatch(bad);
+              }
+              PackageRow template = store.pkg(olds.get(0).packageId()).orElseThrow();
+              List<String> newIds = new java.util.ArrayList<>();
+              int n = 0;
+              for (NewPackage np : cmd.packages()) {
+                n++;
+                String newId = "PKG-" + UUID.randomUUID();
+                int ver = maxVersion + 1;
+                List<Content> contents =
+                    np.contents().stream()
+                        .map(
+                            c ->
+                                new Content(
+                                    c.orderLineId(),
+                                    c.sku(),
+                                    Objects.requireNonNull(c.lotId()),
+                                    c.qty()))
+                        .toList();
+                store.insertRegroup(
+                    template,
+                    newId,
+                    requestId + ":" + n,
+                    ver,
+                    "PKG:" + newId + ":" + ver,
+                    mapper.writeValueAsString(contents),
+                    Math.max(1, np.bagCount()),
+                    alcohol,
+                    me,
+                    now);
+                newIds.add(newId);
+              }
+              for (PackageFence p : olds) {
+                store.invalidateForRepack(
+                    p.packageId(), cmd.reason() + "→" + String.join(",", newIds));
+                events.packageInvalidated(p, newIds, cmd.reason(), me, now);
+              }
+              log.info(
+                  "출고 {} 포장 재구성({}) {} → {}", shipmentId, cmd.reason(), cmd.packageIds(), newIds);
+              return newIds.stream().map(id -> store.pkg(id).orElseThrow()).toList();
+            }));
+  }
+
+  private static PmartException mismatch(String msg) {
+    return new PmartException(
+        "CONTENT_MISMATCH", HttpStatus.UNPROCESSABLE_CONTENT, msg, false, List.of());
+  }
+
   public PackageRow repack(String packageId, String requestId, RepackCommand cmd) {
     PackageFence p0 =
         handovers
