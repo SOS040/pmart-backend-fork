@@ -22,8 +22,8 @@ class WorkerRulesTest {
                 new WorkerRules.Profile("SUSPENDED", PICKER.duty()), "PICK", null))
         .isEqualTo(WorkerRules.WORKER_NOT_ACTIVE);
     assertThat(WorkerRules.rejection(PICKER, "PACK", null)).isEqualTo(WorkerRules.DUTY_NOT_ALLOWED);
-    assertThat(WorkerRules.rejection(PICKER, "PICK", "FROZEN"))
-        .isEqualTo(WorkerRules.ZONE_NOT_QUALIFIED);
+    // MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08) — 냉동도 거절하지 않음
+    assertThat(WorkerRules.rejection(PICKER, "PICK", "FROZEN")).isNull();
     assertThat(WorkerRules.rejection(PICKER, "PICK", "CHILLED")).isNull();
     assertThat(WorkerRules.rejection(PICKER, "PICK", null)).isNull();
   }

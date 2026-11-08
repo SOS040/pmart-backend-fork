@@ -76,6 +76,134 @@ public class AssignmentService {
     this.workers = workers;
   }
 
+  /** 다음 작업 받기 배정의 assignedBy(사람이 아님). */
+  public static final String SYSTEM = "SYSTEM";
+
+  public static final String NO_TASK_AVAILABLE = "NO_TASK_AVAILABLE";
+  public static final String OFF_SHIFT_BLOCKED = "OFF_SHIFT";
+
+  private com.pmart.mfc.capacity.infrastructure.@Nullable FulfillmentClient fulfillment;
+  private org.springframework.transaction.support.@Nullable TransactionTemplate tx;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setPullDeps(
+      com.pmart.mfc.capacity.infrastructure.FulfillmentClient fulfillment,
+      org.springframework.transaction.PlatformTransactionManager txm) {
+    this.fulfillment = fulfillment;
+    this.tx = new org.springframework.transaction.support.TransactionTemplate(txm);
+  }
+
+  /**
+   * 다음 작업 받기(2026-11-08 사용자 결정 — 현장 크루는 시스템이 작업을 하나씩 배정). 작업자 본인만. 들고 있는 작업이 있으면 그 배정(created =
+   * false), 없으면 업무 안의 담당 없는 READY 작업 중 가장 급한 것(PICK·PACK 약속 이른 순 → RETURN)을 SYSTEM 배정.
+   */
+  public Assigned pullNext(String mfcId, String workerId) {
+    requireSelf(mfcId, workerId);
+    String reject = workers.rejection(mfcId, workerId, "PICK", null);
+    if (com.pmart.mfc.capacity.domain.WorkerRules.WORKER_NOT_REGISTERED.equals(reject)
+        || com.pmart.mfc.capacity.domain.WorkerRules.WORKER_NOT_ACTIVE.equals(reject)) {
+      throw new PmartException(
+          reject,
+          org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+          "작업을 받을 수 없는 작업자입니다: " + reject,
+          false,
+          List.of());
+    }
+    Instant now = clock.instant();
+    if (workers.offShift(mfcId, workerId, now)) {
+      throw new PmartException(
+          OFF_SHIFT_BLOCKED,
+          org.springframework.http.HttpStatus.CONFLICT,
+          "등록 근무 밖에는 시스템이 작업을 주지 않습니다(감독자 배정만).",
+          false,
+          List.of());
+    }
+    var tasks =
+        java.util.Objects.requireNonNull(fulfillment)
+            .tasks(mfcId, List.of("READY", "ASSIGNED", "IN_PROGRESS"));
+    java.util.Map<String, com.pmart.mfc.capacity.infrastructure.FulfillmentClient.TaskView> open =
+        new java.util.HashMap<>();
+    tasks.forEach(t -> open.put(t.taskId(), t));
+    // 한 번에 하나: 이 작업자의 ACTIVE 배정 중 아직 끝나지 않은 작업
+    for (AssignmentRow a : store.list(mfcId, null, workerId, "ACTIVE", null)) {
+      if (open.containsKey(a.taskId())) {
+        return new Assigned(a, false, List.of());
+      }
+    }
+    java.util.Set<String> duty = workers.taskTypes(mfcId, workerId);
+    List<com.pmart.mfc.capacity.infrastructure.FulfillmentClient.TaskView> candidates =
+        tasks.stream()
+            .filter(t -> "READY".equals(t.state()) && t.workerId() == null)
+            .filter(t -> duty.contains(t.taskType()))
+            .sorted(
+                java.util.Comparator.comparingInt(
+                        (com.pmart.mfc.capacity.infrastructure.FulfillmentClient.TaskView t) ->
+                            rank(t.taskType()))
+                    .thenComparing(
+                        t -> t.promisedReadyAt(),
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                    .thenComparing(t -> t.taskId()))
+            .toList();
+    for (var t : candidates) {
+      AssignmentRow made =
+          java.util.Objects.requireNonNull(tx)
+              .execute(
+                  s -> {
+                    if (store.lockActive(t.taskId()).isPresent()) {
+                      return null; // 다른 작업자가 먼저(또는 감독자 배정)
+                    }
+                    Instant at = clock.instant();
+                    AssignmentRow row =
+                        new AssignmentRow(
+                            "ASG-" + UUID.randomUUID(),
+                            mfcId,
+                            t.taskId(),
+                            t.taskType(),
+                            workerId,
+                            store.maxVersion(t.taskId()) + 1,
+                            "ACTIVE",
+                            null,
+                            SYSTEM,
+                            "NEXT_TASK",
+                            at,
+                            null);
+                    store.insert(row);
+                    publish(row, SYSTEM);
+                    return row;
+                  });
+      if (made != null) {
+        log.info("다음 작업 {} {} → {} (시스템 배정)", made.taskType(), made.taskId(), workerId);
+        return new Assigned(made, true, List.of());
+      }
+    }
+    throw new PmartException(
+        NO_TASK_AVAILABLE,
+        org.springframework.http.HttpStatus.CONFLICT,
+        "지금 받을 수 있는 작업이 없습니다.",
+        true,
+        List.of());
+  }
+
+  /** 다음 작업 우선순위: 주문 작업 → 복귀 → 그 밖(이동·보충은 다음 단계). */
+  static int rank(String taskType) {
+    return switch (taskType) {
+      case "PICK", "PACK" -> 0;
+      case "REPLENISH" -> 1;
+      case "RETURN" -> 3;
+      default -> 2;
+    };
+  }
+
+  private static void requireSelf(String mfcId, String workerId) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "작업자(운영자)만 할 수 있습니다."));
+    if (!p.canAccessCenter(mfcId) || !p.subject().equals(workerId)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "작업자 본인만 다음 작업을 받습니다.");
+    }
+  }
+
   public Assigned assign(String requestId, String sourceSystem, AssignCommand cmd) {
     String supervisor = requireSupervisor(cmd.mfcId());
     if (!TASK_TYPES.contains(cmd.taskType())) {
@@ -215,7 +343,9 @@ public class AssignmentService {
     if (r.planId() != null) {
       payload.put("planId", r.planId());
     }
-    payload.put("source", r.planId() == null ? "MANUAL" : "PLAN");
+    payload.put(
+        "source",
+        r.planId() != null ? "PLAN" : SYSTEM.equals(r.assignedBy()) ? "SYSTEM" : "MANUAL");
     payload.put("publishedAt", r.assignedAt().toString());
     events.publish(
         codec.create(

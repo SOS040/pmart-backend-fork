@@ -36,6 +36,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkersController implements WorkersApi {
 
   private final WorkerService service;
+  private com.pmart.mfc.capacity.application.AssignmentService assignments;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setAssignments(com.pmart.mfc.capacity.application.AssignmentService assignments) {
+    this.assignments = assignments;
+  }
+
+  /** 다음 작업 받기(0.6.0) — 시스템이 하나씩 배정. */
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.Assignment> pullNextTask(
+      String mfcId, String workerId, String idempotencyKey, String xSourceSystem) {
+    var r = assignments.pullNext(mfcId, workerId);
+    return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK)
+        .body(AssignmentsController.dto(r.assignment()));
+  }
 
   public WorkersController(WorkerService service) {
     this.service = service;
@@ -233,7 +248,11 @@ public class WorkersController implements WorkersApi {
     return in.stream().map(TaskType::getValue).collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
-  private static Set<String> zones(java.util.Collection<TemperatureZone> in) {
+  private static Set<String> zones(
+      java.util.@org.jspecify.annotations.Nullable Collection<TemperatureZone> in) {
+    if (in == null) {
+      return Set.of();
+    }
     return in.stream()
         .map(TemperatureZone::getValue)
         .collect(Collectors.toCollection(LinkedHashSet::new));

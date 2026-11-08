@@ -191,6 +191,13 @@ public class AssignmentsController implements AssignmentsApi {
     a.setPlanId(r.planId());
     a.setAssignedBy(r.assignedBy());
     a.setAssignedAt(r.assignedAt().atOffset(ZoneOffset.UTC));
+    a.setSource(
+        Assignment.SourceEnum.fromValue(
+            r.planId() != null
+                ? "PLAN"
+                : com.pmart.mfc.capacity.application.AssignmentService.SYSTEM.equals(r.assignedBy())
+                    ? "SYSTEM"
+                    : "MANUAL"));
     return a;
   }
 }

@@ -43,9 +43,7 @@ public final class WorkerRules {
     if (!p.duty().taskTypes().contains(taskType)) {
       return DUTY_NOT_ALLOWED;
     }
-    if (temperatureZone != null && !p.duty().zones().contains(temperatureZone)) {
-      return ZONE_NOT_QUALIFIED;
-    }
+    // MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08 — 피킹 때 냉동·냉장·상온 자유, 구분은 CDC 만). temperatureZone 은 받기만 한다
     return null;
   }
 
@@ -62,8 +60,8 @@ public final class WorkerRules {
     if (taskTypes.isEmpty() || !TASK_TYPES.containsAll(taskTypes)) {
       return "작업 유형은 " + TASK_TYPES + " 중 하나 이상입니다.";
     }
-    if (zones.isEmpty() || !ZONES.containsAll(zones)) {
-      return "온도대는 " + ZONES + " 중 하나 이상입니다.";
+    if (!ZONES.containsAll(zones)) {
+      return "온도대는 " + ZONES + " 중에서입니다(MFC 배정 조건은 아님 — 기록만).";
     }
     return null;
   }

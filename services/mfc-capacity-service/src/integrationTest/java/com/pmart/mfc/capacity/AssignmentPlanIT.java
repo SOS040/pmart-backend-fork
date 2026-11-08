@@ -140,6 +140,69 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
                             Map.of("items", items, "page", Map.of("size", items.size()))))));
   }
 
+  /**
+   * 다음 작업 받기(0.6.0): 업무 안의 담당 없는 READY 작업 중 약속 이른 PICK → (그다음) 복귀 순, 한 번에 하나(다시 부르면 같은 배정), 본인만, 줄
+   * 작업 없음 409, 등록 근무 밖 409.
+   */
+  @Test
+  void nextTaskIsAssignedOneAtATimeBySystem() {
+    String s = UUID.randomUUID().toString().substring(0, 6);
+    String a = "nx1-" + s;
+    String b = "nx2-" + s;
+    String c = "nx3-" + s;
+    register(a, List.of("PICK", "RETURN"));
+    register(b, List.of("PICK"));
+    register(c, List.of("RETURN"));
+    String early = "T-NE-" + s;
+    String late = "T-NL-" + s;
+    String ret = "T-NR-" + s;
+    tasks(
+        List.of(
+            task(late, "PICK", "READY", 1, null, 90),
+            task(ret, "RETURN", "READY", 1, null, 0),
+            task(early, "PICK", "READY", 1, null, 30),
+            task("T-NO-" + s, "PACK", "READY", 1, null, 10)),
+        "READY",
+        "ASSIGNED",
+        "IN_PROGRESS");
+    String ta = TestJwt.operator(a, List.of("MFC_WORKER"), List.of(MFC));
+    String tb = TestJwt.operator(b, List.of("MFC_WORKER"), List.of(MFC));
+    String tc = TestJwt.operator(c, List.of("MFC_WORKER"), List.of(MFC));
+    String path = "/mfcs/" + MFC + "/workers/";
+    // 본인만
+    assertThat(send("POST", ta, path + b + "/next-tasks", null).status()).isEqualTo(403);
+    Res first = send("POST", ta, path + a + "/next-tasks", null);
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(201);
+    assertThat(first.body().path("taskId").asString()).isEqualTo(early);
+    assertThat(first.body().path("source").asString()).isEqualTo("SYSTEM");
+    // 한 번에 하나 — 다시 부르면 같은 배정
+    Res again = send("POST", ta, path + a + "/next-tasks", null);
+    assertThat(again.status()).isEqualTo(200);
+    assertThat(again.body().path("taskId").asString()).isEqualTo(early);
+    // 다른 작업자는 남은 것 중 가장 급한 PICK, 복귀만 하는 작업자는 복귀
+    assertThat(send("POST", tb, path + b + "/next-tasks", null).body().path("taskId").asString())
+        .isEqualTo(late);
+    assertThat(send("POST", tc, path + c + "/next-tasks", null).body().path("taskId").asString())
+        .isEqualTo(ret);
+    // 더 받을 작업 없음
+    String d = "nx4-" + s;
+    register(d, List.of("PICK"));
+    String td = TestJwt.operator(d, List.of("MFC_WORKER"), List.of(MFC));
+    Res none = send("POST", td, path + d + "/next-tasks", null);
+    assertThat(none.status()).isEqualTo(409);
+    assertThat(none.body().path("code").asString()).isEqualTo("NO_TASK_AVAILABLE");
+    // 등록 근무 밖이면 시스템이 작업을 주지 않음
+    Instant later = Instant.now().plusSeconds(3 * 3600);
+    send(
+        "POST",
+        SUP,
+        path + d + "/shifts",
+        Map.of("startAt", later.toString(), "endAt", later.plusSeconds(4 * 3600).toString()));
+    Res off = send("POST", td, path + d + "/next-tasks", null);
+    assertThat(off.status()).isEqualTo(409);
+    assertThat(off.body().path("code").asString()).isEqualTo("OFF_SHIFT");
+  }
+
   @Test
   void proposesByDutyAndBusyTimeThenCommitsAfterRecheck() {
     register("pk1", List.of("PICK"));

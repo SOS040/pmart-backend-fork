@@ -65,6 +65,12 @@ public class WorkerService {
     return WorkerRules.rejection(profile(mfcId, workerId), taskType, temperatureZone);
   }
 
+  /** 지금 업무의 작업 유형(등록 안 됨이면 빈 집합). */
+  public java.util.Set<String> taskTypes(String mfcId, String workerId) {
+    var p = profile(mfcId, workerId);
+    return p == null ? java.util.Set.of() : p.duty().taskTypes();
+  }
+
   public boolean offShift(String mfcId, String workerId, Instant now) {
     List<Instant[]> s =
         store.shifts(mfcId, workerId, now.minusSeconds(86_400), now.plusSeconds(86_400)).stream()

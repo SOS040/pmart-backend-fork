@@ -211,21 +211,16 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
     assertThat(register(w, List.of("PICK"), List.of("AMBIENT")).body().path("code").asString())
         .isEqualTo("WORKER_ALREADY_REGISTERED");
 
-    // 업무에 없는 작업 유형, 자격 없는 온도대 → 거절. 상온 PICK 은 배정
+    // 업무에 없는 작업 유형 → 거절. PICK 은 배정
     assertThat(
             assign(SUPERVISOR, with(body(task, w), "taskType", "PACK"), null)
                 .body()
                 .path("code")
                 .asString())
         .isEqualTo("DUTY_NOT_ALLOWED");
-    assertThat(
-            assign(SUPERVISOR, with(body(task, w), "temperatureZone", "FROZEN"), null)
-                .body()
-                .path("code")
-                .asString())
-        .isEqualTo("ZONE_NOT_QUALIFIED");
     String pickTask = "TSK-" + UUID.randomUUID();
-    Res ok = assign(SUPERVISOR, with(body(pickTask, w), "temperatureZone", "AMBIENT"), 0);
+    // MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08) — 업무에 상온만 있어도 냉동 작업 배정
+    Res ok = assign(SUPERVISOR, with(body(pickTask, w), "temperatureZone", "FROZEN"), 0);
     assertThat(ok.status()).as(ok.body().toString()).isEqualTo(201);
     assertThat(ok.body().path("warnings")).isEmpty();
 

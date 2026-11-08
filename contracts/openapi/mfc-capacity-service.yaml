@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.5.2
+  version: 0.6.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -560,6 +560,48 @@ paths:
               schema: { $ref: '#/components/schemas/WorkerDetail' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /mfcs/{mfcId}/workers/{workerId}/next-tasks:
+    post:
+      tags: [workers]
+      summary: 다음 작업 받기 — 시스템이 작업을 하나씩 배정 (0.6.0)
+      description: |
+        2026-11-08 사용자 결정: 현장 크루는 정규직이든 일일크루든 **시스템이 작업을 하나씩 배정**한다. 작업자 본인(토큰 주체 = workerId)이 부른다.
+        - 이미 들고 있는 작업(이 작업자의 ACTIVE 배정 중 아직 끝나지 않은 작업)이 있으면 그 배정을 200 으로 돌려준다(한 번에 하나).
+        - 없으면 업무(작업 유형) 안의 **담당 없는 READY 작업** 중 가장 급한 것을 배정해 201(배정 출처 SYSTEM, `AssignmentPublished`).
+          순서: 주문 작업(PICK·PACK — 출하 약속 이른 순) → 취소품 복귀(RETURN). 재고 이동·보충은 다음 단계에서 들어온다.
+        - ACTIVE 가 아니면 422 WORKER_NOT_ACTIVE, 등록 근무가 있는데 지금이 근무 밖이면 409 OFF_SHIFT(근무 등록이 없으면 판단 안 함),
+          줄 작업이 없으면 409 NO_TASK_AVAILABLE. 감독자의 수동 배정(`POST /assignments`)은 예외 처리로 그대로 쓴다.
+        - MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08 — 구분은 CDC 만).
+      operationId: pullNextTask
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { type: string } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 이미 들고 있는 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+        '201':
+          description: 새로 배정한 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: OFF_SHIFT / NO_TASK_AVAILABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: WORKER_NOT_REGISTERED / WORKER_NOT_ACTIVE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   /mfcs/{mfcId}/workers/{workerId}/duty-changes:
     post:
       tags: [workers]
@@ -712,11 +754,11 @@ components:
     TemperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
     WorkerDutyBody:
       type: object
-      description: 업무 — 할 수 있는 작업 유형과 들어갈 수 있는 온도대(냉장·냉동 자격). 계정과 따로 버전으로 남긴다.
-      required: [taskTypes, temperatureZones]
+      description: 업무 — 할 수 있는 작업 유형. 계정과 따로 버전으로 남긴다. temperatureZones 는 0.6.0 부터 MFC 에서 쓰지 않는다(사용자 2026-11-08 — MFC 는 온도대 출입 자격 없음, 구분은 CDC 만). 보내면 기록만.
+      required: [taskTypes]
       properties:
         taskTypes: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/TaskType' } }
-        temperatureZones: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/TemperatureZone' } }
+        temperatureZones: { type: array, uniqueItems: true, items: { $ref: '#/components/schemas/TemperatureZone' }, description: '(0.6.0) MFC 에서 배정 조건 아님 — 기록만' }
     WorkerDuty:
       type: object
       properties:
@@ -852,6 +894,7 @@ components:
         planId: { type: [string, 'null'], description: 수동 배정은 null }
         assignedBy: { type: [string, 'null'] }
         assignedAt: { type: string, format: date-time }
+        source: { type: [string, 'null'], enum: [MANUAL, PLAN, SYSTEM, null], description: '(0.6.0) 배정 출처 — SYSTEM = 다음 작업 받기' }
         warnings: { type: array, items: { type: string }, description: '(0.4.0) 막지 않는 경고 — OFF_SHIFT(등록 근무 밖)' }
         workerEligibility:
           type: [string, 'null']
