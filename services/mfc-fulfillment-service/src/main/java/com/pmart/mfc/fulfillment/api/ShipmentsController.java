@@ -1,14 +1,17 @@
 package com.pmart.mfc.fulfillment.api;
 
 import com.pmart.mfc.fulfillment.api.generated.ShipmentsApi;
+import com.pmart.mfc.fulfillment.api.generated.model.DispatchRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.FenceState;
 import com.pmart.mfc.fulfillment.api.generated.model.ModelPackage;
 import com.pmart.mfc.fulfillment.api.generated.model.PackageContentLine;
 import com.pmart.mfc.fulfillment.api.generated.model.PackageFence;
 import com.pmart.mfc.fulfillment.api.generated.model.PackageState;
+import com.pmart.mfc.fulfillment.api.generated.model.RequestDispatchRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.SealPackageRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.Shipment;
 import com.pmart.mfc.fulfillment.api.generated.model.ShipmentState;
+import com.pmart.mfc.fulfillment.application.DispatchRequestService;
 import com.pmart.mfc.fulfillment.application.PackageService;
 import com.pmart.mfc.fulfillment.application.PackageService.SealCommand;
 import com.pmart.mfc.fulfillment.domain.TaskRules.Content;
@@ -35,12 +38,15 @@ public class ShipmentsController implements ShipmentsApi {
 
   private final com.pmart.mfc.fulfillment.application.RepackService repacks;
   private final com.pmart.mfc.fulfillment.infrastructure.HandoverStore handovers;
+  private final DispatchRequestService dispatch;
 
   public ShipmentsController(
       PackageService service,
       com.pmart.mfc.fulfillment.application.RepackService repacks,
       com.pmart.mfc.fulfillment.infrastructure.HandoverStore handovers,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchRequestService dispatch) {
+    this.dispatch = dispatch;
     this.handovers = handovers;
     this.service = service;
     this.repacks = repacks;
@@ -130,7 +136,26 @@ public class ShipmentsController implements ShipmentsApi {
     out.setContainsAlcohol(alcohol);
     out.setWeightG(weight);
     out.setReadyAt(TasksController.time(v.readyAt()));
+    out.setDispatchRequest(dispatch.find(shipmentId).map(ShipmentsController::dto).orElse(null));
     return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<DispatchRequest> requestDispatch(
+      String shipmentId, String idempotencyKey, String xSourceSystem, RequestDispatchRequest body) {
+    var o = dispatch.request(shipmentId, body.getEstimatedPackMinutes());
+    return ResponseEntity.status(o.created() ? HttpStatus.CREATED : HttpStatus.OK)
+        .body(dto(o.request()));
+  }
+
+  static DispatchRequest dto(DispatchRequestService.Request r) {
+    return new DispatchRequest()
+        .shipmentId(r.shipmentId())
+        .trigger(DispatchRequest.TriggerEnum.fromValue(r.trigger()))
+        .estimatedPackMinutes(r.estimatedPackMinutes())
+        .estimatedReadyAt(TasksController.time(r.estimatedReadyAt()))
+        .requestedAt(TasksController.time(r.requestedAt()))
+        .requestedBy(r.requestedBy());
   }
 
   private ModelPackage dto(PackageRow p, String orderId) {

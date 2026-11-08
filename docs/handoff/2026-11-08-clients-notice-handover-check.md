@@ -25,3 +25,9 @@
 
 ### 라이더 앱
 - 새 거절 코드 `FENCE_EXPIRED_UNCONFIRMED`: "앞선 인계 허가 확인이 필요합니다 — 점원에게 문의" 안내. 재배정된 이전 라이더의 확정은 `NOT_ASSIGNED`.
+
+## 추가(같은 날, mfc-fulfillment 0.4.5): 배차 요청 — 사용자 결정 D-5
+### 패킹 앱(점원)
+- "배차 요청" 버튼: 포장을 시작한 뒤 `POST /api/v1/shipments/{id}/dispatch-requests` (Idempotency-Key, X-Source-System), 본문 `{ "estimatedPackMinutes": 1~180 }`(필수) → 201 `DispatchRequest{trigger MANUAL, estimatedReadyAt, …}`. 이미 요청된 출고는 200 으로 그 요청. 포장 시작 전·취소된 출고는 409 `INVALID_STATE`.
+- 포장을 다 끝낼 때까지 누르지 않으면 서버가 자동 요청한다(trigger `AUTO_ON_READY`) — 버튼을 놓쳐도 주문이 멈추지 않는다.
+- 출고 조회 `GET /api/v1/shipments/{id}` 에 `dispatchRequest`(없으면 null).

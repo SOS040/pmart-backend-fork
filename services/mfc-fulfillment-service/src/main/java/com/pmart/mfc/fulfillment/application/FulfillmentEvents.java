@@ -103,6 +103,25 @@ public class FulfillmentEvents {
     publish("LineShortageReported", "Fulfillment", t.orderId(), orderVersion(t), t.startedBy(), p);
   }
 
+  /** DispatchRequested(D-5) — 출고 집계, 같은 트랜잭션. */
+  public void dispatchRequested(TaskInfo pack, DispatchRequestService.Request r) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("orderId", pack.orderId());
+    p.put("fulfillmentId", pack.fulfillmentId());
+    p.put("shipmentId", r.shipmentId());
+    p.put("mfcId", pack.mfcId());
+    p.put("trigger", r.trigger());
+    if (r.estimatedPackMinutes() != null) {
+      p.put("estimatedPackMinutes", r.estimatedPackMinutes());
+    }
+    p.put("estimatedReadyAt", r.estimatedReadyAt().toString());
+    p.put("requestedAt", r.requestedAt().toString());
+    if (r.requestedBy() != null) {
+      p.put("requestedBy", r.requestedBy());
+    }
+    publish("DispatchRequested", "Shipment", r.shipmentId(), 1, r.requestedBy(), p);
+  }
+
   public void packingFinishedAndReady(
       TaskInfo pack, List<PackageRow> sealed, int shipmentVersion, Instant at) {
     List<Map<String, Object>> pkgs = new ArrayList<>();

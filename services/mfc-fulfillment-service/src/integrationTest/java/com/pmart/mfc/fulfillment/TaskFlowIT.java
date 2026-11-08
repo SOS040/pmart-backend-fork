@@ -1074,7 +1074,8 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
   record Pkg(String id, String qr) {}
 
   /** 피킹·포장까지 끝난 출고(포장 2개: L1 2개, L2 1개) — 출고 READY. */
-  List<Pkg> readyShipment(String o) {
+  /** 피킹을 다 하고 PACK 을 시작한 출고(포장 전). */
+  String packStarted(String o) {
     String s = accept(o);
     String pick = s + "-PICK";
     String pack = s + "-PACK";
@@ -1117,6 +1118,11 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     }
     assigned(pack, "w2", 1);
     assertThat(start(W2, pack, "w2", 1).status()).isEqualTo(201);
+    return s;
+  }
+
+  List<Pkg> readyShipment(String o) {
+    String s = packStarted(o);
     plan(o, 1, 1, 0, 0, 1, 0);
     inventoryCommits(
         "PACK", 201, Map.of("status", "APPLIED", "resultId", "CMT-P", "appliedQty", 1));
@@ -1617,6 +1623,52 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
         "/packages/" + p.id() + "/handover-checks",
         UUID.randomUUID().toString(),
         Map.of("result", result, "note", "시험"));
+  }
+
+  /**
+   * 배차 요청(D-5): 포장 시작 전 409, 포장 중 점원 요청 MANUAL(예상 시각 = 지금 + 분), 다시 = 200 같은 요청, 포장 끝까지 없으면 READY 때
+   * AUTO.
+   */
+  @Test
+  void dispatchIsRequestedByClerkDuringPackingOrAutomaticallyWhenReady() {
+    String o0 = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s0 = accept(o0);
+    assertThat(dispatch(W2, s0, 5).body().path("code").asString()).isEqualTo("INVALID_STATE");
+
+    String o1 = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s1 = packStarted(o1);
+    Res manual = dispatch(W2, s1, 7);
+    assertThat(manual.status()).as(manual.body().toString()).isEqualTo(201);
+    assertThat(manual.body().path("trigger").asString()).isEqualTo("MANUAL");
+    assertThat(manual.body().path("estimatedPackMinutes").asInt()).isEqualTo(7);
+    java.time.Duration gap =
+        java.time.Duration.between(
+            java.time.Instant.parse(manual.body().path("requestedAt").asString()),
+            java.time.Instant.parse(manual.body().path("estimatedReadyAt").asString()));
+    assertThat(gap).isEqualTo(java.time.Duration.ofMinutes(7));
+    Res again = dispatch(W2, s1, 3);
+    assertThat(again.status()).isEqualTo(200);
+    assertThat(again.body().path("estimatedPackMinutes").asInt()).isEqualTo(7);
+    assertThat(outbox("DispatchRequested", s1)).isEqualTo(1);
+    assertThat(dispatch(W2, s1, 0).status()).isEqualTo(400); // 계약 최소 1분
+
+    String o2 = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    readyShipment(o2);
+    String s2 = o2 + "-S1";
+    assertThat(outbox("DispatchRequested", s2)).isEqualTo(1);
+    JsonNode ship = call("GET", VIEWER, "/shipments/" + s2, null, null).body();
+    assertThat(ship.path("dispatchRequest").path("trigger").asString()).isEqualTo("AUTO_ON_READY");
+    assertThat(dispatch(W2, s2, 5).status()).isEqualTo(200); // 이미 자동 요청됨
+    assertThat(outbox("DispatchRequested", s2)).isEqualTo(1);
+  }
+
+  Res dispatch(String token, String shipmentId, int minutes) {
+    return call(
+        "POST",
+        token,
+        "/shipments/" + shipmentId + "/dispatch-requests",
+        UUID.randomUUID().toString(),
+        Map.of("estimatedPackMinutes", minutes));
   }
 
   static Map<String, Object> returnLikePick() {

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DispatchRequested.v1.json",
+  "title": "DispatchRequested",
+  "description": "출고의 라이더 배차를 요청한 사실(2026-11-08 사용자 결정 D-5, Delivery §3.1). 점원이 포장 중 예상 포장 시간과 함께 요청(MANUAL)하거나, 포장이 끝날 때까지 요청이 없으면 출하 대기 때 자동(AUTO_ON_READY). 출고당 한 번. 발행 mfc-fulfillment. 구독 delivery-dispatch(예정). 토픽 mfc.fulfillment.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "DispatchRequested"
+        },
+        "aggregateType": {
+          "const": "Shipment"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "shipmentId",
+            "mfcId",
+            "trigger",
+            "estimatedReadyAt",
+            "requestedAt"
+          ],
+          "properties": {
+            "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "fulfillmentId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "shipmentId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "mfcId": { "$ref": "_defs.v1.json#/$defs/CenterId" },
+            "trigger": { "type": "string", "enum": ["MANUAL", "AUTO_ON_READY"] },
+            "estimatedPackMinutes": { "type": "integer", "minimum": 1, "description": "MANUAL 만 — 점원이 넣은 예상 포장 시간(분)" },
+            "estimatedReadyAt": { "$ref": "_defs.v1.json#/$defs/DateTime", "description": "출하 대기 예상 시각. AUTO_ON_READY 면 이미 대기(= requestedAt)" },
+            "requestedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" },
+            "requestedBy": { "type": "string", "description": "MANUAL 만 — 점원 ID" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

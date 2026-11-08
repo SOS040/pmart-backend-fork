@@ -120,7 +120,8 @@
 | `PreparationStarted` | mfc-fulfillment | order, delivery-dispatch(준비 예상) | orderId, fulfillmentId, startedAt, estimatedPackDuration | 실제 준비 시작 확정 | ① |
 | `LineShortageReported` | mfc-fulfillment | order-orchestration, case(동의 없음 시), mfc-quality(파손) | orderId, orderLineId, shortQty, reason(SHORT/DAMAGED/BLOCKED), alreadyHandedOverQty | 피킹 결품·파손 | ① |
 | `PackingFinished` | mfc-fulfillment | delivery-dispatch, commerce | shipmentId, packages[{packageId, bagCount, weight, volume, alcohol}] | 포장 완료(인계 아님) | ① |
-| `ShipmentReady` | mfc-fulfillment | delivery-dispatch, order | orderId, shipmentId, mfcId, readyAt, packages[], pickupLocation | 출하 대기(배차 요청 트리거) | ① |
+| `DispatchRequested` | mfc-fulfillment | delivery-dispatch(예정) | orderId, shipmentId, mfcId, trigger(MANUAL/AUTO_ON_READY), estimatedPackMinutes?, estimatedReadyAt | 배차 요청 — 점원이 포장 중 예상 시간과 함께, 없으면 출하 대기 때 자동(2026-11-08 D-5). 출고당 한 번 | ① |
+| `ShipmentReady` | mfc-fulfillment | delivery-dispatch, order | orderId, shipmentId, mfcId, readyAt, packages[], pickupLocation | 출하 대기(배차는 `DispatchRequested` 로 — D-5) | ① |
 | `PackageHandedOver` | mfc-fulfillment | order, delivery-execution, delivery-dispatch, claim, demand-planning, BI | orderId, shipmentId, deliveryId, packageId, riderId, handoverId, inventoryCommitId, lines[], handedAt | QR 전수 스캔·fence·inventory 커밋 후 | ① |
 | `WorkStopResult` | mfc-fulfillment | order-orchestration, claim | orderId, stopRequestId, perPackage[{packageId, STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER}], notStartedLines[] (작업 지시 전 중지), claimId | 중지 요청 판정 | ① |
 | `PackageInvalidated` | mfc-fulfillment | delivery-dispatch, delivery-execution | packageId, newPackageId, reason | 재포장(구 라벨 무효) | ① |
@@ -143,7 +144,7 @@
 
 - **발행 중**
   - mfc-inventory: `InventoryHoldExpired`, `ReservationBlocked`, `ReservationBlockCleared`, `PackageHandedOverPosted`, `InventoryExecutionApplied`, `StockAdjusted`, `SkuHandlingChanged`, `InventorySnapshotPublished`(주기, 설정 있을 때만)
-  - mfc-fulfillment: `WorkAccepted`, `WorkRejected`, `PreparationStarted`, `LineShortageReported`, `PackingFinished`, `ShipmentReady`, `PackageHandedOver`, `WorkStopResult`, `PackageInvalidated`, `TaskProgressed`
+  - mfc-fulfillment: `WorkAccepted`, `WorkRejected`, `PreparationStarted`, `LineShortageReported`, `PackingFinished`, `ShipmentReady`, `DispatchRequested`, `PackageHandedOver`, `WorkStopResult`, `PackageInvalidated`, `TaskProgressed`
   - mfc-capacity: `AssignmentPublished`, `CapacityReduced`, `OperationRestrictionApplied`/`Lifted`
   - mfc-quality: `QualityDecisionMade`, `DisposalApproved` · mfc-location: `MfcLocationStateChanged` · mfc-inbound: `SupplyRequestSubmitted`
 - **아직 발행 안 함**(동기 응답으로 대신하거나 앞 흐름이 없음): `InventoryHeld`·`InventoryReleased`(예약·해제는 동기 응답 — orchestration 이 응답으로 진행), `MfcReceiptPosted`·`ReceiptCorrectionPosted`(CDC 이송 흐름 없음), `MfcStockAvailable`(③), `CapacityHoldResult`(동기 응답), `ReceivingCapabilityChanged`(구독자 없음 — 값은 설정), `InboundArrivalRecorded`·`ReceiptDiscrepancyReported`(TRF 없음), `ReturnItemReceived`·`ReturnInspected`(회수 흐름 IV-10 없음)

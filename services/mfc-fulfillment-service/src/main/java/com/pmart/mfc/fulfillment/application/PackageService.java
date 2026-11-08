@@ -64,6 +64,7 @@ public class PackageService {
       List<PackageRow> packages) {}
 
   private final TaskStore store;
+  private final DispatchRequestService dispatch;
   private final WorkOrderStore works;
   private final InventoryClient inventory;
   private final FulfillmentEvents events;
@@ -78,7 +79,9 @@ public class PackageService {
       FulfillmentEvents events,
       ObjectMapper mapper,
       PlatformTransactionManager txManager,
-      Clock clock) {
+      Clock clock,
+      DispatchRequestService dispatch) {
+    this.dispatch = dispatch;
     this.store = store;
     this.works = works;
     this.inventory = inventory;
@@ -244,6 +247,7 @@ public class PackageService {
                     .filter(p -> "SEALED".equals(p.state()))
                     .toList();
             events.packingFinishedAndReady(pack, sealed, shipmentVersion, now);
+            dispatch.autoOnReady(pack, now); // 포장 끝까지 배차 요청이 없었으면 자동(D-5)
             log.info("출고 {} 포장 완료 — READY", open.shipmentId());
           }
         }
