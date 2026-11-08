@@ -28,12 +28,65 @@ public class StockQueryService {
   /** 요청 원결과. 수량 변화가 없던 요청은 commit 이 null. */
   public record RequestView(String requestId, @Nullable CommitRow commit, Instant occurredAt) {}
 
+  /**
+   * 스냅샷 한 줄. NORMAL·STORED 줄만 allocated(위치 배정 남은 양)·held(조사 보류)·available(= qty − held − allocated,
+   * 0 미만은 0)을 채운다(V11). 위치 배정 전 예약(LOT 단위)은 위치를 정할 근거가 없어 빼지 않는다.
+   */
+  public record SnapshotLine(
+      StockStore.SnapshotRow row,
+      @Nullable Integer allocated,
+      @Nullable Integer held,
+      @Nullable Integer available) {}
+
   private final StockStore stock;
   private final SkuHandlingStore handlings;
+  private final com.pmart.mfc.inventory.infrastructure.AllocationStore allocations;
 
-  public StockQueryService(StockStore stock, SkuHandlingStore handlings) {
+  public StockQueryService(
+      StockStore stock,
+      SkuHandlingStore handlings,
+      com.pmart.mfc.inventory.infrastructure.AllocationStore allocations) {
     this.stock = stock;
     this.handlings = handlings;
+    this.allocations = allocations;
+  }
+
+  @Transactional(readOnly = true)
+  public List<SnapshotLine> snapshotLines(
+      String mfcId,
+      @Nullable String sku,
+      @Nullable String locationCode,
+      @Nullable String cursor,
+      int limit) {
+    var rows = stock.snapshot(mfcId, sku, locationCode, cursor, limit);
+    List<String> keys = new ArrayList<>();
+    Map<String, Map<com.pmart.mfc.inventory.domain.StockUnit.Key, Integer>> holdsBySku =
+        new java.util.HashMap<>();
+    for (var r : rows) {
+      var k = r.unit().key();
+      if (stored(k)) {
+        keys.add(k.lotId() + "|" + k.locationCode());
+        holdsBySku.computeIfAbsent(k.sku(), s -> stock.openHolds(mfcId, s));
+      }
+    }
+    Map<String, Integer> alloc = allocations.outstanding(mfcId, keys);
+    List<SnapshotLine> out = new ArrayList<>();
+    for (var r : rows) {
+      var k = r.unit().key();
+      if (!stored(k)) {
+        out.add(new SnapshotLine(r, null, null, null));
+        continue;
+      }
+      int a = alloc.getOrDefault(k.lotId() + "|" + k.locationCode(), 0);
+      int h = holdsBySku.get(k.sku()).getOrDefault(k, 0);
+      out.add(new SnapshotLine(r, a, h, Math.max(0, r.unit().qty() - h - a)));
+    }
+    return out;
+  }
+
+  private static boolean stored(com.pmart.mfc.inventory.domain.StockUnit.Key k) {
+    return k.quality() == com.pmart.mfc.inventory.domain.StockUnit.Quality.NORMAL
+        && k.work() == com.pmart.mfc.inventory.domain.StockUnit.Work.STORED;
   }
 
   @Transactional(readOnly = true)

@@ -62,9 +62,11 @@ public class ReservationStore {
           + " promised_date, created_at, updated_at";
 
   private final JdbcTemplate jdbc;
+  private final AllocationStore allocations;
 
-  public ReservationStore(JdbcTemplate jdbc) {
+  public ReservationStore(JdbcTemplate jdbc, AllocationStore allocations) {
     this.jdbc = jdbc;
+    this.allocations = allocations;
   }
 
   public void insert(
@@ -231,6 +233,10 @@ public class ReservationStore {
         newQty,
         Timestamp.from(at),
         partId);
+    Integer picked =
+        jdbc.queryForObject(
+            "SELECT picked_qty FROM reservation_part WHERE part_id = ?", Integer.class, partId);
+    allocations.trim(partId, newQty - (picked == null ? 0 : picked), at); // 위치 배정도 같이 줄인다
   }
 
   /** 조각 상태 바꾸기(결품 보고로 전부 빠진 조각 → RELEASED, 사유 기록). */
@@ -242,6 +248,9 @@ public class ReservationStore {
         reason,
         Timestamp.from(at),
         partId);
+    if (state != ReservationState.CONFIRMED) {
+      allocations.releasePart(partId, at);
+    }
   }
 
   /** 집품이 시작된 조각이 있는가(해제 차단 — 집품 후 취소는 IV-08). */
@@ -285,13 +294,18 @@ public class ReservationStore {
   /** 조각 상태 전이: from 상태인 조각 전부를 to 로. */
   public int transitionParts(
       String reservationId, ReservationState from, ReservationState to, Instant at) {
-    return jdbc.update(
-        "UPDATE reservation_part SET state = ?, updated_at = ? WHERE reservation_id = ?"
-            + " AND state = ?",
-        to.name(),
-        Timestamp.from(at),
-        reservationId,
-        from.name());
+    int n =
+        jdbc.update(
+            "UPDATE reservation_part SET state = ?, updated_at = ? WHERE reservation_id = ?"
+                + " AND state = ?",
+            to.name(),
+            Timestamp.from(at),
+            reservationId,
+            from.name());
+    if (to != ReservationState.CONFIRMED) {
+      allocations.releaseUnconfirmed(reservationId, at);
+    }
+    return n;
   }
 
   private static ReservationRow row(ResultSet rs) throws SQLException {

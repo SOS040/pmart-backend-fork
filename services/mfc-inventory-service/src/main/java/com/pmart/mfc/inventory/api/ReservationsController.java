@@ -28,11 +28,23 @@ public class ReservationsController implements ReservationsApi {
 
   private final ReservationService service;
   private final com.pmart.mfc.inventory.application.ShortageService shortages;
+  private final com.pmart.mfc.inventory.application.LocationAllocationService allocations;
 
   public ReservationsController(
-      ReservationService service, com.pmart.mfc.inventory.application.ShortageService shortages) {
+      ReservationService service,
+      com.pmart.mfc.inventory.application.ShortageService shortages,
+      com.pmart.mfc.inventory.application.LocationAllocationService allocations) {
     this.service = service;
     this.shortages = shortages;
+    this.allocations = allocations;
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.PickPlan>
+      allocateReservationLocations(
+          String reservationId, String idempotencyKey, String xSourceSystem) {
+    allocations.allocate(reservationId);
+    return ResponseEntity.ok(pickPlanDto(allocations.plan(reservationId)));
   }
 
   @Override
@@ -139,7 +151,11 @@ public class ReservationsController implements ReservationsApi {
   @Override
   public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.PickPlan> getPickPlan(
       String reservationId) {
-    var plan = service.pickPlan(reservationId);
+    return ResponseEntity.ok(pickPlanDto(allocations.plan(reservationId)));
+  }
+
+  private static com.pmart.mfc.inventory.api.generated.model.PickPlan pickPlanDto(
+      com.pmart.mfc.inventory.application.LocationAllocationService.Plan plan) {
     var r = plan.reservation();
     var out = new com.pmart.mfc.inventory.api.generated.model.PickPlan();
     out.setReservationId(r.reservationId());
@@ -147,7 +163,8 @@ public class ReservationsController implements ReservationsApi {
     out.setMfcId(r.mfcId());
     out.setState(ReservationPartState.fromValue(r.state().name()));
     var parts = new ArrayList<com.pmart.mfc.inventory.api.generated.model.PickPlanPartsInner>();
-    for (var pp : plan.parts()) {
+    for (var ap : plan.parts()) {
+      var pp = ap.base();
       var p = new com.pmart.mfc.inventory.api.generated.model.PickPlanPartsInner();
       p.setPartId(pp.part().partId());
       p.setOrderLineId(pp.part().orderLineId());
@@ -161,17 +178,30 @@ public class ReservationsController implements ReservationsApi {
       var locs =
           new ArrayList<
               com.pmart.mfc.inventory.api.generated.model.PickPlanPartsInnerLocationsInner>();
-      for (var e : pp.locations()) {
+      for (var e : ap.locations()) {
         var l = new com.pmart.mfc.inventory.api.generated.model.PickPlanPartsInnerLocationsInner();
-        l.setLocationCode(e.getKey());
-        l.setQty(e.getValue());
+        l.setLocationCode(e.locationCode());
+        l.setQty(e.qty());
+        l.setAllocatedQty(e.allocatedQty());
         locs.add(l);
       }
       p.setLocations(locs);
+      var allocs =
+          new ArrayList<
+              com.pmart.mfc.inventory.api.generated.model.PickPlanPartsInnerAllocationsInner>();
+      for (var e : ap.allocations()) {
+        var a =
+            new com.pmart.mfc.inventory.api.generated.model.PickPlanPartsInnerAllocationsInner();
+        a.setLocationCode(e.getKey());
+        a.setQty(e.getValue());
+        allocs.add(a);
+      }
+      p.setAllocations(allocs);
+      p.setUnallocatedQty(ap.unallocatedQty());
       parts.add(p);
     }
     out.setParts(parts);
-    return ResponseEntity.ok(out);
+    return out;
   }
 
   @Override

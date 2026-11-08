@@ -238,7 +238,9 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     m.put("qty", qty);
     m.put("pickedQty", picked);
     m.put("packedQty", packed);
-    m.put("locations", List.of(Map.of("locationCode", loc, "qty", 5)));
+    m.put(
+        "locations",
+        List.of(Map.of("locationCode", loc, "qty", 5, "allocatedQty", Math.max(0, qty - picked))));
     return m;
   }
 
@@ -349,7 +351,11 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(start(W2, pick, "w1", 1).status()).isEqualTo(403);
     assertThat(start(W2, pick, "w2", 1).body().path("code").asString()).isEqualTo("NOT_ASSIGNEE");
 
-    // w1 시작 → IN_PROGRESS, 준비 시작 사건 한 번
+    // w1 시작 → IN_PROGRESS, 준비 시작 사건 한 번, 재고 위치 배정 한 번(같은 키 재생은 다시 안 부름)
+    inv.stubFor(
+        WireMock.post(
+                urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/location-allocations"))
+            .willReturn(json(200, Map.of("reservationId", "RSV-" + o, "parts", List.of()))));
     String key = UUID.randomUUID().toString();
     Res started =
         call(
@@ -370,6 +376,10 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(start(W1, pick, "w1", 1).body().path("code").asString())
         .isEqualTo("ALREADY_STARTED");
     assertThat(outbox("PreparationStarted", o)).isEqualTo(1);
+    inv.verify(
+        1,
+        WireMock.postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/location-allocations")));
     assertThat(
             call("GET", W1, "/tasks/" + pick + "/starts/" + key, null, null)
                 .body()
@@ -386,6 +396,8 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(l1.path("picks")).hasSize(2);
     assertThat(l1.path("lotId").asString()).isEqualTo("LOT-A");
     assertThat(l1.path("locationId").asString()).isEqualTo("A-S1-01-1-01");
+    assertThat(l1.path("picks").path(0).path("locations").path(0).path("allocatedQty").asInt())
+        .isEqualTo(1);
 
     // 재고가 거절한 실적 → REJECTED, 수량 변화 없음
     inventoryCommits("PICK", 422, Map.of("code", "LOT_MISMATCH", "detail", "예약 LOT 이 아닙니다"));

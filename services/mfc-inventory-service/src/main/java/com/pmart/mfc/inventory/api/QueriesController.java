@@ -157,7 +157,7 @@ public class QueriesController implements QueriesApi {
           @Nullable Integer size,
           @Nullable String cursor) {
     int n = size == null ? 50 : size;
-    var rows = queries.snapshot(mfcId, sku, locationCode, cursor, n + 1);
+    var rows = queries.snapshotLines(mfcId, sku, locationCode, cursor, n + 1);
     boolean more = rows.size() > n;
     var page = more ? rows.subList(0, n) : rows;
     var out = new com.pmart.mfc.inventory.api.generated.model.GetSnapshot200Response();
@@ -170,7 +170,8 @@ public class QueriesController implements QueriesApi {
     out.setItems(
         page.stream()
             .map(
-                r -> {
+                line -> {
+                  var r = line.row();
                   var b = new com.pmart.mfc.inventory.api.generated.model.Balance();
                   var k = r.unit().key();
                   b.setMfcId(mfcId);
@@ -182,13 +183,16 @@ public class QueriesController implements QueriesApi {
                   b.setWorkState(WorkState.fromValue(k.work().name()));
                   b.setQty(r.unit().qty());
                   b.setVersion((int) r.unit().version());
+                  b.setAllocatedQty(line.allocated());
+                  b.setHeldQty(line.held());
+                  b.setAvailableQty(line.available());
                   return b;
                 })
             .toList());
     var p = new com.pmart.mfc.inventory.api.generated.model.GetSnapshot200ResponsePage();
     p.setSize(page.size());
     if (more) {
-      var k = page.get(page.size() - 1).unit().key();
+      var k = page.get(page.size() - 1).row().unit().key();
       p.setNextCursor(
           k.sku() + "|" + k.lotId() + "|" + k.locationCode() + "|" + k.quality() + "|" + k.work());
     }

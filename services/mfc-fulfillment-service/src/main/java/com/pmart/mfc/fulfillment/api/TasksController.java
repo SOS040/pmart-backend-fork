@@ -119,6 +119,7 @@ public class TasksController implements TasksApi {
           var li = new TaskLinePicksInnerLocationsInner();
           li.setLocationCode(e.getKey());
           li.setQty(e.getValue());
+          li.setAllocatedQty(p.allocated().getOrDefault(e.getKey(), 0));
           locs.add(li);
         }
         pi.setLocations(locs);

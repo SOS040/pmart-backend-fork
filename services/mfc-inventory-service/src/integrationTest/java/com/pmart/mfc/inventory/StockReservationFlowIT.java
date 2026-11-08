@@ -736,6 +736,165 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         body);
   }
 
+  /** 확정 예약 + 위치 배정(V11) — 배정 결과(PickPlan)를 돌려준다. */
+  JsonNode confirmedAndAllocated(String orderId, String sku, int qty) {
+    String rid =
+        reserve(
+                UUID.randomUUID().toString(),
+                Map.of(
+                    "orderId",
+                    orderId,
+                    "mfcId",
+                    mfc,
+                    "lines",
+                    List.of(Map.of("orderLineId", "L1", "sku", sku, "qty", qty))))
+            .body()
+            .path("resultId")
+            .asString();
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    "/internal/reservations/" + rid + "/confirmations",
+                    UUID.randomUUID().toString(),
+                    Map.of("orderId", orderId, "paymentAttemptId", "PAY-" + orderId))
+                .status())
+        .isEqualTo(200);
+    Res a =
+        post(
+            INBOUND,
+            "mfc-fulfillment-service",
+            "/internal/reservations/" + rid + "/location-allocations",
+            UUID.randomUUID().toString(),
+            Map.of());
+    assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+    return a.body();
+  }
+
+  JsonNode snapshotLine(String sku, String location) {
+    for (JsonNode n :
+        get(ORCH, "/internal/snapshots?mfcId=" + mfc + "&sku=" + sku).body().path("items")) {
+      if (n.path("locationCode").asString().equals(location)
+          && n.path("workState").asString().equals("STORED")) {
+        return n;
+      }
+    }
+    return mapper.createObjectNode();
+  }
+
+  @Test
+  void reservationsAreAllocatedToShelvesAndPickingConsumesOrMovesTheAllocation() {
+    location("PAK-A-01", "PACKING", "AMBIENT", "ACTIVE", 1);
+    location("A-01-02", "STORAGE", "AMBIENT", "ACTIVE", 1);
+    awaitLocations(5);
+    String sku = newSku();
+    handlingOn(sku);
+    projection(sku, "AMBIENT");
+    // 같은 LOT 10개: A-01-01 에 7, A-01-02 에 3
+    String receiptId = "RCV-" + UUID.randomUUID();
+    assertThat(
+            postReceipt(
+                    UUID.randomUUID().toString(),
+                    receiptOf(receiptId, List.of(line(sku, 10, 0, null, null))))
+                .status())
+        .isEqualTo(201);
+    String lot =
+        get(INBOUND, "/internal/receipts/" + receiptId)
+            .body()
+            .path("lines")
+            .path(0)
+            .path("lotId")
+            .asString();
+    assertThat(
+            execute(
+                    "INSPECT",
+                    "RCV-DOCK",
+                    null,
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 10, "resultQuality", "NORMAL")))
+                .status())
+        .isEqualTo(201);
+    assertThat(
+            execute(
+                    "PUTAWAY",
+                    "RCV-DOCK",
+                    "A-01-01",
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 7)))
+                .status())
+        .isEqualTo(201);
+    assertThat(
+            execute(
+                    "PUTAWAY",
+                    "RCV-DOCK",
+                    "A-01-02",
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 3)))
+                .status())
+        .isEqualTo(201);
+
+    // 주문 A 5개: 한 칸(A-01-01, 7)에서 다 집을 수 있다 → 한 칸 배정
+    JsonNode a = confirmedAndAllocated("ORD-ALC-A", sku, 5);
+    JsonNode pa = a.path("parts").path(0);
+    assertThat(pa.path("allocations").size()).isEqualTo(1);
+    assertThat(pa.path("allocations").path(0).path("locationCode").asString()).isEqualTo("A-01-01");
+    assertThat(pa.path("allocations").path(0).path("qty").asInt()).isEqualTo(5);
+    assertThat(pa.path("unallocatedQty").asInt()).isZero();
+    assertThat(pa.path("locations").path(0).path("allocatedQty").asInt()).isEqualTo(5);
+    String ridA = a.path("reservationId").asString();
+    // 다시 불러도 그대로(멱등)
+    Res again =
+        post(
+            INBOUND,
+            "mfc-fulfillment-service",
+            "/internal/reservations/" + ridA + "/location-allocations",
+            UUID.randomUUID().toString(),
+            Map.of());
+    assertThat(again.body().path("parts").path(0).path("allocations").size()).isEqualTo(1);
+    assertThat(again.body().path("parts").path(0).path("allocations").path(0).path("qty").asInt())
+        .isEqualTo(5);
+
+    // 주문 B 4개: 남은 가용 A-01-01 2·A-01-02 3 — 한 칸으로 안 되니 많은 칸부터(A-01-02 3, A-01-01 1)
+    JsonNode b = confirmedAndAllocated("ORD-ALC-B", sku, 4);
+    JsonNode pb = b.path("parts").path(0);
+    assertThat(pb.path("allocations").path(0).path("locationCode").asString()).isEqualTo("A-01-02");
+    assertThat(pb.path("allocations").path(0).path("qty").asInt()).isEqualTo(3);
+    assertThat(pb.path("allocations").path(1).path("locationCode").asString()).isEqualTo("A-01-01");
+    assertThat(pb.path("allocations").path(1).path("qty").asInt()).isEqualTo(1);
+    String ridB = b.path("reservationId").asString();
+
+    // 위치별 가용: A-01-01 7 − 배정 6 = 1, A-01-02 3 − 3 = 0
+    JsonNode s1 = snapshotLine(sku, "A-01-01");
+    assertThat(s1.path("allocatedQty").asInt()).isEqualTo(6);
+    assertThat(s1.path("availableQty").asInt()).isEqualTo(1);
+    assertThat(snapshotLine(sku, "A-01-02").path("availableQty").asInt()).isZero();
+
+    // B 가 A-01-01 에서 2개(배정 1 + 남는 1) → 허용, A-01-02 배정은 2 로 줄어든다
+    Map<String, Object> two = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 2);
+    assertThat(pickPack("PICK", ridB, "A-01-01", "PAK-A-01", List.of(two)).status()).isEqualTo(201);
+    JsonNode pb2 =
+        get(ORCH, "/internal/reservations/" + ridB + "/pick-plan").body().path("parts").path(0);
+    assertThat(pb2.path("allocations").size()).isEqualTo(1);
+    assertThat(pb2.path("allocations").path(0).path("locationCode").asString())
+        .isEqualTo("A-01-02");
+    assertThat(pb2.path("allocations").path(0).path("qty").asInt()).isEqualTo(2);
+    // A-01-01 에 남은 5 는 A 몫 — B 가 더 집으면 거절
+    Map<String, Object> one = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 1);
+    Res steal = pickPack("PICK", ridB, "A-01-01", "PAK-A-01", List.of(one));
+    assertThat(steal.status()).isEqualTo(409);
+    assertThat(steal.body().path("code").asString()).isEqualTo("LOCATION_ALLOCATED_TO_OTHER");
+
+    // A 는 배정대로 5개 → 배정 소진
+    Map<String, Object> five = Map.of("orderLineId", "L1", "sku", sku, "lotId", lot, "qty", 5);
+    assertThat(pickPack("PICK", ridA, "A-01-01", "PAK-A-01", List.of(five)).status())
+        .isEqualTo(201);
+    JsonNode pa2 =
+        get(ORCH, "/internal/reservations/" + ridA + "/pick-plan").body().path("parts").path(0);
+    assertThat(pa2.path("allocations").size()).isZero();
+    assertThat(pa2.path("unallocatedQty").asInt()).isZero();
+    JsonNode s2 = snapshotLine(sku, "A-01-02");
+    assertThat(s2.path("qty").asInt()).isEqualTo(3);
+    assertThat(s2.path("allocatedQty").asInt()).isEqualTo(2);
+    assertThat(s2.path("availableQty").asInt()).isEqualTo(1);
+  }
+
   @Test
   void pickAndPackMoveReservedUnitsWithoutChangingTotals() {
     location("PAK-A-01", "PACKING", "AMBIENT", "ACTIVE", 1);

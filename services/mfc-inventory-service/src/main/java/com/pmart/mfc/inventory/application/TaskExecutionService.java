@@ -101,6 +101,7 @@ public class TaskExecutionService {
   private final ReservationStore reservations;
   private final RequestIdempotency idempotency;
   private final Clock clock;
+  private final LocationAllocationService allocations;
 
   public TaskExecutionService(
       StockStore stock,
@@ -109,7 +110,8 @@ public class TaskExecutionService {
       SkuProjectionStore skus,
       ReservationStore reservations,
       RequestIdempotency idempotency,
-      Clock clock) {
+      Clock clock,
+      LocationAllocationService allocations) {
     this.stock = stock;
     this.ledger = ledger;
     this.locations = locations;
@@ -117,6 +119,7 @@ public class TaskExecutionService {
     this.reservations = reservations;
     this.idempotency = idempotency;
     this.clock = clock;
+    this.allocations = allocations;
   }
 
   public CommandResponse commit(String requestId, String sourceSystem, ExecCommand cmd) {
@@ -311,6 +314,17 @@ public class TaskExecutionService {
     }
     for (PickRules.Take t : takes) {
       reservations.addPicked(t.partId(), t.qty(), step == PickRules.Step.PICK, at);
+    }
+    if (step == PickRules.Step.PICK) {
+      Map<String, Integer> byPart = new java.util.LinkedHashMap<>();
+      takes.forEach(t -> byPart.merge(t.partId(), t.qty(), Integer::sum));
+      allocations.onPick(
+          cmd.mfcId(),
+          reservationId,
+          java.util.Objects.requireNonNull(cmd.fromLocation()),
+          byPart,
+          parts,
+          at); // 위치 배정 소진·다른 칸 집품 기록(V11)
     }
   }
 

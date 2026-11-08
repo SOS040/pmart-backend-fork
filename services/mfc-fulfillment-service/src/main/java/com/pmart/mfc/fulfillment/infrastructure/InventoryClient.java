@@ -39,7 +39,8 @@ public class InventoryClient {
       int qty,
       int pickedQty,
       int packedQty,
-      List<Map.Entry<String, Integer>> locations) {}
+      List<Map.Entry<String, Integer>> locations,
+      Map<String, Integer> allocated) {}
 
   /** 작업 실행 반영 결과. APPLIED / REJECTED(4xx — code·detail) / UNKNOWN(결과 모름) / NOT_DELIVERED(안 감). */
   public record Commit(
@@ -99,8 +100,13 @@ public class InventoryClient {
     List<PlanPart> out = new ArrayList<>();
     for (JsonNode p : n.path("parts")) {
       List<Map.Entry<String, Integer>> locs = new ArrayList<>();
+      Map<String, Integer> allocated = new java.util.LinkedHashMap<>();
       for (JsonNode l : p.path("locations")) {
         locs.add(Map.entry(l.path("locationCode").asString(""), l.path("qty").asInt(0)));
+        int a = l.path("allocatedQty").asInt(0);
+        if (a > 0) {
+          allocated.put(l.path("locationCode").asString(""), a);
+        }
       }
       out.add(
           new PlanPart(
@@ -112,9 +118,24 @@ public class InventoryClient {
               p.path("qty").asInt(0),
               p.path("pickedQty").asInt(0),
               p.path("packedQty").asInt(0),
-              locs));
+              locs,
+              allocated));
     }
     return out;
+  }
+
+  /** 예약의 위치 배정(피킹 시작 때). inventory 쪽이 멱등(이미 배정된 양은 다시 배정하지 않음). 실패는 PmartException 그대로. */
+  public void allocateLocations(String reservationId, String key) {
+    Downstream.call(
+        INVENTORY,
+        () ->
+            inventory
+                .post()
+                .uri("/api/v1/internal/reservations/{id}/location-allocations", reservationId)
+                .header("Idempotency-Key", key)
+                .header("X-Source-System", SOURCE)
+                .retrieve()
+                .toBodilessEntity());
   }
 
   /**

@@ -91,12 +91,21 @@ public class TaskService {
   /** 실적 결과(상태 APPLIED / REJECTED / UNKNOWN_RESULT / RECORDED). */
   public record ExecResult(ExecutionRow execution, int taskVersion) {}
 
-  /** 지시 한 LOT. */
+  /** 지시 한 LOT. allocated = 위치 → 이 주문 몫으로 배정된 남은 양(inventory 위치 배정, 배정된 위치가 locations 앞). */
   public record Pick(
       String lotId,
       @Nullable String expiresOn,
       int remainingQty,
-      List<Map.Entry<String, Integer>> locations) {}
+      List<Map.Entry<String, Integer>> locations,
+      Map<String, Integer> allocated) {
+    public Pick(
+        String lotId,
+        @Nullable String expiresOn,
+        int remainingQty,
+        List<Map.Entry<String, Integer>> locations) {
+      this(lotId, expiresOn, remainingQty, locations, Map.of());
+    }
+  }
 
   /** 상세 화면. picksByLine 은 PICK 만, planFresh = 재고 지시 조회 성공. */
   public record Detail(
@@ -173,7 +182,7 @@ public class TaskService {
           }
           picks
               .computeIfAbsent(p.orderLineId(), k -> new ArrayList<>())
-              .add(new Pick(p.lotId(), p.expiryDate(), remaining, p.locations()));
+              .add(new Pick(p.lotId(), p.expiryDate(), remaining, p.locations(), p.allocated()));
         }
       } catch (PmartException | org.springframework.web.client.RestClientException e) {
         fresh = false; // 지시는 참고 — 실적 판정은 재고가 한다
@@ -232,64 +241,74 @@ public class TaskService {
       return recorded.get();
     }
     ActiveAssignment active = capacity.active(t0.mfcId(), taskId); // 실패면 503 — 기록 없음
-    return Objects.requireNonNull(
-        tx.execute(
-            s -> {
-              var again = store.findStart(taskId, requestId);
-              if (again.isPresent()) {
-                return again.get();
-              }
-              TaskInfo t = store.lock(taskId).orElseThrow();
-              Instant now = clock.instant();
-              String reject;
-              if (expectedVersion != null && expectedVersion != t.version()) {
-                reject = TaskRules.VERSION_CONFLICT;
-              } else {
-                boolean predecessorDone =
-                    !"PACK".equals(t.taskType())
-                        || store
-                            .sibling(t.shipmentId(), "PICK")
-                            .map(p -> "COMPLETED".equals(p.state()))
-                            .orElse(true);
-                reject =
-                    TaskRules.startRejection(
-                        t.state(), predecessorDone, active, workerId, assignmentVersion);
-              }
-              if (reject != null) {
-                StartRow r =
-                    new StartRow(
-                        taskId,
-                        requestId,
-                        "REJECTED",
-                        reject,
-                        workerId,
-                        assignmentVersion,
-                        t.version(),
-                        now);
-                store.insertStart(r);
-                return r;
-              }
-              store.markStarted(taskId, requestId, workerId, deviceId, now);
-              StartRow r =
-                  new StartRow(
-                      taskId,
-                      requestId,
-                      "STARTED",
-                      null,
-                      workerId,
-                      assignmentVersion,
-                      t.version() + 1,
-                      now);
-              store.insertStart(r);
-              events.taskProgressed(
-                  t, "IN_PROGRESS", t.state(), t.version() + 1, workerId, null, now);
-              if ("PICK".equals(t.taskType())
-                  && store.markPreparationStarted(t.fulfillmentId(), now)) {
-                events.preparationStarted(t, now);
-              }
-              log.info("작업 {} 시작 by {}", taskId, workerId);
-              return r;
-            }));
+    StartRow started =
+        Objects.requireNonNull(
+            tx.execute(
+                s -> {
+                  var again = store.findStart(taskId, requestId);
+                  if (again.isPresent()) {
+                    return again.get();
+                  }
+                  TaskInfo t = store.lock(taskId).orElseThrow();
+                  Instant now = clock.instant();
+                  String reject;
+                  if (expectedVersion != null && expectedVersion != t.version()) {
+                    reject = TaskRules.VERSION_CONFLICT;
+                  } else {
+                    boolean predecessorDone =
+                        !"PACK".equals(t.taskType())
+                            || store
+                                .sibling(t.shipmentId(), "PICK")
+                                .map(p -> "COMPLETED".equals(p.state()))
+                                .orElse(true);
+                    reject =
+                        TaskRules.startRejection(
+                            t.state(), predecessorDone, active, workerId, assignmentVersion);
+                  }
+                  if (reject != null) {
+                    StartRow r =
+                        new StartRow(
+                            taskId,
+                            requestId,
+                            "REJECTED",
+                            reject,
+                            workerId,
+                            assignmentVersion,
+                            t.version(),
+                            now);
+                    store.insertStart(r);
+                    return r;
+                  }
+                  store.markStarted(taskId, requestId, workerId, deviceId, now);
+                  StartRow r =
+                      new StartRow(
+                          taskId,
+                          requestId,
+                          "STARTED",
+                          null,
+                          workerId,
+                          assignmentVersion,
+                          t.version() + 1,
+                          now);
+                  store.insertStart(r);
+                  events.taskProgressed(
+                      t, "IN_PROGRESS", t.state(), t.version() + 1, workerId, null, now);
+                  if ("PICK".equals(t.taskType())
+                      && store.markPreparationStarted(t.fulfillmentId(), now)) {
+                    events.preparationStarted(t, now);
+                  }
+                  log.info("작업 {} 시작 by {}", taskId, workerId);
+                  return r;
+                }));
+    if ("STARTED".equals(started.outcome()) && "PICK".equals(t0.taskType())) {
+      // 위치 배정(IV-05 위치 세분화) — 지시는 참고라 실패해도 시작은 그대로(집품 때 inventory 가 판정)
+      try {
+        inventory.allocateLocations(t0.reservationId(), taskId + ":" + requestId);
+      } catch (PmartException | org.springframework.web.client.RestClientException e) {
+        log.warn("작업 {} 위치 배정 실패(시작은 유지): {}", taskId, e.getMessage());
+      }
+    }
+    return started;
   }
 
   // ---------- 피킹 실적 ----------
