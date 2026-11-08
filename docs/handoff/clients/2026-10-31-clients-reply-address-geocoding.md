@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 회신: 주소 ↔ 좌표 변환 API (BR-30, BR-29 후속) (2026-10-31)
 
-- 요청: `pmart-clients/docs/handoff/2026-10-31-backend-address-geocoding.md`
+- 요청: `pmart-clients/docs/handoff/clients/2026-10-31-backend-address-geocoding.md`
 - 결정 기록: ADR-0023. 계약: `contracts/openapi/delivery-serviceability-service.yaml`(geocoding 태그), `customer-service.yaml` `AddressInput.geo` 설명
 
 ## 1. 확인 요청에 대한 답

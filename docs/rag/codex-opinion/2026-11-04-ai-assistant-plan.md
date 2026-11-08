@@ -235,7 +235,7 @@
 - ADR-0036: 1차 RAG 결정 — 명시 목록, 세 축(authority·lifecycle·implementation), 대체 활성화 규칙, 스냅숏 색인, 선점형 처리, 원문 미저장, 기준선 모드, 외부 모델 결정 전.
 - service-map·architecture-design 에 "1차 앞당김(ADR-0036)" 표기.
 - 서비스 `CLAUDE.md`.
-- `docs/handoff/2026-11-04-clients-request-ai-assistant.md`: API, 인증, 202 처리 중·재조회 흐름, 오류, 상태별 예제, answerMode 표시 안내, mock 사례.
+- `docs/handoff/clients/2026-11-04-clients-request-ai-assistant.md`: API, 인증, 202 처리 중·재조회 흐름, 오류, 상태별 예제, answerMode 표시 안내, mock 사례.
 - 작업 일지.
 
 ### J. 결정이 필요한 것 (구현은 local/fake 로 진행하고 끝에 묶어 보고)

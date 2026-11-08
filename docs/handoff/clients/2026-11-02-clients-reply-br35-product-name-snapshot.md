@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 회신: 주문 품목 상품명 사본·결제창 주문명 (BR-35) (2026-11-02)
 
-- 요청: `pmart-clients/docs/handoff/2026-10-31-backend-checkout-widget-and-product-names.md` §2 (BR-35). §1(BR-34)은 `2026-11-02-clients-reply-br34-payment-widget-config.md`.
+- 요청: `pmart-clients/docs/handoff/clients/2026-10-31-backend-checkout-widget-and-product-names.md` §2 (BR-35). §1(BR-34)은 `2026-11-02-clients-reply-br34-payment-widget-config.md`.
 - 계약: `contracts/openapi/order-service.yaml` `DraftLine.productName`·`optionLabel`(신규), `OrderLine.productName`(채움)·`optionLabel`(신규)
 - 구현: order-service(V6 `customer_order_line.product_name`·`option_label`), product-content `GET /internal/product-contents/{productId}/snapshot` 사용
 

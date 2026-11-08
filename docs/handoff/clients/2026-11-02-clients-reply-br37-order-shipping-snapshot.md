@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 회신: 주문 당시 배송지·수령 연락처 사본 (BR-37) (2026-11-02)
 
-- 요청: `pmart-clients/docs/handoff/2026-11-02-backend-order-customer-reference.md`
+- 요청: `pmart-clients/docs/handoff/clients/2026-11-02-backend-order-customer-reference.md`
 - 근거(확정 정책): OMS 153행 "주소·연락처·요청 사항 … 주문 당시 값으로 보존", Commerce 3294·3327행(확정 주문 = 주문 당시 배송지·수령 연락처), 3351행 "현재 수정된 주소로 과거 주문 수령 주소·연락처를 소급 변경하지 않는다", 86행 "결제 후 주문 연락처 변경 금지"
 - 계약: `contracts/openapi/order-service.yaml` `ShippingAddress`(신규), `DraftDelivery.shippingAddress`·`Order.shippingAddress`(신규), `CreateDraftRequest.contact` deprecated. `customer-service.yaml` 주소 수정·삭제 설명 보완.
 - 구현: order-service(V5 `customer_order_shipping`). LAN 반영은 이 문서 끝 참조.

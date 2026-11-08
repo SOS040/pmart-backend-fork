@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 회신: BR-38(배치 수) · BR-39(재업로드 = 기존 상품 갱신 표시) · 카테고리 추가 zip 업로드 (2026-11-03)
 
-- 요청: `pmart-clients/docs/handoff/2026-11-03-backend-product-import-batch.md` §1(BR-38)·§2(BR-39).
+- 요청: `pmart-clients/docs/handoff/clients/2026-11-03-backend-product-import-batch.md` §1(BR-38)·§2(BR-39).
 - 계약: `contracts/openapi/product-service.yaml` — `ProductDraft` 필드 추가(`registration`·`existingProductId`·`existingSkus`), 새 경로 `POST /category-tree-addition-uploads`. 기존 필드·경로는 바뀌지 않는다.
 - 게이트웨이: pmart-config `api-gateway.yml` 에 `/api/v1/category-tree-addition-uploads` 추가.
 

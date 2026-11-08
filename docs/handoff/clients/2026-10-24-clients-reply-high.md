@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 계약 공백 요청 회신 (우선순위 높음 6건)
 
-- 회신 대상: `pmart-clients/docs/handoff/2026-10-24-backend-requests-high.md`
+- 회신 대상: `pmart-clients/docs/handoff/clients/2026-10-24-backend-requests-high.md`
 - 계약 반영 커밋: pmart-backend `d3ce55c` (2026-10-24, main push 완료) + 독립 검토 후 수정 커밋(아래 "검증 상태")
 - 요약: 수용 1 (BR-05), 부분 수용 1 (BR-06), 보류 4 (BR-01·02·03·07)
 - 반영한 경로도 서버 구현 전까지는 501을 반환한다. 연동 테스트는 구현 완료 공지 후에 한다.

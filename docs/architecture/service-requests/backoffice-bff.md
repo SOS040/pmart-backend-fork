@@ -9,4 +9,4 @@
   3. 중지 실패 재시도 — `POST /internal/stop-requests/{id}/retries` 있음.
 - **지금**: 화면 없음 — API·로그로만. backoffice-bff CommandsController 501.
 - **사용자 결정 필요**: 화면 범위·절차(누가 어떤 근거로 재시도·포기하나).
-- 화면은 pmart-clients 몫 — 정해지면 `docs/handoff/` 로 알린다.
+- 화면은 pmart-clients 몫 — 정해지면 `docs/handoff/clients/` 로 알린다.

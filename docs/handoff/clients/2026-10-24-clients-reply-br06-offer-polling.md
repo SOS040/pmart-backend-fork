@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] BR-06 추가 질문 회신: `GET /offers` 폴링 간격
 
-- 회신 대상: `pmart-clients/docs/handoff/2026-10-24-backend-br06-offer-polling.md`
+- 회신 대상: `pmart-clients/docs/handoff/clients/2026-10-24-backend-br06-offer-polling.md`
 - 계약 반영: `contracts/openapi/delivery-dispatch-service.yaml` `listMyOffers` 응답에 `pollAfterSec` 추가 (이 회신과 같은 커밋)
 
 ## 답변

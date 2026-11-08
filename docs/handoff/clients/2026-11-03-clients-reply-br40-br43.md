@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 회신: BR-40 통합 승인함 · BR-41 제출한 배치의 승인 요청 · BR-42/43 장바구니 (2026-11-03)
 
-- 요청: `pmart-clients/docs/handoff/2026-11-03-backend-approval-inbox-and-batch-approval.md`(BR-40·41), `2026-11-03-backend-cart-latency.md`(BR-42·43).
+- 요청: `pmart-clients/docs/handoff/clients/2026-11-03-backend-approval-inbox-and-batch-approval.md`(BR-40·41), `2026-11-03-backend-cart-latency.md`(BR-42·43).
 - 계약: `backoffice-bff.yaml`(승인함 항목 필드 추가), `approval-service.yaml`(`targetRef` 필터), `product-service.yaml`·`product-content-service.yaml`(`pendingSubmission`), `pricing-service.yaml`(`approvalRequest`), `cart-service.yaml`(`CartChangeResult.cart`). 모두 **필드·파라미터 추가**만이다.
 - LAN: 배포 시점은 따로 안내한다.
 

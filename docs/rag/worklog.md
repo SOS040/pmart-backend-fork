@@ -35,7 +35,7 @@
   - 게이트웨이 `/api/v1/assistant/**`
   - lan DB 비밀번호는 비워 둠(배포 결정 뒤 `{cipher}`)
 - 로컬 전용 `deploy/local/ai-assistant/docker-compose.yml`(pgvector/pgvector:pg17, 15433). 공용 compose 는 그대로 뒀다.
-- 문서: ADR-0036(제안), service-map·architecture-design 표기, 서비스 CLAUDE.md, 클라이언트 안내 `docs/handoff/2026-11-04-clients-request-ai-assistant.md`.
+- 문서: ADR-0036(제안), service-map·architecture-design 표기, 서비스 CLAUDE.md, 클라이언트 안내 `docs/handoff/clients/2026-11-04-clients-request-ai-assistant.md`.
 - 시행착오:
   - 통합 시험 컨테이너를 `@Container` 로 두면 시험 클래스마다 멈춰, 공유 컨텍스트가 꺼진 포트를 잡았다 → 정적 start 로 바꿨다.
   - jsonb::text 의 `": "` 공백 형식이 시험 치환 SQL 과 맞지 않았다 → 정규식으로 고쳤다.
@@ -61,11 +61,11 @@
 
 ### 20:30~21:30 BR-46 질문 목록 (클라이언트 요청 BR-44~48 묶음)
 - 근거:
-  - 클라이언트 요청서 `../pmart-clients/docs/handoff/2026-11-04-backend-ai-assistant-contract.md` §4
+  - 클라이언트 요청서 `../pmart-clients/docs/handoff/clients/2026-11-04-backend-ai-assistant-contract.md` §4
   - 계약 1.0.0 대조 결과 남은 항목: 질문 목록·원문 열람·상태 확인 경로·LAN 배포
 - `GET /assistant/question-history`(계약 1.1.0): 본인·출처 범위, 완료 답변은 현재 권한 재검사.
 - 원문 열람 없음, actuator 비공개, LAN 배포 보류.
-- 회신 `docs/handoff/2026-11-04-clients-reply-br44-br48.md`.
+- 회신 `docs/handoff/clients/2026-11-04-clients-reply-br44-br48.md`.
 - 커밋·push `bcb2fd4`(20:46).
 
 ---

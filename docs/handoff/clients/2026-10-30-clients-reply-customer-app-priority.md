@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 고객앱 우선 범위 회신 (2026-10-30)
 
-- 원 요청: `pmart-clients/docs/handoff/2026-10-30-backend-customer-app-priority.md`
+- 원 요청: `pmart-clients/docs/handoff/clients/2026-10-30-backend-customer-app-priority.md`
 - 기준: pmart-backend `main` 308e773 이후
 
 ## 1. 결정 (사용자 승인, 2026-10-30)
@@ -13,7 +13,7 @@
 
 ## 2. 결제(BR-01) — 해결됨
 - 고객용 결제 계약을 추가하고 구현·LAN 배포했다(ADR-0020): `POST /payment-confirmations {orderId, paymentKey, amount}`, `POST /payment-authorization-failures`, `GET /payments/{orderId}`.
-- 안내: `pmart-backend/docs/handoff/2026-10-30-clients-notice-customer-payment.md`.
+- 안내: `pmart-backend/docs/handoff/clients/2026-10-30-clients-notice-customer-payment.md`.
 - 결제 진입 정보(orderId·amount·orderName·clientKey)는 주문 초안 `nextAction=PAY` 로 내려간다(D4). 주문서(⑤)가 생겨야 앱에서 결제까지 이어진다.
 
 ## 3. 항목별 메모

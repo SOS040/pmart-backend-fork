@@ -1,7 +1,7 @@
 # [pmart-backend → pmart-clients] 회신: BR-44·45·46·47·48 (2026-11-04)
 
 - 대상: pmart-clients 요청서
-  - `docs/handoff/2026-11-04-backend-category-addition-500.md`(BR-48)
+  - `docs/handoff/clients/2026-11-04-backend-category-addition-500.md`(BR-48)
   - `…-search-not-carried.md`(BR-47)
   - `…-approval-screen-fixes.md`(BR-45)
   - `…-content-import-registration.md`(BR-44)

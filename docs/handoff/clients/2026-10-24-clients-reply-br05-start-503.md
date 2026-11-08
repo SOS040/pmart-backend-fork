@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] BR-05 추가 질문 회신: 작업 시작의 503 처리
 
-- 회신 대상: `pmart-clients/docs/handoff/2026-10-24-backend-br05-start-503.md`
+- 회신 대상: `pmart-clients/docs/handoff/clients/2026-10-24-backend-br05-start-503.md`
 - 계약 반영: `contracts/openapi/mfc-fulfillment-service.yaml` `startTask`, `getTaskStart` (이 회신과 같은 커밋)
 - 지적이 맞다. 503 이 공통 응답(`DEPENDENCY_UNAVAILABLE / UNKNOWN_RESULT`)을 참조하고 있어 의미가 모호했다. 작업 시작 전용 503 으로 바꿨다.
 

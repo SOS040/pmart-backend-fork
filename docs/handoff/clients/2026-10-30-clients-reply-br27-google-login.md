@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] BR-27 고객 Google 로그인 확인 요청 회신
 
-- 원 요청: `pmart-clients/docs/handoff/2026-10-30-backend-customer-google-login.md`
+- 원 요청: `pmart-clients/docs/handoff/clients/2026-10-30-backend-customer-google-login.md`
 - 기준: pmart-backend `main` (이 회신과 같은 커밋), `contracts/openapi/auth-service.yaml`, ADR-0019
 
 ## 1. 이용 불가 계정 오류 코드 (BR-27) — 수용: 계약 보완

@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 안내: 토스 결제위젯 customerKey = 회원 accountId (BR-34 일부, 결제 명세 D6) (2026-11-02)
 
-- 관련: 요청 `pmart-clients/docs/handoff/2026-10-31-backend-checkout-widget-and-product-names.md` §1(BR-34), 결제 명세 `docs/architecture/payment-system-spec.md` §10.3·§12 D6, 이전 안내 `2026-10-30-clients-notice-customer-payment.md`("customerKey 미정 — 앱 임시값")
+- 관련: 요청 `pmart-clients/docs/handoff/clients/2026-10-31-backend-checkout-widget-and-product-names.md` §1(BR-34), 결제 명세 `docs/architecture/payment-system-spec.md` §10.3·§12 D6, 이전 안내 `2026-10-30-clients-notice-customer-payment.md`("customerKey 미정 — 앱 임시값")
 - 결정(2026-11-02, 백엔드 사용자): **customerKey 로 회원의 기존 accountId 를 그대로 쓴다.** 별도 값·컬럼을 만들지 않는다.
 
 ## 1. 앱이 할 일

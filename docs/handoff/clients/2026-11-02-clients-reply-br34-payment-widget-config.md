@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 회신: 주문서형 결제위젯 설정 — `GET /payment-widget-config` (BR-34) (2026-11-02)
 
-- 요청: `pmart-clients/docs/handoff/2026-10-31-backend-checkout-widget-and-product-names.md` §1 (BR-34). §2(BR-35 상품명 사본)는 따로 회신한다.
+- 요청: `pmart-clients/docs/handoff/clients/2026-10-31-backend-checkout-widget-and-product-names.md` §1 (BR-34). §2(BR-35 상품명 사본)는 따로 회신한다.
 - 선택: 요청서의 (b) 별도 조회. 토스 키는 payment-service 설정이라 주문(초안) 계약에 결제사 정보를 섞지 않는다.
 - 계약: `contracts/openapi/payment-service.yaml` `GET /payment-widget-config`, `PaymentWidgetConfig`. 게이트웨이 라우트 추가.
 - 함께 볼 것: `2026-11-02-clients-notice-toss-customer-key.md`(customerKey = accountId)
