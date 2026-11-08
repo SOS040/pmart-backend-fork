@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -15,6 +15,7 @@ security:
   - bearerAuth: []
 tags:
   - { name: capacity, description: 여력 스냅샷·CapacityHold (orchestration) }
+  - { name: workers, description: '작업자·업무(작업 유형·온도대 자격)·근무 (WK-02 입력, 0.4.0)' }
   - { name: receiving, description: 수령창·수용량·하차면 (SCM/TMS) }
   - { name: assignments, description: 작업 배정·OR-Tools 계획 }
   - { name: restrictions, description: 운영 제한 (접수 중지·용량 축소) }
@@ -293,7 +294,9 @@ paths:
         2026-11-07(슬라이스 6b). 그 센터의 `MFC_SUPERVISOR` 운영자만. 작업에 활성 담당을 한 명 정한다 — 이미 담당이 있으면 그 배정은 SUPERSEDED,
         assignmentVersion 은 작업마다 1부터 1씩 는다. X-Expected-Version = 지금 활성 assignmentVersion(담당이 없으면 0) — 다르면 409 VERSION_CONFLICT.
         같은 작업자에게 다시 지정하면 바꾸지 않고 현재 배정을 돌려준다(200).
-        작업 상태(시작 가능 여부)는 mfc-fulfillment 가 시작 때 판정한다. 작업자 자격·근무·장비 정본은 아직 없어 검사하지 않는다(WK-02 강제 제약 미구현).
+        작업 상태(시작 가능 여부)는 mfc-fulfillment 가 시작 때 판정한다.
+        WK-02 강제 제약(0.4.0): 작업자가 이 센터에 등록돼 있어야(422 WORKER_NOT_REGISTERED), ACTIVE(422 WORKER_NOT_ACTIVE), 지금 업무에 taskType 이 있어야(422 DUTY_NOT_ALLOWED),
+        temperatureZone 을 주면 그 온도대 자격이 있어야(422 ZONE_NOT_QUALIFIED). 근무 밖이면 막지 않고 warnings 에 OFF_SHIFT(Q-09 미결). 장비는 아직 없다.
         바뀌면 같은 트랜잭션에서 AssignmentPublished(planId null, planVersion = assignmentVersion, 항목 1개, 토픽 mfc.capacity.v1).
       operationId: assignTask
       parameters:
@@ -464,8 +467,287 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /mfcs/{mfcId}/workers:
+    get:
+      tags: [workers]
+      summary: 센터 작업자 목록 (WK-02 입력 — 0.4.0)
+      description: 그 센터 운영자 또는 서비스 토큰. 기본은 ACTIVE·SUSPENDED(LEFT 제외). 각 작업자의 지금 업무(dutyVersion 최신)를 같이 준다.
+      operationId: listWorkers
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/WorkerState' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Worker' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [workers]
+      summary: 작업자 등록 (그 센터 MFC_SUPERVISOR — 0.4.0)
+      description: |
+        2026-11-08. workerId = 로그인 계정(운영자 ID, 토큰 subject) — 등록 뒤 바꾸지 않는 열쇠. 업무(작업 유형·온도대 자격)는 계정이 아니라
+        별도 업무 이력(dutyVersion 1부터)에 둔다 — 업무를 바꿔도 로그인 정보·계정은 그대로(사용자 결정 2026-11-08).
+        같은 센터에 이미 있으면 409 WORKER_ALREADY_REGISTERED(LEFT 였다면 state-changes 로 다시 ACTIVE). 계정 존재 여부는 auth 를 부르지 않고 기록만.
+      operationId: registerWorker
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId, displayName, duty]
+              properties:
+                workerId: { type: string, minLength: 1, maxLength: 64 }
+                displayName: { type: string, minLength: 1, maxLength: 60 }
+                duty: { $ref: '#/components/schemas/WorkerDutyBody' }
+      responses:
+        '201':
+          description: 등록됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Worker' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /mfcs/{mfcId}/workers/{workerId}:
+    get:
+      tags: [workers]
+      summary: 작업자 한 명 — 지금 업무 + 업무 이력·상태 이력 (0.4.0)
+      operationId: getWorker
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerDetail' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /mfcs/{mfcId}/workers/{workerId}/duty-changes:
+    post:
+      tags: [workers]
+      summary: 업무 변경 — 새 업무 버전 (그 센터 MFC_SUPERVISOR — 0.4.0)
+      description: |
+        업무를 통째로 새 버전으로 적는다(이전 버전은 이력으로 남는다). 계정·로그인·상태는 바뀌지 않는다. X-Expected-Version = 지금 dutyVersion(다르면 409).
+        이미 잡힌 배정은 지우지 않는다 — 새 업무에 맞지 않는 ACTIVE 배정은 응답 affectedAssignments 로 알려 감독자가 재배정한다.
+      operationId: changeWorkerDuty
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WorkerDutyBody'
+                - type: object
+                  required: [reason]
+                  properties:
+                    reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: 바뀜(같은 내용이면 변화 없이 지금 상태)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerChangeResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /mfcs/{mfcId}/workers/{workerId}/state-changes:
+    post:
+      tags: [workers]
+      summary: 작업자 상태 변경 ACTIVE·SUSPENDED·LEFT (그 센터 MFC_SUPERVISOR — 0.4.0)
+      description: SUSPENDED·LEFT 는 새 배정을 막는다(로그인·센터 권한은 auth 소관이라 여기서 바꾸지 않는다). 기존 ACTIVE 배정은 affectedAssignments 로 알린다.
+      operationId: changeWorkerState
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state, reason]
+              properties:
+                state: { $ref: '#/components/schemas/WorkerState' }
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: 바뀜(같은 상태면 변화 없음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerChangeResult' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /mfcs/{mfcId}/workers/{workerId}/shifts:
+    get:
+      tags: [workers]
+      summary: 근무 일정 (0.4.0)
+      operationId: listWorkerShifts
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK (PLANNED 만, 시작 순)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/WorkerShift' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [workers]
+      summary: 근무 등록 (그 센터 MFC_SUPERVISOR — 0.4.0)
+      description: |
+        [startAt, endAt) — 최대 16시간, 같은 작업자의 PLANNED 근무와 겹치면 409 SHIFT_OVERLAP. 휴게·교대 규칙(Q-09)은 미결이라 근무 밖 배정은 아직 막지 않는다
+        (배정 응답 warnings 에 OFF_SHIFT 로만 알린다).
+      operationId: addWorkerShift
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startAt, endAt]
+              properties:
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
+                note: { type: string, maxLength: 200 }
+      responses:
+        '201':
+          description: 등록됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerShift' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /mfcs/{mfcId}/workers/{workerId}/shifts/{shiftId}/cancellations:
+    post:
+      tags: [workers]
+      summary: 근무 취소 (그 센터 MFC_SUPERVISOR — 0.4.0)
+      operationId: cancelWorkerShift
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - { name: shiftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: 취소됨(이미 취소면 지금 상태)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerShift' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 components:
   schemas:
+    WorkerState: { type: string, enum: [ACTIVE, SUSPENDED, LEFT] }
+    TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH] }
+    TemperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+    WorkerDutyBody:
+      type: object
+      description: 업무 — 할 수 있는 작업 유형과 들어갈 수 있는 온도대(냉장·냉동 자격). 계정과 따로 버전으로 남긴다.
+      required: [taskTypes, temperatureZones]
+      properties:
+        taskTypes: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/TaskType' } }
+        temperatureZones: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/TemperatureZone' } }
+    WorkerDuty:
+      type: object
+      properties:
+        dutyVersion: { type: integer }
+        taskTypes: { type: array, items: { $ref: '#/components/schemas/TaskType' } }
+        temperatureZones: { type: array, items: { $ref: '#/components/schemas/TemperatureZone' } }
+        reason: { type: [string, 'null'] }
+        changedBy: { type: string }
+        changedAt: { type: string, format: date-time }
+    Worker:
+      type: object
+      properties:
+        mfcId: { type: string }
+        workerId: { type: string, description: 로그인 계정(운영자 ID). 바뀌지 않는다 }
+        displayName: { type: string }
+        state: { $ref: '#/components/schemas/WorkerState' }
+        duty: { $ref: '#/components/schemas/WorkerDuty' }
+        registeredBy: { type: string }
+        registeredAt: { type: string, format: date-time }
+    WorkerDetail:
+      allOf:
+        - $ref: '#/components/schemas/Worker'
+        - type: object
+          properties:
+            dutyHistory: { type: array, description: 새 버전부터, items: { $ref: '#/components/schemas/WorkerDuty' } }
+            stateHistory:
+              type: array
+              description: 새 것부터
+              items:
+                type: object
+                properties:
+                  fromState: { type: [string, 'null'] }
+                  toState: { type: string }
+                  reason: { type: [string, 'null'] }
+                  changedBy: { type: string }
+                  changedAt: { type: string, format: date-time }
+    WorkerChangeResult:
+      type: object
+      properties:
+        worker: { $ref: '#/components/schemas/Worker' }
+        changed: { type: boolean }
+        affectedAssignments:
+          type: array
+          description: 이 작업자의 ACTIVE 배정 중 새 업무·상태에 맞지 않는 것(지우지 않음 — 재배정 판단용)
+          items: { $ref: '#/components/schemas/Assignment' }
+    WorkerShift:
+      type: object
+      properties:
+        shiftId: { type: string }
+        mfcId: { type: string }
+        workerId: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        state: { type: string, enum: [PLANNED, CANCELLED] }
+        note: { type: [string, 'null'] }
+        createdBy: { type: string }
+        cancelReason: { type: [string, 'null'] }
     CapacityDemand:
       type: object
       description: 주문 1건이 소비하는 수용 단위 입력
@@ -528,7 +810,8 @@ components:
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
         taskId: { type: string, maxLength: 96 }
         taskType: { type: string, enum: [PICK, PACK, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH], description: 표시·집계용(작업 정본은 fulfillment/inbound) }
-        workerId: { type: string, maxLength: 64, description: 작업자 = 운영자 ID(작업자 로그인 BR-02 결정 전 잠정) }
+        workerId: { type: string, maxLength: 64, description: 작업자 = 운영자 ID(작업자 로그인 BR-02 결정 전 잠정). 이 센터에 등록된 작업자여야 한다(0.4.0) }
+        temperatureZone: { $ref: '#/components/schemas/TemperatureZone', description: '(0.4.0) 작업 구역 온도대 — 주면 그 자격을 검사' }
         reason: { type: string, maxLength: 200 }
     Assignment:
       type: object
@@ -543,6 +826,7 @@ components:
         planId: { type: [string, 'null'], description: 수동 배정은 null }
         assignedBy: { type: [string, 'null'] }
         assignedAt: { type: string, format: date-time }
+        warnings: { type: array, items: { type: string }, description: '(0.4.0) 막지 않는 경고 — OFF_SHIFT(등록 근무 밖)' }
     AssignmentPlan:
       type: object
       properties:

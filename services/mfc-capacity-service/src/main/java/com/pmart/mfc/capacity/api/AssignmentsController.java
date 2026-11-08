@@ -45,9 +45,11 @@ public class AssignmentsController implements AssignmentsApi {
                 body.getTaskType().getValue(),
                 body.getWorkerId(),
                 body.getReason(),
-                xExpectedVersion));
-    return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK)
-        .body(dto(r.assignment()));
+                xExpectedVersion,
+                body.getTemperatureZone() == null ? null : body.getTemperatureZone().getValue()));
+    Assignment out = dto(r.assignment());
+    out.setWarnings(r.warnings());
+    return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK).body(out);
   }
 
   @Override

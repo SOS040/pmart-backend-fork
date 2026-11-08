@@ -79,6 +79,48 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
     return res(e);
   }
 
+  Res send(String method, String token, String path, Object body, @Nullable Integer expected) {
+    var e =
+        http.method(org.springframework.http.HttpMethod.valueOf(method))
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "backoffice-web");
+                  if (expected != null) {
+                    h.set("X-Expected-Version", expected.toString());
+                  }
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(mapper.writeValueAsString(body))
+            .retrieve()
+            .toEntity(String.class);
+    return res(e);
+  }
+
+  /** 감독자가 작업자 등록(이미 있으면 409 — 무시해도 된다). */
+  Res register(String worker, List<String> types, List<String> zones) {
+    return send(
+        "POST",
+        SUPERVISOR,
+        "/mfcs/" + MFC + "/workers",
+        Map.of(
+            "workerId",
+            worker,
+            "displayName",
+            "작업자 " + worker,
+            "duty",
+            Map.of("taskTypes", types, "temperatureZones", zones)),
+        null);
+  }
+
+  static Map<String, Object> with(Map<String, Object> base, String k, String v) {
+    Map<String, Object> m = new java.util.HashMap<>(base);
+    m.put(k, v);
+    return m;
+  }
+
   Res get(String token, String path) {
     var e =
         http.get().uri(path).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
@@ -96,6 +138,8 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
 
   @Test
   void supervisorAssignsAndReassignsWithVersions() {
+    register("wrk-1", List.of("PICK", "PACK"), List.of("AMBIENT"));
+    register("wrk-2", List.of("PICK"), List.of("AMBIENT"));
     String task = "TSK-" + UUID.randomUUID();
     // 작업자·다른 센터 감독자는 배정 못 한다
     assertThat(assign(WORKER, body(task, "wrk-1"), null).status()).isEqualTo(403);
@@ -137,5 +181,122 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
             "MANUAL:" + task);
     assertThat(payloads).hasSize(2);
     assertThat(payloads.get(1)).contains("\"wrk-2\"").doesNotContain("wrk-1");
+  }
+
+  @Test
+  void workersAreRegisteredByASupervisorAndDutiesChangeWithoutTouchingTheAccount() {
+    String w = "wrk-" + UUID.randomUUID().toString().substring(0, 8);
+    Map<String, Object> duty =
+        Map.of("taskTypes", List.of("PICK"), "temperatureZones", List.of("AMBIENT"));
+    // 작업자 본인은 등록 못 한다
+    assertThat(
+            send(
+                    "POST",
+                    WORKER,
+                    "/mfcs/" + MFC + "/workers",
+                    Map.of("workerId", w, "displayName", "x", "duty", duty),
+                    null)
+                .status())
+        .isEqualTo(403);
+
+    // 등록 전 배정 → 422 WORKER_NOT_REGISTERED
+    String task = "TSK-" + UUID.randomUUID();
+    Res unknown = assign(SUPERVISOR, body(task, w), null);
+    assertThat(unknown.status()).isEqualTo(422);
+    assertThat(unknown.body().path("code").asString()).isEqualTo("WORKER_NOT_REGISTERED");
+
+    Res reg = register(w, List.of("PICK"), List.of("AMBIENT"));
+    assertThat(reg.status()).as(reg.body().toString()).isEqualTo(201);
+    assertThat(reg.body().path("duty").path("dutyVersion").asInt()).isEqualTo(1);
+    assertThat(register(w, List.of("PICK"), List.of("AMBIENT")).body().path("code").asString())
+        .isEqualTo("WORKER_ALREADY_REGISTERED");
+
+    // 업무에 없는 작업 유형, 자격 없는 온도대 → 거절. 상온 PICK 은 배정
+    assertThat(
+            assign(SUPERVISOR, with(body(task, w), "taskType", "PACK"), null)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("DUTY_NOT_ALLOWED");
+    assertThat(
+            assign(SUPERVISOR, with(body(task, w), "temperatureZone", "FROZEN"), null)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("ZONE_NOT_QUALIFIED");
+    String pickTask = "TSK-" + UUID.randomUUID();
+    Res ok = assign(SUPERVISOR, with(body(pickTask, w), "temperatureZone", "AMBIENT"), 0);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(201);
+    assertThat(ok.body().path("warnings")).isEmpty();
+
+    // 업무 변경 → 새 버전, 같은 workerId·등록 정보 그대로. PICK 을 빼면 기존 배정은 지우지 않고 알린다
+    String path = "/mfcs/" + MFC + "/workers/" + w;
+    Map<String, Object> toPack =
+        Map.of(
+            "taskTypes",
+            List.of("PACK"),
+            "temperatureZones",
+            List.of("AMBIENT", "FROZEN"),
+            "reason",
+            "포장 담당으로");
+    assertThat(send("POST", SUPERVISOR, path + "/duty-changes", toPack, 9).status()).isEqualTo(409);
+    Res changed = send("POST", SUPERVISOR, path + "/duty-changes", toPack, 1);
+    assertThat(changed.status()).as(changed.body().toString()).isEqualTo(200);
+    assertThat(changed.body().path("changed").asBoolean()).isTrue();
+    assertThat(changed.body().path("worker").path("workerId").asString()).isEqualTo(w);
+    assertThat(changed.body().path("worker").path("duty").path("dutyVersion").asInt()).isEqualTo(2);
+    assertThat(changed.body().path("affectedAssignments")).hasSize(1);
+    assertThat(changed.body().path("affectedAssignments").path(0).path("taskId").asString())
+        .isEqualTo(pickTask);
+    JsonNode detail = get(WORKER, path).body();
+    assertThat(detail.path("registeredBy").asString()).isEqualTo("sup-1");
+    assertThat(detail.path("dutyHistory")).hasSize(2);
+    assertThat(detail.path("dutyHistory").path(1).path("taskTypes").path(0).asString())
+        .isEqualTo("PICK");
+    // 이제 냉동 PACK 가능
+    Map<String, Object> frozenPack =
+        with(
+            with(body("TSK-" + UUID.randomUUID(), w), "taskType", "PACK"),
+            "temperatureZone",
+            "FROZEN");
+    assertThat(assign(SUPERVISOR, frozenPack, 0).status()).isEqualTo(201);
+
+    // 근무: 겹치면 409, 등록 근무 밖 배정은 막지 않고 OFF_SHIFT 경고
+    java.time.Instant later = java.time.Instant.now().plusSeconds(3 * 3600);
+    Map<String, Object> shift =
+        Map.of("startAt", later.toString(), "endAt", later.plusSeconds(8 * 3600).toString());
+    assertThat(send("POST", SUPERVISOR, path + "/shifts", shift, null).status()).isEqualTo(201);
+    Res overlap = send("POST", SUPERVISOR, path + "/shifts", shift, null);
+    assertThat(overlap.status()).isEqualTo(409);
+    assertThat(overlap.body().path("code").asString()).isEqualTo("SHIFT_OVERLAP");
+    Res warned =
+        assign(SUPERVISOR, with(body("TSK-" + UUID.randomUUID(), w), "taskType", "PACK"), 0);
+    assertThat(warned.status()).isEqualTo(201);
+    assertThat(warned.body().path("warnings").path(0).asString()).isEqualTo("OFF_SHIFT");
+
+    // 정지 → 새 배정 거절(로그인·계정은 그대로), 상태 이력
+    Res suspended =
+        send(
+            "POST",
+            SUPERVISOR,
+            path + "/state-changes",
+            Map.of("state", "SUSPENDED", "reason", "휴직"),
+            null);
+    assertThat(suspended.body().path("worker").path("state").asString()).isEqualTo("SUSPENDED");
+    assertThat(suspended.body().path("affectedAssignments")).hasSize(3);
+    assertThat(
+            assign(SUPERVISOR, with(body("TSK-" + UUID.randomUUID(), w), "taskType", "PACK"), 0)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("WORKER_NOT_ACTIVE");
+    assertThat(get(WORKER, path).body().path("stateHistory").path(0).path("toState").asString())
+        .isEqualTo("SUSPENDED");
+    assertThat(
+            get(WORKER, "/mfcs/" + MFC + "/workers?state=SUSPENDED")
+                .body()
+                .path("items")
+                .findValuesAsString("workerId"))
+        .contains(w);
   }
 }

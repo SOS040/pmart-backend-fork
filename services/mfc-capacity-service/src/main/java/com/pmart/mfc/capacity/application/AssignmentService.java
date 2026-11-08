@@ -46,28 +46,32 @@ public class AssignmentService {
       String taskType,
       String workerId,
       @Nullable String reason,
-      @Nullable Integer expectedVersion) {}
+      @Nullable Integer expectedVersion,
+      @Nullable String temperatureZone) {}
 
-  /** created = false 면 이미 그 작업자(변화 없음). */
-  public record Assigned(AssignmentRow assignment, boolean created) {}
+  /** created = false 면 이미 그 작업자(변화 없음). warnings = 막지 않는 경고(OFF_SHIFT). */
+  public record Assigned(AssignmentRow assignment, boolean created, List<String> warnings) {}
 
   private final AssignmentStore store;
   private final RequestIdempotency idempotency;
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
   private final Clock clock;
+  private final WorkerService workers;
 
   public AssignmentService(
       AssignmentStore store,
       RequestIdempotency idempotency,
       EventPublisher events,
       EventEnvelopeCodec codec,
-      Clock clock) {
+      Clock clock,
+      WorkerService workers) {
     this.store = store;
     this.idempotency = idempotency;
     this.events = events;
     this.codec = codec;
     this.clock = clock;
+    this.workers = workers;
   }
 
   public Assigned assign(String requestId, String sourceSystem, AssignCommand cmd) {
@@ -78,6 +82,21 @@ public class AssignmentService {
     if (cmd.workerId().isBlank()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "workerId 가 비었습니다.");
     }
+    // WK-02 강제 제약: 등록·ACTIVE·업무(작업 유형)·온도대 자격. 근무 밖은 경고만(Q-09 미결)
+    String reject =
+        workers.rejection(cmd.mfcId(), cmd.workerId(), cmd.taskType(), cmd.temperatureZone());
+    if (reject != null) {
+      throw new PmartException(
+          reject,
+          org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+          "작업자 " + cmd.workerId() + " 에게 이 작업을 배정할 수 없습니다: " + reject,
+          false,
+          List.of());
+    }
+    List<String> warnings =
+        workers.offShift(cmd.mfcId(), cmd.workerId(), clock.instant())
+            ? List.of(com.pmart.mfc.capacity.domain.WorkerRules.OFF_SHIFT)
+            : List.of();
     return idempotency
         .execute(
             new RequestKey(sourceSystem, requestId, "assignTask", supervisor),
@@ -96,7 +115,7 @@ public class AssignmentService {
                   throw new PmartException(ErrorCode.FORBIDDEN, "다른 센터의 작업입니다.");
                 }
                 if (a.workerId().equals(cmd.workerId())) {
-                  return new Assigned(a, false);
+                  return new Assigned(a, false, warnings);
                 }
               }
               Instant at = clock.instant();
@@ -113,7 +132,8 @@ public class AssignmentService {
                       null,
                       supervisor,
                       cmd.reason(),
-                      at);
+                      at,
+                      cmd.temperatureZone());
               store.insert(row);
               publish(row, supervisor);
               log.info(
@@ -123,7 +143,7 @@ public class AssignmentService {
                   row.assignmentVersion(),
                   row.mfcId(),
                   supervisor);
-              return new Assigned(row, true);
+              return new Assigned(row, true, warnings);
             })
         .value();
   }

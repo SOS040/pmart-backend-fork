@@ -30,7 +30,8 @@ public class AssignmentStore {
       @Nullable String planId,
       @Nullable String assignedBy,
       @Nullable String reason,
-      Instant assignedAt) {}
+      Instant assignedAt,
+      @Nullable String temperatureZone) {}
 
   private final JdbcTemplate jdbc;
 
@@ -68,8 +69,8 @@ public class AssignmentStore {
   public void insert(AssignmentRow r) {
     jdbc.update(
         "INSERT INTO task_assignment (assignment_id, mfc_id, task_id, task_type, worker_id,"
-            + " assignment_version, state, plan_id, assigned_by, reason, assigned_at)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            + " assignment_version, state, plan_id, assigned_by, reason, assigned_at, temperature_zone)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         r.assignmentId(),
         r.mfcId(),
         r.taskId(),
@@ -80,7 +81,8 @@ public class AssignmentStore {
         r.planId(),
         r.assignedBy(),
         r.reason(),
-        Timestamp.from(r.assignedAt()));
+        Timestamp.from(r.assignedAt()),
+        r.temperatureZone());
   }
 
   public List<AssignmentRow> list(
@@ -121,6 +123,7 @@ public class AssignmentStore {
         rs.getString("plan_id"),
         rs.getString("assigned_by"),
         rs.getString("reason"),
-        rs.getTimestamp("assigned_at").toInstant());
+        rs.getTimestamp("assigned_at").toInstant(),
+        rs.getString("temperature_zone"));
   }
 }
