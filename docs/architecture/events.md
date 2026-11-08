@@ -137,6 +137,23 @@
 | `ReturnInspected` | mfc-quality | claim, mfc-inventory | claimId, lines[{sku, qty, RESALE/DISPOSE}], inspectedAt | 회수품 검수(상온 미개봉만 재판매) | ② |
 | `DisposalApproved` | mfc-quality | mfc-inventory | disposalId, lines[], approverRef | 폐기 승인(실행은 inventory) | ② |
 
+### MFC 구현 현황 (2026-11-08 코드·설정 기준)
+위 표의 구독자는 설계상 목록이고, 상당수는 서비스가 아직 없거나 구독을 붙이지 않았다. 실제 상태:
+
+- **발행 중**
+  - mfc-inventory: `InventoryHoldExpired`, `ReservationBlocked`, `PackageHandedOverPosted`, `InventoryExecutionApplied`, `StockAdjusted`, `SkuHandlingChanged`, `InventorySnapshotPublished`(주기, 설정 있을 때만)
+  - mfc-fulfillment: `WorkAccepted`, `WorkRejected`, `PreparationStarted`, `LineShortageReported`, `PackingFinished`, `ShipmentReady`, `PackageHandedOver`, `WorkStopResult`, `PackageInvalidated`, `TaskProgressed`
+  - mfc-capacity: `AssignmentPublished`, `CapacityReduced`, `OperationRestrictionApplied`/`Lifted`
+  - mfc-quality: `QualityDecisionMade`, `DisposalApproved` · mfc-location: `MfcLocationStateChanged` · mfc-inbound: `SupplyRequestSubmitted`
+- **아직 발행 안 함**(동기 응답으로 대신하거나 앞 흐름이 없음): `InventoryHeld`·`InventoryReleased`(예약·해제는 동기 응답 — orchestration 이 응답으로 진행), `MfcReceiptPosted`·`ReceiptCorrectionPosted`(CDC 이송 흐름 없음), `MfcStockAvailable`(③), `CapacityHoldResult`(동기 응답), `ReceivingCapabilityChanged`(구독자 없음 — 값은 설정), `InboundArrivalRecorded`·`ReceiptDiscrepancyReported`(TRF 없음), `ReturnItemReceived`·`ReturnInspected`(회수 흐름 IV-10 없음)
+- **실제 구독(토픽 → 서비스: 처리하는 사건, 나머지는 inbox 만)**
+  - `mfc.fulfillment.v1` → order-orchestration: `LineShortageReported` · order: `PreparationStarted` · claim: `WorkStopResult`
+  - `mfc.inventory.v1` → order: `ReservationBlocked`(이행 확인 필요) · mfc-inbound: `InventoryExecutionApplied`·`InventoryHoldExpired`·`StockAdjusted`(보충 즉시 점검)
+  - `mfc.capacity.v1` → mfc-fulfillment: `AssignmentPublished`
+  - `mfc.location.v1` → mfc-inventory: `MfcLocationStateChanged`
+  - `mfc.sku-handling.v1` → search(Logstash)
+- **구독자가 아직 없는 서비스**(표에 "예정"으로 읽는다): replenishment, demand-planning, transport-planning·execution, delivery-dispatch·execution, cdc-*, case, approval(사건 구독), audit, notification, BI, backoffice-bff, cart.
+
 ## 6. Middle-mile TMS
 
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
