@@ -102,6 +102,7 @@ public class TaskExecutionService {
   private final RequestIdempotency idempotency;
   private final Clock clock;
   private final LocationAllocationService allocations;
+  private final MoveService moves;
 
   public TaskExecutionService(
       StockStore stock,
@@ -111,7 +112,9 @@ public class TaskExecutionService {
       ReservationStore reservations,
       RequestIdempotency idempotency,
       Clock clock,
-      LocationAllocationService allocations) {
+      LocationAllocationService allocations,
+      MoveService moves) {
+    this.moves = moves;
     this.stock = stock;
     this.ledger = ledger;
     this.locations = locations;
@@ -240,6 +243,15 @@ public class TaskExecutionService {
       for (String sku : cmd.lines().stream().map(ExecLine::sku).distinct().toList()) {
         var p = projections.get(sku);
         locations.requireStorage(cmd.mfcId(), cmd.toLocation(), p == null ? null : p.storageType());
+      }
+      // 진열 규칙(카테고리·출하 부적격·같은 상품 한 자리·용량) — 이동과 같은 기준(2026-11-08)
+      for (ExecLine l : cmd.lines()) {
+        moves.requirePlacement(
+            cmd.mfcId(),
+            l.sku(),
+            l.lotId(),
+            java.util.Objects.requireNonNull(cmd.toLocation()),
+            l.qty());
       }
     }
     if (cmd.type() == Type.PICK) {

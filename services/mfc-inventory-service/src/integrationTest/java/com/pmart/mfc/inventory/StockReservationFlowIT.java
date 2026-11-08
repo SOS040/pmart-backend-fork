@@ -1155,6 +1155,73 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         .contains("WAITING_FOR_STOCK");
   }
 
+  /** 입고 적치도 진열 규칙(2026-11-08): 같은 상품은 한 자리(고회전 제외), 카테고리 칸은 그 카테고리 상품만. */
+  @Test
+  void putawayFollowsShelfRules() {
+    shelf("B-09-01", "STORAGE", 0, 0, 0, false);
+    shelf("H-09-01", "PICKING", 0, 0, 0, true);
+    shelf("K-09-01", "STORAGE", 0, 0, 0, false, "CAT-DRINK");
+    awaitLocations(6);
+    String sku = newSku();
+    handlingOn(sku);
+    projection(sku, "AMBIENT");
+    String receiptId = "RCV-" + UUID.randomUUID();
+    assertThat(
+            postReceipt(
+                    UUID.randomUUID().toString(),
+                    receiptOf(receiptId, List.of(line(sku, 9, 0, null, null))))
+                .status())
+        .isEqualTo(201);
+    String lot =
+        get(INBOUND, "/internal/receipts/" + receiptId)
+            .body()
+            .path("lines")
+            .path(0)
+            .path("lotId")
+            .asString();
+    assertThat(
+            execute(
+                    "INSPECT",
+                    "RCV-DOCK",
+                    null,
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 9, "resultQuality", "NORMAL")))
+                .status())
+        .isEqualTo(201);
+    assertThat(
+            execute(
+                    "PUTAWAY",
+                    "RCV-DOCK",
+                    "A-01-01",
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 3)))
+                .status())
+        .isEqualTo(201);
+    Res second =
+        execute(
+            "PUTAWAY", "RCV-DOCK", "B-09-01", List.of(Map.of("sku", sku, "lotId", lot, "qty", 2)));
+    assertThat(second.status()).isEqualTo(409);
+    assertThat(second.body().path("code").asString()).isEqualTo("SKU_ALREADY_SHELVED");
+    Res category =
+        execute(
+            "PUTAWAY", "RCV-DOCK", "K-09-01", List.of(Map.of("sku", sku, "lotId", lot, "qty", 2)));
+    assertThat(category.body().path("code").asString()).isEqualTo("SKU_CATEGORY_UNKNOWN");
+    assertThat(
+            execute(
+                    "PUTAWAY",
+                    "RCV-DOCK",
+                    "H-09-01",
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 2)))
+                .status())
+        .isEqualTo(201); // 고회전 칸은 두 번째 자리 가능
+    assertThat(
+            execute(
+                    "PUTAWAY",
+                    "RCV-DOCK",
+                    "A-01-01",
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 4)))
+                .status())
+        .isEqualTo(201); // 원래 자리에 더 넣기
+  }
+
   /** 수령 → 검수 → 칸별 적치(같은 LOT 을 여러 칸에). 반환 = lotId. */
   String stockedAt(String sku, String lotRef, String expiry, Map<String, Integer> byShelf) {
     projection(sku, "AMBIENT");
@@ -1210,7 +1277,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void quarantineBlocksOrdersAllocatedAtThatShelfFirstAndResecuresFromAnotherLot() {
     location("PAK-A-01", "PACKING", "AMBIENT", "ACTIVE", 1);
-    location("A-01-02", "STORAGE", "AMBIENT", "ACTIVE", 1);
+    shelf("A-01-02", "STORAGE", 0, 0, 0, true); // 같은 LOT 을 두 칸에 — 고회전 칸이라 가능(한 상품 한 자리 예외)
     awaitLocations(5);
     String sku = newSku();
     handlingOn(sku);
@@ -1353,7 +1420,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void reservationsAreAllocatedToShelvesAndPickingConsumesOrMovesTheAllocation() {
     location("PAK-A-01", "PACKING", "AMBIENT", "ACTIVE", 1);
-    location("A-01-02", "STORAGE", "AMBIENT", "ACTIVE", 1);
+    shelf("A-01-02", "STORAGE", 0, 0, 0, true); // 같은 LOT 을 두 칸에 — 고회전 칸이라 가능(한 상품 한 자리 예외)
     awaitLocations(5);
     String sku = newSku();
     handlingOn(sku);

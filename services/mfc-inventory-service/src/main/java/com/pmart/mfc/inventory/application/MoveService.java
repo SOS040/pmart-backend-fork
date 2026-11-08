@@ -431,6 +431,70 @@ public class MoveService {
         .orElseThrow(() -> PmartException.notFound(MOVE_NOT_FOUND, "이동이 없습니다: " + moveId));
   }
 
+  /**
+   * 입고 적치의 진열 규칙(2026-11-08 사용자 결정 — 이동과 같은 기준): 카테고리 칸은 그 카테고리 상품·출하 가능 LOT 만, 같은 상품은 한 자리(고회전
+   * 제외). 용량은 칸 치수와 상품 크기를 알 때만 본다(적치는 치수 미등록으로 입고를 멈추지 않는다 — 전에는 용량을 아예 안 봤다).
+   */
+  public void requirePlacement(String mfcId, String sku, String lotId, String toLocation, int qty) {
+    LocationRow to = locations.row(mfcId, toLocation);
+    Integer capacity =
+        props.isDummySkuSize()
+            ? SkuSize.dummyFor(sku)
+                .capacity(to.widthMm(), to.depthMm(), to.heightMm(), to.maxWeightG())
+            : null;
+    int destNow = 0;
+    for (var u : stock.unitsAt(mfcId, toLocation)) {
+      if (u.key().sku().equals(sku)) {
+        destNow += u.qty();
+      }
+    }
+    int destIncoming = 0;
+    for (MoveRow m : moves.openAt(mfcId, toLocation)) {
+      if (m.toLocation().equals(toLocation) && m.sku().equals(sku)) {
+        destIncoming += m.incoming();
+      }
+    }
+    Map<String, Boolean> shelves = new LinkedHashMap<>();
+    for (var u : stock.units(mfcId, sku)) {
+      shelf(mfcId, u.key().locationCode(), shelves);
+    }
+    for (MoveRow m : moves.openForSku(mfcId, sku)) {
+      shelf(mfcId, m.toLocation(), shelves);
+    }
+    var lotRow = stock.lots(List.of(lotId)).get(lotId);
+    Boolean shippable =
+        lotRow == null
+            ? null
+            : reservations.shippableToday(
+                sku, lotId, lotRow.expiryDate(), lotRow.manufactureDate(), clock.instant());
+    String from = "(입고)";
+    String reject =
+        MoveRules.rejection(
+            from,
+            toLocation,
+            false,
+            to.highTurnover(),
+            qty,
+            qty,
+            qty,
+            to.categoryId(),
+            skus.categories(sku).orElse(null),
+            shippable,
+            shelves,
+            0,
+            destNow + destIncoming + qty,
+            capacity == null ? Integer.MAX_VALUE : capacity);
+    if (reject != null) {
+      CreateCommand c = new CreateCommand("-", mfcId, sku, lotId, from, toLocation, qty);
+      throw new PmartException(
+          reject,
+          HttpStatus.CONFLICT,
+          message(reject, c, qty, qty, capacity == null ? 0 : capacity, destNow + destIncoming),
+          false,
+          List.of());
+    }
+  }
+
   /** 출하 부적격 LOT 한 줄. */
   public record Unshippable(
       String sku,
