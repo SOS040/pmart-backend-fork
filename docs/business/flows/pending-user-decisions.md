@@ -18,8 +18,8 @@
 ## 4. 수요·공급 (보류)
 | 결정할 것 | 자세히 |
 |---|---|
-| 판매 예상량 기반 CDC 공급 요청 — 예측 기준·이동평균 기간·품절 판정·신상품 기준선·검토 주기·리드타임·안전재고 | `forecast-based-supply-request.md` |
-| Chronos-2(별도 Python 서비스) 도입 — 기술 스택 "별도 Python 런타임 없음" 과 충돌, ADR 필요 | memory `baro-pick-docs-mfc-addendum` 충돌 ① |
+| 판매 예상량 기반 CDC 공급 요청 — **계획(시작값) 기록됨 2026-11-08**, 서비스 시작 때 이력으로 검증 | `forecast-based-supply-request.md` "계획" |
+| Chronos-2(별도 Python 서비스) — **보류**(이동평균부터, 이력·백테스트 뒤 ADR) | 같은 문서 "계획" |
 
 ## 5. 그 밖 (작음)
 - 진열: LAN 칸에 카테고리 넣기(지금 전부 기타 칸) — 실제 카테고리 배치가 정해지면.
