@@ -509,6 +509,13 @@ public class MoveService {
   @Transactional(readOnly = true)
   public List<Unshippable> unshippable(String mfcId) {
     Operator.requireCenter(mfcId);
+    List<Unshippable> out = unshippableAt(mfcId);
+    return out.size() > 500 ? out.subList(0, 500) : out;
+  }
+
+  /** {@link #unshippable} 의 계산(권한 검사·500 자르기 없음) — 정기 알림(UnshippableLotScan)이 쓴다. */
+  @Transactional(readOnly = true)
+  public List<Unshippable> unshippableAt(String mfcId) {
     Instant now = clock.instant();
     var units = stock.storedUnits(mfcId);
     var lots =
@@ -551,7 +558,7 @@ public class MoveService {
                 Unshippable::expiryDate,
                 java.util.Comparator.nullsLast(java.util.Comparator.<LocalDate>naturalOrder()))
             .thenComparing(Unshippable::locationCode));
-    return out.size() > 500 ? out.subList(0, 500) : out;
+    return out;
   }
 
   /** 실사: 이 칸들에 진행 중 이동이 있는가. */

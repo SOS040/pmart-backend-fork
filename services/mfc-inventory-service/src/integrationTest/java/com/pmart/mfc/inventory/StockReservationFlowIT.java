@@ -58,6 +58,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.mfc.inventory.application.UnshippableLotScan unshippableScan;
 
   RestClient http;
   String mfc;
@@ -1024,11 +1025,33 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     JsonNode recall = get(op, "/mfcs/" + mfc + "/unshippable-lots").body().path("items");
     assertThat(recall.findValuesAsString("lotId")).contains(nearLot);
     assertThat(recall.findValuesAsString("lotId")).doesNotContain(lot); // 소비기한 없는 정상 LOT 은 아님
+    // 정기 알림(남은 일 16): 기타 칸(A-01-01)에 있으면 알림 아님 → 카테고리 칸이면 OPEN(처음 본 시각 유지) → 기타 칸으로 거두면 CLEARED
+    assertThat(unshippableScan.scan(mfc).added()).isZero();
+    jdbc.update(
+        "UPDATE location_projection SET category_id = 'CAT-FOOD' WHERE mfc_id = ? AND location_code = 'A-01-01'",
+        mfc);
+    var firstScan = unshippableScan.scan(mfc);
+    assertThat(firstScan.added()).isEqualTo(1);
+    assertThat(unshippableScan.scan(mfc).added()).isZero(); // 같은 칸·LOT 은 한 건
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM unshippable_lot_alert WHERE mfc_id = ? AND lot_id = ?"
+                    + " AND state = 'OPEN' AND location_code = 'A-01-01'",
+                Integer.class,
+                mfc,
+                nearLot))
+        .isEqualTo(1);
+    jdbc.update(
+        "UPDATE location_projection SET category_id = NULL WHERE mfc_id = ? AND location_code = 'A-01-01'",
+        mfc);
     Res misc =
         move(
             "/internal/move-allocations",
             moveBody("MV-10", near, nearLot, "A-01-01", "B-01-02", 3));
     assertThat(misc.status()).as(misc.body().toString()).isEqualTo(201); // 기타 칸(카테고리 없음)은 받는다
+    var after = unshippableScan.scan(mfc);
+    assertThat(after.cleared()).isEqualTo(1);
+    assertThat(after.open()).isZero();
   }
 
   Res put(String token, String path, Object body) {
