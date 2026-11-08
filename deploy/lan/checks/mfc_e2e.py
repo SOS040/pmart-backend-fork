@@ -172,8 +172,24 @@ pick, pack, ret = ship + "-PICK", ship + "-PACK", ship + "-RETURN"
 
 
 def assign_and_start(task, ttype):
-    step(f"{ttype} 배정(감독자)", http("POST", f"{GW}/assignments", sup,
-                                    {"mfcId": MFC, "taskId": task, "taskType": ttype, "workerId": wid}, version=0), 201, 200)
+    # 다음 작업 받기(시스템 배정, capacity 0.6.0) — 센터에 더 급한 다른 작업이 있으면 감독자 배정으로
+    pulled = None
+    for _ in range(20):
+        st, b = http("POST", f"{GW}/mfcs/{MFC}/workers/{wid}/next-tasks", wrk)
+        if st in (200, 201) and b.get("taskId") == task:
+            pulled = b
+            break
+        if st == 409 and b.get("code") == "NO_TASK_AVAILABLE":
+            time.sleep(1)  # 작업이 READY 로 보이기 전
+            continue
+        break
+    if pulled:
+        results.append((f"{ttype} 다음 작업 받기(시스템 배정)", 201, True))
+        print("OK  ", f"{ttype} 다음 작업 받기(시스템 배정)", pulled.get("source"))
+    else:
+        print("     (다음 작업 받기가 다른 작업을 줌 — 감독자 배정으로)", st, b.get("taskId") or b.get("code"))
+        step(f"{ttype} 배정(감독자)", http("POST", f"{GW}/assignments", sup,
+                                        {"mfcId": MFC, "taskId": task, "taskType": ttype, "workerId": wid}, version=0), 201, 200)
     for _ in range(30):
         st, t = http("GET", f"{GW}/tasks/{task}", wrk)
         if st == 200 and t.get("state") == "ASSIGNED":
