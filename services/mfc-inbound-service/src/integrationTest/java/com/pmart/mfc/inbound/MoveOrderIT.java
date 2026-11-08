@@ -53,6 +53,7 @@ class MoveOrderIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired com.pmart.mfc.inbound.application.MoveOrderService moveOrders;
 
   @InjectWireMock("inventory")
   WireMockServer inv;
@@ -196,5 +197,27 @@ class MoveOrderIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("moveId"))
         .contains(moveId);
+  }
+
+  @Test
+  void systemReplenishmentsAreRecordedAsMoveOrdersOnce() {
+    Map<String, Object> mv = new LinkedHashMap<>(alloc(10, 0, 0, "ACTIVE", null));
+    mv.put("moveId", "RPL-IT-1");
+    mv.put("kind", "REPLENISH");
+    mv.put("mfcId", MFC);
+    mv.put("sku", "E-00000010");
+    mv.put("lotId", "LOT-9");
+    mv.put("fromLocation", "A-S1-05-1-01");
+    mv.put("toLocation", "A-S9-01-1-01");
+    stub(
+        "/api/v1/internal/replenishment-evaluations",
+        200,
+        Map.of("created", 1, "moves", List.of(mv), "skipped", List.of()));
+    assertThat(moveOrders.recordReplenishments()).isEqualTo(1);
+    assertThat(moveOrders.recordReplenishments()).isZero(); // 같은 이동은 한 번
+    JsonNode order = get(WRK, "/move-orders/RPL-IT-1").body();
+    assertThat(order.path("kind").asString()).isEqualTo("REPLENISH");
+    assertThat(order.path("createdBy").asString()).isEqualTo("SYSTEM");
+    assertThat(order.path("qty").asInt()).isEqualTo(10);
   }
 }

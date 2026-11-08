@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -154,6 +154,109 @@ paths:
                         onMiscShelf: { type: boolean }
                         qty: { type: integer }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+  /mfcs/{mfcId}/replenishment-policies:
+    get:
+      tags: [moves]
+      summary: 자동 선반 보충 기준 목록 (IV-04, 0.14.0)
+      operationId: listReplenishmentPolicies
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ReplenishmentPolicy' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    put:
+      tags: [moves]
+      summary: 자동 선반 보충 기준 등록·변경 — 감독자 (IV-04, 0.14.0)
+      description: |
+        2026-11-08 사용자 결정: 보충은 **시스템이 만든다**(재배치는 감독자). 기준값(Q-07)은 감독자가 칸·상품별로 등록한다 — 등록이 없는 칸은 보충하지 않는다(수동 보충 요청 없음).
+        **고회전 선반만**(같은 상품 한 자리 규칙의 예외인 칸 — 아니면 422 REPLENISH_ONLY_HIGH_TURNOVER). min ≤ target, 단위 > 0.
+      operationId: putReplenishmentPolicy
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locationCode, sku, minQty, targetQty, unitQty]
+              properties:
+                locationCode: { type: string }
+                sku: { type: string }
+                minQty: { type: integer, minimum: 0 }
+                targetQty: { type: integer, minimum: 0 }
+                unitQty: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 등록됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReplenishmentPolicy' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+    delete:
+      tags: [moves]
+      summary: 자동 선반 보충 기준 삭제 — 감독자 (0.14.0)
+      operationId: deleteReplenishmentPolicy
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: locationCode, in: query, required: true, schema: { type: string } }
+        - { name: sku, in: query, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '204': { description: 삭제됨(없어도) }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+  /internal/replenishment-evaluations:
+    post:
+      tags: [moves]
+      summary: '[inbound→inventory] 자동 선반 보충 점검 — 필요한 보충 이동을 만들고 진행 중 보충 이동을 돌려준다 (IV-04, 0.14.0)'
+      description: |
+        기준마다: 현재량 C(그 칸 정상·적치 − 보류)가 min 이하이면 지시량 = floor(min(target − C − 진행 중 U, 출발 이동 가능 S, 도착 남은 공간 V) ÷ 단위) × 단위.
+        출발은 같은 상품의 다른 선반·피킹 칸에서 **소비기한 빠른 출하 가능 LOT 부터**, 이동 가능 = 집을 수 있는 양이고 LOT 가용 A 까지(이동 중은 판매 가능에서 빠짐 —
+        예약이 많아 A 가 모자라면 **재고가 확보될 때까지 보충하지 않는다**, 사용자 결정). 만든 이동은 일반 이동 배정(kind REPLENISH)과 같은 규칙으로 검사한다.
+        기준마다 따로 처리(한 기준의 거절이 다른 기준을 막지 않는다). 응답 = 지금 진행 중인 보충 이동 전부(inbound 가 이동 지시로 남긴다 — 다시 불러도 같다).
+        상품 크기·칸 치수가 없으면 그 기준은 건너뛴다(skipped 에 이유).
+      operationId: evaluateReplenishment
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mfcId: { type: [string, 'null'], description: 없으면 모든 센터 }
+      responses:
+        '200':
+          description: 점검 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: { type: integer }
+                  moves: { type: array, items: { $ref: '#/components/schemas/MoveAllocation' } }
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        mfcId: { type: string }
+                        locationCode: { type: string }
+                        sku: { type: string }
+                        reason: { type: string }
   /internal/move-allocations:
     post:
       tags: [moves]
@@ -1224,6 +1327,7 @@ components:
       type: object
       properties:
         moveId: { type: string }
+        kind: { type: string, enum: [MOVE, REPLENISH], description: 'MOVE = 감독자 재배치, REPLENISH = 시스템 자동 보충(0.14.0)' }
         mfcId: { type: string }
         sku: { type: string }
         lotId: { type: string }
@@ -1238,6 +1342,17 @@ components:
         sizeClass: { type: [string, 'null'], description: 용량 계산에 쓴 상품 크기(S·M·L, 더미) }
         destinationCapacity: { type: [integer, 'null'], description: 도착 칸에 이 상품이 들어가는 개수(더미 크기 기준) }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ReplenishmentPolicy:
+      type: object
+      properties:
+        mfcId: { type: string }
+        locationCode: { type: string }
+        sku: { type: string }
+        minQty: { type: integer }
+        targetQty: { type: integer }
+        unitQty: { type: integer }
+        updatedBy: { type: string }
         updatedAt: { type: string, format: date-time }
     PickPlan:
       type: object

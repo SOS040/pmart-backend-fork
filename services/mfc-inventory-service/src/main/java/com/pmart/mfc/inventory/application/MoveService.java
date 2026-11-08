@@ -59,7 +59,19 @@ public class MoveService {
       String lotId,
       String fromLocation,
       String toLocation,
-      int qty) {}
+      int qty,
+      String kind) {
+    public CreateCommand(
+        String moveId,
+        String mfcId,
+        String sku,
+        String lotId,
+        String fromLocation,
+        String toLocation,
+        int qty) {
+      this(moveId, mfcId, sku, lotId, fromLocation, toLocation, qty, "MOVE");
+    }
+  }
 
   private final MoveStore moves;
   private final StockStore stock;
@@ -237,7 +249,8 @@ public class MoveService {
             capacity,
             hash,
             at,
-            at);
+            at,
+            c.kind());
     moves.insert(row);
     log.info(
         "이동 배정 {} {} {}×{} {} → {} (크기 {} 용량 {})",

@@ -30,7 +30,8 @@ public class MoveStore {
       @Nullable Integer destinationCapacity,
       String contentHash,
       Instant createdAt,
-      Instant updatedAt) {
+      Instant updatedAt,
+      String kind) {
     public int onCart() {
       return pickedQty - droppedQty;
     }
@@ -59,8 +60,8 @@ public class MoveStore {
   public boolean insert(MoveRow m) {
     return jdbc.update(
             "INSERT INTO move_allocation (move_id, mfc_id, sku, lot_id, from_location, to_location,"
-                + " qty, state, size_class, destination_capacity, content_hash, created_at, updated_at)"
-                + " VALUES (?,?,?,?,?,?,?,'ACTIVE',?,?,?,?,?) ON CONFLICT DO NOTHING",
+                + " qty, state, size_class, destination_capacity, content_hash, created_at, updated_at,"
+                + " kind) VALUES (?,?,?,?,?,?,?,'ACTIVE',?,?,?,?,?,?) ON CONFLICT DO NOTHING",
             m.moveId(),
             m.mfcId(),
             m.sku(),
@@ -72,7 +73,8 @@ public class MoveStore {
             m.destinationCapacity(),
             m.contentHash(),
             Timestamp.from(m.createdAt()),
-            Timestamp.from(m.updatedAt()))
+            Timestamp.from(m.updatedAt()),
+            m.kind())
         == 1;
   }
 
@@ -102,6 +104,20 @@ public class MoveStore {
         mfcId,
         location,
         location);
+  }
+
+  /** 진행 중 자동 보충 이동(센터 null 이면 전부). */
+  public List<MoveRow> openReplenishments(@Nullable String mfcId) {
+    return mfcId == null
+        ? jdbc.query(
+            "SELECT * FROM move_allocation WHERE kind = 'REPLENISH'"
+                + " AND state IN ('ACTIVE', 'CANCEL_PENDING') ORDER BY created_at",
+            (rs, i) -> row(rs))
+        : jdbc.query(
+            "SELECT * FROM move_allocation WHERE kind = 'REPLENISH' AND mfc_id = ?"
+                + " AND state IN ('ACTIVE', 'CANCEL_PENDING') ORDER BY created_at",
+            (rs, i) -> row(rs),
+            mfcId);
   }
 
   /** 이 상품의 진행 중 이동. */
@@ -151,6 +167,7 @@ public class MoveStore {
         (Integer) rs.getObject("destination_capacity"),
         rs.getString("content_hash"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("kind"));
   }
 }

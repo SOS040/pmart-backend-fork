@@ -80,6 +80,7 @@ public class MoveOrdersController implements MovesApi {
   static MoveOrder dto(Row r) {
     var out = new MoveOrder();
     out.setMoveId(r.moveId());
+    out.setKind(MoveOrder.KindEnum.fromValue(r.kind()));
     out.setMfcId(r.mfcId());
     out.setSku(r.sku());
     out.setLotId(r.lotId());

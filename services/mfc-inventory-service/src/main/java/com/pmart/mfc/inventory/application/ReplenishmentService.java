@@ -1,0 +1,341 @@
+package com.pmart.mfc.inventory.application;
+
+import com.pmart.common.security.PmartPrincipal;
+import com.pmart.common.web.ErrorCode;
+import com.pmart.common.web.PmartException;
+import com.pmart.mfc.inventory.domain.ReplenishmentRules;
+import com.pmart.mfc.inventory.domain.SkuSize;
+import com.pmart.mfc.inventory.domain.StockUnit.Quality;
+import com.pmart.mfc.inventory.domain.StockUnit.Work;
+import com.pmart.mfc.inventory.infrastructure.MoveStore;
+import com.pmart.mfc.inventory.infrastructure.MoveStore.MoveRow;
+import com.pmart.mfc.inventory.infrastructure.StockStore;
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
+
+/**
+ * 자동 선반 보충(IV-04, 2026-11-08 사용자 결정: 시스템이 만든다, 재배치는 감독자). 기준(최소·목표·단위, Q-07 값)은 감독자가 고회전 선반·상품별로
+ * 등록하고, 점검은 mfc-inbound 가 주기적으로 부른다. 만든 보충은 일반 이동 배정(kind REPLENISH)과 같은 규칙({@link MoveService})으로
+ * 검사한다 — 출발 LOT 가용(A)이 모자라면(이동 중은 판매 가능에서 빠지므로) 재고가 확보될 때까지 보충하지 않는다(사용자 결정, 예외 없음).
+ */
+@Service
+public class ReplenishmentService {
+
+  public static final String REPLENISH_ONLY_HIGH_TURNOVER = "REPLENISH_ONLY_HIGH_TURNOVER";
+  static final String SUPERVISOR = "MFC_SUPERVISOR";
+  private static final Logger log = LoggerFactory.getLogger(ReplenishmentService.class);
+
+  public record Policy(
+      String mfcId,
+      String locationCode,
+      String sku,
+      int minQty,
+      int targetQty,
+      int unitQty,
+      String updatedBy,
+      Instant updatedAt) {}
+
+  public record Skipped(String mfcId, String locationCode, String sku, String reason) {}
+
+  public record Evaluation(int created, List<MoveRow> moves, List<Skipped> skipped) {}
+
+  private final JdbcTemplate jdbc;
+  private final StockStore stock;
+  private final MoveStore moves;
+  private final MoveService moveService;
+  private final Locations locations;
+  private final LocationAllocationService allocations;
+  private final ReservationService reservations;
+  private final InventoryProperties props;
+  private final TransactionTemplate tx;
+  private final Clock clock;
+
+  public ReplenishmentService(
+      JdbcTemplate jdbc,
+      StockStore stock,
+      MoveStore moves,
+      MoveService moveService,
+      Locations locations,
+      LocationAllocationService allocations,
+      ReservationService reservations,
+      InventoryProperties props,
+      TransactionTemplate tx,
+      Clock clock) {
+    this.jdbc = jdbc;
+    this.stock = stock;
+    this.moves = moves;
+    this.moveService = moveService;
+    this.locations = locations;
+    this.allocations = allocations;
+    this.reservations = reservations;
+    this.props = props;
+    this.tx = tx;
+    this.clock = clock;
+  }
+
+  // ---------- 기준 ----------
+
+  public Policy put(String mfcId, String locationCode, String sku, int min, int target, int unit) {
+    String me = supervisor(mfcId);
+    if (min < 0 || target < min || unit < 1) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED,
+          "최소 ≤ 목표, 단위 ≥ 1 이어야 합니다(최소 " + min + " 목표 " + target + ").");
+    }
+    var loc = locations.row(mfcId, locationCode);
+    if (!loc.highTurnover() || !Locations.STORE_ZONES.contains(loc.zone())) {
+      throw new PmartException(
+          REPLENISH_ONLY_HIGH_TURNOVER,
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          locationCode + " 는 고회전 선반이 아닙니다 — 보충 기준은 고회전 선반(피킹면)에만 둡니다(같은 상품 한 자리 규칙의 예외 칸).",
+          false,
+          List.of());
+    }
+    Instant at = clock.instant();
+    jdbc.update(
+        "INSERT INTO replenishment_policy (mfc_id, location_code, sku, min_qty, target_qty, unit_qty,"
+            + " updated_by, updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (mfc_id, location_code, sku)"
+            + " DO UPDATE SET min_qty = EXCLUDED.min_qty, target_qty = EXCLUDED.target_qty,"
+            + " unit_qty = EXCLUDED.unit_qty, updated_by = EXCLUDED.updated_by,"
+            + " updated_at = EXCLUDED.updated_at",
+        mfcId,
+        locationCode,
+        sku,
+        min,
+        target,
+        unit,
+        me,
+        Timestamp.from(at));
+    log.info(
+        "보충 기준 {} {} {} min {} target {} unit {} by {}",
+        mfcId,
+        locationCode,
+        sku,
+        min,
+        target,
+        unit,
+        me);
+    return policies(mfcId).stream()
+        .filter(p -> p.locationCode().equals(locationCode) && p.sku().equals(sku))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  public void delete(String mfcId, String locationCode, String sku) {
+    supervisor(mfcId);
+    jdbc.update(
+        "DELETE FROM replenishment_policy WHERE mfc_id = ? AND location_code = ? AND sku = ?",
+        mfcId,
+        locationCode,
+        sku);
+  }
+
+  public List<Policy> list(String mfcId) {
+    Operator.requireCenter(mfcId);
+    return policies(mfcId);
+  }
+
+  private List<Policy> policies(@Nullable String mfcId) {
+    return jdbc.query(
+        "SELECT * FROM replenishment_policy"
+            + (mfcId == null ? "" : " WHERE mfc_id = ?")
+            + " ORDER BY mfc_id, location_code, sku",
+        (rs, i) ->
+            new Policy(
+                rs.getString("mfc_id"),
+                rs.getString("location_code"),
+                rs.getString("sku"),
+                rs.getInt("min_qty"),
+                rs.getInt("target_qty"),
+                rs.getInt("unit_qty"),
+                rs.getString("updated_by"),
+                rs.getTimestamp("updated_at").toInstant()),
+        mfcId == null ? new Object[] {} : new Object[] {mfcId});
+  }
+
+  // ---------- 점검 ----------
+
+  /** 기준마다 따로(한 기준의 거절이 다른 기준을 막지 않게) 필요한 보충 이동을 만들고, 진행 중 보충 이동 전부를 돌려준다. */
+  public Evaluation evaluate(String requestId, String sourceSystem, @Nullable String mfcId) {
+    int created = 0;
+    List<Skipped> skipped = new ArrayList<>();
+    for (Policy p : policies(mfcId)) {
+      try {
+        Integer n = tx.execute(s -> evaluateOne(requestId, sourceSystem, p, skipped));
+        created += n == null ? 0 : n;
+      } catch (PmartException e) {
+        skipped.add(new Skipped(p.mfcId(), p.locationCode(), p.sku(), e.code()));
+        log.info("보충 {} {} {} 건너뜀: {}", p.mfcId(), p.locationCode(), p.sku(), e.getMessage());
+      }
+    }
+    return new Evaluation(created, moves.openReplenishments(mfcId), skipped);
+  }
+
+  private int evaluateOne(String requestId, String sourceSystem, Policy p, List<Skipped> skipped) {
+    // 같은 칸·상품 점검을 줄 세운다(동시 점검이 진행 중 U 를 못 보고 둘 다 만들지 않게)
+    jdbc.queryForList(
+        "SELECT pg_advisory_xact_lock(hashtext(?))",
+        "replenish:" + p.mfcId() + ":" + p.locationCode() + ":" + p.sku());
+    var dest = locations.row(p.mfcId(), p.locationCode());
+    if (!props.isDummySkuSize()) {
+      skipped.add(new Skipped(p.mfcId(), p.locationCode(), p.sku(), "CONFIG_REQUIRED:SKU_SIZE"));
+      return 0;
+    }
+    Integer capacity =
+        SkuSize.dummyFor(p.sku())
+            .capacity(dest.widthMm(), dest.depthMm(), dest.heightMm(), dest.maxWeightG());
+    if (capacity == null) {
+      skipped.add(
+          new Skipped(p.mfcId(), p.locationCode(), p.sku(), "CONFIG_REQUIRED:LOCATION_DIMENSIONS"));
+      return 0;
+    }
+    var holds = stock.openHolds(p.mfcId(), p.sku());
+    int current = 0;
+    int destAll = 0;
+    var units = stock.units(p.mfcId(), p.sku());
+    for (var u : units) {
+      if (!u.key().locationCode().equals(p.locationCode())) {
+        continue;
+      }
+      destAll += u.qty();
+      if (u.key().quality() == Quality.NORMAL && u.key().work() == Work.STORED) {
+        current += u.qty() - holds.getOrDefault(u.key(), 0);
+      }
+    }
+    int incoming = 0;
+    for (MoveRow m : moves.openAt(p.mfcId(), p.locationCode())) {
+      if (m.toLocation().equals(p.locationCode()) && m.sku().equals(p.sku())) {
+        incoming += m.incoming();
+      }
+    }
+    // 출발 후보: 같은 상품의 다른 선반·피킹 칸, 소비기한 빠른 출하 가능 LOT 부터
+    Instant now = clock.instant();
+    var lotIds = units.stream().map(u -> u.key().lotId()).distinct().toList();
+    var lots = stock.lots(lotIds);
+    var lotBalances = stock.lotBalances(p.mfcId(), p.sku());
+    record Source(String lotId, @Nullable LocalDate expiry, String location, int movable) {}
+    List<Source> sources = new ArrayList<>();
+    for (String lotId : lotIds) {
+      var lot = lots.get(lotId);
+      if (lot == null) {
+        continue;
+      }
+      Boolean ok =
+          reservations.shippableToday(p.sku(), lotId, lot.expiryDate(), lot.manufactureDate(), now);
+      if (Boolean.FALSE.equals(ok)) {
+        continue; // 부적격 LOT 은 피킹면에 채우지 않는다
+      }
+      int lotAvailable =
+          lotBalances.stream()
+              .filter(b -> b.lotId().equals(lotId))
+              .mapToInt(b -> b.available())
+              .findFirst()
+              .orElse(0);
+      for (Map.Entry<String, Integer> e : allocations.free(p.mfcId(), p.sku(), lotId).entrySet()) {
+        if (e.getKey().equals(p.locationCode()) || e.getValue() <= 0) {
+          continue;
+        }
+        var src = locations.projection(p.mfcId(), e.getKey()).orElse(null);
+        if (src == null || !Locations.STORE_ZONES.contains(src.zone())) {
+          continue;
+        }
+        sources.add(
+            new Source(lotId, lot.expiryDate(), e.getKey(), Math.min(e.getValue(), lotAvailable)));
+      }
+    }
+    sources.sort(
+        Comparator.comparing(
+                Source::expiry, Comparator.nullsLast(Comparator.<LocalDate>naturalOrder()))
+            .thenComparing(Source::location));
+    // LOT 가용은 LOT 단위라 같은 LOT 의 여러 칸에 겹쳐 세지 않게 깎으며 합한다
+    Map<String, Integer> lotLeft = new java.util.HashMap<>();
+    for (String lotId : lotIds) {
+      lotLeft.put(
+          lotId,
+          lotBalances.stream()
+              .filter(b -> b.lotId().equals(lotId))
+              .mapToInt(b -> b.available())
+              .findFirst()
+              .orElse(0));
+    }
+    int s = 0;
+    List<int[]> takes = new ArrayList<>();
+    for (int i = 0; i < sources.size(); i++) {
+      Source src = sources.get(i);
+      int t = Math.min(src.movable(), lotLeft.getOrDefault(src.lotId(), 0));
+      if (t > 0) {
+        lotLeft.merge(src.lotId(), -t, Integer::sum);
+        s += t;
+        takes.add(new int[] {i, t});
+      }
+    }
+    int v = capacity - destAll - incoming;
+    int qty =
+        ReplenishmentRules.orderQty(
+            current, p.minQty(), p.targetQty(), incoming, s, v, p.unitQty());
+    if (qty <= 0) {
+      if (current <= p.minQty() && s < p.unitQty()) {
+        skipped.add(new Skipped(p.mfcId(), p.locationCode(), p.sku(), "WAITING_FOR_STOCK"));
+      }
+      return 0;
+    }
+    int left = qty;
+    int n = 0;
+    for (int[] tk : takes) {
+      if (left == 0) {
+        break;
+      }
+      Source src = sources.get(tk[0]);
+      int chunk = Math.min(left, tk[1]);
+      String moveId = "RPL-" + UUID.randomUUID();
+      moveService.create(
+          requestId + ":" + moveId,
+          sourceSystem,
+          new MoveService.CreateCommand(
+              moveId,
+              p.mfcId(),
+              p.sku(),
+              src.lotId(),
+              src.location(),
+              p.locationCode(),
+              chunk,
+              "REPLENISH"));
+      left -= chunk;
+      n++;
+    }
+    log.info(
+        "보충 {} {} {} — 현재 {} 최소 {} 목표 {} 진행 {} → 지시 {}개({}건)",
+        p.mfcId(),
+        p.locationCode(),
+        p.sku(),
+        current,
+        p.minQty(),
+        p.targetQty(),
+        incoming,
+        qty,
+        n);
+    return n;
+  }
+
+  private static String supervisor(String mfcId) {
+    String me = Operator.requireCenter(mfcId);
+    if (!PmartPrincipal.current().orElseThrow().hasRole(SUPERVISOR)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "보충 기준은 이 센터의 MFC_SUPERVISOR 가 정합니다.");
+    }
+    return me;
+  }
+}

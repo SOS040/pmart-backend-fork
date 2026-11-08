@@ -17,9 +17,91 @@ import org.springframework.web.bind.annotation.RestController;
 public class MovesController implements MovesApi {
 
   private final MoveService service;
+  private final com.pmart.mfc.inventory.application.ReplenishmentService replenishment;
 
-  public MovesController(MoveService service) {
+  public MovesController(
+      MoveService service, com.pmart.mfc.inventory.application.ReplenishmentService replenishment) {
     this.service = service;
+    this.replenishment = replenishment;
+  }
+
+  @Override
+  public ResponseEntity<
+          com.pmart.mfc.inventory.api.generated.model.ListReplenishmentPolicies200Response>
+      listReplenishmentPolicies(String mfcId) {
+    var out =
+        new com.pmart.mfc.inventory.api.generated.model.ListReplenishmentPolicies200Response();
+    out.setItems(replenishment.list(mfcId).stream().map(MovesController::policy).toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.ReplenishmentPolicy>
+      putReplenishmentPolicy(
+          String mfcId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.inventory.api.generated.model.PutReplenishmentPolicyRequest b) {
+    return ResponseEntity.ok(
+        policy(
+            replenishment.put(
+                mfcId,
+                b.getLocationCode(),
+                b.getSku(),
+                b.getMinQty(),
+                b.getTargetQty(),
+                b.getUnitQty())));
+  }
+
+  @Override
+  public ResponseEntity<Void> deleteReplenishmentPolicy(
+      String mfcId, String locationCode, String sku, String idempotencyKey, String xSourceSystem) {
+    replenishment.delete(mfcId, locationCode, sku);
+    return ResponseEntity.noContent().build();
+  }
+
+  @Override
+  public ResponseEntity<
+          com.pmart.mfc.inventory.api.generated.model.EvaluateReplenishment200Response>
+      evaluateReplenishment(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.inventory.api.generated.model.@org.jspecify.annotations.Nullable
+              EvaluateReplenishmentRequest
+              b) {
+    var r = replenishment.evaluate(idempotencyKey, xSourceSystem, b == null ? null : b.getMfcId());
+    var out = new com.pmart.mfc.inventory.api.generated.model.EvaluateReplenishment200Response();
+    out.setCreated(r.created());
+    out.setMoves(r.moves().stream().map(MovesController::dto).toList());
+    out.setSkipped(
+        r.skipped().stream()
+            .map(
+                s -> {
+                  var x =
+                      new com.pmart.mfc.inventory.api.generated.model
+                          .EvaluateReplenishment200ResponseSkippedInner();
+                  x.setMfcId(s.mfcId());
+                  x.setLocationCode(s.locationCode());
+                  x.setSku(s.sku());
+                  x.setReason(s.reason());
+                  return x;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  static com.pmart.mfc.inventory.api.generated.model.ReplenishmentPolicy policy(
+      com.pmart.mfc.inventory.application.ReplenishmentService.Policy p) {
+    var out = new com.pmart.mfc.inventory.api.generated.model.ReplenishmentPolicy();
+    out.setMfcId(p.mfcId());
+    out.setLocationCode(p.locationCode());
+    out.setSku(p.sku());
+    out.setMinQty(p.minQty());
+    out.setTargetQty(p.targetQty());
+    out.setUnitQty(p.unitQty());
+    out.setUpdatedBy(p.updatedBy());
+    out.setUpdatedAt(p.updatedAt().atOffset(ZoneOffset.UTC));
+    return out;
   }
 
   @Override
@@ -108,6 +190,7 @@ public class MovesController implements MovesApi {
   static MoveAllocation dto(MoveRow m) {
     var out = new MoveAllocation();
     out.setMoveId(m.moveId());
+    out.setKind(MoveAllocation.KindEnum.fromValue(m.kind()));
     out.setMfcId(m.mfcId());
     out.setSku(m.sku());
     out.setLotId(m.lotId());

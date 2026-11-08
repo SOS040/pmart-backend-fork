@@ -45,6 +45,11 @@ public class InventoryMoveClient {
     return post("/api/v1/internal/move-allocations/" + moveId + "/drops", key, body);
   }
 
+  /** 자동 선반 보충 점검(IV-04) — 진행 중 보충 이동 전부를 돌려받는다. */
+  public JsonNode evaluateReplenishment(String key) {
+    return post("/api/v1/internal/replenishment-evaluations", key, Map.of());
+  }
+
   public JsonNode cancel(String moveId, String key) {
     return post("/api/v1/internal/move-allocations/" + moveId + "/cancellations", key, null);
   }

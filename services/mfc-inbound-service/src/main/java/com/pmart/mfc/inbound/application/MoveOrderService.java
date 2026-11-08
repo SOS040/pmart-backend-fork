@@ -51,7 +51,8 @@ public class MoveOrderService {
       @Nullable String reason,
       String createdBy,
       Instant createdAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      String kind) {}
 
   public record CreateCommand(
       String mfcId,
@@ -178,6 +179,42 @@ public class MoveOrderService {
             state);
   }
 
+  /**
+   * 자동 선반 보충 점검(IV-04, 사용자 결정: 시스템이 만든다) — inventory 가 만든 진행 중 보충 이동을 이동 지시(kind REPLENISH, 지시자
+   * SYSTEM)로 남긴다. 다시 해도 같은 이동은 하나(moveId). 작업자는 일반 이동과 같이 카트로 실행한다.
+   *
+   * @return 새로 남긴 지시 수
+   */
+  public int recordReplenishments() {
+    JsonNode r = inventory.evaluateReplenishment("RPL-EVAL-" + UUID.randomUUID());
+    int n = 0;
+    Instant now = clock.instant();
+    for (JsonNode m : r.path("moves")) {
+      String moveId = m.path("moveId").asString();
+      n +=
+          jdbc.update(
+              "INSERT INTO move_order (move_id, mfc_id, sku, lot_id, from_location, to_location, qty,"
+                  + " state, reason, created_by, created_at, updated_at, kind)"
+                  + " VALUES (?,?,?,?,?,?,?,?,'자동 보충','SYSTEM',?,?,'REPLENISH')"
+                  + " ON CONFLICT (move_id) DO NOTHING",
+              moveId,
+              m.path("mfcId").asString(),
+              m.path("sku").asString(),
+              m.path("lotId").asString(),
+              m.path("fromLocation").asString(),
+              m.path("toLocation").asString(),
+              m.path("qty").asInt(),
+              m.path("state").asString("ACTIVE"),
+              Timestamp.from(now),
+              Timestamp.from(now));
+      mirror(moveId, m);
+    }
+    if (n > 0) {
+      log.info("자동 보충 이동 {}건을 이동 지시로 남김", n);
+    }
+    return n;
+  }
+
   /** inventory 응답 → 사본. */
   private void mirror(String moveId, JsonNode m) {
     jdbc.update(
@@ -235,6 +272,7 @@ public class MoveOrderService {
         rs.getString("reason"),
         rs.getString("created_by"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("kind"));
   }
 }

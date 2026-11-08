@@ -1031,6 +1031,130 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(misc.status()).as(misc.body().toString()).isEqualTo(201); // 기타 칸(카테고리 없음)은 받는다
   }
 
+  Res put(String token, String path, Object body) {
+    var e =
+        http.put()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "backoffice-web");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(mapper.writeValueAsString(body))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(e.getStatusCode().value(), read(e.getBody()));
+  }
+
+  /**
+   * 자동 선반 보충(IV-04, 사용자 결정: 시스템이 만든다): 고회전 선반 기준 → 점검이 보충 이동을 만들고, 진행 중이면 더 안 만들고, 가용이 없으면 기다린다.
+   */
+  @Test
+  void replenishmentFillsHighTurnoverShelvesFromStorageAndWaitsWhenStockIsReserved() {
+    shelf("H-02-01", "PICKING", 1000, 600, 400, true);
+    shelf("B-02-01", "STORAGE", 1000, 600, 400, false);
+    shelf("CRT-A-09", "CART", 0, 0, 0, false);
+    awaitLocations(6);
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 20); // A-01-01(보관)
+    String sup = TestJwt.operator("sv-r", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    String wrk = TestJwt.operator("wk-r", List.of("MFC_WORKER"), List.of(mfc));
+    String path = "/mfcs/" + mfc + "/replenishment-policies";
+    Map<String, Object> policy =
+        Map.of("locationCode", "H-02-01", "sku", sku, "minQty", 2, "targetQty", 10, "unitQty", 2);
+    assertThat(put(wrk, path, policy).status()).isEqualTo(403);
+    Res notHt =
+        put(
+            sup,
+            path,
+            Map.of(
+                "locationCode", "B-02-01", "sku", sku, "minQty", 2, "targetQty", 10, "unitQty", 2));
+    assertThat(notHt.body().path("code").asString()).isEqualTo("REPLENISH_ONLY_HIGH_TURNOVER");
+    assertThat(put(sup, path, policy).status()).isEqualTo(200);
+
+    // 점검: 현재 0 ≤ 최소 2 → 목표 10 만큼 보충 이동(시스템, kind REPLENISH)
+    Map<String, Object> scope = Map.of("mfcId", mfc);
+    Res first =
+        post(
+            INBOUND,
+            "mfc-inbound-service",
+            "/internal/replenishment-evaluations",
+            UUID.randomUUID().toString(),
+            scope);
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(200);
+    assertThat(first.body().path("created").asInt()).isEqualTo(1);
+    JsonNode mv = first.body().path("moves").path(0);
+    assertThat(mv.path("kind").asString()).isEqualTo("REPLENISH");
+    assertThat(mv.path("toLocation").asString()).isEqualTo("H-02-01");
+    assertThat(mv.path("qty").asInt()).isEqualTo(10);
+    // 다시 점검해도 진행 중 보충(U)이 있어 더 만들지 않는다
+    Res again =
+        post(
+            INBOUND,
+            "mfc-inbound-service",
+            "/internal/replenishment-evaluations",
+            UUID.randomUUID().toString(),
+            scope);
+    assertThat(again.body().path("created").asInt()).isZero();
+    assertThat(again.body().path("moves")).hasSize(1);
+
+    // 실행(카트 경유) 뒤 현재 10 > 최소 → 점검이 아무것도 안 만든다
+    String moveId = mv.path("moveId").asString();
+    move(
+        "/internal/move-allocations/" + moveId + "/pickups",
+        Map.of("executionId", "EXE-" + UUID.randomUUID(), "cartLocation", "CRT-A-09", "qty", 10));
+    Res dropped =
+        move(
+            "/internal/move-allocations/" + moveId + "/drops",
+            Map.of("executionId", "EXE-" + UUID.randomUUID(), "toLocation", "H-02-01", "qty", 10));
+    assertThat(dropped.body().path("state").asString()).isEqualTo("COMPLETED");
+    Res after =
+        post(
+            INBOUND,
+            "mfc-inbound-service",
+            "/internal/replenishment-evaluations",
+            UUID.randomUUID().toString(),
+            scope);
+    assertThat(after.body().path("created").asInt()).isZero();
+    assertThat(after.body().path("moves")).isEmpty();
+
+    // 예약이 재고를 다 잡고 있으면(A 0) 보충하지 않고 기다린다(사용자 결정 — 예외 없음)
+    String busy = newSku();
+    handlingOn(busy);
+    stocked(busy, 4);
+    confirmedReservation("ORD-RPL", busy, 4);
+    assertThat(
+            put(
+                    sup,
+                    path,
+                    Map.of(
+                        "locationCode",
+                        "H-02-01",
+                        "sku",
+                        busy,
+                        "minQty",
+                        1,
+                        "targetQty",
+                        4,
+                        "unitQty",
+                        1))
+                .status())
+        .isEqualTo(200);
+    Res waiting =
+        post(
+            INBOUND,
+            "mfc-inbound-service",
+            "/internal/replenishment-evaluations",
+            UUID.randomUUID().toString(),
+            scope);
+    assertThat(waiting.body().path("created").asInt()).isZero();
+    assertThat(waiting.body().path("skipped").findValuesAsString("reason"))
+        .contains("WAITING_FOR_STOCK");
+  }
+
   /** 수령 → 검수 → 칸별 적치(같은 LOT 을 여러 칸에). 반환 = lotId. */
   String stockedAt(String sku, String lotRef, String expiry, Map<String, Integer> byShelf) {
     projection(sku, "AMBIENT");
