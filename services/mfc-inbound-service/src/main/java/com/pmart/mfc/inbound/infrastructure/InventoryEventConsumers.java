@@ -13,6 +13,15 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 class InventoryEventConsumers {
 
+  /**
+   * mfc-quality 사건(mfc.quality.v1, 바인딩 qualityEvents-in-0) — ReturnInspected 의 재판매 분 적치 작업(IV-10).
+   */
+  @Bean
+  PmartEventConsumer qualityEvents(
+      EventConsumers consumers, com.pmart.mfc.inbound.application.ReturnReceiptService returns) {
+    return consumers.of(returns::onQualityEvent);
+  }
+
   @Bean
   PmartEventConsumer inventoryEvents(EventConsumers consumers, ReplenishmentTrigger trigger) {
     return consumers.of(trigger::onInventoryEvent);

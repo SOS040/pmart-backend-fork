@@ -129,14 +129,14 @@
 | `SupplyRequestSubmitted` | mfc-inbound | replenishment | supplyRequestId, version, mfcId, lines[], requestedReadyAt, urgency, reason, recommendationRef | 로컬 DRAFT→SUBMITTED | ② |
 | `InboundArrivalRecorded` | mfc-inbound | transport-execution, replenishment | trfId, tripId, stopId, arrivedAt | 차량 도착 기록(수령 아님) | ② |
 | `ReceiptDiscrepancyReported` | mfc-inbound | cdc-inventory, transport-execution, replenishment, case | trfId, departureId, expected, received, missingQty, excessQty | 수령 차이 | ② |
-| `ReturnItemReceived` | mfc-inbound | mfc-quality, claim | claimId, returnPickupId, lines[], receivedAt | 회수품 점포 수령(검수 대기, 판매 재고 아님) | ② |
+| `ReturnItemReceived` | mfc-inbound | **mfc-quality(검수 사본, 2026-11-08)**, claim(예정) | returnReceiptId, claimId, returnPickupId, lines[{sku, lot, qty, locationCode}], receivedBy, receivedAt | 회수품 점포 수령 — 격리(검수 대기, 판매 재고 아님) | ② |
 | `MfcLocationStateChanged` | mfc-location | mfc-inventory, mfc-fulfillment | locationId, state, locationCode·zone·temperatureZone·version(전체 속성, 2026-11-07) | 위치 등록·속성 변경·폐쇄·활성(투영용 — version 큰 것만) | ① |
 | `CapacityHoldResult` | mfc-capacity | order-orchestration | holdId, orderId, result, expiresAt | HoldCapacity 결과 | ① |
 | `CapacityReduced` | mfc-capacity | delivery-capacity, order, notification | mfcId, window, oldCapacity, newCapacity, affectedOrders[] | 용량 축소(기존 약속 삭제 없음) | ① |
 | `ReceivingCapabilityChanged` | mfc-capacity | replenishment, transport-planning | mfcId, windows[], maxPerArrival, staff | 수령창·수용량 변경 | ② |
 | `AssignmentPublished` | mfc-capacity | mfc-fulfillment, mfc-inbound | planVersion, assignments[{taskId, workerId, assignmentVersion}] | 계획 발행(COMMITTED) | ① |
 | `QualityDecisionMade` | mfc-quality | mfc-inventory, case(리콜), order(참조) | sku, lot, decision(QUARANTINE/RELEASE/DISPOSAL_PENDING), qty, approverRef | 판정·승인 | ① |
-| `ReturnInspected` | mfc-quality | claim, mfc-inventory | claimId, lines[{sku, qty, RESALE/DISPOSE}], inspectedAt | 회수품 검수(상온 미개봉만 재판매) | ② |
+| `ReturnInspected` | mfc-quality | **mfc-inbound(재판매 적치 작업, 2026-11-08)**, claim(예정 — 검수 뒤 환불) | inspectionId, claimId, returnReceiptId, lines[{sku, lot, qty, disposition}], inspectedAt | 회수품 검수(상온 미개봉만 재판매, 재고 반영은 quality 가 inventory 에 직접) | ② |
 | `DisposalApproved` | mfc-quality | mfc-inventory | disposalId, lines[], approverRef | 폐기 승인(실행은 inventory) | ② |
 
 ### MFC 구현 현황 (2026-11-08 코드·설정 기준)
@@ -146,8 +146,8 @@
   - mfc-inventory: `InventoryReleased`, `InventoryHoldExpired`, `ReservationBlocked`, `ReservationBlockCleared`, `PackageHandedOverPosted`, `InventoryExecutionApplied`, `StockAdjusted`, `SkuHandlingChanged`, `InventorySnapshotPublished`(주기, 설정 있을 때만)
   - mfc-fulfillment: `WorkAccepted`, `WorkRejected`, `PreparationStarted`, `LineShortageReported`, `PackingFinished`, `ShipmentReady`, `DispatchRequested`, `PackageHandedOver`, `WorkStopResult`, `PackageInvalidated`, `TaskProgressed`
   - mfc-capacity: `AssignmentPublished`, `CapacityReduced`, `OperationRestrictionApplied`/`Lifted`
-  - mfc-quality: `QualityDecisionMade`, `DisposalApproved` · mfc-location: `MfcLocationStateChanged` · mfc-inbound: `SupplyRequestSubmitted`
-- **아직 발행 안 함**(동기 응답으로 대신하거나 앞 흐름이 없음): `InventoryHeld`(예약은 동기 응답 — orchestration 이 응답으로 진행), `MfcReceiptPosted`·`ReceiptCorrectionPosted`(CDC 이송 흐름 없음), `MfcStockAvailable`(③), `CapacityHoldResult`(동기 응답), `ReceivingCapabilityChanged`(구독자 없음 — 값은 설정), `InboundArrivalRecorded`·`ReceiptDiscrepancyReported`(TRF 없음), `ReturnItemReceived`·`ReturnInspected`(회수 흐름 IV-10 없음)
+  - mfc-quality: `QualityDecisionMade`, `DisposalApproved`, `ReturnInspected` · mfc-location: `MfcLocationStateChanged` · mfc-inbound: `SupplyRequestSubmitted`, `ReturnItemReceived`
+- **아직 발행 안 함**(동기 응답으로 대신하거나 앞 흐름이 없음): `InventoryHeld`(예약은 동기 응답 — orchestration 이 응답으로 진행), `MfcReceiptPosted`·`ReceiptCorrectionPosted`(CDC 이송 흐름 없음), `MfcStockAvailable`(③), `CapacityHoldResult`(동기 응답), `ReceivingCapabilityChanged`(구독자 없음 — 값은 설정), `InboundArrivalRecorded`·`ReceiptDiscrepancyReported`(TRF 없음), (회수품 사건은 2026-11-08 부터 발행)
 - **실제 구독(토픽 → 서비스: 처리하는 사건, 나머지는 inbox 만)**
   - `mfc.fulfillment.v1` → order-orchestration: `LineShortageReported` · order: `PreparationStarted` · claim: `WorkStopResult`
   - `mfc.inventory.v1` → order: `ReservationBlocked`(이행 확인 필요)·`ReservationBlockCleared`(자동 종결) · mfc-inbound: `InventoryExecutionApplied`·`InventoryReleased`·`InventoryHoldExpired`·`StockAdjusted`(보충 즉시 점검) · mfc-fulfillment: `ReservationBlocked`(피킹 중 보류 점검)

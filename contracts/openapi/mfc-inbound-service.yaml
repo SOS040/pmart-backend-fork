@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inbound-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     MFC 입고 작업(RECEIVE/INSPECT/PUTAWAY Task)·InboundPromise(TRF·TOUT·ETA 투영)·수령 사실·수령 차이·회수품 반입·로컬 공급 요청(WK-14)의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량(mfc-inventory에 ConfirmReceipt 요청 후 commitId 수신), 수령창·수용량(mfc-capacity), 품질 판정(mfc-quality), 공급 승인(replenishment).
@@ -230,6 +230,12 @@ paths:
     post:
       tags: [return-receipts]
       summary: 회수품 실물 반입 등록 (→ mfc-inventory H+q·Q+q, ReturnItemReceived → quality 검수 대기)
+      description: |
+        0.7.0(2026-11-08, IV-10 — 사용자: "환불 격리로 뒀다가 품질 검수, 적격이면 재배치"). 회수품은 반품 위치(toLocationCode, RETURN 구역)에
+        **격리(QUARANTINED)로만** 들어간다(판매 가능 아님, IV-10 "실제 인수는 격리 증가"). inventory 수령(receiptId = returnReceiptId, trfId = claimId,
+        departureId = returnPickupId, quarantinedQty = qty)이 반영되면 `ReturnItemReceived`(줄별 inventory lot·위치) → mfc-quality 회수품 검수.
+        검수 RESALE 분은 `ReturnInspected` 를 받아 적치(PUTAWAY) 작업을 만든다(진열 규칙대로 선반에 재배치). LOT: sourceLotRef(없으면 `RET-<claimId>`)·
+        expiryDate 로 추적 LOT. 그 센터 운영자(작업자·감독자). 같은 Idempotency-Key 는 같은 반입. 결과: APPLIED / REJECTED(재고 거절) / UNKNOWN_RESULT(같은 키로 다시).
       operationId: recordReturnReceipt
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -240,9 +246,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [mfcId, claimId, returnPickupId, lines]
+              required: [mfcId, claimId, returnPickupId, toLocationCode, lines]
               properties:
                 mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                toLocationCode: { type: string, description: '반품 위치(RETURN 구역, 예 RTN-A-01) — 격리로 들어감' }
                 claimId: { type: string }
                 returnPickupId: { type: string, description: delivery 회수 ID (ReturnDelivered) }
                 orderId: { type: string }
@@ -258,6 +265,8 @@ paths:
                       orderLineId: { type: string }
                       sku: { $ref: '_common.yaml#/components/schemas/Sku' }
                       qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      sourceLotRef: { type: string, maxLength: 64, description: '상품 표기 LOT(없으면 RET-<claimId>)' }
+                      expiryDate: { type: string, format: date, description: 소비기한(재판매 때 출하 기준 판정에 쓴다) }
                       conditionNote: { type: string, maxLength: 200 }
                       evidenceRef: { type: string }
       responses:
@@ -293,6 +302,21 @@ paths:
                   inventoryCommitId: { type: [string, 'null'] }
                   inspectionState: { type: string, enum: [PENDING, INSPECTED] }
                   receivedAt: { type: string, format: date-time }
+                  orderId: { type: [string, 'null'] }
+                  toLocationCode: { type: string }
+                  receivedBy: { type: string }
+                  rejectReason: { type: [string, 'null'] }
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        orderLineId: { type: [string, 'null'] }
+                        sku: { type: string }
+                        qty: { type: integer }
+                        lotId: { type: [string, 'null'], description: inventory lotId(반영 뒤) }
+                        conditionNote: { type: [string, 'null'] }
+                  putawayTaskIds: { type: array, items: { type: string }, description: 'RESALE 분 적치 작업' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/initial-stock-loads:

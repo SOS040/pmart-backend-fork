@@ -67,6 +67,24 @@ public class InventoryReceiptClient {
     this.mapper = mapper;
   }
 
+  /** 줄을 직접 만든 수령(회수품 격리 반입 — IV-10). */
+  public Result postRaw(
+      String receiptId,
+      String trfId,
+      String departureId,
+      String mfcId,
+      Instant receivedAt,
+      List<Map<String, Object>> lines) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("receiptId", receiptId);
+    body.put("trfId", trfId);
+    body.put("departureId", departureId);
+    body.put("mfcId", mfcId);
+    body.put("receivedAt", receivedAt.toString());
+    body.put("lines", lines);
+    return send(receiptId, body);
+  }
+
   public Result post(Receipt r) {
     List<Map<String, Object>> lines = new ArrayList<>();
     r.normalQtyBySku()
@@ -87,6 +105,10 @@ public class InventoryReceiptClient {
     body.put("mfcId", r.mfcId());
     body.put("receivedAt", r.receivedAt().toString());
     body.put("lines", lines);
+    return send(r.receiptId(), body);
+  }
+
+  private Result send(String receiptId, Map<String, Object> body) {
     try {
       String raw =
           Downstream.call(
@@ -94,7 +116,7 @@ public class InventoryReceiptClient {
               () ->
                   http.post()
                       .uri("/api/v1/internal/receipts")
-                      .header("Idempotency-Key", r.receiptId())
+                      .header("Idempotency-Key", receiptId)
                       .contentType(MediaType.APPLICATION_JSON)
                       .body(body)
                       .retrieve()
