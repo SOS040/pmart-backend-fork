@@ -46,7 +46,7 @@
   3. 요청·승인·출고·실제 입고 수량을 한 화면에 — 승인·이송은 SCM 사건으로 조회 모델(경계는 그대로, `baro-pick-docs` 검토 충돌 ②).
 
 ### mfc-inventory-service (있음 — MFC)
-- **해야 할 것**: 재고 포지션 입력 — `InventorySnapshotPublished`(계약 있음, 아직 발행 안 함) 발행(센터 × SKU 가용·예약, 주기 또는 변화 시) — demand-planning 품절 판정과 replenishment IP 에 쓴다.
+- **했음(2026-11-08)**: `InventorySnapshotPublished` 주기 발행(센터 × SKU H·Q·E·R·A, 설정 `snapshot-interval`). **남은 것**: 변화 때 발행(trigger EVENT — 품절 진입·해제 순간), 안전량 S(정책 정해지면). demand-planning 품절 판정과 replenishment IP 에 쓴다.
 - 판매 실적은 이미 `PackageHandedOverPosted` 로 나간다.
 
 ### mfc-capacity-service (있음 — MFC)

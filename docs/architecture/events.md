@@ -82,7 +82,7 @@
 | `TransitReconciled` | cdc-inventory | mfc-inbound, replenishment, backoffice-bff | trfId, departureId, q, r, l, t, state(RECONCILED/PENDING/CONFLICT) | `q = r + l + t` 대사 | ② |
 | `TransferAckStatus` | cdc-inventory | mfc-inventory, replenishment | receiptId, ackState(ACKED/PENDING/CONFLICT) | TIN 확인 처리 결과 | ② |
 | `QuantityPostingResult` | cdc-inventory | cdc-inbound, cdc-outbound, cdc-quality | requestId, commitId, postingType, appliedQty, result | 수량 반영 요청 결과 | ② |
-| `InventorySnapshotPublished` | cdc-inventory / mfc-inventory | replenishment, BI | centerId, asOf, version, lines[{sku, lot, onHand/H, reserved/R, held/Q, available/A, safety}] | 주기/사건 스냅샷 | ② |
+| `InventorySnapshotPublished` | cdc-inventory / mfc-inventory | replenishment(예정), demand-planning(예정), BI | centerId, asOf, version, lines[{sku, lot, onHand/H, reserved/R, held/Q, available/A, safety}] | 주기/사건 스냅샷. mfc-inventory 는 2026-11-08 부터 주기 발행(SKU 단위·LOT 없음, 500줄씩 part/partCount, 설정 없으면 안 함) | ② |
 | `LotBlocked` / `LotReleased` | cdc-inventory | cdc-outbound, replenishment, mfc-quality(리콜 참조), order(영향 참조) | sku, lot, scope, reason, blockedQty | quality 요청 반영 | ② |
 | `InventoryAdjustmentPosted` | cdc-inventory / mfc-inventory | approval, audit, replenishment | centerId, adjId, approvalRef, lines[], executedQty | 승인 범위 내 ADJ 집행 | ② |
 | `PutawayTaskStateChanged` | cdc-inbound | backoffice-bff | taskId, state, qty(C/U/K) | 적치 상태 전이 | ② |

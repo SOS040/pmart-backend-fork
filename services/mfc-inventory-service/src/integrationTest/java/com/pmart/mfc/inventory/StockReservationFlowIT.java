@@ -58,6 +58,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.mfc.inventory.application.SnapshotPublisher snapshots;
   @Autowired com.pmart.mfc.inventory.application.UnshippableLotScan unshippableScan;
 
   RestClient http;
@@ -2122,6 +2123,42 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 created.body().path("sessionId").asString()))
         .isZero();
+  }
+
+  /** InventorySnapshotPublished(남은 일 17): 센터 × SKU H·Q·E·R·A, 센터마다 버전 +1, 같은 트랜잭션 outbox. */
+  @Test
+  void snapshotPublishesCenterSkuBalancesWithIncreasingVersion() {
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 10);
+    confirmedReservation("ORD-SNP", sku, 4);
+    var first = snapshots.publish(mfc, "EVENT");
+    assertThat(first.version()).isEqualTo(1);
+    assertThat(first.parts()).isEqualTo(1);
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'InventorySnapshotPublished'"
+                + " AND topic = 'mfc.inventory.v1' AND payload #>> '{payload,snapshotId}' = ?",
+            String.class,
+            first.snapshotId());
+    JsonNode p = mapper.readTree(payload).path("payload");
+    assertThat(p.path("centerType").asString()).isEqualTo("MFC");
+    assertThat(p.path("centerId").asString()).isEqualTo(mfc);
+    assertThat(p.path("trigger").asString()).isEqualTo("EVENT");
+    JsonNode line = null;
+    for (JsonNode l : p.path("lines")) {
+      if (sku.equals(l.path("sku").asString())) {
+        line = l;
+      }
+    }
+    assertThat(line).as(p.toString()).isNotNull();
+    assertThat(line.path("onHandQty").asInt()).isEqualTo(10);
+    assertThat(line.path("saleableQty").asInt()).isEqualTo(10);
+    assertThat(line.path("reservedQty").asInt()).isEqualTo(4);
+    assertThat(line.path("heldQty").asInt()).isZero();
+    assertThat(line.path("availableQty").asInt()).isEqualTo(6);
+    assertThat(line.has("safetyQty")).isFalse(); // 안전량 정책 미결 — 0 으로 채우지 않음
+    assertThat(snapshots.publish(mfc, "PERIODIC").version()).isEqualTo(2);
   }
 
   Res shortage(

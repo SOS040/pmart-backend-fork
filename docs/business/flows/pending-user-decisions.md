@@ -64,6 +64,6 @@
 14. 취소품 복귀(MOVE) 진열 규칙 — 복귀 칸 고르는 규칙과 함께(#59)
 15. ~~자동 보충 즉시 점검~~ — 완료 2026-11-08(`InventoryExecutionApplied` 등 → 5초 안에 모아 점검)
 16. ~~출하 부적격 LOT 정기 알림~~ — 완료 2026-11-08(1시간마다, 지표·로그. Slack 알림 규칙은 사용자 요청 시)
-17. mfc-inventory `InventorySnapshotPublished` 발행(공급·예측 준비)
+17. ~~mfc-inventory `InventorySnapshotPublished` 발행~~ — 완료 2026-11-08(주기만, LAN PT1H; 변화 때 발행은 구독자 생길 때)
 18. LAN 칸 카테고리 데이터(실제 배치가 정해지면)
 19. 이벤트 카탈로그에 예정 구독자(orchestration·replenishment) 정리
