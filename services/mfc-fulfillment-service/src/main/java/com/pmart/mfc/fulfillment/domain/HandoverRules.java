@@ -22,6 +22,7 @@ public final class HandoverRules {
   public static final String NOT_ASSIGNED = "NOT_ASSIGNED";
   public static final String RIDER_MISMATCH = "RIDER_MISMATCH";
   public static final String FENCE_ACTIVE = "FENCE_ACTIVE";
+  public static final String FENCE_EXPIRED_UNCONFIRMED = "FENCE_EXPIRED_UNCONFIRMED";
   public static final String HANDOVER_RESULT_PENDING = "HANDOVER_RESULT_PENDING";
   public static final String FENCE_EXPIRED = "FENCE_EXPIRED";
   public static final String FENCE_VERSION_MISMATCH = "FENCE_VERSION_MISMATCH";
@@ -72,7 +73,8 @@ public final class HandoverRules {
       boolean commitRequested,
       @Nullable String fenceRiderId,
       @Nullable String fenceDeliveryId,
-      String deliveryId) {}
+      String deliveryId,
+      boolean fenceOpen) {}
 
   /** 허가 판정: REJECT(code) / REUSE(같은 라이더·배송의 살아 있는 fence 그대로) / NEW. */
   public record AuthorizeDecision(String outcome, @Nullable String code) {
@@ -108,12 +110,24 @@ public final class HandoverRules {
     if (f.commitRequested()) {
       return AuthorizeDecision.reject(HANDOVER_RESULT_PENDING);
     }
+    boolean same =
+        f.riderId().equals(f.fenceRiderId()) && f.deliveryId().equals(f.fenceDeliveryId());
     if (f.fenceLive()) {
-      boolean same =
-          f.riderId().equals(f.fenceRiderId()) && f.deliveryId().equals(f.fenceDeliveryId());
       return same ? new AuthorizeDecision("REUSE", null) : AuthorizeDecision.reject(FENCE_ACTIVE);
     }
+    if (f.fenceOpen() && !same) {
+      // 만료됐지만 실제로 안 넘겼다는 확인이 없다 — 같은 라이더·배송만 다시 찍기(D-1 안 C), 나머지는 점원 확인 뒤
+      return AuthorizeDecision.reject(FENCE_EXPIRED_UNCONFIRMED);
+    }
     return new AuthorizeDecision("NEW", null);
+  }
+
+  /** 점원 확인이 필요한가: 허가 기록이 열려 있고(HANDOVER_IN_PROGRESS) 확정 요청 없이 유효시간이 끝남(D-1). */
+  public static boolean checkRequired(
+      String fenceState, @Nullable Instant expiresAt, boolean commitRequested, Instant now) {
+    return "HANDOVER_IN_PROGRESS".equals(fenceState)
+        && !commitRequested
+        && (expiresAt == null || !now.isBefore(expiresAt));
   }
 
   /** QR 원문 = 밀봉 때 발급한 qrCode(`PKG:<id>:<버전>`). */

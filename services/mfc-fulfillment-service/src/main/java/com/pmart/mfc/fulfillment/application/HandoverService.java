@@ -165,7 +165,8 @@ public class HandoverService {
                           requested,
                           p.fenceRiderId(),
                           p.fenceDeliveryId(),
-                          in.deliveryId()));
+                          in.deliveryId(),
+                          "HANDOVER_IN_PROGRESS".equals(p.fenceState())));
               if ("REJECT".equals(d.outcome())) {
                 throw rejection(Objects.requireNonNull(d.code()), packageId);
               }
@@ -243,6 +244,13 @@ public class HandoverService {
                   }
                   if (!in.riderId().equals(p.fenceRiderId())) {
                     throw rejection(HandoverRules.RIDER_MISMATCH, packageId);
+                  }
+                  // 배정이 바뀌었으면 이전 라이더 허가로 확정하지 않는다(허가는 점원 확인까지 남음, D-1)
+                  Assignment cur = store.assignment(p.fenceDeliveryId()).orElse(null);
+                  if (cur == null
+                      || !"ASSIGNED".equals(cur.state())
+                      || !in.riderId().equals(cur.riderId())) {
+                    throw rejection(HandoverRules.NOT_ASSIGNED, packageId);
                   }
                   Instant now = clock.instant();
                   if (!HandoverRules.fenceLive(p.fenceState(), p.fenceExpiresAt(), false, now)) {
@@ -474,7 +482,11 @@ public class HandoverService {
     }
   }
 
-  /** 배정이 바뀌면 다른 라이더의 확정 요청 전 fence 를 끝낸다(새 라이더만 인계, Delivery 9.4). 확정 요청이 있는 포장은 그대로(대사). */
+  /**
+   * 배정이 바뀌어도 이전 라이더의 열린 허가는 끝내지 않는다(2026-11-08 D-1 안 C) — QR 을 찍은 라이더가 이미 들고 갔을 수 있다. 이전 라이더는 확정할 수
+   * 없고(NOT_ASSIGNED), 새 라이더는 허가가 살아 있으면 FENCE_ACTIVE, 만료 뒤에는 점원 확인(handover-checks) 전까지
+   * FENCE_EXPIRED_UNCONFIRMED.
+   */
   private void revokeOtherRiders(String deliveryId, @Nullable String keepRider) {
     Assignment a = store.assignment(deliveryId).orElse(null);
     if (a == null || a.shipmentId() == null) {
@@ -483,12 +495,90 @@ public class HandoverService {
     for (PackageFence p : store.byShipment(a.shipmentId())) {
       if ("HANDOVER_IN_PROGRESS".equals(p.fenceState())
           && deliveryId.equals(p.fenceDeliveryId())
-          && (keepRider == null || !keepRider.equals(p.fenceRiderId()))
-          && store.expireFence(p.packageId()) == 1) {
-        log.info(
-            "포장 {} 인계 허가 해제 — 배송 {} 배정 변경(라이더 {})", p.packageId(), deliveryId, p.fenceRiderId());
+          && (keepRider == null || !keepRider.equals(p.fenceRiderId()))) {
+        log.warn(
+            "포장 {} 배송 {} 배정 변경 — 이전 라이더 {} 의 인계 허가는 점원 확인 전까지 유지",
+            p.packageId(),
+            deliveryId,
+            p.fenceRiderId());
       }
     }
+  }
+
+  // ---------- 점원 확인(D-1) ----------
+
+  public static final String AT_STATION = "AT_STATION";
+  public static final String TAKEN_BY_RIDER = "TAKEN_BY_RIDER";
+
+  /**
+   * 만료됐지만 확정 요청이 없는 허가의 실물 확인. AT_STATION → 허가 해제, TAKEN_BY_RIDER → 허가 라이더에게 인계된 것으로(인계 사실 → 재고
+   * 전기).
+   */
+  public Resolution check(
+      String packageId,
+      String requestId,
+      String sourceSystem,
+      String result,
+      @Nullable String note) {
+    PackageFence p0 = pkg(packageId);
+    String me = TaskService.requireWorker(p0.mfcId());
+    if (!AT_STATION.equals(result) && !TAKEN_BY_RIDER.equals(result)) {
+      throw TaskService.invalid("result 는 AT_STATION / TAKEN_BY_RIDER 입니다.");
+    }
+    idempotency.execute(
+        new RequestKey(sourceSystem, requestId, "checkPackageHandover", me),
+        Map.of("packageId", packageId, "result", result),
+        String.class,
+        () -> {
+          works.lockOrder(p0.orderId());
+          PackageFence p = store.lock(packageId).orElseThrow();
+          boolean requested = store.handover(packageId).isPresent();
+          Instant now = clock.instant();
+          if (!HandoverRules.checkRequired(p.fenceState(), p.fenceExpiresAt(), requested, now)) {
+            boolean live =
+                HandoverRules.fenceLive(p.fenceState(), p.fenceExpiresAt(), requested, now);
+            throw new PmartException(
+                live && !requested ? HandoverRules.FENCE_ACTIVE : HandoverRules.INVALID_STATE,
+                HttpStatus.CONFLICT,
+                live && !requested
+                    ? "인계 허가 유효시간이 아직 남았습니다 — 만료 뒤 확인합니다 (" + packageId + ")"
+                    : "확인할 인계 허가가 없습니다(허가 없음·확정 요청 있음·이미 확인) (" + packageId + ")",
+                false,
+                List.of());
+          }
+          store.recordCheck(packageId, result, me, note, now);
+          if (AT_STATION.equals(result)) {
+            store.expireFence(packageId);
+            log.info("포장 {} 점원 확인 — 포장대에 있음, 인계 허가 해제 by {}", packageId, me);
+            return "RELEASED";
+          }
+          store.insertHandover(
+              new Handover(
+                  "HOV-" + UUID.randomUUID(),
+                  packageId,
+                  p.shipmentId(),
+                  Objects.requireNonNull(p.authorizationId()),
+                  p.fenceVersion(),
+                  Objects.requireNonNull(p.fenceRiderId()),
+                  Objects.requireNonNull(p.fenceDeliveryId()),
+                  "REQUESTED",
+                  null,
+                  null,
+                  now,
+                  null));
+          log.warn(
+              "포장 {} 점원 확인 — 포장대에 없음, 라이더 {} 에게 인계된 것으로 확정 by {}", packageId, p.fenceRiderId(), me);
+          return "TAKEN";
+        });
+    store
+        .handover(packageId)
+        .filter(h -> "REQUESTED".equals(h.state()) || "UNKNOWN_RESULT".equals(h.state()))
+        .ifPresent(h -> post(packageId));
+    return resolution(packageId, null);
+  }
+
+  public java.util.Optional<HandoverStore.Check> lastCheck(String packageId) {
+    return store.lastCheck(packageId);
   }
 
   // ---------- 내부 ----------
@@ -520,6 +610,8 @@ public class HandoverService {
           case HandoverRules.DELIVERY_MISMATCH -> "이 포장의 배송이 아닙니다.";
           case HandoverRules.NOT_ASSIGNED -> "배정된 라이더가 없습니다(배정 해제·취소).";
           case HandoverRules.FENCE_ACTIVE -> "다른 라이더의 인계 허가가 진행 중입니다.";
+          case HandoverRules.FENCE_EXPIRED_UNCONFIRMED ->
+              "앞선 인계 허가가 만료됐지만 포장 실물 확인이 없습니다 — 점원 확인 뒤 다시 찍어 주세요.";
           case HandoverRules.HANDOVER_RESULT_PENDING -> "인계 확정 결과를 확인 중입니다.";
           case HandoverRules.FENCE_EXPIRED -> "인계 허가가 만료됐습니다. 다시 찍어 주세요.";
           case HandoverRules.FENCE_VERSION_MISMATCH -> "인계 허가가 바뀌었습니다. 다시 찍어 주세요.";

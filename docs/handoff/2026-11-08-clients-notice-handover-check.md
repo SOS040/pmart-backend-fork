@@ -1,0 +1,27 @@
+# 공지: 인계 허가 만료 뒤 점원 확인 (mfc-fulfillment 0.4.4)
+
+- 근거: 사용자 결정 D-1 안 C(2026-11-08), `docs/business/flows/package-handover-decisions.md` D-1
+- 계약: `contracts/openapi/mfc-fulfillment-service.yaml` 0.4.4 (커밋은 이 공지와 같은 커밋)
+
+## 무엇이 바뀌나
+라이더가 포장 QR 을 찍은 뒤 "픽업 완료"(확정) 없이 인계 허가가 만료되면(앱 오류·통신 끊김), 실물이 라이더에게 갔을 수 있다. 이제 그런 포장은:
+
+| 동작 | 지금 |
+|---|---|
+| 같은 라이더·같은 배송이 다시 찍기 | 확인 없이 새 허가(이전과 같음) |
+| 다른 라이더가 찍기(재배정 등) | 409 `FENCE_EXPIRED_UNCONFIRMED` — 점원 확인 뒤 |
+| 주문 중지(고객센터 취소 등) | 판정 PENDING(포장 `HANDOVER_IN_PROGRESS`) — 점원 확인 뒤 진행 |
+| 재포장 | 409 `FENCE_EXPIRED_UNCONFIRMED` — 점원 확인 뒤 |
+| 재배정 | 이전 라이더 허가를 자동으로 끝내지 않음. 이전 라이더 확정은 409 `NOT_ASSIGNED` |
+
+## 클라이언트가 할 일
+### 패킹 앱(점원, MFC_WORKER)
+- 확인 필요 표시: `GET /api/v1/packages/{id}/handover-resolution` 의 `checkRequired: true`(새 필드), 마지막 확인 `lastCheck{result, checkedBy, checkedAt}`.
+- 확인 버튼: `POST /api/v1/packages/{id}/handover-checks` (Idempotency-Key, X-Source-System), 본문 `{ "result": "AT_STATION" | "TAKEN_BY_RIDER", "note": "…" }`
+  - `AT_STATION` = 포장대에 있음 → 허가 해제(다른 라이더가 찍을 수 있고, 대기 중인 중지가 이어짐)
+  - `TAKEN_BY_RIDER` = 포장대에 없음 → 그 라이더에게 인계된 것으로 확정(응답 verdict `HANDED_OVER`)
+  - 허가가 아직 살아 있으면 409 `FENCE_ACTIVE`, 확인할 허가가 없으면 409 `INVALID_STATE`. 응답은 `HandoverResolution`.
+- 확인할 포장 목록 API 는 아직 없다(포장 단위 조회만). 필요하면 요청서로.
+
+### 라이더 앱
+- 새 거절 코드 `FENCE_EXPIRED_UNCONFIRMED`: "앞선 인계 허가 확인이 필요합니다 — 점원에게 문의" 안내. 재배정된 이전 라이더의 확정은 `NOT_ASSIGNED`.

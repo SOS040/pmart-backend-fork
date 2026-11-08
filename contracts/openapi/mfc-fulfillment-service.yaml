@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.3
+  version: 0.4.4
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -652,6 +652,46 @@ paths:
               schema: { $ref: '#/components/schemas/HandoverResolution' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /packages/{packageId}/handover-checks:
+    post:
+      tags: [handovers]
+      summary: 인계 허가 만료 뒤 점원 확인 — 포장대에 있음(허가 해제) / 없음(그 라이더에게 인계 확정) (0.4.4, D-1)
+      description: |
+        2026-11-08 사용자 결정 D-1 안 C. 라이더가 QR 을 찍은 뒤 확정 없이 허가가 만료되면(앱 오류·통신 단절) 실물이 라이더에게 갔을 수 있다.
+        그런 포장은 **같은 라이더·같은 배송의 다시 찍기만** 확인 없이 허용하고, 다른 라이더 허가(409 FENCE_EXPIRED_UNCONFIRMED)·주문 중지
+        (PENDING)·재포장은 점원이 이 요청으로 실물을 확인한 뒤에만 진행한다. 배정이 바뀌어도 이전 라이더 허가를 자동으로 끝내지 않는다.
+        AT_STATION = 포장대에 있음 → 허가 해제(EXPIRED), 대기 중지는 sweep 이 이어 감. TAKEN_BY_RIDER = 포장대에 없음 → 허가 라이더에게 인계된 것으로
+        인계 사실을 만들고 재고 인계 전기(라이더 확정과 같은 경로, PackageHandedOver). 그 센터 MFC_WORKER. 허가가 아직 살아 있으면 409 FENCE_ACTIVE,
+        확인할 허가가 없으면 409 INVALID_STATE. 같은 Idempotency-Key 는 같은 결과.
+      operationId: checkPackageHandover
+      parameters:
+        - { name: packageId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result]
+              properties:
+                result: { type: string, enum: [AT_STATION, TAKEN_BY_RIDER] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: 확인 뒤 판정
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HandoverResolution' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: FENCE_ACTIVE(허가 유효시간이 남음) / INVALID_STATE(확인할 허가 없음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /internal/package-handovers/{handoverId}/retries:
     post:
       tags: [handovers]
@@ -1148,6 +1188,13 @@ components:
         inventoryCommitId: { type: [string, 'null'] }
         inventoryApplyStatus: { type: string, enum: [NOT_REQUESTED, PROCESSING, APPLIED, REJECTED, UNKNOWN_RESULT] }
         stopRequestId: { type: [string, 'null'] }
+        checkRequired: { type: boolean, description: '0.4.4 — 허가가 만료됐지만 확정 요청이 없어 점원 확인(handover-checks)이 필요함' }
+        lastCheck:
+          type: [object, 'null']
+          properties:
+            result: { type: string, enum: [AT_STATION, TAKEN_BY_RIDER] }
+            checkedBy: { type: string }
+            checkedAt: { type: string, format: date-time }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
   securitySchemes:
     bearerAuth:

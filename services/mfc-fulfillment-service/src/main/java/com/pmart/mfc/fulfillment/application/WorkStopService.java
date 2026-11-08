@@ -278,7 +278,6 @@ public class WorkStopService {
     // 라이더 인계(6c, ADR-0047): 인계된 포장이 있으면 전체 중지 거절, 인계 진행 중이면 그 결과까지 대기, 끝난(만료) fence 는 닫는다
     List<PackageVerdict> handedOver = new ArrayList<>();
     List<PackageVerdict> inProgress = new ArrayList<>();
-    List<String> expired = new ArrayList<>();
     for (ShipmentRow s : works.shipments(fid)) {
       for (HandoverStore.PackageFence pf : handovers.byShipment(s.shipmentId())) {
         boolean requested = handovers.handover(pf.packageId()).isPresent();
@@ -293,7 +292,10 @@ public class WorkStopService {
               new PackageVerdict(
                   pf.packageId(), s.shipmentId(), "HANDOVER_IN_PROGRESS", List.of()));
         } else if ("HANDOVER_IN_PROGRESS".equals(pf.fenceState())) {
-          expired.add(pf.packageId());
+          // 만료됐지만 실물 확인 없음(D-1 안 C) — 점원 확인(handover-checks)까지 대기
+          inProgress.add(
+              new PackageVerdict(
+                  pf.packageId(), s.shipmentId(), "HANDOVER_IN_PROGRESS", List.of()));
         }
       }
     }
@@ -312,9 +314,8 @@ public class WorkStopService {
     }
     if (!inProgress.isEmpty()) {
       store.pendingVerdicts(stop.stopRequestId(), mapper.writeValueAsString(inProgress));
-      return false; // 인계 결과(확정 또는 fence 만료) 뒤 sweep 이 다시
+      return false; // 인계 결과(확정 또는 점원 확인) 뒤 sweep 이 다시
     }
-    expired.forEach(handovers::expireFence);
     List<TaskRow> taskRows = works.tasks(fid);
     List<TaskLineRow> taskLines = works.taskLines(fid);
     List<Return> all = new ArrayList<>();

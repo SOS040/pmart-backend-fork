@@ -120,6 +120,32 @@ public class HandoverStore {
   }
 
   /** 살아 있는 fence 를 끝냄(만료·배정 변경). 확정 요청이 있는 포장은 건드리지 않는다. 반환 = 바뀐 행 수. */
+  /** 점원 확인 기록(D-1). */
+  public void recordCheck(
+      String packageId, String result, String by, @Nullable String note, Instant at) {
+    jdbc.update(
+        "UPDATE package SET fence_check_result = ?, fence_checked_by = ?, fence_checked_at = ?,"
+            + " fence_check_note = ? WHERE package_id = ?",
+        result,
+        by,
+        java.sql.Timestamp.from(at),
+        note,
+        packageId);
+  }
+
+  public record Check(String result, String checkedBy, Instant checkedAt) {}
+
+  public Optional<Check> lastCheck(String packageId) {
+    return jdbc
+        .query(
+            "SELECT fence_check_result, fence_checked_by, fence_checked_at FROM package"
+                + " WHERE package_id = ? AND fence_check_result IS NOT NULL",
+            (rs, i) -> new Check(rs.getString(1), rs.getString(2), rs.getTimestamp(3).toInstant()),
+            packageId)
+        .stream()
+        .findFirst();
+  }
+
   public int expireFence(String packageId) {
     return jdbc.update(
         "UPDATE package p SET fence_state = 'EXPIRED', version = version + 1 WHERE p.package_id = ?"

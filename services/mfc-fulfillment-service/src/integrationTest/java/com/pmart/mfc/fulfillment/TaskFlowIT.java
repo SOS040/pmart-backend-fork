@@ -1498,9 +1498,12 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(201);
   }
 
-  /** 인계 진행 중이면 중지는 대기 → fence 만료 뒤 중지 완료(취소 복귀). 재배정은 이전 라이더 허가를 끝낸다. */
+  /**
+   * D-1 안 C(2026-11-08): 재배정은 이전 라이더 허가를 끝내지 않는다(이전 라이더 확정 409, 새 라이더 FENCE_ACTIVE → 만료 뒤
+   * FENCE_EXPIRED_UNCONFIRMED). 중지는 확인 전까지 PENDING → 점원 확인 AT_STATION → 허가 해제 → 중지 완료(취소 복귀).
+   */
   @Test
-  void stopWaitsForLiveFenceAndReassignmentRevokesOldRider() {
+  void expiredFenceNeedsClerkCheckBeforeOtherRiderOrStop() {
     String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
     List<Pkg> pkgs = readyShipment(o);
     Pkg p1 = pkgs.get(0);
@@ -1509,40 +1512,51 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     Res old = authorize(RIDER1, p1, "R1", dlv, p1.qr());
     assertThat(old.status()).isEqualTo(201);
 
-    // 재배정(R1 → R2): R1 의 확정 요청 전 허가는 끝, R2 가 새로 허가
+    // 재배정(R1 → R2): R1 은 확정 못 함, R1 허가는 남아 있어 R2 는 FENCE_ACTIVE
     assignRider(o, dlv, "R2", 2);
-    assertThat(commit(RIDER1, p1, old.body(), "R1").status()).isEqualTo(409);
-    Res a2 = authorize(RIDER2, p1, "R2", dlv, p1.qr());
-    assertThat(a2.status()).as(a2.body().toString()).isEqualTo(201);
-    assertThat(a2.body().path("fenceVersion").asInt()).isEqualTo(2);
+    Res oldCommit = commit(RIDER1, p1, old.body(), "R1");
+    assertThat(oldCommit.status()).isEqualTo(409);
+    assertThat(oldCommit.body().path("code").asString()).isEqualTo("NOT_ASSIGNED");
+    assertThat(authorize(RIDER2, p1, "R2", dlv, p1.qr()).body().path("code").asString())
+        .isEqualTo("FENCE_ACTIVE");
+    // 살아 있는 허가는 점원 확인 대상 아님
+    assertThat(check(p1, "AT_STATION").body().path("code").asString()).isEqualTo("FENCE_ACTIVE");
 
-    // 살아 있는 fence → 중지는 PENDING, 그 포장 HANDOVER_IN_PROGRESS, 작업·출고 그대로
+    // 만료(확정 요청 없음) → 다른 라이더는 점원 확인 전 거절, 판정에 확인 필요
+    jdbc.update(
+        "UPDATE package SET fence_expires_at = now() - interval '1 minute' WHERE package_id = ?",
+        p1.id());
+    assertThat(authorize(RIDER2, p1, "R2", dlv, p1.qr()).body().path("code").asString())
+        .isEqualTo("FENCE_EXPIRED_UNCONFIRMED");
+    assertThat(
+            call("GET", SVC, "/packages/" + p1.id() + "/handover-resolution", null, null)
+                .body()
+                .path("checkRequired")
+                .asBoolean())
+        .isTrue();
+
+    // 중지도 확인 전까지 PENDING
     Res stop =
         call("POST", SVC, "/internal/stop-requests", UUID.randomUUID().toString(), fullStop(o));
     assertThat(stop.body().path("state").asString()).isEqualTo("PENDING");
     assertThat(stop.body().path("packages").toString()).contains("HANDOVER_IN_PROGRESS");
-    assertThat(
-            call("GET", VIEWER, "/shipments/" + o + "-S1", null, null)
-                .body()
-                .path("state")
-                .asString())
-        .isEqualTo("READY");
-    // 중지 진행 중에는 다른 포장 허가 안 함
-    assertThat(
-            authorize(RIDER2, pkgs.get(1), "R2", dlv, pkgs.get(1).qr())
-                .body()
-                .path("code")
-                .asString())
-        .isEqualTo("INVALID_STATE");
-
-    // fence 만료(확정 요청 없음) → 중지 진행: 포장 무효·출고 취소·취소 복귀
-    jdbc.update(
-        "UPDATE package SET fence_expires_at = now() - interval '1 minute' WHERE package_id = ?",
-        p1.id());
     inv.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/cancel-returns"))
             .willReturn(
                 json(200, Map.of("status", "APPLIED", "resultId", "RSV-" + o, "appliedQty", 3))));
+    stops.sweepPending();
+    assertThat(
+            call("GET", SVC, "/internal/stop-requests/STOP-" + o, null, null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("PENDING");
+
+    // 점원 확인 — 포장대에 있음 → 허가 해제 → 중지 완료
+    Res checked = check(p1, "AT_STATION");
+    assertThat(checked.status()).as(checked.body().toString()).isEqualTo(200);
+    assertThat(checked.body().path("checkRequired").asBoolean()).isFalse();
+    assertThat(checked.body().path("lastCheck").path("result").asString()).isEqualTo("AT_STATION");
     stops.sweepPending();
     JsonNode done = call("GET", SVC, "/internal/stop-requests/STOP-" + o, null, null).body();
     assertThat(done.path("state").asString()).as(done.toString()).isEqualTo("RESOLVED");
@@ -1552,11 +1566,57 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
                 .path("state")
                 .asString())
         .isEqualTo("CANCELLED");
-    // 만료된 허가로 확정 안 됨, 무효 포장은 다시 허가 안 됨
-    assertThat(commit(RIDER2, p1, a2.body(), "R2").status()).isEqualTo(409);
-    assertThat(authorize(RIDER2, p1, "R2", dlv, p1.qr()).body().path("code").asString())
-        .isEqualTo("PACKAGE_INVALIDATED");
     inv.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers")));
+  }
+
+  /** D-1 안 C: 같은 라이더·배송은 만료 뒤 확인 없이 다시 찍기. 점원 확인 TAKEN_BY_RIDER → 그 라이더에게 인계 확정(재고 전기). */
+  @Test
+  void sameRiderRescansWithoutCheckAndTakenByRiderCommitsHandover() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    List<Pkg> pkgs = readyShipment(o);
+    Pkg p1 = pkgs.get(0);
+    Pkg p2 = pkgs.get(1);
+    String dlv = "DLV-" + o;
+    assignRider(o, dlv, "R1", 1);
+    assertThat(authorize(RIDER1, p1, "R1", dlv, p1.qr()).status()).isEqualTo(201);
+    jdbc.update(
+        "UPDATE package SET fence_expires_at = now() - interval '1 minute' WHERE package_id = ?",
+        p1.id());
+    Res again = authorize(RIDER1, p1, "R1", dlv, p1.qr());
+    assertThat(again.status()).as(again.body().toString()).isEqualTo(201);
+    assertThat(again.body().path("fenceVersion").asInt()).isEqualTo(2);
+
+    // p2: 찍고 만료 → 점원이 "포장대에 없음" → R1 에게 인계 확정
+    assertThat(authorize(RIDER1, p2, "R1", dlv, p2.qr()).status()).isEqualTo(201);
+    jdbc.update(
+        "UPDATE package SET fence_expires_at = now() - interval '1 minute' WHERE package_id = ?",
+        p2.id());
+    inv.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/package-handovers"))
+            .willReturn(
+                json(201, Map.of("status", "APPLIED", "resultId", "CMT-HC", "appliedQty", 1))));
+    Res taken = check(p2, "TAKEN_BY_RIDER");
+    assertThat(taken.status()).as(taken.body().toString()).isEqualTo(200);
+    assertThat(taken.body().path("verdict").asString()).isEqualTo("HANDED_OVER");
+    assertThat(taken.body().path("inventoryCommitId").asString()).isEqualTo("CMT-HC");
+    inv.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers"))
+            .withRequestBody(matchingJsonPath("$.riderId", equalTo("R1")))
+            .withRequestBody(matchingJsonPath("$.packageId", equalTo(p2.id()))));
+    assertThat(outbox("PackageHandedOver", p2.id())).isEqualTo(1);
+    // 다시 확인 → 확인할 허가 없음(재고 한 번)
+    assertThat(check(p2, "TAKEN_BY_RIDER").body().path("code").asString())
+        .isEqualTo("INVALID_STATE");
+    inv.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/internal/package-handovers")));
+  }
+
+  Res check(Pkg p, String result) {
+    return call(
+        "POST",
+        W1,
+        "/packages/" + p.id() + "/handover-checks",
+        UUID.randomUUID().toString(),
+        Map.of("result", result, "note", "시험"));
   }
 
   static Map<String, Object> returnLikePick() {

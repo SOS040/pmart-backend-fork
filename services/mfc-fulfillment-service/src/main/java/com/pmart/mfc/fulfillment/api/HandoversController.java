@@ -2,12 +2,14 @@ package com.pmart.mfc.fulfillment.api;
 
 import com.pmart.mfc.fulfillment.api.generated.HandoversApi;
 import com.pmart.mfc.fulfillment.api.generated.model.AuthorizePackageHandoverRequest;
+import com.pmart.mfc.fulfillment.api.generated.model.CheckPackageHandoverRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.CommitPackageHandoverRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.FenceState;
 import com.pmart.mfc.fulfillment.api.generated.model.HandoverAuthorization;
 import com.pmart.mfc.fulfillment.api.generated.model.HandoverCommitResult;
 import com.pmart.mfc.fulfillment.api.generated.model.HandoverResolution;
 import com.pmart.mfc.fulfillment.api.generated.model.HandoverResolutionFence;
+import com.pmart.mfc.fulfillment.api.generated.model.HandoverResolutionLastCheck;
 import com.pmart.mfc.fulfillment.api.generated.model.PackageState;
 import com.pmart.mfc.fulfillment.api.generated.model.ShipmentState;
 import com.pmart.mfc.fulfillment.application.HandoverService;
@@ -112,7 +114,26 @@ public class HandoversController implements HandoversApi {
   @Override
   public ResponseEntity<HandoverResolution> getHandoverResolution(
       String packageId, @Nullable String stopRequestId) {
-    var r = handovers.resolution(packageId, stopRequestId);
+    return ResponseEntity.ok(dto(handovers.resolution(packageId, stopRequestId)));
+  }
+
+  @Override
+  public ResponseEntity<HandoverResolution> checkPackageHandover(
+      String packageId,
+      String idempotencyKey,
+      String xSourceSystem,
+      CheckPackageHandoverRequest body) {
+    return ResponseEntity.ok(
+        dto(
+            handovers.check(
+                packageId,
+                idempotencyKey,
+                xSourceSystem,
+                body.getResult().getValue(),
+                body.getNote())));
+  }
+
+  private HandoverResolution dto(HandoverService.Resolution r) {
     var p = r.pkg();
     String fenceState =
         "HANDOVER_IN_PROGRESS".equals(p.fenceState()) && !r.fenceLive()
@@ -135,17 +156,26 @@ public class HandoversController implements HandoversApi {
     if (p.fenceExpiresAt() != null) {
       fence.setExpiresAt(time(p.fenceExpiresAt()));
     }
-    return ResponseEntity.ok(
-        new HandoverResolution()
-            .packageId(p.packageId())
-            .packageVersion(p.packageVersion())
-            .packageState(PackageState.fromValue(p.state()))
-            .verdict(HandoverResolution.VerdictEnum.fromValue(r.verdict().name()))
-            .fence(fence)
-            .handoverId(r.handover() == null ? null : r.handover().handoverId())
-            .inventoryCommitId(r.handover() == null ? null : r.handover().inventoryCommitId())
-            .inventoryApplyStatus(HandoverResolution.InventoryApplyStatusEnum.fromValue(apply))
-            .stopRequestId(r.stopRequestId()));
+    var check = handovers.lastCheck(p.packageId()).orElse(null);
+    return new HandoverResolution()
+        .checkRequired(
+            "HANDOVER_IN_PROGRESS".equals(p.fenceState()) && !r.fenceLive() && r.handover() == null)
+        .lastCheck(
+            check == null
+                ? null
+                : new HandoverResolutionLastCheck()
+                    .result(HandoverResolutionLastCheck.ResultEnum.fromValue(check.result()))
+                    .checkedBy(check.checkedBy())
+                    .checkedAt(time(check.checkedAt())))
+        .packageId(p.packageId())
+        .packageVersion(p.packageVersion())
+        .packageState(PackageState.fromValue(p.state()))
+        .verdict(HandoverResolution.VerdictEnum.fromValue(r.verdict().name()))
+        .fence(fence)
+        .handoverId(r.handover() == null ? null : r.handover().handoverId())
+        .inventoryCommitId(r.handover() == null ? null : r.handover().inventoryCommitId())
+        .inventoryApplyStatus(HandoverResolution.InventoryApplyStatusEnum.fromValue(apply))
+        .stopRequestId(r.stopRequestId());
   }
 
   private static OffsetDateTime time(Instant i) {
