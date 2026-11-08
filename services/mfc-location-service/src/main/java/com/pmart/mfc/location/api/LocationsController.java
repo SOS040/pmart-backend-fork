@@ -187,7 +187,8 @@ public class LocationsController implements LocationsApi {
         d == null ? null : d.getHeightMm(),
         d == null ? null : d.getSlotCount(),
         d == null ? null : d.getMaxWeightG(),
-        b.getPickSequence());
+        b.getPickSequence(),
+        Boolean.TRUE.equals(b.getHighTurnover()));
   }
 
   static Location dto(LocationView v) {
@@ -212,6 +213,7 @@ public class LocationsController implements LocationsApi {
       out.setDimensions(d);
     }
     out.setPickSequence(v.pickSequence());
+    out.setHighTurnover(v.highTurnover());
     out.setVersion(v.version());
     out.setState(LocationState.fromValue(v.state()));
     out.setStateReason(v.stateReason());

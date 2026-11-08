@@ -22,7 +22,9 @@ public final class StockUnit {
     STORED,
     PICKED,
     PACKED,
-    CANCEL_RETURN_PENDING
+    CANCEL_RETURN_PENDING,
+    /** 이동 중 — 카트 위(IV-03). 판매 가능(E) 아님. */
+    MOVING
   }
 
   /** 단위 행 키(센터 안). */

@@ -19,5 +19,6 @@ public record LocationView(
     @Nullable Integer slotCount,
     @Nullable Integer maxWeightG,
     @Nullable Integer pickSequence,
+    boolean highTurnover,
     int version,
     Instant updatedAt) {}

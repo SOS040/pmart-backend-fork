@@ -56,7 +56,8 @@ public class LocationService {
       @Nullable Integer heightMm,
       @Nullable Integer slotCount,
       @Nullable Integer maxWeightG,
-      @Nullable Integer pickSequence) {}
+      @Nullable Integer pickSequence,
+      boolean highTurnover) {}
 
   record StateRequest(
       String locationId,
@@ -124,6 +125,7 @@ public class LocationService {
                       b.slotCount(),
                       b.maxWeightG(),
                       b.pickSequence(),
+                      b.highTurnover(),
                       1,
                       at);
               if (!store.insert(v, operator, at)) {
@@ -190,6 +192,7 @@ public class LocationService {
                       b.slotCount(),
                       b.maxWeightG(),
                       b.pickSequence(),
+                      b.highTurnover(),
                       cur.version() + 1,
                       at);
               store.updateAttributes(v);
@@ -429,6 +432,11 @@ public class LocationService {
     payload.put("reason", reason);
     payload.put("version", v.version());
     payload.put("pickSequence", v.pickSequence());
+    payload.put("highTurnover", v.highTurnover());
+    payload.put("widthMm", v.widthMm());
+    payload.put("depthMm", v.depthMm());
+    payload.put("heightMm", v.heightMm());
+    payload.put("maxWeightG", v.maxWeightG());
     payload.put("changedAt", v.updatedAt().toString());
     EventEnvelope.Actor actor =
         operator == null

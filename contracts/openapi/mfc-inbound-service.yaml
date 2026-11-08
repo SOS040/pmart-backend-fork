@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inbound-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     MFC 입고 작업(RECEIVE/INSPECT/PUTAWAY Task)·InboundPromise(TRF·TOUT·ETA 투영)·수령 사실·수령 차이·회수품 반입·로컬 공급 요청(WK-14)의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량(mfc-inventory에 ConfirmReceipt 요청 후 commitId 수신), 수령창·수용량(mfc-capacity), 품질 판정(mfc-quality), 공급 승인(replenishment).
@@ -11,6 +11,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - { name: moves, description: '재고 위치 이동 지시·실행(IV-03, 0.5.0)' }
   - { name: inbound-tasks, description: 입고 작업(품질검사·적치) — 현장 실행 사실 → mfc-inventory 반영(IV-13) }
   - { name: inbound-promises, description: 입고 예정·도착·수령 }
   - { name: supply-requests, description: 로컬 공급 요청 WK-14 }
@@ -533,8 +534,184 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/InitialStockLoad' } }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /move-orders:
+    get:
+      tags: [moves]
+      summary: 재고 이동 지시 목록 (IV-03, 0.5.0)
+      description: 그 센터 운영자. 기본은 진행 중(ACTIVE·CANCEL_PENDING).
+      operationId: listMoveOrders
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: state, in: query, schema: { type: string, enum: [ACTIVE, CANCEL_PENDING, COMPLETED, CANCELLED] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/MoveOrder' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [moves]
+      summary: 재고 이동 지시 — 감독자 (IV-03, 0.5.0)
+      description: |
+        2026-11-08 사용자 결정: MFC 선반 간 재고 이동은 **감독자가 지시**하고 작업자가 두 단계(출발 칸 → 카트 → 도착 칸)로 실행한다(CDC 는 시스템 지시).
+        그 센터 MFC_SUPERVISOR. mfc-inventory 이동 배정(출발 물량·도착 공간, 칸당 한 상품·한 상품 한 자리·용량)을 먼저 잡고 지시를 남긴다 — 거절은 inventory 의 코드 그대로.
+        같은 Idempotency-Key 는 같은 이동(moveId 가 키에서 정해진다).
+      operationId: createMoveOrder
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, sku, lotId, fromLocation, toLocation, qty]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                sku: { type: string }
+                lotId: { type: string }
+                fromLocation: { type: string }
+                toLocation: { type: string }
+                qty: { type: integer, minimum: 1 }
+                reason: { type: string, maxLength: 200 }
+      responses:
+        '201':
+          description: 지시됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+  /move-orders/{moveId}:
+    get:
+      tags: [moves]
+      summary: 재고 이동 지시 한 건 (0.5.0)
+      operationId: getMoveOrder
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /move-orders/{moveId}/pickups:
+    post:
+      tags: [moves]
+      summary: 집어 올리기 — 출발 칸 → 카트 (작업자, 0.5.0)
+      description: 그 센터 MFC_WORKER·MFC_SUPERVISOR. 카트 식별번호(CART 위치 코드)를 찍는다. 같은 Idempotency-Key 는 한 번(inventory 실행 ID).
+      operationId: pickUpMoveOrder
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cartLocation, qty]
+              properties:
+                cartLocation: { type: string }
+                qty: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+  /move-orders/{moveId}/drops:
+    post:
+      tags: [moves]
+      summary: 내려놓기 — 카트 → 도착 칸(취소 뒤에는 출발 칸으로 되돌리기) (작업자, 0.5.0)
+      operationId: dropMoveOrder
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toLocation, qty]
+              properties:
+                toLocation: { type: string }
+                qty: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+  /move-orders/{moveId}/cancellations:
+    post:
+      tags: [moves]
+      summary: 이동 지시 취소 — 감독자 (0.5.0)
+      description: 집지 않은 몫만 풀린다. 카트에 남은 물건은 내려놓아야 끝난다(CANCEL_PENDING → CANCELLED).
+      operationId: cancelMoveOrder
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: 취소됨(또는 카트 정리 대기)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 components:
   schemas:
+    MoveOrder:
+      type: object
+      properties:
+        moveId: { type: string }
+        mfcId: { type: string }
+        sku: { type: string }
+        lotId: { type: string }
+        fromLocation: { type: string }
+        toLocation: { type: string }
+        cartLocation: { type: [string, 'null'] }
+        qty: { type: integer }
+        pickedQty: { type: integer }
+        droppedQty: { type: integer }
+        onCartQty: { type: integer }
+        state: { type: string, enum: [ACTIVE, CANCEL_PENDING, COMPLETED, CANCELLED] }
+        reason: { type: [string, 'null'] }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     InboundPromiseState:
       type: string
       enum: [EXPECTED, RECEIVING, TIN_POSTED, CANCELLED]

@@ -61,7 +61,8 @@
                 "QUARANTINE",
                 "DISPATCH_STAGING",
                 "RETURN",
-                "DISPOSAL"
+                "DISPOSAL",
+                "CART"
               ]
             },
             "temperatureZone": {
@@ -81,6 +82,38 @@
                 "integer",
                 "null"
               ]
+            },
+            "highTurnover": {
+              "type": "boolean",
+              "description": "고회전 선반(같은 상품 여러 칸 허용), 2026-11-08"
+            },
+            "widthMm": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "칸 치수·하중(재고 이동 용량 계산), 2026-11-08"
+            },
+            "depthMm": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "칸 치수·하중(재고 이동 용량 계산), 2026-11-08"
+            },
+            "heightMm": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "칸 치수·하중(재고 이동 용량 계산), 2026-11-08"
+            },
+            "maxWeightG": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "칸 치수·하중(재고 이동 용량 계산), 2026-11-08"
             }
           },
           "additionalProperties": true

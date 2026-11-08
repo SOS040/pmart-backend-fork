@@ -1,0 +1,200 @@
+package com.pmart.mfc.inbound;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
+import com.pmart.common.test.PostgresKafkaContainerSupport;
+import com.pmart.common.test.TestJwt;
+import com.pmart.common.test.TestJwtConfiguration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/** 재고 이동 지시(IV-03): 감독자 지시 → 작업자 집어 올리기·내려놓기 → 감독자 취소. 수량 정본(inventory)은 WireMock. */
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+      "spring.main.banner-mode=off",
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      "pmart.inbound.post-interval=PT1H"
+    })
+@Import(TestJwtConfiguration.class)
+@EnableWireMock(
+    @ConfigureWireMock(
+        name = "inventory",
+        baseUrlProperties = "pmart.inbound.mfc-inventory-base-url"))
+class MoveOrderIT extends PostgresKafkaContainerSupport {
+
+  static final String MFC = "MFC-MV-1";
+  static final String SUP = TestJwt.operator("sup-m", List.of("MFC_SUPERVISOR"), List.of(MFC));
+  static final String WRK = TestJwt.operator("wrk-m", List.of("MFC_WORKER"), List.of(MFC));
+
+  @LocalServerPort int port;
+  @Autowired ObjectMapper mapper;
+
+  @InjectWireMock("inventory")
+  WireMockServer inv;
+
+  RestClient http;
+
+  record Res(int status, JsonNode body) {}
+
+  @BeforeEach
+  void setUp() {
+    http =
+        RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1")
+            .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+            .build();
+  }
+
+  Res post(String token, String path, @Nullable Object body) {
+    var spec =
+        http.post()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "mfc-pda");
+                });
+    var e =
+        (body == null
+                ? spec
+                : spec.contentType(MediaType.APPLICATION_JSON)
+                    .body(mapper.writeValueAsString(body)))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  Res get(String token, String path) {
+    var e =
+        http.get().uri(path).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
+    return new Res(e.getStatusCode().value(), mapper.readTree(e.getBody()));
+  }
+
+  void stub(String pathRegex, int status, Map<String, Object> body) {
+    inv.stubFor(
+        WireMock.post(urlPathMatching(pathRegex))
+            .willReturn(
+                aResponse()
+                    .withStatus(status)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(body))));
+  }
+
+  static Map<String, Object> alloc(int qty, int picked, int dropped, String state, String cart) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("qty", qty);
+    m.put("pickedQty", picked);
+    m.put("droppedQty", dropped);
+    m.put("state", state);
+    m.put("cartLocation", cart);
+    return m;
+  }
+
+  @Test
+  void supervisorOrdersAndWorkerMovesThroughACart() {
+    Map<String, Object> order = new LinkedHashMap<>();
+    order.put("mfcId", MFC);
+    order.put("sku", "E-00000009");
+    order.put("lotId", "LOT-1");
+    order.put("fromLocation", "A-S1-01-1-01");
+    order.put("toLocation", "A-S1-02-1-01");
+    order.put("qty", 10);
+    order.put("reason", "선반 재배치");
+
+    // 작업자는 지시 못 한다
+    assertThat(post(WRK, "/move-orders", order).status()).isEqualTo(403);
+
+    // inventory 거절 코드는 그대로
+    stub(
+        "/api/v1/internal/move-allocations",
+        409,
+        Map.of("code", "LOCATION_HAS_OTHER_SKU", "detail", "다른 상품이 있습니다"));
+    Res rejected = post(SUP, "/move-orders", order);
+    assertThat(rejected.status()).isEqualTo(409);
+    assertThat(rejected.body().path("code").asString()).isEqualTo("LOCATION_HAS_OTHER_SKU");
+
+    stub("/api/v1/internal/move-allocations", 201, alloc(10, 0, 0, "ACTIVE", null));
+    Res created = post(SUP, "/move-orders", order);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String moveId = created.body().path("moveId").asString();
+    assertThat(moveId).startsWith("MV-");
+    assertThat(created.body().path("state").asString()).isEqualTo("ACTIVE");
+    inv.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/move-allocations"))
+            .withRequestBody(matchingJsonPath("$.moveId", WireMock.equalTo(moveId))));
+
+    // 작업자: 카트로 집어 올리기 → 사본 갱신, 실행 ID = moveId + 요청 키
+    stub(
+        "/api/v1/internal/move-allocations/.*/pickups", 200, alloc(10, 6, 0, "ACTIVE", "CRT-A-01"));
+    Res picked =
+        post(
+            WRK,
+            "/move-orders/" + moveId + "/pickups",
+            Map.of("cartLocation", "CRT-A-01", "qty", 6));
+    assertThat(picked.status()).as(picked.body().toString()).isEqualTo(200);
+    assertThat(picked.body().path("onCartQty").asInt()).isEqualTo(6);
+    assertThat(picked.body().path("cartLocation").asString()).isEqualTo("CRT-A-01");
+    inv.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/move-allocations/" + moveId + "/pickups"))
+            .withRequestBody(matchingJsonPath("$.executionId", WireMock.matching(moveId + ":.+"))));
+
+    stub("/api/v1/internal/move-allocations/.*/drops", 200, alloc(10, 6, 6, "ACTIVE", "CRT-A-01"));
+    Res dropped =
+        post(
+            WRK,
+            "/move-orders/" + moveId + "/drops",
+            Map.of("toLocation", "A-S1-02-1-01", "qty", 6));
+    assertThat(dropped.body().path("droppedQty").asInt()).isEqualTo(6);
+
+    // 취소는 감독자만, 집지 않은 몫이 풀림
+    assertThat(
+            post(WRK, "/move-orders/" + moveId + "/cancellations", Map.of("reason", "x")).status())
+        .isEqualTo(403);
+    stub(
+        "/api/v1/internal/move-allocations/.*/cancellations",
+        200,
+        alloc(6, 6, 6, "CANCELLED", "CRT-A-01"));
+    Res cancelled =
+        post(SUP, "/move-orders/" + moveId + "/cancellations", Map.of("reason", "나머지는 그대로"));
+    assertThat(cancelled.body().path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(cancelled.body().path("qty").asInt()).isEqualTo(6);
+
+    // 목록: 진행 중에는 없음, CANCELLED 로 보면 있음
+    assertThat(
+            get(WRK, "/move-orders?mfcId=" + MFC).body().path("items").findValuesAsString("moveId"))
+        .doesNotContain(moveId);
+    assertThat(
+            get(WRK, "/move-orders?mfcId=" + MFC + "&state=CANCELLED")
+                .body()
+                .path("items")
+                .findValuesAsString("moveId"))
+        .contains(moveId);
+  }
+}

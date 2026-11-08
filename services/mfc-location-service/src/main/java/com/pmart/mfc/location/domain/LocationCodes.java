@@ -38,7 +38,8 @@ public final class LocationCodes {
           "QUARANTINE", "QRT",
           "DISPATCH_STAGING", "DSP",
           "RETURN", "RTN",
-          "DISPOSAL", "DSL");
+          "DISPOSAL", "DSL",
+          "CART", "CRT");
 
   /** 검사 결과: 문제가 없으면 problem 이 비고 areaCode 는 확정값(선반·피킹은 코드의 구역). */
   public record Checked(Optional<String> problem, @Nullable String areaCode) {}

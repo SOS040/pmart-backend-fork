@@ -25,7 +25,7 @@ public class LocationStore {
   private static final String COLUMNS =
       "location_id, mfc_id, location_code, area_code, zone, temperature_zone, state, state_reason,"
           + " width_mm, depth_mm, height_mm, slot_count, max_weight_g, pick_sequence, row_version,"
-          + " updated_at";
+          + " updated_at, high_turnover";
 
   private final JdbcTemplate jdbc;
   private final NamedParameterJdbcTemplate named;
@@ -42,8 +42,8 @@ public class LocationStore {
     return jdbc.update(
             "INSERT INTO location (location_id, mfc_id, location_code, area_code, zone,"
                 + " temperature_zone, state, state_reason, width_mm, depth_mm, height_mm, slot_count,"
-                + " max_weight_g, pick_sequence, row_version, created_by, created_at, updated_at)"
-                + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                + " max_weight_g, pick_sequence, row_version, created_by, created_at, updated_at,"
+                + " high_turnover) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 + " ON CONFLICT (mfc_id, location_code) DO NOTHING",
             v.locationId(),
             v.mfcId(),
@@ -62,7 +62,8 @@ public class LocationStore {
             v.version(),
             createdBy,
             Timestamp.from(at),
-            Timestamp.from(at))
+            Timestamp.from(at),
+            v.highTurnover())
         == 1;
   }
 
@@ -70,7 +71,7 @@ public class LocationStore {
     jdbc.update(
         "UPDATE location SET area_code = ?, zone = ?, temperature_zone = ?, width_mm = ?,"
             + " depth_mm = ?, height_mm = ?, slot_count = ?, max_weight_g = ?, pick_sequence = ?,"
-            + " row_version = ?, updated_at = ? WHERE location_id = ?",
+            + " row_version = ?, updated_at = ?, high_turnover = ? WHERE location_id = ?",
         v.areaCode(),
         v.zone(),
         v.temperatureZone(),
@@ -82,6 +83,7 @@ public class LocationStore {
         v.pickSequence(),
         v.version(),
         Timestamp.from(v.updatedAt()),
+        v.highTurnover(),
         v.locationId());
   }
 
@@ -239,6 +241,7 @@ public class LocationStore {
         intOrNull(rs, "slot_count"),
         intOrNull(rs, "max_weight_g"),
         intOrNull(rs, "pick_sequence"),
+        rs.getBoolean("high_turnover"),
         rs.getInt("row_version"),
         rs.getTimestamp("updated_at").toInstant());
   }

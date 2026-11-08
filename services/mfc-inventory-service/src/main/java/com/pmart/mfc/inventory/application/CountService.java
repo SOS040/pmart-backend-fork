@@ -76,6 +76,11 @@ public class CountService {
   private final ObjectMapper mapper;
   private final Clock clock;
 
+  private final com.pmart.mfc.inventory.infrastructure.MoveStore moves;
+
+  /** 진행 중 재고 이동이 있는 칸은 실사를 시작하지 않는다(이동 보류·카트 물량이 장부를 흔든다, IV-03). */
+  public static final String MOVE_IN_PROGRESS = "MOVE_IN_PROGRESS";
+
   public CountService(
       CountStore store,
       StockStore stock,
@@ -86,7 +91,9 @@ public class CountService {
       EventEnvelopeCodec codec,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      com.pmart.mfc.inventory.infrastructure.MoveStore moves) {
+    this.moves = moves;
     this.store = store;
     this.stock = stock;
     this.locations = locations;
@@ -128,6 +135,14 @@ public class CountService {
                 () -> {
                   for (String l : locs) {
                     locations.requireCountLocked(mfcId, l);
+                    if (!moves.openAt(mfcId, l).isEmpty()) {
+                      throw new PmartException(
+                          MOVE_IN_PROGRESS,
+                          HttpStatus.CONFLICT,
+                          l + " 에 진행 중인 재고 이동이 있습니다 — 끝내거나 취소한 뒤 실사합니다.",
+                          false,
+                          List.of());
+                    }
                   }
                   List<String> busy = store.openLocations(mfcId, locs);
                   if (!busy.isEmpty()) {

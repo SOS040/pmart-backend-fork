@@ -45,7 +45,8 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.inventory.hold-expiry-interval=PT1S"
+      "pmart.inventory.hold-expiry-interval=PT1S",
+      "pmart.inventory.dummy-sku-size=true"
     })
 @Import(TestJwtConfiguration.class)
 class StockReservationFlowIT extends PostgresKafkaContainerSupport {
@@ -90,6 +91,30 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         EventEnvelopeFixtures.envelope("MfcLocationStateChanged")
             .from("mfc-location-service")
             .aggregate("Location", id, version)
+            .payload(payload)
+            .buildJson();
+    kafka.send("mfc.location.v1", id, json).join();
+  }
+
+  /** 치수·고회전이 있는 위치(재고 이동 용량·규칙 시험). */
+  void shelf(String code, String zone, int w, int d, int h, boolean highTurnover) {
+    String id = "LOC-" + mfc + "-" + code;
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("locationId", id);
+    payload.put("mfcId", mfc);
+    payload.put("locationCode", code);
+    payload.put("zone", zone);
+    payload.put("temperatureZone", "AMBIENT");
+    payload.put("state", "ACTIVE");
+    payload.put("version", 1);
+    payload.put("highTurnover", highTurnover);
+    payload.put("widthMm", w);
+    payload.put("depthMm", d);
+    payload.put("heightMm", h);
+    String json =
+        EventEnvelopeFixtures.envelope("MfcLocationStateChanged")
+            .from("mfc-location-service")
+            .aggregate("Location", id, 1)
             .payload(payload)
             .buildJson();
     kafka.send("mfc.location.v1", id, json).join();
@@ -734,6 +759,209 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         "/internal/task-executions",
         UUID.randomUUID().toString(),
         body);
+  }
+
+  Res move(String path, Map<String, Object> body) {
+    return post(INBOUND, "mfc-inbound-service", path, UUID.randomUUID().toString(), body);
+  }
+
+  Map<String, Object> moveBody(String id, String sku, String lot, String from, String to, int qty) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("moveId", id);
+    m.put("mfcId", mfc);
+    m.put("sku", sku);
+    m.put("lotId", lot);
+    m.put("fromLocation", from);
+    m.put("toLocation", to);
+    m.put("qty", qty);
+    return m;
+  }
+
+  int unit(String sku, String location, String work) {
+    return jdbc.queryForObject(
+        "SELECT COALESCE(SUM(qty), 0) FROM stock_unit WHERE mfc_id = ? AND sku = ? AND location_code = ?"
+            + " AND work_state = ?",
+        Integer.class,
+        mfc,
+        sku,
+        location,
+        work);
+  }
+
+  /**
+   * 재고 위치 이동(IV-03, 2026-11-08 사용자 결정): 두 단계(칸 → 카트 → 칸), 이동 중은 판매 가능에서 빠짐, 칸당 한 상품·한 상품 한 자리(고회전
+   * 제외)·용량(더미 크기).
+   */
+  @Test
+  void stockMovesThroughACartAndFollowsShelfRules() {
+    shelf("B-01-01", "STORAGE", 1000, 600, 400, false); // 큰 상품도 16개
+    shelf("B-01-02", "STORAGE", 1000, 600, 400, false);
+    shelf("H-01-01", "PICKING", 1000, 600, 400, true); // 고회전
+    shelf("T-01-01", "PICKING", 10, 10, 10, true); // 아무것도 안 들어감
+    shelf("CRT-A-01", "CART", 0, 0, 0, false);
+    shelf("CRT-A-02", "CART", 0, 0, 0, false);
+    awaitLocations(8);
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 10); // A-01-01
+    String lot =
+        jdbc.queryForObject(
+            "SELECT lot_id FROM stock_unit WHERE mfc_id = ? AND sku = ? LIMIT 1",
+            String.class,
+            mfc,
+            sku);
+
+    // 예약 4 가 걸려 있으면 가용 6 까지만
+    String rid = confirmedReservation("ORD-MV", sku, 4);
+    Res over =
+        move("/internal/move-allocations", moveBody("MV-1", sku, lot, "A-01-01", "B-01-01", 10));
+    assertThat(over.status()).isEqualTo(409);
+    assertThat(over.body().path("code").asString()).isEqualTo("MOVE_QTY_EXCEEDS_AVAILABLE");
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    "/internal/reservations/" + rid + "/releases",
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "CANCEL_BEFORE_PICK"))
+                .status())
+        .isIn(200, 202);
+
+    // 전부 옮기기 배정 → 출발 칸 보류, E 0(H 10 그대로)
+    Res created =
+        move("/internal/move-allocations", moveBody("MV-1", sku, lot, "A-01-01", "B-01-01", 10));
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    assertThat(created.body().path("state").asString()).isEqualTo("ACTIVE");
+    assertThat(created.body().path("sizeClass").asString()).isIn("S", "M", "L");
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(10);
+    assertThat(av.path("sellable").asInt()).isZero();
+    // 같은 moveId 같은 내용 → 그대로, 다른 내용 → 409
+    assertThat(
+            move("/internal/move-allocations", moveBody("MV-1", sku, lot, "A-01-01", "B-01-01", 10))
+                .status())
+        .isEqualTo(201);
+    assertThat(
+            move("/internal/move-allocations", moveBody("MV-1", sku, lot, "A-01-01", "B-01-01", 9))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("MOVE_ID_CONFLICT");
+
+    // 집어 올리기 6 → 카트 MOVING 6, 출발 4, E 그대로 0
+    String exe = "EXE-" + UUID.randomUUID();
+    Map<String, Object> pick = Map.of("executionId", exe, "cartLocation", "CRT-A-01", "qty", 6);
+    Res picked = move("/internal/move-allocations/MV-1/pickups", pick);
+    assertThat(picked.status()).as(picked.body().toString()).isEqualTo(200);
+    assertThat(picked.body().path("onCartQty").asInt()).isEqualTo(6);
+    assertThat(
+            move("/internal/move-allocations/MV-1/pickups", pick).body().path("pickedQty").asInt())
+        .isEqualTo(6); // 같은 실행 ID 는 한 번
+    assertThat(unit(sku, "CRT-A-01", "MOVING")).isEqualTo(6);
+    assertThat(unit(sku, "A-01-01", "STORED")).isEqualTo(4);
+    assertThat(availability(sku).path("sellable").asInt()).isZero();
+    // 다른 카트·남은 배정 초과는 거절
+    assertThat(
+            move(
+                    "/internal/move-allocations/MV-1/pickups",
+                    Map.of(
+                        "executionId",
+                        "EXE-" + UUID.randomUUID(),
+                        "cartLocation",
+                        "CRT-A-02",
+                        "qty",
+                        1))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("CART_MISMATCH");
+    assertThat(
+            move(
+                    "/internal/move-allocations/MV-1/pickups",
+                    Map.of(
+                        "executionId",
+                        "EXE-" + UUID.randomUUID(),
+                        "cartLocation",
+                        "CRT-A-01",
+                        "qty",
+                        5))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("MOVE_QTY_EXCEEDED");
+
+    // 내려놓기 6 → 도착 STORED 6, E 6
+    Res dropped =
+        move(
+            "/internal/move-allocations/MV-1/drops",
+            Map.of("executionId", "EXE-" + UUID.randomUUID(), "toLocation", "B-01-01", "qty", 6));
+    assertThat(dropped.status()).as(dropped.body().toString()).isEqualTo(200);
+    assertThat(unit(sku, "B-01-01", "STORED")).isEqualTo(6);
+    assertThat(availability(sku).path("sellable").asInt()).isEqualTo(6);
+
+    // 나머지 4 를 집어 카트에 둔 채 취소 → 출발로 되돌려 놓아야 끝남
+    move(
+        "/internal/move-allocations/MV-1/pickups",
+        Map.of("executionId", "EXE-" + UUID.randomUUID(), "cartLocation", "CRT-A-01", "qty", 2));
+    Res cancelled = move("/internal/move-allocations/MV-1/cancellations", Map.of());
+    assertThat(cancelled.body().path("state").asString()).isEqualTo("CANCEL_PENDING");
+    assertThat(cancelled.body().path("qty").asInt()).isEqualTo(8); // 집은 양으로 줄어듦
+    assertThat(availability(sku).path("sellable").asInt()).isEqualTo(8); // 집지 않은 2 복구
+    Res back =
+        move(
+            "/internal/move-allocations/MV-1/drops",
+            Map.of("executionId", "EXE-" + UUID.randomUUID(), "toLocation", "A-01-01", "qty", 2));
+    assertThat(back.body().path("state").asString())
+        .as(back.body().toString())
+        .isEqualTo("CANCELLED");
+    assertThat(availability(sku).path("sellable").asInt()).isEqualTo(10);
+    assertThat(availability(sku).path("onHand").asInt()).isEqualTo(10);
+
+    // 규칙: 다른 상품이 있는 칸, 이미 다른 칸에 있는 상품, 나눠 두기, 용량, 고회전 예외
+    String other = newSku();
+    handlingOn(other);
+    stocked(other, 5); // A-01-01
+    String otherLot =
+        jdbc.queryForObject(
+            "SELECT lot_id FROM stock_unit WHERE mfc_id = ? AND sku = ? LIMIT 1",
+            String.class,
+            mfc,
+            other);
+    assertThat(
+            move(
+                    "/internal/move-allocations",
+                    moveBody("MV-2", other, otherLot, "A-01-01", "B-01-01", 5))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("LOCATION_HAS_OTHER_SKU");
+    assertThat(
+            move("/internal/move-allocations", moveBody("MV-3", sku, lot, "A-01-01", "B-01-02", 4))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("SKU_ALREADY_SHELVED"); // sku 는 이미 B-01-01 에 있다
+    assertThat(
+            move(
+                    "/internal/move-allocations",
+                    moveBody("MV-4", other, otherLot, "A-01-01", "B-01-02", 2))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("SKU_SPLIT_NOT_ALLOWED");
+    assertThat(
+            move(
+                    "/internal/move-allocations",
+                    moveBody("MV-5", other, otherLot, "A-01-01", "T-01-01", 1))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("LOCATION_CAPACITY_EXCEEDED");
+    Res ht =
+        move(
+            "/internal/move-allocations",
+            moveBody("MV-6", other, otherLot, "A-01-01", "H-01-01", 2));
+    assertThat(ht.status()).as(ht.body().toString()).isEqualTo(201); // 고회전 선반은 나눠 둘 수 있다
   }
 
   /** 수령 → 검수 → 칸별 적치(같은 LOT 을 여러 칸에). 반환 = lotId. */

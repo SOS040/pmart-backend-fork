@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.11.1
+  version: 0.12.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -25,6 +25,7 @@ tags:
   - { name: queries, description: 가용·스냅샷·원결과 조회 }
   - { name: sku-handlings, description: 센터 SKU 취급 ON·OFF (운영자 — 자기 센터) }
   - { name: skus, description: 상품 SKU 투영 조회 }
+  - { name: moves, description: '재고 위치 이동 — 이동 배정·집어 올리기·내려놓기(IV-03, 0.12.0)' }
 
 paths:
   /internal/reservations:
@@ -120,6 +121,139 @@ paths:
               schema: { $ref: '#/components/schemas/PickPlan' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /internal/move-allocations:
+    post:
+      tags: [moves]
+      summary: '[inbound→inventory] 재고 이동 배정 — 출발 물량·도착 공간을 함께 잡는다 (IV-03, 0.12.0)'
+      description: |
+        2026-11-08 사용자 결정. 두 단계 이동(출발 칸 → 카트 → 도착 칸)의 시작. 옮길 수 있는 양 = 출발 칸의 **집을 수 있는 양**(NORMAL·STORED − 보류 − 다른 주문 칸 배정)이고
+        그 LOT 의 가용(A) 까지 — 이동 배정분은 판매 가능(E)에서 빠진다(IV-03, 출발 칸에 MOVE 보류). 도착 칸: 선반·피킹, ACTIVE, 온도대 = 상품 보관 유형,
+        **칸당 한 상품**(다른 상품이 있거나 들어올 예정이면 409 LOCATION_HAS_OTHER_SKU), **한 상품은 한 자리**(고회전 선반 제외 — 다른 칸에 이미 있으면 409 SKU_ALREADY_SHELVED,
+        출발 칸에 남는 양이 있으면 409 SKU_SPLIT_NOT_ALLOWED), 용량(칸 치수 ÷ 상품 크기, 들어올 예정 포함 — 넘으면 409 LOCATION_CAPACITY_EXCEEDED, 칸 치수 없으면 422 CONFIG_REQUIRED).
+        상품 크기는 실제 정보가 없어 설정 `pmart.inventory.dummy-sku-size` 가 켜진 환경(LAN·시험)에서만 더미(소·중·대)로 계산한다. 같은 moveId 는 한 번(같은 내용이면 지금 상태).
+        출발·도착이 실사 잠금이면 409.
+      operationId: createMoveAllocation
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [moveId, mfcId, sku, lotId, fromLocation, toLocation, qty]
+              properties:
+                moveId: { type: string, maxLength: 64 }
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                sku: { type: string }
+                lotId: { type: string }
+                fromLocation: { type: string }
+                toLocation: { type: string }
+                qty: { type: integer, minimum: 1 }
+      responses:
+        '201':
+          description: 배정됨(또는 같은 moveId 의 지금 상태)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveAllocation' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+  /internal/move-allocations/{moveId}:
+    get:
+      tags: [moves]
+      summary: 재고 이동 배정 조회 (0.12.0)
+      operationId: getMoveAllocation
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveAllocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /internal/move-allocations/{moveId}/pickups:
+    post:
+      tags: [moves]
+      summary: 집어 올리기 — 출발 칸 → 카트 (0.12.0)
+      description: |
+        출발 칸 NORMAL·STORED −q, 카트 NORMAL·MOVING +q, MOVE 보류 −q(E 변화 없음 — 이미 배정 때 뺐다). 카트 = 구역 CART·ACTIVE 위치, 한 이동은 한 카트(다른 카트 409 CART_MISMATCH).
+        남은 배정량 초과 409 MOVE_QTY_EXCEEDED. 같은 executionId 는 한 번.
+      operationId: pickUpMove
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [executionId, cartLocation, qty]
+              properties:
+                executionId: { type: string, maxLength: 128 }
+                cartLocation: { type: string }
+                qty: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveAllocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /internal/move-allocations/{moveId}/drops:
+    post:
+      tags: [moves]
+      summary: 내려놓기 — 카트 → 도착 칸(취소 뒤에는 출발 칸으로도) (0.12.0)
+      description: |
+        카트 NORMAL·MOVING −q, 칸 NORMAL·STORED +q(E +q). 도착 칸은 배정의 도착 칸, 취소된 이동은 출발 칸도 허용(카트에 남은 물건을 되돌림).
+        카트 위 양 초과 409 MOVE_QTY_EXCEEDED. 모두 내려놓으면 COMPLETED. 같은 executionId 는 한 번.
+      operationId: dropMove
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [executionId, toLocation, qty]
+              properties:
+                executionId: { type: string, maxLength: 128 }
+                toLocation: { type: string }
+                qty: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveAllocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /internal/move-allocations/{moveId}/cancellations:
+    post:
+      tags: [moves]
+      summary: 이동 취소 — 아직 집지 않은 몫만 푼다 (0.12.0)
+      description: |
+        집지 않은 양의 MOVE 보류를 풀어 E 를 되돌리고 배정 수량을 집은 양으로 줄인다. 카트에 남은 물건은 실제로 내려놓아야(도착 칸 또는 출발 칸) 끝난다 —
+        다 내려놓았으면 바로 CANCELLED, 아니면 CANCEL_PENDING. 이미 끝난 이동은 지금 상태.
+      operationId: cancelMove
+      parameters:
+        - { name: moveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 취소됨(또는 카트 정리 대기)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveAllocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
   /internal/reservations/{reservationId}/shortfall-releases:
     post:
       tags: [reservations]
@@ -1052,6 +1186,25 @@ components:
               partId: { type: string }
               lotId: { type: string }
               qty: { type: integer }
+    MoveAllocation:
+      type: object
+      properties:
+        moveId: { type: string }
+        mfcId: { type: string }
+        sku: { type: string }
+        lotId: { type: string }
+        fromLocation: { type: string }
+        toLocation: { type: string }
+        cartLocation: { type: [string, 'null'] }
+        qty: { type: integer, description: 배정 수량(취소하면 집은 양으로 줄어든다) }
+        pickedQty: { type: integer }
+        droppedQty: { type: integer }
+        onCartQty: { type: integer, description: 카트 위 = 집음 − 내려놓음 }
+        state: { type: string, enum: [ACTIVE, CANCEL_PENDING, COMPLETED, CANCELLED] }
+        sizeClass: { type: [string, 'null'], description: 용량 계산에 쓴 상품 크기(S·M·L, 더미) }
+        destinationCapacity: { type: [integer, 'null'], description: 도착 칸에 이 상품이 들어가는 개수(더미 크기 기준) }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     PickPlan:
       type: object
       properties:

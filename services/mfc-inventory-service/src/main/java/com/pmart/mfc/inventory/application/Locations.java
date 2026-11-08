@@ -45,6 +45,31 @@ public class Locations {
     this.clock = clock;
   }
 
+  private static @Nullable Integer intOrNull(JsonNode p, String f) {
+    return p.hasNonNull(f) ? p.path(f).asInt() : null;
+  }
+
+  /** 카트(재고 이동 바구니, IV-03): 등록·ACTIVE·구역 CART. */
+  public void requireCart(String mfcId, String locationCode) {
+    LocationRow r = active(mfcId, locationCode);
+    if (!"CART".equals(r.zone())) {
+      throw mismatch(LOCATION_ZONE_MISMATCH, locationCode + " 는 카트가 아닙니다(구역 " + r.zone() + ").");
+    }
+  }
+
+  public java.util.Optional<LocationRow> projection(String mfcId, String locationCode) {
+    return store.byCode(mfcId, locationCode);
+  }
+
+  /** 투영 한 칸(없으면 404 — 등록 안 된 위치). */
+  public LocationRow row(String mfcId, String locationCode) {
+    return store
+        .byCode(mfcId, locationCode)
+        .orElseThrow(
+            () ->
+                PmartException.notFound(LOCATION_NOT_REGISTERED, "등록되지 않은 위치입니다: " + locationCode));
+  }
+
   /** MfcLocationStateChanged → 투영(InboxGuard 트랜잭션 안). */
   public void apply(EventEnvelope e) {
     if (!"MfcLocationStateChanged".equals(e.eventType())) {
@@ -67,7 +92,12 @@ public class Locations {
                 p.path("zone").asString(),
                 p.path("temperatureZone").asString(),
                 p.path("state").asString(),
-                version),
+                version,
+                p.path("highTurnover").asBoolean(false),
+                intOrNull(p, "widthMm"),
+                intOrNull(p, "depthMm"),
+                intOrNull(p, "heightMm"),
+                intOrNull(p, "maxWeightG")),
             clock.instant());
     if (n == 0) {
       log.debug("location {} v{} ignored (older)", p.path("locationId").asString(), version);

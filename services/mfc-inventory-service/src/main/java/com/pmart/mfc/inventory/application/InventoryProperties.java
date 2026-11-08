@@ -24,6 +24,20 @@ public class InventoryProperties {
    */
   private @Nullable Duration defaultHoldTtl;
 
+  /**
+   * 실제 상품 크기 정보가 없을 때 재고 이동 용량을 더미 크기(소·중·대, SKU 로 고정 배정)로 계산할지(2026-11-08 사용자 요청: 시스템 구현용 더미).
+   * LAN·시험만 켠다. 꺼져 있으면 이동 배정은 CONFIG_REQUIRED.
+   */
+  private boolean dummySkuSize;
+
+  public boolean isDummySkuSize() {
+    return dummySkuSize;
+  }
+
+  public void setDummySkuSize(boolean dummySkuSize) {
+    this.dummySkuSize = dummySkuSize;
+  }
+
   public @Nullable Duration getDefaultHoldTtl() {
     return defaultHoldTtl;
   }

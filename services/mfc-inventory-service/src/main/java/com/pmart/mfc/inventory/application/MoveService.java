@@ -1,0 +1,490 @@
+package com.pmart.mfc.inventory.application;
+
+import com.pmart.common.web.ErrorCode;
+import com.pmart.common.web.PmartException;
+import com.pmart.mfc.inventory.application.Ledger.HoldChange;
+import com.pmart.mfc.inventory.domain.MoveRules;
+import com.pmart.mfc.inventory.domain.SkuSize;
+import com.pmart.mfc.inventory.domain.StockUnit.Change;
+import com.pmart.mfc.inventory.domain.StockUnit.Key;
+import com.pmart.mfc.inventory.domain.StockUnit.Quality;
+import com.pmart.mfc.inventory.domain.StockUnit.Work;
+import com.pmart.mfc.inventory.infrastructure.LocationProjectionStore.LocationRow;
+import com.pmart.mfc.inventory.infrastructure.MoveStore;
+import com.pmart.mfc.inventory.infrastructure.MoveStore.MoveRow;
+import com.pmart.mfc.inventory.infrastructure.SkuProjectionStore;
+import com.pmart.mfc.inventory.infrastructure.StockStore;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 재고 위치 이동(IV-03, 2026-11-08 사용자 결정) — 두 단계: 출발 칸 → 카트(MOVING) → 도착 칸. H 불변.
+ *
+ * <ul>
+ *   <li>배정: {@link MoveRules} 판정 뒤 출발 칸 NORMAL·STORED 에 MOVE 보류(E −q). 피킹 칸 배정·다른 이동은 보류를 빼고 보므로 같은
+ *       물건을 못 가져간다. 도착 칸 공간은 들어올 예정량으로 잡는다.
+ *   <li>집어 올리기: 출발 −q, 카트 MOVING +q, 보류 −q — E 변화 없음(배정 때 이미 뺐다).
+ *   <li>내려놓기: 카트 −q, 도착(취소 뒤에는 출발도) STORED +q — E +q.
+ *   <li>취소: 집지 않은 양만 보류를 풀어 E 복구. 카트 위 물건은 내려놓아야 끝난다.
+ * </ul>
+ *
+ * 잠금 순서 이동 행 → 센터 요약 → LOT 요약 → 단위(Ledger). 실사 잠금 칸은 출발·도착 모두 안 된다(실사는 진행 중 이동이 있으면 시작을 거절).
+ */
+@Service
+public class MoveService {
+
+  public static final String MOVE_NOT_FOUND = "MOVE_NOT_FOUND";
+  public static final String MOVE_QTY_EXCEEDED = "MOVE_QTY_EXCEEDED";
+  public static final String CART_MISMATCH = "CART_MISMATCH";
+  public static final String MOVE_ID_CONFLICT = "MOVE_ID_CONFLICT";
+
+  private static final Logger log = LoggerFactory.getLogger(MoveService.class);
+
+  public record CreateCommand(
+      String moveId,
+      String mfcId,
+      String sku,
+      String lotId,
+      String fromLocation,
+      String toLocation,
+      int qty) {}
+
+  private final MoveStore moves;
+  private final StockStore stock;
+  private final Ledger ledger;
+  private final Locations locations;
+  private final SkuProjectionStore skus;
+  private final LocationAllocationService allocations;
+  private final InventoryProperties props;
+  private final Clock clock;
+
+  public MoveService(
+      MoveStore moves,
+      StockStore stock,
+      Ledger ledger,
+      Locations locations,
+      SkuProjectionStore skus,
+      LocationAllocationService allocations,
+      InventoryProperties props,
+      Clock clock) {
+    this.moves = moves;
+    this.stock = stock;
+    this.ledger = ledger;
+    this.locations = locations;
+    this.skus = skus;
+    this.allocations = allocations;
+    this.props = props;
+    this.clock = clock;
+  }
+
+  // ---------- 배정 ----------
+
+  @Transactional
+  public MoveRow create(String requestId, String sourceSystem, CreateCommand c) {
+    String hash = hash(c);
+    var existing = moves.find(c.moveId());
+    if (existing.isPresent()) {
+      if (!existing.get().contentHash().equals(hash)) {
+        throw new PmartException(
+            MOVE_ID_CONFLICT,
+            HttpStatus.CONFLICT,
+            "이동 " + c.moveId() + " 는 다른 내용으로 이미 있습니다.",
+            false,
+            List.of());
+      }
+      return existing.get();
+    }
+    if (c.qty() < 1) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "qty 는 1 이상입니다.");
+    }
+    locations.requireNotCountLocked(c.mfcId(), c.fromLocation());
+    locations.requireNotCountLocked(c.mfcId(), c.toLocation());
+    LocationRow from = locations.row(c.mfcId(), c.fromLocation());
+    if (!Locations.STORE_ZONES.contains(from.zone())) {
+      throw new PmartException(
+          Locations.LOCATION_ZONE_MISMATCH,
+          HttpStatus.CONFLICT,
+          c.fromLocation() + " 는 선반·피킹 칸이 아닙니다(구역 " + from.zone() + ").",
+          false,
+          List.of());
+    }
+    String storage = skus.find(c.sku()).map(s -> s.storageType()).orElse(null);
+    locations.requireStorage(c.mfcId(), c.toLocation(), storage);
+    LocationRow to = locations.row(c.mfcId(), c.toLocation());
+    if (!props.isDummySkuSize()) {
+      throw PmartException.configRequired("상품 크기(실제 정보 없음 — pmart.inventory.dummy-sku-size)");
+    }
+    SkuSize size = SkuSize.dummyFor(c.sku());
+    Integer capacity = size.capacity(to.widthMm(), to.depthMm(), to.heightMm(), to.maxWeightG());
+    if (capacity == null) {
+      throw PmartException.configRequired("위치 치수(" + c.toLocation() + " 가로·세로·높이 — mfc-location)");
+    }
+
+    // 잠금: 센터 요약 → LOT 요약 (Ledger 와 같은 순서)
+    stock.lockBalances(c.mfcId(), List.of(c.sku()));
+    var lot =
+        stock.lockLotBalances(c.mfcId(), List.of(c.sku())).stream()
+            .filter(b -> b.lotId().equals(c.lotId()))
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    PmartException.notFound(
+                        "LOT_NOT_FOUND", "이 센터에 LOT " + c.lotId() + " 재고가 없습니다."));
+    int pickable =
+        Math.max(
+            0, allocations.free(c.mfcId(), c.sku(), c.lotId()).getOrDefault(c.fromLocation(), 0));
+
+    // 도착 칸의 상품들(지금 + 들어올 예정)
+    Set<String> destSkus = new LinkedHashSet<>();
+    int destNow = 0;
+    for (var u : stock.unitsAt(c.mfcId(), c.toLocation())) {
+      destSkus.add(u.key().sku());
+      if (u.key().sku().equals(c.sku())) {
+        destNow += u.qty();
+      }
+    }
+    int destIncoming = 0;
+    for (MoveRow m : moves.openAt(c.mfcId(), c.toLocation())) {
+      if (m.toLocation().equals(c.toLocation())) {
+        destSkus.add(m.sku());
+        if (m.sku().equals(c.sku())) {
+          destIncoming += m.incoming();
+        }
+      }
+    }
+    // 이 상품이 있는(들어올) 선반·피킹 칸 → 고회전 여부
+    Map<String, Boolean> shelves = new LinkedHashMap<>();
+    int atFrom = 0;
+    for (var u : stock.units(c.mfcId(), c.sku())) {
+      String loc = u.key().locationCode();
+      if (loc.equals(c.fromLocation())) {
+        atFrom += u.qty();
+      }
+      shelf(c.mfcId(), loc, shelves);
+    }
+    for (MoveRow m : moves.openForSku(c.mfcId(), c.sku())) {
+      shelf(c.mfcId(), m.toLocation(), shelves);
+    }
+    String reject =
+        MoveRules.rejection(
+            c.sku(),
+            c.fromLocation(),
+            c.toLocation(),
+            from.highTurnover(),
+            to.highTurnover(),
+            c.qty(),
+            pickable,
+            lot.available(),
+            destSkus,
+            shelves,
+            atFrom - c.qty(),
+            destNow + destIncoming + c.qty(),
+            capacity);
+    if (reject != null) {
+      throw new PmartException(
+          reject,
+          HttpStatus.CONFLICT,
+          message(reject, c, pickable, lot.available(), capacity, destNow + destIncoming),
+          false,
+          List.of());
+    }
+    Instant at = clock.instant();
+    Key fromKey = new Key(c.fromLocation(), c.sku(), c.lotId(), Quality.NORMAL, Work.STORED);
+    ledger.postWithHolds(
+        Ledger.newCommitId(),
+        "MOVE_ALLOCATE",
+        c.mfcId(),
+        requestId,
+        sourceSystem,
+        c.moveId(),
+        c.qty(),
+        List.of(),
+        List.of(),
+        List.of(new HoldChange(fromKey, c.qty())),
+        at);
+    stock.insertHold("MVH-" + c.moveId(), c.mfcId(), fromKey, c.qty(), "MOVE", c.moveId(), at);
+    MoveRow row =
+        new MoveRow(
+            c.moveId(),
+            c.mfcId(),
+            c.sku(),
+            c.lotId(),
+            c.fromLocation(),
+            c.toLocation(),
+            null,
+            c.qty(),
+            0,
+            0,
+            "ACTIVE",
+            size.name(),
+            capacity,
+            hash,
+            at,
+            at);
+    moves.insert(row);
+    log.info(
+        "이동 배정 {} {} {}×{} {} → {} (크기 {} 용량 {})",
+        c.moveId(),
+        c.sku(),
+        c.lotId(),
+        c.qty(),
+        c.fromLocation(),
+        c.toLocation(),
+        size,
+        capacity);
+    return moves.find(c.moveId()).orElseThrow();
+  }
+
+  private void shelf(String mfcId, String loc, Map<String, Boolean> shelves) {
+    if (shelves.containsKey(loc)) {
+      return;
+    }
+    locations
+        .projection(mfcId, loc)
+        .filter(r -> Locations.STORE_ZONES.contains(r.zone()))
+        .ifPresent(r -> shelves.put(loc, r.highTurnover()));
+  }
+
+  // ---------- 집어 올리기 ----------
+
+  @Transactional
+  public MoveRow pickUp(
+      String requestId,
+      String sourceSystem,
+      String moveId,
+      String executionId,
+      String cart,
+      int qty) {
+    MoveRow m = lockOrThrow(moveId);
+    if (alreadyPosted(executionId, m.mfcId(), "MOVE_PICKUP:" + moveId + ":" + cart + ":" + qty)) {
+      return moves.find(moveId).orElseThrow();
+    }
+    if (!"ACTIVE".equals(m.state())) {
+      throw PmartException.invalidState("이동 " + moveId + " 는 " + m.state() + " 라 더 집지 않습니다.");
+    }
+    if (m.cartLocation() != null && !m.cartLocation().equals(cart)) {
+      throw new PmartException(
+          CART_MISMATCH,
+          HttpStatus.CONFLICT,
+          "이 이동은 카트 " + m.cartLocation() + " 로 옮기고 있습니다.",
+          false,
+          List.of());
+    }
+    if (qty < 1 || qty > m.unpicked()) {
+      throw exceeded("집을 수 있는 남은 배정 " + m.unpicked() + "개");
+    }
+    locations.requireCart(m.mfcId(), cart);
+    Instant at = clock.instant();
+    Key fromKey = new Key(m.fromLocation(), m.sku(), m.lotId(), Quality.NORMAL, Work.STORED);
+    Key cartKey = new Key(cart, m.sku(), m.lotId(), Quality.NORMAL, Work.MOVING);
+    ledger.postWithHolds(
+        Ledger.newCommitId(),
+        "MOVE_PICKUP",
+        m.mfcId(),
+        requestId,
+        sourceSystem,
+        moveId,
+        qty,
+        List.of(new Change(fromKey, -qty), new Change(cartKey, qty)),
+        List.of(),
+        List.of(new HoldChange(fromKey, -qty)),
+        at);
+    stock.consumeMoveHold(moveId, qty, at);
+    moves.update(moveId, m.qty(), m.pickedQty() + qty, m.droppedQty(), cart, "ACTIVE", at);
+    log.info("이동 {} 집어 올림 {}개 → 카트 {}", moveId, qty, cart);
+    return moves.find(moveId).orElseThrow();
+  }
+
+  // ---------- 내려놓기 ----------
+
+  @Transactional
+  public MoveRow drop(
+      String requestId,
+      String sourceSystem,
+      String moveId,
+      String executionId,
+      String toLocation,
+      int qty) {
+    MoveRow m = lockOrThrow(moveId);
+    if (alreadyPosted(
+        executionId, m.mfcId(), "MOVE_DROP:" + moveId + ":" + toLocation + ":" + qty)) {
+      return moves.find(moveId).orElseThrow();
+    }
+    if (!m.open()) {
+      throw PmartException.invalidState("이동 " + moveId + " 는 이미 " + m.state() + " 입니다.");
+    }
+    boolean back = toLocation.equals(m.fromLocation());
+    if (!toLocation.equals(m.toLocation()) && !(back && "CANCEL_PENDING".equals(m.state()))) {
+      throw new PmartException(
+          Locations.LOCATION_ZONE_MISMATCH,
+          HttpStatus.CONFLICT,
+          "이 이동의 도착 칸은 "
+              + m.toLocation()
+              + " 입니다(취소한 이동만 출발 칸 "
+              + m.fromLocation()
+              + " 으로 되돌릴 수 있다).",
+          false,
+          List.of());
+    }
+    if (qty < 1 || qty > m.onCart()) {
+      throw exceeded("카트 위 " + m.onCart() + "개");
+    }
+    String storage = skus.find(m.sku()).map(s -> s.storageType()).orElse(null);
+    locations.requireStorage(m.mfcId(), toLocation, storage);
+    Instant at = clock.instant();
+    Key cartKey =
+        new Key(
+            java.util.Objects.requireNonNull(m.cartLocation()),
+            m.sku(),
+            m.lotId(),
+            Quality.NORMAL,
+            Work.MOVING);
+    Key toKey = new Key(toLocation, m.sku(), m.lotId(), Quality.NORMAL, Work.STORED);
+    ledger.postWithHolds(
+        Ledger.newCommitId(),
+        "MOVE_DROP",
+        m.mfcId(),
+        requestId,
+        sourceSystem,
+        moveId,
+        qty,
+        List.of(new Change(cartKey, -qty), new Change(toKey, qty)),
+        List.of(),
+        List.of(),
+        at);
+    int dropped = m.droppedQty() + qty;
+    String state = m.state();
+    if (dropped == m.qty()) {
+      state = "CANCEL_PENDING".equals(m.state()) ? "CANCELLED" : "COMPLETED";
+    }
+    moves.update(moveId, m.qty(), m.pickedQty(), dropped, m.cartLocation(), state, at);
+    log.info("이동 {} 내려놓음 {}개 → {} ({})", moveId, qty, toLocation, state);
+    return moves.find(moveId).orElseThrow();
+  }
+
+  // ---------- 취소 ----------
+
+  @Transactional
+  public MoveRow cancel(String requestId, String sourceSystem, String moveId) {
+    MoveRow m = lockOrThrow(moveId);
+    if (!"ACTIVE".equals(m.state())) {
+      return m; // 이미 취소 중·끝남
+    }
+    Instant at = clock.instant();
+    int unpicked = m.unpicked();
+    if (unpicked > 0) {
+      Key fromKey = new Key(m.fromLocation(), m.sku(), m.lotId(), Quality.NORMAL, Work.STORED);
+      ledger.postWithHolds(
+          Ledger.newCommitId(),
+          "MOVE_CANCEL",
+          m.mfcId(),
+          requestId,
+          sourceSystem,
+          moveId,
+          unpicked,
+          List.of(),
+          List.of(),
+          List.of(new HoldChange(fromKey, -unpicked)),
+          at);
+      stock.consumeMoveHold(moveId, unpicked, at);
+    }
+    String state = m.onCart() == 0 ? "CANCELLED" : "CANCEL_PENDING";
+    moves.update(moveId, m.pickedQty(), m.pickedQty(), m.droppedQty(), m.cartLocation(), state, at);
+    log.info("이동 {} 취소 — 보류 {}개 풀고 카트 위 {}개 ({})", moveId, unpicked, m.onCart(), state);
+    return moves.find(moveId).orElseThrow();
+  }
+
+  @Transactional(readOnly = true)
+  public MoveRow get(String moveId) {
+    return moves
+        .find(moveId)
+        .orElseThrow(() -> PmartException.notFound(MOVE_NOT_FOUND, "이동이 없습니다: " + moveId));
+  }
+
+  /** 실사: 이 칸들에 진행 중 이동이 있는가. */
+  public boolean busy(String mfcId, List<String> locations) {
+    return locations.stream().anyMatch(l -> !moves.openAt(mfcId, l).isEmpty());
+  }
+
+  private boolean alreadyPosted(String executionId, String mfcId, String fingerprint) {
+    String fp = sha(fingerprint);
+    var done = stock.execution(executionId);
+    if (done.isPresent()) {
+      if (!done.get().contentHash().equals(fp)) {
+        throw new PmartException(
+            TaskExecutionService.EXECUTION_ALREADY_POSTED,
+            HttpStatus.CONFLICT,
+            "실행 " + executionId + " 는 다른 내용으로 이미 반영됐습니다.",
+            false,
+            List.of());
+      }
+      return true;
+    }
+    stock.claimExecution(executionId, mfcId, "MOVE", fp, "-", 0, clock.instant());
+    return false;
+  }
+
+  private MoveRow lockOrThrow(String moveId) {
+    return moves
+        .lock(moveId)
+        .orElseThrow(() -> PmartException.notFound(MOVE_NOT_FOUND, "이동이 없습니다: " + moveId));
+  }
+
+  private static PmartException exceeded(String what) {
+    return new PmartException(
+        MOVE_QTY_EXCEEDED, HttpStatus.CONFLICT, "수량이 " + what + "을 넘습니다.", false, List.of());
+  }
+
+  private static String message(
+      String code, CreateCommand c, int pickable, int available, int capacity, int destQty) {
+    return switch (code) {
+      case MoveRules.SAME_LOCATION -> "출발과 도착이 같은 칸입니다.";
+      case MoveRules.MOVE_QTY_EXCEEDS_PICKABLE ->
+          c.fromLocation() + " 에서 옮길 수 있는 양은 " + pickable + "개입니다(다른 주문 배정·보류 제외).";
+      case MoveRules.MOVE_QTY_EXCEEDS_AVAILABLE ->
+          "LOT " + c.lotId() + " 의 가용이 " + available + "개라 그 이상 옮기면 예약이 판매 가능을 넘습니다.";
+      case MoveRules.LOCATION_HAS_OTHER_SKU -> c.toLocation() + " 에 다른 상품이 있거나 들어올 예정입니다(칸당 한 상품).";
+      case MoveRules.SKU_ALREADY_SHELVED -> c.sku() + " 는 이미 다른 칸에 있습니다(한 상품은 한 자리, 고회전 선반 제외).";
+      case MoveRules.SKU_SPLIT_NOT_ALLOWED ->
+          c.fromLocation() + " 에 " + c.sku() + " 가 남아 두 칸에 나뉩니다 — 전부 옮기거나 고회전 선반으로 옮깁니다.";
+      case MoveRules.LOCATION_CAPACITY_EXCEEDED ->
+          c.toLocation() + " 에는 이 상품이 " + capacity + "개까지 들어갑니다(지금·예정 " + destQty + "개).";
+      default -> code;
+    };
+  }
+
+  private static String hash(CreateCommand c) {
+    return sha(
+        String.join(
+            "|",
+            c.mfcId(),
+            c.sku(),
+            c.lotId(),
+            c.fromLocation(),
+            c.toLocation(),
+            String.valueOf(c.qty())));
+  }
+
+  private static String sha(String s) {
+    try {
+      return HexFormat.of()
+          .formatHex(
+              MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8)));
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+}

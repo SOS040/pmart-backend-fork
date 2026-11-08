@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-location-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     MFC 센터 내부 Area/Location 마스터·온도구역·격리/출하대기 구역·위치 상태의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량·공간 예약 잔여량 V(mfc-inventory), 센터 마스터(center-master).
@@ -218,7 +218,8 @@ components:
   schemas:
     ZoneKind:
       type: string
-      enum: [RECEIVING, STORAGE, PICKING, PACKING, QUARANTINE, DISPATCH_STAGING, RETURN, DISPOSAL]
+      enum: [RECEIVING, STORAGE, PICKING, PACKING, QUARANTINE, DISPATCH_STAGING, RETURN, DISPOSAL, CART]
+      description: 'CART(0.4.0) = 재고 이동용 바구니(식별번호 있는 임시 위치, 코드 CRT-{온도대}-{번호})'
     TemperatureZone:
       type: string
       enum: [AMBIENT, CHILLED, FROZEN]
@@ -237,7 +238,7 @@ components:
             센터 안 유일, 등록 뒤 바꿀 수 없다. 문법(Q-03 결정 2026-11-07, ADR-0042 — 새 등록에만 검사, 어기면 400 LOCATION_CODE_INVALID):
             선반·피킹(STORAGE·PICKING) `{온도대 A/C/F}-{구역 영문1+숫자1}-{랙 2자리}-{단 1~9}-{칸 2자리}` 예 `C-S1-03-2-04`
             (온도대 글자 = temperatureZone, 구역 = areaCode).
-            그 밖의 구역 `{접두}-{온도대}-{번호 2자리}` 예 `RCV-C-01` — 접두 RCV 수령·PAK 포장·QRT 격리·DSP 출고 대기·RTN 회수·DSL 폐기.
+            그 밖의 구역 `{접두}-{온도대}-{번호 2자리}` 예 `RCV-C-01` — 접두 RCV 수령·PAK 포장·QRT 격리·DSP 출고 대기·RTN 회수·DSL 폐기·CRT 이동 카트(0.4.0).
             이 결정 전에 등록된 자유 형식 코드는 그대로 쓴다(바꾸려면 새로 등록하고 옮긴 뒤 닫는다).
         areaCode: { type: string, description: '구역. 선반·피킹은 코드의 구역과 같아야 하고, 없으면 코드에서 채운다' }
         zone: { $ref: '#/components/schemas/ZoneKind' }
@@ -252,6 +253,7 @@ components:
             slotCount: { type: integer, minimum: 0 }
             maxWeightG: { type: integer, minimum: 0 }
         pickSequence: { type: integer, description: 피킹 동선 순서 }
+        highTurnover: { type: boolean, default: false, description: '(0.4.0) 고회전 선반 — 같은 상품이 여러 칸에 있어도 된다(그 밖의 선반은 칸당 한 상품·한 상품은 한 자리). 2026-11-08 사용자 결정' }
     Location:
       allOf:
         - $ref: '#/components/schemas/LocationBody'

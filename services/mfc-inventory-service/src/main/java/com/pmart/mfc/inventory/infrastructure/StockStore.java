@@ -547,6 +547,54 @@ public class StockStore {
         sku);
   }
 
+  /** 한 칸의 0 이 아닌 단위 행(모든 상품·상태) — 재고 이동 칸 판정. */
+  public List<UnitRow> unitsAt(String mfcId, String locationCode) {
+    return jdbc.query(
+        "SELECT location_code, sku, lot_id, quality_state, work_state, qty, row_version"
+            + " FROM stock_unit WHERE mfc_id = ? AND location_code = ? AND qty > 0",
+        (rs, i) ->
+            new UnitRow(
+                new Key(
+                    rs.getString("location_code"),
+                    rs.getString("sku"),
+                    rs.getString("lot_id"),
+                    Quality.valueOf(rs.getString("quality_state")),
+                    Work.valueOf(rs.getString("work_state"))),
+                rs.getInt("qty"),
+                rs.getLong("row_version")),
+        mfcId,
+        locationCode);
+  }
+
+  /** 이동 보류(reason MOVE, source_ref = moveId)를 qty 만큼 줄인다 — 0 이 되면 RESOLVED. */
+  public void consumeMoveHold(String moveId, int qty, Instant at) {
+    var rows =
+        jdbc.queryForList(
+            "SELECT hold_id, qty FROM stock_hold WHERE source_ref = ? AND reason = 'MOVE'"
+                + " AND state = 'OPEN' FOR UPDATE",
+            moveId);
+    int left = qty;
+    for (var r : rows) {
+      if (left == 0) {
+        break;
+      }
+      String id = (String) r.get("hold_id");
+      int q = ((Number) r.get("qty")).intValue();
+      int take = Math.min(left, q);
+      if (q - take > 0) {
+        jdbc.update("UPDATE stock_hold SET qty = ? WHERE hold_id = ?", q - take, id);
+      } else {
+        jdbc.update(
+            "UPDATE stock_hold SET state = 'RESOLVED', resolved_at = ?, resolved_ref = ?"
+                + " WHERE hold_id = ?",
+            Timestamp.from(at),
+            moveId,
+            id);
+      }
+      left -= take;
+    }
+  }
+
   // ---------- 확정 단위 ----------
 
   public void insertCommit(CommitRow c) {
