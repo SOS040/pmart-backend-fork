@@ -41,7 +41,8 @@ public class MoveOrdersController implements MovesApi {
                         b.getFromLocation(),
                         b.getToLocation(),
                         b.getQty(),
-                        b.getReason()))));
+                        b.getReason(),
+                        Boolean.TRUE.equals(b.getUrgent())))));
   }
 
   @Override
@@ -94,6 +95,9 @@ public class MoveOrdersController implements MovesApi {
     out.setState(MoveOrder.StateEnum.fromValue(r.state()));
     out.setReason(r.reason());
     out.setCreatedBy(r.createdBy());
+    out.setUrgent(r.urgent());
+    out.setAssigneeId(r.assigneeId());
+    out.setPickedBy(r.pickedBy());
     out.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     out.setUpdatedAt(r.updatedAt().atOffset(ZoneOffset.UTC));
     return out;

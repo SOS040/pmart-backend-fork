@@ -83,6 +83,16 @@ public class AssignmentService {
   public static final String OFF_SHIFT_BLOCKED = "OFF_SHIFT";
 
   private com.pmart.mfc.capacity.infrastructure.@Nullable FulfillmentClient fulfillment;
+  private com.pmart.mfc.capacity.infrastructure.@Nullable InboundClient inbound;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setInbound(com.pmart.mfc.capacity.infrastructure.InboundClient inbound) {
+    this.inbound = inbound;
+  }
+
+  /** 다음 작업 후보(작업 지시·이동 지시 공통). */
+  record Candidate(String taskId, String taskType, int rank, @Nullable Instant when) {}
+
   private org.springframework.transaction.support.@Nullable TransactionTemplate tx;
 
   @org.springframework.beans.factory.annotation.Autowired
@@ -125,9 +135,20 @@ public class AssignmentService {
     java.util.Map<String, com.pmart.mfc.capacity.infrastructure.FulfillmentClient.TaskView> open =
         new java.util.HashMap<>();
     tasks.forEach(t -> open.put(t.taskId(), t));
+    // 이동·보충(mfc-inbound) — 조회가 안 되면 건너뛴다(주문 작업은 계속)
+    List<com.pmart.mfc.capacity.infrastructure.InboundClient.MoveView> moves = List.of();
+    if (inbound != null && inbound.configured()) {
+      try {
+        moves = inbound.openMoves(mfcId);
+      } catch (RuntimeException ex) {
+        log.warn("이동 지시 조회 실패 — 이동은 건너뜀: {}", ex.getMessage());
+      }
+    }
+    java.util.Set<String> openMoves = new java.util.HashSet<>();
+    moves.forEach(m -> openMoves.add(m.moveId()));
     // 한 번에 하나: 이 작업자의 ACTIVE 배정 중 아직 끝나지 않은 작업
     for (AssignmentRow a : store.list(mfcId, null, workerId, "ACTIVE", null)) {
-      if (open.containsKey(a.taskId())) {
+      if (open.containsKey(a.taskId()) || openMoves.contains(a.taskId())) {
         return new Assigned(a, false, List.of());
       }
     }
@@ -141,19 +162,32 @@ public class AssignmentService {
           List.of());
     }
     java.util.Set<String> duty = workers.taskTypes(mfcId, workerId);
-    List<com.pmart.mfc.capacity.infrastructure.FulfillmentClient.TaskView> candidates =
-        tasks.stream()
-            .filter(t -> "READY".equals(t.state()) && t.workerId() == null)
-            .filter(t -> duty.contains(t.taskType()))
-            .sorted(
-                java.util.Comparator.comparingInt(
-                        (com.pmart.mfc.capacity.infrastructure.FulfillmentClient.TaskView t) ->
-                            rank(t.taskType()))
-                    .thenComparing(
-                        t -> t.promisedReadyAt(),
-                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
-                    .thenComparing(t -> t.taskId()))
-            .toList();
+    List<Candidate> candidates = new java.util.ArrayList<>();
+    tasks.stream()
+        .filter(t -> "READY".equals(t.state()) && t.workerId() == null)
+        .filter(t -> duty.contains(t.taskType()))
+        .forEach(
+            t ->
+                candidates.add(
+                    new Candidate(
+                        t.taskId(), t.taskType(), rank(t.taskType()), t.promisedReadyAt())));
+    moves.stream()
+        .filter(m -> "ACTIVE".equals(m.state()) && m.pickedQty() == 0 && m.assigneeId() == null)
+        .filter(m -> duty.contains(m.taskType()))
+        .forEach(
+            m ->
+                candidates.add(
+                    new Candidate(
+                        m.moveId(),
+                        m.taskType(),
+                        m.urgent() ? rank("REPLENISH") : rank(m.taskType()),
+                        m.createdAt())));
+    candidates.sort(
+        java.util.Comparator.comparingInt(Candidate::rank)
+            .thenComparing(
+                Candidate::when,
+                java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+            .thenComparing(Candidate::taskId));
     for (var t : candidates) {
       AssignmentRow made =
           java.util.Objects.requireNonNull(tx)
@@ -222,8 +256,9 @@ public class AssignmentService {
     return switch (taskType) {
       case "PICK", "PACK" -> 0;
       case "REPLENISH" -> 1;
+      case "MOVE" -> 2;
       case "RETURN" -> 3;
-      default -> 2;
+      default -> 4;
     };
   }
 

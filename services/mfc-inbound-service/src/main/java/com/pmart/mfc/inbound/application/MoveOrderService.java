@@ -52,7 +52,10 @@ public class MoveOrderService {
       String createdBy,
       Instant createdAt,
       Instant updatedAt,
-      String kind) {}
+      String kind,
+      @Nullable String assigneeId,
+      boolean urgent,
+      @Nullable String pickedBy) {}
 
   public record CreateCommand(
       String mfcId,
@@ -61,7 +64,8 @@ public class MoveOrderService {
       String fromLocation,
       String toLocation,
       int qty,
-      @Nullable String reason) {}
+      @Nullable String reason,
+      boolean urgent) {}
 
   private final JdbcTemplate jdbc;
   private final InventoryMoveClient inventory;
@@ -91,7 +95,7 @@ public class MoveOrderService {
     Instant now = clock.instant();
     jdbc.update(
         "INSERT INTO move_order (move_id, mfc_id, sku, lot_id, from_location, to_location, qty,"
-            + " state, reason, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+            + " state, reason, created_by, created_at, updated_at, urgent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
             + " ON CONFLICT (move_id) DO NOTHING",
         moveId,
         c.mfcId(),
@@ -104,7 +108,8 @@ public class MoveOrderService {
         c.reason(),
         me,
         Timestamp.from(now),
-        Timestamp.from(now));
+        Timestamp.from(now),
+        c.urgent());
     mirror(moveId, m);
     log.info(
         "재고 이동 지시 {} {} {}×{} {} → {} by {}",
@@ -121,12 +126,30 @@ public class MoveOrderService {
   public Row pickUp(String requestId, String moveId, String cart, int qty) {
     Row r = get(moveId);
     String me = require(r.mfcId(), FIELD_ROLES, "이 센터의 작업자만 실행합니다.");
+    if (r.assigneeId() != null && !r.assigneeId().equals(me)) {
+      throw new PmartException(
+          "NOT_ASSIGNEE",
+          org.springframework.http.HttpStatus.CONFLICT,
+          "담당(" + r.assigneeId() + ")만 집어 올립니다 — 배정은 다음 작업 받기·감독자.",
+          false,
+          List.of());
+    }
+    if (r.pickedBy() != null && !r.pickedBy().equals(me)) {
+      throw new PmartException(
+          "NOT_PICKER",
+          org.springframework.http.HttpStatus.CONFLICT,
+          "이미 " + r.pickedBy() + " 이(가) 카트에 실은 이동입니다.",
+          false,
+          List.of());
+    }
     JsonNode m =
         inventory.pickUp(
             moveId,
             requestId,
             Map.of("executionId", moveId + ":" + requestId, "cartLocation", cart, "qty", qty));
     mirror(moveId, m);
+    jdbc.update(
+        "UPDATE move_order SET picked_by = COALESCE(picked_by, ?) WHERE move_id = ?", me, moveId);
     log.info("재고 이동 {} 집어 올림 {}개 → {} by {}", moveId, qty, cart, me);
     return get(moveId);
   }
@@ -134,6 +157,14 @@ public class MoveOrderService {
   public Row drop(String requestId, String moveId, String toLocation, int qty) {
     Row r = get(moveId);
     String me = require(r.mfcId(), FIELD_ROLES, "이 센터의 작업자만 실행합니다.");
+    if (r.pickedBy() != null && !r.pickedBy().equals(me)) {
+      throw new PmartException(
+          "NOT_PICKER",
+          org.springframework.http.HttpStatus.CONFLICT,
+          "카트에 실은 사람(" + r.pickedBy() + ")만 내려놓습니다.",
+          false,
+          List.of());
+    }
     JsonNode m =
         inventory.drop(
             moveId,
@@ -161,6 +192,27 @@ public class MoveOrderService {
     Row r = get(moveId);
     reader(r.mfcId());
     return r;
+  }
+
+  /** capacity AssignmentPublished(mfc.capacity.v1, inbox 트랜잭션 안) — 이동 지시 담당 투영(더 새 배정 버전만). */
+  public void onCapacityEvent(com.pmart.common.messaging.EventEnvelope e) {
+    if (!"AssignmentPublished".equals(e.eventType())) {
+      return;
+    }
+    for (JsonNode a : e.payload().path("assignments")) {
+      int n =
+          jdbc.update(
+              "UPDATE move_order SET worker_id = ?, assignment_version = ?, updated_at = ?"
+                  + " WHERE move_id = ? AND assignment_version < ?",
+              a.path("workerId").asString(null),
+              a.path("assignmentVersion").asInt(0),
+              Timestamp.from(clock.instant()),
+              a.path("taskId").asString(""),
+              a.path("assignmentVersion").asInt(0));
+      if (n > 0) {
+        log.info("이동 {} 담당 {}", a.path("taskId").asString(""), a.path("workerId").asString(""));
+      }
+    }
   }
 
   public List<Row> list(String mfcId, @Nullable String state) {
@@ -273,6 +325,9 @@ public class MoveOrderService {
         rs.getString("created_by"),
         rs.getTimestamp("created_at").toInstant(),
         rs.getTimestamp("updated_at").toInstant(),
-        rs.getString("kind"));
+        rs.getString("kind"),
+        rs.getString("worker_id"),
+        rs.getBoolean("urgent"),
+        rs.getString("picked_by"));
   }
 }

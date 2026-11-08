@@ -27,7 +27,16 @@ public final class WorkerRules {
   public static final String SHIFT_OVERLAP = "SHIFT_OVERLAP";
 
   public static final Set<String> TASK_TYPES =
-      Set.of("PICK", "PACK", "RETURN", "DISPATCH", "RECEIVE", "INSPECT", "PUTAWAY", "REPLENISH");
+      Set.of(
+          "PICK",
+          "PACK",
+          "RETURN",
+          "DISPATCH",
+          "RECEIVE",
+          "INSPECT",
+          "PUTAWAY",
+          "REPLENISH",
+          "MOVE");
   public static final Set<String> ZONES = Set.of("AMBIENT", "CHILLED", "FROZEN");
   public static final Duration MAX_SHIFT = Duration.ofHours(16);
 

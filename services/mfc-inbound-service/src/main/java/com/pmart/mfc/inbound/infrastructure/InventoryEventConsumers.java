@@ -22,6 +22,13 @@ class InventoryEventConsumers {
     return consumers.of(returns::onQualityEvent);
   }
 
+  /** mfc-capacity 사건(mfc.capacity.v1, 바인딩 capacityEvents-in-0) — 이동 지시 담당 투영(작업자 쪽 4단계). */
+  @Bean
+  PmartEventConsumer capacityEvents(
+      EventConsumers consumers, com.pmart.mfc.inbound.application.MoveOrderService moves) {
+    return consumers.of(moves::onCapacityEvent);
+  }
+
   @Bean
   PmartEventConsumer inventoryEvents(EventConsumers consumers, ReplenishmentTrigger trigger) {
     return consumers.of(trigger::onInventoryEvent);

@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
@@ -53,6 +54,7 @@ class MoveOrderIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired org.springframework.kafka.core.KafkaTemplate<String, String> kafka;
   @Autowired com.pmart.mfc.inbound.application.MoveOrderService moveOrders;
 
   @InjectWireMock("inventory")
@@ -197,6 +199,74 @@ class MoveOrderIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("moveId"))
         .contains(moveId);
+  }
+
+  /** 작업자 쪽 4단계: 긴급 표시, 담당 투영(AssignmentPublished) — 담당만 집어 올림, 카트에 실은 사람만 내려놓음. */
+  @Test
+  void assignedMoveIsPickedOnlyByAssigneeAndDroppedOnlyByPicker() throws Exception {
+    Map<String, Object> order = new LinkedHashMap<>();
+    order.put("mfcId", MFC);
+    order.put("sku", "E-00000019");
+    order.put("lotId", "LOT-9");
+    order.put("fromLocation", "A-S1-03-1-01");
+    order.put("toLocation", "A-S1-04-1-01");
+    order.put("qty", 4);
+    order.put("urgent", true);
+    stub("/api/v1/internal/move-allocations", 201, alloc(4, 0, 0, "ACTIVE", null));
+    Res created = post(SUP, "/move-orders", order);
+    assertThat(created.body().path("urgent").asBoolean()).isTrue();
+    String moveId = created.body().path("moveId").asString();
+    String json =
+        EventEnvelopeFixtures.envelope("AssignmentPublished")
+            .from("mfc-capacity-service")
+            .aggregate("AssignmentPlan", "MANUAL:" + moveId, 1)
+            .payload(
+                Map.of(
+                    "planVersion",
+                    1,
+                    "mfcId",
+                    MFC,
+                    "assignments",
+                    List.of(Map.of("taskId", moveId, "workerId", "wrk-m", "assignmentVersion", 1))))
+            .buildJson();
+    kafka.send("mfc.capacity.v1", "MANUAL:" + moveId, json).join();
+    long until = System.currentTimeMillis() + 30_000;
+    String assignee = null;
+    while (System.currentTimeMillis() < until) {
+      assignee = get(WRK, "/move-orders/" + moveId).body().path("assigneeId").asString(null);
+      if ("wrk-m".equals(assignee)) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(assignee).isEqualTo("wrk-m");
+    String other = TestJwt.operator("wrk-x", List.of("MFC_WORKER"), List.of(MFC));
+    stub("/api/v1/internal/move-allocations/.*/pickups", 200, alloc(4, 4, 0, "ACTIVE", "CRT-A-01"));
+    assertThat(
+            post(
+                    other,
+                    "/move-orders/" + moveId + "/pickups",
+                    Map.of("cartLocation", "CRT-A-01", "qty", 4))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NOT_ASSIGNEE");
+    Res picked =
+        post(
+            WRK,
+            "/move-orders/" + moveId + "/pickups",
+            Map.of("cartLocation", "CRT-A-01", "qty", 4));
+    assertThat(picked.status()).as(picked.body().toString()).isEqualTo(200);
+    assertThat(picked.body().path("pickedBy").asString()).isEqualTo("wrk-m");
+    assertThat(
+            post(
+                    other,
+                    "/move-orders/" + moveId + "/drops",
+                    Map.of("toLocation", "A-S1-04-1-01", "qty", 4))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NOT_PICKER");
   }
 
   @Test

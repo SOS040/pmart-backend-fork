@@ -41,6 +41,7 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.capacity.units-per-hour=3",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.capacity.plan.mfc-fulfillment-base-url=${ful.url}",
+      "pmart.capacity.plan.mfc-inbound-base-url=${ful.url}",
       "pmart.capacity.plan.task-minutes.PICK=7",
       "pmart.capacity.plan.task-minutes.PACK=4",
       "pmart.capacity.plan.time-limit=PT5S",
@@ -336,6 +337,60 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
             .toEntity(String.class);
     return new Res(
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /** 작업자 쪽 4단계: 다음 작업 받기 순서 — 자동 보충·긴급 이동(만든 순) → 감독자 이동 → 복귀, 담당 있거나 이미 집은 이동은 제외. */
+  @Test
+  void nextTaskIncludesMovesAndReplenishmentsInDecidedOrder() {
+    String s = UUID.randomUUID().toString().substring(0, 6);
+    String ret = "T-MR-" + s;
+    tasks(List.of(task(ret, "RETURN", "READY", 1, null, 0)), "READY", "ASSIGNED", "IN_PROGRESS");
+    Instant base = Instant.now().minusSeconds(3600);
+    List<Map<String, Object>> moves =
+        List.of(
+            move("MV-N-" + s, "MOVE", false, 0, null, base.plusSeconds(10)),
+            move("MV-U-" + s, "MOVE", true, 0, null, base.plusSeconds(30)),
+            move("MV-R-" + s, "REPLENISH", false, 0, null, base.plusSeconds(20)),
+            move("MV-P-" + s, "REPLENISH", false, 2, null, base),
+            move("MV-A-" + s, "REPLENISH", false, 0, "someone", base));
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/move-orders"))
+            .withQueryParam("mfcId", WireMock.equalTo(MFC))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(Map.of("items", moves)))));
+    List<String> order = new java.util.ArrayList<>();
+    for (int i = 0; i < 4; i++) {
+      String w = "mv" + i + "-" + s;
+      register(w, List.of("MOVE", "REPLENISH", "RETURN"));
+      String tok = TestJwt.operator(w, List.of("MFC_WORKER"), List.of(MFC));
+      Res r = send("POST", tok, "/mfcs/" + MFC + "/workers/" + w + "/next-tasks", null);
+      assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+      order.add(r.body().path("taskId").asString());
+    }
+    assertThat(order).containsExactly("MV-R-" + s, "MV-U-" + s, "MV-N-" + s, ret);
+  }
+
+  static Map<String, Object> move(
+      String id,
+      String kind,
+      boolean urgent,
+      int picked,
+      @Nullable String assignee,
+      Instant created) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("moveId", id);
+    m.put("kind", kind);
+    m.put("state", "ACTIVE");
+    m.put("urgent", urgent);
+    m.put("pickedQty", picked);
+    if (assignee != null) {
+      m.put("assigneeId", assignee);
+    }
+    m.put("createdAt", created.toString());
+    return m;
   }
 
   @Test

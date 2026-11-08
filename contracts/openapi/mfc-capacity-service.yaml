@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -572,7 +572,8 @@ paths:
         2026-11-08 사용자 결정: 현장 크루는 정규직이든 일일크루든 **시스템이 작업을 하나씩 배정**한다. 작업자 본인(토큰 주체 = workerId)이 부른다.
         - 이미 들고 있는 작업(이 작업자의 ACTIVE 배정 중 아직 끝나지 않은 작업)이 있으면 그 배정을 200 으로 돌려준다(한 번에 하나).
         - 없으면 업무(작업 유형) 안의 **담당 없는 READY 작업** 중 가장 급한 것을 배정해 201(배정 출처 SYSTEM, `AssignmentPublished`).
-          순서: 주문 작업(PICK·PACK — 출하 약속 이른 순) → 취소품 복귀(RETURN). 재고 이동·보충은 다음 단계에서 들어온다.
+          순서: 주문 작업(PICK·PACK — 출하 약속 이른 순) → 자동 보충(REPLENISH)·긴급 이동 → 감독자 이동(MOVE) → 취소품 복귀(RETURN)(사용자 결정 2026-11-08).
+          이동·보충은 mfc-inbound 이동 지시(담당 없음·아직 안 집음) — 조회가 안 되면 이동은 건너뛰고 나머지로.
         - ACTIVE 가 아니면 422 WORKER_NOT_ACTIVE, 등록 근무가 있는데 지금이 근무 밖이면 409 OFF_SHIFT(근무 등록이 없으면 판단 안 함),
           줄 작업이 없으면 409 NO_TASK_AVAILABLE. 감독자의 수동 배정(`POST /assignments`)은 예외 처리로 그대로 쓴다.
         - MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08 — 구분은 CDC 만).
@@ -898,7 +899,7 @@ paths:
 components:
   schemas:
     WorkerState: { type: string, enum: [ACTIVE, SUSPENDED, LEFT] }
-    TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH] }
+    TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH, MOVE], description: '(0.9.0) MOVE = 감독자 지시 재고 이동(mfc-inbound 이동 지시), REPLENISH = 자동 선반 보충' }
     TemperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
     WorkerDutyBody:
       type: object
