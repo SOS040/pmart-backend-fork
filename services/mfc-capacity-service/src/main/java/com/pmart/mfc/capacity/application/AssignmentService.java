@@ -35,8 +35,10 @@ public class AssignmentService {
   public static final String TOPIC = "mfc.capacity.v1";
   public static final String SUPERVISOR_ROLE = "MFC_SUPERVISOR";
 
+  /** 업무 유형 목록과 하나로(RETURN 포함 — 2026-11-08 LAN E2E 에서 빠진 것 발견). */
   private static final Set<String> TASK_TYPES =
-      Set.of("PICK", "PACK", "DISPATCH", "RECEIVE", "INSPECT", "PUTAWAY", "REPLENISH");
+      com.pmart.mfc.capacity.domain.WorkerRules.TASK_TYPES;
+
   private static final Set<String> STATES = Set.of("ACTIVE", "SUPERSEDED", "RELEASED");
   private static final Logger log = LoggerFactory.getLogger(AssignmentService.class);
 

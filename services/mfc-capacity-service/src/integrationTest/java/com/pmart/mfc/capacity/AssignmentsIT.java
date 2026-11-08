@@ -260,6 +260,11 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
             "temperatureZone",
             "FROZEN");
     assertThat(assign(SUPERVISOR, frozenPack, 0).status()).isEqualTo(201);
+    // RETURN(집품 뒤 취소 복귀) 작업도 배정 요청 유형으로 받는다 — 업무에 없으면 400 이 아니라 422 DUTY_NOT_ALLOWED(0.5.2)
+    Res ret =
+        assign(SUPERVISOR, with(body("TSK-" + UUID.randomUUID(), w), "taskType", "RETURN"), 0);
+    assertThat(ret.status()).as(ret.body().toString()).isEqualTo(422);
+    assertThat(ret.body().path("code").asString()).isEqualTo("DUTY_NOT_ALLOWED");
 
     // 근무: 겹치면 409, 등록 근무 밖 배정은 막지 않고 OFF_SHIFT 경고
     java.time.Instant later = java.time.Instant.now().plusSeconds(3 * 3600);

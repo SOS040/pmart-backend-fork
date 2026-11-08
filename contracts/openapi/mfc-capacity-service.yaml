@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.5.1
+  version: 0.5.2
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -835,7 +835,7 @@ components:
       properties:
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
         taskId: { type: string, maxLength: 96 }
-        taskType: { type: string, enum: [PICK, PACK, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH], description: 표시·집계용(작업 정본은 fulfillment/inbound) }
+        taskType: { $ref: '#/components/schemas/TaskType', description: '표시·집계용(작업 정본은 fulfillment/inbound). 0.5.2 — 업무 유형 목록과 같게(RETURN 포함 — 집품 뒤 취소 복귀 작업이 배정되지 않던 것, 2026-11-08 LAN E2E 에서 발견)' }
         workerId: { type: string, maxLength: 64, description: 작업자 = 운영자 ID(작업자 로그인 BR-02 결정 전 잠정). 이 센터에 등록된 작업자여야 한다(0.4.0) }
         temperatureZone: { $ref: '#/components/schemas/TemperatureZone', description: '(0.4.0) 작업 구역 온도대 — 주면 그 자격을 검사' }
         reason: { type: string, maxLength: 200 }
