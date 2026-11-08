@@ -42,7 +42,7 @@
 ### mfc-inbound-service (있음 — MFC)
 - 지금: 로컬 공급 요청 제출·변경·철회(WK-14, `SupplyRequestSubmitted`), `recommendationRef` 필드 자리만 있음.
 - **해야 할 것(위 두 서비스가 생긴 뒤)**
-  1. 공급 요청 화면용 **추천 수량 조회**(replenishment 추천을 읽어 `recommendationRef` 로 연결) — 감독자가 추천을 보고 요청(또는 정책이 정하면 자동 요청).
+  1. 공급 요청 화면용 **추천 수량 조회**(replenishment 추천을 읽어 `recommendationRef` 로 연결) — 센터 관리자가 추천을 보고 요청(또는 정책이 정하면 자동 요청).
   2. `SupplyRequestReceived` 구독 → 요청 ACKNOWLEDGED(지금은 생산자가 없어 못 함).
   3. 요청·승인·출고·실제 입고 수량을 한 화면에 — 승인·이송은 SCM 사건으로 조회 모델(경계는 그대로, `baro-pick-docs` 검토 충돌 ②).
 

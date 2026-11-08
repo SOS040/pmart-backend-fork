@@ -335,7 +335,7 @@ paths:
         강제 제약: 작업마다 배정 하나 또는 미배정, 업무에 그 유형이 있는 작업자만, 작업자 시간 겹침 금지, 근무를 등록한 작업자는 근무 안에서만, 동시 PACK ≤ 패킹대 수(`plan.packing-stations`).
         목적(Q-08 전 임시 가중치): 미배정 수 → 약속 준비 시각(promisedReadyAt) 지연 분 → 작업자별 최대 부하 → 시작 시각 합 순.
         (0.9.2) 이동·보충도 넣는다 — mfc-inbound 열린 이동 지시 중 담당 없음·아직 안 집음은 후보, 담당 있는 진행 중 이동은 그 담당의 앞 점유. 확정하면 이동 지시도 배정(AssignmentPublished → inbound 담당 투영).
-        같은 미배정 개수면 정해진 순서(주문 작업 → 자동 보충·긴급 이동 → 감독자 이동 → 취소품 복귀)의 앞선 유형을 넣는다(미배정 벌점에 작게 더함). 이동 조회가 안 되면 이동 없이 계산하고 limitations 에 MOVES_NOT_INCLUDED.
+        같은 미배정 개수면 정해진 순서(주문 작업 → 자동 보충·긴급 이동 → 센터 관리자 이동 → 취소품 복귀)의 앞선 유형을 넣는다(미배정 벌점에 작게 더함). 이동 조회가 안 되면 이동 없이 계산하고 limitations 에 MOVES_NOT_INCLUDED.
         계산은 시간 제한(`plan.time-limit`) 안에서. OPTIMAL·FEASIBLE = PROPOSED, 그 밖(UNKNOWN·MODEL_INVALID) = NO_SOLUTION(수동 배정으로).
       operationId: createAssignmentPlan
       parameters:
@@ -574,10 +574,10 @@ paths:
         2026-11-08 사용자 결정: 현장 크루는 정규직이든 일일크루든 **시스템이 작업을 하나씩 배정**한다. 작업자 본인(토큰 주체 = workerId)이 부른다.
         - 이미 들고 있는 작업(이 작업자의 ACTIVE 배정 중 아직 끝나지 않은 작업)이 있으면 그 배정을 200 으로 돌려준다(한 번에 하나).
         - 없으면 업무(작업 유형) 안의 **담당 없는 READY 작업** 중 가장 급한 것을 배정해 201(배정 출처 SYSTEM, `AssignmentPublished`).
-          순서: 주문 작업(PICK·PACK — 출하 약속 이른 순) → 자동 보충(REPLENISH)·긴급 이동 → 감독자 이동(MOVE) → 취소품 복귀(RETURN)(사용자 결정 2026-11-08).
+          순서: 주문 작업(PICK·PACK — 출하 약속 이른 순) → 자동 보충(REPLENISH)·긴급 이동 → 센터 관리자 이동(MOVE) → 취소품 복귀(RETURN)(사용자 결정 2026-11-08).
           이동·보충은 mfc-inbound 이동 지시(담당 없음·아직 안 집음) — 조회가 안 되면 이동은 건너뛰고 나머지로.
         - ACTIVE 가 아니면 422 WORKER_NOT_ACTIVE, 등록 근무가 있는데 지금이 근무 밖이면 409 OFF_SHIFT(근무 등록이 없으면 판단 안 함),
-          줄 작업이 없으면 409 NO_TASK_AVAILABLE. 감독자의 수동 배정(`POST /assignments`)은 예외 처리로 그대로 쓴다.
+          줄 작업이 없으면 409 NO_TASK_AVAILABLE. 센터 관리자의 수동 배정(`POST /assignments`)은 예외 처리로 그대로 쓴다.
         - MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08 — 구분은 CDC 만).
         - (0.9.1) 응답 `detail` 에 받은 작업의 상세(상품·칸·LOT·수량·약속 시각)를 한 번에 — PICK·PACK·RETURN 은 mfc-fulfillment 작업 상세, REPLENISH·MOVE 는
           mfc-inbound 이동 지시에서 옮겨 적는다. 조회가 안 되면 `detail.available=false`(배정은 그대로 — 화면이 상세 API 를 직접 부른다).
@@ -616,7 +616,7 @@ paths:
       tags: [workers]
       summary: 자격 변경 (그 센터 MFC_SUPERVISOR — 0.7.0)
       description: |
-        2026-11-08 사용자 결정(자격과 업무 분리): 자격 = 할 수 있는 일(감독자, 계속 유지, 만료일 선택). 새 버전으로 남긴다. 업무는 자격 안에서만 유효 —
+        2026-11-08 사용자 결정(자격과 업무 분리): 자격 = 할 수 있는 일(센터 관리자, 계속 유지, 만료일 선택). 새 버전으로 남긴다. 업무는 자격 안에서만 유효 —
         자격에서 빠진 업무 유형은 배정 조건에서 빠진다(업무 행은 그대로, 지금 유효 업무 = 업무 ∩ 자격). X-Expected-Version = 지금 자격 버전.
       operationId: changeWorkerQualification
       parameters:
@@ -685,7 +685,7 @@ paths:
       tags: [workers]
       summary: 휴게 시작 (0.8.0)
       description: |
-        2026-11-08 사용자 결정(Q-09): 휴게 중에는 다음 작업 받기가 작업을 주지 않는다(409 ON_BREAK), 들고 있던 작업은 그대로. 본인 또는 그 센터 감독자.
+        2026-11-08 사용자 결정(Q-09): 휴게 중에는 다음 작업 받기가 작업을 주지 않는다(409 ON_BREAK), 들고 있던 작업은 그대로. 본인 또는 그 센터 관리자.
         이미 휴게 중이면 그 휴게(200).
       operationId: startWorkerBreak
       parameters:
@@ -761,7 +761,7 @@ paths:
       summary: 업무 변경 — 새 업무 버전 (그 센터 MFC_SUPERVISOR — 0.4.0)
       description: |
         업무를 통째로 새 버전으로 적는다(이전 버전은 이력으로 남는다). 계정·로그인·상태는 바뀌지 않는다. X-Expected-Version = 지금 dutyVersion(다르면 409).
-        이미 잡힌 배정은 지우지 않는다 — 새 업무에 맞지 않는 ACTIVE 배정은 응답 affectedAssignments 로 알려 감독자가 재배정한다.
+        이미 잡힌 배정은 지우지 않는다 — 새 업무에 맞지 않는 ACTIVE 배정은 응답 affectedAssignments 로 알려 센터 관리자가 재배정한다.
       operationId: changeWorkerDuty
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
@@ -903,7 +903,7 @@ paths:
 components:
   schemas:
     WorkerState: { type: string, enum: [ACTIVE, SUSPENDED, LEFT] }
-    TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH, MOVE], description: '(0.9.0) MOVE = 감독자 지시 재고 이동(mfc-inbound 이동 지시), REPLENISH = 자동 선반 보충' }
+    TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH, MOVE], description: '(0.9.0) MOVE = 센터 관리자 지시 재고 이동(mfc-inbound 이동 지시), REPLENISH = 자동 선반 보충' }
     TemperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
     WorkerDutyBody:
       type: object
@@ -1116,7 +1116,7 @@ components:
               qty: { type: integer, description: 남은 양 }
               fromLocation: { type: [string, 'null'], description: '집을 칸(PICK 배정 칸 우선·RETURN 포장 위치·이동 출발 칸)' }
               toLocation: { type: [string, 'null'], description: 놓을 칸(RETURN 추천 칸·이동 도착 칸) }
-              notice: { type: [string, 'null'], description: '화면 안내(예: "어느 칸에서도 못 찾음 — 감독자 확인")' }
+              notice: { type: [string, 'null'], description: '화면 안내(예: "어느 칸에서도 못 찾음 — 센터 관리자 확인")' }
     AssignmentPlan:
       properties:
         planId: { type: string }
@@ -1164,7 +1164,7 @@ components:
           additionalProperties: true
         availabilityUnverifiedWorkers:
           type: array
-          description: '(0.5.1) 근무를 등록하지 않아 가용성을 확인 못 한 작업자 — 계산은 구간 전체 가능으로 했다(Q-09 미결). 감독자가 확인한다'
+          description: '(0.5.1) 근무를 등록하지 않아 가용성을 확인 못 한 작업자 — 계산은 구간 전체 가능으로 했다(Q-09 미결). 센터 관리자가 확인한다'
           items: { type: string }
         limitations:
           type: array

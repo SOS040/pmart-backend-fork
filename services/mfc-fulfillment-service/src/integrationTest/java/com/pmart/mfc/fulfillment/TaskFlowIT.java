@@ -337,7 +337,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     String pick = s + "-PICK";
     String pack = s + "-PACK";
 
-    // 배정 전: 시작 못 한다(담당 없음), 감독자가 배정 → ASSIGNED
+    // 배정 전: 시작 못 한다(담당 없음), 센터 관리자가 배정 → ASSIGNED
     cap.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/assignments"))
             .willReturn(json(200, Map.of("items", List.of()))));

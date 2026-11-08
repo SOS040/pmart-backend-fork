@@ -33,7 +33,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 회수품 검수(IV-10): 반입 사본(ReturnItemReceived) 기준, 반입자 아닌 감독자, 재판매는 상온·미개봉만 → 격리 해제(반품 위치 UNSTOWED),
+ * 회수품 검수(IV-10): 반입 사본(ReturnItemReceived) 기준, 반입자 아닌 센터 관리자, 재판매는 상온·미개봉만 → 격리 해제(반품 위치 UNSTOWED),
  * 폐기는 폐기 승인 요청 → ReturnInspected.
  */
 @SpringBootTest(
@@ -207,7 +207,7 @@ class ReturnInspectionIT extends PostgresKafkaContainerSupport {
             id);
     JsonNode ev = mapper.readTree(evt).path("payload").path("lines");
     assertThat(ev.findValuesAsString("disposition")).containsExactly("RESALE", "DISPOSE");
-    // 폐기 1 → 폐기 승인 요청(감독자 승인·실행은 기존 흐름)
+    // 폐기 1 → 폐기 승인 요청(센터 관리자 승인·실행은 기존 흐름)
     assertThat(
             jdbc.queryForObject(
                 "SELECT disposal_approval_id IS NOT NULL FROM return_inspection WHERE return_inspection_id = ?",

@@ -163,7 +163,7 @@ public class AssignmentService {
       throw new PmartException(
           OFF_SHIFT_BLOCKED,
           org.springframework.http.HttpStatus.CONFLICT,
-          "등록 근무 밖에는 시스템이 작업을 주지 않습니다(감독자 배정만).",
+          "등록 근무 밖에는 시스템이 작업을 주지 않습니다(센터 관리자 배정만).",
           false,
           List.of());
     }
@@ -232,7 +232,7 @@ public class AssignmentService {
               .execute(
                   s -> {
                     if (store.lockActive(t.taskId()).isPresent()) {
-                      return null; // 다른 작업자가 먼저(또는 감독자 배정)
+                      return null; // 다른 작업자가 먼저(또는 센터 관리자 배정)
                     }
                     Instant at = clock.instant();
                     AssignmentRow row =

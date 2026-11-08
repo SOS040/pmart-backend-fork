@@ -22,7 +22,7 @@ public class InboundClient {
 
   public static final String INBOUND = "mfc-inbound-service";
 
-  /** 이동 지시 사본. taskType = REPLENISH(자동 보충) / MOVE(감독자). */
+  /** 이동 지시 사본. taskType = REPLENISH(자동 보충) / MOVE(센터 관리자). */
   public record MoveView(
       String moveId,
       String taskType,

@@ -73,7 +73,7 @@ class TaskRulesTest {
     var none = TaskRules.pickStatus(3, 0, 0, false);
     assertThat(none.status()).isEqualTo("NOT_FOUND");
     assertThat(none.unallocatedQty()).isEqualTo(3);
-    assertThat(none.notice()).contains("감독자 확인");
+    assertThat(none.notice()).contains("센터 관리자 확인");
     // 시작 뒤: 이 주문 몫 배정으로 판단
     var part = TaskRules.pickStatus(3, 10, 1, true);
     assertThat(part.status()).isEqualTo("PARTIAL");

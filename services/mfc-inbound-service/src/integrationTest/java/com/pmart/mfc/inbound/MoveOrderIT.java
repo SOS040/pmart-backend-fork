@@ -33,7 +33,7 @@ import org.wiremock.spring.InjectWireMock;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** 재고 이동 지시(IV-03): 감독자 지시 → 작업자 집어 올리기·내려놓기 → 감독자 취소. 수량 정본(inventory)은 WireMock. */
+/** 재고 이동 지시(IV-03): 센터 관리자 지시 → 작업자 집어 올리기·내려놓기 → 센터 관리자 취소. 수량 정본(inventory)은 WireMock. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
@@ -176,7 +176,7 @@ class MoveOrderIT extends PostgresKafkaContainerSupport {
             Map.of("toLocation", "A-S1-02-1-01", "qty", 6));
     assertThat(dropped.body().path("droppedQty").asInt()).isEqualTo(6);
 
-    // 취소는 감독자만, 집지 않은 몫이 풀림
+    // 취소는 센터 관리자만, 집지 않은 몫이 풀림
     assertThat(
             post(WRK, "/move-orders/" + moveId + "/cancellations", Map.of("reason", "x")).status())
         .isEqualTo(403);

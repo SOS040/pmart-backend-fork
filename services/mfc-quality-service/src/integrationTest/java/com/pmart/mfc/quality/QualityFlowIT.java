@@ -36,7 +36,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 품질 판정·폐기(IV-09·IV-10): 격리 즉시 재고 반영, 해제는 요청 → 다른 감독자 승인 → 재고 반영, 재고 결과 모름은 같은 키로 다시, 폐기는 요청 →
+ * 품질 판정·폐기(IV-09·IV-10): 격리 즉시 재고 반영, 해제는 요청 → 다른 센터 관리자 승인 → 재고 반영, 재고 결과 모름은 같은 키로 다시, 폐기는 요청 →
  * 승인(근거·부분 승인) → 승인 잔량 안에서 실행. 재고 정본은 WireMock.
  */
 @SpringBootTest(
@@ -193,7 +193,7 @@ class QualityFlowIT extends PostgresKafkaContainerSupport {
                 .status())
         .isEqualTo(403);
 
-    // 다른 감독자 승인 → 재고 결과 모름 → 같은 키로 다시(sweep) → APPLIED
+    // 다른 센터 관리자 승인 → 재고 결과 모름 → 같은 키로 다시(sweep) → APPLIED
     inv.stubFor(WireMock.post(urlPathEqualTo(POSTINGS)).willReturn(json(500, Map.of())));
     Res a =
         call(
@@ -253,7 +253,7 @@ class QualityFlowIT extends PostgresKafkaContainerSupport {
             Map.of("lines", List.of(line("E-00000002", "LOT-2", 1))));
     assertThat(early.status()).isEqualTo(409);
 
-    // 근거 없는 승인·작업자 승인은 거절, 감독자가 2개만 부분 승인
+    // 근거 없는 승인·작업자 승인은 거절, 센터 관리자가 2개만 부분 승인
     Map<String, Object> approve = new LinkedHashMap<>();
     approve.put("action", "APPROVE");
     approve.put("mfcId", MFC);

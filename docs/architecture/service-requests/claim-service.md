@@ -5,7 +5,7 @@
 - **결정(D-7)**: 픽업·배달 시작 뒤 고객 취소는 **고객센터를 통해서만**(R-2), **배송·회수비 9,000원 고객 부담**(Delivery 381행), 회사 잘못(오배송·지연 등)이면 면제(사유 목록은 고객센터 서비스 때). 회수비는 상품 환불액과 **상계하지 않고 따로 결제**, 상품 환불은 **회수품 검수 뒤**(OMS·Commerce: 회수비 납부 ≠ 반품 승인·환불 완료).
 - **MFC 쪽(구현됨, 2026-11-08)**:
   1. mfc-inbound `POST /return-receipts` — 회수품을 반품 위치에 **격리**로 반입(재고 H+q·Q+q, 판매 불가) → `ReturnItemReceived`(claimId·returnReceiptId·줄별 lot·반입자).
-  2. mfc-quality `POST /return-inspections` — 반입자가 아닌 감독자가 검수: RESALE(상온·미개봉·신선 아님만) → 격리 해제, DISPOSE → 폐기 승인 요청 → `ReturnInspected`(claimId·줄별 disposition RESALE/DISPOSE).
+  2. mfc-quality `POST /return-inspections` — 반입자가 아닌 센터 관리자가 검수: RESALE(상온·미개봉·신선 아님만) → 격리 해제, DISPOSE → 폐기 승인 요청 → `ReturnInspected`(claimId·줄별 disposition RESALE/DISPOSE).
   3. mfc-inbound 가 `ReturnInspected` 의 RESALE 분 → 적치(PUTAWAY) 작업 — 진열 규칙대로 선반에 **재배치**.
 - **claim-service 가 할 것(아직 없음 — 반품 클레임 RETURN 이 미구현)**
   1. 반품·인계 뒤 취소 클레임(type RETURN) 접수: 고객센터 채널, 회수 수량·사유·회수비 여부(면제 사유) 기록.

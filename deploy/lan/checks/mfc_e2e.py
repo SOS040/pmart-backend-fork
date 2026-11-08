@@ -1,7 +1,7 @@
-"""LAN MFC 처음부터 끝까지 확인(실제 API — 주문 조정 서비스가 부르는 내부 API + 감독자·작업자 LAN 계정). 토큰·비밀번호는 출력하지 않는다.
+"""LAN MFC 처음부터 끝까지 확인(실제 API — 주문 조정 서비스가 부르는 내부 API + 센터 관리자·작업자 LAN 계정). 토큰·비밀번호는 출력하지 않는다.
 
 예약 → 확정 → 작업 접수 → PICK 배정·시작·피킹 → PACK 배정·시작 → 점원 배차 요청 → 밀봉(READY) → 전체 중지(취소) → 복귀 작업(추천 칸)
-→ 재고 원복(처음과 같은 H·A) → 감독자 이동 지시(긴급, 고회전 칸) → 작업자 다음 작업 받기(MOVE)·집기·내려놓기 → 되돌리는 이동. 시험 주문은 만들었다가 취소·복귀하므로 재고는 원래대로 돌아간다. 고객 로그인·결제(Toss)·라이더 인계는 없다.
+→ 재고 원복(처음과 같은 H·A) → 센터 관리자 이동 지시(긴급, 고회전 칸) → 작업자 다음 작업 받기(MOVE)·집기·내려놓기 → 되돌리는 이동. 시험 주문은 만들었다가 취소·복귀하므로 재고는 원래대로 돌아간다. 고객 로그인·결제(Toss)·라이더 인계는 없다.
 
 실행: python -I deploy/lan/checks/mfc_e2e.py   (PYTHONIOENCODING=utf-8 권장)
 필요: deploy/lan/.secrets/claude-dev-login·claude-dev-password(LAN 전용 OPERATOR_ADMIN). 계정 claude-mfc-sup·claude-mfc-wrk 는 실행마다 만들거나 비밀번호를 새로 정한다.
@@ -172,7 +172,7 @@ pick, pack, ret = ship + "-PICK", ship + "-PACK", ship + "-RETURN"
 
 
 def assign_and_start(task, ttype):
-    # 다음 작업 받기(시스템 배정, capacity 0.6.0) — 센터에 더 급한 다른 작업이 있으면 감독자 배정으로
+    # 다음 작업 받기(시스템 배정, capacity 0.6.0) — 센터에 더 급한 다른 작업이 있으면 센터 관리자 배정으로
     pulled = None
     for _ in range(20):
         st, b = http("POST", f"{GW}/mfcs/{MFC}/workers/{wid}/next-tasks", wrk)
@@ -190,8 +190,8 @@ def assign_and_start(task, ttype):
         print("     상세", [(l.get("sku"), l.get("qty"), l.get("fromLocation"), l.get("toLocation")) for l in det.get("lines", [])])
         step(f"{ttype} 받은 작업 상세(capacity 0.9.1)", (200 if det.get("available") and det.get("lines") else 409, det), 200)
     else:
-        print("     (다음 작업 받기가 다른 작업을 줌 — 감독자 배정으로)", st, b.get("taskId") or b.get("code"))
-        step(f"{ttype} 배정(감독자)", http("POST", f"{GW}/assignments", sup,
+        print("     (다음 작업 받기가 다른 작업을 줌 — 센터 관리자 배정으로)", st, b.get("taskId") or b.get("code"))
+        step(f"{ttype} 배정(센터 관리자)", http("POST", f"{GW}/assignments", sup,
                                         {"mfcId": MFC, "taskId": task, "taskType": ttype, "workerId": wid}, version=0), 201, 200)
     for _ in range(30):
         st, t = http("GET", f"{GW}/tasks/{task}", wrk)
@@ -271,7 +271,7 @@ same = all(av2[s]["onHand"] == av0[s]["onHand"] and av2[s]["available"] == av0[s
 print("     재고 H/A 처음:", {s: (av0[s]["onHand"], av0[s]["available"]) for s in av0}, "끝:", {s: (av2[s]["onHand"], av2[s]["available"]) for s in av2})
 step("재고 원복(H·A 처음과 같음)", (200 if same else 409, {}), 200)
 
-# 6. 감독자 이동 지시(긴급) → 작업자 다음 작업 받기(MOVE) → 집기·내려놓기 → 되돌리는 이동 — 작업자 쪽 4단계(capacity 0.9.0·inbound 0.7.1)
+# 6. 센터 관리자 이동 지시(긴급) → 작업자 다음 작업 받기(MOVE) → 집기·내려놓기 → 되돌리는 이동 — 작업자 쪽 4단계(capacity 0.9.0·inbound 0.7.1)
 w = step("작업자 조회", http("GET", f"{GW}/mfcs/{MFC}/workers/{wid}", sup), 200)
 if "MOVE" not in (w.get("effectiveTaskTypes") or []):
     q = w.get("qualification") or {}
@@ -325,7 +325,7 @@ def carry(mv, label):
             break
         time.sleep(1)
     step(f"{label} 담당 반영(assigneeId)", (200 if m.get("assigneeId") == wid else 409, m), 200)
-    step(f"{label} 감독자는 담당이 아니라 못 집음", http("POST", f"{GW}/move-orders/{mid}/pickups", sup, {"cartLocation": cart, "qty": 1}), 409)
+    step(f"{label} 센터 관리자는 담당이 아니라 못 집음", http("POST", f"{GW}/move-orders/{mid}/pickups", sup, {"cartLocation": cart, "qty": 1}), 409)
     step(f"{label} 집기 → {cart}", http("POST", f"{GW}/move-orders/{mid}/pickups", wrk, {"cartLocation": cart, "qty": 1}), 200)
     d = step(f"{label} 내려놓기 → {mv['toLocation']}", http("POST", f"{GW}/move-orders/{mid}/drops", wrk, {"toLocation": mv["toLocation"], "qty": 1}), 200)
     step(f"{label} 완료", (200 if d.get("state") == "COMPLETED" else 409, d), 200)

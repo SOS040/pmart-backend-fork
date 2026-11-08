@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 자동 선반 보충(IV-04, 2026-11-08 사용자 결정: 시스템이 만든다, 재배치는 감독자). 기준(최소·목표·단위, Q-07 값)은 감독자가 고회전 선반·상품별로
+ * 자동 선반 보충(IV-04, 2026-11-08 사용자 결정: 시스템이 만든다, 재배치는 센터 관리자). 기준(최소·목표·단위, Q-07 값)은 센터 관리자가 고회전 선반·상품별로
  * 등록하고, 점검은 mfc-inbound 가 주기적으로 부른다. 만든 보충은 일반 이동 배정(kind REPLENISH)과 같은 규칙({@link MoveService})으로
  * 검사한다 — 출발 LOT 가용(A)이 모자라면(이동 중은 판매 가능에서 빠지므로) 재고가 확보될 때까지 보충하지 않는다(사용자 결정, 예외 없음).
  */

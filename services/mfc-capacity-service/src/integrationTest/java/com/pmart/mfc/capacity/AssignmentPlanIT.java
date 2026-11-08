@@ -352,7 +352,7 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
   }
 
-  /** 작업자 쪽 4단계: 다음 작업 받기 순서 — 자동 보충·긴급 이동(만든 순) → 감독자 이동 → 복귀, 담당 있거나 이미 집은 이동은 제외. */
+  /** 작업자 쪽 4단계: 다음 작업 받기 순서 — 자동 보충·긴급 이동(만든 순) → 센터 관리자 이동 → 복귀, 담당 있거나 이미 집은 이동은 제외. */
   @Test
   void nextTaskIncludesMovesAndReplenishmentsInDecidedOrder() {
     String s = UUID.randomUUID().toString().substring(0, 6);

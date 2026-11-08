@@ -24,7 +24,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 로컬 공급 요청(WK-14): 감독자만, 제출 = SUBMITTED + SupplyRequestSubmitted, 같은 SKU 미해결 요청 중복 거절, 변경은 새 버전,
+ * 로컬 공급 요청(WK-14): 센터 관리자만, 제출 = SUBMITTED + SupplyRequestSubmitted, 같은 SKU 미해결 요청 중복 거절, 변경은 새 버전,
  * 철회.
  */
 @SpringBootTest(

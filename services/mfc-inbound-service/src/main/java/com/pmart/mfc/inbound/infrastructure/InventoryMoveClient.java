@@ -15,7 +15,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * mfc-inventory 이동 배정(IV-03) 호출. 수량 정본은 inventory — 4xx 는 inventory 의 코드·설명을 그대로 돌려주고(감독자·작업자가 이유를
+ * mfc-inventory 이동 배정(IV-03) 호출. 수량 정본은 inventory — 4xx 는 inventory 의 코드·설명을 그대로 돌려주고(센터 관리자·작업자가 이유를
  * 본다), 미전달·불명은 Downstream 의 503/UNKNOWN_RESULT(같은 키로 다시 하면 inventory 가 한 번만 반영).
  */
 @Component

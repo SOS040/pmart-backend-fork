@@ -235,7 +235,7 @@ paths:
         **격리(QUARANTINED)로만** 들어간다(판매 가능 아님, IV-10 "실제 인수는 격리 증가"). inventory 수령(receiptId = returnReceiptId, trfId = claimId,
         departureId = returnPickupId, quarantinedQty = qty)이 반영되면 `ReturnItemReceived`(줄별 inventory lot·위치) → mfc-quality 회수품 검수.
         검수 RESALE 분은 `ReturnInspected` 를 받아 적치(PUTAWAY) 작업을 만든다(진열 규칙대로 선반에 재배치). LOT: sourceLotRef(없으면 `RET-<claimId>`)·
-        expiryDate 로 추적 LOT. 그 센터 운영자(작업자·감독자). 같은 Idempotency-Key 는 같은 반입. 결과: APPLIED / REJECTED(재고 거절) / UNKNOWN_RESULT(같은 키로 다시).
+        expiryDate 로 추적 LOT. 그 센터 운영자(작업자·센터 관리자). 같은 Idempotency-Key 는 같은 반입. 결과: APPLIED / REJECTED(재고 거절) / UNKNOWN_RESULT(같은 키로 다시).
       operationId: recordReturnReceipt
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -579,9 +579,9 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
     post:
       tags: [moves]
-      summary: 재고 이동 지시 — 감독자 (IV-03, 0.5.0)
+      summary: 재고 이동 지시 — 센터 관리자 (IV-03, 0.5.0)
       description: |
-        2026-11-08 사용자 결정: MFC 선반 간 재고 이동은 **감독자가 지시**하고 작업자가 두 단계(출발 칸 → 카트 → 도착 칸)로 실행한다(CDC 는 시스템 지시).
+        2026-11-08 사용자 결정: MFC 선반 간 재고 이동은 **센터 관리자가 지시**하고 작업자가 두 단계(출발 칸 → 카트 → 도착 칸)로 실행한다(CDC 는 시스템 지시).
         그 센터 MFC_SUPERVISOR. mfc-inventory 이동 배정(출발 물량·도착 공간, 칸당 한 상품·한 상품 한 자리·용량)을 먼저 잡고 지시를 남긴다 — 거절은 inventory 의 코드 그대로.
         같은 Idempotency-Key 는 같은 이동(moveId 가 키에서 정해진다).
       operationId: createMoveOrder
@@ -691,7 +691,7 @@ paths:
   /move-orders/{moveId}/cancellations:
     post:
       tags: [moves]
-      summary: 이동 지시 취소 — 감독자 (0.5.0)
+      summary: 이동 지시 취소 — 센터 관리자 (0.5.0)
       description: 집지 않은 몫만 풀린다. 카트에 남은 물건은 내려놓아야 끝난다(CANCEL_PENDING → CANCELLED).
       operationId: cancelMoveOrder
       parameters:
@@ -722,7 +722,7 @@ components:
       type: object
       properties:
         moveId: { type: string }
-        kind: { type: string, enum: [MOVE, REPLENISH], description: 'MOVE = 감독자 재배치, REPLENISH = 시스템 자동 보충(0.6.0 — createdBy SYSTEM, 실행·취소는 같다)' }
+        kind: { type: string, enum: [MOVE, REPLENISH], description: 'MOVE = 센터 관리자 재배치, REPLENISH = 시스템 자동 보충(0.6.0 — createdBy SYSTEM, 실행·취소는 같다)' }
         mfcId: { type: string }
         sku: { type: string }
         lotId: { type: string }
@@ -738,7 +738,7 @@ components:
         createdBy: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-        urgent: { type: boolean, description: (0.7.1) 감독자 긴급 표시 }
+        urgent: { type: boolean, description: (0.7.1) 센터 관리자 긴급 표시 }
         assigneeId: { type: [string, 'null'], description: '(0.7.1) 담당(capacity 배정 투영) — 있으면 담당만 집어 올림' }
         pickedBy: { type: [string, 'null'], description: '(0.7.1) 카트에 실은 사람 — 그 사람만 내려놓음' }
     InboundPromiseState:

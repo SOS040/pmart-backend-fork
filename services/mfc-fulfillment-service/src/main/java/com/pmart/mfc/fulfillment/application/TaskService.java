@@ -949,7 +949,7 @@ public class TaskService {
    */
   // ---------- 작업 내놓기·주의 표시(작업자 쪽 3단계, Q-09) ----------
 
-  /** 작업 내놓기: 담당 본인 또는 감독자, 진행 중 실적·열린 포장 없을 때만, capacity 배정 해제 뒤 READY. */
+  /** 작업 내놓기: 담당 본인 또는 센터 관리자, 진행 중 실적·열린 포장 없을 때만, capacity 배정 해제 뒤 READY. */
   public TaskInfo release(String taskId, String workerId, @Nullable String reason) {
     TaskInfo t0 = task(taskId);
     com.pmart.common.security.PmartPrincipal p =
@@ -959,7 +959,7 @@ public class TaskService {
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 할 수 있습니다."));
     if (!p.canAccessCenter(t0.mfcId())
         || !(p.subject().equals(workerId) || p.hasRole("MFC_SUPERVISOR"))) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "담당 본인 또는 그 센터 감독자만 내놓을 수 있습니다.");
+      throw new PmartException(ErrorCode.FORBIDDEN, "담당 본인 또는 그 센터 관리자만 내놓을 수 있습니다.");
     }
     if (!"ASSIGNED".equals(t0.state()) && !"IN_PROGRESS".equals(t0.state())) {
       throw PmartException.invalidState("배정·진행 중인 작업만 내놓습니다(지금 " + t0.state() + ").");

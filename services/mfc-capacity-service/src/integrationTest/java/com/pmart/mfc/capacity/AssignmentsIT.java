@@ -23,7 +23,7 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** 수동 배정(WK-02·WK-05, 슬라이스 6b): 감독자만, 활성 1명·버전 증가, 재지정 SUPERSEDED, 낡은 버전 409, 사건 발행, 조회. */
+/** 수동 배정(WK-02·WK-05, 슬라이스 6b): 센터 관리자만, 활성 1명·버전 증가, 재지정 SUPERSEDED, 낡은 버전 409, 사건 발행, 조회. */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
@@ -99,7 +99,7 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
     return res(e);
   }
 
-  /** 감독자가 작업자 등록(이미 있으면 409 — 무시해도 된다). */
+  /** 센터 관리자가 작업자 등록(이미 있으면 409 — 무시해도 된다). */
   Res register(String worker, List<String> types, List<String> zones) {
     return send(
         "POST",
@@ -141,7 +141,7 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
     register("wrk-1", List.of("PICK", "PACK"), List.of("AMBIENT"));
     register("wrk-2", List.of("PICK"), List.of("AMBIENT"));
     String task = "TSK-" + UUID.randomUUID();
-    // 작업자·다른 센터 감독자는 배정 못 한다
+    // 작업자·다른 센터의 센터 관리자는 배정 못 한다
     assertThat(assign(WORKER, body(task, "wrk-1"), null).status()).isEqualTo(403);
     assertThat(assign(OTHER_SUP, body(task, "wrk-1"), null).status()).isEqualTo(403);
 

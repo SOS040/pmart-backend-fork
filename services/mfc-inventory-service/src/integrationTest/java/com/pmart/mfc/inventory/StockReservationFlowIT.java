@@ -1966,7 +1966,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     return post(token, "mfc-pda", "/mfcs/" + mfc + path, UUID.randomUUID().toString(), body);
   }
 
-  /** 순환 실사(IV-11): 잠금 위치만, 장부 숨김 → 첫 계수 차이 → 다른 작업자 재계수 → 시작·계수자 아닌 감독자 승인(근거) → 조정 + 조사 보류 해소. */
+  /** 순환 실사(IV-11): 잠금 위치만, 장부 숨김 → 첫 계수 차이 → 다른 작업자 재계수 → 시작·계수자 아닌 센터 관리자 승인(근거) → 조정 + 조사 보류 해소. */
   @Test
   void cycleCountNeedsRecountByAnotherWorkerAndSupervisorApproval() {
     String w1 = TestJwt.operator("cw1", List.of("MFC_WORKER"), List.of(mfc));

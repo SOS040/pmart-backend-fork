@@ -213,7 +213,7 @@ public class ReturnInspectionService {
       throw new PmartException(
           "SELF_APPROVAL",
           HttpStatus.UNPROCESSABLE_CONTENT,
-          "반입한 사람은 검수(격리 해제)하지 않습니다 — 다른 감독자가 합니다(Q-11).",
+          "반입한 사람은 검수(격리 해제)하지 않습니다 — 다른 센터 관리자가 합니다(Q-11).",
           false,
           List.of());
     }

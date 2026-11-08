@@ -34,7 +34,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
- * 배정 추천(WK-09)·확정(WK-10). 추천은 배정을 바꾸지 않는다. 자동 확정(Q-08)은 없다 — 감독자가 확정한다.
+ * 배정 추천(WK-09)·확정(WK-10). 추천은 배정을 바꾸지 않는다. 자동 확정(Q-08)은 없다 — 센터 관리자가 확정한다.
  *
  * <ul>
  *   <li>계산: fulfillment 작업(READY = 대상, ASSIGNED·IN_PROGRESS = 그 담당의 앞 점유) + ACTIVE 작업자·지금 업무·근무 →

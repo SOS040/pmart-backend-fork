@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 작업자·업무·근무(WK-02 입력, V5). 사용자 결정(2026-11-08): 감독자가 등록하고, 업무가 바뀌어도 로그인 정보는 그대로 — workerId(운영자 ID)는
+ * 작업자·업무·근무(WK-02 입력, V5). 사용자 결정(2026-11-08): 센터 관리자가 등록하고, 업무가 바뀌어도 로그인 정보는 그대로 — workerId(운영자 ID)는
  * 바꾸지 않는 열쇠이고 업무(작업 유형·온도대 자격)는 버전마다 따로 남는다. 상태(ACTIVE·SUSPENDED·LEFT)는 새 배정만 막고 로그인·센터 권한(auth)은
  * 건드리지 않는다. 업무·상태가 바뀌어도 기존 배정은 지우지 않고 맞지 않는 것을 알려 준다.
  */
@@ -141,7 +141,7 @@ public class WorkerService {
     return breaks.open(mfcId, workerId).isPresent();
   }
 
-  /** 휴게 시작(본인 또는 감독자) — 이미 휴게 중이면 그 휴게. */
+  /** 휴게 시작(본인 또는 센터 관리자) — 이미 휴게 중이면 그 휴게. */
   public com.pmart.mfc.capacity.infrastructure.BreakStore.Break startBreak(
       String mfcId, String workerId) {
     String me = selfOrSupervisor(mfcId, workerId);
@@ -174,7 +174,7 @@ public class WorkerService {
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 할 수 있습니다."));
     if (!p.canAccessCenter(mfcId)
         || !(p.subject().equals(workerId) || p.hasRole(AssignmentService.SUPERVISOR_ROLE))) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "그 센터 감독자 또는 본인만 할 수 있습니다.");
+      throw new PmartException(ErrorCode.FORBIDDEN, "그 센터 관리자 또는 본인만 할 수 있습니다.");
     }
     return p.subject();
   }
@@ -401,7 +401,7 @@ public class WorkerService {
         List.of());
   }
 
-  /** 자격 변경(감독자) — 새 버전. 자격에서 빠진 업무 유형은 배정 조건에서 빠진다(업무 행은 그대로). */
+  /** 자격 변경(센터 관리자) — 새 버전. 자격에서 빠진 업무 유형은 배정 조건에서 빠진다(업무 행은 그대로). */
   public ChangeResult changeQualification(
       String requestId,
       String sourceSystem,
@@ -447,7 +447,7 @@ public class WorkerService {
     return new ChangeResult(view(mfcId, workerId), changed, affected(mfcId, workerId));
   }
 
-  /** 일일크루 그날 근무 등록(감독자 또는 본인). 그날 업무 = 유효 자격(시스템이 정함 — 수요 맞춤 세분은 나중). */
+  /** 일일크루 그날 근무 등록(센터 관리자 또는 본인). 그날 업무 = 유효 자격(시스템이 정함 — 수요 맞춤 세분은 나중). */
   public QualificationStore.Day enrollDay(
       String requestId,
       String sourceSystem,
@@ -461,7 +461,7 @@ public class WorkerService {
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 할 수 있습니다."));
     if (!p.canAccessCenter(mfcId)
         || !(p.subject().equals(workerId) || p.hasRole(AssignmentService.SUPERVISOR_ROLE))) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "그 센터 감독자 또는 본인만 근무를 등록합니다.");
+      throw new PmartException(ErrorCode.FORBIDDEN, "그 센터 관리자 또는 본인만 근무를 등록합니다.");
     }
     WorkerRow w =
         store

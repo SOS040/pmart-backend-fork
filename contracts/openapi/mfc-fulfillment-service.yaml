@@ -6,7 +6,7 @@ info:
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
     0.2.0(2026-11-07, 슬라이스 6b): 점원 단말 Task API·포장 밀봉 구현. 작업자 = 운영자 계정(작업자 로그인 BR-02 결정 전 잠정) — 그 센터 권한 +
-    역할 `MFC_WORKER`. 담당은 mfc-capacity 수동 배정(감독자 `MFC_SUPERVISOR`, WK-02 — Q-08 전 수동 지정만)의 투영과 시작 때 동기 조회.
+    역할 `MFC_WORKER`. 담당은 mfc-capacity 수동 배정(센터 관리자 `MFC_SUPERVISOR`, WK-02 — Q-08 전 수동 지정만)의 투영과 시작 때 동기 조회.
     PICK 시작(센터에서 그 주문의 첫 시작)이 준비 시작 PreparationStarted(D6-1). 피킹 실적은 mfc-inventory PICK(선반 → 포장 구역)으로, 포장 밀봉은
     PACK(PICKED → PACKED)으로 반영한다. 결품 보고는 작업을 BLOCKED 로 두고 LineShortageReported 만 낸다(재고 처리는 IV-09 단계).
     DISPATCH·인계 fence 는 아직 501(6c).
@@ -354,7 +354,7 @@ paths:
       summary: 작업 내놓기 — 교대·퇴근 때 담당을 풀고 READY 로 (0.4.8)
       description: |
         2026-11-08 사용자 결정(Q-09): 작업자가 "작업 내놓기"를 하면 잔량을 확인한 뒤 대기로 되돌린다 — 진행 중 실적(RECORDED·결과 모름)·열린 포장이 있으면
-        409 EXECUTION_IN_FLIGHT(끝난 뒤). 담당 본인 또는 그 센터 감독자. ASSIGNED·IN_PROGRESS 만(아니면 409 INVALID_STATE). mfc-capacity 배정을 먼저 풀고
+        409 EXECUTION_IN_FLIGHT(끝난 뒤). 담당 본인 또는 그 센터 관리자. ASSIGNED·IN_PROGRESS 만(아니면 409 INVALID_STATE). mfc-capacity 배정을 먼저 풀고
         (`/internal/assignments/{taskId}/releases`, 실패면 503 — 바꾸지 않음) 작업을 READY 로(담당·시작 지움, 완료량은 그대로 — 다음 사람이 남은 양을 이어서).
       operationId: releaseTask
       parameters:
@@ -604,7 +604,7 @@ paths:
       summary: 점원 확인이 필요한 포장 목록 — 센터 전체 (0.4.9)
       description: |
         PDA 응답 다듬기(2026-11-08 공지 계획): 포장마다 handover-resolution 을 부르지 않고, 인계 허가가 만료됐지만 확정 요청이 없어
-        점원 확인(POST /packages/{id}/handover-checks)이 필요한 포장을 한 번에. 지금은 checkRequired=true 만(그 밖은 400). 그 센터 작업자·감독자.
+        점원 확인(POST /packages/{id}/handover-checks)이 필요한 포장을 한 번에. 지금은 checkRequired=true 만(그 밖은 400). 그 센터 작업자·센터 관리자.
         허가 만료가 오래된 순.
       operationId: listPackagesToCheck
       parameters:
@@ -953,7 +953,7 @@ components:
         remainingQty: { type: integer }
         promisedReadyAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
-        late: { type: boolean, description: '(0.4.8) 시작 뒤 예상 시간의 2배를 넘김 — 감독자 화면 표시만(자동으로 빼앗지 않음, Q-09)' }
+        late: { type: boolean, description: '(0.4.8) 시작 뒤 예상 시간의 2배를 넘김 — 센터 관리자 화면 표시만(자동으로 빼앗지 않음, Q-09)' }
         idle: { type: boolean, description: '(0.4.8) 진행 중인데 30분 동안 실적 없음 — 알림만(자동 해제 없음)' }
         lastActivityAt: { type: [string, 'null'], format: date-time, description: '(0.4.8) 시작 또는 마지막 실적 시각' }
         headline:
@@ -1011,7 +1011,7 @@ components:
                 description: '(0.4.9, PICK 만) 화면 표시용 — OK 칸 정해짐, PARTIAL 일부만, NOT_FOUND 어느 칸에서도 못 찾음, DONE 다 집음'
               notice:
                 type: [string, 'null']
-                description: '(0.4.9) 화면에 그대로 보일 짧은 안내(예: "어느 칸에서도 못 찾음 — 감독자 확인"). 없으면 null'
+                description: '(0.4.9) 화면에 그대로 보일 짧은 안내(예: "어느 칸에서도 못 찾음 — 센터 관리자 확인"). 없으면 null'
         plannedQty: { type: integer }
         completedQty: { type: integer, description: 서버 확정 실적 }
         cancelledQty: { type: integer, description: 승인 취소 }

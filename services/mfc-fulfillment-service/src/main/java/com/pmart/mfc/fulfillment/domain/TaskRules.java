@@ -40,9 +40,9 @@ public final class TaskRules {
       return new PickStatus("OK", 0, null);
     }
     if (covered == 0) {
-      return new PickStatus("NOT_FOUND", missing, "어느 칸에서도 못 찾음 — 감독자 확인");
+      return new PickStatus("NOT_FOUND", missing, "어느 칸에서도 못 찾음 — 센터 관리자 확인");
     }
-    return new PickStatus("PARTIAL", missing, missing + "개는 칸을 못 찾음 — 있는 만큼 집고 감독자 확인");
+    return new PickStatus("PARTIAL", missing, missing + "개는 칸을 못 찾음 — 있는 만큼 집고 센터 관리자 확인");
   }
 
   public static final String ALREADY_STARTED = "ALREADY_STARTED";
@@ -89,7 +89,7 @@ public final class TaskRules {
       return VERSION_CONFLICT;
     }
     if (active.workerRejection() != null) {
-      return active.workerRejection(); // 배정 뒤 정지·퇴사·업무 변경 — 감독자가 재배정(2026-11-08 검토 #29·#30)
+      return active.workerRejection(); // 배정 뒤 정지·퇴사·업무 변경 — 센터 관리자가 재배정(2026-11-08 검토 #29·#30)
     }
     return null;
   }
