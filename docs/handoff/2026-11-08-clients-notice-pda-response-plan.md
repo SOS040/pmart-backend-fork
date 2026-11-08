@@ -20,3 +20,15 @@
 
 ## 지금 쓸 수 있는 것
 위 표의 "지금" 열 API 는 구현돼 있다(계약 `contracts/openapi/mfc-fulfillment-service.yaml` 0.4.7, `mfc-capacity-service.yaml` 0.5.2). 응답 모양은 계획이 구현될 때 **필드 추가만** 한다(기존 필드는 그대로).
+
+## 추가(같은 날): 작업자 쪽 구현됨 — PDA·백오피스가 쓸 API
+| 화면 | API |
+|---|---|
+| PDA "다음 작업 받기" | `POST /api/v1/mfcs/{mfcId}/workers/{workerId}/next-tasks`(본인) → 201 새 배정 / 200 들고 있는 작업 / 409 `NO_TASK_AVAILABLE`·`OFF_SHIFT`·`ON_BREAK` / 422 `DAILY_NOT_ENROLLED`. 응답 `Assignment{taskId, taskType(PICK·PACK·RETURN·REPLENISH·MOVE), source SYSTEM}` — PICK·PACK·RETURN 은 fulfillment `/tasks/{id}`, REPLENISH·MOVE 는 inbound `/move-orders/{moveId}` |
+| PDA 휴게 | `POST …/workers/{workerId}/breaks`, `POST …/breaks/current/end` |
+| PDA 작업 내놓기 | `POST /api/v1/tasks/{taskId}/releases {workerId, reason}` — 409 `EXECUTION_IN_FLIGHT`(반영 중) |
+| 일일크루 출근 | `POST …/workers/{workerId}/day-enrollments`(본인 또는 감독자) |
+| 백오피스 작업자 | 등록 `employmentType`·`qualification{taskTypes, expiresAt}`, `POST …/qualification-changes`, 응답 `effectiveTaskTypes`·`onBreak`·`todayEnrollment` |
+| 백오피스 작업 감시 | fulfillment `GET /tasks` 의 `late`·`idle`·`lastActivityAt` |
+| 이동 지시 | inbound 지시 본문 `urgent`, 응답 `assigneeId`·`pickedBy`, 거절 `NOT_ASSIGNEE`·`NOT_PICKER` |
+- MFC 는 온도대 출입 자격이 없다 — 업무의 `temperatureZones` 는 선택(기록만).
