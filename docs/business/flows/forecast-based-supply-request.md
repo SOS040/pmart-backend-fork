@@ -50,7 +50,7 @@
 - 판매 실적은 이미 `PackageHandedOverPosted` 로 나간다.
 
 ### mfc-capacity-service (있음 — MFC)
-- 오전 입고 수령창·하차면(`ReceivingCapabilityChanged`, 지금 501) — replenishment 가 구역 수용 한도를 넘지 않게 쓰는 입력. 수령창 기능이 먼저 필요.
+- 오전 입고 수령창·하차면 — 조회·예약 구현됨(2026-11-08, `GET /internal/receiving-capabilities`). 남은 것: replenishment 가 생기면 `ReceivingCapabilityChanged` 발행(설정 갱신 시).
 
 ### order-service / mfc-fulfillment (있음)
 - 추가 일 없음 — 필요한 사건(`OrderConfirmed`·`OrderLineQuantityChanged`·`PackageHandedOver`)은 이미 발행한다.

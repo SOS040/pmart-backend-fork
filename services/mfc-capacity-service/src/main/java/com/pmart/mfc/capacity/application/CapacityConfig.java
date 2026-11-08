@@ -8,7 +8,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 /** 정책값·시계, 만료 Hold 정리({@link HoldExpirySweeper})를 위한 스케줄링. */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({CapacityProperties.class, PlanProperties.class})
+@EnableConfigurationProperties({
+  CapacityProperties.class,
+  PlanProperties.class,
+  ReceivingProperties.class
+})
 @EnableScheduling
 class CapacityConfig {
 
