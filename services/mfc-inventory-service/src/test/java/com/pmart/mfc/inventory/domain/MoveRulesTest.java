@@ -81,6 +81,20 @@ class MoveRulesTest {
   }
 
   @Test
+  void unshippableLotRecallToMiscShelfIgnoresOneShelfRule() {
+    // 상품이 다른 칸(C)에 있어도 출하 부적격 LOT 을 기타 칸(카테고리 없음)으로 거두는 것은 허용(#59) — 출하 가능 LOT 은 그대로 막음
+    Map<String, Boolean> shelves = Map.of("C", false);
+    assertThat(
+            MoveRules.rejection(
+                "A", "B", false, false, 1, 5, 5, null, null, false, shelves, 0, 1, 20))
+        .isNull();
+    assertThat(
+            MoveRules.rejection(
+                "A", "B", false, false, 1, 5, 5, null, null, true, shelves, 0, 1, 20))
+        .isEqualTo(MoveRules.SKU_ALREADY_SHELVED);
+  }
+
+  @Test
   void oneShelfPerSkuExceptHighTurnover() {
     assertThat(check(false, false, 1, 5, 5, Map.of("A", false, "C", false), 0, 1, 20))
         .isEqualTo(MoveRules.SKU_ALREADY_SHELVED);

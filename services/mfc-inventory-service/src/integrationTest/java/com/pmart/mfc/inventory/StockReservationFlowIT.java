@@ -1716,6 +1716,36 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
                 .status())
         .isEqualTo(200);
 
+    // 복귀 칸 규칙(#59): 추천 첫 칸 = 원래 칸(A-01-01), 다른 선반으로는 같은 상품 한 자리 규칙으로 409
+    shelf("B-09-01", "STORAGE", 1000, 600, 400, false);
+    awaitSql(
+        "SELECT count(*) FROM location_projection WHERE mfc_id = '"
+            + mfc
+            + "' AND location_code = 'B-09-01'",
+        1);
+    JsonNode suggest =
+        get(
+                INBOUND,
+                "/internal/placement-suggestions?mfcId="
+                    + mfc
+                    + "&sku="
+                    + sku
+                    + "&lotId="
+                    + lot
+                    + "&qty=3")
+            .body();
+    assertThat(suggest.path("locationCodes").path(0).asString())
+        .as(suggest.toString())
+        .isEqualTo("A-01-01");
+    Res elsewhere =
+        execute(
+            "MOVE",
+            "PAK-A-01",
+            "B-09-01",
+            List.of(Map.of("sku", sku, "lotId", lot, "qty", 3, "resultQuality", "NORMAL")));
+    assertThat(elsewhere.status()).isEqualTo(409);
+    assertThat(elsewhere.body().path("code").asString()).isEqualTo("SKU_ALREADY_SHELVED");
+
     // 선반 복귀(MOVE) → 판매 가능 회복 E10/A10
     Res back =
         execute(

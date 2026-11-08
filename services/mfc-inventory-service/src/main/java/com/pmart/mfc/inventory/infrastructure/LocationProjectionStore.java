@@ -88,6 +88,18 @@ public class LocationProjectionStore {
         r.categoryId());
   }
 
+  /** 기타 칸(카테고리 없음) 후보: 선반·피킹 구역, ACTIVE, 고회전 아님, 위치 코드 순(#59 복귀 칸 추천). */
+  public java.util.List<String> miscShelves(String mfcId, int limit) {
+    return jdbc.queryForList(
+        "SELECT DISTINCT ON (location_code) location_code FROM location_projection"
+            + " WHERE mfc_id = ? AND zone IN ('STORAGE', 'PICKING') AND state = 'ACTIVE'"
+            + " AND category_id IS NULL AND NOT high_turnover"
+            + " ORDER BY location_code, location_version DESC LIMIT ?",
+        String.class,
+        mfcId,
+        limit);
+  }
+
   public Optional<LocationRow> byCode(String mfcId, String locationCode) {
     return jdbc
         .query(

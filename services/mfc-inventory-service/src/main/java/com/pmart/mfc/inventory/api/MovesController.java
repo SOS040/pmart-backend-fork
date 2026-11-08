@@ -163,6 +163,20 @@ public class MovesController implements MovesApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.SuggestPlacement200Response>
+      suggestPlacement(
+          String mfcId,
+          String sku,
+          String lotId,
+          Integer qty,
+          @org.jspecify.annotations.Nullable Integer limit) {
+    var out = new com.pmart.mfc.inventory.api.generated.model.SuggestPlacement200Response();
+    out.setLocationCodes(
+        service.suggestPlacement(mfcId, sku, lotId, qty, limit == null ? 3 : limit));
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
   public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.ListUnshippableLots200Response>
       listUnshippableLots(String mfcId) {
     var out = new com.pmart.mfc.inventory.api.generated.model.ListUnshippableLots200Response();

@@ -307,6 +307,18 @@ public class TaskExecutionService {
         var p = projections.get(sku);
         locations.requireStorage(cmd.mfcId(), cmd.toLocation(), p == null ? null : p.storageType());
       }
+      // 취소품 복귀도 진열 규칙(#59, 2026-11-08 사용자 결정) — 정상 판정분만(격리분은 판매 칸 규칙 대상 아님). 추천 칸은
+      // placement-suggestions
+      for (ExecLine l : cmd.lines()) {
+        if (l.resultQuality() == null || l.resultQuality() == Quality.NORMAL) {
+          moves.requirePlacement(
+              cmd.mfcId(),
+              l.sku(),
+              l.lotId(),
+              java.util.Objects.requireNonNull(cmd.toLocation()),
+              l.qty());
+        }
+      }
     }
   }
 

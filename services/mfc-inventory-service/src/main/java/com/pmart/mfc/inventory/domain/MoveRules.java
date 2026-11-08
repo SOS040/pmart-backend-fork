@@ -88,7 +88,9 @@ public final class MoveRules {
         return CATEGORY_MISMATCH;
       }
     }
-    if (!toHighTurnover) {
+    // 출하 부적격 LOT 을 기타 칸으로 거두는 것은 "한 상품 한 자리" 예외(회수·세일 칸 — 2026-11-08 #59, 그러지 않으면 거둘 곳이 없다)
+    boolean recallToMisc = toCategory == null && Boolean.FALSE.equals(lotShippable);
+    if (!toHighTurnover && !recallToMisc) {
       for (var e : skuShelves.entrySet()) {
         if (!e.getKey().equals(from) && !e.getKey().equals(to) && !e.getValue()) {
           return SKU_ALREADY_SHELVED;

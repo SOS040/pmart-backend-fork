@@ -31,3 +31,8 @@
 - "배차 요청" 버튼: 포장을 시작한 뒤 `POST /api/v1/shipments/{id}/dispatch-requests` (Idempotency-Key, X-Source-System), 본문 `{ "estimatedPackMinutes": 1~180 }`(필수) → 201 `DispatchRequest{trigger MANUAL, estimatedReadyAt, …}`. 이미 요청된 출고는 200 으로 그 요청. 포장 시작 전·취소된 출고는 409 `INVALID_STATE`.
 - 포장을 다 끝낼 때까지 누르지 않으면 서버가 자동 요청한다(trigger `AUTO_ON_READY`) — 버튼을 놓쳐도 주문이 멈추지 않는다.
 - 출고 조회 `GET /api/v1/shipments/{id}` 에 `dispatchRequest`(없으면 null).
+
+## 추가(같은 날, mfc-fulfillment 0.4.6): 취소품 복귀 추천 칸 — 사용자 결정 #59
+### 패킹 앱(점원) — 복귀(RETURN) 작업
+- 작업 상세 `lines[].picks[].suggestedToLocations`: 돌려놓을 추천 선반(앞이 우선 — 그 상품이 있던 칸, 없으면 기타 칸). 조회 실패면 빈 배열.
+- 복귀 실적도 진열 규칙을 탄다: 다른 칸에 놓으면 실적 REJECTED(사유 `SKU_ALREADY_SHELVED`·`CATEGORY_MISMATCH`·`LOT_NOT_SHIPPABLE`·`LOCATION_CAPACITY_EXCEEDED` 등) — 추천 칸으로 다시.

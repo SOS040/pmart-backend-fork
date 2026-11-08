@@ -86,6 +86,32 @@ public class InventoryClient {
   }
 
   /** 피킹 지시. 조회가 안 되면 PmartException 그대로(호출자가 표시를 비운다). */
+  /** 적치·복귀 추천 칸(#59, mfc-inventory placement-suggestions). */
+  public List<String> suggestPlacement(String mfcId, String sku, String lotId, int qty) {
+    String raw =
+        Downstream.call(
+            INVENTORY,
+            () ->
+                inventory
+                    .get()
+                    .uri(
+                        u ->
+                            u.path("/api/v1/internal/placement-suggestions")
+                                .queryParam("mfcId", mfcId)
+                                .queryParam("sku", sku)
+                                .queryParam("lotId", lotId)
+                                .queryParam("qty", qty)
+                                .build())
+                    .retrieve()
+                    .body(String.class));
+    JsonNode n = raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+    List<String> out = new ArrayList<>();
+    for (JsonNode c : n.path("locationCodes")) {
+      out.add(c.asString(""));
+    }
+    return out;
+  }
+
   public List<PlanPart> pickPlan(String reservationId) {
     String raw =
         Downstream.call(

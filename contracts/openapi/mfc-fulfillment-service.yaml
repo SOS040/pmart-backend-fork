@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.5
+  version: 0.4.6
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -871,6 +871,10 @@ components:
                     locationCode: { type: string }
                     qty: { type: integer, description: 그 위치의 LOT 선반 잔량(이 주문 몫만이 아님) }
                     allocatedQty: { type: integer, description: '(0.4.3) 그 위치에서 이 주문 몫으로 배정된 남은 양 — 피킹 시작 때 배정. 배정된 위치가 앞에 온다' }
+              suggestedToLocations:
+                type: array
+                items: { type: string }
+                description: '(0.4.6, RETURN 만) 돌려놓을 추천 선반 — 그 상품이 있던 칸 → 기타 칸 순, 진열 규칙 통과 칸만(mfc-inventory placement-suggestions). 조회 실패면 빈 배열'
         plannedQty: { type: integer }
         completedQty: { type: integer, description: 서버 확정 실적 }
         cancelledQty: { type: integer, description: 승인 취소 }

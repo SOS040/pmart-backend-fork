@@ -83,6 +83,8 @@ public class MoveService {
   private final Clock clock;
   private final ReservationService reservations;
 
+  private final com.pmart.mfc.inventory.infrastructure.LocationProjectionStore locationStore;
+
   public MoveService(
       MoveStore moves,
       StockStore stock,
@@ -92,7 +94,9 @@ public class MoveService {
       LocationAllocationService allocations,
       InventoryProperties props,
       Clock clock,
-      ReservationService reservations) {
+      ReservationService reservations,
+      com.pmart.mfc.inventory.infrastructure.LocationProjectionStore locationStore) {
+    this.locationStore = locationStore;
     this.reservations = reservations;
     this.moves = moves;
     this.stock = stock;
@@ -493,6 +497,39 @@ public class MoveService {
           false,
           List.of());
     }
+  }
+
+  /**
+   * 복귀·적치 칸 추천(#59, 2026-11-08 사용자 결정): ① 그 상품이 이미 있는 칸(고회전 아님) ② 기타 칸(카테고리 없음) 순으로, 진열 규칙 ({@link
+   * #requirePlacement})을 통과하는 칸만 최대 {@code limit} 개. 통과하는 칸이 없으면 빈 목록.
+   */
+  @Transactional(readOnly = true)
+  public List<String> suggestPlacement(String mfcId, String sku, String lotId, int qty, int limit) {
+    java.util.LinkedHashSet<String> candidates = new java.util.LinkedHashSet<>();
+    Map<String, Boolean> shelves = new LinkedHashMap<>();
+    for (var u : stock.units(mfcId, sku)) {
+      shelf(mfcId, u.key().locationCode(), shelves);
+    }
+    shelves.forEach(
+        (loc, highTurnover) -> {
+          if (!highTurnover) {
+            candidates.add(loc);
+          }
+        });
+    candidates.addAll(locationStore.miscShelves(mfcId, 50));
+    List<String> out = new java.util.ArrayList<>();
+    for (String loc : candidates) {
+      try {
+        requirePlacement(mfcId, sku, lotId, loc, qty);
+        out.add(loc);
+      } catch (PmartException e) {
+        // 규칙에 안 맞는 칸 — 다음 후보
+      }
+      if (out.size() >= limit) {
+        break;
+      }
+    }
+    return out;
   }
 
   /** 출하 부적격 LOT 한 줄. */

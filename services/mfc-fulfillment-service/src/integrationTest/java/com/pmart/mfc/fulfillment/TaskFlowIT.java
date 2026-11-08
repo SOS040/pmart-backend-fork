@@ -931,8 +931,22 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("READY");
     assigned(ret, "w2", 1);
     assertThat(start(W2, ret, "w2", 1).status()).isEqualTo(201);
+    inv.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/placement-suggestions"))
+            .willReturn(
+                json(200, Map.of("locationCodes", List.of("A-S1-01-1-01", "B-S9-01-1-01")))));
     JsonNode rd = call("GET", VIEWER, "/tasks/" + ret, null, null).body();
     assertThat(rd.path("taskType").asString()).isEqualTo("RETURN");
+    // 복귀 추천 칸(#59) — 그 상품이 있던 칸이 앞
+    assertThat(
+            rd.path("lines")
+                .path(0)
+                .path("picks")
+                .path(0)
+                .path("suggestedToLocations")
+                .path(0)
+                .asString())
+        .isEqualTo("A-S1-01-1-01");
     JsonNode rp = rd.path("lines").path(0).path("picks").path(0);
     assertThat(rp.path("lotId").asString()).isEqualTo("LOT-A");
     assertThat(rp.path("remainingQty").asInt()).isEqualTo(1);

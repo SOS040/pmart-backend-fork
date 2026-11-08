@@ -123,6 +123,7 @@ public class TasksController implements TasksApi {
           locs.add(li);
         }
         pi.setLocations(locs);
+        pi.setSuggestedToLocations(p.suggestedTo());
         picks.add(pi);
       }
       tl.setPicks(picks);

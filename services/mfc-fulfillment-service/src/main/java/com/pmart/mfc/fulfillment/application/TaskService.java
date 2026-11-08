@@ -97,7 +97,17 @@ public class TaskService {
       @Nullable String expiresOn,
       int remainingQty,
       List<Map.Entry<String, Integer>> locations,
-      Map<String, Integer> allocated) {
+      Map<String, Integer> allocated,
+      List<String> suggestedTo) {
+    public Pick(
+        String lotId,
+        @Nullable String expiresOn,
+        int remainingQty,
+        List<Map.Entry<String, Integer>> locations,
+        Map<String, Integer> allocated) {
+      this(lotId, expiresOn, remainingQty, locations, allocated, List.of());
+    }
+
     public Pick(
         String lotId,
         @Nullable String expiresOn,
@@ -611,7 +621,10 @@ public class TaskService {
   private Map<String, List<Pick>> returnPicks(String taskId) {
     Map<String, Integer> left = returnRemaining(taskId, false);
     Map<String, Map<String, Map<String, Integer>>> byLineLot = new LinkedHashMap<>();
+    Map<String, String> skuOfLine = new LinkedHashMap<>();
+    String mfcId = task(taskId).mfcId();
     for (CancelReturnRules.Return r : returnsOf(taskId)) {
+      skuOfLine.put(r.orderLineId(), r.sku());
       int q =
           left.getOrDefault(
               CancelReturnRules.key(r.orderLineId(), r.sku(), r.lotId(), r.locationCode()), 0);
@@ -638,8 +651,27 @@ public class TaskService {
                                 List.copyOf(
                                     locs.entrySet().stream()
                                         .map(e -> Map.entry(e.getKey(), e.getValue()))
-                                        .toList())))));
+                                        .toList()),
+                                Map.of(),
+                                suggest(
+                                    mfcId,
+                                    skuOfLine.get(line),
+                                    lot,
+                                    locs.values().stream().mapToInt(Integer::intValue).sum())))));
     return out;
+  }
+
+  /** 복귀 추천 칸(#59) — 지시는 참고라 실패하면 빈 목록(실적 판정은 inventory 진열 규칙). */
+  private List<String> suggest(String mfcId, @Nullable String sku, String lotId, int qty) {
+    if (sku == null || qty <= 0) {
+      return List.of();
+    }
+    try {
+      return inventory.suggestPlacement(mfcId, sku, lotId, qty);
+    } catch (PmartException | org.springframework.web.client.RestClientException e) {
+      log.warn("복귀 추천 칸 조회 실패 {} {}: {}", sku, lotId, e.getMessage());
+      return List.of();
+    }
   }
 
   /** 재고 반영(트랜잭션 밖) → 결과 기록. */
