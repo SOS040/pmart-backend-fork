@@ -43,7 +43,8 @@ public class FulfillmentIssueService {
       @Nullable String note,
       @Nullable String acknowledgedBy,
       @Nullable Instant acknowledgedAt,
-      Instant blockedAt) {}
+      Instant blockedAt,
+      @Nullable Instant resolvedAt) {}
 
   private final JdbcTemplate jdbc;
   private final Clock clock;
@@ -86,6 +87,52 @@ public class FulfillmentIssueService {
           p.path("sku").asString(""),
           p.path("blockedQty").asInt(0),
           p.path("reason").asString(""));
+    }
+  }
+
+  /**
+   * ReservationBlockCleared(피킹 시작 전 재확보, #5 안 C) → 그 예약·SKU 의 남은 보류가 0 이면 열린 확인 필요를 RESOLVED, 아니면
+   * 메모만. InboxGuard 트랜잭션 안.
+   */
+  public void cleared(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String reservationId = p.path("reservationId").asString("");
+    String sku = p.path("sku").asString("");
+    int remaining = p.path("remainingBlockedQty").asInt(-1);
+    int got = p.path("resecuredQty").asInt(0);
+    Instant now = clock.instant();
+    String memo = "MFC 재확보 " + got + "개(남은 보류 " + Math.max(remaining, 0) + ") " + now;
+    int n;
+    if (remaining == 0) {
+      n =
+          jdbc.update(
+              "UPDATE order_fulfillment_issue SET state = 'RESOLVED', resolved_at = ?,"
+                  + " note = CASE WHEN note IS NULL THEN ? ELSE note || ' / ' || ? END"
+                  + " WHERE reservation_id = ? AND sku = ? AND state IN ('OPEN', 'ACKNOWLEDGED')",
+              Timestamp.from(now),
+              memo,
+              memo,
+              reservationId,
+              sku);
+    } else {
+      n =
+          jdbc.update(
+              "UPDATE order_fulfillment_issue SET"
+                  + " note = CASE WHEN note IS NULL THEN ? ELSE note || ' / ' || ? END"
+                  + " WHERE reservation_id = ? AND sku = ? AND state IN ('OPEN', 'ACKNOWLEDGED')",
+              memo,
+              memo,
+              reservationId,
+              sku);
+    }
+    if (n > 0) {
+      log.info(
+          "주문 {} 이행 확인 {}건 — {} ({} {})",
+          p.path("orderId").asString(""),
+          n,
+          remaining == 0 ? "자동 종결" : "메모",
+          sku,
+          memo);
     }
   }
 
@@ -139,6 +186,7 @@ public class FulfillmentIssueService {
 
   private static Issue row(ResultSet rs) throws SQLException {
     Timestamp ack = rs.getTimestamp("acknowledged_at");
+    Timestamp resolved = rs.getTimestamp("resolved_at");
     return new Issue(
         rs.getString("issue_id"),
         rs.getString("order_id"),
@@ -152,6 +200,7 @@ public class FulfillmentIssueService {
         rs.getString("note"),
         rs.getString("acknowledged_by"),
         ack == null ? null : ack.toInstant(),
-        rs.getTimestamp("blocked_at").toInstant());
+        rs.getTimestamp("blocked_at").toInstant(),
+        resolved == null ? null : resolved.toInstant());
   }
 }

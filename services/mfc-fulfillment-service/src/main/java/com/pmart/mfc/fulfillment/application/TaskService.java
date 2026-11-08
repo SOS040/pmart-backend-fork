@@ -307,8 +307,82 @@ public class TaskService {
       } catch (PmartException | org.springframework.web.client.RestClientException e) {
         log.warn("작업 {} 위치 배정 실패(시작은 유지): {}", taskId, e.getMessage());
       }
+      reportBlocked(taskId);
     }
     return started;
+  }
+
+  /**
+   * 예약 보류분 → 결품(2026-11-08 사용자 결정 #5 안 C): 피킹 시작 때(그리고 집품마다) 이 주문 예약에 BLOCKED 조각(격리·실사 손실로 보류되고 다시
+   * 못 잡은 양)이 남아 있으면 결품 보고와 같게 작업 BLOCKED + {@code LineShortageReported}(reason BLOCKED) — 결품 사가가 고객
+   * 사전 선택대로 처리한다(품절만 취소 = 부분 취소·환불, 전체 취소, 선택 없음 = 상신). 재고 쪽 반영은 이미 끝났으므로(보류) inventory 결품 보고는 부르지
+   * 않는다. 작업이 IN_PROGRESS 일 때만(이미 BLOCKED 면 사가 처리 중). 피킹 시작 전에는 mfc-inventory 가 보류분을 자동으로 다시 잡는다.
+   */
+  private void reportBlocked(String taskId) {
+    TaskInfo t0 = task(taskId);
+    if (!"PICK".equals(t0.taskType()) || t0.reservationId() == null) {
+      return;
+    }
+    List<PlanPart> plan;
+    try {
+      plan = inventory.pickPlan(t0.reservationId());
+    } catch (PmartException | org.springframework.web.client.RestClientException e) {
+      log.warn("작업 {} 보류 확인 실패(다음 집품 때 다시): {}", taskId, e.getMessage());
+      return;
+    }
+    List<PlanPart> blocked =
+        plan.stream()
+            .filter(p -> "BLOCKED".equals(p.state()) && p.orderLineId() != null && p.qty() > 0)
+            .toList();
+    if (blocked.isEmpty()) {
+      return;
+    }
+    tx.executeWithoutResult(
+        s -> {
+          TaskInfo t = store.lock(taskId).orElseThrow();
+          if (!"IN_PROGRESS".equals(t.state())) {
+            return;
+          }
+          Map<String, Integer> room = new LinkedHashMap<>();
+          for (var l : store.lines(taskId)) {
+            room.put(l.orderLineId(), l.remaining());
+          }
+          List<PlanPart> report = new ArrayList<>();
+          List<Integer> qtys = new ArrayList<>();
+          for (PlanPart p : blocked) {
+            int left = room.getOrDefault(p.orderLineId(), 0);
+            int q = Math.min(left, p.qty());
+            if (q > 0) {
+              room.put(p.orderLineId(), left - q);
+              report.add(p);
+              qtys.add(q);
+            }
+          }
+          if (report.isEmpty()) {
+            return;
+          }
+          Instant now = clock.instant();
+          String reason =
+              "예약 보류(격리·실사 손실 — 재확보 못 함): "
+                  + String.join(
+                      ", ",
+                      java.util.stream.IntStream.range(0, report.size())
+                          .mapToObj(i -> report.get(i).orderLineId() + " " + qtys.get(i) + "개")
+                          .toList());
+          store.setState(taskId, "BLOCKED", reason, false, now);
+          events.taskProgressed(t, "BLOCKED", t.state(), t.version() + 1, t.startedBy(), null, now);
+          for (int i = 0; i < report.size(); i++) {
+            PlanPart p = report.get(i);
+            events.lineShortage(
+                t,
+                p.orderLineId(),
+                p.sku(),
+                p.lotId(),
+                new Shortage(qtys.get(i), "BLOCKED", "예약 보류분(피킹 시작 시점)"),
+                now);
+          }
+          log.warn("작업 {} 예약 보류분 → 결품 처리로 BLOCKED ({})", taskId, reason);
+        });
   }
 
   // ---------- 피킹 실적 ----------
@@ -346,7 +420,11 @@ public class TaskService {
     if (!isOpen(exec)) {
       return new ExecResult(exec, task(taskId).version());
     }
-    return post(exec, t0);
+    ExecResult res = post(exec, t0);
+    if ("PICK".equals(t0.taskType()) && "APPLIED".equals(res.execution().state())) {
+      reportBlocked(taskId); // 피킹 중에 생긴 보류도(#5)
+    }
+    return res;
   }
 
   private ExecutionRow record(

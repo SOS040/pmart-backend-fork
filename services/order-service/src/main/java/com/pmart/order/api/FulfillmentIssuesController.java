@@ -54,6 +54,7 @@ public class FulfillmentIssuesController implements FulfillmentIssuesApi {
     out.setAcknowledgedAt(
         i.acknowledgedAt() == null ? null : i.acknowledgedAt().atOffset(ZoneOffset.UTC));
     out.setBlockedAt(i.blockedAt().atOffset(ZoneOffset.UTC));
+    out.setResolvedAt(i.resolvedAt() == null ? null : i.resolvedAt().atOffset(ZoneOffset.UTC));
     return out;
   }
 }

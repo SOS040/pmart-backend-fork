@@ -148,6 +148,8 @@ D6-5 세부(사용자 결정 2026-11-07):
 
 구현(2026-11-07, ADR-0044 — IV-09 1부): 결품·파손은 먼저 MFC 안에서 같은 SKU 적격 LOT 으로 재확보를 시도하고, **재확보 못 한 양만** `LineShortageReported` 로 나온다. 2부(ADR-0045, 결품 사가): `품절 상품만 취소`는 자동 — 작업 수량 취소 → 이행부족 해제 → 주문 수량 변경(SHORTAGE) → 부분 환불(원단가×수량, 봉투·배달팁 제외). 선택 없음(CS 미구현)은 상신(수동)으로 두고 작업은 BLOCKED 유지. `전체 취소`·주문 전체 결품(2026-11-08, ADR-0046)은 결품 사가 REQUEST_FULL_CANCEL → claim 시스템 전체 취소(reason OUT_OF_STOCK, 주문 PREPARING 허용) → S3(현장 중지가 집품분을 취소 복귀로) → 주문 취소 → 환불 = 원 승인액 − 앞선 결품 부분 환불(봉투·배달팁 포함).
 
+예약 보류분(2026-11-08, 사용자 결정 #5 안 C): 결제 뒤 격리·실사 손실로 생긴 보류(`ReservationBlocked`)는 **피킹 시작 전에는 mfc-inventory 가 자동 재확보**(1분, `ReservationBlockCleared` → order 확인 필요 종결)하고, **피킹 시작 때(·집품마다) 남아 있으면 mfc-fulfillment 가 `LineShortageReported`(reason BLOCKED)** 로 넘긴다 — 아래 표 그대로.
+
 | 고객 사전 선택 | 처리 |
 |---|---|
 | `품절 상품만 취소` | 미인계 범위에서 해당 품목 부분 취소 → claim.RefundIntent(원가격·원안분) → payment.PartialCancel → RefundResult → OrderLineQuantityChanged. 남은 주문이 15,000원 미만이어도 유지. 재결제 요구·배달팁 추가 없음 |

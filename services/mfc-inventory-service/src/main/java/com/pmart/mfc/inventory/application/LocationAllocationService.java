@@ -123,6 +123,7 @@ public class LocationAllocationService {
     List<PickPart> parts = reservations.pickParts(reservationId, true);
     lockStock(r.mfcId(), parts);
     Instant at = clock.instant();
+    reservations.markPickingStarted(reservationId, at); // 이후 보류분은 결품 사가가(#5 안 C)
     int total = 0;
     for (PickPart p : parts) {
       if (p.state() != ReservationState.CONFIRMED) {

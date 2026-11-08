@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.2.0
+  version: 0.2.1
   description: |
     주문 초안·주문 원장·스냅샷·상태·이행 계획의 정본. (docs/architecture/service-map.md §2)
     사가 진행은 order-orchestration-service, PG 거래는 payment-service, 클레임 심사는 claim-service.
@@ -27,7 +27,7 @@ paths:
       operationId: listFulfillmentIssues
       parameters:
         - { name: mfcId, in: query, required: true, schema: { type: string } }
-        - { name: state, in: query, schema: { type: string, enum: [OPEN, ACKNOWLEDGED] } }
+        - { name: state, in: query, schema: { type: string, enum: [OPEN, ACKNOWLEDGED, RESOLVED] } }
       responses:
         '200':
           description: OK (새 것부터, 최대 500)
@@ -445,10 +445,11 @@ components:
         lotId: { type: [string, 'null'] }
         blockedQty: { type: integer }
         reason: { type: string, description: 'QUALITY_HOLD(품질 격리)·COUNT_LOSS(실사 손실)·SHORT·DAMAGED(피킹 결품 보고) 등 — inventory 사유 그대로' }
-        state: { type: string, enum: [OPEN, ACKNOWLEDGED] }
+        state: { type: string, enum: [OPEN, ACKNOWLEDGED, RESOLVED], description: 'RESOLVED = 피킹 시작 전에 MFC 가 보류분을 다시 잡음(자동, 2026-11-08). 피킹 시작 뒤 남은 보류는 결품 사가가 고객 사전 선택대로 처리' }
         note: { type: [string, 'null'] }
         acknowledgedBy: { type: [string, 'null'] }
         acknowledgedAt: { type: [string, 'null'], format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
         blockedAt: { type: string, format: date-time }
     InternalOrder:
       type: object

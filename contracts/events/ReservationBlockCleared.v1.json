@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReservationBlockCleared.v1.json",
+  "title": "ReservationBlockCleared",
+  "description": "보류(BLOCKED)됐던 예약분을 피킹 시작 전에 다시 잡은 사실(재고가 돌아와 같은 SKU 적격 LOT 으로 재확보, 2026-11-08 #5). 발행 mfc-inventory. 구독 order(이행 확인 필요 자동 종결). 토픽 mfc.inventory.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReservationBlockCleared"
+        },
+        "aggregateType": {
+          "const": "Reservation"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "reservationId",
+            "orderId",
+            "sku",
+            "resecuredQty",
+            "remainingBlockedQty"
+          ],
+          "properties": {
+            "reservationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "orderLineId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string",
+              "description": "보류됐던 LOT"
+            },
+            "resecuredQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty"
+            },
+            "remainingBlockedQty": {
+              "$ref": "_defs.v1.json#/$defs/Qty",
+              "description": "이 SKU 의 남은 보류량(이 예약 전체). 0 이면 이 SKU 보류가 모두 풀림"
+            },
+            "clearedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -254,6 +254,15 @@ public class ReservationStore {
   }
 
   /** 집품이 시작된 조각이 있는가(해제 차단 — 집품 후 취소는 IV-08). */
+  /** 피킹 시작 표시(위치 배정 호출 = PICK 시작, #5) — 처음 한 번만. 그 뒤 보류분 자동 재확보는 하지 않는다. */
+  public void markPickingStarted(String reservationId, Instant at) {
+    jdbc.update(
+        "UPDATE reservation SET picking_started_at = ? WHERE reservation_id = ?"
+            + " AND picking_started_at IS NULL",
+        java.sql.Timestamp.from(at),
+        reservationId);
+  }
+
   public boolean anyPicked(String reservationId) {
     Integer n =
         jdbc.queryForObject(

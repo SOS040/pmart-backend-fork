@@ -143,4 +143,68 @@ class FulfillmentIssueIT extends PostgresKafkaContainerSupport {
     assertThat(get(op, "/fulfillment-issues?mfcId=" + mfc + "&state=ACKNOWLEDGED").path("items"))
         .hasSize(1);
   }
+
+  /** 피킹 시작 전 재확보(#5 안 C): ReservationBlockCleared(남은 보류 0) → 확인 필요 자동 RESOLVED. */
+  @Test
+  void clearedBlockResolvesIssue() throws Exception {
+    String mfc = "MFC-FC-" + UUID.randomUUID().toString().substring(0, 6);
+    String orderId = "ORD-FC-" + UUID.randomUUID();
+    String rid = "RSV-" + orderId;
+    Map<String, Object> b = new LinkedHashMap<>();
+    b.put("reservationId", rid);
+    b.put("orderId", orderId);
+    b.put("mfcId", mfc);
+    b.put("sku", "E-00000008");
+    b.put("lot", "LOT-2");
+    b.put("blockedQty", 1);
+    b.put("reason", "QUALITY_HOLD");
+    kafka
+        .send(
+            "mfc.inventory.v1",
+            rid,
+            EventEnvelopeFixtures.envelope("ReservationBlocked")
+                .from("mfc-inventory-service")
+                .aggregate("Reservation", rid, 3)
+                .payload(b)
+                .buildJson())
+        .join();
+    Map<String, Object> c = new LinkedHashMap<>();
+    c.put("reservationId", rid);
+    c.put("orderId", orderId);
+    c.put("mfcId", mfc);
+    c.put("sku", "E-00000008");
+    c.put("lot", "LOT-2");
+    c.put("resecuredQty", 1);
+    c.put("remainingBlockedQty", 0);
+    kafka
+        .send(
+            "mfc.inventory.v1",
+            rid,
+            EventEnvelopeFixtures.envelope("ReservationBlockCleared")
+                .from("mfc-inventory-service")
+                .aggregate("Reservation", rid, 4)
+                .payload(c)
+                .buildJson())
+        .join();
+    Instant until = Instant.now().plus(Duration.ofSeconds(30));
+    String state = null;
+    while (Instant.now().isBefore(until)) {
+      var rows =
+          jdbc.queryForList(
+              "SELECT state FROM order_fulfillment_issue WHERE order_id = ?",
+              String.class,
+              orderId);
+      state = rows.isEmpty() ? null : rows.get(0);
+      if ("RESOLVED".equals(state)) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(state).isEqualTo("RESOLVED");
+    String op = TestJwt.operator("op-2", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    JsonNode items = get(op, "/fulfillment-issues?mfcId=" + mfc + "&state=RESOLVED").path("items");
+    assertThat(items).hasSize(1);
+    assertThat(items.path(0).path("resolvedAt").isNull()).isFalse();
+    assertThat(items.path(0).path("note").asString()).contains("재확보 1개");
+  }
 }

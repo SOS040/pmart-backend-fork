@@ -58,6 +58,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.mfc.inventory.application.BlockedResecurer blockedResecurer;
   @Autowired com.pmart.mfc.inventory.application.SnapshotPublisher snapshots;
   @Autowired com.pmart.mfc.inventory.application.UnshippableLotScan unshippableScan;
 
@@ -2159,6 +2160,75 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(line.path("availableQty").asInt()).isEqualTo(6);
     assertThat(line.has("safetyQty")).isFalse(); // 안전량 정책 미결 — 0 으로 채우지 않음
     assertThat(snapshots.publish(mfc, "PERIODIC").version()).isEqualTo(2);
+  }
+
+  /**
+   * 보류분 자동 재확보(#5 안 C): 결품 보고로 BLOCKED 가 남은 확정 예약 → 재고가 들어오면(입고 적치) 주기 작업이 같은 SKU 적격 LOT 으로 다시 잡고
+   * ReservationBlockCleared(남은 보류 0). 피킹이 시작된(위치 배정이 불린) 예약은 건드리지 않는다.
+   */
+  @Test
+  void blockedPartIsResecuredWhenStockReturnsBeforePicking() {
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 3);
+    String rid = confirmedReservation("ORD-BRS", sku, 3);
+    String lot =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    // 파손 1 → 격리, 다른 LOT 없음 → BLOCKED 1
+    assertThat(shortage("RPT-BRS", rid, sku, lot, 1, "DAMAGED").status()).isEqualTo(201);
+    assertThat(blockedQty(rid)).isEqualTo(1);
+    blockedResecurer.run(); // 아직 재고 없음 — 그대로(run 은 모든 센터를 본다)
+    assertThat(blockedQty(rid)).isEqualTo(1);
+
+    stocked(sku, 2); // 재고가 돌아옴
+    blockedResecurer.run();
+    assertThat(blockedQty(rid)).isZero();
+    String cleared =
+        jdbc.queryForObject(
+            "SELECT payload #>> '{payload,remainingBlockedQty}' FROM outbox_event"
+                + " WHERE type = 'ReservationBlockCleared' AND aggregateid = ?",
+            String.class,
+            rid);
+    assertThat(cleared).isEqualTo("0");
+
+    // 피킹 시작 뒤에는 자동 재확보 안 함
+    String rid2 = confirmedReservation("ORD-BRS2", sku, 1);
+    String lot2 =
+        get(ORCH, "/internal/reservations/" + rid2 + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    assertThat(
+            post(
+                    ORCH,
+                    "mfc-fulfillment-service",
+                    "/internal/reservations/" + rid2 + "/location-allocations",
+                    UUID.randomUUID().toString(),
+                    Map.of())
+                .status())
+        .isLessThan(300);
+    assertThat(shortage("RPT-BRS2", rid2, sku, lot2, 1, "DAMAGED").status()).isEqualTo(201);
+    int before = blockedQty(rid2);
+    stocked(sku, 2);
+    blockedResecurer.run();
+    assertThat(blockedQty(rid2)).isEqualTo(before);
+  }
+
+  int blockedQty(String rid) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(qty), 0) FROM reservation_part WHERE reservation_id = ?"
+                + " AND state = 'BLOCKED'",
+            Integer.class,
+            rid);
+    return n == null ? 0 : n;
   }
 
   Res shortage(

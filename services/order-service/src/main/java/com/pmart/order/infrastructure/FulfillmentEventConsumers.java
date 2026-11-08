@@ -37,6 +37,8 @@ class FulfillmentEventConsumers {
         e -> {
           if ("ReservationBlocked".equals(e.eventType())) {
             issues.blocked(e);
+          } else if ("ReservationBlockCleared".equals(e.eventType())) {
+            issues.cleared(e); // 피킹 시작 전 재확보 → 자동 종결(#5 안 C)
           }
         });
   }

@@ -22,3 +22,6 @@
 
 ## 상태
 3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+
+## 다른 서비스의 요청
+- MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 "선택 없음" CS 이관, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

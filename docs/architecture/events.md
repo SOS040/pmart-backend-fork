@@ -108,6 +108,7 @@
 | `InventoryReleased` | mfc-inventory | order-orchestration, cart | reservationId, reason | 해제 확인 | ① |
 | `InventoryHoldExpired` | mfc-inventory | order-orchestration | reservationId | 10분 만료(PG 불명이면 `결제 확인 대기 점유`로 전환되므로 만료 아님) | ① |
 | `ReservationBlocked` | mfc-inventory | **order(이행 확인 필요 표시, 2026-11-08 — 자동 처리 없음)**, order-orchestration(예정), replenishment(예정) | reservationId, orderId, sku, lot, blockedQty, reason | 품질 격리로 예약 BLOCKED(약속은 유지) | ① |
+| `ReservationBlockCleared` | mfc-inventory | order(확인 필요 자동 종결) | reservationId, orderId, sku, lot, resecuredQty, remainingBlockedQty | 피킹 시작 전 보류분 자동 재확보(2026-11-08 #5) | ① |
 | `MfcReceiptPosted` (TIN) | mfc-inventory | cdc-inventory, replenishment, mfc-inbound, transport-execution | receiptId, postingId, trfId, departureId, lines[{sku, lot, normalQty, quarantinedQty, pendingQty}], commitId | ConfirmReceipt COMMITTED 후 `H+r` | ② |
 | `ReceiptCorrectionPosted` | mfc-inventory | cdc-inventory | receiptId, δr, reason | 수령 정정 | ② |
 | `PackageHandedOverPosted` | mfc-inventory | mfc-fulfillment, BI | commitId, packageId, lines[{sku, qty}] | 인계 전기 `H−q, E−q, R−q` | ① |
@@ -141,14 +142,14 @@
 위 표의 구독자는 설계상 목록이고, 상당수는 서비스가 아직 없거나 구독을 붙이지 않았다. 실제 상태:
 
 - **발행 중**
-  - mfc-inventory: `InventoryHoldExpired`, `ReservationBlocked`, `PackageHandedOverPosted`, `InventoryExecutionApplied`, `StockAdjusted`, `SkuHandlingChanged`, `InventorySnapshotPublished`(주기, 설정 있을 때만)
+  - mfc-inventory: `InventoryHoldExpired`, `ReservationBlocked`, `ReservationBlockCleared`, `PackageHandedOverPosted`, `InventoryExecutionApplied`, `StockAdjusted`, `SkuHandlingChanged`, `InventorySnapshotPublished`(주기, 설정 있을 때만)
   - mfc-fulfillment: `WorkAccepted`, `WorkRejected`, `PreparationStarted`, `LineShortageReported`, `PackingFinished`, `ShipmentReady`, `PackageHandedOver`, `WorkStopResult`, `PackageInvalidated`, `TaskProgressed`
   - mfc-capacity: `AssignmentPublished`, `CapacityReduced`, `OperationRestrictionApplied`/`Lifted`
   - mfc-quality: `QualityDecisionMade`, `DisposalApproved` · mfc-location: `MfcLocationStateChanged` · mfc-inbound: `SupplyRequestSubmitted`
 - **아직 발행 안 함**(동기 응답으로 대신하거나 앞 흐름이 없음): `InventoryHeld`·`InventoryReleased`(예약·해제는 동기 응답 — orchestration 이 응답으로 진행), `MfcReceiptPosted`·`ReceiptCorrectionPosted`(CDC 이송 흐름 없음), `MfcStockAvailable`(③), `CapacityHoldResult`(동기 응답), `ReceivingCapabilityChanged`(구독자 없음 — 값은 설정), `InboundArrivalRecorded`·`ReceiptDiscrepancyReported`(TRF 없음), `ReturnItemReceived`·`ReturnInspected`(회수 흐름 IV-10 없음)
 - **실제 구독(토픽 → 서비스: 처리하는 사건, 나머지는 inbox 만)**
   - `mfc.fulfillment.v1` → order-orchestration: `LineShortageReported` · order: `PreparationStarted` · claim: `WorkStopResult`
-  - `mfc.inventory.v1` → order: `ReservationBlocked`(이행 확인 필요) · mfc-inbound: `InventoryExecutionApplied`·`InventoryHoldExpired`·`StockAdjusted`(보충 즉시 점검)
+  - `mfc.inventory.v1` → order: `ReservationBlocked`(이행 확인 필요)·`ReservationBlockCleared`(자동 종결) · mfc-inbound: `InventoryExecutionApplied`·`InventoryHoldExpired`·`StockAdjusted`(보충 즉시 점검)
   - `mfc.capacity.v1` → mfc-fulfillment: `AssignmentPublished`
   - `mfc.location.v1` → mfc-inventory: `MfcLocationStateChanged`
   - `mfc.sku-handling.v1` → search(Logstash)

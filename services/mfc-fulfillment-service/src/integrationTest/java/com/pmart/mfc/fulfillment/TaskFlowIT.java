@@ -601,6 +601,49 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
                 Map.of("qty", 1, "reason", reason))));
   }
 
+  /**
+   * 예약 보류분은 피킹 시작 때 결품으로(2026-11-08 #5 안 C): pick-plan 에 BLOCKED 조각(L2 1개)이 있으면 시작 직후 작업 BLOCKED +
+   * LineShortageReported(reason BLOCKED, shortQty 1) — inventory 결품 보고는 부르지 않는다.
+   */
+  @Test
+  void blockedReservationPartBecomesShortageAtPickStart() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    Map<String, Object> blockedPart =
+        new LinkedHashMap<>(part("L2", "E-00000002", "LOT-C", null, 1, 0, 0, "C-S1-01-1-01"));
+    blockedPart.put("state", "BLOCKED");
+    inv.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/pick-plan"))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "reservationId",
+                        "RSV-" + o,
+                        "state",
+                        "CONFIRMED",
+                        "parts",
+                        List.of(
+                            part(
+                                "L1", "E-00000001", "LOT-A", "2026-11-20", 2, 0, 0, "A-S1-01-1-01"),
+                            blockedPart)))));
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    JsonNode t = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
+    assertThat(t.path("state").asString()).isEqualTo("BLOCKED");
+    assertThat(t.path("blockReason").asString()).contains("예약 보류").contains("L2");
+    assertThat(outbox("LineShortageReported", o)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload #>> '{payload,reason}' || ':' || (payload #>> '{payload,shortQty}')"
+                    + " FROM outbox_event WHERE type = 'LineShortageReported' AND aggregateid = ?",
+                String.class,
+                o))
+        .isEqualTo("BLOCKED:1");
+    inv.verify(0, WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/shortage-reports")));
+  }
+
   @Test
   void shortageBlocksTaskAndResolutionResumesWork() {
     String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
