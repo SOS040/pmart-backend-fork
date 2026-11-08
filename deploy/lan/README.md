@@ -163,3 +163,6 @@ PC 2·3·4 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수 �
 - `down` 은 볼륨을 남긴다. DB 를 새로 만들려면 원격에서 `docker volume rm pmart-lan_pgdata` (서비스 DB 가 늘었을 때 `init-db.sql` 은 새 볼륨에서만 실행됨).
 - 서명키를 다시 만들면 발급된 토큰이 모두 무효가 된다.
 - 비밀정보는 `.secrets/`·`build/` 에만 있다(둘 다 git 제외). 원격 PC 에는 `.env` 로 복사된다.
+
+## 확인 스크립트 (deploy/lan/checks)
+- `mfc_e2e.py` — MFC 처음부터 끝까지(예약 → 작업 → 피킹 → 포장 → 배차 요청 → 취소 → 복귀 → 재고 원복). 실제 API 만, 재고는 원래대로 돌아간다. 배포 뒤 `PYTHONIOENCODING=utf-8 python -I deploy/lan/checks/mfc_e2e.py`. 고객 로그인·결제·라이더 인계는 없다.
