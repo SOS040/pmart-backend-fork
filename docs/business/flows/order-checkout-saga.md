@@ -80,7 +80,7 @@ PG 진입 전 두 타이머 모두 유효해야 하며 더 이른 만료를 고�
 | h | RECONCILE_PAYMENT | 승인액·통화 = 청구액(KRW). 다르면 RECONCILIATION_REQUIRED + `ReconciliationRequired`(확정·취소·해제 모두 멈춤, 강제 출고 금지) |
 | i | CONFIRM_RESOURCES | 재고 예약·여력·슬롯 HELD → CONFIRMED(키 `sagaId:CONFIRM:자원`). **흐름 원문(h 주문 확정 → i 자원 확정)과 순서를 바꿨다**: `OrderConfirmed` 는 자원 확정 뒤 발행(사건 카탈로그 조건) |
 | (h) | CONFIRM_ORDER | order `/internal/orders/{id}/confirmation` → 주문 저장·`OrderConfirmed` → 사가 COMPLETED. 금액 불일치 422 → 대사 |
-| j | 보상 취소 | 확정 실패(점유 소멸 RESERVATION_LOST·주문 확정 거절 ORDER_CONFIRM_FAILED) → payment 보상 취소(전액) → **CANCELLED 확인 뒤에만** 재고·여력·슬롯 해제 → COMPENSATED |
+| j | 보상 취소 | 확정 실패(점유 소멸 RESERVATION_LOST — 재고가 결제 중 격리·실사 손실로 보류돼 재확보 못 한 몫이 있으면 inventory 확정이 409 RESERVATION_SHORT 로 거절, 2026-11-08 — ·주문 확정 거절 ORDER_CONFIRM_FAILED) → payment 보상 취소(전액) → **CANCELLED 확인 뒤에만** 재고·여력·슬롯 해제 → COMPENSATED |
 
 - 단계 명령 Idempotency-Key = `sagaId:단계`, 해제 = `sagaId:RELEASE:자원종류`. 중단·불명이면 sweep(10초)이 30초 멈춘 사가를 같은 키로 이어서 진행한다.
 - 거절 → 보상 로그의 자원만 역순 해제 → 원예약 조회로 RELEASED·EXPIRED 확인 뒤에만 RELEASED → 모두 확인되면 COMPENSATED. 초안은 `DRAFT`·`REVIEW` + `checkoutFailure`(견적이 유효하면 다시 결제 진입 가능, 새 주문 ID).

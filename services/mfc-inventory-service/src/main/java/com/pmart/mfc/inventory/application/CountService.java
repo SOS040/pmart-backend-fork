@@ -290,6 +290,7 @@ public class CountService {
     List<Change> units = new ArrayList<>();
     List<HoldChange> holds = new ArrayList<>();
     Map<String, Integer> sellableDrop = new TreeMap<>();
+    Map<String, java.util.Set<String>> dropLocations = new TreeMap<>();
     int moved = 0;
     for (Difference d : table) {
       Key k = new Key(d.locationCode(), d.sku(), d.lotId(), Quality.NORMAL, Work.STORED);
@@ -304,11 +305,14 @@ public class CountService {
       int de = d.delta() + held; // E 변화 = 단위 증감 + 보류 해소
       if (de < 0) {
         sellableDrop.merge(d.sku() + "|" + d.lotId(), -de, Integer::sum);
+        dropLocations
+            .computeIfAbsent(d.sku() + "|" + d.lotId(), key -> new java.util.TreeSet<>())
+            .add(d.locationCode());
       }
     }
     String commitId = Ledger.newCommitId();
     ReservationBlocker.Result blocked =
-        blocker.block(mfcId, sellableDrop, "COUNT_LOSS", sessionId, now);
+        blocker.block(mfcId, sellableDrop, dropLocations, "COUNT_LOSS", sessionId, now);
     ledger.postWithHolds(
         commitId,
         "COUNT_ADJ",
@@ -335,6 +339,7 @@ public class CountService {
             now);
       }
     }
+    blocked = blocker.resecure(blocked, sessionId + ":" + me, "mfc-count", now);
     blocker.publish(blocked, "COUNT_LOSS", now);
     store.decide(sessionId, "ADJUSTED", me, approvalRef, note, commitId, now);
     if (!units.isEmpty()) {

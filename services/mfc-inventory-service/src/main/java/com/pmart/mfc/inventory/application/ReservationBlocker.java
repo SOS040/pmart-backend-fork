@@ -2,6 +2,7 @@ package com.pmart.mfc.inventory.application;
 
 import com.pmart.mfc.inventory.application.Ledger.ReservedChange;
 import com.pmart.mfc.inventory.domain.ReservationState;
+import com.pmart.mfc.inventory.infrastructure.AllocationStore;
 import com.pmart.mfc.inventory.infrastructure.ReservationStore;
 import com.pmart.mfc.inventory.infrastructure.ReservationStore.LotPart;
 import com.pmart.mfc.inventory.infrastructure.ReservationStore.PartRow;
@@ -13,41 +14,74 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * 판매 가능(E)이 줄어 LOT 의 R 이 E 를 넘을 때 넘는 양만큼 그 LOT 의 아직 집지 않은 HELD·CONFIRMED 조각을 **나중에 잡은 예약부터** 줄여
- * BLOCKED(이행부족 D) 조각으로 옮긴다 — 품질 격리(IV-09)·실사 손실(IV-11) 공통. 자동 재배분은 하지 않는다(MFC Q-13 "다주문 부족 자동 배분
- * 차단, 영향 약속 보류·수동 해결"). 호출자 트랜잭션 안에서, Ledger 반영 전에 부른다(잠금 순서 예약 행 → 조각 → 잔량).
+ * 판매 가능(E)이 줄어 LOT 의 R 이 E 를 넘을 때(품질 격리 IV-09·실사 손실 IV-11) 넘는 양만큼 예약을 보류하고, 같은 SKU 의 다른 적격 LOT 으로
+ * 다시 잡는다(ADR-0042 결정 1). 사용자 결정(2026-11-08):
+ *
+ * <ol>
+ *   <li><b>칸 기준</b>: 줄어든 칸에 위치 배정된 조각부터(그 칸 배정량 많은 순) → 위치 배정이 없는 조각(나중 예약부터) → 다른 칸에 배정된 조각(나중
+ *       예약부터). 아직 집지 않은 양에서만.
+ *   <li>{@link #block} — 호출자 Ledger 반영 전: 조각을 줄이고(그 칸 배정을 먼저 깎음) 같은 양의 BLOCKED 조각, R −q.
+ *   <li>{@link #resecure} — Ledger 반영 뒤(잔량이 최신): BLOCKED 마다 같은 SKU 적격 LOT 의 신규 가용 안에서 다시 잡고(원래 조각
+ *       상태 HELD·CONFIRMED 그대로) 잡은 만큼 BLOCKED 를 줄인다. 다른 주문의 예약은 건드리지 않는다(Q-13 "다주문 부족 자동 배분 차단").
+ *   <li>{@link #publish} — 남은 BLOCKED 만 ReservationBlocked. HELD 예약에 BLOCKED 가 남으면 확정이 거절된다(결제 보상).
+ * </ol>
+ *
+ * 잠금 순서 예약 행 → 조각 → 잔량.
  */
 @Component
 public class ReservationBlocker {
 
-  /** 보류 결과: Ledger 에 넣을 R 감소와 ReservationBlocked 로 알릴 조각. */
+  /** 보류 결과: Ledger 에 넣을 R 감소와 보류한 조각. */
   public record Result(List<ReservedChange> reserved, List<Blocked> blocked) {}
 
-  public record Blocked(ReservationRow reservation, String sku, String lotId, int qty) {}
+  /**
+   * @param partId 만든 BLOCKED 조각
+   * @param originalState 줄인 원래 조각의 상태(재확보 조각 상태)
+   */
+  public record Blocked(
+      ReservationRow reservation,
+      String partId,
+      String orderLineId,
+      String sku,
+      String lotId,
+      int qty,
+      ReservationState originalState) {}
 
   private final StockStore stock;
   private final ReservationStore reservations;
   private final ReservationService reservationService;
+  private final AllocationStore allocations;
 
   public ReservationBlocker(
-      StockStore stock, ReservationStore reservations, ReservationService reservationService) {
+      StockStore stock,
+      ReservationStore reservations,
+      ReservationService reservationService,
+      AllocationStore allocations) {
     this.stock = stock;
     this.reservations = reservations;
     this.reservationService = reservationService;
+    this.allocations = allocations;
   }
 
   /**
    * @param sellableDrop "sku|lotId" → 이번 변경으로 줄어드는 E(양수)
+   * @param dropLocations "sku|lotId" → E 가 줄어든 칸들
    * @param reason 조각 사유(QUALITY_HOLD·COUNT_LOSS)
    * @param ref 근거(풀린 조각 사유에 붙임)
    */
   public Result block(
-      String mfcId, Map<String, Integer> sellableDrop, String reason, String ref, Instant at) {
+      String mfcId,
+      Map<String, Integer> sellableDrop,
+      Map<String, Set<String>> dropLocations,
+      String reason,
+      String ref,
+      Instant at) {
     List<ReservedChange> reserved = new ArrayList<>();
     List<Blocked> blocked = new ArrayList<>();
     TreeSet<String> reservationIds = new TreeSet<>();
@@ -68,6 +102,7 @@ public class ReservationBlocker {
       String[] sl = e.getKey().split("\\|", 2);
       String sku = sl[0];
       String lotId = sl[1];
+      Set<String> here = dropLocations.getOrDefault(e.getKey(), Set.of());
       LotBalance lb =
           stock.lockLotBalances(mfcId, List.of(sku)).stream()
               .filter(b -> b.lotId().equals(lotId))
@@ -77,7 +112,7 @@ public class ReservationBlocker {
         continue; // 잔량 행이 없으면 Ledger 가 부족으로 거절한다
       }
       int deficit = lb.reserved() - (lb.sellable() - e.getValue());
-      for (LotPart p : reservations.activeLotParts(mfcId, sku, lotId)) {
+      for (LotPart p : ordered(reservations.activeLotParts(mfcId, sku, lotId), here)) {
         if (deficit <= 0) {
           break;
         }
@@ -89,15 +124,17 @@ public class ReservationBlocker {
         if (take <= 0) {
           continue;
         }
+        allocations.shrinkAt(p.partId(), here, take, at); // 없어진 칸의 배정부터 깎는다
         if (p.qty() - take > 0) {
           reservations.shrinkPart(p.partId(), p.qty() - take, at);
         } else {
           reservations.setPartState(p.partId(), ReservationState.RELEASED, reason + ":" + ref, at);
         }
+        String blockedId = r.reservationId() + ":Q" + UUID.randomUUID().toString().substring(0, 8);
         reservations.insertPart(
             r.reservationId(),
             new PartRow(
-                r.reservationId() + ":Q" + UUID.randomUUID().toString().substring(0, 8),
+                blockedId,
                 p.orderLineId(),
                 sku,
                 lotId,
@@ -107,14 +144,88 @@ public class ReservationBlocker {
                 reason),
             at);
         reserved.add(new ReservedChange(sku, lotId, -take));
-        blocked.add(new Blocked(r, sku, lotId, take));
+        blocked.add(new Blocked(r, blockedId, p.orderLineId(), sku, lotId, take, p.state()));
         deficit -= take;
       }
     }
     return new Result(reserved, blocked);
   }
 
-  /** Ledger 반영 뒤(같은 트랜잭션) ReservationBlocked. */
+  /** 칸 기준 순서: 그 칸 배정 조각(배정량 많은 순) → 배정 없는 조각 → 다른 칸 배정 조각. 각 묶음 안은 들어온 순서(나중 예약부터). */
+  private List<LotPart> ordered(List<LotPart> parts, Set<String> here) {
+    List<LotPart> atHere = new ArrayList<>();
+    Map<String, Integer> hereQty = new LinkedHashMap<>();
+    List<LotPart> none = new ArrayList<>();
+    List<LotPart> elsewhere = new ArrayList<>();
+    for (LotPart p : parts) {
+      int mineHere = 0;
+      int mineAll = 0;
+      for (var a : allocations.active(p.partId())) {
+        mineAll += a.remaining();
+        if (here.contains(a.locationCode())) {
+          mineHere += a.remaining();
+        }
+      }
+      if (mineHere > 0) {
+        atHere.add(p);
+        hereQty.put(p.partId(), mineHere);
+      } else if (mineAll == 0) {
+        none.add(p);
+      } else {
+        elsewhere.add(p);
+      }
+    }
+    // 정렬은 안정 정렬이라 같은 배정량이면 원래 순서(나중 예약부터)
+    atHere.sort((a, b) -> Integer.compare(hereQty.get(b.partId()), hereQty.get(a.partId())));
+    List<LotPart> out = new ArrayList<>(atHere);
+    out.addAll(none);
+    out.addAll(elsewhere);
+    return out;
+  }
+
+  /**
+   * Ledger 반영 뒤(같은 트랜잭션): BLOCKED 마다 같은 SKU 적격 LOT 으로 다시 잡고(ADR-0042 결정 1), 잡은 만큼 BLOCKED 를 줄인다.
+   *
+   * @return 남은 보류(재확보 못 한 양)
+   */
+  public Result resecure(Result r, String requestId, String sourceSystem, Instant at) {
+    List<Blocked> left = new ArrayList<>();
+    int n = 0;
+    for (Blocked b : r.blocked()) {
+      n++;
+      var got =
+          reservationService.resecure(
+              b.reservation(),
+              b.orderLineId(),
+              b.sku(),
+              b.qty(),
+              requestId + ":RS" + n,
+              sourceSystem,
+              at,
+              b.originalState());
+      int q =
+          got.stream().mapToInt(com.pmart.mfc.inventory.domain.LotAllocator.Allocation::qty).sum();
+      if (q >= b.qty()) {
+        reservations.setPartState(b.partId(), ReservationState.RELEASED, "RESECURED", at);
+        continue;
+      }
+      if (q > 0) {
+        reservations.shrinkPart(b.partId(), b.qty() - q, at);
+      }
+      left.add(
+          new Blocked(
+              b.reservation(),
+              b.partId(),
+              b.orderLineId(),
+              b.sku(),
+              b.lotId(),
+              b.qty() - q,
+              b.originalState()));
+    }
+    return new Result(r.reserved(), left);
+  }
+
+  /** 남은 보류만 ReservationBlocked. */
   public void publish(Result r, String reason, Instant at) {
     for (Blocked b : r.blocked()) {
       reservationService.publishBlocked(b.reservation(), b.sku(), b.lotId(), b.qty(), reason, at);

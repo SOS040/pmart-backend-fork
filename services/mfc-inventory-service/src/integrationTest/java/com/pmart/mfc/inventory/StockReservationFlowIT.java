@@ -736,6 +736,155 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         body);
   }
 
+  /** 수령 → 검수 → 칸별 적치(같은 LOT 을 여러 칸에). 반환 = lotId. */
+  String stockedAt(String sku, String lotRef, String expiry, Map<String, Integer> byShelf) {
+    projection(sku, "AMBIENT");
+    int total = byShelf.values().stream().mapToInt(Integer::intValue).sum();
+    String receiptId = "RCV-" + UUID.randomUUID();
+    assertThat(
+            postReceipt(
+                    UUID.randomUUID().toString(),
+                    receiptOf(receiptId, List.of(line(sku, total, 0, lotRef, expiry))))
+                .status())
+        .isEqualTo(201);
+    String lot =
+        get(INBOUND, "/internal/receipts/" + receiptId)
+            .body()
+            .path("lines")
+            .path(0)
+            .path("lotId")
+            .asString();
+    assertThat(
+            execute(
+                    "INSPECT",
+                    "RCV-DOCK",
+                    null,
+                    List.of(
+                        Map.of("sku", sku, "lotId", lot, "qty", total, "resultQuality", "NORMAL")))
+                .status())
+        .isEqualTo(201);
+    byShelf.forEach(
+        (shelf, q) ->
+            assertThat(
+                    execute(
+                            "PUTAWAY",
+                            "RCV-DOCK",
+                            shelf,
+                            List.of(Map.of("sku", sku, "lotId", lot, "qty", q)))
+                        .status())
+                .isEqualTo(201));
+    return lot;
+  }
+
+  int partQty(String reservationId, String state) {
+    return jdbc.queryForObject(
+        "SELECT COALESCE(SUM(qty), 0) FROM reservation_part WHERE reservation_id = ? AND state = ?",
+        Integer.class,
+        reservationId,
+        state);
+  }
+
+  /**
+   * 사용자 결정(2026-11-08): 격리로 모자라면 그 칸에 배정된 주문부터 보류하고(예약 순서가 아니라), 같은 SKU 다른 적격 LOT 으로 다시 잡은
+   * 뒤(ADR-0042 결정 1) 남은 것만 보류.
+   */
+  @Test
+  void quarantineBlocksOrdersAllocatedAtThatShelfFirstAndResecuresFromAnotherLot() {
+    location("PAK-A-01", "PACKING", "AMBIENT", "ACTIVE", 1);
+    location("A-01-02", "STORAGE", "AMBIENT", "ACTIVE", 1);
+    awaitLocations(5);
+    String sku = newSku();
+    handlingOn(sku);
+    String lotA =
+        stockedAt(
+            sku, "REF-A", "2027-06-30", new LinkedHashMap<>(Map.of("A-01-01", 5, "A-01-02", 5)));
+    String lotB = stockedAt(sku, "REF-B", "2027-12-31", Map.of("A-01-01", 3));
+
+    // X(먼저) 5 → A-01-01 배정, Y(나중) 5 → A-01-02 배정 (FEFO 로 둘 다 LOT A)
+    JsonNode x = confirmedAndAllocated("ORD-SX", sku, 5);
+    JsonNode y = confirmedAndAllocated("ORD-SY", sku, 5);
+    assertThat(x.path("parts").path(0).path("lotId").asString()).isEqualTo(lotA);
+    assertThat(x.path("parts").path(0).path("allocations").path(0).path("locationCode").asString())
+        .isEqualTo("A-01-01");
+    assertThat(y.path("parts").path(0).path("allocations").path(0).path("locationCode").asString())
+        .isEqualTo("A-01-02");
+    String rx = x.path("reservationId").asString();
+    String ry = y.path("reservationId").asString();
+
+    // A-01-01 의 LOT A 5개 격리 → 그 칸에 배정된 X 가 보류 대상(나중 예약 Y 가 아니라)
+    Res q = quality("QUARANTINE", "QD-SHELF", sku, lotA, 5);
+    assertThat(q.status()).as(q.body().toString()).isEqualTo(201);
+    assertThat(partQty(ry, "BLOCKED")).isZero();
+    assertThat(partQty(ry, "CONFIRMED")).isEqualTo(5);
+    // X: LOT B(빈 3개)로 다시 잡고, 남은 2 만 보류
+    assertThat(partQty(rx, "BLOCKED")).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COALESCE(SUM(qty), 0) FROM reservation_part WHERE reservation_id = ?"
+                    + " AND state = 'CONFIRMED' AND lot_id = ?",
+                Integer.class,
+                rx,
+                lotB))
+        .isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'ReservationBlocked'"
+                    + " AND aggregateid = ? AND payload::text LIKE '%\"blockedQty\": 2%'",
+                Integer.class, rx))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'ReservationBlocked' AND aggregateid = ?",
+                Integer.class,
+                ry))
+        .isZero();
+    // 총량: H13 Q5 E8 R8(Y5 + X 의 LOT B 3) A0
+    JsonNode av = availability(sku);
+    assertThat(av.path("quarantined").asInt()).isEqualTo(5);
+    assertThat(av.path("sellable").asInt()).isEqualTo(8);
+    assertThat(av.path("reserved").asInt()).isEqualTo(8);
+    assertThat(av.path("available").asInt()).isZero();
+  }
+
+  /** 결제 중(HELD) 예약이 격리로 모자라게 되면 확정을 거절한다 — 사가가 결제를 보상 취소한다. */
+  @Test
+  void heldReservationThatLostStockIsNotConfirmed() {
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 5);
+    Res held =
+        reserve(
+            UUID.randomUUID().toString(),
+            Map.of(
+                "orderId",
+                "ORD-HS",
+                "mfcId",
+                mfc,
+                "lines",
+                List.of(Map.of("orderLineId", "L1", "sku", sku, "qty", 4))));
+    String rid = held.body().path("resultId").asString();
+    String lot =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    // 격리 3 → E2, R4 → 2 보류(다른 LOT 없음), 남은 HELD 2
+    assertThat(quality("QUARANTINE", "QD-HS", sku, lot, 3).status()).isEqualTo(201);
+    assertThat(partQty(rid, "BLOCKED")).isEqualTo(2);
+    assertThat(partQty(rid, "HELD")).isEqualTo(2);
+    Res confirm =
+        post(
+            ORCH,
+            "order-orchestration-service",
+            "/internal/reservations/" + rid + "/confirmations",
+            UUID.randomUUID().toString(),
+            Map.of("orderId", "ORD-HS", "paymentAttemptId", "PAY-HS"));
+    assertThat(confirm.status()).isEqualTo(409);
+    assertThat(confirm.body().path("code").asString()).isEqualTo("RESERVATION_SHORT");
+  }
+
   /** 확정 예약 + 위치 배정(V11) — 배정 결과(PickPlan)를 돌려준다. */
   JsonNode confirmedAndAllocated(String orderId, String sku, int qty) {
     String rid =

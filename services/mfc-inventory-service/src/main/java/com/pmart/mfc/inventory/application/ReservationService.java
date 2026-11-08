@@ -71,6 +71,7 @@ public class ReservationService {
   public static final String RESERVATION_NOT_FOUND = "RESERVATION_NOT_FOUND";
   public static final String PARTIAL_RELEASE_NOT_SUPPORTED = "PARTIAL_RELEASE_NOT_SUPPORTED";
   public static final String NO_ELIGIBLE_LOT = "NO_ELIGIBLE_LOT";
+  public static final String RESERVATION_SHORT = "RESERVATION_SHORT";
 
   /** 계약 InventoryHoldExpired.v1 의 토픽(집합 이름이 아니라 서비스 토픽). */
   public static final String TOPIC = "mfc.inventory.v1";
@@ -397,6 +398,20 @@ public class ReservationService {
                     at);
               }
               checkVersion(r, expectedVersion);
+              // 격리·실사 손실로 보류된(재확보 못 한) 몫이 있으면 확정하지 않는다 — 결제 보상(사가 RESERVATION_LOST)으로 간다
+              int short_ =
+                  reservations.parts(reservationId).stream()
+                      .filter(p -> p.state() == ReservationState.BLOCKED)
+                      .mapToInt(PartRow::qty)
+                      .sum();
+              if (short_ > 0) {
+                throw new PmartException(
+                    RESERVATION_SHORT,
+                    HttpStatus.CONFLICT,
+                    "예약 " + reservationId + " 의 " + short_ + "개가 재고 부족(격리·실사 손실)으로 보류돼 확정할 수 없습니다.",
+                    false,
+                    List.of());
+              }
               int total =
                   reservations.heldBySku(reservationId).values().stream()
                       .mapToInt(Integer::intValue)
@@ -719,6 +734,20 @@ public class ReservationService {
       String requestId,
       String sourceSystem,
       Instant at) {
+    return resecure(
+        r, orderLineId, sku, qty, requestId, sourceSystem, at, ReservationState.CONFIRMED);
+  }
+
+  /** 재확보 — 새 조각 상태는 원래 조각과 같게(결제 전 HELD 예약은 HELD). */
+  public List<Allocation> resecure(
+      ReservationRow r,
+      String orderLineId,
+      String sku,
+      int qty,
+      String requestId,
+      String sourceSystem,
+      Instant at,
+      ReservationState partState) {
     LocalDate promised =
         r.promisedDate() != null ? r.promisedDate() : LocalDate.ofInstant(at, BUSINESS_ZONE);
     List<LotCandidate> lots = new ArrayList<>();
@@ -765,7 +794,7 @@ public class ReservationService {
               al.lotId(),
               "HAND",
               al.qty(),
-              ReservationState.CONFIRMED,
+              partState,
               null),
           at);
       deltas.add(new ReservedChange(al.sku(), al.lotId(), al.qty()));

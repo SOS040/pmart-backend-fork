@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.11.0
+  version: 0.11.1
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -205,6 +205,8 @@ paths:
         이미 CONFIRMED 면 변경 없이 성공(appliedQty 0). EXPIRED/RELEASED 는 409 INVALID_STATE. orderId 가 예약과 다르면 409 INVALID_STATE.
         만료 시각이 지났어도 만료 작업이 아직 EXPIRED 로 바꾸기 전(HELD, 수량 점유 중)이면 확정한다.
         X-Expected-Version 은 상태가 바뀔 때만 비교한다.
+        (0.11.1, 2026-11-08 사용자 결정) 결제 중 격리·실사 손실로 보류(BLOCKED)되어 다른 LOT 으로도 다시 잡지 못한 몫이 남아 있으면 409 RESERVATION_SHORT —
+        가용 재고가 없는 주문은 확정하지 않는다(사가는 RESERVATION_LOST 로 결제를 보상 취소한다).
       operationId: confirmReservation
       parameters:
         - { name: reservationId, in: path, required: true, schema: { type: string } }

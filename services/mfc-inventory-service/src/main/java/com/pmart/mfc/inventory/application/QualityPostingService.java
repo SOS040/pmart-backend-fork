@@ -106,6 +106,7 @@ public class QualityPostingService {
               List<Change> changes = new ArrayList<>();
               // LOT 별 E 감소(격리) — 예약 영향 계산
               Map<String, Integer> sellableDrop = new TreeMap<>();
+              Map<String, java.util.Set<String>> dropLocations = new TreeMap<>();
               for (Line l : in.lines()) {
                 LotRow lot = lots.get(l.lotId());
                 if (lot == null || !lot.sku().equals(l.sku())) {
@@ -122,6 +123,10 @@ public class QualityPostingService {
                     changes.add(new Change(quarantined, l.qty()));
                     if (normal.sellable()) {
                       sellableDrop.merge(l.sku() + "|" + l.lotId(), l.qty(), Integer::sum);
+                      dropLocations
+                          .computeIfAbsent(
+                              l.sku() + "|" + l.lotId(), k -> new java.util.TreeSet<>())
+                          .add(l.locationCode());
                     }
                   }
                   case "RELEASE" -> {
@@ -132,7 +137,13 @@ public class QualityPostingService {
                 }
               }
               ReservationBlocker.Result held =
-                  blocker.block(in.mfcId(), sellableDrop, "QUALITY_HOLD", in.approvalRef(), at);
+                  blocker.block(
+                      in.mfcId(),
+                      sellableDrop,
+                      dropLocations,
+                      "QUALITY_HOLD",
+                      in.approvalRef(),
+                      at);
               String commitId =
                   ledger.post(
                       "QUALITY_" + in.postingType(),
@@ -144,6 +155,8 @@ public class QualityPostingService {
                       changes,
                       held.reserved(),
                       at);
+              // 같은 SKU 적격 LOT 으로 다시 잡고(ADR-0042 결정 1) 남은 것만 알린다
+              held = blocker.resecure(held, requestId, sourceSystem, at);
               blocker.publish(held, "QUALITY_HOLD", at);
               log.info(
                   "품질 반영 {} {} {}개 (근거 {}, 결정 {}) — 예약 보류 {}건",

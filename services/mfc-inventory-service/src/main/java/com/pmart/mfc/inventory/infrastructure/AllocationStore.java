@@ -41,7 +41,7 @@ public class AllocationStore {
     return jdbc.query(
         "SELECT allocation_id, part_id, location_code, qty, picked_qty, source, created_at"
             + " FROM reservation_location_allocation WHERE part_id = ? AND state = 'ACTIVE'"
-            + " ORDER BY created_at, allocation_id",
+            + " ORDER BY seq",
         (rs, i) ->
             new Alloc(
                 rs.getString("allocation_id"),
@@ -139,6 +139,21 @@ public class AllocationStore {
         qty,
         Timestamp.from(at),
         a.allocationId());
+  }
+
+  /** 이 칸들의 배정을 먼저 qty 만큼 깎는다(격리·실사 손실로 그 칸 물건이 없어졌을 때). */
+  public void shrinkAt(String partId, java.util.Set<String> locations, int qty, Instant at) {
+    int left = qty;
+    for (Alloc a : active(partId)) {
+      if (left == 0) {
+        break;
+      }
+      if (locations.contains(a.locationCode()) && a.remaining() > 0) {
+        int cut = Math.min(left, a.remaining());
+        shrink(a, a.remaining() - cut, at);
+        left -= cut;
+      }
+    }
   }
 
   /** 조각이 확정이 아니게 되면 그 조각의 배정을 놓는다. */
