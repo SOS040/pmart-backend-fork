@@ -114,6 +114,13 @@
                 "null"
               ],
               "description": "칸 치수·하중(재고 이동 용량 계산), 2026-11-08"
+            },
+            "categoryId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "진열 카테고리(없으면 기타 칸), 2026-11-08"
             }
           },
           "additionalProperties": true

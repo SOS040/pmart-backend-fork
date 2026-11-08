@@ -89,6 +89,30 @@ public class SkuProjectionStore {
         Timestamp.from(p.updatedAt()));
   }
 
+  /** 상품 카테고리 경로(진열 카테고리 판정). 더 오래된 상품 버전은 무시. */
+  public void upsertCategories(String sku, List<String> paths, int version, Instant at) {
+    jdbc.update(
+        "INSERT INTO sku_category (sku, category_paths, product_version, updated_at) VALUES (?,?,?,?)"
+            + " ON CONFLICT (sku) DO UPDATE SET category_paths = EXCLUDED.category_paths,"
+            + " product_version = EXCLUDED.product_version, updated_at = EXCLUDED.updated_at"
+            + " WHERE sku_category.product_version <= EXCLUDED.product_version",
+        sku,
+        String.join("\n", paths),
+        version,
+        java.sql.Timestamp.from(at));
+  }
+
+  /** 상품 카테고리 경로. 모르면 empty. */
+  public Optional<List<String>> categories(String sku) {
+    return jdbc
+        .query(
+            "SELECT category_paths FROM sku_category WHERE sku = ?",
+            (rs, i) -> List.of(rs.getString(1).split("\n")),
+            sku)
+        .stream()
+        .findFirst();
+  }
+
   public Optional<SkuProjection> find(String sku) {
     return jdbc
         .query(

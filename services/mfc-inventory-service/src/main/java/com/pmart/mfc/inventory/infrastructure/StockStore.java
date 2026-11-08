@@ -547,6 +547,25 @@ public class StockStore {
         sku);
   }
 
+  /** 센터의 정상·적치 단위 행(모든 상품) — 출하 부적격 LOT 회수 목록. */
+  public List<UnitRow> storedUnits(String mfcId) {
+    return jdbc.query(
+        "SELECT location_code, sku, lot_id, quality_state, work_state, qty, row_version"
+            + " FROM stock_unit WHERE mfc_id = ? AND qty > 0 AND quality_state = 'NORMAL'"
+            + " AND work_state = 'STORED'",
+        (rs, i) ->
+            new UnitRow(
+                new Key(
+                    rs.getString("location_code"),
+                    rs.getString("sku"),
+                    rs.getString("lot_id"),
+                    Quality.valueOf(rs.getString("quality_state")),
+                    Work.valueOf(rs.getString("work_state"))),
+                rs.getInt("qty"),
+                rs.getLong("row_version")),
+        mfcId);
+  }
+
   /** 한 칸의 0 이 아닌 단위 행(모든 상품·상태) — 재고 이동 칸 판정. */
   public List<UnitRow> unitsAt(String mfcId, String locationCode) {
     return jdbc.query(

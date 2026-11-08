@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -121,6 +121,39 @@ paths:
               schema: { $ref: '#/components/schemas/PickPlan' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /mfcs/{mfcId}/unshippable-lots:
+    get:
+      tags: [moves]
+      summary: 출하 부적격 LOT 회수 목록 (0.13.0)
+      description: |
+        2026-11-08 사용자 결정: 같은 상품의 여러 LOT 이 한 칸에 섞여도 되지만, 출하 기준(상품 소비기한 보장, 없으면 보관 유형 최소 잔여일 — 오늘 기준)을
+        못 맞추는 LOT 은 빨리 거둔다. 선반·피킹 칸의 정상·적치 재고 중 오늘 부적격인 LOT 과 그 칸·수량. onMiscShelf = 이미 기타 칸(카테고리 없음)에 있음.
+        감독자는 이 목록으로 기타 칸으로 이동을 지시한다(카테고리 칸으로는 이동 배정이 409 LOT_NOT_SHIPPABLE). 그 센터 운영자. 기준이 없는 상품은 빼고 보여 주지 않는다.
+      operationId: listUnshippableLots
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: OK (소비기한 빠른 순, 최대 500)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sku: { type: string }
+                        lotId: { type: string }
+                        expiryDate: { type: [string, 'null'], format: date }
+                        manufactureDate: { type: [string, 'null'], format: date }
+                        locationCode: { type: string }
+                        locationCategoryId: { type: [string, 'null'] }
+                        onMiscShelf: { type: boolean }
+                        qty: { type: integer }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
   /internal/move-allocations:
     post:
       tags: [moves]
@@ -128,7 +161,8 @@ paths:
       description: |
         2026-11-08 사용자 결정. 두 단계 이동(출발 칸 → 카트 → 도착 칸)의 시작. 옮길 수 있는 양 = 출발 칸의 **집을 수 있는 양**(NORMAL·STORED − 보류 − 다른 주문 칸 배정)이고
         그 LOT 의 가용(A) 까지 — 이동 배정분은 판매 가능(E)에서 빠진다(IV-03, 출발 칸에 MOVE 보류). 도착 칸: 선반·피킹, ACTIVE, 온도대 = 상품 보관 유형,
-        **칸당 한 상품**(다른 상품이 있거나 들어올 예정이면 409 LOCATION_HAS_OTHER_SKU), **한 상품은 한 자리**(고회전 선반 제외 — 다른 칸에 이미 있으면 409 SKU_ALREADY_SHELVED,
+        **칸에 여러 상품 가능 — 카테고리 칸은 그 카테고리(하위 포함) 상품만**(409 CATEGORY_MISMATCH, 상품 카테고리를 모르면 SKU_CATEGORY_UNKNOWN), 카테고리 없는 칸 = 기타(아무 상품).
+        출하 부적격 LOT 은 카테고리 칸에 못 둔다(409 LOT_NOT_SHIPPABLE). **같은 상품은 한 자리**(고회전 선반 제외 — 다른 칸에 이미 있으면 409 SKU_ALREADY_SHELVED,
         출발 칸에 남는 양이 있으면 409 SKU_SPLIT_NOT_ALLOWED), 용량(칸 치수 ÷ 상품 크기, 들어올 예정 포함 — 넘으면 409 LOCATION_CAPACITY_EXCEEDED, 칸 치수 없으면 422 CONFIG_REQUIRED).
         상품 크기는 실제 정보가 없어 설정 `pmart.inventory.dummy-sku-size` 가 켜진 환경(LAN·시험)에서만 더미(소·중·대)로 계산한다. 같은 moveId 는 한 번(같은 내용이면 지금 상태).
         출발·도착이 실사 잠금이면 409.

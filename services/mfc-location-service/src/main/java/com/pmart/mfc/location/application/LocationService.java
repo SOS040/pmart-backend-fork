@@ -57,7 +57,8 @@ public class LocationService {
       @Nullable Integer slotCount,
       @Nullable Integer maxWeightG,
       @Nullable Integer pickSequence,
-      boolean highTurnover) {}
+      boolean highTurnover,
+      @Nullable String categoryId) {}
 
   record StateRequest(
       String locationId,
@@ -126,6 +127,7 @@ public class LocationService {
                       b.maxWeightG(),
                       b.pickSequence(),
                       b.highTurnover(),
+                      b.categoryId(),
                       1,
                       at);
               if (!store.insert(v, operator, at)) {
@@ -193,6 +195,7 @@ public class LocationService {
                       b.maxWeightG(),
                       b.pickSequence(),
                       b.highTurnover(),
+                      b.categoryId(),
                       cur.version() + 1,
                       at);
               store.updateAttributes(v);
@@ -433,6 +436,7 @@ public class LocationService {
     payload.put("version", v.version());
     payload.put("pickSequence", v.pickSequence());
     payload.put("highTurnover", v.highTurnover());
+    payload.put("categoryId", v.categoryId());
     payload.put("widthMm", v.widthMm());
     payload.put("depthMm", v.depthMm());
     payload.put("heightMm", v.heightMm());

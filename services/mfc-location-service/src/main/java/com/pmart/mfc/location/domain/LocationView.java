@@ -20,5 +20,6 @@ public record LocationView(
     @Nullable Integer maxWeightG,
     @Nullable Integer pickSequence,
     boolean highTurnover,
+    @Nullable String categoryId,
     int version,
     Instant updatedAt) {}

@@ -2,8 +2,8 @@ package com.pmart.mfc.inventory.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class MoveRulesTest {
@@ -14,13 +14,11 @@ class MoveRulesTest {
       int qty,
       int pickable,
       int available,
-      Set<String> destSkus,
       Map<String, Boolean> shelves,
       int remainingAtFrom,
       int destAfter,
       int capacity) {
     return MoveRules.rejection(
-        "S1",
         "A",
         "B",
         fromHt,
@@ -28,46 +26,74 @@ class MoveRulesTest {
         qty,
         pickable,
         available,
-        destSkus,
+        null,
+        null,
+        null,
         shelves,
         remainingAtFrom,
         destAfter,
         capacity);
   }
 
+  static String category(String toCategory, List<String> paths, Boolean shippable) {
+    return MoveRules.rejection(
+        "A",
+        "B",
+        false,
+        false,
+        1,
+        5,
+        5,
+        toCategory,
+        paths,
+        shippable,
+        Map.of("A", false),
+        0,
+        1,
+        20);
+  }
+
   @Test
-  void wholeMoveToAnEmptyShelfIsAllowed() {
-    assertThat(check(false, false, 10, 10, 10, Set.of(), Map.of("A", false), 0, 10, 20)).isNull();
+  void wholeMoveToAMiscShelfIsAllowed() {
+    assertThat(check(false, false, 10, 10, 10, Map.of("A", false), 0, 10, 20)).isNull();
   }
 
   @Test
   void quantityIsLimitedByPickableAndLotAvailability() {
-    assertThat(check(false, false, 5, 4, 10, Set.of(), Map.of(), 0, 5, 20))
+    assertThat(check(false, false, 5, 4, 10, Map.of(), 0, 5, 20))
         .isEqualTo(MoveRules.MOVE_QTY_EXCEEDS_PICKABLE);
-    assertThat(check(false, false, 5, 10, 4, Set.of(), Map.of(), 0, 5, 20))
+    assertThat(check(false, false, 5, 10, 4, Map.of(), 0, 5, 20))
         .isEqualTo(MoveRules.MOVE_QTY_EXCEEDS_AVAILABLE);
   }
 
   @Test
-  void oneSkuPerShelfAndOneShelfPerSkuExceptHighTurnover() {
-    assertThat(check(false, false, 1, 5, 5, Set.of("S2"), Map.of(), 0, 1, 20))
-        .isEqualTo(MoveRules.LOCATION_HAS_OTHER_SKU);
-    assertThat(check(false, false, 1, 5, 5, Set.of(), Map.of("A", false, "C", false), 0, 1, 20))
+  void categoryShelvesTakeOnlyTheirCategoryAndShippableLots() {
+    assertThat(category("SNACK", List.of("FOOD/SNACK/CHIPS"), true)).isNull(); // 하위 카테고리 포함
+    assertThat(category("SNACK", List.of("FOOD/DRINK"), true))
+        .isEqualTo(MoveRules.CATEGORY_MISMATCH);
+    assertThat(category("SNACK", null, true)).isEqualTo(MoveRules.SKU_CATEGORY_UNKNOWN);
+    assertThat(category("SNACK", List.of("FOOD/SNACK"), false))
+        .isEqualTo(MoveRules.LOT_NOT_SHIPPABLE);
+    // 기타 칸(카테고리 없음)은 아무 상품·부적격 LOT 도 받는다
+    assertThat(category(null, null, false)).isNull();
+    // 기준이 없어 판정 못 하는 LOT(null)은 막지 않는다
+    assertThat(category("SNACK", List.of("FOOD/SNACK"), null)).isNull();
+  }
+
+  @Test
+  void oneShelfPerSkuExceptHighTurnover() {
+    assertThat(check(false, false, 1, 5, 5, Map.of("A", false, "C", false), 0, 1, 20))
         .isEqualTo(MoveRules.SKU_ALREADY_SHELVED);
-    assertThat(check(false, false, 1, 5, 5, Set.of(), Map.of("A", false), 4, 1, 20))
+    assertThat(check(false, false, 1, 5, 5, Map.of("A", false), 4, 1, 20))
         .isEqualTo(MoveRules.SKU_SPLIT_NOT_ALLOWED);
-    // 고회전 도착 칸은 나눠 두기·다른 칸 존재를 허용, 고회전 출발 칸은 남겨도 된다
-    assertThat(check(false, true, 1, 5, 5, Set.of(), Map.of("A", false, "C", false), 4, 1, 20))
-        .isNull();
-    assertThat(check(true, false, 1, 5, 5, Set.of(), Map.of("A", true), 4, 1, 20)).isNull();
-    // 다른 고회전 칸에 있는 것은 "이미 진열" 이 아니다
-    assertThat(check(false, false, 5, 5, 5, Set.of(), Map.of("A", false, "H", true), 0, 5, 20))
-        .isNull();
+    assertThat(check(false, true, 1, 5, 5, Map.of("A", false, "C", false), 4, 1, 20)).isNull();
+    assertThat(check(true, false, 1, 5, 5, Map.of("A", true), 4, 1, 20)).isNull();
+    assertThat(check(false, false, 5, 5, 5, Map.of("A", false, "H", true), 0, 5, 20)).isNull();
   }
 
   @Test
   void capacityCountsWhatIsThereAndWhatIsComing() {
-    assertThat(check(false, true, 3, 5, 5, Set.of("S1"), Map.of(), 2, 21, 20))
+    assertThat(check(false, true, 3, 5, 5, Map.of(), 2, 21, 20))
         .isEqualTo(MoveRules.LOCATION_CAPACITY_EXCEEDED);
   }
 

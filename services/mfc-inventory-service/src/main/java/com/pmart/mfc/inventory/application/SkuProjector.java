@@ -68,8 +68,17 @@ public class SkuProjector {
     String productId = text(p, "productId");
     String baseProductId = text(p, "baseProductId");
     Instant at = Instant.now(clock);
+    java.util.List<String> paths = new java.util.ArrayList<>();
+    for (JsonNode c : p.path("categoryPaths")) {
+      if (!c.asString("").isBlank()) {
+        paths.add(c.asString());
+      }
+    }
     for (JsonNode s : p.path("skus")) {
       String sku = s.path("sku").asString();
+      if (!paths.isEmpty()) {
+        store.upsertCategories(sku, paths, version, at); // 진열 카테고리 판정(2026-11-08)
+      }
       Optional<SkuProjection> stored = store.find(sku);
       if (stored.isPresent()
           && !ProductVersionGate.acceptsSnapshot(stored.get().productVersion(), version)) {

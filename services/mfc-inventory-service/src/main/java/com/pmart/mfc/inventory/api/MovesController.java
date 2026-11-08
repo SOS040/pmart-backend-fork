@@ -80,6 +80,31 @@ public class MovesController implements MovesApi {
     return ResponseEntity.ok(dto(service.cancel(idempotencyKey, xSourceSystem, moveId)));
   }
 
+  @Override
+  public ResponseEntity<com.pmart.mfc.inventory.api.generated.model.ListUnshippableLots200Response>
+      listUnshippableLots(String mfcId) {
+    var out = new com.pmart.mfc.inventory.api.generated.model.ListUnshippableLots200Response();
+    out.setItems(
+        service.unshippable(mfcId).stream()
+            .map(
+                u -> {
+                  var i =
+                      new com.pmart.mfc.inventory.api.generated.model
+                          .ListUnshippableLots200ResponseItemsInner();
+                  i.setSku(u.sku());
+                  i.setLotId(u.lotId());
+                  i.setExpiryDate(u.expiryDate());
+                  i.setManufactureDate(u.manufactureDate());
+                  i.setLocationCode(u.locationCode());
+                  i.setLocationCategoryId(u.locationCategoryId());
+                  i.setOnMiscShelf(u.locationCategoryId() == null);
+                  i.setQty(u.qty());
+                  return i;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
   static MoveAllocation dto(MoveRow m) {
     var out = new MoveAllocation();
     out.setMoveId(m.moveId());

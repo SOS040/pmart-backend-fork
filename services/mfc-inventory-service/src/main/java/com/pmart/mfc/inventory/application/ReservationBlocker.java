@@ -191,7 +191,7 @@ public class ReservationBlocker {
   public Result resecure(Result r, String requestId, String sourceSystem, Instant at) {
     List<Blocked> left = new ArrayList<>();
     int n = 0;
-    for (Blocked b : r.blocked()) {
+    for (Blocked b : priority(r.blocked())) {
       n++;
       var got =
           reservationService.resecure(
@@ -223,6 +223,22 @@ public class ReservationBlocker {
               b.originalState()));
     }
     return new Result(r.reserved(), left);
+  }
+
+  /**
+   * 재확보 순서(사용자 결정 2026-11-08): ① 결제를 마친 주문(CONFIRMED) 먼저 — 결제 중(HELD) 주문은 못 채워도 확정 거절 → 결제 취소로 끝나
+   * 고객 피해가 작다 ② 배송 약속일 이른 순 ③ 먼저 예약한 순.
+   */
+  static List<Blocked> priority(List<Blocked> in) {
+    List<Blocked> out = new ArrayList<>(in);
+    out.sort(
+        java.util.Comparator.comparing(
+                (Blocked b) -> b.originalState() == ReservationState.CONFIRMED ? 0 : 1)
+            .thenComparing(
+                b -> b.reservation().promisedDate(),
+                java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+            .thenComparing(b -> b.reservation().createdAt()));
+    return out;
   }
 
   /** 남은 보류만 ReservationBlocked. */

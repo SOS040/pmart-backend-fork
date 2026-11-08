@@ -840,6 +840,24 @@ public class ReservationService {
         TOPIC);
   }
 
+  /**
+   * 이 LOT 이 오늘(Asia/Seoul) 출하 기준을 맞추는가 — 예약 배정과 같은 적격 기준(상품 소비기한 보장, 없으면 보관 유형 최소 잔여일). 기준이 없으면
+   * null(판정 불가).
+   */
+  public @Nullable Boolean shippableToday(
+      String sku,
+      String lotId,
+      @Nullable LocalDate expiryDate,
+      @Nullable LocalDate manufactureDate,
+      Instant at) {
+    LotAllocator.Rules rules = shelfRules(List.of(sku), skus.findAll(List.of(sku)));
+    LotCandidate c = new LotCandidate(sku, lotId, expiryDate, manufactureDate, null, 1);
+    if (!LotAllocator.missingPolicy(List.of(c), rules).isEmpty()) {
+      return null;
+    }
+    return LotAllocator.eligible(c, LocalDate.ofInstant(at, BUSINESS_ZONE), rules);
+  }
+
   // ---------- 조회 ----------
 
   /** 피킹 지시 한 조각: 예약 조각 + LOT 소비기한 + 그 LOT 의 선반 위치별 잔량(코드 순). */

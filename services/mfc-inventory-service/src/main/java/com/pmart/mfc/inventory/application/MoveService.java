@@ -18,12 +18,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -70,6 +69,7 @@ public class MoveService {
   private final LocationAllocationService allocations;
   private final InventoryProperties props;
   private final Clock clock;
+  private final ReservationService reservations;
 
   public MoveService(
       MoveStore moves,
@@ -79,7 +79,9 @@ public class MoveService {
       SkuProjectionStore skus,
       LocationAllocationService allocations,
       InventoryProperties props,
-      Clock clock) {
+      Clock clock,
+      ReservationService reservations) {
+    this.reservations = reservations;
     this.moves = moves;
     this.stock = stock;
     this.ledger = ledger;
@@ -147,24 +149,25 @@ public class MoveService {
         Math.max(
             0, allocations.free(c.mfcId(), c.sku(), c.lotId()).getOrDefault(c.fromLocation(), 0));
 
-    // 도착 칸의 상품들(지금 + 들어올 예정)
-    Set<String> destSkus = new LinkedHashSet<>();
+    // 도착 칸의 이 상품(지금 + 들어올 예정) — 칸에 여러 상품 가능(2026-11-08)
     int destNow = 0;
     for (var u : stock.unitsAt(c.mfcId(), c.toLocation())) {
-      destSkus.add(u.key().sku());
       if (u.key().sku().equals(c.sku())) {
         destNow += u.qty();
       }
     }
     int destIncoming = 0;
     for (MoveRow m : moves.openAt(c.mfcId(), c.toLocation())) {
-      if (m.toLocation().equals(c.toLocation())) {
-        destSkus.add(m.sku());
-        if (m.sku().equals(c.sku())) {
-          destIncoming += m.incoming();
-        }
+      if (m.toLocation().equals(c.toLocation()) && m.sku().equals(c.sku())) {
+        destIncoming += m.incoming();
       }
     }
+    var lotRow = stock.lots(List.of(c.lotId())).get(c.lotId());
+    Boolean shippable =
+        lotRow == null
+            ? null
+            : reservations.shippableToday(
+                c.sku(), c.lotId(), lotRow.expiryDate(), lotRow.manufactureDate(), clock.instant());
     // 이 상품이 있는(들어올) 선반·피킹 칸 → 고회전 여부
     Map<String, Boolean> shelves = new LinkedHashMap<>();
     int atFrom = 0;
@@ -180,7 +183,6 @@ public class MoveService {
     }
     String reject =
         MoveRules.rejection(
-            c.sku(),
             c.fromLocation(),
             c.toLocation(),
             from.highTurnover(),
@@ -188,7 +190,9 @@ public class MoveService {
             c.qty(),
             pickable,
             lot.available(),
-            destSkus,
+            to.categoryId(),
+            skus.categories(c.sku()).orElse(null),
+            shippable,
             shelves,
             atFrom - c.qty(),
             destNow + destIncoming + c.qty(),
@@ -414,6 +418,65 @@ public class MoveService {
         .orElseThrow(() -> PmartException.notFound(MOVE_NOT_FOUND, "이동이 없습니다: " + moveId));
   }
 
+  /** 출하 부적격 LOT 한 줄. */
+  public record Unshippable(
+      String sku,
+      String lotId,
+      java.time.@org.jspecify.annotations.Nullable LocalDate expiryDate,
+      java.time.@org.jspecify.annotations.Nullable LocalDate manufactureDate,
+      String locationCode,
+      @org.jspecify.annotations.Nullable String locationCategoryId,
+      int qty) {}
+
+  /** 선반·피킹 칸의 정상·적치 재고 중 오늘 출하 기준을 못 맞추는 LOT(소비기한 빠른 순, 최대 500). 기준이 없는 상품은 뺀다. */
+  @Transactional(readOnly = true)
+  public List<Unshippable> unshippable(String mfcId) {
+    Operator.requireCenter(mfcId);
+    Instant now = clock.instant();
+    var units = stock.storedUnits(mfcId);
+    var lots =
+        stock.lots(
+            units.stream().map(u -> u.key().lotId()).collect(java.util.stream.Collectors.toSet()));
+    Map<String, Boolean> verdict = new LinkedHashMap<>();
+    List<Unshippable> out = new java.util.ArrayList<>();
+    for (var u : units) {
+      var loc = locations.projection(mfcId, u.key().locationCode()).orElse(null);
+      if (loc == null || !Locations.STORE_ZONES.contains(loc.zone())) {
+        continue;
+      }
+      var lot = lots.get(u.key().lotId());
+      if (lot == null) {
+        continue;
+      }
+      Boolean ok =
+          verdict.computeIfAbsent(
+              u.key().lotId(),
+              id -> {
+                Boolean v =
+                    reservations.shippableToday(
+                        u.key().sku(), id, lot.expiryDate(), lot.manufactureDate(), now);
+                return v == null ? Boolean.TRUE : v; // 기준 없음 — 판정 못 하니 목록에 넣지 않는다
+              });
+      if (!ok) {
+        out.add(
+            new Unshippable(
+                u.key().sku(),
+                u.key().lotId(),
+                lot.expiryDate(),
+                lot.manufactureDate(),
+                u.key().locationCode(),
+                loc.categoryId(),
+                u.qty()));
+      }
+    }
+    out.sort(
+        java.util.Comparator.comparing(
+                Unshippable::expiryDate,
+                java.util.Comparator.nullsLast(java.util.Comparator.<LocalDate>naturalOrder()))
+            .thenComparing(Unshippable::locationCode));
+    return out.size() > 500 ? out.subList(0, 500) : out;
+  }
+
   /** 실사: 이 칸들에 진행 중 이동이 있는가. */
   public boolean busy(String mfcId, List<String> locations) {
     return locations.stream().anyMatch(l -> !moves.openAt(mfcId, l).isEmpty());
@@ -456,7 +519,12 @@ public class MoveService {
           c.fromLocation() + " 에서 옮길 수 있는 양은 " + pickable + "개입니다(다른 주문 배정·보류 제외).";
       case MoveRules.MOVE_QTY_EXCEEDS_AVAILABLE ->
           "LOT " + c.lotId() + " 의 가용이 " + available + "개라 그 이상 옮기면 예약이 판매 가능을 넘습니다.";
-      case MoveRules.LOCATION_HAS_OTHER_SKU -> c.toLocation() + " 에 다른 상품이 있거나 들어올 예정입니다(칸당 한 상품).";
+      case MoveRules.CATEGORY_MISMATCH ->
+          c.toLocation() + " 은 다른 카테고리 칸입니다 — 이 상품의 카테고리 칸이나 기타 칸으로 옮깁니다.";
+      case MoveRules.SKU_CATEGORY_UNKNOWN ->
+          c.sku() + " 의 카테고리를 모릅니다(상품 정보 미수신) — 기타 칸으로만 옮길 수 있습니다.";
+      case MoveRules.LOT_NOT_SHIPPABLE ->
+          "LOT " + c.lotId() + " 은 출하 기준(소비기한)을 못 맞춥니다 — 카테고리 칸이 아니라 기타 칸으로 뺍니다.";
       case MoveRules.SKU_ALREADY_SHELVED -> c.sku() + " 는 이미 다른 칸에 있습니다(한 상품은 한 자리, 고회전 선반 제외).";
       case MoveRules.SKU_SPLIT_NOT_ALLOWED ->
           c.fromLocation() + " 에 " + c.sku() + " 가 남아 두 칸에 나뉩니다 — 전부 옮기거나 고회전 선반으로 옮깁니다.";

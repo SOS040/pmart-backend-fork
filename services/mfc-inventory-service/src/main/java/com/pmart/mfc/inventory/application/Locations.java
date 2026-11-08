@@ -97,7 +97,8 @@ public class Locations {
                 intOrNull(p, "widthMm"),
                 intOrNull(p, "depthMm"),
                 intOrNull(p, "heightMm"),
-                intOrNull(p, "maxWeightG")),
+                intOrNull(p, "maxWeightG"),
+                p.hasNonNull("categoryId") ? p.path("categoryId").asString() : null),
             clock.instant());
     if (n == 0) {
       log.debug("location {} v{} ignored (older)", p.path("locationId").asString(), version);

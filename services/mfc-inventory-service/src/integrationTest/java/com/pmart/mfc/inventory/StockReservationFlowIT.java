@@ -98,6 +98,11 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
 
   /** 치수·고회전이 있는 위치(재고 이동 용량·규칙 시험). */
   void shelf(String code, String zone, int w, int d, int h, boolean highTurnover) {
+    shelf(code, zone, w, d, h, highTurnover, null);
+  }
+
+  void shelf(
+      String code, String zone, int w, int d, int h, boolean highTurnover, String categoryId) {
     String id = "LOC-" + mfc + "-" + code;
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("locationId", id);
@@ -111,6 +116,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     payload.put("widthMm", w);
     payload.put("depthMm", d);
     payload.put("heightMm", h);
+    payload.put("categoryId", categoryId);
     String json =
         EventEnvelopeFixtures.envelope("MfcLocationStateChanged")
             .from("mfc-location-service")
@@ -800,7 +806,8 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     shelf("T-01-01", "PICKING", 10, 10, 10, true); // 아무것도 안 들어감
     shelf("CRT-A-01", "CART", 0, 0, 0, false);
     shelf("CRT-A-02", "CART", 0, 0, 0, false);
-    awaitLocations(8);
+    shelf("K-01-01", "STORAGE", 1000, 600, 400, false, "CAT-SNACK"); // 카테고리 칸
+    awaitLocations(9);
     String sku = newSku();
     handlingOn(sku);
     stocked(sku, 10); // A-01-01
@@ -927,14 +934,40 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
             String.class,
             mfc,
             other);
+    // 칸에 여러 상품 가능(마트 진열대처럼) — 셋째 상품 전부를 sku 가 있는 B-01-01 로
+    String third = newSku();
+    handlingOn(third);
+    stocked(third, 3);
+    String thirdLot =
+        jdbc.queryForObject(
+            "SELECT lot_id FROM stock_unit WHERE mfc_id = ? AND sku = ? LIMIT 1",
+            String.class,
+            mfc,
+            third);
+    Res mixed =
+        move(
+            "/internal/move-allocations",
+            moveBody("MV-2", third, thirdLot, "A-01-01", "B-01-01", 3));
+    assertThat(mixed.status()).as(mixed.body().toString()).isEqualTo(201);
+    // 카테고리 칸: 다른 카테고리 상품·카테고리 모르는 상품은 거절
+    jdbc.update(
+        "INSERT INTO sku_category (sku, category_paths, product_version, updated_at)"
+            + " VALUES (?, 'CAT-FOOD/CAT-DRINK', 1, now())",
+        other);
     assertThat(
             move(
                     "/internal/move-allocations",
-                    moveBody("MV-2", other, otherLot, "A-01-01", "B-01-01", 5))
+                    moveBody("MV-7", other, otherLot, "A-01-01", "K-01-01", 2))
                 .body()
                 .path("code")
                 .asString())
-        .isEqualTo("LOCATION_HAS_OTHER_SKU");
+        .isEqualTo("CATEGORY_MISMATCH");
+    assertThat(
+            move("/internal/move-allocations", moveBody("MV-8", sku, lot, "A-01-01", "K-01-01", 1))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("SKU_CATEGORY_UNKNOWN");
     assertThat(
             move("/internal/move-allocations", moveBody("MV-3", sku, lot, "A-01-01", "B-01-02", 4))
                 .body()
@@ -962,6 +995,40 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
             "/internal/move-allocations",
             moveBody("MV-6", other, otherLot, "A-01-01", "H-01-01", 2));
     assertThat(ht.status()).as(ht.body().toString()).isEqualTo(201); // 고회전 선반은 나눠 둘 수 있다
+
+    // 출하 부적격 LOT(상온 최소 잔여 30일인데 5일 남음): 카테고리 칸 거절, 회수 목록에 나옴, 기타 칸으로는 이동
+    String near = newSku();
+    handlingOn(near);
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(line(near, 3, 0, "REF-NEAR", java.time.LocalDate.now().plusDays(5).toString())));
+    jdbc.update(
+        "INSERT INTO sku_category (sku, category_paths, product_version, updated_at)"
+            + " VALUES (?, 'CAT-FOOD/CAT-SNACK', 1, now())",
+        near);
+    String nearLot =
+        jdbc.queryForObject(
+            "SELECT lot_id FROM stock_unit WHERE mfc_id = ? AND sku = ? LIMIT 1",
+            String.class,
+            mfc,
+            near);
+    assertThat(
+            move(
+                    "/internal/move-allocations",
+                    moveBody("MV-9", near, nearLot, "A-01-01", "K-01-01", 3))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("LOT_NOT_SHIPPABLE");
+    String op = TestJwt.operator("sv-1", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    JsonNode recall = get(op, "/mfcs/" + mfc + "/unshippable-lots").body().path("items");
+    assertThat(recall.findValuesAsString("lotId")).contains(nearLot);
+    assertThat(recall.findValuesAsString("lotId")).doesNotContain(lot); // 소비기한 없는 정상 LOT 은 아님
+    Res misc =
+        move(
+            "/internal/move-allocations",
+            moveBody("MV-10", near, nearLot, "A-01-01", "B-01-02", 3));
+    assertThat(misc.status()).as(misc.body().toString()).isEqualTo(201); // 기타 칸(카테고리 없음)은 받는다
   }
 
   /** 수령 → 검수 → 칸별 적치(같은 LOT 을 여러 칸에). 반환 = lotId. */
