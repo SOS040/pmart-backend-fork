@@ -111,7 +111,7 @@
 | `MfcReceiptPosted` (TIN) | mfc-inventory | cdc-inventory, replenishment, mfc-inbound, transport-execution | receiptId, postingId, trfId, departureId, lines[{sku, lot, normalQty, quarantinedQty, pendingQty}], commitId | ConfirmReceipt COMMITTED 후 `H+r` | ② |
 | `ReceiptCorrectionPosted` | mfc-inventory | cdc-inventory | receiptId, δr, reason | 수령 정정 | ② |
 | `PackageHandedOverPosted` | mfc-inventory | mfc-fulfillment, BI | commitId, packageId, lines[{sku, qty}] | 인계 전기 `H−q, E−q, R−q` | ① |
-| `InventoryExecutionApplied` | mfc-inventory | mfc-fulfillment, mfc-inbound, mfc-quality | requestId, commitId, executionType, appliedQty, result | 작업 실행 반영 결과 | ① |
+| `InventoryExecutionApplied` | mfc-inventory | **mfc-inbound(자동 보충 즉시 점검, 2026-11-08)**, mfc-fulfillment(예정), mfc-quality(예정) | requestId, commitId, executionType, appliedQty, result | 작업 실행 반영 결과 — 성공만 발행(2026-11-08), 거절은 동기 응답 | ① |
 | `StockAdjusted` | mfc-inventory | approval, audit, replenishment | adjId, lines[], approvalRef | 실사 ADJ | ② |
 | `MfcStockAvailable` | mfc-inventory | notification(재입고 알림) | mfcId, sku, availableQty | 정상 판정·판매 준비 후 A>0 전환 | ③ |
 | `SkuHandlingChanged` | mfc-inventory | search(Logstash — 상품 carriedMfcIds) | mfcId, sku, productId?, handlingEnabled, version, changedAt, republished? | 센터 취급 ON/OFF 변경(바뀔 때만). 토픽 `mfc.sku-handling.v1`(무제한 보관 — 재색인 재생). `/internal/sku-handling-republications` 가 지금 상태를 같은 버전으로 다시 알림 (2026-11-05) | ① |
