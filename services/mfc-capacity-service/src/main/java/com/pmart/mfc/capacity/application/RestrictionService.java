@@ -58,6 +58,8 @@ public class RestrictionService {
   private final ObjectMapper mapper;
   private final Clock clock;
 
+  private final ApprovalRefs approvalRefs;
+
   public RestrictionService(
       RestrictionStore store,
       CapacityProperties props,
@@ -65,7 +67,9 @@ public class RestrictionService {
       EventEnvelopeCodec codec,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      ApprovalRefs approvalRefs) {
+    this.approvalRefs = approvalRefs;
     this.store = store;
     this.props = props;
     this.events = events;
@@ -141,6 +145,7 @@ public class RestrictionService {
     if (approvalRef == null || approvalRef.isBlank()) {
       throw new PmartException(ErrorCode.APPROVAL_REQUIRED, "해제에는 승인 근거(approvalRef)가 필요합니다.");
     }
+    approvalRefs.requireUsable(); // 해제만(제한 적용은 보호 동작이라 막지 않음) — 외부 검토 #8
     Row r = store.find(restrictionId, true).orElseThrow();
     Instant now = clock.instant();
     if ("ACTIVE".equals(r.state())) {

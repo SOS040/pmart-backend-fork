@@ -81,6 +81,8 @@ public class CountService {
   /** 진행 중 재고 이동이 있는 칸은 실사를 시작하지 않는다(이동 보류·카트 물량이 장부를 흔든다, IV-03). */
   public static final String MOVE_IN_PROGRESS = "MOVE_IN_PROGRESS";
 
+  private final ApprovalRefs approvalRefs;
+
   public CountService(
       CountStore store,
       StockStore stock,
@@ -92,7 +94,9 @@ public class CountService {
       RequestIdempotency idempotency,
       ObjectMapper mapper,
       Clock clock,
-      com.pmart.mfc.inventory.infrastructure.MoveStore moves) {
+      com.pmart.mfc.inventory.infrastructure.MoveStore moves,
+      ApprovalRefs approvalRefs) {
+    this.approvalRefs = approvalRefs;
     this.moves = moves;
     this.store = store;
     this.stock = stock;
@@ -281,6 +285,7 @@ public class CountService {
     if (approvalRef == null || approvalRef.isBlank()) {
       throw new PmartException(ErrorCode.APPROVAL_REQUIRED, "조정 승인 근거(approvalRef)가 필요합니다.");
     }
+    approvalRefs.requireUsable(); // 승인 번호 검증 전에는 개발 환경만(외부 검토 #8)
     List<String> locs = mapper.readValue(s.locationCodes(), STRINGS);
     for (String l : locs) {
       locations.requireCountLocked(mfcId, l);

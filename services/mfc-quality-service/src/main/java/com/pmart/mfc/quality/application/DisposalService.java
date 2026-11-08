@@ -63,6 +63,8 @@ public class DisposalService {
   private final TransactionTemplate tx;
   private final Clock clock;
 
+  private final ApprovalRefs approvalRefs;
+
   public DisposalService(
       QualityStore store,
       InventoryClient inventory,
@@ -70,7 +72,9 @@ public class DisposalService {
       RequestIdempotency idempotency,
       ObjectMapper mapper,
       PlatformTransactionManager txManager,
-      Clock clock) {
+      Clock clock,
+      ApprovalRefs approvalRefs) {
+    this.approvalRefs = approvalRefs;
     this.store = store;
     this.inventory = inventory;
     this.events = events;
@@ -145,6 +149,9 @@ public class DisposalService {
     if (approve && (cmd.approvalRef() == null || cmd.approvalRef().isBlank())) {
       throw new PmartException(
           ErrorCode.APPROVAL_REQUIRED, "폐기 승인에는 approvalRef(손실 승인 근거)가 필요합니다.");
+    }
+    if (approve) {
+      approvalRefs.requireUsable(); // 승인 번호 검증 전에는 개발 환경만(외부 검토 #8)
     }
     return idempotency
         .execute(

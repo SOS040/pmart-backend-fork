@@ -64,13 +64,17 @@ public class CorrectionService {
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
+  private final ApprovalRefs approvalRefs;
+
   public CorrectionService(
       StockStore stock,
       Ledger ledger,
       Locations locations,
       SkuProjectionStore skus,
       RequestIdempotency idempotency,
-      Clock clock) {
+      Clock clock,
+      ApprovalRefs approvalRefs) {
+    this.approvalRefs = approvalRefs;
     this.stock = stock;
     this.ledger = ledger;
     this.locations = locations;
@@ -84,6 +88,7 @@ public class CorrectionService {
     if (cmd.approvalRef() == null || cmd.approvalRef().isBlank()) {
       throw new PmartException(ErrorCode.APPROVAL_REQUIRED, "정정 근거(approvalRef)가 필요합니다.");
     }
+    approvalRefs.requireUsable(); // 승인 번호 검증 전에는 개발 환경만(외부 검토 #8)
     if (cmd.lines().isEmpty() || cmd.lines().size() > 500) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "정정 줄은 1~500개입니다.");
     }

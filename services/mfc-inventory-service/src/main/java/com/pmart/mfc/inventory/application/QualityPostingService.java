@@ -58,12 +58,16 @@ public class QualityPostingService {
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
+  private final ApprovalRefs approvalRefs;
+
   public QualityPostingService(
       StockStore stock,
       ReservationBlocker blocker,
       Ledger ledger,
       RequestIdempotency idempotency,
-      Clock clock) {
+      Clock clock,
+      ApprovalRefs approvalRefs) {
+    this.approvalRefs = approvalRefs;
     this.stock = stock;
     this.blocker = blocker;
     this.ledger = ledger;
@@ -74,6 +78,9 @@ public class QualityPostingService {
   public CommandResponse post(String requestId, String sourceSystem, Posting in) {
     if (in.approvalRef() == null || in.approvalRef().isBlank()) {
       throw new PmartException(ErrorCode.APPROVAL_REQUIRED, "승인 근거(approvalRef)가 필요합니다.");
+    }
+    if (!"QUARANTINE".equals(in.postingType())) {
+      approvalRefs.requireUsable(); // 해제·폐기만(격리는 보호 동작이라 막지 않음) — 외부 검토 #8
     }
     if (!List.of("QUARANTINE", "RELEASE", "DISPOSE").contains(in.postingType())) {
       throw new PmartException(
