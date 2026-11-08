@@ -2026,6 +2026,71 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("MATCHED");
   }
 
+  /**
+   * 실사 승인 보류 비교(2026-11-08 검토 #12): 실사 시작 뒤 생긴 결품 조사 보류는 이 실사가 본 적이 없다 — 승인이 그 보류를 같이 풀면 안 되므로 단위
+   * 수량이 같아도 보류가 바뀌었으면 BOOK_CHANGED, 보류는 열린 채로 남는다.
+   */
+  @Test
+  void countApprovalRejectsHoldCreatedAfterCountStarted() {
+    String w1 = TestJwt.operator("hw1", List.of("MFC_WORKER"), List.of(mfc));
+    String w2 = TestJwt.operator("hw2", List.of("MFC_WORKER"), List.of(mfc));
+    String s1 = TestJwt.operator("hs1", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(sku, 10);
+    String rid = confirmedReservation("ORD-CNTH", sku, 4);
+    String lot =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
+            .body()
+            .path("parts")
+            .path(0)
+            .path("lotId")
+            .asString();
+    location("A-01-01", "STORAGE", "AMBIENT", "COUNT_LOCKED", 2);
+    awaitSql(
+        "SELECT count(*) FROM location_projection WHERE mfc_id = '"
+            + mfc
+            + "' AND location_code = 'A-01-01' AND state = 'COUNT_LOCKED'",
+        1);
+    Res created = count(w1, "/count-sessions", Map.of("locationCodes", List.of("A-01-01")));
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String base = "/count-sessions/" + created.body().path("sessionId").asString();
+    Map<String, Object> nine =
+        Map.of(
+            "lines",
+            List.of(Map.of("locationCode", "A-01-01", "sku", sku, "lotId", lot, "countedQty", 9)));
+    assertThat(count(w1, base + "/counts", nine).body().path("state").asString())
+        .isEqualTo("RECOUNT_REQUIRED");
+    Res second = count(w2, base + "/counts", nine);
+    assertThat(second.body().path("state").asString()).isEqualTo("PENDING_APPROVAL");
+    assertThat(second.body().path("differences").path(0).path("heldQty").asInt()).isZero();
+
+    // 승인 전에 결품 보고 → 조사 보류 1 (단위 수량 H 는 그대로 10)
+    Res report = shortage("RPT-CNTH", rid, sku, lot, 1, "SHORT");
+    assertThat(report.status()).as(report.body().toString()).isEqualTo(201);
+    assertThat(availability(sku).path("onHand").asInt()).isEqualTo(10);
+
+    Res approve =
+        count(s1, base + "/approvals", Map.of("action", "APPROVE", "approvalRef", "ADJ-H1"));
+    assertThat(approve.status()).as(approve.body().toString()).isEqualTo(409);
+    assertThat(approve.body().path("code").asString()).isEqualTo("BOOK_CHANGED");
+    // 아무것도 바뀌지 않음: 보류는 열린 채, 재고 그대로, 조정 사건 없음
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM stock_hold WHERE source_ref = 'RPT-CNTH' AND state = 'OPEN'",
+                Integer.class))
+        .isEqualTo(1);
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(10);
+    assertThat(av.path("sellable").asInt()).isEqualTo(9);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'StockAdjusted' AND aggregateid = ?",
+                Integer.class,
+                created.body().path("sessionId").asString()))
+        .isZero();
+  }
+
   Res shortage(
       String reportId, String reservationId, String sku, String lot, int qty, String reason) {
     Map<String, Object> b = new LinkedHashMap<>();
