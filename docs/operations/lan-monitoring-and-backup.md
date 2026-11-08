@@ -239,7 +239,7 @@ Kafka 이력 토픽(kafka-1~3) ─▶ logstash-search(pc3) ─▶ es-search prod
   - Prometheus: 2 GB에서 멈춘다.
   - 로그: 4 GB에서 멈춘다.
   - Kafka 이력: 무제한이지만 하루 수 MB 수준이다. 복제 3이라 세 PC 에 같은 양이 쌓인다.
-  - 옛 이미지와 vhdx: 가장 크다. 정리는 결정 대기다.
+  - 옛 이미지와 vhdx: 가장 크다. 2026-11-08 정리함(아래 10장 4번). 배포가 쌓이면 다시 늘어난다.
   - 전환 때 남긴 롤백용 옛 볼륨: pc2 `kafkadata`, pc4 `esdata`·`lsdata`. 전환 확인 뒤 별도 요청으로 지운다.
 
 ## 10. 결정 대기 (운영)
@@ -247,5 +247,5 @@ Kafka 이력 토픽(kafka-1~3) ─▶ logstash-search(pc3) ─▶ es-search prod
 1. ~~경보를 받을 곳~~ → Slack(2026-11-06)
 2. Kafka 백업 외부 보관과 자동화
 3. config-server 지표 열기
-4. 옛 이미지 정리와 vhdx 압축(Docker 정지 필요)
+4. ~~옛 이미지 정리와 vhdx 압축~~ → 2026-11-08 실행(worklog 2026-11-08). PC 1 압축은 관리자 권한이 없어 안 함
 5. ~~Zipkin 저장소~~ → 로그 ES(2026-11-06). 남은 결정: 추적 보존 상한(2GB)·수집 비율
