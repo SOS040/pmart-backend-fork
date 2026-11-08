@@ -2039,6 +2039,16 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     handlingOn(sku);
     stocked(sku, 10);
     String rid = confirmedReservation("ORD-CNTH", sku, 4);
+    // 작업 실행(적치) 반영은 InventoryExecutionApplied 로 알린다(mfc-inbound 보충 즉시 점검, 남은 일 15)
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'InventoryExecutionApplied'"
+                    + " AND topic = 'mfc.inventory.v1' AND payload #>> '{payload,mfcId}' = ?"
+                    + " AND payload #>> '{payload,executionType}' = 'PUTAWAY'"
+                    + " AND payload #>> '{payload,result}' = 'SUCCESS'",
+                Integer.class,
+                mfc))
+        .isEqualTo(1);
     String lot =
         get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
             .body()

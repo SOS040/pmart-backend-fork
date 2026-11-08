@@ -1,5 +1,8 @@
 package com.pmart.mfc.inventory.application;
 
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.messaging.EventEnvelopeCodec;
+import com.pmart.common.messaging.EventPublisher;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.web.CommandResponse;
 import com.pmart.common.web.CommandStatus;
@@ -103,6 +106,8 @@ public class TaskExecutionService {
   private final Clock clock;
   private final LocationAllocationService allocations;
   private final MoveService moves;
+  private final EventPublisher events;
+  private final EventEnvelopeCodec codec;
 
   public TaskExecutionService(
       StockStore stock,
@@ -113,8 +118,12 @@ public class TaskExecutionService {
       RequestIdempotency idempotency,
       Clock clock,
       LocationAllocationService allocations,
-      MoveService moves) {
+      MoveService moves,
+      EventPublisher events,
+      EventEnvelopeCodec codec) {
     this.moves = moves;
+    this.events = events;
+    this.codec = codec;
     this.stock = stock;
     this.ledger = ledger;
     this.locations = locations;
@@ -163,6 +172,7 @@ public class TaskExecutionService {
                   changes(cmd, at),
                   List.of(),
                   at);
+              publishApplied(requestId, commitId, cmd, total, at);
               log.info(
                   "{} {} (task {}) posted to {} as {} ({} units)",
                   cmd.type(),
@@ -175,6 +185,39 @@ public class TaskExecutionService {
                   CommandStatus.APPLIED, requestId, commitId, total, null, false, null, at);
             })
         .value();
+  }
+
+  /**
+   * {@code InventoryExecutionApplied}(mfc.inventory.v1, 사건 카탈로그 — 구독 mfc-inbound 등). 같은 트랜잭션
+   * outbox. 성공한 반영만 알린다(거절은 호출자가 응답으로 안다). mfc-inbound 는 이것으로 자동 보충을 바로 점검한다(2026-11-08 남은 일 15).
+   */
+  private void publishApplied(
+      String requestId, String commitId, ExecCommand cmd, int total, Instant at) {
+    Map<String, Object> p = new java.util.LinkedHashMap<>();
+    p.put("requestId", requestId);
+    p.put("commitId", commitId);
+    p.put("executionType", cmd.type().name());
+    p.put("mfcId", cmd.mfcId());
+    p.put("appliedQty", total);
+    p.put(
+        "lines",
+        cmd.lines().stream()
+            .map(l -> Map.<String, Object>of("sku", l.sku(), "lot", l.lotId(), "qty", l.qty()))
+            .toList());
+    p.put("result", "SUCCESS");
+    p.put("appliedAt", at.toString());
+    events.publish(
+        codec.create(
+            events.sourceSystem(),
+            "InventoryExecutionApplied",
+            1,
+            "InventoryExecution",
+            cmd.executionId(),
+            1,
+            new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+            EventEnvelope.EventSource.REAL,
+            p),
+        HandoverPostingService.TOPIC);
   }
 
   private static void validate(ExecCommand cmd) {
