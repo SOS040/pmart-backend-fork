@@ -70,6 +70,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired com.pmart.mfc.fulfillment.application.WorkStopService stops;
+  @Autowired com.pmart.mfc.fulfillment.application.TaskService taskService;
 
   @InjectWireMock("inv")
   WireMockServer inv;
@@ -605,6 +606,85 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
    * 예약 보류분은 피킹 시작 때 결품으로(2026-11-08 #5 안 C): pick-plan 에 BLOCKED 조각(L2 1개)이 있으면 시작 직후 작업 BLOCKED +
    * LineShortageReported(reason BLOCKED, shortQty 1) — inventory 결품 보고는 부르지 않는다.
    */
+  /** 피킹 중(시작 뒤) 생긴 예약 보류: ReservationBlocked → 점검 표시 → 주기 점검이 결품으로(#5 남은 빈틈 — 집품이 더 없어도). */
+  @Test
+  void reservationBlockedDuringPickingIsReportedWithoutAnotherPick() throws Exception {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    plan(o, 0, 0, 0, 0, 0, 0);
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    assertThat(call("GET", VIEWER, "/tasks/" + pick, null, null).body().path("state").asString())
+        .isEqualTo("IN_PROGRESS");
+
+    // 그 뒤 L2 가 격리로 보류됨
+    Map<String, Object> blockedPart =
+        new LinkedHashMap<>(part("L2", "E-00000002", "LOT-C", null, 1, 0, 0, "C-S1-01-1-01"));
+    blockedPart.put("state", "BLOCKED");
+    inv.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/pick-plan"))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "reservationId",
+                        "RSV-" + o,
+                        "state",
+                        "CONFIRMED",
+                        "parts",
+                        List.of(
+                            part(
+                                "L1", "E-00000001", "LOT-A", "2026-11-20", 2, 0, 0, "A-S1-01-1-01"),
+                            blockedPart)))));
+    String json =
+        EventEnvelopeFixtures.envelope("ReservationBlocked")
+            .from("mfc-inventory-service")
+            .aggregate("Reservation", "RSV-" + o, 5)
+            .payload(
+                Map.of(
+                    "reservationId",
+                    "RSV-" + o,
+                    "orderId",
+                    o,
+                    "mfcId",
+                    MFC,
+                    "sku",
+                    "E-00000002",
+                    "lot",
+                    "LOT-C",
+                    "blockedQty",
+                    1,
+                    "reason",
+                    "QUALITY_HOLD"))
+            .buildJson();
+    kafka.send("mfc.inventory.v1", "RSV-" + o, json).join();
+    long until = System.currentTimeMillis() + 30_000;
+    Integer due = 0;
+    while (System.currentTimeMillis() < until) {
+      due =
+          jdbc.queryForObject(
+              "SELECT COUNT(*) FROM task WHERE task_id = ? AND blocked_check_due_at IS NOT NULL",
+              Integer.class,
+              pick);
+      if (due != null && due > 0) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(due).isEqualTo(1);
+    taskService.sweepBlockedChecks();
+    JsonNode t = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
+    assertThat(t.path("state").asString()).isEqualTo("BLOCKED");
+    assertThat(outbox("LineShortageReported", o)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM task WHERE task_id = ? AND blocked_check_due_at IS NULL",
+                Integer.class,
+                pick))
+        .isEqualTo(1);
+  }
+
   @Test
   void blockedReservationPartBecomesShortageAtPickStart() {
     String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);

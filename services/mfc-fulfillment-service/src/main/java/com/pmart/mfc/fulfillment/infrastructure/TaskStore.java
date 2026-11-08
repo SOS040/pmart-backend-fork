@@ -180,6 +180,28 @@ public class TaskStore {
         taskId);
   }
 
+  /** 그 예약의 진행 중 PICK 에 보류 점검 표시(#5). @return 표시한 작업 수 */
+  public int markBlockedCheck(String reservationId, Instant at) {
+    return jdbc.update(
+        "UPDATE task t SET blocked_check_due_at = ? FROM shipment s, work_order w"
+            + " WHERE s.shipment_id = t.shipment_id AND w.fulfillment_id = s.fulfillment_id"
+            + " AND w.reservation_id = ? AND t.task_type = 'PICK' AND t.state = 'IN_PROGRESS'",
+        java.sql.Timestamp.from(at),
+        reservationId);
+  }
+
+  public List<String> blockedCheckDue(int limit) {
+    return jdbc.queryForList(
+        "SELECT task_id FROM task WHERE blocked_check_due_at IS NOT NULL"
+            + " ORDER BY blocked_check_due_at LIMIT ?",
+        String.class,
+        limit);
+  }
+
+  public void clearBlockedCheck(String taskId) {
+    jdbc.update("UPDATE task SET blocked_check_due_at = NULL WHERE task_id = ?", taskId);
+  }
+
   public Optional<TaskInfo> sibling(String shipmentId, String taskType) {
     return jdbc
         .query(

@@ -16,6 +16,15 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 class AssignmentEventConsumers {
 
+  /**
+   * mfc-inventory 사건(mfc.inventory.v1, 바인딩 inventoryEvents-in-0) — ReservationBlocked 만 진행 중 피킹 점검
+   * 표시(#5).
+   */
+  @Bean
+  PmartEventConsumer inventoryEvents(EventConsumers consumers, TaskService tasks) {
+    return consumers.of(tasks::onInventoryEvent);
+  }
+
   @Bean
   PmartEventConsumer assignmentEvents(EventConsumers consumers, TaskService tasks) {
     return consumers.of(

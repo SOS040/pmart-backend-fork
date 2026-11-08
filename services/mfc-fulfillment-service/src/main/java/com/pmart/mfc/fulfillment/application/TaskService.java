@@ -322,6 +322,32 @@ public class TaskService {
     return started;
   }
 
+  /** mfc.inventory.v1 ReservationBlocked(inbox 트랜잭션 안) — 진행 중 PICK 에 점검 표시만(외부 호출 없음). */
+  public void onInventoryEvent(com.pmart.common.messaging.EventEnvelope e) {
+    if (!"ReservationBlocked".equals(e.eventType())) {
+      return;
+    }
+    String rid = e.payload().path("reservationId").asString(null);
+    if (rid != null && store.markBlockedCheck(rid, clock.instant()) > 0) {
+      log.info("예약 {} 보류 — 진행 중 피킹 점검 예정", rid);
+    }
+  }
+
+  /** 표시된 작업의 보류 점검(#5 — 마지막 집품 뒤 생긴 보류도). 실패는 표시를 남겨 다음 주기에. */
+  @org.springframework.scheduling.annotation.Scheduled(
+      fixedDelayString = "${pmart.fulfillment.blocked-check-interval:PT10S}",
+      initialDelayString = "PT20S")
+  public void sweepBlockedChecks() {
+    for (String taskId : store.blockedCheckDue(50)) {
+      try {
+        reportBlocked(taskId);
+        store.clearBlockedCheck(taskId);
+      } catch (RuntimeException ex) {
+        log.warn("작업 {} 보류 점검 실패(다음 주기): {}", taskId, ex.getMessage());
+      }
+    }
+  }
+
   /**
    * 예약 보류분 → 결품(2026-11-08 사용자 결정 #5 안 C): 피킹 시작 때(그리고 집품마다) 이 주문 예약에 BLOCKED 조각(격리·실사 손실로 보류되고 다시
    * 못 잡은 양)이 남아 있으면 결품 보고와 같게 작업 BLOCKED + {@code LineShortageReported}(reason BLOCKED) — 결품 사가가 고객

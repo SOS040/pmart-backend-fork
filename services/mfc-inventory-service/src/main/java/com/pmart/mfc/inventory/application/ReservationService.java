@@ -473,6 +473,7 @@ public class ReservationService {
                     List.of());
               }
               Map<String, Integer> held = reservations.heldBySku(reservationId);
+              Map<String, Integer> releasedLines = new LinkedHashMap<>(held);
               if (!StockRules.isFullRelease(lines, held)) {
                 throw new PmartException(
                     PARTIAL_RELEASE_NOT_SUPPORTED,
@@ -486,6 +487,7 @@ public class ReservationService {
               int total =
                   unreserve(
                       r, ReservationState.RELEASED, reason, version, requestId, sourceSystem, at);
+              publishReleased(r, reason, releasedLines, version, at);
               log.info("reservation {} RELEASED ({}, {} units)", reservationId, reason, total);
               return new CommandResponse(
                   CommandStatus.APPLIED, requestId, reservationId, total, version, false, null, at);
@@ -812,6 +814,37 @@ public class ReservationService {
           at);
     }
     return res.allocations();
+  }
+
+  /**
+   * InventoryReleased(mfc.inventory.v1, 2026-11-08 — 사건 목록에 있던 것, 처음 발행). 해제가 실제로 바뀐 때만(이미 끝난 해제는
+   * 사건 없음). 구독: mfc-inbound(가용이 생겨 자동 보충 즉시 점검), 예정 order-orchestration·cart. 같은 트랜잭션 outbox.
+   */
+  private void publishReleased(
+      ReservationRow r, String reason, Map<String, Integer> lines, int version, Instant at) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("reservationId", r.reservationId());
+    payload.put("orderId", r.orderId());
+    payload.put("mfcId", r.mfcId());
+    payload.put("reason", reason);
+    payload.put(
+        "lines",
+        lines.entrySet().stream()
+            .map(e -> Map.<String, Object>of("sku", e.getKey(), "qty", e.getValue()))
+            .toList());
+    payload.put("releasedAt", at.toString());
+    events.publish(
+        codec.create(
+            events.sourceSystem(),
+            "InventoryReleased",
+            1,
+            "Reservation",
+            r.reservationId(),
+            version,
+            new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+            EventEnvelope.EventSource.REAL,
+            payload),
+        TOPIC);
   }
 
   /** ReservationBlocked(mfc.inventory.v1) — 못 잡은 이행부족 D. 호출자 트랜잭션 안. */

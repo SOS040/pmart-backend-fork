@@ -593,6 +593,14 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
             Map.of("reason", "SAGA_COMPENSATION"));
     assertThat(rerelease.status()).isEqualTo(200);
     assertThat(rerelease.body().path("appliedQty").asInt()).isZero();
+    // 해제가 실제로 바뀐 한 번만 InventoryReleased(2026-11-08)
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'InventoryReleased' AND aggregateid = ?"
+                    + " AND payload #>> '{payload,reason}' = 'CANCEL_BEFORE_PICK'",
+                Integer.class,
+                reservationId))
+        .isEqualTo(1);
     assertThat(availability(a).path("available").asInt()).isEqualTo(5);
     Res confirmReleased =
         post(
