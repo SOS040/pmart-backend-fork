@@ -12,3 +12,8 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
   3. **포장 중 결품·취소**: 출고가 취소되면(주문 취소 → mfc `WorkStopResult`, 결품으로 출고 수량이 줄면 `PackingFinished` 내용) 배차를 취소·조정한다. 배정된 라이더가 있으면 `DeliveryCancelledBeforePickup`(MFC 는 이것으로 배정을 푼다).
   4. 라이더 단계(D-4): 일시 중지·계약 종료 라이더의 배정을 풀고(`DeliveryAssignmentChanged`) 재배정. 신규배차 제한 라이더는 배정분 그대로.
 - **MFC 쪽 보충(delivery-dispatch 가 생기면)**: 없음. 필요하면 점원 화면에 라이더 ETA(`Shipment.riderEta`, 지금 비어 있음)를 delivery 사건으로 채운다.
+
+## DD-1 에 덧붙임 (2026-11-09 조사)
+- S3 취소 사가의 배차 취소 단계 — 모든 포장이 STOPPED 일 때만(`package-handover-contract.md`, `cancel-vs-handover.md`, orchestration `CancellationRules`).
+- DeliveryType 불일치 정리(사건 NORMAL/SPLIT vs API FORWARD).
+- DispatchFailed 사유 값 정리(`package-handover-decisions.md` D-9).

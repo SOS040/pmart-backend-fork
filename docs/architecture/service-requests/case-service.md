@@ -30,3 +30,13 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 | R-1 | order | "이행 확인 필요" 에 케이스 ID 연결(선택) |
 | R-2 | claim | 운영자(고객센터) 취소 명령 — channel CS, PREPARING 허용, 권한·사유 검사 |
 | R-2 | order-orchestration | 없음(기존 S3) |
+
+## R-3. 사가·결제 상신 받기 (2026-11-09 기록)
+
+- **요청한 곳**: order-orchestration, payment.
+- **지금**: 아래 사건은 **실제로 발행되지만 아무도 구독하지 않는다**. 사람이 사가 행 `last_error`·`GET /internal/sagas` 로 찾는다.
+- **case-service 가 할 것**
+  1. `ReconciliationRequired`·`CompensationExecuted`(orchestration), `PaymentResultUnknown`(장기 불명)·`PaymentMismatch`(payment) 구독 → 케이스 열기.
+  2. 사가 ESCALATED(S1·S3·결품 사가의 업무 거절) 상신 경로 — 사건으로 받을지 직접 호출로 받을지 함께 정한다.
+- **사용자 결정**: 문서에 없음 — 케이스 유형·담당·처리 기한은 case 구현 때 질문.
+- 근거: `docs/architecture/events.md`, `docs/business/flows/cancel-vs-handover.md`, `services/order-orchestration-service/CLAUDE.md`(상태).
