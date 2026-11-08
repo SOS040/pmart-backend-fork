@@ -348,59 +348,18 @@ public class PlanService {
         }
       }
     }
-    CommitOutcome out =
-        idempotency
-            .execute(
-                new RequestKey(sourceSystem, requestId, "commitAssignmentPlan", me),
-                List.of(planId),
-                CommitOutcome.class,
-                () -> {
-                  PlanRow p = plans.lock(planId).orElseThrow(() -> notFound(planId));
-                  if ("COMMITTED".equals(p.state())) {
-                    return new CommitOutcome(List.of());
-                  }
-                  if (!"PROPOSED".equals(p.state())) {
-                    return new CommitOutcome(p.staleReasons());
-                  }
-                  List<String> stale = new ArrayList<>();
-                  Map<String, Optional<AssignmentRow>> locked = new HashMap<>();
-                  for (ItemRow i : items) {
-                    TaskView t = now.get(i.taskId());
-                    if (t == null || t.version() != i.taskVersion()) {
-                      stale.add("TASK_CHANGED:" + i.taskId());
-                      continue;
-                    }
-                    Optional<AssignmentRow> a = assignments.lockActive(i.taskId());
-                    locked.put(i.taskId(), a);
-                    if (a.isPresent()) {
-                      stale.add("TASK_ALREADY_ASSIGNED:" + i.taskId());
-                    }
-                    var w = workers.find(p.mfcId(), i.workerId());
-                    String reject =
-                        w.isEmpty()
-                            ? WorkerRules.WORKER_NOT_REGISTERED
-                            : WorkerRules.rejection(
-                                profile(p.mfcId(), w.get()), i.taskType(), null);
-                    if (reject != null || w.get().dutyVersion() != i.dutyVersion()) {
-                      stale.add("WORKER_CHANGED:" + i.workerId());
-                    }
-                  }
-                  if (!stale.isEmpty()) {
-                    List<String> uniq = stale.stream().distinct().toList();
-                    plans.markStale(planId, uniq);
-                    log.info("배정 추천 {} STALE: {}", planId, uniq);
-                    return new CommitOutcome(uniq);
-                  }
-                  Instant at = clock.instant();
-                  for (ItemRow i : items) {
-                    assignmentService.insertFromPlan(
-                        p.mfcId(), i.taskId(), i.taskType(), i.workerId(), planId, me, at);
-                  }
-                  plans.markCommitted(planId, me, at);
-                  log.info("배정 추천 {} 확정 {}건 by {}", planId, items.size(), me);
-                  return new CommitOutcome(List.of());
-                })
-            .value();
+    CommitOutcome out;
+    try {
+      out = commitOnce(requestId, sourceSystem, planId, me, items, now);
+    } catch (org.springframework.dao.DuplicateKeyException race) {
+      // 재검사 뒤 같은 작업에 동시에 다른 배정이 들어갔다 — 전부 되돌려졌다. 다음 확정 시도가 TASK_ALREADY_ASSIGNED 로 STALE 처리한다
+      throw new PmartException(
+          PLAN_STALE,
+          HttpStatus.CONFLICT,
+          "확정하는 동안 같은 작업에 다른 배정이 들어가 확정하지 않았습니다 — 다시 계산합니다.",
+          false,
+          List.of());
+    }
     if (!out.stale().isEmpty()) {
       throw new PmartException(
           PLAN_STALE,
@@ -410,6 +369,66 @@ public class PlanService {
           List.of());
     }
     return view(planId);
+  }
+
+  private CommitOutcome commitOnce(
+      String requestId,
+      String sourceSystem,
+      String planId,
+      String me,
+      List<ItemRow> items,
+      Map<String, TaskView> now) {
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "commitAssignmentPlan", me),
+            List.of(planId),
+            CommitOutcome.class,
+            () -> {
+              PlanRow p = plans.lock(planId).orElseThrow(() -> notFound(planId));
+              if ("COMMITTED".equals(p.state())) {
+                return new CommitOutcome(List.of());
+              }
+              if (!"PROPOSED".equals(p.state())) {
+                return new CommitOutcome(p.staleReasons());
+              }
+              List<String> stale = new ArrayList<>();
+              Map<String, Optional<AssignmentRow>> locked = new HashMap<>();
+              for (ItemRow i : items) {
+                TaskView t = now.get(i.taskId());
+                if (t == null || t.version() != i.taskVersion()) {
+                  stale.add("TASK_CHANGED:" + i.taskId());
+                  continue;
+                }
+                Optional<AssignmentRow> a = assignments.lockActive(i.taskId());
+                locked.put(i.taskId(), a);
+                if (a.isPresent()) {
+                  stale.add("TASK_ALREADY_ASSIGNED:" + i.taskId());
+                }
+                var w = workers.find(p.mfcId(), i.workerId());
+                String reject =
+                    w.isEmpty()
+                        ? WorkerRules.WORKER_NOT_REGISTERED
+                        : WorkerRules.rejection(profile(p.mfcId(), w.get()), i.taskType(), null);
+                if (reject != null || w.get().dutyVersion() != i.dutyVersion()) {
+                  stale.add("WORKER_CHANGED:" + i.workerId());
+                }
+              }
+              if (!stale.isEmpty()) {
+                List<String> uniq = stale.stream().distinct().toList();
+                plans.markStale(planId, uniq);
+                log.info("배정 추천 {} STALE: {}", planId, uniq);
+                return new CommitOutcome(uniq);
+              }
+              Instant at = clock.instant();
+              for (ItemRow i : items) {
+                assignmentService.insertFromPlan(
+                    p.mfcId(), i.taskId(), i.taskType(), i.workerId(), planId, me, at);
+              }
+              plans.markCommitted(planId, me, at);
+              log.info("배정 추천 {} 확정 {}건 by {}", planId, items.size(), me);
+              return new CommitOutcome(List.of());
+            })
+        .value();
   }
 
   // ---------- 조회 ----------

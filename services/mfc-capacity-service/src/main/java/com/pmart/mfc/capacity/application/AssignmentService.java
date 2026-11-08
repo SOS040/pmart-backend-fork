@@ -227,32 +227,14 @@ public class AssignmentService {
                 java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
             .thenComparing(Candidate::taskId));
     for (var t : candidates) {
-      AssignmentRow made =
-          java.util.Objects.requireNonNull(tx)
-              .execute(
-                  s -> {
-                    if (store.lockActive(t.taskId()).isPresent()) {
-                      return null; // 다른 작업자가 먼저(또는 센터 관리자 배정)
-                    }
-                    Instant at = clock.instant();
-                    AssignmentRow row =
-                        new AssignmentRow(
-                            "ASG-" + UUID.randomUUID(),
-                            mfcId,
-                            t.taskId(),
-                            t.taskType(),
-                            workerId,
-                            store.maxVersion(t.taskId()) + 1,
-                            "ACTIVE",
-                            null,
-                            SYSTEM,
-                            "NEXT_TASK",
-                            at,
-                            null);
-                    store.insert(row);
-                    publish(row, SYSTEM);
-                    return row;
-                  });
+      AssignmentRow made;
+      try {
+        made = tryAssignNext(mfcId, workerId, t);
+      } catch (org.springframework.dao.DuplicateKeyException race) {
+        // 활성 배정이 없을 때는 FOR UPDATE 로 잠글 행이 없다 — 동시에 같은 작업을 잡으면 부분 유일 인덱스가 한쪽을 막는다. 진 쪽은 다음 후보로
+        log.info("다음 작업 {} 경합 — 다른 배정이 먼저, 다음 후보로", t.taskId());
+        continue;
+      }
       if (made != null) {
         log.info("다음 작업 {} {} → {} (시스템 배정)", made.taskType(), made.taskId(), workerId);
         return new Assigned(made, true, List.of());
@@ -264,6 +246,35 @@ public class AssignmentService {
         "지금 받을 수 있는 작업이 없습니다.",
         true,
         List.of());
+  }
+
+  /** 후보 하나를 한 트랜잭션에서 배정. 이미 활성 배정이 있으면 null. 동시 삽입 경합은 DuplicateKeyException(호출자가 다음 후보로). */
+  private @Nullable AssignmentRow tryAssignNext(String mfcId, String workerId, Candidate t) {
+    return java.util.Objects.requireNonNull(tx)
+        .execute(
+            s -> {
+              if (store.lockActive(t.taskId()).isPresent()) {
+                return null; // 다른 작업자가 먼저(또는 센터 관리자 배정)
+              }
+              Instant at = clock.instant();
+              AssignmentRow row =
+                  new AssignmentRow(
+                      "ASG-" + UUID.randomUUID(),
+                      mfcId,
+                      t.taskId(),
+                      t.taskType(),
+                      workerId,
+                      store.maxVersion(t.taskId()) + 1,
+                      "ACTIVE",
+                      null,
+                      SYSTEM,
+                      "NEXT_TASK",
+                      at,
+                      null);
+              store.insert(row);
+              publish(row, SYSTEM);
+              return row;
+            });
   }
 
   /**
@@ -333,6 +344,20 @@ public class AssignmentService {
         workers.offShift(cmd.mfcId(), cmd.workerId(), clock.instant())
             ? List.of(com.pmart.mfc.capacity.domain.WorkerRules.OFF_SHIFT)
             : List.of();
+    try {
+      return assignOnce(requestId, sourceSystem, cmd, supervisor, warnings);
+    } catch (org.springframework.dao.DuplicateKeyException race) {
+      // 같은 작업에 동시에 다른 배정(다음 작업 받기·다른 센터 관리자)이 먼저 들어갔다 — 500 이 아니라 버전 충돌로
+      throw PmartException.versionConflict("같은 작업에 동시에 다른 배정이 들어갔습니다 — 다시 조회한 뒤 배정하세요.");
+    }
+  }
+
+  private Assigned assignOnce(
+      String requestId,
+      String sourceSystem,
+      AssignCommand cmd,
+      String supervisor,
+      List<String> warnings) {
     return idempotency
         .execute(
             new RequestKey(sourceSystem, requestId, "assignTask", supervisor),

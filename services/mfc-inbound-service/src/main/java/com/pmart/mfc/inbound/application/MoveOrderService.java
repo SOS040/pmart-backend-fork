@@ -23,9 +23,9 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 
 /**
- * 재고 위치 이동 지시(IV-03, 2026-11-08 사용자 결정: MFC 선반 간 이동은 센터 관리자 지시, 작업자가 카트를 거쳐 두 단계 실행 — CDC 는 시스템 지시).
- * 수량·칸 규칙은 mfc-inventory 이동 배정이 판정하고, 여기는 지시·실행 사본을 inventory 응답으로 맞춘다. moveId 는 지시 요청 키에서 정해져 같은
- * 키로 다시 해도 같은 이동이다. 실행(집어 올리기·내려놓기)의 inventory 실행 ID = moveId + 요청 키 — 같은 키는 한 번.
+ * 재고 위치 이동 지시(IV-03, 2026-11-08 사용자 결정: MFC 선반 간 이동은 센터 관리자 지시, 작업자가 카트를 거쳐 두 단계 실행 — CDC 는 시스템
+ * 지시). 수량·칸 규칙은 mfc-inventory 이동 배정이 판정하고, 여기는 지시·실행 사본을 inventory 응답으로 맞춘다. moveId 는 지시 요청 키에서 정해져
+ * 같은 키로 다시 해도 같은 이동이다. 실행(집어 올리기·내려놓기)의 inventory 실행 ID = moveId + 요청 키 — 같은 키는 한 번.
  */
 @Service
 public class MoveOrderService {

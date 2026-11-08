@@ -26,9 +26,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 작업자·업무·근무(WK-02 입력, V5). 사용자 결정(2026-11-08): 센터 관리자가 등록하고, 업무가 바뀌어도 로그인 정보는 그대로 — workerId(운영자 ID)는
- * 바꾸지 않는 열쇠이고 업무(작업 유형·온도대 자격)는 버전마다 따로 남는다. 상태(ACTIVE·SUSPENDED·LEFT)는 새 배정만 막고 로그인·센터 권한(auth)은
- * 건드리지 않는다. 업무·상태가 바뀌어도 기존 배정은 지우지 않고 맞지 않는 것을 알려 준다.
+ * 작업자·업무·근무(WK-02 입력, V5). 사용자 결정(2026-11-08): 센터 관리자가 등록하고, 업무가 바뀌어도 로그인 정보는 그대로 — workerId(운영자
+ * ID)는 바꾸지 않는 열쇠이고 업무(작업 유형·온도대 자격)는 버전마다 따로 남는다. 상태(ACTIVE·SUSPENDED·LEFT)는 새 배정만 막고 로그인·센터
+ * 권한(auth)은 건드리지 않는다. 업무·상태가 바뀌어도 기존 배정은 지우지 않고 맞지 않는 것을 알려 준다.
  */
 @Service
 public class WorkerService {

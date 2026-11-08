@@ -156,6 +156,61 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 여러 작업자가 동시에 하나 남은 작업을 받으려 하면 한 명만 받고 나머지는 409 NO_TASK_AVAILABLE — 500 이 나면 안 된다(2026-11-09 결함:
+   * 활성 배정이 없을 때 FOR UPDATE 가 잠글 행이 없어 동시 삽입이 유일 인덱스에 걸리면 진 쪽이 500).
+   */
+  @Test
+  void concurrentPullsOnTheLastTaskGiveItToExactlyOneWorker() throws Exception {
+    for (int round = 0; round < 5; round++) {
+      String s = UUID.randomUUID().toString().substring(0, 6);
+      String only = "T-RC-" + s;
+      tasks(List.of(task(only, "PICK", "READY", 1, null, 30)), "READY", "ASSIGNED", "IN_PROGRESS");
+      int n = 6;
+      List<String> ws = new java.util.ArrayList<>();
+      for (int i = 0; i < n; i++) {
+        String w = "rc" + i + "-" + s;
+        register(w, List.of("PICK"));
+        ws.add(w);
+      }
+      var start = new java.util.concurrent.CountDownLatch(1);
+      var pool = java.util.concurrent.Executors.newFixedThreadPool(n);
+      try {
+        List<java.util.concurrent.Future<Res>> fs = new java.util.ArrayList<>();
+        for (String w : ws) {
+          String tok = TestJwt.operator(w, List.of("MFC_WORKER"), List.of(MFC));
+          fs.add(
+              pool.submit(
+                  () -> {
+                    start.await();
+                    return send(
+                        "POST", tok, "/mfcs/" + MFC + "/workers/" + w + "/next-tasks", null);
+                  }));
+        }
+        start.countDown();
+        List<Res> rs = new java.util.ArrayList<>();
+        for (var f : fs) {
+          rs.add(f.get(30, java.util.concurrent.TimeUnit.SECONDS));
+        }
+        assertThat(rs)
+            .allSatisfy(r -> assertThat(r.status()).as(r.body().toString()).isIn(201, 409));
+        assertThat(rs).filteredOn(r -> r.status() == 201).hasSize(1);
+        assertThat(rs)
+            .filteredOn(r -> r.status() == 409)
+            .allSatisfy(
+                r -> assertThat(r.body().path("code").asString()).isEqualTo("NO_TASK_AVAILABLE"));
+        assertThat(
+                jdbc.queryForObject(
+                    "SELECT count(*) FROM task_assignment WHERE task_id = ? AND state = 'ACTIVE'",
+                    Integer.class,
+                    only))
+            .isEqualTo(1);
+      } finally {
+        pool.shutdownNow();
+      }
+    }
+  }
+
+  /**
    * 다음 작업 받기(0.6.0): 업무 안의 담당 없는 READY 작업 중 약속 이른 PICK → (그다음) 복귀 순, 한 번에 하나(다시 부르면 같은 배정), 본인만, 줄
    * 작업 없음 409, 등록 근무 밖 409.
    */
