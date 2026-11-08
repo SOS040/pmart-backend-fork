@@ -32,3 +32,12 @@
 | 백오피스 작업 감시 | fulfillment `GET /tasks` 의 `late`·`idle`·`lastActivityAt` |
 | 이동 지시 | inbound 지시 본문 `urgent`, 응답 `assigneeId`·`pickedBy`, 거절 `NOT_ASSIGNEE`·`NOT_PICKER` |
 - MFC 는 온도대 출입 자격이 없다 — 업무의 `temperatureZones` 는 선택(기록만).
+
+## 추가(같은 날 밤): 응답 다듬기 구현됨 (fulfillment 0.4.9, capacity 0.9.1 — LAN 배포)
+| 계획 | 구현 |
+|---|---|
+| 피킹 칸 상태 | `lines[].picks[]` 에 `pickStatus`(OK·PARTIAL·NOT_FOUND·DONE), `unallocatedQty`, `notice`(그대로 보일 안내 — 예 "어느 칸에서도 못 찾음 — 감독자 확인"). PICK 작업만 |
+| 확인 필요 포장 목록 | `GET /api/v1/packages?mfcId={mfcId}&checkRequired=true` → `items[]` = HandoverResolution(+ `shipmentId`·`orderId`·`packingLocation`·`riderId`), 만료 오래된 순 |
+| 작업 목록 | `GET /tasks` 항목에 `headline{productName, otherLineCount}`("상품명 외 N건") — 목록에도 `lineCount`·`plannedQty`·`completedQty`·`remainingQty` 채움. 칸은 목록에 없음(상세·다음 작업 받기에서) |
+| 다음 작업 받기 상세 | 응답 `detail{available, promisedReadyAt, urgent, packingLocations[], lines[{sku, productName, lotId, expiresOn, qty, fromLocation, toLocation, notice}]}`. `available=false` 면 상세 API(`/tasks/{id}`·`/move-orders/{id}`)를 직접 부른다. 이동은 `productName` 없음 |
+| 거절 응답 짧은 안내 | **안 함** — 오류 모양은 전 서비스 공통이라 바꾸지 않았다. 화면 문구는 `code` 로 매핑해 주세요(`detail` 은 한국어 설명). 꼭 필요하면 요청서로 |
