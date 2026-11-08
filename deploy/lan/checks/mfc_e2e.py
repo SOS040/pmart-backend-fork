@@ -348,4 +348,12 @@ if mv:
     carry(mv2, "되돌림")
 else:
     step("이동 지시(고회전 칸)", (409, {"code": "NO_CANDIDATE"}), 201)
+# 7. 배정 추천(OR-Tools)에 열린 이동이 들어가는가(capacity 0.9.2) — 추천만, 확정 안 함. 이동 지시는 취소해 둔다
+mv3 = try_move(units, hot[:5], False)
+step("추천용 이동 지시", (201 if mv3 else 409, mv3 or {}), 201)
+pl = step("배정 추천 계산", http("POST", f"{GW}/assignment-plans", sup, {"mfcId": MFC, "horizonMinutes": 60}), 201)
+ids = [i.get("taskId") for i in pl.get("items", [])] + [u.get("taskId") for u in pl.get("unassigned", [])]
+print("     추천", pl.get("state"), "항목", len(pl.get("items", [])), "미배정", [(u.get("taskId"), u.get("reason")) for u in pl.get("unassigned", [])][:5], pl.get("limitations"))
+step("추천에 이동 지시 포함", (200 if mv3["moveId"] in ids else 409, {}), 200)
+step("추천용 이동 취소", http("POST", f"{GW}/move-orders/{mv3['moveId']}/cancellations", sup, {"reason": "E2E 추천 확인 뒤 취소"}), 200)
 summary()

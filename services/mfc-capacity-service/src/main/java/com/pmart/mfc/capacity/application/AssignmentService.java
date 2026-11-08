@@ -90,6 +90,25 @@ public class AssignmentService {
     this.inbound = inbound;
   }
 
+  /** 열린 이동 지시(배정 추천용). 이동 조회를 안 쓰면 빈 목록, 조회 실패면 null(추천은 이동 없이 — 한계로 남긴다). */
+  public @Nullable List<com.pmart.mfc.capacity.infrastructure.InboundClient.MoveView> openMoves(
+      String mfcId) {
+    if (inbound == null || !inbound.configured()) {
+      return List.of();
+    }
+    try {
+      return inbound.openMoves(mfcId);
+    } catch (RuntimeException ex) {
+      log.warn("이동 지시 조회 실패 — 배정 추천에서 이동 제외: {}", ex.getMessage());
+      return null;
+    }
+  }
+
+  /** 정해진 순서의 앞섬(배정 추천 미배정 벌점용) — 다음 작업 받기 순서와 같다. 긴급 이동은 보충과 같다. */
+  public static int priority(String taskType, boolean urgent) {
+    return 3 - Math.min(3, urgent ? rank("REPLENISH") : rank(taskType));
+  }
+
   /** 받은 작업의 상세(0.9.1) — 읽지 못하면 available=false(배정은 그대로). */
   public NextTaskDetails.Detail detailOf(String taskId, String taskType) {
     try {

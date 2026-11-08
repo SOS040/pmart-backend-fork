@@ -119,7 +119,29 @@ public class PlanService {
     Instant end = now.plus(Duration.ofMinutes(horizon));
 
     // 입력 모으기(트랜잭션 밖)
-    List<TaskView> all = fulfillment.tasks(mfcId, List.of("READY", "ASSIGNED", "IN_PROGRESS"));
+    List<TaskView> all =
+        new ArrayList<>(fulfillment.tasks(mfcId, List.of("READY", "ASSIGNED", "IN_PROGRESS")));
+    // 이동·보충(mfc-inbound, 작업자 쪽 4단계 뒤) — 담당 없음·아직 안 집음 = READY, 그 밖의 진행 중 = 담당의 앞 점유
+    Map<String, Boolean> urgentMoves = new HashMap<>();
+    var moves = assignmentService.openMoves(mfcId);
+    if (moves != null) {
+      for (var mv : moves) {
+        if (!"ACTIVE".equals(mv.state()) && !"CANCEL_PENDING".equals(mv.state())) {
+          continue;
+        }
+        boolean open =
+            "ACTIVE".equals(mv.state()) && mv.pickedQty() == 0 && mv.assigneeId() == null;
+        urgentMoves.put(mv.moveId(), mv.urgent());
+        all.add(
+            new TaskView(
+                mv.moveId(),
+                mv.taskType(),
+                open ? "READY" : "IN_PROGRESS",
+                0,
+                mv.assigneeId(),
+                null));
+      }
+    }
     Map<String, AssignmentRow> active = new HashMap<>();
     for (AssignmentRow a : assignments.list(mfcId, null, null, "ACTIVE", null)) {
       active.put(a.taskId(), a);
@@ -147,7 +169,15 @@ public class PlanService {
           t.promisedReadyAt() == null
               ? null
               : (int) Duration.between(now, t.promisedReadyAt()).toMinutes();
-      tasks.add(new PlanProblem.Task(t.taskId(), t.taskType(), t.version(), m, due));
+      tasks.add(
+          new PlanProblem.Task(
+              t.taskId(),
+              t.taskType(),
+              t.version(),
+              m,
+              due,
+              AssignmentService.priority(
+                  t.taskType(), urgentMoves.getOrDefault(t.taskId(), false))));
     }
     List<PlanProblem.Worker> ws = new ArrayList<>();
     List<String> unverified = new ArrayList<>();
@@ -211,6 +241,9 @@ public class PlanService {
     settings.put("status", "TEMPORARY_IMPLEMENTATION_VALUES"); // 운영 정책 아님
     List<String> limits =
         new ArrayList<>(List.of("NO_TRAVEL_TIME", "ZONE_NOT_CHECKED", "FIXED_TASK_MINUTES"));
+    if (moves == null) {
+      limits.add("MOVES_NOT_INCLUDED"); // 이동 지시 조회 실패 — 이동·보충 없이 계산
+    }
     if (!busyMinutes.isEmpty()) {
       limits.add(0, "IN_PROGRESS_FULL_DURATION");
     }
@@ -302,6 +335,18 @@ public class PlanService {
     Map<String, TaskView> now = new HashMap<>();
     for (TaskView t : fulfillment.tasks(p0.mfcId(), List.of("READY"))) {
       now.put(t.taskId(), t);
+    }
+    if (items.stream()
+        .anyMatch(i -> "MOVE".equals(i.taskType()) || "REPLENISH".equals(i.taskType()))) {
+      var moves = assignmentService.openMoves(p0.mfcId());
+      for (var mv :
+          moves == null
+              ? List.<com.pmart.mfc.capacity.infrastructure.InboundClient.MoveView>of()
+              : moves) {
+        if ("ACTIVE".equals(mv.state()) && mv.pickedQty() == 0 && mv.assigneeId() == null) {
+          now.put(mv.moveId(), new TaskView(mv.moveId(), mv.taskType(), "READY", 0, null, null));
+        }
+      }
     }
     CommitOutcome out =
         idempotency

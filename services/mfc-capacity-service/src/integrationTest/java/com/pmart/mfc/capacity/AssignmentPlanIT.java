@@ -44,6 +44,8 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.capacity.plan.mfc-inbound-base-url=${ful.url}",
       "pmart.capacity.plan.task-minutes.PICK=7",
       "pmart.capacity.plan.task-minutes.PACK=4",
+      "pmart.capacity.plan.task-minutes.MOVE=5",
+      "pmart.capacity.plan.task-minutes.REPLENISH=5",
       "pmart.capacity.plan.time-limit=PT5S",
       "pmart.capacity.plan.packing-stations=4"
     })
@@ -126,6 +128,17 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
       m.put("promisedReadyAt", Instant.now().plusSeconds(dueIn * 60L).toString());
     }
     return m;
+  }
+
+  void moveOrders(List<Map<String, Object>> moves) {
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/move-orders"))
+            .withQueryParam("mfcId", WireMock.equalTo(MFC))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(Map.of("items", moves)))));
   }
 
   void tasks(List<Map<String, Object>> items, String... states) {
@@ -463,6 +476,7 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
 
   @Test
   void proposesByDutyAndBusyTimeThenCommitsAfterRecheck() {
+    moveOrders(List.of());
     register("pk1", List.of("PICK"));
     register("pk2", List.of("PICK", "PACK"));
     String s = UUID.randomUUID().toString().substring(0, 6);
@@ -546,8 +560,62 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
         .isEqualTo("COMMITTED");
   }
 
+  /** 작업자 쪽 4단계 뒤: 배정 추천에 열린 이동·보충이 들어가고, 확정하면 이동 지시도 배정된다(사건 → inbound 담당 투영). */
+  @Test
+  void planIncludesOpenMovesAndCommitsThem() {
+    String s = UUID.randomUUID().toString().substring(0, 6);
+    register("pm-" + s, List.of("MOVE", "REPLENISH"));
+    tasks(List.of(), "READY", "ASSIGNED", "IN_PROGRESS");
+    Instant base = Instant.now().minusSeconds(600);
+    String open = "MV-PO-" + s;
+    String rep = "MV-PR-" + s;
+    moveOrders(
+        List.of(
+            move(open, "MOVE", false, 0, null, base),
+            move(rep, "REPLENISH", false, 0, null, base),
+            move("MV-PP-" + s, "MOVE", false, 1, null, base), // 이미 집음 — 추천 대상 아님
+            move("MV-PA-" + s, "REPLENISH", false, 0, "someone", base))); // 담당 있음
+    Res created =
+        send("POST", SUP, "/assignment-plans", Map.of("mfcId", MFC, "horizonMinutes", 60));
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    JsonNode plan = created.body();
+    assertThat(plan.path("items").findValuesAsString("taskId")).contains(open, rep);
+    assertThat(plan.path("items").findValuesAsString("taskId"))
+        .doesNotContain("MV-PP-" + s, "MV-PA-" + s);
+    assertThat(plan.path("limitations").toString()).doesNotContain("MOVES_NOT_INCLUDED");
+
+    tasks(List.of(), "READY");
+    Res committed =
+        send("POST", SUP, "/assignment-plans/" + plan.path("planId").asString() + "/commits", null);
+    assertThat(committed.status()).as(committed.body().toString()).isEqualTo(200);
+    assertThat(committed.body().path("assignments").findValuesAsString("taskId"))
+        .contains(open, rep);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT task_type FROM task_assignment WHERE task_id = ? AND state = 'ACTIVE'",
+                String.class,
+                rep))
+        .isEqualTo("REPLENISH");
+  }
+
+  /** 이동 지시 조회가 안 되면 이동 없이 계산하고 한계로 남긴다. */
+  @Test
+  void planWithoutMovesWhenInboundFails() {
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/move-orders"))
+            .withQueryParam("mfcId", WireMock.equalTo(MFC))
+            .willReturn(aResponse().withStatus(500)));
+    tasks(List.of(), "READY", "ASSIGNED", "IN_PROGRESS");
+    Res created =
+        send("POST", SUP, "/assignment-plans", Map.of("mfcId", MFC, "horizonMinutes", 30));
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    assertThat(created.body().path("limitations").toString()).contains("MOVES_NOT_INCLUDED");
+    moveOrders(List.of());
+  }
+
   @Test
   void commitIsRejectedAsStaleWhenATaskChangedAfterPlanning() {
+    moveOrders(List.of());
     register("pk3", List.of("PICK"));
     String q = "T-Q1-" + UUID.randomUUID().toString().substring(0, 6);
     tasks(List.of(task(q, "PICK", "READY", 1, null, 0)), "READY", "ASSIGNED", "IN_PROGRESS");

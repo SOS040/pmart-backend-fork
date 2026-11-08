@@ -86,7 +86,11 @@ public class CpSatPlanner {
       int d = t.minutes();
       // 미배정은 늘 늦게라도 하는 것보다 비싸야 한다 — 급한 작업을 빼서 지연을 피하지 않게, 구간 끝에 끝낸 지연만큼 더한다
       long dropLate = t.due() == null ? 0 : Math.max(0, (long) h + d - t.due());
-      objective.addTerm(u, p.weights().unassigned() + p.weights().late() * dropLate);
+      objective.addTerm(
+          u,
+          p.weights().unassigned()
+              + p.weights().late() * dropLate
+              + p.weights().late() * (long) t.priority());
       if (d <= h) {
         for (PlanProblem.Worker w : p.workers()) {
           if (!w.can(t.taskType())) {

@@ -94,4 +94,22 @@ class CpSatPlannerTest {
     assertThat(gaps.get(0)).containsExactly(5, 10);
     assertThat(gaps.get(1)).containsExactly(30, 60);
   }
+
+  /** 같은 개수만 넣을 수 있으면 정해진 순서의 앞선 유형을 넣는다(보충 > 이동 > 복귀). */
+  @Test
+  void priorityDecidesWhichTaskFitsWhenTimeIsShort() {
+    var p =
+        new PlanProblem(
+            10,
+            4,
+            List.of(
+                new PlanProblem.Task("RET", "RETURN", 0, 5, null, 0),
+                new PlanProblem.Task("MV", "MOVE", 0, 5, null, 1),
+                new PlanProblem.Task("REP", "REPLENISH", 0, 5, null, 2)),
+            List.of(worker("w", Set.of("RETURN", "MOVE", "REPLENISH"), List.of())));
+    var r = planner.solve(p, Duration.ofSeconds(5));
+    assertThat(r.solved()).isTrue();
+    assertThat(r.items()).extracting(Item::taskId).containsExactlyInAnyOrder("REP", "MV");
+    assertThat(r.unassigned()).containsExactly("RET");
+  }
 }

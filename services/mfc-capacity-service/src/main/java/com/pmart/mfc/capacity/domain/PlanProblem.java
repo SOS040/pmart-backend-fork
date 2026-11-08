@@ -26,9 +26,20 @@ public record PlanProblem(
 
   /**
    * @param due 약속 준비 시각(분, 음수면 이미 지남). 없으면 null — 지연을 세지 않는다
+   * @param priority 정해진 순서의 앞섬(클수록 먼저 넣는다, 2026-11-08 사용자 결정: 주문 작업 3 → 자동 보충·긴급 이동 2 → 감독자 이동 1 →
+   *     취소품 복귀 0). 미배정 벌점에 조금 더한다 — 미배정 개수를 줄이는 것이 먼저, 같은 개수면 앞선 유형을 넣는다
    */
   public record Task(
-      String taskId, String taskType, int version, int minutes, @Nullable Integer due) {}
+      String taskId,
+      String taskType,
+      int version,
+      int minutes,
+      @Nullable Integer due,
+      int priority) {
+    public Task(String taskId, String taskType, int version, int minutes, @Nullable Integer due) {
+      this(taskId, taskType, version, minutes, due, 0);
+    }
+  }
 
   /**
    * @param busy 이미 막힌 구간 [start, end) — 앞서 맡은 작업·근무 밖
