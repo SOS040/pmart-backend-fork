@@ -133,6 +133,25 @@ public class HandoversController implements HandoversApi {
                 body.getNote())));
   }
 
+  @Override
+  public ResponseEntity<
+          com.pmart.mfc.fulfillment.api.generated.model.ListPackagesToCheck200Response>
+      listPackagesToCheck(String mfcId, Boolean checkRequired) {
+    if (!Boolean.TRUE.equals(checkRequired)) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "지금은 checkRequired=true 만 됩니다.");
+    }
+    var out = new com.pmart.mfc.fulfillment.api.generated.model.ListPackagesToCheck200Response();
+    out.setItems(handovers.toCheck(mfcId).stream().map(this::dto).toList());
+    var a = new com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponseAsOf();
+    a.setAsOf(time(java.time.Instant.now()));
+    a.setFreshness(
+        com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponseAsOf.FreshnessEnum
+            .CURRENT);
+    out.setAsOf(a);
+    return ResponseEntity.ok(out);
+  }
+
   private HandoverResolution dto(HandoverService.Resolution r) {
     var p = r.pkg();
     String fenceState =
@@ -168,6 +187,10 @@ public class HandoversController implements HandoversApi {
                     .checkedBy(check.checkedBy())
                     .checkedAt(time(check.checkedAt())))
         .packageId(p.packageId())
+        .shipmentId(p.shipmentId())
+        .orderId(p.orderId())
+        .packingLocation(p.packingLocation())
+        .riderId(p.fenceRiderId())
         .packageVersion(p.packageVersion())
         .packageState(PackageState.fromValue(p.state()))
         .verdict(HandoverResolution.VerdictEnum.fromValue(r.verdict().name()))

@@ -77,8 +77,12 @@ public class TasksController implements TasksApi {
     List<TaskInfo> page = more ? rows.subList(0, limit) : rows;
     var out = new ListTasks200Response();
     List<TaskSummary> items = new ArrayList<>();
+    Map<String, List<LineView>> linesOf =
+        service.linesOf(page.stream().map(TaskInfo::taskId).toList());
     for (TaskInfo t : page) {
-      items.add(attention(summary(t), t));
+      TaskSummary s = attention(summary(t), t);
+      counts(s, linesOf.getOrDefault(t.taskId(), List.of()));
+      items.add(s);
     }
     out.setItems(items);
     var p = new ListTasks200ResponsePage();
@@ -95,6 +99,8 @@ public class TasksController implements TasksApi {
     TaskInfo t = d.task();
     var out = new TaskDetail();
     fill(out, t, d.lines());
+    var hl = headline(d.lines());
+    out.setHeadline(hl);
     var att = service.attention(t);
     out.setLate(att.late());
     out.setIdle(att.idle());
@@ -128,6 +134,17 @@ public class TasksController implements TasksApi {
         }
         pi.setLocations(locs);
         pi.setSuggestedToLocations(p.suggestedTo());
+        if ("PICK".equals(t.taskType())) {
+          var st =
+              com.pmart.mfc.fulfillment.domain.TaskRules.pickStatus(
+                  p.remainingQty(),
+                  p.locations().stream().mapToInt(Map.Entry::getValue).sum(),
+                  p.allocated().values().stream().mapToInt(Integer::intValue).sum(),
+                  "IN_PROGRESS".equals(t.state()));
+          pi.setUnallocatedQty(st.unallocatedQty());
+          pi.setPickStatus(TaskLinePicksInner.PickStatusEnum.fromValue(st.status()));
+          pi.setNotice(st.notice());
+        }
         picks.add(pi);
       }
       tl.setPicks(picks);
@@ -328,6 +345,23 @@ public class TasksController implements TasksApi {
     s.setPromisedReadyAt(time(t.readyAt()));
     s.setCreatedAt(time(t.createdAt()));
     return s;
+  }
+
+  /** 목록 줄 수·수량·대표 상품(0.4.9). */
+  private static void counts(TaskSummary s, List<LineView> lines) {
+    s.setLineCount(lines.size());
+    s.setPlannedQty(lines.stream().mapToInt(LineView::plannedQty).sum());
+    s.setCompletedQty(lines.stream().mapToInt(LineView::completedQty).sum());
+    s.setRemainingQty(lines.stream().mapToInt(LineView::remaining).sum());
+    s.setHeadline(headline(lines));
+  }
+
+  private static com.pmart.mfc.fulfillment.api.generated.model.TaskSummaryHeadline headline(
+      List<LineView> lines) {
+    var h = new com.pmart.mfc.fulfillment.api.generated.model.TaskSummaryHeadline();
+    h.setProductName(lines.isEmpty() ? null : lines.get(0).productName());
+    h.setOtherLineCount(Math.max(0, lines.size() - 1));
+    return h;
   }
 
   private static void fill(TaskDetail d, TaskInfo t, List<LineView> lines) {

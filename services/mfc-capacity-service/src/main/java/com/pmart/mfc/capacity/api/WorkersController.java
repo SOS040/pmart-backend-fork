@@ -48,8 +48,35 @@ public class WorkersController implements WorkersApi {
   public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.Assignment> pullNextTask(
       String mfcId, String workerId, String idempotencyKey, String xSourceSystem) {
     var r = assignments.pullNext(mfcId, workerId);
-    return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK)
-        .body(AssignmentsController.dto(r.assignment()));
+    var out = AssignmentsController.dto(r.assignment());
+    out.setDetail(detail(assignments.detailOf(out.getTaskId(), out.getTaskType())));
+    return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK).body(out);
+  }
+
+  private static com.pmart.mfc.capacity.api.generated.model.NextTaskDetail detail(
+      com.pmart.mfc.capacity.application.NextTaskDetails.Detail d) {
+    var out = new com.pmart.mfc.capacity.api.generated.model.NextTaskDetail();
+    out.setAvailable(d.available());
+    out.setPromisedReadyAt(
+        d.promisedReadyAt() == null ? null : java.time.OffsetDateTime.parse(d.promisedReadyAt()));
+    out.setUrgent(d.urgent());
+    out.setPackingLocations(d.packingLocations());
+    java.util.List<com.pmart.mfc.capacity.api.generated.model.NextTaskDetailLinesInner> lines =
+        new java.util.ArrayList<>();
+    for (var l : d.lines()) {
+      var x = new com.pmart.mfc.capacity.api.generated.model.NextTaskDetailLinesInner();
+      x.setSku(l.sku());
+      x.setProductName(l.productName());
+      x.setLotId(l.lotId());
+      x.setExpiresOn(l.expiresOn() == null ? null : java.time.LocalDate.parse(l.expiresOn()));
+      x.setQty(l.qty());
+      x.setFromLocation(l.fromLocation());
+      x.setToLocation(l.toLocation());
+      x.setNotice(l.notice());
+      lines.add(x);
+    }
+    out.setLines(lines);
+    return out;
   }
 
   public WorkersController(WorkerService service) {

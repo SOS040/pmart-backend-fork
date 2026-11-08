@@ -90,6 +90,25 @@ public class AssignmentService {
     this.inbound = inbound;
   }
 
+  /** 받은 작업의 상세(0.9.1) — 읽지 못하면 available=false(배정은 그대로). */
+  public NextTaskDetails.Detail detailOf(String taskId, String taskType) {
+    try {
+      if ("MOVE".equals(taskType) || "REPLENISH".equals(taskType)) {
+        if (inbound == null || !inbound.configured()) {
+          return NextTaskDetails.Detail.unavailable();
+        }
+        return NextTaskDetails.fromMove(inbound.moveOrder(taskId));
+      }
+      if (fulfillment == null) {
+        return NextTaskDetails.Detail.unavailable();
+      }
+      return NextTaskDetails.fromTask(fulfillment.taskDetail(taskId));
+    } catch (RuntimeException ex) {
+      log.warn("작업 {} 상세 조회 실패 — 상세 없이 응답: {}", taskId, ex.getMessage());
+      return NextTaskDetails.Detail.unavailable();
+    }
+  }
+
   /** 다음 작업 후보(작업 지시·이동 지시 공통). */
   record Candidate(String taskId, String taskType, int rank, @Nullable Instant when) {}
 

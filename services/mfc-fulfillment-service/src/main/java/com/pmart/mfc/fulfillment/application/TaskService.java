@@ -177,6 +177,11 @@ public class TaskService {
     return store.list(mfcId, worker, type, s, cursor, Math.max(1, Math.min(size, 200)));
   }
 
+  /** 목록 표시용 줄(0.4.9). */
+  public Map<String, List<LineView>> linesOf(List<String> taskIds) {
+    return store.linesOf(taskIds);
+  }
+
   public Detail detail(String taskId) {
     TaskInfo t = task(taskId);
     requireReader(t.mfcId());

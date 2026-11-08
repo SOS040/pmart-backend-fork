@@ -361,7 +361,63 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
                     .withStatus(200)
                     .withHeader("Content-Type", "application/json")
                     .withBody(mapper.writeValueAsString(Map.of("items", moves)))));
+    // 0.9.1 상세: 보충 지시·복귀 작업은 상세를 옮겨 적고, 상세가 없는(404) 이동은 available=false
+    Map<String, Object> mvDetail =
+        new LinkedHashMap<>(move("MV-R-" + s, "REPLENISH", false, 1, null, base));
+    mvDetail.putAll(
+        Map.of(
+            "sku",
+            "E-1",
+            "lotId",
+            "LOT-1",
+            "fromLocation",
+            "A-S1-01-1-01",
+            "toLocation",
+            "A-S9-01-1-01",
+            "qty",
+            4));
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/move-orders/MV-R-" + s))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(mvDetail))));
+    Map<String, Object> retDetail =
+        Map.of(
+            "taskId",
+            ret,
+            "taskType",
+            "RETURN",
+            "lines",
+            List.of(
+                Map.of(
+                    "sku",
+                    "E-2",
+                    "productName",
+                    "우유",
+                    "remainingQty",
+                    2,
+                    "picks",
+                    List.of(
+                        Map.of(
+                            "lotId",
+                            "LOT-2",
+                            "remainingQty",
+                            2,
+                            "locations",
+                            List.of(Map.of("locationCode", "PAK-A-01", "qty", 2)),
+                            "suggestedToLocations",
+                            List.of("A-S1-02-1-01"))))));
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/tasks/" + ret))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(retDetail))));
     List<String> order = new java.util.ArrayList<>();
+    List<JsonNode> details = new java.util.ArrayList<>();
     for (int i = 0; i < 4; i++) {
       String w = "mv" + i + "-" + s;
       register(w, List.of("MOVE", "REPLENISH", "RETURN"));
@@ -369,8 +425,20 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
       Res r = send("POST", tok, "/mfcs/" + MFC + "/workers/" + w + "/next-tasks", null);
       assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
       order.add(r.body().path("taskId").asString());
+      details.add(r.body().path("detail"));
     }
     assertThat(order).containsExactly("MV-R-" + s, "MV-U-" + s, "MV-N-" + s, ret);
+    JsonNode d0 = details.get(0);
+    assertThat(d0.path("available").asBoolean()).isTrue();
+    assertThat(d0.path("lines").path(0).path("qty").asInt()).isEqualTo(3);
+    assertThat(d0.path("lines").path(0).path("fromLocation").asString()).isEqualTo("A-S1-01-1-01");
+    assertThat(d0.path("lines").path(0).path("toLocation").asString()).isEqualTo("A-S9-01-1-01");
+    assertThat(details.get(1).path("available").asBoolean()).isFalse();
+    JsonNode d3 = details.get(3);
+    assertThat(d3.path("available").asBoolean()).isTrue();
+    assertThat(d3.path("lines").path(0).path("productName").asString()).isEqualTo("우유");
+    assertThat(d3.path("lines").path(0).path("fromLocation").asString()).isEqualTo("PAK-A-01");
+    assertThat(d3.path("lines").path(0).path("toLocation").asString()).isEqualTo("A-S1-02-1-01");
   }
 
   static Map<String, Object> move(

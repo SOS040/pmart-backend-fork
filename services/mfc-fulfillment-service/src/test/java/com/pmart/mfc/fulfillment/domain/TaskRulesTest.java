@@ -64,4 +64,21 @@ class TaskRulesTest {
                 .error())
         .isNotNull();
   }
+
+  @org.junit.jupiter.api.Test
+  void pickStatusForScreen() {
+    assertThat(TaskRules.pickStatus(0, 0, 0, true).status()).isEqualTo("DONE");
+    // 시작 전: 선반 잔량으로 판단
+    assertThat(TaskRules.pickStatus(3, 5, 0, false).status()).isEqualTo("OK");
+    var none = TaskRules.pickStatus(3, 0, 0, false);
+    assertThat(none.status()).isEqualTo("NOT_FOUND");
+    assertThat(none.unallocatedQty()).isEqualTo(3);
+    assertThat(none.notice()).contains("감독자 확인");
+    // 시작 뒤: 이 주문 몫 배정으로 판단
+    var part = TaskRules.pickStatus(3, 10, 1, true);
+    assertThat(part.status()).isEqualTo("PARTIAL");
+    assertThat(part.unallocatedQty()).isEqualTo(2);
+    assertThat(TaskRules.pickStatus(3, 10, 0, true).status()).isEqualTo("NOT_FOUND");
+    assertThat(TaskRules.pickStatus(3, 10, 3, true).notice()).isNull();
+  }
 }

@@ -186,6 +186,9 @@ def assign_and_start(task, ttype):
     if pulled:
         results.append((f"{ttype} 다음 작업 받기(시스템 배정)", 201, True))
         print("OK  ", f"{ttype} 다음 작업 받기(시스템 배정)", pulled.get("source"))
+        det = pulled.get("detail") or {}
+        print("     상세", [(l.get("sku"), l.get("qty"), l.get("fromLocation"), l.get("toLocation")) for l in det.get("lines", [])])
+        step(f"{ttype} 받은 작업 상세(capacity 0.9.1)", (200 if det.get("available") and det.get("lines") else 409, det), 200)
     else:
         print("     (다음 작업 받기가 다른 작업을 줌 — 감독자 배정으로)", st, b.get("taskId") or b.get("code"))
         step(f"{ttype} 배정(감독자)", http("POST", f"{GW}/assignments", sup,
@@ -202,6 +205,8 @@ def assign_and_start(task, ttype):
 # 3. 피킹
 assign_and_start(pick, "PICK")
 d = step("피킹 지시 조회", http("GET", f"{GW}/tasks/{pick}", wrk), 200)
+step("피킹 화면 상태(pickStatus, fulfillment 0.4.9)", (200 if all(p.get("pickStatus") for l in d["lines"] for p in l.get("picks", [])) else 409, {}), 200)
+step("확인 필요 포장 목록(0.4.9)", http("GET", f"{GW}/packages?mfcId={MFC}&checkRequired=true", wrk), 200)
 for line in d["lines"]:
     need = line["remainingQty"]
     for p in line.get("picks", []):
@@ -311,6 +316,8 @@ def carry(mv, label):
         print("     다음 작업 받기가 다른 것을 줌", st, b.get("taskId") or b.get("code"))
         break
     step(f"{label} 다음 작업 받기 → {got and got.get('taskType')}", (200 if got and got.get("taskType") == "MOVE" else 409, got or {}), 200)
+    ln = ((got.get("detail") or {}).get("lines") or [{}])[0]
+    step(f"{label} 받은 이동 상세(출발·도착 칸)", (200 if ln.get("fromLocation") == mv["fromLocation"] and ln.get("toLocation") == mv["toLocation"] else 409, ln), 200)
     m = {}
     for _ in range(30):
         m = http("GET", f"{GW}/move-orders/{mid}", wrk)[1]

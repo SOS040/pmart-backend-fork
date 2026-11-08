@@ -86,6 +86,30 @@ public class InboundClient {
     return out;
   }
 
+  /** 이동 지시 한 건 원문 — 다음 작업 받기 상세(0.9.1). */
+  public JsonNode moveOrder(String moveId) {
+    if (client == null) {
+      return mapper.createObjectNode();
+    }
+    String auth = currentAuthorization();
+    String raw =
+        Downstream.call(
+            INBOUND,
+            () ->
+                client
+                    .get()
+                    .uri("/api/v1/move-orders/{m}", moveId)
+                    .headers(
+                        h -> {
+                          if (auth != null) {
+                            h.set(HttpHeaders.AUTHORIZATION, auth);
+                          }
+                        })
+                    .retrieve()
+                    .body(String.class));
+    return raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+  }
+
   private static @Nullable String currentAuthorization() {
     if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes a) {
       HttpServletRequest r = a.getRequest();

@@ -100,6 +100,27 @@ public class FulfillmentClient {
     return out.size() > MAX_TASKS ? out.subList(0, MAX_TASKS) : out;
   }
 
+  /** 작업 상세 원문(GET /tasks/{id}) — 다음 작업 받기 상세(0.9.1). 호출자 토큰. */
+  public JsonNode taskDetail(String taskId) {
+    String auth = currentAuthorization();
+    String raw =
+        Downstream.call(
+            FULFILLMENT,
+            () ->
+                client
+                    .get()
+                    .uri("/api/v1/tasks/{t}", taskId)
+                    .headers(
+                        h -> {
+                          if (auth != null) {
+                            h.set(HttpHeaders.AUTHORIZATION, auth);
+                          }
+                        })
+                    .retrieve()
+                    .body(String.class));
+    return raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+  }
+
   private static @Nullable String currentAuthorization() {
     if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes a) {
       HttpServletRequest r = a.getRequest();

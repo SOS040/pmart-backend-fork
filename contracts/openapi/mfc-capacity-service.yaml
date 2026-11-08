@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.9.0
+  version: 0.9.1
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -577,6 +577,8 @@ paths:
         - ACTIVE 가 아니면 422 WORKER_NOT_ACTIVE, 등록 근무가 있는데 지금이 근무 밖이면 409 OFF_SHIFT(근무 등록이 없으면 판단 안 함),
           줄 작업이 없으면 409 NO_TASK_AVAILABLE. 감독자의 수동 배정(`POST /assignments`)은 예외 처리로 그대로 쓴다.
         - MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08 — 구분은 CDC 만).
+        - (0.9.1) 응답 `detail` 에 받은 작업의 상세(상품·칸·LOT·수량·약속 시각)를 한 번에 — PICK·PACK·RETURN 은 mfc-fulfillment 작업 상세, REPLENISH·MOVE 는
+          mfc-inbound 이동 지시에서 옮겨 적는다. 조회가 안 되면 `detail.available=false`(배정은 그대로 — 화면이 상세 API 를 직접 부른다).
       operationId: pullNextTask
       parameters:
         - { name: mfcId, in: path, required: true, schema: { type: string } }
@@ -1082,13 +1084,38 @@ components:
         assignedAt: { type: string, format: date-time }
         source: { type: [string, 'null'], enum: [MANUAL, PLAN, SYSTEM, null], description: '(0.6.0) 배정 출처 — SYSTEM = 다음 작업 받기' }
         warnings: { type: array, items: { type: string }, description: '(0.4.0) 막지 않는 경고 — OFF_SHIFT(등록 근무 밖)' }
+        detail:
+          oneOf:
+            - { $ref: '#/components/schemas/NextTaskDetail' }
+            - { type: 'null' }
+          description: '(0.9.1) 다음 작업 받기 응답에만 — 받은 작업의 상세. 다른 응답은 null'
         workerEligibility:
           type: [string, 'null']
           description: |
             (0.5.1, 조회 때 계산) 이 배정의 작업자가 **지금도** 맡을 수 있는가. null = 적격. 아니면 WORKER_NOT_REGISTERED·WORKER_NOT_ACTIVE·DUTY_NOT_ALLOWED·ZONE_NOT_QUALIFIED.
             배정 뒤 정지·퇴사·업무 변경이 있어도 배정은 지우지 않는다 — fulfillment 가 작업 시작 때 이 값으로 시작을 거절한다(2026-11-08 검토 반영 #29·#30).
-    AssignmentPlan:
+    NextTaskDetail:
       type: object
+      description: (0.9.1) PDA 가 다음 작업 받기 한 번으로 화면을 그리게 — 정본은 각 서비스(작업·이동 지시) 상세
+      properties:
+        available: { type: boolean, description: 상세를 읽었나(false 면 나머지는 비어 있음) }
+        promisedReadyAt: { type: [string, 'null'], format: date-time, description: 출하 약속(주문 작업) }
+        urgent: { type: boolean, description: 긴급 이동 }
+        packingLocations: { type: array, items: { type: string }, description: PACK — 집품분이 놓인 포장 위치 }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              productName: { type: [string, 'null'] }
+              lotId: { type: [string, 'null'] }
+              expiresOn: { type: [string, 'null'], format: date }
+              qty: { type: integer, description: 남은 양 }
+              fromLocation: { type: [string, 'null'], description: '집을 칸(PICK 배정 칸 우선·RETURN 포장 위치·이동 출발 칸)' }
+              toLocation: { type: [string, 'null'], description: 놓을 칸(RETURN 추천 칸·이동 도착 칸) }
+              notice: { type: [string, 'null'], description: '화면 안내(예: "어느 칸에서도 못 찾음 — 감독자 확인")' }
+    AssignmentPlan:
       properties:
         planId: { type: string }
         mfcId: { type: string }

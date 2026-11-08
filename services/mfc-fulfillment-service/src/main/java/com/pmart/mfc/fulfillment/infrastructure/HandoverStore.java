@@ -90,6 +90,18 @@ public class HandoverStore {
         .findFirst();
   }
 
+  /** 점원 확인 필요(허가 만료·확정 요청 없음) 포장 — 센터 전체, 만료 오래된 순(0.4.9). */
+  public List<PackageFence> checkRequired(String mfcId, Instant now) {
+    return jdbc.query(
+        FENCE_SELECT
+            + " WHERE w.mfc_id = ? AND p.fence_state = 'HANDOVER_IN_PROGRESS' AND p.fence_expires_at <= ?"
+            + " AND NOT EXISTS (SELECT 1 FROM package_handover h WHERE h.package_id = p.package_id)"
+            + " ORDER BY p.fence_expires_at, p.package_id LIMIT 200",
+        (rs, i) -> fence(rs),
+        mfcId,
+        java.sql.Timestamp.from(now));
+  }
+
   /** 출고의 포장 전부(만든 순). */
   public List<PackageFence> byShipment(String shipmentId) {
     return jdbc.query(

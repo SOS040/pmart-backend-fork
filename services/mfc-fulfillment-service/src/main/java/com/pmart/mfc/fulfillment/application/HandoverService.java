@@ -416,6 +416,16 @@ public class HandoverService {
 
   // ---------- 조회 ----------
 
+  /** 점원 확인이 필요한 포장 — 센터 전체(0.4.9). */
+  public List<Resolution> toCheck(String mfcId) {
+    TaskService.requireWorker(mfcId);
+    List<Resolution> out = new java.util.ArrayList<>();
+    for (PackageFence p : store.checkRequired(mfcId, clock.instant())) {
+      out.add(resolution(p.packageId(), null));
+    }
+    return out;
+  }
+
   public Resolution resolution(String packageId, @Nullable String stopRequestId) {
     PackageFence p = pkg(packageId);
     Handover h = store.handover(packageId).orElse(null);

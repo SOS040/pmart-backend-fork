@@ -347,6 +347,11 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assigned(pick, "w1", 1);
     JsonNode mine = call("GET", W1, "/tasks?mfcId=" + MFC + "&assignee=me", null, null).body();
     assertThat(mine.path("items").findValuesAsString("taskId")).contains(pick);
+    JsonNode mineRow = mine.path("items").path(0);
+    assertThat(mineRow.path("lineCount").asInt()).isPositive();
+    assertThat(mineRow.path("headline").path("otherLineCount").asInt())
+        .isEqualTo(mineRow.path("lineCount").asInt() - 1);
+    assertThat(mineRow.path("plannedQty").asInt()).isPositive();
 
     // 다른 작업자 토큰으로 w1 시작 → 403, w2 는 담당 아님 → 409
     assertThat(start(W2, pick, "w1", 1).status()).isEqualTo(403);
@@ -399,6 +404,10 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(l1.path("locationId").asString()).isEqualTo("A-S1-01-1-01");
     assertThat(l1.path("picks").path(0).path("locations").path(0).path("allocatedQty").asInt())
         .isEqualTo(1);
+    // 0.4.9 화면 표시: 칸이 정해진 조각은 OK·안내 없음
+    assertThat(l1.path("picks").path(0).path("pickStatus").asString()).isEqualTo("OK");
+    assertThat(l1.path("picks").path(0).path("unallocatedQty").asInt()).isZero();
+    assertThat(l1.path("picks").path(0).path("notice").isNull()).isTrue();
 
     // 재고가 거절한 실적 → REJECTED, 수량 변화 없음
     inventoryCommits("PICK", 422, Map.of("code", "LOT_MISMATCH", "detail", "예약 LOT 이 아닙니다"));
@@ -1634,6 +1643,13 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
                 .path("checkRequired")
                 .asBoolean())
         .isTrue();
+    // 0.4.9 센터 전체 확인 필요 목록
+    JsonNode toCheck =
+        call("GET", W1, "/packages?mfcId=" + MFC + "&checkRequired=true", null, null).body();
+    assertThat(toCheck.path("items").findValuesAsString("packageId")).contains(p1.id());
+    assertThat(
+            call("GET", W1, "/packages?mfcId=" + MFC + "&checkRequired=false", null, null).status())
+        .isEqualTo(400);
 
     // 중지도 확인 전까지 PENDING
     Res stop =
@@ -1657,6 +1673,12 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(checked.status()).as(checked.body().toString()).isEqualTo(200);
     assertThat(checked.body().path("checkRequired").asBoolean()).isFalse();
     assertThat(checked.body().path("lastCheck").path("result").asString()).isEqualTo("AT_STATION");
+    assertThat(
+            call("GET", W1, "/packages?mfcId=" + MFC + "&checkRequired=true", null, null)
+                .body()
+                .path("items")
+                .findValuesAsString("packageId"))
+        .doesNotContain(p1.id());
     stops.sweepPending();
     JsonNode done = call("GET", SVC, "/internal/stop-requests/STOP-" + o, null, null).body();
     assertThat(done.path("state").asString()).as(done.toString()).isEqualTo("RESOLVED");

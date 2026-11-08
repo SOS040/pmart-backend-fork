@@ -164,6 +164,31 @@ public class TaskStore {
     return jdbc.query(sql.toString(), (rs, i) -> info(rs), args.toArray());
   }
 
+  /** 목록 표시용 — 작업들의 줄(작업 ID → 줄, 0.4.9). 한 번의 조회. */
+  public Map<String, List<LineView>> linesOf(List<String> taskIds) {
+    Map<String, List<LineView>> out = new java.util.LinkedHashMap<>();
+    if (taskIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT l.task_id, l.order_line_id, s.sku, s.product_name, l.planned_qty, l.completed_qty,"
+            + " l.cancelled_qty FROM task_line l JOIN shipment_line s ON s.shipment_id = l.shipment_id"
+            + " AND s.order_line_id = l.order_line_id WHERE l.task_id = ANY (?) ORDER BY l.task_id, l.order_line_id",
+        rs -> {
+          out.computeIfAbsent(rs.getString("task_id"), k -> new ArrayList<>())
+              .add(
+                  new LineView(
+                      rs.getString("order_line_id"),
+                      rs.getString("sku"),
+                      rs.getString("product_name"),
+                      rs.getInt("planned_qty"),
+                      rs.getInt("completed_qty"),
+                      rs.getInt("cancelled_qty")));
+        },
+        (Object) taskIds.toArray(new String[0]));
+    return out;
+  }
+
   public List<LineView> lines(String taskId) {
     return jdbc.query(
         "SELECT l.order_line_id, s.sku, s.product_name, l.planned_qty, l.completed_qty,"

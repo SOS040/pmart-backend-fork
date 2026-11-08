@@ -18,6 +18,33 @@ public final class TaskRules {
 
   private TaskRules() {}
 
+  /** PDA 피킹 표시(0.4.9): OK·PARTIAL·NOT_FOUND·DONE 과 화면 안내. */
+  public record PickStatus(
+      String status,
+      @org.jspecify.annotations.Nullable Integer unallocatedQty,
+      @org.jspecify.annotations.Nullable String notice) {}
+
+  /**
+   * @param remaining 이 LOT 조각에서 더 집을 양
+   * @param shelfQty 후보 칸들의 그 LOT 선반 잔량 합
+   * @param allocated 이 주문 몫으로 칸에 배정된 양 합(피킹 시작 때 배정)
+   * @param started 피킹 시작됨(배정이 끝난 뒤)
+   */
+  public static PickStatus pickStatus(int remaining, int shelfQty, int allocated, boolean started) {
+    if (remaining <= 0) {
+      return new PickStatus("DONE", 0, null);
+    }
+    int covered = started ? allocated : Math.min(remaining, shelfQty);
+    int missing = Math.max(0, remaining - covered);
+    if (missing == 0) {
+      return new PickStatus("OK", 0, null);
+    }
+    if (covered == 0) {
+      return new PickStatus("NOT_FOUND", missing, "어느 칸에서도 못 찾음 — 감독자 확인");
+    }
+    return new PickStatus("PARTIAL", missing, missing + "개는 칸을 못 찾음 — 있는 만큼 집고 감독자 확인");
+  }
+
   public static final String ALREADY_STARTED = "ALREADY_STARTED";
   public static final String NOT_ASSIGNEE = "NOT_ASSIGNEE";
   public static final String PREDECESSOR_NOT_COMPLETED = "PREDECESSOR_NOT_COMPLETED";
