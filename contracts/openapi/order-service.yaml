@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     주문 초안·주문 원장·스냅샷·상태·이행 계획의 정본. (docs/architecture/service-map.md §2)
     사가 진행은 order-orchestration-service, PG 거래는 payment-service, 클레임 심사는 claim-service.
@@ -13,8 +13,58 @@ tags:
   - { name: drafts, description: 주문 초안(가격 동결 10분) }
   - { name: orders, description: 확정 주문 조회·변경 }
   - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+  - { name: fulfillment-issues, description: '이행 확인 필요(재고 보류 — 운영자 확인, 자동 처리 없음)' }
 
 paths:
+  /fulfillment-issues:
+    get:
+      tags: [fulfillment-issues]
+      summary: 이행 확인 필요 주문 목록 — 운영자 (0.2.0)
+      description: |
+        2026-11-08 사용자 결정(외부 검토 #5 반영): MFC 재고가 격리·실사 손실로 주문 예약 일부를 보류(ReservationBlocked, 다른 LOT 으로도 못 다시 잡음)하면
+        주문을 "확인 필요"로 표시해 담당자가 보게 한다. **자동 취소·환불·LOT 대체·고객 안내는 하지 않는다**(정책 확정 전) — 주문 상태도 바꾸지 않는다.
+        그 센터 운영자(centers 에 mfcId). 기본은 OPEN.
+      operationId: listFulfillmentIssues
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string, enum: [OPEN, ACKNOWLEDGED] } }
+      responses:
+        '200':
+          description: OK (새 것부터, 최대 500)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/FulfillmentIssue' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+  /fulfillment-issues/{issueId}/acknowledgements:
+    post:
+      tags: [fulfillment-issues]
+      summary: 이행 확인 필요 — 담당자 확인 (0.2.0)
+      description: 확인 표시만 한다(처리 내용은 note). 그 센터 운영자. 이미 확인했으면 지금 상태.
+      operationId: acknowledgeFulfillmentIssue
+      parameters:
+        - { name: issueId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 확인됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FulfillmentIssue' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
   /delivery-options:
     get:
       tags: [drafts]
@@ -384,6 +434,22 @@ paths:
 
 components:
   schemas:
+    FulfillmentIssue:
+      type: object
+      properties:
+        issueId: { type: string }
+        orderId: { type: string }
+        mfcId: { type: string }
+        reservationId: { type: string }
+        sku: { type: string }
+        lotId: { type: [string, 'null'] }
+        blockedQty: { type: integer }
+        reason: { type: string, description: 'QUALITY_HOLD(품질 격리)·COUNT_LOSS(실사 손실)·SHORT·DAMAGED(피킹 결품 보고) 등 — inventory 사유 그대로' }
+        state: { type: string, enum: [OPEN, ACKNOWLEDGED] }
+        note: { type: [string, 'null'] }
+        acknowledgedBy: { type: [string, 'null'] }
+        acknowledgedAt: { type: [string, 'null'], format: date-time }
+        blockedAt: { type: string, format: date-time }
     InternalOrder:
       type: object
       description: 서비스 간 주문 원장 사본(claim 심사·환불 근거). 금액은 주문 당시 동결 견적, 승인액은 PG 승인 사실.

@@ -2,6 +2,7 @@ package com.pmart.order.infrastructure;
 
 import com.pmart.common.messaging.EventConsumers;
 import com.pmart.common.messaging.PmartEventConsumer;
+import com.pmart.order.application.FulfillmentIssueService;
 import com.pmart.order.application.OrderService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,6 +23,20 @@ class FulfillmentEventConsumers {
         e -> {
           if ("PreparationStarted".equals(e.eventType())) {
             orders.preparationStarted(e);
+          }
+        });
+  }
+
+  /**
+   * mfc-inventory 사건(토픽 mfc.inventory.v1, 바인딩 {@code inventoryEvents-in-0}) — ReservationBlocked 만
+   * "이행 확인 필요" 로 남긴다 (자동 취소·환불 없음, 2026-11-08). 같은 토픽의 다른 사건은 inbox 에만.
+   */
+  @Bean
+  PmartEventConsumer inventoryEvents(EventConsumers consumers, FulfillmentIssueService issues) {
+    return consumers.of(
+        e -> {
+          if ("ReservationBlocked".equals(e.eventType())) {
+            issues.blocked(e);
           }
         });
   }

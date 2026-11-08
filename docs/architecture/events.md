@@ -107,7 +107,7 @@
 | `InventoryHeld` | mfc-inventory | order-orchestration | reservationId, orderId, lines[{sku, lot?, qty}], expiresAt | 결제 직전 전품목 예약 성공 | ① |
 | `InventoryReleased` | mfc-inventory | order-orchestration, cart | reservationId, reason | 해제 확인 | ① |
 | `InventoryHoldExpired` | mfc-inventory | order-orchestration | reservationId | 10분 만료(PG 불명이면 `결제 확인 대기 점유`로 전환되므로 만료 아님) | ① |
-| `ReservationBlocked` | mfc-inventory | order-orchestration, replenishment | reservationId, orderId, sku, lot, blockedQty, reason | 품질 격리로 예약 BLOCKED(약속은 유지) | ① |
+| `ReservationBlocked` | mfc-inventory | **order(이행 확인 필요 표시, 2026-11-08 — 자동 처리 없음)**, order-orchestration(예정), replenishment(예정) | reservationId, orderId, sku, lot, blockedQty, reason | 품질 격리로 예약 BLOCKED(약속은 유지) | ① |
 | `MfcReceiptPosted` (TIN) | mfc-inventory | cdc-inventory, replenishment, mfc-inbound, transport-execution | receiptId, postingId, trfId, departureId, lines[{sku, lot, normalQty, quarantinedQty, pendingQty}], commitId | ConfirmReceipt COMMITTED 후 `H+r` | ② |
 | `ReceiptCorrectionPosted` | mfc-inventory | cdc-inventory | receiptId, δr, reason | 수령 정정 | ② |
 | `PackageHandedOverPosted` | mfc-inventory | mfc-fulfillment, BI | commitId, packageId, lines[{sku, qty}] | 인계 전기 `H−q, E−q, R−q` | ① |
