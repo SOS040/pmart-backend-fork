@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -534,6 +534,10 @@ paths:
               properties:
                 workerId: { type: string, minLength: 1, maxLength: 64 }
                 displayName: { type: string, minLength: 1, maxLength: 60 }
+                employmentType: { $ref: '#/components/schemas/EmploymentType' }
+                qualification:
+                  description: '(0.7.0) 자격 — 할 수 있는 일. 생략하면 정규직·알바 = duty 작업 유형, 일일크루 = PICK·PACK(사용자 결정). duty 는 자격 안이어야(422 DUTY_OUTSIDE_QUALIFICATION)'
+                  allOf: [{ $ref: '#/components/schemas/QualificationBody' }]
                 duty: { $ref: '#/components/schemas/WorkerDutyBody' }
       responses:
         '201':
@@ -601,6 +605,75 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /mfcs/{mfcId}/workers/{workerId}/qualification-changes:
+    post:
+      tags: [workers]
+      summary: 자격 변경 (그 센터 MFC_SUPERVISOR — 0.7.0)
+      description: |
+        2026-11-08 사용자 결정(자격과 업무 분리): 자격 = 할 수 있는 일(감독자, 계속 유지, 만료일 선택). 새 버전으로 남긴다. 업무는 자격 안에서만 유효 —
+        자격에서 빠진 업무 유형은 배정 조건에서 빠진다(업무 행은 그대로, 지금 유효 업무 = 업무 ∩ 자격). X-Expected-Version = 지금 자격 버전.
+      operationId: changeWorkerQualification
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { type: string } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/QualificationBody'
+                - type: object
+                  properties:
+                    reason: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: 바뀐 작업자
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Worker' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /mfcs/{mfcId}/workers/{workerId}/day-enrollments:
+    post:
+      tags: [workers]
+      summary: 일일크루 그날 근무 등록(출근) (0.7.0)
+      description: |
+        2026-11-08 사용자 결정: 일일크루는 계정을 사람별로 유지하고 **그날 근무 등록**으로 통제한다. 등록한 날만 작업을 받는다(없으면 배정·다음 작업
+        받기 422 DAILY_NOT_ENROLLED). 그날 업무는 시스템이 정한다 — 지금은 유효 자격 전부(그날 수요에 맞춘 세분은 나중). 그 센터 MFC_SUPERVISOR 또는 본인.
+        일일크루가 아니면 422 NOT_DAILY_CREW. 같은 날 다시 부르면 같은 등록.
+      operationId: enrollWorkerDay
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { type: string } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                businessDate: { type: string, format: date, description: '생략 = 오늘(Asia/Seoul)' }
+      responses:
+        '200':
+          description: 그날 등록
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DayEnrollment' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: NOT_DAILY_CREW / WORKER_NOT_ACTIVE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /mfcs/{mfcId}/workers/{workerId}/duty-changes:
     post:
@@ -776,8 +849,36 @@ components:
         displayName: { type: string }
         state: { $ref: '#/components/schemas/WorkerState' }
         duty: { $ref: '#/components/schemas/WorkerDuty' }
+        employmentType: { $ref: '#/components/schemas/EmploymentType' }
+        qualification: { $ref: '#/components/schemas/WorkerQualification' }
+        effectiveTaskTypes: { type: array, items: { $ref: '#/components/schemas/TaskType' }, description: '(0.7.0) 지금 배정 조건 = 업무 ∩ 유효 자격(일일크루는 오늘 등록한 날의 업무)' }
+        todayEnrollment: { oneOf: [{ $ref: '#/components/schemas/DayEnrollment' }, { type: 'null' }] }
         registeredBy: { type: string }
         registeredAt: { type: string, format: date-time }
+    EmploymentType: { type: string, enum: [REGULAR, PART_TIME, DAILY], description: '(0.7.0) 정규직 / 알바 / 일일크루. 기본 REGULAR' }
+    QualificationBody:
+      type: object
+      required: [taskTypes]
+      properties:
+        taskTypes: { type: array, minItems: 1, uniqueItems: true, items: { $ref: '#/components/schemas/TaskType' } }
+        expiresAt: { type: [string, 'null'], format: date-time, description: '만료 — 지나면 이 자격으로 배정하지 않음. 기본 없음' }
+    WorkerQualification:
+      type: object
+      properties:
+        qualificationVersion: { type: integer }
+        taskTypes: { type: array, items: { $ref: '#/components/schemas/TaskType' } }
+        expiresAt: { type: [string, 'null'], format: date-time }
+        expired: { type: boolean }
+        changedBy: { type: string }
+        changedAt: { type: string, format: date-time }
+    DayEnrollment:
+      type: object
+      properties:
+        workerId: { type: string }
+        businessDate: { type: string, format: date }
+        dutyTaskTypes: { type: array, items: { $ref: '#/components/schemas/TaskType' }, description: '시스템이 정한 그날 업무' }
+        enrolledBy: { type: string }
+        enrolledAt: { type: string, format: date-time }
     WorkerDetail:
       allOf:
         - $ref: '#/components/schemas/Worker'

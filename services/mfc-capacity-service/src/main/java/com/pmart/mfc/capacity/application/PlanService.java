@@ -386,10 +386,20 @@ public class PlanService {
     return new PlanView(p, plans.items(planId), plans.unassigned(planId), made);
   }
 
+  private WorkerService workerService;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setWorkerService(WorkerService workerService) {
+    this.workerService = workerService;
+  }
+
+  /** 추천도 배정과 같은 조건 — 유효 업무 = 업무 ∩ 유효 자격(일일크루는 오늘 등록한 날만, 작업자 쪽 2단계). */
   private WorkerRules.Profile profile(String mfcId, WorkerStore.WorkerRow w) {
     var d = workers.duty(mfcId, w.workerId(), w.dutyVersion());
     return new WorkerRules.Profile(
-        w.state(), new WorkerRules.Duty(d.dutyVersion(), d.taskTypes(), d.zones()));
+        w.state(),
+        new WorkerRules.Duty(
+            d.dutyVersion(), workerService.taskTypes(mfcId, w.workerId()), d.zones()));
   }
 
   private static PmartException notFound(@Nullable String planId) {

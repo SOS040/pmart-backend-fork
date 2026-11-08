@@ -7,6 +7,7 @@ import com.pmart.common.web.PmartException;
 import com.pmart.mfc.capacity.domain.WorkerRules;
 import com.pmart.mfc.capacity.infrastructure.AssignmentStore;
 import com.pmart.mfc.capacity.infrastructure.AssignmentStore.AssignmentRow;
+import com.pmart.mfc.capacity.infrastructure.QualificationStore;
 import com.pmart.mfc.capacity.infrastructure.WorkerStore;
 import com.pmart.mfc.capacity.infrastructure.WorkerStore.DutyRow;
 import com.pmart.mfc.capacity.infrastructure.WorkerStore.ShiftRow;
@@ -38,13 +39,32 @@ public class WorkerService {
   private static final Set<String> STATES = Set.of("ACTIVE", "SUSPENDED", "LEFT");
   private static final Logger log = LoggerFactory.getLogger(WorkerService.class);
 
-  public record View(WorkerRow worker, DutyRow duty) {}
+  /**
+   * @param effective 지금 배정 조건 = 업무 ∩ 유효 자격(일일크루는 오늘 등록한 날의 업무 ∩ 자격)
+   * @param today 일일크루의 오늘 등록(없으면 null)
+   */
+  public record View(
+      WorkerRow worker,
+      DutyRow duty,
+      String employmentType,
+      QualificationStore.@Nullable Qualification qualification,
+      Set<String> effective,
+      QualificationStore.@Nullable Day today) {}
 
   public record Detail(View view, List<DutyRow> duties, List<StateChangeRow> states) {}
 
   public record ChangeResult(View view, boolean changed, List<AssignmentRow> affected) {}
 
   private final WorkerStore store;
+  private QualificationStore quals;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setQuals(QualificationStore quals) {
+    this.quals = quals;
+  }
+
+  private static final java.time.ZoneId SEOUL = java.time.ZoneId.of("Asia/Seoul");
+
   private final AssignmentStore assignments;
   private final RequestIdempotency idempotency;
   private final Clock clock;
@@ -62,7 +82,50 @@ public class WorkerService {
   /** WK-02 거절 코드, 적격이면 null. */
   public @Nullable String rejection(
       String mfcId, String workerId, String taskType, @Nullable String temperatureZone) {
-    return WorkerRules.rejection(profile(mfcId, workerId), taskType, temperatureZone);
+    var p = profile(mfcId, workerId);
+    if (p != null
+        && "ACTIVE".equals(p.state())
+        && "DAILY".equals(quals.employmentType(mfcId, workerId))
+        && quals.day(mfcId, workerId, today()).isEmpty()) {
+      return WorkerRules.DAILY_NOT_ENROLLED; // 일일크루는 그날 근무 등록한 날만(사용자 결정)
+    }
+    return WorkerRules.rejection(p, taskType, temperatureZone);
+  }
+
+  private java.time.LocalDate today() {
+    return java.time.LocalDate.ofInstant(clock.instant(), SEOUL);
+  }
+
+  /** 지금 배정 조건 = 업무 ∩ 유효 자격. 일일크루는 오늘 등록한 날의 업무(시스템이 정한 것) ∩ 자격. */
+  private Set<String> effective(String mfcId, String workerId, DutyRow d) {
+    Instant now = clock.instant();
+    var q = quals.current(mfcId, workerId);
+    Set<String> qual =
+        q.isEmpty() ? d.taskTypes() : q.get().valid(now) ? q.get().taskTypes() : Set.<String>of();
+    Set<String> base;
+    if ("DAILY".equals(quals.employmentType(mfcId, workerId))) {
+      base =
+          quals
+              .day(mfcId, workerId, today())
+              .map(QualificationStore.Day::dutyTaskTypes)
+              .orElse(Set.of());
+    } else {
+      base = d.taskTypes();
+    }
+    Set<String> out = new TreeSet<>(base);
+    out.retainAll(qual);
+    return out;
+  }
+
+  private View build(WorkerRow w) {
+    DutyRow d = store.duty(w.mfcId(), w.workerId(), w.dutyVersion());
+    return new View(
+        w,
+        d,
+        quals.employmentType(w.mfcId(), w.workerId()),
+        quals.current(w.mfcId(), w.workerId()).orElse(null),
+        effective(w.mfcId(), w.workerId(), d),
+        quals.day(w.mfcId(), w.workerId(), today()).orElse(null));
   }
 
   /** 지금 업무의 작업 유형(등록 안 됨이면 빈 집합). */
@@ -87,7 +150,8 @@ public class WorkerService {
             w -> {
               DutyRow d = store.duty(mfcId, workerId, w.dutyVersion());
               return new WorkerRules.Profile(
-                  w.state(), new WorkerRules.Duty(d.dutyVersion(), d.taskTypes(), d.zones()));
+                  w.state(),
+                  new WorkerRules.Duty(d.dutyVersion(), effective(mfcId, workerId, d), d.zones()));
             })
         .orElse(null);
   }
@@ -101,9 +165,25 @@ public class WorkerService {
       String workerId,
       String displayName,
       Set<String> taskTypes,
-      Set<String> zones) {
+      Set<String> zones,
+      @Nullable String employmentType,
+      @Nullable Set<String> qualificationTypes,
+      @Nullable Instant qualificationExpiresAt) {
     String me = AssignmentService.requireSupervisor(mfcId);
     checkDuty(taskTypes, zones);
+    String type = employmentType == null ? "REGULAR" : employmentType;
+    if (!WorkerRules.EMPLOYMENT_TYPES.contains(type)) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED, "고용 형태는 " + WorkerRules.EMPLOYMENT_TYPES + " 입니다.");
+    }
+    Set<String> qual =
+        qualificationTypes != null && !qualificationTypes.isEmpty()
+            ? qualificationTypes
+            : "DAILY".equals(type) ? WorkerRules.DAILY_DEFAULT_QUALIFICATION : taskTypes;
+    checkDuty(qual, Set.of());
+    if (!"DAILY".equals(type) && !qual.containsAll(taskTypes)) {
+      throw outsideQualification(taskTypes, qual);
+    }
     if (workerId.isBlank() || displayName.isBlank()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "workerId·displayName 이 비었습니다.");
     }
@@ -126,6 +206,8 @@ public class WorkerService {
                     List.of());
               }
               store.insertDuty(mfcId, workerId, 1, taskTypes, zones, "등록", me, at);
+              quals.setEmploymentType(mfcId, workerId, type);
+              quals.insert(mfcId, workerId, 1, qual, qualificationExpiresAt, "등록", me, at);
               store.setState(mfcId, workerId, null, "ACTIVE", "등록", me, at);
               log.info("작업자 {} 등록 {} by {} (업무 {} {})", workerId, mfcId, me, taskTypes, zones);
               return workerId;
@@ -145,6 +227,13 @@ public class WorkerService {
       String reason) {
     String me = AssignmentService.requireSupervisor(mfcId);
     checkDuty(taskTypes, zones);
+    var q = quals.current(mfcId, workerId);
+    if (q.isPresent() && !"DAILY".equals(quals.employmentType(mfcId, workerId))) {
+      Set<String> qual = q.get().valid(clock.instant()) ? q.get().taskTypes() : Set.of();
+      if (!qual.containsAll(taskTypes)) {
+        throw outsideQualification(taskTypes, qual);
+      }
+    }
     boolean changed =
         idempotency
             .execute(
@@ -232,9 +321,7 @@ public class WorkerService {
   @Transactional(readOnly = true)
   public List<View> list(String mfcId, @Nullable String state) {
     AssignmentService.requireReader(mfcId);
-    return store.list(mfcId, state).stream()
-        .map(w -> new View(w, store.duty(mfcId, w.workerId(), w.dutyVersion())))
-        .toList();
+    return store.list(mfcId, state).stream().map(this::build).toList();
   }
 
   @Transactional(readOnly = true)
@@ -249,7 +336,110 @@ public class WorkerService {
         store
             .find(mfcId, workerId)
             .orElseThrow(() -> PmartException.notFound(WORKER_NOT_FOUND, "작업자가 없습니다: " + workerId));
-    return new View(w, store.duty(mfcId, workerId, w.dutyVersion()));
+    return build(w);
+  }
+
+  // ---------- 자격·일일크루(작업자 쪽 2단계) ----------
+
+  private static PmartException outsideQualification(Set<String> duty, Set<String> qual) {
+    return new PmartException(
+        WorkerRules.DUTY_OUTSIDE_QUALIFICATION,
+        HttpStatus.UNPROCESSABLE_CONTENT,
+        "업무 " + duty + " 는 자격 " + qual + " 안이어야 합니다.",
+        false,
+        List.of());
+  }
+
+  /** 자격 변경(감독자) — 새 버전. 자격에서 빠진 업무 유형은 배정 조건에서 빠진다(업무 행은 그대로). */
+  public ChangeResult changeQualification(
+      String requestId,
+      String sourceSystem,
+      String mfcId,
+      String workerId,
+      @Nullable Integer expectedVersion,
+      Set<String> taskTypes,
+      @Nullable Instant expiresAt,
+      @Nullable String reason) {
+    String me = AssignmentService.requireSupervisor(mfcId);
+    checkDuty(taskTypes, Set.of());
+    boolean changed =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, requestId, "changeWorkerQualification", me),
+                List.of(
+                    mfcId,
+                    workerId,
+                    new TreeSet<>(taskTypes),
+                    String.valueOf(expiresAt),
+                    String.valueOf(expectedVersion)),
+                Boolean.class,
+                () -> {
+                  lockOrThrow(mfcId, workerId);
+                  var cur = quals.current(mfcId, workerId).orElse(null);
+                  int v = cur == null ? 0 : cur.version();
+                  if (expectedVersion != null && expectedVersion != v) {
+                    throw PmartException.versionConflict(
+                        "자격이 이미 바뀌었습니다(기대 " + expectedVersion + ", 현재 " + v + ").");
+                  }
+                  if (cur != null
+                      && cur.taskTypes().equals(taskTypes)
+                      && java.util.Objects.equals(cur.expiresAt(), expiresAt)) {
+                    return false;
+                  }
+                  quals.insert(
+                      mfcId, workerId, v + 1, taskTypes, expiresAt, reason, me, clock.instant());
+                  log.info(
+                      "작업자 {} 자격 v{} {} (만료 {}) by {}", workerId, v + 1, taskTypes, expiresAt, me);
+                  return true;
+                })
+            .value();
+    return new ChangeResult(view(mfcId, workerId), changed, affected(mfcId, workerId));
+  }
+
+  /** 일일크루 그날 근무 등록(감독자 또는 본인). 그날 업무 = 유효 자격(시스템이 정함 — 수요 맞춤 세분은 나중). */
+  public QualificationStore.Day enrollDay(
+      String requestId,
+      String sourceSystem,
+      String mfcId,
+      String workerId,
+      java.time.@Nullable LocalDate date) {
+    var p =
+        com.pmart.common.security.PmartPrincipal.current()
+            .filter(
+                x -> x.type() == com.pmart.common.security.PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 할 수 있습니다."));
+    if (!p.canAccessCenter(mfcId)
+        || !(p.subject().equals(workerId) || p.hasRole(AssignmentService.SUPERVISOR_ROLE))) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "그 센터 감독자 또는 본인만 근무를 등록합니다.");
+    }
+    WorkerRow w =
+        store
+            .find(mfcId, workerId)
+            .orElseThrow(() -> PmartException.notFound(WORKER_NOT_FOUND, "작업자가 없습니다: " + workerId));
+    if (!"DAILY".equals(quals.employmentType(mfcId, workerId))) {
+      throw new PmartException(
+          WorkerRules.NOT_DAILY_CREW,
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "일일크루만 그날 근무를 등록합니다.",
+          false,
+          List.of());
+    }
+    if (!"ACTIVE".equals(w.state())) {
+      throw new PmartException(
+          WorkerRules.WORKER_NOT_ACTIVE,
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "ACTIVE 가 아닌 작업자입니다.",
+          false,
+          List.of());
+    }
+    java.time.LocalDate d = date == null ? today() : date;
+    Instant now = clock.instant();
+    var q = quals.current(mfcId, workerId).orElse(null);
+    Set<String> duty = q == null || !q.valid(now) ? Set.of() : q.taskTypes();
+    if (quals.enroll(mfcId, workerId, d, duty, p.subject(), now)) {
+      log.info("일일크루 {} {} 근무 등록 — 그날 업무 {} by {}", workerId, d, duty, p.subject());
+    }
+    return quals.day(mfcId, workerId, d).orElseThrow();
   }
 
   // ---------- 근무 ----------

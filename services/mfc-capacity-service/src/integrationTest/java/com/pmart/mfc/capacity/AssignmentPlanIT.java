@@ -203,6 +203,114 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
     assertThat(off.body().path("code").asString()).isEqualTo("OFF_SHIFT");
   }
 
+  /**
+   * 작업자 쪽 2단계: 일일크루는 그날 근무 등록한 날만(그날 업무 = 유효 자격, 기본 PICK·PACK), 업무는 자격 안, 자격에서 빠진 유형·만료 자격은 배정 조건에서
+   * 빠짐, 정규직은 근무 등록 대상 아님.
+   */
+  @Test
+  void dailyCrewWorksOnlyOnEnrolledDaysAndDutyStaysWithinQualification() {
+    String s = UUID.randomUUID().toString().substring(0, 6);
+    String dc = "dc-" + s;
+    String rg = "rg-" + s;
+    String path = "/mfcs/" + MFC + "/workers";
+    Res reg =
+        send(
+            "POST",
+            SUP,
+            path,
+            Map.of(
+                "workerId",
+                dc,
+                "displayName",
+                dc,
+                "employmentType",
+                "DAILY",
+                "duty",
+                Map.of("taskTypes", List.of("PICK"))));
+    assertThat(reg.status()).as(reg.body().toString()).isEqualTo(201);
+    assertThat(reg.body().path("employmentType").asString()).isEqualTo("DAILY");
+    assertThat(reg.body().path("qualification").path("taskTypes").toString())
+        .contains("PICK")
+        .contains("PACK");
+    assertThat(reg.body().path("effectiveTaskTypes")).isEmpty(); // 아직 근무 등록 전
+    String pack = "T-DP-" + s;
+    tasks(List.of(task(pack, "PACK", "READY", 1, null, 15)), "READY", "ASSIGNED", "IN_PROGRESS");
+    String tdc = TestJwt.operator(dc, List.of("MFC_WORKER"), List.of(MFC));
+    Res before = send("POST", tdc, path + "/" + dc + "/next-tasks", null);
+    assertThat(before.status()).isEqualTo(422);
+    assertThat(before.body().path("code").asString()).isEqualTo("DAILY_NOT_ENROLLED");
+    Res day = send("POST", tdc, path + "/" + dc + "/day-enrollments", Map.of());
+    assertThat(day.status()).as(day.body().toString()).isEqualTo(200);
+    assertThat(day.body().path("dutyTaskTypes").toString()).contains("PICK").contains("PACK");
+    Res got = send("POST", tdc, path + "/" + dc + "/next-tasks", null);
+    assertThat(got.status()).as(got.body().toString()).isEqualTo(201);
+    assertThat(got.body().path("taskId").asString()).isEqualTo(pack);
+
+    // 정규직: 업무는 자격 안, 근무 등록 대상 아님
+    Res outside =
+        send(
+            "POST",
+            SUP,
+            path,
+            Map.of(
+                "workerId",
+                rg,
+                "displayName",
+                rg,
+                "qualification",
+                Map.of("taskTypes", List.of("PICK")),
+                "duty",
+                Map.of("taskTypes", List.of("PICK", "PACK"))));
+    assertThat(outside.body().path("code").asString()).isEqualTo("DUTY_OUTSIDE_QUALIFICATION");
+    register(rg, List.of("PICK", "PACK"));
+    String trg = TestJwt.operator(rg, List.of("MFC_WORKER"), List.of(MFC));
+    assertThat(
+            send("POST", trg, path + "/" + rg + "/day-enrollments", Map.of())
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NOT_DAILY_CREW");
+    // 자격에서 PICK 을 빼면 유효 업무 = PACK 만, 만료 자격이면 아무것도
+    Res q1 =
+        sendV(
+            SUP,
+            path + "/" + rg + "/qualification-changes",
+            Map.of("taskTypes", List.of("PACK"), "reason", "피킹 교육 전"),
+            1);
+    assertThat(q1.status()).as(q1.body().toString()).isEqualTo(200);
+    assertThat(q1.body().path("effectiveTaskTypes").toString()).isEqualTo("[\"PACK\"]");
+    Res q2 =
+        sendV(
+            SUP,
+            path + "/" + rg + "/qualification-changes",
+            Map.of(
+                "taskTypes", List.of("PACK"),
+                "expiresAt", Instant.now().minusSeconds(60).toString(),
+                "reason", "만료 시험"),
+            2);
+    assertThat(q2.body().path("qualification").path("expired").asBoolean()).isTrue();
+    assertThat(q2.body().path("effectiveTaskTypes")).isEmpty();
+  }
+
+  Res sendV(String token, String path, Object body, int version) {
+    var e =
+        http.post()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "backoffice-web");
+                  h.set("X-Expected-Version", String.valueOf(version));
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(mapper.writeValueAsString(body))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
   @Test
   void proposesByDutyAndBusyTimeThenCommitsAfterRecheck() {
     register("pk1", List.of("PICK"));

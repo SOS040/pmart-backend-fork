@@ -234,6 +234,22 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
             List.of("AMBIENT", "FROZEN"),
             "reason",
             "포장 담당으로");
+    // 업무는 자격 안이어야 — 자격이 PICK 뿐이면 PACK 업무는 422, 자격을 넓힌 뒤 변경(작업자 쪽 2단계)
+    assertThat(
+            send("POST", SUPERVISOR, path + "/duty-changes", toPack, 1)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("DUTY_OUTSIDE_QUALIFICATION");
+    assertThat(
+            send(
+                    "POST",
+                    SUPERVISOR,
+                    path + "/qualification-changes",
+                    Map.of("taskTypes", List.of("PICK", "PACK"), "reason", "포장 교육"),
+                    1)
+                .status())
+        .isEqualTo(200);
     assertThat(send("POST", SUPERVISOR, path + "/duty-changes", toPack, 9).status()).isEqualTo(409);
     Res changed = send("POST", SUPERVISOR, path + "/duty-changes", toPack, 1);
     assertThat(changed.status()).as(changed.body().toString()).isEqualTo(200);

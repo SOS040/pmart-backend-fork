@@ -67,7 +67,16 @@ public class WorkersController implements WorkersApi {
             body.getWorkerId(),
             body.getDisplayName(),
             types(body.getDuty().getTaskTypes()),
-            zones(body.getDuty().getTemperatureZones()));
+            zones(body.getDuty().getTemperatureZones()),
+            body.getEmploymentType() == null ? null : body.getEmploymentType().getValue(),
+            body.getQualification() == null
+                ? null
+                : body.getQualification().getTaskTypes().stream()
+                    .map(TaskType::getValue)
+                    .collect(java.util.stream.Collectors.toSet()),
+            body.getQualification() == null || body.getQualification().getExpiresAt() == null
+                ? null
+                : body.getQualification().getExpiresAt().toInstant());
     return ResponseEntity.status(HttpStatus.CREATED).body(worker(v));
   }
 
@@ -214,9 +223,77 @@ public class WorkersController implements WorkersApi {
     w.setDisplayName(v.worker().displayName());
     w.setState(WorkerState.fromValue(v.worker().state()));
     w.setDuty(duty(v.duty()));
+    w.setEmploymentType(
+        com.pmart.mfc.capacity.api.generated.model.EmploymentType.fromValue(v.employmentType()));
+    if (v.qualification() != null) {
+      var q = new com.pmart.mfc.capacity.api.generated.model.WorkerQualification();
+      q.setQualificationVersion(v.qualification().version());
+      q.setTaskTypes(v.qualification().taskTypes().stream().map(TaskType::fromValue).toList());
+      q.setExpiresAt(
+          v.qualification().expiresAt() == null ? null : odt(v.qualification().expiresAt()));
+      q.setExpired(!v.qualification().valid(Instant.now()));
+      q.setChangedBy(v.qualification().changedBy());
+      q.setChangedAt(odt(v.qualification().changedAt()));
+      w.setQualification(q);
+    }
+    w.setEffectiveTaskTypes(v.effective().stream().map(TaskType::fromValue).toList());
+    w.setTodayEnrollment(v.today() == null ? null : day(v.today()));
     w.setRegisteredBy(v.worker().registeredBy());
     w.setRegisteredAt(odt(v.worker().registeredAt()));
     return w;
+  }
+
+  private static com.pmart.mfc.capacity.api.generated.model.DayEnrollment day(
+      com.pmart.mfc.capacity.infrastructure.QualificationStore.Day d) {
+    var out = new com.pmart.mfc.capacity.api.generated.model.DayEnrollment();
+    out.setWorkerId(d.workerId());
+    out.setBusinessDate(d.businessDate());
+    out.setDutyTaskTypes(d.dutyTaskTypes().stream().map(TaskType::fromValue).toList());
+    out.setEnrolledBy(d.enrolledBy());
+    out.setEnrolledAt(odt(d.enrolledAt()));
+    return out;
+  }
+
+  @Override
+  public ResponseEntity<Worker> changeWorkerQualification(
+      String mfcId,
+      String workerId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.capacity.api.generated.model.ChangeWorkerQualificationRequest body,
+      @org.jspecify.annotations.Nullable Integer xExpectedVersion) {
+    var r =
+        service.changeQualification(
+            idempotencyKey,
+            xSourceSystem,
+            mfcId,
+            workerId,
+            xExpectedVersion,
+            body.getTaskTypes().stream()
+                .map(TaskType::getValue)
+                .collect(java.util.stream.Collectors.toSet()),
+            body.getExpiresAt() == null ? null : body.getExpiresAt().toInstant(),
+            body.getReason());
+    return ResponseEntity.ok(worker(r.view()));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.DayEnrollment> enrollWorkerDay(
+      String mfcId,
+      String workerId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.capacity.api.generated.model.@org.jspecify.annotations.Nullable
+          EnrollWorkerDayRequest
+          body) {
+    return ResponseEntity.ok(
+        day(
+            service.enrollDay(
+                idempotencyKey,
+                xSourceSystem,
+                mfcId,
+                workerId,
+                body == null ? null : body.getBusinessDate())));
   }
 
   private static WorkerDuty duty(DutyRow d) {

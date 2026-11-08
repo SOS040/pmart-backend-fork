@@ -101,7 +101,8 @@ public class AssignmentService {
     requireSelf(mfcId, workerId);
     String reject = workers.rejection(mfcId, workerId, "PICK", null);
     if (com.pmart.mfc.capacity.domain.WorkerRules.WORKER_NOT_REGISTERED.equals(reject)
-        || com.pmart.mfc.capacity.domain.WorkerRules.WORKER_NOT_ACTIVE.equals(reject)) {
+        || com.pmart.mfc.capacity.domain.WorkerRules.WORKER_NOT_ACTIVE.equals(reject)
+        || com.pmart.mfc.capacity.domain.WorkerRules.DAILY_NOT_ENROLLED.equals(reject)) {
       throw new PmartException(
           reject,
           org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,

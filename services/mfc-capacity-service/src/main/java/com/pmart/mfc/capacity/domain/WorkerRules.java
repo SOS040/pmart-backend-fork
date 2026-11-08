@@ -16,6 +16,14 @@ public final class WorkerRules {
   public static final String DUTY_NOT_ALLOWED = "DUTY_NOT_ALLOWED";
   public static final String ZONE_NOT_QUALIFIED = "ZONE_NOT_QUALIFIED";
   public static final String OFF_SHIFT = "OFF_SHIFT";
+  public static final String DAILY_NOT_ENROLLED = "DAILY_NOT_ENROLLED";
+  public static final String DUTY_OUTSIDE_QUALIFICATION = "DUTY_OUTSIDE_QUALIFICATION";
+  public static final String NOT_DAILY_CREW = "NOT_DAILY_CREW";
+  public static final Set<String> EMPLOYMENT_TYPES = Set.of("REGULAR", "PART_TIME", "DAILY");
+
+  /** 일일크루 기본 자격(사용자 결정 2026-11-08 — MFC 는 온도대 자격 없음). */
+  public static final Set<String> DAILY_DEFAULT_QUALIFICATION = Set.of("PICK", "PACK");
+
   public static final String SHIFT_OVERLAP = "SHIFT_OVERLAP";
 
   public static final Set<String> TASK_TYPES =
