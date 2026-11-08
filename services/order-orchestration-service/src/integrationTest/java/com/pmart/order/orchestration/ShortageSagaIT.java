@@ -182,20 +182,21 @@ class ShortageSagaIT extends PostgresKafkaContainerSupport {
   }
 
   @Test
-  void cancelAllAndWholeOrderShortageRequestFullCancel() throws Exception {
-    // 전체 취소 선택 → 바로 claim 시스템 전체 취소(OUT_OF_STOCK), 작업·부분 환불 호출 없음
+  void preferenceIsIgnoredAndOnlyWholeOrderShortageRequestsFullCancel() throws Exception {
+    // 전체 취소 선택이어도 부분 취소·환불(ADR-0049) — 전체 취소 호출 없음
     String o = order();
-    systemCancelAccepts(o);
+    ledger(o);
+    participantsAccept(o);
     shortage(o, "CANCEL_ALL", 1);
     ShortageRow s = await(o, "COMPLETED");
-    assertThat(s.claimId()).isEqualTo("CLM-F-" + o);
+    assertThat(s.claimId()).isEqualTo("CLM-" + o);
     parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds"))
+            .withRequestBody(matchingJsonPath("$.orderId", WireMock.equalTo(o))));
+    parts.verify(
+        0,
         postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/system-cancellations"))
-            .withHeader("Idempotency-Key", WireMock.equalTo(s.sagaId() + ":REQUEST_FULL_CANCEL"))
-            .withRequestBody(matchingJsonPath("$.reason", WireMock.equalTo("OUT_OF_STOCK")))
-            .withRequestBody(
-                matchingJsonPath("$.reasonDetail", WireMock.containing("CANCEL_ALL"))));
-    parts.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds")));
+            .withRequestBody(matchingJsonPath("$.orderId", WireMock.equalTo(o))));
 
     // 남은 수량 전부(5)가 결품 → 주문 확인 뒤 전체 취소, 작업·부분 환불 호출 없음
     String o2 = order();
@@ -215,9 +216,11 @@ class ShortageSagaIT extends PostgresKafkaContainerSupport {
         postRequestedFor(
             urlPathEqualTo("/api/v1/internal/work-orders/FUL-" + o2 + "/shortage-resolutions")));
 
-    // 선택 없음 → 상신(CS 이관 미구현)
+    // 선택 없음도 부분 취소·환불(상신 없음)
     String o3 = order();
+    ledger(o3);
+    participantsAccept(o3);
     shortage(o3, null, 1);
-    assertThat(await(o3, "ESCALATED").lastErrorCode()).isEqualTo("NO_PREFERENCE");
+    assertThat(await(o3, "COMPLETED").claimId()).isEqualTo("CLM-" + o3);
   }
 }

@@ -201,9 +201,7 @@ public class ShortageSagaService {
                       "reason",
                       "OUT_OF_STOCK",
                       "reasonDetail",
-                      (ShortageRules.CANCEL_ALL.equals(s.preference())
-                              ? "CANCEL_ALL"
-                              : "WHOLE_ORDER_OUT_OF_STOCK")
+                      "WHOLE_ORDER_OUT_OF_STOCK"
                           + " 결품 "
                           + s.orderLineId()
                           + " "

@@ -4,15 +4,14 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 결품 사가 규칙(IV-09 2부, ADR-0045, docs/business/flows/order-checkout-saga.md §2.1). 순수 계산.
+ * 결품 사가 규칙(IV-09 2부, ADR-0045 → ADR-0049, docs/business/flows/order-checkout-saga.md §2.1). 순수 계산.
  *
  * <ul>
- *   <li>CANCEL_OOS_ONLY(품절 상품만 취소): CHECK_ORDER → RESOLVE_WORK → RELEASE_SHORTFALL →
- *       APPLY_ORDER_CHANGE → REQUEST_REFUND. 남은 주문이 15,000원 미만이 돼도 유지(재결제·배달팁 추가 없음).
- *   <li>CANCEL_ALL(전체 취소): REQUEST_FULL_CANCEL — claim 시스템 전체 취소(reason OUT_OF_STOCK). 뒤는 S3(현장 중지가
- *       집품분을 취소 복귀로, IV-08 ADR-0046) → 주문 취소 → 전액(앞선 부분 환불 뺀 잔액) 환불.
- *   <li>선택 없음·모름: 출하 보류 → CS(case-service 미구현이라 상신).
- *   <li>결품이 주문의 남은 수량 전부면(봉투값·배달팁까지 환불하는 전체 취소와 같다) CHECK_ORDER → REQUEST_FULL_CANCEL.
+ *   <li><b>결품은 고객 사전 선택과 관계없이 무조건 부분 취소·환불</b>(사용자 결정 2026-11-08, ADR-0049): CHECK_ORDER →
+ *       RESOLVE_WORK → RELEASE_SHORTFALL → APPLY_ORDER_CHANGE → REQUEST_REFUND. 남은 주문이 15,000원 미만이
+ *       돼도 유지(재결제·배달팁 추가 없음). 사전 선택 값(outOfStockPreference)은 기록만 한다 — 전체 취소 선택·선택 없음도 같은 처리, 상신 없음.
+ *   <li>예외: 결품이 주문의 남은 수량 전부면(보낼 상품이 없다) CHECK_ORDER → REQUEST_FULL_CANCEL — claim 시스템 전체 취소(reason
+ *       OUT_OF_STOCK, 봉투값·배달팁까지 환불, ADR-0046).
  * </ul>
  */
 public final class ShortageRules {
@@ -34,17 +33,14 @@ public final class ShortageRules {
   public static final List<String> STEPS =
       List.of(CHECK_ORDER, RESOLVE_WORK, RELEASE_SHORTFALL, APPLY_ORDER_CHANGE, REQUEST_REFUND);
 
-  /** 사가 시작 판정: null 이면 진행, 아니면 상신 사유 코드. */
+  /** 사가 시작 판정: null 이면 진행. 결품은 무조건 부분 취소·환불이라(ADR-0049) 사전 선택으로 상신하지 않는다. */
   public static @Nullable String escalationAtStart(@Nullable String preference) {
-    if (CANCEL_OOS_ONLY.equals(preference) || CANCEL_ALL.equals(preference)) {
-      return null;
-    }
-    return "NO_PREFERENCE";
+    return null;
   }
 
-  /** 첫 단계. 전체 취소 선택은 바로 전체 취소로. */
+  /** 첫 단계 — 언제나 주문 확인(남은 수량 전부 결품이면 거기서 전체 취소로). */
   public static String firstStep(@Nullable String preference) {
-    return CANCEL_ALL.equals(preference) ? REQUEST_FULL_CANCEL : CHECK_ORDER;
+    return CHECK_ORDER;
   }
 
   /** 다음 단계. 마지막이면 null(완료). */

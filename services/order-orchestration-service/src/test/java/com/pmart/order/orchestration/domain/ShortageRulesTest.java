@@ -8,13 +8,12 @@ import org.junit.jupiter.api.Test;
 class ShortageRulesTest {
 
   @Test
-  void preferenceDecidesRunOrEscalate() {
-    assertThat(ShortageRules.escalationAtStart("CANCEL_OOS_ONLY")).isNull();
-    assertThat(ShortageRules.escalationAtStart("CANCEL_ALL")).isNull();
-    assertThat(ShortageRules.firstStep("CANCEL_ALL")).isEqualTo(ShortageRules.REQUEST_FULL_CANCEL);
-    assertThat(ShortageRules.firstStep("CANCEL_OOS_ONLY")).isEqualTo(ShortageRules.CHECK_ORDER);
+  void shortageIsAlwaysPartialCancelRegardlessOfPreference() {
+    for (String p : new String[] {"CANCEL_OOS_ONLY", "CANCEL_ALL", null}) {
+      assertThat(ShortageRules.escalationAtStart(p)).isNull();
+      assertThat(ShortageRules.firstStep(p)).isEqualTo(ShortageRules.CHECK_ORDER);
+    }
     assertThat(ShortageRules.next(ShortageRules.REQUEST_FULL_CANCEL)).isNull();
-    assertThat(ShortageRules.escalationAtStart(null)).isEqualTo("NO_PREFERENCE");
   }
 
   @Test

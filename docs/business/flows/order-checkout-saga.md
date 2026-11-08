@@ -150,11 +150,7 @@ D6-5 세부(사용자 결정 2026-11-07):
 
 예약 보류분(2026-11-08, 사용자 결정 #5 안 C): 결제 뒤 격리·실사 손실로 생긴 보류(`ReservationBlocked`)는 **피킹 시작 전에는 mfc-inventory 가 자동 재확보**(1분, `ReservationBlockCleared` → order 확인 필요 종결)하고, **피킹 시작 때(·집품마다) 남아 있으면 mfc-fulfillment 가 `LineShortageReported`(reason BLOCKED)** 로 넘긴다 — 아래 표 그대로.
 
-| 고객 사전 선택 | 처리 |
-|---|---|
-| `품절 상품만 취소` | 미인계 범위에서 해당 품목 부분 취소 → claim.RefundIntent(원가격·원안분) → payment.PartialCancel → RefundResult → OrderLineQuantityChanged. 남은 주문이 15,000원 미만이어도 유지. 재결제 요구·배달팁 추가 없음 |
-| `전체 취소` | S3(취소) 호출. 인계된 포장이 있으면 그 수량은 회수 절차 |
-| 선택 없음/불명 | 출하 보류 → `case-service` CS 이관. 임의 대체 상품 금지 |
+**결품 처리(2026-11-08 사용자 결정, ADR-0049 — ADR-0045 의 사전 선택별 처리를 대체)**: 고객 사전 선택과 관계없이 **무조건 그 품목만 부분 취소·환불** — 미인계 범위에서 해당 품목 부분 취소 → claim.RefundIntent(원가격·원안분) → payment.PartialCancel → RefundResult → OrderLineQuantityChanged. 남은 주문이 15,000원 미만이어도 유지, 재결제·배달팁 추가 없음, 대체 상품 없음, 상신·CS 이관 없음. 예외: 결품이 주문의 남은 수량 전부면 전체 취소(봉투값·배달팁 포함 전액 환불).
 
 부분 취소 PG 요청은 `추가 환불 가능 한도 = 승인액 − 성공 누적 − 불명 점유` 안에서만, 같은 요청 ID로 1회.
 
