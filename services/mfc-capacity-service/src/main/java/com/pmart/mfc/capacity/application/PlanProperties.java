@@ -1,0 +1,27 @@
+package com.pmart.mfc.capacity.application;
+
+import java.time.Duration;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+/**
+ * {@code pmart.capacity.plan.*} — 배정 추천(WK-09) 정책값. 미설정은 0·무제한으로 대체하지 않는다.
+ *
+ * @param mfcFulfillmentBaseUrl 작업 목록(READY·ASSIGNED·IN_PROGRESS) 동기 조회 주소
+ * @param taskMinutes 작업 유형 → 예상 분(설계 가정 PICK 7·PACK 4 는 승인 전 LAN 시험값). 없는 유형의 작업은 미배정
+ *     CONFIG_REQUIRED, 비면 계산 거절
+ * @param timeLimit 계산 시간 제한(게이트웨이 10초보다 짧게). 없으면 계산 거절
+ * @param packingStations 동시 PACK 상한. 없으면 계산 거절
+ */
+@ConfigurationProperties(prefix = "pmart.capacity.plan")
+public record PlanProperties(
+    @Nullable String mfcFulfillmentBaseUrl,
+    @Nullable Map<String, Integer> taskMinutes,
+    @Nullable Duration timeLimit,
+    @Nullable Integer packingStations) {
+
+  public static final String TASK_MINUTES_KEY = "pmart.capacity.plan.task-minutes";
+  public static final String TIME_LIMIT_KEY = "pmart.capacity.plan.time-limit";
+  public static final String PACKING_STATIONS_KEY = "pmart.capacity.plan.packing-stations";
+}

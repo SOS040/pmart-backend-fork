@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -326,8 +326,15 @@ paths:
   /assignment-plans:
     post:
       tags: [assignments]
-      summary: OR-Tools 배정 계획 생성·확정 요청 (PROPOSED→COMMITTED, AssignmentPublished)
-      description: 입력 스냅샷 버전이 바뀌면 STALE, 해 없음은 NO_SOLUTION, 실행 중 불일치는 RECOVERY_REQUIRED. optimizers 의존 `[결정 필요]`.
+      summary: 배정 추천 계산 (WK-09 — OR-Tools CP-SAT, 0.5.0)
+      description: |
+        2026-11-08. 그 센터 MFC_SUPERVISOR. 지금부터 horizonMinutes 안에서 READY 작업을 ACTIVE 작업자에게 나누는 **추천(PROPOSED)** 을 만든다 — 배정은 바뀌지 않는다
+        (확정은 POST /assignment-plans/{planId}/commits, WK-10). 자동 확정(Q-08)은 아직 없다.
+        입력(서버가 모음): mfc-fulfillment READY 작업(+ ASSIGNED·IN_PROGRESS 작업은 그 담당의 앞 점유), 이 서비스의 ACTIVE 작업자·지금 업무·근무.
+        작업 시간은 설정 `pmart.capacity.plan.task-minutes.<유형>`(없으면 그 작업만 미배정 CONFIG_REQUIRED, 하나도 없으면 422 CONFIG_REQUIRED).
+        강제 제약: 작업마다 배정 하나 또는 미배정, 업무에 그 유형이 있는 작업자만, 작업자 시간 겹침 금지, 근무를 등록한 작업자는 근무 안에서만, 동시 PACK ≤ 패킹대 수(`plan.packing-stations`).
+        목적(Q-08 전 임시 가중치): 미배정 수 → 약속 준비 시각(promisedReadyAt) 지연 분 → 작업자별 최대 부하 → 시작 시각 합 순.
+        계산은 시간 제한(`plan.time-limit`) 안에서. OPTIMAL·FEASIBLE = PROPOSED, 그 밖(UNKNOWN·MODEL_INVALID) = NO_SOLUTION(수동 배정으로).
       operationId: createAssignmentPlan
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -338,30 +345,24 @@ paths:
           application/json:
             schema:
               type: object
-              required: [mfcId, window, mode]
+              required: [mfcId, horizonMinutes]
               properties:
                 mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-                window: { type: string, description: ISO-8601 interval }
-                mode: { type: string, enum: [PROPOSE_ONLY, PROPOSE_AND_COMMIT] }
-                inputSnapshotVersion: { type: integer }
-                constraints:
-                  type: object
-                  properties:
-                    maxPackingStations: { type: integer, minimum: 1, maximum: 8, default: 4 }
-                    respectQualifications: { type: boolean, default: true }
+                horizonMinutes: { type: integer, minimum: 10, maximum: 480 }
       responses:
-        '202':
-          description: 접수 (resultId = planId)
+        '201':
+          description: 계산됨(PROPOSED 또는 NO_SOLUTION)
           content:
             application/json:
-              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+              schema: { $ref: '#/components/schemas/AssignmentPlan' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
-
   /assignment-plans/{planId}:
     get:
       tags: [assignments]
-      summary: 배정 계획 조회
+      summary: 배정 추천 조회 (0.5.0)
+      description: 그 센터 운영자·서비스.
       operationId: getAssignmentPlan
       parameters:
         - { name: planId, in: path, required: true, schema: { type: string } }
@@ -371,7 +372,32 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AssignmentPlan' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /assignment-plans/{planId}/commits:
+    post:
+      tags: [assignments]
+      summary: 배정 추천 확정 (WK-10 — 최신 상태 재검증 뒤 전부 또는 전무, 0.5.0)
+      description: |
+        그 센터 MFC_SUPERVISOR, PROPOSED 만. 항목마다 다시 확인: 작업이 아직 READY·같은 version(fulfillment), 그 작업에 활성 담당 없음, 작업자가 아직 적격·같은 업무 버전.
+        하나라도 어긋나면 아무것도 배정하지 않고 계획을 STALE(staleReasons) 로 두고 409 PLAN_STALE — 다시 계산한다.
+        모두 맞으면 한 트랜잭션에서 항목마다 배정(planId 기록, assignmentVersion +1) + AssignmentPublished(planId, planVersion = assignmentVersion), 계획 COMMITTED.
+        이미 COMMITTED 면 지금 상태(200). 미배정 작업은 수동 배정으로.
+      operationId: commitAssignmentPlan
+      parameters:
+        - { name: planId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 확정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssignmentPlan' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /operation-restrictions:
     get:
@@ -832,12 +858,45 @@ components:
       properties:
         planId: { type: string }
         mfcId: { type: string }
-        window: { type: string }
-        state: { type: string, enum: [PROPOSED, COMMITTED, NO_SOLUTION, STALE, RECOVERY_REQUIRED] }
-        inputSnapshotVersion: { type: integer }
-        assignments: { type: array, items: { $ref: '#/components/schemas/Assignment' } }
-        objective: { type: object, properties: { makespanSec: { type: integer }, utilization: { type: number } } }
+        state: { type: string, enum: [PROPOSED, COMMITTED, NO_SOLUTION, STALE] }
+        solverStatus: { type: string, enum: [OPTIMAL, FEASIBLE, INFEASIBLE, UNKNOWN, MODEL_INVALID, NOT_RUN] }
+        horizonStart: { type: string, format: date-time }
+        horizonMinutes: { type: integer }
+        items:
+          type: array
+          description: 추천 배정(시작 순)
+          items:
+            type: object
+            properties:
+              taskId: { type: string }
+              taskType: { type: string }
+              taskVersion: { type: integer }
+              workerId: { type: string }
+              dutyVersion: { type: integer }
+              startAt: { type: string, format: date-time }
+              endAt: { type: string, format: date-time }
+              lateMinutes: { type: integer, description: promisedReadyAt 보다 늦게 끝나는 분(0 이상) }
+        unassigned:
+          type: array
+          items:
+            type: object
+            properties:
+              taskId: { type: string }
+              taskType: { type: string }
+              reason: { type: string, enum: [NO_ELIGIBLE_WORKER, NO_TIME, CONFIG_REQUIRED] }
+        objective:
+          type: object
+          properties:
+            unassignedCount: { type: integer }
+            lateMinutes: { type: integer }
+            maxWorkerLoadMinutes: { type: integer }
+            objectiveValue: { type: integer, format: int64 }
+            wallTimeMs: { type: integer }
+        staleReasons: { type: array, items: { type: string } }
+        assignments: { type: array, description: 확정 뒤 만든 배정, items: { $ref: '#/components/schemas/Assignment' } }
+        createdBy: { type: string }
         createdAt: { type: string, format: date-time }
+        committedBy: { type: [string, 'null'] }
         committedAt: { type: [string, 'null'], format: date-time }
     OperationRestriction:
       type: object

@@ -148,6 +148,37 @@ public class AssignmentService {
         .value();
   }
 
+  /**
+   * 배정 추천 확정(WK-10)의 한 항목. 호출자가 트랜잭션 안에서 그 작업에 활성 배정이 없음을 잠가 확인한 뒤 부른다. 사건 집계 키는 수동과 같은 {@code
+   * MANUAL:<taskId>}(작업마다 assignmentVersion 순서를 한 파티션에서 지키려고), payload 에 planId·source PLAN.
+   */
+  AssignmentRow insertFromPlan(
+      String mfcId,
+      String taskId,
+      String taskType,
+      String workerId,
+      String planId,
+      String by,
+      Instant at) {
+    AssignmentRow row =
+        new AssignmentRow(
+            "ASG-" + UUID.randomUUID(),
+            mfcId,
+            taskId,
+            taskType,
+            workerId,
+            store.maxVersion(taskId) + 1,
+            "ACTIVE",
+            planId,
+            by,
+            "PLAN " + planId,
+            at,
+            null);
+    store.insert(row);
+    publish(row, by);
+    return row;
+  }
+
   @Transactional(readOnly = true)
   public List<AssignmentRow> list(
       String mfcId,
@@ -174,7 +205,10 @@ public class AssignmentService {
     payload.put("planVersion", r.assignmentVersion());
     payload.put("mfcId", r.mfcId());
     payload.put("assignments", List.of(item));
-    payload.put("source", "MANUAL");
+    if (r.planId() != null) {
+      payload.put("planId", r.planId());
+    }
+    payload.put("source", r.planId() == null ? "MANUAL" : "PLAN");
     payload.put("publishedAt", r.assignedAt().toString());
     events.publish(
         codec.create(

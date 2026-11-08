@@ -24,9 +24,97 @@ import org.springframework.web.bind.annotation.RestController;
 public class AssignmentsController implements AssignmentsApi {
 
   private final AssignmentService service;
+  private final com.pmart.mfc.capacity.application.PlanService plans;
 
-  public AssignmentsController(AssignmentService service) {
+  public AssignmentsController(
+      AssignmentService service, com.pmart.mfc.capacity.application.PlanService plans) {
     this.service = service;
+    this.plans = plans;
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.AssignmentPlan>
+      createAssignmentPlan(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.capacity.api.generated.model.CreateAssignmentPlanRequest body) {
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(
+            plan(
+                plans.create(
+                    idempotencyKey, xSourceSystem, body.getMfcId(), body.getHorizonMinutes())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.AssignmentPlan>
+      getAssignmentPlan(String planId) {
+    return ResponseEntity.ok(plan(plans.get(planId)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.AssignmentPlan>
+      commitAssignmentPlan(String planId, String idempotencyKey, String xSourceSystem) {
+    return ResponseEntity.ok(plan(plans.commit(idempotencyKey, xSourceSystem, planId)));
+  }
+
+  static com.pmart.mfc.capacity.api.generated.model.AssignmentPlan plan(
+      com.pmart.mfc.capacity.application.PlanService.PlanView v) {
+    var p = v.plan();
+    var out = new com.pmart.mfc.capacity.api.generated.model.AssignmentPlan();
+    out.setPlanId(p.planId());
+    out.setMfcId(p.mfcId());
+    out.setState(
+        com.pmart.mfc.capacity.api.generated.model.AssignmentPlan.StateEnum.fromValue(p.state()));
+    out.setSolverStatus(
+        com.pmart.mfc.capacity.api.generated.model.AssignmentPlan.SolverStatusEnum.fromValue(
+            p.solverStatus()));
+    out.setHorizonStart(p.horizonStart().atOffset(ZoneOffset.UTC));
+    out.setHorizonMinutes(p.horizonMinutes());
+    out.setItems(
+        v.items().stream()
+            .map(
+                i -> {
+                  var x = new com.pmart.mfc.capacity.api.generated.model.AssignmentPlanItemsInner();
+                  x.setTaskId(i.taskId());
+                  x.setTaskType(i.taskType());
+                  x.setTaskVersion(i.taskVersion());
+                  x.setWorkerId(i.workerId());
+                  x.setDutyVersion(i.dutyVersion());
+                  x.setStartAt(i.startAt().atOffset(ZoneOffset.UTC));
+                  x.setEndAt(i.endAt().atOffset(ZoneOffset.UTC));
+                  x.setLateMinutes(i.lateMinutes());
+                  return x;
+                })
+            .toList());
+    out.setUnassigned(
+        v.unassigned().stream()
+            .map(
+                u -> {
+                  var x =
+                      new com.pmart.mfc.capacity.api.generated.model
+                          .AssignmentPlanUnassignedInner();
+                  x.setTaskId(u.taskId());
+                  x.setTaskType(u.taskType());
+                  x.setReason(
+                      com.pmart.mfc.capacity.api.generated.model.AssignmentPlanUnassignedInner
+                          .ReasonEnum.fromValue(u.reason()));
+                  return x;
+                })
+            .toList());
+    var o = new com.pmart.mfc.capacity.api.generated.model.AssignmentPlanObjective();
+    o.setUnassignedCount(p.unassignedCount());
+    o.setLateMinutes(p.lateMinutes());
+    o.setMaxWorkerLoadMinutes(p.maxLoadMinutes());
+    o.setObjectiveValue(p.objectiveValue());
+    o.setWallTimeMs(p.wallTimeMs());
+    out.setObjective(o);
+    out.setStaleReasons(p.staleReasons());
+    out.setAssignments(v.assignments().stream().map(AssignmentsController::dto).toList());
+    out.setCreatedBy(p.createdBy());
+    out.setCreatedAt(p.createdAt().atOffset(ZoneOffset.UTC));
+    out.setCommittedBy(p.committedBy());
+    out.setCommittedAt(p.committedAt() == null ? null : p.committedAt().atOffset(ZoneOffset.UTC));
+    return out;
   }
 
   @Override
