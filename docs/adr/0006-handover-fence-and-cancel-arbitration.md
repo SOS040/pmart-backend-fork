@@ -1,6 +1,6 @@
 # ADR-0006 인계 fence는 mfc-fulfillment, 취소 판정은 order-orchestration이 맡는다
 
-- 상태: 제안 (2026-10-23)
+- 상태: 승인 (2026-11-08, 사용자 결정 D-2 "그래" — 판정 주체 = mfc-fulfillment, 별도 판정 서비스 없음. 운영 허가 유효시간 기본 3분)
 - 관련: MFC Q-01(공통 주문 판정 주체 미결), IV-08 L1425, 인계 절차 L1980~1986, OMS 8.3~8.4·A.1.11·A.5.4, BackOffice BO-12, Delivery 3.4·5.4
 
 ## 배경

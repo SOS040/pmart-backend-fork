@@ -54,8 +54,10 @@ public class FulfillmentProperties {
   }
 
   /** 센터 인계 허가 유효시간. 없으면 null(CONFIG_REQUIRED). */
+  /** 센터 값 → 없으면 {@code default}(2026-11-08 사용자 결정 D-2: 운영 3분) → 그것도 없으면 null(CONFIG_REQUIRED). */
   public @Nullable Duration handoverFenceTtl(String mfcId) {
-    return handoverFenceTtl.get(mfcId);
+    Duration own = handoverFenceTtl.get(mfcId);
+    return own != null ? own : handoverFenceTtl.get("default");
   }
 
   /** 센터 준비 시각 설정. 없으면 null(CONFIG_REQUIRED). */

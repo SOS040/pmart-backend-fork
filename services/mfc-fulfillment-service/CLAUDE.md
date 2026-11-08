@@ -51,7 +51,7 @@
 ## 라이더 인계 (2026-11-08, 슬라이스 6c — ADR-0047, V6, 계약 0.4.0)
 - 정본 `docs/business/flows/package-handover-contract.md`. 규칙 `domain/HandoverRules`, 실행 `application/HandoverService`, 표 `delivery_assignment`(배송 배정 투영)·`package` fence 열·`package_handover`(인계 사실, 포장당 하나).
 - 배정: `delivery.delivery.v1`(바인딩 `deliveryEvents-in-0`, `DeliveryEventConsumers`) — DeliveryCreated(shipmentId)·DeliveryAssigned·DeliveryAssignmentChanged·DeliveryCancelledBeforePickup, 더 새 버전만, 바뀌면 확정 요청 전 fence 끝.
-- 허가 `POST /packages/{id}/handover-authorizations`(RIDER 토큰, 주체 = riderId): 주문 잠금 → 포장 잠금 → `HandoverRules.authorize`. 유효시간 `pmart.fulfillment.handover-fence-ttl."[센터]"`(없으면 422 CONFIG_REQUIRED). 같은 라이더·배송 재스캔은 같은 허가.
+- 허가 `POST /packages/{id}/handover-authorizations`(RIDER 토큰, 주체 = riderId): 주문 잠금 → 포장 잠금 → `HandoverRules.authorize`. 유효시간 `pmart.fulfillment.handover-fence-ttl."[센터]"` → 없으면 `default`(사용자 결정 D-2: 3분, 공통 설정) → 둘 다 없으면 422 CONFIG_REQUIRED. 같은 라이더·배송 재스캔은 같은 허가.
 - 확정 `POST /packages/{id}/handover-commits`: 주문 잠금 아래 fence 확인·인계 사실 REQUESTED → 밖에서 inventory `/internal/package-handovers`(키 = handoverId) → APPLIED 면 포장 HANDED_OVER·출고 갱신·`PackageHandedOver`(집계 Package). 모름 202 UNKNOWN_RESULT(sweep `pmart.fulfillment.handover-sweep-interval` 기본 PT15S), 거절 202 REJECTED(fence 유지·대사).
 - 재고 거절(REJECTED)은 자동으로 다시 안 감 — 운영자가 실물 확인·재고 정정 뒤 `POST /internal/package-handovers/{handoverId}/retries`(0.4.1, 같은 인계 ID, REJECTED 아니면 지금 결과). 확정 응답 `rejectReason`.
 - 판정 `GET /packages/{id}/handover-resolution`. 중지(`WorkStopService.prepare`)는 인계된 포장이 있으면 거절(RESOLVED + HANDED_OVER), 살아 있는 fence 면 PENDING(HANDOVER_IN_PROGRESS), 만료 fence 는 닫고 진행. `WorkStopStore.orderStopped` 가 허가를 막는다.
