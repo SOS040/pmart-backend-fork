@@ -1,7 +1,7 @@
 """LAN MFC 처음부터 끝까지 확인(실제 API — 주문 조정 서비스가 부르는 내부 API + 감독자·작업자 LAN 계정). 토큰·비밀번호는 출력하지 않는다.
 
 예약 → 확정 → 작업 접수 → PICK 배정·시작·피킹 → PACK 배정·시작 → 점원 배차 요청 → 밀봉(READY) → 전체 중지(취소) → 복귀 작업(추천 칸)
-→ 재고 원복(처음과 같은 H·A). 시험 주문은 만들었다가 취소·복귀하므로 재고는 원래대로 돌아간다. 고객 로그인·결제(Toss)·라이더 인계는 없다.
+→ 재고 원복(처음과 같은 H·A) → 감독자 이동 지시(긴급, 고회전 칸) → 작업자 다음 작업 받기(MOVE)·집기·내려놓기 → 되돌리는 이동. 시험 주문은 만들었다가 취소·복귀하므로 재고는 원래대로 돌아간다. 고객 로그인·결제(Toss)·라이더 인계는 없다.
 
 실행: python -I deploy/lan/checks/mfc_e2e.py   (PYTHONIOENCODING=utf-8 권장)
 필요: deploy/lan/.secrets/claude-dev-login·claude-dev-password(LAN 전용 OPERATOR_ADMIN). 계정 claude-mfc-sup·claude-mfc-wrk 는 실행마다 만들거나 비밀번호를 새로 정한다.
@@ -265,4 +265,80 @@ av2 = {s: http("GET", f"{INV}/internal/availability?mfcId={MFC}&sku={s}")[1]["it
 same = all(av2[s]["onHand"] == av0[s]["onHand"] and av2[s]["available"] == av0[s]["available"] for s in av0)
 print("     재고 H/A 처음:", {s: (av0[s]["onHand"], av0[s]["available"]) for s in av0}, "끝:", {s: (av2[s]["onHand"], av2[s]["available"]) for s in av2})
 step("재고 원복(H·A 처음과 같음)", (200 if same else 409, {}), 200)
+
+# 6. 감독자 이동 지시(긴급) → 작업자 다음 작업 받기(MOVE) → 집기·내려놓기 → 되돌리는 이동 — 작업자 쪽 4단계(capacity 0.9.0·inbound 0.7.1)
+w = step("작업자 조회", http("GET", f"{GW}/mfcs/{MFC}/workers/{wid}", sup), 200)
+if "MOVE" not in (w.get("effectiveTaskTypes") or []):
+    q = w.get("qualification") or {}
+    types = sorted(set((q.get("taskTypes") or []) + ["PICK", "PACK", "RETURN", "MOVE"]))
+    step("자격에 MOVE", http("POST", f"{GW}/mfcs/{MFC}/workers/{wid}/qualification-changes", sup,
+                            {"taskTypes": types, "reason": "E2E 이동"}, version=w.get("qualificationVersion", q.get("qualificationVersion"))), 200)
+    w = http("GET", f"{GW}/mfcs/{MFC}/workers/{wid}", sup)[1]
+    duty = sorted(set(((w.get("duty") or {}).get("taskTypes") or []) + ["MOVE"]))
+    step("업무에 MOVE", http("POST", f"{GW}/mfcs/{MFC}/workers/{wid}/duty-changes", sup,
+                            {"taskTypes": duty, "reason": "E2E 이동"}, version=(w.get("duty") or {}).get("dutyVersion")), 200)
+cart = next((l["locationCode"] for l in locs if l["zone"] == "CART"), None)
+step("이동 카트 있음", (200 if cart else 409, {}), 200)
+loc_of = {l["locationCode"]: l for l in locs}
+snap = http("GET", f"{INV}/internal/snapshots?mfcId={MFC}&size=200")[1]
+
+
+def try_move(units, dests, urgent):
+    for u in units:
+        for d in dests:
+            if d == u["locationCode"]:
+                continue
+            st, b = http("POST", f"{GW}/move-orders", sup, {
+                "mfcId": MFC, "sku": u["sku"], "lotId": u["lotId"], "fromLocation": u["locationCode"],
+                "toLocation": d, "qty": 1, "reason": "E2E 이동", "urgent": urgent})
+            if st == 201:
+                return b
+            print("     이동 지시 거절", u["sku"], u["locationCode"], "→", d, st, b.get("code"))
+    return None
+
+
+def carry(mv, label):
+    mid = mv["moveId"]
+    got = None
+    for _ in range(20):
+        st, b = http("POST", f"{GW}/mfcs/{MFC}/workers/{wid}/next-tasks", wrk)
+        if st in (200, 201) and b.get("taskId") == mid:
+            got = b
+            break
+        if st == 409 and b.get("code") == "NO_TASK_AVAILABLE":
+            time.sleep(1)
+            continue
+        print("     다음 작업 받기가 다른 것을 줌", st, b.get("taskId") or b.get("code"))
+        break
+    step(f"{label} 다음 작업 받기 → {got and got.get('taskType')}", (200 if got and got.get("taskType") == "MOVE" else 409, got or {}), 200)
+    m = {}
+    for _ in range(30):
+        m = http("GET", f"{GW}/move-orders/{mid}", wrk)[1]
+        if m.get("assigneeId") == wid:
+            break
+        time.sleep(1)
+    step(f"{label} 담당 반영(assigneeId)", (200 if m.get("assigneeId") == wid else 409, m), 200)
+    step(f"{label} 감독자는 담당이 아니라 못 집음", http("POST", f"{GW}/move-orders/{mid}/pickups", sup, {"cartLocation": cart, "qty": 1}), 409)
+    step(f"{label} 집기 → {cart}", http("POST", f"{GW}/move-orders/{mid}/pickups", wrk, {"cartLocation": cart, "qty": 1}), 200)
+    d = step(f"{label} 내려놓기 → {mv['toLocation']}", http("POST", f"{GW}/move-orders/{mid}/drops", wrk, {"toLocation": mv["toLocation"], "qty": 1}), 200)
+    step(f"{label} 완료", (200 if d.get("state") == "COMPLETED" else 409, d), 200)
+    return d
+
+
+units = [u for u in snap.get("items", [])
+         if u.get("qualityState") == "NORMAL" and u.get("workState") == "STORED" and (u.get("pickableQty") or 0) >= 2
+         and loc_of.get(u["locationCode"], {}).get("temperatureZone") == "AMBIENT"][:6]
+hot = [l["locationCode"] for l in locs if l.get("highTurnover") and l["temperatureZone"] == "AMBIENT"
+       and l["zone"] in ("STORAGE", "PICKING")]
+print("     고회전 상온 칸", hot[:5], "후보", len(units))
+mv = try_move(units, hot[:5], True)
+if mv:
+    step("이동 지시(긴급)", (201, mv), 201)
+    carry(mv, "이동")
+    back = {"sku": mv["sku"], "lotId": mv["lotId"], "locationCode": mv["toLocation"]}
+    mv2 = try_move([back], [mv["fromLocation"]], False)
+    step("되돌리는 이동 지시", (201 if mv2 else 409, mv2 or {}), 201)
+    carry(mv2, "되돌림")
+else:
+    step("이동 지시(고회전 칸)", (409, {"code": "NO_CANDIDATE"}), 201)
 summary()
