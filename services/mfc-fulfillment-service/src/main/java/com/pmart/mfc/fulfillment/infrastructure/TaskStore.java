@@ -245,6 +245,25 @@ public class TaskStore {
         taskId);
   }
 
+  /** 작업 내놓기 — READY, 담당·시작 지움(assignment_version 은 그대로 — 다음 배정이 더 큰 버전). */
+  public void releaseToReady(String taskId, Instant at) {
+    jdbc.update(
+        "UPDATE task SET state = 'READY', worker_id = NULL, assignment_id = NULL, start_request_id = NULL,"
+            + " started_by = NULL, started_at = NULL, version = version + 1, updated_at = ? WHERE task_id = ?",
+        ts(at),
+        taskId);
+  }
+
+  /** 마지막 실적 접수 시각(없으면 null). */
+  public @Nullable Instant lastExecutionAt(String taskId) {
+    List<java.sql.Timestamp> r =
+        jdbc.queryForList(
+            "SELECT max(recorded_at) FROM task_execution WHERE task_id = ?",
+            java.sql.Timestamp.class,
+            taskId);
+    return r.isEmpty() || r.get(0) == null ? null : r.get(0).toInstant();
+  }
+
   public void markStarted(
       String taskId, String requestId, String workerId, @Nullable String deviceId, Instant at) {
     jdbc.update(

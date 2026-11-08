@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -675,6 +675,81 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /mfcs/{mfcId}/workers/{workerId}/breaks:
+    post:
+      tags: [workers]
+      summary: 휴게 시작 (0.8.0)
+      description: |
+        2026-11-08 사용자 결정(Q-09): 휴게 중에는 다음 작업 받기가 작업을 주지 않는다(409 ON_BREAK), 들고 있던 작업은 그대로. 본인 또는 그 센터 감독자.
+        이미 휴게 중이면 그 휴게(200).
+      operationId: startWorkerBreak
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { type: string } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 휴게 중
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerBreak' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /mfcs/{mfcId}/workers/{workerId}/breaks/current/end:
+    post:
+      tags: [workers]
+      summary: 휴게 끝 (0.8.0)
+      operationId: endWorkerBreak
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { type: string } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 끝낸 휴게(휴게 중이 아니었으면 마지막 휴게, 없으면 404)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerBreak' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/assignments/{taskId}/releases:
+    post:
+      tags: [assignments]
+      summary: '[mfc-fulfillment→capacity] 작업 내놓기 — 그 작업의 ACTIVE 배정 해제 (0.8.0)'
+      description: |
+        2026-11-08 사용자 결정(Q-09): 작업자가 "작업 내놓기"(교대·퇴근)를 하면 fulfillment 가 잔량을 확인(진행 중 실적 없음)한 뒤 이 요청으로 배정을 풀고
+        작업을 READY 로 되돌린다. workerId 가 지금 담당이 아니면 409 NOT_ASSIGNEE. 활성 배정이 없으면 변화 없는 성공. 사건은 내지 않는다(fulfillment 가 작업 상태 정본).
+      operationId: releaseTaskAssignment
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId]
+              properties:
+                workerId: { type: string }
+                reason: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: 해제(또는 이미 없음)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskId: { type: string }
+                  released: { type: boolean }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /mfcs/{mfcId}/workers/{workerId}/duty-changes:
     post:
       tags: [workers]
@@ -853,9 +928,18 @@ components:
         qualification: { $ref: '#/components/schemas/WorkerQualification' }
         effectiveTaskTypes: { type: array, items: { $ref: '#/components/schemas/TaskType' }, description: '(0.7.0) 지금 배정 조건 = 업무 ∩ 유효 자격(일일크루는 오늘 등록한 날의 업무)' }
         todayEnrollment: { oneOf: [{ $ref: '#/components/schemas/DayEnrollment' }, { type: 'null' }] }
+        onBreak: { type: boolean, description: '(0.8.0) 휴게 중 — 다음 작업 받기 409 ON_BREAK' }
         registeredBy: { type: string }
         registeredAt: { type: string, format: date-time }
     EmploymentType: { type: string, enum: [REGULAR, PART_TIME, DAILY], description: '(0.7.0) 정규직 / 알바 / 일일크루. 기본 REGULAR' }
+    WorkerBreak:
+      type: object
+      properties:
+        breakId: { type: string }
+        workerId: { type: string }
+        startedAt: { type: string, format: date-time }
+        startedBy: { type: string }
+        endedAt: { type: [string, 'null'], format: date-time }
     QualificationBody:
       type: object
       required: [taskTypes]

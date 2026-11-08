@@ -942,6 +942,81 @@ public class TaskService {
    * AssignmentPublished(mfc.capacity.v1) — 더 새 배정 버전만 반영. READY → ASSIGNED, 진행 중에 담당이 바뀌면(WK-05)
    * ASSIGNED 로 돌리고 시작 점유를 지운다(완료량은 그대로, 후임은 잔량만). inbox 트랜잭션 안에서 호출된다.
    */
+  // ---------- 작업 내놓기·주의 표시(작업자 쪽 3단계, Q-09) ----------
+
+  /** 작업 내놓기: 담당 본인 또는 감독자, 진행 중 실적·열린 포장 없을 때만, capacity 배정 해제 뒤 READY. */
+  public TaskInfo release(String taskId, String workerId, @Nullable String reason) {
+    TaskInfo t0 = task(taskId);
+    com.pmart.common.security.PmartPrincipal p =
+        com.pmart.common.security.PmartPrincipal.current()
+            .filter(
+                x -> x.type() == com.pmart.common.security.PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 할 수 있습니다."));
+    if (!p.canAccessCenter(t0.mfcId())
+        || !(p.subject().equals(workerId) || p.hasRole("MFC_SUPERVISOR"))) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "담당 본인 또는 그 센터 감독자만 내놓을 수 있습니다.");
+    }
+    if (!"ASSIGNED".equals(t0.state()) && !"IN_PROGRESS".equals(t0.state())) {
+      throw PmartException.invalidState("배정·진행 중인 작업만 내놓습니다(지금 " + t0.state() + ").");
+    }
+    if (!workerId.equals(t0.workerId())) {
+      throw new PmartException(
+          "NOT_ASSIGNEE",
+          HttpStatus.CONFLICT,
+          "지금 담당(" + t0.workerId() + ")이 아닙니다.",
+          false,
+          List.of());
+    }
+    boolean openPack =
+        "PACK".equals(t0.taskType())
+            && store.packages(t0.shipmentId()).stream().anyMatch(x -> "OPEN".equals(x.state()));
+    if (!store.openExecutions(taskId).isEmpty() || openPack) {
+      throw new PmartException(
+          "EXECUTION_IN_FLIGHT",
+          HttpStatus.CONFLICT,
+          "반영 중인 실적·포장이 있습니다 — 끝난 뒤 내놓습니다(잔량 확인).",
+          true,
+          List.of());
+    }
+    capacity.release(taskId, workerId, reason); // 실패면 503 — 바꾸지 않음
+    return Objects.requireNonNull(
+        tx.execute(
+            s -> {
+              TaskInfo t = store.lock(taskId).orElseThrow();
+              Instant now = clock.instant();
+              if (workerId.equals(t.workerId())
+                  && ("ASSIGNED".equals(t.state()) || "IN_PROGRESS".equals(t.state()))) {
+                store.releaseToReady(taskId, now);
+                events.taskProgressed(t, "READY", t.state(), t.version() + 1, workerId, null, now);
+                log.info("작업 {} 내놓기 by {}({}) — READY", taskId, p.subject(), reason);
+              }
+              return store.find(taskId).orElseThrow();
+            }));
+  }
+
+  private FulfillmentProperties props;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setProps(FulfillmentProperties props) {
+    this.props = props;
+  }
+
+  /** 주의 표시: late = 시작 뒤 예상 2배 넘김, idle = 진행 중 30분 실적 없음(표시만). */
+  public record Attention(boolean late, boolean idle, @Nullable Instant lastActivityAt) {}
+
+  public Attention attention(TaskInfo t) {
+    if (!"IN_PROGRESS".equals(t.state()) || t.startedAt() == null) {
+      return new Attention(false, false, null);
+    }
+    Instant now = clock.instant();
+    Instant last = store.lastExecutionAt(t.taskId());
+    Instant activity = last == null || last.isBefore(t.startedAt()) ? t.startedAt() : last;
+    java.time.Duration est = props.taskMinutes(t.taskType());
+    boolean late = est != null && t.startedAt().plus(est.multipliedBy(2)).isBefore(now);
+    boolean idle = activity.plus(java.time.Duration.ofMinutes(30)).isBefore(now);
+    return new Attention(late, idle, activity);
+  }
+
   public void applyAssignment(EventEnvelope e) {
     var payload = e.payload();
     Instant now = clock.instant();

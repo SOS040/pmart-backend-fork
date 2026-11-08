@@ -179,6 +179,19 @@ public class AssignmentsController implements AssignmentsApi {
     return ResponseEntity.ok(out);
   }
 
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.ReleaseTaskAssignment200Response>
+      releaseTaskAssignment(
+          String taskId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.capacity.api.generated.model.ReleaseTaskAssignmentRequest body) {
+    var out = new com.pmart.mfc.capacity.api.generated.model.ReleaseTaskAssignment200Response();
+    out.setTaskId(taskId);
+    out.setReleased(service.releaseTask(taskId, body.getWorkerId()));
+    return ResponseEntity.ok(out);
+  }
+
   static Assignment dto(AssignmentRow r) {
     var a = new Assignment();
     a.setAssignmentId(r.assignmentId());

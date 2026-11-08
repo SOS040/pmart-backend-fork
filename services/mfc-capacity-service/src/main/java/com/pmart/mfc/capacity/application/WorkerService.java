@@ -49,7 +49,8 @@ public class WorkerService {
       String employmentType,
       QualificationStore.@Nullable Qualification qualification,
       Set<String> effective,
-      QualificationStore.@Nullable Day today) {}
+      QualificationStore.@Nullable Day today,
+      boolean onBreak) {}
 
   public record Detail(View view, List<DutyRow> duties, List<StateChangeRow> states) {}
 
@@ -125,7 +126,57 @@ public class WorkerService {
         quals.employmentType(w.mfcId(), w.workerId()),
         quals.current(w.mfcId(), w.workerId()).orElse(null),
         effective(w.mfcId(), w.workerId(), d),
-        quals.day(w.mfcId(), w.workerId(), today()).orElse(null));
+        quals.day(w.mfcId(), w.workerId(), today()).orElse(null),
+        breaks.open(w.mfcId(), w.workerId()).isPresent());
+  }
+
+  private com.pmart.mfc.capacity.infrastructure.BreakStore breaks;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setBreaks(com.pmart.mfc.capacity.infrastructure.BreakStore breaks) {
+    this.breaks = breaks;
+  }
+
+  public boolean onBreak(String mfcId, String workerId) {
+    return breaks.open(mfcId, workerId).isPresent();
+  }
+
+  /** 휴게 시작(본인 또는 감독자) — 이미 휴게 중이면 그 휴게. */
+  public com.pmart.mfc.capacity.infrastructure.BreakStore.Break startBreak(
+      String mfcId, String workerId) {
+    String me = selfOrSupervisor(mfcId, workerId);
+    store
+        .find(mfcId, workerId)
+        .orElseThrow(() -> PmartException.notFound(WORKER_NOT_FOUND, "작업자가 없습니다: " + workerId));
+    var b = breaks.start(mfcId, workerId, me, clock.instant());
+    log.info("작업자 {} 휴게 시작 by {}", workerId, me);
+    return b;
+  }
+
+  public com.pmart.mfc.capacity.infrastructure.BreakStore.Break endBreak(
+      String mfcId, String workerId) {
+    String me = selfOrSupervisor(mfcId, workerId);
+    var open = breaks.open(mfcId, workerId);
+    if (open.isPresent()) {
+      breaks.end(open.get().breakId(), me, clock.instant());
+      log.info("작업자 {} 휴게 끝 by {}", workerId, me);
+    }
+    return breaks
+        .last(mfcId, workerId)
+        .orElseThrow(() -> PmartException.notFound("BREAK_NOT_FOUND", "휴게 기록이 없습니다: " + workerId));
+  }
+
+  private static String selfOrSupervisor(String mfcId, String workerId) {
+    var p =
+        com.pmart.common.security.PmartPrincipal.current()
+            .filter(
+                x -> x.type() == com.pmart.common.security.PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 할 수 있습니다."));
+    if (!p.canAccessCenter(mfcId)
+        || !(p.subject().equals(workerId) || p.hasRole(AssignmentService.SUPERVISOR_ROLE))) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "그 센터 감독자 또는 본인만 할 수 있습니다.");
+    }
+    return p.subject();
   }
 
   /** 지금 업무의 작업 유형(등록 안 됨이면 빈 집합). */

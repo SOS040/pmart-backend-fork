@@ -16,10 +16,11 @@ class FulfillmentPropertiesTest {
             null,
             null,
             null,
-            Map.of("MFC-A", Duration.ofMinutes(2), "default", Duration.ofMinutes(3)));
+            Map.of("MFC-A", Duration.ofMinutes(2), "default", Duration.ofMinutes(3)),
+            null);
     assertThat(p.handoverFenceTtl("MFC-A")).isEqualTo(Duration.ofMinutes(2));
     assertThat(p.handoverFenceTtl("MFC-B")).isEqualTo(Duration.ofMinutes(3));
-    assertThat(new FulfillmentProperties(null, null, null, null).handoverFenceTtl("MFC-B"))
+    assertThat(new FulfillmentProperties(null, null, null, null, null).handoverFenceTtl("MFC-B"))
         .isNull();
   }
 }

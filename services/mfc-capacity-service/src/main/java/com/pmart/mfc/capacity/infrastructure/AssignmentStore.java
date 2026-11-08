@@ -66,6 +66,13 @@ public class AssignmentStore {
         assignmentId);
   }
 
+  /** 작업 내놓기 — ACTIVE → RELEASED. */
+  public void release(String assignmentId, Instant at) {
+    jdbc.update(
+        "UPDATE task_assignment SET state = 'RELEASED' WHERE assignment_id = ? AND state = 'ACTIVE'",
+        assignmentId);
+  }
+
   public void insert(AssignmentRow r) {
     jdbc.update(
         "INSERT INTO task_assignment (assignment_id, mfc_id, task_id, task_type, worker_id,"

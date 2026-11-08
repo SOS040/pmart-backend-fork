@@ -1819,6 +1819,54 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("PACKAGE_INVALIDATED");
   }
 
+  /** 작업자 쪽 3단계: 늦음·무실적 표시(시작 뒤 예상 2배·30분), 작업 내놓기(담당만 → capacity 해제 → READY, 완료량 그대로). */
+  @Test
+  void lateAndIdleAreFlaggedAndAssigneeCanReleaseTask() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    plan(o, 0, 0, 0, 0, 0, 0);
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    JsonNode fresh = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
+    assertThat(fresh.path("late").asBoolean()).isFalse();
+    assertThat(fresh.path("idle").asBoolean()).isFalse();
+    jdbc.update("UPDATE task SET started_at = now() - interval '1 hour' WHERE task_id = ?", pick);
+    JsonNode old = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
+    assertThat(old.path("late").asBoolean()).isTrue(); // 7분 × 2 넘김
+    assertThat(old.path("idle").asBoolean()).isTrue(); // 30분 실적 없음
+    JsonNode listed =
+        call("GET", VIEWER, "/tasks?mfcId=" + MFC + "&state=IN_PROGRESS", null, null).body();
+    assertThat(listed.toString()).contains("\"late\":true");
+
+    // 담당이 아니면 409(capacity 를 부르지 않음), 담당이면 capacity 해제 → READY
+    Res notMine =
+        call(
+            "POST",
+            W2,
+            "/tasks/" + pick + "/releases",
+            UUID.randomUUID().toString(),
+            Map.of("workerId", "w2", "reason", "교대"));
+    assertThat(notMine.status()).isEqualTo(409);
+    cap.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/assignments/" + pick + "/releases"))
+            .willReturn(json(200, Map.of("taskId", pick, "released", true))));
+    Res rel =
+        call(
+            "POST",
+            W1,
+            "/tasks/" + pick + "/releases",
+            UUID.randomUUID().toString(),
+            Map.of("workerId", "w1", "reason", "퇴근"));
+    assertThat(rel.status()).as(rel.body().toString()).isEqualTo(200);
+    assertThat(rel.body().path("state").asString()).isEqualTo("READY");
+    assertThat(rel.body().path("assignment").path("workerId").isNull()).isTrue();
+    cap.verify(
+        WireMock.postRequestedFor(
+                urlPathEqualTo("/api/v1/internal/assignments/" + pick + "/releases"))
+            .withRequestBody(matchingJsonPath("$.workerId", equalTo("w1"))));
+  }
+
   Res dispatch(String token, String shipmentId, int minutes) {
     return call(
         "POST",

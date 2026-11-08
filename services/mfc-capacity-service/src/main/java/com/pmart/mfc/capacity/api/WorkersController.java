@@ -238,6 +238,7 @@ public class WorkersController implements WorkersApi {
     }
     w.setEffectiveTaskTypes(v.effective().stream().map(TaskType::fromValue).toList());
     w.setTodayEnrollment(v.today() == null ? null : day(v.today()));
+    w.setOnBreak(v.onBreak());
     w.setRegisteredBy(v.worker().registeredBy());
     w.setRegisteredAt(odt(v.worker().registeredAt()));
     return w;
@@ -251,6 +252,29 @@ public class WorkersController implements WorkersApi {
     out.setDutyTaskTypes(d.dutyTaskTypes().stream().map(TaskType::fromValue).toList());
     out.setEnrolledBy(d.enrolledBy());
     out.setEnrolledAt(odt(d.enrolledAt()));
+    return out;
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.WorkerBreak> startWorkerBreak(
+      String mfcId, String workerId, String idempotencyKey, String xSourceSystem) {
+    return ResponseEntity.ok(brk(service.startBreak(mfcId, workerId)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.WorkerBreak> endWorkerBreak(
+      String mfcId, String workerId, String idempotencyKey, String xSourceSystem) {
+    return ResponseEntity.ok(brk(service.endBreak(mfcId, workerId)));
+  }
+
+  private static com.pmart.mfc.capacity.api.generated.model.WorkerBreak brk(
+      com.pmart.mfc.capacity.infrastructure.BreakStore.Break b) {
+    var out = new com.pmart.mfc.capacity.api.generated.model.WorkerBreak();
+    out.setBreakId(b.breakId());
+    out.setWorkerId(b.workerId());
+    out.setStartedAt(odt(b.startedAt()));
+    out.setStartedBy(b.startedBy());
+    out.setEndedAt(b.endedAt() == null ? null : odt(b.endedAt()));
     return out;
   }
 

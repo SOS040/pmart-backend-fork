@@ -61,6 +61,27 @@ public class CapacityClient {
     return null;
   }
 
+  /** 작업 내놓기 — capacity 배정 해제(내부 경로, 공용 RestClient 가 서비스 토큰). 409 NOT_ASSIGNEE 는 그대로. */
+  public void release(String taskId, String workerId, @Nullable String reason) {
+    java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("workerId", workerId);
+    if (reason != null) {
+      body.put("reason", reason);
+    }
+    Downstream.call(
+        CAPACITY,
+        () ->
+            capacity
+                .post()
+                .uri("/api/v1/internal/assignments/{t}/releases", taskId)
+                .header("Idempotency-Key", "REL-" + java.util.UUID.randomUUID())
+                .header("X-Source-System", "mfc-fulfillment-service")
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(String.class));
+  }
+
   private static @Nullable String currentAuthorization() {
     if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes a) {
       HttpServletRequest r = a.getRequest();

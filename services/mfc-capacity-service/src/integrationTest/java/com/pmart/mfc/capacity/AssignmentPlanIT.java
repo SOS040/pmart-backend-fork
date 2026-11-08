@@ -53,6 +53,7 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
   static final String MFC = "MFC-PLAN-1";
   static final String SUP = TestJwt.operator("sup-p", List.of("MFC_SUPERVISOR"), List.of(MFC));
   static final String WORKER = TestJwt.operator("pk1", List.of("MFC_WORKER"), List.of(MFC));
+  static final String FUL_SVC = TestJwt.service("mfc-fulfillment-service");
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
@@ -179,6 +180,32 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
     Res again = send("POST", ta, path + a + "/next-tasks", null);
     assertThat(again.status()).isEqualTo(200);
     assertThat(again.body().path("taskId").asString()).isEqualTo(early);
+    // 휴게 중: 들고 있는 작업은 그대로 돌려줌, 휴게 끝까지 새 작업은 없음(작업자 쪽 3단계)
+    assertThat(send("POST", ta, path + a + "/breaks", null).status()).isEqualTo(200);
+    assertThat(send("POST", ta, path + a + "/next-tasks", null).status()).isEqualTo(200);
+    // 작업 내놓기(fulfillment 가 부르는 내부 API): 담당만, 풀리면 새 작업 받기에서 그 작업이 다시 후보
+    assertThat(
+            send(
+                    "POST",
+                    FUL_SVC,
+                    "/internal/assignments/" + early + "/releases",
+                    Map.of("workerId", "someone"))
+                .status())
+        .isEqualTo(409);
+    Res rel =
+        send(
+            "POST", FUL_SVC, "/internal/assignments/" + early + "/releases", Map.of("workerId", a));
+    assertThat(rel.body().path("released").asBoolean()).isTrue();
+    Res onBreak = send("POST", ta, path + a + "/next-tasks", null);
+    assertThat(onBreak.body().path("code").asString()).isEqualTo("ON_BREAK");
+    assertThat(
+            send("POST", ta, path + a + "/breaks/current/end", null)
+                .body()
+                .path("endedAt")
+                .isNull())
+        .isFalse();
+    assertThat(send("POST", ta, path + a + "/next-tasks", null).body().path("taskId").asString())
+        .isEqualTo(early);
     // 다른 작업자는 남은 것 중 가장 급한 PICK, 복귀만 하는 작업자는 복귀
     assertThat(send("POST", tb, path + b + "/next-tasks", null).body().path("taskId").asString())
         .isEqualTo(late);

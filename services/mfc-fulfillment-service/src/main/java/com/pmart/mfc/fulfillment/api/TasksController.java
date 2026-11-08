@@ -78,7 +78,7 @@ public class TasksController implements TasksApi {
     var out = new ListTasks200Response();
     List<TaskSummary> items = new ArrayList<>();
     for (TaskInfo t : page) {
-      items.add(summary(t));
+      items.add(attention(summary(t), t));
     }
     out.setItems(items);
     var p = new ListTasks200ResponsePage();
@@ -95,6 +95,10 @@ public class TasksController implements TasksApi {
     TaskInfo t = d.task();
     var out = new TaskDetail();
     fill(out, t, d.lines());
+    var att = service.attention(t);
+    out.setLate(att.late());
+    out.setIdle(att.idle());
+    out.setLastActivityAt(time(att.lastActivityAt()));
     List<TaskLine> lines = new ArrayList<>();
     Map<String, Integer> pending = pendingByLine(d.pending());
     for (LineView l : d.lines()) {
@@ -291,6 +295,25 @@ public class TasksController implements TasksApi {
   }
 
   // ---------- 변환 ----------
+
+  private TaskSummary attention(TaskSummary s, TaskInfo t) {
+    var a = service.attention(t);
+    s.setLate(a.late());
+    s.setIdle(a.idle());
+    s.setLastActivityAt(time(a.lastActivityAt()));
+    return s;
+  }
+
+  /** 작업 내놓기(0.4.8, Q-09). */
+  @Override
+  public ResponseEntity<TaskSummary> releaseTask(
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.fulfillment.api.generated.model.ReleaseTaskRequest body) {
+    TaskInfo t = service.release(taskId, body.getWorkerId(), body.getReason());
+    return ResponseEntity.ok(attention(summary(t), t));
+  }
 
   private static TaskSummary summary(TaskInfo t) {
     var s = new TaskSummary();

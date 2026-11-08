@@ -131,6 +131,15 @@ public class AssignmentService {
         return new Assigned(a, false, List.of());
       }
     }
+    // 휴게 중에는 새 작업 없음(들고 있던 작업은 위에서 돌려줌)
+    if (workers.onBreak(mfcId, workerId)) {
+      throw new PmartException(
+          "ON_BREAK",
+          org.springframework.http.HttpStatus.CONFLICT,
+          "휴게 중에는 새 작업을 받지 않습니다 — 휴게를 끝낸 뒤.",
+          false,
+          List.of());
+    }
     java.util.Set<String> duty = workers.taskTypes(mfcId, workerId);
     List<com.pmart.mfc.capacity.infrastructure.FulfillmentClient.TaskView> candidates =
         tasks.stream()
@@ -183,6 +192,29 @@ public class AssignmentService {
         "지금 받을 수 있는 작업이 없습니다.",
         true,
         List.of());
+  }
+
+  /**
+   * 작업 내놓기(Q-09, fulfillment 가 잔량 확인 뒤 부름): 그 작업의 ACTIVE 배정을 RELEASED. 담당이 아니면 409 NOT_ASSIGNEE, 활성
+   * 배정이 없으면 false. 사건 없음(작업 상태 정본은 fulfillment).
+   */
+  @Transactional
+  public boolean releaseTask(String taskId, String workerId) {
+    var active = store.lockActive(taskId);
+    if (active.isEmpty()) {
+      return false;
+    }
+    if (!active.get().workerId().equals(workerId)) {
+      throw new PmartException(
+          "NOT_ASSIGNEE",
+          org.springframework.http.HttpStatus.CONFLICT,
+          "지금 담당(" + active.get().workerId() + ")이 아닙니다.",
+          false,
+          List.of());
+    }
+    store.release(active.get().assignmentId(), clock.instant());
+    log.info("작업 {} 배정 해제(작업 내놓기) — {}", taskId, workerId);
+    return true;
   }
 
   /** 다음 작업 우선순위: 주문 작업 → 복귀 → 그 밖(이동·보충은 다음 단계). */

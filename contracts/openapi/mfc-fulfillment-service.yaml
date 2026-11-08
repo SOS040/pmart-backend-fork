@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.7
+  version: 0.4.8
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -347,6 +347,40 @@ paths:
               schema: { $ref: '#/components/schemas/TaskDetail' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /tasks/{taskId}/releases:
+    post:
+      tags: [tasks]
+      summary: 작업 내놓기 — 교대·퇴근 때 담당을 풀고 READY 로 (0.4.8)
+      description: |
+        2026-11-08 사용자 결정(Q-09): 작업자가 "작업 내놓기"를 하면 잔량을 확인한 뒤 대기로 되돌린다 — 진행 중 실적(RECORDED·결과 모름)·열린 포장이 있으면
+        409 EXECUTION_IN_FLIGHT(끝난 뒤). 담당 본인 또는 그 센터 감독자. ASSIGNED·IN_PROGRESS 만(아니면 409 INVALID_STATE). mfc-capacity 배정을 먼저 풀고
+        (`/internal/assignments/{taskId}/releases`, 실패면 503 — 바꾸지 않음) 작업을 READY 로(담당·시작 지움, 완료량은 그대로 — 다음 사람이 남은 양을 이어서).
+      operationId: releaseTask
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId]
+              properties:
+                workerId: { type: string, description: 지금 담당 }
+                reason: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: 내놓음(READY)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskSummary' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /tasks/{taskId}/starts:
     post:
@@ -894,6 +928,9 @@ components:
         remainingQty: { type: integer }
         promisedReadyAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
+        late: { type: boolean, description: '(0.4.8) 시작 뒤 예상 시간의 2배를 넘김 — 감독자 화면 표시만(자동으로 빼앗지 않음, Q-09)' }
+        idle: { type: boolean, description: '(0.4.8) 진행 중인데 30분 동안 실적 없음 — 알림만(자동 해제 없음)' }
+        lastActivityAt: { type: [string, 'null'], format: date-time, description: '(0.4.8) 시작 또는 마지막 실적 시각' }
     TaskLine:
       type: object
       required: [taskLineId, orderLineId, sku, plannedQty, completedQty, cancelledQty, remainingQty]
