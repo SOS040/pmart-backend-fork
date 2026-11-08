@@ -124,7 +124,11 @@ public final class RepackRules {
       }
     }
     if (!have.equals(want)) {
-      return "재구성은 합계를 바꾸지 않습니다(지금 " + have + ", 요청 " + want + "). 수량 감소는 아직 지원하지 않습니다.";
+      return "재구성은 합계를 바꾸지 않습니다(지금 "
+          + have
+          + ", 요청 "
+          + want
+          + "). 수량을 줄여야 하면(포장 중 파손 등) 감독자에게 알려 운영자가 확인·처리합니다.";
     }
     return null;
   }
