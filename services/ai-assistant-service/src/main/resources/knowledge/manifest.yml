@@ -27,6 +27,18 @@ documents:
   - { path: docs/business/OMS-business-logic.md, domain: oms, kind: BUSINESS, authority: PROPOSAL, precedence: 3 }
   - { path: docs/business/Commerce-business-logic.md, domain: commerce, kind: BUSINESS, authority: PROPOSAL, precedence: 2 }
   - { path: docs/business/Delivery-business-logic.md, domain: delivery, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  # --- 고객센터 상담 대응(2026-11-09, 운영자용) — 대본·절차는 [설계안], 업무 문서에서 옮긴 절만 [확정 정책]·[채택 설계]. 업무 원문과 다르면 원문이 앞선다(precedence 1) ---
+  - { path: docs/business/cs-scripts/README.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/01-common-greeting-identity.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/02-order-cancel.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/03-refund-partial-cancel.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/04-shortage.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/05-delivery-delay.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/06-wrong-delivery.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/07-missing-wrong-item.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/08-damage-quality.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/09-return-exchange.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
+  - { path: docs/business/cs-scripts/10-records-notifications.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
   # --- 사가 흐름 (버전 0.1 설계안) ---
   - { path: docs/business/flows/cancel-vs-handover.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
   - { path: docs/business/flows/order-checkout-saga.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
