@@ -6,6 +6,7 @@ import com.pmart.customerassistant.application.CustomerQuestionService.RateLimit
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /** 요청 제한(C3) 초과 → 429 RATE_LIMITED(Problem Details, 공통 형식) + Retry-After(초). */
 @RestControllerAdvice
+@ConditionalOnWebApplication(
+    type = ConditionalOnWebApplication.Type.SERVLET) // 색인 작업(웹 없음)에는 공통 오류 처리기가 없다
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RateLimitAdvice {
 
