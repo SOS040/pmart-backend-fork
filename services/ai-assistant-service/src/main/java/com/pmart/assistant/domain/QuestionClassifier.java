@@ -59,10 +59,25 @@ public final class QuestionClassifier {
   private static final Pattern HISTORY_CUE =
       Pattern.compile("예전|이전에는|이전 정책|과거|변경 전|바뀌기 전|왜 바뀌|원래는|대체되기 전|대체된|폐기된|옛날");
 
+  /**
+   * 지시 무력화·시스템 지시문 요청(2026-11-09 답변 평가 A22 — 모델이 엉뚱한 근거로 답함). 모델에 보내지 않고 범위 밖으로 돌린다. 정책 질문("규칙을
+   * 무시하면 어떻게 돼?")과 겹치지 않게 "지시/프롬프트" 대상과 함께일 때만.
+   */
+  private static final Pattern INJECTION =
+      Pattern.compile(
+          "(?i)(?:지시|명령|프롬프트|지침|규칙)(?:문|사항)?(?:은|는|을|를|들)?\\s?(?:모두|전부|다)?\\s?(?:무시|잊어|잊고|따르지\\s?마)"
+              + "|시스템\\s?(?:지시|프롬프트|메시지|지침|설정)"
+              + "|system\\s?(?:prompt|message|instruction)"
+              + "|ignore\\s+(?:all|any|previous|the\\s+above|your)"
+              + "|(?:프롬프트|지시문|지침)(?:을|를)?\\s?(?:그대로\\s?)?(?:출력|보여|알려|공개)");
+
   private QuestionClassifier() {}
 
   public static Classification classify(String question) {
     String q = RequestHashing.normalize(question);
+    if (INJECTION.matcher(q).find()) {
+      return new Classification(Intent.OUT_OF_SCOPE, false);
+    }
     boolean identifier = IDENTIFIER.matcher(q).find();
     boolean info = INFO_CUE.matcher(q).find();
     boolean action = ACTION_IMPERATIVE.matcher(q).find() && !info;

@@ -33,6 +33,10 @@ tasks.named<Test>("integrationTest") {
     inputs.property("evalOllamaModel", evalModel)
     systemProperty("pmart.eval.ollama-model", evalModel.get())
     systemProperty("pmart.eval.ollama-url", evalUrl.get())
+    // 검색 가중 조정(-PevalSweep=true) — 같은 색인으로 여러 가중을 비교(retrieval-sweep.md)
+    val evalSweep = providers.gradleProperty("evalSweep").orElse("false")
+    inputs.property("evalSweep", evalSweep)
+    systemProperty("pmart.eval.sweep", evalSweep.get())
 }
 
 // 통제된 색인·정리 작업(ADR-0036). 평소 bootRun·컨테이너 기동에서는 색인하지 않는다.

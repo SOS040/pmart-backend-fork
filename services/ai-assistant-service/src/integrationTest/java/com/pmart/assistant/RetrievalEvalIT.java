@@ -114,8 +114,124 @@ class RetrievalEvalIT extends AssistantITBase {
             .average()
             .orElse(0);
     writeSection(rows, sRecall, sMrr, recall, mrr);
+    if (Boolean.getBoolean("pmart.eval.sweep")) {
+      sweep(snapshot);
+    }
     assertThat(rows).hasSizeGreaterThanOrEqualTo(20);
     assertThat(recall).as("기준선 recall@5 — 보고용, 품질 보증 아님").isGreaterThan(0.0);
+  }
+
+  @Autowired com.pmart.assistant.application.AssistantProperties props;
+
+  /**
+   * 검색 가중 조정(2026-11-09, -PevalSweep=true): 한 번 색인한 스냅숏으로 혼합 비율(코사인:키워드)·지위 가중 배율을 바꿔 가며 같은 질문을 다시
+   * 검색한다. 지표: 검색 평가 질문의 문서·절 recall@5 + 답변 평가 질문(eval/answers.json, ANSWER)의 근거 문서 적중@5. 끝나면 원래 값으로
+   * 되돌린다. 보고서 report("retrieval-sweep.md").
+   */
+  void sweep(com.pmart.assistant.infrastructure.SnapshotStore.SnapshotRow snapshot)
+      throws IOException {
+    var r = props.getRetrieval();
+    double[] orig = {
+      r.getCosineWeight(),
+      r.getKeywordWeight(),
+      r.getConfirmedWeight(),
+      r.getAdoptedWeight(),
+      r.getProposalWeight(),
+      r.getAssumptionWeight(),
+      r.getPrecedenceWeight()
+    };
+    List<Q> retrievalQs = questions();
+    List<Q> answerQs = answerQuestions();
+    StringBuilder sb =
+        new StringBuilder("# 검색 가중 조정 (" + label + ")\n\n")
+            .append(
+                "| 코사인:키워드 | 지위 가중 배율 | 문서 recall@5 | 절 recall@5 | 답변 질문 근거 적중@5 | 놓친 답변 질문 |\n")
+            .append("|---|---|---|---|---|---|\n");
+    for (double cos : new double[] {0.6, 0.75, 0.9, 1.0}) {
+      for (double scale : new double[] {1.0, 0.5, 0.0}) {
+        r.setCosineWeight(cos);
+        r.setKeywordWeight(Math.round((1 - cos) * 100) / 100.0);
+        r.setConfirmedWeight(orig[2] * scale);
+        r.setAdoptedWeight(orig[3] * scale);
+        r.setProposalWeight(orig[4] * scale);
+        r.setAssumptionWeight(orig[5] * scale);
+        r.setPrecedenceWeight(orig[6] * scale);
+        int doc = 0;
+        int sec = 0;
+        for (Q q : retrievalQs) {
+          var res =
+              retriever.retrieve(
+                  snapshot,
+                  q.q(),
+                  QuestionClassifier.classify(q.q()).history(),
+                  Set.of("operator"));
+          if (res.ranked().stream()
+              .anyMatch(c -> q.expected().stream().anyMatch(c.path()::startsWith))) {
+            doc++;
+          }
+          if (res.ranked().stream().anyMatch(c -> sectionHit(q, c.path(), c.section()))) {
+            sec++;
+          }
+        }
+        int hit = 0;
+        List<String> missed = new ArrayList<>();
+        for (Q q : answerQs) {
+          var res =
+              retriever.retrieve(
+                  snapshot,
+                  q.q(),
+                  QuestionClassifier.classify(q.q()).history(),
+                  Set.of("operator"));
+          if (res.ranked().stream()
+              .anyMatch(c -> q.expected().stream().anyMatch(c.path()::startsWith))) {
+            hit++;
+          } else {
+            missed.add(q.id());
+          }
+        }
+        sb.append(
+            String.format(
+                Locale.ROOT,
+                "| %.2f:%.2f | %.1f | %d/%d | %d/%d | %d/%d | %s |%n",
+                cos,
+                1 - cos,
+                scale,
+                doc,
+                retrievalQs.size(),
+                sec,
+                retrievalQs.size(),
+                hit,
+                answerQs.size(),
+                String.join(" ", missed)));
+      }
+    }
+    r.setCosineWeight(orig[0]);
+    r.setKeywordWeight(orig[1]);
+    r.setConfirmedWeight(orig[2]);
+    r.setAdoptedWeight(orig[3]);
+    r.setProposalWeight(orig[4]);
+    r.setAssumptionWeight(orig[5]);
+    r.setPrecedenceWeight(orig[6]);
+    Path out = report("retrieval-sweep.md");
+    Files.createDirectories(out.getParent());
+    Files.writeString(out, sb.toString(), StandardCharsets.UTF_8);
+  }
+
+  /** 답변 평가 질문(eval/answers.json) 중 ANSWER — sources 를 정답 문서로. */
+  static List<Q> answerQuestions() throws IOException {
+    try (InputStream in = new ClassPathResource("eval/answers.json").getInputStream()) {
+      var root = tools.jackson.databind.json.JsonMapper.builder().build().readTree(in);
+      List<Q> out = new ArrayList<>();
+      for (var n : root.path("questions")) {
+        if (!"ANSWER".equals(n.path("expect").asString())) {
+          continue;
+        }
+        List<String> src = new ArrayList<>();
+        n.path("sources").forEach(s -> src.add(s.asString()));
+        out.add(new Q(n.path("id").asString(), n.path("q").asString(), src, List.of()));
+      }
+      return out;
+    }
   }
 
   /** 보고서 제목·폴더: 해시 기준선이면 그대로(build/reports/eval/), 비교 평가면 모델별 하위 폴더. */
