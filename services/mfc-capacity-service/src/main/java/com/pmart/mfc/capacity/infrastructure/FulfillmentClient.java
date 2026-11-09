@@ -33,7 +33,20 @@ public class FulfillmentClient {
       String state,
       int version,
       @Nullable String workerId,
-      @Nullable Instant promisedReadyAt) {}
+      @Nullable Instant promisedReadyAt,
+      @Nullable Integer plannedQty,
+      @Nullable Integer remainingQty) {
+
+    public TaskView(
+        String taskId,
+        String taskType,
+        String state,
+        int version,
+        @Nullable String workerId,
+        @Nullable Instant promisedReadyAt) {
+      this(taskId, taskType, state, version, workerId, promisedReadyAt, null, null);
+    }
+  }
 
   private final RestClient client;
   private final ObjectMapper mapper;
@@ -90,7 +103,9 @@ public class FulfillmentClient {
                 t.path("state").asString(""),
                 t.path("version").asInt(0),
                 worker == null || worker.isBlank() ? null : worker,
-                promised == null || promised.isBlank() ? null : Instant.parse(promised)));
+                promised == null || promised.isBlank() ? null : Instant.parse(promised),
+                t.path("plannedQty").isNumber() ? t.path("plannedQty").asInt() : null,
+                t.path("remainingQty").isNumber() ? t.path("remainingQty").asInt() : null));
       }
       cursor = n.path("page").path("nextCursor").asString(null);
       if (cursor != null && cursor.isBlank()) {

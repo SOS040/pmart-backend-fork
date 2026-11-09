@@ -154,6 +154,7 @@ public class PlanService {
       active.put(a.taskId(), a);
     }
     Map<String, Integer> busyMinutes = new HashMap<>(); // 작업자 → 앞 점유 분
+    boolean progressUsed = false; // 진행 중 작업의 남은 시간을 진척률로 줄였는가
     List<PlanProblem.Task> tasks = new ArrayList<>();
     List<UnassignedRow> left = new ArrayList<>();
     Map<String, TaskView> byId = new LinkedHashMap<>();
@@ -163,7 +164,11 @@ public class PlanService {
       String holder = a != null ? a.workerId() : t.workerId();
       if (!"READY".equals(t.state()) || a != null) {
         if (holder != null && m != null) {
-          busyMinutes.merge(holder, m, Integer::sum);
+          int left0 = remainingMinutes(t, m);
+          busyMinutes.merge(holder, left0, Integer::sum);
+          if (left0 < m) {
+            progressUsed = true;
+          }
         }
         continue;
       }
@@ -265,13 +270,15 @@ public class PlanService {
     settings.put("packingStations", stations);
     settings.put("timeLimitMs", limit.toMillis());
     settings.put("status", "TEMPORARY_IMPLEMENTATION_VALUES"); // 운영 정책 아님
-    List<String> limits =
-        new ArrayList<>(List.of("NO_TRAVEL_TIME", "ZONE_NOT_CHECKED", "FIXED_TASK_MINUTES"));
+    // ZONE_NOT_CHECKED 는 뺐다 — MFC 는 온도대 자격을 쓰지 않는다(사용자 결정 2026-11-08, 한계가 아니라 설계, 2026-11-09)
+    List<String> limits = new ArrayList<>(List.of("NO_TRAVEL_TIME", "FIXED_TASK_MINUTES"));
     if (moves == null) {
       limits.add("MOVES_NOT_INCLUDED"); // 이동 지시 조회 실패 — 이동·보충 없이 계산
     }
     if (!busyMinutes.isEmpty()) {
-      limits.add(0, "IN_PROGRESS_FULL_DURATION");
+      // 진행 중 작업: 남은 수량 비율로 남은 시간을 줄인다(0.9.4). 진척을 모르는 작업(시작 전 배정·이동)은 전체 시간
+      limits.add(
+          0, progressUsed ? "IN_PROGRESS_ESTIMATED_BY_PROGRESS" : "IN_PROGRESS_FULL_DURATION");
     }
     settings.put("limitations", limits);
     String settingsJson = mapper.writeValueAsString(settings);
@@ -295,11 +302,12 @@ public class PlanService {
         left.add(new UnassignedRow(id, byId.get(id).taskType(), "NO_TIME"));
       }
     } else {
+      String why = "UNKNOWN".equals(r.status()) ? "UNDETERMINED" : "NO_TIME";
       for (PlanProblem.Task t : solvable) {
-        left.add(new UnassignedRow(t.taskId(), t.taskType(), "NO_TIME"));
+        left.add(new UnassignedRow(t.taskId(), t.taskType(), why));
       }
     }
-    String state = r.solved() ? "PROPOSED" : "NO_SOLUTION";
+    String state = planState(r.solved(), r.status());
     PlanRow row =
         new PlanRow(
             planId,
@@ -342,6 +350,32 @@ public class PlanService {
         r.wallMs(),
         me);
     return view(id);
+  }
+
+  /**
+   * 원문 WK-09 의 계산 상태(0.9.4): 해 있음 = PROPOSED, 시간 안에 못 찾음(UNKNOWN — 불가능 증명이 아님) = UNDETERMINED, 모델
+   * 입력 오류 = INVALID, 불가능 증명(INFEASIBLE) = NO_SOLUTION.
+   */
+  static String planState(boolean solved, String solverStatus) {
+    if (solved) {
+      return "PROPOSED";
+    }
+    return switch (solverStatus) {
+      case "UNKNOWN" -> "UNDETERMINED";
+      case "MODEL_INVALID" -> "INVALID";
+      default -> "NO_SOLUTION";
+    };
+  }
+
+  /** 진행 중 작업이 담당을 앞에서 막는 분(0.9.4). 시작해서 수량 진척이 있으면 남은 수량 비율만큼(올림, 최소 1분), 진척을 모르면 유형 분 전체. */
+  static int remainingMinutes(TaskView t, int minutes) {
+    Integer planned = t.plannedQty();
+    Integer remaining = t.remainingQty();
+    if (!"IN_PROGRESS".equals(t.state()) || planned == null || remaining == null || planned <= 0) {
+      return minutes;
+    }
+    int r = Math.max(0, Math.min(planned, remaining));
+    return Math.max(1, (int) Math.ceil(minutes * (double) r / planned));
   }
 
   // ---------- WK-10 확정 ----------
