@@ -65,18 +65,8 @@ class RetrievalEvalIT extends AssistantITBase {
     long q0 = System.nanoTime();
     for (Q q : questions()) {
       var cls = QuestionClassifier.classify(q.q());
-      Retriever.Retrieval r;
-      var eval = embedding.eval;
-      if (eval != null) {
-        eval.queryMode.set(true); // 질문만 모델 권장 지시문(Qwen3)
-      }
-      try {
-        r = retriever.retrieve(snapshot, q.q(), cls.history(), Set.of("operator"));
-      } finally {
-        if (eval != null) {
-          eval.queryMode.set(false);
-        }
-      }
+      Retriever.Retrieval r =
+          retriever.retrieve(snapshot, q.q(), cls.history(), Set.of("operator"));
       List<String> top = r.ranked().stream().map(RetrievedChunk::path).toList();
       int rank = 0;
       for (int i = 0; i < top.size(); i++) {

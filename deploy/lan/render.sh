@@ -48,8 +48,12 @@ KAFKA_METRICS_NODE=kafka-1
 
 INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
+# RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
+RAG_APPS=" ai-assistant-service customer-assistant-service "
+is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
 # rag-pgvector·ollama(ADR-0051)는 같은 PC 의 RAG 서비스만 컨테이너 이름으로 부른다 — 포트도 LAN 에 열지 않는다
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama "
+# RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -723,7 +727,13 @@ EOF
         echo "    ports: [\"$port:$port\"]"
         echo "    networks: { default: { ipv4_address: $ip_addr } }"
         echo "    mem_limit: 768m"
-        if needs_db "$c" && [[ "$comps" == *" postgres "* ]]; then
+        if is_rag "$c"; then
+          [[ "$comps" == *" rag-pgvector "* && "$comps" == *" ollama "* ]] \
+            || { echo "$c 는 같은 PC 에 rag-pgvector·ollama 가 필요하다(ADR-0051)" >&2; exit 1; }
+          echo "    depends_on:"
+          echo "      rag-pgvector: { condition: service_healthy }"
+          echo "      ollama: { condition: service_started }"
+        elif needs_db "$c" && [[ "$comps" == *" postgres "* ]]; then
           echo "    depends_on:"
           echo "      postgres: { condition: service_healthy }"
         fi
@@ -758,7 +768,11 @@ EOF
         echo "      PMART_BUS_INSTANCE: $pc"
         echo
         # 배치 대조: DB 를 쓰는 앱의 lan DB 주소가 이 PC 의 postgres 인가(placement.conf 를 바꾸면 저장소도 바꿔야 한다)
-        if needs_db "$c"; then
+        if is_rag "$c"; then
+          want="jdbc:postgresql://rag-pgvector:15433/$(db_of "$c")"
+          grep -qF "$want" "$CFG_CLONE/$c-lan.yml" \
+            || { echo "배치와 설정 저장소가 다름: $c 의 DB 주소가 $want 가 아니다(ADR-0051)" >&2; exit 1; }
+        elif needs_db "$c"; then
           [ -n "${WHERE[postgres-$pc]:-}" ] || { echo "$c 는 DB 가 필요한데 $pc 에 postgres 가 없음" >&2; exit 1; }
           want="jdbc:postgresql://postgres-$pc:15432/$(db_of "$c")"
           grep -qF "$want" "$CFG_CLONE/$c-lan.yml" \
@@ -926,6 +940,7 @@ EOF
     echo "-- 생성 파일(deploy/lan/render.sh). 볼륨이 처음 만들어질 때 실행되고, lan.sh deploy 가 매번 다시 실행한다(없는 DB 만 만든다)."
     for c in ${COMPS[$pc]}; do
       [[ "$INFRA" == *" $c "* ]] && continue
+      is_rag "$c" && continue # RAG DB 는 rag-pgvector(rag/rag-init-db.sh)
       needs_db "$c" \
         && echo "SELECT 'CREATE DATABASE $(db_of "$c")' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '$(db_of "$c")')\\gexec"
     done
@@ -939,6 +954,13 @@ EOF
   # RAG pgvector 초기화 스크립트(ADR-0051)
   if [[ "$comps" == *" rag-pgvector "* ]]; then
     mkdir -p "$dir/rag" && tr -d '\r' < "$LAN/rag/rag-init-db.sh" > "$dir/rag/rag-init-db.sh"
+  fi
+  # 운영자 RAG 색인 대상 문서(manifest 명시 목록만): lan.sh rag-ingest 가 컨테이너에 /repo 로 붙여 색인한다. 출처 커밋은 REVISION
+  if [[ "$comps" == *" ai-assistant-service "* ]]; then
+    kdir="$dir/rag/knowledge-operator"; mkdir -p "$kdir"
+    sed -n 's/^  - { path: \([^,]*\),.*/\1/p' services/ai-assistant-service/src/main/resources/knowledge/manifest.yml \
+      | while read -r f; do mkdir -p "$kdir/$(dirname "$f")"; cp "$f" "$kdir/$f"; done
+    git rev-parse HEAD > "$kdir/REVISION"
   fi
 
   # 임시 백오피스 정적 파일: lan.sh publish-backoffice 가 둔 빌드(backoffice-dist, git 제외). 없으면 안내 페이지

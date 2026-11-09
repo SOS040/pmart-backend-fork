@@ -66,6 +66,7 @@ spring-cloud-config-monitor = { module = "org.springframework.cloud:spring-cloud
 spring-cloud-starter-bus-kafka = { module = "org.springframework.cloud:spring-cloud-starter-bus-kafka" } # 설정 변경 알림(springCloudBus 토픽). 기본 꺼짐, LAN 만 켬 (ADR-0033)
 spring-cloud-starter-stream-kafka = { module = "org.springframework.cloud:spring-cloud-starter-stream-kafka" } # 업무 이벤트 소비·DLT·재처리(Kafka 바인더, ADR-0035)
 spring-ai-model = { module = "org.springframework.ai:spring-ai-model" }             # EmbeddingModel·ChatModel 추상화 (ai-assistant-service 만)
+spring-ai-ollama = { module = "org.springframework.ai:spring-ai-ollama" }           # LAN Ollama 임베딩·대화(ADR-0051 결정 6) — RAG 서비스만, 자동 설정 starter 는 쓰지 않는다
 
 # --- 데이터·메시징 (BOM 관리) ---
 postgresql = { module = "org.postgresql:postgresql" }

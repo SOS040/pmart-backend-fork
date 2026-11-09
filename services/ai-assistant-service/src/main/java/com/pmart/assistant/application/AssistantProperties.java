@@ -19,10 +19,23 @@ public class AssistantProperties {
   private Ingest ingest = new Ingest();
 
   public static class Model {
-    /** local(기본: 해시 임베딩 + 발췌 답변) | fake(시험: 주입한 ChatModel 로 생성 경로). 외부 제공자는 결정 전. */
+    /**
+     * local(기본: 해시 임베딩 + 발췌 답변) | ollama(LAN Ollama 임베딩·생성, ADR-0051) | fake(시험: 주입한 ChatModel 로 생성
+     * 경로).
+     */
     private String provider = "local";
 
     private int embeddingDim = 384;
+
+    private Ollama ollama = new Ollama();
+
+    public Ollama getOllama() {
+      return ollama;
+    }
+
+    public void setOllama(Ollama ollama) {
+      this.ollama = ollama;
+    }
 
     public String getProvider() {
       return provider;
@@ -38,6 +51,119 @@ public class AssistantProperties {
 
     public void setEmbeddingDim(int embeddingDim) {
       this.embeddingDim = embeddingDim;
+    }
+  }
+
+  /** provider=ollama 설정(ADR-0051 결정 6). 모델 이름·버전이 없으면 기동하지 않는다(대체값 없음). */
+  public static class Ollama {
+    private @Nullable String baseUrl;
+    private @Nullable String embeddingModel;
+
+    /** Ollama 모델 ID(ollama list). 스냅숏·캐시 키에 들어간다 — 모델 파일을 바꾸면 이 값도 바꾸고 재색인한다. */
+    private @Nullable String embeddingVersion;
+
+    /** 질문에만 붙이는 지시문(Qwen3-Embedding 권장 형식). 바꾸면 재색인. */
+    private @Nullable String queryInstruction;
+
+    private @Nullable String chatModel;
+    private double chatTemperature = 0.2;
+    private int chatNumCtx = 8192;
+
+    /** Qwen3 의 생각(thinking) 단계를 끈다 — 지연을 줄인다. */
+    private boolean disableThinking = true;
+
+    private String keepAlive = "24h";
+    private Duration connectTimeout = Duration.ofSeconds(2);
+
+    /** 한 번의 모델 호출 시간 제한. 처리 하드 타임아웃보다 짧아야 한다(기동 검사). */
+    private Duration requestTimeout = Duration.ofSeconds(25);
+
+    public @Nullable String getBaseUrl() {
+      return baseUrl;
+    }
+
+    public void setBaseUrl(@Nullable String baseUrl) {
+      this.baseUrl = baseUrl;
+    }
+
+    public @Nullable String getEmbeddingModel() {
+      return embeddingModel;
+    }
+
+    public void setEmbeddingModel(@Nullable String embeddingModel) {
+      this.embeddingModel = embeddingModel;
+    }
+
+    public @Nullable String getEmbeddingVersion() {
+      return embeddingVersion;
+    }
+
+    public void setEmbeddingVersion(@Nullable String embeddingVersion) {
+      this.embeddingVersion = embeddingVersion;
+    }
+
+    public @Nullable String getQueryInstruction() {
+      return queryInstruction;
+    }
+
+    public void setQueryInstruction(@Nullable String queryInstruction) {
+      this.queryInstruction = queryInstruction;
+    }
+
+    public @Nullable String getChatModel() {
+      return chatModel;
+    }
+
+    public void setChatModel(@Nullable String chatModel) {
+      this.chatModel = chatModel;
+    }
+
+    public double getChatTemperature() {
+      return chatTemperature;
+    }
+
+    public void setChatTemperature(double chatTemperature) {
+      this.chatTemperature = chatTemperature;
+    }
+
+    public int getChatNumCtx() {
+      return chatNumCtx;
+    }
+
+    public void setChatNumCtx(int chatNumCtx) {
+      this.chatNumCtx = chatNumCtx;
+    }
+
+    public boolean isDisableThinking() {
+      return disableThinking;
+    }
+
+    public void setDisableThinking(boolean disableThinking) {
+      this.disableThinking = disableThinking;
+    }
+
+    public String getKeepAlive() {
+      return keepAlive;
+    }
+
+    public void setKeepAlive(String keepAlive) {
+      this.keepAlive = keepAlive;
+    }
+
+    public Duration getConnectTimeout() {
+      return connectTimeout;
+    }
+
+    public void setConnectTimeout(Duration connectTimeout) {
+      this.connectTimeout = connectTimeout;
+    }
+
+    public Duration getRequestTimeout() {
+      return requestTimeout;
+    }
+
+    public void setRequestTimeout(Duration requestTimeout) {
+      this.requestTimeout = requestTimeout;
     }
   }
 

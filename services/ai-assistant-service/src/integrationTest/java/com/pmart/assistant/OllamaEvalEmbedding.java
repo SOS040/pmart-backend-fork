@@ -6,7 +6,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.Embedding;
@@ -31,7 +30,6 @@ final class OllamaEvalEmbedding implements DescribedEmbeddingModel {
           + " document passages that answer it\nQuery: ";
 
   final String model;
-  final AtomicBoolean queryMode = new AtomicBoolean();
   private final RestClient http;
   private final @Nullable String queryPrefix;
   private int dim;
@@ -87,8 +85,12 @@ final class OllamaEvalEmbedding implements DescribedEmbeddingModel {
 
   @Override
   public float[] embed(String text) {
-    String input = queryMode.get() && queryPrefix != null ? queryPrefix + text : text;
-    return embedRaw(input);
+    return embedRaw(text);
+  }
+
+  @Override
+  public float[] embedQuery(String question) {
+    return embedRaw(queryPrefix == null ? question : queryPrefix + question);
   }
 
   private float[] embedRaw(String input) {

@@ -1,5 +1,5 @@
 // ai-assistant-service: 내부 운영자용 정책·업무 절차 질의응답(RAG, 1차 — ADR-0036). 저장소 문서의 사본 색인과 답변 기록만 소유한다.
-// Spring AI·pgvector 는 이 서비스에만(.claude/rules/gradle-build.md). 외부 모델 제공자 모듈은 결정 전이라 넣지 않는다.
+// Spring AI·pgvector 는 이 서비스에만(.claude/rules/gradle-build.md). 모델 제공자는 LAN Ollama 만(ADR-0051) — 외부 유료 API 모듈은 넣지 않는다.
 plugins {
     id("pmart.spring-service")
 }
@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.bundles.service.observability)
     implementation(platform(libs.spring.ai.bom))
     implementation(libs.spring.ai.model)
+    implementation(libs.spring.ai.ollama) // ADR-0051: LAN Ollama(자동 설정 없이 AssistantConfig 가 만든다)
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))

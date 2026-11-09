@@ -49,7 +49,7 @@ public class Retriever {
         || !snapshot.preprocessingHash().equals(spec.preprocessingHash())) {
       throw new SnapshotModelMismatchException("활성 스냅숏의 임베딩 모델이 현재 설정과 다릅니다 — 재색인 필요");
     }
-    float[] q = embeddings.embed(question);
+    float[] q = embeddings.embedQuery(question);
     List<Lifecycle> excluded = Lifecycle.excludedFor(history);
     ChunkStore.Query query =
         new ChunkStore.Query(

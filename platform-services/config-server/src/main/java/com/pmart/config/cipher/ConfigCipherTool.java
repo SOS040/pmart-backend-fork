@@ -37,13 +37,17 @@ public final class ConfigCipherTool {
     List<String> out = new ArrayList<>();
     int reused = 0;
     int created = 0;
+    int lineNo = 0;
     for (String line : Files.readAllLines(Path.of(args[0]), StandardCharsets.UTF_8)) {
+      lineNo++;
       if (line.isBlank()) {
         continue;
       }
       String[] f = line.split("\t", -1);
       if (f.length < 2) {
-        throw new IllegalArgumentException("형식 오류(키 TAB 평문Base64 [TAB 기존 암호문]): " + f[0]);
+        // 줄 내용은 출력하지 않는다 — 형식을 틀리면 평문이 첫 칸에 들어 있을 수 있다(2026-11-09 평문이 오류에 찍힘)
+        throw new IllegalArgumentException(
+            "형식 오류(키 TAB 평문Base64 [TAB 기존 암호문]): " + lineNo + "번째 줄");
       }
       String plain = new String(Base64.getDecoder().decode(f[1]), StandardCharsets.UTF_8);
       String previous = f.length > 2 ? f[2] : "";

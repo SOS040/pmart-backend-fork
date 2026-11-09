@@ -83,6 +83,14 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
     }
 
     @Override
+    public float[] embedQuery(String question) {
+      if (failing.get()) {
+        throw new IllegalStateException("embedding down (test)");
+      }
+      return delegate.embedQuery(question);
+    }
+
+    @Override
     public float[] embed(String text) {
       Runnable hook = onNextEmbed.getAndSet(null);
       if (hook != null) {
