@@ -4,6 +4,8 @@ L = json.load(open(sys.argv[1], encoding='utf-8'))
 out = sys.argv[2]
 # 선택: 고회전 칸 목록(high-turnover.json) — 그 칸이 있는 랙을 강조한다
 HT = json.load(open(sys.argv[3], encoding='utf-8'))['bins'] if len(sys.argv) > 3 else []
+# 선택: 백엔드가 정한 자리(backend-points.json) — 평면에 없는 위치
+EXTRA = json.load(open(sys.argv[4], encoding='utf-8'))['points'] if len(sys.argv) > 4 else []
 ht_racks = {}
 for b in HT:
     ht_racks.setdefault(b['rackId'], []).append(b)
@@ -125,6 +127,9 @@ dot(P['riderPickup'], '#2c3e50', '라이더 픽업', 7, 4)
 dot(P['riderEntry'], '#2c3e50', '라이더 진입', 7, 4)
 dot(P['idle'][0], '#7f8c8d', '작업자 대기 줄', 0, -8)
 dot(P['inboundIdle'][0], '#7f8c8d', '입고 작업자 대기', 0, -8)
+for ex in EXTRA:
+    a(f'<rect x="{X(ex["x"]) - 5:.1f}" y="{Z(ex["z"]) - 5:.1f}" width="10" height="10" fill="#00897b" stroke="#fff" stroke-width="1"/>')
+    a(f'<text x="{X(ex["x"]) + 8:.1f}" y="{Z(ex["z"]) + 4:.1f}" font-size="10" font-weight="700" fill="#00695c" paint-order="stroke" stroke="#fff" stroke-width="3">{e(ex["label"])}</text>')
 for (x, z, lab) in [(6, 30.1, '냉동실 문'), (17.8, 30.1, '냉장실 문')]:
     a(f'<text x="{X(x):.1f}" y="{Z(z) + 13:.1f}" font-size="9" fill="#555" text-anchor="middle">{lab}</text>')
 
@@ -140,7 +145,7 @@ y += 18
 items = [('box', rack_fill['FROZEN'], '냉동 랙 105 (5단 × 3칸)'), ('box', rack_fill['CHILLED'], '냉장 랙 125 (5단 × 3칸)'),
          ('box', rack_fill['AMBIENT'], '상온 랙 138 (6단 × 4칸)'), ('box', '#a1887f', '보충재고 팔레트 자리 32'),
          ('box', '#6d9f5b', '패킹대 8 (번호, 기본 가동 4)'), ('box', '#e08a2c', '외부 출하대기 랙 2'),
-         ('box', '#8e7cc3', '하차 적치 칸 36'), ('box', '#e53935', '고회전 칸이 있는 랙 (E2E 시험용, 나머지는 일반 선반)'), ('line', '#333', '벽 (끊긴 곳 = 문)'),
+         ('box', '#8e7cc3', '하차 적치 칸 36'), ('box', '#e53935', '고회전 칸이 있는 랙 (E2E 시험용, 나머지는 일반 선반)'), ('box', '#00897b', '백엔드가 정한 자리 (평면에 없음)'), ('line', '#333', '벽 (끊긴 곳 = 문)'),
          ('line', '#7fb3d5', '유리벽 (패킹실)'), ('line', '#9e9e9e', '낮은 울타리')]
 for kind, col, lab in items:
     if kind == 'line':

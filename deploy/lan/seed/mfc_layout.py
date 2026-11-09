@@ -183,6 +183,9 @@ def plan():
         support.append({"locationCode": code, "zone": "QUARANTINE", "temperatureZone": temp, "position": {"xM": x, "zM": z}})
     x, z = center(zones["RCV"]["rect"])
     support.append({"locationCode": "RCV-A-01", "zone": "RECEIVING", "temperatureZone": "AMBIENT", "position": {"xM": x, "zM": z}})
+    # 회수(반품) 위치 — 시뮬레이터 평면에 회수 구역이 없어 입고·검수 구역 서쪽 아래(하차 적치 칸·입고 작업자 대기 자리 밖)에 둔다
+    # (사용자 2026-11-09 "그렇게 해줘": 회수품도 입고처럼 그 문으로 들어온다). 백엔드가 정한 자리 — backend-points.json 으로 도면에 표시
+    support.append({"locationCode": "RTN-A-01", "zone": "RETURN", "temperatureZone": "AMBIENT", "position": {"xM": 38.6, "zM": 22.0}})
     ship = [o for o in L["obstacles"] if o["kind"] == "SHIP_RACK"]
     for i, o in enumerate(ship, start=1):
         x, z = center(o["rect"])
