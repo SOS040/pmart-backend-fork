@@ -116,7 +116,13 @@
 - 임베딩 비교(D3): PC1 임시 Ollama 로 `RetrievalEvalIT -PevalOllamaModel=` — 절 기준 recall@5 해시 0.52 · **Qwen3-Embedding-0.6B 0.76** · BGE-M3 0.68, 문서 기준 0.68 · 0.84 · 0.84. 추천 Qwen3(절 기준 앞섬, 639MB, 검색 빠름). 질문 25개라 2문항 차이 — 한계는 `verification/2026-11-09/embedding-compare/README.md`. 시험 전용 `OllamaEvalEmbedding`, 운영 코드 변경 없음. 해시 기준선은 색인 문서가 늘어 0.76 → 0.68(문서 기준).
 - 사용자 결정: 임베딩 = Qwen3-Embedding-0.6B(ADR-0051·D3 갱신).
 
-## 남은 것
+### 운영자 RAG LAN 배포(pc2, 2026-11-09 오후)
+- 코드: provider=ollama(`OllamaModels`) — 임베딩 Qwen3-Embedding-0.6B(질문에만 지시문 `embedQuery`, `/api/embed` 직접 호출: Spring AI OllamaEmbeddingModel 2.0.2 가 options·keep_alive 를 빠뜨려 시험으로 발견), 대화 qwen3:4b(생각 끔·JSON·문맥 8192). 호출 제한 25초 < 처리 60초(기동 검사). 시험: 단위 OllamaModelsTest 3, 통합 OllamaProviderIT(WireMock — 요청 형식) — ai-assistant check 통과.
+- LAN: `rag-pgvector` 서비스 계정 `ai_assistant_service`(비밀 {cipher}), 색인 75파일·1,966청크(일회 작업 `ai-assistant-ingest`, 약 3분), `lan.sh rag-pull·rag-warm·rag-ingest`.
+- 겪은 것: ① 첫 모델 적재 26~30초 > 호출 제한 → `rag-warm`. ② `NUM_PARALLEL 2` 면 대화 모델 5.4GB·일부 CPU → 1. ③ 6GB GPU(화면 0.86GB 사용)에 대화+임베딩이 함께 안 올라가 서로 밀어냄 → **임베딩은 CPU**(num_gpu 0, 문맥 2048 — 994MB), 대화는 GPU 100%(3.9GB). ④ `compose run` 이 앱 고정 IP 를 써서 충돌 → 별도 작업 서비스. ⑤ config-server `ConfigCipherTool` 이 형식 오류 때 평문을 출력 → 줄 번호만 출력하게 고치고 그 비밀번호를 바꿈(LAN 전용, 사용 전). ⑥ 새 서비스 첫 배포 뒤 게이트웨이가 몇 분간 503(Unable to find instance) — 이후 정상.
+- 확인(`deploy/lan/checks/rag_e2e.py`): 6/6 기대대로, 2~4초. 결품·봉투·서비스 간 인증 정답, 근거 없음·실시간 NONE. **"배정 추천 목표 순서"는 피킹 방문 순서로 잘못 답함**(인용은 했으나 주제 다름 — 인용 검사가 문장 겹침만 봐서 통과). 질문 모음으로 생성 충실도 평가 필요.
+- LAN 색인은 git 이 없어 출처 커밋이 비어 기록된다(render 가 `REVISION` 파일은 두었으나 색인기가 아직 읽지 않음).
+
 - ADR-0036 결정 4건(외부 모델·외부 전송 범위, LAN pgvector 위치, 답변 보존·원문 저장, 운영자 역할).
 - 결정 뒤: pgvector 배치, LAN 배포, 실제 모델 평가(의미 검색·생성 충실도·환각·주입 방어).
 - 평가: 문서는 맞혔지만 절은 못 맞힌 Q01·Q04·Q11·Q20, 놓친 Q05·Q10·Q12~Q15(해시 기준선 한계).
