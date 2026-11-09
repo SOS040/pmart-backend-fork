@@ -44,9 +44,23 @@ public record PlanProblem(
   /**
    * @param busy 이미 막힌 구간 [start, end) — 앞서 맡은 작업·근무 밖
    */
-  public record Worker(String workerId, int dutyVersion, Set<String> taskTypes, List<int[]> busy) {
+  /**
+   * @param speed 속도 배율(0.11.0) — 이 작업자의 작업 시간 = 작업 분 ÷ speed(올림, 최소 1분).
+   */
+  public record Worker(
+      String workerId, int dutyVersion, Set<String> taskTypes, List<int[]> busy, double speed) {
+
+    public Worker(String workerId, int dutyVersion, Set<String> taskTypes, List<int[]> busy) {
+      this(workerId, dutyVersion, taskTypes, busy, 1.0);
+    }
+
     public boolean can(String taskType) {
       return taskTypes.contains(taskType);
+    }
+
+    /** 이 작업자가 그 작업에 쓰는 분. */
+    public int minutes(int base) {
+      return speed <= 0 ? base : Math.max(1, (int) Math.ceil(base / speed));
     }
   }
 

@@ -136,6 +136,44 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
     return Map.of("mfcId", MFC, "taskId", taskId, "taskType", "PICK", "workerId", worker);
   }
 
+  /** 0.11.0 작업자 속도 배율: 센터 관리자만, 0.5~2.0, 작업자 조회에 보인다(기본 1.0). */
+  @Test
+  void supervisorSetsWorkerSpeedFactor() {
+    String w = "spd-" + UUID.randomUUID().toString().substring(0, 6);
+    assertThat(register(w, List.of("PICK"), List.of("AMBIENT")).status()).isEqualTo(201);
+    String path = "/mfcs/" + MFC + "/workers/" + w;
+    assertThat(get(SUPERVISOR, path).body().path("speedFactor").asDouble()).isEqualTo(1.0);
+    Res ok =
+        send(
+            "POST",
+            SUPERVISOR,
+            path + "/speed-changes",
+            Map.of("speedFactor", 1.2, "reason", "숙련"),
+            null);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("speedFactor").asDouble()).isEqualTo(1.2);
+    assertThat(get(SUPERVISOR, path).body().path("speedFactor").asDouble()).isEqualTo(1.2);
+    assertThat(
+            send(
+                    "POST",
+                    SUPERVISOR,
+                    path + "/speed-changes",
+                    Map.of("speedFactor", 2.5, "reason", "x"),
+                    null)
+                .status())
+        .isEqualTo(400);
+    String worker = TestJwt.operator(w, List.of("MFC_WORKER"), List.of(MFC));
+    assertThat(
+            send(
+                    "POST",
+                    worker,
+                    path + "/speed-changes",
+                    Map.of("speedFactor", 1.5, "reason", "x"),
+                    null)
+                .status())
+        .isEqualTo(403);
+  }
+
   @Test
   void supervisorAssignsAndReassignsWithVersions() {
     register("wrk-1", List.of("PICK", "PACK"), List.of("AMBIENT"));

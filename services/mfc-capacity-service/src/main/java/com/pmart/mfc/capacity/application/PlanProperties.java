@@ -24,7 +24,18 @@ public record PlanProperties(
     @Nullable String mfcInboundBaseUrl,
     @Nullable String centerMasterBaseUrl,
     @Nullable String mfcLocationBaseUrl,
-    @Nullable String pickRouteStart) {
+    @Nullable String pickRouteStart,
+    @Nullable Travel travel) {
+
+  /**
+   * 작업 시간 추정(0.11.0, 임시 구현값 — 시뮬레이터 값): 걷는 속도(m/s), 줄당 스캔 초, 개수당 처리 초, 포장 위치(피킹 끝). 하나라도 없으면 추정 없이
+   * 유형 분.
+   */
+  public record Travel(
+      @Nullable Double walkSpeedMps,
+      @Nullable Integer scanSecPerLine,
+      @Nullable Integer secPerUnit,
+      @Nullable String packLocation) {}
 
   public static final String TASK_MINUTES_KEY = "pmart.capacity.plan.task-minutes";
   public static final String TIME_LIMIT_KEY = "pmart.capacity.plan.time-limit";

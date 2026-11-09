@@ -128,6 +128,7 @@ public class WorkersController implements WorkersApi {
     out.setDisplayName(w.getDisplayName());
     out.setState(w.getState());
     out.setDuty(w.getDuty());
+    out.setSpeedFactor(w.getSpeedFactor());
     out.setRegisteredBy(w.getRegisteredBy());
     out.setRegisteredAt(w.getRegisteredAt());
     out.setDutyHistory(d.duties().stream().map(WorkersController::duty).toList());
@@ -243,8 +244,27 @@ public class WorkersController implements WorkersApi {
     return out;
   }
 
+  @Override
+  public ResponseEntity<Worker> changeWorkerSpeed(
+      String mfcId,
+      String workerId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.capacity.api.generated.model.ChangeWorkerSpeedRequest body) {
+    return ResponseEntity.ok(
+        worker(
+            service.changeSpeed(
+                idempotencyKey,
+                xSourceSystem,
+                mfcId,
+                workerId,
+                body.getSpeedFactor().doubleValue(),
+                body.getReason())));
+  }
+
   private static Worker worker(WorkerService.View v) {
     var w = new Worker();
+    w.setSpeedFactor(java.math.BigDecimal.valueOf(v.worker().speedFactor()));
     w.setMfcId(v.worker().mfcId());
     w.setWorkerId(v.worker().workerId());
     w.setDisplayName(v.worker().displayName());

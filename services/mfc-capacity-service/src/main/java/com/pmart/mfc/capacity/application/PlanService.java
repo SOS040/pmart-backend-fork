@@ -75,6 +75,13 @@ public class PlanService {
 
   private StaffHours staffHours;
 
+  private TaskTimeEstimator estimator;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setEstimator(TaskTimeEstimator estimator) {
+    this.estimator = estimator;
+  }
+
   @org.springframework.beans.factory.annotation.Autowired
   void setStaffHours(StaffHours staffHours) {
     this.staffHours = staffHours;
@@ -153,6 +160,18 @@ public class PlanService {
     for (AssignmentRow a : assignments.list(mfcId, null, null, "ACTIVE", null)) {
       active.put(a.taskId(), a);
     }
+    // 작업 시간 추정(0.11.0, 사용자 결정 2026-11-09): 설정이 있으면 작업마다 — 없으면 유형 분
+    TaskTimeEstimator.Estimate est = null;
+    if (estimator != null && estimator.enabled()) {
+      Map<String, com.pmart.mfc.capacity.infrastructure.InboundClient.MoveView> moveById =
+          new HashMap<>();
+      if (moves != null) {
+        moves.forEach(mv -> moveById.put(mv.moveId(), mv));
+      }
+      List<TaskView> readyTasks =
+          all.stream().filter(t -> "READY".equals(t.state()) && t.workerId() == null).toList();
+      est = estimator.estimate(mfcId, readyTasks, moveById, minutes);
+    }
     Map<String, Integer> busyMinutes = new HashMap<>(); // 작업자 → 앞 점유 분
     boolean progressUsed = false; // 진행 중 작업의 남은 시간을 진척률로 줄였는가
     List<PlanProblem.Task> tasks = new ArrayList<>();
@@ -177,6 +196,9 @@ public class PlanService {
         left.add(new UnassignedRow(t.taskId(), t.taskType(), "CONFIG_REQUIRED"));
         continue;
       }
+      if (est != null) {
+        m = est.minutes().getOrDefault(t.taskId(), m);
+      }
       Integer due =
           t.promisedReadyAt() == null
               ? null
@@ -192,6 +214,7 @@ public class PlanService {
                   t.taskType(), urgentMoves.getOrDefault(t.taskId(), false))));
     }
     List<PlanProblem.Worker> ws = new ArrayList<>();
+    Map<String, Double> speeds = new LinkedHashMap<>(); // 속도 배율이 1 이 아닌 작업자(설정 기록용)
     List<String> unverified = new ArrayList<>();
     Map<String, Integer> dutyVersion = new HashMap<>();
     @org.jspecify.annotations.Nullable List<int[]> staffWindows = null;
@@ -199,7 +222,10 @@ public class PlanService {
       var d = workers.duty(mfcId, w.workerId(), w.dutyVersion());
       dutyVersion.put(w.workerId(), d.dutyVersion());
       List<int[]> busy = new ArrayList<>();
-      int pre = Math.min(horizon, busyMinutes.getOrDefault(w.workerId(), 0));
+      double speed = w.speedFactor() <= 0 ? 1.0 : w.speedFactor();
+      int pre =
+          Math.min(
+              horizon, (int) Math.ceil(busyMinutes.getOrDefault(w.workerId(), 0) / speed)); // 속도 배율
       if (pre > 0) {
         busy.add(new int[] {0, pre});
       }
@@ -240,7 +266,10 @@ public class PlanService {
         unverified.add(w.workerId()); // 근무 미등록 — 센터 직원 근무 시간표로 계산
       }
       busy.addAll(PlanProblem.offShift(windows, horizon));
-      ws.add(new PlanProblem.Worker(w.workerId(), d.dutyVersion(), d.taskTypes(), busy));
+      ws.add(new PlanProblem.Worker(w.workerId(), d.dutyVersion(), d.taskTypes(), busy, speed));
+      if (Math.abs(speed - 1.0) > 0.005) {
+        speeds.put(w.workerId(), speed);
+      }
     }
     // 적격 작업자가 없는 작업은 미리 뺀다(이유가 다르다)
     List<PlanProblem.Task> solvable = new ArrayList<>();
@@ -271,7 +300,19 @@ public class PlanService {
     settings.put("timeLimitMs", limit.toMillis());
     settings.put("status", "TEMPORARY_IMPLEMENTATION_VALUES"); // 운영 정책 아님
     // ZONE_NOT_CHECKED 는 뺐다 — MFC 는 온도대 자격을 쓰지 않는다(사용자 결정 2026-11-08, 한계가 아니라 설계, 2026-11-09)
-    List<String> limits = new ArrayList<>(List.of("NO_TRAVEL_TIME", "FIXED_TASK_MINUTES"));
+    List<String> limits =
+        est == null
+            ? new ArrayList<>(List.of("NO_TRAVEL_TIME", "FIXED_TASK_MINUTES"))
+            : new ArrayList<>(List.of("TRAVEL_ESTIMATED")); // 작업 사이 이동은 추정에 없음
+    if (est != null) {
+      if (est.partial()) {
+        limits.add("TRAVEL_ESTIMATE_PARTIAL"); // 추정 못 한 작업은 유형 분
+      }
+      settings.put("travel", est.settings());
+    }
+    if (!speeds.isEmpty()) {
+      settings.put("workerSpeed", speeds);
+    }
     if (moves == null) {
       limits.add("MOVES_NOT_INCLUDED"); // 이동 지시 조회 실패 — 이동·보충 없이 계산
     }

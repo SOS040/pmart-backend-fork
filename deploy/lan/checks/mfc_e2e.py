@@ -375,5 +375,6 @@ pl = step("배정 추천 계산", http("POST", f"{GW}/assignment-plans", sup, {"
 ids = [i.get("taskId") for i in pl.get("items", [])] + [u.get("taskId") for u in pl.get("unassigned", [])]
 print("     추천", pl.get("state"), "항목", len(pl.get("items", [])), "미배정", [(u.get("taskId"), u.get("reason")) for u in pl.get("unassigned", [])][:5], pl.get("limitations"))
 step("추천에 이동 지시 포함", (200 if mv3["moveId"] in ids else 409, {}), 200)
+step("추천 작업 시간 추정(TRAVEL_ESTIMATED, capacity 0.11.0)", (200 if "TRAVEL_ESTIMATED" in (pl.get("limitations") or []) else 409, {}), 200)
 step("추천용 이동 취소", http("POST", f"{GW}/move-orders/{mv3['moveId']}/cancellations", sup, {"reason": "E2E 추천 확인 뒤 취소"}), 200)
 summary()

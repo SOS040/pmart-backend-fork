@@ -30,7 +30,22 @@ public class InboundClient {
       boolean urgent,
       int pickedQty,
       @Nullable String assigneeId,
-      @Nullable Instant createdAt) {}
+      @Nullable Instant createdAt,
+      @Nullable String fromLocation,
+      @Nullable String toLocation,
+      int qty) {
+
+    public MoveView(
+        String moveId,
+        String taskType,
+        String state,
+        boolean urgent,
+        int pickedQty,
+        @Nullable String assigneeId,
+        @Nullable Instant createdAt) {
+      this(moveId, taskType, state, urgent, pickedQty, assigneeId, createdAt, null, null, 0);
+    }
+  }
 
   private final @Nullable RestClient client;
   private final ObjectMapper mapper;
@@ -81,7 +96,10 @@ public class InboundClient {
               m.path("urgent").asBoolean(false),
               m.path("pickedQty").asInt(0),
               assignee == null || assignee.isBlank() ? null : assignee,
-              created == null || created.isBlank() ? null : Instant.parse(created)));
+              created == null || created.isBlank() ? null : Instant.parse(created),
+              m.path("fromLocation").asString(null),
+              m.path("toLocation").asString(null),
+              m.path("qty").asInt(0)));
     }
     return out;
   }

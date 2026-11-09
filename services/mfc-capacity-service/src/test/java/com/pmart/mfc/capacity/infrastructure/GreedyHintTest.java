@@ -51,4 +51,25 @@ class GreedyHintTest {
     assertThat(h.get("P2")[1]).isEqualTo(4);
     assertThat(h).doesNotContainKey("P3");
   }
+
+  @Test
+  void fasterWorkerFinishesSoonerAndGetsTheEarlierSlot() {
+    // 같은 7분 작업 둘, 둘 다 할 수 있는 a(보통)·b(배율 2.0 → 4분)
+    var p =
+        new PlanProblem(
+            20,
+            4,
+            List.of(
+                new PlanProblem.Task("T1", "PICK", 1, 7, 10, 3),
+                new PlanProblem.Task("T2", "PICK", 1, 7, 12, 3)),
+            List.of(
+                new PlanProblem.Worker("a", 1, Set.of("PICK"), List.of(new int[] {0, 1}), 1.0),
+                new PlanProblem.Worker("b", 1, Set.of("PICK"), List.of(new int[] {0, 1}), 2.0)));
+    assertThat(p.workers().get(1).minutes(7)).isEqualTo(4);
+    assertThat(p.workers().get(0).minutes(7)).isEqualTo(7);
+    var h = CpSatPlanner.greedy(p);
+    // 둘 다 1분부터 비면 앞 작업자(a)가 T1, T2 는 a 가 8분부터·b 가 1분부터 → b
+    assertThat(h.get("T1")).containsExactly(0, 1);
+    assertThat(h.get("T2")).containsExactly(1, 1);
+  }
 }

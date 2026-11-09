@@ -373,6 +373,35 @@ public class WorkerService {
     return new ChangeResult(view(mfcId, workerId), changed, affected(mfcId, workerId));
   }
 
+  /** 속도 배율 변경(0.11.0, 사용자 결정 2026-11-09) — 배정 추천의 작업 시간 = 추정 분 ÷ 배율. 0.5~2.0. */
+  public View changeSpeed(
+      String requestId,
+      String sourceSystem,
+      String mfcId,
+      String workerId,
+      double factor,
+      String reason) {
+    String me = AssignmentService.requireSupervisor(mfcId);
+    if (factor < 0.5 || factor > 2.0) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "속도 배율은 0.5~2.0 입니다.");
+    }
+    idempotency.execute(
+        new RequestKey(sourceSystem, requestId, "changeWorkerSpeed", me),
+        List.of(mfcId, workerId, String.valueOf(factor), reason),
+        Boolean.class,
+        () -> {
+          WorkerRow w = lockOrThrow(mfcId, workerId);
+          if (Math.abs(w.speedFactor() - factor) < 0.005) {
+            return false;
+          }
+          store.setSpeed(mfcId, workerId, factor);
+          log.info(
+              "작업자 {} 속도 배율 {} → {} by {} ({})", workerId, w.speedFactor(), factor, me, reason);
+          return true;
+        });
+    return view(mfcId, workerId);
+  }
+
   /** 이 작업자의 ACTIVE 배정 중 지금 업무·상태로는 받을 수 없는 것. */
   private List<AssignmentRow> affected(String mfcId, String workerId) {
     WorkerRules.Profile p = profile(mfcId, workerId);

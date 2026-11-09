@@ -77,14 +77,15 @@ public class CpSatPlanner {
             .thenComparing(PlanProblem.Task::taskId));
     Map<String, int[]> out = new HashMap<>();
     for (PlanProblem.Task t : order) {
-      int d = t.minutes();
       boolean pack = "PACK".equals(t.taskType());
       int bestW = -1;
       int bestS = Integer.MAX_VALUE;
+      int bestD = 0;
       for (int w = 0; w < nw; w++) {
         if (!p.workers().get(w).can(t.taskType())) {
           continue;
         }
+        int d = p.workers().get(w).minutes(t.minutes());
         for (int s = 0; s + d <= h && s < bestS; s++) {
           boolean ok = true;
           for (int x = s; x < s + d && ok; x++) {
@@ -93,12 +94,13 @@ public class CpSatPlanner {
           if (ok) {
             bestW = w;
             bestS = s;
+            bestD = d;
             break;
           }
         }
       }
       if (bestW >= 0) {
-        for (int x = bestS; x < bestS + d; x++) {
+        for (int x = bestS; x < bestS + bestD; x++) {
           busy[bestW][x] = true;
           if (pack) {
             packUse[x]++;
@@ -122,10 +124,11 @@ public class CpSatPlanner {
         left.add(t.taskId());
         continue;
       }
-      int late = t.due() == null ? 0 : Math.max(0, g[1] + t.minutes() - t.due());
+      int dw = p.workers().get(g[0]).minutes(t.minutes());
+      int late = t.due() == null ? 0 : Math.max(0, g[1] + dw - t.due());
       lateSum += late;
-      load.merge(wids.get(g[0]), t.minutes(), Integer::sum);
-      items.add(new Item(t.taskId(), wids.get(g[0]), g[1], g[1] + t.minutes(), late));
+      load.merge(wids.get(g[0]), dw, Integer::sum);
+      items.add(new Item(t.taskId(), wids.get(g[0]), g[1], g[1] + dw, late));
     }
     if (items.isEmpty()) {
       return new Result(
@@ -175,16 +178,17 @@ public class CpSatPlanner {
           p.weights().unassigned()
               + p.weights().late() * dropLate
               + p.weights().late() * (long) t.priority());
-      if (d <= h) {
+      {
         for (PlanProblem.Worker w : p.workers()) {
-          if (!w.can(t.taskType())) {
+          int dw = w.minutes(d); // 작업자 속도 배율(0.11.0)
+          if (!w.can(t.taskType()) || dw > h) {
             continue;
           }
           String n = t.taskId() + "_" + w.workerId();
           BoolVar b = m.newBoolVar("x_" + n);
-          IntVar s = m.newIntVar(0, h - d, "s_" + n);
+          IntVar s = m.newIntVar(0, h - dw, "s_" + n);
           m.addEquality(s, 0).onlyEnforceIf(b.not());
-          IntervalVar iv = m.newOptionalFixedSizeIntervalVar(s, d, b, "i_" + n);
+          IntervalVar iv = m.newOptionalFixedSizeIntervalVar(s, dw, b, "i_" + n);
           byWorker.get(w.workerId()).add(iv);
           if ("PACK".equals(t.taskType())) {
             packs.add(iv);
@@ -193,14 +197,14 @@ public class CpSatPlanner {
               m.newIntVar(0, (long) h + Math.abs(t.due() == null ? 0 : t.due()), "l_" + n);
           if (t.due() != null) {
             // late ≥ start + d − due (배정됐을 때만)
-            m.addGreaterOrEqual(late, LinearExpr.newBuilder().add(s).add(d - t.due()).build())
+            m.addGreaterOrEqual(late, LinearExpr.newBuilder().add(s).add(dw - t.due()).build())
                 .onlyEnforceIf(b);
           }
           m.addEquality(late, 0).onlyEnforceIf(b.not());
           objective.addTerm(late, p.weights().late());
           objective.add(s);
           one.add(b);
-          load.get(w.workerId()).addTerm(b, d);
+          load.get(w.workerId()).addTerm(b, dw);
           choices.add(new Choice(t, w.workerId(), b, s, late));
         }
       }
@@ -234,10 +238,8 @@ public class CpSatPlanner {
       boolean on = g != null && wids.get(g[0]).equals(c.workerId());
       m.addHint(c.present(), on ? 1 : 0);
       m.addHint(c.start(), on ? g[1] : 0);
-      int late =
-          on && c.task().due() != null
-              ? Math.max(0, g[1] + c.task().minutes() - c.task().due())
-              : 0;
+      int dwh = on ? p.workers().get(g[0]).minutes(c.task().minutes()) : 0;
+      int late = on && c.task().due() != null ? Math.max(0, g[1] + dwh - c.task().due()) : 0;
       m.addHint(c.late(), late);
     }
     unassigned.forEach((id, u) -> m.addHint(u, hint.containsKey(id) ? 0 : 1));
@@ -274,7 +276,13 @@ public class CpSatPlanner {
         int s = (int) solver.value(c.start());
         int late = (int) solver.value(c.late());
         lateSum += late;
-        items.add(new Item(c.task().taskId(), c.workerId(), s, s + c.task().minutes(), late));
+        int dw =
+            p.workers().stream()
+                .filter(w -> w.workerId().equals(c.workerId()))
+                .findFirst()
+                .map(w -> w.minutes(c.task().minutes()))
+                .orElse(c.task().minutes());
+        items.add(new Item(c.task().taskId(), c.workerId(), s, s + dw, late));
       }
     }
     items.sort(java.util.Comparator.comparingInt(Item::start).thenComparing(Item::taskId));

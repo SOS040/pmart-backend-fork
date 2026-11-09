@@ -27,7 +27,8 @@ public class WorkerStore {
       String state,
       int dutyVersion,
       String registeredBy,
-      Instant registeredAt) {}
+      Instant registeredAt,
+      double speedFactor) {}
 
   public record DutyRow(
       int dutyVersion,
@@ -284,7 +285,17 @@ public class WorkerStore {
         rs.getString("state"),
         rs.getInt("duty_version"),
         rs.getString("registered_by"),
-        rs.getTimestamp("registered_at").toInstant());
+        rs.getTimestamp("registered_at").toInstant(),
+        rs.getBigDecimal("speed_factor").doubleValue());
+  }
+
+  /** 속도 배율(0.11.0). */
+  public void setSpeed(String mfcId, String workerId, double factor) {
+    jdbc.update(
+        "UPDATE mfc_worker SET speed_factor = ? WHERE mfc_id = ? AND worker_id = ?",
+        java.math.BigDecimal.valueOf(factor).setScale(2, java.math.RoundingMode.HALF_UP),
+        mfcId,
+        workerId);
   }
 
   private static DutyRow duty(ResultSet rs) throws SQLException {

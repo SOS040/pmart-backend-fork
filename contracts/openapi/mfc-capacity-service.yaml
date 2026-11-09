@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -340,6 +340,12 @@ paths:
         (0.9.4) 엔진에는 규칙 기반 첫 해(정해진 앞섬 → 약속 순, 근무·겹침·패킹대 지킴)를 힌트로 준다. 엔진이 시간 안에 해를 못 내면(UNKNOWN) 그 규칙 기반 해를 PROPOSED 로 내고
         limitations 에 RULE_BASED_FALLBACK(최적화 안 됨, solverStatus 는 UNKNOWN 그대로). 규칙으로도 하나도 못 넣으면 UNDETERMINED.
         (0.9.4) 진행 중 작업은 남은 수량 비율만큼만 담당을 막는다(진척을 모르면 유형 분 전체).
+        (0.11.0, 사용자 결정 2026-11-09) 작업 시간 추정 — 설정 `plan.travel.*` 이 있으면:
+        PICK·PACK 은 유형 분(PICK 7·PACK 4 — 문서 기준)을 **이번 계산의 같은 유형 평균**으로 두고 주문마다 (걷는 거리 ÷ 걷는 속도 + 줄·개수 처리 초)의 비율로
+        늘이고 줄인다(0.5~2배). PICK 걷는 길 = 장바구니 보관 자리 → 후보 칸(냉장 → 냉동 → 상온 C~H, 가까운 칸부터) → 포장 위치.
+        이동·보충은 장바구니 보관 자리 → 출발 칸 → 도착 칸, 복귀는 포장 위치 → 추천 칸 — 걷는 시간 + 처리 초로 직접(최소 1분).
+        작업자별 속도 배율(speedFactor)로 그 작업자의 시간 = 추정 분 ÷ 배율. limitations TRAVEL_ESTIMATED(작업 사이 이동은 추정에 포함 안 함),
+        추정을 못 한 작업이 있으면 TRAVEL_ESTIMATE_PARTIAL(그 작업은 유형 분).
       operationId: createAssignmentPlan
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -864,6 +870,38 @@ paths:
               schema: { $ref: '#/components/schemas/WorkerChangeResult' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /mfcs/{mfcId}/workers/{workerId}/speed-changes:
+    post:
+      tags: [workers]
+      summary: 작업자 속도 배율 변경 (그 센터 MFC_SUPERVISOR — 0.11.0)
+      description: |
+        2026-11-09 사용자 결정. 배정 추천(OR-Tools)에서 이 작업자가 작업에 쓰는 시간 = 작업 추정 분 ÷ 배율(올림, 최소 1분). 0.5~2.0, 기본 1.0.
+        실데이터가 없어 센터 관리자가 정하는 값(예: 숙련 1.2, 신입 0.8). 다음 작업 받기(규칙 배정)에는 쓰지 않는다.
+      operationId: changeWorkerSpeed
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [speedFactor, reason]
+              properties:
+                speedFactor: { type: number, minimum: 0.5, maximum: 2.0 }
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: 바뀜(같은 값이면 변화 없음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Worker' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
   /mfcs/{mfcId}/workers/{workerId}/shifts:
     get:
       tags: [workers]
@@ -979,6 +1017,7 @@ components:
         effectiveTaskTypes: { type: array, items: { $ref: '#/components/schemas/TaskType' }, description: '(0.7.0) 지금 배정 조건 = 업무 ∩ 유효 자격(일일크루는 오늘 등록한 날의 업무)' }
         todayEnrollment: { oneOf: [{ $ref: '#/components/schemas/DayEnrollment' }, { type: 'null' }] }
         onBreak: { type: boolean, description: '(0.8.0) 휴게 중 — 다음 작업 받기 409 ON_BREAK' }
+        speedFactor: { type: number, description: '(0.11.0) 속도 배율 — 배정 추천에서 이 작업자의 작업 시간 = 추정 분 ÷ 배율(1.0 보통, 실데이터 없어 센터 관리자가 정함)' }
         registeredBy: { type: string }
         registeredAt: { type: string, format: date-time }
     EmploymentType: { type: string, enum: [REGULAR, PART_TIME, DAILY], description: '(0.7.0) 정규직 / 알바 / 일일크루. 기본 REGULAR' }
@@ -1216,7 +1255,7 @@ components:
           items: { type: string }
         limitations:
           type: array
-          description: '(0.5.1) 이 추천의 알려진 한계 — IN_PROGRESS_FULL_DURATION(진행 중 작업 남은 시간 모름, 전체 시간으로 막음) / (0.9.4) IN_PROGRESS_ESTIMATED_BY_PROGRESS(남은 수량 비율로 추정), NO_TRAVEL_TIME(동선 없음), FIXED_TASK_MINUTES(수량 무관 고정 분), MOVES_NOT_INCLUDED, (0.9.4) RULE_BASED_FALLBACK(엔진이 시간 안에 해를 못 내 규칙 기반 해). (0.9.4) ZONE_NOT_CHECKED 는 뺐다 — MFC 는 온도대 자격을 쓰지 않는다(설계)'
+          description: '(0.5.1) 이 추천의 알려진 한계 — IN_PROGRESS_FULL_DURATION(진행 중 작업 남은 시간 모름, 전체 시간으로 막음) / (0.9.4) IN_PROGRESS_ESTIMATED_BY_PROGRESS(남은 수량 비율로 추정), NO_TRAVEL_TIME(동선 없음), FIXED_TASK_MINUTES(수량 무관 고정 분), MOVES_NOT_INCLUDED, (0.9.4) RULE_BASED_FALLBACK(엔진이 시간 안에 해를 못 내 규칙 기반 해). (0.11.0) TRAVEL_ESTIMATED·TRAVEL_ESTIMATE_PARTIAL — 설정이 있으면 NO_TRAVEL_TIME·FIXED_TASK_MINUTES 대신. (0.9.4) ZONE_NOT_CHECKED 는 뺐다 — MFC 는 온도대 자격을 쓰지 않는다(설계)'
           items: { type: string }
         assignments: { type: array, description: 확정 뒤 만든 배정, items: { $ref: '#/components/schemas/Assignment' } }
         createdBy: { type: string }
