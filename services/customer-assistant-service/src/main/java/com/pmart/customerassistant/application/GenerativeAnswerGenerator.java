@@ -1,6 +1,7 @@
 package com.pmart.customerassistant.application;
 
 import com.pmart.customerassistant.domain.CitationVerifier;
+import com.pmart.customerassistant.domain.CustomerAnswerChecks;
 import com.pmart.customerassistant.domain.ExtractiveComposer;
 import com.pmart.customerassistant.domain.RetrievedChunk;
 import java.util.ArrayList;
@@ -107,6 +108,11 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
         return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
       }
       CitationVerifier.Result r = verifier.verify(out.answer(), out.usedIds(), evidence);
+      String customerProblem = r.valid() ? customerCheck(question, out, byTag, evidence) : null;
+      if (customerProblem != null) {
+        feedback = "직전 답변이 검사를 통과하지 못했다: " + customerProblem;
+        continue;
+      }
       if (r.valid()) {
         List<RetrievedChunk> used = new ArrayList<>();
         out.usedIds().forEach(id -> used.add(byTag.get(id)));
@@ -136,6 +142,26 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
 
   record Output(String answer, List<String> usedIds, boolean grounded) {}
 
+  /** 고객 답변 추가 검사(CustomerAnswerChecks). 통과면 null, 아니면 모델에 줄 고칠 점. */
+  static @Nullable String customerCheck(
+      String question,
+      Output out,
+      Map<String, RetrievedChunk> byTag,
+      Map<String, String> evidence) {
+    String joined = String.join("\n", out.usedIds().stream().map(evidence::get).toList());
+    List<String> raw = out.usedIds().stream().map(id -> byTag.get(id).content()).toList();
+    if (!CustomerAnswerChecks.numbersWhole(out.answer(), joined)) {
+      return "답의 숫자가 근거의 숫자와 다르다. 숫자·금액은 근거에 적힌 그대로 쓴다.";
+    }
+    if (!CustomerAnswerChecks.tableComplete(out.answer(), raw)) {
+      return "근거 표의 경우 중 일부만 썼다. 표의 모든 경우와 값을 함께 쓴다.";
+    }
+    if (!CustomerAnswerChecks.questionTermsInEvidence(question, out.answer(), joined)) {
+      return "질문의 대상이 근거에 없다. 근거에 없는 대상은 답하지 말고 grounded=false.";
+    }
+    return null;
+  }
+
   /** 모델에 넘기는 근거 글: 지위 태그 빼고, 표는 행마다 한 줄("열: 값"). */
   static String modelText(RetrievedChunk c) {
     return com.pmart.customerassistant.domain.TableText.linearize(
@@ -149,6 +175,11 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
         (tag, c) ->
             user.append("<doc id=\"")
                 .append(tag)
+                .append("\" title=\"")
+                // 절 제목("환불 > 환불은 언제 되나요?") — 질문과 절을 잇기 쉽게(고객 평가 C08)
+                .append(
+                    ExtractiveComposer.stripTags(c.section() == null ? "" : c.section())
+                        .replace("\"", "'"))
                 .append("\">\n")
                 .append(modelText(c).replace("</doc", "<\\/doc"))
                 .append("\n</doc>\n"));
