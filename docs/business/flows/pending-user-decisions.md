@@ -86,3 +86,4 @@
 - **D-7 인계 뒤 취소 회수비**(사용자 "응 그대로"): 고객 부담 9,000원(Delivery 381행), 고객센터 경유만, 회사 잘못이면 면제, 회수비는 환불과 따로, 상품 환불은 회수품 검수 뒤. 회수품 = 격리 반입 → 품질 검수 → 적격이면 재배치(구현됨). claim 쪽은 요청 문서 CL-1.
 - **시뮬레이터 ↔ 실서버·실제 앱 연결**(2026-11-09): SIM-1~11 정함(SIM-1·4 임시 통과). 남은 것 SIM-4a 가짜 주문 실서버 투입 방식(나중) — `docs/simulator/mfc-simulator-integration.md`
 - **딥러닝 수요예측**(사용자 2026-11-09 "딥러닝 모델 사용", 작업은 11-10 이후): 모델·실행 방식(Python 배치 / Java 추론)·이동평균 관계·소비처·주기·출력 형식(F-1~F-6), tech-stack 방침 변경 ADR 필요 — `docs/architecture/demand-forecast-deep-learning.md`
+- **시뮬레이션 범위**(사용자 2026-11-09): MFC 시뮬레이션 먼저 → CDC 시뮬레이션(입고 없음), TMS 구현(OR-Tools 경로), **MFC 도면 = 시뮬레이터 평면**(Q-03 의 배치 부분 대신). 확인할 것: L-1 백엔드 시험 센터 칸을 그 평면대로 다시 등록할지(SIM-6 과 함께), L-2 CDC 범위, L-3 TMS 범위 — `docs/simulator/scope.md`. OR-Tools 후보(라이더 배정·피킹 순서·TMS 경로, JGraphT 안 씀) — `docs/architecture/or-tools-usage.md`

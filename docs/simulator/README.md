@@ -4,5 +4,6 @@
 
 | 문서 | 내용 |
 |---|---|
+| [scope.md](scope.md) | 시뮬레이션 구현 범위 — MFC 먼저, 그다음 CDC(입고 없음), TMS 는 구현(OR-Tools 경로), MFC 도면 = 시뮬레이터 평면 |
 | [mfc-simulator-integration.md](mfc-simulator-integration.md) | 시뮬레이터 ↔ 실서버·실제 앱 연결 목표와 결정 기록(SIM-1~) |
 | [layout/](layout/README.md) | 시뮬레이터 평면 배치 도면(코드 실행 결과로 그림) + 다시 그리는 도구 |
