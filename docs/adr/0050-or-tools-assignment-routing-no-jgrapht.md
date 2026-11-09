@@ -6,7 +6,7 @@
 
 ## 결정
 1. **배정(Assignment·최소비용흐름)** — 라이더 ↔ 배송 짝짓기(delivery-dispatch DD-1 의 라이더 후보 탐색·제안)에 OR-Tools 를 쓸 수 있다. 사용 서비스에 `delivery-dispatch-service` 를 더한다. 라이더 선택 규칙(무엇을 최소화하나)은 업무 문서(`Delivery-business-logic.md`)를 따르고, 없는 규칙은 구현 때 질문한다.
-2. **경로(Routing)** — (가) TMS 운송 경로(`transport-routing-service`, 기존 범위), (나) MFC 피킹 방문 순서 — **mfc-capacity 가 맡는다**(사용자 2026-11-09, C4 = (나)): 피킹 시작 때 mfc-fulfillment 가 capacity 에 칸 순서를 묻고, capacity 는 mfc-location 거리표(`/internal/location-distances`)로 계산한다. capacity 가 응답하지 못하면 칸 코드 순(피킹은 멈추지 않음). OR-Tools 는 capacity 한 곳에만.
+2. **경로(Routing)** — (가) TMS 운송 경로(`transport-routing-service`, 기존 범위), (나) MFC 피킹 방문 순서 — **mfc-capacity 가 맡는다**(사용자 2026-11-09, C4 = (나)): 피킹 시작 때 mfc-fulfillment 가 capacity 에 칸 순서를 묻고, capacity 는 mfc-location 거리표(`/internal/location-distances`)로 계산한다. capacity 가 응답하지 못하면 칸 코드 순(피킹은 멈추지 않음). OR-Tools 는 capacity 한 곳에만. 피킹 방문 순서 규칙(사용자 2026-11-09): **MFC 문서 1장 8-3 원본 기록 순서**(`B → A → C → D → E → F → X → Z`)를 설계 구역에 대 **냉장 B → 냉동 A → 상온 C → D → E → F → G → H**(그룹 순서는 시뮬레이터 DOC_B_A_C 와 같음), 각 그룹 안에서는 거리표로 가장 덜 걷는 순서. **출발점은 늘 장바구니 보관 자리**(현장은 작업마다 장바구니를 가지고 출발). 작업자 위치에 따른 예외는 두지 않는다(사용자가 제안했다가 뺌).
 3. **새 의존성 없음** — 지금 `ortools-java 9.15.6755` 에 배정(`LinearSumAssignment`·`MinCostFlow`)·경로(`RoutingModel`)가 다 들어 있다.
 4. **JGraphT 는 도입하지 않는다.** OR-Tools 경로는 지점 사이 거리표를 받아 순서만 정하므로, MFC 안 "칸 사이 걷는 거리"는 도면 격자 위 길찾기를 직접 구현한다(시뮬레이터 `navgrid.ts` 0.25 m 격자 A* 와 같은 방식). 배송 거리는 외부 경로 API(service-map transport-routing). 통로 구조가 복잡해져 직접 구현이 버거우면 다시 본다.
 5. **도면은 MFC 마다 다르다**(사용자 2026-11-09). 지금 도면(`docs/simulator/mfc/layout/`)은 임시로 만든 시험 MFC 한 곳의 것이다. 피킹 거리표는 센터별 도면·칸 좌표 데이터에서 만들고, 특정 센터 배치를 코드에 박지 않는다. 도면·좌표를 어느 서비스가 갖는지(mfc-location 이 위치의 정본)는 피킹 순서 구현 때 정한다.
