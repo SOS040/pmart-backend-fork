@@ -1,6 +1,6 @@
 # ai-assistant-service
 
-서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `ai-assistant-service` 절과 ADR-0036 이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다.
+서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `ai-assistant-service` 절과 ADR-0036·ADR-0051(운영자 전용, 고객용은 `customer-assistant-service`) 이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다.
 
 ## 계약
 - REST: `contracts/openapi/ai-assistant-service.yaml`(1.0.0) → `com.pmart.assistant.api.generated`. `api/AssistantController` 가 구현한다.
@@ -17,12 +17,13 @@
 - 검색 범위(접근 범위·생애 제외)는 SQL WHERE 로 먼저 건다. 권한 밖 문서를 가져와서 걸러내지 않는다.
 - 잠금은 둘이다. `AdvisoryLocks.INGEST`(세션, 색인 전체)와 `AdvisoryLocks.SNAPSHOT`(트랜잭션, 고정=공유 / 전환·정리=배타). 키를 섞지 않는다.
 - 질문·문서 본문·토큰을 로그에 남기지 않는다(답변 ID·상태·소요 시간·청크 수만).
-- 외부 모델 제공자 모듈은 결정 전이라 넣지 않는다(ADR-0036 결정 필요 1). `provider=fake` 는 시험 전용이다.
+- 모델은 LAN Ollama 만(ADR-0051 결정 6 — 외부 유료 API 없음). 운영 연결은 Spring AI Ollama 모듈로, 임베딩 모델을 고른 뒤 만든다(아직 없음). `provider=fake` 는 시험 전용이다.
+- 임베딩 비교 평가: `-PevalOllamaModel=<모델>`(로컬 Ollama, `OllamaEvalEmbedding` — 시험 전용)로 `RetrievalEvalIT` → `build/reports/eval/<모델>/`.
 - 색인 대상은 `src/main/resources/knowledge/manifest.yml` 의 명시 목록뿐이다. 문서를 더하면 목록에 넣는다. 새 ADR 도 넣어야 한다 — `RealDocumentsIngestTest` 가 ADR 개수를 대조한다.
 
 ## 데이터
 - `V1__init.sql`: `index_snapshot`·`index_source_file`·`doc_chunk`(vector·pg_trgm)·`embedding_cache`·`policy_answer`. 적용된 파일은 수정하지 않는다.
-- pgvector 가 필요하다. 로컬은 `deploy/local/ai-assistant/docker-compose.yml`(15433), 시험은 `PgvectorContainerSupport`(`pgvector/pgvector:pg17`).
+- pgvector 가 필요하다. 로컬은 `deploy/local/ai-assistant/docker-compose.yml`(15433), 시험은 `PgvectorContainerSupport`(`pgvector/pgvector:pg17`), LAN 은 pc2 `rag-pgvector` 의 DB·계정 `ai_assistant_service`(ADR-0051, 아직 서비스 미배포).
 
 ## 실행
 ```bash

@@ -24,6 +24,16 @@ dependencies {
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc)
 }
 
+// 임베딩 비교 평가(ADR-0051 D3): -PevalOllamaModel=<모델> [-PevalOllamaUrl=http://localhost:11434] 이면 RetrievalEvalIT 가
+// 해시 기준선 대신 그 Ollama 모델로 색인·검색한다 — 보고서 build/reports/eval/<모델>/. 없으면 평소 시험 그대로.
+tasks.named<Test>("integrationTest") {
+    val evalModel = providers.gradleProperty("evalOllamaModel").orElse("")
+    val evalUrl = providers.gradleProperty("evalOllamaUrl").orElse("http://localhost:11434")
+    inputs.property("evalOllamaModel", evalModel)
+    systemProperty("pmart.eval.ollama-model", evalModel.get())
+    systemProperty("pmart.eval.ollama-url", evalUrl.get())
+}
+
 // 통제된 색인·정리 작업(ADR-0036). 평소 bootRun·컨테이너 기동에서는 색인하지 않는다.
 // 앱을 local 프로필로 띄워 한 번 실행하고 종료한다 — 먼저 config-server(local)와 deploy/local/ai-assistant compose 를 띄운다.
 //   ./gradlew :services:ai-assistant-service:ingestKnowledge -Prepo=<저장소 경로>

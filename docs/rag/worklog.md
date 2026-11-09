@@ -113,6 +113,7 @@
 - LAN pc2 에 RAG 전용 `rag-pgvector`(pgvector/pgvector:0.8.6-pg17, 컨테이너 포트 15433, LAN 미공개)·`ollama`(ollama/ollama:0.40.10, GPU, CPU 4·메모리 6GB 상한, LAN 미공개) 배포. DB·계정 `ai_assistant_service`·`customer_assistant_service`(서로 접속 권한 없음 확인), 확장 vector 0.8.6·pg_trgm 1.6. Ollama 로그 "inference compute … RTX 2060 CUDA". 비밀 `.secrets/rag-db-{operator,customer}-password`(init-secrets.sh).
   - 첫 시도 실패: `-p 15433` 만 주면 엔트리포인트의 첫 초기화 임시 서버가 5432 로 떠 초기화 스크립트가 못 붙음 → `PGPORT=15433` 으로 고치고 새 볼륨을 지우고 다시 만듦.
   - pc2 의 log-shipper·host-disk 는 자동으로 줄 뒤에 붙는 구성요소라 고정 IP 가 두 칸 밀림(.25→.27, .26→.28) → IP 충돌을 피하려고 그 둘을 먼저 다시 만든 뒤 새 컨테이너를 띄움. pc3·pc4 생성 파일은 변화 없음. 기존 서비스 재시작 없음.
+- 임베딩 비교(D3): PC1 임시 Ollama 로 `RetrievalEvalIT -PevalOllamaModel=` — 절 기준 recall@5 해시 0.52 · **Qwen3-Embedding-0.6B 0.76** · BGE-M3 0.68, 문서 기준 0.68 · 0.84 · 0.84. 추천 Qwen3(절 기준 앞섬, 639MB, 검색 빠름). 질문 25개라 2문항 차이 — 한계는 `verification/2026-11-09/embedding-compare/README.md`. 시험 전용 `OllamaEvalEmbedding`, 운영 코드 변경 없음. 해시 기준선은 색인 문서가 늘어 0.76 → 0.68(문서 기준).
 
 ## 남은 것
 - ADR-0036 결정 4건(외부 모델·외부 전송 범위, LAN pgvector 위치, 답변 보존·원문 저장, 운영자 역할).

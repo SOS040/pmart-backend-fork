@@ -59,7 +59,10 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
 
   /** 시험이 켜고 끄는 임베딩: 장애 흉내(503), 첫 호출 때 부수효과(색인 중 파일 변경), 차원 위반. */
   static class ControllableEmbedding implements DescribedEmbeddingModel {
-    final LocalHashEmbeddingModel delegate = new LocalHashEmbeddingModel(384);
+    /** 임베딩 비교 평가(ADR-0051 D3): -PevalOllamaModel=<모델> 일 때만 Ollama, 아니면 해시 기준선. */
+    final @Nullable OllamaEvalEmbedding eval = OllamaEvalEmbedding.fromSystemProperties();
+
+    final DescribedEmbeddingModel delegate = eval != null ? eval : new LocalHashEmbeddingModel(384);
     final AtomicBoolean failing = new AtomicBoolean();
     final AtomicBoolean wrongDimension = new AtomicBoolean();
     final AtomicReference<@Nullable Runnable> onNextEmbed = new AtomicReference<>();
