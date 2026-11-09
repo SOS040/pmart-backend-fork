@@ -40,6 +40,9 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       6. 질문과 주제가 맞는 근거만 쓴다. 단어만 비슷하고 다른 주제를 다룬 근거로 답하지 않는다. 맞는 근거가 없으면 grounded=false.
       7. 근거에 경우별(표·목록)로 값이 다르면, 질문이 경우를 정하지 않은 한 모든 경우와 값을 함께 쓴다(하나만 고르지 않는다).
          무료·예외 조건이 근거에 있으면 같이 쓴다.
+      8. 질문이 묻는 대상(기능·서비스·상품 이름)이 근거에 직접 나오지 않으면 grounded=false. 다른 대상에 대한 문장
+         (예: "쿠폰 기능이 없어요")을 질문의 대상에 옮겨 쓰지 않는다.
+      9. 질문이 "언제"를 물으면 근거에 적힌 시점·기간 문장으로 답한다.
       출력은 JSON 하나만: {"answer": "...", "usedIds": ["D1", ...], "grounded": true|false}
       근거로 답할 수 없으면 grounded=false.
       """;
@@ -89,8 +92,9 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
     for (int i = 0; i < ranked.size(); i++) {
       byTag.put("D" + (i + 1), ranked.get(i));
     }
+    // 모델이 보는 근거와 같은 글(표는 줄로 — TableText)로 인용을 검사한다
     Map<String, String> evidence = new LinkedHashMap<>();
-    byTag.forEach((k, v) -> evidence.put(k, v.content()));
+    byTag.forEach((k, v) -> evidence.put(k, modelText(v)));
 
     String feedback = null;
     for (int attempt = 0; attempt < 2; attempt++) {
@@ -132,6 +136,12 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
 
   record Output(String answer, List<String> usedIds, boolean grounded) {}
 
+  /** 모델에 넘기는 근거 글: 지위 태그 빼고, 표는 행마다 한 줄("열: 값"). */
+  static String modelText(RetrievedChunk c) {
+    return com.pmart.customerassistant.domain.TableText.linearize(
+        ExtractiveComposer.stripTags(c.content()));
+  }
+
   private @Nullable Output call(
       String question, Map<String, RetrievedChunk> byTag, @Nullable String feedback) {
     StringBuilder user = new StringBuilder();
@@ -140,7 +150,7 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
             user.append("<doc id=\"")
                 .append(tag)
                 .append("\">\n")
-                .append(ExtractiveComposer.stripTags(c.content()).replace("</doc", "<\\/doc"))
+                .append(modelText(c).replace("</doc", "<\\/doc"))
                 .append("\n</doc>\n"));
     user.append("\n질문: ").append(question);
     if (feedback != null) {

@@ -25,7 +25,21 @@ public class Retriever {
    * @param topSimilarity 임계값 적용 전 1위 후보의 혼합 유사도(후보 없으면 0) — 임계값 맞추기용 기록(숫자만 로그)
    */
   public record Retrieval(
-      List<RetrievedChunk> ranked, List<RetrievedChunk> companions, double topSimilarity) {}
+      List<RetrievedChunk> ranked, List<RetrievedChunk> companions, double topSimilarity) {
+
+    /** 상위 근거의 절 제목(문서 메타데이터 — 질문·본문 아님), 로그용. */
+    public String topSections() {
+      return ranked.stream()
+          .limit(3)
+          .map(
+              c ->
+                  c.path().replaceAll(".*/", "")
+                      + "#"
+                      + String.valueOf(c.section()).replaceAll(".*> ", ""))
+          .toList()
+          .toString();
+    }
+  }
 
   public static class SnapshotModelMismatchException extends RuntimeException {
     public SnapshotModelMismatchException(String message) {

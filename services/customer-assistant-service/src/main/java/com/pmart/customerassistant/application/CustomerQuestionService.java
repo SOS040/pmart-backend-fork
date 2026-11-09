@@ -290,11 +290,13 @@ public class CustomerQuestionService {
     AnswerGenerator.Generated generated;
     String retrievalMode = embeddings.spec().semantic() ? "SEMANTIC" : "BASELINE_HASH";
     double[] top = {Double.NaN};
+    String[] sections = {""};
     Future<AnswerGenerator.Generated> work =
         executor.submit(
             () -> {
               Retriever.Retrieval r = retriever.retrieve(snapshot, question, false, scopes);
               top[0] = r.topSimilarity();
+              sections[0] = r.topSections();
               return generator.generate(question, r.ranked(), r.companions());
             });
     try {
@@ -319,10 +321,11 @@ public class CustomerQuestionService {
 
     // 임계값 맞추기용: 1위 후보 유사도(숫자만 — 질문·본문은 남기지 않는다)
     log.info(
-        "customer-assistant answer={} top={} mode={}",
+        "customer-assistant answer={} top={} mode={} sections={}",
         answerId,
         String.format(java.util.Locale.ROOT, "%.3f", top[0]),
-        generated.mode());
+        generated.mode(),
+        sections[0]);
     List<CitationRecord> citations =
         generated.used().stream().map(c -> CitationRecord.of(c, snapshot)).toList();
     Completion completion =
