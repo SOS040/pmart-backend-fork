@@ -13,11 +13,14 @@
 | 번호 | 받는 서비스 | 요청한 곳 | 내용 | 사용자 결정 | 상태 |
 |---|---|---|---|---|---|
 | [DD-1](delivery-dispatch-service.md) | delivery-dispatch | mfc-fulfillment, orchestration | `DispatchRequested` 받아 배송 생성·라이더 제안, 취소·조정 | 없음 | 대기 |
+| [DD-2](delivery-dispatch-service.md) | delivery-dispatch | 사용자 | 확인된 오배송 회수 라이더 자동 배차(인근 다른 라이더) | ADR-0052 | 대기(DD-1 뒤) |
 | [DE-1](delivery-execution-service.md) | delivery-execution | mfc-fulfillment | 픽업 완료 = 포장별 인계 확정, 모든 `PackageHandedOver` 뒤 PICKED_UP | 없음 | 대기 |
 | [TR-1](delivery-tracking-service.md) | delivery-tracking | mfc-fulfillment, order | `DeliveryEtaUpdated` (라이더 ETA) | 없음 | 대기 |
 | [RS-1](rider-service.md) | rider | delivery-dispatch | 라이더 단계 사건(제한·중지·종료) | 없음 | 대기 |
 | [CP-1](delivery-capacity-service.md) | delivery-capacity | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | **필요**(#15) | 대기 |
 | [O-1](order-service.md) | order | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태 | 없음 | 대기 |
+| [O-2](order-service.md) | order(·orchestration) | 사용자 | 고객 자율 취소는 상품준비 전까지 | ADR-0052 | 대기 |
+| [O-3](order-service.md) | order(·orchestration, mfc) | 사용자 | 확인된 오배송 새 발송(원주소, 비용 0원) | ADR-0052 | 대기 |
 | [F-1](mfc-fulfillment-service.md) | mfc-fulfillment | mfc-capacity | 운영 제한 사건 구독 → `OPERATION_RESTRICTED` 거절 | 진행 중 작업 처리 | 대기 |
 | [CL-1](claim-service.md) | claim | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | **필요**(감액·면제 사유) | 대기 |
 | [R-1](case-service.md) | case | orchestration | 결품 상신 | — | 취소(ADR-0049) |

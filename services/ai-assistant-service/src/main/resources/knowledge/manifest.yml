@@ -105,6 +105,7 @@ documents:
   - { path: docs/adr/0049-shortage-always-partial-cancel.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0050-or-tools-assignment-routing-no-jgrapht.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0051-rag-customer-expansion-split-services-ollama.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0052-customer-cancel-deadline-and-misdelivery-parallel-resend.md, domain: adr, kind: ADR, precedence: 5 }
 
 # 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
 overrides:

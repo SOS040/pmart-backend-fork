@@ -17,3 +17,8 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - S3 취소 사가의 배차 취소 단계 — 모든 포장이 STOPPED 일 때만(`package-handover-contract.md`, `cancel-vs-handover.md`, orchestration `CancellationRules`).
 - DeliveryType 불일치 정리(사건 NORMAL/SPLIT vs API FORWARD).
 - DispatchFailed 사유 값 정리(`package-handover-decisions.md` D-9).
+
+## DD-2. 확인된 오배송 — 회수 라이더 자동 배차 (2026-11-09, ADR-0052)
+- 오배송이 확인되면(라이더 확인·사진 위치 다름·잘못 받은 사람 연락) **인근 다른 라이더**를 자동 배차해 오배송지에서 회수하고 MFC 로 반납한다(원래 라이더는 다른 코스로 이동했을 가능성이 높음).
+- 같은 때 MFC 의 새 발송(원주소)은 일반 배차 요청(DD-1)으로 따로 나간다 — 회수품을 원주소로 다시 보내지 않는다.
+- 필요한 것: 오배송 확인 사건(누가 기록하나 — ADR-0052 남은 것), 회수 배송 유형(픽업지 = 오배송지, 도착지 = MFC), 인근 라이더 탐색. DD-1 구현 뒤.
