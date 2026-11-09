@@ -289,10 +289,12 @@ public class CustomerQuestionService {
     Set<String> scopes = access.allowedScopes(p);
     AnswerGenerator.Generated generated;
     String retrievalMode = embeddings.spec().semantic() ? "SEMANTIC" : "BASELINE_HASH";
+    double[] top = {Double.NaN};
     Future<AnswerGenerator.Generated> work =
         executor.submit(
             () -> {
               Retriever.Retrieval r = retriever.retrieve(snapshot, question, false, scopes);
+              top[0] = r.topSimilarity();
               return generator.generate(question, r.ranked(), r.companions());
             });
     try {
@@ -315,6 +317,12 @@ public class CustomerQuestionService {
       return failed(p, answerId, attempt, DEPENDENCY_UNAVAILABLE, "검색·모델 장애입니다. 같은 키로 다시 보내세요.");
     }
 
+    // 임계값 맞추기용: 1위 후보 유사도(숫자만 — 질문·본문은 남기지 않는다)
+    log.info(
+        "customer-assistant answer={} top={} mode={}",
+        answerId,
+        String.format(java.util.Locale.ROOT, "%.3f", top[0]),
+        generated.mode());
     List<CitationRecord> citations =
         generated.used().stream().map(c -> CitationRecord.of(c, snapshot)).toList();
     Completion completion =

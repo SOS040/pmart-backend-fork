@@ -38,6 +38,8 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       5. 질문에 직접 답하는 완결된 한국어 문장 1~3개로 쓴다. 근거의 숫자·금액·기간·조건(무엇 전/후)은 빠뜨리거나 바꾸지 말고
          근거에 적힌 그대로 쓴다.
       6. 질문과 주제가 맞는 근거만 쓴다. 단어만 비슷하고 다른 주제를 다룬 근거로 답하지 않는다. 맞는 근거가 없으면 grounded=false.
+      7. 근거에 경우별(표·목록)로 값이 다르면, 질문이 경우를 정하지 않은 한 모든 경우와 값을 함께 쓴다(하나만 고르지 않는다).
+         무료·예외 조건이 근거에 있으면 같이 쓴다.
       출력은 JSON 하나만: {"answer": "...", "usedIds": ["D1", ...], "grounded": true|false}
       근거로 답할 수 없으면 grounded=false.
       """;

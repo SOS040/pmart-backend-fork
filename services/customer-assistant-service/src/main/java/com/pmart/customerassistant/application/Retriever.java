@@ -21,7 +21,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class Retriever {
 
-  public record Retrieval(List<RetrievedChunk> ranked, List<RetrievedChunk> companions) {}
+  /**
+   * @param topSimilarity 임계값 적용 전 1위 후보의 혼합 유사도(후보 없으면 0) — 임계값 맞추기용 기록(숫자만 로그)
+   */
+  public record Retrieval(
+      List<RetrievedChunk> ranked, List<RetrievedChunk> companions, double topSimilarity) {}
 
   public static class SnapshotModelMismatchException extends RuntimeException {
     public SnapshotModelMismatchException(String message) {
@@ -61,7 +65,9 @@ public class Retriever {
             props.getCosineWeight(),
             props.getKeywordWeight(),
             props.getCandidates());
-    List<RetrievedChunk> ranked = ranking().rank(chunks.search(query), props.getTopK());
+    List<RetrievedChunk> candidates = chunks.search(query);
+    double top = candidates.stream().mapToDouble(RetrievedChunk::similarity).max().orElse(0);
+    List<RetrievedChunk> ranked = ranking().rank(candidates, props.getTopK());
     Set<String> proposedDocs = new LinkedHashSet<>();
     for (RetrievedChunk c : ranked) {
       if (c.lifecycle() == Lifecycle.SUPERSESSION_PROPOSED) {
@@ -69,7 +75,7 @@ public class Retriever {
       }
     }
     List<RetrievedChunk> companions = chunks.bestPerDocument(query, proposedDocs);
-    return new Retrieval(ranked, companions);
+    return new Retrieval(ranked, companions, top);
   }
 
   RankingPolicy ranking() {
