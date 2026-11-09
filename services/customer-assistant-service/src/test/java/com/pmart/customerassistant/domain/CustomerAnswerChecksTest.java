@@ -46,6 +46,11 @@ class CustomerAnswerChecksTest {
         .isFalse();
     assertThat(CustomerAnswerChecks.questionTermsInEvidence("쿠폰을 쓴 주문은요?", "지금은 쿠폰 기능이 없어요.", ev))
         .isTrue();
+    // 합성어: 근거의 "냉장·냉동 같은 신선식품" 은 "냉동식품" 을 뒷받침한다(6회차 C11)
+    assertThat(
+            CustomerAnswerChecks.questionTermsInEvidence(
+                "냉동식품도 반품되나요?", "냉동식품은 받은 뒤 24시간 안에 문의해 주세요.", "냉장·냉동 같은 신선식품은 받은 뒤 24시간 안에"))
+        .isTrue();
     // 동사·의문 낱말은 대상이 아니다
     assertThat(CustomerAnswerChecks.terms("환불은 언제 들어와요?")).containsExactly("환불");
   }

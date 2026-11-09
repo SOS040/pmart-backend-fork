@@ -84,11 +84,32 @@ public final class CustomerAnswerChecks {
   /** 질문의 대상 낱말 중 답에 나온 것이 근거에도 있는가. */
   public static boolean questionTermsInEvidence(String question, String answer, String evidence) {
     for (String term : terms(question)) {
-      if (answer.contains(term) && !evidence.contains(term)) {
+      if (answer.contains(term) && !termInEvidence(term, evidence)) {
         return false;
       }
     }
     return true;
+  }
+
+  /**
+   * 낱말이 근거에 있는가 — 그대로 있거나, 합성어면 앞 두 글자가 있고 두 글자 묶음의 2/3 이상이 있으면 있다고 본다("냉동식품" ← "냉장·냉동 같은 신선식품", 고객
+   * 평가 6회차 C11). "선물하기" 는 "선물" 이 없어 없다.
+   */
+  static boolean termInEvidence(String term, String evidence) {
+    if (evidence.contains(term)) {
+      return true;
+    }
+    if (term.length() < 3 || !evidence.contains(term.substring(0, 2))) {
+      return false;
+    }
+    int total = term.length() - 1;
+    int hit = 0;
+    for (int i = 0; i < total; i++) {
+      if (evidence.contains(term.substring(i, i + 2))) {
+        hit++;
+      }
+    }
+    return hit * 3 >= total * 2;
   }
 
   static Set<String> terms(String question) {
