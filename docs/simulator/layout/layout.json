@@ -1,0 +1,6622 @@
+{
+ "width": 48,
+ "depth": 40,
+ "buildingDepth": 32,
+ "zones": [
+  {
+   "id": "A",
+   "kind": "FROZEN",
+   "label": "냉동 A",
+   "rect": {
+    "x0": 0,
+    "z0": 0,
+    "x1": 12,
+    "z1": 30
+   },
+   "docPyeong": 109
+  },
+  {
+   "id": "B",
+   "kind": "CHILLED",
+   "label": "냉장 B",
+   "rect": {
+    "x0": 12.2,
+    "z0": 0,
+    "x1": 23,
+    "z1": 30
+   },
+   "docPyeong": 100
+  },
+  {
+   "id": "C-H",
+   "kind": "AMBIENT",
+   "label": "상온 C~H",
+   "rect": {
+    "x0": 23.2,
+    "z0": 0,
+    "x1": 37,
+    "z1": 15.4
+   },
+   "docPyeong": 65
+  },
+  {
+   "id": "WH",
+   "kind": "INBOUND_STORE",
+   "label": "입고창고",
+   "rect": {
+    "x0": 37.2,
+    "z0": 0,
+    "x1": 48,
+    "z1": 16.5
+   },
+   "docPyeong": 55
+  },
+  {
+   "id": "RCV",
+   "kind": "RECEIVING",
+   "label": "입고·검수",
+   "rect": {
+    "x0": 37.2,
+    "z0": 16.7,
+    "x1": 48,
+    "z1": 23
+   },
+   "docPyeong": 22
+  },
+  {
+   "id": "OFF",
+   "kind": "OFFICE",
+   "label": "휴게·사무",
+   "rect": {
+    "x0": 37.2,
+    "z0": 23.2,
+    "x1": 48,
+    "z1": 28.6
+   },
+   "docPyeong": 18
+  },
+  {
+   "id": "PK",
+   "kind": "PACKING",
+   "label": "패킹",
+   "rect": {
+    "x0": 25,
+    "z0": 20.5,
+    "x1": 35,
+    "z1": 28.5
+   },
+   "docPyeong": 24
+  },
+  {
+   "id": "AQ",
+   "kind": "QUARANTINE",
+   "label": "냉동 격리",
+   "rect": {
+    "x0": 0.2,
+    "z0": 26.6,
+    "x1": 3.8,
+    "z1": 29.8
+   },
+   "docPyeong": 4
+  },
+  {
+   "id": "BQ",
+   "kind": "QUARANTINE",
+   "label": "냉장 격리",
+   "rect": {
+    "x0": 12.4,
+    "z0": 26.6,
+    "x1": 16,
+    "z1": 29.8
+   },
+   "docPyeong": 4
+  },
+  {
+   "id": "CQ",
+   "kind": "QUARANTINE",
+   "label": "상온 격리",
+   "rect": {
+    "x0": 44.4,
+    "z0": 12.9,
+    "x1": 47.8,
+    "z1": 16.3
+   },
+   "docPyeong": 4
+  },
+  {
+   "id": "SHIP",
+   "kind": "SHIPPING",
+   "label": "외부 출하대기",
+   "rect": {
+    "x0": 27,
+    "z0": 32.4,
+    "x1": 33,
+    "z1": 35
+   },
+   "docPyeong": 3
+  },
+  {
+   "id": "PARK",
+   "kind": "PARKING",
+   "label": "라이더 대기",
+   "rect": {
+    "x0": 24,
+    "z0": 36.5,
+    "x1": 36,
+    "z1": 39.6
+   }
+  }
+ ],
+ "walls": [
+  {
+   "rect": {
+    "x0": 0,
+    "z0": -0.1,
+    "x1": 48,
+    "z1": 0.1
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 0,
+    "z0": 31.9,
+    "x1": 28.8,
+    "z1": 32.1
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 31.2,
+    "z0": 31.9,
+    "x1": 48,
+    "z1": 32.1
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": -0.1,
+    "z0": 0,
+    "x1": 0.1,
+    "z1": 32
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 47.9,
+    "z0": 0,
+    "x1": 48.1,
+    "z1": 18
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 47.9,
+    "z0": 21.5,
+    "x1": 48.1,
+    "z1": 32
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 12,
+    "z0": 0,
+    "x1": 12.2,
+    "z1": 30
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 0,
+    "z0": 30,
+    "x1": 5,
+    "z1": 30.200000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 7,
+    "z0": 30,
+    "x1": 12.1,
+    "z1": 30.200000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 12.1,
+    "z0": 30,
+    "x1": 16.8,
+    "z1": 30.200000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 18.8,
+    "z0": 30,
+    "x1": 23.1,
+    "z1": 30.200000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 23,
+    "z0": 0,
+    "x1": 23.200000000000003,
+    "z1": 17
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 23,
+    "z0": 19,
+    "x1": 23.200000000000003,
+    "z1": 30.1
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 37,
+    "z0": 0,
+    "x1": 37.2,
+    "z1": 11.8
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 37,
+    "z0": 14.2,
+    "x1": 37.2,
+    "z1": 16.6
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 37.1,
+    "z0": 16.5,
+    "x1": 40,
+    "z1": 16.700000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 42,
+    "z0": 16.5,
+    "x1": 48,
+    "z1": 16.700000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 37,
+    "z0": 16.6,
+    "x1": 37.2,
+    "z1": 18.4
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 37,
+    "z0": 20.6,
+    "x1": 37.2,
+    "z1": 28.7
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 37.1,
+    "z0": 23,
+    "x1": 44,
+    "z1": 23.200000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 45.5,
+    "z0": 23,
+    "x1": 48,
+    "z1": 23.200000000000003
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 37.1,
+    "z0": 28.599999999999998,
+    "x1": 40,
+    "z1": 28.8
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 41.6,
+    "z0": 28.599999999999998,
+    "x1": 48,
+    "z1": 28.8
+   },
+   "height": 3,
+   "glass": false
+  },
+  {
+   "rect": {
+    "x0": 25,
+    "z0": 20.4,
+    "x1": 33,
+    "z1": 20.6
+   },
+   "height": 3,
+   "glass": true
+  },
+  {
+   "rect": {
+    "x0": 34.8,
+    "z0": 20.4,
+    "x1": 35,
+    "z1": 20.6
+   },
+   "height": 3,
+   "glass": true
+  },
+  {
+   "rect": {
+    "x0": 25,
+    "z0": 28.4,
+    "x1": 33,
+    "z1": 28.6
+   },
+   "height": 3,
+   "glass": true
+  },
+  {
+   "rect": {
+    "x0": 34.8,
+    "z0": 28.4,
+    "x1": 35,
+    "z1": 28.6
+   },
+   "height": 3,
+   "glass": true
+  },
+  {
+   "rect": {
+    "x0": 24.9,
+    "z0": 20.5,
+    "x1": 25.1,
+    "z1": 28.5
+   },
+   "height": 3,
+   "glass": true
+  },
+  {
+   "rect": {
+    "x0": 34.9,
+    "z0": 20.5,
+    "x1": 35.1,
+    "z1": 28.5
+   },
+   "height": 3,
+   "glass": true
+  },
+  {
+   "rect": {
+    "x0": 20,
+    "z0": 32,
+    "x1": 20.15,
+    "z1": 40
+   },
+   "height": 1
+  },
+  {
+   "rect": {
+    "x0": 39.85,
+    "z0": 32,
+    "x1": 40,
+    "z1": 40
+   },
+   "height": 1
+  }
+ ],
+ "racks": [
+  {
+   "id": "RA-1",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 1,
+   "cx": 6.025,
+   "cz": 1.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-2",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 2,
+   "cx": 6.025,
+   "cz": 2.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-3",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 3,
+   "cx": 6.025,
+   "cz": 4.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-4",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 4,
+   "cx": 6.025,
+   "cz": 5.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-5",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 5,
+   "cx": 6.025,
+   "cz": 6.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-6",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 6,
+   "cx": 6.025,
+   "cz": 7.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-7",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 7,
+   "cx": 6.025,
+   "cz": 9.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-8",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 8,
+   "cx": 6.025,
+   "cz": 10.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-9",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 9,
+   "cx": 6.025,
+   "cz": 11.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-10",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 10,
+   "cx": 6.025,
+   "cz": 14.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-11",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 11,
+   "cx": 6.025,
+   "cz": 15.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-12",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 12,
+   "cx": 6.025,
+   "cz": 16.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-13",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 13,
+   "cx": 6.025,
+   "cz": 18.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-14",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 14,
+   "cx": 6.025,
+   "cz": 19.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-15",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 15,
+   "cx": 6.025,
+   "cz": 20.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-16",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 16,
+   "cx": 6.025,
+   "cz": 21.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-17",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 17,
+   "cx": 6.025,
+   "cz": 23.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-18",
+   "temp": "FROZEN",
+   "group": "A01",
+   "rackNo": 18,
+   "cx": 6.025,
+   "cz": 24.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-19",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 1,
+   "cx": 6.4750000000000005,
+   "cz": 1.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-20",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 2,
+   "cx": 6.4750000000000005,
+   "cz": 2.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-21",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 3,
+   "cx": 6.4750000000000005,
+   "cz": 4.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-22",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 4,
+   "cx": 6.4750000000000005,
+   "cz": 5.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-23",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 5,
+   "cx": 6.4750000000000005,
+   "cz": 6.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-24",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 6,
+   "cx": 6.4750000000000005,
+   "cz": 7.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-25",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 7,
+   "cx": 6.4750000000000005,
+   "cz": 9.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-26",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 8,
+   "cx": 6.4750000000000005,
+   "cz": 10.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-27",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 9,
+   "cx": 6.4750000000000005,
+   "cz": 11.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-28",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 10,
+   "cx": 6.4750000000000005,
+   "cz": 14.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-29",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 11,
+   "cx": 6.4750000000000005,
+   "cz": 15.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-30",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 12,
+   "cx": 6.4750000000000005,
+   "cz": 16.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-31",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 13,
+   "cx": 6.4750000000000005,
+   "cz": 18.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-32",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 14,
+   "cx": 6.4750000000000005,
+   "cz": 19.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-33",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 15,
+   "cx": 6.4750000000000005,
+   "cz": 20.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-34",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 16,
+   "cx": 6.4750000000000005,
+   "cz": 21.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-35",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 17,
+   "cx": 6.4750000000000005,
+   "cz": 23.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-36",
+   "temp": "FROZEN",
+   "group": "A02",
+   "rackNo": 18,
+   "cx": 6.4750000000000005,
+   "cz": 24.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-37",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 1,
+   "cx": 4.425,
+   "cz": 1.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-38",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 2,
+   "cx": 4.425,
+   "cz": 2.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-39",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 3,
+   "cx": 4.425,
+   "cz": 4.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-40",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 4,
+   "cx": 4.425,
+   "cz": 5.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-41",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 5,
+   "cx": 4.425,
+   "cz": 6.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-42",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 6,
+   "cx": 4.425,
+   "cz": 7.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-43",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 7,
+   "cx": 4.425,
+   "cz": 9.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-44",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 8,
+   "cx": 4.425,
+   "cz": 10.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-45",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 9,
+   "cx": 4.425,
+   "cz": 11.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-46",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 10,
+   "cx": 4.425,
+   "cz": 14.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-47",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 11,
+   "cx": 4.425,
+   "cz": 15.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-48",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 12,
+   "cx": 4.425,
+   "cz": 16.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-49",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 13,
+   "cx": 4.425,
+   "cz": 18.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-50",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 14,
+   "cx": 4.425,
+   "cz": 19.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-51",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 15,
+   "cx": 4.425,
+   "cz": 20.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-52",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 16,
+   "cx": 4.425,
+   "cz": 21.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-53",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 17,
+   "cx": 4.425,
+   "cz": 23.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-54",
+   "temp": "FROZEN",
+   "group": "A03",
+   "rackNo": 18,
+   "cx": 4.425,
+   "cz": 24.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-55",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 1,
+   "cx": 4.875,
+   "cz": 1.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-56",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 2,
+   "cx": 4.875,
+   "cz": 2.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-57",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 3,
+   "cx": 4.875,
+   "cz": 4.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-58",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 4,
+   "cx": 4.875,
+   "cz": 5.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-59",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 5,
+   "cx": 4.875,
+   "cz": 6.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-60",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 6,
+   "cx": 4.875,
+   "cz": 7.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-61",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 7,
+   "cx": 4.875,
+   "cz": 9.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-62",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 8,
+   "cx": 4.875,
+   "cz": 10.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-63",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 9,
+   "cx": 4.875,
+   "cz": 11.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-64",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 10,
+   "cx": 4.875,
+   "cz": 14.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-65",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 11,
+   "cx": 4.875,
+   "cz": 15.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-66",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 12,
+   "cx": 4.875,
+   "cz": 16.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-67",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 13,
+   "cx": 4.875,
+   "cz": 18.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-68",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 14,
+   "cx": 4.875,
+   "cz": 19.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-69",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 15,
+   "cx": 4.875,
+   "cz": 20.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-70",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 16,
+   "cx": 4.875,
+   "cz": 21.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-71",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 17,
+   "cx": 4.875,
+   "cz": 23.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-72",
+   "temp": "FROZEN",
+   "group": "A04",
+   "rackNo": 18,
+   "cx": 4.875,
+   "cz": 24.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-73",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 1,
+   "cx": 7.625,
+   "cz": 1.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-74",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 2,
+   "cx": 7.625,
+   "cz": 2.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-75",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 3,
+   "cx": 7.625,
+   "cz": 4.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-76",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 4,
+   "cx": 7.625,
+   "cz": 5.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-77",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 5,
+   "cx": 7.625,
+   "cz": 6.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-78",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 6,
+   "cx": 7.625,
+   "cz": 7.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-79",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 7,
+   "cx": 7.625,
+   "cz": 9.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-80",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 8,
+   "cx": 7.625,
+   "cz": 10.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-81",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 9,
+   "cx": 7.625,
+   "cz": 11.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-82",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 10,
+   "cx": 7.625,
+   "cz": 14.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-83",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 11,
+   "cx": 7.625,
+   "cz": 15.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-84",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 12,
+   "cx": 7.625,
+   "cz": 16.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-85",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 13,
+   "cx": 7.625,
+   "cz": 18.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-86",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 14,
+   "cx": 7.625,
+   "cz": 19.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-87",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 15,
+   "cx": 7.625,
+   "cz": 20.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-88",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 16,
+   "cx": 7.625,
+   "cz": 21.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-89",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 17,
+   "cx": 7.625,
+   "cz": 23.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-90",
+   "temp": "FROZEN",
+   "group": "A05",
+   "rackNo": 18,
+   "cx": 7.625,
+   "cz": 24.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-91",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 1,
+   "cx": 8.075000000000001,
+   "cz": 1.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-92",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 2,
+   "cx": 8.075000000000001,
+   "cz": 2.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-93",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 3,
+   "cx": 8.075000000000001,
+   "cz": 4.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-94",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 4,
+   "cx": 8.075000000000001,
+   "cz": 5.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-95",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 5,
+   "cx": 8.075000000000001,
+   "cz": 6.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-96",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 6,
+   "cx": 8.075000000000001,
+   "cz": 7.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-97",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 7,
+   "cx": 8.075000000000001,
+   "cz": 9.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-98",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 8,
+   "cx": 8.075000000000001,
+   "cz": 10.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-99",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 9,
+   "cx": 8.075000000000001,
+   "cz": 11.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-100",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 10,
+   "cx": 8.075000000000001,
+   "cz": 14.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-101",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 11,
+   "cx": 8.075000000000001,
+   "cz": 15.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-102",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 12,
+   "cx": 8.075000000000001,
+   "cz": 16.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-103",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 13,
+   "cx": 8.075000000000001,
+   "cz": 18.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-104",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 14,
+   "cx": 8.075000000000001,
+   "cz": 19.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RA-105",
+   "temp": "FROZEN",
+   "group": "A06",
+   "rackNo": 15,
+   "cx": 8.075000000000001,
+   "cz": 20.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-1",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 1,
+   "cx": 18.225,
+   "cz": 1.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-2",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 2,
+   "cx": 18.225,
+   "cz": 2.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-3",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 3,
+   "cx": 18.225,
+   "cz": 4.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-4",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 4,
+   "cx": 18.225,
+   "cz": 5.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-5",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 5,
+   "cx": 18.225,
+   "cz": 6.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-6",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 6,
+   "cx": 18.225,
+   "cz": 7.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-7",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 7,
+   "cx": 18.225,
+   "cz": 9.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-8",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 8,
+   "cx": 18.225,
+   "cz": 10.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-9",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 9,
+   "cx": 18.225,
+   "cz": 11.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-10",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 10,
+   "cx": 18.225,
+   "cz": 14.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-11",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 11,
+   "cx": 18.225,
+   "cz": 15.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-12",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 12,
+   "cx": 18.225,
+   "cz": 16.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-13",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 13,
+   "cx": 18.225,
+   "cz": 18.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-14",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 14,
+   "cx": 18.225,
+   "cz": 19.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-15",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 15,
+   "cx": 18.225,
+   "cz": 20.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-16",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 16,
+   "cx": 18.225,
+   "cz": 21.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-17",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 17,
+   "cx": 18.225,
+   "cz": 23.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-18",
+   "temp": "CHILLED",
+   "group": "B01",
+   "rackNo": 18,
+   "cx": 18.225,
+   "cz": 24.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-19",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 1,
+   "cx": 18.675,
+   "cz": 1.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-20",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 2,
+   "cx": 18.675,
+   "cz": 2.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-21",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 3,
+   "cx": 18.675,
+   "cz": 4.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-22",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 4,
+   "cx": 18.675,
+   "cz": 5.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-23",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 5,
+   "cx": 18.675,
+   "cz": 6.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-24",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 6,
+   "cx": 18.675,
+   "cz": 7.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-25",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 7,
+   "cx": 18.675,
+   "cz": 9.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-26",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 8,
+   "cx": 18.675,
+   "cz": 10.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-27",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 9,
+   "cx": 18.675,
+   "cz": 11.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-28",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 10,
+   "cx": 18.675,
+   "cz": 14.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-29",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 11,
+   "cx": 18.675,
+   "cz": 15.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-30",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 12,
+   "cx": 18.675,
+   "cz": 16.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-31",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 13,
+   "cx": 18.675,
+   "cz": 18.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-32",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 14,
+   "cx": 18.675,
+   "cz": 19.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-33",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 15,
+   "cx": 18.675,
+   "cz": 20.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-34",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 16,
+   "cx": 18.675,
+   "cz": 21.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-35",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 17,
+   "cx": 18.675,
+   "cz": 23.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-36",
+   "temp": "CHILLED",
+   "group": "B02",
+   "rackNo": 18,
+   "cx": 18.675,
+   "cz": 24.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-37",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 1,
+   "cx": 16.625,
+   "cz": 1.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-38",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 2,
+   "cx": 16.625,
+   "cz": 2.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-39",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 3,
+   "cx": 16.625,
+   "cz": 4.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-40",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 4,
+   "cx": 16.625,
+   "cz": 5.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-41",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 5,
+   "cx": 16.625,
+   "cz": 6.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-42",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 6,
+   "cx": 16.625,
+   "cz": 7.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-43",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 7,
+   "cx": 16.625,
+   "cz": 9.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-44",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 8,
+   "cx": 16.625,
+   "cz": 10.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-45",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 9,
+   "cx": 16.625,
+   "cz": 11.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-46",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 10,
+   "cx": 16.625,
+   "cz": 14.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-47",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 11,
+   "cx": 16.625,
+   "cz": 15.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-48",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 12,
+   "cx": 16.625,
+   "cz": 16.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-49",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 13,
+   "cx": 16.625,
+   "cz": 18.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-50",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 14,
+   "cx": 16.625,
+   "cz": 19.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-51",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 15,
+   "cx": 16.625,
+   "cz": 20.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-52",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 16,
+   "cx": 16.625,
+   "cz": 21.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-53",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 17,
+   "cx": 16.625,
+   "cz": 23.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-54",
+   "temp": "CHILLED",
+   "group": "B03",
+   "rackNo": 18,
+   "cx": 16.625,
+   "cz": 24.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-55",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 1,
+   "cx": 17.075,
+   "cz": 1.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-56",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 2,
+   "cx": 17.075,
+   "cz": 2.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-57",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 3,
+   "cx": 17.075,
+   "cz": 4.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-58",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 4,
+   "cx": 17.075,
+   "cz": 5.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-59",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 5,
+   "cx": 17.075,
+   "cz": 6.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-60",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 6,
+   "cx": 17.075,
+   "cz": 7.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-61",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 7,
+   "cx": 17.075,
+   "cz": 9.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-62",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 8,
+   "cx": 17.075,
+   "cz": 10.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-63",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 9,
+   "cx": 17.075,
+   "cz": 11.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-64",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 10,
+   "cx": 17.075,
+   "cz": 14.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-65",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 11,
+   "cx": 17.075,
+   "cz": 15.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-66",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 12,
+   "cx": 17.075,
+   "cz": 16.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-67",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 13,
+   "cx": 17.075,
+   "cz": 18.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-68",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 14,
+   "cx": 17.075,
+   "cz": 19.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-69",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 15,
+   "cx": 17.075,
+   "cz": 20.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-70",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 16,
+   "cx": 17.075,
+   "cz": 21.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-71",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 17,
+   "cx": 17.075,
+   "cz": 23.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-72",
+   "temp": "CHILLED",
+   "group": "B04",
+   "rackNo": 18,
+   "cx": 17.075,
+   "cz": 24.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-73",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 1,
+   "cx": 19.825000000000003,
+   "cz": 1.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-74",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 2,
+   "cx": 19.825000000000003,
+   "cz": 2.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-75",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 3,
+   "cx": 19.825000000000003,
+   "cz": 4.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-76",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 4,
+   "cx": 19.825000000000003,
+   "cz": 5.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-77",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 5,
+   "cx": 19.825000000000003,
+   "cz": 6.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-78",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 6,
+   "cx": 19.825000000000003,
+   "cz": 7.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-79",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 7,
+   "cx": 19.825000000000003,
+   "cz": 9.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-80",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 8,
+   "cx": 19.825000000000003,
+   "cz": 10.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-81",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 9,
+   "cx": 19.825000000000003,
+   "cz": 11.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-82",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 10,
+   "cx": 19.825000000000003,
+   "cz": 14.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-83",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 11,
+   "cx": 19.825000000000003,
+   "cz": 15.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-84",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 12,
+   "cx": 19.825000000000003,
+   "cz": 16.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-85",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 13,
+   "cx": 19.825000000000003,
+   "cz": 18.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-86",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 14,
+   "cx": 19.825000000000003,
+   "cz": 19.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-87",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 15,
+   "cx": 19.825000000000003,
+   "cz": 20.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-88",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 16,
+   "cx": 19.825000000000003,
+   "cz": 21.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-89",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 17,
+   "cx": 19.825000000000003,
+   "cz": 23.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-90",
+   "temp": "CHILLED",
+   "group": "B05",
+   "rackNo": 18,
+   "cx": 19.825000000000003,
+   "cz": 24.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-91",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 1,
+   "cx": 20.275000000000002,
+   "cz": 1.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-92",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 2,
+   "cx": 20.275000000000002,
+   "cz": 2.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-93",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 3,
+   "cx": 20.275000000000002,
+   "cz": 4.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-94",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 4,
+   "cx": 20.275000000000002,
+   "cz": 5.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-95",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 5,
+   "cx": 20.275000000000002,
+   "cz": 6.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-96",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 6,
+   "cx": 20.275000000000002,
+   "cz": 7.875,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-97",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 7,
+   "cx": 20.275000000000002,
+   "cz": 9.125,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-98",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 8,
+   "cx": 20.275000000000002,
+   "cz": 10.375,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-99",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 9,
+   "cx": 20.275000000000002,
+   "cz": 11.625,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-100",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 10,
+   "cx": 20.275000000000002,
+   "cz": 14.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-101",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 11,
+   "cx": 20.275000000000002,
+   "cz": 15.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-102",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 12,
+   "cx": 20.275000000000002,
+   "cz": 16.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-103",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 13,
+   "cx": 20.275000000000002,
+   "cz": 18.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-104",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 14,
+   "cx": 20.275000000000002,
+   "cz": 19.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-105",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 15,
+   "cx": 20.275000000000002,
+   "cz": 20.575,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-106",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 16,
+   "cx": 20.275000000000002,
+   "cz": 21.825,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-107",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 17,
+   "cx": 20.275000000000002,
+   "cz": 23.075,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-108",
+   "temp": "CHILLED",
+   "group": "B06",
+   "rackNo": 18,
+   "cx": 20.275000000000002,
+   "cz": 24.325,
+   "along": "z",
+   "face": 1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-109",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 1,
+   "cx": 15.024999999999999,
+   "cz": 1.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-110",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 2,
+   "cx": 15.024999999999999,
+   "cz": 2.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-111",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 3,
+   "cx": 15.024999999999999,
+   "cz": 4.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-112",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 4,
+   "cx": 15.024999999999999,
+   "cz": 5.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-113",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 5,
+   "cx": 15.024999999999999,
+   "cz": 6.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-114",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 6,
+   "cx": 15.024999999999999,
+   "cz": 7.875,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-115",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 7,
+   "cx": 15.024999999999999,
+   "cz": 9.125,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-116",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 8,
+   "cx": 15.024999999999999,
+   "cz": 10.375,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-117",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 9,
+   "cx": 15.024999999999999,
+   "cz": 11.625,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-118",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 10,
+   "cx": 15.024999999999999,
+   "cz": 14.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-119",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 11,
+   "cx": 15.024999999999999,
+   "cz": 15.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-120",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 12,
+   "cx": 15.024999999999999,
+   "cz": 16.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-121",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 13,
+   "cx": 15.024999999999999,
+   "cz": 18.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-122",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 14,
+   "cx": 15.024999999999999,
+   "cz": 19.325,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-123",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 15,
+   "cx": 15.024999999999999,
+   "cz": 20.575,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-124",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 16,
+   "cx": 15.024999999999999,
+   "cz": 21.825,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RB-125",
+   "temp": "CHILLED",
+   "group": "B07",
+   "rackNo": 17,
+   "cx": 15.024999999999999,
+   "cz": 23.075,
+   "along": "z",
+   "face": -1,
+   "levels": 5,
+   "slotsPerLevel": 3
+  },
+  {
+   "id": "RC-1",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-2",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-3",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-4",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-5",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-6",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-7",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-8",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-9",
+   "temp": "AMBIENT",
+   "group": "C01",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 1.0250000000000001,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-10",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-11",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-12",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-13",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-14",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-15",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-16",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-17",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-18",
+   "temp": "AMBIENT",
+   "group": "C02",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 1.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-19",
+   "temp": "AMBIENT",
+   "group": "C03",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-20",
+   "temp": "AMBIENT",
+   "group": "C03",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-21",
+   "temp": "AMBIENT",
+   "group": "C03",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-22",
+   "temp": "AMBIENT",
+   "group": "C03",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-23",
+   "temp": "AMBIENT",
+   "group": "C03",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-24",
+   "temp": "AMBIENT",
+   "group": "C03",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-25",
+   "temp": "AMBIENT",
+   "group": "D01",
+   "rackNo": 1,
+   "cx": 32.125,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-26",
+   "temp": "AMBIENT",
+   "group": "D01",
+   "rackNo": 2,
+   "cx": 33.375,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-27",
+   "temp": "AMBIENT",
+   "group": "D01",
+   "rackNo": 3,
+   "cx": 34.625,
+   "cz": 2.6250000000000004,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-28",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-29",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-30",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-31",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-32",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-33",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-34",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-35",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-36",
+   "temp": "AMBIENT",
+   "group": "D02",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 3.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-37",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-38",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-39",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-40",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-41",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-42",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-43",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-44",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-45",
+   "temp": "AMBIENT",
+   "group": "D03",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 4.225,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-46",
+   "temp": "AMBIENT",
+   "group": "D04",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-47",
+   "temp": "AMBIENT",
+   "group": "D04",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-48",
+   "temp": "AMBIENT",
+   "group": "D04",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-49",
+   "temp": "AMBIENT",
+   "group": "E01",
+   "rackNo": 1,
+   "cx": 28.375,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-50",
+   "temp": "AMBIENT",
+   "group": "E01",
+   "rackNo": 2,
+   "cx": 29.625,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-51",
+   "temp": "AMBIENT",
+   "group": "E01",
+   "rackNo": 3,
+   "cx": 30.875,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-52",
+   "temp": "AMBIENT",
+   "group": "E01",
+   "rackNo": 4,
+   "cx": 32.125,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-53",
+   "temp": "AMBIENT",
+   "group": "E01",
+   "rackNo": 5,
+   "cx": 33.375,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-54",
+   "temp": "AMBIENT",
+   "group": "E01",
+   "rackNo": 6,
+   "cx": 34.625,
+   "cz": 4.675,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-55",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-56",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-57",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-58",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-59",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-60",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-61",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-62",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-63",
+   "temp": "AMBIENT",
+   "group": "E02",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 5.824999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-64",
+   "temp": "AMBIENT",
+   "group": "E03",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-65",
+   "temp": "AMBIENT",
+   "group": "E03",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-66",
+   "temp": "AMBIENT",
+   "group": "E03",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-67",
+   "temp": "AMBIENT",
+   "group": "E03",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-68",
+   "temp": "AMBIENT",
+   "group": "E03",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-69",
+   "temp": "AMBIENT",
+   "group": "E03",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-70",
+   "temp": "AMBIENT",
+   "group": "F01",
+   "rackNo": 1,
+   "cx": 32.125,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-71",
+   "temp": "AMBIENT",
+   "group": "F01",
+   "rackNo": 2,
+   "cx": 33.375,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-72",
+   "temp": "AMBIENT",
+   "group": "F01",
+   "rackNo": 3,
+   "cx": 34.625,
+   "cz": 6.2749999999999995,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-73",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-74",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-75",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-76",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-77",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-78",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-79",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-80",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-81",
+   "temp": "AMBIENT",
+   "group": "F02",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 7.424999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-82",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-83",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-84",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-85",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-86",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-87",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-88",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-89",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-90",
+   "temp": "AMBIENT",
+   "group": "F03",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 7.874999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-91",
+   "temp": "AMBIENT",
+   "group": "F04",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-92",
+   "temp": "AMBIENT",
+   "group": "F04",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-93",
+   "temp": "AMBIENT",
+   "group": "F04",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-94",
+   "temp": "AMBIENT",
+   "group": "G01",
+   "rackNo": 1,
+   "cx": 28.375,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-95",
+   "temp": "AMBIENT",
+   "group": "G01",
+   "rackNo": 2,
+   "cx": 29.625,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-96",
+   "temp": "AMBIENT",
+   "group": "G01",
+   "rackNo": 3,
+   "cx": 30.875,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-97",
+   "temp": "AMBIENT",
+   "group": "G01",
+   "rackNo": 4,
+   "cx": 32.125,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-98",
+   "temp": "AMBIENT",
+   "group": "G01",
+   "rackNo": 5,
+   "cx": 33.375,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-99",
+   "temp": "AMBIENT",
+   "group": "G01",
+   "rackNo": 6,
+   "cx": 34.625,
+   "cz": 9.024999999999999,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-100",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-101",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-102",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-103",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-104",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-105",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-106",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-107",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-108",
+   "temp": "AMBIENT",
+   "group": "G02",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 9.475,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-109",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-110",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-111",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-112",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-113",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-114",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-115",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-116",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-117",
+   "temp": "AMBIENT",
+   "group": "G03",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 10.624999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-118",
+   "temp": "AMBIENT",
+   "group": "G04",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-119",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 1,
+   "cx": 25.875,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-120",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 2,
+   "cx": 27.125,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-121",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 3,
+   "cx": 28.375,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-122",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 4,
+   "cx": 29.625,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-123",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 5,
+   "cx": 30.875,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-124",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 6,
+   "cx": 32.125,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-125",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 7,
+   "cx": 33.375,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-126",
+   "temp": "AMBIENT",
+   "group": "H01",
+   "rackNo": 8,
+   "cx": 34.625,
+   "cz": 11.075,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-127",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-128",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-129",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-130",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 4,
+   "cx": 28.375,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-131",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 5,
+   "cx": 29.625,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-132",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 6,
+   "cx": 30.875,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-133",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 7,
+   "cx": 32.125,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-134",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 8,
+   "cx": 33.375,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-135",
+   "temp": "AMBIENT",
+   "group": "H02",
+   "rackNo": 9,
+   "cx": 34.625,
+   "cz": 12.224999999999998,
+   "along": "x",
+   "face": -1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-136",
+   "temp": "AMBIENT",
+   "group": "H03",
+   "rackNo": 1,
+   "cx": 24.625,
+   "cz": 12.674999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-137",
+   "temp": "AMBIENT",
+   "group": "H03",
+   "rackNo": 2,
+   "cx": 25.875,
+   "cz": 12.674999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  },
+  {
+   "id": "RC-138",
+   "temp": "AMBIENT",
+   "group": "H03",
+   "rackNo": 3,
+   "cx": 27.125,
+   "cz": 12.674999999999999,
+   "along": "x",
+   "face": 1,
+   "levels": 6,
+   "slotsPerLevel": 4
+  }
+ ],
+ "locationCount": 6762,
+ "sampleLocations": [
+  "A01-01-101",
+  "A01-01-102",
+  "A01-01-103"
+ ],
+ "obstacles": [
+  {
+   "rect": {
+    "x0": 7.8,
+    "z0": 26.8,
+    "x1": 8.9,
+    "z1": 27.900000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 7.8,
+    "z0": 28.3,
+    "x1": 8.9,
+    "z1": 29.400000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 9.4,
+    "z0": 26.8,
+    "x1": 10.5,
+    "z1": 27.900000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 9.4,
+    "z0": 28.3,
+    "x1": 10.5,
+    "z1": 29.400000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 19.4,
+    "z0": 26.8,
+    "x1": 20.5,
+    "z1": 27.900000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 19.4,
+    "z0": 28.3,
+    "x1": 20.5,
+    "z1": 29.400000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 21,
+    "z0": 26.8,
+    "x1": 22.1,
+    "z1": 27.900000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 21,
+    "z0": 28.3,
+    "x1": 22.1,
+    "z1": 29.400000000000002
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 38.6,
+    "z0": 1,
+    "x1": 39.7,
+    "z1": 2.1
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 40.1,
+    "z0": 1,
+    "x1": 41.2,
+    "z1": 2.1
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 41.6,
+    "z0": 1,
+    "x1": 42.7,
+    "z1": 2.1
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 43.1,
+    "z0": 1,
+    "x1": 44.2,
+    "z1": 2.1
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 44.6,
+    "z0": 1,
+    "x1": 45.7,
+    "z1": 2.1
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 46.1,
+    "z0": 1,
+    "x1": 47.2,
+    "z1": 2.1
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 38.6,
+    "z0": 3.7,
+    "x1": 39.7,
+    "z1": 4.800000000000001
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 40.1,
+    "z0": 3.7,
+    "x1": 41.2,
+    "z1": 4.800000000000001
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 41.6,
+    "z0": 3.7,
+    "x1": 42.7,
+    "z1": 4.800000000000001
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 43.1,
+    "z0": 3.7,
+    "x1": 44.2,
+    "z1": 4.800000000000001
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 44.6,
+    "z0": 3.7,
+    "x1": 45.7,
+    "z1": 4.800000000000001
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 46.1,
+    "z0": 3.7,
+    "x1": 47.2,
+    "z1": 4.800000000000001
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 38.6,
+    "z0": 6.4,
+    "x1": 39.7,
+    "z1": 7.5
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 40.1,
+    "z0": 6.4,
+    "x1": 41.2,
+    "z1": 7.5
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 41.6,
+    "z0": 6.4,
+    "x1": 42.7,
+    "z1": 7.5
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 43.1,
+    "z0": 6.4,
+    "x1": 44.2,
+    "z1": 7.5
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 44.6,
+    "z0": 6.4,
+    "x1": 45.7,
+    "z1": 7.5
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 46.1,
+    "z0": 6.4,
+    "x1": 47.2,
+    "z1": 7.5
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 38.6,
+    "z0": 9.1,
+    "x1": 39.7,
+    "z1": 10.2
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 40.1,
+    "z0": 9.1,
+    "x1": 41.2,
+    "z1": 10.2
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 41.6,
+    "z0": 9.1,
+    "x1": 42.7,
+    "z1": 10.2
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 43.1,
+    "z0": 9.1,
+    "x1": 44.2,
+    "z1": 10.2
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 44.6,
+    "z0": 9.1,
+    "x1": 45.7,
+    "z1": 10.2
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 46.1,
+    "z0": 9.1,
+    "x1": 47.2,
+    "z1": 10.2
+   },
+   "height": 0.15,
+   "kind": "RESERVE"
+  },
+  {
+   "rect": {
+    "x0": 25.099999999999998,
+    "z0": 20.75,
+    "x1": 26.7,
+    "z1": 21.549999999999997
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 27.099999999999998,
+    "z0": 20.75,
+    "x1": 28.7,
+    "z1": 21.549999999999997
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 29.099999999999998,
+    "z0": 20.75,
+    "x1": 30.7,
+    "z1": 21.549999999999997
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 31.099999999999998,
+    "z0": 20.75,
+    "x1": 32.699999999999996,
+    "z1": 21.549999999999997
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 25.099999999999998,
+    "z0": 27.450000000000003,
+    "x1": 26.7,
+    "z1": 28.25
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 27.099999999999998,
+    "z0": 27.450000000000003,
+    "x1": 28.7,
+    "z1": 28.25
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 29.099999999999998,
+    "z0": 27.450000000000003,
+    "x1": 30.7,
+    "z1": 28.25
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 31.099999999999998,
+    "z0": 27.450000000000003,
+    "x1": 32.699999999999996,
+    "z1": 28.25
+   },
+   "height": 0.9,
+   "kind": "TABLE"
+  },
+  {
+   "rect": {
+    "x0": 34.1,
+    "z0": 23,
+    "x1": 34.85,
+    "z1": 24.4
+   },
+   "height": 1.6,
+   "kind": "MATERIAL"
+  },
+  {
+   "rect": {
+    "x0": 34.1,
+    "z0": 24.8,
+    "x1": 34.85,
+    "z1": 26.2
+   },
+   "height": 1.6,
+   "kind": "MATERIAL"
+  },
+  {
+   "rect": {
+    "x0": 27.975,
+    "z0": 33.175,
+    "x1": 29.225,
+    "z1": 33.625
+   },
+   "height": 2.1,
+   "kind": "SHIP_RACK"
+  },
+  {
+   "rect": {
+    "x0": 30.775,
+    "z0": 33.175,
+    "x1": 32.025,
+    "z1": 33.625
+   },
+   "height": 2.1,
+   "kind": "SHIP_RACK"
+  }
+ ],
+ "stations": [
+  {
+   "id": "PS-1",
+   "index": 0,
+   "table": {
+    "x": 25.9,
+    "z": 21.15
+   },
+   "stand": {
+    "x": 25.9,
+    "z": 22.35
+   }
+  },
+  {
+   "id": "PS-2",
+   "index": 1,
+   "table": {
+    "x": 27.9,
+    "z": 21.15
+   },
+   "stand": {
+    "x": 27.9,
+    "z": 22.35
+   }
+  },
+  {
+   "id": "PS-3",
+   "index": 2,
+   "table": {
+    "x": 29.9,
+    "z": 21.15
+   },
+   "stand": {
+    "x": 29.9,
+    "z": 22.35
+   }
+  },
+  {
+   "id": "PS-4",
+   "index": 3,
+   "table": {
+    "x": 31.9,
+    "z": 21.15
+   },
+   "stand": {
+    "x": 31.9,
+    "z": 22.35
+   }
+  },
+  {
+   "id": "PS-5",
+   "index": 4,
+   "table": {
+    "x": 25.9,
+    "z": 27.85
+   },
+   "stand": {
+    "x": 25.9,
+    "z": 26.65
+   }
+  },
+  {
+   "id": "PS-6",
+   "index": 5,
+   "table": {
+    "x": 27.9,
+    "z": 27.85
+   },
+   "stand": {
+    "x": 27.9,
+    "z": 26.65
+   }
+  },
+  {
+   "id": "PS-7",
+   "index": 6,
+   "table": {
+    "x": 29.9,
+    "z": 27.85
+   },
+   "stand": {
+    "x": 29.9,
+    "z": 26.65
+   }
+  },
+  {
+   "id": "PS-8",
+   "index": 7,
+   "table": {
+    "x": 31.9,
+    "z": 27.85
+   },
+   "stand": {
+    "x": 31.9,
+    "z": 26.65
+   }
+  }
+ ],
+ "shippingSlots": [
+  {
+   "id": "SR1-11",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.150000000000002,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-12",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.450000000000003,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-13",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.750000000000004,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-14",
+   "rackIndex": 0,
+   "pos": {
+    "x": 29.05,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-21",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.150000000000002,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-22",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.450000000000003,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-23",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.750000000000004,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-24",
+   "rackIndex": 0,
+   "pos": {
+    "x": 29.05,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-31",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.150000000000002,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-32",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.450000000000003,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-33",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.750000000000004,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-34",
+   "rackIndex": 0,
+   "pos": {
+    "x": 29.05,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-41",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.150000000000002,
+    "y": 1.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-42",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.450000000000003,
+    "y": 1.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-43",
+   "rackIndex": 0,
+   "pos": {
+    "x": 28.750000000000004,
+    "y": 1.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR1-44",
+   "rackIndex": 0,
+   "pos": {
+    "x": 29.05,
+    "y": 1.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-11",
+   "rackIndex": 1,
+   "pos": {
+    "x": 30.95,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-12",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.25,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-13",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.55,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-14",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.849999999999998,
+    "y": 0.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-21",
+   "rackIndex": 1,
+   "pos": {
+    "x": 30.95,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-22",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.25,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-23",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.55,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-24",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.849999999999998,
+    "y": 0.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-31",
+   "rackIndex": 1,
+   "pos": {
+    "x": 30.95,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-32",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.25,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-33",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.55,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-34",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.849999999999998,
+    "y": 1.25,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-41",
+   "rackIndex": 1,
+   "pos": {
+    "x": 30.95,
+    "y": 1.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-42",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.25,
+    "y": 1.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-43",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.55,
+    "y": 1.75,
+    "z": 33.4
+   }
+  },
+  {
+   "id": "SR2-44",
+   "rackIndex": 1,
+   "pos": {
+    "x": 31.849999999999998,
+    "y": 1.75,
+    "z": 33.4
+   }
+  }
+ ],
+ "reserves": [
+  {
+   "id": "AR-1",
+   "temp": "FROZEN",
+   "rect": {
+    "x0": 7.8,
+    "z0": 26.8,
+    "x1": 8.9,
+    "z1": 27.900000000000002
+   },
+   "stand": {
+    "x": 8.35,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "AR-2",
+   "temp": "FROZEN",
+   "rect": {
+    "x0": 7.8,
+    "z0": 28.3,
+    "x1": 8.9,
+    "z1": 29.400000000000002
+   },
+   "stand": {
+    "x": 8.35,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "AR-3",
+   "temp": "FROZEN",
+   "rect": {
+    "x0": 9.4,
+    "z0": 26.8,
+    "x1": 10.5,
+    "z1": 27.900000000000002
+   },
+   "stand": {
+    "x": 9.950000000000001,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "AR-4",
+   "temp": "FROZEN",
+   "rect": {
+    "x0": 9.4,
+    "z0": 28.3,
+    "x1": 10.5,
+    "z1": 29.400000000000002
+   },
+   "stand": {
+    "x": 9.950000000000001,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "BR-1",
+   "temp": "CHILLED",
+   "rect": {
+    "x0": 19.4,
+    "z0": 26.8,
+    "x1": 20.5,
+    "z1": 27.900000000000002
+   },
+   "stand": {
+    "x": 19.95,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "BR-2",
+   "temp": "CHILLED",
+   "rect": {
+    "x0": 19.4,
+    "z0": 28.3,
+    "x1": 20.5,
+    "z1": 29.400000000000002
+   },
+   "stand": {
+    "x": 19.95,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "BR-3",
+   "temp": "CHILLED",
+   "rect": {
+    "x0": 21,
+    "z0": 26.8,
+    "x1": 22.1,
+    "z1": 27.900000000000002
+   },
+   "stand": {
+    "x": 21.55,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "BR-4",
+   "temp": "CHILLED",
+   "rect": {
+    "x0": 21,
+    "z0": 28.3,
+    "x1": 22.1,
+    "z1": 29.400000000000002
+   },
+   "stand": {
+    "x": 21.55,
+    "z": 26.25
+   }
+  },
+  {
+   "id": "WR-01",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 38.6,
+    "z0": 1,
+    "x1": 39.7,
+    "z1": 2.1
+   },
+   "stand": {
+    "x": 39.15,
+    "z": 2.6500000000000004
+   }
+  },
+  {
+   "id": "WR-02",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 40.1,
+    "z0": 1,
+    "x1": 41.2,
+    "z1": 2.1
+   },
+   "stand": {
+    "x": 40.65,
+    "z": 2.6500000000000004
+   }
+  },
+  {
+   "id": "WR-03",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 41.6,
+    "z0": 1,
+    "x1": 42.7,
+    "z1": 2.1
+   },
+   "stand": {
+    "x": 42.15,
+    "z": 2.6500000000000004
+   }
+  },
+  {
+   "id": "WR-04",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 43.1,
+    "z0": 1,
+    "x1": 44.2,
+    "z1": 2.1
+   },
+   "stand": {
+    "x": 43.65,
+    "z": 2.6500000000000004
+   }
+  },
+  {
+   "id": "WR-05",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 44.6,
+    "z0": 1,
+    "x1": 45.7,
+    "z1": 2.1
+   },
+   "stand": {
+    "x": 45.15,
+    "z": 2.6500000000000004
+   }
+  },
+  {
+   "id": "WR-06",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 46.1,
+    "z0": 1,
+    "x1": 47.2,
+    "z1": 2.1
+   },
+   "stand": {
+    "x": 46.65,
+    "z": 2.6500000000000004
+   }
+  },
+  {
+   "id": "WR-07",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 38.6,
+    "z0": 3.7,
+    "x1": 39.7,
+    "z1": 4.800000000000001
+   },
+   "stand": {
+    "x": 39.15,
+    "z": 5.3500000000000005
+   }
+  },
+  {
+   "id": "WR-08",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 40.1,
+    "z0": 3.7,
+    "x1": 41.2,
+    "z1": 4.800000000000001
+   },
+   "stand": {
+    "x": 40.65,
+    "z": 5.3500000000000005
+   }
+  },
+  {
+   "id": "WR-09",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 41.6,
+    "z0": 3.7,
+    "x1": 42.7,
+    "z1": 4.800000000000001
+   },
+   "stand": {
+    "x": 42.15,
+    "z": 5.3500000000000005
+   }
+  },
+  {
+   "id": "WR-10",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 43.1,
+    "z0": 3.7,
+    "x1": 44.2,
+    "z1": 4.800000000000001
+   },
+   "stand": {
+    "x": 43.65,
+    "z": 5.3500000000000005
+   }
+  },
+  {
+   "id": "WR-11",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 44.6,
+    "z0": 3.7,
+    "x1": 45.7,
+    "z1": 4.800000000000001
+   },
+   "stand": {
+    "x": 45.15,
+    "z": 5.3500000000000005
+   }
+  },
+  {
+   "id": "WR-12",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 46.1,
+    "z0": 3.7,
+    "x1": 47.2,
+    "z1": 4.800000000000001
+   },
+   "stand": {
+    "x": 46.65,
+    "z": 5.3500000000000005
+   }
+  },
+  {
+   "id": "WR-13",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 38.6,
+    "z0": 6.4,
+    "x1": 39.7,
+    "z1": 7.5
+   },
+   "stand": {
+    "x": 39.15,
+    "z": 8.05
+   }
+  },
+  {
+   "id": "WR-14",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 40.1,
+    "z0": 6.4,
+    "x1": 41.2,
+    "z1": 7.5
+   },
+   "stand": {
+    "x": 40.65,
+    "z": 8.05
+   }
+  },
+  {
+   "id": "WR-15",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 41.6,
+    "z0": 6.4,
+    "x1": 42.7,
+    "z1": 7.5
+   },
+   "stand": {
+    "x": 42.15,
+    "z": 8.05
+   }
+  },
+  {
+   "id": "WR-16",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 43.1,
+    "z0": 6.4,
+    "x1": 44.2,
+    "z1": 7.5
+   },
+   "stand": {
+    "x": 43.65,
+    "z": 8.05
+   }
+  },
+  {
+   "id": "WR-17",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 44.6,
+    "z0": 6.4,
+    "x1": 45.7,
+    "z1": 7.5
+   },
+   "stand": {
+    "x": 45.15,
+    "z": 8.05
+   }
+  },
+  {
+   "id": "WR-18",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 46.1,
+    "z0": 6.4,
+    "x1": 47.2,
+    "z1": 7.5
+   },
+   "stand": {
+    "x": 46.65,
+    "z": 8.05
+   }
+  },
+  {
+   "id": "WR-19",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 38.6,
+    "z0": 9.1,
+    "x1": 39.7,
+    "z1": 10.2
+   },
+   "stand": {
+    "x": 39.15,
+    "z": 10.75
+   }
+  },
+  {
+   "id": "WR-20",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 40.1,
+    "z0": 9.1,
+    "x1": 41.2,
+    "z1": 10.2
+   },
+   "stand": {
+    "x": 40.65,
+    "z": 10.75
+   }
+  },
+  {
+   "id": "WR-21",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 41.6,
+    "z0": 9.1,
+    "x1": 42.7,
+    "z1": 10.2
+   },
+   "stand": {
+    "x": 42.15,
+    "z": 10.75
+   }
+  },
+  {
+   "id": "WR-22",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 43.1,
+    "z0": 9.1,
+    "x1": 44.2,
+    "z1": 10.2
+   },
+   "stand": {
+    "x": 43.65,
+    "z": 10.75
+   }
+  },
+  {
+   "id": "WR-23",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 44.6,
+    "z0": 9.1,
+    "x1": 45.7,
+    "z1": 10.2
+   },
+   "stand": {
+    "x": 45.15,
+    "z": 10.75
+   }
+  },
+  {
+   "id": "WR-24",
+   "temp": "AMBIENT",
+   "rect": {
+    "x0": 46.1,
+    "z0": 9.1,
+    "x1": 47.2,
+    "z1": 10.2
+   },
+   "stand": {
+    "x": 46.65,
+    "z": 10.75
+   }
+  }
+ ],
+ "dockSlots": [
+  {
+   "id": "DK-1",
+   "pos": {
+    "x": 40.6,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-2",
+   "pos": {
+    "x": 41.35,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-3",
+   "pos": {
+    "x": 42.1,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-4",
+   "pos": {
+    "x": 42.85,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-5",
+   "pos": {
+    "x": 43.6,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-6",
+   "pos": {
+    "x": 44.35,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-7",
+   "pos": {
+    "x": 45.1,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-8",
+   "pos": {
+    "x": 45.85,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-9",
+   "pos": {
+    "x": 46.6,
+    "z": 17.15
+   }
+  },
+  {
+   "id": "DK-10",
+   "pos": {
+    "x": 40.6,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-11",
+   "pos": {
+    "x": 41.35,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-12",
+   "pos": {
+    "x": 42.1,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-13",
+   "pos": {
+    "x": 42.85,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-14",
+   "pos": {
+    "x": 43.6,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-15",
+   "pos": {
+    "x": 44.35,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-16",
+   "pos": {
+    "x": 45.1,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-17",
+   "pos": {
+    "x": 45.85,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-18",
+   "pos": {
+    "x": 46.6,
+    "z": 17.9
+   }
+  },
+  {
+   "id": "DK-19",
+   "pos": {
+    "x": 40.6,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-20",
+   "pos": {
+    "x": 41.35,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-21",
+   "pos": {
+    "x": 42.1,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-22",
+   "pos": {
+    "x": 42.85,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-23",
+   "pos": {
+    "x": 43.6,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-24",
+   "pos": {
+    "x": 44.35,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-25",
+   "pos": {
+    "x": 45.1,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-26",
+   "pos": {
+    "x": 45.85,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-27",
+   "pos": {
+    "x": 46.6,
+    "z": 21.35
+   }
+  },
+  {
+   "id": "DK-28",
+   "pos": {
+    "x": 40.6,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-29",
+   "pos": {
+    "x": 41.35,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-30",
+   "pos": {
+    "x": 42.1,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-31",
+   "pos": {
+    "x": 42.85,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-32",
+   "pos": {
+    "x": 43.6,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-33",
+   "pos": {
+    "x": 44.35,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-34",
+   "pos": {
+    "x": 45.1,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-35",
+   "pos": {
+    "x": 45.85,
+    "z": 22.1
+   }
+  },
+  {
+   "id": "DK-36",
+   "pos": {
+    "x": 46.6,
+    "z": 22.1
+   }
+  }
+ ],
+ "points": {
+  "truckDoor": {
+   "x": 47.2,
+   "z": 19.75
+  },
+  "truckDock": {
+   "x": 52.6,
+   "z": 19.75
+  },
+  "inboundIdle": [
+   {
+    "x": 38.3,
+    "z": 19.2
+   },
+   {
+    "x": 39.099999999999994,
+    "z": 19.2
+   },
+   {
+    "x": 39.9,
+    "z": 19.2
+   },
+   {
+    "x": 40.699999999999996,
+    "z": 19.2
+   },
+   {
+    "x": 38.3,
+    "z": 20.099999999999998
+   },
+   {
+    "x": 39.099999999999994,
+    "z": 20.099999999999998
+   },
+   {
+    "x": 39.9,
+    "z": 20.099999999999998
+   },
+   {
+    "x": 40.699999999999996,
+    "z": 20.099999999999998
+   }
+  ],
+  "cartDepot": {
+   "x": 33.2,
+   "z": 18.6
+  },
+  "idle": [
+   {
+    "x": 24.2,
+    "z": 16.4
+   },
+   {
+    "x": 25.2,
+    "z": 16.4
+   },
+   {
+    "x": 26.2,
+    "z": 16.4
+   },
+   {
+    "x": 27.2,
+    "z": 16.4
+   },
+   {
+    "x": 28.2,
+    "z": 16.4
+   },
+   {
+    "x": 29.2,
+    "z": 16.4
+   },
+   {
+    "x": 30.2,
+    "z": 16.4
+   },
+   {
+    "x": 31.2,
+    "z": 16.4
+   },
+   {
+    "x": 32.2,
+    "z": 16.4
+   },
+   {
+    "x": 33.2,
+    "z": 16.4
+   },
+   {
+    "x": 34.2,
+    "z": 16.4
+   },
+   {
+    "x": 35.2,
+    "z": 16.4
+   },
+   {
+    "x": 24.2,
+    "z": 17.2
+   },
+   {
+    "x": 25.2,
+    "z": 17.2
+   },
+   {
+    "x": 26.2,
+    "z": 17.2
+   },
+   {
+    "x": 27.2,
+    "z": 17.2
+   },
+   {
+    "x": 28.2,
+    "z": 17.2
+   },
+   {
+    "x": 29.2,
+    "z": 17.2
+   },
+   {
+    "x": 30.2,
+    "z": 17.2
+   },
+   {
+    "x": 31.2,
+    "z": 17.2
+   },
+   {
+    "x": 32.2,
+    "z": 17.2
+   },
+   {
+    "x": 33.2,
+    "z": 17.2
+   },
+   {
+    "x": 34.2,
+    "z": 17.2
+   },
+   {
+    "x": 35.2,
+    "z": 17.2
+   }
+  ],
+  "packQueue": {
+   "x": 33.9,
+   "z": 19.4
+  },
+  "shipDrop": {
+   "x": 30,
+   "z": 32.75
+  },
+  "riderPickup": {
+   "x": 30,
+   "z": 34.2
+  },
+  "riderParking": [
+   {
+    "x": 25,
+    "z": 38.4
+   },
+   {
+    "x": 26.2,
+    "z": 38.4
+   },
+   {
+    "x": 27.4,
+    "z": 38.4
+   },
+   {
+    "x": 28.6,
+    "z": 38.4
+   },
+   {
+    "x": 29.8,
+    "z": 38.4
+   },
+   {
+    "x": 31,
+    "z": 38.4
+   },
+   {
+    "x": 32.2,
+    "z": 38.4
+   },
+   {
+    "x": 33.4,
+    "z": 38.4
+   },
+   {
+    "x": 34.6,
+    "z": 38.4
+   },
+   {
+    "x": 35.8,
+    "z": 38.4
+   }
+  ],
+  "riderEntry": {
+   "x": 30,
+   "z": 39.6
+  }
+ }
+}
