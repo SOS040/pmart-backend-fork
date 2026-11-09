@@ -136,7 +136,8 @@ case "$cmd" in
         remote_compose "$pc" up -d --wait postgres
         remote_compose "$pc" exec -T postgres psql -U pmart -p 15432 -d pmart -q -f /docker-entrypoint-initdb.d/10-init-db.sql
       fi
-      remote_compose "$pc" up -d --remove-orphans "$@"
+      # 서비스를 지정하면 의존 컨테이너는 건드리지 않는다(--no-deps) — 지정 배포가 ollama·rag-pgvector 를 다시 만들어 모델이 내려갔다(2026-11-09)
+      if [ $# -gt 0 ]; then remote_compose "$pc" up -d --no-deps "$@"; else remote_compose "$pc" up -d --remove-orphans; fi
     done ;;
   status)
     for pc in $(pcs "${1:-all}"); do
@@ -180,7 +181,8 @@ case "$cmd" in
     models="${*:-qwen3:4b}"
     for m in $models; do
       echo "warm $m"
-      remote_compose "$pc" exec -T ollama ollama run "$m" --keepalive 24h "ok" >/dev/null 2>&1 || echo "  실패: $m" >&2
+      # 표준입력을 닫는다 — 터미널이 아니면 ollama run 이 표준입력 끝을 기다려 원격 실행에서 멈췄다(2026-11-09)
+      remote_compose "$pc" exec -T ollama sh -c "'ollama run $m --keepalive 24h ok </dev/null'" >/dev/null 2>&1 || echo "  실패: $m" >&2
     done
     remote_compose "$pc" exec -T ollama ollama ps ;;
   rag-ingest)
