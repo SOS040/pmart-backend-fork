@@ -151,7 +151,7 @@ def plan():
         area = r["group"][0] + str(int(r["group"][1:]))
         code = f"{t}-{area}-{r['rackNo']:02d}-{loc['level']}-{loc['slot']:02d}"
         shelves.append({"locationCode": code, "zone": "STORAGE", "temperatureZone": loc["temp"],
-                        "pickSequence": seq, "highTurnover": False, "sim": loc["code"],
+                        "pickSequence": seq, "highTurnover": False, "sim": loc["code"], "rackId": loc["rackId"],
                         "position": {"xM": loc["pickX"], "zM": loc["pickZ"]},
                         # 칸 치수 = 도면 랙 규격(길이 1.25 m 의 90 % 를 칸 수로, 높이 2.1 m 를 단 수로, 깊이 0.45 m) — 재고 이동 용량 계산 입력
                         "dimensions": {"widthMm": round(RACK_LEN * 900 / r["slotsPerLevel"]),
@@ -316,6 +316,14 @@ def httest_step(s, shelves, existing):
         else:
             print("  고회전 지정 실패", x["locationCode"], st, bb.get("code"), bb.get("detail"))
     print("시험용 고회전 칸:", already)
+    # 도면에 강조할 목록(docs/simulator/layout/high-turnover.json → tools/draw.py 세 번째 인자)
+    by_code = {x["locationCode"]: x for x in shelves}
+    bins = [{"backend": c, "sim": by_code[c]["sim"], "rackId": by_code[c]["rackId"],
+             "pick": [by_code[c]["position"]["xM"], by_code[c]["position"]["zM"]]} for c in sorted(already)]
+    with open(os.path.join(os.path.dirname(LAYOUT), "high-turnover.json"), "w", encoding="utf-8") as f:
+        json.dump({"_comment": "E2E 시험용 고회전 칸(사용자 2026-11-09 — 선반은 일반 선반, 시험용으로 이 칸만 고회전). "
+                               "mfc_layout.py httest 가 지정·갱신. 도면 draw.py 가 강조해 그린다.", "bins": bins},
+                  f, ensure_ascii=False, indent=1)
     st, b = http("GET", f"{GW}/mfcs/{MFC}/replenishment-policies", s.sup())
     for p in b.get("items", []) if st == 200 else []:
         if old_shelf(p["locationCode"]):

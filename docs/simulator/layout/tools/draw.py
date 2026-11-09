@@ -2,6 +2,11 @@ import json, sys, collections, html
 
 L = json.load(open(sys.argv[1], encoding='utf-8'))
 out = sys.argv[2]
+# 선택: 고회전 칸 목록(high-turnover.json) — 그 칸이 있는 랙을 강조한다
+HT = json.load(open(sys.argv[3], encoding='utf-8'))['bins'] if len(sys.argv) > 3 else []
+ht_racks = {}
+for b in HT:
+    ht_racks.setdefault(b['rackId'], []).append(b)
 S = 18.0  # px per m
 M = 40
 W_M = 55.0  # include truck outside east wall
@@ -53,6 +58,11 @@ for rk in L['racks']:
     lx, lz = (1.25, 0.45) if rk['along'] == 'x' else (0.45, 1.25)
     rect({'x0': rk['cx'] - lx / 2, 'z0': rk['cz'] - lz / 2, 'x1': rk['cx'] + lx / 2, 'z1': rk['cz'] + lz / 2},
          rack_fill[rk['temp']], 'stroke="#fff" stroke-width="0.4"')
+for rid, bins in ht_racks.items():
+    rk = next(r for r in L['racks'] if r['id'] == rid)
+    lx, lz = (1.25, 0.45) if rk['along'] == 'x' else (0.45, 1.25)
+    rect({'x0': rk['cx'] - lx / 2, 'z0': rk['cz'] - lz / 2, 'x1': rk['cx'] + lx / 2, 'z1': rk['cz'] + lz / 2},
+         '#e53935', 'stroke="#7f0000" stroke-width="1.5"')
 for d in L['dockSlots']:
     a(f'<rect x="{X(d["pos"]["x"]) - 3:.1f}" y="{Z(d["pos"]["z"]) - 3:.1f}" width="6" height="6" fill="#8e7cc3"/>')
 for w in L['walls']:
@@ -91,6 +101,13 @@ for s in L['stations']:
       f'text-anchor="middle">{s["id"].split("-")[1]}</text>')
 
 P = L['points']
+for rid, bins in ht_racks.items():
+    rk = next(r for r in L['racks'] if r['id'] == rid)
+    first, last = bins[0], bins[-1]
+    lab = f"고회전 {len(bins)}칸 {first['backend']}~{last['backend'][-4:]}"
+    a(f'<line x1="{X(rk["cx"]):.1f}" y1="{Z(rk["cz"]):.1f}" x2="{X(rk["cx"]) + 30:.1f}" y2="{Z(rk["cz"]) + 46:.1f}" stroke="#c62828" stroke-width="1.2"/>')
+    a(f'<text x="{X(rk["cx"]) + 32:.1f}" y="{Z(rk["cz"]) + 50:.1f}" font-size="10" font-weight="700" fill="#c62828" '
+      f'paint-order="stroke" stroke="#fff" stroke-width="3">{e(lab)}</text>')
 
 
 def dot(pt, col, lab, dx=6, dy=-6, anchor='start'):
@@ -123,7 +140,7 @@ y += 18
 items = [('box', rack_fill['FROZEN'], '냉동 랙 105 (5단 × 3칸)'), ('box', rack_fill['CHILLED'], '냉장 랙 125 (5단 × 3칸)'),
          ('box', rack_fill['AMBIENT'], '상온 랙 138 (6단 × 4칸)'), ('box', '#a1887f', '보충재고 팔레트 자리 32'),
          ('box', '#6d9f5b', '패킹대 8 (번호, 기본 가동 4)'), ('box', '#e08a2c', '외부 출하대기 랙 2'),
-         ('box', '#8e7cc3', '하차 적치 칸 36'), ('line', '#333', '벽 (끊긴 곳 = 문)'),
+         ('box', '#8e7cc3', '하차 적치 칸 36'), ('box', '#e53935', '고회전 칸이 있는 랙 (E2E 시험용, 나머지는 일반 선반)'), ('line', '#333', '벽 (끊긴 곳 = 문)'),
          ('line', '#7fb3d5', '유리벽 (패킹실)'), ('line', '#9e9e9e', '낮은 울타리')]
 for kind, col, lab in items:
     if kind == 'line':
