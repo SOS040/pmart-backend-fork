@@ -74,6 +74,21 @@ public final class CustomerAnswerChecks {
     return true;
   }
 
+  private static final Pattern YES_NO_LEAD = Pattern.compile("^\\s*(?:네|예|아니요|아뇨)\\s*[,.!]\\s*");
+
+  /** 답에 물음표 문장이 있는가 — 질문을 되풀이한 답("네, 냉동식품도 반품되나요?", 고객 평가 8회차 C11). 안내 답에는 질문이 필요 없다. */
+  public static boolean asksQuestion(String answer) {
+    return answer.contains("?") || answer.contains("？");
+  }
+
+  /**
+   * 맨 앞 "네, "·"아니요, " 를 뗀다 — 4B 모델이 내용과 반대로 "네" 로 시작한다("비회원도 주문할 수 있나요?" → "네, … 주문·결제는 회원만", 고객 평가
+   * C23). 뒤 내용은 그대로.
+   */
+  public static String dropYesNoLead(String answer) {
+    return YES_NO_LEAD.matcher(answer).replaceFirst("");
+  }
+
   /** 앞뒤가 숫자로 이어지지 않는 같은 수가 있는가("9,0" 은 "9,000" 에 없다). */
   static boolean containsWhole(String text, String number) {
     return Pattern.compile("(?<![\\d.,])" + Pattern.quote(number) + "(?!\\d|[.,]\\d)")

@@ -44,7 +44,6 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       8. 질문이 묻는 대상(기능·서비스·상품 이름)이 근거에 직접 나오지 않으면 grounded=false. 다른 대상에 대한 문장
          (예: "쿠폰 기능이 없어요")을 질문의 대상에 옮겨 쓰지 않는다.
       9. 질문이 "언제"를 물으면 근거에 적힌 시점·기간 문장으로 답한다.
-      10. "네"·"아니요"로 시작하지 말고, 질문을 되풀이하지 말고, 근거 문장으로 바로 답한다.
       출력은 JSON 하나만: {"answer": "...", "usedIds": ["D1", ...], "grounded": true|false}
       근거로 답할 수 없으면 grounded=false.
       """;
@@ -125,7 +124,12 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
           }
         }
         // 고객용: 지위 머리말을 붙이지 않는다 — 고객 안내 문서는 모두 승인된 공개 안내다(C1)
-        return new Generated(true, Mode.GENERATIVE, out.answer(), List.copyOf(used), chatModelName);
+        return new Generated(
+            true,
+            Mode.GENERATIVE,
+            CustomerAnswerChecks.dropYesNoLead(out.answer()),
+            List.copyOf(used),
+            chatModelName);
       }
       feedback =
           "직전 답변이 인용 검사를 통과하지 못했다: " + r.violations() + ". 근거 문장에 있는 내용만 쓰고 근거 ID 를 정확히 적어라.";
@@ -152,6 +156,9 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       Map<String, String> evidence) {
     String joined = String.join("\n", out.usedIds().stream().map(evidence::get).toList());
     List<String> raw = out.usedIds().stream().map(id -> byTag.get(id).content()).toList();
+    if (CustomerAnswerChecks.asksQuestion(out.answer())) {
+      return "답에 질문(물음표)을 쓰지 말고 근거 문장으로 답한다.";
+    }
     if (!CustomerAnswerChecks.numbersWhole(out.answer(), joined)) {
       return "답의 숫자가 근거의 숫자와 다르다. 숫자·금액은 근거에 적힌 그대로 쓴다.";
     }

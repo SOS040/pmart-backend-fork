@@ -40,6 +40,15 @@ class CustomerAnswerChecksTest {
   }
 
   @Test
+  void echoedQuestionAndYesNoLeadAreHandled() {
+    assertThat(CustomerAnswerChecks.asksQuestion("네, 냉동식품도 반품되나요?")).isTrue();
+    assertThat(CustomerAnswerChecks.asksQuestion("신선식품은 받은 뒤 24시간 안에 신청해 주세요.")).isFalse();
+    assertThat(CustomerAnswerChecks.dropYesNoLead("네, 비회원은 장바구니에 담을 수 있어요."))
+        .isEqualTo("비회원은 장바구니에 담을 수 있어요.");
+    assertThat(CustomerAnswerChecks.dropYesNoLead("네이버 로그인은 없어요.")).isEqualTo("네이버 로그인은 없어요.");
+  }
+
+  @Test
   void subjectFromQuestionMustBeInEvidence() {
     String ev = "지금은 쿠폰 기능이 없어요. 쿠폰이 생기면 환불 기준을 함께 안내할게요.";
     assertThat(CustomerAnswerChecks.questionTermsInEvidence("선물하기 기능이 있나요?", "선물하기 기능이 없어요.", ev))
