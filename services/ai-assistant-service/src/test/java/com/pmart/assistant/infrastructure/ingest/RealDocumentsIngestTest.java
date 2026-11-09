@@ -120,10 +120,24 @@ class RealDocumentsIngestTest {
 
   @Test
   void implementationRecordDateIsSeparateFromAuthority() {
-    assertThat(rows)
-        .filteredOn(r -> r.path().endsWith("order-checkout-saga.md") && r.implRecordDate() != null)
+    // 절마다 자기 "구현 상태 (날짜…)" — 1.4 는 2026-10-31, 2.0.x(슬라이스 6, 2026-11-07 추가)는 2026-11-07
+    var recorded =
+        rows.stream()
+            .filter(r -> r.path().endsWith("order-checkout-saga.md") && r.implRecordDate() != null)
+            .toList();
+    assertThat(recorded).isNotEmpty();
+    assertThat(recorded)
+        .filteredOn(r -> r.sectionPath() != null && r.sectionPath().contains("1.4 구현 상태"))
         .isNotEmpty()
         .allSatisfy(r -> assertThat(r.implRecordDate()).isEqualTo("2026-10-31"));
+    assertThat(recorded)
+        .filteredOn(r -> r.sectionPath() != null && r.sectionPath().contains("2.0.1 구현 상태"))
+        .isNotEmpty()
+        .allSatisfy(r -> assertThat(r.implRecordDate()).isEqualTo("2026-11-07"));
+    // 지위는 날짜로 바뀌지 않는다
+    assertThat(recorded)
+        .extracting(ChunkRow::implRecordDate)
+        .containsOnly("2026-10-31", "2026-11-07");
   }
 
   @Test

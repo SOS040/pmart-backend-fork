@@ -106,6 +106,9 @@
 
 ## 2026-11-09
 - 사용자 결정: 고객용으로도 확대(D1 재확인), **pgvector 를 백오피스용·고객용 따로**(C7 — 앞의 추천 "함께, 청크별 접근 범위로 거름"을 대체), 임베딩은 Qwen3-Embedding-0.6B·BGE-M3 를 우리 문서로 비교 뒤 선택(D3). `planning/2026-11-07-references-review.md` 결정 표에 반영.
+- 사용자 결정: 추천대로 서비스 분리(고객용 `customer-assistant-service` 새로 만듦), RAG 전용 pgvector 컨테이너 하나에 DB 둘, LAN 배치 pc2(PC 를 한 대 더 들일 수 있음), 모델은 Ollama. → ADR-0051(승인), service-map §8·architecture-design 50개, CLAUDE.md.
+- LAN 확인(읽기만): 세 PC PostgreSQL 모두 pgvector 없음, PC 넷 같은 사양(i5-11400F·32GB·RTX 2060 6GB), 컨테이너 메모리 pc2 7.8·pc3 11.7·pc4 10.2GB.
+- 색인 목록(`manifest.yml`)에 빠져 있던 ADR-0037~0050 과 새 0051 추가(RealDocumentsIngestTest 가 ADR 개수 대조). 같은 시험의 낡은 기대값(주문 사가 문서 구현 날짜가 모두 10-31) 을 절별(1.4 = 10-31, 2.0.1 = 11-07)로 고침. ai-assistant check 통과(단위 91, 통합 31).
 
 ## 남은 것
 - ADR-0036 결정 4건(외부 모델·외부 전송 범위, LAN pgvector 위치, 답변 보존·원문 저장, 운영자 역할).

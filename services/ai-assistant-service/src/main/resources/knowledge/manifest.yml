@@ -78,6 +78,21 @@ documents:
   - { path: docs/adr/0034-kafka-event-history-retention-and-reindex.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0035-event-consumption-spring-cloud-stream.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0036-ai-assistant-phase1-policy-rag.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0037-kafka-three-node-kraft-cluster.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0038-split-search-and-logs-elasticsearch.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0039-approval-application-receipt-event.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0040-mfc-inventory-model-v2.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0041-per-product-shelf-life-guarantee.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0042-mfc-open-decisions-lot-substitution-hold-ttl-location-code-bulk-inbound.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0043-slice-6b-picking-packing.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0044-pick-shortage-hold-and-resecure.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0045-shortage-saga-cancel-out-of-stock-only.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0046-cancel-after-pick-return.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0047-package-handover-fence.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0048-mfc-overnight-quality-count-restrictions.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0049-shortage-always-partial-cancel.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0050-or-tools-assignment-routing-no-jgrapht.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0051-rag-customer-expansion-split-services-ollama.md, domain: adr, kind: ADR, precedence: 5 }
 
 # 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
 overrides:

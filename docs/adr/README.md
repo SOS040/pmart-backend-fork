@@ -54,3 +54,4 @@
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.
 | [0050](0050-or-tools-assignment-routing-no-jgrapht.md) | 라이더 배정·배송 경로·피킹 순서는 기존 OR-Tools 로(delivery-dispatch 추가), JGraphT 도입 안 함, 도면은 MFC 마다 | 승인 |
+| [0051](0051-rag-customer-expansion-split-services-ollama.md) | RAG 고객앱 확대 — 운영자용·고객용 서비스와 pgvector DB 분리(전용 컨테이너 하나), LAN pc2, 모델은 Ollama — ADR-0036 결정 11·결정 필요 1·2 대체 | 승인 |
