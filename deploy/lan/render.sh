@@ -773,9 +773,11 @@ EOF
         echo
         # 운영자 RAG 색인 작업(ADR-0036 결정 6 — 기동 때 색인하지 않는다): 같은 이미지·설정, profiles 로 up 에서 제외,
         # 고정 IP 없음(compose run 이 앱의 고정 IP 를 그대로 쓰면 실행 중인 앱과 겹친다). lan.sh rag-ingest 가 run --rm 으로 한 번 돌린다
-        if [ "$c" = ai-assistant-service ]; then
+        # 고객용(customer-assistant-ingest, ADR-0051)도 같은 방식 — 문서는 rag/knowledge-customer(고객 안내 문서만)
+        if [ "$c" = ai-assistant-service ] || [ "$c" = customer-assistant-service ]; then
+          if [ "$c" = ai-assistant-service ]; then job=ai-assistant-ingest; kn=knowledge-operator; else job=customer-assistant-ingest; kn=knowledge-customer; fi
           cat <<EOF
-  ai-assistant-ingest:
+  $job:
     <<: *common
     image: $REGISTRY/pmart-$c@$(digest_of "$c")
     profiles: ["jobs"]
@@ -783,7 +785,7 @@ EOF
     mem_limit: 768m
     environment: *env-$c
     volumes:
-      - ./rag/knowledge-operator:/repo:ro
+      - ./rag/$kn:/repo:ro
     command:
       - --spring.main.web-application-type=none
       - --eureka.client.enabled=false
@@ -982,12 +984,15 @@ EOF
     mkdir -p "$dir/rag" && tr -d '\r' < "$LAN/rag/rag-init-db.sh" > "$dir/rag/rag-init-db.sh"
   fi
   # 운영자 RAG 색인 대상 문서(manifest 명시 목록만): lan.sh rag-ingest 가 컨테이너에 /repo 로 붙여 색인한다. 출처 커밋은 REVISION
-  if [[ "$comps" == *" ai-assistant-service "* ]]; then
-    kdir="$dir/rag/knowledge-operator"; mkdir -p "$kdir"
-    sed -n 's/^  - { path: \([^,]*\),.*/\1/p' services/ai-assistant-service/src/main/resources/knowledge/manifest.yml \
+  # 고객용 RAG(customer-assistant-service)는 rag/knowledge-customer — 고객 안내 문서만(lan.sh rag-ingest-customer)
+  for rag in ai-assistant-service:knowledge-operator customer-assistant-service:knowledge-customer; do
+    app="${rag%%:*}"; kn="${rag#*:}"
+    [[ "$comps" == *" $app "* ]] || continue
+    kdir="$dir/rag/$kn"; rm -rf "$kdir"; mkdir -p "$kdir"
+    sed -n 's/^  - { path: \([^,]*\),.*/\1/p' "services/$app/src/main/resources/knowledge/manifest.yml" \
       | while read -r f; do mkdir -p "$kdir/$(dirname "$f")"; cp "$f" "$kdir/$f"; done
     git rev-parse HEAD > "$kdir/REVISION"
-  fi
+  done
 
   # 임시 백오피스 정적 파일: lan.sh publish-backoffice 가 둔 빌드(backoffice-dist, git 제외). 없으면 안내 페이지
   if [[ "$comps" == *" backoffice-web "* ]]; then

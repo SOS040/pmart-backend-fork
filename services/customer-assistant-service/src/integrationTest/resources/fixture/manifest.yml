@@ -1,0 +1,15 @@
+# 통합 시험 픽스처 manifest — 본 manifest 와 같은 형식. hq-only 는 고객 범위 밖(검색되지 않아야 한다)
+version: 1
+defaultAccessScope: customer
+documents:
+  - { path: docs/business/policy.md, domain: commerce, kind: BUSINESS, authority: PROPOSAL, precedence: 3 }
+  - { path: docs/adr/0001-service-token.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0002-no-service-token.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0003-category.md, domain: adr, kind: ADR, precedence: 5, accessScope: hq-only }
+  - { path: docs/secret/hq.md, domain: settlement, kind: REFERENCE, authority: CONFIRMED, precedence: 4, accessScope: hq-only }
+overrides:
+  - path: docs/business/policy.md
+    contains: "고객 분류는 1·2단계"
+    lifecycle: SUPERSESSION_PROPOSED
+    proposedSupersededBy: [docs/adr/0003-category.md]
+    reason: 시험 — 제안 ADR 의 대체 제안 표시, 제안 문서는 hq-only 라 운영자에게 동반 인용되지 않아야 한다

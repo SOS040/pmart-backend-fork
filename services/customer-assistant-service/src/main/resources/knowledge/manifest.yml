@@ -1,0 +1,20 @@
+# customer-assistant-service 색인 대상 명시 목록(ADR-0051). 여기에 없는 파일은 색인하지 않는다.
+# 고객 공개 안내 문서만 — Claude 초안·사용자 승인(2026-11-09 결정 C1, 승인 2026-11-09). 업무 문서(docs/business/*-business-logic.md·cs-scripts·ADR)는
+# 내부 문서라 넣지 않는다. README(작성 규칙)도 넣지 않는다. 문서를 더하거나 고치면 사용자 승인 뒤 여기에 넣고 재색인(lan.sh rag-ingest-customer).
+# 지위·우선순위 가중은 설정에서 0 — 승인된 고객 안내는 모두 같은 지위로 본다.
+version: 1
+defaultAccessScope: customer
+documents:
+  - { path: docs/business/customer-faq/01-customer-center.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/02-cancel.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/03-delivery-status.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/04-not-received.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/05-missing-wrong-item.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/06-damage-quality.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/07-refund.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/08-return-exchange.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/09-shortage.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/10-address-area.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/11-payment-fees.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/12-account.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/13-alcohol.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }

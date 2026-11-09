@@ -11,6 +11,7 @@
 #   deploy/lan/lan.sh rag-warm <pc> [모델...]       ollama 에 대화 모델을 미리 올림(첫 적재 약 30초 > 호출 시간 제한 25초). ollama 재시작 뒤 한 번.
 #                                                   임베딩 모델은 서비스가 CPU 로 올린다(embedding-num-gpu 0) — 여기서 올리면 GPU 에 올라가 대화 모델을 밀어낸다
 #   deploy/lan/lan.sh rag-ingest <pc>              운영자 RAG 색인(compose 의 ai-assistant-ingest — rag/knowledge-operator 를 /repo 로, 일회 컨테이너)
+#   deploy/lan/lan.sh rag-ingest-customer <pc>     고객 RAG 색인(customer-assistant-ingest — 고객 안내 문서 rag/knowledge-customer, ADR-0051)
 #   deploy/lan/lan.sh config-push [메시지]        설정 저장소 사본(deploy/lan/.config-repo, 사람이 고친 내용)을 GitHub pmart-config 에 commit·push(ADR-0029)
 # deploy 는 설정 저장소 사본에 미커밋·미push 가 있으면 멈추고(config-push 먼저), config-server 를 먼저 띄운 뒤 나머지를 올린다.
 # 원격 실행: deploy/remote/run-ps.sh (원격 docker 는 %USERPROFILE%\.docker-pmart 설정 — 읽기 전용 pull 토큰)
@@ -191,6 +192,11 @@ case "$cmd" in
     pc="${1:?pc}"
     copy_files "$pc"
     remote_compose "$pc" run --rm --no-deps ai-assistant-ingest ;;
+  rag-ingest-customer)
+    "$0" rag-warm "${1:?pc}"
+    pc="${1:?pc}"
+    copy_files "$pc"
+    remote_compose "$pc" run --rm --no-deps customer-assistant-ingest ;;
   down)
     for pc in $(pcs "${1:?pc|all}"); do echo "=== $pc"; remote_compose "$pc" down; done ;;
   *)

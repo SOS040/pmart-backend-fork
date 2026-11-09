@@ -215,7 +215,7 @@ claim ──ReturnPickupRequested──► delivery-dispatch → delivery-execut
 | `notification-service` | 고객·라이더·운영 알림, 채널, 발송 이력·재시도, 읽음 | 알림 실패는 통지만 복구 |
 | `audit-service` | 감사 사건 수집·조회·보존(추가만) | |
 | `ai-assistant-service` | RAG·정책 설명·권한 있는 도메인 API 호출 | 비즈니스 문서에 요구 없음, 3차. 1차(정책 문서 질의응답·근거 표시)만 앞당김 — ADR-0036. 운영자 전용(ADR-0051) |
-| `customer-assistant-service` | 고객앱 RAG(고객 공개 문서 질의응답) | 2026-11-09 추가(ADR-0051), 미구현 — 운영자용과 서비스·DB 분리 |
+| `customer-assistant-service` | 고객앱 RAG(고객 공개 문서 질의응답) | 2026-11-09 추가(ADR-0051), 1차 구현 — 운영자용과 서비스·DB 분리 |
 | **`approval-service`** `[추가 제안]` | ChangeRequest·ApprovalDossier, 5축 상태(요청/심사/실행/전달/사건), 부분 집행 불변식, 통합 승인함(BO-10), 대량 변경(BO-26), 정책 참조 레지스트리(BO-09 PolicyReference) | 승인 **정본은 도메인**(replenishment, claim, quality…). 여기는 워크플로 원장 (ADR-0004) |
 | **`case-service`** `[추가 제안]` | Case/SubCase/Obligation/ActionRequest/ShiftHandover/CloseSnapshot, CS 접수, 문제함(MFC WK-12), 도움요청(Delivery 9장) | 도메인 사고·클레임은 원시스템 유지 |
 | **`center-master-service`** `[추가 제안]` | 센터 코드·유형·주소·좌표·영업 캘린더·취급 온도대·입고창 (BO-06, TMS 2.3~3.1) | 소비자: order, replenishment, transport, delivery, mfc, cdc. 현장 용량·LOC는 각 센터 서비스 |
