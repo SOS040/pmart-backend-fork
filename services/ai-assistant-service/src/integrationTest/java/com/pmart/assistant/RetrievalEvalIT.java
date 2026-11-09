@@ -116,6 +116,7 @@ class RetrievalEvalIT extends AssistantITBase {
     writeSection(rows, sRecall, sMrr, recall, mrr);
     if (Boolean.getBoolean("pmart.eval.sweep")) {
       sweep(snapshot);
+      calibrate(snapshot);
     }
     assertThat(rows).hasSizeGreaterThanOrEqualTo(20);
     assertThat(recall).as("기준선 recall@5 — 보고용, 품질 보증 아님").isGreaterThan(0.0);
@@ -213,6 +214,96 @@ class RetrievalEvalIT extends AssistantITBase {
     r.setAssumptionWeight(orig[5]);
     r.setPrecedenceWeight(orig[6]);
     Path out = report("retrieval-sweep.md");
+    Files.createDirectories(out.getParent());
+    Files.writeString(out, sb.toString(), StandardCharsets.UTF_8);
+  }
+
+  /**
+   * 근거 없음 임계값 맞추기(2026-11-09 — 해시 기준선 값 0.18 은 의미 임베딩에서 거의 모든 질문이 넘는다, 답변 평가 A20): 임계값을 0 으로 두고 답변
+   * 평가 질문마다 1위 혼합 유사도를 잰다. 답이 있는 질문(ANSWER)과 없는 질문(NONE)의 분포·겹침과 후보 임계값별 결과를
+   * report("threshold-calibration.md") 로 쓴다.
+   */
+  void calibrate(com.pmart.assistant.infrastructure.SnapshotStore.SnapshotRow snapshot)
+      throws IOException {
+    var r = props.getRetrieval();
+    double orig = r.getThreshold();
+    r.setThreshold(0.0);
+    record Score(String id, String expect, double top, String path, String q) {}
+    List<Score> scores = new ArrayList<>();
+    try (InputStream in = new ClassPathResource("eval/answers.json").getInputStream()) {
+      var root = tools.jackson.databind.json.JsonMapper.builder().build().readTree(in);
+      for (var n : root.path("questions")) {
+        String expect = n.path("expect").asString();
+        String q = n.path("q").asString();
+        var cls = QuestionClassifier.classify(q);
+        if ("REALTIME".equals(expect) || cls.intent() != QuestionClassifier.Intent.POLICY) {
+          continue; // 검색 전에 거르는 질문
+        }
+        var res = retriever.retrieve(snapshot, q, cls.history(), Set.of("operator"));
+        var top = res.ranked().isEmpty() ? null : res.ranked().get(0);
+        scores.add(
+            new Score(
+                n.path("id").asString(),
+                expect,
+                top == null ? 0 : top.similarity(),
+                top == null ? "" : top.path(),
+                q));
+      }
+    } finally {
+      r.setThreshold(orig);
+    }
+    scores.sort((a, b) -> Double.compare(b.top(), a.top()));
+    double minAnswer =
+        scores.stream()
+            .filter(s -> s.expect().equals("ANSWER"))
+            .mapToDouble(Score::top)
+            .min()
+            .orElse(0);
+    double maxNone =
+        scores.stream()
+            .filter(s -> s.expect().equals("NONE"))
+            .mapToDouble(Score::top)
+            .max()
+            .orElse(0);
+    StringBuilder sb =
+        new StringBuilder("# 근거 없음 임계값 맞추기 (" + label + ")\n\n")
+            .append(
+                String.format(
+                    Locale.ROOT,
+                    "- 혼합 유사도 = 코사인 %.2f + 키워드 %.2f. 지금 임계값 %.2f%n- 답이 있는 질문의 최저 1위 점수 **%.3f**, 답이 없는 질문의"
+                        + " 최고 1위 점수 **%.3f** → %s%n%n",
+                    r.getCosineWeight(),
+                    r.getKeywordWeight(),
+                    orig,
+                    minAnswer,
+                    maxNone,
+                    minAnswer > maxNone ? "나뉨(사이 값이 후보)" : "겹침(임계값 하나로 다 나눌 수 없음)"))
+            .append("| 후보 임계값 | 답 있는 질문 중 근거 없음으로 잘못 감 | 답 없는 질문 중 걸러짐 |\n|---|---|---|\n");
+    long answers = scores.stream().filter(s -> s.expect().equals("ANSWER")).count();
+    long nones = scores.size() - answers;
+    for (double t = 0.30; t <= 0.701; t += 0.025) {
+      double tt = t;
+      long lost = scores.stream().filter(s -> s.expect().equals("ANSWER") && s.top() < tt).count();
+      long blocked = scores.stream().filter(s -> s.expect().equals("NONE") && s.top() < tt).count();
+      sb.append(
+          String.format(
+              Locale.ROOT, "| %.3f | %d/%d | %d/%d |%n", t, lost, answers, blocked, nones));
+    }
+    sb.append("\n| 순위 | id | 기대 | 1위 점수 | 1위 문서 | 질문 |\n|---|---|---|---|---|---|\n");
+    int i = 1;
+    for (Score s : scores) {
+      sb.append(
+          String.format(
+              Locale.ROOT,
+              "| %d | %s | %s | %.3f | %s | %s |%n",
+              i++,
+              s.id(),
+              s.expect(),
+              s.top(),
+              s.path(),
+              s.q()));
+    }
+    Path out = report("threshold-calibration.md");
     Files.createDirectories(out.getParent());
     Files.writeString(out, sb.toString(), StandardCharsets.UTF_8);
   }

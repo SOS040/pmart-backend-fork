@@ -118,10 +118,15 @@ public final class OllamaModels {
     if (o.isDisableThinking()) {
       options.disableThinking();
     }
+    // 재시도 없음: Spring AI 기본 재시도는 같은 입력에서 되풀이되는 Ollama 500 을 네 번 더 불러 60초 처리 시간을 다 썼다(2026-11-09 답변
+    // 평가 N08). 실패는 바로 503(DEPENDENCY_UNAVAILABLE) — 같은 Idempotency-Key 로 다시 물을 수 있다
     return OllamaChatModel.builder()
         .ollamaApi(api)
         .options(options.build())
         .modelManagementOptions(noPull())
+        .retryTemplate(
+            new org.springframework.core.retry.RetryTemplate(
+                org.springframework.core.retry.RetryPolicy.withMaxRetries(0)))
         .build();
   }
 }

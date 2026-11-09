@@ -66,6 +66,53 @@ class OllamaProviderIT extends PgvectorContainerSupport {
 
   final JsonMapper json = JsonMapper.builder().build();
 
+  /** 모델 오류는 재시도하지 않고 바로 503 — 같은 입력에서 되풀이되는 500 을 다시 불러 처리 시간을 다 쓰지 않는다(2026-11-09 N08). */
+  @Test
+  void chatModelErrorIsNotRetriedAndAnswersDependencyUnavailable() throws Exception {
+    ollama.resetAll(); // 같은 클래스 다른 시험의 요청 기록·스텁을 지운다
+    jdbc.update("DELETE FROM policy_answer");
+    jdbc.update("DELETE FROM index_snapshot");
+    ollama.stubFor(
+        post(urlPathEqualTo("/api/embed"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"model\":\"test-embed\",\"embeddings\":[[0.5,0.5,0.5,0.5]]}")));
+    ollama.stubFor(
+        post(urlPathEqualTo("/api/chat"))
+            .willReturn(aResponse().withStatus(500).withBody("{\"error\":\"boom\"}")));
+    Path repo = Files.createTempDirectory("assistant-ollama-err");
+    for (String f : AssistantITBase.FIXTURE_FILES) {
+      Path target = repo.resolve(f);
+      Files.createDirectories(target.getParent());
+      try (InputStream in = new ClassPathResource("fixture/" + f).getInputStream()) {
+        Files.copy(in, target);
+      }
+    }
+    try (InputStream in = new ClassPathResource("fixture/manifest.yml").getInputStream()) {
+      ingestor.ingest(repo, KnowledgeManifest.load(in));
+    }
+    long t0 = System.nanoTime();
+    // JDK 클라이언트 — 기본(Apache) 클라이언트는 503 을 스스로 다시 보내 모델 호출 수가 2 로 보인다
+    int status =
+        RestClient.builder()
+            .requestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory())
+            .build()
+            .post()
+            .uri("http://localhost:" + port + "/api/v1/assistant/policy-questions")
+            .header(
+                HttpHeaders.AUTHORIZATION,
+                "Bearer " + TestJwt.operator("op-e", List.of("OPS"), List.of()))
+            .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
+            .header("X-Source-System", "backoffice-web")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(json.writeValueAsString(Map.of("question", "봉투값은 얼마인가요?")))
+            .exchange((req, res) -> res.getStatusCode().value());
+    assertThat(status).isEqualTo(503);
+    assertThat((System.nanoTime() - t0) / 1_000_000_000.0).isLessThan(10.0);
+    ollama.verify(1, postRequestedFor(urlPathEqualTo("/api/chat")));
+  }
+
   @Test
   void ingestsAndAnswersThroughOllamaWithQueryInstructionThinkingOffAndJsonFormat()
       throws Exception {
