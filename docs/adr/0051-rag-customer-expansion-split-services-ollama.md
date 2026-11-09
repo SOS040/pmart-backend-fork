@@ -23,7 +23,7 @@
    - Ollama 는 Docker 컨테이너로 두고 pc2 GPU 를 쓴다(다른 구성요소처럼 `lan.sh` 로 관리·버전 고정). 컨테이너에서 GPU 가 안 되면 다시 정한다. → 2026-11-09 확인: pc2 Docker 컨테이너(`--gpus all`)에서 RTX 2060 6144MiB 보임(nvidia-smi, CUDA 13.3).
    - 서비스는 Spring AI 의 Ollama 모듈(`spring-ai-ollama`, 기존 `spring-ai-bom` 2.0.2)로 부른다. `libs.versions.toml` 에 등록한다.
    - 임베딩: Qwen3-Embedding-0.6B 와 BGE-M3 를 우리 문서(`RetrievalEvalIT` 질문)로 비교한 뒤 고른다(D3, 사용자 2026-11-09). → **Qwen3-Embedding-0.6B 로 결정**(2026-11-09 사용자, 절 기준 recall@5 0.76 vs 0.68, 639MB — `docs/rag/verification/2026-11-09/embedding-compare/`). 1024차원, 질문에만 지시문. 차원이 바뀌므로 재색인이 따른다.
-   - 대화 모델: RTX 2060(6GB)에 임베딩과 같이 올라가는 4B 급으로 시작해 답변 충실도를 평가하고, 부족하면 8B 를 시험한다(시작값 — 평가 뒤 정한다). → 2026-11-09 LAN: qwen3:4b(문맥 8192)는 GPU 100%(3.9GB). pc2 GPU 는 화면이 0.86GB 를 써서 임베딩과 함께 올라가지 않아 **임베딩은 CPU**(994MB, 질문 하나 1초 안)로 정했다.
+   - 대화 모델: RTX 2060(6GB)에 임베딩과 같이 올라가는 4B 급으로 시작해 답변 충실도를 평가하고, 부족하면 8B 를 시험한다(시작값 — 평가 뒤 정한다). → 2026-11-09 LAN: qwen3:4b(문맥 8192)는 GPU 100%(3.9GB). pc2 GPU 는 화면이 0.86GB 를 써서 임베딩과 함께 올라가지 않아 **임베딩은 CPU**(994MB, 질문 하나 1초 안)로 정했다. → **대화 모델 qwen3:4b 로 결정**(2026-11-09 사용자): 같은 30문항에서 8B 26/30·4B 25/30, 8B 는 8~22초(4B 1.4~8초)·일부 CPU(`docs/rag/verification/2026-11-09/answer-eval/report-5-qwen3-8b.md`).
 
 ## 결정 대기
 | # | 내용 | 막는 것 |

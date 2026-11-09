@@ -81,7 +81,8 @@ public class AssistantConfig {
           "ollama:" + o.getChatModel(),
           new CitationVerifier(r.getMinSentenceOverlap()),
           extractive,
-          json);
+          json,
+          r::getFallbackMinSimilarity);
     }
     if ("fake".equals(provider)) {
       ChatModel chat = chatModel.getIfAvailable();
@@ -89,7 +90,12 @@ public class AssistantConfig {
         throw new IllegalStateException("provider=fake 인데 ChatModel 빈이 없습니다(시험 전용).");
       }
       return new GenerativeAnswerGenerator(
-          chat, "fake-chat", new CitationVerifier(r.getMinSentenceOverlap()), extractive, json);
+          chat,
+          "fake-chat",
+          new CitationVerifier(r.getMinSentenceOverlap()),
+          extractive,
+          json,
+          r::getFallbackMinSimilarity);
     }
     throw new IllegalStateException(
         "지원하지 않는 pmart.assistant.model.provider: " + provider + " (local|ollama|fake)");

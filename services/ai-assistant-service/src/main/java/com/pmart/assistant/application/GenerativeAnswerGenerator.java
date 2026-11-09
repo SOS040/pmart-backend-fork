@@ -49,6 +49,7 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
   private final CitationVerifier verifier;
   private final ExtractiveAnswerGenerator fallback;
   private final ObjectMapper json;
+  private final java.util.function.DoubleSupplier fallbackMinSimilarity;
 
   public GenerativeAnswerGenerator(
       ChatModel chat,
@@ -56,6 +57,21 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       CitationVerifier verifier,
       ExtractiveAnswerGenerator fallback,
       ObjectMapper json) {
+    this(chat, chatModelName, verifier, fallback, json, () -> 0.0);
+  }
+
+  /**
+   * @param fallbackMinSimilarity 생성이 인용 검사에 두 번 떨어졌을 때 발췌로 바꾸는 1위 근거 혼합 유사도 하한. 그보다 낮으면 근거 없음(NONE)
+   *     — 임계값 바로 위의 관계없는 질문에 관계없는 원문을 보여 주지 않는다(2026-11-09 답변 평가 N01). 설정 갱신을 따라가게 공급자로 받는다
+   */
+  public GenerativeAnswerGenerator(
+      ChatModel chat,
+      String chatModelName,
+      CitationVerifier verifier,
+      ExtractiveAnswerGenerator fallback,
+      ObjectMapper json,
+      java.util.function.DoubleSupplier fallbackMinSimilarity) {
+    this.fallbackMinSimilarity = fallbackMinSimilarity;
     this.chat = chat;
     this.chatModelName = chatModelName;
     this.verifier = verifier;
@@ -104,6 +120,9 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       }
       feedback =
           "직전 답변이 인용 검사를 통과하지 못했다: " + r.violations() + ". 근거 문장에 있는 내용만 쓰고 근거 ID 를 정확히 적어라.";
+    }
+    if (ranked.get(0).similarity() < fallbackMinSimilarity.getAsDouble()) {
+      return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
     }
     Generated extractive = fallback.generate(question, ranked, companions);
     return new Generated(

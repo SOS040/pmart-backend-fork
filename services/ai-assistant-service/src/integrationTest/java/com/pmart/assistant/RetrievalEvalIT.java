@@ -146,10 +146,10 @@ class RetrievalEvalIT extends AssistantITBase {
     StringBuilder sb =
         new StringBuilder("# 검색 가중 조정 (" + label + ")\n\n")
             .append(
-                "| 코사인:키워드 | 지위 가중 배율 | 문서 recall@5 | 절 recall@5 | 답변 질문 근거 적중@5 | 놓친 답변 질문 |\n")
-            .append("|---|---|---|---|---|---|\n");
+                "| 코사인:키워드 | 지위 가중 배율 | 문서 recall@5 | 절 recall@5 | 답변 질문 문서 적중@5 | 답변 질문 답 절 적중@5 | 답 절 놓침 |\n")
+            .append("|---|---|---|---|---|---|---|\n");
     for (double cos : new double[] {0.6, 0.75, 0.9, 1.0}) {
-      for (double scale : new double[] {1.0, 0.5, 0.0}) {
+      for (double scale : new double[] {1.0, 0.5, 0.2, 0.0}) {
         r.setCosineWeight(cos);
         r.setKeywordWeight(Math.round((1 - cos) * 100) / 100.0);
         r.setConfirmedWeight(orig[2] * scale);
@@ -175,7 +175,9 @@ class RetrievalEvalIT extends AssistantITBase {
           }
         }
         int hit = 0;
+        int secHit = 0;
         List<String> missed = new ArrayList<>();
+        List<String> secMissed = new ArrayList<>();
         for (Q q : answerQs) {
           var res =
               retriever.retrieve(
@@ -183,6 +185,20 @@ class RetrievalEvalIT extends AssistantITBase {
                   q.q(),
                   QuestionClassifier.classify(q.q()).history(),
                   Set.of("operator"));
+          // 답 절: 경로 앞부분 일치 + 절 이름에 그 글자(answers.json sections)
+          if (res.ranked().stream()
+              .anyMatch(
+                  c ->
+                      q.sections().stream()
+                          .anyMatch(
+                              s ->
+                                  c.path().startsWith(s.get(0))
+                                      && c.section() != null
+                                      && c.section().contains(s.get(1))))) {
+            secHit++;
+          } else {
+            secMissed.add(q.id());
+          }
           if (res.ranked().stream()
               .anyMatch(c -> q.expected().stream().anyMatch(c.path()::startsWith))) {
             hit++;
@@ -193,7 +209,7 @@ class RetrievalEvalIT extends AssistantITBase {
         sb.append(
             String.format(
                 Locale.ROOT,
-                "| %.2f:%.2f | %.1f | %d/%d | %d/%d | %d/%d | %s |%n",
+                "| %.2f:%.2f | %.1f | %d/%d | %d/%d | %d/%d | %d/%d | %s |%n",
                 cos,
                 1 - cos,
                 scale,
@@ -203,7 +219,9 @@ class RetrievalEvalIT extends AssistantITBase {
                 retrievalQs.size(),
                 hit,
                 answerQs.size(),
-                String.join(" ", missed)));
+                secHit,
+                answerQs.size(),
+                String.join(" ", secMissed)));
       }
     }
     r.setCosineWeight(orig[0]);
@@ -230,6 +248,8 @@ class RetrievalEvalIT extends AssistantITBase {
     r.setThreshold(0.0);
     record Score(String id, String expect, double top, String path, String q) {}
     List<Score> scores = new ArrayList<>();
+    StringBuilder top5 =
+        new StringBuilder("# 답변 평가 질문별 상위 근거 (" + label + ", 임계값 0 — 생성 모델에 넘어가는 순서)\n");
     try (InputStream in = new ClassPathResource("eval/answers.json").getInputStream()) {
       var root = tools.jackson.databind.json.JsonMapper.builder().build().readTree(in);
       for (var n : root.path("questions")) {
@@ -241,6 +261,19 @@ class RetrievalEvalIT extends AssistantITBase {
         }
         var res = retriever.retrieve(snapshot, q, cls.history(), Set.of("operator"));
         var top = res.ranked().isEmpty() ? null : res.ranked().get(0);
+        top5.append("\n### ").append(n.path("id").asString()).append(" — ").append(q).append('\n');
+        int k = 1;
+        for (var c : res.ranked()) {
+          top5.append(
+              String.format(
+                  Locale.ROOT,
+                  "%d. %.3f [%s] %s — %s%n",
+                  k++,
+                  c.similarity(),
+                  c.authority(),
+                  c.path(),
+                  c.section()));
+        }
         scores.add(
             new Score(
                 n.path("id").asString(),
@@ -306,6 +339,7 @@ class RetrievalEvalIT extends AssistantITBase {
     Path out = report("threshold-calibration.md");
     Files.createDirectories(out.getParent());
     Files.writeString(out, sb.toString(), StandardCharsets.UTF_8);
+    Files.writeString(report("answer-top5.md"), top5.toString(), StandardCharsets.UTF_8);
   }
 
   /** 답변 평가 질문(eval/answers.json) 중 ANSWER — sources 를 정답 문서로. */
@@ -319,7 +353,10 @@ class RetrievalEvalIT extends AssistantITBase {
         }
         List<String> src = new ArrayList<>();
         n.path("sources").forEach(s -> src.add(s.asString()));
-        out.add(new Q(n.path("id").asString(), n.path("q").asString(), src, List.of()));
+        List<List<String>> secs = new ArrayList<>();
+        n.path("sections")
+            .forEach(s -> secs.add(List.of(s.get(0).asString(), s.get(1).asString())));
+        out.add(new Q(n.path("id").asString(), n.path("q").asString(), src, secs));
       }
       return out;
     }

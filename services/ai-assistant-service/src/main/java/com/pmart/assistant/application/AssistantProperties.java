@@ -237,6 +237,12 @@ public class AssistantProperties {
     /** 혼합 유사도 하한. 기준선 평가(RetrievalEvalIT)로 정한다. */
     private double threshold = 0.18;
 
+    /**
+     * 생성이 인용 검사에 떨어졌을 때 발췌로 바꾸는 1위 근거 유사도 하한. 0(기본)이면 늘 발췌로 바꾼다(종전). 그보다 낮으면 근거 없음 — 임계값 바로 위의 관계없는
+     * 질문에 관계없는 원문을 보이지 않게(2026-11-09 N01).
+     */
+    private double fallbackMinSimilarity = 0.0;
+
     private double cosineWeight = 0.6;
     private double keywordWeight = 0.4;
 
@@ -276,6 +282,14 @@ public class AssistantProperties {
 
     public double getThreshold() {
       return threshold;
+    }
+
+    public double getFallbackMinSimilarity() {
+      return fallbackMinSimilarity;
+    }
+
+    public void setFallbackMinSimilarity(double fallbackMinSimilarity) {
+      this.fallbackMinSimilarity = fallbackMinSimilarity;
     }
 
     public void setThreshold(double threshold) {

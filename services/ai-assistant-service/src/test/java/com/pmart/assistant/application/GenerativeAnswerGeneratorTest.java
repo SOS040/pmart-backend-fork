@@ -70,6 +70,38 @@ class GenerativeAnswerGeneratorTest {
     assertThat(chat.prompts.get(1).getContents()).contains("인용 검사를 통과하지 못했다");
   }
 
+  /** 발췌 전환 하한(2026-11-09 N01): 1위 근거가 하한보다 낮으면 관계없는 원문 대신 근거 없음, 높으면 종전처럼 발췌. */
+  @Test
+  void twoFailuresWithWeakTopEvidenceAnswerNoGroundingInsteadOfExtract() {
+    var strict =
+        new GenerativeAnswerGenerator(
+            chat,
+            "fake-chat",
+            new CitationVerifier(0.5),
+            new ExtractiveAnswerGenerator(4000, 5),
+            JsonMapper.builder().build(),
+            () -> 0.95);
+    chat.replies.add("{\"answer\":\"연차는 15일이다.\",\"usedIds\":[\"D1\"],\"grounded\":true}");
+    chat.replies.add("{\"answer\":\"연차는 정책 테이블에 있다.\",\"usedIds\":[\"D1\"],\"grounded\":true}");
+    var weak = strict.generate("연차는 며칠?", ranked, List.of()); // 1위 0.9 < 0.95
+    assertThat(weak.mode()).isEqualTo(Mode.NONE);
+    assertThat(weak.grounded()).isFalse();
+    assertThat(weak.used()).isEmpty();
+
+    var lenient =
+        new GenerativeAnswerGenerator(
+            chat,
+            "fake-chat",
+            new CitationVerifier(0.5),
+            new ExtractiveAnswerGenerator(4000, 5),
+            JsonMapper.builder().build(),
+            () -> 0.5);
+    chat.replies.add("{\"answer\":\"봉투값은 주문당 500원이다.\",\"usedIds\":[\"D1\"],\"grounded\":true}");
+    chat.replies.add("{\"answer\":\"봉투값은 무료다.\",\"usedIds\":[\"D3\"],\"grounded\":true}");
+    assertThat(lenient.generate("봉투값?", ranked, List.of()).mode())
+        .isEqualTo(Mode.BASELINE_EXTRACTIVE); // 1위 0.9 ≥ 0.5
+  }
+
   @Test
   void twoFailuresFallBackToExtractiveNeverToOriginalText() {
     chat.replies.add("{\"answer\":\"봉투값은 주문당 500원이다.\",\"usedIds\":[\"D1\"],\"grounded\":true}");
