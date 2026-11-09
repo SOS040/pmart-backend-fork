@@ -50,7 +50,8 @@ import tools.jackson.databind.json.JsonMapper;
       "pmart.assistant.model.ollama.embedding-model=test-embed",
       "pmart.assistant.model.ollama.embedding-version=abc123",
       "pmart.assistant.model.ollama.query-instruction=Q-INSTRUCT: ",
-      "pmart.assistant.model.ollama.chat-model=test-chat:4b"
+      "pmart.assistant.model.ollama.chat-model=test-chat:4b",
+      "pmart.assistant.model.ollama.embedding-num-gpu=0"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({@ConfigureWireMock(name = "ollama", baseUrlProperties = "ollama.url")})
@@ -143,13 +144,17 @@ class OllamaProviderIT extends PgvectorContainerSupport {
     ollama.verify(
         postRequestedFor(urlPathEqualTo("/api/embed"))
             .withRequestBody(containing("봉투값은 주문당 100원 1회다")));
+    // 임베딩은 CPU(num_gpu 0) — GPU 는 대화 모델에
+    ollama.verify(
+        postRequestedFor(urlPathEqualTo("/api/embed"))
+            .withRequestBody(containing("\"num_gpu\":0"))
+            .withRequestBody(containing("\"keep_alive\":\"24h\"")));
     // 생성: 설정한 모델, 생각 끔, JSON 형식
     ollama.verify(
         postRequestedFor(urlPathEqualTo("/api/chat"))
             .withRequestBody(
                 equalToJson(
-                    "{\"model\":\"test-chat:4b\",\"format\":\"json\",\"think\":false}",
-                    true,
-                    true)));
+                    "{\"model\":\"test-chat:4b\",\"format\":\"json\",\"think\":false}", true, true))
+            .withRequestBody(containing("\"num_ctx\":8192")));
   }
 }

@@ -3,12 +3,19 @@ package com.pmart.assistant.infrastructure;
 import com.pmart.assistant.application.AssistantProperties;
 import com.pmart.assistant.infrastructure.embedding.OllamaDescribedEmbeddingModel;
 import java.net.http.HttpClient;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.Embedding;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.embedding.EmbeddingRequest;
+import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.OllamaEmbeddingModel;
 import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
-import org.springframework.ai.ollama.api.OllamaEmbeddingOptions;
 import org.springframework.ai.ollama.management.ModelManagementOptions;
 import org.springframework.ai.ollama.management.PullModelStrategy;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -38,18 +45,66 @@ public final class OllamaModels {
 
   public static OllamaDescribedEmbeddingModel embedding(
       OllamaApi api, AssistantProperties.Ollama o, int dim) {
-    OllamaEmbeddingModel m =
-        OllamaEmbeddingModel.builder()
-            .ollamaApi(api)
-            .options(
-                OllamaEmbeddingOptions.builder()
-                    .model(o.getEmbeddingModel())
-                    .keepAlive(o.getKeepAlive())
-                    .build())
-            .modelManagementOptions(noPull())
-            .build();
     return new OllamaDescribedEmbeddingModel(
-        m, o.getEmbeddingModel(), o.getEmbeddingVersion(), dim, o.getQueryInstruction());
+        new ApiEmbedding(api, o),
+        o.getEmbeddingModel(),
+        o.getEmbeddingVersion(),
+        dim,
+        o.getQueryInstruction());
+  }
+
+  /**
+   * {@code /api/embed} 를 직접 부른다. Spring AI {@code OllamaEmbeddingModel}(2.0.2)은 요청에
+   * options·keep_alive 를 싣지 않아(시험에서 확인 — "options":{}) CPU 지정(num_gpu 0)·문맥 길이가 Ollama 에 가지 않는다.
+   */
+  static final class ApiEmbedding implements EmbeddingModel {
+    private final OllamaApi api;
+    private final String model;
+    private final String keepAlive;
+    private final Map<String, Object> options;
+
+    ApiEmbedding(OllamaApi api, AssistantProperties.Ollama o) {
+      this.api = api;
+      this.model = o.getEmbeddingModel();
+      this.keepAlive = o.getKeepAlive();
+      Map<String, Object> opts = new LinkedHashMap<>();
+      if (o.getEmbeddingNumGpu() != null) {
+        opts.put("num_gpu", o.getEmbeddingNumGpu());
+      }
+      if (o.getEmbeddingNumCtx() != null) {
+        opts.put("num_ctx", o.getEmbeddingNumCtx());
+      }
+      this.options = Map.copyOf(opts);
+    }
+
+    @Override
+    public EmbeddingResponse call(EmbeddingRequest request) {
+      List<float[]> vectors = embedAll(request.getInstructions());
+      List<Embedding> out = new ArrayList<>();
+      for (int i = 0; i < vectors.size(); i++) {
+        out.add(new Embedding(vectors.get(i), i));
+      }
+      return new EmbeddingResponse(out);
+    }
+
+    @Override
+    public float[] embed(Document document) {
+      return embed(document.getText() == null ? "" : document.getText());
+    }
+
+    @Override
+    public float[] embed(String text) {
+      return embedAll(List.of(text)).get(0);
+    }
+
+    private List<float[]> embedAll(List<String> inputs) {
+      var res =
+          api.embed(new OllamaApi.EmbeddingsRequest(model, inputs, keepAlive, options, true, null));
+      if (res == null || res.embeddings() == null || res.embeddings().size() != inputs.size()) {
+        throw new IllegalStateException("Ollama 임베딩 응답 개수가 요청과 다름");
+      }
+      return res.embeddings();
+    }
   }
 
   public static ChatModel chat(OllamaApi api, AssistantProperties.Ollama o) {

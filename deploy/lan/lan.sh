@@ -8,7 +8,9 @@
 #   deploy/lan/lan.sh down <pc|all>               컨테이너 정지·삭제(볼륨은 남긴다)
 #   deploy/lan/lan.sh publish-backoffice <dist>    임시 백오피스 빌드(npm run build:lan 결과)를 올리고 backoffice-web 만 다시 배포
 #   deploy/lan/lan.sh rag-pull <pc> <모델...>       그 PC 의 ollama 에 모델 받기(ADR-0051, 예: qwen3-embedding:0.6b qwen3:4b)
-#   deploy/lan/lan.sh rag-ingest <pc>              운영자 RAG 색인(render 가 둔 rag/knowledge-operator 를 /repo 로 — 일회 컨테이너)
+#   deploy/lan/lan.sh rag-warm <pc> [모델...]       ollama 에 대화 모델을 미리 올림(첫 적재 약 30초 > 호출 시간 제한 25초). ollama 재시작 뒤 한 번.
+#                                                   임베딩 모델은 서비스가 CPU 로 올린다(embedding-num-gpu 0) — 여기서 올리면 GPU 에 올라가 대화 모델을 밀어낸다
+#   deploy/lan/lan.sh rag-ingest <pc>              운영자 RAG 색인(compose 의 ai-assistant-ingest — rag/knowledge-operator 를 /repo 로, 일회 컨테이너)
 #   deploy/lan/lan.sh config-push [메시지]        설정 저장소 사본(deploy/lan/.config-repo, 사람이 고친 내용)을 GitHub pmart-config 에 commit·push(ADR-0029)
 # deploy 는 설정 저장소 사본에 미커밋·미push 가 있으면 멈추고(config-push 먼저), config-server 를 먼저 띄운 뒤 나머지를 올린다.
 # 원격 실행: deploy/remote/run-ps.sh (원격 docker 는 %USERPROFILE%\.docker-pmart 설정 — 읽기 전용 pull 토큰)
@@ -173,13 +175,20 @@ case "$cmd" in
     pc="${1:?pc}"; shift
     for m in "$@"; do remote_compose "$pc" exec -T ollama ollama pull "$m" | tail -1; done
     remote_compose "$pc" exec -T ollama ollama list ;;
+  rag-warm)
+    pc="${1:?pc}"; shift
+    models="${*:-qwen3:4b}"
+    for m in $models; do
+      echo "warm $m"
+      remote_compose "$pc" exec -T ollama ollama run "$m" --keepalive 24h "ok" >/dev/null 2>&1 || echo "  실패: $m" >&2
+    done
+    remote_compose "$pc" exec -T ollama ollama ps ;;
   rag-ingest)
+    "$0" rag-warm "${1:?pc}"
     # 같은 이미지·설정(lan)으로 한 번 돌고 끝난다: 웹·Eureka·Bus 끔, 문서는 읽기 전용. 색인 중에도 기존 ACTIVE 로 답한다(ADR-0036 결정 6)
     pc="${1:?pc}"
     copy_files "$pc"
-    remote_compose "$pc" run --rm --no-deps -v ./rag/knowledge-operator:/repo:ro ai-assistant-service \
-      --spring.main.web-application-type=none --eureka.client.enabled=false --spring.cloud.bus.enabled=false \
-      --pmart.assistant.ingest.run=true --pmart.assistant.ingest.repo=/repo ;;
+    remote_compose "$pc" run --rm --no-deps ai-assistant-ingest ;;
   down)
     for pc in $(pcs "${1:?pc|all}"); do echo "=== $pc"; remote_compose "$pc" down; done ;;
   *)

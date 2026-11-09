@@ -705,8 +705,11 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
       OLLAMA_KEEP_ALIVE: "24h"
+      # 기본 문맥 = 서비스가 요청하는 chat-num-ctx(8192). 다르면 첫 질문 때 모델을 다시 올려(약 30초) 호출 시간 제한을 넘는다
+      OLLAMA_CONTEXT_LENGTH: "8192"
       OLLAMA_MAX_LOADED_MODELS: "2"
-      OLLAMA_NUM_PARALLEL: "2"
+      # 동시 1건 — 2 면 문맥 메모리를 두 배로 잡아(qwen3:4b 8192 문맥 5.4GB) 6GB GPU 에서 임베딩 모델이 밀려나고 일부가 CPU 로 돈다(2026-11-09)
+      OLLAMA_NUM_PARALLEL: "1"
     volumes:
       - ollamadata:/root/.ollama
     mem_limit: 6g
@@ -737,7 +740,8 @@ EOF
           echo "    depends_on:"
           echo "      postgres: { condition: service_healthy }"
         fi
-        echo "    environment:"
+        # RAG 앱은 환경을 앵커로 — 색인 작업 서비스(<앱 이름 앞부분>-ingest)가 같은 환경을 쓴다
+        if is_rag "$c"; then echo "    environment: &env-$c"; else echo "    environment:"; fi
         if [ "$c" = config-server ]; then
           # 서버 자신의 비밀은 configtree 디렉터리(파일 이름 = 속성 이름). 저장소 주소는 application.yml 기본값(GitHub)
           echo "      PMART_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans"
@@ -767,6 +771,28 @@ EOF
         # Bus 소비 그룹 이름 고정(bus-<앱>-<PC>, application-lan.yml) — 재시작마다 anonymous.* 그룹이 늘지 않게(2026-11-04)
         echo "      PMART_BUS_INSTANCE: $pc"
         echo
+        # 운영자 RAG 색인 작업(ADR-0036 결정 6 — 기동 때 색인하지 않는다): 같은 이미지·설정, profiles 로 up 에서 제외,
+        # 고정 IP 없음(compose run 이 앱의 고정 IP 를 그대로 쓰면 실행 중인 앱과 겹친다). lan.sh rag-ingest 가 run --rm 으로 한 번 돌린다
+        if [ "$c" = ai-assistant-service ]; then
+          cat <<EOF
+  ai-assistant-ingest:
+    <<: *common
+    image: $REGISTRY/pmart-$c@$(digest_of "$c")
+    profiles: ["jobs"]
+    restart: "no"
+    mem_limit: 768m
+    environment: *env-$c
+    volumes:
+      - ./rag/knowledge-operator:/repo:ro
+    command:
+      - --spring.main.web-application-type=none
+      - --eureka.client.enabled=false
+      - --spring.cloud.bus.enabled=false
+      - --pmart.assistant.ingest.run=true
+      - --pmart.assistant.ingest.repo=/repo
+
+EOF
+        fi
         # 배치 대조: DB 를 쓰는 앱의 lan DB 주소가 이 PC 의 postgres 인가(placement.conf 를 바꾸면 저장소도 바꿔야 한다)
         if is_rag "$c"; then
           want="jdbc:postgresql://rag-pgvector:15433/$(db_of "$c")"

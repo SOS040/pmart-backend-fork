@@ -65,6 +65,15 @@ public class AssistantProperties {
     /** 질문에만 붙이는 지시문(Qwen3-Embedding 권장 형식). 바꾸면 재색인. */
     private @Nullable String queryInstruction;
 
+    /**
+     * 임베딩 모델을 GPU 에 올릴 층 수. 0 = CPU 만 — 6GB GPU 는 대화 모델(8192 문맥)에 주고 작은 임베딩 모델은 CPU 로(2026-11-09
+     * pc2: 둘이 함께 올라가지 않아 서로 밀어냄). 비우면 Ollama 기본(가능한 만큼 GPU).
+     */
+    private @Nullable Integer embeddingNumGpu;
+
+    /** 임베딩 문맥 길이(토큰). 청크 최대 1500자라 2048 이면 충분 — 메모리를 줄인다. 비우면 Ollama 기본. */
+    private @Nullable Integer embeddingNumCtx;
+
     private @Nullable String chatModel;
     private double chatTemperature = 0.2;
     private int chatNumCtx = 8192;
@@ -108,6 +117,22 @@ public class AssistantProperties {
 
     public void setQueryInstruction(@Nullable String queryInstruction) {
       this.queryInstruction = queryInstruction;
+    }
+
+    public @Nullable Integer getEmbeddingNumGpu() {
+      return embeddingNumGpu;
+    }
+
+    public void setEmbeddingNumGpu(@Nullable Integer embeddingNumGpu) {
+      this.embeddingNumGpu = embeddingNumGpu;
+    }
+
+    public @Nullable Integer getEmbeddingNumCtx() {
+      return embeddingNumCtx;
+    }
+
+    public void setEmbeddingNumCtx(@Nullable Integer embeddingNumCtx) {
+      this.embeddingNumCtx = embeddingNumCtx;
     }
 
     public @Nullable String getChatModel() {
