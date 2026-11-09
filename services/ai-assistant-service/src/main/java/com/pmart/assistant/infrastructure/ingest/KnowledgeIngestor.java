@@ -215,10 +215,14 @@ public class KnowledgeIngestor {
         Lifecycle lifecycle = applied.lifecycle();
         Authority authority = pc.authority();
         List<String> proposed = applied.proposedSupersededBy();
+        String supersededBy = applied.supersededBy();
         for (KnowledgeManifest.Override o : manifest.overrides()) {
           if (o.path().equals(doc.path()) && pc.content().contains(o.contains())) {
             if (o.lifecycle() != null) {
               lifecycle = o.lifecycle();
+            }
+            if (o.supersededBy() != null) {
+              supersededBy = o.supersededBy();
             }
             if (o.authority() != null) {
               authority = o.authority();
@@ -251,7 +255,7 @@ public class KnowledgeIngestor {
                 doc.domain(),
                 authority.name(),
                 lifecycle.name(),
-                applied.supersededBy(),
+                supersededBy,
                 proposed,
                 doc.precedence(),
                 pc.implRecordDate(),

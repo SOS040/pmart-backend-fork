@@ -56,7 +56,8 @@ public record KnowledgeManifest(
       @Nullable Lifecycle lifecycle,
       @Nullable Authority authority,
       List<String> proposedSupersededBy,
-      String reason) {}
+      String reason,
+      @Nullable String supersededBy) {}
 
   public static KnowledgeManifest load(InputStream in) throws IOException {
     byte[] bytes = in.readAllBytes();
@@ -90,7 +91,8 @@ public record KnowledgeManifest(
               m.get("lifecycle") == null ? null : Lifecycle.valueOf(str(m.get("lifecycle"), null)),
               m.get("authority") == null ? null : Authority.valueOf(str(m.get("authority"), null)),
               List.copyOf(proposed),
-              str(m.get("reason"), "")));
+              str(m.get("reason"), ""),
+              opt(m.get("supersededBy"))));
     }
     Number version = (Number) root.getOrDefault("version", 1);
     return new KnowledgeManifest(

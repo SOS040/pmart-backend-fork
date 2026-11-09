@@ -96,6 +96,14 @@ documents:
 
 # 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
 overrides:
+  - path: docs/business/OMS-business-logic.md
+    contains: "주문 당시 고객은 `품절 상품만 취소` 또는 `전체 취소`를 선택한다"
+    lifecycle: SUPERSEDED
+    supersededBy: docs/adr/0049-shortage-always-partial-cancel.md
+    reason: >-
+      ADR-0049(상태: 승인, 2026-11-08 사용자 "무조건 부분취소환불임")가 대체 줄에 "업무 원문 OMS 8.2(사전 선택별 처리, 선택 없으면
+      CS 이관)를 사용자가 바꿨다"고 적었다. 대상이 업무 문서라 결정 번호가 없어 대체 규칙(결정 4)으로는 활성화되지 않는 예외 →
+      OMS 8.2 결품 처리 문단만 SUPERSEDED. 현재 질문에서 빠지고 이력 질문에서만 나온다(2026-11-09 답변 평가 A13 이 옛 규칙을 섞어 답함).
   - path: docs/business/Commerce-business-logic.md
     contains: "고객 분류는 1·2단계"
     lifecycle: SUPERSESSION_PROPOSED

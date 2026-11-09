@@ -110,6 +110,29 @@ class RealDocumentsIngestTest {
         .containsExactly("docs/adr/0015-category-tree-follows-reference-data.md");
   }
 
+  /**
+   * ADR-0049(승인)가 업무 원문 OMS 8.2 결품 처리를 바꿨다 — 그 문단만 SUPERSEDED(manifest override, 2026-11-09 A13).
+   */
+  @Test
+  void omsShortagePreselectionIsSupersededByAdr0049Only() {
+    var oms =
+        rows.stream().filter(r -> r.path().equals("docs/business/OMS-business-logic.md")).toList();
+    assertThat(oms)
+        .filteredOn(r -> r.content().contains("주문 당시 고객은 `품절 상품만 취소` 또는 `전체 취소`를 선택한다"))
+        .isNotEmpty()
+        .allSatisfy(
+            r -> {
+              assertThat(r.lifecycleStatus()).isEqualTo("SUPERSEDED");
+              assertThat(r.supersededBy())
+                  .isEqualTo("docs/adr/0049-shortage-always-partial-cancel.md");
+            });
+    // 이웃 절(8.3 취소와 인계 경합)은 그대로
+    assertThat(oms)
+        .filteredOn(r -> r.sectionPath() != null && r.sectionPath().contains("8.3 취소와 인계 경합"))
+        .isNotEmpty()
+        .allSatisfy(r -> assertThat(r.lifecycleStatus()).isEqualTo("ACTIVE"));
+  }
+
   @Test
   void commerceAppendixCIsExcludedFromPhase1() {
     assertThat(rows)
