@@ -408,6 +408,11 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(l1.path("picks").path(0).path("pickStatus").asString()).isEqualTo("OK");
     assertThat(l1.path("picks").path(0).path("unallocatedQty").asInt()).isZero();
     assertThat(l1.path("picks").path(0).path("notice").isNull()).isTrue();
+    // 0.4.10 방문 순서: 시작 때 순서를 못 받으면(capacity 스텁 없음) 칸 코드 순
+    assertThat(detail.path("routeMethod").asString()).isEqualTo("CODE_ORDER");
+    assertThat(l1.path("picks").path(0).path("visitSeq").asInt()).isEqualTo(1);
+    assertThat(detail.path("lines").path(1).path("picks").path(0).path("visitSeq").asInt())
+        .isEqualTo(3);
 
     // 재고가 거절한 실적 → REJECTED, 수량 변화 없음
     inventoryCommits("PICK", 422, Map.of("code", "LOT_MISMATCH", "detail", "예약 LOT 이 아닙니다"));
@@ -692,6 +697,52 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 pick))
         .isEqualTo(1);
+  }
+
+  /**
+   * 0.4.10 피킹 방문 순서(ADR-0050 B2): 시작 때 위치 배정 뒤 칸 목록을 mfc-capacity 에 물어 저장하고, 상세가 그 순서로 줄·조각을
+   * 늘어놓는다(냉장 칸 C-… 이 먼저 오면 L2 줄이 먼저).
+   */
+  @Test
+  void pickDetailFollowsRouteFromCapacity() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    assigned(pick, "w1", 1);
+    inv.stubFor(
+        WireMock.post(
+                urlPathEqualTo("/api/v1/internal/reservations/RSV-" + o + "/location-allocations"))
+            .willReturn(json(200, Map.of("reservationId", "RSV-" + o, "parts", List.of()))));
+    plan(o, 0, 0, 0, 0, 0, 0);
+    cap.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/pick-routes"))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "ordered",
+                        List.of("C-S1-01-1-01", "A-S1-02-1-01", "A-S1-01-1-01"),
+                        "method",
+                        "ROUTING",
+                        "startLocation",
+                        "CRT-A-01"))));
+    Res started = start(W1, pick, "w1", 1);
+    assertThat(started.status()).as(started.body().toString()).isEqualTo(201);
+    cap.verify(
+        1,
+        WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/pick-routes"))
+            .withRequestBody(WireMock.containing("C-S1-01-1-01"))
+            .withRequestBody(WireMock.containing("A-S1-01-1-01")));
+    JsonNode d = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
+    assertThat(d.path("routeMethod").asString()).isEqualTo("ROUTING");
+    assertThat(d.path("lines").path(0).path("orderLineId").asString()).isEqualTo("L2");
+    assertThat(d.path("lines").path(0).path("picks").path(0).path("visitSeq").asInt()).isEqualTo(1);
+    JsonNode l1 = d.path("lines").path(1);
+    assertThat(l1.path("orderLineId").asString()).isEqualTo("L1");
+    // 같은 줄 안에서도 순서대로: LOT-B(A-S1-02, 2번) → LOT-A(A-S1-01, 3번)
+    assertThat(l1.path("picks").path(0).path("lotId").asString()).isEqualTo("LOT-B");
+    assertThat(l1.path("picks").path(0).path("visitSeq").asInt()).isEqualTo(2);
+    assertThat(l1.path("picks").path(1).path("visitSeq").asInt()).isEqualTo(3);
   }
 
   @Test

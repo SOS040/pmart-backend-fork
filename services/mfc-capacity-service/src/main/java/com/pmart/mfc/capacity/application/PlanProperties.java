@@ -22,7 +22,9 @@ public record PlanProperties(
     @Nullable Integer packingStations,
     @Nullable Map<String, Long> weights,
     @Nullable String mfcInboundBaseUrl,
-    @Nullable String centerMasterBaseUrl) {
+    @Nullable String centerMasterBaseUrl,
+    @Nullable String mfcLocationBaseUrl,
+    @Nullable String pickRouteStart) {
 
   public static final String TASK_MINUTES_KEY = "pmart.capacity.plan.task-minutes";
   public static final String TIME_LIMIT_KEY = "pmart.capacity.plan.time-limit";

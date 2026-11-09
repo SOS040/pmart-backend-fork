@@ -43,6 +43,8 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.capacity.plan.mfc-fulfillment-base-url=${ful.url}",
       "pmart.capacity.plan.mfc-inbound-base-url=${ful.url}",
       "pmart.capacity.plan.center-master-base-url=${ful.url}",
+      "pmart.capacity.plan.mfc-location-base-url=${ful.url}",
+      "pmart.capacity.plan.pick-route-start=CRT-A-01",
       "pmart.capacity.plan.task-minutes.PICK=7",
       "pmart.capacity.plan.task-minutes.PACK=4",
       "pmart.capacity.plan.task-minutes.MOVE=5",
@@ -78,6 +80,49 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     staffHours(MFC, 200, "{\"open\":true,\"ranges\":[{\"start\":\"00:00\",\"end\":\"24:00\"}]}");
+  }
+
+  /**
+   * 피킹 방문 순서(0.10.0, ADR-0050 B2): 냉장 → 냉동 → 상온 C~H, 선반 아닌 칸은 맨 뒤. 거리표는 mfc-location(WireMock). 이
+   * PC 처럼 OR-Tools 네이티브를 못 올리면 NEAREST_FALLBACK, 리눅스면 ROUTING — 순서 규칙은 같다.
+   */
+  @Test
+  void pickRouteFollowsTemperatureGroupOrder() {
+    String body =
+        """
+        {"codes":["CRT-A-01","A-C1-01-1-01","F-A1-01-1-01","C-B1-01-1-01","PAK-A-01"],
+         "meters":[[0,4,20,12,1],[4,0,16,8,5],[20,16,0,8,21],[12,8,8,0,13],[1,5,21,13,0]],
+         "missing":[],"method":"MANHATTAN_V1","limitations":["WALLS_NOT_CONSIDERED"],
+         "attributes":[{"locationCode":"CRT-A-01","zone":"CART","temperatureZone":"AMBIENT","areaCode":null},
+                       {"locationCode":"A-C1-01-1-01","zone":"STORAGE","temperatureZone":"AMBIENT","areaCode":"C1"},
+                       {"locationCode":"F-A1-01-1-01","zone":"STORAGE","temperatureZone":"FROZEN","areaCode":"A1"},
+                       {"locationCode":"C-B1-01-1-01","zone":"STORAGE","temperatureZone":"CHILLED","areaCode":"B1"},
+                       {"locationCode":"PAK-A-01","zone":"PACKING","temperatureZone":"AMBIENT","areaCode":null}]}
+        """;
+    ful.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/location-distances"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(body)));
+    Res r =
+        send(
+            "POST",
+            TestJwt.service("mfc-fulfillment-service"),
+            "/internal/pick-routes",
+            Map.of(
+                "mfcId",
+                MFC,
+                "locationCodes",
+                List.of("PAK-A-01", "A-C1-01-1-01", "F-A1-01-1-01", "C-B1-01-1-01")));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("ordered").findValuesAsString("ordered")).isEmpty();
+    assertThat(r.body().path("ordered").toString())
+        .isEqualTo("[\"C-B1-01-1-01\",\"F-A1-01-1-01\",\"A-C1-01-1-01\",\"PAK-A-01\"]");
+    assertThat(r.body().path("method").asString()).isIn("ROUTING", "NEAREST_FALLBACK");
+    assertThat(r.body().path("startLocation").asString()).isEqualTo("CRT-A-01");
+    assertThat(r.body().path("totalMeters").asDouble()).isEqualTo(12 + 8 + 16); // 출발→냉장→냉동→상온
   }
 
   /** center-master 직원 근무 시간표(STAFF) 응답 — 근무 미등록 작업자의 근무(2026-11-09). */

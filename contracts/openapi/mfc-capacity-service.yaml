@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.9.4
+  version: 0.10.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -723,6 +723,48 @@ paths:
               schema: { $ref: '#/components/schemas/WorkerBreak' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/pick-routes:
+    post:
+      tags: [assignments]
+      summary: '[mfc-fulfillment→capacity] 피킹 방문 순서 (0.10.0, ADR-0050 B2)'
+      description: |
+        2026-11-09 사용자 결정. 피킹 시작 때 fulfillment 가 이 작업의 칸 목록을 주면 방문 순서를 돌려준다.
+        - 규칙: MFC 문서 1장 8-3 원본 순서 → **냉장(B) → 냉동(A) → 상온 C → D → E → F → G → H** 그룹 순, 그룹 안은 걷는 거리 최단(OR-Tools 경로).
+          출발점은 늘 장바구니 보관 자리(설정 `pmart.capacity.plan.pick-route-start`). 작업자 위치에 따른 예외 없음. 선반이 아닌 칸·좌표 없는 칸은 맨 뒤(코드 순).
+        - 거리: mfc-location `/internal/location-distances`(직각 거리, 벽 미반영 — limitations WALLS_NOT_CONSIDERED).
+        - method: ROUTING(OR-Tools) / NEAREST_FALLBACK(엔진을 못 쓰거나 시간 안에 못 풀면 가까운 칸부터). 거리표를 못 읽으면 503 — fulfillment 는 칸 코드 순으로 대신한다.
+        - 읽기만 하는 계산이지만 POST(공통 규칙상 Idempotency-Key 필요).
+      operationId: planPickRoute
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, locationCodes]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                locationCodes: { type: array, minItems: 1, maxItems: 200, items: { type: string } }
+      responses:
+        '200':
+          description: 방문 순서
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ordered: { type: array, items: { type: string }, description: 방문 순서(요청 칸 전부, 중복 없이) }
+                  startLocation: { type: string }
+                  method: { type: string, enum: [ROUTING, NEAREST_FALLBACK] }
+                  totalMeters: { type: number, description: 출발점에서 마지막 칸까지(좌표 있는 칸만) }
+                  missing: { type: array, items: { type: string }, description: 좌표가 없어 맨 뒤에 둔 칸 }
+                  limitations: { type: array, items: { type: string } }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /internal/assignments/{taskId}/releases:
     post:

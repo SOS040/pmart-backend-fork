@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-location-service
-  version: 0.7.0
+  version: 0.7.1
   description: |
     MFC 센터 내부 Area/Location 마스터·온도구역·격리/출하대기 구역·위치 상태의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량·공간 예약 잔여량 V(mfc-inventory), 센터 마스터(center-master).
@@ -192,6 +192,16 @@ paths:
                   codes: { type: array, items: { type: string } }
                   meters: { type: array, items: { type: array, items: { type: number } } }
                   missing: { type: array, items: { type: string }, description: 없는 코드·좌표 없는 칸 }
+                  attributes:
+                    type: array
+                    description: '(0.7.1) codes 와 같은 순서 — 칸의 구역·온도대·구역 코드(피킹 순서의 온도대·그룹 판단용)'
+                    items:
+                      type: object
+                      properties:
+                        locationCode: { type: string }
+                        zone: { $ref: '#/components/schemas/ZoneKind' }
+                        temperatureZone: { $ref: '#/components/schemas/TemperatureZone' }
+                        areaCode: { type: [string, 'null'] }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /locations/{locationId}/state-changes/{requestId}:

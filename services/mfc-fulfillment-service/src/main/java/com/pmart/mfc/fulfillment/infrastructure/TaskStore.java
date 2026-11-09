@@ -464,6 +464,38 @@ public class TaskStore {
         executionId);
   }
 
+  /** 피킹 방문 순서 저장(0.4.10) — 다시 정하면 바꾼다. */
+  public void saveRoute(String taskId, List<String> ordered, String method, Instant at) {
+    jdbc.update("DELETE FROM task_pick_route WHERE task_id = ?", taskId);
+    int seq = 0;
+    for (String code : ordered) {
+      jdbc.update(
+          "INSERT INTO task_pick_route (task_id, location_code, seq, method, created_at)"
+              + " VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+          taskId,
+          code,
+          ++seq,
+          method,
+          java.sql.Timestamp.from(at));
+    }
+  }
+
+  /** 저장된 방문 순서(칸 → 순서)와 방법. 없으면 빈 지도·null. */
+  public record Route(java.util.Map<String, Integer> seq, @Nullable String method) {}
+
+  public Route route(String taskId) {
+    java.util.Map<String, Integer> seq = new java.util.LinkedHashMap<>();
+    String[] method = {null};
+    jdbc.query(
+        "SELECT location_code, seq, method FROM task_pick_route WHERE task_id = ? ORDER BY seq",
+        rs -> {
+          seq.put(rs.getString(1), rs.getInt(2));
+          method[0] = rs.getString(3);
+        },
+        taskId);
+    return new Route(seq, method[0]);
+  }
+
   /** 출고의 집품분이 놓인 포장 위치(반영된 PICK 실적의 도착지). */
   public List<String> packingLocations(String shipmentId) {
     return jdbc.queryForList(

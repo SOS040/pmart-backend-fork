@@ -124,7 +124,30 @@ public class TaskService {
       Map<String, List<Pick>> picksByLine,
       boolean planFresh,
       List<ExecutionRow> pending,
-      List<String> packingLocations) {}
+      List<String> packingLocations,
+      Map<String, Integer> visitSeq,
+      @Nullable String routeMethod) {
+
+    public Detail(
+        TaskInfo task,
+        List<LineView> lines,
+        Map<String, List<Pick>> picksByLine,
+        boolean planFresh,
+        List<ExecutionRow> pending,
+        List<String> packingLocations) {
+      this(task, lines, picksByLine, planFresh, pending, packingLocations, Map.of(), null);
+    }
+  }
+
+  /** 조각을 집는 칸 — 이 주문 몫으로 배정된 칸 우선, 없으면 첫 칸(capacity 다음 작업 상세와 같은 기준). */
+  public static @Nullable String fromLocation(Pick p) {
+    for (var e : p.locations()) {
+      if (p.allocated().getOrDefault(e.getKey(), 0) > 0) {
+        return e.getKey();
+      }
+    }
+    return p.locations().isEmpty() ? null : p.locations().get(0).getKey();
+  }
 
   private final TaskStore store;
   private final com.pmart.mfc.fulfillment.infrastructure.WorkOrderStore works;
@@ -206,13 +229,64 @@ public class TaskService {
     } else if ("RETURN".equals(t.taskType())) {
       picks = returnPicks(taskId);
     }
+    Map<String, Integer> seq = Map.of();
+    String method = null;
+    if ("PICK".equals(t.taskType()) && !picks.isEmpty()) {
+      // 방문 순서(0.4.10): 시작 때 capacity 가 정한 순서, 없으면 칸 코드 순. 줄·조각을 그 순서로 늘어놓는다
+      TaskStore.Route route = store.route(taskId);
+      seq = new java.util.HashMap<>(route.seq());
+      method = route.method();
+      java.util.TreeSet<String> unknown = new java.util.TreeSet<>();
+      for (List<Pick> ps : picks.values()) {
+        for (Pick p : ps) {
+          String c = fromLocation(p);
+          if (c != null && !seq.containsKey(c)) {
+            unknown.add(c);
+          }
+        }
+      }
+      if (!unknown.isEmpty()) {
+        int next = seq.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        for (String c : unknown) {
+          seq.put(c, ++next);
+        }
+        if (method == null) {
+          method = "CODE_ORDER";
+        }
+      }
+      Map<String, Integer> fseq = seq;
+      java.util.Comparator<Pick> byVisit =
+          java.util.Comparator.comparingInt(
+              p -> {
+                String c = fromLocation(p);
+                return c == null ? Integer.MAX_VALUE : fseq.getOrDefault(c, Integer.MAX_VALUE);
+              });
+      Map<String, List<Pick>> sorted = new LinkedHashMap<>();
+      picks.forEach(
+          (line, ps) -> {
+            List<Pick> copy = new ArrayList<>(ps);
+            copy.sort(byVisit);
+            sorted.put(line, copy);
+          });
+      picks = sorted;
+      Map<String, List<Pick>> fp = picks;
+      lines = new ArrayList<>(lines);
+      lines.sort(
+          java.util.Comparator.comparingInt(
+              (LineView l) -> {
+                List<Pick> ps = fp.getOrDefault(l.orderLineId(), List.of());
+                return ps.isEmpty() ? Integer.MAX_VALUE : byVisitKey(ps.get(0), fseq);
+              }));
+    }
     return new Detail(
         t,
         lines,
         picks,
         fresh,
         store.openExecutions(taskId),
-        "PACK".equals(t.taskType()) ? store.packingLocations(t.shipmentId()) : List.of());
+        "PACK".equals(t.taskType()) ? store.packingLocations(t.shipmentId()) : List.of(),
+        seq,
+        method);
   }
 
   public Map<String, Object> getStart(String taskId, String requestId) {
@@ -322,9 +396,45 @@ public class TaskService {
       } catch (PmartException | org.springframework.web.client.RestClientException e) {
         log.warn("작업 {} 위치 배정 실패(시작은 유지): {}", taskId, e.getMessage());
       }
+      planRoute(t0.mfcId(), taskId, t0.reservationId());
       reportBlocked(taskId);
     }
     return started;
+  }
+
+  private static int byVisitKey(Pick p, Map<String, Integer> seq) {
+    String c = fromLocation(p);
+    return c == null ? Integer.MAX_VALUE : seq.getOrDefault(c, Integer.MAX_VALUE);
+  }
+
+  /**
+   * 피킹 방문 순서(0.4.10, ADR-0050 B2): 위치 배정 뒤 이 작업의 칸 목록을 mfc-capacity 에 물어 저장한다. 실패해도 시작은 그대로 — 상세가 칸
+   * 코드 순으로 대신한다.
+   */
+  void planRoute(String mfcId, String taskId, String reservationId) {
+    try {
+      java.util.LinkedHashSet<String> codes = new java.util.LinkedHashSet<>();
+      for (PlanPart p : inventory.pickPlan(reservationId)) {
+        if (p.orderLineId() == null
+            || p.qty() - p.pickedQty() <= 0
+            || !"CONFIRMED".equals(p.state())) {
+          continue;
+        }
+        String c =
+            fromLocation(new Pick(p.lotId(), p.expiryDate(), 0, p.locations(), p.allocated()));
+        if (c != null) {
+          codes.add(c);
+        }
+      }
+      if (codes.isEmpty()) {
+        return;
+      }
+      CapacityClient.PickRoute r = capacity.pickRoute(mfcId, new ArrayList<>(codes));
+      store.saveRoute(taskId, r.ordered(), r.method(), clock.instant());
+      log.info("작업 {} 방문 순서 {}칸 ({})", taskId, r.ordered().size(), r.method());
+    } catch (RuntimeException e) {
+      log.warn("작업 {} 방문 순서 못 받음 — 칸 코드 순으로: {}", taskId, e.getMessage());
+    }
   }
 
   /** mfc.inventory.v1 ReservationBlocked(inbox 트랜잭션 안) — 진행 중 PICK 에 점검 표시만(외부 호출 없음). */

@@ -82,6 +82,29 @@ public class CapacityClient {
                 .body(String.class));
   }
 
+  /** 피킹 방문 순서(capacity 0.10.0, ADR-0050 B2). 실패하면 예외 — 호출자가 칸 코드 순으로 대신한다. */
+  public record PickRoute(java.util.List<String> ordered, String method) {}
+
+  public PickRoute pickRoute(String mfcId, java.util.List<String> codes) {
+    String raw =
+        Downstream.call(
+            CAPACITY,
+            () ->
+                capacity
+                    .post()
+                    .uri("/api/v1/internal/pick-routes")
+                    .header("Idempotency-Key", "RTE-" + java.util.UUID.randomUUID())
+                    .header("X-Source-System", "mfc-fulfillment-service")
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(java.util.Map.of("mfcId", mfcId, "locationCodes", codes))
+                    .retrieve()
+                    .body(String.class));
+    tools.jackson.databind.JsonNode n = mapper.readTree(raw == null ? "{}" : raw);
+    java.util.List<String> ordered = new java.util.ArrayList<>();
+    n.path("ordered").forEach(x -> ordered.add(x.asString("")));
+    return new PickRoute(ordered, n.path("method").asString("ROUTING"));
+  }
+
   private static @Nullable String currentAuthorization() {
     if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes a) {
       HttpServletRequest r = a.getRequest();

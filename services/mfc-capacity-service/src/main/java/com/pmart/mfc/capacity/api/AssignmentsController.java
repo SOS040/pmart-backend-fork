@@ -26,6 +26,33 @@ public class AssignmentsController implements AssignmentsApi {
   private final AssignmentService service;
   private final com.pmart.mfc.capacity.application.PlanService plans;
 
+  private com.pmart.mfc.capacity.application.PickRouteService routes;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setRoutes(com.pmart.mfc.capacity.application.PickRouteService routes) {
+    this.routes = routes;
+  }
+
+  /** 피킹 방문 순서(0.10.0, ADR-0050 B2) — fulfillment 가 피킹 시작 때 부른다. */
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.PlanPickRoute200Response>
+      planPickRoute(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.capacity.api.generated.model.PlanPickRouteRequest body) {
+    var r = routes.route(body.getMfcId(), body.getLocationCodes());
+    var out = new com.pmart.mfc.capacity.api.generated.model.PlanPickRoute200Response();
+    out.setOrdered(r.ordered());
+    out.setStartLocation(r.startLocation());
+    out.setMethod(
+        com.pmart.mfc.capacity.api.generated.model.PlanPickRoute200Response.MethodEnum.fromValue(
+            r.method()));
+    out.setTotalMeters(java.math.BigDecimal.valueOf(r.totalMeters()));
+    out.setMissing(r.missing());
+    out.setLimitations(r.limitations());
+    return ResponseEntity.ok(out);
+  }
+
   public AssignmentsController(
       AssignmentService service, com.pmart.mfc.capacity.application.PlanService plans) {
     this.service = service;

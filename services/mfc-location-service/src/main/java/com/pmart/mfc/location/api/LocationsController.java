@@ -123,6 +123,19 @@ public class LocationsController implements LocationsApi {
     }
     out.setMeters(rows);
     out.setMissing(t.missing());
+    List<com.pmart.mfc.location.api.generated.model.GetLocationDistances200ResponseAttributesInner>
+        attrs = new ArrayList<>();
+    for (LocationView v : t.views()) {
+      var a =
+          new com.pmart.mfc.location.api.generated.model
+              .GetLocationDistances200ResponseAttributesInner();
+      a.setLocationCode(v.locationCode());
+      a.setZone(ZoneKind.fromValue(v.zone()));
+      a.setTemperatureZone(TemperatureZone.fromValue(v.temperatureZone()));
+      a.setAreaCode(v.areaCode());
+      attrs.add(a);
+    }
+    out.setAttributes(attrs);
     return ResponseEntity.ok(out);
   }
 

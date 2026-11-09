@@ -135,6 +135,8 @@ public class TasksController implements TasksApi {
         pi.setLocations(locs);
         pi.setSuggestedToLocations(p.suggestedTo());
         if ("PICK".equals(t.taskType())) {
+          String from = com.pmart.mfc.fulfillment.application.TaskService.fromLocation(p);
+          pi.setVisitSeq(from == null ? null : d.visitSeq().get(from));
           var st =
               com.pmart.mfc.fulfillment.domain.TaskRules.pickStatus(
                   p.remainingQty(),
@@ -157,6 +159,8 @@ public class TasksController implements TasksApi {
       lines.add(tl);
     }
     out.setLines(lines);
+    out.setRouteMethod(
+        d.routeMethod() == null ? null : TaskDetail.RouteMethodEnum.fromValue(d.routeMethod()));
     if ("IN_PROGRESS".equals(t.state()) && t.startedBy() != null) {
       var s = new TaskActiveStart();
       s.setRequestId(t.startRequestId());

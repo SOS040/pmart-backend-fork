@@ -221,6 +221,12 @@ assign_and_start(pick, "PICK")
 d = step("피킹 지시 조회", http("GET", f"{GW}/tasks/{pick}", wrk), 200)
 step("피킹 화면 상태(pickStatus, fulfillment 0.4.9)", (200 if all(p.get("pickStatus") for l in d["lines"] for p in l.get("picks", [])) else 409, {}), 200)
 step("확인 필요 포장 목록(0.4.9)", http("GET", f"{GW}/packages?mfcId={MFC}&checkRequired=true", wrk), 200)
+# 피킹 방문 순서(fulfillment 0.4.10 · capacity 0.10.0, ADR-0050 B2): 시작 때 capacity 가 정한 순서 — 조각마다 visitSeq, 줄은 그 순서
+seqs = [p.get("visitSeq") for l in d["lines"] for p in l.get("picks", [])]
+print("     방문 순서", d.get("routeMethod"), [(p.get("visitSeq"), (p.get("locations") or [{}])[0].get("locationCode")) for l in d["lines"] for p in l.get("picks", [])])
+per_line = [[p.get("visitSeq") for p in l.get("picks", [])] for l in d["lines"] if l.get("picks")]
+ordered_ok = all(x == sorted(x) for x in per_line) and [x[0] for x in per_line] == sorted(x[0] for x in per_line)
+step("피킹 방문 순서(ROUTING/NEAREST_FALLBACK)", (200 if d.get("routeMethod") in ("ROUTING", "NEAREST_FALLBACK") and all(seqs) and ordered_ok else 409, {}), 200)
 for line in d["lines"]:
     need = line["remainingQty"]
     for p in line.get("picks", []):

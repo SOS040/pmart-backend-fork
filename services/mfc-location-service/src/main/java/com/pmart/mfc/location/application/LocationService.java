@@ -97,7 +97,8 @@ public class LocationService {
   }
 
   /** 거리표 결과(0.7.0). */
-  public record DistanceTable(List<String> codes, double[][] meters, List<String> missing) {}
+  public record DistanceTable(
+      List<String> codes, double[][] meters, List<String> missing, List<LocationView> views) {}
 
   /** 칸 사이 걷는 거리표(내부 경로 — 서비스가 부른다). 같은 코드는 한 번만, 요청 순서 유지. */
   public DistanceTable distances(String mfcId, List<String> codes) {
@@ -110,6 +111,7 @@ public class LocationService {
       found.put(v.locationCode(), v);
     }
     List<String> ok = new java.util.ArrayList<>();
+    List<LocationView> views = new java.util.ArrayList<>();
     List<Double> xs = new java.util.ArrayList<>();
     List<Double> zs = new java.util.ArrayList<>();
     List<String> missing = new java.util.ArrayList<>();
@@ -120,11 +122,12 @@ public class LocationService {
         continue;
       }
       ok.add(c);
+      views.add(v);
       xs.add(v.posXM());
       zs.add(v.posZM());
     }
     return new DistanceTable(
-        ok, com.pmart.mfc.location.domain.Distances.manhattan(xs, zs), missing);
+        ok, com.pmart.mfc.location.domain.Distances.manhattan(xs, zs), missing, views);
   }
 
   // ---------- 쓰기 ----------

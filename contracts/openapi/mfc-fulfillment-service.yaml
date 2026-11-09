@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.9
+  version: 0.4.10
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -998,6 +998,9 @@ components:
                     locationCode: { type: string }
                     qty: { type: integer, description: 그 위치의 LOT 선반 잔량(이 주문 몫만이 아님) }
                     allocatedQty: { type: integer, description: '(0.4.3) 그 위치에서 이 주문 몫으로 배정된 남은 양 — 피킹 시작 때 배정. 배정된 위치가 앞에 온다' }
+              visitSeq:
+                type: [integer, 'null']
+                description: '(0.4.10, PICK 만) 방문 순서(1부터) — 이 조각을 집는 칸(배정 칸 우선)의 순서. 냉장 → 냉동 → 상온 C~H, 칸 사이는 걷는 거리 최단(ADR-0050). 줄·조각은 이 순서로 온다'
               suggestedToLocations:
                 type: array
                 items: { type: string }
@@ -1049,6 +1052,10 @@ components:
               type: array
               description: PACK — 이 출고의 집품분이 놓인 포장 위치(PICK 실적의 도착지, 0.2.0)
               items: { type: string }
+            routeMethod:
+              type: [string, 'null']
+              enum: [ROUTING, NEAREST_FALLBACK, CODE_ORDER, null]
+              description: '(0.4.10, PICK 만) 방문 순서를 정한 방법 — ROUTING(mfc-capacity OR-Tools), NEAREST_FALLBACK(가까운 칸부터), CODE_ORDER(순서를 못 받아 칸 코드 순). 피킹 시작 때 정한다'
             asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     TaskStart:
       type: object

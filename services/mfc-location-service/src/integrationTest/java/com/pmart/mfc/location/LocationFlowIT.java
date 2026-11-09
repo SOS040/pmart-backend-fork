@@ -238,6 +238,10 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(r.body().path("codes").toString()).isEqualTo("[\"A-C1-01-1-02\",\"A-C1-01-1-01\"]");
     assertThat(r.body().path("meters").path(0).path(1).asDouble()).isEqualTo(7.0);
     assertThat(r.body().path("missing").toString()).contains("A-C1-01-1-03", "NOPE");
+    // 0.7.1 칸 속성(피킹 순서의 온도대·그룹 판단용)
+    assertThat(r.body().path("attributes").path(0).path("temperatureZone").asString())
+        .isEqualTo("AMBIENT");
+    assertThat(r.body().path("attributes").path(1).path("areaCode").asString()).isEqualTo("C1");
   }
 
   @Test
