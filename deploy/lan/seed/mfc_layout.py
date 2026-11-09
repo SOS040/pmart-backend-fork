@@ -2,6 +2,7 @@
 
 단계(각각 다시 돌려도 된다 — 이미 된 것은 건너뜀):
   dims      치수가 없는 도면 칸에 치수(랙 규격으로 계산)를 넣는다 — 재고 이동 용량 계산에 필요.
+  httest    E2E 시험용 고회전 칸(상온 H1 줄 빈 칸 5개) 지정, 옛 고회전 칸(A-S9)의 보충 기준·열린 보충 지시 정리.
   register  도면의 선반 칸(368 랙 × 단 × 칸 = 6,762)·보충재고 팔레트 자리(32)를 백엔드 코드 문법으로 등록(위치 position·동선 순서 포함).
             선반 칸은 일반 선반(highTurnover=false — 사용자 2026-11-09 "일단 임시로 일반 선반만", 특정 그룹 고회전은 나중).
   support   보조 위치(포장·카트·수령·격리·출고 대기)에 도면 좌표를 넣고 없는 것은 등록.
@@ -30,7 +31,8 @@ MFC = os.environ.get("PMART_MFC", "MFC-SEED-01")
 LAYOUT = os.path.join(ROOT, "docs", "simulator", "layout", "layout.json")
 APPROVAL_REF = "layout-v1"
 TEMP_LETTER = {"FROZEN": "F", "CHILLED": "C", "AMBIENT": "A"}
-OLD_SHELF_AREA = "S1"  # 옛 시험 선반 A-S1-*, C-S1-*, F-S1-*
+OLD_SHELF_AREAS = ("S1", "S9")  # 옛 시험 선반 A-S1-*, C-S1-*, F-S1-* 와 옛 고회전 시험 칸 A-S9-01-1-01
+HT_TEST_AREA, HT_TEST_COUNT = "H1", 5  # E2E 시험용 고회전 칸: 상온 H01 줄의 빈 칸 앞에서 5개(사용자 2026-11-09 — 일반 선반 중 시험용 몇 칸만)
 RACK_LEN, RACK_HEIGHT, RACK_DEPTH_MM = 1.25, 2.1, 450  # 시뮬레이터 layout.ts 랙 규격(MFC 문서 1장 2,100×1,250×450)
 
 
@@ -287,7 +289,45 @@ def support_step(s, support, existing):
 
 def old_shelf(code):
     parts = code.split("-")
-    return len(parts) == 5 and parts[0] in ("A", "C", "F") and parts[1] == OLD_SHELF_AREA
+    return len(parts) == 5 and parts[0] in ("A", "C", "F") and parts[1] in OLD_SHELF_AREAS
+
+
+def httest_step(s, shelves, existing):
+    """옛 고회전 칸(A-S9) 대신 도면 칸 몇 개를 시험용 고회전으로. 옛 칸에 걸린 보충 기준·열린 보충 지시는 지운다
+    (보충 업무 작업자가 없어 지시가 미배정으로 남아 일반 선반 재고를 붙잡았다 — 2026-11-09)."""
+    rows = snapshot()
+    occupied = {r["locationCode"] for r in rows}
+    cands = [x for x in shelves if x["pickSequence"] is not None and x["temperatureZone"] == "AMBIENT"
+             and x["locationCode"].split("-")[1] == HT_TEST_AREA]
+    already = [x["locationCode"] for x in cands if existing.get(x["locationCode"], {}).get("highTurnover")]
+    need = HT_TEST_COUNT - len(already)
+    for x in cands:
+        if need <= 0:
+            break
+        cur = existing[x["locationCode"]]
+        if cur.get("highTurnover") or x["locationCode"] in occupied:
+            continue
+        b = keep_body(cur, cur.get("position"))
+        b["highTurnover"] = True
+        st, bb = http("PUT", f"{GW}/locations/{cur['locationId']}", s.sup(), b, version=cur["version"])
+        if st == 200:
+            already.append(x["locationCode"])
+            need -= 1
+        else:
+            print("  고회전 지정 실패", x["locationCode"], st, bb.get("code"), bb.get("detail"))
+    print("시험용 고회전 칸:", already)
+    st, b = http("GET", f"{GW}/mfcs/{MFC}/replenishment-policies", s.sup())
+    for p in b.get("items", []) if st == 200 else []:
+        if old_shelf(p["locationCode"]):
+            st2, _ = http("DELETE", f"{GW}/mfcs/{MFC}/replenishment-policies?locationCode={urllib.parse.quote(p['locationCode'])}"
+                          f"&sku={urllib.parse.quote(p['sku'])}", s.sup())
+            print("  옛 칸 보충 기준 삭제", p["locationCode"], p["sku"], p.get("minQty"), p.get("targetQty"), p.get("unitQty"), st2)
+    st, b = http("GET", f"{GW}/move-orders?mfcId={MFC}", s.sup())
+    for mv in b.get("items", []) if st == 200 else []:
+        if mv.get("state") == "ACTIVE" and (old_shelf(mv.get("fromLocation") or "") or old_shelf(mv.get("toLocation") or ""))                 and (mv.get("pickedQty") or 0) == 0:
+            st2, bb = http("POST", f"{GW}/move-orders/{mv['moveId']}/cancellations", s.sup(),
+                           {"reason": "옛 시험 칸 정리 — 도면 칸으로 이전(scope L-1)"})
+            print("  옛 칸 이동 지시 취소", mv["moveId"], st2, bb.get("state") or bb.get("code"))
 
 
 def move_step(s, shelves, existing, apply):
@@ -374,6 +414,9 @@ def main():
         existing = current_locations(s)
     if "dims" in steps:
         dims_step(s, shelves, existing)
+        existing = current_locations(s)
+    if "httest" in steps:
+        httest_step(s, shelves, existing)
         existing = current_locations(s)
     if "support" in steps:
         support_step(s, support, existing)
