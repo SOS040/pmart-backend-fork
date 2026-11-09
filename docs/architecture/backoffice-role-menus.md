@@ -18,6 +18,7 @@
 | `PRODUCT_APPROVER`·`DISPLAY_APPROVER`·`PRICE_APPROVER`·`SERVICEABILITY_APPROVER`·`CENTER_MASTER_APPROVER`·`INVENTORY_APPROVER` | 승인함·승인 상세(자기 유형) | approval `/approvals*` |
 | **`MFC_SUPERVISOR`(센터 관리자)** | **MFC 메뉴 전체**(아래 3장) — 자기 `centers` 의 센터만 | mfc-* 서비스 |
 | `MFC_WORKER`(작업자) | 백오피스 메뉴 없음(내 세션만) — 현장 작업은 PDA 앱 | — |
+| `CS_AGENT`(고객센터 상담원, 2026-11-09) | 고객센터 문의(목록·상세·답변) | case `/inquiries` |
 
 - **여러 역할**: 메뉴를 합쳐 보인다(합집합).
 - **여러 센터**(`centers` 가 둘 이상): MFC 메뉴 위에 센터 선택 — 고른 센터의 `mfcId` 로 부른다. 하나면 고르지 않는다.

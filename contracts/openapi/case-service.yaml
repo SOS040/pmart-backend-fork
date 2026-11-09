@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -16,6 +16,7 @@ tags:
   - { name: obligations, description: 의무 등록·해소 }
   - { name: action-requests, description: 도메인 행위 요청 연결 }
   - { name: intakes, description: CS 접수·라이더 도움요청·교대 인수인계 }
+  - { name: inquiries, description: '고객센터 문의(고객앱 문의 페이지·고객 RAG 연결) 0.2.0' }
 
 paths:
   /cases:
@@ -368,6 +369,113 @@ paths:
               schema: { $ref: '#/components/schemas/Intake' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /inquiries:
+    post:
+      tags: [inquiries]
+      summary: 고객센터 문의 남기기 (고객 — 0.2.0)
+      description: |
+        2026-11-09 사용자 결정(C4): 고객앱 "고객센터 문의" 페이지 + 고객 RAG 가 답하지 못할 때 연결할 곳. 회원(고객 토큰)만 — 비회원 불가(C2).
+        CS 접수(channel APP)와 사건(CS_INQUIRY)을 함께 만든다. 접수는 명령이 아니다 — 취소·환불을 실행하지 않는다.
+        orderId 를 주면 order-service 에 고객 토큰으로 본인 주문인지 확인한다(남의·없는 주문 422 ORDER_NOT_FOUND, order 응답 불가 503).
+        같은 Idempotency-Key 재전송은 같은 문의. 내용은 로그에 남기지 않는다.
+      operationId: createInquiry
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, body]
+              properties:
+                category: { $ref: '#/components/schemas/InquiryCategory' }
+                orderId: { type: string, description: 주문 건 문의면 주문 ID(본인 주문만) }
+                title: { type: string, maxLength: 100 }
+                body: { type: string, minLength: 1, maxLength: 2000 }
+                origin: { type: string, enum: [INQUIRY_PAGE, ASSISTANT_HANDOFF], description: '문의 페이지에서 직접 / 고객 RAG 가 답하지 못해 넘어옴(기본 INQUIRY_PAGE)' }
+      responses:
+        '201':
+          description: 접수
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inquiry' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+    get:
+      tags: [inquiries]
+      summary: 문의 목록 (고객 = 본인 것, CS_AGENT = 전체)
+      description: 최근 접수 순. 고객 토큰은 본인 문의만, 운영자는 역할 CS_AGENT 만(그 밖 403). status 로 거른다.
+      operationId: listInquiries
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/InquiryStatus' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/InquirySummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /inquiries/{inquiryId}:
+    get:
+      tags: [inquiries]
+      summary: 문의 상세 + 답변 (고객 = 본인 것, CS_AGENT)
+      description: 남의 문의는 404(존재를 드러내지 않음).
+      operationId: getInquiry
+      parameters:
+        - { name: inquiryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inquiry' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /inquiries/{inquiryId}/replies:
+    post:
+      tags: [inquiries]
+      summary: 문의에 답변 (운영자 CS_AGENT)
+      description: |
+        답변을 붙이면 상태가 ANSWERED. 닫힌(CLOSED) 문의는 409 INQUIRY_CLOSED. X-Expected-Version = 문의 version.
+        고객 앱 알림은 notification-service 구현 뒤(지금은 고객이 문의 페이지에서 확인).
+      operationId: replyInquiry
+      parameters:
+        - { name: inquiryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 4000 }
+      responses:
+        '200':
+          description: 답변 반영
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inquiry' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /help-requests:
     post:
       tags: [intakes]
@@ -607,6 +715,45 @@ components:
             requestedBy: { type: string }
             requestedAt: { type: string, format: date-time }
             resultAt: { type: [string, 'null'], format: date-time }
+    InquiryCategory:
+      type: string
+      enum: [ORDER, DELIVERY, PAYMENT, REFUND, PRODUCT, ACCOUNT, OTHER]
+      description: 주문·배송·결제·환불·상품·회원·기타
+    InquiryStatus:
+      type: string
+      enum: [RECEIVED, ANSWERED, CLOSED]
+      description: 접수 → 답변됨 → 종료(종료는 아직 API 없음)
+    InquirySummary:
+      type: object
+      required: [inquiryId, category, status, createdAt, version]
+      properties:
+        inquiryId: { type: string }
+        category: { $ref: '#/components/schemas/InquiryCategory' }
+        orderId: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/InquiryStatus' }
+        origin: { type: string }
+        createdAt: { type: string, format: date-time }
+        answeredAt: { type: string, format: date-time, nullable: true }
+        version: { type: integer }
+    Inquiry:
+      allOf:
+        - $ref: '#/components/schemas/InquirySummary'
+        - type: object
+          required: [body, replies, caseId]
+          properties:
+            caseId: { type: string }
+            customerId: { type: string, description: 운영자 조회에만 의미(고객에게는 본인) }
+            body: { type: string }
+            replies:
+              type: array
+              items:
+                type: object
+                properties:
+                  replyId: { type: string }
+                  authorType: { type: string, enum: [AGENT] }
+                  body: { type: string }
+                  createdAt: { type: string, format: date-time }
     Intake:
       type: object
       properties:

@@ -19,3 +19,6 @@ notification-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 
 | N-1 | order | 고객 안내에 필요한 사건이 다 나가는지 확인(`OrderLineQuantityChanged` SHORTAGE·`OrderCancelled` 사유) — 없으면 추가 |
 | N-1 | claim/payment | `RefundResult` 에 결품 환불 구분(사유 OUT_OF_STOCK)이 실리는지 확인 |
 | N-1 | order(선택) | 고객 앱 "확인 중" 표시를 하기로 하면 고객 주문 상세 응답 필드 + clients handoff |
+
+## N-2. 고객센터 문의 답변 알림 (2026-11-09, case 0.2.0)
+- 상담원이 문의에 답하면(`ANSWERED`) 고객에게 앱 알림. 지금은 case-service 가 사건을 발행하지 않는다 — 알림 서비스 구현 때 case 에 `InquiryAnswered`(inquiryId·customerId) 발행을 함께 넣는다.
