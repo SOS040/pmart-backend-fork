@@ -119,6 +119,7 @@ public class Seed {
     approver = ensureOperator(admin, APPROVER_LOGIN, "시험 승인권자", APPROVER_ROLES, List.of());
 
     center(mfcId);
+    staffCalendar(mfcId);
     categoryTree();
     serviceability(mfcId);
     List<Map<String, Object>> products = list(data, "products");
@@ -312,6 +313,44 @@ public class Seed {
     approve(body, "센터 " + mfcId);
     await("센터 시간표 발효", () -> send("GET", calendarPath, md, null, null).status() == 200);
     say("센터 " + mfcId + ": 고객 주문 " + list(c, "customerOrderHours"));
+  }
+
+  /**
+   * 직원 근무 시간표(STAFF). 근무를 따로 등록하지 않은 작업자의 근무 = 이 시간표(사용자 결정 2026-11-09 — 풀타임은 센터 운영시간, mfc-capacity).
+   * 없을 때만 넣는다.
+   */
+  void staffCalendar(String mfcId) throws Exception {
+    Map<String, Object> c = map(data, "center");
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    String path = "/centers/" + mfcId + "/calendar?date=" + today + "&kind=STAFF";
+    if (send("GET", path, md, null, null).status() == 200) {
+      say("센터 " + mfcId + ": 직원 근무 시간표 있음 → 건너뜀");
+      return;
+    }
+    List<Object> weekly = new ArrayList<>();
+    for (String d : List.of("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")) {
+      weekly.add(Map.of("dayOfWeek", d, "ranges", list(c, "staffHours")));
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("type", "CENTER_MASTER");
+    body.put("targetService", "center-master-service");
+    body.put("targetRef", "CENTER-" + mfcId + "-STAFF-" + System.currentTimeMillis());
+    body.put("allowedActions", List.of("APPLY_CENTER_CHANGE"));
+    body.put("summary", "pmart-seed 시험 센터 " + mfcId + " 직원 근무 시간표");
+    body.put(
+        "lines",
+        List.of(
+            Map.of(
+                "lineKey", mfcId + ":STAFF",
+                "attributes",
+                    Map.of(
+                        "changeType", "UPDATE_CALENDAR",
+                        "centerId", mfcId,
+                        "calendar",
+                            Map.of("kind", "STAFF", "weekly", weekly, "holidays", List.of())))));
+    approve(body, "센터 " + mfcId + " 직원 시간표");
+    await("직원 근무 시간표 발효", () -> send("GET", path, md, null, null).status() == 200);
+    say("센터 " + mfcId + ": 직원 근무 " + list(c, "staffHours"));
   }
 
   /** 이름·주소·좌표가 시험 데이터와 같은가. */

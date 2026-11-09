@@ -42,6 +42,7 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.capacity.plan.mfc-fulfillment-base-url=${ful.url}",
       "pmart.capacity.plan.mfc-inbound-base-url=${ful.url}",
+      "pmart.capacity.plan.center-master-base-url=${ful.url}",
       "pmart.capacity.plan.task-minutes.PICK=7",
       "pmart.capacity.plan.task-minutes.PACK=4",
       "pmart.capacity.plan.task-minutes.MOVE=5",
@@ -76,6 +77,68 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
             .baseUrl("http://localhost:" + port + "/api/v1")
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
+    staffHours(MFC, 200, "{\"open\":true,\"ranges\":[{\"start\":\"00:00\",\"end\":\"24:00\"}]}");
+  }
+
+  /** center-master 직원 근무 시간표(STAFF) 응답 — 근무 미등록 작업자의 근무(2026-11-09). */
+  void staffHours(String mfc, int status, String body) {
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/centers/" + mfc + "/calendar"))
+            .withQueryParam("kind", WireMock.equalTo("STAFF"))
+            .willReturn(
+                aResponse()
+                    .withStatus(status)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(body)));
+  }
+
+  /**
+   * 근무를 등록하지 않은 작업자 = 센터 직원 근무 시간표 안에서만(사용자 결정 2026-11-09 — 풀타임은 센터 운영시간): 시간표 밖(오늘 영업 안 함)이면 다음 작업
+   * 받기 409 OFF_SHIFT, 시간표가 없으면 422 CONFIG_REQUIRED(상시 근무로 바꾸지 않음). 수동 배정은 경고만.
+   */
+  @Test
+  void workersWithoutShiftFollowCenterStaffHours() {
+    String s = UUID.randomUUID().toString().substring(0, 6);
+    String closed = "MFC-SH-" + s;
+    String unset = "MFC-SU-" + s;
+    staffHours(closed, 200, "{\"open\":false,\"ranges\":[]}");
+    staffHours(unset, 422, "{\"code\":\"CONFIG_REQUIRED\"}");
+    for (String m : List.of(closed, unset)) {
+      String sup = TestJwt.operator("sup-" + s, List.of("MFC_SUPERVISOR"), List.of(m));
+      String w = "sh-" + m;
+      Res reg =
+          send(
+              "POST",
+              sup,
+              "/mfcs/" + m + "/workers",
+              Map.of(
+                  "workerId",
+                  w,
+                  "displayName",
+                  w,
+                  "duty",
+                  Map.of("taskTypes", List.of("PICK"), "temperatureZones", List.of("AMBIENT"))));
+      assertThat(reg.status()).as(reg.body().toString()).isEqualTo(201);
+      String tok = TestJwt.operator(w, List.of("MFC_WORKER"), List.of(m));
+      Res r = send("POST", tok, "/mfcs/" + m + "/workers/" + w + "/next-tasks", null);
+      if (m.equals(closed)) {
+        assertThat(r.status()).as(r.body().toString()).isEqualTo(409);
+        assertThat(r.body().path("code").asString()).isEqualTo("OFF_SHIFT");
+      } else {
+        assertThat(r.status()).as(r.body().toString()).isEqualTo(422);
+        assertThat(r.body().path("code").asString()).isEqualTo("CONFIG_REQUIRED");
+      }
+      // 수동 배정은 막지 않는다 — 시간표 밖이면 경고, 시간표를 못 읽으면 경고 없이
+      Res a =
+          send(
+              "POST",
+              sup,
+              "/assignments",
+              Map.of("mfcId", m, "taskId", "T-SH-" + m, "taskType", "PICK", "workerId", w));
+      assertThat(a.status()).as(a.body().toString()).isEqualTo(201);
+      assertThat(a.body().path("warnings").toString())
+          .isEqualTo(m.equals(closed) ? "[\"OFF_SHIFT\"]" : "[]");
+    }
   }
 
   Res send(String method, String token, String path, @Nullable Object body) {

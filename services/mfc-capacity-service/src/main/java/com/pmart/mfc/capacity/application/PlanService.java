@@ -73,6 +73,13 @@ public class PlanService {
   private final Clock clock;
   private final tools.jackson.databind.ObjectMapper mapper;
 
+  private StaffHours staffHours;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setStaffHours(StaffHours staffHours) {
+    this.staffHours = staffHours;
+  }
+
   public PlanService(
       PlanStore plans,
       WorkerStore workers,
@@ -182,6 +189,7 @@ public class PlanService {
     List<PlanProblem.Worker> ws = new ArrayList<>();
     List<String> unverified = new ArrayList<>();
     Map<String, Integer> dutyVersion = new HashMap<>();
+    @org.jspecify.annotations.Nullable List<int[]> staffWindows = null;
     for (var w : workers.list(mfcId, "ACTIVE")) {
       var d = workers.duty(mfcId, w.workerId(), w.dutyVersion());
       dutyVersion.put(w.workerId(), d.dutyVersion());
@@ -205,10 +213,28 @@ public class PlanService {
                         (int) Duration.between(now, s.endAt()).toMinutes()
                       })
               .toList();
-      busy.addAll(PlanProblem.offShift(windows, horizon));
       if (windows.isEmpty()) {
-        unverified.add(w.workerId()); // 근무 미등록 = 가용성 미확인(구간 전체로 계산, Q-09 미결)
+        // 근무 미등록 = 센터 직원 근무 시간표(STAFF) 안에서만(사용자 결정 2026-11-09 — 풀타임 = 센터 운영시간). 없으면 CONFIG_REQUIRED
+        if (staffWindows == null) {
+          staffWindows =
+              staffHours
+                  .windows(
+                      mfcId,
+                      now.minus(Duration.ofHours(OFF_SHIFT_LOOKAROUND_HOURS)),
+                      end.plus(Duration.ofHours(OFF_SHIFT_LOOKAROUND_HOURS)))
+                  .stream()
+                  .map(
+                      x ->
+                          new int[] {
+                            (int) Duration.between(now, x[0]).toMinutes(),
+                            (int) Duration.between(now, x[1]).toMinutes()
+                          })
+                  .toList();
+        }
+        windows = staffWindows;
+        unverified.add(w.workerId()); // 근무 미등록 — 센터 직원 근무 시간표로 계산
       }
+      busy.addAll(PlanProblem.offShift(windows, horizon));
       ws.add(new PlanProblem.Worker(w.workerId(), d.dutyVersion(), d.taskTypes(), busy));
     }
     // 적격 작업자가 없는 작업은 미리 뺀다(이유가 다르다)

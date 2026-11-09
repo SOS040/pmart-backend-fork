@@ -340,10 +340,17 @@ public class AssignmentService {
           false,
           List.of());
     }
-    List<String> warnings =
-        workers.offShift(cmd.mfcId(), cmd.workerId(), clock.instant())
-            ? List.of(com.pmart.mfc.capacity.domain.WorkerRules.OFF_SHIFT)
-            : List.of();
+    List<String> warnings;
+    try {
+      warnings =
+          workers.offShift(cmd.mfcId(), cmd.workerId(), clock.instant())
+              ? List.of(com.pmart.mfc.capacity.domain.WorkerRules.OFF_SHIFT)
+              : List.of();
+    } catch (PmartException ex) {
+      // 수동 배정은 근무 밖이어도 막지 않는다(경고만) — 직원 시간표를 못 읽으면 경고 없이(Q-09)
+      log.warn("근무 판단 못 함({}) — 경고 없이 배정: {}", cmd.workerId(), ex.getMessage());
+      warnings = List.of();
+    }
     try {
       return assignOnce(requestId, sourceSystem, cmd, supervisor, warnings);
     } catch (org.springframework.dao.DuplicateKeyException race) {

@@ -64,6 +64,13 @@ public class WorkerService {
     this.quals = quals;
   }
 
+  private @Nullable StaffHours staffHours;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  void setStaffHours(StaffHours staffHours) {
+    this.staffHours = staffHours;
+  }
+
   private static final java.time.ZoneId SEOUL = java.time.ZoneId.of("Asia/Seoul");
 
   private final AssignmentStore assignments;
@@ -185,12 +192,19 @@ public class WorkerService {
     return p == null ? java.util.Set.of() : p.duty().taskTypes();
   }
 
+  /**
+   * 근무 밖인가. 앞뒤 하루에 등록한 근무가 있으면 그 근무로, 없으면 센터 직원 근무 시간표(STAFF)로 판단한다(사용자 결정 2026-11-09 — 근무를 따로 등록하지
+   * 않은 작업자는 풀타임 = 센터 운영시간). 시간표가 없으면 CONFIG_REQUIRED.
+   */
   public boolean offShift(String mfcId, String workerId, Instant now) {
     List<Instant[]> s =
         store.shifts(mfcId, workerId, now.minusSeconds(86_400), now.plusSeconds(86_400)).stream()
             .map(x -> new Instant[] {x.startAt(), x.endAt()})
             .toList();
-    // 앞뒤 하루에 근무가 하나도 없으면 근무를 쓰지 않는 작업자로 보고 판단하지 않는다
+    StaffHours staff = staffHours;
+    if (s.isEmpty() && staff != null) {
+      return staff.outside(mfcId, now);
+    }
     return WorkerRules.offShift(s, now);
   }
 
