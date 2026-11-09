@@ -58,7 +58,9 @@ public class LocationService {
       @Nullable Integer maxWeightG,
       @Nullable Integer pickSequence,
       boolean highTurnover,
-      @Nullable String categoryId) {}
+      @Nullable String categoryId,
+      @Nullable Double posXM,
+      @Nullable Double posZM) {}
 
   record StateRequest(
       String locationId,
@@ -128,6 +130,8 @@ public class LocationService {
                       b.pickSequence(),
                       b.highTurnover(),
                       b.categoryId(),
+                      b.posXM(),
+                      b.posZM(),
                       1,
                       at);
               if (!store.insert(v, operator, at)) {
@@ -196,6 +200,8 @@ public class LocationService {
                       b.pickSequence(),
                       b.highTurnover(),
                       b.categoryId(),
+                      b.posXM(),
+                      b.posZM(),
                       cur.version() + 1,
                       at);
               store.updateAttributes(v);

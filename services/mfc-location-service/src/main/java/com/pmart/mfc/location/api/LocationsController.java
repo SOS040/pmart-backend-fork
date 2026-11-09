@@ -189,7 +189,9 @@ public class LocationsController implements LocationsApi {
         d == null ? null : d.getMaxWeightG(),
         b.getPickSequence(),
         Boolean.TRUE.equals(b.getHighTurnover()),
-        b.getCategoryId() == null || b.getCategoryId().isBlank() ? null : b.getCategoryId().trim());
+        b.getCategoryId() == null || b.getCategoryId().isBlank() ? null : b.getCategoryId().trim(),
+        b.getPosition() == null ? null : b.getPosition().getxM().doubleValue(),
+        b.getPosition() == null ? null : b.getPosition().getzM().doubleValue());
   }
 
   static Location dto(LocationView v) {
@@ -216,6 +218,12 @@ public class LocationsController implements LocationsApi {
     out.setPickSequence(v.pickSequence());
     out.setHighTurnover(v.highTurnover());
     out.setCategoryId(v.categoryId());
+    if (v.posXM() != null && v.posZM() != null) {
+      var pos = new com.pmart.mfc.location.api.generated.model.FloorPosition();
+      pos.setxM(java.math.BigDecimal.valueOf(v.posXM()));
+      pos.setzM(java.math.BigDecimal.valueOf(v.posZM()));
+      out.setPosition(pos);
+    }
     out.setVersion(v.version());
     out.setState(LocationState.fromValue(v.state()));
     out.setStateReason(v.stateReason());

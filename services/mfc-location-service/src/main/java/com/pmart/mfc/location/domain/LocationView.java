@@ -21,5 +21,7 @@ public record LocationView(
     @Nullable Integer pickSequence,
     boolean highTurnover,
     @Nullable String categoryId,
+    @Nullable Double posXM,
+    @Nullable Double posZM,
     int version,
     Instant updatedAt) {}

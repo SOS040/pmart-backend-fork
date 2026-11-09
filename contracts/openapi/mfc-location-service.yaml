@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-location-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     MFC 센터 내부 Area/Location 마스터·온도구역·격리/출하대기 구역·위치 상태의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량·공간 예약 잔여량 V(mfc-inventory), 센터 마스터(center-master).
@@ -226,6 +226,12 @@ components:
     LocationState:
       type: string
       enum: [ACTIVE, CLOSED, COUNT_LOCKED, RETIRED]
+    FloorPosition:
+      type: object
+      required: [xM, zM]
+      properties:
+        xM: { type: number, minimum: 0, maximum: 1000, description: 동쪽 방향 미터 }
+        zM: { type: number, minimum: 0, maximum: 1000, description: 남쪽 방향 미터 }
     LocationBody:
       type: object
       required: [mfcId, locationCode, zone, temperatureZone]
@@ -254,6 +260,13 @@ components:
             maxWeightG: { type: integer, minimum: 0 }
         pickSequence: { type: integer, description: 피킹 동선 순서 }
         categoryId: { type: [string, 'null'], maxLength: 64, description: '(0.5.0) 진열 카테고리 — 상품 카테고리 ID(그 아래 카테고리 상품도 받는다). 없으면 기타 칸(아무 상품 — 세일 상품 등). 2026-11-08 사용자 결정' }
+        position:
+          oneOf:
+            - $ref: '#/components/schemas/FloorPosition'
+            - { type: 'null' }
+          description: |
+            (0.6.0) 그 센터 도면 위 작업자가 서서 집는 지점(미터). 도면은 MFC 마다 다르다(ADR-0050) — 좌표계는 센터 도면 기준(x = 동쪽, z = 남쪽, 원점 = 건물 북서 모서리).
+            피킹 동선 거리표 입력. 없으면 null. 속성 변경(PUT)은 전체 교체라 보내지 않으면 지워진다.
         highTurnover: { type: boolean, default: false, description: '(0.4.0) 고회전 선반 — 같은 상품이 여러 칸에 있어도 된다(그 밖의 선반은 한 상품은 한 자리). 2026-11-08 사용자 결정' }
     Location:
       allOf:

@@ -182,6 +182,32 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(409);
   }
 
+  /** 0.6.0 도면 위 위치(ADR-0050): 등록·변경에 넣으면 그대로 돌려주고 조회에도 남는다, 범위 밖은 400, PUT 에 빠지면 지워진다. */
+  @Test
+  void floorPositionIsStoredAndValidated() {
+    Map<String, Object> b = body("F-A3-05-2-01", "STORAGE", "FROZEN", 7);
+    b.put("position", Map.of("xM", 12.35, "zM", 7.5));
+    Res created = send(HttpMethod.POST, op, "/locations", b, null);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String id = created.body().path("locationId").asString();
+    assertThat(created.body().path("position").path("xM").asDouble()).isEqualTo(12.35);
+    assertThat(created.body().path("areaCode").asString()).isEqualTo("A3");
+    assertThat(get(op, "/locations/" + id).body().path("position").path("zM").asDouble())
+        .isEqualTo(7.5);
+    Map<String, Object> bad = body("F-A3-05-2-01", "STORAGE", "FROZEN", 7);
+    bad.put("position", Map.of("xM", -1, "zM", 0));
+    assertThat(send(HttpMethod.PUT, op, "/locations/" + id, bad, 1).status()).isEqualTo(400);
+    Res cleared =
+        send(
+            HttpMethod.PUT,
+            op,
+            "/locations/" + id,
+            body("F-A3-05-2-01", "STORAGE", "FROZEN", 7),
+            1);
+    assertThat(cleared.status()).isEqualTo(200);
+    assertThat(cleared.body().path("position").isNull()).isTrue();
+  }
+
   @Test
   void registerChangeAndListLocations() {
     Res created =
