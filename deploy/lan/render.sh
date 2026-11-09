@@ -46,9 +46,10 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs "
+# rag-pgvector·ollama(ADR-0051)는 같은 PC 의 RAG 서비스만 컨테이너 이름으로 부른다 — 포트도 LAN 에 열지 않는다
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -660,6 +661,60 @@ EOF
 
 EOF
         ;;
+      rag-pgvector)
+        # RAG 전용 PostgreSQL + pgvector(ADR-0051): 운영자용·고객용 DB·계정 둘(rag/rag-init-db.sh). 공용 postgres 는 그대로.
+        # 같은 PC 의 RAG 서비스만 쓴다 — LAN 포트를 열지 않는다(확인은 docker exec). 다른 PC 로 옮기면 ports 를 연다
+        cat <<EOF
+  rag-pgvector:
+    <<: *common
+    image: pgvector/pgvector:0.8.6-pg17
+    command: ["postgres", "-c", "max_connections=60"]
+    environment:
+      # 포트는 PGPORT 로 — 첫 초기화 때 엔트리포인트의 임시 서버도 같은 포트로 떠야 초기화 스크립트가 붙는다(-p 만 주면 5432 로 떠서 실패, 2026-11-09)
+      PGPORT: "15433"
+      POSTGRES_USER: pmart
+      POSTGRES_PASSWORD: \${PMART_DB_PASSWORD}
+      POSTGRES_DB: postgres
+      PMART_RAG_OPERATOR_DB_PASSWORD: \${PMART_RAG_OPERATOR_DB_PASSWORD}
+      PMART_RAG_CUSTOMER_DB_PASSWORD: \${PMART_RAG_CUSTOMER_DB_PASSWORD}
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ragpgdata:/var/lib/postgresql/data
+      - ./rag/rag-init-db.sh:/docker-entrypoint-initdb.d/10-rag-init-db.sh:ro
+    mem_limit: 1g
+    cpus: 2
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pmart"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+EOF
+        ;;
+      ollama)
+        # 모델 서버(ADR-0051 결정 6): 임베딩·대화 모델을 이 PC GPU(RTX 2060 6GB)로. 인증이 없어 LAN 포트를 열지 않는다(같은 PC 서비스만).
+        # 주문·결제가 같은 PC 에 있어 CPU 4·메모리 6GB 상한(모델이 GPU 를 넘치면 CPU 로 넘어간다). 모델 파일은 ollamadata 볼륨
+        cat <<EOF
+  ollama:
+    <<: *common
+    image: ollama/ollama:0.40.10
+    networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      OLLAMA_KEEP_ALIVE: "24h"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      OLLAMA_NUM_PARALLEL: "2"
+    volumes:
+      - ollamadata:/root/.ollama
+    mem_limit: 6g
+    cpus: 4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - { driver: nvidia, count: all, capabilities: [gpu] }
+
+EOF
+        ;;
       *)
         port="$(port_of "$c")"; [ -n "$port" ] || { echo "포트 없음: $c" >&2; exit 1; }
         echo "  $c:"
@@ -732,6 +787,8 @@ EOF
     [[ " ${COMPS[$pc]} " == *" prometheus "* ]] && vols+="  promdata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" grafana "* ]] && vols+="  grafanadata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" log-shipper "* ]] && vols+="  fbdata:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" rag-pgvector "* ]] && vols+="  ragpgdata:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" ollama "* ]] && vols+="  ollamadata:"$'\n'
     [ -n "$vols" ] && printf 'volumes:\n%s' "$vols"
   } > "$dir/compose.yml"
 
@@ -879,6 +936,11 @@ EOF
     mkdir -p "$dir/connectors" && cp deploy/local/connectors/*.json "$dir/connectors/"
   fi
 
+  # RAG pgvector 초기화 스크립트(ADR-0051)
+  if [[ "$comps" == *" rag-pgvector "* ]]; then
+    mkdir -p "$dir/rag" && tr -d '\r' < "$LAN/rag/rag-init-db.sh" > "$dir/rag/rag-init-db.sh"
+  fi
+
   # 임시 백오피스 정적 파일: lan.sh publish-backoffice 가 둔 빌드(backoffice-dist, git 제외). 없으면 안내 페이지
   if [[ "$comps" == *" backoffice-web "* ]]; then
     cp "$LAN/backoffice/nginx.conf" "$dir/backoffice-nginx.conf"
@@ -898,6 +960,10 @@ EOF
     echo "PMART_EUREKA_PASSWORD=$(secret eureka-password)"
     [[ "$comps" == *" config-relay "* ]] && echo "PMART_SMEE_URL=$(secret smee-url)"
     [[ "$comps" == *" grafana "* ]] && echo "PMART_GRAFANA_ADMIN_PASSWORD=$(secret grafana-admin-password)"
+    if [[ "$comps" == *" rag-pgvector "* ]]; then
+      echo "PMART_RAG_OPERATOR_DB_PASSWORD=$(secret rag-db-operator-password)"
+      echo "PMART_RAG_CUSTOMER_DB_PASSWORD=$(secret rag-db-customer-password)"
+    fi
     if [[ "$comps" == *" s3 "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
       echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"

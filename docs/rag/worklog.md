@@ -110,6 +110,9 @@
 - LAN 확인(읽기만): 세 PC PostgreSQL 모두 pgvector 없음, PC 넷 같은 사양(i5-11400F·32GB·RTX 2060 6GB), 컨테이너 메모리 pc2 7.8·pc3 11.7·pc4 10.2GB.
 - 색인 목록(`manifest.yml`)에 빠져 있던 ADR-0037~0050 과 새 0051 추가(RealDocumentsIngestTest 가 ADR 개수 대조). 같은 시험의 낡은 기대값(주문 사가 문서 구현 날짜가 모두 10-31) 을 절별(1.4 = 10-31, 2.0.1 = 11-07)로 고침. ai-assistant check 통과(단위 91, 통합 31).
 - pc2 Docker GPU 확인: 기존 이미지로 `nvidia-smi` 일회 컨테이너(`--rm`) — RTX 2060 6144MiB(사용 861MiB), CUDA 13.3. Ollama 를 컨테이너로 GPU 에서 돌릴 수 있다.
+- LAN pc2 에 RAG 전용 `rag-pgvector`(pgvector/pgvector:0.8.6-pg17, 컨테이너 포트 15433, LAN 미공개)·`ollama`(ollama/ollama:0.40.10, GPU, CPU 4·메모리 6GB 상한, LAN 미공개) 배포. DB·계정 `ai_assistant_service`·`customer_assistant_service`(서로 접속 권한 없음 확인), 확장 vector 0.8.6·pg_trgm 1.6. Ollama 로그 "inference compute … RTX 2060 CUDA". 비밀 `.secrets/rag-db-{operator,customer}-password`(init-secrets.sh).
+  - 첫 시도 실패: `-p 15433` 만 주면 엔트리포인트의 첫 초기화 임시 서버가 5432 로 떠 초기화 스크립트가 못 붙음 → `PGPORT=15433` 으로 고치고 새 볼륨을 지우고 다시 만듦.
+  - pc2 의 log-shipper·host-disk 는 자동으로 줄 뒤에 붙는 구성요소라 고정 IP 가 두 칸 밀림(.25→.27, .26→.28) → IP 충돌을 피하려고 그 둘을 먼저 다시 만든 뒤 새 컨테이너를 띄움. pc3·pc4 생성 파일은 변화 없음. 기존 서비스 재시작 없음.
 
 ## 남은 것
 - ADR-0036 결정 4건(외부 모델·외부 전송 범위, LAN pgvector 위치, 답변 보존·원문 저장, 운영자 역할).
