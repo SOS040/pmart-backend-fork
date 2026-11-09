@@ -93,9 +93,10 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
     for (int i = 0; i < ranked.size(); i++) {
       byTag.put("D" + (i + 1), ranked.get(i));
     }
-    // 모델이 보는 근거와 같은 글(표는 줄로 — TableText)로 인용을 검사한다
+    // 모델이 보는 근거와 같은 글(절 제목 + 본문, 표는 줄로 — TableText)로 검사한다. 절 제목을 넣는 이유: "최소 주문금액" 처럼 질문 대상이
+    // 제목에만 있는 절(고객 평가 4회차 C07)
     Map<String, String> evidence = new LinkedHashMap<>();
-    byTag.forEach((k, v) -> evidence.put(k, modelText(v)));
+    byTag.forEach((k, v) -> evidence.put(k, title(v) + "\n" + modelText(v)));
 
     String feedback = null;
     for (int attempt = 0; attempt < 2; attempt++) {
@@ -162,6 +163,11 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
     return null;
   }
 
+  /** 절 제목(지위 태그 뺌). */
+  static String title(RetrievedChunk c) {
+    return ExtractiveComposer.stripTags(c.section() == null ? "" : c.section());
+  }
+
   /** 모델에 넘기는 근거 글: 지위 태그 빼고, 표는 행마다 한 줄("열: 값"). */
   static String modelText(RetrievedChunk c) {
     return com.pmart.customerassistant.domain.TableText.linearize(
@@ -177,9 +183,7 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
                 .append(tag)
                 .append("\" title=\"")
                 // 절 제목("환불 > 환불은 언제 되나요?") — 질문과 절을 잇기 쉽게(고객 평가 C08)
-                .append(
-                    ExtractiveComposer.stripTags(c.section() == null ? "" : c.section())
-                        .replace("\"", "'"))
+                .append(title(c).replace("\"", "'"))
                 .append("\">\n")
                 .append(modelText(c).replace("</doc", "<\\/doc"))
                 .append("\n</doc>\n"));
