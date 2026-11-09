@@ -96,6 +96,37 @@ public class LocationService {
     this.clock = clock;
   }
 
+  /** 거리표 결과(0.7.0). */
+  public record DistanceTable(List<String> codes, double[][] meters, List<String> missing) {}
+
+  /** 칸 사이 걷는 거리표(내부 경로 — 서비스가 부른다). 같은 코드는 한 번만, 요청 순서 유지. */
+  public DistanceTable distances(String mfcId, List<String> codes) {
+    if (codes.size() > 300) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "locationCodes 는 최대 300개입니다.");
+    }
+    List<String> uniq = new java.util.ArrayList<>(new java.util.LinkedHashSet<>(codes));
+    java.util.Map<String, LocationView> found = new java.util.HashMap<>();
+    for (LocationView v : store.byCodes(mfcId, uniq)) {
+      found.put(v.locationCode(), v);
+    }
+    List<String> ok = new java.util.ArrayList<>();
+    List<Double> xs = new java.util.ArrayList<>();
+    List<Double> zs = new java.util.ArrayList<>();
+    List<String> missing = new java.util.ArrayList<>();
+    for (String c : uniq) {
+      LocationView v = found.get(c);
+      if (v == null || v.posXM() == null || v.posZM() == null) {
+        missing.add(c);
+        continue;
+      }
+      ok.add(c);
+      xs.add(v.posXM());
+      zs.add(v.posZM());
+    }
+    return new DistanceTable(
+        ok, com.pmart.mfc.location.domain.Distances.manhattan(xs, zs), missing);
+  }
+
   // ---------- 쓰기 ----------
 
   public LocationView create(String requestId, String sourceSystem, Body b) {

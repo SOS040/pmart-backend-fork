@@ -5,6 +5,8 @@ import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.location.api.generated.LocationsApi;
 import com.pmart.mfc.location.api.generated.model.ChangeLocationStateRequest;
+import com.pmart.mfc.location.api.generated.model.GetLocationDistances200Response;
+import com.pmart.mfc.location.api.generated.model.GetLocationDistancesRequest;
 import com.pmart.mfc.location.api.generated.model.GetLocationStateChange200Response;
 import com.pmart.mfc.location.api.generated.model.ListLocations200Response;
 import com.pmart.mfc.location.api.generated.model.ListLocations200ResponsePage;
@@ -99,6 +101,29 @@ public class LocationsController implements LocationsApi {
       String idempotencyKey, String xSourceSystem, @Nullable String mfcId) {
     return ResponseEntity.status(HttpStatus.ACCEPTED)
         .body(command(service.republish(idempotencyKey, xSourceSystem, mfcId)));
+  }
+
+  @Override
+  public ResponseEntity<GetLocationDistances200Response> getLocationDistances(
+      GetLocationDistancesRequest body) {
+    var t = service.distances(body.getMfcId(), body.getLocationCodes());
+    var out = new GetLocationDistances200Response();
+    out.setMethod(
+        GetLocationDistances200Response.MethodEnum.fromValue(
+            com.pmart.mfc.location.domain.Distances.METHOD));
+    out.setLimitations(List.of(com.pmart.mfc.location.domain.Distances.WALLS_NOT_CONSIDERED));
+    out.setCodes(t.codes());
+    List<List<java.math.BigDecimal>> rows = new ArrayList<>();
+    for (double[] r : t.meters()) {
+      List<java.math.BigDecimal> row = new ArrayList<>();
+      for (double d : r) {
+        row.add(java.math.BigDecimal.valueOf(d));
+      }
+      rows.add(row);
+    }
+    out.setMeters(rows);
+    out.setMissing(t.missing());
+    return ResponseEntity.ok(out);
   }
 
   @Override

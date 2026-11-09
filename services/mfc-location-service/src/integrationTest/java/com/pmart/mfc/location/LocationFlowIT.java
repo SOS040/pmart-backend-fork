@@ -208,6 +208,38 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(cleared.body().path("position").isNull()).isTrue();
   }
 
+  /** 0.7.0 칸 사이 거리표(내부): 좌표 있는 칸끼리 직각 거리, 좌표 없거나 없는 코드는 missing, 벽은 아직 안 봄. */
+  @Test
+  void distanceTableFromFloorPositions() {
+    for (Object[] c :
+        new Object[][] {
+          {"A-C1-01-1-01", 1.0, 2.0}, {"A-C1-01-1-02", 4.0, 6.0}, {"A-C1-01-1-03", null, null}
+        }) {
+      Map<String, Object> b = body((String) c[0], "STORAGE", "AMBIENT", null);
+      if (c[1] != null) {
+        b.put("position", Map.of("xM", c[1], "zM", c[2]));
+      }
+      assertThat(send(HttpMethod.POST, op, "/locations", b, null).status()).isEqualTo(201);
+    }
+    Res r =
+        send(
+            HttpMethod.POST,
+            TestJwt.service("mfc-capacity-service"),
+            "/internal/location-distances",
+            Map.of(
+                "mfcId",
+                mfc,
+                "locationCodes",
+                List.of("A-C1-01-1-02", "A-C1-01-1-01", "A-C1-01-1-03", "NOPE", "A-C1-01-1-02")),
+            null);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("method").asString()).isEqualTo("MANHATTAN_V1");
+    assertThat(r.body().path("limitations").toString()).contains("WALLS_NOT_CONSIDERED");
+    assertThat(r.body().path("codes").toString()).isEqualTo("[\"A-C1-01-1-02\",\"A-C1-01-1-01\"]");
+    assertThat(r.body().path("meters").path(0).path(1).asDouble()).isEqualTo(7.0);
+    assertThat(r.body().path("missing").toString()).contains("A-C1-01-1-03", "NOPE");
+  }
+
   @Test
   void registerChangeAndListLocations() {
     Res created =

@@ -173,6 +173,18 @@ public class LocationStore {
         limit);
   }
 
+  /** 센터의 코드 목록으로(거리표, 0.7.0). */
+  public List<LocationView> byCodes(String mfcId, List<String> codes) {
+    if (codes.isEmpty()) {
+      return List.of();
+    }
+    return jdbc.query(
+        "SELECT " + COLUMNS + " FROM location WHERE mfc_id = ? AND location_code = ANY (?)",
+        (rs, i) -> view(rs),
+        mfcId,
+        codes.toArray(new String[0]));
+  }
+
   /** 다시 알림 대상(센터 지정 가능, 위치 ID 순). */
   public List<LocationView> all(@Nullable String mfcId, int limit) {
     if (mfcId == null) {

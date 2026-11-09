@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-location-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     MFC 센터 내부 Area/Location 마스터·온도구역·격리/출하대기 구역·위치 상태의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량·공간 예약 잔여량 V(mfc-inventory), 센터 마스터(center-master).
@@ -159,6 +159,40 @@ paths:
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       responses:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+
+  /internal/location-distances:
+    post:
+      tags: [locations]
+      summary: '[capacity·fulfillment→location] 칸 사이 걷는 거리표 (0.7.0, ADR-0050)'
+      description: |
+        2026-11-09. 피킹 방문 순서·배정 추천 이동 시간의 입력. 칸마다 도면 위 위치(position, 0.6.0)로 계산한다 — 도면은 MFC 마다 다르다.
+        1차(method MANHATTAN_V1): 서는 지점 사이 직각 거리(|Δx| + |Δz|, 미터, 소수 1자리). **벽·문·통로는 아직 보지 않는다**(limitations WALLS_NOT_CONSIDERED) —
+        2차에서 도면 격자 길찾기로 바꾼다. 좌표가 없거나 없는 코드는 missing 에 두고 표에서 뺀다. 최대 300칸.
+      operationId: getLocationDistances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfcId, locationCodes]
+              properties:
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                locationCodes: { type: array, minItems: 1, maxItems: 300, items: { type: string } }
+      responses:
+        '200':
+          description: 거리표(codes 순서대로 meters[i][j])
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  method: { type: string, enum: [MANHATTAN_V1] }
+                  limitations: { type: array, items: { type: string } }
+                  codes: { type: array, items: { type: string } }
+                  meters: { type: array, items: { type: array, items: { type: number } } }
+                  missing: { type: array, items: { type: string }, description: 없는 코드·좌표 없는 칸 }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /locations/{locationId}/state-changes/{requestId}:
     get:
