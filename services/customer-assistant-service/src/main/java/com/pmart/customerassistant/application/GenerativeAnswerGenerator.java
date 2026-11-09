@@ -44,6 +44,7 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       8. 질문이 묻는 대상(기능·서비스·상품 이름)이 근거에 직접 나오지 않으면 grounded=false. 다른 대상에 대한 문장
          (예: "쿠폰 기능이 없어요")을 질문의 대상에 옮겨 쓰지 않는다.
       9. 질문이 "언제"를 물으면 근거에 적힌 시점·기간 문장으로 답한다.
+      10. "네"·"아니요"로 시작하지 말고, 질문을 되풀이하지 말고, 근거 문장으로 바로 답한다.
       출력은 JSON 하나만: {"answer": "...", "usedIds": ["D1", ...], "grounded": true|false}
       근거로 답할 수 없으면 grounded=false.
       """;
