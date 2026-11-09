@@ -36,8 +36,10 @@ public class ChunkStore {
       access_scope, content
       """;
 
+  // 고객용: 키워드는 절 제목 + 본문과 비교한다 — 고객 질문은 안내 문서의 절 제목("다른 주문의 상품이 왔어요")과 닮았다(고객 평가 5회차 C16).
+  // 운영자용은 본문만
   private static final String SIM =
-      "(? * (1 - (embedding <=> ?::vector)) + ? * word_similarity(?, content))";
+      "(? * (1 - (embedding <=> ?::vector)) + ? * word_similarity(?, coalesce(section_path, '') || ' ' || content))";
 
   private final JdbcTemplate jdbc;
 
