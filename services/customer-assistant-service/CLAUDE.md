@@ -38,4 +38,6 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 로컬 포트 8509. LAN 색인 `deploy/lan/lan.sh rag-ingest-customer pc2`.
 
 ## 상태
-- 1차 구현 2026-11-09. 남은 결정: 답변 보존 기간(`answers.retention`, 비어 있으면 지우지 않음). 고객 질문 평가셋으로 임계값(지금 운영자용 0.40·0.45) 다시 맞추기.
+- 1차 구현 2026-11-09. 남은 결정: 답변 보존 기간(`answers.retention`, 운영자용과 같이 미설정 — 지우지 않음).
+- 평가(2026-11-10, `docs/rag/verification/2026-11-10/customer-eval/`): 37문항 37/37. 확인: `python -I deploy/lan/checks/customer_rag_eval.py`(고객 토큰 필요).
+- 고객용 답변 검사 `domain/CustomerAnswerChecks`(숫자 온전 일치·표 모든 행·질문 대상·물음표)와 `TableText`(표 → 줄)는 운영자용에 없다. 4B 모델은 프롬프트 규칙을 잘 따르지 않으므로 막아야 할 것은 이 검사에 넣는다.
