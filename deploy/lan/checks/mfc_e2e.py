@@ -126,7 +126,21 @@ if st not in (201, 409):
     raise SystemExit(1)
 
 # 1. 포장 위치·재고 고르기
-locs = step("위치 조회", http("GET", f"{GW}/locations?mfcId={MFC}&state=ACTIVE&size=200", sup), 200)["items"]
+def all_locations():
+    """센터의 ACTIVE 위치 전부(2026-11-09 도면 칸 6,762개 등록 뒤 — 한 쪽 200개로는 포장·카트 위치가 안 나온다)."""
+    out, cursor = [], None
+    while True:
+        u = f"{GW}/locations?mfcId={MFC}&state=ACTIVE&size=200" + (f"&cursor={urllib.parse.quote(cursor)}" if cursor else "")
+        st, b = http("GET", u, sup)
+        if st != 200:
+            return st, b
+        out += b.get("items", [])
+        cursor = (b.get("page") or {}).get("nextCursor")
+        if not cursor:
+            return 200, {"items": out}
+
+
+locs = step("위치 조회", all_locations(), 200)["items"]
 pak = next(l["locationCode"] for l in locs if l["zone"] == "PACKING")
 temp_of = {l["locationCode"]: l["temperatureZone"] for l in locs}
 snap = step("재고 스냅샷", http("GET", f"{INV}/internal/snapshots?mfcId={MFC}&size=200"), 200)

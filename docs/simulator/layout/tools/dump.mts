@@ -21,6 +21,10 @@ const out = {
     along: r.along, face: r.face, levels: r.levels, slotsPerLevel: r.slotsPerLevel,
   })),
   locationCount: L.locations.length,
+  locations: L.locations.map((l: any) => ({
+    code: l.code, rackId: l.rackId, temp: l.temp, level: l.level, slot: l.slot,
+    pickX: Math.round(l.pick.x * 100) / 100, pickZ: Math.round(l.pick.z * 100) / 100,
+  })),
   sampleLocations: L.locations.slice(0, 3).map((l: any) => l.code),
   obstacles: L.obstacles,
   stations: L.stations,
