@@ -337,6 +337,8 @@ paths:
         (0.9.2) 이동·보충도 넣는다 — mfc-inbound 열린 이동 지시 중 담당 없음·아직 안 집음은 후보, 담당 있는 진행 중 이동은 그 담당의 앞 점유. 확정하면 이동 지시도 배정(AssignmentPublished → inbound 담당 투영).
         같은 미배정 개수면 정해진 순서(주문 작업 → 자동 보충·긴급 이동 → 센터 관리자 이동 → 취소품 복귀)의 앞선 유형을 넣는다(미배정 벌점에 작게 더함). 이동 조회가 안 되면 이동 없이 계산하고 limitations 에 MOVES_NOT_INCLUDED.
         계산은 시간 제한(`plan.time-limit`) 안에서. OPTIMAL·FEASIBLE = PROPOSED, (0.9.4) UNKNOWN = UNDETERMINED·MODEL_INVALID = INVALID·INFEASIBLE = NO_SOLUTION(모두 수동 배정으로).
+        (0.9.4) 엔진에는 규칙 기반 첫 해(정해진 앞섬 → 약속 순, 근무·겹침·패킹대 지킴)를 힌트로 준다. 엔진이 시간 안에 해를 못 내면(UNKNOWN) 그 규칙 기반 해를 PROPOSED 로 내고
+        limitations 에 RULE_BASED_FALLBACK(최적화 안 됨, solverStatus 는 UNKNOWN 그대로). 규칙으로도 하나도 못 넣으면 UNDETERMINED.
         (0.9.4) 진행 중 작업은 남은 수량 비율만큼만 담당을 막는다(진척을 모르면 유형 분 전체).
       operationId: createAssignmentPlan
       parameters:
@@ -1172,7 +1174,7 @@ components:
           items: { type: string }
         limitations:
           type: array
-          description: '(0.5.1) 이 추천의 알려진 한계 — IN_PROGRESS_FULL_DURATION(진행 중 작업 남은 시간 모름, 전체 시간으로 막음) / (0.9.4) IN_PROGRESS_ESTIMATED_BY_PROGRESS(남은 수량 비율로 추정), NO_TRAVEL_TIME(동선 없음), FIXED_TASK_MINUTES(수량 무관 고정 분), MOVES_NOT_INCLUDED. (0.9.4) ZONE_NOT_CHECKED 는 뺐다 — MFC 는 온도대 자격을 쓰지 않는다(설계)'
+          description: '(0.5.1) 이 추천의 알려진 한계 — IN_PROGRESS_FULL_DURATION(진행 중 작업 남은 시간 모름, 전체 시간으로 막음) / (0.9.4) IN_PROGRESS_ESTIMATED_BY_PROGRESS(남은 수량 비율로 추정), NO_TRAVEL_TIME(동선 없음), FIXED_TASK_MINUTES(수량 무관 고정 분), MOVES_NOT_INCLUDED, (0.9.4) RULE_BASED_FALLBACK(엔진이 시간 안에 해를 못 내 규칙 기반 해). (0.9.4) ZONE_NOT_CHECKED 는 뺐다 — MFC 는 온도대 자격을 쓰지 않는다(설계)'
           items: { type: string }
         assignments: { type: array, description: 확정 뒤 만든 배정, items: { $ref: '#/components/schemas/Assignment' } }
         createdBy: { type: string }

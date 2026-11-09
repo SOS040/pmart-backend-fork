@@ -275,6 +275,9 @@ public class PlanService {
     if (moves == null) {
       limits.add("MOVES_NOT_INCLUDED"); // 이동 지시 조회 실패 — 이동·보충 없이 계산
     }
+    if (r.ruleBased()) {
+      limits.add(0, "RULE_BASED_FALLBACK"); // 엔진이 시간 안에 해를 못 내 규칙 기반 해를 냈다(최적화 안 됨)
+    }
     if (!busyMinutes.isEmpty()) {
       // 진행 중 작업: 남은 수량 비율로 남은 시간을 줄인다(0.9.4). 진척을 모르는 작업(시작 전 배정·이동)은 전체 시간
       limits.add(

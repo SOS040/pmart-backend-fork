@@ -63,9 +63,29 @@ public record PlanProblem(
       int lateMinutes,
       int maxLoadMinutes,
       long objective,
-      long wallMs) {
+      long wallMs,
+      boolean ruleBased) {
+
+    public Result(
+        String status,
+        List<Item> items,
+        List<String> unassigned,
+        int lateMinutes,
+        int maxLoadMinutes,
+        long objective,
+        long wallMs) {
+      this(status, items, unassigned, lateMinutes, maxLoadMinutes, objective, wallMs, false);
+    }
+
+    /**
+     * 해가 있는가. ruleBased = 엔진이 시간 안에 해를 못 냈을 때(UNKNOWN) 규칙 기반 첫 해를 대신 낸 것(2026-11-09) — status 는
+     * UNKNOWN 그대로 둔다.
+     */
     public boolean solved() {
-      return "OPTIMAL".equals(status) || "FEASIBLE".equals(status) || "NOT_RUN".equals(status);
+      return ruleBased
+          || "OPTIMAL".equals(status)
+          || "FEASIBLE".equals(status)
+          || "NOT_RUN".equals(status);
     }
   }
 
