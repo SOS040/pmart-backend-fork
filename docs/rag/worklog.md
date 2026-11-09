@@ -114,6 +114,7 @@
   - 첫 시도 실패: `-p 15433` 만 주면 엔트리포인트의 첫 초기화 임시 서버가 5432 로 떠 초기화 스크립트가 못 붙음 → `PGPORT=15433` 으로 고치고 새 볼륨을 지우고 다시 만듦.
   - pc2 의 log-shipper·host-disk 는 자동으로 줄 뒤에 붙는 구성요소라 고정 IP 가 두 칸 밀림(.25→.27, .26→.28) → IP 충돌을 피하려고 그 둘을 먼저 다시 만든 뒤 새 컨테이너를 띄움. pc3·pc4 생성 파일은 변화 없음. 기존 서비스 재시작 없음.
 - 임베딩 비교(D3): PC1 임시 Ollama 로 `RetrievalEvalIT -PevalOllamaModel=` — 절 기준 recall@5 해시 0.52 · **Qwen3-Embedding-0.6B 0.76** · BGE-M3 0.68, 문서 기준 0.68 · 0.84 · 0.84. 추천 Qwen3(절 기준 앞섬, 639MB, 검색 빠름). 질문 25개라 2문항 차이 — 한계는 `verification/2026-11-09/embedding-compare/README.md`. 시험 전용 `OllamaEvalEmbedding`, 운영 코드 변경 없음. 해시 기준선은 색인 문서가 늘어 0.76 → 0.68(문서 기준).
+- 사용자 결정: 임베딩 = Qwen3-Embedding-0.6B(ADR-0051·D3 갱신).
 
 ## 남은 것
 - ADR-0036 결정 4건(외부 모델·외부 전송 범위, LAN pgvector 위치, 답변 보존·원문 저장, 운영자 역할).

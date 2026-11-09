@@ -22,7 +22,7 @@
 6. **모델은 LAN 의 Ollama 로 돌린다**(사용자 2026-11-09 도입 승인). 외부 유료 모델 API 는 쓰지 않는다 — 질문·문서가 밖으로 나가지 않는다.
    - Ollama 는 Docker 컨테이너로 두고 pc2 GPU 를 쓴다(다른 구성요소처럼 `lan.sh` 로 관리·버전 고정). 컨테이너에서 GPU 가 안 되면 다시 정한다. → 2026-11-09 확인: pc2 Docker 컨테이너(`--gpus all`)에서 RTX 2060 6144MiB 보임(nvidia-smi, CUDA 13.3).
    - 서비스는 Spring AI 의 Ollama 모듈(`spring-ai-ollama`, 기존 `spring-ai-bom` 2.0.2)로 부른다. `libs.versions.toml` 에 등록한다.
-   - 임베딩: Qwen3-Embedding-0.6B 와 BGE-M3 를 우리 문서(`RetrievalEvalIT` 질문)로 비교한 뒤 고른다(D3, 사용자 2026-11-09). 차원이 바뀌므로 새 마이그레이션과 재색인이 따른다.
+   - 임베딩: Qwen3-Embedding-0.6B 와 BGE-M3 를 우리 문서(`RetrievalEvalIT` 질문)로 비교한 뒤 고른다(D3, 사용자 2026-11-09). → **Qwen3-Embedding-0.6B 로 결정**(2026-11-09 사용자, 절 기준 recall@5 0.76 vs 0.68, 639MB — `docs/rag/verification/2026-11-09/embedding-compare/`). 1024차원, 질문에만 지시문. 차원이 바뀌므로 재색인이 따른다.
    - 대화 모델: RTX 2060(6GB)에 임베딩과 같이 올라가는 4B 급으로 시작해 답변 충실도를 평가하고, 부족하면 8B 를 시험한다(시작값 — 평가 뒤 정한다).
 
 ## 결정 대기
