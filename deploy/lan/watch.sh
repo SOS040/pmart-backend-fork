@@ -54,6 +54,11 @@ check() {
       body="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
         "docker exec pmart-lan-logstash-search-1 curl -s -m 5 localhost:9600/" 2>/dev/null)" || return 1
       grep -q '"status":"green"' <<<"$body" ;;
+    # RAG 전용 pgvector·Ollama(ADR-0051)도 LAN 포트가 없다 — 그 PC 에 SSH 로 들어가 컨테이너 안에서 본다. 없던 때는 기본(actuator)으로
+    # 늘 실패해 10분마다 재시작됐고, Ollama 재시작은 올려 둔 모델을 내려 첫 질문이 실패했다(2026-11-09)
+    rag-pgvector|ollama)
+      ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
+        "docker exec pmart-lan-$c-1 $([ "$c" = ollama ] && echo 'ollama list' || echo 'pg_isready -q -U pmart')" >/dev/null 2>&1 ;;
     prometheus|alertmanager) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:$([ "$c" = prometheus ] && echo 9090 || echo 9093)/-/ready")" = 200 ] ;;
     grafana)  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:3000/api/health")" = 200 ] ;;
     # Kafka 클러스터 지표(ADR-0037). 브로커 수는 보지 않는다 — 브로커가 죽은 것은 경보(KafkaBrokerDown)가 알리고,
