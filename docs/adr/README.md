@@ -53,3 +53,4 @@
 | [0049](0049-shortage-always-partial-cancel.md) | 결품은 고객 사전 선택과 관계없이 무조건 부분 취소·환불(남은 상품이 없을 때만 전체 취소) — ADR-0045 사전 선택별 처리 대체 | 승인 |
 
 형식: 배경 → 결정 → 대안 → 결과. 상태는 `제안 → 승인 → 대체됨(by ADR-xxxx)`.
+| [0050](0050-or-tools-assignment-routing-no-jgrapht.md) | 라이더 배정·배송 경로·피킹 순서는 기존 OR-Tools 로(delivery-dispatch 추가), JGraphT 도입 안 함, 도면은 MFC 마다 | 승인 |

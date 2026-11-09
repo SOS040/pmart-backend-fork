@@ -300,7 +300,7 @@
 - **API**: 배차 요청(점원·자동), 제안 응답(라이더), 배차 취소, 배송 조회, 회수 배차 요청(claim), 배차 상태 조회(orchestration S3).
 - **발행**: `DeliveryCreated`, `DispatchOfferSent`, `DeliveryAssigned`, `DeliveryAssignmentChanged`, `DispatchFailed`(기사 없음/반복 거절/만료/장애 구분), `DispatchDelayed`, `DeliveryCancelledBeforePickup`.
 - **구독**: `ShipmentReady`, `PackingFinished`, `OrderCancelled`, `ReturnPickupRequested`, `ExchangeReshipmentApproved`, `RiderStateChanged`, `RiderRestricted`, `PackageHandedOver`.
-- **의존**: rider, delivery-tracking(거리), mfc-fulfillment(포장 정보), order(이행 계획).
+- **의존**: rider, delivery-tracking(거리), mfc-fulfillment(포장 정보), order(이행 계획). 라이더 ↔ 배송 짝짓기 계산은 OR-Tools 배정(내부 라이브러리, ADR-0050).
 
 ### delivery-execution-service `[1단계]`
 - **소유**: 배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수, 보관 장소, 촬영 시각; 업로드 실패 시 재시도 또는 지원센터 대체 증빙), 시간 경과 자동완료 없음 `[확정]`, 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 `[확정]`, 완료 후 사고 신고(기존 완료 유지·사건 별도), 상태 정정(처리자·근거), 도움요청(→case), 회수 수행(고객 수거→점포 반납→점원 수령 확인), 수행료 근거(수단·거리 구간 요율표 버전·할증·보상·공제·취소 시점별 기준; 요율 미등록=산정 불가), 정산 상태(예상/확정 대기/지급 확정/지급중/지급 완료/지급 실패/조정; 지급 실행은 외부 회계), 라이더 배송 이력·오늘 내역.
@@ -395,7 +395,7 @@
 | 카카오 로컬(주소 검색·좌표→주소) | delivery-serviceability | 확정(2026-10-31, ADR-0023). REST API 키 서버 전용, 주소 원문 로그 금지 |
 | 카카오 로컬(주소 검색·좌표→주소) | delivery-serviceability | 확정(2026-10-31, ADR-0023). REST API 키 서버 전용, 주소 원문 로그 금지 |
 | 카카오모빌리티 길찾기 / 카카오맵 | delivery-tracking(거리·경로), transport-routing(간선 행렬) | `[결정 필요]` |
-| OR-Tools(Java) | transport-routing, mfc-capacity 내부 라이브러리 | 확정(2026-10-23). GreedRL·RouteFinder(Python)는 3단계 별도 승인 |
+| OR-Tools(Java) | transport-routing, mfc-capacity, delivery-dispatch(라이더 배정), 피킹 순서 담당(구현 때 정함) 내부 라이브러리 | 확정(2026-10-23), 범위 확대 ADR-0050(2026-11-09). JGraphT 도입 안 함. GreedRL·RouteFinder(Python)는 3단계 별도 승인 |
 | 알림 채널(푸시·알림톡) | notification-service | |
 | 회계·지급 | 없음(1차 수동) | 라이더 수행료·운송비 지급, BO-21 `[결정 필요]` |
 | 가상 설비·센서 | cdc-inbound/outbound, cold-chain | `source=SIMULATED` |
