@@ -10,6 +10,7 @@ PMART_SEED_ADMIN_PASSWORD=pmart-local java deploy/lan/seed/Seed.java --gateway h
 ```
 
 - 관리자 아이디·비밀번호: `deploy/lan/.secrets/operator-admin-login`·`operator-admin-password`(git 제외) 또는 환경변수 `PMART_SEED_ADMIN_LOGIN`·`PMART_SEED_ADMIN_PASSWORD`.
+  - 2026-11-07 부터 `operator-admin-password` 파일 값이 LAN 의 `admin` 실제 비밀번호와 다르다(사용자가 바꿈 — 사용자 결정 2026-11-09 그대로 둠). 시드는 LAN 전용 `claude-dev` 로: `PMART_SEED_ADMIN_LOGIN="$(cat deploy/lan/.secrets/claude-dev-login)" PMART_SEED_ADMIN_PASSWORD="$(cat deploy/lan/.secrets/claude-dev-password)" java deploy/lan/seed/Seed.java`.
 - 시험 운영자 `seed-md`(MD, 센터 `MFC-SEED-01`)·`seed-approver`(PRODUCT·DISPLAY·PRICE·SERVICEABILITY·CENTER_MASTER·INVENTORY 승인)를 만들거나 맞춘다. 비밀번호는 실행마다 무작위로 초기화하고 저장하지 않는다(발의자 ≠ 승인자 규칙 때문에 두 계정).
 - 순서: 센터·시간표 → 카테고리 트리 → 배송 권역 → 상품 → 콘텐츠·대표 이미지(합성 PNG) → 기본가 → MFC 취급 ON → (--initial-stock) 초기 재고. 이미 있으면 건너뛴다(상품은 바코드로 확인). 초기 재고 말고는 다시 돌려도 안전하다.
 - 초기 재고는 INITIAL_STOCK 승인 → mfc-inbound 초기 보유 반입 → mfc-inventory 전기(D2, 조정으로 넣지 않음). 반영은 `GET /initial-stock-loads?approvalId=` 로 확인한다.
