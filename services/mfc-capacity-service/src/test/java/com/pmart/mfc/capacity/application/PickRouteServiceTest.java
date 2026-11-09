@@ -23,7 +23,8 @@ import org.junit.jupiter.api.Test;
 class PickRouteServiceTest {
 
   private static PlanProperties props(String start) {
-    return new PlanProperties(null, null, null, null, null, null, null, "http://loc", start, null);
+    return new PlanProperties(
+        null, null, null, null, null, null, null, "http://loc", start, null, null);
   }
 
   /** 좌표: 1차원 x 만(직각 거리 = |Δx|). */

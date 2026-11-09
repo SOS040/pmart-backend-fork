@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -383,6 +383,32 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AssignmentPlan' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /assignment-plans/{planId}/input:
+    get:
+      tags: [assignments]
+      summary: 배정 추천 계산 입력 (0.12.0, 원문 WK-09 재현 저장)
+      description: |
+        2026-11-09. 그 계획을 계산할 때 엔진(OR-Tools CP-SAT)에 넘긴 문제 그대로 — 작업(분·약속까지 분·우선순위·버전), 작업자(할 수 있는 유형·속도 배율·막힌 구간),
+        패킹대 수, 목적 가중치, 계산 시간 제한, 구간 시작 시각. 다시 계산(replay)은 아직 없다(사용자 결정).
+        기간으로 지우지 않는다 — 저장 총량이 설정 `plan.input-max-bytes`(LAN 2GB)를 넘으면 오래된 것부터 지운다(확정 안 된 계획 먼저). 지워졌으면 404 INPUT_NOT_KEPT.
+      operationId: getAssignmentPlanInput
+      parameters:
+        - { name: planId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planId: { type: string }
+                  inputHash: { type: string, description: 입력 JSON 의 SHA-256 — 같으면 같은 입력 }
+                  bytes: { type: integer }
+                  createdAt: { type: string, format: date-time }
+                  input: { type: object, additionalProperties: true }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
   /assignment-plans/{planId}/commits:
@@ -1204,6 +1230,10 @@ components:
     AssignmentPlan:
       properties:
         planId: { type: string }
+        inputHash:
+          type: string
+          nullable: true
+          description: '(0.12.0) 계산 입력 JSON 의 SHA-256 — `GET /assignment-plans/{planId}/input`. 보관 상한으로 지워졌으면 null'
         mfcId: { type: string }
         state:
           type: string

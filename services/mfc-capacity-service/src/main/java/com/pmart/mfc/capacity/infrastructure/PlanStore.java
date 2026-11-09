@@ -53,6 +53,76 @@ public class PlanStore {
     this.jdbc = jdbc;
   }
 
+  /** 계산 입력(0.12.0). */
+  public record InputRow(String planId, String json, String hash, int bytes, Instant createdAt) {}
+
+  public void insertInput(String planId, String json, String hash, int bytes, Instant at) {
+    jdbc.update(
+        "INSERT INTO assignment_plan_input (plan_id, input_json, input_hash, bytes, created_at)"
+            + " VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+        planId,
+        json,
+        hash,
+        bytes,
+        Timestamp.from(at));
+  }
+
+  public java.util.Optional<InputRow> input(String planId) {
+    return jdbc
+        .query(
+            "SELECT plan_id, input_json, input_hash, bytes, created_at FROM assignment_plan_input"
+                + " WHERE plan_id = ?",
+            (rs, i) ->
+                new InputRow(
+                    rs.getString(1),
+                    rs.getString(2),
+                    rs.getString(3),
+                    rs.getInt(4),
+                    rs.getTimestamp(5).toInstant()),
+            planId)
+        .stream()
+        .findFirst();
+  }
+
+  public @org.jspecify.annotations.Nullable String inputHash(String planId) {
+    return jdbc
+        .queryForList(
+            "SELECT input_hash FROM assignment_plan_input WHERE plan_id = ?", String.class, planId)
+        .stream()
+        .findFirst()
+        .orElse(null);
+  }
+
+  public long totalInputBytes() {
+    Long n =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(bytes), 0) FROM assignment_plan_input", Long.class);
+    return n == null ? 0 : n;
+  }
+
+  /**
+   * 오래된 입력부터 지운다 — 확정 안 된 계획 먼저, 그다음 확정된 계획. 지운 합이 excess 이상이 될 때까지만(한 건씩, 넘치게 지우지 않음).
+   *
+   * @return 지운 바이트
+   */
+  public long deleteOldestInputs(long excess) {
+    long freed = 0;
+    while (freed < excess) {
+      List<java.util.Map<String, Object>> rows =
+          jdbc.queryForList(
+              "SELECT i.plan_id, i.bytes FROM assignment_plan_input i JOIN assignment_plan p"
+                  + " ON p.plan_id = i.plan_id"
+                  + " ORDER BY (p.state = 'COMMITTED'), i.created_at, i.plan_id LIMIT 1");
+      if (rows.isEmpty()) {
+        break;
+      }
+      var r = rows.get(0);
+      jdbc.update("DELETE FROM assignment_plan_input WHERE plan_id = ?", r.get("plan_id"));
+      freed += ((Number) r.get("bytes")).longValue();
+    }
+    return freed;
+  }
+
   public void insert(PlanRow p, List<ItemRow> items, List<UnassignedRow> left) {
     jdbc.update(
         "INSERT INTO assignment_plan (plan_id, mfc_id, state, solver_status, horizon_start,"

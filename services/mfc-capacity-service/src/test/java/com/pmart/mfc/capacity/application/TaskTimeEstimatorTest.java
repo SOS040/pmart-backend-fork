@@ -33,7 +33,8 @@ class TaskTimeEstimatorTest {
         null,
         "http://loc",
         "CRT-A-01",
-        new PlanProperties.Travel(1.0, 10, 5, "PAK-A-01"));
+        new PlanProperties.Travel(1.0, 10, 5, "PAK-A-01"),
+        null);
   }
 
   /** 1차원 좌표 x 로 거리표(|Δx|). 모두 상온 C 그룹 선반, 출발·포장은 선반 아님. */
@@ -129,7 +130,7 @@ class TaskTimeEstimatorTest {
     assertThat(new TaskTimeEstimator(ful, loc, props()).enabled()).isTrue();
     var noTravel =
         new PlanProperties(
-            null, null, null, null, null, null, null, "http://loc", "CRT-A-01", null);
+            null, null, null, null, null, null, null, "http://loc", "CRT-A-01", null, null);
     assertThat(new TaskTimeEstimator(ful, loc, noTravel).enabled()).isFalse();
   }
 }

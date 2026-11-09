@@ -800,4 +800,70 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
                 "SELECT COUNT(*) FROM task_assignment WHERE task_id = ?", Integer.class, q))
         .isZero();
   }
+
+  /**
+   * 계산 입력 저장(0.12.0, A4 — 원문 WK-09 재현 저장): 계획마다 엔진 입력 JSON·지문을 남기고 조회한다. 총량 상한을 넘으면 오래된 것부터(확정 안 된
+   * 계획 먼저) 지우고, 계획 결과는 남는다. 지워진 입력은 404 INPUT_NOT_KEPT.
+   */
+  @Test
+  void planInputIsKeptWithHashAndOldestIsSweptOverCap() {
+    moveOrders(List.of());
+    tasks(List.of(), "READY", "ASSIGNED", "IN_PROGRESS");
+    Res a = send("POST", SUP, "/assignment-plans", Map.of("mfcId", MFC, "horizonMinutes", 30));
+    assertThat(a.status()).as(a.body().toString()).isEqualTo(201);
+    String planA = a.body().path("planId").asString();
+    String hashA = a.body().path("inputHash").asString();
+    assertThat(hashA).hasSize(64);
+
+    Res in = send("GET", SUP, "/assignment-plans/" + planA + "/input", null);
+    assertThat(in.status()).as(in.body().toString()).isEqualTo(200);
+    assertThat(in.body().path("inputHash").asString()).isEqualTo(hashA);
+    assertThat(in.body().path("input").path("mfcId").asString()).isEqualTo(MFC);
+    assertThat(in.body().path("input").path("horizonMinutes").asInt()).isEqualTo(30);
+    assertThat(in.body().path("input").path("packingStations").asInt()).isEqualTo(4);
+    assertThat(in.body().path("input").path("timeLimitMs").asLong()).isEqualTo(5000);
+    assertThat(in.body().path("bytes").asInt()).isPositive();
+    // 다른 센터 운영자는 못 본다
+    String other = TestJwt.operator("sup-x", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER"));
+    assertThat(send("GET", other, "/assignment-plans/" + planA + "/input", null).status())
+        .isEqualTo(403);
+
+    Res b = send("POST", SUP, "/assignment-plans", Map.of("mfcId", MFC, "horizonMinutes", 30));
+    String planB = b.body().path("planId").asString();
+    // 지금 총량에서 한 건만 넘치게 상한을 두면 가장 오래된 것(계획 A 포함 앞선 것들)부터 지워진다
+    long total = plans.totalInputBytes();
+    int bytesB =
+        jdbc.queryForObject(
+            "SELECT bytes FROM assignment_plan_input WHERE plan_id = ?", Integer.class, planB);
+    new com.pmart.mfc.capacity.application.PlanInputSweeper(plans, props(bytesB)).sweep();
+    assertThat(plans.totalInputBytes()).isLessThanOrEqualTo(bytesB).isLessThan(total);
+    assertThat(plans.input(planB)).isPresent();
+    Res gone = send("GET", SUP, "/assignment-plans/" + planA + "/input", null);
+    assertThat(gone.status()).isEqualTo(404);
+    assertThat(gone.body().path("code").asString()).isEqualTo("INPUT_NOT_KEPT");
+    // 계획 결과는 그대로, 지문은 null
+    Res planAfter = send("GET", SUP, "/assignment-plans/" + planA, null);
+    assertThat(planAfter.status()).isEqualTo(200);
+    assertThat(planAfter.body().path("inputHash").isNull()).isTrue();
+    // 상한이 없으면 지우지 않는다
+    new com.pmart.mfc.capacity.application.PlanInputSweeper(plans, props(null)).sweep();
+    assertThat(plans.input(planB)).isPresent();
+  }
+
+  @Autowired com.pmart.mfc.capacity.infrastructure.PlanStore plans;
+
+  static com.pmart.mfc.capacity.application.PlanProperties props(@Nullable Integer max) {
+    return new com.pmart.mfc.capacity.application.PlanProperties(
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        max == null ? null : (long) max);
+  }
 }

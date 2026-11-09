@@ -57,7 +57,20 @@ public class PlanService {
       PlanRow plan,
       List<ItemRow> items,
       List<UnassignedRow> unassigned,
-      List<AssignmentRow> assignments) {}
+      List<AssignmentRow> assignments,
+      @org.jspecify.annotations.Nullable String inputHash) {}
+
+  /** 계산 입력(0.12.0). 지워졌으면 404 INPUT_NOT_KEPT. */
+  public PlanStore.InputRow input(String planId) {
+    PlanRow p = plans.find(planId).orElseThrow(() -> notFound(planId));
+    AssignmentService.requireReader(p.mfcId());
+    return plans
+        .input(planId)
+        .orElseThrow(
+            () ->
+                PmartException.notFound(
+                    "INPUT_NOT_KEPT", "계획 " + planId + " 의 계산 입력은 보관 상한으로 지워졌거나 없습니다."));
+  }
 
   /** 확정 결과(멱등 기록용). stale 이 비면 확정됨. */
   public record CommitOutcome(List<String> stale) {}
@@ -281,15 +294,19 @@ public class PlanService {
       }
     }
     var wt = props.resolvedWeights();
+    PlanProblem problem;
     PlanProblem.Result r =
         planner.solve(
-            new PlanProblem(
-                horizon,
-                stations,
-                solvable,
-                ws,
-                new PlanProblem.Weights(wt.unassigned(), wt.late(), wt.maxLoad())),
+            problem =
+                new PlanProblem(
+                    horizon,
+                    stations,
+                    solvable,
+                    ws,
+                    new PlanProblem.Weights(wt.unassigned(), wt.late(), wt.maxLoad())),
             limit);
+    // 엔진에 넘긴 문제 그대로(0.12.0, A4 — 원문 WK-09 재현 저장)
+    PlanInputs.Stored input = PlanInputs.of(mapper, mfcId, now, problem, limit);
     // 이 계산에 쓴 설정(임시 구현값)과 알려진 한계 — 계획마다 남긴다(2026-11-08 검토 #33·#34·#35·#37)
     Map<String, Object> settings = new LinkedHashMap<>();
     settings.put("taskMinutes", new java.util.TreeMap<>(minutes));
@@ -380,6 +397,8 @@ public class PlanService {
                 String.class,
                 () -> {
                   plans.insert(row, items, left);
+                  plans.insertInput(
+                      planId, input.json(), input.hash(), input.bytes(), clock.instant());
                   return planId;
                 })
             .value();
@@ -551,7 +570,8 @@ public class PlanService {
                 .filter(a -> planId.equals(a.planId()))
                 .toList()
             : List.of();
-    return new PlanView(p, plans.items(planId), plans.unassigned(planId), made);
+    return new PlanView(
+        p, plans.items(planId), plans.unassigned(planId), made, plans.inputHash(planId));
   }
 
   private WorkerService workerService;

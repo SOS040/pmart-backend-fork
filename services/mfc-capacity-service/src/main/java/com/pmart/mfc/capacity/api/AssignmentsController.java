@@ -84,6 +84,22 @@ public class AssignmentsController implements AssignmentsApi {
     return ResponseEntity.ok(plan(plans.commit(idempotencyKey, xSourceSystem, planId)));
   }
 
+  @Override
+  public ResponseEntity<
+          com.pmart.mfc.capacity.api.generated.model.GetAssignmentPlanInput200Response>
+      getAssignmentPlanInput(String planId) {
+    var in = plans.input(planId);
+    var out = new com.pmart.mfc.capacity.api.generated.model.GetAssignmentPlanInput200Response();
+    out.setPlanId(in.planId());
+    out.setInputHash(in.hash());
+    out.setBytes(in.bytes());
+    out.setCreatedAt(in.createdAt().atOffset(ZoneOffset.UTC));
+    @SuppressWarnings("unchecked")
+    java.util.Map<String, Object> body = JSON.readValue(in.json(), java.util.Map.class);
+    out.setInput(body);
+    return ResponseEntity.ok(out);
+  }
+
   private static final tools.jackson.databind.ObjectMapper JSON =
       tools.jackson.databind.json.JsonMapper.builder().build();
 
@@ -92,6 +108,7 @@ public class AssignmentsController implements AssignmentsApi {
     var p = v.plan();
     var out = new com.pmart.mfc.capacity.api.generated.model.AssignmentPlan();
     out.setPlanId(p.planId());
+    out.setInputHash(v.inputHash());
     out.setMfcId(p.mfcId());
     out.setState(
         com.pmart.mfc.capacity.api.generated.model.AssignmentPlan.StateEnum.fromValue(p.state()));
