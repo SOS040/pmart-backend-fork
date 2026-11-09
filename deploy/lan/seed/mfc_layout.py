@@ -12,7 +12,7 @@
 실행: python -I deploy/lan/seed/mfc_layout.py [register support move close ...]   (단계 없이 = 계획만 출력)
 필요: deploy/lan/.secrets/claude-dev-login·claude-dev-password. 센터 관리자 시험 계정 claude-mfc-sup 의 비밀번호를 새로 정해 쓴다(E2E 와 같은 방식).
 코드 대응: 시뮬레이터 `A01-01-101`(그룹-랙-단·칸) → `F-A1-01-1-01`({온도대 A/C/F}-{그룹 글자+줄 번호}-{랙}-{단}-{칸}). 팔레트 → `{온도대}-R1-{번호}-1-01`.
-좌표 = 도면의 작업자 서는 지점(m, x 동쪽·z 남쪽). 도면: docs/simulator/layout/ (layout.json).
+좌표 = 도면의 작업자 서는 지점(m, x 동쪽·z 남쪽). 도면: docs/simulator/mfc/layout/ (layout.json).
 """
 import json
 import os
@@ -28,7 +28,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 INV = os.environ.get("PMART_INVENTORY", "http://192.168.0.222:8301/api/v1")
 MFC = os.environ.get("PMART_MFC", "MFC-SEED-01")
-LAYOUT = os.path.join(ROOT, "docs", "simulator", "layout", "layout.json")
+LAYOUT = os.path.join(ROOT, "docs", "simulator", "mfc", "layout", "layout.json")
 APPROVAL_REF = "layout-v1"
 TEMP_LETTER = {"FROZEN": "F", "CHILLED": "C", "AMBIENT": "A"}
 OLD_SHELF_AREAS = ("S1", "S9")  # 옛 시험 선반 A-S1-*, C-S1-*, F-S1-* 와 옛 고회전 시험 칸 A-S9-01-1-01
@@ -316,7 +316,7 @@ def httest_step(s, shelves, existing):
         else:
             print("  고회전 지정 실패", x["locationCode"], st, bb.get("code"), bb.get("detail"))
     print("시험용 고회전 칸:", already)
-    # 도면에 강조할 목록(docs/simulator/layout/high-turnover.json → tools/draw.py 세 번째 인자)
+    # 도면에 강조할 목록(docs/simulator/mfc/layout/high-turnover.json → tools/draw.py 세 번째 인자)
     by_code = {x["locationCode"]: x for x in shelves}
     bins = [{"backend": c, "sim": by_code[c]["sim"], "rackId": by_code[c]["rackId"],
              "pick": [by_code[c]["position"]["xM"], by_code[c]["position"]["zM"]]} for c in sorted(already)]

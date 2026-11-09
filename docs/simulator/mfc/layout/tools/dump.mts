@@ -1,13 +1,13 @@
 // 시뮬레이터 평면(buildLayout) 좌표를 JSON 으로 뽑는다. 시뮬레이터 저장소는 읽기만 한다.
 // 실행(Node 23.6+ — TypeScript 를 그대로 실행): node dump.mts <출력.json> [layout.ts 경로]
-//   기본 layout.ts 경로 = 이 파일 기준 ../../../../../pmart-mfc-simulation/src/domain/layout.ts
+//   기본 layout.ts 경로 = 이 파일 기준 ../../../../../../pmart-mfc-simulation/src/domain/layout.ts
 // 그림: python -I draw.py <출력.json> <floorplan.svg>
 import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const src = process.argv[3]
   ? pathToFileURL(process.argv[3]).href
-  : new URL('../../../../../pmart-mfc-simulation/src/domain/layout.ts', import.meta.url).href;
+  : new URL('../../../../../../pmart-mfc-simulation/src/domain/layout.ts', import.meta.url).href;
 const mod = await import(src);
 const L = mod.buildLayout();
 const out = {

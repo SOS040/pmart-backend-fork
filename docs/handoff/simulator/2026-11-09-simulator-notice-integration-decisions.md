@@ -1,6 +1,6 @@
 # [공지] 실서버 연결 결정과 백엔드 현황 (2026-11-09)
 
-설계·결정 정본: `pmart-backend/docs/simulator/mfc-simulator-integration.md`(SIM-1~11). 요약:
+설계·결정 정본: `pmart-backend/docs/simulator/mfc/mfc-simulator-integration.md`(SIM-1~11). 요약:
 
 ## 결정 (시뮬레이터가 맞출 것)
 - **SIM-1 (임시)**: 실서버 모드는 1× 실제 시간. 배속은 MOCK 모드 전용. 센터 시간 설정은 하지 않는다(SIM-1a) — 시간 판단은 현재 실제 시각 기준.

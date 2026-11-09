@@ -1,6 +1,6 @@
 # 시뮬레이션 구현 범위 (사용자 2026-11-09)
 
-> 결정이 바뀌면 이 문서에 날짜와 함께 고친다. 연결 결정(SIM-1~)은 `mfc-simulator-integration.md`.
+> 결정이 바뀌면 이 문서에 날짜와 함께 고친다. 연결 결정(SIM-1~)은 MFC `mfc/mfc-simulator-integration.md`.
 
 ## 정한 것
 
@@ -10,7 +10,7 @@
 | S-2 | 그것을 토대로 **CDC 시뮬레이션도 만든다** — 둘 다 있게 된다. |
 | S-3 | CDC 시뮬레이션은 **입고를 다루지 않는다.** 수요예측 등 MFC 와 달리 기능적으로 빠지는 부분이 많다. |
 | S-4 | **TMS(CDC → MFC 운송)는 구현한다** — MFC 쪽 수요예측을 바탕으로 보충 물량을 실어 나르는 단계. 배송 단계에서 **OR-Tools 경로(Routing)** 를 쓴다(`tech-stack.md:49` 의 `transport-routing-service` 와 같은 방향). |
-| S-5 | **MFC 도면 = 시뮬레이터 평면**(`layout/floorplan.svg`, `buildLayout()` 실행 결과) — **임시로 만든 시험 MFC 한 곳의 도면**이다. **도면은 MFC 마다 다르다**(사용자 2026-11-09) → 도면·칸 좌표는 센터별 데이터로 다루고 특정 배치를 코드에 박지 않는다(ADR-0050). |
+| S-5 | **MFC 도면 = 시뮬레이터 평면**(`mfc/layout/floorplan.svg`, `buildLayout()` 실행 결과) — **임시로 만든 시험 MFC 한 곳의 도면**이다. **도면은 MFC 마다 다르다**(사용자 2026-11-09) → 도면·칸 좌표는 센터별 데이터로 다루고 특정 배치를 코드에 박지 않는다(ADR-0050). |
 | S-6 | **CDC 시뮬레이션 범위 = 출고·피킹·상차만**(L-2, 2026-11-09). |
 | S-7 | **TMS 범위 = 일단 차량·기사 정보, 배차, 실제 출발·도착 기록까지**(L-3, 2026-11-09). 서비스 대응(service-map): 차량·기사 = fleet, 배차·운송 계획 = transport-planning(+ 경로 transport-routing, OR-Tools), 실제 출발·도착 = transport-execution. |
 

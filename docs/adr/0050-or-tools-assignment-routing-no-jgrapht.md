@@ -9,7 +9,7 @@
 2. **경로(Routing)** — (가) TMS 운송 경로(`transport-routing-service`, 기존 범위), (나) MFC 피킹 방문 순서. (나)를 맡을 서비스는 구현 때 정한다(작업 상세의 칸 순서를 내는 쪽 — mfc-fulfillment 또는 배정 추천과 묶어 mfc-capacity). 정해지면 이 ADR 의 범위 표에 적는다.
 3. **새 의존성 없음** — 지금 `ortools-java 9.15.6755` 에 배정(`LinearSumAssignment`·`MinCostFlow`)·경로(`RoutingModel`)가 다 들어 있다.
 4. **JGraphT 는 도입하지 않는다.** OR-Tools 경로는 지점 사이 거리표를 받아 순서만 정하므로, MFC 안 "칸 사이 걷는 거리"는 도면 격자 위 길찾기를 직접 구현한다(시뮬레이터 `navgrid.ts` 0.25 m 격자 A* 와 같은 방식). 배송 거리는 외부 경로 API(service-map transport-routing). 통로 구조가 복잡해져 직접 구현이 버거우면 다시 본다.
-5. **도면은 MFC 마다 다르다**(사용자 2026-11-09). 지금 도면(`docs/simulator/layout/`)은 임시로 만든 시험 MFC 한 곳의 것이다. 피킹 거리표는 센터별 도면·칸 좌표 데이터에서 만들고, 특정 센터 배치를 코드에 박지 않는다. 도면·좌표를 어느 서비스가 갖는지(mfc-location 이 위치의 정본)는 피킹 순서 구현 때 정한다.
+5. **도면은 MFC 마다 다르다**(사용자 2026-11-09). 지금 도면(`docs/simulator/mfc/layout/`)은 임시로 만든 시험 MFC 한 곳의 것이다. 피킹 거리표는 센터별 도면·칸 좌표 데이터에서 만들고, 특정 센터 배치를 코드에 박지 않는다. 도면·좌표를 어느 서비스가 갖는지(mfc-location 이 위치의 정본)는 피킹 순서 구현 때 정한다.
 
 ## OR-Tools 사용 범위 (이 ADR 기준)
 | 서비스 | 기능 | 상태 |

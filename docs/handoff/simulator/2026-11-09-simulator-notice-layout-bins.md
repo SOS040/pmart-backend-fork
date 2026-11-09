@@ -1,7 +1,7 @@
 # [공지] 시험 센터 칸을 시뮬레이터 평면대로 다시 등록 (2026-11-09)
 
 - 결정: 사용자 2026-11-09 — **MFC 도면 = 시뮬레이터 평면(임시 시험 MFC 한 곳)**, 백엔드 시험 센터 `MFC-SEED-01` 의 칸을 그 평면대로 다시 등록(scope L-1). 도면은 MFC 마다 다르다(ADR-0050).
-- 근거 문서(백엔드): `docs/simulator/scope.md`, `docs/simulator/layout/README.md`(도면·대응표), `docs/simulator/mfc-simulator-integration.md` SIM-6 보완.
+- 근거 문서(백엔드): `docs/simulator/scope.md`, `docs/simulator/mfc/layout/README.md`(도면·대응표), `docs/simulator/mfc/mfc-simulator-integration.md` SIM-6 보완.
 - 커밋: `e4d4e81`(mfc-location 0.6.0 좌표), `6bb0632`(등록·이전 스크립트), 이 공지와 같은 커밋(시험용 고회전 칸).
 
 ## 1. 무엇이 바뀌었나
@@ -23,7 +23,7 @@
   - `position {xM, zM}`(mfc-location 0.6.0): 작업자가 서서 집는 지점, 미터, 평면 좌표계(x 동쪽, z 남쪽, 원점 건물 북서 모서리) — 시뮬레이터 `Location.pick` 과 같은 값.
   - `pickSequence`: 평면의 칸 순서(시뮬레이터 `locations` 배열 순서).
   - `dimensions`: 상온 칸 281×450×350 mm, 냉장·냉동 375×450×420 mm(랙 규격으로 계산), 팔레트 자리는 평면 사각형 × 높이 1.2 m(임시).
-  - `highTurnover`: **선반 칸은 일반 선반(false) — 임시**(사용자 결정, 나중에 특정 그룹만 고회전). E2E 시험용 고회전 칸만 true: `A-H1-01-1-01`~`04`·`A-H1-01-2-01` = 시뮬레이터 `H01-01-101`~`104`·`H01-01-201`(상온 H01 줄 1번 랙). 백엔드 도면(`docs/simulator/layout/floorplan.svg`)에 빨간 랙으로 표시했고, 목록은 `docs/simulator/layout/high-turnover.json`(백엔드·시뮬레이터 코드, 랙, 좌표).
+  - `highTurnover`: **선반 칸은 일반 선반(false) — 임시**(사용자 결정, 나중에 특정 그룹만 고회전). E2E 시험용 고회전 칸만 true: `A-H1-01-1-01`~`04`·`A-H1-01-2-01` = 시뮬레이터 `H01-01-101`~`104`·`H01-01-201`(상온 H01 줄 1번 랙). 백엔드 도면(`docs/simulator/mfc/layout/floorplan.svg`)에 빨간 랙으로 표시했고, 목록은 `docs/simulator/mfc/layout/high-turnover.json`(백엔드·시뮬레이터 코드, 랙, 좌표).
 - 재고: 옛 시험 선반의 재고를 새 칸으로 옮겼다 — **SKU 하나 = 칸 하나**(같은 온도대, 평면 칸 순서 앞에서부터). 약 505개 칸만 재고가 있고 나머지는 비어 있다. 시뮬레이터의 가상 SKU 900개가 아니라 실서버의 실제 SKU(약 500개)다.
 
 ## 2. 시뮬레이터가 맞출 것 (SIM-6)
