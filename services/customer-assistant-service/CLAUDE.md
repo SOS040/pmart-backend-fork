@@ -25,7 +25,7 @@
 
 ## 데이터
 - `V1__init.sql`: `index_snapshot`·`index_source_file`·`doc_chunk`·`embedding_cache`·`customer_answer`(질문 원문 컬럼 없음, `order_id`, 요청 제한 색인).
-- LAN: pc2 `rag-pgvector` 의 DB·계정 `customer_assistant_service`(ADR-0051). 로컬: `deploy/local/ai-assistant/docker-compose.yml`(15433, 새 볼륨이면 DB 자동 생성).
+- LAN: pc5 `rag-pgvector`(2026-11-10 pc2 → pc5) 의 DB·계정 `customer_assistant_service`(ADR-0051). 로컬: `deploy/local/ai-assistant/docker-compose.yml`(15433, 새 볼륨이면 DB 자동 생성).
 
 ## 실행
 ```bash
@@ -35,7 +35,7 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 ./gradlew :services:customer-assistant-service:ingestKnowledge -Prepo=$(pwd)
 ./gradlew :services:customer-assistant-service:bootRun --args='--spring.profiles.active=local'
 ```
-로컬 포트 8509. LAN 색인 `deploy/lan/lan.sh rag-ingest-customer pc2`.
+로컬 포트 8509. LAN 색인 `deploy/lan/lan.sh rag-ingest-customer pc5`.
 
 ## 상태
 - 1차 구현 2026-11-09. 남은 결정: 답변 보존 기간(`answers.retention`, 운영자용과 같이 미설정 — 지우지 않음).

@@ -19,6 +19,7 @@
 3. **pgvector 는 백오피스용·고객용 DB 를 따로 둔다**: DB `ai_assistant_service`, `customer_assistant_service`, 계정도 서비스마다 따로(서로의 DB 에 권한 없음).
 4. **RAG 전용 pgvector 컨테이너 하나에 두 DB 를 둔다**(`pgvector/pgvector:pg17`, 버전 고정). 공용 PostgreSQL 이미지는 바꾸지 않는다(40여 서비스 DB 가 있어 영향이 크다). 고객 부하가 커지면 고객용 DB 만 다른 컨테이너·PC 로 옮긴다(서비스는 접속 주소만 바뀜).
 5. **LAN 배치는 pc2**: pgvector·두 서비스·Ollama. 가장 여유가 있다(위 수치). PC1(빌드·개발 PC)은 빌드·시험과 자원이 겹치고 자주 재시작해서 상시 운영에 두지 않는다 — 임베딩 비교처럼 한 번 돌리는 시험에만 쓴다. pc2 에는 주문·결제가 있어 RAG 컨테이너에 CPU·메모리 상한을 걸고 고객용에 요청 제한을 둔다. PC 를 한 대 더 들일 수 있어(사용자 2026-11-09), 그때 옮기는 것을 다시 본다.
+   - **2026-11-10 pc5 로 옮김(사용자 "A로")**: pc5(같은 사양, 배송 서비스 6개, 남은 메모리 16.2GB — pc2 10.5GB·pc3 9.7GB·pc4 6.2GB) 줄 끝에 pgvector·Ollama·두 서비스. 주문·결제와 CPU 를 나누지 않으려는 것(대화 모델이 GPU 를 넘치면 CPU 로 돈다). 네 구성요소는 다른 PC 가 이름으로 부르지 않아(`NO_EXTRA_HOST`) 다른 PC compose 는 그대로. 색인은 옮기지 않고 `lan.sh rag-ingest pc5`·`rag-ingest-customer pc5` 로 다시 만들고, 모델은 다시 받는다. pc5 컨테이너에도 GPU 장치(`/dev/dxg`, nvidia-smi)가 들어오는 것을 확인했다. 적용은 전체 재배포 때(ADR-0054 결정 J).
 6. **모델은 LAN 의 Ollama 로 돌린다**(사용자 2026-11-09 도입 승인). 외부 유료 모델 API 는 쓰지 않는다 — 질문·문서가 밖으로 나가지 않는다.
    - Ollama 는 Docker 컨테이너로 두고 pc2 GPU 를 쓴다(다른 구성요소처럼 `lan.sh` 로 관리·버전 고정). 컨테이너에서 GPU 가 안 되면 다시 정한다. → 2026-11-09 확인: pc2 Docker 컨테이너(`--gpus all`)에서 RTX 2060 6144MiB 보임(nvidia-smi, CUDA 13.3).
    - 서비스는 Spring AI 의 Ollama 모듈(`spring-ai-ollama`, 기존 `spring-ai-bom` 2.0.2)로 부른다. `libs.versions.toml` 에 등록한다.

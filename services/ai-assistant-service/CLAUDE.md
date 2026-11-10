@@ -23,7 +23,7 @@
 
 ## 데이터
 - `V1__init.sql`: `index_snapshot`·`index_source_file`·`doc_chunk`(vector·pg_trgm)·`embedding_cache`·`policy_answer`. 적용된 파일은 수정하지 않는다.
-- pgvector 가 필요하다. 로컬은 `deploy/local/ai-assistant/docker-compose.yml`(15433), 시험은 `PgvectorContainerSupport`(`pgvector/pgvector:pg17`), LAN 은 pc2 `rag-pgvector` 의 DB·계정 `ai_assistant_service`(ADR-0051, 아직 서비스 미배포).
+- pgvector 가 필요하다. 로컬은 `deploy/local/ai-assistant/docker-compose.yml`(15433), 시험은 `PgvectorContainerSupport`(`pgvector/pgvector:pg17`), LAN 은 pc5 `rag-pgvector`(2026-11-10 pc2 → pc5) 의 DB·계정 `ai_assistant_service`(ADR-0051, 아직 서비스 미배포).
 
 ## 실행
 ```bash
@@ -40,4 +40,4 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 - 내 질문 목록 `GET /assistant/question-history`(BR-46, 계약 1.1.0) — 본인·출처 범위, 완료 답변은 현재 권한 재검사 후만. 쪽 계산은 `domain/HistoryPager`: 보이는 행을 size+1 개째까지 찾아 그때만 nextCursor(2026-11-05 결함 수정 — 숨김 행 뒤 누락).
 - 검색 평가 `RetrievalEvalIT`: 문서 경로 기준(`expected`) + 절 기준(`sections`, 원문을 읽어 정함). 정답 절은 검색 결과에 맞춰 넓히지 않는다.
 - 1차 구현(2026-11-04, ADR-0036): 기준선(해시 임베딩 + 발췌).
-- **LAN 배포(2026-11-09, ADR-0051)**: pc2, provider=ollama — 임베딩 qwen3-embedding:0.6b(CPU, `/api/embed` 직접 — Spring AI 임베딩 모델이 options 를 빠뜨림), 대화 qwen3:4b(GPU, 생각 끔·JSON). DB 는 `rag-pgvector` 의 `ai_assistant_service`(서비스 계정). 색인은 `lan.sh rag-ingest pc2`(일회 작업 `ai-assistant-ingest`), Ollama 재시작 뒤 `lan.sh rag-warm pc2`. 확인 `deploy/lan/checks/rag_e2e.py`.
+- **LAN 배포(2026-11-09, ADR-0051)**: pc2(2026-11-10 pc5 로 옮기기로 — 전체 재배포 때), provider=ollama — 임베딩 qwen3-embedding:0.6b(CPU, `/api/embed` 직접 — Spring AI 임베딩 모델이 options 를 빠뜨림), 대화 qwen3:4b(GPU, 생각 끔·JSON). DB 는 `rag-pgvector` 의 `ai_assistant_service`(서비스 계정). 색인은 `lan.sh rag-ingest pc5`(일회 작업 `ai-assistant-ingest`), Ollama 재시작 뒤 `lan.sh rag-warm pc5`. 확인 `deploy/lan/checks/rag_e2e.py`.

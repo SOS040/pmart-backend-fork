@@ -697,7 +697,7 @@ EOF
         ;;
       ollama)
         # 모델 서버(ADR-0051 결정 6): 임베딩·대화 모델을 이 PC GPU(RTX 2060 6GB)로. 인증이 없어 LAN 포트를 열지 않는다(같은 PC 서비스만).
-        # 주문·결제가 같은 PC 에 있어 CPU 4·메모리 6GB 상한(모델이 GPU 를 넘치면 CPU 로 넘어간다). 모델 파일은 ollamadata 볼륨
+        # 다른 업무 서비스(2026-11-10 부터 pc5 배송)와 같은 PC 라 CPU 4·메모리 6GB 상한(모델이 GPU 를 넘치면 CPU 로 넘어간다). 모델 파일은 ollamadata 볼륨
         cat <<EOF
   ollama:
     <<: *common
