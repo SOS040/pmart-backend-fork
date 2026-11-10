@@ -3,7 +3,7 @@
 - 작성: 2026-11-10
 - 근거: ADR-0054(인증 셋으로 — 직원 Keycloak·고객 auth-service·라이더 rider-auth-service), ADR-0055(Google 로그인은 ID 토큰 검증만, 결정 6 PMart JWT `aud`), ADR-0019(고객 Google 로그인), ADR-0018(운영자 로그인), ADR-0022(비회원 세션)
 - 계약: `contracts/openapi/auth-service.yaml`, `contracts/openapi/rider-auth-service.yaml`
-- 이 문서는 **작업이 모두 끝난 뒤** 기준이다. 2026-11-10 현재 rider-auth-service 와 `aud` 검사는 LAN 에 아직 배포되지 않았다(전체 재배포 때 함께, ADR-0054 결정 J). 상태는 [7. 현재 상태와 남은 일](#7-현재-상태와-남은-일).
+- 2026-11-11 LAN 전체 재배포로 rider-auth-service·`aud` 검사가 동작 중이고, 발급자 표 auth-service 줄의 RIDER 는 뺐다. 상태는 [7. 현재 상태와 남은 일](#7-현재-상태와-남은-일).
 
 ## 1. 전체 구조 — 발급자 셋, 게이트웨이 하나
 
@@ -18,7 +18,7 @@
 
 | 표의 줄 | 확인하는 `iss` | 서명 확인용 공개키 | 확인하는 `aud` | 인정하는 종류 |
 |---|---|---|---|---|
-| `auth-service` | auth-service | auth-service JWKS | `pmart-api` | CUSTOMER, GUEST, SERVICE (+ 옮기는 동안 OPERATOR, LAN 시험용 RIDER) |
+| `auth-service` | auth-service | auth-service JWKS | `pmart-api` | CUSTOMER, GUEST, SERVICE (+ 옮기는 동안 OPERATOR) |
 | `staff` | Keycloak pmart-staff | Keycloak certs | `pmart-api` | OPERATOR |
 | `rider` | rider-auth-service | rider-auth-service JWKS (`/api/v1/internal/jwks`) | `pmart-api` | RIDER |
 
@@ -150,19 +150,15 @@ Spring OAuth2 Client, Google 인가 코드 교환, Google access token 으로 �
 
 ## 7. 현재 상태와 남은 일
 
-2026-11-10 현재: 코드·설정·시험은 끝났다(`:services:auth-service:check`, `:services:rider-auth-service:check`, `:platform-services:api-gateway:check` 통과). 커밋·pmart-config push·LAN 배포는 하지 않았다.
+2026-11-11: 커밋·pmart-config push·LAN 전체 재배포 완료(이미지 5265276). 확인 — 비회원·운영자 토큰 `aud=pmart-api` 로 API 통과, `aud` 없는 토큰 401, 라이더 로그인 경로가 rider-auth-service 까지 도달(가짜 토큰 `PROVIDER_REJECTED`), rider-auth-service 서명 시험 토큰 통과, auth-service 서명 RIDER 토큰 401.
 
 | 할 일 | 언제·누가 |
 |---|---|
-| 백엔드·pmart-config 커밋·push | 사용자 승인 뒤 |
-| 전체 LAN 재배포 (rider-auth-service 첫 배치, `aud` 검사 시작) | 마지막에 한 번 (ADR-0054 결정 J) |
-| 배포 뒤 발급자 표 auth-service 줄에서 `RIDER` 빼기 | 배포 확인 뒤 |
 | 운영자 로그인을 Keycloak 으로 옮기고 auth-service 줄에서 `OPERATOR` 빼기 | ADR-0054 다음 단계 |
 | 라이더 앱 로그인 연동, 실제 Google 토큰으로 시험 | 클라이언트 (`docs/handoff/clients/2026-11-10-clients-notice-rider-google-login.md`) |
 | rider-service 가입 구현 (RS-2) | rider-service 작업 때 |
 | 라이더 정지 시 세션 끊기 (ADR-0054 ⑤), 주체 비활성 API | 나중 |
 | 웹 클라이언트 `client_secret` 삭제·재발급 | 사용자 (Google Cloud 콘솔) |
 
-### 배포 때 알아 둘 것
-- 재배포 직후 `aud` 없이 발급된 기존 access token 은 거절된다(고객 최대 30분, 비회원 최대 1시간). 앱은 refresh token 으로 갱신하면 새 토큰을 받는다.
-- LAN 시험용으로 직접 만드는 토큰(고객, 라이더 `RD-claude-*`)에도 `aud: pmart-api` 를 넣어야 한다.
+### 알아 둘 것
+- LAN 시험용으로 직접 만드는 토큰에도 `aud: pmart-api` 를 넣는다. 시험 라이더 토큰은 rider-auth-service 서명키(`.secrets/rider-auth-signing-key.pem`, `iss=http://rider-auth-service:8510`)로 만든다 — auth-service 서명 RIDER 토큰은 이제 401.
