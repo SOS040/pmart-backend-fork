@@ -3,8 +3,9 @@
 배송 서비스(delivery-dispatch·delivery-execution·rider·delivery-tracking·delivery-capacity·delivery-serviceability)를 만들기 시작할 때 **먼저 읽는 한 장**. MFC 쪽은 이미 만들어 LAN 에서 돌고 있고, 배송 쪽이 없어서 멈춰 있는 지점과 맞춰야 할 약속을 모았다. 항목별 상세는 아래 링크(받는 서비스 파일)가 정본이다.
 
 ## 1. 지금 상태
-- 배송 6개 서비스: 스캐폴딩(2026-10-23) — 모든 엔드포인트 501. LAN 은 **PC 5**(192.168.0.101, 2026-11-10 PC 3 에서 옮김, DB 새로 — `docs/worklog/2026-11-10.md`). Outbox 커넥터 6개는 PC 5 DB 를 보고 RUNNING(발행만 하면 Kafka 로 나간다).
+- 배송 6개 서비스 — **구현됨 2개**: delivery-serviceability(권역 매핑·좌표·주소 판정, 배송 조건 — 고객 주소 등록에 쓰임), delivery-capacity(예약 슬롯 조회·점유 — 주문에 쓰임). **스캐폴딩(501) 4개**: delivery-dispatch·delivery-execution·rider·delivery-tracking. LAN 은 **PC 5**(192.168.0.101, 2026-11-10 PC 3 에서 옮김, DB 새로 — `docs/worklog/2026-11-10.md`). Outbox 커넥터 6개는 PC 5 DB 를 보고 RUNNING(발행만 하면 Kafka 로 나간다).
 - MFC 쪽: 피킹 → 포장 → **배차 요청** → 출하 대기(READY) → **라이더 QR 인계** 까지 구현·LAN 배포. 실제 고객 주문 1건(ORD-0e67de38-7acf-3e71-8a28-7aeadd986bb0, 2026-11-10)이 **출고 READY 에서 배차를 기다리는 중** — 배차가 생기면 처음 이어서 시험할 대상(단, §6 시작 위치 참고).
+- 이전 사고(2026-11-10): PC 5 로 옮길 때 옛 DB 를 지워 **권역 매핑이 사라졌다**(고객 주소 판정 불가) → 시드(`deploy/lan/seed/Seed.java`, 승인 경로)로 같은 시드 권역을 버전 1 로 다시 발효. 슬롯 점유(slot_hold) 기록도 사라졌다. 구현된 두 서비스의 DB 를 옮기거나 지울 때는 정확한 행 수(`count(*)`)로 확인한다 — 통계 추정값(`pg_stat_user_tables.n_live_tup`)은 0 으로 나올 수 있다.
 - 인계 관련 사용자 결정 D-1~D-9 는 모두 결정됨(2026-11-08, `docs/business/flows/package-handover-decisions.md`).
 
 ## 2. 받는 서비스별 할 일 (정본 링크)
@@ -29,7 +30,7 @@
 | `WorkStopResult` | 주문 중지 판정 | perPackage[{packageId, STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER}] — 출고 취소면 배차 취소 |
 
 ### API — `contracts/openapi/mfc-fulfillment-service.yaml`
-- `POST /packages/{packageId}/handover-authorizations` — 라이더 QR 스캔(토큰 **RIDER**, 주체 = riderId). 포장 SEALED·출고 READY·배정 라이더여야 함. 실패 코드: `DELIVERY_MISMATCH`·`NOT_ASSIGNED`·`RIDER_MISMATCH`(403)·`FENCE_ACTIVE`·`PACKAGE_INVALIDATED`·`HANDOVER_RESULT_PENDING`.
+- `POST /packages/{packageId}/handover-authorizations` — 라이더 QR 스캔(토큰 **RIDER**, 주체 = riderId). 포장 SEALED·출고 READY 또는 PARTIALLY_HANDED_OVER·배정 라이더여야 함. 실패 코드: `DELIVERY_MISMATCH`·`NOT_ASSIGNED`·`RIDER_MISMATCH`(403)·`FENCE_ACTIVE`·`PACKAGE_INVALIDATED`·`HANDOVER_RESULT_PENDING`.
 - `POST /packages/{packageId}/handover-commits` — 인계 확정(같은 라이더). 결과 모름이면 MFC 가 같은 인계 ID 로 다시 보내고 결과는 `PackageHandedOver` 로 온다. `FENCE_EXPIRED` 면 다시 찍기(같은 라이더는 확인 없이 — D-1 안 C).
 - 허가 유효시간: 센터 설정 `handover-fence-ttl`, 기본 3분(D-2).
 
@@ -46,6 +47,7 @@ mfc-fulfillment 는 아래 4개로 "이 출고를 누가 가져갈 수 있나"(�
 - 발행은 Outbox(`EventPublisher`) → Debezium. 같은 aggregate 의 낮은 version 이 늦게 오면 상태 전이는 버린다(`events.md` 순서 규칙).
 
 ## 5. 결정된 규칙(배송 쪽에 영향 있는 것)
+- ADR-0053: delivery-dispatch 가 라이더 배정에 OR-Tools 를 넣으면 그 서비스는 **GraalVM Native 로 만들지 않고 JVM** 으로 실행(넣는 커밋에서 ADR 표 갱신).
 - D-3: MFC 는 라이더 **가게 도착을 보지 않는다**. "도착 → QR → 픽업 완료" 순서는 라이더 앱·delivery-execution 몫.
 - D-4: MFC 는 라이더 단계를 직접 보지 않는다 — dispatch 가 일시 중지·계약 종료 라이더의 배정을 풀면(`DeliveryAssignmentChanged`) 인계가 막힌다. 신규배차 제한 라이더는 이미 배정된 것 그대로.
 - D-5: 배차 요청 시점 = 점원 요청(포장 중) + 포장 끝까지 없으면 READY 때 자동.
@@ -55,12 +57,12 @@ mfc-fulfillment 는 아래 4개로 "이 출고를 누가 가져갈 수 있나"(�
 - 주문당 출고 1개(D6-2, 10kg 분할 없음) — 배송 1 ↔ 출고 1 로 시작해도 된다.
 
 ## 6. 시작 전 결정(2026-11-10 결정됨)과 남은 것
-- **구독 시작 위치 — 결정(2026-11-10, 사용자 "그래")**: delivery-dispatch 의 `mfc.fulfillment.v1` 소비 그룹은 **처음 켜기 전에 시작 위치를 2026-11-10 09:30 KST(00:30Z)로** 맞춘다(`kafka-consumer-groups --reset-offsets --to-datetime 2026-11-10T00:30:00.000Z --execute`, 그룹이 비어 있을 때). 그 전의 E2E 시험 출고는 건너뛰고 READY 로 기다리는 실제 주문(ORD-0e67de38…)부터 받는다. 같은 출고의 배차 요청이 두 번 와도 배송은 하나(shipmentId 로 멱등) — 그래서 이후 시작 위치와 상관없이 안전하다. 이후 E2E 시험 출고는 정상 흐름(생성 → 중지면 배차 취소)으로 처리한다.
+- **구독 시작 위치 — 결정(2026-11-10, 사용자 "그래")**: delivery-dispatch 의 `mfc.fulfillment.v1` 소비 그룹은 **처음 켜기 전에 시작 위치를 2026-11-10 09:30 KST(00:30Z)로** 맞춘다(`kafka-consumer-groups --bootstrap-server <kafka> --group <dispatch 소비 그룹> --topic mfc.fulfillment.v1 --reset-offsets --to-datetime 2026-11-10T00:30:00.000Z --execute`, 그룹에 실행 중인 소비자가 없을 때). 그 전의 E2E 시험 출고는 건너뛰고 READY 로 기다리는 실제 주문(ORD-0e67de38…)부터 받는다. 같은 출고의 배차 요청이 두 번 와도 배송은 하나(shipmentId 로 멱등) — 그래서 이후 시작 위치와 상관없이 안전하다. 이후 E2E 시험 출고는 정상 흐름(생성 → 중지면 배차 취소)으로 처리한다.
 - **문서끼리 다른 값 — 결정(2026-11-10)**: 사건 스키마를 API 에 맞췄다 — `DeliveryCreated.type` = `FORWARD / RETURN / RESHIPMENT`(분할은 유형이 아님 — 도입 때 별도 항목, 오배송 회수 DD-2 는 RETURN), `DispatchFailed.reason` = `NO_RIDER / REPEATED_REJECTION / EXPIRED / SYSTEM_FAILURE`. 포장 상태는 구현이 정본 — `SEALED → INVALIDATED`(재포장·피킹 뒤 중지), `OPEN → VOIDED`(밀봉 때 재고 거절). 상태 문서의 "VOIDED = 취소" 문구를 고쳤다(배송 쪽 영향 없음 — 둘 다 QR 409 `PACKAGE_INVALIDATED`).
 - 오배송 확인 사건을 누가 기록하는지(DD-2, ADR-0052 남은 것).
 - **시험 라이더 토큰 — 결정(2026-11-10)**: 라이더 로그인(auth)·라이더 앱이 아직 없어, 시험은 **LAN 서명키로 만든 시험 라이더 토큰**(`typ=RIDER`, 주체 `RD-claude-*`, 15분, 파일 `deploy/lan/.secrets/rider-token` 은 쓰고 지움 — 고객 시험 토큰과 같은 방식). LAN 전용, 운영 금지. 실제 라이더 가입·로그인은 라이더 앱을 만들 때(인증 방식은 그때 사용자 결정). auth 에 임시 라이더 로그인 코드는 만들지 않는다.
 
 ## 7. 시험
 - MFC 쪽 끝까지: `deploy/lan/checks/mfc_e2e.py`(배차 요청·READY·인계 판정까지, 라이더 인계 없음).
-- 실제 주문 진행 기록: `docs/worklog/2026-11-10.md`, 추적은 Zipkin `http://192.168.0.40:9411`(MFC → 배송 사건도 traceparent 로 이어진다).
+- 실제 주문 진행 기록: `docs/worklog/2026-11-10.md`, 추적은 Zipkin `http://192.168.0.40:9411`(Outbox 가 traceparent 를 싣기 때문에 MFC → 배송 사건도 이어질 것 — 배송 쪽 구독이 생기면 확인).
 - 근거 문서: `docs/business/flows/package-handover-contract.md`(§5 서비스별 할 일, §7 열린 질문), `package-handover-decisions.md`, ADR-0006·0047·0052, `docs/business/Delivery-business-logic.md`(업무 원문).
