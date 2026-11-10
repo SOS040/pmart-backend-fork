@@ -33,7 +33,7 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조. 배포 �
 ./gradlew :services:<name>:jib -PcontainerRegistry=docker.io/heeji4445 -PimageTag=<sha> -PgitRevision=<sha> --no-configuration-cache   # jib 은 구성 캐시와 호환되지 않음(ci-cd.md)
 # 2) 파일 생성·배포
 deploy/lan/lan.sh render
-deploy/lan/lan.sh deploy all            # 또는 deploy pc3 delivery-tracking-service
+deploy/lan/lan.sh deploy all            # 또는 deploy pc5 delivery-tracking-service
 deploy/lan/lan.sh status all
 deploy/lan/lan.sh logs pc2 order-service 200
 # 3) 시험 데이터(승인 API 경로, 다시 돌려도 안전) — deploy/lan/seed/README.md
@@ -133,7 +133,7 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
   상태·로그는 `~/.pmart-lan-watch/` (`watch.log`, `last-<pc>`). Kafka 가 재시작되면 Connect 작업이 UNASSIGNED 로 남는데(재배정 안 됨), 이것도 감시가 Connect 재시작으로 복구한다.
 
 ## IP 변경 시 복구 (2026-10-28)
-PC 2·3·4 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수 없음, 지금까지는 같은 IP 가 나왔다). 반면 `placement.conf` 의 IP 는
+PC 2·3·4·5 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수 없음, 지금까지는 같은 IP 가 나왔다). 반면 `placement.conf` 의 IP 는
 각 PC compose 의 `extra_hosts`·Kafka 광고 주소·Connect 의 DB 주소에 그대로 들어가므로, 한 PC 의 IP 가 바뀌면 **모든 PC** 를 다시 배포해야 한다.
 
 - **SSH 는 컴퓨터 이름으로 접속**한다(PC 1 `~/.ssh/config`: `HostName DS603-12`/`D603-15`/`D603-16`, `AddressFamily inet`).
