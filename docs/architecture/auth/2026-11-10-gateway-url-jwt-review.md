@@ -1,6 +1,6 @@
 # API Gateway 단일 구성·URL별 JWT 검증 글 확인 (2026-11-10)
 
-원문: [`references/2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`](references/2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md). 상태: **확인만 — 결정 전**. 같은 날 Keycloak 추천 글([확인](2026-11-10-keycloak-recommendation-review.md))을 전제로 한 글이다.
+원문: [`references/2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`](references/2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md). 상태: 처음 확인은 결정 전 기준. **2026-11-10 Keycloak 구성 결정(ADR-0054) 뒤 다시 본 내용은 §5**. 같은 날 Keycloak 추천 글([확인](2026-11-10-keycloak-recommendation-review.md))을 전제로 한 글이다.
 
 ## 1. 지금 게이트웨이(코드 확인)
 - **게이트웨이는 이미 1개**(`platform-services/api-gateway`, Spring Cloud Gateway Server WebFlux) — 원문의 결론 "2개로 나눌 필요 없다"는 지금 구조와 같다.
@@ -24,3 +24,13 @@
 - 게이트웨이 1개: **지금 그대로**(바꿀 것 없음).
 - 경로별 발급자·대상 검증: Keycloak 도입을 정할 때만 필요 — Keycloak 결정(같은 날 확인 문서 §5)에 딸린 문제.
 - 할 수 있는 개선(선택, 결정 필요): 게이트웨이에서 `typ` 로 사용자 종류를 한 번 더 거르기(§3-3).
+
+## 5. Keycloak 구성 결정(ADR-0054) 뒤 다시 본 것
+발급자가 3개(auth-service, Keycloak `pmart-staff`, `pmart-rider`)가 되므로 원문의 핵심 — **"신뢰하는 발급자의 유효한 토큰"만 보면 다른 종류 토큰이 통과한다** — 이 이제 실제 문제다.
+1. **게이트웨이 1개 유지**: 원문 결론 그대로. 바꿀 것 없음.
+2. **발급자를 고르는 기준은 URL 이 아니라 토큰의 `iss`**: 우리 URL 은 사용자 종류로 나뉘지 않는다(§1). 그래서 원문처럼 `/api/rider/**` 체인을 나누는 대신, 허용 발급자 3개 목록으로 `iss` 를 보고 그 발급자의 공개키로 검증한다(Spring Security 의 발급자별 인증 관리자 선택 — `JwtIssuerReactiveAuthenticationManagerResolver`, 게이트웨이는 WebFlux). 목록에 없는 `iss` 는 거부.
+3. **발급자 ↔ 사용자 종류 짝 강제**: auth-service → CUSTOMER·GUEST·SERVICE, `pmart-staff` → OPERATOR, `pmart-rider` → RIDER. 사용자 종류(`TYPE_x`)는 **발급자에서 정한다**(토큰 안 `typ` 문자열이 다르면 거부). 원문 §2 의 "고객 토큰으로 라이더 API" 는 이걸로 막힌다.
+4. **`aud` 검증 추가**: Keycloak 은 Realm 마다 PMart 용 클라이언트를 두고 대상(audience) 매퍼로 `aud` 를 넣어, 게이트웨이·서비스가 확인한다(원문 §3). auth-service 토큰에는 지금 `aud` 가 없다 — 넣을지는 구현 때.
+5. **서비스도 같은 검증**: 지금 서비스들은 auth-service JWKS 하나로 검증한다. 같은 다중 발급자·짝 규칙을 `common-security` 에 넣어 전 서비스가 쓴다(원문 §5 "개별 MSA 도 검증" — 라이브러리 변경이라 전 서비스 영향). 업무 인가(배차 소유권, 라이더 승인, 센터 권한)는 지금처럼 서비스가 본다.
+6. **경로별 사용자 종류 거르기(§3-3)**: 이제 더 쓸모 있다. 다만 경로 목록을 계약과 맞춰야 하므로, 1차는 3·5(발급자·종류 짝)로 막고, 경로 규칙은 계약에서 자동 생성하는 방법을 정한 뒤 더한다.
+7. 원문 예시 코드(`hasRole`, 경로별 `JwtDecoder`)는 그대로 쓰지 않는다 — Keycloak 역할(`realm_access.roles`)·센터를 우리 형태(`TYPE_x`·역할·센터)로 바꾸는 변환과 직원 주체 ID 유지(ADR-0054 '정할 것')가 먼저다.

@@ -6,7 +6,7 @@
 ## 배경
 - `/api/v1/internal/**` 는 서비스 간 전용이며 TYPE_SERVICE(`typ=SERVICE` 토큰)만 허용한다. 그런데 서비스 토큰 발급자가 없어서 3단계까지는 사용자 토큰을 그대로 전파했다. 이 방식으로는 내부 호출이 모두 403 이고, 이벤트 소비처럼 사용자 요청이 없는 호출은 아예 할 수 없다.
 - 리소스 서버 설정(`jwk-set-uri`)이 가리킬 JWKS 발급자도 없었다.
-- 요청 없이 새 프레임워크를 도입하지 않는다(CLAUDE.md). Spring Authorization Server·Keycloak 은 도입하지 않는다.
+- 요청 없이 새 프레임워크를 도입하지 않는다(CLAUDE.md). Spring Authorization Server·Keycloak 은 도입하지 않는다. → 2026-11-10 ADR-0054 로 직원·라이더 로그인에 Keycloak 도입(서비스 신원 토큰은 이 ADR 그대로 auth-service).
 
 ## 결정
 1. **서명**: auth-service 가 RS256 으로 서명한다. 키는 Secret Manager 에서 PKCS#8 PEM 으로 주입한다(`pmart.auth.signing.keys[n].kid/private-key`). 목록의 첫 키로 서명하고, 모든 키의 공개키를 JWKS 로 내보낸다(교체 시 이전 키로 서명한 토큰도 만료까지 검증). 키가 없으면 기동하지 않는다. local/test 에서만 `ephemeral=true`(기동 시 임시 키).

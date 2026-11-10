@@ -8,5 +8,5 @@
 
 | 날짜 | 파일 | 무엇 | 확인 |
 |---|---|---|---|
-| 2026-11-10 | [`2026-11-10/PMart-최종-인증-아키텍처-추천.md`](2026-11-10/PMart-최종-인증-아키텍처-추천.md) (받은 이름 `PMart______________.md`, 내용 그대로) | Keycloak 1개 + Realm 2개(직원·라이더), 고객은 auth-service 유지, Google 신원 연결 계층 | [`../2026-11-10-keycloak-recommendation-review.md`](../2026-11-10-keycloak-recommendation-review.md) — 미결정 |
-| 2026-11-10 | [`2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`](2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md) (받은 이름 `PMart_API_Gateway______JWT______.md`, 내용 그대로) | 게이트웨이 1개, URL 경로별 발급자·대상·권한 검증(위 Keycloak 글 전제) | [`../2026-11-10-gateway-url-jwt-review.md`](../2026-11-10-gateway-url-jwt-review.md) — 미결정 |
+| 2026-11-10 | [`2026-11-10/PMart-최종-인증-아키텍처-추천.md`](2026-11-10/PMart-최종-인증-아키텍처-추천.md) (받은 이름 `PMart______________.md`, 내용 그대로) | Keycloak 1개 + Realm 2개(직원·라이더), 고객은 auth-service 유지, Google 신원 연결 계층 | [`../2026-11-10-keycloak-recommendation-review.md`](../2026-11-10-keycloak-recommendation-review.md) — ADR-0054 로 결정 |
+| 2026-11-10 | [`2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`](2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md) (받은 이름 `PMart_API_Gateway______JWT______.md`, 내용 그대로) | 게이트웨이 1개, URL 경로별 발급자·대상·권한 검증(위 Keycloak 글 전제) | [`../2026-11-10-gateway-url-jwt-review.md`](../2026-11-10-gateway-url-jwt-review.md) — ADR-0054 뒤 §5 |
