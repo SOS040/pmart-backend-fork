@@ -22,7 +22,7 @@
 
 ## Package (PKG)
 
-`OPEN → SEALED → HANDED_OVER`; `SEALED → INVALIDATED`(재포장, 새 PKG 발급); `OPEN|SEALED → VOIDED`(취소). 인계 후 재포장 금지.
+`OPEN → SEALED → HANDED_OVER`; `SEALED → INVALIDATED`(재포장 — 새 PKG 발급, 또는 피킹 뒤 전체 중지 — ADR-0046); `OPEN → VOIDED`(밀봉 때 재고 PACK 거절). 인계 후 재포장 금지. (2026-11-10 구현에 맞춰 고침 — 예전 문구 "OPEN|SEALED → VOIDED(취소)"는 틀림, D-9)
 
 ## Handover fence
 

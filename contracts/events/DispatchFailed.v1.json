@@ -34,9 +34,9 @@
               "type": "string",
               "enum": [
                 "NO_RIDER",
-                "REPEATED_REJECT",
+                "REPEATED_REJECTION",
                 "EXPIRED",
-                "SYSTEM"
+                "SYSTEM_FAILURE"
               ]
             },
             "attempts": {

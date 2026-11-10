@@ -54,11 +54,11 @@ mfc-fulfillment 는 아래 4개로 "이 출고를 누가 가져갈 수 있나"(�
 - 취소: 배차 취소는 그 주문의 **모든 포장이 STOPPED** 일 때만(S3 취소 사가, `cancel-vs-handover.md`). 하나라도 인계됐으면 회수(미구현).
 - 주문당 출고 1개(D6-2, 10kg 분할 없음) — 배송 1 ↔ 출고 1 로 시작해도 된다.
 
-## 6. 시작할 때 정해야 할 것 / 주의
-- **구독 시작 위치**: `mfc.fulfillment.v1` 에는 지난 E2E 시험 출고(`E2E-…`, 대부분 취소됨)의 `DispatchRequested` 가 남아 있다. 새 소비 그룹을 처음부터 읽으면 지난 시험 출고에 배송을 만든다. 처음부터 읽을지·지금부터 읽을지(그러면 READY 로 기다리는 실제 주문은 배차 요청을 다시 받아야 함 — MFC 에 재요청 API 는 없다)는 **구현 전에 사용자 결정**.
-- **문서끼리 다른 값**(구현 전에 하나로): DeliveryType(사건 NORMAL/SPLIT… vs API FORWARD…), `DispatchFailed` 사유 enum(D-9), 취소 포장 상태 이름(VOIDED vs ADR-0046 INVALIDATED).
+## 6. 시작 전 결정(2026-11-10 결정됨)과 남은 것
+- **구독 시작 위치 — 결정(2026-11-10, 사용자 "그래")**: delivery-dispatch 의 `mfc.fulfillment.v1` 소비 그룹은 **처음 켜기 전에 시작 위치를 2026-11-10 09:30 KST(00:30Z)로** 맞춘다(`kafka-consumer-groups --reset-offsets --to-datetime 2026-11-10T00:30:00.000Z --execute`, 그룹이 비어 있을 때). 그 전의 E2E 시험 출고는 건너뛰고 READY 로 기다리는 실제 주문(ORD-0e67de38…)부터 받는다. 같은 출고의 배차 요청이 두 번 와도 배송은 하나(shipmentId 로 멱등) — 그래서 이후 시작 위치와 상관없이 안전하다. 이후 E2E 시험 출고는 정상 흐름(생성 → 중지면 배차 취소)으로 처리한다.
+- **문서끼리 다른 값 — 결정(2026-11-10)**: 사건 스키마를 API 에 맞췄다 — `DeliveryCreated.type` = `FORWARD / RETURN / RESHIPMENT`(분할은 유형이 아님 — 도입 때 별도 항목, 오배송 회수 DD-2 는 RETURN), `DispatchFailed.reason` = `NO_RIDER / REPEATED_REJECTION / EXPIRED / SYSTEM_FAILURE`. 포장 상태는 구현이 정본 — `SEALED → INVALIDATED`(재포장·피킹 뒤 중지), `OPEN → VOIDED`(밀봉 때 재고 거절). 상태 문서의 "VOIDED = 취소" 문구를 고쳤다(배송 쪽 영향 없음 — 둘 다 QR 409 `PACKAGE_INVALIDATED`).
 - 오배송 확인 사건을 누가 기록하는지(DD-2, ADR-0052 남은 것).
-- 라이더 토큰(RIDER 역할)·라이더 앱은 아직 없다 — 인계 API 시험은 시험용 라이더 토큰이 필요(만드는 방식은 사용자 확인).
+- **시험 라이더 토큰 — 결정(2026-11-10)**: 라이더 로그인(auth)·라이더 앱이 아직 없어, 시험은 **LAN 서명키로 만든 시험 라이더 토큰**(`typ=RIDER`, 주체 `RD-claude-*`, 15분, 파일 `deploy/lan/.secrets/rider-token` 은 쓰고 지움 — 고객 시험 토큰과 같은 방식). LAN 전용, 운영 금지. 실제 라이더 가입·로그인은 라이더 앱을 만들 때(인증 방식은 그때 사용자 결정). auth 에 임시 라이더 로그인 코드는 만들지 않는다.
 
 ## 7. 시험
 - MFC 쪽 끝까지: `deploy/lan/checks/mfc_e2e.py`(배차 요청·READY·인계 판정까지, 라이더 인계 없음).

@@ -15,8 +15,9 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 
 ## DD-1 에 덧붙임 (2026-11-09 조사)
 - S3 취소 사가의 배차 취소 단계 — 모든 포장이 STOPPED 일 때만(`package-handover-contract.md`, `cancel-vs-handover.md`, orchestration `CancellationRules`).
-- DeliveryType 불일치 정리(사건 NORMAL/SPLIT vs API FORWARD).
-- DispatchFailed 사유 값 정리(`package-handover-decisions.md` D-9).
+- ~~DeliveryType 불일치~~ — 2026-11-10 결정: FORWARD/RETURN/RESHIPMENT 로 통일(사건 스키마 수정).
+- ~~DispatchFailed 사유 값~~ — 2026-11-10 결정: NO_RIDER/REPEATED_REJECTION/EXPIRED/SYSTEM_FAILURE.
+- 첫 기동 전 `mfc.fulfillment.v1` 소비 그룹 시작 위치 = 2026-11-10T00:30Z, 출고당 배송 하나(멱등) — `delivery-kickoff-from-mfc.md` §6.
 
 ## DD-2. 확인된 오배송 — 회수 라이더 자동 배차 (2026-11-09, ADR-0052)
 - 오배송이 확인되면(라이더 확인·사진 위치 다름·잘못 받은 사람 연락) **인근 다른 라이더**를 자동 배차해 오배송지에서 회수하고 MFC 로 반납한다(원래 라이더는 다른 코스로 이동했을 가능성이 높음).

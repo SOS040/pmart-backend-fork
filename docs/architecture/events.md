@@ -188,11 +188,11 @@
 | `RiderStateChanged` | rider | delivery-dispatch, delivery-tracking | riderId, operatingState, newDispatchEnabled, vehicleType | 운행 시작/종료·신규배차 ON/OFF | ① |
 | `RiderRestricted` | rider | delivery-dispatch, mfc-fulfillment(인계 차단), audit | riderId, restriction, from, to, basis | 계정 제한(증빙 기반) | ① |
 | `RiderSupplyChanged` | rider | delivery-capacity | zoneId, activeRiders | 수급 참고 | ① |
-| `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce | deliveryId, orderId, shipmentId, type(NORMAL/SPLIT/RETURN/RESHIP), mfcId, dropAddressRef | 배송 단위 생성 | ① |
+| `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce | deliveryId, orderId, shipmentId, type(FORWARD/RETURN/RESHIPMENT — API 와 같게, 2026-11-10. 분할은 유형이 아님), mfcId, dropAddressRef | 배송 단위 생성 | ① |
 | `DispatchOfferSent` | delivery-dispatch | notification(라이더 알림) | offerId, attemptId, deliveryId, riderId, expiresAt(1분), fee | 제안 전송 | ① |
 | `DeliveryAssigned` | delivery-dispatch | delivery-execution, delivery-tracking, mfc-fulfillment, order, notification | deliveryId, riderId, assignmentVersion, acceptedAt | 유효 수락 1건 확정 | ① |
 | `DeliveryAssignmentChanged` | delivery-dispatch | delivery-execution, mfc-fulfillment(이전 기사 인계 차단) | deliveryId, oldRiderId, newRiderId, assignmentVersion, reason | 재배정·배차 취소 | ① |
-| `DispatchFailed` | delivery-dispatch | case, notification, order | deliveryId, reason(NO_RIDER/REPEATED_REJECT/EXPIRED/SYSTEM), attempts | 배차 불가 | ① |
+| `DispatchFailed` | delivery-dispatch | case, notification, order | deliveryId, reason(NO_RIDER/REPEATED_REJECTION/EXPIRED/SYSTEM_FAILURE — API 와 같게, 2026-11-10), attempts | 배차 불가 | ① |
 | `DispatchDelayed` | delivery-dispatch | notification(점포·CS·고객), case | deliveryId, delayedMinutes, threshold | 지연 임계 초과 | ① |
 | `DeliveryCancelledBeforePickup` | delivery-dispatch | delivery-execution, mfc-fulfillment, order | deliveryId, reason | 픽업 전 취소(상품은 점포 보관) | ① |
 | `RiderArrivedAtStore` | delivery-execution | mfc-fulfillment(QR 활성), delivery-tracking | deliveryId, riderId, at | 가게 도착(인계 아님) | ① |

@@ -1329,7 +1329,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
           "DeliveryCreated",
           deliveryId,
           1,
-          Map.of("orderId", o, "shipmentId", o + "-S1", "mfcId", MFC, "type", "NORMAL"));
+          Map.of("orderId", o, "shipmentId", o + "-S1", "mfcId", MFC, "type", "FORWARD"));
       deliveryEvent(
           "DeliveryAssigned",
           deliveryId,

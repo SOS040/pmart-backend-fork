@@ -146,4 +146,4 @@ MFC 바인딩 `deliveryEvents-in-0`. 배송 ID 한 행으로 투영하므로 사
 | 재고 거절된 인계의 대사 | 운영자 화면(BO-12)·절차 | MFC 1551행 |
 | 10kg 분할 | D6-2 로 지금은 주문당 출고 1개(분할 없음). 분할 도입 시 배송 여러 개 ↔ 출고 여러 개 | OMS 9, MFC Q-10 |
 | 냉장·냉동 대기 한계 | 출하대기 온도·시간 | MFC 413·771행, Q-05 |
-| 문서 불일치 | 취소 포장 상태(VOIDED vs ADR-0046 INVALIDATED), DeliveryType enum(이벤트 NORMAL/SPLIT/… vs API FORWARD/…), DispatchFailed 사유 enum | 조사 기록 |
+| ~~문서 불일치~~ | 2026-11-10 정리 — `package-handover-decisions.md` D-9 | — |

@@ -42,10 +42,9 @@
             "type": {
               "type": "string",
               "enum": [
-                "NORMAL",
-                "SPLIT",
+                "FORWARD",
                 "RETURN",
-                "RESHIP"
+                "RESHIPMENT"
               ]
             },
             "mfcId": {

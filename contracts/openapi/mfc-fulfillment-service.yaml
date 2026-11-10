@@ -29,7 +29,7 @@ info:
     상태 기계
     - TSK: WAITING→READY→ASSIGNED→IN_PROGRESS→COMPLETED / BLOCKED / FAILED / CANCELLED / CLOSED_PARTIAL (계획 = 완료 + 취소 + 잔량)
     - SHP: PREPARING→READY→PARTIALLY_HANDED_OVER→HANDED_OVER / CANCELLED / CLOSED_PARTIAL
-    - PKG: OPEN→SEALED→HANDED_OVER / INVALIDATED / VOIDED
+    - PKG: OPEN→SEALED→HANDED_OVER / SEALED→INVALIDATED(재포장·피킹 뒤 중지) / OPEN→VOIDED(재고 PACK 거절)
     - 인계 fence: AuthorizePackageHandover → HANDOVER_IN_PROGRESS(handoverAuthorizationId, fenceVersion) → CommitPackageHandover → mfc-inventory 커밋 → HANDED_OVER.
       WorkStopResult와 PackageHandedOver는 같은 packageId에 상호 배타. fence 만료는 취소 성공이 아니다.
 servers:
