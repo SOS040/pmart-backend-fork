@@ -807,6 +807,8 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
    */
   @Test
   void planInputIsKeptWithHashAndOldestIsSweptOverCap() {
+    // 다른 시험이 남긴 입력(확정 계획 포함)을 비운다 — 확정 안 된 것부터 지우므로, 확정 계획이 남아 있으면 계획 B 가 먼저 지워진다(순서 의존)
+    jdbc.update("DELETE FROM assignment_plan_input");
     moveOrders(List.of());
     tasks(List.of(), "READY", "ASSIGNED", "IN_PROGRESS");
     Res a = send("POST", SUP, "/assignment-plans", Map.of("mfcId", MFC, "horizonMinutes", 30));

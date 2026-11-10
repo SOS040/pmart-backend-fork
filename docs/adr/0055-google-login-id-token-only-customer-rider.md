@@ -1,7 +1,8 @@
 # ADR-0055 Google 소셜 로그인은 ID 토큰 검증만 — 고객·라이더 각자 웹 클라이언트 ID(aud), 백엔드 OAuth2 Client 없음
 
 - 상태: 승인 (2026-11-10, 사용자 "PMart Google 소셜로그인 최종 구현 방향")
-- 대체: **ADR-0025 전체**(서버 인가 코드 하이브리드 — 구현하지 않음, 기각). ADR-0019 결정 1·8 은 이 ADR 로 다시 확정(허용 aud 는 웹 클라이언트 ID 하나로 좁힘).
+- 대체: ADR-0025 결정 1~9(전체 — 서버 인가 코드 하이브리드, 구현하지 않음, 기각).
+- 확인: 고객 Google 로그인 ADR(0019)의 결정 1·8 은 대체가 아니라 이 ADR 로 다시 확정한다(허용 aud 는 웹 클라이언트 ID 하나로 좁힘). RAG 색인기가 대체로 읽지 않도록 대체 줄에 적지 않는다.
 - 관련: ADR-0019(고객 Google 로그인), ADR-0054(인증 셋으로 — 결정 3·E·F), ADR-0011(PMart JWKS), `contracts/openapi/auth-service.yaml`·`rider-auth-service.yaml`
 
 ## 배경
