@@ -39,6 +39,7 @@ val libraries = listOf<String>(
     "common-observability",
     "common-messaging",
     "common-security",
+    "common-jwt", // 발급자 표·발급자↔사용자 종류 짝 규칙(ADR-0054) — common-security(서블릿)·api-gateway(리액티브) 공용
     "common-test",
     // 2단계에서 추가: "common-web", "common-messaging", "common-security", "common-observability", "common-test"
 )

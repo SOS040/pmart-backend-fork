@@ -67,6 +67,7 @@ pmart-backend/
 ├── libraries/
 │   ├── common-observability/  common-security/
 │   ├── common-messaging/  common-test/
+│   ├── common-jwt/  (발급자 표·발급자↔사용자 종류 짝 규칙 — common-security·api-gateway 공용, ADR-0054)
 ├── contracts/ (openapi/, events/)
 ├── deploy/helm/
 └── Jenkinsfile

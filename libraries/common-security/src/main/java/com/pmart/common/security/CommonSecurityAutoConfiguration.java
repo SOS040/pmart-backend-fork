@@ -22,6 +22,7 @@ import org.springframework.security.authorization.AuthorizationManagers;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
@@ -79,7 +80,8 @@ public class CommonSecurityAutoConfiguration {
       HttpSecurity http,
       SecurityProperties props,
       ProblemAuthHandlers handlers,
-      PmartJwtAuthenticationConverter converter)
+      PmartJwtAuthenticationConverter converter,
+      ObjectProvider<JwtDecoder> jwtDecoder)
       throws Exception {
     String[] permit = props.getPermitPaths().toArray(String[]::new);
     String[] internal = props.getInternalPaths().toArray(String[]::new);
@@ -100,10 +102,17 @@ public class CommonSecurityAutoConfiguration {
               auth.anyRequest().access(NOT_GUEST);
             })
         .oauth2ResourceServer(
-            rs ->
-                rs.jwt(jwt -> jwt.jwtAuthenticationConverter(converter))
-                    .authenticationEntryPoint(handlers)
-                    .accessDeniedHandler(handlers))
+            rs -> {
+              if (props.getIssuers().isEmpty()) {
+                // 발급자 표 없음: 앱 JwtDecoder 하나 + typ 클레임(지금까지의 방식)
+                rs.jwt(jwt -> jwt.jwtAuthenticationConverter(converter));
+              } else {
+                // 발급자 표(ADR-0054): iss 로 발급자 선택, 종류는 발급자 규칙
+                rs.authenticationManagerResolver(
+                    new TrustedIssuers(props.getIssuers()).resolver(jwtDecoder.getIfAvailable()));
+              }
+              rs.authenticationEntryPoint(handlers).accessDeniedHandler(handlers);
+            })
         .exceptionHandling(
             ex -> ex.authenticationEntryPoint(handlers).accessDeniedHandler(handlers))
         // 토큰 없는 내부 호출 → X-Source-System 이름의 서비스 주체(ADR-0026). JWT 인증 뒤·익명 처리 전에

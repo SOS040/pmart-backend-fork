@@ -5,6 +5,7 @@ plugins {
 }
 
 dependencies {
+    api(project(":libraries:common-jwt")) // 발급자 표 규칙(ADR-0054)
     api(libs.spring.boot.starter.security)
     api(libs.spring.boot.starter.oauth2.resource.server)
     api(libs.spring.boot.starter.restclient)

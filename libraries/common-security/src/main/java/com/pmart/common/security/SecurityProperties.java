@@ -1,5 +1,6 @@
 package com.pmart.common.security;
 
+import com.pmart.common.jwt.IssuerSettings;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -27,6 +28,21 @@ public class SecurityProperties {
 
   /** 행위 시점 검증(auth-service) 클라이언트 설정. */
   private Authz authz = new Authz();
+
+  /**
+   * 믿는 발급자 표(ADR-0054). 비어 있으면 지금처럼 앱의 JwtDecoder 하나({@code jwk-set-uri})와 {@code typ} 클레임으로 동작한다.
+   * 있으면 토큰의 {@code iss} 로 발급자를 고르고(표에 없으면 401), 사용자 종류는 그 발급자 규칙으로 정한다({@link
+   * com.pmart.common.jwt.IssuerPolicy}).
+   */
+  private List<IssuerSettings> issuers = List.of();
+
+  public List<IssuerSettings> getIssuers() {
+    return issuers;
+  }
+
+  public void setIssuers(List<IssuerSettings> issuers) {
+    this.issuers = issuers;
+  }
 
   public static class Authz {
     /** auth-service 기본 URL. 비우면 ActionAuthorizer 를 등록하지 않는다. */

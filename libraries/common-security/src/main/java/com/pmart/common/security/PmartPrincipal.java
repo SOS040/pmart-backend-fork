@@ -79,6 +79,10 @@ public record PmartPrincipal(
    */
   public static Optional<PmartPrincipal> current() {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    // 발급자 표(ADR-0054)로 인증됐으면 발급자 규칙으로 정한 주체(종류·주체 ID·역할·센터)
+    if (auth instanceof PmartAuthenticationToken token) {
+      return Optional.of(token.pmartPrincipal());
+    }
     if (auth instanceof JwtAuthenticationToken token) {
       return Optional.of(fromJwt(token.getToken()));
     }

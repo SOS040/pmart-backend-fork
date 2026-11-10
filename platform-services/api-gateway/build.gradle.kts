@@ -5,6 +5,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":libraries:common-jwt")) // 발급자 표·종류 짝 규칙(ADR-0054) — 서비스와 같은 규칙
     implementation(project(":libraries:common-observability")) // 로그 JSON·추적 기본값(서블릿 필터는 WebFlux 에서 비활성)
     implementation(libs.bundles.service.observability)
     implementation(libs.spring.boot.starter.data.redis.reactive) // RedisRateLimiter (토큰 버킷 상태)

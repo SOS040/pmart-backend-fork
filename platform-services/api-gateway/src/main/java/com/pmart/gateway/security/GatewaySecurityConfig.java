@@ -1,8 +1,10 @@
 package com.pmart.gateway.security;
 
+import com.pmart.common.jwt.IssuerPolicy;
 import com.pmart.gateway.GatewayProperties;
 import java.time.Duration;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -14,7 +16,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.authorization.AuthorizationContext;
@@ -27,7 +29,8 @@ import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
  * 게이트웨이 보안 체인 (security-config.md).
  *
  * <ul>
- *   <li>JWT(auth-service JWKS) 검증. 토큰 없음·무효 → 401 Problem, 권한 없음 → 403 Problem.
+ *   <li>JWT 검증: 발급자 표({@code pmart.security.issuers}, ADR-0054)가 있으면 {@code iss} 로 발급자를 골라 그
+ *       키·규칙(종류 짝·aud)으로, 없으면 auth-service JWKS 하나로. 토큰 없음·무효 → 401 Problem, 권한 없음 → 403 Problem.
  *   <li>{@code /api/{v}/internal/**} 는 서비스 간 전용 — 외부에서 절대 통과하지 않는다(denyAll).
  *   <li>서비스 신원 토큰({@code typ=SERVICE})은 외부 경로에서 403 — 내부 호출 전용(ADR-0011).
  *   <li>비회원 토큰({@code typ=GUEST})은 {@code pmart.gateway.guest-paths} 에서만, 그 밖은 403.
@@ -61,18 +64,20 @@ public class GatewaySecurityConfig {
               .defaultIfEmpty(new AuthorizationDecision(false));
 
   static boolean isGuestToken(Authentication authentication) {
-    return authentication.getPrincipal() instanceof Jwt jwt
-        && "GUEST".equals(jwt.getClaimAsString("typ"));
+    return "GUEST".equals(IssuedToken.userTypeOf(authentication));
   }
 
   static boolean isServiceToken(Authentication authentication) {
-    return authentication.getPrincipal() instanceof Jwt jwt
-        && "SERVICE".equals(jwt.getClaimAsString("typ"));
+    return "SERVICE".equals(IssuedToken.userTypeOf(authentication));
   }
 
   @Bean
   SecurityWebFilterChain gatewaySecurityFilterChain(
-      ServerHttpSecurity http, GatewayProperties properties, ProblemResponseWriter problems) {
+      ServerHttpSecurity http,
+      GatewayProperties properties,
+      GatewayIssuerProperties issuers,
+      ObjectProvider<ReactiveJwtDecoder> jwtDecoder,
+      ProblemResponseWriter problems) {
     ServerAuthenticationEntryPoint entryPoint =
         (exchange, ex) -> {
           exchange.getResponse().getHeaders().set("WWW-Authenticate", "Bearer");
@@ -106,11 +111,18 @@ public class GatewaySecurityConfig {
               exchanges.anyExchange().access(USER_TOKEN_ONLY);
             })
         .oauth2ResourceServer(
-            oauth2 ->
-                oauth2
-                    .jwt(Customizer.withDefaults())
-                    .authenticationEntryPoint(entryPoint)
-                    .accessDeniedHandler(deniedHandler))
+            oauth2 -> {
+              if (issuers.getIssuers().isEmpty()) {
+                // 발급자 표 없음: jwk-set-uri 디코더 하나 + typ 클레임(지금까지의 방식)
+                oauth2.jwt(Customizer.withDefaults());
+              } else {
+                // 발급자 표(ADR-0054): iss 로 발급자 선택, 표에 없으면 401, 종류는 발급자 규칙
+                oauth2.authenticationManagerResolver(
+                    IssuedToken.resolver(
+                        IssuerPolicy.table(issuers.getIssuers()), jwtDecoder.getIfAvailable()));
+              }
+              oauth2.authenticationEntryPoint(entryPoint).accessDeniedHandler(deniedHandler);
+            })
         .exceptionHandling(
             handling ->
                 handling.authenticationEntryPoint(entryPoint).accessDeniedHandler(deniedHandler));

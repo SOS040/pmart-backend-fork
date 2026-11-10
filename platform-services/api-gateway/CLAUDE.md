@@ -3,7 +3,7 @@
 책임의 정본은 `docs/architecture/service-map.md` 의 `api-gateway` 절: 라우팅, JWT 검증(auth-service JWKS), traceId 시작(외부 요청의 첫 span), rate limit. **업무 로직 없음.**
 
 ## 스택
-Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.spring-gateway`). Spring MVC·`common-web`·`common-security`(서블릿 전용)는 쓰지 않는다. 오류 응답은 게이트웨이 안에서 RFC 9457 로 직접 쓴다(`security/ProblemResponseWriter`).
+Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.spring-gateway`). Spring MVC·`common-web`·`common-security`(서블릿 전용)는 쓰지 않는다. 발급자 표 규칙만은 서블릿에 묶이지 않은 `common-jwt` 를 서비스와 함께 쓴다(ADR-0054). 오류 응답은 게이트웨이 안에서 RFC 9457 로 직접 쓴다(`security/ProblemResponseWriter`).
 
 ## 라우팅 표 (설정 저장소 `pmart-config` 의 `api-gateway.yml`, ADR-0029)
 - `contracts/openapi/*.yaml` 의 `servers.url` + 첫 경로 세그먼트에서 도출. 계약에 리소스를 추가하면 여기도 갱신한다.
@@ -16,6 +16,7 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 ## 보안
 - 공개 작업(`pmart.gateway.public-paths`)은 계약의 `security: []` 인 작업과 1:1. 임의 추가 금지.
 - 그 외 `/api/**` 는 유효한 JWT 필수(401/403 Problem). 역할·센터·행위 시점 검증은 각 서비스 책임.
+- **발급자 표**(`pmart.security.issuers`, ADR-0054, `security/IssuedToken`): 있으면 토큰 `iss` 로 발급자를 골라(표에 없으면 401) 그 키로 서명, 그 발급자 규칙(`common-jwt` `IssuerPolicy` — 만료·iss·aud·발급자 ↔ 사용자 종류 짝·주체 클레임)으로 확인한다. SERVICE·GUEST 제한은 발급자 규칙이 정한 종류로 본다. 비어 있으면 예전처럼 `jwk-set-uri` 하나 + `typ` 클레임. `jwk-set-uri` 를 비운 발급자는 Boot 기본 디코더를 쓴다. 서비스(common-security)도 같은 표·규칙으로 다시 검증한다.
 - 서비스 간 호출은 게이트웨이를 거치지 않고 인증하지 않는다(ADR-0026 — private subnet 이 신뢰 경계). 게이트웨이는 `/internal/**` 를 라우팅하지 않는다(denyAll).
 
 ## 처리율 제한 (`filter/RateLimitGlobalFilter`, `pmart.gateway.rate-limit`)
