@@ -5,6 +5,7 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조. 배포 �
 
 | 파일 | 역할 |
 |---|---|
+| `pc-bootstrap.ps1` | 새 LAN PC 처음 준비(그 PC 에서 관리자로 한 번) — SSH 접속까지 |
 | `placement.conf` | 배치 정보 — PC 이름·IP·ssh 별칭·구성요소. PC 수는 가변 |
 | `render.sh` | 배치 → `build/<pc>/compose.yml`, `.env`, `init-db.sql` 생성 |
 | `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키·S3 자격 증명·첫 운영자 관리자(아이디 `operator-admin-login`, 비밀번호 원문 `operator-admin-password`, bcrypt 해시 `operator-admin-hash`) 생성. 있으면 유지. **재생성하면 LAN 과 값이 달라지므로** 잃어버렸으면 PC 1 백업(`%USERPROFILE%\.pmart-lan-secrets-backup\`, 저장소 밖)에서 되돌린다 |
@@ -157,6 +158,14 @@ PC 2·3·4 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수 �
 5. 확인: `deploy/lan/watch.sh --dry-run` 이 PC 마다 OK, `ip-<pc>` 가 `OK`, Connect 커넥터 전부 RUNNING(`curl http://<pc3 IP>:8083/connectors?expand=status`),
    게이트웨이 `http://<pc4 IP>:8080` 응답.
 6. `placement.conf` 변경을 커밋하고 worklog 에 남긴다.
+
+## 새 PC 추가 (2026-11-10, PC 5 192.168.0.101)
+
+1. **그 PC 에서(사용자)**: 관리자 PowerShell 로 `deploy/lan/pc-bootstrap.ps1` 실행 — OpenSSH 서버·PC 1 LAN 공개 키·SSH 기본 셸 PowerShell·방화벽(SSH·ping, 192.168.0.0/24). 끝에 컴퓨터 이름·사용자를 출력한다.
+   Docker Desktop 설치, `%USERPROFILE%\.docker-pmart` 로 Docker Hub 읽기 전용 로그인(`docker --config "$env:USERPROFILE\.docker-pmart" login`, 별도 터미널)도 사용자가 한다.
+2. **PC 1**: `~/.ssh/config` 에 `Host pmart-pcN`(HostName = 컴퓨터 이름, HostKeyAlias pmart-pcN, AddressFamily inet, User, IdentityFile ~/.ssh/pmart_lan.pem) → 첫 접속 호스트 키 확인.
+3. **PC 1 → SSH 로 맞춤(PC 3 기준, `docs/worklog/2026-10-28.md` 11:40)**: 방화벽 `PMart Docker published ports (LAN)`(com.docker.backend.exe), `.docker-pmart\config.json` `cliPluginsExtraDirs`, `.wslconfig` 메모리, 예약 작업 'PMart Docker Desktop Start', Docker Desktop AutoStart, 절전 끔.
+4. `placement.conf` 에 줄 추가(구성요소는 사용자 결정) → `lan.sh render` → `lan.sh deploy pcN` → `watch.sh --dry-run`.
 
 ## 주의
 - 원격 작업 폴더 `%USERPROFILE%\pmart-lan`, compose 프로젝트 `pmart-lan`. 같은 PC 의 다른 프로젝트 컨테이너는 건드리지 않는다.
