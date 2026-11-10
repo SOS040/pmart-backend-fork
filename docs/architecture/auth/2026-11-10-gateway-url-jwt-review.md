@@ -26,6 +26,7 @@
 - 할 수 있는 개선(선택, 결정 필요): 게이트웨이에서 `typ` 로 사용자 종류를 한 번 더 거르기(§3-3).
 
 ## 5. Keycloak 구성 결정(ADR-0054) 뒤 다시 본 것
+> 2026-11-10 정정: 이 절은 처음 ADR-0054(라이더도 Keycloak)를 전제로 썼다. 사용자 결정으로 라이더는 Keycloak 이 아니라 **새 라이더 auth 서비스**(Google), 고객은 지금 auth-service — 발급자 3개는 Keycloak·auth-service·라이더 auth 로 읽는다. URL 구조는 ADR-0054 '정할 것'.
 발급자가 3개(auth-service, Keycloak `pmart-staff`, `pmart-rider`)가 되므로 원문의 핵심 — **"신뢰하는 발급자의 유효한 토큰"만 보면 다른 종류 토큰이 통과한다** — 이 이제 실제 문제다.
 1. **게이트웨이 1개 유지**: 원문 결론 그대로. 바꿀 것 없음.
 2. **발급자를 고르는 기준은 URL 이 아니라 토큰의 `iss`**: 우리 URL 은 사용자 종류로 나뉘지 않는다(§1). 그래서 원문처럼 `/api/rider/**` 체인을 나누는 대신, 허용 발급자 3개 목록으로 `iss` 를 보고 그 발급자의 공개키로 검증한다(Spring Security 의 발급자별 인증 관리자 선택 — `JwtIssuerReactiveAuthenticationManagerResolver`, 게이트웨이는 WebFlux). 목록에 없는 `iss` 는 거부.
