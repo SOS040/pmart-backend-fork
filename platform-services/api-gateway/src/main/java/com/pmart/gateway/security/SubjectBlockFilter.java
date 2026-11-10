@@ -70,7 +70,9 @@ public class SubjectBlockFilter implements WebFilter, Ordered {
             t -> {
               Jwt jwt = t.getToken();
               String iss = jwt.getClaimAsString("iss");
-              String sub = jwt.getSubject();
+              // 주체 = 발급자 규칙이 정한 주체(인증 이름). Keycloak 직원은 sub(내부 UUID)가 아니라 pmart_operator_id —
+              // 차단 사건의 subject 와 같은 값이다(2026-11-11 LAN: sub 로 찾아 막지 못했다)
+              String sub = t.getName();
               if (iss == null || sub == null) {
                 return Mono.just(Boolean.FALSE); // 발급자 규칙이 이미 막는다 — 여기서는 찾을 키가 없다
               }

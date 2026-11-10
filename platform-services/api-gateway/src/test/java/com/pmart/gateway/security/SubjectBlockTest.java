@@ -49,6 +49,29 @@ class SubjectBlockTest {
     assertThat(run(list, NOW.minusSeconds(30))).isNull();
   }
 
+  /**
+   * Keycloak 직원: sub 는 내부 UUID, 발급자 규칙의 주체는 pmart_operator_id — 차단 사건의 subject 와 같은 값으로
+   * 찾는다(2026-11-11 LAN 결함).
+   */
+  @Test
+  void looksUpIssuerTableSubjectNotRawSub() {
+    FakeBlocklist list = new FakeBlocklist();
+    list.entry = Mono.just(NOW.getEpochSecond());
+    String iss = "http://192.168.0.101:8180/realms/pmart-staff";
+    Jwt jwt =
+        Jwt.withTokenValue("t")
+            .header("alg", "RS256")
+            .subject("6f1c2e9a-0000-4000-8000-000000000001")
+            .claim("iss", iss)
+            .claim("pmart_operator_id", "OP-1")
+            .issuedAt(NOW.minusSeconds(30))
+            .expiresAt(NOW.plusSeconds(900))
+            .build();
+    IssuedToken staff = new IssuedToken(jwt, List.of(), "OP-1", "OPERATOR", "staff");
+    assertThat(run(list, staff)).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(list.lookedUp).isEqualTo(iss + "|OP-1");
+  }
+
   @Test
   void redisFailureAndTimeoutPassRequests() {
     FakeBlocklist list = new FakeBlocklist();
@@ -81,12 +104,6 @@ class SubjectBlockTest {
   // --- 도움
 
   private static HttpStatus run(FakeBlocklist list, Instant issuedAt) {
-    SubjectBlockFilter filter =
-        new SubjectBlockFilter(
-            list,
-            Duration.ofMillis(100),
-            new ProblemResponseWriter(tools.jackson.databind.json.JsonMapper.builder().build()),
-            null);
     Jwt jwt =
         Jwt.withTokenValue("t")
             .header("alg", "RS256")
@@ -95,7 +112,16 @@ class SubjectBlockTest {
             .issuedAt(issuedAt)
             .expiresAt(issuedAt.plusSeconds(900))
             .build();
-    JwtAuthenticationToken auth = new JwtAuthenticationToken(jwt, List.of());
+    return run(list, new JwtAuthenticationToken(jwt, List.of()));
+  }
+
+  private static HttpStatus run(FakeBlocklist list, JwtAuthenticationToken auth) {
+    SubjectBlockFilter filter =
+        new SubjectBlockFilter(
+            list,
+            Duration.ofMillis(100),
+            new ProblemResponseWriter(tools.jackson.databind.json.JsonMapper.builder().build()),
+            null);
     MockServerWebExchange base =
         MockServerWebExchange.from(MockServerHttpRequest.get("/api/v1/orders/ord-1"));
     ServerWebExchange exchange = base.mutate().principal(Mono.just(auth)).build();
@@ -128,6 +154,7 @@ class SubjectBlockTest {
 
   static final class FakeBlocklist extends SubjectBlocklist {
     Mono<Long> entry = Mono.empty();
+    String lookedUp;
     final List<Recorded> recorded = new ArrayList<>();
 
     FakeBlocklist() {
@@ -136,6 +163,7 @@ class SubjectBlockTest {
 
     @Override
     public Mono<Long> blockedBefore(String issuer, String subject) {
+      lookedUp = issuer + "|" + subject;
       return entry;
     }
 
