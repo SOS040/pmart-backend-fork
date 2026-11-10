@@ -9,7 +9,7 @@
 
 | 사용자 | 로그인 방식 | 토큰 발급 서버 | `typ` | 주체 ID |
 |---|---|---|---|---|
-| 고객 | Google 소셜 로그인 | auth-service (8501, PC 1) | `CUSTOMER` | `CU-…` |
+| 고객 | Google 소셜 로그인 | auth-service (8501, PC 4) | `CUSTOMER` | `CU-…` |
 | 비회원 | 기기 기준 임시 세션 | auth-service | `GUEST` | `GST-…` |
 | 라이더 | Google 소셜 로그인 | rider-auth-service (8510, PC 5) | `RIDER` | `RD-…` |
 | 직원(운영자) | 아이디·비밀번호 | 지금은 auth-service. Keycloak(PC 5, Realm `pmart-staff`)으로 옮길 준비만 됨 | `OPERATOR` | 운영자 ID |
