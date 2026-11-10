@@ -22,6 +22,19 @@
 - Keycloak 이미지 버전 고정·DB·배치 PC·관리자 비밀 보관, `iss` 호스트 이름, 토큰 수명, 즉시 차단(퇴사·라이더 정지) 방법.
 - 백오피스·MFC 앱·라이더 앱 로그인 변경 요청(pmart-clients handoff).
 
+## 구현 전 결정(2026-11-10, 사용자 "너 권장대로")
+- A. Keycloak 은 **PC 5** + PC 5 postgres 에 DB 하나(`keycloak`).
+- B. Keycloak 관리자·DB 비밀번호는 `deploy/lan/init-secrets.sh` 가 무작위 생성(`.secrets/keycloak-admin-password`, `.secrets/keycloak-db-password`, 값 출력 없음, 관리 화면 로그인 때 사용자가 파일을 연다).
+- C. 직원 주체 ID 는 Keycloak 사용자 속성 `pmart_operator_id` → 같은 이름 클레임. 서비스는 이 값을 주체 ID 로 쓴다(Keycloak `sub` UUID 는 쓰지 않음).
+- D. 운영자 비밀번호(bcrypt)는 옮기지 않는다 — LAN 시험 계정은 Keycloak 에서 새로 정하고, 이전 동안 auth-service 운영자 로그인을 잠시 함께 둔다.
+- E. 라이더 auth 서비스 = `rider-auth-service`, 포트 8510, PC 5 + PC 5 postgres DB. service-map 에 등록.
+- F. 라이더 Google 로그인은 고객과 같은 방식(앱이 받은 Google ID 토큰을 서버가 Google 공개키로 확인, client secret 없음). Google Cloud 콘솔에 **라이더용 웹 클라이언트 + Android 클라이언트(패키지 `com.pmart.rider_app`, 서명 SHA-1 = PC 1 디버그 키스토어 `58:0F:75:0A:83:91:28:84:AA:ED:58:52:55:4E:E5:0F:E2:B2:CF:D9` — 고객 앱과 같은 키)**를 사용자가 만들고, 클라이언트 ID 를 알려 주면 설정에 넣는다. 고객용 웹 클라이언트와 나눠 두 앱의 Google 토큰이 섞이지 않게 한다.
+- G. 라이더 가입: Google 로그인 → 전화번호·배달 지역·배달 수단·약관 입력 → **즉시 운행 승인**(업무 원문 §1.1). 전화번호는 본인인증 API 가 없어 **중복 확인만**.
+- H. 차단 목록 저장소(PC 4 Redis) 장애 때는 **통과(fail-open)** — 직원 토큰 15분, 업무 상태는 서비스가 따로 확인.
+- I. 관리 경로는 LAN 대역(192.168.0.0/24)만, 결제 웹훅은 토스 문서의 IP 대역 확인 뒤.
+- J. LAN 전체 재배포는 작업을 모두 마친 뒤 한 번에(사용자).
+- 순서: ① 발급자 표 구조(게이트웨이·`common-security`, 표에는 auth-service 만 — 동작 같음) ② 경로별 허용 목록 기록 모드 ③ Keycloak 배치·직원 로그인 ④ rider-auth-service ⑤ 차단 목록(주체 → jti → IP) ⑥ 허용 목록 차단 모드.
+
 ## 대안
 - 라이더도 Keycloak(첫 번째 글) — 사용자가 쓰지 않기로 함.
 - 라이더를 지금 auth-service 에 넣기 — 사용자가 별도 서비스로 정함.
