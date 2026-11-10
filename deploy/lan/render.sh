@@ -1010,7 +1010,12 @@ EOF
 
   # Keycloak Realm 가져오기 파일(ADR-0054)
   if [[ "$comps" == *" keycloak "* ]]; then
-    mkdir -p "$dir/keycloak" && tr -d '\r' < "$LAN/keycloak/pmart-staff-realm.json" > "$dir/keycloak/pmart-staff-realm.json"
+    # 중계 클라이언트(pmart-auth-relay, ADR-0054 ⑤ 결정 M) 비밀값 자리표시자를 .secrets 값으로 — build/ 에만(git 제외).
+    # 가져오기는 Realm 이 없을 때 한 번뿐이다. 이미 있는 Realm 의 값은 Keycloak 관리 화면·API 로 맞춘다
+    mkdir -p "$dir/keycloak"
+    relay_secret="$(secret keycloak-relay-client-secret)"
+    tr -d '\r' < "$LAN/keycloak/pmart-staff-realm.json" \
+      | sed "s|__PMART_KEYCLOAK_RELAY_SECRET__|${relay_secret}|" > "$dir/keycloak/pmart-staff-realm.json"
   fi
 
   if [[ "$comps" == *" connect "* ]]; then

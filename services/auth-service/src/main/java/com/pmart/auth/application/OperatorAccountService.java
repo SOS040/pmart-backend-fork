@@ -50,6 +50,7 @@ public class OperatorAccountService {
   private final OperatorProperties props;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final SubjectBlocks blocks;
 
   public OperatorAccountService(
       OperatorStore store,
@@ -57,13 +58,15 @@ public class OperatorAccountService {
       RequestIdempotency idempotency,
       OperatorProperties props,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      SubjectBlocks blocks) {
     this.store = store;
     this.encoder = encoder;
     this.idempotency = idempotency;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
+    this.blocks = blocks;
   }
 
   /** 첫 관리자 계정: 설정에 아이디·비밀번호 해시가 있고 그 아이디가 없을 때만 만든다. */
@@ -223,6 +226,11 @@ public class OperatorAccountService {
           }
           if ("DISABLED".equals(in.state())) {
             store.revokeAllSessions(operatorId, "ACCOUNT_DISABLED", now);
+            if (!"DISABLED".equals(a.state())) {
+              // 이미 나간 access token 도 만료 전에 막는다(게이트웨이 차단 목록, ADR-0054 ⑤)
+              blocks.block(
+                  operatorId, "OPERATOR", expected + 1L, now, "ACCOUNT_DISABLED", admin.subject());
+            }
           }
           log.info("운영자 계정 수정: operatorId={} by {}", operatorId, admin.subject());
           return operatorId;
@@ -250,6 +258,8 @@ public class OperatorAccountService {
           Instant now = clock.instant();
           store.setPassword(operatorId, encoder.encode(temporaryPassword), true, now);
           store.revokeAllSessions(operatorId, "PASSWORD_RESET", now);
+          blocks.block(
+              operatorId, "OPERATOR", a.version() + 1L, now, "PASSWORD_RESET", admin.subject());
           log.info("운영자 비밀번호 초기화: operatorId={} by {}", operatorId, admin.subject());
           return operatorId;
         });

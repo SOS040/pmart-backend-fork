@@ -20,6 +20,7 @@ dependencies {
     implementation(libs.bundles.service.observability)
 
     "integrationTestImplementation"(platform(libs.spring.cloud.bom))
+    "integrationTestImplementation"(libs.spring.cloud.starter.eureka.server) // SingleNodePeersIT 가 PeerEurekaNodes 를 본다
 }
 
 jib {

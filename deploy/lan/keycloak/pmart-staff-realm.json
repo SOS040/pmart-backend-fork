@@ -152,6 +152,19 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "pmart-auth-relay",
+      "name": "auth-service 관리 기록 중계(ADR-0054 ⑤ 결정 M)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "__PMART_KEYCLOAK_RELAY_SECRET__",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "fullScopeAllowed": false
     }
   ],
   "components": {
@@ -164,6 +177,35 @@
             "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"pmart_operator_id\", \"displayName\": \"PMart 운영자 ID\", \"validations\": {\"pattern\": {\"pattern\": \"^[A-Za-z0-9_.-]{1,64}$\", \"error-message\": \"영문·숫자·_.- 1~64자\"}}, \"required\": {\"roles\": [\"admin\"]}, \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"centers\", \"displayName\": \"담당 센터\", \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": true}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
           ]
         }
+      }
+    ]
+  },
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "attributes": {
+    "adminEventsExpiration": "604800"
+  },
+  "users": [
+    {
+      "username": "service-account-pmart-auth-relay",
+      "enabled": true,
+      "serviceAccountClientId": "pmart-auth-relay",
+      "clientRoles": {
+        "realm-management": [
+          "view-events",
+          "view-users"
+        ]
+      }
+    }
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "pmart-auth-relay",
+        "roles": [
+          "view-events",
+          "view-users"
+        ]
       }
     ]
   }

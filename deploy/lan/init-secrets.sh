@@ -16,6 +16,7 @@
 # - eureka-password: 서비스 → eureka-server Basic 인증 비밀번호(사용자 pmart, ADR-0032). 대시보드(http://<pc4>:8761) 로그인도 이것
 # - grafana-admin-password: Grafana 관리자(admin) 비밀번호(ADR-0030). 원문은 이 파일에만 있다
 # - keycloak-admin-password / keycloak-db-password: Keycloak(ADR-0054, 직원 로그인) 첫 관리자(admin)·Keycloak DB 계정(keycloak). 원문은 이 파일에만
+# - keycloak-relay-client-secret: Keycloak 중계 클라이언트 pmart-auth-relay(ADR-0054 ⑤ 결정 M — auth-service 가 관리 기록을 읽음). pmart-config auth-service-lan.yml 에는 {cipher} 로, Realm 가져오기 파일에는 render.sh 가 넣는다
 # - rag-db-operator-password / rag-db-customer-password: RAG 전용 pgvector 의 서비스 계정 ai_assistant_service·customer_assistant_service(ADR-0051)
 # 이 값들은 LAN 개발 환경 전용이다. 운영은 Secret Manager.
 set -euo pipefail
@@ -64,4 +65,5 @@ fi
 [ -f .secrets/rag-db-customer-password ] || { openssl rand -hex 24 > .secrets/rag-db-customer-password; echo "created rag-db-customer-password"; }
 [ -f .secrets/keycloak-admin-password ] || { openssl rand -base64 24 | tr -d '\r\n/+=' > .secrets/keycloak-admin-password; echo "created keycloak-admin-password"; }
 [ -f .secrets/keycloak-db-password ] || { openssl rand -hex 24 > .secrets/keycloak-db-password; echo "created keycloak-db-password"; }
+[ -f .secrets/keycloak-relay-client-secret ] || { openssl rand -hex 32 > .secrets/keycloak-relay-client-secret; echo "created keycloak-relay-client-secret"; }
 echo "secrets: $(pwd)/.secrets"

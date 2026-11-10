@@ -212,6 +212,7 @@
 
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
+| `SubjectBlocked` | auth(운영자 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계; 나중에 고객 정지·rider-service) | api-gateway(Redis 차단 목록) | issuer, subject, userType, blockedBefore, reason | 주체 차단 — 그 전에 발급된 토큰 거부(토픽 `platform.subject-block.v1`, 키 = 주체, ADR-0054 ⑤) | ① |
 | `CustomerAuthenticated` | auth | customer | accountId, provider, at, (email, emailVerified, name, pictureUrl — ADR-0024) | 소셜 인증 성공(이용 가능≠) | ① |
 | `GrantApplied` | auth | approval(Receipt), audit | grantId, approvalRef, operatorId, roles[], centerScope[], effective | 권한 반영 확인 | ① |
 | `DelegationStarted` / `DelegationEnded` | auth | approval, audit | delegationId, from, to, scope(교집합), until | 대행 | ① |

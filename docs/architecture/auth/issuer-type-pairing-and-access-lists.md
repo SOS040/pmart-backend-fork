@@ -94,13 +94,16 @@ http.oauth2ResourceServer(o -> o.authenticationManagerResolver(
 
 - **저장**: 게이트웨이가 이미 쓰는 Redis(처리율 제한용)에 둔다. 요청마다 조회해야 해서 빨라야 한다.
 - **채우는 쪽(정본은 발급자·업무 서비스)**: 직원 = Keycloak(계정 비활성)·auth 관리 화면, 고객 = auth-service(계정 정지), 라이더 = 라이더 auth + rider-service(이미 있는 `RiderRestricted` 사건). 각자 "차단" 사건을 내고, 게이트웨이 쪽 구독자가 Redis 에 쓴다. 사람이 Redis 에 직접 쓰지 않는다.
+  - **구현(2026-11-11, ADR-0054 결정 K)**: 사건 `SubjectBlocked`(계약 `contracts/events/SubjectBlocked.v1.json`, 토픽 `platform.subject-block.v1`, 키 = 주체) — payload `issuer`(토큰 iss 그대로)·`subject`·`userType`·`blockedBefore`·`reason`. 지금 발행: auth-service 운영자 비활성화·비밀번호 초기화, **Keycloak 직원**은 auth-service 가 Keycloak 관리 기록을 읽어 대신 낸다(`StaffBlockRelay`, ADR-0054 결정 M — 비활성·세션 로그아웃·비밀번호 재설정, 10초 주기, 사용자 삭제는 못 막음). 게이트웨이 함수 `subjectBlocks`(그룹 `api-gateway`) → Redis `pmart:gw:subject-block:<iss>|<sub>` = 차단 시각(epoch 초, 늦은 값만 남김, 남길 기간 = 차단 시각 + `pmart.gateway.subject-blocklist.max-token-lifetime`(2시간) − 지금). 판정 `iat <= 차단 시각`(초 단위, iat 없으면 차단). 해제 사건은 두지 않는다 — 다시 쓸 수 있게 되면 새로 받은 토큰이 통과한다.
 - **확인 위치**: 게이트웨이 §3 의 3번(서명 확인) 바로 뒤. 차단이면 401 + 사유 코드(`TOKEN_REVOKED`·`SUBJECT_BLOCKED`·`IP_BLOCKED`).
-- **Redis 장애 때**: 처리율 제한은 fail-open(통과)이다. 차단 목록도 통과로 둘지(가용성), 막을지(안전)는 그때 정한다 — 토큰 수명이 짧으면(직원 15분) 통과 쪽 위험이 작다.
+- **Redis 장애 때**: 처리율 제한과 같이 **통과**(fail-open, ADR-0054 결정 H). 조회 상한 200ms. 지표 `pmart_gateway_subject_block_total{result}`(blocked·lookup_failed).
 - **서비스는**: 업무 상태(라이더 정지 → 배차 제외, 작업자 LEFT → 새 배정 거부)를 지금처럼 자기 데이터로 본다. 차단 목록은 그 앞의 빠른 차단일 뿐 대신하지 않는다.
 - **감사**: 차단 추가·해제는 누가·왜·언제를 audit 에 남긴다.
 
 ### 6.3 진행
 - 2026-11-10 ① 발급자 표(105da93) ② 경로별 허용 목록 **RECORD 모드** — 계약 외부 작업 400개에 `x-pmart-user-types`(추정 94개는 `user-type-allowlist-estimates.md` 에서 검토), 생성 파일 `api-gateway/src/main/resources/access/user-type-allowlist.txt`(417줄), 필터 `UserTypeAllowlistFilter`. ENFORCE 전환은 추정 목록 확정 + LAN 에서 경고 로그가 없는지 본 뒤.
+
+- 2026-11-11 ⑤ 주체 차단(위 6.2 구현). `jti`·IP 차단은 아직.
 
 ### 6.4 할 때 순서(제안)
 1. 계약에 `x-pmart-user-types` 표시 → 목록 생성 도구 → 게이트웨이 "경로별 종류" 허용 목록(처음엔 기록만 하고 막지 않는 모드로 돌려 빠진 경로를 찾은 뒤 막기)

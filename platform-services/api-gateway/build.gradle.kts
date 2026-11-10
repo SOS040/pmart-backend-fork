@@ -18,6 +18,7 @@ dependencies {
     "integrationTestImplementation"(libs.spring.boot.starter.webflux.test)
     "integrationTestImplementation"(libs.spring.boot.starter.security.test)
     "integrationTestImplementation"(libs.wiremock.spring.boot)
+    "integrationTestImplementation"(libs.spring.boot.starter.data.redis.reactive) // SubjectBlocklistIT 가 Redis 항목을 직접 본다
 }
 
 jib {

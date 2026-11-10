@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.web.client.RestClient;
@@ -30,6 +31,7 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.auth.signing.ephemeral=true",
       "pmart.auth.issuer=http://auth-service.test",
       "pmart.auth.operator.max-failed-attempts=3",
+      "pmart.messaging.outbox.delete-after-insert=false", // 주체 차단 사건(SubjectBlocked)을 outbox 에서 확인
       "pmart.auth.operator.bootstrap.login-id=admin",
       // pmart-local
       "pmart.auth.operator.bootstrap.password-hash={bcrypt}$2a$10$Qut13u4vwUA83/mKRLIfwOJFI5P5ZJWUVbSYxzWim244YpORIaYKG",
@@ -42,6 +44,7 @@ class OperatorLoginIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired JdbcTemplate jdbc;
 
   RestClient http;
 
@@ -55,6 +58,26 @@ class OperatorLoginIT extends PostgresKafkaContainerSupport {
   }
 
   record Res(int status, JsonNode body) {}
+
+  /** 그 주체의 SubjectBlocked 사건 사유(발행 순서). 토픽은 계약대로 platform.subject-block.v1. */
+  List<String> blockReasons(String subject) {
+    assertThat(
+            jdbc.queryForList(
+                "SELECT DISTINCT topic FROM outbox_event WHERE type = 'SubjectBlocked'"
+                    + " AND aggregateid = ?",
+                String.class,
+                subject))
+        .allMatch("platform.subject-block.v1"::equals);
+    return jdbc
+        .queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'SubjectBlocked'"
+                + " AND aggregateid = ? ORDER BY created_at",
+            String.class,
+            subject)
+        .stream()
+        .map(p -> mapper.readTree(p).path("payload").path("reason").asString())
+        .toList();
+  }
 
   Res call(String method, String path, String token, Object body, Map<String, String> headers) {
     var spec =
@@ -315,6 +338,8 @@ class OperatorLoginIT extends PostgresKafkaContainerSupport {
     assertThat(afterReset.status()).isEqualTo(200);
     assertThat(afterReset.body().path("operator").path("passwordChangeRequired").asBoolean())
         .isTrue();
+    // 초기화 전에 나간 access token 도 게이트웨이에서 막도록 주체 차단 사건(ADR-0054 ⑤)
+    assertThat(blockReasons(operatorId)).containsExactly("PASSWORD_RESET");
 
     // 비활성화 → 로그인 불가, 열린 세션의 refresh 불가
     call(
@@ -334,6 +359,34 @@ class OperatorLoginIT extends PostgresKafkaContainerSupport {
     assertThat(login(loginId, "temp-pass-9999").status()).isEqualTo(401);
     assertThat(refresh(afterReset.body().path("tokens").path("refreshToken").asString()).status())
         .isEqualTo(401);
+    assertThat(blockReasons(operatorId)).containsExactly("PASSWORD_RESET", "ACCOUNT_DISABLED");
+    JsonNode blocked =
+        mapper.readTree(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'SubjectBlocked'"
+                    + " AND aggregateid = ? ORDER BY created_at DESC LIMIT 1",
+                String.class,
+                operatorId));
+    assertThat(blocked.path("payload").path("issuer").asString())
+        .isEqualTo("http://auth-service.test");
+    assertThat(blocked.path("payload").path("userType").asString()).isEqualTo("OPERATOR");
+    assertThat(blocked.path("payload").path("blockedBefore").asString()).isNotBlank();
+    // 이미 비활성인 계정을 다시 비활성으로 저장해도 사건을 또 내지 않는다
+    call(
+        "PUT",
+        "/operator-accounts/" + operatorId,
+        adminToken,
+        Map.of(
+            "displayName",
+            "잠금 시험 2",
+            "roles",
+            List.of("MD"),
+            "centers",
+            List.of(),
+            "state",
+            "DISABLED"),
+        Map.of());
+    assertThat(blockReasons(operatorId)).hasSize(2);
 
     // 관리자는 자기 자신을 비활성화할 수 없다
     String adminId =

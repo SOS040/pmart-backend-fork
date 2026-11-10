@@ -322,12 +322,13 @@
 
 ### api-gateway `[1단계]`
 - 라우팅, JWT 검증(auth 공개키), rate limit, `traceId` 발급·전파, 앱별(고객/라이더/점원/기사/관리자) 경로 분리. 비즈니스 로직 없음.
+- **구독**: `SubjectBlocked`(Redis 주체 차단 목록 — 차단 전에 발급된 토큰 401, ADR-0054 ⑤).
 
 ### auth-service `[1단계]`
 - **소유**: 고객(Google ID 토큰 검증 — ADR-0019·0055, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 운영자 신원(Keycloak 으로 옮기기 전까지 — ADR-0054)·비회원(서비스 간은 인증 없음 — ADR-0026), 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
 - **소유하지 않음**: 권한 **부여 승인 흐름**(approval BO-01/02), 고객 프로필(customer), 라이더 로그인·토큰(rider-auth-service, ADR-0054).
 - **API**: 로그인/토큰(운영자 아이디·비밀번호 로그인과 운영자 계정 관리 — ADR-0018), 행위 검증(`authorize(actor, action, target, centerScope)`), grant 반영(approval 승인 결과), grant 조회.
-- **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`.
+- **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`, `SubjectBlocked`(운영자 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계 → 게이트웨이 차단 목록, ADR-0054 ⑤·결정 M).
 - **구독**: `ApprovalDecided`(BO-01/02), `CustomerWithdrawalCompleted`(세션·소셜 연결 삭제).
 
 ### rider-auth-service `[1단계]` — 라이더 로그인·라이더 토큰 발급자 (ADR-0054 E·F, ADR-0055, 2026-11-10)

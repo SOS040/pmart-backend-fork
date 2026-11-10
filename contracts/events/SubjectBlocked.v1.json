@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SubjectBlocked.v1.json",
+  "title": "SubjectBlocked",
+  "description": "주체 차단(ADR-0054 ⑤): 이 주체가 blockedBefore 이전에 받은 토큰은 만료 전이라도 쓰지 못한다. 발행 auth(운영자 계정 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계 — ADR-0054 결정 M; 나중에 고객 정지·rider-service 라이더 정지). 구독 api-gateway(Redis 차단 목록). 토픽 platform.subject-block.v1, 키 = 주체. 해제 사건은 없다 — 다시 쓸 수 있게 되면 새로 받은 토큰(iat > blockedBefore)이 통과한다. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SubjectBlocked"
+        },
+        "aggregateType": {
+          "const": "SubjectBlock"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "issuer",
+            "subject",
+            "userType",
+            "blockedBefore",
+            "reason"
+          ],
+          "properties": {
+            "issuer": {
+              "type": "string",
+              "minLength": 1,
+              "description": "토큰 iss 값 그대로(예 http://auth-service:8501). 게이트웨이는 (iss, sub) 로 찾는다"
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1,
+              "description": "토큰 sub(OP-…, CU-…, RD-…)"
+            },
+            "userType": {
+              "type": "string",
+              "enum": ["OPERATOR", "CUSTOMER", "RIDER"],
+              "description": "로그·지표용. 판정에는 쓰지 않는다"
+            },
+            "blockedBefore": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "이 시각(초 단위로 내림) 이하에 발급된(iat) 토큰은 거부"
+            },
+            "reason": {
+              "type": "string",
+              "enum": ["ACCOUNT_DISABLED", "PASSWORD_RESET", "SESSIONS_REVOKED", "ACCOUNT_RESTRICTED", "RIDER_RESTRICTED"],
+              "description": "차단 사유 코드. SESSIONS_REVOKED = 관리자가 그 사람의 세션을 모두 끊음(Keycloak \"로그아웃\")"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -8,8 +8,13 @@ spring:
   data:
     redis:
       url: ${PMART_REDIS_URL}
+  cloud:
+    function:
+      definition: "" # Kafka 가 없는 통합 시험(RateLimitIT·TraceIdIT)은 사건 함수를 붙이지 않는다 — SubjectBlocklistIT 가 다시 켠다
 pmart:
   gateway:
+    subject-blocklist:
+      enabled: false # SubjectBlocklistIT 가 다시 켠다
     cors:
       allowed-origins: ${PMART_GATEWAY_CORS_ALLOWEDORIGINS:}
 management:
