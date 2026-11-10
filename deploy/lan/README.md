@@ -161,7 +161,7 @@ PC 2·3·4 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수 �
 
 ## 새 PC 추가 (2026-11-10, PC 5 192.168.0.101)
 
-1. **그 PC 에서(사용자)**: 관리자 PowerShell 로 `deploy/lan/pc-bootstrap.ps1` 실행 — OpenSSH 서버·PC 1 LAN 공개 키·SSH 기본 셸 PowerShell·방화벽(SSH·ping, 192.168.0.0/24). 끝에 컴퓨터 이름·사용자를 출력한다.
+1. **그 PC 에서(사용자)**: 관리자 PowerShell 로 `deploy/lan/pc-bootstrap.ps1` 실행(그 PC 에 sshd·비밀번호 로그인이 이미 되면 PC 1 의 별도 터미널에서 `scp deploy/lan/pc-bootstrap.ps1 <사용자>@<IP>:pc-bootstrap.ps1` → `ssh <사용자>@<IP> powershell -NoProfile -ExecutionPolicy Bypass -File pc-bootstrap.ps1` — 비밀번호는 사용자가 직접 입력) — OpenSSH 서버·PC 1 LAN 공개 키·SSH 기본 셸 PowerShell·방화벽(SSH·ping, 192.168.0.0/24). 끝에 컴퓨터 이름·사용자를 출력한다.
    Docker Desktop 설치, `%USERPROFILE%\.docker-pmart` 로 Docker Hub 읽기 전용 로그인(`docker --config "$env:USERPROFILE\.docker-pmart" login`, 별도 터미널)도 사용자가 한다.
 2. **PC 1**: `~/.ssh/config` 에 `Host pmart-pcN`(HostName = 컴퓨터 이름, HostKeyAlias pmart-pcN, AddressFamily inet, User, IdentityFile ~/.ssh/pmart_lan.pem) → 첫 접속 호스트 키 확인.
 3. **PC 1 → SSH 로 맞춤(PC 3 기준, `docs/worklog/2026-10-28.md` 11:40)**: 방화벽 `PMart Docker published ports (LAN)`(com.docker.backend.exe), `.docker-pmart\config.json` `cliPluginsExtraDirs`, `.wslconfig` 메모리, 예약 작업 'PMart Docker Desktop Start', Docker Desktop AutoStart, 절전 끔.
