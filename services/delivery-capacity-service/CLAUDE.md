@@ -34,3 +34,5 @@
 - 같은 슬롯 점유는 `slot_lock` 행 FOR UPDATE 로 직렬화한 뒤 `slot_hold` 를 센다(별도 집계 열 없음). 주문당 활성 1건은 부분 유일 색인 `ux_slot_hold_active_order` 가 최종 방어선(409 HOLD_ALREADY_ACTIVE).
 - TTL(기본 600초) 지난 HELD 는 정리 전에도 정원에서 빠지고 EXPIRED 로 보인다(확정 불가). `HoldExpirySweeper` 가 `pmart.capacity.hold-sweep-interval`(기본 PT30S)마다 SKIP LOCKED 로 EXPIRED 저장.
 - 확정·해제 결과는 `slot_hold_command` 에 남겨 `.../{requestId}` 로 조회한다. 모든 변경은 RequestIdempotency 안(같은 키 재전송은 마감 뒤에도 기존 점유 반환).
+
+- 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.

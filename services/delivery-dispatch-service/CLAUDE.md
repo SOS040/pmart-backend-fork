@@ -22,3 +22,5 @@
 
 ## 상태
 3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+
+- 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
