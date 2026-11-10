@@ -1,7 +1,7 @@
 # ADR-0054 직원·라이더 로그인은 Keycloak(서버 1개, Realm 2개), 고객은 auth-service 유지, 같은 사람 연결은 Google 신원으로
 
 - 상태: 승인 (2026-11-10, 사용자 "키클록 구성을 따를거야")
-- 근거: 사용자가 준 추천 글 `docs/architecture/auth/references/2026-11-10/PMart-최종-인증-아키텍처-추천.md`(구성)와 `PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`(게이트웨이). 확인 기록 `docs/architecture/auth/2026-11-10-*-review.md`.
+- 근거: 사용자가 준 추천 글 Keycloak 구성안(2026-11-10, 원문은 사용자 요청으로 삭제 — 내용 요약은 확인 기록)과 `PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`(게이트웨이). 확인 기록 `docs/architecture/auth/2026-11-10-*-review.md`.
 - 대체: ADR-0011 대안의 "Keycloak 은 도입하지 않는다"(서비스 신원 토큰 결정 자체는 유지), ADR-0018 대안의 "외부 IdP(Keycloak) 도입 안 함"과 운영자 로그인의 발급 주체(auth-service → Keycloak). ADR-0019·0025(고객 Google 로그인)는 그대로.
 
 ## 결정
