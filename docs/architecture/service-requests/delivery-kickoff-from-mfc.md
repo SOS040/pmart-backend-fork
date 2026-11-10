@@ -60,6 +60,14 @@ mfc-fulfillment 는 아래 4개로 "이 출고를 누가 가져갈 수 있나"(�
 - **구독 시작 위치 — 결정(2026-11-10, 사용자 "그래")**: delivery-dispatch 의 `mfc.fulfillment.v1` 소비 그룹은 **처음 켜기 전에 시작 위치를 2026-11-10 09:30 KST(00:30Z)로** 맞춘다(`kafka-consumer-groups --bootstrap-server <kafka> --group <dispatch 소비 그룹> --topic mfc.fulfillment.v1 --reset-offsets --to-datetime 2026-11-10T00:30:00.000Z --execute`, 그룹에 실행 중인 소비자가 없을 때). 그 전의 E2E 시험 출고는 건너뛰고 READY 로 기다리는 실제 주문(ORD-0e67de38…)부터 받는다. 같은 출고의 배차 요청이 두 번 와도 배송은 하나(shipmentId 로 멱등) — 그래서 이후 시작 위치와 상관없이 안전하다. 이후 E2E 시험 출고는 정상 흐름(생성 → 중지면 배차 취소)으로 처리한다.
 - **문서끼리 다른 값 — 결정(2026-11-10)**: 사건 스키마를 API 에 맞췄다 — `DeliveryCreated.type` = `FORWARD / RETURN / RESHIPMENT`(분할은 유형이 아님 — 도입 때 별도 항목, 오배송 회수 DD-2 는 RETURN), `DispatchFailed.reason` = `NO_RIDER / REPEATED_REJECTION / EXPIRED / SYSTEM_FAILURE`. 포장 상태는 구현이 정본 — `SEALED → INVALIDATED`(재포장·피킹 뒤 중지), `OPEN → VOIDED`(밀봉 때 재고 거절). 상태 문서의 "VOIDED = 취소" 문구를 고쳤다(배송 쪽 영향 없음 — 둘 다 QR 409 `PACKAGE_INVALIDATED`).
 - 오배송 확인 사건을 누가 기록하는지(DD-2, ADR-0052 남은 것).
+- **배송 구현 범위·방식 — 결정(2026-11-10, 사용자)**:
+  1. 첫 범위는 세로 조각 — rider(등록·운행 상태) + tracking(위치 수신·최신 위치) + dispatch(배차 요청 → 배송 생성 → 제안 → 수락 → 배정 사건) → MFC 인계까지. execution 은 그다음.
+  2. **반경 단계(1km → 2km → 3km)는 배차 방식이 아니라 "라이더 탐색·제안 정책"**이다(원문 §3.2). 배차 방식은 원문 §2.2 의 **AI 추천 배차모드**와 **일반 배차모드**(§2.4 배달리스트에서 라이더가 골라 수락) 두 가지를 모두 구현한다. 두 모드 모두 같은 서버 배정 결과를 쓰고, 라이더 수락 없이 배정을 확정하지 않는다(§2.2·§3.3). 반경·1분·재시도 2회 10분 간격(§3.2·§3.5)은 설정값, 기본값 = 원문 값.
+  3. 제안 전달은 폴링(`listMyOffers`, `pollAfterSec`) + `DispatchOfferSent` 사건. SSE·FCM 은 라이더 앱 때 정한다(원문 §4.1 "별도 결정").
+  4. **거리·시간은 원문 §2.1 ② 대로 카카오모빌리티 길찾기 API 의 도로 거리·예상 소요시간**(기사 → MFC, MFC → 고객, 고객 → 다음 고객 행렬). 직선거리로 이 기능을 대신하지 않는다.
+  5. **알뜰배달은 원문대로 여러 건 묶음 배정**이고, 배정·방문 순서 계산은 OR-Tools 또는 AI 로 한다(최대 3건 연속, §5.3). OR-Tools 를 넣으면 dispatch 는 ADR-0053 대상(JVM).
+  6. 라이더 앱: 사용자가 `code-and-pick/PMart-Delivery-Test`(임의로 만든 시험 앱·서버)를 기반 후보로 제시 — 검토 결과와 남은 결정은 아래.
+- 남은 결정(2026-11-10): AI 배정 계산 엔진(원문 §2.1 ③ 은 Python GreedRL·RouteFinder, `tech-stack.md` 는 Python 을 3단계 별도 승인으로 둠), 라이더 앱 기반(위 6), 카카오모빌리티 REST 키 등록(사용자가 별도 터미널에서), 배차 가능 시간 09~24시와 LAN 시험 센터 주문 08~24시 충돌.
 - **시험 라이더 토큰 — 결정(2026-11-10)**: 라이더 로그인(auth)·라이더 앱이 아직 없어, 시험은 **LAN 서명키로 만든 시험 라이더 토큰**(`typ=RIDER`, 주체 `RD-claude-*`, 15분, 파일 `deploy/lan/.secrets/rider-token` 은 쓰고 지움 — 고객 시험 토큰과 같은 방식). LAN 전용, 운영 금지. 실제 라이더 가입·로그인은 라이더 앱을 만들 때(인증 방식은 그때 사용자 결정). auth 에 임시 라이더 로그인 코드는 만들지 않는다.
 
 ## 7. 시험
