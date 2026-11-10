@@ -23,6 +23,12 @@ public class IssuerSettings {
   /** 이 발급자가 낼 수 있는 사용자 종류({@link IssuerPolicy#USER_TYPES}). */
   private List<String> userTypes = List.of();
 
+  /**
+   * 사용자 종류 클레임. 비우면 토큰의 클레임을 보지 않고 발급자가 낼 수 있는 종류(하나여야 함)로 정한다. Keycloak 은 {@code typ} 에 "Bearer" 를
+   * 넣으므로 직원 발급자는 비운다(2026-11-10 실제 토큰으로 확인).
+   */
+  private String typeClaim = IssuerPolicy.CLAIM_TYPE;
+
   /** 주체 ID 클레임(점으로 중첩). Keycloak 직원은 {@code pmart_operator_id}. */
   private String subjectClaim = "sub";
 
@@ -70,6 +76,14 @@ public class IssuerSettings {
 
   public void setUserTypes(List<String> userTypes) {
     this.userTypes = userTypes;
+  }
+
+  public String getTypeClaim() {
+    return typeClaim;
+  }
+
+  public void setTypeClaim(String typeClaim) {
+    this.typeClaim = typeClaim;
   }
 
   public String getSubjectClaim() {

@@ -14,6 +14,7 @@
 #   볼 수 있어 비밀로 둔다(서명 비밀은 웹훅에 실리지 않는다). 새 채널은 smee.io 에 HEAD 요청 한 번으로 만든다
 # - eureka-password: 서비스 → eureka-server Basic 인증 비밀번호(사용자 pmart, ADR-0032). 대시보드(http://<pc4>:8761) 로그인도 이것
 # - grafana-admin-password: Grafana 관리자(admin) 비밀번호(ADR-0030). 원문은 이 파일에만 있다
+# - keycloak-admin-password / keycloak-db-password: Keycloak(ADR-0054, 직원 로그인) 첫 관리자(admin)·Keycloak DB 계정(keycloak). 원문은 이 파일에만
 # - rag-db-operator-password / rag-db-customer-password: RAG 전용 pgvector 의 서비스 계정 ai_assistant_service·customer_assistant_service(ADR-0051)
 # 이 값들은 LAN 개발 환경 전용이다. 운영은 Secret Manager.
 set -euo pipefail
@@ -55,4 +56,6 @@ fi
 [ -f .secrets/grafana-admin-password ] || { openssl rand -base64 18 | tr -d '\r\n/+=' > .secrets/grafana-admin-password; echo "created grafana-admin-password"; }
 [ -f .secrets/rag-db-operator-password ] || { openssl rand -hex 24 > .secrets/rag-db-operator-password; echo "created rag-db-operator-password"; }
 [ -f .secrets/rag-db-customer-password ] || { openssl rand -hex 24 > .secrets/rag-db-customer-password; echo "created rag-db-customer-password"; }
+[ -f .secrets/keycloak-admin-password ] || { openssl rand -base64 24 | tr -d '\r\n/+=' > .secrets/keycloak-admin-password; echo "created keycloak-admin-password"; }
+[ -f .secrets/keycloak-db-password ] || { openssl rand -hex 24 > .secrets/keycloak-db-password; echo "created keycloak-db-password"; }
 echo "secrets: $(pwd)/.secrets"

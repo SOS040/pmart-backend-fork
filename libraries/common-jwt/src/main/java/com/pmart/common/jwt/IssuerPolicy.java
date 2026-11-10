@@ -20,8 +20,9 @@ import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
  * 믿는 발급자 하나의 규칙(ADR-0054). 발급자 표({@code pmart.security.issuers})의 한 줄.
  *
  * <ul>
- *   <li>사용자 종류는 <b>발급자가 정한다</b>: 토큰의 {@code typ} 가 있으면 그 발급자의 {@code user-types} 안이어야 하고, 없으면 그
- *       발급자가 낼 수 있는 종류가 하나일 때만 그 종류(예: Keycloak 직원 토큰 → OPERATOR). 그 밖은 무효 토큰(401).
+ *   <li>사용자 종류는 <b>발급자가 정한다</b>: 종류 클레임({@code type-claim}, 기본 {@code typ}. 비우면 보지 않음)이 있으면 그 발급자의
+ *       {@code user-types} 안이어야 하고, 없으면 그 발급자가 낼 수 있는 종류가 하나일 때만 그 종류(예: Keycloak 직원 토큰 →
+ *       OPERATOR). 그 밖은 무효 토큰(401).
  *   <li>주체 ID·역할·센터는 발급자마다 클레임 이름이 다를 수 있다(Keycloak: {@code pmart_operator_id}, {@code
  *       realm_access.roles}). 점(.)으로 중첩 클레임을 가리킨다.
  *   <li>{@code aud} 는 {@code audiences} 가 있을 때만 확인한다(하나라도 겹치면 통과).
@@ -56,6 +57,7 @@ public final class IssuerPolicy {
   private final @Nullable String jwkSetUri;
   private final List<String> audiences;
   private final Set<String> userTypes;
+  private final String typeClaim;
   private final String subjectClaim;
   private final String rolesClaim;
   private final String centersClaim;
@@ -79,6 +81,11 @@ public final class IssuerPolicy {
         p.getJwkSetUri() == null || p.getJwkSetUri().isBlank() ? null : p.getJwkSetUri();
     this.audiences = List.copyOf(p.getAudiences());
     this.userTypes = Set.copyOf(p.getUserTypes());
+    this.typeClaim = p.getTypeClaim() == null ? "" : p.getTypeClaim();
+    if (typeClaim.isBlank() && userTypes.size() != 1) {
+      throw new IllegalStateException(
+          "pmart.security.issuers[" + name + "] type-claim 을 비우면 user-types 는 하나여야 합니다.");
+    }
     this.subjectClaim = p.getSubjectClaim();
     this.rolesClaim = p.getRolesClaim();
     this.centersClaim = p.getCentersClaim();
@@ -142,7 +149,7 @@ public final class IssuerPolicy {
 
   /** 발급자 규칙에 맞는 사용자 종류, 맞지 않으면 null. */
   public @Nullable String resolveType(Jwt jwt) {
-    String typ = jwt.getClaimAsString(CLAIM_TYPE);
+    String typ = typeClaim.isBlank() ? null : jwt.getClaimAsString(typeClaim);
     if (typ == null || typ.isBlank()) {
       return userTypes.size() == 1 ? userTypes.iterator().next() : null;
     }

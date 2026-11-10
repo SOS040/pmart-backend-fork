@@ -46,7 +46,7 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
 # RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
 RAG_APPS=" ai-assistant-service customer-assistant-service "
@@ -722,6 +722,35 @@ EOF
 
 EOF
         ;;
+      keycloak)
+        # 직원 로그인(ADR-0054): Realm pmart-staff 를 keycloak/pmart-staff-realm.json 에서 처음 한 번 가져온다(이미 있으면 건너뜀).
+        # 발급자(iss) = KC_HOSTNAME = http://<이 PC LAN IP>:8180 — 브라우저(로그인 화면)와 서비스(JWKS)가 같은 주소로 본다.
+        # DB 는 같은 PC postgres 의 keycloak(init-db.sql 이 계정·DB 를 만든다). LAN 개발이라 HTTP(운영은 TLS 앞단 필요)
+        cat <<EOF
+  keycloak:
+    <<: *common
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: ["start", "--import-realm"]
+    ports: ["8180:8080"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-$pc:15432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: \${PMART_KEYCLOAK_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: \${PMART_KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME: http://${IP[$pc]}:8180
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    mem_limit: 1536m
+    cpus: 2
+
+EOF
+        ;;
       *)
         port="$(port_of "$c")"; [ -n "$port" ] || { echo "포트 없음: $c" >&2; exit 1; }
         echo "  $c:"
@@ -972,7 +1001,17 @@ EOF
       needs_db "$c" \
         && echo "SELECT 'CREATE DATABASE $(db_of "$c")' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '$(db_of "$c")')\\gexec"
     done
+    # Keycloak(ADR-0054): 전용 계정·DB(없는 것만). 비밀번호는 build/ 의 이 파일에만(git 제외)
+    if [[ "$comps" == *" keycloak "* ]]; then
+      echo "SELECT 'CREATE ROLE keycloak LOGIN PASSWORD ''$(secret keycloak-db-password)''' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'keycloak')\\gexec"
+      echo "SELECT 'CREATE DATABASE keycloak OWNER keycloak' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'keycloak')\\gexec"
+    fi
   } > "$dir/init-db.sql"
+
+  # Keycloak Realm 가져오기 파일(ADR-0054)
+  if [[ "$comps" == *" keycloak "* ]]; then
+    mkdir -p "$dir/keycloak" && tr -d '\r' < "$LAN/keycloak/pmart-staff-realm.json" > "$dir/keycloak/pmart-staff-realm.json"
+  fi
 
   if [[ "$comps" == *" connect "* ]]; then
     cp deploy/local/connector-registrar.sh "$dir/"
@@ -1016,6 +1055,10 @@ EOF
     if [[ "$comps" == *" rag-pgvector "* ]]; then
       echo "PMART_RAG_OPERATOR_DB_PASSWORD=$(secret rag-db-operator-password)"
       echo "PMART_RAG_CUSTOMER_DB_PASSWORD=$(secret rag-db-customer-password)"
+    fi
+    if [[ "$comps" == *" keycloak "* ]]; then
+      echo "PMART_KEYCLOAK_ADMIN_PASSWORD=$(secret keycloak-admin-password)"
+      echo "PMART_KEYCLOAK_DB_PASSWORD=$(secret keycloak-db-password)"
     fi
     if [[ "$comps" == *" s3 "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"

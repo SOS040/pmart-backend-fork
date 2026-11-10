@@ -35,7 +35,9 @@
 - J. LAN 전체 재배포는 작업을 모두 마친 뒤 한 번에(사용자).
 - 순서: ① 발급자 표 구조(게이트웨이·`common-security`, 표에는 auth-service 만 — 동작 같음) ② 경로별 허용 목록 기록 모드 ③ Keycloak 배치·직원 로그인 ④ rider-auth-service ⑤ 차단 목록(주체 → jti → IP) ⑥ 허용 목록 차단 모드.
 
-## 대안
+## 진행
+- 2026-11-10 ① 발급자 표(105da93) ② 경로별 허용 목록 RECORD(204c072) ③ Keycloak 배치 준비 — `placement.conf` pc5 끝에 `keycloak`(quay.io/keycloak/keycloak:26.8.1, LAN 8180, iss `http://192.168.0.101:8180/realms/pmart-staff`), `render.sh`(DB·계정 keycloak, 비밀 `.secrets/keycloak-*`), Realm `deploy/lan/keycloak/pmart-staff-realm.json`(클라이언트 `pmart-backoffice` PKCE·`pmart-dev-cli` LAN 시험용 직접 로그인, aud `pmart-api`, 사용자 속성 `pmart_operator_id`·`centers` → 같은 이름 클레임, 접근 토큰 15분·세션 12시간·5회 실패 잠금). 이 PC 의 일회용 Keycloak 에서 가져오기·토큰 클레임 확인 — **Keycloak 은 `typ` 에 "Bearer" 를 넣는다** → 발급자 설정 `type-claim`(비우면 발급자 종류로만) 추가. LAN 배치·운영자 계정 옮기기는 사용자 결정 J 대로 마지막에.
+
 - 라이더도 Keycloak(첫 번째 글) — 사용자가 쓰지 않기로 함.
 - 라이더를 지금 auth-service 에 넣기 — 사용자가 별도 서비스로 정함.
 - 고객도 Keycloak — 바꿀 요구 없음.

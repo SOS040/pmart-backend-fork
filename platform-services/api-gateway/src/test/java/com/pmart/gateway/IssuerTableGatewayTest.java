@@ -47,6 +47,7 @@ import org.wiremock.spring.InjectWireMock;
       "pmart.security.issuers[1].issuer-uri=http://keycloak:8080/realms/pmart-staff",
       "pmart.security.issuers[1].audiences=pmart-api",
       "pmart.security.issuers[1].user-types=OPERATOR",
+      "pmart.security.issuers[1].type-claim=",
       "pmart.security.issuers[1].subject-claim=pmart_operator_id",
       "pmart.security.issuers[1].roles-claim=realm_access.roles",
       "pmart.security.issuers[2].id=rider",
@@ -137,6 +138,8 @@ class IssuerTableGatewayTest {
             Map.of(
                 "sub",
                 "uuid",
+                "typ",
+                "Bearer", // Keycloak 이 넣는 값 — 직원 발급자는 type-claim 을 비워 보지 않는다
                 "pmart_operator_id",
                 "claude-dev",
                 "aud",
@@ -158,7 +161,8 @@ class IssuerTableGatewayTest {
   }
 
   @Test
-  void keycloakStaffTokenClaimingServiceIsUnauthorized() throws Exception {
+  void keycloakStaffTokenClaimingServiceIsStillOperator() throws Exception {
+    // 직원 발급자는 종류 클레임을 보지 않는다 — typ=SERVICE 라고 적어도 OPERATOR(서비스 토큰 제한에 걸리지도, 승격되지도 않음)
     call(
             "/api/v1/orders",
             "http://keycloak:8080/realms/pmart-staff",
@@ -168,7 +172,7 @@ class IssuerTableGatewayTest {
                 "aud", List.of("pmart-api"),
                 "typ", "SERVICE"))
         .expectStatus()
-        .isUnauthorized();
+        .isOk();
   }
 
   WebTestClient.ResponseSpec call(String path, String issuer, Map<String, Object> claims)

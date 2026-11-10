@@ -45,6 +45,7 @@ class IssuerPolicyTest {
   @Test
   void singleTypeIssuerWithoutTypClaimUsesThatType() {
     IssuerSettings s = settings("http://kc", List.of("OPERATOR"));
+    s.setTypeClaim(""); // Keycloak: typ=Bearer 를 보지 않는다
     s.setSubjectClaim("pmart_operator_id");
     s.setRolesClaim("realm_access.roles");
     IssuerPolicy p = new IssuerPolicy(s);
@@ -53,6 +54,7 @@ class IssuerPolicyTest {
             "http://kc",
             Map.of(
                 "sub", "uuid",
+                "typ", "Bearer",
                 "pmart_operator_id", "op-1",
                 "realm_access", Map.of("roles", List.of("A", "B")),
                 "centers", "MFC-1"));
@@ -89,6 +91,19 @@ class IssuerPolicyTest {
                 .validate(jwt("http://kc", Map.of("sub", "x", "aud", List.of("pmart-api"))))
                 .hasErrors())
         .isFalse();
+  }
+
+  @Test
+  void keycloakBearerTypWithoutTypeClaimSettingIsRejected() {
+    IssuerPolicy p = new IssuerPolicy(settings("http://kc", List.of("OPERATOR")));
+    assertThat(p.resolveType(jwt("http://kc", Map.of("sub", "x", "typ", "Bearer")))).isNull();
+  }
+
+  @Test
+  void blankTypeClaimNeedsSingleUserType() {
+    IssuerSettings s = settings("http://a", List.of("CUSTOMER", "GUEST"));
+    s.setTypeClaim("");
+    assertThatThrownBy(() -> new IssuerPolicy(s)).isInstanceOf(IllegalStateException.class);
   }
 
   @Test

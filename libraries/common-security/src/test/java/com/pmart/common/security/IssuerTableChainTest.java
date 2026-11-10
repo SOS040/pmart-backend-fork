@@ -46,6 +46,7 @@ import org.springframework.web.bind.annotation.RestController;
       "pmart.security.issuers[1].issuer-uri=http://keycloak:8080/realms/pmart-staff",
       "pmart.security.issuers[1].audiences=pmart-api",
       "pmart.security.issuers[1].user-types=OPERATOR",
+      "pmart.security.issuers[1].type-claim=",
       "pmart.security.issuers[1].subject-claim=pmart_operator_id",
       "pmart.security.issuers[1].roles-claim=realm_access.roles",
       "pmart.security.issuers[2].id=rider",
@@ -136,11 +137,18 @@ class IssuerTableChainTest {
   void keycloakStaffTokenMapsToOperatorWithOperatorIdAndRealmRoles() throws Exception {
     Map<String, Object> claims =
         Map.of(
-            "sub", "6f1c-uuid",
-            "pmart_operator_id", "claude-mfc-sup",
-            "aud", List.of("pmart-api"),
-            "realm_access", Map.of("roles", List.of("MFC_SUPERVISOR")),
-            "centers", List.of("MFC-SEED-01"));
+            "sub",
+            "6f1c-uuid",
+            "typ",
+            "Bearer",
+            "pmart_operator_id",
+            "claude-mfc-sup",
+            "aud",
+            List.of("pmart-api"),
+            "realm_access",
+            Map.of("roles", List.of("MFC_SUPERVISOR")),
+            "centers",
+            List.of("MFC-SEED-01"));
     mvc.perform(get("/api/v1/assistant/ask").header("Authorization", bearer(STAFF_ISS, claims)))
         .andExpect(status().isOk())
         .andExpect(content().string("OPERATOR:claude-mfc-sup:[MFC_SUPERVISOR]:[MFC-SEED-01]"));
@@ -161,7 +169,8 @@ class IssuerTableChainTest {
   }
 
   @Test
-  void staffTokenClaimingCustomerIsUnauthorized() throws Exception {
+  // 직원 발급자는 종류 클레임을 보지 않는다(Keycloak typ=Bearer) — 고객이라고 적어도 발급자 규칙대로 OPERATOR
+  void staffTokenClaimingCustomerIsStillOperator() throws Exception {
     Map<String, Object> claims =
         Map.of(
             "sub",
@@ -173,7 +182,8 @@ class IssuerTableChainTest {
             "typ",
             "CUSTOMER");
     mvc.perform(get("/api/v1/orders").header("Authorization", bearer(STAFF_ISS, claims)))
-        .andExpect(status().isUnauthorized());
+        .andExpect(status().isOk())
+        .andExpect(content().string("OPERATOR:op-1"));
   }
 
   @Test

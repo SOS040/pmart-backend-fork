@@ -44,6 +44,7 @@ check() {
     kafka-[123]) [[ "$(tcp_probe "$ip" 9092 '\x00\x00\x00\x0b\x00\x12\x00\x00\x00\x00\x00\x01\x00\x01\x77' 8)" =~ ^.{8}00000001$ ]] ;; # ApiVersions v0 → 길이 + correlation id 1
     redis)    [ "$(tcp_probe "$ip" 6379 'PING\r\n' 5)" = 2b504f4e47 ] ;;                         # +PONG
     zipkin)   curl -sf -m 5 "http://$ip:9411/health" >/dev/null ;;
+    keycloak) curl -sf -m 5 "http://$ip:8180/realms/pmart-staff/.well-known/openid-configuration" >/dev/null ;;
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
     backoffice-web) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip/")" = 200 ] ;;    # 임시 백오피스(Nginx)
     es-search|es-logs) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031·0038)
