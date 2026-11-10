@@ -15,7 +15,7 @@
 5. 서비스가 쓰는 권한 형태(`TYPE_x`·역할·센터)는 유지 — 발급자별 토큰을 이 형태로 바꾸는 일은 공통 변환기(`common-security`)가 맡는다.
 
 ## 정할 것(구현 전)
-- **URL 구조**: 두 번째 글은 `/api/backoffice/**`·`/api/customer/**`·`/api/rider/**` 로 나눠 영역마다 검증한다. 지금 경로는 자원 기준(`/api/v1/deliveries/**` 등)이라 한 경로를 여러 사용자 종류가 쓴다 — 경로를 바꿀지, 지금 경로에서 발급자·종류 짝으로 막을지 사용자 결정.
+- **URL 구조**: 두 번째 글은 `/api/backoffice/**`·`/api/customer/**`·`/api/rider/**` 로 나눠 영역마다 검증한다. 지금 경로는 자원 기준(`/api/v1/deliveries/**` 등)이라 한 경로를 여러 사용자 종류가 쓴다 — 경로를 바꿀지, 지금 경로에서 발급자·종류 짝으로 막을지 사용자 결정. "경로 유지" 안의 구조 예시와 나중 작업(허용 목록·차단 목록)은 `docs/architecture/auth/issuer-type-pairing-and-access-lists.md`.
 - **직원 주체 ID 유지**: 운영자 ID 가 여러 서비스에 기록돼 있다(mfc-capacity `workerId = 운영자 ID`, 승인 이력 처리자 등). Keycloak 기본 `sub` 는 UUID — 기존 ID 를 클레임으로 싣는 방법·계정 이전 순서.
 - **라이더 가입과 업무 원문**: `Delivery-business-logic.md` §1.1 은 전화번호 인증·아이디·비밀번호·"가입 완료 → 즉시 운행 승인". 로그인은 Google 로 정했으므로 전화번호·약관·배달 정보 입력·운행 승인 시점을 어떻게 맞출지.
 - 라이더 auth 서비스 이름·포트·DB, Google OAuth 클라이언트(라이더 앱용), service-map 등록(새 서비스 경계).
