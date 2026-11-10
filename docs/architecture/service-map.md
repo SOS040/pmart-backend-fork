@@ -289,7 +289,7 @@
 
 ### rider-service `[1단계]`
 - **소유**: 라이더 프로필(전화·본인확인·면허번호 고유성·주민번호 고유성(검증 없음, 중복 가입 차단)·계좌·거주지·배달지역·수단), 운행 상태(운행 종료/운행 중·신규배차 허용/운행 중·신규배차 중지), 하나씩 배달하기 설정, 배차 모드(일반/AI추천), 계정 제한(정상/신규배차 제한/일시 중지/계약 종료; 증빙 기반, 후기만으로 자동 제재 없음), 수단 변경(배송 중 불가), 마지막 통신 시각, 탈퇴.
-- **소유하지 않음**: 특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet).
+- **소유하지 않음**: 특정 배송의 배정 권리(dispatch), 수행·정산(execution), 로그인·인증 토큰(rider-auth-service — 라이더 주체 `RD-…` = 토큰 `sub` = riderId), 간선기사(fleet).
 - **API**: 가입/프로필/상태 변경, 적격 라이더 조회(dispatch: 상태·권역·수단·제한·용량).
 - **발행**: `RiderStateChanged`, `RiderRestricted`, `RiderSupplyChanged`.
 - **구독**: `ApprovalDecided`(라이더 제한 BO-20), `DeliveryIncidentRaised`(반복 배차취소 집계).
@@ -318,17 +318,25 @@
 
 ---
 
-## 8. Platform & Support (6 + 추가 3 + 고객 RAG 1)
+## 8. Platform & Support (6 + 추가 3 + 고객 RAG 1 + 라이더 auth 1)
 
 ### api-gateway `[1단계]`
 - 라우팅, JWT 검증(auth 공개키), rate limit, `traceId` 발급·전파, 앱별(고객/라이더/점원/기사/관리자) 경로 분리. 비즈니스 로직 없음.
 
 ### auth-service `[1단계]`
-- **소유**: 고객(소셜 OAuth 제공자 검증, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 라이더·운영자 신원(서비스 간은 인증 없음 — ADR-0026), 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
-- **소유하지 않음**: 권한 **부여 승인 흐름**(approval BO-01/02), 고객 프로필(customer).
+- **소유**: 고객(Google ID 토큰 검증 — ADR-0019·0055, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 운영자 신원(Keycloak 으로 옮기기 전까지 — ADR-0054)·비회원(서비스 간은 인증 없음 — ADR-0026), 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
+- **소유하지 않음**: 권한 **부여 승인 흐름**(approval BO-01/02), 고객 프로필(customer), 라이더 로그인·토큰(rider-auth-service, ADR-0054).
 - **API**: 로그인/토큰(운영자 아이디·비밀번호 로그인과 운영자 계정 관리 — ADR-0018), 행위 검증(`authorize(actor, action, target, centerScope)`), grant 반영(approval 승인 결과), grant 조회.
 - **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`.
 - **구독**: `ApprovalDecided`(BO-01/02), `CustomerWithdrawalCompleted`(세션·소셜 연결 삭제).
+
+### rider-auth-service `[1단계]` — 라이더 로그인·라이더 토큰 발급자 (ADR-0054 E·F, ADR-0055, 2026-11-10)
+- **소유**: 라이더 Google 로그인(라이더 앱이 받은 Google ID 토큰을 Google 공개키로 검증 — `aud` = 라이더용 웹 클라이언트 ID, client secret·인가 코드 교환 없음), Google 계정(`sub`) ↔ 라이더 주체 `RD-…`, 로그인 세션·refresh token(회전·재사용 감지), 기기별 로그인 실패 제한(15분 5회→10분), 라이더 토큰(`typ=RIDER`) 서명키·JWKS.
+- **소유하지 않음**: 라이더 프로필·가입 정보(전화번호·배달 지역·수단·약관)·승인·정지·운행 상태(rider-service), 고객·비회원 토큰(auth-service), 직원 토큰(Keycloak).
+- **API**(계약 0.1.0): `POST /rider-auth/social-logins`, `GET /rider-auth/social-logins/{authRequestId}`, `POST /rider-auth/tokens`, `POST /rider-auth/logouts`, `GET /rider-auth/sessions/current`, `GET /internal/jwks`(게이트웨이·전 서비스가 발급자 표 rider 줄로 사용).
+- **발행·구독**: 없음(Kafka 미사용). 가입은 받은 토큰으로 rider-service 에 한다(가입 여부 = `GET /riders/me`).
+- **나중(ADR-0054 순서 ⑤)**: 라이더 정지(`RiderRestricted`)를 받아 세션을 끊거나 차단 목록에 올리는 일 — 지금은 rider-service 가 업무 상태로 막는다.
+- LAN: PC 5, 포트 8510, DB `rider_auth_service`(PC 5 postgres).
 
 ### config-server `[LAN]` — 설정 배포만 (ADR-0027, 2026-11-02)
 - Spring Cloud Config Server. LAN(compose)의 Spring 앱이 부팅할 때 GitHub `code-and-pick/pmart-config`(`lan/`)의 설정을 받는다. 비밀값은 `{cipher}` 를 서버가 복호화. 저장소 내용은 `deploy/lan/render.sh` 가 만든다.

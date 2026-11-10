@@ -2,6 +2,7 @@
 # LAN 공유 개발 환경용 비밀정보 생성 → deploy/lan/.secrets/ (git 제외). 이미 있으면 그대로 둔다(덮어쓰지 않음).
 # - db-password: 각 PC postgres 의 pmart 사용자 비밀번호
 # - signing-key.pem / signing-kid: auth-service RS256 서명키(PKCS#8). 재생성하면 발급된 토큰이 모두 무효
+# - rider-auth-signing-key.pem / rider-auth-signing-kid: rider-auth-service(라이더 토큰 발급자, ADR-0054 E) RS256 서명키 — auth-service 와 다른 키
 # - s3-access-key / s3-secret-key: s3(SeaweedFS) 자격 증명(ADR-0016)
 # - operator-admin-login / operator-admin-password / operator-admin-hash: auth-service 첫 관리자(ADR-0018).
 #   비밀번호 원문은 이 파일에만 있다(사용자가 읽어 로그인). 서비스에는 해시만 넘긴다. 해시는 BcryptHash.java(spring-security-crypto) 로 만든다.
@@ -26,6 +27,11 @@ if [ ! -f .secrets/signing-key.pem ]; then
   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/signing-key.pem 2>/dev/null
   echo "lan-$(date +%Y%m%d)" > .secrets/signing-kid
   echo "created signing-key.pem (kid $(cat .secrets/signing-kid))"
+fi
+if [ ! -f .secrets/rider-auth-signing-key.pem ]; then
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/rider-auth-signing-key.pem 2>/dev/null
+  echo "rider-lan-$(date +%Y%m%d)" > .secrets/rider-auth-signing-kid
+  echo "created rider-auth-signing-key.pem (kid $(cat .secrets/rider-auth-signing-kid))"
 fi
 [ -f .secrets/s3-access-key ] || { echo "pmart-lan-$(openssl rand -hex 4)" > .secrets/s3-access-key; echo "created s3-access-key"; }
 [ -f .secrets/s3-secret-key ] || { openssl rand -hex 24 > .secrets/s3-secret-key; echo "created s3-secret-key"; }

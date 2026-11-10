@@ -61,6 +61,7 @@ val services = listOf<String>(
     "audit-service",
     "notification-service",
     "auth-service",
+    "rider-auth-service", // 라이더 Google 로그인·라이더 토큰(ADR-0054 E)
     "delivery-tracking-service",
     "delivery-execution-service",
     "delivery-dispatch-service",

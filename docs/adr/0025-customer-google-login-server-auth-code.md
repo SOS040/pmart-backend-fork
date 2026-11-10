@@ -1,6 +1,7 @@
 # ADR-0025 고객 Google 로그인은 하이브리드 — 앱은 서버 인가 코드를 받고, auth-service 가 OAuth 클라이언트로 교환한다
 
-- 상태: 제안 (2026-10-31, 초안 — 사용자 검토 전)
+- 상태: **기각** (2026-11-10) — 구현하지 않고 ADR-0055(ID 토큰 검증만, 백엔드 OAuth2 Client·client secret 없음)로 대체. 아래는 기록으로 남긴다.
+- 처음 상태: 제안 (2026-10-31, 초안 — 사용자 검토 전)
 - 대체: ADR-0019 결정 1(앱 ID 토큰 직접 전달)·8(백엔드는 client secret 을 쓰지 않음). ADR-0019 의 계정 연결·동의 생략·토큰·실패 제한·재전송·이벤트(결정 2~7)는 그대로 유지한다.
 - 관련: ADR-0018(세션·토큰), ADR-0024(제공자 프로필 → customer-service), Commerce 4.9(인증 상태·실패 제한), `contracts/openapi/auth-service.yaml`(logins)
 

@@ -178,6 +178,8 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
     Jwt jwt = decode(first.body().path("tokens").path("accessToken").asString());
     assertThat(jwt.getSubject()).isEqualTo(accountId);
     assertThat(jwt.getClaimAsString("typ")).isEqualTo("CUSTOMER");
+    // PMart API 용 aud(ADR-0055 결정 6) — Google ID 토큰의 aud(고객 웹 클라이언트 ID)를 옮기지 않는다
+    assertThat(jwt.getAudience()).containsExactly("pmart-api");
     assertThat(
             jdbc.queryForObject(
                 "SELECT topic FROM outbox_event WHERE type = 'CustomerAuthenticated' AND aggregateid = ?"

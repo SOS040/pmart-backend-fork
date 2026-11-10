@@ -19,6 +19,7 @@
 | [DE-1](delivery-execution-service.md) | delivery-execution | mfc-fulfillment | 픽업 완료 = 포장별 인계 확정, 모든 `PackageHandedOver` 뒤 PICKED_UP | 없음 | 대기 |
 | [TR-1](delivery-tracking-service.md) | delivery-tracking | mfc-fulfillment, order | `DeliveryEtaUpdated` (라이더 ETA) | 없음 | 대기 |
 | [RS-1](rider-service.md) | rider | delivery-dispatch | 라이더 단계 사건(제한·중지·종료) | 없음 | 대기 |
+| [RS-2](rider-service.md) | rider | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | 대기 |
 | [CP-1](delivery-capacity-service.md) | delivery-capacity | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | **필요**(#15) | 대기 |
 | [O-1](order-service.md) | order | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태 | 없음 | 대기 |
 | [O-2](order-service.md) | order(·orchestration) | 사용자 | 고객 자율 취소는 상품준비 전까지 | ADR-0052 | 대기 |

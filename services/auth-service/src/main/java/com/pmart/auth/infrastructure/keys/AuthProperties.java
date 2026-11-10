@@ -8,15 +8,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param issuer 발급 토큰의 {@code iss}
  * @param signing 서명키
+ * @param audience 발급 토큰의 {@code aud}(기본 {@code pmart-api}) — 발급자 표 auth-service 줄 {@code audiences}
+ *     와 맞춘다 (ADR-0055 결정 6)
  */
 @ConfigurationProperties(prefix = "pmart.auth")
-public record AuthProperties(String issuer, Signing signing) {
+public record AuthProperties(String issuer, Signing signing, String audience) {
+
+  /** PMart API 용 토큰의 기본 {@code aud}. Keycloak 직원 토큰도 같은 값(ADR-0054). */
+  public static final String DEFAULT_AUDIENCE = "pmart-api";
 
   public AuthProperties {
     if (issuer == null || issuer.isBlank()) {
       throw new IllegalArgumentException("pmart.auth.issuer 를 설정해야 한다");
     }
     signing = signing == null ? new Signing(List.of(), false) : signing;
+    audience = audience == null || audience.isBlank() ? DEFAULT_AUDIENCE : audience;
   }
 
   /**

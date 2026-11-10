@@ -1,6 +1,6 @@
 # ADR-0019 고객 소셜 로그인은 Google 먼저 — 앱이 받은 ID 토큰을 auth-service 가 검증한다
 
-- 상태: 제안 (2026-10-30, 사용자 결정)
+- 상태: 제안 (2026-10-30, 사용자 결정). 2026-11-10 ADR-0055 로 결정 1(ID 토큰 검증)·8(client secret 없음)을 다시 확정하고 허용 aud 를 웹 클라이언트 ID 하나로 좁혔다(ADR-0025 기각).
 - 관련: `docs/architecture/implementation-plan.md` D6, ADR-0018(세션·토큰), Commerce 4.9(인증 상태·실패 제한), `contracts/openapi/auth-service.yaml`(logins)
 
 ## 배경

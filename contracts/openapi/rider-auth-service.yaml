@@ -1,0 +1,244 @@
+openapi: 3.1.0
+info:
+  title: rider-auth-service
+  version: 0.1.0
+  description: |
+    라이더 로그인·토큰 발급자(ADR-0054 결정 3·E·F, ADR-0055). 라이더 앱이 Google 로그인으로 받은 OpenID Connect ID 토큰을 Google 공개키(JWKS)로
+    검증하고(서명·iss·aud=라이더용 웹 클라이언트 ID·exp), Google 계정(sub)을 내부 라이더 주체 RD-… 에 연결한 뒤 PMart 라이더 토큰(typ=RIDER)을 발급한다.
+    Google client secret·인가 코드 교환·Google access token 은 쓰지 않는다.
+    정본: 라이더 Google 연결(sub ↔ RD-…)·로그인 세션·refresh token·라이더 토큰 서명키(JWKS).
+    비정본: 라이더 프로필·가입 정보·승인·정지·운행 상태(rider-service). 가입(전화번호·배달 지역·수단·약관)은 이 토큰으로 rider-service 에 한다.
+    고객 로그인(auth-service)·직원 로그인(Keycloak)과 발급자가 다르다 — 게이트웨이·서비스는 발급자 표로 이 발급자의 토큰을 RIDER 로만 인정한다.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: logins, description: 라이더 Google 로그인·원인증 결과 조회 }
+  - { name: tokens, description: 토큰 갱신·로그아웃·현재 세션 }
+  - { name: keys, description: "JWKS 공개키 — 라이더 토큰 검증용 (클러스터 내부 전용)" }
+
+paths:
+  /rider-auth/social-logins:
+    post:
+      tags: [logins]
+      summary: 라이더 Google 로그인 (Google ID 토큰 검증 → 라이더 주체 연결/생성 → 라이더 토큰)
+      description: |
+        providerToken 은 라이더 앱이 google_sign_in(serverClientId = 라이더용 웹 클라이언트 ID)으로 받은 Google ID 토큰이다. 인가 코드는 받지 않는다.
+        같은 Google 계정(sub)은 늘 같은 라이더 주체(riderId)로 이어진다. 이메일이 같다는 이유로 계정을 합치지 않는다.
+        newAccount=true 면 처음 로그인한 것이다. 가입(전화번호·배달 지역·배달 수단·약관)은 받은 토큰으로 rider-service POST /riders/signups 에 한다 —
+        가입 여부는 GET /riders/me(404 = 미가입)로 판단한다.
+        같은 Idempotency-Key 재전송은 원인증 결과를 따른다(새 라이더 주체를 다시 만들지 않는다. 성공이었으면 새 세션 토큰).
+        같은 기기의 명확한 실패(PROVIDER_REJECTED)가 15분 안에 5회면 10분 제한(423). Google 장애(503)는 세지 않는다.
+      operationId: riderSocialLogin
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, providerToken]
+              properties:
+                provider: { $ref: '#/components/schemas/Provider' }
+                providerToken: { type: string, description: Google ID 토큰(JWT). 로그 금지 }
+      responses:
+        '200':
+          description: 로그인됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderAuthResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '401':
+          description: PROVIDER_REJECTED (ID 토큰 서명·iss·aud·만료 검증 실패. 실패 횟수 가산)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: ACCOUNT_NOT_AVAILABLE — Google 인증은 맞지만 이 라이더 주체로 로그인할 수 없음(비활성). 토큰을 주지 않는다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: CONFIG_REQUIRED — 허용할 Google 클라이언트 ID(pmart.rider-auth.google.client-ids)가 설정되지 않음
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '423':
+          description: AUTH_RESTRICTED (15분 내 5회 실패 → 10분 제한. retryAfterSeconds 포함)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/RestrictedError' }
+        '501':
+          description: UNSUPPORTED_ACTION — 아직 지원하지 않는 제공자(지금은 GOOGLE 만)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503':
+          description: PROVIDER_UNAVAILABLE (Google 공개키를 받지 못함. 실패 횟수 미가산 — 잠시 뒤 재시도)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /rider-auth/social-logins/{authRequestId}:
+    get:
+      tags: [logins]
+      summary: 원인증 결과 조회 (응답을 받지 못했을 때. 같은 기기만, 토큰은 다시 주지 않음)
+      operationId: getRiderSocialLogin
+      security: []
+      parameters:
+        - { name: authRequestId, in: path, required: true, schema: { type: string } }
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderAuthResult' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /rider-auth/tokens:
+    post:
+      tags: [tokens]
+      summary: 토큰 갱신 (refresh token 회전. 재사용 감지 시 세션 폐기)
+      description: refresh token 은 한 번만 쓴다. 이미 쓴 토큰이 다시 오면 세션을 끝내고 TOKEN_REUSED. 로그인한 기기(X-Device-Id)에서만 갱신된다.
+      operationId: refreshRiderTokens
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: TOKEN_INVALID / TOKEN_REUSED (세션 폐기됨, 재로그인)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /rider-auth/logouts:
+    post:
+      tags: [tokens]
+      summary: 로그아웃 (세션 종료. 운행 상태는 바꾸지 않음 — 운행 종료는 rider-service)
+      operationId: riderLogout
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allDevices: { type: boolean, default: false }
+      responses:
+        '204': { description: 종료됨 (이미 종료여도 멱등 성공) }
+
+  /rider-auth/sessions/current:
+    get:
+      tags: [tokens]
+      summary: 현재 세션 조회
+      operationId: getCurrentRiderSession
+      x-pmart-user-types: [RIDER]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderSession' }
+        '401':
+          description: SESSION_EXPIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  # ---------- keys (JWKS). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  /internal/jwks:
+    get:
+      tags: [keys]
+      summary: "[게이트웨이·전 서비스→rider-auth] 라이더 토큰 검증 공개키 (JWK Set, RFC 7517)"
+      description: |
+        활성 서명키와 교체 중인 이전 키의 공개키를 모두 싣는다. 검증 측은 토큰 헤더 kid 로 키를 고른다.
+        발급자 표(pmart.security.issuers)의 rider 줄 jwk-set-uri 가 이 주소를 가리킨다.
+      operationId: getRiderJwks
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JwkSet' }
+
+components:
+  schemas:
+    JwkSet:
+      type: object
+      required: [keys]
+      description: RFC 7517 JWK Set. 공개키만(RSA n/e, kid, alg=RS256, use=sig).
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    Provider:
+      type: string
+      enum: [GOOGLE]
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, accessTokenExpiresAt]
+      properties:
+        accessToken: { type: string, description: "PMart 라이더 토큰(RS256, iss = rider-auth-service, sub = riderId, typ = RIDER)" }
+        refreshToken: { type: string }
+        accessTokenExpiresAt: { type: string, format: date-time }
+        refreshTokenExpiresAt: { type: string, format: date-time }
+        sessionId: { type: string }
+    RiderAuthResult:
+      type: object
+      required: [authRequestId, state, riderId, newAccount, occurredAt]
+      properties:
+        authRequestId: { type: string }
+        state: { type: string, enum: [AUTH_MEMBER], description: 지금은 성공이면 늘 AUTH_MEMBER(실패는 오류 응답) }
+        riderId: { type: string, description: "라이더 주체(RD-…) = 토큰 sub = rider-service 의 riderId" }
+        newAccount: { type: boolean, description: 이번 로그인으로 라이더 주체가 처음 만들어짐(가입 화면으로) }
+        tokens: { $ref: '#/components/schemas/TokenPair' }
+        occurredAt: { type: string, format: date-time }
+    RestrictedError:
+      allOf:
+        - $ref: '_common.yaml#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            retryAfterSeconds: { type: integer }
+            restrictedUntil: { type: string, format: date-time }
+    RiderSession:
+      type: object
+      required: [sessionId, riderId, issuedAt, expiresAt]
+      properties:
+        sessionId: { type: string }
+        riderId: { type: string }
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

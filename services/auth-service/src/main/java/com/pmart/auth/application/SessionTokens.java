@@ -43,6 +43,7 @@ public class SessionTokens {
   private final JwtEncoder jwtEncoder;
   private final SigningKeyRing keys;
   private final String issuer;
+  private final String audience;
 
   public SessionTokens(
       OperatorStore store, JwtEncoder jwtEncoder, SigningKeyRing keys, AuthProperties props) {
@@ -50,6 +51,7 @@ public class SessionTokens {
     this.jwtEncoder = jwtEncoder;
     this.keys = keys;
     this.issuer = props.issuer();
+    this.audience = props.audience();
   }
 
   public Tokens issue(
@@ -63,6 +65,7 @@ public class SessionTokens {
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
             .issuer(issuer)
+            .audience(List.of(audience))
             .subject(p.subject())
             .issuedAt(now)
             .notBefore(now)

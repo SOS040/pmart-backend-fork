@@ -25,6 +25,7 @@ CREATE DATABASE delivery_dispatch_service;
 CREATE DATABASE delivery_execution_service;
 CREATE DATABASE delivery_tracking_service;
 CREATE DATABASE auth_service;
+CREATE DATABASE rider_auth_service;
 CREATE DATABASE notification_service;
 CREATE DATABASE audit_service;
 CREATE DATABASE approval_service;

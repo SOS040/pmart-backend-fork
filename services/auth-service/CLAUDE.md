@@ -25,6 +25,7 @@
 - 서명키 `pmart.auth.signing.keys` (Secret Manager, PKCS#8 PEM, 첫 키가 활성). 없으면 기동 실패. local/test 만 `ephemeral=true`.
 - 서비스 토큰 발급(`/internal/service-tokens`)·서비스 클라이언트 등록부는 없다(서비스 간 호출은 인증하지 않음, ADR-0026). 토큰 로그 금지.
 - 자기 토큰 검증은 `KeyConfig` 의 JwtDecoder(같은 키 묶음) — `jwk-set-uri` 없음.
+- access token `aud` = `pmart.auth.audience`(기본 `pmart-api`, ADR-0055 결정 6) — 발급자 표 auth-service 줄 `audiences` 와 같아야 한다. 시험 토큰을 직접 만들 때도 넣는다.
 
 ## 운영자 로그인 (ADR-0018)
 - `POST /api/v1/auth/operator-logins`(permit-path, Idempotency-Key 제외 경로) → access(`typ=OPERATOR, roles, centers, sid`) + refresh. 비밀번호·토큰 로그 금지.
@@ -33,8 +34,9 @@
 - 계정 관리 `/api/v1/operator-accounts/**` 는 `pmart.auth.operator.admin-role`(기본 `OPERATOR_ADMIN`)만. 수치(토큰 수명·잠금)는 `pmart.auth.operator.*`.
 - 첫 관리자: `pmart.auth.operator.bootstrap.login-id`·`password-hash`(bcrypt, Secret Manager). 로컬 프로파일은 `admin` / `pmart-local`.
 
-## 고객 소셜 로그인 (ADR-0019)
-- 지금은 GOOGLE 만. 앱이 보낸 ID 토큰을 `GoogleIdTokenVerifier`(Google JWKS, iss·aud·만료)로 검증 — client secret 은 쓰지 않는다. 허용 aud 는 `pmart.auth.customer.google.client-ids`— 환경별 값은 pmart-config `auth-service-<프로필>.yml`(ADR-0029)(원본 클라이언트 파일은 백엔드에 두지 않음).
+## 고객 소셜 로그인 (ADR-0019·0055)
+- 지금은 GOOGLE 만. 앱이 보낸 ID 토큰을 `GoogleIdTokenVerifier`(Google JWKS, iss·aud·만료)로 검증 — client secret·인가 코드 교환·Spring OAuth2 Client 는 쓰지 않는다(ADR-0055, ADR-0025 기각). 허용 aud 는 `pmart.auth.customer.google.client-ids` = **고객용 웹 클라이언트 ID 하나**(고객 앱 serverClientId). Android 클라이언트 ID·라이더 웹 ID 는 넣지 않는다. 환경별 값은 pmart-config `auth-service-<프로필>.yml`(ADR-0029)(원본 클라이언트 파일은 백엔드에 두지 않음).
+- 라이더 로그인은 이 서비스가 아니라 rider-auth-service(ADR-0054). 발급자 표의 auth-service 줄 RIDER 는 LAN 시험 라이더 토큰용으로 rider-auth-service 배치 전까지만 둔다.
 - 제공자 `sub` → 내부 계정 `CU-…`(이메일 병합 없음). 필수 동의 단계는 `require-consent=false`(사용자 결정) — 신규도 바로 AUTH_MEMBER.
 - 기기별 15분 5회 `PROVIDER_REJECTED` → 10분 `AUTH_RESTRICTED`(423, `AuthRestrictedAdvice`). 제공자 장애(503)는 세지 않는다.
 - 세션·토큰은 운영자와 공통(`SessionTokens`, `SessionService`). 고객 토큰 `typ=CUSTOMER`. 회원이면 `CustomerAuthenticated`(platform.auth.v1).

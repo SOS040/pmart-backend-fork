@@ -1,0 +1,41 @@
+# rider-auth-service
+
+서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `rider-auth-service` 절이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다.
+결정: ADR-0054(결정 3·E·F — 라이더는 Keycloak 이 아니라 이 서비스), ADR-0055(Google 로그인은 ID 토큰 검증만).
+
+## 계약
+- REST: `contracts/openapi/rider-auth-service.yaml` → `openApiGenerate` 가 `com.pmart.riderauth.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
+- 이벤트: 없음(Kafka 를 쓰지 않는다). 시험 클래스패스에만 common-messaging 이 있어 `rider-auth-service-it-env.yml` 에 `pmart.messaging.domain` 을 둔다.
+
+## 패키지
+`com.pmart.riderauth.{api, application, infrastructure}` — rider-service(`com.pmart.rider`)와 겹치지 않게. Controller 에 업무 규칙 금지.
+
+## 데이터
+- 스키마 변경은 `src/main/resources/db/migration/V*.sql` 로만. 적용된 파일 수정 금지(V1 은 2026-11-10 LAN 배치 전).
+- Google 토큰·이메일·이름은 저장하지 않는다 — Google `sub` 와 내부 라이더 주체 `RD-…` 연결만. refresh token 은 SHA-256 만.
+
+## 실행
+```bash
+./gradlew :services:rider-auth-service:check                      # 단위 + 통합(Testcontainers PostgreSQL) + 계약 검증
+./gradlew :services:rider-auth-service:bootRun --args='--spring.profiles.active=local'   # deploy/local 기동 후
+```
+로컬 포트 8510. LAN PC 5.
+
+## Google 로그인 (ADR-0055)
+- 라이더 앱(`google_sign_in`, `serverClientId` = 라이더용 **웹** 클라이언트 ID)이 받은 Google ID 토큰을 `GoogleIdTokenVerifier`(Google JWKS, iss·aud·만료)로 검증한다. client secret·인가 코드 교환·Spring OAuth2 Client 를 쓰지 않는다.
+- 허용 aud = `pmart.rider-auth.google.client-ids`(라이더 웹 ID 하나, pmart-config `rider-auth-service.yml`). **고객용 웹 ID·Android 클라이언트 ID 는 넣지 않는다** — 고객 앱 토큰으로 라이더 로그인이 되면 안 된다.
+- 같은 Google 계정 → 같은 `RD-…`. 이메일로 합치지 않는다. `newAccount=true` 면 앱이 가입 화면으로 간다(가입은 rider-service `POST /riders/signups` — 가입 여부는 `GET /riders/me`).
+- 기기별 15분 5회 `PROVIDER_REJECTED` → 10분 `AUTH_RESTRICTED`(423, `RestrictedAdvice`). Google 장애(503)는 세지 않는다.
+- 같은 Idempotency-Key 재전송: 성공이었으면 같은 주체로 새 세션 토큰, 실패였으면 같은 실패, 다른 기기면 409.
+- 시험은 `GoogleIdTokenVerifier` 빈을 시험 키 검증기로 바꾼다(`RiderSocialLoginIT`).
+
+## 토큰 (자체 JWT)
+- access: RS256, `iss` = `pmart.rider-auth.issuer`(발급자 표 `rider` 줄 issuer-uri 와 같아야 함), `sub` = riderId, `typ=RIDER`, `aud` = `pmart.rider-auth.audience`(기본 `pmart-api`, 발급자 표 rider 줄 `audiences` 와 같게 — ADR-0055 결정 6. Google 토큰의 aud 와 다른 값), `roles`·`centers` 빈 목록, `sid`. 수명 30분.
+- refresh: 30일, 한 번만 쓴다(재사용이면 세션 폐기 `TOKEN_REUSED`), 로그인한 기기에서만. 세션은 마지막 갱신 기준 30일 연장. 수치는 `pmart.rider-auth.*`(record 설정 — 바꾸면 재시작).
+- 서명키 `pmart.rider-auth.signing.keys`(auth-service 와 **다른 키**). LAN 은 `{cipher}`(원본 `deploy/lan/.secrets/rider-auth-signing-key.pem`, `init-secrets.sh` 가 만듦). local/test 만 `ephemeral=true`.
+- `GET /api/v1/internal/jwks`(permit-path, 게이트웨이 비노출) — 게이트웨이·전 서비스가 발급자 표 `rider` 줄로 이 주소를 쓴다. 자기 토큰(로그아웃·현재 세션)도 같은 표로 검증하고, 서비스 안에서 `typ=RIDER`·`iss` 를 한 번 더 본다.
+
+## 상태
+2026-11-10 구현(ADR-0054 ④): 로그인·결과 조회·갱신·로그아웃·현재 세션·JWKS. LAN 미배치(ADR-0054 결정 J — 전체 재배포 때).
+- 나중: 라이더 정지(`RiderRestricted`, rider-service)를 받아 세션 끊기·차단 목록(ADR-0054 ⑤). 그 전까지 정지 라이더 차단은 rider-service 업무 상태가 맡는다.
+- 주체 비활성(`rider_account.state=DISABLED`)을 바꾸는 API 는 아직 없다.

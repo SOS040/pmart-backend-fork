@@ -5,11 +5,11 @@
   - "라이더 키클롭 안쓰는거야. 구글 소셜 로그인을 쓰는 라이더 auth 서비스를 하나 더만드는거야"
   - "지금 auth 서비스를 고객앱 쓰는 그대로 하면돼"
 - 근거: `docs/architecture/auth/references/2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`, 확인 `docs/architecture/auth/2026-11-10-gateway-url-jwt-review.md`.
-- 대체 예정(이전이 끝나면 확정 — 그 전까지 아래 ADR 은 그대로 유효): ADR-0018 결정 1~5(운영자 계정·로그인·발급 주체 auth-service → Keycloak, 결정 D 의 이전 기간에는 함께 둔다). ADR-0011·0018 대안 절의 "Keycloak 도입 안 함" 문장은 이 ADR 로 뒤집혔다(결정 아님). ADR-0011 의 서비스 신원 토큰 결정, ADR-0019·0025(고객 Google 로그인)는 그대로.
+- 대체 예정(이전이 끝나면 확정 — 그 전까지 아래 ADR 은 그대로 유효): ADR-0018 결정 1~5(운영자 계정·로그인·발급 주체 auth-service → Keycloak, 결정 D 의 이전 기간에는 함께 둔다). ADR-0011·0018 대안 절의 "Keycloak 도입 안 함" 문장은 이 ADR 로 뒤집혔다(결정 아님). ADR-0011 의 서비스 신원 토큰 결정, ADR-0019(고객 Google 로그인)는 그대로(ADR-0025 는 2026-11-10 기각 — ADR-0055).
 
 ## 결정
 1. **직원(백오피스·MFC 등 운영자) = Keycloak.** 서버 1개.
-2. **고객 = 지금 auth-service 그대로**(Google 로그인 ADR-0019·0025, 고객 토큰). 비회원(`GUEST`)·서비스 신원(`SERVICE`, ADR-0011) 토큰도 지금처럼 auth-service.
+2. **고객 = 지금 auth-service 그대로**(Google 로그인 ADR-0019·0055, 고객 토큰). 비회원(`GUEST`)·서비스 신원(`SERVICE`, ADR-0011) 토큰도 지금처럼 auth-service.
 3. **라이더 = 새 라이더 auth 서비스**(Google 소셜 로그인, 라이더 토큰 `typ=RIDER` 발급). Keycloak 을 쓰지 않는다. 라이더 업무 정보(승인·정지·운행 상태)는 지금처럼 rider-service 정본 — 라이더 auth 는 로그인·토큰만.
 4. **게이트웨이 1개**, 발급자 3개(Keycloak, auth-service, 라이더 auth). 사용자 종류마다 허용 발급자·대상(`aud`)·권한을 검증하고, 맞지 않으면 거부(고객 토큰으로 라이더 API 불가). 서비스도 다시 검증하고, 업무 인가(배차 소유권·라이더 승인·센터 권한)는 서비스가 본다.
 5. 서비스가 쓰는 권한 형태(`TYPE_x`·역할·센터)는 유지 — 발급자별 토큰을 이 형태로 바꾸는 일은 공통 변환기(`common-security`)가 맡는다.
@@ -37,6 +37,7 @@
 
 ## 진행
 - 2026-11-10 ① 발급자 표(105da93) ② 경로별 허용 목록 RECORD(204c072) ③ Keycloak 배치 준비 — `placement.conf` pc5 끝에 `keycloak`(quay.io/keycloak/keycloak:26.8.1, LAN 8180, iss `http://192.168.0.101:8180/realms/pmart-staff`), `render.sh`(DB·계정 keycloak, 비밀 `.secrets/keycloak-*`), Realm `deploy/lan/keycloak/pmart-staff-realm.json`(클라이언트 `pmart-backoffice` PKCE·`pmart-dev-cli` LAN 시험용 직접 로그인, aud `pmart-api`, 사용자 속성 `pmart_operator_id`·`centers` → 같은 이름 클레임, 접근 토큰 15분·세션 12시간·5회 실패 잠금). 이 PC 의 일회용 Keycloak 에서 가져오기·토큰 클레임 확인 — **Keycloak 은 `typ` 에 "Bearer" 를 넣는다** → 발급자 설정 `type-claim`(비우면 발급자 종류로만) 추가. LAN 배치·운영자 계정 옮기기는 사용자 결정 J 대로 마지막에.
+- 2026-11-10 ④ rider-auth-service — 라이더 웹 클라이언트 ID(`293585219605-la3cj13q…`)를 사용자가 줌. Google 로그인 방식은 ADR-0055(ID 토큰 검증만, client secret·인가 코드 교환 없음). 계약 `contracts/openapi/rider-auth-service.yaml`, 서비스(로그인·결과 조회·갱신 회전·로그아웃·현재 세션·JWKS, 주체 `RD-…`, Kafka 없음), pmart-config `rider-auth-service*.yml`(LAN 서명키 `{cipher}`, 원본 `.secrets/rider-auth-signing-key.pem`), 발급자 표 `rider` 줄(LAN·로컬), 게이트웨이 라우트 `/api/v1/rider-auth/**`·공개 경로·허용 목록, `placement.conf` pc5 끝. 가입(결정 G)은 rider-service 요청 RS-2. LAN 배치는 결정 J 대로 마지막에 — 배치·확인 뒤 auth-service 줄의 RIDER(시험 라이더 토큰)를 뺀다.
 
 - 라이더도 Keycloak(첫 번째 글) — 사용자가 쓰지 않기로 함.
 - 라이더를 지금 auth-service 에 넣기 — 사용자가 별도 서비스로 정함.

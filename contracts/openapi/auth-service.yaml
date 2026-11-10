@@ -3,7 +3,7 @@ info:
   title: auth-service
   version: 0.1.0
   description: |
-    고객 소셜 OAuth 제공자 검증·인증 상태(AUTH_GUEST→PENDING→(CONSENT)→MEMBER, AUTH_UNKNOWN, AUTH_RESTRICTED 15분 5회→10분), 라이더·운영자 신원,
+    고객 소셜 로그인(Google ID 토큰 검증, ADR-0019·0055)·인증 상태(AUTH_GUEST→PENDING→(CONSENT)→MEMBER, AUTH_UNKNOWN, AUTH_RESTRICTED 15분 5회→10분), 운영자 신원(Keycloak 이전 전까지, ADR-0054),
     토큰/세션, 유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한, 행위 시점 검증, 보안 기록 90일의 정본. (docs/architecture/service-map.md §8)
     비정본: 권한 부여 승인 흐름(approval BO-01/02), 고객 프로필·동의(customer).
     발행: CustomerAuthenticated, GrantApplied, DelegationStarted/Ended. 구독: ApprovalDecided(BO-01/02), CustomerWithdrawalCompleted(세션·소셜 연결 삭제).
@@ -71,7 +71,7 @@ paths:
               required: [provider, providerToken]
               properties:
                 provider: { $ref: '#/components/schemas/Provider' }
-                providerToken: { type: string, description: 제공자 발급 인가 코드 또는 ID 토큰. 로그 금지 }
+                providerToken: { type: string, description: "Google ID 토큰(JWT, aud = 고객용 웹 클라이언트 ID — 고객 앱 serverClientId). 인가 코드는 받지 않는다(ADR-0055). 로그 금지" }
                 purpose: { type: string, enum: [GENERAL, CHECKOUT], default: GENERAL, description: CHECKOUT이면 장바구니 병합 확인 흐름으로 복귀 }
       responses:
         '200':
