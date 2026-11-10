@@ -24,6 +24,7 @@ paths:
         단말 시각 순으로 정렬해 저장. 정확도 불량·권역 밖·시간 역전은 기록하되 폐기하지 않는다(gpsQuality에 표기).
         갱신 지연이 임계를 넘으면 RiderLocationStale 발행. 위치 수신은 배송 상태를 바꾸지 않는다.
       operationId: uploadMyLocations
+      x-pmart-user-types: [RIDER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -46,6 +47,7 @@ paths:
       tags: [locations]
       summary: 내 마지막 수신 위치·품질 조회 (업로드 확인용)
       operationId: getMyLatestLocation
+      x-pmart-user-types: [RIDER]
       responses:
         '200':
           description: OK
@@ -62,6 +64,7 @@ paths:
         호출자 역할에 따라 범위가 다르다. 고객 토큰은 본인 주문 배송의 dropEta만, 점포 직원·운영자는 pickupEta·dropEta 모두.
         라이더 미배정·위치 미수신·행렬 조회 실패면 status LOCATING / ETA_PENDING 으로 응답하고 수치는 비운다. 라이더 좌표는 고객에게 주지 않는다.
       operationId: getDeliveryEta
+      x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
       responses:
@@ -83,6 +86,7 @@ paths:
         text/event-stream 으로 DeliveryEta 갱신과 진행 단계(execution 이벤트 사본)를 푸시한다. WebSocket은 같은 경로에 Upgrade 요청으로 접속하며 메시지 본문은 동일한 StreamEvent.
         노출 범위는 GET /eta와 같다(고객은 drop만, 라이더 좌표 비노출). 연결 끊김 시 Last-Event-ID로 재개. 배송 종료(COMPLETED/FAILED/CANCELLED) 이벤트 후 서버가 닫는다.
       operationId: streamDeliveryTracking
+      x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - name: Last-Event-ID

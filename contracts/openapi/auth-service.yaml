@@ -202,6 +202,7 @@ paths:
       tags: [tokens]
       summary: 로그아웃 (세션 종료. 주문·결제는 취소하지 않음, 이관하지 않은 비회원 목록만 복원 대상)
       operationId: logout
+      x-pmart-user-types: [CUSTOMER, GUEST, OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -221,6 +222,7 @@ paths:
       tags: [tokens]
       summary: 현재 세션·신원·유효 역할 조회 (토큰 claim의 원천)
       operationId: getCurrentSession
+      x-pmart-user-types: [CUSTOMER, GUEST, OPERATOR]
       responses:
         '200':
           description: OK
@@ -280,6 +282,7 @@ paths:
       tags: [operators]
       summary: 내 비밀번호 변경 (운영자. 현재 비밀번호 확인)
       operationId: changeOwnPassword
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -312,6 +315,7 @@ paths:
       tags: [operators]
       summary: 운영자 계정 목록 (OPERATOR_ADMIN)
       operationId: listOperatorAccounts
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
@@ -330,6 +334,7 @@ paths:
       tags: [operators]
       summary: 운영자 계정 생성 (OPERATOR_ADMIN. 첫 로그인 때 비밀번호 변경 필요)
       operationId: createOperatorAccount
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -370,6 +375,7 @@ paths:
       tags: [operators]
       summary: 운영자 계정 조회 (OPERATOR_ADMIN)
       operationId: getOperatorAccount
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: operatorId, in: path, required: true, schema: { type: string } }
       responses:
@@ -384,6 +390,7 @@ paths:
       tags: [operators]
       summary: 운영자 계정 수정 — 표시 이름·역할·센터·상태 (OPERATOR_ADMIN. 다음 로그인·토큰 갱신부터 반영)
       operationId: updateOperatorAccount
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: operatorId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -417,6 +424,7 @@ paths:
       tags: [operators]
       summary: 비밀번호 초기화 (OPERATOR_ADMIN. 임시 비밀번호 지정, 잠금 해제, 다음 로그인 때 변경 필요, 열린 세션 폐기)
       operationId: resetOperatorPassword
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: operatorId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

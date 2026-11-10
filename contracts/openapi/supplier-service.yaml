@@ -19,6 +19,8 @@ paths:
       summary: 공급사 목록 조회
       description: 1차 제외 (SCM 문서 0.1)
       operationId: listSuppliers
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자(코드 없음), 공급사 마스터는 직원 관리"
       x-stage: 3
       parameters:
         - $ref: '_common.yaml#/components/parameters/PageSize'
@@ -34,6 +36,8 @@ paths:
       summary: 공급사 등록 → SupplierRegistered
       description: 1차 제외 (SCM 문서 0.1)
       operationId: registerSupplier
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자(코드 없음), 공급사 마스터는 직원 관리"
       x-stage: 3
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -47,6 +51,8 @@ paths:
       summary: 공급사 상세 조회
       description: 1차 제외 (SCM 문서 0.1)
       operationId: getSupplier
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자(코드 없음), 공급사 마스터는 직원 관리"
       x-stage: 3
       parameters:
         - { name: supplierId, in: path, required: true, schema: { type: string } }
@@ -64,6 +70,8 @@ paths:
       summary: 공급 계약·납품 조건 등록
       description: 1차 제외 (SCM 문서 0.1)
       operationId: createSupplierContract
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자(코드 없음), 공급사 마스터는 직원 관리"
       x-stage: 3
       parameters:
         - { name: supplierId, in: path, required: true, schema: { type: string } }

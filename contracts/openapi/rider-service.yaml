@@ -24,6 +24,8 @@ paths:
         같은 전화·면허번호·주민번호(해시)로 기존 계정이 있으면 409 DUPLICATE_RIDER. 번호 유효성 자체는 검증하지 않는다.
         가입 직후 운행 상태는 OFF_DUTY, 계정 상태는 NORMAL(서류 심사가 있는 경우 PENDING_REVIEW).
       operationId: createRiderSignup
+      x-pmart-user-types: [RIDER]
+      x-pmart-user-types-note: "추정 — 가입 전 라이더 auth(Google 로그인) 토큰으로 호출한다고 봄, 구현 코드 없음"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -56,6 +58,8 @@ paths:
       tags: [signup]
       summary: 가입 신청 결과 조회
       operationId: getRiderSignup
+      x-pmart-user-types: [RIDER]
+      x-pmart-user-types-note: "추정 — 가입 신청자(라이더 토큰) 조회로 봄, 구현 코드 없음"
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -76,6 +80,7 @@ paths:
       tags: [me]
       summary: 내 프로필·운행 상태·설정·계정 제한 조회
       operationId: getMyRider
+      x-pmart-user-types: [RIDER]
       responses:
         '200':
           description: OK
@@ -88,6 +93,7 @@ paths:
       summary: 프로필 변경 (계좌·거주지·배달지역·수단)
       description: 수단(vehicleType) 변경은 진행 중 배송이 있으면 409 INVALID_STATE. 면허·주민번호는 변경 불가(재가입 아님, CS 경유).
       operationId: updateMyRider
+      x-pmart-user-types: [RIDER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -117,6 +123,7 @@ paths:
         계정 제한 DISPATCH_RESTRICTED·SUSPENDED·TERMINATED이면 newDispatchEnabled=true로 전환 불가(403).
         진행 중 배송이 있으면 OFF_DUTY 전환 불가(409). 변경은 RiderStateChanged로 전파되어 dispatch 적격 판정에 반영된다.
       operationId: setMyOperatingState
+      x-pmart-user-types: [RIDER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -138,6 +145,7 @@ paths:
       tags: [me]
       summary: 내 운행 상태 조회
       operationId: getMyOperatingState
+      x-pmart-user-types: [RIDER]
       responses:
         '200':
           description: OK
@@ -150,6 +158,7 @@ paths:
       tags: [me]
       summary: 배차 설정 (하나씩 배달하기, 배차 모드 일반/AI추천)
       operationId: setMyDispatchSettings
+      x-pmart-user-types: [RIDER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -175,6 +184,7 @@ paths:
       tags: [me]
       summary: 배차 설정 조회
       operationId: getMyDispatchSettings
+      x-pmart-user-types: [RIDER]
       responses:
         '200':
           description: OK
@@ -187,6 +197,7 @@ paths:
       tags: [me]
       summary: 탈퇴 신청 (진행 중 배송·미정산 수행료 없을 때만)
       operationId: createMyWithdrawal
+      x-pmart-user-types: [RIDER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -211,6 +222,7 @@ paths:
       tags: [me]
       summary: 탈퇴 신청 결과 조회
       operationId: getMyWithdrawal
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:

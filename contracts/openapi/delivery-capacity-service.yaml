@@ -23,6 +23,7 @@ paths:
         date는 Asia/Seoul 기준. 정원 NOT_SET 슬롯은 availability CONFIG_REQUIRED로 표시되어 선택 불가(0도 무제한도 아님).
         잔여 정원은 조회 사본이며 선택 성공을 보장하지 않는다. 확보는 POST /internal/slot-holds로만.
       operationId: listSlots
+      x-pmart-user-types: [CUSTOMER, GUEST]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { type: string } }
         - { name: date, in: query, required: true, schema: { type: string, format: date } }

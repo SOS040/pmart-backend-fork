@@ -47,6 +47,7 @@ paths:
       tags: [audit-entries]
       summary: 감사 사건 목록 (행위자·대상·명령·기간 필터)
       operationId: listAuditEntries
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: actorId, in: query, schema: { type: string } }
         - { name: targetType, in: query, schema: { type: string } }
@@ -77,6 +78,7 @@ paths:
       tags: [audit-entries]
       summary: 감사 사건 상세 (전후 값 포함)
       operationId: getAuditEntry
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: auditEntryId, in: path, required: true, schema: { type: string } }
       responses:

@@ -267,6 +267,7 @@ paths:
         그 센터 운영자 또는 서비스 토큰. 기본은 ACTIVE 만(작업마다 최대 1건). taskId 로 한 작업의 현재 담당을, workerId 로 한 작업자의 담당 작업을 본다.
         date 는 배정 시각(Asia/Seoul) 날짜로 거른다(0.2.0 부터 선택).
       operationId: listAssignments
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: date, in: query, schema: { type: string, format: date } }
@@ -299,6 +300,7 @@ paths:
         temperatureZone 을 주면 그 온도대 자격이 있어야(422 ZONE_NOT_QUALIFIED). 근무 밖이면 막지 않고 warnings 에 OFF_SHIFT(Q-09 미결 — 근무 미등록 작업자는 센터 직원 근무 시간표 STAFF 기준, 0.9.3, 시간표를 못 읽으면 경고 없이). 장비는 아직 없다.
         바뀌면 같은 트랜잭션에서 AssignmentPublished(planId null, planVersion = assignmentVersion, 항목 1개, 토픽 mfc.capacity.v1).
       operationId: assignTask
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -347,6 +349,7 @@ paths:
         작업자별 속도 배율(speedFactor)로 그 작업자의 시간 = 추정 분 ÷ 배율. limitations TRAVEL_ESTIMATED(작업 사이 이동은 추정에 포함 안 함),
         추정을 못 한 작업이 있으면 TRAVEL_ESTIMATE_PARTIAL(그 작업은 유형 분).
       operationId: createAssignmentPlan
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -375,6 +378,7 @@ paths:
       summary: 배정 추천 조회 (0.5.0)
       description: 그 센터 운영자·서비스.
       operationId: getAssignmentPlan
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: planId, in: path, required: true, schema: { type: string } }
       responses:
@@ -394,6 +398,7 @@ paths:
         패킹대 수, 목적 가중치, 계산 시간 제한, 구간 시작 시각. 다시 계산(replay)은 아직 없다(사용자 결정).
         기간으로 지우지 않는다 — 저장 총량이 설정 `plan.input-max-bytes`(LAN 2GB)를 넘으면 오래된 것부터 지운다(확정 안 된 계획 먼저). 지워졌으면 404 INPUT_NOT_KEPT.
       operationId: getAssignmentPlanInput
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: planId, in: path, required: true, schema: { type: string } }
       responses:
@@ -421,6 +426,7 @@ paths:
         모두 맞으면 한 트랜잭션에서 항목마다 배정(planId 기록, assignmentVersion +1) + AssignmentPublished(planId, planVersion = assignmentVersion), 계획 COMMITTED.
         이미 COMMITTED 면 지금 상태(200). 미배정 작업은 수동 배정으로.
       operationId: commitAssignmentPlan
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: planId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -441,6 +447,7 @@ paths:
       tags: [restrictions]
       summary: 운영 제한 조회 (활성·이력)
       operationId: listOperationRestrictions
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: activeOnly, in: query, schema: { type: boolean, default: true } }
@@ -464,6 +471,7 @@ paths:
         CAPACITY_REDUCE: reducedCapacityUnits 필수, 범위 창의 수용 단위 = min(설정값, 활성 축소들) — 신규 Hold 판정·스냅샷에 반영. 지금 활성 점유가 새 수용 단위를
         넘는 창마다 CapacityReduced(그 창의 활성 주문 = affectedOrders, 기존 약속 유지). 제한이 여럿이면 모두 적용(하나 해제돼도 나머지 유지).
       operationId: applyOperationRestriction
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -500,6 +508,7 @@ paths:
       tags: [restrictions]
       summary: 운영 제한 조회
       operationId: getOperationRestriction
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: restrictionId, in: path, required: true, schema: { type: string } }
       responses:
@@ -514,6 +523,7 @@ paths:
       summary: 운영 제한 해제·재개 (approvalRef 필수, OperationRestrictionLifted)
       description: '구현(0.3.0): 그 센터 MFC_SUPERVISOR, ACTIVE 만(이미 LIFTED 면 지금 상태 202). INTAKE_STOP 해제는 OperationRestrictionLifted. 다른 제한은 유지.'
       operationId: liftOperationRestriction
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: restrictionId, in: path, required: true, schema: { type: string } }
         - { name: approvalRef, in: query, required: true, schema: { type: string } }
@@ -536,6 +546,7 @@ paths:
       summary: 센터 작업자 목록 (WK-02 입력 — 0.4.0)
       description: 그 센터 운영자 또는 서비스 토큰. 기본은 ACTIVE·SUSPENDED(LEFT 제외). 각 작업자의 지금 업무(dutyVersion 최신)를 같이 준다.
       operationId: listWorkers
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/WorkerState' } }
@@ -557,6 +568,7 @@ paths:
         별도 업무 이력(dutyVersion 1부터)에 둔다 — 업무를 바꿔도 로그인 정보·계정은 그대로(사용자 결정 2026-11-08).
         같은 센터에 이미 있으면 409 WORKER_ALREADY_REGISTERED(LEFT 였다면 state-changes 로 다시 ACTIVE). 계정 존재 여부는 auth 를 부르지 않고 기록만.
       operationId: registerWorker
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -590,6 +602,7 @@ paths:
       tags: [workers]
       summary: 작업자 한 명 — 지금 업무 + 업무 이력·상태 이력 (0.4.0)
       operationId: getWorker
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -617,6 +630,7 @@ paths:
         - (0.9.1) 응답 `detail` 에 받은 작업의 상세(상품·칸·LOT·수량·약속 시각)를 한 번에 — PICK·PACK·RETURN 은 mfc-fulfillment 작업 상세, REPLENISH·MOVE 는
           mfc-inbound 이동 지시에서 옮겨 적는다. 조회가 안 되면 `detail.available=false`(배정은 그대로 — 화면이 상세 API 를 직접 부른다).
       operationId: pullNextTask
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { type: string } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -654,6 +668,7 @@ paths:
         2026-11-08 사용자 결정(자격과 업무 분리): 자격 = 할 수 있는 일(센터 관리자, 계속 유지, 만료일 선택). 새 버전으로 남긴다. 업무는 자격 안에서만 유효 —
         자격에서 빠진 업무 유형은 배정 조건에서 빠진다(업무 행은 그대로, 지금 유효 업무 = 업무 ∩ 자격). X-Expected-Version = 지금 자격 버전.
       operationId: changeWorkerQualification
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { type: string } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -689,6 +704,7 @@ paths:
         받기 422 DAILY_NOT_ENROLLED). 그날 업무는 시스템이 정한다 — 지금은 유효 자격 전부(그날 수요에 맞춘 세분은 나중). 그 센터 MFC_SUPERVISOR 또는 본인.
         일일크루가 아니면 422 NOT_DAILY_CREW. 같은 날 다시 부르면 같은 등록.
       operationId: enrollWorkerDay
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { type: string } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -723,6 +739,7 @@ paths:
         2026-11-08 사용자 결정(Q-09): 휴게 중에는 다음 작업 받기가 작업을 주지 않는다(409 ON_BREAK), 들고 있던 작업은 그대로. 본인 또는 그 센터 관리자.
         이미 휴게 중이면 그 휴게(200).
       operationId: startWorkerBreak
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { type: string } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -742,6 +759,7 @@ paths:
       tags: [workers]
       summary: 휴게 끝 (0.8.0)
       operationId: endWorkerBreak
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { type: string } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -840,6 +858,7 @@ paths:
         업무를 통째로 새 버전으로 적는다(이전 버전은 이력으로 남는다). 계정·로그인·상태는 바뀌지 않는다. X-Expected-Version = 지금 dutyVersion(다르면 409).
         이미 잡힌 배정은 지우지 않는다 — 새 업무에 맞지 않는 ACTIVE 배정은 응답 affectedAssignments 로 알려 센터 관리자가 재배정한다.
       operationId: changeWorkerDuty
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -873,6 +892,7 @@ paths:
       summary: 작업자 상태 변경 ACTIVE·SUSPENDED·LEFT (그 센터 MFC_SUPERVISOR — 0.4.0)
       description: SUSPENDED·LEFT 는 새 배정을 막는다(로그인·센터 권한은 auth 소관이라 여기서 바꾸지 않는다). 기존 ACTIVE 배정은 affectedAssignments 로 알린다.
       operationId: changeWorkerState
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -904,6 +924,7 @@ paths:
         2026-11-09 사용자 결정. 배정 추천(OR-Tools)에서 이 작업자가 작업에 쓰는 시간 = 작업 추정 분 ÷ 배율(올림, 최소 1분). 0.5~2.0, 기본 1.0.
         실데이터가 없어 센터 관리자가 정하는 값(예: 숙련 1.2, 신입 0.8). 다음 작업 받기(규칙 배정)에는 쓰지 않는다.
       operationId: changeWorkerSpeed
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -933,6 +954,7 @@ paths:
       tags: [workers]
       summary: 근무 일정 (0.4.0)
       operationId: listWorkerShifts
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -955,6 +977,7 @@ paths:
         [startAt, endAt) — 최대 16시간, 같은 작업자의 PLANNED 근무와 겹치면 409 SHIFT_OVERLAP. 휴게·교대 규칙(Q-09)은 미결이라 근무 밖 배정은 아직 막지 않는다
         (배정 응답 warnings 에 OFF_SHIFT 로만 알린다).
       operationId: addWorkerShift
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: workerId, in: path, required: true, schema: { type: string } }
@@ -986,6 +1009,7 @@ paths:
       tags: [workers]
       summary: 근무 취소 (그 센터 MFC_SUPERVISOR — 0.4.0)
       operationId: cancelWorkerShift
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: workerId, in: path, required: true, schema: { type: string } }

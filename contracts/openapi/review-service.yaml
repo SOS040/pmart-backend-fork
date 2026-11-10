@@ -23,6 +23,7 @@ paths:
       tags: [eligibilities]
       summary: 본인 리뷰 자격 조회 (주문 품목별. 기한은 품목 실제 배송완료 + 14일)
       operationId: listMyReviewEligibilities
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: orderId, in: query, schema: { type: string } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/ReviewState' } }
@@ -44,6 +45,7 @@ paths:
       tags: [reviews]
       summary: 리뷰 작성 (품목당 1건. REV_ELIGIBLE → SUBMIT_PENDING → PUBLISHED)
       operationId: createReview
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -87,6 +89,7 @@ paths:
       tags: [reviews]
       summary: 리뷰 수정 (최초 등록 후 3일 미만, 본인만)
       operationId: updateReview
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: reviewId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -119,6 +122,8 @@ paths:
       tags: [reviews]
       summary: 리뷰 삭제 (삭제 후 재작성 불가. ReviewDeleted 발행)
       operationId: deleteReview
+      x-pmart-user-types: [CUSTOMER]
+      x-pmart-user-types-note: "추정 — 작성자 본인 삭제로 봄(운영 측 차단은 content/case 경로), 서비스 미구현"
       parameters:
         - { name: reviewId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

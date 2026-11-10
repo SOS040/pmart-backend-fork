@@ -24,6 +24,7 @@ paths:
       tags: [profile]
       summary: 본인 프로필·계정 상태 조회
       operationId: getMyProfile
+      x-pmart-user-types: [CUSTOMER]
       responses:
         '200':
           description: OK
@@ -40,6 +41,7 @@ paths:
         제공자(Google) 사진 URL 을 그대로 주지 않는다. 로그인 뒤 서버가 한 번 받아 비공개 저장소에 둔 사본이다. 본인 토큰이 있어야 읽는다
         (`Authorization` 헤더 — `<img src>` 만으로는 안 된다). 주소는 `Profile.profileImageUrl` 을 쓴다(사본이 바뀌면 `v` 가 바뀐다).
       operationId: getMyProfileImage
+      x-pmart-user-types: [CUSTOMER]
       responses:
         '200':
           description: 이미지 바이트
@@ -66,6 +68,7 @@ paths:
         phone(연락처) 변경은 본인 확인 방식을 정한 뒤에 연다 — 지금은 phone 이 오면 400 VALIDATION_FAILED (2026-11-03).
         결과는 GET /me/profile-changes/{requestId}(= Idempotency-Key)로 다시 본다.
       operationId: changeMyProfile
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -93,6 +96,7 @@ paths:
       tags: [profile]
       summary: 프로필 변경 결과 조회
       operationId: getMyProfileChange
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -108,6 +112,7 @@ paths:
       tags: [consents]
       summary: 현재 동의 상태 (항목별 버전·동의 시각·철회 시각)
       operationId: listMyConsents
+      x-pmart-user-types: [CUSTOMER]
       responses:
         '200':
           description: OK
@@ -125,6 +130,7 @@ paths:
       description: |
         마케팅 동의 철회는 주문 조회를 막지 않는다. 탈퇴 철회 시 마케팅 동의를 자동 복원하지 않는다. 반영 시 CustomerConsentChanged 발행.
       operationId: changeMyConsents
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -161,6 +167,7 @@ paths:
       tags: [consents]
       summary: 동의 변경 결과 조회
       operationId: getMyConsentChange
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -176,6 +183,7 @@ paths:
       tags: [addresses]
       summary: 주소록 조회 (권역 판정 결과 사본 포함)
       operationId: listMyAddresses
+      x-pmart-user-types: [CUSTOMER]
       responses:
         '200':
           description: OK
@@ -190,6 +198,7 @@ paths:
       tags: [addresses]
       summary: 주소 추가 (delivery-serviceability 권역 판정 동기 조회)
       operationId: addMyAddress
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -218,6 +227,7 @@ paths:
       tags: [addresses]
       summary: 주소 단건 조회
       operationId: getMyAddress
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: addressId, in: path, required: true, schema: { type: string } }
       responses:
@@ -231,6 +241,7 @@ paths:
       tags: [addresses]
       summary: 주소 수정 (초안·확정 주문은 주문 당시 사본을 써서 바뀌지 않음 — order-service shippingAddress, BR-37)
       operationId: updateMyAddress
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: addressId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -253,6 +264,7 @@ paths:
       tags: [addresses]
       summary: 주소 삭제 (현재 쇼핑 주소면 INVALID_STATE. 초안·주문은 사본을 가져 영향 없음 — BR-37)
       operationId: deleteMyAddress
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: addressId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -267,6 +279,7 @@ paths:
       tags: [addresses]
       summary: 현재 쇼핑 주소 선택 (shoppingContextVersion 증가, ShoppingAddressChanged 발행)
       operationId: selectShoppingAddress
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -294,6 +307,7 @@ paths:
       tags: [addresses]
       summary: 현재 쇼핑 주소·담당 MFC·컨텍스트 버전 조회
       operationId: getShoppingContext
+      x-pmart-user-types: [CUSTOMER]
       responses:
         '200':
           description: OK
@@ -351,6 +365,7 @@ paths:
         접수 즉시 신규 구매를 차단하고 CustomerWithdrawalRequested를 발행한다. 완료는 order-service 미결 의무(미결 주문·불명 결제·환불·회수·분쟁) 조회가
         eligible=true일 때만 비동기로 진행되며, 완료 시 CustomerWithdrawalCompleted 발행(auth가 세션·소셜 연결 삭제). 완료된 탈퇴는 되돌리지 않는다.
       operationId: requestWithdrawal
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -377,6 +392,7 @@ paths:
       tags: [withdrawals]
       summary: 탈퇴 진행 상태 조회 (남은 의무 포함)
       operationId: getWithdrawal
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: withdrawalId, in: path, required: true, schema: { type: string } }
       responses:
@@ -392,6 +408,7 @@ paths:
       tags: [withdrawals]
       summary: 탈퇴 철회 (WITHDRAW_PENDING에서만, 마케팅 동의는 자동 복원하지 않음)
       operationId: revokeWithdrawal
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: withdrawalId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

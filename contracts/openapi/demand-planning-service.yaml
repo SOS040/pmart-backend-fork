@@ -24,6 +24,8 @@ paths:
         최신 발행 버전을 반환한다. 품절 구간(stockoutFlags)은 실적이 수요를 과소 반영했음을 표시하며 모델이 보정한 값이 아니다.
         예측에 포함된 확정 약속(committedQtyInForecast)을 함께 반환해 replenishment가 F를 계산할 수 있게 한다.
       operationId: getForecasts
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 주 호출자는 replenishment(서비스, 게이트웨이 밖), 사람은 운영자 화면으로 봄"
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
@@ -51,6 +53,7 @@ paths:
         approvalRef가 있어야 다음 예측 버전에 반영된다. 승인 없는 입력은 PENDING_APPROVAL로 보관만 한다.
         수동 수요는 확정 약속 C가 아니며 재고 예약 근거가 아니다.
       operationId: createManualDemand
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -80,6 +83,7 @@ paths:
       tags: [manual-demands]
       summary: 수동 수요 조회 (반영된 예측 버전 포함)
       operationId: getManualDemand
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: manualDemandId, in: path, required: true, schema: { type: string } }
       responses:
@@ -96,6 +100,7 @@ paths:
       summary: 예측 실행 트리거 → 완료 시 ForecastVersionPublished
       description: 접수(ACCEPTED)는 발행이 아니다. 결과는 GET /forecast-runs/{forecastRunId}로 조회한다.
       operationId: createForecastRun
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -137,6 +142,7 @@ paths:
       tags: [forecast-runs]
       summary: 예측 실행 결과 조회 (RUNNING/PUBLISHED/FAILED, 발행 버전)
       operationId: getForecastRun
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: forecastRunId, in: path, required: true, schema: { type: string } }
       responses:

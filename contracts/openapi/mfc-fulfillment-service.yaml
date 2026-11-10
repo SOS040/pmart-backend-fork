@@ -298,6 +298,7 @@ paths:
         정렬은 생성시각 오름차순의 표시 정렬이며 실행 우선순위가 아니다(우선순위는 Q-08 결정 대기, :866).
       x-added-in: '2026-10-24'
       operationId: listTasks
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - name: assignee
@@ -337,6 +338,7 @@ paths:
         재고 확정 대기는 업무 진행 상태와 별도 필드다(:808) — 행의 pendingQty, 상세의 pendingExecutions.
       x-added-in: '2026-10-24'
       operationId: getTask
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
       responses:
@@ -357,6 +359,7 @@ paths:
         409 EXECUTION_IN_FLIGHT(끝난 뒤). 담당 본인 또는 그 센터 관리자. ASSIGNED·IN_PROGRESS 만(아니면 409 INVALID_STATE). mfc-capacity 배정을 먼저 풀고
         (`/internal/assignments/{taskId}/releases`, 실패면 503 — 바꾸지 않음) 작업을 READY 로(담당·시작 지움, 완료량은 그대로 — 다음 사람이 남은 양을 이어서).
       operationId: releaseTask
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -403,6 +406,7 @@ paths:
         Q-09 결정 전 잠정: 시작 점유는 자동 만료하지 않는다. 점유는 실행 완료·WK-04 종결(BLOCKED/FAILED/CANCELLED/CLOSED_PARTIAL)·WK-05 재배정으로 끝난다.
       x-added-in: '2026-10-24'
       operationId: startTask
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -449,6 +453,7 @@ paths:
         따라서 404 만으로 시작 안 됨을 확정하지 않는다. 같은 Idempotency-Key 로 재전송해 판정을 받는다.
       x-added-in: '2026-10-24'
       operationId: getTaskStart
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }
@@ -473,6 +478,7 @@ paths:
         수량 반영은 mfc-inventory.CommitTaskExecution 으로 요청하고 commitId를 받는다. 자체 사본으로 성공 판단 금지.
         shortage 가 있으면 LineShortageReported 발행(Task → BLOCKED 또는 CLOSED_PARTIAL). reason DAMAGED 는 quality가 구독.
       operationId: recordTaskExecution
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -502,6 +508,7 @@ paths:
       tags: [tasks]
       summary: 실행 결과 조회 (inventory 반영 상태·commitId)
       operationId: getTaskExecution
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - { name: executionId, in: path, required: true, schema: { type: string } }
@@ -518,6 +525,7 @@ paths:
       tags: [shipments]
       summary: 출하 단위 조회 (Task·Package·fence·ETA 투영)
       operationId: getShipment
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: shipmentId, in: path, required: true, schema: { type: string } }
       responses:
@@ -538,6 +546,7 @@ paths:
         출고당 한 번 — 이미 요청됐으면 그 요청을 200 으로 돌려준다(새 사건 없음). 그 센터 MFC_WORKER, PACK 작업이 시작됐거나 출고가 READY 여야
         (아니면 409 INVALID_STATE). 배차 자체(라이더 찾기)는 delivery-dispatch(아직 없음).
       operationId: requestDispatch
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: shipmentId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -576,6 +585,7 @@ paths:
       summary: 포장 밀봉 (OPEN→SEALED) → 포장 QR 발급, PackingFinished
       description: 포장 내용(PackageContent)·봉투 수·주류 여부·부피/무게를 기록한다. 모든 포장이 SEALED 되면 ShipmentReady 발행(배차 요청 정보 포함).
       operationId: sealPackage
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: shipmentId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -607,6 +617,7 @@ paths:
         점원 확인(POST /packages/{id}/handover-checks)이 필요한 포장을 한 번에. 지금은 checkRequired=true 만(그 밖은 400). 그 센터 작업자·센터 관리자.
         허가 만료가 오래된 순.
       operationId: listPackagesToCheck
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: checkRequired, in: query, required: true, schema: { type: boolean } }
@@ -628,6 +639,7 @@ paths:
       tags: [shipments]
       summary: 포장 조회 (상태·버전·QR·fence)
       operationId: getPackage
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
       responses:
@@ -651,6 +663,7 @@ paths:
         다시 찍으면 같은 허가(201), 다른 라이더면 409 FENCE_ACTIVE, 확정 요청 뒤 결과 대기면 409 HANDOVER_RESULT_PENDING. 제한 라이더 검사는
         rider-service(RiderRestricted) 투영이 생기면.
       operationId: authorizePackageHandover
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -702,6 +715,7 @@ paths:
         재고 반영(201 APPLIED) / 결과 모름·미전달(202 UNKNOWN_RESULT, 같은 인계 ID 로 서버가 다시 보냄) / 재고 거절(202 REJECTED — fence 유지,
         재인계·취소 모두 막고 대사 필요, nextAction RECONCILE). fence 만료 뒤 첫 확정은 409 FENCE_EXPIRED(다시 찍기).
       operationId: commitPackageHandover
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -742,6 +756,8 @@ paths:
       tags: [handovers]
       summary: QueryHandoverResolution — 포장 인계 판정 조회 (stopRequest·fence·inventory commit 결합)
       operationId: getHandoverResolution
+      x-pmart-user-types: [OPERATOR, RIDER]
+      x-pmart-user-types-note: "추정 — 코드에 호출자 종류 검사 없음, 인계 판정은 라이더 앱·점원 단말 둘 다 조회"
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
         - { name: stopRequestId, in: query, schema: { type: string } }
@@ -765,6 +781,7 @@ paths:
         인계 사실을 만들고 재고 인계 전기(라이더 확정과 같은 경로, PackageHandedOver). 그 센터 MFC_WORKER. 허가가 아직 살아 있으면 409 FENCE_ACTIVE,
         확인할 허가가 없으면 409 INVALID_STATE. 같은 Idempotency-Key 는 같은 결과.
       operationId: checkPackageHandover
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -826,6 +843,7 @@ paths:
         새 포장은 새 ID·packageVersion(이전 최대+1)·새 QR, 무게·부피는 비움(다시 잴 때까지). 이전 포장은 INVALIDATED + PackageInvalidated
         (newPackageId = 첫 새 포장, newPackageIds = 전부). 그 센터 MFC_WORKER. 같은 Idempotency-Key 는 같은 새 포장들.
       operationId: regroupPackages
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: shipmentId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -885,6 +903,7 @@ paths:
         (INVALID_STATE)은 409. contents 는 지금 내용과 같아야 한다 — 포장 사이 재구성·수량 감소는 아직 없음(422 CONTENT_MISMATCH).
         라벨 재출력은 이 요청이 아니다(기존 QR 그대로). 같은 Idempotency-Key 는 같은 새 포장.
       operationId: repackPackage
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: packageId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

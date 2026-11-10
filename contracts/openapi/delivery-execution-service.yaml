@@ -23,6 +23,7 @@ paths:
       tags: [execution]
       summary: 배송 수행 상태 조회 (라이더·점원·운영자)
       operationId: getDeliveryExecution
+      x-pmart-user-types: [RIDER, OPERATOR]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
       responses:
@@ -39,6 +40,7 @@ paths:
       tags: [execution]
       summary: 가게 도착 (ASSIGNED → ARRIVED_AT_STORE)
       operationId: reportStoreArrival
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -62,6 +64,7 @@ paths:
         mfc-fulfillment의 CommitPackageHandover로 발급된 handoverId(=PackageHandedOver)가 배송의 모든 포장에 대해 확인되어야 한다.
         미확인 포장이 있으면 422 HANDOVER_NOT_CONFIRMED. QR 스캔·GPS·버튼만으로 픽업 처리하지 않는다(ADR-0006).
       operationId: reportPickup
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -93,6 +96,7 @@ paths:
       tags: [execution]
       summary: 고객 도착 (PICKED_UP → ARRIVED_AT_CUSTOMER)
       operationId: reportCustomerArrival
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -117,6 +121,7 @@ paths:
         시간 경과 자동완료는 없다. 주류 포함 배송도 현장 신분증 절차 없음(PG 인증 통합).
         완료 시 DeliveryCompleted(배송 단위, 증빙 참조) 발행 → order 완료 집계·review 자격·claim 기한 기산.
       operationId: reportCompletion
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -143,6 +148,7 @@ paths:
       summary: 전달 실패 (고객 부재·주소 오류·연락 두절 등; 자동 환불 없음)
       description: 실패 후 처리(고객 연락·보관·회수)는 case-service 판단. 재배송은 교환 승인 건만.
       operationId: reportFailure
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -171,6 +177,8 @@ paths:
       tags: [execution]
       summary: 도움요청 (→ case-service 지원센터)
       operationId: createHelpRequest
+      x-pmart-user-types: [RIDER]
+      x-pmart-user-types-note: "추정 — 미구현, 라이더 앱 도움요청으로 봄"
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -199,6 +207,8 @@ paths:
       tags: [execution]
       summary: 도움요청 상태 조회
       operationId: getHelpRequest
+      x-pmart-user-types: [RIDER]
+      x-pmart-user-types-note: "추정 — 미구현, 도움요청을 낸 라이더의 조회로 봄"
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }
@@ -220,6 +230,7 @@ paths:
       tags: [returns]
       summary: 회수 고객 수거 (type RETURN; → ReturnPickedUp)
       operationId: reportReturnPickup
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -253,6 +264,7 @@ paths:
       tags: [returns]
       summary: 회수품 점포 반납 (→ ReturnDelivered; 점원 수령 확인은 mfc-inbound)
       operationId: reportReturnStoreDelivery
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -278,6 +290,7 @@ paths:
       tags: [me]
       summary: 내 배송 이력·오늘 내역 (진행 중 포함)
       operationId: listMyDeliveries
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: date, in: query, schema: { type: string, format: date, description: Asia/Seoul } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/ExecutionState' } }
@@ -299,6 +312,7 @@ paths:
       tags: [me]
       summary: 수행료·정산 조회 (요율표 버전·할증·보상·공제; 요율 미등록=산정 불가)
       operationId: listMyEarnings
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }

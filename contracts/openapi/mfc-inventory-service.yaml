@@ -130,6 +130,7 @@ paths:
         못 맞추는 LOT 은 빨리 거둔다. 선반·피킹 칸의 정상·적치 재고 중 오늘 부적격인 LOT 과 그 칸·수량. onMiscShelf = 이미 기타 칸(카테고리 없음)에 있음.
         센터 관리자는 이 목록으로 기타 칸으로 이동을 지시한다(카테고리 칸으로는 이동 배정이 409 LOT_NOT_SHIPPABLE). 그 센터 운영자. 기준이 없는 상품은 빼고 보여 주지 않는다.
       operationId: listUnshippableLots
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
       responses:
@@ -183,6 +184,7 @@ paths:
       tags: [moves]
       summary: 자동 선반 보충 기준 목록 (IV-04, 0.14.0)
       operationId: listReplenishmentPolicies
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
       responses:
@@ -202,6 +204,7 @@ paths:
         2026-11-08 사용자 결정: 보충은 **시스템이 만든다**(재배치는 센터 관리자). 기준값(Q-07)은 센터 관리자가 칸·상품별로 등록한다 — 등록이 없는 칸은 보충하지 않는다(수동 보충 요청 없음).
         **고회전 선반만**(같은 상품 한 자리 규칙의 예외인 칸 — 아니면 422 REPLENISH_ONLY_HIGH_TURNOVER). min ≤ target, 단위 > 0.
       operationId: putReplenishmentPolicy
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -232,6 +235,7 @@ paths:
       tags: [moves]
       summary: 자동 선반 보충 기준 삭제 — 센터 관리자 (0.14.0)
       operationId: deleteReplenishmentPolicy
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: locationCode, in: query, required: true, schema: { type: string } }
@@ -915,6 +919,7 @@ paths:
       tags: [queries]
       summary: '[운영자] 센터 재고 상세 — SKU 의 LOT 별 요약(H/Q/E/R·소비기한)과 위치·상태별 단위 행'
       operationId: getCenterStock
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
@@ -936,6 +941,7 @@ paths:
         없으면 같은 LOT)으로 옮긴다. 품질·업무상태는 바꾸지 않는다. 목적 위치가 STORED 면 적치와 같은 위치 검사. 예약(R)이 걸린 수량은 옮길 수
         없다(LOT 의 R ≤ E — 409 INVARIANT_VIOLATION). approvalRef 필수(정정 근거 — 시드는 `seed-v2`). 그 센터의 운영자만.
       operationId: correctStock
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -969,6 +975,7 @@ paths:
         잠금 실패는 계수 시작 차단). 대상 = 그 위치의 판매 단위(NORMAL·STORED) — 위치·SKU·LOT 별 장부 수량과 조사 보류(IV-09 결품 보고)를
         기준 시각에 고정한다. 응답의 계수표(sheet)에는 수량이 없다(첫 계수 장부 숨김). 같은 위치가 열린 실사에 있으면 409 COUNT_IN_PROGRESS.
       operationId: createCountSession
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -997,6 +1004,7 @@ paths:
       tags: [counts]
       summary: '[운영자] 실사 조회 — 계수 중에는 장부·차이를 보이지 않는다'
       operationId: getCountSession
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sessionId, in: path, required: true, schema: { type: string } }
@@ -1019,6 +1027,7 @@ paths:
         재계수가 장부와 같고 보류가 없으면 MATCHED, 아니면 PENDING_APPROVAL(최종 수량 = 재계수). 첫 계수가 같아도 조사 보류가 있으면 PENDING_APPROVAL
         (보류 해소도 승인 뒤). 계수 단계가 아닌 실사는 409 INVALID_STATE.
       operationId: submitCount
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sessionId, in: path, required: true, schema: { type: string } }
@@ -1064,6 +1073,7 @@ paths:
         ReservationBlocked. 증감이 있으면 StockAdjusted. 같은 승인 재요청은 지금 실사(한 번만 반영). REJECT → REJECTED(변화 없음, 보류 그대로).
         실사 잠금 해제는 mfc-location 에서 따로(시간 만료로 자동 해제하지 않음).
       operationId: decideCountSession
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sessionId, in: path, required: true, schema: { type: string } }
@@ -1104,6 +1114,7 @@ paths:
         취급 레코드가 없으면 OFF(handlingEnabled=false, version 0)이다(사용자 결정 2026-10-30: 기본 OFF, 센터 운영자가 켬).
         토큰의 centers 클레임에 mfcId 가 없으면 403.
       operationId: listSkuHandlings
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: enabled, in: query, required: false, description: 'true=ON 만, false=OFF(레코드 없음 포함)만, 생략=전체', schema: { type: boolean } }
@@ -1124,6 +1135,7 @@ paths:
         현재 값과 같으면 변경·이력 없이 현재 상태를 돌려준다(changed=false). 바뀌면 이력을 남기고 version +1.
         X-Expected-Version 은 이 센터·SKU 취급 레코드의 version(레코드가 없으면 0).
       operationId: changeSkuHandling
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -1162,6 +1174,7 @@ paths:
         모든 행을 먼저 검증하고 하나라도 실패하면 아무것도 바꾸지 않는다(422 SKU_HANDLING_BATCH_REJECTED, details[].field = items[i]).
         행 규칙은 단건과 같다. 같은 SKU 가 두 번 나오면 400 VALIDATION_FAILED.
       operationId: changeSkuHandlingBatch
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

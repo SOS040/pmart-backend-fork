@@ -34,6 +34,7 @@ paths:
         본문의 approverId 로 승인을 대신하지 않는다(요청·승인 분리, MFC Q-11). 승인은 다른 운영자가 POST …/{id}/approvals.
         decidedBy 는 토큰 주체와 같아야 한다(생략 가능). 줄마다 lotId·locationCode 필수, workState STORED(기본)/UNSTOWED.
       operationId: createQualityDecision
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -66,6 +67,7 @@ paths:
         MFC_SUPERVISOR, 판정 요청자 본인은 안 됨(422 SELF_APPROVAL). REQUESTED 판정만(아니면 409 INVALID_STATE, 같은 결정 재요청은 지금 판정).
         APPROVE → mfc-inventory RELEASE(Q−q, STORED 면 E+q) → APPLIED / UNKNOWN_RESULT(서버가 같은 키로 다시) / REJECTED(사유). REJECT → DECLINED.
       operationId: approveQualityDecision
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: qualityDecisionId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -100,6 +102,7 @@ paths:
       tags: [decisions]
       summary: 판정 조회 (inventory 반영 상태·commitId)
       operationId: getQualityDecision
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: qualityDecisionId, in: path, required: true, schema: { type: string } }
       responses:
@@ -119,6 +122,7 @@ paths:
         temperatureZone 이 CHILLED/FROZEN 또는 신선 카테고리이면 RESALE 요청은 422 RESALE_NOT_ALLOWED.
         RESALE 은 inventory 에 RELEASE(Q−q, E+q), DISPOSE 는 폐기 승인 요청(disposal-approvals)으로 이어진다.
       operationId: createReturnInspection
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -150,6 +154,7 @@ paths:
       tags: [return-inspections]
       summary: 회수품 검수 조회
       operationId: getReturnInspection
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: returnInspectionId, in: path, required: true, schema: { type: string } }
       responses:
@@ -171,6 +176,7 @@ paths:
         422 SELF_APPROVAL), APPROVE 는 approvalRef 필수(422 APPROVAL_REQUIRED — BO-15 승인 ID, 지금은 존재 확인 없이 기록만), lines 로 부분 승인(요청량 이하).
         승인하면 DisposalApproved. 응답 resultId = disposalApprovalId. 실제 폐기는 POST …/{id}/executions.
       operationId: decideDisposal
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -203,6 +209,7 @@ paths:
         실행 ID = Idempotency-Key 기준(같은 키는 같은 실행). 재고 반영 APPLIED 면 누계 +q, 다 실행하면 COMPLETED. 모름은 서버가 같은 실행 ID 로 다시,
         거절은 REJECTED(잔량 되돌림).
       operationId: executeDisposal
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: disposalApprovalId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -240,6 +247,7 @@ paths:
       tags: [disposals]
       summary: 폐기 승인 조회 (승인량·집행 누계·잔량)
       operationId: getDisposalApproval
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: disposalApprovalId, in: path, required: true, schema: { type: string } }
       responses:
@@ -255,6 +263,7 @@ paths:
       tags: [incidents]
       summary: 품질 사건 목록 (온도 이탈·파손·리콜 영향 LOT)
       operationId: listQualityIncidents
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: kind, in: query, schema: { $ref: '#/components/schemas/IncidentKind' } }
@@ -278,6 +287,7 @@ paths:
       tags: [incidents]
       summary: 품질 사건 조회
       operationId: getQualityIncident
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: incidentId, in: path, required: true, schema: { type: string } }
       responses:

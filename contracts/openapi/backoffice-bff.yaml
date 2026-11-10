@@ -21,6 +21,7 @@ paths:
       tags: [views]
       summary: 통합 조회 (주문·배송·TRF·운행·사건을 식별자/고객으로 한 번에)
       operationId: getUnifiedLookupView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, maxLength: 128 }, description: 주문번호·전화 참조·TRF·tripId 등 }
         - { name: kind, in: query, schema: { type: string, enum: [ORDER, DELIVERY, TRANSFER, TRIP, CUSTOMER, CASE, ANY] } }
@@ -55,6 +56,7 @@ paths:
         approval-service 가 응답하지 않으면 200 + 빈 items + unavailableSources=[approval-service](추정하지 않음). 운영자가 아니면 403.
         centerId 는 아직 approval-service 가 거르지 않는다(넘기기만 함).
       operationId: getApprovalInboxView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: approvalType, in: query, schema: { type: string } }
         - { name: reviewState, in: query, schema: { type: string } }
@@ -100,6 +102,7 @@ paths:
       tags: [views]
       summary: 사건함 (case-service 읽기 + 연결 도메인 사건 상태)
       operationId: getCaseInboxView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: state, in: query, schema: { type: string } }
         - { name: assignee, in: query, schema: { type: string } }
@@ -136,6 +139,7 @@ paths:
       tags: [views]
       summary: 보충 현황 (TRF별 승인/확보/편성/출발/수령 — 원천별 기준시각 분리, 합산 금지)
       operationId: getReplenishmentStatusView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, schema: { type: string } }
         - { name: cdcId, in: query, schema: { type: string } }
@@ -174,6 +178,7 @@ paths:
       tags: [views]
       summary: 운행 관제 (planning 배정 + execution 운행/ETA/사건 + cold-chain 이탈)
       operationId: getTripControlView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: date, in: query, required: true, schema: { type: string, format: date } }
         - { name: cdcId, in: query, schema: { type: string } }
@@ -213,6 +218,7 @@ paths:
       tags: [views]
       summary: 실시간 배송 현황 (MFC별 고객 배송·배차·라이더 — delivery-* 읽기)
       operationId: getLiveDeliveryView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { type: string } }
         - { name: state, in: query, schema: { type: string } }
@@ -247,6 +253,7 @@ paths:
       tags: [views]
       summary: 포장 인계 현황 (MFC 포장 완료·인계 펜스·라이더 인계 — mfc-*/delivery 읽기)
       operationId: getPackingHandoverView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { type: string } }
         - { name: state, in: query, schema: { type: string } }
@@ -280,6 +287,7 @@ paths:
       tags: [views]
       summary: 지표 (분모 보존; 비율은 분자/분모를 함께 반환)
       operationId: getMetricsView
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: metric, in: query, required: true, schema: { type: string, enum: [ON_TIME_DELIVERY, SHORTAGE_RATE, TRANSPORT_ON_TIME, UNPLANNED_RATE, PAYMENT_UNKNOWN, CASE_SLA] } }
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
@@ -318,6 +326,7 @@ paths:
         X-Expected-Version을 붙여 대상에 전달한다. 응답 status는 대상의 값을 변형하지 않는다. UNKNOWN_RESULT는 GET /commands/{targetService}/{command}/{requestId}로 해소.
         허용 명령은 대상 서비스 계약에 등록된 것만. 주문 상태 직접 변경·잔고 덮어쓰기·강제 성공 명령은 UNSUPPORTED_ACTION.
       operationId: proxyCommand
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: targetService, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9-]+$' }, description: 예 approval-service }
         - { name: command, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9-]+$' }, description: 대상 계약의 명령 경로 식별자 }
@@ -356,6 +365,7 @@ paths:
       tags: [commands]
       summary: 전달한 명령의 원결과 조회 (대상 서비스 짝 조회로 위임)
       operationId: getProxiedCommandResult
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: targetService, in: path, required: true, schema: { type: string } }
         - { name: command, in: path, required: true, schema: { type: string } }

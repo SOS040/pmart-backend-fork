@@ -26,6 +26,7 @@ paths:
         최신 CALCULABLE planRun 기준. 조회 실패 원천은 H0/SS0로 대체하지 않으며 state INPUT_PENDING으로 표시한다.
         시간대별 최초 부족시각(firstShortageAt)·최대 부족·회복시각을 함께 반환한다.
       operationId: getReplenishmentStatus
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
@@ -46,6 +47,7 @@ paths:
         입력 스냅샷(asOf·원천 버전)을 고정한 뒤 S/IP/N/W/B/K/Q를 계산한다.
         응답 state가 CALCULABLE일 때만 ReplenishmentRecommended를 발행한다. 추천은 요청·승인이 아니다.
       operationId: createPlanRun
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -85,6 +87,7 @@ paths:
       tags: [planning]
       summary: 계획 실행 결과 조회 (스냅샷 원천·버전·상태·SKU별 결과)
       operationId: getPlanRun
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: planRunId, in: path, required: true, schema: { type: string } }
       responses:
@@ -100,6 +103,7 @@ paths:
       tags: [planning]
       summary: 보충 추천 조회 (W/B/K/Q, 원수요 미충족·배수 완충)
       operationId: listRecommendations
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
@@ -123,6 +127,7 @@ paths:
       tags: [supply-requests]
       summary: 공급 요청 접수 결과 조회 (ACCEPTED/CONFLICT/PENDING, 연결 TRF)
       operationId: getSupplyRequest
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: supplyRequestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -139,6 +144,7 @@ paths:
       summary: 심사 후보 조회 (같은 CDC 재고를 두고 센터별 요청 비교 — 수동/요청순/위험/비례)
       description: 정책 미승인 시 수동 심사 대상으로 등록된다. 후보는 승인이 아니다.
       operationId: listAllocationCandidates
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
@@ -160,6 +166,7 @@ paths:
       tags: [transfers]
       summary: 승인 TRF 정본·실행 추적 조회 (확보/편성/출발/수령/준비 상태, 보존식 A0 = D + Cpre + Uclosed + Uopen)
       operationId: getTransfer
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
       responses:
@@ -178,6 +185,7 @@ paths:
         WMS/TMS 실제 미실행을 확인한 뒤 적용한다. SCM이 예약을 직접 해제하거나 실물을 삭제하지 않는다.
         실제 출발 후에는 변경 불가(INVALID_STATE).
       operationId: requestTransferChange
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -220,6 +228,7 @@ paths:
       tags: [transfers]
       summary: 승인 TRF 취소 요청 (실제 출발 전만) → TransferCancelled
       operationId: requestTransferCancellation
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -251,6 +260,7 @@ paths:
         승인 60·실출발 48이면 미출발 12를 같은 TRF로 보내지 않고 잔량 종료한다(60 = 48 + 12).
         추가 공급은 별도 요청·승인(SCM-D11). approvalRef 필수.
       operationId: closeTransferResidual
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -285,6 +295,7 @@ paths:
       tags: [transfers]
       summary: 변경/취소/잔량 종료 요청 결과 조회 (PENDING/APPLIED/REJECTED/UNKNOWN)
       operationId: getTransferRequest
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }
@@ -309,6 +320,7 @@ paths:
       summary: 공급 정책값 조회 (우선순위 센터+SKU → 그룹 → 전역, 3값 응답)
       description: NOT_SET은 0/무제한이 아니다. 정책 미설정 SKU의 신규 계획 실행은 CONFIG_REQUIRED로 보류한다.
       operationId: getPolicies
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: centerId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }

@@ -25,6 +25,7 @@ paths:
         ShipmentReady로 생성된 delivery에 대해 점원이 수동으로 배차를 요청한다(자동 배차와 병행). 같은 deliveryId의 진행 중 배차 시도가 있으면 기존 시도 반환.
         주문이 취소되었으면 422 ORDER_CANCELLED. 규격(무게·부피)이 단일 라이더 용량을 넘으면 추가·분할 배차(splitCount)로 응답.
       operationId: createDispatchRequest
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -59,6 +60,8 @@ paths:
       tags: [dispatch-requests]
       summary: 배차 요청 결과 조회 (시도·제안·응답 이력)
       operationId: getDispatchRequest
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 미구현, 배차를 요청한 점원의 조회로 봄"
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -82,6 +85,7 @@ paths:
         푸시·SSE 전달 채널과 일반배차모드 대기 목록(Delivery-business-logic :126 대기목록화면)은 이 경로에 포함하지 않는다(BR-06 보류 항목).
       x-added-in: '2026-10-24'
       operationId: listMyOffers
+      x-pmart-user-types: [RIDER]
       parameters:
         - name: state
           in: query
@@ -119,6 +123,7 @@ paths:
         늦은 수락은 200으로 응답하되 outcome=LATE와 lateReason(EXPIRED / ALREADY_ASSIGNED / ORDER_CANCELLED / INELIGIBLE)을 반환한다.
         거절 5회 연속 시 안내(consecutiveRejections). 라이더가 하나씩 배달하기 설정이고 진행 중 배송이 있으면 INELIGIBLE.
       operationId: respondToOffer
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: offerId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -149,6 +154,7 @@ paths:
       tags: [offers]
       summary: 제안 조회 (라이더 본인 제안만)
       operationId: getOffer
+      x-pmart-user-types: [RIDER]
       parameters:
         - { name: offerId, in: path, required: true, schema: { type: string } }
       responses:
@@ -167,6 +173,7 @@ paths:
       description: |
         배송 수행 상태(GET /deliveries/{deliveryId})는 delivery-execution-service 소유. 이 작업은 배차 관점만 반환한다.
       operationId: getDeliveryDispatch
+      x-pmart-user-types: [RIDER, OPERATOR]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
       responses:
@@ -187,6 +194,7 @@ paths:
         픽업 후(PackageHandedOver 수신)면 취소 불가 → 422 PICKED_UP_CASE_REQUIRED, case-service 지원센터로 안내.
         라이더 측 반복 배차취소는 DeliveryIncidentRaised 집계로 rider-service에 전달된다.
       operationId: createAssignmentCancellation
+      x-pmart-user-types: [RIDER, OPERATOR]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -221,6 +229,8 @@ paths:
       tags: [deliveries]
       summary: 배차 취소 결과 조회
       operationId: getAssignmentCancellation
+      x-pmart-user-types: [RIDER, OPERATOR]
+      x-pmart-user-types-note: "추정 — 미구현, 취소를 요청한 쪽(라이더·점원·운영자)의 조회로 봄"
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }

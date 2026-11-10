@@ -206,6 +206,7 @@ paths:
         EXPIRED + 422 RESERVATION_EXPIRED → READY→CONFIRMING 조건부 갱신과 paymentKey 저장 → 토스 승인 API(시도별 고정 Idempotency-Key).
         "인증 성공"은 결제 완료가 아니다. stage=APPROVED 를 받은 뒤에만 완료로 표시한다. 응답을 놓치면 다시 보내지 말고 GET /payments/{orderId} 로 확인한다.
       operationId: confirmPayment
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -251,6 +252,7 @@ paths:
         READY 인 결제 시도만 바꾼다. errorCode=PAY_PROCESS_CANCELED 면 CANCELED_BY_USER, 그 밖은 AUTH_FAILED. 이미 다른 상태면 현재 상태를 돌려준다(멱등).
         토스 실패 결과의 orderId 는 빈 값일 수 있으므로 앱이 보관한 값을 보낸다.
       operationId: reportAuthorizationFailure
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -278,6 +280,7 @@ paths:
       tags: [checkout]
       summary: 결제 상태 조회 (본인 결제 시도만)
       operationId: getCheckoutPayment
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string } }
       responses:
@@ -298,6 +301,7 @@ paths:
         다시 받을 때: 다른 계정으로 로그인했을 때, 위젯이 키 오류를 낼 때.
         customerKey 는 지금 회원 accountId 와 같다(결제 명세 D6) — 앱은 이 값을 그대로 쓴다.
       operationId: getPaymentWidgetConfig
+      x-pmart-user-types: [CUSTOMER]
       responses:
         '200':
           description: OK

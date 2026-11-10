@@ -28,6 +28,7 @@ paths:
         ApprovalDecided(SERVICEABILITY) 를 받아 발효(ACTIVE)하고 ServiceabilityVersionApplied 를 발행한다. 이전 발효 버전은 SUPERSEDED.
         시험 주소(testAddresses)를 주면 발효 직전에 기대 판정과 비교하고, 하나라도 다르면 발효하지 않는다(BO-07).
       operationId: createServiceabilityVersion
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -53,6 +54,7 @@ paths:
       tags: [mapping-versions]
       summary: 매핑 버전 조회 (운영자, 권역 경계 포함)
       operationId: getServiceabilityVersionForOperator
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: version, in: path, required: true, schema: { type: integer } }
       responses:
@@ -125,6 +127,8 @@ paths:
       tags: [conditions]
       summary: 배송 가능 조건 조회 (방식·수단·중량·부피·보냉·시간 제한)
       operationId: getDeliveryConditions
+      x-pmart-user-types: [CUSTOMER, GUEST]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 게이트웨이 비회원 경로·주문 화면용(운영자 화면 여부 불명)"
       parameters:
         - { name: mfcId, in: query, required: true, schema: { type: string } }
       responses:
@@ -145,6 +149,7 @@ paths:
         - 카카오 장애·시간 초과 503 DEPENDENCY_UNAVAILABLE(retryable), 무료 사용량 소진 429 QUOTA_EXCEEDED, 키 미설정·거절 422 CONFIG_REQUIRED
         이 좌표는 지도 시작 위치용이다. 배송 가능 판정은 이 API 결과가 아니라 판정 요청의 roadAddress 를 서버가 다시 변환한 좌표로 한다.
       operationId: searchAddressGeocodes
+      x-pmart-user-types: [CUSTOMER, GUEST]
       parameters:
         - { name: query, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
       responses:
@@ -170,6 +175,7 @@ paths:
         고객이 지도 핀을 옮겼을 때 "이 위치: ○○로 12" 를 보여 주는 용도. 0건은 200 + 빈 results. 오류 규칙은 /address-geocodes 와 같다.
         핀 좌표는 배달 위치 참고로만 쓰고 배송 가능 판정에는 쓰지 않는다(ADR-0023).
       operationId: searchAddressReverseGeocodes
+      x-pmart-user-types: [CUSTOMER, GUEST]
       parameters:
         - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
         - { name: lng, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }

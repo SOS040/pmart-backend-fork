@@ -72,6 +72,8 @@ paths:
       tags: [prices]
       summary: SKU 가격 버전 이력 (효력일 순)
       operationId: listPriceVersions
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 호출자 검사 없음. 가격 버전 이력은 백오피스 화면용으로 봄"
       parameters:
         - { name: sku, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
@@ -96,6 +98,7 @@ paths:
         이 명령은 요청이 그 승인 범위(SKU·금액·효력일)와 같은지 대조하고 반영 결과를 requestId 로 묶는다.
         다르면 APPROVAL_SCOPE_MISMATCH, 승인을 아직 받지 못했거나 반려된 승인이면 APPROVAL_REQUIRED(같은 키로 재시도 가능).
       operationId: applyPriceVersion
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -135,6 +138,7 @@ paths:
       tags: [price-versions]
       summary: 가격 버전 반영 결과 조회 (SKU별 발급 버전)
       operationId: getPriceVersionApplication
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -169,6 +173,7 @@ paths:
         행을 만든다: 가격이 없던 SKU = NEW, 현재 가격과 다른 SKU = CHANGE, 같으면 UNCHANGED(제출에서 빠진다).
         basePrice 는 묶음 값으로 미리 채우고 운영자가 행마다 고치거나 뺄 수 있다(PUT …/lines/{seedProductId}).
       operationId: uploadPriceImportBatch
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -201,6 +206,7 @@ paths:
       tags: [registration]
       summary: 배치 상태·행별 결과 (승인 뒤에는 행별 반영 결과 포함)
       operationId: getPriceImportBatch
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: batchId, in: path, required: true, schema: { type: string } }
       responses:
@@ -219,6 +225,7 @@ paths:
         basePrice 는 1 이상 KRW 정수(0원 허용은 미정이라 받지 않는다). null 이면 묶음 값으로 되돌린다.
         excluded=true 면 제출에서 뺀다. 고친 가격이 현재 가격과 같아지면 그 행은 UNCHANGED 로 바뀌어 제출에서 빠진다.
       operationId: updatePriceImportLine
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: batchId, in: path, required: true, schema: { type: string } }
         - { name: seedProductId, in: path, required: true, schema: { type: string } }
@@ -251,6 +258,7 @@ paths:
       summary: SKU·현재 가격 다시 대조 (상품 승인 뒤 SKU_NOT_FOUND 행을 풀 때, DRAFT 배치만)
       description: 운영자가 고친 가격·뺀 행은 그대로 둔다.
       operationId: refreshPriceImportBatch
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: batchId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -280,6 +288,7 @@ paths:
         승인되면 행마다 가격 버전이 생기고(ApprovalDecided) 배치 GET 에 행별 결과가 보인다. 반려되면 배치는 REJECTED — 새로 올린다.
         effectiveFrom 을 비우면 승인 반영 즉시, 넣으면 그 시각(지난 시각은 거절)에 효력.
       operationId: submitPriceImportBatch
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: batchId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'

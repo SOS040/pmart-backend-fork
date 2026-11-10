@@ -24,6 +24,8 @@ paths:
       summary: 적치 지시 생성 (cdc-location 후보 산출 → 공간 선점 RESERVED)
       description: 공간 선점 실패(NO_ELIGIBLE_LOCATION 등)는 422 사유 코드로 반환하며 지시를 만들지 않는다. 생성은 수량 변경이 아니다.
       operationId: createPutawayTask
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -52,6 +54,8 @@ paths:
       tags: [putaway-tasks]
       summary: 적치 지시 조회 (Q = C + U + K 진행 수량, 선점·전기 참조)
       operationId: getPutawayTask
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
       responses:
@@ -70,6 +74,7 @@ paths:
         지시량 Q = 완료 C + 미완료 U + 취소 K. 이번 실행분만 cdc-inventory POST /internal/move-postings로 전기하고 commitId를 기록한다.
         전기 실패 시 이번 선점분만 해제하고 FAILED→RETRY_READY. 자체 사본으로 성공을 판단하지 않는다.
       operationId: recordPutawayExecution
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -116,6 +121,8 @@ paths:
       summary: 적치 지시 취소 (미완료 잔량 U → K, 선점 해제). 완료분 C는 되돌리지 않음
       description: 실행 중 취소 경합은 버전으로 해소한다. 이미 전기된 완료분은 별도 MOV로만 이동한다.
       operationId: cancelPutawayTask
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -147,6 +154,8 @@ paths:
         필요량 = max(0, 보충 목표 − 피킹 위치 현물 − 진행 중 보충). 지시량 = 배수 올림 후 min(필요량, 보관 위치 가용, 피킹 위치 잔여 용량).
         센터 간 공급 TRF와 구분되는 센터 내부 이동이다. 실행·전기는 적치 지시와 같은 S7 경로.
       operationId: createReplenishmentMove
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 구현 없음. 수동 생성은 CDC 센터 직원(자동 생성은 서비스 안에서)으로 봄"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -187,6 +196,8 @@ paths:
       tags: [replenishment-moves]
       summary: 보충 MOV 조회 (산식 입력값·연결 적치 지시·진행)
       operationId: getReplenishmentMove
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
       parameters:
         - { name: moveId, in: path, required: true, schema: { type: string } }
       responses:
@@ -277,6 +288,8 @@ paths:
       summary: ASN 등록 (공급사 입고 예정) → 실수령·검수·입고 차이
       description: 3단계. 1차 제외 (SCM 문서 0.1). CDC 실입고 확정은 cdc-inbound 3단계에서 정의한다.
       operationId: createAsn
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자. 공급사 사용자 종류가 없어 직원 대리 등록으로 봄"
       x-stage: 3
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -290,6 +303,8 @@ paths:
       summary: ASN 조회
       description: 3단계. 1차 제외 (SCM 문서 0.1)
       operationId: getAsn
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자. CDC 센터 직원 조회로 봄"
       x-stage: 3
       parameters:
         - { name: asnId, in: path, required: true, schema: { type: string } }

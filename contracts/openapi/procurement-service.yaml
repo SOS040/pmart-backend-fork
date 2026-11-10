@@ -21,6 +21,8 @@ paths:
       summary: 발주 생성 → PurchaseOrderIssued
       description: 1차 제외 (SCM 문서 0.1)
       operationId: createPurchaseOrder
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자. 발주는 본사 직원 업무로 봄"
       x-stage: 3
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -34,6 +36,8 @@ paths:
       summary: 발주 상세 조회
       description: 1차 제외 (SCM 문서 0.1)
       operationId: getPurchaseOrder
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자. 발주는 본사 직원 업무로 봄"
       x-stage: 3
       parameters:
         - { name: purchaseOrderId, in: path, required: true, schema: { type: string } }
@@ -51,6 +55,8 @@ paths:
       summary: 발주 취소 요청
       description: 1차 제외 (SCM 문서 0.1)
       operationId: cancelPurchaseOrder
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 3단계 자리표시자. 발주는 본사 직원 업무로 봄"
       x-stage: 3
       parameters:
         - { name: purchaseOrderId, in: path, required: true, schema: { type: string } }

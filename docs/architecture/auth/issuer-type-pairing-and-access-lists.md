@@ -99,7 +99,10 @@ http.oauth2ResourceServer(o -> o.authenticationManagerResolver(
 - **서비스는**: 업무 상태(라이더 정지 → 배차 제외, 작업자 LEFT → 새 배정 거부)를 지금처럼 자기 데이터로 본다. 차단 목록은 그 앞의 빠른 차단일 뿐 대신하지 않는다.
 - **감사**: 차단 추가·해제는 누가·왜·언제를 audit 에 남긴다.
 
-### 6.3 할 때 순서(제안)
+### 6.3 진행
+- 2026-11-10 ① 발급자 표(105da93) ② 경로별 허용 목록 **RECORD 모드** — 계약 외부 작업 400개에 `x-pmart-user-types`(추정 94개는 `user-type-allowlist-estimates.md` 에서 검토), 생성 파일 `api-gateway/src/main/resources/access/user-type-allowlist.txt`(417줄), 필터 `UserTypeAllowlistFilter`. ENFORCE 전환은 추정 목록 확정 + LAN 에서 경고 로그가 없는지 본 뒤.
+
+### 6.4 할 때 순서(제안)
 1. 계약에 `x-pmart-user-types` 표시 → 목록 생성 도구 → 게이트웨이 "경로별 종류" 허용 목록(처음엔 기록만 하고 막지 않는 모드로 돌려 빠진 경로를 찾은 뒤 막기)
 2. 주체 차단(퇴사·정지) — 가장 쓸모 있음
 3. `jti` 차단·IP 차단

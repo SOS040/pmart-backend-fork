@@ -79,6 +79,8 @@ paths:
       tags: [excursions]
       summary: 이탈 사건 목록 (tripId 또는 centerId 중 하나 필수)
       operationId: listExcursions
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 호출자 언급 없음, 품질·관제 운영 화면 조회로 봄"
       parameters:
         - { name: tripId, in: query, schema: { type: string } }
         - { name: centerId, in: query, schema: { type: string } }
@@ -105,6 +107,8 @@ paths:
       tags: [excursions]
       summary: 이탈 사건 상세 (구획·기간·영향 화물·측정 이력)
       operationId: getExcursion
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 호출자 언급 없음, 품질·관제 운영 화면 조회로 봄"
       parameters:
         - { name: excursionId, in: path, required: true, schema: { type: string } }
       responses:

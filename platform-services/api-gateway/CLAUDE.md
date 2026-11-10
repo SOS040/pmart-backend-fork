@@ -17,6 +17,7 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 - 공개 작업(`pmart.gateway.public-paths`)은 계약의 `security: []` 인 작업과 1:1. 임의 추가 금지.
 - 그 외 `/api/**` 는 유효한 JWT 필수(401/403 Problem). 역할·센터·행위 시점 검증은 각 서비스 책임.
 - **발급자 표**(`pmart.security.issuers`, ADR-0054, `security/IssuedToken`): 있으면 토큰 `iss` 로 발급자를 골라(표에 없으면 401) 그 키로 서명, 그 발급자 규칙(`common-jwt` `IssuerPolicy` — 만료·iss·aud·발급자 ↔ 사용자 종류 짝·주체 클레임)으로 확인한다. SERVICE·GUEST 제한은 발급자 규칙이 정한 종류로 본다. 비어 있으면 예전처럼 `jwk-set-uri` 하나 + `typ` 클레임. `jwk-set-uri` 를 비운 발급자는 Boot 기본 디코더를 쓴다. 서비스(common-security)도 같은 표·규칙으로 다시 검증한다.
+- **경로별 사용자 종류 허용 목록**(ADR-0054 §6.1, `security/UserTypeAllowlistFilter`, 보안 체인 뒤 order 0): 인증된 `/api/**` 요청의 (메서드, 경로) → 허용 종류를 `src/main/resources/access/user-type-allowlist.txt` 에서 찾는다(가장 구체적인 패턴). 이 파일은 **생성 파일** — 정본은 계약의 작업별 `x-pmart-user-types`(없으면 UNLABELED, `security: []` 는 PUBLIC). 계약을 고치면 `PMART_WRITE_ALLOWLIST=1 ./gradlew :platform-services:api-gateway:test --tests '*UserTypeAllowlistFileTest'` 로 다시 만든다(시험이 계약과 다르면 실패). 모드 `pmart.gateway.user-type-allowlist.mode`: RECORD(기본, 경고 로그·지표만) / ENFORCE(403 `USER_TYPE_NOT_ALLOWED`, 목록에 없으면 거부) / OFF. 로그에는 경로 원문 대신 맞은 패턴(없으면 앞 세 마디 + `/**`).
 - 서비스 간 호출은 게이트웨이를 거치지 않고 인증하지 않는다(ADR-0026 — private subnet 이 신뢰 경계). 게이트웨이는 `/internal/**` 를 라우팅하지 않는다(denyAll).
 
 ## 처리율 제한 (`filter/RateLimitGlobalFilter`, `pmart.gateway.rate-limit`)

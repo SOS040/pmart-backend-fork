@@ -35,6 +35,7 @@ paths:
       tags: [ops]
       summary: 등록 라우트 목록 (앱별 경로 접두어·대상 서비스; 운영자 토큰)
       operationId: listGatewayRoutes
+      x-pmart-user-types: [OPERATOR]
       responses:
         '200':
           description: OK

@@ -34,6 +34,7 @@ paths:
         [2026-10-31 구현] CANCEL 만, 고객 본인 주문(CONFIRMED)의 전체 취소만 받는다(모든 행 × 미이행 수량). 접수와 함께 stopRequestId 를 발급하고
         ClaimOpened·CancellationRequested(order.claim.v1)를 발행해 orchestration S3 를 시작한다. 상태 OPENED → STOP_PENDING → IN_PROGRESS(취소 확정·환불 실행) → CLOSED(PG 환불 성공) / REJECTED(인계됨).
       operationId: createClaim
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -62,6 +63,7 @@ paths:
       tags: [claims]
       summary: 클레임 목록 (고객은 본인, 운영자는 orderId·상태 필터)
       operationId: listClaims
+      x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - { name: orderId, in: query, schema: { type: string } }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/ClaimType' } }
@@ -84,6 +86,7 @@ paths:
       tags: [claims]
       summary: 클레임 상세 (심사 결과·회수·환불·재배송 상태를 각각 표시)
       operationId: getClaim
+      x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - { name: claimId, in: path, required: true, schema: { type: string } }
       responses:
@@ -104,6 +107,7 @@ paths:
         비용 결정(회수비·교환비)은 근거·승인자와 함께 기록. 환불 의도는 여기서 산정되며 PG 실행은 payment가 한다.
         CANCEL 유형은 S3 결과(orchestration 확정 수량)로 자동 결정되므로 운영자 결정 대상이 아니다(UNSUPPORTED_ACTION).
       operationId: createClaimDecision
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: claimId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -130,6 +134,8 @@ paths:
       tags: [decisions]
       summary: 심사 결정 결과 조회
       operationId: getClaimDecision
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 미구현, 심사 결정(운영자 BO-14)을 낸 쪽의 결과 조회로 봄"
       parameters:
         - { name: claimId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }
@@ -149,6 +155,7 @@ paths:
         진행된 회수 수행·실물·PG 취소를 대사해 처리하며 사건을 삭제하지 않는다. 환불이 이미 PG 성공이면 철회 불가(INVALID_STATE).
         회수 배차가 진행 중이면 dispatch 취소를 요청하고 결과 확인 후 WITHDRAWN으로 전이한다.
       operationId: createClaimWithdrawal
+      x-pmart-user-types: [CUSTOMER]
       parameters:
         - { name: claimId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -177,6 +184,8 @@ paths:
       tags: [claims]
       summary: 철회 요청 결과 조회
       operationId: getClaimWithdrawal
+      x-pmart-user-types: [CUSTOMER]
+      x-pmart-user-types-note: "추정 — 미구현, 철회(고객)를 요청한 쪽의 결과 조회로 봄"
       parameters:
         - { name: claimId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }
@@ -199,6 +208,7 @@ paths:
       tags: [refunds]
       summary: 환불 의도·상태 조회 (PG 성공 전 "완료" 표시 없음)
       operationId: listClaimRefunds
+      x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - { name: claimId, in: path, required: true, schema: { type: string } }
       responses:

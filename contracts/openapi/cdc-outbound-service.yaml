@@ -65,6 +65,8 @@ paths:
       tags: [waves]
       summary: Wave 생성 (여러 TRF 묶음, 출발 창·차량 유형 기준)
       operationId: createWave
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -102,6 +104,8 @@ paths:
       tags: [waves]
       summary: Wave 조회 (상태·TRF·작업 요약)
       operationId: getWave
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: waveId, in: path, required: true, schema: { type: string } }
       responses:
@@ -117,6 +121,8 @@ paths:
       tags: [waves]
       summary: Wave 릴리스 (PLANNED→RELEASED, 피킹 Task 생성) → WaveStateChanged
       operationId: releaseWave
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: waveId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -135,6 +141,8 @@ paths:
       tags: [tasks]
       summary: 작업 목록 (Wave·상태·작업자 기준)
       operationId: listTasks
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: waveId, in: query, required: true, schema: { type: string } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/TaskState' } }
@@ -157,6 +165,8 @@ paths:
       tags: [tasks]
       summary: 작업 상세 (피킹 결과·부족 포함)
       operationId: getTask
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
       responses:
@@ -173,6 +183,8 @@ paths:
       summary: 실피킹 결과 등록 (부족 보고 → PickShortageReported → 재할당 또는 축소)
       description: 실피킹 ≤ 유효할당. 부족분은 cdc-inventory 해제 후 재할당을 시도하며 불가하면 TRF 축소 대상으로 replenishment에 통지한다.
       operationId: reportPickResult
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -214,6 +226,8 @@ paths:
       summary: 분류 결과 등록 (BOX SEALED / PLT READY, LPN 구성·계보)
       description: 분류 ≤ 실피킹. LPN은 물류 취급 단위이며 상품 수량과 별도다. 한 LPN은 하나의 TRF에만 속한다.
       operationId: reportSortingResult
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -251,6 +265,8 @@ paths:
       summary: 검품 결과 등록 (LPN 단위 합격/불합격, 온도·봉인 확인)
       description: 검품합격 ≤ 분류. 불합격 LPN은 재분류 또는 cdc-quality 보류 대상.
       operationId: reportInspectionResult
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -293,6 +309,8 @@ paths:
         상차 ≤ 검품합격. LOADED는 출발 사실이 아니며 수량 전기를 일으키지 않는다.
         출발 전 하차(UNLOADED)도 같은 경로로 등록한다. 출발 준비 적격은 TMS 창·MFC 수령창 조건을 소비한다.
       operationId: reportLoadingResult
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -338,6 +356,8 @@ paths:
       tags: [results]
       summary: 분류/검품/상차 결과 조회 (명령 짝 조회)
       operationId: getWorkResult
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: workResultId, in: path, required: true, schema: { type: string } }
       responses:
@@ -449,6 +469,8 @@ paths:
         TransferCancelled/Changed 수신 또는 현장 결정으로 호출. 실제 출발 후에는 불가(INVALID_STATE).
         상차된 LPN은 하차 결과(UNLOADED) 등록 후 해제가 완료된다. 출발 경합·불명은 결과 조회로 해소한다.
       operationId: cancelBeforeDeparture
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -487,6 +509,8 @@ paths:
       tags: [transfers]
       summary: 미출발 취소 요청 결과 조회 (PENDING/APPLIED/REJECTED/UNKNOWN)
       operationId: getPreDepartureCancellation
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }

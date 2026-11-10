@@ -21,6 +21,8 @@ paths:
       tags: [vehicles]
       summary: 실차 목록 (상태·차종·온도대·거점)
       operationId: listVehicles
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: depot, in: query, schema: { type: string } }
         - { name: status, in: query, schema: { $ref: '#/components/schemas/VehicleStatus' } }
@@ -43,6 +45,8 @@ paths:
       tags: [vehicles]
       summary: 실차 상세
       operationId: getVehicle
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: vehicleId, in: path, required: true, schema: { type: string } }
       responses:
@@ -58,6 +62,8 @@ paths:
       tags: [vehicles]
       summary: 다음 가용 시각 (복귀 + 준비 시간; 기사 가용은 별도)
       operationId: getVehicleNextAvailability
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: vehicleId, in: path, required: true, schema: { type: string } }
         - { name: after, in: query, schema: { type: string, format: date-time } }
@@ -81,6 +87,8 @@ paths:
       tags: [drivers]
       summary: 간선기사 목록 (자격·가용 상태)
       operationId: listDrivers
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: status, in: query, schema: { $ref: '#/components/schemas/DriverStatus' } }
         - { name: licenseClass, in: query, schema: { type: string } }
@@ -102,6 +110,8 @@ paths:
       tags: [drivers]
       summary: 간선기사 상세
       operationId: getDriver
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
         - { name: driverId, in: path, required: true, schema: { type: string } }
       responses:

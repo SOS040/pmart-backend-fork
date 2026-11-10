@@ -23,6 +23,7 @@ paths:
       tags: [locations]
       summary: 위치 목록 (센터·구역·온도대·상태)
       operationId: listLocations
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: zone, in: query, schema: { $ref: '#/components/schemas/ZoneKind' } }
@@ -44,6 +45,7 @@ paths:
       tags: [locations]
       summary: 위치 등록
       operationId: createLocation
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -70,6 +72,7 @@ paths:
       tags: [locations]
       summary: 위치 조회
       operationId: getLocation
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: locationId, in: path, required: true, schema: { type: string } }
       responses:
@@ -83,6 +86,7 @@ paths:
       tags: [locations]
       summary: 위치 속성 변경 (치수·슬롯 수·온도대·구역; 코드 변경 불가)
       operationId: updateLocation
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: locationId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -106,6 +110,7 @@ paths:
       summary: 위치 폐지 (재고 잔량 0·예약 없음일 때만, 논리 삭제 RETIRED)
       description: '구현(2026-11-08): 그 센터 운영자. CLOSED 만(먼저 닫아 새 적치·수령을 막는다 — 아니면 409 INVALID_STATE). mfc-inventory `GET /internal/snapshots?locationCode=` 에 재고 단위가 있으면 409, 조회 실패면 503(폐지 안 함). RETIRED + MfcLocationStateChanged, 되돌리지 않음. 이미 RETIRED 면 202 지금 상태. 공간 예약(MoveAllocation)은 아직 없어 보지 않는다.'
       operationId: retireLocation
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: locationId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -126,6 +131,7 @@ paths:
       summary: 위치 상태 변경 (ACTIVE/CLOSED/COUNT_LOCKED, MfcLocationStateChanged)
       description: COUNT_LOCKED 는 실사 잠금 협업용. CLOSED 위치에는 mfc-inventory 가 PUTAWAY/MOVE 를 거절한다(LOCATION_CLOSED).
       operationId: changeLocationState
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: locationId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -209,6 +215,7 @@ paths:
       tags: [locations]
       summary: 상태 변경 요청 결과 조회
       operationId: getLocationStateChange
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: locationId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }
@@ -232,6 +239,7 @@ paths:
       tags: [locations]
       summary: 적치 후보 위치 (온도대·구역 적합, 공간 잔여 V는 mfc-inventory 사본)
       operationId: listPutawayCandidates
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: mfcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }

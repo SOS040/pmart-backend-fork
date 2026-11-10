@@ -31,6 +31,7 @@ paths:
       tags: [change-requests]
       summary: 변경 요청 초안 생성 (DRAFT; 승인 아님)
       operationId: createChangeRequest
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -53,6 +54,7 @@ paths:
       tags: [change-requests]
       summary: 변경 요청 조회
       operationId: getChangeRequest
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: changeRequestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -69,6 +71,7 @@ paths:
       summary: 제출 (DRAFT→SUBMITTED, ApprovalDossier 생성, ChangeRequestSubmitted)
       description: 제출 시 승인 단위(종류·원객체/행·범위·예상 버전·허용 행위·수량/금액·조건·효력/만료)를 확정하고 approvalId 를 발급한다. 같은 원객체·종류의 열린 승인이 있으면 DUPLICATE_APPROVAL.
       operationId: submitChangeRequest
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: changeRequestId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -97,6 +100,7 @@ paths:
       tags: [change-requests]
       summary: 철회 (SUBMITTED→WITHDRAW_REQUESTED→WITHDRAWN; 집행 시작 후는 불가)
       operationId: withdrawChangeRequest
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: changeRequestId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -124,6 +128,7 @@ paths:
       tags: [approvals]
       summary: 통합 승인함 (BO-10; 종류·심사 상태·센터 범위·담당 필터)
       operationId: listApprovals
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: type, in: query, schema: { $ref: '#/components/schemas/ApprovalType' } }
         - { name: reviewState, in: query, schema: { $ref: '#/components/schemas/ReviewState' } }
@@ -150,6 +155,7 @@ paths:
       tags: [approvals]
       summary: 승인 상세 (5축 상태·승인 단위·집행 누계·계보)
       operationId: getApproval
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: approvalId, in: path, required: true, schema: { type: string } }
       responses:
@@ -170,6 +176,7 @@ paths:
         PARTIALLY_APPROVE 는 lines 의 approvedQty/approvedAmount 로 승인량을 줄인다(요청량 초과 불가).
         효력은 effectiveFrom 부터. 결정 후 실행 축은 NOT_REQUESTED→VALIDATING 으로 넘어가고 정본의 Receipt 로 갱신된다.
       operationId: decideApproval
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: approvalId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -208,6 +215,7 @@ paths:
       tags: [approvals]
       summary: 결정 조회
       operationId: getDecision
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: approvalId, in: path, required: true, schema: { type: string } }
         - { name: decisionId, in: path, required: true, schema: { type: string } }
@@ -225,6 +233,7 @@ paths:
       summary: 재심사 요청 (새 승인 버전 발급, 계보 유지; 기존은 SUPERSEDED)
       description: 집행된 수량은 되돌리지 않는다. 새 버전의 승인량은 기존 미집행 잔량 범위에서 조정 가능.
       operationId: requestReReview
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: approvalId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -254,6 +263,7 @@ paths:
       tags: [approvals]
       summary: 반영 확인 목록 (수신자별 ApplicationReceipt; 실행·전달 축 근거)
       operationId: listApplicationReceipts
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: approvalId, in: path, required: true, schema: { type: string } }
       responses:
@@ -297,6 +307,7 @@ paths:
       summary: 대량 변경 배치 등록 (BO-26; fileHash 고정·행별 멱등·결과 분리)
       description: 같은 fileHash 재등록은 기존 batchId 반환. 각 행은 rowKey 로 멱등하며 개별 ChangeRequest 로 전개된다.
       operationId: createBatchChange
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -336,6 +347,7 @@ paths:
       tags: [batch-changes]
       summary: 배치 조회 (집계)
       operationId: getBatchChange
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: batchId, in: path, required: true, schema: { type: string } }
       responses:
@@ -351,6 +363,7 @@ paths:
       tags: [batch-changes]
       summary: 배치 행별 결과 (BatchRowResultRecorded)
       operationId: listBatchChangeRows
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: batchId, in: path, required: true, schema: { type: string } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/BatchRowState' } }
@@ -373,6 +386,7 @@ paths:
       tags: [policy-references]
       summary: 정책 참조 조회 (BO-09; 소유 서비스·정책 키·반영 상태)
       operationId: listPolicyReferences
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: ownerService, in: query, required: true, schema: { type: string } }
         - { name: policyKey, in: query, schema: { type: string } }
@@ -393,6 +407,7 @@ paths:
       tags: [policy-references]
       summary: 정책 참조 등록 (원정책 ID·버전 연결; 계산 엔진 복제 없음, PolicyVersionApproved)
       operationId: registerPolicyReference
+      x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'

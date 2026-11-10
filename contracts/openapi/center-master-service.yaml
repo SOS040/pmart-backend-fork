@@ -22,6 +22,8 @@ paths:
       tags: [centers]
       summary: 센터 목록 (유형·상태·온도대 필터)
       operationId: listCenters
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 백오피스만 호출(고객·라이더 화면 사용처 없음)"
       parameters:
         - { name: type, in: query, schema: { $ref: '#/components/schemas/CenterType' } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/CenterState' } }
@@ -44,6 +46,8 @@ paths:
       tags: [centers]
       summary: 센터 조회 (버전 포함; version 쿼리로 과거 버전)
       operationId: getCenter
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 백오피스만 호출(고객·라이더 화면 사용처 없음)"
       parameters:
         - { name: centerId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: version, in: query, schema: { type: integer, minimum: 0 }, description: 생략 시 현재 버전 }
@@ -60,6 +64,8 @@ paths:
       tags: [calendars]
       summary: 영업 캘린더 조회 (일자·시간표 종류; 휴일·임시 제한·버전·승인자)
       operationId: getCenterCalendar
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 백오피스만 호출(고객·라이더 화면 사용처 없음)"
       parameters:
         - { name: centerId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: date, in: query, required: true, schema: { type: string, format: date, description: Asia/Seoul 영업일 } }

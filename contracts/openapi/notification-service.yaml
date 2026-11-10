@@ -23,6 +23,8 @@ paths:
       tags: [inbox]
       summary: 알림함 목록 (본인만. 발송 문구는 당시 사실 보존, 최신 상태는 목적지에서 조회)
       operationId: listMyNotifications
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      x-pmart-user-types-note: "추정 — 서비스 지도는 고객 알림함, Recipient.principalType 에 RIDER 도 있어 포함(운영자 제외), 구현 없음"
       parameters:
         - { name: unreadOnly, in: query, schema: { type: boolean, default: false } }
         - { name: category, in: query, schema: { $ref: '#/components/schemas/Category' } }
@@ -45,6 +47,8 @@ paths:
       tags: [inbox]
       summary: 알림 상세 (목적지 참조 포함. 접근 불가 주문은 내용 미노출)
       operationId: getMyNotification
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      x-pmart-user-types-note: "추정 — 서비스 지도는 고객 알림함, Recipient.principalType 에 RIDER 도 있어 포함(운영자 제외), 구현 없음"
       parameters:
         - { name: notificationId, in: path, required: true, schema: { type: string } }
       responses:
@@ -61,6 +65,8 @@ paths:
       tags: [inbox]
       summary: 읽음 처리 (NOTICE_UNREAD → NOTICE_READ. 배송 수령·거래 확정 근거가 아님)
       operationId: markNotificationRead
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      x-pmart-user-types-note: "추정 — 서비스 지도는 고객 알림함, Recipient.principalType 에 RIDER 도 있어 포함(운영자 제외), 구현 없음"
       parameters:
         - { name: notificationId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -79,6 +85,8 @@ paths:
       tags: [settings]
       summary: 앱 수신 설정 조회 (채널·카테고리별. 마케팅 동의·OS 권한 상태는 참조만)
       operationId: getMyNotificationSettings
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      x-pmart-user-types-note: "추정 — 앱 수신 설정(고객 앱 중심), 라이더 앱도 같은 설정을 쓴다고 봄, 구현 없음"
       responses:
         '200':
           description: OK
@@ -91,6 +99,8 @@ paths:
       tags: [settings]
       summary: 앱 수신 설정 변경 (거래 안내는 끌 수 없음. 마케팅은 customer 동의와 함께 확인)
       operationId: changeMyNotificationSettings
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      x-pmart-user-types-note: "추정 — 앱 수신 설정(고객 앱 중심), 라이더 앱도 같은 설정을 쓴다고 봄, 구현 없음"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -127,6 +137,8 @@ paths:
       tags: [settings]
       summary: 수신 설정 변경 결과 조회
       operationId: getMyNotificationSettingChange
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      x-pmart-user-types-note: "추정 — 앱 수신 설정(고객 앱 중심), 라이더 앱도 같은 설정을 쓴다고 봄, 구현 없음"
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
