@@ -28,6 +28,7 @@ jib {
     from {
         // 베이스 이미지(ADR-0028): Eclipse Temurin 21 JDK (Ubuntu). 개발 단계 — Docker Desktop Exec 탭에서 셸(sh·bash)과
         // JVM 진단 도구(jcmd·jstack·jmap·jfr)를 쓰기 위해서다. 운영은 GraalVM Native 이미지로 따로 정한다(이 베이스를 쓰지 않음).
+        // 예외: OR-Tools(libs.ortools.java) 의존 서비스는 Native 금지 — JVM 실행(ADR-0053). Native 설정을 만들 때 이 서비스들을 빼는 장치를 같이 넣는다.
         // Docker Hub 공식 이미지(익명 pull — rate limit 영향을 받는다). digest 고정(멀티 아키텍처 인덱스, 아래 platform 으로 amd64 선택).
         // 갱신: docker pull eclipse-temurin:21-jdk → RepoDigests 의 sha256 으로 교체(PR).
         image = "eclipse-temurin:21-jdk@sha256:ebfbb18d11ff163ee83b21258acf12248af48d22a0fdfdc68fa1a1516c05976a"

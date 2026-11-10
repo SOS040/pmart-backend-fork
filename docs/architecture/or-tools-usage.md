@@ -3,6 +3,10 @@
 > 2026-11-09 기록. 라이브러리는 이미 있다(`ortools-java 9.15.6755`, `gradle/libs.versions.toml`) — 아래 기능은 모두 그 안에 들어 있다(CP-SAT `CpSolver`, 선형·정수계획 `MPSolver`, 배정·흐름 `LinearSumAssignment`·`MinCostFlow`, 경로 `RoutingModel`, 적재 `KnapsackSolver` — jar 안 클래스로 확인). **새 의존성 없이** 서비스 안에 계산 어댑터만 추가하면 된다.
 > 방침: **ADR-0050**(2026-11-09 승인) — 라이더 배정·배송 경로·피킹 순서는 기존 OR-Tools 로, JGraphT 도입 안 함. 사용 서비스: mfc-capacity·transport-routing·delivery-dispatch·피킹 순서 담당(구현 때 정함).
 
+## 네이티브 이미지 예외 (ADR-0053, 2026-11-10 사용자 결정)
+
+**OR-Tools 를 쓰는 서비스는 GraalVM Native 이미지로 만들지 않고 JVM 으로 실행한다.** 판정 = `build.gradle.kts` 에 `libs.ortools.java` 가 있는가. 지금 mfc-capacity, OR-Tools 를 넣는 순간 delivery-dispatch·transport-routing 도. 이유: OR-Tools 는 미리 빌드된 `.so` 약 100개를 jar 에서 풀어 JNI 로 올린다 — Native 에서는 JNI·Protobuf 설정, `.so` 포함, glibc 기반 이미지가 필요하고 실패가 실행 때(대체 처리로 조용히) 드러난다.
+
 ## 쓰는 곳
 
 | 기능 | 서비스 | 내용 |

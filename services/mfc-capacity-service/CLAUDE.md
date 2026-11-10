@@ -38,3 +38,6 @@
 - **휴게·작업 내놓기(작업자 쪽 3단계, 0.8.0, V10)**: `mfc_worker_break`(열린 휴게 하나, `BreakStore`), `POST …/breaks`·`…/breaks/current/end`(본인 또는 센터 관리자). 다음 작업 받기는 들고 있는 작업은 돌려주고, 휴게 중이면 새 작업 409 ON_BREAK. 작업자 응답 onBreak. `POST /internal/assignments/{taskId}/releases`(fulfillment 가 잔량 확인 뒤) — 담당이 아니면 409 NOT_ASSIGNEE, ACTIVE → RELEASED(사건 없음).
 - **이동·보충 작업 배정(작업자 쪽 4단계, 0.9.0)**: 작업 유형 MOVE 추가. 다음 작업 받기가 mfc-inbound `GET /move-orders`(작업자 토큰, `plan.mfc-inbound-base-url`, 조회 실패면 이동은 건너뜀)의 ACTIVE·안 집음·담당 없는 이동을 후보로 — 순서 주문 작업(PICK·PACK 약속 순) → 자동 보충·긴급 이동(만든 순) → 센터 관리자 이동 → 복귀(`rank`). 들고 있는 작업 판정에 열린 이동 포함. 배정은 같은 `AssignmentPublished`(taskId = moveId) → inbound 가 담당 투영.
 - **계산 입력 저장(0.12.0, V13, OR-Tools 보완 A4 — 원문 WK-09 재현)**: 배정 추천을 만들 때 엔진에 넘긴 `PlanProblem` + 구간 시작·시간 제한·seed 를 `PlanInputs`(순수 변환, 같은 문제 = 같은 JSON·지문)로 JSON·SHA-256 → `assignment_plan_input`(계획과 같은 트랜잭션). `GET /assignment-plans/{id}/input`(그 센터 운영자, 지워졌으면 404 INPUT_NOT_KEPT), 계획 응답 `inputHash`. 사용자 결정 2026-11-09: replay 없음, 기간 보관 없음, 총량 상한 `plan.input-max-bytes`(LAN·local 2GB, 없으면 안 지움) — `PlanInputSweeper`(기본 1시간마다)가 넘친 만큼만 오래된 것부터(확정 안 된 계획 먼저, 한 건씩) 지운다. 계획 결과는 남는다.
+
+## 이미지 (ADR-0053)
+- **GraalVM Native 이미지로 만들지 않는다 — JVM 으로 실행한다.** OR-Tools(JNI + 미리 빌드된 `.so`) 때문. 다른 서비스가 Native 로 바뀌어도 이 서비스는 JVM(2026-11-10 사용자 결정).

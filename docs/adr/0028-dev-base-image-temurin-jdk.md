@@ -15,7 +15,7 @@
    - JDK 라서 `jcmd`·`jstack`·`jmap`·`jfr` 로 컨테이너 안에서 바로 JVM 진단을 할 수 있다.
 2. **비루트 실행 유지**: 베이스 기본 사용자는 root 이므로 Jib `container.user = ubuntu`(uid 1000, 베이스 내장). root 가 필요하면 `docker exec -u 0` 로만. Helm `podSecurityContext` 도 1000 으로 맞춘다.
 3. **베이스 pull 인증**: 베이스가 Docker Hub 에 있으므로(distroless 는 gcr.io 익명) push 대상이 Docker Hub 이면 `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` 로 베이스도 받는다. PC 1 의 저장된 Docker Desktop 자격 증명이 낡으면 401 이 난다(2026-11-02 재현).
-4. **운영 이미지**는 이 베이스를 쓰지 않는다. GraalVM Native 이미지(빌드 방식·베이스·라이브러리 호환)는 운영 준비 때 새 ADR 로 정한다.
+4. **운영 이미지**는 이 베이스를 쓰지 않는다. GraalVM Native 이미지(빌드 방식·베이스·라이브러리 호환)는 운영 준비 때 새 ADR 로 정한다. **예외: OR-Tools 를 쓰는 서비스는 Native 로 만들지 않고 JVM 으로 실행한다(ADR-0053, 2026-11-10).**
 
 ## 대안
 - **distroless 유지 + 디버그 컨테이너를 옆에 붙이기**(`docker run --network/--pid container:…`): 보안상 더 낫지만 Exec 탭을 쓸 수 없다(사용자 결정으로 제외).

@@ -24,3 +24,6 @@
 3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
+
+## 이미지 (ADR-0053)
+- OR-Tools(라이더 배정, ADR-0050)를 넣으면 **GraalVM Native 로 만들지 않고 JVM 으로 실행한다**. 넣는 커밋에서 ADR-0053 표를 갱신한다.

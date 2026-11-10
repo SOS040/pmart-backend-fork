@@ -56,3 +56,4 @@
 | [0050](0050-or-tools-assignment-routing-no-jgrapht.md) | 라이더 배정·배송 경로·피킹 순서는 기존 OR-Tools 로(delivery-dispatch 추가), JGraphT 도입 안 함, 도면은 MFC 마다 | 승인 |
 | [0051](0051-rag-customer-expansion-split-services-ollama.md) | RAG 고객앱 확대 — 운영자용·고객용 서비스와 pgvector DB 분리(전용 컨테이너 하나), LAN pc2, 모델은 Ollama — ADR-0036 결정 11·결정 필요 1·2 대체 | 승인 |
 | [0052](0052-customer-cancel-deadline-and-misdelivery-parallel-resend.md) | 고객 자율 취소는 상품준비 전까지(뒤는 고객센터 접수), 확인된 오배송은 새 발송과 회수를 동시에(재고 부족 품목은 부분 환불) | 승인 |
+| [0053](0053-or-tools-services-stay-on-jvm.md) | OR-Tools 를 쓰는 서비스(mfc-capacity, 앞으로 delivery-dispatch·transport-routing)는 GraalVM Native 로 만들지 않고 JVM 으로 — ADR-0028 운영 Native 계획의 예외 | 승인 |
