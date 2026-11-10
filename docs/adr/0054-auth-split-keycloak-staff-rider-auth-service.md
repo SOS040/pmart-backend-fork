@@ -33,12 +33,14 @@
 - H. 차단 목록 저장소(PC 4 Redis) 장애 때는 **통과(fail-open)** — 직원 토큰 15분, 업무 상태는 서비스가 따로 확인.
 - I. 관리 경로는 LAN 대역(192.168.0.0/24)만, 결제 웹훅은 토스 문서의 IP 대역 확인 뒤.
 - J. LAN 전체 재배포는 작업을 모두 마친 뒤 한 번에(사용자).
+- L. (2026-11-11, 사용자 "A로 하자") 직원 계정 관리는 **당분간 Keycloak 관리 화면에서 직접** 한다 — 관리자가 `pmart-staff` 에 사용자를 만들고 역할(Realm 역할)·`pmart_operator_id`(`OP-<UUID>`, 새로 매김 — 기존 계정은 auth-service 의 ID 를 그대로)·`centers` 속성을 넣는다. 백오피스의 운영자 계정 화면(auth-service `/operator-accounts`)은 이전 뒤 내린다. 계정이 늘면 백엔드가 Keycloak 관리 API 를 대신 부르는 방식으로 옮긴다(다시 결정).
 - 순서: ① 발급자 표 구조(게이트웨이·`common-security`, 표에는 auth-service 만 — 동작 같음) ② 경로별 허용 목록 기록 모드 ③ Keycloak 배치·직원 로그인 ④ rider-auth-service ⑤ 차단 목록(주체 → jti → IP) ⑥ 허용 목록 차단 모드.
 
 ## 진행
 - 2026-11-10 ① 발급자 표(105da93) ② 경로별 허용 목록 RECORD(204c072) ③ Keycloak 배치 준비 — `placement.conf` pc5 끝에 `keycloak`(quay.io/keycloak/keycloak:26.8.1, LAN 8180, iss `http://192.168.0.101:8180/realms/pmart-staff`), `render.sh`(DB·계정 keycloak, 비밀 `.secrets/keycloak-*`), Realm `deploy/lan/keycloak/pmart-staff-realm.json`(클라이언트 `pmart-backoffice` PKCE·`pmart-dev-cli` LAN 시험용 직접 로그인, aud `pmart-api`, 사용자 속성 `pmart_operator_id`·`centers` → 같은 이름 클레임, 접근 토큰 15분·세션 12시간·5회 실패 잠금). 이 PC 의 일회용 Keycloak 에서 가져오기·토큰 클레임 확인 — **Keycloak 은 `typ` 에 "Bearer" 를 넣는다** → 발급자 설정 `type-claim`(비우면 발급자 종류로만) 추가. LAN 배치·운영자 계정 옮기기는 사용자 결정 J 대로 마지막에.
 - 2026-11-10 ④ rider-auth-service — 라이더 웹 클라이언트 ID(`293585219605-la3cj13q…`)를 사용자가 줌. Google 로그인 방식은 ADR-0055(ID 토큰 검증만, client secret·인가 코드 교환 없음). 계약 `contracts/openapi/rider-auth-service.yaml`, 서비스(로그인·결과 조회·갱신 회전·로그아웃·현재 세션·JWKS, 주체 `RD-…`, Kafka 없음), pmart-config `rider-auth-service*.yml`(LAN 서명키 `{cipher}`, 원본 `.secrets/rider-auth-signing-key.pem`), 발급자 표 `rider` 줄(LAN·로컬), 게이트웨이 라우트 `/api/v1/rider-auth/**`·공개 경로·허용 목록, `placement.conf` pc5 끝. 가입(결정 G)은 rider-service 요청 RS-2. LAN 배치는 결정 J 대로 마지막에 — 배치·확인 뒤 auth-service 줄의 RIDER(시험 라이더 토큰)를 뺀다.
 - 2026-11-11 LAN 전체 재배포(결정 J, 이미지 5265276): ①~④ 와 Keycloak(pc5, 운영자 계정은 아직 auth-service) 배치. 확인 — PMart JWT aud=pmart-api(없으면 401), rider-auth-service 경로·서명 토큰 통과, Keycloak discovery 200. 발급자 표 auth-service 줄에서 RIDER 제거(pmart-config baca65e) 후 전 앱 재시작 — auth-service 서명 RIDER 토큰 401. 다음: 운영자 Keycloak 이전(D), ⑤, ⑥(RECORD 경고 로그 관찰부터).
+- 2026-11-11 ③ 이어서: `pmart-staff` 에 시험 계정 `claude-dev`(운영자 ID = auth-service 와 같은 `OP-eaf58e67…`, OPERATOR_ADMIN, 비밀번호 `.secrets/keycloak-claude-dev-password`). 같은 계정의 auth-service·Keycloak 토큰으로 게이트웨이 GET 14곳 비교 — 13곳 같은 결과, `/auth/sessions/current`(auth-service 세션)만 Keycloak 토큰 401(예상). 백오피스 클라이언트 redirect 에 `http://192.168.0.40/*`(지금 백오피스 주소) 추가 — Realm 파일·실행 중 Keycloak 둘 다. 결정 L(계정 관리). 백오피스 로그인 변경 요청 `docs/handoff/clients/2026-11-11-clients-request-backoffice-keycloak-login.md`. 남은 것: 백오피스 전환 확인 뒤 auth-service 줄 OPERATOR 제거, 운영자 차단 사건(⑤, 보류) 발행 방법.
 
 - 라이더도 Keycloak(첫 번째 글) — 사용자가 쓰지 않기로 함.
 - 라이더를 지금 auth-service 에 넣기 — 사용자가 별도 서비스로 정함.
