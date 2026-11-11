@@ -21,6 +21,46 @@
       {
         "name": "OPERATOR_ADMIN",
         "description": "운영자 계정 관리(ADR-0018)"
+      },
+      {
+        "name": "CENTER_MASTER_APPROVER",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "CS_AGENT",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "DISPLAY_APPROVER",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "INVENTORY_APPROVER",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "MD",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "MFC_SUPERVISOR",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "MFC_WORKER",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "PRICE_APPROVER",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "PRODUCT_APPROVER",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
+      },
+      {
+        "name": "SERVICEABILITY_APPROVER",
+        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
       }
     ]
   },
