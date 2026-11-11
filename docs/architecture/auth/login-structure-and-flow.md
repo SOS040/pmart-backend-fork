@@ -12,7 +12,9 @@
 | 고객 | Google 소셜 로그인 | auth-service (8501, PC 4) | `CUSTOMER` | `CU-…` |
 | 비회원 | 기기 기준 임시 세션 | auth-service | `GUEST` | `GST-…` |
 | 라이더 | Google 소셜 로그인 | rider-auth-service (8510, PC 5) | `RIDER` | `RD-…` |
-| 직원(운영자) | 아이디·비밀번호 | 지금은 auth-service. Keycloak(PC 5, Realm `pmart-staff`)으로 옮길 준비만 됨 | `OPERATOR` | 운영자 ID |
+| 직원(운영자) | 아이디·비밀번호(Keycloak 로그인 화면, PKCE) | **Keycloak**(PC 5 :8180, Realm `pmart-staff`) — 2026-11-11 백오피스 전환·계정 옮김. auth-service 운영자 로그인은 확인 전까지 함께 둠 | `OPERATOR`(Keycloak `typ` 는 "Bearer" — 발급자로 정함) | 운영자 ID(`pmart_operator_id`, `OP-…`) |
+
+Keycloak 구조(Realm·클라이언트·역할·계정 관리·차단 중계)는 `keycloak-structure.md`.
 
 게이트웨이와 모든 서비스는 **발급자 표**(pmart-config `application-<프로필>.yml` 의 `pmart.security.issuers`) 하나로 토큰을 검증한다.
 
@@ -154,10 +156,10 @@ Spring OAuth2 Client, Google 인가 코드 교환, Google access token 으로 �
 
 | 할 일 | 언제·누가 |
 |---|---|
-| 운영자 로그인을 Keycloak 으로 옮기고 auth-service 줄에서 `OPERATOR` 빼기 | ADR-0054 다음 단계 |
+| 운영자 로그인 Keycloak 이전 — 계정 옮김·백오피스 배포 완료(2026-11-11). 백오피스 로그인 확인 뒤 auth-service 줄에서 `OPERATOR` 빼기 | 클라이언트 회신 뒤 (`keycloak-structure.md` §13) |
 | 라이더 앱 로그인 연동, 실제 Google 토큰으로 시험 | 클라이언트 (`docs/handoff/clients/2026-11-10-clients-notice-rider-google-login.md`) |
 | rider-service 가입 구현 (RS-2) | rider-service 작업 때 |
-| 라이더 정지 시 세션 끊기 (ADR-0054 ⑤), 주체 비활성 API | 나중 |
+| 차단 목록 ⑤ — 운영자(auth-service)·Keycloak 직원은 동작(2026-11-11 LAN). 라이더 정지·고객 정지는 그 기능을 만들 때 | 나중 |
 | 웹 클라이언트 `client_secret` 삭제·재발급 | 사용자 (Google Cloud 콘솔) |
 
 ### 알아 둘 것

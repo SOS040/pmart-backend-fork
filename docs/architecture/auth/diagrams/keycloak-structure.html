@@ -1,0 +1,177 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;background:#fff}
+  svg{display:block;font-family:"Malgun Gothic","맑은 고딕",sans-serif}
+  .t{font-size:15px;fill:#1f2937}
+  .s{font-size:13px;fill:#374151}
+  .h{font-size:16px;font-weight:700;fill:#111827}
+  .lbl{font-size:13px;font-weight:700;fill:#1d4ed8}
+  .lblr{font-size:13px;font-weight:700;fill:#b91c1c}
+  .mono{font-family:Consolas,"Malgun Gothic",monospace;font-size:13px;fill:#111827}
+</style></head>
+<body>
+<svg width="1600" height="1010" viewBox="0 0 1600 1010" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d4ed8"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/></marker>
+  </defs>
+
+  <text x="40" y="42" style="font-size:24px;font-weight:700;fill:#111827">PMart Keycloak 구조 — 직원(운영자) 로그인</text>
+  <text x="40" y="66" class="s">ADR-0054 · 2026-11-11 LAN 기준 · 고객(auth-service)·라이더(rider-auth-service)는 Keycloak 을 쓰지 않는다</text>
+
+  <!-- ===== 왼쪽: 사용자 ===== -->
+  <rect x="40" y="140" width="260" height="100" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="60" y="172" class="h">백오피스 (브라우저)</text>
+  <text x="60" y="196" class="s">http://192.168.0.40</text>
+  <text x="60" y="218" class="s">클라이언트 pmart-backoffice</text>
+
+  <rect x="40" y="600" width="260" height="110" rx="10" fill="#f9fafb" stroke="#6b7280" stroke-width="2"/>
+  <text x="60" y="632" class="h">Keycloak 관리자</text>
+  <text x="60" y="656" class="s">관리 콘솔 :8180/admin</text>
+  <text x="60" y="678" class="s">로그인 = master 의 admin</text>
+  <text x="60" y="698" class="s">(직원 계정으로는 안 됨)</text>
+
+  <!-- ===== 가운데: PC 5 Keycloak ===== -->
+  <rect x="350" y="100" width="640" height="630" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="2.5"/>
+  <text x="370" y="128" class="h">PC 5 · 192.168.0.101 — Keycloak 26.8.1 :8180 (HTTP)</text>
+
+  <rect x="370" y="145" width="600" height="440" rx="12" fill="#ffffff" stroke="#ea580c" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="390" y="172" class="h">Realm pmart-staff</text>
+  <text x="560" y="172" class="s">iss = http://192.168.0.101:8180/realms/pmart-staff</text>
+
+  <rect x="390" y="190" width="270" height="180" rx="8" fill="#fffbeb" stroke="#d97706"/>
+  <text x="405" y="215" class="h">클라이언트 3개</text>
+  <text x="405" y="243" class="t">pmart-backoffice</text>
+  <text x="405" y="262" class="s">  공개 · PKCE(S256) · 백오피스</text>
+  <text x="405" y="288" class="t">pmart-dev-cli</text>
+  <text x="405" y="307" class="s">  공개 · 직접 로그인 · 백엔드 시험 전용</text>
+  <text x="405" y="333" class="t">pmart-auth-relay</text>
+  <text x="405" y="352" class="s">  기밀 · 서비스 계정 · 읽기만</text>
+
+  <rect x="680" y="190" width="270" height="180" rx="8" fill="#fffbeb" stroke="#d97706"/>
+  <text x="695" y="215" class="h">Realm 역할 11개</text>
+  <text x="695" y="243" class="t">OPERATOR_ADMIN · MD</text>
+  <text x="695" y="267" class="t">MFC_SUPERVISOR · MFC_WORKER</text>
+  <text x="695" y="291" class="t">CS_AGENT</text>
+  <text x="695" y="315" class="t">승인 6종(*_APPROVER)</text>
+  <text x="695" y="345" class="s">토큰 realm_access.roles 로 나감</text>
+
+  <rect x="390" y="385" width="270" height="180" rx="8" fill="#fffbeb" stroke="#d97706"/>
+  <text x="405" y="410" class="h">직원 계정</text>
+  <text x="405" y="438" class="t">PMart 운영자 ID</text>
+  <text x="405" y="457" class="s">  pmart_operator_id = OP-…(기존 ID)</text>
+  <text x="405" y="483" class="t">담당 센터</text>
+  <text x="405" y="502" class="s">  centers = MFC-SEED-01 …</text>
+  <text x="405" y="530" class="lblr">그만 쓸 때: 비활성화</text>
+  <text x="405" y="550" class="lblr">(삭제하면 토큰을 못 막음)</text>
+
+  <rect x="680" y="385" width="270" height="180" rx="8" fill="#fffbeb" stroke="#d97706"/>
+  <text x="695" y="410" class="h">관리 기록 (admin events)</text>
+  <text x="695" y="438" class="s">내용 없이 · 7일 보관</text>
+  <text x="695" y="466" class="t">비활성화 → ACCOUNT_DISABLED</text>
+  <text x="695" y="490" class="t">세션 로그아웃 → SESSIONS_REVOKED</text>
+  <text x="695" y="514" class="t">비밀번호 재설정 → PASSWORD_RESET</text>
+  <text x="695" y="545" class="s">auth-service 가 10초마다 읽음</text>
+
+  <rect x="370" y="605" width="290" height="105" rx="10" fill="#f3f4f6" stroke="#6b7280"/>
+  <text x="390" y="635" class="h">Realm master</text>
+  <text x="390" y="660" class="s">Keycloak 관리자 admin 만</text>
+  <text x="390" y="682" class="s">직원을 두지 않는다</text>
+
+  <rect x="680" y="605" width="290" height="105" rx="10" fill="#f3f4f6" stroke="#6b7280"/>
+  <text x="700" y="635" class="h">postgres-pc5 · DB keycloak</text>
+  <text x="700" y="660" class="s">계정·세션·관리 기록의 정본</text>
+  <text x="700" y="682" class="s">Realm 파일은 처음 한 번만 가져옴</text>
+
+  <!-- ===== 오른쪽: PC 4 ===== -->
+  <rect x="1040" y="100" width="520" height="460" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2.5"/>
+  <text x="1060" y="128" class="h">PC 4 · 192.168.0.40</text>
+
+  <rect x="1060" y="145" width="480" height="140" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+  <text x="1080" y="172" class="h">api-gateway :8080</text>
+  <text x="1080" y="198" class="t">발급자 표 staff 줄: iss · JWKS 서명 · aud=pmart-api</text>
+  <text x="1080" y="222" class="t">주체 = pmart_operator_id · 종류 = OPERATOR</text>
+  <text x="1080" y="246" class="s">(Keycloak typ "Bearer" 는 보지 않음, sub(UUID) 쓰지 않음)</text>
+  <text x="1080" y="270" class="lblr">SubjectBlockFilter → 401 SUBJECT_BLOCKED</text>
+
+  <rect x="1060" y="300" width="200" height="75" rx="10" fill="#ffffff" stroke="#16a34a"/>
+  <text x="1080" y="330" class="h">Redis</text>
+  <text x="1080" y="354" class="s">차단 목록(iss|운영자 ID)</text>
+
+  <rect x="1310" y="300" width="230" height="130" rx="10" fill="#ffffff" stroke="#16a34a"/>
+  <text x="1328" y="330" class="h">auth-service</text>
+  <text x="1328" y="356" class="t">StaffBlockRelay</text>
+  <text x="1328" y="378" class="s">10초마다 관리 기록 읽기</text>
+  <text x="1328" y="400" class="s">→ SubjectBlocked (Outbox)</text>
+
+  <rect x="1060" y="450" width="230" height="90" rx="10" fill="#ffffff" stroke="#16a34a"/>
+  <text x="1080" y="480" class="h">Kafka</text>
+  <text x="1080" y="504" class="s">platform.subject-block.v1</text>
+  <text x="1080" y="524" class="s">(Debezium 이 Outbox 에서)</text>
+
+  <rect x="1040" y="585" width="520" height="95" rx="12" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <text x="1060" y="615" class="h">업무 서비스들 (PC 2~5)</text>
+  <text x="1060" y="640" class="t">common-security: 같은 발급자 표로 다시 검증</text>
+  <text x="1060" y="662" class="s">역할·센터·소유권 판단은 각 서비스</text>
+
+  <!-- ===== 화살표 ===== -->
+  <!-- ① 로그인 -->
+  <path d="M300,175 L390,230" stroke="#1d4ed8" stroke-width="2.5" fill="none" marker-end="url(#a)"/>
+  <text x="182" y="128" class="lbl">① 로그인(PKCE)</text>
+  <!-- ② 토큰 -->
+  <path d="M390,265 L300,225" stroke="#1d4ed8" stroke-width="2.5" fill="none" stroke-dasharray="7 5" marker-end="url(#a)"/>
+  <text x="200" y="262" class="lbl">② 토큰(15분)</text>
+  <!-- ③ API 호출 -->
+  <path d="M170,140 L170,84 L1300,84 L1300,145" stroke="#1d4ed8" stroke-width="2.5" fill="none" marker-end="url(#a)"/>
+  <text x="790" y="78" class="lbl">③ API 호출 — Authorization: Bearer &lt;직원 토큰&gt;</text>
+  <!-- ④ JWKS -->
+  <path d="M1060,215 L972,262" stroke="#1d4ed8" stroke-width="2.5" fill="none" stroke-dasharray="7 5" marker-end="url(#a)"/>
+  <text x="976" y="325" class="lbl">④ 공개키</text>
+  <!-- 게이트웨이 → 서비스 -->
+  <path d="M1540,230 L1578,230 L1578,632 L1562,632" stroke="#1d4ed8" stroke-width="2.5" fill="none" marker-end="url(#a)"/>
+  <text x="1500" y="578" class="lbl">⑤ 라우팅</text>
+  <!-- ⑥ 관리 기록 읽기 -->
+  <path d="M1430,430 L1430,550 L1000,550 L1000,428 L952,428" stroke="#b91c1c" stroke-width="2.5" fill="none" marker-end="url(#r)"/>
+  <text x="1060" y="577" class="lblr">⑥ 관리 기록 읽기(pmart-auth-relay)</text>
+  <!-- ⑦ 사건 → Kafka -->
+  <path d="M1340,430 L1292,478" stroke="#b91c1c" stroke-width="2.5" fill="none" marker-end="url(#r)"/>
+  <text x="1300" y="500" class="lblr">⑦ SubjectBlocked</text>
+  <!-- ⑧ Kafka → Redis -->
+  <path d="M1160,450 L1160,377" stroke="#b91c1c" stroke-width="2.5" fill="none" marker-end="url(#r)"/>
+  <text x="1168" y="420" class="lblr">⑧ 게이트웨이가 기록</text>
+  <!-- 게이트웨이 ↔ Redis 조회 -->
+  <path d="M1120,285 L1120,298" stroke="#4b5563" stroke-width="2" fill="none" marker-end="url(#g)"/>
+
+  <!-- 관리자 -->
+  <path d="M300,655 L368,655" stroke="#4b5563" stroke-width="2.5" fill="none" marker-end="url(#g)"/>
+  <path d="M250,600 L250,500 L388,500" stroke="#4b5563" stroke-width="2.5" fill="none" stroke-dasharray="7 5" marker-end="url(#g)"/>
+  <text x="120" y="585" class="s" style="font-weight:700">계정·역할 관리(콘솔)</text>
+
+  <!-- ===== 아래: 토큰 예시 ===== -->
+  <rect x="40" y="755" width="950" height="230" rx="12" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="60" y="783" class="h">직원 access token (예)</text>
+  <text x="60" y="810" class="mono">"iss": "http://192.168.0.101:8180/realms/pmart-staff"     ← 발급자 표 staff 줄을 고른다</text>
+  <text x="60" y="834" class="mono">"sub": "6f1c…(Keycloak 내부 UUID)"                       ← 쓰지 않는다</text>
+  <text x="60" y="858" class="mono">"pmart_operator_id": "OP-45e6ce65-…"                    ← 주체(운영자 ID)</text>
+  <text x="60" y="882" class="mono">"realm_access": { "roles": ["OPERATOR_ADMIN", …] }      ← 역할(기본 역할 3개는 무시)</text>
+  <text x="60" y="906" class="mono">"centers": ["MFC-SEED-01"]                              ← 담당 센터</text>
+  <text x="60" y="930" class="mono">"aud": ["pmart-api", "account"]                         ← pmart-api 필수</text>
+  <text x="60" y="954" class="mono">"typ": "Bearer"                                         ← 토큰 종류일 뿐, 사용자 종류 아님</text>
+  <text x="60" y="975" class="s">수명 15분 · 로그인 세션 12시간 · 15분 안에 5회 실패 → 10분 잠금</text>
+
+  <!-- ===== 아래 오른쪽: 흐름 설명 ===== -->
+  <rect x="1040" y="705" width="520" height="280" rx="12" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="1060" y="733" class="h">흐름</text>
+  <text x="1060" y="760" class="t"><tspan class="lbl">①②</tspan> 백오피스 → Keycloak 로그인 화면 → 토큰</text>
+  <text x="1060" y="786" class="t"><tspan class="lbl">③</tspan> 토큰으로 게이트웨이 호출</text>
+  <text x="1060" y="812" class="t"><tspan class="lbl">④</tspan> 게이트웨이·서비스가 Keycloak 공개키로 서명 확인</text>
+  <text x="1060" y="838" class="t"><tspan class="lbl">⑤</tspan> 업무 서비스로 라우팅(서비스도 다시 검증)</text>
+  <text x="1060" y="870" class="t"><tspan class="lblr">⑥~⑧</tspan> 직원 차단: 관리자가 비활성화·로그아웃·</text>
+  <text x="1060" y="894" class="t">      비밀번호 재설정 → 중계 → Kafka → Redis</text>
+  <text x="1060" y="918" class="t">      → 이미 나간 토큰도 401 (LAN 확인 2초)</text>
+  <text x="1060" y="950" class="s">자세한 설명: docs/architecture/auth/keycloak-structure.md</text>
+  <text x="1060" y="970" class="s">정본: deploy/lan/keycloak/pmart-staff-realm.json</text>
+</svg>
+</body></html>
