@@ -53,6 +53,7 @@ service-map 51개 → 53개(employee-auth-service, hr-service). 메일 서버·�
 | hr-service | PC 5 | **8512** | 8512 | pc5 postgres `hr_service` | 768 MB |
 | mailserver | PC 5 | **없음**(LAN 미공개) | 25 · 587 · 143 · 993 | 볼륨 `mail-data`·`mail-state`·`mail-logs`·설정 | 1 GB |
 | roundcube | PC 5 | **8190** | 80 | 볼륨 `roundcube-data`(SQLite) | 256 MB |
+| mail-provisioner (새, 사이드카) | PC 5 | 없음(LAN 미공개) | 내부 HTTP | 메일 서버 설정 볼륨 공유 | 256 MB |
 
 왜 PC 5 인가:
 - Keycloak 이 이미 PC 5 에 있다. Keycloak → 메일 서버(SMTP), hr-service → Keycloak(Admin API), employee-auth-service → Keycloak(`/token`·JWKS)이 **같은 Docker 네트워크 안**에서 끝나 메일 포트·관리 API 를 LAN 에 열 필요가 없다.
@@ -236,7 +237,7 @@ API: `GET /oauth2/authorization/keycloak`·`GET /login/oauth2/code/keycloak`(Spr
 
 | 표 | 내용 |
 |---|---|
-| `employee` | `OP-…`, 이름, 메일 ID(`@pmart.com`, 퇴사 뒤에도 다시 쓰지 않음), 고용 형태, 소속, 근무 시작일·계약 종료일, 재직 상태 |
+| `employee` | `OP-…`, 사번(`P2026-00012`), 이름, 메일 ID(`@pmart.com`, 퇴사 뒤에도 다시 쓰지 않음), 고용 형태, 소속, 근무 시작일·계약 종료일, 재직 상태 |
 | `provisioning` | 직원별 단계 상태(REQUESTED → MAILBOX_CREATED → IAM_CREATED → INVITE_SENT / FAILED_xxx), 시도 횟수, 마지막 오류 코드(비밀값·비밀번호 없음) |
 | outbox | 사건 발행(같은 트랜잭션) |
 
@@ -253,7 +254,7 @@ API: `POST /hr/employees`, `GET /hr/employees`, `POST /hr/employees/{id}/affilia
 | 소속 | 예 | 본사 부서 또는 센터(center-master 의 센터 코드). 소속일 뿐 **권한 범위가 아니다** |
 | 근무 시작일 | 예 | 그 전에는 로그인 불가(employee-auth 상태 확인) |
 | 계약 종료일 | 정규직 없음, 파트타임·일일크루 입력 | **종료일에 자동 정지**(hr-service 예약 처리 → `EmployeeSuspended` → 차단) |
-| 사번 | 선택 | 따로 필요한지 확인 전 — 없으면 운영자 ID(`OP-…`)만 |
+| 사번 | 자동 | **정함(2026-11-12)**: hr-service 가 등록 때 자동으로 매김 — `P` + 등록 연도 + `-` + 5자리 순번(예: `P2026-00012`). 바뀌지 않고 다시 쓰지 않음, 재입사도 같은 번호, 고용 형태는 번호에 넣지 않음. **화면 표시·인사 검색·문의용**이고 토큰·서비스 간 식별자는 계속 `OP-…`(다른 서비스 변경 없음). 기존 13명은 이전 때 `P2026-00001` 부터 |
 
 **요청 권한(같은 화면)**: 역할, 권한 센터, 기간(기본 = 근무 기간), 근거. 등록과 함께 approval 에 권한 요청으로 자동 제출(요청자 = 등록한 인사팀 직원). 비워 두면 권한 없이 등록(나중에 따로 요청).
 
@@ -280,7 +281,7 @@ API: `POST /hr/employees`, `GET /hr/employees`, `POST /hr/employees/{id}/affilia
 | 3 | TLS 없이 STARTTLS·SMTP 인증 설정 → 실패 가능 | (a) Keycloak → 메일 서버: 포트 25, 인증·TLS 없이 **Docker 네트워크에서만 받기**(`PERMIT_DOCKER=connected-networks`) — SMTP 비밀번호 비밀값 자체가 없어진다. (b) Roundcube ↔ IMAP/SMTP: Dovecot 은 TLS 없는 평문 로그인을 막으므로 **내부용 자체 서명 인증서**(`SSL_TYPE=self-signed`, `mail.pmart.com`), Roundcube 는 내부 인증서 확인 끔. 구현 때 고정 버전 문서로 확인 |
 | 4 | `ONE_DIR`·`DMS_DEBUG` 는 최신판에서 없어지거나 `LOG_LEVEL` 로 바뀜 | 쓰지 않는다. `LOG_LEVEL`. ClamAV·SpamAssassin·Fail2ban 끔(내부망·메모리) |
 | 5 | 계정이 하나도 없으면 Dovecot 이 제대로 뜨지 않음 | 배포 때 `no-reply@pmart.com`(Keycloak 발신용)과 `postmaster@pmart.com` 을 먼저 만든다(`lan.sh` 배포 단계) |
-| 6 | `setup email add` 는 컨테이너 안 명령 — HTTP API 가 아님, `docker.sock` 마운트는 금지 | **단계적으로.** 1단계: hr-service 가 진행 상태를 `MAILBOX_PENDING` 으로 두고, 관리자가 `lan.sh mail-add <id>`(ssh → `docker exec … setup email add`)로 만든 뒤 hr-service 에서 "사서함 완료"를 누른다. 2단계(직원이 늘면): 메일 서버 옆 작은 프로비저닝 사이드카(내부 HTTP, 서비스 토큰 인증, 그 컨테이너만 `setup` 실행 권한) — 따로 결정 |
+| 6 | `setup email add` 는 컨테이너 안 명령 — HTTP API 가 아님, `docker.sock` 마운트는 금지 | **처음부터 자동(사용자 결정 2026-11-12 "2단계 바로")**: hr-service 와 함께 메일 서버 옆 **사서함 프로비저닝 사이드카**(`mail-provisioner`, PC 5, LAN 포트 없음)를 만든다 — 내부 HTTP(`POST /mailboxes`, `POST /mailboxes/{addr}/disable`), 서비스 토큰 인증(ADR-0011), 할 수 있는 일은 사서함 만들기·비활성화뿐, 멱등(이미 있으면 성공), 요청·결과 기록. 방식: 메일 서버의 설정 볼륨을 같이 붙여 `setup email add` 와 같은 일(계정 파일에 해시 한 줄)을 하고, 메일 서버의 변경 감지가 사서함을 만든다 — **`docker.sock` 없이**. 고정 버전에서 계정 파일 형식·해시 방식 확인. 예비 수단: 사이드카 장애 때 관리자가 `lan.sh mail-add <id>`(ssh → `docker exec … setup email add`) 후 hr-service 에서 "사서함 완료" |
 | 7 | 비밀값을 `.env` 에 | `.secrets/` 원본 + pmart-config `{cipher}`(§10). `.env` 는 쓰지 않는다 |
 | 8 | 발급 순서가 원본 두 개에서 다름 | 사서함 → Keycloak → 안내 메일(§7-③) |
 | 9 | 볼륨 삭제(`down -v`)로 사서함 유실 | `lan.sh` 에 볼륨 삭제 명령을 두지 않는다. 메일 볼륨 백업은 DB 백업 방침과 함께 정한다(§13 D7) |
@@ -330,12 +331,12 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 | D1 | 직원 역할·센터의 정본 | **정함(2026-11-12): employee-auth-service.** auth-service 는 고객·비회원·서비스 신원만(ADR-0054 결정 2) — service-map 의 "RoleGrant·Delegation·긴급권한 정본 = auth-service" 를 옮긴다(경계 변경, ADR-0056 에 기록). 옮길 기능 코드는 없음(지금 auth-service 는 `operator_account.roles·centers` JSON 만, 대행은 빈 자리) — 운영자 13명 값만 옮긴다. hr-service 가 아닌 이유: 고용 정보와 접근 권한은 따로(BO-01 "인사상 상사라는 이유만으로 권한을 줄 수 없다"), 토큰 발급자가 갖으면 로그인 때 다른 서비스를 부르지 않는다. Keycloak Realm 역할·`centers` 는 이전 뒤 삭제 |
 | D2 | 직원 ID 형식 | **정함(2026-11-12, 사용자 "알아서 만들어줘")**: `username = email = <메일 ID>@pmart.com`. 기존 운영자 13명(2026-11-12 Keycloak `pmart-staff` 기준)은 **지금 로그인 아이디를 그대로 메일 ID** 로 쓰고 운영자 ID(`OP-…`)는 그대로 연결 — `admin`, `claude-approver`, `claude-cs`, `claude-dev`, `claude-md`, `claude-mfc`, `claude-mfc-sup`, `claude-mfc-sup2`, `claude-mfc-wrk`, `heeji`, `heeji-test`, `seed-approver`, `seed-md` → 각각 `<아이디>@pmart.com`. 예약 주소(`postmaster`, `no-reply`)와 겹치지 않음. 이전 때 사서함 13개를 만들고 Keycloak `email` 을 채운다 |
 | D3 | 인사 권한 역할 이름 | **정함(2026-11-12)**: `HR_ADMIN` 새 역할. 자동 승인 대상 아님 — 승인자 심사(approval) |
-| D4 | 직원 등록에 받는 항목·규칙 | **정함(2026-11-12)** — §8-1: 한 화면에서 기본 정보 + 요청 권한, 권한은 approval 경유, 자동 승인 = 소속 센터 `MFC_WORKER` 만. 남은 것: 사번이 따로 필요한지 |
+| D4 | 직원 등록에 받는 항목·규칙 | **정함(2026-11-12)** — §8-1: 한 화면에서 기본 정보 + 요청 권한, 권한은 approval 경유, 자동 승인 = 소속 센터 `MFC_WORKER` 만, 사번 자동(`P2026-00012`) |
 | D5 | LAN 시험 스크립트(claude-dev)의 직원 토큰 받는 법 — 브라우저 흐름을 스크립트가 할 수 없음 | `pmart-dev-cli`(직접 로그인)로 Keycloak 토큰 → employee-auth-service 의 **LAN 전용**(설정으로만 켜는) 교환 경로 `POST /internal/dev-token-exchange` → PMart JWT. prod 프로필에서는 경로 자체가 없음. **정함(2026-11-12, 제안대로)** |
 | D6 | Keycloak 관리 콘솔에서 직접 막는 경우를 남길지 | **정함(2026-11-12, 제안대로)**: 남기지 않음 — 모든 퇴사·정지는 hr-service 로만 → `pmart-auth-relay`·`StaffBlockRelay` 내림(ADR-0054 결정 M 대체) |
 | D7 | 사서함 보존 기간·메일 백업 | **정함(2026-11-12, 제안대로)**: 퇴사 뒤 비활성으로 **계속 보존**(삭제 안 함, 실습 환경). 메일 볼륨 백업은 DB 백업 방침 정할 때 함께 |
 | D8 | PDA 공용 기기 로그아웃 정책 | **정함(2026-11-12, 제안대로)**: ① 로그아웃 때 Keycloak 세션도 종료(`end_session_endpoint`) ② 근무(교대) 종료 시각이 지나면 자동 로그아웃 ③ 무활동 30분이면 다시 로그인(2026-11-08 "30분 무활동 = 경보"와 맞춤) |
-| D9 | 사서함 자동화 2단계(사이드카) 시점 | 직원 수가 늘거나 시연 요구가 생길 때 |
+| D9 | 사서함 자동화 2단계(사이드카) 시점 | **정함(2026-11-12)**: hr-service 를 만들 때 함께 만든다(§9-6). 수동 명령은 예비 수단 |
 
 ## 14. 감수하는 것
 
