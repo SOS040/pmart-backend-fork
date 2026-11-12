@@ -349,7 +349,7 @@
 - **동기 의존**: Keycloak(`/token`·certs, PC 5 내부).
 - LAN: PC 5, 포트 8511, DB `employee_auth_service`(PC 5 postgres). 상세 `docs/architecture/auth/employee-auth-structure.md`.
 
-### hr-service `[ADR-0056 — 2026-11-13 5-1 구현(등록·발급·상태·사건)·5-4 권한 요청 제출(사건), 미배치]` — 직원 등록·인사 정보·계정 발급
+### hr-service `[ADR-0056 — 2026-11-13 구현·LAN 배치(PC 5, 8512)]` — 직원 등록·인사 정보·계정 발급
 - **소유**: 직원 신원·고용 정보(운영자 ID `OP-<UUID>` 매기기, 사번 `P<연도>-<5자리>`, 이름, 메일 ID `@pmart.com`(재사용 금지), 고용 형태 REGULAR·PART_TIME·DAILY, 소속(본사 부서·센터), 근무 시작일·계약 종료일, 재직 상태), 등록·소속 변경·재입사·정지·퇴사 업무 흐름(계약 종료일 자동 정지), **계정 발급 진행 상태**(사서함 → Keycloak 계정 → 안내 메일 — 재시도·보상), Keycloak Admin API 호출(서비스 계정 클라이언트 `hr-provisioner`, `manage-users`·`view-users`·`query-users` 만 — 역할·그룹 매핑은 하지 않음), 등록 화면에서 받은 요청 권한을 approval 에 제출.
 - **소유하지 않음**: 직원 권한의 효력·정본(employee-auth-service — hr-service 는 조회만, BO-01 인사·권한 분리), 권한 심사(approval), 로그인·토큰(employee-auth-service), 비밀번호(Keycloak — 평문을 받지도 돌려주지도 않음), 사서함 저장(메일 서버).
 - **API**(제안): `POST /hr/employees`(기본 정보 + 요청 권한), `GET /hr/employees`, `POST /hr/employees/{id}/affiliation-changes`, `POST /hr/employees/{id}/reinstatements`, `POST /hr/employees/{id}/suspend`, `POST /hr/employees/{id}/leave`, `POST /hr/employees/{id}/resend-invite`. 권한 `HR_ADMIN`.
