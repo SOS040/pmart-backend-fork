@@ -328,8 +328,8 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 | # | 질문 | 권장 |
 |---|---|---|
 | D1 | 직원 역할·센터의 정본 | **정함(2026-11-12): employee-auth-service.** auth-service 는 고객·비회원·서비스 신원만(ADR-0054 결정 2) — service-map 의 "RoleGrant·Delegation·긴급권한 정본 = auth-service" 를 옮긴다(경계 변경, ADR-0056 에 기록). 옮길 기능 코드는 없음(지금 auth-service 는 `operator_account.roles·centers` JSON 만, 대행은 빈 자리) — 운영자 13명 값만 옮긴다. hr-service 가 아닌 이유: 고용 정보와 접근 권한은 따로(BO-01 "인사상 상사라는 이유만으로 권한을 줄 수 없다"), 토큰 발급자가 갖으면 로그인 때 다른 서비스를 부르지 않는다. Keycloak Realm 역할·`centers` 는 이전 뒤 삭제 |
-| D2 | 직원 ID 형식 | `username = email = <메일 ID>@pmart.com`, 기존 운영자 13명은 지금 `OP-…` 그대로 연결하고 메일 ID 를 새로 정함(목록 필요) |
-| D3 | 인사 권한 역할 이름 | `HR_ADMIN` 새 역할(역할 부여는 지금처럼 approval 흐름) |
+| D2 | 직원 ID 형식 | **정함(2026-11-12, 사용자 "알아서 만들어줘")**: `username = email = <메일 ID>@pmart.com`. 기존 운영자 13명(2026-11-12 Keycloak `pmart-staff` 기준)은 **지금 로그인 아이디를 그대로 메일 ID** 로 쓰고 운영자 ID(`OP-…`)는 그대로 연결 — `admin`, `claude-approver`, `claude-cs`, `claude-dev`, `claude-md`, `claude-mfc`, `claude-mfc-sup`, `claude-mfc-sup2`, `claude-mfc-wrk`, `heeji`, `heeji-test`, `seed-approver`, `seed-md` → 각각 `<아이디>@pmart.com`. 예약 주소(`postmaster`, `no-reply`)와 겹치지 않음. 이전 때 사서함 13개를 만들고 Keycloak `email` 을 채운다 |
+| D3 | 인사 권한 역할 이름 | **정함(2026-11-12)**: `HR_ADMIN` 새 역할. 자동 승인 대상 아님 — 승인자 심사(approval) |
 | D4 | 직원 등록에 받는 항목·규칙 | **정함(2026-11-12)** — §8-1: 한 화면에서 기본 정보 + 요청 권한, 권한은 approval 경유, 자동 승인 = 소속 센터 `MFC_WORKER` 만. 남은 것: 사번이 따로 필요한지 |
 | D5 | LAN 시험 스크립트(claude-dev)의 직원 토큰 받는 법 — 브라우저 흐름을 스크립트가 할 수 없음 | `pmart-dev-cli`(직접 로그인)로 Keycloak 토큰 → employee-auth-service 의 **LAN 전용**(설정으로만 켜는) 교환 경로 `POST /internal/dev-token-exchange` → PMart JWT. prod 프로필에서는 경로 자체가 없음 |
 | D6 | Keycloak 관리 콘솔에서 직접 막는 경우를 남길지 | 남기지 않음(모든 퇴사·정지는 hr-service) → `pmart-auth-relay`·`StaffBlockRelay` 내림. 남기면 중계도 유지 |
