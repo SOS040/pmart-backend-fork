@@ -159,6 +159,13 @@ PC 2·3·4·5 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수
    게이트웨이 `http://<pc4 IP>:8080` 응답.
 6. `placement.conf` 변경을 커밋하고 worklog 에 남긴다.
 
+## LAN HTTPS 사설 CA (2026-11-12, `docs/architecture/lan-https-private-ca.md`)
+
+- 루트 CA: 공개 인증서 `deploy/lan/tls/pmart-lan-root-ca.crt`(커밋, 기기·앱에 설치), 개인키 `.secrets/tls/pmart-lan-root-ca.key`(10년, `init-secrets.sh` 가 없을 때만 만든다 — 다시 만들면 모든 기기에 다시 설치).
+- PC 서버 인증서: `lan.sh tls-issue <pc|all>` → `.secrets/tls/<pc>.crt·key`(1년). SAN = LAN IP + 컴퓨터 이름 + `tls/extra-sans.conf`. **IP 가 바뀌면 다시 발급.** `watch.sh` 가 만료 30일 전부터 하루 한 번 로그.
+- 기기 신뢰: `lan.sh tls-trust <pc|all>`(PC 2~5 원격, Windows LocalMachine\Root), `lan.sh tls-trust pc1`(이 PC — **관리자 승인 창**). Firefox·안드로이드는 문서 §6.
+- 아직 어느 구성요소도 HTTPS 로 뜨지 않는다 — 메일 서버(ADR-0056 2단계)부터 쓰고, 게이트웨이·Keycloak 은 ADR-0056 4단계와 같은 배포에서.
+
 ## 새 PC 추가 (2026-11-10, PC 5 192.168.0.101)
 
 1. **그 PC 에서(사용자)**: 관리자 PowerShell 로 `deploy/lan/pc-bootstrap.ps1` 실행(그 PC 에 sshd·비밀번호 로그인이 이미 되면 PC 1 의 별도 터미널에서 `scp deploy/lan/pc-bootstrap.ps1 <사용자>@<IP>:pc-bootstrap.ps1` → `ssh <사용자>@<IP> powershell -NoProfile -ExecutionPolicy Bypass -File pc-bootstrap.ps1` — 비밀번호는 사용자가 직접 입력) — OpenSSH 서버·PC 1 LAN 공개 키·SSH 기본 셸 PowerShell·방화벽(SSH·ping, 192.168.0.0/24). 끝에 컴퓨터 이름·사용자를 출력한다.

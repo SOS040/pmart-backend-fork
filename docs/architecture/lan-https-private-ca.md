@@ -1,8 +1,13 @@
 # LAN 개발용 HTTPS — 사설 CA 계획
 
-- 작성: 2026-11-12. **상태: 결정됨(2026-11-12, 사용자 "권장안대로 하자" — §8 T1~T6 모두 권장안), 구현 전.** 구현을 시작할 때 ADR 로 올린다.
+- 작성: 2026-11-12. **상태: 결정됨(2026-11-12, 사용자 "권장안대로 하자" — §8 T1~T6 모두 권장안), 구현 전.** ADR-0057.
 - 왜: 지금 LAN 은 전부 HTTP 다. 직원 로그인(ADR-0056)에서 비밀번호·인가 코드·로그인 티켓·Refresh 가 평문으로 오가고, OTP(D10, 보류) 등록 QR 의 비밀 값도 평문으로 간다. 참고 자료(`auth/references/2026-11-12/PMart_직원_IAM_아키텍처.html` §02-4)도 "Keycloak 은 사내 CA HTTPS 필요"로 적었다. 도메인이 없어도 **우리만 쓰는 인증기관(CA)** 으로 LAN IP·PC 이름용 인증서를 발급하면 HTTPS 를 쓸 수 있다.
 - 범위: LAN 개발·시연 전용. 운영은 공인 인증서(Let's Encrypt·클라우드 인증서)로 따로 정한다.
+
+## 진행
+
+- **2026-11-12 §7 1단계 완료(동작 변화 없음)**: 루트 CA `CN=PMart LAN Dev Root CA 2026`(RSA 3072, 2036-11-09 만료, SHA-1 지문 `D3:A4:63:43:F0:78:0F:34:2A:25:9C:E9:B9:2A:12:54:6D:DA:CD:2A`) — `deploy/lan/tls/pmart-lan-root-ca.crt`. PC 4(`IP:192.168.0.40`, `DNS:d603-16`)·PC 5(`IP:192.168.0.101`, `DNS:d603-13`, `mail.pmart.com`, `mailserver`) 서버 인증서(RSA 2048, 1년). 스크립트 `deploy/lan/tls/tls.sh`, `lan.sh tls-issue`·`tls-trust`, `init-secrets.sh`, `watch.sh` 만료 경보. **PC 2~5 Windows 신뢰 저장소에 설치함. PC 1 은 관리자 승인 창이 취소돼 아직**(사용자가 `deploy/lan/lan.sh tls-trust pc1` 실행 후 승인).
+- 다음: 메일 서버(ADR-0056 2단계)를 이 인증서로.
 
 ## 1. 원리
 

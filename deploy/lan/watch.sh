@@ -139,6 +139,17 @@ for pc in $(ls "$OUT"); do
   for c in "${due[@]}"; do rm -f "$STATE/fail-$pc-$c"; done
 done
 
+# ---- LAN HTTPS 인증서 만료(docs/architecture/lan-https-private-ca.md T5) — 30일 안에 끝나는 인증서를 하루 한 번 로그 ----
+if [ -f "$LAN/tls/tls.sh" ]; then
+  source "$LAN/tls/tls.sh"
+  today="$(date +%F)"
+  if [ "$(cat "$STATE/tls-checked" 2>/dev/null)" != "$today" ]; then
+    exp="$(tls_expiring 2592000)"
+    [ -n "$exp" ] && log "LAN HTTPS 인증서 만료 30일 이내 — deploy/lan/lan.sh tls-issue <pc>(루트 CA 면 새 CA·전 기기 재설치): $(tr '\n' ';' <<<"$exp")"
+    echo "$today" > "$STATE/tls-checked"
+  fi
+fi
+
 # ---- Kafka 이벤트 이력 토픽 지표(ADR-0034) ----
 # kafka-1(ADR-0037, 한 노드가 클러스터 전체를 본다)에서 토픽 크기·오프셋·보관 설정을 재서 그 PC 의 pmart-lan/metrics/kafka_topics.prom 에 쓴다(host-disk 가 내보낸다).
 # 읽기만 한다(재시작·설정 변경 없음). 실패해도 위 점검·복구에는 영향이 없다 — 멈추면 Prometheus 의 KafkaTopicMetricsStale 이 알린다.

@@ -60,3 +60,4 @@
 | [0054](0054-auth-split-keycloak-staff-rider-auth-service.md) | 인증을 셋으로 — 직원 Keycloak, 고객 지금 auth-service, 라이더 Google 로그인 라이더 auth 서비스(새로), 게이트웨이 1개·발급자 3개 — ADR-0011·0018 의 Keycloak 미도입 대체 | 승인 |
 | [0055](0055-google-login-id-token-only-customer-rider.md) | Google 소셜 로그인은 ID 토큰 검증만 — 고객·라이더 각자 웹 클라이언트 ID(aud), 백엔드 OAuth2 Client·client secret·인가 코드 교환 없음(ADR-0025 대체) | 승인 |
 | [0056](0056-staff-login-employee-auth-service-and-hr-service.md) | 직원 로그인 — Keycloak 은 신원만, PMart 직원 JWT 는 employee-auth-service(Keycloak 기밀 클라이언트), 직원 권한 정본도 이곳, 계정 발급은 hr-service + 사내 메일(@pmart.com), 모두 PC 5 — ADR-0054 결정 L·M 과 직원 토큰 발급자 대체 | 승인(구현 전) |
+| [0057](0057-lan-dev-https-private-ca.md) | LAN 개발 HTTPS 는 사설 루트 CA 로 — 입구만 HTTPS(게이트웨이·백오피스·Keycloak·Roundcube·메일 내부), 루트 공개 인증서 커밋, 안드로이드는 lan/debug 빌드만 신뢰 | 승인 |

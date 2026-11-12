@@ -18,6 +18,8 @@
 # - keycloak-admin-password / keycloak-db-password: Keycloak(ADR-0054, 직원 로그인) 첫 관리자(admin)·Keycloak DB 계정(keycloak). 원문은 이 파일에만
 # - keycloak-relay-client-secret: Keycloak 중계 클라이언트 pmart-auth-relay(ADR-0054 ⑤ 결정 M — auth-service 가 관리 기록을 읽음). pmart-config auth-service-lan.yml 에는 {cipher} 로, Realm 가져오기 파일에는 render.sh 가 넣는다
 # - rag-db-operator-password / rag-db-customer-password: RAG 전용 pgvector 의 서비스 계정 ai_assistant_service·customer_assistant_service(ADR-0051)
+# - tls/pmart-lan-root-ca.key: LAN 개발용 HTTPS 사설 루트 CA 개인키(10년). 공개 인증서는 deploy/lan/tls/pmart-lan-root-ca.crt(커밋).
+#   PC 서버 인증서(tls/<pc>.crt·key)는 lan.sh tls-issue 가 만든다
 # 이 값들은 LAN 개발 환경 전용이다. 운영은 Secret Manager.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -66,4 +68,6 @@ fi
 [ -f .secrets/keycloak-admin-password ] || { openssl rand -base64 24 | tr -d '\r\n/+=' > .secrets/keycloak-admin-password; echo "created keycloak-admin-password"; }
 [ -f .secrets/keycloak-db-password ] || { openssl rand -hex 24 > .secrets/keycloak-db-password; echo "created keycloak-db-password"; }
 [ -f .secrets/keycloak-relay-client-secret ] || { openssl rand -hex 32 > .secrets/keycloak-relay-client-secret; echo "created keycloak-relay-client-secret"; }
+# LAN 개발용 HTTPS 루트 CA(docs/architecture/lan-https-private-ca.md) — 개인키 .secrets/tls, 공개 인증서 tls/(커밋). 없을 때만
+( cd ../.. && source deploy/lan/tls/tls.sh && tls_ensure_ca )
 echo "secrets: $(pwd)/.secrets"

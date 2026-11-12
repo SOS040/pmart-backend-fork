@@ -12,6 +12,8 @@
 #                                                   임베딩 모델은 서비스가 CPU 로 올린다(embedding-num-gpu 0) — 여기서 올리면 GPU 에 올라가 대화 모델을 밀어낸다
 #   deploy/lan/lan.sh rag-ingest <pc>              운영자 RAG 색인(compose 의 ai-assistant-ingest — rag/knowledge-operator 를 /repo 로, 일회 컨테이너)
 #   deploy/lan/lan.sh rag-ingest-customer <pc>     고객 RAG 색인(customer-assistant-ingest — 고객 안내 문서 rag/knowledge-customer, ADR-0051)
+#   deploy/lan/lan.sh tls-issue <pc|all>           LAN HTTPS 사설 CA 로 PC 서버 인증서 발급·갱신(1년, docs/architecture/lan-https-private-ca.md)
+#   deploy/lan/lan.sh tls-trust <pc|all|pc1>       루트 CA 를 PC 의 Windows 신뢰 저장소에 설치(pc1 = 이 PC, UAC 창)
 #   deploy/lan/lan.sh config-push [메시지]        설정 저장소 사본(deploy/lan/.config-repo, 사람이 고친 내용)을 GitHub pmart-config 에 commit·push(ADR-0029)
 # deploy 는 설정 저장소 사본에 미커밋·미push 가 있으면 멈추고(config-push 먼저), config-server 를 먼저 띄운 뒤 나머지를 올린다.
 # 원격 실행: deploy/remote/run-ps.sh (원격 docker 는 %USERPROFILE%\.docker-pmart 설정 — 읽기 전용 pull 토큰)
@@ -199,6 +201,33 @@ case "$cmd" in
     remote_compose "$pc" run --rm --no-deps customer-assistant-ingest ;;
   down)
     for pc in $(pcs "${1:?pc|all}"); do echo "=== $pc"; remote_compose "$pc" down; done ;;
+  tls-issue)
+    # LAN 개발용 HTTPS(docs/architecture/lan-https-private-ca.md): PC 서버 인증서 발급·갱신(SAN = LAN IP + 컴퓨터 이름 + tls/extra-sans.conf)
+    source "$LAN/tls/tls.sh"; source "$LAN/ipcheck.sh"
+    for pc in $(pcs "${1:?pc|all}"); do
+      read -r _ ip alias < "$OUT/$pc/target"
+      tls_issue "$pc" "$ip" "$(ipcheck_hostname "$alias")"
+    done ;;
+  tls-trust)
+    # 루트 CA 를 PC 의 Windows 신뢰 저장소(LocalMachine\Root)에 설치. pc1 = 이 PC(UAC 창이 뜬다)
+    source "$LAN/tls/tls.sh"; tls_ensure_ca
+    targets="${1:?pc|all|pc1}"
+    if [ "$targets" = pc1 ] || [ "$targets" = all ]; then
+      echo "=== pc1 (이 PC — 관리자 승인 창)"
+      res="$TMP/tls-trust-pc1.txt"; rm -f "$res"
+      # BOM 을 붙인다 — Windows PowerShell 5.1 은 BOM 없는 UTF-8 스크립트를 ANSI 로 읽어 한글이 깨진다
+      { printf '\xEF\xBB\xBF'; tls_trust_ps "'$(cygpath -w "$(pwd)/$TLS_CA_CRT")'" "$(cygpath -w "$res")"; } > "$TMP/tls-trust-pc1.ps1"
+      powershell -NoProfile -Command "Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"$(cygpath -w "$TMP/tls-trust-pc1.ps1")\"'"
+      cat "$res" 2>/dev/null || echo "pc1 결과 없음(승인 창을 거절했는지 확인)"
+    fi
+    if [ "$targets" != pc1 ]; then
+      for pc in $(pcs "$targets"); do
+        echo "=== $pc"; a="$(alias_of "$pc")"
+        scp -q -o BatchMode=yes -o ConnectTimeout=10 "$TLS_CA_CRT" "$a:pmart-lan-root-ca.crt" || { echo "$pc 복사 실패" >&2; continue; }
+        tls_trust_ps "(Join-Path \$env:USERPROFILE 'pmart-lan-root-ca.crt')" > "$TMP/tls-trust-$pc.ps1"
+        sh deploy/remote/run-ps.sh "$a" "$TMP/tls-trust-$pc.ps1"
+      done
+    fi ;;
   *)
     sed -n '2,10p' "$0"; exit 2 ;;
 esac
