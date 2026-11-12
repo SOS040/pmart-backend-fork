@@ -1,0 +1,3987 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PMart 직원 IAM 아키텍처</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0}
+/* Layout: review dossier — sticky document index on the left, one long reading column; collapses to a top index on phones. */
+:root {
+  --bg: #f6f7f8;
+  --paper: #ffffff;
+  --ink: #17202a;
+  --muted: #5a6672;
+  --line: #dde2e7;
+  --soft: #eef1f4;
+  --accent: #1f5f8b;
+  --accent-soft: #e3eef6;
+  --g: #1d7a4f; --g-bg: #e2f3ea;
+  --b: #45607a; --b-bg: #e7edf3;
+  --p: #5146a8; --p-bg: #ebe9f8;
+  --a: #8a5a00; --a-bg: #fbefd6;
+  --r: #b02e2e; --r-bg: #fbe4e2;
+  --c: #0e6f7a; --c-bg: #def2f3;
+  --n: #5f6670; --n-bg: #eceef0;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11161b; --paper: #171e25; --ink: #e4e9ee; --muted: #9aa6b2; --line: #2b3640; --soft: #1d262e;
+  --accent: #7db7e0; --accent-soft: #1b3142;
+  --g: #6fd2a0; --g-bg: #16342a; --b: #a9bdd1; --b-bg: #22303d; --p: #b3aaf0; --p-bg: #2a2650;
+  --a: #f0c060; --a-bg: #3a2e12; --r: #f29b93; --r-bg: #431f1e; --c: #72d3dc; --c-bg: #143539; --n: #b3bac2; --n-bg: #262d34;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #11161b; --paper: #171e25; --ink: #e4e9ee; --muted: #9aa6b2; --line: #2b3640; --soft: #1d262e;
+  --accent: #7db7e0; --accent-soft: #1b3142;
+  --g: #6fd2a0; --g-bg: #16342a; --b: #a9bdd1; --b-bg: #22303d; --p: #b3aaf0; --p-bg: #2a2650;
+  --a: #f0c060; --a-bg: #3a2e12; --r: #f29b93; --r-bg: #431f1e; --c: #72d3dc; --c-bg: #143539; --n: #b3bac2; --n-bg: #262d34;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code { font-family: var(--f-mono); font-size: .88em; background: var(--soft); padding: .08em .35em; border-radius: 4px; }
+
+.shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 40px; max-width: 1240px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 80px; }
+nav.index { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; }
+.index h1 { font-size: 15px; line-height: 1.4; margin: 0 0 4px; font-weight: 700; }
+.index .meta { font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+.index ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.index a { display: flex; gap: 10px; padding: 6px 8px; border-radius: 6px; text-decoration: none; color: var(--ink); }
+.index a:hover { background: var(--soft); }
+.index a.active { background: var(--accent-soft); color: var(--accent); }
+.toc-no { font-family: var(--f-mono); font-size: 12px; color: var(--muted); padding-top: 2px; min-width: 20px; }
+.index a.active .toc-no { color: var(--accent); }
+.toc-l { display: flex; flex-direction: column; font-size: 13.5px; font-weight: 500; line-height: 1.35; }
+.toc-l small { font-size: 11.5px; color: var(--muted); font-weight: 400; }
+
+main { min-width: 0; display: grid; gap: 28px; }
+.doc, .brief { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 32px clamp(18px, 4vw, 44px); min-width: 0; }
+
+/* brief */
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.brief h2 { font-size: clamp(24px, 3.4vw, 32px); line-height: 1.25; margin: 6px 0 10px; text-wrap: balance; letter-spacing: -.01em; }
+.lede { max-width: 66ch; color: var(--muted); margin: 0 0 18px; }
+.stamp { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; padding: 8px 12px; border: 1px dashed var(--a); color: var(--a); background: var(--a-bg); border-radius: 6px; }
+.flows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 26px 0; }
+.flow { border: 1px solid var(--line); border-radius: 8px; padding: 18px; background: var(--bg); min-width: 0; }
+.flow h3 { margin: 0 0 4px; font-size: 16px; }
+.flow .owner { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+.path { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; margin: 0 0 12px; }
+.path span.node { background: var(--paper); border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; }
+.path span.node.key { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.path .arr { color: var(--muted); font-family: var(--f-mono); }
+.path .arr.dash { opacity: .7; }
+.flow ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.brief h3.sec { font-size: 17px; margin: 28px 0 10px; }
+.risks { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.risks li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 14px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); font-size: 14px; }
+.sev { font-size: 12px; font-weight: 700; text-align: center; border-radius: 4px; padding: 1px 0; }
+.sev.crit { color: var(--r); background: var(--r-bg); }
+.sev.high { color: var(--a); background: var(--a-bg); }
+.ids { font-family: var(--f-mono); font-size: 12px; color: var(--muted); margin-left: 6px; }
+.ugrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.u { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; line-height: 1.45; }
+.u b { font-family: var(--f-mono); font-size: 12px; color: var(--a); font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: var(--muted); }
+.legend div { display: flex; gap: 6px; align-items: center; }
+
+/* status tags */
+.tag { display: inline-block; font-size: .78em; font-weight: 600; line-height: 1.5; padding: 0 .5em; border-radius: 4px; white-space: nowrap; vertical-align: .05em; }
+.t-agreed { color: var(--g); background: var(--g-bg); }
+.t-legacy { color: var(--b); background: var(--b-bg); }
+.t-proposal { color: var(--p); background: var(--p-bg); }
+.t-open { color: var(--a); background: var(--a-bg); }
+.t-conflict { color: var(--r); background: var(--r-bg); }
+.t-verify { color: var(--c); background: var(--c-bg); }
+.t-supp { color: var(--n); background: var(--n-bg); }
+.t-unread { color: var(--n); background: transparent; border: 1px dashed var(--n); }
+.src { font-family: var(--f-mono); font-size: .78em; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 .35em; white-space: nowrap; }
+
+/* rendered documents */
+.doc-title { display: flex; gap: 14px; align-items: baseline; font-size: clamp(21px, 2.8vw, 26px); line-height: 1.3; margin: 0 0 18px; text-wrap: balance; }
+.doc-no { font-family: var(--f-mono); font-size: 14px; font-weight: 500; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 6px; flex: none; }
+.doc h3 { font-size: 18px; margin: 34px 0 10px; padding-top: 14px; border-top: 1px solid var(--line); text-wrap: balance; }
+.doc h4 { font-size: 15.5px; margin: 24px 0 8px; }
+.doc h5 { font-size: 14.5px; margin: 18px 0 6px; }
+.doc p, .doc li { max-width: 78ch; }
+.doc ul, .doc ol { padding-left: 22px; }
+.doc blockquote { margin: 16px 0; padding: 10px 16px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 6px 6px 0; }
+.doc blockquote p { margin: 4px 0; }
+.tbl { overflow-x: auto; margin: 14px 0 18px; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; line-height: 1.55; }
+th, td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--line); min-width: 90px; }
+th { background: var(--soft); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-variant-numeric: tabular-nums; }
+.diagram { overflow-x: auto; margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.diagram pre.mermaid { margin: 0; background: transparent; text-align: center; font-family: var(--f-body); }
+pre.code { overflow-x: auto; background: var(--soft); padding: 14px; border-radius: 8px; font-size: 13px; }
+pre.code code { background: none; padding: 0; }
+.to-top { font-size: 12.5px; color: var(--muted); }
+
+/* hand-drawn diagrams */
+figure.viz { margin: 18px 0 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); padding: 14px 14px 12px; min-width: 0; }
+.viz-scroll { overflow-x: auto; }
+figure.viz svg { width: 100%; height: auto; display: block; }
+figure.viz text { font-family: var(--f-body); font-size: 12.5px; fill: var(--ink); }
+figure.viz .nl { font-weight: 600; font-size: 13px; }
+figure.viz .hl { font-weight: 700; font-size: 13px; }
+figure.viz .ns { font-size: 11.5px; fill: var(--muted); font-weight: 400; }
+figure.viz .zlabel, figure.viz .blabel { font-size: 11.5px; font-weight: 700; }
+figure.viz .elabel, figure.viz .slabel { paint-order: stroke; stroke: var(--paper); stroke-width: 5px; stroke-linejoin: round; }
+figure.viz .elabel { font-size: 11.5px; font-weight: 600; }
+figure.viz .num { font-weight: 700; }
+figure.viz .zone { stroke-width: 1.2; fill-opacity: .4; }
+figure.viz .zone.dash, figure.viz .ghost { stroke-dasharray: 5 4; }
+figure.viz .node { stroke-width: 1.5; }
+figure.viz .band { fill-opacity: .55; stroke-width: 1; stroke-opacity: .7; }
+figure.viz .band.dash { stroke-dasharray: 5 4; }
+figure.viz .edge { fill: none; stroke-width: 1.8; }
+figure.viz .edge.dash { stroke-dasharray: 6 5; }
+figure.viz .edge.bold { stroke-width: 3.4; }
+figure.viz .edge.forbid { stroke-dasharray: 3 4; stroke-width: 1.8; }
+figure.viz .life { stroke: var(--line); stroke-width: 1.3; stroke-dasharray: 4 5; }
+figure.viz .snote { fill: var(--soft); stroke: var(--line); }
+figure.viz .notetext { font-size: 12px; fill: var(--muted); }
+.vleg { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.vleg span { display: inline-flex; gap: 6px; align-items: center; }
+figure.viz .vleg svg { width: 40px; height: 14px; flex: none; display: inline-block; }
+.vleg .edge { fill: none; stroke-width: 2; }
+.vleg .edge.dash { stroke-dasharray: 6 4; }
+.vleg .edge.bold { stroke-width: 3.4; }
+.vleg .edge.forbid { stroke-dasharray: 3 3; }
+.vleg .ghost { stroke-dasharray: 4 3; }
+figure.viz figcaption { font-size: 13px; color: var(--ink); margin-top: 8px; max-width: 80ch; }
+details.mm { margin: 0 0 16px; font-size: 12.5px; color: var(--muted); }
+details.mm summary { cursor: pointer; padding: 4px 0; }
+
+/* service cards */
+.svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; }
+.svc { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: var(--bg); min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.svc header { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.svc h4 { margin: 0 6px 0 0; font-size: 16px; }
+.svc-one { margin: 0; font-size: 13.5px; color: var(--muted); }
+.svc dl { margin: 0; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 10px; font-size: 13.5px; line-height: 1.55; }
+.svc dt { font-weight: 600; color: var(--muted); font-size: 12.5px; padding-top: 1px; }
+.svc dd { margin: 0; min-width: 0; }
+.svc dd ul { margin: 0; padding-left: 16px; display: grid; gap: 2px; }
+.ids-line { font-family: var(--f-mono); font-size: 12px; color: var(--a); }
+.tbd-card { border-style: dashed; }
+.chg { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.chg.new { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.chg.add { color: var(--p); border-color: var(--p); background: var(--p-bg); }
+.chg.cut { color: var(--n); border-color: var(--n); background: var(--n-bg); }
+.chg.keep { color: var(--n); border-color: var(--line); background: transparent; }
+.chg.tbd { color: var(--a); border-color: var(--a); border-style: dashed; background: transparent; }
+.brief .tbl td:first-child { font-weight: 600; white-space: nowrap; }
+.note-p { font-size: 14px; max-width: 80ch; margin: 14px 0 0; }
+
+/* pros/cons + recommendation */
+.pc-grid { display: grid; gap: 14px; }
+.pc { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: var(--bg); min-width: 0; }
+.pc header { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 10px; }
+.pc h4 { margin: 0; font-size: 16px; }
+.mini { font-size: 12.5px; color: var(--muted); }
+.pc-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pc h5, .why h5 { margin: 0 0 6px; font-size: 13px; }
+.pro h5 { color: var(--g); } .con h5 { color: var(--r); }
+.pro, .con { border-top: 3px solid; padding-top: 8px; min-width: 0; }
+.pro { border-color: var(--g); } .con { border-color: var(--r); }
+.pc ul, .why ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6; display: grid; gap: 3px; }
+.fit { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.fit b { color: var(--ink); margin-right: 6px; }
+.rec { border: 1.5px solid var(--p); background: var(--p-bg); border-radius: 10px; padding: 16px 20px; }
+.rec-head { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.rec-points { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+.why-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.why { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+@media (max-width: 760px) { .pc-cols, .why-grid { grid-template-columns: minmax(0, 1fr); } }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-block: 20px 60px; }
+  nav.index { position: static; max-height: none; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .index ol { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  .flows { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+
+</head>
+<body>
+<div class="shell">
+  <nav class="index" aria-label="문서 목차">
+    <h1>PMart 직원 IAM 아키텍처</h1>
+    <p class="meta">설계 검토 아티팩트 · 2026-11-12</p>
+    <ol>
+      <li><a href="#brief"><span class="toc-no">··</span><span class="toc-l">요약<small>두 흐름·핵심 위험·미확정</small></span></a></li>
+      <li><a href="#services"><span class="toc-no">··</span><span class="toc-l">서비스별 역할<small>누가 무엇을 하나</small></span></a></li>
+      <li><a href="#tokens"><span class="toc-no">··</span><span class="toc-l">토큰 저장 위치<small>비교 · 장단점 · 추천안</small></span></a></li>
+<li><a href="#d00"><span class="toc-no">00</span><span class="toc-l">README<small>기준선·범례·읽는 순서</small></span></a></li>
+<li><a href="#d01"><span class="toc-no">01</span><span class="toc-l">시스템 컨텍스트<small>C4 Level 1</small></span></a></li>
+<li><a href="#d02"><span class="toc-no">02</span><span class="toc-l">컨테이너 구조<small>C4 Level 2</small></span></a></li>
+<li><a href="#d03"><span class="toc-no">03</span><span class="toc-l">책임과 데이터 정본<small>누가 무엇을 소유하나</small></span></a></li>
+<li><a href="#d04"><span class="toc-no">04</span><span class="toc-l">계정 생명주기<small>발급·이동·퇴사</small></span></a></li>
+<li><a href="#d05"><span class="toc-no">05</span><span class="toc-l">로그인과 세션<small>직원 로그인·고객 경계</small></span></a></li>
+<li><a href="#d06"><span class="toc-no">06</span><span class="toc-l">신뢰 경계와 보안<small>T-01 ~ T-15</small></span></a></li>
+<li><a href="#d07"><span class="toc-no">07</span><span class="toc-l">충돌과 결정<small>C·U·N 레지스터</small></span></a></li>
+<li><a href="#d08"><span class="toc-no">08</span><span class="toc-l">대안과 트레이드오프<small>결정하지 않음</small></span></a></li>
+<li><a href="#d09"><span class="toc-no">09</span><span class="toc-l">검토와 추적성<small>근거·위험·검수</small></span></a></li>
+
+    </ol>
+  </nav>
+
+  <main>
+    <section class="brief" id="brief">
+      <p class="eyebrow">Keycloak realm pmart-staff · 설계 검토</p>
+      <h2>직원 로그인과 직원 계정 발급을 서로 다른 경로로 나눈다</h2>
+      <p class="lede">로그인은 <code>employee-auth</code>가, IAM 계정 발급은 <code>HR Service</code>가 맡는다. 고객 Google 로그인은 그대로 둔다. 이 페이지는 최신 합의안과 기존 구성안을 비교하고 정리한 설계 문서 10편이며, 미확정 사항은 정하지 않고 남겨 두었다.</p>
+      <div class="stamp">초안 · 구현·설정·배포·테스트를 수행하지 않음 · 저장소 ADR·코드 미열람</div>
+
+      <div class="flows">
+        <div class="flow">
+          <h3>직원 로그인</h3>
+          <p class="owner">소유: employee-auth · Keycloak OIDC</p>
+          <div class="path">
+            <span class="node">React / PDA</span><span class="arr">→</span>
+            <span class="node">API Gateway</span><span class="arr">→</span>
+            <span class="node key">employee-auth</span><span class="arr">⇄</span>
+            <span class="node">Keycloak Token Endpoint</span>
+          </div>
+          <ul>
+            <li><span class="tag t-agreed">합의</span> React·PDA는 Keycloak에 직접 Client로 등록하지 않는다</li>
+            <li><span class="tag t-open">미확정</span> 브라우저 경로, 앱 복귀, 세션·토큰 형태 (U-01~U-07)</li>
+          </ul>
+        </div>
+        <div class="flow">
+          <h3>직원 IAM 계정 발급</h3>
+          <p class="owner">소유: HR Service · Keycloak Admin REST API</p>
+          <div class="path">
+            <span class="node">인사팀 React</span><span class="arr">→</span>
+            <span class="node">API Gateway</span><span class="arr">→</span>
+            <span class="node key">HR Service</span><span class="arr">⇒</span>
+            <span class="node">Keycloak Admin REST API</span>
+          </div>
+          <ul>
+            <li><span class="tag t-agreed">합의</span> 별도 Employee IAM 서비스를 두지 않는다</li>
+            <li><span class="tag t-agreed">합의</span> 관리 자격 = 서비스 계정 <code>hr-provisioner</code> + 역할 3종 + Client Credentials. 로그인 Client와 분리, 최고 관리자 미사용</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 class="sec">한 장으로 보는 구성</h3>
+      <figure class="viz" data-viz="d02-m1"></figure>
+
+      <h3 class="sec">먼저 결정해야 할 위험</h3>
+      <ul class="risks">
+        <li><span class="sev crit">치명</span><span>백오피스 OTP 강제(LoA 2)가 단일 <code>employee-auth</code> Client 구조로 자동 승계되지 않는다<span class="ids">N-01 · T-08</span></span></li>
+        <li><span class="sev crit">치명</span><span>PDA 로그인 결과를 시작한 기기에만 안전하게 돌려주는 방법이 없다<span class="ids">U-04 · T-06</span></span></li>
+        <li><span class="sev crit">치명</span><span>HR Service의 Keycloak 관리 권한 범위가 넓으면 realm 전체가 위험하다<span class="ids">U-11 · T-04</span></span></li>
+        <li><span class="sev high">중요</span><span>공용 PDA에 이전 직원의 Keycloak 세션 쿠키가 남을 수 있다<span class="ids">N-05 · T-07</span></span></li>
+        <li><span class="sev high">중요</span><span>퇴사 시 이미 발급된 토큰 차단의 시한과 등록 주체가 비어 있다<span class="ids">U-14 · N-03 · N-04</span></span></li>
+        <li><span class="sev high">중요</span><span><code>staff-access</code>는 기존안에서 권한 서비스였으므로 "IAM 서비스 불필요" 합의로 폐기되지 않는다<span class="ids">C-07 · U-13</span></span></li>
+      </ul>
+
+      <h3 class="sec">미확정 레지스터 U-01 ~ U-15</h3>
+      <div class="ugrid">
+        <div class="u"><b>U-01</b><span>PDA 인증 화면·리다이렉트·앱 복귀</span></div>
+        <div class="u"><b>U-02</b><span>employee-auth의 Keycloak 토큰 보관</span></div>
+        <div class="u"><b>U-03</b><span>React/PDA 인증 상태(쿠키·세션·토큰)</span></div>
+        <div class="u"><b>U-04</b><span>PDA 요청과 로그인 결과의 안전한 연결</span></div>
+        <div class="u"><b>U-05</b><span>직원 외부 소셜 IdP 사용 여부</span></div>
+        <div class="u"><b>U-06</b><span>React SPA / BFF 여부</span></div>
+        <div class="u"><b>U-07</b><span>Redirect URI·PKCE·토큰 저장 정책</span></div>
+        <div class="u"><b>U-08</b><span>계정 발급 승인 주체·절차</span></div>
+        <div class="u"><b>U-09</b><span><code>xxx@pmart.com</code>의 의미</span></div>
+        <div class="u"><b>U-10</b><span>메일 없는 현장 작업자와 SMTP 대상</span></div>
+        <div class="u"><b>U-11</b><span>HR의 Admin API 최소 권한</span></div>
+        <div class="u"><b>U-12</b><span>Gateway·Resource Server 검증 계약</span></div>
+        <div class="u"><b>U-13</b><span>센터별 역할 승인·회수 정본</span></div>
+        <div class="u"><b>U-14</b><span>퇴사·권한 회수의 토큰 반영 시한</span></div>
+        <div class="u"><b>U-15</b><span>라이더 인증 분리 방식</span></div>
+      </div>
+
+      <h3 class="sec">상태 표기</h3>
+      <div class="legend">
+        <div><span class="tag t-agreed">합의</span>최신 합의</div>
+        <div><span class="tag t-legacy">기존안</span>기존 구성안</div>
+        <div><span class="tag t-proposal">제안</span>권고, 결정 아님</div>
+        <div><span class="tag t-open">미확정</span>후속 결정 필요</div>
+        <div><span class="tag t-conflict">충돌</span>기존안과 다름</div>
+        <div><span class="tag t-verify">확인</span>실환경 시험 필요</div>
+        <div><span class="tag t-supp">보충</span>외부 일반 지식</div>
+        <div><span class="tag t-unread">미열람</span>근거 미열람</div>
+      </div>
+    </section>
+
+    <section class="brief" id="services">
+      <p class="eyebrow">구성요소 안내</p>
+      <h2>서비스별로 하는 일</h2>
+      <p class="lede">이 구조에 등장하는 서비스가 각각 무엇을 맡고 무엇을 맡지 않는지 정리했다. 뱃지는 이번 구조에서 그 서비스가 어떻게 달라졌는지를 뜻한다.</p>
+      <div class="legend" style="margin-bottom:18px">
+        <div><span class="chg new">신규</span>이번 구조에서 새로 생김</div>
+        <div><span class="chg add">역할 추가</span>있던 서비스에 일이 늘어남</div>
+        <div><span class="chg cut">역할 축소</span>있던 일이 빠짐</div>
+        <div><span class="chg keep">기존</span>그대로</div>
+        <div><span class="chg tbd">채택 미정</span>둘지 말지 정하지 않음</div>
+      </div>
+
+      <h3 class="sec">직원 IAM의 중심 서비스</h3>
+      <div class="svc-grid">
+        <article class="svc">
+          <header><h4>employee-auth</h4><span class="chg new">신규</span><span class="tag t-agreed">합의</span></header>
+          <p class="svc-one">직원 로그인을 대신 처리하는 서버. Keycloak에 로그인용 OIDC Client로 등록된다.</p>
+          <dl>
+            <dt>하는 일</dt>
+            <dd><ul>
+              <li>React·PDA의 로그인 시작 요청을 Gateway를 거쳐 받는다</li>
+              <li>state·nonce·PKCE 같은 로그인 요청 상태를 만든다</li>
+              <li>Keycloak 콜백으로 받은 code를 Token Endpoint에서 토큰으로 바꾼다</li>
+              <li>앱에 로그인 결과를 돌려준다 (형식 미정)</li>
+              <li><span class="tag t-open">후보</span> 토큰 보관·세션 관리 = BFF 역할 (아래 R-1, R-3)</li>
+            </ul></dd>
+            <dt>하지 않는 일</dt>
+            <dd>직원 계정 생성, 인사 원장, Keycloak Admin API 호출</dd>
+            <dt>가진 자격</dt>
+            <dd>로그인 Client 자격 (Client Secret 등). HR의 관리 자격과 분리</dd>
+            <dt>남은 질문</dt>
+            <dd class="ids-line">U-01 · U-02 · U-03 · U-04 · U-06 · U-07 · N-01</dd>
+          </dl>
+        </article>
+
+        <article class="svc">
+          <header><h4>HR Service</h4><span class="chg add">역할 추가</span><span class="tag t-agreed">합의</span></header>
+          <p class="svc-one">인사 정보의 정본이자, 직원 IAM 계정을 직접 만드는 서비스. 별도 IAM 서비스를 두지 않는다.</p>
+          <dl>
+            <dt>하는 일</dt>
+            <dd><ul>
+              <li>사번·재직 상태·소속 등 인사 정보 등록과 검증</li>
+              <li>요청자가 인사 담당자인지, 같은 사번이 이미 있는지 확인</li>
+              <li>Keycloak Admin REST API로 사용자 생성·수정·비활성화·세션 종료</li>
+              <li>사번 ↔ Keycloak 사용자 ID 매핑 기록</li>
+              <li><span class="tag t-proposal">제안</span> 응답이 끊기면 "반영 미확인"으로 두고 재조회, 하루 1회 대사</li>
+            </ul></dd>
+            <dt>하지 않는 일</dt>
+            <dd>직원 로그인 처리, 업무 권한(센터별 역할) 부여 <span class="tag t-legacy">기존안</span></dd>
+            <dt>가진 자격</dt>
+            <dd>서비스 계정 Client <code>hr-provisioner</code> + <code>realm-management</code> 역할 <code>manage-users</code>·<code>view-users</code>·<code>query-users</code> + Client Credentials. 최고 관리자 계정은 쓰지 않음 <span class="tag t-agreed">합의</span> · 02 §3.1</dd>
+            <dt>남은 질문</dt>
+            <dd class="ids-line">U-08 승인 · U-09 로그인 ID · U-10 초기 비밀번호 · U-11 역할 매핑 허용 여부</dd>
+          </dl>
+        </article>
+
+        <article class="svc">
+          <header><h4>Keycloak · pmart-staff</h4><span class="chg new">신규</span><span class="tag t-legacy">기존안</span></header>
+          <p class="svc-one">직원 전용 IdP. 직원 계정과 비밀번호, 로그인, 토큰 발급을 한곳에서 맡는다.</p>
+          <dl>
+            <dt>하는 일</dt>
+            <dd><ul>
+              <li>직원 계정·비밀번호·OTP 보관 (Credential 정본)</li>
+              <li>로그인 화면, 인증 흐름, 인증 수준(LoA·acr)</li>
+              <li>SSO·클라이언트 세션 관리, 토큰 서명·발급</li>
+              <li>입구가 둘: 로그인용 <b>OIDC</b>, 계정 관리용 <b>Admin REST API</b></li>
+              <li>로그인·관리 이벤트 기록</li>
+            </ul></dd>
+            <dt>하지 않는 일</dt>
+            <dd>입사 승인 기록, 업무 원장</dd>
+            <dt>저장소</dt>
+            <dd>전용 PostgreSQL (업무 DB와 분리) <span class="tag t-legacy">기존안</span></dd>
+            <dt>남은 질문</dt>
+            <dd class="ids-line">N-01 단일 Client에서 백오피스 OTP 강제 · N-05 PDA 쿠키 잔존</dd>
+          </dl>
+        </article>
+
+        <article class="svc">
+          <header><h4>API Gateway</h4><span class="chg add">역할 추가</span><span class="tag t-legacy">기존안</span></header>
+          <p class="svc-one">모든 앱 요청이 들어오는 하나의 문. 경로에 따라 알맞은 서비스로 보낸다.</p>
+          <dl>
+            <dt>하는 일</dt>
+            <dd><ul>
+              <li>로그인 시작 → employee-auth, 인사 등록 → HR Service</li>
+              <li>직원·고객 업무 요청 → 업무 API, 고객 로그인 → auth-service</li>
+              <li>토큰 검증: 발급자·aud·ptyp·acr를 경로별로 검사 <span class="tag t-legacy">기존안</span></li>
+              <li>퇴사자 차단 목록 확인 <span class="tag t-open">채택 미정</span></li>
+            </ul></dd>
+            <dt>하지 않는 일</dt>
+            <dd>인사·계정 정본, 계정 생성. 브라우저가 Keycloak 화면으로 가는 경로가 Gateway를 지나는지는 미정</dd>
+            <dt>남은 질문</dt>
+            <dd class="ids-line">U-12 무엇을 검증하나 · U-14 퇴사 반영</dd>
+          </dl>
+        </article>
+      </div>
+
+      <h3 class="sec">앱과 기존 서비스</h3>
+      <div class="svc-grid">
+        <article class="svc">
+          <header><h4>React 백오피스</h4><span class="chg add">역할 추가</span></header>
+          <p class="svc-one">직원 업무 화면과 인사팀의 직원 등록 화면.</p>
+          <dl>
+            <dt>하는 일</dt><dd>업무 UI, 신규 직원 등록·계정 발급 요청, 로그인 시작</dd>
+            <dt>하지 않는 일</dt><dd>Keycloak Client 등록, 관리 Secret 보관, Admin API 직접 호출</dd>
+            <dt>남은 질문</dt><dd class="ids-line">U-06 SPA인가 BFF인가</dd>
+          </dl>
+        </article>
+        <article class="svc">
+          <header><h4>Flutter PDA</h4><span class="chg keep">기존</span></header>
+          <p class="svc-one">MFC·CDC 현장 직원의 공용 기기 앱.</p>
+          <dl>
+            <dt>하는 일</dt><dd>로그인 시작, 피킹·입고 등 현장 업무 요청</dd>
+            <dt>하지 않는 일</dt><dd>Keycloak Client 등록, Admin API 호출</dd>
+            <dt>남은 질문</dt><dd class="ids-line">U-01 앱 복귀 · U-04 결과 바인딩 · N-05 교대 시 세션 잔존</dd>
+          </dl>
+        </article>
+        <article class="svc">
+          <header><h4>업무 API</h4><span class="chg keep">기존</span></header>
+          <p class="svc-one">WMS·OMS·mfc-capacity 등 실제 업무 서비스.</p>
+          <dl>
+            <dt>하는 일</dt><dd>토큰 재검증, "센터 + 역할" 단위 인가, 상태 전이 검증</dd>
+            <dt>하지 않는 일</dt><dd>계정 생성</dd>
+          </dl>
+        </article>
+        <article class="svc">
+          <header><h4>auth-service</h4><span class="chg cut">역할 축소</span></header>
+          <p class="svc-one">고객 전용 인증 서비스. 직원 기능은 이행 후 뺀다.</p>
+          <dl>
+            <dt>하는 일</dt><dd>고객 Google 로그인 처리(서버 인가 코드 교환), 고객·게스트 JWT 발급(ptyp)</dd>
+            <dt>빠지는 일</dt><dd>직원 운영자 로그인·계정 <span class="tag t-legacy">기존안 P5</span></dd>
+          </dl>
+        </article>
+      </div>
+
+      <h3 class="sec">둘지 말지 정하지 않은 것</h3>
+      <div class="svc-grid">
+        <article class="svc tbd-card">
+          <header><h4>staff-access</h4><span class="chg tbd">채택 미정</span></header>
+          <p class="svc-one">기존안이 권한 관리용으로 권장한 서비스. 계정을 만드는 서비스가 아니다.</p>
+          <dl>
+            <dt>맡을 일</dt><dd>센터별 권한 기록, 부여 규칙 검사, 승인 연결, Keycloak 그룹 반영, 퇴사 차단 등록, 대사</dd>
+            <dt>남은 질문</dt><dd class="ids-line">U-13 권한 정본 · C-07</dd>
+          </dl>
+        </article>
+        <article class="svc tbd-card">
+          <header><h4>차단 목록 (Redis)</h4><span class="chg tbd">채택 미정</span></header>
+          <p class="svc-one">퇴사자의 아직 유효한 토큰을 Gateway에서 막는 목록.</p>
+          <dl>
+            <dt>맡을 일</dt><dd>퇴사자 sub를 토큰 최대 수명(15분) 동안 차단</dd>
+            <dt>남은 질문</dt><dd class="ids-line">U-14 반영 시한 · N-04 누가 등록하나</dd>
+          </dl>
+        </article>
+        <article class="svc tbd-card">
+          <header><h4>외부 서비스</h4><span class="chg keep">외부</span></header>
+          <p class="svc-one">PMart 밖에서 쓰는 서비스.</p>
+          <dl>
+            <dt>Google</dt><dd>고객 로그인 IdP</dd>
+            <dt>직원 외부 IdP</dt><dd>사용 여부 미정 (U-05)</dd>
+            <dt>SMTP</dt><dd>비밀번호 설정 메일. 메일 없는 현장 직원 처리 미정 (U-10)</dd>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <section class="brief" id="tokens">
+      <p class="eyebrow">미확정 U-02 · U-03 · U-06</p>
+      <h2>토큰은 어디에 저장하나</h2>
+      <p class="lede">일반적인 BFF 구조라면 BFF 서버가 토큰을 보관한다. 지금 구조에서 Keycloak 토큰을 처음 받는 곳은 employee-auth지만, 그 토큰을 employee-auth가 계속 보관할지는 정하지 않았다. 아래 세 가지가 후보다. 결정하지 않았다.</p>
+
+      <h3 class="sec">R-1 · employee-auth가 BFF처럼 토큰을 보관</h3>
+      <figure class="viz" data-viz="tok-r1"></figure>
+      <h3 class="sec">R-2 · 토큰을 앱에 넘김</h3>
+      <figure class="viz" data-viz="tok-r2"></figure>
+      <h3 class="sec">R-3 · employee-auth가 자체 토큰 발급</h3>
+      <figure class="viz" data-viz="tok-r3"></figure>
+
+      <h3 class="sec">한눈에 비교</h3>
+      <div class="tbl"><table>
+        <thead><tr><th></th><th>R-1 BFF 세션</th><th>R-2 토큰 전달</th><th>R-3 자체 토큰</th></tr></thead>
+        <tbody>
+          <tr><td>Keycloak 토큰 위치</td><td>employee-auth 서버</td><td>앱 (SPA 메모리 · PDA 보안 저장소)</td><td>employee-auth 서버</td></tr>
+          <tr><td>앱이 가진 것</td><td>세션 쿠키</td><td>Keycloak access token</td><td>PMart 직원 JWT</td></tr>
+          <tr><td>브라우저·기기에 토큰 노출</td><td>없음</td><td>있음 (XSS·기기 분실)</td><td>PMart JWT만 노출</td></tr>
+          <tr><td>employee-auth 상태</td><td>상태 있음. 여러 대면 세션 저장소 공유 필요</td><td>상태 없음</td><td>상태 있음</td></tr>
+          <tr><td>Gateway가 검증하는 것</td><td>쿠키 세션 → 토큰 변환 방식 정해야 함</td><td>Keycloak 서명 (기존안 그대로)</td><td>employee-auth 서명 · 발급자 3개</td></tr>
+          <tr><td>백오피스 OTP(acr) 확인</td><td>세션에 acr 기록 필요</td><td>토큰의 acr 그대로</td><td>새 토큰에 acr 옮겨 담기</td></tr>
+          <tr><td>퇴사 때 끊을 곳</td><td>Keycloak + employee-auth 세션</td><td>Keycloak + 차단 목록</td><td>Keycloak + employee-auth + 차단 목록</td></tr>
+          <tr><td>PDA</td><td>브라우저 쿠키를 그대로 못 써서 앱용 세션 값 필요 (U-04)</td><td>refresh를 누가 하는지 모호</td><td>앱이 JWT 보관 · 갱신 방식 필요</td></tr>
+          <tr><td>최신 합의와 맞나</td><td>맞음</td><td>맞음 (세부 미정)</td><td>맞음</td></tr>
+        </tbody>
+      </table></div>
+      <h3 class="sec">방식별 장단점</h3>
+      <div class="pc-grid">
+        <article class="pc">
+          <header><h4>R-1 · BFF 세션</h4><span class="mini">토큰은 employee-auth에만</span></header>
+          <div class="pc-cols">
+            <div class="pro"><h5>장점</h5><ul>
+              <li>브라우저·PDA에 Keycloak 토큰이 없다. XSS나 기기 분실로 토큰이 새지 않는다</li>
+              <li>Client Secret과 refresh token이 서버 한곳에만 있어 관리가 쉽다</li>
+              <li>"employee-auth가 로그인 Client"라는 합의와 가장 잘 맞는다</li>
+              <li>퇴사 시 employee-auth 세션을 지우면 그 즉시 막힌다. 차단 목록 없이도 1분 목표에 다가간다</li>
+              <li>Gateway가 Keycloak 토큰을 붙여 보내면 업무 API는 기존안 검증(iss·aud·ptyp·acr)을 그대로 쓴다</li>
+            </ul></div>
+            <div class="con"><h5>단점</h5><ul>
+              <li>employee-auth가 상태를 가진다. 여러 대로 띄우면 세션 저장소(Redis 등) 공유가 필요하다</li>
+              <li>모든 업무 요청마다 세션 → 토큰 변환이 필요해 Gateway와 employee-auth가 핵심 경로에 놓인다</li>
+              <li>employee-auth가 멈추면 로그인뿐 아니라 업무 요청도 멈춘다</li>
+              <li>쿠키를 쓰므로 CSRF 대비가 필요하다</li>
+              <li>PDA는 브라우저 쿠키를 그대로 못 쓰므로 앱용 세션 값을 따로 설계해야 한다 (U-04)</li>
+            </ul></div>
+          </div>
+          <p class="fit"><b>잘 맞는 경우</b> 보안을 우선하고, 세션 저장소를 운영할 수 있을 때</p>
+        </article>
+
+        <article class="pc">
+          <header><h4>R-2 · 토큰 전달</h4><span class="mini">토큰은 앱에</span></header>
+          <div class="pc-cols">
+            <div class="pro"><h5>장점</h5><ul>
+              <li>employee-auth에 상태가 없어 단순하고 수평 확장이 쉽다</li>
+              <li>Gateway·업무 API가 기존안 §8.1 방식으로 Keycloak 토큰을 바로 검증한다</li>
+              <li>업무 요청 경로에 employee-auth가 끼지 않는다</li>
+            </ul></div>
+            <div class="con"><h5>단점</h5><ul>
+              <li>토큰이 브라우저 메모리·PDA 저장소에 놓인다. 서버측 Client로 만든 이점이 대부분 사라진다</li>
+              <li>토큰을 받은 쪽(employee-auth)과 쓰는 쪽(앱)이 달라 OAuth 표준 흐름에서 벗어난다</li>
+              <li>refresh를 앱이 하면 Client 자격이 필요하고, employee-auth가 하면 결국 상태가 생긴다</li>
+              <li>퇴사 즉시 차단에는 차단 목록이 따로 필요하다</li>
+              <li>공용 PDA에 이전 직원 토큰이 남을 위험이 커진다 (N-05)</li>
+            </ul></div>
+          </div>
+          <p class="fit"><b>잘 맞는 경우</b> 빨리 붙여야 하고, 토큰 노출 위험을 받아들일 수 있을 때</p>
+        </article>
+
+        <article class="pc">
+          <header><h4>R-3 · 자체 토큰</h4><span class="mini">앱엔 PMart JWT</span></header>
+          <div class="pc-cols">
+            <div class="pro"><h5>장점</h5><ul>
+              <li>앱·Gateway가 보는 토큰 형식을 PMart가 정한다. Keycloak을 바꿔도 앱 계약은 유지된다</li>
+              <li>업무 요청마다 employee-auth를 부르지 않는다 (공개키 캐시로 검증)</li>
+              <li>Keycloak 토큰은 서버에만 둔다</li>
+            </ul></div>
+            <div class="con"><h5>단점</h5><ul>
+              <li>발급자가 3개(Keycloak · auth-service · employee-auth)가 되어 Gateway 규칙이 복잡해진다 (N-02)</li>
+              <li>acr·centerRoles·emp 같은 Keycloak 정보를 새 토큰에 옮겨 담아야 한다. 누락되면 OTP 우회 위험 (N-01)</li>
+              <li>서명키 관리·교체·JWKS 공개를 employee-auth가 새로 맡는다</li>
+              <li>퇴사 때 끊을 곳이 Keycloak · employee-auth · 차단 목록 셋으로 늘어난다</li>
+              <li>기존안 §8.1 검증 설정을 다시 써야 한다</li>
+            </ul></div>
+          </div>
+          <p class="fit"><b>잘 맞는 경우</b> IdP를 갈아낄 가능성이 크거나 토큰 형식을 PMart가 꼭 통제해야 할 때</p>
+        </article>
+      </div>
+
+      <h3 class="sec">추천안 · R-1 기반, 웹과 PDA만 앱 보관값을 다르게</h3>
+      <div class="rec">
+        <p class="rec-head"><span class="tag t-proposal">제안</span> 결정 아님. 아래 확인 조건을 통과하면 ADR-B·ADR-E 후보로 올린다.</p>
+        <ol class="rec-points">
+          <li><b>Keycloak 토큰은 employee-auth만 보관한다.</b> access · refresh 모두 서버 세션 저장소에 둔다.</li>
+          <li><b>앱이 받는 값만 다르게 한다.</b> 웹(React)은 HttpOnly · Secure · SameSite 세션 쿠키, PDA는 쿠키 대신 보안 저장소에 두는 <b>불투명 세션 토큰</b>(의미 없는 랜덤 값)을 Authorization 헤더로 보낸다.</li>
+          <li><b>Gateway가 세션 값을 Keycloak access token으로 바꿔 업무 API에 붙인다</b> (token relay). 업무 API는 기존안 §8.1의 iss · aud · ptyp · acr 검증을 그대로 쓴다.</li>
+          <li><b>퇴사 · 로그아웃은 employee-auth 세션 삭제 + Keycloak 비활성화</b>로 처리한다. 다음 요청부터 바로 막힌다.</li>
+        </ol>
+      </div>
+      <figure class="viz" data-viz="tok-rec"></figure>
+
+      <div class="why-grid">
+        <div class="why">
+          <h5>현재 구조에 맞는 이유</h5>
+          <ul>
+            <li>합의된 "employee-auth = 서버측 로그인 Client"를 끝까지 살린다. code를 받은 서버가 토큰도 지킨다</li>
+            <li>앱을 Keycloak Client로 등록하지 않는다는 합의(C-01·C-02)와 충돌이 없다</li>
+            <li>업무 API는 Keycloak 토큰을 그대로 받으므로 기존안의 검증·acr·centerRoles 설계를 버리지 않는다. R-3의 발급자 3개 문제가 없다</li>
+            <li>공용 PDA에는 의미 없는 세션 값만 남는다. 교대 시 서버에서 지우면 끝이다 (N-05 완화)</li>
+            <li>퇴사 즉시 차단을 차단 목록 없이도 세션 삭제로 달성할 수 있다 (U-14·N-04 단순화)</li>
+          </ul>
+        </div>
+        <div class="why">
+          <h5>채택 전 확인할 것</h5>
+          <ul>
+            <li><b>U-12</b> Gateway가 요청마다 세션 → 토큰을 바꿀 수 있는가. employee-auth 호출 또는 공유 세션 저장소(Redis) 직접 조회 중 무엇으로 할지 [확인]</li>
+            <li><b>성능·가용성</b> 세션 조회 지연과 employee-auth·세션 저장소 장애 시 영향 (N-07)</li>
+            <li><b>U-04</b> PDA가 시스템 브라우저 로그인 뒤 세션 토큰을 안전하게 받는 방법 (08 §1 P-1)</li>
+            <li><b>N-01</b> 백오피스 세션에 acr=2가 기록되는지, PDA 세션으로 백오피스 경로를 못 부르는지</li>
+            <li><b>refresh</b> access token 만료 시 employee-auth가 갱신하는 시점과 동시 요청 처리</li>
+            <li><b>CSRF</b> 웹 쿠키 요청의 CSRF 방어 방식</li>
+          </ul>
+        </div>
+      </div>
+      <p class="note-p">R-2와 R-3을 추천하지 않는 이유: R-2는 토큰을 다시 기기에 내려보내 서버측 Client로 바꾼 의미가 줄고, R-3은 발급자와 클레임 재전달 문제를 새로 만든다. 기존안의 "SPA·PDA가 직접 토큰 보관" 방식은 앱이 Keycloak Client가 아니게 되면서 쓸 수 없다 (C-01 · C-02).</p>
+    </section>
+
+<section class="doc" id="d00" aria-labelledby="d00-t">
+<h2 class="doc-title"><span class="doc-no">00</span>PMart 직원 IAM 아키텍처 아티팩트 — README</h2><ul>
+<li>작성일: 2026-11-12</li>
+<li>문서 상태: <strong>설계 검토용 아티팩트(초안 정리)</strong>. 승인된 구현 사양이 아니며, 구현·설정·배포·테스트를 수행하지 않았다.</li>
+<li>작성 범위: 직원 IAM 계정 발급 경로, 직원 로그인 경로, 고객 인증과의 경계, 신뢰 경계, 충돌·미확정 사항</li>
+<li>범위 제외: 소스 코드, Keycloak Realm/Client 실제 등록, DB 스키마, Docker/Helm, API/보안 테스트, 구현 계획·티켓</li>
+</ul>
+<h3 id="d00-h1">1. 기준선과 출처</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>우선순위</th>
+<th>출처</th>
+<th>약칭</th>
+<th>취급</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>PMart_Employee_IAM_Architecture_Draft.md</code> (2026-11-12)</td>
+<td><strong><span class="src">Draft</span></strong></td>
+<td>최신 합의 기준선</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>바로픽_Keycloak_OAuth_구성안.md</code> (2026-11-11 초안)</td>
+<td><strong><span class="src">구성안</span></strong></td>
+<td>기존안. 최신 합의와 다르면 <span class="tag t-conflict">충돌</span>로 기록하고 삭제하지 않음</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>ARCHITECTURE_ARTIFACT_SPEC.md</code>, <code>CLAUDE_ARCHITECTURE_ONLY_PROMPT.md</code></td>
+<td><strong><span class="src">Spec</span></strong>, <strong><span class="src">Prompt</span></strong></td>
+<td>산출물 형식·수용 조건</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>스크린샷 2026-11-12 100723.png</code> (상위 폴더)</td>
+<td><strong><span class="src">SS</span></strong></td>
+<td>서버측 OAuth Client 흐름 참고 그림. 결정 근거로 사용하지 않음</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>pmart-backend</code>, <code>pmart-clients</code> 저장소의 ADR·코드·OpenAPI</td>
+<td><strong><span class="tag t-unread">미열람</span></strong></td>
+<td>이 작업 환경에 저장소가 없어 열람하지 못함. 구성안이 인용한 내용은 &quot;구성안 인용&quot;으로만 표기</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li>우선순위: 최신 사용자 합의 &gt; 구성안 내부 제안 &gt; 일반 기술 권장. 저장소 코드·ADR은 확인하지 못했으므로 <strong>[코드 확인]·[ADR 기재]</strong> 태그는 이 문서 세트에서 사용하지 않는다.</li>
+<li>Keycloak 버전별 동작은 외부 문서로 재확인하지 않았다. 관련 서술은 **<span class="tag t-supp">보충</span>**이며 확정 사항이 아니다.</li>
+</ul>
+<h3 id="d00-h2">2. 확정 수준 범례</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>태그</th>
+<th>의미</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong><span class="tag t-agreed">합의</span></strong></td>
+<td><span class="src">Draft</span>에서 사용자와 합의된 최신 방향</td>
+</tr>
+<tr>
+<td><strong><span class="tag t-legacy">기존안</span></strong></td>
+<td><span class="src">구성안</span>에 적힌 정책. 구현 확인을 뜻하지 않음</td>
+</tr>
+<tr>
+<td><strong><span class="tag t-proposal">제안</span></strong></td>
+<td>이 아티팩트 또는 <span class="src">Draft</span>의 보안·설계 권고. 결정 아님</td>
+</tr>
+<tr>
+<td><strong><span class="tag t-open">미확정</span></strong></td>
+<td>후속 결정 필요. 이 문서는 답을 정하지 않음 (U-01~U-15, 추가 발견 N-xx)</td>
+</tr>
+<tr>
+<td><strong><span class="tag t-conflict">충돌</span></strong></td>
+<td><span class="src">구성안</span>과 <span class="src">Draft</span>가 다르거나, 합의끼리 긴장 관계에 있는 항목</td>
+</tr>
+<tr>
+<td><strong><span class="tag t-verify">확인</span></strong></td>
+<td>실환경 시험 또는 공식 문서 대조가 필요한 기술 사실</td>
+</tr>
+<tr>
+<td><strong><span class="tag t-supp">보충</span></strong></td>
+<td>외부 일반 기술 지식. PMart 결정이 아님</td>
+</tr>
+<tr>
+<td><strong><span class="tag t-unread">미열람</span></strong></td>
+<td>근거 문서가 있다고 알려졌으나 이번에 열람하지 못함</td>
+</tr>
+</tbody></table></div>
+<p>다이어그램 공통 범례: <strong>실선 = 자료상 확인되거나 합의된 경로</strong>, <strong>점선 = 미정·선택적 경로</strong>. 시퀀스 다이어그램에서는 응답도 확정 경로면 실선으로 그리며, 점선은 오직 미정·선택 경로를 뜻한다. 각 다이어그램 아래에 범례를 다시 적었다.</p>
+<h3 id="d00-h3">3. 파일 안내와 읽는 순서</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>순서</th>
+<th>파일</th>
+<th>내용</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><a href="#d01">01-SYSTEM-CONTEXT.md</a></td>
+<td>C4 L1. 사람·외부 시스템·PMart 경계, 직원/고객 인증 분리</td>
+</tr>
+<tr>
+<td>2</td>
+<td><a href="#d02">02-CONTAINER-ARCHITECTURE.md</a></td>
+<td>C4 L2. 논리 컨테이너와 연결, 물리 배치와의 구분</td>
+</tr>
+<tr>
+<td>3</td>
+<td><a href="#d03">03-RESPONSIBILITY-AND-DATA-OWNERSHIP.md</a></td>
+<td>책임·데이터 정본·토큰 발급 주체·권한 승인 주체</td>
+</tr>
+<tr>
+<td>4</td>
+<td><a href="#d04">04-ACCOUNT-LIFECYCLE.md</a></td>
+<td>입사·중복·응답 유실·승인·수정·퇴사 시퀀스</td>
+</tr>
+<tr>
+<td>5</td>
+<td><a href="#d05">05-LOGIN-AND-SESSION.md</a></td>
+<td>직원 로그인(미정 구간 표시), 고객 로그인 경계</td>
+</tr>
+<tr>
+<td>6</td>
+<td><a href="#d06">06-TRUST-BOUNDARIES-AND-SECURITY.md</a></td>
+<td>신뢰 경계, 자격 분리, 위협·장애 반례</td>
+</tr>
+<tr>
+<td>7</td>
+<td><a href="#d07">07-CONFLICTS-AND-DECISIONS.md</a></td>
+<td>구성안 vs 최신 합의, U-01~U-15, 추가 발견, ADR 후보</td>
+</tr>
+<tr>
+<td>8</td>
+<td><a href="#d08">08-ALTERNATIVES-AND-TRADEOFFS.md</a></td>
+<td>미결 주제별 선택지와 장단점 (결정하지 않음)</td>
+</tr>
+<tr>
+<td>9</td>
+<td><a href="#d09">09-REVIEW-AND-TRACEABILITY.md</a></td>
+<td>출처 추적, 평가표, 위험 심각도, 남은 확인사항, 최종 검수</td>
+</tr>
+</tbody></table></div>
+<p>빠르게 검토하려면 01 → 05 → 07 → 09 순서를 권한다.</p>
+<h3 id="d00-h4">4. 한눈에 보는 핵심 (5문장)</h3><ol>
+<li><strong><span class="tag t-agreed">합의</span></strong> 직원 <strong>로그인</strong>은 <code>employee-auth</code>(Spring Boot)가 Keycloak <code>pmart-staff</code>의 서버측 OIDC Client로 중개하며, React 백오피스와 Flutter PDA는 Keycloak에 각자 Client로 직접 등록하지 않는다.</li>
+<li><strong><span class="tag t-agreed">합의</span></strong> 직원 <strong>IAM 계정 발급·비활성화</strong>는 인사팀 React → API Gateway → <code>HR Service</code> → Keycloak <strong>Admin REST API</strong> 경로이며, 별도 Employee IAM 서비스를 두지 않는다.</li>
+<li><strong><span class="tag t-agreed">합의</span></strong> HR의 Admin API 자격은 <strong>서비스 계정 Client <code>hr-provisioner</code> + <code>realm-management</code> 역할(<code>manage-users</code>·<code>view-users</code>·<code>query-users</code>) + Client Credentials</strong> 세 가지로 구성한다. <code>employee-auth</code>의 로그인 Client 자격과 분리하며 최고 관리자 개인 계정은 쓰지 않는다. 역할 매핑 허용 여부만 U-11로 남는다 (02 §3.1).</li>
+<li><strong><span class="tag t-legacy">기존안·합의</span></strong> 고객은 Google → 기존 <code>auth-service</code> 자체 토큰 경로를 유지하고 직원과 발급자를 분리하며, 라이더는 U-15로 남는다.</li>
+<li><strong><span class="tag t-open">미확정</span></strong> PDA 인증 화면·앱 복귀·결과 바인딩, React의 SPA/BFF 형태, 토큰 보관·세션 형태, 소셜 IdP, 퇴사 반영 시한은 정하지 않았으며, 특히 구성안의 <strong>LoA(<code>acr</code>)·<code>azp</code> 기반 OTP 강제 설계가 단일 <code>employee-auth</code> Client 구조에서 그대로 성립하는지</strong>가 새로 드러난 핵심 검증 과제다(N-01, 07 문서).</li>
+</ol>
+<h3 id="d00-h5">5. 이 문서 세트가 하지 않은 것</h3><ul>
+<li>코드·설정·인프라·원본 파일을 생성하거나 수정하지 않았다. 새 문서 파일 10개만 만들었다.</li>
+<li>Mermaid 다이어그램은 <strong>문법을 정적으로만 검토</strong>했고 렌더링은 실행하지 않았다(미검증).</li>
+<li>&quot;검토 완료&quot;는 문서 간 정합성 검토를 뜻하며 코드·운영 검증 완료를 뜻하지 않는다.</li>
+</ul>
+
+</section>
+<section class="doc" id="d01" aria-labelledby="d01-t">
+<h2 class="doc-title"><span class="doc-no">01</span>시스템 컨텍스트 (C4 Level 1)</h2><ul>
+<li>출처: <span class="src">Draft</span> §2·§3, <span class="src">구성안</span> §0·§1·§2.1·§10.5, <span class="src">Spec</span> §3</li>
+<li>목적: 사람(행위자)과 외부 시스템, PMart 시스템 경계를 구분하고 직원 인증과 고객 인증이 분리돼 있음을 보인다.</li>
+</ul>
+<h3 id="d01-h1">1. 행위자와 외부 시스템</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>구분</th>
+<th>이름</th>
+<th>설명</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>사람</td>
+<td>본사·백오피스 직원</td>
+<td>React 백오피스로 업무 수행</td>
+<td><span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td>사람</td>
+<td>MFC·CDC 현장 직원</td>
+<td>Flutter PDA로 현장 업무. 메일 없을 수 있음</td>
+<td><span class="tag t-agreed">합의</span> 앱 / <span class="tag t-legacy">기존안</span> 메일 없음(D5)</td>
+</tr>
+<tr>
+<td>사람</td>
+<td>인사 담당자</td>
+<td>React 백오피스의 인사 화면에서 신규 인력 등록·계정 발급 요청</td>
+<td><span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td>사람</td>
+<td>고객</td>
+<td>고객 앱 사용, Google 로그인</td>
+<td><span class="tag t-legacy">기존안</span> 유지</td>
+</tr>
+<tr>
+<td>사람</td>
+<td>라이더</td>
+<td>인증 방식 미정</td>
+<td><span class="tag t-open">미확정</span> U-15</td>
+</tr>
+<tr>
+<td>사람</td>
+<td>Keycloak 운영 관리자</td>
+<td>master realm 최고 관리자. 업무 사용자와 분리</td>
+<td><span class="tag t-legacy">기존안</span> §6</td>
+</tr>
+<tr>
+<td>외부</td>
+<td>Google</td>
+<td>고객 인증 IdP</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td>외부</td>
+<td>직원용 외부 소셜 IdP</td>
+<td>사용 여부·제공자 미정</td>
+<td><span class="tag t-open">미확정</span> U-05</td>
+</tr>
+<tr>
+<td>외부</td>
+<td>SMTP 외부 발송 서비스</td>
+<td>비밀번호 설정·재설정 메일</td>
+<td><span class="tag t-legacy">기존안</span> §2.3·§6.6, 대상 구분은 U-10</td>
+</tr>
+<tr>
+<td>경계 내</td>
+<td>PMart 시스템</td>
+<td>사용자 앱, Gateway, Spring Boot 서비스, Keycloak(<code>pmart-staff</code>)</td>
+<td>Keycloak은 PMart가 운영하는 구성요소로 경계 <strong>안</strong>에 둠 <span class="tag t-legacy">기존안 §5</span></td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>Keycloak은 제3자 SaaS가 아니라 PMart가 자체 배치(LAN pc4 / Kubernetes)하는 구성요소로 기존안에 기술돼 있어 PMart 경계 안에 그렸다. 다만 &quot;업무 서비스와 다른 보안 영역&quot;이라는 점은 06 문서에서 별도 신뢰 경계로 다룬다.</p>
+</blockquote>
+<h3 id="d01-h2">2. 컨텍스트 다이어그램</h3><figure class="viz" data-viz="d01-m1"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>flowchart LR
+  STAFF(["본사·백오피스 직원"])
+  FIELD(["MFC·CDC 현장 직원"])
+  HRU(["인사 담당자"])
+  CUSTU(["고객"])
+  RIDER(["라이더 - 방식 미정 U-15"])
+  KCADM(["Keycloak 운영 관리자"])
+
+  subgraph PMART["PMart 시스템 경계"]
+    direction LR
+    SAPP["직원 앱 - React 백오피스 / Flutter PDA"]
+    CAPP["고객 앱"]
+    GW["API Gateway - 공통 진입점"]
+    subgraph STAFFZONE["직원 인증 영역 - 발급자 pmart-staff"]
+      SIAM["직원 IAM - HR Service, employee-auth, Keycloak"]
+    end
+    subgraph CUSTZONE["고객 인증 영역 - 발급자 auth-service"]
+      CAUTH["auth-service"]
+    end
+    BIZ["업무 서비스 - WMS, OMS 등"]
+  end
+
+  GOOGLE["Google - 고객 IdP"]
+  SIDP["직원용 외부 IdP - 사용 여부 미정 U-05"]
+  SMTP["SMTP 외부 발송 서비스"]
+
+  STAFF --&gt;|업무·로그인| SAPP
+  FIELD --&gt;|업무·로그인| SAPP
+  HRU --&gt;|직원 등록·계정 발급 요청| SAPP
+  KCADM --&gt;|관리 콘솔 - 내부망, Gateway 미경유| SIAM
+  SAPP --&gt;|로그인·계정 발급·업무 요청| GW
+  CAPP --&gt;|고객 로그인·업무 요청| GW
+  GW --&gt;|로그인 · 계정 발급| SIAM
+  GW --&gt;|업무 요청| BIZ
+  GW --&gt;|고객 로그인| CAUTH
+  SAPP -.-&gt;|로그인 화면 이동 - 경로 미정| SIAM
+  CUSTU --&gt; CAPP
+  CAUTH --&gt;|인가 코드 교환| GOOGLE
+  SIAM -.-&gt;|선택적 연동| SIDP
+  SIAM -.-&gt;|대상·사용 범위 미정 U-10| SMTP
+  RIDER -.-&gt;|미정| PMART</code></pre></details><p><strong>범례:</strong> 실선 = 합의 또는 기존안에 기재된 경로 · 점선 = 미정·선택적 경로 · 둥근 노드 = 사람 · 사각 노드 = 시스템/컨테이너 묶음. 직원 앱과 고객 앱의 API 요청은 모두 <strong>API Gateway</strong>를 거친다 [Draft §3]. 로그인 중 브라우저가 Keycloak 화면으로 이동하는 경로가 Gateway를 지나는지는 미정이라 점선으로 따로 그렸다 [Draft §3 주의].</p>
+<h3 id="d01-h3">3. 경계 규칙</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>규칙</th>
+<th>상태</th>
+<th>근거</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>B1</td>
+<td>직원 토큰 발급자(Keycloak <code>pmart-staff</code>)와 고객 토큰 발급자(<code>auth-service</code>)는 다르다</td>
+<td><span class="tag t-legacy">기존안</span> <span class="tag t-agreed">합의</span></td>
+<td>구성안 §0·D3, Draft §2-5</td>
+</tr>
+<tr>
+<td>B2</td>
+<td>고객 계정은 직원 권한으로 승격되지 않는다</td>
+<td><span class="tag t-legacy">기존안</span></td>
+<td>구성안 D3, BO-01 <span class="tag t-unread">미열람</span></td>
+</tr>
+<tr>
+<td>B3</td>
+<td>직원 계정은 인사 등록 경로로만 생성되며 자가 가입은 없다</td>
+<td><span class="tag t-legacy">기존안</span> §6.1 / <span class="tag t-agreed">합의</span> HR 경로</td>
+<td>구성안 §6.1, Draft §2-3</td>
+</tr>
+<tr>
+<td>B4</td>
+<td>사람의 로그인 자격(직원)과 서버의 관리 자격(HR Service)은 다른 신원이다</td>
+<td><span class="tag t-proposal">제안</span></td>
+<td>Draft §5·§7</td>
+</tr>
+<tr>
+<td>B5</td>
+<td>고객 Google 로그인 경로는 변경하지 않는다</td>
+<td><span class="tag t-agreed">합의</span></td>
+<td>Prompt 금지사항, Draft §8</td>
+</tr>
+<tr>
+<td>B6</td>
+<td>라이더가 어느 영역에 속하는지 정하지 않는다</td>
+<td><span class="tag t-open">미확정</span> U-15</td>
+<td>구성안 Q7, Draft U-15</td>
+</tr>
+</tbody></table></div>
+<h3 id="d01-h4">4. 이 레벨에서 보이지 않는 것 (다음 문서로)</h3><ul>
+<li><code>employee-auth</code>와 <code>HR Service</code>의 분리, Gateway 뒤 경로별 라우팅 → 02</li>
+<li>계정 발급과 로그인의 시퀀스 → 04, 05</li>
+<li>Admin REST API와 OIDC Endpoint의 구분 → 02 §3, 06 §2</li>
+</ul>
+
+</section>
+<section class="doc" id="d02" aria-labelledby="d02-t">
+<h2 class="doc-title"><span class="doc-no">02</span>컨테이너 아키텍처 (C4 Level 2)</h2><ul>
+<li>출처: <span class="src">Draft</span> §3·§4·§7, <span class="src">구성안</span> §4·§5·§7·§8, <span class="src">Spec</span> §3·§4</li>
+<li>주의: 이 문서는 <strong>논리 컨테이너와 논리 연결</strong>을 그린다. 물리 배치(LAN pc4, Kubernetes)는 §4에 별도로 적고, 둘을 섞지 않는다.</li>
+</ul>
+<h3 id="d02-h1">1. 컨테이너 목록</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>컨테이너</th>
+<th>기술</th>
+<th>역할 요약</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>직원·인사팀 React 백오피스</td>
+<td>React</td>
+<td>직원 업무 UI, 인사 등록·발급 요청 UI</td>
+<td><span class="tag t-agreed">합의</span>. SPA/BFF 형태는 U-06</td>
+</tr>
+<tr>
+<td>직원 Flutter PDA</td>
+<td>Flutter (Android)</td>
+<td>현장 로그인 시작, 현장 업무</td>
+<td><span class="tag t-agreed">합의</span>. 인증 복귀는 U-01</td>
+</tr>
+<tr>
+<td>고객 앱</td>
+<td>(기존)</td>
+<td>고객 업무, Google 로그인</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td>API Gateway</td>
+<td>Spring Cloud Gateway(리액티브)로 기술됨</td>
+<td>라우팅, 공통 보안 경계</td>
+<td><span class="tag t-legacy">기존안</span> §8.1. 검증 계약은 U-12</td>
+</tr>
+<tr>
+<td><strong>HR Service</strong></td>
+<td>Spring Boot</td>
+<td>인사정보 정본, 계정 발급·수정·비활성화</td>
+<td><span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td><strong>employee-auth</strong></td>
+<td>Spring Boot</td>
+<td>직원 OIDC 로그인 중개 (Keycloak 로그인 Client)</td>
+<td><span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td>Keycloak (<code>pmart-staff</code>)</td>
+<td>Keycloak 26.x로 기술됨</td>
+<td>직원 계정·Credential·인증 Flow·세션·토큰</td>
+<td><span class="tag t-legacy">기존안</span> 이름·버전</td>
+</tr>
+<tr>
+<td>Keycloak PostgreSQL</td>
+<td>PostgreSQL 전용 DB</td>
+<td>Keycloak 영속 저장</td>
+<td><span class="tag t-legacy">기존안</span> §5</td>
+</tr>
+<tr>
+<td>업무 API</td>
+<td>Spring Boot (WMS, OMS, mfc-capacity 등)</td>
+<td>도메인 인가·상태 전이</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td>기존 auth-service</td>
+<td>Spring Boot</td>
+<td>고객·게스트 토큰 발급 (직원 운영자 기능은 이행 후 제거 예정)</td>
+<td><span class="tag t-legacy">기존안</span> §8.4</td>
+</tr>
+<tr>
+<td>staff-access</td>
+<td>(미정)</td>
+<td>업무 권한 기록·반영</td>
+<td><span class="tag t-legacy">기존안</span> 권장. <strong>채택 여부 미정</strong> U-13</td>
+</tr>
+<tr>
+<td>차단 목록 저장소</td>
+<td>Redis(기존)</td>
+<td>퇴사자 <code>sub</code> 차단</td>
+<td><span class="tag t-legacy">기존안</span> §5.1. 채택 여부는 U-14</td>
+</tr>
+</tbody></table></div>
+<h3 id="d02-h2">2. 컨테이너 다이어그램</h3><figure class="viz" data-viz="d02-m1"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>flowchart TB
+  subgraph CLIENTS["사용자 애플리케이션"]
+    WEB["직원·인사팀 React 백오피스"]
+    PDA["직원 Flutter PDA"]
+    CAPP["고객 앱"]
+  end
+
+  GW["API Gateway"]
+
+  subgraph SVC["PMart Spring Boot 서비스"]
+    HR["HR Service - 소유: 인사 원장, 계정 발급"]
+    EA["employee-auth - 소유: 직원 로그인 중개"]
+    BIZ["업무 API - 소유: 도메인 인가"]
+    AUTH["auth-service - 소유: 고객 토큰"]
+    SA["staff-access - 기존안 권장, 채택 미정 U-13"]
+  end
+
+  subgraph IDP["직원 IdP 영역"]
+    KC["Keycloak realm pmart-staff"]
+    KCDB[("Keycloak 전용 PostgreSQL")]
+  end
+
+  GOOGLE["Google"]
+  SIDP["직원 외부 IdP - 선택 U-05"]
+  REDIS[("차단 목록 Redis - 채택 미정 U-14")]
+
+  WEB --&gt;|"인사 등록·발급 요청 (HTTPS API)"| GW
+  GW --&gt;|라우팅| HR
+  HR --&gt;|"① Client Credentials - hr-provisioner 서비스 계정"| KC
+  HR ==&gt;|"② Admin REST API - Bearer 관리용 토큰"| KC
+
+  WEB --&gt;|로그인 시작| GW
+  PDA --&gt;|로그인 시작| GW
+  GW --&gt;|라우팅| EA
+  EA --&gt;|"OIDC Token Endpoint (code 교환)"| KC
+  WEB -.-&gt;|"사용자 에이전트 인증 화면 - 경로 미정 U-01 U-06"| KC
+  PDA -.-&gt;|"사용자 에이전트 인증 화면 - 경로 미정 U-01"| KC
+  KC -.-&gt;|"Redirect 콜백 - 연결 방식 미정 U-07"| EA
+  EA -.-&gt;|"앱 인증 결과 - 형식 미정 U-03"| GW
+
+  WEB --&gt;|업무 요청| GW
+  PDA --&gt;|업무 요청| GW
+  GW --&gt;|라우팅| BIZ
+  GW -.-&gt;|"직원 토큰·세션 검증 계약 미정 U-12"| KC
+  GW -.-&gt;|차단 확인| REDIS
+
+  KC --- KCDB
+  KC -.-&gt;|선택적 연동| SIDP
+
+  CAPP --&gt;|Google 로그인| GOOGLE
+  CAPP --&gt;|"서버 인가 코드 (Gateway 경유)"| GW
+  GW --&gt;|라우팅| AUTH
+  AUTH --&gt;|코드 교환| GOOGLE
+  CAPP --&gt;|고객 업무 요청| GW
+
+  SA -.-&gt;|"Admin REST API (그룹·역할) - 채택 미정"| KC</code></pre></details><p><strong>범례</strong></p>
+<ul>
+<li>실선 <code>--&gt;</code> : 합의 또는 기존안에 기재된 논리 연결</li>
+<li>굵은 실선 <code>==&gt;</code> : <strong>Keycloak Admin REST API</strong> (관리 경로, HR Service 전용). 바로 위 ① 실선은 그 호출에 쓸 관리용 토큰 취득(Client Credentials)</li>
+<li><code>OIDC Token Endpoint</code> 라벨 : <strong>로그인 경로</strong>의 서버간 code 교환. Admin REST API와 다른 Endpoint·다른 자격</li>
+<li>점선 <code>-.-&gt;</code> : 미정·선택적 경로 (해당 U-ID 표기)</li>
+<li>사용자 에이전트(브라우저/시스템 브라우저)의 Keycloak 화면 이동은 <strong>점선</strong>으로만 그렸다. 서버 API 호출로 확정하지 않는다.</li>
+</ul>
+<h3 id="d02-h3">3. 두 개의 Keycloak 인터페이스 구분</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>구분</th>
+<th>로그인 경로</th>
+<th>계정 발급 경로</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>호출자</td>
+<td><code>employee-auth</code> (+ 사용자 에이전트)</td>
+<td><code>HR Service</code></td>
+</tr>
+<tr>
+<td>Keycloak 인터페이스</td>
+<td>OIDC Authorization Endpoint / Token Endpoint (<code>/realms/pmart-staff/protocol/openid-connect/...</code>) <span class="tag t-supp">보충</span></td>
+<td>Admin REST API (<code>/admin/realms/pmart-staff/users</code> 등) [Draft §5]</td>
+</tr>
+<tr>
+<td>자격</td>
+<td><code>employee-auth</code> 로그인 Client 자격 (Client 인증 방식 U-07)</td>
+<td>서비스 계정 Client <code>hr-provisioner</code>의 Access Token (Client Credentials), 권한은 <code>realm-management</code> 역할 3종 <span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td>결과</td>
+<td>직원 사용자에 대한 토큰</td>
+<td>사용자 생성·수정·비활성화</td>
+</tr>
+<tr>
+<td>상태</td>
+<td><span class="tag t-agreed">합의</span> 역할, 세부 미정</td>
+<td><span class="tag t-agreed">합의</span> 경로·자격 구성 (§3.1), 역할 매핑 허용 여부만 U-11</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p><strong><span class="tag t-supp">보충</span></strong> 관리용 Access Token 자체는 OAuth2 Token Endpoint에서 Client Credentials로 받는다. 따라서 HR Service도 Token Endpoint를 호출하지만, 그 목적은 &quot;관리 자격 취득&quot;이고 직원 로그인과 무관하다. §2 다이어그램에서는 ① 토큰 취득과 ② Admin REST API 호출로 나눠 그렸다.</p>
+</blockquote>
+<h4 id="d02-h4">3.1 HR Service의 Admin REST API 자격 구성 <span class="tag t-agreed">합의 2026-11-12</span></h4><p>Admin REST API를 쓰려면 아래 세 가지를 <strong>함께</strong> 갖춘다. 하나라도 빠지면 호출이 실패한다.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>구성 요소</th>
+<th>내용</th>
+<th>빠지면</th>
+<th>근거</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>서비스 계정 Client</td>
+<td><code>pmart-staff</code> realm의 <code>hr-provisioner</code>. Client authentication ON(기밀 Client, Secret 발급), Service accounts roles ON. Standard flow·Direct access grants OFF (사람이 이 Client로 로그인하지 않음)</td>
+<td>관리용 토큰을 받을 주체가 없음</td>
+<td><span class="src">구성안</span> §7.1, OFF 항목은 <span class="tag t-supp">보충</span></td>
+</tr>
+<tr>
+<td>2</td>
+<td>서비스 계정 권한</td>
+<td>Keycloak이 만든 서비스 계정 사용자(<code>service-account-hr-provisioner</code>)에 <code>realm-management</code> Client 역할 <code>manage-users</code>·<code>view-users</code>·<code>query-users</code>. <code>realm-admin</code>·<code>manage-realm</code>·<code>manage-clients</code>는 주지 않음</td>
+<td>토큰은 발급되나 Admin API가 <strong>403</strong></td>
+<td><span class="src">구성안</span> §7.1</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Client Credentials</td>
+<td>HR Service가 <code>POST /realms/pmart-staff/protocol/openid-connect/token</code> (<code>grant_type=client_credentials</code>, client_id, secret)으로 관리용 Access Token을 받아 Admin API 호출 시 <code>Authorization: Bearer</code> 헤더에 넣음</td>
+<td><strong>401</strong></td>
+<td><span class="src">Draft</span> §5, 경로는 <span class="tag t-supp">보충</span></td>
+</tr>
+</tbody></table></div>
+<figure class="viz" data-viz="d02-m2"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>flowchart LR
+  subgraph HRS["HR Service"]
+    SEC["client_id · secret - 암호화 설정 저장"]
+    CACHE["관리용 토큰 캐시 - 만료 전 재사용"]
+  end
+  subgraph KCR["Keycloak realm pmart-staff"]
+    TOK["Token Endpoint"]
+    ADM["Admin REST API - admin/realms/pmart-staff/users"]
+    CL["1 서비스 계정 Client hr-provisioner - Service accounts ON"]
+    SAU["서비스 계정 사용자 service-account-hr-provisioner"]
+    RM["2 realm-management 역할 - manage-users, view-users, query-users"]
+  end
+  SEC --&gt;|"3 Client Credentials"| TOK
+  TOK -.-&gt;|Client 확인| CL
+  TOK --&gt;|"관리용 Access Token - 역할 포함"| CACHE
+  CACHE ==&gt;|"Bearer 호출"| ADM
+  ADM -.-&gt;|"권한 확인"| RM
+  CL --- SAU
+  SAU --- RM</code></pre></details><p><strong>범례:</strong> 실선 = 토큰 취득 · 굵은 실선 = Admin REST API 호출 · 점선 = Keycloak 내부 확인 · <code>---</code> = 구성 관계(Client → 서비스 계정 사용자 → 역할). 번호 1·2·3은 위 표의 구성 요소다.</p>
+<p>운영 규칙:</p>
+<ul>
+<li><strong><span class="tag t-agreed">합의</span></strong> master realm 최고 관리자 계정을 쓰지 않는다. <code>pmart-staff</code> realm의 서비스 계정으로 그 realm만 관리한다 (C-14).</li>
+<li><strong><span class="tag t-agreed">합의</span></strong> <code>hr-provisioner</code>는 <code>employee-auth</code> 로그인 Client와 별개다. 같은 Token Endpoint를 쓰지만 grant 종류와 목적이 다르다.</li>
+<li><strong><span class="tag t-legacy">기존안</span></strong> Secret은 암호화 설정 저장소(<code>{cipher}</code>)에 두고 교체 절차를 정한다. Admin 이벤트 저장을 켠다 (§6.6).</li>
+<li><strong><span class="tag t-agreed">합의</span></strong> HR Service는 Keycloak 내부 주소로 직접 호출하고, <code>/admin</code> 경로는 API Gateway로 노출하지 않는다 (06 S-3).</li>
+<li><strong><span class="tag t-proposal">제안</span></strong> 관리용 토큰은 수명이 짧으므로 만료 전까지 캐시해 재사용하고, 401 수신 시 1회 재발급 후 재시도한다.</li>
+<li><strong><span class="tag t-open">미확정</span> U-11 (이번 범위 제외)</strong> <code>manage-users</code>가 역할 매핑·그룹 가입까지 허용하는지는 고정 버전에서 확인한다. 결과에 따라 08 §3 A-2·A-3을 추가할지 정한다.</li>
+<li>Endpoint 경로와 역할 이름은 일반적인 Keycloak 기준이며, 고정할 26.x 버전 공식 문서로 재확인한다 <span class="tag t-verify">확인</span>.</li>
+</ul>
+<h3 id="d02-h5">4. 물리 배치 (논리 연결과 별개)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>환경</th>
+<th>기존안 기재</th>
+<th>이 문서의 입장</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>LAN</td>
+<td>Keycloak은 pc4, <code>postgres-pc4</code> 안 전용 DB, 포트 8180/8543/9000, 사내 CA HTTPS 필요</td>
+<td><span class="tag t-legacy">기존안</span> 그대로 인용. <code>employee-auth</code>·<code>HR Service</code>의 배치 위치는 기록 없음 → <strong>미확인</strong></td>
+</tr>
+<tr>
+<td>운영</td>
+<td>Kubernetes 2대 이상, <code>jdbc-ping</code>, 관리형 PostgreSQL, 관리 콘솔 내부망</td>
+<td><span class="tag t-legacy">기존안</span>·<span class="tag t-verify">확인</span> 대상</td>
+</tr>
+<tr>
+<td>발급자 주소</td>
+<td><code>iss</code>는 공개 주소 하나로 고정, JWKS는 내부 주소로 수신</td>
+<td><span class="tag t-legacy">기존안</span> §5.1. <code>employee-auth</code>가 내부 주소로 Token Endpoint를 호출할 때 <code>iss</code> 일치 여부는 <span class="tag t-verify">확인</span> (N-06)</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li>Gateway 뒤에 <code>employee-auth</code>가 있다는 것은 <strong>API 라우팅상 논리 위치</strong>다. Keycloak 로그인 화면으로의 브라우저 이동이 Gateway를 통과하는지는 정하지 않는다(<span class="src">Draft</span> §3 주의 문구).</li>
+</ul>
+<h3 id="d02-h6">5. 다이어그램 해석상 주의</h3><ol>
+<li><code>EA --&gt; KC (Token Endpoint)</code> 화살표는 &quot;employee-auth가 code를 교환할 수 있다&quot;는 뜻일 뿐, React/PDA의 최종 세션 모델(U-02, U-03)을 확정하지 않는다.</li>
+<li><code>GW -.-&gt; KC</code> 점선은 Gateway가 Keycloak 토큰을 직접 검증할지, <code>employee-auth</code>가 만든 별도 세션/토큰을 검증할지 정해지지 않았음을 뜻한다(U-12).</li>
+<li><code>staff-access</code>는 구성안의 권장이며 Draft에서 채택도 폐기도 되지 않았다. 계정 생성 책임은 HR Service에 있으므로 <code>staff-access</code>가 있더라도 <strong>계정 생성을 하지 않는다</strong>(03 문서).</li>
+</ol>
+
+</section>
+<section class="doc" id="d03" aria-labelledby="d03-t">
+<h2 class="doc-title"><span class="doc-no">03</span>책임과 데이터 소유권</h2><ul>
+<li>출처: <span class="src">Draft</span> §2·§4·§7, <span class="src">구성안</span> §4·§8.5·§9.2·§9.3, <span class="src">Prompt</span> 확정 경계</li>
+<li>원칙: <strong>신규 &quot;Employee IAM Service&quot;를 만들지 않는다 <span class="tag t-agreed">합의</span>.</strong> 계정 발급은 HR Service가, 로그인은 employee-auth가, Credential·세션은 Keycloak이 소유한다. 업무 권한 승인 정본은 미정(U-13)이다.</li>
+</ul>
+<h3 id="d03-h1">1. 책임 매트릭스</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>구성요소</th>
+<th>책임</th>
+<th>책임이 아닌 것</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>React 백오피스</td>
+<td>인사 정보 입력·발급 요청, 직원 업무 UI</td>
+<td>Keycloak 관리 Secret 보관, Admin API 직접 호출</td>
+<td><span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td>Flutter PDA</td>
+<td>직원 로그인 시작, 현장 업무 요청</td>
+<td>Keycloak 관리 API 호출, Keycloak Client 등록</td>
+<td><span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td>API Gateway</td>
+<td>라우팅, 공통 보안 경계(토큰/세션 검증·차단 목록 확인은 기존안)</td>
+<td>인사·IAM 정본, 계정 생성</td>
+<td><span class="tag t-agreed">합의</span>·<span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td><strong>HR Service</strong></td>
+<td>인사정보 등록·검증, 발급 요청 처리, Keycloak 사용자 생성·수정·비활성화, 직원↔Keycloak 사용자 매핑 기록</td>
+<td>대화형 OIDC 로그인, 업무 권한 부여(기존안 원칙)</td>
+<td><span class="tag t-agreed">합의</span>. 권한 부여 금지는 <span class="tag t-legacy">기존안</span> §9.1</td>
+</tr>
+<tr>
+<td><strong>employee-auth</strong></td>
+<td>직원 OIDC 로그인 중개, Keycloak 로그인 Client</td>
+<td>계정 발급, 인사 원장, 관리 API 호출</td>
+<td><span class="tag t-agreed">합의</span></td>
+</tr>
+<tr>
+<td>Keycloak <code>pmart-staff</code></td>
+<td>계정·Credential·OTP·인증 Flow·LoA·세션·토큰 발급</td>
+<td>입사 승인 원장, 업무 원장</td>
+<td><span class="tag t-agreed">합의</span>·<span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td>업무 서비스</td>
+<td>토큰 재검증, 센터별 역할로 인가, 상태 전이 검증</td>
+<td>IAM 계정 생성</td>
+<td><span class="tag t-agreed">합의</span>·<span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td>auth-service</td>
+<td>고객·게스트 토큰 발급</td>
+<td>직원 IAM, 직원 로그인 (이행 후)</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td>staff-access</td>
+<td>권한 기록·규칙 검사·승인 연결·Keycloak 반영·차단 등록·대사</td>
+<td>계정 생성</td>
+<td><strong><span class="tag t-legacy">기존안 권장, 채택 미정</span></strong> U-13</td>
+</tr>
+</tbody></table></div>
+<h3 id="d03-h2">2. 데이터 정본</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>데이터</th>
+<th>정본(제안)</th>
+<th>사본/참조</th>
+<th>상태</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>사번, 재직 상태, 인사정보, 소속</td>
+<td>HR Service</td>
+<td>Keycloak 사용자 속성(<code>employeeNo</code>, <code>affiliation</code>, <code>employmentType</code>)</td>
+<td><span class="tag t-proposal">제안</span> Draft §4</td>
+<td>Keycloak 속성은 HR이 써 넣는 사본</td>
+</tr>
+<tr>
+<td>직원 ↔ Keycloak 사용자 ID(<code>sub</code>) 매핑</td>
+<td>HR Service</td>
+<td>—</td>
+<td><span class="tag t-proposal">제안</span> Draft §5 시퀀스</td>
+<td>멱등·대사의 키</td>
+</tr>
+<tr>
+<td>로그인 ID</td>
+<td>Keycloak (값은 HR이 결정해 생성)</td>
+<td>HR</td>
+<td><span class="tag t-open">미확정</span> U-09</td>
+<td>기존안은 사번 <code>EMP-000123</code>, Draft는 <code>xxx@pmart.com</code> 언급</td>
+</tr>
+<tr>
+<td>비밀번호·OTP·Credential</td>
+<td>Keycloak</td>
+<td>없음</td>
+<td><span class="tag t-legacy">기존안</span>·<span class="tag t-agreed">합의</span></td>
+<td>HR은 Credential을 저장하지 않아야 함 <span class="tag t-proposal">제안</span></td>
+</tr>
+<tr>
+<td>인증 세션(SSO/클라이언트 세션)</td>
+<td>Keycloak</td>
+<td>employee-auth 세션(형태 미정)</td>
+<td><span class="tag t-open">미확정</span> U-02·U-03</td>
+<td></td>
+</tr>
+<tr>
+<td>앱 인증 상태(쿠키·세션·토큰)</td>
+<td>미정</td>
+<td>—</td>
+<td><span class="tag t-open">미확정</span> U-03</td>
+<td>employee-auth가 소유할 가능성 있으나 미정</td>
+</tr>
+<tr>
+<td>센터별 역할·본사 역할(현재 상태)</td>
+<td>Keycloak 그룹·realm role <span class="tag t-legacy">기존안</span></td>
+<td>토큰 <code>centerRoles</code>·<code>roles</code></td>
+<td><span class="tag t-legacy">기존안</span> §9.2</td>
+<td></td>
+</tr>
+<tr>
+<td>권한 부여 기록(누가·언제·승인자)</td>
+<td>staff-access <span class="tag t-legacy">기존안 권장</span></td>
+<td>—</td>
+<td><span class="tag t-open">미확정</span> U-13</td>
+<td></td>
+</tr>
+<tr>
+<td>계정 발급 승인 기록</td>
+<td>미정</td>
+<td>—</td>
+<td><span class="tag t-open">미확정</span> U-08</td>
+<td>HR 내부일지 approval-service 연동일지 미정</td>
+</tr>
+<tr>
+<td>작업 자격(냉동·장비·근무)</td>
+<td><code>mfc-capacity</code></td>
+<td>—</td>
+<td><span class="tag t-legacy">기존안</span> §9.2 <span class="tag t-unread">미열람</span></td>
+<td></td>
+</tr>
+<tr>
+<td>행위자 ID</td>
+<td>Keycloak <code>sub</code></td>
+<td>화면엔 사번</td>
+<td><span class="tag t-legacy">기존안 권장</span> Q4</td>
+<td>Keycloak 재구축 시 ID 유지 필요</td>
+</tr>
+<tr>
+<td>퇴사자 차단 목록</td>
+<td>Redis (Gateway)</td>
+<td>—</td>
+<td><span class="tag t-legacy">기존안</span> / <span class="tag t-open">미확정</span> U-14</td>
+<td>등록 주체 미정(N-04)</td>
+</tr>
+</tbody></table></div>
+<h3 id="d03-h3">3. 토큰·자격 발급 주체</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>발급물</th>
+<th>발급자</th>
+<th>받는 쪽</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>직원 Access/Refresh/ID Token</td>
+<td>Keycloak <code>pmart-staff</code></td>
+<td>employee-auth (이후 보관·전달은 미정)</td>
+<td><span class="tag t-agreed">합의</span> 발급자 / <span class="tag t-open">미확정</span> U-02</td>
+</tr>
+<tr>
+<td>앱용 인증 결과(세션 쿠키 또는 별도 토큰)</td>
+<td>미정 (employee-auth 후보)</td>
+<td>React / PDA</td>
+<td><span class="tag t-open">미확정</span> U-03</td>
+</tr>
+<tr>
+<td>HR 관리용 Access Token</td>
+<td>Keycloak (서비스 계정 Client <code>hr-provisioner</code>, Client Credentials, <code>realm-management</code> 역할 3종)</td>
+<td>HR Service</td>
+<td><span class="tag t-agreed">합의</span> (02 §3.1)</td>
+</tr>
+<tr>
+<td>고객·게스트 JWT</td>
+<td>auth-service</td>
+<td>고객 앱</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>employee-auth가 자체 토큰을 발급하게 되면 <strong>세 번째 발급자</strong>가 생긴다. 이 경우 Gateway·업무 서비스의 발급자 목록(구성안 §8.1)과 <code>ptyp</code>·<code>aud</code> 규칙이 바뀌어야 한다. 결정하지 않으며 U-03·U-12와 N-02로 기록한다.</p>
+</blockquote>
+<h3 id="d03-h4">4. 권한·승인 주체</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>행위</th>
+<th>요청</th>
+<th>승인</th>
+<th>실행(시스템)</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>직원 계정 발급</td>
+<td>인사 담당자</td>
+<td>미정</td>
+<td>HR Service → Admin REST API</td>
+<td><span class="tag t-agreed">합의</span> 실행 경로 / <span class="tag t-open">미확정</span> U-08 승인</td>
+</tr>
+<tr>
+<td>계정 정보 수정(센터 이동 등)</td>
+<td>인사 담당자</td>
+<td>미정</td>
+<td>HR Service</td>
+<td><span class="tag t-legacy">기존안</span> §9.1 / U-08</td>
+</tr>
+<tr>
+<td>계정 비활성화(퇴사)</td>
+<td>인사 담당자</td>
+<td>미정</td>
+<td>HR Service</td>
+<td><span class="tag t-legacy">기존안</span> §9.1</td>
+</tr>
+<tr>
+<td>본사 역할·센터 관리자 임명</td>
+<td>부서장·본사 운영</td>
+<td>본사 권한 관리자</td>
+<td>staff-access (채택 시)</td>
+<td><span class="tag t-legacy">기존안</span> §9.3 / U-13</td>
+</tr>
+<tr>
+<td>센터 작업자 역할</td>
+<td>센터 관리자</td>
+<td>없음</td>
+<td>staff-access (채택 시)</td>
+<td><span class="tag t-legacy">기존안</span> §9.3 / U-13</td>
+</tr>
+<tr>
+<td>비밀번호 초기화(메일 없는 직원)</td>
+<td>직원 → 센터 관리자</td>
+<td>미정</td>
+<td>미정 (HR? Keycloak 콘솔?)</td>
+<td><span class="tag t-legacy">기존안</span> §6.1, 실행 주체 미기재 → N-08</td>
+</tr>
+</tbody></table></div>
+<h3 id="d03-h5">5. 책임 경계에서 발견한 공백</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>공백</th>
+<th>이유</th>
+<th>관련</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>G-1</td>
+<td>HR Service가 &quot;업무 권한을 주지 않는다&quot;는 원칙을 Admin 권한으로 강제할지</td>
+<td>구성안 <code>hr-provisioner</code>는 역할 부여 권한이 없도록 권장. Keycloak에서 <code>manage-users</code>가 역할 매핑까지 허용하는지 <span class="tag t-verify">확인</span></td>
+<td>U-11, 08 §3</td>
+</tr>
+<tr>
+<td>G-2</td>
+<td>staff-access 미채택 시 권한 부여·퇴사 차단 등록 주체</td>
+<td>Draft는 계정 생성용 서비스만 불필요하다고 했고 권한 서비스는 미정</td>
+<td>U-13, U-14, N-04</td>
+</tr>
+<tr>
+<td>G-3</td>
+<td>현장 직원 비밀번호 초기화 실행 주체</td>
+<td>메일이 없어 Keycloak 셀프 재설정 불가</td>
+<td>U-10, N-08</td>
+</tr>
+<tr>
+<td>G-4</td>
+<td>앱 인증 상태의 정본</td>
+<td>employee-auth가 세션을 가지면 상태 서비스가 됨(확장·장애 영향)</td>
+<td>U-02, U-03</td>
+</tr>
+</tbody></table></div>
+
+</section>
+<section class="doc" id="d04" aria-labelledby="d04-t">
+<h2 class="doc-title"><span class="doc-no">04</span>직원 IAM 계정 생명주기</h2><ul>
+<li>출처: <span class="src">Draft</span> §2-3·§2-4·§5·§9, <span class="src">구성안</span> §6.1·§9.1·§9.5·§10.3·§11</li>
+<li>경로 고정 <span class="tag t-agreed">합의</span>: <strong>인사 담당자 → React 백오피스 → API Gateway → HR Service → Keycloak Admin REST API</strong></li>
+<li>이 문서의 모든 Keycloak 호출은 <strong>Admin REST API</strong>이며 OIDC 로그인 Endpoint가 아니다.</li>
+</ul>
+<h3 id="d04-h1">1. 상태 모델 (논리)</h3><figure class="viz" data-viz="d04-m1"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>stateDiagram-v2
+  state "등록요청" as REQ
+  state "승인대기" as WAIT
+  state "발급진행" as PROV
+  state "반영미확인" as UNK
+  state "활성" as ACTIVE
+  state "비활성" as DISABLED
+  state "거절" as REJ
+  [*] --&gt; REQ: 인사 담당자 입력
+  REQ --&gt; WAIT: 승인 필요 시 - U-08
+  REQ --&gt; PROV: 승인 불요 시 - U-08
+  WAIT --&gt; PROV: 승인
+  WAIT --&gt; REJ: 반려
+  PROV --&gt; ACTIVE: Keycloak 생성 확인
+  PROV --&gt; UNK: 응답 유실 또는 타임아웃
+  UNK --&gt; ACTIVE: 재조회로 존재 확인
+  UNK --&gt; PROV: 재조회로 부재 확인 후 재시도
+  ACTIVE --&gt; ACTIVE: 속성 수정 - 센터 이동 등
+  ACTIVE --&gt; DISABLED: 퇴사
+  DISABLED --&gt; [*]: 삭제하지 않음 - 기존안
+  REJ --&gt; [*]</code></pre></details><p><strong>범례:</strong> 상태 이름은 논리 설명용이며 HR Service의 실제 상태 코드가 아니다. <code>반영미확인</code>은 <span class="src">구성안</span> §9.1·<span class="src">Draft</span> §5의 <span class="tag t-proposal">제안</span>. 승인 단계 존재 여부는 U-08로 미정이므로 두 경로를 모두 그렸다.</p>
+<h3 id="d04-h2">2. 시퀀스 ① — 신규 직원 계정 발급 (정상·중복·응답 유실)</h3><figure class="viz" data-viz="d04-m2"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>sequenceDiagram
+  autonumber
+  actor HRU as 인사 담당자
+  participant WEB as React 백오피스
+  participant GW as API Gateway
+  participant HR as HR Service
+  participant TOK as Keycloak Token Endpoint
+  participant ADM as Keycloak Admin REST API
+  HRU-&gt;&gt;WEB: 신규 인력 정보 입력, 계정 발급 요청
+  WEB-&gt;&gt;GW: 직원 등록 요청 (인사 담당자 인증 상태 포함)
+  GW-&gt;&gt;HR: 라우팅
+  HR-&gt;&gt;HR: 요청자 권한, 입력값, 사번 중복 검증
+  opt 승인 절차가 결정된 경우 - U-08
+    HR--&gt;&gt;HR: 승인 대기 또는 승인 확인
+  end
+  HR-&gt;&gt;TOK: Client Credentials - hr-provisioner client_id와 secret
+  TOK-&gt;&gt;HR: 관리용 Access Token - realm-management 역할 3종 포함
+  HR-&gt;&gt;ADM: Bearer 토큰으로 사용자 검색 - 로그인 ID 또는 사번 속성
+  alt 이미 존재
+    ADM-&gt;&gt;HR: 기존 사용자
+    HR-&gt;&gt;HR: 매핑 존재 여부 확인, 신규 생성 대신 연결 또는 오류 - 정책 미정
+    HR-&gt;&gt;WEB: 중복 또는 기존 계정 연결 결과
+  else 존재하지 않음
+    HR-&gt;&gt;ADM: 사용자 생성 - POST /admin/realms/pmart-staff/users
+    alt 생성 성공 응답 수신
+      ADM-&gt;&gt;HR: 201 및 사용자 위치(ID)
+      HR-&gt;&gt;HR: 사번과 Keycloak 사용자 ID 매핑 기록
+      HR-&gt;&gt;ADM: 초기 Credential 설정 또는 필수 작업 지정 - 방식 미정 U-10
+      HR-&gt;&gt;WEB: 발급 완료
+    else 응답 유실 또는 타임아웃
+      HR-&gt;&gt;HR: 반영미확인으로 기록 - 제안
+      HR-&gt;&gt;ADM: 동일 키로 재조회
+      HR-&gt;&gt;WEB: 확인 필요 또는 재조회 결과
+    end
+  end</code></pre></details><p><strong>범례:</strong> 실선 = 합의(경로) 또는 Draft·구성안에 기재된 단계 · 점선(<code>--&gt;&gt;</code>) = 미정·선택 단계. 응답 메시지도 확정 단계면 실선으로 그렸다. <code>Token Endpoint</code> 호출은 관리 자격 취득이며 <strong>직원 로그인과 무관</strong>하다.</p>
+<h4 id="d04-h3">2.1 단계별 결정 상태</h4><div class="tbl"><table>
+<thead>
+<tr>
+<th>단계</th>
+<th>내용</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>요청자 권한 검증</td>
+<td>인사 담당자인지 확인. 인증 상태가 Gateway에서 어떻게 전달되는지는 U-12</td>
+<td><span class="tag t-agreed">합의</span> 검증 필요, 방법 <span class="tag t-open">미확정</span></td>
+</tr>
+<tr>
+<td>사번 중복 검증</td>
+<td>생성 전에 같은 사번 검색, 있으면 수정 처리</td>
+<td><span class="tag t-legacy">기존안</span> §9.1 (BO-01 1단계 <span class="tag t-unread">미열람</span>)</td>
+</tr>
+<tr>
+<td>관리 자격</td>
+<td>서비스 계정 Client <code>hr-provisioner</code> + <code>realm-management</code> 역할(<code>manage-users</code>·<code>view-users</code>·<code>query-users</code>) + Client Credentials, 최고 관리자 미사용 (02 §3.1)</td>
+<td><span class="tag t-agreed">합의</span> / 역할 매핑 허용 여부 U-11</td>
+</tr>
+<tr>
+<td>로그인 ID</td>
+<td>사번(<code>EMP-</code> + 6자리) vs <code>xxx@pmart.com</code></td>
+<td><span class="tag t-conflict">충돌</span>·<span class="tag t-open">미확정</span> U-09</td>
+</tr>
+<tr>
+<td>초기 Credential</td>
+<td>사무직: 설정 메일, 현장: 임시 비밀번호 + <code>UPDATE_PASSWORD</code></td>
+<td><span class="tag t-legacy">기존안</span> §9.1·§11 / U-10</td>
+</tr>
+<tr>
+<td>OTP 등록</td>
+<td>백오피스 사용자 첫 로그인 시 <code>CONFIGURE_TOTP</code></td>
+<td><span class="tag t-legacy">기존안</span> §6.3</td>
+</tr>
+<tr>
+<td>응답 유실 처리</td>
+<td>반영미확인 → 재조회 → 재시도</td>
+<td><span class="tag t-proposal">제안</span></td>
+</tr>
+<tr>
+<td>대사</td>
+<td>하루 1회 재직자 목록 vs Keycloak 활성 계정</td>
+<td><span class="tag t-legacy">기존안</span> §9.1 <span class="tag t-proposal">제안</span> 주체는 HR Service</td>
+</tr>
+<tr>
+<td>업무 권한 부여</td>
+<td>HR은 하지 않음</td>
+<td><span class="tag t-legacy">기존안</span> §9.1. 누가 하는지 U-13</td>
+</tr>
+</tbody></table></div>
+<h4 id="d04-h4">2.2 멱등성 불변식 <span class="tag t-proposal">제안</span></h4><ol>
+<li>한 사번에는 활성 Keycloak 사용자가 최대 하나다.</li>
+<li>HR Service는 Keycloak 생성 결과를 확인하기 전에 &quot;발급 완료&quot;를 사용자에게 응답하지 않는다.</li>
+<li>재시도는 항상 &quot;검색 후 생성&quot; 순서를 따른다. 사번 속성 검색 또는 로그인 ID(username) 유일성 중 무엇을 중복 판정 키로 쓸지는 U-09에 종속된다.</li>
+<li>Keycloak의 <code>username</code> 유일 제약에 따른 충돌 응답(일반적으로 409)은 &quot;이미 생성됨&quot; 신호로 재조회해야 한다 <span class="tag t-supp">보충</span><span class="tag t-verify">확인</span>.</li>
+</ol>
+<h3 id="d04-h5">3. 시퀀스 ② — 정보 수정 (센터 이동)</h3><figure class="viz" data-viz="d04-m3"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>sequenceDiagram
+  autonumber
+  actor HRU as 인사 담당자
+  participant WEB as React 백오피스
+  participant GW as API Gateway
+  participant HR as HR Service
+  participant ADM as Keycloak Admin REST API
+  participant PERM as 권한 정본 - U-13
+  HRU-&gt;&gt;WEB: 소속 변경 입력
+  WEB-&gt;&gt;GW: 변경 요청
+  GW-&gt;&gt;HR: 라우팅
+  HR-&gt;&gt;HR: 인사 원장 갱신
+  HR-&gt;&gt;ADM: 사용자 속성 affiliation 수정
+  ADM-&gt;&gt;HR: 결과
+  HR--&gt;&gt;PERM: 이전 센터 권한 종료 통지 - 경로 미정
+  Note over HR,PERM: 이전 센터 권한 종료와 새 센터 권한 시작은 별도 처리 - 기존안 9.1</code></pre></details><p><strong>범례:</strong> 실선 = 기존안 기재 · 점선 = 권한 정본 미정(U-13)으로 수신자 미확정.</p>
+<h3 id="d04-h6">4. 시퀀스 ③ — 퇴사·비활성화</h3><figure class="viz" data-viz="d04-m4"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>sequenceDiagram
+  autonumber
+  actor HRU as 인사 담당자
+  participant WEB as React 백오피스
+  participant GW as API Gateway
+  participant HR as HR Service
+  participant ADM as Keycloak Admin REST API
+  participant EA as employee-auth
+  participant BL as 차단 목록 - 채택 미정
+  participant PERM as 권한 정본 - U-13
+  HRU-&gt;&gt;WEB: 퇴사 처리
+  WEB-&gt;&gt;GW: 퇴사 요청
+  GW-&gt;&gt;HR: 라우팅
+  HR-&gt;&gt;HR: 재직 상태 퇴사로 변경
+  HR-&gt;&gt;ADM: 사용자 enabled=false
+  HR-&gt;&gt;ADM: 해당 사용자 세션 전부 종료
+  ADM-&gt;&gt;HR: 결과
+  HR--&gt;&gt;EA: employee-auth 보유 세션·토큰 무효화 - 필요 여부 U-02
+  HR--&gt;&gt;BL: sub 차단 등록 - 등록 주체 미정 N-04
+  HR--&gt;&gt;PERM: 권한 기록 종료 통지 - U-13
+  HR-&gt;&gt;WEB: 처리 결과 - 반영미확인 포함
+  Note over HR,ADM: 계정 삭제 금지 - 과거 행위자 기록 유지, 기존안 9.1</code></pre></details><p><strong>범례:</strong> 실선 = 기존안 §9.1·§10.3에 기재된 단계(HR이 실행 주체가 된 것은 합의) · 점선 = 미정. 기존안은 <code>HR → staff-access → 차단 목록</code> 순서였으나 staff-access 채택이 미정이므로 수신자를 일반화했다.</p>
+<h4 id="d04-h7">4.1 퇴사 반영 시한</h4><div class="tbl"><table>
+<thead>
+<tr>
+<th>대상</th>
+<th>기존안 목표</th>
+<th>Draft 상태</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>새 로그인·refresh</td>
+<td>비활성화·세션 종료로 즉시</td>
+<td><span class="tag t-legacy">기존안</span></td>
+<td>Keycloak 세션 종료 범위 <span class="tag t-verify">확인</span></td>
+</tr>
+<tr>
+<td>이미 발급된 access token</td>
+<td>차단 목록으로 1분 이내</td>
+<td><span class="tag t-open">미확정</span> U-14</td>
+<td>차단 목록 없으면 최대 access 수명(15분)까지 유효</td>
+</tr>
+<tr>
+<td>employee-auth 세션(존재 시)</td>
+<td>기록 없음</td>
+<td><span class="tag t-open">미확정</span> U-02·U-03</td>
+<td><strong>N-03</strong>: 새 계층이 생기면 별도 무효화 경로 필요</td>
+</tr>
+<tr>
+<td>승인 권한 회수</td>
+<td>행위 시점 조회로 즉시</td>
+<td><span class="tag t-legacy">기존안</span> / U-13</td>
+<td>staff-access 의존</td>
+</tr>
+</tbody></table></div>
+<h3 id="d04-h8">5. 오류·보상 책임</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>상황</th>
+<th>감지</th>
+<th>보상·복구 책임</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Keycloak 생성 성공, HR 응답 유실</td>
+<td>타임아웃</td>
+<td>HR: 반영미확인 → 재조회 → 매핑</td>
+<td><span class="tag t-proposal">제안</span></td>
+</tr>
+<tr>
+<td>HR 매핑 기록 실패, Keycloak에는 생성됨</td>
+<td>HR 내부 오류</td>
+<td>HR: 대사 작업에서 고아 계정 발견·연결</td>
+<td><span class="tag t-proposal">제안</span></td>
+</tr>
+<tr>
+<td>동일 요청 이중 제출</td>
+<td>사번 중복</td>
+<td>HR: 검색 후 생성, 중복 판정 키 U-09</td>
+<td><span class="tag t-legacy">기존안</span>·<span class="tag t-proposal">제안</span></td>
+</tr>
+<tr>
+<td>비활성화 성공, 세션 종료 실패</td>
+<td>응답 오류</td>
+<td>HR: 재시도, 차단 목록(채택 시)으로 보완</td>
+<td><span class="tag t-proposal">제안</span> / U-14</td>
+</tr>
+<tr>
+<td>Keycloak 장애</td>
+<td>연결 실패</td>
+<td>HR: 발급 요청 보류(대기열 여부 미정), 인사 화면에 상태 표시</td>
+<td><span class="tag t-open">미확정</span> N-07</td>
+</tr>
+<tr>
+<td>관리 콘솔에서 직접 변경</td>
+<td>대사</td>
+<td>HR(신원)·권한 정본(권한) 각각 대사</td>
+<td><span class="tag t-legacy">기존안</span> §8.5·§9.1</td>
+</tr>
+<tr>
+<td>퇴사자 활성 계정 발견</td>
+<td>일일 대사</td>
+<td>HR: 즉시 비활성화·알림</td>
+<td><span class="tag t-legacy">기존안</span> §9.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="d04-h9">6. 이 문서가 정하지 않은 것</h3><p>U-08(승인), U-09(로그인 ID), U-10(메일·초기 비밀번호), U-11(Admin 권한 범위), U-13(권한 정본), U-14(퇴사 반영 시한). 08 문서에서 선택지를 비교한다.</p>
+
+</section>
+<section class="doc" id="d05" aria-labelledby="d05-t">
+<h2 class="doc-title"><span class="doc-no">05</span>직원 로그인과 세션 (고객 로그인 경계 포함)</h2><ul>
+<li>출처: <span class="src">Draft</span> §2·§6·§7, <span class="src">구성안</span> §6.3·§6.4·§7·§10.1·§10.2·§10.5, <span class="src">SS</span>, RFC 8252 <span class="tag t-supp">보충</span></li>
+<li>확정된 것 <span class="tag t-agreed">합의</span>: <code>employee-auth</code>가 Keycloak <code>pmart-staff</code>의 <strong>로그인용 OIDC Client</strong>다. React·PDA는 Keycloak에 개별 Client로 직접 등록하지 않는다.</li>
+<li>확정되지 않은 것 <span class="tag t-open">미확정</span>: 브라우저/시스템 브라우저 경로(U-01), employee-auth의 토큰 보관(U-02), 앱 인증 상태(U-03), PDA 결과 바인딩(U-04), 소셜 IdP(U-05), React SPA/BFF(U-06), Redirect URI·PKCE·저장 정책(U-07), Gateway 검증 계약(U-12).</li>
+</ul>
+<blockquote>
+<p><strong>해석 원칙.</strong> &quot;employee-auth가 Keycloak과 code 교환을 한다&quot;는 사실이 &quot;PDA·React가 최종적으로 어떤 세션을 갖는다&quot;를 정하지 않는다. 또한 PDA가 비밀번호를 employee-auth로 보내고 employee-auth가 대신 로그인하는 형태(Resource Owner Password Credentials)를 표준 Authorization Code 흐름으로 간주하지 않는다 [Draft §6 해석].</p>
+</blockquote>
+<h3 id="d05-h1">1. 시퀀스 ② — 직원 로그인 공통 골격 (개념)</h3><figure class="viz" data-viz="d05-m1"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>sequenceDiagram
+  autonumber
+  actor STAFF as 직원
+  participant APP as React 또는 PDA
+  participant UA as 사용자 에이전트 - 브라우저 또는 시스템 브라우저
+  participant GW as API Gateway
+  participant EA as employee-auth
+  participant KC as Keycloak OIDC
+  participant EXT as 직원 외부 IdP - 선택
+  STAFF-&gt;&gt;APP: 로그인 시작
+  APP-&gt;&gt;GW: 로그인 시작 요청
+  GW-&gt;&gt;EA: 라우팅
+  EA-&gt;&gt;EA: 인증 요청 상태 생성 - state, nonce, PKCE 여부 U-07
+  EA--&gt;&gt;UA: Keycloak 인가 요청으로 이동 지시 - 전달 방식 U-01 U-06
+  UA--&gt;&gt;KC: Authorization Endpoint 접속 - 경로 미정
+  KC--&gt;&gt;UA: 로그인 화면 - 사번 또는 ID, 비밀번호, OTP 수준 N-01
+  opt 직원 외부 IdP 사용이 결정된 경우 - U-05
+    KC--&gt;&gt;EXT: 외부 인증 위임
+    EXT--&gt;&gt;KC: 외부 인증 결과
+  end
+  UA--&gt;&gt;EA: Redirect 콜백 code, state - 콜백 수신 위치 U-07
+  EA-&gt;&gt;EA: state 검증, 요청 상태와 결합
+  EA-&gt;&gt;KC: Token Endpoint - code 교환, Client 인증
+  KC-&gt;&gt;EA: Access, Refresh, ID Token
+  Note over EA: 토큰 보관 여부 U-02, 앱 세션 발급 형태 U-03
+  EA--&gt;&gt;APP: 앱 인증 결과 - 형식 미정, PDA 바인딩 U-04</code></pre></details><p><strong>범례:</strong> 실선 = 합의 또는 OIDC Authorization Code의 필수 단계(employee-auth가 Client이므로 code 교환은 employee-auth가 수행) · 점선 = 경로·형식 미정 또는 선택. <code>Token Endpoint</code>(로그인 code 교환)는 04 문서의 <code>Admin REST API</code>와 다른 인터페이스다.</p>
+<h3 id="d05-h2">2. React 백오피스 로그인</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기존안 (§7.1, §10.1)</th>
+<th>최신 합의</th>
+<th>남은 질문</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Client</td>
+<td><code>backoffice</code> 공개 Client, SPA가 PKCE 수행</td>
+<td>employee-auth가 Client</td>
+<td><span class="tag t-conflict">충돌</span> C-01</td>
+</tr>
+<tr>
+<td>토큰 위치</td>
+<td>SPA 메모리</td>
+<td>미정</td>
+<td>U-02, U-03, U-06</td>
+</tr>
+<tr>
+<td>SSO 자동 로그인</td>
+<td>Keycloak SSO 세션 유휴 2h, 최대 12h</td>
+<td>언급 없음</td>
+<td>Keycloak 브라우저 쿠키 기반 SSO는 사용자 에이전트가 Keycloak 화면을 거쳐야 유지됨 <span class="tag t-supp">보충</span>. N-05</td>
+</tr>
+<tr>
+<td>OTP 강제</td>
+<td><code>backoffice</code> Client 기본 요구 수준 2, API는 <code>acr=2</code>만</td>
+<td>언급 없음</td>
+<td><strong>N-01</strong> 단일 Client에서 앱별 LoA 구분 방법</td>
+</tr>
+<tr>
+<td>로그아웃</td>
+<td>Keycloak 로그아웃으로 SSO까지 종료</td>
+<td>언급 없음</td>
+<td>employee-auth 세션과 Keycloak 세션 모두 종료해야 함 <span class="tag t-proposal">제안</span></td>
+</tr>
+</tbody></table></div>
+<p>React 쪽 가능한 형태(BFF, 토큰 전달형 등)는 08 §2에서 비교하며 여기서 고르지 않는다.</p>
+<blockquote>
+<p><strong><span class="src">SS</span> 참고.</strong> 상위 폴더 스크린샷은 &quot;클라이언트(8080) 서버가 code + client_secret + verifier로 Google과 직접 교환하고, 자체 JWT를 브라우저 쿠키로 내려주는&quot; 서버측 Client 패턴을 그린다. 이는 employee-auth를 BFF처럼 쓰는 대안(08 §2 옵션 R-1)과 모양이 같다. 다만 이 그림은 고객 Google 로그인 설명용으로 보이며 PMart 직원 결정의 근거가 아니다. 또한 구성안 §2.1·§10.5가 기술한 고객 흐름(앱이 서버 인가 코드를 auth-service로 전달)과 세부가 다르다(N-10).</p>
+</blockquote>
+<h3 id="d05-h3">3. Flutter PDA 로그인</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기존안 (§7.1, §10.2)</th>
+<th>최신 합의</th>
+<th>남은 질문</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Client</td>
+<td><code>logistics-app</code> 공개 Client, redirect <code>com.pmart.logistics:/oauth2redirect</code></td>
+<td>Keycloak에 직접 등록 안 함</td>
+<td><span class="tag t-conflict">충돌</span> C-02</td>
+</tr>
+<tr>
+<td>인증 화면</td>
+<td>시스템 브라우저(AppAuth류)에서 Keycloak 화면</td>
+<td>미정</td>
+<td>U-01</td>
+</tr>
+<tr>
+<td>앱 복귀</td>
+<td>커스텀 스킴 redirect → 앱이 code 교환</td>
+<td>code는 employee-auth가 받음. 앱이 결과를 어떻게 받는지 미정</td>
+<td>U-01, U-04</td>
+</tr>
+<tr>
+<td>공용 기기 보호</td>
+<td><code>prompt=login</code>으로 매번 로그인, 근무 종료 시 로그아웃·토큰 삭제</td>
+<td>언급 없음</td>
+<td>앱 세션과 Keycloak 브라우저 세션 모두 잔존하지 않아야 함 <span class="tag t-proposal">제안</span> N-05</td>
+</tr>
+<tr>
+<td>토큰 보관</td>
+<td>refresh를 기기 보안 저장소에</td>
+<td>미정</td>
+<td>U-02, U-03</td>
+</tr>
+<tr>
+<td>수명</td>
+<td>클라이언트 세션 1h/10h</td>
+<td>미정</td>
+<td><code>employee-auth</code> 단일 Client라 앱별 수명 구분 불가할 수 있음 N-01</td>
+</tr>
+</tbody></table></div>
+<figure class="viz" data-viz="d05-m2"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>sequenceDiagram
+  autonumber
+  actor W as 현장 작업자
+  participant PDA as Flutter PDA
+  participant SB as 시스템 브라우저
+  participant GW as API Gateway
+  participant EA as employee-auth
+  participant KC as Keycloak OIDC
+  W-&gt;&gt;PDA: 근무 시작
+  PDA-&gt;&gt;GW: 로그인 시작 요청
+  GW-&gt;&gt;EA: 라우팅
+  EA-&gt;&gt;EA: 요청 상태 생성, PDA 인스턴스 연결값 - U-04
+  EA--&gt;&gt;PDA: 인가 요청 URL 또는 핸들 - Gateway 경유 응답, 형식 미정
+  PDA--&gt;&gt;SB: 시스템 브라우저 열기 - U-01
+  SB--&gt;&gt;KC: 로그인 화면, prompt=login 여부 미정
+  W-&gt;&gt;SB: 사번 바코드, 비밀번호 입력 - 기존안
+  KC--&gt;&gt;EA: Redirect 콜백 code - 수신 위치 U-07
+  EA-&gt;&gt;KC: code 교환
+  KC-&gt;&gt;EA: 토큰
+  EA--&gt;&gt;SB: 앱 복귀 지시 - App Link 또는 커스텀 스킴 미정
+  SB--&gt;&gt;PDA: 앱 복귀 - 일회성 결과 핸들 여부 U-04
+  PDA--&gt;&gt;GW: 결과 핸들 교환 - 바인딩 검증 U-04
+  GW--&gt;&gt;EA: 라우팅
+  EA--&gt;&gt;PDA: 앱 인증 상태 - Gateway 경유 응답, 형식 U-03
+  Note over PDA,EA: 이 그림은 미정 구간을 보이기 위한 개념도이며 채택안이 아님</code></pre></details><p><strong>범례:</strong> 실선 = 합의된 경로(PDA → Gateway → employee-auth), 기존안의 사용자 입력, OIDC 필수 단계 · 점선 = 미정. 콜백·복귀·결과 핸들 단계는 <strong>설계 필요 구간</strong>이다. PDA가 employee-auth를 부르는 API 요청은 Gateway를 거친다 <span class="tag t-agreed">합의</span>. 반면 시스템 브라우저가 Keycloak 로그인 화면으로 이동하고 콜백을 받는 경로가 Gateway를 지나는지는 미정이다 [Draft §3 주의].</p>
+<h3 id="d05-h4">4. 직원 로그인에서 새로 드러난 핵심 과제</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>과제</th>
+<th>이유</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>N-01</td>
+<td>앱별 인증 수준(LoA)·세션 수명 분리</td>
+<td>기존안은 <code>backoffice</code>(수준 2, 12h)와 <code>logistics-app</code>(수준 1, 10h)를 <strong>Client 단위</strong>로 강제했다. Client가 <code>employee-auth</code> 하나면 Client 기본 요구 수준으로 구분할 수 없다. 요청별 <code>acr_values</code>·<code>claims</code> 요청은 Client가 빠뜨리면 우회될 수 있다는 것이 기존안 §6.3의 우려다 <span class="tag t-legacy">기존안</span>. 백오피스와 PDA용 Client를 employee-auth 안에서 두 개 쓰는 방식도 가능하나 Draft는 &quot;로그인용 Client&quot;를 단수로 기술했다 → 결정 필요</td>
+</tr>
+<tr>
+<td>N-02</td>
+<td><code>azp</code>·<code>aud</code> 기반 라우팅</td>
+<td>기존안 토큰 예시는 <code>azp=logistics-app/backoffice</code>. 단일 Client면 <code>azp</code>로 앱을 구분할 수 없다</td>
+</tr>
+<tr>
+<td>N-05</td>
+<td>Keycloak 브라우저 세션 잔존</td>
+<td>employee-auth 세션을 지워도 시스템 브라우저의 Keycloak SSO 쿠키가 남으면 공용 PDA에서 다음 사람이 앞 사람으로 로그인될 수 있다. <code>prompt=login</code> 또는 동등한 강제 재인증 필요 <span class="tag t-legacy">기존안</span>·<span class="tag t-verify">확인</span></td>
+</tr>
+</tbody></table></div>
+<h3 id="d05-h5">5. 시퀀스 ④ — 고객 인증 경계 (변경 없음)</h3><figure class="viz" data-viz="d05-m3"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>sequenceDiagram
+  autonumber
+  actor C as 고객
+  participant CAPP as 고객 앱
+  participant G as Google
+  participant GW as API Gateway
+  participant AUTH as auth-service
+  participant API as 고객 업무 API
+  C-&gt;&gt;CAPP: Google 로그인
+  CAPP-&gt;&gt;G: Google 인증 - 고객 앱이 Google OAuth Client
+  G-&gt;&gt;CAPP: 서버 인가 코드
+  CAPP-&gt;&gt;GW: 서버 인가 코드 전달
+  GW-&gt;&gt;AUTH: 라우팅
+  AUTH-&gt;&gt;G: 코드 교환 - ADR-0025, 미열람
+  G-&gt;&gt;AUTH: Google 토큰
+  AUTH-&gt;&gt;AUTH: customer 연결·저장
+  AUTH-&gt;&gt;CAPP: PMart 고객 JWT - ptyp CUSTOMER
+  CAPP-&gt;&gt;GW: 고객 API 호출 Bearer
+  GW-&gt;&gt;GW: iss=auth-service, ptyp CUSTOMER 또는 GUEST 확인
+  GW-&gt;&gt;API: 라우팅
+  Note over GW,API: 직원 경로는 Keycloak 또는 employee-auth 발급 결과만 수용 - 계약 U-12</code></pre></details><p><strong>범례:</strong> 모두 실선 = 기존안 §2.1·§8.1·§10.5에 기재된 현행/계획 경로. <code>ptyp</code> 발급은 기존안의 P1 변경 계획이며 현재 구현 여부는 <span class="tag t-unread">미열람</span>.</p>
+<h4 id="d05-h6">5.1 고객·직원 분리 불변식</h4><div class="tbl"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>불변식</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>I-1</td>
+<td>고객 JWT(<code>iss=auth-service</code>)로 직원 API를 호출할 수 없다 (이행 후 <code>ptyp=OPERATOR</code>도 거절)</td>
+<td><span class="tag t-legacy">기존안</span> §8.2</td>
+</tr>
+<tr>
+<td>I-2</td>
+<td>직원 토큰(<code>iss=pmart-staff</code>)은 <code>ptyp=OPERATOR</code>만 가질 수 있다</td>
+<td><span class="tag t-legacy">기존안</span> §8.1</td>
+</tr>
+<tr>
+<td>I-3</td>
+<td>고객 Google 계정은 직원 계정으로 연결·승격되지 않는다</td>
+<td><span class="tag t-legacy">기존안</span> D3</td>
+</tr>
+<tr>
+<td>I-4</td>
+<td>직원 외부 IdP를 도입해도 고객 Google Client·고객 Realm 경로와 섞지 않는다</td>
+<td><span class="tag t-proposal">제안</span> U-05</td>
+</tr>
+<tr>
+<td>I-5</td>
+<td>employee-auth가 별도 토큰을 발급한다면 발급자·<code>ptyp</code>·<code>aud</code> 규칙에 새로 포함돼야 한다</td>
+<td><span class="tag t-open">미확정</span> U-03·U-12</td>
+</tr>
+</tbody></table></div>
+<h3 id="d05-h7">6. 이 문서가 정하지 않은 것</h3><p>U-01~U-07, U-12, U-15. 라이더는 이 문서의 어떤 경로에도 포함하지 않았다.</p>
+
+</section>
+<section class="doc" id="d06" aria-labelledby="d06-t">
+<h2 class="doc-title"><span class="doc-no">06</span>신뢰 경계와 보안</h2><ul>
+<li>출처: <span class="src">Draft</span> §5·§7·§9, <span class="src">구성안</span> §5·§6·§7·§8·§9.5·§14, <span class="src">Spec</span> §6, RFC 8252·OAuth 보안 BCP <span class="tag t-supp">보충</span></li>
+<li>이 문서는 해법을 확정하지 않는다. 각 반례는 <strong>전제 → 실패 조건 → 영향 → 방지해야 할 불변식 → 검증 질문</strong> 형식이다.</li>
+</ul>
+<h3 id="d06-h1">1. 신뢰 경계</h3><figure class="viz" data-viz="d06-m1"></figure><details class="mm"><summary>Mermaid 원본 보기</summary><pre class="code"><code>flowchart LR
+  subgraph Z0["Z0 비신뢰 - 사용자 기기"]
+    WEB["React 백오피스"]
+    PDA["Flutter PDA - 공용 기기"]
+    UA["브라우저·시스템 브라우저"]
+  end
+  subgraph Z1["Z1 경계 - 진입점"]
+    GW["API Gateway"]
+  end
+  subgraph Z2["Z2 내부 서비스"]
+    HR["HR Service - 관리 자격 보유"]
+    EA["employee-auth - 로그인 Client 자격 보유"]
+    BIZ["업무 API"]
+  end
+  subgraph Z3["Z3 직원 IdP 영역"]
+    KCU["Keycloak 사용자용 - OIDC"]
+    KCA["Keycloak Admin REST API·관리 콘솔"]
+  end
+  WEB --&gt; GW
+  PDA --&gt; GW
+  GW --&gt; HR
+  GW --&gt; EA
+  GW --&gt; BIZ
+  HR ==&gt;|"Admin REST API"| KCA
+  EA --&gt;|"Token Endpoint"| KCU
+  UA -.-&gt;|"인증 화면 - 경로 미정"| KCU
+  WEB -.-&gt;|"금지 경로 - 존재하면 안 됨"| KCA
+  PDA -.-&gt;|"금지 경로 - 존재하면 안 됨"| KCA</code></pre></details><p><strong>범례:</strong> 실선 = 합의 경로 · 굵은 실선 = Admin REST API · 점선 화살표 = 미정 경로. 단, 라벨이 &quot;금지 경로&quot;인 점선은 **존재해서는 안 되는 경로(불변식 S-2·S-3)**를 표시한 것이다. 존(Z0~Z3)은 논리 신뢰 수준이며 네트워크 구획을 확정하지 않는다.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>경계</th>
+<th>넘는 것</th>
+<th>검증 책임</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Z0 → Z1</td>
+<td>사용자 요청, 인증 상태</td>
+<td>Gateway: 토큰/세션 검증, 발급자·<code>aud</code>·<code>ptyp</code>·<code>acr</code>, 차단 목록</td>
+<td><span class="tag t-legacy">기존안</span> / 계약 U-12</td>
+</tr>
+<tr>
+<td>Z1 → Z2</td>
+<td>라우팅된 요청</td>
+<td>서비스: 재검증·인가 (기존안 &quot;토큰 재검증&quot;)</td>
+<td><span class="tag t-legacy">기존안</span>. ADR-0026(서비스간 인증 없음) 영향 <span class="tag t-unread">미열람</span></td>
+</tr>
+<tr>
+<td>Z2(HR) → Z3 관리</td>
+<td><code>hr-provisioner</code> 관리용 Access Token (Client Credentials)</td>
+<td>Keycloak: 서비스 계정의 <code>realm-management</code> 역할 3종</td>
+<td><span class="tag t-agreed">합의</span> / 역할 매핑 U-11</td>
+</tr>
+<tr>
+<td>Z2(EA) → Z3 사용자</td>
+<td>code, Client 인증</td>
+<td>Keycloak: Redirect URI·Client 자격·PKCE</td>
+<td>U-07</td>
+</tr>
+<tr>
+<td>Z0(UA) → Z3 사용자</td>
+<td>비밀번호·OTP</td>
+<td>Keycloak 로그인 화면만 Credential을 받음</td>
+<td><span class="tag t-legacy">기존안</span> / 경로 U-01</td>
+</tr>
+<tr>
+<td>관리 콘솔</td>
+<td>운영자</td>
+<td>내부망 한정, <code>KC_HOSTNAME_ADMIN</code> 분리</td>
+<td><span class="tag t-legacy">기존안</span> §5</td>
+</tr>
+</tbody></table></div>
+<h3 id="d06-h2">2. 신원과 자격의 분리</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>신원</th>
+<th>자격</th>
+<th>할 수 있는 일</th>
+<th>할 수 없어야 하는 일</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>직원(사람)</td>
+<td>비밀번호, OTP</td>
+<td>자기 로그인</td>
+<td>Admin API</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td>인사 담당자(사람)</td>
+<td>직원 로그인 + 인사 역할</td>
+<td>HR Service에 발급 요청</td>
+<td>Admin API 직접 호출, Keycloak 콘솔</td>
+<td><span class="tag t-agreed">합의</span> 경로 / 역할 이름 미정</td>
+</tr>
+<tr>
+<td><code>employee-auth</code>(서버)</td>
+<td>로그인 Client 자격</td>
+<td>code 교환, 토큰 갱신</td>
+<td>사용자 생성·수정, Admin API</td>
+<td><span class="tag t-agreed">합의</span>·<span class="tag t-proposal">제안</span></td>
+</tr>
+<tr>
+<td>HR Service(서버)</td>
+<td>서비스 계정 Client <code>hr-provisioner</code> 자격 (<code>manage-users</code>·<code>view-users</code>·<code>query-users</code>)</td>
+<td>사용자 생성·조회·수정·비활성화·세션 종료</td>
+<td>역할 매핑·realm·Client 설정 변경, 직원 로그인 대행</td>
+<td><span class="tag t-agreed">합의</span>·역할 매핑 U-11</td>
+</tr>
+<tr>
+<td>Keycloak 최고 관리자(사람)</td>
+<td>master realm, OTP, 공용 운영 메일</td>
+<td>긴급 조치</td>
+<td>일상 계정 발급</td>
+<td><span class="tag t-legacy">기존안</span> D5·§6</td>
+</tr>
+<tr>
+<td>auth-service(서버)</td>
+<td>고객 토큰 서명키</td>
+<td>고객·게스트 토큰</td>
+<td><code>OPERATOR</code> 토큰(이행 후)</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+</tbody></table></div>
+<p><strong>불변식 <span class="tag t-proposal">제안</span></strong></p>
+<ul>
+<li>S-1: HR Service의 관리 자격과 employee-auth의 로그인 자격은 서로 다른 Client이며 Secret을 공유하지 않는다.</li>
+<li>S-2: 어떤 사용자 앱(Z0)도 관리 자격·Client Secret을 보유하지 않는다.</li>
+<li>S-3: Admin REST API는 Z2의 HR Service(및 채택 시 권한 정본 서비스)에서만 호출되며 Gateway 외부 노출 경로가 없다.</li>
+<li>S-4: 직원 Credential은 Keycloak 화면에서만 입력된다(ROPC 미사용). 이 불변식을 바꾸려면 별도 결정이 필요하다.</li>
+</ul>
+<h3 id="d06-h3">3. 토큰 검증 기준 (기존안 기준, 최신 구조 영향 표시)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>검사</th>
+<th>기존안</th>
+<th>단일 employee-auth Client 구조에서</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>iss</code></td>
+<td>공개 주소 하나로 고정</td>
+<td>동일. 다만 employee-auth가 자체 토큰을 내면 발급자 추가</td>
+<td>U-12, N-02</td>
+</tr>
+<tr>
+<td><code>aud</code></td>
+<td><code>pmart-api</code> audience mapper</td>
+<td>매퍼를 employee-auth Client scope에 붙여야 함</td>
+<td><span class="tag t-verify">확인</span></td>
+</tr>
+<tr>
+<td><code>ptyp</code></td>
+<td>Keycloak 고정값 <code>OPERATOR</code></td>
+<td>동일</td>
+<td><span class="tag t-legacy">기존안</span></td>
+</tr>
+<tr>
+<td><code>acr</code></td>
+<td>백오피스 API는 <code>acr=2</code>만</td>
+<td>Client 기본 요구 수준으로 강제 불가 가능성</td>
+<td><strong>N-01</strong></td>
+</tr>
+<tr>
+<td><code>azp</code></td>
+<td><code>backoffice</code>/<code>logistics-app</code></td>
+<td>항상 <code>employee-auth</code></td>
+<td>N-02</td>
+</tr>
+<tr>
+<td>차단 목록</td>
+<td><code>sub</code> 15분 등록</td>
+<td>등록 주체 미정</td>
+<td>N-04, U-14</td>
+</tr>
+</tbody></table></div>
+<h3 id="d06-h4">4. 위협·예외·반례</h3><h4 id="d06-h5">T-01 중복 계정 발급</h4><ul>
+<li>전제: 인사 담당자가 같은 직원을 두 번 제출하거나 HR이 재시도한다.</li>
+<li>실패 조건: &quot;검색 후 생성&quot;이 없거나 중복 판정 키(U-09)가 일관되지 않다.</li>
+<li>영향: 한 사람에게 두 <code>sub</code>, 권한·감사 기록 분산, 퇴사 시 한쪽만 비활성화.</li>
+<li>불변식: 사번당 활성 Keycloak 사용자 1개(04 §2.2).</li>
+<li>검증 질문: 중복 판정 키는 username인가 사번 속성인가? 사번 속성 검색이 정확 일치로 동작하는가 <span class="tag t-verify">확인</span>?</li>
+</ul>
+<h4 id="d06-h6">T-02 동일 사번 충돌 (재입사·오입력)</h4><ul>
+<li>전제: 퇴사 후 재입사, 또는 다른 사람에게 잘못된 사번 입력.</li>
+<li>실패 조건: 비활성 계정을 무조건 재활성화하거나 덮어쓴다.</li>
+<li>영향: 과거 행위자 기록 오염, 이전 권한 부활.</li>
+<li>불변식: 재활성화는 명시적 절차이며 이전 권한은 자동 복원되지 않는다 <span class="tag t-proposal">제안</span>.</li>
+<li>검증 질문: 재입사 시 같은 <code>sub</code>를 재사용하는가? 권한 정본(U-13)은 이를 어떻게 처리하는가?</li>
+</ul>
+<h4 id="d06-h7">T-03 Keycloak 생성 성공 후 HR 응답 유실</h4><ul>
+<li>전제: Admin API 201 응답 전 네트워크 단절.</li>
+<li>실패 조건: HR이 실패로 판단하고 사용자에게 &quot;실패&quot;를 반환, 재요청 시 409 또는 중복.</li>
+<li>영향: 인사 원장과 Keycloak 불일치, 매핑 없는 고아 계정.</li>
+<li>불변식: 확인 전 완료·실패 단정 금지, 반영미확인 상태 유지 <span class="tag t-proposal">제안</span>.</li>
+<li>검증 질문: 대사 주기와 고아 계정 처리 책임자는?</li>
+</ul>
+<h4 id="d06-h8">T-04 HR 관리 자격의 과도한 권한</h4><ul>
+<li>전제: HR Service가 <code>realm-admin</code> 또는 최고 관리자 자격을 쓴다.</li>
+<li>실패 조건: HR Service 침해 또는 SSRF.</li>
+<li>영향: 역할 자가 부여, Client Secret 열람·변경, realm 전체 장악.</li>
+<li>불변식: S-1·S-3, 관리 자격은 <code>realm-management</code> 역할 3종으로 제한 <span class="tag t-agreed">합의</span> (02 §3.1), 역할 매핑 허용 여부는 U-11.</li>
+<li>검증 질문: <code>manage-users</code>가 역할 매핑을 허용하는지, 고정 버전의 Fine-Grained Admin Permissions로 그룹/속성 범위를 좁힐 수 있는지 <span class="tag t-supp">보충</span><span class="tag t-verify">확인</span>.</li>
+</ul>
+<h4 id="d06-h9">T-05 일반 직원에게 Admin API 경로 노출</h4><ul>
+<li>전제: Gateway에 Keycloak 관리 경로 라우트가 존재하거나 HR 발급 API의 인가가 약하다.</li>
+<li>실패 조건: 인사 역할 없는 직원이 HR 발급 API를 호출.</li>
+<li>영향: 임의 계정 생성(내부자 백도어).</li>
+<li>불변식: HR 발급 API는 인사 역할과 (결정 시) 승인 상태를 서버측에서 확인 <span class="tag t-proposal">제안</span>·U-08.</li>
+<li>검증 질문: 인사 담당자 역할은 어디에 정의되며 누가 부여하는가(U-13)?</li>
+</ul>
+<h4 id="d06-h10">T-06 React/PDA 인증 결과 혼동 (로그인 CSRF·결과 탈취)</h4><ul>
+<li>전제: employee-auth가 콜백 후 결과를 앱에 넘기는 방식이 미정(U-04).</li>
+<li>실패 조건: state 미검증, 결과 핸들이 재사용 가능, 커스텀 스킴 탈취(다른 앱이 같은 스킴 등록) <span class="tag t-supp">보충 RFC 8252</span>.</li>
+<li>영향: 다른 기기·다른 사용자 세션으로 로그인, 공격자 계정으로 피해자 로그인.</li>
+<li>불변식: 로그인 결과는 시작한 앱 인스턴스에만 1회 전달된다.</li>
+<li>검증 질문: App Link(검증된 HTTPS) 사용 가능 여부, 결과 핸들의 수명·1회성, 앱이 보관하는 검증값 존재 여부.</li>
+</ul>
+<h4 id="d06-h11">T-07 공용 PDA에서 이전 직원 세션 잔존</h4><ul>
+<li>전제: 교대 시 같은 PDA를 넘김.</li>
+<li>실패 조건: 앱 세션 또는 시스템 브라우저의 Keycloak SSO 쿠키가 남는다.</li>
+<li>영향: 다음 작업자의 작업이 앞 사람 이름으로 기록.</li>
+<li>불변식: 새 근무 시작은 항상 재인증 <span class="tag t-legacy">기존안 D4</span>.</li>
+<li>검증 질문: 단일 employee-auth Client에서 PDA 요청에만 <code>prompt=login</code>을 강제하는 방법은? 기존안 §15.2의 쿠키 잔존 시험을 새 구조에서 다시 수행해야 하는가?</li>
+</ul>
+<h4 id="d06-h12">T-08 OTP 우회 (LoA 혼동)</h4><ul>
+<li>전제: 백오피스와 PDA가 같은 Client(<code>employee-auth</code>)를 쓴다.</li>
+<li>실패 조건: 비밀번호만으로 만든 SSO 세션이나 <code>acr=1</code> 토큰이 백오피스 경로에서 수용된다.</li>
+<li>영향: OTP 없는 백오피스 접근(기존안 §6.3이 막으려던 구멍).</li>
+<li>불변식: 백오피스 경로는 수준 2 인증 결과만 수용 <span class="tag t-legacy">기존안</span>.</li>
+<li>검증 질문: 요구 수준을 employee-auth가 요청마다 지정할 때 Keycloak이 이를 강제하는지, Gateway가 앱 세션에 <code>acr</code>을 어떻게 반영받는지(N-01).</li>
+</ul>
+<h4 id="d06-h13">T-09 잘못된 Issuer/Audience/사용자 유형 수용</h4><ul>
+<li>전제: 다중 발급자 검증.</li>
+<li>실패 조건: <code>iss</code>만 보고 <code>aud</code>·<code>ptyp</code>을 보지 않음, 또는 사내 도구용 토큰 수용.</li>
+<li>영향: 고객 토큰으로 직원 API 호출, 다른 Client 토큰 재사용.</li>
+<li>불변식: 발급자별 <code>aud</code>·<code>ptyp</code> 허용 목록 <span class="tag t-legacy">기존안</span> §8.1.</li>
+<li>검증 질문: employee-auth 발급 토큰(만약 존재)의 <code>iss</code>·<code>aud</code>·<code>ptyp</code>은?</li>
+</ul>
+<h4 id="d06-h14">T-10 Gateway 우회</h4><ul>
+<li>전제: 업무 서비스가 내부망에서 직접 접근 가능.</li>
+<li>실패 조건: 서비스가 Gateway가 넣은 헤더만 신뢰하고 토큰을 재검증하지 않는다.</li>
+<li>영향: 위조 헤더로 권한 획득.</li>
+<li>불변식: 서비스도 토큰을 재검증 <span class="tag t-legacy">기존안</span> §4. ADR-0026(서비스간 인증 없음)과의 관계 확인 필요 <span class="tag t-unread">미열람</span>.</li>
+<li>검증 질문: employee-auth가 서버 세션 모델을 택하면 업무 서비스는 무엇을 재검증하는가(U-12)?</li>
+</ul>
+<h4 id="d06-h15">T-11 퇴사·비활성화와 기존 토큰 유효기간 차이</h4><ul>
+<li>전제: access 15분, refresh 회전, (가능하면) employee-auth 세션.</li>
+<li>실패 조건: 차단 목록 없음, employee-auth 세션 무효화 없음.</li>
+<li>영향: 퇴사 후 최대 access 수명 또는 앱 세션 수명 동안 접근.</li>
+<li>불변식: 퇴사 반영 시한 내 모든 계층(Keycloak, employee-auth, Gateway) 거절 — 시한은 U-14.</li>
+<li>검증 질문: 1분 목표(기존안)를 유지하는가? 차단 목록 등록 주체는(N-04)?</li>
+</ul>
+<h4 id="d06-h16">T-12 Keycloak 장애</h4><ul>
+<li>전제: Keycloak 단일 노드(LAN) 또는 클러스터 일부 장애.</li>
+<li>실패 조건: 신규 로그인·refresh·계정 발급 불가.</li>
+<li>영향: 교대 시작 시 현장 로그인 불가, 신규 입사 처리 지연.</li>
+<li>불변식: 계정 발급 요청은 유실되지 않는다 <span class="tag t-proposal">제안</span>. 기존 세션 유지 범위는 미정.</li>
+<li>검증 질문: JWKS 캐시로 기존 access token 검증이 계속되는가? employee-auth 세션이 있으면 Keycloak 장애 중 얼마나 유지할 것인가(N-07)?</li>
+</ul>
+<h4 id="d06-h17">T-13 메일 없는 직원</h4><ul>
+<li>전제: 현장 작업자는 메일 없음 <span class="tag t-legacy">기존안 D5</span>.</li>
+<li>실패 조건: 비밀번호 재설정이 메일 기반만 존재, 또는 Draft의 <code>xxx@pmart.com</code>이 필수값.</li>
+<li>영향: 계정 생성 실패, 임시 비밀번호의 비보안 전달.</li>
+<li>불변식: 메일 유무와 무관하게 계정 발급·초기화 경로가 존재 <span class="tag t-proposal">제안</span>.</li>
+<li>검증 질문: U-09·U-10, 초기화 실행 주체(N-08).</li>
+</ul>
+<h4 id="d06-h18">T-14 소셜 IdP 미사용 또는 사용 시 계정 연결</h4><ul>
+<li>전제: U-05로 외부 IdP 도입 가능성.</li>
+<li>실패 조건: 외부 IdP 이메일 일치만으로 기존 직원 계정 자동 연결(First Broker Login 자동 링크) <span class="tag t-supp">보충</span>.</li>
+<li>영향: 외부 계정 탈취 = 직원 계정 탈취, 고객 Google 계정이 직원으로 연결.</li>
+<li>불변식: 직원 계정은 인사 발급으로만 생성되며 외부 IdP는 기존 계정에 명시적 절차로만 연결 <span class="tag t-proposal">제안</span>. 고객 Google과 섞지 않는다(I-3).</li>
+<li>검증 질문: 도입 시 자가 가입 차단, 이메일 검증 신뢰 여부, OTP 요구 수준 유지 방법.</li>
+</ul>
+<h4 id="d06-h19">T-15 employee-auth 침해</h4><ul>
+<li>전제: employee-auth가 Client Secret과 (U-02에 따라) 직원 Refresh Token을 보관.</li>
+<li>실패 조건: 서버 침해.</li>
+<li>영향: 모든 직원 세션 탈취 가능(중앙 집중 위험).</li>
+<li>불변식: 보관 최소화·암호화 저장·관리 자격 미보유(S-1) <span class="tag t-proposal">제안</span>.</li>
+<li>검증 질문: U-02 결정 시 저장소·암호화·수명은?</li>
+</ul>
+<h3 id="d06-h20">5. 보안 판정 요약</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>위협</th>
+<th>심각도(잠정)</th>
+<th>근거</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>T-04 관리 자격 과도</td>
+<td>치명</td>
+<td>realm 전체 장악</td>
+</tr>
+<tr>
+<td>T-06 결과 탈취·혼동</td>
+<td>치명</td>
+<td>설계 미정 구간에 직접 해당</td>
+</tr>
+<tr>
+<td>T-08 OTP 우회</td>
+<td>치명</td>
+<td>기존안 핵심 통제가 새 구조에서 미보장(N-01)</td>
+</tr>
+<tr>
+<td>T-07 PDA 세션 잔존</td>
+<td>중요</td>
+<td>감사 기록 오염</td>
+</tr>
+<tr>
+<td>T-11 퇴사 반영</td>
+<td>중요</td>
+<td>시한·주체 미정</td>
+</tr>
+<tr>
+<td>T-14 IdP 연결</td>
+<td>중요(도입 시 치명)</td>
+<td>U-05</td>
+</tr>
+<tr>
+<td>T-15 employee-auth 침해</td>
+<td>중요</td>
+<td>U-02 따라 변동</td>
+</tr>
+<tr>
+<td>T-01·T-02·T-03</td>
+<td>보통</td>
+<td>대사로 복구 가능</td>
+</tr>
+<tr>
+<td>T-05·T-09·T-10</td>
+<td>중요</td>
+<td>표준 통제로 방지 가능하나 계약 미정</td>
+</tr>
+<tr>
+<td>T-12·T-13</td>
+<td>보통</td>
+<td>운영 절차로 완화</td>
+</tr>
+</tbody></table></div>
+<p>심각도는 문서 검토 기준의 잠정 판단이며 위험 평가 절차를 거친 값이 아니다.</p>
+
+</section>
+<section class="doc" id="d07" aria-labelledby="d07-t">
+<h2 class="doc-title"><span class="doc-no">07</span>충돌과 결정 사항</h2><ul>
+<li>출처: <span class="src">Draft</span> §8·§10, <span class="src">구성안</span> 전체, <span class="src">Spec</span> §5, <span class="src">SS</span></li>
+<li>원칙: 기존안의 정책을 말없이 삭제하거나 확정하지 않는다. 최신 합의가 우선이지만, 기존안의 통제가 새 구조에서 사라지는 경우는 **<span class="tag t-conflict">충돌</span>**로 남긴다.</li>
+</ul>
+<h3 id="d07-h1">1. 기존안 vs 최신 합의</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>주제</th>
+<th>기존안 (<span class="src">구성안</span>)</th>
+<th>최신 합의 (<span class="src">Draft</span>)</th>
+<th>처리</th>
+<th>영향받는 기존안 통제</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>C-01</td>
+<td>백오피스 로그인 Client</td>
+<td><code>backoffice</code> 공개 Client, SPA가 PKCE (§7.1·§10.1)</td>
+<td><code>employee-auth</code>가 OIDC Client, React는 직접 등록 안 함</td>
+<td>최신 합의로 문서화, <strong>기술 검증 필요</strong></td>
+<td>앱별 LoA 2 강제, SSO 12h, front-channel 로그아웃</td>
+</tr>
+<tr>
+<td>C-02</td>
+<td>PDA 로그인 Client</td>
+<td><code>logistics-app</code> 공개 Client, 커스텀 스킴 redirect, <code>prompt=login</code> (§7.1·§10.2)</td>
+<td>직접 등록 안 함, 복귀 방식 미정</td>
+<td>최신 합의로 문서화, U-01·U-04</td>
+<td>매번 로그인, 세션 10h, 기기 보안 저장소</td>
+</tr>
+<tr>
+<td>C-03</td>
+<td>인증 수준 강제 위치</td>
+<td>Client별 기본 요구 수준(Keycloak 강제) + Gateway <code>acr</code> 검사 (§6.3)</td>
+<td>언급 없음</td>
+<td><strong><span class="tag t-conflict">충돌</span></strong> N-01. 기존 통제가 자동 승계되지 않음</td>
+<td>OTP 우회 방지</td>
+</tr>
+<tr>
+<td>C-04</td>
+<td><code>azp</code>·Client별 수명</td>
+<td>Client별 세션 수명·<code>azp</code> 값 (§6.4·§7.3)</td>
+<td>단일 로그인 Client</td>
+<td><strong><span class="tag t-conflict">충돌</span></strong> N-02</td>
+<td>교대 단위 끊김, 앱 구분</td>
+</tr>
+<tr>
+<td>C-05</td>
+<td>Gateway가 검증하는 대상</td>
+<td>Keycloak access token 직접 검증 (§8.1)</td>
+<td>앱 인증 결과 형식 미정</td>
+<td>U-03·U-12</td>
+<td>다중 발급자 규칙</td>
+</tr>
+<tr>
+<td>C-06</td>
+<td>계정 발급 주체</td>
+<td>&quot;인사팀 앱&quot;이 <code>hr-provisioner</code>로 Admin API (§9.1)</td>
+<td>HR Service가 Admin REST API 직접 호출</td>
+<td><strong>정합</strong>. 인사팀 앱의 서버 = HR Service로 해석. 관리 자격은 <code>hr-provisioner</code> 서비스 계정 + 역할 3종 + Client Credentials로 <span class="tag t-agreed">합의 2026-11-12</span></td>
+<td>사용자 관리 권한만, 역할 부여 금지</td>
+</tr>
+<tr>
+<td>C-07</td>
+<td>별도 서비스</td>
+<td><code>staff-access</code>는 <strong>권한</strong> 기록·반영 서비스(§8.5). 계정 생성 주체 아님</td>
+<td>계정 생성용 Employee IAM 서비스 불필요</td>
+<td><strong>해석 충돌</strong>: Draft §8은 staff-access를 &quot;계정 생성용 별도 모듈&quot;처럼 기술. 기존안상 staff-access는 권한 서비스이므로 Draft 결정은 staff-access 폐기를 뜻하지 않음 → U-13 유지</td>
+<td>행위 시점 권한 조회, 대행 만료, 퇴사 차단 등록</td>
+</tr>
+<tr>
+<td>C-08</td>
+<td>퇴사 차단 흐름</td>
+<td>HR → staff-access 통보 → Gateway 차단 목록(1분) (§9.5·§10.3)</td>
+<td>HR이 비활성화 소유, 차단 경로 언급 없음</td>
+<td>U-14, N-04</td>
+<td>퇴사 즉시 차단</td>
+</tr>
+<tr>
+<td>C-09</td>
+<td>직원 소셜 로그인</td>
+<td>직원은 사번+비밀번호(+OTP), 소셜 언급 없음, PDA 소셜 미사용</td>
+<td>외부 IdP 연결 설명 등장, 사용 여부 미정</td>
+<td>U-05</td>
+<td>자가 가입 끔, 사번 로그인</td>
+</tr>
+<tr>
+<td>C-10</td>
+<td>로그인 ID</td>
+<td>사번 <code>EMP-000123</code>, 이메일 로그인 끔, 이메일 선택 (§6.1, 부록 A)</td>
+<td><code>xxx@pmart.com</code> 언급</td>
+<td><strong><span class="tag t-conflict">충돌</span></strong> U-09</td>
+<td>메일 없는 현장 작업자(D5)</td>
+</tr>
+<tr>
+<td>C-11</td>
+<td>로그인 시작 경로</td>
+<td>SPA·PDA가 Keycloak으로 직접</td>
+<td>앱 → Gateway → employee-auth</td>
+<td>최신 합의. 브라우저 경로는 미정</td>
+<td>사내 HTTPS·PKCE 요구사항(§5.1) 재검토</td>
+</tr>
+<tr>
+<td>C-12</td>
+<td>기존 ADR</td>
+<td>ADR-0011·0018 &quot;Keycloak 도입 안 함&quot; 대체 필요 (§1)</td>
+<td>언급 없음</td>
+<td>대체 ADR 필요성 유지 <span class="tag t-legacy">기존안</span></td>
+<td>—</td>
+</tr>
+<tr>
+<td>C-13</td>
+<td>고객 인증</td>
+<td>Google → auth-service, <code>ptyp</code> 발급 추가</td>
+<td>동일</td>
+<td>유지</td>
+<td>—</td>
+</tr>
+<tr>
+<td>C-14</td>
+<td>관리자 초기 계정</td>
+<td>master realm 최고 관리자, 공용 운영 메일+OTP (D5·§6.6)</td>
+<td>HR은 최고 관리자 미사용</td>
+<td>정합</td>
+<td>—</td>
+</tr>
+</tbody></table></div>
+<h3 id="d07-h2">2. 미확정 레지스터 U-01 ~ U-15 (상태 변경 없음)</h3><p>모든 항목의 상태는 <strong><span class="tag t-open">미확정</span></strong> 이며 이 문서는 답을 정하지 않는다. &quot;결정권자 후보&quot;는 문서상 추정이며 지정이 아니다.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>질문</th>
+<th>관련 아티팩트</th>
+<th>결정이 필요한 이유</th>
+<th>관련 대안 (08)</th>
+<th>결정권자 후보</th>
+<th>검증 필요조건</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>U-01</td>
+<td>PDA 인증 화면·리다이렉트·앱 복귀 방식</td>
+<td>05 §3, 06 T-06·T-07</td>
+<td>결과 탈취·세션 잔존 위험의 근원</td>
+<td>08 §1 P-1~P-4</td>
+<td>모바일 리드, 보안 담당, 아키텍트</td>
+<td>Android PDA 기종에서 App Link·시스템 브라우저 동작 시험</td>
+</tr>
+<tr>
+<td>U-02</td>
+<td>employee-auth의 Keycloak Access/Refresh Token 보관 여부</td>
+<td>03 §3, 05 §1, 06 T-15</td>
+<td>상태 보유·침해 영향·퇴사 반영 경로 결정</td>
+<td>08 §2</td>
+<td>백엔드 리드, 보안 담당</td>
+<td>저장소·암호화·수명, 다중 인스턴스 시 세션 공유</td>
+</tr>
+<tr>
+<td>U-03</td>
+<td>React/PDA에 제공되는 인증 상태</td>
+<td>03 §3, 05 §1, 06 §3</td>
+<td>Gateway 검증 계약·발급자 수 결정</td>
+<td>08 §1·§2</td>
+<td>아키텍트, 프론트·모바일 리드</td>
+<td>쿠키 속성·토큰 형식, 다중 발급자 영향</td>
+</tr>
+<tr>
+<td>U-04</td>
+<td>PDA 인증 요청과 결과의 안전한 연결</td>
+<td>05 §3, 06 T-06</td>
+<td>로그인 결과가 다른 기기로 전달될 위험</td>
+<td>08 §1</td>
+<td>보안 담당, 모바일 리드</td>
+<td>1회성·수명·앱 측 검증값 설계 검토</td>
+</tr>
+<tr>
+<td>U-05</td>
+<td>직원 외부 소셜 IdP 사용 여부·제공자</td>
+<td>01, 05 §1, 06 T-14</td>
+<td>계정 연결 위협, OTP 정책</td>
+<td>08 §6</td>
+<td>경영·보안 담당</td>
+<td>계정 연결 정책, 자가 가입 차단 시험</td>
+</tr>
+<tr>
+<td>U-06</td>
+<td>React SPA/BFF 여부</td>
+<td>02, 05 §2</td>
+<td>토큰 노출 범위, SSO·로그아웃</td>
+<td>08 §2</td>
+<td>프론트 리드, 아키텍트</td>
+<td>기존 백오피스·<code>backoffice-bff</code><span class="tag t-unread">미열람</span> 구조 확인</td>
+</tr>
+<tr>
+<td>U-07</td>
+<td>employee-auth Client의 Redirect URI·PKCE·토큰 저장 정책</td>
+<td>02, 05 §1</td>
+<td>Client 등록 사양</td>
+<td>08 §1·§2</td>
+<td>백엔드 리드, 보안 담당</td>
+<td>Keycloak Client 설정 검토, 정확 일치 redirect</td>
+</tr>
+<tr>
+<td>U-08</td>
+<td>계정 발급 승인 주체·절차·완료 기준</td>
+<td>03 §4, 04 §1·§2</td>
+<td>내부자 임의 발급 방지</td>
+<td>08 §5</td>
+<td>인사팀, 본사 운영</td>
+<td><code>approval-service</code>·BO-01 <span class="tag t-unread">미열람</span> 확인</td>
+</tr>
+<tr>
+<td>U-09</td>
+<td><code>xxx@pmart.com</code>의 의미</td>
+<td>03 §2, 04 §2.2, C-10</td>
+<td>중복 판정 키·로그인 화면·메일 필수 여부</td>
+<td>08 §5</td>
+<td>인사팀, 아키텍트</td>
+<td>사번 바코드 로그인과의 양립 여부</td>
+</tr>
+<tr>
+<td>U-10</td>
+<td>메일 없는 현장 작업자와 SMTP 대상 구분</td>
+<td>04 §2.1, 06 T-13</td>
+<td>초기 Credential·재설정 경로</td>
+<td>08 §5</td>
+<td>인사팀, 센터 운영</td>
+<td>임시 비밀번호 전달 절차</td>
+</tr>
+<tr>
+<td>U-11</td>
+<td>HR Service의 Admin API 최소 권한 (자격 구성은 합의됨. 남은 질문: <code>manage-users</code>의 역할 매핑·그룹 가입 허용 여부)</td>
+<td>03 §5 G-1, 06 T-04</td>
+<td>realm 장악 위험</td>
+<td>08 §3</td>
+<td>보안 담당, Keycloak 운영</td>
+<td>고정 버전에서 권한별 허용 동작 시험</td>
+</tr>
+<tr>
+<td>U-12</td>
+<td>Gateway·Resource Server의 직원 토큰/세션 검증 계약</td>
+<td>02, 05 §5, 06 §3</td>
+<td>업무 API 인가 일관성</td>
+<td>08 §2·§4</td>
+<td>아키텍트, 플랫폼 리드</td>
+<td><code>common-security</code>·Gateway 현행 코드 <span class="tag t-unread">미열람</span></td>
+</tr>
+<tr>
+<td>U-13</td>
+<td>센터별 역할 승인·회수 정본 서비스</td>
+<td>03 §2·§4, 04 §3·§4</td>
+<td>staff-access 존폐, HR 권한 범위</td>
+<td>08 §5</td>
+<td>본사 운영, 아키텍트</td>
+<td>BackOffice 업무 로직 <span class="tag t-unread">미열람</span></td>
+</tr>
+<tr>
+<td>U-14</td>
+<td>퇴사·권한 회수의 기존 토큰 반영 목표</td>
+<td>04 §4.1, 06 T-11</td>
+<td>차단 목록 필요성·주체</td>
+<td>08 §4</td>
+<td>보안 담당, 인사팀</td>
+<td>1분 목표 유지 여부, 측정 방법</td>
+</tr>
+<tr>
+<td>U-15</td>
+<td>라이더 인증 분리 방식</td>
+<td>01, 05 §6</td>
+<td>발급자·<code>ptyp</code> 설계</td>
+<td>— (범위 밖)</td>
+<td>사업·아키텍트</td>
+<td>BR-02 <span class="tag t-unread">미열람</span></td>
+</tr>
+</tbody></table></div>
+<h3 id="d07-h3">3. 추가 발견 항목 (N-xx, 신규 미확정)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>발견</th>
+<th>근거</th>
+<th>관련 U</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>N-01</td>
+<td>단일 <code>employee-auth</code> Client에서 백오피스(LoA 2)와 PDA(LoA 1)를 Keycloak 측에서 강제 구분하는 방법</td>
+<td>기존안 §6.3은 Client 기본 요구 수준에 의존</td>
+<td>U-03, U-07, U-12</td>
+</tr>
+<tr>
+<td>N-02</td>
+<td><code>azp</code>가 항상 employee-auth가 되어 앱 구분·경로별 허용 조합(§8.2) 재설계 필요. employee-auth가 자체 토큰을 내면 발급자 3개</td>
+<td>기존안 §7.3·§8.2</td>
+<td>U-03, U-12</td>
+</tr>
+<tr>
+<td>N-03</td>
+<td>employee-auth가 세션을 가지면 퇴사·로그아웃 시 무효화할 계층이 하나 늘어남</td>
+<td>04 §4</td>
+<td>U-02, U-14</td>
+</tr>
+<tr>
+<td>N-04</td>
+<td>staff-access 미채택 시 차단 목록 등록·권한 기록 종료 주체 공백</td>
+<td>기존안 §9.5</td>
+<td>U-13, U-14</td>
+</tr>
+<tr>
+<td>N-05</td>
+<td>공용 PDA에서 시스템 브라우저의 Keycloak 쿠키 잔존</td>
+<td>기존안 §15.2 시험 항목</td>
+<td>U-01</td>
+</tr>
+<tr>
+<td>N-06</td>
+<td>employee-auth가 Token Endpoint를 내부 주소로 호출할 때 <code>iss</code>(공개 주소) 일치</td>
+<td>기존안 §5.1</td>
+<td>U-07</td>
+</tr>
+<tr>
+<td>N-07</td>
+<td>Keycloak 장애 시 employee-auth 세션·계정 발급 요청 처리</td>
+<td>Draft §9</td>
+<td>U-02</td>
+</tr>
+<tr>
+<td>N-08</td>
+<td>메일 없는 직원의 비밀번호 초기화 실행 주체(센터 관리자가 어떤 시스템으로?)</td>
+<td>기존안 §6.1</td>
+<td>U-10, U-13</td>
+</tr>
+<tr>
+<td>N-09</td>
+<td>인사 담당자 자신의 인증·역할(누가 인사 역할을 주는가, 부트스트랩)</td>
+<td>04 §2.1</td>
+<td>U-08, U-13</td>
+</tr>
+<tr>
+<td>N-10</td>
+<td><span class="src">SS</span> 그림의 고객 흐름(서버가 code+secret+verifier 교환, 쿠키 JWT)과 기존안 §2.1·§10.5 고객 흐름의 차이</td>
+<td><span class="src">SS</span>, 기존안</td>
+<td>— (고객 경로는 변경하지 않음. 설명 자료 정합만 확인)</td>
+</tr>
+</tbody></table></div>
+<h3 id="d07-h4">4. ADR 후보 (작성하지 않음, 목록만)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>후보</th>
+<th>다룰 결정</th>
+<th>선행 조건</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ADR-A</td>
+<td>직원 IdP로 Keycloak 도입 (ADR-0011·0018 대체)</td>
+<td>기존안 D1~D5 확정</td>
+</tr>
+<tr>
+<td>ADR-B</td>
+<td>직원 로그인은 <code>employee-auth</code> 서버측 OIDC Client로 중개</td>
+<td>U-01~U-04, U-06, U-07, N-01</td>
+</tr>
+<tr>
+<td>ADR-C</td>
+<td>직원 계정 발급 책임은 HR Service, Admin REST API 사용, 관리 자격 분리 (자격 구성은 <span class="tag t-agreed">합의 2026-11-12</span>, 02 §3.1)</td>
+<td>U-08, U-09, U-11</td>
+</tr>
+<tr>
+<td>ADR-D</td>
+<td>업무 권한 정본(staff-access 존폐)</td>
+<td>U-13</td>
+</tr>
+<tr>
+<td>ADR-E</td>
+<td>직원 토큰·세션 검증 계약과 퇴사 반영 시한</td>
+<td>U-12, U-14, N-02~N-04</td>
+</tr>
+<tr>
+<td>ADR-F</td>
+<td>직원 외부 IdP 정책 (도입 시)</td>
+<td>U-05</td>
+</tr>
+</tbody></table></div>
+<h3 id="d07-h5">5. 정책 변경 필요사항 (기존안 기준)</h3><ul>
+<li>기존안 §7.1의 <code>backoffice</code>·<code>logistics-app</code> 공개 Client 행은 최신 합의와 충돌한다. 기존안을 개정할 때 삭제하지 말고 &quot;대체됨, C-01·C-02&quot; 표시를 권한다 <span class="tag t-proposal">제안</span>.</li>
+<li>기존안 §6.3·§6.4의 Client 단위 설정은 N-01·N-02 결정 후 다시 써야 한다.</li>
+<li>기존안 §13 이행 단계 P2·P3의 완료 시험(OTP step-up, PDA 쿠키 잔존)은 새 구조에서도 유효한 수용 기준으로 유지하길 권한다 <span class="tag t-proposal">제안</span>.</li>
+</ul>
+<h3 id="d07-h6">6. 사용자 결정 기록</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>일자</th>
+<th>결정</th>
+<th>남긴 것</th>
+<th>반영 위치</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>2026-11-12</td>
+<td>HR Service의 Admin REST API 자격 = 서비스 계정 Client <code>hr-provisioner</code> + <code>realm-management</code> 역할 <code>manage-users</code>·<code>view-users</code>·<code>query-users</code> + Client Credentials</td>
+<td>U-11(역할 매핑 허용 여부)은 이번에 다루지 않고 <span class="tag t-open">미확정</span> 유지</td>
+<td>00, 02 §3.1, 03, 04, 06, 08 §3, 09</td>
+</tr>
+</tbody></table></div>
+
+</section>
+<section class="doc" id="d08" aria-labelledby="d08-t">
+<h2 class="doc-title"><span class="doc-no">08</span>대안과 트레이드오프</h2><ul>
+<li>출처: <span class="src">Draft</span>, <span class="src">구성안</span>, RFC 8252·OAuth 2.0 보안 BCP·Keycloak 일반 기능 <span class="tag t-supp">보충</span></li>
+<li><strong>이 문서는 결정하지 않는다.</strong> 각 주제의 최종 상태는 **<span class="tag t-open">미확정</span>**이다. 권고가 있으면 **<span class="tag t-proposal">제안</span>**으로만 표기한다.</li>
+<li>합의 위반 여부 열: 최신 합의(React/PDA를 Keycloak에 직접 등록하지 않음 등)와 충돌하는 선택지는 &quot;합의 변경 필요&quot;로 표시했다. 그런 선택지는 합의를 다시 여는 결정이 있어야만 채택할 수 있다.</li>
+</ul>
+<h3 id="d08-h1">1. PDA 인증 결과 전달 (U-01, U-03, U-04, U-07)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>옵션</th>
+<th>개요</th>
+<th>장점</th>
+<th>단점·위험</th>
+<th>합의 정합</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>P-1 서버측 Client + 앱 복귀 핸들</td>
+<td>PDA가 시스템 브라우저로 Keycloak 로그인 → 콜백은 employee-auth → employee-auth가 1회성 결과 핸들을 App Link로 앱에 전달 → 앱이 핸들 + 앱이 시작 시 만든 검증값으로 교환</td>
+<td>Keycloak 토큰이 기기로 가지 않을 수 있음, Client Secret 서버 보관</td>
+<td>설계 자체가 비표준 확장: 핸들 1회성·수명·검증값 바인딩을 직접 설계해야 함. App Link 검증 도메인 필요</td>
+<td>정합</td>
+</tr>
+<tr>
+<td>P-2 서버측 Client + 토큰 전달</td>
+<td>P-1과 같으나 employee-auth가 Keycloak 토큰(또는 일부)을 앱에 넘김</td>
+<td>업무 API가 Keycloak 토큰을 그대로 검증(기존안 §8.1 재사용)</td>
+<td>Client가 employee-auth인데 토큰 사용자는 앱 → 토큰 수령 주체와 사용 주체 불일치. refresh 처리 주체 모호</td>
+<td>정합(세부 미정)</td>
+</tr>
+<tr>
+<td>P-3 employee-auth가 ID/비밀번호 수신 (ROPC)</td>
+<td>PDA 화면에서 입력, employee-auth가 Direct Access Grant로 Keycloak 인증</td>
+<td>화면 전환 없음, 바코드 입력 UX 단순</td>
+<td>OAuth 보안 BCP가 금지 권고 <span class="tag t-supp">보충</span>, OTP·외부 IdP·Keycloak 잠금/필수 작업 처리 제약, Credential이 Keycloak 밖을 지남(S-4 위반)</td>
+<td>형식상 정합, Draft §6 해석과 충돌</td>
+</tr>
+<tr>
+<td>P-4 PDA 공개 Client + PKCE (기존안)</td>
+<td>앱이 직접 Authorization Code + PKCE</td>
+<td>표준(RFC 8252), 기존안 시험 계획 재사용</td>
+<td>최신 합의 위반</td>
+<td><strong>합의 변경 필요</strong></td>
+</tr>
+<tr>
+<td>P-5 Device Authorization Grant</td>
+<td>PDA가 코드 표시, 다른 기기에서 인증</td>
+<td>입력 어려운 기기에 적합</td>
+<td>현장 교대 UX 부적합, 다른 기기 필요</td>
+<td>형식상 정합, 실효성 낮음</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li>공통 검증 조건: 공용 기기에서 매번 재인증(N-05), 결과 1회성, 기종별 시스템 브라우저 동작 <span class="tag t-verify">확인</span>.</li>
+<li><strong><span class="tag t-proposal">제안</span></strong> 비교 우선순위는 P-1 → P-2 순으로 검토하고, P-3은 S-4 불변식을 바꾸는 결정이 있을 때만 다룬다. 최종 선택은 <span class="tag t-open">미확정</span>.</li>
+</ul>
+<h3 id="d08-h2">2. React 인증 형태 (U-03, U-06, U-12)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>옵션</th>
+<th>개요</th>
+<th>장점</th>
+<th>단점·위험</th>
+<th>합의 정합</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>R-1 employee-auth = BFF 세션</td>
+<td>employee-auth가 Keycloak 토큰 보관, 브라우저엔 HttpOnly·Secure·SameSite 세션 쿠키 (<span class="src">SS</span> 그림과 같은 모양)</td>
+<td>브라우저 토큰 노출 없음, Client Secret 서버 보관</td>
+<td>employee-auth가 상태 보유(세션 공유·확장), Gateway가 쿠키 세션을 검증하는 방법 필요(U-12), CSRF 대응 필요</td>
+<td>정합</td>
+</tr>
+<tr>
+<td>R-2 employee-auth가 토큰을 SPA에 전달</td>
+<td>로그인 후 access token을 SPA 메모리로</td>
+<td>Gateway가 Keycloak 토큰 직접 검증(기존안 재사용)</td>
+<td>XSS 시 토큰 노출, 수령 주체 불일치(P-2와 동일)</td>
+<td>정합(세부 미정)</td>
+</tr>
+<tr>
+<td>R-3 employee-auth 자체 토큰</td>
+<td>Keycloak 토큰은 서버 보관, PMart 직원 JWT 별도 발급</td>
+<td>앱·Gateway 계약을 PMart가 통제</td>
+<td>발급자 3개(N-02), <code>acr</code> 등 Keycloak 클레임 재전달 필요, 퇴사 반영 계층 증가(N-03)</td>
+<td>정합</td>
+</tr>
+<tr>
+<td>R-4 SPA 공개 Client (기존안)</td>
+<td>SPA가 직접 PKCE</td>
+<td>표준, 기존안 그대로</td>
+<td>최신 합의 위반</td>
+<td><strong>합의 변경 필요</strong></td>
+</tr>
+</tbody></table></div>
+<ul>
+<li>기존 <code>backoffice-bff</code>(기존안 §8.2에 언급)와의 관계는 저장소 미열람으로 확인하지 못했다. R-1을 검토하면 기존 BFF와 역할이 겹치는지 확인해야 한다.</li>
+</ul>
+<h3 id="d08-h3">3. HR 관리 자격 최소 권한 (U-11)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>옵션</th>
+<th>개요</th>
+<th>장점</th>
+<th>단점·위험</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A-1 서비스 계정 + <code>realm-management</code> 일부 역할 (<code>manage-users</code>, <code>view-users</code>, <code>query-users</code>)</td>
+<td>기존안 <code>hr-provisioner</code> 권장 · <strong>채택 <span class="tag t-agreed">합의 2026-11-12</span></strong></td>
+<td>단순, 기존안과 일치</td>
+<td><code>manage-users</code>의 실제 허용 범위(역할 매핑·그룹 가입·사용자 사칭 등)가 버전별로 다를 수 있음 <span class="tag t-verify">확인</span></td>
+</tr>
+<tr>
+<td>A-2 A-1 + Fine-Grained Admin Permissions로 범위 축소</td>
+<td>특정 그룹·동작으로 제한</td>
+<td>최소 권한 근접</td>
+<td>고정 버전에서의 기능 상태·설정 복잡도 <span class="tag t-supp">보충</span><span class="tag t-verify">확인</span></td>
+</tr>
+<tr>
+<td>A-3 Keycloak 앞에 HR 내부 허용 목록</td>
+<td>HR 코드가 호출 가능한 Admin API 종류를 제한</td>
+<td>Keycloak 권한과 이중 방어</td>
+<td>HR 침해 시 무력화, Keycloak 측 권한이 실질 경계</td>
+</tr>
+<tr>
+<td>A-4 최고 관리자 자격</td>
+<td>—</td>
+<td>—</td>
+<td><strong>배제 [Draft 제안]</strong></td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p><strong><span class="tag t-agreed">합의 2026-11-12</span></strong> A-1을 기본 구성으로 채택한다 (02 §3.1). A-2·A-3을 더할지는 U-11 확인 결과로 정하며, 이번 범위에서 다루지 않는다.</p>
+</blockquote>
+<ul>
+<li>공통: Client Secret은 암호화 설정 저장소(기존안 <code>{cipher}</code>), Secret 교체 절차, Admin 이벤트 감사 활성화 <span class="tag t-legacy">기존안 §6.6</span>.</li>
+<li>검증 질문: &quot;HR은 업무 권한을 주지 않는다&quot;를 <strong>권한으로</strong> 막을지, <strong>코드 규칙</strong>으로만 막을지.</li>
+</ul>
+<h3 id="d08-h4">4. 퇴사 즉시 차단 (U-14, N-03, N-04)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>옵션</th>
+<th>개요</th>
+<th>반영 시간</th>
+<th>장점</th>
+<th>단점</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>X-1 짧은 access 수명만</td>
+<td>비활성화 + 세션 종료, 기존 토큰은 만료 대기</td>
+<td>최대 access 수명(기존안 15분)</td>
+<td>단순</td>
+<td>기존안 1분 목표 미달</td>
+</tr>
+<tr>
+<td>X-2 Gateway 차단 목록 (기존안)</td>
+<td><code>sub</code>를 토큰 최대 수명 동안 Redis에 등록</td>
+<td>등록 즉시</td>
+<td>기존안 설계·시험 재사용</td>
+<td>등록 주체 필요(N-04), Gateway 우회 시 서비스도 확인 필요</td>
+</tr>
+<tr>
+<td>X-3 Introspection / 세션 조회</td>
+<td>Gateway가 매 요청 또는 캐시로 활성 여부 확인</td>
+<td>캐시 TTL</td>
+<td>정확</td>
+<td>Keycloak 부하·장애 의존</td>
+</tr>
+<tr>
+<td>X-4 employee-auth 서버 세션 폐기 (R-1·R-3일 때)</td>
+<td>앱 세션을 서버에서 삭제</td>
+<td>즉시</td>
+<td>세션 모델이면 자연스러움</td>
+<td>Keycloak 토큰을 직접 쓰는 경로가 남으면 불완전</td>
+</tr>
+<tr>
+<td>X-5 Keycloak 이벤트 기반 전파</td>
+<td>Admin 이벤트·백채널 로그아웃 수신 → 각 계층 무효화</td>
+<td>이벤트 지연</td>
+<td>자동화</td>
+<td>전달 보장·구현 범위 <span class="tag t-verify">확인</span></td>
+</tr>
+</tbody></table></div>
+<ul>
+<li>승인 권한 회수의 &quot;행위 시점 조회&quot;(기존안 §9.5)는 차단 목록과 별개 통제이며 U-13에 종속된다.</li>
+</ul>
+<h3 id="d08-h5">5. 계정 발급 정책 (U-08, U-09, U-10, U-13)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>주제</th>
+<th>선택지</th>
+<th>고려사항</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>승인(U-08)</td>
+<td>(a) 승인 없음, 인사 역할만으로 발급 (b) HR 내부 2인 승인 (c) <code>approval-service</code> 연동</td>
+<td>내부자 위험 vs 입사 당일 처리 속도. 기존안 BO-01 <span class="tag t-unread">미열람</span></td>
+</tr>
+<tr>
+<td>로그인 ID(U-09)</td>
+<td>(a) 사번 <code>EMP-000123</code> (b) <code>xxx@pmart.com</code> (c) 사번 로그인 + 이메일은 선택 속성</td>
+<td>현장 바코드 로그인(기존안), 메일 없는 직원, 중복 판정 키</td>
+</tr>
+<tr>
+<td>초기 Credential(U-10)</td>
+<td>(a) 메일 링크 (b) 임시 비밀번호 출력·전달 (c) 센터 관리자 대면 설정</td>
+<td>전달 채널 보안, 첫 로그인 변경 강제</td>
+</tr>
+<tr>
+<td>권한 정본(U-13)</td>
+<td>(a) staff-access 신설(기존안) (b) HR Service 확장 (c) 기존 서비스(<code>approval-service</code>·<code>backoffice</code> 계열)에 편입 (d) Keycloak 그룹만</td>
+<td>(b)는 HR의 Admin 권한 확대를 부름(T-04). 합의 &quot;Employee IAM 서비스 불필요&quot;는 계정 생성에 한정된 것으로 읽힘(C-07)</td>
+</tr>
+</tbody></table></div>
+<h3 id="d08-h6">6. 직원 외부 IdP (U-05)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>옵션</th>
+<th>장점</th>
+<th>단점</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>미사용</td>
+<td>공격면 최소, 기존안과 일치</td>
+<td>사무직 편의 없음</td>
+</tr>
+<tr>
+<td>사내 IdP(예: 기업 디렉터리)만</td>
+<td>사내 계정과 통합</td>
+<td>인사 원장과 이중 정본 위험</td>
+</tr>
+<tr>
+<td>소셜 IdP</td>
+<td>편의</td>
+<td>계정 연결 탈취(T-14), OTP 정책 우회 가능성, 퇴사 후 외부 계정 잔존</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li>도입 시 공통 조건 <span class="tag t-proposal">제안</span>: 자가 가입 금지, 자동 링크 금지, 백오피스 LoA 2 유지.</li>
+</ul>
+<h3 id="d08-h7">7. 단일 Client에서 앱별 LoA·수명 구분 (N-01, N-02)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>옵션</th>
+<th>개요</th>
+<th>장점</th>
+<th>단점</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>L-1 employee-auth가 요청마다 <code>acr_values</code>(또는 claims) 지정</td>
+<td>백오피스 시작 요청은 수준 2 요구</td>
+<td>Client 하나 유지</td>
+<td>기존안이 우려한 &quot;요청에 빠뜨리면 우회&quot;를 employee-auth 코드가 책임짐. 결과 <code>acr</code> 검증 필수</td>
+</tr>
+<tr>
+<td>L-2 employee-auth 내부에 Client 2개(백오피스용·PDA용)</td>
+<td>Client 기본 수준·수명을 Keycloak이 강제</td>
+<td>기존안 통제 승계</td>
+<td>Draft의 &quot;로그인용 Client&quot; 단수 표현과 해석 차이 → 합의 확인 필요</td>
+</tr>
+<tr>
+<td>L-3 앱 세션에 <code>acr</code> 반영 후 Gateway가 경로별 검사</td>
+<td>Gateway 계약에 인증 수준 포함</td>
+<td>경로별 강제</td>
+<td>U-12 확정 필요, 세션 형태 의존</td>
+</tr>
+</tbody></table></div>
+<ul>
+<li><strong><span class="tag t-proposal">제안</span></strong> L-1·L-3 조합이든 L-2든 &quot;비밀번호만 거친 세션으로 백오피스 접근 시 OTP 요구&quot;라는 기존안 P2 완료 시험을 수용 기준으로 유지한다.</li>
+</ul>
+
+</section>
+<section class="doc" id="d09" aria-labelledby="d09-t">
+<h2 class="doc-title"><span class="doc-no">09</span>검토와 추적성</h2><ul>
+<li>목적: 이 문서 세트의 주요 결론이 어느 출처·가정에 연결되는지 추적하고, 평가 기준 충족 여부·위험·남은 확인사항을 정리한다.</li>
+<li>&quot;검토&quot;는 <strong>문서 간 정적 검토</strong>이며 코드·설정·운영 검증이 아니다.</li>
+</ul>
+<h3 id="d09-h1">1. 출처 목록</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>약칭</th>
+<th>파일</th>
+<th>날짜</th>
+<th>열람</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><span class="src">Draft</span></td>
+<td><code>PMart_IAM_Claude_Architecture_Package/PMart_Employee_IAM_Architecture_Draft.md</code></td>
+<td>2026-11-12</td>
+<td>전체</td>
+<td>기준선</td>
+</tr>
+<tr>
+<td><span class="src">구성안</span></td>
+<td><code>PMart_IAM_Claude_Architecture_Package/바로픽_Keycloak_OAuth_구성안.md</code></td>
+<td>2026-11-11</td>
+<td>전체</td>
+<td>기존안</td>
+</tr>
+<tr>
+<td><span class="src">Spec</span></td>
+<td><code>PMart_IAM_Claude_Architecture_Package/ARCHITECTURE_ARTIFACT_SPEC.md</code></td>
+<td>—</td>
+<td>전체</td>
+<td>산출물 명세</td>
+</tr>
+<tr>
+<td><span class="src">Prompt</span></td>
+<td><code>PMart_IAM_Claude_Architecture_Package/CLAUDE_ARCHITECTURE_ONLY_PROMPT.md</code></td>
+<td>—</td>
+<td>전체</td>
+<td>작업 지시</td>
+</tr>
+<tr>
+<td><span class="src">SS</span></td>
+<td><code>스크린샷 2026-11-12 100723.png</code></td>
+<td>2026-11-12</td>
+<td>이미지</td>
+<td>서버측 OAuth Client 흐름 그림(Google 예시)</td>
+</tr>
+<tr>
+<td>ADR-0011/0018/0019/0025/0026</td>
+<td><code>pmart-backend/docs/adr/...</code></td>
+<td>—</td>
+<td><strong>미열람</strong></td>
+<td>구성안 인용으로만 사용</td>
+</tr>
+<tr>
+<td>BackOffice 업무 로직, BR-02, OpenAPI, PmartPrincipal, 배포 문서</td>
+<td><code>pmart-backend</code>, <code>pmart-clients</code></td>
+<td>—</td>
+<td><strong>미열람</strong></td>
+<td>동일</td>
+</tr>
+</tbody></table></div>
+<h3 id="d09-h2">2. 결론 → 근거 추적표</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>설계 결론</th>
+<th>상태</th>
+<th>근거</th>
+<th>문서</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>직원 로그인은 employee-auth가 Keycloak OIDC Client로 중개</td>
+<td><span class="tag t-agreed">합의</span></td>
+<td>Draft §2-1, Prompt</td>
+<td>02, 05</td>
+</tr>
+<tr>
+<td>2</td>
+<td>React/PDA는 Keycloak에 직접 Client 등록 안 함</td>
+<td><span class="tag t-agreed">합의</span></td>
+<td>Draft §2-2, §7</td>
+<td>05, 07 C-01·C-02</td>
+</tr>
+<tr>
+<td>3</td>
+<td>계정 발급 경로 인사 React → GW → HR → Admin REST API</td>
+<td><span class="tag t-agreed">합의</span></td>
+<td>Draft §2-3, §5</td>
+<td>04</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Employee IAM 서비스 신설 안 함</td>
+<td><span class="tag t-agreed">합의</span></td>
+<td>Draft §2-4, Prompt</td>
+<td>03</td>
+</tr>
+<tr>
+<td>5</td>
+<td>HR 관리 자격 = 서비스 계정 Client <code>hr-provisioner</code> + <code>realm-management</code> 역할 3종 + Client Credentials. employee-auth 로그인 자격과 분리, 최고 관리자 미사용</td>
+<td><span class="tag t-agreed">합의</span> 2026-11-12 사용자 결정</td>
+<td>Draft §5·§7, 구성안 §7.1 <code>hr-provisioner</code></td>
+<td>02 §3.1, 03, 04, 06 §2</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Realm 이름 <code>pmart-staff</code></td>
+<td><span class="tag t-legacy">기존안</span></td>
+<td>구성안 §0, Draft §2-5</td>
+<td>전체</td>
+</tr>
+<tr>
+<td>7</td>
+<td>고객 Google → auth-service 유지, 발급자 분리</td>
+<td><span class="tag t-legacy">기존안</span>·<span class="tag t-agreed">합의</span></td>
+<td>구성안 §2.1·§10.5, Draft §8</td>
+<td>01, 05 §5</td>
+</tr>
+<tr>
+<td>8</td>
+<td>HR은 업무 권한을 주지 않음</td>
+<td><span class="tag t-legacy">기존안</span></td>
+<td>구성안 §9.1</td>
+<td>03</td>
+</tr>
+<tr>
+<td>9</td>
+<td>퇴사 시 비활성화·세션 종료·삭제 금지</td>
+<td><span class="tag t-legacy">기존안</span></td>
+<td>구성안 §9.1</td>
+<td>04 §4</td>
+</tr>
+<tr>
+<td>10</td>
+<td>사번당 활성 계정 1개, 검색 후 생성, 반영미확인</td>
+<td><span class="tag t-legacy">기존안</span>·<span class="tag t-proposal">제안</span></td>
+<td>구성안 §9.1, Draft §5·§9</td>
+<td>04 §2.2</td>
+</tr>
+<tr>
+<td>11</td>
+<td>단일 Client 구조에서 LoA·<code>azp</code> 기반 통제 재설계 필요</td>
+<td><span class="tag t-conflict">충돌</span> 발견</td>
+<td>구성안 §6.3·§6.4·§7.3 vs Draft §2</td>
+<td>05 §4, 07 N-01·N-02</td>
+</tr>
+<tr>
+<td>12</td>
+<td>staff-access는 계정 생성 서비스가 아니었음 → Draft 결정과 별개로 U-13</td>
+<td><span class="tag t-conflict">충돌</span> 해석</td>
+<td>구성안 §8.5, Draft §8</td>
+<td>07 C-07</td>
+</tr>
+<tr>
+<td>13</td>
+<td>Credential은 Keycloak 화면에서만 입력(ROPC 미사용)</td>
+<td><span class="tag t-proposal">제안</span></td>
+<td>Draft §6 해석, 보안 BCP <span class="tag t-supp">보충</span></td>
+<td>06 S-4, 08 §1 P-3</td>
+</tr>
+<tr>
+<td>14</td>
+<td>다이어그램 화살표는 논리 연결이며 HTTP 경로가 아님</td>
+<td><span class="tag t-agreed">합의</span></td>
+<td>Draft §3 주의</td>
+<td>01, 02</td>
+</tr>
+</tbody></table></div>
+<p>가정(근거 없이 둔 것):</p>
+<ul>
+<li>A-1: &quot;인사팀 앱&quot;(구성안)의 서버측 = HR Service로 해석했다(07 C-06).</li>
+<li>A-2: Keycloak을 PMart 시스템 경계 안에 그렸다(자체 운영, 구성안 §5).</li>
+<li>A-3: Gateway가 Spring Cloud Gateway(리액티브)라는 서술은 구성안 §8.1 문장에서 추론했다 <span class="tag t-unread">미열람</span>.</li>
+</ul>
+<h3 id="d09-h3">3. 평가 기준 충족 (Draft §11)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>기준</th>
+<th>판정</th>
+<th>위치</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>로그인(employee-auth)과 계정 발급(HR)을 혼동하지 않는가</td>
+<td>충족</td>
+<td>02 §3, 04, 05</td>
+</tr>
+<tr>
+<td>2</td>
+<td>HR이 Admin REST API를 직접 호출하며 불필요한 서비스를 추가하지 않았는가</td>
+<td>충족 (staff-access는 기존안 권장으로 미정 표시만)</td>
+<td>03, 07 C-07</td>
+</tr>
+<tr>
+<td>3</td>
+<td>로그인용 Client와 관리 API 자격을 구분했는가</td>
+<td>충족</td>
+<td>02 §3, 06 §2</td>
+</tr>
+<tr>
+<td>4</td>
+<td>PDA 로그인 완료 프로토콜을 임의로 확정하지 않았는가</td>
+<td>충족 (05 §3 개념도에 &quot;채택안 아님&quot; 명시)</td>
+<td>05, 08 §1</td>
+</tr>
+<tr>
+<td>5</td>
+<td>고객 Google 로그인 경로를 변경하지 않았는가</td>
+<td>충족</td>
+<td>05 §5</td>
+</tr>
+<tr>
+<td>6</td>
+<td>기존 구성안과의 충돌을 명시했는가</td>
+<td>충족</td>
+<td>07 §1</td>
+</tr>
+<tr>
+<td>7</td>
+<td>실제 구현·테스트 완료를 주장하지 않았는가</td>
+<td>충족</td>
+<td>00 §5</td>
+</tr>
+</tbody></table></div>
+<h3 id="d09-h4">4. 아키텍처 평가표 (잠정)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>품질 속성</th>
+<th>평가</th>
+<th>근거</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>책임 분리</td>
+<td>양호</td>
+<td>로그인/발급/고객 경로가 서로 다른 컨테이너·자격</td>
+</tr>
+<tr>
+<td>보안 통제 승계</td>
+<td><strong>취약</strong></td>
+<td>기존안의 Client 단위 LoA·수명 통제가 단일 Client 구조로 자동 승계되지 않음(N-01·N-02)</td>
+</tr>
+<tr>
+<td>퇴사 대응</td>
+<td>미정</td>
+<td>차단 목록 등록 주체·시한 미정(U-14, N-04)</td>
+</tr>
+<tr>
+<td>복구 가능성(계정 발급)</td>
+<td>양호(제안 기준)</td>
+<td>검색 후 생성, 반영미확인, 대사</td>
+</tr>
+<tr>
+<td>가용성</td>
+<td>미정</td>
+<td>employee-auth 세션 모델·Keycloak 장애 영향(N-07)</td>
+</tr>
+<tr>
+<td>운영 복잡도</td>
+<td>증가</td>
+<td>서버측 Client + 앱 복귀 설계가 표준 네이티브 패턴보다 복잡(08 §1)</td>
+</tr>
+</tbody></table></div>
+<h3 id="d09-h5">5. 충돌·위험 심각도</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>등급</th>
+<th>항목</th>
+<th>근거</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>치명</strong></td>
+<td>N-01 / T-08 OTP 우회 가능성</td>
+<td>기존안 핵심 통제가 새 구조에서 보장되지 않음</td>
+</tr>
+<tr>
+<td><strong>치명</strong></td>
+<td>U-04 / T-06 PDA 결과 바인딩</td>
+<td>로그인 결과가 다른 기기·사용자로 전달될 수 있는 설계 공백</td>
+</tr>
+<tr>
+<td><strong>치명</strong></td>
+<td>U-11 / T-04 HR 관리 권한 범위</td>
+<td>HR 침해 시 realm 장악 가능</td>
+</tr>
+<tr>
+<td>중요</td>
+<td>N-05 / T-07 공용 PDA 세션 잔존</td>
+<td>감사 기록 오염</td>
+</tr>
+<tr>
+<td>중요</td>
+<td>U-14·N-03·N-04 퇴사 반영</td>
+<td>즉시 차단 목표의 주체·경로 공백</td>
+</tr>
+<tr>
+<td>중요</td>
+<td>N-02 / U-12 검증 계약·발급자 수</td>
+<td>업무 API 인가 일관성</td>
+</tr>
+<tr>
+<td>중요</td>
+<td>C-07 / U-13 권한 정본</td>
+<td>staff-access 오독 시 권한 통제 누락</td>
+</tr>
+<tr>
+<td>중요</td>
+<td>U-05 외부 IdP</td>
+<td>도입 시 계정 연결 위협</td>
+</tr>
+<tr>
+<td>보통</td>
+<td>U-09·C-10 로그인 ID</td>
+<td>중복 판정·메일 없는 직원</td>
+</tr>
+<tr>
+<td>보통</td>
+<td>U-08 승인</td>
+<td>내부자 발급 통제</td>
+</tr>
+<tr>
+<td>보통</td>
+<td>N-06 <code>iss</code> 주소 일치</td>
+<td>설정 문제로 해결 가능 <span class="tag t-verify">확인</span></td>
+</tr>
+<tr>
+<td>보통</td>
+<td>N-10 <span class="src">SS</span> 설명 자료 정합</td>
+<td>문서 혼동 방지</td>
+</tr>
+</tbody></table></div>
+<h3 id="d09-h6">6. 남은 확인사항</h3><ol>
+<li>저장소 열람: ADR-0011/0018/0025/0026, <code>common-security</code> <code>PmartPrincipal</code>, Gateway 설정, <code>backoffice-bff</code>, BackOffice 업무 로직(BO-01/02), BR-02.</li>
+<li>Keycloak 고정 버전 공식 문서: <code>manage-users</code> 허용 범위, Fine-Grained Admin Permissions 상태, LoA·<code>acr_values</code> 강제 동작, 사용자 속성 검색 정확 일치, 세션 종료 API 범위, <code>jdbc-ping</code> 기본값.</li>
+<li>Android PDA 기종: 시스템 브라우저·App Link·쿠키 잔존(구성안 §15.2 시험 항목을 새 구조로 재정의).</li>
+<li>결정권자 확인: U-01<del>U-15, N-01</del>N-10.</li>
+</ol>
+<h3 id="d09-h7">7. 수용 기준 (Spec §7 최종 검수)</h3><div class="tbl"><table>
+<thead>
+<tr>
+<th>항목</th>
+<th>결과</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>아티팩트만 생성했고 기능·설정·배포를 변경하지 않았다</td>
+<td>충족</td>
+<td><code>docs/architecture/employee-iam/</code> 아래 Markdown 10개만 생성</td>
+</tr>
+<tr>
+<td>로그인/직원 계정 발급 두 흐름을 완전히 구분했다</td>
+<td>충족</td>
+<td>04 vs 05, 02 §3</td>
+</tr>
+<tr>
+<td>U-01~U-15가 모두 존재하며 상태가 변경되지 않았다</td>
+<td>충족</td>
+<td>07 §2, 전부 <span class="tag t-open">미확정</span>. U-11은 질문 범위만 좁힘 (07 §6)</td>
+</tr>
+<tr>
+<td>원본 구성안과의 차이와 최신 합의 근거를 추적할 수 있다</td>
+<td>충족</td>
+<td>07 §1, 본 문서 §2</td>
+</tr>
+<tr>
+<td>구현된 사실·제안·미확정이 구분된다</td>
+<td>충족</td>
+<td>태그 범례 00 §2. 구현 사실은 저장소 미열람으로 <strong>확인된 것이 없음</strong></td>
+</tr>
+<tr>
+<td>중요 보안 반례·실패/복구를 다뤘다</td>
+<td>충족</td>
+<td>06 §4 T-01~T-15, 04 §5</td>
+</tr>
+<tr>
+<td>Mermaid 문법·참조 일관성을 정적 검토했다</td>
+<td>정적 검토만 수행, <strong>렌더링 미검증</strong></td>
+<td>flowchart 4개, sequenceDiagram 6개, stateDiagram 1개</td>
+</tr>
+<tr>
+<td>&#39;검토 완료&#39;를 코드/운영 검증과 혼동하지 않았다</td>
+<td>충족</td>
+<td>본 문서 서두</td>
+</tr>
+</tbody></table></div>
+
+</section>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  var TONES = { blue: ['--accent', '--accent-soft'], purple: ['--p', '--p-bg'], orange: ['--a', '--a-bg'], green: ['--g', '--g-bg'], red: ['--r', '--r-bg'], teal: ['--c', '--c-bg'], gray: ['--n', '--n-bg'] };
+  function fg(t) { return 'var(' + TONES[t || 'gray'][0] + ')'; }
+  function bg(t) { return 'var(' + TONES[t || 'gray'][1] + ')'; }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  var UID = 0;
+
+  function defs(u) {
+    return '<defs>' + Object.keys(TONES).map(function (t) {
+      return '<marker id="a' + u + t + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:' + fg(t) + '"/></marker>';
+    }).join('') + '<marker id="x' + u + '" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="13" markerHeight="13" markerUnits="userSpaceOnUse" orient="auto"><path d="M1,1 L9,9 M9,1 L1,9" style="stroke:' + fg('red') + ';stroke-width:2.4;fill:none"/></marker></defs>';
+  }
+
+  function lines(x, y, s, o) {
+    o = o || {};
+    var ls = String(s).split('\n'), lh = o.lh || 16, y0 = y - (ls.length - 1) * lh / 2;
+    return '<text x="' + x + '" y="' + y0 + '" text-anchor="' + (o.anchor || 'middle') + '" dominant-baseline="middle"' + (o.cls ? ' class="' + o.cls + '"' : '') + (o.style ? ' style="' + o.style + '"' : '') + '>' +
+      ls.map(function (l, i) { return '<tspan x="' + x + '" y="' + (y0 + i * lh) + '" class="' + (i === 0 ? (o.first || '') : (o.rest || '')) + '">' + esc(l) + '</tspan>'; }).join('') + '</text>';
+  }
+
+  function svgOpen(W, H, minW, title) {
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="min-width:' + minW + 'px" role="img" aria-label="' + esc(title) + '">';
+  }
+
+  /* ---------- box-and-arrow diagrams ---------- */
+  function graph(sp) {
+    var u = ++UID, out = svgOpen(sp.W, sp.H, sp.minW || 720, sp.title) + defs(u), N = {}, labels = '';
+    (sp.zones || []).forEach(function (z) {
+      out += '<rect x="' + z.x + '" y="' + z.y + '" width="' + z.w + '" height="' + z.h + '" rx="14" class="zone' + (z.dash ? ' dash' : '') + '" style="stroke:' + fg(z.tone) + ';fill:' + (z.nofill ? 'none' : bg(z.tone)) + '"/>';
+      out += lines(z.x + 14, z.y + 17, z.label, { anchor: 'start', cls: 'zlabel', style: 'fill:' + fg(z.tone) });
+    });
+    (sp.nodes || []).forEach(function (n) { N[n.id] = n; });
+    (sp.edges || []).forEach(function (e) {
+      var st = e.s || 'solid', tone = e.tone || (st === 'forbid' ? 'red' : (N[e.f] ? N[e.f].tone : 'gray'));
+      var d = e.d, pts = e.pts;
+      if (!d) d = 'M ' + pts.map(function (p) { return p[0] + ' ' + p[1]; }).join(' L ');
+      var mk = st === 'forbid' ? 'url(#x' + u + ')' : 'url(#a' + u + tone + ')';
+      out += '<path d="' + d + '" class="edge ' + st + '" style="stroke:' + fg(tone) + '" marker-end="' + mk + '"/>';
+      if (e.label) {
+        var lx = e.lx, ly = e.ly, anchor = e.anchor || 'middle';
+        if (lx == null && pts) {
+          var best = 0, bi = 0;
+          for (var i = 0; i < pts.length - 1; i++) { var L = Math.abs(pts[i + 1][0] - pts[i][0]) + Math.abs(pts[i + 1][1] - pts[i][1]); if (L > best) { best = L; bi = i; } }
+          var a = pts[bi], b = pts[bi + 1];
+          if (a[1] === b[1]) { lx = (a[0] + b[0]) / 2; ly = a[1] - 10; } else { lx = a[0] + 8; ly = (a[1] + b[1]) / 2; anchor = 'start'; }
+        }
+        labels += lines(lx, ly, e.label, { anchor: anchor, cls: 'elabel', lh: 14, style: 'fill:' + fg(tone) });
+      }
+    });
+    (sp.nodes || []).forEach(function (n) {
+      var rx = n.kind === 'person' ? n.h / 2 : 10;
+      out += '<rect x="' + n.x + '" y="' + n.y + '" width="' + n.w + '" height="' + n.h + '" rx="' + rx + '" class="node' + (n.ghost ? ' ghost' : '') + (n.port ? ' port' : '') + '" style="stroke:' + fg(n.tone) + ';fill:' + (n.port || n.container ? 'var(--paper)' : bg(n.tone)) + '"/>';
+      var cy = n.top ? n.y + 22 + (String(n.label).split('\n').length - 1) * 8 : n.y + n.h / 2;
+      out += lines(n.x + n.w / 2, cy, n.label, { first: 'nl', rest: 'ns', style: n.ghost ? 'fill:var(--muted)' : '' });
+    });
+    (sp.notes || []).forEach(function (t) {
+      labels += lines(t.x, t.y, t.text, { anchor: t.anchor || 'middle', cls: 'elabel', lh: 14, style: 'fill:' + fg(t.tone) });
+    });
+    return out + labels + '</svg>';
+  }
+
+  /* ---------- sequence diagrams ---------- */
+  function seq(sp) {
+    var u = ++UID, P = sp.p, cw = sp.cw || 150, pad = 14, top = 6, hh = sp.hh || 52;
+    var W = pad * 2 + cw * P.length, X = {}, T = {};
+    P.forEach(function (p, i) { X[p.id] = pad + cw * i + cw / 2; T[p.id] = p; });
+    var y = top + hh + 34, n = 0, body = '', bands = [], stack = [];
+    sp.s.forEach(function (s) {
+      if (s.g) { stack.push({ g: s.g, tone: s.tone, dash: s.dash, from: s.from, to: s.to, y0: y - 14, depth: stack.length }); y += 36; return; }
+      if (s.end) { var g = stack.pop(); g.y1 = y - 12; bands.push(g); y += 14; return; }
+      if (s.note) {
+        var x0 = X[s.f] - cw / 2 + 16, x1 = X[s.t || s.f] + cw / 2 - 16;
+        body += '<rect x="' + x0 + '" y="' + (y - 12) + '" width="' + (x1 - x0) + '" height="30" rx="8" class="snote"/>';
+        body += lines((x0 + x1) / 2, y + 3, s.note, { cls: 'notetext' });
+        y += 46; return;
+      }
+      n++;
+      var num = String.fromCharCode(0x2460 + n - 1), tone = s.c || T[s.f].tone || 'gray', st = s.d ? 'dash' : 'solid';
+      var mk = 'url(#a' + u + tone + ')';
+      if (s.f === s.t) {
+        var x = X[s.f];
+        body += '<path d="M ' + x + ' ' + (y - 7) + ' h 24 v 15 h -21" class="edge ' + st + '" style="stroke:' + fg(tone) + '" marker-end="' + mk + '"/>';
+        body += '<text x="' + (x + 32) + '" y="' + (y + 1) + '" text-anchor="start" dominant-baseline="middle" class="slabel"><tspan class="num" style="fill:' + fg(tone) + '">' + num + '</tspan> ' + esc(s.txt) + '</text>';
+        y += 40;
+      } else {
+        var xa = X[s.f], xb = X[s.t], dir = xb > xa ? 1 : -1;
+        body += '<path d="M ' + (xa + dir * 3) + ' ' + y + ' L ' + (xb - dir * 3) + ' ' + y + '" class="edge ' + st + '" style="stroke:' + fg(tone) + '" marker-end="' + mk + '"/>';
+        body += '<text x="' + ((xa + xb) / 2) + '" y="' + (y - 10) + '" text-anchor="middle" dominant-baseline="middle" class="slabel"><tspan class="num" style="fill:' + fg(tone) + '">' + num + '</tspan> ' + esc(s.txt) + '</text>';
+        y += 46;
+      }
+    });
+    var H = y + 4, out = svgOpen(W, H, sp.minW || 760, sp.title) + defs(u);
+    bands.sort(function (a, b) { return a.depth - b.depth; }).forEach(function (g) {
+      var x0 = g.from ? X[g.from] - cw / 2 + 4 : pad / 2 + g.depth * 6;
+      var x1 = g.to ? X[g.to] + cw / 2 - 4 : W - pad / 2 - g.depth * 6;
+      out += '<rect x="' + x0 + '" y="' + g.y0 + '" width="' + (x1 - x0) + '" height="' + (g.y1 - g.y0) + '" rx="10" class="band' + (g.dash ? ' dash' : '') + '" style="fill:' + bg(g.tone) + ';stroke:' + fg(g.tone) + '"/>';
+      out += '<text x="' + (x0 + 12) + '" y="' + (g.y0 + 14) + '" dominant-baseline="middle" class="blabel" style="fill:' + fg(g.tone) + '">' + esc(g.g) + '</text>';
+    });
+    P.forEach(function (p) {
+      out += '<line x1="' + X[p.id] + '" y1="' + (top + hh) + '" x2="' + X[p.id] + '" y2="' + (H - 2) + '" class="life"/>';
+    });
+    P.forEach(function (p) {
+      out += '<rect x="' + (X[p.id] - cw / 2 + 8) + '" y="' + top + '" width="' + (cw - 16) + '" height="' + hh + '" rx="10" class="node' + (p.ghost ? ' ghost' : '') + '" style="stroke:' + fg(p.tone) + ';fill:' + bg(p.tone) + '"/>';
+      out += lines(X[p.id], top + hh / 2, p.label, { first: 'hl', rest: 'ns', lh: 15, style: 'fill:' + (p.ghost ? 'var(--muted)' : fg(p.tone)) });
+    });
+    return out + body + '</svg>';
+  }
+
+  /* ---------- legend ---------- */
+  var LEG = {
+    solid: ['<path d="M2 7 H38" class="edge solid" style="stroke:var(--ink)"/>', '확정 경로 (합의·기존안)'],
+    dash: ['<path d="M2 7 H38" class="edge dash" style="stroke:var(--ink)"/>', '미정 · 선택 경로'],
+    bold: ['<path d="M2 7 H38" class="edge bold" style="stroke:var(--p)"/>', 'Admin REST API (관리 경로)'],
+    forbid: ['<path d="M2 7 H38" class="edge forbid" style="stroke:var(--r)"/>', '있으면 안 되는 경로'],
+    teal: ['<rect x="2" y="1" width="36" height="12" rx="3" style="fill:var(--c-bg);stroke:var(--c)"/>', '서버끼리 직접 (브라우저 거치지 않음)'],
+    open: ['<rect x="2" y="1" width="36" height="12" rx="3" style="fill:var(--a-bg);stroke:var(--a)"/>', '설계가 정해지지 않은 구간'],
+    ghost: ['<rect x="2" y="1" width="36" height="12" rx="3" class="ghost" style="fill:var(--n-bg);stroke:var(--n)"/>', '존재·형태 미정 구성요소']
+  };
+  function legend(keys) {
+    return '<div class="vleg">' + keys.map(function (k) {
+      return '<span><svg width="40" height="14" aria-hidden="true">' + LEG[k][0] + '</svg>' + LEG[k][1] + '</span>';
+    }).join('') + '</div>';
+  }
+
+  /* ---------- diagram specs ---------- */
+  var V = {};
+
+  V['d01-m1'] = { type: 'graph', title: '시스템 컨텍스트', W: 1120, H: 500, minW: 780, legend: ['solid', 'dash', 'bold', 'ghost'],
+    caption: '사람은 왼쪽, 외부 서비스는 오른쪽. 직원 앱과 고객 앱의 요청은 모두 API Gateway를 거쳐 들어간다. 직원과 고객은 토큰 발급자가 다른 두 영역으로 나뉜다.',
+    zones: [
+      { x: 8, y: 16, w: 196, h: 470, label: '사람', tone: 'gray', dash: true, nofill: true },
+      { x: 225, y: 16, w: 665, h: 470, label: 'PMart 시스템 경계', tone: 'gray' },
+      { x: 520, y: 50, w: 350, h: 170, label: '직원 인증 영역 · 발급자 pmart-staff', tone: 'blue' },
+      { x: 520, y: 340, w: 350, h: 110, label: '고객 인증 영역 · 발급자 auth-service', tone: 'orange' },
+      { x: 910, y: 16, w: 200, h: 470, label: '외부 서비스', tone: 'gray', dash: true, nofill: true }
+    ],
+    nodes: [
+      { id: 'st', x: 22, y: 56, w: 170, h: 40, label: '본사·백오피스 직원', kind: 'person', tone: 'blue' },
+      { id: 'fd', x: 22, y: 116, w: 170, h: 40, label: 'MFC·CDC 현장 직원', kind: 'person', tone: 'blue' },
+      { id: 'hr', x: 22, y: 176, w: 170, h: 40, label: '인사 담당자', kind: 'person', tone: 'purple' },
+      { id: 'ri', x: 22, y: 270, w: 170, h: 40, label: '라이더 · 방식 미정', kind: 'person', tone: 'gray', ghost: true },
+      { id: 'cu', x: 22, y: 368, w: 170, h: 40, label: '고객', kind: 'person', tone: 'orange' },
+      { id: 'op', x: 22, y: 428, w: 170, h: 40, label: 'Keycloak 운영 관리자', kind: 'person', tone: 'gray' },
+      { id: 'sapp', x: 245, y: 96, w: 120, h: 60, label: '직원 앱\nReact · PDA', tone: 'blue' },
+      { id: 'capp', x: 245, y: 360, w: 120, h: 56, label: '고객 앱', tone: 'orange' },
+      { id: 'gw', x: 400, y: 60, w: 90, h: 400, label: 'API Gateway\n공통 진입점\n라우팅 ·\n보안 경계', tone: 'gray', top: true },
+      { id: 'hrs', x: 540, y: 82, w: 150, h: 50, label: 'HR Service\n계정 발급', tone: 'purple' },
+      { id: 'ea', x: 540, y: 150, w: 150, h: 50, label: 'employee-auth\n로그인 중개', tone: 'blue' },
+      { id: 'kc', x: 720, y: 82, w: 135, h: 118, label: 'Keycloak\npmart-staff\n로그인 OIDC\n관리 Admin API', tone: 'teal' },
+      { id: 'biz', x: 540, y: 250, w: 150, h: 60, label: '업무 서비스\nWMS · OMS 등', tone: 'green' },
+      { id: 'au', x: 540, y: 372, w: 150, h: 56, label: 'auth-service\n고객 JWT 발급', tone: 'orange' },
+      { id: 'sidp', x: 925, y: 82, w: 170, h: 50, label: '직원 외부 IdP\n사용 여부 미정 U-05', tone: 'gray', ghost: true },
+      { id: 'smtp', x: 925, y: 150, w: 170, h: 50, label: 'SMTP 발송 서비스\n대상 미정 U-10', tone: 'gray', ghost: true },
+      { id: 'goo', x: 925, y: 372, w: 170, h: 56, label: 'Google\n고객 IdP', tone: 'orange' }
+    ],
+    edges: [
+      { f: 'st', pts: [[192, 76], [232, 76], [232, 110], [245, 110]] },
+      { f: 'fd', pts: [[192, 136], [245, 136]] },
+      { f: 'hr', pts: [[192, 196], [232, 196], [232, 148], [245, 148]] },
+      { f: 'ri', s: 'dash', tone: 'gray', pts: [[192, 290], [224, 290]] },
+      { f: 'cu', pts: [[192, 388], [245, 388]] },
+      { f: 'sapp', pts: [[365, 126], [400, 126]] },
+      { f: 'capp', pts: [[365, 388], [400, 388]] },
+      { f: 'hrs', tone: 'purple', pts: [[490, 107], [540, 107]] },
+      { f: 'ea', tone: 'blue', pts: [[490, 175], [540, 175]] },
+      { f: 'biz', tone: 'green', pts: [[490, 280], [540, 280]] },
+      { f: 'au', tone: 'orange', pts: [[490, 400], [540, 400]] },
+      { f: 'hrs', s: 'bold', pts: [[690, 107], [720, 107]] },
+      { f: 'ea', pts: [[690, 175], [720, 175]] },
+      { f: 'sapp', s: 'dash', tone: 'blue', d: 'M 305 96 C 305 28, 787 24, 787 82', label: '로그인 화면 이동 · 경로 미정 (Gateway 경유 여부 미정)', lx: 546, ly: 36 },
+      { f: 'au', pts: [[690, 400], [925, 400]], label: '인가 코드 교환', lx: 808, ly: 390 },
+      { f: 'kc', s: 'dash', tone: 'gray', pts: [[855, 107], [925, 107]] },
+      { f: 'kc', s: 'dash', tone: 'gray', pts: [[855, 175], [925, 175]] },
+      { f: 'op', tone: 'gray', pts: [[192, 448], [210, 448], [210, 474], [800, 474], [800, 200]], label: '관리 콘솔 · 내부망 (Gateway 미경유)', lx: 600, ly: 465 }
+    ] };
+
+  V['d02-m1'] = { type: 'graph', title: '컨테이너 구조 — 네 갈래 경로', W: 1000, H: 480, legend: ['solid', 'dash', 'bold', 'ghost'],
+    caption: '한 줄이 한 경로다. Gateway는 모든 경로가 지나는 하나의 진입점이고, Keycloak은 로그인용 OIDC와 계정 관리용 Admin REST API라는 서로 다른 두 입구를 가진다.',
+    zones: [
+      { x: 10, y: 60, w: 980, h: 90, label: '① 직원 로그인', tone: 'blue' },
+      { x: 10, y: 165, w: 980, h: 90, label: '② 직원 계정 발급', tone: 'purple' },
+      { x: 10, y: 270, w: 980, h: 90, label: '③ 직원 업무 요청', tone: 'green' },
+      { x: 10, y: 375, w: 980, h: 90, label: '④ 고객 로그인·업무', tone: 'orange' }
+    ],
+    nodes: [
+      { id: 'gw', x: 340, y: 72, w: 110, h: 383, label: 'API Gateway\n모든 요청의\n진입점', tone: 'gray', top: true, container: true },
+      { id: 'kc', x: 720, y: 68, w: 255, h: 180, label: 'Keycloak · realm pmart-staff', tone: 'gray', top: true, container: true },
+      { id: 'a1', x: 140, y: 78, w: 150, h: 54, label: 'React · PDA\n로그인 시작', tone: 'blue' },
+      { id: 'ea', x: 500, y: 78, w: 160, h: 54, label: 'employee-auth\n로그인 중개', tone: 'blue' },
+      { id: 'oidc', x: 738, y: 96, w: 220, h: 46, label: 'OIDC Token Endpoint\n로그인 code 교환', tone: 'blue', port: true },
+      { id: 'b1', x: 140, y: 183, w: 150, h: 54, label: '인사팀 React\n직원 등록 요청', tone: 'purple' },
+      { id: 'hrs', x: 500, y: 183, w: 160, h: 54, label: 'HR Service\n인사 원장 · 계정 발급', tone: 'purple' },
+      { id: 'adm', x: 738, y: 190, w: 220, h: 46, label: 'Admin REST API\n사용자 생성·수정·비활성화', tone: 'purple', port: true },
+      { id: 'c1', x: 140, y: 288, w: 150, h: 54, label: 'React · PDA\n업무 요청', tone: 'green' },
+      { id: 'biz', x: 500, y: 288, w: 160, h: 54, label: '업무 API\nWMS · OMS 등', tone: 'green' },
+      { id: 'u12', x: 720, y: 288, w: 255, h: 54, label: '직원 토큰·세션 검증 방식\n미정 U-12 · 차단 목록 U-14', tone: 'gray', ghost: true },
+      { id: 'd1', x: 140, y: 393, w: 150, h: 54, label: '고객 앱\nGoogle 로그인 후', tone: 'orange' },
+      { id: 'au', x: 500, y: 393, w: 160, h: 54, label: 'auth-service\n고객 JWT 발급', tone: 'orange' },
+      { id: 'goo', x: 720, y: 393, w: 255, h: 54, label: 'Google\n고객 IdP', tone: 'orange' }
+    ],
+    edges: [
+      { f: 'a1', pts: [[290, 105], [340, 105]] },
+      { f: 'a1', pts: [[450, 105], [500, 105]] },
+      { f: 'ea', pts: [[660, 112], [738, 112]], label: 'code 교환', lx: 699, ly: 101 },
+      { f: 'a1', s: 'dash', tone: 'blue', d: 'M 215 78 C 215 26, 848 14, 848 66', label: '사용자 브라우저가 로그인 화면으로 이동 · 경로 미정 U-01 U-06', lx: 530, ly: 34 },
+      { f: 'b1', pts: [[290, 210], [340, 210]] },
+      { f: 'b1', pts: [[450, 210], [500, 210]] },
+      { f: 'hrs', s: 'bold', pts: [[660, 212], [738, 212]], label: 'Admin API', lx: 699, ly: 200 },
+      { f: 'c1', pts: [[290, 315], [340, 315]] },
+      { f: 'c1', pts: [[450, 315], [500, 315]] },
+      { f: 'd1', pts: [[290, 420], [340, 420]], label: 'code', lx: 315, ly: 409 },
+      { f: 'd1', pts: [[450, 420], [500, 420]] },
+      { f: 'au', pts: [[660, 420], [720, 420]], label: '코드 교환', lx: 690, ly: 409 }
+    ],
+    notes: [{ x: 580, y: 143, text: '앱에 결과 전달 형식 미정 · U-03', tone: 'orange' },
+      { x: 580, y: 248, text: 'hr-provisioner · Client Credentials', tone: 'purple' }] };
+
+  V['d02-m2'] = { type: 'graph', title: 'HR Service Admin REST API 자격 구성', W: 1000, H: 330, minW: 760, legend: ['solid', 'dash', 'bold'],
+    caption: '세 가지가 함께 있어야 호출된다. ① Client가 있어야 토큰을 받고, ② 역할이 있어야 Admin API가 허락하며, ③ Client Credentials로 받은 토큰을 Bearer로 붙여 부른다.',
+    zones: [
+      { x: 10, y: 28, w: 300, h: 290, label: 'HR Service', tone: 'purple' },
+      { x: 340, y: 28, w: 650, h: 290, label: 'Keycloak · realm pmart-staff', tone: 'teal' },
+      { x: 690, y: 46, w: 290, h: 252, label: '설정 — 한 번 구성', tone: 'gray', dash: true, nofill: true }
+    ],
+    nodes: [
+      { id: 'sec', x: 30, y: 70, w: 250, h: 56, label: 'client_id · secret\n암호화 설정 저장 {cipher}', tone: 'purple' },
+      { id: 'cache', x: 30, y: 220, w: 250, h: 56, label: '관리용 토큰 캐시\n만료 전까지 재사용', tone: 'purple' },
+      { id: 'tok', x: 370, y: 70, w: 260, h: 56, label: 'Token Endpoint\n…/protocol/openid-connect/token', tone: 'teal', port: true },
+      { id: 'adm', x: 370, y: 220, w: 260, h: 56, label: 'Admin REST API\n/admin/realms/pmart-staff/users', tone: 'purple', port: true },
+      { id: 'cl', x: 705, y: 76, w: 260, h: 52, label: '① 서비스 계정 Client\nhr-provisioner · Service accounts ON', tone: 'blue' },
+      { id: 'sau', x: 705, y: 158, w: 260, h: 52, label: '서비스 계정 사용자\nservice-account-hr-provisioner', tone: 'gray' },
+      { id: 'rm', x: 705, y: 238, w: 260, h: 56, label: '② realm-management 역할\nmanage-users · view-users · query-users', tone: 'green' }
+    ],
+    edges: [
+      { f: 'sec', tone: 'teal', pts: [[280, 98], [370, 98]], label: '③ Client\nCredentials', lx: 325, ly: 78 },
+      { f: 'tok', s: 'dash', tone: 'blue', pts: [[630, 98], [705, 98]], label: 'Client 확인', lx: 667, ly: 87 },
+      { f: 'tok', tone: 'teal', pts: [[430, 126], [430, 175], [200, 175], [200, 220]], label: '관리용 Access Token (역할 포함)', lx: 315, ly: 164 },
+      { f: 'cache', s: 'bold', tone: 'purple', pts: [[280, 248], [370, 248]], label: 'Bearer', lx: 325, ly: 237 },
+      { f: 'adm', s: 'dash', tone: 'green', pts: [[630, 266], [705, 266]], label: '권한 확인', lx: 667, ly: 255 },
+      { f: 'cl', tone: 'gray', pts: [[835, 128], [835, 158]], label: '켜면 자동 생성', lx: 845, ly: 143, anchor: 'start' },
+      { f: 'sau', tone: 'gray', pts: [[835, 210], [835, 238]], label: '역할 부여', lx: 845, ly: 224, anchor: 'start' }
+    ],
+    notes: [
+      { x: 500, y: 300, text: '빠지면: ① 토큰 발급 불가 · ② 403 · ③ 401', tone: 'red' },
+      { x: 835, y: 309, text: '역할 매핑 허용 여부 U-11 · 이번 범위 제외', tone: 'orange' }
+    ] };
+
+  V['d04-m1'] = { type: 'graph', title: '계정 상태 흐름', W: 980, H: 280, minW: 720, legend: ['solid', 'dash'],
+    caption: '왼쪽에서 오른쪽으로 진행한다. 승인 단계가 있는지는 U-08로 미정이라 두 경로를 모두 그렸다.',
+    nodes: [
+      { id: 'req', x: 20, y: 62, w: 120, h: 56, label: '등록 요청', tone: 'purple' },
+      { id: 'wait', x: 190, y: 62, w: 120, h: 56, label: '승인 대기\nU-08', tone: 'orange', ghost: true },
+      { id: 'prov', x: 360, y: 62, w: 120, h: 56, label: '발급 진행', tone: 'purple' },
+      { id: 'act', x: 600, y: 62, w: 120, h: 56, label: '활성', tone: 'green' },
+      { id: 'dis', x: 820, y: 62, w: 140, h: 56, label: '비활성\n삭제하지 않음', tone: 'gray' },
+      { id: 'rej', x: 190, y: 200, w: 120, h: 56, label: '거절', tone: 'red' },
+      { id: 'unk', x: 470, y: 200, w: 140, h: 56, label: '반영 미확인\n제안', tone: 'orange' }
+    ],
+    edges: [
+      { f: 'req', s: 'dash', pts: [[140, 90], [190, 90]], label: '필요 시', lx: 165, ly: 80 },
+      { f: 'req', s: 'dash', pts: [[80, 62], [80, 30], [420, 30], [420, 62]], label: '승인 불요 시 · U-08' },
+      { f: 'wait', pts: [[310, 90], [360, 90]], label: '승인', lx: 335, ly: 80 },
+      { f: 'wait', tone: 'red', pts: [[250, 118], [250, 200]], label: '반려' },
+      { f: 'prov', tone: 'green', pts: [[480, 90], [600, 90]], label: 'Keycloak 생성 확인' },
+      { f: 'prov', tone: 'orange', pts: [[420, 118], [420, 228], [470, 228]], label: '응답 유실', lx: 412, ly: 175, anchor: 'end' },
+      { f: 'unk', pts: [[500, 200], [500, 150], [455, 150], [455, 118]], label: '재조회: 없음 → 재시도', lx: 508, ly: 160, anchor: 'start' },
+      { f: 'unk', tone: 'green', pts: [[610, 228], [660, 228], [660, 118]], label: '재조회: 있음' },
+      { f: 'act', d: 'M 640 62 C 640 20, 690 20, 690 62', label: '속성 수정 (센터 이동 등)', lx: 665, ly: 16 },
+      { f: 'act', tone: 'gray', pts: [[720, 90], [820, 90]], label: '퇴사' }
+    ] };
+
+  var P_HR = { id: 'hr', label: 'HR Service', tone: 'purple' };
+  var P_GW = { id: 'gw', label: 'API Gateway', tone: 'gray' };
+
+  V['d04-m2'] = { type: 'seq', title: '신규 직원 계정 발급', cw: 156, legend: ['solid', 'dash', 'teal', 'open'],
+    caption: '계정 발급 경로. Keycloak 호출은 모두 Admin REST API이며 직원 로그인과 관계없다.',
+    p: [{ id: 'u', label: '인사 담당자', tone: 'purple' }, { id: 'web', label: 'React 백오피스', tone: 'blue' }, P_GW, P_HR,
+      { id: 'tok', label: 'Keycloak\nToken Endpoint', tone: 'teal' }, { id: 'adm', label: 'Keycloak\nAdmin REST API', tone: 'orange' }],
+    s: [
+      { f: 'u', t: 'web', txt: '신규 인력 입력 · 발급 요청' },
+      { f: 'web', t: 'gw', txt: '직원 등록 요청' },
+      { f: 'gw', t: 'hr', txt: '라우팅' },
+      { f: 'hr', t: 'hr', txt: '요청자 권한 · 입력값 · 사번 중복 검증' },
+      { g: '선택 — 승인 절차가 정해진 경우 (U-08)', tone: 'orange', dash: true, from: 'web', to: 'hr' },
+      { f: 'hr', t: 'hr', txt: '승인 대기 또는 승인 확인', d: true },
+      { end: 1 },
+      { g: '관리 자격 받기 — 서버끼리, 직원 로그인과 무관', tone: 'teal', from: 'hr', to: 'tok' },
+      { f: 'hr', t: 'tok', txt: 'Client Credentials · hr-provisioner' },
+      { f: 'tok', t: 'hr', txt: '관리용 Access Token (역할 3종 포함)' },
+      { end: 1 },
+      { f: 'hr', t: 'adm', txt: 'Bearer 토큰으로 사번 검색' },
+      { g: '이미 있으면', tone: 'gray', from: 'web', to: 'adm' },
+      { f: 'adm', t: 'hr', txt: '기존 사용자' },
+      { f: 'hr', t: 'web', txt: '중복 또는 기존 계정 연결 결과' },
+      { end: 1 },
+      { g: '없으면 — 새로 만든다', tone: 'green', from: 'web', to: 'adm' },
+      { f: 'hr', t: 'adm', txt: 'POST /admin/realms/pmart-staff/users' },
+      { f: 'adm', t: 'hr', txt: '201 + 사용자 ID' },
+      { f: 'hr', t: 'hr', txt: '사번 ↔ Keycloak ID 매핑 기록' },
+      { f: 'hr', t: 'web', txt: '발급 완료' },
+      { end: 1 },
+      { g: '응답이 끊기면 (제안)', tone: 'red', from: 'web', to: 'adm' },
+      { f: 'hr', t: 'hr', txt: '반영 미확인으로 기록 → 같은 키로 재조회' },
+      { f: 'hr', t: 'web', txt: '확인 필요' },
+      { end: 1 }
+    ] };
+
+  V['d04-m3'] = { type: 'seq', title: '센터 이동', cw: 156, legend: ['solid', 'dash', 'ghost'],
+    caption: '소속 속성만 바꾼다. 업무 권한을 누가 정리하는지는 U-13으로 미정이다.',
+    p: [{ id: 'u', label: '인사 담당자', tone: 'purple' }, { id: 'web', label: 'React 백오피스', tone: 'blue' }, P_GW, P_HR,
+      { id: 'adm', label: 'Keycloak\nAdmin REST API', tone: 'orange' }, { id: 'perm', label: '권한 정본\n미정 U-13', tone: 'gray', ghost: true }],
+    s: [
+      { f: 'u', t: 'web', txt: '소속 변경 입력' },
+      { f: 'web', t: 'gw', txt: '변경 요청' },
+      { f: 'gw', t: 'hr', txt: '라우팅' },
+      { f: 'hr', t: 'hr', txt: '인사 원장 갱신' },
+      { f: 'hr', t: 'adm', txt: 'affiliation 속성 수정' },
+      { f: 'adm', t: 'hr', txt: '결과' },
+      { f: 'hr', t: 'perm', txt: '이전 센터 권한 종료 통지 · 경로 미정', d: true },
+      { note: '이전 센터 권한 종료와 새 센터 권한 시작은 따로 처리 (기존안)', f: 'hr', t: 'perm' }
+    ] };
+
+  V['d04-m4'] = { type: 'seq', title: '퇴사·비활성화', cw: 138, legend: ['solid', 'dash', 'open', 'ghost'],
+    caption: 'Keycloak 계정 차단은 정해져 있다. 이미 나간 세션·토큰을 누가 어떻게 끊는지는 아직 비어 있다.',
+    p: [{ id: 'web', label: '인사팀 React', tone: 'purple' }, P_GW, P_HR,
+      { id: 'adm', label: 'Keycloak\nAdmin REST API', tone: 'orange' }, { id: 'ea', label: 'employee-auth', tone: 'blue' },
+      { id: 'bl', label: '차단 목록\n채택 미정', tone: 'gray', ghost: true }, { id: 'perm', label: '권한 정본\n미정 U-13', tone: 'gray', ghost: true }],
+    s: [
+      { f: 'web', t: 'gw', txt: '퇴사 처리 요청' },
+      { f: 'gw', t: 'hr', txt: '라우팅' },
+      { f: 'hr', t: 'hr', txt: '재직 상태 → 퇴사' },
+      { g: 'Keycloak에서 막기 — 기존안', tone: 'green', from: 'hr', to: 'adm' },
+      { f: 'hr', t: 'adm', txt: 'enabled = false' },
+      { f: 'hr', t: 'adm', txt: '세션 전부 종료' },
+      { f: 'adm', t: 'hr', txt: '결과' },
+      { end: 1 },
+      { g: '미정 — 누가, 어떻게 끊나', tone: 'orange', dash: true, from: 'hr', to: 'perm' },
+      { f: 'hr', t: 'ea', txt: '앱 세션 무효화 · U-02', d: true },
+      { f: 'hr', t: 'bl', txt: 'sub 차단 등록 · N-04', d: true },
+      { f: 'hr', t: 'perm', txt: '권한 기록 종료 · U-13', d: true },
+      { end: 1 },
+      { f: 'hr', t: 'web', txt: '처리 결과 (반영 미확인 포함)' },
+      { note: '계정은 삭제하지 않는다 — 과거 행위자 기록 유지', f: 'hr', t: 'adm' }
+    ] };
+
+  V['d05-m1'] = { type: 'seq', title: '직원 로그인 공통 골격', cw: 140, legend: ['solid', 'dash', 'teal', 'open', 'ghost'],
+    caption: '확정된 것은 가운데 청록 구간뿐이다. employee-auth가 Keycloak과 code를 교환한다. 앞뒤의 브라우저 경로와 결과 전달은 정해지지 않았다.',
+    p: [{ id: 'st', label: '직원', tone: 'purple' }, { id: 'app', label: 'React · PDA', tone: 'blue' }, { id: 'ua', label: '사용자 브라우저', tone: 'gray' },
+      P_GW, { id: 'ea', label: 'employee-auth', tone: 'blue' }, { id: 'kc', label: 'Keycloak OIDC', tone: 'teal' }, { id: 'ext', label: '외부 IdP\n선택 U-05', tone: 'gray', ghost: true }],
+    s: [
+      { f: 'st', t: 'app', txt: '로그인 시작' },
+      { f: 'app', t: 'gw', txt: '로그인 시작 요청' },
+      { f: 'gw', t: 'ea', txt: '라우팅' },
+      { f: 'ea', t: 'ea', txt: 'state · nonce · PKCE 준비 (U-07)' },
+      { g: '미정 — 브라우저 경로와 콜백 (U-01 · U-06 · U-07)', tone: 'orange', dash: true, from: 'ua', to: 'ext' },
+      { f: 'ea', t: 'ua', txt: 'Keycloak으로 이동 지시', d: true },
+      { f: 'ua', t: 'kc', txt: '로그인 화면 접속', d: true },
+      { f: 'kc', t: 'ua', txt: '사번 · 비밀번호 · OTP 입력 (N-01)', d: true },
+      { g: '선택 — 직원 외부 IdP를 쓰기로 한 경우', tone: 'gray', dash: true, from: 'kc', to: 'ext' },
+      { f: 'kc', t: 'ext', txt: '외부 인증 위임', d: true },
+      { f: 'ext', t: 'kc', txt: '인증 결과', d: true },
+      { end: 1 },
+      { f: 'ua', t: 'ea', txt: 'Redirect 콜백 (code, state)', d: true },
+      { end: 1 },
+      { g: '확정 — 서버끼리 직접', tone: 'teal', from: 'ea', to: 'kc' },
+      { f: 'ea', t: 'ea', txt: 'state 검증' },
+      { f: 'ea', t: 'kc', txt: 'code 교환 + Client 인증' },
+      { f: 'kc', t: 'ea', txt: 'Access · Refresh · ID Token' },
+      { end: 1 },
+      { g: '미정 — 토큰 보관 U-02 · 앱 세션 U-03 · PDA 바인딩 U-04', tone: 'orange', dash: true, from: 'app', to: 'ea' },
+      { f: 'ea', t: 'app', txt: '앱 인증 결과 (형식 미정)', d: true },
+      { end: 1 }
+    ] };
+
+  V['d05-m2'] = { type: 'seq', title: 'PDA 로그인 개념도', cw: 156, legend: ['solid', 'dash', 'teal', 'open'],
+    caption: '채택안이 아니다. 앱이 결과를 어떻게 돌려받는지가 비어 있다는 것을 보이는 개념도다. PDA가 employee-auth를 부르는 요청은 Gateway를 거친다. 시스템 브라우저가 Keycloak 화면으로 가고 콜백을 받는 길이 Gateway를 지나는지는 미정이다.',
+    p: [{ id: 'w', label: '현장 작업자', tone: 'purple' }, { id: 'pda', label: 'Flutter PDA', tone: 'blue' }, { id: 'sb', label: '시스템 브라우저', tone: 'gray' },
+      P_GW, { id: 'ea', label: 'employee-auth', tone: 'blue' }, { id: 'kc', label: 'Keycloak OIDC', tone: 'teal' }],
+    s: [
+      { f: 'w', t: 'pda', txt: '근무 시작' },
+      { f: 'pda', t: 'gw', txt: '로그인 시작 요청' },
+      { f: 'gw', t: 'ea', txt: '라우팅' },
+      { f: 'ea', t: 'ea', txt: '요청 상태 + PDA 연결값 (U-04)' },
+      { g: '미정 — 로그인 화면으로 가는 길 (U-01)', tone: 'orange', dash: true },
+      { f: 'ea', t: 'pda', txt: '인가 요청 URL 또는 핸들 (Gateway 경유 응답)', d: true },
+      { f: 'pda', t: 'sb', txt: '시스템 브라우저 열기', d: true },
+      { f: 'sb', t: 'kc', txt: '로그인 화면 (prompt=login 여부 미정)', d: true },
+      { f: 'w', t: 'sb', txt: '직원증 바코드 + 비밀번호', c: 'purple' },
+      { f: 'kc', t: 'ea', txt: 'Redirect 콜백 code (U-07)', d: true },
+      { end: 1 },
+      { g: '확정 — 서버끼리 직접', tone: 'teal', from: 'ea', to: 'kc' },
+      { f: 'ea', t: 'kc', txt: 'code 교환' },
+      { f: 'kc', t: 'ea', txt: '토큰' },
+      { end: 1 },
+      { g: '미정 — 앱 복귀와 결과 바인딩 (U-04)', tone: 'orange', dash: true, from: 'pda', to: 'ea' },
+      { f: 'ea', t: 'sb', txt: '앱 복귀 지시 (App Link 또는 스킴)', d: true },
+      { f: 'sb', t: 'pda', txt: '앱 복귀 · 1회용 결과 핸들?', d: true },
+      { f: 'pda', t: 'gw', txt: '결과 핸들 교환 · 바인딩 검증', d: true },
+      { f: 'gw', t: 'ea', txt: '라우팅', d: true },
+      { f: 'ea', t: 'pda', txt: '앱 인증 상태 (U-03 · Gateway 경유 응답)', d: true },
+      { end: 1 }
+    ] };
+
+  V['d05-m3'] = { type: 'seq', title: '고객 로그인 경계', cw: 156, legend: ['solid', 'teal'],
+    caption: '지금 방식을 그대로 둔다. 고객 JWT는 고객 경로에서만 받는다.',
+    p: [{ id: 'c', label: '고객', tone: 'orange' }, { id: 'capp', label: '고객 앱', tone: 'orange' }, { id: 'g', label: 'Google', tone: 'red' },
+      P_GW, { id: 'au', label: 'auth-service', tone: 'orange' }, { id: 'api', label: '고객 업무 API', tone: 'green' }],
+    s: [
+      { f: 'c', t: 'capp', txt: 'Google 로그인' },
+      { f: 'capp', t: 'g', txt: 'Google 인증' },
+      { f: 'g', t: 'capp', txt: '서버 인가 코드' },
+      { f: 'capp', t: 'gw', txt: '서버 인가 코드 전달' },
+      { f: 'gw', t: 'au', txt: '라우팅' },
+      { g: '서버끼리 직접 (ADR-0025, 미열람)', tone: 'teal', from: 'g', to: 'au' },
+      { f: 'au', t: 'g', txt: '코드 교환' },
+      { f: 'g', t: 'au', txt: 'Google 토큰' },
+      { end: 1 },
+      { f: 'au', t: 'au', txt: 'customer 연결 · 저장' },
+      { f: 'au', t: 'capp', txt: 'PMart 고객 JWT (ptyp CUSTOMER)' },
+      { f: 'capp', t: 'gw', txt: '고객 API 호출 (Bearer)' },
+      { f: 'gw', t: 'gw', txt: 'iss = auth-service · ptyp 확인' },
+      { f: 'gw', t: 'api', txt: '라우팅' },
+      { note: '직원 경로는 고객 JWT를 받지 않는다 (계약 U-12)', f: 'gw', t: 'api' }
+    ] };
+
+  V['d06-m1'] = { type: 'graph', title: '신뢰 경계', W: 1000, H: 460, legend: ['solid', 'dash', 'bold', 'forbid'],
+    caption: '왼쪽일수록 덜 믿는다. 사용자 기기에서 Keycloak 관리 API로 가는 길은 없어야 한다.',
+    zones: [
+      { x: 10, y: 40, w: 200, h: 410, label: 'Z0 사용자 기기 · 비신뢰', tone: 'gray', dash: true },
+      { x: 240, y: 40, w: 160, h: 410, label: 'Z1 진입점', tone: 'gray' },
+      { x: 430, y: 40, w: 250, h: 410, label: 'Z2 내부 서비스', tone: 'green' },
+      { x: 710, y: 40, w: 280, h: 410, label: 'Z3 직원 IdP · Keycloak', tone: 'teal' }
+    ],
+    nodes: [
+      { id: 'web', x: 30, y: 100, w: 160, h: 54, label: 'React 백오피스', tone: 'blue' },
+      { id: 'pda', x: 30, y: 200, w: 160, h: 54, label: 'Flutter PDA\n공용 기기', tone: 'blue' },
+      { id: 'ua', x: 30, y: 350, w: 160, h: 54, label: '브라우저\n시스템 브라우저', tone: 'gray' },
+      { id: 'gw', x: 260, y: 100, w: 120, h: 164, label: 'API Gateway', tone: 'gray' },
+      { id: 'hr', x: 450, y: 100, w: 210, h: 56, label: 'HR Service\n관리 자격 보유', tone: 'purple' },
+      { id: 'biz', x: 450, y: 200, w: 210, h: 54, label: '업무 API', tone: 'green' },
+      { id: 'ea', x: 450, y: 300, w: 210, h: 56, label: 'employee-auth\n로그인 Client 자격 보유', tone: 'blue' },
+      { id: 'adm', x: 730, y: 100, w: 240, h: 56, label: 'Admin REST API\n관리 콘솔', tone: 'purple' },
+      { id: 'oidc', x: 730, y: 300, w: 240, h: 56, label: 'OIDC 로그인\nToken Endpoint', tone: 'blue' }
+    ],
+    edges: [
+      { f: 'web', pts: [[190, 127], [260, 127]] },
+      { f: 'pda', pts: [[190, 227], [260, 227]] },
+      { f: 'gw', pts: [[380, 128], [450, 128]] },
+      { f: 'gw', pts: [[380, 227], [450, 227]] },
+      { f: 'gw', pts: [[380, 250], [415, 250], [415, 328], [450, 328]] },
+      { f: 'hr', s: 'bold', pts: [[660, 128], [730, 128]], label: 'Admin API', lx: 695, ly: 172 },
+      { f: 'ea', pts: [[660, 328], [730, 328]], label: 'code 교환', lx: 695, ly: 372 },
+      { f: 'ua', s: 'dash', tone: 'gray', pts: [[190, 377], [850, 377], [850, 356]], label: '로그인 화면 · 경로 미정 U-01', lx: 520, ly: 392 },
+      { f: 'web', s: 'forbid', pts: [[110, 100], [110, 82], [850, 82], [850, 98]], label: 'React·PDA → 관리 API 직접 호출 금지 (S-2 · S-3)', lx: 480, ly: 72 }
+    ] };
+
+  /* token storage comparison: shared frame */
+  function tokFrame(o) {
+    var nodes = [
+      { id: 'gw', x: 350, y: 28, w: 120, h: 272, label: 'API Gateway', tone: 'gray', top: true },
+      { id: 'app1', x: 130, y: 40, w: 160, h: 54, label: 'React · PDA', tone: 'blue' },
+      { id: 'ea1', x: 530, y: 40, w: 160, h: 54, label: o.eaLabel, tone: 'blue' },
+      { id: 'kc', x: 760, y: 40, w: 220, h: 54, label: 'Keycloak\nOIDC Token Endpoint', tone: 'teal' },
+      { id: 'sa', x: 130, y: 102, w: 160, h: 36, label: o.appStore, tone: o.appTone || 'gray', ghost: !!o.appGhost },
+      { id: 'se', x: 530, y: 102, w: 160, h: 36, label: o.eaStore, tone: o.eaTone || 'gray', ghost: !!o.eaGhost },
+      { id: 'app2', x: 130, y: 200, w: 160, h: 50, label: 'React · PDA', tone: 'blue' },
+      { id: 'ea2', x: 530, y: 166, w: 160, h: 40, label: o.ea2Label, tone: o.ea2Ghost ? 'gray' : 'blue', ghost: !!o.ea2Ghost },
+      { id: 'biz', x: 760, y: 200, w: 220, h: 50, label: '업무 API', tone: 'green' }
+    ];
+    var edges = [
+      { f: 'ea1', pts: [[690, 58], [760, 58]], label: 'code 교환', lx: 725, ly: 47 },
+      { f: 'kc', pts: [[760, 80], [690, 80]], label: '토큰', lx: 725, ly: 70 },
+      { f: 'ea1', pts: [[530, 67], [470, 67]] },
+      { f: 'gw', tone: 'blue', pts: [[350, 67], [290, 67]], label: o.toApp, lx: 320, ly: 56 },
+      { f: 'app2', pts: [[290, 225], [350, 225]], label: o.appSends, lx: 320, ly: 214 },
+      { f: 'gw', tone: 'green', pts: [[470, 240], [760, 240]], label: o.toBiz, lx: 615, ly: 230 }
+    ];
+    if (o.gwToEa) edges.push({ f: 'gw', s: 'dash', tone: 'blue', pts: [[470, 186], [530, 186]], label: o.gwToEa, lx: 500, ly: 160 });
+    return { type: 'graph', W: 1000, H: 315, minW: 760, title: o.title, caption: o.caption, legend: ['solid', 'dash', 'ghost'],
+      zones: [
+        { x: 10, y: 10, w: 980, h: 136, label: '로그인할 때', tone: 'blue' },
+        { x: 10, y: 154, w: 980, h: 152, label: '업무 API를\n부를 때', tone: 'green' }
+      ],
+      nodes: nodes, edges: edges,
+      notes: [{ x: 725, y: 282, text: o.gwNote, tone: o.noteTone || 'gray' }] };
+  }
+
+  V['tok-r1'] = tokFrame({ title: 'R-1 employee-auth가 BFF', eaLabel: 'employee-auth\nBFF 역할',
+    appStore: '앱 보관: 세션 쿠키만', appTone: 'gray', eaStore: '보관: Access · Refresh\nToken + 세션', eaTone: 'green',
+    toApp: '세션 쿠키', appSends: '쿠키', ea2Label: '세션 → 토큰 찾기', gwToEa: '토큰 조회',
+    toBiz: 'Bearer access token (Gateway가 붙임)', gwNote: 'Gateway가 쿠키를 토큰으로 바꾸는 방법은 미정 · U-12', noteTone: 'orange',
+    caption: '토큰은 서버(employee-auth)에만 있고 앱은 쿠키만 가진다. 보내주신 스크린샷 ⑧ "우리 서버가 만든 값을 브라우저에 쿠키로"와 같은 모양이다.' });
+
+  V['tok-r2'] = tokFrame({ title: 'R-2 토큰을 앱에 넘김', eaLabel: 'employee-auth\n교환 후 전달', eaGhost: true,
+    appStore: '앱 보관: Access Token\nSPA 메모리 · PDA 저장소', appTone: 'green', eaStore: '보관: 없음 또는 미정', eaTone: 'gray',
+    toApp: 'Keycloak 토큰', appSends: 'Bearer', ea2Label: '관여하지 않음', ea2Ghost: true,
+    toBiz: 'Bearer access token (앱이 보냄)', gwNote: 'Gateway가 Keycloak 공개키로 서명 검증 · 기존안 §8.1 그대로',
+    caption: '기존안의 검증 방식을 그대로 쓸 수 있다. 대신 토큰을 받은 쪽(employee-auth)과 쓰는 쪽(앱)이 달라지고, 토큰이 브라우저·기기에 놓인다.' });
+
+  V['tok-r3'] = tokFrame({ title: 'R-3 employee-auth가 자체 토큰 발급', eaLabel: 'employee-auth\n자체 JWT 발급',
+    appStore: '앱 보관: PMart 직원 JWT', appTone: 'blue', eaStore: '보관: Keycloak 토큰', eaTone: 'green',
+    toApp: 'PMart 직원 JWT', appSends: 'Bearer', ea2Label: 'employee-auth 공개키', gwToEa: '공개키',
+    toBiz: 'Bearer PMart 직원 JWT', gwNote: 'Gateway가 검증할 발급자가 3개로 늘어남 · N-02', noteTone: 'orange',
+    caption: '앱과 Gateway가 보는 토큰을 PMart가 정한다. 대신 acr 같은 Keycloak 정보를 새 토큰에 다시 옮겨 담아야 하고, 퇴사 때 끊을 곳이 하나 늘어난다.' });
+
+  V['tok-rec'] = tokFrame({ title: '추천안 R-1 하이브리드', eaLabel: 'employee-auth\n토큰 · 세션 보관',
+    appStore: '웹: HttpOnly 쿠키\nPDA: 불투명 세션 토큰', appTone: 'gray', eaStore: '보관: Access · Refresh\nToken + 세션', eaTone: 'green',
+    toApp: '세션 값', appSends: '세션 값', ea2Label: '세션 → access token', gwToEa: '조회',
+    toBiz: 'Bearer Keycloak access token (Gateway가 붙임)', gwNote: '업무 API는 기존안 §8.1 검증 그대로 · 조회 방식 U-12', noteTone: 'teal',
+    caption: '앱에는 의미 없는 세션 값만 있고, Keycloak 토큰은 employee-auth에만 있다. Gateway가 세션 값을 토큰으로 바꿔 붙이므로 업무 API는 지금 설계대로 Keycloak 토큰을 검증한다.' });
+
+  function render(fig) {
+    var key = fig.getAttribute('data-viz'), sp = V[key];
+    if (!sp) return;
+    var svg = sp.type === 'seq' ? seq(sp) : graph(sp);
+    fig.innerHTML = '<div class="viz-scroll">' + svg + '</div>' + legend(sp.legend || ['solid', 'dash']) +
+      (sp.caption ? '<figcaption>' + esc(sp.caption) + '</figcaption>' : '');
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('figure.viz[data-viz]'), function (f) {
+    try { render(f); } catch (e) { f.innerHTML = '<figcaption>다이어그램을 그리지 못했습니다. 아래 Mermaid 원본을 참고하세요.</figcaption>'; }
+  });
+})();
+
+</script>
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.index a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  if (!('IntersectionObserver' in window)) return;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting && map[e.target.id]) {
+        links.forEach(function (l) { l.classList.remove('active'); });
+        map[e.target.id].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  Object.keys(map).forEach(function (id) { var el = document.getElementById(id); if (el) io.observe(el); });
+})();
+</script>
+
+</body>
+</html>

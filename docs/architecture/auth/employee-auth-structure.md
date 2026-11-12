@@ -23,7 +23,7 @@
 |---|---|
 | 인가 서버(Authorization Server, OIDC 제공자) | Keycloak(PC 5) |
 | 클라이언트 — 로그인 | **employee-auth-service** (기밀, `authorization_code` + PKCE) — Keycloak 에 등록되는 유일한 로그인 클라이언트 |
-| 클라이언트 — 관리 | **hr-service** (기밀, `client_credentials`, 서비스 계정 권한 `manage-users`·`view-users` 만) |
+| 클라이언트 — 관리 | **`hr-provisioner`** — hr-service 가 쓰는 서비스 계정 클라이언트(기밀, `client_credentials`, `realm-management` 의 `manage-users`·`view-users`·`query-users` 만 — §6-1) |
 | 리소스 서버 | api-gateway, 모든 업무 서비스 — **PMart 직원 JWT 만** 검증. Keycloak 토큰을 보지 않는다 |
 | 리소스 소유자 | 직원(MFC 작업자·본사 운영자·인사팀 …) |
 | 클라이언트가 **아닌 것** | Flutter PDA 앱(mfc_app), React 백오피스 — 로그인 화면은 앱이 연 브라우저에 뜨지만, 인가 코드를 받고 토큰으로 바꾸는 쪽은 employee-auth-service. 앱에는 client_secret 도 Keycloak 토큰도 없다 |
@@ -115,7 +115,7 @@ flowchart LR
 | 항목 | 지금(ADR-0054) | 이 설계 |
 |---|---|---|
 | 로그인 클라이언트 | `pmart-backoffice`(공개, PKCE) | **`employee-auth-service`**(기밀, Standard flow + PKCE, Direct access·Implicit 끔). Redirect URI `http://192.168.0.40:8080/api/v1/employee-auth/login/oauth2/code/keycloak`. `pmart-backoffice` 는 이전 뒤 삭제 |
-| 관리 클라이언트 | `pmart-auth-relay`(관리 기록 읽기 — 차단 중계) | **`hr-service`**(기밀, 서비스 계정만, `realm-management` 의 `manage-users`·`view-users`). `pmart-auth-relay` 는 "Keycloak 화면에서 직접 막는 경우"가 없어지면 삭제(§13 D6) |
+| 관리 클라이언트 | `pmart-auth-relay`(관리 기록 읽기 — 차단 중계) | **`hr-provisioner`**(hr-service 용, 기밀, 서비스 계정만 — §6-1). `pmart-auth-relay` 는 "Keycloak 화면에서 직접 막는 경우"가 없어지면 삭제(§13 D6) |
 | 개발 클라이언트 | `pmart-dev-cli`(직접 로그인) | Keycloak 토큰은 API 가 받지 않게 되므로 그대로는 쓸모없다 → §13 D5 |
 | 토큰의 쓰임 | Keycloak Access Token 을 API 에 그대로 | Keycloak 토큰은 employee-auth-service 안에서만 쓰고 끝(앱에 내려가지 않음) |
 | 역할·센터 | Realm 역할 10개 + 사용자 속성 `centers` | employee-auth-service 로(D1). Keycloak 에는 계정·비밀번호·상태·`pmart_operator_id` 만 — 이전 뒤 Realm 역할·`centers` 속성 삭제 |
@@ -123,6 +123,25 @@ flowchart LR
 | 메일(SMTP) | 없음 | Realm → Email: host `mailserver`, port 25, from `no-reply@pmart.com`, 인증·TLS 없음(같은 Docker 네트워크만 허용 — §9) |
 | 계정 | 관리 콘솔에서 직접(결정 L) | hr-service 가 Admin API 로. 관리 콘솔은 Keycloak 관리자 전용(LAN 비노출 검토) |
 | 퇴사 | 관리 콘솔에서 비활성 → 관리 기록 → auth-service 중계(결정 M) | hr-service 가 `enabled=false` + 세션 로그아웃, 사건으로 바로 차단(§7-④). **삭제하지 않는다** |
+
+### 6-1. HR Service 의 Admin REST API 자격 (2026-11-12, `references/2026-11-12/PMart_직원_IAM_아키텍처.html` §02-3.1 반영)
+
+세 가지가 모두 있어야 호출된다.
+
+| # | 구성 | 내용 | 빠지면 |
+|---|---|---|---|
+| 1 | 서비스 계정 클라이언트 `hr-provisioner` | Realm `pmart-staff`, Client authentication ON(기밀·Secret), Service accounts ON, Standard flow·Direct access grants OFF | 관리용 토큰을 받을 주체가 없음 |
+| 2 | 서비스 계정 권한 | `service-account-hr-provisioner` 에 `realm-management` 역할 `manage-users`·`view-users`·`query-users` 만. `realm-admin`·`manage-realm`·`manage-clients` 등은 주지 않음 | 토큰은 나오나 Admin API 403 |
+| 3 | Client Credentials | `POST /realms/pmart-staff/protocol/openid-connect/token`(`grant_type=client_credentials`) → 관리용 토큰을 `Authorization: Bearer` 로 | 401 |
+
+운영 규칙:
+- master Realm 관리자 계정을 쓰지 않는다. `hr-provisioner` 는 employee-auth 로그인 클라이언트와 별개(같은 `/token` 이지만 grant 와 목적이 다름).
+- Keycloak 내부 주소로만 호출, `/admin` 은 게이트웨이로 노출하지 않는다(§11).
+- 관리용 토큰은 만료 전까지 캐시해 재사용, 401 이면 한 번 다시 받아 재시도.
+- Secret 원본 `.secrets/keycloak-hr-provisioner-client-secret`, 설정은 pmart-config `{cipher}`. 교체: 새 Secret 발급 → 설정 반영·재시작 → 옛 Secret 폐기.
+- Realm 관리 이벤트(Admin events) 저장을 켠다 — 감사용(누가 어떤 계정을 만들고 바꿨나). 차단 중계(D6 으로 없앰)와는 무관.
+- **U-11**: `manage-users` 가 역할 매핑·그룹 가입까지 허용하는지 고정 버전(26.8.1)에서 시험으로 확인. 최종 구조에서는 Keycloak 역할이 토큰 권한이 아니므로(D1) 영향 없음. 다만 **전환 기간**(발급자 표에 Keycloak 줄이 남아 Keycloak 토큰도 받아 주는 동안 — §12 3~7단계)에는 Keycloak 역할이 실제 권한이라: (B, 기본) hr-service 는 역할·그룹 매핑 API 를 부르지 않고 시험으로 확인, (A) 가능하면 Keycloak 줄 제거를 hr-service 배포 전으로 당긴다.
+- 경로·역할 이름은 고정 버전 공식 문서로 다시 확인한다.
 
 ## 7. 흐름
 
@@ -298,7 +317,7 @@ API: `POST /hr/employees`, `GET /hr/employees`, `POST /hr/employees/{id}/affilia
 | 새 비밀값(`.secrets/`) | 쓰는 곳 | 넣는 방식 |
 |---|---|---|
 | `keycloak-employee-auth-client-secret` | employee-auth-service ↔ Keycloak | pmart-config `{cipher}` + Realm 파일(render) |
-| `keycloak-hr-client-secret` | hr-service ↔ Keycloak | 같음 |
+| `keycloak-hr-provisioner-client-secret` | hr-service(`hr-provisioner`) ↔ Keycloak | 같음 + 교체 절차(새 Secret 발급 → 설정 반영·재시작 → 옛 Secret 폐기) |
 | `employee-auth-signing-key.pem`·`employee-auth-signing-kid` | PMart 직원 JWT 서명 | pmart-config `{cipher}`(rider-auth 와 같은 방식) |
 | `employee-auth-db-password`·`hr-db-password` | 각 DB | 기존 DB 비밀번호 방식 |
 | `mail-postmaster-password`·`mail-noreply-password` | 기본 사서함 | render → 배포 단계 |
@@ -320,7 +339,7 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 2. 메일 서버·Roundcube 배치(PC 5) — 기본 사서함, Keycloak SMTP 설정, 비밀번호 재설정 메일이 사서함에 도착하는지 확인.
 3. employee-auth-service — 계약 → 구현 → 시험(Keycloak 컨테이너로 인가 코드 흐름 통합 시험) → 배치. 발급자 표에 `staff-ea` 줄을 **추가**(옮기는 동안 Keycloak 줄과 함께 둠).
 4. Keycloak 주소를 게이트웨이 `/iam` 로 — `iss` 가 바뀌므로 3 과 같은 배포 창에서, 백오피스 영향 확인.
-5. hr-service — 계약 → 구현(진행 상태·재시도·보상) → 배치. 사서함은 §9-6 1단계 방식.
+5. hr-service + mail-provisioner — 계약 → 구현(진행 상태·재시도·보상, 역할 매핑 API 미사용 시험) → 배치. 가능하면 7단계의 발급자 표 Keycloak 줄 제거를 이보다 먼저(§6-1 U-11).
 6. 클라이언트 요청(`docs/handoff/clients/`): 백오피스 로그인을 "employee-auth 시작 주소 → 티켓 교환"으로 다시 바꿈, mfc_app 로그인 새로(Custom Tabs + 딥링크 `pmart-mfc://login`), 인사팀 직원 등록 화면.
 7. 전환 확인 뒤 정리 — Keycloak 줄·`pmart-backoffice`·(D6 에 따라) `pmart-auth-relay`·auth-service 운영자 로그인·`StaffBlockRelay` 내림, Realm 역할 정리(D1).
 
@@ -337,6 +356,7 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 | D7 | 사서함 보존 기간·메일 백업 | **정함(2026-11-12, 제안대로)**: 퇴사 뒤 비활성으로 **계속 보존**(삭제 안 함, 실습 환경). 메일 볼륨 백업은 DB 백업 방침 정할 때 함께 |
 | D8 | PDA 공용 기기 로그아웃 정책 | **정함(2026-11-12, 제안대로)**: ① 로그아웃 때 Keycloak 세션도 종료(`end_session_endpoint`) ② 근무(교대) 종료 시각이 지나면 자동 로그아웃 ③ 무활동 30분이면 다시 로그인(2026-11-08 "30분 무활동 = 경보"와 맞춤) |
 | D9 | 사서함 자동화 2단계(사이드카) 시점 | **정함(2026-11-12)**: hr-service 를 만들 때 함께 만든다(§9-6). 수동 명령은 예비 수단 |
+| D10 | 백오피스 로그인 OTP(2단계 인증, LoA 2) | **미정** — 업무 문서에는 요구 없음(참고 자료의 다른 구성안에서 온 요구). 넣는다면: Keycloak 에 employee-auth 용 클라이언트를 백오피스용·PDA용 둘로 등록해 백오피스용에만 OTP, employee-auth 가 `acr` 을 PMart JWT 에 담고, 게이트웨이가 백오피스 경로에서 `acr=2` 확인. Claude 추천: 넣는다 |
 
 ## 14. 감수하는 것
 

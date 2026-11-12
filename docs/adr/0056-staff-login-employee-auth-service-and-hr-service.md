@@ -14,7 +14,7 @@
 - auth-service 는 ADR-0054 결정 2 로 고객·비회원·서비스 신원만 남기는 방향인데, service-map 에는 직원 RoleGrant 정본이 auth-service 로 남아 있었다(사용자 지적 2026-11-12). 코드에는 RoleGrant·Delegation 기능이 아직 없고 `operator_account.roles·centers`(JSON)만 있다.
 
 ## 결정
-1. **역할**: Keycloak = 인가 서버(직원 신원 확인 — 계정·비밀번호·세션·인증 메일). **employee-auth-service(새)** = Keycloak 의 **유일한 로그인 클라이언트**(기밀, 인가 코드 + PKCE, client_secret 은 서버에만) + **PMart 직원 JWT 발급자**(개인키·JWKS). **hr-service(새)** = Keycloak 관리용 기밀 클라이언트(`client_credentials`, `manage-users`·`view-users` 만 — master 관리자 권한 아님). PDA 앱·백오피스는 Keycloak 클라이언트가 아니다. 게이트웨이·업무 서비스는 PMart 직원 JWT 만 검증한다(Keycloak 토큰은 employee-auth-service 안에서만 쓰고 앱에 내려가지 않는다).
+1. **역할**: Keycloak = 인가 서버(직원 신원 확인 — 계정·비밀번호·세션·인증 메일). **employee-auth-service(새)** = Keycloak 의 **유일한 로그인 클라이언트**(기밀, 인가 코드 + PKCE, client_secret 은 서버에만) + **PMart 직원 JWT 발급자**(개인키·JWKS). **hr-service(새)** = Keycloak 관리용 기밀 클라이언트 `hr-provisioner` 로 Admin API 를 부른다(결정 16). PDA 앱·백오피스는 Keycloak 클라이언트가 아니다. 게이트웨이·업무 서비스는 PMart 직원 JWT 만 검증한다(Keycloak 토큰은 employee-auth-service 안에서만 쓰고 앱에 내려가지 않는다).
 2. **로그인 흐름**: 앱이 시스템 브라우저(Custom Tabs, WebView 금지)로 employee-auth-service 시작 주소를 연다 → Keycloak 로그인 화면(게이트웨이 `/iam/**` 중계) → 콜백(employee-auth-service)에서 코드 교환·ID 토큰 검증·직원 상태 확인 → 60초·1회용·기기 확인 **로그인 티켓**을 딥링크(`pmart-mfc://login`)·백오피스 주소로 → 앱이 티켓을 PMart 직원 Access(15분)·Refresh(회전)로 바꾼다. 토큰을 주소에 싣지 않는다. 복귀 주소는 설정 허용 목록만.
 3. **직원 JWT 모양** = 예전 auth-service 운영자 토큰과 같다(`iss` = employee-auth-service, `sub = OP-…`, `typ = OPERATOR`, `aud = [pmart-api]`, `roles`, `centers`). 발급자 표 `staff` 줄은 employee-auth-service 로 바뀌고 Keycloak 줄의 특수 설정(`type-claim: ''`, `subject-claim`, `roles-claim`)은 없어진다.
 4. **직원 역할·권한 센터의 정본 = employee-auth-service**(D1, 사용자 "정본 너가 말한대로 확정할게"). 유효 grant·대행·긴급권한·행위 시점 검증 API 와 `GrantApplied` 발행이 auth-service 에서 옮겨 온다(서비스 경계 변경). auth-service 는 고객·비회원·서비스 신원 토큰만. hr-service 는 권한을 보기만 한다(BO-01 "인사상 상사라는 이유만으로 실행 권한을 줄 수 없다" — 고용 정보와 접근 권한 분리). Keycloak Realm 역할·`centers` 속성은 옮긴 뒤 지운다.
@@ -29,17 +29,19 @@
 13. **LAN 시험 토큰**(D5): `pmart-dev-cli` 로 받은 Keycloak 토큰을 employee-auth-service 의 LAN 전용 교환 경로(설정으로만 켬, prod 프로필에는 경로 없음)에서 PMart 직원 JWT 로 바꾼다 — 브라우저 없는 E2E 용.
 14. **공용 PDA 로그아웃**(D8): 로그아웃 때 Keycloak 세션도 끝냄, 근무(교대) 종료 시각 뒤 자동 로그아웃, 무활동 30분이면 다시 로그인.
 15. 비밀값은 PMart 방식 — 원본 `deploy/lan/.secrets/`, 앱 설정은 pmart-config `{cipher}`, 컨테이너는 `render.sh` 가 넣는다(새 비밀값 목록은 상세 구조 §10).
+16. **HR 관리 자격 = 세 가지**(2026-11-12, `references/2026-11-12/PMart_직원_IAM_아키텍처.html` §02-3.1 반영): ① 서비스 계정 클라이언트 **`hr-provisioner`**(Realm `pmart-staff`, 기밀·Secret, Service accounts ON, Standard flow·Direct access OFF — 사람이 이 클라이언트로 로그인하지 않음) ② 서비스 계정 사용자 `service-account-hr-provisioner` 에 `realm-management` 역할 **`manage-users`·`view-users`·`query-users` 만** — `realm-admin`·`manage-realm`·`manage-clients` 등은 주지 않음 ③ `client_credentials` 로 관리용 토큰(만료 전까지 캐시, 401 이면 한 번 다시 받아 재시도)을 받아 Admin API 에 `Bearer`. master 관리자 계정은 쓰지 않는다, employee-auth 로그인 클라이언트와 별개, Keycloak 내부 주소로만 호출(`/admin` 은 게이트웨이로 노출 안 함), Secret 원본 `.secrets/keycloak-hr-provisioner-client-secret` + pmart-config `{cipher}` 와 교체 절차(새 Secret 발급 → 설정 반영·재시작 → 옛 Secret 폐기), Realm **관리 이벤트(Admin events) 저장 켬**(감사용 — 중계용 아님). **U-11**: `manage-users` 가 역할 매핑·그룹 가입까지 허용하는지 고정 버전(26.8.1)에서 시험으로 확인한다. 최종 구조에서는 Keycloak 역할이 토큰 권한이 아니라(D1) 영향이 없지만, 전환 기간(발급자 표에 Keycloak 줄이 남아 있는 동안)에는 실제 권한이 되므로 — (B) hr-service 는 역할·그룹 매핑 API 를 부르지 않고 시험으로 확인(기본), (A) 가능하면 Keycloak 줄 제거(7단계)를 hr-service 배포 전으로 당긴다.
 
 ## 옮기는 순서
 1. 이 ADR, service-map·이벤트 카탈로그 반영(이 커밋).
 2. 메일 서버·Roundcube 배치, Keycloak SMTP, 기본 사서함(`no-reply`·`postmaster`).
 3. employee-auth-service — 계약 → 구현 → 시험(Keycloak 컨테이너로 인가 코드 흐름) → 배치. 발급자 표에 줄을 **추가**(옮기는 동안 Keycloak 줄과 함께).
 4. Keycloak 공개 주소를 게이트웨이 `/iam` 로(`iss` 변경) — 3 과 같은 배포 창.
-5. hr-service + mail-provisioner — 계약 → 구현(진행 상태·재시도·보상, 자동 승인 연동) → 배치. 운영자 13명 이전(메일 ID·사번·권한 값을 auth-service `operator_account`/Keycloak 에서 옮김).
+5. hr-service + mail-provisioner — 계약 → 구현(진행 상태·재시도·보상, 자동 승인 연동, 역할 매핑 API 미사용 시험) → 배치(결정 16 U-11 — 가능하면 7단계의 Keycloak 줄 제거를 이보다 먼저). 운영자 13명 이전(메일 ID·사번·권한 값을 auth-service `operator_account`/Keycloak 에서 옮김).
 6. 클라이언트 요청(`docs/handoff/clients/`): 백오피스 로그인 다시 변경(티켓 교환), mfc_app 로그인 새로, 인사팀 직원 등록 화면.
 7. 전환 확인 뒤 정리 — 발급자 표 Keycloak 줄, `pmart-backoffice`·`pmart-auth-relay`, auth-service 운영자 로그인·`operator_account`·`StaffBlockRelay`, Keycloak Realm 역할·`centers` 속성. 계정 발급 흐름은 구현 커밋에서 `docs/business/flows/` 에 쓴다.
 
 ## 대안
+- **토큰 보관 R-1(employee-auth 가 Keycloak 토큰 보관, 앱엔 세션 값, 게이트웨이가 요청마다 세션 → Keycloak 토큰 변환)** — `references/2026-11-12/PMart_직원_IAM_아키텍처.html` 의 추천안. 즉시 차단은 이미 있는 차단 목록(ADR-0054 K)으로 되고, 모든 업무 요청이 employee-auth 를 거쳐 단일 장애 지점이 되며 업무 서비스가 Keycloak 토큰 모양을 계속 알아야 함 — 사용자 "R-3 그대로"(2026-11-12)로 결정 3 유지. R-2(Keycloak 토큰을 앱에 넘김)도 기각.
 - **지금처럼 앱이 Keycloak 공개 클라이언트(ADR-0054)**: 더 단순하지만 업무 서비스가 Keycloak 토큰 모양을 알아야 하고, 계정·차단이 관리 화면과 중계에 기댄다. 사용자가 강의 설계를 택함.
 - **직원 권한 정본을 auth-service(RoleGrant 그대로)**: auth-service 를 고객용으로 정리하는 방향(ADR-0054 결정 2)과 거꾸로 — 기각. **hr-service**: 고용 정보와 접근 권한을 섞음(BO-01) — 기각. **Keycloak**: "Keycloak 은 신원만"과 맞지 않음 — 기각.
 - **사서함은 관리자 수동만(1단계)**: 등록 때마다 사람이 끼어 일일크루·자동 승인 흐름이 끊김 — 예비 수단으로만.
