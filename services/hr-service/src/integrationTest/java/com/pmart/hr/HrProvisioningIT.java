@@ -405,6 +405,7 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     JsonNode g0 =
         call("GET", "/hr/employees/" + op, hr, null).body().path("requestedGrants").get(0);
     assertThat(g0.path("reason").asText()).isEqualTo("입사");
+    assertThat(g0.path("validFrom").asText()).as("비운 기간 = 근무 시작일").isEqualTo(today().toString());
     assertThat(g0.path("approvalRef").asText()).isEqualTo(approvalId);
 
     // 본인 조회(그 직원 토큰)

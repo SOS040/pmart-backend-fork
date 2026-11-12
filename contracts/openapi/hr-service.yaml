@@ -362,8 +362,8 @@ components:
       properties:
         role: { type: string }
         centers: { type: array, items: { type: string } }
-        validFrom: { type: string, format: date }
-        validTo: { type: string, format: date }
+        validFrom: { type: string, format: date, description: 비워 받았으면 근무 시작일 }
+        validTo: { type: string, format: date, description: '비워 받았으면 계약 종료일(정규직은 없음 — 기한 없음)' }
         reason: { type: string, description: 등록 때 받은 근거 }
         approvalRef: { type: string, description: 'approval 승인 ID(AP-…) — 결정이 온 뒤' }
         submission: { type: string, enum: [PENDING, SUBMITTED, APPROVED, REJECTED], description: 'PENDING = 아직 approval 에 올리지 않음(계정 발급 전·발급 중 정지), SUBMITTED = 승인 대기, APPROVED·REJECTED = approval 결정' }
