@@ -1,0 +1,1394 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>바로픽 사내 메일·IAM 가이드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --text:#191c22; --muted:#5a6170; --faint:#8a91a0;
+  --border:#e1e4ea; --accent:#2f6fed; --accent-soft:#e7effe;
+  --green:#178a57; --green-soft:#e1f5ea; --amber:#a86a12; --amber-soft:#fcf1dc;
+  --red:#cf3b3b; --red-soft:#fde7e7; --violet:#6d4fd0; --violet-soft:#eee9fc;
+  --slate:#475569; --slate-soft:#e9edf2;
+  --code-bg:#121826; --code-text:#e4e9f2; --code-muted:#8592a8;
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 16px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1115; --surface:#171a21; --surface-2:#1e222b; --text:#e8eaef; --muted:#a3aab8; --faint:#737b8b;
+    --border:#2a2f3a; --accent:#6b9bff; --accent-soft:#1c2a47;
+    --green:#4cc38a; --green-soft:#16302a; --amber:#e3a94b; --amber-soft:#33281a;
+    --red:#f07272; --red-soft:#3a1d1f; --violet:#a58cf5; --violet-soft:#2a2342;
+    --slate:#a0acbf; --slate-soft:#232a35;
+    --code-bg:#0b0d12; --code-text:#e4e9f2; --code-muted:#7d889c;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --surface:#171a21; --surface-2:#1e222b; --text:#e8eaef; --muted:#a3aab8; --faint:#737b8b;
+  --border:#2a2f3a; --accent:#6b9bff; --accent-soft:#1c2a47;
+  --green:#4cc38a; --green-soft:#16302a; --amber:#e3a94b; --amber-soft:#33281a;
+  --red:#f07272; --red-soft:#3a1d1f; --violet:#a58cf5; --violet-soft:#2a2342;
+  --slate:#a0acbf; --slate-soft:#232a35;
+  --code-bg:#0b0d12; --code-text:#e4e9f2; --code-muted:#7d889c;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.75;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:anywhere}
+a{color:var(--accent)}
+code{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:.86em;background:var(--surface-2);border:1px solid var(--border);padding:.08em .4em;border-radius:5px}
+h1,h2,h3{line-height:1.3;letter-spacing:-.01em}
+
+/* Hero */
+.hero{background:linear-gradient(135deg,#1d3f8f 0%,#2f6fed 55%,#5b8cff 100%);color:#fff;padding:56px 16px 64px}
+.hero-inner{max-width:1160px;margin:0 auto}
+.eyebrow{display:inline-block;font-size:13px;font-weight:700;letter-spacing:.08em;background:rgba(255,255,255,.16);padding:4px 12px;border-radius:999px}
+.hero h1{font-size:clamp(28px,4.6vw,44px);font-weight:800;margin:16px 0 12px}
+.hero p{max-width:720px;font-size:17px;opacity:.92;margin:0}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:32px}
+.stat{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:14px 16px}
+.stat b{display:block;font-size:24px;font-weight:800}
+.stat span{font-size:13px;opacity:.88}
+
+/* Layout */
+.layout{max-width:1160px;margin:0 auto;padding:0 16px;display:grid;grid-template-columns:230px minmax(0,1fr);gap:40px}
+.toc{position:sticky;top:20px;align-self:start;margin-top:32px;max-height:calc(100vh - 40px);overflow:auto;font-size:14px}
+.toc-title{font-size:12px;font-weight:700;color:var(--faint);letter-spacing:.08em;margin:0 0 8px 12px}
+.toc a{display:block;color:var(--muted);text-decoration:none;padding:5px 12px;border-left:2px solid var(--border);line-height:1.45}
+.toc a:hover{color:var(--text)}
+.toc a.active{color:var(--accent);border-left-color:var(--accent);font-weight:700}
+.theme-btn{margin:16px 0 0 12px;font:inherit;font-size:13px;background:var(--surface);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer}
+main{min-width:0;padding:32px 0 80px}
+.mobile-toc{display:none}
+section{margin-bottom:56px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+.sec-num{font-family:"JetBrains Mono",monospace;font-size:14px;font-weight:600;color:var(--accent);background:var(--accent-soft);padding:2px 9px;border-radius:7px;flex:none}
+h2{font-size:26px;font-weight:800;margin:0}
+h3{font-size:18px;font-weight:700;margin:28px 0 10px}
+.lead{color:var(--muted);margin:0 0 20px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;box-shadow:var(--shadow)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.goal{display:flex;gap:12px;align-items:flex-start;padding:14px 16px}
+.goal .ico{flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-weight:800;font-size:15px}
+.goal p{margin:0;font-size:15px;line-height:1.6}
+.comp{padding:16px 18px;border-top:4px solid var(--c)}
+.comp .tag{display:inline-block;font-size:12px;font-weight:700;color:var(--c);background:var(--cs);padding:2px 9px;border-radius:999px}
+.comp h4{margin:8px 0 4px;font-size:17px}
+.comp p{margin:0;font-size:14px;color:var(--muted);line-height:1.6}
+.c-kc{--c:var(--violet);--cs:var(--violet-soft)}
+.c-sb{--c:var(--green);--cs:var(--green-soft)}
+.c-ms{--c:var(--accent);--cs:var(--accent-soft)}
+.c-rc{--c:var(--amber);--cs:var(--amber-soft)}
+.c-pg{--c:var(--slate);--cs:var(--slate-soft)}
+
+/* Callouts */
+.callout{border-radius:12px;padding:14px 18px;margin:18px 0;border:1px solid;font-size:15px;line-height:1.65}
+.callout b.t{display:block;margin-bottom:4px}
+.callout p{margin:0}
+.callout ul{margin:6px 0 0;padding-left:20px}
+.info{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.info b.t{color:var(--accent)}
+.warn{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 35%,transparent)}
+.warn b.t{color:var(--amber)}
+.danger{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 35%,transparent)}
+.danger b.t{color:var(--red)}
+.ok{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 35%,transparent)}
+.ok b.t{color:var(--green)}
+
+/* Diagrams */
+.figure{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow);margin:16px 0}
+.figure .scroll{overflow-x:auto}
+.figure svg{display:block;width:100%;min-width:660px;height:auto}
+.figcap{font-size:13px;color:var(--faint);margin-top:8px;text-align:center}
+svg text{font-family:"Noto Sans KR",system-ui,sans-serif;fill:var(--text)}
+svg .sub{fill:var(--muted);font-size:12px}
+svg .lbl{fill:var(--muted);font-size:12.5px;paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
+svg .box{stroke-width:1.5}
+svg .b-kc{fill:var(--violet-soft);stroke:var(--violet)}
+svg .b-sb{fill:var(--green-soft);stroke:var(--green)}
+svg .b-ms{fill:var(--accent-soft);stroke:var(--accent)}
+svg .b-rc{fill:var(--amber-soft);stroke:var(--amber)}
+svg .b-pg{fill:var(--slate-soft);stroke:var(--slate)}
+svg .b-actor{fill:var(--surface-2);stroke:var(--faint)}
+svg .b-red{fill:var(--red-soft);stroke:var(--red)}
+svg .frame{fill:none;stroke:var(--accent);stroke-dasharray:6 5;stroke-width:1.5}
+svg .frame-s{fill:none;stroke:var(--faint);stroke-dasharray:6 5;stroke-width:1.5}
+svg .ln{stroke:var(--muted);stroke-width:1.6;fill:none}
+svg .ln-a{stroke:var(--accent);stroke-width:1.8;fill:none}
+svg .ln-g{stroke:var(--green);stroke-width:1.8;fill:none}
+svg .ln-v{stroke:var(--violet);stroke-width:1.8;fill:none}
+svg .ln-r{stroke:var(--red);stroke-width:1.8;fill:none;stroke-dasharray:5 4}
+svg .dash{stroke-dasharray:6 4}
+svg .life{stroke:var(--border);stroke-width:1.5;stroke-dasharray:4 4}
+svg .ah{fill:var(--muted)}
+svg .ah-a{fill:var(--accent)} svg .ah-g{fill:var(--green)} svg .ah-v{fill:var(--violet)} svg .ah-r{fill:var(--red)}
+svg .fw{fill:var(--red-soft);stroke:var(--red)}
+svg .t-b{font-weight:700;font-size:15px}
+svg .num{fill:var(--accent);font-weight:700;font-size:12px}
+
+/* Tables */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:var(--shadow);margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+th{background:var(--surface-2);font-weight:700;font-size:13.5px;color:var(--muted)}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:1px 9px;border-radius:999px;white-space:nowrap}
+.p-g{background:var(--green-soft);color:var(--green)} .p-r{background:var(--red-soft);color:var(--red)}
+.p-a{background:var(--amber-soft);color:var(--amber)} .p-b{background:var(--accent-soft);color:var(--accent)}
+
+/* Ports */
+.ports{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.port{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 12px;text-align:center;box-shadow:var(--shadow)}
+.port .n{font-family:"JetBrains Mono",monospace;font-size:26px;font-weight:600;color:var(--accent);line-height:1.2}
+.port .p{font-weight:700;font-size:14px;margin-top:2px}
+.port .d{font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:4px}
+.port.used{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+
+/* Account model */
+.acct{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center}
+.acct .card h4{margin:6px 0 8px;font-size:17px}
+.acct .card ul{margin:0;padding-left:18px;font-size:14.5px;color:var(--muted)}
+.acct .mono{font-family:"JetBrains Mono",monospace;font-size:15px;font-weight:600;background:var(--surface-2);border-radius:8px;padding:6px 10px;display:inline-block;margin-bottom:8px}
+.link{text-align:center;font-size:13px;color:var(--muted)}
+.link .bar{width:2px;height:28px;background:var(--border);margin:6px auto}
+.link .key{background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px 12px;font-weight:700;color:var(--text);white-space:nowrap}
+
+/* Steps */
+.steps{list-style:none;padding:0;margin:16px 0;counter-reset:s;position:relative}
+.steps li{position:relative;padding:0 0 18px 52px;counter-increment:s}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:14px;z-index:1}
+.steps li::after{content:"";position:absolute;left:16px;top:34px;bottom:0;width:2px;background:var(--border)}
+.steps li:last-child::after{display:none}
+.steps b{display:block;font-size:15.5px}
+.steps span{font-size:14px;color:var(--muted)}
+.steps .who{display:inline-block;font-size:11.5px;font-weight:700;padding:0 8px;border-radius:999px;margin-left:6px;vertical-align:2px}
+
+/* Compare A/B */
+.ab .card h4{margin:4px 0 10px;font-size:17px}
+.ab ul{margin:0;padding-left:18px;font-size:14.5px}
+.ab .rec{font-size:12px;font-weight:700;color:var(--green);background:var(--green-soft);padding:2px 9px;border-radius:999px}
+.ab .opt{font-size:12px;font-weight:700;color:var(--amber);background:var(--amber-soft);padding:2px 9px;border-radius:999px}
+
+/* Security checks */
+.sec-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;list-style:none;padding:0;margin:14px 0}
+.sec-list li{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px 10px 40px;position:relative;font-size:14.5px;line-height:1.55}
+.sec-list li::before{content:"";position:absolute;left:14px;top:14px;width:16px;height:16px;border-radius:5px;background:var(--green-soft);border:1.5px solid var(--green)}
+.sec-list li::after{content:"";position:absolute;left:19px;top:17px;width:5px;height:8px;border:solid var(--green);border-width:0 2px 2px 0;transform:rotate(45deg)}
+
+/* Code */
+.code{position:relative;background:var(--code-bg);border-radius:12px;margin:12px 0;overflow:hidden}
+.code .bar{display:flex;justify-content:space-between;align-items:center;padding:7px 12px 7px 16px;border-bottom:1px solid rgba(255,255,255,.07);font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--code-muted)}
+.code button{font:inherit;font-size:12px;color:var(--code-text);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:2px 10px;cursor:pointer}
+.code button:hover{background:rgba(255,255,255,.16)}
+.code pre{margin:0;padding:14px 16px;overflow-x:auto;color:var(--code-text);font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:13.5px;line-height:1.65}
+.code .c{color:var(--code-muted)}
+.code .k{color:#8fb7ff}
+.code .s{color:#9fe0b0}
+
+/* Tree */
+.tree{font-family:"JetBrains Mono",monospace;font-size:13.5px;line-height:1.75;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;white-space:pre;overflow-x:auto}
+.tree .dim{color:var(--faint)} .tree .sec{color:var(--red);font-weight:600}
+
+/* Flow (inline boxes) */
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:14px 0}
+.flow .node{flex:1 1 150px;background:var(--surface);border:1.5px solid var(--c,var(--border));border-radius:12px;padding:12px 14px;text-align:center;box-shadow:var(--shadow)}
+.flow .node b{display:block;font-size:15px}
+.flow .node span{font-size:12.5px;color:var(--muted)}
+.flow .arr{flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:0 8px;font-size:12px;color:var(--muted);min-width:90px;text-align:center}
+.flow .arr::before{content:"→";font-size:22px;color:var(--accent);line-height:1}
+.flow .arr.no::before{content:"✕";color:var(--red)}
+
+/* Roadmap */
+.road{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.phase .ph{font-size:12px;font-weight:700;color:var(--accent)}
+.phase h4{margin:2px 0 8px;font-size:16px}
+.prog{height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-bottom:4px}
+.prog i{display:block;height:100%;width:0;background:var(--green);transition:width .25s}
+.prog-t{font-size:12px;color:var(--faint);margin-bottom:10px}
+.phase label{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;line-height:1.5;padding:4px 0;cursor:pointer}
+.phase input{margin-top:3px;accent-color:var(--green);flex:none}
+.phase label:has(input:checked) span{color:var(--faint);text-decoration:line-through}
+
+/* Review */
+.diff td:first-child{font-weight:700;white-space:nowrap}
+.final{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow)}
+.final p{margin:0}
+.refs{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.refs a{display:block;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;text-decoration:none;color:var(--text);font-weight:600;font-size:14.5px}
+.refs a span{display:block;font-weight:400;font-size:12.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.refs a:hover{border-color:var(--accent)}
+footer{text-align:center;color:var(--faint);font-size:13px;padding:24px 16px 40px}
+
+/* Terms & tooltip */
+.term,.term-demo{border-bottom:1.5px dotted var(--accent);cursor:help;border-radius:2px}
+code.term{border-bottom:1.5px dotted var(--accent)}
+.term:hover,.term:focus-visible,.term.on{background:var(--accent-soft);outline:none}
+svg .svg-term{cursor:help}
+svg .svg-term:hover{fill:var(--accent)}
+#tip{position:fixed;z-index:60;left:0;top:0;width:max-content;max-width:min(340px,calc(100vw - 24px));background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:12px 14px;font-size:13.5px;line-height:1.6;pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s;word-break:keep-all}
+#tip.on{opacity:1;transform:none}
+#tip .tt{display:flex;align-items:center;gap:8px;font-weight:800;font-size:14.5px;margin-bottom:4px}
+#tip .ex{margin-top:7px;padding-top:7px;border-top:1px dashed var(--border);color:var(--muted);font-size:12.5px}
+#tip .ex b{color:var(--accent)}
+.an{margin:8px 0 0!important;font-size:13px!important;color:var(--faint)!important}
+.an b{color:var(--accent)}
+.mini-h{font-size:15.5px;margin:22px 0 8px}
+.big-num{font-family:"JetBrains Mono",monospace;font-size:30px;font-weight:600;color:var(--accent);line-height:1.2}
+
+/* Glossary */
+.gl-search{width:100%;font:inherit;font-size:15px;padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);margin-bottom:6px}
+.gl-search:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.gl-cat{font-size:13px;font-weight:700;color:var(--accent);margin:22px 0 8px;letter-spacing:.04em}
+.gl-item{padding:14px 16px}
+.gl-item h4{margin:0 0 4px;font-size:15.5px}
+.gl-item h4 small{font-weight:400;color:var(--faint);font-size:12.5px;margin-left:6px}
+.gl-item p{margin:0;font-size:14px;color:var(--muted);line-height:1.6}
+.gl-item p.e{margin-top:6px;font-size:13px;color:var(--faint)}
+.gl-item p.e b{color:var(--accent)}
+.gl-empty{color:var(--faint);font-size:14px;padding:12px 0}
+
+@media (max-width:1000px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:0}
+  .toc{display:none}
+  .mobile-toc{display:block;margin:20px 0 32px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 16px}
+  .mobile-toc summary{font-weight:700;cursor:pointer}
+  .mobile-toc a{display:block;padding:4px 0;color:var(--muted);text-decoration:none;font-size:14.5px}
+  .road{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ports{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  body{font-size:15px}
+  .hero{padding:40px 16px 44px}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .g2,.g3,.sec-list,.refs,.road{grid-template-columns:minmax(0,1fr)}
+  .ports{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .acct{grid-template-columns:minmax(0,1fr)}
+  .link .bar{height:14px}
+  .flow{flex-direction:column}
+  .flow .arr{padding:6px 0}
+  .flow .arr::before{content:"↓"}
+  .flow .arr.no::before{content:"✕"}
+  h2{font-size:22px}
+}
+@media print{.toc,.mobile-toc,.theme-btn,.code button{display:none}.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <span class="eyebrow">BAROPICK · INTERNAL MAIL &amp; IAM</span>
+    <h1>바로픽 사내 메일 서버 구축 및<br>IAM 인증 메일 연동 가이드</h1>
+    <p>직원에게 <b>직원ID@baropick.test</b> 회사 메일을 발급하고, 이 메일을 Keycloak 기반 IAM 인증(계정 활성화·이메일 확인·비밀번호 재설정)에 활용하는 방법을 정리했습니다. Docker로 구성하며 비용이 들지 않는 내부 실습 환경입니다.</p>
+    <div class="stats">
+      <div class="stat"><b>4</b><span>핵심 컨테이너<br>Mailserver · Roundcube · Keycloak · PostgreSQL</span></div>
+      <div class="stat"><b>2</b><span>직원당 계정<br>IAM 계정 + 메일 사서함</span></div>
+      <div class="stat"><b>.test</b><span>내부 전용 도메인<br>baropick.test</span></div>
+      <div class="stat"><b>₩0</b><span>외부 유료 서비스<br>없이 사내 LAN에서 검증</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc" id="toc">
+    <p class="toc-title">목차</p>
+    <div id="tocLinks"></div>
+    <button class="theme-btn" id="themeBtn" type="button">테마 전환</button>
+  </nav>
+
+  <main>
+    <details class="mobile-toc">
+      <summary>목차 보기</summary>
+      <div id="mtocLinks"></div>
+    </details>
+
+    <!-- 1 -->
+    <section id="goals">
+      <div class="sec-head"><span class="sec-num">01</span><h2>프로젝트 목표</h2></div>
+      <p class="lead">바로픽 직원에게 회사 이메일 계정을 발급하고, 그 메일을 사내 IAM 인증 수단으로 사용합니다.</p>
+      <div class="grid g2">
+        <div class="card goal"><div class="ico">@</div><p>모든 직원에게 <code>직원ID@baropick.test</code> 형식의 사내 메일 계정 발급</p></div>
+        <div class="card goal"><div class="ico">⇄</div><p>직원끼리 내부 메일 송수신</p></div>
+        <div class="card goal"><div class="ico">◱</div><p>Roundcube 웹메일로 브라우저에서 메일 확인·발송</p></div>
+        <div class="card goal"><div class="ico">ID</div><p>Keycloak으로 직원 IAM 계정과 인증 관리</p></div>
+        <div class="card goal"><div class="ico">✉</div><p>신규 계정 활성화, 이메일 인증, 비밀번호 변경 시 회사 메일로 인증 코드·링크 발송</p></div>
+        <div class="card goal"><div class="ico">₩</div><p>Docker 기반 실행, 유료 메일 호스팅이나 외부 발송 서비스 없이 내부망에서 실습·검증</p></div>
+      </div>
+      <div class="callout warn">
+        <b class="t">도메인 관련 중요 사항</b>
+        <p><code>baropick.test</code>는 테스트용으로 예약된 내부 전용 도메인입니다. Gmail·Outlook 같은 외부 메일과는 주고받을 수 없습니다. <code>staff01@baropick.com</code>처럼 실제 도메인을 인터넷에서 쓰려면 도메인 등록과 공개 DNS 설정이 필요합니다. 로컬 서버에 <code>baropick.com</code>을 임의로 설정한다고 해서 실제 인터넷 메일 주소가 생기지는 않습니다.</p>
+      </div>
+    </section>
+
+    <!-- concepts -->
+    <section id="concepts">
+      <div class="sec-head"><span class="sec-num">02</span><h2>핵심 개념 이해하기</h2></div>
+      <p class="lead">구축을 시작하기 전에 알아야 할 메일, IAM, Docker, DNS, 보안 개념을 그림과 비유로 정리했습니다.</p>
+      <div class="callout info"><b class="t">용어 툴팁 사용법</b><p><span class="term-demo">점선 밑줄</span>이 있는 단어에 마우스를 올리면 뜻이 나옵니다. 모바일에서는 탭하고, 키보드로는 Tab 키로 이동하면 됩니다. 같은 단어는 섹션마다 처음 나올 때 표시하며, 다이어그램 안의 이름에도 마우스를 올릴 수 있습니다. 전체 목록은 <a href="#glossary">용어 사전</a>에서 볼 수 있습니다.</p></div>
+
+      <h3>① 이메일은 어떻게 전달될까: 우편에 비유하기</h3>
+      <p>메일 시스템은 우편 제도와 구조가 같습니다. 편지를 쓰는 사람(<span class="term" data-k="MUA">MUA</span>), 편지를 분류해 옮기는 우체국(<span class="term" data-k="MTA">MTA</span>), 편지를 보관하는 우편함(사서함)이 각각 다른 프로그램입니다. Docker Mailserver는 우체국과 우편함을 한 건물에 넣어 둔 것이고, Roundcube는 사람이 쓰는 편지지와 우편함 열쇠에 해당합니다.</p>
+      <div class="figure"><div class="scroll">
+        <svg viewBox="0 0 900 230" role="img" aria-label="메일 전달 과정">
+          <defs>
+            <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="frame" x="245" y="28" width="410" height="190" rx="16"/>
+          <text x="262" y="50" class="t-b" style="fill:var(--accent);font-size:13px">Docker Mailserver</text>
+          <rect class="box b-rc" x="20" y="66" width="140" height="72" rx="12"/><text x="90" y="97" text-anchor="middle" class="t-b">보내는 사람</text><text x="90" y="118" text-anchor="middle" class="sub">Roundcube · 앱</text>
+          <rect class="box b-ms" x="265" y="66" width="140" height="72" rx="12"/><text x="335" y="97" text-anchor="middle" class="t-b">Postfix</text><text x="335" y="118" text-anchor="middle" class="sub">SMTP 서버</text>
+          <rect class="box b-ms" x="495" y="66" width="140" height="72" rx="12"/><text x="565" y="97" text-anchor="middle" class="t-b">Dovecot</text><text x="565" y="118" text-anchor="middle" class="sub">IMAP · 사서함</text>
+          <rect class="box b-rc" x="740" y="66" width="140" height="72" rx="12"/><text x="810" y="97" text-anchor="middle" class="t-b">받는 사람</text><text x="810" y="118" text-anchor="middle" class="sub">Roundcube</text>
+          <line class="ln-a" x1="160" y1="102" x2="263" y2="102" marker-end="url(#a3)"/><text x="212" y="92" text-anchor="middle" class="lbl">SMTP 587 제출</text>
+          <line class="ln-a" x1="405" y1="102" x2="493" y2="102" marker-end="url(#a3)"/><text x="449" y="92" text-anchor="middle" class="lbl">LMTP 전달</text>
+          <line class="ln-a" x1="637" y1="102" x2="738" y2="102" marker-start="url(#a3)" marker-end="url(#a3)"/><text x="688" y="92" text-anchor="middle" class="lbl">IMAP 143 조회</text>
+          <text x="90" y="168" text-anchor="middle" style="fill:var(--accent);font-weight:700;font-size:13px">편지 쓰기</text>
+          <text x="335" y="168" text-anchor="middle" style="fill:var(--accent);font-weight:700;font-size:13px">우체국 · 분류와 발송</text>
+          <text x="565" y="168" text-anchor="middle" style="fill:var(--accent);font-weight:700;font-size:13px">우편함 · 보관</text>
+          <text x="810" y="168" text-anchor="middle" style="fill:var(--accent);font-weight:700;font-size:13px">우편함 열어보기</text>
+          <text x="90" y="190" text-anchor="middle" class="sub">MUA</text>
+          <text x="335" y="190" text-anchor="middle" class="sub">MTA</text>
+          <text x="565" y="190" text-anchor="middle" class="sub">MDA · 저장소</text>
+          <text x="810" y="190" text-anchor="middle" class="sub">MUA</text>
+        </svg>
+      </div><p class="figcap">그림 A. 메일 한 통이 보내는 사람에서 받는 사람까지 가는 길</p></div>
+
+      <div class="grid g2">
+        <div class="card comp c-ms"><span class="tag">보내기</span><h4>SMTP</h4><p>메일을 서버로 <b>밀어 넣는</b> 규약입니다. 앱이나 Roundcube가 메일을 제출할 때(587), 서버끼리 메일을 넘길 때(25) 씁니다. SMTP로는 메일을 읽을 수 없습니다.</p><p class="an"><b>비유</b> · 우체통에 편지를 넣고, 우체국끼리 편지를 옮기는 일</p></div>
+        <div class="card comp c-rc"><span class="tag">읽기</span><h4>IMAP</h4><p>서버 사서함에 있는 메일을 <b>가져와 보는</b> 규약입니다(143). 메일이 서버에 남아 있어서 PC와 휴대폰에서 같은 상태(읽음, 폴더)를 봅니다.</p><p class="an"><b>비유</b> · 열쇠로 내 우편함을 열어 편지를 확인하는 일</p></div>
+      </div>
+      <p style="font-size:14.5px;color:var(--muted)">그래서 Roundcube 설정에는 IMAP 서버(읽기용)와 SMTP 서버(보내기용)를 <b>둘 다</b> 입력합니다. 반면 Keycloak과 Spring Boot는 메일을 보내기만 하므로 SMTP 설정만 있으면 됩니다.</p>
+
+      <h4 class="mini-h">외부 인터넷으로 보낼 때는?</h4>
+      <div class="flow">
+        <div class="node" style="--c:var(--accent)"><b>우리 Postfix</b><span>받는 사람: kim@gmail.com</span></div>
+        <div class="arr">MX 조회</div>
+        <div class="node" style="--c:var(--slate)"><b>공개 DNS</b><span>gmail.com의 메일 서버는?</span></div>
+        <div class="arr">서버 주소</div>
+        <div class="node" style="--c:var(--accent)"><b>상대 메일 서버</b><span>SMTP 25번으로 전달</span></div>
+      </div>
+      <div class="callout warn"><b class="t">이 실습에서 외부 메일이 안 되는 이유</b><p><code>.test</code> 도메인은 공개 DNS에 등록되지 않으므로 외부 서버가 우리 서버를 찾을 수 없습니다. 이 실습의 메일은 모두 <b>같은 Postfix 안에서</b> 받는 사람의 사서함으로 바로 전달되고 끝납니다.</p></div>
+
+      <h3>② IAM과 Keycloak</h3>
+      <p><span class="term" data-k="IAM">IAM</span>은 "누가 누구인지 확인하고, 그 사람이 무엇을 할 수 있는지 정하는" 체계입니다. 둘은 서로 다른 질문입니다.</p>
+      <div class="grid g2">
+        <div class="card comp c-kc"><span class="tag">Authentication</span><h4><span class="term" data-k="인증 (Authentication)">인증</span>: 당신은 누구인가?</h4><p>아이디와 비밀번호, 이메일 인증 코드, OTP 등으로 본인임을 확인합니다. 이 프로젝트에서 회사 메일은 <b>인증 수단</b>으로 쓰입니다.</p><p class="an"><b>비유</b> · 사원증을 찍고 건물에 들어가기</p></div>
+        <div class="card comp c-kc"><span class="tag">Authorization</span><h4><span class="term" data-k="인가 (Authorization)">인가</span>: 무엇을 할 수 있는가?</h4><p>관리자, 일반 직원 같은 <span class="term" data-k="Role">역할(Role)</span>에 따라 접근할 수 있는 메뉴와 기능을 정합니다.</p><p class="an"><b>비유</b> · 사원증에 따라 들어갈 수 있는 층이 다름</p></div>
+      </div>
+
+      <h4 class="mini-h">Keycloak 핵심 용어</h4>
+      <div class="tbl-wrap"><table>
+        <tr><th>용어</th><th>의미</th><th>바로픽 예시</th></tr>
+        <tr><td><b>Realm</b></td><td>사용자, 앱, 역할, 설정을 묶는 독립된 공간</td><td><code>baropick</code> realm</td></tr>
+        <tr><td><b>User</b></td><td>로그인하는 사람의 계정. username, email, 상태(활성/이메일 확인 여부)를 가짐</td><td><code>staff01</code>, email=<code>staff01@baropick.test</code></td></tr>
+        <tr><td><b><span class="term" data-k="Client">Client</span></b></td><td>Keycloak에 로그인을 맡기는 애플리케이션 등록 정보</td><td>사내 React 앱, Spring Boot API</td></tr>
+        <tr><td><b><span class="term" data-k="Role">Role</span></b></td><td>권한 묶음. 사용자나 그룹에 부여</td><td><code>ADMIN</code>, <code>STAFF</code></td></tr>
+        <tr><td><b>Required Action</b></td><td>다음 로그인 때 반드시 해야 하는 작업</td><td>이메일 확인, 최초 비밀번호 변경</td></tr>
+        <tr><td><b>토큰</b></td><td>로그인 성공 후 발급되는 디지털 출입증</td><td>앱이 API 호출 시 함께 전송</td></tr>
+      </table></div>
+
+      <h4 class="mini-h">로그인 흐름 (<span class="term" data-k="OIDC">OIDC</span>)</h4>
+      <div class="flow">
+        <div class="node"><b>직원</b><span>사내 앱 접속</span></div>
+        <div class="arr">로그인 필요</div>
+        <div class="node" style="--c:var(--violet)"><b>Keycloak 로그인 화면</b><span>아이디·비밀번호 확인</span></div>
+        <div class="arr">토큰 발급</div>
+        <div class="node" style="--c:var(--green)"><b>사내 앱 · API</b><span>토큰을 검증하고 역할 확인</span></div>
+      </div>
+      <p style="font-size:14.5px;color:var(--muted)">앱이 비밀번호를 직접 다루지 않고 Keycloak에 맡기기 때문에, 여러 앱이 같은 계정으로 로그인하는 <span class="term" data-k="SSO">SSO</span>가 가능해집니다.</p>
+
+      <div class="callout info"><b class="t">Keycloak은 메일 서버가 아닙니다</b><p>Keycloak은 "편지를 써서 우체국에 맡기는 사람"입니다. 실제 배달은 Docker Mailserver가 합니다. 그래서 Keycloak 관리 콘솔의 <b>Realm settings → Email</b>에 다음과 같이 SMTP 정보를 입력합니다.</p></div>
+      <div class="tbl-wrap"><table>
+        <tr><th>항목</th><th>예시 값</th><th>설명</th></tr>
+        <tr><td>Host</td><td><code>mailserver</code></td><td>같은 Docker 네트워크에 있을 때의 서비스 이름</td></tr>
+        <tr><td>Port</td><td><code>587</code></td><td>Submission 포트</td></tr>
+        <tr><td>From</td><td><code>auth-service@baropick.test</code></td><td>인증 메일의 발신 주소</td></tr>
+        <tr><td>Encryption</td><td>StartTLS</td><td>메일 서버에 TLS 인증서가 있어야 함</td></tr>
+        <tr><td>Authentication</td><td>발신 사서함 계정과 비밀번호</td><td>사서함을 먼저 만들어야 함</td></tr>
+      </table></div>
+
+      <h3>③ Docker 기본 개념</h3>
+      <div class="grid g3">
+        <div class="card comp c-ms"><span class="tag">Image</span><h4>이미지</h4><p>프로그램과 실행 환경을 통째로 묶은 읽기 전용 패키지입니다.</p><p class="an"><b>비유</b> · 설치 파일, 붕어빵 틀</p></div>
+        <div class="card comp c-ms"><span class="tag">Container</span><h4>컨테이너</h4><p>이미지를 실행한 격리된 프로그램입니다. 지우면 안의 데이터도 사라집니다.</p><p class="an"><b>비유</b> · 틀로 찍어낸 붕어빵</p></div>
+        <div class="card comp c-ms"><span class="tag">Volume</span><h4>볼륨</h4><p>컨테이너 밖에 있는 저장 공간입니다. 컨테이너를 지우고 다시 만들어도 데이터가 남습니다.</p><p class="an"><b>비유</b> · 이사해도 들고 가는 외장 하드</p></div>
+        <div class="card comp c-ms"><span class="tag">Network</span><h4>Docker 네트워크</h4><p>컨테이너끼리 <b>서비스 이름</b>으로 서로를 찾는 가상 네트워크입니다.</p><p class="an"><b>비유</b> · 사내 내선 번호</p></div>
+        <div class="card comp c-ms"><span class="tag">Port</span><h4>포트 매핑</h4><p><code>"8080:80"</code>은 호스트 8080번으로 들어온 요청을 컨테이너 80번으로 넘긴다는 뜻입니다.</p><p class="an"><b>비유</b> · 대표 번호를 내선으로 돌려 주는 교환기</p></div>
+        <div class="card comp c-ms"><span class="tag">Compose</span><h4>Docker Compose</h4><p>여러 컨테이너의 설정을 <code>compose.yaml</code> 하나에 적고 한 번에 실행합니다.</p><p class="an"><b>비유</b> · 여러 악기를 맞추는 악보</p></div>
+      </div>
+
+      <div class="figure"><div class="scroll">
+        <svg viewBox="0 0 900 300" role="img" aria-label="Docker 포트 매핑과 볼륨 구조">
+          <defs>
+            <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a4m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box b-actor" x="10" y="122" width="130" height="56" rx="12"/><text x="75" y="146" text-anchor="middle" class="t-b" style="font-size:14px">브라우저</text><text x="75" y="166" text-anchor="middle" class="sub">localhost:8080</text>
+          <rect class="frame-s" x="175" y="10" width="715" height="280" rx="16"/>
+          <text x="195" y="34" class="t-b" style="font-size:14px">호스트 PC · Windows + Docker Desktop</text>
+          <rect class="frame" x="245" y="52" width="420" height="224" rx="14"/>
+          <text x="262" y="74" style="fill:var(--accent);font-weight:700;font-size:13px">Docker 네트워크 (Compose가 자동 생성)</text>
+          <rect class="box b-rc" x="275" y="112" width="160" height="66" rx="12"/><text x="355" y="140" text-anchor="middle" class="t-b">roundcube</text><text x="355" y="160" text-anchor="middle" class="sub">컨테이너 포트 80</text>
+          <rect class="box b-ms" x="485" y="112" width="160" height="66" rx="12"/><text x="565" y="140" text-anchor="middle" class="t-b">mailserver</text><text x="565" y="160" text-anchor="middle" class="sub">143 · 587 · 25</text>
+          <rect class="box b-rc" x="163" y="132" width="54" height="36" rx="8"/><text x="190" y="155" text-anchor="middle" style="font-weight:700;font-size:13px">8080</text>
+          <line class="ln-a" x1="140" y1="150" x2="161" y2="150" marker-end="url(#a4)"/>
+          <line class="ln-a" x1="217" y1="148" x2="273" y2="148" marker-end="url(#a4)"/>
+          <text x="245" y="200" text-anchor="middle" class="lbl">포트 매핑 8080→80</text>
+          <line class="ln-a" x1="435" y1="145" x2="483" y2="145" marker-end="url(#a4)"/>
+          <text x="460" y="226" text-anchor="middle" class="lbl">서비스 이름 'mailserver'로 접속</text>
+          <path class="box b-ms" d="M700 95 a75 11 0 0 0 150 0 v52 a75 11 0 0 1 -150 0 z"/><ellipse class="box b-ms" cx="775" cy="95" rx="75" ry="11"/>
+          <text x="775" y="126" text-anchor="middle" style="font-weight:700;font-size:13px">mail-data 볼륨</text><text x="775" y="143" text-anchor="middle" class="sub">→ /var/mail</text>
+          <path class="box b-ms" d="M700 200 a75 11 0 0 0 150 0 v52 a75 11 0 0 1 -150 0 z"/><ellipse class="box b-ms" cx="775" cy="200" rx="75" ry="11"/>
+          <text x="775" y="231" text-anchor="middle" style="font-weight:700;font-size:13px">mail-state 볼륨</text><text x="775" y="248" text-anchor="middle" class="sub">→ /var/mail-state</text>
+          <line class="ln dash" x1="645" y1="128" x2="698" y2="118" marker-end="url(#a4m)"/>
+          <line class="ln dash" x1="645" y1="162" x2="698" y2="222" marker-end="url(#a4m)"/>
+          <text x="676" y="182" text-anchor="middle" class="lbl">마운트</text>
+        </svg>
+      </div><p class="figcap">그림 B. 포트 매핑, Docker 네트워크, 볼륨의 관계. 컨테이너를 다시 만들어도 볼륨의 메일은 그대로 남습니다.</p></div>
+
+      <h4 class="mini-h">어디서 접속하느냐에 따라 주소가 다릅니다</h4>
+      <div class="tbl-wrap"><table>
+        <tr><th>접속하는 쪽</th><th>메일 서버 주소</th><th>이유</th></tr>
+        <tr><td>Roundcube 컨테이너</td><td><code>mailserver:143</code>, <code>mailserver:587</code></td><td>같은 Docker 네트워크라서 서비스 이름이 통함</td></tr>
+        <tr><td>Compose 안의 Spring Boot·Keycloak</td><td><code>mailserver:587</code></td><td>같은 이유</td></tr>
+        <tr><td>호스트에서 직접 실행한 Spring Boot</td><td><code>localhost:587</code></td><td>네트워크 밖이므로 공개된 포트 매핑으로 접속</td></tr>
+        <tr><td>팀원 PC 브라우저</td><td><code>http://192.168.0.10:8080</code></td><td>서버 PC의 LAN IP와 공개 포트</td></tr>
+      </table></div>
+
+      <h3>④ 도메인과 DNS</h3>
+      <p><span class="term" data-k="DNS">DNS</span>는 인터넷의 전화번호부입니다. 이름(<code>gmail.com</code>)을 물으면 IP 주소나 메일 서버 주소를 알려 줍니다. <code>.test</code>는 국제 표준(RFC 2606)에서 <b>테스트 전용으로 예약</b>한 최상위 도메인이어서 누구도 실제로 등록할 수 없습니다. 그래서 실습에 써도 실제 회사 도메인과 충돌하지 않습니다.</p>
+      <div class="tbl-wrap"><table>
+        <tr><th>레코드</th><th>하는 일</th><th>비유</th><th>실습 필요</th></tr>
+        <tr><td><b>A</b></td><td>이름에 대응하는 IP 주소</td><td>건물 주소</td><td><span class="pill p-a">hosts로 대체</span></td></tr>
+        <tr><td><b>MX</b></td><td>이 도메인의 메일을 받을 서버</td><td>회사 우편 수발실 위치</td><td><span class="pill p-g">불필요</span></td></tr>
+        <tr><td><b>SPF</b></td><td>이 도메인으로 메일을 보내도 되는 서버 목록</td><td>공식 발송처 명단</td><td><span class="pill p-g">불필요</span></td></tr>
+        <tr><td><b>DKIM</b></td><td>메일에 전자 서명을 붙여 위조·변조 확인</td><td>봉투의 인감</td><td><span class="pill p-g">불필요</span></td></tr>
+        <tr><td><b>DMARC</b></td><td>SPF·DKIM 검증 실패 메일 처리 정책</td><td>위조 편지 처리 규칙</td><td><span class="pill p-g">불필요</span></td></tr>
+        <tr><td><b>PTR</b></td><td>IP 주소로 이름을 찾는 역방향 조회</td><td>주소로 거주자 확인</td><td><span class="pill p-g">불필요</span></td></tr>
+      </table></div>
+      <p style="font-size:14.5px;color:var(--muted)">실습에서 <code>mail.baropick.test</code> 같은 이름을 쓰려면 DNS 대신 각 PC의 hosts 파일(<code>C:\Windows\System32\drivers\etc\hosts</code>)에 다음 한 줄을 추가합니다.</p>
+      <div class="code"><div class="bar"><span>hosts (관리자 권한으로 편집)</span><button type="button">복사</button></div><pre>192.168.0.10   mail.baropick.test</pre></div>
+
+      <h3>⑤ 인증 코드 보안이 필요한 이유</h3>
+      <div class="grid g3">
+        <div class="card"><div class="big-num">1,000,000</div><p style="margin:4px 0 0;font-size:14px;color:var(--muted)">6자리 숫자 코드의 경우의 수입니다. 시도 횟수를 제한하지 않으면 자동화 프로그램이 <span class="term" data-k="무차별 대입">무차별 대입</span>으로 금방 맞힙니다.</p></div>
+        <div class="card"><div class="big-num">0.0005%</div><p style="margin:4px 0 0;font-size:14px;color:var(--muted)">시도를 5회로 제한하면 코드를 우연히 맞힐 확률이 이 정도로 떨어집니다. 횟수 제한이 핵심 방어선입니다.</p></div>
+        <div class="card"><div class="big-num">≤ 10분</div><p style="margin:4px 0 0;font-size:14px;color:var(--muted)">만료 시간을 짧게 두면, 메일이 유출되더라도 코드를 쓸 수 있는 시간이 짧아집니다. (값은 정책으로 결정)</p></div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <tr><th>정책</th><th>막는 공격·사고</th></tr>
+        <tr><td>보안 난수 사용</td><td>코드 생성 규칙을 추측해 다음 코드를 예측하는 공격</td></tr>
+        <tr><td>일회성 처리</td><td>이미 쓴 코드를 다시 제출하는 재사용(재전송) 공격</td></tr>
+        <tr><td>해시로 저장</td><td>DB가 유출되었을 때 유효한 코드가 그대로 노출되는 사고</td></tr>
+        <tr><td>목적·계정 함께 검증</td><td>이메일 확인용 코드로 비밀번호를 바꾸거나, 남의 계정에 코드를 쓰는 공격</td></tr>
+        <tr><td>재전송 제한</td><td>메일 폭탄, 메일 서버 과부하</td></tr>
+        <tr><td>로그에 원문 금지</td><td>로그 열람 권한만 있는 사람이 코드나 비밀번호를 알아내는 사고</td></tr>
+      </table></div>
+
+      <h3>⑥ 프로비저닝과 부분 실패</h3>
+      <p>계정 발급은 메일 서버와 Keycloak, 두 시스템에 걸친 작업이라 <b>한쪽만 성공</b>할 수 있습니다. 이 경우를 처리하는 방식이 <span class="term" data-k="보상 처리">보상 처리</span>와 <span class="term" data-k="멱등성">멱등성</span>입니다.</p>
+      <div class="flow">
+        <div class="node" style="--c:var(--green)"><b>① 사서함 생성</b><span>성공</span></div>
+        <div class="arr">다음 단계</div>
+        <div class="node" style="--c:var(--red)"><b>② Keycloak 계정 생성</b><span>실패 (네트워크 오류 등)</span></div>
+        <div class="arr">선택</div>
+        <div class="node" style="--c:var(--amber)"><b>재시도 또는 보상</b><span>②를 다시 시도하거나 ①을 정리</span></div>
+      </div>
+      <ul class="sec-list">
+        <li><b>재시도:</b> 같은 요청을 다시 보내도 계정이 두 번 생기지 않도록 "이미 있으면 건너뛰기"로 구현(멱등성)</li>
+        <li><b>보상:</b> 재시도해도 안 되면 이미 만든 사서함을 비활성화하거나 삭제해 반쪽 계정을 남기지 않음</li>
+        <li><b>상태 기록:</b> 직원별로 "사서함 완료 / IAM 완료 / 안내 발송" 상태를 DB에 저장</li>
+        <li><b>권한 분리:</b> 사서함을 만드는 권한은 프로비저닝 서비스만 가짐</li>
+      </ul>
+    </section>
+
+    <!-- 2 -->
+    <section id="arch">
+      <div class="sec-head"><span class="sec-num">02</span><h2>전체 시스템 구성</h2></div>
+      <p class="lead">IAM(Keycloak)과 메일(Docker Mailserver)은 <b>서로 독립된 시스템</b>이고, Spring Boot가 두 시스템을 연결합니다.</p>
+
+      <div class="figure"><div class="scroll">
+        <svg viewBox="0 0 900 460" role="img" aria-label="바로픽 사내 메일·IAM 아키텍처">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a1g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-g" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a1v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-v" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <!-- mail container -->
+          <rect class="frame" x="450" y="160" width="430" height="285" rx="16"/>
+          <text x="470" y="186" class="t-b" style="fill:var(--accent)">Docker Mailserver</text>
+          <text x="470" y="204" class="sub">하나의 컨테이너로 SMTP·IMAP·사서함 제공</text>
+
+          <!-- actors -->
+          <rect class="box b-actor" x="20" y="50" width="120" height="56" rx="12"/><text x="80" y="83" text-anchor="middle" class="t-b">관리자</text>
+          <rect class="box b-actor" x="20" y="320" width="120" height="56" rx="12"/><text x="80" y="353" text-anchor="middle" class="t-b">직원</text>
+
+          <!-- middle -->
+          <rect class="box b-sb" x="210" y="50" width="170" height="56" rx="12"/><text x="295" y="75" text-anchor="middle" class="t-b">Spring Boot</text><text x="295" y="94" text-anchor="middle" class="sub">계정 발급·인증 서비스</text>
+          <rect class="box b-rc" x="210" y="270" width="170" height="56" rx="12"/><text x="295" y="295" text-anchor="middle" class="t-b">Roundcube</text><text x="295" y="314" text-anchor="middle" class="sub">웹메일 :8080</text>
+          <rect class="box b-actor" x="210" y="370" width="170" height="56" rx="12"/><text x="295" y="395" text-anchor="middle" class="t-b">사내 앱</text><text x="295" y="414" text-anchor="middle" class="sub">React SPA / PDA</text>
+
+          <!-- right top -->
+          <rect class="box b-kc" x="470" y="50" width="170" height="56" rx="12"/><text x="555" y="75" text-anchor="middle" class="t-b">Keycloak</text><text x="555" y="94" text-anchor="middle" class="sub">직원 IAM</text>
+          <rect class="box b-pg" x="710" y="50" width="170" height="56" rx="12"/><text x="795" y="75" text-anchor="middle" class="t-b">PostgreSQL</text><text x="795" y="94" text-anchor="middle" class="sub">IAM·업무 데이터</text>
+
+          <!-- mail internals -->
+          <rect class="box b-ms" x="480" y="230" width="170" height="64" rx="12"/><text x="565" y="257" text-anchor="middle" class="t-b">Postfix</text><text x="565" y="277" text-anchor="middle" class="sub">SMTP 송수신</text>
+          <rect class="box b-ms" x="480" y="355" width="170" height="64" rx="12"/><text x="565" y="382" text-anchor="middle" class="t-b">Dovecot</text><text x="565" y="402" text-anchor="middle" class="sub">IMAP · 사서함 관리</text>
+          <path class="box b-ms" d="M710 360 a70 12 0 0 0 140 0 v50 a70 12 0 0 1 -140 0 z"/>
+          <ellipse class="box b-ms" cx="780" cy="360" rx="70" ry="12"/>
+          <text x="780" y="394" text-anchor="middle" class="t-b" style="font-size:14px">직원별 사서함</text>
+
+          <!-- arrows -->
+          <line class="ln" x1="140" y1="78" x2="208" y2="78" marker-end="url(#a1)"/>
+          <line class="ln-v" x1="380" y1="78" x2="468" y2="78" marker-end="url(#a1v)"/>
+          <text x="424" y="68" text-anchor="middle" class="lbl">IAM 계정</text>
+          <line class="ln" x1="640" y1="78" x2="708" y2="78" marker-end="url(#a1)"/>
+          <path class="ln-g" d="M295 106 V215 H478" marker-end="url(#a1g)"/>
+          <text x="388" y="207" text-anchor="middle" class="lbl">사서함 생성</text>
+          <path class="ln-v" d="M610 106 V228" marker-end="url(#a1v)"/>
+          <text x="618" y="140" class="lbl">SMTP 인증 메일</text>
+          <line class="ln-a" x1="380" y1="288" x2="478" y2="272" marker-end="url(#a1a)"/>
+          <text x="430" y="270" text-anchor="middle" class="lbl">SMTP 587</text>
+          <line class="ln-a" x1="380" y1="310" x2="478" y2="378" marker-end="url(#a1a)"/>
+          <text x="420" y="356" text-anchor="middle" class="lbl">IMAP 143</text>
+          <line class="ln-a" x1="565" y1="294" x2="565" y2="353" marker-end="url(#a1a)"/>
+          <text x="573" y="328" class="lbl">로컬 전달</text>
+          <line class="ln-a" x1="650" y1="387" x2="708" y2="387" marker-end="url(#a1a)"/>
+          <line class="ln" x1="140" y1="340" x2="208" y2="302" marker-end="url(#a1)"/>
+          <line class="ln" x1="140" y1="358" x2="208" y2="396" marker-end="url(#a1)"/>
+        </svg>
+      </div><p class="figcap">그림 1. 전체 아키텍처: 보라색은 IAM 흐름, 초록색은 계정 발급 연계, 파란색은 메일 흐름</p></div>
+
+      <h3>구성 요소</h3>
+      <div class="grid g3">
+        <div class="card comp c-kc"><span class="tag">IAM</span><h4>Keycloak</h4><p>직원 계정, 로그인, 역할과 인증을 관리합니다. SMTP 설정을 통해 인증 메일을 보냅니다.</p></div>
+        <div class="card comp c-sb"><span class="tag">백엔드</span><h4>Spring Boot</h4><p>계정 발급 요청, Keycloak과 메일 서버 연계, 필요할 때 인증 코드 생성·검증과 메일 발송을 맡습니다.</p></div>
+        <div class="card comp c-ms"><span class="tag">메일 서버</span><h4>Docker Mailserver</h4><p>Postfix(SMTP)와 Dovecot(IMAP)을 묶어 제공하고, 직원별 사서함을 저장합니다.</p></div>
+        <div class="card comp c-rc"><span class="tag">웹메일</span><h4>Roundcube</h4><p>메일 서버가 아닌 웹 클라이언트입니다. IMAP으로 메일을 읽고 SMTP로 보냅니다.</p></div>
+        <div class="card comp c-pg"><span class="tag">DB</span><h4>PostgreSQL</h4><p>Keycloak과 애플리케이션 데이터, 필요할 때 인증 코드 관련 데이터를 저장합니다.</p></div>
+        <div class="card comp" style="--c:var(--faint);--cs:var(--surface-2)"><span class="tag">실행 환경</span><h4>Docker Compose</h4><p>컨테이너 실행과 내부 네트워크를 구성합니다. Windows에서는 Docker Desktop(WSL 2)을 사용합니다.</p></div>
+      </div>
+      <div class="callout info"><b class="t">핵심 원칙</b><p>Keycloak에 직원을 등록해도 메일 사서함은 자동으로 생기지 않고, 그 반대도 마찬가지입니다. 계정 발급 절차에서 두 시스템에 각각 계정을 만들고 <b>직원 ID와 회사 메일 주소</b>로 연결해야 합니다.</p></div>
+    </section>
+
+    <!-- 3 -->
+    <section id="mail">
+      <div class="sec-head"><span class="sec-num">03</span><h2>메일 서버와 프로토콜</h2></div>
+      <p class="lead">Docker Mailserver 하나에 메일 운영에 필요한 핵심 구성 요소가 들어 있습니다.</p>
+      <div class="grid g3">
+        <div class="card comp c-ms"><span class="tag">SMTP</span><h4>Postfix</h4><p>메일을 보내고 들어온 메일을 처리합니다.</p></div>
+        <div class="card comp c-ms"><span class="tag">IMAP</span><h4>Dovecot</h4><p>사서함에 저장된 메일을 클라이언트가 조회할 수 있게 합니다.</p></div>
+        <div class="card comp c-ms"><span class="tag">Storage</span><h4>메일 저장소</h4><p>직원별 메일과 사서함 데이터를 볼륨에 보관합니다.</p></div>
+      </div>
+
+      <h3>주요 포트</h3>
+      <div class="ports">
+        <div class="port"><div class="n">25</div><div class="p">SMTP</div><div class="d">서버 간 메일 전달</div></div>
+        <div class="port used"><div class="n">587</div><div class="p">Submission</div><div class="d">클라이언트·앱의 인증된 발송<br><span class="pill p-b">실습 사용</span></div></div>
+        <div class="port"><div class="n">465</div><div class="p">SMTPS</div><div class="d">TLS 기반 메일 제출</div></div>
+        <div class="port used"><div class="n">143</div><div class="p">IMAP</div><div class="d">메일 조회<br><span class="pill p-b">실습 사용</span></div></div>
+        <div class="port"><div class="n">993</div><div class="p">IMAPS</div><div class="d">TLS 기반 메일 조회</div></div>
+      </div>
+      <div class="callout ok"><b class="t">실습 구성</b><p>Roundcube와 Spring Boot는 Docker 내부 네트워크로 메일 서버의 <b>587(SMTP)</b>과 <b>143(IMAP)</b>에 접속합니다. 메일 포트를 외부 네트워크에 공개할 필요는 없습니다.</p></div>
+    </section>
+
+    <!-- 4 -->
+    <section id="accounts">
+      <div class="sec-head"><span class="sec-num">04</span><h2>이메일 주소와 계정 정책</h2></div>
+      <p class="lead">실습용 주소 예시는 <code>admin@baropick.test</code>, <code>staff01@baropick.test</code>, <code>staff02@baropick.test</code>, <code>auth-service@baropick.test</code>(발송 전용)입니다.</p>
+      <div class="acct">
+        <div class="card" style="border-top:4px solid var(--violet)">
+          <span class="pill" style="background:var(--violet-soft);color:var(--violet)">IAM 계정 · Keycloak</span>
+          <h4>로그인과 권한</h4>
+          <div class="mono">staff01</div>
+          <ul><li>사내 앱 로그인, 역할 관리</li><li>email 속성에 회사 메일 등록</li><li>IAM 비밀번호는 별도</li></ul>
+        </div>
+        <div class="link"><span class="key">직원 ID로 연결</span><div class="bar"></div>비밀번호는<br>공유하지 않음</div>
+        <div class="card" style="border-top:4px solid var(--accent)">
+          <span class="pill p-b">메일 사서함 · Docker Mailserver</span>
+          <h4>메일 송수신</h4>
+          <div class="mono">staff01@baropick.test</div>
+          <ul><li>Roundcube 로그인 계정</li><li>인증 메일을 받는 곳</li><li>사서함 비밀번호는 별도</li></ul>
+        </div>
+      </div>
+      <div class="callout warn"><b class="t">비밀번호 정책</b><p>두 계정의 식별자는 연결하지만 비밀번호와 인증 정보는 자동으로 공유되지 않습니다. 초기 구축에서는 IAM 비밀번호와 사서함 비밀번호를 <b>따로 관리</b>하고, 두 비밀번호를 똑같이 맞추는 방식은 권장하지 않습니다.</p></div>
+    </section>
+
+    <!-- 5 -->
+    <section id="onboarding">
+      <div class="sec-head"><span class="sec-num">05</span><h2>신규 직원 계정 발급</h2></div>
+      <p class="lead">회사 메일함이 메일을 받을 수 있는 상태가 된 뒤에야 인증 메일을 보낼 수 있습니다. 이 순서가 가장 중요합니다.</p>
+
+      <div class="figure"><div class="scroll"><svg id="seqOnboard" role="img" aria-label="신규 직원 계정 발급 시퀀스"></svg></div>
+      <p class="figcap">그림 2. 신규 직원 계정 발급 흐름</p></div>
+
+      <ol class="steps">
+        <li><b>직원 정보 등록 <span class="who" style="background:var(--surface-2);color:var(--muted)">관리자</span></b><span>직원 ID, 이름, 회사 메일 주소(<code>staff01@baropick.test</code>)를 정합니다.</span></li>
+        <li><b>메일 사서함 생성 <span class="who" style="background:var(--green-soft);color:var(--green)">Spring Boot → Mailserver</span></b><span>실습 단계에서는 관리자가 <code>setup email add</code>로 직접 만들어도 됩니다.</span></li>
+        <li><b>Keycloak IAM 계정 생성 <span class="who" style="background:var(--violet-soft);color:var(--violet)">Admin REST API</span></b><span>email 속성에 회사 메일을 등록합니다.</span></li>
+        <li><b>생성 결과 기록과 수신 가능 상태 확인</b><span>한쪽만 성공한 경우 재시도하거나 보상 처리할 수 있도록 결과를 남깁니다.</span></li>
+        <li><b>회사 메일 주소와 최초 접속 방법 안내</b><span>사서함 초기 비밀번호는 아래 주의 사항대로 별도 경로로 전달합니다.</span></li>
+        <li><b>직원이 Roundcube에서 회사 메일함에 로그인</b><span>로그인 후 사서함 비밀번호를 바로 변경합니다.</span></li>
+        <li><b>인증·활성화 메일 발송 <span class="who" style="background:var(--violet-soft);color:var(--violet)">Keycloak 또는 Spring Boot</span></b><span>일회용 활성화 링크나 만료 시간이 짧은 인증 코드를 보냅니다.</span></li>
+        <li><b>인증 완료 후 최초 IAM 비밀번호 설정</b><span>인증이 끝나야 로그인과 비밀번호 설정을 허용합니다.</span></li>
+      </ol>
+
+      <div class="grid g2">
+        <div class="callout danger" style="margin:0"><b class="t">초기 비밀번호 전달 시 주의</b><p>아직 로그인할 수 없는 사서함으로 그 사서함의 초기 비밀번호를 보내면 직원은 확인할 수 없습니다. 관리자가 안전한 별도 경로로 전달하거나 첫 접속을 직접 도운 뒤 바로 변경하게 합니다. 공용 문서나 메신저 공개 채널에 적지 않습니다.</p></div>
+        <div class="callout danger" style="margin:0"><b class="t">메일 본문에 비밀번호 금지</b><p>IAM 초기 비밀번호를 메일 본문에 평문으로 보내지 않습니다. 일회용 활성화 링크나 짧은 만료 시간의 인증 코드를 쓰고, 최초 로그인 때 비밀번호를 새로 설정하게 합니다.</p></div>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section id="auth">
+      <div class="sec-head"><span class="sec-num">06</span><h2>이메일 인증과 비밀번호 변경</h2></div>
+      <p class="lead">직원이 인증을 요청하면 코드를 만들어 회사 메일로 보내고, 직원이 입력한 코드를 검증합니다.</p>
+
+      <div class="figure"><div class="scroll"><svg id="seqAuth" role="img" aria-label="인증 메일 발송 및 검증 시퀀스"></svg></div>
+      <p class="figcap">그림 3. 인증 메일 발송과 코드 검증 흐름</p></div>
+
+      <h3>Keycloak과 Spring Boot의 역할 구분</h3>
+      <div class="grid g2 ab">
+        <div class="card" style="border-top:4px solid var(--violet)">
+          <span class="rec">먼저 검토</span>
+          <h4>방법 A · Keycloak 내장 기능</h4>
+          <ul>
+            <li>Keycloak의 Realm SMTP 설정에 Docker Mailserver 정보를 등록합니다.</li>
+            <li>내장된 이메일 확인과 비밀번호 재설정 기능을 그대로 씁니다.</li>
+            <li>인증 메일 발송과 인증 절차를 Keycloak이 처리합니다.</li>
+          </ul>
+        </div>
+        <div class="card" style="border-top:4px solid var(--green)">
+          <span class="opt">업무 요구가 있을 때</span>
+          <h4>방법 B · Spring Boot 자체 구현</h4>
+          <ul>
+            <li>코드 생성, 저장, 만료, 검증을 Spring Boot가 맡습니다.</li>
+            <li>Spring Boot가 SMTP로 메일을 보냅니다.</li>
+            <li>인증에 성공하면 Keycloak Admin REST API로 계정 작업을 합니다.</li>
+            <li>권한 확인, 토큰 검증, 재설정 권한 검증을 엄격하게 처리해야 합니다.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout info"><b class="t">권장</b><p>처음부터 두 방법을 모두 만들 필요는 없습니다. Keycloak 내장 기능으로 어디까지 되는지 먼저 확인하고, 바로픽만의 정책이나 업무 흐름이 필요할 때 Spring Boot 인증 기능을 추가합니다.</p></div>
+
+      <h3>인증 코드 보안 정책</h3>
+      <ul class="sec-list">
+        <li>예측하기 어려운 보안 난수(<code>SecureRandom</code> 등)로 코드 생성</li>
+        <li>짧은 만료 시간 설정</li>
+        <li>한 번 사용한 코드는 다시 쓸 수 없게 처리</li>
+        <li>검증 실패 횟수 제한</li>
+        <li>인증 메일 재전송 횟수와 간격 제한</li>
+        <li>인증 목적(활성화, 비밀번호 변경 등)과 대상 계정을 함께 검증</li>
+        <li>DB에는 원문 대신 해시값 저장</li>
+        <li>로그에 인증 코드, 비밀번호, SMTP 자격 증명을 남기지 않음</li>
+        <li>인증에 성공한 뒤에만 비밀번호 변경 등 보호된 작업 허용</li>
+      </ul>
+    </section>
+
+    <!-- 7 -->
+    <section id="setup">
+      <div class="sec-head"><span class="sec-num">07</span><h2>Docker로 구축하기</h2></div>
+      <p class="lead">권장 환경은 Windows 10/11, Docker Desktop(WSL 2 기반 Linux 컨테이너), Docker Compose, 실습용 데스크톱 1대입니다. 실제 운영은 Linux 서버를 권장합니다.</p>
+
+      <h3>① Docker 설치 확인</h3>
+      <div class="code"><div class="bar"><span>PowerShell</span><button type="button">복사</button></div><pre>docker --version
+docker compose version</pre></div>
+
+      <h3>② 프로젝트 디렉터리</h3>
+      <p>예시 경로는 <code>C:\Development\codes\baropick-mail\</code>입니다.</p>
+      <div class="tree">baropick-mail/
+├── compose.yaml          <span class="dim"># 서비스 정의</span>
+├── .env                  <span class="sec"># 비밀정보 · Git 커밋 금지</span>
+├── .env.example          <span class="dim"># 변수명만 공유</span>
+├── .gitignore
+├── config/               <span class="sec"># Mailserver 설정·계정 정보 · 커밋 금지</span>
+└── README.md
+<span class="dim">(메일 데이터·상태·로그, Roundcube 데이터는 Docker named volume에 저장)</span></div>
+      <div class="code"><div class="bar"><span>.gitignore</span><button type="button">복사</button></div><pre>.env
+config/
+mail-data/
+mail-state/
+mail-logs/</pre></div>
+
+      <h3>③ compose.yaml</h3>
+      <div class="code"><div class="bar"><span>compose.yaml</span><button type="button">복사</button></div><pre><span class="k">services:</span>
+  <span class="k">mailserver:</span>
+    <span class="k">image:</span> <span class="s">ghcr.io/docker-mailserver/docker-mailserver:latest</span>   <span class="c"># 검증 후 버전 고정</span>
+    <span class="k">container_name:</span> mailserver
+    <span class="k">hostname:</span> <span class="s">mail.baropick.test</span>
+    <span class="k">env_file:</span>
+      - .env
+    <span class="k">ports:</span>
+      - <span class="s">"25:25"</span>
+      - <span class="s">"465:465"</span>
+      - <span class="s">"587:587"</span>
+      - <span class="s">"143:143"</span>
+      - <span class="s">"993:993"</span>
+    <span class="k">volumes:</span>
+      - mail-data:/var/mail
+      - mail-state:/var/mail-state
+      - mail-logs:/var/log/mail
+      - ./config:/tmp/docker-mailserver
+      - /etc/localtime:/etc/localtime:ro
+    <span class="k">restart:</span> unless-stopped
+    <span class="k">stop_grace_period:</span> 1m
+
+  <span class="k">roundcube:</span>
+    <span class="k">image:</span> <span class="s">roundcube/roundcubemail:latest</span>   <span class="c"># 검증 후 버전 고정</span>
+    <span class="k">container_name:</span> roundcube
+    <span class="k">depends_on:</span>
+      - mailserver
+    <span class="k">environment:</span>
+      <span class="k">ROUNDCUBEMAIL_DEFAULT_HOST:</span> mailserver
+      <span class="k">ROUNDCUBEMAIL_DEFAULT_PORT:</span> 143
+      <span class="k">ROUNDCUBEMAIL_SMTP_SERVER:</span> mailserver
+      <span class="k">ROUNDCUBEMAIL_SMTP_PORT:</span> 587
+    <span class="k">ports:</span>
+      - <span class="s">"8080:80"</span>
+    <span class="k">volumes:</span>
+      - roundcube-data:/var/roundcube
+    <span class="k">restart:</span> unless-stopped
+
+<span class="k">volumes:</span>
+  mail-data:
+  mail-state:
+  mail-logs:
+  roundcube-data:</pre></div>
+      <div class="callout warn"><b class="t">compose.yaml을 쓸 때 확인할 점</b>
+        <ul>
+          <li><b>버전 고정:</b> <code>latest</code>는 업데이트에 따라 동작이 바뀔 수 있습니다. 팀 실습을 똑같이 재현하려면 검증한 버전 태그로 고정합니다.</li>
+          <li><b>포트 공개 범위:</b> 내부 실습에서는 Roundcube와 Spring Boot가 Docker 네트워크로 접속하므로, 메일 포트(25·465·587·143·993)를 호스트에 꼭 공개할 필요는 없습니다. 필요한 포트만 남깁니다.</li>
+          <li><b>Keycloak·PostgreSQL:</b> 기존 바로픽 개발 환경에 이미 있다면 새로 만들지 말고 같은 Docker 네트워크에 연결해 재사용합니다.</li>
+        </ul>
+      </div>
+
+      <h3>④ .env</h3>
+      <div class="code"><div class="bar"><span>.env</span><button type="button">복사</button></div><pre>POSTMASTER_ADDRESS=postmaster@baropick.test
+ONE_DIR=1
+DMS_DEBUG=0</pre></div>
+      <p style="font-size:14.5px;color:var(--muted)">실제 비밀번호와 개인키는 <code>.env</code>에 두고 Git에 커밋하지 않습니다. <code>.env.example</code>에는 변수명만 적습니다.</p>
+
+      <h3>⑤ 실행과 상태 확인</h3>
+      <div class="code"><div class="bar"><span>PowerShell · 프로젝트 디렉터리에서</span><button type="button">복사</button></div><pre>docker compose pull
+docker compose up -d
+docker compose ps
+docker compose logs -f mailserver
+docker compose logs -f roundcube</pre></div>
+      <p style="font-size:14.5px;color:var(--muted)">문제가 생기면 먼저 로그에서 포트 충돌, 설정 오류, 컨테이너 시작 실패 여부를 확인합니다.</p>
+      <div class="callout info"><b class="t">구축 시 주의 사항</b>
+        <ul>
+          <li>메일 데이터와 설정은 볼륨이나 영속 디렉터리에 두고, 컨테이너를 다시 만들어도 데이터가 남는지 확인합니다.</li>
+          <li>관리용 포트와 메일 포트는 필요한 네트워크에만 공개하고, 방화벽에서도 필요한 포트만 엽니다.</li>
+          <li>메일 서버 계정 생성·삭제 권한은 관리자에게만 줍니다.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section id="mailbox">
+      <div class="sec-head"><span class="sec-num">08</span><h2>사서함 계정 관리</h2></div>
+      <p class="lead">Docker Mailserver는 컨테이너 안의 <code>setup</code> 명령으로 사서함을 관리합니다.</p>
+      <div class="grid g3">
+        <div><h3 style="margin-top:0">생성</h3><div class="code"><div class="bar"><span>add</span><button type="button">복사</button></div><pre>docker exec -it mailserver \
+  setup email add staff01@baropick.test</pre></div><p style="font-size:13.5px;color:var(--muted);margin:0">실행 중에 사서함 비밀번호를 입력합니다.</p></div>
+        <div><h3 style="margin-top:0">목록</h3><div class="code"><div class="bar"><span>list</span><button type="button">복사</button></div><pre>docker exec -it mailserver \
+  setup email list</pre></div></div>
+        <div><h3 style="margin-top:0">삭제</h3><div class="code"><div class="bar"><span>del</span><button type="button">복사</button></div><pre>docker exec -it mailserver \
+  setup email del staff01@baropick.test</pre></div><p style="font-size:13.5px;color:var(--muted);margin:0">실제 데이터에 영향을 줍니다. 실습 계정에서만 테스트합니다.</p></div>
+      </div>
+      <div class="callout warn"><b class="t">계정 발급 시 기억할 점</b>
+        <ul>
+          <li>Keycloak 사용자를 만들어도 사서함은 생기지 않고, 사서함을 만들어도 IAM 사용자는 생기지 않습니다.</li>
+          <li>두 시스템을 연결하려면 Spring Boot 발급 흐름이나 별도 프로비저닝 작업이 필요합니다.</li>
+          <li>운영 환경에서는 삭제보다 계정 비활성화, 보존 정책, 백업 절차를 먼저 설계합니다.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section id="webmail">
+      <div class="sec-head"><span class="sec-num">09</span><h2>Roundcube와 LAN 접속</h2></div>
+      <p class="lead">메일 서버를 실행하는 데스크톱 한 대를 실습 서버로 쓰고, 팀원은 각자 PC의 브라우저로 접속합니다.</p>
+
+      <div class="figure"><div class="scroll">
+        <svg viewBox="0 0 900 300" role="img" aria-label="LAN 접속 구성">
+          <defs>
+            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah-g" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+          <rect class="box b-actor" x="20" y="30" width="150" height="56" rx="12"/><text x="95" y="55" text-anchor="middle" class="t-b">팀원 PC 1</text><text x="95" y="74" text-anchor="middle" class="sub">브라우저</text>
+          <rect class="box b-actor" x="20" y="122" width="150" height="56" rx="12"/><text x="95" y="147" text-anchor="middle" class="t-b">팀원 PC 2</text><text x="95" y="166" text-anchor="middle" class="sub">브라우저</text>
+          <rect class="box b-actor" x="20" y="214" width="150" height="56" rx="12"/><text x="95" y="239" text-anchor="middle" class="t-b">팀원 PC 3</text><text x="95" y="258" text-anchor="middle" class="sub">브라우저</text>
+          <rect class="box b-pg" x="250" y="122" width="130" height="56" rx="12"/><text x="315" y="147" text-anchor="middle" class="t-b">사내 LAN</text><text x="315" y="166" text-anchor="middle" class="sub">공유기·스위치</text>
+          <line class="ln" x1="170" y1="58" x2="248" y2="140" marker-end="url(#a2)"/>
+          <line class="ln" x1="170" y1="150" x2="248" y2="150" marker-end="url(#a2)"/>
+          <line class="ln" x1="170" y1="242" x2="248" y2="160" marker-end="url(#a2)"/>
+
+          <rect class="fw" x="448" y="20" width="14" height="260" rx="4"/>
+          <text x="455" y="14" text-anchor="middle" class="sub" style="fill:var(--red);font-weight:700">Windows 방화벽</text>
+
+          <rect class="frame-s" x="490" y="20" width="395" height="260" rx="16"/>
+          <text x="508" y="46" class="t-b">서버 PC · Docker Desktop</text>
+          <text x="508" y="64" class="sub">예: 192.168.0.10</text>
+
+          <rect class="box b-rc" x="520" y="84" width="160" height="56" rx="12"/><text x="600" y="109" text-anchor="middle" class="t-b">Roundcube</text><text x="600" y="128" text-anchor="middle" class="sub">호스트 :8080 공개</text>
+          <rect class="box b-ms" x="520" y="200" width="160" height="56" rx="12"/><text x="600" y="225" text-anchor="middle" class="t-b">mailserver</text><text x="600" y="244" text-anchor="middle" class="sub">내부 전용</text>
+          <rect class="box b-kc" x="715" y="84" width="150" height="56" rx="12"/><text x="790" y="117" text-anchor="middle" class="t-b">Keycloak</text>
+          <rect class="box b-sb" x="715" y="200" width="150" height="56" rx="12"/><text x="790" y="233" text-anchor="middle" class="t-b">Spring Boot</text>
+          <line class="ln-a" x1="600" y1="140" x2="600" y2="198" marker-end="url(#a2a)"/>
+          <text x="608" y="174" class="lbl">143 · 587</text>
+          <line class="ln-a" x1="715" y1="228" x2="682" y2="228" marker-end="url(#a2a)"/>
+
+          <path class="ln-g" d="M380 140 L518 112" marker-end="url(#a2g)"/>
+          <text x="405" y="112" class="lbl" style="fill:var(--green);font-weight:700">:8080 허용</text>
+          <path class="ln-r" d="M380 162 L444 210"/>
+          <text x="420" y="232" text-anchor="middle" class="lbl" style="fill:var(--red)">메일 포트 미공개</text>
+          <text x="446" y="214" text-anchor="middle" style="fill:var(--red);font-weight:800;font-size:18px">✕</text>
+        </svg>
+      </div><p class="figcap">그림 4. 팀원은 8080(Roundcube)으로만 접속하고, 메일 포트는 Docker 내부에서만 사용합니다</p></div>
+
+      <h3>접속 방법</h3>
+      <div class="grid g2">
+        <div class="card"><b>서버 PC 본인</b><div class="code" style="margin-bottom:0"><div class="bar"><span>URL</span><button type="button">복사</button></div><pre>http://localhost:8080</pre></div></div>
+        <div class="card"><b>같은 LAN의 팀원 PC</b><div class="code" style="margin-bottom:0"><div class="bar"><span>URL · 서버 IP는 ipconfig로 확인</span><button type="button">복사</button></div><pre>http://192.168.0.10:8080</pre></div></div>
+      </div>
+
+      <h3>접속 조건</h3>
+      <ul class="sec-list">
+        <li>서버 PC와 팀원 PC가 같은 LAN에 연결되어 있음</li>
+        <li>서버 PC가 켜져 있고 컨테이너가 실행 중임</li>
+        <li>Windows Defender 방화벽에서 8080 포트 인바운드 허용</li>
+        <li>네트워크가 클라이언트 간 통신을 막지 않음(AP 격리 등)</li>
+        <li>Roundcube가 mailserver 컨테이너에 정상 연결됨</li>
+        <li>팀원에게 실습용 주소와 계정 정보를 안내함</li>
+      </ul>
+
+      <h3>로그인과 송수신 테스트</h3>
+      <div class="tbl-wrap"><table>
+        <tr><th>항목</th><th>입력값</th></tr>
+        <tr><td>사용자 이름</td><td><code>staff01@baropick.test</code></td></tr>
+        <tr><td>비밀번호</td><td>Docker Mailserver에서 계정을 만들 때 지정한 비밀번호</td></tr>
+      </table></div>
+      <div class="flow">
+        <div class="node" style="--c:var(--amber)"><b>staff01 로그인</b><span>Roundcube</span></div>
+        <div class="arr">메일 작성</div>
+        <div class="node" style="--c:var(--accent)"><b>staff02에게 발송</b><span>SMTP 587</span></div>
+        <div class="arr">로그아웃 후</div>
+        <div class="node" style="--c:var(--amber)"><b>staff02 로그인</b><span>받은 편지함 확인</span></div>
+        <div class="arr">반대 방향</div>
+        <div class="node" style="--c:var(--green)"><b>양방향 확인</b><span>내부 송수신 정상</span></div>
+      </div>
+
+      <div class="callout info"><b class="t">내부 DNS 이름</b><p>여러 PC에서 <code>mail.baropick.test</code>라는 이름을 쓰려면 내부 DNS나 각 PC의 hosts 파일에 이름과 서버 IP를 등록해야 합니다. Roundcube 컨테이너 안에서는 Compose 서비스 이름인 <code>mailserver</code>를 사용합니다.</p></div>
+    </section>
+
+    <!-- 10 -->
+    <section id="spring">
+      <div class="sec-head"><span class="sec-num">10</span><h2>Spring Boot 메일 발송</h2></div>
+      <p class="lead">방법 B를 선택하거나 계정 안내 메일을 보낼 때 Spring Boot가 SMTP로 메일 서버에 메일을 넘깁니다.</p>
+
+      <h3>① 의존성</h3>
+      <div class="code"><div class="bar"><span>build.gradle</span><button type="button">복사</button></div><pre><span class="k">dependencies</span> {
+    implementation <span class="s">'org.springframework.boot:spring-boot-starter-mail'</span>
+}</pre></div>
+
+      <h3>② SMTP 설정</h3>
+      <div class="code"><div class="bar"><span>application.yml</span><button type="button">복사</button></div><pre><span class="k">spring:</span>
+  <span class="k">mail:</span>
+    <span class="k">host:</span> mailserver          <span class="c"># Compose 네트워크 안에서 실행할 때</span>
+    <span class="k">port:</span> 587
+    <span class="k">username:</span> ${MAIL_USERNAME}
+    <span class="k">password:</span> ${MAIL_PASSWORD}
+    <span class="k">properties:</span>
+      <span class="k">mail:</span>
+        <span class="k">smtp:</span>
+          <span class="k">auth:</span> true
+          <span class="k">starttls:</span>
+            <span class="k">enable:</span> true</pre></div>
+      <div class="code"><div class="bar"><span>환경변수</span><button type="button">복사</button></div><pre>MAIL_USERNAME=auth-service@baropick.test
+MAIL_PASSWORD=&lt;메일 계정 비밀번호&gt;</pre></div>
+      <div class="grid g2">
+        <div class="callout info" style="margin:0"><b class="t">발신 사서함 먼저 생성</b><p><code>auth-service@baropick.test</code> 사서함을 Docker Mailserver에 먼저 만들어 둡니다.</p></div>
+        <div class="callout warn" style="margin:0"><b class="t">호스트 PC에서 실행할 때</b><p>서비스 이름 <code>mailserver</code>는 Docker 네트워크 밖에서는 해석되지 않습니다. <code>localhost</code>와 공개된 포트 매핑을 따로 확인합니다.</p></div>
+      </div>
+
+      <h3>③ 메일 발송 서비스 예시</h3>
+      <div class="code"><div class="bar"><span>MailService.java</span><button type="button">복사</button></div><pre><span class="k">@Service</span>
+<span class="k">@RequiredArgsConstructor</span>
+<span class="k">public class</span> MailService {
+
+    <span class="k">private final</span> JavaMailSender mailSender;
+
+    <span class="k">public void</span> sendVerificationCode(String recipient, String code) {
+        SimpleMailMessage message = <span class="k">new</span> SimpleMailMessage();
+
+        message.setFrom(<span class="s">"auth-service@baropick.test"</span>);
+        message.setTo(recipient);
+        message.setSubject(<span class="s">"[바로픽] 이메일 인증 코드"</span>);
+        message.setText(
+            <span class="s">"인증 코드는 "</span> + code + <span class="s">"입니다.\n"</span> +
+            <span class="s">"인증 코드는 제한된 시간 동안만 유효합니다."</span>
+        );
+
+        mailSender.send(message);
+    }
+}</pre></div>
+      <p style="font-size:14.5px;color:var(--muted)">이 코드는 발송만 보여 주는 기본 예시입니다. 코드 생성, 저장, 만료, 검증, 재사용 방지, 요청 제한은 <a href="#auth">인증 코드 보안 정책</a>에 따라 따로 구현합니다.</p>
+    </section>
+
+    <!-- 11 -->
+    <section id="provision">
+      <div class="sec-head"><span class="sec-num">11</span><h2>사서함 프로비저닝 자동화</h2></div>
+      <p class="lead"><code>setup email add</code>는 서버 안에서 실행하는 관리 명령입니다. Keycloak Admin REST API처럼 HTTP로 바로 호출하는 API가 아닙니다.</p>
+      <p>개발·실습 단계에서는 관리자가 명령을 직접 실행하고, Spring Boot 연계 자동화는 별도 작업으로 구현합니다.</p>
+
+      <h3>권장 구조</h3>
+      <div class="flow">
+        <div class="node" style="--c:var(--green)"><b>Spring Boot</b><span>발급 업무 흐름</span></div>
+        <div class="arr">인증된<br>내부 API</div>
+        <div class="node" style="--c:var(--violet)"><b>프로비저닝 서비스</b><span>권한 제한 · 요청/결과 기록</span></div>
+        <div class="arr">setup email add</div>
+        <div class="node" style="--c:var(--accent)"><b>Docker Mailserver</b><span>사서함 생성</span></div>
+      </div>
+      <h3>피해야 할 구조</h3>
+      <div class="flow">
+        <div class="node" style="--c:var(--green)"><b>Spring Boot</b><span>업무 애플리케이션</span></div>
+        <div class="arr no">직접 마운트</div>
+        <div class="node" style="--c:var(--red)"><b>/var/run/docker.sock</b><span>호스트 전체에 가까운 권한</span></div>
+      </div>
+      <ul class="sec-list">
+        <li>메일 서버 계정 생성 권한은 프로비저닝 서비스만 가짐</li>
+        <li>Spring Boot는 인증된 내부 API로만 요청</li>
+        <li>요청과 실행 결과를 기록</li>
+        <li>중복 생성 방지와 실패 복구(재시도·보상) 처리</li>
+      </ul>
+    </section>
+
+    <!-- 12 -->
+    <section id="limits">
+      <div class="sec-head"><span class="sec-num">12</span><h2>무료 실습과 실제 운영 비교</h2></div>
+      <p class="lead">지금 단계에서는 외부 인터넷 메일은 목표가 아닙니다. 내부 직원 간 송수신과 IAM 인증 메일 수신을 먼저 검증합니다.</p>
+      <div class="tbl-wrap"><table>
+        <tr><th>항목</th><th>무료 내부 실습</th><th>실제 <code>@baropick.com</code> 운영</th></tr>
+        <tr><td>이메일 도메인</td><td><code>baropick.test</code></td><td>등록·소유한 실제 도메인</td></tr>
+        <tr><td>메일 송수신</td><td>같은 서버의 계정끼리 내부 송수신</td><td>인터넷의 외부 메일 서버와 송수신</td></tr>
+        <tr><td>DNS</td><td>내부 DNS 또는 hosts</td><td>공개 DNS: A, MX, SPF, DKIM, DMARC</td></tr>
+        <tr><td>공인 IP · PTR</td><td><span class="pill p-g">불필요</span></td><td><span class="pill p-r">고정 공인 IP와 역방향 DNS 필요</span></td></tr>
+        <tr><td>외부 SMTP 수신</td><td><span class="pill p-a">지원 안 함</span></td><td>MX와 네트워크 설정 필요</td></tr>
+        <tr><td>TLS 인증서</td><td>내부 실습용 인증서</td><td>공개적으로 신뢰되는 인증서 권장</td></tr>
+        <tr><td>운영 수준</td><td>개발·교육용</td><td>상시 운영, 스팸 대응, 모니터링, 백업</td></tr>
+        <tr><td>비용</td><td><span class="pill p-g">₩0</span></td><td><span class="pill p-a">도메인, 서버, 호스팅 비용</span></td></tr>
+      </table></div>
+      <div class="callout warn"><b class="t">가정용·사무실 회선의 한계</b><p>통신사가 SMTP 25번 포트를 막거나 PTR 레코드를 설정할 수 없는 경우가 많습니다. 외부 수신 서버가 발신 IP 평판을 이유로 메일을 거부하거나 스팸으로 분류할 수도 있습니다. 실제 운영에서는 직접 메일 서버를 운영하는 것보다 <b>전문 메일 호스팅</b>을 쓰는 편이 안정적일 수 있습니다.</p></div>
+    </section>
+
+    <!-- 13 -->
+    <section id="roadmap">
+      <div class="sec-head"><span class="sec-num">13</span><h2>단계별 구현 로드맵</h2></div>
+      <p class="lead">체크 상태는 이 브라우저에만 저장됩니다.</p>
+      <div class="road" id="road"></div>
+    </section>
+
+    <!-- 14 -->
+    <section id="ops">
+      <div class="sec-head"><span class="sec-num">14</span><h2>문제 해결과 운영 명령</h2></div>
+      <div class="tbl-wrap"><table>
+        <tr><th>목적</th><th>명령</th></tr>
+        <tr><td>컨테이너 상태</td><td><code>docker compose ps</code></td></tr>
+        <tr><td>메일 서버 로그</td><td><code>docker compose logs --tail=200 mailserver</code></td></tr>
+        <tr><td>Roundcube 로그</td><td><code>docker compose logs --tail=200 roundcube</code></td></tr>
+        <tr><td>재시작</td><td><code>docker compose restart mailserver roundcube</code></td></tr>
+        <tr><td>설정 변경 후 재기동</td><td><code>docker compose up -d</code></td></tr>
+        <tr><td>중지(데이터 유지)</td><td><code>docker compose down</code></td></tr>
+        <tr><td>중지와 볼륨 삭제</td><td><code>docker compose down -v</code> <span class="pill p-r">사서함 데이터 삭제</span></td></tr>
+      </table></div>
+      <div class="callout danger"><b class="t">주의</b><p><code>docker compose down -v</code>는 볼륨까지 지워서 사서함과 Roundcube 데이터가 사라집니다. 실습 데이터가 필요하면 쓰지 않습니다.</p></div>
+    </section>
+
+    <!-- 15 -->
+    <section id="review">
+      <div class="sec-head"><span class="sec-num">15</span><h2>통합 시 정리한 차이점</h2></div>
+      <p class="lead">원본 문서 두 개(<code>internal_email_iam_guide</code>, <code>mail_server_setup_and_iam_guide</code>)에서 서로 다르게 쓰인 부분을 이 가이드에서는 아래처럼 정리했습니다.</p>
+      <div class="tbl-wrap"><table class="diff">
+        <tr><th>항목</th><th>IAM 가이드</th><th>구축 가이드</th><th>이 문서의 정리</th></tr>
+        <tr><td>발급 순서</td><td>사서함 → Keycloak</td><td>Keycloak → 사서함</td><td>사서함 → Keycloak. 순서보다 중요한 원칙은 <b>사서함이 수신 가능해진 뒤 메일 발송</b>입니다.</td></tr>
+        <tr><td>인증 메일 담당</td><td>Keycloak 내장 기능 우선</td><td>Spring Boot 중심</td><td>A(Keycloak)를 먼저 검토하고 필요하면 B(Spring Boot)를 추가합니다.</td></tr>
+        <tr><td>초기 비밀번호</td><td>관리자가 별도 경로로 전달</td><td>활성화 링크·코드 후 최초 설정</td><td>사서함은 별도 경로로 전달하고, IAM은 링크나 코드로 처리합니다.</td></tr>
+        <tr><td>예시 계정</td><td><code>employee01</code></td><td><code>staff01</code></td><td><code>staff01</code>로 통일</td></tr>
+        <tr><td>디렉터리</td><td><code>docker-data/</code> 하위</td><td><code>config/</code>와 named volume</td><td>구축 가이드 방식(named volume)</td></tr>
+        <tr><td>Compose 범위</td><td>keycloak, postgres 포함</td><td>mailserver, roundcube만</td><td>기존 Keycloak·PostgreSQL이 있으면 재사용합니다.</td></tr>
+      </table></div>
+
+      <h3>구축 전에 추가로 확인할 점</h3>
+      <div class="grid g2">
+        <div class="callout warn" style="margin:0"><b class="t">TLS 미설정 상태</b><p>예시 compose에는 인증서 설정(<code>SSL_TYPE</code> 등)이 없습니다. 그런데 Spring은 <code>starttls.enable: true</code>로 설정되어 있고 Roundcube는 587로 인증 발송을 합니다. 이 상태에서는 STARTTLS나 SMTP 인증이 실패할 수 있으니 실습용 self-signed 인증서를 쓸지 미리 정합니다.</p></div>
+        <div class="callout warn" style="margin:0"><b class="t">환경변수 지원 여부</b><p><code>ONE_DIR</code>, <code>DMS_DEBUG</code>는 최신 Docker Mailserver에서 지원이 중단되었거나 <code>LOG_LEVEL</code>로 대체되었을 수 있습니다. 고정할 버전의 공식 문서에서 확인합니다.</p></div>
+        <div class="callout warn" style="margin:0"><b class="t">첫 계정은 바로 생성</b><p>Docker Mailserver는 계정이 하나도 없으면 Dovecot이 정상적으로 기동하지 않습니다. <code>up -d</code> 직후에 바로 <code>setup email add</code>를 실행합니다.</p></div>
+        <div class="callout warn" style="margin:0"><b class="t">포트 공개 모순</b><p>원본 본문은 외부 공개가 필요 없다고 하지만 예시 compose는 메일 포트 다섯 개를 모두 호스트에 바인딩합니다. 내부 실습이라면 8080만 공개해도 됩니다.</p></div>
+      </div>
+
+      <h3>최종 정리</h3>
+      <div class="final"><p><b>Docker Mailserver</b>는 직원 사서함과 SMTP·IMAP을 제공하고, <b>Roundcube</b>는 웹메일 화면을 제공합니다. <b>Keycloak</b>은 직원 IAM 계정과 인증을 관리하고, <b>Spring Boot</b>는 계정 발급과 두 시스템 연계를 맡습니다. Keycloak은 메일 사서함까지 관리하지 않으므로, 두 시스템의 계정은 <b>따로 만들고 직원 ID와 회사 메일 주소로 연결</b>합니다. 먼저 무료 내부 실습 환경에서 <code>@baropick.test</code> 메일과 Keycloak 연동, 직원 간 송수신, 회사 메일을 통한 인증 절차를 검증합니다.</p></div>
+    </section>
+
+    <!-- glossary -->
+    <section id="glossary">
+      <div class="sec-head"><span class="sec-num">00</span><h2>용어 사전</h2></div>
+      <p class="lead">이 문서에 나오는 용어를 분야별로 모았습니다. 본문 툴팁과 같은 내용입니다.</p>
+      <input class="gl-search" id="glSearch" type="search" placeholder="용어 검색 (예: SMTP, 볼륨, DKIM)" aria-label="용어 검색">
+      <div id="glList"></div>
+    </section>
+
+    <!-- 16 -->
+    <section id="refs">
+      <div class="sec-head"><span class="sec-num">16</span><h2>참고 자료</h2></div>
+      <ul class="refs">
+        <li><a href="https://docker-mailserver.github.io/docker-mailserver/latest/" target="_blank" rel="noopener">Docker Mailserver 문서<span>docker-mailserver.github.io</span></a></li>
+        <li><a href="https://github.com/docker-mailserver/docker-mailserver" target="_blank" rel="noopener">Docker Mailserver GitHub<span>github.com/docker-mailserver</span></a></li>
+        <li><a href="https://roundcube.net/" target="_blank" rel="noopener">Roundcube 공식 사이트<span>roundcube.net</span></a></li>
+        <li><a href="https://hub.docker.com/r/roundcube/roundcubemail" target="_blank" rel="noopener">Roundcube Docker 이미지<span>hub.docker.com/r/roundcube/roundcubemail</span></a></li>
+        <li><a href="https://docs.spring.io/spring-boot/reference/io/email.html" target="_blank" rel="noopener">Spring Boot 이메일 발송<span>docs.spring.io</span></a></li>
+        <li><a href="https://www.keycloak.org/documentation" target="_blank" rel="noopener">Keycloak 공식 문서<span>keycloak.org/documentation</span></a></li>
+      </ul>
+    </section>
+  </main>
+</div>
+<footer>바로픽 사내 메일·IAM 가이드 · 원본 문서 2종 통합본</footer>
+
+<script>
+(function(){
+  /* ---------- Sequence diagram renderer ---------- */
+  function seq(id, actors, msgs){
+    var svg=document.getElementById(id); if(!svg) return;
+    var W=900, n=actors.length, col=W/n, X=function(i){return col*i+col/2;};
+    var top=12, hh=46, y=top+hh+40, parts=[], ys=[];
+    msgs.forEach(function(m){ ys.push(y); y += m.self?58:44; });
+    var H=y+10;
+    svg.setAttribute('viewBox','0 0 '+W+' '+H);
+    var mk=id+'-ah';
+    parts.push('<defs><marker id="'+mk+'" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker></defs>');
+    actors.forEach(function(a,i){
+      var x=X(i), bw=Math.min(150,col-20);
+      parts.push('<line class="life" x1="'+x+'" y1="'+(top+hh)+'" x2="'+x+'" y2="'+(H-6)+'"/>');
+      parts.push('<rect class="box '+a.c+'" x="'+(x-bw/2)+'" y="'+top+'" width="'+bw+'" height="'+hh+'" rx="11"/>');
+      parts.push('<text x="'+x+'" y="'+(top+hh/2+5)+'" text-anchor="middle" class="t-b" style="font-size:14px">'+a.n+'</text>');
+    });
+    msgs.forEach(function(m,k){
+      var yy=ys[k], x1=X(m.f), num='<tspan class="num">'+(k+1)+'  </tspan>';
+      if(m.self){
+        parts.push('<path class="ln" d="M'+x1+' '+yy+' h38 v22 h-36" marker-end="url(#'+mk+')"/>');
+        parts.push('<text x="'+(x1+46)+'" y="'+(yy+15)+'" class="lbl" style="font-size:13px">'+num+m.l+'</text>');
+      } else {
+        var x2=X(m.t), dir=x2>x1?1:-1;
+        parts.push('<line class="ln'+(m.d?' dash':'')+'" x1="'+x1+'" y1="'+yy+'" x2="'+(x2-dir*3)+'" y2="'+yy+'" marker-end="url(#'+mk+')"/>');
+        parts.push('<text x="'+((x1+x2)/2)+'" y="'+(yy-8)+'" text-anchor="middle" class="lbl" style="font-size:13px">'+num+m.l+'</text>');
+      }
+    });
+    svg.innerHTML=parts.join('');
+  }
+
+  seq('seqOnboard',
+    [{n:'관리자',c:'b-actor'},{n:'Spring Boot',c:'b-sb'},{n:'Mailserver',c:'b-ms'},{n:'Keycloak',c:'b-kc'},{n:'신규 직원',c:'b-actor'}],
+    [
+      {f:0,t:1,l:'직원 정보·회사 메일 등록'},
+      {f:1,t:2,l:'사서함 생성'},
+      {f:2,t:1,l:'생성 결과',d:1},
+      {f:1,t:3,l:'IAM 계정 생성 (Admin API)'},
+      {f:3,t:1,l:'생성 결과',d:1},
+      {f:1,self:1,l:'결과 기록 · 실패 시 재시도/보상'},
+      {f:3,t:2,l:'활성화·인증 메일 (SMTP)'},
+      {f:4,t:2,l:'Roundcube에서 메일 확인'},
+      {f:4,t:3,l:'인증 완료 · 최초 비밀번호 설정'}
+    ]);
+
+  seq('seqAuth',
+    [{n:'직원',c:'b-actor'},{n:'사내 앱',c:'b-actor'},{n:'Keycloak / Spring',c:'b-kc'},{n:'Mailserver',c:'b-ms'},{n:'직원 메일함',c:'b-rc'}],
+    [
+      {f:0,t:1,l:'인증·비밀번호 변경 요청'},
+      {f:1,t:2,l:'인증 요청'},
+      {f:2,self:1,l:'코드 생성 · 해시와 만료시각 저장'},
+      {f:2,t:3,l:'SMTP 발송'},
+      {f:3,t:4,l:'인증 메일 전달'},
+      {f:0,t:4,l:'메일함에서 코드 확인'},
+      {f:0,t:1,l:'코드 입력'},
+      {f:1,t:2,l:'검증 요청'},
+      {f:2,self:1,l:'일치 · 만료 · 시도 횟수 · 목적 확인'},
+      {f:2,t:1,l:'성공 / 실패',d:1},
+      {f:1,t:0,l:'결과 안내',d:1}
+    ]);
+
+  /* ---------- Roadmap ---------- */
+  var phases=[
+    {t:'사내 메일 서버 구축',i:['Docker Desktop·Compose 환경 확인','Docker Mailserver 컨테이너 구성','Roundcube 컨테이너 구성','테스트 메일 도메인 설정','관리자·직원 사서함 생성','Roundcube 로그인 확인','직원 간 메일 송수신 확인','재시작 후 사서함 데이터 유지 확인']},
+    {t:'Keycloak 연동',i:['Keycloak SMTP 설정','테스트 직원 계정 생성','직원 email을 회사 메일로 등록','이메일 확인 기능 테스트','비밀번호 재설정 메일 수신·처리 테스트']},
+    {t:'Spring Boot 연동',i:['SMTP 연결·발신 계정 인증 확인','직원 정보 등록 API 구현','Admin REST API로 IAM 계정 생성','사서함 생성 자동화 방안 구현','계정·사서함 생성 결과 관리','(필요 시) 인증 코드 생성·검증','만료·재전송 제한·일회성 검증']},
+    {t:'통합 테스트',i:['신규 등록부터 사서함 생성까지 확인','신규 직원 최초 로그인 절차 확인','회사 메일로 인증 코드 수신','인증 성공·실패 케이스 확인','비밀번호 변경·재설정 확인','타 직원 메일함 접근 불가 확인','부분 실패 시 재시도·보상 처리','보안 설정·데이터 백업 점검']}
+  ];
+  var KEY='baropick-roadmap-v1', state={};
+  try{ state=JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){ state={}; }
+  var road=document.getElementById('road');
+  phases.forEach(function(p,pi){
+    var el=document.createElement('div'); el.className='phase';
+    var h='<div class="ph">'+(pi+1)+'단계</div><h4>'+p.t+'</h4><div class="prog"><i></i></div><div class="prog-t"></div>';
+    p.i.forEach(function(it,ii){
+      var k=pi+'-'+ii;
+      h+='<label><input type="checkbox" data-k="'+k+'"'+(state[k]?' checked':'')+'><span>'+it+'</span></label>';
+    });
+    el.innerHTML=h; road.appendChild(el);
+    function upd(){
+      var boxes=el.querySelectorAll('input'), c=0;
+      boxes.forEach(function(b){ if(b.checked) c++; });
+      el.querySelector('.prog i').style.width=(c/boxes.length*100)+'%';
+      el.querySelector('.prog-t').textContent=c+' / '+boxes.length+' 완료';
+    }
+    el.addEventListener('change',function(e){
+      var k=e.target.getAttribute('data-k'); if(!k) return;
+      state[k]=e.target.checked;
+      try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(err){}
+      upd();
+    });
+    upd();
+  });
+
+  /* ---------- Copy buttons ---------- */
+  document.querySelectorAll('.code button').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var txt=btn.closest('.code').querySelector('pre').innerText;
+      function done(){ btn.textContent='복사됨'; setTimeout(function(){btn.textContent='복사';},1400); }
+      try{
+        if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(done,function(){}); }
+        else { var t=document.createElement('textarea'); t.value=txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); done(); }
+      }catch(e){}
+    });
+  });
+
+  /* ---------- Glossary data ---------- */
+  var GL=[
+    // 메일
+    {k:'SMTP',a:['SMTP'],c:'메일',d:'Simple Mail Transfer Protocol. 메일을 서버로 보내고, 서버끼리 메일을 넘겨주는 규약입니다. 보내기 전용이며 메일을 읽을 때는 쓰지 않습니다.',e:'우체통에 편지를 넣고 우체국끼리 편지를 옮기는 일'},
+    {k:'IMAP',a:['IMAP'],c:'메일',d:'서버 사서함에 저장된 메일을 조회하는 규약입니다(기본 143번). 메일이 서버에 남아 있어 여러 기기에서 같은 상태(읽음, 폴더)를 봅니다.',e:'열쇠로 내 우편함을 열어 확인하는 일'},
+    {k:'Submission (587)',a:['Submission'],c:'메일',d:'메일 프로그램이나 앱이 로그인한 뒤 메일을 서버에 제출할 때 쓰는 SMTP 포트(587)입니다. 서버 간 전달용 25번과 용도가 다릅니다.'},
+    {k:'SMTPS',a:['SMTPS'],c:'메일',d:'연결 처음부터 TLS로 암호화하는 SMTP 방식입니다(465번).'},
+    {k:'IMAPS',a:['IMAPS'],c:'메일',d:'연결 처음부터 TLS로 암호화하는 IMAP 방식입니다(993번).'},
+    {k:'MUA',a:['MUA'],c:'메일',d:'Mail User Agent. 사람이 메일을 쓰고 읽는 프로그램입니다. Roundcube, Outlook, 휴대폰 메일 앱 등이 해당합니다.',e:'편지지와 펜, 우편함 열쇠'},
+    {k:'MTA',a:['MTA'],c:'메일',d:'Mail Transfer Agent. 메일을 받아 목적지(내부 사서함이나 다른 서버)로 넘겨주는 서버 프로그램입니다. 이 프로젝트에서는 Postfix입니다.',e:'우체국'},
+    {k:'MDA',a:['MDA'],c:'메일',d:'Mail Delivery Agent. MTA가 받은 메일을 실제 사용자 사서함에 넣는 역할입니다. 이 프로젝트에서는 Dovecot이 맡습니다.',e:'우편함에 편지를 넣는 집배원'},
+    {k:'LMTP',a:['LMTP','로컬 전달'],c:'메일',d:'Postfix가 받은 메일을 같은 서버의 Dovecot에 넘겨 사서함에 저장할 때 쓰는 전달 방식입니다.'},
+    {k:'Postfix',a:['Postfix'],c:'메일',d:'가장 널리 쓰이는 오픈소스 MTA(SMTP 서버)입니다. 발송 요청과 수신 메일을 받아 알맞은 사서함이나 다른 서버로 전달합니다.',e:'우체국'},
+    {k:'Dovecot',a:['Dovecot'],c:'메일',d:'오픈소스 IMAP 서버입니다. 사서함 파일을 관리하고 메일 클라이언트의 로그인과 메일 조회를 처리합니다. Docker Mailserver에서는 SMTP 로그인 확인도 Dovecot이 맡습니다.',e:'우편함과 우편함 관리인'},
+    {k:'Docker Mailserver',a:['Docker Mailserver','Mailserver','mailserver'],c:'메일',d:'Postfix, Dovecot, 스팸·바이러스 필터 등을 하나의 Docker 이미지로 묶은 오픈소스 메일 서버입니다. 사서함은 컨테이너 안의 setup 명령으로 관리합니다. 이 문서의 Compose 서비스 이름도 mailserver입니다.'},
+    {k:'Roundcube',a:['Roundcube'],c:'메일',d:'오픈소스 웹메일 클라이언트(MUA)입니다. 메일을 직접 저장하지 않고 IMAP으로 읽고 SMTP로 보냅니다.'},
+    {k:'웹메일',a:['웹메일'],c:'메일',d:'프로그램을 설치하지 않고 브라우저에서 메일을 읽고 쓰는 서비스입니다.'},
+    {k:'사서함',a:['메일 사서함','사서함','메일함'],c:'메일',d:'메일 서버에 있는 계정별 메일 저장 공간입니다. 사서함이 있어야 그 주소로 메일을 받을 수 있고, 이 프로젝트에서는 Roundcube 로그인 계정이기도 합니다.',e:'개인 우편함'},
+    {k:'postmaster',a:['postmaster','POSTMASTER_ADDRESS'],c:'메일',d:'메일 서버 관리자 주소의 관례적인 이름입니다. 반송 메일과 오류 알림이 이 주소로 갑니다.'},
+    {k:'IP 평판',a:['IP 평판','평판'],c:'메일',d:'메일을 받는 서버가 발신 IP의 과거 이력으로 매기는 신뢰도입니다. 평판이 낮거나 이력이 없는 IP의 메일은 거부되거나 스팸함으로 갑니다.'},
+    // IAM·보안
+    {k:'IAM',a:['IAM'],c:'IAM·보안',d:'Identity and Access Management. 누가 누구인지(신원) 확인하고, 그 사람이 무엇에 접근할 수 있는지(권한) 관리하는 체계입니다. 계정 생성, 로그인, 역할, 비밀번호 정책을 포함합니다.',e:'사원증 발급과 출입 권한 관리'},
+    {k:'인증 (Authentication)',a:[],c:'IAM·보안',d:'"당신은 누구인가"를 확인하는 과정입니다. 비밀번호, 이메일 인증 코드, OTP 등을 사용합니다.',e:'사원증을 찍고 건물에 들어가기'},
+    {k:'인가 (Authorization)',a:[],c:'IAM·보안',d:'인증된 사용자가 "무엇을 할 수 있는가"를 정하는 과정입니다. 주로 역할(Role)로 판단합니다.',e:'사원증에 따라 들어갈 수 있는 층이 다름'},
+    {k:'Keycloak',a:['Keycloak'],c:'IAM·보안',d:'오픈소스 IAM 서버입니다. 로그인 화면, 사용자·역할 관리, 토큰 발급(OIDC), 이메일 확인과 비밀번호 재설정 기능을 제공합니다. 메일 서버는 아니어서 메일을 보낼 때는 SMTP 서버(여기서는 Docker Mailserver)를 사용합니다.'},
+    {k:'Realm',a:['Realm'],c:'IAM·보안',d:'Keycloak 안에서 사용자, 앱, 역할, 설정을 묶는 독립 공간입니다. 예: baropick realm. SMTP 설정도 Realm마다 따로 합니다.',e:'한 건물 안의 독립된 회사'},
+    {k:'Client',a:[],c:'IAM·보안',d:'Keycloak에 로그인을 맡기는 애플리케이션의 등록 정보입니다. 예: 사내 React 앱, Spring Boot API.'},
+    {k:'Role',a:[],c:'IAM·보안',d:'권한 묶음입니다. 사용자나 그룹에 부여하고, 앱은 토큰에 담긴 역할로 접근 가능 여부를 판단합니다. 예: ADMIN, STAFF.'},
+    {k:'Required Action',a:['Required Action'],c:'IAM·보안',d:'Keycloak 사용자가 다음 로그인 때 반드시 해야 하는 작업입니다. 이메일 확인(VERIFY_EMAIL), 비밀번호 변경(UPDATE_PASSWORD) 등이 있습니다.'},
+    {k:'OIDC',a:['OIDC','OpenID Connect'],c:'IAM·보안',d:'OpenID Connect. 앱이 로그인을 Keycloak 같은 인증 서버에 맡기고, 결과를 토큰으로 받는 표준 방식입니다.'},
+    {k:'SSO',a:['SSO'],c:'IAM·보안',d:'Single Sign-On. 한 번 로그인하면 같은 IAM을 쓰는 여러 앱에 다시 로그인하지 않고 접근하는 방식입니다.'},
+    {k:'토큰',a:['토큰'],c:'IAM·보안',d:'로그인에 성공하면 Keycloak이 발급하는 디지털 출입증입니다. 서명되어 있어 위조할 수 없고, 앱은 토큰을 검증해 사용자와 역할을 확인합니다.',e:'유효기간이 있는 방문증'},
+    {k:'Admin REST API',a:['Admin REST API','Admin API'],c:'IAM·보안',d:'Keycloak을 프로그램으로 관리하는 HTTP API입니다. 사용자 생성, 이메일 설정, 비밀번호 재설정 메일 요청, 역할 부여 등을 코드로 할 수 있습니다.'},
+    {k:'인증 코드',a:['인증 코드'],c:'IAM·보안',d:'본인 확인을 위해 메일로 보내는 짧은 일회용 코드입니다. 그 메일함에 접근할 수 있는 사람만 코드를 알 수 있다는 점을 이용합니다.'},
+    {k:'활성화 링크',a:['일회용 활성화 링크','활성화 링크'],c:'IAM·보안',d:'클릭하면 계정을 활성화하거나 비밀번호 설정 화면으로 이동하는 일회용 URL입니다. 서명된 토큰을 담고 있으며 만료 시간이 있습니다.'},
+    {k:'해시',a:['해시값','해시'],c:'IAM·보안',d:'원문을 되돌릴 수 없는 값으로 바꾸는 것입니다. DB에는 해시만 저장하고, 입력값도 같은 방식으로 해시해 비교합니다. DB가 유출되어도 원문을 알 수 없습니다.',e:'지문: 지문으로 사람을 확인할 수는 있지만 지문으로 사람을 만들 수는 없음'},
+    {k:'보안 난수',a:['SecureRandom','보안 난수','난수'],c:'IAM·보안',d:'예측할 수 없는 난수입니다. Java에서는 SecureRandom을 씁니다. 일반 Random은 앞의 값으로 다음 값을 추측할 수 있어 인증 코드에 쓰면 안 됩니다.'},
+    {k:'만료 시간',a:['만료 시간'],c:'IAM·보안',d:'코드나 링크를 쓸 수 있는 유효 기간입니다. 짧을수록 유출되었을 때의 피해가 줄어듭니다.'},
+    {k:'일회성',a:['일회성','재사용 방지'],c:'IAM·보안',d:'한 번 성공적으로 사용한 코드를 즉시 무효화해 다시 쓸 수 없게 하는 것입니다.'},
+    {k:'요청 제한 (Rate limit)',a:['재전송 제한','횟수 제한','요청 제한'],c:'IAM·보안',d:'정해진 시간 안의 요청이나 시도 횟수를 제한하는 것입니다. 코드를 계속 바꿔 넣는 무차별 대입과 메일 폭탄을 막습니다.'},
+    {k:'무차별 대입',a:['무차별 대입'],c:'IAM·보안',d:'가능한 값을 처음부터 끝까지 하나씩 넣어 보는 공격입니다(Brute force). 시도 횟수 제한으로 막습니다.'},
+    {k:'자격 증명',a:['자격 증명'],c:'IAM·보안',d:'로그인에 쓰는 정보(아이디, 비밀번호, API 키 등)입니다.'},
+    {k:'TLS',a:['TLS'],c:'IAM·보안',d:'통신 내용을 암호화하고, 인증서로 서버가 진짜인지 확인하는 기술입니다. HTTPS의 S가 TLS입니다.',e:'봉인된 등기 우편'},
+    {k:'STARTTLS',a:['STARTTLS','StartTLS','starttls'],c:'IAM·보안',d:'평문으로 연결을 시작한 뒤 같은 연결에서 TLS 암호화로 전환하는 방식입니다. 587, 143 포트에서 사용합니다. 서버에 인증서가 없으면 실패합니다.'},
+    {k:'인증서',a:['self-signed','인증서'],c:'IAM·보안',d:'서버의 신원을 증명하는 전자 문서입니다. 공인 기관(CA)이 서명한 인증서는 자동으로 신뢰되고, 직접 만든 self-signed 인증서는 실습용으로 쓰되 클라이언트에서 신뢰 예외 설정이 필요합니다.'},
+    {k:'SSL_TYPE',a:['SSL_TYPE'],c:'IAM·보안',d:'Docker Mailserver에서 TLS 인증서 방식을 정하는 환경변수입니다(letsencrypt, manual, self-signed 등). 비어 있으면 TLS를 쓰지 않습니다.'},
+    {k:'보상 처리',a:['보상 처리'],c:'IAM·보안',d:'여러 단계 작업 중 일부만 성공했을 때, 이미 성공한 단계를 되돌리거나 정리하는 처리입니다. 예: 사서함은 만들었는데 Keycloak 생성에 실패하면 사서함을 비활성화하거나 삭제합니다.'},
+    {k:'멱등성',a:['멱등성','중복 생성'],c:'IAM·보안',d:'같은 요청을 여러 번 보내도 결과가 한 번 보낸 것과 같은 성질입니다. 재시도해도 계정이 두 번 생기지 않게 하는 데 필요합니다.'},
+    {k:'프로비저닝',a:['프로비저닝'],c:'IAM·보안',d:'사용자에게 필요한 계정과 자원을 만들어 바로 쓸 수 있는 상태로 준비하는 작업입니다. 여기서는 메일 사서함과 IAM 계정 생성을 말합니다.'},
+    // Docker·실행 환경
+    {k:'Docker',a:['Docker'],c:'Docker·실행 환경',d:'프로그램과 실행 환경을 이미지로 묶어 어느 PC에서나 똑같이 실행하게 해 주는 컨테이너 플랫폼입니다.'},
+    {k:'Docker Desktop',a:['Docker Desktop'],c:'Docker·실행 환경',d:'Windows·macOS에서 Docker를 쓸 수 있게 해 주는 데스크톱 프로그램입니다. Windows에서는 WSL 2 위에서 Linux 컨테이너를 실행합니다.'},
+    {k:'WSL 2',a:['WSL 2'],c:'Docker·실행 환경',d:'Windows Subsystem for Linux 2. Windows 안에서 실제 Linux 커널을 실행하는 기능입니다. Docker Desktop이 Linux 컨테이너를 돌릴 때 사용합니다.'},
+    {k:'Docker Compose',a:['Docker Compose','Compose'],c:'Docker·실행 환경',d:'여러 컨테이너의 이미지, 포트, 볼륨, 네트워크를 compose.yaml 하나로 정의하고 docker compose up 한 번으로 실행하는 도구입니다.',e:'여러 악기를 맞추는 악보'},
+    {k:'compose.yaml',a:['compose.yaml'],c:'Docker·실행 환경',d:'Docker Compose 설정 파일입니다. services(컨테이너), volumes(저장소), networks 등을 YAML로 적습니다.'},
+    {k:'이미지',a:['Docker 이미지','이미지'],c:'Docker·실행 환경',d:'프로그램과 실행 환경을 통째로 묶은 읽기 전용 패키지입니다. 이미지를 실행하면 컨테이너가 됩니다.',e:'설치 파일, 붕어빵 틀'},
+    {k:'컨테이너',a:['컨테이너'],c:'Docker·실행 환경',d:'이미지를 실행한 격리된 프로그램입니다. 자체 파일 시스템과 네트워크를 가지며, 지우면 안의 데이터도 사라집니다(볼륨에 저장한 데이터는 남음).',e:'틀로 찍어낸 붕어빵'},
+    {k:'볼륨',a:['named volume','볼륨'],c:'Docker·실행 환경',d:'컨테이너 밖에 데이터를 보관하는 저장 공간입니다. 컨테이너를 지우고 다시 만들어도 메일 같은 데이터가 유지됩니다. docker compose down -v를 하면 함께 삭제됩니다.',e:'이사해도 들고 가는 외장 하드'},
+    {k:'태그 (latest)',a:['latest','버전 고정','태그'],c:'Docker·실행 환경',d:'이미지 버전을 가리키는 이름입니다. latest는 "가장 최근"이라는 뜻이라 받을 때마다 내용이 바뀔 수 있습니다. 재현성을 위해 15.0.0처럼 특정 버전으로 고정합니다.'},
+    {k:'Docker 네트워크',a:['Docker 내부 네트워크','Docker 네트워크','내부 네트워크'],c:'Docker·실행 환경',d:'Compose가 자동으로 만드는 가상 네트워크입니다. 같은 네트워크의 컨테이너는 서비스 이름(mailserver)으로 서로를 찾고, 이 이름은 네트워크 밖에서는 통하지 않습니다.',e:'사내 내선 번호'},
+    {k:'포트 매핑',a:['포트 매핑','바인딩'],c:'Docker·실행 환경',d:'호스트 PC의 포트를 컨테이너 포트에 연결하는 설정입니다. “8080:80”은 호스트 8080번으로 들어온 요청을 컨테이너 80번으로 넘긴다는 뜻입니다.',e:'대표 번호를 내선으로 돌려 주는 교환기'},
+    {k:'Docker 소켓',a:['Docker 소켓','docker.sock'],c:'Docker·실행 환경',d:'Docker 엔진에 명령을 내리는 통로(/var/run/docker.sock)입니다. 접근할 수 있으면 컨테이너를 마음대로 만들고 호스트 파일까지 다룰 수 있어서 사실상 관리자 권한과 같습니다.'},
+    {k:'.env',a:['.env.example','.env'],c:'Docker·실행 환경',d:'환경변수를 모아 둔 파일입니다. Compose가 읽어 컨테이너에 넘깁니다. 비밀정보가 들어가므로 Git에 올리지 않고, 변수 이름만 적은 .env.example을 공유합니다.'},
+    {k:'.gitignore',a:['.gitignore'],c:'Docker·실행 환경',d:'Git이 추적하지 않을 파일 목록입니다. .env, 메일 데이터, 설정 폴더를 넣어 실수로 커밋되는 것을 막습니다.'},
+    {k:'환경변수',a:['환경변수'],c:'Docker·실행 환경',d:'프로그램 밖에서 넣어 주는 설정값입니다. 코드에 비밀번호를 적지 않고 실행 환경마다 값을 바꿀 수 있습니다.'},
+    {k:'ONE_DIR · DMS_DEBUG · LOG_LEVEL',a:['ONE_DIR','DMS_DEBUG','LOG_LEVEL'],c:'Docker·실행 환경',d:'Docker Mailserver 환경변수입니다. ONE_DIR은 상태 파일을 한 폴더에 모으는 옵션, DMS_DEBUG는 디버그 로그 옵션입니다. 최신 버전에서는 두 옵션이 없어졌거나 LOG_LEVEL로 바뀌었을 수 있으니 사용하는 버전 문서를 확인하세요.'},
+    {k:'setup 명령',a:['setup email add','setup email list','setup email del','setup'],c:'Docker·실행 환경',d:'Docker Mailserver 컨테이너 안에 있는 관리 스크립트입니다. docker exec로 실행해 사서함 추가(add), 목록(list), 삭제(del), 비밀번호 변경(update) 등을 합니다.'},
+    {k:'PowerShell',a:['PowerShell'],c:'Docker·실행 환경',d:'Windows의 기본 명령줄 셸입니다. docker 명령을 여기서 실행합니다.'},
+    // 네트워크·DNS
+    {k:'도메인',a:['도메인'],c:'네트워크·DNS',d:'이메일 주소에서 @ 뒤의 이름(baropick.test)입니다. DNS로 이 이름에 해당하는 서버와 메일 서버를 찾습니다.'},
+    {k:'.test 도메인',a:['baropick.test','.test'],c:'네트워크·DNS',d:'국제 표준(RFC 2606)이 테스트용으로 예약한 최상위 도메인입니다. 누구도 실제로 등록할 수 없어 실습용으로 안전하지만, 인터넷에서는 동작하지 않습니다.'},
+    {k:'DNS',a:['DNS'],c:'네트워크·DNS',d:'Domain Name System. 이름(gmail.com)을 IP 주소나 메일 서버 주소로 바꿔 주는 인터넷의 전화번호부입니다.',e:'전화번호부'},
+    {k:'hosts 파일',a:['hosts 파일','hosts'],c:'네트워크·DNS',d:'PC마다 있는 이름-IP 대응표입니다. DNS보다 먼저 확인되므로 내부 실습용 이름을 등록할 때 씁니다. Windows 경로는 C:\\Windows\\System32\\drivers\\etc\\hosts입니다.'},
+    {k:'MX',a:['MX'],c:'네트워크·DNS',d:'Mail eXchanger 레코드. 이 도메인으로 오는 메일을 받을 서버를 알려 주는 DNS 레코드입니다.',e:'회사 우편 수발실 위치'},
+    {k:'SPF',a:['SPF'],c:'네트워크·DNS',d:'이 도메인 이름으로 메일을 보내도 되는 서버(IP) 목록을 DNS에 공개하는 레코드입니다. 발신자 위조를 막습니다.',e:'공식 발송처 명단'},
+    {k:'DKIM',a:['DKIM'],c:'네트워크·DNS',d:'메일에 전자 서명을 붙이고 공개키를 DNS에 올려, 받는 쪽이 위조나 변조 여부를 확인하게 하는 기술입니다.',e:'봉투의 인감'},
+    {k:'DMARC',a:['DMARC'],c:'네트워크·DNS',d:'SPF·DKIM 검증에 실패한 메일을 어떻게 처리할지(통과·격리·거부) 정하는 정책 레코드입니다.'},
+    {k:'PTR',a:['역방향 DNS','PTR'],c:'네트워크·DNS',d:'IP 주소로 이름을 찾는 역방향 DNS 레코드입니다. 받는 메일 서버가 발신 서버를 신뢰할지 판단할 때 확인합니다. 보통 회선을 제공하는 통신사가 설정합니다.'},
+    {k:'공인 IP',a:['공인 IP'],c:'네트워크·DNS',d:'인터넷에서 직접 접근할 수 있는 고유한 IP 주소입니다. 외부 메일을 받으려면 고정 공인 IP가 필요합니다.'},
+    {k:'사설 IP (LAN IP)',a:['사설 IP','LAN IP'],c:'네트워크·DNS',d:'사내망이나 공유기 안에서만 쓰는 IP 주소입니다(예: 192.168.x.x). 같은 LAN의 PC끼리만 접근할 수 있습니다.'},
+    {k:'IPv4',a:['IPv4'],c:'네트워크·DNS',d:'192.168.0.10처럼 점으로 구분한 네 개의 숫자로 된 IP 주소 형식입니다. ipconfig로 확인합니다.'},
+    {k:'LAN',a:['LAN'],c:'네트워크·DNS',d:'Local Area Network. 사무실이나 집처럼 한 공유기나 스위치에 연결된 내부 네트워크입니다.'},
+    {k:'localhost',a:['localhost'],c:'네트워크·DNS',d:'"지금 이 컴퓨터 자신"을 가리키는 이름(127.0.0.1)입니다. 서버 PC에서만 의미가 있고, 팀원 PC에서는 그 팀원 PC를 뜻합니다.'},
+    {k:'포트',a:['포트'],c:'네트워크·DNS',d:'한 컴퓨터 안에서 어떤 프로그램과 통신할지 구분하는 번호입니다(0~65535).',e:'IP가 건물 주소라면 포트는 호수'},
+    {k:'방화벽',a:['Windows Defender 방화벽','Windows 방화벽','방화벽'],c:'네트워크·DNS',d:'허용한 포트와 프로그램으로만 통신을 통과시키는 보안 장치입니다. 팀원이 접속하려면 서버 PC 방화벽에서 8080 인바운드를 허용해야 할 수 있습니다.',e:'건물 출입 경비실'},
+    {k:'인바운드',a:['인바운드'],c:'네트워크·DNS',d:'외부에서 이 PC로 들어오는 연결입니다. 반대는 아웃바운드(이 PC에서 나가는 연결)입니다.'},
+    {k:'AP 격리',a:['AP 격리'],c:'네트워크·DNS',d:'공유기의 와이파이 기능으로, 같은 무선망에 연결된 기기끼리 통신하지 못하게 막습니다. 켜져 있으면 팀원 PC가 서버 PC에 접속할 수 없습니다.'},
+    // 개발
+    {k:'Spring Boot',a:['Spring Boot'],c:'개발',d:'Java 웹 백엔드 프레임워크입니다. 이 프로젝트에서는 직원 계정 발급, Keycloak과 메일 서버 연계, 필요할 때 인증 코드 처리를 맡습니다.'},
+    {k:'JavaMailSender',a:['JavaMailSender'],c:'개발',d:'Spring이 제공하는 메일 발송 인터페이스입니다. spring.mail 설정을 읽어 SMTP 서버로 메일을 보냅니다.'},
+    {k:'PostgreSQL',a:['PostgreSQL'],c:'개발',d:'오픈소스 관계형 데이터베이스입니다. Keycloak 데이터와 애플리케이션 데이터(인증 코드 해시, 계정 발급 상태 등)를 저장합니다.'},
+    {k:'React SPA',a:['React SPA','SPA'],c:'개발',d:'Single Page Application. React로 만든, 페이지 이동 없이 화면을 바꾸는 웹 앱입니다. 바로픽 사내 웹 화면을 말합니다.'},
+    {k:'PDA',a:['PDA'],c:'개발',d:'현장에서 쓰는 휴대용 업무 단말기입니다(예: 바코드 스캐너 일체형 기기). 사내 앱의 클라이언트 중 하나입니다.'},
+    {k:'REST API',a:['REST API'],c:'개발',d:'HTTP 주소와 메서드(GET, POST 등)로 데이터를 주고받는 API 방식입니다.'}
+  ];
+  var byK={}, aliasMap={}, aliases=[];
+  GL.forEach(function(g){ byK[g.k]=g; g.a.forEach(function(a){ aliasMap[a]=g; aliases.push(a); }); });
+  aliases.sort(function(x,y){return y.length-x.length;});
+  function esc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+  var W='A-Za-z0-9_';
+  var RX=new RegExp(aliases.map(function(a){
+    return (/\w/.test(a[0])?'(?<!['+W+'])':'')+esc(a)+(/\w/.test(a[a.length-1])?'(?![\\-'+W+'])':'');
+  }).join('|'),'g');
+
+  /* ---------- Auto-tag terms ---------- */
+  var SKIP='pre,.code,svg,script,style,a,button,.term,.term-demo,h1,h2,h3,.sec-num,.tree,code,input,label,.gl-search,#glList,#tocLinks,#mtocLinks,summary';
+  var mainEl=document.querySelector('main');
+  [].slice.call(mainEl.querySelectorAll('section')).forEach(function(sec){
+    if(sec.id==='glossary') return;
+    var used={};
+    sec.querySelectorAll('.term[data-k]').forEach(function(t){ used[t.getAttribute('data-k')]=1; });
+    var walker=document.createTreeWalker(sec,NodeFilter.SHOW_TEXT,{acceptNode:function(n){
+      if(!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      return n.parentElement.closest(SKIP)?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT;
+    }});
+    var nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function(node){
+      var txt=node.nodeValue, last=0, frag=null, m;
+      RX.lastIndex=0;
+      while((m=RX.exec(txt))){
+        var g=aliasMap[m[0]]; if(!g || used[g.k]) continue;
+        used[g.k]=1;
+        frag=frag||document.createDocumentFragment();
+        frag.appendChild(document.createTextNode(txt.slice(last,m.index)));
+        var s=document.createElement('span'); s.className='term'; s.setAttribute('data-k',g.k); s.textContent=m[0];
+        frag.appendChild(s); last=m.index+m[0].length;
+      }
+      if(frag){ frag.appendChild(document.createTextNode(txt.slice(last))); node.parentNode.replaceChild(frag,node); }
+    });
+    // inline code that exactly matches a term
+    sec.querySelectorAll('code').forEach(function(c){
+      if(c.closest('pre,.code,.tree')) return;
+      var g=aliasMap[c.textContent.trim()]; if(g){ c.classList.add('term'); c.setAttribute('data-k',g.k); }
+    });
+  });
+  document.querySelectorAll('.term[data-k]').forEach(function(t){ if(byK[t.getAttribute('data-k')]) t.setAttribute('tabindex','0'); });
+  // SVG labels
+  document.querySelectorAll('main svg text').forEach(function(t){
+    RX.lastIndex=0; var m=RX.exec(t.textContent);
+    if(m && aliasMap[m[0]]){ t.classList.add('svg-term'); t.setAttribute('data-k',aliasMap[m[0]].k); }
+  });
+
+  /* ---------- Tooltip ---------- */
+  var tip=document.createElement('div'); tip.id='tip'; tip.setAttribute('role','tooltip'); document.body.appendChild(tip);
+  var catCls={'메일':'p-b','IAM·보안':'p-a','Docker·실행 환경':'p-g','네트워크·DNS':'p-r','개발':'p-g'};
+  var cur=null;
+  function h(s){return s.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function show(el){
+    var g=byK[el.getAttribute('data-k')]; if(!g) return;
+    if(cur && cur!==el) cur.classList.remove('on');
+    cur=el; el.classList.add('on');
+    tip.innerHTML='<div class="tt">'+h(g.k)+'<span class="pill '+(catCls[g.c]||'p-b')+'">'+g.c+'</span></div><div>'+h(g.d)+'</div>'+(g.e?'<div class="ex"><b>비유</b> · '+h(g.e)+'</div>':'');
+    tip.style.left='0px'; tip.style.top='0px'; tip.classList.add('on');
+    var r=el.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+    var left=Math.max(12,Math.min(r.left+r.width/2-tw/2, window.innerWidth-tw-12));
+    var top=r.top-th-10; if(top<8) top=r.bottom+10;
+    tip.style.left=left+'px'; tip.style.top=top+'px';
+  }
+  function hide(){ tip.classList.remove('on'); if(cur){ cur.classList.remove('on'); cur=null; } }
+  document.addEventListener('mouseover',function(e){ var t=e.target.closest && e.target.closest('[data-k]'); if(t) show(t); });
+  document.addEventListener('mouseout',function(e){ var t=e.target.closest && e.target.closest('[data-k]'); if(t && !t.contains(e.relatedTarget)) hide(); });
+  document.addEventListener('focusin',function(e){ var t=e.target.closest && e.target.closest('[data-k]'); if(t) show(t); });
+  document.addEventListener('focusout',hide);
+  document.addEventListener('click',function(e){ var t=e.target.closest && e.target.closest('[data-k]'); if(t){ show(t); } else hide(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') hide(); });
+  window.addEventListener('scroll',hide,{passive:true});
+
+  /* ---------- Glossary list ---------- */
+  var glList=document.getElementById('glList'), glSearch=document.getElementById('glSearch');
+  function renderGl(q){
+    q=(q||'').trim().toLowerCase(); var html='', cats=[], n=0;
+    GL.forEach(function(g){ if(cats.indexOf(g.c)<0) cats.push(g.c); });
+    cats.forEach(function(c){
+      var items=GL.filter(function(g){ return g.c===c && (!q || (g.k+' '+g.a.join(' ')+' '+g.d+' '+(g.e||'')).toLowerCase().indexOf(q)>=0); });
+      if(!items.length) return; n+=items.length;
+      html+='<div class="gl-cat">'+c+' · '+items.length+'</div><div class="grid g2">';
+      items.forEach(function(g){
+        var al=g.a.filter(function(a){return a!==g.k;}).slice(0,3);
+        html+='<div class="card gl-item"><h4>'+h(g.k)+(al.length?'<small>'+h(al.join(', '))+'</small>':'')+'</h4><p>'+h(g.d)+'</p>'+(g.e?'<p class="e"><b>비유</b> · '+h(g.e)+'</p>':'')+'</div>';
+      });
+      html+='</div>';
+    });
+    glList.innerHTML=n?html:'<p class="gl-empty">검색 결과가 없습니다.</p>';
+  }
+  renderGl(''); glSearch.addEventListener('input',function(){ renderGl(glSearch.value); });
+
+  /* ---------- TOC + section numbers ---------- */
+  var tocBox=document.getElementById('tocLinks'), mBox=document.getElementById('mtocLinks');
+  [].slice.call(mainEl.querySelectorAll('section')).forEach(function(s,i){
+    var num=s.querySelector('.sec-num'); if(num) num.textContent=String(i+1).padStart(2,'0');
+    var title=s.querySelector('h2').textContent;
+    [tocBox,mBox].forEach(function(b){ var a=document.createElement('a'); a.href='#'+s.id; a.textContent=(i+1)+'. '+title; b.appendChild(a); });
+  });
+
+  /* ---------- Scroll spy ---------- */
+  var links=[].slice.call(document.querySelectorAll('#tocLinks a'));
+  var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});
+  function spy(){
+    var y=window.scrollY+120, idx=0;
+    secs.forEach(function(s,i){ if(s && s.offsetTop<=y) idx=i; });
+    links.forEach(function(a,i){ a.classList.toggle('active',i===idx); });
+  }
+  window.addEventListener('scroll',spy,{passive:true}); spy();
+
+  /* ---------- Theme toggle ---------- */
+  var root=document.documentElement, TK='baropick-theme';
+  try{ var saved=localStorage.getItem(TK); if(saved) root.setAttribute('data-theme',saved); }catch(e){}
+  document.getElementById('themeBtn').addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    var next=cur==='dark'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    try{ localStorage.setItem(TK,next); }catch(e){}
+  });
+})();
+</script>
+</body>
+</html>

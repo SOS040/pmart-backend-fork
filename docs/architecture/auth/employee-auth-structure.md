@@ -1,0 +1,316 @@
+# 직원 인증 전체 구조 — Keycloak(신원) + Employee Auth Service(PMart 직원 JWT) + HR Service(계정 발급) + 사내 메일
+
+- 작성: 2026-11-12. **상태: 설계안(구현 전)** — 사용자 "그 설계를 따르고 싶다"(2026-11-12). 구현 전에 새 ADR(ADR-0056 예정)로 ADR-0054 의 직원 부분(결정 L·M, 발급자 표 `staff` 줄, 백오피스 Keycloak 직접 로그인)을 대체한다.
+- 기준 설계(강의): [`references/2026-11-12/pmart-keycloak-guide.html`](references/2026-11-12/pmart-keycloak-guide.html) — 강의 설계를 PMart 에 맞춘 적용안. 사내 메일: [`references/2026-11-12/baropick_mail_iam_guide.html`](references/2026-11-12/baropick_mail_iam_guide.html).
+- 이 문서가 정한 것: 사용자 결정 2026-11-12 — ① 메일 도메인 `@pmart.com` ② 배치는 Claude 가 정함(§4) ③ 비밀값은 PMart 방식(`.secrets` 원본 + pmart-config `{cipher}`) ④ 이 설계를 따른다. 나머지 값(포트·경로·사건 이름·표 이름)은 **제안**이고 §13 의 결정이 남아 있다.
+- 지금 구조(비교 대상): [`keycloak-structure.md`](keycloak-structure.md), [`login-structure-and-flow.md`](login-structure-and-flow.md), [`issuer-table.md`](issuer-table.md), ADR-0054·0055.
+
+## 1. 한 줄 요약
+
+**Keycloak 은 "이 직원이 맞다"만 증명하고, PMart 직원 JWT 는 Employee Auth Service 가 만든다.** 고객(Google → auth-service)·라이더(Google → rider-auth-service)와 같은 모양 — "밖에서 신원 확인 → PMart 가 토큰 발급" — 이 직원에게도 적용된다.
+
+| | 고객 | 라이더 | 직원(이 설계) |
+|---|---|---|---|
+| 신원 확인 | Google | Google | **Keycloak**(Realm `pmart-staff`, 계정 `xxx@pmart.com`) |
+| PMart 토큰 발급 | auth-service | rider-auth-service | **employee-auth-service**(새) |
+| 신원 확인 방식 | 앱이 받은 Google ID 토큰 검증만(ADR-0055) | 같음 | **OAuth 2.0 인가 코드 흐름 — 서비스가 Keycloak 의 기밀 클라이언트** |
+| 계정 만들기 | 회원가입 | 라이더 가입(rider-service) | **hr-service**(새) → Keycloak Admin API + 메일 사서함 |
+| 토큰 검증 | 게이트웨이 + 각 서비스(발급자 표) | 같음 | 같음 — 발급자 표 `staff` 줄만 바뀐다 |
+
+## 2. OAuth 역할 — 누가 무엇인가
+
+| OAuth 역할 | 이 설계에서 |
+|---|---|
+| 인가 서버(Authorization Server, OIDC 제공자) | Keycloak(PC 5) |
+| 클라이언트 — 로그인 | **employee-auth-service** (기밀, `authorization_code` + PKCE) — Keycloak 에 등록되는 유일한 로그인 클라이언트 |
+| 클라이언트 — 관리 | **hr-service** (기밀, `client_credentials`, 서비스 계정 권한 `manage-users`·`view-users` 만) |
+| 리소스 서버 | api-gateway, 모든 업무 서비스 — **PMart 직원 JWT 만** 검증. Keycloak 토큰을 보지 않는다 |
+| 리소스 소유자 | 직원(MFC 작업자·본사 운영자·인사팀 …) |
+| 클라이언트가 **아닌 것** | Flutter PDA 앱(mfc_app), React 백오피스 — 로그인 화면은 앱이 연 브라우저에 뜨지만, 인가 코드를 받고 토큰으로 바꾸는 쪽은 employee-auth-service. 앱에는 client_secret 도 Keycloak 토큰도 없다 |
+
+employee-auth-service 는 **두 얼굴**이다: Keycloak 쪽에서 보면 OAuth 클라이언트, PMart 안에서 보면 JWT 발급자(개인키 서명·JWKS 공개). auth-service 가 Google 에 대해 하는 일과 같은 자리다(다만 auth-service 는 ID 토큰 검증만 하고 인가 코드 교환은 하지 않는다 — ADR-0055).
+
+## 3. 구성요소와 책임 경계
+
+| 구성요소 | 소유(책임) | 소유하지 않음 |
+|---|---|---|
+| **Keycloak** (있음) | 직원 IAM 계정(`username = email = <id>@pmart.com`), 비밀번호·잠금(5회), Keycloak 세션·SSO, 비밀번호 설정/재설정·이메일 확인 메일 발송(내장 기능, SMTP 로 메일 서버에 맡김), 사용자 속성 `pmart_operator_id` | PMart 역할·센터(§13 D1), PMart 토큰, 메일 사서함 |
+| **employee-auth-service** (새) | Keycloak 로그인 연동(OAuth2 Client), Keycloak ID 토큰 검증, `Keycloak sub ↔ OP-…` 연결, 직원 로그인 상태(ACTIVE/DISABLED/LEFT), 일회용 로그인 티켓, 직원 세션·Refresh 회전, **PMart 직원 JWT 발급·JWKS**, 직원 차단 사건 발행 | 직원 인사 정보(hr-service), 계정 만들기, 역할 부여 승인(approval) |
+| **hr-service** (새) | 직원 등록·퇴사·정지의 업무 흐름, 직원 인사 기본 정보(이름·메일 ID·소속 센터·직무), 운영자 ID `OP-<UUID>` 매기기, **계정 발급 진행 상태**(사서함 → IAM → 안내 메일 — 부분 실패 재시도·보상), Keycloak Admin API 호출, 사서함 만들기 요청 | 로그인·토큰(employee-auth-service), 역할의 유효성 판단(auth-service RoleGrant — §13 D1) |
+| **mailserver** (새, docker-mailserver) | `@pmart.com` 사서함, SMTP(받기·보내기)·IMAP | 계정 정책(hr-service), 외부 인터넷 메일(하지 않는다 — §9) |
+| **roundcube** (새) | 사서함을 보는 웹메일 화면(IMAP 읽기 + SMTP 보내기) | 메일 저장(메일 서버) |
+| **api-gateway** (있음) | `/api/v1/employee-auth/**`·`/api/v1/hr/**` 라우팅, `/iam/**` → Keycloak OIDC 경로 중계(관리 경로 차단), PMart JWT 검증·차단 목록 | 로그인 처리 자체 |
+| **auth-service** (있음) | 고객·비회원 그대로. **RoleGrant·Delegation·긴급권한 정본은 그대로**(service-map) — 직원 역할 조회 API 를 employee-auth-service 에 제공(§13 D1 권장안) | 직원 로그인·직원 토큰(이전 뒤 내림) |
+
+service-map 51개 → 53개(employee-auth-service, hr-service). 메일 서버·웹메일은 인프라(placement 구성요소)로 둔다.
+
+## 4. 배치 — 직원 신원 묶음을 PC 5 에
+
+| 구성요소 | PC | LAN 포트 | 컨테이너 안 | DB | 메모리 상한 |
+|---|---|---|---|---|---|
+| keycloak (있음) | PC 5 | 8180 | 8080 · 9000(관리) | pc5 postgres `keycloak` | 1.5 GB |
+| employee-auth-service | PC 5 | **8511** | 8511 | pc5 postgres `employee_auth_service` | 768 MB |
+| hr-service | PC 5 | **8512** | 8512 | pc5 postgres `hr_service` | 768 MB |
+| mailserver | PC 5 | **없음**(LAN 미공개) | 25 · 587 · 143 · 993 | 볼륨 `mail-data`·`mail-state`·`mail-logs`·설정 | 1 GB |
+| roundcube | PC 5 | **8190** | 80 | 볼륨 `roundcube-data`(SQLite) | 256 MB |
+
+왜 PC 5 인가:
+- Keycloak 이 이미 PC 5 에 있다. Keycloak → 메일 서버(SMTP), hr-service → Keycloak(Admin API), employee-auth-service → Keycloak(`/token`·JWKS)이 **같은 Docker 네트워크 안**에서 끝나 메일 포트·관리 API 를 LAN 에 열 필요가 없다.
+- PC 4 는 이미 구성요소 22개·디스크 여유 61 GB 로 가장 무겁고, 8080 은 게이트웨이가 쓴다(가이드의 Roundcube 8080 과 겹침 → 8190 으로 바꿈). PC 2 는 주문·결제와 CPU 를 나누지 않기로 RAG 를 뺀 PC, PC 3 은 MFC 개발 PC.
+- 늘어나는 양 약 2.8 GB. 2026-11-12 PC 5 남은 메모리 17.1 GB(Docker VM 25 GB) — ollama(GPU)·배송 6개·개발 작업과 함께 감당 가능. 느려지면 employee-auth·hr 를 PC 4 로 옮긴다(Eureka 등록이라 주소 고정 없음).
+- 위험: 직원 로그인 전부가 PC 5 하나에 달린다(지금도 Keycloak 때문에 같음). PC 5 는 2026-11-11 08:56 비정상 종료 이력이 있어 지켜본다.
+- 포트: 85xx 는 인증·배송 계열(8501 auth-service … 8510 rider-auth-service) 다음 번호. 8190 은 Keycloak 8180 옆.
+- `placement.conf` pc5 줄 **끝에** 붙인다(컨테이너 고정 IP 가 순서로 정해짐). mailserver·roundcube 는 LAN 포트가 없거나 actuator 가 없으므로 `watch.sh` `check()` 에 점검 방법을 같이 넣는다(SMTP 응답 `220`, Roundcube HTTP 200).
+
+## 5. 구조도
+
+```mermaid
+flowchart LR
+  subgraph 직원기기[직원 기기]
+    PDA[Flutter PDA 앱<br/>mfc_app · 클라이언트 아님]
+    BR[시스템 브라우저<br/>Custom Tabs]
+    BO[React 백오피스<br/>클라이언트 아님]
+  end
+  subgraph PC4[PC 4]
+    GW[api-gateway :8080<br/>PMart JWT 검증 · 차단 목록]
+    REDIS[(Redis 차단 목록)]
+  end
+  subgraph PC5[PC 5 — 직원 신원 묶음]
+    KC[Keycloak :8180<br/>Realm pmart-staff]
+    EA[employee-auth-service :8511<br/>OAuth2 Client · JWT 발급 · JWKS]
+    HR[hr-service :8512<br/>계정 발급 · Admin API]
+    MS[mailserver<br/>Postfix · Dovecot<br/>@pmart.com]
+    RC[Roundcube :8190]
+    PG[(postgres<br/>keycloak · employee_auth_service · hr_service)]
+  end
+  SVC[업무 서비스들<br/>PC 2·3·5 · 리소스 서버]
+
+  PDA -- 로그인 버튼 --> BR
+  BR -- /api/v1/employee-auth/** --> GW
+  BR -- /iam/realms/pmart-staff/protocol/** --> GW
+  BO -- /api/v1/** --> GW
+  GW --> EA
+  GW -- /iam 중계 --> KC
+  GW --> HR
+  GW -- Bearer PMart JWT --> SVC
+  GW <--> REDIS
+  EA -- /token · JWKS (내부) --> KC
+  HR -- client_credentials · Admin API (내부) --> KC
+  HR -- 사서함 만들기 --> MS
+  KC -- SMTP 25 (내부) --> MS
+  RC -- IMAP · SMTP (내부) --> MS
+  EA -.JWKS.-> GW
+  EA -.JWKS.-> SVC
+  HR -. EmployeeRegistered 등 Kafka .-> EA
+  EA -. SubjectBlocked Kafka .-> GW
+```
+
+통신 길은 두 종류다:
+- **브라우저 리디렉션** — 직원이 비밀번호를 치는 Keycloak 화면은 브라우저가 닿아야 한다. 게이트웨이가 `/iam/**` 로 Keycloak 의 OIDC·로그인 화면 경로**만** 중계한다(`/iam/admin/**`, `/iam/realms/master/**` 차단).
+- **서버끼리 직접** — employee-auth → Keycloak `/token`·certs, hr → Keycloak Admin API, Keycloak → 메일 서버는 PC 5 Docker 네트워크 안에서 바로. 게이트웨이를 다시 거치지 않는다.
+
+## 6. Keycloak 설정 — 지금 → 이 설계
+
+| 항목 | 지금(ADR-0054) | 이 설계 |
+|---|---|---|
+| 로그인 클라이언트 | `pmart-backoffice`(공개, PKCE) | **`employee-auth-service`**(기밀, Standard flow + PKCE, Direct access·Implicit 끔). Redirect URI `http://192.168.0.40:8080/api/v1/employee-auth/login/oauth2/code/keycloak`. `pmart-backoffice` 는 이전 뒤 삭제 |
+| 관리 클라이언트 | `pmart-auth-relay`(관리 기록 읽기 — 차단 중계) | **`hr-service`**(기밀, 서비스 계정만, `realm-management` 의 `manage-users`·`view-users`). `pmart-auth-relay` 는 "Keycloak 화면에서 직접 막는 경우"가 없어지면 삭제(§13 D6) |
+| 개발 클라이언트 | `pmart-dev-cli`(직접 로그인) | Keycloak 토큰은 API 가 받지 않게 되므로 그대로는 쓸모없다 → §13 D5 |
+| 토큰의 쓰임 | Keycloak Access Token 을 API 에 그대로 | Keycloak 토큰은 employee-auth-service 안에서만 쓰고 끝(앱에 내려가지 않음) |
+| 역할·센터 | Realm 역할 10개 + 사용자 속성 `centers` | PMart 쪽으로(§13 D1). Keycloak 에는 계정·비밀번호·상태·`pmart_operator_id` 만 |
+| 주소(`iss`) | `KC_HOSTNAME=http://192.168.0.101:8180` | `KC_HOSTNAME=http://192.168.0.40:8080/iam`, `KC_PROXY_HEADERS=xforwarded`, 내부 호출은 `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` — 브라우저가 본 주소와 `iss` 를 같게. **구현 때 Keycloak 26.8 에서 확인**(경로 붙은 hostname·게이트웨이 StripPrefix) |
+| 메일(SMTP) | 없음 | Realm → Email: host `mailserver`, port 25, from `no-reply@pmart.com`, 인증·TLS 없음(같은 Docker 네트워크만 허용 — §9) |
+| 계정 | 관리 콘솔에서 직접(결정 L) | hr-service 가 Admin API 로. 관리 콘솔은 Keycloak 관리자 전용(LAN 비노출 검토) |
+| 퇴사 | 관리 콘솔에서 비활성 → 관리 기록 → auth-service 중계(결정 M) | hr-service 가 `enabled=false` + 세션 로그아웃, 사건으로 바로 차단(§7-④). **삭제하지 않는다** |
+
+## 7. 흐름
+
+### ① 직원 로그인 (PDA)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant App as PDA 앱
+  participant B as 시스템 브라우저
+  participant GW as Gateway
+  participant EA as employee-auth
+  participant KC as Keycloak
+  App->>B: 로그인 → Custom Tab 열기
+  B->>GW: GET /api/v1/employee-auth/oauth2/authorization/keycloak?app=mfc
+  GW->>EA: (공개 경로)
+  EA->>EA: state · PKCE 만들어 브라우저 세션에 저장
+  EA-->>B: 302 → /iam/realms/pmart-staff/protocol/openid-connect/auth?client_id=employee-auth-service…
+  B->>GW: GET /iam/… (게이트웨이가 Keycloak 으로 중계)
+  KC-->>B: 로그인 화면
+  B->>KC: gildong@pmart.com + 비밀번호 (Keycloak 만 봄)
+  KC-->>B: 302 → …/login/oauth2/code/keycloak?code&state
+  B->>GW: GET 콜백 → EA
+  EA->>KC: POST /token (code + client_secret + code_verifier, 내부)
+  KC-->>EA: ID · Access Token
+  EA->>EA: ID 토큰 검증(서명·iss·aud·만료) → pmart_operator_id 로 직원 찾기 → 상태 확인 → 60초 1회용 티켓
+  EA-->>B: 302 → pmart-mfc://login?ticket=T-…
+  B-->>App: 딥링크로 앱 복귀
+  App->>GW: POST /api/v1/employee-auth/tokens {ticket} + X-Device-Id
+  GW->>EA: (공개 경로)
+  EA-->>App: PMart 직원 Access(15분) + Refresh
+```
+
+- 로그인 시작(②)과 콜백(⑩)을 **같은 브라우저**가 해야 state 쿠키가 맞는다 — 그래서 앱이 아니라 브라우저가 시작 주소를 연다. 일반 WebView 금지(RFC 8252).
+- 토큰을 딥링크 주소에 싣지 않는다. 주소에는 60초·1회용·발급 기기 확인 티켓만.
+- 앱으로 돌아갈 주소는 설정의 허용 목록(`app=mfc` → `pmart-mfc://login`, `app=backoffice` → 백오피스 주소)에서만 고른다(열린 리디렉션 방지).
+- **백오피스**도 같은 흐름: 딥링크 대신 백오피스 주소로 redirect + 티켓 교환. Keycloak 에 등록된 클라이언트는 여전히 `employee-auth-service` 하나.
+- 공용 PDA 로그아웃은 Keycloak 세션도 끝낸다(`end_session_endpoint`) — 다음 작업자가 앞사람으로 자동 로그인되지 않게.
+
+### ② 로그인 뒤 업무 API
+
+지금 구조 그대로. 게이트웨이: 발급자 표에서 `iss` = employee-auth-service 줄 → JWKS 서명·만료 → `aud=pmart-api`·종류 `OPERATOR` 짝 → Redis 차단 목록 → 서비스. 서비스(common-security): 같은 발급자 표로 다시 검증 → `roles`·`centers` 로 업무 권한(403).
+
+PMart 직원 JWT 모양은 **예전 auth-service 운영자 토큰과 같다**(`sub=OP-…`, `typ=OPERATOR`, `roles`, `centers`, `aud=[pmart-api]`, `sid`, `jti`, 15분). 그래서 업무 서비스의 권한 코드는 바뀌지 않고, 발급자 표 `staff` 줄의 특수 설정(`type-claim: ''`, `subject-claim: pmart_operator_id`, `roles-claim: realm_access.roles`)이 사라진다.
+
+```yaml
+# pmart-config application-lan.yml (제안)
+pmart:
+  security:
+    issuers:
+      - id: staff
+        issuer-uri: 'http://employee-auth-service:8511'
+        jwk-set-uri: 'http://employee-auth-service:8511/api/v1/internal/jwks'
+        audiences: [pmart-api]
+        user-types: [OPERATOR]
+```
+
+### ③ 신규 직원 등록 (hr-service) — 여러 시스템에 걸친 흐름
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant HRU as 인사팀(백오피스)
+  participant HR as hr-service
+  participant MS as mailserver
+  participant KC as Keycloak
+  participant EA as employee-auth
+  HRU->>HR: POST /api/v1/hr/employees {이름, 메일 ID, 센터, 직무}
+  HR->>HR: 권한 확인 → OP-<UUID> 매김 → 진행 상태 REQUESTED
+  HR->>MS: 사서함 gildong@pmart.com 만들기 → MAILBOX_CREATED
+  HR->>KC: client_credentials 관리 토큰
+  HR->>KC: POST /admin/realms/pmart-staff/users (email, pmart_operator_id, requiredActions UPDATE_PASSWORD) → IAM_CREATED
+  HR->>KC: PUT …/users/{id}/execute-actions-email [UPDATE_PASSWORD] → INVITE_SENT
+  KC->>MS: 비밀번호 설정 링크 메일(SMTP)
+  HR-->>EA: EmployeeRegistered (Kafka) → 연결·ACTIVE 등록
+  HR-->>HRU: 완료 + 사서함 초기 비밀번호는 별도 경로 안내
+```
+
+- 순서: **사서함이 메일을 받을 수 있게 된 뒤에** 안내 메일을 보낸다(메일 가이드 결론).
+- 부분 실패: 단계마다 진행 상태를 hr-service DB 에 기록. 재시도는 멱등("이미 있으면 건너뛰기" — Keycloak 은 username 중복 409 를 성공으로 본다), 끝내 안 되면 보상(만든 사서함 비활성). 새 다단계 흐름이므로 구현 커밋에서 `docs/business/flows/` 에 흐름 문서를 쓴다.
+- Keycloak 은 비밀번호를 평문으로 돌려주지 않는다 → 본인이 메일 링크로 정한다. 메일 본문에 비밀번호를 쓰지 않는다.
+- 직원은 비밀번호가 둘이다: **IAM(Keycloak) 비밀번호**(링크로 본인이 정함)와 **사서함 비밀번호**(Roundcube 로그인용, 초기값은 인사팀이 별도 경로로 전달 → 첫 로그인 때 변경). 두 비밀번호를 맞추지 않는다.
+- 사서함 만들기 방법: §9-6.
+
+### ④ 갱신 · 로그아웃 · 퇴사/정지
+
+- 갱신: `POST /api/v1/employee-auth/tokens/refresh` — 상태 다시 확인 후 새 쌍(1회용 회전, 해시만 저장). Keycloak 에 다시 가지 않는다.
+- 로그아웃: `POST /api/v1/employee-auth/logouts` — PMart 세션 종료(+ 공용 기기는 Keycloak 세션도).
+- 세션 길이: Access 15분, 세션은 근무 교대 기준(지금 Keycloak 세션 12시간과 같은 값 제안).
+- 퇴사·정지: 인사팀 `POST /api/v1/hr/employees/{id}/leave`(또는 `/suspend`) → hr-service 가 Keycloak `enabled=false` + 사용자 세션 로그아웃 → `EmployeeLeft`/`EmployeeSuspended` 사건 → employee-auth-service 가 상태 LEFT/DISABLED, Refresh 전부 무효, **`SubjectBlocked`**(있는 계약 `contracts/events/SubjectBlocked.v1.json`) 발행 → 게이트웨이 Redis 차단 목록 → 이미 나간 15분 토큰도 바로 401 `SUBJECT_BLOCKED`.
+- 사서함은 퇴사 때 바로 지우지 않고 비활성(보존 기간은 §13 D7).
+
+## 8. 서비스별 데이터 · API · 사건 (제안)
+
+**employee-auth-service** (DB `employee_auth_service`)
+
+| 표 | 내용 |
+|---|---|
+| `employee_identity` | Keycloak `sub`(UUID) ↔ 운영자 ID `OP-…` (고객 auth-service `social_identity` 와 같은 역할) |
+| `employee_status` | ACTIVE / DISABLED / LEFT — Keycloak 인증이 성공해도 PMart 에서 막힌 직원은 토큰을 못 받는다 |
+| `login_ticket` | 해시, 60초, 1회, 발급 기기, 복귀 앱 |
+| `employee_session`·`refresh_token` | 세션, Refresh 해시(회전) |
+
+API: `GET /oauth2/authorization/keycloak`·`GET /login/oauth2/code/keycloak`(Spring OAuth2 Client 기본 경로, 공개), `POST /tokens`(티켓 교환, 공개), `POST /tokens/refresh`, `POST /logouts`, `GET /sessions/current`, `GET /internal/jwks`. 계약 `contracts/openapi/employee-auth-service.yaml`.
+의존성: `spring-boot-starter-oauth2-client`(Keycloak 클라이언트), `common-jwt`(발급·JWKS), `common-security`(자기 API 보호). 상태 저장 브라우저 세션(state·PKCE)은 1대라 서버 메모리로 시작, 여러 대가 되면 Redis 세션.
+
+**hr-service** (DB `hr_service`)
+
+| 표 | 내용 |
+|---|---|
+| `employee` | `OP-…`, 이름, 메일 ID(`@pmart.com`), 소속 센터, 직무, 재직 상태 |
+| `provisioning` | 직원별 단계 상태(REQUESTED → MAILBOX_CREATED → IAM_CREATED → INVITE_SENT / FAILED_xxx), 시도 횟수, 마지막 오류 코드(비밀값·비밀번호 없음) |
+| outbox | 사건 발행(같은 트랜잭션) |
+
+API: `POST /hr/employees`, `GET /hr/employees`, `POST /hr/employees/{id}/leave`, `POST /hr/employees/{id}/suspend`, `POST /hr/employees/{id}/resend-invite`. 권한: 인사 역할(이름 §13 D3).
+사건(새, `contracts/events/` + `docs/architecture/events.md`): `EmployeeRegistered`, `EmployeeSuspended`, `EmployeeReinstated`, `EmployeeLeft` — 발행 hr-service, 구독 employee-auth-service(+ 필요하면 mfc 작업자 관리). 직원 차단은 있는 `SubjectBlocked`(발행자에 employee-auth-service 추가).
+
+## 9. 사내 메일 서버 — 가이드의 문제점과 PMart 에서 정한 것
+
+가이드(`baropick_mail_iam_guide.html`)의 구조(docker-mailserver + Roundcube, Keycloak 내장 메일 먼저)는 그대로 따른다. 가이드가 스스로 적은 문제(15장)와 PMart 규칙에 걸리는 것을 이렇게 정한다.
+
+| # | 가이드의 문제 | 정한 것 |
+|---|---|---|
+| 1 | 이미지 `latest` | 검증한 버전 **digest 고정**(Keycloak 처럼 태그만 두지 않는다). 갱신은 PR |
+| 2 | 메일 포트 5개(25·465·587·143·993)를 호스트에 공개 — "공개 필요 없다"는 본문과 모순 | **메일 포트는 LAN 에 하나도 열지 않는다.** Keycloak·Roundcube·hr-service 는 같은 PC 5 Docker 네트워크 안에서 접속. LAN 에는 Roundcube 8190 만 |
+| 3 | TLS 없이 STARTTLS·SMTP 인증 설정 → 실패 가능 | (a) Keycloak → 메일 서버: 포트 25, 인증·TLS 없이 **Docker 네트워크에서만 받기**(`PERMIT_DOCKER=connected-networks`) — SMTP 비밀번호 비밀값 자체가 없어진다. (b) Roundcube ↔ IMAP/SMTP: Dovecot 은 TLS 없는 평문 로그인을 막으므로 **내부용 자체 서명 인증서**(`SSL_TYPE=self-signed`, `mail.pmart.com`), Roundcube 는 내부 인증서 확인 끔. 구현 때 고정 버전 문서로 확인 |
+| 4 | `ONE_DIR`·`DMS_DEBUG` 는 최신판에서 없어지거나 `LOG_LEVEL` 로 바뀜 | 쓰지 않는다. `LOG_LEVEL`. ClamAV·SpamAssassin·Fail2ban 끔(내부망·메모리) |
+| 5 | 계정이 하나도 없으면 Dovecot 이 제대로 뜨지 않음 | 배포 때 `no-reply@pmart.com`(Keycloak 발신용)과 `postmaster@pmart.com` 을 먼저 만든다(`lan.sh` 배포 단계) |
+| 6 | `setup email add` 는 컨테이너 안 명령 — HTTP API 가 아님, `docker.sock` 마운트는 금지 | **단계적으로.** 1단계: hr-service 가 진행 상태를 `MAILBOX_PENDING` 으로 두고, 관리자가 `lan.sh mail-add <id>`(ssh → `docker exec … setup email add`)로 만든 뒤 hr-service 에서 "사서함 완료"를 누른다. 2단계(직원이 늘면): 메일 서버 옆 작은 프로비저닝 사이드카(내부 HTTP, 서비스 토큰 인증, 그 컨테이너만 `setup` 실행 권한) — 따로 결정 |
+| 7 | 비밀값을 `.env` 에 | `.secrets/` 원본 + pmart-config `{cipher}`(§10). `.env` 는 쓰지 않는다 |
+| 8 | 발급 순서가 원본 두 개에서 다름 | 사서함 → Keycloak → 안내 메일(§7-③) |
+| 9 | 볼륨 삭제(`down -v`)로 사서함 유실 | `lan.sh` 에 볼륨 삭제 명령을 두지 않는다. 메일 볼륨 백업은 DB 백업 방침과 함께 정한다(§13 D7) |
+
+**`@pmart.com` 쓰는 것에 대해**(사용자 결정 ①): 메일 서버의 **로컬 도메인**을 `pmart.com` 으로 두면 우리 서버 안의 `@pmart.com` 끼리는 공개 DNS 없이 바로 전달된다 — 동작에 문제없다. 다만 `pmart.com` 은 우리가 소유한 인터넷 도메인이 아니므로:
+- 메일 서버가 **바깥으로 보내지 않게** 한다(릴레이 호스트 없음, 외부 도메인 받는 사람 거부). 잘못 새면 실제 `pmart.com` 소유자에게 간다.
+- 바깥(Gmail 등)과는 주고받을 수 없다 — 의도한 범위.
+- 이름 해석이 필요하면 내부만(`mail.pmart.com` → PC 5, hosts 또는 Docker 네트워크 별칭).
+
+## 10. 비밀값 (PMart 방식)
+
+원본은 PC 1 `deploy/lan/.secrets/`(git 제외), 앱 설정에는 pmart-config `{cipher}` 암호문만, 컨테이너 환경변수는 `render.sh` 가 원본에서 넣는다. 로그에 남기지 않는다. `init-secrets.sh` 에 생성 단계를 추가한다.
+
+| 새 비밀값(`.secrets/`) | 쓰는 곳 | 넣는 방식 |
+|---|---|---|
+| `keycloak-employee-auth-client-secret` | employee-auth-service ↔ Keycloak | pmart-config `{cipher}` + Realm 파일(render) |
+| `keycloak-hr-client-secret` | hr-service ↔ Keycloak | 같음 |
+| `employee-auth-signing-key.pem`·`employee-auth-signing-kid` | PMart 직원 JWT 서명 | pmart-config `{cipher}`(rider-auth 와 같은 방식) |
+| `employee-auth-db-password`·`hr-db-password` | 각 DB | 기존 DB 비밀번호 방식 |
+| `mail-postmaster-password`·`mail-noreply-password` | 기본 사서함 | render → 배포 단계 |
+| `mail-tls/`(자체 서명 키·인증서) | 메일 서버 TLS | 볼륨 마운트(읽기 전용) |
+
+SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀번호는 저장하지 않는다(만들 때 한 번 전달, 본인이 변경).
+
+## 11. 게이트웨이 변경
+
+- 라우트: `/api/v1/employee-auth/**` → employee-auth-service, `/api/v1/hr/**` → hr-service, `/iam/**` → Keycloak(`http://192.168.0.101:8180`, StripPrefix 1, `X-Forwarded-*` 전달).
+- 공개 경로(토큰 없음): 로그인 시작·콜백·`POST /tokens`·`/tokens/refresh`, `/iam/realms/pmart-staff/protocol/openid-connect/**`, `/iam/realms/pmart-staff/login-actions/**`, `/iam/resources/**`(로그인 화면 CSS·JS).
+- **차단**: `/iam/admin/**`, `/iam/realms/master/**`, 그 밖의 `/iam/**`.
+- 경로별 사용자 종류 허용 목록(`x-pmart-user-types`): 새 계약 경로 추가.
+- 운영 전환 때 TLS 필수(비밀번호·코드·티켓이 오간다) — 지금 LAN 은 HTTP.
+
+## 12. 지금 구조에서 옮기는 순서 (제안)
+
+1. **ADR-0056** 작성 — ADR-0054 직원 부분 대체, 결정 L·M 대체. service-map 에 두 서비스, `docs/architecture/events.md`, `docs/business/flows/`(계정 발급 흐름).
+2. 메일 서버·Roundcube 배치(PC 5) — 기본 사서함, Keycloak SMTP 설정, 비밀번호 재설정 메일이 사서함에 도착하는지 확인.
+3. employee-auth-service — 계약 → 구현 → 시험(Keycloak 컨테이너로 인가 코드 흐름 통합 시험) → 배치. 발급자 표에 `staff-ea` 줄을 **추가**(옮기는 동안 Keycloak 줄과 함께 둠).
+4. Keycloak 주소를 게이트웨이 `/iam` 로 — `iss` 가 바뀌므로 3 과 같은 배포 창에서, 백오피스 영향 확인.
+5. hr-service — 계약 → 구현(진행 상태·재시도·보상) → 배치. 사서함은 §9-6 1단계 방식.
+6. 클라이언트 요청(`docs/handoff/clients/`): 백오피스 로그인을 "employee-auth 시작 주소 → 티켓 교환"으로 다시 바꿈, mfc_app 로그인 새로(Custom Tabs + 딥링크 `pmart-mfc://login`), 인사팀 직원 등록 화면.
+7. 전환 확인 뒤 정리 — Keycloak 줄·`pmart-backoffice`·(D6 에 따라) `pmart-auth-relay`·auth-service 운영자 로그인·`StaffBlockRelay` 내림, Realm 역할 정리(D1).
+
+## 13. 정해야 할 것
+
+| # | 질문 | 권장 |
+|---|---|---|
+| D1 | 직원 역할·센터의 정본 | **auth-service RoleGrant 그대로**(service-map 경계 유지). employee-auth-service 가 토큰 발급·갱신 때 auth-service 내부 API 로 유효 역할·센터를 조회. Keycloak Realm 역할은 이전 뒤 없앰 |
+| D2 | 직원 ID 형식 | `username = email = <메일 ID>@pmart.com`, 기존 운영자 13명은 지금 `OP-…` 그대로 연결하고 메일 ID 를 새로 정함(목록 필요) |
+| D3 | 인사 권한 역할 이름 | `HR_ADMIN` 새 역할(역할 부여는 지금처럼 approval 흐름) |
+| D4 | 직원 등록에 받는 항목·규칙(직무 목록, 센터 여러 개, 정규직·알바·일일크루 구분 등) | 업무 문서에 없으면 추측하지 않는다 — 사용자 확인. MFC 작업자 유형 설계(보류 중)와 맞춘다 |
+| D5 | LAN 시험 스크립트(claude-dev)의 직원 토큰 받는 법 — 브라우저 흐름을 스크립트가 할 수 없음 | `pmart-dev-cli`(직접 로그인)로 Keycloak 토큰 → employee-auth-service 의 **LAN 전용**(설정으로만 켜는) 교환 경로 `POST /internal/dev-token-exchange` → PMart JWT. prod 프로필에서는 경로 자체가 없음 |
+| D6 | Keycloak 관리 콘솔에서 직접 막는 경우를 남길지 | 남기지 않음(모든 퇴사·정지는 hr-service) → `pmart-auth-relay`·`StaffBlockRelay` 내림. 남기면 중계도 유지 |
+| D7 | 사서함 보존 기간·메일 백업 | 퇴사 뒤 비활성 보존, 기간은 사용자 결정 |
+| D8 | PDA 공용 기기 로그아웃 정책(교대 때 강제 로그아웃 등) | MFC 근무 교대 규칙과 함께 결정 |
+| D9 | 사서함 자동화 2단계(사이드카) 시점 | 직원 수가 늘거나 시연 요구가 생길 때 |
+
+## 14. 감수하는 것
+
+- 서비스 2개 + 인프라 2개가 늘어난다(배포·감시 대상, PC 5 부담).
+- 이미 배포한 백오피스 Keycloak 직접 로그인(ADR-0054)을 다시 바꾼다.
+- 로그인 결과를 앱에 넘기는 티켓 설계, Keycloak 을 게이트웨이 뒤로 숨기는 프록시·`iss` 설정을 정확히 맞춰야 한다.
+- 직원이 비밀번호를 둘(IAM·사서함) 가진다.
+- 얻는 것: 세 사용자 종류의 로그인 모양이 같아지고, 업무 서비스는 Keycloak 토큰 모양을 몰라도 되며(예전 운영자 토큰과 같은 모양), 앱에 Keycloak 토큰·비밀이 없고, 퇴사·정지가 인사 흐름 안에서 바로 차단으로 이어진다. 나중에 IdP 를 바꿔도 employee-auth-service 만 고친다.

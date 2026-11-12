@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PMart Keycloak 적용안</title>
+<meta name="description" content="강의(ChatGPT 대화)에서 정리한 Keycloak 직원 인증 설계를 PMart 실제 구조에 적용했을 때의 구성과 흐름을 초보자 눈높이로 정리한 안내서">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f7fb; --surface:#ffffff; --surface-2:#f0f2f8; --text:#1b1f2a; --muted:#5d6577; --border:#dde1ea;
+  --accent:#2f5bea; --accent-soft:#e6ecfe;
+  --kc:#7c3aed; --kc-soft:#f1eafe;
+  --emp:#0f766e; --emp-soft:#e0f5f2;
+  --ok:#15803d; --ok-soft:#e5f6ea;
+  --warn:#b45309; --warn-soft:#fdf2df;
+  --danger:#c62828; --danger-soft:#fde8e8;
+  --code-bg:#f3f4f8;
+  --shadow:0 1px 2px rgba(20,30,60,.06),0 4px 16px rgba(20,30,60,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1218; --surface:#171b24; --surface-2:#1e2330; --text:#e7eaf1; --muted:#9aa3b5; --border:#2b3242;
+    --accent:#7d9bff; --accent-soft:#1d2848;
+    --kc:#b794ff; --kc-soft:#2a1f45;
+    --emp:#4fd1c5; --emp-soft:#123330;
+    --ok:#5fd38a; --ok-soft:#14301f;
+    --warn:#f2b45a; --warn-soft:#3a2a12;
+    --danger:#ff7b7b; --danger-soft:#3d1a1a;
+    --code-bg:#1b2030; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --surface:#171b24; --surface-2:#1e2330; --text:#e7eaf1; --muted:#9aa3b5; --border:#2b3242;
+  --accent:#7d9bff; --accent-soft:#1d2848;
+  --kc:#b794ff; --kc-soft:#2a1f45;
+  --emp:#4fd1c5; --emp-soft:#123330;
+  --ok:#5fd38a; --ok-soft:#14301f;
+  --warn:#f2b45a; --warn-soft:#3a2a12;
+  --danger:#ff7b7b; --danger-soft:#3d1a1a;
+  --code-bg:#1b2030; --shadow:none;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth; -webkit-text-size-adjust:100%}
+body{margin:0; background:var(--bg); color:var(--text); font:16px/1.75 "Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif; word-break:keep-all; overflow-wrap:anywhere}
+code,pre{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace; font-size:.88em}
+code{background:var(--code-bg); border:1px solid var(--border); padding:.05em .4em; border-radius:6px}
+pre{background:var(--code-bg); border:1px solid var(--border); border-radius:12px; padding:14px 16px; overflow-x:auto; line-height:1.6; margin:12px 0}
+pre code{background:none; border:0; padding:0}
+a{color:var(--accent)}
+mark{background:linear-gradient(transparent 55%, var(--warn-soft) 55%); color:inherit; padding:0 .1em; font-weight:700}
+
+.layout{display:grid; grid-template-columns:260px minmax(0,1fr); gap:32px; max-width:1240px; margin:0 auto; padding:24px 16px 80px}
+nav.toc{position:sticky; top:16px; align-self:start; max-height:calc(100vh - 32px); overflow:auto; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; font-size:14px; box-shadow:var(--shadow)}
+nav.toc h2{font-size:13px; letter-spacing:.06em; color:var(--muted); margin:0 0 8px}
+nav.toc ol{margin:0; padding-left:20px}
+nav.toc li{margin:4px 0}
+nav.toc a{color:var(--text); text-decoration:none}
+nav.toc a:hover{color:var(--accent)}
+main{min-width:0}
+
+header.hero{background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:28px; box-shadow:var(--shadow); position:relative}
+.hero .eyebrow{display:inline-block; font-size:13px; font-weight:700; color:var(--emp); background:var(--emp-soft); padding:3px 10px; border-radius:999px}
+.hero h1{font-size:clamp(26px,4vw,38px); line-height:1.3; margin:12px 0 8px; font-weight:900}
+.hero p{color:var(--muted); margin:0}
+.theme-btn{position:absolute; top:18px; right:18px; background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:999px; padding:6px 12px; font:inherit; font-size:13px; cursor:pointer}
+
+section{margin-top:40px}
+section > h2{font-size:clamp(21px,3vw,27px); line-height:1.35; margin:0 0 6px; font-weight:900; display:flex; gap:10px; align-items:baseline}
+section > h2 .num{color:var(--accent); font-family:"JetBrains Mono",monospace; font-size:.8em}
+section > .lead{color:var(--muted); margin:0 0 16px}
+h3{font-size:19px; margin:28px 0 8px}
+h4{font-size:16px; margin:14px 0 6px}
+
+.card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px 20px; box-shadow:var(--shadow); margin:14px 0}
+.card.emp{border:2px solid var(--emp)}
+.card.kc{border:2px solid var(--kc)}
+.grid{display:grid; gap:14px}
+.grid.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid.c3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid .card{margin:0}
+.card h4:first-child{margin-top:0}
+
+.callout{border-radius:12px; padding:14px 16px 14px 18px; margin:14px 0; border:1px solid var(--border); border-left-width:5px; background:var(--surface)}
+.callout .t{font-weight:900; display:block; margin-bottom:4px}
+.callout.key{border-left-color:var(--accent); background:var(--accent-soft)} .callout.key .t{color:var(--accent)}
+.callout.warn{border-left-color:var(--warn); background:var(--warn-soft)} .callout.warn .t{color:var(--warn)}
+.callout.danger{border-left-color:var(--danger); background:var(--danger-soft)} .callout.danger .t{color:var(--danger)}
+.callout.ok{border-left-color:var(--ok); background:var(--ok-soft)} .callout.ok .t{color:var(--ok)}
+.callout.emp{border-left-color:var(--emp); background:var(--emp-soft)} .callout.emp .t{color:var(--emp)}
+.callout p{margin:4px 0}
+.callout ul,.callout ol{margin:6px 0; padding-left:20px}
+
+.tldr{display:grid; gap:12px; grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:18px}
+.tldr .item{background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:14px}
+.tldr .item b{display:block; font-size:15px; margin-bottom:4px}
+.tldr .item span{color:var(--muted); font-size:14.5px}
+.tldr .item.kc{border-color:var(--kc); background:var(--kc-soft)}
+.tldr .item.emp{border-color:var(--emp); background:var(--emp-soft)}
+
+.tbl{overflow-x:auto; margin:12px 0; border:1px solid var(--border); border-radius:12px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:560px}
+th,td{padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top}
+th{background:var(--surface-2); font-weight:700; white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tr.hl td{background:var(--emp-soft)}
+
+.pill{display:inline-block; font-size:12.5px; font-weight:700; padding:1px 9px; border-radius:999px; border:1px solid var(--border); background:var(--surface-2); color:var(--muted); white-space:nowrap}
+.pill.kc{color:var(--kc); background:var(--kc-soft); border-color:transparent}
+.pill.emp{color:var(--emp); background:var(--emp-soft); border-color:transparent}
+.pill.ok{color:var(--ok); background:var(--ok-soft); border-color:transparent}
+.pill.warn{color:var(--warn); background:var(--warn-soft); border-color:transparent}
+.pill.danger{color:var(--danger); background:var(--danger-soft); border-color:transparent}
+.pill.ac{color:var(--accent); background:var(--accent-soft); border-color:transparent}
+
+.steps{list-style:none; margin:14px 0; padding:0; counter-reset:s}
+.steps > li{position:relative; padding:12px 14px 12px 58px; margin:10px 0; background:var(--surface); border:1px solid var(--border); border-radius:12px}
+.steps > li::before{counter-increment:s; content:counter(s); position:absolute; left:14px; top:12px; width:30px; height:30px; border-radius:50%; background:var(--accent); color:#fff; font-weight:900; display:grid; place-items:center; font-size:14px}
+.steps.emp > li::before{background:var(--emp)}
+.steps.kc > li::before{background:var(--kc)}
+.steps.danger > li::before{background:var(--danger)}
+.steps .who{display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:4px; font-size:13.5px}
+.steps .who .arrow{color:var(--muted)}
+.steps p{margin:2px 0}
+.phase{font-weight:900; color:var(--muted); font-size:14px; margin:22px 0 4px; letter-spacing:.02em}
+
+.analogy{display:flex; gap:12px; align-items:flex-start}
+.analogy .ico{flex:0 0 40px; height:40px; border-radius:10px; display:grid; place-items:center; background:var(--accent-soft); font-size:20px}
+
+figure{margin:16px 0}
+.diagram{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px; overflow-x:auto}
+.diagram svg{display:block; width:100%; height:auto; min-width:780px}
+figcaption{color:var(--muted); font-size:13.5px; margin-top:6px}
+
+.s-box{fill:var(--surface-2); stroke:var(--border); stroke-width:1.5}
+.s-box.kc{fill:var(--kc-soft); stroke:var(--kc); stroke-width:2}
+.s-box.emp{fill:var(--emp-soft); stroke:var(--emp); stroke-width:2.4}
+.s-box.ac{fill:var(--accent-soft); stroke:var(--accent); stroke-width:2}
+.s-box.dash{stroke-dasharray:6 5}
+.s-t{fill:var(--text); font:700 15px "Noto Sans KR",sans-serif}
+.s-s{fill:var(--muted); font:500 12.5px "Noto Sans KR",sans-serif}
+.s-k{fill:var(--kc); font:700 13px "Noto Sans KR",sans-serif}
+.s-e{fill:var(--emp); font:700 13px "Noto Sans KR",sans-serif}
+.s-a{fill:var(--accent); font:700 13px "Noto Sans KR",sans-serif}
+.s-l{fill:var(--muted); font:500 12.5px "Noto Sans KR",sans-serif}
+.s-line{stroke:var(--muted); stroke-width:1.6; fill:none}
+.s-line.kc{stroke:var(--kc); stroke-width:2.2}
+.s-line.emp{stroke:var(--emp); stroke-width:2.4}
+.s-line.ac{stroke:var(--accent); stroke-width:2.2}
+.s-line.dash{stroke-dasharray:6 5}
+.s-life{stroke:var(--border); stroke-width:1.5; stroke-dasharray:4 5}
+.ah{fill:var(--muted)} .ah-kc{fill:var(--kc)} .ah-ac{fill:var(--accent)} .ah-emp{fill:var(--emp)}
+.s-note{fill:var(--surface); stroke:var(--border)}
+.s-band{fill:var(--surface-2); opacity:.6}
+
+details{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 14px; margin:10px 0}
+summary{cursor:pointer; font-weight:700}
+details[open] summary{margin-bottom:6px}
+.glossary dt{font-weight:900; margin-top:12px}
+.glossary dd{margin:2px 0 0 0}
+.glossary dd .ex{color:var(--muted)}
+footer{margin-top:56px; color:var(--muted); font-size:13.5px; border-top:1px solid var(--border); padding-top:16px}
+
+@media (max-width: 960px){
+  .layout{grid-template-columns:1fr; padding:16px 16px 64px}
+  nav.toc{position:static; max-height:none}
+  .tldr,.grid.c3{grid-template-columns:1fr}
+}
+@media (max-width: 640px){
+  .grid.c2{grid-template-columns:1fr}
+  header.hero{padding:22px 18px}
+  .theme-btn{position:static; margin-bottom:10px}
+  .steps > li{padding-left:52px}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" aria-label="목차">
+  <h2>목차</h2>
+  <ol>
+    <li><a href="#s0">결론 한눈에</a></li>
+    <li><a href="#s1">기초 개념</a></li>
+    <li><a href="#s2">구성요소와 역할</a></li>
+    <li><a href="#s3">PMart 적용 구조도</a></li>
+    <li><a href="#s4">Keycloak 설정</a></li>
+    <li><a href="#s5">흐름 ① 직원 PDA 로그인</a></li>
+    <li><a href="#s6">Employee Auth Service 내부</a></li>
+    <li><a href="#s7">흐름 ② 업무 API 호출</a></li>
+    <li><a href="#s8">흐름 ③ 신규 직원 등록 (HR)</a></li>
+    <li><a href="#s9">흐름 ④ 갱신·로그아웃·퇴사</a></li>
+    <li><a href="#s10">고객 로그인과 나란히</a></li>
+    <li><a href="#s11">지금 PMart에서 바뀌는 것</a></li>
+    <li><a href="#s12">주의할 점·오해</a></li>
+    <li><a href="#s13">용어 사전</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="hero">
+  <button class="theme-btn" type="button" id="themeBtn">🌓 테마</button>
+  <span class="eyebrow">강의 설계 → PMart 적용안</span>
+  <h1>Keycloak 직원 인증 설계를<br>PMart에 적용하면</h1>
+  <p>ChatGPT 대화 2개(「OAuth 인증 구조 정리」·「키클록 인증 구조 설계」)에 정리된 강의 설계를 <b>기준</b>으로 삼았습니다. 핵심은 <b>Employee Auth Service가 Keycloak의 OAuth 클라이언트</b>가 되고 <b>HR Service가 IAM 계정을 만든다</b>는 것입니다. 이 설계를 GitHub <code>code-and-pick</code>의 실제 PMart 구성(게이트웨이, PC 배치, 서비스, 발급자 표)에 맞춰 놓았습니다.</p>
+  <div class="tldr">
+    <div class="item kc"><b>Keycloak = 신원 확인</b><span>직원 IAM 계정(<code>xxx@pmart.com</code>)과 비밀번호를 관리하고 "이 사람이 맞다"를 증명합니다. PMart API용 토큰은 <b>만들지 않습니다.</b></span></div>
+    <div class="item emp"><b>Employee Auth Service = 로그인</b><span>Keycloak에 등록된 <b>유일한 로그인 클라이언트</b>입니다. Keycloak 결과를 검증한 뒤 <b>PMart 직원용 JWT</b>를 발급합니다.</span></div>
+    <div class="item"><b>HR Service = 계정 생성</b><span>인사팀 백오피스 요청을 받아 <b>Keycloak Admin REST API</b>로 신규 직원 계정을 만듭니다.</span></div>
+  </div>
+</header>
+
+<!-- 0 -->
+<section id="s0">
+  <h2><span class="num">00</span>결론 한눈에</h2>
+  <p class="lead">강의 설계를 PMart에 얹으면 직원 로그인이 <b>고객 로그인과 똑같은 모양</b>이 됩니다.</p>
+
+  <div class="tbl"><table>
+    <tr><th></th><th>고객 (지금 PMart)</th><th>직원 (이 적용안)</th></tr>
+    <tr><td>사용하는 앱</td><td>Flutter 고객 앱</td><td>Flutter PDA 앱 · React 백오피스</td></tr>
+    <tr><td>신원을 확인해 주는 곳</td><td>Google</td><td><b>Keycloak</b></td></tr>
+    <tr class="hl"><td>PMart 쪽 인증 서비스</td><td>auth-service</td><td><b>Employee Auth Service (신규)</b></td></tr>
+    <tr class="hl"><td>PMart JWT 발급</td><td>auth-service</td><td><b>Employee Auth Service</b></td></tr>
+    <tr><td>JWT 검증</td><td>API Gateway + 각 서비스</td><td>API Gateway + 각 서비스 (같은 방식)</td></tr>
+    <tr><td>계정 관리</td><td>PMart 고객 회원 DB</td><td>Keycloak IAM + PMart 직원 DB</td></tr>
+    <tr class="hl"><td>계정 생성 업무</td><td>고객 회원가입 로직</td><td><b>HR Service (신규)</b> + Keycloak Admin API</td></tr>
+  </table></div>
+
+  <div class="callout key">
+    <span class="t">🔑 이 설계의 핵심 세 문장</span>
+    <ul>
+      <li><b>Keycloak은 신원(자격 증명)만 증명합니다.</b> 로그인을 완성하는 토큰은 PMart 백엔드가 만듭니다. <span class="pill">강의 필기: "키클록은 인증만 해줄 뿐"</span></li>
+      <li><b>Keycloak에 OAuth 클라이언트로 등록되는 것은 Spring Boot 서비스입니다.</b> PDA·React 앱은 클라이언트가 <mark>아닙니다</mark>. 로그인 화면은 앱이 연 브라우저에 뜨지만, 인가 코드를 받고 토큰으로 바꾸는 쪽은 Employee Auth Service입니다.</li>
+      <li><b>게이트웨이와 업무 서비스는 Keycloak 토큰을 보지 않습니다.</b> PMart 직원 JWT만 검증합니다(리소스 서버 역할).</li>
+    </ul>
+  </div>
+
+  <div class="callout warn">
+    <span class="t">⚠️ 이 문서에서 표시하는 세 가지</span>
+    <p><span class="pill emp">강의 설계</span> ChatGPT 대화에 정리된 교수님 설계(이 문서의 기준)<br>
+       <span class="pill ac">ChatGPT 보완</span> 대화에서 ChatGPT가 정정·보완한 내용<br>
+       <span class="pill warn">PMart 맞춤</span> PMart 실제 구조에 맞추려고 이 문서에서 정한 값(서비스 이름·포트·경로 등). <b>아직 결정된 값이 아니라 예시</b>입니다.</p>
+  </div>
+</section>
+
+<!-- 1 -->
+<section id="s1">
+  <h2><span class="num">01</span>기초 개념 — 이것부터</h2>
+  <p class="lead">뒤에 나오는 흐름을 읽으려면 OAuth의 "역할"과 "토큰"을 먼저 알아야 합니다.</p>
+
+  <h3>1-1. 비유: 회사 출입 시스템</h3>
+  <div class="grid c2">
+    <div class="card analogy"><div class="ico">🪪</div><div><b>Keycloak = 신분 확인 데스크</b><br>사원증 사진과 얼굴을 대조해 "이 사람 맞음" 확인서를 써 줍니다. 건물 출입증은 직접 주지 않습니다.</div></div>
+    <div class="card analogy"><div class="ico">🏷️</div><div><b>Employee Auth Service = 출입증 발급실</b><br>확인서를 보고 PMart 건물용 <b>출입증(PMart JWT)</b>을 만들어 줍니다. 출입증에는 부서와 권한이 적혀 있습니다.</div></div>
+    <div class="card analogy"><div class="ico">🚪</div><div><b>API Gateway·업무 서비스 = 각 층 출입문</b><br>출입증이 진짜인지(서명), 기간이 남았는지(만료), 이 층에 들어올 수 있는지(권한)만 봅니다.</div></div>
+    <div class="card analogy"><div class="ico">🗂️</div><div><b>HR Service = 인사팀 등록 창구</b><br>신입이 오면 신분 확인 데스크(Keycloak)에 새 사원을 등록해 달라고 요청합니다.</div></div>
+  </div>
+
+  <h3>1-2. OAuth 2.0의 역할</h3>
+  <div class="tbl"><table>
+    <tr><th>OAuth 역할</th><th>뜻</th><th>이 적용안에서</th></tr>
+    <tr><td><b>Authorization Server</b><br>권한 부여 서버</td><td>사용자를 인증하고 토큰을 발급</td><td><span class="pill kc">Keycloak</span> (OAuth 2.0 + OIDC 제공자)</td></tr>
+    <tr><td><b>Client</b><br>클라이언트</td><td>권한 부여 서버에 로그인을 요청하고 토큰을 받는 쪽</td><td><span class="pill emp">Employee Auth Service</span> (기밀 클라이언트)<br>HR Service (관리 API용 기밀 클라이언트)</td></tr>
+    <tr><td><b>Resource Server</b><br>리소스 서버</td><td>토큰을 검증하고 보호된 API를 제공</td><td>API Gateway, 주문·재고·MFC 등 업무 서비스</td></tr>
+    <tr><td><b>Resource Owner</b><br>리소스 소유자</td><td>실제 사람</td><td>MFC 작업자, 본사 운영자, 인사팀 등 직원</td></tr>
+  </table></div>
+
+  <div class="callout key">
+    <span class="t">🔑 Employee Auth Service는 "두 얼굴"</span>
+    <p><b>Keycloak 쪽에서 보면 OAuth 클라이언트</b>이고, <b>PMart 안에서 보면 JWT 발급자</b>입니다. 한 서버가 두 역할을 함께 할 수 있다는 점이 이 설계의 핵심입니다. 고객 쪽 auth-service가 Google에 대해 하는 일과 같은 모양입니다.</p>
+  </div>
+
+  <h3>1-3. 토큰 정리 — 이 설계에서는 토큰이 두 종류 나옵니다</h3>
+  <div class="tbl"><table>
+    <tr><th>토큰</th><th>발급자</th><th>누가 쓰나</th><th>용도</th></tr>
+    <tr><td>Keycloak ID Token</td><td>Keycloak</td><td>Employee Auth Service만</td><td>"이 직원이 맞다"는 신원 증명</td></tr>
+    <tr><td>Keycloak Access Token</td><td>Keycloak</td><td>Employee Auth Service만</td><td>(필요할 때) Keycloak userinfo 조회 등</td></tr>
+    <tr class="hl"><td><b>PMart 직원 Access Token</b></td><td>Employee Auth Service</td><td>PDA·백오피스 앱 → 게이트웨이</td><td>업무 API 호출. <code>Authorization: Bearer</code> 머리글</td></tr>
+    <tr class="hl"><td><b>PMart 직원 Refresh Token</b></td><td>Employee Auth Service</td><td>앱 → Employee Auth Service</td><td>Access Token 재발급. <b>API 머리글에는 넣지 않습니다</b></td></tr>
+  </table></div>
+  <div class="callout danger"><span class="t">🚨 중요</span><p><b>Keycloak 토큰은 앱에 내려가지 않습니다.</b> Keycloak 토큰은 서버(Employee Auth Service) 안에서만 쓰고 끝납니다. 앱이 들고 다니는 것은 PMart 직원 JWT뿐입니다. <span class="pill ac">ChatGPT 보완: "Keycloak이 발급한 토큰을 Flutter에 자동으로 전달하는 것은 아니다"</span></p></div>
+
+  <h3>1-4. JWT · 개인키 · 공개키 · JWKS</h3>
+  <div class="card">
+    <p>JWT는 <code>머리.내용.서명</code>으로 된 문자열입니다. <b>Employee Auth Service는 개인키(Private Key)로 서명</b>하고, <b>공개키(Public Key)는 JWKS 주소로 공개</b>합니다. 게이트웨이와 서비스는 그 공개키를 받아 두고 요청마다 <b>스스로</b> 서명을 확인합니다. 매번 Employee Auth Service에 물어보지 않습니다.</p>
+    <p>이 검증 기능은 직접 만들지 않습니다. Spring Security <b>OAuth2 Resource Server</b>가 제공하고, 안에서 <b>Nimbus JOSE + JWT</b> 라이브러리를 씁니다. PMart는 이미 이 의존성을 쓰고 있습니다.</p>
+  </div>
+  <div class="callout warn"><span class="t">⚠️ 필기 정정</span><p>공개키는 "서비스를 쓰려는 앱을 검증"하는 용도가 아니라 <b>토큰의 서명과 발급자를 검증</b>하는 용도입니다. Resource Server를 쓰는 주된 이유도 "Nimbus를 간접으로 들여오려고"가 아니라 <b>JWT 검증과 HTTP 보안 처리를 표준대로 하려고</b>입니다.</p></div>
+
+  <h3>1-5. 기밀 클라이언트와 client_secret</h3>
+  <div class="card">
+    <p><b>기밀 클라이언트(Confidential Client)</b>는 서버처럼 비밀값을 숨길 수 있는 쪽입니다. Employee Auth Service와 HR Service는 서버라서 <code>client_secret</code>을 안전하게 보관할 수 있습니다. 그래서 둘을 기밀 클라이언트로 등록합니다.</p>
+    <p>반대로 PDA 앱(APK)과 React 앱은 코드가 공개되어 비밀을 숨길 수 없습니다. 이 설계에서 앱을 클라이언트로 등록하지 않는 이유 중 하나입니다. <b>앱에는 client_secret이 전혀 없습니다.</b></p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+  <h2><span class="num">02</span>구성요소와 역할</h2>
+  <p class="lead">강의 필기에 나온 구성요소를 PMart 실제 서버에 하나씩 대응시켰습니다.</p>
+
+  <div class="tbl"><table>
+    <tr><th>구성요소</th><th>PMart에서 하는 일</th><th>지금 PMart에</th><th>배치 (PMart 맞춤)</th></tr>
+    <tr><td><span class="pill kc">Keycloak</span></td><td>직원 IAM 계정(<code>xxx@pmart.com</code>)·비밀번호 관리, 신원 인증, OIDC 토큰 발급(Employee Auth Service에게만)</td><td>있음</td><td>PC 5 · 8180 · DB <code>keycloak</code></td></tr>
+    <tr class="hl"><td><span class="pill emp">Employee Auth Service</span></td><td>Keycloak 로그인 연동(OAuth2 Client), Keycloak 토큰 검증, 직원 상태·권한 확인, <b>PMart 직원 JWT 발급</b>, JWKS 공개</td><td><b>신규</b></td><td>PC 4 · 예: 8520 · DB <code>employee_auth_service</code></td></tr>
+    <tr class="hl"><td><span class="pill emp">HR Service</span></td><td>신규 인력 등록, Keycloak Admin REST API로 IAM 계정 생성·비활성화</td><td><b>신규</b></td><td>PC 4 · 예: 8530 · DB <code>hr_service</code></td></tr>
+    <tr><td>API Gateway</td><td>로그인 요청 라우팅, PMart JWT 검증, 업무 API 접근 제어, Keycloak 인증 경로 중계</td><td>있음</td><td>PC 4 · 8080</td></tr>
+    <tr><td>업무 서비스</td><td>주문·재고·MFC 피킹/패킹 등. PMart 직원 JWT를 다시 검증하고 역할·센터 판단</td><td>있음</td><td>PC 2·3·5</td></tr>
+    <tr><td>Flutter PDA 앱 (mfc_app)</td><td>직원 로그인 시작, 업무 수행. <b>Keycloak 클라이언트 아님</b></td><td>있음 (로그인 없음)</td><td>안드로이드 PDA</td></tr>
+    <tr><td>React 백오피스</td><td>본사 운영 화면 + <b>인사팀 신규 직원 등록 화면</b>. Keycloak 클라이언트 아님</td><td>있음</td><td>PC 4 · 192.168.0.40</td></tr>
+    <tr><td>메일 서버 (SMTP + 메일함)</td><td><code>@pmart.com</code> 실제 메일함과 Keycloak 안내 메일 발송용 SMTP. 강의에서 말한 <b>Roundcube</b>(PHP 웹메일, Apache)는 메일함을 보는 화면</td><td>없음</td><td>별도 구성 필요</td></tr>
+    <tr><td>auth-service (고객)</td><td>고객 Google 로그인. <b>이 설계와는 따로</b> 그대로 둡니다</td><td>있음</td><td>PC 4 · 8501</td></tr>
+  </table></div>
+
+  <div class="grid c3">
+    <div class="card kc"><h4>Keycloak에 클라이언트로 등록 ✅</h4><p>Employee Auth Service (로그인용)<br>HR Service (관리 API용)</p></div>
+    <div class="card"><h4>Keycloak에 클라이언트로 등록 ❌</h4><p>Flutter PDA 앱<br>React 백오피스<br>API Gateway<br>업무 서비스</p></div>
+    <div class="card emp"><h4>client_secret을 가진 곳</h4><p>Employee Auth Service, HR Service의 서버 안에만 둡니다. PMart 규칙대로 <code>pmart-config</code>에는 <code>{cipher}</code> 암호문만 둡니다.</p></div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+  <h2><span class="num">03</span>PMart에 적용한 구조도</h2>
+  <p class="lead">초록 = 새로 생기는 서비스, 보라 = Keycloak, 파랑 = 기존 정문(게이트웨이)입니다.</p>
+
+  <figure>
+  <div class="diagram">
+  <svg viewBox="0 0 1000 640" role="img" aria-label="강의 설계를 PMart에 적용한 구조도">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+      <marker id="ahk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-kc"/></marker>
+      <marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-ac"/></marker>
+      <marker id="ahe" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-emp"/></marker>
+    </defs>
+
+    <text x="20" y="22" class="s-l">외부 (직원 기기)</text>
+    <text x="250" y="22" class="s-l">정문</text>
+    <text x="470" y="22" class="s-l">PMart 백엔드 (내부망)</text>
+
+    <!-- apps -->
+    <rect x="20" y="50" width="180" height="80" rx="12" class="s-box"/>
+    <text x="34" y="78" class="s-t">Flutter PDA 앱</text>
+    <text x="34" y="99" class="s-s">MFC 작업자</text>
+    <text x="34" y="117" class="s-s">클라이언트 아님</text>
+
+    <rect x="20" y="160" width="180" height="62" rx="12" class="s-box dash"/>
+    <text x="34" y="187" class="s-t">시스템 브라우저</text>
+    <text x="34" y="207" class="s-s">PDA가 연 Custom Tab</text>
+
+    <rect x="20" y="290" width="180" height="80" rx="12" class="s-box"/>
+    <text x="34" y="318" class="s-t">React 백오피스</text>
+    <text x="34" y="339" class="s-s">본사 운영 · 인사팀</text>
+    <text x="34" y="357" class="s-s">클라이언트 아님</text>
+
+    <!-- gateway -->
+    <rect x="240" y="50" width="190" height="450" rx="14" class="s-box ac"/>
+    <text x="256" y="78" class="s-a">API Gateway</text>
+    <text x="256" y="98" class="s-s">PC 4 · :8080</text>
+    <text x="256" y="138" class="s-s">/api/v1/employee-auth/**</text>
+    <text x="256" y="156" class="s-s">  → Employee Auth</text>
+    <text x="256" y="190" class="s-s">/iam/realms/pmart-staff/</text>
+    <text x="256" y="208" class="s-s">  protocol/** → Keycloak</text>
+    <text x="256" y="226" class="s-s">  (/iam/admin 은 차단)</text>
+    <text x="256" y="262" class="s-s">/api/v1/hr/**</text>
+    <text x="256" y="280" class="s-s">  → HR Service</text>
+    <text x="256" y="314" class="s-s">/api/v1/&lt;업무&gt;/**</text>
+    <text x="256" y="332" class="s-s">  → 업무 서비스</text>
+    <text x="256" y="380" class="s-a">PMart 직원 JWT 검증</text>
+    <text x="256" y="400" class="s-s">발급자 표 staff 줄 =</text>
+    <text x="256" y="418" class="s-s">employee-auth-service</text>
+    <text x="256" y="452" class="s-s">Redis 차단 목록 확인</text>
+
+    <!-- employee auth -->
+    <rect x="490" y="50" width="230" height="150" rx="14" class="s-box emp"/>
+    <text x="506" y="78" class="s-e">Employee Auth Service</text>
+    <text x="506" y="98" class="s-s">신규 · Spring Boot · PC 4</text>
+    <text x="506" y="124" class="s-s">• Keycloak OAuth2 Client (기밀)</text>
+    <text x="506" y="144" class="s-s">• Keycloak 토큰 검증 · 직원 확인</text>
+    <text x="506" y="164" class="s-s">• PMart 직원 JWT 발급 (개인키)</text>
+    <text x="506" y="184" class="s-s">• JWKS 공개 · DB 직원 상태/권한</text>
+
+    <!-- keycloak -->
+    <rect x="770" y="50" width="210" height="150" rx="14" class="s-box kc"/>
+    <text x="786" y="78" class="s-k">Keycloak</text>
+    <text x="786" y="98" class="s-s">PC 5 · :8180</text>
+    <text x="786" y="124" class="s-s">Realm pmart-staff</text>
+    <text x="786" y="144" class="s-s">IAM 계정 xxx@pmart.com</text>
+    <text x="786" y="164" class="s-s">client: employee-auth-service</text>
+    <text x="786" y="184" class="s-s">client: hr-service</text>
+
+    <!-- hr -->
+    <rect x="490" y="250" width="230" height="100" rx="14" class="s-box emp"/>
+    <text x="506" y="278" class="s-e">HR Service</text>
+    <text x="506" y="298" class="s-s">신규 · Spring Boot · PC 4</text>
+    <text x="506" y="320" class="s-s">• 신규 인력 등록</text>
+    <text x="506" y="340" class="s-s">• Keycloak Admin REST API 호출</text>
+
+    <!-- mail -->
+    <rect x="770" y="250" width="210" height="100" rx="14" class="s-box dash"/>
+    <text x="786" y="278" class="s-t">메일 서버</text>
+    <text x="786" y="298" class="s-s">SMTP + 메일함 (별도)</text>
+    <text x="786" y="320" class="s-s">Roundcube 웹메일</text>
+    <text x="786" y="340" class="s-s">@pmart.com</text>
+
+    <!-- business -->
+    <rect x="490" y="400" width="490" height="100" rx="14" class="s-box"/>
+    <text x="506" y="428" class="s-t">업무 서비스 (리소스 서버)</text>
+    <text x="506" y="450" class="s-s">mfc-fulfillment · mfc-inventory · order · approval … — common-security 로 PMart 직원 JWT 재검증</text>
+    <text x="506" y="472" class="s-s">→ roles(MFC_WORKER 등) · centers 로 업무 권한 판단</text>
+
+    <!-- arrows -->
+    <path d="M200,90 L238,105" class="s-line emp" marker-end="url(#ahe)"/>
+    <path d="M110,130 L110,158" class="s-line dash" marker-end="url(#ah)"/>
+    <text x="118" y="149" class="s-l">브라우저 열기</text>
+    <path d="M200,190 L238,200" class="s-line kc" marker-end="url(#ahk)"/>
+    <path d="M200,330 L238,330" class="s-line" marker-end="url(#ah)"/>
+
+    <path d="M430,140 L488,110" class="s-line emp" marker-end="url(#ahe)"/>
+    <path d="M430,205 C600,225 700,220 768,180" class="s-line kc dash" marker-end="url(#ahk)"/>
+    <text x="560" y="232" class="s-k">로그인 화면 (/iam 중계)</text>
+
+    <path d="M720,95 L768,95" class="s-line kc" marker-end="url(#ahk)"/>
+    <text x="724" y="88" class="s-k" style="font-size:11.5px">/token</text>
+    <path d="M768,135 L722,135" class="s-line kc" marker-end="url(#ahk)"/>
+    <text x="724" y="152" class="s-k" style="font-size:11.5px">토큰</text>
+
+    <path d="M430,272 L488,290" class="s-line" marker-end="url(#ah)"/>
+    <path d="M720,290 C750,270 760,230 820,202" class="s-line kc" marker-end="url(#ahk)"/>
+    <text x="740" y="240" class="s-k" style="font-size:11.5px">Admin API</text>
+    <path d="M875,200 L875,248" class="s-line dash" marker-end="url(#ah)"/>
+    <text x="882" y="230" class="s-l">SMTP</text>
+
+    <path d="M430,450 L488,450" class="s-line ac" marker-end="url(#aha)"/>
+    <path d="M560,200 C540,300 470,380 432,400" class="s-line emp dash" marker-end="url(#ahe)"/>
+    <text x="450" y="368" class="s-e" style="font-size:11.5px">JWKS</text>
+
+    <text x="20" y="560" class="s-l">초록 실선: PMart 로그인 요청 · 보라: Keycloak 통신 · 파랑: 검증 통과 후 업무 API · 점선: 보조 통신</text>
+    <text x="20" y="584" class="s-l">※ 고객 앱 → auth-service(Google) 와 라이더 앱 → rider-auth-service 는 이 그림에서 뺐습니다(지금 그대로 유지).</text>
+  </svg>
+  </div>
+  <figcaption>강의 필기의 "Keycloak이 백엔드 서버 안에 있어 게이트웨이를 통해 전달된다"를 반영해, 브라우저가 Keycloak 로그인 화면에 닿는 길도 게이트웨이(/iam)로 중계하도록 그렸습니다.</figcaption>
+  </figure>
+
+  <div class="callout key">
+    <span class="t">🔑 통신 경로는 두 종류입니다 <span class="pill ac">ChatGPT 보완</span></span>
+    <ol>
+      <li><b>브라우저 리디렉션</b>: 직원이 비밀번호를 치는 Keycloak 로그인 화면은 <b>브라우저가 닿을 수 있어야</b> 합니다. Keycloak이 내부망에 있으므로 게이트웨이가 <code>/iam/**</code>로 Keycloak의 OIDC 경로만 중계합니다.</li>
+      <li><b>서버끼리 직접</b>: Employee Auth Service → Keycloak <code>/token</code>, HR Service → Keycloak Admin API는 <b>내부망에서 바로</b> 통신합니다. 게이트웨이를 다시 거칠 필요가 없습니다.</li>
+    </ol>
+    <p>강의 질문 "API 게이트웨이에서 Keycloak으로 바로 갈 수 없는 이유는?"의 답: 기술적으로는 <b>갈 수 있습니다</b>. 진짜 문제는 HTTP가 닿느냐가 아니라 <b>인가 코드를 누가 받고 누가 토큰으로 교환하느냐</b>입니다. 이 설계에서는 그 일을 Employee Auth Service가 맡으므로 게이트웨이는 길만 열어 줍니다.</p>
+  </div>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+  <h2><span class="num">04</span>Keycloak 설정 (적용안)</h2>
+  <p class="lead">Realm은 PMart에 이미 있는 <code>pmart-staff</code>를 그대로 쓴다고 가정합니다.</p>
+
+  <h3>4-1. 클라이언트</h3>
+  <div class="tbl"><table>
+    <tr><th>클라이언트 ID</th><th>종류</th><th>Grant</th><th>설정 핵심</th></tr>
+    <tr class="hl"><td><code>employee-auth-service</code></td><td><span class="pill warn">기밀</span></td><td>authorization_code (+ PKCE 권장)</td><td>Valid redirect URI: <code>http://192.168.0.40:8080/api/v1/employee-auth/login/oauth2/code/keycloak</code><br>Standard flow만 켬. Direct access grant·Implicit 끔</td></tr>
+    <tr class="hl"><td><code>hr-service</code></td><td><span class="pill warn">기밀</span></td><td>client_credentials (서비스 계정)</td><td>Standard flow 끔. 서비스 계정 역할: realm-management의 <b><code>manage-users</code>, <code>view-users</code></b>만</td></tr>
+  </table></div>
+  <div class="callout danger">
+    <span class="t">🚨 필기 정정 — "root 권한을 가진 자만 IAM 계정 발급"</span>
+    <p>root(<code>master</code> admin)를 업무 서비스에 연결하면 <b>Keycloak 전체를 쥐여 주는 것</b>입니다. HR Service에는 <code>manage-users</code>처럼 <mark>필요한 권한만</mark> 가진 서비스 계정을 줍니다(최소 권한 원칙). <span class="pill ac">ChatGPT 보완</span></p>
+  </div>
+
+  <h3>4-2. 사용자(IAM 계정)</h3>
+  <div class="tbl"><table>
+    <tr><th>항목</th><th>값</th><th>설명</th></tr>
+    <tr><td>username / email</td><td><code>employee01@pmart.com</code></td><td>강의 필기의 "IAM은 xxx@pmart.com"</td></tr>
+    <tr><td>사용자 속성 <code>pmart_operator_id</code></td><td><code>OP-&lt;UUID&gt;</code></td><td>PMart 직원 ID. Keycloak <code>sub</code>(UUID)와 PMart ID를 잇는 열쇠 <span class="pill warn">PMart 맞춤</span></td></tr>
+    <tr><td>Required action</td><td>UPDATE_PASSWORD</td><td>첫 로그인 때 비밀번호를 직접 정하게 함</td></tr>
+    <tr><td>Enabled</td><td>true / false</td><td>퇴사하면 <b>삭제하지 말고</b> false로 바꿈</td></tr>
+  </table></div>
+
+  <div class="callout emp">
+    <span class="t">💡 역할(권한)은 어디에 두나? <span class="pill warn">PMart 맞춤</span></span>
+    <p>강의 설계는 "Keycloak = 신원만, 권한은 PMart가 판단"입니다. 그래서 직원의 역할(<code>MFC_WORKER</code> 등)과 담당 센터는 <b>Employee Auth Service DB(PMart 쪽)</b>에 두고, PMart JWT를 발급할 때 넣습니다. Keycloak에는 계정·비밀번호·상태만 남습니다.</p>
+    <p>⚠️ 지금 PMart에서는 역할 부여(RoleGrant)·대행(Delegation)의 정본이 <code>auth-service</code>입니다(service-map). 그대로 두고 Employee Auth Service가 조회할지, 옮길지는 <b>결정이 필요</b>합니다.</p>
+  </div>
+
+  <h3>4-3. SMTP 연결</h3>
+  <div class="card">
+    <p>Realm settings → Email에 <b>외부 SMTP 서버</b>를 넣으면 Keycloak이 "비밀번호 설정 링크" 메일을 보낼 수 있습니다. <b>Keycloak 자체는 메일 서버도, 메일함도 아닙니다.</b></p>
+    <div class="tbl" style="margin-bottom:0"><table>
+      <tr><th>기능</th><th>Keycloak이 해 주나?</th></tr>
+      <tr><td>직원 로그인 계정 생성 · 비밀번호 관리 · 이메일 주소 저장</td><td>✅ 해 줌</td></tr>
+      <tr><td>인증·비밀번호 재설정 메일 발송</td><td>✅ (외부 SMTP 연결 필요)</td></tr>
+      <tr><td><code>@pmart.com</code> 실제 메일 주소 발급, 메일함 생성, SMTP 서버 운영</td><td>❌ 안 해 줌 → 메일 서버(+ Roundcube 웹메일)를 따로 구성</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+  <h2><span class="num">05</span>흐름 ① 직원 PDA 로그인 — 핵심 흐름</h2>
+  <p class="lead">강의 설계(백엔드 중심 로그인) 그대로입니다. 강의에서 "Employee Auth Service가 처리함"이라고 한 부분을 실제 HTTP 단계로 풀었습니다.</p>
+
+  <figure>
+  <div class="diagram">
+  <svg viewBox="0 0 1000 960" role="img" aria-label="직원 PDA 로그인 시퀀스">
+    <defs>
+      <marker id="q" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+      <marker id="qk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-kc"/></marker>
+      <marker id="qe" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-emp"/></marker>
+      <marker id="qa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-ac"/></marker>
+    </defs>
+    <rect x="10" y="84" width="980" height="196" rx="10" class="s-band"/>
+    <text x="20" y="102" class="s-l">A. 로그인 시작</text>
+    <rect x="10" y="292" width="980" height="314" rx="10" class="s-band"/>
+    <text x="20" y="310" class="s-l">B. Keycloak 인증과 코드 교환</text>
+    <rect x="10" y="618" width="980" height="330" rx="10" class="s-band"/>
+    <text x="20" y="636" class="s-l">C. PMart JWT 받기와 업무 시작</text>
+
+    <rect x="25" y="20" width="130" height="50" rx="10" class="s-box"/><text x="90" y="51" text-anchor="middle" class="s-t">PDA 앱</text>
+    <rect x="195" y="20" width="130" height="50" rx="10" class="s-box dash"/><text x="260" y="51" text-anchor="middle" class="s-t">시스템 브라우저</text>
+    <rect x="385" y="20" width="130" height="50" rx="10" class="s-box ac"/><text x="450" y="51" text-anchor="middle" class="s-t">API Gateway</text>
+    <rect x="565" y="20" width="170" height="50" rx="10" class="s-box emp"/><text x="650" y="51" text-anchor="middle" class="s-t">Employee Auth</text>
+    <rect x="800" y="20" width="150" height="50" rx="10" class="s-box kc"/><text x="875" y="51" text-anchor="middle" class="s-t">Keycloak</text>
+    <line x1="90" y1="70" x2="90" y2="950" class="s-life"/>
+    <line x1="260" y1="70" x2="260" y2="950" class="s-life"/>
+    <line x1="450" y1="70" x2="450" y2="950" class="s-life"/>
+    <line x1="650" y1="70" x2="650" y2="950" class="s-life"/>
+    <line x1="875" y1="70" x2="875" y2="950" class="s-life"/>
+
+    <!-- A -->
+    <path d="M90,130 L258,130" class="s-line" marker-end="url(#q)"/>
+    <text x="175" y="122" text-anchor="middle" class="s-l">① 로그인 → 브라우저 열기</text>
+    <path d="M260,168 L448,168" class="s-line emp" marker-end="url(#qe)"/>
+    <text x="355" y="160" text-anchor="middle" class="s-e">② GET …/oauth2/authorization/keycloak</text>
+    <path d="M450,200 L648,200" class="s-line emp" marker-end="url(#qe)"/>
+    <text x="550" y="192" text-anchor="middle" class="s-e">③ 라우팅</text>
+    <rect x="560" y="212" width="180" height="40" rx="8" class="s-note"/>
+    <text x="650" y="237" text-anchor="middle" class="s-s">④ state·PKCE 만들어 세션 저장</text>
+    <path d="M650,268 L262,268" class="s-line emp" marker-end="url(#qe)"/>
+    <text x="455" y="262" text-anchor="middle" class="s-e">⑤ 302 → Keycloak 로그인 주소</text>
+
+    <!-- B -->
+    <path d="M260,340 L873,340" class="s-line kc" marker-end="url(#qk)"/>
+    <text x="570" y="332" text-anchor="middle" class="s-k">⑥ GET /iam/…/auth?client_id=employee-auth-service (게이트웨이 경유)</text>
+    <path d="M875,380 L262,380" class="s-line kc" marker-end="url(#qk)"/>
+    <text x="570" y="372" text-anchor="middle" class="s-k">⑦ Keycloak 로그인 화면</text>
+    <path d="M260,420 L873,420" class="s-line kc" marker-end="url(#qk)"/>
+    <text x="570" y="412" text-anchor="middle" class="s-k">⑧ employee01@pmart.com + 비밀번호 → 신원 인증</text>
+    <path d="M875,460 L262,460" class="s-line kc" marker-end="url(#qk)"/>
+    <text x="570" y="452" text-anchor="middle" class="s-k">⑨ 302 → 콜백 주소 ?code=일회용코드&amp;state</text>
+    <path d="M260,500 L648,500" class="s-line emp" marker-end="url(#qe)"/>
+    <text x="455" y="492" text-anchor="middle" class="s-e">⑩ GET …/login/oauth2/code/keycloak?code (게이트웨이 경유)</text>
+    <path d="M650,540 L873,540" class="s-line kc" marker-end="url(#qk)"/>
+    <text x="762" y="532" text-anchor="middle" class="s-k">⑪ POST /token + secret</text>
+    <path d="M875,580 L652,580" class="s-line kc" marker-end="url(#qk)"/>
+    <text x="762" y="572" text-anchor="middle" class="s-k">⑫ ID·Access Token</text>
+
+    <!-- C -->
+    <rect x="535" y="646" width="230" height="58" rx="8" class="s-note"/>
+    <text x="650" y="670" text-anchor="middle" class="s-s">⑬ Keycloak 토큰 검증 · 직원 확인</text>
+    <text x="650" y="690" text-anchor="middle" class="s-s">· 상태·권한 조회 · 일회용 티켓 생성</text>
+    <path d="M650,730 L262,730" class="s-line emp" marker-end="url(#qe)"/>
+    <text x="455" y="722" text-anchor="middle" class="s-e">⑭ 302 → pmart-mfc://login?ticket=…</text>
+    <path d="M260,764 L92,764" class="s-line" marker-end="url(#q)"/>
+    <text x="175" y="756" text-anchor="middle" class="s-l">⑮ 앱으로 돌아옴</text>
+    <path d="M90,804 L648,804" class="s-line emp" marker-end="url(#qe)"/>
+    <text x="370" y="796" text-anchor="middle" class="s-e">⑯ POST /employee-auth/tokens {ticket} (게이트웨이 경유)</text>
+    <path d="M650,844 L92,844" class="s-line emp" marker-end="url(#qe)"/>
+    <text x="370" y="836" text-anchor="middle" class="s-e">⑰ PMart 직원 Access(15분) + Refresh</text>
+    <path d="M90,894 L448,894" class="s-line ac" marker-end="url(#qa)"/>
+    <text x="270" y="886" text-anchor="middle" class="s-a">⑱ 업무 API · Bearer PMart JWT</text>
+    <text x="460" y="925" class="s-l">→ 게이트웨이 검증 후 업무 서비스로 (7장)</text>
+  </svg>
+  </div>
+  <figcaption>"게이트웨이 경유"라고 적힌 화살표는 실제로 게이트웨이를 거쳐 지나갑니다. 그림을 단순하게 하려고 한 줄로 그렸습니다.</figcaption>
+  </figure>
+
+  <h3>단계별 자세한 설명</h3>
+
+  <p class="phase">A. 로그인 시작</p>
+  <ol class="steps emp">
+    <li><div class="who"><span class="pill">PDA 앱</span><span class="arrow">→</span><span class="pill">시스템 브라우저</span></div><p>직원이 로그인 버튼을 누르면 앱이 <b>시스템 브라우저(Custom Tabs)</b>를 엽니다. 앱에는 아이디·비밀번호 입력칸이 없습니다. <span class="pill danger">일반 내장 WebView 금지</span></p></li>
+    <li><div class="who"><span class="pill">브라우저</span><span class="arrow">→</span><span class="pill ac">Gateway</span></div><p>브라우저가 여는 첫 주소는 Keycloak이 아니라 <b>Employee Auth Service의 로그인 시작 주소</b>입니다.</p>
+<pre><code>GET http://192.168.0.40:8080/api/v1/employee-auth/oauth2/authorization/keycloak
+    ?app=mfc        ← 로그인이 끝나면 어느 앱으로 돌려보낼지 (PMart 맞춤)</code></pre></li>
+    <li><div class="who"><span class="pill ac">Gateway</span><span class="arrow">→</span><span class="pill emp">Employee Auth</span></div><p>게이트웨이가 <code>/api/v1/employee-auth/**</code>를 Employee Auth Service로 보냅니다. 이 경로는 아직 토큰이 없는 단계이므로 <b>인증 없이 열린 공개 경로</b>입니다.</p></li>
+    <li><div class="who"><span class="pill emp">Employee Auth</span></div><p>Spring Security OAuth2 Client가 위조 방지용 <code>state</code>와 PKCE <code>code_verifier</code>를 만들어 <b>브라우저 세션</b>에 저장합니다.</p></li>
+    <li><div class="who"><span class="pill emp">Employee Auth</span><span class="arrow">→</span><span class="pill">브라우저</span></div><p>302 응답으로 브라우저를 Keycloak 인가 주소로 보냅니다.</p></li>
+  </ol>
+  <div class="callout key"><span class="t">🔑 왜 앱이 아니라 "브라우저"가 로그인을 시작하나요? <span class="pill warn">PMart 맞춤</span></span><p>④에서 저장한 <code>state</code>는 <b>브라우저 세션 쿠키</b>에 묶입니다. ⑩에서 콜백을 받을 때 "같은 브라우저가 시작한 로그인인지" 확인해야 하므로, 시작(②)과 콜백(⑩)을 <b>같은 브라우저</b>가 해야 합니다. ChatGPT 대화의 "Employee Auth Service가 로그인 URL을 만들어 주면 Flutter가 브라우저로 연다"를 Spring 기본 동작에 맞게 구체화한 것입니다.</p></div>
+
+  <p class="phase">B. Keycloak 인증과 코드 교환</p>
+  <ol class="steps kc" start="6" style="counter-reset:s 5">
+    <li><div class="who"><span class="pill">브라우저</span><span class="arrow">→</span><span class="pill ac">Gateway /iam</span><span class="arrow">→</span><span class="pill kc">Keycloak</span></div>
+<pre><code>GET http://192.168.0.40:8080/iam/realms/pmart-staff/protocol/openid-connect/auth
+    ?client_id=employee-auth-service          ← ★ 앱이 아니라 서비스 이름
+    &amp;response_type=code
+    &amp;scope=openid
+    &amp;redirect_uri=http://192.168.0.40:8080/api/v1/employee-auth/login/oauth2/code/keycloak
+    &amp;state=…&amp;code_challenge=…&amp;code_challenge_method=S256</code></pre></li>
+    <li><div class="who"><span class="pill kc">Keycloak</span><span class="arrow">→</span><span class="pill">브라우저</span></div><p>Keycloak 로그인 화면이 PDA 화면에 뜹니다. <b>앱 화면처럼 보여도 실제로는 Keycloak 페이지</b>입니다. 강의 질문 "PDA에서 Keycloak 사이트 화면에서 바로 로그인하는 게 맞나?"의 답은 <b>맞습니다</b>. 다만 그 화면을 연 주체가 OAuth 클라이언트가 되는 것은 아닙니다.</p></li>
+    <li><div class="who"><span class="pill">직원</span><span class="arrow">→</span><span class="pill kc">Keycloak</span></div><p>IAM 계정(<code>employee01@pmart.com</code>)과 비밀번호를 입력합니다. 이 비밀번호는 <b>Keycloak만</b> 봅니다. PDA 앱, 게이트웨이, Employee Auth Service는 보지 않습니다. 첫 로그인이면 Keycloak이 비밀번호 변경 화면을 띄웁니다.</p></li>
+    <li><div class="who"><span class="pill kc">Keycloak</span><span class="arrow">→</span><span class="pill">브라우저</span></div><p>인증에 성공하면 등록된 콜백 주소로 302를 보냅니다.</p>
+<pre><code>HTTP/1.1 302 Found
+Location: http://192.168.0.40:8080/api/v1/employee-auth/login/oauth2/code/keycloak?code=abc123&amp;state=…</code></pre>
+    <p><mark>인가 코드를 받는 곳은 Flutter가 아니라 Employee Auth Service의 콜백</mark>입니다.</p></li>
+    <li><div class="who"><span class="pill">브라우저</span><span class="arrow">→</span><span class="pill ac">Gateway</span><span class="arrow">→</span><span class="pill emp">Employee Auth</span></div><p>브라우저가 콜백 주소로 이동하면 Employee Auth Service가 <code>code</code>를 받고, 세션의 <code>state</code>와 비교합니다.</p></li>
+    <li><div class="who"><span class="pill emp">Employee Auth</span><span class="arrow">→</span><span class="pill kc">Keycloak</span> <span class="pill">내부망 직접</span></div>
+<pre><code>POST http://keycloak:8080/realms/pmart-staff/protocol/openid-connect/token
+grant_type=authorization_code
+code=abc123
+redirect_uri=…/login/oauth2/code/keycloak
+client_id=employee-auth-service
+client_secret=…            ← 서버만 아는 비밀
+code_verifier=…</code></pre></li>
+    <li><div class="who"><span class="pill kc">Keycloak</span><span class="arrow">→</span><span class="pill emp">Employee Auth</span></div><p>Keycloak이 <b>ID Token</b>과 <b>Access Token</b>(설정에 따라 Refresh Token)을 줍니다. Keycloak이 공식 지원하는 Authorization Code Flow입니다.</p></li>
+  </ol>
+
+  <p class="phase">C. PMart JWT 받기와 업무 시작</p>
+  <ol class="steps emp" start="13" style="counter-reset:s 12">
+    <li><div class="who"><span class="pill emp">Employee Auth</span></div><p>Keycloak JWKS로 ID Token을 검증합니다(서명, <code>iss</code>, <code>aud=employee-auth-service</code>, 만료). 그다음 <code>pmart_operator_id</code>로 PMart 직원을 찾아 <b>상태</b>(재직 중인지)와 <b>역할·센터</b>를 확인하고, <b>60초짜리 일회용 로그인 티켓</b>을 만듭니다.</p></li>
+    <li><div class="who"><span class="pill emp">Employee Auth</span><span class="arrow">→</span><span class="pill">브라우저</span></div><p>브라우저를 <b>앱 딥링크</b>로 보냅니다. 예: <code>pmart-mfc://login?ticket=T-9f2…</code>. 토큰 자체는 주소에 싣지 않고, 아무 데도 못 쓰는 짧은 티켓만 싣습니다.</p></li>
+    <li><div class="who"><span class="pill">브라우저</span><span class="arrow">→</span><span class="pill">PDA 앱</span></div><p>딥링크로 브라우저 탭이 닫히고 앱으로 돌아옵니다.</p></li>
+    <li><div class="who"><span class="pill">PDA 앱</span><span class="arrow">→</span><span class="pill ac">Gateway</span><span class="arrow">→</span><span class="pill emp">Employee Auth</span></div>
+<pre><code>POST /api/v1/employee-auth/tokens
+X-Device-Id: PDA-0012
+{ "ticket": "T-9f2…" }      ← 한 번 쓰면 사라짐</code></pre></li>
+    <li><div class="who"><span class="pill emp">Employee Auth</span><span class="arrow">→</span><span class="pill">PDA 앱</span></div><p><b>PMart 직원 Access Token(15분)</b>과 <b>Refresh Token</b>을 발급합니다. 앱은 이것을 기기 보안 저장소에 둡니다.</p></li>
+    <li><div class="who"><span class="pill">PDA 앱</span><span class="arrow">→</span><span class="pill ac">Gateway</span></div><p>이제 피킹·패킹 API를 <code>Authorization: Bearer &lt;PMart JWT&gt;</code>로 부릅니다. → <a href="#s7">7장</a></p></li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="t">⚠️ C 단계(앱에 결과 전달)는 강의에서 비어 있던 부분</span>
+    <p>ChatGPT도 "여기에는 추가 설계가 필요하다. 예를 들어 일회용 로그인 티켓으로 Flutter가 토큰을 안전하게 받아오게 할 수 있다"고 했습니다. 이 문서는 그 제안을 PMart에 맞춰 구체화했습니다(티켓 60초·1회용·발급 기기 확인). <b>Access Token을 딥링크 주소에 직접 싣는 방식은 쓰지 않습니다.</b> 주소는 기록에 남거나 다른 앱이 가로챌 수 있기 때문입니다.</p>
+  </div>
+  <div class="callout ok">
+    <span class="t">✅ React 백오피스도 같은 흐름</span>
+    <p>백오피스는 이미 브라우저라서 ①이 "로그인 페이지로 이동"이 되고, ⑭~⑯은 딥링크 대신 <b>백오피스 주소로 redirect + 티켓 교환</b>이 됩니다. Keycloak에 등록하는 클라이언트는 여전히 <code>employee-auth-service</code> 하나입니다.</p>
+  </div>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+  <h2><span class="num">06</span>Employee Auth Service 안쪽</h2>
+  <p class="lead">강의 필기 "이걸 쓰려면 OAuth2 클라이언트 디펜던시가 붙어야 함"을 PMart 규칙(Gradle, pmart-config)에 맞춰 보여 줍니다. <span class="pill warn">PMart 맞춤 예시</span></p>
+
+  <h3>6-1. 의존성 — 두 역할에 두 가지</h3>
+  <div class="tbl"><table>
+    <tr><th>의존성</th><th>왜 필요한가</th></tr>
+    <tr><td><code>spring-boot-starter-oauth2-client</code></td><td>Keycloak에 대한 <b>OAuth2 클라이언트</b> 역할. 로그인 주소 만들기, 콜백 받기, 코드 교환, ID Token 검증을 대신 해 줍니다</td></tr>
+    <tr><td><code>common-jwt</code> (PMart 라이브러리)</td><td><b>PMart JWT 발급자</b> 역할. 개인키 서명, JWKS 공개 (auth-service와 같은 방식)</td></tr>
+    <tr><td><code>common-security</code> (PMart 라이브러리)</td><td>자기 API(갱신·로그아웃 등)를 보호하는 리소스 서버 기능</td></tr>
+  </table></div>
+
+  <h3>6-2. 설정 — pmart-config <code>employee-auth-service-lan.yml</code></h3>
+<pre><code>spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: employee-auth-service
+            client-secret: '{cipher}AQB3…'          # 평문 금지 — 암호문만 (ADR-0027)
+            authorization-grant-type: authorization_code
+            scope: openid
+            redirect-uri: 'http://192.168.0.40:8080/api/v1/employee-auth/login/oauth2/code/keycloak'
+        provider:
+          keycloak:
+            authorization-uri: 'http://192.168.0.40:8080/iam/realms/pmart-staff/protocol/openid-connect/auth'  # 브라우저용(게이트웨이)
+            token-uri:         'http://192.168.0.101:8180/realms/pmart-staff/protocol/openid-connect/token'   # 서버끼리(내부)
+            jwk-set-uri:       'http://192.168.0.101:8180/realms/pmart-staff/protocol/openid-connect/certs'
+            issuer-uri:        'http://192.168.0.40:8080/iam/realms/pmart-staff'
+pmart:
+  employee-auth:
+    audience: pmart-api
+    access-token-ttl: 15m
+    login-ticket-ttl: 60s
+    app-redirects:                                   # 허용한 앱 복귀 주소만
+      mfc: 'pmart-mfc://login'
+      backoffice: 'http://192.168.0.40/login/complete'</code></pre>
+  <div class="callout warn"><span class="t">⚠️ <code>iss</code> 주소를 하나로 맞추기</span><p>Keycloak은 토큰의 <code>iss</code>를 "자기가 아는 외부 주소"로 씁니다. 브라우저가 게이트웨이(<code>/iam</code>)로 들어오므로 Keycloak에 <code>KC_HOSTNAME=http://192.168.0.40:8080/iam</code>, <code>KC_PROXY_HEADERS=xforwarded</code>를 설정해 <b>브라우저가 본 주소와 <code>iss</code>를 같게</b> 해야 합니다. 서버끼리 부르는 내부 주소(<code>192.168.0.101:8180</code>)와 달라도 <code>iss</code> 검증이 깨지지 않게 하려는 설정입니다. <span class="pill ac">ChatGPT 보완: "외부 URL, redirect URI, 프록시 설정을 일치시켜야"</span></p></div>
+
+  <h3>6-3. Employee Auth Service가 발급하는 PMart 직원 JWT</h3>
+<pre><code>{
+  "iss": "http://employee-auth-service:8520",   ← 발급자 = Employee Auth Service (Keycloak 아님)
+  "sub": "OP-45e6ce65-…",                        ← PMart 직원 ID
+  "aud": ["pmart-api"],
+  "typ": "OPERATOR",                             ← PMart 사용자 종류
+  "roles": ["MFC_WORKER"],
+  "centers": ["MFC-SEED-01"],
+  "sid": "ES-…", "jti": "…",
+  "iat": …, "exp": …                             ← 15분
+}</code></pre>
+  <div class="callout ok">
+    <span class="t">✅ 이 설계의 큰 장점: 업무 서비스는 거의 그대로</span>
+    <p>이 토큰 모양은 <b>예전 auth-service 운영자 토큰과 같습니다</b>(<code>sub=OP-…</code>, <code>typ=OPERATOR</code>, <code>roles</code>, <code>centers</code>). 그래서 50개 업무 서비스의 권한 판단 코드는 바꿀 필요가 없고, <b>발급자 표의 한 줄</b>만 바뀝니다. Keycloak 토큰의 특이한 모양(<code>typ="Bearer"</code>, <code>realm_access.roles</code>, UUID <code>sub</code>)은 Employee Auth Service 안에서만 처리하면 됩니다.</p>
+  </div>
+
+  <h3>6-4. Employee Auth Service가 가지는 데이터 (DB)</h3>
+  <div class="tbl"><table>
+    <tr><th>표</th><th>내용</th></tr>
+    <tr><td><code>employee_identity</code></td><td>Keycloak <code>sub</code>(UUID) ↔ PMart 직원 ID(<code>OP-…</code>) 연결. 고객 auth-service의 <code>social_identity</code>(Google sub ↔ 고객 ID)와 같은 역할</td></tr>
+    <tr><td><code>employee_status</code></td><td>ACTIVE / DISABLED / LEFT(퇴사). Keycloak 인증이 성공해도 <b>PMart에서 막힌 직원은 토큰을 받지 못합니다</b></td></tr>
+    <tr><td><code>login_ticket</code></td><td>일회용 티켓. 60초, 1회, 발급 기기</td></tr>
+    <tr><td><code>employee_session</code> · <code>refresh_token</code></td><td>세션과 Refresh Token(해시만 저장, 1회용 회전)</td></tr>
+    <tr><td>(결정 필요) 역할·센터</td><td>직접 가질지, auth-service RoleGrant를 조회할지</td></tr>
+  </table></div>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+  <h2><span class="num">07</span>흐름 ② 로그인 뒤 업무 API 호출</h2>
+  <p class="lead">PDA 앱이 피킹 작업을 가져오는 상황을 예로 듭니다. 이 부분은 PMart에 이미 있는 검증 구조를 그대로 씁니다.</p>
+
+  <ol class="steps">
+    <li><div class="who"><span class="pill">PDA 앱</span><span class="arrow">→</span><span class="pill ac">Gateway</span></div><p><code>GET /api/v1/mfc/pick-tasks?center=MFC-SEED-01</code> + <code>Authorization: Bearer &lt;PMart 직원 JWT&gt;</code></p></li>
+    <li><div class="who"><span class="pill ac">Gateway</span></div><p><b>발급자 고르기</b>: <code>iss</code>가 Employee Auth Service인지 확인합니다. 발급자 표에 없으면 <span class="pill danger">401</span></p></li>
+    <li><div class="who"><span class="pill ac">Gateway</span></div><p><b>서명 확인</b>: Employee Auth Service JWKS 공개키로 서명과 만료를 확인합니다. 공개키는 처음 한 번 받아 두고 재사용합니다.</p></li>
+    <li><div class="who"><span class="pill ac">Gateway</span></div><p><b>대상·종류 짝</b>: <code>aud=pmart-api</code>여야 하고, 이 발급자는 OPERATOR만 낼 수 있습니다. 고객 토큰으로 직원 API를 부르면 막힙니다.</p></li>
+    <li><div class="who"><span class="pill ac">Gateway</span><span class="arrow">↔</span><span class="pill">Redis</span></div><p><b>차단 목록</b>: 퇴사·정지된 직원의 토큰이면 <span class="pill danger">401 SUBJECT_BLOCKED</span> → <a href="#s9">9장</a></p></li>
+    <li><div class="who"><span class="pill ac">Gateway</span><span class="arrow">→</span><span class="pill">mfc 서비스</span></div><p>경로에 맞는 서비스로 전달합니다.</p></li>
+    <li><div class="who"><span class="pill">mfc 서비스</span></div><p><b>다시 검증</b>: <code>common-security</code>가 같은 발급자 표로 한 번 더 확인합니다. 게이트웨이를 믿고 건너뛰지 않습니다.</p></li>
+    <li><div class="who"><span class="pill">mfc 서비스</span></div><p><b>업무 권한</b>: <code>roles</code>에 <code>MFC_WORKER</code>가 있고 <code>centers</code>에 <code>MFC-SEED-01</code>이 있어야 합니다. 아니면 <span class="pill warn">403</span></p></li>
+  </ol>
+
+  <h3>발급자 표 변화 (pmart-config <code>application-lan.yml</code>)</h3>
+<pre><code>pmart:
+  security:
+    issuers:
+      - id: staff                                   # ★ 직원 — Keycloak 대신 Employee Auth Service
+        issuer-uri: 'http://employee-auth-service:8520'
+        jwk-set-uri: 'http://employee-auth-service:8520/api/v1/internal/jwks'
+        audiences: [pmart-api]
+        user-types: [OPERATOR]
+      - id: auth-service                            # 고객·비회원·서비스 (그대로)
+      - id: rider                                   # 라이더 (그대로)</code></pre>
+  <div class="callout key"><span class="t">🔑 401과 403</span><p><b>401</b> = 토큰이 없거나 가짜이거나 만료됨(인증 실패) · <b>403</b> = 누군지는 알지만 이 일은 할 수 없음(인가 실패)</p></div>
+  <div class="callout key"><span class="t">🔑 SSO와 인가는 다릅니다</span><p>같은 Keycloak 계정으로 PDA와 백오피스에 모두 로그인할 수 있지만(SSO), <b>무엇을 할 수 있는지</b>는 PMart JWT의 역할·센터로 앱과 서비스마다 따로 판단합니다. MFC 작업자가 인사 화면에 들어가지 못하는 것은 SSO와 상관없이 인가에서 막히기 때문입니다.</p></div>
+</section>
+
+<!-- 8 -->
+<section id="s8">
+  <h2><span class="num">08</span>흐름 ③ 신규 직원 등록 — HR Service</h2>
+  <p class="lead">강의 필기: "인사팀이 사용할 백오피스 React 앱 요청을 처리할 HR 서비스를 API 게이트웨이 뒤에 만든다. HR 서비스가 Keycloak에 IAM 계정 생성을 요청한다."</p>
+
+  <figure>
+  <div class="diagram">
+  <svg viewBox="0 0 1000 300" role="img" aria-label="신규 직원 등록 흐름">
+    <defs>
+      <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+      <marker id="hk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-kc"/></marker>
+      <marker id="he" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-emp"/></marker>
+    </defs>
+    <rect x="20" y="40" width="160" height="80" rx="12" class="s-box"/><text x="100" y="75" text-anchor="middle" class="s-t">인사팀</text><text x="100" y="97" text-anchor="middle" class="s-s">React 백오피스</text>
+    <rect x="230" y="40" width="150" height="80" rx="12" class="s-box ac"/><text x="305" y="75" text-anchor="middle" class="s-t">API Gateway</text><text x="305" y="97" text-anchor="middle" class="s-s">/api/v1/hr/**</text>
+    <rect x="430" y="40" width="170" height="80" rx="12" class="s-box emp"/><text x="515" y="75" text-anchor="middle" class="s-t">HR Service</text><text x="515" y="97" text-anchor="middle" class="s-s">직원 등록 · 권한 확인</text>
+    <rect x="660" y="40" width="150" height="80" rx="12" class="s-box kc"/><text x="735" y="75" text-anchor="middle" class="s-t">Keycloak</text><text x="735" y="97" text-anchor="middle" class="s-s">IAM 계정 저장</text>
+    <rect x="850" y="40" width="130" height="80" rx="12" class="s-box dash"/><text x="915" y="75" text-anchor="middle" class="s-t">메일 서버</text><text x="915" y="97" text-anchor="middle" class="s-s">SMTP</text>
+    <path d="M180,80 L228,80" class="s-line" marker-end="url(#h)"/>
+    <path d="M380,80 L428,80" class="s-line" marker-end="url(#h)"/>
+    <path d="M600,70 L658,70" class="s-line kc" marker-end="url(#hk)"/>
+    <path d="M658,95 L602,95" class="s-line kc" marker-end="url(#hk)"/>
+    <path d="M810,80 L848,80" class="s-line dash" marker-end="url(#h)"/>
+    <rect x="430" y="160" width="170" height="70" rx="12" class="s-box emp"/><text x="515" y="190" text-anchor="middle" class="s-t">Employee Auth</text><text x="515" y="212" text-anchor="middle" class="s-s">직원 연결·상태 등록</text>
+    <path d="M515,120 L515,158" class="s-line emp dash" marker-end="url(#he)"/>
+    <text x="525" y="145" class="s-e" style="font-size:11.5px">EmployeeRegistered 사건</text>
+    <text x="20" y="275" class="s-l">HR Service → Keycloak: client_credentials 로 받은 관리 토큰으로 Admin REST API 호출 (서버끼리 내부망)</text>
+  </svg>
+  </div>
+  </figure>
+
+  <ol class="steps emp">
+    <li><div class="who"><span class="pill">인사팀</span><span class="arrow">→</span><span class="pill ac">Gateway</span><span class="arrow">→</span><span class="pill emp">HR Service</span></div><p>인사팀이 백오피스에서 신규 직원의 이름, 쓸 메일 아이디, 소속 센터, 직무를 입력합니다. 인사팀 직원도 <b>자기 PMart 직원 JWT</b>로 로그인한 상태입니다.</p>
+<pre><code>POST /api/v1/hr/employees
+{ "name": "홍길동", "mailId": "gildong", "center": "MFC-SEED-01", "job": "MFC_WORKER" }</code></pre></li>
+    <li><div class="who"><span class="pill emp">HR Service</span></div><p>요청한 사람이 인사 권한(예: <code>HR_ADMIN</code>)을 가졌는지 확인합니다. 그다음 PMart 직원 ID <code>OP-&lt;UUID&gt;</code>를 새로 매기고 자기 DB에 직원 기록을 만듭니다.</p></li>
+    <li><div class="who"><span class="pill emp">HR Service</span><span class="arrow">→</span><span class="pill kc">Keycloak</span></div><p>먼저 자기 자격 증명으로 관리용 토큰을 받습니다. 직원 로그인과는 다른 길입니다.</p>
+<pre><code>POST /realms/pmart-staff/protocol/openid-connect/token
+grant_type=client_credentials
+client_id=hr-service
+client_secret=…</code></pre></li>
+    <li><div class="who"><span class="pill emp">HR Service</span><span class="arrow">→</span><span class="pill kc">Keycloak Admin API</span></div>
+<pre><code>POST /admin/realms/pmart-staff/users
+Authorization: Bearer &lt;관리 토큰&gt;
+{
+  "username": "gildong@pmart.com",
+  "email": "gildong@pmart.com",
+  "firstName": "길동", "lastName": "홍",
+  "enabled": true,
+  "attributes": { "pmart_operator_id": ["OP-7c1d…"] },
+  "requiredActions": ["UPDATE_PASSWORD"]
+}
+→ 201 Created  (Location 머리글에 Keycloak 사용자 ID)</code></pre></li>
+    <li><div class="who"><span class="pill emp">HR Service</span><span class="arrow">→</span><span class="pill kc">Keycloak</span><span class="arrow">→</span><span class="pill">메일 서버</span></div><p>비밀번호 설정 메일을 보내 달라고 요청합니다.</p>
+<pre><code>PUT /admin/realms/pmart-staff/users/{id}/execute-actions-email
+["UPDATE_PASSWORD"]</code></pre>
+    <p>신입은 메일의 링크로 <b>자기 비밀번호를 직접</b> 정합니다. 메일함이 아직 없다면 인사팀이 Keycloak에 <b>임시 비밀번호</b>(Temporary)를 넣고 직접 전달하는 방법도 있습니다.</p></li>
+    <li><div class="who"><span class="pill emp">HR Service</span><span class="arrow">→</span><span class="pill emp">Employee Auth</span></div><p><code>EmployeeRegistered</code> 사건(Kafka)으로 Employee Auth Service가 직원 연결과 상태(ACTIVE), 역할·센터를 등록합니다. PMart 규칙(다른 서비스 DB 직접 접근 금지)에 맞춘 방식입니다. <span class="pill warn">PMart 맞춤</span></p></li>
+    <li><div class="who"><span class="pill emp">HR Service</span><span class="arrow">→</span><span class="pill">인사팀</span></div><p>"계정 생성 완료: gildong@pmart.com, 비밀번호 설정 메일 발송"을 돌려줍니다.</p></li>
+  </ol>
+
+  <div class="callout danger">
+    <span class="t">🚨 강의 필기 정정 <span class="pill ac">ChatGPT 보완</span></span>
+    <ul>
+      <li><b>"계정 생성은 OAuth 서버와 상관없다"</b> → 로그인 API와는 별개지만, Admin API를 부르려면 HR Service도 Keycloak 기밀 클라이언트로 토큰을 받아 <b>관리 권한을 증명</b>해야 합니다.</li>
+      <li><b>"xxx@과 초기 패스워드를 Keycloak에서 받아 인사팀에 전달"</b> → Keycloak은 비밀번호를 평문으로 <b>돌려주지 않습니다</b>. 메일 링크로 본인이 정하게 하거나, 임시 비밀번호를 HR이 정해 넣습니다.</li>
+      <li><b>root 권한</b> → 필요 없습니다. <code>manage-users</code>만 줍니다.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 9 -->
+<section id="s9">
+  <h2><span class="num">09</span>흐름 ④ 토큰 갱신 · 로그아웃 · 퇴사</h2>
+
+  <div class="grid c3">
+    <div class="card"><h4>🔄 갱신</h4><p>Access Token이 만료되면 앱이 <code>POST /api/v1/employee-auth/tokens/refresh</code>에 Refresh Token을 보냅니다. Employee Auth Service가 직원 상태를 다시 확인하고 새 토큰 쌍을 줍니다(1회용 회전). <b>Keycloak에는 다시 가지 않습니다.</b></p></div>
+    <div class="card"><h4>🚪 로그아웃</h4><p>앱 → <code>POST /api/v1/employee-auth/logouts</code>로 PMart 세션을 끝냅니다. 공용 PDA라면 브라우저의 Keycloak 세션도 끝내야(<code>end_session_endpoint</code>) 다음 작업자가 앞사람으로 자동 로그인되지 않습니다.</p></div>
+    <div class="card"><h4>⏳ 세션 길이</h4><p>PMart 직원 Access 15분, 세션은 근무 교대 기준(예: 12시간). Keycloak 세션과 PMart 세션은 <b>따로</b> 돕니다. "OpenID 세션 90일" 같은 고정값은 없습니다.</p></div>
+  </div>
+
+  <h3>퇴사 · 정지 처리</h3>
+  <ol class="steps danger">
+    <li><div class="who"><span class="pill">인사팀</span><span class="arrow">→</span><span class="pill emp">HR Service</span></div><p><code>POST /api/v1/hr/employees/{id}/leave</code> (퇴사 처리)</p></li>
+    <li><div class="who"><span class="pill emp">HR Service</span><span class="arrow">→</span><span class="pill kc">Keycloak</span></div><p>Admin API로 <code>enabled=false</code>를 설정하고 세션을 로그아웃시킵니다. 이제 <b>새로 로그인할 수 없습니다.</b></p></li>
+    <li><div class="who"><span class="pill emp">HR Service</span><span class="arrow">→</span><span class="pill">Kafka</span></div><p><code>EmployeeLeft</code> 사건을 냅니다.</p></li>
+    <li><div class="who"><span class="pill emp">Employee Auth</span></div><p>사건을 받아 상태를 LEFT로 바꾸고 Refresh Token을 모두 무효로 만든 뒤, <code>SubjectBlocked</code> 사건을 냅니다(PMart에 이미 있는 계약).</p></li>
+    <li><div class="who"><span class="pill ac">Gateway</span><span class="arrow">→</span><span class="pill">Redis</span></div><p>게이트웨이가 Redis 차단 목록에 "이 직원의 이 시각 이전 토큰 거부"를 씁니다. → <b>이미 나간 15분짜리 토큰도 바로 401</b></p></li>
+  </ol>
+  <div class="callout danger"><span class="t">🚨 Keycloak 계정은 지우지 말고 비활성화</span><p>지우면 기록 연결(<code>OP-…</code>)이 끊기고 감사 추적이 어려워집니다. 퇴사자는 <code>enabled=false</code>로 둡니다.</p></div>
+  <div class="callout ok"><span class="t">✅ 지금 PMart보다 단순해지는 점</span><p>지금은 관리자가 Keycloak 화면에서 직접 막기 때문에 auth-service가 Keycloak 관리 기록을 10초마다 읽어 차단 사건을 대신 냅니다(StaffBlockRelay). 이 설계에서는 <b>퇴사 처리를 HR Service가 직접 하므로</b> 그 자리에서 사건을 낼 수 있습니다. 관리 기록을 읽는 중계가 필요 없어집니다(Keycloak 화면에서 직접 막는 경우만 남으면 그때 유지).</p></div>
+</section>
+
+<!-- 10 -->
+<section id="s10">
+  <h2><span class="num">10</span>고객 로그인과 나란히 보기</h2>
+  <p class="lead">강의에서 함께 다룬 Google 고객 로그인과 비교하면 이 설계의 의도가 잘 보입니다.</p>
+
+  <div class="grid c2">
+    <div class="card">
+      <h4>고객 (지금 PMart · ADR-0055)</h4>
+      <ol>
+        <li>고객 앱 → Google 로그인 → <b>Google ID 토큰</b></li>
+        <li>앱 → 게이트웨이 → <b>auth-service</b> <code>POST /auth/social-logins</code></li>
+        <li>auth-service가 Google 공개키로 검증</li>
+        <li>Google <code>sub</code> → <code>CU-…</code> 연결</li>
+        <li><b>PMart 고객 JWT</b> 발급</li>
+      </ol>
+    </div>
+    <div class="card emp">
+      <h4>직원 (이 적용안)</h4>
+      <ol>
+        <li>PDA → 브라우저 → Keycloak 로그인 → <b>Keycloak 토큰</b>(서버로)</li>
+        <li>브라우저 → 게이트웨이 → <b>Employee Auth Service</b> 콜백</li>
+        <li>Employee Auth가 Keycloak 공개키로 검증</li>
+        <li>Keycloak <code>sub</code> → <code>OP-…</code> 연결</li>
+        <li><b>PMart 직원 JWT</b> 발급</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="callout key">
+    <span class="t">🔑 차이점 하나: Google 쪽은 "OAuth 클라이언트"가 아님</span>
+    <p>고객 쪽 auth-service는 앱이 받아 온 Google ID 토큰을 <b>검증만</b> 합니다. 인가 코드 교환, client_secret, Spring OAuth2 Client를 쓰지 않습니다(ADR-0055). 그래서 강의 질문 "Auth Service가 우리 PMart의 OAuth 클라이언트 서버지?"의 답은 이렇습니다.</p>
+    <ul>
+      <li><b>직원 쪽 Employee Auth Service</b>: Keycloak의 OAuth 클라이언트가 <b>맞습니다</b> (이 설계).</li>
+      <li><b>고객 쪽 auth-service</b>: 개념상 Google 로그인을 받아 주는 쪽이지만, PMart 구현은 클라이언트 흐름 없이 <b>ID 토큰 검증 방식</b>입니다.</li>
+      <li>주문·결제 같은 업무 API는 둘 다 <b>리소스 서버</b>입니다.</li>
+    </ul>
+  </div>
+  <div class="callout warn"><span class="t">⚠️ 용어: 직원 로그인은 "소셜 로그인"이 아닙니다</span><p>강의 필기에 "Employee Auth Service가 소셜 로그인을 처리"라고 되어 있지만, 회사 IAM 계정(<code>@pmart.com</code>)으로 Keycloak에 로그인하는 것은 <b>사내 IAM 인증</b>입니다. Google·Naver처럼 외부 IdP를 Keycloak에 연동할 때만 소셜 로그인이라고 부릅니다. <span class="pill ac">ChatGPT 보완</span></p></div>
+</section>
+
+<!-- 11 -->
+<section id="s11">
+  <h2><span class="num">11</span>지금 PMart에서 무엇이 바뀌나</h2>
+  <p class="lead">PMart 저장소에는 Keycloak이 이미 2026-11-11부터 다른 방식으로 돌고 있습니다(ADR-0054: 백오피스가 Keycloak에 직접 로그인하고 Keycloak 토큰을 그대로 씀). 이 적용안으로 가려면 아래를 바꿔야 합니다.</p>
+
+  <div class="tbl"><table>
+    <tr><th>항목</th><th>지금 PMart</th><th>이 적용안</th></tr>
+    <tr><td>Keycloak 로그인 클라이언트</td><td><code>pmart-backoffice</code> (공개, PKCE)</td><td><code>employee-auth-service</code> (기밀) — 백오피스 클라이언트는 제거</td></tr>
+    <tr><td>API에 쓰는 직원 토큰</td><td>Keycloak Access Token</td><td>PMart 직원 JWT (Employee Auth Service 발급)</td></tr>
+    <tr><td>발급자 표 <code>staff</code> 줄</td><td>Keycloak (<code>type-claim: ''</code>, <code>subject-claim: pmart_operator_id</code>, <code>roles-claim: realm_access.roles</code>)</td><td>Employee Auth Service (일반 PMart 토큰 형태라 특별 설정 불필요)</td></tr>
+    <tr><td>Keycloak 노출</td><td>브라우저가 <code>192.168.0.101:8180</code>에 직접 접속</td><td>게이트웨이 <code>/iam/**</code> 중계 (<code>KC_HOSTNAME</code> 변경 → <code>iss</code> 변경)</td></tr>
+    <tr><td>직원 계정 생성</td><td>관리자가 Keycloak 관리 콘솔에서 직접 (결정 L)</td><td>HR Service + Admin REST API</td></tr>
+    <tr><td>역할·센터</td><td>Keycloak Realm 역할·사용자 속성</td><td>PMart 쪽(Employee Auth / auth-service RoleGrant) — 결정 필요</td></tr>
+    <tr><td>직원 차단</td><td>auth-service StaffBlockRelay가 Keycloak 관리 기록을 읽음</td><td>HR → Employee Auth가 직접 <code>SubjectBlocked</code> 발행</td></tr>
+    <tr><td>새 서비스</td><td>—</td><td>Employee Auth Service, HR Service (service-map 등록, 포트·DB·배치)</td></tr>
+    <tr><td>앱 변경</td><td>백오피스 OIDC(PKCE) 로그인 배포됨</td><td>백오피스: Employee Auth 로그인 + 티켓 교환으로 다시 변경. PDA: 새로 구현</td></tr>
+    <tr><td>결정 문서</td><td>ADR-0054</td><td>새 ADR로 ADR-0054의 직원 부분을 대체</td></tr>
+  </table></div>
+
+  <div class="grid c2">
+    <div class="card"><h4>👍 이 적용안의 장점</h4><ul>
+      <li>고객·라이더·직원 모두 "<b>외부가 신원 확인 → PMart가 토큰 발급</b>"으로 모양이 같아집니다</li>
+      <li>업무 서비스가 Keycloak 토큰 모양을 몰라도 됩니다. 토큰 형태가 예전 운영자 토큰과 같습니다</li>
+      <li>앱에 Keycloak 토큰이나 비밀이 전혀 없습니다</li>
+      <li>퇴사·정지를 HR 업무 흐름 안에서 바로 처리합니다</li>
+      <li>나중에 IdP를 바꿔도 Employee Auth Service만 고치면 됩니다</li>
+    </ul></div>
+    <div class="card"><h4>👎 감수할 점</h4><ul>
+      <li>서비스가 2개 늘어납니다(운영·배포·모니터링 대상 증가)</li>
+      <li>앱에 결과를 넘기는 티켓 설계가 추가로 필요합니다</li>
+      <li>Keycloak을 게이트웨이 뒤로 숨기려면 프록시와 <code>iss</code> 설정을 정확히 맞춰야 합니다</li>
+      <li>이미 배포된 백오피스 Keycloak 로그인을 다시 바꿔야 합니다</li>
+      <li>ChatGPT 의견: 앱이 직접 Keycloak에 붙는 방식(PKCE)이 "비교적 단순"하다. 이 설계도 가능하지만 <b>유일한 정답은 아님</b></li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section id="s12">
+  <h2><span class="num">12</span>주의할 점 · 자주 하는 오해</h2>
+  <div class="tbl"><table>
+    <tr><th>필기 / 오해</th><th>정확한 설명</th></tr>
+    <tr><td>Keycloak은 인증만 해 준다</td><td>Keycloak 자체는 토큰 발급·SSO·계정 관리까지 할 수 있습니다. <b>이 설계에서는 일부러</b> 신원 확인 용도로만 쓰고 PMart JWT는 백엔드가 만듭니다</td></tr>
+    <tr><td>Flutter·React 앱은 Keycloak 클라이언트가 될 수 없다</td><td>될 수는 있습니다(공개 클라이언트 + PKCE). 이 설계는 <b>등록하지 않기로 선택</b>한 것입니다</td></tr>
+    <tr><td>PDA에서 Keycloak 화면으로 로그인하는 게 맞나?</td><td>맞습니다. 단, 시스템 브라우저(Custom Tabs)를 쓰고 일반 WebView는 쓰지 않습니다(RFC 8252)</td></tr>
+    <tr><td>게이트웨이에서 Keycloak으로 갈 수 없다</td><td>갈 수 있습니다. 문제는 리디렉션과 코드 교환을 누가 맡느냐입니다. 관리 경로(<code>/admin</code>)는 외부에 열지 않습니다</td></tr>
+    <tr><td>액세스 토큰을 내서 URL 정보를 얻는다</td><td>URL은 이미 알고 있고, 그 URL의 <b>보호된 API에 접근하려고</b> 토큰을 냅니다. <code>/token</code>은 코드를 토큰으로 바꾸는 곳입니다</td></tr>
+    <tr><td>Access·Refresh Token을 둘 다 Authorization 헤더에</td><td>API에는 Access Token만 넣습니다. Refresh Token은 갱신 주소에만 보냅니다</td></tr>
+    <tr><td>OpenID와 액세스 토큰을 게이트웨이에 주면 회원 테이블에 저장</td><td>토큰 자체를 회원 테이블에 저장하지 않습니다. 검증 뒤 <b>주체 연결(sub ↔ PMart ID)</b>만 저장합니다</td></tr>
+    <tr><td>Keycloak SMTP = 자체 메일 서버·메일함</td><td>아닙니다. 외부 SMTP로 <b>보내기만</b> 합니다. 메일함과 웹메일(Roundcube)은 따로 구성합니다</td></tr>
+    <tr><td>root만 IAM 계정을 발급</td><td><code>manage-users</code>만 가진 서비스 계정이면 됩니다</td></tr>
+    <tr><td>공개키는 서비스를 쓰려는 앱을 검증</td><td>토큰의 서명·발급자를 검증합니다</td></tr>
+    <tr><td>@RestController가 HTTP 응답의 시작점</td><td>요청은 톰캣 → 필터(SecurityFilterChain) → DispatcherServlet → 컨트롤러 순서로 들어오고, 반환값이 응답으로 변환됩니다</td></tr>
+    <tr><td>Spring Boot Web = 항상 Tomcat</td><td>MVC 서비스는 Tomcat, WebFlux(PMart 게이트웨이)는 Reactor Netty입니다</td></tr>
+  </table></div>
+
+  <div class="callout warn">
+    <span class="t">⚠️ LAN에서 운영으로 갈 때</span>
+    <ul>
+      <li>지금 LAN은 HTTP입니다. 운영에서는 <b>TLS(HTTPS) 필수</b>입니다. 비밀번호, 코드, 티켓이 오가기 때문입니다</li>
+      <li>client_secret은 <code>.secrets</code>에 원본, <code>pmart-config</code>에는 <code>{cipher}</code>만 둡니다. 로그에 토큰·비밀번호를 남기지 않습니다</li>
+      <li>게이트웨이에서 <code>/iam/admin/**</code>, <code>/iam/realms/master/**</code>는 반드시 차단합니다</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 13 -->
+<section id="s13">
+  <h2><span class="num">13</span>용어 사전</h2>
+  <dl class="glossary card">
+    <dt>OAuth 2.0</dt><dd>앱이 사용자 대신 API를 쓸 수 있도록 권한을 위임하는 규칙.</dd>
+    <dt>OIDC (OpenID Connect)</dt><dd>OAuth 2.0 위에 "이 사람이 누구인가"를 더한 규칙. ID Token이 여기서 나옵니다.</dd>
+    <dt>IAM</dt><dd>Identity and Access Management. 직원 계정과 접근을 관리하는 체계. 여기서는 Keycloak의 <code>xxx@pmart.com</code> 계정.</dd>
+    <dt>Realm</dt><dd>Keycloak 안의 독립된 사용자·클라이언트 묶음. 예: <code>pmart-staff</code>.</dd>
+    <dt>기밀 / 공개 클라이언트</dt><dd>client_secret을 숨길 수 있는 서버 / 숨길 수 없는 앱·브라우저.</dd>
+    <dt>Grant Type</dt><dd>토큰을 받는 방식. <code>authorization_code</code>(사람 로그인), <code>client_credentials</code>(서버끼리, HR Service), <code>refresh_token</code>(갱신).</dd>
+    <dt>Redirect URI · 콜백</dt><dd>로그인 뒤 인가 코드를 받는 주소. 이 설계에서는 Employee Auth Service의 <code>/login/oauth2/code/keycloak</code>.</dd>
+    <dt>state · PKCE</dt><dd>각각 로그인 요청 위조 방지, 인가 코드 가로채기 방지를 위한 난수.</dd>
+    <dt>일회용 로그인 티켓</dt><dd>로그인 결과를 앱에 안전하게 넘기려고 만드는 짧은 수명의 1회용 값. 앱이 이것을 PMart 토큰으로 바꿉니다.</dd>
+    <dt>JWT · JWS · JWKS</dt><dd>토큰 형식 · 서명된 JWT · 공개키 목록 주소.</dd>
+    <dt>iss · sub · aud · exp · iat</dt><dd>발급자 · 주체 · 대상 · 만료 · 발급 시각.</dd>
+    <dt>Resource Server</dt><dd>토큰을 검증하고 API를 제공하는 쪽. PMart 게이트웨이와 업무 서비스.</dd>
+    <dt>Admin REST API</dt><dd>Keycloak 관리 기능을 HTTP로 부르는 API. 예: <code>POST /admin/realms/{realm}/users</code>, <code>execute-actions-email</code>.</dd>
+    <dt>SMTP · Roundcube</dt><dd>메일을 보내는 규약 · 메일함을 웹으로 보여 주는 PHP 웹메일 프로그램(Apache 위에서 동작).</dd>
+    <dt>SSO</dt><dd>한 번 로그인으로 여러 앱을 쓰는 것. 무엇을 할 수 있는지(인가)는 별개입니다.</dd>
+    <dt>발급자 표</dt><dd>PMart 설정 <code>pmart.security.issuers</code>. 인정하는 토큰 발급자와 각 발급자가 낼 수 있는 사용자 종류를 적은 표.</dd>
+  </dl>
+</section>
+
+<footer>
+  <p><b>기준 자료</b> — ChatGPT 공유 대화 「OAuth 인증 구조 정리」·「키클록 인증 구조 설계」(강의 필기 정리, 이 문서의 기준 설계)</p>
+  <p><b>PMart 대응에 쓴 자료</b> — GitHub <code>code-and-pick/pmart-backend</code>: <code>docs/architecture/service-map.md</code>, <code>docs/adr/0054·0055</code>, <code>docs/architecture/auth/*</code>, <code>.claude/rules/security-config.md</code> / <code>pmart-config</code> / <code>pmart-clients</code>: <code>docs/apps/mfc-app.md</code> / <code>environment-setup</code> (PC 배치)</p>
+  <p>Employee Auth Service·HR Service의 포트(8520·8530), 경로, 티켓 방식, 사건 이름은 이 문서에서 정한 <b>예시 값</b>입니다. 실제로 적용하려면 새 ADR과 service-map 등록이 필요합니다. 2026-11-12 정리.</p>
+</footer>
+
+</main>
+</div>
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  try{ var s=localStorage.getItem('pmart-kc-theme'); if(s) root.setAttribute('data-theme',s); }catch(e){}
+  btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme');
+    if(!cur){ cur=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }
+    var next=cur==='dark'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    try{ localStorage.setItem('pmart-kc-theme',next); }catch(e){}
+  });
+})();
+</script>
+</body>
+</html>

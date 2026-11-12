@@ -9,3 +9,5 @@
 | 날짜 | 파일 | 무엇 | 확인 |
 |---|---|---|---|
 | 2026-11-10 | [`2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`](2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md) (받은 이름 `PMart_API_Gateway______JWT______.md`, 내용 그대로) | 게이트웨이 1개, URL 경로별 발급자·대상·권한 검증(위 Keycloak 글 전제) | [`../2026-11-10-gateway-url-jwt-review.md`](../2026-11-10-gateway-url-jwt-review.md) — ADR-0054 뒤 §5 |
+| 2026-11-12 | [`2026-11-12/pmart-keycloak-guide.html`](2026-11-12/pmart-keycloak-guide.html) | 강의 설계(ChatGPT 대화 2개 정리)를 PMart 에 맞춘 Keycloak 직원 인증 적용안 — Employee Auth Service 가 Keycloak 기밀 클라이언트·PMart 직원 JWT 발급, HR Service 가 Admin API 로 계정 발급 | [`../employee-auth-structure.md`](../employee-auth-structure.md) — 사용자 "이 설계를 따른다"(2026-11-12) |
+| 2026-11-12 | [`2026-11-12/baropick_mail_iam_guide.html`](2026-11-12/baropick_mail_iam_guide.html) | 사내 메일 서버(docker-mailserver + Roundcube)와 Keycloak 인증 메일 연동 가이드(원본 2종 통합본, 예시 도메인 `baropick.test`) | [`../employee-auth-structure.md`](../employee-auth-structure.md) §9 — 도메인은 `@pmart.com`(사용자 결정) |
