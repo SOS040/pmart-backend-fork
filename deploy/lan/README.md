@@ -23,6 +23,10 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조. 배포 �
 - 다른 PC 의 구성요소는 `extra_hosts` 로 가리킨다. 그래서 어느 PC 에서든 주소가 같다:
   `kafka-1:9092,kafka-2:9092,kafka-3:9092`(3노드 클러스터, ADR-0037), `auth-service:8501`, `redis:6379`, `zipkin:9411`, `postgres-<pc>:15432`, `es-search:9200`, `<service>:<port>`.
   게이트웨이 업스트림 기본값(`http://<service>:<port>`)도 그대로 맞는다.
+- **새 구성요소를 더하면** 그 이름이 다른 PC 들의 `extra_hosts` 에도 새로 들어간다. 다른 PC 의 서비스가 그 이름을 부르면(예: 발급자 표의 JWKS 주소)
+  그 PC 들의 앱을 **다시 만들어야** 한다(`lan.sh deploy <pc> <앱…>`). `lan.sh restart` 는 compose 변경을 반영하지 않는다 —
+  2026-11-12 employee-auth-service 를 더했을 때 재시작만 한 PC 2~4 서비스가 `UnknownHostException: employee-auth-service`(JWKS)로 직원 토큰에 500 을 냈다.
+  `deploy` 는 그 PC postgres 도 먼저 `up` 하므로 postgres 도 다시 만들어질 수 있다(데이터는 볼륨에 남는다).
 - PostgreSQL 은 DB 가 필요한 서비스가 있는 PC 마다 하나(컨테이너 안에서도 15432). 그 PC 서비스의 DB 만 만든다.
 - Debezium Connect 는 한 곳. `connector-registrar` 가 모든 PC 의 PostgreSQL(`DB_HOSTS`)을 훑어 커넥터를 만든다.
 - 설정은 config-server 가 설정 저장소(pmart-config)에서 준다(아래 "설정" 절). `local` 프로파일은 LAN 에서 쓰지 않는다.
