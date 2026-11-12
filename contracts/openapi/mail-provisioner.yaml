@@ -1,0 +1,136 @@
+openapi: 3.1.0
+info:
+  title: mail-provisioner
+  version: 0.1.0
+  description: |
+    사서함 프로비저닝 사이드카(ADR-0056 결정 10·D9). 메일 서버(docker-mailserver)의 설정 볼륨을 같이 붙여 계정 파일에 한 줄을 쓰는 방식으로
+    사서함을 만들고 비활성화한다(`setup email add` 와 같은 일 — docker.sock 을 쓰지 않는다). 할 수 있는 일은 사서함 만들기·비활성·다시 활성·
+    비밀번호 바꾸기뿐이고 지우지 않는다(D7). 호출자는 hr-service 하나. LAN 포트 없이 PC 5 Docker 네트워크 안에서만(서비스 간 경로 —
+    ADR-0026, 사용자 토큰 받지 않음). 비밀번호는 해시(SHA512-CRYPT)만 파일에 쓰고 로그·응답에 싣지 않는다.
+servers:
+  - url: /api/v1
+tags:
+  - { name: mailboxes, description: 사서함 }
+
+paths:
+  /internal/mailboxes:
+    post:
+      tags: [mailboxes]
+      summary: "[hr-service→mail-provisioner] 사서함 만들기 (멱등 — 있으면 그대로, 비활성이면 다시 활성)"
+      description: |
+        비밀번호를 주지 않으면 무작위 값으로 만든다(아무도 모르는 값 — 웹메일 비밀번호는 password 로 따로 정한다).
+        만든 직후에는 메일 서버가 반영할 때까지(수 초) 메일을 받지 못할 수 있다 — GET 의 receiving 으로 확인한다.
+      operationId: createMailbox
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [address]
+              properties:
+                address: { $ref: '#/components/schemas/Address' }
+      responses:
+        '200':
+          description: 만들어짐(또는 이미 있음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mailbox' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /internal/mailboxes/{address}:
+    get:
+      tags: [mailboxes]
+      summary: "[hr-service→mail-provisioner] 사서함 상태 (메일을 받을 수 있는지 — SMTP RCPT 확인)"
+      operationId: getMailbox
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AddressPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mailbox' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/mailboxes/{address}/disable:
+    post:
+      tags: [mailboxes]
+      summary: "[hr-service→mail-provisioner] 비활성 (로그인 불가 — 메일·사서함은 지우지 않음, D7)"
+      operationId: disableMailbox
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AddressPath'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 비활성(이미 비활성이어도 성공)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mailbox' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/mailboxes/{address}/enable:
+    post:
+      tags: [mailboxes]
+      summary: "[hr-service→mail-provisioner] 다시 활성 (비밀번호는 비활성 전 값으로 돌아오지 않는다 — password 로 새로 정한다)"
+      operationId: enableMailbox
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AddressPath'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 활성
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mailbox' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/mailboxes/{address}/password:
+    put:
+      tags: [mailboxes]
+      summary: "[hr-service→mail-provisioner] 웹메일 비밀번호 정하기 (해시만 저장, 로그 금지)"
+      operationId: setMailboxPassword
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AddressPath'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, minLength: 12, maxLength: 128, description: 로그 금지 }
+      responses:
+        '204': { description: 바뀜 }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+components:
+  parameters:
+    AddressPath:
+      name: address
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Address' }
+  schemas:
+    Address:
+      type: string
+      maxLength: 128
+      pattern: '^[a-z0-9][a-z0-9._-]{0,62}@[a-z0-9.-]+$'
+      description: 메일 주소(설정한 도메인만 — 그 밖은 400)
+    Mailbox:
+      type: object
+      required: [address, state, receiving]
+      properties:
+        address: { type: string }
+        state: { type: string, enum: [ACTIVE, DISABLED] }
+        receiving: { type: boolean, description: 메일 서버가 이 주소의 메일을 받는가(SMTP RCPT 250) }

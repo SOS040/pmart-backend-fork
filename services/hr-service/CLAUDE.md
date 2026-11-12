@@ -1,0 +1,32 @@
+# hr-service
+
+서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `hr-service` 절이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다.
+결정: ADR-0056(결정 5·7·8·10·12·16). 흐름: `docs/business/flows/employee-account-provisioning.md`.
+
+## 계약
+- REST: `contracts/openapi/hr-service.yaml` → `com.pmart.hr.api.generated`. 사건: `contracts/events/EmployeeRegistered·Suspended·Reinstated·Left.v1.json`(토픽 `platform.employee.v1`, 키 = 운영자 ID). 부르는 쪽 계약: `contracts/openapi/mail-provisioner.yaml`.
+- 계약을 먼저 고치고 코드를 맞춘다. 사건에 이름·역할을 싣지 않는다(이름은 구독자가 쓰지 않는 개인정보, 권한 정본은 employee-auth-service).
+
+## 패키지
+`com.pmart.hr.{api, application, infrastructure}`. Controller 에 업무 규칙 금지.
+
+## 데이터·규칙
+- 스키마는 `db/migration/V*.sql` 로만. 적용된 파일 수정 금지.
+- 비밀번호(Keycloak·사서함)를 받지도 저장하지도 로그하지도 않는다. 사서함 초기 비밀번호는 `mailbox-password-resets` 응답에만(멱등 기록에도 남기지 않으려고 `RequestIdempotency` 를 쓰지 않는다).
+- 개인정보는 이름만. 행·메일 ID·사번을 지우지 않는다(퇴사자 메일 ID 재사용 금지). 사번 `P<연도>-<5자리>`(Asia/Seoul 연도, `employee_no_counter` 원자 증가).
+- 모든 명령·목록은 `HR_ADMIN`(D3), 본인 조회(`/hr/employees/me`)만 모든 직원.
+- 상태 변경 명령은 `RequestIdempotency` + `X-Expected-Version`(row_version).
+
+## 계정 발급·상태 맞추기
+- `ProvisioningWorker`: 행 잠금(SKIP LOCKED) 한 명씩, 단계 REQUESTED → MAILBOX_CREATED → IAM_CREATED → INVITE_SENT → DONE. 외부 호출 실패는 예외를 트랜잭션 밖으로 내지 않고 기록(같은 단계, 지수 대기). 영구 거절·횟수 소진이면 보상. 등록·재시도 직후 `kick()` 으로 바로 한 번.
+- `IamSyncWorker`: 재직 상태 → Keycloak enabled·세션 로그아웃·사서함 활성/비활성. `ContractEndJob`: 한 시간마다 계약 종료 자동 정지.
+- Keycloak 은 `KeycloakAdminClient`(hr-provisioner, 사용자 경로만 — **역할·그룹 매핑 API 를 부르지 않는다**, U-11). 사용자 표현을 바꿀 때는 전체를 읽어 enabled 만 바꿔 쓴다(속성이 지워지지 않게).
+- 설정이 없으면 클라이언트 빈이 없고(로컬) 발급은 CONFIG_REQUIRED 로 남는다.
+
+## 시험
+```bash
+./gradlew :services:hr-service:check   # 단위 + 통합(PostgreSQL·Kafka·Keycloak 26.8.1·Mailpit 컨테이너, mail-provisioner WireMock)
+```
+- `HrProvisioningIT`: 등록 → 사서함 → Keycloak 사용자 → 실제 메일 도착(Mailpit) → EmployeeRegistered, 사서함 대기, 영구 거절 보상, 정지·퇴사·복귀 반영, 계약 종료, 비밀번호 미저장, **U-11(manage-users 로 역할 매핑 가능 = 204)**.
+- 시험 Realm 에는 `hr-provisioner` 의 `realm-management` 역할을 `clientScopeMappings` 로도 준다(fullScopeAllowed false — 없으면 403). LAN Realm 도 같다.
+- 로컬 포트 8512. LAN PC 5.

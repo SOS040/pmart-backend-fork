@@ -4,6 +4,7 @@
 # - signing-key.pem / signing-kid: auth-service RS256 서명키(PKCS#8). 재생성하면 발급된 토큰이 모두 무효
 # - rider-auth-signing-key.pem / rider-auth-signing-kid: rider-auth-service(라이더 토큰 발급자, ADR-0054 E) RS256 서명키 — auth-service 와 다른 키
 # - employee-auth-signing-key.pem / employee-auth-signing-kid: employee-auth-service(직원 토큰 발급자, ADR-0056) RS256 서명키 — 다른 발급자와 다른 키
+# - keycloak-hr-provisioner-client-secret: Keycloak 서비스 계정 클라이언트 hr-provisioner(hr-service 의 Admin API — manage/view/query-users 만, ADR-0056 결정 16). pmart-config 에는 {cipher}. 교체: 새 값 → 설정·Keycloak 반영·재시작 → 옛 값 폐기
 # - keycloak-employee-auth-client-secret: Keycloak 로그인 클라이언트 employee-auth-service(기밀, ADR-0056). pmart-config 에는 {cipher}, Keycloak 에는 kcadm 으로
 # - s3-access-key / s3-secret-key: s3(SeaweedFS) 자격 증명(ADR-0016)
 # - operator-admin-login / operator-admin-password / operator-admin-hash: auth-service 첫 관리자(ADR-0018).
@@ -45,6 +46,7 @@ if [ ! -f .secrets/employee-auth-signing-key.pem ]; then
   echo "created employee-auth-signing-key.pem (kid $(cat .secrets/employee-auth-signing-kid))"
 fi
 [ -f .secrets/keycloak-employee-auth-client-secret ] || { openssl rand -hex 32 > .secrets/keycloak-employee-auth-client-secret; echo "created keycloak-employee-auth-client-secret"; }
+[ -f .secrets/keycloak-hr-provisioner-client-secret ] || { openssl rand -hex 32 > .secrets/keycloak-hr-provisioner-client-secret; echo "created keycloak-hr-provisioner-client-secret"; }
 [ -f .secrets/s3-access-key ] || { echo "pmart-lan-$(openssl rand -hex 4)" > .secrets/s3-access-key; echo "created s3-access-key"; }
 [ -f .secrets/s3-secret-key ] || { openssl rand -hex 24 > .secrets/s3-secret-key; echo "created s3-secret-key"; }
 [ -f .secrets/operator-admin-login ] || { echo "admin" > .secrets/operator-admin-login; echo "created operator-admin-login"; }

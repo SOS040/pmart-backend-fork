@@ -1,0 +1,18 @@
+# 시험 전용: 환경 자리표시자 — 시험은 Testcontainers·각 시험 properties 가 덮는다
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${PMART_JWKS_URI:http://localhost:1/jwks}
+  datasource:
+    url: ${PMART_DB_URL}
+    username: ${PMART_DB_USERNAME}
+    password: ${PMART_DB_PASSWORD}
+  kafka:
+    bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP:localhost:9092}
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

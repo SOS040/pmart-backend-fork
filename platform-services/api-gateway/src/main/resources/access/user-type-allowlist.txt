@@ -92,6 +92,9 @@ GET /api/v1/fulfillment-issues OPERATOR
 GET /api/v1/guest-delivery-addresses/{guestAddressId} PUBLIC
 GET /api/v1/help-requests/{intakeId} OPERATOR,RIDER
 GET /api/v1/holds/{holdId} OPERATOR
+GET /api/v1/hr/employees OPERATOR
+GET /api/v1/hr/employees/me OPERATOR
+GET /api/v1/hr/employees/{operatorId} OPERATOR
 GET /api/v1/inbound-promises OPERATOR
 GET /api/v1/inbound-promises/{trfId} OPERATOR
 GET /api/v1/inbound-promises/{trfId}/receipts/{receiptId} OPERATOR
@@ -301,6 +304,14 @@ POST /api/v1/guest-delivery-addresses PUBLIC
 POST /api/v1/help-requests RIDER
 POST /api/v1/holds OPERATOR
 POST /api/v1/holds/{holdId}/releases OPERATOR
+POST /api/v1/hr/employees OPERATOR
+POST /api/v1/hr/employees/{operatorId}/affiliation-changes OPERATOR
+POST /api/v1/hr/employees/{operatorId}/departures OPERATOR
+POST /api/v1/hr/employees/{operatorId}/invite-resends OPERATOR
+POST /api/v1/hr/employees/{operatorId}/mailbox-password-resets OPERATOR
+POST /api/v1/hr/employees/{operatorId}/provisioning-retries OPERATOR
+POST /api/v1/hr/employees/{operatorId}/reinstatements OPERATOR
+POST /api/v1/hr/employees/{operatorId}/suspensions OPERATOR
 POST /api/v1/inbound-promises/{trfId}/arrivals OPERATOR
 POST /api/v1/inbound-promises/{trfId}/receipts OPERATOR
 POST /api/v1/inbound-tasks/{taskId}/inspections OPERATOR

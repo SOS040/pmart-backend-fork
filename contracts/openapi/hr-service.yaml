@@ -1,0 +1,398 @@
+openapi: 3.1.0
+info:
+  title: hr-service
+  version: 0.1.0
+  description: |
+    직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
+    hr-service 가 사서함(@pmart.com, mail-provisioner) → Keycloak 계정(hr-provisioner, Admin API) → 비밀번호 설정 메일(Keycloak) 순서로
+    계정을 발급하고(뒤에서 — 진행 상태를 조회), 끝나면 `EmployeeRegistered` 를 발행한다(employee-auth-service 가 로그인 상태로 반영).
+    정본: 직원 신원·고용 정보(운영자 ID OP-…, 사번 P<연도>-<5자리>, 이름, 메일 ID, 고용 형태, 소속, 근무 시작일·계약 종료일, 재직 상태), 계정 발급 진행 상태.
+    비정본: 로그인·토큰·**직원 권한의 효력**(employee-auth-service — 등록 화면의 요청 권한은 approval 에 올릴 뿐, ADR-0056 결정 4), 비밀번호(Keycloak·메일 서버 —
+    hr-service 는 받지도 저장하지도 않는다), MFC 작업 자격(mfc-capacity).
+    권한: 조회·명령 모두 HR_ADMIN(본인 조회 /hr/employees/me 만 모든 직원).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: employees, description: 직원 등록·조회·소속 변경 }
+  - { name: employment, description: 정지·복귀·퇴사 }
+  - { name: provisioning, description: 계정 발급(사서함·Keycloak·안내 메일) 진행·재시도 }
+  - { name: self, description: 본인 조회 }
+
+paths:
+  /hr/employees:
+    post:
+      tags: [employees]
+      summary: 직원 등록 (기본 정보 즉시 효력 + 요청 권한은 승인 요청으로 — 계정 발급은 뒤에서)
+      description: |
+        같은 메일 ID 가 있으면(퇴사자 포함 — 다시 쓰지 않는다) 409 MAIL_ID_TAKEN. 운영자 ID(OP-<UUID>)와 사번(P<등록 연도>-<5자리>, 연도별 순번)을 매긴다.
+        계정 발급(provisioning)은 응답 뒤에 진행된다 — GET /hr/employees/{operatorId} 의 provisioning 으로 본다.
+        사서함 초기 비밀번호는 이 응답에 없다(요청 재전송 대비로 응답이 저장되므로) — POST /hr/employees/{operatorId}/mailbox-password-resets 로 받는다.
+        요청 권한(requestedGrants)은 저장만 하고 승인 요청 제출은 approval 연동(ADR-0056 5단계 뒤) — 그 전까지 submission = PENDING.
+      operationId: registerEmployee
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeRegistration' }
+      responses:
+        '201':
+          description: 등록됨(계정 발급 진행 중)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+    get:
+      tags: [employees]
+      summary: 직원 목록 (상태·소속·검색어 — 이름·메일 ID·사번)
+      operationId: listEmployees
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/EmploymentStatus' } }
+        - { name: affiliationCode, in: query, required: false, schema: { type: string, maxLength: 64 } }
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 60 }, description: 이름·메일 ID·사번 앞부분 }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeePage' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /hr/employees/me:
+    get:
+      tags: [self]
+      summary: 본인 인사 정보 (이름·사번·메일·소속 — 모든 직원)
+      description: 토큰의 운영자 ID 로 찾는다. 인사 기록이 없는 운영자(이전 전 계정 등)는 404.
+      operationId: getMyEmployee
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeSelf' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /hr/employees/{operatorId}:
+    parameters:
+      - $ref: '#/components/parameters/OperatorId'
+    get:
+      tags: [employees]
+      summary: 직원 조회 (계정 발급 진행 포함)
+      operationId: getEmployee
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /hr/employees/{operatorId}/affiliation-changes:
+    post:
+      tags: [employees]
+      summary: 소속 변경 (권한은 바뀌지 않는다 — 센터 이동은 권한을 따로 요청, BO-01)
+      operationId: changeAffiliation
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [affiliation, reason]
+              properties:
+                affiliation: { $ref: '#/components/schemas/Affiliation' }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /hr/employees/{operatorId}/suspensions:
+    post:
+      tags: [employment]
+      summary: 정지 (Keycloak 계정 비활성·세션 로그아웃 → EmployeeSuspended → employee-auth-service 가 세션 종료·즉시 차단)
+      operationId: suspendEmployee
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 정지됨(이미 정지면 그대로)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /hr/employees/{operatorId}/reinstatements:
+    post:
+      tags: [employment]
+      summary: 복귀·재입사 (같은 운영자 ID·사번·메일 ID 를 다시 활성 — 정지·퇴사 모두)
+      operationId: reinstateEmployee
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+                startDate: { type: string, format: date, description: 재입사 근무 시작일(생략하면 그대로) }
+                endDate: { type: string, format: date, description: 새 계약 종료일(정규직은 비움) }
+      responses:
+        '200':
+          description: 복귀됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /hr/employees/{operatorId}/departures:
+    post:
+      tags: [employment]
+      summary: 퇴사 (계정·사서함은 지우지 않고 비활성 — 메일 ID 는 다시 쓰지 않는다, D7)
+      operationId: departEmployee
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 퇴사 처리됨(이미 퇴사면 그대로)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /hr/employees/{operatorId}/invite-resends:
+    post:
+      tags: [provisioning]
+      summary: 비밀번호 설정 메일 다시 보내기 (Keycloak execute-actions-email)
+      operationId: resendInvite
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '202': { description: 보냄(메일 도착은 사서함에서 확인) }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /hr/employees/{operatorId}/provisioning-retries:
+    post:
+      tags: [provisioning]
+      summary: 실패한 계정 발급 다시 시도 (FAILED 일 때만 — 이미 끝난 단계는 건너뛴다)
+      operationId: retryProvisioning
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '202':
+          description: 다시 진행
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /hr/employees/{operatorId}/mailbox-password-resets:
+    post:
+      tags: [provisioning]
+      summary: 사서함(웹메일) 초기 비밀번호 발급 — 응답에 한 번만, 저장하지 않음
+      description: |
+        새 무작위 비밀번호로 사서함 비밀번호를 바꾸고 그 값을 이 응답에만 싣는다(Cache-Control no-store). hr-service 는 저장·로그하지 않는다 —
+        잃어버리면 다시 발급한다. 같은 Idempotency-Key 재전송도 결과를 재생하지 않는다(새로 발급). 직원은 웹메일 첫 로그인 뒤 바꾼다.
+        Keycloak(로그인) 비밀번호와 다르다 — 그쪽은 본인이 메일 링크로 정한다.
+      operationId: resetMailboxPassword
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 발급됨
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mailAddress, initialPassword]
+                properties:
+                  mailAddress: { type: string }
+                  initialPassword: { type: string, description: 한 번만 보인다. 로그·저장 금지 }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+components:
+  parameters:
+    OperatorId:
+      name: operatorId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' }
+  schemas:
+    EmploymentType:
+      type: string
+      enum: [REGULAR, PART_TIME, DAILY]
+      description: 정규직 / 파트타임(알바) / 일일크루 — mfc-capacity employmentType 과 같은 값
+    EmploymentStatus:
+      type: string
+      enum: [ACTIVE, SUSPENDED, LEFT]
+    Affiliation:
+      type: object
+      required: [type, code]
+      description: 소속(권한 범위가 아니다). 본사 부서 코드 또는 센터 코드(center-master)
+      properties:
+        type: { type: string, enum: [HQ_DEPARTMENT, CENTER] }
+        code: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' }
+    RequestedGrant:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,63}$' }
+        centers: { type: array, maxItems: 64, items: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
+        validFrom: { type: string, format: date, description: 생략하면 근무 시작일 }
+        validTo: { type: string, format: date, description: 생략하면 계약 종료일(정규직은 없음) }
+        reason: { type: string, maxLength: 500 }
+    EmployeeRegistration:
+      type: object
+      required: [name, mailId, employmentType, affiliation, startDate]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        mailId:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$'
+          description: '메일 ID — 주소는 <mailId>@pmart.com, Keycloak 로그인 아이디도 이 주소. 소문자·숫자·._- 3~32자. postmaster·no-reply 등 예약어 불가'
+        employmentType: { $ref: '#/components/schemas/EmploymentType' }
+        affiliation: { $ref: '#/components/schemas/Affiliation' }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date, description: 계약 종료일 — PART_TIME·DAILY 는 필수, REGULAR 는 비움. 이 날이 지나면 자동 정지 }
+        requestedGrants: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/RequestedGrant' } }
+    ProvisioningStep:
+      type: string
+      enum: [REQUESTED, MAILBOX_CREATED, IAM_CREATED, INVITE_SENT, DONE, FAILED, COMPENSATED]
+      description: |
+        REQUESTED → MAILBOX_CREATED(사서함이 메일을 받음) → IAM_CREATED(Keycloak 계정) → INVITE_SENT(비밀번호 설정 메일) → DONE(EmployeeRegistered 발행).
+        재시도를 다 쓰면 FAILED(provisioning-retries 로 다시), 보상(만든 사서함 비활성)까지 했으면 COMPENSATED.
+    Provisioning:
+      type: object
+      required: [step, attempts]
+      properties:
+        step: { $ref: '#/components/schemas/ProvisioningStep' }
+        attempts: { type: integer }
+        lastErrorCode: { type: string, description: 마지막 실패 코드(비밀값 없음) }
+        nextAttemptAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    GrantRequestState:
+      type: object
+      required: [role, centers, submission]
+      properties:
+        role: { type: string }
+        centers: { type: array, items: { type: string } }
+        validFrom: { type: string, format: date }
+        validTo: { type: string, format: date }
+        submission: { type: string, enum: [PENDING, SUBMITTED, APPROVED, REJECTED], description: 'PENDING = 아직 approval 에 올리지 않음(연동 전)' }
+    Employee:
+      type: object
+      required: [operatorId, employeeNo, name, mailAddress, employmentType, affiliation, startDate, status, provisioning, version, createdAt, updatedAt]
+      properties:
+        operatorId: { type: string, description: '운영자 ID(OP-…) — 토큰 sub·서비스 간 식별자' }
+        employeeNo: { type: string, description: '사번(P2026-00012) — 화면 표시·검색용' }
+        name: { type: string }
+        mailAddress: { type: string }
+        employmentType: { $ref: '#/components/schemas/EmploymentType' }
+        affiliation: { $ref: '#/components/schemas/Affiliation' }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        status: { $ref: '#/components/schemas/EmploymentStatus' }
+        provisioning: { $ref: '#/components/schemas/Provisioning' }
+        requestedGrants: { type: array, items: { $ref: '#/components/schemas/GrantRequestState' } }
+        version: { type: integer, format: int64 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    EmployeePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Employee' } }
+        nextCursor: { type: string }
+    EmployeeSelf:
+      type: object
+      required: [operatorId, employeeNo, name, mailAddress, employmentType, affiliation, status]
+      properties:
+        operatorId: { type: string }
+        employeeNo: { type: string }
+        name: { type: string }
+        mailAddress: { type: string }
+        employmentType: { $ref: '#/components/schemas/EmploymentType' }
+        affiliation: { $ref: '#/components/schemas/Affiliation' }
+        status: { $ref: '#/components/schemas/EmploymentStatus' }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

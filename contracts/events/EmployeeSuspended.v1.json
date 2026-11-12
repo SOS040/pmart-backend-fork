@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/EmployeeSuspended.v1.json",
+  "title": "EmployeeSuspended",
+  "description": "직원 정지(인사 정지·계약 종료 자동 정지). Keycloak 계정은 hr-service 가 이미 비활성·세션 로그아웃. employee-auth-service 가 상태 DISABLED·세션 종료·SubjectBlocked 발행(이미 나간 토큰 즉시 차단). 발행 hr-service(ADR-0056), 구독 employee-auth-service(직원 로그인 상태). 토픽 platform.employee.v1, 키 = 운영자 ID. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "EmployeeSuspended"
+        },
+        "aggregateType": {
+          "const": "Employee"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "operatorId",
+            "reason",
+            "effectiveAt"
+          ],
+          "properties": {
+            "operatorId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "운영자 ID(OP-…) = 직원 토큰 sub = aggregateId"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "SUSPENDED",
+                "CONTRACT_ENDED"
+              ]
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

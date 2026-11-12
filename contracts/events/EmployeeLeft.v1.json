@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/EmployeeLeft.v1.json",
+  "title": "EmployeeLeft",
+  "description": "직원 퇴사. Keycloak 계정 비활성·세션 로그아웃, 사서함 비활성(지우지 않음 — D7). employee-auth-service 가 상태 LEFT·세션 종료·SubjectBlocked. 발행 hr-service(ADR-0056), 구독 employee-auth-service(직원 로그인 상태). 토픽 platform.employee.v1, 키 = 운영자 ID. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "EmployeeLeft"
+        },
+        "aggregateType": {
+          "const": "Employee"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "operatorId",
+            "effectiveAt"
+          ],
+          "properties": {
+            "operatorId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "운영자 ID(OP-…) = 직원 토큰 sub = aggregateId"
+            },
+            "effectiveAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
