@@ -54,7 +54,8 @@ is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
 # rag-pgvector·ollama(ADR-0051)는 같은 PC 의 RAG 서비스만 컨테이너 이름으로 부른다 — 포트도 LAN 에 열지 않는다
 # RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
 # 사내 메일(ADR-0056 결정 9)·웹메일도 같은 PC(Keycloak·hr-service)만 이름으로 부른다
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube "
+# hr-service 는 게이트웨이가 Eureka 로, mail-provisioner 는 같은 PC 의 hr-service 만 이름으로 부른다(ADR-0056 5-5)
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -1125,7 +1126,7 @@ EOF
     mkdir -p "$dir/keycloak"
     relay_secret="$(secret keycloak-relay-client-secret)"
     tr -d '\r' < "$LAN/keycloak/pmart-staff-realm.json" \
-      | sed -e "s|__PMART_KEYCLOAK_RELAY_SECRET__|${relay_secret}|" -e "s|__PMART_KEYCLOAK_EMPLOYEE_AUTH_SECRET__|$(secret keycloak-employee-auth-client-secret)|" > "$dir/keycloak/pmart-staff-realm.json"
+      | sed -e "s|__PMART_KEYCLOAK_RELAY_SECRET__|${relay_secret}|" -e "s|__PMART_KEYCLOAK_EMPLOYEE_AUTH_SECRET__|$(secret keycloak-employee-auth-client-secret)|" -e "s|__PMART_KEYCLOAK_HR_PROVISIONER_SECRET__|$(secret keycloak-hr-provisioner-client-secret)|" > "$dir/keycloak/pmart-staff-realm.json"
   fi
 
   # 사내 메일(ADR-0056 결정 9)·웹메일: 설정 파일과 이 PC 의 LAN 사설 CA 인증서(ADR-0057, lan.sh tls-issue <pc> 가 만든 것). 키는 build/ 에만(git 제외)

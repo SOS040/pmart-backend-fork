@@ -91,7 +91,7 @@
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://192.168.0.40/login##http://d603-16/login##http://localhost:5173/login"
+        "post.logout.redirect.uris": "http://192.168.0.40/login##http://d603-16/login##http://localhost:5173/login##http://192.168.0.40:8081/login##http://d603-16:8081/login##http://localhost:5174/login"
       },
       "fullScopeAllowed": false,
       "protocolMappers": [
@@ -257,6 +257,19 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "fullScopeAllowed": false
+    },
+    {
+      "clientId": "hr-provisioner",
+      "name": "hr-service Admin API (ADR-0056 결정 16 — 사용자 경로만)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "__PMART_KEYCLOAK_HR_PROVISIONER_SECRET__",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "fullScopeAllowed": false
     }
   ],
   "components": {
@@ -288,6 +301,18 @@
           "view-users"
         ]
       }
+    },
+    {
+      "username": "service-account-hr-provisioner",
+      "enabled": true,
+      "serviceAccountClientId": "hr-provisioner",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users"
+        ]
+      }
     }
   ],
   "clientScopeMappings": {
@@ -297,6 +322,14 @@
         "roles": [
           "view-events",
           "view-users"
+        ]
+      },
+      {
+        "client": "hr-provisioner",
+        "roles": [
+          "manage-users",
+          "view-users",
+          "query-users"
         ]
       }
     ]
