@@ -53,6 +53,12 @@ public class MailProvisionerClient {
             .baseUrl(
                 Objects.requireNonNull(props.baseUrl()).replaceAll("/+$", "") + "/api/v1/internal")
             .defaultHeader("X-Source-System", sourceSystem)
+            // 명령은 모두 멱등이라 요청마다 새 키(공통 헤더 규칙)
+            .requestInterceptor(
+                (req, body, ex) -> {
+                  req.getHeaders().set("Idempotency-Key", java.util.UUID.randomUUID().toString());
+                  return ex.execute(req, body);
+                })
             .requestFactory(f)
             .build();
   }

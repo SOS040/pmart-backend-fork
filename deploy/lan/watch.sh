@@ -64,6 +64,11 @@ check() {
     mailserver)
       ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
         "docker exec pmart-lan-mailserver-1 sh -c 'ss -ltn | grep -q \":25 \" && ss -ltn | grep -q \":143 \"'" >/dev/null 2>&1 ;;
+    # 사서함 사이드카(ADR-0056 결정 10): LAN 포트가 없다 — 그 PC 에서 컨테이너 안 actuator(bash /dev/tcp — 이미지에 curl 이 없을 수 있어서)
+    mail-provisioner)
+      body="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
+        "docker exec pmart-lan-mail-provisioner-1 bash -c 'exec 3<>/dev/tcp/localhost/8513; printf \"GET /actuator/health HTTP/1.0\r\n\r\n\" >&3; cat <&3'" 2>/dev/null)" || return 1
+      grep -q '"status":"UP"' <<<"$body" ;;
     roundcube)
       # --ssl-revoke-best-effort: Windows curl(schannel)은 사설 CA 에 폐기 목록(CRL)이 없어 "revocation status unknown" 으로 실패한다(2026-11-12)
       [ "$(curl -s -m 5 --ssl-revoke-best-effort --cacert "$LAN/tls/pmart-lan-root-ca.crt" -o /dev/null -w '%{http_code}' "https://$ip:8190/")" = 200 ] ;;

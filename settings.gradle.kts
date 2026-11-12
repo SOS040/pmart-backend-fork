@@ -47,6 +47,7 @@ val libraries = listOf<String>(
 val platformServices = listOf<String>(
     "api-gateway",
     "config-server", // ADR-0027
+    "mail-provisioner", // 사서함 프로비저닝 사이드카(ADR-0056 결정 10·D9) — PC 5, LAN 포트 없음
     "eureka-server", // ADR-0032
 )
 

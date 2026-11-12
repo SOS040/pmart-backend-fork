@@ -7,6 +7,7 @@ info:
     사서함을 만들고 비활성화한다(`setup email add` 와 같은 일 — docker.sock 을 쓰지 않는다). 할 수 있는 일은 사서함 만들기·비활성·다시 활성·
     비밀번호 바꾸기뿐이고 지우지 않는다(D7). 호출자는 hr-service 하나. LAN 포트 없이 PC 5 Docker 네트워크 안에서만(서비스 간 경로 —
     ADR-0026, 사용자 토큰 받지 않음). 비밀번호는 해시(SHA512-CRYPT)만 파일에 쓰고 로그·응답에 싣지 않는다.
+    모든 명령은 그 자체로 멱등(같은 결과면 파일을 다시 쓰지 않음)이라 Idempotency-Key 로 결과를 재생하지 않는다(DB 없음 — 헤더는 공통 규칙대로 받는다).
 servers:
   - url: /api/v1
 tags:
@@ -23,6 +24,7 @@ paths:
       operationId: createMailbox
       security: []
       parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
         required: true
@@ -65,6 +67,7 @@ paths:
       security: []
       parameters:
         - $ref: '#/components/parameters/AddressPath'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       responses:
         '200':
@@ -77,11 +80,12 @@ paths:
   /internal/mailboxes/{address}/enable:
     post:
       tags: [mailboxes]
-      summary: "[hr-service→mail-provisioner] 다시 활성 (비밀번호는 비활성 전 값으로 돌아오지 않는다 — password 로 새로 정한다)"
+      summary: "[hr-service→mail-provisioner] 다시 활성 (비활성 전 비밀번호로 돌아온다 — 바꾸려면 password)"
       operationId: enableMailbox
       security: []
       parameters:
         - $ref: '#/components/parameters/AddressPath'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       responses:
         '200':
@@ -99,6 +103,7 @@ paths:
       security: []
       parameters:
         - $ref: '#/components/parameters/AddressPath'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
         required: true

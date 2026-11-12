@@ -850,6 +850,11 @@ EOF
         if [ "$c" = api-gateway ]; then
           # HTTPS 입구(ADR-0057) 8443 을 8080 옆에 — 클라이언트가 옮길 때까지 둘 다(T3). 인증서는 아래 ./tls(이 PC 서버 인증서)
           echo "    ports: [\"$port:$port\", \"8443:8443\"]"
+        elif [ "$c" = mail-provisioner ]; then
+          # 사서함 사이드카(ADR-0056 결정 10): LAN 포트 없음 — 같은 PC 의 hr-service 만 이름으로 부른다. 메일 서버 설정 볼륨의 계정 파일을 쓰므로
+          # 그 PC 에 mailserver 가 있어야 하고, 파일 주인이 root 라 root 로 돈다(docker.sock 은 붙이지 않는다)
+          [[ "$comps" == *" mailserver "* ]] || { echo "mail-provisioner 는 mailserver 와 같은 PC 에 둔다" >&2; exit 1; }
+          echo "    user: \"0:0\""
         else
           echo "    ports: [\"$port:$port\"]"
         fi
@@ -898,6 +903,9 @@ EOF
         if [ "$c" = api-gateway ]; then
           echo "    volumes:"
           echo "      - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(pmart-config api-gateway-lan.yml 의 SSL 번들 lan-tls)"
+        elif [ "$c" = mail-provisioner ]; then
+          echo "    volumes:"
+          echo "      - mail-config:/tmp/docker-mailserver # 계정 파일 postfix-accounts.cf(메일 서버가 변경을 감지해 사서함을 만든다)"
         fi
         echo
         # 운영자 RAG 색인 작업(ADR-0036 결정 6 — 기동 때 색인하지 않는다): 같은 이미지·설정, profiles 로 up 에서 제외,

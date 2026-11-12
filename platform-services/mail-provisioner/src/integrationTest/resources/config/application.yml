@@ -1,0 +1,12 @@
+# 시험 전용(ADR-0029). config-server 없이 pmart-config 사본(pmart-config/)을 읽는다. 계정 파일은 시험 임시 폴더, SMTP 는 시험 안의 가짜 서버.
+spring:
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: "classpath:pmart-config/application.yml,classpath:pmart-config/mail-provisioner.yml"
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: http://localhost:9411/api/v2/spans

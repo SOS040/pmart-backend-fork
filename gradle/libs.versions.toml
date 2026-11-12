@@ -75,6 +75,7 @@ flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
 spring-kafka-test = { module = "org.springframework.kafka:spring-kafka-test" }
 jackson-databind = { module = "tools.jackson.core:jackson-databind" }
+commons-codec = { module = "commons-codec:commons-codec" } # 버전 = Spring Boot BOM. mail-provisioner 의 SHA512-CRYPT(Sha2Crypt — docker-mailserver 계정 파일 형식)
 
 # --- 관측 (BOM 관리) ---
 micrometer-core = { module = "io.micrometer:micrometer-core" }
