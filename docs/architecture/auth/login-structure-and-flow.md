@@ -16,7 +16,7 @@
 
 Keycloak 구조(Realm·클라이언트·역할·계정 관리·차단 중계)는 `keycloak-structure.md`.
 
-> 2026-11-12 설계안: 직원 로그인을 강의 설계대로 바꾼다 — Keycloak 은 신원만, PMart 직원 JWT 는 employee-auth-service(Keycloak 기밀 클라이언트), 계정 발급은 hr-service + 사내 메일(`@pmart.com`). [`employee-auth-structure.md`](employee-auth-structure.md). 구현 전(ADR-0056 예정)이라 아래 표는 아직 지금 구조다.
+> 2026-11-12 결정(ADR-0056, 구현 전): 직원 로그인을 강의 설계대로 바꾼다 — Keycloak 은 신원만, PMart 직원 JWT 는 employee-auth-service(Keycloak 기밀 클라이언트), 계정 발급은 hr-service + 사내 메일(`@pmart.com`). [`employee-auth-structure.md`](employee-auth-structure.md). 구현·전환 전이라 아래 표는 아직 지금(ADR-0054) 구조다.
 
 게이트웨이와 모든 서비스는 **발급자 표**(pmart-config `application-<프로필>.yml` 의 `pmart.security.issuers`) 하나로 토큰을 검증한다.
 

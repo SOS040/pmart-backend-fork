@@ -5,6 +5,7 @@
   - "라이더 키클롭 안쓰는거야. 구글 소셜 로그인을 쓰는 라이더 auth 서비스를 하나 더만드는거야"
   - "지금 auth 서비스를 고객앱 쓰는 그대로 하면돼"
 - 근거: `docs/architecture/auth/references/2026-11-10/PMart-API-Gateway-단일-구성과-URL별-JWT-인증-인가.md`, 확인 `docs/architecture/auth/2026-11-10-gateway-url-jwt-review.md`.
+- **일부 대체됨(2026-11-12, ADR-0056)**: 결정 L·M 전체, 결정 1·C 중 직원 토큰 발급자(Keycloak → employee-auth-service — Keycloak 은 직원 신원 확인으로 남음). 직원 역할·센터 정본은 employee-auth-service. 옮기는 동안 아래 직원 부분은 지금 동작으로 유효하다.
 - 대체 예정(이전이 끝나면 확정 — 그 전까지 아래 ADR 은 그대로 유효): ADR-0018 결정 1~5(운영자 계정·로그인·발급 주체 auth-service → Keycloak, 결정 D 의 이전 기간에는 함께 둔다). ADR-0011·0018 대안 절의 "Keycloak 도입 안 함" 문장은 이 ADR 로 뒤집혔다(결정 아님). ADR-0011 의 서비스 신원 토큰 결정, ADR-0019(고객 Google 로그인)는 그대로(ADR-0025 는 2026-11-10 기각 — ADR-0055).
 
 ## 결정

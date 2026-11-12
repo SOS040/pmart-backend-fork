@@ -318,7 +318,7 @@
 
 ---
 
-## 8. Platform & Support (6 + 추가 3 + 고객 RAG 1 + 라이더 auth 1)
+## 8. Platform & Support (6 + 추가 3 + 고객 RAG 1 + 라이더 auth 1 + 직원 인증 2)
 
 ### api-gateway `[1단계]`
 - 라우팅, JWT 검증(auth 공개키), rate limit, `traceId` 발급·전파, 앱별(고객/라이더/점원/기사/관리자) 경로 분리. 비즈니스 로직 없음.
@@ -327,6 +327,7 @@
 ### auth-service `[1단계]`
 - **소유**: 고객(Google ID 토큰 검증 — ADR-0019·0055, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 운영자 신원(Keycloak 으로 옮기기 전까지 — ADR-0054)·비회원(서비스 간은 인증 없음 — ADR-0026), 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
 - **소유하지 않음**: 권한 **부여 승인 흐름**(approval BO-01/02), 고객 프로필(customer), 라이더 로그인·토큰(rider-auth-service, ADR-0054).
+- **ADR-0056(2026-11-12, 구현 전)**: 직원 신원·직원 토큰과 **직원 RoleGrant·Delegation·긴급권한 정본·행위 시점 검증 API·`GrantApplied`·직원 `SubjectBlocked`** 은 employee-auth-service 로 옮긴다. 전환이 끝나면 auth-service 는 고객·비회원·서비스 신원 토큰만 — 운영자 로그인·`operator_account`·`StaffBlockRelay` 를 내린다. 지금 코드에 RoleGrant·Delegation 기능은 없고 `operator_account.roles·centers` 만 있다.
 - **API**: 로그인/토큰(운영자 아이디·비밀번호 로그인과 운영자 계정 관리 — ADR-0018), 행위 검증(`authorize(actor, action, target, centerScope)`), grant 반영(approval 승인 결과), grant 조회.
 - **발행**: `CustomerAuthenticated`, `GrantApplied`(수신 확인 Receipt), `DelegationStarted/Ended`, `SubjectBlocked`(운영자 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계 → 게이트웨이 차단 목록, ADR-0054 ⑤·결정 M).
 - **구독**: `ApprovalDecided`(BO-01/02), `CustomerWithdrawalCompleted`(세션·소셜 연결 삭제).
@@ -338,6 +339,23 @@
 - **발행·구독**: 없음(Kafka 미사용). 가입은 받은 토큰으로 rider-service 에 한다(가입 여부 = `GET /riders/me`).
 - **나중(ADR-0054 순서 ⑤)**: 라이더 정지(`RiderRestricted`)를 받아 세션을 끊거나 차단 목록에 올리는 일 — 지금은 rider-service 가 업무 상태로 막는다.
 - LAN: PC 5, 포트 8510, DB `rider_auth_service`(PC 5 postgres).
+
+### employee-auth-service `[ADR-0056 — 2026-11-12 결정, 구현 전]` — 직원 로그인·직원 토큰 발급자·직원 권한 정본
+- **소유**: Keycloak 로그인 연동(Keycloak `pmart-staff` 의 **유일한 로그인 클라이언트** — 기밀, 인가 코드 + PKCE), Keycloak ID 토큰 검증, Keycloak `sub` ↔ 운영자 ID `OP-…`, 직원 로그인 상태(ACTIVE/DISABLED/LEFT), 1회용 로그인 티켓(60초), 직원 세션·refresh(회전), **PMart 직원 JWT(`typ=OPERATOR`, `aud=pmart-api`) 서명키·JWKS**, **직원 유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장 — auth-service 에서 옮김), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 직원 보안 기록.
+- **소유하지 않음**: 직원 계정·비밀번호(Keycloak), 직원 인사·고용 정보·계정 발급(hr-service), 권한 **부여 승인 흐름**(approval BO-01/02 — 자동 승인 규칙 포함), MFC 작업 자격(mfc-capacity), 고객·비회원·서비스 토큰(auth-service).
+- **API**(제안): 로그인 시작·콜백(Spring OAuth2 Client 경로), `POST /employee-auth/tokens`(티켓 교환), `POST /employee-auth/tokens/refresh`, `POST /employee-auth/logouts`, `GET /employee-auth/sessions/current`, `GET /internal/jwks`, grant 반영·조회, 행위 검증(`authorize(actor, action, target, centerScope)`), LAN 전용 시험 토큰 교환(설정으로만, prod 없음).
+- **발행**: `GrantApplied`, `DelegationStarted/Ended`, `SubjectBlocked`(직원 — 퇴사·정지).
+- **구독**: `ApprovalDecided`(BO-01/02 권한 승인), `EmployeeRegistered`·`EmployeeSuspended`·`EmployeeReinstated`·`EmployeeLeft`(hr-service).
+- **동기 의존**: Keycloak(`/token`·certs, PC 5 내부).
+- LAN: PC 5, 포트 8511, DB `employee_auth_service`(PC 5 postgres). 상세 `docs/architecture/auth/employee-auth-structure.md`.
+
+### hr-service `[ADR-0056 — 2026-11-12 결정, 구현 전]` — 직원 등록·인사 정보·계정 발급
+- **소유**: 직원 신원·고용 정보(운영자 ID `OP-<UUID>` 매기기, 사번 `P<연도>-<5자리>`, 이름, 메일 ID `@pmart.com`(재사용 금지), 고용 형태 REGULAR·PART_TIME·DAILY, 소속(본사 부서·센터), 근무 시작일·계약 종료일, 재직 상태), 등록·소속 변경·재입사·정지·퇴사 업무 흐름(계약 종료일 자동 정지), **계정 발급 진행 상태**(사서함 → Keycloak 계정 → 안내 메일 — 재시도·보상), Keycloak Admin API 호출(관리용 기밀 클라이언트, `manage-users`·`view-users` 만), 등록 화면에서 받은 요청 권한을 approval 에 제출.
+- **소유하지 않음**: 직원 권한의 효력·정본(employee-auth-service — hr-service 는 조회만, BO-01 인사·권한 분리), 권한 심사(approval), 로그인·토큰(employee-auth-service), 비밀번호(Keycloak — 평문을 받지도 돌려주지도 않음), 사서함 저장(메일 서버).
+- **API**(제안): `POST /hr/employees`(기본 정보 + 요청 권한), `GET /hr/employees`, `POST /hr/employees/{id}/affiliation-changes`, `POST /hr/employees/{id}/reinstatements`, `POST /hr/employees/{id}/suspend`, `POST /hr/employees/{id}/leave`, `POST /hr/employees/{id}/resend-invite`. 권한 `HR_ADMIN`.
+- **발행**: `EmployeeRegistered`, `EmployeeSuspended`, `EmployeeReinstated`, `EmployeeLeft`.
+- **동기 의존**: Keycloak Admin API, mail-provisioner(사서함 만들기·비활성 — PC 5 내부, 서비스 토큰), approval(권한 요청 제출), center-master(센터 코드).
+- LAN: PC 5, 포트 8512, DB `hr_service`(PC 5 postgres). 인프라: mailserver(docker-mailserver, `@pmart.com` 로컬 전용, LAN 포트 없음)·mail-provisioner(사이드카, LAN 포트 없음)·Roundcube(8190) — 서비스가 아니라 배치 구성요소.
 
 ### config-server `[LAN]` — 설정 배포만 (ADR-0027, 2026-11-02)
 - Spring Cloud Config Server. LAN(compose)의 Spring 앱이 부팅할 때 GitHub `code-and-pick/pmart-config`(`lan/`)의 설정을 받는다. 비밀값은 `{cipher}` 를 서버가 복호화. 저장소 내용은 `deploy/lan/render.sh` 가 만든다.

@@ -1,6 +1,6 @@
 # 직원 인증 전체 구조 — Keycloak(신원) + Employee Auth Service(PMart 직원 JWT) + HR Service(계정 발급) + 사내 메일
 
-- 작성: 2026-11-12. **상태: 설계안(구현 전)** — 사용자 "그 설계를 따르고 싶다"(2026-11-12). 구현 전에 새 ADR(ADR-0056 예정)로 ADR-0054 의 직원 부분(결정 L·M, 발급자 표 `staff` 줄, 백오피스 Keycloak 직접 로그인)을 대체한다.
+- 작성: 2026-11-12. **상태: 결정됨, 구현 전** — [ADR-0056](../../adr/0056-staff-login-employee-auth-service-and-hr-service.md)(2026-11-12 승인)이 ADR-0054 의 직원 부분(결정 L·M, 직원 토큰 발급자, 백오피스 Keycloak 직접 로그인)을 대체한다. D1~D9 모두 정함(§13).
 - 기준 설계(강의): [`references/2026-11-12/pmart-keycloak-guide.html`](references/2026-11-12/pmart-keycloak-guide.html) — 강의 설계를 PMart 에 맞춘 적용안. 사내 메일: [`references/2026-11-12/baropick_mail_iam_guide.html`](references/2026-11-12/baropick_mail_iam_guide.html).
 - 이 문서가 정한 것: 사용자 결정 2026-11-12 — ① 메일 도메인 `@pmart.com` ② 배치는 Claude 가 정함(§4) ③ 비밀값은 PMart 방식(`.secrets` 원본 + pmart-config `{cipher}`) ④ 이 설계를 따른다. 나머지 값(포트·경로·사건 이름·표 이름)은 **제안**이고 §13 의 결정이 남아 있다.
 - 지금 구조(비교 대상): [`keycloak-structure.md`](keycloak-structure.md), [`login-structure-and-flow.md`](login-structure-and-flow.md), [`issuer-table.md`](issuer-table.md), ADR-0054·0055.

@@ -1,5 +1,7 @@
 # PMart Keycloak 구조 — 직원(운영자) 로그인
 
+> **2026-11-12 ADR-0056 으로 바뀔 예정(구현 전)**: Keycloak 은 직원 신원 확인만 하고, API 용 직원 토큰은 employee-auth-service(Keycloak 기밀 클라이언트)가 발급한다. `pmart-backoffice`·`pmart-auth-relay` 클라이언트, Realm 역할·`centers` 속성, 관리 화면 계정 관리(결정 L), 차단 중계(결정 M)는 전환 뒤 없어진다. 새 구조: `employee-auth-structure.md`. 이 문서는 지금 LAN 에서 도는 구조다.
+
 - 상태: **LAN 운영 중**(2026-11-11). 백오피스가 Keycloak 로그인으로 배포됨, auth-service 운영자 계정 11개를 같은 운영자 ID 로 옮김. auth-service 운영자 로그인은 옮기는 동안 함께 둔다(ADR-0054 결정 D) — 확인 뒤 발급자 표에서 뺀다.
 - 결정: ADR-0054(직원 = Keycloak, 고객 = auth-service, 라이더 = rider-auth-service) 결정 A~D·L·M. 전체 로그인 구조는 `login-structure-and-flow.md`, 발급자 표·차단 목록은 `issuer-type-pairing-and-access-lists.md`.
 - 설정의 정본: `deploy/lan/keycloak/pmart-staff-realm.json`(Realm), `deploy/lan/render.sh`(컨테이너), pmart-config `application-lan.yml`(발급자 표)·`auth-service-lan.yml`(차단 중계).

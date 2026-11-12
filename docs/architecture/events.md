@@ -212,10 +212,13 @@
 
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
-| `SubjectBlocked` | auth(운영자 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계; 나중에 고객 정지·rider-service) | api-gateway(Redis 차단 목록) | issuer, subject, userType, blockedBefore, reason | 주체 차단 — 그 전에 발급된 토큰 거부(토픽 `platform.subject-block.v1`, 키 = 주체, ADR-0054 ⑤) | ① |
+| `SubjectBlocked` | auth(운영자 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계; 나중에 고객 정지·rider-service) — ADR-0056 전환 뒤 직원은 employee-auth(퇴사·정지), 중계는 내림 | api-gateway(Redis 차단 목록) | issuer, subject, userType, blockedBefore, reason | 주체 차단 — 그 전에 발급된 토큰 거부(토픽 `platform.subject-block.v1`, 키 = 주체, ADR-0054 ⑤) | ① |
+| `EmployeeRegistered` | hr (ADR-0056, 구현 전) | employee-auth | operatorId, employeeNo, keycloakUserId, mailAddress, employmentType, affiliation, startDate, endDate? | 직원 등록·계정 발급 완료 → 연결·ACTIVE | ① |
+| `EmployeeSuspended` / `EmployeeReinstated` | hr (ADR-0056, 구현 전) | employee-auth | operatorId, reason(SUSPENDED/CONTRACT_ENDED/…), effectiveAt | 정지(계약 종료 자동 포함)·복귀 | ① |
+| `EmployeeLeft` | hr (ADR-0056, 구현 전) | employee-auth | operatorId, effectiveAt | 퇴사 → 상태 LEFT·refresh 무효·`SubjectBlocked` | ① |
 | `CustomerAuthenticated` | auth | customer | accountId, provider, at, (email, emailVerified, name, pictureUrl — ADR-0024) | 소셜 인증 성공(이용 가능≠) | ① |
-| `GrantApplied` | auth | approval(Receipt), audit | grantId, approvalRef, operatorId, roles[], centerScope[], effective | 권한 반영 확인 | ① |
-| `DelegationStarted` / `DelegationEnded` | auth | approval, audit | delegationId, from, to, scope(교집합), until | 대행 | ① |
+| `GrantApplied` | auth → ADR-0056 전환 뒤 employee-auth | approval(Receipt), audit | grantId, approvalRef, operatorId, roles[], centerScope[], effective | 권한 반영 확인 | ① |
+| `DelegationStarted` / `DelegationEnded` | auth → ADR-0056 전환 뒤 employee-auth | approval, audit | delegationId, from, to, scope(교집합), until | 대행 | ① |
 | `ChangeRequestSubmitted` | approval | 해당 정본(검증용), notification(승인자) | changeRequestId, type, targetRef, expectedVersion, payloadRef | 초안 제출 | ① |
 | `ApprovalDecided` | approval | product, pricing, storefront, product-content, center-master, delivery-serviceability, auth, replenishment, claim, cdc-quality, mfc-quality, mfc-capacity, rider, cdc-inventory, mfc-inventory, notification, audit | approvalId, type, decision(APPROVED/PARTIALLY_APPROVED/REJECTED), targetRef, lines[{qty/amount}], conditions, effectiveFrom, expiresAt, approverId, dossierVersion | 심사 확정(정본 반영은 별도 Receipt) | ① |
 | `ApplicationReceiptRecorded` | pricing(1차; 이후 승인 대상 정본) | approval | approvalId, receiverService, receiptSeq, result(ACCEPTED/APPLIED/PARTIAL/REJECTED/UNKNOWN_RESULT), lines[{lineKey, result, reasonCode}] | 승인 반영 결과 회신(토픽 `platform.approval-receipt.v1`, ADR-0039) | ① |

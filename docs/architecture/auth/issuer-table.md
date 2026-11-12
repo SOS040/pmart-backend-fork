@@ -1,5 +1,7 @@
 # 발급자 표(`pmart.security.issuers`)
 
+> **2026-11-12 ADR-0056(구현 전)**: `staff` 줄은 Keycloak 에서 employee-auth-service(`iss = http://employee-auth-service:8511`, JWKS `/api/v1/internal/jwks`)로 바뀌고 `type-claim`·`subject-claim`·`roles-claim` 특수 설정이 없어진다. 옮기는 동안 두 줄을 함께 둔다. 상세 `employee-auth-structure.md` §7-②.
+
 - 작성: 2026-11-11(사용자 요청 정리). 근거: ADR-0054(발급자 셋, 발급자 ↔ 사용자 종류 짝), ADR-0055 결정 6(`aud=pmart-api`).
 - 함께 볼 문서: `issuer-type-pairing-and-access-lists.md`(처음 설계·허용/차단 목록), `aud-and-typ.md`(`aud`·`typ` 뜻), `keycloak-structure.md`(직원 토큰), `login-structure-and-flow.md`(전체 로그인).
 

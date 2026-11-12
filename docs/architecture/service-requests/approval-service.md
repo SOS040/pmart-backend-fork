@@ -10,3 +10,16 @@
 - **요청한 쪽에서 바꿀 것**: `ApprovalRefs` 를 실제 검증으로 바꾸고 RECORD_ONLY 를 LAN 시험용으로만 남긴다.
 - **사용자 결정**: Q-11 "위험 추가 승인(금액·수량 기준)" 은 기준이 정해지면(`docs/business/flows/pending-user-decisions.md`).
 - 근거: `services/mfc-*-service/.../application/ApprovalRefs.java`, `docs/business/flows/mfc-defaults-status.md` #8.
+
+## AP-2. 직원 권한 요청 유형(BO-01)·hr-service 자동 제출·자동 승인 규칙 (2026-11-12 기록, ADR-0056)
+
+- **요청한 곳**: hr-service(새, 구현 전), employee-auth-service(새, 구현 전).
+- **필요한 것**
+  1. 권한 요청 승인 유형(BO-01: 역할·권한 센터·기간·근거 행 단위) — 지금 `ApprovalRules.targetType` 에 없다.
+  2. hr-service 가 직원 등록 때 요청 권한을 **권한 요청으로 자동 제출**하는 내부 경로(요청자 = 등록한 인사팀 직원, 서비스 토큰).
+  3. **자동 승인 규칙**: 요청 역할이 `MFC_WORKER` 이고 권한 센터 = 등록한 소속 센터일 때만 심사 없이 승인, 승인자 = 규칙(ID·버전)으로 기록. 그 밖은 승인자 심사. 규칙 표는 approval-service 설정(바꿀 때 기록).
+  4. 승인 결과(`ApprovalDecided`)의 반영 대상을 auth-service → **employee-auth-service**(직원 권한 정본)로. 반영 확인 `GrantApplied` 도 employee-auth-service 가 발행.
+- **지금(임시)**: 없음 — 직원 역할은 Keycloak Realm 역할을 관리 화면에서 직접 넣는다(ADR-0054 결정 L, 전환 때까지).
+- **요청한 쪽에서 바꿀 것**: hr-service 등록 화면이 요청 권한을 받아 제출, employee-auth-service 가 `ApprovalDecided` 구독·grant 저장.
+- **사용자 결정**: 정함(2026-11-12 — 등록 화면에서 함께 받기 "1번을 하자", 자동 승인 "소속 센터 현장 역할만").
+- 근거: `docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md` 결정 5·6, `docs/architecture/auth/employee-auth-structure.md` §8-1, 업무 원문 BO-01.
