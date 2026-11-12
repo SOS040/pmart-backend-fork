@@ -35,12 +35,12 @@ employee-auth-service 는 **두 얼굴**이다: Keycloak 쪽에서 보면 OAuth 
 | 구성요소 | 소유(책임) | 소유하지 않음 |
 |---|---|---|
 | **Keycloak** (있음) | 직원 IAM 계정(`username = email = <id>@pmart.com`), 비밀번호·잠금(5회), Keycloak 세션·SSO, 비밀번호 설정/재설정·이메일 확인 메일 발송(내장 기능, SMTP 로 메일 서버에 맡김), 사용자 속성 `pmart_operator_id` | PMart 역할·센터(§13 D1), PMart 토큰, 메일 사서함 |
-| **employee-auth-service** (새) | Keycloak 로그인 연동(OAuth2 Client), Keycloak ID 토큰 검증, `Keycloak sub ↔ OP-…` 연결, 직원 로그인 상태(ACTIVE/DISABLED/LEFT), 일회용 로그인 티켓, 직원 세션·Refresh 회전, **PMart 직원 JWT 발급·JWKS**, 직원 차단 사건 발행 | 직원 인사 정보(hr-service), 계정 만들기, 역할 부여 승인(approval) |
-| **hr-service** (새) | 직원 등록·퇴사·정지의 업무 흐름, 직원 신원·고용 정보(이름·메일 ID·고용 형태·소속·근무 시작/계약 종료 — §8-1), 운영자 ID `OP-<UUID>` 매기기, **계정 발급 진행 상태**(사서함 → IAM → 안내 메일 — 부분 실패 재시도·보상), Keycloak Admin API 호출, 사서함 만들기 요청 | 로그인·토큰(employee-auth-service), **역할·권한 센터 부여**(BO-01 권한 요청 → approval → auth-service RoleGrant — 등록 화면에서 받지 않는다), MFC 작업 자격(mfc-capacity) |
+| **employee-auth-service** (새) | Keycloak 로그인 연동(OAuth2 Client), Keycloak ID 토큰 검증, `Keycloak sub ↔ OP-…` 연결, 직원 로그인 상태(ACTIVE/DISABLED/LEFT), 일회용 로그인 티켓, 직원 세션·Refresh 회전, **PMart 직원 JWT 발급·JWKS**, 직원 차단 사건 발행, **직원 역할·권한 센터의 정본**(유효 grant·대행·긴급권한·행위 시점 검증 API — D1, auth-service 에서 옮김), 권한 반영 확인 `GrantApplied` 발행 | 직원 인사 정보(hr-service), 계정 만들기, 권한 요청의 심사·승인(approval) |
+| **hr-service** (새) | 직원 등록·퇴사·정지의 업무 흐름, 직원 신원·고용 정보(이름·메일 ID·고용 형태·소속·근무 시작/계약 종료 — §8-1), 운영자 ID `OP-<UUID>` 매기기, **계정 발급 진행 상태**(사서함 → IAM → 안내 메일 — 부분 실패 재시도·보상), Keycloak Admin API 호출, 사서함 만들기 요청 | 로그인·토큰(employee-auth-service), **권한의 효력·저장**(등록 화면에서 받은 요청 권한은 approval 에 올릴 뿐 — 승인·자동 승인 뒤 employee-auth-service 가 저장, D1), MFC 작업 자격(mfc-capacity) |
 | **mailserver** (새, docker-mailserver) | `@pmart.com` 사서함, SMTP(받기·보내기)·IMAP | 계정 정책(hr-service), 외부 인터넷 메일(하지 않는다 — §9) |
 | **roundcube** (새) | 사서함을 보는 웹메일 화면(IMAP 읽기 + SMTP 보내기) | 메일 저장(메일 서버) |
 | **api-gateway** (있음) | `/api/v1/employee-auth/**`·`/api/v1/hr/**` 라우팅, `/iam/**` → Keycloak OIDC 경로 중계(관리 경로 차단), PMart JWT 검증·차단 목록 | 로그인 처리 자체 |
-| **auth-service** (있음) | 고객·비회원 그대로. **RoleGrant·Delegation·긴급권한 정본은 그대로**(service-map) — 직원 역할 조회 API 를 employee-auth-service 에 제공(§13 D1 권장안) | 직원 로그인·직원 토큰(이전 뒤 내림) |
+| **auth-service** (있음) | 고객·비회원·서비스 신원 토큰만(ADR-0054 결정 2) | 직원 로그인·직원 토큰·**직원 권한(RoleGrant 등 — employee-auth-service 로 옮김, D1)**. 이전 뒤 `operator_account`·운영자 로그인·`StaffBlockRelay` 내림 |
 
 service-map 51개 → 53개(employee-auth-service, hr-service). 메일 서버·웹메일은 인프라(placement 구성요소)로 둔다.
 
@@ -117,7 +117,7 @@ flowchart LR
 | 관리 클라이언트 | `pmart-auth-relay`(관리 기록 읽기 — 차단 중계) | **`hr-service`**(기밀, 서비스 계정만, `realm-management` 의 `manage-users`·`view-users`). `pmart-auth-relay` 는 "Keycloak 화면에서 직접 막는 경우"가 없어지면 삭제(§13 D6) |
 | 개발 클라이언트 | `pmart-dev-cli`(직접 로그인) | Keycloak 토큰은 API 가 받지 않게 되므로 그대로는 쓸모없다 → §13 D5 |
 | 토큰의 쓰임 | Keycloak Access Token 을 API 에 그대로 | Keycloak 토큰은 employee-auth-service 안에서만 쓰고 끝(앱에 내려가지 않음) |
-| 역할·센터 | Realm 역할 10개 + 사용자 속성 `centers` | PMart 쪽으로(§13 D1). Keycloak 에는 계정·비밀번호·상태·`pmart_operator_id` 만 |
+| 역할·센터 | Realm 역할 10개 + 사용자 속성 `centers` | employee-auth-service 로(D1). Keycloak 에는 계정·비밀번호·상태·`pmart_operator_id` 만 — 이전 뒤 Realm 역할·`centers` 속성 삭제 |
 | 주소(`iss`) | `KC_HOSTNAME=http://192.168.0.101:8180` | `KC_HOSTNAME=http://192.168.0.40:8080/iam`, `KC_PROXY_HEADERS=xforwarded`, 내부 호출은 `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` — 브라우저가 본 주소와 `iss` 를 같게. **구현 때 Keycloak 26.8 에서 확인**(경로 붙은 hostname·게이트웨이 StripPrefix) |
 | 메일(SMTP) | 없음 | Realm → Email: host `mailserver`, port 25, from `no-reply@pmart.com`, 인증·TLS 없음(같은 Docker 네트워크만 허용 — §9) |
 | 계정 | 관리 콘솔에서 직접(결정 L) | hr-service 가 Admin API 로. 관리 콘솔은 Keycloak 관리자 전용(LAN 비노출 검토) |
@@ -189,7 +189,8 @@ sequenceDiagram
   participant MS as mailserver
   participant KC as Keycloak
   participant EA as employee-auth
-  HRU->>HR: POST /api/v1/hr/employees {이름, 메일 ID, 고용 형태, 소속, 근무 시작일, 계약 종료일}
+  participant AP as approval
+  HRU->>HR: POST /api/v1/hr/employees {기본 정보 + 요청 권한(역할·권한 센터·기간·근거)}
   HR->>HR: 권한 확인 → OP-<UUID> 매김 → 진행 상태 REQUESTED
   HR->>MS: 사서함 gildong@pmart.com 만들기 → MAILBOX_CREATED
   HR->>KC: client_credentials 관리 토큰
@@ -197,7 +198,10 @@ sequenceDiagram
   HR->>KC: PUT …/users/{id}/execute-actions-email [UPDATE_PASSWORD] → INVITE_SENT
   KC->>MS: 비밀번호 설정 링크 메일(SMTP)
   HR-->>EA: EmployeeRegistered (Kafka) → 연결·ACTIVE 등록
-  HR-->>HRU: 완료 + 사서함 초기 비밀번호는 별도 경로 안내
+  HR->>AP: 요청 권한을 권한 요청으로 자동 제출(요청자 = 등록한 인사팀)
+  AP->>AP: 자동 승인 규칙에 맞으면 바로 승인(승인자 = 규칙), 아니면 승인자 심사
+  AP-->>EA: 승인 결과 → 유효 grant 저장 → GrantApplied
+  HR-->>HRU: 완료(계정 + 권한: 승인됨/승인 대기) + 사서함 초기 비밀번호는 별도 경로 안내
 ```
 
 - 순서: **사서함이 메일을 받을 수 있게 된 뒤에** 안내 메일을 보낸다(메일 가이드 결론).
@@ -239,7 +243,7 @@ API: `GET /oauth2/authorization/keycloak`·`GET /login/oauth2/code/keycloak`(Spr
 API: `POST /hr/employees`, `GET /hr/employees`, `POST /hr/employees/{id}/affiliation-changes`(소속 변경), `POST /hr/employees/{id}/reinstatements`(재입사 — 같은 `OP-…` 다시 활성), `POST /hr/employees/{id}/leave`, `POST /hr/employees/{id}/suspend`, `POST /hr/employees/{id}/resend-invite`. 권한: 인사 역할(이름 §13 D3).
 ### 8-1. 직원 등록 항목과 규칙 (D4, 2026-11-12 정함)
 
-원칙: **등록(누구인가·고용 상태)과 권한 부여(무엇을 할 수 있나)를 나눈다.** 업무 문서 BO-01(`docs/business/BackOffice-business-logic.md`)은 권한을 역할·센터·행위·기간 행 단위 요청 → 승인자 심사 → 유효 grant 로 정하고, 입력의 "사내 신원·고용/계약 상태"에 대해 "인사 연계 서비스 배치는 미결정"이라고 적는다 — hr-service 가 그 자리다. 등록 화면에서 역할을 받으면 승인 심사를 건너뛰므로 받지 않는다.
+원칙: **한 화면에서 함께 받고, 효력은 나눈다**(사용자 결정 2026-11-12 "1번을 하자"). 업무 문서 BO-01(`docs/business/BackOffice-business-logic.md`)의 입력도 "사내 신원, 소속/센터, 요청 역할·행위, 기간, 승인자·근거"를 함께 받고, "인사 연계 서비스 배치는 미결정"이라고 적는다 — hr-service 가 그 자리다. 기본 정보는 등록 즉시 효력, **요청 권한은 approval 을 거쳐야 효력**(BO-01 확정 정책 — 요청 → 심사 → 유효 grant). 인사팀이 입력했다고 권한이 바로 생기지 않는다(자동 승인 규칙에 맞는 것만 바로).
 
 | 항목 | 필수 | 규칙 |
 |---|---|---|
@@ -251,13 +255,17 @@ API: `POST /hr/employees`, `GET /hr/employees`, `POST /hr/employees/{id}/affilia
 | 계약 종료일 | 정규직 없음, 파트타임·일일크루 입력 | **종료일에 자동 정지**(hr-service 예약 처리 → `EmployeeSuspended` → 차단) |
 | 사번 | 선택 | 따로 필요한지 확인 전 — 없으면 운영자 ID(`OP-…`)만 |
 
-받지 않는 것: 역할·권한 센터(등록 뒤 BO-01 권한 요청 → approval → auth-service RoleGrant), MFC 작업 자격(센터 관리자가 mfc-capacity 에서), 연락처·주민번호 같은 개인정보(쓰는 곳이 없다).
+**요청 권한(같은 화면)**: 역할, 권한 센터, 기간(기본 = 근무 기간), 근거. 등록과 함께 approval 에 권한 요청으로 자동 제출(요청자 = 등록한 인사팀 직원). 비워 두면 권한 없이 등록(나중에 따로 요청).
+
+**자동 승인 규칙**(사용자 결정 2026-11-12 "자동 승인은 할거야", 범위 "소속 센터 현장 역할만"): 요청 역할이 `MFC_WORKER` 이고 권한 센터가 **등록한 소속 센터와 같을 때만** 승인자 심사 없이 바로 승인한다. 기록에는 승인자 = 자동 승인 규칙(규칙 ID·버전)으로 남긴다. 그 밖(`MFC_SUPERVISOR`, 각종 `*_APPROVER`, `OPERATOR_ADMIN`, `MD`, `CS_AGENT`, 소속과 다른 센터)은 모두 승인자 심사. 규칙 표는 approval-service 설정에 두고 바꿀 때 기록을 남긴다.
+
+받지 않는 것: MFC 작업 자격(센터 관리자가 mfc-capacity 에서), 연락처·주민번호 같은 개인정보(쓰는 곳이 없다).
 
 규칙:
 - 같은 사람이 이미 있으면 새로 만들지 않고 변경 요청(BO-01 1번). 재입사는 예전 `OP-…` 를 다시 활성(`reinstatements`).
 - 센터 이동은 hr-service 에서 소속만 바꾸고, 권한은 BO-01 대로 A 종료·B 시작을 따로 요청한다.
 - **일일크루도 사서함을 발급한다**(사람마다 계정 하나 — 2026-11-08 결정 Q2, 비밀번호 설정 링크를 받을 곳). 근무일 참여(enrollment)는 지금처럼 mfc-capacity.
-- 직원 한 명의 순서: 인사팀 등록(신원·고용 → 사서함 → Keycloak → 안내 메일) → 권한 요청·승인(RoleGrant) → (MFC 작업자면) 작업 자격 지정 → 로그인. 권한 없이 로그인하면 업무 API 는 403.
+- 직원 한 명의 순서: 인사팀이 한 화면에서 등록 + 요청 권한 → 계정(사서함 → Keycloak → 안내 메일)은 바로, 권한은 자동 승인 또는 승인자 승인 뒤 employee-auth-service 에 저장 → (MFC 작업자면) 작업 자격 지정 → 로그인. 승인 전에 로그인하면 업무 API 는 403, 화면에 "권한 승인 대기".
 
 사건(새, `contracts/events/` + `docs/architecture/events.md`): `EmployeeRegistered`, `EmployeeSuspended`, `EmployeeReinstated`, `EmployeeLeft` — 발행 hr-service, 구독 employee-auth-service(+ 필요하면 mfc 작업자 관리). 직원 차단은 있는 `SubjectBlocked`(발행자에 employee-auth-service 추가).
 
@@ -319,10 +327,10 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 
 | # | 질문 | 권장 |
 |---|---|---|
-| D1 | 직원 역할·센터의 정본 | **auth-service RoleGrant 그대로**(service-map 경계 유지). employee-auth-service 가 토큰 발급·갱신 때 auth-service 내부 API 로 유효 역할·센터를 조회. Keycloak Realm 역할은 이전 뒤 없앰 |
+| D1 | 직원 역할·센터의 정본 | **정함(2026-11-12): employee-auth-service.** auth-service 는 고객·비회원·서비스 신원만(ADR-0054 결정 2) — service-map 의 "RoleGrant·Delegation·긴급권한 정본 = auth-service" 를 옮긴다(경계 변경, ADR-0056 에 기록). 옮길 기능 코드는 없음(지금 auth-service 는 `operator_account.roles·centers` JSON 만, 대행은 빈 자리) — 운영자 13명 값만 옮긴다. hr-service 가 아닌 이유: 고용 정보와 접근 권한은 따로(BO-01 "인사상 상사라는 이유만으로 권한을 줄 수 없다"), 토큰 발급자가 갖으면 로그인 때 다른 서비스를 부르지 않는다. Keycloak Realm 역할·`centers` 는 이전 뒤 삭제 |
 | D2 | 직원 ID 형식 | `username = email = <메일 ID>@pmart.com`, 기존 운영자 13명은 지금 `OP-…` 그대로 연결하고 메일 ID 를 새로 정함(목록 필요) |
 | D3 | 인사 권한 역할 이름 | `HR_ADMIN` 새 역할(역할 부여는 지금처럼 approval 흐름) |
-| D4 | 직원 등록에 받는 항목·규칙 | **정함(2026-11-12, 사용자 "그렇게 해줘")** — §8-1. 남은 것: 사번이 따로 필요한지 |
+| D4 | 직원 등록에 받는 항목·규칙 | **정함(2026-11-12)** — §8-1: 한 화면에서 기본 정보 + 요청 권한, 권한은 approval 경유, 자동 승인 = 소속 센터 `MFC_WORKER` 만. 남은 것: 사번이 따로 필요한지 |
 | D5 | LAN 시험 스크립트(claude-dev)의 직원 토큰 받는 법 — 브라우저 흐름을 스크립트가 할 수 없음 | `pmart-dev-cli`(직접 로그인)로 Keycloak 토큰 → employee-auth-service 의 **LAN 전용**(설정으로만 켜는) 교환 경로 `POST /internal/dev-token-exchange` → PMart JWT. prod 프로필에서는 경로 자체가 없음 |
 | D6 | Keycloak 관리 콘솔에서 직접 막는 경우를 남길지 | 남기지 않음(모든 퇴사·정지는 hr-service) → `pmart-auth-relay`·`StaffBlockRelay` 내림. 남기면 중계도 유지 |
 | D7 | 사서함 보존 기간·메일 백업 | 퇴사 뒤 비활성 보존, 기간은 사용자 결정 |
