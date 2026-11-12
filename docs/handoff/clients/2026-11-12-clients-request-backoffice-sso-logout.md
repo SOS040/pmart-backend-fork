@@ -1,4 +1,5 @@
 # 백오피스 SSO — 로그아웃 응답이 바뀐다(204 → 200 + `idpLogoutUri`)
+- **회신(2026-11-13)**: pmart-clients `7852899` `docs/handoff/2026-11-13-backend-backoffice-sso-logout-deployed.md` — 반영·LAN 배포(`index-zFWj8wt_.js`), 실로그인 11항목 통과(SSO 새 탭 비밀번호 없음, 로그아웃 → Keycloak 로그아웃 → `/login`, 다시 로그인 때 비밀번호 물음). 백엔드 확인 끝.
 
 - 작성: pmart-backend, 2026-11-12
 - 대상: pmart-clients 백오피스(`web/backoffice`, `lan` 빌드 — employee-auth-service 로그인)
