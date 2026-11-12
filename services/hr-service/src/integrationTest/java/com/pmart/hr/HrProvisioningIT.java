@@ -344,6 +344,10 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
                     op))
             .path("payload");
     assertThat(gr.path("requestedBy").asText()).isEqualTo("OP-IT-HR");
+    assertThat(gr.path("employeeNo").asText())
+        .isEqualTo(created.body().path("employeeNo").asText());
+    assertThat(gr.path("mailAddress").asText()).isEqualTo(address);
+    assertThat(gr.toString()).doesNotContain("홍길동");
     assertThat(gr.path("affiliation").path("code").asText()).isEqualTo("MFC-IT-01");
     JsonNode line = gr.path("lines").get(0);
     assertThat(line.path("role").asText()).isEqualTo("MFC_WORKER");
@@ -398,6 +402,10 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
               .asText();
     }
     assertThat(state).isEqualTo("APPROVED");
+    JsonNode g0 =
+        call("GET", "/hr/employees/" + op, hr, null).body().path("requestedGrants").get(0);
+    assertThat(g0.path("reason").asText()).isEqualTo("입사");
+    assertThat(g0.path("approvalRef").asText()).isEqualTo(approvalId);
 
     // 본인 조회(그 직원 토큰)
     Res me = call("GET", "/hr/employees/me", TestJwt.operator(op, List.of(), List.of()), null);

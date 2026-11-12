@@ -10,6 +10,10 @@ info:
     비정본: 로그인·토큰·**직원 권한의 효력**(employee-auth-service — 등록 화면의 요청 권한은 approval 에 올릴 뿐, ADR-0056 결정 4), 비밀번호(Keycloak·메일 서버 —
     hr-service 는 받지도 저장하지도 않는다), MFC 작업 자격(mfc-capacity).
     권한: 조회·명령 모두 HR_ADMIN(본인 조회 /hr/employees/me 만 모든 직원).
+    409 code(Problem Details `code`): MAIL_ID_TAKEN(메일 ID 사용 중·퇴사자 포함), VERSION_CONFLICT(X-Expected-Version 이 지금 버전과 다름 — 다시 조회),
+    INVALID_STATE(지금 상태에서 할 수 없는 명령 — 퇴사자 정지, 발급 실패가 아닌데 재시도, Keycloak 계정이 없거나 재직 중이 아닌데 안내 메일, 사서함이 없거나 퇴사자인데
+    사서함 비밀번호), KEYCLOAK_<HTTP 상태>·MAILBOX_<HTTP 상태>(Keycloak·메일 서버가 거절). 이미 그 상태인 복귀·퇴사는 바꾸지 않고 200.
+    503 DEPENDENCY_UNAVAILABLE(Keycloak·메일 서버 응답 없음 — 잠시 뒤 다시).
 servers:
   - url: /api/v1
 security:
@@ -223,6 +227,7 @@ paths:
               schema: { $ref: '#/components/schemas/Employee' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /hr/employees/{operatorId}/invite-resends:
     post:
@@ -244,7 +249,7 @@ paths:
   /hr/employees/{operatorId}/provisioning-retries:
     post:
       tags: [provisioning]
-      summary: 실패한 계정 발급 다시 시도 (FAILED 일 때만 — 이미 끝난 단계는 건너뛴다)
+      summary: 실패한 계정 발급 다시 시도 (FAILED·COMPENSATED 일 때만 — 이미 끝난 단계는 건너뛴다. 그 밖은 409 INVALID_STATE)
       operationId: retryProvisioning
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -359,6 +364,8 @@ components:
         centers: { type: array, items: { type: string } }
         validFrom: { type: string, format: date }
         validTo: { type: string, format: date }
+        reason: { type: string, description: 등록 때 받은 근거 }
+        approvalRef: { type: string, description: 'approval 승인 ID(AP-…) — 결정이 온 뒤' }
         submission: { type: string, enum: [PENDING, SUBMITTED, APPROVED, REJECTED], description: 'PENDING = 아직 approval 에 올리지 않음(계정 발급 전·발급 중 정지), SUBMITTED = 승인 대기, APPROVED·REJECTED = approval 결정' }
     Employee:
       type: object

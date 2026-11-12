@@ -44,6 +44,16 @@
               "maxLength": 64,
               "description": "요청자 = 직원을 등록한 인사팀 직원(OP-…). 자기승인 금지 판정에 쓴다"
             },
+            "employeeNo": {
+              "type": "string",
+              "pattern": "^P[0-9]{4}-[0-9]{5}$",
+              "description": "사번 — 승인자가 누구의 권한인지 알아보게(이름은 싣지 않는다)"
+            },
+            "mailAddress": {
+              "type": "string",
+              "minLength": 3,
+              "description": "사내 메일 주소(로그인 ID)"
+            },
             "affiliation": {
               "type": "object",
               "required": [

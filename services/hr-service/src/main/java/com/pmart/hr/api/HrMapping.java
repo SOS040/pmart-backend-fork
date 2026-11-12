@@ -76,6 +76,8 @@ final class HrMapping {
                             .centers(g.centers())
                             .validFrom(g.validFrom())
                             .validTo(g.validTo())
+                            .reason(g.reason())
+                            .approvalRef(g.approvalRef())
                             .submission(GrantRequestState.SubmissionEnum.fromValue(g.submission())))
                 .toList())
         .version(e.version())

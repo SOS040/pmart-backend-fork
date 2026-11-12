@@ -66,6 +66,8 @@ public class EmployeeEvents {
     p.put("requestId", requestId);
     p.put("operatorId", e.operatorId());
     p.put("requestedBy", e.registeredBy());
+    p.put("employeeNo", e.employeeNo());
+    p.put("mailAddress", e.mailAddress());
     p.put("affiliation", Map.of("type", e.affiliationType(), "code", e.affiliationCode()));
     p.put("lines", lines);
     p.put("requestedAt", now.toString());

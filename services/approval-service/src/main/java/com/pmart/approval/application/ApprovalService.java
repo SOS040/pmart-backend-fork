@@ -229,10 +229,22 @@ public class ApprovalService {
     if (auto.isEmpty() && manual.isEmpty()) {
       throw new IllegalArgumentException("권한 요청 행 없음: " + requestId); // 계약 위반 → DLT
     }
+    // 승인자가 누구의 권한인지 알아보게 — 사번·메일 주소·소속(이름은 사건에 없다)
+    Map<String, Object> who = new LinkedHashMap<>();
+    who.put("operatorId", operatorId);
+    if (p.hasNonNull("employeeNo")) {
+      who.put("employeeNo", p.get("employeeNo").asString());
+    }
+    if (p.hasNonNull("mailAddress")) {
+      who.put("mailAddress", p.get("mailAddress").asString());
+    }
+    if (affType != null) {
+      who.put("affiliation", Map.of("type", affType, "code", affCode == null ? "" : affCode));
+    }
     Instant at = now();
     // 자동 승인부터 — 바로 닫히므로 아래 심사 중 승인과 '대상마다 열린 승인 하나' 제약이 겹치지 않는다
     for (var g : auto.entrySet()) {
-      ApprovalRow ap = openGrantApproval(requestId, operatorId, requestedBy, g.getValue(), at);
+      ApprovalRow ap = openGrantApproval(requestId, operatorId, requestedBy, who, g.getValue(), at);
       ApprovalProperties.AutoApprovalRule rule = g.getKey();
       String comment = "자동 승인 규칙 " + rule.approverId() + "(ADR-0056 결정 6)";
       store.insert(
@@ -257,13 +269,18 @@ public class ApprovalService {
               ap, unit, "APPROVED", rule.approverId(), List.of(), effectiveFrom, null, at));
     }
     if (!manual.isEmpty()) {
-      openGrantApproval(requestId, operatorId, requestedBy, manual, at);
+      openGrantApproval(requestId, operatorId, requestedBy, who, manual, at);
     }
   }
 
   /** 변경 요청(제출됨) + 심사 중 승인 하나 + ChangeRequestSubmitted. */
   private ApprovalRow openGrantApproval(
-      String requestId, String operatorId, String requestedBy, List<JsonNode> lines, Instant at) {
+      String requestId,
+      String operatorId,
+      String requestedBy,
+      Map<String, Object> who,
+      List<JsonNode> lines,
+      Instant at) {
     TreeSet<String> centerScope = new TreeSet<>();
     List<Map<String, Object>> bodyLines = new ArrayList<>();
     LocalDate earliest = null;
@@ -282,6 +299,7 @@ public class ApprovalService {
       if (l.hasNonNull("reason")) {
         attrs.put("reason", l.get("reason").asString());
       }
+      attrs.put("employee", who);
       bodyLines.add(
           Map.of(
               "lineKey",
@@ -298,7 +316,14 @@ public class ApprovalService {
     body.put("targetRef", operatorId);
     body.put("centerScope", List.copyOf(centerScope));
     body.put("allowedActions", List.of("GRANT_ROLE"));
-    body.put("summary", "직원 권한 요청 " + operatorId + " (hr-service " + requestId + ")");
+    body.put(
+        "summary",
+        "직원 권한 요청 "
+            + who.getOrDefault("employeeNo", operatorId)
+            + (who.containsKey("mailAddress") ? " " + who.get("mailAddress") : "")
+            + " (hr-service "
+            + requestId
+            + ")");
     body.put("lines", bodyLines);
     body.put("requestedEffectiveFrom", earliest.atStartOfDay(SEOUL).toOffsetDateTime().toString());
     String bodyJson = mapper.writeValueAsString(body);

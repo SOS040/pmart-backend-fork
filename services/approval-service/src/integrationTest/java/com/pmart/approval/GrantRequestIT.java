@@ -52,6 +52,8 @@ class GrantRequestIT extends PostgresKafkaContainerSupport {
     p.put("requestId", "GR-" + UUID.randomUUID());
     p.put("operatorId", op);
     p.put("requestedBy", hrStaff);
+    p.put("employeeNo", "P2026-00099");
+    p.put("mailAddress", "new.worker@pmart.com");
     p.put("affiliation", affiliation);
     p.put("lines", lines);
     p.put("requestedAt", Instant.now().toString());
@@ -155,6 +157,12 @@ class GrantRequestIT extends PostgresKafkaContainerSupport {
     assertThat(l1.path("lineId").asString()).isEqualTo("1");
     assertThat(l1.path("attributes").path("role").asString()).isEqualTo("MFC_WORKER");
     assertThat(l1.path("attributes").path("validTo").asString()).isEqualTo("2027-02-28");
+    assertThat(l1.path("attributes").path("employee").path("employeeNo").asString())
+        .isEqualTo("P2026-00099");
+    assertThat(l1.path("attributes").path("employee").path("mailAddress").asString())
+        .isEqualTo("new.worker@pmart.com");
+    assertThat(l1.path("attributes").path("employee").path("affiliation").path("code").asString())
+        .isEqualTo("MFC-IT-01");
     assertThat(envelope(autoId).path("actor").path("type").asString()).isEqualTo("SYSTEM");
 
     // 심사: 2·3번 행, 아직 결정 사건 없음
