@@ -22,7 +22,8 @@
       ],
       "webOrigins": [],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://backoffice.test/*"
       },
       "fullScopeAllowed": false,
       "protocolMappers": [
@@ -42,7 +43,11 @@
             "introspection.token.claim": "true"
           }
         }
-      ]
+      ],
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": []
     },
     {
       "clientId": "pmart-dev-cli",
@@ -208,6 +213,26 @@
         }
       ],
       "attributes": {}
+    },
+    {
+      "username": "sso1",
+      "enabled": true,
+      "email": "sso1@pmart.com",
+      "emailVerified": true,
+      "firstName": "sso1",
+      "lastName": "test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pw-sso1",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "pmart_operator_id": [
+          "OP-IT-SSO1"
+        ]
+      }
     }
   ]
 }

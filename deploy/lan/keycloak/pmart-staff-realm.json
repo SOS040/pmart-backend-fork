@@ -90,7 +90,8 @@
       ],
       "webOrigins": [],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://192.168.0.40/login##http://d603-16/login##http://localhost:5173/login"
       },
       "fullScopeAllowed": false,
       "protocolMappers": [
@@ -110,7 +111,11 @@
             "introspection.token.claim": "false"
           }
         }
-      ]
+      ],
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": []
     },
     {
       "clientId": "pmart-backoffice",

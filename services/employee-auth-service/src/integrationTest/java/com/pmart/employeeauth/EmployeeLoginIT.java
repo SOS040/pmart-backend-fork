@@ -122,6 +122,7 @@ class EmployeeLoginIT extends PostgresContainerSupport {
     account("OP-IT-WORKER1", "ACTIVE", List.of("MFC_WORKER"), List.of("MFC-IT-01"));
     account("OP-IT-ADMIN1", "ACTIVE", List.of("OPERATOR_ADMIN"), List.of());
     account("OP-IT-LEFT1", "LEFT", List.of("MFC_WORKER"), List.of("MFC-IT-01"));
+    account("OP-IT-SSO1", "ACTIVE", List.of("MD"), List.of());
   }
 
   void account(String op, String state, List<String> roles, List<String> centers) {
@@ -351,8 +352,13 @@ class EmployeeLoginIT extends PostgresContainerSupport {
     // 다시 로그인 → 로그아웃 → 현재 세션 401
     JsonNode again = loginTokens("worker1", "pda-1");
     String access2 = again.path("tokens").path("accessToken").asText();
-    assertThat(withToken("POST", "/employee-auth/logouts", access2, Map.of()).status())
-        .isEqualTo(204);
+    Res loggedOut = withToken("POST", "/employee-auth/logouts", access2, Map.of());
+    assertThat(loggedOut.status()).isEqualTo(200);
+    assertThat(
+            loggedOut.body().path("idpLogoutUri").isMissingNode()
+                || loggedOut.body().path("idpLogoutUri").isNull())
+        .as("PDA 는 Keycloak 세션이 이미 없다")
+        .isTrue();
     assertThat(withToken("GET", "/employee-auth/sessions/current", access2, null).status())
         .isEqualTo(401);
     assertThat(refresh(again.path("tokens").path("refreshToken").asText(), "pda-1").status())
@@ -514,6 +520,101 @@ class EmployeeLoginIT extends PostgresContainerSupport {
     Res ghost = devExchange(directLogin("pmart-dev-cli", "ghost1"));
     assertThat(ghost.status()).isEqualTo(403);
     assertThat(ghost.body().path("code").asText()).isEqualTo("EMPLOYEE_NOT_REGISTERED");
+  }
+
+  @Test
+  void backofficeUsesSsoAndLogoutEndsKeycloakSession() throws Exception {
+    String bo = "http://backoffice.test/auth/callback";
+    Browser b = new Browser();
+
+    // 1) 첫 로그인 — 비밀번호. 백오피스는 prompt=login 이 없다
+    String v1 = verifier();
+    HttpResponse<String> start = b.get(startUrl("backoffice", "tab-1", v1) + "&returnUri=" + bo);
+    String kcUrl = start.headers().firstValue("Location").orElseThrow();
+    assertThat(kcUrl).doesNotContain("prompt=");
+    Matcher m = FORM_ACTION.matcher(b.get(kcUrl).body());
+    assertThat(m.find()).isTrue();
+    HttpResponse<String> submitted =
+        b.postForm(
+            m.group(1).replace("&amp;", "&"),
+            Map.of("username", "sso1", "password", "pw-sso1", "credentialId", ""));
+    URI back1 =
+        URI.create(
+            b.get(submitted.headers().firstValue("Location").orElseThrow())
+                .headers()
+                .firstValue("Location")
+                .orElseThrow());
+    assertThat(back1.toString()).startsWith(bo + "?ticket=");
+    Res first = exchange(param(back1, "ticket"), v1, "tab-1");
+    assertThat(first.status()).isEqualTo(200);
+    assertThat(keycloakSessions("sso1")).as("SSO — Keycloak 세션이 남는다").isEqualTo(1);
+
+    // 저장한 Keycloak ID 토큰에는 이름·이메일이 없다(클라이언트 기본 범위 basic 만)
+    String idToken =
+        jdbc.queryForObject(
+            "SELECT keycloak_id_token FROM employee_session WHERE session_id = ?",
+            String.class,
+            first.body().path("tokens").path("sessionId").asText());
+    String payload =
+        new String(
+            java.util.Base64.getUrlDecoder().decode(idToken.split("[.]")[1]),
+            java.nio.charset.StandardCharsets.UTF_8);
+    assertThat(payload).doesNotContain("\"email\"").doesNotContain("\"name\"").contains("\"sid\"");
+
+    // 2) 새 탭(같은 브라우저) — 비밀번호 없이 바로 티켓
+    String v2 = verifier();
+    String kc2 =
+        b.get(startUrl("backoffice", "tab-2", v2) + "&returnUri=" + bo)
+            .headers()
+            .firstValue("Location")
+            .orElseThrow();
+    HttpResponse<String> sso = b.get(kc2);
+    assertThat(sso.statusCode()).as("로그인 화면 없이 콜백으로").isEqualTo(302);
+    URI back2 =
+        URI.create(
+            b.get(sso.headers().firstValue("Location").orElseThrow())
+                .headers()
+                .firstValue("Location")
+                .orElseThrow());
+    Res second = exchange(param(back2, "ticket"), v2, "tab-2");
+    assertThat(second.status()).isEqualTo(200);
+    assertThat(second.body().path("operatorId").asText()).isEqualTo("OP-IT-SSO1");
+
+    // 3) 로그아웃 → Keycloak 로그아웃 주소 → 브라우저가 가면 확인 화면 없이 백오피스 로그인 화면으로
+    Res out =
+        withToken(
+            "POST",
+            "/employee-auth/logouts",
+            second.body().path("tokens").path("accessToken").asText(),
+            Map.of());
+    assertThat(out.status()).isEqualTo(200);
+    String idp = out.body().path("idpLogoutUri").asText();
+    assertThat(idp)
+        .startsWith(kcBase() + "/realms/pmart-staff/protocol/openid-connect/logout?")
+        .contains("id_token_hint=")
+        .contains("post_logout_redirect_uri=http://backoffice.test/login");
+    HttpResponse<String> kcLogout = b.get(idp);
+    assertThat(kcLogout.statusCode()).as(kcLogout.body()).isEqualTo(302);
+    assertThat(kcLogout.headers().firstValue("Location").orElseThrow())
+        .startsWith("http://backoffice.test/login");
+    assertThat(keycloakSessions("sso1")).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM employee_session WHERE operator_id = 'OP-IT-SSO1'"
+                    + " AND state = 'REVOKED' AND keycloak_id_token IS NOT NULL",
+                Integer.class))
+        .as("끝난 세션의 ID 토큰은 지운다")
+        .isZero();
+
+    // 4) 그 뒤 새 로그인은 다시 비밀번호
+    String kc3 =
+        b.get(startUrl("backoffice", "tab-3", verifier()) + "&returnUri=" + bo)
+            .headers()
+            .firstValue("Location")
+            .orElseThrow();
+    HttpResponse<String> page = b.get(kc3);
+    assertThat(page.statusCode()).isEqualTo(200);
+    assertThat(FORM_ACTION.matcher(page.body()).find()).isTrue();
   }
 
   // ------------------------------------------------------------------ Keycloak 도우미

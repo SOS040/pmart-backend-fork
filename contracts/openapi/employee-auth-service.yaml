@@ -11,8 +11,9 @@ info:
 
     로그인 흐름(앱·백오피스 공통 — 앱은 OAuth 클라이언트가 아니다):
     1. 앱이 code_verifier 를 만들고, 시스템 브라우저(Custom Tabs — WebView 금지)로 GET /employee-auth/logins?app=…&deviceId=…&codeChallenge=… 를 연다.
-    2. 이 서비스가 Keycloak 로그인 화면으로 보낸다(prompt=login — 공용 PDA 에서 앞사람 세션으로 들어가지 않게).
-    3. Keycloak 이 콜백(GET /employee-auth/logins/callback)으로 돌려보내면 코드 교환·ID 토큰 검증·직원 상태 확인 뒤 Keycloak 세션을 바로 끝내고(ADR-0056 결정 14 ①),
+    2. 이 서비스가 Keycloak 로그인 화면으로 보낸다(PDA 등은 prompt=login — 공용 PDA 에서 앞사람 세션으로 들어가지 않게. SSO 앱은 남은 Keycloak 세션을 쓴다).
+    3. Keycloak 이 콜백(GET /employee-auth/logins/callback)으로 돌려보내면 코드 교환·ID 토큰 검증·직원 상태 확인 뒤 — PDA 등은 Keycloak 세션을 바로 끝내고(ADR-0056 결정 14 ①),
+       SSO 앱(backoffice)은 남겨 두고(같은 브라우저의 다음 로그인은 비밀번호 없이, 로그아웃 응답의 idpLogoutUri 로 끝낸다) —
        설정의 복귀 주소로 60초·1회용 로그인 티켓을 붙여 보낸다(예 pmart-mfc://login?ticket=…). 실패면 ?error=코드.
     4. 앱이 POST /employee-auth/tokens {ticket, codeVerifier} + X-Device-Id 로 직원 토큰을 받는다. 티켓은 시작한 기기·code_verifier 로만 바뀐다
        (딥링크를 가로챈 다른 앱은 쓸 수 없다 — RFC 8252 §8.1 과 같은 방식).
@@ -142,7 +143,11 @@ paths:
     post:
       tags: [tokens]
       summary: 로그아웃 (이 세션 또는 이 직원의 모든 세션 종료)
-      description: Keycloak 세션은 로그인 때 이미 끝냈다 — 공용 PDA 다음 작업자는 다시 비밀번호를 친다.
+      description: |
+        PDA(mfc 등 SSO 를 쓰지 않는 앱)는 Keycloak 세션을 로그인 때 이미 끝냈다 — idpLogoutUri 가 없다.
+        SSO 앱(backoffice — 2026-11-12 사용자 결정)은 Keycloak 세션이 남아 있으므로 응답의 idpLogoutUri 로 **브라우저를 이동**시켜야
+        Keycloak 세션까지 끝난다(확인 화면 없이 바로 끝나고 그 앱의 로그인 화면으로 돌아온다). 이동하지 않으면 같은 브라우저의 새 로그인이
+        비밀번호 없이 된다. 이미 끝난 세션이면 idpLogoutUri 없이 200.
       operationId: employeeLogout
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -157,7 +162,11 @@ paths:
               properties:
                 allDevices: { type: boolean, default: false }
       responses:
-        '204': { description: 종료됨 (이미 종료여도 멱등 성공) }
+        '200':
+          description: 종료됨 (이미 종료여도 멱등 성공)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeLogoutResult' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /employee-auth/sessions/current:
@@ -308,6 +317,12 @@ components:
         roles: { type: array, items: { type: string }, description: 비어 있으면 권한 승인 대기(업무 API 403) }
         centers: { type: array, items: { type: string } }
         tokens: { $ref: '#/components/schemas/TokenPair' }
+    EmployeeLogoutResult:
+      type: object
+      properties:
+        idpLogoutUri:
+          type: string
+          description: "SSO 앱만 — 브라우저를 이 주소로 이동시킨다(Keycloak 로그아웃 → 앱 로그인 화면). 토큰 값이 들어 있으니 로그에 남기지 않는다"
     EmployeeSession:
       type: object
       required: [sessionId, operatorId, app, issuedAt, expiresAt]

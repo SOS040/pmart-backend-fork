@@ -51,7 +51,7 @@ public record EmployeeAuthProperties(
     roles = roles == null ? List.of() : List.copyOf(roles);
     keycloak =
         keycloak == null
-            ? new Keycloak(null, null, null, null, null, null, null, null, null)
+            ? new Keycloak(null, null, null, null, null, null, null, null, null, null)
             : keycloak;
     devTokenExchange =
         devTokenExchange == null ? new DevTokenExchange(false, null) : devTokenExchange;
@@ -80,11 +80,27 @@ public record EmployeeAuthProperties(
   /**
    * @param returnUris 허용 복귀 주소(첫 번째가 기본). 로그인 시작의 returnUri 는 이 중 하나와 정확히 같아야 한다
    * @param sessionIdle 무활동 한도 — 이 시간 동안 갱신이 없으면 다시 로그인(mfc 30분, ADR-0056 결정 14 ③)
+   * @param sso Keycloak 세션을 남겨 SSO 를 쓴다(백오피스, 2026-11-12 사용자 결정). 끄면(기본 — PDA) 로그인 직후 Keycloak 세션을
+   *     끝내고 매번 비밀번호를 묻는다(결정 14 ①). 켠 앱은 로그아웃 때 Keycloak 로그아웃 주소를 돌려준다
+   * @param postLogoutPath SSO 앱이 Keycloak 로그아웃 뒤 돌아갈 경로(로그인한 복귀 주소의 출처 + 이 경로, 기본 /login). Keycloak
+   *     클라이언트의 post.logout.redirect.uris 에 있어야 한다
    */
-  public record App(List<String> returnUris, @Nullable Duration sessionIdle) {
+  public record App(
+      List<String> returnUris,
+      @Nullable Duration sessionIdle,
+      boolean sso,
+      @Nullable String postLogoutPath) {
     public App {
       returnUris = returnUris == null ? List.of() : List.copyOf(returnUris);
+      postLogoutPath =
+          postLogoutPath == null || postLogoutPath.isBlank() ? "/login" : postLogoutPath;
     }
+  }
+
+  /** 앱이 SSO 를 쓰는가(모르는 앱은 아니다). */
+  public boolean sso(String app) {
+    App a = apps.get(app);
+    return a != null && a.sso();
   }
 
   /**
@@ -100,6 +116,7 @@ public record EmployeeAuthProperties(
    * @param clientSecret 클라이언트 비밀(설정 {cipher}, 로그 금지)
    * @param redirectUri Keycloak 에 등록한 콜백(게이트웨이 경유 공개 주소)
    * @param timeout Keycloak 호출 연결·응답 한도
+   * @param endSessionUri 브라우저용 로그아웃 주소(SSO 앱 로그아웃, 기본 issuer + /protocol/openid-connect/logout)
    */
   public record Keycloak(
       @Nullable String issuer,
@@ -110,7 +127,8 @@ public record EmployeeAuthProperties(
       @Nullable String clientId,
       @Nullable String clientSecret,
       @Nullable String redirectUri,
-      @Nullable Duration timeout) {
+      @Nullable Duration timeout,
+      @Nullable String endSessionUri) {
 
     public Keycloak {
       String base = issuer == null ? "" : issuer.replaceAll("/+$", "");
@@ -120,6 +138,8 @@ public record EmployeeAuthProperties(
       jwkSetUri = blank(jwkSetUri) ? base + "/protocol/openid-connect/certs" : jwkSetUri;
       logoutUri = blank(logoutUri) ? base + "/protocol/openid-connect/logout" : logoutUri;
       timeout = timeout == null ? Duration.ofSeconds(5) : timeout;
+      endSessionUri =
+          blank(endSessionUri) ? base + "/protocol/openid-connect/logout" : endSessionUri;
     }
 
     /** 로그인에 필요한 값이 모두 있는가. */

@@ -19,6 +19,7 @@
   - 첫 로그인 연결: Keycloak `sub` 로 찾고, 없으면 ID 토큰의 `pmart_operator_id`(클라이언트 매퍼 — ID 토큰에만) 로 `employee_account` 를 찾아 연결. 다른 Keycloak 사용자가 이미 연결된 운영자 ID 면 거절.
   - LAN 시험 교환(D5): `POST /api/v1/internal/dev-token-exchange` — Keycloak access token(azp = `pmart-dev-cli`)을 본문으로, `pmart.employee-auth.dev-token-exchange.enabled=true` 일 때만 경로가 있다.
   - 아직 없는 것(5단계): Kafka(Employee* 구독, `SubjectBlocked`·`GrantApplied` 발행), grant·대행·행위 시점 검증 API, 근무 시작일·계약 종료일 확인.
+- **2026-11-12 백오피스 SSO(사용자 결정 — D8 을 백오피스에서 바꿈)**: 사용자 "백오피스는 sso적용하는게 나은것같아". 앱별 설정 `sso` — **backoffice 만 켬**, PDA(mfc)는 지금처럼 매번 비밀번호. 켠 앱은 Keycloak 세션을 남기고(`prompt=login` 없음) 새 탭은 비밀번호 없이 로그인된다. Keycloak 세션 무활동 한도 = **Realm 값 12시간 그대로**(사용자 선택 — 공용 PC 에서 브라우저를 닫지 않으면 그 동안 다음 사람이 들어올 수 있음을 알고 고름). 로그아웃은 **Keycloak 세션도 끝냄**(사용자 선택): 로그아웃 응답 `idpLogoutUri` 로 브라우저 이동 → Keycloak end_session(`id_token_hint` — SSO 세션에만 Keycloak ID 토큰 저장, 클라이언트 기본 범위 `basic` 만이라 이름·이메일 없음, 만료돼도 동작 확인) → `<출처>/login`. 백오피스 저장소는 sessionStorage 그대로(클라이언트 결정 D1 수용). 클라이언트 요청 `docs/handoff/clients/2026-11-12-clients-request-backoffice-sso-logout.md`.
 - **2026-11-12 4단계 준비(안 끊기는 부분)**: LAN 백오피스가 아직 Keycloak 에 직접 로그인하므로 Keycloak 주소(`KC_HOSTNAME`)는 백오피스가 employee-auth 로그인으로 옮긴 뒤 바꾼다(클라이언트 요청 `docs/handoff/clients/2026-11-12-clients-request-backoffice-employee-auth-login.md`). 먼저 한 것: 게이트웨이 `/iam` 중계(로그인 경로만, **Keycloak 쿠키는 넘김** — 게이트웨이의 Cookie 제거를 전역 필터로 바꾸고 이 라우트만 예외), 그 밖의 `/iam/**` denyAll, 게이트웨이 HTTPS 8443(8080 과 함께). 실제 Keycloak 26.8.1 을 `KC_HOSTNAME=http://localhost:<게이트웨이>/iam`·`KC_PROXY_HEADERS=xforwarded` 로 띄워 게이트웨이 경유 로그인 → code 까지 시험(`KeycloakIamIT`) — 경로 붙은 hostname + StripPrefix 동작 확인(§6 표의 "구현 때 확인" 해소).
 
 ## 1. 한 줄 요약
@@ -370,7 +371,7 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 | D5 | LAN 시험 스크립트(claude-dev)의 직원 토큰 받는 법 — 브라우저 흐름을 스크립트가 할 수 없음 | `pmart-dev-cli`(직접 로그인)로 Keycloak 토큰 → employee-auth-service 의 **LAN 전용**(설정으로만 켜는) 교환 경로 `POST /internal/dev-token-exchange` → PMart JWT. prod 프로필에서는 경로 자체가 없음. **정함(2026-11-12, 제안대로)** |
 | D6 | Keycloak 관리 콘솔에서 직접 막는 경우를 남길지 | **정함(2026-11-12, 제안대로)**: 남기지 않음 — 모든 퇴사·정지는 hr-service 로만 → `pmart-auth-relay`·`StaffBlockRelay` 내림(ADR-0054 결정 M 대체) |
 | D7 | 사서함 보존 기간·메일 백업 | **정함(2026-11-12, 제안대로)**: 퇴사 뒤 비활성으로 **계속 보존**(삭제 안 함, 실습 환경). 메일 볼륨 백업은 DB 백업 방침 정할 때 함께 |
-| D8 | PDA 공용 기기 로그아웃 정책 | **정함(2026-11-12, 제안대로)**: ① 로그아웃 때 Keycloak 세션도 종료(`end_session_endpoint`) ② 근무(교대) 종료 시각이 지나면 자동 로그아웃 ③ 무활동 30분이면 다시 로그인(2026-11-08 "30분 무활동 = 경보"와 맞춤) |
+| D8 | PDA 공용 기기 로그아웃 정책 | **정함(2026-11-12, 제안대로)** — **백오피스는 같은 날 SSO 로 바꿈**(진행 절): ① 로그아웃 때 Keycloak 세션도 종료(`end_session_endpoint`) ② 근무(교대) 종료 시각이 지나면 자동 로그아웃 ③ 무활동 30분이면 다시 로그인(2026-11-08 "30분 무활동 = 경보"와 맞춤) |
 | D9 | 사서함 자동화 2단계(사이드카) 시점 | **정함(2026-11-12)**: hr-service 를 만들 때 함께 만든다(§9-6). 수동 명령은 예비 수단 |
 | D10 | 백오피스 로그인 OTP(2단계 인증, LoA 2) | **정함(2026-11-12): 넣지 않는다**(사용자 "일단 otp 안넣을거야"). 아래는 검토했던 내용 — 업무 문서에는 요구 없음(참고 자료의 다른 구성안에서 온 요구). 넣는다면: Keycloak 에 employee-auth 용 클라이언트를 백오피스용·PDA용 둘로 등록해 백오피스용에만 OTP, employee-auth 가 `acr` 을 PMart JWT 에 담고, 게이트웨이가 백오피스 경로에서 `acr=2` 확인. Claude 추천: 넣는다 |
 

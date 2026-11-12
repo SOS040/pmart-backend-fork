@@ -116,8 +116,13 @@ public class EmployeeLoginService {
         nonce,
         now,
         now.plus(props.loginAttemptTtl()));
-    return UriComponentsBuilder.fromUriString(Objects.requireNonNull(kc.authorizationUri()))
-        .queryParam("client_id", kc.clientId())
+    UriComponentsBuilder auth =
+        UriComponentsBuilder.fromUriString(Objects.requireNonNull(kc.authorizationUri()));
+    if (!a.sso()) {
+      // 공용 PDA(결정 14 ①): Keycloak 세션이 남아 있어도 매번 비밀번호를 묻는다. SSO 앱(백오피스)은 남은 세션을 쓴다
+      auth.queryParam("prompt", "login");
+    }
+    return auth.queryParam("client_id", kc.clientId())
         .queryParam("response_type", "code")
         .queryParam("scope", "openid")
         .queryParam("redirect_uri", kc.redirectUri())
@@ -125,7 +130,6 @@ public class EmployeeLoginService {
         .queryParam("nonce", nonce)
         .queryParam("code_challenge", EmployeeTokens.s256(verifier))
         .queryParam("code_challenge_method", "S256")
-        .queryParam("prompt", "login")
         .encode()
         .build()
         .toUri();
@@ -148,12 +152,19 @@ public class EmployeeLoginService {
       log.info("직원 로그인 중단(Keycloak 오류 응답) app={}", attempt.app());
       return back(attempt, "error", "IDP_ERROR");
     }
+    boolean sso = props.sso(attempt.app());
     KeycloakClient.Identity identity;
+    KeycloakClient.Tokens kcTokens;
     try {
-      KeycloakClient.Tokens kcTokens = keycloak.exchange(code, attempt.codeVerifier());
+      kcTokens = keycloak.exchange(code, attempt.codeVerifier());
       try {
         identity = keycloak.verifyIdToken(kcTokens.idToken(), attempt.nonce());
-      } finally {
+      } catch (RuntimeException e) {
+        keycloak.endSession(kcTokens.refreshToken());
+        throw e;
+      }
+      if (!sso) {
+        // 공용 PDA(결정 14 ①): Keycloak 세션을 바로 끝낸다 — 직원 세션은 PMart 세션 하나
         keycloak.endSession(kcTokens.refreshToken());
       }
     } catch (KeycloakClient.Unavailable e) {
@@ -167,6 +178,10 @@ public class EmployeeLoginService {
     try {
       operatorId = tx.execute(s -> resolve(identity, now));
     } catch (PmartException e) {
+      if (sso) {
+        // 거절된 로그인의 Keycloak 세션은 남기지 않는다(같은 브라우저가 계속 그 계정으로 SSO 되지 않게)
+        keycloak.endSession(kcTokens.refreshToken());
+      }
       return back(attempt, "error", e.code());
     }
     String ticket = EmployeeTokens.random();
@@ -177,7 +192,10 @@ public class EmployeeLoginService {
         attempt.deviceId(),
         attempt.ticketChallenge(),
         now,
-        now.plus(props.ticketTtl()));
+        now.plus(props.ticketTtl()),
+        attempt.returnUri(),
+        // SSO 앱만: 로그아웃 때 Keycloak 세션을 확인 화면 없이 끝내는 id_token_hint(이름·이메일 없음, PMart API 에 못 씀)
+        sso ? kcTokens.idToken() : null);
     log.info("직원 로그인 확인: operatorId={} app={}", operatorId, attempt.app());
     return back(attempt, "ticket", ticket);
   }
@@ -242,7 +260,14 @@ public class EmployeeLoginService {
                       .account(t.operatorId(), false)
                       .orElseThrow(EmployeeLoginService::notRegistered);
               requireActive(account);
-              return openSession(account, deviceId, t.app(), sourceSystem, now);
+              return openSession(
+                  account,
+                  deviceId,
+                  t.app(),
+                  sourceSystem,
+                  now,
+                  t.returnUri(),
+                  t.keycloakIdToken());
             });
     if (invalid[0] || r == null) {
       log.warn("로그인 티켓 교환 거절");
@@ -279,7 +304,8 @@ public class EmployeeLoginService {
             s -> {
               String operatorId = resolve(identity, now);
               AccountRow account = store.account(operatorId, false).orElseThrow();
-              return openSession(account, deviceId, "dev-cli", "dev-token-exchange", now);
+              return openSession(
+                  account, deviceId, "dev-cli", "dev-token-exchange", now, null, null);
             });
     log.info("LAN 시험 토큰 교환: operatorId={}", Objects.requireNonNull(r).operatorId());
     return r;
@@ -288,12 +314,27 @@ public class EmployeeLoginService {
   // ---------------------------------------------------------------- 공통
 
   private LoginResult openSession(
-      AccountRow account, String deviceId, String app, String sourceSystem, Instant now) {
+      AccountRow account,
+      String deviceId,
+      String app,
+      String sourceSystem,
+      Instant now,
+      @Nullable String returnUri,
+      @Nullable String keycloakIdToken) {
     String sessionId = "ESES-" + UUID.randomUUID();
     Instant max = now.plus(props.sessionMaxAge());
     Instant expires = min(now.plus(props.sessionIdle(app)), max);
     store.insertSession(
-        sessionId, account.operatorId(), deviceId, app, sourceSystem, now, max, expires);
+        sessionId,
+        account.operatorId(),
+        deviceId,
+        app,
+        sourceSystem,
+        now,
+        max,
+        expires,
+        returnUri,
+        keycloakIdToken);
     EmployeeTokens.Tokens t =
         tokens.issue(
             account.operatorId(), account.roles(), account.centers(), sessionId, expires, now);

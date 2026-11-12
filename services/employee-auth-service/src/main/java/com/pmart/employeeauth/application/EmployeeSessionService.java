@@ -6,6 +6,7 @@ import com.pmart.employeeauth.infrastructure.EmployeeAuthStore;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore.AccountRow;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore.RefreshRow;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore.SessionRow;
+import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -19,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * 토큰 갱신·로그아웃·현재 세션. refresh token 은 한 번만 쓴다 — 쓴 토큰이 다시 오면 탈취로 보고 세션 폐기(TOKEN_REUSED). 직원 상태·역할은 갱신
@@ -108,17 +110,52 @@ public class EmployeeSessionService {
   }
 
   /** 현재 토큰의 세션(또는 그 직원의 모든 세션) 종료. 이미 종료여도 성공. */
-  public void logout(boolean allDevices) {
+  /**
+   * 현재 토큰의 세션(또는 그 직원의 모든 세션)을 끝낸다. 이미 끝났어도 성공. SSO 앱(백오피스) 세션이면 브라우저가 이동할 Keycloak 로그아웃 주소를 돌려준다(이
+   * 브라우저의 Keycloak 세션까지 끝내려고 — 2026-11-12 사용자 결정). 아니면 null.
+   */
+  public @Nullable URI logout(boolean allDevices) {
     Jwt jwt = ownJwt();
     Instant now = clock.instant();
-    tx.executeWithoutResult(
+    String sid = jwt.getClaimAsString("sid");
+    return tx.execute(
         status -> {
+          SessionRow current = sid == null ? null : store.session(sid, true).orElse(null);
+          URI idpLogout =
+              current != null
+                      && "ACTIVE".equals(current.state())
+                      && current.operatorId().equals(jwt.getSubject())
+                  ? idpLogoutUri(current)
+                  : null;
           if (allDevices) {
             store.revokeAllSessions(jwt.getSubject(), "LOGOUT_ALL", now);
-          } else if (jwt.getClaimAsString("sid") != null) {
-            store.revokeSession(jwt.getClaimAsString("sid"), "LOGOUT", now);
+          } else if (sid != null) {
+            store.revokeSession(sid, "LOGOUT", now);
           }
+          return idpLogout;
         });
+  }
+
+  /** Keycloak end_session(브라우저용). id_token_hint 로 확인 화면 없이 끝내고 그 앱의 로그인 화면으로 돌아온다. */
+  private @Nullable URI idpLogoutUri(SessionRow s) {
+    if (!props.sso(s.app()) || s.keycloakIdToken() == null || s.returnUri() == null) {
+      return null;
+    }
+    EmployeeAuthProperties.App app = props.apps().get(s.app());
+    URI back = URI.create(s.returnUri());
+    String postLogout =
+        back.getScheme()
+            + "://"
+            + back.getRawAuthority()
+            + Objects.requireNonNull(app.postLogoutPath());
+    return UriComponentsBuilder.fromUriString(
+            Objects.requireNonNull(props.keycloak().endSessionUri()))
+        .queryParam("client_id", props.keycloak().clientId())
+        .queryParam("id_token_hint", s.keycloakIdToken())
+        .queryParam("post_logout_redirect_uri", postLogout)
+        .encode()
+        .build()
+        .toUri();
   }
 
   public Current current() {

@@ -44,7 +44,9 @@ public class EmployeeAuthStore {
       String deviceId,
       String ticketChallenge,
       Instant expiresAt,
-      @Nullable Instant usedAt) {}
+      @Nullable Instant usedAt,
+      @Nullable String returnUri,
+      @Nullable String keycloakIdToken) {}
 
   public record SessionRow(
       String sessionId,
@@ -53,7 +55,9 @@ public class EmployeeAuthStore {
       String app,
       String state,
       Instant maxExpiresAt,
-      Instant expiresAt) {}
+      Instant expiresAt,
+      @Nullable String returnUri,
+      @Nullable String keycloakIdToken) {}
 
   public record RefreshRow(
       String tokenHash, String sessionId, Instant expiresAt, @Nullable Instant usedAt) {}
@@ -232,17 +236,21 @@ public class EmployeeAuthStore {
       String deviceId,
       String ticketChallenge,
       Instant at,
-      Instant expiresAt) {
+      Instant expiresAt,
+      String returnUri,
+      @Nullable String keycloakIdToken) {
     jdbc.update(
-        "INSERT INTO login_ticket (ticket_hash, operator_id, app, device_id, ticket_challenge, issued_at, expires_at)"
-            + " VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO login_ticket (ticket_hash, operator_id, app, device_id, ticket_challenge, issued_at, expires_at,"
+            + " return_uri, keycloak_id_token) VALUES (?,?,?,?,?,?,?,?,?)",
         ticketHash,
         operatorId,
         app,
         deviceId,
         ticketChallenge,
         Timestamp.from(at),
-        Timestamp.from(expiresAt));
+        Timestamp.from(expiresAt),
+        returnUri,
+        keycloakIdToken);
   }
 
   public Optional<TicketRow> lockTicket(String ticketHash) {
@@ -257,7 +265,9 @@ public class EmployeeAuthStore {
                     rs.getString("device_id"),
                     rs.getString("ticket_challenge"),
                     instant(rs, "expires_at"),
-                    nullableInstant(rs, "used_at")),
+                    nullableInstant(rs, "used_at"),
+                    rs.getString("return_uri"),
+                    rs.getString("keycloak_id_token")),
             ticketHash)
         .stream()
         .findFirst();
@@ -265,13 +275,18 @@ public class EmployeeAuthStore {
 
   public void markTicketUsed(String ticketHash, Instant at) {
     jdbc.update(
-        "UPDATE login_ticket SET used_at = ? WHERE ticket_hash = ? AND used_at IS NULL",
+        "UPDATE login_ticket SET used_at = ?, keycloak_id_token = NULL WHERE ticket_hash = ? AND used_at IS NULL",
         Timestamp.from(at),
         ticketHash);
   }
 
   /** 하루 지난 시도·티켓을 지운다(감사 기록이 아니다 — 세션·변경 기록은 남는다). */
   public int purgeExpired(Instant before) {
+    // 끝난(만료된) SSO 세션의 Keycloak ID 토큰도 지운다 — 로그아웃 때만 쓰고, 세션이 끝나면 쓸 데가 없다
+    jdbc.update(
+        "UPDATE employee_session SET keycloak_id_token = NULL"
+            + " WHERE keycloak_id_token IS NOT NULL AND expires_at < ?",
+        Timestamp.from(before));
     return jdbc.update("DELETE FROM login_attempt WHERE expires_at < ?", Timestamp.from(before))
         + jdbc.update("DELETE FROM login_ticket WHERE expires_at < ?", Timestamp.from(before));
   }
@@ -286,10 +301,13 @@ public class EmployeeAuthStore {
       String sourceSystem,
       Instant at,
       Instant maxExpiresAt,
-      Instant expiresAt) {
+      Instant expiresAt,
+      @Nullable String returnUri,
+      @Nullable String keycloakIdToken) {
     jdbc.update(
         "INSERT INTO employee_session (session_id, operator_id, device_id, app, source_system, state,"
-            + " created_at, max_expires_at, expires_at) VALUES (?,?,?,?,?,'ACTIVE',?,?,?)",
+            + " created_at, max_expires_at, expires_at, return_uri, keycloak_id_token)"
+            + " VALUES (?,?,?,?,?,'ACTIVE',?,?,?,?,?)",
         sessionId,
         operatorId,
         deviceId,
@@ -297,7 +315,9 @@ public class EmployeeAuthStore {
         sourceSystem,
         Timestamp.from(at),
         Timestamp.from(maxExpiresAt),
-        Timestamp.from(expiresAt));
+        Timestamp.from(expiresAt),
+        returnUri,
+        keycloakIdToken);
   }
 
   public Optional<SessionRow> session(String sessionId, boolean forUpdate) {
@@ -313,7 +333,9 @@ public class EmployeeAuthStore {
                     rs.getString("app"),
                     rs.getString("state"),
                     instant(rs, "max_expires_at"),
-                    instant(rs, "expires_at")),
+                    instant(rs, "expires_at"),
+                    rs.getString("return_uri"),
+                    rs.getString("keycloak_id_token")),
             sessionId)
         .stream()
         .findFirst();
@@ -329,7 +351,8 @@ public class EmployeeAuthStore {
 
   public void revokeSession(String sessionId, String reason, Instant at) {
     jdbc.update(
-        "UPDATE employee_session SET state = 'REVOKED', revoked_at = ?, revoke_reason = ?"
+        "UPDATE employee_session SET state = 'REVOKED', revoked_at = ?, revoke_reason = ?,"
+            + " keycloak_id_token = NULL"
             + " WHERE session_id = ? AND state = 'ACTIVE'",
         Timestamp.from(at),
         reason,
@@ -338,7 +361,8 @@ public class EmployeeAuthStore {
 
   public int revokeAllSessions(String operatorId, String reason, Instant at) {
     return jdbc.update(
-        "UPDATE employee_session SET state = 'REVOKED', revoked_at = ?, revoke_reason = ?"
+        "UPDATE employee_session SET state = 'REVOKED', revoked_at = ?, revoke_reason = ?,"
+            + " keycloak_id_token = NULL"
             + " WHERE operator_id = ? AND state = 'ACTIVE'",
         Timestamp.from(at),
         reason,

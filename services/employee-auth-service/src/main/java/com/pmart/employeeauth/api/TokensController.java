@@ -3,6 +3,7 @@ package com.pmart.employeeauth.api;
 import com.pmart.employeeauth.api.generated.TokensApi;
 import com.pmart.employeeauth.api.generated.model.EmployeeLoginResult;
 import com.pmart.employeeauth.api.generated.model.EmployeeLogoutRequest;
+import com.pmart.employeeauth.api.generated.model.EmployeeLogoutResult;
 import com.pmart.employeeauth.api.generated.model.EmployeeSession;
 import com.pmart.employeeauth.api.generated.model.ExchangeLoginTicketRequest;
 import com.pmart.employeeauth.api.generated.model.RefreshEmployeeTokensRequest;
@@ -55,10 +56,12 @@ public class TokensController implements TokensApi {
   }
 
   @Override
-  public ResponseEntity<Void> employeeLogout(
+  public ResponseEntity<EmployeeLogoutResult> employeeLogout(
       String idempotencyKey, String xSourceSystem, @Nullable EmployeeLogoutRequest body) {
-    sessions.logout(body != null && Boolean.TRUE.equals(body.getAllDevices()));
-    return ResponseEntity.noContent().build();
+    java.net.URI idp = sessions.logout(body != null && Boolean.TRUE.equals(body.getAllDevices()));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(new EmployeeLogoutResult().idpLogoutUri(idp == null ? null : idp.toString()));
   }
 
   @Override

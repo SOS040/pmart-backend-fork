@@ -13,12 +13,13 @@
 ## 데이터
 - 스키마 변경은 `src/main/resources/db/migration/V*.sql` 로만. 적용된 파일 수정 금지.
 - Keycloak 토큰·비밀번호·이메일·이름은 저장하지 않는다 — Keycloak `sub` ↔ 운영자 ID 연결만. state·티켓·refresh token 은 SHA-256 만. Keycloak PKCE verifier 는 콜백에서 지운다.
+  - **예외(2026-11-12, 백오피스 SSO)**: SSO 앱 세션에만 Keycloak **ID 토큰**을 둔다(`login_ticket`→`employee_session.keycloak_id_token`) — 로그아웃 때 `id_token_hint` 로 확인 화면 없이 Keycloak 세션을 끝내려고. 클라이언트 기본 범위를 `basic` 만 두어 이름·이메일이 없고(시험이 확인), `aud` = 이 서비스라 PMart API 에 쓸 수 없다. 세션이 끝나면(로그아웃·폐기·만료 뒤 하루 정리) 지운다. 만료된 ID 토큰으로도 Keycloak 26.8.1 로그아웃이 된다(2026-11-12 확인).
 - `employee_account` 가 직원 상태·역할·권한 센터의 정본(D1). 바꾸는 길은 지금 관리 경로(PUT, 변경 기록) 하나.
 
 ## 로그인 (Keycloak 기밀 클라이언트)
 - Spring OAuth2 Client 를 쓰지 않는다 — 게이트웨이가 Cookie 헤더를 지우므로 세션 쿠키 없이 돌게 직접 구현(`EmployeeLoginService`, `infrastructure/KeycloakClient`).
 - 브라우저 주소(authorization-uri)와 서버끼리 주소(token·jwks·logout — 같은 PC 5 Docker 네트워크)를 나눈다. ID 토큰 `iss` 는 `pmart.employee-auth.keycloak.issuer` 와 정확히 같아야 한다(Keycloak KC_HOSTNAME 기준).
-- 콜백에서 코드 교환 직후 Keycloak 세션을 끝내고(`endSession`), 시작 URL 에는 `prompt=login`(공용 PDA).
+- 앱별 SSO(`pmart.employee-auth.apps.<앱>.sso`): **끈 앱(기본, PDA)** 은 콜백에서 코드 교환 직후 Keycloak 세션을 끝내고(`endSession`) 시작 URL 에 `prompt=login`. **켠 앱(backoffice, 2026-11-12 사용자 결정)** 은 Keycloak 세션을 남겨 같은 브라우저의 다음 로그인이 비밀번호 없이 되고, 로그아웃 응답 `idpLogoutUri`(Keycloak end_session + `id_token_hint` + `<로그인한 출처><post-logout-path>`)로 브라우저가 Keycloak 세션을 끝낸다. 거절된 로그인(미등록·정지)은 SSO 앱이어도 Keycloak 세션을 끝낸다. Keycloak 세션 무활동 한도는 Realm 값(12시간, 사용자 결정 — 바꾸지 않음).
 - 티켓은 60초·1회, 시작한 기기 + 앱의 code_verifier(S256) 로만. 틀린 시도도 티켓을 태운다.
 - 복귀 주소는 설정 허용 목록에서만(열린 리디렉션 금지). 오류는 `?error=코드` 로 앱에 돌려준다(state 를 모르면 400).
 - Keycloak 클라이언트 시크릿은 pmart-config `{cipher}`(원본 `deploy/lan/.secrets/keycloak-employee-auth-client-secret`), Keycloak 쪽 값은 Realm 파일 자리표시자(render.sh). 로그에 남기지 않는다.
