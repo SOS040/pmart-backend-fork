@@ -10,13 +10,13 @@
 
 | 항목 | 값 |
 |---|---|
-| 로그인 | employee-auth-service, 지금 백오피스와 같은 흐름(`GET /employee-auth/logins` → `/auth/callback?ticket=` → `POST /employee-auth/tokens`, PKCE·`X-Device-Id`, sessionStorage). **앱 이름 `app=hr-backoffice`** |
+| 로그인 | employee-auth-service, 지금 백오피스와 같은 흐름(`GET /employee-auth/logins` → `/auth/callback?ticket=` → `POST /employee-auth/tokens`, PKCE·`X-Device-Id`, sessionStorage). **앱 이름 `app=hr-backoffice`(확정)** |
 | SSO | 켬 — 같은 브라우저에서 지금 백오피스에 로그인돼 있으면 비밀번호 없이 들어온다. 로그아웃 200 `idpLogoutUri` 로 이동하면 **두 백오피스 모두** Keycloak 세션이 끝난다(각 앱의 PMart 세션 토큰은 각자 지운다) |
-| LAN 주소(제안) | `http://192.168.0.40:8081` (PC 4, 새 nginx) — 복귀 `…/auth/callback`, 로그아웃 뒤 `…/login`. 개발 `http://localhost:5174` |
+| LAN 주소(확정) | `http://192.168.0.40:8081` (PC 4, 새 nginx) — 복귀 `…/auth/callback`, 로그아웃 뒤 `…/login`. 개발 `http://localhost:5174` |
 | `X-Source-System` | `hr-backoffice-web` |
 | 볼 수 있는 사람 | 역할 `HR_ADMIN`(본인 조회 `/hr/employees/me` 만 모든 직원). 역할이 없으면 403 → "인사 권한이 없습니다" 안내 |
 
-백엔드가 할 일(5-5 때 같이): employee-auth-service 앱 `hr-backoffice`(복귀 주소·SSO·로그아웃 경로), Keycloak 로그아웃 허용 주소, 게이트웨이 CORS 출처, PC 4 서빙(`lan.sh publish-hr-backoffice <dist>` — 지금 백오피스 서빙과 따로라 서로 덮지 않는다). 주소·포트를 바꾸고 싶으면 회신에 적어 달라.
+백엔드가 할 일(5-5 때 같이): employee-auth-service 앱 `hr-backoffice`(복귀 주소·SSO·로그아웃 경로), Keycloak 로그아웃 허용 주소, 게이트웨이 CORS 출처, PC 4 서빙(`lan.sh publish-hr-backoffice <dist>` — 지금 백오피스 서빙과 따로라 서로 덮지 않는다).
 
 ## 2. 화면과 API
 
@@ -47,6 +47,6 @@
 
 ## 5. 회신 부탁
 
-1. 주소·포트(`:8081`, 개발 `:5174`)와 앱 이름(`hr-backoffice`) 괜찮은지.
-2. 화면 범위에서 빼거나 더할 것.
-3. 목 서버로 만든 뒤, 백엔드 LAN 배포(5-5) 알림을 받으면 실로그인 확인.
+1. §2 화면 중 계약만으로 만들기 어려운 것(API·필드가 모자란 것)이 있으면 알려 달라.
+2. 목 서버로 만든 뒤, 백엔드 LAN 배포(5-5) 알림을 받으면 실로그인 확인.
+(주소·포트·앱 이름은 사용자가 백엔드에 맡겨 위 값으로 확정 — 2026-11-13.)
