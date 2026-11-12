@@ -86,7 +86,7 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://192.168.0.40:8080/api/v1/employee-auth/logins/callback"
+        "https://192.168.0.40:8443/api/v1/employee-auth/logins/callback"
       ],
       "webOrigins": [],
       "attributes": {

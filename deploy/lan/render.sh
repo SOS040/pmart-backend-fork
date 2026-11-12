@@ -725,7 +725,9 @@ EOF
         ;;
       keycloak)
         # 직원 로그인(ADR-0054): Realm pmart-staff 를 keycloak/pmart-staff-realm.json 에서 처음 한 번 가져온다(이미 있으면 건너뜀).
-        # 발급자(iss) = KC_HOSTNAME = http://<이 PC LAN IP>:8180 — 브라우저(로그인 화면)와 서비스(JWKS)가 같은 주소로 본다.
+        # 공개 주소(ADR-0056 4단계, 2026-11-12) = 게이트웨이 HTTPS /iam — 브라우저(로그인 화면)와 토큰 iss 가 이 주소. 게이트웨이가 로그인 경로만 중계한다
+        # (관리 경로 차단). 관리 화면·Admin API 는 KC_HOSTNAME_ADMIN(이 PC 직접 주소 8180)으로. 서버끼리(employee-auth-service 의 token·jwks·logout,
+        # 서비스의 JWKS)는 요청한 주소 그대로(KC_HOSTNAME_BACKCHANNEL_DYNAMIC). 게이트웨이가 넘기는 X-Forwarded-* 를 믿는다(KC_PROXY_HEADERS)
         # DB 는 같은 PC postgres 의 keycloak(init-db.sql 이 계정·DB 를 만든다). LAN 개발이라 HTTP(운영은 TLS 앞단 필요)
         cat <<EOF
   keycloak:
@@ -740,7 +742,10 @@ EOF
       KC_DB_PASSWORD: \${PMART_KEYCLOAK_DB_PASSWORD}
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: \${PMART_KEYCLOAK_ADMIN_PASSWORD}
-      KC_HOSTNAME: http://${IP[$pc]}:8180
+      KC_HOSTNAME: https://${IP[${WHERE[api-gateway]}]}:8443/iam
+      KC_HOSTNAME_ADMIN: http://${IP[$pc]}:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
       JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
