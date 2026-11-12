@@ -73,60 +73,6 @@
       "optionalClientScopes": []
     },
     {
-      "clientId": "pmart-backoffice",
-      "name": "PMart 백오피스(웹)",
-      "enabled": true,
-      "publicClient": true,
-      "protocol": "openid-connect",
-      "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
-      "implicitFlowEnabled": false,
-      "serviceAccountsEnabled": false,
-      "redirectUris": [
-        "http://d603-16/*",
-        "http://192.168.0.40/*",
-        "http://localhost:5173/*"
-      ],
-      "webOrigins": [
-        "+"
-      ],
-      "attributes": {
-        "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "+"
-      },
-      "fullScopeAllowed": true,
-      "protocolMappers": [
-        {
-          "name": "pmart-api-audience",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.custom.audience": "pmart-api",
-            "access.token.claim": "true",
-            "id.token.claim": "false",
-            "introspection.token.claim": "true"
-          }
-        },
-        {
-          "name": "pmart_operator_id",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "pmart_operator_id",
-            "claim.name": "pmart_operator_id",
-            "jsonType.label": "String",
-            "multivalued": "false",
-            "access.token.claim": "true",
-            "id.token.claim": "false",
-            "userinfo.token.claim": "true",
-            "introspection.token.claim": "true"
-          }
-        }
-      ]
-    },
-    {
       "clientId": "pmart-dev-cli",
       "name": "LAN 시험 스크립트(직접 로그인) — LAN 전용, 운영 금지",
       "enabled": true,

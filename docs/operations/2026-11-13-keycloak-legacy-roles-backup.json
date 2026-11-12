@@ -108,6 +108,31 @@
         "view-events",
         "view-users"
       ]
+    },
+    "pmart-backoffice": {
+      "clientId": "pmart-backoffice",
+      "name": "PMart 백오피스(웹)",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://d603-16/*",
+        "http://192.168.0.40/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "realm_client": "false",
+        "post.logout.redirect.uris": "+",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        "pmart-api-audience",
+        "pmart_operator_id"
+      ],
+      "deleted": "2026-11-13"
     }
   },
   "userProfileCentersAttribute": {
