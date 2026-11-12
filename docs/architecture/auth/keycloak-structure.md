@@ -1,5 +1,7 @@
 # PMart Keycloak 구조 — 직원(운영자) 로그인
 
+> **2026-11-12 ADR-0056 4단계 완료(LAN)**: Keycloak 공개 주소 = 게이트웨이 HTTPS `/iam` — `KC_HOSTNAME=https://192.168.0.40:8443/iam`(토큰 `iss` = `https://192.168.0.40:8443/iam/realms/pmart-staff`), `KC_HOSTNAME_ADMIN=http://192.168.0.101:8180`(관리 콘솔·Admin API 는 PC 5 직접 주소 — 게이트웨이는 `/iam/admin`·master 를 막음), `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`(서버끼리 호출은 내부 주소), `KC_PROXY_HEADERS=xforwarded`. 게이트웨이는 로그인 경로만 중계하므로 **본인 계정 화면(`/realms/pmart-staff/account`)은 브라우저에서 열리지 않는다** — 비밀번호 설정은 메일 링크(`login-actions`)로. 아래 본문의 `http://192.168.0.101:8180` 주소(토큰 `iss`·백오피스 직접 로그인)는 그 전 구조다.
+
 > **2026-11-12 ADR-0056 으로 바뀔 예정(구현 전)**: Keycloak 은 직원 신원 확인만 하고, API 용 직원 토큰은 employee-auth-service(Keycloak 기밀 클라이언트)가 발급한다. `pmart-backoffice`·`pmart-auth-relay` 클라이언트, Realm 역할·`centers` 속성, 관리 화면 계정 관리(결정 L), 차단 중계(결정 M)는 전환 뒤 없어진다. 새 구조: `employee-auth-structure.md`. 이 문서는 지금 LAN 에서 도는 구조다.
 
 - 상태: **LAN 운영 중**(2026-11-11). 백오피스가 Keycloak 로그인으로 배포됨, auth-service 운영자 계정 11개를 같은 운영자 ID 로 옮김. auth-service 운영자 로그인은 옮기는 동안 함께 둔다(ADR-0054 결정 D) — 확인 뒤 발급자 표에서 뺀다.

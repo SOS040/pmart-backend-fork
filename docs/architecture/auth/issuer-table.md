@@ -44,7 +44,7 @@
 | `id` | 발급자 | `issuer-uri` | `jwk-set-uri` | `user-types` | 다른 칸 |
 |---|---|---|---|---|---|
 | `auth-service` | auth-service | `http://auth-service:8501` | (비움 → `http://auth-service:8501/api/v1/internal/jwks`) | CUSTOMER, GUEST, SERVICE, **OPERATOR** | 기본값 |
-| `staff` | Keycloak Realm `pmart-staff`(PC5) | `http://192.168.0.101:8180/realms/pmart-staff` | `…/realms/pmart-staff/protocol/openid-connect/certs` | OPERATOR | `type-claim: ''`, `subject-claim: pmart_operator_id`, `roles-claim: realm_access.roles` |
+| `staff` | Keycloak Realm `pmart-staff`(PC5) — 전환 기간만(7단계에 뺀다) | `https://192.168.0.40:8443/iam/realms/pmart-staff`(2026-11-12 4단계부터, 전에는 `http://192.168.0.101:8180/realms/pmart-staff`) | `…/realms/pmart-staff/protocol/openid-connect/certs` | OPERATOR | `type-claim: ''`, `subject-claim: pmart_operator_id`, `roles-claim: realm_access.roles` |
 | `staff-ea` | employee-auth-service(PC5, ADR-0056) | `http://employee-auth-service:8511` | `http://employee-auth-service:8511/api/v1/internal/jwks` | OPERATOR | 기본값 |
 | `rider` | rider-auth-service(PC5) | `http://rider-auth-service:8510` | `http://rider-auth-service:8510/api/v1/internal/jwks` | RIDER | 기본값 |
 
