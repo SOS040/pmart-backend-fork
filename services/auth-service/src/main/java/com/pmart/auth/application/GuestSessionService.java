@@ -1,6 +1,6 @@
 package com.pmart.auth.application;
 
-import com.pmart.auth.infrastructure.OperatorStore;
+import com.pmart.auth.infrastructure.SessionStore;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.web.ErrorCode;
@@ -34,7 +34,7 @@ public class GuestSessionService {
 
   public record Started(String guestId, SessionTokens.Tokens tokens) {}
 
-  private final OperatorStore sessions;
+  private final SessionStore sessions;
   private final SessionTokens tokens;
   private final GuestProperties props;
   private final RequestIdempotency idempotency;
@@ -42,7 +42,7 @@ public class GuestSessionService {
   private final Clock clock;
 
   public GuestSessionService(
-      OperatorStore sessions,
+      SessionStore sessions,
       SessionTokens tokens,
       GuestProperties props,
       RequestIdempotency idempotency,

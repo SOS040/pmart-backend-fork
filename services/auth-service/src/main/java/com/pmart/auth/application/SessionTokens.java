@@ -1,6 +1,6 @@
 package com.pmart.auth.application;
 
-import com.pmart.auth.infrastructure.OperatorStore;
+import com.pmart.auth.infrastructure.SessionStore;
 import com.pmart.auth.infrastructure.keys.AuthProperties;
 import com.pmart.auth.infrastructure.keys.SigningKeyRing;
 import java.nio.charset.StandardCharsets;
@@ -39,14 +39,14 @@ public class SessionTokens {
   /** 토큰 내용: 주체·유형·역할·센터. */
   public record Principal(String subject, String type, List<String> roles, List<String> centers) {}
 
-  private final OperatorStore store;
+  private final SessionStore store;
   private final JwtEncoder jwtEncoder;
   private final SigningKeyRing keys;
   private final String issuer;
   private final String audience;
 
   public SessionTokens(
-      OperatorStore store, JwtEncoder jwtEncoder, SigningKeyRing keys, AuthProperties props) {
+      SessionStore store, JwtEncoder jwtEncoder, SigningKeyRing keys, AuthProperties props) {
     this.store = store;
     this.jwtEncoder = jwtEncoder;
     this.keys = keys;

@@ -4,7 +4,7 @@
 - 늘 하는 것: 게이트웨이 경로, 비회원(실제 guest-sessions 토큰)·운영자(claude-dev) 403, 헬스.
 - 고객 토큰이 있을 때만: 질문 답변(근거·문의 연결·주문 고르기). 고객 토큰은 LAN 서명키로 만들지 않는다 — 고객앱에서 Google 로그인한
   토큰을 사용자가 따로 터미널에서 deploy/lan/.secrets/customer-token 파일에 넣는다(15분 유효, 저장소 제외). 없으면 건너뛴다.
-필요: deploy/lan/.secrets/claude-dev-login·claude-dev-password.
+필요: deploy/lan/.secrets/keycloak-claude-dev-password·keycloak-admin-password(직원 토큰은 staff_auth.py — employee-auth-service 시험용 교환).
 """
 import json
 import os
@@ -14,6 +14,8 @@ import urllib.request
 import uuid
 
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from staff_auth import staff_token  # noqa: E402 — 직원 토큰(employee-auth-service, 2026-11-13)
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 SECRETS = os.path.join(os.path.dirname(__file__), "..", ".secrets")
 ok_count, total = 0, 0
@@ -67,9 +69,7 @@ guest = b.get("tokens", {}).get("accessToken")
 st, _ = http("POST", f"{GW}/customer-assistant/questions", guest, {"question": "봉투값은 얼마인가요?"})
 step("비회원 질문 → 403(C2)", st, 403)
 
-st, b = http("POST", f"{GW}/auth/operator-logins", source="backoffice-web",
-             body={"loginId": read_secret("claude-dev-login"), "password": read_secret("claude-dev-password")})
-admin = b.get("tokens", {}).get("accessToken")
+admin, _ = staff_token("claude-dev")
 st, _ = http("POST", f"{GW}/customer-assistant/questions", admin, {"question": "봉투값은 얼마인가요?"}, source="backoffice-web")
 step("운영자 질문 → 403(고객만)", st, 403)
 

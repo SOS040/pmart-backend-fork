@@ -128,9 +128,7 @@ class GuestSessionIT extends PostgresKafkaContainerSupport {
     assertThat(claims(refreshed.body().path("accessToken").asString()).path("typ").asString())
         .isEqualTo("GUEST");
 
-    // 회원·운영자 전용 API 는 403, 자기 세션 조회·로그아웃은 된다
-    assertThat(call(HttpMethod.GET, "/operator-accounts", access, null, Map.of()).status())
-        .isEqualTo(403);
+    // 자기 세션 조회·로그아웃은 된다
     Res current = call(HttpMethod.GET, "/auth/sessions/current", access, null, Map.of());
     assertThat(current.status()).isEqualTo(200);
     assertThat(current.body().path("principalType").asString()).isEqualTo("GUEST");

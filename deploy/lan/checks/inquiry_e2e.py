@@ -1,7 +1,7 @@
 """LAN 고객센터 문의 확인(case-service 0.2.0): 비회원 차단, 상담원(CS_AGENT) 목록, 상담원 아닌 운영자 차단.
 
 실행: python -I deploy/lan/checks/inquiry_e2e.py
-필요: deploy/lan/.secrets/claude-dev-login·claude-dev-password(LAN 전용 OPERATOR_ADMIN). 상담원 계정 claude-cs 는 실행마다 비밀번호를 새로 정한다.
+필요: deploy/lan/.secrets/keycloak-claude-dev-password·keycloak-admin-password(직원 토큰은 staff_auth.py — employee-auth-service 시험용 교환). 상담원 계정 claude-cs 는 실행마다 Keycloak 비밀번호를 새로 정하고 역할을 CS_AGENT 로 맞춘다.
 고객 작성·본인 조회는 고객 토큰이 필요해 여기서 하지 않는다(LAN 서명키로 고객 토큰을 만들지 않음) — 통합 시험 InquiriesIT 가 본다.
 """
 import json
@@ -14,6 +14,8 @@ import urllib.request
 import uuid
 
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from staff_auth import staff_token  # noqa: E402 — 직원 토큰(employee-auth-service, 2026-11-13)
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 SECRETS = os.path.join(os.path.dirname(__file__), "..", ".secrets")
 ok_count, total = 0, 0
@@ -58,42 +60,8 @@ def step(name, st, want):
     print(f"{'OK  ' if good else 'FAIL'} {name} {st} (기대 {want})")
 
 
-def login(login_id, password):
-    st, b = http("POST", f"{GW}/auth/operator-logins", body={"loginId": login_id, "password": password})
-    if st != 200:
-        sys.exit(f"로그인 {login_id} 실패: HTTP {st} {b.get('code', '')}")
-    return b["tokens"]["accessToken"]
-
-
-def ensure_operator(admin, login_id, name, roles):
-    password = "Pm!" + secrets.token_urlsafe(18)
-    found, cursor = None, None
-    while True:
-        q = f"{GW}/operator-accounts?size=200" + (f"&cursor={urllib.parse.quote(cursor)}" if cursor else "")
-        st, b = http("GET", q, admin)
-        for it in b.get("items", []):
-            if it.get("loginId") == login_id:
-                found = it
-        cursor = b.get("nextCursor")
-        if found or not cursor:
-            break
-    if not found:
-        st, b = http("POST", f"{GW}/operator-accounts", admin,
-                     {"loginId": login_id, "displayName": name, "initialPassword": password, "roles": roles, "centers": []})
-        print(f"     계정 만들기 {login_id}: HTTP {st} {b.get('code', '')}")
-    else:
-        oid = found["operatorId"]
-        st, _ = http("PUT", f"{GW}/operator-accounts/{oid}", admin,
-                     {"displayName": name, "roles": roles, "centers": [], "state": "ACTIVE"}, version=found["version"])
-        print(f"     계정 갱신 {login_id}: HTTP {st}")
-        st, b = http("POST", f"{GW}/operator-accounts/{oid}/password-resets", admin, {"temporaryPassword": password},
-                     extra={"Accept": "*/*"})  # 204 — Accept: application/json 이면 406
-        print(f"     비밀번호 초기화 {login_id}: HTTP {st} {b.get('code', '')}")
-    return login(login_id, password)
-
-
-admin = login(read_secret("claude-dev-login"), read_secret("claude-dev-password"))
-cs = ensure_operator(admin, "claude-cs", "Claude 고객센터 상담원(LAN)", ["CS_AGENT"])
+admin, _ = staff_token("claude-dev")
+cs, _ = staff_token("claude-cs", ["CS_AGENT"], [])
 
 st, b = http("POST", f"{GW}/auth/guest-sessions", body={}, source="customer-app",
              extra={"X-Device-Id": "claude-lan-inquiry-check"})

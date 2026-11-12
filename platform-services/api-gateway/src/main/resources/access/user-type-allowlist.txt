@@ -139,8 +139,6 @@ GET /api/v1/offers RIDER
 GET /api/v1/offers/{offerId} RIDER
 GET /api/v1/operation-restrictions OPERATOR
 GET /api/v1/operation-restrictions/{restrictionId} OPERATOR
-GET /api/v1/operator-accounts OPERATOR
-GET /api/v1/operator-accounts/{operatorId} OPERATOR
 GET /api/v1/order-drafts/{draftId} CUSTOMER
 GET /api/v1/orders CUSTOMER
 GET /api/v1/orders/{orderId} CUSTOMER
@@ -247,8 +245,6 @@ POST /api/v1/assignments/{assignmentId}/changes OPERATOR
 POST /api/v1/assistant/policy-questions OPERATOR
 POST /api/v1/auth/guest-sessions PUBLIC
 POST /api/v1/auth/logouts CUSTOMER,GUEST,OPERATOR
-POST /api/v1/auth/operator-logins PUBLIC
-POST /api/v1/auth/password-changes OPERATOR
 POST /api/v1/auth/social-logins PUBLIC
 POST /api/v1/auth/social-logins/{authRequestId}/completions PUBLIC
 POST /api/v1/auth/tokens PUBLIC
@@ -358,8 +354,6 @@ POST /api/v1/obligations/{obligationId}/resolutions OPERATOR
 POST /api/v1/offers/{offerId}/responses RIDER
 POST /api/v1/operation-restrictions OPERATOR
 POST /api/v1/operation-restrictions/{restrictionId}/resumes OPERATOR
-POST /api/v1/operator-accounts OPERATOR
-POST /api/v1/operator-accounts/{operatorId}/password-resets OPERATOR
 POST /api/v1/order-drafts CUSTOMER
 POST /api/v1/order-drafts/{draftId}/checkouts CUSTOMER
 POST /api/v1/orders/{orderId}/reservation-time-changes CUSTOMER
@@ -436,7 +430,6 @@ PUT /api/v1/content-drafts/{draftId} OPERATOR
 PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR
 PUT /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
-PUT /api/v1/operator-accounts/{operatorId} OPERATOR
 PUT /api/v1/price-import-batches/{batchId}/lines/{seedProductId} OPERATOR
 PUT /api/v1/product-drafts/{draftId} OPERATOR
 PUT /api/v1/riders/me/settings RIDER

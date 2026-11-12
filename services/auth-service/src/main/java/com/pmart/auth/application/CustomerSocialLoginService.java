@@ -3,7 +3,7 @@ package com.pmart.auth.application;
 import com.pmart.auth.infrastructure.CustomerStore;
 import com.pmart.auth.infrastructure.CustomerStore.AuthRequestRow;
 import com.pmart.auth.infrastructure.GoogleIdTokenVerifier;
-import com.pmart.auth.infrastructure.OperatorStore;
+import com.pmart.auth.infrastructure.SessionStore;
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.messaging.EventEnvelopeCodec;
 import com.pmart.common.messaging.EventPublisher;
@@ -76,7 +76,7 @@ public class CustomerSocialLoginService {
   }
 
   private final CustomerStore customers;
-  private final OperatorStore sessions;
+  private final SessionStore sessions;
   private final SessionTokens tokens;
   private final GoogleIdTokenVerifier google;
   private final CustomerProperties props;
@@ -87,7 +87,7 @@ public class CustomerSocialLoginService {
 
   public CustomerSocialLoginService(
       CustomerStore customers,
-      OperatorStore sessions,
+      SessionStore sessions,
       SessionTokens tokens,
       GoogleIdTokenVerifier google,
       CustomerProperties props,

@@ -4,7 +4,7 @@
 → 재고 원복(처음과 같은 H·A) → 센터 관리자 이동 지시(긴급, 고회전 칸) → 작업자 다음 작업 받기(MOVE)·집기·내려놓기 → 되돌리는 이동. 시험 주문은 만들었다가 취소·복귀하므로 재고는 원래대로 돌아간다. 고객 로그인·결제(Toss)·라이더 인계는 없다.
 
 실행: python -I deploy/lan/checks/mfc_e2e.py   (PYTHONIOENCODING=utf-8 권장)
-필요: deploy/lan/.secrets/claude-dev-login·claude-dev-password(LAN 전용 OPERATOR_ADMIN). 계정 claude-mfc-sup·claude-mfc-wrk 는 실행마다 만들거나 비밀번호를 새로 정한다.
+필요: deploy/lan/.secrets/keycloak-claude-dev-password·keycloak-admin-password(직원 토큰은 staff_auth.py — employee-auth-service 시험용 교환). 계정 claude-mfc-sup·claude-mfc-wrk 는 실행마다 Keycloak 비밀번호를 새로 정하고 역할·센터를 맞춘다(계정은 hr-service 로 등록돼 있어야 한다).
 2026-11-08 — 이 시험으로 mfc-capacity 가 RETURN 작업 배정을 거절하던 결함을 찾았다(dab9873).
 """
 import base64
@@ -19,6 +19,8 @@ import urllib.request
 import uuid
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from staff_auth import staff_token  # noqa: E402 — 직원 토큰(employee-auth-service, 2026-11-13)
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 INV = os.environ.get("PMART_INVENTORY", "http://192.168.0.222:8301/api/v1")
 FUL = os.environ.get("PMART_FULFILLMENT", "http://192.168.0.222:8302/api/v1")
@@ -83,39 +85,9 @@ def sub(token):
     return json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))["sub"]
 
 
-def login(login_id, password):
-    st, b = http("POST", f"{GW}/auth/operator-logins", body={"loginId": login_id, "password": password})
-    if st != 200:
-        raise SystemExit(f"로그인 {login_id} 실패: HTTP {st} {b.get('code', '')}")
-    return b["tokens"]["accessToken"]
-
-
-def ensure_operator(admin, login_id, name, roles, centers):
-    password = "Pm!" + secrets.token_urlsafe(18)
-    found, cursor = None, None
-    while True:
-        q = f"{GW}/operator-accounts?size=200" + (f"&cursor={urllib.parse.quote(cursor)}" if cursor else "")
-        st, b = http("GET", q, admin)
-        for it in b.get("items", []):
-            if it.get("loginId") == login_id:
-                found = it
-        cursor = b.get("nextCursor")
-        if found or not cursor:
-            break
-    if not found:
-        http("POST", f"{GW}/operator-accounts", admin,
-             {"loginId": login_id, "displayName": name, "initialPassword": password, "roles": roles, "centers": centers})
-    else:
-        oid = found["operatorId"]
-        http("PUT", f"{GW}/operator-accounts/{oid}", admin,
-             {"displayName": name, "roles": roles, "centers": centers, "state": "ACTIVE"}, version=found["version"])
-        http("POST", f"{GW}/operator-accounts/{oid}/password-resets", admin, {"temporaryPassword": password})
-    return login(login_id, password)
-
-
-admin = login(read_secret("claude-dev-login"), read_secret("claude-dev-password"))
-sup = ensure_operator(admin, "claude-mfc-sup", "Claude MFC 감독(LAN)", ["MFC_SUPERVISOR"], [MFC])
-wrk = ensure_operator(admin, "claude-mfc-wrk", "Claude MFC 작업자(LAN)", ["MFC_WORKER"], [MFC])
+admin, _ = staff_token("claude-dev")
+sup, _ = staff_token("claude-mfc-sup", ["MFC_SUPERVISOR"], [MFC])
+wrk, _ = staff_token("claude-mfc-wrk", ["MFC_WORKER"], [MFC])
 wid = sub(wrk)
 # 0. 작업자 등록(이미 있으면 409)
 st, b = http("POST", f"{GW}/mfcs/{MFC}/workers", sup,

@@ -33,16 +33,21 @@ import javax.imageio.ImageIO;
  *
  * <pre>
  * java deploy/lan/seed/Seed.java                                  # LAN: 게이트웨이 = placement.conf 의 api-gateway PC
- * java deploy/lan/seed/Seed.java --gateway http://localhost:8080   # 로컬(관리자 비밀번호는 PMART_SEED_ADMIN_PASSWORD)
  * </pre>
+ *
+ * 직원 토큰은 employee-auth-service 시험용 교환(ADR-0056, 2026-11-13 — auth-service 운영자 로그인을 없앰): Keycloak(pmart-dev-cli)
+ * 비밀번호 로그인 → {@code /api/v1/internal/dev-token-exchange}. 필요: {@code deploy/lan/.secrets/keycloak-admin-password}·
+ * {@code keycloak-claude-dev-password}(또는 PMART_SEED_KEYCLOAK_ADMIN_PASSWORD·PMART_SEED_DEV_PASSWORD). 주소는 --keycloak·
+ * --employee-auth 로 바꾼다. 로컬 프로필에는 Keycloak 이 없어 LAN 에서만 돈다.
  *
  * 조회도 MD 토큰으로 한다(공개 경로가 배포되기 전 게이트웨이에서도 동작).
  *
- * 순서: 관리자 로그인 → 시험 운영자(seed-md: MD·센터, seed-approver: 승인 역할 4종) 보장 → 카테고리 트리(PRODUCT 승인) → 배송 권역
+ * 순서: 관리자(claude-dev) 토큰 → 시험 직원(seed-md: MD·센터, seed-approver: 승인 역할) 역할 맞춤 → 카테고리 트리(PRODUCT 승인) → 배송 권역
  * (SERVICEABILITY 승인) → 상품(PRODUCT 승인, 바코드로 이미 있는지 확인) → 콘텐츠·대표 이미지(DISPLAY 승인) → 기본가(PRICE 승인) →
  * MFC 취급 ON. 각 단계는 결과가 이미 있으면 건너뛴다(다시 돌려도 안전).
  *
- * <p>비밀번호·토큰은 출력하지 않는다. 시험 운영자 비밀번호는 실행마다 무작위로 초기화한다(저장하지 않음).
+ * <p>비밀번호·토큰은 출력하지 않는다. 시험 직원의 Keycloak 비밀번호는 실행마다 무작위로 정한다(저장하지 않음). 계정은 만들지 않는다 —
+ * Keycloak·employee-auth-service 에 있어야 한다(새 직원은 hr-service 로 등록).
  */
 public class Seed {
 
@@ -67,6 +72,10 @@ public class Seed {
   final Map<String, Object> data;
   String md;
   String approver;
+  String keycloak = "http://192.168.0.101:8180";
+  String employeeAuth = "http://192.168.0.101:8511";
+  String kcAdminPassword;
+  String devPassword;
   /** --initial-stock: 초기 재고 반입(한 번만 — 다시 돌리면 그만큼 더 들어간다). 추가 SKU 는 --initial-stock-skus a,b */
   boolean initialStock;
   List<String> extraStockSkus = List.of();
@@ -79,13 +88,15 @@ public class Seed {
   public static void main(String[] args) throws Exception {
     Path root = Path.of(".").toAbsolutePath().normalize();
     String gateway = null;
-    String adminLogin = null;
+    String keycloak = null;
+    String employeeAuth = null;
     boolean initialStock = false;
     List<String> extraSkus = List.of();
     for (int i = 0; i < args.length; i++) {
       switch (args[i]) {
         case "--gateway" -> gateway = args[++i];
-        case "--admin-login" -> adminLogin = args[++i];
+        case "--keycloak" -> keycloak = args[++i];
+        case "--employee-auth" -> employeeAuth = args[++i];
         case "--initial-stock" -> initialStock = true;
         case "--initial-stock-skus" -> extraSkus = List.of(args[++i].split(","));
         default -> throw new IllegalArgumentException("알 수 없는 인자: " + args[i]);
@@ -95,11 +106,6 @@ public class Seed {
     if (gateway == null) {
       gateway = "http://" + gatewayHost(root.resolve("deploy/lan/placement.conf")) + ":8080";
     }
-    if (adminLogin == null) {
-      adminLogin = readSecret(secrets, "operator-admin-login", "PMART_SEED_ADMIN_LOGIN", "admin");
-    }
-    String adminPassword =
-        readSecret(secrets, "operator-admin-password", "PMART_SEED_ADMIN_PASSWORD", null);
     @SuppressWarnings("unchecked")
     Map<String, Object> data =
         (Map<String, Object>)
@@ -108,15 +114,24 @@ public class Seed {
     Seed s = new Seed(gateway, data);
     s.initialStock = initialStock;
     s.extraStockSkus = extraSkus;
+    if (keycloak != null) {
+      s.keycloak = keycloak.replaceAll("/+$", "");
+    }
+    if (employeeAuth != null) {
+      s.employeeAuth = employeeAuth.replaceAll("/+$", "");
+    }
+    s.kcAdminPassword =
+        readSecret(secrets, "keycloak-admin-password", "PMART_SEED_KEYCLOAK_ADMIN_PASSWORD", null);
+    s.devPassword =
+        readSecret(secrets, "keycloak-claude-dev-password", "PMART_SEED_DEV_PASSWORD", null);
     say("게이트웨이 " + s.api);
-    s.run(adminLogin, adminPassword);
+    s.run();
   }
 
-  void run(String adminLogin, String adminPassword) throws Exception {
-    String admin = login(adminLogin, adminPassword);
+  void run() throws Exception {
     String mfcId = str(data, "mfcId");
-    md = ensureOperator(admin, MD_LOGIN, "시험 MD", List.of("MD"), List.of(mfcId));
-    approver = ensureOperator(admin, APPROVER_LOGIN, "시험 승인권자", APPROVER_ROLES, List.of());
+    md = staffToken(MD_LOGIN, List.of("MD"), List.of(mfcId));
+    approver = staffToken(APPROVER_LOGIN, APPROVER_ROLES, List.of());
 
     center(mfcId);
     staffCalendar(mfcId);
@@ -147,72 +162,113 @@ public class Seed {
     say("배송 가능 좌표 예: " + str(in, "label") + " lat " + in.get("lat") + ", lng " + in.get("lng") + " → " + mfcId);
   }
 
-  // ---------- 운영자 ----------
+  // ---------- 직원 토큰(employee-auth-service, ADR-0056) ----------
 
-  String login(String loginId, String password) throws Exception {
-    Res r =
-        send("POST", "/auth/operator-logins", null, Map.of("loginId", loginId, "password", password), null);
-    r.expect("로그인 " + loginId, 200);
-    return str(map(r.map(), "tokens"), "accessToken");
-  }
-
-  /** 없으면 만들고, 있으면 역할·센터를 맞춘 뒤 비밀번호를 무작위로 초기화하고 로그인한다. */
-  String ensureOperator(
-      String admin, String loginId, String name, List<String> roles, List<String> centers)
+  /** 절대 주소 요청(Keycloak·employee-auth-service 직접). form 이 있으면 x-www-form-urlencoded. */
+  Res raw(String method, String url, String token, Map<String, String> form, Object json, Map<String, String> headers)
       throws Exception {
-    String password = randomPassword();
-    Map<String, Object> existing = findOperator(admin, loginId);
-    if (existing == null) {
-      Map<String, Object> body = new LinkedHashMap<>();
-      body.put("loginId", loginId);
-      body.put("displayName", name);
-      body.put("initialPassword", password);
-      body.put("roles", roles);
-      body.put("centers", centers);
-      send("POST", "/operator-accounts", admin, body, null).expect("운영자 생성 " + loginId, 201);
-      say("운영자 생성 " + loginId + " " + roles);
-    } else {
-      String id = str(existing, "operatorId");
-      Map<String, Object> body = new LinkedHashMap<>();
-      body.put("displayName", name);
-      body.put("roles", roles);
-      body.put("centers", centers);
-      body.put("state", "ACTIVE");
-      send("PUT", "/operator-accounts/" + id, admin, body, num(existing, "version"))
-          .expect("운영자 갱신 " + loginId, 200);
-      send(
-              "POST",
-              "/operator-accounts/" + id + "/password-resets",
-              admin,
-              Map.of("temporaryPassword", password),
-              null)
-          .expect("비밀번호 초기화 " + loginId, 200, 204);
-      say("운영자 확인 " + loginId + " " + roles);
+    HttpRequest.Builder b =
+        HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30)).header("Accept", "application/json");
+    if (token != null) {
+      b.header("Authorization", "Bearer " + token);
     }
-    return login(loginId, password);
+    headers.forEach(b::header);
+    if (form != null) {
+      StringBuilder f = new StringBuilder();
+      form.forEach((k, v) -> f.append(f.isEmpty() ? "" : "&").append(enc(k)).append('=').append(enc(v)));
+      b.header("Content-Type", "application/x-www-form-urlencoded")
+          .method(method, HttpRequest.BodyPublishers.ofString(f.toString(), StandardCharsets.UTF_8));
+    } else if (json != null) {
+      b.header("Content-Type", "application/json")
+          .method(method, HttpRequest.BodyPublishers.ofString(Json.write(json), StandardCharsets.UTF_8));
+    } else {
+      b.method(method, HttpRequest.BodyPublishers.noBody());
+    }
+    HttpResponse<String> r = http.send(b.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    return new Res(r.statusCode(), r.body());
   }
 
-  Map<String, Object> findOperator(String admin, String loginId) throws Exception {
-    String cursor = null;
-    do {
-      Res r =
-          send(
-              "GET",
-              "/operator-accounts?size=200" + (cursor == null ? "" : "&cursor=" + enc(cursor)),
-              admin,
-              null,
-              null);
-      r.expect("운영자 목록", 200);
-      List<Map<String, Object>> items = list(r.map(), "items");
-      for (Map<String, Object> a : items) {
-        if (loginId.equals(a.get("loginId"))) {
-          return a;
-        }
-      }
-      Object page = r.map().get("page");
-      cursor = page instanceof Map<?, ?> m && m.get("nextCursor") instanceof String c ? c : null;
-    } while (cursor != null);
-    return null;
+  /** Keycloak 비밀번호 로그인(개발 클라이언트) → employee-auth-service 시험용 교환 → 직원 토큰. */
+  String exchange(String username, String password) throws Exception {
+    Res kc =
+        raw(
+            "POST",
+            keycloak + "/realms/pmart-staff/protocol/openid-connect/token",
+            null,
+            Map.of("grant_type", "password", "client_id", "pmart-dev-cli", "username", username, "password", password),
+            null,
+            Map.of());
+    kc.expect("Keycloak 로그인 " + username, 200);
+    Res ex =
+        raw(
+            "POST",
+            employeeAuth + "/api/v1/internal/dev-token-exchange",
+            null,
+            null,
+            Map.of("keycloakAccessToken", str(kc.map(), "access_token")),
+            Map.of(
+                "Idempotency-Key", UUID.randomUUID().toString(),
+                "X-Source-System", SOURCE,
+                "X-Device-Id", SOURCE));
+    ex.expect("직원 토큰 교환 " + username, 200);
+    return str(map(ex.map(), "tokens"), "accessToken");
+  }
+
+  /** 시험 직원의 Keycloak 비밀번호를 무작위로 정하고, 역할·센터를 맞춘 뒤(관리자 claude-dev) 직원 토큰을 받는다. */
+  String staffToken(String username, List<String> roles, List<String> centers) throws Exception {
+    Res adm =
+        raw(
+            "POST",
+            keycloak + "/realms/master/protocol/openid-connect/token",
+            null,
+            Map.of("grant_type", "password", "client_id", "admin-cli", "username", "admin", "password", kcAdminPassword),
+            null,
+            Map.of());
+    adm.expect("Keycloak 관리자 로그인", 200);
+    String kcAdmin = str(adm.map(), "access_token");
+    Res users =
+        raw("GET", keycloak + "/admin/realms/pmart-staff/users?exact=true&username=" + enc(username), kcAdmin, null, null, Map.of());
+    users.expect("Keycloak 사용자 " + username, 200);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> found = (List<Map<String, Object>>) Json.parse(users.body());
+    if (found.isEmpty()) {
+      throw new IllegalStateException(username + " 이 Keycloak 에 없다 — 새 직원은 hr-service 로 등록한다");
+    }
+    String password = randomPassword();
+    raw(
+            "PUT",
+            keycloak + "/admin/realms/pmart-staff/users/" + str(found.get(0), "id") + "/reset-password",
+            kcAdmin,
+            null,
+            Map.of("type", "password", "value", password, "temporary", false),
+            Map.of())
+        .expect("비밀번호 설정 " + username, 204);
+    String token = exchange(username, password);
+    @SuppressWarnings("unchecked")
+    String operatorId =
+        (String) ((List<Object>) ((Map<String, Object>) found.get(0).get("attributes")).get("pmart_operator_id")).get(0);
+    String admin = exchange("claude-dev", devPassword);
+    Res cur = send("GET", "/employee-auth/employees/" + operatorId, admin, null, null);
+    cur.expect("직원 조회 " + username, 200);
+    List<String> wantRoles = roles.stream().sorted().toList();
+    List<String> wantCenters = centers.stream().sorted().toList();
+    @SuppressWarnings("unchecked")
+    List<String> haveRoles = ((List<String>) cur.map().get("roles")).stream().sorted().toList();
+    @SuppressWarnings("unchecked")
+    List<String> haveCenters = ((List<String>) cur.map().get("centers")).stream().sorted().toList();
+    if (!wantRoles.equals(haveRoles) || !wantCenters.equals(haveCenters) || !"ACTIVE".equals(cur.map().get("state"))) {
+      Map<String, Object> body = new LinkedHashMap<>();
+      body.put("state", "ACTIVE");
+      body.put("roles", wantRoles);
+      body.put("centers", wantCenters);
+      body.put("reason", "시드 시험 직원 역할 맞춤(Seed.java)");
+      send("PUT", "/employee-auth/employees/" + operatorId, admin, body, null).expect("역할 맞춤 " + username, 200);
+      token = exchange(username, password);
+      say("직원 역할 맞춤 " + username + " " + wantRoles);
+    } else {
+      say("직원 확인 " + username + " " + wantRoles);
+    }
+    return token;
   }
 
   // ---------- 승인 ----------

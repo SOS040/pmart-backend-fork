@@ -259,7 +259,9 @@ class GatewayRoutingSecurityTest {
   }
 
   @Test
-  void operatorLoginIsPublicAndAccountsRouteToAuth() {
+  void operatorLoginIsGone() {
+    // auth-service 운영자 로그인은 2026-11-13 없앴다(ADR-0056 7단계) — 더 이상 공개 경로가 아니다(직원은
+    // employee-auth-service)
     client
         .post()
         .uri("/api/v1/auth/operator-logins")
@@ -267,10 +269,7 @@ class GatewayRoutingSecurityTest {
         .bodyValue("{}")
         .exchange()
         .expectStatus()
-        .isOk();
-    upstream.verify(postRequestedFor(urlPathEqualTo("/api/v1/auth/operator-logins")));
-    assertRoutedTo("/api/v1/operator-accounts/OP-1", "auth-service");
-    // 계정 관리는 공개가 아니다
+        .isUnauthorized();
     client.get().uri("/api/v1/operator-accounts").exchange().expectStatus().isUnauthorized();
   }
 

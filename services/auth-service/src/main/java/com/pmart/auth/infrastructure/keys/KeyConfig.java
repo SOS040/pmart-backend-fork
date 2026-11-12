@@ -11,8 +11,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.crypto.factory.PasswordEncoderFactories;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -44,12 +42,6 @@ public class KeyConfig {
     DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
     processor.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, source));
     return new NimbusJwtDecoder(processor);
-  }
-
-  /** 운영자 비밀번호 해시(bcrypt, DelegatingPasswordEncoder). */
-  @Bean
-  PasswordEncoder passwordEncoder() {
-    return PasswordEncoderFactories.createDelegatingPasswordEncoder();
   }
 
   @Bean

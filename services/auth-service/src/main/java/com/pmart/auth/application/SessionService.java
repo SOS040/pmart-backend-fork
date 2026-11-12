@@ -1,10 +1,9 @@
 package com.pmart.auth.application;
 
 import com.pmart.auth.infrastructure.CustomerStore;
-import com.pmart.auth.infrastructure.OperatorStore;
-import com.pmart.auth.infrastructure.OperatorStore.AccountRow;
-import com.pmart.auth.infrastructure.OperatorStore.RefreshRow;
-import com.pmart.auth.infrastructure.OperatorStore.SessionRow;
+import com.pmart.auth.infrastructure.SessionStore;
+import com.pmart.auth.infrastructure.SessionStore.RefreshRow;
+import com.pmart.auth.infrastructure.SessionStore.SessionRow;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import java.time.Clock;
@@ -21,8 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 토큰 갱신·로그아웃·현재 세션(운영자·고객 공통, ADR-0018). refresh token 은 한 번만 쓴다 — 쓴 토큰이 다시 오면 탈취로 보고 세션을
- * 폐기한다(TOKEN_REUSED). 역할·센터·계정 상태는 갱신 때마다 정본에서 다시 읽는다.
+ * 토큰 갱신·로그아웃·현재 세션(고객·비회원 — 운영자는 2026-11-13 employee-auth-service 로, ADR-0056). refresh token 은 한
+ * 번만 쓴다 — 쓴 토큰이 다시 오면 탈취로 보고 세션을 폐기한다(TOKEN_REUSED). 역할·센터·계정 상태는 갱신 때마다 정본에서 다시 읽는다.
  */
 @Service
 public class SessionService {
@@ -39,20 +38,18 @@ public class SessionService {
       Instant issuedAt,
       Instant expiresAt) {}
 
-  private final OperatorStore store;
+  private final SessionStore store;
   private final CustomerStore customers;
   private final SessionTokens tokens;
-  private final OperatorProperties operators;
   private final CustomerProperties customerProps;
   private final GuestProperties guestProps;
   private final TransactionTemplate tx;
   private final Clock clock;
 
   public SessionService(
-      OperatorStore store,
+      SessionStore store,
       CustomerStore customers,
       SessionTokens tokens,
-      OperatorProperties operators,
       CustomerProperties customerProps,
       GuestProperties guestProps,
       TransactionTemplate tx,
@@ -60,7 +57,6 @@ public class SessionService {
     this.store = store;
     this.customers = customers;
     this.tokens = tokens;
-    this.operators = operators;
     this.customerProps = customerProps;
     this.guestProps = guestProps;
     this.tx = tx;
@@ -119,25 +115,12 @@ public class SessionService {
   /** 주체 유형별로 정본 상태를 다시 읽어 토큰을 발급한다. 이용할 수 없으면 null. */
   private SessionTokens.@Nullable Tokens reissue(SessionRow s, Instant now) {
     return switch (s.principalType()) {
-      case OperatorAuthService.TYPE -> {
-        AccountRow a = store.byId(s.principalId(), false).orElse(null);
-        yield a == null || !"ACTIVE".equals(a.state())
-            ? null
-            : tokens.issue(
-                new SessionTokens.Principal(
-                    a.operatorId(), OperatorAuthService.TYPE, a.roles(), a.centers()),
-                s.sessionId(),
-                s.expiresAt(),
-                operators.accessTokenTtl(),
-                operators.refreshTokenTtl(),
-                now);
-      }
       case CustomerSocialLoginService.TYPE -> {
         if (!"ACTIVE".equals(customers.accountState(s.principalId()).orElse(null))) {
           yield null;
         }
         // 고객 세션은 마지막 사용 기준으로 연장한다(사용자 결정 2026-11-02): 갱신할 때마다 만료 = 지금 + session-max-age.
-        // 그래서 session-max-age 동안 앱을 쓰지 않아야 다시 로그인한다. 운영자 세션은 절대 수명 그대로(보안).
+        // 그래서 session-max-age 동안 앱을 쓰지 않아야 다시 로그인한다.
         Instant extended = now.plus(customerProps.sessionMaxAge());
         store.extendSession(s.sessionId(), extended);
         yield tokens.issue(
@@ -197,11 +180,6 @@ public class SessionService {
                         List.of()));
     List<String> roles = List.of();
     List<String> centers = List.of();
-    if (OperatorAuthService.TYPE.equals(s.principalType())) {
-      AccountRow a = store.byId(s.principalId(), false).orElseThrow();
-      roles = a.roles();
-      centers = a.centers();
-    }
     return new Current(
         s.sessionId(),
         s.principalId(),

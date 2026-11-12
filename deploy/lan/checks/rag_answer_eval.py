@@ -2,7 +2,7 @@
 
 실행: python -I deploy/lan/checks/rag_answer_eval.py [보고서 폴더]
   기본 보고서 폴더: docs/rag/verification/<오늘>/answer-eval/ (report.md · answers.json)
-필요: deploy/lan/.secrets/claude-dev-login·claude-dev-password(LAN 전용 OPERATOR_ADMIN). 토큰·비밀번호는 출력하지 않는다.
+필요: deploy/lan/.secrets/keycloak-claude-dev-password·keycloak-admin-password(직원 토큰은 staff_auth.py — employee-auth-service 시험용 교환). 토큰·비밀번호는 출력하지 않는다.
 
 채점(질문마다):
 - 정답: ANSWER 는 HTTP 200 + 근거 있는 답(answerMode GENERATIVE·BASELINE_EXTRACTIVE) + facts 묶음을 모두 담음.
@@ -20,6 +20,8 @@ import urllib.request
 import uuid
 
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from staff_auth import staff_token  # noqa: E402 — 직원 토큰(employee-auth-service, 2026-11-13)
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 SECRETS = os.path.join(ROOT, "deploy", "lan", ".secrets")
@@ -78,11 +80,7 @@ def grade(q, st, r):
     return ok, missing, bad, src_hit, off_topic, mode, text, paths, cites
 
 
-st, b = http("POST", f"{GW}/auth/operator-logins",
-             body={"loginId": read_secret("claude-dev-login"), "password": read_secret("claude-dev-password")})
-if st != 200:
-    sys.exit(f"로그인 실패: HTTP {st} {b.get('code', '')}")
-token = b["tokens"]["accessToken"]
+token, _ = staff_token("claude-dev")
 
 with open(QFILE, encoding="utf-8") as f:
     questions = json.load(f)["questions"]
