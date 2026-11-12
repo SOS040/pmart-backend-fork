@@ -9,12 +9,14 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 - `contracts/openapi/*.yaml` 의 `servers.url` + 첫 경로 세그먼트에서 도출. 계약에 리소스를 추가하면 여기도 갱신한다.
 - `me`·`riders`·`deliveries` 는 여러 서비스가 공유 → 구체 경로를 음수 `order` 로 먼저 매칭. 새 공유 세그먼트가 생기면 같은 방식.
 - 정본은 GitHub `code-and-pick/pmart-config`(로컬 사본 `deploy/lan/.config-repo/api-gateway.yml`). 고친 뒤 `deploy/lan/config-copies.sh sync` 로 `src/test`·`src/integrationTest` 의 `pmart-config/` 사본을 맞춘다.
-- 라우트 `uri` 는 `${pmart.gateway.upstream.<service>}` 자리표시자. 라우트별 `filters:` 는 없다(공통: `default-filters: RemoveRequestHeader=Cookie`).
+- 라우트 `uri` 는 `${pmart.gateway.upstream.<service>}` 자리표시자. 라우트별 `filters:` 는 없다 — 예외는 `keycloak-iam`(아래).
+- **Cookie**: 업스트림으로 가는 `Cookie` 헤더는 `filter/CookieStripGlobalFilter` 가 지운다(2026-11-12, 예전 `default-filters: RemoveRequestHeader=Cookie`). 라우트 `metadata.pmart-keep-cookies: true` 인 라우트만 넘긴다.
+- **`/iam`**(ADR-0056 결정 11, 라우트 `keycloak-iam`): Keycloak `pmart-staff` 로그인에 필요한 경로만 중계 — `protocol/openid-connect/**`·`login-actions/**`·`.well-known/**`·`/iam/resources/**`, `StripPrefix=1`, 쿠키 넘김(Keycloak 로그인은 `AUTH_SESSION_ID`·`KC_RESTART` 쿠키로 이어진다 — 지우면 비밀번호가 맞아도 실패, `KeycloakIamIT` 가 확인). 공개 경로에도 같은 범위만, 그 밖의 `/iam/**`(관리 콘솔·Admin API·master Realm·계정 화면)은 보안에서 `denyAll`. 업스트림 `pmart.gateway.upstream.keycloak`(LAN `http://192.168.0.101:8180`).
 - `/api/v1/internal/**` 은 라우팅하지 않고 보안에서도 `denyAll`. 서비스 간 호출은 게이트웨이를 거치지 않는다(운영 Service DNS, LAN 은 Eureka — ADR-0032).
 - 업스트림 주소는 `pmart.gateway.upstream.<service>`: 기본(`api-gateway.yml`)은 `http://<service>:<port>`(운영 Service DNS), `api-gateway-lan.yml` 은 `lb://<service>`(Eureka, 등록 없으면 503), `api-gateway-local.yml` 은 localhost 포트.
 
 ## 보안
-- 공개 작업(`pmart.gateway.public-paths`)은 계약의 `security: []` 인 작업과 1:1. 임의 추가 금지.
+- 공개 작업(`pmart.gateway.public-paths`)은 계약의 `security: []` 인 작업과 1:1. 임의 추가 금지. 유일한 예외는 Keycloak 로그인 경로 `/iam/realms/pmart-staff/…`(PMart 계약이 아님, ADR-0056 결정 11 — 라우트 `keycloak-iam` 과 같은 범위).
 - 그 외 `/api/**` 는 유효한 JWT 필수(401/403 Problem). 역할·센터·행위 시점 검증은 각 서비스 책임.
 - **발급자 표**(`pmart.security.issuers`, ADR-0054, `security/IssuedToken`): 있으면 토큰 `iss` 로 발급자를 골라(표에 없으면 401) 그 키로 서명, 그 발급자 규칙(`common-jwt` `IssuerPolicy` — 만료·iss·aud·발급자 ↔ 사용자 종류 짝·주체 클레임)으로 확인한다. SERVICE·GUEST 제한은 발급자 규칙이 정한 종류로 본다. 비어 있으면 예전처럼 `jwk-set-uri` 하나 + `typ` 클레임. `jwk-set-uri` 를 비운 발급자는 Boot 기본 디코더를 쓴다. 서비스(common-security)도 같은 표·규칙으로 다시 검증한다.
 - **경로별 사용자 종류 허용 목록**(ADR-0054 §6.1, `security/UserTypeAllowlistFilter`, 보안 체인 뒤 order 0): 인증된 `/api/**` 요청의 (메서드, 경로) → 허용 종류를 `src/main/resources/access/user-type-allowlist.txt` 에서 찾는다(가장 구체적인 패턴). 이 파일은 **생성 파일** — 정본은 계약의 작업별 `x-pmart-user-types`(없으면 UNLABELED, `security: []` 는 PUBLIC). 계약을 고치면 `PMART_WRITE_ALLOWLIST=1 ./gradlew :platform-services:api-gateway:test --tests '*UserTypeAllowlistFileTest'` 로 다시 만든다(시험이 계약과 다르면 실패). 모드 `pmart.gateway.user-type-allowlist.mode`: RECORD(기본, 경고 로그·지표만) / ENFORCE(403 `USER_TYPE_NOT_ALLOWED`, 목록에 없으면 거부) / OFF. 로그에는 경로 원문 대신 맞은 패턴(없으면 앞 세 마디 + `/**`).
@@ -22,6 +24,10 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
   - 채우는 쪽은 사건 `SubjectBlocked`(토픽 `platform.subject-block.v1`) 뿐 — Stream 함수 `subjectBlocks`(`security/SubjectBlockEvents`, 그룹 `api-gateway`). 사람·서비스가 Redis 에 직접 쓰지 않는다. 게이트웨이는 DB 가 없어 **common-messaging 을 쓰지 않는다**: 그룹·재시도(3회)·DLT(`platform.subject-block.v1.DLT`)·역직렬화는 pmart-config `api-gateway.yml` 에 직접 적었고, inbox 대신 쓰기가 멱등이다(Lua — 늦은 차단 시각만 남김). 남길 기간 = 차단 시각 + `max-token-lifetime`(2시간) − 지금 → 토픽을 다시 읽어도 지난 차단은 안 생긴다. 발급자 access token 수명을 2시간 넘게 늘리면 이 값도 늘린다.
   - Kafka 는 Bus 와 같은 클러스터(`spring.kafka.bootstrap-servers`). Bus(lan)는 definition 뒤에 busConsumer 를 붙인다. 단위 시험은 `application-test.yml`, 통합 시험은 `api-gateway-it-env.yml` 에서 definition 을 비우고 `subject-blocklist.enabled=false` — `SubjectBlocklistIT`(Redis·Kafka 컨테이너)만 다시 켠다.
 - 서비스 간 호출은 게이트웨이를 거치지 않고 인증하지 않는다(ADR-0026 — private subnet 이 신뢰 경계). 게이트웨이는 `/internal/**` 를 라우팅하지 않는다(denyAll).
+
+## HTTPS 입구 (ADR-0057, `GatewayHttpsServer`)
+- `pmart.gateway.https.port`(0 = 끔)·`bundle`(Spring SSL 번들). 같은 `HttpHandler` 를 TLS 포트에 하나 더 붙인다 — 규칙·필터가 HTTP 입구와 같다. Boot `server.ssl` 은 포트가 하나라 쓰지 않는다.
+- LAN: 8443, 번들 `lan-tls` = `/etc/pmart-tls/cert.pem·key.pem`(render.sh 가 PC 4 서버 인증서를 `build/pc4/tls` 에). 8080 HTTP 는 클라이언트 전환까지 함께(T3). 시험 `GatewayHttpsIT`(시험 전용 자체 서명).
 
 ## 처리율 제한 (`filter/RateLimitGlobalFilter`, `pmart.gateway.rate-limit`)
 - Redis 토큰 버킷(`RedisRateLimiter`). 유효한 JWT → subject 단위, 그 외 → 클라이언트 IP 단위(`trusted-proxies` 만큼 `X-Forwarded-For` 신뢰). 초과 시 429 Problem `RATE_LIMITED`(retryable) + `Retry-After`.
@@ -31,7 +37,7 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 
 ## 필터 순서 (층이 다르다)
 1. WebFilter: `RequestIdWebFilter`(HIGHEST+10, `X-Request-Id`) → Spring Security `WebFilterChainProxy`(-100: CORS·JWT·인가, 401/403 Problem) → `SubjectBlockFilter`(-50, 401 `SUBJECT_BLOCKED`) → `UserTypeAllowlistFilter`(0)
-2. 라우트 선택(없으면 404) → Gateway 필터: `RateLimitGlobalFilter`(HIGHEST+100) → `RemoveRequestHeader=Cookie` → `lb://` 해석 → `NettyRoutingFilter`
+2. 라우트 선택(없으면 404) → Gateway 필터: `RateLimitGlobalFilter`(HIGHEST+100) → `CookieStripGlobalFilter`(HIGHEST+200) → `lb://` 해석 → `NettyRoutingFilter`
 - Security 가 거부한 요청은 Gateway 필터(처리율 제한)까지 오지 않는다.
 
 ## 추적(traceId)

@@ -19,6 +19,7 @@
   - 첫 로그인 연결: Keycloak `sub` 로 찾고, 없으면 ID 토큰의 `pmart_operator_id`(클라이언트 매퍼 — ID 토큰에만) 로 `employee_account` 를 찾아 연결. 다른 Keycloak 사용자가 이미 연결된 운영자 ID 면 거절.
   - LAN 시험 교환(D5): `POST /api/v1/internal/dev-token-exchange` — Keycloak access token(azp = `pmart-dev-cli`)을 본문으로, `pmart.employee-auth.dev-token-exchange.enabled=true` 일 때만 경로가 있다.
   - 아직 없는 것(5단계): Kafka(Employee* 구독, `SubjectBlocked`·`GrantApplied` 발행), grant·대행·행위 시점 검증 API, 근무 시작일·계약 종료일 확인.
+- **2026-11-12 4단계 준비(안 끊기는 부분)**: LAN 백오피스가 아직 Keycloak 에 직접 로그인하므로 Keycloak 주소(`KC_HOSTNAME`)는 백오피스가 employee-auth 로그인으로 옮긴 뒤 바꾼다(클라이언트 요청 `docs/handoff/clients/2026-11-12-clients-request-backoffice-employee-auth-login.md`). 먼저 한 것: 게이트웨이 `/iam` 중계(로그인 경로만, **Keycloak 쿠키는 넘김** — 게이트웨이의 Cookie 제거를 전역 필터로 바꾸고 이 라우트만 예외), 그 밖의 `/iam/**` denyAll, 게이트웨이 HTTPS 8443(8080 과 함께). 실제 Keycloak 26.8.1 을 `KC_HOSTNAME=http://localhost:<게이트웨이>/iam`·`KC_PROXY_HEADERS=xforwarded` 로 띄워 게이트웨이 경유 로그인 → code 까지 시험(`KeycloakIamIT`) — 경로 붙은 hostname + StripPrefix 동작 확인(§6 표의 "구현 때 확인" 해소).
 
 ## 1. 한 줄 요약
 

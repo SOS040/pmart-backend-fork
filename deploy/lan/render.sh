@@ -842,7 +842,12 @@ EOF
         echo "  $c:"
         echo "    <<: *common"
         echo "    image: $REGISTRY/pmart-$c@$(digest_of "$c")"
-        echo "    ports: [\"$port:$port\"]"
+        if [ "$c" = api-gateway ]; then
+          # HTTPS 입구(ADR-0057) 8443 을 8080 옆에 — 클라이언트가 옮길 때까지 둘 다(T3). 인증서는 아래 ./tls(이 PC 서버 인증서)
+          echo "    ports: [\"$port:$port\", \"8443:8443\"]"
+        else
+          echo "    ports: [\"$port:$port\"]"
+        fi
         echo "    networks: { default: { ipv4_address: $ip_addr } }"
         echo "    mem_limit: 768m"
         if is_rag "$c"; then
@@ -885,6 +890,10 @@ EOF
         echo "      PMART_EUREKA_PASSWORD: \${PMART_EUREKA_PASSWORD}"
         # Bus 소비 그룹 이름 고정(bus-<앱>-<PC>, application-lan.yml) — 재시작마다 anonymous.* 그룹이 늘지 않게(2026-11-04)
         echo "      PMART_BUS_INSTANCE: $pc"
+        if [ "$c" = api-gateway ]; then
+          echo "    volumes:"
+          echo "      - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(pmart-config api-gateway-lan.yml 의 SSL 번들 lan-tls)"
+        fi
         echo
         # 운영자 RAG 색인 작업(ADR-0036 결정 6 — 기동 때 색인하지 않는다): 같은 이미지·설정, profiles 로 up 에서 제외,
         # 고정 IP 없음(compose run 이 앱의 고정 IP 를 그대로 쓰면 실행 중인 앱과 겹친다). lan.sh rag-ingest 가 run --rm 으로 한 번 돌린다
@@ -1113,6 +1122,13 @@ EOF
     for f in postfix-main.cf accounts-init.sh roundcube-pmart.php roundcube-ssl.conf; do tr -d '\r' < "$LAN/mail/$f" > "$dir/mail/$f"; done
     cp "$SECRETS/tls/$pc.crt" "$dir/mail/tls/cert.pem"; cp "$SECRETS/tls/$pc.key" "$dir/mail/tls/key.pem"
     cp "$LAN/tls/pmart-lan-root-ca.crt" "$dir/mail/tls/pmart-lan-root-ca.crt"
+  fi
+
+  # 게이트웨이 HTTPS(ADR-0057): 이 PC 서버 인증서·키 → build/<pc>/tls(키는 build/ 에만, git 제외)
+  if [[ "$comps" == *" api-gateway "* ]]; then
+    [ -f "$SECRETS/tls/$pc.crt" ] || { echo "$pc: LAN HTTPS 인증서 없음 — deploy/lan/lan.sh tls-issue $pc 먼저" >&2; exit 1; }
+    mkdir -p "$dir/tls"
+    cp "$SECRETS/tls/$pc.crt" "$dir/tls/cert.pem"; cp "$SECRETS/tls/$pc.key" "$dir/tls/key.pem"
   fi
 
   if [[ "$comps" == *" connect "* ]]; then

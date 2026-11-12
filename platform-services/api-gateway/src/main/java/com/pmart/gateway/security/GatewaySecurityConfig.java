@@ -103,6 +103,10 @@ public class GatewaySecurityConfig {
               for (GatewayProperties.PublicPath p : properties.publicPaths()) {
                 exchanges.pathMatchers(HttpMethod.valueOf(p.method()), p.path()).permitAll();
               }
+              // Keycloak 중계(/iam, ADR-0056 결정 11)는 공개 목록의 로그인 경로만. 관리 콘솔·Admin API·master Realm 등 그
+              // 밖은
+              // 토큰이 있어도 거부 — 라우트가 없다는 것에만 기대지 않는다
+              exchanges.pathMatchers("/iam/**").denyAll();
               // 비회원 토큰(typ=GUEST)은 비회원을 허용한 경로(장바구니 등)에서만
               for (String p : properties.guestPaths()) {
                 exchanges.pathMatchers(p).access(USER_OR_GUEST_TOKEN);

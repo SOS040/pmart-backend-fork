@@ -82,8 +82,8 @@ class GatewayRoutingSecurityTest {
   void everyScaffoldedServiceHasAnUpstreamAndAtLeastOneRoute() {
     List<String> routeIds = routeLocator.getRoutes().map(Route::getId).collectList().block();
     assertThat(properties.upstream())
-        .hasSize(36); // + ai-assistant-service(ADR-0036), customer-assistant-service(ADR-0051),
-    // rider-auth-service(ADR-0054 E), employee-auth-service(ADR-0056)
+        .hasSize(37); // + ai-assistant-service(ADR-0036), customer-assistant-service(ADR-0051),
+    // rider-auth-service(ADR-0054 E), employee-auth-service·keycloak(/iam, ADR-0056)
     for (String service : properties.upstream().keySet()) {
       if (INTERNAL_ONLY.contains(service)) {
         continue;
@@ -129,6 +129,22 @@ class GatewayRoutingSecurityTest {
         .jsonPath("$.code")
         .isEqualTo("FORBIDDEN");
     upstream.verify(0, postRequestedFor(anyUrl()));
+  }
+
+  /**
+   * Keycloak 중계(/iam)는 로그인 경로만 — 관리 콘솔·Admin API·master Realm 은 유효한 토큰이 있어도 403(ADR-0056 결정 11).
+   */
+  @Test
+  void keycloakAdminPathsNeverPassEvenWithValidToken() {
+    for (String path :
+        new String[] {
+          "/iam/admin/master/console/",
+          "/iam/admin/realms/pmart-staff/users",
+          "/iam/realms/master/protocol/openid-connect/token",
+          "/iam/realms/pmart-staff/account"
+        }) {
+      client.mutateWith(mockJwt()).get().uri(path).exchange().expectStatus().isForbidden();
+    }
   }
 
   @Test

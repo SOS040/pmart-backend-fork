@@ -1,0 +1,35 @@
+{
+  "realm": "pmart-staff",
+  "enabled": true,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "it-login",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": []
+    }
+  ],
+  "users": [
+    {
+      "username": "u1",
+      "enabled": true,
+      "email": "u1@pmart.com",
+      "emailVerified": true,
+      "firstName": "u",
+      "lastName": "one",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pw-u1",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
