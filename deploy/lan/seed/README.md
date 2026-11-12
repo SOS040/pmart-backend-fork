@@ -6,12 +6,10 @@
 java deploy/lan/seed/Seed.java                                  # LAN: 게이트웨이 = placement.conf 의 api-gateway PC :8080
 java deploy/lan/seed/Seed.java --initial-stock                  # + 시험 초기 재고(SKU 마다 initialStockPerSku). 한 번만 — 다시 돌리면 그만큼 더 들어간다
 java deploy/lan/seed/Seed.java --initial-stock --initial-stock-skus E-00000008,E-00000009   # 추가 SKU 도 함께
-PMART_SEED_ADMIN_PASSWORD=pmart-local java deploy/lan/seed/Seed.java --gateway http://localhost:8080   # 로컬
 ```
 
-- 관리자 아이디·비밀번호: `deploy/lan/.secrets/operator-admin-login`·`operator-admin-password`(git 제외) 또는 환경변수 `PMART_SEED_ADMIN_LOGIN`·`PMART_SEED_ADMIN_PASSWORD`.
-  - 2026-11-07 부터 `operator-admin-password` 파일 값이 LAN 의 `admin` 실제 비밀번호와 다르다(사용자가 바꿈 — 사용자 결정 2026-11-09 그대로 둠). 시드는 LAN 전용 `claude-dev` 로: `PMART_SEED_ADMIN_LOGIN="$(cat deploy/lan/.secrets/claude-dev-login)" PMART_SEED_ADMIN_PASSWORD="$(cat deploy/lan/.secrets/claude-dev-password)" java deploy/lan/seed/Seed.java`.
-- 시험 운영자 `seed-md`(MD, 센터 `MFC-SEED-01`)·`seed-approver`(PRODUCT·DISPLAY·PRICE·SERVICEABILITY·CENTER_MASTER·INVENTORY 승인)를 만들거나 맞춘다. 비밀번호는 실행마다 무작위로 초기화하고 저장하지 않는다(발의자 ≠ 승인자 규칙 때문에 두 계정).
+- 직원 토큰(2026-11-13, ADR-0056 — auth-service 운영자 로그인을 없앰): `deploy/lan/.secrets/keycloak-admin-password`·`keycloak-claude-dev-password`(또는 `PMART_SEED_KEYCLOAK_ADMIN_PASSWORD`·`PMART_SEED_DEV_PASSWORD`). Keycloak(pmart-dev-cli) 로그인 → employee-auth-service 시험용 교환. 로컬 프로필에는 Keycloak 이 없어 LAN 에서만 돈다(`--keycloak`·`--employee-auth` 로 주소 변경).
+- 시험 직원 `seed-md`(MD, 센터 `MFC-SEED-01`)·`seed-approver`(PRODUCT·DISPLAY·PRICE·SERVICEABILITY·CENTER_MASTER·INVENTORY 승인)의 역할·센터를 맞춘다(관리자 claude-dev). 계정은 만들지 않는다(hr-service 로 등록). Keycloak 비밀번호는 실행마다 무작위로 정하고 저장하지 않는다(발의자 ≠ 승인자 규칙 때문에 두 계정).
 - 순서: 센터·시간표 → 카테고리 트리 → 배송 권역 → 상품 → 콘텐츠·대표 이미지(합성 PNG) → 기본가 → MFC 취급 ON → (--initial-stock) 초기 재고. 이미 있으면 건너뛴다(상품은 바코드로 확인). 초기 재고 말고는 다시 돌려도 안전하다.
 - 초기 재고는 INITIAL_STOCK 승인 → mfc-inbound 초기 보유 반입 → mfc-inventory 전기(D2, 조정으로 넣지 않음). 반영은 `GET /initial-stock-loads?approvalId=` 로 확인한다.
 - 다른 카테고리 트리나 권역 매핑이 이미 발효 중이면 덮어쓰지 않는다(트리 발효본은 그대로 쓰고, 권역은 넣지 않는다). 발효 중인 권역이 모두 seed 권역(`Z-SEED-*`)이면 `seed-data.json` 의 권역으로 새 버전을 올려 교체한다.

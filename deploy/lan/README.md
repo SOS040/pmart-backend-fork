@@ -8,8 +8,8 @@ PC 접속·원격 docker 설정은 `docs/worklog/2026-10-24.md` 참조. 배포 �
 | `pc-bootstrap.ps1` | 새 LAN PC 처음 준비(그 PC 에서 관리자로 한 번) — SSH 접속까지 |
 | `placement.conf` | 배치 정보 — PC 이름·IP·ssh 별칭·구성요소. PC 수는 가변 |
 | `render.sh` | 배치 → `build/<pc>/compose.yml`, `.env`, `init-db.sql` 생성 |
-| `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키·S3 자격 증명·첫 운영자 관리자(아이디 `operator-admin-login`, 비밀번호 원문 `operator-admin-password`, bcrypt 해시 `operator-admin-hash`) 생성. 있으면 유지. **재생성하면 LAN 과 값이 달라지므로** 잃어버렸으면 PC 1 백업(`%USERPROFILE%\.pmart-lan-secrets-backup\`, 저장소 밖)에서 되돌린다 |
-| `.secrets/claude-dev-login`·`claude-dev-password` | **개발 환경 전용 관리자 계정**(2026-11-07, 사용자 요청) — auth-service LAN 프로필 `pmart.auth.operator.dev-accounts`(bcrypt 해시 `{cipher}`)로 기동 때 만든다. Claude 가 승인·현장 시험 스크립트를 사람 입력 없이 돌리는 데 쓴다. 운영(prod) 설정에 넣지 않는다. 없애려면 설정 항목 삭제 + 계정 비활성화 |
+| `init-secrets.sh` | `.secrets/`(git 제외)에 DB 비밀번호·auth 서명키·S3 자격 증명 생성. 있으면 유지. **재생성하면 LAN 과 값이 달라지므로** 잃어버렸으면 PC 1 백업(`%USERPROFILE%\.pmart-lan-secrets-backup\`, 저장소 밖)에서 되돌린다 |
+| `.secrets/keycloak-claude-dev-password`·`keycloak-admin-password` | **LAN 시험 직원 토큰**(2026-11-13 — auth-service 운영자 로그인을 없앤 뒤): `deploy/lan/checks/staff_auth.py` 가 Keycloak(pmart-dev-cli) 로그인 → employee-auth-service 시험용 교환으로 `claude-dev`(OPERATOR_ADMIN) 토큰을 받고, 다른 시험 계정은 실행마다 Keycloak 비밀번호를 새로 정한다. 시험 스크립트·`seed/mfc_layout.py`·`seed/Seed.java` 가 쓴다. 옛 `claude-dev-login`·`claude-dev-password`·`claude-dev-hash`·`operator-admin-*` 는 더 쓰지 않는다 |
 | `.secrets/registry.env` | Docker Hub 액세스 토큰(읽기·쓰기, 사용자가 발급 — 저장소 밖). `set -a; . deploy/lan/.secrets/registry.env; set +a` 로 `REGISTRY_USERNAME`·`REGISTRY_PASSWORD` 를 넣으면 Jib 이 Docker Desktop 로그인 대신 이 값으로 push 한다(401 회피) |
 | `lan.sh` | 실행기: `render` / `deploy` / `status` / `logs` / `restart` / `down` / `config-push` |
 | `config-server/github-host-key.conf` | config-server 가 GitHub 에 SSH 로 붙을 때 확인하는 호스트 키(공개 지문과 대조함, 비밀 아님) |

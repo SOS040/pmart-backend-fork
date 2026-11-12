@@ -1,5 +1,7 @@
 # 발급자 표(`pmart.security.issuers`)
 
+> **2026-11-13 auth-service 줄 user-types 에서 OPERATOR 뺌**(pmart-config `f03ad72`, ADR-0056 7단계 — auth-service 운영자 로그인을 없앰). 직원(OPERATOR) 토큰은 `staff-ea`(employee-auth-service) 한 줄만. LAN 반영: PC 2·3·5 앱·게이트웨이·auth-service 는 재시작/재배포됨, PC 4 의 나머지 6개 앱은 재시작 전(자동 권한 검사가 막음 — auth-service 가 운영자 토큰을 더 만들지 않아 실제 영향 없음).
+>
 > **2026-11-13 Keycloak `staff` 줄 뺌(pmart-config `0af0756`, 사용자 결정 — ADR-0056 U-11 (A))**: hr-service 의 `manage-users` 로 Keycloak 역할을 붙여 권한을 올리는 길을 막는다. 이제 Keycloak 토큰은 PMart API 에서 401, 직원 토큰은 `staff-ea`(employee-auth-service)만. **LAN 적용은 앱 재시작 때**(5-5 배포와 함께 — hr-service 배포 전).
 >
 > **2026-11-12 ADR-0056 3단계**: `staff-ea` 줄(employee-auth-service, 기본값 — 예전 운영자 토큰 모양)을 **더했다**. Keycloak `staff` 줄은 옮기는 동안 함께 둔다(7단계 또는 hr-service 배포 전 U-11 에 뺀다). 설계: `staff` 줄은 Keycloak 에서 employee-auth-service(`iss = http://employee-auth-service:8511`, JWKS `/api/v1/internal/jwks`)로 바뀌고 `type-claim`·`subject-claim`·`roles-claim` 특수 설정이 없어진다. 옮기는 동안 두 줄을 함께 둔다. 상세 `employee-auth-structure.md` §7-②.

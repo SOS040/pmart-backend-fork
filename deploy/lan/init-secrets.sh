@@ -7,7 +7,7 @@
 # - keycloak-hr-provisioner-client-secret: Keycloak 서비스 계정 클라이언트 hr-provisioner(hr-service 의 Admin API — manage/view/query-users 만, ADR-0056 결정 16). pmart-config 에는 {cipher}. 교체: 새 값 → 설정·Keycloak 반영·재시작 → 옛 값 폐기
 # - keycloak-employee-auth-client-secret: Keycloak 로그인 클라이언트 employee-auth-service(기밀, ADR-0056). pmart-config 에는 {cipher}, Keycloak 에는 kcadm 으로
 # - s3-access-key / s3-secret-key: s3(SeaweedFS) 자격 증명(ADR-0016)
-# - operator-admin-login / operator-admin-password / operator-admin-hash: auth-service 첫 관리자(ADR-0018).
+# - (2026-11-13 폐기) operator-admin-login / operator-admin-password / operator-admin-hash: auth-service 첫 관리자 — 운영자 로그인을 없애 더 만들지 않는다.
 #   비밀번호 원문은 이 파일에만 있다(사용자가 읽어 로그인). 서비스에는 해시만 넘긴다. 해시는 BcryptHash.java(spring-security-crypto) 로 만든다.
 # - config-encrypt-key / config-encrypt-salt: config-server {cipher} 암호화 키(ADR-0027). 바꾸면 render 가 저장소 값을 모두 다시 암호화한다.
 #   salt 는 16진수여야 한다(Encryptors.text).
@@ -49,15 +49,6 @@ fi
 [ -f .secrets/keycloak-hr-provisioner-client-secret ] || { openssl rand -hex 32 > .secrets/keycloak-hr-provisioner-client-secret; echo "created keycloak-hr-provisioner-client-secret"; }
 [ -f .secrets/s3-access-key ] || { echo "pmart-lan-$(openssl rand -hex 4)" > .secrets/s3-access-key; echo "created s3-access-key"; }
 [ -f .secrets/s3-secret-key ] || { openssl rand -hex 24 > .secrets/s3-secret-key; echo "created s3-secret-key"; }
-[ -f .secrets/operator-admin-login ] || { echo "admin" > .secrets/operator-admin-login; echo "created operator-admin-login"; }
-[ -f .secrets/operator-admin-password ] || { openssl rand -base64 18 | tr -d '\r\n/+=' > .secrets/operator-admin-password; echo "created operator-admin-password"; }
-if [ ! -f .secrets/operator-admin-hash ]; then
-  jar="$(find "$HOME/.gradle/caches/modules-2" -name 'spring-security-crypto-*.jar' ! -name '*sources*' 2>/dev/null | sort | tail -1)"
-  [ -n "$jar" ] || { echo "spring-security-crypto jar 없음: 먼저 ./gradlew :services:auth-service:compileJava" >&2; exit 1; }
-  tr -d '\r\n' < .secrets/operator-admin-password | java -cp "$jar" BcryptHash.java > .secrets/operator-admin-hash
-  grep -q '^{bcrypt}\$2' .secrets/operator-admin-hash || { rm -f .secrets/operator-admin-hash; echo "bcrypt 해시 생성 실패" >&2; exit 1; }
-  echo "created operator-admin-hash"
-fi
 [ -f .secrets/config-encrypt-key ] || { openssl rand -hex 32 > .secrets/config-encrypt-key; echo "created config-encrypt-key"; }
 [ -f .secrets/config-encrypt-salt ] || { openssl rand -hex 16 > .secrets/config-encrypt-salt; echo "created config-encrypt-salt"; }
 [ -f .secrets/config-password ] || { openssl rand -hex 24 > .secrets/config-password; echo "created config-password"; }
