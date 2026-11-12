@@ -1,0 +1,162 @@
+{
+  "realm": "pmart-staff",
+  "taken": "2026-11-13",
+  "note": "ADR-0056 7단계 정리 전 Keycloak 옛 업무 역할·centers·중계 클라이언트(비밀값 없음)",
+  "roles": {
+    "CENTER_MASTER_APPROVER": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "seed-approver"
+      ]
+    },
+    "MFC_SUPERVISOR": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-mfc-sup",
+        "claude-mfc-sup2"
+      ]
+    },
+    "OPERATOR_ADMIN": {
+      "description": "운영자 계정 관리(ADR-0018)",
+      "users": [
+        "admin",
+        "claude-dev",
+        "heeji-test"
+      ]
+    },
+    "SERVICEABILITY_APPROVER": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "seed-approver"
+      ]
+    },
+    "PRICE_APPROVER": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-approver",
+        "heeji",
+        "seed-approver"
+      ]
+    },
+    "MD": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-md",
+        "claude-mfc",
+        "seed-md"
+      ]
+    },
+    "MFC_WORKER": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-mfc-wrk"
+      ]
+    },
+    "INVENTORY_APPROVER": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-approver",
+        "seed-approver"
+      ]
+    },
+    "PRODUCT_APPROVER": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-approver",
+        "seed-approver"
+      ]
+    },
+    "DISPLAY_APPROVER": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-approver",
+        "seed-approver"
+      ]
+    },
+    "CS_AGENT": {
+      "description": "auth-service 에서 옮김(2026-11-11)",
+      "users": [
+        "claude-cs"
+      ]
+    }
+  },
+  "centers": {
+    "claude-md": [
+      "MFC-SEED-01"
+    ],
+    "claude-mfc": [
+      "MFC-SEED-01"
+    ],
+    "claude-mfc-sup": [
+      "MFC-SEED-01"
+    ],
+    "claude-mfc-sup2": [
+      "MFC-SEED-01"
+    ],
+    "claude-mfc-wrk": [
+      "MFC-SEED-01"
+    ],
+    "seed-md": [
+      "MFC-SEED-01"
+    ]
+  },
+  "clients": {
+    "pmart-auth-relay": {
+      "clientId": "pmart-auth-relay",
+      "serviceAccountsEnabled": true,
+      "realmManagementRoles": [
+        "view-events",
+        "view-users"
+      ]
+    }
+  },
+  "userProfileCentersAttribute": {
+    "name": "centers",
+    "displayName": "담당 센터",
+    "permissions": {
+      "view": [
+        "admin"
+      ],
+      "edit": [
+        "admin"
+      ]
+    },
+    "multivalued": true
+  },
+  "centersMappers": {
+    "pmart-backoffice": {
+      "id": "6a711a87-c38f-4d75-9e19-eb5efccfa417",
+      "name": "centers",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "introspection.token.claim": "true",
+        "multivalued": "true",
+        "userinfo.token.claim": "true",
+        "user.attribute": "centers",
+        "id.token.claim": "false",
+        "access.token.claim": "true",
+        "claim.name": "centers",
+        "jsonType.label": "String"
+      }
+    },
+    "pmart-dev-cli": {
+      "id": "ec16c9ea-e0fd-41c0-90b8-3d2c5f615e99",
+      "name": "centers",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "introspection.token.claim": "true",
+        "multivalued": "true",
+        "userinfo.token.claim": "true",
+        "user.attribute": "centers",
+        "id.token.claim": "false",
+        "access.token.claim": "true",
+        "claim.name": "centers",
+        "jsonType.label": "String"
+      }
+    }
+  }
+}

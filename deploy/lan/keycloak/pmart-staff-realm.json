@@ -26,52 +26,7 @@
   "loginWithEmailAllowed": false,
   "duplicateEmailsAllowed": true,
   "roles": {
-    "realm": [
-      {
-        "name": "OPERATOR_ADMIN",
-        "description": "운영자 계정 관리(ADR-0018)"
-      },
-      {
-        "name": "CENTER_MASTER_APPROVER",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "CS_AGENT",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "DISPLAY_APPROVER",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "INVENTORY_APPROVER",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "MD",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "MFC_SUPERVISOR",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "MFC_WORKER",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "PRICE_APPROVER",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "PRODUCT_APPROVER",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      },
-      {
-        "name": "SERVICEABILITY_APPROVER",
-        "description": "auth-service 운영자 역할(2026-11-11 옮김)"
-      }
-    ]
+    "realm": []
   },
   "clients": [
     {
@@ -168,22 +123,6 @@
             "userinfo.token.claim": "true",
             "introspection.token.claim": "true"
           }
-        },
-        {
-          "name": "centers",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "centers",
-            "claim.name": "centers",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "access.token.claim": "true",
-            "id.token.claim": "false",
-            "userinfo.token.claim": "true",
-            "introspection.token.claim": "true"
-          }
         }
       ]
     },
@@ -226,37 +165,8 @@
             "userinfo.token.claim": "true",
             "introspection.token.claim": "true"
           }
-        },
-        {
-          "name": "centers",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "centers",
-            "claim.name": "centers",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "access.token.claim": "true",
-            "id.token.claim": "false",
-            "userinfo.token.claim": "true",
-            "introspection.token.claim": "true"
-          }
         }
       ]
-    },
-    {
-      "clientId": "pmart-auth-relay",
-      "name": "auth-service 관리 기록 중계(ADR-0054 ⑤ 결정 M)",
-      "enabled": true,
-      "publicClient": false,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "__PMART_KEYCLOAK_RELAY_SECRET__",
-      "serviceAccountsEnabled": true,
-      "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "implicitFlowEnabled": false,
-      "fullScopeAllowed": false
     },
     {
       "clientId": "hr-provisioner",
@@ -279,7 +189,7 @@
         "subComponents": {},
         "config": {
           "kc.user.profile.config": [
-            "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"pmart_operator_id\", \"displayName\": \"PMart 운영자 ID\", \"validations\": {\"pattern\": {\"pattern\": \"^[A-Za-z0-9_.-]{1,64}$\", \"error-message\": \"영문·숫자·_.- 1~64자\"}}, \"required\": {\"roles\": [\"admin\"]}, \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"centers\", \"displayName\": \"담당 센터\", \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": true}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
+            "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"pmart_operator_id\", \"displayName\": \"PMart 운영자 ID\", \"validations\": {\"pattern\": {\"pattern\": \"^[A-Za-z0-9_.-]{1,64}$\", \"error-message\": \"영문·숫자·_.- 1~64자\"}}, \"required\": {\"roles\": [\"admin\"]}, \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
           ]
         }
       }
@@ -291,17 +201,6 @@
     "adminEventsExpiration": "604800"
   },
   "users": [
-    {
-      "username": "service-account-pmart-auth-relay",
-      "enabled": true,
-      "serviceAccountClientId": "pmart-auth-relay",
-      "clientRoles": {
-        "realm-management": [
-          "view-events",
-          "view-users"
-        ]
-      }
-    },
     {
       "username": "service-account-hr-provisioner",
       "enabled": true,
@@ -317,13 +216,6 @@
   ],
   "clientScopeMappings": {
     "realm-management": [
-      {
-        "client": "pmart-auth-relay",
-        "roles": [
-          "view-events",
-          "view-users"
-        ]
-      },
       {
         "client": "hr-provisioner",
         "roles": [

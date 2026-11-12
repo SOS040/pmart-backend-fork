@@ -49,5 +49,7 @@ client_secret_*.json
 
 # LAN 임시 백오피스 빌드 산출물(pmart-clients web/backoffice dist 사본, lan.sh publish-backoffice)
 /deploy/lan/backoffice-dist/
+# 인사팀 백오피스 빌드 사본(pmart-clients web/hr-backoffice dist, lan.sh publish-hr-backoffice)
+/deploy/lan/hr-backoffice-dist/
 # 검색 재색인 진행 상태(deploy/lan/elastic/reindex.sh)
 deploy/lan/.reindex.state

@@ -1,5 +1,7 @@
 # PMart Keycloak 구조 — 직원(운영자) 로그인
 
+> **2026-11-13 ADR-0056 7단계 정리(LAN)**: Realm 업무 역할 11개(`OPERATOR_ADMIN`·`MD`·`MFC_*`·`CS_AGENT`·`*_APPROVER`)와 사용자 연결, `centers` 속성·사용자 프로필 항목·`centers` 매퍼, 중계 클라이언트 `pmart-auth-relay`(서비스 계정 포함)를 지웠다 — 남은 Realm 역할은 기본 3개(`default-roles-pmart-staff`·`offline_access`·`uma_authorization`). 직원 역할·센터의 정본은 employee-auth-service DB 뿐이고 Keycloak 토큰은 PMart API 에서 401(발급자 표 줄 제거). 지우기 전 상태: `docs/operations/2026-11-13-keycloak-legacy-roles-backup.json`. auth-service 차단 중계는 설정으로 껐다(`staff-relay.enabled: false`). Realm 가져오기 파일도 같게 맞췄다. 아래 본문의 역할·`centers`·중계(§9) 설명은 그 전 구조다. 클라이언트 `pmart-backoffice`(백오피스 직접 Keycloak 로그인, 쓰는 곳 없음)는 아직 남아 있다.
+>
 > **2026-11-12 ADR-0056 4단계 완료(LAN)**: Keycloak 공개 주소 = 게이트웨이 HTTPS `/iam` — `KC_HOSTNAME=https://192.168.0.40:8443/iam`(토큰 `iss` = `https://192.168.0.40:8443/iam/realms/pmart-staff`), `KC_HOSTNAME_ADMIN=http://192.168.0.101:8180`(관리 콘솔·Admin API 는 PC 5 직접 주소 — 게이트웨이는 `/iam/admin`·master 를 막음), `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`(서버끼리 호출은 내부 주소), `KC_PROXY_HEADERS=xforwarded`. 게이트웨이는 로그인 경로만 중계하므로 **본인 계정 화면(`/realms/pmart-staff/account`)은 브라우저에서 열리지 않는다** — 비밀번호 설정은 메일 링크(`login-actions`)로. 아래 본문의 `http://192.168.0.101:8180` 주소(토큰 `iss`·백오피스 직접 로그인)는 그 전 구조다.
 
 > **2026-11-12 ADR-0056 으로 바뀔 예정(구현 전)**: Keycloak 은 직원 신원 확인만 하고, API 용 직원 토큰은 employee-auth-service(Keycloak 기밀 클라이언트)가 발급한다. `pmart-backoffice`·`pmart-auth-relay` 클라이언트, Realm 역할·`centers` 속성, 관리 화면 계정 관리(결정 L), 차단 중계(결정 M)는 전환 뒤 없어진다. 새 구조: `employee-auth-structure.md`. 이 문서는 지금 LAN 에서 도는 구조다.

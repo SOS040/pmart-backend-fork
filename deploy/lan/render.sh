@@ -46,7 +46,7 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web hr-backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
 # RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
 RAG_APPS=" ai-assistant-service customer-assistant-service "
@@ -55,7 +55,7 @@ is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
 # RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
 # 사내 메일(ADR-0056 결정 9)·웹메일도 같은 PC(Keycloak·hr-service)만 이름으로 부른다
 # hr-service 는 게이트웨이가 Eureka 로, mail-provisioner 는 같은 PC 의 hr-service 만 이름으로 부른다(ADR-0056 5-5)
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner "
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner hr-backoffice-web "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -337,6 +337,26 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./backoffice:/usr/share/nginx/html:ro
+      - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+EOF
+        ;;
+      hr-backoffice-web)
+        # 인사팀 백오피스(React SPA, pmart-clients web/hr-backoffice `npm run build:lan`, ADR-0056 5-6) — 지금 백오피스와 같은 nginx 설정, 8081.
+        # 게이트웨이 CORS 출처 http://192.168.0.40:8081·http://d603-16:8081(api-gateway-lan.yml). 파일은 render 가 hr-backoffice/ 에 둔다
+        cat <<EOF
+  hr-backoffice-web:
+    <<: *common
+    image: nginx:1.27-alpine
+    ports: ["8081:80"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./hr-backoffice:/usr/share/nginx/html:ro
       - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
@@ -1121,12 +1141,12 @@ EOF
 
   # Keycloak Realm 가져오기 파일(ADR-0054)
   if [[ "$comps" == *" keycloak "* ]]; then
-    # 중계 클라이언트(pmart-auth-relay, ADR-0054 ⑤ 결정 M) 비밀값 자리표시자를 .secrets 값으로 — build/ 에만(git 제외).
+    # 클라이언트 비밀값 자리표시자(employee-auth-service·hr-provisioner)를 .secrets 값으로 — build/ 에만(git 제외).
+    # 중계 클라이언트 pmart-auth-relay 는 2026-11-13 지웠다(ADR-0056 7단계).
     # 가져오기는 Realm 이 없을 때 한 번뿐이다. 이미 있는 Realm 의 값은 Keycloak 관리 화면·API 로 맞춘다
     mkdir -p "$dir/keycloak"
-    relay_secret="$(secret keycloak-relay-client-secret)"
     tr -d '\r' < "$LAN/keycloak/pmart-staff-realm.json" \
-      | sed -e "s|__PMART_KEYCLOAK_RELAY_SECRET__|${relay_secret}|" -e "s|__PMART_KEYCLOAK_EMPLOYEE_AUTH_SECRET__|$(secret keycloak-employee-auth-client-secret)|" -e "s|__PMART_KEYCLOAK_HR_PROVISIONER_SECRET__|$(secret keycloak-hr-provisioner-client-secret)|" > "$dir/keycloak/pmart-staff-realm.json"
+      | sed -e "s|__PMART_KEYCLOAK_EMPLOYEE_AUTH_SECRET__|$(secret keycloak-employee-auth-client-secret)|" -e "s|__PMART_KEYCLOAK_HR_PROVISIONER_SECRET__|$(secret keycloak-hr-provisioner-client-secret)|" > "$dir/keycloak/pmart-staff-realm.json"
   fi
 
   # 사내 메일(ADR-0056 결정 9)·웹메일: 설정 파일과 이 PC 의 LAN 사설 CA 인증서(ADR-0057, lan.sh tls-issue <pc> 가 만든 것). 키는 build/ 에만(git 제외)
@@ -1173,6 +1193,16 @@ EOF
       cp -r "$LAN/backoffice-dist/." "$dir/backoffice/"
     else
       cp "$LAN/backoffice/placeholder.html" "$dir/backoffice/index.html"
+    fi
+  fi
+  # 인사팀 백오피스 정적 파일: lan.sh publish-hr-backoffice 가 둔 빌드(hr-backoffice-dist, git 제외). 없으면 안내 페이지
+  if [[ "$comps" == *" hr-backoffice-web "* ]]; then
+    cp "$LAN/backoffice/nginx.conf" "$dir/backoffice-nginx.conf"
+    rm -rf "$dir/hr-backoffice"; mkdir -p "$dir/hr-backoffice"
+    if [ -f "$LAN/hr-backoffice-dist/index.html" ]; then
+      cp -r "$LAN/hr-backoffice-dist/." "$dir/hr-backoffice/"
+    else
+      cp "$LAN/backoffice/hr-placeholder.html" "$dir/hr-backoffice/index.html"
     fi
   fi
 
