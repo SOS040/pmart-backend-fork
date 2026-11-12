@@ -331,10 +331,10 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 | D2 | 직원 ID 형식 | **정함(2026-11-12, 사용자 "알아서 만들어줘")**: `username = email = <메일 ID>@pmart.com`. 기존 운영자 13명(2026-11-12 Keycloak `pmart-staff` 기준)은 **지금 로그인 아이디를 그대로 메일 ID** 로 쓰고 운영자 ID(`OP-…`)는 그대로 연결 — `admin`, `claude-approver`, `claude-cs`, `claude-dev`, `claude-md`, `claude-mfc`, `claude-mfc-sup`, `claude-mfc-sup2`, `claude-mfc-wrk`, `heeji`, `heeji-test`, `seed-approver`, `seed-md` → 각각 `<아이디>@pmart.com`. 예약 주소(`postmaster`, `no-reply`)와 겹치지 않음. 이전 때 사서함 13개를 만들고 Keycloak `email` 을 채운다 |
 | D3 | 인사 권한 역할 이름 | **정함(2026-11-12)**: `HR_ADMIN` 새 역할. 자동 승인 대상 아님 — 승인자 심사(approval) |
 | D4 | 직원 등록에 받는 항목·규칙 | **정함(2026-11-12)** — §8-1: 한 화면에서 기본 정보 + 요청 권한, 권한은 approval 경유, 자동 승인 = 소속 센터 `MFC_WORKER` 만. 남은 것: 사번이 따로 필요한지 |
-| D5 | LAN 시험 스크립트(claude-dev)의 직원 토큰 받는 법 — 브라우저 흐름을 스크립트가 할 수 없음 | `pmart-dev-cli`(직접 로그인)로 Keycloak 토큰 → employee-auth-service 의 **LAN 전용**(설정으로만 켜는) 교환 경로 `POST /internal/dev-token-exchange` → PMart JWT. prod 프로필에서는 경로 자체가 없음 |
-| D6 | Keycloak 관리 콘솔에서 직접 막는 경우를 남길지 | 남기지 않음(모든 퇴사·정지는 hr-service) → `pmart-auth-relay`·`StaffBlockRelay` 내림. 남기면 중계도 유지 |
-| D7 | 사서함 보존 기간·메일 백업 | 퇴사 뒤 비활성 보존, 기간은 사용자 결정 |
-| D8 | PDA 공용 기기 로그아웃 정책(교대 때 강제 로그아웃 등) | MFC 근무 교대 규칙과 함께 결정 |
+| D5 | LAN 시험 스크립트(claude-dev)의 직원 토큰 받는 법 — 브라우저 흐름을 스크립트가 할 수 없음 | `pmart-dev-cli`(직접 로그인)로 Keycloak 토큰 → employee-auth-service 의 **LAN 전용**(설정으로만 켜는) 교환 경로 `POST /internal/dev-token-exchange` → PMart JWT. prod 프로필에서는 경로 자체가 없음. **정함(2026-11-12, 제안대로)** |
+| D6 | Keycloak 관리 콘솔에서 직접 막는 경우를 남길지 | **정함(2026-11-12, 제안대로)**: 남기지 않음 — 모든 퇴사·정지는 hr-service 로만 → `pmart-auth-relay`·`StaffBlockRelay` 내림(ADR-0054 결정 M 대체) |
+| D7 | 사서함 보존 기간·메일 백업 | **정함(2026-11-12, 제안대로)**: 퇴사 뒤 비활성으로 **계속 보존**(삭제 안 함, 실습 환경). 메일 볼륨 백업은 DB 백업 방침 정할 때 함께 |
+| D8 | PDA 공용 기기 로그아웃 정책 | **정함(2026-11-12, 제안대로)**: ① 로그아웃 때 Keycloak 세션도 종료(`end_session_endpoint`) ② 근무(교대) 종료 시각이 지나면 자동 로그아웃 ③ 무활동 30분이면 다시 로그인(2026-11-08 "30분 무활동 = 경보"와 맞춤) |
 | D9 | 사서함 자동화 2단계(사이드카) 시점 | 직원 수가 늘거나 시연 요구가 생길 때 |
 
 ## 14. 감수하는 것
