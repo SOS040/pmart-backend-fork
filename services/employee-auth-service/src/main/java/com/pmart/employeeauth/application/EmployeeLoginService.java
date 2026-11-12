@@ -58,6 +58,7 @@ public class EmployeeLoginService {
   private final EmployeeAuthProperties props;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final EmployeeAccess access;
 
   public EmployeeLoginService(
       EmployeeAuthStore store,
@@ -65,13 +66,15 @@ public class EmployeeLoginService {
       KeycloakClient keycloak,
       EmployeeAuthProperties props,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      EmployeeAccess access) {
     this.store = store;
     this.tokens = tokens;
     this.keycloak = keycloak;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
+    this.access = access;
   }
 
   // ---------------------------------------------------------------- 시작
@@ -336,10 +339,11 @@ public class EmployeeLoginService {
         expires,
         returnUri,
         keycloakIdToken);
+    EmployeeAccess.Access access = this.access.of(account, now);
     EmployeeTokens.Tokens t =
         tokens.issue(
-            account.operatorId(), account.roles(), account.centers(), sessionId, expires, now);
-    return new LoginResult(account.operatorId(), account.roles(), account.centers(), t);
+            account.operatorId(), access.roles(), access.centers(), sessionId, expires, now);
+    return new LoginResult(account.operatorId(), access.roles(), access.centers(), t);
   }
 
   /** 재직 중(ACTIVE)이고 근무 시작일(Asia/Seoul)이 지났는가. */

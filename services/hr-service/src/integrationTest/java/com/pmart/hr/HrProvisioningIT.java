@@ -12,6 +12,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
@@ -39,6 +40,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClient;
@@ -119,6 +121,7 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired KafkaTemplate<String, String> kafka;
   @Autowired ProvisioningWorker worker;
   @Autowired IamSyncWorker iamSync;
   @Autowired ContractEndJob contractEnd;
@@ -329,6 +332,72 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
             op);
     assertThat(payload).contains(u.path("id").asText()).doesNotContain("홍길동");
     mail.verify(postRequestedFor(urlPathEqualTo("/api/v1/internal/mailboxes")));
+
+    // 요청 권한 → GrantRequested(같은 트랜잭션, ADR-0056 5-4) — 요청자 = 등록한 인사팀 직원, 기간 기본 = 근무 기간
+    assertThat(outbox(op, "GrantRequested")).isEqualTo(1);
+    JsonNode gr =
+        mapper
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'GrantRequested'",
+                    String.class,
+                    op))
+            .path("payload");
+    assertThat(gr.path("requestedBy").asText()).isEqualTo("OP-IT-HR");
+    assertThat(gr.path("affiliation").path("code").asText()).isEqualTo("MFC-IT-01");
+    JsonNode line = gr.path("lines").get(0);
+    assertThat(line.path("role").asText()).isEqualTo("MFC_WORKER");
+    assertThat(line.path("validFrom").asText()).isEqualTo(today().toString());
+    assertThat(line.path("validTo").isNull()).as("정규직 — 기한 없음").isTrue();
+    Res submitted = call("GET", "/hr/employees/" + op, hr, null);
+    assertThat(submitted.body().path("requestedGrants").get(0).path("submission").asText())
+        .isEqualTo("SUBMITTED");
+
+    // approval-service 의 결정(자동 승인) → APPROVED
+    String approvalId = "AP-" + UUID.randomUUID();
+    kafka
+        .send(
+            "platform.approval.v1",
+            approvalId,
+            EventEnvelopeFixtures.envelope("ApprovalDecided")
+                .from("approval-service")
+                .aggregate("Approval", approvalId, 2)
+                .payload(
+                    Map.of(
+                        "approvalId",
+                        approvalId,
+                        "type",
+                        "GRANT",
+                        "decision",
+                        "APPROVED",
+                        "targetRef",
+                        Map.of(
+                            "targetType", "EmployeeGrant",
+                            "targetId", op,
+                            "targetService", "employee-auth-service"),
+                        "lines",
+                        List.of(
+                            Map.of(
+                                "lineId", line.path("lineKey").asText(), "decision", "APPROVED")),
+                        "approverId",
+                        "RULE:GRANT-MFC-WORKER-OWN-CENTER@v1",
+                        "decidedAt",
+                        java.time.Instant.now().toString()))
+                .buildJson())
+        .join();
+    java.time.Instant until = java.time.Instant.now().plusSeconds(30);
+    String state = "SUBMITTED";
+    while (!"APPROVED".equals(state) && java.time.Instant.now().isBefore(until)) {
+      Thread.sleep(200);
+      state =
+          call("GET", "/hr/employees/" + op, hr, null)
+              .body()
+              .path("requestedGrants")
+              .get(0)
+              .path("submission")
+              .asText();
+    }
+    assertThat(state).isEqualTo("APPROVED");
 
     // 본인 조회(그 직원 토큰)
     Res me = call("GET", "/hr/employees/me", TestJwt.operator(op, List.of(), List.of()), null);

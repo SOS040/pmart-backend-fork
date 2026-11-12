@@ -15,11 +15,15 @@ import com.pmart.common.web.CommandStatus;
 import com.pmart.common.web.PmartException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.TreeSet;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -138,29 +142,7 @@ public class ApprovalService {
                   at));
           store.markSubmitted(cr.changeRequestId(), cr.version(), approvalId, at);
 
-          Map<String, Object> payload = new LinkedHashMap<>();
-          payload.put("changeRequestId", cr.changeRequestId());
-          payload.put("type", cr.type());
-          payload.put(
-              "targetRef",
-              Map.of(
-                  "targetType", ApprovalRules.targetType(cr.type()),
-                  "targetId", cr.targetRef(),
-                  "targetService", cr.targetService()));
-          if (body.hasNonNull("targetExpectedVersion")) {
-            payload.put("expectedVersion", body.get("targetExpectedVersion").asInt());
-          }
-          payload.put("payloadRef", "approval-service/change-requests/" + cr.changeRequestId());
-          payload.put("submittedBy", operator.id());
-          payload.put("submittedAt", at.toString());
-          events.publish(
-              "ChangeRequestSubmitted",
-              1,
-              "ChangeRequest",
-              cr.changeRequestId(),
-              cr.version() + 1L,
-              actor(operator),
-              payload);
+          publishSubmitted(cr, body, operator.id(), at);
           return new CommandResponse(
               CommandStatus.APPLIED,
               requestId,
@@ -171,6 +153,205 @@ public class ApprovalService {
               null,
               at);
         });
+  }
+
+  private void publishSubmitted(
+      ChangeRequestRow cr, JsonNode body, String submittedBy, Instant at) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("changeRequestId", cr.changeRequestId());
+    payload.put("type", cr.type());
+    payload.put(
+        "targetRef",
+        Map.of(
+            "targetType", ApprovalRules.targetType(cr.type()),
+            "targetId", cr.targetRef(),
+            "targetService", cr.targetService()));
+    if (body.hasNonNull("targetExpectedVersion")) {
+      payload.put("expectedVersion", body.get("targetExpectedVersion").asInt());
+    }
+    payload.put("payloadRef", "approval-service/change-requests/" + cr.changeRequestId());
+    payload.put("submittedBy", submittedBy);
+    payload.put("submittedAt", at.toString());
+    events.publish(
+        "ChangeRequestSubmitted",
+        1,
+        "ChangeRequest",
+        cr.changeRequestId(),
+        cr.version() + 1L,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, submittedBy),
+        payload);
+  }
+
+  // ---------------------------------------------------------------- 직원 권한 요청(ADR-0056 5-4)
+
+  /** 권한 반영 정본(ADR-0056 결정 4). */
+  static final String GRANT_TARGET_SERVICE = "employee-auth-service";
+
+  private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
+  /**
+   * hr-service 의 {@code GrantRequested}(직원 등록 화면에서 받은 요청 권한)를 변경 요청 + 승인으로 올린다. 호출자 inbox 트랜잭션 안(같은
+   * 사건 두 번 없음). 요청자 = 등록한 인사팀 직원.
+   *
+   * <p>행마다 자동 승인 규칙(ADR-0056 결정 6)을 본다. 맞는 행은 규칙별로 한 승인에 모아 바로 APPROVE(승인자 = {@code
+   * RULE:<id>@v<버전>}, 행위자 SYSTEM) → ApprovalDecided. 나머지 행은 한 승인으로 심사 중(REVIEW_PENDING) — 승인자가
+   * 승인함에서 결정한다. 부분 승인이 아직 없으므로 승인을 나눠 행 단위 결과를 지킨다.
+   *
+   * <p>같은 직원에 심사 중인 권한 승인이 이미 있으면 DUPLICATE_APPROVAL 로 실패한다(재시도 뒤 DLT) — 지금은 등록 때 한 번만 온다.
+   */
+  public void intakeGrantRequest(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String requestId = required(p, "requestId");
+    String operatorId = required(p, "operatorId");
+    String requestedBy = required(p, "requestedBy");
+    String affType = p.path("affiliation").path("type").asString(null);
+    String affCode = p.path("affiliation").path("code").asString(null);
+
+    Map<ApprovalProperties.AutoApprovalRule, List<JsonNode>> auto = new LinkedHashMap<>();
+    List<JsonNode> manual = new ArrayList<>();
+    for (JsonNode line : p.path("lines")) {
+      String role = line.path("role").asString();
+      List<String> centers = strings(line.path("centers"));
+      ApprovalProperties.AutoApprovalRule rule =
+          properties.getAutoApprovalRules().stream()
+              .filter(
+                  r ->
+                      ApprovalRules.autoApprovable(
+                          r.roles(), r.sameCenterAsAffiliation(), role, centers, affType, affCode))
+              .findFirst()
+              .orElse(null);
+      if (rule == null) {
+        manual.add(line);
+      } else {
+        auto.computeIfAbsent(rule, k -> new ArrayList<>()).add(line);
+      }
+    }
+    if (auto.isEmpty() && manual.isEmpty()) {
+      throw new IllegalArgumentException("권한 요청 행 없음: " + requestId); // 계약 위반 → DLT
+    }
+    Instant at = now();
+    // 자동 승인부터 — 바로 닫히므로 아래 심사 중 승인과 '대상마다 열린 승인 하나' 제약이 겹치지 않는다
+    for (var g : auto.entrySet()) {
+      ApprovalRow ap = openGrantApproval(requestId, operatorId, requestedBy, g.getValue(), at);
+      ApprovalProperties.AutoApprovalRule rule = g.getKey();
+      String comment = "자동 승인 규칙 " + rule.approverId() + "(ADR-0056 결정 6)";
+      store.insert(
+          new DecisionRow(
+              "DC-" + UUID.randomUUID(),
+              ap.approvalId(),
+              "APPROVE",
+              rule.approverId(),
+              mapper.writeValueAsString(Map.of("decision", "APPROVE", "comment", comment)),
+              at));
+      JsonNode unit = mapper.readTree(ap.unit());
+      Instant effectiveFrom = ap.effectiveFrom();
+      store.markDecided(ap.approvalId(), ap.version(), "APPROVED", effectiveFrom, null);
+      events.publish(
+          "ApprovalDecided",
+          1,
+          "Approval",
+          ap.approvalId(),
+          ap.version() + 1L,
+          new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "approval-service"),
+          decidedPayload(
+              ap, unit, "APPROVED", rule.approverId(), List.of(), effectiveFrom, null, at));
+    }
+    if (!manual.isEmpty()) {
+      openGrantApproval(requestId, operatorId, requestedBy, manual, at);
+    }
+  }
+
+  /** 변경 요청(제출됨) + 심사 중 승인 하나 + ChangeRequestSubmitted. */
+  private ApprovalRow openGrantApproval(
+      String requestId, String operatorId, String requestedBy, List<JsonNode> lines, Instant at) {
+    TreeSet<String> centerScope = new TreeSet<>();
+    List<Map<String, Object>> bodyLines = new ArrayList<>();
+    LocalDate earliest = null;
+    for (JsonNode l : lines) {
+      Map<String, Object> attrs = new LinkedHashMap<>();
+      attrs.put("role", l.path("role").asString());
+      List<String> centers = strings(l.path("centers"));
+      centerScope.addAll(centers);
+      attrs.put("centers", centers);
+      LocalDate from = LocalDate.parse(l.path("validFrom").asString());
+      earliest = earliest == null || from.isBefore(earliest) ? from : earliest;
+      attrs.put("validFrom", from.toString());
+      if (l.hasNonNull("validTo")) {
+        attrs.put("validTo", l.get("validTo").asString());
+      }
+      if (l.hasNonNull("reason")) {
+        attrs.put("reason", l.get("reason").asString());
+      }
+      bodyLines.add(
+          Map.of(
+              "lineKey",
+              l.path("lineKey").asString(),
+              "targetRef",
+              operatorId,
+              "attributes",
+              attrs));
+    }
+    Instant effectiveFrom = Objects.requireNonNull(earliest).atStartOfDay(SEOUL).toInstant();
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("type", "GRANT");
+    body.put("targetService", GRANT_TARGET_SERVICE);
+    body.put("targetRef", operatorId);
+    body.put("centerScope", List.copyOf(centerScope));
+    body.put("allowedActions", List.of("GRANT_ROLE"));
+    body.put("summary", "직원 권한 요청 " + operatorId + " (hr-service " + requestId + ")");
+    body.put("lines", bodyLines);
+    body.put("requestedEffectiveFrom", earliest.atStartOfDay(SEOUL).toOffsetDateTime().toString());
+    String bodyJson = mapper.writeValueAsString(body);
+
+    String crId = "CR-" + UUID.randomUUID();
+    ChangeRequestRow cr =
+        new ChangeRequestRow(
+            crId,
+            1,
+            "GRANT",
+            GRANT_TARGET_SERVICE,
+            operatorId,
+            "DRAFT",
+            requestedBy,
+            null,
+            bodyJson,
+            at,
+            null);
+    store.insert(cr);
+    ApprovalRow ap =
+        new ApprovalRow(
+            "AP-" + UUID.randomUUID(),
+            1,
+            crId,
+            "GRANT",
+            GRANT_TARGET_SERVICE,
+            operatorId,
+            requestedBy,
+            "REVIEW_PENDING",
+            "NOT_REQUESTED",
+            "PENDING",
+            bodyJson,
+            effectiveFrom,
+            null,
+            at);
+    store.insert(ap);
+    store.markSubmitted(crId, cr.version(), ap.approvalId(), at);
+    publishSubmitted(cr, mapper.readTree(bodyJson), requestedBy, at);
+    return ap;
+  }
+
+  private static List<String> strings(JsonNode array) {
+    List<String> out = new ArrayList<>();
+    array.forEach(c -> out.add(c.asString()));
+    return out;
+  }
+
+  private static String required(JsonNode p, String field) {
+    String v = p.path(field).asString(null);
+    if (v == null || v.isBlank()) {
+      throw new IllegalArgumentException(field + " 없음"); // 계약 위반 → DLT
+    }
+    return v;
   }
 
   public ApprovalRow getApproval(String approvalId) {
@@ -263,7 +444,8 @@ public class ApprovalService {
               approvalId,
               ap.version() + 1L,
               actor(operator),
-              decidedPayload(ap, unit, decided, operator, in, effectiveFrom, expiresAt, at));
+              decidedPayload(
+                  ap, unit, decided, operator.id(), in.conditions(), effectiveFrom, expiresAt, at));
           return new CommandResponse(
               CommandStatus.APPLIED,
               requestId,
@@ -280,8 +462,8 @@ public class ApprovalService {
       ApprovalRow ap,
       JsonNode unit,
       String decided,
-      Operator operator,
-      NewDecision in,
+      String approverId,
+      List<String> conditions,
       @Nullable Instant effectiveFrom,
       @Nullable Instant expiresAt,
       Instant at) {
@@ -323,14 +505,14 @@ public class ApprovalService {
     p.put("decision", decided);
     p.put("targetRef", target);
     p.put("lines", lines);
-    p.put("conditions", in.conditions().stream().map(c -> Map.of("code", c)).toList());
+    p.put("conditions", conditions.stream().map(c -> Map.of("code", c)).toList());
     if (effectiveFrom != null) {
       p.put("effectiveFrom", effectiveFrom.toString());
     }
     if (expiresAt != null) {
       p.put("expiresAt", expiresAt.toString());
     }
-    p.put("approverId", operator.id());
+    p.put("approverId", approverId);
     p.put("dossierVersion", ap.version() + 1);
     p.put("decidedAt", at.toString());
     return p;

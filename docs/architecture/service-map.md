@@ -344,17 +344,18 @@
 - **소유**: Keycloak 로그인 연동(Keycloak `pmart-staff` 의 **유일한 로그인 클라이언트** — 기밀, 인가 코드 + PKCE), Keycloak ID 토큰 검증, Keycloak `sub` ↔ 운영자 ID `OP-…`, 직원 로그인 상태(ACTIVE/DISABLED/LEFT), 1회용 로그인 티켓(60초), 직원 세션·refresh(회전), **PMart 직원 JWT(`typ=OPERATOR`, `aud=pmart-api`) 서명키·JWKS**, **직원 유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장 — auth-service 에서 옮김), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 직원 보안 기록.
 - **소유하지 않음**: 직원 계정·비밀번호(Keycloak), 직원 인사·고용 정보·계정 발급(hr-service), 권한 **부여 승인 흐름**(approval BO-01/02 — 자동 승인 규칙 포함), MFC 작업 자격(mfc-capacity), 고객·비회원·서비스 토큰(auth-service).
 - **API**(계약 `contracts/openapi/employee-auth-service.yaml`): `GET /employee-auth/logins`(시작 — 앱 code_challenge 를 시도에 묶음)·`GET /employee-auth/logins/callback`(Keycloak 콜백 → 앱 복귀 주소 `?ticket=`/`?error=`), `POST /employee-auth/tokens`(티켓 + code_verifier + 기기), `POST /employee-auth/tokens/refresh`, `POST /employee-auth/logouts`, `GET /employee-auth/sessions/current`, `GET /internal/jwks`, `GET·PUT /employee-auth/employees/{operatorId}`(OPERATOR_ADMIN — 상태·역할·센터, 5단계 연동 전 이전·보정용, 변경 기록), `POST /internal/dev-token-exchange`(LAN 전용), (5단계) grant 반영·조회, 행위 검증(`authorize(actor, action, target, centerScope)`), LAN 전용 시험 토큰 교환(설정으로만, prod 없음).
-- **발행**: `SubjectBlocked`(직원 — 퇴사·정지, 2026-11-13 구현), (5-4 이후) `GrantApplied`, `DelegationStarted/Ended`.
-- **구독**: `EmployeeRegistered`·`EmployeeSuspended`·`EmployeeReinstated`·`EmployeeLeft`(hr-service, 2026-11-13 구현), (5-4) `ApprovalDecided`(BO-01/02 권한 승인), `EmployeeRegistered`·`EmployeeSuspended`·`EmployeeReinstated`·`EmployeeLeft`(hr-service).
+- **발행**: `SubjectBlocked`(직원 — 퇴사·정지, 2026-11-13 구현), `GrantApplied`·`ApplicationReceiptRecorded`(권한 승인 반영, 2026-11-13 5-4 구현), (계획) `DelegationStarted/Ended`.
+- **구독**: `EmployeeRegistered`·`EmployeeSuspended`·`EmployeeReinstated`·`EmployeeLeft`(hr-service, 2026-11-13 구현), `ApprovalDecided`(type GRANT — BO-01 권한 승인 → `employee_grant`, 2026-11-13 5-4 구현; BO-02 대행은 계획).
 - **동기 의존**: Keycloak(`/token`·certs, PC 5 내부).
 - LAN: PC 5, 포트 8511, DB `employee_auth_service`(PC 5 postgres). 상세 `docs/architecture/auth/employee-auth-structure.md`.
 
-### hr-service `[ADR-0056 — 2026-11-13 5-1 구현(등록·발급·상태·사건), 미배치. approval 제출은 5-4]` — 직원 등록·인사 정보·계정 발급
+### hr-service `[ADR-0056 — 2026-11-13 5-1 구현(등록·발급·상태·사건)·5-4 권한 요청 제출(사건), 미배치]` — 직원 등록·인사 정보·계정 발급
 - **소유**: 직원 신원·고용 정보(운영자 ID `OP-<UUID>` 매기기, 사번 `P<연도>-<5자리>`, 이름, 메일 ID `@pmart.com`(재사용 금지), 고용 형태 REGULAR·PART_TIME·DAILY, 소속(본사 부서·센터), 근무 시작일·계약 종료일, 재직 상태), 등록·소속 변경·재입사·정지·퇴사 업무 흐름(계약 종료일 자동 정지), **계정 발급 진행 상태**(사서함 → Keycloak 계정 → 안내 메일 — 재시도·보상), Keycloak Admin API 호출(서비스 계정 클라이언트 `hr-provisioner`, `manage-users`·`view-users`·`query-users` 만 — 역할·그룹 매핑은 하지 않음), 등록 화면에서 받은 요청 권한을 approval 에 제출.
 - **소유하지 않음**: 직원 권한의 효력·정본(employee-auth-service — hr-service 는 조회만, BO-01 인사·권한 분리), 권한 심사(approval), 로그인·토큰(employee-auth-service), 비밀번호(Keycloak — 평문을 받지도 돌려주지도 않음), 사서함 저장(메일 서버).
 - **API**(제안): `POST /hr/employees`(기본 정보 + 요청 권한), `GET /hr/employees`, `POST /hr/employees/{id}/affiliation-changes`, `POST /hr/employees/{id}/reinstatements`, `POST /hr/employees/{id}/suspend`, `POST /hr/employees/{id}/leave`, `POST /hr/employees/{id}/resend-invite`. 권한 `HR_ADMIN`.
-- **발행**: `EmployeeRegistered`, `EmployeeSuspended`, `EmployeeReinstated`, `EmployeeLeft`.
-- **동기 의존**: Keycloak Admin API, mail-provisioner(사서함 만들기·비활성 — PC 5 내부, 서비스 토큰), approval(권한 요청 제출), center-master(센터 코드).
+- **발행**: `EmployeeRegistered`, `EmployeeSuspended`, `EmployeeReinstated`, `EmployeeLeft`, `GrantRequested`(등록 화면의 요청 권한 → approval, 2026-11-13 5-4).
+- **구독**: `ApprovalDecided`(type GRANT — 요청 권한 상태 APPROVED·REJECTED 표시, 2026-11-13 5-4).
+- **동기 의존**: Keycloak Admin API, mail-provisioner(사서함 만들기·비활성 — PC 5 내부), center-master(센터 코드, 계획). approval 제출은 동기 호출이 아니라 사건 `GrantRequested`(2026-11-13).
 - LAN: PC 5, 포트 8512, DB `hr_service`(PC 5 postgres). 인프라: mailserver(docker-mailserver, `@pmart.com` 로컬 전용, LAN 포트 없음)·mail-provisioner(사이드카, LAN 포트 없음)·Roundcube(8190) — 서비스가 아니라 배치 구성요소.
 
 ### config-server `[LAN]` — 설정 배포만 (ADR-0027, 2026-11-02)
@@ -400,10 +401,10 @@
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).
 - **소유하지 않음**: 승인 결과의 업무 정본(product/pricing/replenishment/claim/quality/serviceability/auth), 사건(case).
-- **승인 종류 → 정본**: 상품/SKU/환산→product · 가격→pricing · 전시→storefront/product-content · 센터 기준정보→center-master · 권역→delivery-serviceability · 운영 중지/재개→cdc-quality/mfc-capacity/rider · 정책→각 소유 서비스 · 공급 사업승인→replenishment · 환불/클레임→claim · 품질/리콜→cdc-quality/mfc-quality · 재고 조정/손실→cdc-inventory/mfc-inventory(승인 참조 집행) · 권한→auth.
+- **승인 종류 → 정본**: 상품/SKU/환산→product · 가격→pricing · 전시→storefront/product-content · 센터 기준정보→center-master · 권역→delivery-serviceability · 운영 중지/재개→cdc-quality/mfc-capacity/rider · 정책→각 소유 서비스 · 공급 사업승인→replenishment · 환불/클레임→claim · 품질/리콜→cdc-quality/mfc-quality · 재고 조정/손실→cdc-inventory/mfc-inventory(승인 참조 집행) · 직원 권한(GRANT)→employee-auth-service(ADR-0056).
 - **API**: 변경 요청 제출/철회, 심사·승인·부분승인·반려, 승인함 조회, 반영 상태 조회, 정책 참조 등록.
 - **발행**: `ChangeRequestSubmitted`, `ApprovalDecided`, `ApprovalWithdrawn/Expired/Superseded`, `PolicyVersionApproved`, `OperationRestrictionRequested/ResumeRequested`, `BatchRowResultRecorded`.
-- **구독**: `ApplicationReceiptRecorded`(정본의 반영 회신 → 실행·전달 축, ADR-0039 — 1차 pricing). 계획: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
+- **구독**: `ApplicationReceiptRecorded`(정본의 반영 회신 → 실행·전달 축, ADR-0039 — pricing, employee-auth-service), `GrantRequested`(hr-service 직원 권한 요청 → 변경 요청·승인, 자동 승인 규칙 — ADR-0056 5-4, 2026-11-13). 계획: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
 - **의존(동기)**: auth(승인자 권한·대행), 각 정본(명령 전달, 2 hop 초과 시 이벤트).
 
 ### case-service `[1단계 — 추가 제안, ADR-0004]`

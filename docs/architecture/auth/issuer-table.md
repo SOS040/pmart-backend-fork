@@ -1,5 +1,7 @@
 # 발급자 표(`pmart.security.issuers`)
 
+> **2026-11-13 Keycloak `staff` 줄 뺌(pmart-config `0af0756`, 사용자 결정 — ADR-0056 U-11 (A))**: hr-service 의 `manage-users` 로 Keycloak 역할을 붙여 권한을 올리는 길을 막는다. 이제 Keycloak 토큰은 PMart API 에서 401, 직원 토큰은 `staff-ea`(employee-auth-service)만. **LAN 적용은 앱 재시작 때**(5-5 배포와 함께 — hr-service 배포 전).
+>
 > **2026-11-12 ADR-0056 3단계**: `staff-ea` 줄(employee-auth-service, 기본값 — 예전 운영자 토큰 모양)을 **더했다**. Keycloak `staff` 줄은 옮기는 동안 함께 둔다(7단계 또는 hr-service 배포 전 U-11 에 뺀다). 설계: `staff` 줄은 Keycloak 에서 employee-auth-service(`iss = http://employee-auth-service:8511`, JWKS `/api/v1/internal/jwks`)로 바뀌고 `type-claim`·`subject-claim`·`roles-claim` 특수 설정이 없어진다. 옮기는 동안 두 줄을 함께 둔다. 상세 `employee-auth-structure.md` §7-②.
 
 - 작성: 2026-11-11(사용자 요청 정리). 근거: ADR-0054(발급자 셋, 발급자 ↔ 사용자 종류 짝), ADR-0055 결정 6(`aud=pmart-api`).
@@ -44,7 +46,7 @@
 | `id` | 발급자 | `issuer-uri` | `jwk-set-uri` | `user-types` | 다른 칸 |
 |---|---|---|---|---|---|
 | `auth-service` | auth-service | `http://auth-service:8501` | (비움 → `http://auth-service:8501/api/v1/internal/jwks`) | CUSTOMER, GUEST, SERVICE, **OPERATOR** | 기본값 |
-| `staff` | Keycloak Realm `pmart-staff`(PC5) — 전환 기간만(7단계에 뺀다) | `https://192.168.0.40:8443/iam/realms/pmart-staff`(2026-11-12 4단계부터, 전에는 `http://192.168.0.101:8180/realms/pmart-staff`) | `…/realms/pmart-staff/protocol/openid-connect/certs` | OPERATOR | `type-claim: ''`, `subject-claim: pmart_operator_id`, `roles-claim: realm_access.roles` |
+| ~~`staff`~~ | Keycloak Realm `pmart-staff`(PC5) — **2026-11-13 설정에서 뺐다**(LAN 재시작 전까지는 남아 있음) | `https://192.168.0.40:8443/iam/realms/pmart-staff`(2026-11-12 4단계부터, 전에는 `http://192.168.0.101:8180/realms/pmart-staff`) | `…/realms/pmart-staff/protocol/openid-connect/certs` | OPERATOR | `type-claim: ''`, `subject-claim: pmart_operator_id`, `roles-claim: realm_access.roles` |
 | `staff-ea` | employee-auth-service(PC5, ADR-0056) | `http://employee-auth-service:8511` | `http://employee-auth-service:8511/api/v1/internal/jwks` | OPERATOR | 기본값 |
 | `rider` | rider-auth-service(PC5) | `http://rider-auth-service:8510` | `http://rider-auth-service:8510/api/v1/internal/jwks` | RIDER | 기본값 |
 

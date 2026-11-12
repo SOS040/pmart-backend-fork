@@ -1,17 +1,21 @@
 package com.pmart.hr.application;
 
 import com.pmart.common.messaging.EventPublisher;
+import com.pmart.hr.infrastructure.HrStore;
 import com.pmart.hr.infrastructure.HrStore.EmployeeRow;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
 
 /**
  * 직원 사건(계약 {@code contracts/events/Employee*.v1.json}, 토픽 platform.employee.v1, 키 = 운영자 ID). 호출자
- * 트랜잭션 안(outbox). 역할·권한은 싣지 않는다(권한 정본은 employee-auth-service — ADR-0056 결정 4). 이름은 싣지 않는다(구독자가 쓰지
- * 않는 개인정보).
+ * 트랜잭션 안(outbox). 직원 사건에는 역할·권한을 싣지 않는다(권한 정본은 employee-auth-service — ADR-0056 결정 4). 요청 권한은 따로
+ * GrantRequested(같은 토픽) — approval-service 가 승인해야 효력. 이름은 싣지 않는다(구독자가 쓰지 않는 개인정보).
  */
 @Component
 public class EmployeeEvents {
@@ -38,6 +42,34 @@ public class EmployeeEvents {
       p.put("endDate", e.endDate().toString());
     }
     publish("EmployeeRegistered", e, p);
+  }
+
+  /**
+   * 등록 화면에서 받은 요청 권한을 approval-service 에 올린다(계약 GrantRequested, ADR-0056 5-4). 비워 받은 기간은 근무 기간(시작일
+   * ~ 계약 종료일). 행 키 = 요청 권한 행 ID — ApprovalDecided.lines[].lineId 로 돌아온다.
+   */
+  public void grantRequested(
+      EmployeeRow e, String requestId, List<HrStore.GrantRow> grants, Instant now) {
+    List<Map<String, Object>> lines = new ArrayList<>();
+    for (HrStore.GrantRow g : grants) {
+      Map<String, Object> l = new LinkedHashMap<>();
+      l.put("lineKey", Long.toString(g.grantId()));
+      l.put("role", g.role());
+      l.put("centers", g.centers());
+      l.put("validFrom", (g.validFrom() != null ? g.validFrom() : e.startDate()).toString());
+      LocalDate to = g.validTo() != null ? g.validTo() : e.endDate();
+      l.put("validTo", to == null ? null : to.toString());
+      l.put("reason", g.reason());
+      lines.add(l);
+    }
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("requestId", requestId);
+    p.put("operatorId", e.operatorId());
+    p.put("requestedBy", e.registeredBy());
+    p.put("affiliation", Map.of("type", e.affiliationType(), "code", e.affiliationCode()));
+    p.put("lines", lines);
+    p.put("requestedAt", now.toString());
+    publish("GrantRequested", e, p);
   }
 
   /** 지금 재직 상태를 알리는 사건(정지·복귀·퇴사). ACTIVE 면 Reinstated. */

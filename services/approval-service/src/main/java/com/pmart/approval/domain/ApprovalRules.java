@@ -79,6 +79,7 @@ public final class ApprovalRules {
       case "CENTER_MASTER" -> "Center";
       case "SERVICEABILITY" -> "ServiceabilityVersion";
       case "INITIAL_STOCK" -> "InitialStockLoad";
+      case "GRANT" -> "EmployeeGrant";
       default -> type;
     };
   }
@@ -102,6 +103,29 @@ public final class ApprovalRules {
       return null;
     }
     return result;
+  }
+
+  /**
+   * 직원 권한 요청 행이 자동 승인 규칙에 맞는가(ADR-0056 결정 6 — "소속 센터 현장 역할만"). 규칙의 역할이어야 하고, {@code
+   * sameCenterAsAffiliation} 이면 소속이 센터이고 권한 센터가 정확히 그 센터 하나여야 한다. 하나라도 어긋나면 승인자 심사.
+   */
+  public static boolean autoApprovable(
+      List<String> ruleRoles,
+      boolean sameCenterAsAffiliation,
+      String role,
+      List<String> centers,
+      @Nullable String affiliationType,
+      @Nullable String affiliationCode) {
+    if (!ruleRoles.contains(role)) {
+      return false;
+    }
+    if (!sameCenterAsAffiliation) {
+      return true;
+    }
+    return "CENTER".equals(affiliationType)
+        && affiliationCode != null
+        && centers.size() == 1
+        && affiliationCode.equals(centers.getFirst());
   }
 
   public static PmartException forbidden(String message) {

@@ -447,6 +447,54 @@ public class EmployeeAuthStore {
         tokenHash);
   }
 
+  // ---------- 승인된 권한(ADR-0056 5-4) ----------
+
+  /** 지금 유효한 grant 의 역할·센터. */
+  public record GrantAccess(String role, List<String> centers) {}
+
+  /** 승인 행 하나를 grant 로. 같은 승인·행이 이미 있으면 false(재전달). */
+  public boolean insertGrant(
+      String grantId,
+      String operatorId,
+      String role,
+      List<String> centers,
+      Instant validFrom,
+      @Nullable Instant validUntil,
+      String approvalId,
+      String lineId,
+      String approverId,
+      @Nullable String reason,
+      Instant at) {
+    return jdbc.update(
+            "INSERT INTO employee_grant (grant_id, operator_id, role, centers, valid_from, valid_until,"
+                + " approval_id, line_id, approver_id, reason, applied_at)"
+                + " VALUES (?, ?, ?, ?::varchar[], ?, ?, ?, ?, ?, ?, ?)"
+                + " ON CONFLICT DO NOTHING",
+            grantId,
+            operatorId,
+            role,
+            array(centers),
+            Timestamp.from(validFrom),
+            validUntil == null ? null : Timestamp.from(validUntil),
+            approvalId,
+            lineId,
+            approverId,
+            reason,
+            Timestamp.from(at))
+        == 1;
+  }
+
+  public List<GrantAccess> activeGrants(String operatorId, Instant now) {
+    Timestamp t = Timestamp.from(now);
+    return jdbc.query(
+        "SELECT role, centers FROM employee_grant WHERE operator_id = ? AND valid_from <= ?"
+            + " AND (valid_until IS NULL OR valid_until > ?) ORDER BY valid_from, grant_id",
+        (rs, i) -> new GrantAccess(rs.getString("role"), list(rs.getArray("centers"))),
+        operatorId,
+        t,
+        t);
+  }
+
   // ---------- 변환 ----------
 
   private static AccountRow account(ResultSet rs) throws SQLException {

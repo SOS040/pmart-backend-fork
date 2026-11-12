@@ -29,7 +29,9 @@ paths:
         같은 메일 ID 가 있으면(퇴사자 포함 — 다시 쓰지 않는다) 409 MAIL_ID_TAKEN. 운영자 ID(OP-<UUID>)와 사번(P<등록 연도>-<5자리>, 연도별 순번)을 매긴다.
         계정 발급(provisioning)은 응답 뒤에 진행된다 — GET /hr/employees/{operatorId} 의 provisioning 으로 본다.
         사서함 초기 비밀번호는 이 응답에 없다(요청 재전송 대비로 응답이 저장되므로) — POST /hr/employees/{operatorId}/mailbox-password-resets 로 받는다.
-        요청 권한(requestedGrants)은 저장만 하고 승인 요청 제출은 approval 연동(ADR-0056 5단계 뒤) — 그 전까지 submission = PENDING.
+        요청 권한(requestedGrants)은 계정 발급이 끝날 때 approval-service 에 권한 요청(GrantRequested)으로 올라간다(PENDING → SUBMITTED).
+        소속 센터의 MFC_WORKER 는 자동 승인, 나머지는 승인자 심사 — 결과가 오면 APPROVED·REJECTED. 효력은 employee-auth-service 가 승인 뒤 정한다(ADR-0056 5-4).
+        비운 기간은 근무 기간(시작일 ~ 계약 종료일).
       operationId: registerEmployee
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -357,7 +359,7 @@ components:
         centers: { type: array, items: { type: string } }
         validFrom: { type: string, format: date }
         validTo: { type: string, format: date }
-        submission: { type: string, enum: [PENDING, SUBMITTED, APPROVED, REJECTED], description: 'PENDING = 아직 approval 에 올리지 않음(연동 전)' }
+        submission: { type: string, enum: [PENDING, SUBMITTED, APPROVED, REJECTED], description: 'PENDING = 아직 approval 에 올리지 않음(계정 발급 전·발급 중 정지), SUBMITTED = 승인 대기, APPROVED·REJECTED = approval 결정' }
     Employee:
       type: object
       required: [operatorId, employeeNo, name, mailAddress, employmentType, affiliation, startDate, status, provisioning, version, createdAt, updatedAt]

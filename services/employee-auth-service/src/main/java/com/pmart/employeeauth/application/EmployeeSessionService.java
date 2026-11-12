@@ -39,18 +39,21 @@ public class EmployeeSessionService {
   private final EmployeeAuthProperties props;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final EmployeeAccess access;
 
   public EmployeeSessionService(
       EmployeeAuthStore store,
       EmployeeTokens tokens,
       EmployeeAuthProperties props,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      EmployeeAccess access) {
     this.store = store;
     this.tokens = tokens;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
+    this.access = access;
   }
 
   public EmployeeTokens.Tokens refresh(String refreshToken, @Nullable String deviceId) {
@@ -88,10 +91,11 @@ public class EmployeeSessionService {
               Instant extended = idle.isBefore(s.maxExpiresAt()) ? idle : s.maxExpiresAt();
               store.markRefreshUsed(r.tokenHash(), now);
               store.refreshed(s.sessionId(), now, extended);
+              EmployeeAccess.Access access = this.access.of(account, now);
               return tokens.issue(
                   account.operatorId(),
-                  account.roles(),
-                  account.centers(),
+                  access.roles(),
+                  access.centers(),
                   s.sessionId(),
                   extended,
                   now);

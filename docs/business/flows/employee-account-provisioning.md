@@ -1,6 +1,6 @@
 # 직원 계정 발급·정지·퇴사 흐름 (hr-service, ADR-0056)
 
-- 작성: 2026-11-13. 구현: `services/hr-service`(`ProvisioningWorker`·`IamSyncWorker`·`ContractEndJob`), 계약 `contracts/openapi/hr-service.yaml`·`mail-provisioner.yaml`, 사건 `contracts/events/Employee*.v1.json`.
+- 작성: 2026-11-13. 구현: `services/hr-service`(`ProvisioningWorker`·`IamSyncWorker`·`ContractEndJob`·`GrantDecisions`), approval-service `ApprovalService.intakeGrantRequest`, employee-auth-service `GrantApprovalHandler`·`EmployeeAccess`. 계약 `contracts/openapi/hr-service.yaml`·`mail-provisioner.yaml`, 사건 `contracts/events/Employee*.v1.json`·`GrantRequested.v1.json`.
 - 근거: ADR-0056 결정 5·7·8·10·16, 설계 `docs/architecture/auth/employee-auth-structure.md` §7-③·④, §8-1.
 - 성격: 여러 시스템(사내 메일 서버·Keycloak·employee-auth-service)에 걸치는 흐름이지만 **분산 트랜잭션이 아니다**. hr-service 가 단계별 진행 상태를 자기 DB 에 남기고, 재시도는 멱등, 끝내 안 되면 이번에 만든 것만 비활성으로 되돌린다(보상).
 
@@ -24,8 +24,29 @@ INVITE_SENT ──▶ outbox: EmployeeRegistered(그 사이 정지·퇴사됐으
 | 횟수 소진(8회) 또는 영구 거절(IAM_USERNAME_TAKEN·hr-provisioner 자격 거절·4xx) | FAILED → **보상**: 만든 Keycloak 사용자 비활성, 사서함 비활성(지우지 않는다). 다 되면 COMPENSATED |
 | 다시 시작 | 인사팀 `POST /hr/employees/{id}/provisioning-retries`(FAILED·COMPENSATED 만) → REQUESTED. 이미 있는 사서함·Keycloak 사용자는 그대로 이어 쓴다 |
 
-- 요청 권한은 이 흐름과 따로다 — approval 에 권한 요청으로 제출(5-4단계 연동 뒤), 승인되면 employee-auth-service 가 저장. 계정이 있어도 승인 전에는 업무 API 403.
+- 요청 권한은 계정 발급이 끝날 때(DONE, 등록 사건과 같은 트랜잭션) approval 에 권한 요청으로 올라간다 — 아래 §3. 계정이 있어도 승인 전에는 업무 API 403.
 - 사서함(웹메일) 비밀번호는 등록 응답에 없다. 인사팀이 `mailbox-password-resets` 로 받아 따로 전달(응답에만, 저장·재생 없음). Keycloak 비밀번호는 본인이 메일 링크로 정한다 — 두 비밀번호는 맞추지 않는다.
+
+## 3. 요청 권한 → 승인 → 효력 (5-4단계, 2026-11-13)
+
+```
+hr-service(DONE, 재직 중일 때만): GrantRequested(요청 ID GR-…, 요청자 = 등록한 인사팀 직원, 소속, 행[요청 권한 행 ID·역할·센터·기간])
+    → 요청 권한 SUBMITTED. 비운 기간 = 근무 기간(시작일 ~ 계약 종료일)
+        ▼ (platform.employee.v1)
+approval-service: 행마다 자동 승인 규칙 표(pmart.approval.auto-approval-rules)
+    ├ 맞는 행(역할 MFC_WORKER + 소속이 센터 + 권한 센터 = 그 센터 하나) → 승인 하나로 묶어 바로 APPROVED
+    │    승인자 = RULE:GRANT-MFC-WORKER-OWN-CENTER@v1, 행위자 SYSTEM → ApprovalDecided
+    └ 나머지 행 → 승인 하나 REVIEW_PENDING → 승인자(OPERATOR_ADMIN, 요청자와 다른 사람)가 승인함에서 결정 → ApprovalDecided
+        ▼ (platform.approval.v1, type GRANT, 정본 employee-auth-service)
+employee-auth-service: 승인된 행 → employee_grant(유효 기간 = 시작일 00:00 ~ 마지막 날 다음 00:00, Asia/Seoul)
+    → 행마다 GrantApplied(platform.auth.v1) + 반영 회신 ApplicationReceiptRecorded(platform.approval-receipt.v1 → approval 실행 축)
+    모르는 역할 행은 그 행만 거절(UNKNOWN_ROLE, 회신 PARTIAL)
+hr-service: 같은 ApprovalDecided 로 요청 권한 APPROVED·REJECTED(화면 표시용)
+토큰: 다음 로그인·갱신(15분 안)부터 역할·센터 = 계정 값 ∪ 지금 유효한 grant
+```
+
+- 분산 트랜잭션이 아니다. 각 단계는 outbox + inbox(같은 사건 두 번 반영 없음). 승인이 늦어도 계정·로그인은 그대로(업무 API 만 403).
+- 남은 것: 같은 직원에게 심사 중인 권한 승인이 있으면 새 권한 요청이 DUPLICATE_APPROVAL(지금은 등록 때 한 번만 와서 생기지 않음) — 권한 변경·회수 화면(BO-01) 때 정한다. 이미 끝난 grant 의 회수 사건, 소속 변경 때 권한 종료도 그때.
 
 ## 2. 정지·복귀·퇴사·계약 종료
 

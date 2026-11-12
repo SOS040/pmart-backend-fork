@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/GrantRequested.v1.json",
+  "title": "GrantRequested",
+  "description": "직원 권한 요청(BO-01) — 인사팀이 직원 등록 화면에서 함께 받은 요청 권한을 approval-service 에 승인 요청으로 올린다(ADR-0056 결정 5). 권한은 이 사건으로 생기지 않는다: approval-service 가 승인(자동 승인 규칙 — 소속 센터의 MFC_WORKER 만, 결정 6 — 또는 승인자 심사)하면 ApprovalDecided(type GRANT) → employee-auth-service 가 저장. 발행 hr-service(계정 발급이 끝난 때, EmployeeRegistered 와 같은 트랜잭션), 구독 approval-service. 토픽 platform.employee.v1, 키 = 운영자 ID. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "GrantRequested"
+        },
+        "aggregateType": {
+          "const": "Employee"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "requestId",
+            "operatorId",
+            "requestedBy",
+            "affiliation",
+            "lines"
+          ],
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "hr-service 의 권한 요청 ID(GR-…) — approval 변경 요청 하나"
+            },
+            "operatorId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "권한을 받을 직원(OP-…) = aggregateId"
+            },
+            "requestedBy": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "요청자 = 직원을 등록한 인사팀 직원(OP-…). 자기승인 금지 판정에 쓴다"
+            },
+            "affiliation": {
+              "type": "object",
+              "required": [
+                "type",
+                "code"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "HQ_DEPARTMENT",
+                    "CENTER"
+                  ]
+                },
+                "code": {
+                  "type": "string"
+                }
+              },
+              "description": "등록한 소속(hr-service 정본) — 자동 승인 규칙이 권한 센터와 비교한다"
+            },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "required": [
+                  "lineKey",
+                  "role",
+                  "centers",
+                  "validFrom"
+                ],
+                "properties": {
+                  "lineKey": {
+                    "type": "string",
+                    "description": "hr-service 요청 권한 행 ID — ApprovalDecided.lines[].lineId 로 돌아온다"
+                  },
+                  "role": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]+$"
+                  },
+                  "centers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_.-]+$"
+                    },
+                    "description": "권한 센터. 비면 센터 범위 없음(본사 역할)"
+                  },
+                  "validFrom": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "효력 시작일(Asia/Seoul). 비워 받은 행은 근무 시작일"
+                  },
+                  "validTo": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date",
+                    "description": "효력 마지막 날(이 날까지, Asia/Seoul). 비워 받은 행은 계약 종료일(정규직은 없음)"
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 500
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "requestedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

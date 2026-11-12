@@ -82,6 +82,24 @@ public class ProvisioningWorker implements DisposableBean {
     this.mail = mail;
   }
 
+  /** 등록 때 받은 요청 권한을 승인 요청으로(ADR-0056 5-4) — 등록 사건과 같은 트랜잭션. 재직 중일 때만(발급 중 정지·퇴사면 PENDING 그대로). */
+  private void submitGrants(EmployeeRow e, Instant now) {
+    if (!"ACTIVE".equals(e.status())) {
+      return;
+    }
+    List<HrStore.GrantRow> pending =
+        store.grants(e.operatorId()).stream()
+            .filter(g -> "PENDING".equals(g.submission()))
+            .toList();
+    if (pending.isEmpty()) {
+      return;
+    }
+    String requestId = "GR-" + java.util.UUID.randomUUID();
+    events.grantRequested(e, requestId, pending, now);
+    store.markGrantsSubmitted(e.operatorId(), requestId);
+    log.info("요청 권한 제출: operatorId={} {}행", e.operatorId(), pending.size());
+  }
+
   /** 등록·재시도 직후 바로 한 번 돌린다(다음 주기를 기다리지 않게). 이미 대기 중이면 합친다. */
   public void kick() {
     if (kickQueued.compareAndSet(false, true)) {
@@ -146,6 +164,7 @@ public class ProvisioningWorker implements DisposableBean {
       }
       if ("INVITE_SENT".equals(step)) {
         events.registered(e, now);
+        submitGrants(e, now);
         if (!"ACTIVE".equals(e.status())) {
           // 발급 중에 정지·퇴사됐다 — 등록 사건 뒤에 지금 상태를 알린다(버전 하나 올려서)
           store.bumpVersion(e.operatorId(), now);

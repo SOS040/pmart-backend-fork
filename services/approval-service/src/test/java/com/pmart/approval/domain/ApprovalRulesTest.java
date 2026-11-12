@@ -93,4 +93,37 @@ class ApprovalRulesTest {
                 "APPROVED", "pricing-service", "pricing-service", "DONE"))
         .isNull();
   }
+
+  @Test
+  void autoApprovalOnlyForRuleRoleAtOwnCenter() {
+    List<String> roles = List.of("MFC_WORKER");
+    assertThat(
+            ApprovalRules.autoApprovable(
+                roles, true, "MFC_WORKER", List.of("MFC-01"), "CENTER", "MFC-01"))
+        .isTrue();
+    assertThat(
+            ApprovalRules.autoApprovable(
+                roles, true, "MFC_WORKER", List.of("MFC-02"), "CENTER", "MFC-01"))
+        .as("다른 센터")
+        .isFalse();
+    assertThat(
+            ApprovalRules.autoApprovable(
+                roles, true, "MFC_WORKER", List.of("MFC-01", "MFC-02"), "CENTER", "MFC-01"))
+        .as("센터 둘")
+        .isFalse();
+    assertThat(
+            ApprovalRules.autoApprovable(roles, true, "MFC_WORKER", List.of(), "CENTER", "MFC-01"))
+        .as("센터 없음")
+        .isFalse();
+    assertThat(
+            ApprovalRules.autoApprovable(
+                roles, true, "MFC_WORKER", List.of("MFC-01"), "HQ_DEPARTMENT", "MFC-01"))
+        .as("본사 소속")
+        .isFalse();
+    assertThat(
+            ApprovalRules.autoApprovable(
+                roles, true, "MFC_SUPERVISOR", List.of("MFC-01"), "CENTER", "MFC-01"))
+        .as("다른 역할")
+        .isFalse();
+  }
 }

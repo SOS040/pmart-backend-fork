@@ -13,6 +13,8 @@
 
 ## AP-2. 직원 권한 요청 유형(BO-01)·hr-service 자동 제출·자동 승인 규칙 (2026-11-12 기록, ADR-0056)
 
+> **2026-11-13 구현(ADR-0056 5-4, LAN 배포 전)**: 유형은 계약에 이미 있던 `GRANT`(정본 `employee-auth-service`, 원객체 = 운영자 ID). 제출 경로는 내부 API 대신 **사건** `GrantRequested`(hr-service outbox → platform.employee.v1 → approval-service `employeeEvents`) — hr-service 재시도 장치 없이 등록과 같은 트랜잭션. 자동 승인 규칙 표 `pmart.approval.auto-approval-rules`(설정 저장소, 승인자 = `RULE:<id>@v<버전>`, 행위자 SYSTEM), 맞는 행과 나머지 행은 승인을 나눈다(부분 승인 없음). 수동 심사 역할 `approver-roles.GRANT = OPERATOR_ADMIN`. 반영은 employee-auth-service(`employee_grant`, `GrantApplied`, 회신 `ApplicationReceiptRecorded`), 결과 표시는 hr-service. 남은 것: 같은 직원에 심사 중인 권한 승인이 있으면 새 요청이 DUPLICATE_APPROVAL(지금은 등록 때 한 번만 와서 생기지 않음) — 권한 변경 요청 화면(BO-01 변경·회수)을 만들 때 정한다.
+
 - **요청한 곳**: hr-service(새, 구현 전), employee-auth-service(새, 구현 전).
 - **필요한 것**
   1. 권한 요청 승인 유형(BO-01: 역할·권한 센터·기간·근거 행 단위) — 지금 `ApprovalRules.targetType` 에 없다.

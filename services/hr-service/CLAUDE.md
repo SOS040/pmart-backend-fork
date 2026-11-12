@@ -4,7 +4,7 @@
 결정: ADR-0056(결정 5·7·8·10·12·16). 흐름: `docs/business/flows/employee-account-provisioning.md`.
 
 ## 계약
-- REST: `contracts/openapi/hr-service.yaml` → `com.pmart.hr.api.generated`. 사건: `contracts/events/EmployeeRegistered·Suspended·Reinstated·Left.v1.json`(토픽 `platform.employee.v1`, 키 = 운영자 ID). 부르는 쪽 계약: `contracts/openapi/mail-provisioner.yaml`.
+- REST: `contracts/openapi/hr-service.yaml` → `com.pmart.hr.api.generated`. 사건: `contracts/events/EmployeeRegistered·Suspended·Reinstated·Left.v1.json`·`GrantRequested.v1.json`(토픽 `platform.employee.v1`, 키 = 운영자 ID). 구독: `ApprovalDecided`(platform.approval.v1, type GRANT만 — 바인딩 `approvalEvents-in-0`). 부르는 쪽 계약: `contracts/openapi/mail-provisioner.yaml`.
 - 계약을 먼저 고치고 코드를 맞춘다. 사건에 이름·역할을 싣지 않는다(이름은 구독자가 쓰지 않는 개인정보, 권한 정본은 employee-auth-service).
 
 ## 패키지
@@ -23,10 +23,14 @@
 - Keycloak 은 `KeycloakAdminClient`(hr-provisioner, 사용자 경로만 — **역할·그룹 매핑 API 를 부르지 않는다**, U-11). 사용자 표현을 바꿀 때는 전체를 읽어 enabled 만 바꿔 쓴다(속성이 지워지지 않게).
 - 설정이 없으면 클라이언트 빈이 없고(로컬) 발급은 CONFIG_REQUIRED 로 남는다.
 
+## 요청 권한(2026-11-13, ADR-0056 5-4)
+- 등록 때 받은 요청 권한(`requested_grant`, PENDING)은 발급이 DONE 이 되는 트랜잭션에서 `GrantRequested`(요청 ID `GR-…`, 요청자 = `registered_by`, 행 키 = `grant_id`, 비운 기간 = 근무 기간)로 올리고 SUBMITTED. 재직 중일 때만.
+- `GrantDecisions`: `ApprovalDecided`(GRANT) 행 → APPROVED·REJECTED(+ `approval_ref`). 화면 표시용 — 효력은 employee-auth-service.
+
 ## 시험
 ```bash
 ./gradlew :services:hr-service:check   # 단위 + 통합(PostgreSQL·Kafka·Keycloak 26.8.1·Mailpit 컨테이너, mail-provisioner WireMock)
 ```
-- `HrProvisioningIT`: 등록 → 사서함 → Keycloak 사용자 → 실제 메일 도착(Mailpit) → EmployeeRegistered, 사서함 대기, 영구 거절 보상, 정지·퇴사·복귀 반영, 계약 종료, 비밀번호 미저장, **U-11(manage-users 로 역할 매핑 가능 = 204)**.
+- `HrProvisioningIT`: 등록 → 사서함 → Keycloak 사용자 → 실제 메일 도착(Mailpit) → EmployeeRegistered, 사서함 대기, 영구 거절 보상, 요청 권한 제출(GrantRequested)·승인 결과 반영, 정지·퇴사·복귀 반영, 계약 종료, 비밀번호 미저장, **U-11(manage-users 로 역할 매핑 가능 = 204)**.
 - 시험 Realm 에는 `hr-provisioner` 의 `realm-management` 역할을 `clientScopeMappings` 로도 준다(fullScopeAllowed false — 없으면 403). LAN Realm 도 같다.
 - 로컬 포트 8512. LAN PC 5.

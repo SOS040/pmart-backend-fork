@@ -38,7 +38,8 @@ public class HrStore {
       @Nullable String iamSyncError,
       long version,
       Instant createdAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      String registeredBy) {}
 
   public record ProvisioningRow(
       String operatorId,
@@ -54,7 +55,9 @@ public class HrStore {
       @Nullable LocalDate validFrom,
       @Nullable LocalDate validTo,
       @Nullable String reason,
-      String submission) {}
+      String submission,
+      long grantId,
+      @Nullable String approvalRef) {}
 
   private final JdbcTemplate jdbc;
 
@@ -356,8 +359,32 @@ public class HrStore {
                 date(rs, "valid_from"),
                 date(rs, "valid_to"),
                 rs.getString("reason"),
-                rs.getString("submission")),
+                rs.getString("submission"),
+                rs.getLong("grant_id"),
+                rs.getString("approval_ref")),
         operatorId);
+  }
+
+  /** 아직 올리지 않은 요청 권한을 제출됨으로(같은 요청 ID). */
+  public int markGrantsSubmitted(String operatorId, String requestId) {
+    return jdbc.update(
+        "UPDATE requested_grant SET submission = 'SUBMITTED', request_id = ?"
+            + " WHERE operator_id = ? AND submission = 'PENDING'",
+        requestId,
+        operatorId);
+  }
+
+  /** 승인 결과(ApprovalDecided 행) 반영. 이미 결정된 행은 그대로. */
+  public int markGrantDecided(
+      String operatorId, long grantId, String submission, String approvalRef, Instant at) {
+    return jdbc.update(
+        "UPDATE requested_grant SET submission = ?, approval_ref = ?, decided_at = ?"
+            + " WHERE operator_id = ? AND grant_id = ? AND submission IN ('PENDING', 'SUBMITTED')",
+        submission,
+        approvalRef,
+        Timestamp.from(at),
+        operatorId,
+        grantId);
   }
 
   // ---------- 변경 기록 ----------
@@ -404,7 +431,8 @@ public class HrStore {
         rs.getString("iam_sync_error"),
         rs.getLong("row_version"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("registered_by"));
   }
 
   private static ProvisioningRow provisioning(ResultSet rs) throws SQLException {
