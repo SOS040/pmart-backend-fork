@@ -42,6 +42,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class EmployeeLoginService {
 
   public static final String ACTIVE = "ACTIVE";
+  private static final java.time.ZoneId SEOUL = java.time.ZoneId.of("Asia/Seoul");
   private static final Pattern VERIFIER = Pattern.compile("^[A-Za-z0-9._~-]{43,128}$");
   private static final Pattern CHALLENGE = Pattern.compile("^[A-Za-z0-9_-]{43,128}$");
 
@@ -341,12 +342,22 @@ public class EmployeeLoginService {
     return new LoginResult(account.operatorId(), account.roles(), account.centers(), t);
   }
 
-  static void requireActive(AccountRow account) {
+  /** 재직 중(ACTIVE)이고 근무 시작일(Asia/Seoul)이 지났는가. */
+  private void requireActive(AccountRow account) {
     if (!ACTIVE.equals(account.state())) {
       throw new PmartException(
           "ACCOUNT_NOT_AVAILABLE",
           HttpStatus.FORBIDDEN,
           "이용할 수 없는 직원 계정입니다(" + account.state() + ").",
+          false,
+          List.of());
+    }
+    if (account.startDate() != null
+        && account.startDate().isAfter(java.time.LocalDate.now(clock.withZone(SEOUL)))) {
+      throw new PmartException(
+          "ACCOUNT_NOT_AVAILABLE",
+          HttpStatus.FORBIDDEN,
+          "근무 시작일(" + account.startDate() + ") 전에는 로그인할 수 없습니다.",
           false,
           List.of());
     }

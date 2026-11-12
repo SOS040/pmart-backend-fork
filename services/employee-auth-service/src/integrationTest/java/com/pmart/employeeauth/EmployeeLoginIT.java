@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
-import com.pmart.common.test.PostgresContainerSupport;
+import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.employeeauth.application.EmployeeTokens;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore;
 import java.net.URI;
@@ -54,7 +54,7 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.employee-auth.keycloak.client-secret=it-employee-auth-secret",
       "pmart.employee-auth.dev-token-exchange.enabled=true"
     })
-class EmployeeLoginIT extends PostgresContainerSupport {
+class EmployeeLoginIT extends PostgresKafkaContainerSupport {
 
   static final String REALM = "pmart-staff";
 

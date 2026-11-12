@@ -27,7 +27,9 @@ public class EmployeeAuthStore {
       long version,
       Instant updatedAt,
       @Nullable Instant lastLoginAt,
-      boolean keycloakLinked) {}
+      boolean keycloakLinked,
+      java.time.@Nullable LocalDate startDate,
+      @Nullable Long hrVersion) {}
 
   public record AttemptRow(
       String app,
@@ -132,6 +134,51 @@ public class EmployeeAuthStore {
         array(roles),
         array(centers),
         Timestamp.from(at));
+  }
+
+  /**
+   * hr-service 직원 사건 반영 — 없으면 만들고(역할·센터 없음 — 권한은 approval 승인 뒤), 있으면 상태·근무 시작일·사건 버전만 바꾼다(역할·센터는
+   * 그대로 — 이전한 운영자의 권한을 지우지 않는다).
+   */
+  public void applyHr(
+      String operatorId,
+      String state,
+      java.time.@Nullable LocalDate startDate,
+      long hrVersion,
+      Instant at) {
+    int updated =
+        jdbc.update(
+            "UPDATE employee_account SET state = ?, start_date = COALESCE(?, start_date), hr_version = ?,"
+                + " row_version = row_version + 1, updated_at = ? WHERE operator_id = ?",
+            state,
+            startDate == null ? null : java.sql.Date.valueOf(startDate),
+            hrVersion,
+            Timestamp.from(at),
+            operatorId);
+    if (updated == 0) {
+      jdbc.update(
+          "INSERT INTO employee_account (operator_id, state, roles, centers, row_version, created_at, updated_at,"
+              + " start_date, hr_version) VALUES (?, ?, '{}', '{}', 1, ?, ?, ?, ?)",
+          operatorId,
+          state,
+          Timestamp.from(at),
+          Timestamp.from(at),
+          startDate == null ? null : java.sql.Date.valueOf(startDate),
+          hrVersion);
+    }
+  }
+
+  /**
+   * hr-service 가 알려 준 Keycloak 사용자로 연결한다(hr-service 가 정본 — 그 운영자 ID 의 예전 연결은 바꾼다). 그 Keycloak 사용자가
+   * 이미 다른 운영자 ID 에 연결돼 있으면 바꾸지 않고 false.
+   */
+  public boolean relink(String keycloakSubject, String operatorId, Instant at) {
+    Optional<String> owner = linkedOperator(keycloakSubject);
+    if (owner.isPresent()) {
+      return owner.get().equals(operatorId);
+    }
+    jdbc.update("DELETE FROM employee_identity WHERE operator_id = ?", operatorId);
+    return link(keycloakSubject, operatorId, at) == 1;
   }
 
   // ---------- Keycloak 연결 ----------
@@ -411,7 +458,9 @@ public class EmployeeAuthStore {
         rs.getLong("row_version"),
         instant(rs, "updated_at"),
         nullableInstant(rs, "last_login_at"),
-        rs.getBoolean("linked"));
+        rs.getBoolean("linked"),
+        rs.getDate("start_date") == null ? null : rs.getDate("start_date").toLocalDate(),
+        rs.getObject("hr_version") == null ? null : rs.getLong("hr_version"));
   }
 
   static String array(List<String> values) {

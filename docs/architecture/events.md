@@ -212,7 +212,7 @@
 
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
-| `SubjectBlocked` | auth(운영자 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계; 나중에 고객 정지·rider-service) — ADR-0056 전환 뒤 직원은 employee-auth(퇴사·정지), 중계는 내림 | api-gateway(Redis 차단 목록) | issuer, subject, userType, blockedBefore, reason | 주체 차단 — 그 전에 발급된 토큰 거부(토픽 `platform.subject-block.v1`, 키 = 주체, ADR-0054 ⑤) | ① |
+| `SubjectBlocked` | auth(운영자 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계; 나중에 고객 정지·rider-service) — employee-auth(직원 퇴사·정지 — 2026-11-13 구현, ADR-0056), 중계는 7단계에 내림 | api-gateway(Redis 차단 목록) | issuer, subject, userType, blockedBefore, reason | 주체 차단 — 그 전에 발급된 토큰 거부(토픽 `platform.subject-block.v1`, 키 = 주체, ADR-0054 ⑤) | ① |
 | `EmployeeRegistered` | hr (ADR-0056, 2026-11-13 계약·발행 구현, 토픽 platform.employee.v1) | employee-auth | operatorId, employeeNo, keycloakUserId, mailAddress, employmentType, affiliation, startDate, endDate? | 직원 등록·계정 발급 완료 → 연결·ACTIVE | ① |
 | `EmployeeSuspended` / `EmployeeReinstated` | hr (ADR-0056, 2026-11-13 계약·발행 구현, 토픽 platform.employee.v1) | employee-auth | operatorId, reason(SUSPENDED/CONTRACT_ENDED/…), effectiveAt | 정지(계약 종료 자동 포함)·복귀 | ① |
 | `EmployeeLeft` | hr (ADR-0056, 2026-11-13 계약·발행 구현, 토픽 platform.employee.v1) | employee-auth | operatorId, effectiveAt | 퇴사 → 상태 LEFT·refresh 무효·`SubjectBlocked` | ① |

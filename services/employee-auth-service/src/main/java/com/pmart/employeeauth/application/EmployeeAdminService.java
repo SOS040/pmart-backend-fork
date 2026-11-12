@@ -1,5 +1,6 @@
 package com.pmart.employeeauth.application;
 
+import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
@@ -22,7 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <ul>
  *   <li>역할은 설정의 역할 목록에 있는 것만.
  *   <li>이미 있는 자기 계정은 바꾸지 못한다(스스로 권한을 올리거나 내리지 않게).
- *   <li>ACTIVE 가 아니게 바꾸면 모든 세션을 끝낸다. 이미 나간 access token 즉시 차단(SubjectBlocked)은 5단계.
+ *   <li>ACTIVE 가 아니게 바꾸면 모든 세션을 끝내고 SubjectBlocked 로 이미 나간 access token 도 바로 막는다.
  * </ul>
  */
 @Service
@@ -35,13 +36,19 @@ public class EmployeeAdminService {
   public record Change(String state, List<String> roles, List<String> centers, String reason) {}
 
   private final EmployeeAuthStore store;
+  private final SubjectBlocks blocks;
   private final EmployeeAuthProperties props;
   private final TransactionTemplate tx;
   private final Clock clock;
 
   public EmployeeAdminService(
-      EmployeeAuthStore store, EmployeeAuthProperties props, TransactionTemplate tx, Clock clock) {
+      EmployeeAuthStore store,
+      SubjectBlocks blocks,
+      EmployeeAuthProperties props,
+      TransactionTemplate tx,
+      Clock clock) {
     this.store = store;
+    this.blocks = blocks;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
@@ -92,10 +99,18 @@ public class EmployeeAdminService {
                   roles,
                   centers,
                   now);
-              if (!EmployeeLoginService.ACTIVE.equals(change.state())) {
+              AccountRow updated = store.account(operatorId, false).orElseThrow();
+              if (!EmployeeLoginService.ACTIVE.equals(change.state())
+                  && (before == null || EmployeeLoginService.ACTIVE.equals(before.state()))) {
                 store.revokeAllSessions(operatorId, "ACCOUNT_" + change.state(), now);
+                // 이미 나간 직원 토큰(15분)도 바로 막는다
+                blocks.block(
+                    operatorId,
+                    updated.version(),
+                    now,
+                    new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, admin.subject()));
               }
-              return store.account(operatorId, false).orElseThrow();
+              return updated;
             });
     log.info(
         "직원 변경: operatorId={} state={} roles={} centers={} by={}",
