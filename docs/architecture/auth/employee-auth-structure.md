@@ -8,7 +8,17 @@
 ## 진행
 
 - **2026-11-12 §12 2단계 완료(LAN)**: PC 5 `mailserver`(docker-mailserver 16.0.1)·`roundcube`(1.7.6, `https://192.168.0.101:8190`, ADR-0057 사설 CA). Keycloak `pmart-staff` SMTP = `mailserver:25`·`no-reply@pmart.com`. 확인: Keycloak `execute-actions-email` → `claude-dev@pmart.com` 사서함 도착, Roundcube 로그인(IMAP STARTTLS 를 루트 CA 로 확인), 외부 주소 반송(`5.7.1 … stays inside pmart.com`). 시험 사서함 `claude-dev@pmart.com`(비밀번호 `.secrets/mail-claude-dev-password`), Keycloak `claude-dev` 의 email 도 이 주소로. 결정 9 의 "자체 서명"은 ADR-0057 사설 CA 로 바뀜, "Docker 네트워크만 허용"은 `PERMIT_DOCKER=connected-networks`(Keycloak HELO 가 FQDN 이 아님).
-- 다음: 3단계 employee-auth-service(시작 전 D10 OTP 다시 묻기).
+- **2026-11-12 D10 정함**: 사용자 "일단 otp 안넣을거야" — 백오피스 OTP 넣지 않음(Keycloak 로그인 클라이언트 하나).
+- **2026-11-12 §12 3단계 구현**: `services/employee-auth-service`, 계약 `contracts/openapi/employee-auth-service.yaml`. 통합 시험은 **실제 Keycloak 26.8.1 컨테이너**로 로그인 화면 → 비밀번호 → 콜백 → 티켓 → 토큰까지(`EmployeeLoginIT`). 발급자 표에 `staff-ea` 줄 추가(Keycloak `staff` 줄과 함께), 게이트웨이 `/api/v1/employee-auth/**`. 구현하면서 정한 것(설계 §7·§8 의 제안을 바꾼 곳):
+  - **Spring OAuth2 Client 를 쓰지 않고** 인가 코드 흐름을 직접 구현(state·nonce·PKCE S256, ID 토큰 서명·iss·aud·azp·만료·nonce 검증). 이유: 게이트웨이가 모든 요청의 `Cookie` 헤더를 지워(`RemoveRequestHeader=Cookie`) 세션 쿠키에 기대는 기본 흐름이 게이트웨이 뒤에서 돌지 않고, 공통 보안 체인(무상태 JWT)을 그대로 쓸 수 있다. 로그인 시도(state 해시·nonce·verifier)는 DB `login_attempt` 에 10분.
+  - 경로: 시작 `GET /api/v1/employee-auth/logins?app=&deviceId=&codeChallenge=`, 콜백(Keycloak redirect URI) `GET /api/v1/employee-auth/logins/callback`.
+  - **티켓은 앱이 만든 code_challenge 에 묶는다**(앱 쪽 PKCE): 시작 때 앱이 `codeChallenge = BASE64URL(SHA-256(verifier))` 를 주고, 티켓 교환 때 `codeVerifier` + 같은 `X-Device-Id` 가 맞아야 한다. 쿠키 없이 시작한 쪽과 받는 쪽을 묶고, 딥링크를 가로챈 다른 앱은 티켓을 못 쓴다(RFC 8252 §8.1). 틀린 시도도 티켓을 태운다.
+  - **Keycloak 세션은 콜백에서 코드 교환 직후 바로 끝낸다**(Keycloak refresh token 으로 logout) + 로그인 시작에 `prompt=login` — D8 ① 을 로그아웃 때가 아니라 로그인 때 처리(Keycloak 토큰을 저장하지 않아도 됨). 직원 세션은 PMart 세션 하나.
+  - 세션 = min(갱신 + 앱 무활동 한도, 시작 + 12시간): `mfc` 30분(D8 ③), `backoffice` 12시간. 갱신 때 직원 상태·역할을 다시 읽는다. 복귀 주소 = 설정 `pmart.employee-auth.apps.<app>.return-uris`(LAN 백오피스 `http://192.168.0.40/auth/callback` 등 — 클라이언트 요청은 6단계).
+  - 직원 데이터(`employee_account`: 상태·역할·센터, D1 정본)는 hr-service·approval 연동(5단계) 전까지 **관리 경로** `PUT /api/v1/employee-auth/employees/{operatorId}`(OPERATOR_ADMIN, 역할 목록 검사, 자기 계정 변경 금지, 변경 기록)로 넣는다. ACTIVE 가 아니게 바꾸면 세션을 끝낸다 — 이미 나간 access token 즉시 차단(`SubjectBlocked`)은 5단계(그 전까지 최대 15분).
+  - 첫 로그인 연결: Keycloak `sub` 로 찾고, 없으면 ID 토큰의 `pmart_operator_id`(클라이언트 매퍼 — ID 토큰에만) 로 `employee_account` 를 찾아 연결. 다른 Keycloak 사용자가 이미 연결된 운영자 ID 면 거절.
+  - LAN 시험 교환(D5): `POST /api/v1/internal/dev-token-exchange` — Keycloak access token(azp = `pmart-dev-cli`)을 본문으로, `pmart.employee-auth.dev-token-exchange.enabled=true` 일 때만 경로가 있다.
+  - 아직 없는 것(5단계): Kafka(Employee* 구독, `SubjectBlocked`·`GrantApplied` 발행), grant·대행·행위 시점 검증 API, 근무 시작일·계약 종료일 확인.
 
 ## 1. 한 줄 요약
 
@@ -119,7 +129,7 @@ flowchart LR
 
 | 항목 | 지금(ADR-0054) | 이 설계 |
 |---|---|---|
-| 로그인 클라이언트 | `pmart-backoffice`(공개, PKCE) | **`employee-auth-service`**(기밀, Standard flow + PKCE, Direct access·Implicit 끔). Redirect URI `http://192.168.0.40:8080/api/v1/employee-auth/login/oauth2/code/keycloak`. `pmart-backoffice` 는 이전 뒤 삭제 |
+| 로그인 클라이언트 | `pmart-backoffice`(공개, PKCE) | **`employee-auth-service`**(기밀, Standard flow + PKCE, Direct access·Implicit 끔). Redirect URI `http://192.168.0.40:8080/api/v1/employee-auth/logins/callback`(3단계 구현 — Spring OAuth2 Client 경로 대신). `pmart-backoffice` 는 이전 뒤 삭제 |
 | 관리 클라이언트 | `pmart-auth-relay`(관리 기록 읽기 — 차단 중계) | **`hr-provisioner`**(hr-service 용, 기밀, 서비스 계정만 — §6-1). `pmart-auth-relay` 는 "Keycloak 화면에서 직접 막는 경우"가 없어지면 삭제(§13 D6) |
 | 개발 클라이언트 | `pmart-dev-cli`(직접 로그인) | Keycloak 토큰은 API 가 받지 않게 되므로 그대로는 쓸모없다 → §13 D5 |
 | 토큰의 쓰임 | Keycloak Access Token 을 API 에 그대로 | Keycloak 토큰은 employee-auth-service 안에서만 쓰고 끝(앱에 내려가지 않음) |
@@ -361,7 +371,7 @@ SMTP 비밀번호는 §9-3(a) 로 필요 없다. 직원 사서함 초기 비밀�
 | D7 | 사서함 보존 기간·메일 백업 | **정함(2026-11-12, 제안대로)**: 퇴사 뒤 비활성으로 **계속 보존**(삭제 안 함, 실습 환경). 메일 볼륨 백업은 DB 백업 방침 정할 때 함께 |
 | D8 | PDA 공용 기기 로그아웃 정책 | **정함(2026-11-12, 제안대로)**: ① 로그아웃 때 Keycloak 세션도 종료(`end_session_endpoint`) ② 근무(교대) 종료 시각이 지나면 자동 로그아웃 ③ 무활동 30분이면 다시 로그인(2026-11-08 "30분 무활동 = 경보"와 맞춤) |
 | D9 | 사서함 자동화 2단계(사이드카) 시점 | **정함(2026-11-12)**: hr-service 를 만들 때 함께 만든다(§9-6). 수동 명령은 예비 수단 |
-| D10 | 백오피스 로그인 OTP(2단계 인증, LoA 2) | **미정** — 업무 문서에는 요구 없음(참고 자료의 다른 구성안에서 온 요구). 넣는다면: Keycloak 에 employee-auth 용 클라이언트를 백오피스용·PDA용 둘로 등록해 백오피스용에만 OTP, employee-auth 가 `acr` 을 PMart JWT 에 담고, 게이트웨이가 백오피스 경로에서 `acr=2` 확인. Claude 추천: 넣는다 |
+| D10 | 백오피스 로그인 OTP(2단계 인증, LoA 2) | **정함(2026-11-12): 넣지 않는다**(사용자 "일단 otp 안넣을거야"). 아래는 검토했던 내용 — 업무 문서에는 요구 없음(참고 자료의 다른 구성안에서 온 요구). 넣는다면: Keycloak 에 employee-auth 용 클라이언트를 백오피스용·PDA용 둘로 등록해 백오피스용에만 OTP, employee-auth 가 `acr` 을 PMart JWT 에 담고, 게이트웨이가 백오피스 경로에서 `acr=2` 확인. Claude 추천: 넣는다 |
 
 ## 14. 감수하는 것
 

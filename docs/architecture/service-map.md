@@ -340,12 +340,12 @@
 - **나중(ADR-0054 순서 ⑤)**: 라이더 정지(`RiderRestricted`)를 받아 세션을 끊거나 차단 목록에 올리는 일 — 지금은 rider-service 가 업무 상태로 막는다.
 - LAN: PC 5, 포트 8510, DB `rider_auth_service`(PC 5 postgres).
 
-### employee-auth-service `[ADR-0056 — 2026-11-12 결정, 구현 전]` — 직원 로그인·직원 토큰 발급자·직원 권한 정본
+### employee-auth-service `[ADR-0056 — 2026-11-12 3단계 구현: 로그인·토큰·관리 경로. 권한 grant·대행·행위 검증·사건은 5단계]` — 직원 로그인·직원 토큰 발급자·직원 권한 정본
 - **소유**: Keycloak 로그인 연동(Keycloak `pmart-staff` 의 **유일한 로그인 클라이언트** — 기밀, 인가 코드 + PKCE), Keycloak ID 토큰 검증, Keycloak `sub` ↔ 운영자 ID `OP-…`, 직원 로그인 상태(ACTIVE/DISABLED/LEFT), 1회용 로그인 티켓(60초), 직원 세션·refresh(회전), **PMart 직원 JWT(`typ=OPERATOR`, `aud=pmart-api`) 서명키·JWKS**, **직원 유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장 — auth-service 에서 옮김), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 직원 보안 기록.
 - **소유하지 않음**: 직원 계정·비밀번호(Keycloak), 직원 인사·고용 정보·계정 발급(hr-service), 권한 **부여 승인 흐름**(approval BO-01/02 — 자동 승인 규칙 포함), MFC 작업 자격(mfc-capacity), 고객·비회원·서비스 토큰(auth-service).
-- **API**(제안): 로그인 시작·콜백(Spring OAuth2 Client 경로), `POST /employee-auth/tokens`(티켓 교환), `POST /employee-auth/tokens/refresh`, `POST /employee-auth/logouts`, `GET /employee-auth/sessions/current`, `GET /internal/jwks`, grant 반영·조회, 행위 검증(`authorize(actor, action, target, centerScope)`), LAN 전용 시험 토큰 교환(설정으로만, prod 없음).
-- **발행**: `GrantApplied`, `DelegationStarted/Ended`, `SubjectBlocked`(직원 — 퇴사·정지).
-- **구독**: `ApprovalDecided`(BO-01/02 권한 승인), `EmployeeRegistered`·`EmployeeSuspended`·`EmployeeReinstated`·`EmployeeLeft`(hr-service).
+- **API**(계약 `contracts/openapi/employee-auth-service.yaml`): `GET /employee-auth/logins`(시작 — 앱 code_challenge 를 시도에 묶음)·`GET /employee-auth/logins/callback`(Keycloak 콜백 → 앱 복귀 주소 `?ticket=`/`?error=`), `POST /employee-auth/tokens`(티켓 + code_verifier + 기기), `POST /employee-auth/tokens/refresh`, `POST /employee-auth/logouts`, `GET /employee-auth/sessions/current`, `GET /internal/jwks`, `GET·PUT /employee-auth/employees/{operatorId}`(OPERATOR_ADMIN — 상태·역할·센터, 5단계 연동 전 이전·보정용, 변경 기록), `POST /internal/dev-token-exchange`(LAN 전용), (5단계) grant 반영·조회, 행위 검증(`authorize(actor, action, target, centerScope)`), LAN 전용 시험 토큰 교환(설정으로만, prod 없음).
+- **발행**(5단계 — 지금은 Kafka 없음): `GrantApplied`, `DelegationStarted/Ended`, `SubjectBlocked`(직원 — 퇴사·정지).
+- **구독**(5단계): `ApprovalDecided`(BO-01/02 권한 승인), `EmployeeRegistered`·`EmployeeSuspended`·`EmployeeReinstated`·`EmployeeLeft`(hr-service).
 - **동기 의존**: Keycloak(`/token`·certs, PC 5 내부).
 - LAN: PC 5, 포트 8511, DB `employee_auth_service`(PC 5 postgres). 상세 `docs/architecture/auth/employee-auth-structure.md`.
 

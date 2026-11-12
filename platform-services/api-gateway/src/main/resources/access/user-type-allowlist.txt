@@ -79,6 +79,10 @@ GET /api/v1/dispatch-requests/{requestId} OPERATOR
 GET /api/v1/disposal-approvals/{disposalApprovalId} OPERATOR
 GET /api/v1/drivers OPERATOR
 GET /api/v1/drivers/{driverId} OPERATOR
+GET /api/v1/employee-auth/employees/{operatorId} OPERATOR
+GET /api/v1/employee-auth/logins PUBLIC
+GET /api/v1/employee-auth/logins/callback PUBLIC
+GET /api/v1/employee-auth/sessions/current OPERATOR
 GET /api/v1/excursions OPERATOR
 GET /api/v1/excursions/{excursionId} OPERATOR
 GET /api/v1/fefo-exceptions/{fefoExceptionId} OPERATOR
@@ -287,6 +291,9 @@ POST /api/v1/deliveries/{deliveryId}/store-arrivals RIDER
 POST /api/v1/dispatch-requests OPERATOR
 POST /api/v1/disposal-approvals OPERATOR
 POST /api/v1/disposal-approvals/{disposalApprovalId}/executions OPERATOR
+POST /api/v1/employee-auth/logouts OPERATOR
+POST /api/v1/employee-auth/tokens PUBLIC
+POST /api/v1/employee-auth/tokens/refresh PUBLIC
 POST /api/v1/fefo-exceptions OPERATOR
 POST /api/v1/forecast-runs OPERATOR
 POST /api/v1/fulfillment-issues/{issueId}/acknowledgements OPERATOR
@@ -415,6 +422,7 @@ POST /api/v1/waves OPERATOR
 POST /api/v1/waves/{waveId}/releases OPERATOR
 POST /api/v1/webhooks/toss PUBLIC
 PUT /api/v1/content-drafts/{draftId} OPERATOR
+PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR
 PUT /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 PUT /api/v1/operator-accounts/{operatorId} OPERATOR

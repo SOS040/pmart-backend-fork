@@ -1103,7 +1103,7 @@ EOF
     mkdir -p "$dir/keycloak"
     relay_secret="$(secret keycloak-relay-client-secret)"
     tr -d '\r' < "$LAN/keycloak/pmart-staff-realm.json" \
-      | sed "s|__PMART_KEYCLOAK_RELAY_SECRET__|${relay_secret}|" > "$dir/keycloak/pmart-staff-realm.json"
+      | sed -e "s|__PMART_KEYCLOAK_RELAY_SECRET__|${relay_secret}|" -e "s|__PMART_KEYCLOAK_EMPLOYEE_AUTH_SECRET__|$(secret keycloak-employee-auth-client-secret)|" > "$dir/keycloak/pmart-staff-realm.json"
   fi
 
   # 사내 메일(ADR-0056 결정 9)·웹메일: 설정 파일과 이 PC 의 LAN 사설 CA 인증서(ADR-0057, lan.sh tls-issue <pc> 가 만든 것). 키는 build/ 에만(git 제외)

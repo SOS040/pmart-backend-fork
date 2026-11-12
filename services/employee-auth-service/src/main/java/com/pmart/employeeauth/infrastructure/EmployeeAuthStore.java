@@ -1,0 +1,412 @@
+package com.pmart.employeeauth.infrastructure;
+
+import java.sql.Array;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import org.jspecify.annotations.Nullable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/**
+ * 직원·Keycloak 연결·로그인 시도·티켓·세션·refresh token 저장(JDBC). Keycloak 토큰·비밀번호·이메일은 저장하지 않는다. 역할·센터 값은 계약
+ * 패턴({@code [A-Za-z0-9_.-]})만 들어오므로 배열 문자열로 넘긴다.
+ */
+@Repository
+public class EmployeeAuthStore {
+
+  public record AccountRow(
+      String operatorId,
+      String state,
+      List<String> roles,
+      List<String> centers,
+      long version,
+      Instant updatedAt,
+      @Nullable Instant lastLoginAt,
+      boolean keycloakLinked) {}
+
+  public record AttemptRow(
+      String app,
+      String returnUri,
+      String deviceId,
+      String ticketChallenge,
+      String codeVerifier,
+      String nonce) {}
+
+  public record TicketRow(
+      String ticketHash,
+      String operatorId,
+      String app,
+      String deviceId,
+      String ticketChallenge,
+      Instant expiresAt,
+      @Nullable Instant usedAt) {}
+
+  public record SessionRow(
+      String sessionId,
+      String operatorId,
+      String deviceId,
+      String app,
+      String state,
+      Instant maxExpiresAt,
+      Instant expiresAt) {}
+
+  public record RefreshRow(
+      String tokenHash, String sessionId, Instant expiresAt, @Nullable Instant usedAt) {}
+
+  private final JdbcTemplate jdbc;
+
+  public EmployeeAuthStore(JdbcTemplate jdbc) {
+    this.jdbc = jdbc;
+  }
+
+  // ---------- 직원 ----------
+
+  public Optional<AccountRow> account(String operatorId, boolean forUpdate) {
+    return jdbc
+        .query(
+            "SELECT a.*, EXISTS (SELECT 1 FROM employee_identity i WHERE i.operator_id = a.operator_id) AS linked"
+                + " FROM employee_account a WHERE a.operator_id = ?"
+                + (forUpdate ? " FOR UPDATE OF a" : ""),
+            (rs, i) -> account(rs),
+            operatorId)
+        .stream()
+        .findFirst();
+  }
+
+  public void insertAccount(
+      String operatorId, String state, List<String> roles, List<String> centers, Instant at) {
+    jdbc.update(
+        "INSERT INTO employee_account (operator_id, state, roles, centers, row_version, created_at, updated_at)"
+            + " VALUES (?, ?, ?::varchar[], ?::varchar[], 1, ?, ?)",
+        operatorId,
+        state,
+        array(roles),
+        array(centers),
+        Timestamp.from(at),
+        Timestamp.from(at));
+  }
+
+  public void updateAccount(
+      String operatorId, String state, List<String> roles, List<String> centers, Instant at) {
+    jdbc.update(
+        "UPDATE employee_account SET state = ?, roles = ?::varchar[], centers = ?::varchar[],"
+            + " row_version = row_version + 1, updated_at = ? WHERE operator_id = ?",
+        state,
+        array(roles),
+        array(centers),
+        Timestamp.from(at),
+        operatorId);
+  }
+
+  public void insertChange(
+      String operatorId,
+      String changedBy,
+      String sourceSystem,
+      String reason,
+      @Nullable AccountRow before,
+      String state,
+      List<String> roles,
+      List<String> centers,
+      Instant at) {
+    jdbc.update(
+        "INSERT INTO employee_account_change (operator_id, changed_by, source_system, reason,"
+            + " before_state, before_roles, before_centers, after_state, after_roles, after_centers, changed_at)"
+            + " VALUES (?, ?, ?, ?, ?, ?::varchar[], ?::varchar[], ?, ?::varchar[], ?::varchar[], ?)",
+        operatorId,
+        changedBy,
+        sourceSystem,
+        reason,
+        before == null ? null : before.state(),
+        before == null ? null : array(before.roles()),
+        before == null ? null : array(before.centers()),
+        state,
+        array(roles),
+        array(centers),
+        Timestamp.from(at));
+  }
+
+  // ---------- Keycloak 연결 ----------
+
+  public Optional<String> linkedOperator(String keycloakSubject) {
+    return jdbc
+        .queryForList(
+            "SELECT operator_id FROM employee_identity WHERE keycloak_subject = ?",
+            String.class,
+            keycloakSubject)
+        .stream()
+        .findFirst();
+  }
+
+  public Optional<String> linkedSubject(String operatorId) {
+    return jdbc
+        .queryForList(
+            "SELECT keycloak_subject FROM employee_identity WHERE operator_id = ?",
+            String.class,
+            operatorId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 연결. 이미 있으면 0(동시 로그인 — 호출자가 다시 읽는다). */
+  public int link(String keycloakSubject, String operatorId, Instant at) {
+    return jdbc.update(
+        "INSERT INTO employee_identity (keycloak_subject, operator_id, linked_at) VALUES (?, ?, ?)"
+            + " ON CONFLICT DO NOTHING",
+        keycloakSubject,
+        operatorId,
+        Timestamp.from(at));
+  }
+
+  public void recordLogin(String keycloakSubject, String operatorId, Instant at) {
+    jdbc.update(
+        "UPDATE employee_identity SET last_login_at = ? WHERE keycloak_subject = ?",
+        Timestamp.from(at),
+        keycloakSubject);
+    jdbc.update(
+        "UPDATE employee_account SET last_login_at = ? WHERE operator_id = ?",
+        Timestamp.from(at),
+        operatorId);
+  }
+
+  // ---------- 로그인 시도 ----------
+
+  public void insertAttempt(
+      String stateHash,
+      String app,
+      String returnUri,
+      String deviceId,
+      String ticketChallenge,
+      String codeVerifier,
+      String nonce,
+      Instant at,
+      Instant expiresAt) {
+    jdbc.update(
+        "INSERT INTO login_attempt (state_hash, app, return_uri, device_id, ticket_challenge, code_verifier,"
+            + " nonce, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        stateHash,
+        app,
+        returnUri,
+        deviceId,
+        ticketChallenge,
+        codeVerifier,
+        nonce,
+        Timestamp.from(at),
+        Timestamp.from(expiresAt));
+  }
+
+  /** 아직 쓰지 않았고 만료 전인 시도를 한 번만 꺼낸다(동시에 두 번 오면 한쪽만). verifier 는 지운다. */
+  public Optional<AttemptRow> consumeAttempt(String stateHash, Instant now) {
+    return jdbc
+        .query(
+            "WITH c AS (SELECT * FROM login_attempt WHERE state_hash = ? AND consumed_at IS NULL"
+                + " AND expires_at > ? FOR UPDATE)"
+                + " UPDATE login_attempt a SET consumed_at = ?, code_verifier = NULL FROM c"
+                + " WHERE a.state_hash = c.state_hash"
+                + " RETURNING c.app, c.return_uri, c.device_id, c.ticket_challenge, c.code_verifier, c.nonce",
+            (rs, i) ->
+                new AttemptRow(
+                    rs.getString("app"),
+                    rs.getString("return_uri"),
+                    rs.getString("device_id"),
+                    rs.getString("ticket_challenge"),
+                    rs.getString("code_verifier"),
+                    rs.getString("nonce")),
+            stateHash,
+            Timestamp.from(now),
+            Timestamp.from(now))
+        .stream()
+        .findFirst();
+  }
+
+  // ---------- 티켓 ----------
+
+  public void insertTicket(
+      String ticketHash,
+      String operatorId,
+      String app,
+      String deviceId,
+      String ticketChallenge,
+      Instant at,
+      Instant expiresAt) {
+    jdbc.update(
+        "INSERT INTO login_ticket (ticket_hash, operator_id, app, device_id, ticket_challenge, issued_at, expires_at)"
+            + " VALUES (?,?,?,?,?,?,?)",
+        ticketHash,
+        operatorId,
+        app,
+        deviceId,
+        ticketChallenge,
+        Timestamp.from(at),
+        Timestamp.from(expiresAt));
+  }
+
+  public Optional<TicketRow> lockTicket(String ticketHash) {
+    return jdbc
+        .query(
+            "SELECT * FROM login_ticket WHERE ticket_hash = ? FOR UPDATE",
+            (rs, i) ->
+                new TicketRow(
+                    rs.getString("ticket_hash"),
+                    rs.getString("operator_id"),
+                    rs.getString("app"),
+                    rs.getString("device_id"),
+                    rs.getString("ticket_challenge"),
+                    instant(rs, "expires_at"),
+                    nullableInstant(rs, "used_at")),
+            ticketHash)
+        .stream()
+        .findFirst();
+  }
+
+  public void markTicketUsed(String ticketHash, Instant at) {
+    jdbc.update(
+        "UPDATE login_ticket SET used_at = ? WHERE ticket_hash = ? AND used_at IS NULL",
+        Timestamp.from(at),
+        ticketHash);
+  }
+
+  /** 하루 지난 시도·티켓을 지운다(감사 기록이 아니다 — 세션·변경 기록은 남는다). */
+  public int purgeExpired(Instant before) {
+    return jdbc.update("DELETE FROM login_attempt WHERE expires_at < ?", Timestamp.from(before))
+        + jdbc.update("DELETE FROM login_ticket WHERE expires_at < ?", Timestamp.from(before));
+  }
+
+  // ---------- 세션·refresh ----------
+
+  public void insertSession(
+      String sessionId,
+      String operatorId,
+      String deviceId,
+      String app,
+      String sourceSystem,
+      Instant at,
+      Instant maxExpiresAt,
+      Instant expiresAt) {
+    jdbc.update(
+        "INSERT INTO employee_session (session_id, operator_id, device_id, app, source_system, state,"
+            + " created_at, max_expires_at, expires_at) VALUES (?,?,?,?,?,'ACTIVE',?,?,?)",
+        sessionId,
+        operatorId,
+        deviceId,
+        app,
+        sourceSystem,
+        Timestamp.from(at),
+        Timestamp.from(maxExpiresAt),
+        Timestamp.from(expiresAt));
+  }
+
+  public Optional<SessionRow> session(String sessionId, boolean forUpdate) {
+    return jdbc
+        .query(
+            "SELECT * FROM employee_session WHERE session_id = ?"
+                + (forUpdate ? " FOR UPDATE" : ""),
+            (rs, i) ->
+                new SessionRow(
+                    rs.getString("session_id"),
+                    rs.getString("operator_id"),
+                    rs.getString("device_id"),
+                    rs.getString("app"),
+                    rs.getString("state"),
+                    instant(rs, "max_expires_at"),
+                    instant(rs, "expires_at")),
+            sessionId)
+        .stream()
+        .findFirst();
+  }
+
+  public void refreshed(String sessionId, Instant at, Instant expiresAt) {
+    jdbc.update(
+        "UPDATE employee_session SET last_refreshed_at = ?, expires_at = ? WHERE session_id = ?",
+        Timestamp.from(at),
+        Timestamp.from(expiresAt),
+        sessionId);
+  }
+
+  public void revokeSession(String sessionId, String reason, Instant at) {
+    jdbc.update(
+        "UPDATE employee_session SET state = 'REVOKED', revoked_at = ?, revoke_reason = ?"
+            + " WHERE session_id = ? AND state = 'ACTIVE'",
+        Timestamp.from(at),
+        reason,
+        sessionId);
+  }
+
+  public int revokeAllSessions(String operatorId, String reason, Instant at) {
+    return jdbc.update(
+        "UPDATE employee_session SET state = 'REVOKED', revoked_at = ?, revoke_reason = ?"
+            + " WHERE operator_id = ? AND state = 'ACTIVE'",
+        Timestamp.from(at),
+        reason,
+        operatorId);
+  }
+
+  public void insertRefresh(String tokenHash, String sessionId, Instant at, Instant expiresAt) {
+    jdbc.update(
+        "INSERT INTO employee_refresh_token (token_hash, session_id, issued_at, expires_at) VALUES (?,?,?,?)",
+        tokenHash,
+        sessionId,
+        Timestamp.from(at),
+        Timestamp.from(expiresAt));
+  }
+
+  public Optional<RefreshRow> lockRefresh(String tokenHash) {
+    return jdbc
+        .query(
+            "SELECT * FROM employee_refresh_token WHERE token_hash = ? FOR UPDATE",
+            (rs, i) ->
+                new RefreshRow(
+                    rs.getString("token_hash"),
+                    rs.getString("session_id"),
+                    instant(rs, "expires_at"),
+                    nullableInstant(rs, "used_at")),
+            tokenHash)
+        .stream()
+        .findFirst();
+  }
+
+  public void markRefreshUsed(String tokenHash, Instant at) {
+    jdbc.update(
+        "UPDATE employee_refresh_token SET used_at = ? WHERE token_hash = ?",
+        Timestamp.from(at),
+        tokenHash);
+  }
+
+  // ---------- 변환 ----------
+
+  private static AccountRow account(ResultSet rs) throws SQLException {
+    return new AccountRow(
+        rs.getString("operator_id"),
+        rs.getString("state"),
+        list(rs.getArray("roles")),
+        list(rs.getArray("centers")),
+        rs.getLong("row_version"),
+        instant(rs, "updated_at"),
+        nullableInstant(rs, "last_login_at"),
+        rs.getBoolean("linked"));
+  }
+
+  static String array(List<String> values) {
+    return "{" + String.join(",", values) + "}";
+  }
+
+  private static List<String> list(@Nullable Array a) throws SQLException {
+    if (a == null) {
+      return List.of();
+    }
+    return Arrays.stream((Object[]) a.getArray()).map(String::valueOf).toList();
+  }
+
+  private static Instant instant(ResultSet rs, String col) throws SQLException {
+    return rs.getTimestamp(col).toInstant();
+  }
+
+  private static @Nullable Instant nullableInstant(ResultSet rs, String col) throws SQLException {
+    Timestamp t = rs.getTimestamp(col);
+    return t == null ? null : t.toInstant();
+  }
+}

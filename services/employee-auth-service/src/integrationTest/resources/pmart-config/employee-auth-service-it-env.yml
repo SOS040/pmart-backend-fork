@@ -1,0 +1,22 @@
+# 시험 전용: 환경 자리표시자 — 시험은 Testcontainers·각 시험 properties 가 덮는다
+spring:
+  datasource:
+    url: ${PMART_DB_URL}
+    username: ${PMART_DB_USERNAME}
+    password: ${PMART_DB_PASSWORD}
+pmart:
+  # 시험 클래스패스에만 common-messaging(common-test 가 끌어옴)이 있어 domain 을 요구한다. 운영 앱은 아직 Kafka 를 쓰지 않는다
+  messaging:
+    domain: platform
+  employee-auth:
+    issuer: ${PMART_EMPLOYEE_AUTH_ISSUER:http://employee-auth-service:8511}
+    signing:
+      ephemeral: true
+    apps:
+      backoffice:
+        return-uris: ['http://backoffice.test/auth/callback']
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

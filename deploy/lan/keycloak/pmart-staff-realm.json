@@ -2,7 +2,15 @@
   "realm": "pmart-staff",
   "enabled": true,
   "displayName": "PMart 직원",
-  "smtpServer": { "host": "mailserver", "port": "25", "from": "no-reply@pmart.com", "fromDisplayName": "PMart", "ssl": "false", "starttls": "false", "auth": "false" },
+  "smtpServer": {
+    "host": "mailserver",
+    "port": "25",
+    "from": "no-reply@pmart.com",
+    "fromDisplayName": "PMart",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  },
   "sslRequired": "none",
   "accessTokenLifespan": 900,
   "ssoSessionIdleTimeout": 43200,
@@ -66,6 +74,44 @@
     ]
   },
   "clients": [
+    {
+      "clientId": "employee-auth-service",
+      "name": "PMart 직원 로그인(employee-auth-service, ADR-0056) — 유일한 로그인 클라이언트",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "__PMART_KEYCLOAK_EMPLOYEE_AUTH_SECRET__",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://192.168.0.40:8080/api/v1/employee-auth/logins/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "fullScopeAllowed": false,
+      "protocolMappers": [
+        {
+          "name": "pmart_operator_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "pmart_operator_id",
+            "claim.name": "pmart_operator_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "false",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "false"
+          }
+        }
+      ]
+    },
     {
       "clientId": "pmart-backoffice",
       "name": "PMart 백오피스(웹)",

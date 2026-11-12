@@ -1,6 +1,6 @@
 # 발급자 표(`pmart.security.issuers`)
 
-> **2026-11-12 ADR-0056(구현 전)**: `staff` 줄은 Keycloak 에서 employee-auth-service(`iss = http://employee-auth-service:8511`, JWKS `/api/v1/internal/jwks`)로 바뀌고 `type-claim`·`subject-claim`·`roles-claim` 특수 설정이 없어진다. 옮기는 동안 두 줄을 함께 둔다. 상세 `employee-auth-structure.md` §7-②.
+> **2026-11-12 ADR-0056 3단계**: `staff-ea` 줄(employee-auth-service, 기본값 — 예전 운영자 토큰 모양)을 **더했다**. Keycloak `staff` 줄은 옮기는 동안 함께 둔다(7단계 또는 hr-service 배포 전 U-11 에 뺀다). 설계: `staff` 줄은 Keycloak 에서 employee-auth-service(`iss = http://employee-auth-service:8511`, JWKS `/api/v1/internal/jwks`)로 바뀌고 `type-claim`·`subject-claim`·`roles-claim` 특수 설정이 없어진다. 옮기는 동안 두 줄을 함께 둔다. 상세 `employee-auth-structure.md` §7-②.
 
 - 작성: 2026-11-11(사용자 요청 정리). 근거: ADR-0054(발급자 셋, 발급자 ↔ 사용자 종류 짝), ADR-0055 결정 6(`aud=pmart-api`).
 - 함께 볼 문서: `issuer-type-pairing-and-access-lists.md`(처음 설계·허용/차단 목록), `aud-and-typ.md`(`aud`·`typ` 뜻), `keycloak-structure.md`(직원 토큰), `login-structure-and-flow.md`(전체 로그인).
@@ -45,10 +45,11 @@
 |---|---|---|---|---|---|
 | `auth-service` | auth-service | `http://auth-service:8501` | (비움 → `http://auth-service:8501/api/v1/internal/jwks`) | CUSTOMER, GUEST, SERVICE, **OPERATOR** | 기본값 |
 | `staff` | Keycloak Realm `pmart-staff`(PC5) | `http://192.168.0.101:8180/realms/pmart-staff` | `…/realms/pmart-staff/protocol/openid-connect/certs` | OPERATOR | `type-claim: ''`, `subject-claim: pmart_operator_id`, `roles-claim: realm_access.roles` |
+| `staff-ea` | employee-auth-service(PC5, ADR-0056) | `http://employee-auth-service:8511` | `http://employee-auth-service:8511/api/v1/internal/jwks` | OPERATOR | 기본값 |
 | `rider` | rider-auth-service(PC5) | `http://rider-auth-service:8510` | `http://rider-auth-service:8510/api/v1/internal/jwks` | RIDER | 기본값 |
 
 - 세 줄 모두 `audiences: [pmart-api]`.
-- 로컬(`application-local.yml`)은 `auth-service`(`http://localhost:8501`)·`rider`(`http://localhost:8510`) 두 줄 — Keycloak 줄 없음.
+- 로컬(`application-local.yml`)은 `auth-service`(`http://localhost:8501`)·`staff-ea`(`http://localhost:8511`)·`rider`(`http://localhost:8510`) 세 줄 — Keycloak 줄 없음.
 - **auth-service 줄의 OPERATOR**: 기존 백오피스(auth-service 운영자 로그인)를 없애지 않고 Keycloak 과 따로 운영하기로 해서(사용자, 2026-11-11) 지금은 남아 있다. ADR-0054 결정 D 의 "옮긴 뒤 뺀다"는 이 방향에 맞춰 다시 정해야 한다.
 - RIDER 는 2026-11-11 auth-service 줄에서 뺐다(rider-auth-service LAN 배치·확인 뒤).
 

@@ -1,0 +1,213 @@
+{
+  "realm": "pmart-staff",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": true,
+  "clients": [
+    {
+      "clientId": "employee-auth-service",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "it-employee-auth-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "fullScopeAllowed": false,
+      "protocolMappers": [
+        {
+          "name": "pmart_operator_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "pmart_operator_id",
+            "claim.name": "pmart_operator_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "false",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "pmart-dev-cli",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "fullScopeAllowed": false,
+      "protocolMappers": [
+        {
+          "name": "pmart_operator_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "pmart_operator_id",
+            "claim.name": "pmart_operator_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "other-client",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "fullScopeAllowed": false,
+      "protocolMappers": [
+        {
+          "name": "pmart_operator_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "pmart_operator_id",
+            "claim.name": "pmart_operator_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"pmart_operator_id\", \"displayName\": \"PMart 운영자 ID\", \"validations\": {\"pattern\": {\"pattern\": \"^[A-Za-z0-9_.-]{1,64}$\", \"error-message\": \"영문·숫자·_.- 1~64자\"}}, \"required\": {\"roles\": [\"admin\"]}, \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"centers\", \"displayName\": \"담당 센터\", \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": true}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "worker1",
+      "enabled": true,
+      "email": "worker1@pmart.com",
+      "emailVerified": true,
+      "firstName": "worker1",
+      "lastName": "test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pw-worker1",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "pmart_operator_id": [
+          "OP-IT-WORKER1"
+        ]
+      }
+    },
+    {
+      "username": "admin1",
+      "enabled": true,
+      "email": "admin1@pmart.com",
+      "emailVerified": true,
+      "firstName": "admin1",
+      "lastName": "test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pw-admin1",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "pmart_operator_id": [
+          "OP-IT-ADMIN1"
+        ]
+      }
+    },
+    {
+      "username": "ghost1",
+      "enabled": true,
+      "email": "ghost1@pmart.com",
+      "emailVerified": true,
+      "firstName": "ghost1",
+      "lastName": "test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pw-ghost1",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "pmart_operator_id": [
+          "OP-IT-GHOST"
+        ]
+      }
+    },
+    {
+      "username": "left1",
+      "enabled": true,
+      "email": "left1@pmart.com",
+      "emailVerified": true,
+      "firstName": "left1",
+      "lastName": "test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pw-left1",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "pmart_operator_id": [
+          "OP-IT-LEFT1"
+        ]
+      }
+    },
+    {
+      "username": "noattr1",
+      "enabled": true,
+      "email": "noattr1@pmart.com",
+      "emailVerified": true,
+      "firstName": "noattr1",
+      "lastName": "test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "pw-noattr1",
+          "temporary": false
+        }
+      ],
+      "attributes": {}
+    }
+  ]
+}

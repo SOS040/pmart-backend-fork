@@ -1,0 +1,345 @@
+openapi: 3.1.0
+info:
+  title: employee-auth-service
+  version: 0.1.0
+  description: |
+    직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
+    (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
+    정본: Keycloak 사용자(sub) ↔ 운영자 ID(OP-…) 연결, 직원 로그인 상태(ACTIVE·DISABLED·LEFT), **직원 역할·권한 센터**(ADR-0056 결정 4),
+    로그인 티켓·세션·refresh token, 직원 토큰 서명키(JWKS).
+    비정본: 직원 계정·비밀번호·잠금(Keycloak), 인사 정보(hr-service), 권한 요청 심사(approval-service).
+
+    로그인 흐름(앱·백오피스 공통 — 앱은 OAuth 클라이언트가 아니다):
+    1. 앱이 code_verifier 를 만들고, 시스템 브라우저(Custom Tabs — WebView 금지)로 GET /employee-auth/logins?app=…&deviceId=…&codeChallenge=… 를 연다.
+    2. 이 서비스가 Keycloak 로그인 화면으로 보낸다(prompt=login — 공용 PDA 에서 앞사람 세션으로 들어가지 않게).
+    3. Keycloak 이 콜백(GET /employee-auth/logins/callback)으로 돌려보내면 코드 교환·ID 토큰 검증·직원 상태 확인 뒤 Keycloak 세션을 바로 끝내고(ADR-0056 결정 14 ①),
+       설정의 복귀 주소로 60초·1회용 로그인 티켓을 붙여 보낸다(예 pmart-mfc://login?ticket=…). 실패면 ?error=코드.
+    4. 앱이 POST /employee-auth/tokens {ticket, codeVerifier} + X-Device-Id 로 직원 토큰을 받는다. 티켓은 시작한 기기·code_verifier 로만 바뀐다
+       (딥링크를 가로챈 다른 앱은 쓸 수 없다 — RFC 8252 §8.1 과 같은 방식).
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: logins, description: 직원 로그인 시작·Keycloak 콜백(브라우저가 연다) }
+  - { name: tokens, description: 티켓 교환·갱신·로그아웃·현재 세션 }
+  - { name: employees, description: 직원 로그인 상태·역할·권한 센터(관리자 보정·이전용 — hr·approval 연동 전까지) }
+  - { name: keys, description: "JWKS 공개키 — 직원 토큰 검증용 (클러스터 내부 전용)" }
+  - { name: dev, description: "LAN 시험 전용(설정으로만 켬, 운영 없음)" }
+
+paths:
+  /employee-auth/logins:
+    get:
+      tags: [logins]
+      summary: 직원 로그인 시작 (시스템 브라우저가 연다 → Keycloak 로그인 화면으로 302)
+      description: |
+        app 은 설정의 앱 목록(mfc, backoffice …)에 있어야 하고, returnUri 를 주면 그 앱의 허용 복귀 주소 중 하나와 정확히 같아야 한다(열린 리디렉션 방지).
+        codeChallenge = BASE64URL(SHA-256(code_verifier)), code_verifier 는 앱만 갖는다(43~128자).
+        로그인 시도는 10분 안에 끝내야 한다.
+      operationId: startEmployeeLogin
+      security: []
+      parameters:
+        - { name: app, in: query, required: true, schema: { type: string, maxLength: 32 } }
+        - { name: deviceId, in: query, required: true, schema: { type: string, maxLength: 128 } }
+        - { name: codeChallenge, in: query, required: true, schema: { type: string, minLength: 43, maxLength: 128 } }
+        - { name: codeChallengeMethod, in: query, required: false, schema: { type: string, enum: [S256], default: S256 } }
+        - { name: returnUri, in: query, required: false, schema: { type: string, maxLength: 512 } }
+      responses:
+        '302': { description: Keycloak 로그인 화면으로 }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /employee-auth/logins/callback:
+    get:
+      tags: [logins]
+      summary: Keycloak 콜백 (인가 코드 교환 → 앱 복귀 주소로 ?ticket= 또는 ?error=)
+      description: |
+        Keycloak 에 등록한 redirect URI. 앱 복귀 주소로 302 하며 붙는 error 코드:
+        IDP_ERROR(Keycloak 이 오류를 돌려줌·취소), IDP_REJECTED(ID 토큰 검증 실패), IDP_UNAVAILABLE(Keycloak 응답 없음),
+        EMPLOYEE_NOT_REGISTERED(PMart 직원으로 등록되지 않음), ACCOUNT_NOT_AVAILABLE(정지·퇴사).
+        state 를 알 수 없거나 만료면 복귀 주소를 모르므로 400.
+      operationId: completeEmployeeLogin
+      security: []
+      parameters:
+        - { name: state, in: query, required: false, schema: { type: string, maxLength: 256 } }
+        - { name: code, in: query, required: false, schema: { type: string, maxLength: 4096 } }
+        - { name: error, in: query, required: false, schema: { type: string, maxLength: 256 } }
+      responses:
+        '302': { description: 앱 복귀 주소로(ticket 또는 error) }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /employee-auth/tokens:
+    post:
+      tags: [tokens]
+      summary: 로그인 티켓 → 직원 토큰 (티켓 60초·1회, 시작한 기기·code_verifier 만)
+      operationId: exchangeLoginTicket
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket, codeVerifier]
+              properties:
+                ticket: { type: string, maxLength: 128, description: 로그 금지 }
+                codeVerifier: { type: string, minLength: 43, maxLength: 128, description: 로그 금지 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeLoginResult' }
+        '401':
+          description: TICKET_INVALID (없음·만료·사용됨·다른 기기·verifier 불일치 — 이유를 나누어 알리지 않는다)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: ACCOUNT_NOT_AVAILABLE (티켓 발급 뒤 정지·퇴사)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /employee-auth/tokens/refresh:
+    post:
+      tags: [tokens]
+      summary: 토큰 갱신 (refresh token 회전. 재사용 감지 시 세션 폐기)
+      description: |
+        refresh token 은 한 번만 쓴다. 이미 쓴 토큰이 다시 오면 세션을 끝내고 TOKEN_REUSED. 로그인한 기기(X-Device-Id)에서만.
+        세션은 앱별 무활동 한도(mfc 30분 — ADR-0056 결정 14 ③)와 최대 길이(근무 12시간) 안에서만 이어진다. 직원 상태를 매번 다시 본다.
+      operationId: refreshEmployeeTokens
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: TOKEN_INVALID / TOKEN_REUSED (세션 폐기됨, 재로그인)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /employee-auth/logouts:
+    post:
+      tags: [tokens]
+      summary: 로그아웃 (이 세션 또는 이 직원의 모든 세션 종료)
+      description: Keycloak 세션은 로그인 때 이미 끝냈다 — 공용 PDA 다음 작업자는 다시 비밀번호를 친다.
+      operationId: employeeLogout
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allDevices: { type: boolean, default: false }
+      responses:
+        '204': { description: 종료됨 (이미 종료여도 멱등 성공) }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /employee-auth/sessions/current:
+    get:
+      tags: [tokens]
+      summary: 현재 세션 조회 (이 서비스가 발급한 직원 토큰만)
+      operationId: getCurrentEmployeeSession
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeSession' }
+        '401':
+          description: SESSION_EXPIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /employee-auth/employees/{operatorId}:
+    parameters:
+      - { name: operatorId, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
+    get:
+      tags: [employees]
+      summary: 직원 로그인 상태·역할·권한 센터 조회 (OPERATOR_ADMIN)
+      operationId: getEmployee
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [employees]
+      summary: 직원 등록·보정 (OPERATOR_ADMIN — 운영자 이전과 관리자 보정용)
+      description: |
+        ADR-0056 5단계(hr-service 의 EmployeeRegistered·approval 권한 승인 연동) 전까지 쓰는 관리 경로다. 없으면 만들고 있으면 바꾼다(멱등).
+        역할은 설정의 역할 목록에 있어야 한다. 이미 있는 자기 계정은 바꿀 수 없다. 상태를 ACTIVE 가 아닌 값으로 바꾸면 모든 세션을 끝낸다
+        (이미 나간 access token 의 즉시 차단(SubjectBlocked)은 5단계에서 함께 — 그 전까지는 남은 수명 최대 15분).
+        바꾼 사람·이유·전후 값은 이 서비스 변경 기록에 남는다.
+      operationId: putEmployee
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeChange' }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  # ---------- keys (JWKS). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  /internal/jwks:
+    get:
+      tags: [keys]
+      summary: "[게이트웨이·전 서비스→employee-auth] 직원 토큰 검증 공개키 (JWK Set, RFC 7517)"
+      description: 발급자 표(pmart.security.issuers)의 직원 줄 jwk-set-uri 가 이 주소를 가리킨다.
+      operationId: getEmployeeJwks
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JwkSet' }
+
+  /internal/dev-token-exchange:
+    post:
+      tags: [dev]
+      summary: "[LAN 시험 전용] Keycloak 직접 로그인 토큰(pmart-dev-cli) → 직원 토큰 (ADR-0056 D5)"
+      description: |
+        브라우저 없는 E2E 스크립트용. pmart.employee-auth.dev-token-exchange.enabled=true 일 때만 경로가 생긴다(운영 설정에는 없다 → 404).
+        Keycloak access token 의 서명·iss·만료와 azp(허용 개발 클라이언트)를 확인하고, 로그인과 같은 직원 상태 확인을 거친다.
+        토큰은 Authorization 이 아니라 본문으로 받는다(내부 경로는 사용자 토큰을 받지 않는다 — ADR-0026).
+      operationId: exchangeDevToken
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keycloakAccessToken]
+              properties:
+                keycloakAccessToken: { type: string, maxLength: 8192, description: 로그 금지 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeLoginResult' }
+        '401':
+          description: IDP_REJECTED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: EMPLOYEE_NOT_REGISTERED / ACCOUNT_NOT_AVAILABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+components:
+  schemas:
+    JwkSet:
+      type: object
+      required: [keys]
+      description: RFC 7517 JWK Set. 공개키만(RSA n/e, kid, alg=RS256, use=sig).
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, sessionId]
+      properties:
+        accessToken:
+          type: string
+          description: "PMart 직원 토큰(RS256, iss = employee-auth-service, sub = 운영자 ID, typ = OPERATOR, aud = pmart-api, roles, centers, sid). 15분"
+        refreshToken: { type: string }
+        accessTokenExpiresAt: { type: string, format: date-time }
+        refreshTokenExpiresAt: { type: string, format: date-time }
+        sessionId: { type: string }
+    EmployeeLoginResult:
+      type: object
+      required: [operatorId, roles, centers, tokens]
+      properties:
+        operatorId: { type: string }
+        roles: { type: array, items: { type: string }, description: 비어 있으면 권한 승인 대기(업무 API 403) }
+        centers: { type: array, items: { type: string } }
+        tokens: { $ref: '#/components/schemas/TokenPair' }
+    EmployeeSession:
+      type: object
+      required: [sessionId, operatorId, app, issuedAt, expiresAt]
+      properties:
+        sessionId: { type: string }
+        operatorId: { type: string }
+        app: { type: string }
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: 이 access token 의 만료 }
+    EmployeeState:
+      type: string
+      enum: [ACTIVE, DISABLED, LEFT]
+    Employee:
+      type: object
+      required: [operatorId, state, roles, centers, version, updatedAt]
+      properties:
+        operatorId: { type: string }
+        state: { $ref: '#/components/schemas/EmployeeState' }
+        roles: { type: array, items: { type: string } }
+        centers: { type: array, items: { type: string } }
+        keycloakLinked: { type: boolean, description: Keycloak 사용자와 한 번이라도 로그인으로 연결됨 }
+        lastLoginAt: { type: string, format: date-time }
+        version: { type: integer, format: int64 }
+        updatedAt: { type: string, format: date-time }
+    EmployeeChange:
+      type: object
+      required: [state, roles, centers, reason]
+      properties:
+        state: { $ref: '#/components/schemas/EmployeeState' }
+        roles: { type: array, maxItems: 32, items: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,63}$' } }
+        centers: { type: array, maxItems: 64, items: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

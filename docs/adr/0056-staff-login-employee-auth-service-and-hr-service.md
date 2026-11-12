@@ -1,6 +1,6 @@
 # ADR-0056 직원 로그인 — Keycloak 은 신원만, PMart 직원 JWT 는 employee-auth-service(Keycloak 기밀 클라이언트), 계정 발급은 hr-service + 사내 메일(@pmart.com)
 
-- 상태: 승인 (2026-11-12, 사용자 "그 설계를 따르고 싶다" — 결정 하나하나는 아래에 사용자 말과 함께 적음). **구현 전** — 아래 "옮기는 순서"가 끝날 때까지 지금 동작(ADR-0054 직원 부분)은 그대로 돈다.
+- 상태: 승인 (2026-11-12, 사용자 "그 설계를 따르고 싶다" — 결정 하나하나는 아래에 사용자 말과 함께 적음). **3단계(employee-auth-service) 구현 2026-11-12** — 구현에서 정한 것은 `employee-auth-structure.md` 진행 절. 백오피스 OTP(D10)는 넣지 않음(사용자 2026-11-12). 아래 "옮기는 순서"가 끝날 때까지 지금 동작(ADR-0054 직원 부분)은 그대로 돈다.
 - 대체: ADR-0054 결정 L(직원 계정은 Keycloak 관리 화면에서 직접)·결정 M(Keycloak 관리 기록을 auth-service 가 읽어 차단 사건 중계) 전체. ADR-0054 결정 1·C 의 일부 — 직원 **토큰 발급자**가 Keycloak 에서 employee-auth-service 로 바뀐다(Keycloak 은 직원 신원 확인으로 남는다, `pmart_operator_id` 는 Keycloak 사용자 속성으로 남되 토큰 클레임으로 쓰지 않는다). service-map 의 "auth-service = 직원 RoleGrant·Delegation·긴급권한 정본"(결정 3).
 - 유지: ADR-0054 결정 2(고객 = auth-service)·3(라이더 = rider-auth-service)·4(게이트웨이 1개, 발급자 표)·5(서비스가 보는 권한 형태)·A(Keycloak PC 5)·H·I·K(차단 목록 = Kafka → 게이트웨이 Redis), ADR-0055 전체, ADR-0011(서비스 신원 토큰).
 - 근거(기준 설계): `docs/architecture/auth/references/2026-11-12/pmart-keycloak-guide.html`(강의 설계를 PMart 에 맞춘 적용안), `docs/architecture/auth/references/2026-11-12/baropick_mail_iam_guide.html`(사내 메일·IAM 가이드).
