@@ -2,6 +2,7 @@
   "realm": "pmart-staff",
   "enabled": true,
   "displayName": "PMart 직원",
+  "smtpServer": { "host": "mailserver", "port": "25", "from": "no-reply@pmart.com", "fromDisplayName": "PMart", "ssl": "false", "starttls": "false", "auth": "false" },
   "sslRequired": "none",
   "accessTokenLifespan": 900,
   "ssoSessionIdleTimeout": 43200,

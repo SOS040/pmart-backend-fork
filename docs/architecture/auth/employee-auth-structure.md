@@ -5,6 +5,11 @@
 - 이 문서가 정한 것: 사용자 결정 2026-11-12 — ① 메일 도메인 `@pmart.com` ② 배치는 Claude 가 정함(§4) ③ 비밀값은 PMart 방식(`.secrets` 원본 + pmart-config `{cipher}`) ④ 이 설계를 따른다. 나머지 값(포트·경로·사건 이름·표 이름)은 **제안**이고 §13 의 결정이 남아 있다.
 - 지금 구조(비교 대상): [`keycloak-structure.md`](keycloak-structure.md), [`login-structure-and-flow.md`](login-structure-and-flow.md), [`issuer-table.md`](issuer-table.md), ADR-0054·0055.
 
+## 진행
+
+- **2026-11-12 §12 2단계 완료(LAN)**: PC 5 `mailserver`(docker-mailserver 16.0.1)·`roundcube`(1.7.6, `https://192.168.0.101:8190`, ADR-0057 사설 CA). Keycloak `pmart-staff` SMTP = `mailserver:25`·`no-reply@pmart.com`. 확인: Keycloak `execute-actions-email` → `claude-dev@pmart.com` 사서함 도착, Roundcube 로그인(IMAP STARTTLS 를 루트 CA 로 확인), 외부 주소 반송(`5.7.1 … stays inside pmart.com`). 시험 사서함 `claude-dev@pmart.com`(비밀번호 `.secrets/mail-claude-dev-password`), Keycloak `claude-dev` 의 email 도 이 주소로. 결정 9 의 "자체 서명"은 ADR-0057 사설 CA 로 바뀜, "Docker 네트워크만 허용"은 `PERMIT_DOCKER=connected-networks`(Keycloak HELO 가 FQDN 이 아님).
+- 다음: 3단계 employee-auth-service(시작 전 D10 OTP 다시 묻기).
+
 ## 1. 한 줄 요약
 
 **Keycloak 은 "이 직원이 맞다"만 증명하고, PMart 직원 JWT 는 Employee Auth Service 가 만든다.** 고객(Google → auth-service)·라이더(Google → rider-auth-service)와 같은 모양 — "밖에서 신원 확인 → PMart 가 토큰 발급" — 이 직원에게도 적용된다.

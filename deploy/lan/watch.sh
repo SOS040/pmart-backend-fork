@@ -60,6 +60,13 @@ check() {
     rag-pgvector|ollama)
       ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
         "docker exec pmart-lan-$c-1 $([ "$c" = ollama ] && echo 'ollama list' || echo 'pg_isready -q -U pmart')" >/dev/null 2>&1 ;;
+    # 사내 메일(ADR-0056): 메일 서버는 LAN 포트가 없다 — 그 PC 에서 컨테이너 안 SMTP(25)·IMAP(143) 대기 확인. 웹메일은 LAN HTTPS(사설 CA, ADR-0057)
+    mailserver)
+      ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
+        "docker exec pmart-lan-mailserver-1 sh -c 'ss -ltn | grep -q \":25 \" && ss -ltn | grep -q \":143 \"'" >/dev/null 2>&1 ;;
+    roundcube)
+      # --ssl-revoke-best-effort: Windows curl(schannel)은 사설 CA 에 폐기 목록(CRL)이 없어 "revocation status unknown" 으로 실패한다(2026-11-12)
+      [ "$(curl -s -m 5 --ssl-revoke-best-effort --cacert "$LAN/tls/pmart-lan-root-ca.crt" -o /dev/null -w '%{http_code}' "https://$ip:8190/")" = 200 ] ;;
     prometheus|alertmanager) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:$([ "$c" = prometheus ] && echo 9090 || echo 9093)/-/ready")" = 200 ] ;;
     grafana)  [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:3000/api/health")" = 200 ] ;;
     # Kafka 클러스터 지표(ADR-0037). 브로커 수는 보지 않는다 — 브로커가 죽은 것은 경보(KafkaBrokerDown)가 알리고,

@@ -7,7 +7,8 @@
 ## 진행
 
 - **2026-11-12 §7 1단계 완료(동작 변화 없음)**: 루트 CA `CN=PMart LAN Dev Root CA 2026`(RSA 3072, 2036-11-09 만료, SHA-1 지문 `D3:A4:63:43:F0:78:0F:34:2A:25:9C:E9:B9:2A:12:54:6D:DA:CD:2A`) — `deploy/lan/tls/pmart-lan-root-ca.crt`. PC 4(`IP:192.168.0.40`, `DNS:d603-16`)·PC 5(`IP:192.168.0.101`, `DNS:d603-13`, `mail.pmart.com`, `mailserver`) 서버 인증서(RSA 2048, 1년). 스크립트 `deploy/lan/tls/tls.sh`, `lan.sh tls-issue`·`tls-trust`, `init-secrets.sh`, `watch.sh` 만료 경보. **PC 2~5 Windows 신뢰 저장소에 설치함. PC 1 은 관리자 승인 창이 취소돼 아직**(사용자가 `deploy/lan/lan.sh tls-trust pc1` 실행 후 승인).
-- 다음: 메일 서버(ADR-0056 2단계)를 이 인증서로.
+- **2026-11-12 §7 2단계 완료**: 메일 서버(내부 STARTTLS)·Roundcube(`https://192.168.0.101:8190`)가 PC 5 인증서로 동작. Roundcube 는 메일 서버를 루트 CA 로 확인(확인 끄지 않음). **Windows curl(schannel)은 사설 CA 에 CRL 이 없어 실패 → `--ssl-revoke-best-effort`**(watch.sh 반영, 브라우저는 영향 없음).
+- 다음: 게이트웨이·Keycloak HTTPS 는 ADR-0056 4단계와 같은 배포에서 — **그 전에 PC 1 신뢰 설치(사용자, `lan.sh tls-trust pc1`)**.
 
 ## 1. 원리
 

@@ -1,0 +1,5 @@
+# 사내 메일(ADR-0056 결정 9) — docker-mailserver 가 Postfix main.cf 에 덧붙인다.
+# pmart.com 은 우리 소유 인터넷 도메인이 아니다. pmart.com 사서함끼리만 주고받고, 밖으로는 절대 보내지 않는다
+# (잘못 새면 실제 pmart.com 소유자에게 간다). 우리 사서함(가상 도메인)으로 가는 메일은 virtual_transport(LMTP → Dovecot)라 영향 없음.
+default_transport = error:5.7.1 PMart LAN mail stays inside pmart.com
+relay_transport = error:5.7.1 PMart LAN mail stays inside pmart.com

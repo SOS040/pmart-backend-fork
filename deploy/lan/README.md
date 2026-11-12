@@ -159,6 +159,16 @@ PC 2·3·4·5 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수
    게이트웨이 `http://<pc4 IP>:8080` 응답.
 6. `placement.conf` 변경을 커밋하고 worklog 에 남긴다.
 
+## 사내 메일 (2026-11-12, ADR-0056 결정 9)
+
+- PC 5: `mailserver`(docker-mailserver 16.0.1, `pmart.com` 로컬 전용, **LAN 포트 없음**)·`roundcube`(1.7.6, **https://192.168.0.101:8190**, 사설 CA). 설정 `deploy/lan/mail/`.
+- 밖으로 보내지 않는다: `mail/postfix-main.cf` 의 `default_transport`·`relay_transport` = error(외부 주소는 `5.7.1 PMart LAN mail stays inside pmart.com` 으로 반송).
+- 같은 PC Docker 네트워크(172.28.0.0/24)는 `PERMIT_DOCKER=connected-networks` — Keycloak 이 HELO 로 컨테이너 ID 를 보내 FQDN 검사에 걸렸다.
+- 기본 사서함 `no-reply@`(Keycloak 발신)·`postmaster@` 은 `mail-accounts-init` 이 계정 파일에 없을 때만 넣는다(비밀번호 `.secrets/mail-*-password`, 서버엔 해시만). 계정 파일은 `mail-config` 볼륨 — 직원 사서함은 나중에 mail-provisioner(hr-service 와 함께).
+- 사서함 수동 추가(예비): `ssh pmart-pc5 docker exec pmart-lan-mailserver-1 setup email add <id>@pmart.com <비밀번호>`(별도 터미널), 목록 `setup email list`.
+- Keycloak `pmart-staff` SMTP = `mailserver:25`, 발신 `no-reply@pmart.com`(Realm 파일·실행 중 Realm 둘 다).
+- `postfix-main.cf`·Roundcube 설정 파일만 바꾸면 compose 가 컨테이너를 다시 만들지 않는다 → `lan.sh restart pc5 mailserver`(또는 roundcube).
+
 ## LAN HTTPS 사설 CA (2026-11-12, `docs/architecture/lan-https-private-ca.md`)
 
 - 루트 CA: 공개 인증서 `deploy/lan/tls/pmart-lan-root-ca.crt`(커밋, 기기·앱에 설치), 개인키 `.secrets/tls/pmart-lan-root-ca.key`(10년, `init-secrets.sh` 가 없을 때만 만든다 — 다시 만들면 모든 기기에 다시 설치).

@@ -46,14 +46,15 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
 # RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
 RAG_APPS=" ai-assistant-service customer-assistant-service "
 is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
 # rag-pgvector·ollama(ADR-0051)는 같은 PC 의 RAG 서비스만 컨테이너 이름으로 부른다 — 포트도 LAN 에 열지 않는다
 # RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service "
+# 사내 메일(ADR-0056 결정 9)·웹메일도 같은 PC(Keycloak·hr-service)만 이름으로 부른다
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -751,6 +752,91 @@ EOF
 
 EOF
         ;;
+      mailserver)
+        # 사내 메일(ADR-0056 결정 9): docker-mailserver(Postfix·Dovecot), 도메인 pmart.com 로컬 전용 — 밖으로 보내지 않는다(mail/postfix-main.cf).
+        # LAN 포트를 열지 않는다: Keycloak(SMTP 25)·Roundcube(IMAP 143·SMTP 587)·hr-service 가 같은 PC 에서 이름 mailserver 로 부른다.
+        # TLS 는 LAN 사설 CA(ADR-0057) 인증서. 계정 파일은 mail-config 볼륨 — 기본 사서함은 mail-accounts-init 이 없을 때만 넣는다(직원 사서함 보존).
+        # 바이러스·스팸·DKIM·SPF 검사는 끈다(내부 전용·메모리, SPF 는 실제 pmart.com 의 DNS 를 보게 된다)
+        cat <<EOF
+  mail-accounts-init:
+    <<: *common
+    image: ghcr.io/docker-mailserver/docker-mailserver@sha256:f892bc7479c4cdcc60dc3f50d2d9343a0624ac5e988a987d26c29f42a186fcd6 # 16.0.1
+    restart: "no"
+    entrypoint: ["sh", "/pmart/accounts-init.sh"]
+    environment:
+      PMART_MAIL_NOREPLY_HASH: \${PMART_MAIL_NOREPLY_HASH}
+      PMART_MAIL_POSTMASTER_HASH: \${PMART_MAIL_POSTMASTER_HASH}
+    volumes:
+      - mail-config:/tmp/docker-mailserver
+      - ./mail/accounts-init.sh:/pmart/accounts-init.sh:ro
+    mem_limit: 64m
+
+  mailserver:
+    <<: *common
+    image: ghcr.io/docker-mailserver/docker-mailserver@sha256:f892bc7479c4cdcc60dc3f50d2d9343a0624ac5e988a987d26c29f42a186fcd6 # 16.0.1
+    hostname: mail.pmart.com
+    networks: { default: { ipv4_address: $ip_addr } }
+    depends_on:
+      mail-accounts-init: { condition: service_completed_successfully }
+    environment:
+      POSTMASTER_ADDRESS: postmaster@pmart.com
+      ACCOUNT_PROVISIONER: FILE
+      SSL_TYPE: manual
+      SSL_CERT_PATH: /etc/pmart-tls/cert.pem
+      SSL_KEY_PATH: /etc/pmart-tls/key.pem
+      # 같은 PC Docker 네트워크(Keycloak·hr-service·mail-provisioner)를 mynetworks 로 — Keycloak 은 HELO 로 컨테이너 ID(점 없는 이름)를 보내
+      # reject_non_fqdn_helo_hostname 에 504 로 거절됐다(2026-11-12). 메일 서버는 LAN 포트가 없고, 밖으로 보내기는 postfix-main.cf 의 transport 가 막는다
+      PERMIT_DOCKER: connected-networks
+      SPOOF_PROTECTION: "0"
+      ENABLE_CLAMAV: "0"
+      ENABLE_SPAMASSASSIN: "0"
+      ENABLE_AMAVIS: "0"
+      ENABLE_RSPAMD: "0"
+      ENABLE_OPENDKIM: "0"
+      ENABLE_OPENDMARC: "0"
+      ENABLE_POLICYD_SPF: "0"
+      ENABLE_FAIL2BAN: "0"
+      ENABLE_POSTGREY: "0"
+      ENABLE_DNSBL: "0"
+      ENABLE_POP3: "0"
+      LOG_LEVEL: info
+    volumes:
+      - mail-config:/tmp/docker-mailserver
+      - ./mail/postfix-main.cf:/tmp/docker-mailserver/postfix-main.cf:ro
+      - mail-data:/var/mail
+      - mail-state:/var/mail-state
+      - mail-logs:/var/log/mail
+      - ./mail/tls:/etc/pmart-tls:ro
+    stop_grace_period: 1m
+    mem_limit: 512m
+
+EOF
+        ;;
+      roundcube)
+        # 사내 메일 웹메일(ADR-0056): LAN https://<이 PC IP>:8190 (ADR-0057 사설 CA). 메일 서버에는 같은 PC 에서 STARTTLS(IMAP 143·SMTP 587)로, 루트 CA 로 확인.
+        # 설정 덧붙임 mail/roundcube-pmart.php, HTTPS 는 mail/roundcube-ssl.conf(이미지 Apache 에 443 추가). DB 는 SQLite(roundcube-data 볼륨)
+        cat <<EOF
+  roundcube:
+    <<: *common
+    image: roundcube/roundcubemail@sha256:d23169b8bbb99b5e75adcd502b627d6f29e60833a7053a12e4ff133468c2e5b4 # 1.7.6-apache
+    ports: ["8190:443"]
+    networks: { default: { ipv4_address: $ip_addr } }
+    environment:
+      ROUNDCUBEMAIL_DEFAULT_HOST: tls://mailserver
+      ROUNDCUBEMAIL_DEFAULT_PORT: "143"
+      ROUNDCUBEMAIL_SMTP_SERVER: tls://mailserver
+      ROUNDCUBEMAIL_SMTP_PORT: "587"
+      ROUNDCUBEMAIL_DB_TYPE: sqlite
+      ROUNDCUBEMAIL_SKIN: elastic
+    volumes:
+      - roundcube-data:/var/roundcube/db
+      - ./mail/roundcube-pmart.php:/var/roundcube/config/pmart.php:ro
+      - ./mail/roundcube-ssl.conf:/etc/apache2/conf-enabled/pmart-ssl.conf:ro
+      - ./mail/tls:/etc/pmart-tls:ro
+    mem_limit: 256m
+
+EOF
+        ;;
       *)
         port="$(port_of "$c")"; [ -n "$port" ] || { echo "포트 없음: $c" >&2; exit 1; }
         echo "  $c:"
@@ -860,6 +946,8 @@ EOF
     [[ " ${COMPS[$pc]} " == *" log-shipper "* ]] && vols+="  fbdata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" rag-pgvector "* ]] && vols+="  ragpgdata:"$'\n'
     [[ " ${COMPS[$pc]} " == *" ollama "* ]] && vols+="  ollamadata:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" mailserver "* ]] && vols+="  mail-config:"$'\n'"  mail-data:"$'\n'"  mail-state:"$'\n'"  mail-logs:"$'\n'
+    [[ " ${COMPS[$pc]} " == *" roundcube "* ]] && vols+="  roundcube-data:"$'\n'
     [ -n "$vols" ] && printf 'volumes:\n%s' "$vols"
   } > "$dir/compose.yml"
 
@@ -1018,6 +1106,15 @@ EOF
       | sed "s|__PMART_KEYCLOAK_RELAY_SECRET__|${relay_secret}|" > "$dir/keycloak/pmart-staff-realm.json"
   fi
 
+  # 사내 메일(ADR-0056 결정 9)·웹메일: 설정 파일과 이 PC 의 LAN 사설 CA 인증서(ADR-0057, lan.sh tls-issue <pc> 가 만든 것). 키는 build/ 에만(git 제외)
+  if [[ "$comps" == *" mailserver "* || "$comps" == *" roundcube "* ]]; then
+    [ -f "$SECRETS/tls/$pc.crt" ] || { echo "$pc: LAN HTTPS 인증서 없음 — deploy/lan/lan.sh tls-issue $pc 먼저" >&2; exit 1; }
+    mkdir -p "$dir/mail/tls"
+    for f in postfix-main.cf accounts-init.sh roundcube-pmart.php roundcube-ssl.conf; do tr -d '\r' < "$LAN/mail/$f" > "$dir/mail/$f"; done
+    cp "$SECRETS/tls/$pc.crt" "$dir/mail/tls/cert.pem"; cp "$SECRETS/tls/$pc.key" "$dir/mail/tls/key.pem"
+    cp "$LAN/tls/pmart-lan-root-ca.crt" "$dir/mail/tls/pmart-lan-root-ca.crt"
+  fi
+
   if [[ "$comps" == *" connect "* ]]; then
     cp deploy/local/connector-registrar.sh "$dir/"
     mkdir -p "$dir/connectors" && cp deploy/local/connectors/*.json "$dir/connectors/"
@@ -1064,6 +1161,11 @@ EOF
     if [[ "$comps" == *" keycloak "* ]]; then
       echo "PMART_KEYCLOAK_ADMIN_PASSWORD=$(secret keycloak-admin-password)"
       echo "PMART_KEYCLOAK_DB_PASSWORD=$(secret keycloak-db-password)"
+    fi
+    # 사내 메일 기본 사서함 해시(SHA512-CRYPT, $ 가 있어 작은따옴표 — compose 가 변수로 읽지 않게). 원문 비밀번호는 넘기지 않는다
+    if [[ "$comps" == *" mailserver "* ]]; then
+      echo "PMART_MAIL_NOREPLY_HASH='$(secret mail-noreply-password | MSYS2_ARG_CONV_EXCL='*' openssl passwd -6 -stdin)'"
+      echo "PMART_MAIL_POSTMASTER_HASH='$(secret mail-postmaster-password | MSYS2_ARG_CONV_EXCL='*' openssl passwd -6 -stdin)'"
     fi
     if [[ "$comps" == *" s3 "* ]]; then
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
