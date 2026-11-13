@@ -27,8 +27,10 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 - 다른 저장소와의 요청·회신: `docs/handoff/`(README) — 클라이언트(pmart-clients)는 `docs/handoff/clients/`, MFC 시뮬레이터(pmart-mfc-simulation)는 `docs/handoff/simulator/`. 회신은 여기에만 쓰고 상대 저장소는 읽기만 한다
 - 업무 원문: `docs/business/*-business-logic.md` (확정 정책은 설계가 바꾸지 않는다. 문서에 없는 비즈니스 규칙은 추측하지 말고 질문)
 
-## 다른 PC 에서 개발할 때 (2026-11-13)
-- PC 3(MFC)·PC 5(배송) 등 PC 1 이 아닌 곳에서는 먼저 `docs/operations/dev-on-other-pcs.md` 를 읽는다 — 직원 토큰 받는 법(로컬 `dev-tokens`·LAN `staff_auth.py`), 시험 계정·비밀번호 파일, 없어진 auth-service 운영자 로그인. 배포는 PC 1 만.
+## PC 나눠 작업하기 (2026-11-13)
+- 영역: **platform**(PC 1 — 인증·HR·승인·게이트웨이·라이브러리·배포, 그 밖 서비스), **mfc**(PC 3), **delivery**(PC 5). 영역·서비스·계약 주인·규칙: `docs/operations/pc-split.md`. 배포는 PC 1 만.
+- 작업 일지는 **`docs/worklog/<영역>/YYYY-MM-DD.md`**(자기 영역 파일에만). handoff 파일 이름은 받는 앱 영역(`YYYY-MM-DD-<앱 영역>-<종류>-<주제>.md`)과 첫머리 `보낸 영역:`.
+- PC 1 이 아닌 곳에서는 먼저 `docs/operations/dev-on-other-pcs.md` — 직원 토큰 받는 법(로컬 `dev-tokens`·LAN `staff_auth.py`), 시험 계정·비밀번호 파일, 없어진 auth-service 운영자 로그인.
 
 ## 상세 규칙 (작업 영역에 따라 자동 로드)
 - 빌드/의존성: `.claude/rules/gradle-build.md`

@@ -9,3 +9,4 @@
 
 - 2026-11-09 사용자 결정으로 폴더를 나눴다. 그 전 클라이언트 handoff 는 `docs/handoff/` 바로 아래에 있었고 `clients/` 로 옮겼다(파일 이름은 그대로).
 - 파일 이름 `YYYY-MM-DD-<상대>-<종류>-<주제>.md`(종류: request·reply·notice). 규칙 세부는 각 폴더 README.
+- **2026-11-14 부터 클라이언트 handoff 는 `<상대>` 자리에 받는 앱 영역**(customer-app·mfc-app·rider-app·backoffice·hr-backoffice·web-common·all)을 쓰고 첫머리에 `보낸 영역: platform|mfc|delivery` — PC 를 나눠 작업하므로(`docs/operations/pc-split.md`). 시뮬레이터 handoff 는 mfc 영역이 맡는다.

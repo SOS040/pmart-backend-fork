@@ -1,6 +1,6 @@
 # 다른 PC(PC 3 MFC·PC 5 배송)에서 개발할 때 — 직원 인증 바뀐 뒤(2026-11-13)
 
-PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 2026-11-13 직원 로그인 구조(ADR-0056)가 끝까지 바뀌어서 예전 방법이 안 되는 것들이 있다. 배경: `docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md`, `docs/architecture/auth/employee-auth-structure.md`.
+PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 영역(platform·mfc·delivery)·일지·handoff 규칙은 `docs/operations/pc-split.md`. 2026-11-13 직원 로그인 구조(ADR-0056)가 끝까지 바뀌어서 예전 방법이 안 되는 것들이 있다. 배경: `docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md`, `docs/architecture/auth/employee-auth-structure.md`.
 
 ## 0. 먼저
 
