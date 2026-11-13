@@ -14,6 +14,28 @@
 - 영역을 넘는 사건·공통 계약은 platform 이 바꾼다(한 주인).
 - 브랜치 이름 `<영역>/<주제>`(예 `mfc/count-variance`). PR → PC 1 이 합치고 배포한다.
 
+### 1-1. 예정 영역 (2026-11-13 논의 — 아직 나누지 않음)
+
+| 영역 | 언제 | PC(예정) | 범위(예정) | 정할 것 |
+|---|---|---|---|---|
+| **rag** | 지금 나눠도 됨(로그인과 겹치지 않음 — 직원 토큰 모양은 그대로) | PC 2 추천(PC 4 는 게이트웨이·설정 서버·Eureka 가 있어 개발 부하가 LAN 전체에 번질 수 있음) | ai-assistant-service·customer-assistant-service, `docs/rag/`, `deploy/lan/rag/` | PC 확정. RAG 실행은 PC 5(ollama GPU·rag-pgvector, LAN 포트 없음) — 개발 PC 에 로컬 ollama 를 띄울지 PC 5 포트를 열지 |
+| **backoffice** | **로그인 마무리 뒤**(아래 기준) — 남은 로그인 일이 `web/core`·백오피스·인사팀 화면과 겹친다 | PC 4 추천(백오피스 화면 서빙도 PC 4) | 백엔드 `backoffice-bff`(+ case-service·audit-service 는 정할 것), 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(웹 공통 코드를 함께 — 한 주인). approval-service·hr-service·employee-auth-service 는 인증 중심이라 platform 에 남긴다(추천) | case·audit 포함 여부, hr-backoffice·웹 공통 포함 여부 |
+
+**로그인 마무리 기준**(이것이 끝나면 backoffice 영역을 나눈다):
+1. 두 백오피스가 HTTPS 로만 동작하고 HTTP 80·8081 을 닫음(클라이언트 HTTPS 빌드 대기 — 사용자 결정 "빌드 옮기고 닫아주고").
+2. 웹메일 로그인 방식 — Keycloak 로그인으로 합칠지(첫 로그인 = Keycloak 임시 비밀번호) 결정·적용.
+3. CSRF(웹 refresh token → HttpOnly 쿠키) — 할지·언제 할지 결정(지금 미룸).
+4. mfc_app 실기기 확인 통과(클라이언트).
+
+권한 변경·회수(BO-01)는 백오피스 업무 기능이라 backoffice 영역을 나눈 뒤 그 영역에서 해도 된다.
+
+PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 2 11GB·PC 4 10GB, 32GB 중). 개발을 시작하기 전에: Gradle 동시 작업·메모리 제한(PC 3·5 와 같은 조건), Windows 업데이트 자동 재부팅 방지 정책(PC 2·4 는 아직 — 사용자가 말할 때 건다), 비밀번호 파일 복사·`git pull`(`dev-on-other-pcs.md`).
+
+### 1-2. 영역 사이 알려진 연결
+
+- **mfc ↔ platform(hr-service)**: mfc-capacity 작업자 명단(고용 형태·상태)을 인사와 따로 입력한다 — 퇴사·정지·계약 종료가 MFC 배정에 반영되지 않고 고용 형태를 두 곳에서 넣는다. mfc-capacity 가 `EmployeeRegistered·Suspended·Reinstated·Left`(이미 있는 사건, 고용 형태·소속 센터 포함)를 구독하면 풀린다 — mfc 영역 일. 정할 것: 인사 등록 때 MFC 작업자 자동 생성 여부, 퇴사·정지 자동 반영 여부, 고용 형태 정본(추천: 인사).
+- **delivery**: 맞물리는 점 거의 없음(라이더 로그인 그대로, 배송 관리 API 를 직원으로 시험할 때만 토큰 받는 법이 바뀜).
+
 ## 2. 클라이언트 영역 (pmart-clients — 앱 단위)
 
 | 영역 | 폴더 |
