@@ -54,10 +54,10 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 2 — backoffice 영역(사용자 확정 2026-11-13, 로그인 마무리 뒤 시작)
 
-- 지금 할 일 없음 — 로그인 마무리 기준(`pc-split.md` §1-1: CSRF 시기·mfc_app 실기기) 뒤 시작. 그 전에 사용자 결정: 경계(case·audit 서비스, hr-backoffice·웹 공통 포함 여부).
+- 지금 할 일 없음 — 로그인 마무리 기준(`pc-split.md` §1-1: CSRF 쿠키 방식 LAN 켜기(ADR-0059 — 백엔드 구현 끝)·mfc_app 실기기) 뒤 시작. 그 전에 사용자 결정: 경계(case·audit 서비스, hr-backoffice·웹 공통 포함 여부).
 - 시작할 때: 공통 절 + 백엔드·클라이언트 두 저장소 포크(저장소마다 PR 따로).
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
 
 - [ ] 다른 PC 에 비밀번호 파일 복사(필요한 PC·파일만 — `dev-on-other-pcs.md` §2)
-- [ ] 결정: 개발 PC(PC 4)에서 ollama 쓰는 방법, backoffice 영역 경계, CSRF 언제 할지, MFC↔인사 3개
+- [ ] 결정: 개발 PC(PC 4)에서 ollama 쓰는 방법, backoffice 영역 경계, MFC↔인사 3개 (CSRF 는 2026-11-13 결정 — ADR-0059)
