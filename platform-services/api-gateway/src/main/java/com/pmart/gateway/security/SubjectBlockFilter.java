@@ -77,7 +77,7 @@ public class SubjectBlockFilter implements WebFilter, Ordered {
                 return Mono.just(Boolean.FALSE); // 발급자 규칙이 이미 막는다 — 여기서는 찾을 키가 없다
               }
               return blocklist
-                  .blockedBefore(iss, sub)
+                  .blockedBefore(iss, sub, jwt.getClaimAsString("sid"))
                   .timeout(lookupTimeout)
                   .map(before -> isBlocked(jwt.getIssuedAt(), before))
                   .doOnNext(
@@ -111,7 +111,7 @@ public class SubjectBlockFilter implements WebFilter, Ordered {
                   exchange,
                   HttpStatus.UNAUTHORIZED,
                   "SUBJECT_BLOCKED",
-                  "사용이 중지된 계정의 토큰입니다. 다시 로그인하세요.");
+                  "사용이 중지된 계정이거나 로그아웃한 세션의 토큰입니다. 다시 로그인하세요.");
             });
   }
 

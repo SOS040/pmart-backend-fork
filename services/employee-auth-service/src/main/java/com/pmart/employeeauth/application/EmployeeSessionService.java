@@ -1,5 +1,6 @@
 package com.pmart.employeeauth.application;
 
+import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore;
@@ -40,6 +41,7 @@ public class EmployeeSessionService {
   private final TransactionTemplate tx;
   private final Clock clock;
   private final EmployeeAccess access;
+  private final SubjectBlocks blocks;
 
   public EmployeeSessionService(
       EmployeeAuthStore store,
@@ -47,13 +49,15 @@ public class EmployeeSessionService {
       EmployeeAuthProperties props,
       TransactionTemplate tx,
       Clock clock,
-      EmployeeAccess access) {
+      EmployeeAccess access,
+      SubjectBlocks blocks) {
     this.store = store;
     this.tokens = tokens;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
     this.access = access;
+    this.blocks = blocks;
   }
 
   public EmployeeTokens.Tokens refresh(String refreshToken, @Nullable String deviceId) {
@@ -70,6 +74,15 @@ public class EmployeeSessionService {
               SessionRow s = store.session(r.sessionId(), true).orElseThrow();
               if (r.usedAt() != null) {
                 store.revokeSession(s.sessionId(), "REFRESH_REUSED", now);
+                // 탈취 의심 — 그 세션의 access token 도 바로 막는다(2026-11-13)
+                blocks.blockSession(
+                    s.operatorId(),
+                    s.sessionId(),
+                    version(s.operatorId()),
+                    now,
+                    "TOKEN_REUSED",
+                    new EventEnvelope.Actor(
+                        EventEnvelope.ActorType.SYSTEM, "employee-auth-service"));
                 log.warn("refresh token 재사용 감지: sessionId={}", s.sessionId());
                 reason[0] = "TOKEN_REUSED";
                 return null;
@@ -131,13 +144,26 @@ public class EmployeeSessionService {
                       && current.operatorId().equals(jwt.getSubject())
                   ? idpLogoutUri(current)
                   : null;
+          EventEnvelope.Actor me =
+              new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, jwt.getSubject());
+          // 이미 나간 access token(15분)도 바로 401 — 게이트웨이 Redis 차단 목록(2026-11-13)
           if (allDevices) {
             store.revokeAllSessions(jwt.getSubject(), "LOGOUT_ALL", now);
+            blocks.blockAll(jwt.getSubject(), version(jwt.getSubject()), now, "LOGOUT_ALL", me);
           } else if (sid != null) {
             store.revokeSession(sid, "LOGOUT", now);
+            if (current != null && current.operatorId().equals(jwt.getSubject())) {
+              blocks.blockSession(
+                  jwt.getSubject(), sid, version(jwt.getSubject()), now, "LOGOUT", me);
+            }
           }
           return idpLogout;
         });
+  }
+
+  /** 사건 aggregateVersion — 직원 계정 버전(없으면 1). */
+  private long version(String operatorId) {
+    return store.account(operatorId, false).map(a -> a.version()).orElse(1L);
   }
 
   /** Keycloak end_session(브라우저용). id_token_hint 로 확인 화면 없이 끝내고 그 앱의 로그인 화면으로 돌아온다. */

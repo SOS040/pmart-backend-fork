@@ -4,6 +4,7 @@ import com.pmart.auth.infrastructure.CustomerStore;
 import com.pmart.auth.infrastructure.SessionStore;
 import com.pmart.auth.infrastructure.SessionStore.RefreshRow;
 import com.pmart.auth.infrastructure.SessionStore.SessionRow;
+import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import java.time.Clock;
@@ -44,6 +45,7 @@ public class SessionService {
   private final CustomerProperties customerProps;
   private final GuestProperties guestProps;
   private final TransactionTemplate tx;
+  private final SessionBlocks blocks;
   private final Clock clock;
 
   public SessionService(
@@ -53,13 +55,15 @@ public class SessionService {
       CustomerProperties customerProps,
       GuestProperties guestProps,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      SessionBlocks blocks) {
     this.store = store;
     this.customers = customers;
     this.tokens = tokens;
     this.customerProps = customerProps;
     this.guestProps = guestProps;
     this.tx = tx;
+    this.blocks = blocks;
     this.clock = clock;
   }
 
@@ -78,6 +82,14 @@ public class SessionService {
               if (r.usedAt() != null) {
                 // 이미 쓴 refresh token 이 다시 왔다 — 탈취 가능성, 세션 전체 폐기
                 store.revokeSession(s.sessionId(), "REFRESH_REUSED", now);
+                // 그 세션의 access token 도 게이트웨이에서 바로 막는다(2026-11-13)
+                blocks.block(
+                    s.principalId(),
+                    s.sessionId(),
+                    s.principalType(),
+                    now,
+                    "TOKEN_REUSED",
+                    new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "auth-service"));
                 log.warn("refresh token 재사용 감지: sessionId={}", s.sessionId());
                 reason[0] = "TOKEN_REUSED";
                 return null;
@@ -152,10 +164,17 @@ public class SessionService {
     Instant now = clock.instant();
     tx.executeWithoutResult(
         status -> {
+          // 이미 나간 access token 도 바로 401 — 게이트웨이 Redis 차단 목록(2026-11-13)
+          String type = jwt.getClaimAsString("typ");
+          EventEnvelope.Actor actor =
+              new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "auth-service");
+          String sid = jwt.getClaimAsString("sid");
           if (allDevices) {
             store.revokeAllSessions(jwt.getSubject(), "LOGOUT_ALL", now);
-          } else if (jwt.getClaimAsString("sid") != null) {
-            store.revokeSession(jwt.getClaimAsString("sid"), "LOGOUT", now);
+            blocks.block(jwt.getSubject(), null, type, now, "LOGOUT_ALL", actor);
+          } else if (sid != null) {
+            store.revokeSession(sid, "LOGOUT", now);
+            blocks.block(jwt.getSubject(), sid, type, now, "LOGOUT", actor);
           }
         });
   }

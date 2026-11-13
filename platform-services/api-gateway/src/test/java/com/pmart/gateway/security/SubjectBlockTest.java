@@ -81,6 +81,48 @@ class SubjectBlockTest {
     assertThat(run(list, NOW.minusSeconds(30))).isNull();
   }
 
+  /** 로그아웃(2026-11-13): 그 세션(sid)의 토큰만 막고, 같은 사람의 다른 세션은 통과. */
+  @Test
+  void loggedOutSessionIsBlockedOtherSessionsPass() {
+    FakeBlocklist list = new FakeBlocklist();
+    list.sessionEntry = Mono.just(NOW.getEpochSecond());
+    assertThat(run(list, withSid("ESES-1"))).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(list.sessionLookedUp).isEqualTo("http://employee-auth-service:8511|ESES-1");
+    list.sessionEntry = Mono.empty(); // 다른 세션(항목 없음)
+    assertThat(run(list, withSid("ESES-2"))).isNull();
+  }
+
+  @Test
+  void sessionEventIsRecordedPerSession() {
+    FakeBlocklist list = new FakeBlocklist();
+    SubjectBlockEvents events =
+        new SubjectBlockEvents(
+            list, Duration.ofHours(2), Duration.ofSeconds(1), Clock.fixed(NOW, ZoneOffset.UTC));
+    events.accept(
+        message(
+            """
+            {"eventId":"e-2","eventType":"SubjectBlocked","payload":{"issuer":"http://employee-auth-service:8511",
+             "subject":"OP-1","sessionId":"ESES-1","userType":"OPERATOR","blockedBefore":"%s","reason":"LOGOUT"}}
+            """
+                .formatted(NOW.toString())));
+    assertThat(list.recorded).isEmpty();
+    assertThat(list.sessions).hasSize(1);
+    assertThat(list.sessions.get(0).subject()).isEqualTo("ESES-1");
+  }
+
+  private static JwtAuthenticationToken withSid(String sid) {
+    Jwt jwt =
+        Jwt.withTokenValue("t")
+            .header("alg", "RS256")
+            .subject("OP-1")
+            .claim("iss", "http://employee-auth-service:8511")
+            .claim("sid", sid)
+            .issuedAt(NOW.minusSeconds(30))
+            .expiresAt(NOW.plusSeconds(900))
+            .build();
+    return new JwtAuthenticationToken(jwt, List.of());
+  }
+
   @Test
   void eventIsRecordedWithTtlFromBlockTime() {
     FakeBlocklist list = new FakeBlocklist();
@@ -167,10 +209,27 @@ class SubjectBlockTest {
       return entry;
     }
 
+    Mono<Long> sessionEntry = Mono.empty();
+    String sessionLookedUp;
+    final List<Recorded> sessions = new ArrayList<>();
+
+    @Override
+    public Mono<Long> sessionBlockedBefore(String issuer, String sessionId) {
+      sessionLookedUp = issuer + "|" + sessionId;
+      return sessionEntry;
+    }
+
     @Override
     public Mono<Boolean> record(
         String issuer, String subject, Instant blockedBefore, Duration ttl) {
       recorded.add(new Recorded(issuer, subject, blockedBefore, ttl));
+      return Mono.just(true);
+    }
+
+    @Override
+    public Mono<Boolean> recordSession(
+        String issuer, String sessionId, Instant blockedBefore, Duration ttl) {
+      sessions.add(new Recorded(issuer, sessionId, blockedBefore, ttl));
       return Mono.just(true);
     }
   }

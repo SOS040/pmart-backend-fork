@@ -46,7 +46,7 @@
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://192.168.0.40/login##http://d603-16/login##http://localhost:5173/login##http://192.168.0.40:8081/login##http://d603-16:8081/login##http://localhost:5174/login"
+        "post.logout.redirect.uris": "http://192.168.0.40/login##http://d603-16/login##http://localhost:5173/login##http://192.168.0.40:8081/login##http://d603-16:8081/login##http://localhost:5174/login##https://192.168.0.40/login##https://d603-16/login##https://192.168.0.40:8444/login##https://d603-16:8444/login"
       },
       "fullScopeAllowed": false,
       "protocolMappers": [

@@ -63,11 +63,18 @@ public class SubjectBlockEvents implements Consumer<Message<byte[]>> {
       throw new IllegalArgumentException("SubjectBlocked.blockedBefore 형식이 잘못되었습니다", e);
     }
     Duration ttl = Duration.between(clock.instant(), blockedBefore.plus(maxTokenLifetime));
-    Boolean written = blocklist.record(issuer, subject, blockedBefore, ttl).block(writeTimeout);
+    // sessionId 가 있으면 그 세션의 토큰만(로그아웃·refresh 재사용), 없으면 그 주체의 모든 토큰
+    String sessionId = p.path("sessionId").asString("");
+    Boolean written =
+        (sessionId.isBlank()
+                ? blocklist.record(issuer, subject, blockedBefore, ttl)
+                : blocklist.recordSession(issuer, sessionId, blockedBefore, ttl))
+            .block(writeTimeout);
     // 주체 ID 는 로그에 남기지 않는다 — 사건 ID 로 찾는다
     log.info(
-        "subject block event eventId={} userType={} reason={} issuer={} written={} ttlSeconds={}",
+        "subject block event eventId={} scope={} userType={} reason={} issuer={} written={} ttlSeconds={}",
         envelope.path("eventId").asString(""),
+        sessionId.isBlank() ? "SUBJECT" : "SESSION",
         p.path("userType").asString(""),
         p.path("reason").asString(""),
         issuer,

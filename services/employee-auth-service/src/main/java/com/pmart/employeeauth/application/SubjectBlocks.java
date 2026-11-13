@@ -5,6 +5,7 @@ import com.pmart.common.messaging.EventPublisher;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,12 +31,49 @@ public class SubjectBlocks {
    */
   public void block(
       String operatorId, long aggregateVersion, Instant blockedBefore, EventEnvelope.Actor actor) {
+    publish(operatorId, null, aggregateVersion, blockedBefore, "ACCOUNT_DISABLED", actor);
+  }
+
+  /** 그 직원의 모든 세션 토큰(모든 기기 로그아웃 — LOGOUT_ALL). */
+  public void blockAll(
+      String operatorId,
+      long aggregateVersion,
+      Instant blockedBefore,
+      String reason,
+      EventEnvelope.Actor actor) {
+    publish(operatorId, null, aggregateVersion, blockedBefore, reason, actor);
+  }
+
+  /**
+   * 세션 하나의 토큰만(로그아웃 LOGOUT, refresh 재사용 TOKEN_REUSED — 2026-11-13). 게이트웨이가 (iss, sid) 로 막는다 — 이미 나간
+   * access token(15분)도 바로 401. 같은 직원의 다른 기기 세션은 그대로.
+   */
+  public void blockSession(
+      String operatorId,
+      String sessionId,
+      long aggregateVersion,
+      Instant blockedBefore,
+      String reason,
+      EventEnvelope.Actor actor) {
+    publish(operatorId, sessionId, aggregateVersion, blockedBefore, reason, actor);
+  }
+
+  private void publish(
+      String operatorId,
+      @Nullable String sessionId,
+      long aggregateVersion,
+      Instant blockedBefore,
+      String reason,
+      EventEnvelope.Actor actor) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("issuer", issuer);
     payload.put("subject", operatorId);
+    if (sessionId != null) {
+      payload.put("sessionId", sessionId);
+    }
     payload.put("userType", "OPERATOR");
     payload.put("blockedBefore", blockedBefore.toString());
-    payload.put("reason", "ACCOUNT_DISABLED");
+    payload.put("reason", reason);
     events.publish(
         "SubjectBlocked",
         1,

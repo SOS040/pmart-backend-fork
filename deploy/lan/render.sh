@@ -333,11 +333,12 @@ EOF
   backoffice-web:
     <<: *common
     image: nginx:1.27-alpine
-    ports: ["80:80"]
+    ports: ["80:80", "443:443"] # HTTPS(ADR-0057) — HTTP 는 클라이언트가 옮길 때까지 함께(T3)
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./backoffice:/usr/share/nginx/html:ro
       - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(LAN 사설 CA)
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
       interval: 10s
@@ -353,11 +354,12 @@ EOF
   hr-backoffice-web:
     <<: *common
     image: nginx:1.27-alpine
-    ports: ["8081:80"]
+    ports: ["8081:80", "8444:443"] # HTTPS 8444(ADR-0057) — HTTP 8081 은 클라이언트가 옮길 때까지 함께(T3)
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./hr-backoffice:/usr/share/nginx/html:ro
       - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(LAN 사설 CA)
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
       interval: 10s
@@ -1158,8 +1160,8 @@ EOF
     cp "$LAN/tls/pmart-lan-root-ca.crt" "$dir/mail/tls/pmart-lan-root-ca.crt"
   fi
 
-  # 게이트웨이 HTTPS(ADR-0057): 이 PC 서버 인증서·키 → build/<pc>/tls(키는 build/ 에만, git 제외)
-  if [[ "$comps" == *" api-gateway "* ]]; then
+  # 게이트웨이·백오피스 HTTPS(ADR-0057): 이 PC 서버 인증서·키 → build/<pc>/tls(키는 build/ 에만, git 제외)
+  if [[ "$comps" == *" api-gateway "* || "$comps" == *" backoffice-web "* || "$comps" == *" hr-backoffice-web "* ]]; then
     [ -f "$SECRETS/tls/$pc.crt" ] || { echo "$pc: LAN HTTPS 인증서 없음 — deploy/lan/lan.sh tls-issue $pc 먼저" >&2; exit 1; }
     mkdir -p "$dir/tls"
     cp "$SECRETS/tls/$pc.crt" "$dir/tls/cert.pem"; cp "$SECRETS/tls/$pc.key" "$dir/tls/key.pem"

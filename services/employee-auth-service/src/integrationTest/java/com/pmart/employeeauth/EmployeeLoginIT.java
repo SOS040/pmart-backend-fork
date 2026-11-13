@@ -52,7 +52,8 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "pmart.employee-auth.issuer=http://employee-auth.test",
       "pmart.employee-auth.keycloak.client-secret=it-employee-auth-secret",
-      "pmart.employee-auth.dev-token-exchange.enabled=true"
+      "pmart.employee-auth.dev-token-exchange.enabled=true",
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 class EmployeeLoginIT extends PostgresKafkaContainerSupport {
 
@@ -348,6 +349,9 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
     assertThat(refresh(r2.body().path("refreshToken").asText(), "pda-1").status())
         .as("재사용 감지로 세션이 끝났다")
         .isEqualTo(401);
+    // 그 세션의 access token 도 게이트웨이에서 바로 막히게 — 세션 단위 SubjectBlocked(2026-11-13)
+    assertThat(sessionBlock(r.body().path("tokens").path("sessionId").asText()))
+        .contains("\"reason\": \"TOKEN_REUSED\"");
 
     // 다시 로그인 → 로그아웃 → 현재 세션 401
     JsonNode again = loginTokens("worker1", "pda-1");
@@ -363,6 +367,21 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
         .isEqualTo(401);
     assertThat(refresh(again.path("tokens").path("refreshToken").asText(), "pda-1").status())
         .isEqualTo(401);
+    // 로그아웃한 세션의 access token(15분)도 바로 막는다 — 세션 단위 SubjectBlocked
+    assertThat(sessionBlock(again.path("tokens").path("sessionId").asText()))
+        .contains("\"reason\": \"LOGOUT\"")
+        .contains("\"userType\": \"OPERATOR\"");
+  }
+
+  /** 그 세션의 SubjectBlocked 사건(outbox payload), 없으면 빈 문자열. */
+  String sessionBlock(String sessionId) {
+    return String.join(
+        " | ",
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE topic = 'platform.subject-block.v1'"
+                + " AND payload -> 'payload' ->> 'sessionId' = ?",
+            String.class,
+            sessionId));
   }
 
   @Test

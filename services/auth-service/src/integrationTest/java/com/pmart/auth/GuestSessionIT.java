@@ -28,12 +28,14 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "pmart.auth.signing.ephemeral=true",
-      "pmart.auth.issuer=http://auth-service.test"
+      "pmart.auth.issuer=http://auth-service.test",
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 class GuestSessionIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   RestClient http;
 
@@ -136,5 +138,14 @@ class GuestSessionIT extends PostgresKafkaContainerSupport {
             call(HttpMethod.POST, "/auth/logouts", access, Map.of("allDevices", false), Map.of())
                 .status())
         .isEqualTo(204);
+    // 로그아웃한 세션의 access token 도 게이트웨이에서 바로 막는다 — 세션 단위 SubjectBlocked(2026-11-13)
+    String sid = claims(access).path("sid").asString();
+    String block =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE topic = 'platform.subject-block.v1'"
+                + " AND payload -> 'payload' ->> 'sessionId' = ?",
+            String.class,
+            sid);
+    assertThat(block).contains("LOGOUT").contains("GUEST").contains("http://auth-service.test");
   }
 }
