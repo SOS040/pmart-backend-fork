@@ -22,7 +22,7 @@
 | **backoffice** | **로그인 마무리 뒤**(아래 기준) — 남은 로그인 일이 `web/core`·백오피스·인사팀 화면과 겹친다 | PC 4 추천(백오피스 화면 서빙도 PC 4) | 백엔드 `backoffice-bff`(+ case-service·audit-service 는 정할 것), 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(웹 공통 코드를 함께 — 한 주인). approval-service·hr-service·employee-auth-service 는 인증 중심이라 platform 에 남긴다(추천) | case·audit 포함 여부, hr-backoffice·웹 공통 포함 여부 |
 
 **로그인 마무리 기준**(이것이 끝나면 backoffice 영역을 나눈다):
-1. 두 백오피스가 HTTPS 로만 동작하고 HTTP 80·8081 을 닫음(클라이언트 HTTPS 빌드 대기 — 사용자 결정 "빌드 옮기고 닫아주고").
+1. ~~두 백오피스 HTTPS 전환·HTTP 닫기~~ — **끝(2026-11-13)**: HTTPS 빌드 올림, 80·8081 은 HTTPS 로 301, 허용 목록에서 http 주소 제거. 남은 것: 클라이언트의 브라우저 로그인·업무 화면 확인.
 2. ~~웹메일 로그인 방식~~ — **결정 2026-11-13: 합치지 않는다**(사용자 "안함"). 웹메일은 사서함 비밀번호, 사내 로그인은 Keycloak 비밀번호 — 지금 구조 그대로.
 3. CSRF(웹 refresh token → HttpOnly 쿠키) — 할지·언제 할지 결정(지금 미룸).
 4. mfc_app 실기기 확인 통과(클라이언트).
