@@ -5,7 +5,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 ## 0. 시작 전에
 
 1. `docs/operations/pc-split.md`(영역·일지·handoff 규칙), `docs/operations/dev-on-other-pcs.md`(직원 토큰·시험 계정·비밀번호 파일)를 읽는다.
-2. 작업 일지는 `docs/worklog/mfc/YYYY-MM-DD.md`, 브랜치 `mfc/<주제>`, PR → PC 1 이 합치고 배포. 배포·`.secrets` 원본·Jib push 는 PC 1.
+2. 작업 일지는 `docs/worklog/mfc/YYYY-MM-DD.md`, 브랜치 `mfc/<주제>`. **main 에 직접 넣지 않는다 — PR 만, PC 1 이 검토 뒤 병합·배포.** 배포·`.secrets` 원본·Jib push 는 PC 1.
 3. 저장소 위치는 어디든 된다(드라이브 무관). 다만 **`pmart-backend`·`pmart-clients`·`pmart-mfc-simulation` 을 같은 부모 폴더의 형제로** 둔다 — 시뮬레이터·클라이언트 문서·도구가 `../pmart-…` 를 가정한다.
 4. **OR-Tools 시험**: PC 3 은 Windows 애플리케이션 제어 정책이 OR-Tools 네이티브 DLL 을 막는다 → `tools/ortools-test-docker.sh` 로 Docker 안에서 돌린다(2026-11-12 PC 3 37/37 확인. SSH 로 할 때는 `DOCKER_CONFIG=~/.docker-pmart` + Docker Desktop `resources/bin` 경로, PC 앞에서는 그냥 됨). 그 밖의 시험은 그대로 `./gradlew :services:<mfc 서비스>:check`.
 
