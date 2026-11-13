@@ -69,4 +69,4 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 
 ## 6. 다른 PC 가 알아야 할 사실은 저장소 문서에
 
-Claude 메모는 PC 마다 따로라 서로 모른다. 다른 PC 도 알아야 할 사실(계정·토큰 받는 법·바뀐 규칙)은 메모가 아니라 저장소 문서에 둔다 — `docs/operations/dev-on-other-pcs.md`(개발 방법), 이 문서(영역·기록 규칙). 루트 `CLAUDE.md` 가 두 문서를 가리킨다.
+Claude 메모는 PC 마다 따로라 서로 모른다. 다른 PC 도 알아야 할 사실(계정·토큰 받는 법·바뀐 규칙)은 메모가 아니라 저장소 문서에 둔다 — `docs/operations/dev-on-other-pcs.md`(개발 방법), `docs/operations/other-pcs-todo.md`(PC 별 할 일), 이 문서(영역·기록 규칙). 루트 `CLAUDE.md` 가 두 문서를 가리킨다.

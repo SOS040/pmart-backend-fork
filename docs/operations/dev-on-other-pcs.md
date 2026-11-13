@@ -1,6 +1,6 @@
 # 다른 PC(PC 3 MFC·PC 5 배송)에서 개발할 때 — 직원 인증 바뀐 뒤(2026-11-13)
 
-PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 영역(platform·mfc·delivery)·일지·handoff 규칙은 `docs/operations/pc-split.md`. 2026-11-13 직원 로그인 구조(ADR-0056)가 끝까지 바뀌어서 예전 방법이 안 되는 것들이 있다. 배경: `docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md`, `docs/architecture/auth/employee-auth-structure.md`.
+PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. **PC 별로 지금 할 일은 `other-pcs-todo.md`**(체크리스트). 영역(platform·mfc·delivery)·일지·handoff 규칙은 `docs/operations/pc-split.md`. 2026-11-13 직원 로그인 구조(ADR-0056)가 끝까지 바뀌어서 예전 방법이 안 되는 것들이 있다. 배경: `docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md`, `docs/architecture/auth/employee-auth-structure.md`.
 
 ## 0. 먼저
 
@@ -53,7 +53,7 @@ PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 영�
 
 ## 3. 새 시험 직원 만들기
 
-- **인사팀 백오피스**(`http://192.168.0.40:8081`, HTTPS `https://192.168.0.40:8444`) 또는 hr-service API(`POST /api/v1/hr/employees`, `HR_ADMIN`)로 등록한다. 사서함·Keycloak 계정·비밀번호 설정 메일이 자동으로 생긴다.
+- **인사팀 백오피스**(`https://192.168.0.40:8444` — HTTP 8081 은 2026-11-13 닫혀 HTTPS 로 넘어간다) 또는 hr-service API(`POST /api/v1/hr/employees`, `HR_ADMIN`)로 등록한다. 사서함·Keycloak 계정·비밀번호 설정 메일이 자동으로 생긴다.
 - 요청 권한: 소속 센터의 `MFC_WORKER` 는 자동 승인, 그 밖은 승인함(`OPERATOR_ADMIN`)에서 승인.
 - 예전 `/operator-accounts` 로 만드는 방법은 없다.
 
