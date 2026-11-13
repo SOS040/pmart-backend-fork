@@ -61,5 +61,5 @@ kickoff §6 "남은 결정"이 정본. 요약:
 
 - **mfc**(PC 3): 인계 계약·사건. MFC 서비스·계약을 고쳐야 하면 직접 고치지 않고 `service-requests/<mfc 서비스>.md` 에 요청. 배송이 받는 요청은 그 폴더의 delivery 파일들.
 - **order-service**(platform): O-1 `PackageHandedOver` → 인계 수량·주문 상태 — 인계 시험 전에 같이(PC 1 에 요청).
-- **클라이언트**: 라이더 앱(`apps/rider_app`, 클라이언트 영역 rider-app). 라이더 로그인 안내 `docs/handoff/clients/2026-11-10-clients-notice-rider-google-login.md`. 라이더 앱 handoff 는 `docs/handoff/clients/YYYY-MM-DD-rider-app-<종류>-<주제>.md`, 첫머리 `보낸 영역: delivery`.
+- **클라이언트**: 라이더 앱(`apps/rider_app`, 클라이언트 영역 rider-app). 라이더 로그인 안내 `docs/handoff/clients/rider-app/2026-11-10-clients-notice-rider-google-login.md`. 라이더 앱 handoff 는 `docs/handoff/clients/YYYY-MM-DD-rider-app-<종류>-<주제>.md`, 첫머리 `보낸 영역: delivery`.
 - 일지 `docs/worklog/delivery/YYYY-MM-DD.md`(2026-11-14 부터). 이전 배송 기록은 루트 일지(`docs/worklog/2026-10-30~11-11.md`)에 섞여 있다.
