@@ -271,8 +271,13 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 id))
         .isZero();
-    // 다른 센터 운영자 403, 반려 → 원래 상태(고객 도착 전이면 PICKED_UP)로
+    // 다른 센터 관리자 403, 같은 센터 작업자 403(관리자만 — 2026-11-14), 반려 → 원래 상태(고객 도착 전이면 PICKED_UP)로
     assertThat(decide(id, "OP-X", List.of("MFC-OTHER"), "REJECT").getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(
+            decide(id, "OP-W", List.of("MFC_WORKER"), List.of("MFC-1"), "REJECT")
+                .getStatusCode()
+                .value())
         .isEqualTo(403);
     assertThat(decide(id, "OP-1", List.of("MFC-1"), "REJECT").getStatusCode().value())
         .isEqualTo(200);
@@ -521,11 +526,16 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   ResponseEntity<String> decide(String id, String operator, List<String> centers, String decision) {
+    return decide(id, operator, List.of("MFC_SUPERVISOR"), centers, decision);
+  }
+
+  ResponseEntity<String> decide(
+      String id, String operator, List<String> roles, List<String> centers, String decision) {
     return http.post()
         .uri("/deliveries/{id}/failure-decisions", id)
         .headers(
             h -> {
-              h.setBearerAuth(TestJwt.operator(operator, List.of(), centers));
+              h.setBearerAuth(TestJwt.operator(operator, roles, centers));
               h.set("Idempotency-Key", UUID.randomUUID().toString());
               h.set("X-Source-System", "mfc-backoffice");
             })

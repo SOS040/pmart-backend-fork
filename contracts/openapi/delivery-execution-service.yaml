@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.3.0
+  version: 0.3.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -235,7 +235,7 @@ paths:
       summary: 전달 실패 확정·반려 (운영자 — 지원센터 화면 전까지 백오피스 권한자)
       description: |
         FAILURE_REPORTED 배송만. CONFIRM → FAILED + DeliveryFailed(배송 종료 — dispatch 는 CLOSED, 라이더 진행 중 수에서 빠짐). 이어지는 회수 배차는 새 배송.
-        REJECT → 실패 등록 전 상태로 되돌린다(라이더가 전달을 계속). 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT.
+        REJECT → 실패 등록 전 상태로 되돌린다(라이더가 전달을 계속). 관리자만 — 그 센터의 MFC_SUPERVISOR·OPERATOR_ADMIN·CS_AGENT(0.3.1, 같은 센터 작업자는 403).
       operationId: decideFailure
       x-pmart-user-types: [OPERATOR]
       parameters:

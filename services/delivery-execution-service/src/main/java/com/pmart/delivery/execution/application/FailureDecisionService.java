@@ -81,8 +81,9 @@ public class FailureDecisionService {
                       .lockDelivery(deliveryId)
                       .orElseThrow(
                           () -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
-              if (!Access.operatorCanSee(p, d.mfcId())) {
-                throw ExecutionService.forbidden("이 센터 배송의 실패를 결정할 수 없습니다.");
+              if (!Access.operatorCanDecide(p, d.mfcId())) {
+                throw ExecutionService.forbidden(
+                    "이 배송의 실패를 결정할 권한이 없습니다(센터 관리자·OPERATOR_ADMIN·CS_AGENT).");
               }
               if (expectedVersion != null && expectedVersion != d.version()) {
                 throw PmartException.versionConflict("배송이 바뀌었습니다(현재 버전 " + d.version() + ").");
