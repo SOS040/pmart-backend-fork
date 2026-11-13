@@ -23,13 +23,13 @@
 
 **로그인 마무리 기준**(이것이 끝나면 backoffice 영역을 나눈다):
 1. 두 백오피스가 HTTPS 로만 동작하고 HTTP 80·8081 을 닫음(클라이언트 HTTPS 빌드 대기 — 사용자 결정 "빌드 옮기고 닫아주고").
-2. 웹메일 로그인 방식 — Keycloak 로그인으로 합칠지(첫 로그인 = Keycloak 임시 비밀번호) 결정·적용.
+2. ~~웹메일 로그인 방식~~ — **결정 2026-11-13: 합치지 않는다**(사용자 "안함"). 웹메일은 사서함 비밀번호, 사내 로그인은 Keycloak 비밀번호 — 지금 구조 그대로.
 3. CSRF(웹 refresh token → HttpOnly 쿠키) — 할지·언제 할지 결정(지금 미룸).
 4. mfc_app 실기기 확인 통과(클라이언트).
 
 권한 변경·회수(BO-01)는 백오피스 업무 기능이라 backoffice 영역을 나눈 뒤 그 영역에서 해도 된다.
 
-PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 2 11GB·PC 4 10GB, 32GB 중). 개발을 시작하기 전에: Gradle 동시 작업·메모리 제한(PC 3·5 와 같은 조건), Windows 업데이트 자동 재부팅 방지 정책(PC 2·4 는 아직 — 사용자가 말할 때 건다), 비밀번호 파일 복사·`git pull`(`dev-on-other-pcs.md`).
+PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 2 11GB·PC 4 10GB, 32GB 중). **2026-11-13 적용함**(사용자 요청): Windows 업데이트 정책(AUOptions 4·로그인 중 자동 재부팅 안 함·사용 시간 08~02)과 Gradle 사용자 단위 제한(`%USERPROFILE%\.gradle\gradle.properties` — `org.gradle.workers.max=2`, `-Xmx2g`, 프로젝트 설정보다 우선). PC 3·5 는 Windows 업데이트 정책만 있고 Gradle 제한 파일은 없다(사용 시간도 PC 3 09~02·PC 5 08~19 로 다름). 개발 시작 전 남은 것: 비밀번호 파일 복사·`git pull`(`dev-on-other-pcs.md`).
 
 ### 1-2. 영역 사이 알려진 연결
 
