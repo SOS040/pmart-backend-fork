@@ -192,11 +192,11 @@
 | `DispatchOfferSent` | delivery-dispatch | notification(라이더 알림) | offerId, attemptId, deliveryId, riderId, expiresAt(1분), fee | 제안 전송 | ① |
 | `DeliveryAssigned` | delivery-dispatch | delivery-execution, delivery-tracking, mfc-fulfillment, order, notification | deliveryId, riderId, assignmentVersion, acceptedAt, fee·vehicleType·distanceM(수락 당시 금액·조건 — execution 수행료 기준, 2026-11-13) | 유효 수락 1건 확정 | ① |
 | `DeliveryAssignmentChanged` | delivery-dispatch | delivery-execution, mfc-fulfillment(이전 기사 인계 차단) | deliveryId, oldRiderId, newRiderId, assignmentVersion, reason | 재배정·배차 취소 | ① |
-| `DispatchFailed` | delivery-dispatch | case, notification, order | deliveryId, reason(NO_RIDER/REPEATED_REJECTION/EXPIRED/SYSTEM_FAILURE — API 와 같게, 2026-11-10), attempts | 배차 불가 | ① |
+| `DispatchFailed` | delivery-dispatch | case, notification, order | deliveryId, reason(NO_RIDER/REPEATED_REJECTION/EXPIRED/SYSTEM_FAILURE — API 와 같게, 2026-11-10), attempts | 배차 시도 실패 — **최종 실패가 아니다**: 배송은 배차 대기 그대로 다음 시도(RETRY)로 다시 요청되어 시도마다 반복될 수 있다(2026-11-14, PR #8). 구독자는 attempts 로 보고 주문·결제를 실패로 닫지 않는다 | ① |
 | `DispatchDelayed` | delivery-dispatch | notification(점포·CS·고객), case | deliveryId, delayedMinutes, threshold | 지연 임계 초과 | ① |
 | `DeliveryCancelledBeforePickup` | delivery-dispatch | delivery-execution, mfc-fulfillment, order | deliveryId, reason | 픽업 전 취소(상품은 점포 보관) | ① |
 | `RiderArrivedAtStore` | delivery-execution | mfc-fulfillment(QR 활성), delivery-tracking | deliveryId, riderId, at | 가게 도착(인계 아님) | ① |
-| `PickupCompleted` | delivery-execution | order, delivery-tracking, notification, delivery-dispatch | deliveryId, packageIds[], handoverIds[], at | 모든 포장 `PackageHandedOver` 확인 후 | ① |
+| `PickupCompleted` | delivery-execution | order, delivery-tracking, notification(delivery-dispatch 는 이 사건 대신 `PackageHandedOver` 를 직접 구독 — 2026-11-14) | deliveryId, packageIds[], handoverIds[], at | 모든 포장 `PackageHandedOver` 확인 후 | ① |
 | `RiderArrivedAtCustomer` | delivery-execution | notification | deliveryId, at | 고객 도착 | ① |
 | `DeliveryCompleted` | delivery-execution | order, review, notification, claim, demand-planning, BI, delivery-dispatch(배송 CLOSED — 라이더 진행 중 수에서 뺌) | deliveryId, orderId, lines[{orderLineId, qty}], method(FACE/CONTACTLESS), evidenceRef, deliveredAt | 사진 증빙 확인 후 서버 완료(자동 완료 없음) | ① |
 | `DeliveryFailed` | delivery-execution | order, claim, case, notification, delivery-dispatch(배송 CLOSED) | deliveryId, reason, custody(RIDER/STORE), goodsLocation, at | 운영자가 라이더 실패 등록을 확정했을 때(등록만으로는 진행 중 — 2026-11-13) | ① |
