@@ -2,7 +2,7 @@
 
 - 상태: 제안
 - 날짜: 2026-10-30
-- 관련: ADR-0011(서비스 신원), ADR-0018·0019(로그인), 클라이언트 회신 `docs/handoff/clients/2026-10-30-clients-reply-customer-app-priority.md` 2-2 (a)(사용자 승인)
+- 관련: ADR-0011(서비스 신원), ADR-0018·0019(로그인), 클라이언트 회신 `docs/handoff/clients/archive/2026-10-30-clients-reply-customer-app-priority.md` 2-2 (a)(사용자 승인)
 
 ## 배경
 - Commerce: 비회원도 탐색·장바구니를 쓰고 주문서 진행 전 로그인한다. 로그인 후 고객이 확인한 항목만 한 번 이관한다(자동 병합 금지).

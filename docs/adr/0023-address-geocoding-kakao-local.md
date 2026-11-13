@@ -2,7 +2,7 @@
 
 - 상태: 제안
 - 날짜: 2026-10-31
-- 관련: 클라이언트 요청 BR-30(`pmart-clients/docs/handoff/clients/2026-10-31-backend-address-geocoding.md`), 회신 `docs/handoff/clients/2026-10-31-clients-reply-address-geocoding.md`, ADR-0022(guest-paths), Commerce 5.6·5.7
+- 관련: 클라이언트 요청 BR-30(`pmart-clients/docs/handoff/clients/2026-10-31-backend-address-geocoding.md`), 회신 `docs/handoff/clients/archive/2026-10-31-clients-reply-address-geocoding.md`, ADR-0022(guest-paths), Commerce 5.6·5.7
 
 ## 배경
 - 배송 가능 판정(담당 MFC)은 좌표로만 했고, 고객 앱은 주소를 좌표로 바꿀 수단이 없어 회원 주소 판정이 늘 UNKNOWN 이었다.

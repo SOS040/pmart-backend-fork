@@ -13,7 +13,7 @@
 
 ## 2. 결제(BR-01) — 해결됨
 - 고객용 결제 계약을 추가하고 구현·LAN 배포했다(ADR-0020): `POST /payment-confirmations {orderId, paymentKey, amount}`, `POST /payment-authorization-failures`, `GET /payments/{orderId}`.
-- 안내: `pmart-backend/docs/handoff/clients/2026-10-30-clients-notice-customer-payment.md`.
+- 안내: `pmart-backend/docs/handoff/clients/archive/2026-10-30-clients-notice-customer-payment.md`.
 - 결제 진입 정보(orderId·amount·orderName·clientKey)는 주문 초안 `nextAction=PAY` 로 내려간다(D4). 주문서(⑤)가 생겨야 앱에서 결제까지 이어진다.
 
 ## 3. 항목별 메모

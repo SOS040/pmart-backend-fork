@@ -65,7 +65,7 @@
   - 계약 1.0.0 대조 결과 남은 항목: 질문 목록·원문 열람·상태 확인 경로·LAN 배포
 - `GET /assistant/question-history`(계약 1.1.0): 본인·출처 범위, 완료 답변은 현재 권한 재검사.
 - 원문 열람 없음, actuator 비공개, LAN 배포 보류.
-- 회신 `docs/handoff/clients/2026-11-04-clients-reply-br44-br48.md`.
+- 회신 `docs/handoff/clients/archive/2026-11-04-clients-reply-br44-br48.md`.
 - 커밋·push `bcb2fd4`(20:46).
 
 ---

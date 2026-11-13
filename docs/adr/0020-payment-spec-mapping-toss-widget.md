@@ -23,7 +23,7 @@
 - D1 비동기 결제수단(가상계좌 등): `DONE` 이 아닌 승인 응답은 `MISMATCH_HOLD`. 앱 `pending` 처리는 앱 몫.
 - D2 부분 취소 불가 결제의 부분 취소: 토스를 부르지 않고 `422 PARTIAL_CANCEL_NOT_ALLOWED`(결정 필요).
 - D3 주류 성인인증: 결제 인증을 성인인증으로 기록·표시하지 않는다(`adultVerified` 를 채우지 않음).
-- D4 인증 성공 시 예약 연장: 하지 않는다. D5 승인 기한: 예약 만료 기준만 본다. D6 `customerKey`: 2026-11-02 결정 — 회원 accountId 를 그대로 쓴다(별도 발급·보관 없음, 앱 안내 `2026-11-02-clients-notice-toss-customer-key.md`). D7 orderId 재사용: 하지 않는다. D8 `variantKey`: 쓰지 않는다.
+- D4 인증 성공 시 예약 연장: 하지 않는다. D5 승인 기한: 예약 만료 기준만 본다. D6 `customerKey`: 2026-11-02 결정 — 회원 accountId 를 그대로 쓴다(별도 발급·보관 없음, 앱 안내 `docs/handoff/clients/archive/2026-11-02-clients-notice-toss-customer-key.md`). D7 orderId 재사용: 하지 않는다. D8 `variantKey`: 쓰지 않는다.
 
 ## 결과
 - 테이블: `payment_attempt`, `payment_cancel`, `payment_event_log`, `payment_inquiry`, `toss_webhook_event`.
