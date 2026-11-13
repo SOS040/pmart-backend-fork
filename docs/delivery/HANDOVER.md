@@ -49,6 +49,8 @@ kickoff §6 "남은 결정"이 정본. 요약:
 - 시험 명령: `./gradlew :services:<서비스>:check`(단위·통합 Testcontainers·계약). OR-Tools 를 넣으면 PC 에서 직접이 막힐 수 있다(PC 3 사례 — `tools/ortools-test-docker.sh`, `docs/mfc/HANDOVER.md`).
 - MFC 쪽 끝까지 확인: `deploy/lan/checks/mfc_e2e.py`(라이더 인계 없음). 추적 Zipkin `http://192.168.0.40:9411`.
 
+- **카카오모빌리티 키**: LAN 설정 `delivery-tracking-service-lan.yml` → `pmart.tracking.kakao-mobility.rest-api-key`(`{cipher}`)·`base-url`(2026-11-13 PC 1 등록, 주소 판정 키와 다른 앱 키). 읽는 코드는 아직 없음.
+
 ## 6. LAN 배치·주의
 
 - PC 5 에 배송 6개 + rider-auth-service(`deploy/lan/placement.conf` pc5 줄). 같은 PC 에 keycloak·employee-auth-service·hr-service·메일 서버·RAG(ollama·rag-pgvector)도 있다 — **PC 5 남은 메모리 약 5GB**(2026-11-13). 빌드·시험이 무거울 때 LAN 서비스가 느려지면 PC 1 에 알린다.
