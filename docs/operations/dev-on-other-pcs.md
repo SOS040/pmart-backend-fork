@@ -15,6 +15,9 @@ PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 영�
   gh pr create --repo code-and-pick/pmart-backend --base main --head <내 계정>:mfc/<주제> --title "..." --body "바꾼 것·실행한 시험·영향 영역·공용 표 갱신 필요"
   ```
   받기는 계속 `git pull origin main`(원본). PR 이 병합되면 원본 main 에 들어온다.
+  - PC 1 의 개발은 원본 main 에 바로 들어간다 → 작업 시작·PR 올리기 전에 `git pull origin main` 하고 작업 브랜치는 `git rebase origin/main`. 포크의 main 은 맞출 필요 없다(늘 원본 main 위에 브랜치).
+  - PR 이 충돌(같은 파일 — 주로 공용 파일)이면 `git rebase origin/main` 으로 풀고 `git push --force-with-lease fork mfc/<주제>` 로 PR 을 갱신한다.
+  - 병합 뒤: `git switch main && git pull origin main`, 다 쓴 브랜치 `git branch -d mfc/<주제>`·`git push fork --delete mfc/<주제>`. PC 1 은 squash 병합(커밋 하나, 작성자 유지).
 
 - **`git pull`(작업 브랜치는 main 위로 rebase)**. 2026-11-13 에 계약·서비스가 크게 바뀌었다:
   - auth-service 운영자 로그인·계정 관리 **삭제** — `/api/v1/auth/operator-logins`·`/auth/password-changes`·`/operator-accounts/**`, 계약 `OperatorAccount` 등. 이걸 부르는 코드·스크립트는 깨진다.
@@ -35,7 +38,7 @@ PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 영�
 
 ## 2. LAN 시험 계정과 비밀번호 파일
 
-`.secrets` 는 git 에 없다(PC 1 `deploy/lan/.secrets/`). 다른 PC 에서 LAN 시험을 하려면 **필요한 파일만** 같은 경로로 받아 둔다(사용자가 복사).
+`.secrets` 는 git 에 없다(PC 1 `deploy/lan/.secrets/`). 다른 PC 에서 LAN 시험을 하려면 **필요한 파일만 같은 경로(`deploy/lan/.secrets/`)** 로 받아 둔다(사용자가 복사). 저장소 루트 `.secrets/` 에 두지 않는다(2026-11-13 PC 3 에서 그렇게 복사돼 커밋될 뻔함 — 이제 `.gitignore` 가 루트 `/.secrets/` 도 막는다).
 
 | 파일(`deploy/lan/.secrets/`) | 계정(Keycloak 아이디) | 역할·센터(employee-auth-service) | 쓰는 곳 |
 |---|---|---|---|

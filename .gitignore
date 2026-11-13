@@ -35,6 +35,8 @@ replay_pid*.log
 
 # LAN 배포 비밀정보 (deploy/lan/init-secrets.sh 가 생성)
 deploy/lan/.secrets/
+# 다른 PC 에서 비밀번호 파일을 저장소 루트에 잘못 복사하는 경우 대비(2026-11-13 PC 3 PR #1 지적). 정본 위치는 위 deploy/lan/.secrets/
+/.secrets/
 # config-server 설정 저장소(GitHub code-and-pick/pmart-config) 로컬 사본 — lan.sh config-push (ADR-0027)
 deploy/lan/.config-repo/
 
