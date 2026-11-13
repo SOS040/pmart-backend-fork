@@ -315,6 +315,37 @@ public class EmployeeLoginService {
     return r;
   }
 
+  // ---------------------------------------------------------------- 로컬 개발 발급(2026-11-13)
+
+  /**
+   * local 프로필 전용 — Keycloak 없이 직원 토큰(컨트롤러가 {@code pmart.employee-auth.dev-token-mint.enabled=true}
+   * 일 때만 있다). 계정이 없으면 ACTIVE 로 만들고, 있으면 역할·센터를 이 값으로 바꾼다. 역할은 설정 목록 안에서만.
+   */
+  public LoginResult mintDevToken(
+      String operatorId, List<String> roles, List<String> centers, String deviceId) {
+    List<String> unknown = roles.stream().filter(r -> !props.roles().contains(r)).toList();
+    if (!unknown.isEmpty()) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "모르는 역할: " + unknown);
+    }
+    List<String> sortedRoles = roles.stream().distinct().sorted().toList();
+    List<String> sortedCenters = centers.stream().distinct().sorted().toList();
+    Instant now = now();
+    LoginResult r =
+        tx.execute(
+            s -> {
+              if (store.account(operatorId, true).isEmpty()) {
+                store.insertAccount(operatorId, ACTIVE, sortedRoles, sortedCenters, now);
+              } else {
+                store.updateAccount(operatorId, ACTIVE, sortedRoles, sortedCenters, now);
+              }
+              AccountRow account = store.account(operatorId, false).orElseThrow();
+              return openSession(account, deviceId, "dev-cli", "dev-token-mint", now, null, null);
+            });
+    log.info("로컬 개발 토큰 발급: operatorId={}", Objects.requireNonNull(r).operatorId());
+    return r;
+  }
+
   // ---------------------------------------------------------------- 공통
 
   private LoginResult openSession(

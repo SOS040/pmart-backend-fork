@@ -112,3 +112,14 @@ def staff_token(username, roles=None, centers=None):
             raise SystemExit(f"{username} 역할 맞춤 실패: HTTP {st} {b.get('code', '')}")
         token, op = _exchange(username, password)
     return token, op
+
+
+def local_staff_token(operator_id, roles, centers=None, employee_auth="http://localhost:8511"):
+    """로컬(local 프로필) 개발용 — Keycloak 없이 employee-auth-service 의 dev-token-mint(POST /api/v1/internal/dev-tokens).
+    계정이 없으면 만들고 역할·센터를 이 값으로 맞춘다. 로컬 전용(LAN·운영에는 경로가 없다 → 404). (access token, 운영자 ID)."""
+    st, b = _json("POST", f"{employee_auth}/api/v1/internal/dev-tokens",
+                  {"operatorId": operator_id, "roles": list(roles), "centers": list(centers or [])},
+                  {"Idempotency-Key": str(uuid.uuid4()), "X-Source-System": "local-dev", "X-Device-Id": "local-dev"})
+    if st != 200:
+        raise SystemExit(f"로컬 직원 토큰 발급 실패: HTTP {st} {b.get('code', '')} — local 프로필 employee-auth-service 가 떠 있나?")
+    return b["tokens"]["accessToken"], b.get("operatorId")

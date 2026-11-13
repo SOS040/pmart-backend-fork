@@ -81,5 +81,7 @@ class ServiceBootIT extends PostgresKafkaContainerSupport {
   @Test
   void devTokenExchangeDoesNotExistUnlessEnabled() {
     assertThat(status("POST", "/api/v1/internal/dev-token-exchange")).isEqualTo(404);
+    // 로컬 개발 발급도 켜지 않으면 없다(local 프로필만 켠다)
+    assertThat(status("POST", "/api/v1/internal/dev-tokens")).isEqualTo(404);
   }
 }

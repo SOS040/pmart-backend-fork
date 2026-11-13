@@ -16,7 +16,7 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 
 ## 문서 지도 (설계의 정본, 필요 시 읽을 것)
 - 전체 비즈니스 흐름·확정 정책: `docs/business/overview.md`
-- **서비스 목록(53개 — ADR-0056 employee-auth·hr 포함, 구현 전)과 책임 경계**: `docs/architecture/service-map.md` — 어느 서비스 책임인지 불명확하면 여기를 먼저 확인하고, 그래도 모호하면 질문한다
+- **서비스 목록(53개 — ADR-0056 employee-auth·hr 포함)과 책임 경계**: `docs/architecture/service-map.md` — 어느 서비스 책임인지 불명확하면 여기를 먼저 확인하고, 그래도 모호하면 질문한다
 - 전체 구조·통신 패턴·사가 목록·단계 계획: `docs/architecture/architecture-design.md`
 - 이벤트 카탈로그(발행자 → 구독자): `docs/architecture/events.md`
 - 사가·보상 흐름: `docs/business/flows/` — 새 saga를 만들거나 수정하면 같은 커밋에서 갱신한다
@@ -26,6 +26,9 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 - **서비스 간 요청**(다른 서비스에 아직 없는 API·사건·화면): `docs/architecture/service-requests/` — 받는 서비스마다 파일, `README.md` 에 전체 목록. 서비스를 구현·수정하기 전에 그 서비스 파일을 읽고, 다른 서비스에 필요한 것이 생기면 같은 커밋에서 여기에 적는다
 - 다른 저장소와의 요청·회신: `docs/handoff/`(README) — 클라이언트(pmart-clients)는 `docs/handoff/clients/`, MFC 시뮬레이터(pmart-mfc-simulation)는 `docs/handoff/simulator/`. 회신은 여기에만 쓰고 상대 저장소는 읽기만 한다
 - 업무 원문: `docs/business/*-business-logic.md` (확정 정책은 설계가 바꾸지 않는다. 문서에 없는 비즈니스 규칙은 추측하지 말고 질문)
+
+## 다른 PC 에서 개발할 때 (2026-11-13)
+- PC 3(MFC)·PC 5(배송) 등 PC 1 이 아닌 곳에서는 먼저 `docs/operations/dev-on-other-pcs.md` 를 읽는다 — 직원 토큰 받는 법(로컬 `dev-tokens`·LAN `staff_auth.py`), 시험 계정·비밀번호 파일, 없어진 auth-service 운영자 로그인. 배포는 PC 1 만.
 
 ## 상세 규칙 (작업 영역에 따라 자동 로드)
 - 빌드/의존성: `.claude/rules/gradle-build.md`
