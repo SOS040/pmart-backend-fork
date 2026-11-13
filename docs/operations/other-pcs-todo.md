@@ -35,11 +35,19 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] 권한 기간 "기한 없음" 표시 — `2026-11-13-clients-reply-hr-backoffice-deployed.md`
 - 결과는 클라이언트 저장소 handoff 로 회신(백엔드는 읽기만).
 
-## PC 2·PC 4 — 아직 영역 없음
+## PC 4 — rag 영역(사용자 확정 2026-11-13, 영역 시작은 아직)
 
-- 지금 할 일 없음(LAN 서비스 실행 PC). 예정: rag(PC 2 추천), backoffice(로그인 마무리 뒤, PC 4 추천) — 사용자 결정 뒤 이 절에 할 일을 적는다(`pc-split.md` §1-1, `docs/rag/HANDOVER.md`).
+- [ ] 공통 절 전부
+- [ ] `docs/rag/HANDOVER.md` 읽기
+- [ ] 시작 전 사용자 결정: 개발 PC 에서 모델을 쓰는 방법(PC 4 에 로컬 ollama 또는 PC 5 ollama 포트 열기 — `pc-split.md` §1-1)
+- 주의: PC 4 에 게이트웨이·설정 서버·Eureka 가 있다 — 무거운 빌드·시험 중 LAN 이 느려지면 PC 1 에 알린다
+
+## PC 2 — backoffice 영역(사용자 확정 2026-11-13, 로그인 마무리 뒤 시작)
+
+- 지금 할 일 없음 — 로그인 마무리 기준(`pc-split.md` §1-1: CSRF 시기·mfc_app 실기기) 뒤 시작. 그 전에 사용자 결정: 경계(case·audit 서비스, hr-backoffice·웹 공통 포함 여부).
+- 시작할 때: 공통 절 + 백엔드·클라이언트 두 저장소 포크(저장소마다 PR 따로).
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
 
 - [ ] 다른 PC 에 비밀번호 파일 복사(필요한 PC·파일만 — `dev-on-other-pcs.md` §2)
-- [ ] 결정: rag 영역 PC·개발 PC 에서 ollama 쓰는 방법, backoffice 영역 경계, CSRF 언제 할지, MFC↔인사 3개
+- [ ] 결정: 개발 PC(PC 4)에서 ollama 쓰는 방법, backoffice 영역 경계, CSRF 언제 할지, MFC↔인사 3개

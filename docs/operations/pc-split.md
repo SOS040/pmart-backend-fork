@@ -14,12 +14,12 @@
 - 영역을 넘는 사건·공통 계약은 platform 이 바꾼다(한 주인).
 - 브랜치 이름 `<영역>/<주제>`(예 `mfc/count-variance`). **다른 PC 는 main 에 직접 넣지 않는다 — PR 만 올리고 PC 1 이 검토한 뒤 병합·배포한다**(사용자가 만든 구조, PC 마다 다른 GitHub 계정). PR 설명에 바꾼 것·실행한 시험·영향 영역·공용 표 갱신 필요를 적는다. PC 1 은 병합할 때 자기 일지 `## PR` 절에 한 줄(검토·배포 상태·후속 — `docs/worklog/README.md` 규칙 6). 따로 PR 기록 파일은 두지 않는다.
 
-### 1-1. 예정 영역 (2026-11-13 논의 — 아직 나누지 않음)
+### 1-1. 예정 영역 (2026-11-13 — PC 는 사용자 확정: PC 4 = rag, PC 2 = backoffice. 영역은 아직 나누지 않음)
 
 | 영역 | 언제 | PC(예정) | 범위(예정) | 정할 것 |
 |---|---|---|---|---|
-| **rag**(인수인계 문서 `docs/rag/HANDOVER.md`) | 지금 나눠도 됨(로그인과 겹치지 않음 — 직원 토큰 모양은 그대로) | PC 2 추천(PC 4 는 게이트웨이·설정 서버·Eureka 가 있어 개발 부하가 LAN 전체에 번질 수 있음) | ai-assistant-service·customer-assistant-service, `docs/rag/`, `deploy/lan/rag/` | PC 확정. RAG 실행은 PC 5(ollama GPU·rag-pgvector, LAN 포트 없음) — 개발 PC 에 로컬 ollama 를 띄울지 PC 5 포트를 열지 |
-| **backoffice** | **로그인 마무리 뒤**(아래 기준) — 남은 로그인 일이 `web/core`·백오피스·인사팀 화면과 겹친다 | PC 4 추천(백오피스 화면 서빙도 PC 4) | 백엔드 `backoffice-bff`(+ case-service·audit-service 는 정할 것), 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(웹 공통 코드를 함께 — 한 주인). approval-service·hr-service·employee-auth-service 는 인증 중심이라 platform 에 남긴다(추천) | case·audit 포함 여부, hr-backoffice·웹 공통 포함 여부 |
+| **rag**(인수인계 문서 `docs/rag/HANDOVER.md`) | 지금 나눠도 됨(로그인과 겹치지 않음 — 직원 토큰 모양은 그대로) | **PC 4**(사용자 확정 2026-11-13). 주의: PC 4 에 게이트웨이·설정 서버·Eureka 가 있어 빌드·시험 부하가 LAN 전체에 번질 수 있다 — Gradle 제한(workers 2·Xmx2g) 유지, 무거운 시험 중 LAN 이 느리면 PC 1 에 알린다 | ai-assistant-service·customer-assistant-service, `docs/rag/`, `deploy/lan/rag/` | RAG 실행은 PC 5(ollama GPU·rag-pgvector, LAN 포트 없음) — 개발 PC 에 로컬 ollama 를 띄울지 PC 5 포트를 열지 |
+| **backoffice** | **로그인 마무리 뒤**(아래 기준) — 남은 로그인 일이 `web/core`·백오피스·인사팀 화면과 겹친다 | **PC 2**(사용자 확정 2026-11-13). 백오피스 화면 서빙(nginx)은 계속 PC 4 — 배포는 PC 1 | 백엔드 `backoffice-bff`(+ case-service·audit-service 는 정할 것), 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(웹 공통 코드를 함께 — 한 주인). approval-service·hr-service·employee-auth-service 는 인증 중심이라 platform 에 남긴다(추천) | case·audit 포함 여부, hr-backoffice·웹 공통 포함 여부 |
 
 **로그인 마무리 기준**(이것이 끝나면 backoffice 영역을 나눈다):
 1. ~~두 백오피스 HTTPS 전환·HTTP 닫기~~ — **끝(2026-11-13)**: HTTPS 빌드 올림, 80·8081 은 HTTPS 로 301, 허용 목록에서 http 주소 제거. 남은 것: 클라이언트의 브라우저 로그인·업무 화면 확인.
