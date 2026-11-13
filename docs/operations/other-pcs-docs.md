@@ -22,6 +22,28 @@ PC 1 이 아닌 PC(사람·Claude)가 **어떤 문서를 어떤 순서로** 읽�
 | **PC 4**(rag, 시작 전) | `docs/rag/HANDOVER.md`(인수인계) |
 | **PC 2**(backoffice, 로그인 마무리 뒤) | 아직 없음 — 영역을 나눌 때 `docs/backoffice/HANDOVER.md` 를 만든다 |
 
+## 2-1. 지난 작업 일지 — 영역별로 볼 날짜
+
+2026-11-13 까지의 일지는 `docs/worklog/YYYY-MM-DD.md`(루트, **모든 영역이 한 파일에 섞임**)다. 아래 날짜에서 `## ` 제목으로 자기 영역 항목을 찾는다. 빠진 날이 있을 수 있으니 `grep -il "<서비스 이름>" docs/worklog/2026-*.md` 로도 찾는다. 2026-11-14 부터는 `docs/worklog/<영역>/`.
+
+| 영역 | 날짜(루트 일지) | 무엇 |
+|---|---|---|
+| mfc | 10-30, 11-07, **11-08**(MFC 대부분 구현 — 품질·실사·제한·재포장 등), 11-09(임시 평면도대로 칸 다시 등록·근무 기본값·OR-Tools 보완), 11-10(첫 실주문 → 출고 READY), 11-12(OR-Tools 시험 Docker, PC 3) | `docs/worklog/mfc/2026-11-13.md`(PC 3 첫 일지)도 |
+| delivery | 10-30·10-31(권역 매핑·주소 판정·예약 슬롯), **11-10**(PC 5 로 이동·배송 DB 사고·rider-auth-service 구현), 11-11(rider-auth-service 첫 LAN 배치) | |
+| rag | `docs/rag/worklog.md`(11-04~11-10 RAG 전용), 루트 11-04(1차), 11-11(PC 5 이동·재색인) | |
+| platform·로그인 | 11-12·11-13(ADR-0056 직원 로그인·HR·HTTPS·PC 나누기) | backoffice 영역을 나눌 때 PC 2 가 볼 것 |
+
+## 2-2. handoff — 영역별 관련 파일
+
+클라이언트에 보낸 것 `docs/handoff/clients/`(남은 것만 — 끝난 것은 `archive/`), 클라이언트가 보낸 것 `pmart-clients/docs/handoff/` + 상태표 `pmart-clients/docs/backend-requests.md`(BR 번호, 읽기만).
+
+| 영역 | 백엔드가 보낸 것(`docs/handoff/clients/`) | 클라이언트가 보낸 것·열린 질문 |
+|---|---|---|
+| mfc | `2026-11-07-clients-request-mfc-inbound-screens.md`, `2026-11-07-clients-request-mfc-picking-packing-screens.md`, `2026-11-07-clients-request-shelf-life-screens.md`, `2026-11-08-clients-notice-handover-check.md`, `2026-11-08-clients-notice-pda-response-plan.md`, `2026-11-09-clients-notice-assignment-plan-094.md`, `2026-11-09-clients-notice-plan-input.md`, `2026-11-09-clients-notice-worker-speed-and-plan-estimate.md`, `2026-11-13-clients-request-mfc-app-employee-login.md`, `2026-11-13-clients-reply-mfc-app-login-and-https-build.md` | `2026-11-10-backend-dispatch-manual-only.md`, `2026-11-10-backend-pda-work-areas.md`. **회신 없음: BR-51**(배차 요청은 점원만 — 백엔드 D-5 READY 자동 요청과 충돌, 사용자 확인 중), **BR-52**(PDA 업무 선택 배정), **BR-53**(입고 수령 화면 값). 시뮬레이터 handoff(`docs/handoff/simulator/`)는 1차에서 안 봄 |
+| delivery | `2026-11-10-clients-notice-rider-google-login.md`, `2026-10-31-clients-notice-delivery-and-order-draft.md`(배송 방식·슬롯 — §5 열린 것) | 라이더 앱 요청은 아직 없음 |
+| rag | `2026-11-04-clients-request-ai-assistant.md`(운영자 질문 화면 — 지금도 참조), `2026-11-09-clients-request-customer-chat-assistant.md`(고객 앱 채팅 — 화면 아직 없음) | |
+| backoffice(나중) | `2026-11-09-clients-request-backoffice-role-menus.md`, `2026-11-09-clients-request-customer-inquiry-page.md`, `2026-11-13-*hr-backoffice*`·`*backoffice*` 파일들 | BR-25(상품 이미지 표시) |
+
 ## 3. 필요할 때
 
 | 파일·폴더 | 언제 |
