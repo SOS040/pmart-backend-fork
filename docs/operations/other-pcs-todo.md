@@ -30,8 +30,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC
 
 백엔드에서 회신을 기다리는 것(자세한 내용은 각 handoff):
-- [ ] HTTPS 빌드 소스(vite.config 등) 커밋 — `docs/handoff/clients/2026-11-13-all-reply-https-builds-published-http-closed.md`
-- [ ] 두 백오피스 브라우저 확인: `https://192.168.0.40`(백오피스)·`https://192.168.0.40:8444`(인사팀) 로그인·업무 화면 — 같은 문서
+- [x] HTTPS 빌드 소스(vite.config 등) 커밋 — pmart-clients 13608a6(2026-11-13) — `docs/handoff/clients/2026-11-13-all-reply-https-builds-published-http-closed.md`
+- [x] 두 백오피스 브라우저 확인(사용자 2026-11-13 "HTTPS 전환했어"): `https://192.168.0.40`(백오피스)·`https://192.168.0.40:8444`(인사팀) 로그인·업무 화면 — 같은 문서
 - [ ] 예전 운영자 로그인 코드 삭제 뒤 `gen:api` — `2026-11-13-clients-notice-auth-operator-login-removed.md`
 - [ ] mfc_app: `SUBJECT_BLOCKED`(로그아웃·정지 즉시 401) 안내, **실기기 로그인 확인**(로그인 마무리 기준 4 — `pc-split.md` §1-1) — `2026-11-13-clients-reply-mfc-app-login-and-https-build.md`
 - [ ] 권한 기간 "기한 없음" 표시 — `2026-11-13-clients-reply-hr-backoffice-deployed.md`
