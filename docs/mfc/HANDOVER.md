@@ -8,6 +8,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 2. 작업 일지는 `docs/worklog/mfc/YYYY-MM-DD.md`, 브랜치 `mfc/<주제>`. **main 에 직접 넣지 않는다 — PR 만, PC 1 이 검토 뒤 병합·배포.** 배포·`.secrets` 원본·Jib push 는 PC 1.
 3. 저장소 위치는 어디든 된다(드라이브 무관). 다만 **`pmart-backend`·`pmart-clients`·`pmart-mfc-simulation` 을 같은 부모 폴더의 형제로** 둔다 — 시뮬레이터·클라이언트 문서·도구가 `../pmart-…` 를 가정한다.
 4. **OR-Tools 시험**: PC 3 은 Windows 애플리케이션 제어 정책이 OR-Tools 네이티브 DLL 을 막는다 → `tools/ortools-test-docker.sh` 로 Docker 안에서 돌린다(2026-11-12 PC 3 37/37 확인. SSH 로 할 때는 `DOCKER_CONFIG=~/.docker-pmart` + Docker Desktop `resources/bin` 경로, PC 앞에서는 그냥 됨). 그 밖의 시험은 그대로 `./gradlew :services:<mfc 서비스>:check`.
+5. **시뮬레이터는 1차 범위에서 하지 않는다**(사용자 2026-11-13 "1차적으로 지금당장 mfc 작업할때 시뮬레이션은 안할 예정"). 백엔드 서비스·계약·시험(`check`·`mfc_e2e.py`)으로 확인한다. `pmart-mfc-simulation` 저장소는 지금은 받지 않아도 된다. 시뮬레이터에 맞춘 것(아래 §3 시험 데이터 평면도, 작업 시간 처리 값)은 그대로 쓰되 시뮬레이터 쪽 요청·handoff(`docs/handoff/simulator/`)는 새로 만들지 않는다 — 다시 할 때 사용자가 정한다.
 
 ## 1. 서비스 6개 (모두 LAN PC 3 에서 돈다)
 
@@ -46,7 +47,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 - 작업자: 센터 관리자가 등록, **로그인 정보와 업무는 분리**(업무·자격은 이력 남는 별도 기록). 모든 현장 작업자(정규·알바·일일)는 시스템이 하나씩 배정("다음 작업 받기"), 관리자는 덮어쓰기만. 정규 = 관리자가 업무, 일일 = 그날 유효 자격 전부(수요 기반 나누기는 운영에서 필요해질 때). MFC 에는 온도대 자격 없음(CDC 만).
 - 처리량·입고: 포장대 4·75%, PICK 7분·PACK 4분, 시간당 45, 입고 하루 720·도착당 360·도크 1(07~10시). 배정 목표 순서: 미배정 > 지연 > 이동[평면도 뒤] > 불균형, 5초, 자동 확정 없음.
 - 인계: D-1 C(같은 라이더 재스캔은 확인 없이, 그 밖은 점원 확인), 펜스 TTL 기본 3분, MFC 는 라이더 도착을 보지 않음(QR 바깥 랙), 포장 중 배차 요청 + READY 자동.
-- 시뮬레이터는 실제 현장 대신 보여 주는 것 — **맞지 않으면 시뮬레이터가 바뀐다**(백엔드 계약·업무 문서가 정본). 결정 기록 `docs/simulator/mfc/mfc-simulator-integration.md`(SIM-1~11), 평면도 `docs/simulator/mfc/layout/`, 범위 `docs/simulator/scope.md`. 시뮬레이터 handoff 는 `docs/handoff/simulator/`(mfc 영역).
+- 시뮬레이터는 실제 현장 대신 보여 주는 것(1차 MFC 작업에서는 쓰지 않음 — §0-5) — **맞지 않으면 시뮬레이터가 바뀐다**(백엔드 계약·업무 문서가 정본). 결정 기록 `docs/simulator/mfc/mfc-simulator-integration.md`(SIM-1~11), 평면도 `docs/simulator/mfc/layout/`, 범위 `docs/simulator/scope.md`. 시뮬레이터 handoff 는 `docs/handoff/simulator/`(mfc 영역).
 
 ## 4. 다른 영역·서비스와 걸린 것
 
