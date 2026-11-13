@@ -218,7 +218,7 @@
 - **소유하지 않음**: 재고 R(inventory; CapacityHold와 독립), 고객 배송 슬롯(delivery-capacity), 작업 실행(fulfillment/inbound).
 - **API**: `CapacitySnapshot`/`HoldCapacity`/확정/해제(orchestration), 수령창·수용량 조회(SCM/TMS), 하차면 예약(TMS), 배정 조회(fulfillment), 운영 제한.
 - **발행**: `CapacityHoldResult`, `CapacityReduced`(영향 주문 포함), `ReceivingCapabilityChanged`, `AssignmentPublished`, `OperationRestrictionApplied/Lifted`(MFC).
-- **구독**: `TaskProgressed`, `ApprovalDecided`(운영 중지·재개 BO-08), `CenterMasterChanged`.
+- **구독**: `TaskProgressed`, `ApprovalDecided`(운영 중지·재개 BO-08), `CenterMasterChanged`, 직원 사건 `EmployeeRegistered·Suspended·Reinstated·Left`(인사 사본)·`GrantApplied`(`MFC_WORKER` — 작업자는 그 센터 작업자 권한이 붙을 때 생성, 센터 관리자 ≠ 작업자, 2026-11-13).
 - **의존**: OR-Tools Java 바인딩(서비스 내부 `infrastructure` 어댑터).
 
 ### mfc-quality-service `[1단계 최소 / 2단계 완성]`
@@ -297,10 +297,10 @@
 ### delivery-dispatch-service `[1단계]`
 - **소유**: 배송(delivery; 주문 이행 계획→배송 단위, 독립 배송번호; 분할·회수·재배송 각각 별도 번호, 원주문 연결), 배차 요청(점원 배차요청 입력: 배송번호·점포·배송지·포장 소요시간·부피/무게/봉투 수·주류·예상 배달료), 배차 시도(`attemptId`)·제안(`offerId`)·응답(제안/수락·배정/거절/미응답 만료/전송 실패 구분), 반경 단계 탐색(1km→2km→3km `[외부 참고값]`), 응답 대기 1분, 동시 수락 1명 확정·나머지 "이미 배정", 재시도(최대 2회·10분 `[외부 참고값]`), 거절 5회 연속 안내, 추가·분할 배차(규격별 추가 라이더 기준), 배차 취소(픽업 전: 재배차 / 픽업 후: 지원센터 처리), 늦은 수락 분류(시간 만료/이미 배정/주문 취소/자격·용량 불충족), 취소 주문 신규 배차 차단, 회수·재배송 배차, AI 추천 배차 어댑터(3차), 배차 지연 임계 알림.
 - **소유하지 않음**: 라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution).
-- **API**: 배차 요청(점원·자동), 제안 응답(라이더), 배차 취소, 배송 조회, 회수 배차 요청(claim), 배차 상태 조회(orchestration S3).
+- **API**: 배차 요청(점원만 — 2026-11-13 BR-51 자동 요청 뺌), 제안 응답(라이더), 배차 취소, 배송 조회, 회수 배차 요청(claim), 배차 상태 조회(orchestration S3).
 - **발행**: `DeliveryCreated`, `DispatchOfferSent`, `DeliveryAssigned`, `DeliveryAssignmentChanged`, `DispatchFailed`(기사 없음/반복 거절/만료/장애 구분), `DispatchDelayed`, `DeliveryCancelledBeforePickup`.
 - **구독**: `ShipmentReady`, `PackingFinished`, `OrderCancelled`, `ReturnPickupRequested`, `ExchangeReshipmentApproved`, `RiderStateChanged`, `RiderRestricted`, `PackageHandedOver`.
-- **의존**: rider, delivery-tracking(거리), mfc-fulfillment(포장 정보), order(이행 계획). 라이더 ↔ 배송 짝짓기 계산은 OR-Tools 배정(내부 라이브러리, ADR-0050).
+- **의존**: rider, delivery-tracking(거리), mfc-fulfillment(포장 정보), order(이행 계획). AI 추천 배차 계산은 **Python AI 최적화 서버**(GreedRL·RouteFinder, 내부 계산 서버 — ADR-0058), 거리·시간은 카카오모빌리티 길찾기, 알뜰배달 묶음은 OR-Tools 또는 AI(ADR-0050 일부 대체).
 
 ### delivery-execution-service `[1단계]`
 - **소유**: 배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수, 보관 장소, 촬영 시각; 업로드 실패 시 재시도 또는 지원센터 대체 증빙), 시간 경과 자동완료 없음 `[확정]`, 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 `[확정]`, 완료 후 사고 신고(기존 완료 유지·사건 별도), 상태 정정(처리자·근거), 도움요청(→case), 회수 수행(고객 수거→점포 반납→점원 수령 확인), 수행료 근거(수단·거리 구간 요율표 버전·할증·보상·공제·취소 시점별 기준; 요율 미등록=산정 불가), 정산 상태(예상/확정 대기/지급 확정/지급중/지급 완료/지급 실패/조정; 지급 실행은 외부 회계), 라이더 배송 이력·오늘 내역.
@@ -431,7 +431,7 @@
 | 소셜 OAuth 제공자 | auth-service | 제공자 인증 성공≠계정 이용 가능 |
 | 카카오 로컬(주소 검색·좌표→주소) | delivery-serviceability | 확정(2026-10-31, ADR-0023). REST API 키 서버 전용, 주소 원문 로그 금지 |
 | 카카오 로컬(주소 검색·좌표→주소) | delivery-serviceability | 확정(2026-10-31, ADR-0023). REST API 키 서버 전용, 주소 원문 로그 금지 |
-| 카카오모빌리티 길찾기 / 카카오맵 | delivery-tracking(거리·경로), transport-routing(간선 행렬) | `[결정 필요]` |
+| 카카오모빌리티 길찾기 / 카카오맵 | delivery-tracking(거리·경로), transport-routing(간선 행렬) | 결정(ADR-0058, 2026-11-13 — 도로 거리·시간, 직선거리 대체 없음) |
 | OR-Tools(Java) | transport-routing, mfc-capacity, delivery-dispatch(라이더 배정), 피킹 순서 담당(구현 때 정함) 내부 라이브러리 | 확정(2026-10-23), 범위 확대 ADR-0050(2026-11-09). JGraphT 도입 안 함. GreedRL·RouteFinder(Python)는 3단계 별도 승인 |
 | 알림 채널(푸시·알림톡) | notification-service | |
 | 회계·지급 | 없음(1차 수동) | 라이더 수행료·운송비 지급, BO-21 `[결정 필요]` |

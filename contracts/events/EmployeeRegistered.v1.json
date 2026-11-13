@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/EmployeeRegistered.v1.json",
   "title": "EmployeeRegistered",
-  "description": "직원 등록·계정 발급 완료(사서함 → Keycloak 계정 → 비밀번호 설정 메일). employee-auth-service 가 Keycloak 사용자와 운영자 ID 를 연결하고 로그인 상태를 ACTIVE 로(근무 시작일 전에는 로그인 불가). 역할·권한 센터는 싣지 않는다(권한은 approval 승인 뒤 — ADR-0056 결정 4). 발행 hr-service(ADR-0056), 구독 employee-auth-service(직원 로그인 상태). 토픽 platform.employee.v1, 키 = 운영자 ID. 단계 ①",
+  "description": "직원 등록·계정 발급 완료(사서함 → Keycloak 계정 → 비밀번호 설정 메일). employee-auth-service 가 Keycloak 사용자와 운영자 ID 를 연결하고 로그인 상태를 ACTIVE 로(근무 시작일 전에는 로그인 불가). 역할·권한 센터는 싣지 않는다(권한은 approval 승인 뒤 — ADR-0056 결정 4). 발행 hr-service(ADR-0056), 구독 employee-auth-service(직원 로그인 상태), mfc-capacity-service(인사 사본 — MFC 작업자 상태, 2026-11-13). 토픽 platform.employee.v1, 키 = 운영자 ID. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/EmployeeReinstated.v1.json",
   "title": "EmployeeReinstated",
-  "description": "직원 복귀·재입사(같은 운영자 ID). Keycloak 계정은 hr-service 가 다시 활성. employee-auth-service 가 상태 ACTIVE. 권한은 그대로 남아 있지 않을 수 있다(퇴사 때 끝난 권한은 다시 요청). 발행 hr-service(ADR-0056), 구독 employee-auth-service(직원 로그인 상태). 토픽 platform.employee.v1, 키 = 운영자 ID. 단계 ①",
+  "description": "직원 복귀·재입사(같은 운영자 ID). Keycloak 계정은 hr-service 가 다시 활성. employee-auth-service 가 상태 ACTIVE. 권한은 그대로 남아 있지 않을 수 있다(퇴사 때 끝난 권한은 다시 요청). 발행 hr-service(ADR-0056), 구독 employee-auth-service(직원 로그인 상태), mfc-capacity-service(인사 사본 — MFC 작업자 상태, 2026-11-13). 토픽 platform.employee.v1, 키 = 운영자 ID. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

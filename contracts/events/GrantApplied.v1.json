@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/GrantApplied.v1.json",
   "title": "GrantApplied",
-  "description": "권한 반영 확인. 발행 auth. 구독 approval(Receipt), audit. 토픽 platform.auth.v1. 단계 ①",
+  "description": "권한 반영 확인. 발행 auth. 구독 approval(Receipt), audit, mfc-capacity-service(역할 MFC_WORKER 만 — 그 센터 작업자 생성·권한 기간, 2026-11-13). 토픽 platform.auth.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
