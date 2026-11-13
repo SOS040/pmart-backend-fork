@@ -333,7 +333,7 @@ EOF
   backoffice-web:
     <<: *common
     image: nginx:1.27-alpine
-    ports: ["80:80", "443:443"] # HTTPS(ADR-0057) — HTTP 는 클라이언트가 옮길 때까지 함께(T3)
+    ports: ["80:80", "443:443"] # HTTPS(ADR-0057). 80 은 HTTPS 로 넘기기만(2026-11-13 HTTP 닫음, T3)
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./backoffice:/usr/share/nginx/html:ro
@@ -354,7 +354,7 @@ EOF
   hr-backoffice-web:
     <<: *common
     image: nginx:1.27-alpine
-    ports: ["8081:80", "8444:443"] # HTTPS 8444(ADR-0057) — HTTP 8081 은 클라이언트가 옮길 때까지 함께(T3)
+    ports: ["8081:80", "8444:443"] # HTTPS 8444(ADR-0057). 8081 은 https://…:8444 로 넘기기만(2026-11-13 HTTP 닫음)
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./hr-backoffice:/usr/share/nginx/html:ro
