@@ -20,6 +20,7 @@
 
 - 백오피스 `index-C_IVVcnv.js`, 인사팀 `index-B-0VeOMD.js` — **올리는 것은 사용자 확인 뒤**(PC 4 배포). 올리면 이 파일 아래에 결과(올린 진입 파일 이름)를 덧붙인다.
 - 올리기 전에 지금 PC 4 에 떠 있는 index.html 과 비교한다(11-13 덮어쓰기 사고 뒤 정한 순서).
+- **올림(2026-11-13, 사용자 "1번해줘")**: 올리기 전 PC 4 화면 = 직전에 올린 빌드(Dmg9_m1j·mOfMoV39) 확인 → `publish-backoffice`·`publish-hr-backoffice`. 지금 `https://192.168.0.40` → `index-C_IVVcnv.js`, `https://192.168.0.40:8444` → `index-B-0VeOMD.js`(둘 다 200, CSP 헤더 그대로). 새 빌드에 옛 운영자 로그인 경로·HTTP 8080 없음, API 는 8443 만. 브라우저로 로그인·화면을 한 번 봐 달라.
 
 ## 3. `SUBJECT_BLOCKED` 구별(§4) — 사실 확인만
 
