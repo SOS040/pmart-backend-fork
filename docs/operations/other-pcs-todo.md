@@ -18,7 +18,10 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [x] `git pull origin main`(`.gitignore`·이 문서·dev-on-other-pcs 갱신 받기) — 2026-11-13 `ddfa1f31`
 - [x] `docs/mfc/HANDOVER.md` 읽기 — 시작 전 할 일(OR-Tools Docker 시험 등)·남은 일은 거기에 — 2026-11-13 읽음, OR-Tools Docker 시험 `:services:mfc-capacity-service:test` 37/37 통과
 - 시뮬레이터는 1차 범위에서 하지 않는다(사용자 2026-11-13) — `pmart-mfc-simulation` 은 지금 받지 않아도 되고 `docs/simulator/` 도 지금은 안 읽어도 된다
-- [ ] 첫 MFC 작업 전: 작업자 명단 ↔ 인사(hr-service) 연결은 사용자 결정 3개 대기(`pc-split.md` §1-2) — 결정 전에는 손대지 않는다
+- [x] 작업자 명단 ↔ 인사 연결(결정 3개 "추천대로") — PR #3, main `d46671c`(2026-11-13, LAN 미배포)
+- [x] 배차 자동 요청 제거(BR-51 "자동요청빼") — PR #4, main `d46671c`(LAN 미배포)
+- [ ] **센터 관리자는 작업자와 별개**(사용자 2026-11-13, PR #3 검토 때) — 지금 코드는 MFC 센터 소속이면 등록 때 누구나 작업자로 만든다(센터 관리자 포함). **LAN 배포 전에 고친다.** `EmployeeRegistered` 에는 역할이 없다(권한은 승인 뒤 — ADR-0056 결정 4) → 예: 등록 때가 아니라 그 센터 `MFC_WORKER` 권한이 붙을 때(`GrantApplied`, `platform.auth.v1`) 만들기, 또는 등록 사건에 직무 구분을 더해 달라고 platform 에 요청(`service-requests/hr-service.md`). 방식은 PC 3 이 정해 PR 설명에.
+- [ ] 클라이언트 BR-52(PDA 업무 선택 배정)·BR-53(입고 수령 화면 값) 회신 — 백엔드 회신 없음(`other-pcs-docs.md` §2-2)
 
 ## PC 5 — delivery 영역
 

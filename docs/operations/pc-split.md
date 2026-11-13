@@ -33,7 +33,7 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 
 ### 1-2. 영역 사이 알려진 연결
 
-- **mfc ↔ platform(hr-service)**: mfc-capacity 작업자 명단(고용 형태·상태)을 인사와 따로 입력한다 — 퇴사·정지·계약 종료가 MFC 배정에 반영되지 않고 고용 형태를 두 곳에서 넣는다. mfc-capacity 가 `EmployeeRegistered·Suspended·Reinstated·Left`(이미 있는 사건, 고용 형태·소속 센터 포함)를 구독하면 풀린다 — mfc 영역 일. 정할 것: 인사 등록 때 MFC 작업자 자동 생성 여부, 퇴사·정지 자동 반영 여부, 고용 형태 정본(추천: 인사).
+- **mfc ↔ platform(hr-service)**: mfc-capacity 작업자 명단(고용 형태·상태)을 인사와 따로 입력한다 — 퇴사·정지·계약 종료가 MFC 배정에 반영되지 않고 고용 형태를 두 곳에서 넣는다. mfc-capacity 가 `EmployeeRegistered·Suspended·Reinstated·Left`(이미 있는 사건, 고용 형태·소속 센터 포함)를 구독하면 풀린다 — mfc 영역 일. **결정 2026-11-13("추천대로")·구현 `d46671c`**: 자동 생성·정지/퇴사 자동 반영·고용 형태 정본 = 인사. 덧붙임(사용자): 센터 관리자는 작업자와 별개 — 자동 생성에서 빼는 일이 PC 3 에 남음(`other-pcs-todo.md`).
 - **delivery**: 맞물리는 점 거의 없음(라이더 로그인 그대로, 배송 관리 API 를 직원으로 시험할 때만 토큰 받는 법이 바뀜).
 
 ## 2. 클라이언트 영역 (pmart-clients — 앱 단위)
