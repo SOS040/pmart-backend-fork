@@ -38,14 +38,16 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 
 ## 2. 클라이언트 영역 (pmart-clients — 앱 단위)
 
-| 영역 | 폴더 |
-|---|---|
-| **customer-app** | `apps/customer_app` |
-| **mfc-app** | `apps/mfc_app` |
-| **rider-app** | `apps/rider_app` |
-| **backoffice** | `web/backoffice` |
-| **hr-backoffice** | `web/hr-backoffice` |
-| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(두 웹앱 공통 — 한 주인) |
+| 영역 | 폴더 | PC(클라이언트 알림 2026-11-13, 사용자 "mfc-app 은 PC3, rider-app은 PC5야") |
+|---|---|---|
+| **customer-app** | `apps/customer_app` | PC 1(위주) |
+| **mfc-app** | `apps/mfc_app` | **PC 3** — 백엔드 mfc 영역과 같은 PC |
+| **rider-app** | `apps/rider_app` | **PC 5** — 백엔드 delivery 영역과 같은 PC |
+| **backoffice** | `web/backoffice` | PC 2 가 시작하기 전까지 PC 1 |
+| **hr-backoffice** | `web/hr-backoffice` | 같음(PC 2 로 함께 옮길지 미정) |
+| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(두 웹앱 공통 — 한 주인) | 같음 |
+
+- 클라이언트 정본: pmart-clients `docs/operations/pc-split.md` §1, `docs/handoff/2026-11-13-backend-client-area-pcs-decided.md`.
 
 클라이언트 저장소 규칙은 클라이언트가 정한다 — 백엔드는 `docs/handoff/clients/2026-11-13-all-notice-area-split.md` 로 같은 방식을 제안했다.
 
