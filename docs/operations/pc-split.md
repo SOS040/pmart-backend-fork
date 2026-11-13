@@ -7,7 +7,7 @@
 | 영역 | 지금 맡는 PC | 서비스·폴더 | 계약(`contracts/`) 주인 |
 |---|---|---|---|
 | **platform** | PC 1(192.168.0.32) — 배포 유일 지점 | auth-service·employee-auth-service·hr-service·approval-service·api-gateway·config·eureka·mail-provisioner, `libraries/`·`build-logic/`·`deploy/`, 그리고 아래 두 영역 밖의 모든 서비스(커머스·CDC·RAG 등 — 담당이 생기면 영역을 더한다) | 공통(`_common.yaml`·`_envelope`·`_defs`), 영역을 넘는 사건(`SubjectBlocked`·`ApprovalDecided`·`Employee*`·`GrantRequested` 등), platform 서비스 |
-| **mfc** | PC 3(192.168.0.222) | mfc-inventory·mfc-fulfillment·mfc-capacity·mfc-location·mfc-quality·mfc-inbound-service, `docs/simulator/mfc/` | mfc 서비스 계약·mfc 안에서만 오가는 사건 |
+| **mfc**(인수인계 `docs/mfc/HANDOVER.md`) | PC 3(192.168.0.222) | mfc-inventory·mfc-fulfillment·mfc-capacity·mfc-location·mfc-quality·mfc-inbound-service, `docs/simulator/mfc/` | mfc 서비스 계약·mfc 안에서만 오가는 사건 |
 | **delivery** | PC 5(192.168.0.101) | delivery-serviceability·delivery-capacity·delivery-dispatch·delivery-execution·delivery-tracking-service, rider-service, rider-auth-service | delivery 서비스 계약·delivery 안 사건 |
 
 - 남의 영역 서비스·계약을 고쳐야 하면 직접 고치지 않고 `docs/architecture/service-requests/<받는 서비스>.md` 에 요청을 적는다(지금 규칙 그대로). 급하면 PR 을 열되 그 영역 담당이 리뷰한다.

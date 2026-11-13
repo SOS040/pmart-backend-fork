@@ -4,6 +4,9 @@ PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 영�
 
 ## 0. 먼저
 
+- **저장소 위치는 어디든 된다**(드라이브·경로 무관 — 코드는 절대 경로를 쓰지 않는다). 다만 `pmart-backend`·`pmart-clients`·`pmart-mfc-simulation` 을 **같은 부모 폴더의 형제**로 둔다(클라이언트 `gen:api`·시뮬레이터 문서가 `../pmart-…` 를 가정). 예: `D:\pmart-project\pmart-backend`.
+- GitHub: `winget install --id GitHub.cli -e` 뒤 **새 터미널**에서 `gh auth login`(두 줄을 따로). 그 PC 의 GitHub 계정이 `code-and-pick` 저장소에 쓰기 권한(협업자)이 있어야 브랜치 push·PR 이 된다.
+
 - **`git pull`(작업 브랜치는 main 위로 rebase)**. 2026-11-13 에 계약·서비스가 크게 바뀌었다:
   - auth-service 운영자 로그인·계정 관리 **삭제** — `/api/v1/auth/operator-logins`·`/auth/password-changes`·`/operator-accounts/**`, 계약 `OperatorAccount` 등. 이걸 부르는 코드·스크립트는 깨진다.
   - 새 서비스 hr-service(8512)·mail-provisioner, 새 사건 `GrantRequested`, `SubjectBlocked` 에 `sessionId`(로그아웃 즉시 차단).
