@@ -5,7 +5,16 @@ PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. 영�
 ## 0. 먼저
 
 - **저장소 위치는 어디든 된다**(드라이브·경로 무관 — 코드는 절대 경로를 쓰지 않는다). 다만 `pmart-backend`·`pmart-clients`·`pmart-mfc-simulation` 을 **같은 부모 폴더의 형제**로 둔다(클라이언트 `gen:api`·시뮬레이터 문서가 `../pmart-…` 를 가정). 예: `D:\pmart-project\pmart-backend`.
-- GitHub: `winget install --id GitHub.cli -e` 뒤 **새 터미널**에서 `gh auth login`(두 줄을 따로). 그 PC 의 GitHub 계정(PC 마다 다른 계정)은 브랜치를 올리고 PR 을 열 수 있다. **main 에는 직접 넣지 않는다 — 모든 변경은 PR 로 올리고, PC 1 이 먼저 검토한 뒤 병합한다**(사용자가 만든 구조, 2026-11-13).
+- GitHub: `winget install --id GitHub.cli -e` 뒤 **새 터미널**에서 `gh auth login`(두 줄을 따로). 그 PC 의 GitHub 계정(PC 마다 다른 계정)은 저장소 권한이 `triage` 라 **원본에 push 할 수 없다** — **포크에서 PR 을 보낸다**(2026-11-13 조직·저장소 포크 허용: pmart-backend·pmart-clients·pmart-mfc-simulation. pmart-config 는 포크 안 됨 — PC 1 전용). PC 1(admin)이 검토한 뒤 병합한다. 무료 플랜 비공개 저장소라 GitHub main 보호 규칙은 없다 — triage 권한이 사실상 보호 역할.
+  ```bash
+  gh repo fork code-and-pick/pmart-backend --clone=false          # 처음 한 번 — 내 계정에 비공개 포크
+  git remote add fork https://github.com/<내 계정>/pmart-backend.git # 원본(origin)에서 받은 저장소에 포크를 더한다
+  git switch -c mfc/<주제>   # 작업 → 커밋(일지 포함)
+  git fetch origin && git rebase origin/main
+  git push fork mfc/<주제>
+  gh pr create --repo code-and-pick/pmart-backend --base main --head <내 계정>:mfc/<주제> --title "..." --body "바꾼 것·실행한 시험·영향 영역·공용 표 갱신 필요"
+  ```
+  받기는 계속 `git pull origin main`(원본). PR 이 병합되면 원본 main 에 들어온다.
 
 - **`git pull`(작업 브랜치는 main 위로 rebase)**. 2026-11-13 에 계약·서비스가 크게 바뀌었다:
   - auth-service 운영자 로그인·계정 관리 **삭제** — `/api/v1/auth/operator-logins`·`/auth/password-changes`·`/operator-accounts/**`, 계약 `OperatorAccount` 등. 이걸 부르는 코드·스크립트는 깨진다.
