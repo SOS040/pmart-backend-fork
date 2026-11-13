@@ -18,7 +18,7 @@
 
 | 영역 | 언제 | PC(예정) | 범위(예정) | 정할 것 |
 |---|---|---|---|---|
-| **rag** | 지금 나눠도 됨(로그인과 겹치지 않음 — 직원 토큰 모양은 그대로) | PC 2 추천(PC 4 는 게이트웨이·설정 서버·Eureka 가 있어 개발 부하가 LAN 전체에 번질 수 있음) | ai-assistant-service·customer-assistant-service, `docs/rag/`, `deploy/lan/rag/` | PC 확정. RAG 실행은 PC 5(ollama GPU·rag-pgvector, LAN 포트 없음) — 개발 PC 에 로컬 ollama 를 띄울지 PC 5 포트를 열지 |
+| **rag**(인수인계 문서 `docs/rag/HANDOVER.md`) | 지금 나눠도 됨(로그인과 겹치지 않음 — 직원 토큰 모양은 그대로) | PC 2 추천(PC 4 는 게이트웨이·설정 서버·Eureka 가 있어 개발 부하가 LAN 전체에 번질 수 있음) | ai-assistant-service·customer-assistant-service, `docs/rag/`, `deploy/lan/rag/` | PC 확정. RAG 실행은 PC 5(ollama GPU·rag-pgvector, LAN 포트 없음) — 개발 PC 에 로컬 ollama 를 띄울지 PC 5 포트를 열지 |
 | **backoffice** | **로그인 마무리 뒤**(아래 기준) — 남은 로그인 일이 `web/core`·백오피스·인사팀 화면과 겹친다 | PC 4 추천(백오피스 화면 서빙도 PC 4) | 백엔드 `backoffice-bff`(+ case-service·audit-service 는 정할 것), 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(웹 공통 코드를 함께 — 한 주인). approval-service·hr-service·employee-auth-service 는 인증 중심이라 platform 에 남긴다(추천) | case·audit 포함 여부, hr-backoffice·웹 공통 포함 여부 |
 
 **로그인 마무리 기준**(이것이 끝나면 backoffice 영역을 나눈다):
