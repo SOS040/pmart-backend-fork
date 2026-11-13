@@ -45,6 +45,7 @@ PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. **PC
 | `keycloak-claude-dev-password` | `claude-dev` | `OPERATOR_ADMIN` | 관리자 시험, 다른 시험 계정의 역할 맞춤(`staff_token(..., roles=...)`) |
 | `keycloak-claude-mfc-sup-password` | `claude-mfc-sup` | `MFC_SUPERVISOR` · `MFC-SEED-01` | MFC 센터 관리자(`mfc_e2e.py`·`seed/mfc_layout.py`) |
 | `keycloak-claude-mfc-wrk-password` | `claude-mfc-wrk` | `MFC_WORKER` · `MFC-SEED-01` | MFC 작업자(시뮬레이터 작업자 토큰, `mfc_e2e.py`) |
+| `keycloak-mfc-test-workers-password` | `mfcw-<분야>-NN@pmart.com` 70명 공용 | `MFC_WORKER` · `MFC-SEED-01` | MFC 시험 작업자(2026-11-13) — 피킹·포장 `pp` 01~30, 입고 `rcv`·품질검사 `qc`·재고 이동 `mv`·반품 `rtn` 각 01~10. 홀수 정규직·짝수 알바(계약 종료 2026-12-31). 만든 스크립트 `deploy/lan/seed/mfc_test_workers.py` |
 | `keycloak-claude-approver-password` | `claude-approver` | 승인 역할들 + `HR_ADMIN` | 인사팀 시험(직원 등록) |
 
 - **`keycloak-admin-password`(Keycloak 전체 관리자)는 다른 PC 로 옮기지 않는다.** 이 파일이 없고 계정 비밀번호 파일도 없으면 `staff_token` 이 멈춘다(그 계정은 PC 1 에서만).
