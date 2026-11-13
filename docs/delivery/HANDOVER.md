@@ -45,7 +45,7 @@ kickoff §6 "남은 결정"이 정본. 요약:
 
 - **라이더 토큰**: LAN 서명키로 만든 시험 라이더 토큰(`typ=RIDER`, `RD-claude-*`, `aud: pmart-api`, 15분) — 서명키는 PC 1 에만 있으니 **PC 1 에 요청**(kickoff §6). 실제 라이더 로그인은 rider-auth-service(라이더 앱 Google 로그인).
 - **직원 토큰**(배송 관리 API·권역 승인 등): 2026-11-13 부터 employee-auth-service 토큰만 — `dev-on-other-pcs.md` §1. 로컬은 `dev-tokens`, LAN 은 `deploy/lan/checks/staff_auth.py`. **배송 쪽 직원 시험 계정은 없다** — 필요하면 PC 1 에 요청(인사팀 등록으로 만든다).
-- 직원·고객은 로그아웃하면 그 세션 access token 이 바로 401 `SUBJECT_BLOCKED`(2026-11-13). **라이더는 아직 아니다** — rider-auth-service 는 `SubjectBlocked` 를 발행하지 않아 로그아웃 뒤에도 access token 이 만료(15분)까지 통한다. 라이더 정지 → 세션 끊기는 ADR-0054 ⑤ 남은 일(`services/rider-auth-service/CLAUDE.md`).
+- 로그아웃하면 그 세션 access token 이 바로 401 `SUBJECT_BLOCKED` — 직원·고객·**라이더**(rider-auth-service 2026-11-13 PC 1 추가: 로그아웃·모든 기기·refresh 재사용). 라이더 **정지** → 세션 끊기(`RiderRestricted`)는 ADR-0054 ⑤ 남은 일.
 - 시험 명령: `./gradlew :services:<서비스>:check`(단위·통합 Testcontainers·계약). OR-Tools 를 넣으면 PC 에서 직접이 막힐 수 있다(PC 3 사례 — `tools/ortools-test-docker.sh`, `docs/mfc/HANDOVER.md`).
 - MFC 쪽 끝까지 확인: `deploy/lan/checks/mfc_e2e.py`(라이더 인계 없음). 추적 Zipkin `http://192.168.0.40:9411`.
 
