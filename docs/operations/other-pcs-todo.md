@@ -1,6 +1,6 @@
 # 다른 PC 할 일 — PC 별 체크리스트 (2026-11-13 기준)
 
-PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록. 방법은 `dev-on-other-pcs.md`, 영역·규칙은 `pc-split.md`.
+PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록. 방법은 `dev-on-other-pcs.md`, 영역·규칙은 `pc-split.md`, 읽을 문서 지도는 `other-pcs-docs.md`.
 끝낸 줄은 그 PC 가 PR 로 `[x]` 로 바꾸고 날짜를 적는다(자기 PC 절만 고친다 — 다른 절은 PC 1 이 고친다). 새 할 일이 생기면 PC 1 이 여기에 더한다.
 
 ## 모든 다른 PC 공통 (개발 시작 전)
