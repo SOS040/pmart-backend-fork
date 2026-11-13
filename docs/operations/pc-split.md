@@ -29,7 +29,7 @@
 
 권한 변경·회수(BO-01)는 백오피스 업무 기능이라 backoffice 영역을 나눈 뒤 그 영역에서 해도 된다.
 
-PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 2 11GB·PC 4 10GB, 32GB 중). **2026-11-13 적용함**(사용자 요청): Windows 업데이트 정책(AUOptions 4·로그인 중 자동 재부팅 안 함·사용 시간 08~02)과 Gradle 사용자 단위 제한(`%USERPROFILE%\.gradle\gradle.properties` — `org.gradle.workers.max=2`, `-Xmx2g`, 프로젝트 설정보다 우선). PC 3·5 는 Windows 업데이트 정책만 있고 Gradle 제한 파일은 없다(사용 시간도 PC 3 09~02·PC 5 08~19 로 다름). 개발 시작 전 남은 것: 비밀번호 파일 복사·`git pull`(`dev-on-other-pcs.md`).
+PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 2 11GB·PC 4 10GB, 32GB 중). **2026-11-13 적용함**(사용자 요청): Windows 업데이트 정책(AUOptions 4·로그인 중 자동 재부팅 안 함·사용 시간 08~02)과 Gradle 사용자 단위 제한(`%USERPROFILE%\.gradle\gradle.properties` — `org.gradle.workers.max=2`, `-Xmx2g`, 프로젝트 설정보다 우선). PC 3·5 도 같은 날 같게 맞췄다(전에는 Windows 업데이트 정책만 있고 Gradle 제한 파일이 없었고, 사용 시간이 PC 3 09~02·PC 5 08~19 였다). 이제 PC 2~5 가 모두 같다. 이미 떠 있던 Gradle 데몬은 다음에 새로 뜰 때 제한이 적용된다(`./gradlew --stop`). 개발 시작 전 남은 것: 비밀번호 파일 복사·`git pull`(`dev-on-other-pcs.md`).
 
 ### 1-2. 영역 사이 알려진 연결
 
