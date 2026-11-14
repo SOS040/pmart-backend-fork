@@ -69,6 +69,8 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
               MountableFile.forClasspathResource("keycloak/pmart-staff-it-realm.json"),
               "/opt/keycloak/data/import/pmart-staff-realm.json") // 파일 이름 = Realm 이름(26.8)
           .withExposedPorts(8080)
+          // 백채널 로그아웃(ADR-0061): Keycloak 이 시험 앱(호스트)을 부른다 — host.testcontainers.internal
+          .withAccessToHost(true)
           .waitingFor(
               Wait.forHttp("/realms/" + REALM)
                   .forPort(8080)
@@ -79,6 +81,7 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
   static final int PORT = freePort();
 
   static {
+    org.testcontainers.Testcontainers.exposeHostPorts(PORT);
     KEYCLOAK.start();
   }
 
@@ -670,7 +673,260 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
     assertThat(FORM_ACTION.matcher(page.body()).find()).isTrue();
   }
 
+  /**
+   * 같은 브라우저({@code b})로 SSO 앱 로그인 → 티켓 교환. {@code password} 면 Keycloak 화면에 비밀번호를 낸다(아니면 화면이 나오면
+   * 실패).
+   */
+  Res ssoLogin(Browser b, String user, String app, String origin, String device, boolean password)
+      throws Exception {
+    String v = verifier();
+    String back = origin + "/auth/callback";
+    HttpResponse<String> kc =
+        b.get(
+            b.get(startUrl(app, device, v) + "&returnUri=" + back)
+                .headers()
+                .firstValue("Location")
+                .orElseThrow());
+    if (password) {
+      assertThat(kc.statusCode()).as("Keycloak 로그인 화면").isEqualTo(200);
+      Matcher m = FORM_ACTION.matcher(kc.body());
+      assertThat(m.find()).isTrue();
+      kc =
+          b.postForm(
+              m.group(1).replace("&amp;", "&"),
+              Map.of("username", user, "password", "pw-" + user, "credentialId", ""));
+    }
+    assertThat(kc.statusCode()).as("비밀번호 화면 없이 콜백으로").isEqualTo(302);
+    URI returned =
+        URI.create(
+            b.get(kc.headers().firstValue("Location").orElseThrow())
+                .headers()
+                .firstValue("Location")
+                .orElseThrow());
+    assertThat(returned.toString()).startsWith(back + "?ticket=");
+    Res r = exchange(param(returned, "ticket"), v, device);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    return r;
+  }
+
+  static String sid(Res r) {
+    return r.body().path("tokens").path("sessionId").asText();
+  }
+
+  static String access(Res r) {
+    return r.body().path("tokens").path("accessToken").asText();
+  }
+
+  String sessionState(String sessionId) {
+    return jdbc.queryForObject(
+        "SELECT state || ':' || coalesce(revoke_reason, '') FROM employee_session"
+            + " WHERE session_id = ?",
+        String.class,
+        sessionId);
+  }
+
+  int blockedEvents(String sessionId) {
+    return jdbc.queryForObject(
+        "SELECT count(*) FROM outbox_event WHERE topic = 'platform.subject-block.v1'"
+            + " AND payload::text LIKE ?",
+        Integer.class,
+        "%" + sessionId + "%");
+  }
+
+  Res postLogoutToken(String token) {
+    return http.post()
+        .uri("/internal/keycloak-logouts")
+        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+        .body("logout_token=" + URLEncoder.encode(token, StandardCharsets.UTF_8))
+        .exchange((q, r) -> new Res(r.getStatusCode().value(), read(r.bodyTo(byte[].class))));
+  }
+
+  @Test
+  void logoutEndsOtherSsoAppSessionsOfSameBrowserOnly() throws Exception {
+    // 같은 브라우저: 백오피스(비밀번호) + 인사팀 백오피스(SSO — 비밀번호 없이)
+    Browser b = new Browser();
+    Res bo = ssoLogin(b, "sso1", "backoffice", "http://backoffice.test", "tab-bo", true);
+    Res hr = ssoLogin(b, "sso1", "hr-backoffice", "http://hr.test", "tab-hr", false);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(DISTINCT keycloak_sid) FROM employee_session"
+                    + " WHERE session_id IN (?, ?) AND keycloak_sid IS NOT NULL",
+                Integer.class,
+                sid(bo),
+                sid(hr)))
+        .as("같은 Keycloak 세션")
+        .isEqualTo(1);
+    // 다른 브라우저(다른 PC)의 백오피스, 같은 직원의 PDA
+    Res other =
+        ssoLogin(new Browser(), "sso1", "backoffice", "http://backoffice.test", "pc-2", true);
+    String pdaV = verifier();
+    Res pda =
+        exchange(param(browserLogin("sso1", "mfc", "pda-sso", pdaV), "ticket"), pdaV, "pda-sso");
+    assertThat(pda.status()).isEqualTo(200);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT keycloak_sid FROM employee_session WHERE session_id = ?",
+                String.class,
+                sid(pda)))
+        .as("PDA 는 Keycloak 세션에 묶지 않는다")
+        .isNull();
+
+    // 백오피스에서 로그아웃(브라우저가 Keycloak 로그아웃 주소로 가기 전에도) → 같은 브라우저의 인사팀 세션도 끝난다
+    Res out = withToken("POST", "/employee-auth/logouts", access(bo), Map.of());
+    assertThat(out.status()).isEqualTo(200);
+    assertThat(sessionState(sid(bo))).isEqualTo("REVOKED:LOGOUT");
+    assertThat(sessionState(sid(hr))).isEqualTo("REVOKED:LOGOUT_PROPAGATED");
+    assertThat(withToken("GET", "/employee-auth/sessions/current", access(hr), null).status())
+        .isEqualTo(401);
+    assertThat(blockedEvents(sid(hr))).as("인사팀 세션 토큰도 게이트웨이가 바로 막게").isEqualTo(1);
+    // 다른 PC·PDA 는 그대로
+    assertThat(sessionState(sid(other))).isEqualTo("ACTIVE:");
+    assertThat(sessionState(sid(pda))).isEqualTo("ACTIVE:");
+    assertThat(withToken("GET", "/employee-auth/sessions/current", access(other), null).status())
+        .isEqualTo(200);
+    assertThat(blockedEvents(sid(other))).isZero();
+    // 남긴 Keycloak 세션(두 브라우저)을 정리 — 다른 시험이 sso1 의 Keycloak 세션 수를 센다
+    keycloakLogoutUser("sso1");
+  }
+
+  @Test
+  void keycloakBackchannelLogoutEndsSsoSessions() throws Exception {
+    backchannelUrl(
+        "http://host.testcontainers.internal:" + PORT + "/api/v1/internal/keycloak-logouts");
+    try {
+      Browser b = new Browser();
+      Res bo = ssoLogin(b, "sso1", "backoffice", "http://backoffice.test", "bc-bo", true);
+      Res hr = ssoLogin(b, "sso1", "hr-backoffice", "http://hr.test", "bc-hr", false);
+      String pdaV = verifier();
+      Res pda =
+          exchange(param(browserLogin("sso1", "mfc", "bc-pda", pdaV), "ticket"), pdaV, "bc-pda");
+
+      // 관리자가 Keycloak 에서 그 직원을 로그아웃 → Keycloak 이 이 서비스를 부른다
+      HttpResponse<String> kcOut =
+          new Browser()
+              .client.send(
+                  HttpRequest.newBuilder(
+                          URI.create(
+                              kcBase()
+                                  + "/admin/realms/"
+                                  + REALM
+                                  + "/users/"
+                                  + userId("sso1")
+                                  + "/logout"))
+                      .header("Authorization", "Bearer " + adminToken())
+                      .POST(HttpRequest.BodyPublishers.noBody())
+                      .build(),
+                  HttpResponse.BodyHandlers.ofString());
+      assertThat(kcOut.statusCode()).as(kcOut.body()).isEqualTo(204);
+      long until = System.currentTimeMillis() + 10_000;
+      while (System.currentTimeMillis() < until
+          && !(sessionState(sid(bo)).startsWith("REVOKED")
+              && sessionState(sid(hr)).startsWith("REVOKED"))) {
+        Thread.sleep(200);
+      }
+      assertThat(sessionState(sid(bo))).isEqualTo("REVOKED:IDP_LOGOUT");
+      assertThat(sessionState(sid(hr))).isEqualTo("REVOKED:IDP_LOGOUT");
+      assertThat(blockedEvents(sid(bo))).isEqualTo(1);
+      assertThat(blockedEvents(sid(hr))).isEqualTo(1);
+      assertThat(sessionState(sid(pda))).as("PDA 세션은 그대로").isEqualTo("ACTIVE:");
+    } finally {
+      backchannelUrl("");
+    }
+
+    // 서명 없는·엉뚱한 토큰은 400 invalid_request
+    Res bad = postLogoutToken("not-a-jwt");
+    assertThat(bad.status()).isEqualTo(400);
+    assertThat(bad.body().path("error").asText()).isEqualTo("invalid_request");
+    // Keycloak 이 서명한 다른 토큰(access token — events·aud 없음)도 거절
+    assertThat(postLogoutToken(directLogin("pmart-dev-cli", "ghost1")).status()).isEqualTo(400);
+  }
+
   // ------------------------------------------------------------------ Keycloak 도우미
+
+  String adminToken() throws Exception {
+    HttpResponse<String> t =
+        new Browser()
+            .postForm(
+                kcBase() + "/realms/master/protocol/openid-connect/token",
+                Map.of(
+                    "grant_type", "password",
+                    "client_id", "admin-cli",
+                    "username", "admin",
+                    "password", "admin"));
+    return mapper.readTree(t.body()).path("access_token").asText();
+  }
+
+  /** Keycloak 관리자 "로그아웃"(그 사용자의 Keycloak 세션 전부). */
+  void keycloakLogoutUser(String user) throws Exception {
+    HttpResponse<String> r =
+        new Browser()
+            .client.send(
+                HttpRequest.newBuilder(
+                        URI.create(
+                            kcBase()
+                                + "/admin/realms/"
+                                + REALM
+                                + "/users/"
+                                + userId(user)
+                                + "/logout"))
+                    .header("Authorization", "Bearer " + adminToken())
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(204);
+  }
+
+  String userId(String user) throws Exception {
+    HttpResponse<String> users =
+        new Browser()
+            .client.send(
+                HttpRequest.newBuilder(
+                        URI.create(
+                            kcBase()
+                                + "/admin/realms/"
+                                + REALM
+                                + "/users?exact=true&username="
+                                + user))
+                    .header("Authorization", "Bearer " + adminToken())
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+    return mapper.readTree(users.body()).get(0).path("id").asText();
+  }
+
+  /** 클라이언트 employee-auth-service 의 백채널 로그아웃 주소(시험 앱 포트가 기동 때 정해져 Realm 파일에 둘 수 없다). */
+  void backchannelUrl(String url) throws Exception {
+    String token = adminToken();
+    Browser b = new Browser();
+    HttpResponse<String> list =
+        b.client.send(
+            HttpRequest.newBuilder(
+                    URI.create(
+                        kcBase()
+                            + "/admin/realms/"
+                            + REALM
+                            + "/clients?clientId=employee-auth-service"))
+                .header("Authorization", "Bearer " + token)
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    var client = (tools.jackson.databind.node.ObjectNode) mapper.readTree(list.body()).get(0);
+    ((tools.jackson.databind.node.ObjectNode) client.path("attributes"))
+        .put("backchannel.logout.url", url);
+    HttpResponse<String> put =
+        b.client.send(
+            HttpRequest.newBuilder(
+                    URI.create(
+                        kcBase()
+                            + "/admin/realms/"
+                            + REALM
+                            + "/clients/"
+                            + client.path("id").asText()))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(client)))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+    assertThat(put.statusCode()).as(put.body()).isEqualTo(204);
+  }
 
   Res devExchange(String kcToken) {
     return http.post()

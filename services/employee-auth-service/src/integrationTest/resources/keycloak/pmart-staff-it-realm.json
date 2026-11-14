@@ -21,9 +21,12 @@
         "*"
       ],
       "webOrigins": [],
+      "frontchannelLogout": false,
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://backoffice.test/*"
+        "post.logout.redirect.uris": "http://backoffice.test/*##http://hr.test/*",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "fullScopeAllowed": false,
       "protocolMappers": [

@@ -64,3 +64,4 @@
 | [0058](0058-delivery-ai-dispatch-python-optimizer-server.md) | AI 추천 배차는 Python AI 최적화 서버(GreedRL·RouteFinder)에 Spring 이 계산 요청, 거리·시간은 카카오모빌리티 길찾기(직선거리 대체 없음), 알뜰배달은 묶음 배정(OR-Tools 또는 AI) — tech-stack "Python 런타임 없음"·ADR-0050 일부 대체 | 승인 |
 | [0059](0059-web-staff-refresh-cookie-signed-double-submit.md) | 웹 백오피스 직원 refresh token 은 세션별 HttpOnly 쿠키(Path=갱신 주소/{sessionId}), CSRF 는 Signed Double-Submit(세션에 묶은 HMAC) — ADR-0018 결정 6 의 웹 직원 부분 대체 | 승인 |
 | [0060](0060-no-customer-center-cancel-after-preparing.md) | 상품준비(PREPARING) 뒤 ~ 인계 전 고객 요청 취소는 고객센터로도 받지 않는다(시스템 결품 취소만, 인계 뒤 회수 D-7 그대로) — ADR-0052 결정 2 대체 | 승인 |
+| [0061](0061-staff-logout-propagation-same-browser-and-keycloak-backchannel.md) | 직원 로그아웃 전파 — 같은 브라우저(같은 Keycloak 세션)의 SSO 앱 세션을 함께 끝내고, Keycloak 백채널 로그아웃을 받는다. 다른 탭은 다시 보일 때 확인 | 승인 |

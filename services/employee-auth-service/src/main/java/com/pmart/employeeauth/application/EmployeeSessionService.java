@@ -7,6 +7,7 @@ import com.pmart.employeeauth.infrastructure.EmployeeAuthStore;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore.AccountRow;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore.RefreshRow;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore.SessionRow;
+import com.pmart.employeeauth.infrastructure.KeycloakClient;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
@@ -43,6 +44,7 @@ public class EmployeeSessionService {
   private final EmployeeAccess access;
   private final SubjectBlocks blocks;
   private final CsrfTokens csrf;
+  private final KeycloakClient keycloak;
 
   public EmployeeSessionService(
       EmployeeAuthStore store,
@@ -52,7 +54,8 @@ public class EmployeeSessionService {
       Clock clock,
       EmployeeAccess access,
       SubjectBlocks blocks,
-      CsrfTokens csrf) {
+      CsrfTokens csrf,
+      KeycloakClient keycloak) {
     this.store = store;
     this.tokens = tokens;
     this.props = props;
@@ -61,6 +64,7 @@ public class EmployeeSessionService {
     this.access = access;
     this.blocks = blocks;
     this.csrf = csrf;
+    this.keycloak = keycloak;
   }
 
   /**
@@ -214,10 +218,82 @@ public class EmployeeSessionService {
             if (current != null && current.operatorId().equals(jwt.getSubject())) {
               blocks.blockSession(
                   jwt.getSubject(), sid, version(jwt.getSubject()), now, "LOGOUT", me);
+              // 같은 브라우저 로그인(같은 Keycloak 세션)으로 열린 다른 SSO 앱 세션도(ADR-0061 — 2026-11-14 사용자 "같은 브라우저만")
+              if (current.keycloakSid() != null) {
+                endKeycloakSession(
+                    store.activeSessionsByKeycloakSid(current.keycloakSid()).stream()
+                        .filter(o -> o.operatorId().equals(jwt.getSubject()))
+                        .toList(),
+                    "LOGOUT_PROPAGATED",
+                    now,
+                    me);
+              }
             }
           }
           return new LogoutOutcome(idpLogout, cookieSession);
         });
+  }
+
+  /**
+   * Keycloak 백채널 로그아웃(ADR-0061). sid 면 그 Keycloak 세션으로 열린 SSO 앱 세션, sid 없이 sub 만이면 그 Keycloak 사용자에
+   * 연결된 직원의 SSO 앱 세션 전부. 끝낸 세션 수(이미 끝났으면 0 — 멱등).
+   */
+  public int endByKeycloakLogout(KeycloakLogout logout) {
+    Instant now = clock.instant();
+    EventEnvelope.Actor keycloak =
+        new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "keycloak");
+    Integer n =
+        tx.execute(
+            status -> {
+              List<SessionRow> targets;
+              if (logout.sid() != null) {
+                targets = store.activeSessionsByKeycloakSid(logout.sid());
+                if (logout.subject() != null) {
+                  // sub 도 오면 그 사용자 세션만(다른 직원 세션을 끝내지 않게)
+                  String op = store.linkedOperator(logout.subject()).orElse(null);
+                  targets = targets.stream().filter(t -> t.operatorId().equals(op)).toList();
+                }
+              } else if (logout.subject() != null) {
+                targets =
+                    store
+                        .linkedOperator(logout.subject())
+                        .map(store::activeSsoSessions)
+                        .orElse(List.of());
+              } else {
+                targets = List.of();
+              }
+              return endKeycloakSession(targets, "IDP_LOGOUT", now, keycloak);
+            });
+    int ended = n == null ? 0 : n;
+    log.info("Keycloak 백채널 로그아웃: 끝낸 세션 {}개", ended);
+    return ended;
+  }
+
+  /**
+   * Keycloak 이 보낸 logout_token 을 검증하고 세션을 끝낸다(ADR-0061).
+   *
+   * @throws KeycloakClient.Rejected 토큰 무효(400 invalid_request)
+   * @throws KeycloakClient.Unavailable Keycloak 공개키를 못 받음(503 — Keycloak 이 실패로 본다)
+   */
+  public int receiveKeycloakLogout(String logoutToken) {
+    KeycloakClient.LogoutClaims c = keycloak.verifyLogoutToken(logoutToken);
+    return endByKeycloakLogout(new KeycloakLogout(c.subject(), c.sid()));
+  }
+
+  /** 백채널 로그아웃 요청(검증된 값). */
+  public record KeycloakLogout(@Nullable String subject, @Nullable String sid) {}
+
+  /** 세션들을 끝내고 각 세션의 access token 을 바로 막는다. 트랜잭션 안. */
+  private int endKeycloakSession(
+      List<SessionRow> sessions, String reason, Instant now, EventEnvelope.Actor actor) {
+    int ended = 0;
+    for (SessionRow o : sessions) {
+      store.revokeSession(o.sessionId(), reason, now);
+      blocks.blockSession(
+          o.operatorId(), o.sessionId(), version(o.operatorId()), now, "LOGOUT", actor);
+      ended++;
+    }
+    return ended;
   }
 
   /** 사건 aggregateVersion — 직원 계정 버전(없으면 1). */

@@ -42,8 +42,18 @@ public class KeycloakClient {
 
   public static final String CLAIM_OPERATOR_ID = "pmart_operator_id";
 
-  /** 검증된 Keycloak 사용자. operatorId 는 사용자 속성(첫 로그인 연결용). */
-  public record Identity(String subject, @Nullable String operatorId) {}
+  /**
+   * 검증된 Keycloak 사용자. operatorId 는 사용자 속성(첫 로그인 연결용). sid = Keycloak 세션 ID(ID 토큰 {@code sid} — 같은
+   * 브라우저 로그인을 묶는 값, ADR-0061).
+   */
+  public record Identity(String subject, @Nullable String operatorId, @Nullable String sid) {}
+
+  /** 검증된 백채널 로그아웃(OIDC Back-Channel Logout 1.0). sid·sub 중 하나 이상. */
+  public record LogoutClaims(@Nullable String subject, @Nullable String sid) {}
+
+  /** logout_token {@code events} 의 키(규약 고정값). */
+  public static final String BACKCHANNEL_LOGOUT_EVENT =
+      "http://schemas.openid.net/event/backchannel-logout";
 
   /** 코드 교환 결과(이 서비스 안에서만 쓰고 버린다). */
   public record Tokens(String idToken, @Nullable String refreshToken) {}
@@ -65,6 +75,7 @@ public class KeycloakClient {
   private final RestClient http;
   private volatile @Nullable JwtDecoder idTokens;
   private volatile @Nullable JwtDecoder devAccessTokens;
+  private volatile @Nullable JwtDecoder logoutTokens;
 
   public KeycloakClient(EmployeeAuthProperties props, RestClient.Builder builder) {
     this.kc = props.keycloak();
@@ -86,6 +97,12 @@ public class KeycloakClient {
     return this;
   }
 
+  /** 시험이 백채널 로그아웃 토큰의 서명 확인만 바꿀 때. */
+  public KeycloakClient withLogoutDecoder(JwtDecoder logoutTokens) {
+    this.logoutTokens = logoutTokens;
+    return this;
+  }
+
   // 공개키 주소는 Keycloak 설정이 있을 때만 쓰므로 처음 쓸 때 만든다(설정 없는 기동·시험에서 상대 주소로 실패하지 않게)
   private JwtDecoder idTokens() {
     JwtDecoder d = idTokens;
@@ -94,6 +111,17 @@ public class KeycloakClient {
           NimbusJwtDecoder.withJwkSetUri(Objects.requireNonNull(kc.jwkSetUri())).build();
       n.setJwtValidator(idTokenValidator(kc));
       idTokens = d = n;
+    }
+    return d;
+  }
+
+  private JwtDecoder logoutTokens() {
+    JwtDecoder d = logoutTokens;
+    if (d == null) {
+      NimbusJwtDecoder n =
+          NimbusJwtDecoder.withJwkSetUri(Objects.requireNonNull(kc.jwkSetUri())).build();
+      n.setJwtValidator(logoutTokenValidator(kc));
+      logoutTokens = d = n;
     }
     return d;
   }
@@ -157,6 +185,20 @@ public class KeycloakClient {
     return identity(jwt);
   }
 
+  /**
+   * 백채널 로그아웃 토큰 검증(ADR-0061) — 서명(Keycloak JWKS)·만료·iss·aud(이 클라이언트)·events·nonce 없음·sid 또는 sub.
+   *
+   * @throws Rejected 무효(규약상 400)
+   * @throws Unavailable 공개키를 못 받음
+   */
+  public LogoutClaims verifyLogoutToken(String logoutToken) {
+    Jwt jwt = decode(logoutTokens(), logoutToken);
+    String sid = jwt.getClaimAsString("sid");
+    String sub = jwt.getSubject();
+    return new LogoutClaims(
+        sub == null || sub.isBlank() ? null : sub, sid == null || sid.isBlank() ? null : sid);
+  }
+
   /** (LAN 시험) pmart-dev-cli 등이 직접 로그인으로 받은 Keycloak access token 검증. */
   public Identity verifyDevAccessToken(String accessToken) {
     return identity(decode(devAccessTokens(), accessToken));
@@ -204,7 +246,11 @@ public class KeycloakClient {
       throw new Rejected("sub 없음");
     }
     String op = jwt.getClaimAsString(CLAIM_OPERATOR_ID);
-    return new Identity(jwt.getSubject(), op == null || op.isBlank() ? null : op);
+    String sid = jwt.getClaimAsString("sid");
+    return new Identity(
+        jwt.getSubject(),
+        op == null || op.isBlank() ? null : op,
+        sid == null || sid.isBlank() ? null : sid);
   }
 
   /** ID 토큰: 만료·iss(정확히)·aud 에 이 클라이언트·azp 가 있으면 이 클라이언트. */
@@ -223,6 +269,39 @@ public class KeycloakClient {
           return azp == null || azp.equals(kc.clientId())
               ? OAuth2TokenValidatorResult.success()
               : fail("azp");
+        });
+    return new DelegatingOAuth2TokenValidator<>(v);
+  }
+
+  /** 백채널 로그아웃 토큰: 만료·iss·aud 에 이 클라이언트·events 에 back-channel logout·nonce 없음·sid 또는 sub. */
+  public static OAuth2TokenValidator<Jwt> logoutTokenValidator(EmployeeAuthProperties.Keycloak kc) {
+    List<OAuth2TokenValidator<Jwt>> v = new ArrayList<>();
+    v.add(new JwtTimestampValidator());
+    v.add(issuer(kc));
+    v.add(
+        jwt ->
+            jwt.getAudience() != null && jwt.getAudience().contains(kc.clientId())
+                ? OAuth2TokenValidatorResult.success()
+                : fail("aud"));
+    v.add(
+        jwt -> {
+          Object events = jwt.getClaims().get("events");
+          return events instanceof Map<?, ?> m && m.containsKey(BACKCHANNEL_LOGOUT_EVENT)
+              ? OAuth2TokenValidatorResult.success()
+              : fail("events");
+        });
+    v.add(
+        jwt ->
+            jwt.getClaims().containsKey("nonce")
+                ? fail("nonce")
+                : OAuth2TokenValidatorResult.success());
+    v.add(
+        jwt -> {
+          String sid = jwt.getClaimAsString("sid");
+          String sub = jwt.getSubject();
+          return (sid != null && !sid.isBlank()) || (sub != null && !sub.isBlank())
+              ? OAuth2TokenValidatorResult.success()
+              : fail("sid/sub");
         });
     return new DelegatingOAuth2TokenValidator<>(v);
   }

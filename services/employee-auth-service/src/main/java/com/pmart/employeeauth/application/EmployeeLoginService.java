@@ -226,7 +226,9 @@ public class EmployeeLoginService {
         now.plus(props.ticketTtl()),
         attempt.returnUri(),
         // SSO 앱만: 로그아웃 때 Keycloak 세션을 확인 화면 없이 끝내는 id_token_hint(이름·이메일 없음, PMart API 에 못 씀)
-        sso ? kcTokens.idToken() : null);
+        sso ? kcTokens.idToken() : null,
+        // SSO 앱만: 같은 Keycloak 세션(같은 브라우저 로그인)의 PMart 세션을 함께 끝내려고(ADR-0061)
+        sso ? identity.sid() : null);
     log.info("직원 로그인 확인: operatorId={} app={}", operatorId, attempt.app());
     return back(attempt, "ticket", ticket);
   }
@@ -298,7 +300,8 @@ public class EmployeeLoginService {
                   sourceSystem,
                   now,
                   t.returnUri(),
-                  t.keycloakIdToken());
+                  t.keycloakIdToken(),
+                  t.keycloakSid());
             });
     if (invalid[0] || r == null) {
       log.warn("로그인 티켓 교환 거절");
@@ -336,7 +339,7 @@ public class EmployeeLoginService {
               String operatorId = resolve(identity, now);
               AccountRow account = store.account(operatorId, false).orElseThrow();
               return openSession(
-                  account, deviceId, "dev-cli", "dev-token-exchange", now, null, null);
+                  account, deviceId, "dev-cli", "dev-token-exchange", now, null, null, null);
             });
     log.info("LAN 시험 토큰 교환: operatorId={}", Objects.requireNonNull(r).operatorId());
     return r;
@@ -367,7 +370,8 @@ public class EmployeeLoginService {
                 store.updateAccount(operatorId, ACTIVE, sortedRoles, sortedCenters, now);
               }
               AccountRow account = store.account(operatorId, false).orElseThrow();
-              return openSession(account, deviceId, "dev-cli", "dev-token-mint", now, null, null);
+              return openSession(
+                  account, deviceId, "dev-cli", "dev-token-mint", now, null, null, null);
             });
     log.info("로컬 개발 토큰 발급: operatorId={}", Objects.requireNonNull(r).operatorId());
     return r;
@@ -382,7 +386,8 @@ public class EmployeeLoginService {
       String sourceSystem,
       Instant now,
       @Nullable String returnUri,
-      @Nullable String keycloakIdToken) {
+      @Nullable String keycloakIdToken,
+      @Nullable String keycloakSid) {
     String sessionId = "ESES-" + UUID.randomUUID();
     Instant max = now.plus(props.sessionMaxAge());
     Instant expires = min(now.plus(props.sessionIdle(app)), max);
@@ -396,7 +401,8 @@ public class EmployeeLoginService {
         max,
         expires,
         returnUri,
-        keycloakIdToken);
+        keycloakIdToken,
+        keycloakSid);
     EmployeeAccess.Access access = this.access.of(account, now);
     EmployeeTokens.Tokens t =
         tokens.issue(

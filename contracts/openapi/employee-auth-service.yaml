@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -203,6 +203,8 @@ paths:
         비밀번호 없이 된다. 이미 끝난 세션이면 idpLogoutUri 없이 200.
         refresh 쿠키 앱(ADR-0059)이면 이 세션의 쿠키 둘을 Max-Age=0 으로 지운다(credentials: include 로 불러야 브라우저가 지운다).
         allDevices 면 서버 세션은 모두 끝나지만 쿠키는 이 탭 세션 것만 지워진다(다른 탭 쿠키는 세션이 없어 쓸 수 없다).
+        (0.4.0, ADR-0061) SSO 앱 세션이면 **같은 Keycloak 세션(같은 브라우저 로그인)으로 열린 이 직원의 다른 SSO 앱 세션도 함께** 끝낸다
+        (예 백오피스에서 로그아웃 → 같은 브라우저의 인사팀 백오피스 세션도). 다른 PC·PDA 세션은 그대로. 끝낸 세션의 access token 은 게이트웨이가 바로 401.
       operationId: employeeLogout
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -287,6 +289,41 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   # ---------- keys (JWKS). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  /internal/keycloak-logouts:
+    post:
+      tags: [logins]
+      summary: Keycloak 백채널 로그아웃 수신 (OIDC Back-Channel Logout 1.0, ADR-0061)
+      description: |
+        Keycloak 이 직원의 Keycloak 세션을 끝낼 때(관리자 로그아웃, 비밀번호 변경 때 다른 세션 로그아웃, 로그아웃 주소 이동 등) 서버끼리 부른다
+        (Keycloak 클라이언트 employee-auth-service 의 backchannel.logout.url — 같은 PC Docker 네트워크, 게이트웨이에 열지 않는다).
+        logout_token 의 서명(Keycloak JWKS)·iss·aud(이 클라이언트)·events(back-channel logout)·nonce 없음·sid 또는 sub 를 확인하고,
+        sid 면 그 Keycloak 세션으로 열린 PMart SSO 앱 세션을, sid 없이 sub 만이면 그 직원의 SSO 앱 세션 전부를 끝내고 access token 을 막는다.
+        PDA 등 SSO 가 아닌 앱 세션은 Keycloak 세션과 묶이지 않아 그대로다. 이미 끝났으면 그대로 200(멱등). Keycloak 세션이 시간으로 만료될 때는 Keycloak 이 부르지 않는다.
+        사용자 토큰을 받지 않는다(ADR-0026) — 믿음의 근거는 Keycloak 서명이다. 토큰 값은 로그 금지.
+      operationId: receiveKeycloakLogout
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [logout_token]
+              properties:
+                logout_token: { type: string, maxLength: 8192, description: 로그 금지 }
+      responses:
+        '200': { description: 처리함(끝낼 세션이 없어도) }
+        '400':
+          description: 'logout_token 이 없거나 무효(OIDC 규약: invalid_request) — 본문 { "error": "invalid_request" }'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+        '503':
+          description: Keycloak 공개키를 받을 수 없음(Keycloak 이 다시 보낼 수 있게 실패로 답한다)
+
   /internal/jwks:
     get:
       tags: [keys]

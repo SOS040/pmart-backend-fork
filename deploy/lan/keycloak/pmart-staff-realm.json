@@ -44,8 +44,12 @@
         "https://192.168.0.40:8443/api/v1/employee-auth/logins/callback"
       ],
       "webOrigins": [],
+      "frontchannelLogout": false,
       "attributes": {
         "pkce.code.challenge.method": "S256",
+        "backchannel.logout.url": "http://employee-auth-service:8511/api/v1/internal/keycloak-logouts",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false",
         "post.logout.redirect.uris": "http://localhost:5173/login##http://localhost:5174/login##https://192.168.0.40/login##https://d603-16/login##https://192.168.0.40:8444/login##https://d603-16:8444/login"
       },
       "fullScopeAllowed": false,

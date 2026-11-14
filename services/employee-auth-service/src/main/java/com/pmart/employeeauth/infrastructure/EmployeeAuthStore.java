@@ -48,7 +48,8 @@ public class EmployeeAuthStore {
       Instant expiresAt,
       @Nullable Instant usedAt,
       @Nullable String returnUri,
-      @Nullable String keycloakIdToken) {}
+      @Nullable String keycloakIdToken,
+      @Nullable String keycloakSid) {}
 
   public record SessionRow(
       String sessionId,
@@ -59,7 +60,8 @@ public class EmployeeAuthStore {
       Instant maxExpiresAt,
       Instant expiresAt,
       @Nullable String returnUri,
-      @Nullable String keycloakIdToken) {}
+      @Nullable String keycloakIdToken,
+      @Nullable String keycloakSid) {}
 
   public record RefreshRow(
       String tokenHash, String sessionId, Instant expiresAt, @Nullable Instant usedAt) {}
@@ -286,9 +288,34 @@ public class EmployeeAuthStore {
       Instant expiresAt,
       String returnUri,
       @Nullable String keycloakIdToken) {
+    insertTicket(
+        ticketHash,
+        operatorId,
+        app,
+        deviceId,
+        ticketChallenge,
+        at,
+        expiresAt,
+        returnUri,
+        keycloakIdToken,
+        null);
+  }
+
+  /** {@code keycloakSid}: SSO 앱만 — 같은 Keycloak 세션의 PMart 세션을 함께 끝내려고(ADR-0061). */
+  public void insertTicket(
+      String ticketHash,
+      String operatorId,
+      String app,
+      String deviceId,
+      String ticketChallenge,
+      Instant at,
+      Instant expiresAt,
+      String returnUri,
+      @Nullable String keycloakIdToken,
+      @Nullable String keycloakSid) {
     jdbc.update(
         "INSERT INTO login_ticket (ticket_hash, operator_id, app, device_id, ticket_challenge, issued_at, expires_at,"
-            + " return_uri, keycloak_id_token) VALUES (?,?,?,?,?,?,?,?,?)",
+            + " return_uri, keycloak_id_token, keycloak_sid) VALUES (?,?,?,?,?,?,?,?,?,?)",
         ticketHash,
         operatorId,
         app,
@@ -297,7 +324,8 @@ public class EmployeeAuthStore {
         Timestamp.from(at),
         Timestamp.from(expiresAt),
         returnUri,
-        keycloakIdToken);
+        keycloakIdToken,
+        keycloakSid);
   }
 
   public Optional<TicketRow> lockTicket(String ticketHash) {
@@ -314,7 +342,8 @@ public class EmployeeAuthStore {
                     instant(rs, "expires_at"),
                     nullableInstant(rs, "used_at"),
                     rs.getString("return_uri"),
-                    rs.getString("keycloak_id_token")),
+                    rs.getString("keycloak_id_token"),
+                    rs.getString("keycloak_sid")),
             ticketHash)
         .stream()
         .findFirst();
@@ -351,10 +380,36 @@ public class EmployeeAuthStore {
       Instant expiresAt,
       @Nullable String returnUri,
       @Nullable String keycloakIdToken) {
+    insertSession(
+        sessionId,
+        operatorId,
+        deviceId,
+        app,
+        sourceSystem,
+        at,
+        maxExpiresAt,
+        expiresAt,
+        returnUri,
+        keycloakIdToken,
+        null);
+  }
+
+  public void insertSession(
+      String sessionId,
+      String operatorId,
+      String deviceId,
+      String app,
+      String sourceSystem,
+      Instant at,
+      Instant maxExpiresAt,
+      Instant expiresAt,
+      @Nullable String returnUri,
+      @Nullable String keycloakIdToken,
+      @Nullable String keycloakSid) {
     jdbc.update(
         "INSERT INTO employee_session (session_id, operator_id, device_id, app, source_system, state,"
-            + " created_at, max_expires_at, expires_at, return_uri, keycloak_id_token)"
-            + " VALUES (?,?,?,?,?,'ACTIVE',?,?,?,?,?)",
+            + " created_at, max_expires_at, expires_at, return_uri, keycloak_id_token, keycloak_sid)"
+            + " VALUES (?,?,?,?,?,'ACTIVE',?,?,?,?,?,?)",
         sessionId,
         operatorId,
         deviceId,
@@ -364,7 +419,8 @@ public class EmployeeAuthStore {
         Timestamp.from(maxExpiresAt),
         Timestamp.from(expiresAt),
         returnUri,
-        keycloakIdToken);
+        keycloakIdToken,
+        keycloakSid);
   }
 
   public Optional<SessionRow> session(String sessionId, boolean forUpdate) {
@@ -372,20 +428,42 @@ public class EmployeeAuthStore {
         .query(
             "SELECT * FROM employee_session WHERE session_id = ?"
                 + (forUpdate ? " FOR UPDATE" : ""),
-            (rs, i) ->
-                new SessionRow(
-                    rs.getString("session_id"),
-                    rs.getString("operator_id"),
-                    rs.getString("device_id"),
-                    rs.getString("app"),
-                    rs.getString("state"),
-                    instant(rs, "max_expires_at"),
-                    instant(rs, "expires_at"),
-                    rs.getString("return_uri"),
-                    rs.getString("keycloak_id_token")),
+            EmployeeAuthStore::sessionRow,
             sessionId)
         .stream()
         .findFirst();
+  }
+
+  private static SessionRow sessionRow(ResultSet rs, int i) throws SQLException {
+    return new SessionRow(
+        rs.getString("session_id"),
+        rs.getString("operator_id"),
+        rs.getString("device_id"),
+        rs.getString("app"),
+        rs.getString("state"),
+        instant(rs, "max_expires_at"),
+        instant(rs, "expires_at"),
+        rs.getString("return_uri"),
+        rs.getString("keycloak_id_token"),
+        rs.getString("keycloak_sid"));
+  }
+
+  /** 같은 Keycloak 세션으로 열린 살아 있는 세션(ADR-0061). 잠근다. */
+  public List<SessionRow> activeSessionsByKeycloakSid(String keycloakSid) {
+    return jdbc.query(
+        "SELECT * FROM employee_session WHERE keycloak_sid = ? AND state = 'ACTIVE'"
+            + " ORDER BY session_id FOR UPDATE",
+        EmployeeAuthStore::sessionRow,
+        keycloakSid);
+  }
+
+  /** 그 직원의 살아 있는 SSO 앱 세션(Keycloak 세션에 묶인 것, ADR-0061 — sid 없는 백채널 로그아웃). 잠근다. */
+  public List<SessionRow> activeSsoSessions(String operatorId) {
+    return jdbc.query(
+        "SELECT * FROM employee_session WHERE operator_id = ? AND state = 'ACTIVE'"
+            + " AND keycloak_sid IS NOT NULL ORDER BY session_id FOR UPDATE",
+        EmployeeAuthStore::sessionRow,
+        operatorId);
   }
 
   public void refreshed(String sessionId, Instant at, Instant expiresAt) {
