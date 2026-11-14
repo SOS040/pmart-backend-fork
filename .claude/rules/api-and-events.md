@@ -33,6 +33,7 @@ paths:
 - 소비자는 Spring Cloud Stream 함수 바인딩(ADR-0035): `EventConsumers.of(...)` 로 만든 `PmartEventConsumer` 빈 + 설정 저장소 `<서비스>.yml` 의 `spring.cloud.function.definition`·`spring.cloud.stream.bindings.<fn>-in-0.destination`(그 뒤 `config-copies.sh sync`). 그룹·재시도·DLQ·커밋은 common-messaging 이 넣는다. `@KafkaListener` 와 운영 코드의 KafkaTemplate 은 쓰지 않는다(발행은 outbox → Debezium, 재처리는 StreamBridge).
 - 업무 반영 후 offset 커밋. 재전달을 안전하게 처리.
 - 필수 메타데이터: `eventId`, `aggregateId`, `aggregateVersion`, `schemaVersion`, `occurredAt`, `correlationId`.
+- `aggregateVersion` 은 발행 서비스마다 따로 센다 — 역순 판정은 `(sourceSystem, aggregateId)` 안에서만(같은 aggregate 를 두 서비스가 내는 Delivery 등, events.md §7). 서비스 사이 순서는 업무 값(assignmentVersion·상태)으로.
 - 순서가 필요한 사건은 안정적인 파티션 키 사용 (보통 aggregateId).
 - Retry topic은 처리 순서를 바꿀 수 있음을 고려.
 - 재시도·DLT·재처리 시 원이벤트 식별자 유지.
