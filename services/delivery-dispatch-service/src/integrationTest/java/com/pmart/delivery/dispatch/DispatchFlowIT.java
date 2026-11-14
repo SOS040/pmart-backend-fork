@@ -16,6 +16,7 @@ import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
 import com.pmart.delivery.dispatch.application.DispatchEngine;
+import com.pmart.delivery.dispatch.infrastructure.DispatchStore;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -75,6 +76,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired DispatchEngine engine;
+  @Autowired DispatchStore store;
 
   @InjectWireMock("up")
   WireMockServer up;
@@ -858,6 +860,254 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     ResponseEntity<String> late = cancel(other, deliveryId, "p-" + deliveryId);
     assertThat(late.getStatusCode().value()).isEqualTo(422);
     assertThat(body(late).path("code").asString()).isEqualTo("PICKED_UP_CASE_REQUIRED");
+  }
+
+  /** RS-1(사용자 2026-11-14): 라이더 계정 제한 → 픽업 전 배정은 풀고 다시 배차, 픽업한 배송은 끝까지 전달(그대로), 응답 전 제안은 LATE. */
+  @Test
+  void restrictedRiderLosesPrePickupAssignmentsButKeepsPickedUp() {
+    String mfc = "MFC-D13";
+    String r1 = "RD-rs1-" + UUID.randomUUID();
+    String r2 = "RD-rs2-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true), rider(r2, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}, r2, new double[] {37.4986, 127.0281}));
+
+    String assigned = acceptedBy(r1, mfc);
+    String pickedUp = acceptedBy(r1, mfc);
+    jdbc.update("UPDATE delivery SET state = 'PICKED_UP' WHERE delivery_id = ?", pickedUp);
+    String offered = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-13-" + UUID.randomUUID());
+    engine.tick();
+    String openOffer =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT' AND rider_id = ?",
+            String.class,
+            offered,
+            r1);
+
+    String json =
+        EventEnvelopeFixtures.envelope("RiderRestricted")
+            .from("rider-service")
+            .aggregate("Rider", r1, 3)
+            .payload(
+                Map.of(
+                    "riderId",
+                    r1,
+                    "restriction",
+                    "DISPATCH_RESTRICTED",
+                    "from",
+                    Instant.now().toString(),
+                    "basis",
+                    "고객 신고 확인"))
+            .buildJson();
+    kafka.send("delivery.rider.v1", r1, json).join();
+    awaitSql(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = '"
+            + assigned
+            + "' AND type = 'DeliveryAssignmentChanged'");
+
+    // 픽업 전 배정 → 풀고 재배차(그 라이더는 뺀다)
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, assigned))
+        .isEqualTo("DISPATCHING");
+    JsonNode changed = outbox(assigned, "DeliveryAssignmentChanged").path("payload");
+    assertThat(changed.path("oldRiderId").asString()).isEqualTo(r1);
+    assertThat(changed.path("newRiderId").isNull()).isTrue();
+    assertThat(changed.path("reason").asString()).isEqualTo("RIDER_RESTRICTED");
+    assertThat(changed.path("assignmentVersion").asInt()).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT excluded_rider_id FROM dispatch_attempt WHERE delivery_id = ? AND trigger ="
+                    + " 'REASSIGN'",
+                String.class,
+                assigned))
+        .isEqualTo(r1);
+    // 픽업한 배송은 그대로(전달까지)
+    Map<String, Object> kept =
+        jdbc.queryForMap("SELECT state, rider_id FROM delivery WHERE delivery_id = ?", pickedUp);
+    assertThat(kept.get("state")).isEqualTo("PICKED_UP");
+    assertThat(kept.get("rider_id")).isEqualTo(r1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT restriction FROM restricted_rider WHERE rider_id = ?", String.class, r1))
+        .isEqualTo("DISPATCH_RESTRICTED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type ="
+                    + " 'DeliveryAssignmentChanged'",
+                Integer.class,
+                pickedUp))
+        .isZero();
+    // 응답 전 제안은 LATE — 뒤늦은 수락도 LATE
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state || ':' || late_reason FROM dispatch_offer WHERE offer_id = ?",
+                String.class,
+                openOffer))
+        .isEqualTo("LATE:INELIGIBLE");
+    JsonNode late = body(respond(r1, openOffer, "late-" + offered, "ACCEPT"));
+    assertThat(late.path("outcome").asString()).isEqualTo("LATE");
+    // rider 조회가 아직 제한 전(스텁은 NORMAL)이어도 배달리스트 수락은 잠금 아래 제한 사본을 보고 막힌다 — 겹친 수락이 배정되지 않음
+    JsonNode raced =
+        body(
+            http.post()
+                .uri("/delivery-list/{id}/acceptances", offered)
+                .headers(h -> riderHeaders(h, r1, "race-" + offered))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(raced.path("outcome").asString()).isEqualTo("LATE");
+    assertThat(raced.path("lateReason").asString()).isEqualTo("INELIGIBLE");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, offered))
+        .isNotEqualTo("ASSIGNED");
+
+    // 다른 라이더에게 다시 배차
+    riders(mfc, rider(r2, "AI_RECOMMENDED", true));
+    engine.tick();
+    assertThat(
+            jdbc.queryForList(
+                "SELECT DISTINCT rider_id FROM dispatch_offer WHERE delivery_id IN (?, ?) AND state ="
+                    + " 'SENT'",
+                String.class,
+                assigned,
+                offered))
+        .containsExactly(r2);
+
+    // 풀기(NORMAL) → 제한 사본 지움
+    kafka
+        .send(
+            "delivery.rider.v1",
+            r1,
+            EventEnvelopeFixtures.envelope("RiderRestricted")
+                .from("rider-service")
+                .aggregate("Rider", r1, 4)
+                .payload(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "restriction",
+                        "NORMAL",
+                        "from",
+                        Instant.now().toString(),
+                        "basis",
+                        "소명 확인"))
+                .buildJson())
+        .join();
+    long until = System.currentTimeMillis() + 30_000;
+    while (jdbc.queryForObject(
+                "SELECT count(*) FROM restricted_rider WHERE rider_id = ?", Integer.class, r1)
+            > 0
+        && System.currentTimeMillis() < until) {
+      try {
+        Thread.sleep(200);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        break;
+      }
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM restricted_rider WHERE rider_id = ?", Integer.class, r1))
+        .isZero();
+  }
+
+  /**
+   * 포장을 일부만 넘겨받은 배송(모두 넘겨받기 전이라 아직 ASSIGNED)은 픽업한 배송처럼 다룬다 — 라이더 배차 취소는 422, 계정 제한도 배정을 풀지 않는다(PC 1
+   * PR #13 검토, 사용자 2026-11-14). 이미 결정된 제안은 다른 상태로 덮이지 않는다(만료 → LATE 덮어쓰기 막기).
+   */
+  @Test
+  void partlyHandedOverDeliveryIsTreatedAsPickedUp() {
+    String mfc = "MFC-D14";
+    String r1 = "RD-ph-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String partly = acceptedBy(r1, mfc);
+    String plain = acceptedBy(r1, mfc);
+    // 포장 두 개 중 하나만 넘겨받음 — 목록에는 아직 안 넘긴 포장이 있다
+    jdbc.update(
+        "UPDATE delivery SET packages = ?::jsonb, handed_over_packages = ?::jsonb WHERE"
+            + " delivery_id = ?",
+        "[{\"packageId\":\"P-1\",\"bagCount\":1},{\"packageId\":\"P-2\",\"bagCount\":1}]",
+        "[\"P-1\"]",
+        partly);
+
+    ResponseEntity<String> refused = cancel(r1, partly, "ph-" + partly);
+    assertThat(refused.getStatusCode().value()).isEqualTo(422);
+    assertThat(body(refused).path("code").asString()).isEqualTo("PICKED_UP_CASE_REQUIRED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, partly))
+        .isEqualTo("ASSIGNED");
+
+    kafka
+        .send(
+            "delivery.rider.v1",
+            r1,
+            EventEnvelopeFixtures.envelope("RiderRestricted")
+                .from("rider-service")
+                .aggregate("Rider", r1, 3)
+                .payload(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "restriction",
+                        "SUSPENDED",
+                        "from",
+                        Instant.now().toString(),
+                        "basis",
+                        "고객 신고 확인"))
+                .buildJson())
+        .join();
+    awaitSql(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = '"
+            + plain
+            + "' AND type = 'DeliveryAssignmentChanged'");
+    // 넘겨받은 것이 없는 배송만 풀린다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, plain))
+        .isEqualTo("DISPATCHING");
+    Map<String, Object> kept =
+        jdbc.queryForMap("SELECT state, rider_id FROM delivery WHERE delivery_id = ?", partly);
+    assertThat(kept.get("state")).isEqualTo("ASSIGNED");
+    assertThat(kept.get("rider_id")).isEqualTo(r1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type ="
+                    + " 'DeliveryAssignmentChanged'",
+                Integer.class,
+                partly))
+        .isZero();
+
+    // 응답 전(SENT) 제안만 결정된다 — 이미 결정(ACCEPTED·EXPIRED 등)된 제안은 그대로
+    String accepted =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'ACCEPTED'",
+            String.class,
+            partly);
+    assertThat(store.decideOffer(accepted, "LATE", Instant.now(), null, "INELIGIBLE")).isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM dispatch_offer WHERE offer_id = ?", String.class, accepted))
+        .isEqualTo("ACCEPTED");
+  }
+
+  /** 배송 하나를 만들어 그 라이더에게 제안 → 수락(ASSIGNED). 그 MFC 의 적격 라이더는 미리 그 한 명만. */
+  String acceptedBy(String rider, String mfc) {
+    String deliveryId =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-a-" + UUID.randomUUID());
+    engine.tick();
+    String offerId =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            deliveryId);
+    assertThat(
+            body(respond(rider, offerId, "a-" + deliveryId, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    return deliveryId;
   }
 
   @Test

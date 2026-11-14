@@ -192,7 +192,9 @@ GET /api/v1/riders/me/locations/latest RIDER
 GET /api/v1/riders/me/settings RIDER
 GET /api/v1/riders/me/state RIDER
 GET /api/v1/riders/me/withdrawals/{requestId} RIDER
+GET /api/v1/riders/restriction-reviews OPERATOR
 GET /api/v1/riders/signups/{requestId} RIDER
+GET /api/v1/riders/{riderId}/restrictions OPERATOR
 GET /api/v1/search/filters PUBLIC
 GET /api/v1/search/products PUBLIC
 GET /api/v1/search/suggestions PUBLIC
@@ -399,7 +401,9 @@ POST /api/v1/rider-auth/social-logins PUBLIC
 POST /api/v1/rider-auth/tokens PUBLIC
 POST /api/v1/riders/me/locations RIDER
 POST /api/v1/riders/me/withdrawals RIDER
+POST /api/v1/riders/restriction-reviews/{reviewId}/decisions OPERATOR
 POST /api/v1/riders/signups RIDER
+POST /api/v1/riders/{riderId}/restrictions OPERATOR
 POST /api/v1/serviceability-checks PUBLIC
 POST /api/v1/serviceability-versions OPERATOR
 POST /api/v1/shift-handovers OPERATOR

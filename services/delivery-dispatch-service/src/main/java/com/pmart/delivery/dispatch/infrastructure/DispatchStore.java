@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -63,6 +64,15 @@ public class DispatchStore {
 
     public boolean geoReady() {
       return mfcLat != null && dropLat != null && dropDistanceM != null;
+    }
+
+    /**
+     * 포장을 하나라도 넘겨받았다. 모든 포장이 인계돼야 PICKED_UP 이라(D-6) 그 전에는 ASSIGNED 로 남지만, 이때부터는 픽업한 배송처럼 다룬다 — 배정을
+     * 풀거나 픽업 전 취소하면 넘겨받은 묶음이 그 라이더 손에 남는다(PC 1 PR #13 검토, 사용자 2026-11-14).
+     */
+    public boolean handoverStarted() {
+      String s = handedOverJson == null ? "" : handedOverJson.replaceAll("\\s", "");
+      return !s.isEmpty() && !"[]".equals(s) && !"null".equals(s);
     }
 
     /** 출하 대기(실제 → 예상 → 없음). */
@@ -411,6 +421,62 @@ public class DispatchStore {
 
   // ---------- 라이더 잠금·멈춘 주문 ----------
 
+  /** 계정 제한 사본 기록(V7). until 이 null 이면 무기한. */
+  public void markRestricted(
+      String riderId, String restriction, @Nullable Instant until, Instant now) {
+    jdbc.update(
+        "INSERT INTO restricted_rider (rider_id, restriction, until_at, updated_at) VALUES (?, ?, ?,"
+            + " ?) ON CONFLICT (rider_id) DO UPDATE SET restriction = EXCLUDED.restriction, until_at"
+            + " = EXCLUDED.until_at, updated_at = EXCLUDED.updated_at",
+        riderId,
+        restriction,
+        ts(until),
+        ts(now));
+  }
+
+  public void clearRestricted(String riderId) {
+    jdbc.update("DELETE FROM restricted_rider WHERE rider_id = ?", riderId);
+  }
+
+  /** 지금 제한 중인가(기한 안). 수락은 라이더 잠금 아래 이것을 다시 본다. */
+  public boolean restricted(String riderId, Instant now) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM restricted_rider WHERE rider_id = ? AND (until_at IS NULL OR"
+                + " until_at > ?)",
+            Integer.class,
+            riderId,
+            ts(now));
+    return n != null && n > 0;
+  }
+
+  public Set<String> restrictedAmong(Collection<String> riderIds, Instant now) {
+    if (riderIds.isEmpty()) {
+      return Set.of();
+    }
+    String in = String.join(",", Collections.nCopies(riderIds.size(), "?"));
+    List<Object> args = new ArrayList<>(riderIds);
+    args.add(ts(now));
+    return new TreeSet<>(
+        jdbc.queryForList(
+            "SELECT rider_id FROM restricted_rider WHERE rider_id IN ("
+                + in
+                + ") AND (until_at IS NULL OR until_at > ?)",
+            String.class,
+            args.toArray()));
+  }
+
+  /** 라이더가 맡은(ASSIGNED·PICKED_UP) 배송과 그 라이더에게 간 SENT 제안의 배송 — 잠글 순서대로(배송 ID 순). RS-1. */
+  public List<String> deliveryIdsTouchingRider(String riderId) {
+    return jdbc.queryForList(
+        "SELECT delivery_id FROM delivery WHERE rider_id = ? AND state IN ('ASSIGNED', 'PICKED_UP')"
+            + " UNION SELECT delivery_id FROM dispatch_offer WHERE rider_id = ? AND state = 'SENT'"
+            + " ORDER BY 1",
+        String.class,
+        riderId,
+        riderId);
+  }
+
   /** 같은 라이더의 수락을 줄 세운다(트랜잭션 끝까지) — 진행 중 수를 센 뒤 배정하기까지 다른 수락이 끼지 못하게(PC 1 검토 M1). */
   public void lockRider(String riderId) {
     jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))", "dispatch-rider:" + riderId);
@@ -722,6 +788,13 @@ public class DispatchStore {
         offerId);
   }
 
+  public List<OfferRow> offersOfDelivery(String deliveryId) {
+    return jdbc.query(
+        "SELECT * FROM dispatch_offer WHERE delivery_id = ? ORDER BY sent_at",
+        (rs, i) -> offer(rs),
+        deliveryId);
+  }
+
   public List<OfferRow> offersOfAttempt(String attemptId) {
     return jdbc.query(
         "SELECT * FROM dispatch_offer WHERE attempt_id = ? ORDER BY sent_at",
@@ -779,20 +852,25 @@ public class DispatchStore {
         limit);
   }
 
-  public void decideOffer(
+  /**
+   * 응답 전(SENT) 제안만 결정한다 — 이미 만료·결정된 제안을 덮지 않는다(PC 1 PR #13 검토: 제한 처리가 만료 처리와 겹치면 EXPIRED 가 LATE 로
+   * 덮였다). @return 바꿨으면 true
+   */
+  public boolean decideOffer(
       String offerId,
       String state,
       Instant now,
       @Nullable String rejectReason,
       @Nullable String lateReason) {
-    jdbc.update(
-        "UPDATE dispatch_offer SET state = ?, decided_at = ?, reject_reason = ?, late_reason = ?"
-            + " WHERE offer_id = ?",
-        state,
-        ts(now),
-        rejectReason,
-        lateReason,
-        offerId);
+    return 1
+        == jdbc.update(
+            "UPDATE dispatch_offer SET state = ?, decided_at = ?, reject_reason = ?, late_reason = ?"
+                + " WHERE offer_id = ? AND state = 'SENT'",
+            state,
+            ts(now),
+            rejectReason,
+            lateReason,
+            offerId);
   }
 
   /** 배정이 정해지면 그 배송의 남은 제안은 SUPERSEDED. */
