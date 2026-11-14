@@ -1,6 +1,6 @@
 # ADR-0061 직원 로그아웃 전파 — 같은 브라우저의 SSO 앱 세션을 함께 끝내고, Keycloak 백채널 로그아웃을 받는다
 
-- 상태: 승인 (2026-11-14, 사용자 — "로그아웃 전파할거고"(11-14) → 설계안 → 범위 "같은 브라우저만", 백채널 "같이 넣기", 탭 반영 "탭에 돌아올 때 확인"(모두 추천안))
+- 상태: 승인 (2026-11-14, 사용자 — "로그아웃 전파할거고"(11-14) → 설계안 → 범위 "같은 브라우저만", 백채널 "같이 넣기", 탭 반영 "탭에 돌아올 때 확인"(모두 추천안)). LAN 배포 2026-11-14(e676e7d, pmart-config 31b243e, Keycloak 클라이언트 관리 API)
 - 관련: ADR-0056(employee-auth-service, 결정 14 SSO), ADR-0059(웹 refresh 쿠키), ADR-0054 ⑤(게이트웨이 차단 목록 `SubjectBlocked`), `docs/architecture/auth/employee-auth-structure.md`, 계약 `contracts/openapi/employee-auth-service.yaml` 0.4.0
 
 ## 배경
