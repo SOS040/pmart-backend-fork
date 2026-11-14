@@ -5,6 +5,8 @@ import com.pmart.common.web.PmartException;
 import com.pmart.mailprovisioner.infrastructure.AccountsFile;
 import com.pmart.mailprovisioner.infrastructure.AccountsFile.Account;
 import com.pmart.mailprovisioner.infrastructure.SmtpProbe;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
@@ -26,6 +28,8 @@ public class MailboxService {
   private static final Logger log = LoggerFactory.getLogger(MailboxService.class);
   private static final Pattern LOCAL = Pattern.compile("^[a-z0-9][a-z0-9._-]{0,62}$");
   private static final SecureRandom RANDOM = new SecureRandom();
+  private static final int MIN_PASSWORD = 12;
+  private static final int MAX_PASSWORD = 128;
   private static final String SALT_CHARS =
       "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
@@ -88,6 +92,58 @@ public class MailboxService {
     accounts.update(
         address, before -> before == null ? null : new Account(address, hash(password)));
     log.info("사서함 비밀번호 바꿈: {}", address);
+  }
+
+  /**
+   * 직원 본인의 웹메일 비밀번호 바꾸기(Roundcube {@code password} 플러그인). 현재 비밀번호의 해시가 맞을 때만 바꾼다 — 확인과 쓰기는 계정 파일 잠금
+   * 안에서 한 번에. 사서함 없음·비활성·주소 형식·현재 비밀번호 틀림은 모두 같은 403(어느 것인지 알리지 않는다). 로그에는 주소만.
+   */
+  public void changeOwnPassword(String rawUser, String currentPassword, String newPassword) {
+    if (newPassword == null
+        || newPassword.length() < MIN_PASSWORD
+        || newPassword.length() > MAX_PASSWORD) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED,
+          "새 비밀번호는 " + MIN_PASSWORD + "~" + MAX_PASSWORD + "자입니다.",
+          List.of(new PmartException.Detail("newpass", "길이")));
+    }
+    String address;
+    try {
+      String raw = rawUser == null ? "" : rawUser.strip();
+      address = normalize(raw.indexOf('@') < 0 ? raw + "@" + props.domain() : raw);
+    } catch (PmartException e) {
+      throw denied();
+    }
+    String current = currentPassword == null ? "" : currentPassword;
+    accounts.update(
+        address,
+        before -> {
+          if (before == null || before.disabled() || !matches(current, before.hash())) {
+            log.info("사서함 비밀번호 바꾸기 거절: {}", address);
+            throw denied();
+          }
+          return new Account(address, hash(newPassword));
+        });
+    log.info("사서함 비밀번호 바꿈(본인): {}", address);
+  }
+
+  /** 저장된 {@code {SHA512-CRYPT}$6$…} 와 같은 salt·rounds 로 다시 만들어 상수 시간 비교. */
+  static boolean matches(String password, String stored) {
+    if (!stored.startsWith(AccountsFile.SCHEME + "$6$")) {
+      return false;
+    }
+    String crypt = stored.substring(AccountsFile.SCHEME.length());
+    try {
+      String again = Sha2Crypt.sha512Crypt(password.getBytes(StandardCharsets.UTF_8), crypt);
+      return MessageDigest.isEqual(
+          again.getBytes(StandardCharsets.UTF_8), crypt.getBytes(StandardCharsets.UTF_8));
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+  }
+
+  private static PmartException denied() {
+    return new PmartException(ErrorCode.FORBIDDEN, "아이디 또는 현재 비밀번호가 맞지 않습니다.");
   }
 
   private State state(Account a) {

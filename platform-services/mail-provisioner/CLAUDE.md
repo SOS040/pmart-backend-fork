@@ -1,6 +1,6 @@
 # mail-provisioner
 
-사서함 프로비저닝 사이드카(ADR-0056 결정 10·D9). 업무 서비스가 아니라 사내 메일 서버(docker-mailserver)의 계정 파일을 다루는 플랫폼 구성요소다. 호출자는 hr-service 하나.
+사서함 프로비저닝 사이드카(ADR-0056 결정 10·D9). 업무 서비스가 아니라 사내 메일 서버(docker-mailserver)의 계정 파일을 다루는 플랫폼 구성요소다. 호출자는 hr-service, 그리고 직원 본인 비밀번호 바꾸기만 Roundcube(2026-11-14, 계약 0.2.0).
 
 ## 하는 일
 - 계약 `contracts/openapi/mail-provisioner.yaml`(`/api/v1/internal/mailboxes…` — 서비스 간 경로, 사용자 토큰 없음, ADR-0026).
@@ -10,6 +10,7 @@
 - 비밀번호는 `commons-codec` `Sha2Crypt`(SHA512-CRYPT, 무작위 16자 salt) 해시만 파일에 쓴다. 로그·응답에 비밀번호를 싣지 않는다.
 
 ## 규칙
+- **본인 비밀번호 바꾸기**(`POST /internal/mailbox-password-changes`, 0.2.0): Roundcube `password` 플러그인 `httpapi` 드라이버가 form `user`·`curpass`·`newpass` 로, 공통 헤더 없이 부른다(`pmart.web.excluded-paths`). 현재 비밀번호의 해시가 맞을 때만 바꾸고(확인·쓰기는 계정 파일 잠금 안에서 한 번에), 없음·비활성·주소 형식·틀림은 모두 같은 403. 새 비밀번호 12~128자(400). Roundcube 설정 `deploy/lan/mail/roundcube-pmart.php`. hr-service 의 `PUT …/password`(확인 없이 정함)는 Roundcube 에 주지 않는다.
 - 파일 쓰기는 같은 폴더 임시 파일 → 원자적 이름 바꾸기, 한 프로세스 안에서 직렬(`AccountsFile` synchronized). 한 대만 띄운다.
 - 다른 줄(기본 사서함 `no-reply`·`postmaster` — `mail-accounts-init`, 관리자 `setup email add`)은 보존한다.
 - DB·Kafka·보안 라이브러리 없음. LAN 포트 없음, Eureka 등록 안 함(lan 프로필) — hr-service 가 같은 PC 5 에서 `http://mail-provisioner:8513` 로 부른다.

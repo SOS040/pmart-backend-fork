@@ -8,7 +8,7 @@ import com.pmart.mailprovisioner.application.MailboxService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 MailboxesApi(서비스 간 /internal — hr-service 만 부른다). */
+/** 계약 MailboxesApi(서비스 간 /internal — hr-service, 본인 비밀번호 바꾸기만 Roundcube). */
 @RestController
 public class MailboxesController implements MailboxesApi {
 
@@ -45,6 +45,12 @@ public class MailboxesController implements MailboxesApi {
   public ResponseEntity<Void> setMailboxPassword(
       String address, String idempotencyKey, String xSourceSystem, SetMailboxPasswordRequest body) {
     mailboxes.setPassword(address, body.getPassword());
+    return ResponseEntity.noContent().build();
+  }
+
+  @Override
+  public ResponseEntity<Void> changeMailboxPassword(String user, String curpass, String newpass) {
+    mailboxes.changeOwnPassword(user, curpass, newpass);
     return ResponseEntity.noContent().build();
   }
 

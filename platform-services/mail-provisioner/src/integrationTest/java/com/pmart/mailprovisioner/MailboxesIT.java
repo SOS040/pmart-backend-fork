@@ -155,6 +155,62 @@ class MailboxesIT {
     assertThat(send("POST", "/mailboxes/nobody@pmart.com/disable", null).status()).isEqualTo(404);
   }
 
+  /** Roundcube password 플러그인(httpapi)처럼: 헤더 없이 form user·curpass·newpass. */
+  int change(String user, String curpass, String newpass) {
+    var form = new org.springframework.util.LinkedMultiValueMap<String, String>();
+    form.add("user", user);
+    form.add("curpass", curpass);
+    form.add("newpass", newpass);
+    return RestClient.builder()
+        .baseUrl("http://localhost:" + port + "/api/v1/internal")
+        .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+        .build()
+        .post()
+        .uri("/mailbox-password-changes")
+        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+        .body(form)
+        .exchange((q, r) -> r.getStatusCode().value());
+  }
+
+  @Test
+  void ownPasswordChangeNeedsCurrentPassword() throws Exception {
+    String local = "it" + UUID.randomUUID().toString().substring(0, 6);
+    String a = local + "@pmart.com";
+    send("POST", "/mailboxes", Map.of("address", a));
+    send("PUT", "/mailboxes/" + a + "/password", Map.of("password", "first-password-1"));
+    String before = line(a);
+
+    assertThat(change(a, "wrong-password-9", "second-password-2")).as("현재 비밀번호 틀림").isEqualTo(403);
+    assertThat(change(a, "first-password-1", "short")).as("새 비밀번호 12자 미만").isEqualTo(400);
+    assertThat(change("nobody@pmart.com", "first-password-1", "second-password-2"))
+        .as("없는 사서함도 같은 403")
+        .isEqualTo(403);
+    assertThat(change("x@gmail.com", "first-password-1", "second-password-2"))
+        .as("다른 도메인도 같은 403")
+        .isEqualTo(403);
+    assertThat(line(a)).as("실패하면 그대로").isEqualTo(before);
+
+    assertThat(change(a, "first-password-1", "second-password-2"))
+        .as("헤더 없이(Roundcube) 바뀐다")
+        .isEqualTo(204);
+    String after = line(a);
+    assertThat(after)
+        .isNotEqualTo(before)
+        .startsWith(a + "|{SHA512-CRYPT}$6$")
+        .doesNotContain("second-password-2");
+    assertThat(change(a, "first-password-1", "third-password-3"))
+        .as("옛 비밀번호는 이제 틀림")
+        .isEqualTo(403);
+    assertThat(change(local, "second-password-2", "third-password-3"))
+        .as("@ 없는 로그인 이름은 설정 도메인")
+        .isEqualTo(204);
+
+    send("POST", "/mailboxes/" + a + "/disable", null);
+    String disabled = line(a);
+    assertThat(change(a, "third-password-3", "fourth-password-4")).as("비활성은 403").isEqualTo(403);
+    assertThat(line(a)).isEqualTo(disabled);
+  }
+
   /** 계정 파일에 있는 주소만 받는 가짜 SMTP. */
   static final class FakeSmtp implements AutoCloseable {
     final ServerSocket server;

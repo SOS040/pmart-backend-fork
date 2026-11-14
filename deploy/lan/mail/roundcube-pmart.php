@@ -14,3 +14,17 @@ $config['username_domain'] = 'pmart.com';
 $config['mail_domain'] = 'pmart.com';
 $config['product_name'] = 'PMart 사내 메일';
 $config['language'] = 'ko_KR';
+
+// 직원 본인 비밀번호 바꾸기(2026-11-14): 기본으로 들어 있는 password 플러그인을 켜고, 바꾼 비밀번호는 mail-provisioner 가 계정 파일에 쓴다
+// (httpapi 드라이버 — 같은 PC 5 Docker 네트워크, LAN 포트 없음. 계약 mail-provisioner 0.2.0 /internal/mailbox-password-changes).
+// 현재 비밀번호를 받아 Roundcube 가 먼저 확인하고, mail-provisioner 도 해시로 다시 확인한다. 실패 응답 본문에 비밀번호는 없다.
+// 플러그인 폴더에 config.inc.php 가 없으면 플러그인이 이 본 설정을 쓴다(config.inc.php.dist 는 읽지 않음).
+$config['plugins'][] = 'password';
+$config['password_driver'] = 'httpapi';
+$config['password_confirm_current'] = true;
+$config['password_minimum_length'] = 12; // mail-provisioner 와 같게(12~128자)
+$config['password_httpapi_url'] = 'http://mail-provisioner:8513/api/v1/internal/mailbox-password-changes';
+$config['password_httpapi_method'] = 'POST';
+$config['password_httpapi_var_user'] = 'user';
+$config['password_httpapi_var_curpass'] = 'curpass';
+$config['password_httpapi_var_newpass'] = 'newpass';
