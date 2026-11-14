@@ -1,6 +1,6 @@
 # 임시 백오피스 프론트 구현 참고 — 상품·콘텐츠·가격·승인·센터 취급 API
 
-> **2026-11-13 갱신 — 로그인·계정 부분(0장 1·4행, 1.1절, 계정 관리 행)은 더 이상 맞지 않습니다.** auth-service 운영자 로그인(`/auth/operator-logins`·`/auth/password-changes`·`/operator-accounts/**`)은 없어졌고, 직원 로그인·토큰은 employee-auth-service 하나입니다(ADR-0056 — Keycloak 로그인 → 티켓 교환 `POST /employee-auth/tokens`, 갱신·로그아웃·내 세션도 `/employee-auth/*`). 근거: `archive/2026-11-13-clients-notice-auth-operator-login-removed.md`, 계약 `contracts/openapi/employee-auth-service.yaml`. refresh token 쿠키 전환(ADR-0059)은 `web-common/2026-11-13-web-common-request-refresh-cookie.md`. 토큰 모양(`typ=OPERATOR`·`roles`·`centers`)과 상품·콘텐츠·가격·승인·센터 취급 API 부분은 그대로입니다.
+> **2026-11-13 갱신 — 로그인·계정 부분(0장 1·4행, 1.1절, 계정 관리 행)은 더 이상 맞지 않습니다.** auth-service 운영자 로그인(`/auth/operator-logins`·`/auth/password-changes`·`/operator-accounts/**`)은 없어졌고, 직원 로그인·토큰은 employee-auth-service 하나입니다(ADR-0056 — Keycloak 로그인 → 티켓 교환 `POST /employee-auth/tokens`, 갱신·로그아웃·내 세션도 `/employee-auth/*`). 근거: `archive/2026-11-13-clients-notice-auth-operator-login-removed.md`, 계약 `contracts/openapi/employee-auth-service.yaml`. refresh token 쿠키 전환(ADR-0059)은 `archive/2026-11-13-web-common-request-refresh-cookie.md`. 토큰 모양(`typ=OPERATOR`·`roles`·`centers`)과 상품·콘텐츠·가격·승인·센터 취급 API 부분은 그대로입니다.
 
 - 작성: pmart-backend, 2026-10-30
 - 대상: pmart-clients 임시 백오피스(React)

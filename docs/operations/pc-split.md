@@ -24,7 +24,7 @@
 **로그인 마무리 기준**(이것이 끝나면 backoffice 영역을 나눈다):
 1. ~~두 백오피스 HTTPS 전환·HTTP 닫기~~ — **끝(2026-11-13)**: HTTPS 빌드 올림, 80·8081 은 HTTPS 로 301, 허용 목록에서 http 주소 제거. 클라이언트 HTTPS 빌드 소스 커밋(pmart-clients 13608a6), 브라우저 확인 끝(사용자 2026-11-13 "HTTPS 전환했어" — PC 1 에서 443·8444 200, 80·8081 → 301 확인).
 2. ~~웹메일 로그인 방식~~ — **결정 2026-11-13: 합치지 않는다**(사용자 "안함"). 웹메일은 사서함 비밀번호, 사내 로그인은 Keycloak 비밀번호 — 지금 구조 그대로.
-3. CSRF(웹 refresh token → HttpOnly 쿠키) — **결정·구현 2026-11-13(ADR-0059)**: 세션별 HttpOnly refresh 쿠키(Path = 갱신 주소/{sessionId}) + Signed Double-Submit CSRF(지도 의견). 백엔드 구현·시험 끝(employee-auth-service 0.3.0, 게이트웨이), 설정 `refresh-cookie` 는 꺼 둠. 남은 것: LAN 배포(CSRF 키 `{cipher}`), 클라이언트 `web/core` 적용(`docs/handoff/clients/web-common/2026-11-13-web-common-request-refresh-cookie.md`) → 켜기 → 브라우저 확인(탭별·포트별·preflight).
+3. CSRF(웹 refresh token → HttpOnly 쿠키) — **결정·구현 2026-11-13(ADR-0059)**: 세션별 HttpOnly refresh 쿠키(Path = 갱신 주소/{sessionId}) + Signed Double-Submit CSRF(지도 의견). 백엔드 구현·시험 끝(employee-auth-service 0.3.0, 게이트웨이), 클라이언트 `web/core` 적용(pmart-clients 05f7933, 요청 `docs/handoff/clients/archive/2026-11-13-web-common-request-refresh-cookie.md`), **2026-11-14 LAN 웹 빌드 올리고 `refresh-cookie` 켬**(CSRF 키 `{cipher}`, pmart-config 2597533) — 실제 Keycloak 로그인으로 두 앱 쿠키·CSRF·회전 확인. 남은 것: 브라우저 확인(탭별·포트별·F5·silent).
 4. mfc_app 실기기 확인 통과(클라이언트).
 
 권한 변경·회수(BO-01)는 백오피스 업무 기능이라 backoffice 영역을 나눈 뒤 그 영역에서 해도 된다.

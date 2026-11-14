@@ -5,6 +5,7 @@
 - 대상: web-common(`web/core` 직원 로그인 코드) — backoffice·hr-backoffice 둘 다 쓰는 곳
 - 근거: 사용자 2026-11-13 — 인사팀 백오피스에 로그인한 뒤 새 탭에서 백오피스를 열면 로그인 버튼을 눌러야 함 → "앱을 열 때 조용히 확인" 적용("응 일단 이어서 해주고")
 - 계약: `contracts/openapi/employee-auth-service.yaml` **0.2.0** — `GET /employee-auth/logins` 의 `silent`, 콜백 error `LOGIN_REQUIRED`
+- **끝남(2026-11-14)**: web/core 05f7933 에 반영, LAN 웹 빌드 올림. 브라우저 확인(HR 로그인 뒤 새 탭 백오피스)은 남음.
 
 ## 1. 백엔드가 바꾼 것 (employee-auth-service — LAN 배포는 따로 알림)
 

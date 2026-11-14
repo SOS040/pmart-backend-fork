@@ -5,6 +5,7 @@
 - 대상: web-common(`web/core` 직원 로그인·갱신 코드) — backoffice·hr-backoffice 둘 다
 - 근거: ADR-0059(`docs/adr/0059-web-staff-refresh-cookie-signed-double-submit.md`), 로그인 마무리 기준 3(`docs/operations/pc-split.md` §1-1)
 - 계약: `contracts/openapi/employee-auth-service.yaml` **0.3.0** — `gen:api` 다시 해 주세요
+- **끝남(2026-11-14)**: 클라이언트 회신 `pmart-clients/docs/handoff/web-common/2026-11-14-backend-refresh-cookie-silent-login.md`(web/core 05f7933). LAN 웹 빌드 두 개 올림, `refresh-cookie` 켬(pmart-config 2597533), 실제 Keycloak 로그인으로 쿠키 확인 — 브라우저 확인(탭 둘·F5·443/8444 동시)은 남음.
 
 ## 1. 바뀌는 것 (요약)
 

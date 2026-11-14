@@ -44,4 +44,4 @@
 
 ## 5. 함께 알림 — 이미 보낸 요청
 
-- `../web-common/2026-11-13-web-common-request-silent-login.md` — 백오피스를 열 때 조용히 로그인 확인(employee-auth-service 0.2.0 `silent`). web/core 에 부탁.
+- `../archive/2026-11-13-web-common-request-silent-login.md` — 백오피스를 열 때 조용히 로그인 확인(employee-auth-service 0.2.0 `silent`). web/core 에 부탁.
