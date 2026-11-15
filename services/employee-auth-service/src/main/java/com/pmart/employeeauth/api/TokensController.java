@@ -5,12 +5,14 @@ import com.pmart.employeeauth.api.generated.model.EmployeeLoginResult;
 import com.pmart.employeeauth.api.generated.model.EmployeeLogoutRequest;
 import com.pmart.employeeauth.api.generated.model.EmployeeLogoutResult;
 import com.pmart.employeeauth.api.generated.model.EmployeeSession;
+import com.pmart.employeeauth.api.generated.model.EmployeeSessionCenterDetailsInner;
 import com.pmart.employeeauth.api.generated.model.ExchangeLoginTicketRequest;
 import com.pmart.employeeauth.api.generated.model.RefreshEmployeeTokensRequest;
 import com.pmart.employeeauth.api.generated.model.TokenPair;
 import com.pmart.employeeauth.application.EmployeeLoginService;
 import com.pmart.employeeauth.application.EmployeeSessionService;
 import com.pmart.employeeauth.application.EmployeeTokens;
+import com.pmart.employeeauth.infrastructure.CenterNames;
 import jakarta.servlet.http.HttpServletRequest;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
@@ -28,9 +30,14 @@ public class TokensController implements TokensApi {
   private final EmployeeLoginService logins;
   private final EmployeeSessionService sessions;
   private final HttpServletRequest request;
+  private final CenterNames centerNames;
 
   public TokensController(
-      EmployeeLoginService logins, EmployeeSessionService sessions, HttpServletRequest request) {
+      EmployeeLoginService logins,
+      EmployeeSessionService sessions,
+      HttpServletRequest request,
+      CenterNames centerNames) {
+    this.centerNames = centerNames;
     this.logins = logins;
     this.sessions = sessions;
     this.request = request; // 요청 범위 프록시 — 쿠키 읽기(ADR-0059)
@@ -115,6 +122,14 @@ public class TokensController implements TokensApi {
             .issuedAt(EmployeeAuthMapping.odt(c.issuedAt()))
             .expiresAt(EmployeeAuthMapping.odt(c.expiresAt()))
             .roles(c.roles())
-            .centers(c.centers()));
+            .centers(c.centers())
+            .centerDetails(
+                c.centers().stream()
+                    .map(
+                        id ->
+                            new EmployeeSessionCenterDetailsInner()
+                                .centerId(id)
+                                .name(centerNames.name(id)))
+                    .toList()));
   }
 }

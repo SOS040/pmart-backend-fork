@@ -33,6 +33,11 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 | R-2 | claim | 운영자(고객센터) 취소 명령 — channel CS, PREPARING 허용, 권한·사유 검사 |
 | R-2 | order-orchestration | 없음(기존 S3) |
 
+## 사건함 공통 결정 (사용자 2026-11-16 "너 추천대로")
+- **유형(처음 다섯)**: 라이더 도움요청 `RIDER_HELP`·전달 실패 `DELIVERY_FAILURE`(R-4), 위치 끊김 `RIDER_LOCATION_STALE`(R-6), 오배송 확인 `MISDELIVERY`(R-7), 사가·결제 이상 `ORDER_EXCEPTION`(R-3). 우선순위는 유형·category 로(사고 ACCIDENT 긴급).
+- **담당**: 유형별 팀 — 앞 넷은 **`RIDER_OPS`(지원센터 겸함, 2026-11-16 결정)**, 사가·결제 이상은 `OPERATOR_ADMIN`. 배정은 **팀 공용 목록에서 직원이 집어 간다**(자동 배정 없음 — 집으면 담당자 기록).
+- **처리 기한**: 유형별 기한을 **표시만** 하고 넘긴 건은 목록에서 강조. 알림(Slack 등)은 나중. 기한 값은 설정으로(예: 라이더 도움요청 10분, 결제 이상 1영업일 — 값은 구현 때 사용자 확인).
+
 ## R-3. 사가·결제 상신 받기 (2026-11-09 기록)
 
 - **요청한 곳**: order-orchestration, payment.

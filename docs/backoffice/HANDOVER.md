@@ -37,7 +37,7 @@
 - 서빙: PC 4 nginx 443(`backoffice-web`). 올리기는 PC 1 `lan.sh publish-backoffice <dist>`.
 
 ## 4. 할 일 (추천 순서)
-1. **BO-12 운영자 수동 개입**(`service-requests/backoffice-bff.md`) — 먼저 사용자 결정: 화면 범위·절차(누가 어떤 근거로 재시도·포기). 쓸 수 있는 API:
+1. **BO-12 운영자 수동 개입**(`service-requests/backoffice-bff.md`) — **결정됨 2026-11-16**(OPERATOR_ADMIN 만, 버튼 "재시도"·"처리 완료(사유 필수)", 환불은 기존 절차, 알림은 목록만). 쓸 수 있는 API:
    - order `GET /fulfillment-issues`·`POST …/acknowledgements`(이행 확인 필요 — 이미 직원용)
    - order-orchestration `GET /internal/sagas`·`/internal/sagas/{id}`(조회 됨), `POST /internal/sagas/{id}/manual-actions`(**501**)
    - mfc-fulfillment `POST /internal/package-handovers/{id}/retries`(D-8), `POST /internal/stop-requests/{id}/retries`
@@ -48,9 +48,9 @@
 4. 클라이언트: 주문 원문 열람 흐름, 라이더 찾기·대기 목록 연결(위 §3).
 
 ## 5. 결정 대기 (사용자 — 손대기 전에 확인)
-- BO-12 화면 범위·절차.
+- ~~BO-12 화면 범위·절차~~ — 결정 2026-11-16(위 §4-1, 요청서).
 - ~~지원센터 역할을 따로 둘지~~ — **결정 2026-11-16(사용자): `RIDER_OPS` 가 겸한다.** 사건함의 지원센터 업무(도움요청·전달 실패·위치 끊김·오배송 확인)는 RIDER_OPS 권한으로. 사람을 나눠 운영하게 되면 그때 분리.
-- 사건함 케이스 유형·담당 배정·처리 기한(R-3·R-4).
+- ~~사건함 케이스 유형·담당 배정·처리 기한~~ — 결정 2026-11-16(`service-requests/case-service.md` "사건함 공통 결정" — 다섯 유형, 유형별 팀이 공용 목록에서 집어 감, 기한은 표시만). 기한 값은 구현 때 사용자 확인.
 
 ## 6. 규칙·도구
 - PR: 포크 `backoffice/<주제>` 브랜치 → PC 1 검토·병합·배포. main push 금지. 저장소마다 PR 따로(backend·clients).

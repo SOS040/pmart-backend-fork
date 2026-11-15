@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -529,6 +529,18 @@ components:
         expiresAt: { type: string, format: date-time, description: 이 access token 의 만료 }
         roles: { type: array, items: { type: string }, description: '(0.6.0) 지금 기준 역할 — 비어 있으면 권한 승인 대기' }
         centers: { type: array, items: { type: string }, description: '(0.6.0) 지금 기준 권한 센터(mfcId 등)' }
+        centerDetails:
+          type: array
+          x-added-in: '2026-11-16'
+          description: |
+            (0.9.0) centers 와 같은 순서로 센터 표시 이름 — center-master-service 의 이름(10분 캐시). 못 읽으면 name 이 null(화면은 코드를 보여 준다).
+            세션 응답을 실패시키지 않는다.
+          items:
+            type: object
+            required: [centerId]
+            properties:
+              centerId: { type: string }
+              name: { type: [string, 'null'] }
     EmployeeState:
       type: string
       enum: [ACTIVE, DISABLED, LEFT]
