@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/InquiryAnswered.v1.json",
+  "title": "InquiryAnswered",
+  "description": "상담원이 고객센터 문의에 답한 사실(답변 내용은 싣지 않는다 — 고객은 문의 상세에서 읽는다). 발행 case(2026-11-16, 상담원 답변 POST /inquiries/{id}/replies — service-requests notification N-2). 구독 notification(고객 알림함). 토픽 platform.case.v1. 단계 ①",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "InquiryAnswered" },
+        "aggregateType": { "const": "Case" },
+        "payload": {
+          "type": "object",
+          "required": ["inquiryId", "customerId", "answeredAt"],
+          "properties": {
+            "inquiryId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "caseId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "customerId": { "$ref": "_defs.v1.json#/$defs/Ref", "description": "문의를 남긴 고객 accountId" },
+            "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "answeredAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

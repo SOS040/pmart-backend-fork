@@ -67,3 +67,4 @@
 | [0061](0061-staff-logout-propagation-same-browser-and-keycloak-backchannel.md) | 직원 로그아웃 전파 — 같은 브라우저(같은 Keycloak 세션)의 SSO 앱 세션을 함께 끝내고, Keycloak 백채널 로그아웃을 받는다. 다른 탭은 다시 보일 때 확인 | 승인 |
 | [0062](0062-staff-pii-reveal-recorded-in-audit-service.md) | 직원의 고객 개인정보 원문 열람은 사유를 받고 audit-service(`pii_access_log`, 추가 전용)에 동기 기록한 뒤에만 — 기본은 가린 값, 기록 못 하면 원문도 없음 | 승인 |
 | [0063](0063-review-service-first-implementation.md) | 리뷰 1차 구현 — DeliveryCompleted 로 품목별 자격, 사진 5장·10MB, 받은 수량 전부 반품이면 새 작성 막음(쓴 리뷰는 그대로), 운영자 숨김은 뒤로 | 승인 |
+| [0064](0064-notification-in-app-inbox-first.md) | 알림 1차 — 고객 앱 알림함만(푸시는 나중), 거래 안내 8가지(끌 수 없음), 결과 모르는 일은 완료라 쓰지 않음, 환불 결과는 환불 의도로 주문과 이음 | 승인 |

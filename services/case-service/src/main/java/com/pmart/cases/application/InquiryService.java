@@ -5,6 +5,8 @@ import com.pmart.cases.infrastructure.InquiryStore;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
 import com.pmart.cases.infrastructure.InquiryStore.ReplyRow;
 import com.pmart.cases.infrastructure.OrderClient;
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.messaging.EventPublisher;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.security.PmartPrincipal;
@@ -12,7 +14,9 @@ import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -49,6 +53,7 @@ public class InquiryService {
   private final CaseProperties props;
   private final RequestIdempotency idempotency;
   private final TransactionTemplate tx;
+  private final EventPublisher events;
   private final Clock clock;
 
   public InquiryService(
@@ -57,12 +62,14 @@ public class InquiryService {
       CaseProperties props,
       RequestIdempotency idempotency,
       TransactionTemplate tx,
+      EventPublisher events,
       Clock clock) {
     this.store = store;
     this.orders = orders;
     this.props = props;
     this.idempotency = idempotency;
     this.tx = tx;
+    this.events = events;
     this.clock = clock;
   }
 
@@ -166,13 +173,31 @@ public class InquiryService {
             throw new PmartException(
                 rejected, HttpStatus.CONFLICT, "닫힌 문의에는 답변할 수 없습니다.", false, List.of());
           }
+          Instant now = clock.instant();
           store.addReply(
               inquiryId,
               "RPL-" + UUID.randomUUID(),
               p.subject(),
               body,
               InquiryRules.afterReply(row.status()),
-              clock.instant());
+              now);
+          // 고객 알림(notification N-2, 2026-11-16). 답변 내용은 싣지 않는다
+          Map<String, Object> m = new LinkedHashMap<>();
+          m.put("inquiryId", inquiryId);
+          m.put("caseId", row.caseId());
+          m.put("customerId", row.customerId());
+          if (row.orderId() != null) {
+            m.put("orderId", row.orderId());
+          }
+          m.put("answeredAt", now.toString());
+          events.publish(
+              "InquiryAnswered",
+              1,
+              "Case",
+              row.caseId(),
+              row.version() + 1L,
+              new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()),
+              m);
           log.info("inquiry answered id={}", inquiryId);
           return inquiryId;
         });

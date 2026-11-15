@@ -39,7 +39,8 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.cases.order-service-base-url=${order.url}"
+      "pmart.cases.order-service-base-url=${order.url}",
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({@ConfigureWireMock(name = "order", baseUrlProperties = "order.url")})
@@ -47,6 +48,7 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   @InjectWireMock("order")
   WireMockServer order;
@@ -123,6 +125,13 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
         send("POST", agent, "/inquiries/" + id + "/replies", Map.of("body", "앱을 다시 설치해 보세요"), 0);
     assertThat(replied.status()).as(replied.body().toString()).isEqualTo(200);
     assertThat(replied.body().path("status").asString()).isEqualTo("ANSWERED");
+    // 고객 알림용 사건(답변 내용 없음, N-2)
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'InquiryAnswered' AND payload::text LIKE ?",
+            String.class,
+            "%" + id + "%");
+    assertThat(payload).contains("\"customerId\"").doesNotContain("앱을 다시 설치해 보세요");
     Res seen = send("GET", meTok, "/inquiries/" + id, null, null);
     assertThat(seen.body().path("replies").path(0).path("body").asString())
         .isEqualTo("앱을 다시 설치해 보세요");

@@ -1,6 +1,6 @@
 # notification-service 에 대한 요청 (MFC·주문 이행 쪽에서)
 
-notification-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현을 시작할 때 아래를 함께 넣는다.
+notification-service 1차(2026-11-16, 계약 0.2.0, ADR-0064 — 고객 앱 알림함): **N-1 1·2 구현**(결품 부분 취소·품절 전체 취소 안내, 환불은 결과 SUCCESS 뒤에만), **N-1 3 = 보류 단계에서는 알리지 않음**(추천대로), **N-2 구현**(case `InquiryAnswered`). N-1 4 채널은 앱 알림함만, 야간 제한·문구 승인은 남음.
 
 ## N-1. 예약 보류·결품 처리 고객 안내 (2026-11-08, 사용자 결정 #5 — "요청사항에 남기고 넘기자")
 
@@ -22,3 +22,4 @@ notification-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 
 
 ## N-2. 고객센터 문의 답변 알림 (2026-11-09, case 0.2.0)
 - 상담원이 문의에 답하면(`ANSWERED`) 고객에게 앱 알림. 지금은 case-service 가 사건을 발행하지 않는다 — 알림 서비스 구현 때 case 에 `InquiryAnswered`(inquiryId·customerId) 발행을 함께 넣는다.
+- **구현(2026-11-16)**: case 가 답변 때 `InquiryAnswered`(platform.case.v1, 답변 내용 없음)를 내고 notification 이 고객 알림함에 "문의에 답변이 등록되었어요"(목적지 INQUIRY = inquiryId).

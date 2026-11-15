@@ -378,6 +378,7 @@
 - **소유**: 알림 요청·채널(앱 푸시·카카오 알림톡 `[결정 필요]`)·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록(제안 자체는 dispatch), 지연 안내.
 - **구독**: `OrderConfirmed`, `PaymentFailed/Unknown`, `PreparationStarted`, `DeliveryAssigned`, `PickupCompleted`, `DeliveryEtaUpdated`(지연), `DeliveryCompleted`(분할은 전량 완료 1회), `ClaimDecided`, `RefundResult`, `DispatchOfferSent`, `DispatchDelayed`, `CaseAssigned`, `NotificationRequested`(범용).
 - **발행**: `NotificationDelivered`, `NotificationFailed`.
+- **1차 구현(2026-11-16, 계약 0.2.0, ADR-0064)**: 고객 앱 알림함(IN_APP)만 — 주문 확정·상품 준비·배송 출발(`PickupCompleted`)·완료·취소·결품 부분 취소(`OrderLineQuantityChanged` SHORTAGE)·환불 결과(`RefundIntentCreated` 로 주문과 이음)·고객센터 답변(`InquiryAnswered`). 받는 고객은 사건의 accountId, 없으면 order 내부 주문 조회. 푸시·라이더·운영자·발행은 아직.
 
 ### audit-service `[1단계]`
 - **소유**: 감사 사건(운영자 명령·사유·전후 값·대상·실행·보상 결과; 추가만, 삭제 없음), 개인정보 열람·다운로드 기록(BO-25), 보존 정책 `[결정 필요]`.

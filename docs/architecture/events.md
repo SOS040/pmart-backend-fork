@@ -190,6 +190,7 @@
 | `RiderStateChanged` | rider | delivery-dispatch, delivery-tracking | riderId, operatingState, newDispatchEnabled, vehicleType | 운행 시작/종료·신규배차 ON/OFF | ① |
 | `RiderRestricted` | rider | delivery-dispatch(픽업 전 배정 풀고 재배차 — 2026-11-14 구현), rider-auth(SUSPENDED·TERMINATED 는 진행 중 배송이 끝난 뒤 로그인 끊기 — 2026-11-15 구현), audit. mfc-fulfillment 는 구독하지 않고 `DeliveryAssignmentChanged` 로 인계를 막는다(D-4) | riderId, restriction(풀기는 NORMAL), previous, from, to, basis, evidenceRefs, approvalRef | 계정 제한(증빙 기반, 운영자 — RS-1) | ① |
 | `RiderComplaintRecorded` | case(구현됨 2026-11-15 — 상담원 기록 `POST /rider-complaints`, case 0.3.0, service-requests case R-5) | rider | complaintId, riderId, deliveryId, complaintType(REPORT/MISDELIVERY/DAMAGE), recordedAt, caseId | 라이더 컴플레인 한 건(신고·오배송·파손) — rider 가 같은 종류 7일 안 서로 다른 배송 3건 이상이면 제한 검토 대상(RS-3, 2026-11-14, 자동 제재 없음). 토픽 platform.case.v1 | ① |
+| `InquiryAnswered` | case(구현됨 2026-11-16 — 상담원 답변 `POST /inquiries/{id}/replies`) | notification | inquiryId, customerId, caseId, orderId, answeredAt | 고객센터 문의 답변 사실(답변 내용 없음) — 고객 알림함(notification N-2). 토픽 platform.case.v1 | ① |
 | `RiderSupplyChanged` | rider | delivery-capacity | zoneId, activeRiders | 수급 참고 | ① |
 | `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce | deliveryId, orderId, shipmentId, type(FORWARD/RETURN/RESHIPMENT — API 와 같게, 2026-11-10. 분할은 유형이 아님), mfcId, dropAddressRef | 배송 단위 생성 | ① |
 | `DispatchOfferSent` | delivery-dispatch | notification(라이더 알림) | offerId, attemptId, deliveryId, riderId, expiresAt(1분), fee | 제안 전송 | ① |
