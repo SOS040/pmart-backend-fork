@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pmart.common.test.PostgresKafkaContainerSupport;
+import com.pmart.common.test.TestJwt;
+import com.pmart.common.test.TestJwtConfiguration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +37,7 @@ import tools.jackson.databind.ObjectMapper;
       // 시험 클래스마다 컨테이너가 새로 뜨므로 ServiceBootIT 와 컨텍스트 캐시를 나눈다
       "pmart.test.context=pii-access-log"
     })
+@Import(TestJwtConfiguration.class)
 class PiiAccessLogIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
@@ -166,5 +170,86 @@ class PiiAccessLogIT extends PostgresKafkaContainerSupport {
     assertThatThrownBy(
             () -> jdbc.update("DELETE FROM pii_access_log WHERE request_id = 'purge-recent'"))
         .hasMessageContaining("추가만");
+  }
+
+  JsonNode staffGet(String token, String path) {
+    var r =
+        http.get().uri(path).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
+    var node = mapper.createObjectNode();
+    node.put("status", r.getStatusCode().value());
+    node.set(
+        "body", r.getBody() == null ? mapper.createObjectNode() : mapper.readTree(r.getBody()));
+    return node;
+  }
+
+  /**
+   * 직원용 열람 기록 조회(0.3.0, 2026-11-16): OPERATOR_ADMIN 만(상담원 403), 거르기(열람한 직원·정보주체·사건 참조·기간), 새 것부터,
+   * 커서로 다음 쪽(겹침·빠짐 없음), 한 건 조회.
+   */
+  @Test
+  void adminListsAccessLogsWithFiltersAndCursor() {
+    String subject = "ACC-LIST-" + UUID.randomUUID().toString().substring(0, 6);
+    Instant base = Instant.parse("2026-11-16T00:00:00Z");
+    for (int i = 0; i < 5; i++) {
+      var b = body("목록 시험 " + i, base.plusSeconds(i * 60L));
+      b.put("subjectRef", subject);
+      b.put("caseRef", i < 3 ? "ORDER:ORD-L1" : "ORDER:ORD-L2");
+      assertThat(post("k-" + UUID.randomUUID(), b).getStatusCode().value()).isEqualTo(201);
+    }
+    String admin = TestJwt.operator("op-admin", List.of("OPERATOR_ADMIN"), List.of());
+    String cs = TestJwt.operator("cs-1", List.of("CS_AGENT"), List.of());
+
+    assertThat(staffGet(cs, "/pii-access-logs?subjectRef=" + subject).path("status").asInt())
+        .isEqualTo(403);
+
+    JsonNode p1 = staffGet(admin, "/pii-access-logs?subjectRef=" + subject + "&size=2");
+    assertThat(p1.path("status").asInt()).isEqualTo(200);
+    JsonNode items1 = p1.path("body").path("items");
+    assertThat(items1).hasSize(2);
+    assertThat(items1.get(0).path("purpose").asString()).isEqualTo("목록 시험 4");
+    assertThat(items1.get(1).path("purpose").asString()).isEqualTo("목록 시험 3");
+    String cursor = p1.path("body").path("page").path("nextCursor").asString();
+    assertThat(cursor).isNotBlank();
+    JsonNode p2 =
+        staffGet(admin, "/pii-access-logs?subjectRef=" + subject + "&size=2&cursor=" + cursor);
+    assertThat(p2.path("body").path("items").get(0).path("purpose").asString())
+        .isEqualTo("목록 시험 2");
+    JsonNode p3 =
+        staffGet(
+            admin,
+            "/pii-access-logs?subjectRef="
+                + subject
+                + "&size=2&cursor="
+                + p2.path("body").path("page").path("nextCursor").asString());
+    assertThat(p3.path("body").path("items")).hasSize(1);
+    assertThat(p3.path("body").path("page").path("nextCursor").isNull()).isTrue();
+
+    assertThat(
+            staffGet(admin, "/pii-access-logs?subjectRef=" + subject + "&caseRef=ORDER:ORD-L2")
+                .path("body")
+                .path("items"))
+        .hasSize(2);
+    assertThat(
+            staffGet(
+                    admin,
+                    "/pii-access-logs?subjectRef="
+                        + subject
+                        + "&from=2026-11-16T00:01:00Z&to=2026-11-16T00:03:00Z")
+                .path("body")
+                .path("items"))
+        .hasSize(2);
+    assertThat(
+            staffGet(admin, "/pii-access-logs?subjectRef=" + subject + "&actorId=cs-1")
+                .path("body")
+                .path("items"))
+        .hasSize(5);
+    assertThat(staffGet(admin, "/pii-access-logs?cursor=bad").path("status").asInt())
+        .isEqualTo(400);
+
+    String id = items1.get(0).path("piiAccessLogId").asString();
+    JsonNode one = staffGet(admin, "/pii-access-logs/" + id);
+    assertThat(one.path("status").asInt()).isEqualTo(200);
+    assertThat(one.path("body").path("subjectRef").asString()).isEqualTo(subject);
+    assertThat(staffGet(cs, "/pii-access-logs/" + id).path("status").asInt()).isEqualTo(403);
   }
 }

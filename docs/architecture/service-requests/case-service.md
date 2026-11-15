@@ -54,7 +54,7 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **case-service 에 필요한 것**
   1. 구독 `deliveryEvents`(delivery.delivery.v1, `EventConsumers.of(e -> "DeliveryIncidentRaised".equals(e.eventType()), …)` — 같은 토픽의 다른 배송 사건은 버린다) → `InboxGuard` 안에서 지원센터 사건 열기(유형 예 `RIDER_HELP` / `DELIVERY_FAILURE`, 참조 deliveryId·orderId·incidentId, 우선순위는 category 로 — 예 ACCIDENT 높음). 같은 incidentId 는 한 번.
   2. 사건을 열면 `CaseOpened`(refs 에 `{refType: "incidentId", refId}`·`{refType: "deliveryId", refId}`) — delivery-execution 이 받아 도움요청에 caseId 를 연결하고 state 를 IN_PROGRESS 로(그쪽 구현은 case-service 가 생길 때 delivery 영역이 한다). 사건 종료(`CaseClosed`) → RESOLVED.
-  3. 지원센터 화면에서 전달 실패 확정·반려 — 결정은 delivery-execution `POST /api/v1/deliveries/{id}/failure-decisions`(CONFIRM·REJECT, note, custody)를 부른다(사건을 정본으로 두고 결정만 execution 에). 지원센터 역할이 생기면 execution 권한 검사(`Access.operatorCanSee` — 지금 OPERATOR_ADMIN·CS_AGENT·그 센터 운영자)에 더한다.
+  3. 지원센터 화면에서 전달 실패 확정·반려 — 결정은 delivery-execution `POST /api/v1/deliveries/{id}/failure-decisions`(CONFIRM·REJECT, note, custody)를 부른다(사건을 정본으로 두고 결정만 execution 에). **지원센터 역할 = `RIDER_OPS` 가 겸한다**(사용자 2026-11-16 — 따로 두지 않음). execution 권한 검사(`Access.allCenters` — OPERATOR_ADMIN·CS_AGENT·RIDER_OPS, PR #17)에 이미 들어 있다.
   4. 고객 연락(안심번호 5시간·시도 기록 — 원문 §9.1), 대체 장소 승인, 회수·취소 결정은 원문대로 case 쪽 — 결정 결과를 어디로 보낼지(claim 회수 승인 등)는 case-service 설계 때.
 - **case-service 가 생기면 요청한 쪽(delivery-execution)에서 바꿀 것**: `CaseOpened`·`CaseClosed` 구독 → `help_request.case_id`·state 갱신(지금 테이블·조회 칸은 있다).
 

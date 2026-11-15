@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: audit-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     감사 사건(운영자 명령·사유·전후 값·대상·실행·보상 결과)과 개인정보 열람·다운로드 기록(BO-25)의 정본. (docs/architecture/service-map.md §8)
     추가만 허용, 수정·삭제 없음. 보존 정책은 결정 필요. 각 도메인 정본은 소유 서비스에 있으며 여기 값은 기록 시점 사본이다.
@@ -89,6 +89,59 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AuditEntry' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /pii-access-logs:
+    get:
+      tags: [pii-access-logs]
+      summary: 개인정보 열람 기록 목록 — OPERATOR_ADMIN 만 (ADR-0062 결정 10, 0.3.0)
+      x-added-in: '2026-11-16'
+      description: |
+        누가·언제·누구의 무엇을·왜 열람했는지(BO-25). 열람 시각(occurredAt) 새 것부터, 최대 200건씩(cursor 로 다음).
+        OPERATOR_ADMIN 이 아니면 403(본인 기록 보기·별도 감사 역할 없음 — 사용자 2026-11-15). 원문 개인정보 값은 기록에 없다(참조·항목 코드·사유만).
+        보존 2년 뒤 파기된 기록은 없다(ADR-0062 결정 9).
+      operationId: listPiiAccessLogs
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: actorId, in: query, schema: { type: string, maxLength: 128 }, description: 열람한 직원(운영자 ID) }
+        - { name: subjectType, in: query, schema: { type: string, enum: [CUSTOMER, RIDER, DRIVER, OPERATOR] } }
+        - { name: subjectRef, in: query, schema: { type: string, maxLength: 128 }, description: 정보주체 참조(고객·라이더 ID) }
+        - { name: caseRef, in: query, schema: { type: string, maxLength: 128 }, description: '예 ORDER:ORD-…, RIDER:RD-…' }
+        - { name: accessType, in: query, schema: { type: string, enum: [VIEW, DOWNLOAD, EXPORT, SEARCH] } }
+        - { name: from, in: query, schema: { type: string, format: date-time }, description: 열람 시각 이후(포함) }
+        - { name: to, in: query, schema: { type: string, format: date-time }, description: 열람 시각 이전(미포함) }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/PiiAccessLog' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /pii-access-logs/{piiAccessLogId}:
+    get:
+      tags: [pii-access-logs]
+      summary: 개인정보 열람 기록 한 건 — OPERATOR_ADMIN 만 (0.3.0)
+      x-added-in: '2026-11-16'
+      operationId: getPiiAccessLogForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: piiAccessLogId, in: path, required: true, schema: { type: string, maxLength: 40 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PiiAccessLog' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 

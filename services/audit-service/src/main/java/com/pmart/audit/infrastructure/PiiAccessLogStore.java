@@ -23,7 +23,8 @@ public class PiiAccessLogStore {
       String sourceSystem,
       String requestId,
       Instant recordedAt,
-      PiiAccess access) {}
+      PiiAccess access,
+      long sequence) {}
 
   private static final TypeReference<List<String>> STRINGS = new TypeReference<>() {};
 
@@ -65,18 +66,61 @@ public class PiiAccessLogStore {
         a.traceId());
   }
 
+  private static final String SELECT =
+      "SELECT pii_access_log_id, sequence, source_system, request_id, occurred_at, recorded_at,"
+          + " actor_id, actor_type, actor_on_behalf_of, actor_role_grant_ref, actor_roles::text AS"
+          + " actor_roles, actor_center_scope::text AS actor_center_scope, subject_type,"
+          + " subject_ref, access_type, fields::text AS fields, purpose, screen, case_ref,"
+          + " record_count, trace_id FROM pii_access_log";
+
   public Optional<Stored> find(String id) {
-    return jdbc
-        .query(
-            "SELECT pii_access_log_id, source_system, request_id, occurred_at, recorded_at, actor_id,"
-                + " actor_type, actor_on_behalf_of, actor_role_grant_ref, actor_roles::text AS"
-                + " actor_roles, actor_center_scope::text AS actor_center_scope, subject_type,"
-                + " subject_ref, access_type, fields::text AS fields, purpose, screen, case_ref,"
-                + " record_count, trace_id FROM pii_access_log WHERE pii_access_log_id = ?",
-            this::row,
-            id)
-        .stream()
-        .findFirst();
+    return jdbc.query(SELECT + " WHERE pii_access_log_id = ?", this::row, id).stream().findFirst();
+  }
+
+  /** 직원 조회 조건(0.3.0). 비어 있는 값은 거르지 않는다. */
+  public record Search(
+      @Nullable String actorId,
+      @Nullable String subjectType,
+      @Nullable String subjectRef,
+      @Nullable String caseRef,
+      @Nullable String accessType,
+      @Nullable Instant from,
+      @Nullable Instant to) {}
+
+  /** 열람 시각 새 것부터, 같은 시각이면 추가 순서 역순. after* = 앞 쪽 마지막 행(keyset). */
+  public List<Stored> search(
+      Search s, @Nullable Instant afterOccurredAt, long afterSequence, int limit) {
+    StringBuilder sql = new StringBuilder(SELECT + " WHERE TRUE");
+    List<Object> args = new java.util.ArrayList<>();
+    eq(sql, args, "actor_id", s.actorId());
+    eq(sql, args, "subject_type", s.subjectType());
+    eq(sql, args, "subject_ref", s.subjectRef());
+    eq(sql, args, "case_ref", s.caseRef());
+    eq(sql, args, "access_type", s.accessType());
+    if (s.from() != null) {
+      sql.append(" AND occurred_at >= ?");
+      args.add(Timestamp.from(s.from()));
+    }
+    if (s.to() != null) {
+      sql.append(" AND occurred_at < ?");
+      args.add(Timestamp.from(s.to()));
+    }
+    if (afterOccurredAt != null) {
+      sql.append(" AND (occurred_at, sequence) < (?, ?)");
+      args.add(Timestamp.from(afterOccurredAt));
+      args.add(afterSequence);
+    }
+    sql.append(" ORDER BY occurred_at DESC, sequence DESC LIMIT ?");
+    args.add(limit);
+    return jdbc.query(sql.toString(), this::row, args.toArray());
+  }
+
+  private static void eq(
+      StringBuilder sql, List<Object> args, String column, @Nullable String value) {
+    if (value != null) {
+      sql.append(" AND ").append(column).append(" = ?");
+      args.add(value);
+    }
   }
 
   private Stored row(ResultSet rs, int n) throws SQLException {
@@ -101,7 +145,8 @@ public class PiiAccessLogStore {
             rs.getString("screen"),
             rs.getString("case_ref"),
             rs.getInt("record_count"),
-            rs.getString("trace_id")));
+            rs.getString("trace_id")),
+        rs.getLong("sequence"));
   }
 
   private List<String> strings(@Nullable String json) {

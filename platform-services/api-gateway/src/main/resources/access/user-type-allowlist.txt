@@ -157,6 +157,8 @@ GET /api/v1/packages/{packageId} OPERATOR
 GET /api/v1/packages/{packageId}/handover-resolution OPERATOR,RIDER
 GET /api/v1/payment-widget-config CUSTOMER
 GET /api/v1/payments/{orderId} CUSTOMER
+GET /api/v1/pii-access-logs OPERATOR
+GET /api/v1/pii-access-logs/{piiAccessLogId} OPERATOR
 GET /api/v1/plan-candidates/{candidateSetId} OPERATOR
 GET /api/v1/plan-runs/{planRunId} OPERATOR
 GET /api/v1/policies OPERATOR

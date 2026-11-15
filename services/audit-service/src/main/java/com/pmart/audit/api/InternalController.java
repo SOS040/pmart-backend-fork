@@ -65,32 +65,35 @@ public class InternalController implements InternalApi {
 
   @Override
   public ResponseEntity<PiiAccessLog> getPiiAccessLog(String piiAccessLogId) {
-    PiiAccessLogStore.Stored s = service.get(piiAccessLogId);
+    return ResponseEntity.ok(dto(service.get(piiAccessLogId)));
+  }
+
+  /** 저장된 열람 기록 → 계약 PiiAccessLog(내부 조회·직원 조회 공용). */
+  static PiiAccessLog dto(PiiAccessLogStore.Stored s) {
     PiiAccess a = s.access();
-    return ResponseEntity.ok(
-        new PiiAccessLog()
-            .piiAccessLogId(s.piiAccessLogId())
-            .recordedAt(s.recordedAt().atOffset(ZoneOffset.UTC))
-            .sourceSystem(s.sourceSystem())
-            .requestId(s.requestId())
-            .occurredAt(a.occurredAt().atOffset(ZoneOffset.UTC))
-            .actor(
-                new Actor()
-                    .actorId(a.actorId())
-                    .actorType(Actor.ActorTypeEnum.fromValue(a.actorType()))
-                    .onBehalfOf(a.actorOnBehalfOf())
-                    .roleGrantRef(a.actorRoleGrantRef())
-                    .roles(a.actorRoles())
-                    .centerScope(a.actorCenterScope()))
-            .subjectType(PiiAccessLog.SubjectTypeEnum.fromValue(a.subjectType()))
-            .subjectRef(a.subjectRef())
-            .accessType(PiiAccessLog.AccessTypeEnum.fromValue(a.accessType()))
-            .fields(a.fields())
-            .purpose(a.purpose())
-            .screen(a.screen())
-            .caseRef(a.caseRef())
-            .recordCount(a.recordCount())
-            .traceId(a.traceId()));
+    return new PiiAccessLog()
+        .piiAccessLogId(s.piiAccessLogId())
+        .recordedAt(s.recordedAt().atOffset(ZoneOffset.UTC))
+        .sourceSystem(s.sourceSystem())
+        .requestId(s.requestId())
+        .occurredAt(a.occurredAt().atOffset(ZoneOffset.UTC))
+        .actor(
+            new Actor()
+                .actorId(a.actorId())
+                .actorType(Actor.ActorTypeEnum.fromValue(a.actorType()))
+                .onBehalfOf(a.actorOnBehalfOf())
+                .roleGrantRef(a.actorRoleGrantRef())
+                .roles(a.actorRoles())
+                .centerScope(a.actorCenterScope()))
+        .subjectType(PiiAccessLog.SubjectTypeEnum.fromValue(a.subjectType()))
+        .subjectRef(a.subjectRef())
+        .accessType(PiiAccessLog.AccessTypeEnum.fromValue(a.accessType()))
+        .fields(a.fields())
+        .purpose(a.purpose())
+        .screen(a.screen())
+        .caseRef(a.caseRef())
+        .recordCount(a.recordCount())
+        .traceId(a.traceId());
   }
 
   private static List<String> orEmpty(@Nullable List<String> l) {

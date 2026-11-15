@@ -28,4 +28,4 @@
   - 멱등: `RequestIdempotency`(X-Source-System, Idempotency-Key). 본문 비교에서 occurredAt·traceId 는 뺀다(`PiiAccess.forIdempotency`) — 재시도마다 시각이 달라도 같은 기록(200), 다른 사유·항목은 409. 처음은 201.
   - 추가 전용: 수정·삭제 API 없음 + DB 트리거 `trg_pii_access_log_append_only` 가 UPDATE·DELETE 를 거부. **보존 2년 뒤 파기**(ADR-0062 결정 9, V3): `application.PiiAccessLogPurger`(기본 6시간마다, 설정 `pmart.audit.pii-retention`=P2Y·`pii-purge-interval`) — 트랜잭션마다 `pmart.audit_purge=on` 을 켠 DELETE 만 트리거가 허용(UPDATE 는 언제나 거부). 지운 수만 로그.
   - 원문 개인정보는 받지 않는다(subjectRef = 계정 ID, fields = 항목 코드). 열람 사유(purpose)는 저장하되 로그 금지(`PiiAccess.toString` 이 숨김).
-  - 직원용 열람 기록 조회 화면 API(누가 누구 기록을 볼 수 있나)는 아직 없다 — 결정 필요.
+  - **직원 조회(0.3.0, 2026-11-16 — ADR-0062 결정 10)**: `GET /pii-access-logs`(거르기 actorId·subjectType·subjectRef·caseRef·accessType·from·to, 열람 시각 새 것부터, 커서 = `<occurred_at epoch µs>_<sequence>` keyset, 최대 200)·`GET /pii-access-logs/{id}` — `PiiAccessLogsController` → `PiiAccessLogService.list/getForStaff`. **OPERATOR_ADMIN 만**(그 밖 403). 게이트웨이 라우트 `audit-service` 에 `/api/v1/pii-access-logs/**`.
