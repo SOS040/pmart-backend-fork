@@ -11,7 +11,7 @@ pmart-backend 와 pmart-clients 는 서로의 저장소에 쓰지 않는다. 각
 
 ```
 docs/handoff/clients/
-  customer-app/  mfc-app/  rider-app/  backoffice/  hr-backoffice/  web-common/   # 그 앱 영역이 받는 문서
+  customer-app/  mfc-app/  rider-app/  backoffice/  hr-backoffice/  mfc-backoffice/  web-common/   # 그 앱 영역이 받는 문서(mfc-backoffice 2026-11-15 새 앱)
   all/           # 여러 앱에 걸친 문서
   archive/       # 처리가 끝난 문서(이름 그대로) — 기준·목록 archive/README.md
 ```

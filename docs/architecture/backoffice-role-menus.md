@@ -30,6 +30,8 @@
 
 ## 3. MFC 메뉴 (센터 관리자)
 
+> 2026-11-15: 이 메뉴는 **별도 앱 MFC 백오피스**(`app=mfc-backoffice`, `https://192.168.0.40:8445`)로 — 요청서 `docs/handoff/clients/mfc-backoffice/2026-11-15-request-mfc-backoffice.md`.
+
 | 메뉴 | 내용 | API |
 |---|---|---|
 | 작업자 | 등록, 고용 형태·자격·업무, 상태(정지·퇴사), 근무 등록·취소, 휴게, 일일크루 그날 등록 | mfc-capacity `/mfcs/{id}/workers*` |

@@ -45,6 +45,7 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 | **rider-app** | `apps/rider_app` | **PC 5** — 백엔드 delivery 영역과 같은 PC |
 | **backoffice** | `web/backoffice` | PC 2 가 시작하기 전까지 PC 1 |
 | **hr-backoffice** | `web/hr-backoffice` | 같음(PC 2 로 함께 옮길지 미정) |
+| **mfc-backoffice**(2026-11-15 새 앱 — 사용자 "백오피스 mfc는 떼어내고") | `web/mfc-backoffice`(제안) | **정할 것**(PC 3 또는 PC 2 — 요청서 `docs/handoff/clients/mfc-backoffice/2026-11-15-request-mfc-backoffice.md` §4) |
 | **web-common** | `web/core`·`web/ui`·`tools/web-tools`(두 웹앱 공통 — 한 주인) | 같음 |
 
 - 클라이언트 정본: pmart-clients `docs/operations/pc-split.md` §1, `docs/handoff/2026-11-13-backend-client-area-pcs-decided.md`.
