@@ -46,7 +46,10 @@ check() {
     zipkin)   curl -sf -m 5 "http://$ip:9411/health" >/dev/null ;;
     keycloak) curl -sf -m 5 "http://$ip:8180/realms/pmart-staff/.well-known/openid-configuration" >/dev/null ;;
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
-    backoffice-web) [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip/")" = 200 ] ;;    # 임시 백오피스(Nginx)
+    # 백오피스 웹(Nginx) 두 개 — 2026-11-13 부터 HTTPS(80·8081 은 301 로 넘기기만, ADR-0057). 예전 점검(http 200)과 hr-backoffice-web 점검 없음(기본 actuator)은
+    # 늘 실패해 10분마다 재시작했다(2026-11-15 발견). 사설 CA 로 HTTPS 200 을 본다
+    backoffice-web|hr-backoffice-web)
+      [ "$(curl -s -m 5 --ssl-revoke-best-effort --cacert "$LAN/tls/pmart-lan-root-ca.crt" -o /dev/null -w '%{http_code}'         "https://$ip$([ "$c" = hr-backoffice-web ] && echo :8444)/")" = 200 ] ;;
     es-search|es-logs) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031·0038)
     kibana)   [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:5601/api/status")" = 200 ] ;;
     logstash-logs) timeout 3 bash -c "exec 3<>/dev/tcp/$ip/5044" 2>/dev/null ;;   # beats 포트는 HTTP 가 아니라(curl 은 항상 000) TCP 연결만 확인
@@ -66,8 +69,10 @@ check() {
         "docker exec pmart-lan-mailserver-1 sh -c 'ss -ltn | grep -q \":25 \" && ss -ltn | grep -q \":143 \"'" >/dev/null 2>&1 ;;
     # 사서함 사이드카(ADR-0056 결정 10): LAN 포트가 없다 — 그 PC 에서 컨테이너 안 actuator(bash /dev/tcp — 이미지에 curl 이 없을 수 있어서)
     mail-provisioner)
-      body="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
-        "docker exec pmart-lan-mail-provisioner-1 bash -c 'exec 3<>/dev/tcp/localhost/8513; printf \"GET /actuator/health HTTP/1.0\r\n\r\n\" >&3; cat <&3'" 2>/dev/null)" || return 1
+      # 명령은 표준 입력으로 넘긴다 — 인자로 넘기면 원격 Windows 셸이 따옴표·공백을 깨 요청이 "GET" 만 가서 늘 실패하고 5분마다 재시작됐다(2026-11-15 발견)
+      body="$(printf '%s\n' 'exec 3<>/dev/tcp/localhost/8513; printf "GET /actuator/health HTTP/1.0\r\n\r\n" >&3; cat <&3' \
+        | ssh -o BatchMode=yes -o ConnectTimeout=10 "$(awk -v ip="$ip" '$2 == ip {print $3; exit}' "$OUT"/*/target)" \
+          "docker exec -i pmart-lan-mail-provisioner-1 bash" 2>/dev/null)" || return 1
       grep -q '"status":"UP"' <<<"$body" ;;
     roundcube)
       # --ssl-revoke-best-effort: Windows curl(schannel)은 사설 CA 에 폐기 목록(CRL)이 없어 "revocation status unknown" 으로 실패한다(2026-11-12)

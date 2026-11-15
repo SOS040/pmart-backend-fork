@@ -41,28 +41,28 @@ RAG 영역(`docs/operations/pc-split.md` §1-1 — 나눌 예정)을 받는 PC·
 - `docs/business/customer-faq/01-customer-center.md` ~ `13-alcohol.md` — 고객 공개 안내만(Claude 초안·사용자 승인 2026-11-09 C1). 업무 문서·cs-scripts·ADR 은 내부 문서라 넣지 않는다.
 - **고치거나 더하면 사용자 승인 뒤** manifest 에 넣고 재색인(`rag-ingest-customer`). 지위·우선순위 가중은 0(승인된 안내는 모두 같은 지위).
 
-## 3. LAN 배치·모델 (PC 5, 2026-11-11 PC 2 → PC 5 이동)
+## 3. LAN 배치·모델 (PC 2 — 2026-11-11 PC 2 → PC 5, **2026-11-15 PC 5 → PC 2 다시**: PC 5 메모리. 데이터·모델 볼륨을 그대로 옮김, 색인은 그대로)
 
 | 구성요소 | 내용 |
 |---|---|
-| `ollama` | PC 5 GPU(RTX 2060, 쓸 수 있는 메모리 약 5GB). LAN 포트 없음 — 같은 PC 서비스만 `http://ollama:11434` |
+| `ollama` | PC 2 GPU(RTX 2060, 쓸 수 있는 메모리 약 5GB). 컨테이너 CPU 4·메모리 6GB 상한(같은 PC 의 주문·결제 몫을 남김 — 재색인은 주문 시험이 없을 때). LAN 포트 없음 — 같은 PC 서비스만 `http://ollama:11434` |
 | 대화 모델 | `qwen3:4b`(GPU 100%, 3.9GB, 문맥 8192) — 사용자 결정 2026-11-09(8B 와 비교 25 vs 26/30, 8B 는 8~22초) |
 | 임베딩 모델 | `qwen3-embedding:0.6b`(ID `ac6da0dfba84`, 1024차원, **CPU** — `embedding-num-gpu: 0`, GPU 는 대화 모델에). 2026-11-09 비교 평가로 결정(`verification/2026-11-09/embedding-compare/`) |
 | `rag-pgvector` | PostgreSQL + pgvector, 포트 15433(LAN 노출 없음), 서비스마다 DB·계정(`deploy/lan/rag/rag-init-db.sh`) |
 | 설정 | 설정 저장소 `ai-assistant-service{,-lan,-local}.yml`·`customer-assistant-service{,-lan,-local}.yml` — 임계값(운영자 LAN 0.40, 발췌 전환 하한 0.45, 지위 가중 ×0.5), 대화 온도(운영자 0.2·고객 0.0), 요청 제한 25초 |
 | 로컬 | `deploy/local/ai-assistant/docker-compose.yml`(pgvector 15433). local 프로필은 해시 임베딩 기준선(`provider: local`, 384차원) — 외부·Ollama 없음 |
 
-- 배치 정본 `deploy/lan/placement.conf`(pc5 줄 `rag-pgvector ollama ai-assistant-service customer-assistant-service`), compose 는 `deploy/lan/render.sh`.
+- 배치 정본 `deploy/lan/placement.conf`(pc2 줄 `rag-pgvector ollama ai-assistant-service customer-assistant-service`), compose 는 `deploy/lan/render.sh`.
 - 감시: `deploy/lan/watch.sh` 가 rag-pgvector·ollama 를 SSH 로 컨테이너 안에서 점검(2026-11-09 LAN 포트 없는 둘을 HTTP 로 보다 10분마다 재시작시킨 사고 뒤).
 - 아이디어(결정 아님): 임베딩을 GPU 로(5대 모두 GPU) — 지금은 CPU 라 운영자 전체 재색인 약 60분.
 
 ## 4. 명령 (배포·색인은 PC 1 에서)
 
 ```bash
-deploy/lan/lan.sh rag-pull pc5 qwen3-embedding:0.6b qwen3:4b   # 모델 받기
-deploy/lan/lan.sh rag-warm pc5                                  # 대화 모델 미리 올림(첫 적재 ~30초 > 요청 제한 25초) — ollama 재시작 뒤 한 번
-deploy/lan/lan.sh rag-ingest pc5                                # 운영자 RAG 재색인(일회 컨테이너, manifest 파일들을 rag/knowledge-operator 로 복사해 /repo)
-deploy/lan/lan.sh rag-ingest-customer pc5                       # 고객 RAG 재색인
+deploy/lan/lan.sh rag-pull pc2 qwen3-embedding:0.6b qwen3:4b   # 모델 받기
+deploy/lan/lan.sh rag-warm pc2                                  # 대화 모델 미리 올림(첫 적재 ~30초 > 요청 제한 25초) — ollama 재시작 뒤 한 번
+deploy/lan/lan.sh rag-ingest pc2                                # 운영자 RAG 재색인(일회 컨테이너, manifest 파일들을 rag/knowledge-operator 로 복사해 /repo)
+deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재색인
 ```
 
 - 임베딩 모델 파일을 바꾸면 설정 `embedding-version` 을 바꾸고 재색인.
@@ -79,7 +79,7 @@ deploy/lan/lan.sh rag-ingest-customer pc5                       # 고객 RAG 재
 | LAN 연결 확인 | `deploy/lan/checks/rag_e2e.py`(운영자 6문항), `customer_rag_e2e.py`(경로·403·헬스) |
 | 직원 토큰 | `deploy/lan/checks/staff_auth.py`(2026-11-13 — auth-service 운영자 로그인을 없앤 뒤) — `docs/operations/dev-on-other-pcs.md` |
 
-**최근 결과**: 운영자 7차 엄격 24/30·사람 26/30(답 없는 질문 11/11, 1.7~4초 — `verification/2026-11-09/answer-eval/report-7-final.md`), 고객 9차 37/37(`verification/2026-11-10/customer-eval/report.md`). 11-11 PC 5 이동 뒤 `rag_e2e` 6/6·`customer_rag_e2e` 3/3.
+**최근 결과**: 운영자 7차 엄격 24/30·사람 26/30(답 없는 질문 11/11, 1.7~4초 — `verification/2026-11-09/answer-eval/report-7-final.md`), 고객 9차 37/37(`verification/2026-11-10/customer-eval/report.md`). 11-11 PC 5 이동 뒤 `rag_e2e` 6/6·`customer_rag_e2e` 3/3. 11-15 PC 2 이동 뒤 같음(6/6·3/3), qwen3:4b 100% GPU.
 
 ## 6. 남은 일·결정 대기
 
@@ -87,7 +87,7 @@ deploy/lan/lan.sh rag-ingest-customer pc5                       # 고객 RAG 재
 - 고객: C11 "신선식:" 글자 잘림 1건. 운영자 RAG 에도 같은 결함(숫자 부분 문자열 검사·표 한 행) 있는지 확인.
 - 결정 대기(ADR-0036·0051): 답변 보존 기간·질문 원문 저장(운영자), 운영자 역할 세분, ADR-0051 "결정 대기" 절.
 - 공용 라이브러리(두 서비스 공통 코드) — 아직 없음.
-- 개발 PC 에서 LAN 모델을 쓰려면: PC 5 ollama 는 LAN 포트가 없다 → 개발 PC 에 로컬 ollama(같은 모델) 또는 PC 5 포트 열기(정할 것 — `pc-split.md` §1-1).
+- 개발 PC(PC 4)에서: **평소는 local 프로필**(해시 임베딩 384차원, 모델 없음 — `deploy/local/ai-assistant/docker-compose.yml` pgvector 15433). 실제 모델로 답변을 볼 때만 PC 4 에 로컬 ollama(같은 모델 qwen3:4b·qwen3-embedding:0.6b — PC 1 이 11-09 평가 때 쓴 방식). 실제 모델 임베딩(1024)과 해시(384)는 DB 를 섞지 않는다. LAN rag-pgvector·ollama(PC 2, LAN 포트 없음)에는 붙지 않는다 — LAN 색인은 PC 1 `rag-ingest` 로만. 로컬 ollama 로 부족하면 PC 2 포트 열기를 그때 정한다(사용자 2026-11-15 "일단 자기걸쓰는데 … 한번해보고 포트열든"). PC 4 에는 게이트웨이·설정 서버가 있어 무거운 시험 중 LAN 이 느려지면 PC 1 에 알린다.
 
 ## 7. 이 폴더(`docs/rag/`) 지도
 

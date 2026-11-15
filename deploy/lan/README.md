@@ -140,6 +140,7 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
 PC 2·3·4·5 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수 없음, 지금까지는 같은 IP 가 나왔다). 반면 `placement.conf` 의 IP 는
 각 PC compose 의 `extra_hosts`·Kafka 광고 주소·Connect 의 DB 주소에 그대로 들어가므로, 한 PC 의 IP 가 바뀌면 **모든 PC** 를 다시 배포해야 한다.
 
+- **PC 1 도 배포 대상**(2026-11-15 — 감시 묶음 zipkin·prometheus·alertmanager·grafana): PC 1 에는 SSH 서버가 없어 `lan.sh`·`run-ps.sh` 가 `pmart-pc1` 은 이 PC 에서 바로 실행·복사한다. `%USERPROFILE%\.docker-pmart\config.json` = `cliPluginsExtraDirs`(compose 플러그인)만. 빌드 PC 라 꺼져도 업무가 멈추지 않는 것만 둔다.
 - **SSH 는 컴퓨터 이름으로 접속**한다(PC 1 `~/.ssh/config`: `HostName DS603-12`/`D603-15`/`D603-16`, `AddressFamily inet`).
   호스트 키는 `HostKeyAlias`(`pmart-pc2` 등) 이름으로 `known_hosts` 에 있어 IP 가 바뀌어도 같은 키로 검증한다(검증은 끄지 않는다).
   그래서 IP 가 바뀌어도 `lan.sh`·`run-ps.sh` 는 그대로 접속된다.

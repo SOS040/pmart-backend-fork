@@ -47,6 +47,12 @@ EOF
 # 실패하면 멈춘다(2026-11-03: 접속 실패를 삼켜 아무것도 복사·배포하지 않고 0 으로 끝났다)
 copy_files() {
   local pc="$1" host out; host="$(alias_of "$pc")"
+  # pmart-pc1 = 이 PC(2026-11-15) — SSH 없이 %USERPROFILE%\pmart-lan 에 바로 복사
+  if [ "$host" = pmart-pc1 ]; then
+    local dst; dst="$(cygpath -u "$USERPROFILE")/pmart-lan"; mkdir -p "$dst"
+    (cd "$OUT/$pc" && cp -r $(ls -A | grep -v '^target$') "$dst/") || { echo "$pc 파일 복사 실패 — 배포 중단" >&2; return 1; }
+    return 0
+  fi
   if ! out="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force $env:USERPROFILE\pmart-lan | Out-Null"' 2>&1)"; then
     printf '%s\n' "$out" | grep -v -E 'post-quantum|store now|pq.html' >&2
     echo "$pc($host) 접속 실패 — 배포 중단" >&2; return 1
