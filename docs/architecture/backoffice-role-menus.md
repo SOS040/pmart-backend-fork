@@ -9,6 +9,8 @@
 - **메뉴 숨김은 편의일 뿐, 권한은 서버가 행위마다 판정한다**(BO 문서·클라이언트 원칙 그대로). 숨긴 화면의 API 를 불러도 서버가 403 을 준다.
 - 역할 이름은 백엔드가 실제로 쓰는 이름을 쓴다(클라이언트 문서의 담당 그룹 CS / MFC_OPS … 는 설명용 묶음 — 역할 이름이 아님).
 
+> **2026-11-15 사용자 결정**: MFC 는 기본 백오피스에서 떼어 **따로 앱**으로(아래 3장 MFC 메뉴는 그 앱으로 옮긴다 — 앱 요청은 따로). 고객센터·라이더 운영 메뉴는 기본 백오피스에 붙이고, 메뉴는 **상위-하위 묶음**(상품 관리·승인·고객센터·라이더 운영·업무 도우미)으로. 요청서 `docs/handoff/clients/backoffice/2026-11-15-clients-request-backoffice-cs-rider-menus.md`.
+
 ## 2. 역할 → 메뉴 (임시 기본값, 2026-11-09)
 
 | 역할(실제 이름) | 보이는 메뉴 | 근거 API(정본) |
@@ -19,7 +21,8 @@
 | `PRODUCT_APPROVER`·`DISPLAY_APPROVER`·`PRICE_APPROVER`·`SERVICEABILITY_APPROVER`·`CENTER_MASTER_APPROVER`·`INVENTORY_APPROVER` | 승인함·승인 상세(자기 유형) | approval `/approvals*` |
 | **`MFC_SUPERVISOR`(센터 관리자)** | **MFC 메뉴 전체**(아래 3장) — 자기 `centers` 의 센터만 | mfc-* 서비스 |
 | `MFC_WORKER`(작업자) | 백오피스 메뉴 없음(내 세션만) — 현장 작업은 PDA 앱 | — |
-| `CS_AGENT`(고객센터 상담원, 2026-11-09) | 고객센터 문의(목록·상세·답변) | case `/inquiries` |
+| `CS_AGENT`(고객센터 상담원, 2026-11-09) | **고객센터** 묶음: 주문 조회, 문의 답변, 라이더 컴플레인(기록·조회), 클레임 조회, 배송·배차 확인, 전달 실패 확정·반려(2026-11-15) | order `/orders/lookups`, case `/inquiries`·`/rider-complaints`, claim `/claims`, execution `/deliveries/{id}`·`failure-decisions`, dispatch `/deliveries/{id}/dispatch`(PC 5 BOD-2 뒤) |
+| `RIDER_OPS`(라이더 운영, 2026-11-15 새 역할) | **라이더 운영** 묶음: 라이더 찾기·계정 제한, 제한 검토, 전달 실패·도움요청 대기, 배송·배차 확인·픽업 전 배차 취소, 라이더 컴플레인 조회, 주문 조회 | rider `/riders*`, execution·dispatch `/deliveries/{id}*`, case `/rider-complaints`(조회), order `/orders/lookups` — 권한은 PC 5 BOD-1 뒤(`delivery-backoffice-staff-apis.md`) |
 
 - **여러 역할**: 메뉴를 합쳐 보인다(합집합).
 - **여러 센터**(`centers` 가 둘 이상): MFC 메뉴 위에 센터 선택 — 고른 센터의 `mfcId` 로 부른다. 하나면 고르지 않는다.
