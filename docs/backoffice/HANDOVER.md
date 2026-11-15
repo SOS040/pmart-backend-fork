@@ -50,15 +50,18 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 - 지금 LAN `web/backoffice` 빌드: 역할별 메뉴, 고객센터·라이더 운영 메뉴(클라이언트 fe8d2fb, index-Dyq2y9wh.js — https://192.168.0.40), 상품 메뉴 OPERATOR_ADMIN 도. 서빙 PC 4 nginx 443, 올리기는 PC 1 `lan.sh publish-backoffice <dist>`(인사팀 앱은 `publish-hr-backoffice`, 8444).
 - **아직 화면에 안 붙은 백엔드 — 지금 클라이언트 쪽이 끝까지 한다(사용자 2026-11-16)**. PC 2 는 이 목록이 반영된 빌드부터 이어받는다. 요청서:
 
-| 화면 | 요청서(`docs/handoff/clients/…`) |
-|---|---|
-| 주문 상세 원문 "보기" → 사유 입력 → 열람 요청(ADR-0062) | `backoffice/2026-11-15-request-order-pii-reveal.md` |
-| 라이더 찾기·상세·원문 열람, 직원 배송 찾기, 도움요청 대기 목록(PR #17) | `docs/architecture/service-requests/delivery-backoffice-staff-apis.md` 회신 절 — 화면은 지금 "서버 API 준비 전" |
-| 인사팀 "권한 관리"(보기·추가 요청·회수), 백오피스 "처리 대기" | `all/2026-11-15-request-permission-and-pending-menus.md` |
-| 사건함 "지원센터 사건", 처리 대기 버튼(다시 확인·처리 완료) | `backoffice/2026-11-16-request-case-inbox-and-pending-work.md` |
-| 개인정보 열람 기록(OPERATOR_ADMIN) | `backoffice/2026-11-16-notice-pii-access-log-api.md` |
-| 세션 센터 이름(`centerDetails`) | `web-common/2026-11-16-notice-session-center-names.md` |
-| 역할 목록·본사 부서(인사팀 등록 화면) | `hr-backoffice/` 11-15 알림들 |
+| 화면 | 요청서(`docs/handoff/clients/…`) | 클라이언트 반영(2026-11-16 05시 pmart-clients 확인) |
+|---|---|---|
+| 주문 상세 원문 "보기" → 사유 입력 → 열람 요청(ADR-0062) | `backoffice/2026-11-15-request-order-pii-reveal.md` | ✅ 7a12e02 |
+| 인사팀 "권한 관리"(보기·추가 요청·회수), 본사 부서 | `all/2026-11-15-request-permission-and-pending-menus.md` §1 | ✅ 7a12e02·53fcd72·8c9c2b2(소속 변경 안내) |
+| 백오피스 "처리 대기" — 이행 확인 필요 | 같은 요청서 §2 | ✅ 7a12e02(멈춘 사가 조치는 "준비 중"으로) |
+| 메뉴·센터를 세션 응답으로, 역할 목록 | `web-common/` 11-15 요청 | ✅ 6455a06 |
+| 세션 센터 이름(`centerDetails`) | `web-common/2026-11-16-notice-session-center-names.md` | ✅ 851bf10 |
+| **사건함 "지원센터 사건", 처리 대기 버튼(다시 확인·처리 완료)** | `backoffice/2026-11-16-request-case-inbox-and-pending-work.md` | ❌ 아직(05시에 보냄) |
+| **개인정보 열람 기록(OPERATOR_ADMIN)** | `backoffice/2026-11-16-notice-pii-access-log-api.md` | ❌ 아직 |
+| **라이더 찾기·상세·원문 열람, 직원 배송 찾기**(PR #17 — 11-15 LAN 배포, 알림이 늦음) | `backoffice/2026-11-16-notice-rider-delivery-staff-apis.md`(11-16 보냄) | ❌ 아직 — 지금 화면은 목(riderDirectoryMock·helpQueueMock) |
+
+- ❌ 세 줄도 **지금 클라이언트 쪽이 끝까지 한다**(사용자 2026-11-16 "클라이언트쪽에 보낸 요청까지는 다하기로"). PC 2 는 이것이 반영된 빌드부터.
 
 ## 4. 할 일 (추천 순서)
 1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
