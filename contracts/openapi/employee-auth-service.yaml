@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -231,6 +231,10 @@ paths:
     get:
       tags: [tokens]
       summary: 현재 세션 조회 (이 서비스가 발급한 직원 토큰만)
+      description: |
+        (0.6.0, 2026-11-15) 응답에 지금 기준 역할·권한 센터(`roles`·`centers` — 계정 값 ∪ 지금 유효한 승인 권한, 토큰을 만들 때와 같은 계산)를 싣는다.
+        화면은 메뉴·센터 고르기를 access token 을 풀지 않고 이 응답으로 정한다(앱을 띄울 때·새로고침·갱신 뒤·탭이 다시 보일 때). 권한이 승인·회수된 직후에는
+        토큰(갱신 전)과 다를 수 있다 — API 판정은 토큰 기준이므로, 다르면 갱신하면 같아진다.
       operationId: getCurrentEmployeeSession
       x-pmart-user-types: [OPERATOR]
       responses:
@@ -478,13 +482,15 @@ components:
           description: "SSO 앱만 — 브라우저를 이 주소로 이동시킨다(Keycloak 로그아웃 → 앱 로그인 화면). 토큰 값이 들어 있으니 로그에 남기지 않는다"
     EmployeeSession:
       type: object
-      required: [sessionId, operatorId, app, issuedAt, expiresAt]
+      required: [sessionId, operatorId, app, issuedAt, expiresAt, roles, centers]
       properties:
         sessionId: { type: string }
         operatorId: { type: string }
         app: { type: string }
         issuedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time, description: 이 access token 의 만료 }
+        roles: { type: array, items: { type: string }, description: '(0.6.0) 지금 기준 역할 — 비어 있으면 권한 승인 대기' }
+        centers: { type: array, items: { type: string }, description: '(0.6.0) 지금 기준 권한 센터(mfcId 등)' }
     EmployeeState:
       type: string
       enum: [ACTIVE, DISABLED, LEFT]

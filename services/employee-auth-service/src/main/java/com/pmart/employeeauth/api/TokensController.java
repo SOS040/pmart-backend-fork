@@ -113,6 +113,8 @@ public class TokensController implements TokensApi {
             .operatorId(c.operatorId())
             .app(c.app())
             .issuedAt(EmployeeAuthMapping.odt(c.issuedAt()))
-            .expiresAt(EmployeeAuthMapping.odt(c.expiresAt())));
+            .expiresAt(EmployeeAuthMapping.odt(c.expiresAt()))
+            .roles(c.roles())
+            .centers(c.centers()));
   }
 }

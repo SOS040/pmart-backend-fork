@@ -340,6 +340,9 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
     Res cur = withToken("GET", "/employee-auth/sessions/current", access, null);
     assertThat(cur.status()).isEqualTo(200);
     assertThat(cur.body().path("app").asText()).isEqualTo("mfc");
+    // 0.6.0: 지금 기준 역할·센터(토큰과 같은 계산)
+    assertThat(cur.body().path("roles").toString()).isEqualTo("[\"MFC_WORKER\"]");
+    assertThat(cur.body().path("centers").toString()).isEqualTo("[\"MFC-IT-01\"]");
 
     // 갱신 회전 + 재사용 감지
     String refresh1 = r.body().path("tokens").path("refreshToken").asText();

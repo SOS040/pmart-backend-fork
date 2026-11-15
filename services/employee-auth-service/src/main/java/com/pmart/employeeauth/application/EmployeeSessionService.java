@@ -33,8 +33,15 @@ public class EmployeeSessionService {
 
   private static final Logger log = LoggerFactory.getLogger(EmployeeSessionService.class);
 
+  /** 현재 세션 + 지금 기준 역할·센터(0.6.0 — 토큰을 만들 때와 같은 계산, {@link EmployeeAccess}). */
   public record Current(
-      String sessionId, String operatorId, String app, Instant issuedAt, Instant expiresAt) {}
+      String sessionId,
+      String operatorId,
+      String app,
+      Instant issuedAt,
+      Instant expiresAt,
+      List<String> roles,
+      List<String> centers) {}
 
   private final EmployeeAuthStore store;
   private final EmployeeTokens tokens;
@@ -334,12 +341,22 @@ public class EmployeeSessionService {
       throw new PmartException(
           "SESSION_EXPIRED", HttpStatus.UNAUTHORIZED, "세션이 종료되었습니다. 다시 로그인하세요.", false, List.of());
     }
+    Instant now = clock.instant();
+    AccountRow account = store.account(s.operatorId(), false).orElse(null);
+    if (account == null || !EmployeeLoginService.ACTIVE.equals(account.state())) {
+      // 정지·퇴사 직후(차단 사건이 게이트웨이에 닿기 전) — 세션이 살아 있어도 쓸 수 없다
+      throw new PmartException(
+          "SESSION_EXPIRED", HttpStatus.UNAUTHORIZED, "세션이 종료되었습니다. 다시 로그인하세요.", false, List.of());
+    }
+    EmployeeAccess.Access a = access.of(account, now);
     return new Current(
         s.sessionId(),
         s.operatorId(),
         s.app(),
         Objects.requireNonNull(jwt.getIssuedAt()),
-        Objects.requireNonNull(jwt.getExpiresAt()));
+        Objects.requireNonNull(jwt.getExpiresAt()),
+        a.roles(),
+        a.centers());
   }
 
   /** 이 서비스가 발급한 직원 토큰만(Keycloak 토큰·다른 발급자는 403). */
