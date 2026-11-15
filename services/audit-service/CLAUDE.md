@@ -21,4 +21,11 @@
 로컬 포트 8503.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+3단계 스캐폴딩(2026-10-23). 감사 사건(`/internal/audit-entries`·`/audit-entries`)은 아직 501 UNSUPPORTED_ACTION.
+
+- **개인정보 열람 기록(2026-11-15, BO-25 — 계약 0.2.0, V2)**: `POST /internal/pii-access-logs`(기록)·`GET /internal/pii-access-logs/{id}`(짝 조회) — `InternalController` → `application.PiiAccessLogService` → `infrastructure.PiiAccessLogStore`(JDBC, 표 `pii_access_log`).
+  - 첫 호출자: order-service 직원 주문 배송지 원문 열람(`POST /orders/lookups/{orderId}/pii-reveals`). 호출자는 기록이 된 뒤에만 원문을 준다(실패면 원문 없음).
+  - 멱등: `RequestIdempotency`(X-Source-System, Idempotency-Key). 본문 비교에서 occurredAt·traceId 는 뺀다(`PiiAccess.forIdempotency`) — 재시도마다 시각이 달라도 같은 기록(200), 다른 사유·항목은 409. 처음은 201.
+  - 추가 전용: 수정·삭제 API 없음 + DB 트리거 `trg_pii_access_log_append_only` 가 UPDATE·DELETE 를 거부. 보존기간·파기는 결정 필요(BO-25 §4) — 지금은 지우지 않는다.
+  - 원문 개인정보는 받지 않는다(subjectRef = 계정 ID, fields = 항목 코드). 열람 사유(purpose)는 저장하되 로그 금지(`PiiAccess.toString` 이 숨김).
+  - 직원용 열람 기록 조회 화면 API(누가 누구 기록을 볼 수 있나)는 아직 없다 — 결정 필요.

@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     주문 초안·주문 원장·스냅샷·상태·이행 계획의 정본. (docs/architecture/service-map.md §2)
     사가 진행은 order-orchestration-service, PG 거래는 payment-service, 클레임 심사는 claim-service.
+    0.4.0(2026-11-15): 직원용 주문 상세의 배송지는 가려서 주고(shippingAddressMasked), 원문은 사유를 적은 열람 요청(pii-reveals)으로만 —
+    audit-service 개인정보 열람 기록(BO-25)이 남아야 준다.
 servers:
   - url: /api/v1
 security:
@@ -14,7 +16,7 @@ tags:
   - { name: orders, description: 확정 주문 조회·변경 }
   - { name: internal, description: 서비스 간 조회(서비스 토큰) }
   - { name: fulfillment-issues, description: '이행 확인 필요(재고 보류 — 운영자 확인, 자동 처리 없음)' }
-  - { name: order-lookups, description: '직원용 주문 검색·상세(백오피스 고객센터·라이더 운영, 0.3.0)' }
+  - { name: order-lookups, description: '직원용 주문 검색·상세(백오피스 고객센터·라이더 운영, 0.3.0) + 개인정보 원문 열람(기록 남김, 0.4.0)' }
 
 paths:
   /fulfillment-issues:
@@ -308,10 +310,12 @@ paths:
   /orders/lookups/{orderId}:
     get:
       tags: [order-lookups]
-      summary: 직원용 주문 상세 (0.3.0 — 배송지·연락처 전체 표시)
+      summary: 직원용 주문 상세 (0.3.0; 0.4.0 부터 배송지 가림 — 원문은 pii-reveals)
       x-added-in: '2026-11-15'
       description: |
-        역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 만(그 밖·고객 403). 고객 응대에 필요해 주문 당시 배송지 사본(수령인·연락처·주소·출입)을 가리지 않고 싣는다 — 로그 금지.
+        역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 만(그 밖·고객 403).
+        **0.4.0(2026-11-15 사용자 "기록 남긴다")**: 주문 당시 배송지 사본은 **가려서** 싣는다(shippingAddressMasked=true, 가림 규칙은 StaffOrderDetail.shippingAddress).
+        원문이 필요하면 `POST /orders/lookups/{orderId}/pii-reveals` 에 사유를 적어 요청한다 — 열람 기록(audit-service)이 남은 뒤에만 원문을 준다. 이 조회 자체는 기록하지 않는다.
         order 가 가진 것만: 주문행 수량 누계·금액 구성·결제 시도 ID·이행 확인 필요 기록. 상태 이력·클레임 목록은 order 에 저장돼 있지 않아 싣지 않는다
         (클레임은 claim-service GET /claims?orderId=, 배송은 delivery 쪽 화면에서). 확정 전 주문 ID 는 404.
       operationId: getOrderForStaff
@@ -326,6 +330,45 @@ paths:
               schema: { $ref: '#/components/schemas/StaffOrderDetail' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+  /orders/lookups/{orderId}/pii-reveals:
+    post:
+      tags: [order-lookups]
+      summary: 직원용 주문 배송지 원문 열람 — 사유 필수, 열람 기록 남김 (0.4.0)
+      x-added-in: '2026-11-15'
+      description: |
+        2026-11-15 사용자 결정("기록 남긴다", BO-25): 직원 상세의 가린 배송지 원문은 이 요청으로만 본다. 역할은 상세와 같다(OPERATOR_ADMIN·CS_AGENT·RIDER_OPS, 그 밖·고객 403).
+        처리: 권한 → 주문·배송지 사본 확인(주문 없음 404 ORDER_NOT_FOUND, 사본 없는 옛 주문 404 SHIPPING_COPY_NOT_FOUND — 기록하지 않음)
+        → audit-service `POST /internal/pii-access-logs` 에 **동기로** 기록(행위자·역할·고객 accountId·caseRef ORDER:<orderId>·항목·사유)
+        → 기록이 된 뒤에만 원문을 돌려준다. **audit-service 에 닿지 않거나 결과를 모르면 503(DEPENDENCY_UNAVAILABLE·UNKNOWN_RESULT), 원문 없음**(BO-25 §3).
+        UNKNOWN_RESULT 는 기록이 됐을 수도 있다 — 같은 Idempotency-Key 로 다시 보내면 같은 기록으로 이어진다.
+        멱등: 같은 직원·같은 주문·같은 Idempotency-Key·같은 본문이면 같은 열람 기록(piiAccessLogId)으로 원문을 다시 준다. 같은 키에 다른 사유·항목이면 409 IDEMPOTENCY_CONFLICT.
+        원문 응답은 저장·재생하지 않는다(매번 원장에서 읽음). 사유·원문은 로그에 남기지 않는다. 가린 상세 조회(GET)는 기록하지 않는다.
+      operationId: revealOrderPiiForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StaffPiiRevealRequest' }
+      responses:
+        '200':
+          description: 기록됨 — 요청한 항목만 원문, 나머지는 가린 값
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffPiiReveal' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503':
+          description: 열람 기록을 남기지 못함(audit-service 미응답·결과 불명) — 원문을 주지 않는다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- internal (서비스 토큰) ----------
   /internal/orders/{orderId}/confirmation:
@@ -915,8 +958,8 @@ components:
     StaffOrderDetail:
       type: object
       x-added-in: '2026-11-15'
-      description: 직원용 주문 상세(order 원장만). shippingAddress 는 가리지 않는다 — 로그 금지
-      required: [orderId, customerId, status, version, mfcId, deliveryMode, confirmedAt, amounts, payment, lines, fulfillmentIssues]
+      description: 직원용 주문 상세(order 원장만). 0.4.0 부터 shippingAddress 는 가린 값 — 원문은 pii-reveals. 로그 금지
+      required: [orderId, customerId, status, version, mfcId, deliveryMode, confirmedAt, amounts, payment, lines, fulfillmentIssues, shippingAddressMasked]
       properties:
         orderId: { type: string }
         customerId: { type: string, description: 고객 계정 ID(accountId) }
@@ -937,9 +980,46 @@ components:
           properties:
             paymentAttemptId: { type: string }
             pgTransactionId: { type: string, description: PG 거래 ID(PG 사 조회용) }
-        shippingAddress: { $ref: '#/components/schemas/ShippingAddress' }
+        shippingAddress:
+          $ref: '#/components/schemas/ShippingAddress'
+          description: |
+            주문 당시 배송지 사본을 **가린 값**(0.4.0). 같은 모양, 값만 가림 — 사본 없으면 null.
+            receiverName 첫·끝 글자만(홍길동 → 홍*동, 홍길 → 홍*, 남궁민수 → 남**수), receiverPhone 앞 3·끝 4자리(010-****-1234),
+            roadAddress·postalCode·entranceMethod 그대로(권역·센터 판단용), detailAddress "***"(동·호수 가림), entranceNote null(출입 비밀번호일 수 있음), geo null(정밀 위치).
+            원문은 POST /orders/lookups/{orderId}/pii-reveals.
+        shippingAddressMasked: { type: boolean, description: 'shippingAddress 를 가렸는가(0.4.0 부터 늘 true; 사본이 없으면 shippingAddress 는 null)' }
         lines: { type: array, items: { $ref: '#/components/schemas/OrderLine' } }
         fulfillmentIssues: { type: array, items: { $ref: '#/components/schemas/FulfillmentIssue' }, description: 이 주문의 이행 확인 필요 기록(새 것부터) }
+    StaffPiiField:
+      type: string
+      x-added-in: '2026-11-15'
+      description: |
+        원문으로 볼 배송지 항목(0.4.0). NAME = receiverName, PHONE = receiverPhone, ADDRESS = detailAddress + geo(핀), ENTRANCE = entranceNote.
+        roadAddress·postalCode·entranceMethod 는 가리지 않으므로 항목이 없다.
+      enum: [NAME, PHONE, ADDRESS, ENTRANCE]
+    StaffPiiRevealRequest:
+      type: object
+      x-added-in: '2026-11-15'
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 2, maxLength: 200, description: '열람 사유(예 "고객 문의 — 배송지 확인"). 앞뒤 공백 제외 2자 이상. audit 에 그대로 남고 로그에는 남기지 않는다' }
+        fields:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/StaffPiiField' }
+          description: 볼 항목. 없으면 네 항목 모두
+    StaffPiiReveal:
+      type: object
+      x-added-in: '2026-11-15'
+      description: 열람 기록이 남은 뒤의 배송지 원문(요청한 항목만 원문, 나머지는 상세와 같은 가린 값). 로그 금지
+      required: [orderId, piiAccessLogId, recordedAt, fields, shippingAddress]
+      properties:
+        orderId: { type: string }
+        piiAccessLogId: { type: string, description: audit-service 개인정보 열람 기록 ID }
+        recordedAt: { type: string, format: date-time, description: 열람 기록 시각(audit-service) }
+        fields: { type: array, items: { $ref: '#/components/schemas/StaffPiiField' }, description: 원문으로 준 항목 }
+        shippingAddress: { $ref: '#/components/schemas/ShippingAddress' }
     StaffOrderAmounts:
       type: object
       x-added-in: '2026-11-15'

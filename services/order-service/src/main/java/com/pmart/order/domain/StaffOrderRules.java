@@ -59,6 +59,67 @@ public final class StaffOrderRules {
     return digits;
   }
 
+  /** 원문으로 볼 수 있는 배송지 항목(0.4.0). 도로명주소·우편번호·출입 방법은 가리지 않아 항목이 없다. */
+  public enum PiiField {
+    /** receiverName */
+    NAME,
+    /** receiverPhone */
+    PHONE,
+    /** detailAddress + geo(핀) */
+    ADDRESS,
+    /** entranceNote(출입 비밀번호일 수 있음) */
+    ENTRANCE
+  }
+
+  /** 가린 상세주소. */
+  public static final String MASKED_DETAIL = "***";
+
+  public static final int REASON_MIN = 2;
+  public static final int REASON_MAX = 200;
+
+  /** 열람 사유 검사(앞뒤 공백 제외 2~200자). 문제가 있으면 사유, 없으면 null. 사유 글은 메시지에 되돌려 싣지 않는다. */
+  public static @Nullable String reasonProblem(@Nullable String reason) {
+    int n = reason == null ? 0 : reason.strip().length();
+    if (n < REASON_MIN || n > REASON_MAX) {
+      return "reason(열람 사유)은 " + REASON_MIN + "~" + REASON_MAX + "자여야 합니다.";
+    }
+    return null;
+  }
+
+  /**
+   * 직원 화면용 배송지 가림. {@code reveal} 에 든 항목만 원문, 나머지는 가린다: 이름 첫·끝 글자({@link #maskName}), 연락처 앞 3·끝
+   * 4자리({@link #maskPhone}), 상세주소 {@value #MASKED_DETAIL}·핀 없음, 출입 메모 없음. 도로명주소·우편번호·출입 방법은
+   * 그대로(권역·센터 판단용).
+   */
+  public static ShippingAddress mask(ShippingAddress s, Set<PiiField> reveal) {
+    boolean address = reveal.contains(PiiField.ADDRESS);
+    String phone =
+        reveal.contains(PiiField.PHONE) ? s.receiverPhone() : maskPhone(s.receiverPhone());
+    return new ShippingAddress(
+        s.roadAddress(),
+        address ? s.detailAddress() : MASKED_DETAIL,
+        s.postalCode(),
+        reveal.contains(PiiField.NAME) ? s.receiverName() : maskName(s.receiverName()),
+        phone == null ? "****" : phone,
+        s.entranceMethod(),
+        reveal.contains(PiiField.ENTRANCE) ? s.entranceNote() : null,
+        address ? s.lat() : null,
+        address ? s.lng() : null,
+        s.capturedAt());
+  }
+
+  /** 이름 가림: 첫·끝 글자만(홍길동 → 홍*동, 홍길 → 홍*, 남궁민수 → 남**수, 한 글자 → *). 앞뒤 공백은 뺀다. */
+  public static String maskName(String name) {
+    int[] cp = name.strip().codePoints().toArray();
+    if (cp.length <= 1) {
+      return "*";
+    }
+    if (cp.length == 2) {
+      return new String(cp, 0, 1) + "*";
+    }
+    return new String(cp, 0, 1) + "*".repeat(cp.length - 2) + new String(cp, cp.length - 1, 1);
+  }
+
   /** 목록용 연락처 가림: 앞 3자리·끝 4자리만 남긴다(예 010-****-1234). 숫자가 8자리 미만이면 전부 가린다. */
   public static @Nullable String maskPhone(@Nullable String phone) {
     if (phone == null) {

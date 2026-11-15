@@ -11,7 +11,8 @@ public record OrderProperties(
     String centerMasterBaseUrl,
     String capacityBaseUrl,
     String orchestrationBaseUrl,
-    String contentBaseUrl) {
+    String contentBaseUrl,
+    String auditBaseUrl) {
 
   public OrderProperties {
     customerBaseUrl = or(customerBaseUrl, "http://customer-service:8103");
@@ -22,6 +23,8 @@ public record OrderProperties(
     orchestrationBaseUrl = or(orchestrationBaseUrl, "http://order-orchestration-service:8202");
     // 상품명·옵션 라벨 사본(BR-35) — product-content 주문 스냅샷 조회
     contentBaseUrl = or(contentBaseUrl, "http://product-content-service:8102");
+    // 직원 개인정보 원문 열람 기록(BO-25, 2026-11-15) — audit-service /internal/pii-access-logs
+    auditBaseUrl = or(auditBaseUrl, "http://audit-service:8503");
   }
 
   private static String or(String v, String d) {

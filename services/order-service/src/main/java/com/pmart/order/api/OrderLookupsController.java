@@ -9,19 +9,25 @@ import com.pmart.order.api.generated.model.StaffOrderDetailPayment;
 import com.pmart.order.api.generated.model.StaffOrderSearchResult;
 import com.pmart.order.api.generated.model.StaffOrderSearchResultPage;
 import com.pmart.order.api.generated.model.StaffOrderSummary;
+import com.pmart.order.api.generated.model.StaffPiiField;
+import com.pmart.order.api.generated.model.StaffPiiReveal;
+import com.pmart.order.api.generated.model.StaffPiiRevealRequest;
 import com.pmart.order.application.StaffOrderService;
+import com.pmart.order.domain.StaffOrderRules.PiiField;
 import com.pmart.order.infrastructure.OrderStore.OrderRow;
 import com.pmart.order.infrastructure.OrderStore.StaffSummary;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.EnumSet;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 OrderLookupsApi — 직원용 주문 검색·상세(0.3.0, O-6). 권한·기간 상한·연락처 가림은 {@link StaffOrderService}. 요청·응답
- * 변환만 한다. 개인정보(연락처·배송지)는 로그에 남기지 않는다.
+ * 계약 OrderLookupsApi — 직원용 주문 검색·상세(0.3.0, O-6), 배송지 원문 열람(0.4.0 — 사유 + audit 기록). 권한·기간 상한·가림·기록은
+ * {@link StaffOrderService}. 요청·응답 변환만 한다. 개인정보(연락처·배송지)·열람 사유는 로그에 남기지 않는다.
  */
 @RestController
 public class OrderLookupsController implements OrderLookupsApi {
@@ -101,9 +107,31 @@ public class OrderLookupsController implements OrderLookupsApi {
                     .paymentAttemptId(o.paymentAttemptId())
                     .pgTransactionId(o.pgTransactionId()))
             .shippingAddress(ShippingMapping.of(d.shipping()))
+            .shippingAddressMasked(true)
             .lines(d.lines().stream().map(OrdersController::line).toList())
             .fulfillmentIssues(
                 d.fulfillmentIssues().stream().map(FulfillmentIssuesController::dto).toList()));
+  }
+
+  @Override
+  public ResponseEntity<StaffPiiReveal> revealOrderPiiForStaff(
+      String orderId, String idempotencyKey, String xSourceSystem, StaffPiiRevealRequest body) {
+    Set<PiiField> fields = null;
+    if (body.getFields() != null && !body.getFields().isEmpty()) {
+      fields = EnumSet.noneOf(PiiField.class);
+      for (StaffPiiField f : body.getFields()) {
+        fields.add(PiiField.valueOf(f.getValue()));
+      }
+    }
+    StaffOrderService.Reveal r =
+        service.reveal(orderId, idempotencyKey, xSourceSystem, body.getReason(), fields);
+    return ResponseEntity.ok(
+        new StaffPiiReveal()
+            .orderId(r.orderId())
+            .piiAccessLogId(r.piiAccessLogId())
+            .recordedAt(r.recordedAt().atOffset(ZoneOffset.UTC))
+            .fields(r.fields().stream().map(f -> StaffPiiField.fromValue(f.name())).toList())
+            .shippingAddress(ShippingMapping.of(r.shipping())));
   }
 
   private static StaffOrderSummary summary(StaffOrderService.Row r) {

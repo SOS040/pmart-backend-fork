@@ -19,6 +19,7 @@ pmart:
     center-master-base-url: ${PMART_CENTER_MASTER_BASE_URL:http://center-master-service:8507}
     capacity-base-url: ${PMART_CAPACITY_BASE_URL:http://delivery-capacity-service:8402}
     orchestration-base-url: ${PMART_ORCHESTRATION_BASE_URL:http://order-orchestration-service:8202}
+    audit-base-url: ${PMART_AUDIT_BASE_URL:http://audit-service:8503} # 직원 배송지 원문 열람 기록(BO-25, 2026-11-15) — 시험은 WireMock 이 덮는다
 management:
   tracing:
     export:

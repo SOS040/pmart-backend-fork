@@ -40,4 +40,6 @@
   - 권한: OPERATOR 토큰 + 역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(`StaffOrderRules.ROLES`), 그 밖·고객·라이더 403. 다른 서비스 호출 없음, 읽기 전용. 검색어·배송지는 로그 금지.
   - 색인(V9): `customer_order(confirmed_at DESC, order_id DESC)`, `customer_order(mfc_id, confirmed_at DESC, order_id DESC)`, `customer_order_shipping(regexp_replace(receiver_phone,'[^0-9]','','g'))`.
   - 게이트웨이: 경로가 이미 라우팅된 `/api/v1/orders/**` 아래라 라우트 변경 없음. 허용 목록(`user-type-allowlist.txt`)만 다시 생성(OPERATOR 2줄).
-- **남은 것**: 직원 열람 감사 기록(누가 어떤 주문의 개인정보를 봤는지)은 아직 없음 — 필요하면 audit-service 연동 결정 필요. RIDER_OPS 역할의 Keycloak·employee-auth 쪽 정의는 별도.
+- **추가(2026-11-15, 사용자 "기록 남긴다" — 계약 order 0.4.0·audit 0.2.0, 구현, 커밋만 — 미배포)**: 상세 배송지는 **가림**(`shippingAddressMasked=true`: 이름 홍*동, 연락처 010-****-1234, 상세주소 `***`, 출입 메모·핀 없음, 도로명·우편번호·출입 방법 그대로). 원문은 `POST /orders/lookups/{orderId}/pii-reveals`(`reason` 2~200자 필수, `fields` NAME·PHONE·ADDRESS·ENTRANCE 선택 — 없으면 전부, Idempotency-Key·X-Source-System) → audit-service `POST /internal/pii-access-logs` 에 동기 기록(행위자·역할·고객 accountId·`ORDER:<orderId>`·항목·사유)된 뒤에만 원문(요청 항목만). **audit 미응답·결과 불명 → 503, 원문 없음**(BO-25 §3). 가린 GET 은 기록하지 않음. 클라이언트는 "보기" 토글 대신 사유 입력 → pii-reveals 호출로 바꿔야 한다(handoff 는 PC 1).
+  - 배포 전 할 일: pmart-config `order-service-lan.yml`·`-local.yml` 에 `pmart.order.audit-base-url`, LAN 에서 audit-service 기동 확인(Flyway V2).
+- **남은 것**: 열람 기록을 누가 볼 수 있는지(직원용 조회 API)·보존기간 결정, 배송 요청사항(deliveryNote) 가림 여부. RIDER_OPS 역할의 Keycloak·employee-auth 쪽 정의는 별도.

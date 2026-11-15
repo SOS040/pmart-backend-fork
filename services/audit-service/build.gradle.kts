@@ -18,4 +18,5 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 기록 행 수·추가 전용 트리거 확인
 }
