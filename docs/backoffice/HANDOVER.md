@@ -54,14 +54,15 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 |---|---|---|
 | 주문 상세 원문 "보기" → 사유 입력 → 열람 요청(ADR-0062) | `backoffice/2026-11-15-request-order-pii-reveal.md` | ✅ 7a12e02 |
 | 인사팀 "권한 관리"(보기·추가 요청·회수), 본사 부서 | `all/2026-11-15-request-permission-and-pending-menus.md` §1 | ✅ 7a12e02·53fcd72·8c9c2b2(소속 변경 안내) |
-| 백오피스 "처리 대기" — 이행 확인 필요 | 같은 요청서 §2 | ✅ 7a12e02(멈춘 사가 조치는 "준비 중"으로) |
+| 백오피스 "처리 대기" — 이행 확인 필요 | 같은 요청서 §2 | ✅ 7a12e02 → 7218397 에서 bff 처리 대기로 바뀜 |
 | 메뉴·센터를 세션 응답으로, 역할 목록 | `web-common/` 11-15 요청 | ✅ 6455a06 |
 | 세션 센터 이름(`centerDetails`) | `web-common/2026-11-16-notice-session-center-names.md` | ✅ 851bf10 |
-| **사건함 "지원센터 사건", 처리 대기 버튼(다시 확인·처리 완료)** | `backoffice/2026-11-16-request-case-inbox-and-pending-work.md` | ❌ 아직(05시에 보냄) |
+| 사건함 "지원센터 사건", 처리 대기 버튼(다시 확인·처리 완료) | `backoffice/2026-11-16-request-case-inbox-and-pending-work.md` | ✅ 7218397(목 모드 시험만) — 질문 3개 회신 `backoffice/2026-11-16-reply-case-inbox-questions.md` |
 | **개인정보 열람 기록(OPERATOR_ADMIN)** | `backoffice/2026-11-16-notice-pii-access-log-api.md` | ❌ 아직 |
 | **라이더 찾기·상세·원문 열람, 직원 배송 찾기**(PR #17 — 11-15 LAN 배포, 알림이 늦음) | `backoffice/2026-11-16-notice-rider-delivery-staff-apis.md`(11-16 보냄) | ❌ 아직 — 지금 화면은 목(riderDirectoryMock·helpQueueMock) |
 
-- ❌ 세 줄도 **지금 클라이언트 쪽이 끝까지 한다**(사용자 2026-11-16 "클라이언트쪽에 보낸 요청까지는 다하기로"). PC 2 는 이것이 반영된 빌드부터.
+- **LAN 빌드(2026-11-16 PC 1 올림)**: backoffice `index-Bw-245hF.js`(7218397 까지), hr-backoffice `index-Bkg8rNsZ.js`, mfc-backoffice `index-ChSinewe.js`. 실서버에서 사건함·처리 대기·권한 관리는 아직 사람이 눌러 보지 않았다.
+- ❌ 줄도 **지금 클라이언트 쪽이 끝까지 한다**(사용자 2026-11-16 "클라이언트쪽에 보낸 요청까지는 다하기로"). PC 2 는 이것이 반영된 빌드부터.
 
 ## 4. 할 일 (추천 순서)
 1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
