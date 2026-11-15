@@ -30,15 +30,23 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class EmployeeAdminService {
 
   public static final String ADMIN_ROLE = "OPERATOR_ADMIN";
+  static final String HR_ADMIN_ROLE = "HR_ADMIN";
 
   private static final Logger log = LoggerFactory.getLogger(EmployeeAdminService.class);
 
   public record Change(String state, List<String> roles, List<String> centers, String reason) {}
 
+  /** 조회 결과 — 계정 값, 지금 유효한 역할·센터(토큰과 같은 계산), 승인된 권한 목록(0.7.0). */
+  public record View(
+      AccountRow account,
+      EmployeeAccess.Access effective,
+      List<EmployeeAuthStore.GrantRow> grants) {}
+
   private final EmployeeAuthStore store;
   private final SubjectBlocks blocks;
   private final EmployeeAuthProperties props;
   private final TransactionTemplate tx;
+  private final EmployeeAccess access;
   private final Clock clock;
 
   public EmployeeAdminService(
@@ -46,19 +54,32 @@ public class EmployeeAdminService {
       SubjectBlocks blocks,
       EmployeeAuthProperties props,
       TransactionTemplate tx,
+      EmployeeAccess access,
       Clock clock) {
     this.store = store;
+    this.access = access;
     this.blocks = blocks;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
   }
 
-  public AccountRow get(String operatorId) {
-    requireAdmin();
-    return store
-        .account(operatorId, false)
-        .orElseThrow(() -> PmartException.notFound("EMPLOYEE_NOT_FOUND", "직원이 없습니다."));
+  /**
+   * 직원 로그인 상태·역할·권한 센터 조회 — OPERATOR_ADMIN, 인사팀 HR_ADMIN(0.7.0, 2026-11-15 — 인사팀 앱 "권한 관리" 메뉴에서 지금
+   * 역할·센터를 본다, BO-01). 바꾸기({@link #put})는 OPERATOR_ADMIN 만.
+   */
+  public View get(String operatorId) {
+    requireReader();
+    AccountRow a =
+        store
+            .account(operatorId, false)
+            .orElseThrow(() -> PmartException.notFound("EMPLOYEE_NOT_FOUND", "직원이 없습니다."));
+    return view(a);
+  }
+
+  /** 계정 행 → 조회 결과(유효 역할·센터, grant 목록). */
+  public View view(AccountRow a) {
+    return new View(a, access.of(a, clock.instant()), store.grants(a.operatorId()));
   }
 
   public AccountRow put(String operatorId, Change change, String sourceSystem) {
@@ -120,6 +141,17 @@ public class EmployeeAdminService {
         centers,
         admin.subject());
     return Objects.requireNonNull(after);
+  }
+
+  private static void requireReader() {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "로그인이 필요합니다."));
+    if (p.type() != PmartPrincipal.PrincipalType.OPERATOR
+        || !(p.hasRole(ADMIN_ROLE) || p.hasRole(HR_ADMIN_ROLE))) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, ADMIN_ROLE + " 또는 " + HR_ADMIN_ROLE + " 역할이 필요합니다.");
+    }
   }
 
   private static PmartPrincipal requireAdmin() {

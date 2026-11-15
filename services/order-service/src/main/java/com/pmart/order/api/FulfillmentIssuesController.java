@@ -22,7 +22,7 @@ public class FulfillmentIssuesController implements FulfillmentIssuesApi {
 
   @Override
   public ResponseEntity<ListFulfillmentIssues200Response> listFulfillmentIssues(
-      String mfcId, @Nullable String state) {
+      @Nullable String mfcId, @Nullable String state) {
     var out = new ListFulfillmentIssues200Response();
     out.setItems(
         service.list(mfcId, state).stream().map(FulfillmentIssuesController::dto).toList());

@@ -27,13 +27,14 @@ public class EmployeesController implements EmployeesApi {
       String idempotencyKey, String xSourceSystem, String operatorId, EmployeeChange body) {
     return ResponseEntity.ok(
         EmployeeAuthMapping.employee(
-            admin.put(
-                operatorId,
-                new EmployeeAdminService.Change(
-                    body.getState().getValue(),
-                    body.getRoles(),
-                    body.getCenters(),
-                    body.getReason()),
-                xSourceSystem)));
+            admin.view(
+                admin.put(
+                    operatorId,
+                    new EmployeeAdminService.Change(
+                        body.getState().getValue(),
+                        body.getRoles(),
+                        body.getCenters(),
+                        body.getReason()),
+                    xSourceSystem))));
   }
 }

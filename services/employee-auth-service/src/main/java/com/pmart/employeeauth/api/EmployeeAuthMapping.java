@@ -1,10 +1,12 @@
 package com.pmart.employeeauth.api;
 
 import com.pmart.employeeauth.api.generated.model.Employee;
+import com.pmart.employeeauth.api.generated.model.EmployeeGrant;
 import com.pmart.employeeauth.api.generated.model.EmployeeLoginResult;
 import com.pmart.employeeauth.api.generated.model.EmployeeState;
 import com.pmart.employeeauth.api.generated.model.TokenPair;
 import com.pmart.employeeauth.api.generated.model.TokenPair.RefreshTransportEnum;
+import com.pmart.employeeauth.application.EmployeeAdminService;
 import com.pmart.employeeauth.application.EmployeeLoginService;
 import com.pmart.employeeauth.application.EmployeeTokens;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore;
@@ -43,6 +45,26 @@ final class EmployeeAuthMapping {
         .roles(r.roles())
         .centers(r.centers())
         .tokens(tokens(r.tokens(), cookie));
+  }
+
+  static Employee employee(EmployeeAdminService.View v) {
+    return employee(v.account())
+        .effectiveRoles(v.effective().roles())
+        .effectiveCenters(v.effective().centers())
+        .grants(
+            v.grants().stream()
+                .map(
+                    g ->
+                        new EmployeeGrant()
+                            .grantId(g.grantId())
+                            .role(g.role())
+                            .centers(g.centers())
+                            .validFrom(odt(g.validFrom()))
+                            .validUntil(g.validUntil() == null ? null : odt(g.validUntil()))
+                            .approvalId(g.approvalId())
+                            .approverId(g.approverId())
+                            .appliedAt(odt(g.appliedAt())))
+                .toList());
   }
 
   static Employee employee(EmployeeAuthStore.AccountRow a) {

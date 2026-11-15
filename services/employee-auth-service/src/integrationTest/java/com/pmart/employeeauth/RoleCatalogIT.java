@@ -122,4 +122,62 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
     assertThat(roles(mint(List.of())).status()).isEqualTo(200);
     assertThat(roles(null).status()).isEqualTo(401);
   }
+
+  Res call(String method, String path, String token, @Nullable Object body) {
+    var spec =
+        client()
+            .method(org.springframework.http.HttpMethod.valueOf(method))
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "hr-backoffice-web");
+                });
+    if (body != null) {
+      spec = spec.contentType(MediaType.APPLICATION_JSON).body(body);
+    }
+    return spec.exchange(
+        (q, r) -> {
+          byte[] b = r.getBody().readAllBytes();
+          return new Res(r.getStatusCode().value(), b.length == 0 ? null : mapper.readTree(b));
+        });
+  }
+
+  /**
+   * 직원 조회(0.7.0, BO-01 인사팀 권한 관리 메뉴): HR_ADMIN 도 읽는다(바꾸기는 OPERATOR_ADMIN 만), 지금 유효한 역할·센터·grant 목록.
+   */
+  @Test
+  void hrAdminReadsEmployeeAccessButCannotChangeIt() {
+    String admin = mint(List.of("OPERATOR_ADMIN"));
+    String hr = mint(List.of("HR_ADMIN"));
+    String worker = mint(List.of("MFC_WORKER"));
+    String op = "OP-LOOKUP-" + UUID.randomUUID().toString().substring(0, 8);
+    Map<String, Object> change =
+        Map.of(
+            "state",
+            "ACTIVE",
+            "roles",
+            List.of("MFC_SUPERVISOR"),
+            "centers",
+            List.of("MFC-LOOKUP-1"),
+            "reason",
+            "조회 시험");
+    assertThat(call("PUT", "/employee-auth/employees/" + op, admin, change).status())
+        .isEqualTo(200);
+
+    Res got = call("GET", "/employee-auth/employees/" + op, hr, null);
+    assertThat(got.status()).isEqualTo(200);
+    assertThat(got.body().path("effectiveRoles").get(0).asText()).isEqualTo("MFC_SUPERVISOR");
+    assertThat(got.body().path("effectiveCenters").get(0).asText()).isEqualTo("MFC-LOOKUP-1");
+    assertThat(got.body().path("grants").isArray()).isTrue();
+    assertThat(got.body().path("grants")).isEmpty();
+
+    assertThat(call("GET", "/employee-auth/employees/" + op, worker, null).status())
+        .as("작업자는 못 본다")
+        .isEqualTo(403);
+    assertThat(call("PUT", "/employee-auth/employees/" + op, hr, change).status())
+        .as("인사팀은 바꾸지 못한다")
+        .isEqualTo(403);
+  }
 }

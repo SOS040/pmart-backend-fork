@@ -49,6 +49,11 @@ hr-service: 같은 ApprovalDecided 로 요청 권한 APPROVED·REJECTED(화면 �
 
 - 분산 트랜잭션이 아니다. 각 단계는 outbox + inbox(같은 사건 두 번 반영 없음). 승인이 늦어도 계정·로그인은 그대로(업무 API 만 403).
 - 남은 것: 같은 직원에게 심사 중인 권한 승인이 있으면 새 권한 요청이 DUPLICATE_APPROVAL(지금은 등록 때 한 번만 와서 생기지 않음) — 권한 변경·회수 화면(BO-01) 때 정한다. 이미 끝난 grant 의 회수 사건, 소속 변경 때 권한 종료도 그때.
+- **BO-01 권한 변경·회수 — 사용자 결정(2026-11-15, 추천안)**: 구현은 PC 1(employee-auth·approval·hr), 화면은 인사팀 앱 "권한 관리"(HR_ADMIN).
+  1. 권한 **추가·변경**은 등록 때와 같이 approval 승인을 거친다.
+  2. 권한 **회수(줄이기)는 승인 없이 즉시** — 그 grant 를 끝내고(효력 종료 = 지금) 그 직원 세션을 끊고 `SubjectBlocked`. 누가·왜는 기록에 남긴다.
+  3. 종료일 없는 신청은 받는다 — **근무 기간(계약 종료일)까지** 유효(지금 등록과 같음).
+  4. 조회(0.7.0, 2026-11-15 구현): `GET /employee-auth/employees/{id}` 를 HR_ADMIN 도 읽고, 응답에 지금 유효한 역할·센터(`effectiveRoles`·`effectiveCenters`)와 grant 목록을 싣는다.
 
 ## 2. 정지·복귀·퇴사·계약 종료
 

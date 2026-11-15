@@ -562,6 +562,35 @@ public class EmployeeAuthStore {
         == 1;
   }
 
+  /** 승인된 권한 한 줄(조회 화면용 — 0.7.0). */
+  public record GrantRow(
+      String grantId,
+      String role,
+      List<String> centers,
+      Instant validFrom,
+      @Nullable Instant validUntil,
+      String approvalId,
+      String approverId,
+      Instant appliedAt) {}
+
+  /** 한 직원의 grant 전부(지난 것 포함, 최근 시작 순, 최대 100). */
+  public List<GrantRow> grants(String operatorId) {
+    return jdbc.query(
+        "SELECT grant_id, role, centers, valid_from, valid_until, approval_id, approver_id, applied_at"
+            + " FROM employee_grant WHERE operator_id = ? ORDER BY valid_from DESC, grant_id LIMIT 100",
+        (rs, i) ->
+            new GrantRow(
+                rs.getString("grant_id"),
+                rs.getString("role"),
+                list(rs.getArray("centers")),
+                instant(rs, "valid_from"),
+                nullableInstant(rs, "valid_until"),
+                rs.getString("approval_id"),
+                rs.getString("approver_id"),
+                instant(rs, "applied_at")),
+        operatorId);
+  }
+
   public List<GrantAccess> activeGrants(String operatorId, Instant now) {
     Timestamp t = Timestamp.from(now);
     return jdbc.query(

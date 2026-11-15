@@ -28,6 +28,8 @@ import tools.jackson.databind.JsonNode;
 public class FulfillmentIssueService {
 
   public static final String ISSUE_NOT_FOUND = "FULFILLMENT_ISSUE_NOT_FOUND";
+
+  static final String ADMIN_ROLE = "OPERATOR_ADMIN";
   private static final Logger log = LoggerFactory.getLogger(FulfillmentIssueService.class);
 
   public record Issue(
@@ -136,15 +138,27 @@ public class FulfillmentIssueService {
     }
   }
 
+  /**
+   * 목록 — 그 센터 운영자, 또는 본사 관리자(OPERATOR_ADMIN — 2026-11-15 사용자 "관리자는 모든 센터", BO-12 처리 대기 메뉴). 관리자는
+   * mfcId 를 비우면 모든 센터.
+   */
   @Transactional(readOnly = true)
-  public List<Issue> list(String mfcId, @Nullable String state) {
+  public List<Issue> list(@Nullable String mfcId, @Nullable String state) {
+    String st = state == null ? "OPEN" : state;
+    if (mfcId == null || mfcId.isBlank()) {
+      requireAdmin();
+      return jdbc.query(
+          "SELECT * FROM order_fulfillment_issue WHERE state = ? ORDER BY created_at DESC LIMIT 500",
+          (rs, i) -> row(rs),
+          st);
+    }
     requireCenter(mfcId);
     return jdbc.query(
         "SELECT * FROM order_fulfillment_issue WHERE mfc_id = ? AND state = ?"
             + " ORDER BY created_at DESC LIMIT 500",
         (rs, i) -> row(rs),
         mfcId,
-        state == null ? "OPEN" : state);
+        st);
   }
 
   /** 한 주문의 확인 필요 기록(새 것부터). 권한은 호출자({@link StaffOrderService})가 이미 확인했다. */
@@ -181,15 +195,26 @@ public class FulfillmentIssueService {
         .orElseThrow(() -> PmartException.notFound(ISSUE_NOT_FOUND, "확인 필요 건이 없습니다: " + issueId));
   }
 
+  /** 그 센터 운영자 또는 OPERATOR_ADMIN(모든 센터). */
   private static String requireCenter(String mfcId) {
-    PmartPrincipal p =
-        PmartPrincipal.current()
-            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
-            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 볼 수 있습니다."));
-    if (!p.canAccessCenter(mfcId)) {
+    PmartPrincipal p = operator();
+    if (!p.canAccessCenter(mfcId) && !p.hasRole(ADMIN_ROLE)) {
       throw new PmartException(ErrorCode.FORBIDDEN, "이 센터에 대한 권한이 없습니다.");
     }
     return p.subject();
+  }
+
+  private static void requireAdmin() {
+    if (!operator().hasRole(ADMIN_ROLE)) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, "센터를 고르지 않은 목록은 OPERATOR_ADMIN 만 볼 수 있습니다(mfcId 를 주세요).");
+    }
+  }
+
+  private static PmartPrincipal operator() {
+    return PmartPrincipal.current()
+        .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+        .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 볼 수 있습니다."));
   }
 
   private static Issue row(ResultSet rs) throws SQLException {

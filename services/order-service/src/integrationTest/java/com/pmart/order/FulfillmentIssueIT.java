@@ -123,6 +123,21 @@ class FulfillmentIssueIT extends PostgresKafkaContainerSupport {
     assertThat(issue.path("reason").asString()).isEqualTo("QUALITY_HOLD");
     assertThat(issue.path("state").asString()).isEqualTo("OPEN");
 
+    // 센터 운영자는 mfcId 없이 403, 본사 관리자(OPERATOR_ADMIN, 센터 없음)는 mfcId 없이 모든 센터(0.6.0)
+    assertThat(
+            http.get()
+                .uri("/fulfillment-issues")
+                .headers(h -> h.setBearerAuth(op))
+                .retrieve()
+                .toBodilessEntity()
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    String admin = TestJwt.operator("op-admin", List.of("OPERATOR_ADMIN"), List.of());
+    assertThat(get(admin, "/fulfillment-issues").path("items").findValuesAsString("orderId"))
+        .contains(orderId);
+    assertThat(get(admin, "/fulfillment-issues?mfcId=" + mfc).path("items")).hasSize(1);
+
     // 확인 → ACKNOWLEDGED, OPEN 목록에서 빠짐
     var e =
         http.post()

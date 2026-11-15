@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -255,7 +255,7 @@ paths:
       - { name: operatorId, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
     get:
       tags: [employees]
-      summary: 직원 로그인 상태·역할·권한 센터 조회 (OPERATOR_ADMIN)
+      summary: 직원 로그인 상태·역할·권한 센터 조회 (OPERATOR_ADMIN, HR_ADMIN — 0.7.0 2026-11-15 인사팀 권한 관리 메뉴)
       operationId: getEmployee
       x-pmart-user-types: [OPERATOR]
       responses:
@@ -506,6 +506,25 @@ components:
         lastLoginAt: { type: string, format: date-time }
         version: { type: integer, format: int64 }
         updatedAt: { type: string, format: date-time }
+        effectiveRoles: { type: array, items: { type: string }, description: '지금 유효한 역할 = roles(계정 값) ∪ 지금 유효한 grants — 토큰과 같은 계산(0.7.0, 조회 응답만)', x-added-in: '2026-11-15' }
+        effectiveCenters: { type: array, items: { type: string }, description: '지금 유효한 권한 센터(같은 계산, 0.7.0)', x-added-in: '2026-11-15' }
+        grants:
+          type: array
+          description: 승인된 권한(지난 것 포함, 최근 시작 순, 최대 100 — 0.7.0, 조회 응답만)
+          x-added-in: '2026-11-15'
+          items: { $ref: '#/components/schemas/EmployeeGrant' }
+    EmployeeGrant:
+      type: object
+      required: [grantId, role, centers, validFrom, approvalId, approverId, appliedAt]
+      properties:
+        grantId: { type: string, description: '<approvalId>:<lineId>' }
+        role: { type: string }
+        centers: { type: array, items: { type: string } }
+        validFrom: { type: string, format: date-time }
+        validUntil: { type: [string, 'null'], format: date-time, description: 이 시각부터 무효. null = 기한 없음(근무 기간) }
+        approvalId: { type: string }
+        approverId: { type: string, description: '승인한 운영자 ID 또는 RULE:<id>@v<버전>(자동 승인)' }
+        appliedAt: { type: string, format: date-time }
     EmployeeChange:
       type: object
       required: [state, roles, centers, reason]
