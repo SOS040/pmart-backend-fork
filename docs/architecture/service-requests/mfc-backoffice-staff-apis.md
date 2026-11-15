@@ -25,7 +25,7 @@
 - inbound `/api/v1/inbound-promises*`(입고 예정 TRF — 목록·상세·도착·수령): `InboundPromisesController` 빈 클래스. 간선(TMS·CDC) 쪽 입고 예정이 생겨야 의미가 있으니 **순서는 PC 3 판단**(지금은 자리만).
 - quality `/api/v1/quality-incidents*`: `IncidentsController` 빈 클래스.
 
-## MB-3. 권한 — 사용자 결정 필요(정해지면 이 절에 적는다)
+## MB-3. 권한 — **PC 3 가 정한다**(사용자 2026-11-15 "이건 pc3한테 맡기고") — 정한 내용과 이유를 PR 에 적는다
 
 1. **확인 필요 포장 목록·확인**(`GET /packages?mfcId=&checkRequired=true`, `POST /packages/{id}/handover-checks`)이 지금 `MFC_WORKER` 만(`HandoverService`). 메뉴 정본(`backoffice-role-menus.md` §3)은 센터 관리자 메뉴로 두었다 → (a) `MFC_SUPERVISOR` 도 허용 (b) PDA(작업자)에만 두고 백오피스 메뉴에서 뺀다.
 2. 위치·LOT 정정(`stock-corrections`), 상품 취급(`sku-handlings*`), 위치(칸) 등록·수정·폐지(`/locations*`)는 **역할 검사 없이 센터 권한만** — 그 센터 `MFC_WORKER` 도 부를 수 있다. 관리자 전용(`MFC_SUPERVISOR`)으로 좁힐지. (상품 취급은 MD 도 같은 API 를 쓴다 — 좁히면 MD 를 남긴다.)

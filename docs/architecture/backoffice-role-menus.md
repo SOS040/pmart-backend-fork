@@ -17,7 +17,7 @@
 |---|---|---|
 | (모든 운영자) | 로그인·내 세션, 업무 도우미 | employee-auth, ai-assistant |
 | `OPERATOR_ADMIN` | 직원 계정 보정(역할·센터·상태 — 화면 요청 아직 없음). 평소 역할 부여는 권한 요청(approval `GRANT`), 직원 등록·상태는 인사팀 백오피스 | employee-auth `PUT /employee-auth/employees/{operatorId}` |
-| `MD` | 카테고리, 상품 등록·일괄·조회, 콘텐츠 등록·일괄, 가격·가격 일괄, 센터 취급 | product·product-content·pricing·mfc-inventory `sku-handlings` |
+| `MD`, `OPERATOR_ADMIN`(2026-11-15 사용자 — 판매 상태 변경은 MD 만) | 카테고리, 상품 등록·일괄·조회, 콘텐츠 등록·일괄, 가격·가격 일괄, 센터 취급 | product·product-content·pricing·mfc-inventory `sku-handlings` |
 | `PRODUCT_APPROVER`·`DISPLAY_APPROVER`·`PRICE_APPROVER`·`SERVICEABILITY_APPROVER`·`CENTER_MASTER_APPROVER`·`INVENTORY_APPROVER` | 승인함·승인 상세(자기 유형) | approval `/approvals*` |
 | **`MFC_SUPERVISOR`(센터 관리자)** | **MFC 메뉴 전체**(아래 3장) — 자기 `centers` 의 센터만 | mfc-* 서비스 |
 | `MFC_WORKER`(작업자) | 백오피스 메뉴 없음(내 세션만) — 현장 작업은 PDA 앱 | — |

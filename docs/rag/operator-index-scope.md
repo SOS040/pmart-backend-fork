@@ -51,5 +51,6 @@
 | 0023 | 주소↔좌표는 카카오, 배송 가능 판정 | 배송 가능 지역 판정 | 외부 API 사용 결정이 중심 |
 | 0056 | 직원 로그인 — Keycloak·employee-auth-service | 직원 등록 → 권한 요청 → 승인 | 대부분 인증 구현. 업무 흐름은 `flows/employee-account-provisioning.md` 를 대신 색인함 |
 
+- 애매함 6개를 넣을지는 **RAG 영역(PC 4)이 정한다**(사용자 2026-11-15).
 - 애매함을 다시 넣으려면: manifest 에 그 줄을 넣고 `EXCLUDED_ADRS` 에서 빼고, 이 표를 고친 뒤 `check` → 이미지 → `lan.sh rag-ingest pc2`(PC 1).
 - 평가 질문도 같은 범위로 맞췄다: 검색 평가 `questions.yml`(기술 질문 7개 뺌·R3 업무 질문·Q21~Q23 추가, 21개), LAN `rag_e2e.py`("서비스 간 호출" → "상품준비 뒤 고객센터 취소"). **답변 평가 `answers.json` 의 A07~A12·A19(빠진 ADR 이 정답) 7개는 아직 그대로** — 다음 답변 평가 때 바꾼다.
