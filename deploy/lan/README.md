@@ -142,7 +142,7 @@ PC 2·3·4·5 는 DHCP 로 IP 를 받는다(공유기는 우리가 설정할 수
 
 - **PC 1 도 배포 대상**(2026-11-15 — 감시 묶음 zipkin·prometheus·alertmanager·grafana): PC 1 에는 SSH 서버가 없어 `lan.sh`·`run-ps.sh` 가 `pmart-pc1` 은 이 PC 에서 바로 실행·복사한다. `%USERPROFILE%\.docker-pmart\config.json` = `cliPluginsExtraDirs`(compose 플러그인)만. 빌드 PC 라 꺼져도 업무가 멈추지 않는 것만 둔다.
 - **SSH 는 컴퓨터 이름으로 접속**한다(PC 1 `~/.ssh/config`: `HostName DS603-12`/`D603-15`/`D603-16`, `AddressFamily inet`).
-  - 이 LAN 에는 PC 이름을 아는 DNS 가 없어(DNS 서버 = 인터넷 업체) 이름은 LLMNR/NetBIOS 방송으로만 찾는다 — 상대 PC 가 바쁘면 가끔 `Could not resolve hostname`(2026-11-15 배포 중 두 번). `run-ps.sh`·`lan.sh copy_files` 는 이름 해석 실패만 3초 쉬고 최대 3번 다시 한다(원격에서 아무것도 돌지 않은 실패라 안전). 더 줄이려면 PC 1 `hosts` 에 이름을 적을 수 있지만(관리자 권한) IP 가 바뀌면 같이 고쳐야 한다.
+  - 이 LAN 에는 PC 이름을 아는 DNS 가 없어(DNS 서버 = 인터넷 업체) 이름은 LLMNR/NetBIOS 방송으로만 찾는다 — 상대 PC 가 바쁘면 가끔 `Could not resolve hostname`(2026-11-15 배포 중 두 번). `run-ps.sh`·`lan.sh copy_files` 는 이름 해석 실패만 3초 쉬고 최대 3번 다시 한다(원격에서 아무것도 돌지 않은 실패라 안전). 원인·근본 해결 방법·확인 명령은 `docs/operations/2026-11-15-ssh-hostname-resolution.md`.
   호스트 키는 `HostKeyAlias`(`pmart-pc2` 등) 이름으로 `known_hosts` 에 있어 IP 가 바뀌어도 같은 키로 검증한다(검증은 끄지 않는다).
   그래서 IP 가 바뀌어도 `lan.sh`·`run-ps.sh` 는 그대로 접속된다.
 - **감지**: `watch.sh` 가 5분마다 이름으로 IP 를 조회한다(`ipcheck.sh`). 판정이 바뀔 때만 `~/.pmart-lan-watch/watch.log` 에 남고, 현재 판정은 `ip-<pc>` 파일.
