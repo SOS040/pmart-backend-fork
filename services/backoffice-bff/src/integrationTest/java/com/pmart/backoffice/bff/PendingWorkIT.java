@@ -189,7 +189,7 @@ class PendingWorkIT {
             "POST",
             "/commands/order-orchestration-service/saga-requery",
             ADMIN,
-            Map.of("targetRef", "SSG-2", "reason", "다시 확인", "payload", Map.of()));
+            Map.of("targetRef", "SSG-2", "payload", Map.of())); // 다시 확인은 사유 선택
     assertThat(rej.status()).isEqualTo(422);
     assertThat(rej.body().path("code").asString()).isEqualTo("NOT_REQUERYABLE");
 

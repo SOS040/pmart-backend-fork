@@ -144,7 +144,11 @@ public class PendingWorkView {
           List.of());
     }
     if (reason == null || reason.isBlank()) {
-      throw new PmartException(ErrorCode.VALIDATION_FAILED, "reason(조치 사유)이 필요합니다.");
+      if (!"saga-requery".equals(command)) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "reason(조치 사유)이 필요합니다.");
+      }
+      // 다시 확인은 메모 선택(클라이언트 2026-11-16) — 기록용 기본 문구
+      reason = "결제 결과 다시 확인";
     }
     if (targetRef == null || targetRef.isBlank()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "targetRef(사가 ID)가 필요합니다.");

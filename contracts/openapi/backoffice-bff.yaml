@@ -350,7 +350,7 @@ paths:
       tags: [commands]
       summary: 명령 전달 프록시 (Idempotency-Key 부착; 대상 CommandResponse 그대로 반환, ACK≠성공)
       description: |
-        0.2.0(2026-11-16 BO-12) 지금 열린 명령은 둘 — OPERATOR_ADMIN 만, targetRef = sagaId, reason 필수(감사 기록):
+        0.2.0(2026-11-16 BO-12) 지금 열린 명령은 둘 — OPERATOR_ADMIN 만, targetRef = sagaId, reason 은 saga-resolve 만 필수(saga-requery 는 선택 — 없으면 기본 문구로 기록):
         `order-orchestration-service/saga-requery`(REQUERY_RESULT — 결제 원결과 다시 확인), `order-orchestration-service/saga-resolve`(MARK_RESOLVED — 밖에서 해결함 표시).
         payload 는 지금 쓰지 않는다(빈 객체). 그 밖의 대상·명령은 422 UNSUPPORTED_ACTION.
         본문은 대상 서비스 계약 그대로 전달한다. BFF는 행위 시점 권한 검증(auth)을 먼저 호출하고, 통과하면 멱등키·X-Source-System=backoffice-bff·
