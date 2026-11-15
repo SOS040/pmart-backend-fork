@@ -40,9 +40,9 @@
 
 - 지금: 단건 조회만(`GET /deliveries/{id}`, `GET /deliveries/{id}/help-requests/{rid}`) → 지원센터가 무엇을 처리해야 하는지 볼 곳이 없다(case-service R-4 사건함은 아직 — 1차에서 뺌, PC 1 추천 2026-11-15. 사건함을 넣게 되면 이 목록은 그 사건이 정본).
 - 제안
-  - `GET /api/v1/help-requests`(직원) — 필터 `state`(OPEN·IN_PROGRESS·RESOLVED, 기본 OPEN), `category`(DELIVERY_FAILURE 포함), `mfcId`, `riderId`, `from`/`to`, 페이지(최대 50), 오래된 것 먼저(대기 큐). 행: requestId·deliveryId·orderId·mfcId·riderId·category·stage·state·createdAt·사진 수. `detail`(라이더 글)은 목록에서 빼고 단건에서만.
+  - `GET /api/v1/delivery-help-requests`(직원 — **`/api/v1/help-requests/**` 는 게이트웨이에서 이미 case-service 로 간다**(계약만 있는 case 도움요청 사건), 그래서 다른 이름. 새 앞머리라 PC 1 이 pmart-config `api-gateway.yml` 라우트에 더한다 — PR 에 적어 달라) — 필터 `state`(OPEN·IN_PROGRESS·RESOLVED, 기본 OPEN), `category`(DELIVERY_FAILURE 포함), `mfcId`, `riderId`, `from`/`to`, 페이지(최대 50), 오래된 것 먼저(대기 큐). 행: requestId·deliveryId·orderId·mfcId·riderId·category·stage·state·createdAt·사진 수. `detail`(라이더 글)은 목록에서 빼고 단건에서만.
   - `GET /api/v1/delivery-failures?state=REPORTED`(또는 위 목록의 `category=DELIVERY_FAILURE` 로 대신 — 하나면 충분, PC 5 가 고름) — 운영자 확정·반려 대기(FAILURE_REPORTED) 배송.
-  - 지금 case 가 없으니 **처리 상태를 execution 이 갖는다**: 운영자가 도움요청을 "처리함"으로 닫는 `POST …/help-requests/{rid}/resolutions`(메모 선택) 정도 — R-4 로 case 가 생기면 그 사건이 정본이 되고 이 API 는 정리(지금 state 칸 OPEN·IN_PROGRESS·RESOLVED 가 있음). **필요 없다고 보면 PR 에 이유를 적는다**.
+  - 지금 case 가 없으니 **처리 상태를 execution 이 갖는다**: 운영자가 도움요청을 "처리함"으로 닫는 `POST /api/v1/delivery-help-requests/{deliveryId}:{requestId}/resolutions`(또는 `/api/v1/deliveries/{id}/help-requests/{rid}/resolutions` — 기존 단건 조회 경로 아래, 라우트 추가 없음)(메모 선택) 정도 — R-4 로 case 가 생기면 그 사건이 정본이 되고 이 API 는 정리(지금 state 칸 OPEN·IN_PROGRESS·RESOLVED 가 있음). **필요 없다고 보면 PR 에 이유를 적는다**.
   - 권한: 조회 `Access.operatorCanSee`, 닫기·실패 결정 `operatorCanDecide`(BOD-1 반영 뒤).
 
 ## 백오피스 화면 쪽
