@@ -6,9 +6,9 @@
 
 | 영역 | 지금 맡는 PC | 서비스·폴더 | 계약(`contracts/`) 주인 |
 |---|---|---|---|
-| **platform** | PC 1(192.168.0.32) — 배포 유일 지점 | auth-service·employee-auth-service·**rider-auth-service**(2026-11-15 delivery 에서 옮김 — §1-3)·hr-service·approval-service·api-gateway·config·eureka·mail-provisioner, `libraries/`·`build-logic/`·`deploy/`, 그리고 아래 두 영역 밖의 모든 서비스(커머스·CDC·RAG 등 — 담당이 생기면 영역을 더한다) | 공통(`_common.yaml`·`_envelope`·`_defs`), 영역을 넘는 사건(`SubjectBlocked`·`ApprovalDecided`·`Employee*`·`GrantRequested` 등), platform 서비스 |
+| **platform** | PC 1(192.168.0.32) — 배포 유일 지점 | auth-service·employee-auth-service·hr-service·approval-service·api-gateway·config·eureka·mail-provisioner, `libraries/`·`build-logic/`·`deploy/`, 그리고 아래 두 영역 밖의 모든 서비스(커머스·CDC·RAG 등 — 담당이 생기면 영역을 더한다) | 공통(`_common.yaml`·`_envelope`·`_defs`), 영역을 넘는 사건(`SubjectBlocked`·`ApprovalDecided`·`Employee*`·`GrantRequested` 등), platform 서비스 |
 | **mfc**(인수인계 `docs/mfc/HANDOVER.md`) | PC 3(192.168.0.222) | mfc-inventory·mfc-fulfillment·mfc-capacity·mfc-location·mfc-quality·mfc-inbound-service, `docs/simulator/mfc/` | mfc 서비스 계약·mfc 안에서만 오가는 사건 |
-| **delivery**(인수인계 `docs/delivery/HANDOVER.md`) | PC 5(192.168.0.101) | delivery-serviceability·delivery-capacity·delivery-dispatch·delivery-execution·delivery-tracking-service, rider-service(rider-auth-service 는 2026-11-15 platform 으로 — §1-3) | delivery 서비스 계약·delivery 안 사건 |
+| **delivery**(인수인계 `docs/delivery/HANDOVER.md`) | PC 5(192.168.0.101) | delivery-serviceability·delivery-capacity·delivery-dispatch·delivery-execution·delivery-tracking-service, rider-service, rider-auth-service(라이더 로그인 — §1-3 예외, PC 5 그대로) | delivery 서비스 계약·delivery 안 사건 |
 
 - 남의 영역 서비스·계약을 고쳐야 하면 직접 고치지 않고 `docs/architecture/service-requests/<받는 서비스>.md` 에 요청을 적는다(지금 규칙 그대로). 급하면 PR 을 열되 그 영역 담당이 리뷰한다.
 - 영역을 넘는 사건·공통 계약은 platform 이 바꾼다(한 주인).
@@ -20,9 +20,10 @@
 
 | 저장소 | PC 1 만 고치는 경로 |
 |---|---|
-| pmart-backend | `services/auth-service`(고객 Google 로그인·비회원 세션), `services/employee-auth-service`(직원 로그인·세션·refresh 쿠키·CSRF), `services/rider-auth-service`(라이더 Google 로그인 — 2026-11-15 delivery 에서 옮김), `libraries/common-security`, 게이트웨이 인증·발급자 표·차단(`platform-services/api-gateway` 인증 부분, pmart-config `application-lan.yml` 발급자 표), Keycloak(`deploy/lan/keycloak/`·Realm·클라이언트), 각 앱의 employee-auth 앱 설정(pmart-config `employee-auth-service*.yml` `apps`), 로그인 관련 계약(`auth-service`·`employee-auth-service`·`rider-auth-service` yaml) |
-| pmart-clients | `web/core` 의 로그인·세션·토큰(`employeeAuth.ts`·`session.ts`·`sessionPersistence.ts`·`tokens.ts`·`pmartFetch.ts` 의 갱신 부분), 웹 앱의 `src/features/session`(backoffice·hr-backoffice·mfc-backoffice), `apps/customer_app/lib/features/auth`(Google), `apps/mfc_app/lib/features/auth`(직원 로그인), `apps/rider_app` 로그인(만들 때 — Google), `packages/pmart_core` 의 토큰·인터셉터(`auth_tokens.dart`·`interceptors.dart`) |
+| pmart-backend | `services/auth-service`(고객 Google 로그인·비회원 세션), `services/employee-auth-service`(직원 로그인·세션·refresh 쿠키·CSRF), `libraries/common-security`, 게이트웨이 인증·발급자 표·차단(`platform-services/api-gateway` 인증 부분, pmart-config `application-lan.yml` 발급자 표), Keycloak(`deploy/lan/keycloak/`·Realm·클라이언트), 각 앱의 employee-auth 앱 설정(pmart-config `employee-auth-service*.yml` `apps`), 로그인 관련 계약(`auth-service`·`employee-auth-service` yaml) |
+| pmart-clients | `web/core` 의 로그인·세션·토큰(`employeeAuth.ts`·`session.ts`·`sessionPersistence.ts`·`tokens.ts`·`pmartFetch.ts` 의 갱신 부분), 웹 앱의 `src/features/session`(backoffice·hr-backoffice·mfc-backoffice), `apps/customer_app/lib/features/auth`(Google), `apps/mfc_app/lib/features/auth`(직원 로그인), `packages/pmart_core` 의 토큰·인터셉터(`auth_tokens.dart`·`interceptors.dart`) |
 
+- **예외 — 라이더 로그인은 PC 5 그대로**(사용자 2026-11-15 "라이더 auth서비스는 따로 떼어내도 좋아" → 1번): `services/rider-auth-service`·그 계약, 클라이언트 `apps/rider_app` 로그인은 delivery 영역(PC 5)이 고친다. 단 공용 부분(`libraries/common-security`, 게이트웨이 발급자 표, `pmart_core` 토큰)은 위 규칙대로 PC 1.
 - 업무 API 를 부를 때 토큰을 **쓰는** 코드(헤더 붙이기, 401 처리 화면)는 각 앱 담당이 그대로 쓴다 — 바꾸는 것만 PC 1.
 - 새 앱이 로그인이 필요하면(예 MFC 백오피스) 로그인 부분은 PC 1 이 만들고 나머지 화면을 담당 PC 가 만든다.
 - 클라이언트 쪽 규칙은 클라이언트 `pc-split.md` 에 같은 표로 적어 달라고 알렸다(`docs/handoff/clients/all/2026-11-15-notice-login-code-pc1-only.md`).

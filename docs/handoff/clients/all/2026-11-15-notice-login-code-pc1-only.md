@@ -11,8 +11,8 @@
   - 웹 앱의 `src/features/session`(backoffice·hr-backoffice, 새로 만들 mfc-backoffice)
   - `apps/customer_app/lib/features/auth`(Google 로그인)
   - `apps/mfc_app/lib/features/auth`(직원 로그인)
-  - `apps/rider_app` 로그인(아직 없음 — 만들 때 PC 1)
   - `packages/pmart_core` 의 `auth_tokens.dart`·`interceptors.dart`
+- **예외: `apps/rider_app` 로그인은 rider-app 담당(PC 5)이 그대로 만든다**(사용자 2026-11-15). 공용 `pmart_core` 토큰 코드는 위 규칙대로 PC 1.
 - 업무 화면이 토큰을 **쓰는** 코드(요청에 붙이기, 401·403 화면)는 각 앱 담당이 그대로 쓴다 — 바꾸는 것만 PC 1.
 - 새 앱(예 MFC 백오피스)은 로그인·세션 부분을 PC 1 이 먼저 만들고, 메뉴·업무 화면은 담당 PC 가 만든다.
 

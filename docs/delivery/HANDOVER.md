@@ -21,7 +21,7 @@ delivery 영역(`docs/operations/pc-split.md` §1 — PC 5, 192.168.0.101)을 �
 | delivery-dispatch-service | 8404 | 스캐폴딩(501) — **1순위(DD-1)** | `…/delivery-dispatch-service.yaml` |
 | delivery-execution-service | 8405 | 스캐폴딩(501) | `…/delivery-execution-service.yaml` |
 | delivery-tracking-service | 8406 | 스캐폴딩(501) | `…/delivery-tracking-service.yaml` |
-| rider-auth-service(**2026-11-15 platform 으로 — PC 1 만 고침**, `pc-split.md` §1-3) | 8510 | **구현·LAN 배치**(2026-11-10 구현, 11-11 PC 5 첫 배치): 라이더 Google 로그인(ID 토큰 검증만)·자체 JWT(`typ=RIDER`, `aud=pmart-api`)·갱신·로그아웃 | `…/rider-auth-service.yaml` |
+| rider-auth-service(delivery 그대로 — 로그인 코드 PC 1 규칙의 예외, `pc-split.md` §1-3) | 8510 | **구현·LAN 배치**(2026-11-10 구현, 11-11 PC 5 첫 배치): 라이더 Google 로그인(ID 토큰 검증만)·자체 JWT(`typ=RIDER`, `aud=pmart-api`)·갱신·로그아웃 | `…/rider-auth-service.yaml` |
 
 - 결정: ADR-0023(카카오 주소), ADR-0052(취소 마감·오배송 병행 재발송), ADR-0053(OR-Tools 쓰면 JVM — dispatch 가 OR-Tools 를 넣으면 대상), ADR-0054(라이더 인증 = rider-auth-service), ADR-0055(Google = ID 토큰만).
 - 사건 목록 `docs/architecture/events.md`, 스키마 `contracts/events/Delivery*.v1.json` 등. 배송이 발행하는 토픽 `delivery.delivery.v1`(mfc-fulfillment 가 이미 구독 중 — **항목 이름 그대로** 발행).
