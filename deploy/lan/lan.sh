@@ -215,12 +215,16 @@ case "$cmd" in
     done
     remote_compose "$pc" exec -T ollama ollama ps ;;
   rag-ingest)
+    # 색인할 문서 사본(build/<pc>/rag/…)을 먼저 새로 만든다 — 안 하면 마지막 render 때의 문서로 색인한다(2026-11-15 고친 상담 대본이 빠짐)
+    "$0" render >/dev/null
     "$0" rag-warm "${1:?pc}"
     # 같은 이미지·설정(lan)으로 한 번 돌고 끝난다: 웹·Eureka·Bus 끔, 문서는 읽기 전용. 색인 중에도 기존 ACTIVE 로 답한다(ADR-0036 결정 6)
     pc="${1:?pc}"
     copy_files "$pc"
     remote_compose "$pc" run --rm --no-deps ai-assistant-ingest ;;
   rag-ingest-customer)
+    # 색인할 문서 사본(build/<pc>/rag/…)을 먼저 새로 만든다 — 안 하면 마지막 render 때의 문서로 색인한다(2026-11-15 고친 상담 대본이 빠짐)
+    "$0" render >/dev/null
     "$0" rag-warm "${1:?pc}"
     pc="${1:?pc}"
     copy_files "$pc"
