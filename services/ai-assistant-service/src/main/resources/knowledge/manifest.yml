@@ -109,6 +109,12 @@ documents:
   - { path: docs/adr/0053-or-tools-services-stay-on-jvm.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0054-auth-split-keycloak-staff-rider-auth-service.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0055-google-login-id-token-only-customer-rider.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0057-lan-dev-https-private-ca.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0058-delivery-ai-dispatch-python-optimizer-server.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0059-web-staff-refresh-cookie-signed-double-submit.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0060-no-customer-center-cancel-after-preparing.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0061-staff-logout-propagation-same-browser-and-keycloak-backchannel.md, domain: adr, kind: ADR, precedence: 5 }
 
 # 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
 overrides:

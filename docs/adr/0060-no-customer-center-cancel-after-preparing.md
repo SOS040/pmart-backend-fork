@@ -1,7 +1,7 @@
 # ADR-0060 상품준비 뒤 고객센터 취소는 하지 않는다 — ADR-0052 결정 2 대체
 
 - 상태: 승인 (2026-11-13, 사용자 — PR #8 검토 H1 답 "고객센터 취소 못하는 걸로 정할 거야."(delivery 영역 요청 `service-requests/claim-service.md` CL-D1 — PR #8 에 있음), 범위 확인 "상품준비 뒤~인계 전만 없앰"(추천안))
-- 대체: ADR-0052 **결정 2**("상품준비 뒤 취소: 고객센터 문의로 접수, MFC 출고 중지가 확인된 미인계 수량만 취소"). 사용자 2026-11-08 "중도 고객 취소는 아주 예외 — 고객센터를 통해서만 제한적으로 허용"(case-service 요청 R-2)도 이 ADR 로 거둔다.
+- 대체: ADR-0052 결정 2("상품준비 뒤 취소: 고객센터 문의로 접수, MFC 출고 중지가 확인된 미인계 수량만 취소"). 사용자 2026-11-08 "중도 고객 취소는 아주 예외 — 고객센터를 통해서만 제한적으로 허용"(case-service 요청 R-2)도 이 ADR 로 거둔다.
 - 그대로: ADR-0052 결정 1(고객 자율 취소 = 상품준비 전, 앱 주문 내역)·3~5(오배송). **D-7**(라이더 픽업·배달 시작 뒤 고객 요청은 고객센터 경유, 회수비 9,000원 고객 부담·회사 잘못이면 면제 — `claim-service.md` CL-1)은 그대로다 — 인계 뒤에는 상품이 라이더에게 있어 "취소"가 아니라 회수·반품으로 다룬다.
 - 관련: `docs/business/flows/cancel-vs-handover.md`, `contracts/states/order-states.md`, ADR-0046(피킹 뒤 취소 복귀), ADR-0049(결품 부분 취소), `service-requests/case-service.md` R-2, `service-requests/mfc-fulfillment-service.md` F-2(PR #8 에 있음)
 
