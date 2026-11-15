@@ -24,6 +24,9 @@ import tools.jackson.databind.JsonNode;
  *   <li>EmployeeSuspended·EmployeeLeft: DISABLED·LEFT, 모든 세션 종료, {@code SubjectBlocked}(이미 나간 토큰 즉시
  *       차단).
  *   <li>EmployeeReinstated: ACTIVE(권한은 그대로 — 끝난 권한은 다시 요청).
+ *   <li>EmployeeAffiliationChanged(2026-11-16 BO-01): 이전 소속이 센터면 그 센터가 들어 있는 grant 를 {@code
+ *       previousCenterAccessUntil}(바뀐 날 다음 날 00:00)에 끝낸다 — 그 시각 뒤 갱신부터 토큰에서 빠진다. 새 센터 권한은 주지 않는다.
+ *       계정에 직접 둔 센터(관리 경로 값)는 건드리지 않는다.
  *   <li>사건 버전(aggregateVersion)이 이미 반영한 것보다 작거나 같으면 버린다(늦게 온 옛 사건). 등록 전에 온 상태 사건은 버린다 — hr-service
  *       는 발급이 끝난 뒤에만 상태 사건을 낸다.
  * </ul>
@@ -33,7 +36,12 @@ public class EmployeeEventHandler {
 
   private static final Logger log = LoggerFactory.getLogger(EmployeeEventHandler.class);
   public static final List<String> TYPES =
-      List.of("EmployeeRegistered", "EmployeeSuspended", "EmployeeReinstated", "EmployeeLeft");
+      List.of(
+          "EmployeeRegistered",
+          "EmployeeSuspended",
+          "EmployeeReinstated",
+          "EmployeeLeft",
+          "EmployeeAffiliationChanged");
 
   private final EmployeeAuthStore store;
   private final SubjectBlocks blocks;
@@ -92,6 +100,33 @@ public class EmployeeEventHandler {
             effective.isAfter(now) ? effective : now,
             new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "hr-service"));
         log.info("직원 {} 반영: operatorId={} 세션 {}개 종료·즉시 차단", state, operatorId, revoked);
+      }
+      case "EmployeeAffiliationChanged" -> {
+        if (current == null) {
+          log.warn("등록 전 소속 변경 사건 버림: operatorId={}", operatorId);
+          return;
+        }
+        store.touchHrVersion(operatorId, e.aggregateVersion(), now);
+        JsonNode prev = p.path("previous");
+        String until = p.path("previousCenterAccessUntil").asText(null);
+        if (!"CENTER".equals(prev.path("type").asText(null)) || until == null || until.isBlank()) {
+          log.info("소속 변경 반영(센터 권한 변화 없음): operatorId={}", operatorId);
+          return;
+        }
+        String center = prev.path("code").asText();
+        List<String> ended =
+            store.endGrantsForCenter(
+                operatorId,
+                center,
+                Instant.parse(until),
+                "소속 변경 — 이전 센터 " + center + " 권한 자동 종료",
+                now);
+        log.info(
+            "소속 변경: operatorId={} 이전 센터 {} 권한 {}개를 {} 에 끝냄",
+            operatorId,
+            center,
+            ended.size(),
+            until);
       }
       default -> log.debug("모르는 직원 사건 무시: {}", e.eventType());
     }

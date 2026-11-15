@@ -195,4 +195,67 @@ class EmployeeEventsIT extends PostgresKafkaContainerSupport {
             .exchange((q, r) -> r.getStatusCode().value());
     assertThat(status).as("근무 시작일 전").isEqualTo(403);
   }
+
+  void grant(String grantId, String op, String role, String center) {
+    jdbc.update(
+        "INSERT INTO employee_grant (grant_id, operator_id, role, centers, valid_from, valid_until,"
+            + " approval_id, line_id, approver_id, reason, applied_at)"
+            + " VALUES (?, ?, ?, ARRAY[?]::varchar[], now() - interval '1 day', NULL, ?, ?, 'OP-APPROVER', '시험', now())",
+        grantId,
+        op,
+        role,
+        center,
+        grantId.split(":")[0],
+        grantId.split(":")[1]);
+  }
+
+  /**
+   * 소속 변경(2026-11-16 BO-01): 이전 센터가 들어 있는 grant 는 previousCenterAccessUntil 에 끝나고(회수 기록
+   * SYSTEM:hr-service), 다른 센터 grant 는 그대로. 본사 부서에서 옮긴 경우(until 없음)는 grant 를 건드리지 않는다.
+   */
+  @Test
+  void affiliationChangeEndsPreviousCenterGrants() throws Exception {
+    String op = "OP-AFF-" + UUID.randomUUID();
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    send("EmployeeRegistered", op, 1, registered(UUID.randomUUID().toString(), today));
+    assertThat(await(() -> state(op), "ACTIVE"::equals)).isEqualTo("ACTIVE");
+    grant("AP-" + op + ":1", op, "MFC_WORKER", "MFC-IT-01");
+    grant("AP-" + op + ":2", op, "MFC_WORKER", "MFC-IT-09");
+
+    Instant until = today.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+    send(
+        "EmployeeAffiliationChanged",
+        op,
+        2,
+        Map.of(
+            "previous", Map.of("type", "CENTER", "code", "MFC-IT-01"),
+            "affiliation", Map.of("type", "CENTER", "code", "MFC-IT-02"),
+            "changedAt", Instant.now().toString(),
+            "previousCenterAccessUntil", until.toString()));
+    String ended =
+        await(
+            () ->
+                jdbc.queryForObject(
+                    "SELECT coalesce(revoked_by, '') FROM employee_grant WHERE grant_id = ?",
+                    String.class,
+                    "AP-" + op + ":1"),
+            v -> !v.isEmpty());
+    assertThat(ended).isEqualTo("SYSTEM:hr-service");
+    assertThat(
+            jdbc.queryForObject(
+                    "SELECT valid_until FROM employee_grant WHERE grant_id = ?",
+                    java.sql.Timestamp.class,
+                    "AP-" + op + ":1")
+                .toInstant())
+        .as("그날 안에 인계 — 다음 날 00:00 에 끝")
+        .isEqualTo(until);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT revoked_by FROM employee_grant WHERE grant_id = ?",
+                String.class,
+                "AP-" + op + ":2"))
+        .as("다른 센터 권한은 그대로")
+        .isNull();
+    assertThat(store.account(op, false).orElseThrow().hrVersion()).isEqualTo(2L);
+  }
 }

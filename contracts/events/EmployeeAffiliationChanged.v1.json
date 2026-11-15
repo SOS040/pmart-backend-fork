@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/EmployeeAffiliationChanged.v1.json",
+  "title": "EmployeeAffiliationChanged",
+  "description": "직원 소속 변경(본사 부서·센터 — 권한 범위가 아니다). 2026-11-16 BO-01 사용자 결정(실서비스 추천안): 이전 소속이 센터면 그 센터에 묶인 승인 권한(grant)을 previousCenterAccessUntil(변경한 날 다음 날 00:00 Asia/Seoul — 그날 안에 인계)에 끝낸다. 새 센터 권한은 자동으로 주지 않는다(요청 → 승인, 자기 센터 MFC_WORKER 는 자동 승인 규칙). 발행 hr-service(계정 발급이 끝난 직원만), 구독 employee-auth-service. 토픽 platform.employee.v1, 키 = 운영자 ID.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "EmployeeAffiliationChanged"
+        },
+        "aggregateType": {
+          "const": "Employee"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "operatorId",
+            "previous",
+            "affiliation",
+            "changedAt"
+          ],
+          "properties": {
+            "operatorId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "운영자 ID(OP-…) = aggregateId"
+            },
+            "previous": {
+              "type": "object",
+              "required": [
+                "type",
+                "code"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "HQ_DEPARTMENT",
+                    "CENTER"
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "description": "이전 소속"
+            },
+            "affiliation": {
+              "type": "object",
+              "required": [
+                "type",
+                "code"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "HQ_DEPARTMENT",
+                    "CENTER"
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "description": "새 소속"
+            },
+            "changedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "previousCenterAccessUntil": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "이전 소속이 센터일 때만 — 그 센터 grant 의 효력 끝(이 시각부터 무효)"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

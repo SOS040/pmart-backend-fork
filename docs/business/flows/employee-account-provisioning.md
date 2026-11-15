@@ -59,7 +59,8 @@ hr-service: 같은 ApprovalDecided 로 요청 권한 APPROVED·REJECTED(화면 �
      - 추가·변경 요청 — hr-service 0.3.0 `POST /hr/employees/{id}/grant-requests`(HR_ADMIN, 재직 중·발급 끝난 직원, 자기 권한 403, 결정 안 된 요청이 있으면 409 `GRANT_REQUEST_PENDING`) → 같은 트랜잭션 `GrantRequested`(요청자 = 요청한 인사팀 직원) → 위 1절과 같은 길(승인함 → `ApprovalDecided` → employee-auth 적용).
      - 회수 — employee-auth-service 0.8.0 `POST /employee-auth/employees/{id}/grant-revocations` `{grantId, reason}`(OPERATOR_ADMIN·HR_ADMIN) → grant `valid_until = 지금`·`revoked_at/by/reason`(V6, 행은 남김) → 그 직원 모든 세션 끊기 + `SubjectBlocked`(SESSIONS_REVOKED). 다시 로그인하면 남은 권한으로.
      - 계정에 직접 둔 역할(관리 경로 값 — 이전한 13명 등)은 회수 API 대상이 아니다 — 관리 경로 PUT(OPERATOR_ADMIN).
-     - 아직: 소속 변경(A→B) 때 A 권한 자동 종료, 회수를 hr 화면 표시(`requestedGrants`)에 되돌려 알리는 사건 — 필요해지면.
+     - **소속 변경 자동 종료(2026-11-16, 사용자 "실서비스 추천안으로 지금")**: hr-service 0.4.0 소속 변경 → `EmployeeAffiliationChanged`(이전이 센터면 `previousCenterAccessUntil` = 다음 날 00:00 Asia/Seoul) → employee-auth-service 가 그 센터가 들어 있는 grant 의 `valid_until` 을 그 시각으로(회수 기록 `SYSTEM:hr-service`). 그날 안에 인계, 새 센터 권한은 요청 → 승인. 계정에 직접 둔 센터(관리 경로 값)는 건드리지 않는다. 인계할 일 목록(담당 작업·사건)을 소속 변경 화면에 보여 주는 것은 클라이언트·각 서비스 몫(나중).
+     - 아직: 회수를 hr 화면 표시(`requestedGrants`)에 되돌려 알리는 사건 — 필요해지면.
 
 ## 2. 정지·복귀·퇴사·계약 종료
 

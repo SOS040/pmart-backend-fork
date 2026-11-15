@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -82,6 +83,27 @@ public class EmployeeEvents {
     p.put("lines", lines);
     p.put("requestedAt", now.toString());
     publish("GrantRequested", e, p);
+  }
+
+  /**
+   * 소속 변경(2026-11-16 BO-01) — 이전 소속이 센터면 그 센터 grant 를 {@code previousCenterAccessUntil} 에 끝내라고
+   * employee-auth-service 에 알린다. {@code e} 는 바뀐 뒤 행(버전 포함).
+   */
+  public void affiliationChanged(
+      EmployeeRow e,
+      String previousType,
+      String previousCode,
+      Instant now,
+      @Nullable Instant previousCenterAccessUntil) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("operatorId", e.operatorId());
+    p.put("previous", Map.of("type", previousType, "code", previousCode));
+    p.put("affiliation", Map.of("type", e.affiliationType(), "code", e.affiliationCode()));
+    p.put("changedAt", now.toString());
+    if (previousCenterAccessUntil != null) {
+      p.put("previousCenterAccessUntil", previousCenterAccessUntil.toString());
+    }
+    publish("EmployeeAffiliationChanged", e, p);
   }
 
   /** 지금 재직 상태를 알리는 사건(정지·복귀·퇴사). ACTIVE 면 Reinstated. */

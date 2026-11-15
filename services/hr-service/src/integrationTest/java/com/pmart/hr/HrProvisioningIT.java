@@ -572,6 +572,42 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
         .isEqualTo(409);
   }
 
+  /**
+   * 소속 변경(2026-11-16 BO-01): 발급 끝난 직원의 센터 → 센터 변경은 EmployeeAffiliationChanged(이전 센터 권한 끝 = 다음 날
+   * 00:00), 같은 값은 사건 없음.
+   */
+  @Test
+  void affiliationChangePublishesEventWithPreviousCenterAccessEnd() throws Exception {
+    String op = register(mailId());
+    runUntilSettled(op);
+    Map<String, Object> body =
+        Map.of("affiliation", Map.of("type", "CENTER", "code", "MFC-IT-02"), "reason", "센터 이동");
+    Res r = call("POST", "/hr/employees/" + op + "/affiliation-changes", hr, body);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(outbox(op, "EmployeeAffiliationChanged")).isEqualTo(1);
+    JsonNode ev =
+        mapper
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'EmployeeAffiliationChanged'",
+                    String.class,
+                    op))
+            .path("payload");
+    assertThat(ev.path("previous").path("code").asText()).isEqualTo("MFC-IT-01");
+    assertThat(ev.path("affiliation").path("code").asText()).isEqualTo("MFC-IT-02");
+    assertThat(ev.path("previousCenterAccessUntil").asText())
+        .isEqualTo(
+            today()
+                .plusDays(1)
+                .atStartOfDay(java.time.ZoneId.of("Asia/Seoul"))
+                .toInstant()
+                .toString());
+
+    assertThat(call("POST", "/hr/employees/" + op + "/affiliation-changes", hr, body).status())
+        .isEqualTo(200);
+    assertThat(outbox(op, "EmployeeAffiliationChanged")).as("같은 소속 — 사건 없음").isEqualTo(1);
+  }
+
   @Test
   void contractEndSuspendsAutomatically() {
     String mailId = mailId();

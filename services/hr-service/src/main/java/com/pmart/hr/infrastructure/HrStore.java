@@ -60,6 +60,7 @@ public class HrStore {
       @Nullable String approvalRef) {}
 
   public static final String HQ_DEPARTMENT = "HQ_DEPARTMENT";
+  public static final String CENTER = "CENTER";
 
   private static final String DEPARTMENTS =
       "SELECT d.code, d.name, count(e.operator_id) AS n FROM hq_department d"

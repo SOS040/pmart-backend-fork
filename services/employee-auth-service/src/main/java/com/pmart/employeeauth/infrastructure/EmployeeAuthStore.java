@@ -604,6 +604,36 @@ public class EmployeeAuthStore {
         .findFirst();
   }
 
+  /**
+   * 소속 변경으로 이전 센터 grant 끝내기(2026-11-16) — 그 센터가 들어 있고 아직 회수·만료 전인 grant 의 효력 끝을 {@code until} 로(이미
+   * 그보다 이르면 그대로). 끝낸 grant ID 들.
+   */
+  public List<String> endGrantsForCenter(
+      String operatorId, String centerId, Instant until, String reason, Instant at) {
+    return jdbc.queryForList(
+        "UPDATE employee_grant SET valid_until = LEAST(COALESCE(valid_until, ?), ?), revoked_at = ?,"
+            + " revoked_by = 'SYSTEM:hr-service', revoke_reason = ?, revoke_source = 'hr-service'"
+            + " WHERE operator_id = ? AND ? = ANY(centers) AND revoked_at IS NULL"
+            + " AND (valid_until IS NULL OR valid_until > ?) RETURNING grant_id",
+        String.class,
+        Timestamp.from(until),
+        Timestamp.from(until),
+        Timestamp.from(at),
+        reason,
+        operatorId,
+        centerId,
+        Timestamp.from(at));
+  }
+
+  /** 직원 사건 버전만 올린다(상태는 그대로 — 소속 변경 등). */
+  public void touchHrVersion(String operatorId, long hrVersion, Instant at) {
+    jdbc.update(
+        "UPDATE employee_account SET hr_version = ?, updated_at = ? WHERE operator_id = ?",
+        hrVersion,
+        Timestamp.from(at),
+        operatorId);
+  }
+
   /** 회수(BO-01) — 효력 끝 = 지금, 누가·왜. 행은 남긴다. */
   public void revokeGrant(String grantId, Instant at, String by, String reason, String source) {
     jdbc.update(

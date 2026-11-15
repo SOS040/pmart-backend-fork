@@ -254,6 +254,22 @@ public class EmployeeService {
               reason,
               "{\"from\":\"%s\",\"to\":\"%s\"}".formatted(e.affiliationCode(), code),
               now);
+          // 이전 센터 권한 자동 종료(2026-11-16 BO-01 — 실서비스 추천안): 바뀐 날 다음 날 00:00(그날 안에 인계)
+          boolean changed = !e.affiliationType().equals(type) || !e.affiliationCode().equals(code);
+          boolean registered =
+              store.provisioning(operatorId, false).map(p -> "DONE".equals(p.step())).orElse(false);
+          if (changed && registered) {
+            Instant until =
+                HrStore.CENTER.equals(e.affiliationType())
+                    ? today().plusDays(1).atStartOfDay(props.zone()).toInstant()
+                    : null;
+            events.affiliationChanged(
+                store.employee(operatorId, false).orElseThrow(),
+                e.affiliationType(),
+                e.affiliationCode(),
+                now,
+                until);
+          }
           return operatorId;
         });
     return view(operatorId);
