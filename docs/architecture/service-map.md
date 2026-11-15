@@ -336,8 +336,8 @@
 - **소유**: 라이더 Google 로그인(라이더 앱이 받은 Google ID 토큰을 Google 공개키로 검증 — `aud` = 라이더용 웹 클라이언트 ID, client secret·인가 코드 교환 없음), Google 계정(`sub`) ↔ 라이더 주체 `RD-…`, 로그인 세션·refresh token(회전·재사용 감지), 기기별 로그인 실패 제한(15분 5회→10분), 라이더 토큰(`typ=RIDER`) 서명키·JWKS.
 - **소유하지 않음**: 라이더 프로필·가입 정보(전화번호·배달 지역·수단·약관)·승인·정지·운행 상태(rider-service), 고객·비회원 토큰(auth-service), 직원 토큰(Keycloak).
 - **API**(계약 0.1.0): `POST /rider-auth/social-logins`, `GET /rider-auth/social-logins/{authRequestId}`, `POST /rider-auth/tokens`, `POST /rider-auth/logouts`, `GET /rider-auth/sessions/current`, `GET /internal/jwks`(게이트웨이·전 서비스가 발급자 표 rider 줄로 사용).
-- **발행**: `SubjectBlocked`(로그아웃·refresh 재사용 — 그 세션 또는 모든 기기, outbox, 2026-11-13). **구독**: 없음. 가입은 받은 토큰으로 rider-service 에 한다(가입 여부 = `GET /riders/me`).
-- **나중(ADR-0054 순서 ⑤)**: 라이더 정지(`RiderRestricted`)를 받아 세션을 끊거나 차단 목록에 올리는 일 — 지금은 rider-service 가 업무 상태로 막는다.
+- **발행**: `SubjectBlocked`(로그아웃·refresh 재사용 — 그 세션 또는 모든 기기, 정지 라이더 — 주체 전체 RIDER_RESTRICTED, outbox). **구독**: `RiderRestricted`(rider, 2026-11-15 — SUSPENDED·TERMINATED 는 dispatch 에 맡은 배송이 없어진 뒤 모든 세션 끊기·새 로그인 거절, 사용자 "추천대로"). 가입은 받은 토큰으로 rider-service 에 한다(가입 여부 = `GET /riders/me`).
+- **동기 의존**: delivery-dispatch `GET /internal/riders/{id}/active-deliveries`(로그인 끊기 시점, 1분마다).
 - LAN: PC 5, 포트 8510, DB `rider_auth_service`(PC 5 postgres).
 
 ### employee-auth-service `[ADR-0056 — 2026-11-12 3단계 구현: 로그인·토큰·관리 경로. 권한 grant·대행·행위 검증·사건은 5단계]` — 직원 로그인·직원 토큰 발급자·직원 권한 정본

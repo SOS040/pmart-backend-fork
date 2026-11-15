@@ -70,3 +70,13 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
   - 조회 `GET /api/v1/rider-complaints?riderId=&deliveryId=&complaintType=&from=&to=&size=&cursor=`(최근 순, 쪽은 저장소 관례대로 cursor)·`GET …/{complaintId}`(메모 포함) — 역할 CS_AGENT·OPERATOR_ADMIN·RIDER_OPS. 그 밖 직원 403.
   - 코드: `RiderComplaintService`·`domain/RiderComplaintRules`·`RiderComplaintStore`·`DispatchClient`, 시험 `RiderComplaintsIT`.
   - **남은 것**: 고객 앱 신고 경로(지금은 상담원 기록만, source 는 CS_AGENT 하나), 컴플레인 자체의 사건(Case) 만들기 — 지금 caseId 는 문의에서 넘어온 때만.
+
+## R-6. 위치 끊긴 라이더 → 지원센터 알림 (2026-11-15, 보낸 영역 delivery — TR-2 받는 쪽)
+- **사용자 결정(2026-11-15 "추천대로")**: 배달 중 위치가 3분 넘게 없는 라이더(`RiderLocationStale`)는 **지원센터(운영자)에게 알림만** 한다. **배정을 자동으로 풀지 않는다**(터널·엘리베이터 등 잠깐 끊김이 흔해서) — 그래서 dispatch 는 구독하지 않는다.
+- **보내는 쪽(구현됨, delivery-tracking V3)**: `RiderLocationStale`(계약 `contracts/events/RiderLocationStale.v1.json`, 토픽 delivery.tracking.v1, aggregate Rider) — riderId·deliveryId·lastSeenAt·detectedAt. 끊김 한 번에 한 번, 위치가 다시 오면 다음 끊김에 또 낸다. 상태는 바꾸지 않는다.
+- **case 가 할 것**: 구독해 지원센터가 볼 곳에 올린다(사건함·알림 — 사건함이 아직이면 백오피스 알림이나 목록). 같은 라이더·배송의 끊김이 이어지면 묶어도 된다. 라이더 연락은 사람이 한다. 위치 좌표는 사건에 없다(필요하면 tracking 내부 위치 조회).
+
+## R-7. 오배송 확인 기록 → 회수 배차 사건 (2026-11-15, 보낸 영역 delivery — DD-2 앞단)
+- **사용자 결정(2026-11-15 "추천대로")**: 오배송 "확인"은 **상담원·지원센터가 확인해서 기록**한다(라이더 앱 화면만으로 확정하지 않는다 — 오판 위험). 그 기록이 들어오면 dispatch 가 근처 다른 라이더로 **회수 배차를 자동으로** 낸다(DD-2, ADR-0052).
+- **case 가 할 것**: 상담원·지원센터의 오배송 확인 기록 API(배송 ID, 잘못 간 곳 — 주소·좌표는 개인정보라 사건에는 참조만, 확인 근거 사진·통화 메모 참조)와 사건 하나(예 `MisdeliveryConfirmed` — 이름·필드는 case 가 계약으로 정하고 delivery 에 알림). R-5 오배송 컴플레인(`RiderComplaintRecorded` MISDELIVERY)과는 별개 — 컴플레인은 라이더 검토용, 이 사건은 실물 회수용(같은 화면에서 둘 다 기록해도 된다).
+- **delivery 가 할 것(받은 뒤)**: dispatch 회수 배송(픽업지 = 오배송지, 도착지 = MFC) 만들기·인근 라이더 탐색(DD-2), execution 회수 수행(지금 501). MFC 새 발송(원주소)은 일반 배차로 따로.

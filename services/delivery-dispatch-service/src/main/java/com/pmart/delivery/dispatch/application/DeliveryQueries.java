@@ -70,6 +70,11 @@ public class DeliveryQueries {
     return get(deliveryId);
   }
 
+  /** 라이더가 맡고 있는 배송(서비스 간 — rider-auth 로그인 끊기 시점, 0.3.3). */
+  public List<String> activeDeliveries(String riderId) {
+    return store.activeDeliveryIds(riderId);
+  }
+
   private DeliveryRow get(String deliveryId) {
     return store
         .delivery(deliveryId)

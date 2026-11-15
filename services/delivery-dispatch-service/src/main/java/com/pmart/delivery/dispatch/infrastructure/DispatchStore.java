@@ -466,6 +466,15 @@ public class DispatchStore {
             args.toArray()));
   }
 
+  /** 라이더가 맡고 있는(ASSIGNED·PICKED_UP) 배송(배송 ID 순) — 정지 라이더 로그인 끊기 시점(rider-auth, 2026-11-15). */
+  public List<String> activeDeliveryIds(String riderId) {
+    return jdbc.queryForList(
+        "SELECT delivery_id FROM delivery WHERE rider_id = ? AND state IN ('ASSIGNED', 'PICKED_UP')"
+            + " ORDER BY delivery_id",
+        String.class,
+        riderId);
+  }
+
   /** 라이더가 맡은(ASSIGNED·PICKED_UP) 배송과 그 라이더에게 간 SENT 제안의 배송 — 잠글 순서대로(배송 ID 순). RS-1. */
   public List<String> deliveryIdsTouchingRider(String riderId) {
     return jdbc.queryForList(

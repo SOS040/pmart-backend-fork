@@ -1,13 +1,19 @@
 package com.pmart.riderauth;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
-import com.pmart.common.test.PostgresContainerSupport;
+import com.pmart.common.test.EventEnvelopeFixtures;
+import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.riderauth.application.RiderAuthProperties;
+import com.pmart.riderauth.application.RiderSessionCuts;
 import com.pmart.riderauth.infrastructure.GoogleIdTokenVerifier;
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +31,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -33,6 +40,9 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -49,10 +59,15 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.rider-auth.issuer=http://rider-auth.test",
       "pmart.rider-auth.google.client-ids=" + RiderSocialLoginIT.RIDER_WEB,
       "pmart.rider-auth.max-failures=3",
+      "pmart.rider-auth.session-cut-interval=PT1H", // 시험이 check() 를 직접 부른다
       "pmart.messaging.outbox.delete-after-insert=false"
     })
 @Import(RiderSocialLoginIT.FakeGoogle.class)
-class RiderSocialLoginIT extends PostgresContainerSupport {
+@EnableWireMock(
+    @ConfigureWireMock(
+        name = "dispatch",
+        baseUrlProperties = {"pmart.rider-auth.dispatch-base-url"}))
+class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
 
   static final String RIDER_WEB = "rider-web.apps.googleusercontent.com";
   static final String CUSTOMER_WEB = "customer-web.apps.googleusercontent.com";
@@ -82,6 +97,11 @@ class RiderSocialLoginIT extends PostgresContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired RiderSessionCuts cuts;
+
+  @InjectWireMock("dispatch")
+  WireMockServer dispatch;
 
   RestClient http;
 
@@ -154,6 +174,142 @@ class RiderSocialLoginIT extends PostgresContainerSupport {
         .uri("/rider-auth/sessions/current")
         .headers(h -> h.setBearerAuth(accessToken))
         .exchange((q, r) -> new Res(r.getStatusCode().value(), read(r.bodyTo(byte[].class))));
+  }
+
+  /**
+   * 정지·계약 종료 라이더(2026-11-15 사용자 "추천대로"): 맡은 배송이 남아 있으면 기다리고(로그인도 됨), 없어지면 모든 세션을 끊고 SubjectBlocked
+   * → 새 로그인 거절. 늦게 온 옛 사건은 무시, 풀리면 다시 로그인. 신규배차 제한은 끊지 않는다.
+   */
+  @Test
+  void suspendedRiderIsLoggedOutOnlyAfterActiveDeliveriesEnd() {
+    String sub = "g-" + UUID.randomUUID();
+    String device = "dev-" + UUID.randomUUID();
+    Res first = login("c1-" + sub, device, google(sub));
+    assertThat(first.status()).isEqualTo(200);
+    String riderId = first.body().get("riderId").asString();
+    String refresh = first.body().get("tokens").get("refreshToken").asString();
+
+    restricted(riderId, "SUSPENDED", 3);
+    awaitCut(riderId, "PENDING");
+
+    // 맡은 배송이 남음 → 기다린다, 로그인도 된다(픽업한 배송을 끝내야)
+    activeDeliveries(riderId, "[\"DLV-1\"]");
+    assertThat(cuts.check(riderId)).isFalse();
+    assertThat(activeSessions(riderId)).isPositive();
+    Res during = login("c2-" + sub, device, google(sub));
+    assertThat(during.status()).isEqualTo(200);
+
+    // 배송이 끝남 → 모든 세션을 끊고 차단 사건
+    activeDeliveries(riderId, "[]");
+    assertThat(cuts.check(riderId)).isTrue();
+    assertThat(activeSessions(riderId)).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'SubjectBlocked'"
+                    + " AND payload::text LIKE '%RIDER_RESTRICTED%'",
+                Integer.class, riderId))
+        .isEqualTo(1);
+    assertThat(refresh(refresh, device).status()).isEqualTo(401);
+    Res blocked = login("c3-" + sub, device, google(sub));
+    assertThat(blocked.status()).isEqualTo(403);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("ACCOUNT_NOT_AVAILABLE");
+
+    // 늦게 온 옛 사건(버전 2 풀기)은 무시 — 그대로 막힘
+    restricted(riderId, "NORMAL", 2);
+    restricted(riderId, "TERMINATED", 4); // 이미 끊김 → DONE 그대로
+    awaitVersion(riderId, 4);
+    assertThat(state(riderId)).isEqualTo("DONE");
+    assertThat(login("c4-" + sub, device, google(sub)).status()).isEqualTo(403);
+
+    // 풀림 → 다시 로그인
+    restricted(riderId, "NORMAL", 5);
+    awaitCut(riderId, "LIFTED");
+    assertThat(login("c5-" + sub, device, google(sub)).status()).isEqualTo(200);
+
+    // 신규배차 제한은 끊지 않는다
+    restricted(riderId, "DISPATCH_RESTRICTED", 6);
+    awaitVersion(riderId, 6);
+    assertThat(state(riderId)).isEqualTo("LIFTED");
+    assertThat(cuts.check(riderId)).isFalse();
+    assertThat(activeSessions(riderId)).isPositive();
+  }
+
+  void activeDeliveries(String riderId, String ids) {
+    dispatch.resetAll();
+    dispatch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/" + riderId + "/active-deliveries"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"riderId\":\"" + riderId + "\",\"deliveryIds\":" + ids + "}")));
+  }
+
+  void restricted(String riderId, String restriction, long version) {
+    String json =
+        EventEnvelopeFixtures.envelope("RiderRestricted")
+            .from("rider-service")
+            .aggregate("Rider", riderId, version)
+            .payload(
+                Map.of(
+                    "riderId",
+                    riderId,
+                    "restriction",
+                    restriction,
+                    "from",
+                    Instant.now().toString(),
+                    "basis",
+                    "IT"))
+            .buildJson();
+    kafka.send("delivery.rider.v1", riderId, json).join();
+  }
+
+  int activeSessions(String riderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM rider_session WHERE rider_id = ? AND state = 'ACTIVE'",
+            Integer.class,
+            riderId);
+    return n == null ? 0 : n;
+  }
+
+  String state(String riderId) {
+    return jdbc.queryForObject(
+        "SELECT state FROM rider_session_cut WHERE rider_id = ?", String.class, riderId);
+  }
+
+  void awaitCut(String riderId, String state) {
+    await(
+        "SELECT count(*) FROM rider_session_cut WHERE rider_id = '"
+            + riderId
+            + "' AND state = '"
+            + state
+            + "'");
+  }
+
+  void awaitVersion(String riderId, long version) {
+    await(
+        "SELECT count(*) FROM rider_session_cut WHERE rider_id = '"
+            + riderId
+            + "' AND rider_version = "
+            + version);
+  }
+
+  void await(String countSql) {
+    long until = System.currentTimeMillis() + 30_000;
+    while (System.currentTimeMillis() < until) {
+      Integer n = jdbc.queryForObject(countSql, Integer.class);
+      if (n != null && n > 0) {
+        return;
+      }
+      try {
+        Thread.sleep(200);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
+    throw new AssertionError("기다린 상태가 오지 않음: " + countSql);
   }
 
   JsonNode read(byte[] body) {

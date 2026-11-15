@@ -73,6 +73,7 @@ public class RiderLoginService {
   private final GoogleIdTokenVerifier google;
   private final RiderAuthProperties props;
   private final TransactionTemplate tx;
+  private final RiderSessionCuts cuts;
   private final Clock clock;
 
   public RiderLoginService(
@@ -81,12 +82,14 @@ public class RiderLoginService {
       GoogleIdTokenVerifier google,
       RiderAuthProperties props,
       TransactionTemplate tx,
+      RiderSessionCuts cuts,
       Clock clock) {
     this.store = store;
     this.tokens = tokens;
     this.google = google;
     this.props = props;
     this.tx = tx;
+    this.cuts = cuts;
     this.clock = clock;
   }
 
@@ -155,6 +158,9 @@ public class RiderLoginService {
                     false,
                     List.of());
               }
+              if (cuts.loginBlocked(riderId)) {
+                throw restrictedRider();
+              }
               String authRequestId = "RAR-" + UUID.randomUUID();
               store.insertRequest(
                   authRequestId,
@@ -208,6 +214,9 @@ public class RiderLoginService {
     if (!"ACTIVE".equals(store.accountState(riderId).orElse(null))) {
       throw new PmartException(
           "ACCOUNT_NOT_AVAILABLE", HttpStatus.FORBIDDEN, "이용할 수 없는 라이더 계정입니다.", false, List.of());
+    }
+    if (cuts.loginBlocked(riderId)) {
+      throw restrictedRider();
     }
     Instant now = now();
     RiderTokens.Tokens t = tx.execute(status -> openSession(riderId, deviceId, sourceSystem, now));
@@ -269,5 +278,15 @@ public class RiderLoginService {
 
   static RestrictedException restrictedUntil(Instant until, Instant now) {
     return new RestrictedException(until, Math.max(1, Duration.between(now, until).toSeconds()));
+  }
+
+  /** 정지·계약 종료로 로그인이 끊긴 라이더(진행 중 배송이 끝난 뒤 — 2026-11-15). 제한이 풀리거나 기한이 지나면 다시 된다. */
+  private static PmartException restrictedRider() {
+    return new PmartException(
+        "ACCOUNT_NOT_AVAILABLE",
+        HttpStatus.FORBIDDEN,
+        "정지되었거나 계약이 끝난 라이더 계정입니다. 지원센터에 문의하세요.",
+        false,
+        List.of());
   }
 }

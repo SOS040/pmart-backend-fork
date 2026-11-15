@@ -3,6 +3,7 @@ package com.pmart.delivery.dispatch.api;
 import com.pmart.common.web.PmartException;
 import com.pmart.delivery.dispatch.api.generated.InternalApi;
 import com.pmart.delivery.dispatch.api.generated.model.Assignment;
+import com.pmart.delivery.dispatch.api.generated.model.GetRiderActiveDeliveries200Response;
 import com.pmart.delivery.dispatch.application.DeliveryQueries;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,5 +30,14 @@ public class InternalController implements InternalApi {
       throw PmartException.notFound("ASSIGNMENT_NOT_FOUND", "아직 배정되지 않았습니다.");
     }
     return ResponseEntity.ok(views.assignment(d));
+  }
+
+  @Override
+  public ResponseEntity<GetRiderActiveDeliveries200Response> getRiderActiveDeliveries(
+      String riderId) {
+    return ResponseEntity.ok(
+        new GetRiderActiveDeliveries200Response()
+            .riderId(riderId)
+            .deliveryIds(queries.activeDeliveries(riderId)));
   }
 }

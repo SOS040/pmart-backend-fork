@@ -188,7 +188,7 @@
 | `SlotHoldResult` | delivery-capacity | order-orchestration | slotHoldId, orderId, window, result, expiresAt | HoldSlot 결과 | ① |
 | `SlotCapacityReduced` | delivery-capacity | order, notification | mfcId, window, affectedOrders[] | 정원 축소 | ① |
 | `RiderStateChanged` | rider | delivery-dispatch, delivery-tracking | riderId, operatingState, newDispatchEnabled, vehicleType | 운행 시작/종료·신규배차 ON/OFF | ① |
-| `RiderRestricted` | rider | delivery-dispatch(픽업 전 배정 풀고 재배차 — 2026-11-14 구현), audit. mfc-fulfillment 는 구독하지 않고 `DeliveryAssignmentChanged` 로 인계를 막는다(D-4) | riderId, restriction(풀기는 NORMAL), previous, from, to, basis, evidenceRefs, approvalRef | 계정 제한(증빙 기반, 운영자 — RS-1) | ① |
+| `RiderRestricted` | rider | delivery-dispatch(픽업 전 배정 풀고 재배차 — 2026-11-14 구현), rider-auth(SUSPENDED·TERMINATED 는 진행 중 배송이 끝난 뒤 로그인 끊기 — 2026-11-15 구현), audit. mfc-fulfillment 는 구독하지 않고 `DeliveryAssignmentChanged` 로 인계를 막는다(D-4) | riderId, restriction(풀기는 NORMAL), previous, from, to, basis, evidenceRefs, approvalRef | 계정 제한(증빙 기반, 운영자 — RS-1) | ① |
 | `RiderComplaintRecorded` | case(구현됨 2026-11-15 — 상담원 기록 `POST /rider-complaints`, case 0.3.0, service-requests case R-5) | rider | complaintId, riderId, deliveryId, complaintType(REPORT/MISDELIVERY/DAMAGE), recordedAt, caseId | 라이더 컴플레인 한 건(신고·오배송·파손) — rider 가 같은 종류 7일 안 서로 다른 배송 3건 이상이면 제한 검토 대상(RS-3, 2026-11-14, 자동 제재 없음). 토픽 platform.case.v1 | ① |
 | `RiderSupplyChanged` | rider | delivery-capacity | zoneId, activeRiders | 수급 참고 | ① |
 | `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce | deliveryId, orderId, shipmentId, type(FORWARD/RETURN/RESHIPMENT — API 와 같게, 2026-11-10. 분할은 유형이 아님), mfcId, dropAddressRef | 배송 단위 생성 | ① |
@@ -209,7 +209,7 @@
 | `RiderEarningRecorded` | delivery-execution | BI, (회계 어댑터) | deliveryId, riderId, earningId, feeBasis, rateVersion, status, calculable, payoutDate | 수행료 근거(환불과 독립) — 완료 때 확정 대기·5시간 뒤 확정, 실패·취소는 산정 불가(2026-11-13) | ① |
 | `SettlementStateChanged` | delivery-execution | notification | riderId, periodId, state | 정산 상태 | ② |
 | `DeliveryEtaUpdated` | delivery-tracking | order(고객 조회), mfc-fulfillment(점원), notification(지연) | deliveryId, etaPickup?, etaDrop, basis, staleness | ETA 갱신 | ① |
-| `RiderLocationStale` | delivery-tracking(2026-11-14 구현, 토픽 delivery.tracking.v1) | delivery-dispatch, case(둘 다 구독 전) | riderId, deliveryId, lastSeenAt, detectedAt | 위치 단절 — 진행 중 배송(배정 ~ 완료 전)이 있는 라이더 위치가 3분 넘게 없음, 끊김 한 번에 한 번(사용자 2026-11-14) | ① |
+| `RiderLocationStale` | delivery-tracking(2026-11-14 구현, 토픽 delivery.tracking.v1) | case(지원센터 알림 — 구독 전, R-6). dispatch 는 받지 않는다(사용자 2026-11-15: 자동 배정 해제 없음) | riderId, deliveryId, lastSeenAt, detectedAt | 위치 단절 — 진행 중 배송(배정 ~ 완료 전)이 있는 라이더 위치가 3분 넘게 없음, 끊김 한 번에 한 번(사용자 2026-11-14) | ① |
 
 ## 8. Platform & Support
 

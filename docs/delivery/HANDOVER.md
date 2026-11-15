@@ -49,13 +49,18 @@ kickoff §6 "남은 결정"이 정본. 요약:
 - 라이더·지원센터 화면을 기존 백오피스에 넣을지 새로 만들지 — 조사 결과 보고(2026-11-13), 사용자 결정 대기
 - ~~카카오모빌리티 REST 키~~ — **2026-11-13 받음**: PC 5 `deploy/lan/.secrets/kakao-rest-api-key`(git 제외, 길찾기 호출 확인). LAN 설정(pmart-config `{cipher}`) 등록은 PC 1. 키를 문서·커밋·로그에 적지 않는다
 - ~~배차 가능 시간 충돌~~ — **결정 2026-11-13: PMart 배달 서비스 시간 08~24시**
-- CP-1(`CapacityReduced` 영향 주문 처리) — 사용자 결정 필요, 오배송 확인 사건 기록 주체(DD-2)
+- ~~CP-1(`CapacityReduced` 영향 주문 처리), 오배송 확인 사건 기록 주체(DD-2)~~ — **2026-11-15 사용자 "추천대로"**(PC 5 가 추천한 다섯 가지):
+  1. 정지(SUSPENDED)·계약 종료(TERMINATED) 라이더는 **진행 중 배송이 끝난 뒤 로그인을 끊는다**(신규배차 제한은 끊지 않음) — rider-auth `RiderSessionCuts` 구현.
+  2. 위치 끊긴 라이더(`RiderLocationStale`)는 **지원센터 알림만**, 배정 자동 해제 없음 — case R-6 요청, dispatch 는 구독 안 함.
+  3. 제한 검토 대상 알림은 **나중** — 우선 백오피스 목록만.
+  4. 오배송 확인은 **상담원·지원센터가 기록** → 회수 배차 자동(DD-2) — case R-7 요청.
+  5. CP-1: 이미 잡힌 주문은 **유지 + 지연 가능 안내**, 고객이 원하면 시간대 변경·취소(자동으로 옮기거나 취소하지 않음).
 
 ## 5. 토큰·시험
 
 - **라이더 토큰**: LAN 서명키로 만든 시험 라이더 토큰(`typ=RIDER`, `RD-claude-*`, `aud: pmart-api`, 15분) — 서명키는 PC 1 에만 있으니 **PC 1 에 요청**(kickoff §6). 실제 라이더 로그인은 rider-auth-service(라이더 앱 Google 로그인).
 - **직원 토큰**(배송 관리 API·권역 승인 등): 2026-11-13 부터 employee-auth-service 토큰만 — `dev-on-other-pcs.md` §1. 로컬은 `dev-tokens`, LAN 은 `deploy/lan/checks/staff_auth.py`. **배송 쪽 직원 시험 계정은 없다** — 필요하면 PC 1 에 요청(인사팀 등록으로 만든다).
-- 로그아웃하면 그 세션 access token 이 바로 401 `SUBJECT_BLOCKED` — 직원·고객·**라이더**(rider-auth-service 2026-11-13 PC 1 추가: 로그아웃·모든 기기·refresh 재사용). 라이더 **정지** → 세션 끊기(`RiderRestricted`)는 ADR-0054 ⑤ 남은 일.
+- 로그아웃하면 그 세션 access token 이 바로 401 `SUBJECT_BLOCKED` — 직원·고객·**라이더**(rider-auth-service 2026-11-13 PC 1 추가: 로그아웃·모든 기기·refresh 재사용). 라이더 **정지** → 세션 끊기(`RiderRestricted`)는 2026-11-15 rider-auth 에 구현(진행 중 배송이 끝난 뒤 — 위 결정 1).
 - 시험 명령: `./gradlew :services:<서비스>:check`(단위·통합 Testcontainers·계약). OR-Tools 를 넣으면 PC 에서 직접이 막힐 수 있다(PC 3 사례 — `tools/ortools-test-docker.sh`, `docs/mfc/HANDOVER.md`).
 - MFC 쪽 끝까지 확인: `deploy/lan/checks/mfc_e2e.py`(라이더 인계 없음). 추적 Zipkin `http://192.168.0.40:9411`.
 

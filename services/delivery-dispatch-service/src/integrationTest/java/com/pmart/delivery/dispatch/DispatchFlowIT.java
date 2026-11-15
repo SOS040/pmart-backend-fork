@@ -312,6 +312,24 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 .retrieve()
                 .toEntity(String.class));
     assertThat(internal.path("riderId").asString()).isEqualTo(rider);
+    // 라이더가 맡은 배송(rider-auth 정지 라이더 로그인 끊기 시점, 0.3.3)
+    JsonNode active =
+        body(
+            http.get()
+                .uri("/internal/riders/{r}/active-deliveries", rider)
+                .header("X-Source-System", "rider-auth-service")
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(active.path("deliveryIds").valueStream().map(JsonNode::asString).toList())
+        .contains(deliveryId);
+    assertThat(
+            body(http.get()
+                    .uri("/internal/riders/{r}/active-deliveries", "RD-none")
+                    .header("X-Source-System", "rider-auth-service")
+                    .retrieve()
+                    .toEntity(String.class))
+                .path("deliveryIds"))
+        .isEmpty();
 
     send(
         "PackageHandedOver",

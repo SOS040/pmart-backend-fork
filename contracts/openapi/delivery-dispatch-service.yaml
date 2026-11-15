@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.3.2
+  version: 0.3.3
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -336,6 +336,30 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/riders/{riderId}/active-deliveries:
+    get:
+      tags: [internal]
+      summary: '[rider-auth→dispatch] 라이더가 맡고 있는 배송 (0.3.3 — 정지·계약 종료 라이더 로그인 끊기 시점)'
+      x-added-in: '2026-11-15'
+      description: |
+        ASSIGNED·PICKED_UP(배정됐고 아직 끝나지 않은) 배송. 정지(SUSPENDED)·계약 종료(TERMINATED) 라이더는 픽업 전 배정이 풀리고(RiderRestricted 처리) 픽업한 배송만 남는다 —
+        rider-auth-service 가 이 수가 0 이 되면 로그인을 끊는다(사용자 2026-11-15 "추천대로" — 진행 중 배송이 끝난 뒤 끊기). 포장을 일부만 넘겨받은 ASSIGNED 도 들어간다.
+        가입하지 않은·없는 라이더도 빈 목록(200).
+      operationId: getRiderActiveDeliveries
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [riderId, deliveryIds]
+                properties:
+                  riderId: { type: string }
+                  deliveryIds: { type: array, items: { type: string } }
 
   /internal/deliveries/{deliveryId}/assignment:
     get:

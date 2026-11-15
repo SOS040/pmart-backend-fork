@@ -5,7 +5,7 @@
 
 ## 계약
 - REST: `contracts/openapi/rider-auth-service.yaml` → `openApiGenerate` 가 `com.pmart.riderauth.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
-- 이벤트: 발행 `SubjectBlocked`(platform.subject-block.v1, outbox — `application/SessionBlocks`, 2026-11-13). 로그아웃 = 그 세션(`sessionId`, LOGOUT), 모든 기기 = 주체 전체(LOGOUT_ALL), refresh 재사용 = 그 세션(TOKEN_REUSED). 게이트웨이가 받아 이미 나간 access token 을 바로 401 `SUBJECT_BLOCKED`. 구독 없음. `pmart.messaging.domain: platform`(설정 저장소).
+- 이벤트: 발행 `SubjectBlocked`(platform.subject-block.v1, outbox — `application/SessionBlocks`, 2026-11-13). 로그아웃 = 그 세션(`sessionId`, LOGOUT), 모든 기기 = 주체 전체(LOGOUT_ALL), refresh 재사용 = 그 세션(TOKEN_REUSED), 정지 라이더 = 주체 전체(RIDER_RESTRICTED, 2026-11-15). 게이트웨이가 받아 이미 나간 access token 을 바로 401 `SUBJECT_BLOCKED`. 구독 `riderEvents-in-0` ← delivery.rider.v1 `RiderRestricted`(2026-11-15). `pmart.messaging.domain: platform`(설정 저장소).
 
 ## 패키지
 `com.pmart.riderauth.{api, application, infrastructure}` — rider-service(`com.pmart.rider`)와 겹치지 않게. Controller 에 업무 규칙 금지.
@@ -37,5 +37,5 @@
 
 ## 상태
 2026-11-10 구현(ADR-0054 ④): 로그인·결과 조회·갱신·로그아웃·현재 세션·JWKS. LAN 배치 2026-11-11(PC 5, ADR-0054 결정 J 전체 재배포). 2026-11-13 로그아웃·재사용 즉시 차단(SubjectBlocked — 사용자 "라이더 로그아웃즉시 차단도 해줘").
-- 나중: 라이더 정지(`RiderRestricted`, rider-service)를 받아 세션 끊기·차단 목록(ADR-0054 ⑤). 그 전까지 정지 라이더 차단은 rider-service 업무 상태가 맡는다.
+- **정지 라이더 로그인 끊기(2026-11-15, ADR-0054 ⑤ 라이더 정지 — 사용자 "추천대로": 진행 중 배송이 끝난 뒤 끊기, 신규배차 제한은 끊지 않음)**: `application/RiderSessionCuts`, V2 `rider_session_cut`. `RiderRestricted` SUSPENDED·TERMINATED → PENDING(aggregateVersion = 라이더 행 버전, 낮거나 같으면 버림), 그 밖 → LIFTED. `sweep`(`pmart.rider-auth.session-cut-interval` 1분)이 PENDING 마다 dispatch `GET /internal/riders/{id}/active-deliveries`(`infrastructure/DispatchClient`, `pmart.rider-auth.dispatch-base-url` 기본 `http://delivery-dispatch-service:8404`, 트랜잭션 밖)를 보고 비었으면 잠금 아래 다시 확인 → 모든 세션 REVOKED(`RIDER_RESTRICTED`) + `SubjectBlocked`(주체 전체) → DONE. 기한(`to`)이 지났으면 끊지 않고 LIFTED. dispatch 장애면 다음 점검에. **DONE 이고 제한이 유효하면 새 로그인 403 ACCOUNT_NOT_AVAILABLE**(로그인·같은 키 재전송 둘 다). PENDING 동안은 로그인 된다(픽업한 배송 마무리). 처음 켜기 전 소비 그룹 시작 위치 = latest(지난 제한은 rider-service 상태가 이미 막음).
 - 주체 비활성(`rider_account.state=DISABLED`)을 바꾸는 API 는 아직 없다.

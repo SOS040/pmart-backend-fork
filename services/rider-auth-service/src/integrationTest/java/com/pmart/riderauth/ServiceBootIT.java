@@ -2,7 +2,7 @@ package com.pmart.riderauth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.pmart.common.test.PostgresContainerSupport;
+import com.pmart.common.test.PostgresKafkaContainerSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -15,7 +15,7 @@ import org.springframework.web.client.RestClient;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {"spring.main.banner-mode=off", "pmart.rider-auth.signing.ephemeral=true"})
-class ServiceBootIT extends PostgresContainerSupport {
+class ServiceBootIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
 
