@@ -15,7 +15,18 @@ if [ "$1" = pmart-pc1 ]; then
   rc=$(cat "$rcf"); rm -f "$rcf"
   exit "${rc:-1}"
 fi
-{ ssh -o BatchMode=yes -o ConnectTimeout=10 "$1" "powershell -NoProfile -NonInteractive -EncodedCommand $enc" 2>&1; echo $? > "$rcf"; } \
-  | grep -v -E 'post-quantum|store now|pq.html|^#< CLIXML|^<Objs' || true
-rc=$(cat "$rcf"); rm -f "$rcf"
+# 컴퓨터 이름은 DNS 가 아니라 LLMNR/NetBIOS(방송)로만 찾는다 — 상대 PC 가 바쁘면(배포 중) 가끔 "Could not resolve hostname" 으로 실패한다
+# (2026-11-15 두 번). 이름을 못 찾았으면 원격에서 아무것도 돌지 않았으므로 3초 쉬고 다시(최대 3번). 그 밖의 실패는 다시 하지 않는다
+out=$(mktemp)
+for attempt in 1 2 3; do
+  { ssh -o BatchMode=yes -o ConnectTimeout=10 "$1" "powershell -NoProfile -NonInteractive -EncodedCommand $enc" 2>&1; echo $? > "$rcf"; } \
+    | tee "$out" | grep -v -E 'post-quantum|store now|pq.html|^#< CLIXML|^<Objs|Could not resolve hostname' || true
+  rc=$(cat "$rcf")
+  if [ "$rc" = 255 ] && grep -q 'Could not resolve hostname' "$out" && [ "$attempt" -lt 3 ]; then
+    echo "($1 이름 해석 실패 — 3초 뒤 다시 $((attempt + 1))/3)" >&2; sleep 3; continue
+  fi
+  grep -q 'Could not resolve hostname' "$out" && grep 'Could not resolve hostname' "$out" >&2
+  break
+done
+rm -f "$rcf" "$out"
 exit "${rc:-1}"

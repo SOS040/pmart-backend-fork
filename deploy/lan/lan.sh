@@ -53,11 +53,22 @@ copy_files() {
     (cd "$OUT/$pc" && cp -r $(ls -A | grep -v '^target$') "$dst/") || { echo "$pc 파일 복사 실패 — 배포 중단" >&2; return 1; }
     return 0
   fi
-  if ! out="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force $env:USERPROFILE\pmart-lan | Out-Null"' 2>&1)"; then
-    printf '%s\n' "$out" | grep -v -E 'post-quantum|store now|pq.html' >&2
-    echo "$pc($host) 접속 실패 — 배포 중단" >&2; return 1
-  fi
-  if ! out="$(cd "$OUT/$pc" && scp -q -o BatchMode=yes -o ConnectTimeout=10 -r $(ls -A | grep -v '^target$') "$host:pmart-lan/" 2>&1)"; then
+  # 컴퓨터 이름 해석(LLMNR) 실패만 3초 쉬고 다시(최대 3번) — 원격에서 아무것도 하지 않은 실패라 다시 해도 된다(run-ps.sh 와 같음, 2026-11-15)
+  local attempt
+  for attempt in 1 2 3; do
+    out="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force $env:USERPROFILE\pmart-lan | Out-Null"' 2>&1)" && break
+    [[ "$out" == *"Could not resolve hostname"* && $attempt -lt 3 ]] || {
+      printf '%s\n' "$out" | grep -v -E 'post-quantum|store now|pq.html' >&2
+      echo "$pc($host) 접속 실패 — 배포 중단" >&2; return 1; }
+    echo "($host 이름 해석 실패 — 3초 뒤 다시)" >&2; sleep 3
+  done
+  local rc=1
+  for attempt in 1 2 3; do
+    out="$(cd "$OUT/$pc" && scp -q -o BatchMode=yes -o ConnectTimeout=10 -r $(ls -A | grep -v '^target$') "$host:pmart-lan/" 2>&1)" && { rc=0; break; }
+    [[ "$out" == *"Could not resolve hostname"* && $attempt -lt 3 ]] || break
+    echo "($host 이름 해석 실패 — 3초 뒤 다시)" >&2; sleep 3
+  done
+  if [ "$rc" != 0 ]; then
     printf '%s\n' "$out" | grep -v -E 'post-quantum|store now|pq.html' >&2
     echo "$pc($host) 파일 복사 실패 — 배포 중단(실행 중인 컨테이너가 바인드 파일을 잡고 있는지 확인)" >&2; return 1
   fi
