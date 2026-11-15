@@ -1,13 +1,16 @@
 openapi: 3.1.0
 info:
   title: review-service
-  version: 0.1.0
+  version: 0.2.0
   x-stage: 2
   description: |
     리뷰·사진·평점, 작성/수정/삭제 이력(REV_ELIGIBLE→SUBMIT_PENDING→PUBLISHED→LOCKED(3일) / DELETED), 자격(품목별 실제 배송완료 후 14일 1건)의 정본. (docs/architecture/service-map.md §1, 2단계)
     비정본: 배송완료 사실(delivery-execution/order), 신고·차단 정책 [팀 확인 필요]. 평점 집계 투영은 product-content.
     발행: ReviewPublished, ReviewDeleted. 구독: DeliveryCompleted(자격 시작. 분할배송은 품목별 실제 수령 시각).
     최초 등록 후 3일 미만만 수정, 삭제 후 재작성 불가.
+    0.2.0(2026-11-16, 구현): 사진 올리기·보기(`/review-photos`, 리뷰당 5장·장당 10MB·JPEG/PNG/WEBP — 사용자 결정), 자격에 상품명(주문 당시 사본).
+    자격은 DeliveryCompleted(품목별 첫 수령 시각)로 생긴다. 작성 때 주문 원장으로 다시 확인 — 그 품목이 받은 수량만큼 모두 반품되었으면 NOT_ELIGIBLE(사용자 결정 "전체 환불이면 새 작성 막기", 이미 쓴 리뷰는 그대로).
+    작성자 표시는 고객 별명을 가린 값(customer-service 내부 조회, 작성 때 한 번 저장). 운영자 숨김·신고는 아직 없다(사용자 결정 — 정책 승인 전).
 servers:
   - url: /api/v1
 security:
@@ -15,6 +18,7 @@ security:
 tags:
   - { name: eligibilities, description: 본인 리뷰 작성 자격 }
   - { name: reviews, description: 리뷰 작성·수정·삭제·조회 }
+  - { name: photos, description: 리뷰 사진 올리기·본문(비공개 버킷을 이 서비스가 대신 읽어 준다) }
   - { name: internal, description: 서비스 간 조회(서비스 토큰) }
 
 paths:
@@ -64,7 +68,7 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: NOT_ELIGIBLE (배송완료 사실 없음) / ELIGIBILITY_EXPIRED (14일 경과) / ALREADY_REVIEWED / REWRITE_AFTER_DELETE_FORBIDDEN
+          description: NOT_ELIGIBLE (배송완료 사실 없음·남의 품목·받은 수량 전부 반품) / ELIGIBILITY_EXPIRED (14일 경과) / ALREADY_REVIEWED / REWRITE_AFTER_DELETE_FORBIDDEN / PHOTO_NOT_FOUND (내가 올린 사진이 아니거나 다른 리뷰에 쓰임)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -118,12 +122,17 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: PHOTO_NOT_FOUND (내가 올린 사진이 아니거나 다른 리뷰에 쓰임)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
     delete:
       tags: [reviews]
       summary: 리뷰 삭제 (삭제 후 재작성 불가. ReviewDeleted 발행)
       operationId: deleteReview
       x-pmart-user-types: [CUSTOMER]
-      x-pmart-user-types-note: "추정 — 작성자 본인 삭제로 봄(운영 측 차단은 content/case 경로), 서비스 미구현"
+      x-pmart-user-types-note: "작성자 본인 삭제(운영자 숨김은 아직 없음 — 2026-11-16 사용자 결정)"
       parameters:
         - { name: reviewId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -161,6 +170,62 @@ paths:
                       averageRating: { type: number }
                       reviewCount: { type: integer }
 
+  /review-photos:
+    post:
+      tags: [photos]
+      summary: 리뷰 사진 올리기 (리뷰 작성·수정 전에 한 장씩)
+      description: |
+        JPEG·PNG·WEBP(파일 앞부분으로 판정), 장당 10MB 이하. 돌려준 photoId 를 작성·수정의 photoIds 에 넣는다(리뷰당 5장).
+        올린 사람만 그 사진을 리뷰에 붙일 수 있다. 24시간 안에 리뷰에 붙지 않은 사진은 지운다. 같은 Idempotency-Key 재전송은 같은 photoId.
+      operationId: uploadReviewPhoto
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: 저장
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewPhoto' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: PHOTO_INVALID (형식·크기)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /review-photos/{photoId}:
+    get:
+      tags: [photos]
+      summary: 리뷰 사진 본문 (공개 리뷰에 붙은 사진만 — 토큰 없이 `<img src>`)
+      operationId: getReviewPhoto
+      security: []
+      parameters:
+        - { name: photoId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 이미지 바이트(바뀌지 않으므로 긴 캐시)
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   # ---------- internal (서비스 토큰) ----------
   /internal/reviews/{reviewId}:
     get:
@@ -196,6 +261,7 @@ components:
         orderLineId: { type: string }
         sku: { $ref: '_common.yaml#/components/schemas/Sku' }
         productId: { type: string }
+        productName: { type: [string, 'null'], description: 주문 당시 상품명 사본(없을 수 있다) }
         deliveredAt: { type: string, format: date-time, description: 품목별 실제 수령 시각 }
         eligibleUntil: { type: string, format: date-time, description: deliveredAt + 14일 }
         state: { $ref: '#/components/schemas/ReviewState' }
@@ -207,7 +273,7 @@ components:
         orderLineId: { type: string }
         rating: { type: integer, minimum: 1, maximum: 5 }
         text: { type: string, maxLength: 1000 }
-        photoIds: { type: array, maxItems: 5, items: { type: string }, description: 업로드 완료된 사진 ID }
+        photoIds: { type: array, maxItems: 5, items: { type: string }, description: 업로드 완료된 사진 ID (POST /review-photos) }
     Review:
       type: object
       required: [reviewId, productId, rating, state, createdAt]
@@ -224,12 +290,21 @@ components:
             type: object
             properties:
               photoId: { type: string }
-              url: { type: string, format: uri }
+              url: { type: string, description: '사진 본문 경로 (/api/v1/review-photos/{photoId})' }
         state: { $ref: '#/components/schemas/ReviewState' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
         createdAt: { type: string, format: date-time }
         editableUntil: { type: string, format: date-time, description: createdAt + 3일 }
         updatedAt: { type: [string, 'null'], format: date-time }
+    ReviewPhoto:
+      type: object
+      required: [photoId, contentType, sizeBytes, uploadedAt]
+      properties:
+        photoId: { type: string }
+        url: { type: string, description: '사진 본문 경로 (/api/v1/review-photos/{photoId}) — 공개 리뷰에 붙은 뒤에만 열린다' }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        sizeBytes: { type: integer, format: int64 }
+        uploadedAt: { type: string, format: date-time }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

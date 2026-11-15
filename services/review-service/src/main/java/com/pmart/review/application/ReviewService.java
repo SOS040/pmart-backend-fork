@@ -1,0 +1,553 @@
+package com.pmart.review.application;
+
+import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.messaging.EventPublisher;
+import com.pmart.common.messaging.RequestIdempotency;
+import com.pmart.common.messaging.RequestIdempotency.RequestKey;
+import com.pmart.common.security.PmartPrincipal;
+import com.pmart.common.web.ErrorCode;
+import com.pmart.common.web.PmartException;
+import com.pmart.review.domain.ReviewRules;
+import com.pmart.review.infrastructure.ReviewStore;
+import com.pmart.review.infrastructure.ReviewStore.EligibilityRow;
+import com.pmart.review.infrastructure.ReviewStore.EligibilityView;
+import com.pmart.review.infrastructure.ReviewStore.PhotoRow;
+import com.pmart.review.infrastructure.ReviewStore.ReviewRow;
+import com.pmart.review.infrastructure.Upstreams;
+import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+
+/**
+ * 리뷰(2026-11-16, 계약 0.2.0 — ADR-0063). 규칙은 {@link ReviewRules}.
+ *
+ * <ul>
+ *   <li>자격: {@code DeliveryCompleted}(delivery.delivery.v1)의 품목마다. 계정·SKU·상품·상품명은 order 내부 조회 사본.
+ *   <li>작성·수정·삭제는 본인(고객 토큰)만. 발행 {@code ReviewPublished}(작성·수정 — 별점이 바뀔 수 있다)·{@code ReviewDeleted}
+ *       (commerce.review.v1) — product-content 평점 집계가 받는다.
+ *   <li>리뷰 내용·별명은 로그에 남기지 않는다.
+ * </ul>
+ */
+@Service
+public class ReviewService {
+
+  private static final Logger log = LoggerFactory.getLogger(ReviewService.class);
+  private static final String AGGREGATE = "Review";
+  private static final String ANONYMOUS_AUTHOR = "PMart 고객";
+
+  /** 리뷰 한 건과 사진·계약 상태. deliveredAt 은 내부 조회에만. */
+  public record ReviewView(
+      ReviewRow row, List<PhotoRow> photos, String state, @Nullable Instant deliveredAt) {}
+
+  public record EligibilityPage(List<EligibilityItem> items, @Nullable String nextCursor) {}
+
+  public record EligibilityItem(EligibilityRow row, String state, @Nullable String reviewId) {}
+
+  public record ReviewPage(
+      List<ReviewView> items, @Nullable String nextCursor, @Nullable Double average, int count) {}
+
+  public record Photo(PhotoRow row, InputStream body) {}
+
+  public record CreateCommand(
+      String orderLineId, int rating, @Nullable String text, List<String> photoIds) {}
+
+  public record UpdateCommand(
+      @Nullable Integer rating, @Nullable String text, @Nullable List<String> photoIds) {}
+
+  private final ReviewStore store;
+  private final Upstreams upstreams;
+  private final ReviewPhotoStorage photos;
+  private final EventPublisher events;
+  private final RequestIdempotency idempotency;
+  private final Clock clock;
+
+  public ReviewService(
+      ReviewStore store,
+      Upstreams upstreams,
+      ReviewPhotoStorage photos,
+      EventPublisher events,
+      RequestIdempotency idempotency,
+      Clock clock) {
+    this.store = store;
+    this.upstreams = upstreams;
+    this.photos = photos;
+    this.events = events;
+    this.idempotency = idempotency;
+    this.clock = clock;
+  }
+
+  // ---------------------------------------------------------------- 자격(inbox 트랜잭션 안)
+
+  /** 배송 완료 → 품목마다 자격. 주문을 못 찾으면(시험 배송 등) 건너뛴다. order 장애는 예외 → 재시도·DLT. */
+  public void onDeliveryCompleted(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String orderId = text(p, "orderId");
+    String deliveredAt = text(p, "deliveredAt");
+    if (orderId == null || deliveredAt == null) {
+      throw new IllegalArgumentException("orderId·deliveredAt 없음"); // 계약 위반 → DLT
+    }
+    Upstreams.Order order = upstreams.order(orderId);
+    if (order == null) {
+      log.warn("배송 완료 {} — 주문 {} 이 order 에 없어 리뷰 자격을 만들지 않음", text(p, "deliveryId"), orderId);
+      return;
+    }
+    Instant at = Instant.parse(deliveredAt);
+    Instant now = now();
+    int n = 0;
+    for (JsonNode l : p.path("lines")) {
+      String lineId = text(l, "orderLineId");
+      int qty = l.path("qty").asInt(0);
+      if (lineId == null || qty <= 0) {
+        continue;
+      }
+      Upstreams.OrderLine ol = order.line(lineId);
+      if (ol == null) {
+        log.warn("배송 완료 품목 {} 이 주문 {} 에 없음 — 건너뜀", lineId, orderId);
+        continue;
+      }
+      store.upsertEligibility(
+          new EligibilityRow(
+              lineId,
+              orderId,
+              order.accountId(),
+              ol.sku(),
+              ol.productId(),
+              ol.productName(),
+              qty,
+              at,
+              text(p, "deliveryId")),
+          now);
+      n++;
+    }
+    log.info("배송 완료 {} → 리뷰 자격 {}건", text(p, "deliveryId"), n);
+  }
+
+  public EligibilityPage eligibilities(
+      @Nullable String orderId, @Nullable String state, @Nullable String cursor, int size) {
+    PmartPrincipal c = customer();
+    int offset = offset(cursor);
+    Instant now = now();
+    List<EligibilityView> rows =
+        store.eligibilities(c.subject(), blankToNull(orderId), state, now, offset, size + 1);
+    boolean more = rows.size() > size;
+    List<EligibilityItem> items = new ArrayList<>();
+    for (EligibilityView v : rows.subList(0, Math.min(size, rows.size()))) {
+      items.add(
+          new EligibilityItem(
+              v.e(),
+              ReviewRules.eligibilityState(
+                  v.reviewState(), v.reviewCreatedAt(), v.e().deliveredAt(), now),
+              v.reviewId()));
+    }
+    return new EligibilityPage(items, more ? String.valueOf(offset + size) : null);
+  }
+
+  // ---------------------------------------------------------------- 작성·수정·삭제
+
+  public ReviewView create(String requestId, String sourceSystem, CreateCommand cmd) {
+    PmartPrincipal c = customer();
+    String text = normalize(cmd.text());
+    List<String> photoIds = List.copyOf(cmd.photoIds());
+    ReviewRules.inputProblem(cmd.rating(), true, text, photoIds)
+        .ifPresent(
+            m -> {
+              throw new PmartException(ErrorCode.VALIDATION_FAILED, m);
+            });
+    String lineId = cmd.orderLineId().strip();
+    EligibilityRow e =
+        store
+            .eligibility(lineId)
+            .filter(x -> x.accountId().equals(c.subject()) && x.productId() != null)
+            .orElseThrow(() -> rejected("NOT_ELIGIBLE", "리뷰를 쓸 수 있는 배송 완료 품목이 아닙니다."));
+    // 반품 확인(트랜잭션 밖 — order 장애면 503, 지어내지 않음). 받은 수량 전부 반품이면 새로 못 쓴다(사용자 결정).
+    Upstreams.Order order = upstreams.order(e.orderId());
+    Upstreams.OrderLine ol = order == null ? null : order.line(lineId);
+    if (ol != null && ReviewRules.fullyReturned(e.deliveredQty(), ol.returnedQty())) {
+      throw rejected("NOT_ELIGIBLE", "받은 수량이 모두 반품된 품목은 리뷰를 쓸 수 없습니다.");
+    }
+    String author = Objects.requireNonNullElse(upstreams.authorName(c.subject()), ANONYMOUS_AUTHOR);
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("orderLineId", lineId);
+    req.put("rating", cmd.rating());
+    req.put("text", text);
+    req.put("photoIds", photoIds);
+    String reviewId =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, requestId, "createReview", c.subject()),
+                req,
+                String.class,
+                () -> {
+                  Instant now = now();
+                  EligibilityRow locked =
+                      store.lockEligibility(lineId).orElseThrow(); // 위에서 있음을 확인했다
+                  var existing = store.reviewOfLine(lineId);
+                  if (existing.isPresent()) {
+                    throw ReviewRules.DELETED.equals(existing.get().state())
+                        ? rejected("REWRITE_AFTER_DELETE_FORBIDDEN", "삭제한 리뷰는 다시 쓸 수 없습니다.")
+                        : rejected("ALREADY_REVIEWED", "이미 리뷰를 쓴 품목입니다.");
+                  }
+                  if (!ReviewRules.withinWriteWindow(locked.deliveredAt(), now)) {
+                    throw rejected("ELIGIBILITY_EXPIRED", "리뷰 작성 기간(배송 완료 후 14일)이 지났습니다.");
+                  }
+                  String id = "RV-" + UUID.randomUUID();
+                  ReviewRow r =
+                      new ReviewRow(
+                          id,
+                          lineId,
+                          locked.orderId(),
+                          c.subject(),
+                          Objects.requireNonNull(locked.productId()),
+                          locked.sku(),
+                          author,
+                          cmd.rating(),
+                          text,
+                          ReviewRules.PUBLISHED,
+                          1,
+                          now,
+                          null,
+                          null);
+                  store.insertReview(r);
+                  attach(id, c.subject(), photoIds);
+                  publishPublished(r, now);
+                  log.info("리뷰 {} 작성(품목 {}, 사진 {}장)", id, lineId, photoIds.size());
+                  return id;
+                })
+            .value();
+    return view(store.review(reviewId).orElseThrow(), false);
+  }
+
+  public ReviewView update(
+      String reviewId,
+      String requestId,
+      String sourceSystem,
+      UpdateCommand cmd,
+      @Nullable Integer expectedVersion) {
+    PmartPrincipal c = customer();
+    String text = cmd.text() == null ? null : normalize(cmd.text());
+    if (cmd.rating() == null && cmd.text() == null && cmd.photoIds() == null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "바꿀 값이 없습니다.");
+    }
+    ReviewRules.inputProblem(cmd.rating(), false, text, cmd.photoIds())
+        .ifPresent(
+            m -> {
+              throw new PmartException(ErrorCode.VALIDATION_FAILED, m);
+            });
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("reviewId", reviewId);
+    req.put("rating", cmd.rating());
+    req.put("text", cmd.text() == null ? null : text);
+    req.put("textGiven", cmd.text() != null);
+    req.put("photoIds", cmd.photoIds());
+    req.put("expectedVersion", expectedVersion);
+    idempotency.execute(
+        new RequestKey(sourceSystem, requestId, "updateReview:" + reviewId, c.subject()),
+        req,
+        String.class,
+        () -> {
+          Instant now = now();
+          ReviewRow r = own(store.lockReview(reviewId), c);
+          if (ReviewRules.DELETED.equals(r.state())) {
+            throw PmartException.invalidState("삭제된 리뷰는 고칠 수 없습니다.");
+          }
+          if (!ReviewRules.editable(r.createdAt(), now)) {
+            throw PmartException.invalidState("등록 후 3일이 지난 리뷰는 고칠 수 없습니다.");
+          }
+          if (expectedVersion != null && expectedVersion != r.version()) {
+            throw PmartException.versionConflict("다른 변경이 먼저 반영되었습니다(현재 " + r.version() + ").");
+          }
+          int rating = cmd.rating() == null ? r.rating() : cmd.rating();
+          String body = cmd.text() == null ? r.body() : text;
+          int version = r.version() + 1;
+          if (cmd.photoIds() != null) {
+            store.detachPhotosExcept(reviewId, cmd.photoIds(), now);
+            attach(reviewId, c.subject(), cmd.photoIds());
+          }
+          store.updateReview(reviewId, rating, body, version, now);
+          publishPublished(
+              new ReviewRow(
+                  r.reviewId(),
+                  r.orderLineId(),
+                  r.orderId(),
+                  r.accountId(),
+                  r.productId(),
+                  r.sku(),
+                  r.authorName(),
+                  rating,
+                  body,
+                  r.state(),
+                  version,
+                  r.createdAt(),
+                  now,
+                  null),
+              now);
+          log.info("리뷰 {} 수정(v{})", reviewId, version);
+          return reviewId;
+        });
+    return view(store.review(reviewId).orElseThrow(), false);
+  }
+
+  /** 삭제(멱등 — 이미 삭제면 그대로 성공). 행은 남겨 재작성을 막는다. 사진은 증빙 보존을 위해 지우지 않는다(공개만 닫힘). */
+  public void delete(String reviewId, String requestId, String sourceSystem) {
+    PmartPrincipal c = customer();
+    idempotency.execute(
+        new RequestKey(sourceSystem, requestId, "deleteReview:" + reviewId, c.subject()),
+        Map.of("reviewId", reviewId),
+        String.class,
+        () -> {
+          ReviewRow r = own(store.lockReview(reviewId), c);
+          if (ReviewRules.DELETED.equals(r.state())) {
+            return reviewId;
+          }
+          Instant now = now();
+          int version = r.version() + 1;
+          store.markDeleted(reviewId, version, now);
+          Map<String, Object> m = new LinkedHashMap<>();
+          m.put("reviewId", r.reviewId());
+          m.put("orderLineId", r.orderLineId());
+          m.put("productId", r.productId());
+          m.put("rating", r.rating());
+          m.put("deletedAt", now.toString());
+          m.put("reason", "AUTHOR_DELETED");
+          events.publish(
+              "ReviewDeleted",
+              1,
+              AGGREGATE,
+              r.reviewId(),
+              version,
+              new EventEnvelope.Actor(EventEnvelope.ActorType.CUSTOMER, c.subject()),
+              m);
+          log.info("리뷰 {} 삭제", reviewId);
+          return reviewId;
+        });
+  }
+
+  // ---------------------------------------------------------------- 조회
+
+  /** 공개 단건(삭제된 것은 404). */
+  public ReviewView get(String reviewId) {
+    ReviewRow r =
+        store
+            .review(reviewId)
+            .filter(x -> !ReviewRules.DELETED.equals(x.state()))
+            .orElseThrow(() -> PmartException.notFound("REVIEW_NOT_FOUND", "리뷰가 없습니다."));
+    return view(r, false);
+  }
+
+  /** 내부 조회(삭제 포함, 자격 근거 시각). */
+  public ReviewView internal(String reviewId) {
+    ReviewRow r =
+        store
+            .review(reviewId)
+            .orElseThrow(() -> PmartException.notFound("REVIEW_NOT_FOUND", "리뷰가 없습니다."));
+    return view(r, true);
+  }
+
+  public ReviewPage productReviews(
+      String productId,
+      @Nullable String sort,
+      boolean withPhotoOnly,
+      @Nullable String cursor,
+      int size) {
+    int offset = offset(cursor);
+    List<ReviewRow> rows =
+        store.productReviews(
+            productId, sort == null ? "NEWEST" : sort, withPhotoOnly, offset, size + 1);
+    boolean more = rows.size() > size;
+    List<ReviewRow> page = rows.subList(0, Math.min(size, rows.size()));
+    Map<String, List<PhotoRow>> byReview =
+        store.photosOf(page.stream().map(ReviewRow::reviewId).toList()).stream()
+            .collect(Collectors.groupingBy(p -> Objects.requireNonNull(p.reviewId())));
+    Instant now = now();
+    List<ReviewView> items =
+        page.stream()
+            .map(
+                r ->
+                    new ReviewView(
+                        r,
+                        byReview.getOrDefault(r.reviewId(), List.of()),
+                        ReviewRules.reviewState(r.state(), r.createdAt(), now),
+                        null))
+            .toList();
+    ReviewStore.Summary s = store.summary(productId);
+    return new ReviewPage(
+        items, more ? String.valueOf(offset + size) : null, s.average(), s.count());
+  }
+
+  // ---------------------------------------------------------------- 사진
+
+  public PhotoRow uploadPhoto(String requestId, String sourceSystem, byte[] bytes) {
+    PmartPrincipal c = customer();
+    ReviewRules.photoProblem(bytes)
+        .ifPresent(
+            m -> {
+              throw new PmartException(
+                  "PHOTO_INVALID", HttpStatus.UNPROCESSABLE_CONTENT, m, false, List.of());
+            });
+    String type = ReviewRules.photoType(bytes).orElseThrow();
+    String sha = sha256(bytes);
+    String photoId =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, requestId, "uploadReviewPhoto", c.subject()),
+                Map.of("sha256", sha, "size", bytes.length),
+                String.class,
+                () -> {
+                  String id = "RPH-" + UUID.randomUUID();
+                  String key = "review-photos/" + c.subject() + "/" + id;
+                  photos.put(key, bytes, type); // 실패하면 행도 남지 않는다(같은 트랜잭션에서 예외)
+                  store.insertPhoto(
+                      new PhotoRow(id, c.subject(), key, type, bytes.length, sha, now(), null));
+                  return id;
+                })
+            .value();
+    return store.photo(photoId).orElseThrow();
+  }
+
+  /** 공개 리뷰에 붙은 사진만 본문을 준다. */
+  public Photo photo(String photoId) {
+    PhotoRow p =
+        store
+            .photo(photoId)
+            .filter(
+                x ->
+                    x.reviewId() != null
+                        && store
+                            .review(x.reviewId())
+                            .map(r -> ReviewRules.PUBLISHED.equals(r.state()))
+                            .orElse(false))
+            .orElseThrow(() -> PmartException.notFound("PHOTO_NOT_FOUND", "사진이 없습니다."));
+    return new Photo(p, photos.get(p.objectKey()));
+  }
+
+  /** 붙지 않은(또는 떨어진) 지 하루 지난 사진 정리. */
+  public int sweepOrphanPhotos() {
+    int n = 0;
+    for (PhotoRow p : store.orphanPhotos(now().minus(ReviewRules.ORPHAN_PHOTO_TTL), 100)) {
+      if (photos.delete(p.objectKey())) {
+        store.deletePhoto(p.photoId());
+        n++;
+      }
+    }
+    return n;
+  }
+
+  // ---------------------------------------------------------------- 내부
+
+  private void attach(String reviewId, String accountId, List<String> photoIds) {
+    if (photoIds.isEmpty()) {
+      return;
+    }
+    if (store.attachPhotos(reviewId, accountId, photoIds) != photoIds.size()) {
+      throw rejected("PHOTO_NOT_FOUND", "내가 올린 사진이 아니거나 다른 리뷰에 쓰인 사진입니다."); // 트랜잭션째 되돌린다
+    }
+  }
+
+  private void publishPublished(ReviewRow r, Instant now) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("reviewId", r.reviewId());
+    m.put("orderLineId", r.orderLineId());
+    m.put("orderId", r.orderId());
+    m.put("productId", r.productId());
+    m.put("accountId", r.accountId());
+    m.put("rating", r.rating());
+    m.put("publishedAt", now.toString());
+    events.publish(
+        "ReviewPublished",
+        1,
+        AGGREGATE,
+        r.reviewId(),
+        r.version(),
+        new EventEnvelope.Actor(EventEnvelope.ActorType.CUSTOMER, r.accountId()),
+        m);
+  }
+
+  private ReviewView view(ReviewRow r, boolean withDelivery) {
+    Instant deliveredAt =
+        withDelivery
+            ? store.eligibility(r.orderLineId()).map(EligibilityRow::deliveredAt).orElse(null)
+            : null;
+    return new ReviewView(
+        r,
+        store.photosOf(r.reviewId()),
+        ReviewRules.reviewState(r.state(), r.createdAt(), now()),
+        deliveredAt);
+  }
+
+  private static ReviewRow own(java.util.Optional<ReviewRow> r, PmartPrincipal c) {
+    // 남의 리뷰는 없는 것과 같게(404) — 존재를 알리지 않는다
+    return r.filter(x -> x.accountId().equals(c.subject()))
+        .orElseThrow(() -> PmartException.notFound("REVIEW_NOT_FOUND", "리뷰가 없습니다."));
+  }
+
+  private static PmartPrincipal customer() {
+    return PmartPrincipal.current()
+        .filter(x -> x.type() == PmartPrincipal.PrincipalType.CUSTOMER)
+        .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "회원 고객만 할 수 있습니다."));
+  }
+
+  private static PmartException rejected(String code, String message) {
+    return new PmartException(code, HttpStatus.UNPROCESSABLE_CONTENT, message, false, List.of());
+  }
+
+  private static @Nullable String normalize(@Nullable String text) {
+    if (text == null) {
+      return null;
+    }
+    String v = text.strip();
+    return v.isEmpty() ? null : v;
+  }
+
+  private static @Nullable String blankToNull(@Nullable String s) {
+    return s == null || s.isBlank() ? null : s.strip();
+  }
+
+  private static @Nullable String text(JsonNode n, String field) {
+    JsonNode v = n.get(field);
+    return v == null || v.isNull() ? null : v.asString();
+  }
+
+  private static int offset(@Nullable String cursor) {
+    if (cursor == null || cursor.isBlank()) {
+      return 0;
+    }
+    try {
+      int n = Integer.parseInt(cursor);
+      if (n < 0 || n > 100_000) {
+        throw new NumberFormatException();
+      }
+      return n;
+    } catch (NumberFormatException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
+    }
+  }
+
+  private static String sha256(byte[] b) {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(b));
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private Instant now() {
+    return clock.instant().truncatedTo(ChronoUnit.MICROS);
+  }
+}

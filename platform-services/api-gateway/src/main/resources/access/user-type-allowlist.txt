@@ -192,6 +192,7 @@ GET /api/v1/replenishment-moves/{moveId} OPERATOR
 GET /api/v1/replenishment-status OPERATOR
 GET /api/v1/return-inspections/{returnInspectionId} OPERATOR
 GET /api/v1/return-receipts/{returnReceiptId} OPERATOR
+GET /api/v1/review-photos/{photoId} PUBLIC
 GET /api/v1/reviews/{reviewId} PUBLIC
 GET /api/v1/rider-auth/sessions/current RIDER
 GET /api/v1/rider-auth/social-logins/{authRequestId} PUBLIC
@@ -413,6 +414,7 @@ POST /api/v1/recalls OPERATOR
 POST /api/v1/replenishment-moves OPERATOR
 POST /api/v1/return-inspections OPERATOR
 POST /api/v1/return-receipts OPERATOR
+POST /api/v1/review-photos CUSTOMER
 POST /api/v1/reviews CUSTOMER
 POST /api/v1/rider-auth/logouts RIDER
 POST /api/v1/rider-auth/social-logins PUBLIC

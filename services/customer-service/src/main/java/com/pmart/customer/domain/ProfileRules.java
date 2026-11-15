@@ -33,6 +33,23 @@ public final class ProfileRules {
     return raw == null ? null : raw.strip();
   }
 
+  /** 별명이 없을 때 리뷰 작성자 표시. */
+  public static final String ANONYMOUS_AUTHOR = "PMart 고객";
+
+  /**
+   * 리뷰 작성자 표시(계약 0.2.0 review-author): 별명 첫 글자 + 나머지 글자 수만큼 *(최대 4개). 별명이 없거나 비면 {@link
+   * #ANONYMOUS_AUTHOR}. 글자는 코드 포인트로 센다.
+   */
+  public static String maskedAuthor(@Nullable String nickname) {
+    String v = nickname == null ? "" : nickname.strip();
+    if (v.isEmpty()) {
+      return ANONYMOUS_AUTHOR;
+    }
+    int first = v.codePointAt(0);
+    int rest = Math.min(4, Math.max(1, v.codePointCount(0, v.length()) - 1));
+    return new String(Character.toChars(first)) + "*".repeat(rest);
+  }
+
   /** 탈퇴 신청 이후(WITHDRAW_PENDING·WITHDRAW_COMPLETED)는 프로필을 바꿀 수 없다(계약 409 INVALID_STATE). */
   public static boolean changeable(String status) {
     return "ACTIVE".equals(status);

@@ -55,6 +55,7 @@ val services = listOf<String>(
     "cdc-inventory-service",
     "center-master-service",
     "case-service",
+    "review-service", // 리뷰(2026-11-16 1차 구현 — ADR-0063)
     "approval-service",
     "ai-assistant-service", // 1차 RAG 앞당김(ADR-0036)
     "customer-assistant-service", // 고객앱 RAG(ADR-0051)

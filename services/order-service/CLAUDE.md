@@ -43,7 +43,7 @@
 - 초안 조회: 확정 주문이 있거나 사가 COMPLETED → CONFIRMED·DONE. RECONCILIATION_REQUIRED → PAYMENT_UNKNOWN·WAIT, COMPENSATED → DRAFT·REVIEW(만료면 EXPIRED·RE_QUOTE). 결제 진입은 확정·COMPLETED·RECONCILIATION_REQUIRED 면 기존 주문 ID(새 사가 없음).
 
 ## 출고 전 취소 (2026-10-31, 슬라이스 8 S3 d)
-- `GET /internal/orders/{orderId}`(내부 호출): 주문 원장 사본 — accountId·결제 시도·승인액·금액 구성·행별 수량 누계(claim 심사·환불 근거).
+- `GET /internal/orders/{orderId}`(내부 호출): 주문 원장 사본 — accountId·결제 시도·승인액·금액 구성·행별 수량 누계(claim 심사·환불 근거). 0.7.0(2026-11-16, review — ADR-0063): 행에 productId·productName·deliveredQty·returnedQty(둘 다 아직 늘 0 — 배송 완료·반품 반영 전).
 - `POST /internal/orders/{orderId}/line-quantity-changes`: reason=CANCEL_BEFORE_SHIP·SHORTAGE(결품 사가, 2026-11-07 ADR-0045 — 같은 산식, 주문 상태 유지) 만(그 밖 422 UNSUPPORTED_ACTION). 주문 행 잠금 → `OrderRules.cancelBeforeShip`(미이행 −q·출고 전 취소 +q, 초과·없는 행 409 INVALID_STATE, 바뀌지 않음) → 전 행 미이행·인계 0 이면 CANCELLED, version +1 → 행마다 `OrderLineQuantityChanged`, 주문에 `OrderCancelled`(scope·claimId·accountId·firstPurchase) 한 트랜잭션. 이미 CANCELLED 면 409. 같은 키는 재생.
 
 ## 상태

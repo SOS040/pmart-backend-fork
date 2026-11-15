@@ -48,6 +48,7 @@
 - **API**: 리뷰 CRUD, 자격 조회.
 - **발행**: `ReviewPublished`, `ReviewDeleted`.
 - **구독**: `DeliveryCompleted`(자격 시작, 분할배송은 품목별 실제 수령 시각).
+- **의존**(2026-11-16 1차 구현, ADR-0063): order `GET /internal/orders/{id}`(자격 사본·반품 수량), customer `GET /internal/accounts/{id}/review-author`(가린 별명), S3 버킷 pmart-review(사진). 운영자 숨김·신고 없음.
 
 ### search-service `[1단계 기본]`
 - **소유**: 검색 색인, 키워드·자동완성·필터 속성, 최근 검색어.

@@ -4,10 +4,12 @@ import com.pmart.customer.api.generated.InternalApi;
 import com.pmart.customer.api.generated.model.AccountStatus;
 import com.pmart.customer.api.generated.model.CheckFirstPurchaseInternal200Response;
 import com.pmart.customer.api.generated.model.GetAccountStatusInternal200Response;
+import com.pmart.customer.api.generated.model.GetReviewAuthorInternal200Response;
 import com.pmart.customer.api.generated.model.GetShoppingContextInternal200Response;
 import com.pmart.customer.application.AddressService;
 import com.pmart.customer.application.ProfileService;
 import com.pmart.customer.domain.AddressRules;
+import com.pmart.customer.domain.ProfileRules;
 import com.pmart.customer.infrastructure.CustomerStore.AddressRow;
 import com.pmart.customer.infrastructure.CustomerStore.ContextRow;
 import com.pmart.customer.infrastructure.CustomerStore.ProfileRow;
@@ -52,6 +54,17 @@ public class InternalController implements InternalApi {
             .requiredConsentOutdated(false)
             .version(p.version())
             .asOf(CustomerMapping.asOf(Instant.now(), p.version(), true)));
+  }
+
+  /** 리뷰 작성자 표시(0.2.0) — 별명을 가린 값만. 이름·이메일·전화는 내주지 않는다. */
+  @Override
+  public ResponseEntity<GetReviewAuthorInternal200Response> getReviewAuthorInternal(
+      String accountId) {
+    ProfileRow p = profiles.profile(accountId);
+    return ResponseEntity.ok(
+        new GetReviewAuthorInternal200Response()
+            .accountId(accountId)
+            .displayName(ProfileRules.maskedAuthor(p.nickname())));
   }
 
   @Override

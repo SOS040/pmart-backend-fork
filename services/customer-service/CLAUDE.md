@@ -33,5 +33,7 @@
 - 프로필 변경(2026-11-03, `ProfileChangeService`): 지금은 **닉네임만**(`customer.nickname`, V2 부터 있음). 즉시 반영 APPLIED·version +1, 같은 값이면 그대로. 앞뒤 공백 제거·1~30자·제어 문자 불가(`ProfileRules`). 탈퇴 신청 이후 409 INVALID_STATE, X-Expected-Version 불일치 409. 멱등 해시는 클라이언트 값만(재시도가 처음 결과를 받게), 상태·버전 검사는 멱등 처리 안. 결과 조회는 `request_record`(본인 것만). **phone 은 본인 확인 방식을 정한 뒤 — 지금은 400.** 닉네임 값은 로그 금지. 이벤트 없음(주문 연락처는 주문 사본, BR-37).
 - 약관 동의는 아직 받지 않는다(ADR-0019) — 내부 계정 상태의 `purchasable` 은 ACTIVE 여부만, `requiredConsentOutdated=false`.
 
+- **리뷰 작성자 표시(2026-11-16, 계약 0.2.0, ADR-0063)**: `GET /internal/accounts/{id}/review-author` → 별명 첫 글자 + `*`(최대 4개), 별명 없으면 "PMart 고객"(`ProfileRules.maskedAuthor`). 이름·이메일·전화는 내주지 않는다.
+
 ## 상태
 프로필 조회·주소록·쇼핑 주소·비회원 배송지·내부 계정 상태/쇼핑 컨텍스트 구현(2026-10-30). 첫 구매 사용 기록(OrderConfirmed). 프로필 변경 닉네임(2026-11-03). 동의·탈퇴·연락처 변경·소셜 식별 기준 첫 구매 대조는 501(연락처는 400).

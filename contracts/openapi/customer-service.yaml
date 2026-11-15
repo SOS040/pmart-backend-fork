@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     고객 계정·프로필·이용 상태(ACTIVE/WITHDRAW_PENDING/WITHDRAW_COMPLETED), 약관·마케팅 동의(버전·시점·철회), 주소록·현재 쇼핑 주소(shoppingContextVersion),
     비회원 배송지, 첫 구매 중복혜택 대조값(소셜 식별, 5년)의 정본. (docs/architecture/service-map.md §1)
@@ -445,6 +445,28 @@ paths:
                   requiredConsentOutdated: { type: boolean }
                   version: { $ref: '_common.yaml#/components/schemas/Version' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/accounts/{accountId}/review-author:
+    get:
+      tags: [internal]
+      summary: '[review→customer] 리뷰 작성자 표시 이름 (별명을 가린 값, 0.2.0)'
+      description: |
+        별명 첫 글자 + 나머지 * (예 "장보기왕" → "장***"). 별명이 없으면 "PMart 고객". 이름·이메일·전화는 내주지 않는다.
+      operationId: getReviewAuthorInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accountId, displayName]
+                properties:
+                  accountId: { type: string }
+                  displayName: { type: string }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/accounts/{accountId}/shopping-context:

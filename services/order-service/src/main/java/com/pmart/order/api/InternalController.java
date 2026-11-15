@@ -175,7 +175,11 @@ public class InternalController implements InternalApi {
               .originalQty(l.originalQty())
               .unfulfilledQty(l.unfulfilledQty())
               .handedOverQty(l.handedOverQty())
-              .cancelledBeforeShipQty(l.cancelledBeforeShipQty()));
+              .cancelledBeforeShipQty(l.cancelledBeforeShipQty())
+              .productId(l.productId())
+              .productName(l.productName())
+              .deliveredQty(l.deliveredQty())
+              .returnedQty(l.returnedQty()));
     }
     return ResponseEntity.ok(out);
   }
