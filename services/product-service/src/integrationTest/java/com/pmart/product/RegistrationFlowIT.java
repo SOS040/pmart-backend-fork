@@ -561,6 +561,21 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     @SuppressWarnings("unchecked")
     Map<String, Object> sku = ((List<Map<String, Object>>) input.get("skus")).get(0);
     sku.put("weightG", 180);
+    // 조회도 운영자만(2026-11-15 — 서비스 안 검사): 고객 토큰으로 초안·배치·ID 맵·트리 버전 403
+    String customer = TestJwt.customer("c-1");
+    for (String path :
+        List.of(
+            "/product-drafts/" + draft.path("draftId").asString(),
+            "/product-import-batches/x",
+            "/product-import-batches/x/id-map",
+            "/category-tree-versions/1")) {
+      Integer status =
+          http.get()
+              .uri(path)
+              .headers(h -> h.setBearerAuth(customer))
+              .exchange((rq, rs) -> rs.getStatusCode().value());
+      assertThat(status).as(path).isEqualTo(403);
+    }
     var e =
         http.put()
             .uri("/product-drafts/" + draft.path("draftId").asString())

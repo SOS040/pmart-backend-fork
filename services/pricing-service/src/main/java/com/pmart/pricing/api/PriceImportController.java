@@ -47,6 +47,7 @@ public class PriceImportController implements RegistrationApi {
 
   @Override
   public ResponseEntity<PriceImportBatch> getPriceImportBatch(String batchId) {
+    PriceImportService.requireOperator();
     return ResponseEntity.ok(batch(batchId));
   }
 

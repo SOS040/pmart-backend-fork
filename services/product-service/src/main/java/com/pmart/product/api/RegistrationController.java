@@ -136,6 +136,7 @@ public class RegistrationController implements RegistrationApi {
 
   @Override
   public ResponseEntity<CategoryTreeVersion> getCategoryTreeVersion(Integer version) {
+    Operator.require();
     return ResponseEntity.ok(treeVersion(trees.version(version)));
   }
 
@@ -148,6 +149,7 @@ public class RegistrationController implements RegistrationApi {
 
   @Override
   public ResponseEntity<ProductDraft> getProductDraft(String draftId) {
+    Operator.require();
     return ResponseEntity.ok(mapping.draft(drafts.get(draftId)));
   }
 
@@ -194,6 +196,7 @@ public class RegistrationController implements RegistrationApi {
 
   @Override
   public ResponseEntity<ImportBatch> getProductImportBatch(String batchId) {
+    Operator.require();
     return ResponseEntity.ok(mapping.batch(drafts.batch(batchId), drafts.batchDrafts(batchId)));
   }
 
@@ -206,6 +209,7 @@ public class RegistrationController implements RegistrationApi {
 
   @Override
   public ResponseEntity<IdMap> getProductImportIdMap(String batchId) {
+    Operator.require();
     BatchRow b = drafts.batch(batchId);
     Map<String, Object> m = new LinkedHashMap<>();
     List<Map<String, Object>> entries = drafts.idMap(batchId);

@@ -504,6 +504,11 @@ public class PriceImportService {
     return body;
   }
 
+  /** 조회도 운영자만(계약 [OPERATOR]) — 게이트웨이 허용 목록 뒤 서비스 안에서도(2026-11-15). */
+  public static void requireOperator() {
+    operator();
+  }
+
   private static PmartPrincipal operator() {
     return PmartPrincipal.current()
         .filter(p -> p.type() == PmartPrincipal.PrincipalType.OPERATOR)

@@ -17,6 +17,13 @@ public record Operator(String id, List<String> roles, String sourceSystem) {
     return new Operator(p.subject(), p.roles(), sourceSystem);
   }
 
+  /**
+   * 조회도 운영자만(계약 x-pmart-user-types [OPERATOR]) — 게이트웨이 허용 목록이 막지만 서비스 안에서도 본다(2026-11-15, 깊이 방어).
+   */
+  public static void require() {
+    current(null);
+  }
+
   RequestKey key(String requestId, String operation) {
     return new RequestKey(sourceSystem, requestId, operation, id);
   }

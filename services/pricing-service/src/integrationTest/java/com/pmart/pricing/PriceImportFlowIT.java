@@ -200,6 +200,13 @@ class PriceImportFlowIT extends PostgresKafkaContainerSupport {
     // BR-41: 승인 대기 동안 배치 조회가 제출 응답과 같은 승인 요청 본문을 다시 준다
     assertThat(get("/price-import-batches/" + batchId).body().get("approvalRequest"))
         .isEqualTo(req);
+    // 조회도 운영자만(2026-11-15 — 서비스 안 검사): 고객 토큰 403
+    Integer customerGet =
+        http.get()
+            .uri("/price-import-batches/" + batchId)
+            .headers(h -> h.setBearerAuth(com.pmart.common.test.TestJwt.customer("c-1")))
+            .exchange((rq, rs) -> rs.getStatusCode().value());
+    assertThat(customerGet).isEqualTo(403);
     // 같은 키 재전송 = 같은 결과, 제출 뒤 수정은 잠김
     Res again =
         post("/price-import-batches/" + batchId + "/submissions", submitKey, Map.of(), null);
