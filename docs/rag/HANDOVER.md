@@ -1,6 +1,9 @@
-# RAG 인수인계 (2026-11-13)
+# RAG 인수인계 (2026-11-13 작성, **2026-11-15 갱신 — 여기서부터 PC 4 로 넘김**)
 
-RAG 영역(`docs/operations/pc-split.md` §1-1 — 나눌 예정)을 받는 PC·사람·Claude 가 **처음 읽는 문서**. 무엇이 어디 있고, 지금 어떤 상태이며, 무엇이 남았는지를 한곳에 모았다. 세부는 링크를 따라간다.
+RAG 영역(`docs/operations/pc-split.md` §1-1)을 받는 PC 4·사람·Claude 가 **처음 읽는 문서**. 무엇이 어디 있고, 지금 어떤 상태이며, 무엇이 남았는지를 한곳에 모았다. 세부는 링크를 따라간다.
+
+- **넘기는 시점(2026-11-15, 사용자 "여기서부턴 인수인계로 넘기게")**: PC 1 이 한 마지막 일 — RAG 를 PC 5 → PC 2 로 옮김(데이터째), 운영자 색인 범위를 업무 문서로 좁힘(`operator-index-scope.md`), 재색인, `rag_e2e` 6/6·`customer_rag_e2e` 3/3. 이 뒤의 RAG 개발·평가는 PC 4, **배포·LAN 색인은 계속 PC 1**(`lan.sh rag-ingest*` — PR 에 "재색인 필요"를 적는다).
+- PC 4 가 처음 할 일: §6 "시작하면 먼저".
 
 ## 1. RAG 두 개
 
@@ -22,20 +25,22 @@ RAG 영역(`docs/operations/pc-split.md` §1-1 — 나눌 예정)을 받는 PC·
 
 **여기 적힌 파일만 색인한다.** 문서를 더하거나 빼면 manifest 를 고치고 재색인한다(§4).
 
-### 운영자 RAG — `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml` (90개, 2,085 청크 — 11-11 LAN)
+### 운영자 RAG — `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml` (49개, 1,642 청크 — 2026-11-15 LAN)
+
+**범위 = 업무 직원이 고객 응대·업무 판단에 쓰는 문서만**(사용자 2026-11-15). ADR 61개를 남김 14·뺌 41·애매함 6(뺌)으로 나눈 표와 이유: [`operator-index-scope.md`](operator-index-scope.md). 새 ADR·문서를 넣을 때 이 기준을 먼저 본다.
 
 | 묶음 | 경로 | 개수 | 우선순위(precedence) |
 |---|---|---|---|
 | ~~서비스 목록~~ | ~~`docs/architecture/service-map.md`~~ — 2026-11-15 뺌(서비스 책임 경계는 업무 직원 대상이 아님, "직원 휴가 신청"에 없는 API 를 지어 답한 근거) | 0 | — |
 | ADR(**업무 정책만**, 2026-11-15) | `docs/adr/` 0014·0015·0040~0049·0052·0060 | 14 | 5(지위는 각 ADR 상태 줄 — 승인=확정, 그 밖=제안). 서비스 경계·인프라·인증 구현·배포·관측·RAG 설계 ADR 은 뺌(사용자 "그건 일반 운영자쪽에서 안봐도되는내용인데") — 뺀 목록·이유는 `RealDocumentsIngestTest.EXCLUDED_ADRS`, 새 ADR 은 둘 중 하나로 정해야 시험 통과 |
-| 저장소 설계 | `docs/business/overview.md`·`domain-map.md`·`glossary.md`, `docs/business/flows/`(cancel-vs-handover·order-checkout-saga·replenishment-transfer·return-exchange-refund), `contracts/states/*.md`(8개) | | 4 |
+| 저장소 설계 | `docs/business/overview.md`·`domain-map.md`·`glossary.md`, `docs/business/flows/`(cancel-vs-handover·order-checkout-saga·replenishment-transfer·return-exchange-refund·employee-account-provisioning), `contracts/states/*.md`(8개) | | 4 |
 | 업무 원문 | `docs/business/{WMS,SCM,TMS,MFC,BackOffice}-business-logic.md`(4), `OMS-business-logic.md`(3), `Commerce-business-logic.md`(2), `Delivery-business-logic.md`(1) | | 4·3·2·1 |
 | 고객센터 상담 대응 | `docs/business/cs-scripts/README.md`·`01~10`(2026-11-09) | 11 | 1(업무 원문이 앞섬) |
 
 - 넣지 않는 것: worklog·handoff·그 밖 architecture 문서·코드·시험·배포·비밀.
 - `overrides`: OMS 8.2 결품 문단 SUPERSEDED(ADR-0049), Commerce 카테고리 1·2단계 대체 제안(ADR-0015) — 이유는 manifest 안 `reason`.
 - 직원 등록·권한 요청·승인은 ADR-0056 대신 업무 흐름 `docs/business/flows/employee-account-provisioning.md` 로 넣었다(2026-11-15).
-- 평가 묶음도 같이 맞춤(2026-11-15): 검색 평가 `questions.yml` 은 기술 질문 7개를 빼고 R3 를 업무 질문으로, 업무 질문 Q21~Q23 추가(21개). LAN `rag_e2e.py` 의 "서비스 간 호출" → "상품준비 뒤 고객센터 취소". **답변 평가 `answers.json` 30문항 중 A07~A12·A19(빠진 ADR 이 정답) 7개는 아직 그대로** — 다음 답변 평가 때 업무 질문으로 바꿀 것.
+- 평가 묶음도 같이 맞춤(2026-11-15): 검색 평가 `questions.yml` 은 기술 질문 7개를 빼고 R3 를 업무 질문으로, 업무 질문 Q21~Q23 추가(21개). LAN `rag_e2e.py` 의 "서비스 간 호출" → "상품준비 뒤 고객센터 취소". 답변 평가 `answers.json` 은 §6.
 
 ### 고객 RAG — `services/customer-assistant-service/src/main/resources/knowledge/manifest.yml` (13개, 63 청크)
 
@@ -67,6 +72,8 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 ```
 
 - 임베딩 모델 파일을 바꾸면 설정 `embedding-version` 을 바꾸고 재색인.
+- `rag-ingest*` 는 render 를 먼저 해 문서 사본(`build/pc2/rag/knowledge-*`)을 새로 만든다(2026-11-15 전에는 마지막 render 때 문서로 색인했다).
+- 색인 목록(manifest)은 **이미지 안**에 들어간다 — manifest 를 바꾸면 이미지(Jib) → `lan.sh deploy pc2 ai-assistant-service` → `rag-ingest pc2` 순서.
 - LAN 색인에는 출처 커밋이 비어 기록된다(render 가 `REVISION` 파일을 두지만 색인기가 아직 읽지 않음 — 남은 일).
 
 ## 5. 시험·평가
@@ -80,22 +87,38 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 | LAN 연결 확인 | `deploy/lan/checks/rag_e2e.py`(운영자 6문항), `customer_rag_e2e.py`(경로·403·헬스) |
 | 직원 토큰 | `deploy/lan/checks/staff_auth.py`(2026-11-13 — auth-service 운영자 로그인을 없앤 뒤) — `docs/operations/dev-on-other-pcs.md` |
 
-**최근 결과**: 운영자 7차 엄격 24/30·사람 26/30(답 없는 질문 11/11, 1.7~4초 — `verification/2026-11-09/answer-eval/report-7-final.md`), 고객 9차 37/37(`verification/2026-11-10/customer-eval/report.md`). 11-11 PC 5 이동 뒤 `rag_e2e` 6/6·`customer_rag_e2e` 3/3. 11-15 PC 2 이동 뒤 같음(6/6·3/3), qwen3:4b 100% GPU.
+**최근 결과**: 운영자 7차 엄격 24/30·사람 26/30(답 없는 질문 11/11, 1.7~4초 — `verification/2026-11-09/answer-eval/report-7-final.md`), 고객 9차 37/37(`verification/2026-11-10/customer-eval/report.md`). 11-11 PC 5 이동 뒤 `rag_e2e` 6/6·`customer_rag_e2e` 3/3. **2026-11-15(PC 2, 업무 범위 재색인 뒤) `rag_e2e` 6/6·`customer_rag_e2e` 3/3**, qwen3:4b 100% GPU. 운영자 답변 평가 30문항·고객 37문항은 범위를 바꾼 뒤 아직 다시 돌리지 않았다.
 
 ## 6. 남은 일·결정 대기
 
-- **2026-11-15 재색인 뒤(ADR-0056~0061 추가, 96개·2,158 청크)**: `rag_e2e` **5/6** — "직원 휴가 신청은 어떻게 해?"(근거 없음 기대)에 service-map hr-service 절을 근거로 **없는 API(`POST /hr/employees/{id}/leave`)를 지어 답함**(전에는 NONE). "refresh token 보관·CSRF" 질문은 ADR-0059 의 **배경(예전 sessionStorage 방식)**을 답함 — 결정 절이 아니라 배경 절이 먼저 잡힘. 둘 다 생성 답변 충실도·절 우선순위 문제(재평가 대상). 같은 날 고친 것: 상담 대본 `cs-scripts/02-order-cancel.md` §5 가 옛 ADR-0052 결정 2 로 남아 "고객센터에서 취소할 수 있다"고 답하던 것 → ADR-0060 에 맞춤, 재색인 뒤 바르게 답함. `lan.sh rag-ingest*` 는 이제 render 를 먼저 한다(전에는 마지막 render 때 문서로 색인).
-- 운영자: 오답 A09(TMS 문서를 고름)·A11, 조건 빠짐 A05·A15 — 질문 묶음을 늘려 재평가. 색인 출처 커밋(`REVISION`). ADR-0056·0057 색인 여부.
-- 고객: C11 "신선식:" 글자 잘림 1건. 운영자 RAG 에도 같은 결함(숫자 부분 문자열 검사·표 한 행) 있는지 확인.
+### 시작하면 먼저 (PC 4)
+1. 공통 준비(`docs/operations/dev-on-other-pcs.md`·`other-pcs-todo.md` PC 4 절) — 포크·`<rag>/<주제>` 브랜치, 비밀번호 파일, Gradle 제한.
+2. 개발 환경: **평소는 local 프로필**(해시 임베딩 384차원, 모델 없음 — `deploy/local/ai-assistant/docker-compose.yml` pgvector 15433). 실제 모델로 답변을 볼 때만 PC 4 에 로컬 ollama(같은 모델 qwen3:4b·qwen3-embedding:0.6b — PC 1 이 11-09 평가 때 쓴 방식). 실제 모델 임베딩(1024)과 해시(384)는 DB 를 섞지 않는다. **LAN rag-pgvector·ollama(PC 2, LAN 포트 없음)에는 붙지 않는다** — LAN 색인은 PC 1 `rag-ingest` 로만. 로컬 ollama 로 부족하면 PC 2 포트 열기를 그때 정한다(사용자 2026-11-15 "일단 자기걸쓰는데 … 한번해보고 포트열든"). PC 4 에는 게이트웨이·설정 서버가 있어 무거운 시험 중 LAN 이 느려지면 PC 1 에 알린다(2026-11-15 감시 묶음을 PC 1 로 옮겨 PC 4 메모리 여유가 조금 늘었다).
+3. `./gradlew :services:ai-assistant-service:check`·`:services:customer-assistant-service:check` 가 PC 4 에서 통과하는지.
+
+### 운영자 RAG
+- **답변 평가 `answers.json` 30문항 중 A07~A12·A19 7개는 뺀 ADR 이 정답인 기술 질문** — 업무 질문으로 바꾸고 범위를 바꾼 뒤 다시 평가(`rag_answer_eval.py`). 7차(11-09) 결과는 옛 범위 기준이다.
+- 옛 오답: A09(TMS 문서를 고름)·A11, 조건 빠짐 A05·A15 — 새 범위에서 다시 보고 질문 묶음을 늘려 재평가.
+- 생성 답변이 근거에 충실한지: 11-15 "직원 휴가 신청" 에 없는 API 를 지어 답한 일(근거 문서를 빼서 사라졌지만, 근거가 약할 때 지어내는 성향 자체는 남음). 절 우선순위: ADR 에서 "결정" 대신 "배경" 절을 답한 일(ADR-0059 — 지금은 범위 밖).
+- 색인 출처 커밋(`REVISION`) 기록.
+- 애매함 ADR 6개(`operator-index-scope.md` §3)를 다시 넣을지 — 사용자 결정.
+
+### 고객 RAG
+- C11 "신선식:" 글자 잘림 1건. 운영자 RAG 에도 같은 결함(숫자 부분 문자열 검사·표 한 행) 있는지 확인.
+- 고객 답변 평가 37문항 재실행(고객 토큰 `.secrets/customer-token` 필요 — 11-11 PC 이동 뒤 답변은 아직 확인 안 함). 11-15 재색인에 ADR-0060 고객 안내 문구(상품준비 뒤 취소 불가)가 들어갔다.
+- 고객 앱 채팅 상담 화면은 아직 없다(클라이언트 요청 `docs/handoff/clients/customer-app/2026-11-09-clients-request-customer-chat-assistant.md`) — 화면이 생기면 실제 앱 토큰으로 확인.
+
+### 둘 다
 - 결정 대기(ADR-0036·0051): 답변 보존 기간·질문 원문 저장(운영자), 운영자 역할 세분, ADR-0051 "결정 대기" 절.
 - 공용 라이브러리(두 서비스 공통 코드) — 아직 없음.
-- 개발 PC(PC 4)에서: **평소는 local 프로필**(해시 임베딩 384차원, 모델 없음 — `deploy/local/ai-assistant/docker-compose.yml` pgvector 15433). 실제 모델로 답변을 볼 때만 PC 4 에 로컬 ollama(같은 모델 qwen3:4b·qwen3-embedding:0.6b — PC 1 이 11-09 평가 때 쓴 방식). 실제 모델 임베딩(1024)과 해시(384)는 DB 를 섞지 않는다. LAN rag-pgvector·ollama(PC 2, LAN 포트 없음)에는 붙지 않는다 — LAN 색인은 PC 1 `rag-ingest` 로만. 로컬 ollama 로 부족하면 PC 2 포트 열기를 그때 정한다(사용자 2026-11-15 "일단 자기걸쓰는데 … 한번해보고 포트열든"). PC 4 에는 게이트웨이·설정 서버가 있어 무거운 시험 중 LAN 이 느려지면 PC 1 에 알린다.
+- 아이디어(결정 아님): 임베딩 GPU(§3).
 
 ## 7. 이 폴더(`docs/rag/`) 지도
 
 | 경로 | 내용 |
 |---|---|
 | `README.md` | 폴더 안내(11-05 기준 상태 — **최신 상태는 이 문서**) |
+| `operator-index-scope.md` | 운영자 RAG 색인 범위 — ADR 61개 남김·뺌·애매함 표와 기준(2026-11-15) |
 | `worklog.md` | RAG 작업 일지(11-04~11-10). 영역을 나눈 뒤에는 `docs/worklog/rag/`(만들 때) 또는 여기 |
 | `codex-opinion/` | 설계·검토 원문 1~6차(수정 금지)와 1차 계획 |
 | `references/2026-11-07/` | 사용자가 넣은 외부 자료 원본(무료 모델 추천·Spring AI 구조 검토) |

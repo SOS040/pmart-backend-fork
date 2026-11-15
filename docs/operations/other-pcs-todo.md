@@ -51,12 +51,12 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [x] 권한 기간 "기한 없음" 표시 — ca2ecf3(새 웹 빌드 올리기는 사용자 확인 뒤) — `archive/2026-11-13-clients-reply-hr-backoffice-deployed.md`
 - 결과는 클라이언트 저장소 handoff 로 회신(백엔드는 읽기만).
 
-## PC 4 — rag 영역(사용자 확정 2026-11-13, 영역 시작은 아직)
+## PC 4 — rag 영역(사용자 확정 2026-11-13, **2026-11-15 인수인계 — 시작해도 됨**)
 
 - [ ] 공통 절 전부
-- [ ] `docs/rag/HANDOVER.md` 읽기
-- [ ] 시작 전 사용자 결정: 개발 PC 에서 모델을 쓰는 방법(PC 4 에 로컬 ollama 또는 PC 5 ollama 포트 열기 — `pc-split.md` §1-1)
-- 주의: PC 4 에 게이트웨이·설정 서버·Eureka 가 있다 — 무거운 빌드·시험 중 LAN 이 느려지면 PC 1 에 알린다
+- [ ] `docs/rag/HANDOVER.md` 읽기 — §6 "시작하면 먼저" 부터. 색인 범위는 `docs/rag/operator-index-scope.md`
+- [x] ~~시작 전 사용자 결정: 개발 PC 에서 모델을 쓰는 방법~~ — 2026-11-15 사용자: PC 4 로컬로 먼저(local 프로필 + 필요할 때 로컬 ollama), 부족하면 PC 2 ollama 포트 열기를 그때 정함. RAG LAN 위치는 PC 2(2026-11-15 PC 5 → PC 2)
+- 주의: PC 4 에 게이트웨이·설정 서버·Eureka 가 있다 — 무거운 빌드·시험 중 LAN 이 느려지면 PC 1 에 알린다. 배포·LAN 재색인은 PC 1 — PR 에 "재색인 필요"를 적는다
 
 ## PC 2 — backoffice 영역(사용자 확정 2026-11-13, 로그인 마무리 뒤 시작)
 
