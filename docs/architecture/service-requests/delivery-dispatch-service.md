@@ -26,3 +26,8 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - 같은 때 MFC 의 새 발송(원주소)은 일반 배차 요청(DD-1)으로 따로 나간다 — 회수품을 원주소로 다시 보내지 않는다.
 - 필요한 것: 오배송 확인 사건(누가 기록하나 — ADR-0052 남은 것), 회수 배송 유형(픽업지 = 오배송지, 도착지 = MFC), 인근 라이더 탐색. DD-1 구현 뒤.
 - **결정(2026-11-15, 사용자 "추천대로")**: 오배송 확인은 **상담원·지원센터가 확인해서 기록**한다(case — 요청 `case-service.md` R-7). 그 사건이 오면 회수 배차는 자동. 라이더 앱만으로 확정하지 않는다.
+
+## DD-2 갱신 (2026-11-16, 보낸 영역 platform) — 오배송 확인 사건 생김
+- case-service 가 **`MisdeliveryConfirmed`** 를 낸다(case 0.4.0, 계약 `contracts/events/MisdeliveryConfirmed.v1.json`, 토픽 platform.case.v1, 키 caseId): caseId, deliveryId, riderId(그때 배정 라이더 — 없을 수 있음), confirmedBy, confirmedAt, evidenceRefs. 주소·좌표 원문은 없다.
+- dispatch 가 구독해 회수 배송(픽업지 = 오배송지, 도착지 = MFC)·인근 다른 라이더 배차(DD-2)를 만든다. 오배송지 좌표가 필요하면 tracking 위치·execution 증빙에서(사건에는 없음).
+

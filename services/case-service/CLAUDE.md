@@ -25,5 +25,12 @@
 - **고객센터 문의(2026-11-09, 계약 0.2.0, V2)**: `/inquiries`(`InquiryService`·`domain/InquiryRules`·`InquiryStore`) — 사용자 결정 C2(회원만)·C4(고객앱 문의 페이지). 고객이 남기고(본인 주문이면 order `GET /orders/{id}` 를 고객 토큰으로 불러 확인 — `OrderClient`, 설정 `pmart.cases.order-service-base-url`), 상담원 역할 `CS_AGENT` 가 답한다(→ ANSWERED). 문의 하나 = `cs_inquiry` + `case_record`(CS_INQUIRY). 남의 문의는 404, 내용은 로그에 남기지 않는다. 사진 첨부·답변 알림·종료 API 는 아직 없다.
 - **라이더 컴플레인(2026-11-15, 계약 0.3.0, V3 — service-requests R-5)**: `/rider-complaints`(`RiderComplaintService`·`domain/RiderComplaintRules`·`RiderComplaintStore`). 상담원(CS_AGENT·OPERATOR_ADMIN)이 기록 → 라이더는 dispatch 내부 배정 조회(`DispatchClient`, 설정 `pmart.cases.delivery-dispatch-base-url`) → `rider_complaint` + Outbox `RiderComplaintRecorded`(platform.case.v1, 이 서비스의 첫 발행). 조회는 RIDER_OPS 도. 메모는 로그·사건 금지.
 
+- **사건함(2026-11-16, 계약 0.4.0, V4 — 사용자 "사건함 공통 결정" 추천대로, R-4·R-6·R-7)**: `CaseInboxService`·`domain/CaseRules`·`CaseStore`(표 `case_record` 확장 + `case_history`).
+  - 여는 길: 구독 `deliveryEvents`(delivery.delivery.v1 `DeliveryIncidentRaised` → RIDER_HELP·DELIVERY_INCIDENT, 사고 P1), `trackingEvents`(delivery.tracking.v1 `RiderLocationStale` → RIDER_LOCATION_STALE — 같은 라이더·배송으로 열린 사건이면 RECURRED 이력만), 직원 `POST /cases` kind MISDELIVERY(+ `MisdeliveryConfirmed`, 배정 라이더는 dispatch 조회 — 실패해도 기록). 같은 일(dedupe_key)로 열린 사건은 하나.
+  - 팀 공용 목록 `GET /cases`(state 비우면 열린 것, P1·기한 순, unassigned·overdue·assigneeGroup) → 집기 `POST …/assignments`(자기 자신만, 관리자는 다른 사람에게) → 닫기 `POST …/closures`(resolution·summary 필수, 남이 맡은 것은 관리자만). 보기 OPERATOR_ADMIN·RIDER_OPS·CS_AGENT(배송 쪽, CS 는 보기만).
+  - 처리 기한 `pmart.cases.sla.[종류]`(맵 키는 `"[RIDER_HELP]"` 처럼 — `_` 를 지키려고) — 표시만(`overdue`), 알림 없음. 값은 잠정(10분·30분).
+  - 사건 `CaseOpened·CaseAssigned·CaseClosed`(platform.case.v1). 고객 문의 행(CS_INQUIRY)은 `/cases` 에 나오지 않는다.
+  - 아직: R-3(사가·결제 상신 → RECONCILIATION·PAYMENT_UNKNOWN, BO-12 와 함께), 이관·재개·의무·행위 요청(501).
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

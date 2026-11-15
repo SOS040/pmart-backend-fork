@@ -15,7 +15,7 @@
 | 번호 | 받는 서비스 | 요청한 곳 | 내용 | 사용자 결정 | 상태 |
 |---|---|---|---|---|---|
 | [DD-1](delivery-dispatch-service.md) | delivery-dispatch | mfc-fulfillment, orchestration | `DispatchRequested` 받아 배송 생성·라이더 제안, 취소·조정 | 없음 | **구현·LAN 배포**(2026-11-14, PR #8 1fa5b32) |
-| [DD-2](delivery-dispatch-service.md) | delivery-dispatch | 사용자 | 확인된 오배송 회수 라이더 자동 배차(인근 다른 라이더) | ADR-0052, 2026-11-15 오배송 확인은 상담원·지원센터가 기록(case R-7) | 대기(case R-7 사건 뒤) |
+| [DD-2](delivery-dispatch-service.md) | delivery-dispatch | 사용자 | 확인된 오배송 회수 라이더 자동 배차(인근 다른 라이더) | ADR-0052, 2026-11-15 오배송 확인은 상담원·지원센터가 기록(case R-7) | 대기 — **case 쪽 `MisdeliveryConfirmed` 발행 구현됨(2026-11-16)**, 구독·회수 배차는 PC 5 |
 | [DE-1](delivery-execution-service.md) | delivery-execution | mfc-fulfillment | 픽업 완료 = 포장별 인계 확정, 모든 `PackageHandedOver` 뒤 PICKED_UP | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
 | [TR-1](delivery-tracking-service.md) | delivery-tracking | mfc-fulfillment, order | `DeliveryEtaUpdated` (라이더 ETA) | 없음 | 대기 |
 | [TR-2](delivery-tracking-service.md) | delivery-tracking | dispatch·case | 위치 끊김(배달 중 3분)·위치 보존 30일 | 결정됨(2026-11-14; 2026-11-15 받는 쪽은 지원센터 알림만 — 자동 배정 해제 없음) | 구현·LAN 배포(#15, 2026-11-15) — 받는 쪽 case R-6 대기, dispatch 는 구독 안 함 |
@@ -33,10 +33,10 @@
 | [R-1](case-service.md) | case | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
 | [R-3](case-service.md) | case | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | 대기 |
-| [R-4](case-service.md) | case | delivery-execution | 라이더 도움요청·전달 실패 등록(`DeliveryIncidentRaised`) → 지원센터 사건, `CaseOpened` 로 caseId 회신 | — (사용자 결정 1번, 2026-11-13) | 대기 — execution 쪽 발행은 구현됨 |
+| [R-4](case-service.md) | case | delivery-execution | 라이더 도움요청·전달 실패 등록(`DeliveryIncidentRaised`) → 지원센터 사건, `CaseOpened` 로 caseId 회신 | — (사용자 결정 1번, 2026-11-13) | **구현(2026-11-16, case 0.4.0 — PC 1)** — 사건 RIDER_HELP·DELIVERY_INCIDENT + `CaseOpened`(refs incidentId). execution 이 `CaseOpened`·`CaseClosed` 를 받아 도움요청에 caseId 를 붙이는 일은 delivery(PC 5) |
 | [R-5](case-service.md) | case | rider | 라이더 컴플레인(신고·오배송·파손) 기록 → `RiderComplaintRecorded` 발행 | 결정됨(2026-11-14: 같은 종류 7일 안 3건 이상 → 검토 대상; 2026-11-15 상담원 백오피스 기록) | 구현(2026-11-15, case 0.3.0 — LAN 배포 전) — 상담원 기록만, 고객 앱 신고는 아직 |
-| [R-6](case-service.md) | case | delivery-tracking | 위치 끊긴 라이더(`RiderLocationStale`) → 지원센터 알림 | 결정됨(2026-11-15: 알림만, 자동 배정 해제 없음) | 대기 — tracking 발행은 구현·배포됨 |
-| [R-7](case-service.md) | case | delivery-dispatch | 오배송 확인 기록 → 회수 배차 사건(DD-2 앞단) | 결정됨(2026-11-15: 상담원·지원센터가 확인해 기록) | 대기 |
+| [R-6](case-service.md) | case | delivery-tracking | 위치 끊긴 라이더(`RiderLocationStale`) → 지원센터 알림 | 결정됨(2026-11-15: 알림만, 자동 배정 해제 없음) | **구현(2026-11-16, case 0.4.0)** — 사건 RIDER_LOCATION_STALE(같은 라이더·배송이면 재발 이력만) |
+| [R-7](case-service.md) | case | delivery-dispatch | 오배송 확인 기록 → 회수 배차 사건(DD-2 앞단) | 결정됨(2026-11-15: 상담원·지원센터가 확인해 기록) | **구현(2026-11-16, case 0.4.0)** — `POST /cases`(kind MISDELIVERY) + 사건 `MisdeliveryConfirmed`(platform.case.v1). 구독·회수 배차는 delivery(PC 5, DD-2) |
 | [N-1](notification-service.md) | notification | order, mfc | 결품 부분 취소·환불 고객 안내 | **필요**(보류 단계 안내) | 대기 |
 | [N-2](notification-service.md) | notification(·case) | case | 고객센터 문의 답변 알림(`InquiryAnswered`) | C4 | 대기 |
 | [AP-1](approval-service.md) | approval | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | **필요**(Q-11) | 대기 — 운영 전 필수 |

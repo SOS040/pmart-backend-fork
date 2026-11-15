@@ -10,7 +10,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     CONFIG_REQUIRED
  * @param deliveryDispatchBaseUrl 라이더 컴플레인의 배정 라이더 조회(dispatch `GET
  *     /internal/deliveries/{id}/assignment`, 0.3.0). 없으면 컴플레인 기록만 422 CONFIG_REQUIRED
+ * @param sla 사건함 종류별 처리 기한(0.4.0, 2026-11-16 — 표시만). 없으면 {@code CaseRules.DEFAULT_SLA}
  */
 @ConfigurationProperties("pmart.cases")
 public record CaseProperties(
-    @Nullable String orderServiceBaseUrl, @Nullable String deliveryDispatchBaseUrl) {}
+    @Nullable String orderServiceBaseUrl,
+    @Nullable String deliveryDispatchBaseUrl,
+    java.util.@Nullable Map<String, java.time.Duration> sla) {}

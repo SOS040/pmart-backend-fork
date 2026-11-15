@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/MisdeliveryConfirmed.v1.json",
+  "title": "MisdeliveryConfirmed",
+  "description": "오배송 확인(2026-11-16, service-requests R-7 — 사용자 결정 2026-11-15: 오배송 확인은 상담원·지원센터(RIDER_OPS)가 기록, 라이더 앱만으로 확정하지 않음). 발행 case-service(MISDELIVERY 사건을 열 때 같은 트랜잭션). 구독 delivery-dispatch(회수 배차 DD-2 — 구현은 delivery 영역, 아직). 토픽 platform.case.v1, 키 = caseId. 잘못 간 곳의 주소·좌표 원문은 싣지 않는다(근거는 증빙 참조만).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "MisdeliveryConfirmed"
+        },
+        "aggregateType": {
+          "const": "Case"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "caseId",
+            "deliveryId",
+            "confirmedBy",
+            "confirmedAt"
+          ],
+          "properties": {
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "confirmedBy": {
+              "type": "string",
+              "maxLength": 128,
+              "description": "확인한 직원(운영자 ID)"
+            },
+            "confirmedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "description": "확인 근거 참조(사진·통화 기록 ID)"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
