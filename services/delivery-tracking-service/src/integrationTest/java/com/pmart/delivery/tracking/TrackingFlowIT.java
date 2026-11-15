@@ -9,9 +9,13 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import com.pmart.delivery.tracking.application.RiderWatch;
+import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +29,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -42,7 +48,10 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.tracking.kakao-mobility.rest-api-key=it-key",
       "pmart.tracking.low-accuracy-m=50",
-      "spring.data.redis.url="
+      "spring.data.redis.url=",
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.tracking.stale-check-interval=PT1H", // 시험이 직접 부른다
+      "pmart.tracking.purge-interval=PT1H"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock(
@@ -59,6 +68,9 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired JdbcTemplate jdbc;
+  @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired RiderWatch watch;
 
   @InjectWireMock("kakao")
   WireMockServer kakao;
@@ -213,6 +225,315 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                     .withHeader("Content-Type", "application/json")
                     .withBody("{\"code\":-2,\"msg\":\"bad request\"}")));
     assertThat(matrixStatus()).isEqualTo(503);
+  }
+
+  /** 사용자 2026-11-14: 진행 중 배송이 있는 라이더 위치가 3분 넘게 안 오면 RiderLocationStale 한 번, 완료 뒤에는 안 냄. */
+  @Test
+  void staleLocationRaisedOncePerGapWhileDelivering() {
+    String rider = "RD-st-" + UUID.randomUUID();
+    String delivery = "DLV-st-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryAssigned",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND state = 'ACTIVE'");
+
+    watch.checkStale();
+    assertThat(staleCount(rider)).isZero(); // 막 배정 — 아직 3분 안
+    jdbc.update(
+        "UPDATE rider_active_delivery SET since = ? WHERE delivery_id = ?",
+        Timestamp.from(Instant.now().minus(Duration.ofMinutes(5))),
+        delivery);
+    watch.checkStale();
+    watch.checkStale();
+    assertThat(staleCount(rider)).isEqualTo(1); // 끊김 한 번에 한 번
+    JsonNode stale =
+        json(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'RiderLocationStale'",
+                String.class,
+                rider));
+    assertThat(stale.path("payload").path("deliveryId").asString()).isEqualTo(delivery);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT topic FROM outbox_event WHERE aggregateid = ? AND type = 'RiderLocationStale'",
+                String.class,
+                rider))
+        .isEqualTo("delivery.tracking.v1");
+
+    // 위치가 다시 오면 끊김 아님, 그 뒤 다시 끊기면 또 한 번
+    upload(rider, "k-st-" + rider, List.of(point(37.5, 127.03, 10, Instant.now())));
+    watch.checkStale();
+    assertThat(staleCount(rider)).isEqualTo(1);
+    jdbc.update(
+        "UPDATE rider_signal SET last_received_at = ? WHERE rider_id = ?",
+        Timestamp.from(Instant.now().minus(Duration.ofMinutes(4))),
+        rider);
+    watch.checkStale();
+    assertThat(staleCount(rider)).isEqualTo(2);
+    // 사건 버전 = 알림 횟수(갱신하며 읽음 — 겹치지 않음)
+    assertThat(
+            jdbc.queryForList(
+                "SELECT (payload->>'aggregateVersion')::int FROM outbox_event WHERE aggregateid = ?"
+                    + " AND type = 'RiderLocationStale' ORDER BY created_at",
+                Integer.class,
+                rider))
+        .containsExactly(1, 2);
+
+    // 전달 완료 뒤에는 끊겨도 안 냄, 늦게 온 옛 배정 사건이 다시 열지 않는다
+    deliveryEvent(
+        "DeliveryCompleted",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "orderId",
+            "ORD-1",
+            "riderId",
+            rider,
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1)),
+            "method",
+            "FACE",
+            "evidenceRef",
+            Map.of("evidenceId", "EVP-1", "kind", "PHOTO"),
+            "deliveredAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND state = 'CLOSED'");
+    deliveryEvent(
+        "DeliveryAssigned",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    jdbc.update(
+        "UPDATE rider_signal SET last_received_at = ? WHERE rider_id = ?",
+        Timestamp.from(Instant.now().minus(Duration.ofMinutes(10))),
+        rider);
+    sleepMs(1500);
+    watch.checkStale();
+    assertThat(staleCount(rider)).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM rider_active_delivery WHERE delivery_id = ?",
+                String.class,
+                delivery))
+        .isEqualTo("CLOSED");
+  }
+
+  /**
+   * PC 1 PR #15 검토·사용자 2026-11-14: 감시 시작은 사건에 적힌 배정 시각(읽은 시각이 아님), 배정 뒤 5시간 지나면 끝 사건이 없어도 감시
+   * 끝("5시간이 지나면 감시 종료"), 배정 해제 뒤 늦게 온 옛 배정 사건은 다시 열지 않고 더 높은 버전 배정만 다시 연다.
+   */
+  @Test
+  void watchStartsAtAssignmentTimeEndsAfterFiveHoursAndIgnoresLateOldAssignment() {
+    // 6시간 전 배정 사건을 지금 읽음(옛 사건 재처리) — 지금 배정된 것처럼 되지 않고, 끊김 알림 없이 끝난다
+    String rider = "RD-ex-" + UUID.randomUUID();
+    String old = "DLV-ex-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryAssigned",
+        old,
+        Map.of(
+            "deliveryId",
+            old,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().minus(Duration.ofHours(6)).toString()));
+    awaitCount("SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '" + old + "'");
+    watch.checkStale();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM rider_active_delivery WHERE delivery_id = ?", String.class, old))
+        .isEqualTo("EXPIRED");
+    assertThat(staleCount(rider)).isZero();
+
+    // 배정 → 해제(RELEASED, 버전 2) → 늦게 온 옛 배정(버전 1)은 무시
+    String rider2 = "RD-rl-" + UUID.randomUUID();
+    String d2 = "DLV-rl-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryAssigned",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "riderId",
+            rider2,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + d2
+            + "' AND state = 'ACTIVE'");
+    deliveryEvent(
+        "DeliveryAssignmentChanged",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "oldRiderId",
+            rider2,
+            "assignmentVersion",
+            2,
+            "reason",
+            "RIDER_RESTRICTED",
+            "changedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + d2
+            + "' AND state = 'RELEASED'");
+    deliveryEvent(
+        "DeliveryAssigned",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "riderId",
+            rider2,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    sleepMs(1500);
+    Map<String, Object> released =
+        jdbc.queryForMap(
+            "SELECT state, assignment_version FROM rider_active_delivery WHERE delivery_id = ?",
+            d2);
+    assertThat(released.get("state")).isEqualTo("RELEASED");
+    assertThat(released.get("assignment_version")).isEqualTo(2);
+    jdbc.update(
+        "INSERT INTO rider_signal (rider_id, last_received_at) VALUES (?, ?)",
+        rider2,
+        Timestamp.from(Instant.now().minus(Duration.ofMinutes(10))));
+    watch.checkStale();
+    assertThat(staleCount(rider2)).isZero();
+
+    // 더 높은 버전 새 배정은 다시 연다(시작 = 사건의 배정 시각)
+    Instant acceptedAt =
+        Instant.now()
+            .minus(Duration.ofMinutes(5))
+            .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    deliveryEvent(
+        "DeliveryAssigned",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "riderId",
+            rider2,
+            "assignmentVersion",
+            3,
+            "acceptedAt",
+            acceptedAt.toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + d2
+            + "' AND state = 'ACTIVE'");
+    assertThat(
+            jdbc.queryForObject(
+                    "SELECT since FROM rider_active_delivery WHERE delivery_id = ?",
+                    Timestamp.class,
+                    d2)
+                .toInstant())
+        .isEqualTo(acceptedAt);
+    watch.checkStale();
+    assertThat(staleCount(rider2)).isEqualTo(1);
+  }
+
+  /** 사용자 2026-11-14 "보존기간은 30일": 서버 수신 30일 지난 위치 점은 지운다. */
+  @Test
+  void locationPointsOlderThan30DaysArePurged() {
+    String rider = "RD-pg-" + UUID.randomUUID();
+    upload(rider, "k-pg-" + rider, List.of(point(37.5, 127.03, 10, Instant.now())));
+    jdbc.update(
+        "INSERT INTO rider_location_point (rider_id, lat, lng, recorded_at, received_at, quality) VALUES (?, 37.4, 127.0, ?, ?, 'GOOD')",
+        rider,
+        Timestamp.from(Instant.now().minus(Duration.ofDays(31))),
+        Timestamp.from(Instant.now().minus(Duration.ofDays(31))));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_location_point WHERE rider_id = ?",
+                Integer.class,
+                rider))
+        .isEqualTo(2);
+    watch.purge();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_location_point WHERE rider_id = ?",
+                Integer.class,
+                rider))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_latest_location WHERE rider_id = ?",
+                Integer.class,
+                rider))
+        .isEqualTo(1);
+  }
+
+  private void deliveryEvent(String type, String deliveryId, Map<String, Object> payload) {
+    String json =
+        EventEnvelopeFixtures.envelope(type)
+            .from(
+                type.equals("DeliveryCompleted")
+                    ? "delivery-execution-service"
+                    : "delivery-dispatch-service")
+            .aggregate("Delivery", deliveryId, System.nanoTime() % 100000)
+            .payload(payload)
+            .buildJson();
+    kafka.send("delivery.delivery.v1", deliveryId, json).join();
+  }
+
+  private int staleCount(String rider) {
+    return jdbc.queryForObject(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'RiderLocationStale'",
+        Integer.class,
+        rider);
+  }
+
+  private void awaitCount(String sql) {
+    long until = System.currentTimeMillis() + 30_000;
+    while (System.currentTimeMillis() < until) {
+      Integer n = jdbc.queryForObject(sql, Integer.class);
+      if (n != null && n > 0) {
+        return;
+      }
+      sleepMs(200);
+    }
+    throw new AssertionError("기다린 상태가 오지 않음: " + sql);
+  }
+
+  private static void sleepMs(long ms) {
+    try {
+      Thread.sleep(ms);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   private int matrixStatus() {

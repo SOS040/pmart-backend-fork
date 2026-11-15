@@ -2,6 +2,7 @@ package com.pmart.delivery.execution;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
 import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
@@ -30,6 +31,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -44,9 +48,12 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.execution.confirm-interval=PT1H" // 확정 판단은 시험이 직접 부른다
+      "pmart.execution.confirm-interval=PT1H", // 확정 판단은 시험이 직접 부른다
+      "pmart.execution.photo-sweep-interval=PT1H" // 사진 정리도 시험이 직접 부른다
     })
 @Import({TestJwtConfiguration.class, ExecutionFlowIT.MemoryPhotos.class})
+@EnableWireMock(
+    @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.execution.urls.order"))
 class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   static final Map<String, byte[]> STORED = new ConcurrentHashMap<>();
@@ -62,8 +69,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         }
 
         @Override
-        public void delete(String key) {
+        public boolean delete(String key) {
           STORED.remove(key);
+          return true;
         }
       };
     }
@@ -76,6 +84,10 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired EarningService earnings;
+  @Autowired com.pmart.delivery.execution.application.PhotoSweeper sweeper;
+
+  @InjectWireMock("order")
+  WireMockServer orderApi;
 
   RestClient http;
 
@@ -86,6 +98,98 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             .baseUrl("http://localhost:" + port + "/api/v1")
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
+  }
+
+  /** BR-24(사용자 2026-11-14): 배정 라이더에게 픽업 뒤 ~ 전달 완료 전만, 고객 전화번호 그대로, 저장 안 함(no-store). */
+  @Test
+  void dropInfoOnlyForAssignedRiderBetweenPickupAndCompletion() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    created(id, "SHP-" + UUID.randomUUID(), order);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    Map<String, Object> drop = new java.util.LinkedHashMap<>();
+    drop.put("orderId", order);
+    drop.put("roadAddress", "서울 강남구 테헤란로 1");
+    drop.put("detailAddress", "101동 1001호");
+    drop.put("receiverName", "김고객");
+    drop.put("receiverPhone", "01012345678");
+    drop.put("entranceMethod", "PASSWORD");
+    drop.put("entranceNote", "#1234");
+    drop.put("deliveryNote", "문 앞에 두세요");
+    drop.put("geo", Map.of("lat", 37.5, "lng", 127.03));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(drop))));
+
+    // 픽업 전 409
+    ResponseEntity<String> early = dropInfo(id, rider);
+    assertThat(early.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(early).path("code").asString()).isEqualTo("DROP_INFO_CLOSED");
+
+    jdbc.update("UPDATE execution_delivery SET state = 'PICKED_UP' WHERE delivery_id = ?", id);
+    ResponseEntity<String> ok = dropInfo(id, rider);
+    assertThat(ok.getStatusCode().value()).isEqualTo(200);
+    assertThat(ok.getHeaders().getCacheControl()).contains("no-store");
+    JsonNode d = body(ok);
+    assertThat(d.path("receiverPhone").asString()).isEqualTo("01012345678"); // 안심번호 아님
+    assertThat(d.path("detailAddress").asString()).isEqualTo("101동 1001호");
+    assertThat(d.path("entranceMethod").asString()).isEqualTo("PASSWORD");
+    assertThat(d.path("deliveryNote").asString()).isEqualTo("문 앞에 두세요");
+    assertThat(d.path("lat").asDouble()).isEqualTo(37.5);
+    // 다른 라이더는 있는지도 모른다(404), 운영자 토큰은 403
+    assertThat(dropInfo(id, "RDR-OTHER").getStatusCode().value()).isEqualTo(404);
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/drop-info", id)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-1", List.of("OPERATOR_ADMIN"), List.of()))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+
+    // 실패 등록(확정 전)은 아직 진행 중 — 열림, 전달 완료 뒤 닫힘
+    jdbc.update(
+        "UPDATE execution_delivery SET state = 'FAILURE_REPORTED' WHERE delivery_id = ?", id);
+    assertThat(dropInfo(id, rider).getStatusCode().value()).isEqualTo(200);
+    jdbc.update("UPDATE execution_delivery SET state = 'COMPLETED' WHERE delivery_id = ?", id);
+    assertThat(dropInfo(id, rider).getStatusCode().value()).isEqualTo(409);
+
+    // 주문 당시 사본 없는 주문 → 404 DROP_INFO_NOT_FOUND, order 장애 → 503
+    jdbc.update("UPDATE execution_delivery SET state = 'PICKED_UP' WHERE delivery_id = ?", id);
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(404)));
+    ResponseEntity<String> none = dropInfo(id, rider);
+    assertThat(none.getStatusCode().value()).isEqualTo(404);
+    assertThat(body(none).path("code").asString()).isEqualTo("DROP_INFO_NOT_FOUND");
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(503)));
+    assertThat(dropInfo(id, rider).getStatusCode().value()).isEqualTo(503);
+  }
+
+  ResponseEntity<String> dropInfo(String id, String rider) {
+    return http.get()
+        .uri("/deliveries/{id}/drop-info", id)
+        .header("Authorization", "Bearer " + TestJwt.rider(rider))
+        .retrieve()
+        .toEntity(String.class);
   }
 
   @Test
@@ -163,15 +267,40 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(body(photo).path("contentType").asString()).isEqualTo("image/jpeg");
     assertThat(STORED).containsKey("deliveries/" + id + "/" + photoRef);
     assertThat(upload(id, "RDR-OTHER", JPEG).getStatusCode().value()).isEqualTo(403);
-    // 저장소 올리기는 트랜잭션 밖(PC 1 검토 후속): 같은 키 재시도 → 같은 사진 참조·객체 하나, 같은 키·다른 사진 → 409 + 올린 객체 지움
+    // 저장소 올리기는 트랜잭션 밖(PC 1 검토 후속): 같은 키 재시도 → 같은 사진 참조·객체 하나
     String key = "photo-" + UUID.randomUUID();
     String again = body(upload(id, rider, JPEG, key)).path("photoRef").asString();
     assertThat(body(upload(id, rider, JPEG, key)).path("photoRef").asString()).isEqualTo(again);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM photo_upload WHERE delivery_id = ?", Integer.class, id))
+        .isZero(); // 참조를 저장한 트랜잭션이 올리는 중 기록을 지웠다
+    // 중복 요청 기록이 없어진 뒤 같은 요청을 다시 보내도 409 를 반복하지 않고 그 사진을 돌려준다(#12 후속)
+    jdbc.update("DELETE FROM request_record WHERE request_id = ?", key);
+    ResponseEntity<String> afterPurge = upload(id, rider, JPEG, key);
+    assertThat(afterPurge.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(body(afterPurge).path("photoRef").asString()).isEqualTo(again);
+    // 같은 키·다른 사진 → 409. 올린 객체는 바로 지우지 않고(동시 중복 요청이 같은 객체로 성공했을 수 있다) 5시간 뒤 참조가 없으면 지운다
+    // (사용자 2026-11-14 "5시간이 지나면 삭제")
     byte[] other = java.util.Arrays.copyOf(JPEG, JPEG.length + 1);
     long before = STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count();
     assertThat(upload(id, rider, other, key).getStatusCode().value()).isEqualTo(409);
     assertThat(STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count())
+        .isEqualTo(before + 1);
+    sweeper.sweep(); // 아직 5시간 안 — 그대로
+    assertThat(STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count())
+        .isEqualTo(before + 1);
+    jdbc.update(
+        "UPDATE photo_upload SET started_at = started_at - interval '6 hours' WHERE delivery_id = ?",
+        id);
+    sweeper.sweep();
+    assertThat(STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count())
         .isEqualTo(before);
+    assertThat(STORED).containsKey("deliveries/" + id + "/" + again); // 참조 있는 사진은 남는다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM photo_upload WHERE delivery_id = ?", Integer.class, id))
+        .isZero();
 
     assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
         .isEqualTo(200);
