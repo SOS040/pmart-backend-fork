@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/RiderComplaintRecorded.v1.json",
   "title": "RiderComplaintRecorded",
-  "description": "라이더에 대한 컴플레인 기록(신고·오배송·파손 — RS-3, 사용자 2026-11-14). 발행 case(고객센터가 사건으로 기록할 때 — 구현 전, service-requests case R-5). 구독 rider(같은 종류 7일 안 3건 이상이면 제한 검토 대상 — 자동 제재 아님). 토픽 platform.case.v1. 단계 ①",
+  "description": "라이더에 대한 컴플레인 기록(신고·오배송·파손 — RS-3, 사용자 2026-11-14). 발행 case(상담원이 백오피스에서 기록할 때 — 2026-11-15 구현, case 0.3.0, service-requests case R-5). 구독 rider(같은 종류 7일 안 3건 이상이면 제한 검토 대상 — 자동 제재 아님). 토픽 platform.case.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

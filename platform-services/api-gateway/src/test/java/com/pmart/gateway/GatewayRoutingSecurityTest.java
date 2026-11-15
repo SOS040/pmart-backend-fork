@@ -231,6 +231,21 @@ class GatewayRoutingSecurityTest {
     assertRoutedTo("/api/v1/backoffice/views/case-inbox", "backoffice-bff");
     // 결제위젯 설정(BR-34) — payment-service
     assertRoutedTo("/api/v1/payment-widget-config", "payment-service");
+    // 라이더 컴플레인(case 0.3.0, R-5) — riders 세그먼트와 겹치지 않는다(이 시험의 case 업스트림은 WireMock 이 아니라 라우트만 본다)
+    assertThat(routeIdOf("/api/v1/rider-complaints")).isEqualTo("case-service");
+    assertThat(routeIdOf("/api/v1/rider-complaints/RCP-1")).isEqualTo("case-service");
+  }
+
+  private @org.jspecify.annotations.Nullable String routeIdOf(String path) {
+    MockServerWebExchange exchange =
+        MockServerWebExchange.from(MockServerHttpRequest.get(path).build());
+    Route route =
+        routeLocator
+            .getRoutes()
+            .filterWhen(r -> Mono.from(r.getPredicate().apply(exchange)))
+            .next()
+            .block();
+    return route == null ? null : route.getId();
   }
 
   @Test

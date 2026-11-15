@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -17,6 +17,7 @@ tags:
   - { name: action-requests, description: 도메인 행위 요청 연결 }
   - { name: intakes, description: CS 접수·라이더 도움요청·교대 인수인계 }
   - { name: inquiries, description: '고객센터 문의(고객앱 문의 페이지·고객 RAG 연결) 0.2.0' }
+  - { name: rider-complaints, description: '라이더 컴플레인 기록(신고·오배송·파손 → RiderComplaintRecorded, RS-3) 0.3.0' }
 
 paths:
   /cases:
@@ -598,6 +599,94 @@ paths:
               schema: { $ref: '#/components/schemas/ShiftHandover' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /rider-complaints:
+    post:
+      tags: [rider-complaints]
+      summary: 라이더 컴플레인 기록 (상담원 — 0.3.0, service-requests case R-5)
+      description: |
+        2026-11-15 사용자 결정: 고객센터 상담원이 백오피스에서 라이더에 대한 컴플레인(신고 REPORT·오배송 MISDELIVERY·파손 DAMAGE)을 기록한다.
+        라이더는 서버가 delivery-dispatch `GET /internal/deliveries/{deliveryId}/assignment` 로 채운다 — 배정된 라이더가 없으면 422 RIDER_NOT_ASSIGNED,
+        배송이 없으면 422 DELIVERY_NOT_FOUND, dispatch 응답 불가 503.
+        기록과 같은 트랜잭션에서 `RiderComplaintRecorded`(platform.case.v1)를 낸다 — rider-service 가 종류마다 7일 안 서로 다른 배송 3건 이상이면 제한 검토 대상으로 올린다(자동 제재 없음).
+        inquiryId 를 주면 그 문의의 사건(caseId)을 잇는다(없는 문의 422 INQUIRY_NOT_FOUND). note 는 개인정보가 들어갈 수 있어 로그·사건에 싣지 않는다.
+        역할: CS_AGENT·OPERATOR_ADMIN(그 밖 403). 같은 Idempotency-Key 재전송은 같은 컴플레인.
+      operationId: recordRiderComplaint
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deliveryId, complaintType]
+              properties:
+                deliveryId: { type: string, minLength: 1, maxLength: 64 }
+                complaintType: { $ref: '#/components/schemas/RiderComplaintType' }
+                orderId: { type: string, maxLength: 64 }
+                note: { type: string, maxLength: 1000, description: 상담원 메모(개인정보가 들어갈 수 있음 — 로그·사건 금지) }
+                inquiryId: { type: string, maxLength: 64, description: 고객 문의에서 넘어왔으면 그 문의 ID(사건 연결) }
+      responses:
+        '201':
+          description: 기록(재전송이면 같은 컴플레인)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderComplaint' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: RIDER_NOT_ASSIGNED / DELIVERY_NOT_FOUND / INQUIRY_NOT_FOUND / CONFIG_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+    get:
+      tags: [rider-complaints]
+      summary: 라이더 컴플레인 목록 (백오피스 — 최근 기록 순)
+      description: 역할 CS_AGENT·OPERATOR_ADMIN·RIDER_OPS(그 밖 403). from 이상 to 미만(recordedAt). note 는 상세에만.
+      operationId: listRiderComplaints
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+        - { name: riderId, in: query, schema: { type: string } }
+        - { name: deliveryId, in: query, schema: { type: string } }
+        - { name: complaintType, in: query, schema: { $ref: '#/components/schemas/RiderComplaintType' } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RiderComplaintSummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /rider-complaints/{complaintId}:
+    get:
+      tags: [rider-complaints]
+      summary: 라이더 컴플레인 상세 (메모 포함)
+      description: 역할 CS_AGENT·OPERATOR_ADMIN·RIDER_OPS(그 밖 403).
+      operationId: getRiderComplaint
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: complaintId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderComplaint' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
 components:
   schemas:
     CaseKind:
@@ -738,6 +827,30 @@ components:
             requestedBy: { type: string }
             requestedAt: { type: string, format: date-time }
             resultAt: { type: [string, 'null'], format: date-time }
+    RiderComplaintType:
+      type: string
+      enum: [REPORT, MISDELIVERY, DAMAGE]
+      description: REPORT 고객 신고(불친절·위험 운전 등) / MISDELIVERY 오배송 / DAMAGE 파손 (RiderComplaintRecorded 와 같은 값)
+    RiderComplaintSummary:
+      type: object
+      required: [complaintId, riderId, deliveryId, complaintType, source, recordedBy, recordedAt]
+      properties:
+        complaintId: { type: string }
+        caseId: { type: string, nullable: true, description: 문의에서 넘어왔으면 그 문의의 사건 }
+        riderId: { type: string, description: dispatch 배정 조회로 채운 라이더 }
+        deliveryId: { type: string }
+        orderId: { type: string, nullable: true }
+        inquiryId: { type: string, nullable: true }
+        complaintType: { $ref: '#/components/schemas/RiderComplaintType' }
+        source: { type: string, description: '접수 경로(지금 CS_AGENT)' }
+        recordedBy: { type: string, description: 기록한 직원 ID }
+        recordedAt: { type: string, format: date-time }
+    RiderComplaint:
+      allOf:
+        - $ref: '#/components/schemas/RiderComplaintSummary'
+        - type: object
+          properties:
+            note: { type: string, nullable: true }
     InquiryCategory:
       type: string
       enum: [ORDER, DELIVERY, PAYMENT, REFUND, PRODUCT, ACCOUNT, OTHER]
