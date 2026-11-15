@@ -1,17 +1,18 @@
 # 백오피스(backoffice) 인수인계 (2026-11-15 작성 — **2026-11-16 PC 2 로 넘김**)
 
-보낸 영역: platform(PC 1). 받는 영역: backoffice(PC 2). 경계는 `docs/operations/pc-split.md` §1-1(사용자 2026-11-15 "너의 추천대로" + "인사팀은 내쪽에서").
+보낸 영역: platform(PC 1). 받는 영역: backoffice(PC 2). 경계는 `docs/operations/pc-split.md` §1-1(사용자 2026-11-15 "너의 추천대로").
 
 ## 0. 맡는 것·안 맡는 것
 
 | | PC 2(backoffice) | PC 1(platform)에 남음 |
 |---|---|---|
 | 백엔드 | **backoffice-bff**, **case-service**(문의·컴플레인·도움요청 사건함) | **audit-service**(개인정보 열람 원장 — ADR-0062), approval-service·hr-service·employee-auth-service, 게이트웨이, 라이브러리, **배포 전부** |
-| 클라이언트(pmart-clients) | `web/backoffice`, `web/core`·`web/ui`(웹 공통 — **로그인·세션·토큰 부분 제외**) | `web/hr-backoffice`(인사팀 — 사용자 2026-11-15 "인사팀은 내쪽에서"), 로그인·세션·토큰 코드 전부(§1-3) |
+| 클라이언트(pmart-clients) | `web/backoffice`, `web/hr-backoffice`(인사팀 화면), `web/core`·`web/ui`(웹 공통 — **로그인·세션·토큰 부분 제외**) | 로그인·세션·토큰 코드 전부(§1-3) |
 | 정하지 않음 | `web/mfc-backoffice` 담당(PC 3 또는 PC 2) — 사용자 2026-11-16 결정 | |
 
 - **로그인 코드는 PC 1 만**(`pc-split.md` §1-3): `web/core` 의 `employeeAuth.ts`·`session.ts`·`sessionPersistence.ts`·`tokens.ts`·`pmartFetch.ts` 갱신 부분, 웹 앱 `src/features/session`. 바꾼 PR 은 PC 1 이 돌려보낸다. 필요하면 handoff 로 PC 1 에 요청.
-- 웹 공통(`web/core`·`web/ui`)은 PC 2 가 주인이지만 `web/hr-backoffice`(PC 1)도 쓴다 — 공통 코드를 바꿀 때 hr-backoffice 빌드가 깨지지 않는지 같이 본다.
+- 웹 공통(`web/core`·`web/ui`)은 세 웹 앱(backoffice·hr-backoffice·mfc-backoffice)이 같이 쓴다 — 바꿀 때 세 앱 빌드를 같이 본다.
+- **BO-01 권한 변경·회수**: 백엔드(employee-auth·approval·hr)는 PC 1 이 만든다(2026-11-15 시작). 화면은 PC 2 몫 — PC 1 이 API 가 생기면 handoff 로 알린다.
 - audit-service 계약(`/internal/pii-access-logs`)에 새 `subjectType`·항목 코드가 필요하면 PC 1 에 요청(`service-requests/`).
 
 ## 1. 먼저 읽을 것 (순서대로)

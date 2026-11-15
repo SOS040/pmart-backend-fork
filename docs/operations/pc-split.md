@@ -34,7 +34,7 @@
 | 영역 | 언제 | PC(예정) | 범위(예정) | 정할 것 |
 |---|---|---|---|---|
 | **rag**(인수인계 문서 `docs/rag/HANDOVER.md`) | 지금 나눠도 됨(로그인과 겹치지 않음 — 직원 토큰 모양은 그대로) | **PC 4**(사용자 확정 2026-11-13). 주의: PC 4 에 게이트웨이·설정 서버·Eureka 가 있어 빌드·시험 부하가 LAN 전체에 번질 수 있다 — Gradle 제한(workers 2·Xmx2g) 유지, 무거운 시험 중 LAN 이 느리면 PC 1 에 알린다 | ai-assistant-service·customer-assistant-service, `docs/rag/`, `deploy/lan/rag/` | — (2026-11-15 RAG LAN 위치 PC 5 → PC 2, 개발은 PC 4 로컬 먼저 — 사용자 결정. **PC 4 실제 인계 2026-11-16**, 사용자) |
-| **backoffice** | **2026-11-16 인수인계 예정**(로그인 마무리 기준 — 남은 것은 사용자 브라우저·실기기 확인) | **PC 2**(사용자 확정 2026-11-13). 백오피스 화면 서빙(nginx)은 계속 PC 4 — 배포는 PC 1 | **경계 확정(2026-11-15 사용자 "너의 추천대로")**: 백엔드 `backoffice-bff`·**case-service**(문의·컴플레인·도움요청 사건함 — R-4~R-7). **audit-service 는 platform(PC 1)에 남긴다**(여러 영역이 부르는 개인정보 열람 원장, ADR-0062 — 화면 담당과 떼어 둔다). 클라이언트 `web/backoffice`·**`web/core`·`web/ui`**(웹 공통 한 주인) — 단 `web/core` 로그인·세션·토큰은 §1-3 대로 PC 1 만. **`web/hr-backoffice`(인사팀)는 PC 1**(사용자 2026-11-15 "인사팀은 내쪽에서"). 인수인계 `docs/backoffice/HANDOVER.md`. approval-service·hr-service·employee-auth-service 는 platform | — |
+| **backoffice** | **2026-11-16 인수인계 예정**(로그인 마무리 기준 — 남은 것은 사용자 브라우저·실기기 확인) | **PC 2**(사용자 확정 2026-11-13). 백오피스 화면 서빙(nginx)은 계속 PC 4 — 배포는 PC 1 | **경계 확정(2026-11-15 사용자 "너의 추천대로")**: 백엔드 `backoffice-bff`·**case-service**(문의·컴플레인·도움요청 사건함 — R-4~R-7). **audit-service 는 platform(PC 1)에 남긴다**(여러 영역이 부르는 개인정보 열람 원장, ADR-0062 — 화면 담당과 떼어 둔다). 클라이언트 `web/backoffice`·**`web/hr-backoffice`**·**`web/core`·`web/ui`**(웹 공통 한 주인) — 단 로그인·세션·토큰 코드는 §1-3 대로 PC 1 만. 인수인계 `docs/backoffice/HANDOVER.md`. approval-service·hr-service·employee-auth-service 는 platform | — |
 
 **로그인 마무리 기준**(이것이 끝나면 backoffice 영역을 나눈다):
 1. ~~두 백오피스 HTTPS 전환·HTTP 닫기~~ — **끝(2026-11-13)**: HTTPS 빌드 올림, 80·8081 은 HTTPS 로 301, 허용 목록에서 http 주소 제거. 클라이언트 HTTPS 빌드 소스 커밋(pmart-clients 13608a6), 브라우저 확인 끝(사용자 2026-11-13 "HTTPS 전환했어" — PC 1 에서 443·8444 200, 80·8081 → 301 확인).
@@ -59,7 +59,7 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 | **mfc-app** | `apps/mfc_app` | **PC 3** — 백엔드 mfc 영역과 같은 PC |
 | **rider-app** | `apps/rider_app` | **PC 5** — 백엔드 delivery 영역과 같은 PC |
 | **backoffice** | `web/backoffice` | PC 2 가 시작하기 전까지 PC 1 |
-| **hr-backoffice** | `web/hr-backoffice` | **PC 1**(사용자 2026-11-15 "인사팀은 내쪽에서") |
+| **hr-backoffice** | `web/hr-backoffice` | 같음(PC 2 로 함께 — 2026-11-15 경계 확정) |
 | **mfc-backoffice**(2026-11-15 새 앱 — 사용자 "백오피스 mfc는 떼어내고") | `web/mfc-backoffice`(제안) | **정할 것**(PC 3 또는 PC 2 — 요청서 `docs/handoff/clients/mfc-backoffice/2026-11-15-request-mfc-backoffice.md` §4) |
 | **web-common** | `web/core`·`web/ui`·`tools/web-tools`(두 웹앱 공통 — 한 주인) | 같음 |
 
