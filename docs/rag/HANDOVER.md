@@ -74,7 +74,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 - 임베딩 모델 파일을 바꾸면 설정 `embedding-version` 을 바꾸고 재색인.
 - `rag-ingest*` 는 render 를 먼저 해 문서 사본(`build/pc2/rag/knowledge-*`)을 새로 만든다(2026-11-15 전에는 마지막 render 때 문서로 색인했다).
 - 색인 목록(manifest)은 **이미지 안**에 들어간다 — manifest 를 바꾸면 이미지(Jib) → `lan.sh deploy pc2 ai-assistant-service` → `rag-ingest pc2` 순서.
-- LAN 색인에는 출처 커밋이 비어 기록된다(render 가 `REVISION` 파일을 두지만 색인기가 아직 읽지 않음 — 남은 일).
+- 출처 커밋: 색인 컨테이너에는 `.git` 이 없어 render 가 문서 사본에 둔 `REVISION`(1줄 커밋, 2줄 `clean`·`dirty` — 복사한 문서·manifest 에 커밋 안 한 수정이 있으면 dirty)을 색인기(`GitSourceRevision`, 두 서비스)가 읽어 `index_snapshot.source_revision`·`source_dirty` 에 남긴다(2026-11-15 PC 1 — 그 전 LAN 색인은 빈 값·dirty). 커밋하지 않은 문서로 재색인하지 않는다.
 
 ## 5. 시험·평가
 
@@ -100,7 +100,6 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 - **답변 평가 `answers.json` 30문항 중 A07~A12·A19 7개는 뺀 ADR 이 정답인 기술 질문** — 업무 질문으로 바꾸고 범위를 바꾼 뒤 다시 평가(`rag_answer_eval.py`). 7차(11-09) 결과는 옛 범위 기준이다.
 - 옛 오답: A09(TMS 문서를 고름)·A11, 조건 빠짐 A05·A15 — 새 범위에서 다시 보고 질문 묶음을 늘려 재평가.
 - 생성 답변이 근거에 충실한지: 11-15 "직원 휴가 신청" 에 없는 API 를 지어 답한 일(근거 문서를 빼서 사라졌지만, 근거가 약할 때 지어내는 성향 자체는 남음). 절 우선순위: ADR 에서 "결정" 대신 "배경" 절을 답한 일(ADR-0059 — 지금은 범위 밖).
-- 색인 출처 커밋(`REVISION`) 기록.
 - 애매함 ADR 6개(`operator-index-scope.md` §3)를 다시 넣을지 — 사용자 결정.
 
 ### 고객 RAG
