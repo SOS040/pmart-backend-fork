@@ -1,5 +1,6 @@
 {
   "realm": "pmart-staff",
+  "loginTheme": "pmart",
   "enabled": true,
   "displayName": "PMart 직원",
   "smtpServer": {

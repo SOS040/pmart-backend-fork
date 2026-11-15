@@ -796,6 +796,7 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
+      - ./keycloak-themes/pmart:/opt/keycloak/themes/pmart:ro # 직원 로그인 화면 테마(아이디만 쳐도 @pmart.com, 2026-11-15)
     mem_limit: 1536m
     cpus: 2
 
@@ -1170,6 +1171,7 @@ EOF
     mkdir -p "$dir/keycloak"
     tr -d '\r' < "$LAN/keycloak/pmart-staff-realm.json" \
       | sed -e "s|__PMART_KEYCLOAK_EMPLOYEE_AUTH_SECRET__|$(secret keycloak-employee-auth-client-secret)|" -e "s|__PMART_KEYCLOAK_HR_PROVISIONER_SECRET__|$(secret keycloak-hr-provisioner-client-secret)|" > "$dir/keycloak/pmart-staff-realm.json"
+    rm -rf "$dir/keycloak-themes"; mkdir -p "$dir/keycloak-themes" && cp -r "$LAN/keycloak/themes/." "$dir/keycloak-themes/"
   fi
 
   # 사내 메일(ADR-0056 결정 9)·웹메일: 설정 파일과 이 PC 의 LAN 사설 CA 인증서(ADR-0057, lan.sh tls-issue <pc> 가 만든 것). 키는 build/ 에만(git 제외)

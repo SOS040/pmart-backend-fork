@@ -23,6 +23,13 @@ KEYCLOAK = os.environ.get("PMART_KEYCLOAK", "http://192.168.0.101:8180")
 EMPLOYEE_AUTH = os.environ.get("PMART_EMPLOYEE_AUTH", "http://192.168.0.101:8511")
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 REALM = "pmart-staff"
+MAIL_DOMAIN = "@pmart.com"
+
+
+def kc_username(name):
+    """Keycloak 아이디 = 사내 메일 전체(ADR-0056 결정 7, 2026-11-15 짧은 아이디 13개도 바꿈). 짧게 주면 @pmart.com 을 붙인다 —
+    브라우저 로그인 화면은 테마 스크립트가 붙이지만 이 스크립트는 화면을 거치지 않는다. 비밀번호 파일 이름은 짧은 이름 그대로."""
+    return name if "@" in name else name + MAIL_DOMAIN
 
 
 def _secret(name):
@@ -68,7 +75,7 @@ def _password(username):
     if os.path.exists(path):
         return _secret(f"keycloak-{username}-password")
     admin = _admin_token()
-    st, users = _json("GET", f"{KEYCLOAK}/admin/realms/{REALM}/users?exact=true&username={urllib.parse.quote(username)}",
+    st, users = _json("GET", f"{KEYCLOAK}/admin/realms/{REALM}/users?exact=true&username={urllib.parse.quote(kc_username(username))}",
                       headers={"Authorization": "Bearer " + admin})
     if st != 200 or not users:
         raise SystemExit(f"Keycloak 에 {username} 이 없다 — 새 직원은 hr-service 로 등록한다")
@@ -82,7 +89,7 @@ def _password(username):
 
 def _exchange(username, password):
     st, kc = _json("POST", f"{KEYCLOAK}/realms/{REALM}/protocol/openid-connect/token",
-                   form={"grant_type": "password", "client_id": "pmart-dev-cli", "username": username, "password": password})
+                   form={"grant_type": "password", "client_id": "pmart-dev-cli", "username": kc_username(username), "password": password})
     if st != 200:
         raise SystemExit(f"{username} Keycloak 로그인 실패: HTTP {st} {kc.get('error', '')}")
     st, b = _json("POST", f"{EMPLOYEE_AUTH}/api/v1/internal/dev-token-exchange", {"keycloakAccessToken": kc["access_token"]},
