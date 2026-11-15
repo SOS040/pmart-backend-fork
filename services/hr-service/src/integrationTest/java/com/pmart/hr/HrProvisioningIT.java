@@ -544,6 +544,76 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     assertThat(payload).contains("CONTRACT_ENDED");
   }
 
+  /** 본사 부서 코드 목록(2026-11-15): 처음 보는 코드는 등록·소속 변경이 더하고(거절 안 함), 목록은 코드 순, 이름은 PUT 으로. */
+  @Test
+  void hqDepartmentList() {
+    String suffix = UUID.randomUUID().toString().substring(0, 6);
+    String b = "IT-DEPT-B-" + suffix;
+    String a = "IT-DEPT-A-" + suffix;
+    Map<String, Object> reg = registration(mailId(), "REGULAR", today(), null);
+    reg.put("affiliation", Map.of("type", "HQ_DEPARTMENT", "code", b));
+    reg.remove("requestedGrants");
+    Res created = call("POST", "/hr/employees", hr, reg);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String op = created.body().path("operatorId").asText();
+
+    // 다른 직원을 센터에서 본사 부서 a 로 옮긴다
+    String other = register(mailId());
+    Res moved =
+        call(
+            "POST",
+            "/hr/employees/" + other + "/affiliation-changes",
+            hr,
+            Map.of("affiliation", Map.of("type", "HQ_DEPARTMENT", "code", a), "reason", "본사 발령"));
+    assertThat(moved.status()).as(moved.body().toString()).isEqualTo(200);
+
+    Res list = call("GET", "/hr/departments", hr, null);
+    assertThat(list.status()).isEqualTo(200);
+    List<String> codes = new java.util.ArrayList<>();
+    list.body().path("items").forEach(i -> codes.add(i.path("code").asText()));
+    assertThat(codes).contains(a, b).isSortedAccordingTo(String::compareTo);
+    assertThat(codes).as("센터 코드는 목록에 넣지 않는다").doesNotContain("MFC-IT-01");
+    JsonNode bItem = item(list.body(), b);
+    assertThat(bItem.path("employeeCount").asInt()).isEqualTo(1);
+    assertThat(bItem.has("name") && !bItem.path("name").isNull()).isFalse();
+
+    Res named = call("PUT", "/hr/departments/" + b, hr, Map.of("name", " 인사팀 "));
+    assertThat(named.status()).as(named.body().toString()).isEqualTo(200);
+    assertThat(named.body().path("name").asText()).isEqualTo("인사팀");
+    assertThat(named.body().path("employeeCount").asInt()).isEqualTo(1);
+    assertThat(item(call("GET", "/hr/departments", hr, null).body(), b).path("name").asText())
+        .isEqualTo("인사팀");
+
+    // 이미 있는 코드로 다시 등록해도 이름은 그대로
+    Map<String, Object> again = registration(mailId(), "REGULAR", today(), null);
+    again.put("affiliation", Map.of("type", "HQ_DEPARTMENT", "code", b));
+    assertThat(call("POST", "/hr/employees", hr, again).status()).isEqualTo(201);
+    JsonNode after = item(call("GET", "/hr/departments", hr, null).body(), b);
+    assertThat(after.path("name").asText()).isEqualTo("인사팀");
+    assertThat(after.path("employeeCount").asInt()).isEqualTo(2);
+
+    // PUT 으로 새 코드도 만든다(아직 소속 직원 없음)
+    String c = "IT-DEPT-C-" + suffix;
+    Res createdByPut = call("PUT", "/hr/departments/" + c, hr, Map.of("name", "기획팀"));
+    assertThat(createdByPut.status()).isEqualTo(200);
+    assertThat(createdByPut.body().path("employeeCount").asInt()).isZero();
+
+    String worker = TestJwt.operator("OP-IT-WRK", List.of("MFC_WORKER"), List.of());
+    assertThat(call("GET", "/hr/departments", worker, null).status()).isEqualTo(403);
+    assertThat(call("PUT", "/hr/departments/" + b, worker, Map.of("name", "x")).status())
+        .isEqualTo(403);
+    assertThat(op).isNotBlank();
+  }
+
+  static JsonNode item(JsonNode list, String code) {
+    for (JsonNode i : list.path("items")) {
+      if (code.equals(i.path("code").asText())) {
+        return i;
+      }
+    }
+    throw new AssertionError("목록에 없음: " + code);
+  }
+
   @Test
   void validationAndAuthorization() {
     String worker = TestJwt.operator("OP-IT-WRK", List.of("MFC_WORKER"), List.of());

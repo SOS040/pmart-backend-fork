@@ -94,6 +94,7 @@ GET /api/v1/fulfillment-issues OPERATOR
 GET /api/v1/guest-delivery-addresses/{guestAddressId} PUBLIC
 GET /api/v1/help-requests/{intakeId} OPERATOR,RIDER
 GET /api/v1/holds/{holdId} OPERATOR
+GET /api/v1/hr/departments OPERATOR
 GET /api/v1/hr/employees OPERATOR
 GET /api/v1/hr/employees/me OPERATOR
 GET /api/v1/hr/employees/{operatorId} OPERATOR
@@ -444,6 +445,7 @@ POST /api/v1/waves/{waveId}/releases OPERATOR
 POST /api/v1/webhooks/toss PUBLIC
 PUT /api/v1/content-drafts/{draftId} OPERATOR
 PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
+PUT /api/v1/hr/departments/{code} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR
 PUT /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 PUT /api/v1/price-import-batches/{batchId}/lines/{seedProductId} OPERATOR

@@ -17,6 +17,10 @@
 - 모든 명령·목록은 `HR_ADMIN`(D3), 본인 조회(`/hr/employees/me`)만 모든 직원.
 - 상태 변경 명령은 `RequestIdempotency` + `X-Expected-Version`(row_version).
 
+## 본사 부서 코드 목록(2026-11-15)
+- 표 `hq_department`(code PK·name·updated_by, V3 — 배포 때 기존 직원의 HQ_DEPARTMENT 코드로 채움, 이름 NULL). 소속 코드는 거절하지 않고, 등록·소속 변경이 HQ_DEPARTMENT 의 처음 보는 코드를 같은 트랜잭션에 더한다(`HrStore.ensureDepartment`, ON CONFLICT DO NOTHING).
+- `GET /hr/departments`(코드 순, employeeCount = 퇴사 제외), `PUT /hr/departments/{code}`(표시 이름, 없으면 만듦 — `RequestIdempotency`, 버전 검사 없음). 모두 HR_ADMIN. 부서를 지우는 API 는 없다.
+
 ## 계정 발급·상태 맞추기
 - `ProvisioningWorker`: 행 잠금(SKIP LOCKED) 한 명씩, 단계 REQUESTED → MAILBOX_CREATED → IAM_CREATED → INVITE_SENT → DONE. 외부 호출 실패는 예외를 트랜잭션 밖으로 내지 않고 기록(같은 단계, 지수 대기). 영구 거절·횟수 소진이면 보상. 등록·재시도 직후 `kick()` 으로 바로 한 번.
 - `IamSyncWorker`: 재직 상태 → Keycloak enabled·세션 로그아웃·사서함 활성/비활성. `ContractEndJob`: 한 시간마다 계약 종료 자동 정지.
@@ -31,6 +35,6 @@
 ```bash
 ./gradlew :services:hr-service:check   # 단위 + 통합(PostgreSQL·Kafka·Keycloak 26.8.1·Mailpit 컨테이너, mail-provisioner WireMock)
 ```
-- `HrProvisioningIT`: 등록 → 사서함 → Keycloak 사용자 → 실제 메일 도착(Mailpit) → EmployeeRegistered, 사서함 대기, 영구 거절 보상, 요청 권한 제출(GrantRequested)·승인 결과 반영, 정지·퇴사·복귀 반영, 계약 종료, 비밀번호 미저장, **U-11(manage-users 로 역할 매핑 가능 = 204)**.
+- `HrProvisioningIT`: 등록 → 사서함 → Keycloak 사용자 → 실제 메일 도착(Mailpit) → EmployeeRegistered, 사서함 대기, 영구 거절 보상, 요청 권한 제출(GrantRequested)·승인 결과 반영, 정지·퇴사·복귀 반영, 계약 종료, 비밀번호 미저장, 본사 부서 코드 목록(`hqDepartmentList`), **U-11(manage-users 로 역할 매핑 가능 = 204)**.
 - 시험 Realm 에는 `hr-provisioner` 의 `realm-management` 역할을 `clientScopeMappings` 로도 준다(fullScopeAllowed false — 없으면 403). LAN Realm 도 같다.
 - 로컬 포트 8512. LAN PC 5.

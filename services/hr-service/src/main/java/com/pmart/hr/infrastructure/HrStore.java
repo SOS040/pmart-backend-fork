@@ -59,6 +59,16 @@ public class HrStore {
       long grantId,
       @Nullable String approvalRef) {}
 
+  public static final String HQ_DEPARTMENT = "HQ_DEPARTMENT";
+
+  private static final String DEPARTMENTS =
+      "SELECT d.code, d.name, count(e.operator_id) AS n FROM hq_department d"
+          + " LEFT JOIN employee e ON e.affiliation_type = 'HQ_DEPARTMENT'"
+          + " AND e.affiliation_code = d.code AND e.status <> 'LEFT'";
+
+  /** 본사 부서(코드·표시 이름·퇴사하지 않은 소속 직원 수). */
+  public record DepartmentRow(String code, @Nullable String name, int employeeCount) {}
+
   private final JdbcTemplate jdbc;
 
   public HrStore(JdbcTemplate jdbc) {
@@ -385,6 +395,49 @@ public class HrStore {
         Timestamp.from(at),
         operatorId,
         grantId);
+  }
+
+  // ---------- 본사 부서 ----------
+
+  /** 처음 보는 본사 부서 코드면 더한다(이름 없음). 이미 있으면 그대로. */
+  public void ensureDepartment(String code, String actor, Instant at) {
+    jdbc.update(
+        "INSERT INTO hq_department (code, name, updated_by, created_at, updated_at)"
+            + " VALUES (?, NULL, ?, ?, ?) ON CONFLICT (code) DO NOTHING",
+        code,
+        actor,
+        Timestamp.from(at),
+        Timestamp.from(at));
+  }
+
+  /** 표시 이름을 정한다(없으면 만든다). */
+  public void upsertDepartment(String code, @Nullable String name, String actor, Instant at) {
+    jdbc.update(
+        "INSERT INTO hq_department (code, name, updated_by, created_at, updated_at)"
+            + " VALUES (?, ?, ?, ?, ?) ON CONFLICT (code) DO UPDATE"
+            + " SET name = EXCLUDED.name, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at",
+        code,
+        name,
+        actor,
+        Timestamp.from(at),
+        Timestamp.from(at));
+  }
+
+  /** 코드 오름차순. 직원 수는 소속이 본사 부서이고 퇴사하지 않은 직원. */
+  public List<DepartmentRow> departments() {
+    return jdbc.query(
+        DEPARTMENTS + " GROUP BY d.code, d.name ORDER BY d.code", HrStore::department);
+  }
+
+  public Optional<DepartmentRow> department(String code) {
+    return jdbc
+        .query(DEPARTMENTS + " WHERE d.code = ? GROUP BY d.code, d.name", HrStore::department, code)
+        .stream()
+        .findFirst();
+  }
+
+  private static DepartmentRow department(ResultSet rs, int i) throws SQLException {
+    return new DepartmentRow(rs.getString("code"), rs.getString("name"), rs.getInt("n"));
   }
 
   // ---------- 변경 기록 ----------

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
     hr-service 가 사서함(@pmart.com, mail-provisioner) → Keycloak 계정(hr-provisioner, Admin API) → 비밀번호 설정 메일(Keycloak) 순서로
@@ -14,6 +14,8 @@ info:
     INVALID_STATE(지금 상태에서 할 수 없는 명령 — 퇴사자 정지, 발급 실패가 아닌데 재시도, Keycloak 계정이 없거나 재직 중이 아닌데 안내 메일, 사서함이 없거나 퇴사자인데
     사서함 비밀번호), KEYCLOAK_<HTTP 상태>·MAILBOX_<HTTP 상태>(Keycloak·메일 서버가 거절). 이미 그 상태인 복귀·퇴사는 바꾸지 않고 200.
     503 DEPENDENCY_UNAVAILABLE(Keycloak·메일 서버 응답 없음 — 잠시 뒤 다시).
+    0.2.0(2026-11-15): 본사 부서 코드 목록 GET /hr/departments, 표시 이름 PUT /hr/departments/{code}. 소속 코드는 지금처럼 아무 값이나 받고
+    처음 보는 본사 부서 코드는 등록·소속 변경 때 목록에 더한다(이름 없음).
 servers:
   - url: /api/v1
 security:
@@ -23,6 +25,7 @@ tags:
   - { name: employment, description: 정지·복귀·퇴사 }
   - { name: provisioning, description: 계정 발급(사서함·Keycloak·안내 메일) 진행·재시도 }
   - { name: self, description: 본인 조회 }
+  - { name: departments, description: 본사 부서 코드 목록(소속 HQ_DEPARTMENT 고르기용) }
 
 paths:
   /hr/employees:
@@ -296,12 +299,62 @@ paths:
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
+  /hr/departments:
+    get:
+      tags: [departments]
+      summary: 본사 부서 코드 목록 (코드 오름차순 — 등록·소속 변경 화면에서 고르기용)
+      description: |
+        지금까지 소속(HQ_DEPARTMENT)으로 입력된 코드와 PUT 으로 만든 코드. 목록에 없는 코드도 등록·소속 변경에서 그대로 받고, 그때 목록에 더한다(이름 없음).
+        employeeCount = 그 부서 소속 직원 중 퇴사하지 않은(ACTIVE·SUSPENDED) 수.
+      operationId: listDepartments
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepartmentList' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /hr/departments/{code}:
+    put:
+      tags: [departments]
+      summary: 본사 부서 표시 이름 정하기 (없으면 만든다 — 멱등. name 을 비우면 이름 지움)
+      operationId: putDepartment
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/DepartmentCode'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 60, description: '표시 이름(예 인사팀). 생략·빈 값이면 이름 없음' }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
 components:
   parameters:
     OperatorId:
       name: operatorId
       in: path
       required: true
+      schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' }
+    DepartmentCode:
+      name: code
+      in: path
+      required: true
+      description: 본사 부서 코드(Affiliation.code 와 같은 형식)
       schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' }
   schemas:
     EmploymentType:
@@ -402,6 +455,18 @@ components:
         employmentType: { $ref: '#/components/schemas/EmploymentType' }
         affiliation: { $ref: '#/components/schemas/Affiliation' }
         status: { $ref: '#/components/schemas/EmploymentStatus' }
+    Department:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, description: '본사 부서 코드(예 1004)' }
+        name: { type: string, description: 표시 이름 — 정하지 않았으면 없음 }
+        employeeCount: { type: integer, description: 이 부서 소속 직원 중 퇴사하지 않은 수 }
+    DepartmentList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Department' } }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

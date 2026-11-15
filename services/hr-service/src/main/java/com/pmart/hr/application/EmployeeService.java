@@ -146,6 +146,9 @@ public class EmployeeService {
         actor,
         now);
     store.insertProvisioning(operatorId, now);
+    if (HrStore.HQ_DEPARTMENT.equals(r.affiliationType())) {
+      store.ensureDepartment(r.affiliationCode(), actor, now); // 부서 코드 목록에 없으면 더한다(거절하지 않음)
+    }
     for (GrantRequest g : r.grants()) {
       store.insertGrant(
           operatorId,
@@ -240,6 +243,9 @@ public class EmployeeService {
           EmployeeRow e = locked(operatorId, expectedVersion);
           Instant now = now();
           store.updateAffiliation(operatorId, type, code, now);
+          if (HrStore.HQ_DEPARTMENT.equals(type)) {
+            store.ensureDepartment(code, hr.subject(), now);
+          }
           store.insertChange(
               operatorId,
               "AFFILIATION_CHANGED",
