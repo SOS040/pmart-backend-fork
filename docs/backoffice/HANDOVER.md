@@ -2,7 +2,8 @@
 
 보낸 영역: platform(PC 1). 받는 영역: backoffice(PC 2). 경계는 `docs/operations/pc-split.md` §1-1(사용자 2026-11-15 "너의 추천대로").
 
-- **넘기는 시점(2026-11-16)**: 사용자 결정으로 PC 1 이 넘기기 전에 백엔드를 먼저 만들었다 — 권한 관리(BO-01), 사건함(case R-4·R-6·R-7), 처리 대기(BO-12), 개인정보 열람 기록 조회, 세션 센터 이름. **PC 2 는 화면 연결(클라이언트)부터** 시작하면 된다(§3·§4).
+- **넘기는 시점(2026-11-16)**: 사용자 결정으로 PC 1 이 넘기기 전에 백엔드를 먼저 만들었다 — 권한 관리(BO-01), 사건함(case R-4·R-6·R-7), 처리 대기(BO-12), 개인정보 열람 기록 조회, 세션 센터 이름.
+- **화면: 지금까지 클라이언트에 보낸 요청(§3 표)은 지금 클라이언트 쪽이 끝까지 한다**(사용자 2026-11-16 "클라이언트쪽에 보낸 요청까지는 다하기로"). PC 2 는 그 뒤의 일부터 맡는다 — 받은 화면은 확인만(§4-1).
 - 처음 할 일: §1 먼저 읽을 것 → `./gradlew :services:backoffice-bff:check :services:case-service:check` 가 PC 2 에서 통과하는지 → §4.
 
 ## 0. 맡는 것·안 맡는 것
@@ -47,7 +48,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 ## 3. 클라이언트 상태와 보낸 요청
 
 - 지금 LAN `web/backoffice` 빌드: 역할별 메뉴, 고객센터·라이더 운영 메뉴(클라이언트 fe8d2fb, index-Dyq2y9wh.js — https://192.168.0.40), 상품 메뉴 OPERATOR_ADMIN 도. 서빙 PC 4 nginx 443, 올리기는 PC 1 `lan.sh publish-backoffice <dist>`(인사팀 앱은 `publish-hr-backoffice`, 8444).
-- **아직 화면에 안 붙은 백엔드(=PC 2 첫 일)** — 요청서:
+- **아직 화면에 안 붙은 백엔드 — 지금 클라이언트 쪽이 끝까지 한다(사용자 2026-11-16)**. PC 2 는 이 목록이 반영된 빌드부터 이어받는다. 요청서:
 
 | 화면 | 요청서(`docs/handoff/clients/…`) |
 |---|---|
@@ -60,7 +61,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 | 역할 목록·본사 부서(인사팀 등록 화면) | `hr-backoffice/` 11-15 알림들 |
 
 ## 4. 할 일 (추천 순서)
-1. **화면 연결**(위 §3 표) — 백엔드는 LAN 에 있다. 시험 계정으로 바로 확인(§6).
+1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
 2. **case R-3** — 사가·결제 이상을 사건으로(`ReconciliationRequired`·`CompensationExecuted`·`PaymentResultUnknown`·`PaymentMismatch` 구독 → RECONCILIATION·PAYMENT_UNKNOWN 사건, 담당 OPERATOR_ADMIN). 처리 기한은 그때 사용자에게. 생기면 처리 대기(BO-12)와 겹치지 않게 — 사건은 알림·기록, 조치는 처리 대기 버튼.
 3. 배송 쪽 연결이 오면 확인: delivery-execution 이 `CaseOpened`·`CaseClosed` 로 도움요청에 사건 번호 붙이기(요청 DE-CASE), dispatch 가 `MisdeliveryConfirmed` 로 회수 배차(DD-2) — PC 5 작업. 그 뒤 execution 의 임시 "도움요청 처리함 닫기"(BOD-4) 정리.
 4. 나중: MFC 인계 거절·중지 실패 목록(필요하면 PC 3 에 요청 — 사용자가 정함), bff 의 다른 화면(`/views/*` 501), 사건 알림.
