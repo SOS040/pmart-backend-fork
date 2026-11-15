@@ -1182,9 +1182,14 @@ EOF
     app="${rag%%:*}"; kn="${rag#*:}"
     [[ "$comps" == *" $app "* ]] || continue
     kdir="$dir/rag/$kn"; rm -rf "$kdir"; mkdir -p "$kdir"
-    sed -n 's/^  - { path: \([^,]*\),.*/\1/p' "services/$app/src/main/resources/knowledge/manifest.yml" \
+    mf="services/$app/src/main/resources/knowledge/manifest.yml"
+    sed -n 's/^  - { path: \([^,]*\),.*/\1/p' "$mf" \
       | while read -r f; do mkdir -p "$kdir/$(dirname "$f")"; cp "$f" "$kdir/$f"; done
-    git rev-parse HEAD > "$kdir/REVISION"
+    # REVISION: 1줄 = 커밋, 2줄 = 복사한 문서·manifest 에 커밋하지 않은 수정(새 파일 포함)이 있으면 dirty 없으면 clean.
+    # 색인 컨테이너에는 .git 이 없어 색인기가 이 파일로 출처 커밋을 기록한다(GitSourceRevision, 2026-11-15)
+    { git rev-parse HEAD
+      if [ -n "$(sed -n 's/^  - { path: \([^,]*\),.*/\1/p' "$mf" | xargs git status --porcelain -- "$mf")" ]; then echo dirty; else echo clean; fi
+    } > "$kdir/REVISION"
   done
 
   # 임시 백오피스 정적 파일: lan.sh publish-backoffice 가 둔 빌드(backoffice-dist, git 제외). 없으면 안내 페이지
