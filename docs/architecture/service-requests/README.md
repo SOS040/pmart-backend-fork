@@ -46,6 +46,7 @@
 | [CM-1](center-master-service.md) | center-master | delivery-dispatch | 내부 센터 조회(MFC 좌표) | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
 | [O-4](order-service.md) | order | delivery-dispatch | 배차용 배송지 조회 | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) — 도로명주소 늘 null 버그 고침 PR 대기(2026-11-14) |
 | [O-5](order-service.md) | order | delivery-execution | 라이더용 전달지(BR-24 — 고객 전화번호 그대로) | 결정됨(2026-11-14: 안심번호 대신 고객 전화번호) | 구현(PC 5 — PR 대기) |
+| [O-6](order-service.md) | order | 백오피스(고객센터·라이더 운영) | 직원용 주문 검색·상세(연락처 완전 일치, 목록 가림) | 결정됨(2026-11-15: order-service 에 둔다) | 구현(커밋만, 미배포) |
 | [F-2](mfc-fulfillment-service.md) | mfc-fulfillment | delivery-dispatch | 피킹 시작 전 포장 소요시간 입력 → 배차 요청(사용자 확인 "피킹 시작 전") | 결정됨(2026-11-13) | 대기(mfc, PC 3) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)

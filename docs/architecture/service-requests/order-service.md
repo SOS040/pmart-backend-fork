@@ -30,3 +30,14 @@
 - **호출자 제한 없음(사용자 2026-11-14, PC 1 PR #15 검토 낮음 2 답)**: "주문, 배송정보관리, 배송 서비스 다 전화번호랑 공동현관 출입문 정보를 볼 수 있겠지. 애초에 고객앱에서 넘어온 정보니까" — `X-Source-System == delivery-execution-service` 같은 호출 서비스 검사는 넣지 않는다(내부 호출 신뢰 규칙 ADR-0026 그대로). 라이더에게 보이는 범위는 delivery-execution 이 판정.
 - **필요한 것**: `GET /internal/orders/{orderId}/drop-info`(내부 호출) — 주문 당시 사본(BR-37) 전부 + `deliveryNote`. 공개 범위(배정 라이더 본인·픽업 뒤 ~ 완료 전)는 delivery-execution 이 판정, 게이트웨이에 열지 않는다. 사본 없으면 404.
 - **한 것**: PC 5 가 계약 0.2.4·`InternalController.getOrderDropInfo`·`DraftFlowIT` 확인을 PR 에 넣었다. 표·사건 변경 없음.
+
+## O-6. 직원용 주문 검색 (2026-11-15, platform — 백오피스 고객센터·라이더 운영, **구현, 커밋만 — 미배포**)
+- **요청한 곳**: 직원 웹 백오피스(고객센터·라이더 운영 메뉴). 지금 `GET /orders*` 는 고객 본인 것만.
+- **결정(사용자 2026-11-15)**: backoffice-bff 가 아니라 order-service 에 둔다.
+- **한 것(계약 0.3.0, V9)**
+  - `GET /orders/lookups` — 조건 orderId·customerId(완전 일치)·status·mfcId·receiverPhone·createdFrom/createdTo(확정 시각, from 포함·to 미포함), page(0~)·size(최대 50, 기본 20), 최근 확정 순, `page.hasNext`(전체 건수는 세지 않음). **orderId·customerId 가 없으면 기간 필수·31일 이하**(아니면 400). receiverPhone 은 주문 당시 배송지 사본(BR-37)의 연락처와 숫자만 비교한 **완전 일치**(부분·이름·주소 검색 없음, 사본 없는 옛 주문은 못 찾음). 목록 연락처는 가림(`receiverPhoneMasked`, 예 010-****-1234), 이름·주소는 목록에 없음.
+  - `GET /orders/lookups/{orderId}` — 주문행 수량 누계·금액 구성(+PG 승인액)·결제 시도/PG 거래 ID·배송지 사본 **전체**(수령인·연락처·주소·출입)·이행 확인 필요 기록. 상태 이력·클레임 목록은 order 에 저장돼 있지 않아 없음(클레임은 claim-service `GET /claims?orderId=`).
+  - 권한: OPERATOR 토큰 + 역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(`StaffOrderRules.ROLES`), 그 밖·고객·라이더 403. 다른 서비스 호출 없음, 읽기 전용. 검색어·배송지는 로그 금지.
+  - 색인(V9): `customer_order(confirmed_at DESC, order_id DESC)`, `customer_order(mfc_id, confirmed_at DESC, order_id DESC)`, `customer_order_shipping(regexp_replace(receiver_phone,'[^0-9]','','g'))`.
+  - 게이트웨이: 경로가 이미 라우팅된 `/api/v1/orders/**` 아래라 라우트 변경 없음. 허용 목록(`user-type-allowlist.txt`)만 다시 생성(OPERATOR 2줄).
+- **남은 것**: 직원 열람 감사 기록(누가 어떤 주문의 개인정보를 봤는지)은 아직 없음 — 필요하면 audit-service 연동 결정 필요. RIDER_OPS 역할의 Keycloak·employee-auth 쪽 정의는 별도.

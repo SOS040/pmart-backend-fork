@@ -14,6 +14,7 @@ import com.pmart.order.api.generated.model.OrderSummary;
 import com.pmart.order.api.generated.model.Quote;
 import com.pmart.order.application.DraftService;
 import com.pmart.order.application.OrderService;
+import com.pmart.order.infrastructure.OrderStore.LineRow;
 import com.pmart.order.infrastructure.OrderStore.OrderRow;
 import java.time.Clock;
 import java.time.Instant;
@@ -79,28 +80,7 @@ public class OrdersController implements OrdersApi {
                             : Quote.FirstPurchaseBenefitEnum.NOT_ELIGIBLE)
                     .weightG(o.weightG())
                     .plannedShipments(o.plannedShipments()))
-            .lines(
-                v.lines().stream()
-                    .map(
-                        l ->
-                            new OrderLine()
-                                .orderLineId(l.orderLineId())
-                                .sku(l.sku())
-                                .productId(l.productId())
-                                .productName(l.productName())
-                                .optionLabel(l.optionLabel())
-                                .cartItemId(l.cartItemId())
-                                .unitsPerSku(l.unitsPerSku())
-                                .unitPrice((int) l.unitPrice())
-                                .lineAmount((int) l.lineAmount())
-                                .discountShare((int) l.discountShare())
-                                .originalQty(l.originalQty())
-                                .unfulfilledQty(l.unfulfilledQty())
-                                .handedOverQty(l.handedOverQty())
-                                .cancelledBeforeShipQty(l.cancelledBeforeShipQty())
-                                .deliveredQty(l.deliveredQty())
-                                .returnedQty(l.returnedQty()))
-                    .toList())
+            .lines(v.lines().stream().map(OrdersController::line).toList())
             .shipments(List.of())
             .payment(new OrderPayment().paymentAttemptId(o.paymentAttemptId()).state("APPROVED"))
             .claims(List.of())
@@ -140,6 +120,27 @@ public class OrdersController implements OrdersApi {
                                 .itemCount(s.itemCount()))
                     .toList())
             .page(new ListOrders200ResponsePage().nextCursor(page.nextCursor()).size(page.size())));
+  }
+
+  /** 주문행 → 계약 모델(고객 상세·직원 상세 공용). */
+  static OrderLine line(LineRow l) {
+    return new OrderLine()
+        .orderLineId(l.orderLineId())
+        .sku(l.sku())
+        .productId(l.productId())
+        .productName(l.productName())
+        .optionLabel(l.optionLabel())
+        .cartItemId(l.cartItemId())
+        .unitsPerSku(l.unitsPerSku())
+        .unitPrice((int) l.unitPrice())
+        .lineAmount((int) l.lineAmount())
+        .discountShare((int) l.discountShare())
+        .originalQty(l.originalQty())
+        .unfulfilledQty(l.unfulfilledQty())
+        .handedOverQty(l.handedOverQty())
+        .cancelledBeforeShipQty(l.cancelledBeforeShipQty())
+        .deliveredQty(l.deliveredQty())
+        .returnedQty(l.returnedQty());
   }
 
   private static OffsetDateTime time(Instant i) {

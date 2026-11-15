@@ -147,6 +147,14 @@ public class FulfillmentIssueService {
         state == null ? "OPEN" : state);
   }
 
+  /** 한 주문의 확인 필요 기록(새 것부터). 권한은 호출자({@link StaffOrderService})가 이미 확인했다. */
+  List<Issue> forOrder(String orderId) {
+    return jdbc.query(
+        "SELECT * FROM order_fulfillment_issue WHERE order_id = ? ORDER BY created_at DESC",
+        (rs, i) -> row(rs),
+        orderId);
+  }
+
   @Transactional
   public Issue acknowledge(String issueId, String note) {
     Issue cur = find(issueId);

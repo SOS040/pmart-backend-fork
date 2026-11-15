@@ -318,6 +318,114 @@ public class OrderStore {
         args.toArray());
   }
 
+  /** 직원용 검색 조건(O-6). null 은 거르지 않음. phoneDigits 는 숫자만(완전 일치). */
+  public record StaffCriteria(
+      @Nullable String orderId,
+      @Nullable String accountId,
+      @Nullable String status,
+      @Nullable String mfcId,
+      @Nullable String phoneDigits,
+      @Nullable Instant from,
+      @Nullable Instant to) {}
+
+  /** 직원용 검색 한 줄. receiverPhone 은 원문(가림은 호출자) — 로그 금지. */
+  public record StaffSummary(
+      String orderId,
+      String accountId,
+      String status,
+      int version,
+      String mfcId,
+      String deliveryMode,
+      @Nullable LocalDate arrivalDate,
+      @Nullable String arrivalStart,
+      @Nullable String arrivalEnd,
+      Instant confirmedAt,
+      long totalAmount,
+      long approvedAmount,
+      int itemCount,
+      int lineCount,
+      int plannedShipments,
+      int openFulfillmentIssues,
+      @Nullable String receiverPhone) {}
+
+  /**
+   * 직원용 주문 검색(O-6, 읽기 전용). 최근 확정 순, offset 쪽 나눔. 기간 상한은 호출자가 확인한다. 연락처는 사본의 숫자만 비교(V9 식 색인).
+   *
+   * @param limit 가져올 최대 건수(다음 쪽 판정을 위해 호출자가 +1 해서 준다)
+   */
+  public List<StaffSummary> staffSearch(StaffCriteria c, int offset, int limit) {
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT o.order_id, o.account_id, o.status, o.version, o.mfc_id, o.delivery_mode,"
+                + " o.arrival_date, o.arrival_start, o.arrival_end, o.confirmed_at, o.total_amount,"
+                + " o.approved_amount, o.planned_shipments,"
+                + " (SELECT COALESCE(SUM(l.quantity), 0) FROM customer_order_line l"
+                + " WHERE l.order_id = o.order_id) AS item_count,"
+                + " (SELECT COUNT(*) FROM customer_order_line l WHERE l.order_id = o.order_id)"
+                + " AS line_count,"
+                + " (SELECT COUNT(*) FROM order_fulfillment_issue f WHERE f.order_id = o.order_id"
+                + " AND f.state = 'OPEN') AS open_issues,"
+                + " s.receiver_phone"
+                + " FROM customer_order o"
+                + " LEFT JOIN customer_order_shipping s ON s.order_id = o.order_id WHERE TRUE");
+    List<Object> args = new ArrayList<>();
+    if (c.orderId() != null) {
+      sql.append(" AND o.order_id = ?");
+      args.add(c.orderId());
+    }
+    if (c.accountId() != null) {
+      sql.append(" AND o.account_id = ?");
+      args.add(c.accountId());
+    }
+    if (c.status() != null) {
+      sql.append(" AND o.status = ?");
+      args.add(c.status());
+    }
+    if (c.mfcId() != null) {
+      sql.append(" AND o.mfc_id = ?");
+      args.add(c.mfcId());
+    }
+    if (c.phoneDigits() != null) {
+      sql.append(" AND regexp_replace(s.receiver_phone, '[^0-9]', '', 'g') = ?");
+      args.add(c.phoneDigits());
+    }
+    if (c.from() != null) {
+      sql.append(" AND o.confirmed_at >= ?");
+      args.add(Timestamp.from(c.from()));
+    }
+    if (c.to() != null) {
+      sql.append(" AND o.confirmed_at < ?");
+      args.add(Timestamp.from(c.to()));
+    }
+    sql.append(" ORDER BY o.confirmed_at DESC, o.order_id DESC LIMIT ? OFFSET ?");
+    args.add(limit);
+    args.add(offset);
+    return jdbc.query(
+        sql.toString(),
+        (rs, i) -> {
+          Date arrival = rs.getDate("arrival_date");
+          return new StaffSummary(
+              rs.getString("order_id"),
+              rs.getString("account_id"),
+              rs.getString("status"),
+              rs.getInt("version"),
+              rs.getString("mfc_id"),
+              rs.getString("delivery_mode"),
+              arrival == null ? null : arrival.toLocalDate(),
+              rs.getString("arrival_start"),
+              rs.getString("arrival_end"),
+              rs.getTimestamp("confirmed_at").toInstant(),
+              rs.getLong("total_amount"),
+              rs.getLong("approved_amount"),
+              rs.getInt("item_count"),
+              rs.getInt("line_count"),
+              rs.getInt("planned_shipments"),
+              rs.getInt("open_issues"),
+              rs.getString("receiver_phone"));
+        },
+        args.toArray());
+  }
+
   private static OrderRow row(ResultSet rs) throws SQLException {
     Date arrival = rs.getDate("arrival_date");
     return new OrderRow(

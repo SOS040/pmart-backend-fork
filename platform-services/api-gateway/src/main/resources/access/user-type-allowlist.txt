@@ -144,6 +144,8 @@ GET /api/v1/operation-restrictions OPERATOR
 GET /api/v1/operation-restrictions/{restrictionId} OPERATOR
 GET /api/v1/order-drafts/{draftId} CUSTOMER
 GET /api/v1/orders CUSTOMER
+GET /api/v1/orders/lookups OPERATOR
+GET /api/v1/orders/lookups/{orderId} OPERATOR
 GET /api/v1/orders/{orderId} CUSTOMER
 GET /api/v1/orders/{orderId}/reservation-time-changes/{requestId} CUSTOMER
 GET /api/v1/packages OPERATOR
