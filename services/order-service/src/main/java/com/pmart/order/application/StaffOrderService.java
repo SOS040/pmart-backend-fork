@@ -59,7 +59,8 @@ public class StaffOrderService {
       String piiAccessLogId,
       Instant recordedAt,
       List<PiiField> fields,
-      ShippingAddress shipping) {}
+      ShippingAddress shipping,
+      @Nullable String deliveryNote) {}
 
   /** 검색어. createdFrom·createdTo 는 확정 시각 기준. */
   public record Query(
@@ -193,7 +194,14 @@ public class StaffOrderService {
     AuditClient.Recorded r =
         audit.recordPiiAccess(auditRequestId(p.subject(), orderId, idempotencyKey), body);
     return new Reveal(
-        orderId, r.piiAccessLogId(), r.recordedAt(), ordered, StaffOrderRules.mask(full, wanted));
+        orderId,
+        r.piiAccessLogId(),
+        r.recordedAt(),
+        ordered,
+        StaffOrderRules.mask(full, wanted),
+        wanted.contains(PiiField.ENTRANCE)
+            ? o.deliveryNote()
+            : null); // 배송 요청사항은 ENTRANCE 와 같이(ADR-0062)
   }
 
   /** audit 기록 멱등 키: 직원·주문·클라이언트 키의 SHA-256(128자 상한 안). */

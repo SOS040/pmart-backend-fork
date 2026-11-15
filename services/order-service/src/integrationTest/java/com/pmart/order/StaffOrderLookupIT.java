@@ -394,7 +394,9 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
     assertThat(d.path("customerId").asString()).isEqualTo(account);
     assertThat(d.path("status").asString()).isEqualTo("CONFIRMED");
     assertThat(d.path("mfcId").asString()).isEqualTo(mfc);
-    assertThat(d.path("deliveryNote").asString()).isEqualTo("문 앞에 두세요");
+    // 배송 요청사항은 가림(ADR-0062, 0.5.0) — 있으면 deliveryNoteMasked
+    assertThat(d.path("deliveryNote").isMissingNode() || d.path("deliveryNote").isNull()).isTrue();
+    assertThat(d.path("deliveryNoteMasked").asBoolean()).isTrue();
     assertThat(d.path("amounts").path("totalAmount").asInt()).isEqualTo(24_100);
     assertThat(d.path("amounts").path("approvedAmount").asInt()).isEqualTo(24_100);
     assertThat(d.path("amounts").path("deliveryTip").asInt()).isEqualTo(4_000);
@@ -492,6 +494,9 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
     assertThat(s.path("receiverPhone").asString()).isEqualTo("010-2222-3333");
     assertThat(s.path("detailAddress").asString()).isEqualTo("101동 1001호");
     assertThat(s.path("entranceNote").asString()).isEqualTo("#1234");
+    assertThat(r.path("deliveryNote").asString())
+        .as("ENTRANCE 를 열면 배송 요청사항도")
+        .isEqualTo("문 앞에 두세요");
     assertThat(s.path("geo").path("lat").asDouble()).isEqualTo(37.5);
 
     // audit 에 간 본문: 행위자·역할·고객·주문·항목·사유(원문 개인정보 없음). 키는 직원·주문·클라이언트 키로 정한 값
@@ -539,6 +544,9 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
         .isEqualTo("010-2222-3333");
     assertThat(p.path("shippingAddress").path("receiverName").asString()).isEqualTo("홍*동");
     assertThat(p.path("shippingAddress").path("detailAddress").asString()).isEqualTo("***");
+    assertThat(p.path("deliveryNote").isMissingNode() || p.path("deliveryNote").isNull())
+        .as("PHONE 만 열면 배송 요청사항은 그대로 가림")
+        .isTrue();
 
     // audit 의 409(같은 키·다른 사유)는 그대로, 원문 없음
     audit.stubFor(

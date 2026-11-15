@@ -87,7 +87,9 @@ public class OrderLookupsController implements OrderLookupsApi {
             .confirmedAt(o.confirmedAt().atOffset(ZoneOffset.UTC))
             .outOfStockPreference(
                 StaffOrderDetail.OutOfStockPreferenceEnum.fromValue(o.outOfStockPreference()))
-            .deliveryNote(o.deliveryNote())
+            // 배송 요청사항은 가린다 — 공동현관 번호 등이 들어갈 수 있어 ENTRANCE 열람으로만(ADR-0062, 0.5.0)
+            .deliveryNote(null)
+            .deliveryNoteMasked(o.deliveryNote() != null && !o.deliveryNote().isBlank())
             .weightG(o.weightG())
             .plannedShipments(o.plannedShipments())
             .amounts(
@@ -131,7 +133,8 @@ public class OrderLookupsController implements OrderLookupsApi {
             .piiAccessLogId(r.piiAccessLogId())
             .recordedAt(r.recordedAt().atOffset(ZoneOffset.UTC))
             .fields(r.fields().stream().map(f -> StaffPiiField.fromValue(f.name())).toList())
-            .shippingAddress(ShippingMapping.of(r.shipping())));
+            .shippingAddress(ShippingMapping.of(r.shipping()))
+            .deliveryNote(r.deliveryNote()));
   }
 
   private static StaffOrderSummary summary(StaffOrderService.Row r) {

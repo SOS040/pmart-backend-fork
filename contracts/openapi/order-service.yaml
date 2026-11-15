@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     주문 초안·주문 원장·스냅샷·상태·이행 계획의 정본. (docs/architecture/service-map.md §2)
     사가 진행은 order-orchestration-service, PG 거래는 payment-service, 클레임 심사는 claim-service.
@@ -970,7 +970,8 @@ components:
         arrivalWindow: { $ref: '#/components/schemas/ArrivalWindow' }
         confirmedAt: { type: string, format: date-time }
         outOfStockPreference: { type: string, enum: [CANCEL_OOS_ONLY, CANCEL_ALL] }
-        deliveryNote: { type: [string, 'null'], description: 배송 요청사항 }
+        deliveryNote: { type: [string, 'null'], description: '배송 요청사항 — **0.5.0 부터 직원 상세에서는 가린다(null)**. 공동현관 번호 등이 들어갈 수 있어 ENTRANCE 열람(pii-reveals)으로만 원문(ADR-0062)' }
+        deliveryNoteMasked: { type: boolean, description: '(0.5.0) 배송 요청사항이 있는데 가렸으면 true — 화면은 "열람" 버튼을 보인다' }
         weightG: { type: integer }
         plannedShipments: { type: integer }
         amounts: { $ref: '#/components/schemas/StaffOrderAmounts' }
@@ -994,7 +995,7 @@ components:
       type: string
       x-added-in: '2026-11-15'
       description: |
-        원문으로 볼 배송지 항목(0.4.0). NAME = receiverName, PHONE = receiverPhone, ADDRESS = detailAddress + geo(핀), ENTRANCE = entranceNote.
+        원문으로 볼 배송지 항목(0.4.0). NAME = receiverName, PHONE = receiverPhone, ADDRESS = detailAddress + geo(핀), ENTRANCE = entranceNote + 배송 요청사항(deliveryNote, 0.5.0 — ADR-0062).
         roadAddress·postalCode·entranceMethod 는 가리지 않으므로 항목이 없다.
       enum: [NAME, PHONE, ADDRESS, ENTRANCE]
     StaffPiiRevealRequest:
@@ -1020,6 +1021,7 @@ components:
         recordedAt: { type: string, format: date-time, description: 열람 기록 시각(audit-service) }
         fields: { type: array, items: { $ref: '#/components/schemas/StaffPiiField' }, description: 원문으로 준 항목 }
         shippingAddress: { $ref: '#/components/schemas/ShippingAddress' }
+        deliveryNote: { type: [string, 'null'], description: '(0.5.0) ENTRANCE 를 열었을 때만 배송 요청사항 원문 — 그 밖에는 null' }
     StaffOrderAmounts:
       type: object
       x-added-in: '2026-11-15'
