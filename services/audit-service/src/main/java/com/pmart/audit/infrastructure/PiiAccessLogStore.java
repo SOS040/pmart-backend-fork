@@ -107,4 +107,14 @@ public class PiiAccessLogStore {
   private List<String> strings(@Nullable String json) {
     return json == null ? List.of() : mapper.readValue(json, STRINGS);
   }
+
+  /** 보존 기간 지난 열람 기록 파기(트랜잭션 안에서 — {@code pmart.audit_purge} 는 그 트랜잭션에만, V3 트리거가 이것만 허용). 지운 수. */
+  public int purgeOlderThan(java.time.Instant before, int limit) {
+    jdbc.queryForObject("SELECT set_config('pmart.audit_purge', 'on', true)", String.class);
+    return jdbc.update(
+        "DELETE FROM pii_access_log WHERE pii_access_log_id IN (SELECT pii_access_log_id FROM"
+            + " pii_access_log WHERE occurred_at < ? ORDER BY occurred_at LIMIT ?)",
+        java.sql.Timestamp.from(before),
+        limit);
+  }
 }

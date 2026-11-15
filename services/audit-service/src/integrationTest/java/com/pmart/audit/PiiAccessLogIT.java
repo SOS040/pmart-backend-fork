@@ -39,6 +39,7 @@ class PiiAccessLogIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired com.pmart.audit.application.PiiAccessLogPurger purger;
 
   RestClient http;
 
@@ -146,5 +147,24 @@ class PiiAccessLogIT extends PostgresKafkaContainerSupport {
     var noFields = body("사유", Instant.now());
     noFields.put("fields", List.of());
     assertThat(post("k-" + UUID.randomUUID(), noFields).getStatusCode().value()).isEqualTo(400);
+  }
+
+  /** 보존 2년 뒤 파기(ADR-0062 결정 9, V3): 정리 작업만 지울 수 있고, 2년 안 기록은 남는다. 그냥 DELETE 는 여전히 거부. */
+  @Test
+  void purgeRemovesOnlyRecordsOlderThanRetention() {
+    Instant old = Instant.now().minus(java.time.Duration.ofDays(3 * 365));
+    Instant recent = Instant.now().minus(java.time.Duration.ofDays(30));
+    assertThat(post("purge-old", body("오래된 열람", old)).getStatusCode().value()).isEqualTo(201);
+    assertThat(post("purge-recent", body("최근 열람", recent)).getStatusCode().value()).isEqualTo(201);
+    String count = "SELECT count(*) FROM pii_access_log WHERE request_id = ?";
+
+    assertThat(purger.purge()).isGreaterThanOrEqualTo(1);
+
+    assertThat(jdbc.queryForObject(count, Integer.class, "purge-old")).isZero();
+    assertThat(jdbc.queryForObject(count, Integer.class, "purge-recent")).isEqualTo(1);
+    // 정리 작업 밖의 DELETE 는 그대로 거부
+    assertThatThrownBy(
+            () -> jdbc.update("DELETE FROM pii_access_log WHERE request_id = 'purge-recent'"))
+        .hasMessageContaining("추가만");
   }
 }
