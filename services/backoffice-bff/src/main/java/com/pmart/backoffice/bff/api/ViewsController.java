@@ -2,7 +2,9 @@ package com.pmart.backoffice.bff.api;
 
 import com.pmart.backoffice.bff.api.generated.ViewsApi;
 import com.pmart.backoffice.bff.api.generated.model.GetApprovalInboxView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetPendingWorkView200Response;
 import com.pmart.backoffice.bff.application.ApprovalInboxView;
+import com.pmart.backoffice.bff.application.PendingWorkView;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -10,17 +12,26 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 계약 ViewsApi 의 구현 진입점. 아직 구현하지 않은 메서드는 인터페이스 default 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고
- * 여기서는 요청·응답 변환만 한다. 구현: 승인함(2026-11-03, BR-40).
+ * 여기서는 요청·응답 변환만 한다. 구현: 승인함(2026-11-03, BR-40), 처리 대기(2026-11-16, BO-12).
  */
 @RestController
 public class ViewsController implements ViewsApi {
 
   private final ApprovalInboxView approvalInbox;
+  private final PendingWorkView pendingWork;
   private final ObjectMapper mapper;
 
-  public ViewsController(ApprovalInboxView approvalInbox, ObjectMapper mapper) {
+  public ViewsController(
+      ApprovalInboxView approvalInbox, PendingWorkView pendingWork, ObjectMapper mapper) {
     this.approvalInbox = approvalInbox;
+    this.pendingWork = pendingWork;
     this.mapper = mapper;
+  }
+
+  @Override
+  public ResponseEntity<GetPendingWorkView200Response> getPendingWorkView() {
+    return ResponseEntity.ok(
+        mapper.convertValue(pendingWork.view(), GetPendingWorkView200Response.class));
   }
 
   @Override

@@ -37,13 +37,13 @@
 - 서빙: PC 4 nginx 443(`backoffice-web`). 올리기는 PC 1 `lan.sh publish-backoffice <dist>`.
 
 ## 4. 할 일 (추천 순서)
-1. **BO-12 운영자 수동 개입**(`service-requests/backoffice-bff.md`) — **결정됨 2026-11-16**(OPERATOR_ADMIN 만, 버튼 "재시도"·"처리 완료(사유 필수)", 환불은 기존 절차, 알림은 목록만). 쓸 수 있는 API:
+1. **BO-12 운영자 수동 개입 — 백엔드는 PC 1 이 만들어 LAN 배포(2026-11-16)**: bff `/views/pending-work`·`/commands/order-orchestration-service/saga-requery|saga-resolve`, orchestration stuck-sagas·manual-actions. PC 2 는 화면 연결(클라이언트)·MFC 인계 거절·중지 실패 목록(나중). 아래는 결정 당시 메모 — **결정됨 2026-11-16**(OPERATOR_ADMIN 만, 버튼 "재시도"·"처리 완료(사유 필수)", 환불은 기존 절차, 알림은 목록만). 쓸 수 있는 API:
    - order `GET /fulfillment-issues`·`POST …/acknowledgements`(이행 확인 필요 — 이미 직원용)
    - order-orchestration `GET /internal/sagas`·`/internal/sagas/{id}`(조회 됨), `POST /internal/sagas/{id}/manual-actions`(**501**)
    - mfc-fulfillment `POST /internal/package-handovers/{id}/retries`(D-8), `POST /internal/stop-requests/{id}/retries`
    - 내부 경로는 게이트웨이로 안 나간다 → bff 가 서비스 간 호출로 묶어 `/views`·`/commands` 로 내놓는다. 다른 영역 서비스에 API 가 더 필요하면 `service-requests/` 에 적는다(orchestration·order 는 PC 1, mfc 는 PC 3).
    - 클라이언트에는 메뉴 먼저: "처리 대기" 메뉴에서 이행 확인 필요 목록은 바로 동작, 멈춘 주문 조치는 "준비 중".
-2. **case R-4 사건함**: `DeliveryIncidentRaised`(delivery.delivery.v1) 구독 → 지원센터 사건 → `CaseOpened`·`CaseClosed`. 생기면 delivery-execution 의 임시 "도움요청 처리함 닫기"(BOD-4)를 정리하도록 PC 5 에 알린다.
+2. **case 사건함 — PC 1 이 만들어 LAN 배포(2026-11-16, case 0.4.0)**: R-4·R-6·R-7(도움요청·전달 실패·위치 끊김·오배송 확인), 팀 공용 목록 집기·닫기. PC 2 는 화면 연결, R-3(사가·결제 상신 사건), 이관·재개·의무(501). PC 5 에 연결 요청 적어 둠(execution DE-CASE, dispatch DD-2).
 3. case **R-6**(위치 끊긴 라이더 알림 — `RiderLocationStale`), **R-7**(오배송 확인 기록 → 사건, DD-2 회수 배차 앞단), **R-3**(사가·결제 상신 받기 — 케이스 유형·담당·기한은 사용자에게 질문). R-2 는 ADR-0060 으로 거둠 — 만들지 않는다.
 4. 클라이언트: 주문 원문 열람 흐름, 라이더 찾기·대기 목록 연결(위 §3).
 

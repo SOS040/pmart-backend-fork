@@ -35,6 +35,7 @@ GET /api/v1/backoffice/views/case-inbox OPERATOR
 GET /api/v1/backoffice/views/live-delivery OPERATOR
 GET /api/v1/backoffice/views/metrics OPERATOR
 GET /api/v1/backoffice/views/packing-handover OPERATOR
+GET /api/v1/backoffice/views/pending-work OPERATOR
 GET /api/v1/backoffice/views/replenishment-status OPERATOR
 GET /api/v1/backoffice/views/trip-control OPERATOR
 GET /api/v1/backoffice/views/unified-lookup OPERATOR

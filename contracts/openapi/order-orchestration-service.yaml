@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-orchestration-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     사가 인스턴스·단계·타임아웃·재시도·보상 로그·결과 불명 추적·운영자 수동 개입 기록의 정본. (docs/architecture/service-map.md §2)
     주문 상태(order), 결제·재고·슬롯·작업의 성공 확정(각 정본)은 소유하지 않는다.
@@ -45,6 +45,33 @@ paths:
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
+  /internal/stuck-sagas:
+    get:
+      tags: [sagas]
+      summary: "[backoffice-bff→orchestration] 멈춘 사가 목록 — 사람 손이 필요한 것(BO-12 처리 대기, 0.2.0)"
+      x-added-in: '2026-11-16'
+      description: |
+        2026-11-16 사용자 BO-12 결정(추천대로): 운영 관리자 처리 대기 화면. 네 사가 표(결제 진입·이행 요청·취소·결품)에서
+        ESCALATED·RECONCILIATION_REQUIRED·UNKNOWN_TRACKING 이고 아직 "처리 완료"로 표시되지 않은 것. 오래 멈춘 것부터.
+        allowedActions = 그 사가에 의미 있는 조치 — 결제 확인 대기(UNKNOWN_TRACKING·결제 진입)는 REQUERY_RESULT(원결과 다시 확인),
+        업무 거절로 멈춘 것(ESCALATED)·대사 불일치(RECONCILIATION_REQUIRED)는 MARK_RESOLVED(밖에서 해결 — 사유 필수). 같은 요청을 다시 보내도 같은 거절이라 재시도는 주지 않는다.
+        서비스 간 경로(권한 검사는 backoffice-bff — OPERATOR_ADMIN).
+      operationId: listStuckSagas
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/StuckSaga' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
   /internal/sagas/{sagaId}:
     get:
       tags: [sagas]
@@ -67,7 +94,12 @@ paths:
       tags: [sagas]
       summary: "[bo→orchestration] 수동 재처리 (원결과 재조회 / 미전달 재전송 / 승인된 보상 실행)"
       description: |
-        BO-12 운영자 동작. 세 가지 동작은 각각 분리되며 모두 approvalRef(approval-service 승인 건)가 필요하다.
+        BO-12 운영자 동작. 동작은 각각 분리된다.
+        0.2.0(2026-11-16 사용자 BO-12 결정): **REQUERY_RESULT·MARK_RESOLVED 는 승인 없이**(돈·재고를 움직이지 않음 — backoffice-bff 가 OPERATOR_ADMIN 만 통과시킴, operatorId·reason 필수).
+        RESEND_NOTIFICATION·EXECUTE_COMPENSATION 은 approvalRef 필요(아직 구현 안 함 — 422 UNSUPPORTED_ACTION).
+        - REQUERY_RESULT: 지금은 결제 진입 사가의 결제 확인 대기(WAITING_RESULT·UNKNOWN_TRACKING)만 — 결제 원결과를 바로 다시 확인해 사가를 이어 간다(자동 점검을 당겨 하는 것). 그 밖은 422 NOT_REQUERYABLE.
+        - MARK_RESOLVED: ESCALATED·RECONCILIATION_REQUIRED 사가를 "사람이 밖에서 해결함"으로 표시만 한다(사가 상태·자원은 그대로, 멈춘 사가 목록에서 빠짐). 그 밖은 422 NOT_RESOLVABLE.
+        같은 (X-Source-System, Idempotency-Key)는 같은 결과.
         "강제 취소 성공", "예약 강제 해제" 같은 동작은 존재하지 않는다(UNSUPPORTED_ACTION).
         - REQUERY_RESULT 지정 단계의 원결과를 소유 서비스에 재조회해 사가 상태를 갱신한다.
         - RESEND_NOTIFICATION 미전달 고객 통지만 재전송한다(상태 변경 없음).
@@ -271,15 +303,16 @@ components:
         resolvedEvidenceRef: { type: string, description: PG 원거래 등 정본 증거 참조 }
     ManualActionType:
       type: string
-      enum: [REQUERY_RESULT, RESEND_NOTIFICATION, EXECUTE_COMPENSATION]
+      enum: [REQUERY_RESULT, RESEND_NOTIFICATION, EXECUTE_COMPENSATION, MARK_RESOLVED]
     ManualActionRequest:
       type: object
-      required: [action, approvalRef, reason]
+      required: [action, reason, operatorId]
       properties:
         action: { $ref: '#/components/schemas/ManualActionType' }
         approvalRef:
           type: string
-          description: approval-service 승인 건 ID. 미승인·만료 시 APPROVAL_REQUIRED
+          description: approval-service 승인 건 ID — RESEND_NOTIFICATION·EXECUTE_COMPENSATION 만 필요(0.2.0). 미승인·만료 시 APPROVAL_REQUIRED
+        operatorId: { type: string, maxLength: 128, description: '조치한 직원(운영자 ID — backoffice-bff 가 토큰에서 채움, 0.2.0)', x-added-in: '2026-11-16' }
         reason: { type: string, maxLength: 500 }
         step: { $ref: '#/components/schemas/StepName' }
         compensationResourceIds:
@@ -287,6 +320,21 @@ components:
           description: EXECUTE_COMPENSATION일 때 해제 대상(보상 로그에 있는 ID만 허용)
           items: { type: string }
         notificationRef: { type: string, description: RESEND_NOTIFICATION 대상 통지 ID }
+    StuckSaga:
+      type: object
+      required: [sagaId, sagaType, orderId, state, currentStep, updatedAt, allowedActions]
+      x-added-in: '2026-11-16'
+      properties:
+        sagaId: { type: string }
+        sagaType: { type: string, description: 'S1_CHECKOUT·S2_FULFILLMENT·S3_CANCELLATION·SHORTAGE(결품 사가)' }
+        orderId: { type: string }
+        state: { type: string, enum: [ESCALATED, RECONCILIATION_REQUIRED, UNKNOWN_TRACKING] }
+        currentStep: { type: string }
+        lastErrorStep: { type: [string, 'null'] }
+        lastErrorCode: { type: [string, 'null'] }
+        lastErrorMessage: { type: [string, 'null'] }
+        updatedAt: { type: string, format: date-time, description: 마지막으로 바뀐 시각(멈춘 시각) }
+        allowedActions: { type: array, items: { $ref: '#/components/schemas/ManualActionType' } }
     ManualAction:
       type: object
       properties:

@@ -24,5 +24,10 @@
 - `GET /views/approval-inbox`(`application/ApprovalInboxView`): approval-service `GET /api/v1/approvals` 를 **운영자 본인 토큰**으로 읽어(`infrastructure/ApprovalClient`, ADR-0026 의 서비스 간 인증이 아니라 사용자 토큰 전달) 화면 항목으로 묶는다. `dossierId` = `approvalId`. 결정은 approval-service 상세에서.
 - approval-service 장애(연결 실패·5xx)면 200 + 빈 items + `unavailableSources=[approval-service]`(추정하지 않음). 4xx 는 같은 뜻(401·403 → 403, 그 밖 400). 주소 `pmart.bff.approval-base-url`(기본 `http://approval-service:8505`, local 은 pmart-config).
 
+## 처리 대기 (2026-11-16, BO-12 — 계약 0.2.0)
+- `GET /views/pending-work`(`application/PendingWorkView`, `infrastructure/PendingWorkClients`): OPERATOR_ADMIN 만. order-orchestration `/internal/stuck-sagas`(서비스 간, 토큰 없음) + order `/fulfillment-issues?state=OPEN`(운영자 토큰 전달 — 관리자는 모든 센터)을 오래된 것부터. 원천 장애면 그 항목 없이 `unavailableSources`.
+- `POST /commands/{targetService}/{command}`: 지금은 `order-orchestration-service/saga-requery`(REQUERY_RESULT)·`saga-resolve`(MARK_RESOLVED)만 — targetRef = sagaId, reason 필수, operatorId = 토큰 주체. 대상 4xx 는 코드 그대로, 그 밖 대상·명령 422 UNSUPPORTED_ACTION. 승인 없음(돈·재고를 움직이지 않는 조치, 사용자 결정).
+- 주소 `pmart.bff.orchestration-base-url`(기본 `http://order-orchestration-service:8202`)·`order-base-url`(기본 `http://order-service:8201`).
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03). 그 밖의 `/views/*`·`/commands/*` 는 501.
+3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.

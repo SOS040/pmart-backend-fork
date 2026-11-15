@@ -4,8 +4,13 @@ import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.order.orchestration.api.generated.SagasApi;
 import com.pmart.order.orchestration.api.generated.model.CompensationLogEntry;
+import com.pmart.order.orchestration.api.generated.model.CreateManualAction202Response;
 import com.pmart.order.orchestration.api.generated.model.ListSagas200Response;
 import com.pmart.order.orchestration.api.generated.model.ListSagas200ResponsePage;
+import com.pmart.order.orchestration.api.generated.model.ListStuckSagas200Response;
+import com.pmart.order.orchestration.api.generated.model.ManualAction;
+import com.pmart.order.orchestration.api.generated.model.ManualActionRequest;
+import com.pmart.order.orchestration.api.generated.model.ManualActionType;
 import com.pmart.order.orchestration.api.generated.model.Saga;
 import com.pmart.order.orchestration.api.generated.model.SagaLastError;
 import com.pmart.order.orchestration.api.generated.model.SagaPayment;
@@ -16,9 +21,12 @@ import com.pmart.order.orchestration.api.generated.model.SagaTimers;
 import com.pmart.order.orchestration.api.generated.model.SagaType;
 import com.pmart.order.orchestration.api.generated.model.StepName;
 import com.pmart.order.orchestration.api.generated.model.StepState;
+import com.pmart.order.orchestration.api.generated.model.StuckSaga;
 import com.pmart.order.orchestration.application.CheckoutSagaService;
 import com.pmart.order.orchestration.application.FulfillmentSagaService;
+import com.pmart.order.orchestration.application.ManualActionService;
 import com.pmart.order.orchestration.infrastructure.FulfillmentStore;
+import com.pmart.order.orchestration.infrastructure.ManualActionStore;
 import com.pmart.order.orchestration.infrastructure.SagaStore.SagaRow;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -30,7 +38,7 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * 사가 조회(진행 사본) — S1 결제 진입, S2 이행 요청(2026-11-07). 결제·재고·슬롯·작업 성공은 각 정본의 원결과 조회로만 확정한다. 수동 개입(BO-12)은
- * 아직 501.
+ * 멈춘 사가 목록·수동 조치(REQUERY_RESULT·MARK_RESOLVED, 2026-11-16 BO-12 — {@link ManualActionService}).
  */
 @RestController
 public class SagasController implements SagasApi {
@@ -38,9 +46,13 @@ public class SagasController implements SagasApi {
   private final CheckoutSagaService sagas;
   private final FulfillmentSagaService fulfillments;
 
-  SagasController(CheckoutSagaService sagas, FulfillmentSagaService fulfillments) {
+  private final ManualActionService manual;
+
+  SagasController(
+      CheckoutSagaService sagas, FulfillmentSagaService fulfillments, ManualActionService manual) {
     this.sagas = sagas;
     this.fulfillments = fulfillments;
+    this.manual = manual;
   }
 
   @Override
@@ -254,5 +266,77 @@ public class SagasController implements SagasApi {
   private static @Nullable String text(JsonNode n, String field) {
     String v = n.path(field).asString(null);
     return v == null || v.isBlank() ? null : v;
+  }
+
+  // ---------- 수동 개입(BO-12, 0.2.0)
+
+  @Override
+  public ResponseEntity<ListStuckSagas200Response> listStuckSagas(
+      Integer size, @Nullable String cursor) {
+    ManualActionService.Page page = manual.stuck(cursor, size);
+    return ResponseEntity.ok(
+        new ListStuckSagas200Response()
+            .items(
+                page.items().stream()
+                    .map(
+                        r ->
+                            new StuckSaga()
+                                .sagaId(r.sagaId())
+                                .sagaType(r.sagaType())
+                                .orderId(r.orderId())
+                                .state(StuckSaga.StateEnum.fromValue(r.state()))
+                                .currentStep(r.currentStep())
+                                .lastErrorStep(r.lastErrorStep())
+                                .lastErrorCode(r.lastErrorCode())
+                                .lastErrorMessage(r.lastErrorMessage())
+                                .updatedAt(time(r.updatedAt()))
+                                .allowedActions(
+                                    ManualActionService.allowedActions(r).stream()
+                                        .map(ManualActionType::fromValue)
+                                        .toList()))
+                    .toList())
+            .page(
+                new ListSagas200ResponsePage()
+                    .nextCursor(page.nextCursor())
+                    .size(page.items().size())));
+  }
+
+  @Override
+  public ResponseEntity<CreateManualAction202Response> createManualAction(
+      String sagaId,
+      String idempotencyKey,
+      String xSourceSystem,
+      ManualActionRequest body,
+      @Nullable Integer xExpectedVersion) {
+    ManualActionStore.ActionRow a =
+        manual.act(
+            xSourceSystem,
+            idempotencyKey,
+            sagaId,
+            body.getAction().getValue(),
+            body.getOperatorId(),
+            body.getReason());
+    return ResponseEntity.accepted()
+        .body(
+            new CreateManualAction202Response()
+                .status(CreateManualAction202Response.StatusEnum.APPLIED)
+                .requestId(a.requestId())
+                .resultId(sagaId)
+                .nextAction(a.resultSummary()));
+  }
+
+  @Override
+  public ResponseEntity<ManualAction> getManualAction(String sagaId, String requestId) {
+    ManualActionStore.ActionRow a = manual.get(sagaId, requestId);
+    return ResponseEntity.ok(
+        new ManualAction()
+            .requestId(a.requestId())
+            .sagaId(a.sagaId())
+            .action(ManualActionType.fromValue(a.action()))
+            .operatorId(a.operatorId())
+            .state(ManualAction.StateEnum.fromValue(a.state()))
+            .resultSummary(a.resultSummary())
+            .requestedAt(time(a.requestedAt()))
+            .finishedAt(time(a.finishedAt())));
   }
 }
