@@ -99,6 +99,8 @@ declare -A IPNAME=() IPSTAT=()
 names=()
 for pc in $(ls "$OUT"); do
   read -r _ ip alias < "$OUT/$pc/target"
+  # pmart-pc1 = 이 PC(2026-11-15) — SSH 설정에 없어 ssh -G 가 별칭을 그대로 돌려준다. 자기 IP 는 확인하지 않는다
+  if [ "$alias" = pmart-pc1 ]; then IPSTAT[$pc]=SKIP; continue; fi
   n="$(ipcheck_hostname "$alias")"
   if [ -z "$n" ] || is_ipv4 "$n"; then IPSTAT[$pc]=SKIP; else IPNAME[$pc]="$n"; names+=("$n"); fi
 done
