@@ -46,7 +46,7 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web hr-backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web hr-backoffice-web mfc-backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
 # RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
 RAG_APPS=" ai-assistant-service customer-assistant-service "
@@ -55,7 +55,7 @@ is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
 # RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
 # 사내 메일(ADR-0056 결정 9)·웹메일도 같은 PC(Keycloak·hr-service)만 이름으로 부른다
 # hr-service 는 게이트웨이가 Eureka 로, mail-provisioner 는 같은 PC 의 hr-service 만 이름으로 부른다(ADR-0056 5-5)
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner hr-backoffice-web "
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner hr-backoffice-web mfc-backoffice-web "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -358,6 +358,27 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./hr-backoffice:/usr/share/nginx/html:ro
+      - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(LAN 사설 CA)
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 443 || exit 1"] # HTTPS 대기만(80 은 301 이라 wget 이 사설 인증서 HTTPS 로 따라가다 실패 — 2026-11-15)
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+EOF
+        ;;
+      mfc-backoffice-web)
+        # MFC 백오피스(별도 앱, 2026-11-15 사용자 "백오피스 mfc는 떼어내고" — pmart-clients web/mfc-backoffice(제안) `npm run build:lan`) — 같은 nginx 설정, 8445.
+        # 게이트웨이 CORS 출처 https://192.168.0.40:8445·https://d603-16:8445(api-gateway-lan.yml). 파일은 render 가 mfc-backoffice/ 에 둔다
+        cat <<EOF
+  mfc-backoffice-web:
+    <<: *common
+    image: nginx:1.27-alpine
+    ports: ["8082:80", "8445:443"] # HTTPS 8445(ADR-0057). 8082 는 https://…:8445 로 넘기기만
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./mfc-backoffice:/usr/share/nginx/html:ro
       - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(LAN 사설 CA)
     healthcheck:
@@ -1161,7 +1182,7 @@ EOF
   fi
 
   # 게이트웨이·백오피스 HTTPS(ADR-0057): 이 PC 서버 인증서·키 → build/<pc>/tls(키는 build/ 에만, git 제외)
-  if [[ "$comps" == *" api-gateway "* || "$comps" == *" backoffice-web "* || "$comps" == *" hr-backoffice-web "* ]]; then
+  if [[ "$comps" == *" api-gateway "* || "$comps" == *" backoffice-web "* || "$comps" == *" hr-backoffice-web "* || "$comps" == *" mfc-backoffice-web "* ]]; then
     [ -f "$SECRETS/tls/$pc.crt" ] || { echo "$pc: LAN HTTPS 인증서 없음 — deploy/lan/lan.sh tls-issue $pc 먼저" >&2; exit 1; }
     mkdir -p "$dir/tls"
     cp "$SECRETS/tls/$pc.crt" "$dir/tls/cert.pem"; cp "$SECRETS/tls/$pc.key" "$dir/tls/key.pem"
@@ -1210,6 +1231,16 @@ EOF
       cp -r "$LAN/hr-backoffice-dist/." "$dir/hr-backoffice/"
     else
       cp "$LAN/backoffice/hr-placeholder.html" "$dir/hr-backoffice/index.html"
+    fi
+  fi
+  # MFC 백오피스 정적 파일(2026-11-15): lan.sh publish-mfc-backoffice 가 둔 빌드(mfc-backoffice-dist, git 제외). 없으면 안내 페이지
+  if [[ "$comps" == *" mfc-backoffice-web "* ]]; then
+    cp "$LAN/backoffice/nginx.conf" "$dir/backoffice-nginx.conf"
+    rm -rf "$dir/mfc-backoffice"; mkdir -p "$dir/mfc-backoffice"
+    if [ -f "$LAN/mfc-backoffice-dist/index.html" ]; then
+      cp -r "$LAN/mfc-backoffice-dist/." "$dir/mfc-backoffice/"
+    else
+      cp "$LAN/backoffice/mfc-placeholder.html" "$dir/mfc-backoffice/index.html"
     fi
   fi
 
