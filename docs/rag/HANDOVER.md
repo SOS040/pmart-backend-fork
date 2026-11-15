@@ -26,7 +26,7 @@ RAG 영역(`docs/operations/pc-split.md` §1-1 — 나눌 예정)을 받는 PC·
 
 | 묶음 | 경로 | 개수 | 우선순위(precedence) |
 |---|---|---|---|
-| 서비스 목록 | `docs/architecture/service-map.md` | 1 | 5 |
+| ~~서비스 목록~~ | ~~`docs/architecture/service-map.md`~~ — 2026-11-15 뺌(서비스 책임 경계는 업무 직원 대상이 아님, "직원 휴가 신청"에 없는 API 를 지어 답한 근거) | 0 | — |
 | ADR(**업무 정책만**, 2026-11-15) | `docs/adr/` 0014·0015·0040~0049·0052·0060 | 14 | 5(지위는 각 ADR 상태 줄 — 승인=확정, 그 밖=제안). 서비스 경계·인프라·인증 구현·배포·관측·RAG 설계 ADR 은 뺌(사용자 "그건 일반 운영자쪽에서 안봐도되는내용인데") — 뺀 목록·이유는 `RealDocumentsIngestTest.EXCLUDED_ADRS`, 새 ADR 은 둘 중 하나로 정해야 시험 통과 |
 | 저장소 설계 | `docs/business/overview.md`·`domain-map.md`·`glossary.md`, `docs/business/flows/`(cancel-vs-handover·order-checkout-saga·replenishment-transfer·return-exchange-refund), `contracts/states/*.md`(8개) | | 4 |
 | 업무 원문 | `docs/business/{WMS,SCM,TMS,MFC,BackOffice}-business-logic.md`(4), `OMS-business-logic.md`(3), `Commerce-business-logic.md`(2), `Delivery-business-logic.md`(1) | | 4·3·2·1 |

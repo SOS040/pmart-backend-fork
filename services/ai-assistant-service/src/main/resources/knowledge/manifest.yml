@@ -3,7 +3,7 @@
 #
 # precedence (우선순위 등급, 클수록 우선) — docs/business/domain-map.md:35 그대로:
 #   CLAUDE.md 서비스 목록 > 2026-10-20 이후 문서(WMS v8.1, SCM, TMS, MFC v2.0, BackOffice v2.0) > OMS > Commerce > Delivery(Draft)
-#   5 = 서비스 목록(service-map.md 는 CLAUDE.md 서비스 목록의 책임 경계 정본)·ADR(문서 충돌을 해결한 결정 기록 — 지위는 상태 줄이 정한다)
+#   5 = ADR(업무 정책만 — 아래). 서비스 목록 service-map.md 는 2026-11-15 뺌(문서 충돌을 해결한 결정 기록 — 지위는 상태 줄이 정한다)
 #   4 = 2026-10-20 이후 업무 문서 + 저장소 설계 문서(overview·domain-map·glossary·flows·states, 2026-10-23 이후)
 #   3 = OMS, 2 = Commerce, 1 = Delivery(Draft)
 #   단 [확정 정책] 은 등급과 무관하게 유지 — 지위(authority) 가중으로 반영한다.
@@ -17,7 +17,7 @@ documents:
   - { path: docs/business/overview.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
   - { path: docs/business/domain-map.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
   - { path: docs/business/glossary.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: docs/architecture/service-map.md, domain: architecture, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 5 }
+  # docs/architecture/service-map.md 는 뺌(2026-11-15 사용자 "응 너가 말한 문서빼줘") — 서비스 책임 경계는 업무 직원이 볼 내용이 아니고, "직원 휴가 신청"에 이 문서의 hr-service 절로 없는 API 를 지어 답했다
   # --- 업무 명세 (대부분 "설계안" — 문단 태그가 지위를 정한다) ---
   - { path: docs/business/WMS-business-logic.md, domain: wms, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
   - { path: docs/business/SCM-business-logic.md, domain: scm, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
