@@ -84,6 +84,7 @@ GET /api/v1/drivers/{driverId} OPERATOR
 GET /api/v1/employee-auth/employees/{operatorId} OPERATOR
 GET /api/v1/employee-auth/logins PUBLIC
 GET /api/v1/employee-auth/logins/callback PUBLIC
+GET /api/v1/employee-auth/roles OPERATOR
 GET /api/v1/employee-auth/sessions/current OPERATOR
 GET /api/v1/excursions OPERATOR
 GET /api/v1/excursions/{excursionId} OPERATOR

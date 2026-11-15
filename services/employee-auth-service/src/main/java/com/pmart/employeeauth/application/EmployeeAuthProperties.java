@@ -1,6 +1,8 @@
 package com.pmart.employeeauth.application;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -17,7 +19,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param ticketTtl 로그인 티켓 수명(60초)
  * @param loginAttemptTtl 로그인 시작 → 콜백까지 허용 시간(10분)
  * @param apps 로그인하는 앱(mfc, backoffice …) — 허용 복귀 주소·무활동 한도
- * @param roles 직원 역할 목록(이 밖의 역할은 저장하지 않는다)
+ * @param roles 직원 역할 목록(이 밖의 역할은 저장하지 않는다). 순서 = 역할 목록 API 의 표시 순서
+ * @param roleInfo 역할별 표시 이름·센터 지정(역할 목록 API — BR-57). 역할 코드는 {@code roles} 에도 있어야 보인다. 없는 역할은 이름 =
+ *     코드, 센터 지정 아님
  * @param keycloak Keycloak(인가 서버) 연결
  * @param devTokenExchange LAN 시험 전용 토큰 교환(ADR-0056 D5)
  * @param refreshCookie 웹 앱 refresh 쿠키·Signed Double-Submit CSRF(ADR-0059)
@@ -33,6 +37,7 @@ public record EmployeeAuthProperties(
     Duration loginAttemptTtl,
     Map<String, App> apps,
     List<String> roles,
+    List<RoleInfo> roleInfo,
     Keycloak keycloak,
     DevTokenExchange devTokenExchange,
     RefreshCookie refreshCookie) {
@@ -51,6 +56,7 @@ public record EmployeeAuthProperties(
     loginAttemptTtl = loginAttemptTtl == null ? Duration.ofMinutes(10) : loginAttemptTtl;
     apps = apps == null ? Map.of() : Map.copyOf(apps);
     roles = roles == null ? List.of() : List.copyOf(roles);
+    roleInfo = roleInfo == null ? List.of() : List.copyOf(roleInfo);
     keycloak =
         keycloak == null
             ? new Keycloak(null, null, null, null, null, null, null, null, null, null)
@@ -58,6 +64,36 @@ public record EmployeeAuthProperties(
     devTokenExchange =
         devTokenExchange == null ? new DevTokenExchange(false, null) : devTokenExchange;
     refreshCookie = refreshCookie == null ? new RefreshCookie(null) : refreshCookie;
+  }
+
+  /**
+   * 역할 표시 정보(설정 {@code role-info} 한 줄). 맵(코드 → 값)이 아니라 목록인 것은 Spring 맵 키 바인딩이 대괄호 없이는 {@code _} 를
+   * 지우기 때문이다.
+   *
+   * @param code 역할 코드({@code roles} 의 값)
+   * @param name 화면 표시 이름(한국어). 비면 코드
+   * @param centerScoped 권한 센터를 함께 골라야 하는 역할(MFC_SUPERVISOR·MFC_WORKER)
+   */
+  public record RoleInfo(String code, @Nullable String name, boolean centerScoped) {}
+
+  /** 역할 목록 API 한 줄. {@code order} 는 1부터. */
+  public record RoleView(String code, String name, boolean centerScoped, int order) {}
+
+  /** {@code roles} 순서대로, {@code role-info} 로 이름·센터 지정을 채운 역할 목록. */
+  public List<RoleView> roleCatalog() {
+    Map<String, RoleInfo> info = new HashMap<>();
+    for (RoleInfo i : roleInfo) {
+      if (i != null && i.code() != null) {
+        info.putIfAbsent(i.code(), i);
+      }
+    }
+    List<RoleView> out = new ArrayList<>(roles.size());
+    for (String code : roles) {
+      RoleInfo i = info.get(code);
+      String name = i == null || i.name() == null || i.name().isBlank() ? code : i.name();
+      out.add(new RoleView(code, name, i != null && i.centerScoped(), out.size() + 1));
+    }
+    return List.copyOf(out);
   }
 
   /** 앱별 세션 무활동 한도. 모르는 앱(시험 교환 등)은 세션 최대 길이. */

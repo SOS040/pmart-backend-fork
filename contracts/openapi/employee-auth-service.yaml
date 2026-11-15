@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -33,6 +33,7 @@ tags:
   - { name: logins, description: 직원 로그인 시작·Keycloak 콜백(브라우저가 연다) }
   - { name: tokens, description: 티켓 교환·갱신·로그아웃·현재 세션 }
   - { name: employees, description: 직원 로그인 상태·역할·권한 센터(관리자 보정·이전용 — hr·approval 연동 전까지) }
+  - { name: roles, description: "(0.5.0) 직원 역할 목록 — 화면의 역할 고르기용(BR-57)" }
   - { name: keys, description: "JWKS 공개키 — 직원 토큰 검증용 (클러스터 내부 전용)" }
   - { name: dev, description: "LAN 시험 전용(설정으로만 켬, 운영 없음)" }
   - { name: dev-local, description: "로컬(local 프로필) 개발 전용 — Keycloak 없이 직원 토큰(설정으로만 켬, LAN·운영 없음)" }
@@ -288,6 +289,28 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /employee-auth/roles:
+    get:
+      tags: [roles]
+      summary: 직원 역할 목록 (0.5.0, BR-57 — 직원이면 누구나)
+      description: |
+        이 서비스가 아는 직원 역할 전부 — 권한 요청·관리 경로·승인 반영(GrantApplied)이 받는 역할은 이 목록 안에서만이다(밖이면 UNKNOWN_ROLE·400).
+        인사팀 백오피스(hr-backoffice)의 직원 등록 "요청 권한 역할" 고르기가 화면에 고정해 두던 목록 대신 쓴다(클라이언트 BR-57, 2026-11-15).
+        비밀이 아니므로 역할과 상관없이 OPERATOR 토큰이면 부를 수 있다(발급자 표가 인정하는 직원 토큰 — 고객·라이더·서비스 토큰은 403).
+        정본은 설정 `pmart.employee-auth.roles`(순서)와 `role-info`(표시 이름·센터 지정) — 역할이 늘면 설정만 바꾸고 재시작하면 화면도 따라온다.
+        items 는 order 오름차순. name 이 설정에 없으면 code 를 그대로 준다.
+        centerScoped = 그 역할은 권한 센터를 함께 골라야 의미가 있다(센터별 업무 — 지금 MFC_SUPERVISOR·MFC_WORKER). 화면 안내용이며 이 서비스가 센터 없는
+        요청을 거절하지는 않는다(판정은 approval-service).
+      operationId: listEmployeeRoles
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeRoleList' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   # ---------- keys (JWKS). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
   /internal/keycloak-logouts:
     post:
@@ -485,6 +508,22 @@ components:
         roles: { type: array, maxItems: 32, items: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,63}$' } }
         centers: { type: array, maxItems: 64, items: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
         reason: { type: string, minLength: 1, maxLength: 500 }
+    EmployeeRoleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: order 오름차순
+          items: { $ref: '#/components/schemas/EmployeeRole' }
+    EmployeeRole:
+      type: object
+      required: [code, name, centerScoped, order]
+      properties:
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,63}$', description: 역할 코드(토큰 roles·권한 요청에 쓰는 값) }
+        name: { type: string, description: 화면 표시 이름(한국어). 설정에 없으면 code }
+        centerScoped: { type: boolean, description: 권한 센터를 함께 골라야 하는 역할(MFC_SUPERVISOR·MFC_WORKER) }
+        order: { type: integer, format: int32, minimum: 1, description: 표시 순서(1부터) }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

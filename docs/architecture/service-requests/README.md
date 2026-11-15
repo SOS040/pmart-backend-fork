@@ -40,6 +40,7 @@
 | [AP-1](approval-service.md) | approval | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | **필요**(Q-11) | 대기 — 운영 전 필수 |
 | [AP-2](approval-service.md) | approval | hr, employee-auth (ADR-0056) | 직원 권한 요청 유형(BO-01)·등록 때 자동 제출·자동 승인 규칙(소속 센터 `MFC_WORKER`)·반영 대상 employee-auth | 결정됨(2026-11-12) | 구현(2026-11-13 5-4, LAN 배포 전) — 내부 API 대신 사건 GrantRequested |
 | [EA-1](employee-auth-service.md) | employee-auth | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | 대기 |
+| [EA-2](employee-auth-service.md) | employee-auth | 클라이언트 hr-backoffice (BR-57) | 직원 역할 목록 API `GET /employee-auth/roles`(코드·이름·센터 지정·순서) | 없음(사용자 2026-11-15 "만들거야") | 구현(2026-11-15, employee-auth 0.5.0 — LAN 배포 전) |
 | [RC-1](approval-receipt-publishers.md) | product, product-content, center-master, delivery-serviceability, mfc-inbound | approval | `ApplicationReceiptRecorded` 발행 | 없음 | 대기 |
 | [BO-12](backoffice-bff.md) | backoffice-bff | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 대기 |
 | [CU-1](customer-service.md) | customer | auth | 약관 동의 → `require-consent` 켜기 | **필요**(시점) | 대기 |

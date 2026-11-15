@@ -62,7 +62,8 @@ class ServiceBootIT extends PostgresKafkaContainerSupport {
       strings = {
         "GET /api/v1/employee-auth/sessions/current",
         "POST /api/v1/employee-auth/logouts",
-        "GET /api/v1/employee-auth/employees/OP-1"
+        "GET /api/v1/employee-auth/employees/OP-1",
+        "GET /api/v1/employee-auth/roles"
       })
   void protectedOperationsRequireToken(String operation) {
     String[] op = operation.split(" ");
