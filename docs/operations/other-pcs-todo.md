@@ -11,6 +11,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] `./gradlew --stop` 한 번 — Gradle 사용자 단위 제한(workers 2·Xmx2g, 2026-11-13 PC 2~5 적용)이 새 데몬부터 적용된다
 - [ ] 루트 CA: PC 2~5 Windows 에는 설치돼 있음. PDA·폰 실기기에서 직원 로그인하려면 기기에도 설치
 
+> **2026-11-15 모든 PC — 로그인 코드는 PC 1 만**(`pc-split.md` §1-3): auth-service·employee-auth-service·rider-auth-service·common-security·게이트웨이 인증·Keycloak, 클라이언트 `web/core` 로그인·세션, 앱의 `features/auth`·`features/session`, `pmart_core` 토큰은 고치지 않는다 — 필요하면 요청. 이 경로를 바꾼 PR 은 PC 1 이 돌려보낸다. rider-auth-service 는 delivery 에서 platform 으로 옮겼다(PC 5 담당 아님).
+
 ## PC 3 — mfc 영역 (GitHub YOO196)
 
 - [x] 포크 → PR → PC 1 병합 경로 시험 — PR #1 병합 `965e7e6`(2026-11-13)
