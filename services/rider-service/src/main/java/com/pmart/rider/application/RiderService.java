@@ -71,7 +71,9 @@ public class RiderService {
       @Nullable String approvalRef) {}
 
   /** 계정 제한 이력 + 지금 제한. */
-  public record Restrictions(Rider.Restriction current, List<RiderStore.RestrictionRow> items) {}
+  /** 지금 제한·지금 행 버전(X-Expected-Version 기준, 0.4.0 BOD-6)·이력. */
+  public record Restrictions(
+      Rider.Restriction current, int version, List<RiderStore.RestrictionRow> items) {}
 
   private final RiderStore store;
   private final RequestIdempotency idempotency;
@@ -369,7 +371,7 @@ public class RiderService {
   public Restrictions restrictions(String riderId) {
     requireRestrictionAdmin();
     Rider r = get(riderId);
-    return new Restrictions(r.restriction(), store.restrictions(riderId, 100));
+    return new Restrictions(r.restriction(), r.version(), store.restrictions(riderId, 100));
   }
 
   // ---------- 공통 ----------
@@ -395,7 +397,7 @@ public class RiderService {
     return r;
   }
 
-  /** 계정 제한은 OPERATOR_ADMIN 만(배송·지원센터 역할이 아직 없다 — 생기면 더한다). */
+  /** 계정 제한·제한 검토는 OPERATOR_ADMIN·라이더 운영 RIDER_OPS(0.4.0, BOD-1 — 사용자 2026-11-15 "라이더 운영 전용 역할"). */
   static PmartPrincipal requireRestrictionAdmin() {
     PmartPrincipal p =
         PmartPrincipal.current()
@@ -408,11 +410,11 @@ public class RiderService {
                         "운영자만 계정 제한을 다룰 수 있습니다.",
                         false,
                         List.of()));
-    if (!p.hasRole("OPERATOR_ADMIN")) {
+    if (!p.hasRole("OPERATOR_ADMIN") && !p.hasRole("RIDER_OPS")) {
       throw new PmartException(
           ErrorCode.FORBIDDEN.name(),
           HttpStatus.FORBIDDEN,
-          "계정 제한 권한(OPERATOR_ADMIN)이 없습니다.",
+          "계정 제한 권한(OPERATOR_ADMIN·RIDER_OPS)이 없습니다.",
           false,
           List.of());
     }

@@ -25,8 +25,8 @@ import org.springframework.stereotype.Service;
  *       reassign=false 면 {@code DeliveryCancelledBeforePickup}.
  *   <li>픽업 뒤(PICKED_UP, 또는 포장을 하나라도 넘겨받은 ASSIGNED): 422 PICKED_UP_CASE_REQUIRED — 지원센터가 상품
  *       위치·회수·재인계를 확인한다(기록은 남긴다).
- *   <li>요청자: 배정된 라이더 본인(RIDER), 그 센터 운영자·OPERATOR_ADMIN(OPERATOR — 사유 OPERATOR 면 approvalRef 필수),
- *       서비스(사가).
+ *   <li>요청자: 배정된 라이더 본인(RIDER), 그 센터 운영자·OPERATOR_ADMIN·라이더 운영 RIDER_OPS(OPERATOR — 사유 OPERATOR 면
+ *       approvalRef 필수, RIDER_OPS 는 BOD-1 2026-11-15), 서비스(사가). 고객센터(CS_AGENT)는 취소하지 않는다(ADR-0060).
  *   <li>같은 키·같은 본문은 같은 결과(RequestIdempotency), X-Expected-Version 은 배송 버전.
  * </ul>
  */
@@ -204,8 +204,9 @@ public class CancellationService {
   }
 
   /**
-   * 배차 취소 결과 조회 — 요청한 본인, 그 센터 운영자(MFC 백오피스)·OPERATOR_ADMIN, 고객센터(CS_AGENT), 서비스(사가). 지원센터 역할이 생기면
-   * 더한다(사용자 2026-11-13 "백오피스에 권한이 있는 사람이나 고객센터 및 지원센터", PC 1 검토 L1). 볼 수 없으면 있는지도 알리지 않는다(404).
+   * 배차 취소 결과 조회 — 요청한 본인, 그 센터 운영자(MFC 백오피스)·OPERATOR_ADMIN, 고객센터(CS_AGENT), 라이더 운영(RIDER_OPS —
+   * BOD-1 2026-11-15), 서비스(사가)(사용자 2026-11-13 "백오피스에 권한이 있는 사람이나 고객센터 및 지원센터", PC 1 검토 L1). 볼 수 없으면
+   * 있는지도 알리지 않는다(404).
    */
   public DispatchStore.CancellationRow result(String deliveryId, String requestId) {
     PmartPrincipal p =
@@ -220,7 +221,10 @@ public class CancellationService {
         switch (p.type()) {
           case SERVICE -> true;
           case OPERATOR ->
-              p.hasRole("OPERATOR_ADMIN") || p.hasRole("CS_AGENT") || p.canAccessCenter(mfcId);
+              p.hasRole("OPERATOR_ADMIN")
+                  || p.hasRole("CS_AGENT")
+                  || p.hasRole("RIDER_OPS")
+                  || p.canAccessCenter(mfcId);
           default -> p.subject().equals(c.actor());
         };
     if (!ok) {
@@ -237,7 +241,9 @@ public class CancellationService {
         }
       }
       case OPERATOR -> {
-        if (!p.canAccessCenter(d.mfcId()) && !p.hasRole("OPERATOR_ADMIN")) {
+        if (!p.canAccessCenter(d.mfcId())
+            && !p.hasRole("OPERATOR_ADMIN")
+            && !p.hasRole("RIDER_OPS")) {
           throw OfferService.forbidden("이 센터 배송을 배차 취소할 수 없습니다.");
         }
         if ("RIDER".equals(c.requestedBy())) {

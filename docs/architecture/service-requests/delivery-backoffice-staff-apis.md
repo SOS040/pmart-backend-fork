@@ -57,3 +57,21 @@
 ## BOD-6. 라이더 version 을 조회 응답에 (2026-11-15 추가 — 클라이언트 질문)
 - `POST /riders/{riderId}/restrictions` 의 `X-Expected-Version` 은 라이더 행 version 과 비교하는데, 화면이 그 값을 얻을 곳이 없다(`GET …/restrictions` 의 이력 version 은 프로필·운행 변경으로 낡을 수 있다). `GET /riders/{riderId}/restrictions` 응답(또는 BOD-3 직원 상세)에 지금 라이더 `version` 을 싣는다.
 
+## 회신(PC 5, 2026-11-15 — 브랜치 `delivery/backoffice-staff-apis`)
+
+구현함. 제안과 다른 곳은 굵게.
+
+| 번호 | 한 것 | 계약 |
+|---|---|---|
+| BOD-1 | `RIDER_OPS` 추가 — rider 계정 제한·이력·제한 검토(목록·결정), execution 배송·도움요청 조회(`Access.operatorCanSee`)·전달 실패 결정·도움요청 닫기(`operatorCanDecide`), dispatch 배차 조회·배차 취소·취소 결과 조회. 사유 OPERATOR 면 approvalRef 필수는 그대로 | rider 0.4.0, execution 0.4.0, dispatch 0.3.2 |
+| BOD-2 | dispatch `GET /deliveries/{id}/dispatch` 에 `CS_AGENT`(조회만 — 배차 취소는 403, 시험으로 확인) | dispatch 0.3.2 |
+| BOD-3 | `GET /riders`(찾기)·`GET /riders/{riderId}`(상세) — 권한 OPERATOR_ADMIN·RIDER_OPS·CS_AGENT. **이름 검색은 없다**(사용자 2026-11-15 "아이디로 찾는 게 낫지 않아? 이름은 동명이인이 있을 수도") — `riderId`·`phone` **완전 일치**(숫자만, 하이픈 무시) + restriction(지금 유효한 제한)·operatingStatus·operatingMfcId·vehicleType, 정렬 JOINED_DESC·STATE_CHANGED_DESC, page·size(≤50)·hasNext. **목록·상세 모두 이름·전화 가림**(`nameMasked` 첫·끝 글자, `phoneMasked`) — 상세에 전화 전체를 내지 않는다: ADR-0062 "적용 범위"가 라이더 상세(BOD-3)도 같은 방식이라고 정해 둠 → **`POST /riders/{riderId}/pii-reveals`**(`{reason 2~200자, fields?: [NAME, PHONE]}`, audit-service `subjectType RIDER`·`caseRef RIDER:<riderId>` 동기 기록 뒤에만 원문, audit 실패면 503). 계좌·거주지는 내보내지 않음 | rider 0.4.0, V5(목록 색인) |
+| BOD-4 | **`GET /delivery-help-requests`**(state 기본 OPEN·category·mfcId·riderId·from/to, 오래된 것 먼저, cursor = 건너뛸 수, size ≤50, 행에 detail 없음 — 단건에서만) + **닫기 `POST /deliveries/{id}/help-requests/{requestId}/resolutions`**(`{note?}` → RESOLVED, 권한 = 실패 결정과 같음, 배송 상태·버전·사건 없음, 다시 닫으면 409). 단건 조회 응답에 detail·evidenceRefs·resolvedAt(+ 직원에게만 resolvedBy·resolutionNote). 그 센터 직원(MFC_SUPERVISOR 등)은 목록에 mfcId 필수. **전달 실패 대기는 따로 만들지 않고 BOD-5 목록 `GET /deliveries?state=FAILURE_REPORTED&sort=OLDEST`** — 실패 등록은 도움요청 표가 아니라 배송 상태라서 | execution 0.4.0, V6 |
+| BOD-5 | **dispatch 가 아니라 execution `GET /deliveries`**(orderId·riderId·mfcId·state·type, NEWEST·OLDEST, cursor·size ≤50) — execution 도 DeliveryCreated 부터 모든 배송(배정 전 UNASSIGNED)을 갖고, 게이트웨이 `/api/v1/deliveries/**` 가 이미 execution 으로 가서 라우트 추가가 필요 없다(`/api/v1/deliveries` 도 이 패턴에 맞음 — 게이트웨이 라우팅 시험 추가). 행은 ID·상태·시각만 | execution 0.4.0 |
+| BOD-6 | `GET /riders/{riderId}/restrictions` 응답에 `version`(지금 라이더 행 버전), 상세에도 `version` | rider 0.4.0 |
+
+PC 1 이 할 것(병합·배포 때):
+- pmart-config `api-gateway.yml` — `delivery-execution-service-deliveries` 라우트 Path 에 `/api/v1/delivery-help-requests` 추가(시험 사본 두 곳은 이 PR 에서 고침). `/api/v1/deliveries`·`/api/v1/riders`·`/api/v1/riders/{id}/pii-reveals` 는 기존 라우트로 간다.
+- pmart-config `rider-service-local.yml`(필요하면 `-lan`) — `pmart.rider.audit-base-url`(코드 기본값 `http://audit-service:8503` — order 와 같은 값, local 은 `http://localhost:8503`).
+- 마이그레이션: rider V5(색인만), execution V6(help_request 닫기 칸 + 색인). 배포 순서 rider·delivery-execution·delivery-dispatch → api-gateway(허용 목록 6줄).
+- 화면 요청서(`docs/handoff/clients/backoffice/`)를 위 경로·필드로 맞춤 — 특히 라이더 찾기에 이름 칸 없음, 상세 전화는 "보기"(사유 입력) → pii-reveals.

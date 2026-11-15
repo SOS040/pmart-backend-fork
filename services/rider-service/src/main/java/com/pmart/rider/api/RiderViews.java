@@ -82,6 +82,18 @@ final class RiderViews {
         .lastHeartbeatAt(time(r.lastHeartbeatAt()));
   }
 
+  /** 직원 화면용 이름 가림: 첫·끝 글자만(두 글자면 첫 글자 + *) — order 직원 상세와 같은 방식(ADR-0062). */
+  static String maskName(String name) {
+    int[] cp = name.strip().codePoints().toArray();
+    if (cp.length <= 1) {
+      return "*";
+    }
+    if (cp.length == 2) {
+      return new String(cp, 0, 1) + "*";
+    }
+    return new String(cp, 0, 1) + "*".repeat(cp.length - 2) + new String(cp, cp.length - 1, 1);
+  }
+
   static String maskPhone(String phone) {
     if (phone.length() < 7) {
       return "***";

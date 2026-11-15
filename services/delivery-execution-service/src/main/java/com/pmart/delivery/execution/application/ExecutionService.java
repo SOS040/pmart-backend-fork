@@ -106,17 +106,14 @@ public class ExecutionService {
 
   // ---- 조회
 
-  /** 배정 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT, 서비스. 볼 수 없으면 있는지도 알리지 않는다(404). */
+  /** 배정 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS, 서비스. 볼 수 없으면 있는지도 알리지 않는다(404). */
   public View view(String deliveryId) {
     PmartPrincipal p = principal();
     DeliveryRow d = store.delivery(deliveryId).orElseThrow(ExecutionService::notFound);
     boolean ok =
         switch (p.type()) {
           case SERVICE -> true;
-          case OPERATOR ->
-              p.hasRole("OPERATOR_ADMIN")
-                  || p.hasRole("CS_AGENT")
-                  || (d.mfcId() != null && p.canAccessCenter(d.mfcId()));
+          case OPERATOR -> Access.operatorCanSee(p, d.mfcId());
           case RIDER -> p.subject().equals(d.riderId());
           default -> false;
         };
@@ -451,7 +448,10 @@ public class ExecutionService {
                   "FAILURE_REPORTED",
                   "OPEN",
                   null,
-                  now);
+                  now,
+                  null,
+                  null,
+                  null);
           events.helpRequested(d, incident, f.photoRefs(), store.bumpVersion(deliveryId, now));
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });

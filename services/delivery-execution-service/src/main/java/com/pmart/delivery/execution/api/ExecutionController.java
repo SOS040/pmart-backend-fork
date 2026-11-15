@@ -10,8 +10,7 @@ import com.pmart.delivery.execution.api.generated.model.DecideFailureRequest;
 import com.pmart.delivery.execution.api.generated.model.DeliveryExecution;
 import com.pmart.delivery.execution.api.generated.model.DropInfo;
 import com.pmart.delivery.execution.api.generated.model.EvidencePhoto;
-import com.pmart.delivery.execution.api.generated.model.ExecutionState;
-import com.pmart.delivery.execution.api.generated.model.GetHelpRequest200Response;
+import com.pmart.delivery.execution.api.generated.model.HelpRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportFailureRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportPickupRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportStoreArrival200Response;
@@ -33,6 +32,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 계약 ExecutionApi — 수행 조회, 가게 도착·픽업 완료·고객 도착·증빙 사진·전달 완료(0.2.0), 전달 실패 등록·운영자 결정·도움요청(0.3.0). 요청·응답
@@ -46,18 +46,21 @@ public class ExecutionController implements ExecutionApi {
   private final HelpRequestService helps;
   private final ExecutionViews views;
   private final DropInfoService dropInfos;
+  private final ObjectMapper mapper;
 
   public ExecutionController(
       ExecutionService service,
       FailureDecisionService failures,
       HelpRequestService helps,
       ExecutionViews views,
-      DropInfoService dropInfos) {
+      DropInfoService dropInfos,
+      ObjectMapper mapper) {
     this.service = service;
     this.failures = failures;
     this.helps = helps;
     this.views = views;
     this.dropInfos = dropInfos;
+    this.mapper = mapper;
   }
 
   @Override
@@ -145,17 +148,8 @@ public class ExecutionController implements ExecutionApi {
   }
 
   @Override
-  public ResponseEntity<GetHelpRequest200Response> getHelpRequest(
-      String deliveryId, String requestId) {
-    var h = helps.get(deliveryId, requestId);
-    return ResponseEntity.ok(
-        new GetHelpRequest200Response()
-            .requestId(h.requestId())
-            .caseId(h.caseId())
-            .state(GetHelpRequest200Response.StateEnum.fromValue(h.state()))
-            .category(h.category())
-            .stage(ExecutionState.fromValue(h.stage()))
-            .createdAt(ExecutionViews.time(h.createdAt())));
+  public ResponseEntity<HelpRequest> getHelpRequest(String deliveryId, String requestId) {
+    return ResponseEntity.ok(StaffController.helpRequest(helps.get(deliveryId, requestId), mapper));
   }
 
   @Override

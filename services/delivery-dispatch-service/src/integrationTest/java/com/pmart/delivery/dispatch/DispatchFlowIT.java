@@ -291,6 +291,19 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 .getStatusCode()
                 .value())
         .isEqualTo(403);
+    // 상담원·라이더 운영은 센터와 상관없이 조회(BOD-1·2, 2026-11-15)
+    for (String role : List.of("CS_AGENT", "RIDER_OPS")) {
+      JsonNode staffView =
+          body(
+              http.get()
+                  .uri("/deliveries/{id}/dispatch", deliveryId)
+                  .header(
+                      "Authorization",
+                      "Bearer " + TestJwt.operator("OP-" + role, List.of(role), List.of()))
+                  .retrieve()
+                  .toEntity(String.class));
+      assertThat(staffView.path("assignment").path("riderId").asString()).isEqualTo(rider);
+    }
     JsonNode internal =
         body(
             http.get()
@@ -1442,6 +1455,23 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     ResponseEntity<String> riderTry =
         cancel("RD-x-" + UUID.randomUUID(), deliveryId, "rc-" + deliveryId);
     assertThat(riderTry.getStatusCode().value()).isEqualTo(403);
+    // 상담원은 조회만 — 배차 취소는 403(ADR-0060, BOD-2)
+    assertThat(
+            http.post()
+                .uri("/deliveries/{id}/assignment-cancellations", deliveryId)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()))
+                .header("Idempotency-Key", "cs-" + deliveryId)
+                .header("X-Source-System", "backoffice")
+                .body(
+                    Map.of(
+                        "requestedBy", "STORE_STAFF", "reason", "STORE_REQUEST", "reassign", false))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
     ResponseEntity<String> op =
         http.post()
             .uri("/deliveries/{id}/assignment-cancellations", deliveryId)

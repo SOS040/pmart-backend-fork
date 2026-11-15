@@ -305,7 +305,7 @@
 ### delivery-execution-service `[1단계]`
 - **소유**: 배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수, 보관 장소, 촬영 시각; 업로드 실패 시 재시도 또는 지원센터 대체 증빙), 시간 경과 자동완료 없음 `[확정]`, 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 `[확정]`, 완료 후 사고 신고(기존 완료 유지·사건 별도), 상태 정정(처리자·근거), 도움요청(→case), 회수 수행(고객 수거→점포 반납→점원 수령 확인), 수행료 근거(수단·거리 구간 요율표 버전·할증·보상·공제·취소 시점별 기준; 요율 미등록=산정 불가), 정산 상태(예상/확정 대기/지급 확정/지급중/지급 완료/지급 실패/조정; 지급 실행은 외부 회계), 라이더 배송 이력·오늘 내역.
 - **소유하지 않음**: 배정(dispatch), 인계 fence·재고(mfc), 주문 완료 판단(order), 환불(claim/payment), 위치(tracking).
-- **API**: 상태 전이(라이더), 사진 업로드, 도움요청, 회수 등록, 수행료/정산 조회, 운영자 정정(승인 필요).
+- **API**: 상태 전이(라이더), 사진 업로드, 도움요청, 회수 등록, 수행료/정산 조회, 운영자 정정(승인 필요). 직원(백오피스 고객센터·라이더 운영) 배송 찾기·도움요청 대기 목록·처리함 닫기(2026-11-15 — 지원센터 사건함(case R-4)이 생기면 도움요청 처리 상태의 정본은 case).
 - **발행**: `RiderArrivedAtStore`, `PickupCompleted`, `RiderArrivedAtCustomer`, `DeliveryCompleted`(배송 단위, 증빙 참조), `DeliveryFailed`, `DeliveryIncidentRaised`, `ReturnPickedUp`, `ReturnDelivered`(점포 반납), `DeliveryStatusCorrected`, `RiderEarningRecorded`, `SettlementStateChanged`.
 - **구독**: `DeliveryCreated`, `DeliveryAssigned/AssignmentChanged`, `PackageHandedOver`(픽업 완료 근거), `ShipmentReady`·`PackingFinished`(출고 포장 목록 — 모든 포장 인계 판정, 2026-11-13), `DeliveryCancelledBeforePickup`, `ClaimDecided`(회수 지시).
 

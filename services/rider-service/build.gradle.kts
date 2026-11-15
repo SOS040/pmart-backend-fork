@@ -18,5 +18,6 @@ dependencies {
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // audit-service 개인정보 열람 기록 응답 고정(0.4.0)
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox 행 확인
 }

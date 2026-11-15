@@ -30,6 +30,12 @@ public class HelpRequestService {
 
   public record Created(String requestId, String deliveryId, int version, Instant createdAt) {}
 
+  /** 조회 결과 — staff 면 처리한 직원·메모까지 보여 준다(라이더에게는 숨김). */
+  public record HelpView(HelpRow help, boolean staff) {}
+
+  /** 처리함 닫기 결과(멱등 기록용). */
+  public record Resolved(String deliveryId, String requestId, Instant resolvedAt) {}
+
   private final ExecutionStore store;
   private final ExecutionEvents events;
   private final RequestIdempotency idempotency;
@@ -93,7 +99,10 @@ public class HelpRequestService {
                       d.state(),
                       "OPEN",
                       null,
-                      now);
+                      now,
+                      null,
+                      null,
+                      null);
               if (!store.insertHelp(h)) {
                 throw PmartException.idempotencyConflict(
                     "같은 Idempotency-Key 로 다른 요청이 이미 처리되었습니다. 새 키를 사용하세요.");
@@ -106,8 +115,8 @@ public class HelpRequestService {
         .value();
   }
 
-  /** 요청한 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT. 볼 수 없으면 404. */
-  public HelpRow get(String deliveryId, String requestId) {
+  /** 요청한 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS. 볼 수 없으면 404. */
+  public HelpView get(String deliveryId, String requestId) {
     PmartPrincipal p =
         PmartPrincipal.current().orElseThrow(() -> ExecutionService.forbidden("인증이 필요합니다."));
     HelpRow h =
@@ -122,6 +131,62 @@ public class HelpRequestService {
     if (!ok) {
       throw PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다.");
     }
-    return h;
+    return new HelpView(h, p.type() != PmartPrincipal.PrincipalType.RIDER);
+  }
+
+  /**
+   * 도움요청 처리함으로 닫기(0.4.0, BOD-4 — 지원센터 사건함 전까지). 권한은 전달 실패 결정과 같다({@link Access#operatorCanDecide}).
+   * 배송 상태·버전은 그대로, 사건도 내지 않는다. 메모는 로그에 남기지 않는다.
+   */
+  public HelpView resolve(
+      String deliveryId,
+      String requestId,
+      String idempotencyKey,
+      String source,
+      @Nullable String note) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> ExecutionService.forbidden("직원만 도움요청을 닫을 수 있습니다."));
+    String memo = note == null || note.isBlank() ? null : note.strip();
+    idempotency.execute(
+        new RequestKey(source, idempotencyKey, "resolveHelpRequest", p.subject()),
+        Map.of("deliveryId", deliveryId, "requestId", requestId, "note", String.valueOf(memo)),
+        Resolved.class,
+        () -> {
+          HelpRow h =
+              store
+                  .lockHelp(deliveryId, requestId)
+                  .orElseThrow(
+                      () -> PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다."));
+          String mfcId = store.delivery(deliveryId).map(DeliveryRow::mfcId).orElse(null);
+          if (!Access.operatorCanSee(p, mfcId)) {
+            throw PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다.");
+          }
+          if (!Access.operatorCanDecide(p, mfcId)) {
+            throw ExecutionService.forbidden("도움요청을 닫을 권한이 없습니다(센터 관리자·고객센터·라이더 운영).");
+          }
+          Instant now = clock.instant();
+          if (!store.resolveHelp(deliveryId, requestId, p.subject(), memo, now)) {
+            throw PmartException.invalidState("이미 처리함으로 닫힌 도움요청입니다(지금 " + h.state() + ").");
+          }
+          log.info("배송 {} 도움요청 {} 처리함", deliveryId, requestId);
+          return new Resolved(deliveryId, requestId, now);
+        });
+    HelpRow closed =
+        store
+            .help(deliveryId, requestId)
+            .orElseThrow(() -> PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다."));
+    return new HelpView(closed, true);
+  }
+
+  /**
+   * 도움요청 대기 목록(0.4.0, BOD-4 — 오래된 것 먼저). OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 는 모든 센터, 그 밖 센터 직원은
+   * mfcId 를 주어야 하고 그 센터 권한이 있어야 한다.
+   */
+  public List<ExecutionStore.StaffHelpRow> staffList(
+      ExecutionStore.HelpFilter filter, int limit, int offset) {
+    Access.requireStaffScope(filter.mfcId());
+    return store.staffHelps(filter, limit, offset);
   }
 }

@@ -228,6 +228,15 @@ class GatewayRoutingSecurityTest {
     assertRoutedTo("/api/v1/deliveries/d-1/dispatch", "delivery-dispatch-service-deliveries");
     assertRoutedTo("/api/v1/deliveries/d-1/pickups", "delivery-execution-service-deliveries");
     assertRoutedTo("/api/v1/deliveries/d-1", "delivery-execution-service-deliveries");
+    // 직원 배송 찾기·도움요청 대기 목록·라이더 찾기(delivery 0.4.0, 2026-11-15 BOD-3~5)
+    assertRoutedTo("/api/v1/deliveries", "delivery-execution-service-deliveries");
+    assertRoutedTo("/api/v1/delivery-help-requests", "delivery-execution-service-deliveries");
+    assertRoutedTo(
+        "/api/v1/deliveries/d-1/help-requests/h-1/resolutions",
+        "delivery-execution-service-deliveries");
+    assertRoutedTo("/api/v1/riders", "rider-service-riders");
+    assertRoutedTo("/api/v1/riders/RD-1", "rider-service-riders");
+    assertRoutedTo("/api/v1/riders/RD-1/pii-reveals", "rider-service-riders");
     assertRoutedTo("/api/v1/backoffice/views/case-inbox", "backoffice-bff");
     // 결제위젯 설정(BR-34) — payment-service
     assertRoutedTo("/api/v1/payment-widget-config", "payment-service");

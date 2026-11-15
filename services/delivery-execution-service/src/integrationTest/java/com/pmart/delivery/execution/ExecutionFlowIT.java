@@ -519,6 +519,121 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("STORE_WAITING");
   }
 
+  /** 0.4.0 백오피스 직원 목록(BOD-4·5): 배송 찾기·도움요청 대기 목록·처리함 닫기, RIDER_OPS 권한(BOD-1). */
+  @Test
+  void staffFindsDeliveriesAndHelpQueueAndResolvesHelpRequest() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), order, rider);
+    String requestId =
+        body(post(
+                id,
+                "help-requests",
+                rider,
+                Map.of("category", "ADDRESS_ISSUE", "detail", "동 호수가 안 보임")))
+            .path("resultId")
+            .asString();
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String worker = TestJwt.operator("OP-W", List.of("MFC_WORKER"), List.of("MFC-1"));
+
+    // 배송 찾기 — 주문 ID 로(상담원), 라이더는 403, 센터 직원은 mfcId 를 줘야
+    JsonNode found =
+        body(
+            staffGet(
+                "/deliveries?orderId=" + order,
+                TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of())));
+    assertThat(found.path("items")).hasSize(1);
+    assertThat(found.path("items").get(0).path("deliveryId").asString()).isEqualTo(id);
+    assertThat(found.path("items").get(0).path("state").asString()).isEqualTo("PICKED_UP");
+    assertThat(found.path("items").get(0).path("riderId").asString()).isEqualTo(rider);
+    assertThat(
+            staffGet("/deliveries?orderId=" + order, TestJwt.rider(rider)).getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(staffGet("/deliveries?orderId=" + order, worker).getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(body(staffGet("/deliveries?mfcId=MFC-1&orderId=" + order, worker)).path("items"))
+        .hasSize(1);
+    assertThat(staffGet("/deliveries?mfcId=MFC-2&orderId=" + order, worker).getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(staffGet("/deliveries?sort=SIDEWAYS", ops).getStatusCode().value()).isEqualTo(400);
+
+    // 도움요청 대기 목록 — 라이더 글(detail)은 목록에 없다
+    JsonNode queue = body(staffGet("/delivery-help-requests?riderId=" + rider, ops));
+    assertThat(queue.path("items")).hasSize(1);
+    JsonNode row = queue.path("items").get(0);
+    assertThat(row.path("incidentId").asString()).isEqualTo(id + ":" + requestId);
+    assertThat(row.path("orderId").asString()).isEqualTo(order);
+    assertThat(row.path("mfcId").asString()).isEqualTo("MFC-1");
+    assertThat(row.path("state").asString()).isEqualTo("OPEN");
+    assertThat(row.has("detail")).isFalse();
+    assertThat(staffGet("/delivery-help-requests?riderId=" + rider, worker).getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(staffGet("/delivery-help-requests?state=DONE", ops).getStatusCode().value())
+        .isEqualTo(400);
+
+    // 단건 — 라이더도 자기 글은 본다
+    JsonNode mine =
+        body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, TestJwt.rider(rider)));
+    assertThat(mine.path("detail").asString()).isEqualTo("동 호수가 안 보임");
+
+    // 닫기 — 같은 센터 작업자는 403, 라이더 운영은 닫는다, 같은 키 재전송은 같은 결과, 새 키는 409
+    assertThat(resolve(id, requestId, worker, "K-" + UUID.randomUUID()).getStatusCode().value())
+        .isEqualTo(403);
+    String key = "K-" + UUID.randomUUID();
+    ResponseEntity<String> closed = resolve(id, requestId, ops, key);
+    assertThat(closed.getStatusCode().value()).isEqualTo(200);
+    assertThat(body(closed).path("state").asString()).isEqualTo("RESOLVED");
+    assertThat(body(closed).path("resolvedBy").asString()).isEqualTo("OP-RO");
+    assertThat(body(closed).path("resolutionNote").asString()).isEqualTo("고객과 통화해 위치 안내");
+    assertThat(resolve(id, requestId, ops, key).getStatusCode().value()).isEqualTo(200);
+    assertThat(resolve(id, requestId, ops, "K-" + UUID.randomUUID()).getStatusCode().value())
+        .isEqualTo(409);
+    assertThat(body(staffGet("/delivery-help-requests?riderId=" + rider, ops)).path("items"))
+        .isEmpty();
+    assertThat(
+            body(staffGet("/delivery-help-requests?state=RESOLVED&riderId=" + rider, ops))
+                .path("items"))
+        .hasSize(1);
+
+    // 라이더에게는 닫힌 것만 — 누가·메모는 숨긴다
+    JsonNode after =
+        body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, TestJwt.rider(rider)));
+    assertThat(after.path("state").asString()).isEqualTo("RESOLVED");
+    assertThat(after.path("resolvedAt").isNull()).isFalse();
+    assertThat(after.path("resolvedBy").isNull() || after.path("resolvedBy").isMissingNode())
+        .isTrue();
+    assertThat(
+            after.path("resolutionNote").isNull() || after.path("resolutionNote").isMissingNode())
+        .isTrue();
+
+    // 라이더 운영은 배송 상세도 본다(BOD-1)
+    assertThat(staffGet("/deliveries/" + id, ops).getStatusCode().value()).isEqualTo(200);
+  }
+
+  ResponseEntity<String> staffGet(String uri, String token) {
+    return http.get()
+        .uri(uri)
+        .header("Authorization", "Bearer " + token)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  ResponseEntity<String> resolve(String id, String requestId, String token, String key) {
+    return http.post()
+        .uri("/deliveries/{id}/help-requests/{r}/resolutions", id, requestId)
+        .headers(
+            h -> {
+              h.setBearerAuth(token);
+              h.set("Idempotency-Key", key);
+              h.set("X-Source-System", "backoffice");
+            })
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(Map.of("note", "고객과 통화해 위치 안내"))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   JsonNode view(String id, String rider) {
     return body(
         http.get()

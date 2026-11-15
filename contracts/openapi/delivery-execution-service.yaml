@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.3.2
+  version: 0.4.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
     0.3.0(2026-11-13, 사용자 결정): 전달 실패 = 라이더 등록(FAILURE_REPORTED — 아직 진행 중) → 운영자 확정(FAILED, DeliveryFailed — 배송 종료, 이어지는 회수 배차는 새 배송) 또는 반려(원래 상태로). 도움요청 = 이 서비스에 기록 + DeliveryIncidentRaised(case-service 가 받아 지원센터 사건으로 — 구현 전, caseId 는 그때부터). 수행료 = 수락 당시 금액(dispatch DeliveryAssigned.fee) → 완료 5시간 뒤 확정·지급 예정일 3영업일, 실패·취소는 산정 불가(calculable false). 회수·정정은 아직 501.
+    0.4.0(2026-11-15, 백오피스 고객센터·라이더 운영 — 요청서 service-requests/delivery-backoffice-staff-apis.md BOD-1·4·5): 직원 배송 찾기(GET /deliveries — 주문 ID·라이더·상태, 전달 실패 대기는 state=FAILURE_REPORTED), 도움요청 대기 목록(GET /delivery-help-requests), 도움요청 처리함 닫기(…/resolutions — 지원센터 사건함(case R-4)이 생기면 그 사건이 정본). 역할 RIDER_OPS 를 운영자 조회·결정에 더함.
     배정(dispatch), 인계 fence·재고(mfc), 주문 완료 판단(order), 환불(claim/payment), 위치(tracking)는 소유하지 않는다.
     시간 경과 자동완료 없음 [확정]. 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 [확정]. GPS·버튼만으로 픽업 확정 금지(PackageHandedOver 근거 필요).
     완료 후 사고 신고는 기존 완료를 유지하고 사건을 별도로 올린다. 지급 실행은 외부 회계.
@@ -18,12 +19,14 @@ tags:
   - { name: returns, description: 회수 수행 }
   - { name: me, description: 라이더 본인 이력·수행료 }
   - { name: internal, description: 운영자 정정 (승인 필요) }
+  - { name: staff, description: 직원(백오피스 고객센터·라이더 운영) 목록·처리 (0.4.0) }
 
 paths:
   /deliveries/{deliveryId}:
     get:
       tags: [execution]
       summary: 배송 수행 상태 조회 (라이더·점원·운영자)
+      description: 배정 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(0.4.0), 서비스. 볼 수 없으면 404.
       operationId: getDeliveryExecution
       x-pmart-user-types: [RIDER, OPERATOR]
       parameters:
@@ -259,7 +262,7 @@ paths:
       summary: 전달 실패 확정·반려 (운영자 — 지원센터 화면 전까지 백오피스 권한자)
       description: |
         FAILURE_REPORTED 배송만. CONFIRM → FAILED + DeliveryFailed(배송 종료 — dispatch 는 CLOSED, 라이더 진행 중 수에서 빠짐). 이어지는 회수 배차는 새 배송.
-        REJECT → 실패 등록 전 상태로 되돌린다(라이더가 전달을 계속). 관리자만 — 그 센터의 MFC_SUPERVISOR·OPERATOR_ADMIN·CS_AGENT(0.3.1, 같은 센터 작업자는 403).
+        REJECT → 실패 등록 전 상태로 되돌린다(라이더가 전달을 계속). 관리자만 — 그 센터의 MFC_SUPERVISOR·OPERATOR_ADMIN·CS_AGENT(0.3.1, 같은 센터 작업자는 403)·RIDER_OPS(0.4.0).
       operationId: decideFailure
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -305,10 +308,7 @@ paths:
               type: object
               required: [category]
               properties:
-                category:
-                  type: string
-                  description: 원문 §5.4 도움요청 버튼(점포 대기 STORE_WAITING·상태 정정 STATUS_CORRECTION 은 0.3.0 에 더함). 배차취소는 dispatch 배차 취소 API
-                  enum: [CUSTOMER_UNREACHABLE, ADDRESS_ISSUE, GOODS_ISSUE, PHOTO_UPLOAD_FAILED, ACCIDENT, APP_ERROR, STORE_WAITING, STATUS_CORRECTION, OTHER]
+                category: { $ref: '#/components/schemas/HelpCategory' }
                 detail: { type: string, maxLength: 500 }
                 evidenceRefs: { type: array, maxItems: 10, items: { type: string } }
       responses:
@@ -325,7 +325,10 @@ paths:
     get:
       tags: [execution]
       summary: 도움요청 상태 조회
-      description: 요청한 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT. 볼 수 없으면 404. state 는 case-service 가 생기기 전까지 OPEN.
+      description: |
+        요청한 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(0.4.0). 볼 수 없으면 404.
+        state 는 OPEN → 직원이 처리함으로 닫으면 RESOLVED(0.4.0, 사건함 전까지). IN_PROGRESS 는 사건함이 생긴 뒤.
+        detail·evidenceRefs(0.4.0)는 단건에서만 준다. resolvedBy·resolutionNote 는 직원에게만(라이더에게는 null).
       operationId: getHelpRequest
       x-pmart-user-types: [RIDER, OPERATOR]
       parameters:
@@ -336,16 +339,39 @@ paths:
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  requestId: { type: string }
-                  caseId: { type: [string, 'null'], description: 지원센터 사건 번호 — case-service 가 사건을 만든 뒤 }
-                  state: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED] }
-                  category: { type: string }
-                  stage: { $ref: '#/components/schemas/ExecutionState' }
-                  createdAt: { type: string, format: date-time }
+              schema: { $ref: '#/components/schemas/HelpRequest' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/help-requests/{requestId}/resolutions:
+    post:
+      tags: [staff]
+      summary: 도움요청 처리함으로 닫기 (0.4.0 — 지원센터 사건함 전까지, BOD-4)
+      x-added-in: '2026-11-15'
+      description: |
+        지원센터 사건함(case R-4)이 없는 동안 직원이 도움요청을 처리했다고 닫는다 — OPEN·IN_PROGRESS → RESOLVED. 이미 RESOLVED 면 409 INVALID_STATE(같은 키·같은 본문 재전송은 같은 결과).
+        권한은 전달 실패 결정과 같다: 그 센터 MFC_SUPERVISOR, OPERATOR_ADMIN, CS_AGENT, RIDER_OPS(아니면 403, 없는 도움요청은 404).
+        배송 상태·버전은 바꾸지 않고 사건도 내지 않는다(받는 쪽이 없다 — 라이더 앱은 조회로 본다). note 에는 개인정보를 적지 않는다(로그에 남기지 않음).
+      operationId: resolveHelpRequest
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HelpResolution' }
+      responses:
+        '200':
+          description: 닫힌 도움요청
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HelpRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /deliveries/{deliveryId}/returns/pickups:
     post:
@@ -459,6 +485,75 @@ paths:
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
 
+  /deliveries:
+    get:
+      tags: [staff]
+      summary: 직원용 배송 찾기 (0.4.0 — 주문 ID·라이더·상태, BOD-5)
+      x-added-in: '2026-11-15'
+      description: |
+        백오피스 고객센터·라이더 운영이 주문 조회 뒤 배송을 찾거나(orderId), 라이더의 배송을 보거나(riderId), 전달 실패 확정 대기(state=FAILURE_REPORTED, sort=OLDEST)를 본다.
+        이 서비스는 배송이 생길 때(DeliveryCreated)부터 모든 배송을 갖는다 — 배정 전은 UNASSIGNED. 배차 상세(시도·제안)는 dispatch `GET /deliveries/{deliveryId}/dispatch`.
+        권한: OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 는 모든 센터. 그 밖 센터 직원은 mfcId 를 주어야 하고 그 센터에 권한이 있어야 한다(아니면 403). 라이더·고객 403.
+        목록에는 개인정보가 없다(ID·상태·시각만). 정렬은 배송이 생긴 시각(NEWEST 기본, OLDEST = 대기 큐).
+      operationId: searchDeliveriesForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: 주문 ID 완전 일치 }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 }, description: 배정 라이더 완전 일치 }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/ExecutionState' } }
+        - { name: type, in: query, schema: { type: string, enum: [FORWARD, RETURN, RESHIPMENT] } }
+        - { name: sort, in: query, schema: { type: string, enum: [NEWEST, OLDEST], default: NEWEST } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/StaffDeliverySummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /delivery-help-requests:
+    get:
+      tags: [staff]
+      summary: 도움요청 대기 목록 (0.4.0 — 오래된 것 먼저, BOD-4)
+      x-added-in: '2026-11-15'
+      description: |
+        지원센터 사건함(case-service R-4)이 아직 없어서 라이더 도움요청의 처리 상태를 이 서비스가 갖는다. 사건함이 생기면 그 사건이 정본이 되고 이 목록·닫기는 정리한다.
+        경로가 `/help-requests` 가 아닌 이유: 게이트웨이에서 `/api/v1/help-requests/**` 는 case-service 로 간다.
+        권한: OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 는 모든 센터. 그 밖 센터 직원은 mfcId 를 주어야 하고 그 센터에 권한이 있어야 한다(아니면 403).
+        목록에는 라이더가 쓴 내용(detail)을 넣지 않는다 — 단건 조회에서만. 전달 실패(사진·연락 기록이 붙은 실패 등록)는 도움요청이 아니라 `GET /deliveries?state=FAILURE_REPORTED`.
+        from·to 는 접수 시각(from 포함·to 미포함).
+      operationId: listHelpRequestsForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED], default: OPEN } }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/HelpCategory' } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/StaffHelpRequestSummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /internal/deliveries/{deliveryId}/status-corrections:
     post:
       tags: [internal]
@@ -540,6 +635,63 @@ components:
         deliveryNote: { type: [string, 'null'], description: 배송 요청사항 }
         lat: { type: [number, 'null'], description: 지도 핀(참고) }
         lng: { type: [number, 'null'] }
+    HelpCategory:
+      type: string
+      description: 원문 §5.4 도움요청 버튼(점포 대기 STORE_WAITING·상태 정정 STATUS_CORRECTION 은 0.3.0 에 더함). 배차취소는 dispatch 배차 취소 API
+      enum: [CUSTOMER_UNREACHABLE, ADDRESS_ISSUE, GOODS_ISSUE, PHOTO_UPLOAD_FAILED, ACCIDENT, APP_ERROR, STORE_WAITING, STATUS_CORRECTION, OTHER]
+    HelpResolution:
+      type: object
+      x-added-in: '2026-11-15'
+      properties:
+        note: { type: string, maxLength: 300, description: 처리 메모(선택, 개인정보 금지) }
+    HelpRequest:
+      type: object
+      properties:
+        requestId: { type: string }
+        deliveryId: { type: string }
+        incidentId: { type: string, description: 'DeliveryIncidentRaised.incidentId = <deliveryId>:<requestId>' }
+        caseId: { type: [string, 'null'], description: 지원센터 사건 번호 — case-service 가 사건을 만든 뒤 }
+        state: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED] }
+        category: { type: string }
+        stage: { $ref: '#/components/schemas/ExecutionState' }
+        detail: { type: [string, 'null'], description: 라이더가 쓴 내용(0.4.0 — 단건에서만) }
+        evidenceRefs: { type: array, items: { type: string }, description: 0.4.0 }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time, description: 0.4.0 }
+        resolvedBy: { type: [string, 'null'], description: 닫은 직원 ID(직원에게만, 0.4.0) }
+        resolutionNote: { type: [string, 'null'], description: 처리 메모(직원에게만, 0.4.0) }
+    StaffHelpRequestSummary:
+      type: object
+      x-added-in: '2026-11-15'
+      properties:
+        incidentId: { type: string }
+        requestId: { type: string }
+        deliveryId: { type: string }
+        orderId: { type: [string, 'null'] }
+        mfcId: { type: [string, 'null'] }
+        riderId: { type: string }
+        category: { type: string }
+        stage: { $ref: '#/components/schemas/ExecutionState' }
+        state: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED] }
+        caseId: { type: [string, 'null'] }
+        photoCount: { type: integer, description: 붙인 증빙 참조 수 }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+    StaffDeliverySummary:
+      type: object
+      x-added-in: '2026-11-15'
+      properties:
+        deliveryId: { type: string }
+        version: { type: integer }
+        type: { type: string, enum: [FORWARD, RETURN, RESHIPMENT] }
+        orderId: { type: [string, 'null'] }
+        mfcId: { type: [string, 'null'] }
+        riderId: { type: [string, 'null'], description: 지금 배정 라이더(배정 전·해제 뒤 null) }
+        state: { $ref: '#/components/schemas/ExecutionState' }
+        assignedAt: { type: [string, 'null'], format: date-time }
+        pickedUpAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
     ExecutionState:
       type: string
       description: |

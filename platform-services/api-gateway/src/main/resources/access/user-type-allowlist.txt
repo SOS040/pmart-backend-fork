@@ -67,6 +67,7 @@ GET /api/v1/cs-intakes/{intakeId} OPERATOR
 GET /api/v1/customer-assistant/questions CUSTOMER
 GET /api/v1/customer-assistant/questions/{answerId} CUSTOMER
 GET /api/v1/customer-assistant/recent-orders CUSTOMER
+GET /api/v1/deliveries OPERATOR
 GET /api/v1/deliveries/{deliveryId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/assignment-cancellations/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/dispatch OPERATOR,RIDER
@@ -75,6 +76,7 @@ GET /api/v1/deliveries/{deliveryId}/eta CUSTOMER,OPERATOR
 GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/stream CUSTOMER,OPERATOR
 GET /api/v1/delivery-conditions CUSTOMER,GUEST
+GET /api/v1/delivery-help-requests OPERATOR
 GET /api/v1/delivery-list RIDER
 GET /api/v1/delivery-options CUSTOMER,GUEST
 GET /api/v1/dispatch-requests/{requestId} OPERATOR
@@ -192,6 +194,7 @@ GET /api/v1/rider-auth/sessions/current RIDER
 GET /api/v1/rider-auth/social-logins/{authRequestId} PUBLIC
 GET /api/v1/rider-complaints OPERATOR
 GET /api/v1/rider-complaints/{complaintId} OPERATOR
+GET /api/v1/riders OPERATOR
 GET /api/v1/riders/me RIDER
 GET /api/v1/riders/me/deliveries RIDER
 GET /api/v1/riders/me/earnings RIDER
@@ -201,6 +204,7 @@ GET /api/v1/riders/me/state RIDER
 GET /api/v1/riders/me/withdrawals/{requestId} RIDER
 GET /api/v1/riders/restriction-reviews OPERATOR
 GET /api/v1/riders/signups/{requestId} RIDER
+GET /api/v1/riders/{riderId} OPERATOR
 GET /api/v1/riders/{riderId}/restrictions OPERATOR
 GET /api/v1/search/filters PUBLIC
 GET /api/v1/search/products PUBLIC
@@ -296,6 +300,7 @@ POST /api/v1/deliveries/{deliveryId}/evidence-photos RIDER
 POST /api/v1/deliveries/{deliveryId}/failure-decisions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/failures RIDER
 POST /api/v1/deliveries/{deliveryId}/help-requests RIDER
+POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/resolutions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/store-deliveries RIDER
@@ -412,6 +417,7 @@ POST /api/v1/riders/me/locations RIDER
 POST /api/v1/riders/me/withdrawals RIDER
 POST /api/v1/riders/restriction-reviews/{reviewId}/decisions OPERATOR
 POST /api/v1/riders/signups RIDER
+POST /api/v1/riders/{riderId}/pii-reveals OPERATOR
 POST /api/v1/riders/{riderId}/restrictions OPERATOR
 POST /api/v1/serviceability-checks PUBLIC
 POST /api/v1/serviceability-versions OPERATOR

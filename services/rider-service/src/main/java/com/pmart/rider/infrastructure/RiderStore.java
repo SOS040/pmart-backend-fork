@@ -112,6 +112,60 @@ public class RiderStore {
         requestId);
   }
 
+  /** 직원 라이더 찾기 조건(0.4.0, BOD-3). 이름 검색은 없다(사용자 2026-11-15 — 동명이인). 비어 있는 값은 거르지 않는다. */
+  public record Search(
+      @Nullable String riderId,
+      @Nullable String phone,
+      @Nullable String restriction,
+      @Nullable String operatingStatus,
+      @Nullable String operatingMfcId,
+      @Nullable String vehicleType,
+      boolean byStateChange) {}
+
+  /** 직원 라이더 찾기 — restriction 은 지금 유효한 제한(기한 지난 제한은 NORMAL)으로 거른다. */
+  public List<Rider> search(Search s, Instant now, int limit, int offset) {
+    List<Object> args = new ArrayList<>();
+    StringBuilder sql = new StringBuilder("SELECT " + COLUMNS + " FROM rider WHERE TRUE");
+    if (s.riderId() != null) {
+      sql.append(" AND rider_id = ?");
+      args.add(s.riderId());
+    }
+    if (s.phone() != null) {
+      sql.append(" AND phone = ?");
+      args.add(s.phone());
+    }
+    if (s.restriction() != null) {
+      if ("NORMAL".equals(s.restriction())) {
+        sql.append(" AND (restriction = 'NORMAL' OR restriction_until <= ?)");
+      } else {
+        sql.append(" AND restriction = ? AND (restriction_until IS NULL OR restriction_until > ?)");
+        args.add(s.restriction());
+      }
+      args.add(Timestamp.from(now));
+    }
+    if (s.operatingStatus() != null) {
+      sql.append(" AND operating_status = ?");
+      args.add(s.operatingStatus());
+    }
+    if (s.operatingMfcId() != null) {
+      sql.append(" AND operating_mfc_id = ?");
+      args.add(s.operatingMfcId());
+    }
+    if (s.vehicleType() != null) {
+      sql.append(" AND vehicle_type = ?");
+      args.add(s.vehicleType());
+    }
+    sql.append(
+        s.byStateChange()
+            ? " ORDER BY state_changed_at DESC, rider_id"
+            : " ORDER BY joined_at DESC, rider_id");
+    sql.append(" LIMIT ? OFFSET ?");
+    args.add(limit);
+    args.add(offset);
+    List<Row> rows = jdbc.query(sql.toString(), (rs, i) -> row(rs), args.toArray());
+    return withAreas(rows);
+  }
+
   /** 운행 중·신규배차 ON·제한 없음(기한 지난 제한 포함)·배달지역에 mfcId(적격 라이더 조회). */
   public List<Rider> eligible(String mfcId, @Nullable String vehicleType, int limit, Instant now) {
     List<Object> args = new ArrayList<>();

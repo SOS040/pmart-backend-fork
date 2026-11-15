@@ -45,7 +45,10 @@ public class ExecutionStore {
       String stage,
       String state,
       @Nullable String caseId,
-      Instant createdAt) {
+      Instant createdAt,
+      @Nullable Instant resolvedAt,
+      @Nullable String resolvedBy,
+      @Nullable String resolutionNote) {
 
     /**
      * 사건 번호(DeliveryIncidentRaised.incidentId) = 배송 ID + 요청 ID. 요청 ID 는 앱이 보낸 Idempotency-Key 라
@@ -508,16 +511,70 @@ public class ExecutionStore {
         .findFirst();
   }
 
+  public Optional<HelpRow> lockHelp(String deliveryId, String requestId) {
+    return jdbc
+        .query(
+            HELP_SELECT + " WHERE delivery_id = ? AND request_id = ? FOR UPDATE",
+            this::mapHelp,
+            deliveryId,
+            requestId)
+        .stream()
+        .findFirst();
+  }
+
   public List<HelpRow> helps(String deliveryId) {
     return jdbc.query(
         HELP_SELECT + " WHERE delivery_id = ? ORDER BY created_at", this::mapHelp, deliveryId);
   }
 
-  private static final String HELP_SELECT =
-      "SELECT request_id, delivery_id, rider_id, category, detail, evidence_refs::text, stage,"
-          + " state, case_id, created_at FROM help_request";
+  /** 도움요청 처리함으로 닫기(0.4.0 — 사건함 전까지). 이미 닫혔으면 false. */
+  public boolean resolveHelp(
+      String deliveryId, String requestId, String by, @Nullable String note, Instant now) {
+    return jdbc.update(
+            "UPDATE help_request SET state = 'RESOLVED', resolved_at = ?, resolved_by = ?,"
+                + " resolution_note = ? WHERE delivery_id = ? AND request_id = ?"
+                + " AND state <> 'RESOLVED'",
+            ts(now),
+            by,
+            note,
+            deliveryId,
+            requestId)
+        > 0;
+  }
+
+  private static String helpColumns(String p) {
+    return p
+        + "request_id, "
+        + p
+        + "delivery_id, "
+        + p
+        + "rider_id, "
+        + p
+        + "category, "
+        + p
+        + "detail, "
+        + p
+        + "evidence_refs::text, "
+        + p
+        + "stage, "
+        + p
+        + "state, "
+        + p
+        + "case_id, "
+        + p
+        + "created_at, "
+        + p
+        + "resolved_at, "
+        + p
+        + "resolved_by, "
+        + p
+        + "resolution_note";
+  }
+
+  private static final String HELP_SELECT = "SELECT " + helpColumns("") + " FROM help_request";
 
   private HelpRow mapHelp(ResultSet rs, int i) throws SQLException {
+    Timestamp resolved = rs.getTimestamp(11);
     return new HelpRow(
         rs.getString(1),
         rs.getString(2),
@@ -528,7 +585,93 @@ public class ExecutionStore {
         rs.getString(7),
         rs.getString(8),
         rs.getString(9),
-        rs.getTimestamp(10).toInstant());
+        rs.getTimestamp(10).toInstant(),
+        resolved == null ? null : resolved.toInstant(),
+        rs.getString(12),
+        rs.getString(13));
+  }
+
+  // ---- 직원 목록(0.4.0 — 백오피스 고객센터·라이더 운영, BOD-4·5). 개인정보 없음(ID·상태·시각)
+
+  /** 직원 배송 찾기 조건. 비어 있는 값은 거르지 않는다. */
+  public record DeliveryFilter(
+      @Nullable String orderId,
+      @Nullable String riderId,
+      @Nullable String mfcId,
+      @Nullable String state,
+      @Nullable String type,
+      boolean oldestFirst) {}
+
+  public List<DeliveryRow> staffDeliveries(DeliveryFilter f, int limit, int offset) {
+    StringBuilder sql =
+        new StringBuilder("SELECT " + DELIVERY_COLUMNS + " FROM execution_delivery WHERE TRUE");
+    List<Object> args = new java.util.ArrayList<>();
+    eq(sql, args, "order_id", f.orderId());
+    eq(sql, args, "rider_id", f.riderId());
+    eq(sql, args, "mfc_id", f.mfcId());
+    eq(sql, args, "state", f.state());
+    eq(sql, args, "type", f.type());
+    sql.append(
+        f.oldestFirst()
+            ? " ORDER BY created_at, delivery_id"
+            : " ORDER BY created_at DESC, delivery_id DESC");
+    sql.append(" LIMIT ? OFFSET ?");
+    args.add(limit);
+    args.add(offset);
+    return jdbc.query(sql.toString(), this::mapDelivery, args.toArray());
+  }
+
+  /** 도움요청 대기 목록 조건(접수 시각 from 포함·to 미포함). */
+  public record HelpFilter(
+      String state,
+      @Nullable String category,
+      @Nullable String mfcId,
+      @Nullable String riderId,
+      @Nullable Instant from,
+      @Nullable Instant to) {}
+
+  /** 대기 목록 한 줄 — 배송의 주문·센터를 붙인다. */
+  public record StaffHelpRow(
+      HelpRow help, @Nullable String orderId, @Nullable String mfcId, int evidenceCount) {}
+
+  /** 도움요청 대기 목록(오래된 것 먼저). */
+  public List<StaffHelpRow> staffHelps(HelpFilter f, int limit, int offset) {
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT "
+                + helpColumns("h.")
+                + ", d.order_id, d.mfc_id, jsonb_array_length(h.evidence_refs)"
+                + " FROM help_request h LEFT JOIN execution_delivery d"
+                + " ON d.delivery_id = h.delivery_id WHERE h.state = ?");
+    List<Object> args = new java.util.ArrayList<>();
+    args.add(f.state());
+    eq(sql, args, "h.category", f.category());
+    eq(sql, args, "d.mfc_id", f.mfcId());
+    eq(sql, args, "h.rider_id", f.riderId());
+    if (f.from() != null) {
+      sql.append(" AND h.created_at >= ?");
+      args.add(ts(f.from()));
+    }
+    if (f.to() != null) {
+      sql.append(" AND h.created_at < ?");
+      args.add(ts(f.to()));
+    }
+    sql.append(" ORDER BY h.created_at, h.delivery_id, h.request_id LIMIT ? OFFSET ?");
+    args.add(limit);
+    args.add(offset);
+    return jdbc.query(
+        sql.toString(),
+        (rs, i) ->
+            new StaffHelpRow(mapHelp(rs, i), rs.getString(14), rs.getString(15), rs.getInt(16)),
+        args.toArray());
+  }
+
+  private static void eq(
+      StringBuilder sql, List<Object> args, String column, @Nullable String value) {
+    if (value != null) {
+      sql.append(" AND ").append(column).append(" = ?");
+      args.add(value);
+    }
   }
 
   // ---- 수행료

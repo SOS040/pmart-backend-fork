@@ -9,7 +9,10 @@ import com.pmart.delivery.dispatch.infrastructure.DispatchStore.OfferRow;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
-/** 배송 배차 조회 — 운영자(그 센터 또는 OPERATOR_ADMIN)·라이더(배정받았거나 제안받은 배송)·서비스. */
+/**
+ * 배송 배차 조회 — 운영자(그 센터, OPERATOR_ADMIN, 라이더 운영 RIDER_OPS, 고객센터 CS_AGENT — BOD-1·2 2026-11-15: 상담원은
+ * "라이더 배정됐나요"에 답하려고 조회만)·라이더(배정받았거나 제안받은 배송)·서비스.
+ */
 @Service
 public class DeliveryQueries {
 
@@ -38,7 +41,10 @@ public class DeliveryQueries {
     boolean showAssignment = true;
     switch (p.type()) {
       case OPERATOR -> {
-        if (!p.canAccessCenter(d.mfcId()) && !p.hasRole("OPERATOR_ADMIN")) {
+        if (!p.canAccessCenter(d.mfcId())
+            && !p.hasRole("OPERATOR_ADMIN")
+            && !p.hasRole("RIDER_OPS")
+            && !p.hasRole("CS_AGENT")) {
           throw OfferService.forbidden("이 센터 배송을 볼 수 없습니다.");
         }
       }
