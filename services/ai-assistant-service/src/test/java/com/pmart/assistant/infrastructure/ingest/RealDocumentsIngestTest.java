@@ -66,7 +66,8 @@ class RealDocumentsIngestTest {
           "0033", "0034", "0035", "0036", "0037", "0038", "0039", "0050", "0051",
           "0053", // 설정 갱신·Kafka·소비·RAG·승인 회신·OR-Tools·Native
           "0054", "0055", "0056", "0057", "0058", "0059",
-          "0061"); // 인증 분리·Google·직원 로그인(업무 흐름은 flows 문서)·HTTPS·배차 서버·CSRF·로그아웃 전파
+          "0061", // 인증 분리·Google·직원 로그인(업무 흐름은 flows 문서)·HTTPS·배차 서버·CSRF·로그아웃 전파
+          "0062"); // 개인정보 원문 열람 기록 — 애매함(2026-11-16 PC 1 이 일단 뺌, 넣을지는 RAG 영역 PC 4)
 
   @Test
   void manifestListsExistingFilesExplicitly() {

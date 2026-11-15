@@ -40,7 +40,7 @@ public final class CaseRules {
 
   public static final List<String> CREATE_MISDELIVERY_ROLES = List.of(CS_AGENT, RIDER_OPS, ADMIN);
 
-  /** 종류별 처리 기한 기본값(설정 {@code pmart.cases.sla.<종류>} 로 바꾼다 — 값은 사용자 확인 전 잠정). */
+  /** 종류별 처리 기한 기본값(설정 {@code pmart.cases.sla.<종류>} 로 바꾼다 — 값 확정 2026-11-16 사용자 "그대로 할게"). */
   public static final Map<String, Duration> DEFAULT_SLA =
       Map.of(
           RIDER_HELP, Duration.ofMinutes(10),
