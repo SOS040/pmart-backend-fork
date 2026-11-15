@@ -25,6 +25,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] **mfc_app(클라이언트 mfc-app 영역, PC 3 담당 — 2026-11-13)**: `SUBJECT_BLOCKED`(로그아웃·정지 즉시 401) 안내 — **끝**(클라이언트 ca2ecf3), 남은 것 **실기기 로그인 확인**(로그인 마무리 기준 4 — `pc-split.md` §1-1) — `docs/handoff/clients/mfc-app/2026-11-13-clients-reply-mfc-app-login-and-https-build.md`. 실기기에는 LAN 루트 CA 설치 필요. 시험 계정은 `mfcw-*` 70명(`dev-on-other-pcs.md` §2)
 - [ ] 클라이언트 BR-52(PDA 업무 선택 배정)·BR-53(입고 수령 화면 값) 회신 — BR-52 R1·R3·R4 는 PR #9, **BR-53 R8~R11 회신**(PC 3, 2026-11-13, 브랜치 `mfc/inbound-labels` — `docs/handoff/clients/mfc-app/2026-11-13-reply-br53-inbound-receiving.md`). **BR-52 R2(품질검사·적치)·R19-1 회신**(PC 3, 2026-11-14, 브랜치 `mfc/br52-r2-r19` — `docs/handoff/clients/mfc-app/2026-11-14-reply-br52-r2-r19-1.md`). 남은 것 R2 의 입고·회수품·실사, R5~R7·R12~R18·R19 나머지·R20
 
+- [ ] **MFC 백오피스(센터 관리자 웹)용 API**(2026-11-15 — 요청서 `docs/architecture/service-requests/mfc-backoffice-staff-apis.md` MB-1~3): 목록 API 들, 계약만인 inbound-promises·quality-incidents(순서는 PC 3 판단), 권한 MB-3 은 사용자 결정 뒤. main 에서 새 브랜치로
 ## PC 5 — delivery 영역
 
 - [x] 공통 절 전부(gh·포크·`./gradlew --stop`) — 2026-11-13: 저장소 형제(`pmart-backend`·`pmart-clients`, 시뮬레이터는 delivery 에 불필요), gh `piaa1004` 로그인·포크 `piaa1004/pmart-backend`·`fork` remote, 비밀번호 파일 4개 `deploy/lan/.secrets/`(루트 `.secrets/` 없음), Gradle 제한 파일 있음·`--stop`, 루트 CA 설치 확인. 주의: gh 는 설치돼 있지만 PATH 에 없는 터미널이 있음(`C:\Program Files\GitHub CLI\gh.exe`)

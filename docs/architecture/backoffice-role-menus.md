@@ -5,7 +5,7 @@
 > 2026-11-13 갱신: 직원 로그인은 employee-auth-service 하나(ADR-0056, auth-service 운영자 로그인·`/operator-accounts` 없어짐). 인사(직원 등록·상태)는 별도 앱 인사팀 백오피스(hr-backoffice, :8444).
 
 ## 1. 원칙
-- 메뉴는 **로그인(티켓 교환) 응답·`GET /api/v1/employee-auth/sessions/current` 의 `roles`·`centers`** 로 정한다(백엔드 변경 없음). 토큰 클레임에도 같은 값이 있다(ADR-0056 — 토큰 모양은 예전 운영자 토큰과 같음, `typ=OPERATOR`). 역할·센터 = 계정 값 ∪ 지금 유효한 승인 권한(grant)이라 로그인·갱신 때마다 바뀔 수 있다.
+- 메뉴는 **로그인(티켓 교환) 응답의 `roles`·`centers`(새로고침 뒤에는 access token 클레임)** 로 정한다. `GET /api/v1/employee-auth/sessions/current` 에는 `roles`·`centers` 가 **없다**(2026-11-15 확인 — 이 줄이 전에는 있다고 잘못 적혀 있었다). 토큰 클레임에도 같은 값이 있다(ADR-0056 — 토큰 모양은 예전 운영자 토큰과 같음, `typ=OPERATOR`). 역할·센터 = 계정 값 ∪ 지금 유효한 승인 권한(grant)이라 로그인·갱신 때마다 바뀔 수 있다.
 - **메뉴 숨김은 편의일 뿐, 권한은 서버가 행위마다 판정한다**(BO 문서·클라이언트 원칙 그대로). 숨긴 화면의 API 를 불러도 서버가 403 을 준다.
 - 역할 이름은 백엔드가 실제로 쓰는 이름을 쓴다(클라이언트 문서의 담당 그룹 CS / MFC_OPS … 는 설명용 묶음 — 역할 이름이 아님).
 
@@ -30,7 +30,7 @@
 
 ## 3. MFC 메뉴 (센터 관리자)
 
-> 2026-11-15: 이 메뉴는 **별도 앱 MFC 백오피스**(`app=mfc-backoffice`, `https://192.168.0.40:8445`)로 — 요청서 `docs/handoff/clients/mfc-backoffice/2026-11-15-request-mfc-backoffice.md`.
+> 2026-11-15: 메뉴별 API 상태(구현·없음·계약만)는 요청서 §2-1, 없는 것은 `service-requests/mfc-backoffice-staff-apis.md`(PC 3). 이 메뉴는 **별도 앱 MFC 백오피스**(`app=mfc-backoffice`, `https://192.168.0.40:8445`)로 — 요청서 `docs/handoff/clients/mfc-backoffice/2026-11-15-request-mfc-backoffice.md`.
 
 | 메뉴 | 내용 | API |
 |---|---|---|
@@ -38,7 +38,7 @@
 | 배정 | 작업 배정·재배정, 배정 추천(OR-Tools) 계산·확정, 배정 목록 | mfc-capacity `/assignments`, `/assignment-plans*` |
 | 작업 현황 | 센터 작업 목록·상세, 확인 필요 포장 목록·확인 | mfc-fulfillment `/tasks?mfcId=&state=`, `/packages?mfcId=&checkRequired=true`, `/packages/{id}/handover-checks` |
 | 이동·보충 | 이동 지시 만들기·취소, 목록 | mfc-inbound `/move-orders*` |
-| 입고 | 입고 예정 수령, 품질검사(LOT 분리), 적치, 회수품 반입, 공급 요청 | mfc-inbound `/initial-stock-loads*`, `/inbound-tasks*`, `/return-receipts`, 공급 요청 |
+| 입고 | 입고 예정 수령, 품질검사(LOT 분리), 적치, 회수품 반입, 공급 요청 | mfc-inbound `/initial-stock-loads*`, `/inbound-tasks*`, `/return-receipts`, `/supply-requests*` |
 | 재고 | 센터 재고 조회, 위치·LOT 정정, 순환 실사, 보충 기준, 출하 부적격 LOT, 상품 취급 | mfc-inventory `/mfcs/{id}/stock*`, `/stock-corrections`, `/count-sessions*`, `/replenishment-policies`, `/unshippable-lots`, `/sku-handlings*` |
 | 품질 | 격리·해제(다른 관리자 승인), 폐기, 회수품 검수 | mfc-quality |
 | 위치(칸) | 칸 등록·수정·닫기·폐지, 도면 좌표·치수 | mfc-location `/locations*` |
