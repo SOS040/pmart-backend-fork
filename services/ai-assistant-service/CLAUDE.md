@@ -19,11 +19,11 @@
 - 질문·문서 본문·토큰을 로그에 남기지 않는다(답변 ID·상태·소요 시간·청크 수만).
 - 모델은 LAN Ollama 만(ADR-0051 결정 6 — 외부 유료 API 없음). 운영 연결은 Spring AI Ollama 모듈로, 임베딩 모델을 고른 뒤 만든다(아직 없음). `provider=fake` 는 시험 전용이다.
 - 임베딩 비교 평가: `-PevalOllamaModel=<모델>`(로컬 Ollama, `OllamaEvalEmbedding` — 시험 전용)로 `RetrievalEvalIT` → `build/reports/eval/<모델>/`.
-- 색인 대상은 `src/main/resources/knowledge/manifest.yml` 의 명시 목록뿐이다. 문서를 더하면 목록에 넣는다. 새 ADR 도 넣어야 한다 — `RealDocumentsIngestTest` 가 ADR 개수를 대조한다.
+- 색인 대상은 `src/main/resources/knowledge/manifest.yml` 의 명시 목록뿐이다. 문서를 더하면 목록에 넣는다. **ADR 은 업무 정책 결정만**(2026-11-15 사용자 — 서비스 경계·인프라·인증 구현·배포·RAG 설계는 업무 직원이 볼 내용이 아님). 새 ADR 은 manifest 에 넣거나 `RealDocumentsIngestTest.EXCLUDED_ADRS` 에 더한다 — 둘 다 아니면 시험이 실패한다.
 
 ## 데이터
 - `V1__init.sql`: `index_snapshot`·`index_source_file`·`doc_chunk`(vector·pg_trgm)·`embedding_cache`·`policy_answer`. 적용된 파일은 수정하지 않는다.
-- pgvector 가 필요하다. 로컬은 `deploy/local/ai-assistant/docker-compose.yml`(15433), 시험은 `PgvectorContainerSupport`(`pgvector/pgvector:pg17`), LAN 은 pc5 `rag-pgvector`(2026-11-10 pc2 → pc5) 의 DB·계정 `ai_assistant_service`(ADR-0051, 아직 서비스 미배포).
+- pgvector 가 필요하다. 로컬은 `deploy/local/ai-assistant/docker-compose.yml`(15433), 시험은 `PgvectorContainerSupport`(`pgvector/pgvector:pg17`), LAN 은 pc2 `rag-pgvector`(2026-11-11 pc2 → pc5, 2026-11-15 pc5 → pc2 다시) 의 DB·계정 `ai_assistant_service`(ADR-0051).
 
 ## 실행
 ```bash
@@ -40,4 +40,4 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 - 내 질문 목록 `GET /assistant/question-history`(BR-46, 계약 1.1.0) — 본인·출처 범위, 완료 답변은 현재 권한 재검사 후만. 쪽 계산은 `domain/HistoryPager`: 보이는 행을 size+1 개째까지 찾아 그때만 nextCursor(2026-11-05 결함 수정 — 숨김 행 뒤 누락).
 - 검색 평가 `RetrievalEvalIT`: 문서 경로 기준(`expected`) + 절 기준(`sections`, 원문을 읽어 정함). 정답 절은 검색 결과에 맞춰 넓히지 않는다.
 - 1차 구현(2026-11-04, ADR-0036): 기준선(해시 임베딩 + 발췌).
-- **LAN 배포(2026-11-09, ADR-0051)**: pc2(2026-11-10 pc5 로 옮기기로 — 전체 재배포 때), provider=ollama — 임베딩 qwen3-embedding:0.6b(CPU, `/api/embed` 직접 — Spring AI 임베딩 모델이 options 를 빠뜨림), 대화 qwen3:4b(GPU, 생각 끔·JSON). DB 는 `rag-pgvector` 의 `ai_assistant_service`(서비스 계정). 색인은 `lan.sh rag-ingest pc5`(일회 작업 `ai-assistant-ingest`), Ollama 재시작 뒤 `lan.sh rag-warm pc5`. 확인 `deploy/lan/checks/rag_e2e.py`.
+- **LAN 배포(2026-11-09, ADR-0051)**: pc2(2026-11-10 pc5 로 옮기기로 — 전체 재배포 때), provider=ollama — 임베딩 qwen3-embedding:0.6b(CPU, `/api/embed` 직접 — Spring AI 임베딩 모델이 options 를 빠뜨림), 대화 qwen3:4b(GPU, 생각 끔·JSON). DB 는 `rag-pgvector` 의 `ai_assistant_service`(서비스 계정). 색인은 `lan.sh rag-ingest pc2`(일회 작업 `ai-assistant-ingest`, 2026-11-15 부터 render 를 먼저), Ollama 재시작 뒤 `lan.sh rag-warm pc2`. 확인 `deploy/lan/checks/rag_e2e.py`.

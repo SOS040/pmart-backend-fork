@@ -27,14 +27,15 @@ RAG 영역(`docs/operations/pc-split.md` §1-1 — 나눌 예정)을 받는 PC·
 | 묶음 | 경로 | 개수 | 우선순위(precedence) |
 |---|---|---|---|
 | 서비스 목록 | `docs/architecture/service-map.md` | 1 | 5 |
-| ADR | `docs/adr/0001~0055` | 55 | 5(지위는 각 ADR 상태 줄 — 승인=확정, 그 밖=제안) |
+| ADR(**업무 정책만**, 2026-11-15) | `docs/adr/` 0014·0015·0040~0049·0052·0060 | 14 | 5(지위는 각 ADR 상태 줄 — 승인=확정, 그 밖=제안). 서비스 경계·인프라·인증 구현·배포·관측·RAG 설계 ADR 은 뺌(사용자 "그건 일반 운영자쪽에서 안봐도되는내용인데") — 뺀 목록·이유는 `RealDocumentsIngestTest.EXCLUDED_ADRS`, 새 ADR 은 둘 중 하나로 정해야 시험 통과 |
 | 저장소 설계 | `docs/business/overview.md`·`domain-map.md`·`glossary.md`, `docs/business/flows/`(cancel-vs-handover·order-checkout-saga·replenishment-transfer·return-exchange-refund), `contracts/states/*.md`(8개) | | 4 |
 | 업무 원문 | `docs/business/{WMS,SCM,TMS,MFC,BackOffice}-business-logic.md`(4), `OMS-business-logic.md`(3), `Commerce-business-logic.md`(2), `Delivery-business-logic.md`(1) | | 4·3·2·1 |
 | 고객센터 상담 대응 | `docs/business/cs-scripts/README.md`·`01~10`(2026-11-09) | 11 | 1(업무 원문이 앞섬) |
 
 - 넣지 않는 것: worklog·handoff·그 밖 architecture 문서·코드·시험·배포·비밀.
 - `overrides`: OMS 8.2 결품 문단 SUPERSEDED(ADR-0049), Commerce 카테고리 1·2단계 대체 제안(ADR-0015) — 이유는 manifest 안 `reason`.
-- **빠진 것**: `docs/adr/0056`(직원 로그인·HR)·`0057`(LAN HTTPS 사설 CA) — 2026-11-12~13 새 ADR 이라 아직 manifest 에 없다. 넣으려면 manifest 추가 + 재색인.
+- 직원 등록·권한 요청·승인은 ADR-0056 대신 업무 흐름 `docs/business/flows/employee-account-provisioning.md` 로 넣었다(2026-11-15).
+- 평가 묶음도 같이 맞춤(2026-11-15): 검색 평가 `questions.yml` 은 기술 질문 7개를 빼고 R3 를 업무 질문으로, 업무 질문 Q21~Q23 추가(21개). LAN `rag_e2e.py` 의 "서비스 간 호출" → "상품준비 뒤 고객센터 취소". **답변 평가 `answers.json` 30문항 중 A07~A12·A19(빠진 ADR 이 정답) 7개는 아직 그대로** — 다음 답변 평가 때 업무 질문으로 바꿀 것.
 
 ### 고객 RAG — `services/customer-assistant-service/src/main/resources/knowledge/manifest.yml` (13개, 63 청크)
 

@@ -44,6 +44,7 @@ documents:
   - { path: docs/business/flows/order-checkout-saga.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
   - { path: docs/business/flows/replenishment-transfer.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
   - { path: docs/business/flows/return-exchange-refund.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
+  - { path: docs/business/flows/employee-account-provisioning.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 } # 직원 등록·권한 요청·승인(ADR-0056 의 업무 부분 — ADR 자체는 인증 구현이라 뺌, 2026-11-15)
   # --- 상태표 ---
   - { path: contracts/states/cdc-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
   - { path: contracts/states/claim-refund-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
@@ -53,46 +54,12 @@ documents:
   - { path: contracts/states/platform-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
   - { path: contracts/states/scm-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
   - { path: contracts/states/tms-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  # --- ADR 전부 (지위는 상태 줄) ---
-  - { path: docs/adr/0001-product-master-in-product-service.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0002-inventory-single-writer-per-center-type.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0003-order-saga-orchestration.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0004-backoffice-ledgers-approval-case-center-master.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0005-payment-service-and-pg-source-of-truth.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0006-handover-fence-and-cancel-arbitration.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0007-tms-delivery-split-and-serviceability.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0008-slot-capacity-ownership.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0009-outbox-event-envelope-idempotency.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0010-time-utc-storage-seoul-business-dates.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0011-service-identity-tokens.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0012-image-registry-docker-hub-public.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0013-deployment-lan-compose-and-helm.md, domain: adr, kind: ADR, precedence: 5 }
+  # --- ADR: 업무 정책 결정만 (지위는 상태 줄) — 2026-11-15 사용자 "그건 일반 운영자쪽에서 안봐도되는내용인데" ---
+  # 운영자 RAG 를 쓰는 사람은 백오피스 업무 직원(상담원·MD·승인자·라이더 운영·센터 관리자)이다. 고객 응대·업무 판단에 쓰는 결정만 넣고,
+  # 서비스 경계·인프라·인증 구현·배포·관측·RAG 자체 설계 ADR 은 넣지 않는다(업무 질문에 기술 문서가 근거로 끼어들고 내부 구조가 답으로 나간다).
+  # 새 ADR 이 생기면 여기 넣을지 정하고, 빼면 RealDocumentsIngestTest.EXCLUDED_ADRS 에 이유와 함께 더한다(정하지 않으면 시험이 실패).
   - { path: docs/adr/0014-master-data-and-initial-stock-loading.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0015-category-tree-follows-reference-data.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0016-object-storage-seaweedfs-s3.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0017-production-db-servers-five.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0018-operator-accounts-and-jwt-login.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0019-customer-google-login-id-token.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0020-payment-spec-mapping-toss-widget.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0021-search-index-opensearch-projection.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0022-guest-session-token-and-guest-paths.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0023-address-geocoding-kakao-local.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0024-provider-profile-to-customer-service.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0025-customer-google-login-server-auth-code.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0026-no-service-to-service-authentication.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0027-config-server-github-cipher.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0028-dev-base-image-temurin-jdk.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0029-config-repo-as-source-of-truth.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0030-observability-metrics-logs-dead-letters.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0031-elastic-stack-search-and-logs.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0032-eureka-service-discovery-local-lan.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0033-config-refresh-webhook-bus.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0034-kafka-event-history-retention-and-reindex.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0035-event-consumption-spring-cloud-stream.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0036-ai-assistant-phase1-policy-rag.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0037-kafka-three-node-kraft-cluster.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0038-split-search-and-logs-elasticsearch.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0039-approval-application-receipt-event.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0040-mfc-inventory-model-v2.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0041-per-product-shelf-life-guarantee.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0042-mfc-open-decisions-lot-substitution-hold-ttl-location-code-bulk-inbound.md, domain: adr, kind: ADR, precedence: 5 }
@@ -103,18 +70,8 @@ documents:
   - { path: docs/adr/0047-package-handover-fence.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0048-mfc-overnight-quality-count-restrictions.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0049-shortage-always-partial-cancel.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0050-or-tools-assignment-routing-no-jgrapht.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0051-rag-customer-expansion-split-services-ollama.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0052-customer-cancel-deadline-and-misdelivery-parallel-resend.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0053-or-tools-services-stay-on-jvm.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0054-auth-split-keycloak-staff-rider-auth-service.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0055-google-login-id-token-only-customer-rider.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0057-lan-dev-https-private-ca.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0058-delivery-ai-dispatch-python-optimizer-server.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0059-web-staff-refresh-cookie-signed-double-submit.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0060-no-customer-center-cancel-after-preparing.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0061-staff-logout-propagation-same-browser-and-keycloak-backchannel.md, domain: adr, kind: ADR, precedence: 5 }
 
 # 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
 overrides:
