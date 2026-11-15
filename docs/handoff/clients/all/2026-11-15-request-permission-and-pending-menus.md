@@ -25,12 +25,15 @@
    - 404 `EMPLOYEE_NOT_FOUND` = 아직 계정 발급 전(입사 등록 직후) — "계정 발급 중"으로.
 3. **진행 중인 권한 요청**: 인사팀 앱 직원 상세의 `requestedGrants`(hr-service, 이미 있음)를 같이 보여 주면 좋다.
 
-### 1-2. "준비 중"으로 둘 것
-- **권한 추가·변경 요청** 버튼, **권한 회수** 버튼 — 백엔드(BO-01)를 PC 1 이 만들고 있다. 정해진 규칙(사용자 2026-11-15):
-  - 추가·변경은 지금처럼 **승인을 거친다**(approval-service 승인함).
-  - **회수는 승인 없이 바로** 적용하고 그 직원의 세션도 끊는다(기록은 남김).
-  - 종료일을 비우면 **근무 기간(계약 종료일)까지**.
-  - API 가 생기면 따로 알린다.
+### 1-2. 권한 추가·변경·회수 (같은 날 추가 — hr-service 0.3.0, employee-auth-service 0.8.0)
+규칙(사용자 2026-11-15): 추가·변경은 **승인을 거친다**, 회수는 **승인 없이 바로**(그 직원 세션도 끊김, 사유 필수·기록), 종료일을 비우면 **근무 기간(계약 종료일)까지**. 인사팀 앱은 입사·이동·퇴사에 따른 요청·회수, 백오피스 관리자는 승인·긴급 회수.
+- **추가·변경 요청**: `POST /api/v1/hr/employees/{operatorId}/grant-requests` `{grants:[{role, centers?, validFrom?, validTo?, reason?}], reason}`(헤더 `Idempotency-Key`·`X-Source-System`, 선택 `X-Expected-Version`) → 200 직원(`requestedGrants` 에 SUBMITTED). 승인함에서 결정되면 APPROVED·REJECTED 로 바뀌고, 승인되면 직원 조회의 `effectiveRoles` 에 들어간다.
+  - 409 `GRANT_REQUEST_PENDING` = 아직 결정 안 된 요청이 있음(한 번에 하나) — "승인 대기 중" 안내. 409 `INVALID_STATE` = 재직 중이 아니거나 계정 발급 전. 403 = 자기 권한.
+  - "변경"은 새 권한 요청 + 필요하면 예전 권한 회수(아래) 두 단계로.
+- **회수**: `POST /api/v1/employee-auth/employees/{operatorId}/grant-revocations` `{grantId, reason}`(헤더 `Idempotency-Key`·`X-Source-System`) → 200 직원 조회 결과(그 grant 에 `revokedAt`·`revokedBy`·`revokeReason`). 확인 창("이 직원은 바로 로그아웃됩니다")을 띄운다.
+  - 회수 버튼은 `grants[]` 중 `revokedAt` 이 없고 `validUntil` 이 지나지 않은 줄에만. **`OPERATOR_ADMIN`·`HR_ADMIN` 역할 줄은 인사팀(HR_ADMIN)에게 회수 버튼을 숨긴다**(서버도 403 — 운영 관리자만). 자기 자신 줄도 숨김(403).
+  - 계정에 직접 둔 역할(`roles` 중 `grants` 에 없는 것 — 예전 이전 계정)은 회수 대상이 아니다 — "관리자 보정 값"으로 표시만.
+  - 404 `GRANT_NOT_FOUND`, 409 `INVALID_STATE`(이미 기한이 끝남).
 
 ## 2. 백오피스 — "처리 대기" 메뉴 (OPERATOR_ADMIN)
 

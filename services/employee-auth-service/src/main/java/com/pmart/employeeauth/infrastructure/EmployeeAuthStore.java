@@ -571,24 +571,65 @@ public class EmployeeAuthStore {
       @Nullable Instant validUntil,
       String approvalId,
       String approverId,
-      Instant appliedAt) {}
+      Instant appliedAt,
+      @Nullable Instant revokedAt,
+      @Nullable String revokedBy,
+      @Nullable String revokeReason) {}
 
   /** 한 직원의 grant 전부(지난 것 포함, 최근 시작 순, 최대 100). */
+  private static final String GRANT_COLUMNS =
+      "grant_id, role, centers, valid_from, valid_until, approval_id, approver_id, applied_at,"
+          + " revoked_at, revoked_by, revoke_reason";
+
   public List<GrantRow> grants(String operatorId) {
     return jdbc.query(
-        "SELECT grant_id, role, centers, valid_from, valid_until, approval_id, approver_id, applied_at"
+        "SELECT "
+            + GRANT_COLUMNS
             + " FROM employee_grant WHERE operator_id = ? ORDER BY valid_from DESC, grant_id LIMIT 100",
-        (rs, i) ->
-            new GrantRow(
-                rs.getString("grant_id"),
-                rs.getString("role"),
-                list(rs.getArray("centers")),
-                instant(rs, "valid_from"),
-                nullableInstant(rs, "valid_until"),
-                rs.getString("approval_id"),
-                rs.getString("approver_id"),
-                instant(rs, "applied_at")),
+        (rs, i) -> grantRow(rs),
         operatorId);
+  }
+
+  /** 회수할 grant 를 잠근다(그 직원 것만). */
+  public Optional<GrantRow> lockGrant(String operatorId, String grantId) {
+    return jdbc
+        .query(
+            "SELECT "
+                + GRANT_COLUMNS
+                + " FROM employee_grant WHERE operator_id = ? AND grant_id = ? FOR UPDATE",
+            (rs, i) -> grantRow(rs),
+            operatorId,
+            grantId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 회수(BO-01) — 효력 끝 = 지금, 누가·왜. 행은 남긴다. */
+  public void revokeGrant(String grantId, Instant at, String by, String reason, String source) {
+    jdbc.update(
+        "UPDATE employee_grant SET valid_until = ?, revoked_at = ?, revoked_by = ?, revoke_reason = ?,"
+            + " revoke_source = ? WHERE grant_id = ? AND revoked_at IS NULL",
+        Timestamp.from(at),
+        Timestamp.from(at),
+        by,
+        reason,
+        source,
+        grantId);
+  }
+
+  private GrantRow grantRow(ResultSet rs) throws SQLException {
+    return new GrantRow(
+        rs.getString("grant_id"),
+        rs.getString("role"),
+        list(rs.getArray("centers")),
+        instant(rs, "valid_from"),
+        nullableInstant(rs, "valid_until"),
+        rs.getString("approval_id"),
+        rs.getString("approver_id"),
+        instant(rs, "applied_at"),
+        nullableInstant(rs, "revoked_at"),
+        rs.getString("revoked_by"),
+        rs.getString("revoke_reason"));
   }
 
   public List<GrantAccess> activeGrants(String operatorId, Instant now) {

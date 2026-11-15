@@ -47,6 +47,20 @@ final class HrMapping {
             .toList());
   }
 
+  static List<EmployeeService.GrantRequest> grants(@Nullable List<RequestedGrant> grants) {
+    return (grants == null ? List.<RequestedGrant>of() : grants)
+        .stream()
+            .map(
+                g ->
+                    new EmployeeService.GrantRequest(
+                        g.getRole(),
+                        g.getCenters() == null ? List.of() : List.copyOf(g.getCenters()),
+                        g.getValidFrom(),
+                        g.getValidTo(),
+                        g.getReason()))
+            .toList();
+  }
+
   static Employee employee(EmployeeService.EmployeeView v) {
     EmployeeRow e = v.employee();
     ProvisioningRow p = v.provisioning();

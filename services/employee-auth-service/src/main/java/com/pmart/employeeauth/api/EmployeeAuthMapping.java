@@ -63,7 +63,10 @@ final class EmployeeAuthMapping {
                             .validUntil(g.validUntil() == null ? null : odt(g.validUntil()))
                             .approvalId(g.approvalId())
                             .approverId(g.approverId())
-                            .appliedAt(odt(g.appliedAt())))
+                            .appliedAt(odt(g.appliedAt()))
+                            .revokedAt(g.revokedAt() == null ? null : odt(g.revokedAt()))
+                            .revokedBy(g.revokedBy())
+                            .revokeReason(g.revokeReason()))
                 .toList());
   }
 

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
     hr-service 가 사서함(@pmart.com, mail-provisioner) → Keycloak 계정(hr-provisioner, Admin API) → 비밀번호 설정 메일(Keycloak) 순서로
@@ -136,6 +136,45 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /hr/employees/{operatorId}/grant-requests:
+    post:
+      tags: [employment]
+      summary: 권한 추가·변경 요청 (BO-01 — 재직 중·계정 발급이 끝난 직원, approval 승인 뒤 효력, 0.3.0)
+      description: |
+        2026-11-15 사용자 결정(BO-01): 추가·변경은 등록 때와 같이 approval-service 승인을 거친다(GrantRequested → 승인함 → employee-auth-service 가 적용).
+        회수(줄이기)는 이 API 가 아니라 employee-auth-service `POST /employee-auth/employees/{operatorId}/grant-revocations`(승인 없이 즉시).
+        변경 = 새 권한 요청 + 필요하면 예전 권한 회수.
+        기간을 비우면 시작 = 근무 시작일, 끝 = 계약 종료일(정규직은 없음 — 근무 기간까지).
+        거절: 자기 권한 요청 403, 재직 중이 아니거나 계정 발급 전 409 INVALID_STATE, 아직 결정되지 않은 권한 요청이 있으면 409 GRANT_REQUEST_PENDING(승인 하나씩).
+      operationId: requestEmployeeGrants
+      x-pmart-user-types: [OPERATOR]
+      x-added-in: '2026-11-15'
+      parameters:
+        - $ref: '#/components/parameters/OperatorId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grants, reason]
+              properties:
+                grants: { type: array, minItems: 1, maxItems: 20, items: { $ref: '#/components/schemas/RequestedGrant' } }
+                reason: { type: string, minLength: 1, maxLength: 500, description: 요청 사유(행마다 reason 이 없으면 이 값) }
+      responses:
+        '200':
+          description: 요청 제출됨(requestedGrants 에 SUBMITTED 로 보임 — 승인 결과가 오면 APPROVED·REJECTED)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }

@@ -27,11 +27,16 @@ import tools.jackson.databind.json.JsonMapper;
       "spring.main.banner-mode=off",
       "pmart.employee-auth.issuer=http://employee-auth.test",
       "pmart.employee-auth.dev-token-mint.enabled=true",
-      "pmart.test.context=role-catalog"
+      "pmart.test.context=role-catalog",
+      "pmart.messaging.outbox.delete-after-insert=false" // 회수 SubjectBlocked 확인
     })
 class RoleCatalogIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  org.springframework.jdbc.core.JdbcTemplate jdbc;
+
   final JsonMapper mapper = JsonMapper.builder().build();
 
   record Res(int status, JsonNode body) {}
@@ -179,5 +184,88 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
     assertThat(call("PUT", "/employee-auth/employees/" + op, hr, change).status())
         .as("인사팀은 바꾸지 못한다")
         .isEqualTo(403);
+  }
+
+  void insertGrant(String grantId, String operatorId, String role) {
+    jdbc.update(
+        "INSERT INTO employee_grant (grant_id, operator_id, role, centers, valid_from, valid_until,"
+            + " approval_id, line_id, approver_id, reason, applied_at)"
+            + " VALUES (?, ?, ?, '{}'::varchar[], now() - interval '1 day', NULL, ?, ?, 'OP-APPROVER', '시험', now())",
+        grantId,
+        operatorId,
+        role,
+        grantId.split(":")[0],
+        grantId.split(":")[1]);
+  }
+
+  /**
+   * 권한 회수(0.8.0, BO-01 — 승인 없이 즉시): 인사팀은 일반 권한을 회수하고 관리자 권한(OPERATOR_ADMIN·HR_ADMIN)은 못 뺀다, 운영 관리자는
+   * 뺀다, 다시 보내면 지금 상태(멱등), 남의 grant 404, 작업자 403, 회수 기록(누가·왜)이 조회에 보인다.
+   */
+  @Test
+  void revokesGrantsImmediatelyWithAdminOnlyRolesProtected() {
+    String admin = mint(List.of("OPERATOR_ADMIN"));
+    String hr = mint(List.of("HR_ADMIN"));
+    String worker = mint(List.of("MFC_WORKER"));
+    String op = "OP-REVOKE-" + UUID.randomUUID().toString().substring(0, 8);
+    assertThat(
+            call(
+                    "PUT",
+                    "/employee-auth/employees/" + op,
+                    admin,
+                    Map.of(
+                        "state", "ACTIVE", "roles", List.of(), "centers", List.of(), "reason",
+                        "회수 시험"))
+                .status())
+        .isEqualTo(200);
+    String cs = "AP-" + op + ":1";
+    String hrRole = "AP-" + op + ":2";
+    insertGrant(cs, op, "CS_AGENT");
+    insertGrant(hrRole, op, "HR_ADMIN");
+    String path = "/employee-auth/employees/" + op + "/grant-revocations";
+    assertThat(
+            call("GET", "/employee-auth/employees/" + op, hr, null)
+                .body()
+                .path("effectiveRoles")
+                .toString())
+        .contains("CS_AGENT", "HR_ADMIN");
+
+    assertThat(call("POST", path, worker, Map.of("grantId", cs, "reason", "x")).status())
+        .as("작업자")
+        .isEqualTo(403);
+    Res hrDenied = call("POST", path, hr, Map.of("grantId", hrRole, "reason", "이동"));
+    assertThat(hrDenied.status()).as("인사팀은 관리자 권한을 못 뺀다 " + hrDenied.body()).isEqualTo(403);
+    assertThat(call("POST", path, hr, Map.of("grantId", "AP-other:9", "reason", "x")).status())
+        .isEqualTo(404);
+
+    Res r = call("POST", path, hr, Map.of("grantId", cs, "reason", "부서 이동"));
+    assertThat(r.status()).as(String.valueOf(r.body())).isEqualTo(200);
+    assertThat(r.body().path("effectiveRoles").toString())
+        .doesNotContain("CS_AGENT")
+        .contains("HR_ADMIN");
+    JsonNode revoked = null;
+    for (JsonNode g : r.body().path("grants")) {
+      if (cs.equals(g.path("grantId").asText())) {
+        revoked = g;
+      }
+    }
+    assertThat(revoked).isNotNull();
+    assertThat(revoked.path("revokedAt").isNull()).isFalse();
+    assertThat(revoked.path("revokeReason").asText()).isEqualTo("부서 이동");
+    assertThat(revoked.path("validUntil").asText()).isEqualTo(revoked.path("revokedAt").asText());
+    assertThat(call("POST", path, hr, Map.of("grantId", cs, "reason", "부서 이동")).status())
+        .as("이미 회수 — 지금 상태")
+        .isEqualTo(200);
+
+    Res a = call("POST", path, admin, Map.of("grantId", hrRole, "reason", "역할 정리"));
+    assertThat(a.status()).as(String.valueOf(a.body())).isEqualTo(200);
+    assertThat(a.body().path("effectiveRoles")).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'SubjectBlocked'",
+                Integer.class,
+                op))
+        .as("회수마다 이미 나간 토큰 차단")
+        .isEqualTo(2);
   }
 }

@@ -518,6 +518,60 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
         .isEqualTo(s.body().path("employeeNo").asText());
   }
 
+  /**
+   * 재직 중 권한 추가·변경 요청(BO-01, 0.3.0): 결정 안 된 요청이 있으면 409, 결정된 뒤 새 요청 → GrantRequested(요청자 = 요청한 인사팀
+   * 직원, 비운 기간 = 근무 기간), 자기 권한 403, 정지된 직원 409.
+   */
+  @Test
+  void grantRequestsForActiveEmployee() throws Exception {
+    String op = register(mailId());
+    runUntilSettled(op);
+    Map<String, Object> body =
+        Map.of("grants", List.of(Map.of("role", "CS_AGENT")), "reason", "업무 변경 — 고객센터 지원");
+
+    Res pending = call("POST", "/hr/employees/" + op + "/grant-requests", hr, body);
+    assertThat(pending.status()).as("등록 때 요청이 아직 심사 중").isEqualTo(409);
+    assertThat(pending.body().path("code").asText()).isEqualTo("GRANT_REQUEST_PENDING");
+
+    jdbc.update(
+        "UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?",
+        op); // 승인 결과가 왔다고 친다
+    Res ok = call("POST", "/hr/employees/" + op + "/grant-requests", hr, body);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    JsonNode grants = ok.body().path("requestedGrants");
+    assertThat(grants).hasSize(2);
+    assertThat(grants.get(1).path("role").asText()).isEqualTo("CS_AGENT");
+    assertThat(grants.get(1).path("submission").asText()).isEqualTo("SUBMITTED");
+    assertThat(outbox(op, "GrantRequested")).isEqualTo(2);
+    JsonNode gr =
+        mapper
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'GrantRequested'"
+                        + " ORDER BY created_at DESC LIMIT 1",
+                    String.class,
+                    op))
+            .path("payload");
+    assertThat(gr.path("requestedBy").asText()).isEqualTo("OP-IT-HR");
+    assertThat(gr.path("lines")).hasSize(1);
+    assertThat(gr.path("lines").get(0).path("role").asText()).isEqualTo("CS_AGENT");
+    assertThat(gr.path("lines").get(0).path("validTo").isNull()).as("정규직 — 근무 기간까지").isTrue();
+    assertThat(gr.path("lines").get(0).path("reason").asText()).isEqualTo("업무 변경 — 고객센터 지원");
+
+    assertThat(call("POST", "/hr/employees/OP-IT-HR/grant-requests", hr, body).status())
+        .as("자기 권한")
+        .isEqualTo(403);
+
+    jdbc.update("UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?", op);
+    assertThat(
+            call("POST", "/hr/employees/" + op + "/suspensions", hr, Map.of("reason", "징계"))
+                .status())
+        .isEqualTo(200);
+    assertThat(call("POST", "/hr/employees/" + op + "/grant-requests", hr, body).status())
+        .as("재직 중 아님")
+        .isEqualTo(409);
+  }
+
   @Test
   void contractEndSuspendsAutomatically() {
     String mailId = mailId();

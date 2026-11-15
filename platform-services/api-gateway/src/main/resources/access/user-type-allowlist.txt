@@ -309,6 +309,7 @@ POST /api/v1/delivery-list/{deliveryId}/acceptances RIDER
 POST /api/v1/dispatch-requests OPERATOR
 POST /api/v1/disposal-approvals OPERATOR
 POST /api/v1/disposal-approvals/{disposalApprovalId}/executions OPERATOR
+POST /api/v1/employee-auth/employees/{operatorId}/grant-revocations OPERATOR
 POST /api/v1/employee-auth/logouts OPERATOR
 POST /api/v1/employee-auth/tokens PUBLIC
 POST /api/v1/employee-auth/tokens/refresh PUBLIC
@@ -323,6 +324,7 @@ POST /api/v1/holds/{holdId}/releases OPERATOR
 POST /api/v1/hr/employees OPERATOR
 POST /api/v1/hr/employees/{operatorId}/affiliation-changes OPERATOR
 POST /api/v1/hr/employees/{operatorId}/departures OPERATOR
+POST /api/v1/hr/employees/{operatorId}/grant-requests OPERATOR
 POST /api/v1/hr/employees/{operatorId}/invite-resends OPERATOR
 POST /api/v1/hr/employees/{operatorId}/mailbox-password-resets OPERATOR
 POST /api/v1/hr/employees/{operatorId}/provisioning-retries OPERATOR

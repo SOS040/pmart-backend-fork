@@ -54,6 +54,12 @@ hr-service: 같은 ApprovalDecided 로 요청 권한 APPROVED·REJECTED(화면 �
   2. 권한 **회수(줄이기)는 승인 없이 즉시** — 그 grant 를 끝내고(효력 종료 = 지금) 그 직원 세션을 끊고 `SubjectBlocked`. 누가·왜는 기록에 남긴다.
   3. 종료일 없는 신청은 받는다 — **근무 기간(계약 종료일)까지** 유효(지금 등록과 같음).
   4. 조회(0.7.0, 2026-11-15 구현): `GET /employee-auth/employees/{id}` 를 HR_ADMIN 도 읽고, 응답에 지금 유효한 역할·센터(`effectiveRoles`·`effectiveCenters`)와 grant 목록을 싣는다.
+  5. **누가 무엇을(사용자 2026-11-15 "3번까지 넣어서")**: 인사팀 앱 = 보기·추가/변경 요청·인사 이동/퇴사에 따른 회수, 백오피스 = 승인함 승인·보안상 긴급 회수(OPERATOR_ADMIN). 즉시 회수는 두 앱 모두, 사유 필수·기록. **OPERATOR_ADMIN·HR_ADMIN 권한은 OPERATOR_ADMIN 만 회수**한다.
+  6. 구현(2026-11-15):
+     - 추가·변경 요청 — hr-service 0.3.0 `POST /hr/employees/{id}/grant-requests`(HR_ADMIN, 재직 중·발급 끝난 직원, 자기 권한 403, 결정 안 된 요청이 있으면 409 `GRANT_REQUEST_PENDING`) → 같은 트랜잭션 `GrantRequested`(요청자 = 요청한 인사팀 직원) → 위 1절과 같은 길(승인함 → `ApprovalDecided` → employee-auth 적용).
+     - 회수 — employee-auth-service 0.8.0 `POST /employee-auth/employees/{id}/grant-revocations` `{grantId, reason}`(OPERATOR_ADMIN·HR_ADMIN) → grant `valid_until = 지금`·`revoked_at/by/reason`(V6, 행은 남김) → 그 직원 모든 세션 끊기 + `SubjectBlocked`(SESSIONS_REVOKED). 다시 로그인하면 남은 권한으로.
+     - 계정에 직접 둔 역할(관리 경로 값 — 이전한 13명 등)은 회수 API 대상이 아니다 — 관리 경로 PUT(OPERATOR_ADMIN).
+     - 아직: 소속 변경(A→B) 때 A 권한 자동 종료, 회수를 hr 화면 표시(`requestedGrants`)에 되돌려 알리는 사건 — 필요해지면.
 
 ## 2. 정지·복귀·퇴사·계약 종료
 

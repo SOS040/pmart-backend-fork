@@ -284,6 +284,83 @@ public class EmployeeService {
     return view(operatorId);
   }
 
+  /**
+   * 재직 중 권한 추가·변경 요청(BO-01, 2026-11-15 사용자 결정 — 추가·변경은 승인, 회수는 employee-auth-service 에서 즉시). 계정 발급이
+   * 끝난 재직 중 직원만, 자기 권한은 못 올린다, 결정 안 된 권한 요청이 있으면 409(approval 이 같은 대상에 열린 승인을 하나만 둔다). 요청 행을 넣고 같은
+   * 트랜잭션에서 GrantRequested(요청자 = 이 인사팀 직원) — 등록 때와 같은 길(ApprovalDecided → hr 표시·employee-auth 적용).
+   */
+  public EmployeeView requestGrants(
+      String idempotencyKey,
+      String sourceSystem,
+      String operatorId,
+      @Nullable Long expectedVersion,
+      List<GrantRequest> grants,
+      String reason) {
+    PmartPrincipal hr = requireHrAdmin();
+    if (operatorId.equals(hr.subject())) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "자기 권한은 요청할 수 없습니다(다른 인사 담당자가 요청).");
+    }
+    for (GrantRequest g : grants) {
+      if (g.validFrom() != null && g.validTo() != null && g.validTo().isBefore(g.validFrom())) {
+        throw invalid("grants", "권한 기간이 거꾸로입니다: " + g.role());
+      }
+      if (g.validTo() != null && g.validTo().isBefore(today())) {
+        throw invalid("grants", "이미 지난 종료일입니다: " + g.role());
+      }
+    }
+    idempotency.execute(
+        new RequestKey(sourceSystem, idempotencyKey, "grant-requests:" + operatorId, hr.subject()),
+        java.util.Arrays.asList(grants, reason),
+        String.class,
+        () -> {
+          EmployeeRow e = locked(operatorId, expectedVersion);
+          if (!"ACTIVE".equals(e.status())) {
+            throw PmartException.invalidState("재직 중인 직원만 권한을 요청할 수 있습니다(지금 " + e.status() + ").");
+          }
+          boolean provisioned =
+              store.provisioning(operatorId, false).map(p -> "DONE".equals(p.step())).orElse(false);
+          if (!provisioned) {
+            throw PmartException.invalidState(
+                "계정 발급이 끝난 뒤에 요청할 수 있습니다(등록 때 고른 권한은 발급이 끝나면 자동으로 올라갑니다).");
+          }
+          boolean open =
+              store.grants(operatorId).stream()
+                  .anyMatch(
+                      g -> "PENDING".equals(g.submission()) || "SUBMITTED".equals(g.submission()));
+          if (open) {
+            throw new PmartException(
+                "GRANT_REQUEST_PENDING",
+                HttpStatus.CONFLICT,
+                "아직 결정되지 않은 권한 요청이 있습니다 — 승인함에서 결정된 뒤에 다시 요청하세요.",
+                false,
+                List.of());
+          }
+          Instant now = now();
+          for (GrantRequest g : grants) {
+            store.insertGrant(
+                operatorId,
+                g.role(),
+                g.centers().stream().distinct().sorted().toList(),
+                g.validFrom(),
+                g.validTo(),
+                g.reason() == null || g.reason().isBlank() ? reason : g.reason(),
+                now);
+          }
+          List<GrantRow> pending =
+              store.grants(operatorId).stream()
+                  .filter(g -> "PENDING".equals(g.submission()))
+                  .toList();
+          String requestId = "GR-" + UUID.randomUUID();
+          events.grantRequested(e, requestId, pending, now, hr.subject());
+          store.markGrantsSubmitted(operatorId, requestId);
+          store.insertChange(
+              operatorId, "GRANT_REQUESTED", hr.subject(), sourceSystem, reason, null, now);
+          log.info("권한 요청 제출: operatorId={} {}행 by {}", operatorId, pending.size(), hr.subject());
+          return operatorId;
+        });
+    return view(operatorId);
+  }
+
   public EmployeeView reinstate(
       String idempotencyKey,
       String sourceSystem,

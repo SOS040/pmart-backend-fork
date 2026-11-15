@@ -3,6 +3,7 @@ package com.pmart.employeeauth.api;
 import com.pmart.employeeauth.api.generated.EmployeesApi;
 import com.pmart.employeeauth.api.generated.model.Employee;
 import com.pmart.employeeauth.api.generated.model.EmployeeChange;
+import com.pmart.employeeauth.api.generated.model.RevokeEmployeeGrantRequest;
 import com.pmart.employeeauth.application.EmployeeAdminService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +21,18 @@ public class EmployeesController implements EmployeesApi {
   @Override
   public ResponseEntity<Employee> getEmployee(String operatorId) {
     return ResponseEntity.ok(EmployeeAuthMapping.employee(admin.get(operatorId)));
+  }
+
+  @Override
+  public ResponseEntity<Employee> revokeEmployeeGrant(
+      String idempotencyKey,
+      String xSourceSystem,
+      String operatorId,
+      RevokeEmployeeGrantRequest body) {
+    return ResponseEntity.ok(
+        EmployeeAuthMapping.employee(
+            admin.revokeGrant(
+                operatorId, body.getGrantId(), body.getReason().strip(), xSourceSystem)));
   }
 
   @Override

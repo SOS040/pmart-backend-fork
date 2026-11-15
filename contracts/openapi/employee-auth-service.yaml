@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -293,6 +293,44 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /employee-auth/employees/{operatorId}/grant-revocations:
+    parameters:
+      - { name: operatorId, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
+    post:
+      tags: [employees]
+      summary: 권한 회수 — 승인 없이 즉시 (OPERATOR_ADMIN·HR_ADMIN, BO-01 0.8.0)
+      description: |
+        2026-11-15 사용자 결정: 회수(줄이기)는 승인을 거치지 않고 바로 적용한다. 사유 필수, 누가·언제·왜는 grant 에 남는다(행은 지우지 않음).
+        효력 끝 = 지금. 그 직원의 모든 세션을 끊고 SubjectBlocked(SESSIONS_REVOKED) — 이미 나간 access token 도 바로 401, 다시 로그인하면 남은 권한으로.
+        거절: 자기 권한 403, OPERATOR_ADMIN·HR_ADMIN 역할 grant 를 HR_ADMIN 이 회수 403(운영 관리자만), 그 직원 grant 가 아님 404 GRANT_NOT_FOUND,
+        이미 기한이 끝난 grant 409 INVALID_STATE. 이미 회수한 grant 는 지금 상태로 200(멱등).
+        계정에 직접 둔 역할(roles — 관리 경로 값)은 여기서 회수하지 않는다(PUT, OPERATOR_ADMIN).
+      operationId: revokeEmployeeGrant
+      x-pmart-user-types: [OPERATOR]
+      x-added-in: '2026-11-15'
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grantId, reason]
+              properties:
+                grantId: { type: string, maxLength: 128 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 회수됨(또는 이미 회수됨) — 회수 뒤 직원 조회 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
   /employee-auth/roles:
     get:
       tags: [roles]
@@ -525,6 +563,9 @@ components:
         approvalId: { type: string }
         approverId: { type: string, description: '승인한 운영자 ID 또는 RULE:<id>@v<버전>(자동 승인)' }
         appliedAt: { type: string, format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time, description: 회수 시각(0.8.0) — 있으면 회수됨(validUntil 도 이 시각) }
+        revokedBy: { type: [string, 'null'], description: 회수한 운영자 ID(0.8.0) }
+        revokeReason: { type: [string, 'null'], description: 회수 사유(0.8.0) }
     EmployeeChange:
       type: object
       required: [state, roles, centers, reason]

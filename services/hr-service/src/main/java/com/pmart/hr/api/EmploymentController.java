@@ -3,6 +3,7 @@ package com.pmart.hr.api;
 import com.pmart.hr.api.generated.EmploymentApi;
 import com.pmart.hr.api.generated.model.Employee;
 import com.pmart.hr.api.generated.model.ReinstateEmployeeRequest;
+import com.pmart.hr.api.generated.model.RequestEmployeeGrantsRequest;
 import com.pmart.hr.api.generated.model.SuspendEmployeeRequest;
 import com.pmart.hr.application.EmployeeService;
 import org.jspecify.annotations.Nullable;
@@ -33,6 +34,24 @@ public class EmploymentController implements EmploymentApi {
                 xSourceSystem,
                 operatorId,
                 version(xExpectedVersion),
+                body.getReason())));
+  }
+
+  @Override
+  public ResponseEntity<Employee> requestEmployeeGrants(
+      String operatorId,
+      String idempotencyKey,
+      String xSourceSystem,
+      RequestEmployeeGrantsRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        HrMapping.employee(
+            employees.requestGrants(
+                idempotencyKey,
+                xSourceSystem,
+                operatorId,
+                version(xExpectedVersion),
+                HrMapping.grants(body.getGrants()),
                 body.getReason())));
   }
 

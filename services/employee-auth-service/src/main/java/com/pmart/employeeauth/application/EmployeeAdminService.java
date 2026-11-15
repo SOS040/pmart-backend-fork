@@ -82,6 +82,67 @@ public class EmployeeAdminService {
     return new View(a, access.of(a, clock.instant()), store.grants(a.operatorId()));
   }
 
+  /** 관리자 권한(OPERATOR_ADMIN·HR_ADMIN)은 운영 관리자만 회수한다(2026-11-15 사용자 결정 — 인사팀 앱은 이 둘을 못 뺀다). */
+  static final java.util.Set<String> ADMIN_ONLY_REVOKE =
+      java.util.Set.of(ADMIN_ROLE, HR_ADMIN_ROLE);
+
+  /**
+   * 권한 회수(BO-01, 2026-11-15 사용자 결정 — <b>승인 없이 즉시</b>, 사유 필수·기록). OPERATOR_ADMIN·HR_ADMIN. 자기 권한은 못
+   * 뺀다, OPERATOR_ADMIN·HR_ADMIN 역할 grant 는 OPERATOR_ADMIN 만. 효력 끝 = 지금, 그 직원의 모든 세션을 끊고
+   * SubjectBlocked(이미 나간 access token 도 바로 401) — 다시 로그인하면 남은 권한으로 토큰이 나온다. 이미 회수한 grant 는 지금
+   * 상태(멱등), 이미 기한이 끝난 grant 는 409. 계정에 직접 둔 역할(관리 경로 값)은 여기서 다루지 않는다 — 관리 경로 PUT(OPERATOR_ADMIN).
+   */
+  public View revokeGrant(String operatorId, String grantId, String reason, String sourceSystem) {
+    PmartPrincipal p = requireReaderPrincipal();
+    if (operatorId.equals(p.subject())) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "자기 권한은 회수할 수 없습니다.");
+    }
+    if (store.account(operatorId, false).isEmpty()) {
+      throw PmartException.notFound("EMPLOYEE_NOT_FOUND", "직원이 없습니다.");
+    }
+    Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+    boolean revoked =
+        Boolean.TRUE.equals(
+            tx.execute(
+                s -> {
+                  EmployeeAuthStore.GrantRow g =
+                      store
+                          .lockGrant(operatorId, grantId)
+                          .orElseThrow(
+                              () ->
+                                  PmartException.notFound(
+                                      "GRANT_NOT_FOUND", "이 직원의 권한이 아닙니다: " + grantId));
+                  if (ADMIN_ONLY_REVOKE.contains(g.role()) && !p.hasRole(ADMIN_ROLE)) {
+                    throw new PmartException(
+                        ErrorCode.FORBIDDEN, g.role() + " 권한은 운영 관리자(OPERATOR_ADMIN)만 회수할 수 있습니다.");
+                  }
+                  if (g.revokedAt() != null) {
+                    return false; // 이미 회수 — 지금 상태(멱등)
+                  }
+                  if (g.validUntil() != null && !g.validUntil().isAfter(now)) {
+                    throw PmartException.invalidState("이미 기한이 끝난 권한입니다.");
+                  }
+                  store.revokeGrant(grantId, now, p.subject(), reason, sourceSystem);
+                  store.revokeAllSessions(operatorId, "GRANT_REVOKED", now);
+                  long version =
+                      store.account(operatorId, false).map(AccountRow::version).orElse(0L);
+                  blocks.blockAll(
+                      operatorId,
+                      version,
+                      now,
+                      "SESSIONS_REVOKED",
+                      new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()));
+                  return true;
+                }));
+    if (revoked) {
+      log.info("권한 회수: operatorId={} grantId={} by={}", operatorId, grantId, p.subject());
+    }
+    return view(
+        store
+            .account(operatorId, false)
+            .orElseThrow(() -> PmartException.notFound("EMPLOYEE_NOT_FOUND", "직원이 없습니다.")));
+  }
+
   public AccountRow put(String operatorId, Change change, String sourceSystem) {
     PmartPrincipal admin = requireAdmin();
     List<String> roles = change.roles().stream().distinct().sorted().toList();
@@ -144,6 +205,10 @@ public class EmployeeAdminService {
   }
 
   private static void requireReader() {
+    requireReaderPrincipal();
+  }
+
+  private static PmartPrincipal requireReaderPrincipal() {
     PmartPrincipal p =
         PmartPrincipal.current()
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "로그인이 필요합니다."));
@@ -152,6 +217,7 @@ public class EmployeeAdminService {
       throw new PmartException(
           ErrorCode.FORBIDDEN, ADMIN_ROLE + " 또는 " + HR_ADMIN_ROLE + " 역할이 필요합니다.");
     }
+    return p;
   }
 
   private static PmartPrincipal requireAdmin() {

@@ -50,6 +50,16 @@ public class EmployeeEvents {
    */
   public void grantRequested(
       EmployeeRow e, String requestId, List<HrStore.GrantRow> grants, Instant now) {
+    grantRequested(e, requestId, grants, now, e.registeredBy());
+  }
+
+  /** 재직 중 권한 추가·변경 요청(BO-01, 2026-11-15) — 요청자 = 요청한 인사팀 직원(승인자와 달라야 한다). */
+  public void grantRequested(
+      EmployeeRow e,
+      String requestId,
+      List<HrStore.GrantRow> grants,
+      Instant now,
+      String requestedBy) {
     List<Map<String, Object>> lines = new ArrayList<>();
     for (HrStore.GrantRow g : grants) {
       Map<String, Object> l = new LinkedHashMap<>();
@@ -65,7 +75,7 @@ public class EmployeeEvents {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("requestId", requestId);
     p.put("operatorId", e.operatorId());
-    p.put("requestedBy", e.registeredBy());
+    p.put("requestedBy", requestedBy);
     p.put("employeeNo", e.employeeNo());
     p.put("mailAddress", e.mailAddress());
     p.put("affiliation", Map.of("type", e.affiliationType(), "code", e.affiliationCode()));

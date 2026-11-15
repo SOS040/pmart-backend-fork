@@ -30,6 +30,7 @@
 ## 요청 권한(2026-11-13, ADR-0056 5-4)
 - 등록 때 받은 요청 권한(`requested_grant`, PENDING)은 발급이 DONE 이 되는 트랜잭션에서 `GrantRequested`(요청 ID `GR-…`, 요청자 = `registered_by`, 행 키 = `grant_id`, 비운 기간 = 근무 기간)로 올리고 SUBMITTED. 재직 중일 때만.
 - `GrantDecisions`: `ApprovalDecided`(GRANT) 행 → APPROVED·REJECTED(+ `approval_ref`). 화면 표시용 — 효력은 employee-auth-service.
+- **재직 중 권한 추가·변경 요청(0.3.0, 2026-11-15 BO-01)**: `POST /hr/employees/{id}/grant-requests`(`EmployeeService.requestGrants`) — 재직 중·발급 DONE 직원만, 자기 권한 403, PENDING·SUBMITTED 행이 있으면 409 `GRANT_REQUEST_PENDING`(approval 이 대상마다 열린 승인 하나 — DUPLICATE_APPROVAL 을 미리 막음). 행 넣고 같은 트랜잭션에서 `GrantRequested`(요청자 = 요청한 인사팀 직원), 변경 기록 `GRANT_REQUESTED`. 회수는 employee-auth-service(즉시).
 
 ## 시험
 ```bash
