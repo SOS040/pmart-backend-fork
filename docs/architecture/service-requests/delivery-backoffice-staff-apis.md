@@ -49,3 +49,11 @@
 
 - PC 1 이 화면 요청서(`docs/handoff/clients/backoffice/`)에 이 API 들을 적는다. 경로·필드가 위 제안과 달라지면 PR 설명에 적어 주면 요청서를 맞춘다.
 - 정할 것(사용자 결정 필요 시 PC 5 가 사용자에게): 라이더 이름 검색 방식, 도움요청 "처리함" 닫기 API 를 둘지.
+
+## BOD-5. 주문 ID 로 배송 찾기 (2026-11-15 추가 — 클라이언트 BR-56)
+- 지금: order 는 deliveryId 를 저장하지 않고, dispatch·execution·tracking 계약에 orderId 로 찾는 직원 조회가 없다 → 상담원·라이더 운영이 주문 조회 뒤 배송 번호를 직접 넣는다.
+- 제안: dispatch `GET /api/v1/deliveries?orderId=`(직원 — 배송 요약 목록: deliveryId·유형·상태·배정 라이더·mfcId). dispatch `delivery` 표에 order_id 가 이미 있다. 권한은 BOD-1·2 와 같게(`OPERATOR_ADMIN`·`CS_AGENT`·`RIDER_OPS`·그 센터).
+
+## BOD-6. 라이더 version 을 조회 응답에 (2026-11-15 추가 — 클라이언트 질문)
+- `POST /riders/{riderId}/restrictions` 의 `X-Expected-Version` 은 라이더 행 version 과 비교하는데, 화면이 그 값을 얻을 곳이 없다(`GET …/restrictions` 의 이력 version 은 프로필·운행 변경으로 낡을 수 있다). `GET /riders/{riderId}/restrictions` 응답(또는 BOD-3 직원 상세)에 지금 라이더 `version` 을 싣는다.
+
