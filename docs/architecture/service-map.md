@@ -381,7 +381,7 @@
 ### audit-service `[1단계]`
 - **소유**: 감사 사건(운영자 명령·사유·전후 값·대상·실행·보상 결과; 추가만, 삭제 없음), 개인정보 열람·다운로드 기록(BO-25), 보존 정책 `[결정 필요]`.
 - **구독**: `AuditEntryRecorded`(전 서비스), `ApprovalDecided`, `GrantApplied`, `CompensationExecuted`, `DeliveryStatusCorrected`, `InventoryAdjustmentPosted`.
-- **개인정보 열람 기록 구현(2026-11-15, 계약 0.2.0)**: `POST/GET /internal/pii-access-logs` — 동기 기록(멱등, 추가 전용 트리거). 첫 호출자는 order-service 직원 배송지 원문 열람(`pii-reveals`): 기록이 안 되면 원문을 주지 않는다. 직원용 기록 조회 API·보존기간은 `[결정 필요]`.
+- **개인정보 열람 기록 구현(2026-11-15, 계약 0.2.0, ADR-0062)**: `POST/GET /internal/pii-access-logs` — 동기 기록(멱등, 추가 전용 트리거). 첫 호출자는 order-service 직원 배송지 원문 열람(`pii-reveals`): 기록이 안 되면 원문을 주지 않는다. 직원용 기록 조회 API·보존기간은 `[결정 필요]`.
 
 ### ai-assistant-service `[3단계 — 1차 앞당김(ADR-0036)]`
 - RAG(정책 문서), 정책 설명, 권한 있는 도메인 API 호출(읽기 우선). 비즈니스 문서에 요구 없음.
