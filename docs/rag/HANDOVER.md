@@ -87,7 +87,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 | LAN 연결 확인 | `deploy/lan/checks/rag_e2e.py`(운영자 6문항), `customer_rag_e2e.py`(경로·403·헬스) |
 | 직원 토큰 | `deploy/lan/checks/staff_auth.py`(2026-11-13 — auth-service 운영자 로그인을 없앤 뒤) — `docs/operations/dev-on-other-pcs.md` |
 
-**최근 결과**: 운영자 7차 엄격 24/30·사람 26/30(답 없는 질문 11/11, 1.7~4초 — `verification/2026-11-09/answer-eval/report-7-final.md`), 고객 9차 37/37(`verification/2026-11-10/customer-eval/report.md`). 11-11 PC 5 이동 뒤 `rag_e2e` 6/6·`customer_rag_e2e` 3/3. **2026-11-15(PC 2, 업무 범위 재색인 뒤) `rag_e2e` 6/6·`customer_rag_e2e` 3/3**, qwen3:4b 100% GPU. 운영자 답변 평가 30문항·고객 37문항은 범위를 바꾼 뒤 아직 다시 돌리지 않았다.
+**최근 결과**: 운영자 7차 엄격 24/30·사람 26/30(답 없는 질문 11/11, 1.7~4초 — `verification/2026-11-09/answer-eval/report-7-final.md`), 고객 9차 37/37(`verification/2026-11-10/customer-eval/report.md`). 11-11 PC 5 이동 뒤 `rag_e2e` 6/6·`customer_rag_e2e` 3/3. **2026-11-15(PC 2, 업무 범위 재색인 뒤) `rag_e2e` 6/6·`customer_rag_e2e` 3/3**, qwen3:4b 100% GPU. **고객 답변 평가 2026-11-15 37/37**(`verification/2026-11-15/customer-eval/report.md` — 시험용 고객 토큰, ADR-0060 취소 안내 반영 확인). 운영자 답변 평가 30문항은 범위를 바꾼 뒤 아직 다시 돌리지 않았다(기술 질문 7개 교체 뒤 — §6).
 
 ## 6. 남은 일·결정 대기
 
@@ -104,7 +104,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 
 ### 고객 RAG
 - C11 "신선식:" 글자 잘림 1건. 운영자 RAG 에도 같은 결함(숫자 부분 문자열 검사·표 한 행) 있는지 확인.
-- 고객 답변 평가 37문항 재실행(고객 토큰 `.secrets/customer-token` 필요 — 11-11 PC 이동 뒤 답변은 아직 확인 안 함). 11-15 재색인에 ADR-0060 고객 안내 문구(상품준비 뒤 취소 불가)가 들어갔다.
+- ~~고객 답변 평가 재실행~~ — 2026-11-15 37/37. 고객 토큰은 실제 앱 로그인 대신 PC 1 이 auth-service LAN 서명키로 가상 계정 토큰을 만들 수 있다(사용자 허락 필요 — 2026-11-15 받음, 20분).
 - 고객 앱 채팅 상담 화면은 아직 없다(클라이언트 요청 `docs/handoff/clients/customer-app/2026-11-09-clients-request-customer-chat-assistant.md`) — 화면이 생기면 실제 앱 토큰으로 확인.
 
 ### 둘 다
