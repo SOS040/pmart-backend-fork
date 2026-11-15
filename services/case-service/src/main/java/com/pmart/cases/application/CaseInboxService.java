@@ -105,6 +105,12 @@ public class CaseInboxService {
     List<Ref> refs = new ArrayList<>();
     refs.add(new Ref("incidentId", incidentId));
     refs.add(new Ref("deliveryId", deliveryId));
+    // 도움요청 단건(GET /deliveries/{id}/help-requests/{requestId})을 바로 열 수 있게 — incidentId = 배송 ID + ":"
+    // + 요청 ID
+    // (delivery-execution). 클라이언트 질문 2026-11-16. 형식이 다르면 싣지 않는다
+    if (incidentId.startsWith(deliveryId + ":") && incidentId.length() > deliveryId.length() + 1) {
+      refs.add(new Ref("requestId", incidentId.substring(deliveryId.length() + 1)));
+    }
     addRef(refs, "orderId", text(p, "orderId"));
     addRef(refs, "riderId", text(p, "riderId"));
     String summary =

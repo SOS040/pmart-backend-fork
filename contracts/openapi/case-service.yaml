@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.4.0
+  version: 0.4.1
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -777,7 +777,7 @@ components:
         refs:
           type: array
           x-added-in: '2026-11-16'
-          description: '관련 참조(0.4.0) — incidentId·deliveryId·orderId·riderId 등'
+          description: '관련 참조(0.4.0) — incidentId·deliveryId·orderId·riderId 등. RIDER_HELP·DELIVERY_INCIDENT 는 incidentId(= deliveryId:requestId)·deliveryId 가 늘 있고, 0.4.1(2026-11-16)부터 requestId(도움요청 단건 GET /deliveries/{deliveryId}/help-requests/{requestId})도 — 그 전에 열린 사건은 없다. RIDER_LOCATION_STALE·MISDELIVERY 에는 incidentId 가 없다'
           items:
             type: object
             properties:

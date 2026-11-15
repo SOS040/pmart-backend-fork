@@ -174,7 +174,8 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     assertThat(item.path("centerId").asString()).isEqualTo("MFC-1");
     assertThat(item.path("slaDueAt").isNull()).isFalse();
     assertThat(item.path("overdue").asBoolean()).isFalse();
-    assertThat(item.path("refs").toString()).contains(incidentId, "ORD-1", "RD-1");
+    assertThat(item.path("refs").toString())
+        .contains(incidentId, "ORD-1", "RD-1", "\"requestId\"", "REQ-1");
     assertThat(outbox(caseId, "CaseOpened")).isEqualTo(1);
 
     // 상담원은 보기만, 역할 없는 직원은 목록 403

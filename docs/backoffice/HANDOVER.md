@@ -1,10 +1,11 @@
-# 백오피스(backoffice) 인수인계 (2026-11-15 작성, **2026-11-16 갱신 — PC 2 로 넘김**)
+# 백오피스(backoffice) 인수인계 (2026-11-15 작성, **2026-11-16 갱신 — PC 2 로 넘김**, 11-16 오전 마지막 갱신)
 
 보낸 영역: platform(PC 1). 받는 영역: backoffice(PC 2). 경계는 `docs/operations/pc-split.md` §1-1(사용자 2026-11-15 "너의 추천대로").
 
 - **넘기는 시점(2026-11-16)**: 사용자 결정으로 PC 1 이 넘기기 전에 백엔드를 먼저 만들었다 — 권한 관리(BO-01), 사건함(case R-4·R-6·R-7), 처리 대기(BO-12), 개인정보 열람 기록 조회, 세션 센터 이름.
 - **화면: 지금까지 클라이언트에 보낸 요청(§3 표)은 지금 클라이언트 쪽이 끝까지 한다**(사용자 2026-11-16 "클라이언트쪽에 보낸 요청까지는 다하기로"). PC 2 는 그 뒤의 일부터 맡는다 — 받은 화면은 확인만(§4-1).
 - 처음 할 일: §1 먼저 읽을 것 → `./gradlew :services:backoffice-bff:check :services:case-service:check` 가 PC 2 에서 통과하는지 → §4.
+- **11-16 오전 PC 1 이 더 한 것(PC 2 에 닿는 것)**: case-service 0.4.1 — 상담원 문의 답변 때 `InquiryAnswered` 발행(고객 알림함, ADR-0064), 도움요청·전달 실패 사건 `refs` 에 `requestId`(클라이언트 질문). 클라이언트가 라이더·배송 직원 화면을 붙였고(f50025c) 그 빌드를 LAN 에 올림. 리뷰(review-service, ADR-0063)·고객 알림함(notification-service, ADR-0064)은 PC 1 영역 — 백오피스 화면은 아직 없다(§4-5).
 
 ## 0. 맡는 것·안 맡는 것
 
@@ -32,7 +33,7 @@
 | 서비스 | 된 것 | 안 된 것 |
 |---|---|---|
 | backoffice-bff 0.2.0(8504, LAN PC 4) | 승인함 `GET /views/approval-inbox`(11-03), **처리 대기 `GET /views/pending-work`**(멈춘 사가 + 이행 확인 필요, OPERATOR_ADMIN), **명령 `POST /commands/order-orchestration-service/saga-requery·saga-resolve`**(11-16) | 그 밖 `/views/*`(unified-lookup·case-inbox·trip-control …)·명령 결과 조회 501, MFC 인계 거절·중지 실패 목록(mfc 에 목록 API 없음 — 사용자 "지금은 요청 안 함") |
-| case-service 0.4.0(8506, LAN PC 4) | 고객 문의 `/inquiries`(0.2.0), 라이더 컴플레인 `/rider-complaints`(0.3.0), **사건함 `/cases`**(11-16 — 도움요청·전달 실패·위치 끊김 구독, 오배송 확인 `POST /cases` + `MisdeliveryConfirmed`, 팀 공용 목록 집기·닫기, CaseOpened·Assigned·Closed) | R-3(사가·결제 상신 → 사건), 이관·재개·의무·행위 요청·CS 접수(501), 사건 알림(기한은 표시만) |
+| case-service 0.4.1(8506, LAN PC 4) | 고객 문의 `/inquiries`(0.2.0 — **답변 때 `InquiryAnswered` 발행**, 11-16, notification 이 고객 알림함에 쌓는다. 답변 내용은 사건에 없음), 라이더 컴플레인 `/rider-complaints`(0.3.0), **사건함 `/cases`**(11-16 — 도움요청·전달 실패·위치 끊김 구독, 오배송 확인 `POST /cases` + `MisdeliveryConfirmed`, 팀 공용 목록 집기·닫기, CaseOpened·Assigned·Closed; 0.4.1 도움요청·전달 실패 사건 `refs` 에 `requestId` — 그 전에 열린 사건은 incidentId 만) | R-3(사가·결제 상신 → 사건), 이관·재개·의무·행위 요청·CS 접수(501), 사건 알림(기한은 표시만) |
 
 PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 
@@ -44,6 +45,8 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 | `GET /fulfillment-issues`·`POST …/acknowledgements` | order 0.6.0 | 이행 확인 필요 — 관리자는 모든 센터 |
 | `GET /pii-access-logs`·`/{id}` | audit 0.3.0 | 개인정보 열람 기록 조회(OPERATOR_ADMIN) |
 | `/internal/stuck-sagas`·`/internal/sagas/{id}/manual-actions` | order-orchestration 0.2.0 | 처리 대기 원천(bff 가 부름) |
+| `/reviews`·`/products/{id}/reviews`·`/internal/reviews/{id}` | **review 0.2.0(새, PC 2 LAN 8108 — ADR-0063)** | 고객 리뷰. 운영자 숨김·신고는 사용자 결정으로 **없음**(정책 승인 전) — 백오피스 리뷰 화면을 만들지 않는다 |
+| `/me/notifications` | **notification 0.2.0(ADR-0064)** | 고객 앱 알림함만. 직원·라이더 알림 없음 — 사건 알림(§4-4)을 만들 때 여기를 쓸지는 그때 |
 
 ## 3. 클라이언트 상태와 보낸 요청
 
@@ -59,16 +62,17 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 | 세션 센터 이름(`centerDetails`) | `web-common/2026-11-16-notice-session-center-names.md` | ✅ 851bf10 |
 | 사건함 "지원센터 사건", 처리 대기 버튼(다시 확인·처리 완료) | `backoffice/2026-11-16-request-case-inbox-and-pending-work.md` | ✅ 7218397(목 모드 시험만) — 질문 3개 회신 `backoffice/2026-11-16-reply-case-inbox-questions.md` |
 | **개인정보 열람 기록(OPERATOR_ADMIN)** | `backoffice/2026-11-16-notice-pii-access-log-api.md` | ❌ 아직 |
-| **라이더 찾기·상세·원문 열람, 직원 배송 찾기**(PR #17 — 11-15 LAN 배포, 알림이 늦음) | `backoffice/2026-11-16-notice-rider-delivery-staff-apis.md`(11-16 보냄) | ❌ 아직 — 지금 화면은 목(riderDirectoryMock·helpQueueMock) |
+| **라이더 찾기·상세·원문 열람, 직원 배송 찾기**(PR #17 — 11-15 LAN 배포, 알림이 늦음) | `backoffice/2026-11-16-notice-rider-delivery-staff-apis.md`(11-16 보냄) | ✅ f50025c(목 모드 시험만 — 목 지움, 도움요청 대기 화면 → 사건함 `kind=RIDER_HELP`). 질문(refs 의 incidentId) 회신 `backoffice/2026-11-16-reply-rider-delivery-staff-apis.md` |
 
-- **LAN 빌드(2026-11-16 PC 1 올림)**: backoffice `index-Bw-245hF.js`(7218397 까지), hr-backoffice `index-Bkg8rNsZ.js`, mfc-backoffice `index-ChSinewe.js`. 실서버에서 사건함·처리 대기·권한 관리는 아직 사람이 눌러 보지 않았다.
-- ❌ 줄도 **지금 클라이언트 쪽이 끝까지 한다**(사용자 2026-11-16 "클라이언트쪽에 보낸 요청까지는 다하기로"). PC 2 는 이것이 반영된 빌드부터.
+- **LAN 빌드(2026-11-16 PC 1 올림)**: backoffice **`index-BGISi3dQ.js`(f50025c 까지 — 라이더·배송 직원 화면 포함, 11-16 오전)**, hr-backoffice `index-Bkg8rNsZ.js`, mfc-backoffice `index-ChSinewe.js`. 실서버에서 사건함·처리 대기·권한 관리·라이더 화면은 아직 사람이 눌러 보지 않았다.
+- 남은 ❌ 는 **개인정보 열람 기록 메뉴 하나**. ❌ 줄도 **지금 클라이언트 쪽이 끝까지 한다**(사용자 2026-11-16 "클라이언트쪽에 보낸 요청까지는 다하기로"). PC 2 는 이것이 반영된 빌드부터.
 
 ## 4. 할 일 (추천 순서)
 1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
 2. **case R-3** — 사가·결제 이상을 사건으로(`ReconciliationRequired`·`CompensationExecuted`·`PaymentResultUnknown`·`PaymentMismatch` 구독 → RECONCILIATION·PAYMENT_UNKNOWN 사건, 담당 OPERATOR_ADMIN). 처리 기한은 그때 사용자에게. 생기면 처리 대기(BO-12)와 겹치지 않게 — 사건은 알림·기록, 조치는 처리 대기 버튼.
 3. 배송 쪽 연결이 오면 확인: delivery-execution 이 `CaseOpened`·`CaseClosed` 로 도움요청에 사건 번호 붙이기(요청 DE-CASE), dispatch 가 `MisdeliveryConfirmed` 로 회수 배차(DD-2) — PC 5 작업. 그 뒤 execution 의 임시 "도움요청 처리함 닫기"(BOD-4) 정리.
 4. 나중: MFC 인계 거절·중지 실패 목록(필요하면 PC 3 에 요청 — 사용자가 정함), bff 의 다른 화면(`/views/*` 501), 사건 알림.
+5. 고객센터 문의 답변을 바꿀 때(`InquiryService.reply`) **`InquiryAnswered` 발행을 지킨다** — 고객 알림함이 이것만 보고 "답변이 등록되었어요"를 쌓는다(notification 이 구독, PC 1). 리뷰·알림 백오피스 화면은 정책이 정해질 때(리뷰 숨김·신고는 사용자 결정 "이번엔 뺌").
 - R-2(진행 중 주문 고객센터 취소)는 ADR-0060 으로 거둠 — 만들지 않는다.
 
 ## 5. 정해진 것 (사용자 2026-11-15~16 — 다시 묻지 않는다)
@@ -77,6 +81,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 - **BO-12**: OPERATOR_ADMIN 만, "다시 확인"은 결제 확인 대기에만, 업무 거절로 멈춘 건은 "처리 완료(사유 필수)"만, 두 조치 모두 승인 없음, 환불은 기존 절차, 알림은 목록만.
 - **BO-01**: 추가·변경 = 승인, 회수 = 즉시(사유 필수), 관리자 권한(OPERATOR_ADMIN·HR_ADMIN) 회수는 운영 관리자만, 종료일 없으면 근무 기간까지, 소속 변경 시 이전 센터 권한 다음 날 00:00 종료. 권한 관리 메뉴 = 인사팀 앱, 승인 = 백오피스 승인함.
 - **ADR-0062**: 개인정보 원문은 사유 + audit 기록 뒤에만, 기록 2년, 기록 조회 OPERATOR_ADMIN 만.
+- **ADR-0063(리뷰)**: 운영자 숨김·신고 없음(정책 승인 전). **ADR-0064(알림)**: 고객 앱 알림함만, 직원·라이더 알림 없음, 푸시는 나중.
 
 ## 6. 규칙·도구
 - PR: 포크 `backoffice/<주제>` 브랜치 → PC 1 검토·병합·배포. main push 금지. 저장소마다 PR 따로(backend·clients).

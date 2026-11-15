@@ -60,7 +60,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 ## PC 4 — rag 영역(사용자 확정 2026-11-13, **2026-11-15 인수인계 — 시작해도 됨**)
 
 - [ ] 공통 절 전부
-- [ ] `docs/rag/HANDOVER.md` 읽기 — §6 "시작하면 먼저" 부터. 색인 범위는 `docs/rag/operator-index-scope.md`
+- [ ] `docs/rag/HANDOVER.md` 읽기 — **§0(11-15 뒤 바뀐 것 — 재색인 필요, ADR-0062·0063·0064 를 넣을지)** → §6 "시작하면 먼저". 색인 범위는 `docs/rag/operator-index-scope.md`
 - [x] ~~시작 전 사용자 결정: 개발 PC 에서 모델을 쓰는 방법~~ — 2026-11-15 사용자: PC 4 로컬로 먼저(local 프로필 + 필요할 때 로컬 ollama), 부족하면 PC 2 ollama 포트 열기를 그때 정함. RAG LAN 위치는 PC 2(2026-11-15 PC 5 → PC 2)
 - 주의: PC 4 에 게이트웨이·설정 서버·Eureka 가 있다 — 무거운 빌드·시험 중 LAN 이 느려지면 PC 1 에 알린다. 배포·LAN 재색인은 PC 1 — PR 에 "재색인 필요"를 적는다
 
@@ -68,6 +68,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 - **2026-11-16 인수인계 예정**(사용자 2026-11-15) — 그 전에 사용자가 브라우저·mfc_app 등 화면 확인을 마친다. 경계 확정(2026-11-15 사용자 "너의 추천대로"): backoffice-bff·case-service, 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(로그인·세션 코드는 PC 1 만). audit-service 는 PC 1 에 남는다(`pc-split.md` §1-1). **인수인계 문서 `docs/backoffice/HANDOVER.md`** — 시작하면 먼저 읽는다.
 - 시작할 때: 공통 절 + 백엔드·클라이언트 두 저장소 포크(저장소마다 PR 따로).
+- 11-16 오전 마지막 갱신: case 0.4.1(`InquiryAnswered` 발행·사건 refs requestId), 백오피스 라이더·배송 화면 빌드 LAN, 리뷰·알림(PC 1 영역 — 백오피스 화면 없음). `HANDOVER.md` 첫머리 참고.
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
 
