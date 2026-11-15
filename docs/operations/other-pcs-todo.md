@@ -66,7 +66,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 2 — backoffice 영역(사용자 확정 2026-11-13, 로그인 마무리 뒤 시작)
 
-- **2026-11-16 인수인계 예정**(사용자 2026-11-15) — 그 전에 사용자가 브라우저·mfc_app 등 화면 확인을 마친다. 경계 확정(2026-11-15 사용자 "너의 추천대로"): backoffice-bff·case-service, 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(로그인·세션 코드는 PC 1 만). audit-service 는 PC 1 에 남는다(`pc-split.md` §1-1).
+- **2026-11-16 인수인계 예정**(사용자 2026-11-15) — 그 전에 사용자가 브라우저·mfc_app 등 화면 확인을 마친다. 경계 확정(2026-11-15 사용자 "너의 추천대로"): backoffice-bff·case-service, 클라이언트 `web/backoffice`·`web/core`·`web/ui`(로그인·세션 코드는 PC 1 만). audit-service·`web/hr-backoffice`(인사팀)는 PC 1 에 남는다(`pc-split.md` §1-1). **인수인계 문서 `docs/backoffice/HANDOVER.md`** — 시작하면 먼저 읽는다.
 - 시작할 때: 공통 절 + 백엔드·클라이언트 두 저장소 포크(저장소마다 PR 따로).
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
