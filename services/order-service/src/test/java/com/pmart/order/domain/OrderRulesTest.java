@@ -83,6 +83,50 @@ class OrderRulesTest {
   }
 
   @Test
+  void handoverAndDeliveryProgress() {
+    var a = new OrderRules.Progress("L1", 3, 3, 0, 0, 0);
+    var b = new OrderRules.Progress("L2", 2, 2, 0, 0, 0);
+    // 같은 행이 LOT 별로 두 번 와도 합으로
+    var half =
+        OrderRules.handOver(
+            List.of(a, b), List.of(new OrderRules.Change("L1", 1), new OrderRules.Change("L1", 1)));
+    assertThat(half.get(0)).isEqualTo(new OrderRules.Progress("L1", 3, 1, 2, 0, 0));
+    assertThat(OrderRules.progressStatus("PREPARING", half)).isEqualTo("PARTIALLY_HANDED_OVER");
+    var all =
+        OrderRules.handOver(
+            half, List.of(new OrderRules.Change("L1", 1), new OrderRules.Change("L2", 2)));
+    assertThat(OrderRules.progressStatus("PARTIALLY_HANDED_OVER", all)).isEqualTo("IN_DELIVERY");
+    // 미이행보다 많이·없는 행 → 거절
+    assertThatThrownBy(() -> OrderRules.handOver(all, List.of(new OrderRules.Change("L1", 1))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> OrderRules.handOver(all, List.of(new OrderRules.Change("LX", 1))))
+        .isInstanceOf(IllegalArgumentException.class);
+    // 일부 전달 → PARTIALLY_DELIVERED, 다 전달 → COMPLETED
+    var part = OrderRules.deliver(all, List.of(new OrderRules.Change("L1", 3)));
+    assertThat(OrderRules.progressStatus("IN_DELIVERY", part)).isEqualTo("PARTIALLY_DELIVERED");
+    var done = OrderRules.deliver(part, List.of(new OrderRules.Change("L2", 2)));
+    assertThat(OrderRules.progressStatus("PARTIALLY_DELIVERED", done)).isEqualTo("COMPLETED");
+    // 보낼 수량 넘는 전달 → 거절
+    assertThatThrownBy(() -> OrderRules.deliver(done, List.of(new OrderRules.Change("L2", 1))))
+        .isInstanceOf(IllegalArgumentException.class);
+    // 역순: 인계보다 전달이 먼저 와도 받고 COMPLETED, 뒤에 온 인계는 상태를 되돌리지 않는다
+    var early =
+        OrderRules.deliver(
+            List.of(a, b), List.of(new OrderRules.Change("L1", 3), new OrderRules.Change("L2", 2)));
+    assertThat(OrderRules.progressStatus("PREPARING", early)).isEqualTo("COMPLETED");
+    var late =
+        OrderRules.handOver(
+            early, List.of(new OrderRules.Change("L1", 3), new OrderRules.Change("L2", 2)));
+    assertThat(OrderRules.progressStatus("COMPLETED", late)).isEqualTo("COMPLETED");
+    // 출고 전 취소분은 전달할 것에서 빠진다 — 나머지를 다 전달하면 COMPLETED
+    var cut = new OrderRules.Progress("L1", 3, 0, 2, 1, 2);
+    assertThat(OrderRules.progressStatus("IN_DELIVERY", List.of(cut))).isEqualTo("COMPLETED");
+    // 진행 순서 밖(CANCELLED)은 그대로, 인계·전달 없으면 지금 상태
+    assertThat(OrderRules.progressStatus("CANCELLED", late)).isEqualTo("CANCELLED");
+    assertThat(OrderRules.progressStatus("PREPARING", List.of(a, b))).isEqualTo("PREPARING");
+  }
+
+  @Test
   void cancelBeforeShipRules() {
     var a = new OrderRules.LineQty("L1", 3, 3, 0, 0);
     var b = new OrderRules.LineQty("L2", 2, 2, 0, 0);

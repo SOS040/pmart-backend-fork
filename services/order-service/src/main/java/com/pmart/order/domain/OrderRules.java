@@ -217,6 +217,140 @@ public final class OrderRules {
         && lines.stream().allMatch(l -> l.unfulfilledQty() == 0 && l.handedOverQty() == 0);
   }
 
+  // ---------- 이행 진행(인계·전달, O-1 2026-11-16) ----------
+
+  /** 주문행 진행 누계. 불변식 원수량 = 미이행 + 인계 + 출고 전 취소, 전달 ≤ 원수량 − 출고 전 취소. */
+  public record Progress(
+      String orderLineId,
+      int originalQty,
+      int unfulfilledQty,
+      int handedOverQty,
+      int cancelledBeforeShipQty,
+      int deliveredQty) {}
+
+  /** 진행 순서(뒤로 가지 않는다). 그 밖 상태(CANCELLED·EXPIRED 등)는 진행으로 바꾸지 않는다. */
+  public static final List<String> PROGRESS_ORDER =
+      List.of(
+          "CONFIRMED",
+          "PREPARING",
+          "PARTIALLY_HANDED_OVER",
+          "IN_DELIVERY",
+          "PARTIALLY_DELIVERED",
+          "COMPLETED");
+
+  /** 한 사건의 줄들(같은 주문행이 LOT 별로 여러 번 올 수 있다)을 주문행별 합으로. 수량 1 미만이면 {@link IllegalArgumentException}. */
+  public static java.util.Map<String, Integer> sumByLine(List<Change> changes) {
+    java.util.Map<String, Integer> out = new java.util.LinkedHashMap<>();
+    for (Change c : changes) {
+      if (c.qty() < 1) {
+        throw new IllegalArgumentException("수량은 1 이상이어야 합니다: " + c.orderLineId());
+      }
+      out.merge(c.orderLineId(), c.qty(), Integer::sum);
+    }
+    return out;
+  }
+
+  /**
+   * 포장 인계(PackageHandedOver) 반영: 행마다 미이행 −q, 인계 +q. 없는 행·미이행보다 큰 수량이면 {@link
+   * IllegalArgumentException}(아무것도 바꾸지 않는다 — 호출자가 대사 불일치로 남긴다).
+   */
+  public static List<Progress> handOver(List<Progress> lines, List<Change> changes) {
+    java.util.Map<String, Integer> req = sumByLine(changes);
+    List<Progress> out = new ArrayList<>();
+    for (Progress l : lines) {
+      Integer q = req.remove(l.orderLineId());
+      if (q == null) {
+        out.add(l);
+        continue;
+      }
+      if (q > l.unfulfilledQty()) {
+        throw new IllegalArgumentException(
+            "주문행 " + l.orderLineId() + " 미이행 " + l.unfulfilledQty() + " 보다 많이 인계됐습니다: " + q);
+      }
+      out.add(
+          new Progress(
+              l.orderLineId(),
+              l.originalQty(),
+              l.unfulfilledQty() - q,
+              l.handedOverQty() + q,
+              l.cancelledBeforeShipQty(),
+              l.deliveredQty()));
+    }
+    if (!req.isEmpty()) {
+      throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());
+    }
+    return out;
+  }
+
+  /**
+   * 전달 완료(DeliveryCompleted) 반영: 행마다 전달 +q. 인계보다 먼저 와도 받는다(역순 수신 — 실물 사실). 없는 행·(원수량 − 출고 전 취소)를 넘는
+   * 전달이면 {@link IllegalArgumentException}.
+   */
+  public static List<Progress> deliver(List<Progress> lines, List<Change> changes) {
+    java.util.Map<String, Integer> req = sumByLine(changes);
+    List<Progress> out = new ArrayList<>();
+    for (Progress l : lines) {
+      Integer q = req.remove(l.orderLineId());
+      if (q == null) {
+        out.add(l);
+        continue;
+      }
+      int deliverable = l.originalQty() - l.cancelledBeforeShipQty();
+      if (l.deliveredQty() + q > deliverable) {
+        throw new IllegalArgumentException(
+            "주문행 "
+                + l.orderLineId()
+                + " 전달 누계가 보낼 수량 "
+                + deliverable
+                + " 을 넘습니다: "
+                + (l.deliveredQty() + q));
+      }
+      out.add(
+          new Progress(
+              l.orderLineId(),
+              l.originalQty(),
+              l.unfulfilledQty(),
+              l.handedOverQty(),
+              l.cancelledBeforeShipQty(),
+              l.deliveredQty() + q));
+    }
+    if (!req.isEmpty()) {
+      throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());
+    }
+    return out;
+  }
+
+  /**
+   * 수량으로 본 진행 상태. 모든 행이 (전달 + 출고 전 취소 = 원수량)이고 전달이 하나라도 있으면 COMPLETED(OrderCompleted — "모든 유효 배송 전달
+   * 완료 + 미전달분 해소"), 전달이 있으면 PARTIALLY_DELIVERED, 미이행이 모두 0 이고 인계가 있으면 IN_DELIVERY, 인계가 있으면
+   * PARTIALLY_HANDED_OVER. 지금 상태보다 뒤로는 가지 않고, 진행 순서 밖 상태(CANCELLED 등)는 그대로 둔다.
+   */
+  public static String progressStatus(String current, List<Progress> lines) {
+    int now = PROGRESS_ORDER.indexOf(current);
+    if (now < 0 || lines.isEmpty()) {
+      return current;
+    }
+    boolean anyDelivered = lines.stream().anyMatch(l -> l.deliveredQty() > 0);
+    boolean anyHanded = lines.stream().anyMatch(l -> l.handedOverQty() > 0);
+    boolean allDelivered =
+        lines.stream()
+            .allMatch(l -> l.deliveredQty() + l.cancelledBeforeShipQty() == l.originalQty());
+    boolean noneUnfulfilled = lines.stream().allMatch(l -> l.unfulfilledQty() == 0);
+    String derived;
+    if (anyDelivered && allDelivered) {
+      derived = "COMPLETED";
+    } else if (anyDelivered) {
+      derived = "PARTIALLY_DELIVERED";
+    } else if (anyHanded && noneUnfulfilled) {
+      derived = "IN_DELIVERY";
+    } else if (anyHanded) {
+      derived = "PARTIALLY_HANDED_OVER";
+    } else {
+      return current;
+    }
+    return PROGRESS_ORDER.indexOf(derived) > now ? derived : current;
+  }
+
   /** "HH:mm" → 분(24:00 = 1440). */
   public static int minutes(String hhmm) {
     if ("24:00".equals(hhmm)) {

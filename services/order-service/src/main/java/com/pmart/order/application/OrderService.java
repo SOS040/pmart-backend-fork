@@ -233,9 +233,26 @@ public class OrderService {
                     a.orderLineId(), a.unfulfilledQty(), a.cancelledBeforeShipQty());
                 publishLineChanged(o, rows.get(i), a, in, full, version, now);
               }
-              String status = full ? "CANCELLED" : o.status();
+              // 일부 인계 뒤 남은 미이행을 취소하면 진행 상태가 앞으로 간다(O-1: 남은 게 모두 인계됨 → IN_DELIVERY, 모두 전달됨 →
+              // COMPLETED)
+              List<OrderRules.Progress> progress = new ArrayList<>();
+              for (int i = 0; i < after.size(); i++) {
+                OrderRules.LineQty a = after.get(i);
+                progress.add(
+                    new OrderRules.Progress(
+                        a.orderLineId(),
+                        a.originalQty(),
+                        a.unfulfilledQty(),
+                        a.handedOverQty(),
+                        a.cancelledBeforeShipQty(),
+                        rows.get(i).deliveredQty()));
+              }
+              String status = full ? "CANCELLED" : OrderRules.progressStatus(o.status(), progress);
               orders.updateStatus(orderId, status, version);
               publishCancelled(o, in, full, version, now);
+              if ("COMPLETED".equals(status) && !"COMPLETED".equals(o.status())) {
+                publishCompleted(orderId, version, now);
+              }
               log.info(
                   "주문 {} 출고 전 취소 반영 {}행 → {} (근거 {})",
                   orderId,
@@ -275,6 +292,207 @@ public class OrderService {
     payload.put("startedAt", p.path("startedAt").asString(clock.instant().toString()));
     publishOrderEvent("OrderPreparationStarted", orderId, version, payload);
     log.info("주문 {} 준비 시작 → PREPARING", orderId);
+  }
+
+  // ---------- 이행 진행: 포장 인계·전달 완료 (O-1, 2026-11-16) ----------
+
+  static final String HANDOVER = "HANDOVER";
+  static final String DELIVERY = "DELIVERY";
+
+  /**
+   * MFC 포장 인계(PackageHandedOver, mfc.fulfillment.v1) 반영: 같은 handoverId 는 한 번 → 행마다 미이행 −q·인계 +q →
+   * 진행 상태(PARTIALLY_HANDED_OVER·IN_DELIVERY, 전달이 먼저 왔으면 그 상태 유지) +버전 → 행마다
+   * OrderLineQuantityChanged(reason HANDOVER). 수량이 맞지 않으면(미이행 초과·없는 행) 반영하지 않고 MISMATCH 로 남긴다(실물
+   * 사실은 버리지 않고 대사). inbox 트랜잭션 안.
+   */
+  public void packageHandedOver(com.pmart.common.messaging.EventEnvelope e) {
+    var p = e.payload();
+    String orderId = p.path("orderId").asString("");
+    String handoverId = p.path("handoverId").asString("");
+    if (orderId.isBlank() || handoverId.isBlank()) {
+      log.warn("포장 인계 사건 {} 에 주문·인계 ID 가 없어 무시", e.eventId());
+      return;
+    }
+    progress(
+        e,
+        HANDOVER,
+        handoverId,
+        orderId,
+        text(p, "deliveryId"),
+        instant(p.path("handedAt").asString(null)),
+        changes(p.path("lines")));
+  }
+
+  /**
+   * 배송 전달 완료(DeliveryCompleted, delivery.delivery.v1) 반영: 같은 deliveryId 는 한 번 → 행마다 전달 +q(인계보다 먼저
+   * 와도 받는다) → 진행 상태 +버전 → 다 전달됐으면 OrderCompleted, 아니면 OrderPartiallyDelivered. 수량이 맞지 않으면 MISMATCH.
+   * inbox 트랜잭션 안.
+   */
+  public void deliveryCompleted(com.pmart.common.messaging.EventEnvelope e) {
+    var p = e.payload();
+    String orderId = p.path("orderId").asString("");
+    String deliveryId = p.path("deliveryId").asString("");
+    if (orderId.isBlank() || deliveryId.isBlank()) {
+      log.warn("전달 완료 사건 {} 에 주문·배송 ID 가 없어 무시", e.eventId());
+      return;
+    }
+    progress(
+        e,
+        DELIVERY,
+        deliveryId,
+        orderId,
+        deliveryId,
+        instant(p.path("deliveredAt").asString(null)),
+        changes(p.path("lines")));
+  }
+
+  private void progress(
+      com.pmart.common.messaging.EventEnvelope e,
+      String kind,
+      String sourceRef,
+      String orderId,
+      @Nullable String deliveryId,
+      Instant occurredAt,
+      List<OrderRules.Change> changes) {
+    Instant now = clock.instant();
+    OrderRow o = orders.lock(orderId).orElse(null);
+    if (o == null) {
+      log.warn("{} 사건 {} 의 주문이 없습니다: {}", kind, sourceRef, orderId);
+      return;
+    }
+    List<LineRow> rows = orders.lines(orderId);
+    List<OrderRules.Progress> before = rows.stream().map(OrderService::progressOf).toList();
+    List<OrderRules.Progress> after;
+    try {
+      after =
+          HANDOVER.equals(kind)
+              ? OrderRules.handOver(before, changes)
+              : OrderRules.deliver(before, changes);
+    } catch (IllegalArgumentException ex) {
+      if (orders.recordFact(
+          kind,
+          sourceRef,
+          orderId,
+          deliveryId,
+          String.valueOf(e.eventId()),
+          "MISMATCH",
+          truncate(ex.getMessage()),
+          occurredAt,
+          now)) {
+        log.warn(
+            "주문 {} {} {} 수량 불일치 — 반영하지 않고 대사로 남김: {}", orderId, kind, sourceRef, ex.getMessage());
+      }
+      return;
+    }
+    if (!orders.recordFact(
+        kind,
+        sourceRef,
+        orderId,
+        deliveryId,
+        String.valueOf(e.eventId()),
+        "APPLIED",
+        null,
+        occurredAt,
+        now)) {
+      log.info("주문 {} {} {} 는 이미 반영됨", orderId, kind, sourceRef);
+      return;
+    }
+    if ("CANCELLED".equals(o.status())) {
+      // 취소 뒤 도착한 실물 사실 — 수량은 남기되 상태는 바꾸지 않는다(취소·인계 경합은 cancel-vs-handover 가 판정)
+      log.warn("주문 {} 은 CANCELLED 인데 {} {} 가 왔습니다 — 수량만 반영", orderId, kind, sourceRef);
+    }
+    int version = o.version() + 1;
+    for (int i = 0; i < after.size(); i++) {
+      OrderRules.Progress a = after.get(i);
+      if (a.equals(before.get(i))) {
+        continue;
+      }
+      orders.updateLineProgress(
+          a.orderLineId(), a.unfulfilledQty(), a.handedOverQty(), a.deliveredQty());
+      if (HANDOVER.equals(kind)) {
+        publishHandoverLine(o, rows.get(i), a, sourceRef, version, now);
+      }
+    }
+    String status = OrderRules.progressStatus(o.status(), after);
+    orders.updateStatus(orderId, status, version);
+    if (DELIVERY.equals(kind)) {
+      if ("COMPLETED".equals(status) && !"COMPLETED".equals(o.status())) {
+        publishCompleted(orderId, version, occurredAt);
+      } else if (!"COMPLETED".equals(status)) {
+        Map<String, Object> pd = new LinkedHashMap<>();
+        pd.put("orderId", orderId);
+        pd.put("orderVersion", version);
+        pd.put("deliveryId", sourceRef);
+        List<Map<String, Object>> ls = new ArrayList<>();
+        OrderRules.sumByLine(changes).forEach((k, v) -> ls.add(Map.of("orderLineId", k, "qty", v)));
+        pd.put("deliveredLines", ls);
+        pd.put("deliveredAt", occurredAt.toString());
+        publishOrderEvent("OrderPartiallyDelivered", orderId, version, pd);
+      }
+    }
+    log.info("주문 {} {} {} 반영 → {}", orderId, kind, sourceRef, status);
+  }
+
+  private void publishCompleted(String orderId, int version, Instant at) {
+    Map<String, Object> pc = new LinkedHashMap<>();
+    pc.put("orderId", orderId);
+    pc.put("orderVersion", version);
+    pc.put("deliveryIds", orders.deliveredDeliveryIds(orderId));
+    pc.put("completedAt", at.toString());
+    publishOrderEvent("OrderCompleted", orderId, version, pc);
+  }
+
+  private void publishHandoverLine(
+      OrderRow o, LineRow line, OrderRules.Progress a, String handoverId, int version, Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("orderId", o.orderId());
+    p.put("orderLineId", a.orderLineId());
+    p.put("sku", line.sku());
+    p.put("originalQty", a.originalQty());
+    p.put("unfulfilledQty", a.unfulfilledQty());
+    p.put("handedOverQty", a.handedOverQty());
+    p.put("cancelledBeforeShipQty", a.cancelledBeforeShipQty());
+    p.put("reason", HANDOVER);
+    p.put("handoverId", handoverId);
+    p.put("version", version);
+    p.put("changedAt", at.toString());
+    publishOrderEvent("OrderLineQuantityChanged", o.orderId(), version, p);
+  }
+
+  private static OrderRules.Progress progressOf(LineRow l) {
+    return new OrderRules.Progress(
+        l.orderLineId(),
+        l.originalQty(),
+        l.unfulfilledQty(),
+        l.handedOverQty(),
+        l.cancelledBeforeShipQty(),
+        l.deliveredQty());
+  }
+
+  private static List<OrderRules.Change> changes(tools.jackson.databind.JsonNode lines) {
+    List<OrderRules.Change> out = new ArrayList<>();
+    for (tools.jackson.databind.JsonNode l : lines) {
+      out.add(new OrderRules.Change(l.path("orderLineId").asString(""), l.path("qty").asInt(0)));
+    }
+    return out;
+  }
+
+  private Instant instant(@Nullable String iso) {
+    try {
+      return iso == null ? clock.instant() : Instant.parse(iso);
+    } catch (java.time.format.DateTimeParseException ex) {
+      return clock.instant();
+    }
+  }
+
+  private static @Nullable String text(tools.jackson.databind.JsonNode n, String field) {
+    tools.jackson.databind.JsonNode v = n.path(field);
+    return v.isNull() || v.isMissingNode() ? null : v.asString();
+  }
+
+  private static String truncate(@Nullable String s) {
+    String v = s == null ? "" : s;
+    return v.length() > 500 ? v.substring(0, 500) : v;
   }
 
   /** 서비스 간 주문 원장 조회(claim 심사·환불 근거). 확정 전 주문 ID 는 404. */

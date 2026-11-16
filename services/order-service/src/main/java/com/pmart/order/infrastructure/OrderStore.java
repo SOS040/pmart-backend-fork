@@ -225,6 +225,54 @@ public class OrderStore {
         orderLineId);
   }
 
+  /** 이행 진행(인계·전달, O-1) 반영 — 미이행·인계·전달 누계. */
+  public void updateLineProgress(
+      String orderLineId, int unfulfilledQty, int handedOverQty, int deliveredQty) {
+    jdbc.update(
+        "UPDATE customer_order_line SET unfulfilled_qty = ?, handed_over_qty = ?, delivered_qty = ?"
+            + " WHERE order_line_id = ?",
+        unfulfilledQty,
+        handedOverQty,
+        deliveredQty,
+        orderLineId);
+  }
+
+  /** 이행 사실(인계·전달)을 업무 키로 한 번만 기록. 이미 있으면 false(반영하지 않는다). */
+  public boolean recordFact(
+      String kind,
+      String sourceRef,
+      String orderId,
+      @Nullable String deliveryId,
+      String sourceEventId,
+      String state,
+      @Nullable String detail,
+      Instant occurredAt,
+      Instant appliedAt) {
+    return jdbc.update(
+            "INSERT INTO order_fulfillment_fact (kind, source_ref, order_id, delivery_id,"
+                + " source_event_id, state, detail, occurred_at, applied_at)"
+                + " VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (kind, source_ref) DO NOTHING",
+            kind,
+            sourceRef,
+            orderId,
+            deliveryId,
+            sourceEventId,
+            state,
+            detail,
+            java.sql.Timestamp.from(occurredAt),
+            java.sql.Timestamp.from(appliedAt))
+        > 0;
+  }
+
+  /** 반영된 전달 완료의 배송 ID(OrderCompleted.deliveryIds). */
+  public List<String> deliveredDeliveryIds(String orderId) {
+    return jdbc.queryForList(
+        "SELECT source_ref FROM order_fulfillment_fact WHERE order_id = ? AND kind = 'DELIVERY'"
+            + " AND state = 'APPLIED' ORDER BY occurred_at, source_ref",
+        String.class,
+        orderId);
+  }
+
   /** 주문 상태·버전 갱신. */
   public void updateStatus(String orderId, String status, int version) {
     jdbc.update(

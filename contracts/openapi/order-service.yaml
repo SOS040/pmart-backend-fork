@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.7.0
+  version: 0.7.1
   description: |
     주문 초안·주문 원장·스냅샷·상태·이행 계획의 정본. (docs/architecture/service-map.md §2)
     사가 진행은 order-orchestration-service, PG 거래는 payment-service, 클레임 심사는 claim-service.
@@ -679,7 +679,7 @@ components:
               cancelledBeforeShipQty: { type: integer }
               productId: { type: [string, 'null'], description: 0.7.0 — 리뷰 자격(review-service) }
               productName: { type: [string, 'null'], description: 0.7.0 — 주문 당시 상품명 사본 }
-              deliveredQty: { type: integer, description: 0.7.0 — 전달 완료 수량(배송완료 반영 전에는 0) }
+              deliveredQty: { type: integer, description: '0.7.0 — 전달 완료 수량. 0.7.1(2026-11-16, O-1) DeliveryCompleted 반영으로 채워진다' }
               returnedQty: { type: integer, description: 0.7.0 — 반품 완료 수량(반품 구현 전에는 0). review 가 "받은 수량 전부 반품" 판정에 쓴다 }
     OrderStatus:
       type: string

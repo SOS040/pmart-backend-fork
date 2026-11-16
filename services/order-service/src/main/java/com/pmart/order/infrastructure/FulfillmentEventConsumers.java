@@ -8,8 +8,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * mfc-fulfillment 사건 구독(토픽 mfc.fulfillment.v1, 슬라이스 6b). PreparationStarted 만 반영하고, 같은 토픽의 다른 사건은
- * 반영 없이 inbox 에만 남는다. 반영과 inbox 기록은 한 트랜잭션.
+ * mfc-fulfillment 사건 구독(토픽 mfc.fulfillment.v1, 슬라이스 6b). PreparationStarted(→
+ * PREPARING)·PackageHandedOver(→ 인계 수량·진행 상태, O-1 2026-11-16)를 반영하고, 같은 토픽의 다른 사건은 반영 없이 inbox 에만
+ * 남는다. 반영과 inbox 기록은 한 트랜잭션.
  *
  * <p>Spring Cloud Stream 함수 바인딩(ADR-0035): 바인딩 {@code fulfillmentEvents-in-0} 의 토픽은 설정 저장소 {@code
  * order-service.yml}.
@@ -23,6 +24,23 @@ class FulfillmentEventConsumers {
         e -> {
           if ("PreparationStarted".equals(e.eventType())) {
             orders.preparationStarted(e);
+          } else if ("PackageHandedOver".equals(e.eventType())) {
+            orders.packageHandedOver(e);
+          }
+        });
+  }
+
+  /**
+   * delivery-execution 사건(토픽 delivery.delivery.v1, 바인딩 {@code deliveryEvents-in-0}, O-1 2026-11-16)
+   * — DeliveryCompleted 만 전달 수량·진행 상태·OrderCompleted 로 반영. DeliveryFailed 등 그 밖은 inbox 에만(실패 처리 규칙은
+   * 아직 — 자동 환불 없음).
+   */
+  @Bean
+  PmartEventConsumer deliveryEvents(EventConsumers consumers, OrderService orders) {
+    return consumers.of(
+        e -> {
+          if ("DeliveryCompleted".equals(e.eventType())) {
+            orders.deliveryCompleted(e);
           }
         });
   }
