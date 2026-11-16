@@ -46,7 +46,7 @@
 | [EA-1](employee-auth-service.md) | employee-auth | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | 대기 |
 | [EA-2](employee-auth-service.md) | employee-auth | 클라이언트 hr-backoffice (BR-57) | 직원 역할 목록 API `GET /employee-auth/roles`(코드·이름·센터 지정·순서) | 없음(사용자 2026-11-15 "만들거야") | 구현(2026-11-15, employee-auth 0.5.0 — LAN 배포 전) |
 | [RC-1](approval-receipt-publishers.md) | product, product-content, center-master, delivery-serviceability, mfc-inbound | approval | `ApplicationReceiptRecorded` 발행 | 없음 | 대기 |
-| [BO-12](backoffice-bff.md) | backoffice-bff | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 대기 |
+| [BO-12](backoffice-bff.md) | backoffice-bff | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 사가·이행 확인 LAN 배포(0.2.0). MFC 중지 실패·인계 거절 — bff 0.4.0 재시도 명령 배포(2026-11-16 #31), 목록은 F-4 대기(설정 꺼짐) |
 | [CU-1](customer-service.md) | customer | auth | 약관 동의 → `require-consent` 켜기 | **필요**(시점) | 대기 |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
@@ -55,6 +55,9 @@
 | [O-5](order-service.md) | order | delivery-execution | 라이더용 전달지(BR-24 — 고객 전화번호 그대로) | 결정됨(2026-11-14: 안심번호 대신 고객 전화번호) | 구현·LAN 배포(#15, 2026-11-15) |
 | [O-6](order-service.md) | order | 백오피스(고객센터·라이더 운영) | 직원용 주문 검색·상세(연락처 완전 일치, 목록 가림) | 결정됨(2026-11-15: order-service 에 둔다) | 구현(커밋만, 미배포) |
 | [F-2](mfc-fulfillment-service.md) | mfc-fulfillment | delivery-dispatch | 피킹 시작 전 포장 소요시간 입력 → 배차 요청(사용자 확인 "피킹 시작 전") | 결정됨(2026-11-13) | 대기(mfc, PC 3) |
+| [F-3](mfc-fulfillment-service.md) | mfc-fulfillment | backoffice(PC 2) | 주문 번호로 현장 상태(직원용 — 통합 조회 MFC 칸) | 없음 | 대기(PC 3, 2026-11-16 #27) |
+| [F-4](mfc-fulfillment-service.md) | mfc-fulfillment | backoffice(PC 2) | 멈춘 중지 요청·거절된 인계 목록 + 재시도에 운영자 ID·사유 받기(처리 대기 BO-12) | 결정됨(2026-11-16 "A안") | 대기(PC 3, 2026-11-16 #27·#31) |
+| [DD-MFC](delivery-dispatch-service.md) | delivery-dispatch | backoffice(PC 2) | `DispatchFailed` payload 에 `mfcId`(필드 추가) — 센터 관리자 배차 실패 사건 | 결정됨(2026-11-16 "추천대로") | 대기(PC 5, 2026-11-16 #27) — 그 전엔 센터 관리자에게 0건 |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.
