@@ -49,13 +49,56 @@ public class EmployeeAdminService {
   private final EmployeeAccess access;
   private final Clock clock;
 
+  /**
+   * 관리 경로({@code PUT /employees/{id}})로 역할·센터를 바로 바꿀 수 있나(권한 빈틈 정리 2026-11-17, 사용자 "(가)"). 기본 꺼짐 —
+   * 역할은 인사 요청 → 승인(GRANT)으로 준다. LAN 은 시험 도구(staff_auth.py·Seed.java)가 시험 계정 역할을 맞추느라 켠다. 꺼져 있어도
+   * 상태(정지 등) 변경은 된다.
+   */
+  private final boolean directRoleEdit;
+
+  /** 관리 경로로는 절대 새로 줄 수 없는 역할 — 승인(GRANT)으로만. */
+  static final java.util.Set<String> APPROVAL_ONLY_ROLES =
+      java.util.Set.of("OPERATOR_ADMIN", "HR_ADMIN");
+
+  /**
+   * 관리 경로의 역할·센터 변경 검사. 관리자 역할을 새로 넣으면 항상 403, 그 밖 역할·센터 변경은 {@code enabled} 일 때만(빼는 것도 변경 — 회수는
+   * grant-revocations).
+   */
+  static void checkRoleEdit(
+      boolean enabled,
+      List<String> beforeRoles,
+      List<String> beforeCenters,
+      List<String> roles,
+      List<String> centers) {
+    List<String> addedAdmin =
+        roles.stream()
+            .filter(r -> APPROVAL_ONLY_ROLES.contains(r) && !beforeRoles.contains(r))
+            .toList();
+    if (!addedAdmin.isEmpty()) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, String.join(", ", addedAdmin) + " 역할은 권한 요청 → 승인으로만 줄 수 있습니다.");
+    }
+    boolean changed =
+        !new java.util.TreeSet<>(beforeRoles).equals(new java.util.TreeSet<>(roles))
+            || !new java.util.TreeSet<>(beforeCenters).equals(new java.util.TreeSet<>(centers));
+    if (changed && !enabled) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN,
+          "역할·센터는 권한 요청 → 승인으로 바꿉니다(관리 경로는 상태만 — pmart.employee-auth.direct-role-edit 꺼짐).");
+    }
+  }
+
   public EmployeeAdminService(
       EmployeeAuthStore store,
       SubjectBlocks blocks,
       EmployeeAuthProperties props,
       TransactionTemplate tx,
       EmployeeAccess access,
-      Clock clock) {
+      Clock clock,
+      @org.springframework.beans.factory.annotation.Value(
+              "${pmart.employee-auth.direct-role-edit:false}")
+          boolean directRoleEdit) {
+    this.directRoleEdit = directRoleEdit;
     this.store = store;
     this.access = access;
     this.blocks = blocks;
@@ -162,6 +205,12 @@ public class EmployeeAdminService {
               if (before != null && operatorId.equals(admin.subject())) {
                 throw new PmartException(ErrorCode.FORBIDDEN, "자기 계정의 상태·권한은 바꿀 수 없습니다.");
               }
+              checkRoleEdit(
+                  directRoleEdit,
+                  before == null ? List.of() : before.roles(),
+                  before == null ? List.of() : before.centers(),
+                  roles,
+                  centers);
               if (before == null) {
                 store.insertAccount(operatorId, change.state(), roles, centers, now);
               } else if (!before.state().equals(change.state())

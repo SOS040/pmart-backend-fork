@@ -85,6 +85,8 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
   @DynamicPropertySource
   static void hrBaseUrl(DynamicPropertyRegistry r) {
     r.add("pmart.employee-auth.hr-base-url", () -> "http://127.0.0.1:" + HR.getAddress().getPort());
+    // 시험 계정 준비에 관리 경로 역할 변경을 쓴다(LAN 과 같게 켬 — 권한 빈틈 정리 2026-11-17)
+    r.add("pmart.employee-auth.direct-role-edit", () -> "true");
   }
 
   @LocalServerPort int port;

@@ -41,3 +41,4 @@
 ```
 - `EmployeeLoginIT` 는 Keycloak 컨테이너(`src/integrationTest/resources/keycloak/pmart-staff-it-realm.json` → 컨테이너 안 이름 `pmart-staff-realm.json` — 26.8 은 파일 이름 = Realm 이름)를 띄우고 브라우저를 흉내 낸다. Keycloak 쿠키에 Secure 가 붙어 java.net.CookieManager 대신 직접 쿠키를 보관한다.
 - 로컬 포트 8511. LAN PC 5. 로컬 프로필에는 Keycloak 이 없어 로그인 시작이 CONFIG_REQUIRED.
+- 관리 경로 역할 변경 스위치(2026-11-17, 권한 빈틈 정리 — 사용자 "(가)"): `PUT /employee-auth/employees/{id}` 의 역할·센터 변경은 `pmart.employee-auth.direct-role-edit`(기본 false, LAN true — 시험 도구 `staff_auth.py`·`Seed.java`)일 때만, 꺼지면 상태만. `OPERATOR_ADMIN`·`HR_ADMIN` 을 새로 넣는 것은 항상 403(승인으로만, `EmployeeAdminService.checkRoleEdit`). 시험은 IT 에서 켬.

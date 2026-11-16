@@ -228,8 +228,8 @@
 1. **게이트웨이 사용자 종류 허용 목록이 RECORD(기록만)** — 계약에 "직원만"인데 서비스 코드에 검사가 없는 경로는 지금 **고객·라이더 토큰으로도 열린다.** ENFORCE 로 바꾸면 한 번에 막히지만, 그 전에 RECORD 로그에서 정상 요청이 걸리는지 확인해야 한다.
    - 서비스에 검사가 없던 "직원 전용" 조회: ✅ product `GET /products`·`/products/{id}`·`/skus/{sku}`·`/barcodes/{b}`·판매 상태/SKU 발급 결과, ✅ pricing 가격 버전·반영 결과, ✅ approval `GET /change-requests/{id}`, ✅ center-master `GET /centers*`(직원)·`/mfc-pickup-points`(라이더·직원) — 서비스 안에서 403. 남은 것: serviceability 권역 버전 조회(PC 5), mfc-fulfillment 인계 결과(`handover-resolution` — 고객 토큰도 통과, PC 3).
    - 사용자 종류 검사가 없는 곳: capacity `/slots`, serviceability 배송 조건·주소 변환(라이더·직원도 통과 — 영향 작음).
-2. **직원 토큰에서 역할과 센터가 따로 합쳐진다** — 토큰은 "모든 역할" + "모든 센터"라서, A 센터 `MFC_SUPERVISOR` + B 센터 `MFC_WORKER` 인 사람은 **B 센터에서도 관리자**가 된다(`EmployeeAccess`). 지금 시험 계정에는 이런 조합이 없다.
-3. **`OPERATOR_ADMIN` 이 관리 경로로 역할을 바로 줄 수 있다** — `PUT /employee-auth/employees/{id}` 는 승인(GRANT) 없이 어떤 역할이든(관리자 역할 포함) 계정에 넣는다. ✅ 자기 대상 권한 요청 승인은 막음(GRANT 대상 = 승인자면 403 — `ApprovalRules.requireNotOwnGrant`). 관리 경로의 직접 역할 부여는 아직.
+2. **직원 토큰에서 역할과 센터가 따로 합쳐진다**(사용자 2026-11-17: PC 1 만으로 — 권한 승인 때 센터마다 다른 MFC 역할이 섞이는 요청 거절, 그날 저녁 작업. LAN 실제 데이터: 센터 관리자 2명 모두 자기 센터 안, 여러 센터 직원 0명) — 토큰은 "모든 역할" + "모든 센터"라서, A 센터 `MFC_SUPERVISOR` + B 센터 `MFC_WORKER` 인 사람은 **B 센터에서도 관리자**가 된다(`EmployeeAccess`). 지금 시험 계정에는 이런 조합이 없다.
+3. **`OPERATOR_ADMIN` 이 관리 경로로 역할을 바로 줄 수 있다** — `PUT /employee-auth/employees/{id}` 는 승인(GRANT) 없이 어떤 역할이든(관리자 역할 포함) 계정에 넣는다. ✅ 자기 대상 권한 요청 승인은 막음(GRANT 대상 = 승인자면 403 — `ApprovalRules.requireNotOwnGrant`). ✅ 관리 경로 역할·센터 변경은 스위치 `pmart.employee-auth.direct-role-edit`(기본 꺼짐, LAN 만 켬 — 시험 도구용), `OPERATOR_ADMIN`·`HR_ADMIN` 은 켜져 있어도 관리 경로로 새로 못 줌(사용자 "(가)").
 4. **MFC 재고 정정에 역할이 없다** — `POST /mfcs/{id}/stock-corrections`(재고 증감)는 그 센터 직원이면 누구나, 승인 번호는 LAN 에서 확인 안 함(RECORD_ONLY). 위치 만들기·없애기, 상품 취급 변경, 입고 검수·적치도 역할 없음.
 5. **내부 경로는 부르는 서비스를 확인하지 않는다** — 네트워크만 믿는다(ADR-0026). 민감한 것: 멈춘 주문 처리 명령(`/internal/sagas/{id}/manual-actions` — 처리자 ID 를 요청 본문에서 받음), 고객 배송 주소(`/internal/orders/{id}/delivery-destination`). LAN 안의 아무 PC 에서나 부를 수 있다.
 

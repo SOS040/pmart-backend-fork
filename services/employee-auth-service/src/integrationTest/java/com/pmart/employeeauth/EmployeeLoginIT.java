@@ -105,6 +105,8 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
     r.add("pmart.employee-auth.keycloak.issuer", () -> issuer);
     // 시험은 브라우저·서버가 같은 주소로 Keycloak 을 본다(운영은 token·jwks·logout 이 내부 주소)
     r.add("server.port", () -> PORT);
+    // 관리 경로 역할 변경 — LAN 처럼 켬(시험 계정 준비). 꺼짐 동작은 EmployeeAdminServiceRoleEditTest
+    r.add("pmart.employee-auth.direct-role-edit", () -> "true");
     r.add(
         "pmart.employee-auth.keycloak.redirect-uri",
         () -> "http://localhost:" + PORT + "/api/v1/employee-auth/logins/callback");
@@ -493,6 +495,23 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
                 .status())
         .as("모르는 역할")
         .isEqualTo(400);
+    assertThat(
+            withToken(
+                    "PUT",
+                    "/employee-auth/employees/" + newOp,
+                    admin,
+                    Map.of(
+                        "state",
+                        "ACTIVE",
+                        "roles",
+                        List.of("OPERATOR_ADMIN"),
+                        "centers",
+                        List.of(),
+                        "reason",
+                        "x"))
+                .status())
+        .as("관리자 역할은 스위치가 켜져 있어도 승인으로만(권한 빈틈 정리 2026-11-17)")
+        .isEqualTo(403);
     Res created = withToken("PUT", "/employee-auth/employees/" + newOp, admin, change);
     assertThat(created.status()).as(created.body().toString()).isEqualTo(200);
     assertThat(created.body().path("version").asLong()).isEqualTo(1);
