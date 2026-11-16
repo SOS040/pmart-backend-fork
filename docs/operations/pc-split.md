@@ -80,7 +80,7 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
   - 각 앱 담당 PC 는 자기 앱 폴더와 `all/` 만 본다. 클라이언트 → 백엔드는 `pmart-clients/docs/handoff/<앱 영역>/`.
 - 한 주제는 한 영역이 맡는다(같은 주제를 두 PC 가 따로 보내지 않는다). 인증·HR·배포·공통 계약은 platform.
 - 2026-11-13 까지의 파일은 이름 그대로 폴더만 옮겼다(`…-clients-…`).
-- 시뮬레이터 handoff(`docs/handoff/simulator/`)는 mfc 영역이 맡는다.
+- 시뮬레이터 handoff: MFC(`docs/handoff/simulator/mfc/`)는 mfc 영역, 라이더(`docs/handoff/simulator/rider/`)는 delivery 영역 — 2026-11-16 폴더 나눔. 토큰·인증 회신은 platform(PC 1).
 
 ## 5. 여럿이 고치는 표 — 합칠 때 PC 1 이 몰아서
 

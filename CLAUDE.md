@@ -22,9 +22,9 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 - 사가·보상 흐름: `docs/business/flows/` — 새 saga를 만들거나 수정하면 같은 커밋에서 갱신한다
 - 아키텍처 결정 기록: `docs/adr/` — 결정을 바꾸면 새 ADR로 대체한다
 - 공통 용어: `docs/business/glossary.md`, 문서↔서비스 대응: `docs/business/domain-map.md`
-- **시뮬레이터 관련**: `docs/simulator/`(README) — 공통 범위 `scope.md`, **MFC 는 `mfc/`**(연결 결정 SIM-1~ `mfc-simulator-integration.md`, 평면 도면 `layout/`), **CDC 는 `cdc/`**. 결정이 생기면 날짜와 함께 적고, 시뮬레이터 관련 결과물은 여기에 둔다(handoff 제외). MFC 근거는 `MFC-business-logic.md`, CDC 근거는 `WMS-business-logic.md` — 섞지 않는다
+- **시뮬레이터 관련**: `docs/simulator/`(README) — 공통 범위 `scope.md`, **MFC 는 `mfc/`**(연결 결정 SIM-1~ `mfc-simulator-integration.md`, 평면 도면 `layout/`), **라이더는 `rider/`**(2026-11-16~), **CDC 는 `cdc/`**. 결정이 생기면 날짜와 함께 적고, 시뮬레이터 관련 결과물은 여기에 둔다(handoff 제외). MFC 근거는 `MFC-business-logic.md`, CDC 근거는 `WMS-business-logic.md` — 섞지 않는다
 - **서비스 간 요청**(다른 서비스에 아직 없는 API·사건·화면): `docs/architecture/service-requests/` — 받는 서비스마다 파일, `README.md` 에 전체 목록. 서비스를 구현·수정하기 전에 그 서비스 파일을 읽고, 다른 서비스에 필요한 것이 생기면 같은 커밋에서 여기에 적는다
-- 다른 저장소와의 요청·회신: `docs/handoff/`(README) — 클라이언트(pmart-clients)는 `docs/handoff/clients/`, MFC 시뮬레이터(pmart-mfc-simulation)는 `docs/handoff/simulator/`. 회신은 여기에만 쓰고 상대 저장소는 읽기만 한다
+- 다른 저장소와의 요청·회신: `docs/handoff/`(README) — 클라이언트(pmart-clients)는 `docs/handoff/clients/`, 시뮬레이터는 `docs/handoff/simulator/` 아래 MFC(pmart-mfc-simulation) `mfc/`·라이더(pmart-rider-simulation) `rider/`. 회신은 여기에만 쓰고 상대 저장소는 읽기만 한다
 - 업무 원문: `docs/business/*-business-logic.md` (확정 정책은 설계가 바꾸지 않는다. 문서에 없는 비즈니스 규칙은 추측하지 말고 질문)
 
 ## PC 나눠 작업하기 (2026-11-13)

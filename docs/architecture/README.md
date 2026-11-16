@@ -57,4 +57,4 @@
 - 결정 근거: `docs/adr/`(결정을 바꾸면 새 ADR)
 - 업무 흐름·사가·보상: `docs/business/flows/`, 확정 정책 `docs/business/overview.md`
 - 운영 절차·사고 기록: `docs/operations/`, LAN 배포 `deploy/lan/README.md`, 재색인 `deploy/lan/elastic/REINDEX.md`
-- 클라이언트 요청·회신: `docs/handoff/clients/`, 시뮬레이터: `docs/handoff/simulator/`
+- 클라이언트 요청·회신: `docs/handoff/clients/`, 시뮬레이터: `docs/handoff/simulator/`(mfc/·rider/)
