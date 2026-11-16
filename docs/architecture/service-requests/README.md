@@ -67,6 +67,7 @@
 | [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
+| [DE-2](delivery-execution-service.md) | delivery-execution | PC 5 | backoffice(PC 2) | 도움요청 대화 — 답장 권한(접수 건 규칙)·새 메시지 값·관리자 가림·처리 중 = 집을 때 | 결정됨(2026-11-16 "진행해") | 대기(PC 5, 2026-11-16 #62) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.
