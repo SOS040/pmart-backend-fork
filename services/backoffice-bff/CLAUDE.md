@@ -29,5 +29,17 @@
 - `POST /commands/{targetService}/{command}`: 지금은 `order-orchestration-service/saga-requery`(REQUERY_RESULT)·`saga-resolve`(MARK_RESOLVED)만 — targetRef = sagaId, reason 은 saga-resolve 만 필수(saga-requery 는 없으면 기본 문구), operatorId = 토큰 주체. 대상 4xx 는 코드 그대로, 그 밖 대상·명령 422 UNSUPPORTED_ACTION. 승인 없음(돈·재고를 움직이지 않는 조치, 사용자 결정).
 - 주소 `pmart.bff.orchestration-base-url`(기본 `http://order-orchestration-service:8202`)·`order-base-url`(기본 `http://order-service:8201`).
 
+## 통합 조회 (2026-11-16, BO-11 — 계약 0.3.0)
+- `GET /views/unified-lookup?q=&kind=`(`application/UnifiedLookupView`, `infrastructure/LookupClients`): 역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS. 원천 다섯(order 직원용 주문·delivery-execution 배송·delivery-dispatch 배차·claim 클레임·case 사건(열린 것 + 닫힌 것 최근 20건)·case 고객 문의)을 **운영자 토큰 전달**로 읽어 `matches` 에 원천마다 따로 싣는다(상태를 합치지 않음).
+- 찾는 값: 주문·배송·사건·고객 ID(완전 일치), `kind` 비우면 접두어(ORD-·DLV-·CASE-·CU-). 배송·사건은 그 주문으로 잇는다. 고객 ID 는 주문 목록만. TRANSFER·TRIP·모르는 값은 422 UNSUPPORTED_LOOKUP(전화번호 검색 안 함).
+- 원천 실패·403 은 `unavailableSources`(0건으로 바꾸지 않음), 404 는 항목 없음. summary 는 원천 필드 중 **개인정보가 아닌 것만 고른 목록**(`*_FIELDS`) — 배송지·메모·연락처(가린 값 포함)는 넣지 않는다. 찾는 값은 로그에 남기지 않는다.
+- 배송은 앞 10개까지 배차·사건을 더 읽는다. 문의(`GET /inquiries?orderId=`, case 0.5.0)는 CS_AGENT·OPERATOR_ADMIN 만 볼 수 있어 원천 이름을 `case-service/inquiries` 로 따로 둔다(RIDER_OPS 403 이 사건 원천 실패로 보이지 않게), 다른 주문 문의는 bff 에서도 거르고 제목·내용은 싣지 않는다. 아직 없음: MFC 현장(PC 3 API).
+- 주소 `pmart.bff.execution-base-url`(기본 `http://delivery-execution-service:8405`)·`dispatch-base-url`(8404)·`claim-base-url`(8204)·`case-base-url`(8506).
+
+## 실시간 배송 현황 (2026-11-16, 배송 원문 §10.1 — 계약 0.3.0)
+- `GET /views/live-delivery?mfcId=&state=&size=&cursor=`(`application/LiveDeliveryView`): 역할은 통합 조회와 같다(`UnifiedLookupView.requireRole`). mfcId 비우면 모든 센터.
+- state 비우면 끝나지 않은 배송(`ACTIVE_STATES` 9개)을 delivery-execution 에서 상태마다 읽어 생긴 순으로 합쳐 size(≤50)건 — 쪽 넘김 없음, 넘으면 `truncated`. state 를 주면 원천 커서 그대로.
+- 배송마다 delivery-dispatch 배차를 한 번(배차 장애면 그 칸 state null·UNKNOWN), 열린 사건은 case `/cases?size=200` 한 번으로 읽어 배송 번호(subjectRef·refs deliveryId)로 잇는다. promisedAt = 배차 arrivalWindow 의 date+end(Asia/Seoul). latestEta 는 아직 null(tracking 미연결).
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.
+3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회·실시간 배송 현황(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.
