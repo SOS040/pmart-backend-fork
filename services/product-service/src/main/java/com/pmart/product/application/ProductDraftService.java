@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -54,6 +55,7 @@ public class ProductDraftService {
   private final CatalogStore catalog;
   private final CategoryStore categories;
   private final SeedBundleReader bundles;
+  private final ProductSnapshots snapshots;
   private final RequestIdempotency idempotency;
   private final ObjectMapper mapper;
   private final Clock clock;
@@ -63,6 +65,7 @@ public class ProductDraftService {
       CatalogStore catalog,
       CategoryStore categories,
       SeedBundleReader bundles,
+      ProductSnapshots snapshots,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
       Clock clock) {
@@ -70,6 +73,7 @@ public class ProductDraftService {
     this.catalog = catalog;
     this.categories = categories;
     this.bundles = bundles;
+    this.snapshots = snapshots;
     this.idempotency = idempotency;
     this.mapper = mapper;
     this.clock = clock;
@@ -114,6 +118,84 @@ public class ProductDraftService {
               now());
           return get(draftId);
         });
+  }
+
+  // ---------- 상품 정보 수정(2026-11-17) ----------
+
+  /** 같은 상품에 열린 수정 초안이 이미 있다(409). details[0] = existingDraftId. */
+  public static final String EDIT_DRAFT_EXISTS = "EDIT_DRAFT_EXISTS";
+
+  /**
+   * 상품 정보 수정 초안: 현재 승인 상태(상품·첫 SKU·활성 바코드·치수·소비기한 보장·물류 규격·카테고리·필터 옵션)를 옮겨 담은 targetProductId 초안.
+   * 재승인은 초안 값으로 바꾸므로(빠진 바코드·치수·보장은 지워짐) 운영자가 손으로 옮겨 적지 않게 한다. 판매 상태는 넣지 않는다(반영 때 현재 상태 유지). 상품 행을
+   * 잠그고 열린 수정 초안을 확인해 동시에 두 개가 생기지 않게 한다.
+   */
+  public Outcome<DraftRow> createEdit(String requestId, Operator op, String productId) {
+    return idempotency.execute(
+        op.key(requestId, "createProductEditDraft"),
+        Map.of("productId", productId),
+        DraftRow.class,
+        () -> {
+          if (!catalog.lockProduct(productId)) {
+            throw PmartException.notFound("PRODUCT_NOT_FOUND", "상품이 없습니다: " + productId);
+          }
+          Optional<DraftRow> open = drafts.findOpenForTarget(productId);
+          if (open.isPresent()) {
+            throw new PmartException(
+                EDIT_DRAFT_EXISTS,
+                HttpStatus.CONFLICT,
+                "이 상품의 수정 초안이 이미 열려 있습니다("
+                    + open.get().draftId()
+                    + ", 상태 "
+                    + open.get().state()
+                    + "). 그 초안을 이어서 고치거나 승인·반려를 기다리세요.",
+                false,
+                List.of(new PmartException.Detail("existingDraftId", open.get().draftId())));
+          }
+          return upsert(op, editInput(productId), null);
+        });
+  }
+
+  /**
+   * 현재 상태 → 계약 ProductDraftInput(targetProductId). 모양은 승인 스냅샷과 같은 곳({@link ProductSnapshots})에서
+   * 읽는다.
+   */
+  ObjectNode editInput(String productId) {
+    CatalogStore.ProductRow p = catalog.findProduct(productId).orElseThrow();
+    JsonNode snap = mapper.valueToTree(snapshots.build(productId, p.currentVersion(), "", now()));
+    ObjectNode in = mapper.createObjectNode();
+    in.put("targetProductId", productId);
+    ObjectNode product = in.putObject("product");
+    copyText(snap, product, "internalName");
+    copyText(snap, product, "baseProductId");
+    copyText(snap, product, "primaryCategoryId");
+    product.set("categoryIds", snap.path("categoryIds").deepCopy());
+    ArrayNode skus = in.putArray("skus");
+    JsonNode s = snap.path("skus").path(0);
+    if (s.isObject()) {
+      ObjectNode sku = skus.addObject();
+      copyText(s, sku, "unitType");
+      copyInt(s, sku, "unitsPerSku");
+      copyInt(s, sku, "weightG");
+      copyInt(s, sku, "volumeMl");
+      copyText(s, sku, "storageType");
+      sku.put("alcohol", s.path("alcohol").asBoolean(false));
+      for (String field : List.of("shelfLifeGuarantee", "dimensions", "logistics")) {
+        if (s.path(field).isObject() && !s.path(field).isEmpty()) {
+          sku.set(field, s.get(field).deepCopy());
+        }
+      }
+      copyText(s, sku, "dimensionsSource");
+      sku.set(
+          "barcodes",
+          s.path("barcodes").isArray() ? s.get("barcodes").deepCopy() : mapper.createArrayNode());
+    }
+    in.set(
+        "filterOptions",
+        snap.path("filterOptions").isArray()
+            ? snap.get("filterOptions").deepCopy()
+            : mapper.createArrayNode());
+    return in;
   }
 
   public DraftRow get(String draftId) {

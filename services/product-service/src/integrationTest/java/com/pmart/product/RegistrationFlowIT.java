@@ -6,6 +6,7 @@ import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import com.pmart.product.domain.BarcodeType;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -668,6 +669,202 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(none.body().path("code").asString()).isEqualTo("BUNDLE_INVALID");
   }
 
+  /** 검사 숫자를 붙인 GTIN(2026-11-17 — 초안 검증이 GS1 검사 숫자를 본다). */
+  static String gtin(String body) {
+    return body + BarcodeType.checkDigit(body);
+  }
+
+  /** 시험마다 다른 EAN-13(선행 0 — 실제 제조사 대역과 겹치지 않게). */
+  static String randomGtin13() {
+    return gtin("0" + String.format("%011d", Math.floorMod(System.nanoTime(), 100_000_000_000L)));
+  }
+
+  Res put(String path, Object body) {
+    var e =
+        http.put()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(MD);
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "backoffice-web");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /** 상품의 ProductVersionPublished(Outbox 봉투의 payload) 중 그 버전. */
+  JsonNode publishedVersion(String productId, int version) {
+    for (String row :
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'ProductVersionPublished'"
+                + " AND aggregateid = ?",
+            String.class,
+            productId)) {
+      JsonNode env = mapper.readTree(row);
+      JsonNode payload = env.path("payload").isObject() ? env.path("payload") : env;
+      if (payload.path("version").asInt() == version) {
+        return payload;
+      }
+    }
+    throw new AssertionError("ProductVersionPublished v" + version + " 없음: " + productId);
+  }
+
+  JsonNode approveDraft(String draftId) throws InterruptedException {
+    Res sub = post("/product-drafts/" + draftId + "/submissions", null);
+    assertThat(sub.status()).as(sub.body().toString()).isEqualTo(200);
+    decide(sub.body().path("approvalRequest"), "APPROVED");
+    JsonNode done =
+        await("/product-drafts/" + draftId, b -> "APPLIED".equals(b.path("state").asString()))
+            .body();
+    assertThat(done.path("state").asString()).as(done.toString()).isEqualTo("APPLIED");
+    return done;
+  }
+
+  @SuppressWarnings("unchecked")
+  static Map<String, Object> firstSku(Map<String, Object> input) {
+    return ((List<Map<String, Object>>) input.get("skus")).get(0);
+  }
+
+  /**
+   * 상품 정보 수정(2026-11-17): 수정 시작 → 현재 승인 버전으로 채운 초안 → 이름 변경·바코드 추가 → 승인 → 새 버전이 고친 값과 건드리지 않은
+   * 바코드·치수·소비기한 보장·용량을 함께 갖고 ProductVersionPublished 에 바코드가 실린다. 바코드 교체(빼면 퇴역)·검사 숫자·중복 초안 막기·다른 상품
+   * 바코드 충돌도 본다.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void editDraftPrefillsCurrentVersionAndApprovalKeepsUntouchedValues() throws Exception {
+    ensureTree();
+    String a = randomGtin13();
+    Map<String, Object> skuIn =
+        new LinkedHashMap<>((Map<String, Object>) ((List<?>) water(a).get("skus")).get(0));
+    skuIn.put("volumeMl", 500);
+    skuIn.put("shelfLifeGuarantee", Map.of("minRemainingDays", 30));
+    skuIn.put("dimensions", Map.of("widthMm", 65, "depthMm", 65, "heightMm", 210));
+    skuIn.put("dimensionsSource", "MEASURED");
+    skuIn.put("logistics", Map.of("unitsPerBox", 20));
+    Map<String, Object> first = new LinkedHashMap<>(water(a));
+    first.put("skus", List.of(skuIn));
+    JsonNode created =
+        approveDraft(post("/product-drafts", first).body().path("draftId").asString());
+    String productId = created.path("resultProductId").asString();
+    String sku = created.path("resultSkus").path(0).asString();
+
+    // 없는 상품 404
+    Res none = post("/products/PRD-none/edit-drafts", null);
+    assertThat(none.status()).isEqualTo(404);
+    assertThat(none.body().path("code").asString()).isEqualTo("PRODUCT_NOT_FOUND");
+
+    // 1) 수정 시작: 현재 값이 다 들어 있고(판매 상태·원천 키는 없음) UPDATE
+    Res start = post("/products/" + productId + "/edit-drafts", null);
+    assertThat(start.status()).as(start.body().toString()).isEqualTo(201);
+    JsonNode draft = start.body();
+    String draftId = draft.path("draftId").asString();
+    assertThat(draft.path("validationState").asString()).isEqualTo("VALID");
+    assertThat(draft.path("registration").asString()).isEqualTo("UPDATE");
+    assertThat(draft.path("existingProductId").asString()).isEqualTo(productId);
+    JsonNode in = draft.path("input");
+    assertThat(in.path("targetProductId").asString()).isEqualTo(productId);
+    assertThat(in.path("product").path("internalName").asString()).isEqualTo("삼다수 500mL");
+    assertThat(in.path("product").hasNonNull("saleState")).isFalse();
+    assertThat(in.hasNonNull("sourceKey")).isFalse();
+    assertThat(in.path("product").path("categoryIds").path(0).asString()).isEqualTo("p03");
+    JsonNode s0 = in.path("skus").path(0);
+    assertThat(s0.path("unitType").asString()).isEqualTo("E");
+    assertThat(s0.path("unitsPerSku").asInt()).isEqualTo(1);
+    assertThat(s0.path("weightG").asInt()).isEqualTo(520);
+    assertThat(s0.path("volumeMl").asInt()).isEqualTo(500);
+    assertThat(s0.path("storageType").asString()).isEqualTo("AMBIENT");
+    assertThat(s0.path("alcohol").asBoolean()).isFalse();
+    assertThat(s0.path("shelfLifeGuarantee").path("minRemainingDays").asInt()).isEqualTo(30);
+    assertThat(s0.path("dimensions").path("heightMm").asInt()).isEqualTo(210);
+    assertThat(s0.path("dimensionsSource").asString()).isEqualTo("MEASURED");
+    assertThat(s0.path("logistics").path("unitsPerBox").asInt()).isEqualTo(20);
+    assertThat(s0.path("barcodes")).hasSize(1);
+    assertThat(s0.path("barcodes").path(0).asString()).isEqualTo(a);
+
+    // 2) 열린 수정 초안이 있으면 409 + 그 초안 id
+    Res again = post("/products/" + productId + "/edit-drafts", null);
+    assertThat(again.status()).isEqualTo(409);
+    assertThat(again.body().path("code").asString()).isEqualTo("EDIT_DRAFT_EXISTS");
+    assertThat(again.body().path("details").path(0).path("field").asString())
+        .isEqualTo("existingDraftId");
+    assertThat(again.body().path("details").path(0).path("reason").asString()).isEqualTo(draftId);
+
+    // 3) 검사 숫자가 틀린 바코드는 INVALID, 고치면 VALID
+    Map<String, Object> edit = mapper.convertValue(in, Map.class);
+    ((Map<String, Object>) edit.get("product")).put("internalName", "삼다수 500mL (리뉴얼)");
+    String b = randomGtin13();
+    String badB = b.substring(0, 12) + ((b.charAt(12) - '0' + 1) % 10);
+    firstSku(edit).put("barcodes", List.of(a, badB));
+    Res invalid = put("/product-drafts/" + draftId, edit);
+    assertThat(invalid.status()).isEqualTo(200);
+    assertThat(invalid.body().path("validationState").asString()).isEqualTo("INVALID");
+    assertThat(invalid.body().path("problems").path(0).path("code").asString())
+        .isEqualTo("BARCODE_CHECK_DIGIT_INVALID");
+    firstSku(edit).put("barcodes", List.of(a, b));
+    Res fixed = put("/product-drafts/" + draftId, edit);
+    assertThat(fixed.body().path("validationState").asString()).isEqualTo("VALID");
+
+    // 4) 승인 → 같은 SKU 의 새 버전: 고친 이름 + 바코드 추가, 건드리지 않은 값은 그대로
+    JsonNode applied = approveDraft(draftId);
+    assertThat(applied.path("resultProductId").asString()).isEqualTo(productId);
+    assertThat(applied.path("resultSkus").path(0).asString()).isEqualTo(sku);
+    JsonNode product = get("/products/" + productId).body();
+    assertThat(product.path("version").asInt()).isEqualTo(2);
+    assertThat(product.path("internalName").asString()).isEqualTo("삼다수 500mL (리뉴얼)");
+    JsonNode detail = get("/skus/" + sku).body();
+    assertThat(detail.path("volumeMl").asInt()).isEqualTo(500);
+    assertThat(detail.path("shelfLifeGuarantee").path("minRemainingDays").asInt()).isEqualTo(30);
+    assertThat(detail.path("dimensions").path("widthMm").asInt()).isEqualTo(65);
+    assertThat(detail.path("dimensionsSource").asString()).isEqualTo("MEASURED");
+    assertThat(get("/barcodes/" + a).body().path("sku").asString()).isEqualTo(sku);
+    assertThat(get("/barcodes/" + b).body().path("sku").asString()).isEqualTo(sku);
+    JsonNode v2 = publishedVersion(productId, 2);
+    assertThat(v2.path("internalName").asString()).isEqualTo("삼다수 500mL (리뉴얼)");
+    JsonNode v2Sku = v2.path("skus").path(0);
+    assertThat(v2Sku.path("barcodes").toString()).contains(a).contains(b);
+    assertThat(v2Sku.path("dimensions").path("heightMm").asInt()).isEqualTo(210);
+    assertThat(v2Sku.path("shelfLifeGuarantee").path("minRemainingDays").asInt()).isEqualTo(30);
+    assertThat(v2Sku.path("volumeMl").asInt()).isEqualTo(500);
+
+    // 5) 반영 뒤에는 다시 수정을 시작할 수 있다 — 바코드 교체(a 를 빼면 승인 때 퇴역)
+    Res next = post("/products/" + productId + "/edit-drafts", null);
+    assertThat(next.status()).isEqualTo(201);
+    assertThat(next.body().path("input").path("skus").path(0).path("barcodes").toString())
+        .contains(a)
+        .contains(b);
+    Map<String, Object> replace = mapper.convertValue(next.body().path("input"), Map.class);
+    String c = randomGtin13();
+    firstSku(replace).put("barcodes", List.of(b, c));
+    String nextId = next.body().path("draftId").asString();
+    assertThat(put("/product-drafts/" + nextId, replace).body().path("validationState").asString())
+        .isEqualTo("VALID");
+    approveDraft(nextId);
+    assertThat(get("/barcodes/" + a).status()).isEqualTo(404);
+    assertThat(get("/barcodes/" + c).body().path("sku").asString()).isEqualTo(sku);
+    JsonNode v3Sku = publishedVersion(productId, 3).path("skus").path(0);
+    assertThat(v3Sku.path("barcodes").toString()).doesNotContain(a).contains(b).contains(c);
+    assertThat(v3Sku.path("dimensions").path("widthMm").asInt()).isEqualTo(65);
+
+    // 6) 다른 상품의 활성 바코드를 넣으면 BARCODE_CONFLICT
+    JsonNode other =
+        approveDraft(
+            post("/product-drafts", water(randomGtin13())).body().path("draftId").asString());
+    Res otherEdit =
+        post("/products/" + other.path("resultProductId").asString() + "/edit-drafts", null);
+    assertThat(otherEdit.status()).isEqualTo(201);
+    Map<String, Object> steal = mapper.convertValue(otherEdit.body().path("input"), Map.class);
+    firstSku(steal).put("barcodes", List.of(c));
+    Res conflict = put("/product-drafts/" + otherEdit.body().path("draftId").asString(), steal);
+    assertThat(conflict.body().path("problems").path(0).path("code").asString())
+        .isEqualTo("BARCODE_CONFLICT");
+  }
+
   static Map<String, Object> water(String barcode) {
     return Map.of(
         "product", Map.of("internalName", "삼다수 500mL", "categoryPaths", List.of("국·탕·찌개")),
@@ -691,7 +888,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void barcodeOfIssuedSkuBlocksOtherDraftsAndRejectionKeepsNothing() throws Exception {
     ensureTree();
-    String barcode = "0" + (System.nanoTime() % 1_000_000_000_000L);
+    String barcode = randomGtin13();
 
     // 바코드를 가진 상품 승인
     Res a = post("/product-drafts", water(barcode));
@@ -722,7 +919,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
 
     // 반려된 초안은 상품·SKU 를 만들지 않는다
     Integer skusBefore = jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class);
-    Res c = post("/product-drafts", water("9" + barcode));
+    Res c = post("/product-drafts", water(gtin("9" + barcode.substring(0, 12))));
     String cId = c.body().path("draftId").asString();
     decide(
         post("/product-drafts/" + cId + "/submissions", null).body().path("approvalRequest"),
@@ -738,7 +935,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void productWithoutSourceKeyIsUpdatedByTargetProductId() throws Exception {
     ensureTree();
-    String barcode = "0" + (System.nanoTime() % 1_000_000_000_000L);
+    String barcode = randomGtin13();
     // 원천 키 없이 개별 등록한 상품
     Res a = post("/product-drafts", water(barcode));
     String aId = a.body().path("draftId").asString();
@@ -868,7 +1065,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void skuIssuanceConfirmationPurchaseLimitAndSaleState() throws Exception {
     ensureTree();
-    Res a = post("/product-drafts", water("1" + (System.nanoTime() % 1_000_000_000_000L)));
+    Res a = post("/product-drafts", water(gtin("1" + randomGtin13().substring(1, 12))));
     String aId = a.body().path("draftId").asString();
     String approvalId =
         decide(

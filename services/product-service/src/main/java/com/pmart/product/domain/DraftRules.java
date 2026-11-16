@@ -137,6 +137,17 @@ public final class DraftRules {
         p.add(DraftProblem.of("BARCODE_DUPLICATED_IN_DRAFT", "skus[0].barcodes", b));
         continue;
       }
+      if (!BarcodeType.checkDigitValid(b)) {
+        p.add(
+            DraftProblem.of(
+                "BARCODE_CHECK_DIGIT_INVALID",
+                "skus[0].barcodes",
+                b
+                    + " 의 GS1 검사 숫자가 틀립니다(끝자리 "
+                    + BarcodeType.checkDigit(b.substring(0, b.length() - 1))
+                    + " 이어야 함)."));
+        continue;
+      }
       Optional<String> owner = lookup.activeBarcodeOwner(b);
       if (owner.isPresent() && !ownSkus.contains(owner.get())) {
         p.add(

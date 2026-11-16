@@ -416,6 +416,7 @@ POST /api/v1/product-drafts OPERATOR
 POST /api/v1/product-drafts/{draftId}/submissions OPERATOR
 POST /api/v1/product-import-batches OPERATOR
 POST /api/v1/product-import-batches/{batchId}/submissions OPERATOR
+POST /api/v1/products/{productId}/edit-drafts OPERATOR
 POST /api/v1/products/{productId}/sale-state-changes OPERATOR
 POST /api/v1/purchase-orders OPERATOR
 POST /api/v1/purchase-orders/{purchaseOrderId}/cancellations OPERATOR

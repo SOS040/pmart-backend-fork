@@ -147,6 +147,14 @@ public class RegistrationController implements RegistrationApi {
     return ResponseEntity.status(HttpStatus.CREATED).body(mapping.draft(drafts.get(row.draftId())));
   }
 
+  /** 상품 정보 수정 시작(2026-11-17): 현재 승인 버전으로 채운 targetProductId 초안. */
+  @Override
+  public ResponseEntity<ProductDraft> createProductEditDraft(
+      String productId, String idempotencyKey, String xSourceSystem) {
+    var row = drafts.createEdit(idempotencyKey, Operator.current(xSourceSystem), productId).value();
+    return ResponseEntity.status(HttpStatus.CREATED).body(mapping.draft(drafts.get(row.draftId())));
+  }
+
   @Override
   public ResponseEntity<ProductDraft> getProductDraft(String draftId) {
     Operator.require();

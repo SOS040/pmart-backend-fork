@@ -209,6 +209,44 @@ class DraftRulesTest {
     assertThat(own.valid()).isTrue();
   }
 
+  /** GS1 검사 숫자(2026-11-17): 숫자만 8·12·13·14자리면 확인, 그 밖의 형식은 그대로. LAN 시험 대역 299 도 표준 EAN-13. */
+  @Test
+  void gtinCheckDigitIsValidatedOnlyForGtinLengths() {
+    var ok =
+        DraftRules.validate(
+            facts(
+                180,
+                "FROZEN",
+                List.of(
+                    "8801111000017", // EAN-13
+                    "2991000000191", // LAN 299 대역 B
+                    "96385074", // EAN-8
+                    "036000291452", // UPC-A(12)
+                    "10012345678902", // GTIN-14
+                    "0880123", // 7자리 — 검사 대상 아님
+                    "ABC-12345"), // 숫자 아님 — 검사 대상 아님
+                List.of("국·탕·찌개")),
+            LOOKUP,
+            Set.of("E-00000009"));
+    assertThat(ok.problems()).isEmpty();
+    var bad =
+        DraftRules.validate(
+            facts(
+                180,
+                "FROZEN",
+                List.of("8801111000018", "2990000000011", "96385075", "10012345678903"),
+                List.of("국·탕·찌개")),
+            LOOKUP,
+            Set.of());
+    assertThat(bad.problems())
+        .extracting(DraftProblem::code)
+        .containsOnly("BARCODE_CHECK_DIGIT_INVALID")
+        .hasSize(4);
+    assertThat(bad.problems().get(0).detail()).contains("8801111000018").contains("7");
+    // 검사 숫자가 틀리면 충돌 조회까지 가지 않는다(문제 하나만)
+    assertThat(bad.problems()).noneMatch(x -> x.code().equals("BARCODE_CONFLICT"));
+  }
+
   @Test
   void duplicateBarcodeInDraftAndUnitsRules() {
     var dup =

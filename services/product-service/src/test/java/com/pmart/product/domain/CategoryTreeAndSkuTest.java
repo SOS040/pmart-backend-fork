@@ -184,5 +184,12 @@ class CategoryTreeAndSkuTest {
     assertThat(BarcodeType.normalize(" 0012345678905 ")).isEqualTo("0012345678905");
     assertThat(BarcodeType.classify("0012345678905")).isEqualTo(BarcodeType.GTIN_13);
     assertThat(BarcodeType.classify("ABC-1")).isEqualTo(BarcodeType.OTHER);
+    assertThat(BarcodeType.classify("")).isEqualTo(BarcodeType.OTHER);
+    assertThat(BarcodeType.classify("８８０１１１１００００１７")).isEqualTo(BarcodeType.OTHER); // 전각 숫자
+    assertThat(BarcodeType.checkDigit("880111100001")).isEqualTo(7);
+    assertThat(BarcodeType.checkDigit("299000000001")).isEqualTo(9); // 2990000000019
+    assertThat(BarcodeType.checkDigitValid("0012345678905")).isTrue();
+    assertThat(BarcodeType.checkDigitValid("0012345678906")).isFalse();
+    assertThat(BarcodeType.checkDigitValid("ABC-1")).isTrue();
   }
 }

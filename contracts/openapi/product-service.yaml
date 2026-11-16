@@ -1,13 +1,15 @@
 openapi: 3.1.0
 info:
   title: product-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     기초상품·상품·SKU(E-/B- 8자리, 재사용 금지)·구성 낱개 수·카테고리(4단계·노드별 필터, ADR-0015)·바코드↔SKU·판매 단위·중량·물류 규격·전사 판매 상태·승인 버전의 정본. (docs/architecture/service-map.md §1, ADR-0001)
     비정본: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
     발행 이벤트: ProductVersionPublished, ProductSaleStateChanged, CategoryChanged, SkuIssued.
     0.2.0(2026-11-16): SKU 실물 치수 `dimensions`(widthMm·depthMm·heightMm, 1~5000 mm)·`dimensionsSource`(MEASURED/ESTIMATED) 추가 —
     초안 입력·SkuDetail·상품 버전 조회·ProductVersionPublished.skus[] (선택 필드, 하위 호환). MFC 재고 적치·이동 칸 용량 계산에 쓴다.
+    0.3.0(2026-11-17): 상품 정보 수정 `POST /products/{productId}/edit-drafts` — 현재 승인 버전을 그대로 옮겨 담은 수정 초안(targetProductId)을 만든다
+    (열린 수정 초안이 있으면 409 EDIT_DRAFT_EXISTS). 초안 검증에 GS1 검사 숫자(`BARCODE_CHECK_DIGIT_INVALID` — 숫자만 8·12·13·14자리) 추가.
 servers:
   - url: /api/v1
 security:
@@ -425,6 +427,39 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '422':
           description: DRAFT_INVALID (검증 실패 초안) / DRAFT_NOT_EDITABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /products/{productId}/edit-drafts:
+    post:
+      tags: [registration]
+      summary: 상품 정보 수정 시작 — 현재 승인 버전으로 채운 수정 초안 (2026-11-17)
+      description: |
+        기존 상품을 고쳐 PRODUCT 승인으로 새 버전을 만드는 첫 단계. 현재 승인 버전의 상품 속성(관리용 이름·기초상품·대표/노출 카테고리·필터 옵션)과
+        SKU 속성(unitType·unitsPerSku·weightG·volumeMl·storageType·alcohol·shelfLifeGuarantee·dimensions·dimensionsSource·logistics·
+        활성 바코드 전부)을 옮겨 담은 DRAFT(input.targetProductId = productId)를 만든다. 재승인은 초안 값으로 바꾸므로(빠진 바코드·치수·소비기한
+        보장은 지워짐) 손으로 옮겨 적지 말고 이 초안을 고친다. 판매 상태(product.saleState)는 넣지 않는다 — 반영 때 현재 상태 유지.
+        이후 흐름은 개별 초안과 같다: PUT /product-drafts/{draftId}(바코드 추가·교체 포함) → POST /product-drafts/{draftId}/submissions →
+        approval-service 승인 → 같은 SKU 의 새 버전 + ProductVersionPublished. 원천 키(sourceSystem·sourceKey)는 싣지 않는다(재적재 초안과 섞이지 않게).
+        같은 상품에 열린(DRAFT·SUBMITTED) 수정 초안이 있으면 409 EDIT_DRAFT_EXISTS — details[0] = {field: existingDraftId, reason: <draftId>}.
+        초안 1개에 SKU 1개(1차)라 상품의 첫 SKU 만 옮긴다.
+      operationId: createProductEditDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '201':
+          description: 수정 초안 생성(검증 결과 포함 — 현재 값이 지금 규칙에 맞지 않으면 INVALID 로 저장된다)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDraft' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: EDIT_DRAFT_EXISTS (열린 수정 초안 — details[0].reason 이 그 draftId) / IDEMPOTENCY_CONFLICT
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -892,7 +927,7 @@ components:
               shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
               dimensions: { $ref: '#/components/schemas/SkuDimensions' }
               dimensionsSource: { $ref: '#/components/schemas/DimensionsSource' }
-              barcodes: { type: array, items: { type: string, maxLength: 64 }, description: 선택. 선행 0 보존 }
+              barcodes: { type: array, items: { type: string, maxLength: 64 }, description: '선택. 선행 0 보존. 숫자만 8·12·13·14자리면 GS1 검사 숫자를 확인한다(틀리면 BARCODE_CHECK_DIGIT_INVALID). 다른 상품 SKU 에 활성으로 연결돼 있으면 BARCODE_CONFLICT. 수정 초안에서 빼면 승인 때 그 바코드는 퇴역한다' }
               logistics: { $ref: '#/components/schemas/LogisticsSpec' }
         filterOptions:
           type: array
@@ -908,7 +943,7 @@ components:
       type: object
       required: [code]
       properties:
-        code: { type: string, description: 'WEIGHT_REQUIRED / STORAGE_TYPE_REQUIRED / CATEGORY_NOT_MAPPED / CATEGORY_NOT_FOUND / BARCODE_CONFLICT / BARCODE_DUPLICATED_IN_DRAFT / BASE_PRODUCT_NOT_FOUND / FILTER_OPTION_NOT_FOUND / SHELF_LIFE_INVALID / DIMENSIONS_INVALID / TARGET_PRODUCT_NOT_FOUND / TARGET_CONFLICT' }
+        code: { type: string, description: 'WEIGHT_REQUIRED / STORAGE_TYPE_REQUIRED / CATEGORY_NOT_MAPPED / CATEGORY_NOT_FOUND / BARCODE_CONFLICT / BARCODE_DUPLICATED_IN_DRAFT / BASE_PRODUCT_NOT_FOUND / FILTER_OPTION_NOT_FOUND / SHELF_LIFE_INVALID / DIMENSIONS_INVALID / TARGET_PRODUCT_NOT_FOUND / TARGET_CONFLICT / BARCODE_CHECK_DIGIT_INVALID (숫자만 8·12·13·14자리인데 GS1 검사 숫자가 틀림, 2026-11-17)' }
         field: { type: string }
         detail: { type: string }
     ProductDraft:

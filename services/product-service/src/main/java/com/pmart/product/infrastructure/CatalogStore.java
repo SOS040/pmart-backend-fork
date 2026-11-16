@@ -137,6 +137,15 @@ public class CatalogStore {
         == 1;
   }
 
+  /** 트랜잭션 끝까지 상품 행을 잠근다(수정 초안 만들기를 상품마다 줄 세움, 2026-11-17). 없으면 false. */
+  public boolean lockProduct(String productId) {
+    return !jdbc.queryForList(
+            "SELECT product_id FROM product WHERE product_id = ? FOR UPDATE",
+            String.class,
+            productId)
+        .isEmpty();
+  }
+
   public Optional<ProductRow> findProduct(String productId) {
     return jdbc
         .query("SELECT * FROM product WHERE product_id = ?", (rs, n) -> product(rs), productId)
