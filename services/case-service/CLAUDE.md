@@ -30,7 +30,7 @@
   - 팀 공용 목록 `GET /cases`(state 비우면 열린 것, P1·기한 순, unassigned·overdue·assigneeGroup) → 집기 `POST …/assignments`(자기 자신만, 관리자는 다른 사람에게) → 닫기 `POST …/closures`(resolution·summary 필수, 남이 맡은 것은 관리자만). 보기 OPERATOR_ADMIN·RIDER_OPS·CS_AGENT(배송 쪽, CS 는 보기만).
   - 처리 기한 `pmart.cases.sla.[종류]`(맵 키는 `"[RIDER_HELP]"` 처럼 — `_` 를 지키려고) — 표시만(`overdue`), 알림 없음. 값 확정(2026-11-16 사용자 — 도움요청·위치 끊김 10분, 전달 실패·오배송 30분).
   - 사건 `CaseOpened·CaseAssigned·CaseClosed`(platform.case.v1). 고객 문의 행(CS_INQUIRY)은 `/cases` 에 나오지 않는다.
-  - 아직: 행위 요청·CS 접수(501). 재개 0.6.0, 이관 0.7.0, 의무 0.8.0, 교대 0.9.0. **도움요청 접수 `/help-requests` 는 만들지 않음(0.11.1 계약에 사용 안 함 — R-4 로 delivery-execution 이 받음)**.
+  - 아직: 행위 요청(501). CS 접수는 0.12.0. 재개 0.6.0, 이관 0.7.0, 의무 0.8.0, 교대 0.9.0. **도움요청 접수 `/help-requests` 는 만들지 않음(0.11.1 계약에 사용 안 함 — R-4 로 delivery-execution 이 받음)**.
 - **사가·결제 이상(2026-11-16, 계약 0.5.0 — R-3, 사용자: 기한 1시간·"이상만"·멈춘 사가는 지금 안 함)**: `CaseInboxService.onOrderException`·`CaseRules.orderExceptionKind`. 마이그레이션 없음(같은 표).
   - 구독 `sagaEvents`(order.saga.v1 `ReconciliationRequired` 전부·`CompensationExecuted` 중 result ≠ SUCCESS), `paymentEvents`(order.payment.v1 `PaymentMismatch` 전부·`PaymentResultUnknown` 중 escalated=true). 앞 셋 → RECONCILIATION, 결제 불명 → PAYMENT_UNKNOWN. 정상 보상·조회 중 결제 불명은 버린다.
   - 주문(없으면 사가·결제 시도) + 종류마다 열린 사건 하나(dedupe `<종류>:<대상>`). 재발은 RECURRED 이력, 결제 불명 반복(15분마다)은 이력도 없음. refs = orderId·sagaId·paymentAttemptId·resourceId, 금액·상세 없음.
@@ -74,3 +74,9 @@
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
 - **오배송 귀책·고객 선택(2026-11-16, 계약 0.11.0 — ADR-0065, 작성 PC 5 — 백오피스 영역 PC 2 검토)**: `POST /cases` MISDELIVERY 에 `misdelivery`(fault CUSTOMER·RIDER·SYSTEM, resolution — RIDER·SYSTEM: RESHIP 기본·REFUND, CUSTOMER: REDELIVER 기본·REFUND, redeliveryDestinationId — CUSTOMER·REDELIVER 필수: order 에 기록한 실제 주소 ID). 검사 `CaseInboxService.misdeliveryDecision`(422 INVALID_MISDELIVERY_RESOLUTION·REDELIVERY_DESTINATION_REQUIRED). 사건 refs(fault·resolution·redeliveryDestinationId)와 `MisdeliveryConfirmed` 에 싣는다. 보내지 않으면 예전 처리(회수 + 재발송, 라이더 배달료 지급) — 백오피스 오배송 기록 화면이 귀책·선택·실제 주소를 받게 바뀌어야 한다(클라이언트 handoff).
+
+- **CS 접수(2026-11-16, 계약 0.12.0, V10 cs_intake — 사용자 "그래 일단 그대로 진행해", BO-11)**: `CsIntakeService`·`domain/CsIntakeRules`·`CsIntakeStore`, `IntakesController`. 상담원(CS_AGENT)·관리자가 전화·채팅·메일 연락을 남긴다(PHONE·CHAT·EMAIL 만, 연동 없음). **접수 ≠ 명령**(취소·환불 안 함, 동의는 기록만).
+  - 회원만(customerRef 필수). subjectRef(주문)를 주면 order `GET /orders/lookups/{id}` 를 직원 토큰으로(`OrderClient.staffOrder` — customerId 만 읽음) → 없음 422 ORDER_NOT_FOUND, 다른 고객 422 CUSTOMER_ORDER_MISMATCH.
+  - **본인 확인 방법 필수**(ORDER_DETAILS_MATCH — 주문 필요, APP_SIGNED_IN_CHAT — CHAT 만, OTHER — note 필수). 고객이 말한 값은 저장 안 함. **대리(PROXY)는 표시만** — 클레임을 막지 않는다(대리 정책 없음, 화면 경고).
+  - 새 건 → 문의(origin **STAFF_INTAKE**): 고객 목록에서 빠지고 고객 상세 404, 답변해도 **InquiryAnswered 없음**. linkCaseId → 그 건(사건함에서 볼 수 있는 건 또는 문의 건)에 연결, 이력 CS_INTAKE_LINKED, 새 사건 없음.
+  - 목록 `GET /cs-intakes?caseId|customerRef|subjectRef`(하나 이상), 문의 목록·상세에 channel·callerRelation(LEFT JOIN cs_intake). 이벤트 없음, 요약·메모 로그 금지.

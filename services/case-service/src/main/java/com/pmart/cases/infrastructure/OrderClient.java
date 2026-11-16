@@ -2,6 +2,7 @@ package com.pmart.cases.infrastructure;
 
 import com.pmart.cases.application.CaseProperties;
 import com.pmart.common.web.Downstream;
+import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
@@ -54,6 +55,58 @@ public class OrderClient {
                           return s;
                         }));
     return status != null && status == 200;
+  }
+
+  /** 직원 주문 조회의 결과 — 주문이 있으면 고객 ID. */
+  public sealed interface StaffOrder {
+    record Found(String customerId) implements StaffOrder {}
+
+    record NotFound() implements StaffOrder {}
+
+    record Forbidden() implements StaffOrder {}
+  }
+
+  /**
+   * CS 접수(0.12.0) — order {@code GET /orders/lookups/{id}} 를 호출한 직원 토큰으로. 응답에서 customerId 만 쓴다(배송지
+   * 등은 가린 값이고 읽지 않는다).
+   */
+  @SuppressWarnings("unchecked")
+  public StaffOrder staffOrder(String orderId) {
+    String auth = currentAuthorization();
+    return Downstream.call(
+        ORDER,
+        () ->
+            client
+                .get()
+                .uri("/api/v1/orders/lookups/{id}", orderId)
+                .headers(
+                    h -> {
+                      if (auth != null) {
+                        h.set(HttpHeaders.AUTHORIZATION, auth);
+                      }
+                    })
+                .exchange(
+                    (req, res) -> {
+                      int s = res.getStatusCode().value();
+                      if (s >= 500) {
+                        throw new IllegalStateException("order-service " + s);
+                      }
+                      if (s == 404) {
+                        return new StaffOrder.NotFound();
+                      }
+                      if (s == 401 || s == 403) {
+                        return new StaffOrder.Forbidden();
+                      }
+                      if (s != 200) {
+                        throw new IllegalStateException("order-service " + s);
+                      }
+                      Map<String, Object> body = res.bodyTo(Map.class);
+                      Object c = body == null ? null : body.get("customerId");
+                      if (c == null) {
+                        throw new IllegalStateException("order-service 응답에 customerId 없음");
+                      }
+                      return new StaffOrder.Found(c.toString());
+                    }));
   }
 
   private static @Nullable String currentAuthorization() {
