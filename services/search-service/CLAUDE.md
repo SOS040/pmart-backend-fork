@@ -21,7 +21,7 @@
 로컬 포트 8105.
 
 ## 검색 색인 (ADR-0031 — 2026-11-03 OpenSearch → Elasticsearch)
-- **Elasticsearch 8.18.0 + analysis-nori**(주소 pmart-config `pmart.search.elasticsearch-url`). RestClient 로 REST 호출 — 공용 Builder(사용자 토큰 전파)를 쓰지 않는다. **이 서비스는 조회만** 한다.
+- **Elasticsearch 8.18.0 + analysis-nori**(주소 pmart-config `pmart.search.elasticsearch-url`). RestClient 로 REST 호출 — 공용 Builder(사용자 토큰 전파)를 쓰지 않는다. 상품·가격·취급 색인은 **조회만** 한다(쓰는 것은 최근 검색어·검색 기록 색인뿐 — 아래).
 - **색인은 Logstash**(`src/main/logstash/search-index.conf`, 이 서비스 소유 — 배포가 Logstash 에 복사): commerce.product.v1(ProductVersionPublished·ProductContentPublished·ProductSaleStateChanged)·commerce.pricing.v1(PriceVersionEffective) → products·sku-prices. Painless 스크립트가 버전을 비교(재전달·옛 사건 무시). 콘텐츠는 product-content 공개 카드 API 로 이름·이미지 보강(게시본만, 실패는 재시도 뒤 DLT). 작업자 1·배치 1(가격·상품 경합 방지). 재처리 = 소비 그룹(`search-index.env` 의 `PMART_SEARCH_GROUP_ID`, 지금 `search-index-logstash-v3`) 오프셋 되돌림. 파이프라인을 바꾸면 `SearchFlowIT`(실제 Kafka·ES·Logstash)로 확인한다.
 - 이름 = `name`(nori) · `name.edge`(앞부분) · `name.partial`(1~2글자 n-gram) · `name.compact`(공백을 모두 뺀 뒤 1~2글자 n-gram, products-v4). 찾기: nori 형태소가 모두 맞거나("두부를"→두부) n-gram 조각이 모두 있거나(붙임말 "나랑드사이다제로"·"미역"→미역국) 공백을 뺀 조각이 모두 있거나("생크림"↔"생 크림"). 순위: 형태소 > 앞부분 > 조각, 검색어 낱말이 그 순서로 붙어 있으면 가산(구문 `match_phrase` slop 1, 2026-11-05). 카테고리는 구조 id 조상 범위.
 - 초성(2026-11-05): 검색어가 한글 자음만 2자 이상이면(`SearchRules.isChosungQuery`) `nameChosung`(Logstash 가 이름에서 계산, 공백 제거 n-gram)만 찾는다. 1자·섞인 검색어("ㄷ부")는 일반 검색. 순위: 낱말 앞부분 초성이 맞으면 가산(`nameChosung.edge`, products-v5 — "ㄷㅂ" → 두부가 "단백"보다 위). 자동완성도 같은 조건.
@@ -29,7 +29,15 @@
 - categoryPath: 대표 카테고리의 이름 경로 — product-service 공개 트리(`pmart.search.product-base-url`)를 5분 사본으로 둔다. 조회 실패면 이전 사본, 없으면 빈 목록(검색은 실패하지 않음). (2026-11-02)
 - carried(2026-11-05, 사용자 결정): 색인 `carriedMfcIds` = 대표 SKU 를 켠 센터 목록. 원천은 mfc-inventory `SkuHandlingChanged`(`mfc.sku-handling.v1`) → Logstash 가 SKU 취급 색인 `sku-handlings`(센터별 버전 비교) → 그 SKU 를 대표로 둔 상품에 복사(상품 사건이 먼저 와도 SKU 취급 문서를 찾아 붙임 — 가격과 같은 방식). mfcId 를 주면 carried = 목록에 있는지(취급 레코드 없음 = false), includeNotCarried=false(기본)면 ES 필터로 거른다 → 페이지 크기·total 정확. 실시간 가용 조회·"더 읽어 채우기"(BR-47)는 없앴다. 품절은 색인하지 않는다(화면 표시 때 실시간). 여러 SKU 상품이 생기면 판정 기준(대표 SKU vs 하나라도)을 다시 정한다 — `sku-handlings` 는 SKU 별이라 그대로 쓸 수 있다.
 - 승인 속성 필터(2026-11-04): PVP `filterOptions` → 색인 `filters`("그룹.옵션"), 검색 `filters` 같은 그룹 OR·그룹끼리 AND, `appliedFilters` 는 실제 적용 값. `/search/filters` = 색인 집계 건수 + product-service 필터 패널 이름·선택 방식·옵션 순서(패널은 상속이 없어 그 카테고리와 조상을 가까운 것부터 합침, categoryId 없으면 최상위 노드들 — 5분 사본).
-- 아직 없음: 인기·평점 정렬(관련도로 대체, appliedSort 로 알림), 최근 검색어·재색인 API(501 — 재색인은 `deploy/lan/elastic/REINDEX.md` 절차).
+- 최근 검색어·인기 키워드(2026-11-17 사용자 결정, Commerce §6.7·6.9):
+  - 기록: `GET /search/products` 첫 페이지(cursor 없음)·q 있음일 때 `SearchActivity` 가 작은 작업 큐(작업자 2·대기 1000, 차면 버림)에서 비동기로 남긴다 — 검색은 기록 때문에 늦어지거나 실패하지 않는다. 실패 로그에는 검색어·검색자를 넣지 않는다. 검색어는 `SearchKeywords.normalize`(공백 정리, 100자, 초성도 그대로).
+  - 검색자 = `HMAC-SHA256(비밀키 pmart.search.searcher-hash-key, 사용자 종류:주체 ID)` 해시만 색인에 둔다(고객 ID 원문 없음, 키 없이는 짐작한 ID 로 맞춰 볼 수 없음 — LAN 키는 {cipher}, 원본 .secrets/search-searcher-hash-key). 키가 없으면 기록하지 않고 최근 검색어 조회는 CONFIG_REQUIRED.
+  - 최근 검색어: 고객(CUSTOMER) 토큰만. 색인 `search-recent`(→ `search-recent-v1`), 문서 id = SHA-256(검색자 해시 + 검색어) — 같은 검색어는 덮어써 맨 위로(외부 버전 = 검색 시각 ms, 뒤바뀐 쓰기 방지). 쓸 때 최신 `max-items` 밖을 지우고, 조회는 `retention` 안의 최신 `max-items` 개. 그 밖의 종류는 403(비회원은 보안 체인), 설정 없음은 422 CONFIG_REQUIRED. 삭제는 본디 멱등(Idempotency-Key 저장 안 함 — DB 없음).
+  - 인기 키워드(`/search/suggestions` 의 popular): 고객·비회원 토큰 검색을 색인 `search-log`(→ `search-log-v1`, 검색 하나당 문서)에 남기고, `window` 안 결과 1건 이상 검색을 검색어별로 세어 서로 다른 검색자 `min-searchers` 명 이상만 검색 횟수 순 `size` 개, 숨김 목록 `hidden-keywords` 제외(`SearchKeywords.popular`). `refresh` 동안 메모리 사본, 실패면 이전 사본·빈 목록. 익명·운영자 검색은 세지 않는다.
+  - 설정(pmart-config `search-service.yml`): `pmart.search.recent.{max-items,retention}`, `pmart.search.popular.{window,size,min-searchers,hidden-keywords,refresh}`. 하나라도 없으면 기록하지 않고 인기 키워드는 빈 목록(WARN 한 번) — 기본값으로 대신하지 않는다.
+  - 정리: 매일 04:17(Asia/Seoul) `SearchHousekeeping` 이 retention 지난 최근 검색어·window+1일 지난 검색 기록을 조건 삭제.
+  - 시험: `SearchActivityIT`(실제 ES, 상품 문서를 직접 넣음), `SearchKeywordsTest`·`PopularKeywordsTest`.
+- 아직 없음: 인기·평점 정렬(관련도로 대체, appliedSort 로 알림), 재색인 API(501 — 재색인은 `deploy/lan/elastic/REINDEX.md` 절차), 숨김 목록 운영 API(지금은 설정).
 - 재색인(ADR-0034): Kafka 전체 재생 → 별칭 교체, 절차 `deploy/lan/elastic/REINDEX.md`, 실행 `deploy/lan/elastic/reindex.sh`(check·start·wait·switch·finish). 색인 정의(`products-v5`)에는 별칭을 넣지 않는다 — 별칭이 없을 때만 붙이고(새 환경) 전환은 절차가 한다. Logstash 대상 색인·소비 그룹은 `deploy/lan/elastic/search-index.env`.
 - 판매 상태(2026-11-04): 상품 행 버전(PVP `rowVersion`·PSSC `version`)이 큰 것만. 행 버전 없는 옛 사건은 행 버전 기준 상태가 없을 때만 시각 비교. storefront 도 같은 규칙.
 - 콘텐츠 보강 실패(2026-11-04): 2초 간격 2번 더 시도 → 그래도 실패면 색인하지 않고 `search-index.DLT`(원래 토픽·파티션·오프셋) + 경보 `SearchIndexDeadLetter`.
@@ -37,4 +45,4 @@
 - 파이프라인 감시(2026-11-04): watch.sh 가 소비 지연·Logstash 큐·DLQ·ES 거절·마지막 반영 시각을 지표로 → 경보 `SearchIndexStalled` 등(`deploy/lan/monitoring/alert-rules.yml`).
 
 ## 상태
-상품 검색·자동완성·필터(빈 목록) 구현(2026-10-30).
+상품 검색·자동완성·필터(빈 목록) 구현(2026-10-30). 최근 검색어·인기 키워드 구현(2026-11-17, 계약 0.2.0).

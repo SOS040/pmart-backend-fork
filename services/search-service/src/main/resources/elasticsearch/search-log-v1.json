@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "keyword": { "type": "keyword" },
+      "searcher": { "type": "keyword" },
+      "at": { "type": "date" },
+      "resultCount": { "type": "long" }
+    }
+  }
+}

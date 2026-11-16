@@ -10,6 +10,7 @@ spring:
 pmart:
   search:
     elasticsearch-url: ${PMART_ELASTICSEARCH_URL}
+    searcher-hash-key: it-searcher-hash-key # 시험 전용 값(LAN 은 {cipher})
 management:
   tracing:
     export:

@@ -1,5 +1,6 @@
 package com.pmart.search.api;
 
+import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.search.api.generated.SearchApi;
@@ -10,7 +11,9 @@ import com.pmart.search.api.generated.model.SearchHit;
 import com.pmart.search.api.generated.model.SearchResult;
 import com.pmart.search.api.generated.model.SearchResultPage;
 import com.pmart.search.api.generated.model.SortKey;
+import com.pmart.search.application.PopularKeywords;
 import com.pmart.search.application.ProductSearch;
+import com.pmart.search.application.SearchActivity;
 import com.pmart.search.domain.SearchRules;
 import java.net.URI;
 import java.time.Clock;
@@ -31,14 +34,20 @@ public class SearchController implements SearchApi {
 
   private final ProductSearch search;
   private final com.pmart.search.infrastructure.CategoryTreeClient categories;
+  private final SearchActivity activity;
+  private final PopularKeywords popular;
   private final Clock clock;
 
   public SearchController(
       ProductSearch search,
       com.pmart.search.infrastructure.CategoryTreeClient categories,
+      SearchActivity activity,
+      PopularKeywords popular,
       Clock clock) {
     this.search = search;
     this.categories = categories;
+    this.activity = activity;
+    this.popular = popular;
     this.clock = clock;
   }
 
@@ -76,6 +85,8 @@ public class SearchController implements SearchApi {
     } catch (SearchRules.InvalidCursorException e) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "잘못된 커서입니다. 처음부터 다시 조회하세요.");
     }
+    // 최근 검색어·인기 키워드 기록(첫 페이지·고객/비회원 토큰만, 비동기 — 실패해도 검색 응답은 그대로, 2026-11-17)
+    activity.searched(PmartPrincipal.current().orElse(null), q, cursor, r.total());
     return ResponseEntity.ok(
         new SearchResult()
             .query(SearchRules.normalizeQuery(q))
@@ -93,7 +104,7 @@ public class SearchController implements SearchApi {
     return ResponseEntity.ok(
         new GetSearchSuggestions200Response()
             .keywords(search.suggestions(q, limit == null ? 10 : limit))
-            .popular(List.of()));
+            .popular(popular.current())); // 메모리 사본. 설정 없음·집계 실패면 빈 목록(2026-11-17)
   }
 
   @Override
