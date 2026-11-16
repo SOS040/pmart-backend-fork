@@ -102,6 +102,7 @@ public class OrdersController implements OrdersApi {
     return ResponseEntity.ok(
         new Order()
             .orderId(o.orderId())
+            .orderNumber(o.orderNumber())
             .version(o.version())
             .status(OrderStatus.fromValue(o.status()))
             .mfcId(o.mfcId())
@@ -169,6 +170,7 @@ public class OrdersController implements OrdersApi {
                         s ->
                             new OrderSummary()
                                 .orderId(s.orderId())
+                                .orderNumber(s.orderNumber())
                                 .status(OrderStatus.fromValue(s.status()))
                                 .orderedAt(time(s.confirmedAt()))
                                 .totalAmount((int) s.totalAmount())

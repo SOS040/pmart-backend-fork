@@ -41,6 +41,7 @@ public class OrderLookupsController implements OrderLookupsApi {
   @Override
   public ResponseEntity<StaffOrderSearchResult> searchOrdersForStaff(
       @Nullable String orderId,
+      @Nullable String orderNumber,
       @Nullable String customerId,
       @Nullable OrderStatus status,
       @Nullable String mfcId,
@@ -53,6 +54,7 @@ public class OrderLookupsController implements OrderLookupsApi {
         service.search(
             new StaffOrderService.Query(
                 orderId,
+                orderNumber,
                 customerId,
                 status == null ? null : status.getValue(),
                 mfcId,
@@ -78,6 +80,7 @@ public class OrderLookupsController implements OrderLookupsApi {
     return ResponseEntity.ok(
         new StaffOrderDetail()
             .orderId(o.orderId())
+            .orderNumber(o.orderNumber())
             .customerId(o.accountId())
             .status(OrderStatus.fromValue(o.status()))
             .version(o.version())
@@ -167,6 +170,7 @@ public class OrderLookupsController implements OrderLookupsApi {
     StaffSummary s = r.summary();
     return new StaffOrderSummary()
         .orderId(s.orderId())
+        .orderNumber(s.orderNumber())
         .customerId(s.accountId())
         .status(OrderStatus.fromValue(s.status()))
         .version(s.version())

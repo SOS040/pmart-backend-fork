@@ -176,6 +176,7 @@ public class InternalController implements InternalApi {
     InternalOrder out =
         new InternalOrder()
             .orderId(o.orderId())
+            .orderNumber(o.orderNumber())
             .accountId(o.accountId())
             .status(OrderStatus.fromValue(o.status()))
             .version(o.version())
@@ -257,6 +258,7 @@ public class InternalController implements InternalApi {
         .body(
             new com.pmart.order.api.generated.model.RiderOrderSummary()
                 .orderId(orderId)
+                .orderNumber(v.order().orderNumber())
                 .items(items)
                 .itemAmount(Math.toIntExact(total))
                 .deliveryNote(v.order().deliveryNote()));

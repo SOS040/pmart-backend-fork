@@ -16,6 +16,7 @@
           "properties": {
             "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
             "orderVersion": { "$ref": "_defs.v1.json#/$defs/Version" },
+            "orderNumber": { "type": "string", "pattern": "^[1-9][0-9]{7}$", "description": "화면용 주문번호(숫자 8자리, 2026-11-16) — 포장 라벨·인계 화면에 보일 값. 이 필드 전 주문은 없음" },
             "accountId": { "$ref": "_defs.v1.json#/$defs/Ref" },
             "draftId": { "$ref": "_defs.v1.json#/$defs/Ref", "description": "주문으로 옮긴 주문 초안(2026-10-31 추가)" },
             "mfcId": { "$ref": "_defs.v1.json#/$defs/CenterId" },

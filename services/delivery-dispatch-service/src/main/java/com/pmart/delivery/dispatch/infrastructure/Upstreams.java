@@ -316,6 +316,9 @@ public class Upstreams {
     }
     var out = mapper.createObjectNode();
     out.put("orderId", orderId);
+    if (s.path("orderNumber").isString()) {
+      out.put("orderNumber", s.path("orderNumber").asString());
+    }
     JsonNode c = center(mfcId).orElse(null);
     if (c != null && c.path("name").isString()) {
       out.put("mfcName", c.path("name").asString());

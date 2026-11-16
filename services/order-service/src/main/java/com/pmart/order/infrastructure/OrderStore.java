@@ -1,5 +1,6 @@
 package com.pmart.order.infrastructure;
 
+import com.pmart.order.domain.OrderNumberRules;
 import com.pmart.order.domain.ShippingAddress;
 import java.sql.Date;
 import java.sql.ResultSet;
@@ -49,7 +50,46 @@ public class OrderStore {
       String reservationId,
       @Nullable String capacityHoldId,
       @Nullable String slotHoldId,
-      Instant confirmedAt) {}
+      Instant confirmedAt,
+      @Nullable String orderNumber) {
+
+    /** 저장 때 정해진 화면용 주문번호를 넣은 사본. */
+    public OrderRow withOrderNumber(String number) {
+      return new OrderRow(
+          orderId,
+          accountId,
+          draftId,
+          mfcId,
+          status,
+          version,
+          deliveryMode,
+          arrivalDate,
+          arrivalStart,
+          arrivalEnd,
+          outOfStockPreference,
+          deliveryNote,
+          shoppingAddressId,
+          quoteVersion,
+          priceVersion,
+          itemAmount,
+          deliveryTipBase,
+          deliveryTip,
+          deliveryTipReason,
+          bagFee,
+          totalAmount,
+          firstPurchaseApplied,
+          weightG,
+          plannedShipments,
+          paymentAttemptId,
+          pgTransactionId,
+          approvedAmount,
+          reservationId,
+          capacityHoldId,
+          slotHoldId,
+          confirmedAt,
+          number);
+    }
+  }
 
   public record LineRow(
       String orderLineId,
@@ -76,7 +116,12 @@ public class OrderStore {
 
   /** 목록 한 줄(주문 요약). */
   public record Summary(
-      String orderId, String status, Instant confirmedAt, long totalAmount, int itemCount) {}
+      String orderId,
+      String status,
+      Instant confirmedAt,
+      long totalAmount,
+      int itemCount,
+      @Nullable String orderNumber) {}
 
   private final JdbcTemplate jdbc;
 
@@ -127,46 +172,63 @@ public class OrderStore {
         .findFirst();
   }
 
-  public void insert(OrderRow o, List<LineRow> lines) {
-    jdbc.update(
-        "INSERT INTO customer_order (order_id, account_id, draft_id, mfc_id, status, version,"
-            + " delivery_mode, arrival_date, arrival_start, arrival_end, out_of_stock_preference,"
-            + " delivery_note, shopping_address_id, quote_version, price_version, item_amount,"
-            + " delivery_tip_base, delivery_tip, delivery_tip_reason, bag_fee, total_amount,"
-            + " first_purchase_applied, weight_g, planned_shipments, payment_attempt_id,"
-            + " pg_transaction_id, approved_amount, reservation_id, capacity_hold_id, slot_hold_id,"
-            + " confirmed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        o.orderId(),
-        o.accountId(),
-        o.draftId(),
-        o.mfcId(),
-        o.status(),
-        o.version(),
-        o.deliveryMode(),
-        o.arrivalDate() == null ? null : Date.valueOf(o.arrivalDate()),
-        o.arrivalStart(),
-        o.arrivalEnd(),
-        o.outOfStockPreference(),
-        o.deliveryNote(),
-        o.shoppingAddressId(),
-        o.quoteVersion(),
-        o.priceVersion(),
-        o.itemAmount(),
-        o.deliveryTipBase(),
-        o.deliveryTip(),
-        o.deliveryTipReason(),
-        o.bagFee(),
-        o.totalAmount(),
-        o.firstPurchaseApplied(),
-        o.weightG(),
-        o.plannedShipments(),
-        o.paymentAttemptId(),
-        o.pgTransactionId(),
-        o.approvedAmount(),
-        o.reservationId(),
-        o.capacityHoldId(),
-        o.slotHoldId(),
-        Timestamp.from(o.confirmedAt()));
+  /**
+   * 주문 원장 저장. 화면용 주문번호(V14)는 여기서 뽑는다 — 고유 색인에 겹치면(ON CONFLICT DO NOTHING → 0행) 다시 뽑는다. 정해진 번호를 넣은
+   * 사본을 돌려준다.
+   */
+  public OrderRow insert(OrderRow o, List<LineRow> lines) {
+    String number = null;
+    for (int attempt = 0; number == null; attempt++) {
+      if (attempt >= 10) {
+        throw new IllegalStateException("화면용 주문번호를 10번 뽑아도 겹칩니다: " + o.orderId());
+      }
+      String candidate =
+          attempt == 0 && o.orderNumber() != null ? o.orderNumber() : OrderNumberRules.next();
+      if (jdbc.update(
+              "INSERT INTO customer_order (order_id, account_id, draft_id, mfc_id, status, version,"
+                  + " delivery_mode, arrival_date, arrival_start, arrival_end, out_of_stock_preference,"
+                  + " delivery_note, shopping_address_id, quote_version, price_version, item_amount,"
+                  + " delivery_tip_base, delivery_tip, delivery_tip_reason, bag_fee, total_amount,"
+                  + " first_purchase_applied, weight_g, planned_shipments, payment_attempt_id,"
+                  + " pg_transaction_id, approved_amount, reservation_id, capacity_hold_id, slot_hold_id,"
+                  + " confirmed_at, order_number) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                  + " ON CONFLICT (order_number) DO NOTHING",
+              o.orderId(),
+              o.accountId(),
+              o.draftId(),
+              o.mfcId(),
+              o.status(),
+              o.version(),
+              o.deliveryMode(),
+              o.arrivalDate() == null ? null : Date.valueOf(o.arrivalDate()),
+              o.arrivalStart(),
+              o.arrivalEnd(),
+              o.outOfStockPreference(),
+              o.deliveryNote(),
+              o.shoppingAddressId(),
+              o.quoteVersion(),
+              o.priceVersion(),
+              o.itemAmount(),
+              o.deliveryTipBase(),
+              o.deliveryTip(),
+              o.deliveryTipReason(),
+              o.bagFee(),
+              o.totalAmount(),
+              o.firstPurchaseApplied(),
+              o.weightG(),
+              o.plannedShipments(),
+              o.paymentAttemptId(),
+              o.pgTransactionId(),
+              o.approvedAmount(),
+              o.reservationId(),
+              o.capacityHoldId(),
+              o.slotHoldId(),
+              Timestamp.from(o.confirmedAt()),
+              candidate)
+          == 1) {
+        number = candidate;
+      }
+    }
     for (LineRow l : lines) {
       jdbc.update(
           "INSERT INTO customer_order_line (order_line_id, order_id, line_no, cart_item_id, sku,"
@@ -195,6 +257,7 @@ public class OrderStore {
           l.productName(),
           l.optionLabel());
     }
+    return o.withOrderNumber(number);
   }
 
   public Optional<OrderRow> order(String orderId) {
@@ -361,7 +424,7 @@ public class OrderStore {
       int limit) {
     StringBuilder sql =
         new StringBuilder(
-            "SELECT o.order_id, o.status, o.confirmed_at, o.total_amount,"
+            "SELECT o.order_id, o.status, o.confirmed_at, o.total_amount, o.order_number,"
                 + " (SELECT COALESCE(SUM(l.quantity), 0) FROM customer_order_line l"
                 + " WHERE l.order_id = o.order_id) AS item_count"
                 + " FROM customer_order o WHERE o.account_id = ?");
@@ -386,13 +449,15 @@ public class OrderStore {
                 rs.getString("status"),
                 rs.getTimestamp("confirmed_at").toInstant(),
                 rs.getLong("total_amount"),
-                rs.getInt("item_count")),
+                rs.getInt("item_count"),
+                rs.getString("order_number")),
         args.toArray());
   }
 
   /** 직원용 검색 조건(O-6). null 은 거르지 않음. phoneDigits 는 숫자만(완전 일치). */
   public record StaffCriteria(
       @Nullable String orderId,
+      @Nullable String orderNumber,
       @Nullable String accountId,
       @Nullable String status,
       @Nullable String mfcId,
@@ -418,7 +483,8 @@ public class OrderStore {
       int lineCount,
       int plannedShipments,
       int openFulfillmentIssues,
-      @Nullable String receiverPhone) {}
+      @Nullable String receiverPhone,
+      @Nullable String orderNumber) {}
 
   /**
    * 직원용 주문 검색(O-6, 읽기 전용). 최근 확정 순, offset 쪽 나눔. 기간 상한은 호출자가 확인한다. 연락처는 사본의 숫자만 비교(V9 식 색인).
@@ -430,7 +496,7 @@ public class OrderStore {
         new StringBuilder(
             "SELECT o.order_id, o.account_id, o.status, o.version, o.mfc_id, o.delivery_mode,"
                 + " o.arrival_date, o.arrival_start, o.arrival_end, o.confirmed_at, o.total_amount,"
-                + " o.approved_amount, o.planned_shipments,"
+                + " o.approved_amount, o.planned_shipments, o.order_number,"
                 + " (SELECT COALESCE(SUM(l.quantity), 0) FROM customer_order_line l"
                 + " WHERE l.order_id = o.order_id) AS item_count,"
                 + " (SELECT COUNT(*) FROM customer_order_line l WHERE l.order_id = o.order_id)"
@@ -444,6 +510,10 @@ public class OrderStore {
     if (c.orderId() != null) {
       sql.append(" AND o.order_id = ?");
       args.add(c.orderId());
+    }
+    if (c.orderNumber() != null) {
+      sql.append(" AND o.order_number = ?");
+      args.add(c.orderNumber());
     }
     if (c.accountId() != null) {
       sql.append(" AND o.account_id = ?");
@@ -493,7 +563,8 @@ public class OrderStore {
               rs.getInt("line_count"),
               rs.getInt("planned_shipments"),
               rs.getInt("open_issues"),
-              rs.getString("receiver_phone"));
+              rs.getString("receiver_phone"),
+              rs.getString("order_number"));
         },
         args.toArray());
   }
@@ -531,6 +602,7 @@ public class OrderStore {
         rs.getString("reservation_id"),
         rs.getString("capacity_hold_id"),
         rs.getString("slot_hold_id"),
-        rs.getTimestamp("confirmed_at").toInstant());
+        rs.getTimestamp("confirmed_at").toInstant(),
+        rs.getString("order_number"));
   }
 }

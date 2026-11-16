@@ -107,6 +107,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                     Map.of(
                         "orderId",
                         "x",
+                        "orderNumber",
+                        "48213907",
                         "items",
                         List.of(Map.of("name", "사과 1kg", "qty", 2, "lineAmount", 9800)),
                         "itemAmount",
@@ -251,6 +253,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     // 라이더 앱 요청 §1(2026-11-16 "수락 전부터 전부"): 지점·품목·금액·요청사항
     JsonNode orderInfo = offer.path("summary").path("order");
     assertThat(orderInfo.path("mfcName").asString()).isEqualTo("부산진구지점");
+    assertThat(orderInfo.path("orderNumber").asString()).isEqualTo("48213907");
     assertThat(orderInfo.path("items").get(0).path("name").asString()).isEqualTo("사과 1kg");
     assertThat(orderInfo.path("itemAmount").asInt()).isEqualTo(9800);
     assertThat(orderInfo.path("deliveryNote").asString()).isEqualTo("문 앞에 두세요");

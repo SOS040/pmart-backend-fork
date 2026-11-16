@@ -144,9 +144,9 @@ public class OrderService {
                     false,
                     List.of());
               }
-              OrderRow order = order(row, s, orderId, c, now);
               List<LineRow> lines = lines(orderId, s, unitsPerSku);
-              orders.insert(order, lines);
+              // 화면용 주문번호는 저장 때 정해진다(V14)
+              OrderRow order = orders.insert(order(row, s, orderId, c, now), lines);
               if (s.delivery().shippingAddress() != null) {
                 orders.insertShipping(orderId, s.delivery().shippingAddress());
               }
@@ -781,7 +781,8 @@ public class OrderService {
         c.reservationId(),
         c.capacityHoldId(),
         c.slotHoldId(),
-        now);
+        now,
+        null);
   }
 
   private static List<LineRow> lines(
@@ -869,6 +870,9 @@ public class OrderService {
     p.put("deliveryTipReason", o.deliveryTipReason());
     p.put("bagFee", o.bagFee());
     p.put("totalAmount", o.totalAmount());
+    if (o.orderNumber() != null) {
+      p.put("orderNumber", o.orderNumber()); // 화면용 주문번호(2026-11-16)
+    }
     p.put("firstPurchase", o.firstPurchaseApplied());
     p.put("plannedShipments", o.plannedShipments());
     p.put("confirmedAt", o.confirmedAt().toString());

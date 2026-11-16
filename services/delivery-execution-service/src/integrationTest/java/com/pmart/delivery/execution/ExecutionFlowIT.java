@@ -732,11 +732,12 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 com.github.tomakehurst.wiremock.client.WireMock.aResponse()
                     .withHeader("Content-Type", "application/json")
                     .withBody(
-                        "{\"orderId\":\"x\",\"items\":[{\"name\":\"우유\",\"qty\":1,\"lineAmount\":2500}],\"itemAmount\":2500}")));
+                        "{\"orderId\":\"x\",\"orderNumber\":\"48213907\",\"items\":[{\"name\":\"우유\",\"qty\":1,\"lineAmount\":2500}],\"itemAmount\":2500}")));
     JsonNode viewed = body(staffGet("/deliveries/" + id, TestJwt.rider(rider)));
     assertThat(viewed.path("orderSummary").path("items").get(0).path("name").asString())
         .isEqualTo("우유");
     assertThat(viewed.path("orderSummary").path("itemAmount").asInt()).isEqualTo(2500);
+    assertThat(viewed.path("orderSummary").path("orderNumber").asString()).isEqualTo("48213907");
     String caseId = "CASE-" + UUID.randomUUID();
     kafka
         .send(
