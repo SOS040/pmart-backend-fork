@@ -50,6 +50,7 @@
 | [AP-2](approval-service.md) | approval | PC 1 | hr, employee-auth (ADR-0056) | 직원 권한 요청 유형(BO-01)·등록 때 자동 제출·자동 승인 규칙(소속 센터 `MFC_WORKER`)·반영 대상 employee-auth | 결정됨(2026-11-12) | 구현(2026-11-13 5-4) — LAN 배포 여부 PC 1 확인 필요 |
 | [EA-1](employee-auth-service.md) | employee-auth | PC 1 | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | 대기 |
 | [EA-2](employee-auth-service.md) | employee-auth | PC 1 | 클라이언트 hr-backoffice (BR-57) | 직원 역할 목록 API `GET /employee-auth/roles`(코드·이름·센터 지정·순서) | 없음(사용자 2026-11-15 "만들거야") | 구현(2026-11-15, employee-auth 0.5.0) — LAN 배포 여부 PC 1 확인 필요 |
+| [HR-1](hr-service.md) | hr | PC 1 | employee-auth | 직원 이름 내부 조회 `GET /internal/employee-names`(권한 상세 승인자·회수자 이름 — employee-auth 0.10.0 `approverName`·`revokedByName`) | 없음(사용자 2026-11-17 "백엔드에서") | 구현(2026-11-17, hr 0.5.0) — LAN 배포 전 |
 | [RC-1](approval-receipt-publishers.md) | product, product-content, center-master, delivery-serviceability, mfc-inbound | PC 1(mfc-inbound PC 3, serviceability PC 5) | approval | `ApplicationReceiptRecorded` 발행 | 없음 | 대기 |
 | [BO-12](backoffice-bff.md) | backoffice-bff | PC 2 | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 사가·이행 확인 LAN 배포(0.2.0). MFC 중지 실패·인계 거절 — bff 0.4.0 재시도 명령 배포(2026-11-16 #31), 목록은 F-4 대기(설정 꺼짐) |
 | [CU-1](customer-service.md) | customer | PC 1 | auth | 약관 동의 → `require-consent` 켜기 | **필요**(시점) | 대기 |

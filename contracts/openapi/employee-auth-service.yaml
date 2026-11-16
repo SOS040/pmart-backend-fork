@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -574,9 +574,16 @@ components:
         validUntil: { type: [string, 'null'], format: date-time, description: 이 시각부터 무효. null = 기한 없음(근무 기간) }
         approvalId: { type: string }
         approverId: { type: string, description: '승인한 운영자 ID 또는 RULE:<id>@v<버전>(자동 승인)' }
+        approverName:
+          type: [string, 'null']
+          x-added-in: '2026-11-17'
+          description: |
+            (0.10.0) 승인한 직원 이름 — hr-service 이름(GET /internal/employee-names, 응답마다 한 번에). 자동 승인(RULE:…)·인사 기록이 없는 운영자·
+            hr-service 를 못 읽으면 null(화면은 approverId 를 보여 준다, 자동 승인은 "자동 승인"). 조회 응답을 실패시키지 않는다.
         appliedAt: { type: string, format: date-time }
         revokedAt: { type: [string, 'null'], format: date-time, description: 회수 시각(0.8.0) — 있으면 회수됨(validUntil 도 이 시각) }
         revokedBy: { type: [string, 'null'], description: 회수한 운영자 ID(0.8.0) }
+        revokedByName: { type: [string, 'null'], x-added-in: '2026-11-17', description: '(0.10.0) 회수한 직원 이름 — approverName 과 같은 방식(못 읽으면 null)' }
         revokeReason: { type: [string, 'null'], description: 회수 사유(0.8.0) }
     EmployeeChange:
       type: object

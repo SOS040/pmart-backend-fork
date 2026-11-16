@@ -21,6 +21,9 @@
 - 표 `hq_department`(code PK·name·updated_by, V3 — 배포 때 기존 직원의 HQ_DEPARTMENT 코드로 채움, 이름 NULL). 소속 코드는 거절하지 않고, 등록·소속 변경이 HQ_DEPARTMENT 의 처음 보는 코드를 같은 트랜잭션에 더한다(`HrStore.ensureDepartment`, ON CONFLICT DO NOTHING).
 - `GET /hr/departments`(코드 순, employeeCount = 퇴사 제외), `PUT /hr/departments/{code}`(표시 이름, 없으면 만듦 — `RequestIdempotency`, 버전 검사 없음). 모두 HR_ADMIN. 부서를 지우는 API 는 없다.
 
+## 내부 이름 조회(0.5.0, 2026-11-17)
+- `GET /internal/employee-names?operatorIds=…`(`InternalController` → `EmployeeService.names` → `HrStore.names`) — employee-auth-service 가 직원 조회 응답의 승인자·회수자 이름을 붙인다(사용자 결정 2026-11-17). 토큰 없는 내부 호출(게이트웨이가 `/internal/**` 를 막음), 1~200개, 형식 틀림 400, 퇴사자 포함, 모르는 ID 는 빠짐, 이름 말고는 싣지 않는다. 이름은 로그 금지. 시험 `HrProvisioningIT.internalEmployeeNames`.
+
 ## 계정 발급·상태 맞추기
 - `ProvisioningWorker`: 행 잠금(SKIP LOCKED) 한 명씩, 단계 REQUESTED → MAILBOX_CREATED → IAM_CREATED → INVITE_SENT → DONE. 외부 호출 실패는 예외를 트랜잭션 밖으로 내지 않고 기록(같은 단계, 지수 대기). 영구 거절·횟수 소진이면 보상. 등록·재시도 직후 `kick()` 으로 바로 한 번.
 - `IamSyncWorker`: 재직 상태 → Keycloak enabled·세션 로그아웃·사서함 활성/비활성. `ContractEndJob`: 한 시간마다 계약 종료 자동 정지.

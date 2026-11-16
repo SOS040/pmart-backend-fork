@@ -9,7 +9,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -140,6 +143,24 @@ public class HrStore {
             operatorId)
         .stream()
         .findFirst();
+  }
+
+  /**
+   * 운영자 ID → 이름(0.5.0 내부 이름 조회 — 퇴사자 포함). 모르는 ID 는 빠진다. ID 는 부르는 쪽이 형식을 확인한 값(쉼표·중괄호·따옴표 없음 — 배열
+   * 문자열로 넘긴다). 결과는 로그에 남기지 않는다(개인정보).
+   */
+  public Map<String, String> names(Collection<String> operatorIds) {
+    Map<String, String> out = new LinkedHashMap<>();
+    if (operatorIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT operator_id, name FROM employee WHERE operator_id = ANY (?::varchar[])",
+        rs -> {
+          out.put(rs.getString("operator_id"), rs.getString("name"));
+        },
+        "{" + String.join(",", operatorIds) + "}");
+    return out;
   }
 
   /** 사번 내림차순(최근 등록 먼저). cursor = 이전 쪽 마지막 사번. */

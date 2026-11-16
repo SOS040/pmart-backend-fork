@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
     hr-service 가 사서함(@pmart.com, mail-provisioner) → Keycloak 계정(hr-provisioner, Admin API) → 비밀번호 설정 메일(Keycloak) 순서로
@@ -16,6 +16,7 @@ info:
     503 DEPENDENCY_UNAVAILABLE(Keycloak·메일 서버 응답 없음 — 잠시 뒤 다시).
     0.2.0(2026-11-15): 본사 부서 코드 목록 GET /hr/departments, 표시 이름 PUT /hr/departments/{code}. 소속 코드는 지금처럼 아무 값이나 받고
     처음 보는 본사 부서 코드는 등록·소속 변경 때 목록에 더한다(이름 없음).
+    0.5.0(2026-11-17): 내부 이름 조회 GET /internal/employee-names(employee-auth-service 가 승인자·회수자 이름을 붙이려고 — 토큰 없는 서비스 간 호출).
 servers:
   - url: /api/v1
 security:
@@ -26,6 +27,7 @@ tags:
   - { name: provisioning, description: 계정 발급(사서함·Keycloak·안내 메일) 진행·재시도 }
   - { name: self, description: 본인 조회 }
   - { name: departments, description: 본사 부서 코드 목록(소속 HQ_DEPARTMENT 고르기용) }
+  - { name: internal, description: "(0.5.0) 서비스 간 전용 — 게이트웨이가 막는다(토큰 없는 내부 호출, ADR-0026)" }
 
 paths:
   /hr/employees:
@@ -386,6 +388,34 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /internal/employee-names:
+    get:
+      tags: [internal]
+      summary: '[employee-auth→hr] 운영자 ID 여러 개 → 표시 이름 (토큰 없는 내부 호출, 0.5.0)'
+      description: |
+        2026-11-17 사용자 결정(인사팀 앱 권한 상세의 승인 칸이 이름 대신 OP-… 로 보임 → 백엔드가 이름을 붙인다): employee-auth-service 가
+        직원 조회 응답의 승인자(approverId)·회수자(revokedBy) 이름을 한 번에 읽는다. 퇴사자도 이름을 돌려준다(지난 승인 기록 표시용).
+        모르는 ID 는 items 에서 빠진다(오류 아님). 이름 외의 인사 정보(메일·사번·소속)는 싣지 않는다.
+      x-added-in: '2026-11-17'
+      operationId: getEmployeeNamesInternal
+      parameters:
+        - name: operatorIds
+          in: query
+          required: true
+          description: '운영자 ID(반복 — ?operatorIds=OP-a&operatorIds=OP-b). 같은 값은 한 번만'
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 200
+            items: { type: string, pattern: '^[A-Za-z0-9_.:@-]{1,128}$' }
+      responses:
+        '200':
+          description: OK — 아는 ID 만(순서 없음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeNameList' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
 components:
   parameters:
     OperatorId:
@@ -510,6 +540,19 @@ components:
       required: [items]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/Department' } }
+    EmployeeNameList:
+      type: object
+      required: [items]
+      description: (0.5.0) 내부 이름 조회 응답
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [operatorId, name]
+            properties:
+              operatorId: { type: string }
+              name: { type: string }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

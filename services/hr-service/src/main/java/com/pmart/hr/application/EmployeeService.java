@@ -214,6 +214,27 @@ public class EmployeeService {
         .orElseThrow(() -> PmartException.notFound("EMPLOYEE_NOT_FOUND", "인사 기록이 없습니다."));
   }
 
+  private static final Pattern NAME_LOOKUP_ID = Pattern.compile("^[A-Za-z0-9_.:@-]{1,128}$");
+  static final int NAME_LOOKUP_MAX = 200;
+
+  /**
+   * 내부 이름 조회(0.5.0, 2026-11-17 — employee-auth-service 가 승인자·회수자 이름을 붙인다). 서비스 간 경로라 역할 검사가
+   * 없다(게이트웨이가 {@code /internal/**} 를 막는다). 퇴사자 포함, 모르는 ID 는 빠진다. 형식이 틀린 ID·200개 초과는 400.
+   */
+  public java.util.Map<String, String> names(List<String> operatorIds) {
+    java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+    for (String id : operatorIds) {
+      if (id == null || !NAME_LOOKUP_ID.matcher(id).matches()) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "운영자 ID 형식이 아닙니다.");
+      }
+      ids.add(id);
+    }
+    if (ids.isEmpty() || ids.size() > NAME_LOOKUP_MAX) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "운영자 ID 는 1~200개입니다.");
+    }
+    return store.names(ids);
+  }
+
   private EmployeeView view(String operatorId) {
     EmployeeRow e =
         store

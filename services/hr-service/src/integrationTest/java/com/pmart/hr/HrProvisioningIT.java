@@ -704,6 +704,45 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     throw new AssertionError("목록에 없음: " + code);
   }
 
+  /**
+   * 내부 이름 조회(0.5.0, 2026-11-17 — employee-auth-service 가 승인자·회수자 이름을 붙인다): 토큰 없이, 아는 ID 만, 퇴사자 포함,
+   * 형식이 틀린 ID 는 400.
+   */
+  @Test
+  void internalEmployeeNames() {
+    String a = register(mailId());
+    Map<String, Object> reg = registration(mailId(), "REGULAR", today(), null);
+    reg.put("name", "김승인");
+    reg.remove("requestedGrants");
+    Res created = call("POST", "/hr/employees", hr, reg);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String b = created.body().path("operatorId").asText();
+    jdbc.update("UPDATE employee SET status = 'LEFT' WHERE operator_id = ?", b);
+
+    Res r =
+        http.get()
+            .uri(
+                u ->
+                    u.path("/internal/employee-names")
+                        .queryParam("operatorIds", a, b, "OP-NO-SUCH", a)
+                        .build())
+            .exchange((q, s) -> new Res(s.getStatusCode().value(), read(s.bodyTo(byte[].class))));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    Map<String, String> names = new java.util.HashMap<>();
+    r.body()
+        .path("items")
+        .forEach(i -> names.put(i.path("operatorId").asText(), i.path("name").asText()));
+    assertThat(names).containsOnly(Map.entry(a, "홍길동"), Map.entry(b, "김승인"));
+    assertThat(r.body().path("items").get(0).has("mailAddress")).as("이름 말고는 싣지 않는다").isFalse();
+
+    int bad =
+        http.get()
+            .uri(
+                u -> u.path("/internal/employee-names").queryParam("operatorIds", "OP bad").build())
+            .exchange((q, s) -> s.getStatusCode().value());
+    assertThat(bad).isEqualTo(400);
+  }
+
   @Test
   void validationAndAuthorization() {
     String worker = TestJwt.operator("OP-IT-WRK", List.of("MFC_WORKER"), List.of());

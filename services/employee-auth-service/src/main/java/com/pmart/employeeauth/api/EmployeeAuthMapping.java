@@ -13,6 +13,7 @@ import com.pmart.employeeauth.infrastructure.EmployeeAuthStore;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 
 /** 응답 변환. */
 final class EmployeeAuthMapping {
@@ -47,7 +48,8 @@ final class EmployeeAuthMapping {
         .tokens(tokens(r.tokens(), cookie));
   }
 
-  static Employee employee(EmployeeAdminService.View v) {
+  /** {@code names} = 운영자 ID → 표시 이름(0.10.0 — 없으면 approverName·revokedByName 이 null). */
+  static Employee employee(EmployeeAdminService.View v, Map<String, String> names) {
     return employee(v.account())
         .effectiveRoles(v.effective().roles())
         .effectiveCenters(v.effective().centers())
@@ -63,9 +65,11 @@ final class EmployeeAuthMapping {
                             .validUntil(g.validUntil() == null ? null : odt(g.validUntil()))
                             .approvalId(g.approvalId())
                             .approverId(g.approverId())
+                            .approverName(names.get(g.approverId()))
                             .appliedAt(odt(g.appliedAt()))
                             .revokedAt(g.revokedAt() == null ? null : odt(g.revokedAt()))
                             .revokedBy(g.revokedBy())
+                            .revokedByName(g.revokedBy() == null ? null : names.get(g.revokedBy()))
                             .revokeReason(g.revokeReason()))
                 .toList());
   }
