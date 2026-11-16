@@ -10,6 +10,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>HELD 는 만료 시각이 지나면 정리 작업이 돌기 전이라도 정원에서 빠지고 EXPIRED 로 보인다 — 그래서 만료된 점유를 뒤늦게 확정해 정원을 넘기는 일이
  *       없다.
  *   <li>확정: HELD → CONFIRMED, 이미 CONFIRMED 면 그대로 성공, RELEASED·EXPIRED 면 거절(재확보 필요).
+ *   <li>S4 교체(2026-11-16): 새 점유가 replaces = 기존 확정 점유. 새 점유를 확정하면 기존은 RELEASED(TIME_CHANGED) — 같은
+ *       트랜잭션.
  *   <li>해제: HELD·CONFIRMED → RELEASED(정원 반환), 이미 RELEASED·EXPIRED 면 그대로 성공. OPERATOR 사유는 승인 근거가 있어야
  *       한다.
  * </ul>
@@ -27,7 +29,11 @@ public record SlotHold(
     Instant expiresAt,
     @Nullable Instant confirmedAt,
     @Nullable Instant releasedAt,
-    @Nullable String releaseReason) {
+    @Nullable String releaseReason,
+    @Nullable String replaces) {
+
+  /** S4 교체로 해제된 기존 점유의 사유. */
+  public static final String REASON_REPLACED = "TIME_CHANGED";
 
   public enum State {
     HELD,
@@ -72,7 +78,8 @@ public record SlotHold(
             expiresAt,
             confirmedAt,
             releasedAt,
-            releaseReason);
+            releaseReason,
+            replaces);
   }
 
   public Decision confirmDecision(Instant now) {

@@ -337,6 +337,81 @@ class SlotHoldsIT extends PostgresKafkaContainerSupport {
     assertThat(get(ORCH, "/internal/slot-holds/SH-none").status()).isEqualTo(404);
   }
 
+  /**
+   * S4 예약 시간 변경(2026-11-16): 확정 점유를 두고 다른 시간대 새 HELD(정원 둘 다) → 새 점유 확정 때 기존 RELEASED(TIME_CHANGED).
+   * 확정 전·같은 시간대·진행 중 교체는 거절, 새 점유가 해제되면 기존 약속 그대로.
+   */
+  @Test
+  void s4ReplacementHoldsNewSlotAndReleasesOldOnConfirm() throws Exception {
+    String orderId = order();
+    String old = hold(orderId, "15:00").body().path("holdId").asString();
+    // 확정 전에는 교체 못 함
+    Map<String, Object> early = holdBody(orderId, "MFC-1", TOMORROW, "16:00");
+    early.put("newSlotFor", old);
+    assertThat(post(ORCH, "/internal/slot-holds", key(), early).status()).isEqualTo(409);
+    assertThat(
+            post(
+                    ORCH,
+                    "/internal/slot-holds/" + old + "/confirmations",
+                    key(),
+                    Map.of("orderId", orderId))
+                .status())
+        .isEqualTo(200);
+    // 같은 시간대 422 SAME_SLOT
+    Map<String, Object> same = holdBody(orderId, "MFC-1", TOMORROW, "15:00");
+    same.put("newSlotFor", old);
+    Res sameRes = post(ORCH, "/internal/slot-holds", key(), same);
+    assertThat(sameRes.status()).isEqualTo(422);
+    assertThat(sameRes.body().path("code").asString()).isEqualTo("SAME_SLOT");
+    // 새 시간대 임시 점유 — 기존은 그대로, 정원은 둘 다
+    Map<String, Object> change = holdBody(orderId, "MFC-1", TOMORROW, "16:00");
+    change.put("newSlotFor", old);
+    Res created = post(ORCH, "/internal/slot-holds", key(), change);
+    assertThat(created.status()).isEqualTo(201);
+    String fresh = created.body().path("holdId").asString();
+    assertThat(created.body().path("replaces").asString()).isEqualTo(old);
+    assertThat(created.body().path("state").asString()).isEqualTo("HELD");
+    assertThat(slot("15:00").path("remaining").asInt()).isEqualTo(1);
+    assertThat(slot("16:00").path("remaining").asInt()).isEqualTo(1);
+    // 진행 중 교체가 있으면 또 못 함
+    Map<String, Object> another = holdBody(orderId, "MFC-1", TOMORROW, "17:00");
+    another.put("newSlotFor", old);
+    assertThat(post(ORCH, "/internal/slot-holds", key(), another).body().path("code").asString())
+        .isEqualTo("HOLD_ALREADY_ACTIVE");
+    // 새 점유 확정 → 기존 해제(TIME_CHANGED)
+    assertThat(
+            post(
+                    ORCH,
+                    "/internal/slot-holds/" + fresh + "/confirmations",
+                    key(),
+                    Map.of("orderId", orderId))
+                .status())
+        .isEqualTo(200);
+    JsonNode was = get(ORCH, "/internal/slot-holds/" + old).body();
+    assertThat(was.path("state").asString()).isEqualTo("RELEASED");
+    assertThat(was.path("releaseReason").asString()).isEqualTo("TIME_CHANGED");
+    assertThat(get(ORCH, "/internal/slot-holds/" + fresh).body().path("state").asString())
+        .isEqualTo("CONFIRMED");
+    assertThat(slot("15:00").path("remaining").asInt()).isEqualTo(2);
+
+    // 다시 바꾸다 실패(새 점유 해제) → 지금 약속 그대로
+    Map<String, Object> again = holdBody(orderId, "MFC-1", TOMORROW, "17:00");
+    again.put("newSlotFor", fresh);
+    String third =
+        post(ORCH, "/internal/slot-holds", key(), again).body().path("holdId").asString();
+    assertThat(
+            post(
+                    ORCH,
+                    "/internal/slot-holds/" + third + "/releases",
+                    key(),
+                    Map.of("reason", "SAGA_COMPENSATION"))
+                .status())
+        .isEqualTo(200);
+    assertThat(get(ORCH, "/internal/slot-holds/" + fresh).body().path("state").asString())
+        .isEqualTo("CONFIRMED");
+    assertThat(slot("17:00").path("remaining").asInt()).isEqualTo(2);
+  }
+
   @Test
   void fullSlotRejectsWithCapacityExceeded() {
     assertThat(hold(order(), "12:00").status()).isEqualTo(201);
@@ -428,12 +503,11 @@ class SlotHoldsIT extends PostgresKafkaContainerSupport {
       assertThat(r.status()).as(mfc).isEqualTo(422);
       assertThat(r.body().path("code").asString()).as(mfc).isEqualTo("CONFIG_REQUIRED");
     }
-    // S4 교체는 아직 미지원
+    // S4 교체 대상이 없으면 404
     Map<String, Object> s4 = holdBody(order(), "MFC-1", TOMORROW, "14:00");
     s4.put("newSlotFor", "SH-OLD");
     Res r = post(ORCH, "/internal/slot-holds", key(), s4);
-    assertThat(r.status()).isEqualTo(422);
-    assertThat(r.body().path("code").asString()).isEqualTo("UNSUPPORTED_ACTION");
+    assertThat(r.status()).isEqualTo(404);
     // /internal 은 서비스 토큰만
     assertThat(
             post(

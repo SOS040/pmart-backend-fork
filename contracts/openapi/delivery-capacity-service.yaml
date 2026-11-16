@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-capacity-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     고객 도착 시간대 슬롯 정의(1시간 단위, 07시 도착 없음, 08/09시 개시 [결정 필요])·슬롯 정원(승인값, 1차 수동 설정)·슬롯 점유(HELD→CONFIRMED/RELEASED/EXPIRED)의 정본. (docs/architecture/service-map.md §7, ADR-0008)
     MFC 작업 여력(mfc-capacity)·라이더 배정(dispatch)은 소유하지 않는다. CapacityReduced·RiderSupplyChanged는 입력이지 자동 정원 변경이 아니다.
@@ -52,7 +52,10 @@ paths:
         정원 NOT_SET·조회 실패 → 422 CONFIG_REQUIRED(신규 결제 보류). 정원 소진 → 422 CAPACITY_EXCEEDED.
         TTL 경과 시 EXPIRED(만료 시각이 지나면 정리 전이라도 정원에서 빠지고 조회·확정에서 EXPIRED로 본다). 결제 결과 불명이면 orchestration이 확인 전 해제하지 않는다.
         선택 가능 판정은 GET /slots와 같다(오늘·내일, 운영 구간 안 정시 1시간, 08시 전 없음, 시작 시각 전). 같은 키 재전송은 시간대가 마감된 뒤에도 기존 hold를 돌려준다.
-        [미지원] S4 newSlotFor는 아직 받지 않는다 → 422 UNSUPPORTED_ACTION. 캘린더 조회 실패는 503이 아니라 위 CONFIG_REQUIRED로 응답한다.
+        S4 newSlotFor(2026-11-16): 같은 주문·같은 센터의 **확정** 점유를 두고 다른 시간대의 새 HELD 를 잡는다(정원은 둘 다 잡힘, 응답 replaces).
+        교체 대상이 확정이 아니면 409 INVALID_STATE, 같은 시간대면 422 SAME_SLOT, 진행 중인 교체가 있으면 409 HOLD_ALREADY_ACTIVE, 다른 주문·센터면 400.
+        새 점유를 확정(confirmations)하면 같은 트랜잭션에서 기존 점유가 RELEASED(releaseReason TIME_CHANGED). 새 점유가 만료·해제되면 기존 약속은 그대로.
+        캘린더 조회 실패는 503이 아니라 위 CONFIG_REQUIRED로 응답한다.
       operationId: createSlotHold
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -76,7 +79,7 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: CONFIG_REQUIRED (정원 NOT_SET·조회 실패) / CAPACITY_EXCEEDED / SLOT_NOT_SELECTABLE (과거·07시·미개시·운영 구간 밖·마감) / UNSUPPORTED_ACTION (S4 newSlotFor, 미지원)
+          description: CONFIG_REQUIRED (정원 NOT_SET·조회 실패) / CAPACITY_EXCEEDED / SLOT_NOT_SELECTABLE (과거·07시·미개시·운영 구간 밖·마감) / SAME_SLOT (S4 같은 시간대)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -101,7 +104,7 @@ paths:
     post:
       tags: [holds]
       summary: "[orchestration→capacity] 점유 확정 (주문 확정 후 S1 i단계)"
-      description: HELD → CONFIRMED. 이미 CONFIRMED면 멱등 성공. EXPIRED·RELEASED면 409 INVALID_STATE(재확보 필요).
+      description: HELD → CONFIRMED. 이미 CONFIRMED면 멱등 성공. EXPIRED·RELEASED면 409 INVALID_STATE(재확보 필요). S4 교체 점유면 같은 트랜잭션에서 기존 확정 점유를 RELEASED(TIME_CHANGED) — 기존이 이미 해제(취소 등)됐으면 409 INVALID_STATE.
       operationId: confirmSlotHold
       parameters:
         - { name: holdId, in: path, required: true, schema: { type: string } }

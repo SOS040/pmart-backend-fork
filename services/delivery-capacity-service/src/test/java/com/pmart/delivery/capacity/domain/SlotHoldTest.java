@@ -24,6 +24,7 @@ class SlotHoldTest {
         T0.plusSeconds(600),
         null,
         null,
+        null,
         null);
   }
 

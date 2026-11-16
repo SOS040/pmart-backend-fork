@@ -31,7 +31,8 @@ import org.springframework.stereotype.Service;
  *   <li>선택 가능 판정은 조회 목록과 같은 규칙({@link SlotRules}): 오늘·내일, 운영 구간 안 정시 1시간, 08시 전 없음, 시작 시각 전.
  *   <li>정원 미설정·캘린더 조회 실패 → 422 CONFIG_REQUIRED(계약: 신규 결제 보류). 0·무제한으로 대체하지 않는다.
  *   <li>같은 슬롯 점유는 슬롯 잠금 행(FOR UPDATE)으로 줄 세운 뒤 센다 — 마지막 1자리에 동시 2건이면 1건만 성공.
- *   <li>주문당 활성 점유 1건(부분 유일 색인이 최종 방어선). S4 교체(newSlotFor)는 아직 받지 않는다(422 UNSUPPORTED_ACTION).
+ *   <li>주문당 활성 점유 1건(부분 유일 색인이 최종 방어선 — HELD 1·CONFIRMED 1). S4 교체(newSlotFor, 2026-11-16)는 기존 확정
+ *       점유를 두고 새 HELD 를 잡고, 확정할 때 기존을 해제한다.
  *   <li>모든 변경은 {@link RequestIdempotency} 안에서: 같은 키·같은 본문은 같은 결과. 캘린더 조회도 그 안에서 하므로 재전송은 시간대가 마감된
  *       뒤에도 기존 점유를 돌려준다.
  * </ul>
@@ -93,14 +94,6 @@ public class SlotHoldService {
 
   /** 점유. 같은 키 재전송은 기존 점유(현재 상태)를 돌려준다. */
   public SlotHold create(String requestId, String sourceSystem, CreateHold cmd) {
-    if (cmd.newSlotFor() != null) {
-      throw new PmartException(
-          ErrorCode.UNSUPPORTED_ACTION.name(),
-          HttpStatus.UNPROCESSABLE_CONTENT,
-          "예약 시간 변경(S4, newSlotFor)은 아직 지원하지 않습니다.",
-          false,
-          List.of());
-    }
     String holdId =
         idempotency
             .execute(
@@ -136,12 +129,16 @@ public class SlotHoldService {
     }
 
     store.expireStaleForOrder(cmd.orderId(), now);
-    store
-        .activeHoldIdForOrder(cmd.orderId())
-        .ifPresent(
-            id -> {
-              throw holdAlreadyActive(cmd.orderId());
-            });
+    if (cmd.newSlotFor() == null) {
+      store
+          .activeHoldIdForOrder(cmd.orderId())
+          .ifPresent(
+              id -> {
+                throw holdAlreadyActive(cmd.orderId());
+              });
+    } else {
+      replaceable(cmd, w, now);
+    }
 
     store.lockSlot(cmd.mfcId(), cmd.date(), w.startMinute());
     int used = store.occupying(cmd.mfcId(), cmd.date(), w.startMinute(), now);
@@ -162,7 +159,8 @@ public class SlotHoldService {
             now.plus(Duration.ofSeconds(cmd.ttlSeconds())),
             null,
             null,
-            null);
+            null,
+            cmd.newSlotFor());
     try {
       store.insert(h, sourceSystem);
     } catch (DuplicateKeyException e) {
@@ -172,6 +170,29 @@ public class SlotHoldService {
     log.info(
         "slot hold {} {} order {} until {}", h.holdId(), h.slotId(), h.orderId(), h.expiresAt());
     return h.holdId();
+  }
+
+  /** S4 교체 점유 조건: 기존 점유가 같은 주문·같은 센터의 확정 점유이고, 다른 시간대이며, 진행 중인 교체(HELD)가 없다. 기존 점유는 건드리지 않는다. */
+  private void replaceable(CreateHold cmd, SlotRules.Window w, Instant now) {
+    SlotHold old =
+        store.find(cmd.newSlotFor(), false).orElseThrow(() -> holdNotFound(cmd.newSlotFor()));
+    if (!old.orderId().equals(cmd.orderId()) || !old.mfcId().equals(cmd.mfcId())) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "교체 대상은 같은 주문·같은 센터의 점유여야 합니다.");
+    }
+    if (old.stateAt(now) != SlotHold.State.CONFIRMED) {
+      throw PmartException.invalidState(
+          "교체 대상 점유가 " + old.stateAt(now) + " 상태입니다(확정된 점유만 바꿀 수 있습니다).");
+    }
+    if (old.window().equals(w)) {
+      throw new PmartException(
+          "SAME_SLOT", HttpStatus.UNPROCESSABLE_CONTENT, "지금과 같은 시간대입니다.", false, List.of());
+    }
+    store
+        .heldHoldIdForOrder(cmd.orderId())
+        .ifPresent(
+            id -> {
+              throw holdAlreadyActive(cmd.orderId());
+            });
   }
 
   /** 계약: 조회 실패도 CONFIG_REQUIRED(신규 결제 보류) — 센터 없음·시간표 미승인·연결 실패·결과 불명 모두. */
@@ -236,6 +257,20 @@ public class SlotHoldService {
                         "점유가 " + h.stateAt(now) + " 상태라 확정할 수 없습니다. 다시 확보하세요.");
                 case APPLY -> {
                   check(expectedVersion, version);
+                  if (h.replaces() != null) {
+                    // S4: 기존 확정 점유를 먼저 해제(같은 트랜잭션 — CONFIRMED 1건 색인)
+                    SlotHold old =
+                        store
+                            .find(h.replaces(), true)
+                            .orElseThrow(() -> holdNotFound(h.replaces()));
+                    if (old.state() != SlotHold.State.CONFIRMED) {
+                      throw PmartException.invalidState(
+                          "교체 대상 점유가 " + old.state() + " 상태라 바꿀 수 없습니다(취소 등).");
+                    }
+                    store.markReleased(
+                        old.holdId(), old.version() + 1, now, SlotHold.REASON_REPLACED, null);
+                    log.info("slot hold {} released — replaced by {}", old.holdId(), h.holdId());
+                  }
                   version++;
                   store.markConfirmed(h.holdId(), version, now);
                   log.info("slot hold {} confirmed", h.holdId());

@@ -27,7 +27,7 @@
 - 잔여 = 정원 − 점유(만료 전 HELD + CONFIRMED). 0이면 FULL. 비회원 토큰도 조회 가능(guest-paths).
 
 ## 상태
-예약 슬롯 조회·슬롯 점유 구현(2026-10-31). S4 교체 점유(newSlotFor)는 미지원(422 UNSUPPORTED_ACTION). SlotHoldResult 이벤트는 아직 발행하지 않는다(동기 응답으로 대신).
+예약 슬롯 조회·슬롯 점유 구현(2026-10-31). S4 교체 점유(newSlotFor)는 2026-11-16 구현(아래). SlotHoldResult 이벤트는 아직 발행하지 않는다(동기 응답으로 대신).
 
 ## 슬롯 점유 (2026-10-31, `/internal/slot-holds/**`)
 - 점유 판정은 조회와 같은 규칙(`SlotRules.selectable`) → 아니면 422 SLOT_NOT_SELECTABLE. 정원 미설정·캘린더 조회 실패(센터 없음·미승인·장애 모두) → 422 CONFIG_REQUIRED(계약 문구대로, 503 아님). 정원 소진 → 422 CAPACITY_EXCEEDED.
@@ -37,3 +37,4 @@
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
 - **배송 지연 가능 안내(CP-1 1부, 2026-11-16)**: 구독 `capacityEvents-in-0` ← mfc.capacity.v1 `CapacityReduced` → `CapacityReductionHandler` — 영향 주문의 CONFIRMED 점유를 도착 시간대별로 묶어 `SlotCapacityReduced`(delivery.slot.v1, aggregate Slot `mfcId:날짜:시작분`, window ARRIVAL), 점유 없는 주문은 MFC 작업 창(WORK)으로 한 건. 점유·정원은 바꾸지 않는다(결정 2026-11-15 — 유지 + 안내). 이 서비스의 첫 구독·발행.
+- **S4 교체 점유(2026-11-16, 계약 0.2.0, V3)**: `newSlotFor` = 같은 주문·센터의 확정 점유 → 다른 시간대 새 HELD(replaces, 정원 둘 다), 새 점유 확정 때 같은 트랜잭션에서 기존 RELEASED(TIME_CHANGED). 확정 전·같은 시간대(422 SAME_SLOT)·진행 중 교체(409) 거절, 새 점유 만료·해제면 기존 그대로. 유일 색인 HELD 1·CONFIRMED 1. S4 사가(orchestration)·MFC 쪽은 다음 단계.
