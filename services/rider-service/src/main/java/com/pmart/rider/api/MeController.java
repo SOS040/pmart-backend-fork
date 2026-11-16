@@ -56,7 +56,8 @@ public class MeController implements MeApi {
                                 new Rider.Area(
                                     a.getMfcId(), a.getZoneId() == null ? "" : a.getZoneId()))
                         .distinct()
-                        .toList()));
+                        .toList(),
+                body.getLicenseNumber()));
     return ResponseEntity.ok(RiderViews.profile(r));
   }
 

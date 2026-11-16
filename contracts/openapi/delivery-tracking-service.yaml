@@ -281,7 +281,7 @@ components:
       properties:
         origins: { type: array, minItems: 1, maxItems: 30, items: { $ref: '#/components/schemas/LatLng' } }
         destinations: { type: array, minItems: 1, maxItems: 30, items: { $ref: '#/components/schemas/LatLng' } }
-        vehicleType: { type: string, enum: [MOTORCYCLE, BICYCLE, CAR, WALK] }
+        vehicleType: { type: string, enum: [MOTORCYCLE, BICYCLE, E_BIKE, KICKBOARD, CAR, WALK] }
         departAt: { type: string, format: date-time }
     DistanceMatrix:
       type: object

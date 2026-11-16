@@ -23,6 +23,15 @@ public class SignupController implements SignupApi {
     this.riders = riders;
   }
 
+  /** 운전면허 번호 중복 확인(라이더 앱 요청 §7, 2026-11-16). */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.CheckRiderLicense200Response>
+      checkRiderLicense(com.pmart.rider.api.generated.model.CheckRiderLicenseRequest body) {
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.CheckRiderLicense200Response()
+            .available(riders.licenseAvailable(body.getLicenseNumber())));
+  }
+
   @Override
   public ResponseEntity<RiderProfile> createRiderSignup(
       String idempotencyKey,
@@ -60,7 +69,8 @@ public class SignupController implements SignupApi {
                             c ->
                                 Map.of(
                                     "consentType", c.getConsentType(), "version", c.getVersion()))
-                        .toList()));
+                        .toList(),
+                body.getLicenseNumber()));
     return ResponseEntity.status(HttpStatus.CREATED).body(RiderViews.profile(r));
   }
 

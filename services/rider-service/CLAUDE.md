@@ -33,3 +33,4 @@
 - 아직 없음: 진행 중 배송 수(execution 사본 — 그래서 운행 중이면 수단 변경을 막는다), 검토 대상이 열릴 때 알림 사건(사용자 2026-11-15 — 나중, 우선 목록만), BO-20 승인 연동(`ApprovalDecided`), 마지막 통신 시각은 운행 상태 바꿀 때만.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
+- **배달 수단·운전면허(2026-11-16 — 라이더 앱 요청 §6·§7, V6)**: 수단 E_BIKE(전기자전거)·KICKBOARD(전동킥보드) 추가(수행료는 자전거와 같음 — dispatch `FeeTable` 이 도보만 따로). 가입 `licenseNumber`(12자리, 하이픈 선택) — MOTORCYCLE·CAR·KICKBOARD 필수(422 LICENSE_REQUIRED), 같은 번호 409 DUPLICATE_LICENSE, `POST /riders/license-checks`(가입 전 중복 확인). **원문 저장 안 함**: `license_hash` = HMAC-SHA256(`pmart.rider.license-hash-key` — pmart-config {cipher}, 없으면 면허를 받는 요청만 422 CONFIG_REQUIRED), `license_masked`(11-**-******-12) → 프로필 `licenseNumberMasked`. 가입 뒤 수단 변경(PATCH `/riders/me`)도 오토바이·자동차·킥보드로 바꾸면서 등록된 면허가 없으면 `licenseNumber` 필수(422 LICENSE_REQUIRED, 다른 라이더와 같으면 409 — 사용자 2026-11-16 "받는다").

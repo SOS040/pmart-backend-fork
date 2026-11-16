@@ -33,19 +33,47 @@ public class RiderStore {
       @Nullable String residenceDetail,
       List<Area> areas,
       List<String[]> consents,
-      Instant at) {}
+      Instant at,
+      @Nullable String licenseHash,
+      @Nullable String licenseMasked) {}
 
   private static final String COLUMNS =
       "rider_id, version, signup_request_id, name, phone, vehicle_type, bank_code,"
           + " bank_account_number, bank_holder_name, residence_road, residence_detail,"
           + " operating_status, new_dispatch_enabled, operating_mfc_id, state_changed_at,"
           + " one_at_a_time, dispatch_mode, restriction, restriction_reason, restriction_until,"
-          + " last_heartbeat_at, joined_at";
+          + " last_heartbeat_at, joined_at, license_masked";
 
   private final JdbcTemplate jdbc;
 
   public RiderStore(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
+  }
+
+  public boolean licenseTakenByOther(String licenseHash, String riderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM rider WHERE license_hash = ? AND rider_id <> ?",
+            Integer.class,
+            licenseHash,
+            riderId);
+    return n != null && n > 0;
+  }
+
+  public void setLicense(String riderId, String licenseHash, String licenseMasked) {
+    jdbc.update(
+        "UPDATE rider SET license_hash = ?, license_masked = ? WHERE rider_id = ?",
+        licenseHash,
+        licenseMasked,
+        riderId);
+  }
+
+  /** 이 면허 해시로 가입한 라이더가 있는가(라이더 앱 요청 §7). */
+  public boolean licenseTaken(String licenseHash) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM rider WHERE license_hash = ?", Integer.class, licenseHash);
+    return n != null && n > 0;
   }
 
   public boolean phoneTaken(String phone) {
@@ -59,7 +87,8 @@ public class RiderStore {
     jdbc.update(
         "INSERT INTO rider (rider_id, signup_request_id, name, phone, vehicle_type, bank_code,"
             + " bank_account_number, bank_holder_name, residence_road, residence_detail,"
-            + " state_changed_at, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            + " state_changed_at, joined_at, license_hash, license_masked) VALUES (?, ?, ?, ?, ?, ?, ?,"
+            + " ?, ?, ?, ?, ?, ?, ?)",
         r.riderId(),
         r.signupRequestId(),
         r.name(),
@@ -71,7 +100,9 @@ public class RiderStore {
         r.residenceRoad(),
         r.residenceDetail(),
         at,
-        at);
+        at,
+        r.licenseHash(),
+        r.licenseMasked());
     replaceAreas(r.riderId(), r.areas());
     for (String[] c : r.consents()) {
       jdbc.update(
@@ -370,7 +401,8 @@ public class RiderStore {
               x.restrictionUntil(),
               x.lastHeartbeatAt(),
               x.joinedAt(),
-              List.copyOf(areas.getOrDefault(x.riderId(), List.of()))));
+              List.copyOf(areas.getOrDefault(x.riderId(), List.of())),
+              x.licenseMasked()));
     }
     return out;
   }
@@ -400,7 +432,8 @@ public class RiderStore {
             instantOrNull(rs, "restriction_until"),
             instantOrNull(rs, "last_heartbeat_at"),
             instant(rs, "joined_at"),
-            List.of()));
+            List.of(),
+            rs.getString("license_masked")));
   }
 
   private static Instant instant(ResultSet rs, String col) throws SQLException {

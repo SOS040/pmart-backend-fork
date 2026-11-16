@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -296,6 +296,28 @@ paths:
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /deliveries/{deliveryId}/help-requests:
+    get:
+      tags: [execution]
+      summary: 배송별 도움요청 목록 (0.7.0 — 라이더 앱 요청 §10)
+      x-added-in: '2026-11-16'
+      description: |
+        라이더는 이 배송에서 **본인이 보낸** 도움요청만(앱을 다시 켜도 보낸 요청이 남게 — pmart-clients 라이더 앱 요청 §10), 직원은 도움요청 조회와 같은 범위(그 센터 운영자·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS).
+        오래된 것부터. 항목은 단건 조회와 같은 모양(라이더에게 resolvedBy·resolutionNote 는 null). 볼 수 없는 배송이면 404.
+      operationId: listHelpRequests
+      x-pmart-user-types: [RIDER, OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/HelpRequest' } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
     post:
       tags: [execution]
       summary: 도움요청 (→ case-service 지원센터)

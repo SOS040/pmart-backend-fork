@@ -137,6 +137,26 @@ public class HelpRequestService {
     return new HelpView(h, p.type() != PmartPrincipal.PrincipalType.RIDER);
   }
 
+  /** 배송별 도움요청 목록(0.7.0, 라이더 앱 요청 §10). 라이더는 본인 것만, 직원은 {@link #get} 과 같은 범위. 볼 수 없는 배송이면 404. */
+  public List<HelpView> list(String deliveryId) {
+    PmartPrincipal p =
+        PmartPrincipal.current().orElseThrow(() -> ExecutionService.forbidden("인증이 필요합니다."));
+    DeliveryRow d =
+        store
+            .delivery(deliveryId)
+            .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
+    boolean rider = p.type() == PmartPrincipal.PrincipalType.RIDER;
+    if (!rider
+        && p.type() != PmartPrincipal.PrincipalType.SERVICE
+        && !Access.operatorCanSee(p, d.mfcId())) {
+      throw PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다.");
+    }
+    return store.helps(deliveryId).stream()
+        .filter(h -> !rider || p.subject().equals(h.riderId()))
+        .map(h -> new HelpView(h, !rider))
+        .toList();
+  }
+
   /** 도움요청 대화(0.6.0, 라이더 앱 요청 §11-3) — 볼 수 있는 사람은 {@link #get} 과 같다. after 뒤 메시지만(200개까지). */
   public Thread messages(String deliveryId, String requestId, long after) {
     HelpView v = get(deliveryId, requestId);
