@@ -129,6 +129,40 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     return m;
   }
 
+  /** S4(2026-11-16): 예약 시간 변경 확정 → "예약 시간이 바뀌었어요"(새 도착 시간대). */
+  @Test
+  void reservationTimeChangedTellsCustomerNewWindow() throws Exception {
+    String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String orderId = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(orderId, me);
+    publish(
+        "order.order.v1",
+        "ReservationTimeChanged",
+        "Order",
+        orderId,
+        m(
+            "orderId",
+            orderId,
+            "orderVersion",
+            2,
+            "requestId",
+            "RTC-1",
+            "previousArrivalWindow",
+            m("date", "2026-11-17", "start", "18:00", "end", "19:00"),
+            "arrivalWindow",
+            m("date", "2026-11-18", "start", "20:00", "end", "21:00"),
+            "changedAt",
+            Instant.now().toString()));
+    Res inbox =
+        await(
+            () -> send("GET", TestJwt.customer(me), "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 1);
+    JsonNode n = inbox.body().path("items").get(0);
+    assertThat(n.path("title").asString()).isEqualTo("예약 시간이 바뀌었어요");
+    assertThat(n.path("body").asString()).isEqualTo("11월 18일 20:00~21:00에 도착할 예정이에요.");
+    assertThat(n.path("destination").path("ref").asString()).isEqualTo(orderId);
+  }
+
   /** CP-1: 정원 축소 → 영향 주문 고객마다 "배송이 늦어질 수 있어요"(도착 시간대 KST), 주문 상세로. */
   @Test
   void slotCapacityReducedTellsEachAffectedCustomer() throws Exception {
@@ -158,7 +192,10 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
             r -> r.body().path("items").size() >= 1);
     JsonNode n = mine.body().path("items").get(0);
     assertThat(n.path("title").asString()).isEqualTo("배송이 늦어질 수 있어요");
-    assertThat(n.path("body").asString()).contains("11월 17일 18:00~19:00 도착 예정").contains("취소");
+    assertThat(n.path("body").asString())
+        .contains("11월 17일 18:00~19:00 도착 예정")
+        .contains("다른 시간대로 바꾸거나")
+        .contains("취소");
     assertThat(n.path("destination").path("ref").asString()).isEqualTo(o1);
     Res theirs =
         await(

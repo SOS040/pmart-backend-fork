@@ -125,9 +125,24 @@ public final class Notices {
         "DELIVERY_MAY_BE_DELAYED",
         DELIVERY,
         "배송이 늦어질 수 있어요",
-        "센터 사정으로 " + when + "배송이 늦어질 수 있어요. 기다리기 어려우시면 상품 준비가 시작되기 전까지 주문을 취소할 수 있어요.",
+        "센터 사정으로 "
+            + when
+            + "배송이 늦어질 수 있어요. 기다리기 어려우시면 상품 준비가 시작되기 전까지 "
+            // 예약배달(도착 시간대가 있는 주문)은 S4 시간 변경도 된다(2026-11-16)
+            + (when.isEmpty() ? "" : "다른 시간대로 바꾸거나 ")
+            + "주문을 취소할 수 있어요.",
         "ORDER",
         orderId);
+  }
+
+  /** 예약배달 시간 변경 확정(S4, 2026-11-16 — ReservationTimeChanged). 새 도착 시간대를 적는다. */
+  public static Notice reservationTimeChanged(
+      String orderId, @Nullable String date, @Nullable String start, @Nullable String end) {
+    String when =
+        date != null && start != null && end != null
+            ? koreanDate(date) + " " + start + "~" + end + "에 도착할 예정이에요."
+            : "주문 상세에서 새 도착 시간을 확인해 주세요.";
+    return new Notice("RESERVATION_TIME_CHANGED", ORDER, "예약 시간이 바뀌었어요", when, "ORDER", orderId);
   }
 
   /** 주문 전체 취소. 환불은 결과가 나온 뒤 따로 알린다. */

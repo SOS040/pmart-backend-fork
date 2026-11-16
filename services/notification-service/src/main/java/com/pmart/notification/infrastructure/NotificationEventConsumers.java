@@ -19,7 +19,8 @@ class NotificationEventConsumers {
           "OrderConfirmed",
           "OrderPreparationStarted",
           "OrderCancelled",
-          "OrderLineQuantityChanged");
+          "OrderLineQuantityChanged",
+          "ReservationTimeChanged");
   private static final Set<String> DELIVERY =
       Set.of("PickupCompleted", "DeliveryCompleted", "RedeliveryPaymentRequired");
 
