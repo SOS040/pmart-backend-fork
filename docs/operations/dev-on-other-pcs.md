@@ -38,6 +38,8 @@ PC 1 이 아닌 PC 에서 개발하는 사람·Claude 가 먼저 읽는다. **PC
 
 ## 2. LAN 시험 계정과 비밀번호 파일
 
+> 계정 하나하나(MFC 작업자 70명의 아이디·고용 형태·업무·직원 번호 포함)는 `docs/operations/lan-test-accounts.md`(2026-11-16).
+
 `.secrets` 는 git 에 없다(PC 1 `deploy/lan/.secrets/`). 다른 PC 에서 LAN 시험을 하려면 **필요한 파일만 같은 경로(`deploy/lan/.secrets/`)** 로 받아 둔다(사용자가 복사). 저장소 루트 `.secrets/` 에 두지 않는다(2026-11-13 PC 3 에서 그렇게 복사돼 커밋될 뻔함 — 이제 `.gitignore` 가 루트 `/.secrets/` 도 막는다).
 
 | 파일(`deploy/lan/.secrets/`) | 계정(Keycloak 아이디) | 역할·센터(employee-auth-service) | 쓰는 곳 |

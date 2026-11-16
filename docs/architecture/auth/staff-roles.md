@@ -98,7 +98,7 @@ PMart 직원(운영자) 역할 13개가 무엇이고, 누가 받고, 어느 화�
 
 - 개인정보 원문을 보여 주는 기능은 역할이 있어도 **사유 입력 + audit 기록이 남은 뒤에만** 원문을 준다(ADR-0062).
 
-## 6. LAN 시험 계정 (비밀번호 파일 `deploy/lan/.secrets/`, 토큰은 `deploy/lan/checks/staff_auth.py`)
+## 6. LAN 시험 계정 (비밀번호 파일 `deploy/lan/.secrets/`, 토큰은 `deploy/lan/checks/staff_auth.py`) — 전체 목록(MFC 작업자 70명 포함)은 `docs/operations/lan-test-accounts.md`
 
 | 계정 | 역할·센터 |
 |---|---|
