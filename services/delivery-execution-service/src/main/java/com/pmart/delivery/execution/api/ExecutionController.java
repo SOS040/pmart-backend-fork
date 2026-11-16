@@ -151,6 +151,19 @@ public class ExecutionController implements ExecutionApi {
                 .occurredAt(ExecutionViews.time(c.createdAt())));
   }
 
+  /** 배송별 도움요청 목록(0.7.0, 라이더 앱 요청 §10). */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.ListHelpRequests200Response>
+      listHelpRequests(String deliveryId) {
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.ListHelpRequests200Response()
+            .items(
+                helps.list(deliveryId).stream()
+                    .map(v -> StaffController.helpRequest(v, mapper))
+                    .toList()));
+  }
+
   @Override
   public ResponseEntity<HelpRequest> getHelpRequest(String deliveryId, String requestId) {
     return ResponseEntity.ok(StaffController.helpRequest(helps.get(deliveryId, requestId), mapper));

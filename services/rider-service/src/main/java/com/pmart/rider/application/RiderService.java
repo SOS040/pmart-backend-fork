@@ -7,6 +7,7 @@ import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.rider.domain.LicenseRules;
 import com.pmart.rider.domain.OperatingRules;
 import com.pmart.rider.domain.Rider;
 import com.pmart.rider.domain.Rider.Area;
@@ -37,6 +38,8 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class RiderService {
 
+  private final LicenseHasher licenses;
+
   public record Signup(
       @Nullable String name,
       String phone,
@@ -47,7 +50,8 @@ public class RiderService {
       @Nullable String residenceRoad,
       @Nullable String residenceDetail,
       List<Area> areas,
-      List<Map<String, String>> consents) {}
+      List<Map<String, String>> consents,
+      @Nullable String licenseNumber) {}
 
   public record ProfileChange(
       @Nullable String vehicleType,
@@ -86,7 +90,9 @@ public class RiderService {
       RequestIdempotency idempotency,
       EventPublisher events,
       ObjectMapper json,
-      Clock clock) {
+      Clock clock,
+      LicenseHasher licenses) {
+    this.licenses = licenses;
     this.store = store;
     this.idempotency = idempotency;
     this.events = events;
@@ -114,6 +120,28 @@ public class RiderService {
                   if (store.phoneTaken(cmd.phone())) {
                     throw duplicate("같은 전화번호로 가입한 라이더가 있습니다.");
                   }
+                  String license = LicenseRules.normalize(cmd.licenseNumber());
+                  if (cmd.licenseNumber() != null && license == null) {
+                    throw new PmartException(
+                        ErrorCode.VALIDATION_FAILED, "운전면허 번호는 12자리 숫자입니다(하이픈 선택).");
+                  }
+                  if (license == null && LicenseRules.required(cmd.vehicleType())) {
+                    throw new PmartException(
+                        "LICENSE_REQUIRED",
+                        HttpStatus.UNPROCESSABLE_CONTENT,
+                        "오토바이·자동차·킥보드는 운전면허 번호가 필요합니다.",
+                        false,
+                        List.of());
+                  }
+                  String licenseHash = license == null ? null : licenses.hash(license);
+                  if (licenseHash != null && store.licenseTaken(licenseHash)) {
+                    throw new PmartException(
+                        "DUPLICATE_LICENSE",
+                        HttpStatus.CONFLICT,
+                        "같은 운전면허 번호로 가입한 라이더가 있습니다.",
+                        false,
+                        List.of());
+                  }
                   try {
                     store.insert(
                         new RiderStore.NewRider(
@@ -132,7 +160,9 @@ public class RiderService {
                                 .map(c -> new String[] {c.get("consentType"), c.get("version")})
                                 .filter(c -> c[0] != null && c[1] != null)
                                 .toList(),
-                            clock.instant()));
+                            clock.instant(),
+                            licenseHash,
+                            license == null ? null : LicenseRules.mask(license)));
                   } catch (DuplicateKeyException e) {
                     throw duplicate("이미 가입한 라이더이거나 같은 전화번호가 있습니다.");
                   }
@@ -140,6 +170,16 @@ public class RiderService {
                 })
             .value();
     return get(id);
+  }
+
+  /** 운전면허 번호 중복 확인(가입 전, 라이더 앱 요청 §7). 형식이 틀리면 400. 번호는 저장·로그하지 않는다. */
+  public boolean licenseAvailable(String licenseNumber) {
+    requireRider();
+    String license = LicenseRules.normalize(licenseNumber);
+    if (license == null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "운전면허 번호는 12자리 숫자입니다(하이픈 선택).");
+    }
+    return !store.licenseTaken(licenses.hash(license));
   }
 
   public Rider signupResult(String requestId) {

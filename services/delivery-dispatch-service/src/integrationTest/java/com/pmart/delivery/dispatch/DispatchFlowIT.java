@@ -223,6 +223,12 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(offer.path("summary").path("dropAreaLabel").asString()).isEqualTo("서초구 서초동");
     assertThat(offer.path("summary").path("distanceKm").asDouble()).isEqualTo(1.8);
     assertThat(offer.path("summary").path("pickupEtaSeconds").asInt()).isEqualTo(300);
+    // 라이더 앱 요청 §3(2026-11-16): 픽업 → 전달 소요, 픽업지(MFC 정확)·전달지(약 1km 격자로 반올림)
+    assertThat(offer.path("summary").path("dropEtaSeconds").asInt()).isPositive();
+    assertThat(offer.path("summary").path("pickupPoint").path("lat").isNumber()).isTrue();
+    double dropLat = offer.path("summary").path("dropAreaPoint").path("lat").asDouble();
+    assertThat(dropLat * 100)
+        .isCloseTo(Math.round(dropLat * 100), org.assertj.core.data.Offset.offset(1e-6));
     assertThat(offer.path("summary").path("bagCount").asInt()).isEqualTo(2);
     assertThat(offer.path("remainingSec").asInt()).isBetween(1, 60);
     assertThat(mine.path("pollAfterSec").asInt()).isEqualTo(5);

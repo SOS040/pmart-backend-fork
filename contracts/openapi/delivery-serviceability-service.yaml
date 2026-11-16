@@ -341,7 +341,7 @@ components:
           items: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED] }
         vehicleTypes:
           type: array
-          items: { type: string, enum: [MOTORCYCLE, BICYCLE, CAR, WALK] }
+          items: { type: string, enum: [MOTORCYCLE, BICYCLE, E_BIKE, KICKBOARD, CAR, WALK] }
         maxWeightG: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
         maxVolumeL: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
         coldChainAvailable: { $ref: '_common.yaml#/components/schemas/PolicyValue' }

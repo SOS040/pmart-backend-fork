@@ -473,23 +473,80 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
   }
 
   private ResponseEntity<String> signup(String rider, String phone, String key) {
+    return signup(rider, phone, key, "MOTORCYCLE", license(rider));
+  }
+
+  private ResponseEntity<String> signup(
+      String rider,
+      String phone,
+      String key,
+      String vehicle,
+      @org.jspecify.annotations.Nullable String license) {
+    Map<String, Object> b = new java.util.LinkedHashMap<>();
+    b.put("phone", phone);
+    b.put("name", "시험 라이더");
+    b.put("vehicleType", vehicle);
+    b.put("deliveryAreas", List.of(Map.of("mfcId", "MFC-IT-1")));
+    b.put("consents", List.of(Map.of("consentType", "TERMS", "version", "2026-11")));
+    if (license != null) {
+      b.put("licenseNumber", license);
+    }
     return http.post()
         .uri("/riders/signups")
         .headers(h -> riderHeaders(h, rider, key))
-        .body(
-            Map.of(
-                "phone",
-                phone,
-                "name",
-                "시험 라이더",
-                "vehicleType",
-                "MOTORCYCLE",
-                "deliveryAreas",
-                List.of(Map.of("mfcId", "MFC-IT-1")),
-                "consents",
-                List.of(Map.of("consentType", "TERMS", "version", "2026-11"))))
+        .body(b)
         .retrieve()
         .toEntity(String.class);
+  }
+
+  /** 라이더마다 고정된 시험 면허 번호(같은 키 재전송이 같은 본문이 되게). */
+  private static String license(String seed) {
+    String d = String.format("%012d", Math.floorMod(seed.hashCode(), 1_000_000_000L) * 1000L + 11);
+    return d.substring(0, 2)
+        + "-"
+        + d.substring(2, 4)
+        + "-"
+        + d.substring(4, 10)
+        + "-"
+        + d.substring(10);
+  }
+
+  /**
+   * 라이더 앱 요청 §6·§7(2026-11-16): 전기자전거·킥보드 수단, 오토바이·자동차·킥보드는 면허 필수(422 LICENSE_REQUIRED), 같은 면허 409
+   * DUPLICATE_LICENSE, 중복 확인 경로, 프로필은 가린 번호만.
+   */
+  @Test
+  void licenseRulesAndNewVehicleTypes() {
+    String a = "RD-it-" + UUID.randomUUID();
+    ResponseEntity<String> noLicense = signup(a, phone(), "k-" + a, "KICKBOARD", null);
+    assertThat(noLicense.getStatusCode().value()).isEqualTo(422);
+    assertThat(json(noLicense.getBody()).path("code").asString()).isEqualTo("LICENSE_REQUIRED");
+    String lic = license("lic-" + a);
+    ResponseEntity<String> ok = signup(a, phone(), "k2-" + a, "KICKBOARD", lic);
+    assertThat(ok.getStatusCode().value()).isEqualTo(201);
+    JsonNode p = json(ok.getBody());
+    assertThat(p.path("vehicleType").asString()).isEqualTo("KICKBOARD");
+    assertThat(p.path("licenseNumberMasked").asString())
+        .isEqualTo(lic.substring(0, 2) + "-**-******-" + lic.substring(lic.length() - 2));
+    assertThat(ok.getBody()).doesNotContain(lic.replace("-", "")).doesNotContain(lic);
+    // 중복 확인 경로·같은 면허 409
+    String b = "RD-it-" + UUID.randomUUID();
+    JsonNode check =
+        json(
+            http.post()
+                .uri("/riders/license-checks")
+                .headers(h -> riderHeaders(h, b, "c-" + b))
+                .body(Map.of("licenseNumber", lic.replace("-", "")))
+                .retrieve()
+                .body(String.class));
+    assertThat(check.path("available").asBoolean()).isFalse();
+    ResponseEntity<String> dup = signup(b, phone(), "k-" + b, "CAR", lic);
+    assertThat(dup.getStatusCode().value()).isEqualTo(409);
+    assertThat(json(dup.getBody()).path("code").asString()).isEqualTo("DUPLICATE_LICENSE");
+    // 전기자전거는 면허 선택
+    ResponseEntity<String> ebike = signup(b, phone(), "k2-" + b, "E_BIKE", null);
+    assertThat(ebike.getStatusCode().value()).isEqualTo(201);
+    assertThat(json(ebike.getBody()).path("licenseNumberMasked").isNull()).isTrue();
   }
 
   private List<String> eligibleIds(String mfcId) {

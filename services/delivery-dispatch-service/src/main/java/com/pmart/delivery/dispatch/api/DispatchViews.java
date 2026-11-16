@@ -93,6 +93,9 @@ class DispatchViews {
                 .distanceKm(km(d.dropDistanceM()))
                 .pickupDistanceKm(km(o.pickupDistanceM()))
                 .pickupEtaSeconds(o.pickupDurationS())
+                .dropEtaSeconds(d.dropDurationS())
+                .pickupPoint(pickupPoint(d))
+                .dropAreaPoint(rounded(d.dropLat(), d.dropLng()))
                 .weightG(p.weightG())
                 .bagCount(p.bags())
                 .containsAlcohol(p.alcohol())
@@ -101,6 +104,33 @@ class DispatchViews {
                         ? null
                         : OfferSummary.DeliveryModeEnum.fromValue(d.deliveryMode()))
                 .estimatedFee(o.fee()));
+  }
+
+  /** 픽업지 — MFC 는 정확히, 회수·다시 배송(고객이 있는 곳)은 대략(라이더 앱 요청 §3). */
+  private static com.pmart.delivery.dispatch.api.generated.model.@org.jspecify.annotations.Nullable
+      LatLng
+      pickupPoint(DeliveryRow d) {
+    if (d.pickupBased()) {
+      return rounded(d.pickupLat(), d.pickupLng());
+    }
+    return d.mfcLat() == null || d.mfcLng() == null
+        ? null
+        : new com.pmart.delivery.dispatch.api.generated.model.LatLng()
+            .lat(d.mfcLat())
+            .lng(d.mfcLng());
+  }
+
+  /** 소수 둘째 자리(약 1km 격자) — 수락 전 전달지 대략 위치. */
+  static com.pmart.delivery.dispatch.api.generated.model.@org.jspecify.annotations.Nullable LatLng
+      rounded(
+          @org.jspecify.annotations.Nullable Double lat,
+          @org.jspecify.annotations.Nullable Double lng) {
+    if (lat == null || lng == null) {
+      return null;
+    }
+    return new com.pmart.delivery.dispatch.api.generated.model.LatLng()
+        .lat(Math.round(lat * 100) / 100.0)
+        .lng(Math.round(lng * 100) / 100.0);
   }
 
   DeliveryListItem listItem(OfferService.ListItem i) {

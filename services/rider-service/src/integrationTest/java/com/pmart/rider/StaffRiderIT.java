@@ -281,7 +281,11 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
                 "deliveryAreas",
                 List.of(Map.of("mfcId", "MFC-IT-1")),
                 "consents",
-                List.of(Map.of("consentType", "TERMS", "version", "2026-11"))))
+                List.of(Map.of("consentType", "TERMS", "version", "2026-11")),
+                // 오토바이·자동차·킥보드는 면허 필수(2026-11-16) — 라이더마다 고정된 시험 번호
+                "licenseNumber",
+                String.format(
+                    "%012d", Math.floorMod(rider.hashCode(), 1_000_000_000L) * 1000L + 7)))
         .retrieve()
         .toEntity(String.class);
   }

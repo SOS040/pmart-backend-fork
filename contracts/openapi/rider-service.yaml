@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -48,6 +48,37 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /riders/license-checks:
+    post:
+      tags: [signup]
+      summary: 운전면허 번호 중복 확인 (가입 전, 2026-11-16 — 라이더 앱 요청 §7)
+      x-added-in: '2026-11-16'
+      description: |
+        가입 화면의 "중복확인". 라이더 토큰. 형식이 틀리면 400, 이미 가입한 라이더의 번호면 available=false. 번호는 저장·로그하지 않는다.
+        가입(`POST /riders/signups`)이 같은 검사를 다시 한다(409 DUPLICATE_LICENSE).
+      operationId: checkRiderLicense
+      x-pmart-user-types: [RIDER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [licenseNumber]
+              properties:
+                licenseNumber: { type: string, pattern: '^[0-9]{2}-?[0-9]{2}-?[0-9]{6}-?[0-9]{2}$' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available]
+                properties:
+                  available: { type: boolean }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /riders/signups/{requestId}:
     get:
@@ -476,7 +507,8 @@ components:
   schemas:
     VehicleType:
       type: string
-      enum: [MOTORCYCLE, BICYCLE, CAR, WALK]
+      enum: [MOTORCYCLE, BICYCLE, E_BIKE, KICKBOARD, CAR, WALK]
+      description: 'E_BIKE 전기자전거·KICKBOARD 전동킥보드(2026-11-16 라이더 앱 요청 §6 — 수행료는 자전거와 같다, 업무 원문 §7.1 "위와 동일")'
     OperatingStatus:
       type: string
       description: OFF_DUTY 운행 종료. ON_DUTY 운행 중 (newDispatchEnabled로 신규배차 허용/중지 구분)
@@ -538,9 +570,16 @@ components:
         note: { type: string, maxLength: 300, description: '확인 결과 메모(개인정보를 적지 않는다)' }
     RiderSignupRequest:
       type: object
-      description: 'RS-2·ADR-0054 결정 G — 면허·주민번호 칸은 2026-11-13 뺐다(사용자 결정 2026-11-10, 가입 때 받지 않음)'
+      description: 'RS-2·ADR-0054 결정 G — 주민번호는 받지 않는다. 운전면허 번호는 2026-11-16 사용자 결정으로 다시 받는다(라이더 앱 요청 §7 — 진위 확인 없이 중복만)'
       required: [phone, vehicleType, deliveryAreas, consents]
       properties:
+        licenseNumber:
+          type: string
+          pattern: '^[0-9]{2}-?[0-9]{2}-?[0-9]{6}-?[0-9]{2}$'
+          description: |
+            운전면허 번호 12자리(하이픈 선택, 2026-11-16 사용자 결정). **오토바이·자동차·킥보드(MOTORCYCLE·CAR·KICKBOARD)는 필수**(없으면 422 LICENSE_REQUIRED), 그 밖 수단은 선택.
+            진위 확인 없이 중복만 확인(같은 번호 409 DUPLICATE_LICENSE). 원문은 저장하지 않는다 — 중복 확인용 키 해시와 가린 값(licenseNumberMasked)만.
+          x-added-in: '2026-11-16'
         phone: { type: string, pattern: '^01[0-9]{8,9}$', description: '휴대전화 번호(숫자만). 중복만 확인 — 본인인증 없음', x-added-in: '2026-11-13' }
         name: { type: string, maxLength: 50 }
         vehicleType: { $ref: '#/components/schemas/VehicleType' }

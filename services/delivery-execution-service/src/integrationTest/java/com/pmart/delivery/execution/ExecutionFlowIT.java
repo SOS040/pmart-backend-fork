@@ -677,6 +677,18 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .getStatusCode()
                 .value())
         .isEqualTo(404);
+    // §10 배송별 내 도움요청 목록 — 남의 라이더는 비어 있다(볼 수 없는 배송이 아니라 본인 것만)
+    post(id, "help-requests", rider, Map.of("category", "OTHER"));
+    JsonNode mine = body(staffGet("/deliveries/" + id + "/help-requests", TestJwt.rider(rider)));
+    assertThat(mine.path("items")).hasSize(2);
+    assertThat(mine.path("items").get(0).path("requestId").asString()).isEqualTo(requestId);
+    assertThat(mine.path("items").get(0).path("resolvedBy").isNull()).isTrue();
+    assertThat(body(staffGet("/deliveries/" + id + "/help-requests", ops)).path("items"))
+        .hasSize(2);
+    assertThat(
+            body(staffGet("/deliveries/" + id + "/help-requests", TestJwt.rider("RDR-OTHER")))
+                .path("items"))
+        .isEmpty();
     // 처리되면 더 못 쓴다
     assertThat(resolve(id, requestId, ops, "K-" + UUID.randomUUID()).getStatusCode().value())
         .isEqualTo(200);
