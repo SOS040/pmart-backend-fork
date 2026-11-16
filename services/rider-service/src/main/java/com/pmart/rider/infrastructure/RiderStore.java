@@ -50,6 +50,24 @@ public class RiderStore {
     this.jdbc = jdbc;
   }
 
+  public boolean licenseTakenByOther(String licenseHash, String riderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM rider WHERE license_hash = ? AND rider_id <> ?",
+            Integer.class,
+            licenseHash,
+            riderId);
+    return n != null && n > 0;
+  }
+
+  public void setLicense(String riderId, String licenseHash, String licenseMasked) {
+    jdbc.update(
+        "UPDATE rider SET license_hash = ?, license_masked = ? WHERE rider_id = ?",
+        licenseHash,
+        licenseMasked,
+        riderId);
+  }
+
   /** 이 면허 해시로 가입한 라이더가 있는가(라이더 앱 요청 §7). */
   public boolean licenseTaken(String licenseHash) {
     Integer n =

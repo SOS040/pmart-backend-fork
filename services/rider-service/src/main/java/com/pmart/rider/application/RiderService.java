@@ -60,7 +60,8 @@ public class RiderService {
       @Nullable String bankHolderName,
       @Nullable String residenceRoad,
       @Nullable String residenceDetail,
-      @Nullable List<Area> areas) {}
+      @Nullable List<Area> areas,
+      @Nullable String licenseNumber) {}
 
   public record StateChange(String status, boolean newDispatchEnabled, @Nullable String mfcId) {}
 
@@ -210,6 +211,32 @@ public class RiderService {
               && r.operatingStatus() == Rider.OperatingStatus.ON_DUTY) {
             // 진행 중 배송 수는 execution 사본이 아직 없어 운행 중이면 막는다(배송 중 수단 변경 불가 — 원문 §8.3 보수적 적용)
             throw PmartException.invalidState("운행 중에는 배달 수단을 바꿀 수 없습니다. 운행을 종료한 뒤 바꾸세요.");
+          }
+          // 운전면허(2026-11-16 사용자 결정): 면허가 필요한 수단으로 바꾸면 등록된 면허가 있거나 이번에 넣어야 한다
+          String license = LicenseRules.normalize(c.licenseNumber());
+          if (c.licenseNumber() != null && license == null) {
+            throw new PmartException(ErrorCode.VALIDATION_FAILED, "운전면허 번호는 12자리 숫자입니다(하이픈 선택).");
+          }
+          String vehicle = c.vehicleType() == null ? r.vehicleType() : c.vehicleType();
+          if (license == null && r.licenseMasked() == null && LicenseRules.required(vehicle)) {
+            throw new PmartException(
+                "LICENSE_REQUIRED",
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                "오토바이·자동차·킥보드는 운전면허 번호가 필요합니다.",
+                false,
+                List.of());
+          }
+          if (license != null) {
+            String hash = licenses.hash(license);
+            if (store.licenseTakenByOther(hash, riderId)) {
+              throw new PmartException(
+                  "DUPLICATE_LICENSE",
+                  HttpStatus.CONFLICT,
+                  "같은 운전면허 번호로 가입한 라이더가 있습니다.",
+                  false,
+                  List.of());
+            }
+            store.setLicense(riderId, hash, LicenseRules.mask(license));
           }
           store.updateProfile(
               riderId,

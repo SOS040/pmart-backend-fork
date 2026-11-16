@@ -117,7 +117,7 @@ paths:
     patch:
       tags: [me]
       summary: 프로필 변경 (계좌·거주지·배달지역·수단)
-      description: 수단(vehicleType) 변경은 진행 중 배송이 있으면 409 INVALID_STATE.
+      description: 수단(vehicleType) 변경은 진행 중 배송이 있으면 409 INVALID_STATE. 오토바이·자동차·킥보드로 바꾸면서 등록된 면허가 없으면 licenseNumber 필수(422 LICENSE_REQUIRED — 2026-11-16 사용자 결정).
       operationId: updateMyRider
       x-pmart-user-types: [RIDER]
       parameters:
@@ -614,6 +614,11 @@ components:
     RiderProfileUpdate:
       type: object
       properties:
+        licenseNumber:
+          type: string
+          pattern: '^[0-9]{2}-?[0-9]{2}-?[0-9]{6}-?[0-9]{2}$'
+          description: '운전면허 번호(2026-11-16 사용자 결정): 수단을 오토바이·자동차·킥보드로 바꿀 때 등록된 면허가 없으면 필수(422 LICENSE_REQUIRED). 다른 라이더와 같으면 409 DUPLICATE_LICENSE. 원문 저장 안 함'
+          x-added-in: '2026-11-16'
         vehicleType: { $ref: '#/components/schemas/VehicleType' }
         bankAccount:
           type: object

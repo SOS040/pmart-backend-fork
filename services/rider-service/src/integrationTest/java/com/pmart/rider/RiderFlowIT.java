@@ -499,6 +499,19 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(String.class);
   }
 
+  private ResponseEntity<String> patchMe(String rider, Map<String, Object> body, int version) {
+    return http.patch()
+        .uri("/riders/me")
+        .headers(
+            h -> {
+              riderHeaders(h, rider, "p-" + UUID.randomUUID());
+              h.set("X-Expected-Version", String.valueOf(version));
+            })
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   /** 라이더마다 고정된 시험 면허 번호(같은 키 재전송이 같은 본문이 되게). */
   private static String license(String seed) {
     String d = String.format("%012d", Math.floorMod(seed.hashCode(), 1_000_000_000L) * 1000L + 11);
@@ -547,6 +560,21 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     ResponseEntity<String> ebike = signup(b, phone(), "k2-" + b, "E_BIKE", null);
     assertThat(ebike.getStatusCode().value()).isEqualTo(201);
     assertThat(json(ebike.getBody()).path("licenseNumberMasked").isNull()).isTrue();
+    // 가입 뒤 오토바이로 바꾸려면 면허 필요(사용자 2026-11-16 "받는다")
+    int v = json(ebike.getBody()).path("version").asInt();
+    ResponseEntity<String> noLic = patchMe(b, Map.of("vehicleType", "MOTORCYCLE"), v);
+    assertThat(noLic.getStatusCode().value()).isEqualTo(422);
+    assertThat(json(noLic.getBody()).path("code").asString()).isEqualTo("LICENSE_REQUIRED");
+    ResponseEntity<String> dupLic =
+        patchMe(b, Map.of("vehicleType", "MOTORCYCLE", "licenseNumber", lic), v);
+    assertThat(json(dupLic.getBody()).path("code").asString()).isEqualTo("DUPLICATE_LICENSE");
+    String own = license("own-" + b);
+    ResponseEntity<String> withLic =
+        patchMe(b, Map.of("vehicleType", "MOTORCYCLE", "licenseNumber", own), v);
+    assertThat(withLic.getStatusCode().value()).isEqualTo(200);
+    assertThat(json(withLic.getBody()).path("vehicleType").asString()).isEqualTo("MOTORCYCLE");
+    assertThat(json(withLic.getBody()).path("licenseNumberMasked").asString())
+        .endsWith(own.substring(own.length() - 2));
   }
 
   private List<String> eligibleIds(String mfcId) {
