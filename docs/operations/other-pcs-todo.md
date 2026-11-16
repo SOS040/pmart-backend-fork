@@ -68,6 +68,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 - **2026-11-16 인수인계 예정**(사용자 2026-11-15) — 그 전에 사용자가 브라우저·mfc_app 등 화면 확인을 마친다. 경계 확정(2026-11-15 사용자 "너의 추천대로"): backoffice-bff·case-service, 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(로그인·세션 코드는 PC 1 만). audit-service 는 PC 1 에 남는다(`pc-split.md` §1-1). **인수인계 문서 `docs/backoffice/HANDOVER.md`** — 시작하면 먼저 읽는다.
 - 시작할 때: 공통 절 + 백엔드·클라이언트 두 저장소 포크(저장소마다 PR 따로).
+- **`web/mfc-backoffice` 도 PC 2**(사용자 2026-11-16). 화면이 쓰는 MFC API(MB-1~3)는 PC 3 — 필요하면 PC 3 에 요청.
 - 11-16 오전 마지막 갱신: case 0.4.1(`InquiryAnswered` 발행·사건 refs requestId), 백오피스 라이더·배송 화면 빌드 LAN, 리뷰·알림(PC 1 영역 — 백오피스 화면 없음). `HANDOVER.md` 첫머리 참고.
 
 ## 사용자가 할 일 (PC 가 아니라 사람)

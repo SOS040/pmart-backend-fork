@@ -12,11 +12,12 @@
 | | PC 2(backoffice) | PC 1(platform)에 남음 |
 |---|---|---|
 | 백엔드 | **backoffice-bff**, **case-service**(문의·컴플레인·사건함) | **audit-service**(개인정보 열람 원장 — ADR-0062), approval-service·hr-service·employee-auth-service(권한 API 포함), order·order-orchestration, 게이트웨이, 라이브러리, **배포 전부** |
-| 클라이언트(pmart-clients) | `web/backoffice`, `web/hr-backoffice`(인사팀 화면), `web/core`·`web/ui`(웹 공통 — **로그인·세션·토큰 부분 제외**) | 로그인·세션·토큰 코드 전부(§1-3) |
-| 정하지 않음 | `web/mfc-backoffice` 담당(PC 3 또는 PC 2) — 사용자 2026-11-16 결정 예정 | |
+| 클라이언트(pmart-clients) | `web/backoffice`, `web/hr-backoffice`(인사팀 화면), **`web/mfc-backoffice`(MFC 센터 관리자 웹 — 사용자 2026-11-16 "PC2에서 할거고")**, `web/core`·`web/ui`(웹 공통 — **로그인·세션·토큰 부분 제외**) | 로그인·세션·토큰 코드 전부(§1-3) |
+| PC 3(mfc)에 남음 | `web/mfc-backoffice` 가 부르는 MFC 백엔드 API(MB-1~3 — `docs/architecture/service-requests/mfc-backoffice-staff-apis.md`). 화면에 필요한 MFC API 는 PC 3 에 요청 | |
 
 - **로그인 코드는 PC 1 만**(`pc-split.md` §1-3): `web/core` 의 `employeeAuth.ts`·`session.ts`·`sessionPersistence.ts`·`tokens.ts`·`pmartFetch.ts` 갱신 부분, 웹 앱 `src/features/session`. 바꾼 PR 은 PC 1 이 돌려보낸다. 필요하면 handoff 로 PC 1 에 요청.
-- 웹 공통(`web/core`·`web/ui`)은 세 웹 앱(backoffice·hr-backoffice·mfc-backoffice)이 같이 쓴다 — 바꿀 때 세 앱 빌드를 같이 본다.
+- 웹 공통(`web/core`·`web/ui`)은 세 웹 앱(backoffice·hr-backoffice·mfc-backoffice)이 같이 쓴다 — 바꿀 때 세 앱 빌드를 같이 본다. 세 앱 모두 PC 2 라 한 곳에서 맞춘다.
+- **mfc-backoffice**: LAN https://192.168.0.40:8445(빌드 `index-ChSinewe.js`, 올리기는 PC 1 `lan.sh publish-mfc-backoffice <dist>`). 첫 요청서 `docs/handoff/clients/mfc-backoffice/2026-11-15-request-mfc-backoffice.md`. 업무는 MFC 원문(`docs/business/MFC-business-logic.md`)·`docs/mfc/HANDOVER.md` — MFC 업무 규칙은 추측하지 말고 PC 3·사용자에게 묻는다.
 - 권한·인사·주문·사가 API 가 더 필요하면 PC 1 에 요청(`docs/architecture/service-requests/`). audit-service 계약(`/internal/pii-access-logs`)에 새 `subjectType`·항목 코드가 필요할 때도.
 
 ## 1. 먼저 읽을 것 (순서대로)
