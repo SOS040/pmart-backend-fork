@@ -52,42 +52,42 @@
   },
   "products": [
     {
-      "key": "SEED-001", "barcode": "2990000000011", "categoryId": "t01-c02",
+      "key": "SEED-001", "barcode": "2990000000019", "categoryId": "t01-c02",
       "name": "[시험] 국산콩 두부 300g", "unitType": "E", "unitsPerSku": 1, "weightG": 320, "storageType": "CHILLED",
       "price": 1900, "color": "#F2E8CF",
       "description": "시험용 합성 상품입니다. 국산콩으로 만든 부침용 두부.",
       "storageGuide": "0~10℃ 냉장 보관", "notices": ["원산지: 시험 데이터", "내용량: 300g"]
     },
     {
-      "key": "SEED-002", "barcode": "2990000000028", "categoryId": "t01-c01",
+      "key": "SEED-002", "barcode": "2990000000026", "categoryId": "t01-c01",
       "name": "[시험] 친환경 애호박 1개", "unitType": "E", "unitsPerSku": 1, "weightG": 300, "storageType": "CHILLED",
       "price": 1500, "color": "#8DB580",
       "description": "시험용 합성 상품입니다. 볶음·찌개용 애호박.",
       "storageGuide": "냉장 보관", "notices": ["원산지: 시험 데이터"]
     },
     {
-      "key": "SEED-003", "barcode": "2990000000035", "categoryId": "t02-c01",
+      "key": "SEED-003", "barcode": "2990000000033", "categoryId": "t02-c01",
       "name": "[시험] 소고기 미역국 500g", "unitType": "E", "unitsPerSku": 1, "weightG": 520, "storageType": "CHILLED",
       "price": 4900, "color": "#6B4E3D",
       "description": "시험용 합성 상품입니다. 데우기만 하면 되는 미역국.",
       "storageGuide": "0~10℃ 냉장 보관, 개봉 후 바로 드세요", "notices": ["원산지: 시험 데이터", "내용량: 500g"]
     },
     {
-      "key": "SEED-004", "barcode": "2990000000042", "categoryId": "t02-c02",
+      "key": "SEED-004", "barcode": "2990000000040", "categoryId": "t02-c02",
       "name": "[시험] 차돌 된장찌개 밀키트 2인분", "unitType": "E", "unitsPerSku": 1, "weightG": 750, "storageType": "CHILLED",
       "price": 8900, "color": "#C08B4F",
       "description": "시험용 합성 상품입니다. 재료가 손질된 2인분 밀키트.",
       "storageGuide": "0~10℃ 냉장 보관", "notices": ["원산지: 시험 데이터", "내용량: 2인분"]
     },
     {
-      "key": "SEED-005", "barcode": "2990000000059", "categoryId": "t02-c02",
+      "key": "SEED-005", "barcode": "2990000000057", "categoryId": "t02-c02",
       "name": "[시험] 고기 왕만두 1kg", "unitType": "E", "unitsPerSku": 1, "weightG": 1020, "storageType": "FROZEN",
       "price": 7900, "color": "#E4D6C3",
       "description": "시험용 합성 상품입니다. 찌거나 구워 먹는 냉동 만두.",
       "storageGuide": "-18℃ 이하 냉동 보관", "notices": ["원산지: 시험 데이터", "내용량: 1kg"]
     },
     {
-      "key": "SEED-006", "barcode": "2990000000066", "categoryId": "t03-c01",
+      "key": "SEED-006", "barcode": "2990000000064", "categoryId": "t03-c01",
       "name": "[시험] 3겹 화장지 30롤", "unitType": "B", "unitsPerSku": 30, "weightG": 4200, "storageType": "AMBIENT",
       "price": 12900, "color": "#9FB8D9",
       "description": "시험용 합성 상품입니다. 3겹 롤 화장지 30롤 묶음.",
@@ -95,7 +95,7 @@
       "_comment": "구성 낱개 30 이라 구매 상한(같은 기초상품 10개)을 1개만 담아도 넘는다 — 상한 거절 시험용으로 남긴다"
     },
     {
-      "key": "SEED-007", "barcode": "2990000000073", "categoryId": "t03-c01",
+      "key": "SEED-007", "barcode": "2990000000071", "categoryId": "t03-c01",
       "name": "[시험] 3겹 화장지 6롤", "unitType": "B", "unitsPerSku": 6, "weightG": 840, "storageType": "AMBIENT",
       "price": 4900, "color": "#B7CBE6",
       "description": "시험용 합성 상품입니다. 3겹 롤 화장지 6롤 묶음(구매 상한 안에서 담을 수 있는 묶음).",
