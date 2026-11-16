@@ -754,6 +754,10 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     String productId = created.path("resultProductId").asString();
     String sku = created.path("resultSkus").path(0).asString();
 
+    // MD 가 아니면 403(사용자 결정 2026-11-17 — 수정 시작은 MD)
+    Res notMd = send(CLERK, "/products/" + productId + "/edit-drafts", java.util.Map.of());
+    assertThat(notMd.status()).isEqualTo(403);
+
     // 없는 상품 404
     Res none = post("/products/PRD-none/edit-drafts", null);
     assertThat(none.status()).isEqualTo(404);

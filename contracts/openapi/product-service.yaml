@@ -444,6 +444,7 @@ paths:
         approval-service 승인 → 같은 SKU 의 새 버전 + ProductVersionPublished. 원천 키(sourceSystem·sourceKey)는 싣지 않는다(재적재 초안과 섞이지 않게).
         같은 상품에 열린(DRAFT·SUBMITTED) 수정 초안이 있으면 409 EDIT_DRAFT_EXISTS — details[0] = {field: existingDraftId, reason: <draftId>}.
         초안 1개에 SKU 1개(1차)라 상품의 첫 SKU 만 옮긴다.
+        역할: 설정 `pmart.product.edit-role`(LAN·운영 MD — 사용자 결정 2026-11-17, 판매 상태 변경과 같음)만. 아니면 403, 설정이 비면 CONFIG_REQUIRED.
       operationId: createProductEditDraft
       x-pmart-user-types: [OPERATOR]
       parameters:

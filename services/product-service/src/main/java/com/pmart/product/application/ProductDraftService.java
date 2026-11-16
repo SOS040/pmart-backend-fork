@@ -68,7 +68,10 @@ public class ProductDraftService {
       ProductSnapshots snapshots,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      @org.springframework.beans.factory.annotation.Value("${pmart.product.edit-role:}")
+          String editRole) {
+    this.editRole = editRole;
     this.drafts = drafts;
     this.catalog = catalog;
     this.categories = categories;
@@ -125,12 +128,22 @@ public class ProductDraftService {
   /** 같은 상품에 열린 수정 초안이 이미 있다(409). details[0] = existingDraftId. */
   public static final String EDIT_DRAFT_EXISTS = "EDIT_DRAFT_EXISTS";
 
+  /** 수정 시작 역할(사용자 결정 2026-11-17 "md" — 판매 상태 변경과 같은 MD). 비면 CONFIG_REQUIRED. */
+  private final String editRole;
+
   /**
    * 상품 정보 수정 초안: 현재 승인 상태(상품·첫 SKU·활성 바코드·치수·소비기한 보장·물류 규격·카테고리·필터 옵션)를 옮겨 담은 targetProductId 초안.
    * 재승인은 초안 값으로 바꾸므로(빠진 바코드·치수·보장은 지워짐) 운영자가 손으로 옮겨 적지 않게 한다. 판매 상태는 넣지 않는다(반영 때 현재 상태 유지). 상품 행을
    * 잠그고 열린 수정 초안을 확인해 동시에 두 개가 생기지 않게 한다.
    */
   public Outcome<DraftRow> createEdit(String requestId, Operator op, String productId) {
+    if (editRole.isBlank()) {
+      throw PmartException.configRequired("pmart.product.edit-role");
+    }
+    if (!op.roles().contains(editRole)) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.FORBIDDEN, "상품 정보 수정 시작 권한(" + editRole + ")이 없습니다.");
+    }
     return idempotency.execute(
         op.key(requestId, "createProductEditDraft"),
         Map.of("productId", productId),
