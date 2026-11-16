@@ -249,6 +249,8 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
             UUID.randomUUID().toString(),
             priceChange("E-00000001"));
     assertThat(res.status()).isEqualTo(403);
+    // 변경 요청 조회도 운영자만(권한 빈틈 정리 2026-11-17)
+    assertThat(get("/change-requests/CR-none", TestJwt.customer("c-1")).status()).isEqualTo(403);
   }
 
   /** 제출 → 승인까지(가격). approvalId. */

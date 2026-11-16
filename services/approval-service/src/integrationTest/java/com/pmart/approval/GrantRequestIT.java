@@ -186,6 +186,9 @@ class GrantRequestIT extends PostgresKafkaContainerSupport {
     // 승인 역할 없는 사람
     assertThat(decide(http, manualId, TestJwt.operator("OP-X", List.of("HR_ADMIN"), List.of())))
         .isEqualTo(403);
+    // 권한을 받을 직원 본인은 OPERATOR_ADMIN 이어도 결정할 수 없다(권한 빈틈 정리 2026-11-17)
+    assertThat(decide(http, manualId, TestJwt.operator(op, List.of("OPERATOR_ADMIN"), List.of())))
+        .isEqualTo(403);
     assertThat(
             decide(
                 http, manualId, TestJwt.operator("OP-ADMIN", List.of("OPERATOR_ADMIN"), List.of())))

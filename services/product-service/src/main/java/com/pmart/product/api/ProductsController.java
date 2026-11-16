@@ -5,6 +5,7 @@ import com.pmart.product.api.generated.model.ListProducts200Response;
 import com.pmart.product.api.generated.model.Product;
 import com.pmart.product.api.generated.model.SaleState;
 import com.pmart.product.api.generated.model.SkuDetail;
+import com.pmart.product.application.Operator;
 import com.pmart.product.application.ProductQueries;
 import com.pmart.product.infrastructure.CatalogStore.ProductRow;
 import java.util.HashMap;
@@ -32,11 +33,13 @@ public class ProductsController implements ProductsApi {
 
   @Override
   public ResponseEntity<Product> getProduct(String productId, @Nullable Integer version) {
+    Operator.require(); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     return ResponseEntity.ok(mapping.convert(queries.product(productId, version), Product.class));
   }
 
   @Override
   public ResponseEntity<SkuDetail> getSku(String sku) {
+    Operator.require(); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     return ResponseEntity.ok(mapping.convert(queries.sku(sku), SkuDetail.class));
   }
 
@@ -46,6 +49,7 @@ public class ProductsController implements ProductsApi {
       @Nullable SaleState saleState,
       @Nullable Integer size,
       @Nullable String cursor) {
+    Operator.require(); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     int limit = Math.min(size == null ? DEFAULT_SIZE : Math.max(size, 1), MAX_SIZE);
     List<ProductRow> rows =
         queries.list(

@@ -255,6 +255,7 @@ public class EmployeeService {
       String code,
       String reason) {
     PmartPrincipal hr = requireHrAdmin();
+    requireNotSelf(hr, operatorId, "소속 변경");
     idempotency.execute(
         new RequestKey(
             sourceSystem, idempotencyKey, "changeAffiliation:" + operatorId, hr.subject()),
@@ -303,6 +304,7 @@ public class EmployeeService {
       @Nullable Long expectedVersion,
       String reason) {
     PmartPrincipal hr = requireHrAdmin();
+    requireNotSelf(hr, operatorId, "정지");
     idempotency.execute(
         new RequestKey(sourceSystem, idempotencyKey, "suspend:" + operatorId, hr.subject()),
         reason,
@@ -326,6 +328,16 @@ public class EmployeeService {
    * 끝난 재직 중 직원만, 자기 권한은 못 올린다, 결정 안 된 권한 요청이 있으면 409(approval 이 같은 대상에 열린 승인을 하나만 둔다). 요청 행을 넣고 같은
    * 트랜잭션에서 GrantRequested(요청자 = 이 인사팀 직원) — 등록 때와 같은 길(ApprovalDecided → hr 표시·employee-auth 적용).
    */
+  /**
+   * 자기 인사 상태는 다른 인사 담당자가 바꾼다(권한 빈틈 정리 2026-11-17 — 권한 요청과 같은 원칙). 자기 정지·퇴사로 계정을 잠그거나, 자기 소속을 바꿔 센터
+   * 권한을 움직이는 것을 막는다.
+   */
+  private static void requireNotSelf(PmartPrincipal hr, String operatorId, String what) {
+    if (operatorId.equals(hr.subject())) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "자기 자신은 " + what + "할 수 없습니다(다른 인사 담당자가 처리).");
+    }
+  }
+
   public EmployeeView requestGrants(
       String idempotencyKey,
       String sourceSystem,
@@ -407,6 +419,7 @@ public class EmployeeService {
       @Nullable LocalDate startDate,
       @Nullable LocalDate endDate) {
     PmartPrincipal hr = requireHrAdmin();
+    requireNotSelf(hr, operatorId, "정지 해제");
     idempotency.execute(
         new RequestKey(sourceSystem, idempotencyKey, "reinstate:" + operatorId, hr.subject()),
         java.util.Arrays.asList(reason, startDate, endDate),
@@ -443,6 +456,7 @@ public class EmployeeService {
       @Nullable Long expectedVersion,
       String reason) {
     PmartPrincipal hr = requireHrAdmin();
+    requireNotSelf(hr, operatorId, "퇴사 처리");
     idempotency.execute(
         new RequestKey(sourceSystem, idempotencyKey, "depart:" + operatorId, hr.subject()),
         reason,

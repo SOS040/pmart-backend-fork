@@ -37,6 +37,15 @@ class ApprovalRulesTest {
   }
 
   @Test
+  void grantForTheApproverThemselvesIsForbidden() {
+    assertCode(() -> ApprovalRules.requireNotOwnGrant("GRANT", "admin-1", "admin-1"), "FORBIDDEN");
+    assertThatCode(() -> ApprovalRules.requireNotOwnGrant("GRANT", "emp-9", "admin-1"))
+        .doesNotThrowAnyException();
+    assertThatCode(() -> ApprovalRules.requireNotOwnGrant("PRICE", "admin-1", "admin-1"))
+        .doesNotThrowAnyException(); // GRANT 만 — 다른 종류의 targetRef 는 직원이 아니다
+  }
+
+  @Test
   void missingRoleIsForbidden() {
     assertCode(
         () -> ApprovalRules.requireApprover("PRICE", "md-1", "op-2", List.of("MD"), ROLES),

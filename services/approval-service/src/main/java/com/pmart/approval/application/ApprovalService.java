@@ -442,6 +442,7 @@ public class ApprovalService {
               operator.id(),
               operator.roles(),
               properties.getApproverRoles());
+          ApprovalRules.requireNotOwnGrant(ap.type(), ap.targetRef(), operator.id());
 
           Instant at = now();
           String decided = ApprovalRules.decidedState(in.decision());

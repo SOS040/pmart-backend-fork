@@ -180,6 +180,15 @@ class CenterFlowIT extends PostgresKafkaContainerSupport {
     // 라이더용 픽업지 목록(라이더 앱 요청 §2): 이름·주소·전화·인계 위치, 승인 정보 없음
     Res points = get(TestJwt.rider("RD-IT-1"), "/mfc-pickup-points");
     assertThat(points.status()).isEqualTo(200);
+    // 고객 토큰은 픽업지·센터·캘린더 403(권한 빈틈 정리 2026-11-17)
+    String customer = TestJwt.customer("c-1");
+    assertThat(get(customer, "/mfc-pickup-points").status()).isEqualTo(403);
+    assertThat(get(customer, "/centers?type=MFC").status()).isEqualTo(403);
+    assertThat(get(customer, "/centers/" + centerId).status()).isEqualTo(403);
+    assertThat(
+            get(customer, "/centers/" + centerId + "/calendar?date=2026-12-25&kind=STAFF").status())
+        .isEqualTo(403);
+    assertThat(get(TestJwt.rider("RD-IT-1"), "/centers/" + centerId).status()).isEqualTo(403);
     JsonNode mine = null;
     for (JsonNode p : points.body().path("items")) {
       if (centerId.equals(p.path("centerId").asString())) {

@@ -6,6 +6,7 @@ import com.pmart.center.master.api.generated.model.CenterState;
 import com.pmart.center.master.api.generated.model.CenterType;
 import com.pmart.center.master.api.generated.model.ListCenters200Response;
 import com.pmart.center.master.api.generated.model.ListCenters200ResponsePage;
+import com.pmart.center.master.application.Callers;
 import com.pmart.center.master.application.CenterService;
 import com.pmart.center.master.infrastructure.CenterStore.CenterRow;
 import com.pmart.common.web.ErrorCode;
@@ -33,6 +34,7 @@ public class CentersController implements CentersApi {
   @Override
   public ResponseEntity<com.pmart.center.master.api.generated.model.ListMfcPickupPoints200Response>
       listMfcPickupPoints() {
+    Callers.requireRiderOrOperator();
     return ResponseEntity.ok(
         new com.pmart.center.master.api.generated.model.ListMfcPickupPoints200Response()
             .items(
@@ -48,6 +50,7 @@ public class CentersController implements CentersApi {
       @Nullable String temperatureZone,
       Integer size,
       @Nullable String cursor) {
+    Callers.requireOperator();
     int offset = offset(cursor);
     List<CenterRow> rows =
         centers.centers(
@@ -69,6 +72,7 @@ public class CentersController implements CentersApi {
 
   @Override
   public ResponseEntity<Center> getCenter(String centerId, @Nullable Integer version) {
+    Callers.requireOperator();
     CenterRow c = centers.center(centerId);
     if (version != null && version != c.version()) {
       // 과거 버전 보관은 아직 없다 — 현재 버전만

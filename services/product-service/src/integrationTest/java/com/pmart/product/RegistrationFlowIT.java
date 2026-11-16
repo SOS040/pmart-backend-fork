@@ -592,7 +592,14 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
             "/product-drafts/" + draft.path("draftId").asString(),
             "/product-import-batches/x",
             "/product-import-batches/x/id-map",
-            "/category-tree-versions/1")) {
+            "/category-tree-versions/1",
+            // 상품·SKU·바코드·명령 결과 조회도(권한 빈틈 정리 2026-11-17)
+            "/products",
+            "/products/PRD-none",
+            "/skus/E-00000001",
+            "/barcodes/2990000000011",
+            "/products/PRD-none/sale-state-changes/r-1",
+            "/sku-issuances/r-1")) {
       Integer status =
           http.get()
               .uri(path)

@@ -3,6 +3,7 @@ package com.pmart.center.master.api;
 import com.pmart.center.master.api.generated.CalendarsApi;
 import com.pmart.center.master.api.generated.model.CalendarDay;
 import com.pmart.center.master.api.generated.model.TimetableKind;
+import com.pmart.center.master.application.Callers;
 import com.pmart.center.master.application.CenterService;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -24,6 +25,7 @@ public class CalendarsController implements CalendarsApi {
   @Override
   public ResponseEntity<CalendarDay> getCenterCalendar(
       String centerId, LocalDate date, TimetableKind kind) {
+    Callers.requireOperator();
     return ResponseEntity.ok(
         CenterMapping.calendar(centers.calendar(centerId, date, kind.getValue()), clock.instant()));
   }

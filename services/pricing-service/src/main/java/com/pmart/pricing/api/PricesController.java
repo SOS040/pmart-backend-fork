@@ -5,6 +5,7 @@ import com.pmart.pricing.api.generated.model.ListPriceVersions200Response;
 import com.pmart.pricing.api.generated.model.ListPriceVersions200ResponsePage;
 import com.pmart.pricing.api.generated.model.ListPrices200Response;
 import com.pmart.pricing.api.generated.model.Price;
+import com.pmart.pricing.application.PriceImportService;
 import com.pmart.pricing.application.PriceQueries;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -35,6 +36,7 @@ public class PricesController implements PricesApi {
   @Override
   public ResponseEntity<ListPriceVersions200Response> listPriceVersions(
       String sku, Integer size, @Nullable String cursor) {
+    PriceImportService.requireOperator(); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     PriceQueries.History h = queries.history(sku, size, cursor);
     return ResponseEntity.ok(
         new ListPriceVersions200Response()

@@ -40,6 +40,7 @@ public class ChangeRequestsController implements ChangeRequestsApi {
 
   @Override
   public ResponseEntity<ChangeRequest> getChangeRequest(String changeRequestId) {
+    ApiMapping.operator("backoffice-web"); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     return ResponseEntity.ok(mapping.changeRequest(service.getChangeRequest(changeRequestId)));
   }
 

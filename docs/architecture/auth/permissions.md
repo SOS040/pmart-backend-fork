@@ -164,10 +164,10 @@
 | customer-assistant-service | 고객만: 고객 RAG 질문·답변(자기 것만), 최근 주문은 고객 토큰으로 order 를 불러 본인 것만 |
 | ai-assistant-service | 직원 누구나: 운영자 RAG(답변·기록은 물은 사람만) |
 | audit-service | **`OPERATOR_ADMIN`**: 개인정보 열람 기록 조회. 기록 남기기는 내부 |
-| center-master-service | 센터·캘린더·픽업 지점 조회(계약상 직원/라이더 — §9). 바꾸기는 CENTER_MASTER 승인으로만 |
+| center-master-service | 센터·캘린더 조회 직원, 픽업 지점 라이더·직원(2026-11-17 서비스 안 검사). 바꾸기는 CENTER_MASTER 승인으로만 |
 | cdc-inventory-service | CDC 상품 취급 조회·변경: 그 CDC 가 centers 에 있는 직원(역할 없음). 나머지 내부 |
 | fulfillment-routing-service | 내부만 |
-| hr-service | **`HR_ADMIN`**: 직원 등록·목록·소속 변경·정지·복귀·퇴사·초대 재발송·메일 비밀번호 재설정·부서·권한 요청. 직원 누구나: 내 인사 정보(`/hr/employees/me`) |
+| hr-service | **`HR_ADMIN`**: 직원 등록·목록·소속 변경·정지·복귀·퇴사·초대 재발송·메일 비밀번호 재설정·부서·권한 요청(권한 요청·소속 변경·정지·복귀·퇴사는 자기 자신 제외). 직원 누구나: 내 인사 정보(`/hr/employees/me`) |
 | employee-auth-service | §5. 추가로 `OPERATOR_ADMIN` 만 직원 계정의 상태·역할·센터를 직접 바꾸는 관리 경로(`PUT /employees/{id}`, 자기 계정 제외 — §9) |
 | auth-service | 공개: 고객 Google 로그인·토큰 갱신·비회원 세션. 고객·비회원: 로그아웃·현재 세션 |
 
@@ -222,20 +222,20 @@
 
 ## 9. 계약과 코드가 다른 곳·빈틈 (결정 필요)
 
-조사일 2026-11-17. **아직 고치지 않았다.** 위험이 큰 순서.
+조사일 2026-11-17. 위험이 큰 순서. **✅ = 2026-11-17 고침**(PC 1 영역, 사용자 "응 해줘"), 나머지는 아직.
 
 ### 큰 것
 1. **게이트웨이 사용자 종류 허용 목록이 RECORD(기록만)** — 계약에 "직원만"인데 서비스 코드에 검사가 없는 경로는 지금 **고객·라이더 토큰으로도 열린다.** ENFORCE 로 바꾸면 한 번에 막히지만, 그 전에 RECORD 로그에서 정상 요청이 걸리는지 확인해야 한다.
-   - 서비스에 검사가 없는 "직원 전용" 조회: product `GET /products`·`/products/{id}`·`/skus/{sku}`·`/barcodes/{b}`·판매 상태/SKU 발급 결과, pricing 가격 버전·반영 결과, approval `GET /change-requests/{id}`, center-master `GET /centers*`·`/mfc-pickup-points`, serviceability 권역 버전 조회, mfc-fulfillment 인계 결과(`handover-resolution` — 고객 토큰도 통과).
+   - 서비스에 검사가 없던 "직원 전용" 조회: ✅ product `GET /products`·`/products/{id}`·`/skus/{sku}`·`/barcodes/{b}`·판매 상태/SKU 발급 결과, ✅ pricing 가격 버전·반영 결과, ✅ approval `GET /change-requests/{id}`, ✅ center-master `GET /centers*`(직원)·`/mfc-pickup-points`(라이더·직원) — 서비스 안에서 403. 남은 것: serviceability 권역 버전 조회(PC 5), mfc-fulfillment 인계 결과(`handover-resolution` — 고객 토큰도 통과, PC 3).
    - 사용자 종류 검사가 없는 곳: capacity `/slots`, serviceability 배송 조건·주소 변환(라이더·직원도 통과 — 영향 작음).
 2. **직원 토큰에서 역할과 센터가 따로 합쳐진다** — 토큰은 "모든 역할" + "모든 센터"라서, A 센터 `MFC_SUPERVISOR` + B 센터 `MFC_WORKER` 인 사람은 **B 센터에서도 관리자**가 된다(`EmployeeAccess`). 지금 시험 계정에는 이런 조합이 없다.
-3. **`OPERATOR_ADMIN` 이 관리 경로로 역할을 바로 줄 수 있다** — `PUT /employee-auth/employees/{id}` 는 승인(GRANT) 없이 어떤 역할이든(관리자 역할 포함) 계정에 넣는다. 또 GRANT 승인은 "요청자 ≠ 승인자"만 보므로 `OPERATOR_ADMIN` 이 **자기 대상 권한 요청을 승인**하는 것은 막지 않는다.
+3. **`OPERATOR_ADMIN` 이 관리 경로로 역할을 바로 줄 수 있다** — `PUT /employee-auth/employees/{id}` 는 승인(GRANT) 없이 어떤 역할이든(관리자 역할 포함) 계정에 넣는다. ✅ 자기 대상 권한 요청 승인은 막음(GRANT 대상 = 승인자면 403 — `ApprovalRules.requireNotOwnGrant`). 관리 경로의 직접 역할 부여는 아직.
 4. **MFC 재고 정정에 역할이 없다** — `POST /mfcs/{id}/stock-corrections`(재고 증감)는 그 센터 직원이면 누구나, 승인 번호는 LAN 에서 확인 안 함(RECORD_ONLY). 위치 만들기·없애기, 상품 취급 변경, 입고 검수·적치도 역할 없음.
 5. **내부 경로는 부르는 서비스를 확인하지 않는다** — 네트워크만 믿는다(ADR-0026). 민감한 것: 멈춘 주문 처리 명령(`/internal/sagas/{id}/manual-actions` — 처리자 ID 를 요청 본문에서 받음), 고객 배송 주소(`/internal/orders/{id}/delivery-destination`). LAN 안의 아무 PC 에서나 부를 수 있다.
 
 ### 중간
 6. 취소·환불 조회(claim)는 직원이면 역할·센터 상관없이 전부 본다.
-7. hr-service: `HR_ADMIN` 이 **자기 자신을 정지·퇴사** 처리할 수 있다(권한 요청만 자기 금지).
+7. ✅ hr-service: `HR_ADMIN` 이 자기 자신을 정지·정지 해제·퇴사·소속 변경하는 것을 막음(403, 권한 요청과 같은 원칙).
 8. mfc-inbound `GET /initial-stock-loads` 는 센터 확인이 없다(직원 누구나). `GET /supply-requests`·`/move-orders` 는 사용자 종류를 보지 않는다(센터만).
 9. 차단 목록은 게이트웨이만 본다 — 서비스를 직접 부르면(LAN 안) 정지된 토큰도 만료 전까지 통한다.
 10. 교대 인수인계·운영자 RAG·배송 권역 작성은 직원 누구나(역할 결정 없음).

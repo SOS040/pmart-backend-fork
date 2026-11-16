@@ -207,6 +207,16 @@ class PriceImportFlowIT extends PostgresKafkaContainerSupport {
             .headers(h -> h.setBearerAuth(com.pmart.common.test.TestJwt.customer("c-1")))
             .exchange((rq, rs) -> rs.getStatusCode().value());
     assertThat(customerGet).isEqualTo(403);
+    // 가격 버전·반영 결과 조회도(권한 빈틈 정리 2026-11-17)
+    for (String path :
+        java.util.List.of("/price-versions/E-00000001", "/price-version-applications/r-1")) {
+      Integer status =
+          http.get()
+              .uri(path)
+              .headers(h -> h.setBearerAuth(com.pmart.common.test.TestJwt.customer("c-1")))
+              .exchange((rq, rs) -> rs.getStatusCode().value());
+      assertThat(status).as(path).isEqualTo(403);
+    }
     // 같은 키 재전송 = 같은 결과, 제출 뒤 수정은 잠김
     Res again =
         post("/price-import-batches/" + batchId + "/submissions", submitKey, Map.of(), null);

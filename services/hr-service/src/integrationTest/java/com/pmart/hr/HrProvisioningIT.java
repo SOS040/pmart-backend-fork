@@ -752,6 +752,17 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
         .as("HR_ADMIN 아님")
         .isEqualTo(403);
     assertThat(call("GET", "/hr/employees", worker, null).status()).isEqualTo(403);
+    // 자기 인사 상태는 다른 인사 담당자가(권한 빈틈 정리 2026-11-17)
+    assertThat(
+            call("POST", "/hr/employees/OP-IT-HR/suspensions", hr, Map.of("reason", "자기 정지"))
+                .status())
+        .as("자기 정지")
+        .isEqualTo(403);
+    assertThat(
+            call("POST", "/hr/employees/OP-IT-HR/departures", hr, Map.of("reason", "자기 퇴사"))
+                .status())
+        .as("자기 퇴사")
+        .isEqualTo(403);
     assertThat(
             call("POST", "/hr/employees", hr, registration("postmaster", "REGULAR", today(), null))
                 .status())

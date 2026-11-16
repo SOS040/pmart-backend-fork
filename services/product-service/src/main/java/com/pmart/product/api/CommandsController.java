@@ -53,6 +53,7 @@ public class CommandsController implements CommandsApi {
   @Override
   public ResponseEntity<ChangeSaleState200Response> getSaleStateChange(
       String productId, String requestId) {
+    Operator.require(); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     return ResponseEntity.ok(response(saleStates.result(productId, requestId)));
   }
 
@@ -78,6 +79,7 @@ public class CommandsController implements CommandsApi {
 
   @Override
   public ResponseEntity<GetSkuIssuance200Response> getSkuIssuance(String requestId) {
+    Operator.require(); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     SkuIssuanceService.Result r = issuances.result(requestId);
     return ResponseEntity.ok(
         new GetSkuIssuance200Response()

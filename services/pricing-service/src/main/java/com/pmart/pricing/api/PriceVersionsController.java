@@ -8,6 +8,7 @@ import com.pmart.pricing.api.generated.model.ApplyPriceVersionRequest;
 import com.pmart.pricing.api.generated.model.GetPriceVersionApplication200Response;
 import com.pmart.pricing.api.generated.model.GetPriceVersionApplication200ResponseItemsInner;
 import com.pmart.pricing.application.PriceApplicationService;
+import com.pmart.pricing.application.PriceImportService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +51,7 @@ public class PriceVersionsController implements PriceVersionsApi {
   @Override
   public ResponseEntity<GetPriceVersionApplication200Response> getPriceVersionApplication(
       String requestId) {
+    PriceImportService.requireOperator(); // 조회도 운영자만(계약 [OPERATOR], 권한 빈틈 정리 2026-11-17)
     PriceApplicationService.Result r = applications.result(requestId);
     return ResponseEntity.ok(
         new GetPriceVersionApplication200Response()

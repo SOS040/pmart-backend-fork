@@ -65,6 +65,16 @@ public final class ApprovalRules {
     }
   }
 
+  /**
+   * 자기 권한 승인 금지(권한 빈틈 정리 2026-11-17): GRANT 의 대상(targetRef = 권한을 받을 직원)이 승인자 본인이면 결정할 수 없다. 요청자 ≠
+   * 승인자만으로는 운영 관리자가 자기에게 온 권한 요청을 승인하는 것을 막지 못한다.
+   */
+  public static void requireNotOwnGrant(String type, String targetRef, String approverId) {
+    if ("GRANT".equals(type) && targetRef.equals(approverId)) {
+      throw forbidden("자기 권한 요청은 승인·반려할 수 없습니다.");
+    }
+  }
+
   /** ApprovalDecided.decision (APPROVED / REJECTED). */
   public static String decidedState(String decision) {
     return "APPROVE".equals(decision) ? "APPROVED" : "REJECTED";
