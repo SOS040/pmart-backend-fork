@@ -73,6 +73,16 @@ public class NotificationService {
       }
       case "OrderPreparationStarted" ->
           notify(e, null, orderId, Notices.preparationStarted(orderId), "");
+      case "ReservationTimeChanged" -> {
+        JsonNode w = p.path("arrivalWindow");
+        notify(
+            e,
+            null,
+            orderId,
+            Notices.reservationTimeChanged(
+                orderId, text(w, "date"), text(w, "start"), text(w, "end")),
+            "");
+      }
       case "OrderCancelled" ->
           notify(
               e,
