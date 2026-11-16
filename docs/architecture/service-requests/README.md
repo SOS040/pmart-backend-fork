@@ -63,8 +63,8 @@
 | [F-2](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | delivery-dispatch | 피킹 시작 전 포장 소요시간 입력 → 배차 요청(사용자 확인 "피킹 시작 전") | 결정됨(2026-11-13) | 대기(mfc, PC 3) |
 | [F-3](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | backoffice(PC 2) | 주문 번호로 현장 상태(직원용 — 통합 조회 MFC 칸) | 없음 | 대기(PC 3, 2026-11-16 #27) |
 | [F-4](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | backoffice(PC 2) | 멈춘 중지 요청·거절된 인계 목록 + 재시도에 운영자 ID·사유 받기(처리 대기 BO-12) | 결정됨(2026-11-16 "A안") | 대기(PC 3, 2026-11-16 #27·#31) |
-| [DD-MFC](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | backoffice(PC 2) | `DispatchFailed` payload 에 `mfcId`(필드 추가) — 센터 관리자 배차 실패 사건 | 결정됨(2026-11-16 "추천대로") | 대기(PC 5, 2026-11-16 #27) — 그 전엔 센터 관리자에게 0건 |
-| [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | 대기(PC 5, 2026-11-16) |
+| [DD-MFC](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | backoffice(PC 2) | `DispatchFailed` payload 에 `mfcId`(필드 추가) — 센터 관리자 배차 실패 사건 | 결정됨(2026-11-16 "추천대로") | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
+| [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
 
