@@ -14,3 +14,14 @@ delivery-tracking-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **받는 쪽 결정(2026-11-15, 사용자 "추천대로")**: 지원센터(운영자)에게 **알림만**, 배정 자동 해제 없음 → dispatch 는 구독하지 않고 case 가 받는다(`case-service.md` R-6).
 - **구현**: tracking V3 — `delivery.delivery.v1` 구독(`deliveryEvents-in-0`: 배정·배정 변경·픽업 전 취소·완료·실패 → 진행 중 배송), `RiderWatch` 30초마다 판정 → `RiderLocationStale`(delivery.tracking.v1, 끊김 한 번에 한 번, 기준 = 마지막 수신(품질 무관)과 배정 시각 중 늦은 것). 1시간마다 서버 수신 30일 지난 위치 점·그동안 새 위치 없는 마지막 위치·닫힌 배송 기록 지움.
 - **받는 쪽(아직)**: dispatch·case 는 이 사건을 구독하지 않는다(dispatch 는 이미 위치 2분 기준으로 후보에서 뺀다). 지원센터 알림은 case(R-4 와 같이, PC 1).
+
+## TR-3. 고객·직원 ETA 조회·실시간 구독 API (2026-11-17, platform PC 1 → delivery PC 5)
+- **요청한 곳**: 고객앱(배송 현황 화면 — 앱은 이미 `GET /deliveries/{id}/eta`·`/stream` 을 부르고, 실패하면 "확인 중"·폴링으로 버틴다), 백오피스 실시간 배송(`latestEta`, BFF). 근거: 고객앱 레퍼런스 대비 빠진 기능 `docs/handoff/clients/customer-app/2026-11-17-notice-reference-gap.md` B-1.
+- **사용자 결정(2026-11-17)**: "PC 5에 요청" — tracking 은 delivery 영역이라 PC 1 이 고치지 않는다. 백엔드 추천 순서 1번(도착 예정 시간·실시간 위치).
+- **필요한 것**(계약 `delivery-tracking-service.yaml` 에 이미 있음 — 지금 501):
+  - `GET /deliveries/{deliveryId}/eta` — 고객은 **본인 주문 배송의 dropEta 만**, 직원(그 센터 운영자·`OPERATOR_ADMIN`·`CS_AGENT`·`RIDER_OPS` — execution `Access` 와 같게)은 pickupEta·dropEta. 남의 배송은 404. 라이더 좌표는 고객에게 주지 않는다. 라이더 미배정·위치 미수신·길찾기 실패·**ETA 계산 꺼짐**이면 status `LOCATING`/`ETA_PENDING`, 수치 비움.
+  - `GET /deliveries/{deliveryId}/stream`(SSE) — 같은 범위로 ETA 갱신·진행 단계, 끝나면 서버가 닫음, `Last-Event-ID` 재개.
+  - 고객 소유 확인: 배송 → 주문 → 고객. 조회 방법(execution·order 내부 API 또는 배송 사건 사본)은 PC 5 가 정한다.
+- **PC 1 쪽(같이 할 일)**: ETA 계산 켜기 — `pmart.tracking.eta.interval`·`min-change` 값(카카오 길찾기 사용량)은 사용자 결정 뒤 pmart-config 에 넣는다. 게이트웨이 경로 `/api/v1/deliveries/**` 가 tracking 의 `/eta`·`/stream` 으로 가는지(SSE 버퍼링 끄기 포함) 병합 때 PC 1 이 확인한다.
+- **상태**: 요청함(2026-11-17).
+
