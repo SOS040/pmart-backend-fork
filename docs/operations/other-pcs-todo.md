@@ -28,6 +28,15 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] 클라이언트 BR-52(PDA 업무 선택 배정)·BR-53(입고 수령 화면 값) 회신 — BR-52 R1·R3·R4 는 PR #9, **BR-53 R8~R11 회신**(PC 3, 2026-11-13, 브랜치 `mfc/inbound-labels` — `docs/handoff/clients/mfc-app/2026-11-13-reply-br53-inbound-receiving.md`). **BR-52 R2(품질검사·적치)·R19-1 회신**(PC 3, 2026-11-14, 브랜치 `mfc/br52-r2-r19` — `docs/handoff/clients/mfc-app/2026-11-14-reply-br52-r2-r19-1.md`). 남은 것 R2 의 입고·회수품·실사, R5~R7·R12~R18·R19 나머지·R20
 
 - [ ] **MFC 백오피스(센터 관리자 웹)용 API**(2026-11-15 — 요청서 `docs/architecture/service-requests/mfc-backoffice-staff-apis.md` MB-1~3): 목록 API 들, 계약만인 inbound-promises·quality-incidents(순서는 PC 3 판단), 권한 MB-3 은 사용자 결정 뒤. main 에서 새 브랜치로
+
+- [ ] **서비스 간 요청 — PC 3 몫(2026-11-16 정리, 표 `docs/architecture/service-requests/README.md` "받는 PC" 칸)**:
+  - [ ] F-2 피킹 시작 전 포장 소요시간 → 배차(`mfc-fulfillment-service.md`)
+  - [ ] F-3 주문 번호로 현장 상태(직원용 — 통합 조회 MFC 칸, PC 2 요청)
+  - [ ] F-4 멈춘 중지 요청·거절된 인계 목록 + 재시도에 운영자 ID·사유(처리 대기 BO-12, PC 2 요청 — bff 쪽은 준비됨)
+  - [ ] IV-1 가용 조회에 출하 가능 수량(소비기한 적격 LOT 만), 지난 LOT 이 sellable 로 남는 것 확인 — **고객 주문 막힘 관련, 높음**(`mfc-inventory-service.md`)
+  - [ ] MI-1 회수품 점원 수령 확인·검수(`mfc-inbound-service.md`, DD-2 뒤)
+  - [ ] MFC 시뮬레이터 요청 R-13(상온 대기 칸 — 사용자 결정 대기)·R-15/16(칸·여러 SKU 재고 조회)·R-17(작업 실적 목록)·R-19(인계 끝난 출고 `deliveryId` 비어 있음) — 시뮬레이터 저장소 `docs/backend-requests.md`(GitHub 판이 11-10 이라 아직 안 보이면 PC 1 에 요청)
+
 ## PC 5 — delivery 영역
 
 - [x] 공통 절 전부(gh·포크·`./gradlew --stop`) — 2026-11-13: 저장소 형제(`pmart-backend`·`pmart-clients`, 시뮬레이터는 delivery 에 불필요), gh `piaa1004` 로그인·포크 `piaa1004/pmart-backend`·`fork` remote, 비밀번호 파일 4개 `deploy/lan/.secrets/`(루트 `.secrets/` 없음), Gradle 제한 파일 있음·`--stop`, 루트 CA 설치 확인. 주의: gh 는 설치돼 있지만 PATH 에 없는 터미널이 있음(`C:\Program Files\GitHub CLI\gh.exe`)
@@ -50,6 +59,11 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [x] 사진 보기·원래 고객 전화(2026-11-16 사용자 — execution, 같은 브랜치)
 - [ ] 라이더 앱 회수 화면(handoff 2026-11-16)
 - [ ] LAN 서비스가 많은 PC 다(남은 메모리 약 5GB, 2026-11-13) — 빌드·시험 중 LAN 서비스 상태가 나빠지면 PC 1 에 알린다
+
+- [ ] **서비스 간 요청 — PC 5 몫(2026-11-16 정리)**:
+  - [ ] DD-MFC `DispatchFailed` 에 `mfcId` 싣기(필드 추가 — 센터 관리자 배차 실패 사건, PC 2 요청, `delivery-dispatch-service.md`)
+  - [ ] DE-CASE `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태(`delivery-execution-service.md`)
+  - [ ] TR-1 `DeliveryEtaUpdated`, RS-2(rider-auth) — 표 참고
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC
 
