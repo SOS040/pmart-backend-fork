@@ -89,7 +89,12 @@ public class ProductDraftService {
         op.key(requestId, "createProductDraft"),
         input,
         DraftRow.class,
-        () -> upsert(op, input, null));
+        () -> {
+          if (text(input, "targetProductId") != null) {
+            requireEditRole(op);
+          }
+          return upsert(op, input, null);
+        });
   }
 
   public Outcome<DraftRow> update(
@@ -109,6 +114,11 @@ public class ProductDraftService {
                 "초안이 이미 바뀌었습니다(기대 " + expectedVersion + ", 현재 " + d.version() + ").");
           }
           requireEditable(d);
+          String target = text(input, "targetProductId");
+          if (target != null
+              && !target.equals(text(mapper.readTree(d.input()), "targetProductId"))) {
+            requireEditRole(op); // 수정 대상을 새로 정하거나 바꾸는 것은 수정 시작과 같다
+          }
           requireNoOtherOpenEdit(input, draftId);
           Validated v = validate(input, d.sourceSystem(), d.sourceKey());
           drafts.replaceInput(
@@ -138,13 +148,7 @@ public class ProductDraftService {
    * 잠그고 열린 수정 초안을 확인해 동시에 두 개가 생기지 않게 한다.
    */
   public Outcome<DraftRow> createEdit(String requestId, Operator op, String productId) {
-    if (editRole.isBlank()) {
-      throw PmartException.configRequired("pmart.product.edit-role");
-    }
-    if (!op.roles().contains(editRole)) {
-      throw new PmartException(
-          com.pmart.common.web.ErrorCode.FORBIDDEN, "상품 정보 수정 시작 권한(" + editRole + ")이 없습니다.");
-    }
+    requireEditRole(op);
     return idempotency.execute(
         op.key(requestId, "createProductEditDraft"),
         Map.of("productId", productId),
@@ -155,6 +159,20 @@ public class ProductDraftService {
           }
           return upsert(op, editInput(productId), null); // upsert 가 열린 수정 초안을 확인한다
         });
+  }
+
+  /**
+   * 수정 시작 역할(MD). 수정 시작뿐 아니라 초안 생성에 targetProductId 를 직접 넣거나 초안 수정으로 대상을 새로 정하는 예전 길도 같은 역할이다 (사용자
+   * 2026-11-17 "MD제한 걸어줘"). 이미 정해진 수정 초안을 고치고 제출하는 것은 예전처럼 운영자.
+   */
+  private void requireEditRole(Operator op) {
+    if (editRole.isBlank()) {
+      throw PmartException.configRequired("pmart.product.edit-role");
+    }
+    if (!op.roles().contains(editRole)) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.FORBIDDEN, "상품 정보 수정 시작 권한(" + editRole + ")이 없습니다.");
+    }
   }
 
   /**

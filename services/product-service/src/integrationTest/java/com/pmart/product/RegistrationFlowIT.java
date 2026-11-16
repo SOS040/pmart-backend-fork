@@ -680,12 +680,16 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   Res put(String path, Object body) {
+    return putAs(MD, path, body);
+  }
+
+  Res putAs(String token, String path, Object body) {
     var e =
         http.put()
             .uri(path)
             .headers(
                 h -> {
-                  h.setBearerAuth(MD);
+                  h.setBearerAuth(token);
                   h.set("Idempotency-Key", UUID.randomUUID().toString());
                   h.set("X-Source-System", "backoffice-web");
                 })
@@ -811,6 +815,12 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     Res viaPut = put("/product-drafts/" + newDraftId, retarget);
     assertThat(viaPut.status()).as(viaPut.body().toString()).isEqualTo(409);
     assertThat(viaPut.body().path("code").asString()).isEqualTo("EDIT_DRAFT_EXISTS");
+    // MD 가 아니면 예전 길로도 수정 대상을 정할 수 없다(사용자 2026-11-17 "MD제한 걸어줘") — 403
+    assertThat(send(CLERK, "/product-drafts", in).status()).isEqualTo(403);
+    assertThat(putAs(CLERK, "/product-drafts/" + newDraftId, retarget).status()).isEqualTo(403);
+    // 이미 정해진 수정 초안을 고치는 것은 예전처럼 운영자 누구나
+    Res clerkEdit = putAs(CLERK, "/product-drafts/" + draftId, in);
+    assertThat(clerkEdit.status()).as(clerkEdit.body().toString()).isEqualTo(200);
 
     // 3) 검사 숫자가 틀린 바코드는 INVALID, 고치면 VALID
     Map<String, Object> edit = mapper.convertValue(in, Map.class);

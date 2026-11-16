@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: product-service
-  version: 0.3.1
+  version: 0.3.2
   description: |
     기초상품·상품·SKU(E-/B- 8자리, 재사용 금지)·구성 낱개 수·카테고리(4단계·노드별 필터, ADR-0015)·바코드↔SKU·판매 단위·중량·물류 규격·전사 판매 상태·승인 버전의 정본. (docs/architecture/service-map.md §1, ADR-0001)
     비정본: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
@@ -12,6 +12,7 @@ info:
     (열린 수정 초안이 있으면 409 EDIT_DRAFT_EXISTS). 초안 검증에 GS1 검사 숫자(`BARCODE_CHECK_DIGIT_INVALID` — 숫자만 8·12·13·14자리) 추가.
     0.3.1(2026-11-17): 한 상품에 열린 수정 초안은 하나 — 초안 생성(`POST /product-drafts`)·수정(`PUT /product-drafts/{draftId}`)에
     targetProductId 를 직접 넣는 길도 그 상품을 가리키는 다른 열린(DRAFT·SUBMITTED) 초안이 있으면 409 EDIT_DRAFT_EXISTS(details[0].reason = 그 draftId).
+    0.3.2(2026-11-17): 그 길로 수정 대상(targetProductId)을 새로 정하거나 바꾸는 것도 수정 시작과 같은 역할(MD)만 — 아니면 403. 이미 정해진 수정 초안을 고치는 것은 운영자 누구나.
 servers:
   - url: /api/v1
 security:
