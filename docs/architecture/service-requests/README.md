@@ -15,7 +15,7 @@
 | 번호 | 받는 서비스 | 요청한 곳 | 내용 | 사용자 결정 | 상태 |
 |---|---|---|---|---|---|
 | [DD-1](delivery-dispatch-service.md) | delivery-dispatch | mfc-fulfillment, orchestration | `DispatchRequested` 받아 배송 생성·라이더 제안, 취소·조정 | 없음 | **구현·LAN 배포**(2026-11-14, PR #8 1fa5b32) |
-| [DD-2](delivery-dispatch-service.md) | delivery-dispatch | 사용자 | 확인된 오배송 회수 라이더 자동 배차(인근 다른 라이더) | ADR-0052, 2026-11-15 오배송 확인은 상담원·지원센터가 기록(case R-7) | 대기 — **case 쪽 `MisdeliveryConfirmed` 발행 구현됨(2026-11-16)**, 구독·회수 배차는 PC 5 |
+| [DD-2](delivery-dispatch-service.md) | delivery-dispatch | 사용자 | 확인된 오배송 회수 라이더 자동 배차(인근 다른 라이더) | ADR-0052, 2026-11-15 오배송 확인은 상담원·지원센터가 기록(case R-7), 2026-11-16 회수 수행료·회수지·실패·반납(사용자 "추천대로") | **구현(PC 5, 2026-11-16 — PR 대기)** — dispatch 0.4.0·execution 0.5.0·tracking 0.4.0. 남은 것 사진 보기·MI-1·O-3 |
 | [DD-확인](delivery-dispatch-service.md) | delivery-dispatch | backoffice(PC 2) | 확인 요청: 시험 배송 `DLV-74422b51…` 배차 실패·미배정 — 원인(라이더 없음/다른 오류)·다시 배차할 길 | 없음(배차 실패 → 사건함은 2026-11-16 결정·구현 — case 0.5.0) | **회신(PC 5, 2026-11-16)** — 원인 주소 없음(O-4 null 버그, #15 에서 고침), 운영자 reassign=true 로 다시 배차해 LAN E2E 로 배송 완료 |
 | [DE-1](delivery-execution-service.md) | delivery-execution | mfc-fulfillment | 픽업 완료 = 포장별 인계 확정, 모든 `PackageHandedOver` 뒤 PICKED_UP | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
 | [TR-1](delivery-tracking-service.md) | delivery-tracking | mfc-fulfillment, order | `DeliveryEtaUpdated` (라이더 ETA) | 없음 | 대기 |
@@ -34,7 +34,7 @@
 | [CL-1](claim-service.md) | claim | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | **필요**(감액·면제 사유) | 대기 |
 | [R-1](case-service.md) | case | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
-| [R-3](case-service.md) | case | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | 대기 |
+| [R-3](case-service.md) | case | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | **구현**(2026-11-16, case 0.5.0 — PR #21, LAN 배포) |
 | [R-4](case-service.md) | case | delivery-execution | 라이더 도움요청·전달 실패 등록(`DeliveryIncidentRaised`) → 지원센터 사건, `CaseOpened` 로 caseId 회신 | — (사용자 결정 1번, 2026-11-13) | **구현(2026-11-16, case 0.4.0 — PC 1)** — 사건 RIDER_HELP·DELIVERY_INCIDENT + `CaseOpened`(refs incidentId). execution 이 `CaseOpened`·`CaseClosed` 를 받아 도움요청에 caseId 를 붙이는 일은 delivery(PC 5) |
 | [R-5](case-service.md) | case | rider | 라이더 컴플레인(신고·오배송·파손) 기록 → `RiderComplaintRecorded` 발행 | 결정됨(2026-11-14: 같은 종류 7일 안 3건 이상 → 검토 대상; 2026-11-15 상담원 백오피스 기록) | 구현(2026-11-15, case 0.3.0 — LAN 배포 전) — 상담원 기록만, 고객 앱 신고는 아직 |
 | [R-6](case-service.md) | case | delivery-tracking | 위치 끊긴 라이더(`RiderLocationStale`) → 지원센터 알림 | 결정됨(2026-11-15: 알림만, 자동 배정 해제 없음) | **구현(2026-11-16, case 0.4.0)** — 사건 RIDER_LOCATION_STALE(같은 라이더·배송이면 재발 이력만) |
@@ -50,6 +50,7 @@
 | [CU-1](customer-service.md) | customer | auth | 약관 동의 → `require-consent` 켜기 | **필요**(시점) | 대기 |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
+| [MI-1](mfc-inbound-service.md) | mfc-inbound | delivery-execution | 오배송 회수품 MFC 반납 받기(`ReturnDelivered` purpose MISDELIVERY_RECOVERY) — 점원 수령 확인·검수(신선 폐기·상온 미개봉 재고 복구) | ADR-0052 결정 4(검수 규칙), 2026-11-16 그 전까지 MFC 도착 = 반납 | 대기(PC 3) |
 | [CM-1](center-master-service.md) | center-master | delivery-dispatch | 내부 센터 조회(MFC 좌표) | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
 | [O-4](order-service.md) | order | delivery-dispatch | 배차용 배송지 조회 | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) — 도로명주소 null 고침도 배포(#15, 2026-11-15) |
 | [O-5](order-service.md) | order | delivery-execution | 라이더용 전달지(BR-24 — 고객 전화번호 그대로) | 결정됨(2026-11-14: 안심번호 대신 고객 전화번호) | 구현·LAN 배포(#15, 2026-11-15) |
