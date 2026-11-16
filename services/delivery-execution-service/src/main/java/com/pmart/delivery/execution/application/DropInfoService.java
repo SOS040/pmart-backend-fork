@@ -32,6 +32,12 @@ public class DropInfoService {
     this.order = order;
   }
 
+  /** 라이더용 주문 요약(라이더 앱 요청 §1). 접근 판정은 배송 조회가 이미 했다. 못 읽으면 null. */
+  public tools.jackson.databind.@org.jspecify.annotations.Nullable JsonNode orderSummary(
+      String orderId) {
+    return order.riderSummary(orderId);
+  }
+
   /** 회수 연락처를 여는 상태 — 회수 진행 중. */
   public static final Set<String> RECOVERY_OPEN = Set.of("ASSIGNED", "RETURN_PICKED_UP");
 

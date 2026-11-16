@@ -41,10 +41,15 @@ class DispatchViews {
 
   private final ObjectMapper mapper;
   private final DispatchProperties props;
+  private final com.pmart.delivery.dispatch.infrastructure.DispatchStore store;
 
-  DispatchViews(ObjectMapper mapper, DispatchProperties props) {
+  DispatchViews(
+      ObjectMapper mapper,
+      DispatchProperties props,
+      com.pmart.delivery.dispatch.infrastructure.DispatchStore store) {
     this.mapper = mapper;
     this.props = props;
+    this.store = store;
   }
 
   Packages packages(DeliveryRow d) {
@@ -96,6 +101,7 @@ class DispatchViews {
                 .dropEtaSeconds(d.dropDurationS())
                 .pickupPoint(pickupPoint(d))
                 .dropAreaPoint(rounded(d.dropLat(), d.dropLng()))
+                .order(orderInfo(d))
                 .weightG(p.weightG())
                 .bagCount(p.bags())
                 .containsAlcohol(p.alcohol())
@@ -131,6 +137,17 @@ class DispatchViews {
     return new com.pmart.delivery.dispatch.api.generated.model.LatLng()
         .lat(Math.round(lat * 100) / 100.0)
         .lng(Math.round(lng * 100) / 100.0);
+  }
+
+  /** 주문 요약 사본(라이더 앱 요청 §1). 없으면 null. */
+  private com.pmart.delivery.dispatch.api.generated.model.@org.jspecify.annotations.Nullable
+      OfferOrderInfo
+      orderInfo(DeliveryRow d) {
+    String json = store.orderSummary(d.deliveryId());
+    return json == null
+        ? null
+        : mapper.readValue(
+            json, com.pmart.delivery.dispatch.api.generated.model.OfferOrderInfo.class);
   }
 
   DeliveryListItem listItem(OfferService.ListItem i) {

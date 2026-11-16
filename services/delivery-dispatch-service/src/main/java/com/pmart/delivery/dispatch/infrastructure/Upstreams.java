@@ -287,6 +287,70 @@ public class Upstreams {
         : Optional.empty();
   }
 
+  /** 라이더용 주문 요약(order 내부 — 라이더 앱 요청 §1). 없거나 못 받으면 empty(배차를 막지 않는다). */
+  public Optional<JsonNode> riderOrderSummary(String orderId) {
+    try {
+      return Optional.of(
+          json(
+              Downstream.call(
+                  "order-service rider-summary",
+                  () ->
+                      order
+                          .get()
+                          .uri("/api/v1/internal/orders/{id}/rider-summary", orderId)
+                          .retrieve()
+                          .body(String.class))));
+    } catch (RuntimeException e) {
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * 라이더용 주문 요약 사본 JSON(라이더 앱 요청 §1): order rider-summary + 지점 이름·주소. 주문 요약을 못 받으면 empty — 배차를 막지
+   * 않는다.
+   */
+  public Optional<String> riderSummaryJson(String orderId, String mfcId) {
+    JsonNode s = riderOrderSummary(orderId).orElse(null);
+    if (s == null || !s.path("items").isArray()) {
+      return Optional.empty();
+    }
+    var out = mapper.createObjectNode();
+    out.put("orderId", orderId);
+    JsonNode c = center(mfcId).orElse(null);
+    if (c != null && c.path("name").isString()) {
+      out.put("mfcName", c.path("name").asString());
+    }
+    if (c != null && c.path("address").isString()) {
+      out.put("mfcAddress", c.path("address").asString());
+    }
+    out.set("items", s.path("items"));
+    if (s.path("itemAmount").isNumber()) {
+      out.put("itemAmount", s.path("itemAmount").asLong());
+    }
+    if (s.path("deliveryNote").isString()) {
+      out.put("deliveryNote", s.path("deliveryNote").asString());
+    }
+    return Optional.of(mapper.writeValueAsString(out));
+  }
+
+  /** 지점 이름·주소(center-master). 못 받으면 empty. */
+  public Optional<JsonNode> center(String mfcId) {
+    try {
+      return Optional.of(
+          json(
+              Downstream.call(
+                  "center-master center",
+                  () ->
+                      center
+                          .get()
+                          .uri("/api/v1/internal/centers/{id}", mfcId)
+                          .retrieve()
+                          .body(String.class))));
+    } catch (RuntimeException e) {
+      return Optional.empty();
+    }
+  }
+
   // ---------- center-master ----------
 
   public Optional<Geo> centerCoordinates(String mfcId) {

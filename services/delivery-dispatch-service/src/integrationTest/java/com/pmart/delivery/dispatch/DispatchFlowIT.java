@@ -93,7 +93,26 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     up.resetAll();
     up.stubFor(
         get(urlPathMatching("/api/v1/internal/centers/.*"))
-            .willReturn(json(Map.of("coordinates", Map.of("lat", 37.4979, "lng", 127.0276)))));
+            .willReturn(
+                json(
+                    Map.of(
+                        "coordinates", Map.of("lat", 37.4979, "lng", 127.0276),
+                        "name", "부산진구지점",
+                        "address", "부산 부산진구 동천로 109"))));
+    // 라이더용 주문 요약(라이더 앱 요청 §1)
+    up.stubFor(
+        get(urlPathMatching("/api/v1/internal/orders/.*/rider-summary"))
+            .willReturn(
+                json(
+                    Map.of(
+                        "orderId",
+                        "x",
+                        "items",
+                        List.of(Map.of("name", "사과 1kg", "qty", 2, "lineAmount", 9800)),
+                        "itemAmount",
+                        9800,
+                        "deliveryNote",
+                        "문 앞에 두세요"))));
     up.stubFor(
         get(urlPathMatching("/api/v1/internal/orders/.*/delivery-destination"))
             .willReturn(
@@ -229,6 +248,12 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     double dropLat = offer.path("summary").path("dropAreaPoint").path("lat").asDouble();
     assertThat(dropLat * 100)
         .isCloseTo(Math.round(dropLat * 100), org.assertj.core.data.Offset.offset(1e-6));
+    // 라이더 앱 요청 §1(2026-11-16 "수락 전부터 전부"): 지점·품목·금액·요청사항
+    JsonNode orderInfo = offer.path("summary").path("order");
+    assertThat(orderInfo.path("mfcName").asString()).isEqualTo("부산진구지점");
+    assertThat(orderInfo.path("items").get(0).path("name").asString()).isEqualTo("사과 1kg");
+    assertThat(orderInfo.path("itemAmount").asInt()).isEqualTo(9800);
+    assertThat(orderInfo.path("deliveryNote").asString()).isEqualTo("문 앞에 두세요");
     assertThat(offer.path("summary").path("bagCount").asInt()).isEqualTo(2);
     assertThat(offer.path("remainingSec").asInt()).isBetween(1, 60);
     assertThat(mine.path("pollAfterSec").asInt()).isEqualTo(5);

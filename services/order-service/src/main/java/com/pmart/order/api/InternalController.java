@@ -230,6 +230,38 @@ public class InternalController implements InternalApi {
                 body.getSagaId())));
   }
 
+  /** 라이더용 주문 요약(라이더 앱 요청 §1, 2026-11-16) — 품목·금액·배송 요청사항만. */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.RiderOrderSummary> getRiderOrderSummary(
+      String orderId) {
+    var v = orders.internal(orderId);
+    long total = 0;
+    var items =
+        new java.util.ArrayList<com.pmart.order.api.generated.model.RiderOrderSummaryItemsInner>();
+    for (var l : v.lines()) {
+      int qty = l.originalQty() - l.cancelledBeforeShipQty() + l.reshippedQty();
+      if (qty <= 0) {
+        continue;
+      }
+      long amount = l.unitPrice() * qty;
+      total += amount;
+      items.add(
+          new com.pmart.order.api.generated.model.RiderOrderSummaryItemsInner()
+              .name(l.productName() == null ? l.sku() : l.productName())
+              .optionLabel(l.optionLabel())
+              .qty(qty)
+              .lineAmount(Math.toIntExact(amount)));
+    }
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.noStore())
+        .body(
+            new com.pmart.order.api.generated.model.RiderOrderSummary()
+                .orderId(orderId)
+                .items(items)
+                .itemAmount(Math.toIntExact(total))
+                .deliveryNote(v.order().deliveryNote()));
+  }
+
   private static StartCheckout202Response command(CommandResponse r) {
     return new StartCheckout202Response()
         .status(StartCheckout202Response.StatusEnum.fromValue(r.status().name()))
