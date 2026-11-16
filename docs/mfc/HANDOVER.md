@@ -24,13 +24,20 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 - 업무 원문 `docs/business/MFC-business-logic.md`(IV-01~13·WK-01~14), 책임 경계 `docs/architecture/service-map.md` §5, 상태 `contracts/states/mfc-states.md`, 계약 `contracts/openapi/mfc-*.yaml`.
 - 주요 ADR: 0040(재고 모델 v2) · 0041(상품별 소비기한 보장) · 0042(LOT 대체·홀드 TTL·로케이션 코드) · 0043(피킹·포장) · 0044(결품 홀드·재확보) · 0045·0049(결품 = 항상 부분 취소·환불) · 0046(피킹 뒤 취소·복귀) · 0047(포장 인계 펜스) · 0048(품질·실사·운영 제한) · 0050(OR-Tools 배정·동선, JGraphT 안 씀) · 0053(OR-Tools 서비스는 JVM — Native 금지).
 
-## 2. 지금 상태 (LAN, 2026-11-10 기준 + 이후)
+## 2. 지금 상태 (LAN, 2026-11-10 기준 + 이후, 2026-11-16 갱신)
 
 - 6개 서비스 업무 원문대로 구현·배포(2026-11-07~09 슬라이스 6a·6b·6c, IV-08·09, 밤샘 작업 — 반품 재포장·실사·품질 격리/폐기·운영 제한·공급 요청 등).
 - **LAN 끝까지 시험**: `deploy/lan/checks/mfc_e2e.py`(66/66, 11-09) — 예약 → 확정 → 작업 접수 → PICK 배정·동선(ROUTING)·피킹 → PACK → 배차 요청 → 밀봉 READY → 인계 → 전체 중지 → 복귀(RETURN) → 재고 원복 → 이동 지시·다음 작업 받기(MOVE) → 배정 계획·입력. 2026-11-13 부터 직원 토큰은 `staff_auth.py`(시험 계정 `claude-mfc-sup`·`claude-mfc-wrk`, 센터 `MFC-SEED-01`).
 - **첫 실주문(11-10)**: 고객 앱 실주문 → 결제 → 작업 → 피킹·포장 → 밀봉 → **출고 준비(READY)에서 멈춤** — 배송(delivery-dispatch)이 `DispatchRequested` 를 아직 받지 않는다(delivery 영역 DD-1).
 - 추적: 6개 서비스 HTTP·Kafka 가 한 traceId 로 이어짐(Zipkin 192.168.0.40:9411, 약 2일 보관). 서비스 **안의** 구간(span)은 없다 — §5.
 - 시험 데이터: `MFC-SEED-01` 를 시뮬레이터 임시 평면도대로 다시 등록(11-09, `deploy/lan/seed/mfc_layout.py` — 선반 칸 6,762·팔레트 32, 재고 8,418). 시드 원본 `deploy/lan/seed/Seed.java`(상품·가격·권역·초기 재고).
+- **2026-11-16 바뀐 것(PC 1, 사용자 결정)**:
+  - 칸 구조를 MFC 문서 설계로 — 선반 14,559칸(냉동 5×6, 냉장 5×7, 상온 C9·D10·E8·F10·G9, H 5단×5), 재고 444종 랙 전체로 펼침, 상온 28종 H 로, 냉장·냉동 31종은 칸 용량 초과로 그대로(결정 대기). `docs/simulator/mfc/layout/README.md` '2026-11-16 칸 구조'.
+  - 상품 실물 치수(추정) → 칸 용량 계산(product 0.2.0, mfc-inventory 0.18.0 V20).
+  - 바코드: 503개 SKU 에 299 대역 EAN-13(승인 경로), 검사 숫자 틀린 7개 교체. 설명 `deploy/lan/seed/labels/README.md`.
+  - **PDA 피킹 스캔**: mfc-fulfillment 0.7.0 — 작업 상세 줄에 `barcodes[]`·`barcode` 채움(사용자 허락으로 PC 1 수정, LAN 배포). 전에는 늘 null 이라 모든 스캔이 "다른 상품".
+  - LOT 날짜: 비식품(문구·생활용품) LOT 소비기한 제거, 출고 불가 식품 LOT 소비기한 다시 매김(`deploy/lan/seed/mfc_fix_lot_dates.py`, approvalRef lot-dates-2026-11-16). 옛 시험 주문 예약에 걸린 25 LOT·68개는 그대로.
+  - 위치 라벨 14,608곳·카트 4장 `deploy/lan/seed/labels/`. 카트가 4대뿐이라 동시 피킹 4명 — 늘릴지 결정 필요.
 
 ## 3. 결정 — 어디에 적혀 있나
 

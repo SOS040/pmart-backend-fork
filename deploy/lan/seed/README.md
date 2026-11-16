@@ -15,3 +15,13 @@ java deploy/lan/seed/Seed.java --initial-stock --initial-stock-skus E-00000008,E
 - 다른 카테고리 트리나 권역 매핑이 이미 발효 중이면 덮어쓰지 않는다(트리 발효본은 그대로 쓰고, 권역은 넣지 않는다). 발효 중인 권역이 모두 seed 권역(`Z-SEED-*`)이면 `seed-data.json` 의 권역으로 새 버전을 올려 교체한다.
 - 센터가 이미 있어도 이름·주소·좌표가 `seed-data.json` 과 다르면 CENTER_MASTER 승인(UPDATE_PROFILE)으로 맞춘다. 시험 위치: 부산진구(업무 문서의 초기 부산 MFC 5곳 중 하나) — 2026-11-16 부산진구지점 실제 주소 "부산 부산진구 동천로 109 삼한골든게이트 2층"(35.158501, 129.062021)로 바꿈(그 전 서면 부근 시험 좌표). 권역 `inside` 시험 점(서면역 부근)은 고객 쪽 시험 좌표라 그대로.
 - 데이터: `seed-data.json`. 모두 합성(상품명 `[시험] …`). `local-reference/` 캡처 자료는 쓰지 않는다.
+
+## MFC 칸·재고·바코드 정리 스크립트 (Seed.java 뒤, PC 1)
+| 스크립트 | 하는 일 |
+|---|---|
+| `mfc_layout.py` | 2026-11-09 시뮬레이터 평면대로 칸 등록(코드·좌표), 옛 선반 재고 이전, 고회전 시험 칸(`httest`) |
+| `mfc_layout_v2.py` | 2026-11-16 칸 수를 MFC 문서 설계로(14,559칸) — 기존 칸 치수 변경·새 칸 등록·H 6단 닫기. 다시 돌려도 남은 것만 한다 |
+| `mfc_spread_stock.py` | 재고를 랙 전체로 펼침(한 SKU 한 칸, 위치 정정 `layout-v2`) |
+| `estimate_dimensions.py` · `apply_estimated_dimensions.py` | 상품 치수 추정 → 승인 경로 재적재(바코드도 함께 — 바코드 교체에도 씀) |
+| `mfc_fix_lot_dates.py` | 비식품 LOT 소비기한 제거, 출고 불가 식품 LOT 소비기한 다시 매김(위치 정정) |
+| `location_labels.py` | 위치 바코드 라벨 다시 만들기(`labels/locations/`). 스캔 코드·299 바코드 설명 `labels/README.md` |
