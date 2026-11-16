@@ -2,6 +2,7 @@
 
 PMart 직원(운영자) 역할 13개가 무엇이고, 누가 받고, 어느 화면·API 를 열어 주는지 한곳에 모은 안내서다. 고객·라이더는 역할이 아니라 **토큰 종류**(`typ=CUSTOMER`·`RIDER`)로 나뉜다 — 이 문서는 직원 토큰(`typ=OPERATOR`)만 다룬다.
 
+- **전체 권한(고객·라이더·서비스 포함, 서비스별, 빈틈 목록)은 `permissions.md`**(2026-11-17).
 - **정본**: 역할 목록 = 설정 저장소 `employee-auth-service.yml` 의 `pmart.employee-auth.roles`(순서)·`role-info`(표시 이름·센터 지정). 이 밖의 역할은 저장되지 않는다(ADR-0056 결정 4·D3). 화면은 `GET /api/v1/employee-auth/roles`(직원이면 누구나)로 같은 목록을 받는다.
 - **누가 무엇을 할 수 있는지의 정본은 각 서비스 코드**다(서비스마다 `Access`·`Actors`·`requireAny` 등). 이 문서는 그 요약이라, 서비스 규칙(`services/<서비스>/CLAUDE.md`)이 바뀌면 같이 고친다.
 - 직원 한 명의 역할·권한 센터는 **employee-auth-service DB 의 grant(권한 부여)** 에 있다. Keycloak 에는 로그인 정보만 있고 역할은 없다(2026-11-13 Realm 역할 삭제). 토큰의 `roles`·`centers` 는 로그인·갱신 때 지금 유효한 grant 로 채운다.
