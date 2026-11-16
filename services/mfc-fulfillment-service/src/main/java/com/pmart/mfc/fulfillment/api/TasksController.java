@@ -113,6 +113,9 @@ public class TasksController implements TasksApi {
       tl.setOrderLineId(l.orderLineId());
       tl.setSku(l.sku());
       tl.setProductName(l.productName());
+      List<String> codes = d.barcodesBySku().getOrDefault(l.sku(), List.of());
+      tl.setBarcodes(codes);
+      tl.setBarcode(codes.isEmpty() ? null : codes.get(0));
       tl.setPlannedQty(l.plannedQty());
       tl.setCompletedQty(l.completedQty());
       tl.setCancelledQty(l.cancelledQty());

@@ -126,7 +126,8 @@ public class TaskService {
       List<ExecutionRow> pending,
       List<String> packingLocations,
       Map<String, Integer> visitSeq,
-      @Nullable String routeMethod) {
+      @Nullable String routeMethod,
+      Map<String, List<String>> barcodesBySku) {
 
     public Detail(
         TaskInfo task,
@@ -135,7 +136,8 @@ public class TaskService {
         boolean planFresh,
         List<ExecutionRow> pending,
         List<String> packingLocations) {
-      this(task, lines, picksByLine, planFresh, pending, packingLocations, Map.of(), null);
+      this(
+          task, lines, picksByLine, planFresh, pending, packingLocations, Map.of(), null, Map.of());
     }
   }
 
@@ -286,7 +288,24 @@ public class TaskService {
         store.openExecutions(taskId),
         "PACK".equals(t.taskType()) ? store.packingLocations(t.shipmentId()) : List.of(),
         seq,
-        method);
+        method,
+        barcodes(taskId, lines));
+  }
+
+  /**
+   * 줄 SKU 의 활성 바코드(0.7.0 — PDA 스캔 대조). 저장하지 않고 조회 때 mfc-inventory SKU 투영에서 읽는다(이미 만든 작업도 맞게). 표시용이라
+   * 조회가 안 되면 빈 결과로 상세는 그대로 준다(경고 로그).
+   */
+  private Map<String, List<String>> barcodes(String taskId, List<LineView> lines) {
+    if (lines.isEmpty()) {
+      return Map.of();
+    }
+    try {
+      return inventory.skuBarcodes(lines.stream().map(LineView::sku).toList());
+    } catch (PmartException | org.springframework.web.client.RestClientException e) {
+      log.warn("작업 {} 바코드 조회 실패: {}", taskId, e.getMessage());
+      return Map.of();
+    }
   }
 
   public Map<String, Object> getStart(String taskId, String requestId) {

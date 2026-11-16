@@ -745,6 +745,73 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(l1.path("picks").path(1).path("visitSeq").asInt()).isEqualTo(3);
   }
 
+  /**
+   * 0.7.0 PDA 스캔 대조: 작업 상세 줄에 그 SKU 의 활성 바코드 전부(barcodes)와 첫 값(barcode). 조회 때 mfc-inventory SKU 투영을
+   * 한 번에 묻는다(줄마다 부르지 않음). 투영 없는 SKU·재고 조회 실패는 빈 바코드로 상세는 그대로.
+   */
+  @Test
+  void taskLinesCarryBarcodesFromInventorySkuProjection() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    plan(o, 0, 0, 0, 0, 0, 0);
+    inv.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/skus"))
+            .withQueryParam("skus", equalTo("E-00000001,E-00000002"))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "items",
+                        List.of(
+                            Map.of(
+                                "sku",
+                                "E-00000001",
+                                "state",
+                                "ACTIVE",
+                                "productVersion",
+                                3,
+                                "barcodes",
+                                List.of("8801234567893", "2990000000012"))),
+                        "missing",
+                        List.of("E-00000002")))));
+
+    JsonNode d = call("GET", VIEWER, "/tasks/" + pick, null, null).body();
+    JsonNode l1 = null;
+    JsonNode l2 = null;
+    for (JsonNode l : d.path("lines")) {
+      if ("L1".equals(l.path("orderLineId").asString())) {
+        l1 = l;
+      } else if ("L2".equals(l.path("orderLineId").asString())) {
+        l2 = l;
+      }
+    }
+    assertThat(l1).isNotNull();
+    assertThat(l2).isNotNull();
+    List<String> codes = new java.util.ArrayList<>();
+    l1.path("barcodes").forEach(b -> codes.add(b.asString()));
+    assertThat(codes).containsExactly("8801234567893", "2990000000012");
+    assertThat(l1.path("barcode").asString()).isEqualTo("8801234567893");
+    assertThat(l2.path("barcodes").isEmpty()).isTrue();
+    assertThat(l2.hasNonNull("barcode")).isFalse();
+    inv.verify(1, WireMock.getRequestedFor(urlPathEqualTo("/api/v1/internal/skus")));
+
+    // PACK 상세도 같은 바코드
+    JsonNode pack = call("GET", VIEWER, "/tasks/" + s + "-PACK", null, null).body();
+    assertThat(pack.path("lines").findValuesAsString("barcode")).contains("8801234567893");
+
+    // 재고 SKU 조회 실패(503) → 상세는 200, 바코드는 비움
+    inv.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/skus"))
+            .willReturn(aResponse().withStatus(503)));
+    Res down = call("GET", VIEWER, "/tasks/" + pick, null, null);
+    assertThat(down.status()).isEqualTo(200);
+    for (JsonNode l : down.body().path("lines")) {
+      assertThat(l.path("barcodes").isEmpty()).isTrue();
+      assertThat(l.hasNonNull("barcode")).isFalse();
+    }
+  }
+
   @Test
   void blockedReservationPartBecomesShortageAtPickStart() {
     String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);

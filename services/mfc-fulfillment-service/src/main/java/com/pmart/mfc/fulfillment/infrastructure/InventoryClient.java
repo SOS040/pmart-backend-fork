@@ -85,7 +85,36 @@ public class InventoryClient {
     return new Reservation(n.path("state").asString(null), parts);
   }
 
-  /** 피킹 지시. 조회가 안 되면 PmartException 그대로(호출자가 표시를 비운다). */
+  /** SKU 투영 일괄 조회 한 번의 상한(mfc-inventory {@code GET /internal/skus} maxItems). */
+  static final int SKU_BATCH = 100;
+
+  /**
+   * SKU 별 활성 바코드(0.7.0 — PDA 스캔 대조). mfc-inventory SKU 투영 {@code GET /internal/skus?skus=}(100건씩).
+   * 투영이 없는 SKU 는 결과에 없다. 조회가 안 되면 PmartException·RestClientException 그대로(호출자가 빈 바코드로 둔다).
+   */
+  public Map<String, List<String>> skuBarcodes(java.util.Collection<String> skus) {
+    List<String> all = skus.stream().distinct().sorted().toList();
+    Map<String, List<String>> out = new java.util.HashMap<>();
+    for (int i = 0; i < all.size(); i += SKU_BATCH) {
+      String joined = String.join(",", all.subList(i, Math.min(all.size(), i + SKU_BATCH)));
+      String raw =
+          Downstream.call(
+              INVENTORY + " skus",
+              () ->
+                  inventory
+                      .get()
+                      .uri("/api/v1/internal/skus?skus={s}", joined)
+                      .retrieve()
+                      .body(String.class));
+      for (JsonNode n : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
+        List<String> barcodes = new ArrayList<>();
+        n.path("barcodes").forEach(b -> barcodes.add(b.asString()));
+        out.put(n.path("sku").asString(), List.copyOf(barcodes));
+      }
+    }
+    return out;
+  }
+
   /** 적치·복귀 추천 칸(#59, mfc-inventory placement-suggestions). */
   public List<String> suggestPlacement(String mfcId, String sku, String lotId, int qty) {
     String raw =

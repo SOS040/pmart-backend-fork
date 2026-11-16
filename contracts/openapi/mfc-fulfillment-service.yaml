@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -37,6 +37,10 @@ info:
       RESHIPMENT 는 **같은 주문의 두 번째 작업 지시**(원래 작업 지시와 따로 — 주문당 ORIGINAL 하나, 같은 reshipmentRef 는 하나). 자기 재고 예약(reservationId)으로 덮이는지 보고, 이미 중지된 수량은 빼지 않는다(배송된 상품을 다시 보내는 것).
       재발송 출고의 WorkAccepted·PackingFinished·ShipmentReady·DispatchRequested·LineShortageReported 에 `purpose: MISDELIVERY_RESHIPMENT`·`caseId`. WorkAccepted/WorkRejected 집계는 fulfillmentId(원래 주문 집계 버전과 겹치지 않게).
       `GET /internal/work-orders?orderId=` 와 작업 중지는 원래(ORIGINAL) 작업 지시만 본다.
+
+    0.7.0(2026-11-16, PDA 피킹 스캔 대조 — 사용자 승인으로 PC 1 수정): 작업 상세 TaskLine 에 `barcodes`(그 SKU 의 활성 바코드 전부 — 제조사 880… + 점포 299… 처럼 여럿일 수 있음)를 더하고,
+      그동안 늘 null 이던 `barcode` 는 그 첫 값으로 채운다(하위 호환). 저장하지 않고 **조회 때** mfc-inventory SKU 투영(`GET /internal/skus?skus=`, 100건씩)에서 읽는다 — 이미 만든 작업도 바로 맞는다.
+      재고 조회가 안 되거나 투영이 없는 SKU 는 `barcode` null·`barcodes` 빈 배열(상세 자체는 실패하지 않음).
 servers:
   - url: /api/v1
 security:
@@ -1045,7 +1049,12 @@ components:
         orderLineId: { type: string }
         sku: { $ref: '_common.yaml#/components/schemas/Sku' }
         productName: { type: string, description: 표시용 사본 }
-        barcode: { type: [string, 'null'], description: 필수 스캔 대조값 }
+        barcode: { type: [string, 'null'], description: '필수 스캔 대조값 — barcodes 의 첫 값(0.7.0 부터 채움, 하위 호환). 모르면 null. 스캔 대조는 barcodes 전체로 한다' }
+        barcodes:
+          type: array
+          items: { type: string }
+          description: '(0.7.0) 그 SKU 의 활성 바코드 전부(선행 0 보존, mfc-inventory SKU 투영 사본 — 조회 때 읽음). 스캔 값이 이 중 하나면 같은 상품. 재고 조회 실패·투영 없음이면 빈 배열'
+          x-added-in: '2026-11-16'
         locationId:
           type: [string, 'null']
           description: 지시 로케이션 (예 B04-02-205). PACK·DISPATCH 는 null 일 수 있음
