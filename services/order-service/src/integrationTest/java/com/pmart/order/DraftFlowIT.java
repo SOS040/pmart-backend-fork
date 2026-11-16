@@ -912,6 +912,10 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(mine.status()).as(mine.body().toString()).isEqualTo(200);
     JsonNode o = mine.body();
     assertThat(o.path("status").asString()).isEqualTo("CONFIRMED");
+    // 화면용 주문번호(2026-11-16): 8자리, 사건에도 같은 값
+    String number = o.path("orderNumber").asString();
+    assertThat(number).matches("[1-9][0-9]{7}");
+    assertThat(p.path("orderNumber").asString()).isEqualTo(number);
     assertThat(o.path("version").asInt()).isEqualTo(1);
     assertThat(o.path("deliveryMode").asString()).isEqualTo("SCHEDULED");
     assertThat(o.path("arrivalWindow").path("start").asString()).isEqualTo("10:00");
@@ -966,6 +970,7 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(get(repeat, "/orders/" + orderId).status()).isEqualTo(404);
     JsonNode list = get(first, "/orders?size=1").body();
     assertThat(list.path("items").path(0).path("orderId").asString()).isEqualTo(orderId);
+    assertThat(list.path("items").path(0).path("orderNumber").asString()).isEqualTo(number);
     assertThat(list.path("items").path(0).path("itemCount").asInt()).isEqualTo(10);
     assertThat(get(repeat, "/orders").body().path("items").findValuesAsString("orderId"))
         .doesNotContain(orderId);

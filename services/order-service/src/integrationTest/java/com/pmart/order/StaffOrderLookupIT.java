@@ -166,7 +166,8 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
             "RSV-" + orderId,
             null,
             null,
-            confirmedAt);
+            confirmedAt,
+            null);
     List<LineRow> lines = new ArrayList<>();
     lines.add(
         new LineRow(
@@ -319,6 +320,22 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
     // 주문 ID 완전 일치
     assertThat(ids(ok(CS, "/orders/lookups?orderId=" + other))).containsExactly(other);
     assertThat(ids(ok(CS, "/orders/lookups?orderId=" + other.substring(0, 12)))).isEmpty();
+    // 화면용 주문번호 완전 일치(2026-11-16) — 기간 없이, 하이픈 허용, 8자리 아니면 400
+    String otherNumber =
+        jdbc.queryForObject(
+            "SELECT order_number FROM customer_order WHERE order_id = ?", String.class, other);
+    assertThat(otherNumber).matches("[1-9][0-9]{7}");
+    assertThat(ids(ok(CS, "/orders/lookups?orderNumber=" + otherNumber))).containsExactly(other);
+    assertThat(
+            ids(
+                ok(
+                    CS,
+                    "/orders/lookups?orderNumber="
+                        + otherNumber.substring(0, 4)
+                        + "-"
+                        + otherNumber.substring(4))))
+        .containsExactly(other);
+    assertThat(status(CS, "/orders/lookups?orderNumber=1234")).isEqualTo(400);
 
     // 연락처 완전 일치(하이픈 무시) — 끝자리만으로는 찾지 못한다
     String digits = phone.replace("-", "");

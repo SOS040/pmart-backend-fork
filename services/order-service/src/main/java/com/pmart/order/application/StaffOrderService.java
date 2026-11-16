@@ -3,6 +3,7 @@ package com.pmart.order.application;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.order.domain.OrderNumberRules;
 import com.pmart.order.domain.ShippingAddress;
 import com.pmart.order.domain.StaffOrderRules;
 import com.pmart.order.domain.StaffOrderRules.PiiField;
@@ -65,6 +66,7 @@ public class StaffOrderService {
   /** 검색어. createdFrom·createdTo 는 확정 시각 기준. */
   public record Query(
       @Nullable String orderId,
+      @Nullable String orderNumber,
       @Nullable String customerId,
       @Nullable String status,
       @Nullable String mfcId,
@@ -98,9 +100,16 @@ public class StaffOrderService {
     requireStaff();
     String orderId = blankToNull(q.orderId());
     String customerId = blankToNull(q.customerId());
+    String rawNumber = blankToNull(q.orderNumber());
+    String orderNumber = OrderNumberRules.normalize(rawNumber);
+    if (rawNumber != null && orderNumber == null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "orderNumber 는 숫자 8자리여야 합니다.");
+    }
     String problem =
         StaffOrderRules.rangeProblem(
-            orderId != null || customerId != null, q.createdFrom(), q.createdTo());
+            orderId != null || orderNumber != null || customerId != null,
+            q.createdFrom(),
+            q.createdTo());
     if (problem != null) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, problem);
     }
@@ -116,6 +125,7 @@ public class StaffOrderService {
     var criteria =
         new StaffCriteria(
             orderId,
+            orderNumber,
             customerId,
             q.status(),
             blankToNull(q.mfcId()),
