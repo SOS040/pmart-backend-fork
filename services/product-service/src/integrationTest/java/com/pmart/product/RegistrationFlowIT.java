@@ -798,6 +798,19 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(again.body().path("details").path(0).path("field").asString())
         .isEqualTo("existingDraftId");
     assertThat(again.body().path("details").path(0).path("reason").asString()).isEqualTo(draftId);
+    // 예전 길(초안 생성에 targetProductId 직접)도 같은 409(사용자 결정 2026-11-17 "(가)")
+    Res oldPath = post("/product-drafts", in);
+    assertThat(oldPath.status()).as(oldPath.body().toString()).isEqualTo(409);
+    assertThat(oldPath.body().path("code").asString()).isEqualTo("EDIT_DRAFT_EXISTS");
+    assertThat(oldPath.body().path("details").path(0).path("reason").asString()).isEqualTo(draftId);
+    // 다른 초안을 고쳐 이 상품을 가리키게 해도 409
+    String newDraftId =
+        post("/product-drafts", water(randomGtin13())).body().path("draftId").asString();
+    Map<String, Object> retarget = new LinkedHashMap<>(water(randomGtin13()));
+    retarget.put("targetProductId", productId);
+    Res viaPut = put("/product-drafts/" + newDraftId, retarget);
+    assertThat(viaPut.status()).as(viaPut.body().toString()).isEqualTo(409);
+    assertThat(viaPut.body().path("code").asString()).isEqualTo("EDIT_DRAFT_EXISTS");
 
     // 3) 검사 숫자가 틀린 바코드는 INVALID, 고치면 VALID
     Map<String, Object> edit = mapper.convertValue(in, Map.class);

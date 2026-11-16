@@ -159,13 +159,14 @@ public class DraftStore {
   }
 
   /** 이 상품을 갱신 대상(input.targetProductId)으로 지정한 열린(DRAFT·SUBMITTED) 초안 — 수정 초안 중복 방지(2026-11-17). */
-  public Optional<DraftRow> findOpenForTarget(String productId) {
+  public Optional<DraftRow> findOpenForTarget(String productId, @Nullable String exceptDraftId) {
     return jdbc
         .query(
             "SELECT * FROM product_draft WHERE input ->> 'targetProductId' = ? AND state IN ('DRAFT','SUBMITTED')"
-                + " ORDER BY created_at, draft_id LIMIT 1",
+                + " AND draft_id IS DISTINCT FROM ? ORDER BY created_at, draft_id LIMIT 1",
             (rs, n) -> draft(rs),
-            productId)
+            productId,
+            exceptDraftId)
         .stream()
         .findFirst();
   }

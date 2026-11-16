@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: product-service
-  version: 0.3.0
+  version: 0.3.1
   description: |
     기초상품·상품·SKU(E-/B- 8자리, 재사용 금지)·구성 낱개 수·카테고리(4단계·노드별 필터, ADR-0015)·바코드↔SKU·판매 단위·중량·물류 규격·전사 판매 상태·승인 버전의 정본. (docs/architecture/service-map.md §1, ADR-0001)
     비정본: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
@@ -10,6 +10,8 @@ info:
     초안 입력·SkuDetail·상품 버전 조회·ProductVersionPublished.skus[] (선택 필드, 하위 호환). MFC 재고 적치·이동 칸 용량 계산에 쓴다.
     0.3.0(2026-11-17): 상품 정보 수정 `POST /products/{productId}/edit-drafts` — 현재 승인 버전을 그대로 옮겨 담은 수정 초안(targetProductId)을 만든다
     (열린 수정 초안이 있으면 409 EDIT_DRAFT_EXISTS). 초안 검증에 GS1 검사 숫자(`BARCODE_CHECK_DIGIT_INVALID` — 숫자만 8·12·13·14자리) 추가.
+    0.3.1(2026-11-17): 한 상품에 열린 수정 초안은 하나 — 초안 생성(`POST /product-drafts`)·수정(`PUT /product-drafts/{draftId}`)에
+    targetProductId 를 직접 넣는 길도 그 상품을 가리키는 다른 열린(DRAFT·SUBMITTED) 초안이 있으면 409 EDIT_DRAFT_EXISTS(details[0].reason = 그 draftId).
 servers:
   - url: /api/v1
 security:
@@ -364,6 +366,11 @@ paths:
               schema: { $ref: '#/components/schemas/ProductDraft' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: EDIT_DRAFT_EXISTS (targetProductId 상품에 다른 열린 수정 초안 — details[0].reason 이 그 draftId) / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /product-drafts/{draftId}:
     get:
@@ -383,6 +390,8 @@ paths:
     put:
       tags: [registration]
       summary: 상품 초안 수정 (제출 전 DRAFT 만)
+      description: |
+        targetProductId 가 가리키는 상품에 이 초안 말고 다른 열린(DRAFT·SUBMITTED) 초안이 있으면 409 EDIT_DRAFT_EXISTS(0.3.1).
       operationId: updateProductDraft
       x-pmart-user-types: [OPERATOR]
       parameters:

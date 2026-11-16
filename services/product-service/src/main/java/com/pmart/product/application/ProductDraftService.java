@@ -109,6 +109,7 @@ public class ProductDraftService {
                 "초안이 이미 바뀌었습니다(기대 " + expectedVersion + ", 현재 " + d.version() + ").");
           }
           requireEditable(d);
+          requireNoOtherOpenEdit(input, draftId);
           Validated v = validate(input, d.sourceSystem(), d.sourceKey());
           drafts.replaceInput(
               draftId,
@@ -152,21 +153,33 @@ public class ProductDraftService {
           if (!catalog.lockProduct(productId)) {
             throw PmartException.notFound("PRODUCT_NOT_FOUND", "상품이 없습니다: " + productId);
           }
-          Optional<DraftRow> open = drafts.findOpenForTarget(productId);
-          if (open.isPresent()) {
-            throw new PmartException(
-                EDIT_DRAFT_EXISTS,
-                HttpStatus.CONFLICT,
-                "이 상품의 수정 초안이 이미 열려 있습니다("
-                    + open.get().draftId()
-                    + ", 상태 "
-                    + open.get().state()
-                    + "). 그 초안을 이어서 고치거나 승인·반려를 기다리세요.",
-                false,
-                List.of(new PmartException.Detail("existingDraftId", open.get().draftId())));
-          }
-          return upsert(op, editInput(productId), null);
+          return upsert(op, editInput(productId), null); // upsert 가 열린 수정 초안을 확인한다
         });
+  }
+
+  /**
+   * 한 상품에 열린 수정 초안은 하나(사용자 결정 2026-11-17 "(가)"): 수정 시작뿐 아니라 초안 생성·수정에 targetProductId 를 직접 넣는 예전 길도
+   * 같은 검사를 한다 — 두 초안이 따로 승인되면 나중 것이 먼저 것을 덮어쓴다. 상품 행을 잠가 동시에 두 개가 생기지 않게 한다. 없는 상품은 여기서 막지 않는다(검증이
+   * TARGET_PRODUCT_NOT_FOUND 로 INVALID 저장). {@code ownDraftId} 는 지금 고치는 초안 자신(검사에서 뺀다).
+   */
+  private void requireNoOtherOpenEdit(JsonNode input, @Nullable String ownDraftId) {
+    String productId = text(input, "targetProductId");
+    if (productId == null || !catalog.lockProduct(productId)) {
+      return;
+    }
+    Optional<DraftRow> open = drafts.findOpenForTarget(productId, ownDraftId);
+    if (open.isPresent()) {
+      throw new PmartException(
+          EDIT_DRAFT_EXISTS,
+          HttpStatus.CONFLICT,
+          "이 상품의 수정 초안이 이미 열려 있습니다("
+              + open.get().draftId()
+              + ", 상태 "
+              + open.get().state()
+              + "). 그 초안을 이어서 고치거나 승인·반려를 기다리세요.",
+          false,
+          List.of(new PmartException.Detail("existingDraftId", open.get().draftId())));
+    }
   }
 
   /**
@@ -396,26 +409,26 @@ public class ProductDraftService {
   private DraftRow upsert(Operator op, JsonNode input, @Nullable String batchId) {
     String system = text(input, "sourceSystem");
     String key = text(input, "sourceKey");
+    Optional<DraftRow> open =
+        system != null && key != null ? drafts.findOpen(system, key) : Optional.empty();
+    if (open.isPresent() && "SUBMITTED".equals(open.get().state())) {
+      return open.get(); // 심사 중이면 바꾸지 않는다(승인 범위 고정)
+    }
+    requireNoOtherOpenEdit(input, open.map(DraftRow::draftId).orElse(null));
     Validated v = validate(input, system, key);
     Instant at = now();
-    if (system != null && key != null) {
-      Optional<DraftRow> open = drafts.findOpen(system, key);
-      if (open.isPresent()) {
-        DraftRow d = open.get();
-        if ("SUBMITTED".equals(d.state())) {
-          return d; // 심사 중이면 바꾸지 않는다(승인 범위 고정)
-        }
-        drafts.replaceInput(
-            d.draftId(),
-            d.version(),
-            batchId,
-            v.state(),
-            v.problemsJson(),
-            json(input),
-            v.categoriesJson(),
-            at);
-        return get(d.draftId());
-      }
+    if (open.isPresent()) {
+      DraftRow d = open.get();
+      drafts.replaceInput(
+          d.draftId(),
+          d.version(),
+          batchId,
+          v.state(),
+          v.problemsJson(),
+          json(input),
+          v.categoriesJson(),
+          at);
+      return get(d.draftId());
     }
     DraftRow row =
         new DraftRow(
