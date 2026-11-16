@@ -62,7 +62,8 @@ import tools.jackson.databind.ObjectMapper;
           "pmart.order.center-master-base-url",
           "pmart.order.capacity-base-url",
           "pmart.order.orchestration-base-url",
-          "pmart.order.content-base-url"
+          "pmart.order.content-base-url",
+          "pmart.order.inventory-base-url"
         }))
 class DraftFlowIT extends PostgresKafkaContainerSupport {
 
@@ -129,6 +130,20 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
                 sku("E-00000009", "ON_SALE", 12_000)),
             "missing",
             List.of()));
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .atPriority(5)
+            .willReturn(
+                json(
+                    Map.of(
+                        "mfcId",
+                        "MFC-1",
+                        "items",
+                        List.of(
+                            avail("E-00000001", 99, true),
+                            avail("E-00000002", 99, true),
+                            avail("E-00000003", 99, true),
+                            avail("E-00000009", 99, true))))));
     deps.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/purchase-limit-checks"))
             .atPriority(5)
@@ -266,6 +281,22 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
         availability);
   }
 
+  /** 담당 센터 가용(mfc-inventory /internal/availability) — 기본은 넉넉하게(모든 시험 SKU 99, 취급). */
+  void stock(Map<String, Object>... items) {
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .atPriority(1)
+            .willReturn(json(Map.of("mfcId", "MFC-1", "items", List.of(items)))));
+  }
+
+  static Map<String, Object> avail(String sku, Integer available, boolean handling) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("sku", sku);
+    m.put("available", available);
+    m.put("handlingEnabled", handling);
+    return m;
+  }
+
   void stub(MappingBuilder b, Object body) {
     deps.stubFor(b.willReturn(json(body)));
   }
@@ -320,6 +351,36 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
 
   static Map<String, Object> window(String start, String end) {
     return Map.of("date", TOMORROW, "start", start, "end", end);
+  }
+
+  @Test
+  void insufficientStockBlocksDraftButUnknownDoesNot() {
+    String first = TestJwt.customer(FIRST);
+    // 가용 1 < 주문 2 → 422 INSUFFICIENT_STOCK, 초안 없음(주문서 진입 금지 — 사용자 2026-11-16)
+    stock(avail("E-00000001", 1, true));
+    Res d =
+        create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-IN", "SINGLE", null));
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(422);
+    assertThat(d.body().path("code").asString()).isEqualTo("INSUFFICIENT_STOCK");
+    assertThat(d.body().path("details").path(0).path("field").asString()).isEqualTo("E-00000001");
+    assertThat(d.body().path("details").path(0).path("reason").asString())
+        .isEqualTo("requestedQty=2;availableQty=1");
+    // 센터 취급 안 함 → 같은 거절, 사유 NOT_HANDLED
+    stock(avail("E-00000001", 50, false));
+    d = create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-IN", "SINGLE", null));
+    assertThat(d.status()).isEqualTo(422);
+    assertThat(d.body().path("details").path(0).path("reason").asString()).isEqualTo("NOT_HANDLED");
+    // 가용 값 불명(null) → 막지 않는다
+    stock(avail("E-00000001", null, true));
+    d = create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-IN", "SINGLE", null));
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(201);
+    // 재고 조회 장애(503) → 막지 않는다(결제 단계 예약이 최종)
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
+            .atPriority(1)
+            .willReturn(aResponse().withStatus(503)));
+    d = create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-IN", "SINGLE", null));
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(201);
   }
 
   @Test

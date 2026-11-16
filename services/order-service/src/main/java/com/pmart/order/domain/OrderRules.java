@@ -217,6 +217,44 @@ public final class OrderRules {
         && lines.stream().allMatch(l -> l.unfulfilledQty() == 0 && l.handedOverQty() == 0);
   }
 
+  // ---------- 주문 초안 재고 확인 (2026-11-16) ----------
+
+  /** 담당 센터의 한 SKU 가용(조회 사본). available 이 null 이면 불명. */
+  public record Stock(@Nullable Integer available, boolean handlingEnabled) {}
+
+  /**
+   * 부족한 상품 하나 — reason 은 NOT_HANDLED 또는 requestedQty=<q>;availableQty=<a>(mfc-inventory 예약 거절과 같은
+   * 모양).
+   */
+  public record Shortage(String sku, String reason) {}
+
+  /**
+   * 담당 센터 가용으로 본 부족 상품(주문 순서). 센터가 취급하지 않거나 가용이 주문 수량보다 적으면 부족. 가용 조회가 불명(null)이거나 그 SKU 값이 불명이면
+   * 부족으로 보지 않는다 — 불명을 품절로 단정하지 않는다(결제 단계 재고 예약이 최종).
+   */
+  public static List<Shortage> stockShortages(
+      java.util.Map<String, Integer> qty, java.util.@Nullable Map<String, Stock> stock) {
+    List<Shortage> out = new ArrayList<>();
+    if (stock == null) {
+      return out;
+    }
+    qty.forEach(
+        (sku, q) -> {
+          Stock a = stock.get(sku);
+          if (a == null) {
+            return;
+          }
+          if (!a.handlingEnabled()) {
+            out.add(new Shortage(sku, "NOT_HANDLED"));
+          } else if (a.available() != null && a.available() < q) {
+            out.add(
+                new Shortage(
+                    sku, "requestedQty=" + q + ";availableQty=" + Math.max(a.available(), 0)));
+          }
+        });
+    return out;
+  }
+
   // ---------- 이행 진행(인계·전달, O-1 2026-11-16) ----------
 
   /** 주문행 진행 누계. 불변식 원수량 = 미이행 + 인계 + 출고 전 취소, 전달 ≤ 원수량 − 출고 전 취소. */

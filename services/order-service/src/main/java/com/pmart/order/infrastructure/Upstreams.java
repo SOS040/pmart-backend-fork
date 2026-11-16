@@ -58,6 +58,7 @@ public class Upstreams {
   private final RestClient center;
   private final RestClient capacity;
   private final RestClient content;
+  private final RestClient inventory;
   private final ObjectMapper mapper;
 
   public Upstreams(RestClient.Builder builder, OrderProperties props, ObjectMapper mapper) {
@@ -67,6 +68,7 @@ public class Upstreams {
     this.center = builder.clone().baseUrl(props.centerMasterBaseUrl()).build();
     this.capacity = builder.clone().baseUrl(props.capacityBaseUrl()).build();
     this.content = builder.clone().baseUrl(props.contentBaseUrl()).build();
+    this.inventory = builder.clone().baseUrl(props.inventoryBaseUrl()).build();
     this.mapper = mapper;
   }
 
@@ -199,6 +201,43 @@ public class Upstreams {
       throw PmartException.configRequired("product.purchase-limit-units");
     }
     return r.path("passed").asBoolean(false) ? null : r.path("violations").path(0);
+  }
+
+  // ---------- mfc-inventory ----------
+
+  /**
+   * 담당 센터의 가용(2026-11-16 — 주문 초안 재고 확인). 조회 실패·결과 불명은 null(불명 — 품절로 단정하지 않는다, Commerce 7장). 결제 단계
+   * 재고 예약이 최종 판정이다.
+   */
+  public @Nullable Map<String, OrderRules.Stock> availability(String mfcId, List<String> skus) {
+    try {
+      String raw =
+          Downstream.call(
+              "mfc-inventory-service availability",
+              () ->
+                  inventory
+                      .get()
+                      .uri(
+                          u -> {
+                            u.path("/api/v1/internal/availability").queryParam("mfcId", mfcId);
+                            skus.forEach(s -> u.queryParam("sku", s));
+                            return u.build();
+                          })
+                      .retrieve()
+                      .body(String.class));
+      Map<String, OrderRules.Stock> out = new HashMap<>();
+      for (JsonNode a : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
+        JsonNode v = a.path("available");
+        out.put(
+            a.path("sku").asString(),
+            new OrderRules.Stock(
+                v.isNumber() ? v.asInt() : null, a.path("handlingEnabled").asBoolean(true)));
+      }
+      return out;
+    } catch (PmartException | HttpClientErrorException e) {
+      log.warn("주문 초안 재고 확인 불명(진행 — 결제 단계 예약이 최종) — {}", e.getClass().getSimpleName());
+      return null;
+    }
   }
 
   // ---------- pricing ----------

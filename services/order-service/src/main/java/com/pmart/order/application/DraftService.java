@@ -170,6 +170,22 @@ public class DraftService {
           false,
           notSaleable);
     }
+    // 재고 확인(2026-11-16 사용자 "재고가 부족하면 주문서 진입 자체를 막기(422)") — 담당 센터 가용이 주문 수량보다 적거나 센터가
+    // 취급하지 않으면 초안을 만들지 않는다. 조회 불명은 막지 않는다(결제 단계 재고 예약이 최종). 소비기한 부적격 LOT 은 아직 가용에
+    // 들어 있어 결제 단계에서 걸릴 수 있다(mfc-inventory IV-1).
+    List<PmartException.Detail> shortages =
+        OrderRules.stockShortages(qty, upstreams.availability(mfcId, List.copyOf(qty.keySet())))
+            .stream()
+            .map(x -> new PmartException.Detail(x.sku(), x.reason()))
+            .toList();
+    if (!shortages.isEmpty()) {
+      throw new PmartException(
+          "INSUFFICIENT_STOCK",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "재고가 부족한 상품이 있습니다. 장바구니에서 수량을 줄이거나 빼 주세요.",
+          false,
+          shortages);
+    }
     JsonNode violation = upstreams.purchaseLimitViolation(accountId, qty);
     if (violation != null) {
       throw new PmartException(
