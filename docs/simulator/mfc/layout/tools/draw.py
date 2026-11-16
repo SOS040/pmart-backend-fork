@@ -39,7 +39,7 @@ a(f'<svg xmlns="http://www.w3.org/2000/svg" width="{Wpx}" height="{Hpx}" viewBox
   f'font-family="Malgun Gothic, Noto Sans KR, Apple SD Gothic Neo, sans-serif">')
 a(f'<rect width="{Wpx}" height="{Hpx}" fill="#ffffff"/>')
 a(f'<text x="{M}" y="22" font-size="16" font-weight="700" fill="#222">'
-  f'MFC 시뮬레이터 평면 배치 — pmart-mfc-simulation src/domain/layout.ts buildLayout() 실행 결과</text>')
+  f'MFC 평면 배치 — 시뮬레이터 layout.ts 의 랙 배치 + 칸 수는 백엔드 LAN 설계(2026-11-16)</text>')
 
 
 def rect(r, fill, extra=''):
@@ -142,12 +142,16 @@ lx = M + W_M * S + 20
 y = M + 10
 a(f'<text x="{lx}" y="{y}" font-size="13" font-weight="700" fill="#222">범례</text>')
 y += 18
-items = [('box', rack_fill['FROZEN'], '냉동 랙 105 (5단 × 3칸)'), ('box', rack_fill['CHILLED'], '냉장 랙 125 (5단 × 3칸)'),
-         ('box', rack_fill['AMBIENT'], '상온 랙 138 (6단 × 4칸)'), ('box', '#a1887f', '보충재고 팔레트 자리 32'),
+items = [('box', rack_fill['FROZEN'], '냉동 랙 105 (5단 × 6칸 = 3,150칸)'), ('box', rack_fill['CHILLED'], '냉장 랙 125 (5단 × 7칸 = 4,375칸)'),
+         ('box', rack_fill['AMBIENT'], '상온 랙 138 (7,034칸)'), ('text', None, '  C 24·G 25랙 6단×9칸, D 24·F 24랙 6단×10칸'), ('text', None, '  E 21랙 6단×8칸, H 20랙 5단×5칸(큰 상품)'), ('box', '#a1887f', '보충재고 팔레트 자리 32'),
          ('box', '#6d9f5b', '패킹대 8 (번호, 기본 가동 4)'), ('box', '#e08a2c', '외부 출하대기 랙 2'),
          ('box', '#8e7cc3', '하차 적치 칸 36'), ('box', '#e53935', '고회전 칸이 있는 랙 (E2E 시험용, 나머지는 일반 선반)'), ('box', '#00897b', '백엔드가 정한 자리 (평면에 없음)'), ('line', '#333', '벽 (끊긴 곳 = 문)'),
          ('line', '#7fb3d5', '유리벽 (패킹실)'), ('line', '#9e9e9e', '낮은 울타리')]
 for kind, col, lab in items:
+    if kind == 'text':
+        a(f'<text x="{lx + 26}" y="{y}" font-size="10" fill="#555">{e(lab)}</text>')
+        y += 15
+        continue
     if kind == 'line':
         a(f'<rect x="{lx}" y="{y - 5}" width="18" height="3" fill="{col}"/>')
     else:
@@ -165,7 +169,7 @@ for k, lab in [('FROZEN', '냉동 A'), ('CHILLED', '냉장 B'), ('AMBIENT', '상
       f'<text x="{lx + 26}" y="{y}" font-size="11" fill="#333">{e(lab)}</text>')
     y += 17
 y += 10
-for n in ['칸 6,762개 · 코드 예 A01-01-101', '(구역그룹-랙-단·칸, 문서 8-2 가설)', '평 = MFC 문서 면적(배치 면적과 다를 수 있음)',
+for n in ['선반 칸 14,559개 + 고회전 32 (2026-11-16, MFC 문서 1장 3-3·4-2)', '백엔드 코드 예 A-C1-01-3-09 (온도-구역-랙-단-칸)', '※ 시뮬레이터 layout.ts 칸 수는 아직 옛 값(반영 예정)', '평 = MFC 문서 면적(배치 면적과 다를 수 있음)',
           '구역 위치·모양·문은 시뮬레이터 가정', '(실측 도면 아님, MFC 문서 7-5)']:
     a(f'<text x="{lx}" y="{y}" font-size="10" fill="#666">{e(n)}</text>')
     y += 14
