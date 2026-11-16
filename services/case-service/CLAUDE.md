@@ -67,5 +67,7 @@
   - 수락 `…/acceptances`: **후임 본인만**(관리자도 못 함), excludedCaseIds 는 EXCLUDED(전임 그대로 — 미인수). 그사이 바뀐 건 SKIPPED_CHANGED, 후임이 못 다루면 SKIPPED_NOT_ALLOWED, 나머지 ACCEPTED(담당 이동·이력 HANDED_OVER "전임 → 후임: 다음 조치"·CaseAssigned). COMPLETED + `ShiftHandoverCompleted`(openCases = 받은 건, notReceivedCases).
   - 취소 `…/cancellations`(수락 전, 전임·관리자 — 항목 CANCELLED 로 풀림), 조회·목록(전임·후임·관리자, `unreceived=true` = 수락 전이거나 빠진 건 있음 — 원문 "미인수 상신"). 기한 값 없음, **근무 확인 없음**(본사 근무표 없음 — 역할만), 알림 없음.
 
+- **접수 건 메모(2026-11-16, 계약 0.10.0, V9 case_note — 사용자 "고친 안", 업무 원문 BO-27 "늦은 보고는 원사건으로")**: `CaseNoteService`·`CaseNoteStore`, `CasesController`. 남기기 `POST /cases/{id}/notes` — 볼 수 있는 **본사 직원**(OPERATOR_ADMIN·RIDER_OPS·CS_AGENT, 센터 관리자는 403), **처리 끝난 건에도**(상태 그대로), 500자. 고치기·지우기 없음. 가림 `…/notes/{noteId}/maskings` — 관리자만·사유 필수, **글을 DB 에서 지우고**(text NULL) 누가·언제·왜는 남김(ADR-0062). 목록 GET. 이벤트 없음, 글은 로그 금지.
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
