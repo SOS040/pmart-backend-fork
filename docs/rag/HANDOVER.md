@@ -68,7 +68,7 @@ LAN 색인은 **커밋 `652e518d`(11-15) 문서 기준 그대로**다. 그 뒤 �
 
 | 구성요소 | 내용 |
 |---|---|
-| `ollama` | PC 2 GPU(RTX 2060, 쓸 수 있는 메모리 약 5GB). 컨테이너 CPU 4·메모리 6GB 상한(같은 PC 의 주문·결제 몫을 남김 — 재색인은 주문 시험이 없을 때). LAN 포트 없음 — 같은 PC 서비스만 `http://ollama:11434` |
+| `ollama` | PC 2 GPU(RTX 2060, 쓸 수 있는 메모리 약 5GB). 컨테이너 CPU 4·메모리 6GB 상한(같은 PC 의 주문·결제 몫을 남김 — 재색인은 주문 시험이 없을 때). 같은 PC 서비스는 `http://ollama:11434`. **2026-11-16 부터 LAN `http://192.168.0.34:11434` 열림**(사용자 "포트도 지금 바로" — RAG 개발 PC 4 용, 인증 없음, LAN 안에서만). 동시 1건(`OLLAMA_NUM_PARALLEL=1`)이라 PC 4 요청이 LAN RAG 답을 기다리게 한다 — **대량 임베딩·전체 평가 전에는 PC 1·사용자에게 알린다**. 모델을 내려받거나 지우지 않는다(`ollama pull`·`rm` 은 PC 1 `rag-pull`) |
 | 대화 모델 | `qwen3:4b`(GPU 100%, 3.9GB, 문맥 8192) — 사용자 결정 2026-11-09(8B 와 비교 25 vs 26/30, 8B 는 8~22초) |
 | 임베딩 모델 | `qwen3-embedding:0.6b`(ID `ac6da0dfba84`, 1024차원, **CPU** — `embedding-num-gpu: 0`, GPU 는 대화 모델에). 2026-11-09 비교 평가로 결정(`verification/2026-11-09/embedding-compare/`) |
 | `rag-pgvector` | PostgreSQL + pgvector, 포트 15433(LAN 노출 없음), 서비스마다 DB·계정(`deploy/lan/rag/rag-init-db.sh`) |
@@ -110,7 +110,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 
 ### 시작하면 먼저 (PC 4)
 1. 공통 준비(`docs/operations/dev-on-other-pcs.md`·`other-pcs-todo.md` PC 4 절) — 포크·`<rag>/<주제>` 브랜치, 비밀번호 파일, Gradle 제한.
-2. 개발 환경: **평소는 local 프로필**(해시 임베딩 384차원, 모델 없음 — `deploy/local/ai-assistant/docker-compose.yml` pgvector 15433). 실제 모델로 답변을 볼 때만 PC 4 에 로컬 ollama(같은 모델 qwen3:4b·qwen3-embedding:0.6b — PC 1 이 11-09 평가 때 쓴 방식). 실제 모델 임베딩(1024)과 해시(384)는 DB 를 섞지 않는다. **LAN rag-pgvector·ollama(PC 2, LAN 포트 없음)에는 붙지 않는다** — LAN 색인은 PC 1 `rag-ingest` 로만. 로컬 ollama 로 부족하면 PC 2 포트 열기를 그때 정한다(사용자 2026-11-15 "일단 자기걸쓰는데 … 한번해보고 포트열든"). PC 4 에는 게이트웨이·설정 서버가 있어 무거운 시험 중 LAN 이 느려지면 PC 1 에 알린다(2026-11-15 감시 묶음을 PC 1 로 옮겨 PC 4 메모리 여유가 조금 늘었다).
+2. 개발 환경: **평소는 local 프로필**(해시 임베딩 384차원, 모델 없음 — `deploy/local/ai-assistant/docker-compose.yml` pgvector 15433). 실제 모델로 답변을 볼 때만 PC 4 에 로컬 ollama(같은 모델 qwen3:4b·qwen3-embedding:0.6b — PC 1 이 11-09 평가 때 쓴 방식). 실제 모델 임베딩(1024)과 해시(384)는 DB 를 섞지 않는다. 실제 모델은 **PC 2 LAN ollama `http://192.168.0.34:11434` 를 써도 된다**(2026-11-16 포트 엶 — 사용자 "포트도 지금 바로"; 로컬 ollama 도 그대로 가능). 개발 DB 는 PC 4 로컬 pgvector — **LAN rag-pgvector(포트 닫힘)에는 붙지 않는다**, LAN 색인은 PC 1 `rag-ingest` 로만. 같은 ollama 를 LAN RAG 가 쓰므로 대량 임베딩·전체 평가는 미리 알리고, 모델을 받거나 지우지 않는다. PC 4 에는 게이트웨이·설정 서버가 있어 무거운 시험 중 LAN 이 느려지면 PC 1 에 알린다(2026-11-15 감시 묶음을 PC 1 로 옮겨 PC 4 메모리 여유가 조금 늘었다).
 3. `./gradlew :services:ai-assistant-service:check`·`:services:customer-assistant-service:check` 가 PC 4 에서 통과하는지.
 
 ### 운영자 RAG

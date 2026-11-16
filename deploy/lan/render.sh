@@ -51,7 +51,7 @@ INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-lo
 # RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
 RAG_APPS=" ai-assistant-service customer-assistant-service "
 is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
-# rag-pgvector·ollama(ADR-0051)는 같은 PC 의 RAG 서비스만 컨테이너 이름으로 부른다 — 포트도 LAN 에 열지 않는다
+# rag-pgvector·ollama(ADR-0051)는 같은 PC 의 RAG 서비스만 컨테이너 이름으로 부른다. rag-pgvector 는 LAN 포트를 열지 않는다. ollama 는 2026-11-16 부터 LAN 11434(RAG 개발 PC 용)
 # RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
 # 사내 메일(ADR-0056 결정 9)·웹메일도 같은 PC(Keycloak·hr-service)만 이름으로 부른다
 # hr-service 는 게이트웨이가 Eureka 로, mail-provisioner 는 같은 PC 의 hr-service 만 이름으로 부른다(ADR-0056 5-5)
@@ -741,12 +741,15 @@ EOF
 EOF
         ;;
       ollama)
-        # 모델 서버(ADR-0051 결정 6): 임베딩·대화 모델을 이 PC GPU(RTX 2060 6GB)로. 인증이 없어 LAN 포트를 열지 않는다(같은 PC 서비스만).
+        # 모델 서버(ADR-0051 결정 6): 임베딩·대화 모델을 이 PC GPU(RTX 2060 6GB)로. 인증이 없다.
+        # 2026-11-16 사용자 "포트도 지금 바로 여는게" — RAG 개발 PC(PC 4)가 같은 모델을 쓰게 LAN 11434 를 연다(rag-pgvector 는 계속 닫음).
+        # 동시 1건이라 PC 4 의 대량 임베딩·평가가 LAN RAG 응답을 밀어낸다 — 큰 작업 전에는 PC 1·사용자에게 알린다(docs/rag/HANDOVER.md §3).
         # 다른 업무 서비스(2026-11-15 부터 pc2 주문·결제)와 같은 PC 라 CPU 4·메모리 6GB 상한(모델이 GPU 를 넘치면 CPU 로 넘어간다). 모델 파일은 ollamadata 볼륨
         cat <<EOF
   ollama:
     <<: *common
     image: ollama/ollama:0.40.10
+    ports: ["11434:11434"] # LAN — RAG 개발 PC(PC 4)용(2026-11-16)
     networks: { default: { ipv4_address: $ip_addr } }
     environment:
       OLLAMA_KEEP_ALIVE: "24h"
