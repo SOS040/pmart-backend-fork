@@ -71,6 +71,41 @@ class CenterMapping {
     return out;
   }
 
+  /** 라이더용 픽업지 — 이름·주소·전화·좌표·인계 위치만(승인·휴폐점·반입 조건 없음). */
+  com.pmart.center.master.api.generated.model.PickupPoint pickupPoint(CenterRow c) {
+    JsonNode profile = mapper.readTree(c.profile());
+    var out =
+        new com.pmart.center.master.api.generated.model.PickupPoint()
+            .centerId(c.centerId())
+            .name(c.name())
+            .address(c.address())
+            .phone(profile.path("phone").isString() ? profile.path("phone").asString() : null);
+    if (c.lat() != null && c.lng() != null) {
+      out.coordinates(
+          new com.pmart.center.master.api.generated.model.PickupPointCoordinates()
+              .lat(BigDecimal.valueOf(c.lat()))
+              .lng(BigDecimal.valueOf(c.lng())));
+    }
+    for (JsonNode a : profile.path("accessPoints")) {
+      if ("HANDOVER_POINT".equals(a.path("kind").asString())) {
+        var h =
+            new com.pmart.center.master.api.generated.model.PickupPointHandoverPoint()
+                .label(a.path("label").asString())
+                .note(a.path("note").isString() ? a.path("note").asString() : null);
+        JsonNode at = a.path("coordinates");
+        if (at.path("lat").isNumber() && at.path("lng").isNumber()) {
+          h.coordinates(
+              new com.pmart.center.master.api.generated.model.PickupPointHandoverPointCoordinates()
+                  .lat(at.path("lat").decimalValue())
+                  .lng(at.path("lng").decimalValue()));
+        }
+        out.handoverPoint(h);
+        break;
+      }
+    }
+    return out;
+  }
+
   static CalendarDay calendar(CalendarView v, Instant now) {
     Timetable.Day d = v.day();
     return new CalendarDay()
