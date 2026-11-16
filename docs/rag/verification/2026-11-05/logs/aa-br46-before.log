@@ -1,0 +1,22 @@
+Java HotSpot(TM) 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+{"timestamp":"2026-11-05T02:19:15.140Z","message":"Commencing graceful shutdown. Waiting for active requests to complete","logger_name":"org.springframework.boot.tomcat.GracefulShutdown","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:19:15.396Z","message":"Graceful shutdown complete","logger_name":"org.springframework.boot.tomcat.GracefulShutdown","thread_name":"tomcat-shutdown","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:19:15.404Z","message":"Removing {logging-channel-adapter:_org.springframework.integration.errorLogger} as a subscriber to the 'errorChannel' channel","logger_name":"org.springframework.integration.endpoint.EventDrivenConsumer","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:19:15.404Z","message":"Channel 'ai-assistant-service.errorChannel' has 0 subscriber(s).","logger_name":"org.springframework.integration.channel.PublishSubscribeChannel","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:19:15.404Z","message":"stopped bean '_org.springframework.integration.errorLogger'","logger_name":"org.springframework.integration.endpoint.EventDrivenConsumer","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:19:15.416Z","message":"Closing JPA EntityManagerFactory for persistence unit 'default'","logger_name":"org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:19:15.416Z","message":"HikariPool-1 - Shutdown initiated...","logger_name":"com.zaxxer.hikari.HikariDataSource","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:19:15.424Z","message":"HikariPool-1 - Shutdown completed.","logger_name":"com.zaxxer.hikari.HikariDataSource","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","service":"ai-assistant-service"}
+
+1 test completed, 1 failed
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':services:ai-assistant-service:integrationTest'.
+> There were failing tests. See the report at: file:///C:/development/pmart-project/pmart-backend/services/ai-assistant-service/build/reports/tests/integrationTest/index.html
+
+* Try:
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+BUILD FAILED in 25s

@@ -1,0 +1,76 @@
+Calculating task graph as configuration cache cannot be reused because an input to unknown location has changed.
+> Task :build-logic:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :build-logic:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :build-logic:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :build-logic:compilePluginsBlocks UP-TO-DATE
+> Task :build-logic:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :build-logic:generateScriptPluginAdapters UP-TO-DATE
+> Task :build-logic:compileKotlin UP-TO-DATE
+> Task :build-logic:compileJava NO-SOURCE
+> Task :build-logic:pluginDescriptors UP-TO-DATE
+> Task :build-logic:processResources UP-TO-DATE
+> Task :build-logic:classes UP-TO-DATE
+> Task :build-logic:jar UP-TO-DATE
+> Task :libraries:common-test:processResources NO-SOURCE
+> Task :libraries:common-web:processResources UP-TO-DATE
+> Task :libraries:common-observability:processResources UP-TO-DATE
+> Task :libraries:common-messaging:processResources UP-TO-DATE
+> Task :services:ai-assistant-service:contractCheck UP-TO-DATE
+> Task :libraries:common-security:processResources UP-TO-DATE
+> Task :services:ai-assistant-service:openApiGenerate UP-TO-DATE
+> Task :services:ai-assistant-service:processTestResources NO-SOURCE
+> Task :libraries:common-web:compileJava UP-TO-DATE
+> Task :libraries:common-security:compileJava UP-TO-DATE
+> Task :libraries:common-security:classes UP-TO-DATE
+> Task :libraries:common-web:classes UP-TO-DATE
+> Task :libraries:common-observability:compileJava UP-TO-DATE
+> Task :libraries:common-security:jar UP-TO-DATE
+> Task :libraries:common-observability:classes UP-TO-DATE
+> Task :libraries:common-web:jar UP-TO-DATE
+> Task :libraries:common-observability:jar UP-TO-DATE
+> Task :libraries:common-messaging:compileJava UP-TO-DATE
+> Task :libraries:common-messaging:classes UP-TO-DATE
+> Task :services:ai-assistant-service:compileJava UP-TO-DATE
+> Task :libraries:common-test:compileJava UP-TO-DATE
+> Task :libraries:common-messaging:jar UP-TO-DATE
+> Task :libraries:common-test:classes UP-TO-DATE
+> Task :libraries:common-test:jar UP-TO-DATE
+> Task :services:ai-assistant-service:bootBuildInfo
+> Task :services:ai-assistant-service:processResources UP-TO-DATE
+> Task :services:ai-assistant-service:classes
+> Task :services:ai-assistant-service:spotlessKotlinGradle UP-TO-DATE
+> Task :services:ai-assistant-service:spotlessKotlinGradleCheck UP-TO-DATE
+> Task :services:ai-assistant-service:compileTestJava UP-TO-DATE
+> Task :services:ai-assistant-service:testClasses UP-TO-DATE
+> Task :services:ai-assistant-service:spotlessJava
+> Task :services:ai-assistant-service:spotlessJavaCheck
+> Task :services:ai-assistant-service:spotlessCheck
+> Task :services:ai-assistant-service:jar
+> Task :services:ai-assistant-service:processIntegrationTestResources
+> Task :services:ai-assistant-service:compileIntegrationTestJava
+> Task :services:ai-assistant-service:integrationTestClasses
+Java HotSpot(TM) 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :services:ai-assistant-service:test
+> Task :services:ai-assistant-service:jacocoTestReport
+Java HotSpot(TM) 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :services:ai-assistant-service:integrationTest
+
+{"timestamp":"2026-11-05T02:26:23.722Z","message":"Commencing graceful shutdown. Waiting for active requests to complete","logger_name":"org.springframework.boot.tomcat.GracefulShutdown","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:23.997Z","message":"Graceful shutdown complete","logger_name":"org.springframework.boot.tomcat.GracefulShutdown","thread_name":"tomcat-shutdown","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.009Z","message":"Closing JPA EntityManagerFactory for persistence unit 'default'","logger_name":"org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.009Z","message":"HikariPool-1 - Shutdown initiated...","logger_name":"com.zaxxer.hikari.HikariDataSource","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.014Z","message":"HikariPool-1 - Shutdown completed.","logger_name":"com.zaxxer.hikari.HikariDataSource","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.021Z","message":"Commencing graceful shutdown. Waiting for active requests to complete","logger_name":"org.springframework.boot.tomcat.GracefulShutdown","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.026Z","message":"Graceful shutdown complete","logger_name":"org.springframework.boot.tomcat.GracefulShutdown","thread_name":"tomcat-shutdown","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.026Z","message":"Removing {logging-channel-adapter:_org.springframework.integration.errorLogger} as a subscriber to the 'errorChannel' channel","logger_name":"org.springframework.integration.endpoint.EventDrivenConsumer","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.026Z","message":"Channel 'ai-assistant-service.errorChannel' has 0 subscriber(s).","logger_name":"org.springframework.integration.channel.PublishSubscribeChannel","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.026Z","message":"stopped bean '_org.springframework.integration.errorLogger'","logger_name":"org.springframework.integration.endpoint.EventDrivenConsumer","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.030Z","message":"Closing JPA EntityManagerFactory for persistence unit 'default'","logger_name":"org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","tags":["COMMONS-LOGGING"],"service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.031Z","message":"HikariPool-2 - Shutdown initiated...","logger_name":"com.zaxxer.hikari.HikariDataSource","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","service":"ai-assistant-service"}
+{"timestamp":"2026-11-05T02:26:24.035Z","message":"HikariPool-2 - Shutdown completed.","logger_name":"com.zaxxer.hikari.HikariDataSource","thread_name":"SpringApplicationShutdownHook","level":"INFO","serviceName":"ai-assistant-service","service":"ai-assistant-service"}
+
+> Task :services:ai-assistant-service:check
+
+BUILD SUCCESSFUL in 41s
+39 actionable tasks: 9 executed, 30 up-to-date
+Configuration cache entry stored.

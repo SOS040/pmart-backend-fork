@@ -1,0 +1,706 @@
+Reusing configuration cache.
+
+> Task :services:ai-assistant-service:dependencyInsight
+org.springframework.ai:spring-ai-bom:2.0.2
+  Variant platform-runtime:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | platform     | platform     |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.dependency.bundling |              | external     |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+    | org.gradle.jvm.version         |              | 21           |
+    | org.gradle.libraryelements     |              | jar          |
+
+org.springframework.ai:spring-ai-bom:2.0.2
+\--- runtimeClasspath
+
+org.springframework.ai:spring-ai-commons:2.0.2 (by constraint)
+  Variant runtime:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.dependency.bundling |              | external     |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+    | org.gradle.jvm.version         |              | 21           |
+
+org.springframework.ai:spring-ai-commons:2.0.2
++--- org.springframework.ai:spring-ai-bom:2.0.2
+|    \--- runtimeClasspath
++--- org.springframework.ai:spring-ai-model:2.0.2
+|    +--- runtimeClasspath (requested org.springframework.ai:spring-ai-model)
+|    \--- org.springframework.ai:spring-ai-bom:2.0.2 (*)
+\--- org.springframework.ai:spring-ai-template-st:2.0.2
+     +--- org.springframework.ai:spring-ai-bom:2.0.2 (*)
+     \--- org.springframework.ai:spring-ai-model:2.0.2 (*)
+
+org.springframework.ai:spring-ai-model:2.0.2 (by constraint)
+  Variant runtime:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.dependency.bundling |              | external     |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+    | org.gradle.jvm.version         |              | 21           |
+
+org.springframework.ai:spring-ai-model:2.0.2
+\--- org.springframework.ai:spring-ai-bom:2.0.2
+     \--- runtimeClasspath
+
+org.springframework.ai:spring-ai-model -> 2.0.2
+\--- runtimeClasspath
+
+org.springframework.ai:spring-ai-template-st:2.0.2 (by constraint)
+  Variant runtime:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.dependency.bundling |              | external     |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+    | org.gradle.jvm.version         |              | 21           |
+
+org.springframework.ai:spring-ai-template-st:2.0.2
++--- org.springframework.ai:spring-ai-bom:2.0.2
+|    \--- runtimeClasspath
+\--- org.springframework.ai:spring-ai-model:2.0.2
+     +--- runtimeClasspath (requested org.springframework.ai:spring-ai-model)
+     \--- org.springframework.ai:spring-ai-bom:2.0.2 (*)
+
+(*) - Indicates repeated occurrences of a transitive dependency subtree. Gradle expands transitive dependency subtrees only once per project; repeat occurrences only display the root of the subtree, followed by this annotation.
+
+A web-based, searchable dependency report is available by adding the --scan option.
+
+BUILD SUCCESSFUL in 911ms
+1 actionable task: 1 executed
+Configuration cache entry reused.
+Reusing configuration cache.
+
+> Task :services:ai-assistant-service:dependencyInsight
+org.springframework.boot:spring-boot-starter:4.0.9
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+   Selection reasons:
+      - By constraint
+      - By conflict resolution: between versions 4.0.9 and 4.0.5
+
+org.springframework.boot:spring-boot-starter:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
++--- org.springframework.boot:spring-boot-starter-actuator:4.0.9
+|    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-actuator)
+|    +--- project :libraries:common-observability (requested org.springframework.boot:spring-boot-starter-actuator) (*)
+|    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-cache:4.0.9
+|    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    \--- org.springframework.cloud:spring-cloud-starter-loadbalancer:5.0.4
+|         +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4
+|         |    \--- runtimeClasspath
+|         \--- org.springframework.cloud:spring-cloud-starter-netflix-eureka-client:5.0.3
+|              +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-netflix-eureka-client)
+|              \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
++--- org.springframework.boot:spring-boot-starter-data-jpa:4.0.9
+|    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-data-jpa)
+|    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-flyway:4.0.9
+|    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-flyway)
+|    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-jackson:4.0.9
+|    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    +--- org.springframework.boot:spring-boot-starter-restclient:4.0.9
+|    |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-restclient)
+|    |    +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-restclient) (*)
+|    |    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    \--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9
+|         +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-webmvc)
+|         +--- project :libraries:common-web (requested org.springframework.boot:spring-boot-starter-webmvc) (*)
+|         \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-jdbc:4.0.9
+|    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-jdbc)
+|    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    +--- org.springframework.boot:spring-boot-starter-data-jpa:4.0.9 (*)
+|    \--- org.springframework.boot:spring-boot-starter-flyway:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-micrometer-metrics:4.0.9
+|    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    \--- org.springframework.boot:spring-boot-starter-actuator:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-oauth2-resource-server:4.0.9
+|    +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-oauth2-resource-server) (*)
+|    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-restclient:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-security:4.0.9
+|    +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-security) (*)
+|    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    \--- org.springframework.boot:spring-boot-starter-oauth2-resource-server:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-tomcat:4.0.9
+|    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    \--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9 (*)
++--- org.springframework.boot:spring-boot-starter-validation:4.0.9
+|    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-validation)
+|    +--- project :libraries:common-web (requested org.springframework.boot:spring-boot-starter-validation) (*)
+|    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+|    \--- org.springframework.cloud:spring-cloud-stream:5.0.4
+|         +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+|         +--- org.springframework.cloud:spring-cloud-stream-binder-kafka:5.0.4
+|         |    +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+|         |    \--- org.springframework.cloud:spring-cloud-starter-stream-kafka:5.0.4
+|         |         +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-stream-kafka)
+|         |         +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+|         |         \--- org.springframework.cloud:spring-cloud-starter-bus-kafka:5.0.4
+|         |              +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-bus-kafka)
+|         |              \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+|         \--- org.springframework.cloud:spring-cloud-stream-binder-kafka-core:5.0.4
+|              +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+|              \--- org.springframework.cloud:spring-cloud-stream-binder-kafka:5.0.4 (*)
++--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9 (*)
+\--- org.springframework.cloud:spring-cloud-starter:5.0.4
+     +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     +--- org.springframework.cloud:spring-cloud-starter-netflix-eureka-client:5.0.3 (*)
+     +--- org.springframework.cloud:spring-cloud-starter-config:5.0.6
+     |    +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-config)
+     |    \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     +--- org.springframework.cloud:spring-cloud-starter-loadbalancer:5.0.4 (*)
+     +--- org.springframework.cloud:spring-cloud-config-client:5.0.6
+     |    +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |    \--- org.springframework.cloud:spring-cloud-starter-config:5.0.6 (*)
+     \--- org.springframework.cloud:spring-cloud-bus:5.0.4
+          +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+          \--- org.springframework.cloud:spring-cloud-starter-bus-kafka:5.0.4 (*)
+
+org.springframework.boot:spring-boot-starter:4.0.5 -> 4.0.9
+\--- org.springdoc:springdoc-openapi-starter-common:3.0.3
+     \--- org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3
+          \--- org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3
+               \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-actuator:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-actuator:4.0.9
+\--- org.springframework.boot:spring-boot-dependencies:4.0.9
+     +--- runtimeClasspath
+     +--- project :libraries:common-web
+     |    \--- runtimeClasspath
+     +--- project :libraries:common-observability
+     |    \--- runtimeClasspath
+     \--- project :libraries:common-security
+          \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-actuator -> 4.0.9
++--- project :libraries:common-observability
+|    \--- runtimeClasspath
+\--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-cache:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-cache:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
+\--- org.springframework.cloud:spring-cloud-starter-loadbalancer:5.0.4
+     +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4
+     |    \--- runtimeClasspath
+     \--- org.springframework.cloud:spring-cloud-starter-netflix-eureka-client:5.0.3
+          +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-netflix-eureka-client)
+          \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+
+org.springframework.boot:spring-boot-starter-data-jpa:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-data-jpa:4.0.9
+\--- org.springframework.boot:spring-boot-dependencies:4.0.9
+     +--- runtimeClasspath
+     +--- project :libraries:common-web
+     |    \--- runtimeClasspath
+     +--- project :libraries:common-observability
+     |    \--- runtimeClasspath
+     \--- project :libraries:common-security
+          \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-data-jpa -> 4.0.9
+\--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-flyway:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-flyway:4.0.9
+\--- org.springframework.boot:spring-boot-dependencies:4.0.9
+     +--- runtimeClasspath
+     +--- project :libraries:common-web
+     |    \--- runtimeClasspath
+     +--- project :libraries:common-observability
+     |    \--- runtimeClasspath
+     \--- project :libraries:common-security
+          \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-flyway -> 4.0.9
+\--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-jackson:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-jackson:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
++--- org.springframework.boot:spring-boot-starter-restclient:4.0.9
+|    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-restclient)
+|    +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-restclient) (*)
+|    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+\--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9
+     +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-webmvc)
+     +--- project :libraries:common-web (requested org.springframework.boot:spring-boot-starter-webmvc) (*)
+     \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+
+org.springframework.boot:spring-boot-starter-jdbc:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-jdbc:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
++--- org.springframework.boot:spring-boot-starter-data-jpa:4.0.9
+|    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-data-jpa)
+|    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+\--- org.springframework.boot:spring-boot-starter-flyway:4.0.9
+     +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-flyway)
+     \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+
+org.springframework.boot:spring-boot-starter-jdbc -> 4.0.9
+\--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-logging:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-logging:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
+\--- org.springframework.boot:spring-boot-starter:4.0.9
+     +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-data-jpa:4.0.9
+     |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-data-jpa)
+     |    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-flyway:4.0.9
+     |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-flyway)
+     |    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-jdbc:4.0.9
+     |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-jdbc)
+     |    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     |    +--- org.springframework.boot:spring-boot-starter-data-jpa:4.0.9 (*)
+     |    \--- org.springframework.boot:spring-boot-starter-flyway:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-restclient:4.0.9
+     |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-restclient)
+     |    +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-restclient) (*)
+     |    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-validation:4.0.9
+     |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-validation)
+     |    +--- project :libraries:common-web (requested org.springframework.boot:spring-boot-starter-validation) (*)
+     |    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     |    \--- org.springframework.cloud:spring-cloud-stream:5.0.4
+     |         +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4
+     |         |    \--- runtimeClasspath
+     |         +--- org.springframework.cloud:spring-cloud-stream-binder-kafka:5.0.4
+     |         |    +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |         |    \--- org.springframework.cloud:spring-cloud-starter-stream-kafka:5.0.4
+     |         |         +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-stream-kafka)
+     |         |         +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |         |         \--- org.springframework.cloud:spring-cloud-starter-bus-kafka:5.0.4
+     |         |              +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-bus-kafka)
+     |         |              \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |         \--- org.springframework.cloud:spring-cloud-stream-binder-kafka-core:5.0.4
+     |              +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |              \--- org.springframework.cloud:spring-cloud-stream-binder-kafka:5.0.4 (*)
+     +--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9
+     |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-webmvc)
+     |    +--- project :libraries:common-web (requested org.springframework.boot:spring-boot-starter-webmvc) (*)
+     |    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-actuator:4.0.9
+     |    +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-actuator)
+     |    +--- project :libraries:common-observability (requested org.springframework.boot:spring-boot-starter-actuator) (*)
+     |    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-jackson:4.0.9
+     |    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     |    +--- org.springframework.boot:spring-boot-starter-restclient:4.0.9 (*)
+     |    \--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9 (*)
+     +--- org.springframework.cloud:spring-cloud-starter:5.0.4
+     |    +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |    +--- org.springframework.cloud:spring-cloud-starter-netflix-eureka-client:5.0.3
+     |    |    +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-netflix-eureka-client)
+     |    |    \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |    +--- org.springframework.cloud:spring-cloud-starter-config:5.0.6
+     |    |    +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-config)
+     |    |    \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |    +--- org.springframework.cloud:spring-cloud-starter-loadbalancer:5.0.4
+     |    |    +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |    |    \--- org.springframework.cloud:spring-cloud-starter-netflix-eureka-client:5.0.3 (*)
+     |    +--- org.springframework.cloud:spring-cloud-config-client:5.0.6
+     |    |    +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |    |    \--- org.springframework.cloud:spring-cloud-starter-config:5.0.6 (*)
+     |    \--- org.springframework.cloud:spring-cloud-bus:5.0.4
+     |         +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |         \--- org.springframework.cloud:spring-cloud-starter-bus-kafka:5.0.4 (*)
+     +--- org.springdoc:springdoc-openapi-starter-common:3.0.3 (requested org.springframework.boot:spring-boot-starter:4.0.5)
+     |    \--- org.springdoc:springdoc-openapi-starter-webmvc-api:3.0.3
+     |         \--- org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3
+     |              \--- runtimeClasspath
+     +--- org.springframework.boot:spring-boot-starter-oauth2-resource-server:4.0.9
+     |    +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-oauth2-resource-server) (*)
+     |    \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-security:4.0.9
+     |    +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-security) (*)
+     |    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     |    \--- org.springframework.boot:spring-boot-starter-oauth2-resource-server:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-micrometer-metrics:4.0.9
+     |    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     |    \--- org.springframework.boot:spring-boot-starter-actuator:4.0.9 (*)
+     +--- org.springframework.boot:spring-boot-starter-tomcat:4.0.9
+     |    +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     |    \--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9 (*)
+     \--- org.springframework.boot:spring-boot-starter-cache:4.0.9
+          +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+          \--- org.springframework.cloud:spring-cloud-starter-loadbalancer:5.0.4 (*)
+
+org.springframework.boot:spring-boot-starter-micrometer-metrics:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-micrometer-metrics:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
+\--- org.springframework.boot:spring-boot-starter-actuator:4.0.9
+     +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-actuator)
+     +--- project :libraries:common-observability (requested org.springframework.boot:spring-boot-starter-actuator) (*)
+     \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+
+org.springframework.boot:spring-boot-starter-oauth2-resource-server:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-oauth2-resource-server:4.0.9
+\--- org.springframework.boot:spring-boot-dependencies:4.0.9
+     +--- runtimeClasspath
+     +--- project :libraries:common-web
+     |    \--- runtimeClasspath
+     +--- project :libraries:common-observability
+     |    \--- runtimeClasspath
+     \--- project :libraries:common-security
+          \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-oauth2-resource-server -> 4.0.9
+\--- project :libraries:common-security
+     \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-restclient:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-restclient:4.0.9
+\--- org.springframework.boot:spring-boot-dependencies:4.0.9
+     +--- runtimeClasspath
+     +--- project :libraries:common-web
+     |    \--- runtimeClasspath
+     +--- project :libraries:common-observability
+     |    \--- runtimeClasspath
+     \--- project :libraries:common-security
+          \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-restclient -> 4.0.9
++--- project :libraries:common-security
+|    \--- runtimeClasspath
+\--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-security:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-security:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
+\--- org.springframework.boot:spring-boot-starter-oauth2-resource-server:4.0.9
+     +--- project :libraries:common-security (requested org.springframework.boot:spring-boot-starter-oauth2-resource-server) (*)
+     \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+
+org.springframework.boot:spring-boot-starter-security -> 4.0.9
+\--- project :libraries:common-security
+     \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-tomcat:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-tomcat:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
+\--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9
+     +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-webmvc)
+     +--- project :libraries:common-web (requested org.springframework.boot:spring-boot-starter-webmvc) (*)
+     \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+
+org.springframework.boot:spring-boot-starter-tomcat-runtime:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-tomcat-runtime:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
+\--- org.springframework.boot:spring-boot-starter-tomcat:4.0.9
+     +--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+     \--- org.springframework.boot:spring-boot-starter-webmvc:4.0.9
+          +--- runtimeClasspath (requested org.springframework.boot:spring-boot-starter-webmvc)
+          +--- project :libraries:common-web (requested org.springframework.boot:spring-boot-starter-webmvc) (*)
+          \--- org.springframework.boot:spring-boot-dependencies:4.0.9 (*)
+
+org.springframework.boot:spring-boot-starter-validation:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-validation:4.0.9
++--- org.springframework.boot:spring-boot-dependencies:4.0.9
+|    +--- runtimeClasspath
+|    +--- project :libraries:common-web
+|    |    \--- runtimeClasspath
+|    +--- project :libraries:common-observability
+|    |    \--- runtimeClasspath
+|    \--- project :libraries:common-security
+|         \--- runtimeClasspath
+\--- org.springframework.cloud:spring-cloud-stream:5.0.4
+     +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4
+     |    \--- runtimeClasspath
+     +--- org.springframework.cloud:spring-cloud-stream-binder-kafka:5.0.4
+     |    +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |    \--- org.springframework.cloud:spring-cloud-starter-stream-kafka:5.0.4
+     |         +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-stream-kafka)
+     |         +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     |         \--- org.springframework.cloud:spring-cloud-starter-bus-kafka:5.0.4
+     |              +--- runtimeClasspath (requested org.springframework.cloud:spring-cloud-starter-bus-kafka)
+     |              \--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+     \--- org.springframework.cloud:spring-cloud-stream-binder-kafka-core:5.0.4
+          +--- org.springframework.cloud:spring-cloud-dependencies:2025.1.4 (*)
+          \--- org.springframework.cloud:spring-cloud-stream-binder-kafka:5.0.4 (*)
+
+org.springframework.boot:spring-boot-starter-validation -> 4.0.9
++--- project :libraries:common-web
+|    \--- runtimeClasspath
+\--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-webmvc:4.0.9 (by constraint)
+  Variant runtimeElements:
+    | Attribute Name                 | Provided     | Requested    |
+    |--------------------------------|--------------|--------------|
+    | org.gradle.status              | release      |              |
+    | org.gradle.category            | library      | library      |
+    | org.gradle.dependency.bundling | external     | external     |
+    | org.gradle.jvm.version         | 17           | 21           |
+    | org.gradle.libraryelements     | jar          | jar          |
+    | org.gradle.usage               | java-runtime | java-runtime |
+    | org.gradle.jvm.environment     |              | standard-jvm |
+
+org.springframework.boot:spring-boot-starter-webmvc:4.0.9
+\--- org.springframework.boot:spring-boot-dependencies:4.0.9
+     +--- runtimeClasspath
+     +--- project :libraries:common-web
+     |    \--- runtimeClasspath
+     +--- project :libraries:common-observability
+     |    \--- runtimeClasspath
+     \--- project :libraries:common-security
+          \--- runtimeClasspath
+
+org.springframework.boot:spring-boot-starter-webmvc -> 4.0.9
++--- project :libraries:common-web
+|    \--- runtimeClasspath
+\--- runtimeClasspath
+
+(*) - Indicates repeated occurrences of a transitive dependency subtree. Gradle expands transitive dependency subtrees only once per project; repeat occurrences only display the root of the subtree, followed by this annotation.
+
+A web-based, searchable dependency report is available by adding the --scan option.
+
+BUILD SUCCESSFUL in 865ms
+1 actionable task: 1 executed
+Configuration cache entry reused.

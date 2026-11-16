@@ -25,6 +25,8 @@ Thumbs.db
 out/
 reports/
 *.log
+# RAG 검증 기록의 원본 로그는 남긴다(2026-11-16 사용자 — 빌드·시험 출력뿐, 비밀값 없음을 확인하고 넣는다)
+!docs/rag/verification/**/*.log
 
 # JVM 크래시 로그
 hs_err_pid*.log
