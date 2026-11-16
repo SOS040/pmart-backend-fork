@@ -3,6 +3,7 @@
 DELETE /api/v1/carts/{cartId}/items/{itemId} CUSTOMER,GUEST
 DELETE /api/v1/locations/{locationId} OPERATOR
 DELETE /api/v1/me/addresses/{addressId} CUSTOMER
+DELETE /api/v1/me/push-tokens/{deviceId} CUSTOMER,RIDER
 DELETE /api/v1/me/recent-searches CUSTOMER
 DELETE /api/v1/me/recent-searches/{keyword} CUSTOMER
 DELETE /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
@@ -134,6 +135,7 @@ GET /api/v1/me/notifications CUSTOMER,RIDER
 GET /api/v1/me/notifications/{notificationId} CUSTOMER,RIDER
 GET /api/v1/me/profile-changes/{requestId} CUSTOMER
 GET /api/v1/me/profile-image CUSTOMER
+GET /api/v1/me/push-tokens CUSTOMER,RIDER
 GET /api/v1/me/recent-searches CUSTOMER
 GET /api/v1/me/review-eligibilities CUSTOMER
 GET /api/v1/me/shopping-context CUSTOMER
@@ -482,6 +484,7 @@ PUT /api/v1/content-drafts/{draftId} OPERATOR
 PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
 PUT /api/v1/hr/departments/{code} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR
+PUT /api/v1/me/push-tokens/{deviceId} CUSTOMER,RIDER
 PUT /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 PUT /api/v1/price-import-batches/{batchId}/lines/{seedProductId} OPERATOR
 PUT /api/v1/product-drafts/{draftId} OPERATOR

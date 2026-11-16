@@ -27,6 +27,11 @@
   - API: `/me/notifications`(목록·unreadCount·category·unreadOnly), 상세, 읽음(멱등). 설정은 모두 켜짐·잠김(끄기 422 TRANSACTIONAL_CANNOT_DISABLE, IN_APP 밖 422 CHANNEL_NOT_APPROVED). 운영자 403, 라이더는 빈 알림함.
   - 문구에 개인정보 없음, 결과 모르는 일을 완료로 쓰지 않음. 알림 실패로 원래 업무를 다시 하지 않는다.
   - 아직 501: 설정 변경 결과 조회, `/internal/*`(범용 요청·발송 이력·배차 알림 기록). 푸시·발행(NotificationDelivered·Failed) 없음.
+- **단말 푸시 토큰(2026-11-17, 계약 0.3.0, 클라이언트 요청 BR-09, V3)**: `application/PushTokenService`, 표 `infrastructure/PushTokenStore`(`push_token` — PK 주인 종류·주인·deviceId, 토큰은 `token_sha256` 유일), `api/PushTokensController`.
+  - API: `PUT /me/push-tokens/{deviceId}`(등록·교체 — 같은 단말이면 토큰 교체, 같은 토큰이 다른 주인·단말에 있으면 옮김), `DELETE`(본인 단말만, 멱등 204), `GET /me/push-tokens`(토큰 값 없이 단말 목록). 고객·라이더만(운영자 403), Android 만, deviceId `[A-Za-z0-9._:-]{1,128}`.
+  - 주인당 단말 수 `pmart.notification.push-token.max-devices`(설정 저장소 기본 5) — 넘으면 가장 오래 갱신되지 않은 단말 삭제. 설정 없으면 PUT 422 CONFIG_REQUIRED.
+  - **토큰만 저장 — 발송(FCM) 없음**(자격증명·발송 정책 미정). APP_PUSH 는 여전히 CHANNEL_NOT_APPROVED. 토큰 원문은 로그·응답에 넣지 않는다(생성 DTO `PushTokenRegistration.toString` 에 토큰이 있으니 요청 본문을 로그로 남기지 않는다).
+  - Idempotency-Key·X-Source-System 은 받지만 `RequestIdempotency` 기록은 하지 않는다(이 서비스의 다른 명령과 같음 — PUT·DELETE 가 본래 멱등).
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/notification-service.md`(N-1 결품 처리 고객 안내·보류 단계 안내 여부, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

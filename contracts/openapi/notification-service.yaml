@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: notification-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     알림 요청·채널(앱 푸시·카카오 알림톡 [결정 필요])·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록, 지연 안내의 정본. (docs/architecture/service-map.md §8)
     비정본: 원사건(주문·배송·환불·배차 제안은 각 소유 서비스), 마케팅 동의(customer), OS 알림 권한(단말).
@@ -12,6 +12,8 @@ info:
     고객에게 쌓는 알림: 주문 확정(OrderConfirmed)·상품 준비 시작(OrderPreparationStarted)·배송 출발(PickupCompleted)·배송 완료(DeliveryCompleted, 리뷰 안내 포함)·
     주문 취소(OrderCancelled)·품절 부분 취소(OrderLineQuantityChanged SHORTAGE)·환불 결과(RefundResult SUCCESS·FAILED — RefundIntentCreated 로 주문과 잇는다, 결과 모름은 알리지 않음)·
     고객센터 답변(InquiryAnswered). 라이더·운영자 알림함, 수신 설정 변경 결과 조회, 내부 범용 요청·발송 이력·배차 알림 기록은 아직 501.
+    0.3.0(2026-11-17, 클라이언트 요청 BR-09 — 사용자 승인 "백엔드 3단계"): 단말 푸시 토큰 등록·해제·목록(`/me/push-tokens`, 고객·라이더, Android 만).
+    **토큰만 저장한다 — 푸시 발송(FCM)은 아직 없다**(자격증명·발송 정책 미정). 그래서 APP_PUSH 는 여전히 CHANNEL_NOT_APPROVED 이고, 응답에 토큰 값은 돌려주지 않는다.
 servers:
   - url: /api/v1
 security:
@@ -19,6 +21,7 @@ security:
 tags:
   - { name: inbox, description: 본인 알림함·읽음 }
   - { name: settings, description: 본인 수신 설정(앱 채널 설정. 마케팅 동의·OS 권한과 별개) }
+  - { name: push-tokens, description: "본인 단말 푸시 토큰 등록·해제(0.3.0 — 저장만, 발송은 아직 없음)" }
   - { name: internal, description: 범용 알림 요청·발송 이력·배차 알림 기록(서비스 토큰) }
 
 paths:
@@ -153,6 +156,67 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /me/push-tokens:
+    get:
+      tags: [push-tokens]
+      summary: 내 단말 푸시 토큰 목록 (토큰 값은 돌려주지 않는다 — 앱 설정·점검용)
+      operationId: listMyPushTokens
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      responses:
+        '200':
+          description: OK (최근 갱신 순)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/PushDevice' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /me/push-tokens/{deviceId}:
+    put:
+      tags: [push-tokens]
+      summary: 단말 푸시 토큰 등록·교체 (같은 단말이면 토큰을 바꾼다)
+      description: |
+        호출한 고객·라이더의 단말(deviceId)에 토큰을 둔다. 같은 deviceId 로 다시 부르면 토큰·앱 버전을 바꾼다(멱등).
+        같은 토큰이 다른 주인·단말에 있으면 그 줄을 지우고 이 주인·단말로 옮긴다(토큰 하나는 한 번에 한 주인 — 로그아웃 없이 다른 계정으로 로그인한 단말).
+        주인당 단말 수는 설정 `pmart.notification.push-token.max-devices` — 넘으면 가장 오래 갱신되지 않은 단말을 지운다. 설정이 없으면 422 CONFIG_REQUIRED.
+        토큰 값은 로그·응답에 남기지 않는다. 발송(FCM)은 아직 없다.
+      operationId: registerMyPushToken
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushTokenRegistration' }
+      responses:
+        '200':
+          description: 등록·교체됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushDevice' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+    delete:
+      tags: [push-tokens]
+      summary: 단말 푸시 토큰 해제 (로그아웃·알림 끄기. 없으면 그대로 204 — 멱등, 본인 단말만)
+      operationId: unregisterMyPushToken
+      x-pmart-user-types: [CUSTOMER, RIDER]
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '204': { description: 해제됨(또는 이미 없음) }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   # ---------- internal (서비스 토큰) ----------
   /internal/notification-requests:
     post:
@@ -249,7 +313,35 @@ paths:
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
 
 components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      description: 앱이 단말마다 만들어 두는 식별자(설치 ID 등). 영문·숫자·`._:-` 1~128자.
+      schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9._:-]{1,128}$' }
   schemas:
+    PushPlatform:
+      type: string
+      description: 지금은 Android 만(iOS 는 만들지 않는다)
+      enum: [ANDROID]
+    PushTokenRegistration:
+      type: object
+      required: [token, platform]
+      properties:
+        token: { type: string, minLength: 1, maxLength: 4096, description: FCM 등록 토큰. 응답·로그에 다시 나오지 않는다 }
+        platform: { $ref: '#/components/schemas/PushPlatform' }
+        appVersion: { type: [string, 'null'], maxLength: 32 }
+    PushDevice:
+      type: object
+      description: 등록된 단말(토큰 값 없음)
+      required: [deviceId, platform, registeredAt, updatedAt]
+      properties:
+        deviceId: { type: string }
+        platform: { $ref: '#/components/schemas/PushPlatform' }
+        appVersion: { type: [string, 'null'] }
+        registeredAt: { type: string, format: date-time, description: 이 주인·단말에 처음 등록한 시각 }
+        updatedAt: { type: string, format: date-time, description: 마지막 등록·교체 시각 }
     Channel:
       type: string
       description: KAKAO_ALIMTALK은 [결정 필요] 승인 전 거절

@@ -373,7 +373,7 @@ public class NotificationService {
   // ---------------------------------------------------------------- 공통
 
   /** 알림함 주인: 고객(라이더도 받을 수 있게 열어 두지만 지금은 쌓이는 알림이 없다). 운영자 403. */
-  private static PmartPrincipal recipient() {
+  static PmartPrincipal recipient() {
     return PmartPrincipal.current()
         .filter(
             x ->
