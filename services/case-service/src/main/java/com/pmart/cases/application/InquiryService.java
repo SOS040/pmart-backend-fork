@@ -1,5 +1,6 @@
 package com.pmart.cases.application;
 
+import com.pmart.cases.domain.CsIntakeRules;
 import com.pmart.cases.domain.InquiryRules;
 import com.pmart.cases.infrastructure.InquiryStore;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
@@ -111,7 +112,9 @@ public class InquiryService {
                           InquiryRules.RECEIVED,
                           now,
                           null,
-                          0));
+                          0,
+                          null,
+                          null));
                   log.info("inquiry received id={} category={}", id, cmd.category());
                   return id;
                 })
@@ -140,7 +143,9 @@ public class InquiryService {
     PmartPrincipal p = principal();
     InquiryRow row = store.find(inquiryId).orElseThrow(() -> notFound(inquiryId));
     if (p.type() == PmartPrincipal.PrincipalType.CUSTOMER) {
-      if (!row.customerId().equals(p.subject())) {
+      // 상담원 접수(0.12.0)는 고객 앱에 보이지 않는다
+      if (!row.customerId().equals(p.subject())
+          || CsIntakeRules.ORIGIN_STAFF_INTAKE.equals(row.origin())) {
         throw notFound(inquiryId);
       }
     } else if (!canRead(p)) {
@@ -182,6 +187,11 @@ public class InquiryService {
               body,
               InquiryRules.afterReply(row.status()),
               now);
+          // 상담원 접수(0.12.0)는 고객 앱에 없는 문의 — 알림을 내지 않는다
+          if (CsIntakeRules.ORIGIN_STAFF_INTAKE.equals(row.origin())) {
+            log.info("inquiry answered id={} (staff intake, no notification)", inquiryId);
+            return inquiryId;
+          }
           // 고객 알림(notification N-2, 2026-11-16). 답변 내용은 싣지 않는다
           Map<String, Object> m = new LinkedHashMap<>();
           m.put("inquiryId", inquiryId);

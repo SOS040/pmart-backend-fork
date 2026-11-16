@@ -27,7 +27,9 @@ public class InquiryStore {
       String status,
       Instant createdAt,
       @Nullable Instant answeredAt,
-      int version) {}
+      int version,
+      @Nullable String channel,
+      @Nullable String callerRelation) {}
 
   public record ReplyRow(
       String replyId, String authorType, String authorId, String body, Instant createdAt) {}
@@ -35,6 +37,13 @@ public class InquiryStore {
   private static final String COLS =
       "inquiry_id, case_id, customer_id, category, order_id, title, body, origin, status,"
           + " created_at, answered_at, version";
+
+  /** 상담원 접수(0.12.0)면 연락 경로·본인/대리를 같이 — cs_intake 는 이 서비스 표. */
+  private static final String SELECT =
+      "SELECT q.inquiry_id, q.case_id, q.customer_id, q.category, q.order_id, q.title, q.body,"
+          + " q.origin, q.status, q.created_at, q.answered_at, q.version, i.channel,"
+          + " i.caller_relation FROM cs_inquiry q LEFT JOIN cs_intake i ON i.inquiry_id ="
+          + " q.inquiry_id";
 
   private final JdbcTemplate jdbc;
 
@@ -66,24 +75,20 @@ public class InquiryStore {
   }
 
   public Optional<InquiryRow> find(String inquiryId) {
-    return jdbc
-        .query("SELECT " + COLS + " FROM cs_inquiry WHERE inquiry_id = ?", this::row, inquiryId)
-        .stream()
+    return jdbc.query(SELECT + " WHERE q.inquiry_id = ?", this::row, inquiryId).stream()
         .findFirst();
   }
 
   public Optional<InquiryRow> lock(String inquiryId) {
     return jdbc
-        .query(
-            "SELECT " + COLS + " FROM cs_inquiry WHERE inquiry_id = ? FOR UPDATE",
-            this::row,
-            inquiryId)
+        .query(SELECT + " WHERE q.inquiry_id = ? FOR UPDATE OF q", this::row, inquiryId)
         .stream()
         .findFirst();
   }
 
   /**
-   * 최근 접수 순 한 쪽. customerId 가 있으면 그 고객 것만. cursor = 앞 쪽 마지막 문의 ID(그 행의 접수 시각 다음부터).
+   * 최근 접수 순 한 쪽. customerId 가 있으면 그 고객 것만 — 이때 상담원 접수(STAFF_INTAKE)는 뺀다(고객 앱에 안 보임, 0.12.0). cursor
+   * = 앞 쪽 마지막 문의 ID(그 행의 접수 시각 다음부터).
    *
    * @return size+1 개까지 — 호출 쪽이 다음 쪽 여부를 판단
    */
@@ -93,27 +98,27 @@ public class InquiryStore {
       @Nullable String orderId,
       @Nullable String cursor,
       int size) {
-    StringBuilder sql = new StringBuilder("SELECT " + COLS + " FROM cs_inquiry WHERE 1=1");
+    StringBuilder sql = new StringBuilder(SELECT + " WHERE 1=1");
     List<Object> args = new ArrayList<>();
     if (customerId != null) {
-      sql.append(" AND customer_id = ?");
+      sql.append(" AND q.customer_id = ? AND q.origin <> 'STAFF_INTAKE'");
       args.add(customerId);
     }
     if (status != null) {
-      sql.append(" AND status = ?");
+      sql.append(" AND q.status = ?");
       args.add(status);
     }
     if (orderId != null) {
-      sql.append(" AND order_id = ?");
+      sql.append(" AND q.order_id = ?");
       args.add(orderId);
     }
     if (cursor != null) {
       sql.append(
-          " AND (created_at, inquiry_id) < (SELECT created_at, inquiry_id FROM cs_inquiry"
+          " AND (q.created_at, q.inquiry_id) < (SELECT created_at, inquiry_id FROM cs_inquiry"
               + " WHERE inquiry_id = ?)");
       args.add(cursor);
     }
-    sql.append(" ORDER BY created_at DESC, inquiry_id DESC LIMIT ?");
+    sql.append(" ORDER BY q.created_at DESC, q.inquiry_id DESC LIMIT ?");
     args.add(size + 1);
     return jdbc.query(sql.toString(), this::row, args.toArray());
   }
@@ -169,6 +174,8 @@ public class InquiryStore {
         rs.getString("status"),
         rs.getTimestamp("created_at").toInstant(),
         answered == null ? null : answered.toInstant(),
-        rs.getInt("version"));
+        rs.getInt("version"),
+        rs.getString("channel"),
+        rs.getString("caller_relation"));
   }
 }

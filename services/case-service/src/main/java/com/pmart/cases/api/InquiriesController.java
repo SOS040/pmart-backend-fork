@@ -86,6 +86,8 @@ public class InquiriesController implements InquiriesApi {
     s.setTitle(r.title());
     s.setStatus(InquiryStatus.fromValue(r.status()));
     s.setOrigin(r.origin());
+    s.setChannel(r.channel());
+    s.setCallerRelation(r.callerRelation());
     s.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     s.setAnsweredAt(r.answeredAt() == null ? null : r.answeredAt().atOffset(ZoneOffset.UTC));
     s.setVersion(r.version());
@@ -104,6 +106,8 @@ public class InquiriesController implements InquiriesApi {
     d.setBody(r.body());
     d.setStatus(InquiryStatus.fromValue(r.status()));
     d.setOrigin(r.origin());
+    d.setChannel(r.channel());
+    d.setCallerRelation(r.callerRelation());
     d.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     d.setAnsweredAt(r.answeredAt() == null ? null : r.answeredAt().atOffset(ZoneOffset.UTC));
     d.setVersion(r.version());

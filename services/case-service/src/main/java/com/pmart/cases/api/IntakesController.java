@@ -2,13 +2,21 @@ package com.pmart.cases.api;
 
 import com.pmart.cases.api.generated.IntakesApi;
 import com.pmart.cases.api.generated.model.AcceptShiftHandoverRequest;
+import com.pmart.cases.api.generated.model.CreateCsIntakeRequest;
+import com.pmart.cases.api.generated.model.CreateCsIntakeRequestConsent;
 import com.pmart.cases.api.generated.model.CreateShiftHandoverRequest;
+import com.pmart.cases.api.generated.model.Intake;
+import com.pmart.cases.api.generated.model.IntakeConsent;
+import com.pmart.cases.api.generated.model.IntakeIdentityCheck;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
+import com.pmart.cases.api.generated.model.ListCsIntakes200Response;
 import com.pmart.cases.api.generated.model.ListShiftHandovers200Response;
 import com.pmart.cases.api.generated.model.ShiftHandover;
 import com.pmart.cases.api.generated.model.ShiftHandoverItemsInner;
 import com.pmart.cases.api.generated.model.ShiftHandoverTeamSnapshotInner;
+import com.pmart.cases.application.CsIntakeService;
 import com.pmart.cases.application.ShiftHandoverService;
+import com.pmart.cases.infrastructure.CsIntakeStore.IntakeRow;
 import com.pmart.cases.infrastructure.ShiftHandoverStore.HandoverRow;
 import com.pmart.cases.infrastructure.ShiftHandoverStore.ItemRow;
 import java.net.URI;
@@ -22,16 +30,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 IntakesApi — 지금은 교대 인수인계(0.9.0, 2026-11-16 BO-27)만. CS 접수·도움요청 접수는 인터페이스 default 501. 규칙은
- * {@link ShiftHandoverService}, 여기서는 요청·응답 변환만.
+ * 계약 IntakesApi — 교대 인수인계(0.9.0, 2026-11-16 BO-27)와 CS 접수(0.12.0, BO-11). 도움요청 접수는 인터페이스 default
+ * 501(사용 안 함). 규칙은 {@link ShiftHandoverService}·{@link CsIntakeService}, 여기서는 요청·응답 변환만.
  */
 @RestController
 public class IntakesController implements IntakesApi {
 
   private final ShiftHandoverService handovers;
+  private final CsIntakeService intakes;
 
-  public IntakesController(ShiftHandoverService handovers) {
+  public IntakesController(ShiftHandoverService handovers, CsIntakeService intakes) {
     this.handovers = handovers;
+    this.intakes = intakes;
   }
 
   @Override
@@ -92,6 +102,88 @@ public class IntakesController implements IntakesApi {
         new ListShiftHandovers200Response()
             .items(page.items().stream().map(IntakesController::toModel).toList())
             .page(new ListCases200ResponsePage().nextCursor(page.nextCursor())));
+  }
+
+  @Override
+  public ResponseEntity<Intake> createCsIntake(
+      String idempotencyKey, String xSourceSystem, CreateCsIntakeRequest body) {
+    CreateCsIntakeRequestConsent c = body.getConsent();
+    IntakeRow r =
+        intakes.create(
+            idempotencyKey,
+            xSourceSystem,
+            new CsIntakeService.Create(
+                body.getChannel().getValue(),
+                body.getCategory().getValue(),
+                body.getCustomerRef(),
+                body.getSubjectRef(),
+                body.getSummary(),
+                body.getIdentityCheck().getMethod().getValue(),
+                body.getIdentityCheck().getNote(),
+                body.getCallerRelation().getValue(),
+                c == null
+                    ? null
+                    : new CsIntakeService.Consent(
+                        c.getConsentType(),
+                        Boolean.TRUE.equals(c.getGiven()),
+                        c.getDetail(),
+                        c.getRecordedAt() == null ? null : c.getRecordedAt().toInstant()),
+                body.getLinkCaseId()));
+    return ResponseEntity.created(URI.create("/api/v1/cs-intakes/" + r.intakeId()))
+        .body(toModel(r));
+  }
+
+  @Override
+  public ResponseEntity<Intake> getCsIntake(String intakeId) {
+    return ResponseEntity.ok(toModel(intakes.get(intakeId)));
+  }
+
+  @Override
+  public ResponseEntity<ListCsIntakes200Response> listCsIntakes(
+      @Nullable String caseId,
+      @Nullable String customerRef,
+      @Nullable String subjectRef,
+      Integer size,
+      @Nullable String cursor) {
+    CsIntakeService.Page page =
+        intakes.list(caseId, customerRef, subjectRef, size == null ? 50 : size, cursor);
+    return ResponseEntity.ok(
+        new ListCsIntakes200Response()
+            .items(page.items().stream().map(IntakesController::toModel).toList())
+            .page(
+                new ListCases200ResponsePage()
+                    .nextCursor(page.nextCursor())
+                    .size(page.items().size())));
+  }
+
+  private static Intake toModel(IntakeRow r) {
+    return new Intake()
+        .intakeId(r.intakeId())
+        .intakeType(Intake.IntakeTypeEnum.CS)
+        .caseId(r.caseId())
+        .inquiryId(r.inquiryId())
+        .linked(r.linked())
+        .channel(r.channel())
+        .category(r.category())
+        .customerRef(r.customerId())
+        .subjectRef(r.subjectRef())
+        .summary(r.summary())
+        .callerRelation(Intake.CallerRelationEnum.fromValue(r.callerRelation()))
+        .identityCheck(
+            new IntakeIdentityCheck()
+                .method(IntakeIdentityCheck.MethodEnum.fromValue(r.identityMethod()))
+                .note(r.identityNote()))
+        .consentRecorded(r.consentType() != null)
+        .consent(
+            r.consentType() == null
+                ? null
+                : new IntakeConsent()
+                    .consentType(r.consentType())
+                    .given(r.consentGiven())
+                    .detail(r.consentDetail())
+                    .recordedAt(odt(r.consentRecordedAt())))
+        .receivedBy(r.receivedBy())
+        .receivedAt(odt(r.receivedAt()));
   }
 
   private static ShiftHandover toModel(ShiftHandoverService.View v) {
