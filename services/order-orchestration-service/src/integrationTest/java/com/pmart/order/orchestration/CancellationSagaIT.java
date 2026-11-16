@@ -234,6 +234,44 @@ class CancellationSagaIT extends PostgresKafkaContainerSupport {
     return sagas.byStopRequest(stopId).orElseThrow();
   }
 
+  /** S4(2026-11-16): 시간이 바뀐 주문의 취소는 변경으로 새로 잡은 슬롯·여력을 해제한다(S1 점유는 이미 해제됨). */
+  @Test
+  void cancelAfterTimeChangeReleasesNewHolds() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    String stopId = "STOP-" + UUID.randomUUID();
+    completedCheckout(orderId);
+    jdbc.update(
+        "INSERT INTO time_change_saga (saga_id, request_id, order_id, mfc_id, old_date, old_start,"
+            + " old_end, new_date, new_start, new_end, state, current_step, outcome, new_slot_hold_id,"
+            + " new_capacity_hold_id, started_at, updated_at, finished_at) VALUES (?, ?, ?, 'MFC-1',"
+            + " current_date, '18:00', '19:00', current_date, '20:00', '21:00', 'COMPLETED',"
+            + " 'REPORT_ORDER', 'CONFIRMED', ?, ?, now(), now(), now())",
+        "SAGA-S4-" + UUID.randomUUID(),
+        "RTC-" + UUID.randomUUID(),
+        orderId,
+        "SH-" + orderId + "-B",
+        "CH-" + orderId + "-B");
+    stop(stopId, orderId, stopResult(stopId, orderId, "RESOLVED", List.of()));
+    releasable(orderId, "RELEASED");
+    releasable(orderId + "-B", "RELEASED");
+    orderChange(orderId);
+    assertThat(start("CLM-S4:start", "CLM-S4", stopId, orderId)).isEqualTo(202);
+    assertThat(awaitState(stopId, "COMPLETED").state()).isEqualTo("COMPLETED");
+    parts.verify(
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/capacity-holds/CH-" + orderId + "-B/releases")));
+    parts.verify(
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/slot-holds/SH-" + orderId + "-B/releases")));
+    parts.verify(
+        0,
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/slot-holds/SH-" + orderId + "/releases")));
+    parts.verify(
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/reservations/RSV-" + orderId + "/releases")));
+  }
+
   @Test
   void cancelBeforePickReleasesAndCancelsOrder() throws Exception {
     String orderId = "ORD-" + UUID.randomUUID();

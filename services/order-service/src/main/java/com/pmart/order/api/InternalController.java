@@ -32,11 +32,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class InternalController implements InternalApi {
 
+  private final com.pmart.order.application.TimeChangeService timeChanges;
+
   private final OrderService orders;
   private final com.pmart.order.application.StaffOrderService staff;
 
   public InternalController(
-      OrderService orders, com.pmart.order.application.StaffOrderService staff) {
+      OrderService orders,
+      com.pmart.order.application.StaffOrderService staff,
+      com.pmart.order.application.TimeChangeService timeChanges) {
+    this.timeChanges = timeChanges;
     this.orders = orders;
     this.staff = staff;
   }
@@ -203,6 +208,26 @@ public class InternalController implements InternalApi {
               .reshippedQty(l.reshippedQty()));
     }
     return ResponseEntity.ok(out);
+  }
+
+  /** S4 사가 결과(2026-11-16). */
+  @Override
+  public ResponseEntity<StartCheckout202Response> recordReservationTimeChangeResult(
+      String orderId,
+      String requestId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.order.api.generated.model.RecordReservationTimeChangeResultRequest body) {
+    return ResponseEntity.ok(
+        command(
+            timeChanges.result(
+                idempotencyKey,
+                xSourceSystem,
+                orderId,
+                requestId,
+                body.getResult().getValue(),
+                body.getReason(),
+                body.getSagaId())));
   }
 
   private static StartCheckout202Response command(CommandResponse r) {

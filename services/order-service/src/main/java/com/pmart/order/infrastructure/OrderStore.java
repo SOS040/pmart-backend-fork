@@ -205,6 +205,19 @@ public class OrderStore {
   }
 
   /** 수량 변경 전 주문 행 잠금(같은 주문의 변경을 줄 세운다). */
+  /** S4: 도착 시간대 바꾸기(버전 올림). */
+  public void updateArrival(
+      String orderId, java.time.LocalDate date, String start, String end, int version) {
+    jdbc.update(
+        "UPDATE customer_order SET arrival_date = ?, arrival_start = ?, arrival_end = ?, version = ?"
+            + " WHERE order_id = ?",
+        java.sql.Date.valueOf(date),
+        start,
+        end,
+        version,
+        orderId);
+  }
+
   public Optional<OrderRow> lock(String orderId) {
     return jdbc
         .query(

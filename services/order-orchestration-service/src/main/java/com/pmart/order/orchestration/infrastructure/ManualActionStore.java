@@ -56,7 +56,17 @@ public class ManualActionStore {
           + reshipmentPart()
           + " UNION ALL "
           + redeliveryPart()
+          + " UNION ALL "
+          + timeChangePart()
           + ") x";
+
+  /** S4 예약 시간 변경 — 확정 지점 뒤 거절·되돌리기 실패(2026-11-16). */
+  private static String timeChangePart() {
+    return "SELECT s.saga_id, 'TIME_CHANGE' AS saga_type, s.order_id, s.state, s.current_step,"
+        + " s.last_error_step, s.last_error_code, s.last_error_message, s.updated_at FROM"
+        + " time_change_saga s WHERE"
+        + STUCK;
+  }
 
   /** 오배송 다시 배송 9,000원 결제 대기(ADR-0065) — 결제됐는데 배차를 못 풀었거나 회수로 못 바꿈·늦은 결제 취소 실패. */
   private static String redeliveryPart() {

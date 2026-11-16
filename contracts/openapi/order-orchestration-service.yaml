@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-orchestration-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     사가 인스턴스·단계·타임아웃·재시도·보상 로그·결과 불명 추적·운영자 수동 개입 기록의 정본. (docs/architecture/service-map.md §2)
     주문 상태(order), 결제·재고·슬롯·작업의 성공 확정(각 정본)은 소유하지 않는다.
@@ -23,6 +23,7 @@ tags:
   - { name: sagas, description: 사가 조회·수동 개입 }
   - { name: checkout, description: S1 시작 (order-service) }
   - { name: cancellation, description: S3 시작 (claim-service) }
+  - { name: time-change, description: S4 예약 시간 변경 시작 (order-service) }
   - { name: redelivery-payment, description: '오배송 다시 배송 9,000원 결제 대기(고객 앱 — ADR-0065)' }
 
 paths:
@@ -302,8 +303,53 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /internal/time-change-sagas:
+    post:
+      tags: [time-change]
+      summary: "[order→orchestration] S4 예약 시간 변경 사가 시작 (0.4.0)"
+      x-added-in: '2026-11-16'
+      description: |
+        고객 예약배달 시간 변경(order `POST /orders/{id}/reservation-time-changes` 가 검증 뒤 부른다). 202 는 "사가 시작"이지 변경 성공이 아니다 — 결과는 사가가
+        order `POST /internal/orders/{orderId}/reservation-time-changes/{requestId}/results` 로 알린다. 같은 requestId 는 사가 하나.
+        단계(OMS §4): 지금 점유 찾기(확정된 이전 시간 변경 또는 S1) → 새 슬롯 임시(delivery-capacity newSlotFor) → 새 작업 여력 임시(mfc-capacity replacesHoldId)
+        → 날짜가 바뀌면 LOT 약속일(mfc-inventory) → **작업 지시 시간 변경(mfc-fulfillment — 준비 시작과의 경합, 확정 지점)** → 새 슬롯·여력 확정(기존 해제) → order 결과.
+        확정 지점 전 거절이면 새 점유만 해제·약속일 되돌림 → REJECTED(기존 약속 유지). 확정 지점 뒤 거절은 상신(처리 대기 TIME_CHANGE).
+      operationId: startTimeChangeSaga
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartTimeChangeSagaRequest' }
+      responses:
+        '202':
+          description: 사가 시작 (resultId = sagaId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
 components:
   schemas:
+    StartTimeChangeSagaRequest:
+      type: object
+      x-added-in: '2026-11-16'
+      required: [orderId, requestId, mfcId, currentArrivalWindow, newArrivalWindow]
+      properties:
+        orderId: { type: string }
+        requestId: { type: string, description: order 의 시간 변경 요청 ID }
+        mfcId: { type: string }
+        currentArrivalWindow: { $ref: '#/components/schemas/TimeChangeWindow' }
+        newArrivalWindow: { $ref: '#/components/schemas/TimeChangeWindow' }
+    TimeChangeWindow:
+      type: object
+      required: [date, start, end]
+      properties:
+        date: { type: string, format: date }
+        start: { type: string, pattern: '^[0-2][0-9]:[0-5][0-9]$' }
+        end: { type: string, pattern: '^[0-2][0-9]:[0-5][0-9]$' }
     RedeliveryPayment:
       type: object
       description: 오배송 다시 배송 9,000원 결제 대기(ADR-0065). 주소·좌표 없음.

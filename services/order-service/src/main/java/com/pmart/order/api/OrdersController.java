@@ -26,18 +26,73 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 OrdersApi — 확정 주문 상세·목록(고객 본인). 예약 시간 변경(S4)은 인터페이스 default 가 501 을 돌려준다. 업무 규칙은
- * application/domain 에 두고 여기서는 요청·응답 변환만 한다.
+ * 계약 OrdersApi — 확정 주문 상세·목록(고객 본인), 예약 시간 변경 요청·결과(S4, 0.10.0). 업무 규칙은 application/domain 에 두고
+ * 여기서는 요청·응답 변환만 한다.
  */
 @RestController
 public class OrdersController implements OrdersApi {
 
   private final OrderService orders;
+  private final com.pmart.order.application.TimeChangeService timeChanges;
   private final Clock clock;
 
-  public OrdersController(OrderService orders, Clock clock) {
+  public OrdersController(
+      OrderService orders, com.pmart.order.application.TimeChangeService timeChanges, Clock clock) {
     this.orders = orders;
+    this.timeChanges = timeChanges;
     this.clock = clock;
+  }
+
+  /** S4 예약 시간 변경 요청(202 — 접수, 결과는 조회). */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.StartCheckout202Response>
+      requestReservationTimeChange(
+          String orderId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.order.api.generated.model.RequestReservationTimeChangeRequest req,
+          @org.jspecify.annotations.Nullable Integer xExpectedVersion) {
+    var w = req.getNewArrivalWindow();
+    String requestId =
+        timeChanges.request(
+            DraftService.currentCustomer(),
+            orderId,
+            idempotencyKey,
+            xSourceSystem,
+            xExpectedVersion,
+            w.getDate(),
+            w.getStart(),
+            w.getEnd());
+    return ResponseEntity.status(org.springframework.http.HttpStatus.ACCEPTED)
+        .body(
+            new com.pmart.order.api.generated.model.StartCheckout202Response()
+                .status(
+                    com.pmart.order.api.generated.model.StartCheckout202Response.StatusEnum
+                        .ACCEPTED)
+                .requestId(idempotencyKey)
+                .resultId(requestId)
+                .nextAction("QUERY_RESULT")
+                .occurredAt(java.time.OffsetDateTime.now(clock)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.GetReservationTimeChange200Response>
+      getReservationTimeChange(String orderId, String requestId) {
+    var r = timeChanges.get(DraftService.currentCustomer(), orderId, requestId);
+    return ResponseEntity.ok(
+        new com.pmart.order.api.generated.model.GetReservationTimeChange200Response()
+            .requestId(r.requestId())
+            .state(
+                com.pmart.order.api.generated.model.GetReservationTimeChange200Response.StateEnum
+                    .fromValue(r.state()))
+            .reason(r.reason())
+            .previousArrivalWindow(
+                new ArrivalWindow().date(r.fromDate()).start(r.fromStart()).end(r.fromEnd()))
+            .newArrivalWindow(
+                new ArrivalWindow().date(r.toDate()).start(r.toStart()).end(r.toEnd()))
+            .requestedAt(r.requestedAt().atOffset(java.time.ZoneOffset.UTC))
+            .decidedAt(
+                r.decidedAt() == null ? null : r.decidedAt().atOffset(java.time.ZoneOffset.UTC)));
   }
 
   @Override
