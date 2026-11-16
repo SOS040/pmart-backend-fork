@@ -16,3 +16,7 @@ management:
     export:
       zipkin:
         endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+pmart:
+  rider:
+    # 운전면허 중복 확인 HMAC 키 시험값(LAN·운영은 pmart-config rider-service-<프로필>.yml {cipher}, PR #66 2026-11-16)
+    license-hash-key: it-license-key
