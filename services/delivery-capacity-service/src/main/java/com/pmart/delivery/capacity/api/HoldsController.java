@@ -127,7 +127,8 @@ public class HoldsController implements HoldsApi {
         .expiresAt(time(h.expiresAt()))
         .confirmedAt(time(h.confirmedAt()))
         .releasedAt(time(h.releasedAt()))
-        .releaseReason(h.releaseReason());
+        .releaseReason(h.releaseReason())
+        .replaces(h.replaces());
   }
 
   private static ConfirmSlotHold200Response command(SlotHoldService.CommandResult r) {

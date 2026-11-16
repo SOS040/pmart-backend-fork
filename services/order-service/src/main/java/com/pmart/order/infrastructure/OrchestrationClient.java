@@ -59,6 +59,35 @@ public class OrchestrationClient {
     }
   }
 
+  /** S4 예약 시간 변경 사가 시작(2026-11-16). sagaId. 업무 거절(TIME_CHANGE_IN_PROGRESS 등)은 그대로 전한다. */
+  public String startTimeChange(String idempotencyKey, Map<String, Object> body) {
+    try {
+      String raw =
+          Downstream.call(
+              "order-orchestration time-change-sagas",
+              () ->
+                  client
+                      .post()
+                      .uri("/api/v1/internal/time-change-sagas")
+                      .header("Idempotency-Key", idempotencyKey)
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .body(body)
+                      .retrieve()
+                      .body(String.class));
+      return mapper.readTree(raw).path("resultId").asString();
+    } catch (HttpClientErrorException e) {
+      JsonNode p =
+          mapper.readTree(
+              e.getResponseBodyAsString().isBlank() ? "{}" : e.getResponseBodyAsString());
+      throw new PmartException(
+          p.path("code").asString("TIME_CHANGE_REJECTED"),
+          HttpStatus.valueOf(e.getStatusCode().value()),
+          p.path("detail").asString("시간 변경을 시작하지 못했습니다."),
+          false,
+          List.of());
+    }
+  }
+
   /** 사가 사본. 조회 실패면 null(진행 상태를 모름 — 호출자는 WAIT 로 둔다). */
   public @Nullable JsonNode saga(String sagaId) {
     try {

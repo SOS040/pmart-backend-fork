@@ -72,6 +72,7 @@ public class CancellationSagaService {
 
   private final CancellationStore store;
   private final SagaStore checkouts;
+  private final com.pmart.order.orchestration.infrastructure.TimeChangeStore timeChanges;
   private final Participants participants;
   private final RequestIdempotency idempotency;
   private final TransactionTemplate tx;
@@ -84,6 +85,7 @@ public class CancellationSagaService {
   public CancellationSagaService(
       CancellationStore store,
       SagaStore checkouts,
+      com.pmart.order.orchestration.infrastructure.TimeChangeStore timeChanges,
       Participants participants,
       RequestIdempotency idempotency,
       TransactionTemplate tx,
@@ -95,6 +97,7 @@ public class CancellationSagaService {
     this.tracer = tracer;
     this.store = store;
     this.checkouts = checkouts;
+    this.timeChanges = timeChanges;
     this.participants = participants;
     this.idempotency = idempotency;
     this.tx = tx;
@@ -436,8 +439,21 @@ public class CancellationSagaService {
       return null;
     }
     List<CompensationRow> rows = checkouts.compensations(checkoutSagaId);
+    // S4(2026-11-16): 시간 변경이 확정된 주문은 슬롯·작업 여력이 그 변경의 새 점유다(S1 점유는 이미 TIME_CHANGED·RESCHEDULED 로 해제)
+    var changed = timeChanges.lastConfirmed(orderId);
     ArrayNode out = mapper.createArrayNode();
     for (String type : CancellationRules.RELEASABLE) {
+      if (changed.isPresent() && ("SLOT_HOLD".equals(type) || "CAPACITY_HOLD".equals(type))) {
+        ObjectNode n = out.addObject();
+        n.put("resourceType", type);
+        n.put(
+            "resourceId",
+            "SLOT_HOLD".equals(type)
+                ? changed.get().newSlotHoldId()
+                : changed.get().newCapacityHoldId());
+        n.put("state", "PENDING");
+        continue;
+      }
       for (CompensationRow c : rows) {
         if (c.resourceType().equals(type)) {
           ObjectNode n = out.addObject();

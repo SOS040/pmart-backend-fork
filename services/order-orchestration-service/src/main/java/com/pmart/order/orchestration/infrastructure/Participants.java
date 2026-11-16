@@ -454,6 +454,69 @@ public class Participants {
         Map.of("caseId", caseId, "reason", reason));
   }
 
+  // ---------- S4 예약 시간 변경(2026-11-16) ----------
+
+  /** 주문의 원래 작업 지시 ID(fulfillment). 없으면 null. */
+  public @Nullable String fulfillmentIdOf(String orderId) {
+    try {
+      String raw =
+          Downstream.call(
+              FULFILLMENT + " work-orders",
+              () ->
+                  fulfillment
+                      .get()
+                      .uri("/api/v1/internal/work-orders?orderId={id}", orderId)
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+      String id = n.path("fulfillmentId").asString("");
+      return id.isBlank() ? null : id;
+    } catch (HttpClientErrorException.NotFound e) {
+      return null;
+    }
+  }
+
+  /** 작업 지시 도착 시간대 바꾸기(준비 시작 경합 — 409 PREPARATION_STARTED). */
+  public Result rescheduleWork(
+      String fulfillmentId,
+      String requestId,
+      String orderId,
+      String sagaId,
+      Map<String, Object> window) {
+    return post(
+        fulfillment,
+        FULFILLMENT + " reschedules",
+        "/api/v1/internal/work-orders/" + fulfillmentId + "/reschedules",
+        requestId,
+        Map.of("orderId", orderId, "sagaId", sagaId, "arrivalWindow", window));
+  }
+
+  /** 재고 예약 배송 약속일 바꾸기(422 LOT_EXPIRY_NOT_MET). */
+  public Result changePromisedDate(
+      String reservationId, String requestId, String orderId, String promisedDate) {
+    return post(
+        inventory,
+        INVENTORY + " promised-date-changes",
+        "/api/v1/internal/reservations/" + reservationId + "/promised-date-changes",
+        requestId,
+        Map.of("orderId", orderId, "promisedDate", promisedDate));
+  }
+
+  /** order 에 시간 변경 결과 알리기. */
+  public Result reportTimeChange(
+      String orderId, String timeChangeRequestId, String requestId, Map<String, Object> body) {
+    return post(
+        order,
+        ORDER + " reservation-time-change results",
+        "/api/v1/internal/orders/"
+            + orderId
+            + "/reservation-time-changes/"
+            + timeChangeRequestId
+            + "/results",
+        requestId,
+        body);
+  }
+
   // ---------- 공통 ----------
 
   private Result post(RestClient client, String target, String uri, String requestId, Object body) {

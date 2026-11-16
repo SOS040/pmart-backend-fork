@@ -154,6 +154,23 @@ D6-5 세부(사용자 결정 2026-11-07):
 
 부분 취소 PG 요청은 `추가 환불 가능 한도 = 승인액 − 성공 누적 − 불명 점유` 안에서만, 같은 요청 ID로 1회.
 
+## 2.2 사가 S4: 예약배달 시간 변경 (2026-11-16 — CP-1 2부, 규칙 OMS §4·A.2.5, Commerce §9.4)
+고객 `POST /orders/{id}/reservation-time-changes`(order: 본인·예약배달·CONFIRMED·다른 시간대·진행 중 없음 → PENDING, 202) → orchestration `time_change_saga`.
+
+| 단계 | 하는 일 | 실패 |
+|---|---|---|
+| FIND_RESOURCES | 지금 점유 = 확정된 이전 시간 변경의 새 점유, 없으면 주문을 확정한 S1 의 점유. 작업 지시 ID(fulfillment) | 없으면 REJECTED |
+| HOLD_SLOT | delivery-capacity `newSlotFor` = 지금 슬롯 → 새 HELD(기존 그대로, 정원 둘 다) | 거절 → REJECTED(원인 코드) |
+| HOLD_CAPACITY | mfc-capacity `replacesHoldId` = 지금 여력 → 새 창 HELD | 거절 → 새 슬롯 해제 → REJECTED |
+| MOVE_LOT_DATE | 날짜가 바뀔 때만 — mfc-inventory 약속일 변경(잡힌 LOT 이 새 날짜에도 적격) | LOT_EXPIRY_NOT_MET → 새 점유 해제 → REJECTED |
+| **RESCHEDULE_WORK** | **확정 지점** — mfc-fulfillment 작업 지시 시간 변경(준비 시작 전만 — 먼저 확정된 쪽만 유효) | PREPARATION_STARTED → 새 점유 해제·약속일 되돌림 → REJECTED |
+| CONFIRM_SLOT·CONFIRM_CAPACITY | 새 점유 확정 — 같은 트랜잭션에서 기존 해제(TIME_CHANGED·RESCHEDULED) | 거절은 상신(처리 대기 TIME_CHANGE) |
+| REPORT_ORDER | order 결과 — CONFIRMED 면 주문 도착 시간대·버전·`ReservationTimeChanged`, REJECTED 면 그대로 | 모름은 sweep |
+
+- 새 결제·새 피킹·주소 변경 없음. 실패하면 새로 잡은 것만 풀고 기존 시간·예약·금액 유지(OMS §4).
+- 시간이 바뀐 주문의 취소(S3)는 새 슬롯·여력을 해제한다.
+- 아직: `ReservationTimeChanged` 구독(고객 안내·배차 약속) 없음. 새 점유 TTL(슬롯 30분·여력 30분) 안에 확정 지점까지 가지 못하면 확정 단계가 거절돼 상신.
+
 ## 3. 배차·인계·전달
 
 ```

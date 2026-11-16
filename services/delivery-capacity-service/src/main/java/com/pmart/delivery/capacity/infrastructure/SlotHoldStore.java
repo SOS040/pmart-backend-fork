@@ -35,7 +35,8 @@ public class SlotHoldStore {
 
   private static final String COLUMNS =
       "hold_id, version, order_id, draft_id, saga_id, mfc_id, slot_date, start_minute, end_minute,"
-          + " state, held_at, expires_at, confirmed_at, released_at, release_reason";
+          + " state, held_at, expires_at, confirmed_at, released_at, release_reason,"
+          + " replaces_hold_id";
 
   /** 정원을 차지하는 점유: CONFIRMED 와 만료 전 HELD. */
   private static final String OCCUPYING =
@@ -111,6 +112,17 @@ public class SlotHoldStore {
         Timestamp.from(now));
   }
 
+  /** 주문의 HELD 점유(S4 교체 진행 중 확인). */
+  public Optional<String> heldHoldIdForOrder(String orderId) {
+    return jdbc
+        .query(
+            "SELECT hold_id FROM slot_hold WHERE order_id = ? AND state = 'HELD'",
+            (rs, i) -> rs.getString(1),
+            orderId)
+        .stream()
+        .findFirst();
+  }
+
   public Optional<String> activeHoldIdForOrder(String orderId) {
     return jdbc
         .query(
@@ -125,7 +137,7 @@ public class SlotHoldStore {
     jdbc.update(
         "INSERT INTO slot_hold ("
             + COLUMNS
-            + ", source_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            + ", source_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         h.holdId(),
         h.version(),
         h.orderId(),
@@ -141,6 +153,7 @@ public class SlotHoldStore {
         ts(h.confirmedAt()),
         ts(h.releasedAt()),
         h.releaseReason(),
+        h.replaces(),
         sourceSystem);
   }
 
@@ -247,7 +260,8 @@ public class SlotHoldStore {
         rs.getTimestamp("expires_at").toInstant(),
         instant(rs.getTimestamp("confirmed_at")),
         instant(rs.getTimestamp("released_at")),
-        rs.getString("release_reason"));
+        rs.getString("release_reason"),
+        rs.getString("replaces_hold_id"));
   }
 
   private static @Nullable Timestamp ts(@Nullable Instant i) {
