@@ -8,7 +8,7 @@ RAG 영역(`docs/operations/pc-split.md` §1-1)을 받는 PC 4·사람·Claude �
 
 ## 0. 11-15 넘긴 뒤 바뀐 것 (2026-11-16 PC 1 정리)
 
-LAN 색인은 **커밋 `652e518d`(11-15) 문서 기준 그대로**다. 그 뒤 색인 대상 문서가 바뀌었다.
+**2026-11-16 재색인 끝**(PR #19 병합 `0f477c29` 뒤 PC 1 — 스냅샷 ACTIVE source_revision `0f477c29`·clean, 52개·1,677 청크, 바뀐 조각만 새로 임베딩해 약 3분, `rag_e2e` 6/6). 아래 표는 그 전 상태 기록이다(11-15 `652e518d` 기준이었음).
 
 | 무엇 | 색인 영향 | 할 일 |
 |---|---|---|
@@ -122,7 +122,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 ### 고객 RAG
 - C11 "신선식:" 글자 잘림 1건. 운영자 RAG 에도 같은 결함(숫자 부분 문자열 검사·표 한 행) 있는지 확인.
 - ~~고객 답변 평가 재실행~~ — 2026-11-15 37/37. 고객 토큰은 실제 앱 로그인 대신 PC 1 이 auth-service LAN 서명키로 가상 계정 토큰을 만들 수 있다(사용자 허락 필요 — 2026-11-15 받음, 20분).
-- 고객 앱 채팅 상담 화면은 아직 없다(클라이언트 요청 `docs/handoff/clients/customer-app/2026-11-09-clients-request-customer-chat-assistant.md`) — 화면이 생기면 실제 앱 토큰으로 확인.
+- 고객 앱 채팅 상담 화면은 **클라이언트에 있다**(`/support/chat`, 2026-11-15 — 목 데이터로만 시험, 실서버 확인 전. PC 4 가 11-16 알려 줌). 요청서 `docs/handoff/clients/customer-app/2026-11-09-clients-request-customer-chat-assistant.md`. 고객 앱을 실서버에 붙이면 실제 앱 토큰으로 확인.
 
 ### 둘 다
 - 결정 대기(ADR-0036·0051): 답변 보존 기간·질문 원문 저장(운영자), 운영자 역할 세분, ADR-0051 "결정 대기" 절.
