@@ -235,6 +235,9 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     sku.put("weightG", weightG);
     sku.put("storageType", "FROZEN");
     sku.put("shelfLifeGuarantee", Map.of("minRemainingDays", 91)); // 상품 고시 "주문일 기준 91일 이상"
+    sku.put(
+        "dimensions", Map.of("widthMm", 160, "depthMm", 40, "heightMm", 230)); // 추정 치수(2026-11-16)
+    sku.put("dimensionsSource", "ESTIMATED");
     sku.put("alcohol", null);
     sku.put("barcodes", List.of());
     Map<String, Object> product = new LinkedHashMap<>();
@@ -369,6 +372,26 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
                 String.class,
                 productId))
         .contains("\"shelfLifeGuarantee\"");
+    // 실물 치수(2026-11-16): 묶음 값 그대로 조회·ProductVersionPublished 에 나간다
+    JsonNode skuDetail = get("/skus/" + sku).body();
+    assertThat(skuDetail.path("dimensions").path("widthMm").asInt()).isEqualTo(160);
+    assertThat(skuDetail.path("dimensions").path("depthMm").asInt()).isEqualTo(40);
+    assertThat(skuDetail.path("dimensions").path("heightMm").asInt()).isEqualTo(230);
+    assertThat(skuDetail.path("dimensionsSource").asString()).isEqualTo("ESTIMATED");
+    assertThat(product.path("skus").path(0).path("dimensions").path("heightMm").asInt())
+        .isEqualTo(230);
+    String publishedPayload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'ProductVersionPublished'"
+                + " AND aggregateid = ?",
+            String.class,
+            productId);
+    JsonNode publishedSku = mapper.readTree(publishedPayload).path("payload").path("skus").path(0);
+    if (publishedSku.isMissingNode()) {
+      publishedSku = mapper.readTree(publishedPayload).path("skus").path(0);
+    }
+    assertThat(publishedSku.path("dimensions").path("widthMm").asInt()).isEqualTo(160);
+    assertThat(publishedSku.path("dimensionsSource").asString()).isEqualTo("ESTIMATED");
     assertThat(
             get("/product-import-batches/" + batchId + "/id-map")
                 .body()
@@ -738,6 +761,8 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
         new LinkedHashMap<>((Map<String, Object>) ((List<?>) water(barcode).get("skus")).get(0));
     skuIn.put("shelfLifeGuarantee", Map.of("maxDaysSinceManufacture", 3));
     skuIn.put("volumeMl", 500);
+    skuIn.put("dimensions", Map.of("widthMm", 80, "depthMm", 80, "heightMm", 250));
+    skuIn.put("dimensionsSource", "MEASURED");
     Map<String, Object> change = new LinkedHashMap<>(water(barcode));
     change.put("skus", List.of(skuIn));
     change.put("targetProductId", productId);
@@ -761,6 +786,24 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(detail.path("volumeMl").asInt()).isEqualTo(500);
     assertThat(get("/products/" + productId).body().path("skus").path(0).path("volumeMl").asInt())
         .isEqualTo(500);
+    assertThat(detail.path("dimensions").path("heightMm").asInt()).isEqualTo(250);
+    assertThat(detail.path("dimensionsSource").asString()).isEqualTo("MEASURED");
+
+    // 치수 없이 다시 승인하면 소비기한 보장과 같이 초안 값 그대로 — 치수 미등록으로 바뀐다(승인 버전이 정본)
+    Map<String, Object> noDims = new LinkedHashMap<>(water(barcode));
+    noDims.put("targetProductId", productId);
+    Res d3 = post("/product-drafts", noDims);
+    assertThat(d3.body().path("validationState").asString()).isEqualTo("VALID");
+    String d3Id = d3.body().path("draftId").asString();
+    decide(
+        post("/product-drafts/" + d3Id + "/submissions", null).body().path("approvalRequest"),
+        "APPROVED");
+    await("/product-drafts/" + d3Id, b -> "APPLIED".equals(b.path("state").asString()));
+    JsonNode v3 = get("/skus/" + sku).body();
+    assertThat(v3.path("version").asInt()).isEqualTo(3);
+    assertThat(v3.hasNonNull("dimensions")).isFalse();
+    assertThat(v3.hasNonNull("dimensionsSource")).isFalse();
+    assertThat(v3.hasNonNull("shelfLifeGuarantee")).isFalse();
   }
 
   static final String ORDER = TestJwt.service("order-service");

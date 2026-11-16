@@ -68,6 +68,10 @@ public class SkusController implements SkusApi {
     d.setShelfMinRemainingDays(p.shelfMinRemainingDays());
     d.setShelfMaxDaysSinceManufacture(p.shelfMaxDaysSinceManufacture());
     d.setProductName(p.productName());
+    d.setWidthMm(p.widthMm());
+    d.setDepthMm(p.depthMm());
+    d.setHeightMm(p.heightMm());
+    d.setDimensionsSource(p.dimensionsSource());
     d.setBarcodes(new ArrayList<>(p.barcodes()));
     d.setState(SkuProjection.StateEnum.fromValue(p.state().name()));
     d.setProductVersion(p.productVersion());

@@ -124,6 +124,7 @@ public class ProductQueries {
     if (!guarantee.isEmpty()) {
       m.put("shelfLifeGuarantee", guarantee);
     }
+    ProductSnapshots.putDimensions(m, s);
     m.put("barcodes", catalog.activeBarcodes(s.sku()));
     catalog
         .latestLogistics(s.sku())
@@ -160,6 +161,12 @@ public class ProductQueries {
     m.put("alcohol", s.get("alcohol"));
     if (s.get("shelfLifeGuarantee") != null) {
       m.put("shelfLifeGuarantee", s.get("shelfLifeGuarantee"));
+    }
+    if (s.get("dimensions") != null) {
+      m.put("dimensions", s.get("dimensions"));
+    }
+    if (s.get("dimensionsSource") != null) {
+      m.put("dimensionsSource", s.get("dimensionsSource"));
     }
     m.put("barcodes", s.getOrDefault("barcodes", List.of()));
     Map<String, Object> lg =

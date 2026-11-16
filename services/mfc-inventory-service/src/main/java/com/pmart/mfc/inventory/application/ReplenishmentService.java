@@ -4,7 +4,6 @@ import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.inventory.domain.ReplenishmentRules;
-import com.pmart.mfc.inventory.domain.SkuSize;
 import com.pmart.mfc.inventory.domain.StockUnit.Quality;
 import com.pmart.mfc.inventory.domain.StockUnit.Work;
 import com.pmart.mfc.inventory.infrastructure.MoveStore;
@@ -61,7 +60,6 @@ public class ReplenishmentService {
   private final Locations locations;
   private final LocationAllocationService allocations;
   private final ReservationService reservations;
-  private final InventoryProperties props;
   private final TransactionTemplate tx;
   private final Clock clock;
 
@@ -73,7 +71,6 @@ public class ReplenishmentService {
       Locations locations,
       LocationAllocationService allocations,
       ReservationService reservations,
-      InventoryProperties props,
       TransactionTemplate tx,
       Clock clock) {
     this.jdbc = jdbc;
@@ -83,7 +80,6 @@ public class ReplenishmentService {
     this.locations = locations;
     this.allocations = allocations;
     this.reservations = reservations;
-    this.props = props;
     this.tx = tx;
     this.clock = clock;
   }
@@ -192,13 +188,13 @@ public class ReplenishmentService {
         "SELECT pg_advisory_xact_lock(hashtext(?))",
         "replenish:" + p.mfcId() + ":" + p.locationCode() + ":" + p.sku());
     var dest = locations.row(p.mfcId(), p.locationCode());
-    if (!props.isDummySkuSize()) {
+    var size = moveService.unitSize(p.sku()); // 상품 실물 치수 우선, 없으면 더미(설정 시)
+    if (size == null) {
       skipped.add(new Skipped(p.mfcId(), p.locationCode(), p.sku(), "CONFIG_REQUIRED:SKU_SIZE"));
       return 0;
     }
     Integer capacity =
-        SkuSize.dummyFor(p.sku())
-            .capacity(dest.widthMm(), dest.depthMm(), dest.heightMm(), dest.maxWeightG());
+        size.capacity(dest.widthMm(), dest.depthMm(), dest.heightMm(), dest.maxWeightG());
     if (capacity == null) {
       skipped.add(
           new Skipped(p.mfcId(), p.locationCode(), p.sku(), "CONFIG_REQUIRED:LOCATION_DIMENSIONS"));

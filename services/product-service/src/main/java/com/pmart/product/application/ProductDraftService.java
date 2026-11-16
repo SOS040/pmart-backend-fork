@@ -9,6 +9,7 @@ import com.pmart.product.domain.DraftFacts;
 import com.pmart.product.domain.DraftProblem;
 import com.pmart.product.domain.DraftRules;
 import com.pmart.product.domain.Hashes;
+import com.pmart.product.domain.SkuDimensions;
 import com.pmart.product.infrastructure.CatalogStore;
 import com.pmart.product.infrastructure.CategoryStore;
 import com.pmart.product.infrastructure.DraftStore;
@@ -462,6 +463,11 @@ public class ProductDraftService {
         text(s, "storageType"),
         intOrNull(s.path("shelfLifeGuarantee"), "minRemainingDays"),
         intOrNull(s.path("shelfLifeGuarantee"), "maxDaysSinceManufacture"),
+        new SkuDimensions.Input(
+            intOrNull(s.path("dimensions"), "widthMm"),
+            intOrNull(s.path("dimensions"), "depthMm"),
+            intOrNull(s.path("dimensions"), "heightMm"),
+            text(s, "dimensionsSource")),
         barcodes,
         text(p, "primaryCategoryId"),
         ids,
@@ -522,6 +528,11 @@ public class ProductDraftService {
     if (sku.path("shelfLifeGuarantee").isObject()) {
       s.set("shelfLifeGuarantee", sku.get("shelfLifeGuarantee").deepCopy());
     }
+    // 실물 치수(2026-11-16): 묶음에 있으면 그대로(추정값 일괄 적재 — 출처 ESTIMATED), 없으면 비운다
+    if (sku.path("dimensions").isObject()) {
+      s.set("dimensions", sku.get("dimensions").deepCopy());
+    }
+    copyText(sku, s, "dimensionsSource");
     ArrayNode derived = in.putArray("derivedFields");
     root.path("source").path("derived").forEach(derived::add);
     if (sku.hasNonNull("alcohol")) {

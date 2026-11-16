@@ -3,8 +3,9 @@ package com.pmart.mfc.inventory.domain;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 상품 크기 — 실제 정보가 없어 시스템 구현용 **더미**(2026-11-08 사용자 요청: 큰 것·중간·작은 것에 적당한 값). SKU 코드로 늘 같은 등급을 고른다. 실제
- * 크기 정보(상품 마스터)가 생기면 이것을 대체한다 — 운영 값 아님.
+ * 상품 크기 — 실제 정보가 없어 시스템 구현용 **더미**(2026-11-08 사용자 요청: 큰 것·중간·작은 것에 적당한 값). SKU 코드로 늘 같은 등급을 고른다. 운영
+ * 값 아님. 2026-11-16 부터 상품 마스터 치수(SKU 투영 widthMm·depthMm·heightMm)가 있으면 그것이 우선이고, 더미는 치수 미등록 SKU 의
+ * 대체로만 쓴다({@link UnitSize#resolve}).
  */
 public enum SkuSize {
   /** 작은 것 — 껌·소스 등. 80×60×40 mm, 150 g. */
@@ -35,21 +36,17 @@ public enum SkuSize {
     return h < 50 ? S : h < 85 ? M : L;
   }
 
+  /** 이 더미 등급의 용량 계산 크기(맞음 검사 없음 — 2026-11-16 이전 계산 그대로). */
+  public UnitSize unitSize() {
+    return new UnitSize(widthMm, depthMm, heightMm, weightG, name(), false);
+  }
+
   /**
    * 칸에 이 상품이 몇 개 들어가나 = min(부피 × 채움률 ÷ 상품 부피, 최대 하중 ÷ 상품 무게). 치수가 하나라도 없으면 null(계산 불가 → 호출자가
    * CONFIG_REQUIRED).
    */
   public @Nullable Integer capacity(
       @Nullable Integer w, @Nullable Integer d, @Nullable Integer h, @Nullable Integer maxWeightG) {
-    if (w == null || d == null || h == null || w <= 0 || d <= 0 || h <= 0) {
-      return null;
-    }
-    long vol = (long) w * d * h;
-    long unit = (long) widthMm * depthMm * heightMm;
-    int byVolume = (int) Math.floor(vol * FILL_RATE / unit);
-    if (maxWeightG != null && maxWeightG > 0) {
-      return Math.min(byVolume, maxWeightG / weightG);
-    }
-    return byVolume;
+    return unitSize().capacity(w, d, h, maxWeightG);
   }
 }

@@ -26,8 +26,8 @@ public class SkuProjectionStore {
 
   private static final String COLUMNS =
       "sku, product_id, base_product_id, unit_type, units_per_sku, weight_g, volume_ml, storage_type,"
-          + " alcohol, shelf_min_remaining_days, shelf_max_days_since_mfg, product_name, barcodes, state,"
-          + " product_version, updated_at";
+          + " alcohol, shelf_min_remaining_days, shelf_max_days_since_mfg, product_name, barcodes, width_mm,"
+          + " depth_mm, height_mm, dimensions_source, state, product_version, updated_at";
 
   private final JdbcTemplate jdbc;
   private final NamedParameterJdbcTemplate named;
@@ -64,14 +64,16 @@ public class SkuProjectionStore {
     return jdbc.update(
         "INSERT INTO sku_projection ("
             + COLUMNS
-            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             + " ON CONFLICT (sku) DO UPDATE SET product_id = EXCLUDED.product_id,"
             + " base_product_id = EXCLUDED.base_product_id, unit_type = EXCLUDED.unit_type,"
             + " units_per_sku = EXCLUDED.units_per_sku, weight_g = EXCLUDED.weight_g,"
             + " volume_ml = EXCLUDED.volume_ml, storage_type = EXCLUDED.storage_type,"
             + " alcohol = EXCLUDED.alcohol, shelf_min_remaining_days = EXCLUDED.shelf_min_remaining_days,"
             + " shelf_max_days_since_mfg = EXCLUDED.shelf_max_days_since_mfg,"
-            + " product_name = EXCLUDED.product_name, barcodes = EXCLUDED.barcodes, state = EXCLUDED.state,"
+            + " product_name = EXCLUDED.product_name, barcodes = EXCLUDED.barcodes,"
+            + " width_mm = EXCLUDED.width_mm, depth_mm = EXCLUDED.depth_mm, height_mm = EXCLUDED.height_mm,"
+            + " dimensions_source = EXCLUDED.dimensions_source, state = EXCLUDED.state,"
             + " product_version = EXCLUDED.product_version, updated_at = EXCLUDED.updated_at"
             + " WHERE sku_projection.product_version <= EXCLUDED.product_version",
         p.sku(),
@@ -87,6 +89,10 @@ public class SkuProjectionStore {
         p.shelfMaxDaysSinceManufacture(),
         p.productName(),
         String.join("\n", p.barcodes()),
+        p.widthMm(),
+        p.depthMm(),
+        p.heightMm(),
+        p.dimensionsSource(),
         p.state().name(),
         p.productVersion(),
         Timestamp.from(p.updatedAt()));
@@ -157,6 +163,10 @@ public class SkuProjectionStore {
         rs.getObject("shelf_max_days_since_mfg", Integer.class),
         rs.getString("product_name"),
         barcodes(rs.getString("barcodes")),
+        rs.getObject("width_mm", Integer.class),
+        rs.getObject("depth_mm", Integer.class),
+        rs.getObject("height_mm", Integer.class),
+        rs.getString("dimensions_source"),
         SkuState.valueOf(rs.getString("state")),
         rs.getInt("product_version"),
         rs.getTimestamp("updated_at").toInstant());

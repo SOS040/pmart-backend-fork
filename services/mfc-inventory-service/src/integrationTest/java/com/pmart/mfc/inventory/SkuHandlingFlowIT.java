@@ -133,6 +133,10 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
     s.put("storageType", "CHILLED");
     s.put("alcohol", false);
     s.put("shelfLifeGuarantee", Map.of("minRemainingDays", 5, "maxDaysSinceManufacture", 3));
+    if ("ACTIVE".equals(state)) { // 상품 실물 치수(2026-11-16) — INACTIVE 쪽은 치수 미등록으로 둔다
+      s.put("dimensions", Map.of("widthMm", 70, "depthMm", 70, "heightMm", 200));
+      s.put("dimensionsSource", "ESTIMATED");
+    }
     s.put("state", state);
     s.put("barcodes", List.of("08801234567890"));
     s.put("logistics", Map.of("unitsPerBox", 12, "boxesPerPallet", 40, "ti", 8, "hi", 5));
@@ -215,9 +219,16 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(batch.body().path("items").path(0).path("productName").asString())
         .isEqualTo("관리명 " + productId);
     assertThat(batch.body().path("missing").size()).isEqualTo(1);
-    assertThat(
-            awaitProjection(inactive, b -> "INACTIVE".equals(b.path("state").asString())).status())
-        .isEqualTo(200);
+    // 상품 실물 치수(0.18.0, 2026-11-16) — 없으면 null(지어내지 않음)
+    assertThat(proj.body().path("widthMm").asInt()).isEqualTo(70);
+    assertThat(proj.body().path("depthMm").asInt()).isEqualTo(70);
+    assertThat(proj.body().path("heightMm").asInt()).isEqualTo(200);
+    assertThat(proj.body().path("dimensionsSource").asString()).isEqualTo("ESTIMATED");
+    Res inactiveProj =
+        awaitProjection(inactive, b -> "INACTIVE".equals(b.path("state").asString()));
+    assertThat(inactiveProj.status()).isEqualTo(200);
+    assertThat(inactiveProj.body().hasNonNull("widthMm")).isFalse();
+    assertThat(inactiveProj.body().hasNonNull("dimensionsSource")).isFalse();
     // 이벤트로는 취급 레코드를 만들지 않는다
     assertThat(
             jdbc.queryForObject(

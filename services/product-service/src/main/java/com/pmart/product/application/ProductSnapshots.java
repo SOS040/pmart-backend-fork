@@ -41,6 +41,7 @@ public class ProductSnapshots {
       if (!guarantee.isEmpty()) {
         m.put("shelfLifeGuarantee", guarantee);
       }
+      putDimensions(m, s);
       m.put("state", s.state());
       m.put("barcodes", catalog.activeBarcodes(s.sku()));
       catalog
@@ -82,6 +83,19 @@ public class ProductSnapshots {
     putIfNotNull(g, "minRemainingDays", s.shelfMinRemainingDays());
     putIfNotNull(g, "maxDaysSinceManufacture", s.shelfMaxDaysSinceManufacture());
     return g;
+  }
+
+  /** 실물 치수(2026-11-16). 없으면 넣지 않는다(치수 미등록), 출처는 알 때만. */
+  static void putDimensions(Map<String, Object> m, SkuRow s) {
+    if (s.dimensions() == null) {
+      return;
+    }
+    Map<String, Object> d = new LinkedHashMap<>();
+    d.put("widthMm", s.dimensions().widthMm());
+    d.put("depthMm", s.dimensions().depthMm());
+    d.put("heightMm", s.dimensions().heightMm());
+    m.put("dimensions", d);
+    putIfNotNull(m, "dimensionsSource", s.dimensions().source());
   }
 
   private static void putIfNotNull(Map<String, Object> m, String k, Object v) {

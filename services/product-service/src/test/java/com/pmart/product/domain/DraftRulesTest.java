@@ -41,6 +41,8 @@ class DraftRulesTest {
         }
       };
 
+  static final SkuDimensions.Input NO_DIMENSIONS = new SkuDimensions.Input(null, null, null, null);
+
   static DraftFacts facts(
       Integer weight, String storage, List<String> barcodes, List<String> paths) {
     return new DraftFacts(
@@ -52,6 +54,7 @@ class DraftRulesTest {
         storage,
         null,
         null,
+        NO_DIMENSIONS,
         barcodes,
         null,
         List.of(),
@@ -76,7 +79,19 @@ class DraftRulesTest {
     var ok =
         DraftRules.validate(
             new DraftFacts(
-                "x", null, "E", 1, 100, "CHILLED", 5, 3, List.of(), "p03", List.of(), List.of(),
+                "x",
+                null,
+                "E",
+                1,
+                100,
+                "CHILLED",
+                5,
+                3,
+                NO_DIMENSIONS,
+                List.of(),
+                "p03",
+                List.of(),
+                List.of(),
                 List.of()),
             LOOKUP,
             Set.of());
@@ -84,7 +99,19 @@ class DraftRulesTest {
     var bad =
         DraftRules.validate(
             new DraftFacts(
-                "x", null, "E", 1, 100, "CHILLED", -1, 4000, List.of(), "p03", List.of(), List.of(),
+                "x",
+                null,
+                "E",
+                1,
+                100,
+                "CHILLED",
+                -1,
+                4000,
+                NO_DIMENSIONS,
+                List.of(),
+                "p03",
+                List.of(),
+                List.of(),
                 List.of()),
             LOOKUP,
             Set.of());
@@ -93,6 +120,64 @@ class DraftRulesTest {
         .containsExactlyInAnyOrder(
             "skus[0].shelfLifeGuarantee.minRemainingDays",
             "skus[0].shelfLifeGuarantee.maxDaysSinceManufacture");
+  }
+
+  static DraftFacts withDimensions(SkuDimensions.Input d) {
+    return new DraftFacts(
+        "x", null, "E", 1, 100, "CHILLED", null, null, d, List.of(), "p03", List.of(), List.of(),
+        List.of());
+  }
+
+  @Test
+  void dimensionsAreOptionalButAllThreeInRange() {
+    // 없으면 치수 미등록(지어내지 않음)
+    assertThat(DraftRules.validate(withDimensions(NO_DIMENSIONS), LOOKUP, Set.of()).valid())
+        .isTrue();
+    assertThat(
+            DraftRules.validate(
+                    withDimensions(new SkuDimensions.Input(70, 70, 200, "ESTIMATED")),
+                    LOOKUP,
+                    Set.of())
+                .valid())
+        .isTrue();
+    // 출처는 선택
+    assertThat(
+            DraftRules.validate(
+                    withDimensions(new SkuDimensions.Input(1, 5000, 3, null)), LOOKUP, Set.of())
+                .valid())
+        .isTrue();
+    // 일부만
+    assertThat(
+            DraftRules.validate(
+                    withDimensions(new SkuDimensions.Input(70, null, 200, "MEASURED")),
+                    LOOKUP,
+                    Set.of())
+                .problems())
+        .extracting(DraftProblem::code, DraftProblem::field)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple("DIMENSIONS_INVALID", "skus[0].dimensions"));
+    // 범위 밖
+    assertThat(
+            DraftRules.validate(
+                    withDimensions(new SkuDimensions.Input(0, 5001, 10, null)), LOOKUP, Set.of())
+                .problems())
+        .extracting(DraftProblem::field)
+        .containsExactlyInAnyOrder("skus[0].dimensions.widthMm", "skus[0].dimensions.depthMm");
+    // 출처만 / 모르는 출처
+    assertThat(
+            DraftRules.validate(
+                    withDimensions(new SkuDimensions.Input(null, null, null, "MEASURED")),
+                    LOOKUP,
+                    Set.of())
+                .problems())
+        .extracting(DraftProblem::code)
+        .containsExactly("DIMENSIONS_INVALID");
+    assertThat(
+            DraftRules.validate(
+                    withDimensions(new SkuDimensions.Input(10, 10, 10, "GUESS")), LOOKUP, Set.of())
+                .problems())
+        .extracting(DraftProblem::field)
+        .containsExactly("skus[0].dimensionsSource");
   }
 
   @Test
@@ -135,8 +220,20 @@ class DraftRulesTest {
     var e6 =
         DraftRules.validate(
             new DraftFacts(
-                "x", null, "E", 6, 100, "AMBIENT", null, null, List.of(), "p03", List.of(),
-                List.of(), List.of()),
+                "x",
+                null,
+                "E",
+                6,
+                100,
+                "AMBIENT",
+                null,
+                null,
+                NO_DIMENSIONS,
+                List.of(),
+                "p03",
+                List.of(),
+                List.of(),
+                List.of()),
             LOOKUP,
             Set.of());
     assertThat(e6.problems())
@@ -157,6 +254,7 @@ class DraftRulesTest {
                 "AMBIENT",
                 null,
                 null,
+                NO_DIMENSIONS,
                 List.of(),
                 "p03-c01",
                 List.of("p03", "p03-c01"),
@@ -181,6 +279,7 @@ class DraftRulesTest {
                 "AMBIENT",
                 null,
                 null,
+                NO_DIMENSIONS,
                 List.of(),
                 "p03",
                 List.of(),

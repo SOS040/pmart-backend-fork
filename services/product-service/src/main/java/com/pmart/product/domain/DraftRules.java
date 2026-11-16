@@ -58,6 +58,7 @@ public final class DraftRules {
     }
     checkShelfLife(f.shelfMinRemainingDays(), "minRemainingDays", p);
     checkShelfLife(f.shelfMaxDaysSinceManufacture(), "maxDaysSinceManufacture", p);
+    checkDimensions(f.dimensions(), p);
     checkBarcodes(f.barcodes(), lookup, ownSkus, p);
     List<String> categories = resolveCategories(f, lookup, p);
     for (DraftFacts.FilterOptionRef o : f.filterOptions()) {
@@ -80,6 +81,46 @@ public final class DraftRules {
               "SHELF_LIFE_INVALID",
               "skus[0].shelfLifeGuarantee." + field,
               "소비기한 보장 일수는 0~3650 입니다: " + days));
+    }
+  }
+
+  /**
+   * SKU 실물 치수(2026-11-16): 없으면 미등록(지어내지 않음), 있으면 세 변 모두 1~5000 mm, 출처는 MEASURED·ESTIMATED 이고 치수와
+   * 함께만.
+   */
+  private static void checkDimensions(SkuDimensions.Input d, List<DraftProblem> p) {
+    if (d.empty()) {
+      return;
+    }
+    if (d.widthMm() == null || d.depthMm() == null || d.heightMm() == null) {
+      p.add(
+          DraftProblem.of(
+              "DIMENSIONS_INVALID",
+              "skus[0].dimensions",
+              d.widthMm() == null && d.depthMm() == null && d.heightMm() == null
+                  ? "치수 없이 출처(dimensionsSource)만 있습니다."
+                  : "가로·세로·높이는 셋 다 있거나 셋 다 없어야 합니다."));
+    } else {
+      checkSide(d.widthMm(), "widthMm", p);
+      checkSide(d.depthMm(), "depthMm", p);
+      checkSide(d.heightMm(), "heightMm", p);
+    }
+    if (d.source() != null && !SkuDimensions.SOURCES.contains(d.source())) {
+      p.add(
+          DraftProblem.of(
+              "DIMENSIONS_INVALID",
+              "skus[0].dimensionsSource",
+              "치수 출처는 MEASURED 또는 ESTIMATED 입니다: " + d.source()));
+    }
+  }
+
+  private static void checkSide(int mm, String field, List<DraftProblem> p) {
+    if (mm < SkuDimensions.MIN_MM || mm > SkuDimensions.MAX_MM) {
+      p.add(
+          DraftProblem.of(
+              "DIMENSIONS_INVALID",
+              "skus[0].dimensions." + field,
+              "치수는 " + SkuDimensions.MIN_MM + "~" + SkuDimensions.MAX_MM + " mm 입니다: " + mm));
     }
   }
 

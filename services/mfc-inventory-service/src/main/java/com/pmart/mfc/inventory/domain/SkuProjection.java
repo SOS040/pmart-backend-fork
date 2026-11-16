@@ -12,6 +12,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>shelfMinRemainingDays·shelfMaxDaysSinceManufacture: 상품별 소비기한 보장(ADR-0041, "주문일 기준 N일 이상
  * 남은"·"N일 이내 제조된"). null 이면 그 보장 없음.
+ *
+ * <p>widthMm·depthMm·heightMm·dimensionsSource: 상품 실물 치수(mm, 2026-11-16,
+ * ProductVersionPublished.skus[].dimensions)와 출처(MEASURED·ESTIMATED). 셋 다 있으면 칸 용량을 이 치수로
+ * 계산한다({@link UnitSize}). 없으면 null(지어내지 않는다).
  */
 public record SkuProjection(
     String sku,
@@ -27,6 +31,10 @@ public record SkuProjection(
     @Nullable Integer shelfMaxDaysSinceManufacture,
     @Nullable String productName,
     java.util.List<String> barcodes,
+    @Nullable Integer widthMm,
+    @Nullable Integer depthMm,
+    @Nullable Integer heightMm,
+    @Nullable String dimensionsSource,
     SkuState state,
     int productVersion,
     Instant updatedAt) {

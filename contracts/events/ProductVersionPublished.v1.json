@@ -109,6 +109,41 @@
                     "additionalProperties": false,
                     "description": "상품별 소비기한 보장(ADR-0041). 없으면 보장 문구가 없는 상품 — 재고는 보관 유형 기본 최소 잔여일을 쓴다"
                   },
+                  "dimensions": {
+                    "type": "object",
+                    "required": [
+                      "widthMm",
+                      "depthMm",
+                      "heightMm"
+                    ],
+                    "properties": {
+                      "widthMm": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5000
+                      },
+                      "depthMm": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5000
+                      },
+                      "heightMm": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5000
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "SKU 실물 치수(mm, 2026-11-16 추가 — 선택 필드). 판매 단위 하나의 외곽 세 변(놓는 방향 무관). 없으면 치수 미등록 — MFC 재고는 칸 용량 계산에 더미 크기(설정 시) 또는 CONFIG_REQUIRED"
+                  },
+                  "dimensionsSource": {
+                    "type": "string",
+                    "enum": [
+                      "MEASURED",
+                      "ESTIMATED"
+                    ],
+                    "description": "치수 출처(2026-11-16). ESTIMATED 추정값, MEASURED 실측값. dimensions 가 있을 때만 온다(출처를 모르면 생략)"
+                  },
                   "volumeMl": {
                     "type": "integer",
                     "minimum": 0

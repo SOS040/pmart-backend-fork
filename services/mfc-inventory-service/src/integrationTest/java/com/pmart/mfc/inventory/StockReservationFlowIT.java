@@ -1313,6 +1313,98 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(201); // 원래 자리에 더 넣기
   }
 
+  /** SKU 투영에 상품 실물 치수(2026-11-16 — 상품 이벤트 대신 시험 준비). */
+  void projectionWithDimensions(String sku, int w, int d, int h, Integer weightG, String source) {
+    jdbc.update(
+        "INSERT INTO sku_projection (sku, unit_type, storage_type, weight_g, width_mm, depth_mm, height_mm,"
+            + " dimensions_source, state, product_version, updated_at)"
+            + " VALUES (?, 'E', 'AMBIENT', ?, ?, ?, ?, ?, 'ACTIVE', 1, now())",
+        sku,
+        weightG,
+        w,
+        d,
+        h,
+        source);
+  }
+
+  /** 수령 → 정상 검수까지(수령 위치 UNSTOWED). 반환 = lotId. */
+  String inspected(String sku, int qty) {
+    String receiptId = "RCV-" + UUID.randomUUID();
+    assertThat(
+            postReceipt(
+                    UUID.randomUUID().toString(),
+                    receiptOf(receiptId, List.of(line(sku, qty, 0, null, null))))
+                .status())
+        .isEqualTo(201);
+    String lot =
+        get(INBOUND, "/internal/receipts/" + receiptId)
+            .body()
+            .path("lines")
+            .path(0)
+            .path("lotId")
+            .asString();
+    assertThat(
+            execute(
+                    "INSPECT",
+                    "RCV-DOCK",
+                    null,
+                    List.of(
+                        Map.of("sku", sku, "lotId", lot, "qty", qty, "resultQuality", "NORMAL")))
+                .status())
+        .isEqualTo(201);
+    return lot;
+  }
+
+  /**
+   * 상품 실물 치수(2026-11-16): 치수가 있는 SKU 는 더미 크기 대신 그 치수로 칸 용량을 계산한다(칸 300×200×100 × 0.8 ÷ 상품
+   * 100×100×100 = 4개 — 더미 S 25·M 3·L 0 과 다르다). 어느 방향으로도 칸에 안 들어가는 상품은 용량 0.
+   */
+  @Test
+  void productDimensionsDecideShelfCapacity() {
+    shelf("D-09-01", "STORAGE", 300, 200, 100, false);
+    shelf("D-09-02", "STORAGE", 1000, 600, 400, false);
+    awaitLocations(5);
+    String sku = newSku();
+    handlingOn(sku);
+    projectionWithDimensions(sku, 100, 100, 100, 600, "MEASURED");
+    String lot = inspected(sku, 9);
+
+    Res over =
+        execute(
+            "PUTAWAY", "RCV-DOCK", "D-09-01", List.of(Map.of("sku", sku, "lotId", lot, "qty", 5)));
+    assertThat(over.status()).isEqualTo(409);
+    assertThat(over.body().path("code").asString()).isEqualTo("LOCATION_CAPACITY_EXCEEDED");
+    assertThat(
+            execute(
+                    "PUTAWAY",
+                    "RCV-DOCK",
+                    "D-09-01",
+                    List.of(Map.of("sku", sku, "lotId", lot, "qty", 4)))
+                .status())
+        .isEqualTo(201);
+
+    // 이동 배정도 같은 크기: 표시 MEASURED, 도착 칸 용량 1000×600×400 × 0.8 ÷ 1,000,000 = 192
+    Res moved =
+        move("/internal/move-allocations", moveBody("MV-DIM-1", sku, lot, "D-09-01", "D-09-02", 4));
+    assertThat(moved.status()).as(moved.body().toString()).isEqualTo(201);
+    assertThat(moved.body().path("sizeClass").asString()).isEqualTo("MEASURED");
+    assertThat(moved.body().path("destinationCapacity").asInt()).isEqualTo(192);
+
+    // 가장 긴 변 1,100mm 상품은 부피로는 들어가도 1,000mm 칸에 못 놓는다
+    String longSku = newSku();
+    handlingOn(longSku);
+    projectionWithDimensions(longSku, 50, 1100, 50, 300, "ESTIMATED");
+    String longLot = inspected(longSku, 1);
+    Res tooLong =
+        execute(
+            "PUTAWAY",
+            "RCV-DOCK",
+            "D-09-02",
+            List.of(Map.of("sku", longSku, "lotId", longLot, "qty", 1)));
+    assertThat(tooLong.status()).isEqualTo(409);
+    assertThat(tooLong.body().path("code").asString()).isEqualTo("LOCATION_CAPACITY_EXCEEDED");
+  }
+
   /** 수령 → 검수 → 칸별 적치(같은 LOT 을 여러 칸에). 반환 = lotId. */
   String stockedAt(String sku, String lotRef, String expiry, Map<String, Integer> byShelf) {
     projection(sku, "AMBIENT");

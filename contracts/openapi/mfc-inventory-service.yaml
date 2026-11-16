@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -295,7 +295,8 @@ paths:
         **칸에 여러 상품 가능 — 카테고리 칸은 그 카테고리(하위 포함) 상품만**(409 CATEGORY_MISMATCH, 상품 카테고리를 모르면 SKU_CATEGORY_UNKNOWN), 카테고리 없는 칸 = 기타(아무 상품).
         출하 부적격 LOT 은 카테고리 칸에 못 둔다(409 LOT_NOT_SHIPPABLE). **같은 상품은 한 자리**(고회전 선반 제외 — 다른 칸에 이미 있으면 409 SKU_ALREADY_SHELVED,
         출발 칸에 남는 양이 있으면 409 SKU_SPLIT_NOT_ALLOWED), 용량(칸 치수 ÷ 상품 크기, 들어올 예정 포함 — 넘으면 409 LOCATION_CAPACITY_EXCEEDED, 칸 치수 없으면 422 CONFIG_REQUIRED).
-        상품 크기는 실제 정보가 없어 설정 `pmart.inventory.dummy-sku-size` 가 켜진 환경(LAN·시험)에서만 더미(소·중·대)로 계산한다. 같은 moveId 는 한 번(같은 내용이면 지금 상태).
+        상품 크기는 SKU 투영의 상품 실물 치수(0.18.0, ProductVersionPublished.skus[].dimensions — 어느 방향으로도 칸에 안 들어가면 용량 0, 무게를 알면 칸 최대 하중도 본다)가 우선이고,
+        치수 미등록 SKU 는 설정 `pmart.inventory.dummy-sku-size` 가 켜진 환경(LAN·시험)에서만 더미(소·중·대)로 계산한다(꺼져 있으면 422 CONFIG_REQUIRED). 같은 moveId 는 한 번(같은 내용이면 지금 상태).
         출발·도착이 실사 잠금이면 409.
       operationId: createMoveAllocation
       parameters:
@@ -1447,8 +1448,8 @@ components:
         droppedQty: { type: integer }
         onCartQty: { type: integer, description: 카트 위 = 집음 − 내려놓음 }
         state: { type: string, enum: [ACTIVE, CANCEL_PENDING, COMPLETED, CANCELLED] }
-        sizeClass: { type: [string, 'null'], description: 용량 계산에 쓴 상품 크기(S·M·L, 더미) }
-        destinationCapacity: { type: [integer, 'null'], description: 도착 칸에 이 상품이 들어가는 개수(더미 크기 기준) }
+        sizeClass: { type: [string, 'null'], description: '용량 계산에 쓴 상품 크기 — 더미 S·M·L, 또는 상품 실물 치수(0.18.0) MEASURED·ESTIMATED·PRODUCT(출처 모름)' }
+        destinationCapacity: { type: [integer, 'null'], description: 도착 칸에 이 상품이 들어가는 개수(sizeClass 크기 기준) }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     ReplenishmentPolicy:
@@ -1873,6 +1874,10 @@ components:
         shelfMaxDaysSinceManufacture: { type: [integer, 'null'], description: '상품별 소비기한 보장 — 주문일 기준 제조 후 최대 경과일(ADR-0041). null 이면 보장 없음' }
         productName: { type: [string, 'null'], description: '(0.15.0) 상품 관리용 명칭(ProductVersionPublished.internalName). 이 필드 추가 전에 받은 상품은 다음 상품 버전 발행까지 null' }
         barcodes: { type: array, items: { type: string }, description: '(0.15.0) 활성 바코드(선행 0 보존). 모르면 빈 배열' }
+        widthMm: { type: [integer, 'null'], description: '(0.18.0, 2026-11-16) 상품 실물 치수 가로(mm, ProductVersionPublished.skus[].dimensions). 셋 다 있으면 적치·이동·보충 칸 용량을 이 치수로 계산하고, 없으면 더미 크기(pmart.inventory.dummy-sku-size) 또는 CONFIG_REQUIRED' }
+        depthMm: { type: [integer, 'null'], description: '(0.18.0) 상품 실물 치수 세로(mm). 모르면 null' }
+        heightMm: { type: [integer, 'null'], description: '(0.18.0) 상품 실물 치수 높이(mm). 모르면 null' }
+        dimensionsSource: { type: [string, 'null'], description: '(0.18.0) 치수 출처 MEASURED(실측) / ESTIMATED(추정). 모르면 null' }
         state: { type: string, enum: [ACTIVE, INACTIVE] }
         productVersion: { type: integer, description: 마지막으로 반영한 상품 버전(이보다 오래된 이벤트는 무시) }
         updatedAt: { type: string, format: date-time }

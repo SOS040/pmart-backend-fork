@@ -121,4 +121,69 @@ class MoveRulesTest {
     assertThat(SkuSize.L.capacity(1000, 600, 400, 10_000)).isEqualTo(4); // 하중 10kg ÷ 2.5kg
     assertThat(SkuSize.S.capacity(null, 600, 400, null)).isNull();
   }
+
+  static SkuProjection product(Integer w, Integer d, Integer h, Integer weightG, String source) {
+    return new SkuProjection(
+        "E-00000001",
+        "PRD-1",
+        "BP-1",
+        "E",
+        1,
+        weightG,
+        null,
+        "AMBIENT",
+        false,
+        null,
+        null,
+        null,
+        List.of(),
+        w,
+        d,
+        h,
+        source,
+        SkuProjection.SkuState.ACTIVE,
+        1,
+        java.time.Instant.EPOCH);
+  }
+
+  @Test
+  void productDimensionsDecideCapacityAndDummyIsOnlyTheFallback() {
+    // 상품 치수 100×100×100(1L), 600g: 1000×600×400 칸 = 240,000,000 × 0.8 ÷ 1,000,000 = 192
+    UnitSize real = UnitSize.resolve("E-00000001", product(100, 100, 100, 600, "MEASURED"), true);
+    assertThat(real).isNotNull();
+    assertThat(real.label()).isEqualTo("MEASURED");
+    assertThat(real.capacity(1000, 600, 400, null)).isEqualTo(192);
+    assertThat(real.capacity(1000, 600, 400, 30_000)).isEqualTo(50); // 하중 30kg ÷ 600g
+    assertThat(real.capacity(null, 600, 400, null)).isNull();
+    // 무게를 모르면 하중은 보지 않는다(지어내지 않음)
+    assertThat(
+            UnitSize.resolve("E-1", product(100, 100, 100, null, null), false)
+                .capacity(1000, 600, 400, 1))
+        .isEqualTo(192);
+    assertThat(UnitSize.resolve("E-1", product(100, 100, 100, null, null), false).label())
+        .isEqualTo(UnitSize.PRODUCT);
+
+    // 치수 없음(일부만 있어도) → 더미 허용이면 더미 등급 그대로, 아니면 null(CONFIG_REQUIRED)
+    UnitSize dummy = UnitSize.resolve("E-00000001", product(100, null, 100, 600, null), true);
+    assertThat(dummy.label()).isEqualTo(SkuSize.dummyFor("E-00000001").name());
+    assertThat(dummy.capacity(1000, 600, 400, null))
+        .isEqualTo(SkuSize.dummyFor("E-00000001").capacity(1000, 600, 400, null));
+    assertThat(UnitSize.resolve("E-00000001", product(null, null, null, 600, null), false))
+        .isNull();
+    assertThat(UnitSize.resolve("E-00000001", null, false)).isNull();
+  }
+
+  @Test
+  void productThatFitsNoOrientationHasNoCapacity() {
+    // 긴 상품 50×1100×50: 부피로는 들어가도(1,000×600×400 칸) 가장 긴 변이 칸 가장 긴 변보다 길면 0
+    UnitSize longItem = UnitSize.resolve("E-1", product(50, 1100, 50, 100, "ESTIMATED"), false);
+    assertThat(longItem.capacity(1000, 600, 400, null)).isZero();
+    // 돌려 놓으면 들어간다: 300×900×50 → 칸 1000×600×400 (작은 변끼리 50≤400, 300≤600, 900≤1000)
+    assertThat(
+            UnitSize.resolve("E-1", product(300, 900, 50, 100, null), false).fitsIn(1000, 600, 400))
+        .isTrue();
+    assertThat(
+            UnitSize.resolve("E-1", product(700, 700, 50, 100, null), false).fitsIn(1000, 600, 400))
+        .isFalse();
+  }
 }

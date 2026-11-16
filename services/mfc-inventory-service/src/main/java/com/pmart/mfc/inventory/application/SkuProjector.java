@@ -111,6 +111,10 @@ public class SkuProjector {
               integer(s.path("shelfLifeGuarantee"), "maxDaysSinceManufacture"),
               text(p, "internalName"),
               strings(s.path("barcodes")),
+              integer(s.path("dimensions"), "widthMm"),
+              integer(s.path("dimensions"), "depthMm"),
+              integer(s.path("dimensions"), "heightMm"),
+              s.path("dimensions").isObject() ? text(s, "dimensionsSource") : null,
               "INACTIVE".equals(text(s, "state")) ? SkuState.INACTIVE : SkuState.ACTIVE,
               version,
               at));

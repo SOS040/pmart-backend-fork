@@ -1,6 +1,7 @@
 package com.pmart.product.infrastructure;
 
 import com.pmart.product.domain.BarcodeType;
+import com.pmart.product.domain.SkuDimensions;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -43,7 +44,8 @@ public class CatalogStore {
       String issuedApprovalId,
       Instant issuedAt,
       @Nullable Integer shelfMinRemainingDays,
-      @Nullable Integer shelfMaxDaysSinceManufacture) {}
+      @Nullable Integer shelfMaxDaysSinceManufacture,
+      @Nullable SkuDimensions dimensions) {}
 
   public record LogisticsRow(
       @Nullable Integer unitsPerBox,
@@ -219,7 +221,8 @@ public class CatalogStore {
     jdbc.update(
         "INSERT INTO sku (sku, serial_no, unit_type, product_id, base_product_id, units_per_sku, weight_g, volume_ml,"
             + " storage_type, alcohol, state, issued_approval_id, issued_at, shelf_min_remaining_days,"
-            + " shelf_max_days_since_mfg) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            + " shelf_max_days_since_mfg, width_mm, depth_mm, height_mm, dimensions_source)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         s.sku(),
         s.serialNo(),
         s.unitType(),
@@ -234,12 +237,16 @@ public class CatalogStore {
         s.issuedApprovalId(),
         Timestamp.from(s.issuedAt()),
         s.shelfMinRemainingDays(),
-        s.shelfMaxDaysSinceManufacture());
+        s.shelfMaxDaysSinceManufacture(),
+        s.dimensions() != null ? s.dimensions().widthMm() : null,
+        s.dimensions() != null ? s.dimensions().depthMm() : null,
+        s.dimensions() != null ? s.dimensions().heightMm() : null,
+        s.dimensions() != null ? s.dimensions().source() : null);
   }
 
   /**
-   * 승인된 규격 변경(중량·용량·보관 온도·주류·소비기한 보장). E/B·구성 낱개 수는 SKU 정체성이라 바꾸지 않는다. 소비기한 보장은 승인 초안 값 그대로(초안에 없으면
-   * 보장 없음으로 바뀐다 — 승인 버전이 정본).
+   * 승인된 규격 변경(중량·용량·보관 온도·주류·소비기한 보장·실물 치수). E/B·구성 낱개 수는 SKU 정체성이라 바꾸지 않는다. 소비기한 보장·실물 치수는 승인 초안 값
+   * 그대로(초안에 없으면 보장 없음·치수 미등록으로 바뀐다 — 승인 버전이 정본).
    */
   public void updateSkuAttributes(
       String sku,
@@ -248,16 +255,22 @@ public class CatalogStore {
       String storageType,
       boolean alcohol,
       @Nullable Integer shelfMinRemainingDays,
-      @Nullable Integer shelfMaxDaysSinceManufacture) {
+      @Nullable Integer shelfMaxDaysSinceManufacture,
+      @Nullable SkuDimensions dimensions) {
     jdbc.update(
         "UPDATE sku SET weight_g = ?, volume_ml = ?, storage_type = ?, alcohol = ?,"
-            + " shelf_min_remaining_days = ?, shelf_max_days_since_mfg = ? WHERE sku = ?",
+            + " shelf_min_remaining_days = ?, shelf_max_days_since_mfg = ?, width_mm = ?, depth_mm = ?,"
+            + " height_mm = ?, dimensions_source = ? WHERE sku = ?",
         weightG,
         volumeMl,
         storageType,
         alcohol,
         shelfMinRemainingDays,
         shelfMaxDaysSinceManufacture,
+        dimensions != null ? dimensions.widthMm() : null,
+        dimensions != null ? dimensions.depthMm() : null,
+        dimensions != null ? dimensions.heightMm() : null,
+        dimensions != null ? dimensions.source() : null,
         sku);
   }
 
@@ -490,6 +503,17 @@ public class CatalogStore {
         rs.getString("issued_approval_id"),
         rs.getTimestamp("issued_at").toInstant(),
         (Integer) rs.getObject("shelf_min_remaining_days"),
-        (Integer) rs.getObject("shelf_max_days_since_mfg"));
+        (Integer) rs.getObject("shelf_max_days_since_mfg"),
+        dimensions(rs));
+  }
+
+  private static @Nullable SkuDimensions dimensions(ResultSet rs) throws SQLException {
+    Integer w = (Integer) rs.getObject("width_mm");
+    Integer d = (Integer) rs.getObject("depth_mm");
+    Integer h = (Integer) rs.getObject("height_mm");
+    if (w == null || d == null || h == null) {
+      return null;
+    }
+    return new SkuDimensions(w, d, h, rs.getString("dimensions_source"));
   }
 }

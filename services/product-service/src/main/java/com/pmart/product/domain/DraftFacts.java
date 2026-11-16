@@ -17,6 +17,7 @@ public record DraftFacts(
     @Nullable String storageType,
     @Nullable Integer shelfMinRemainingDays,
     @Nullable Integer shelfMaxDaysSinceManufacture,
+    SkuDimensions.Input dimensions,
     List<String> barcodes,
     @Nullable String primaryCategoryId,
     List<String> categoryIds,

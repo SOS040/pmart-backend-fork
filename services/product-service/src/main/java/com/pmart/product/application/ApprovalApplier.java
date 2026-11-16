@@ -224,7 +224,8 @@ public class ApprovalApplier {
           f.storageType(),
           skuIn.path("alcohol").asBoolean(false),
           f.shelfMinRemainingDays(),
-          f.shelfMaxDaysSinceManufacture());
+          f.shelfMaxDaysSinceManufacture(),
+          f.dimensions().complete());
       for (String old : catalog.activeBarcodes(sku)) {
         if (!barcodes.contains(old)) {
           catalog.retireBarcode(old, sku, at);
@@ -264,7 +265,8 @@ public class ApprovalApplier {
               approvalId,
               at,
               f.shelfMinRemainingDays(),
-              f.shelfMaxDaysSinceManufacture()));
+              f.shelfMaxDaysSinceManufacture(),
+              f.dimensions().complete()));
       issued.add(sku);
     }
     List<String> active = catalog.activeBarcodes(sku);

@@ -4,11 +4,11 @@ import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.inventory.application.Ledger.HoldChange;
 import com.pmart.mfc.inventory.domain.MoveRules;
-import com.pmart.mfc.inventory.domain.SkuSize;
 import com.pmart.mfc.inventory.domain.StockUnit.Change;
 import com.pmart.mfc.inventory.domain.StockUnit.Key;
 import com.pmart.mfc.inventory.domain.StockUnit.Quality;
 import com.pmart.mfc.inventory.domain.StockUnit.Work;
+import com.pmart.mfc.inventory.domain.UnitSize;
 import com.pmart.mfc.inventory.infrastructure.LocationProjectionStore.LocationRow;
 import com.pmart.mfc.inventory.infrastructure.MoveStore;
 import com.pmart.mfc.inventory.infrastructure.MoveStore.MoveRow;
@@ -23,6 +23,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -139,13 +140,16 @@ public class MoveService {
           false,
           List.of());
     }
-    String storage = skus.find(c.sku()).map(s -> s.storageType()).orElse(null);
+    var projection = skus.find(c.sku()).orElse(null);
+    String storage = projection != null ? projection.storageType() : null;
     locations.requireStorage(c.mfcId(), c.toLocation(), storage);
     LocationRow to = locations.row(c.mfcId(), c.toLocation());
-    if (!props.isDummySkuSize()) {
-      throw PmartException.configRequired("상품 크기(실제 정보 없음 — pmart.inventory.dummy-sku-size)");
+    // 상품 실물 치수 우선, 없으면 더미(설정 시) — 2026-11-16
+    UnitSize size = UnitSize.resolve(c.sku(), projection, props.isDummySkuSize());
+    if (size == null) {
+      throw PmartException.configRequired(
+          "상품 크기(" + c.sku() + " 치수 미등록 — 상품 마스터 dimensions 또는 pmart.inventory.dummy-sku-size)");
     }
-    SkuSize size = SkuSize.dummyFor(c.sku());
     Integer capacity = size.capacity(to.widthMm(), to.depthMm(), to.heightMm(), to.maxWeightG());
     if (capacity == null) {
       throw PmartException.configRequired("위치 치수(" + c.toLocation() + " 가로·세로·높이 — mfc-location)");
@@ -249,7 +253,7 @@ public class MoveService {
             0,
             0,
             "ACTIVE",
-            size.name(),
+            size.label(),
             capacity,
             hash,
             at,
@@ -264,7 +268,7 @@ public class MoveService {
         c.qty(),
         c.fromLocation(),
         c.toLocation(),
-        size,
+        size.label(),
         capacity);
     return moves.find(c.moveId()).orElseThrow();
   }
@@ -428,6 +432,11 @@ public class MoveService {
     return moves.find(moveId).orElseThrow();
   }
 
+  /** 용량 계산 크기: SKU 투영의 상품 실물 치수 우선, 없으면 더미(설정 시), 아니면 null(2026-11-16). */
+  public @Nullable UnitSize unitSize(String sku) {
+    return UnitSize.resolve(sku, skus.find(sku).orElse(null), props.isDummySkuSize());
+  }
+
   @Transactional(readOnly = true)
   public MoveRow get(String moveId) {
     return moves
@@ -437,14 +446,15 @@ public class MoveService {
 
   /**
    * 입고 적치의 진열 규칙(2026-11-08 사용자 결정 — 이동과 같은 기준): 카테고리 칸은 그 카테고리 상품·출하 가능 LOT 만, 같은 상품은 한 자리(고회전
-   * 제외). 용량은 칸 치수와 상품 크기를 알 때만 본다(적치는 치수 미등록으로 입고를 멈추지 않는다 — 전에는 용량을 아예 안 봤다).
+   * 제외). 용량은 칸 치수와 상품 크기를 알 때만 본다(적치는 치수 미등록으로 입고를 멈추지 않는다 — 전에는 용량을 아예 안 봤다). 상품 크기는 상품 실물 치수 우선,
+   * 없으면 더미(설정 시) — 2026-11-16.
    */
   public void requirePlacement(String mfcId, String sku, String lotId, String toLocation, int qty) {
     LocationRow to = locations.row(mfcId, toLocation);
+    UnitSize size = unitSize(sku);
     Integer capacity =
-        props.isDummySkuSize()
-            ? SkuSize.dummyFor(sku)
-                .capacity(to.widthMm(), to.depthMm(), to.heightMm(), to.maxWeightG())
+        size != null
+            ? size.capacity(to.widthMm(), to.depthMm(), to.heightMm(), to.maxWeightG())
             : null;
     int destNow = 0;
     for (var u : stock.unitsAt(mfcId, toLocation)) {
