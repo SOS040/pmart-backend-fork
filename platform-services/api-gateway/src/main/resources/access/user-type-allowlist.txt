@@ -65,6 +65,7 @@ GET /api/v1/claims/{claimId}/withdrawals/{requestId} CUSTOMER
 GET /api/v1/content-drafts/{draftId} OPERATOR
 GET /api/v1/content-images/{imageId} PUBLIC
 GET /api/v1/content-import-batches/{batchId} OPERATOR
+GET /api/v1/cs-intakes OPERATOR
 GET /api/v1/cs-intakes/{intakeId} OPERATOR
 GET /api/v1/customer-assistant/questions CUSTOMER
 GET /api/v1/customer-assistant/questions/{answerId} CUSTOMER
