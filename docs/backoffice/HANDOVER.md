@@ -29,12 +29,12 @@
 6. 권한 흐름: `docs/business/flows/employee-account-provisioning.md` §1(BO-01 결정·구현), `docs/architecture/auth/keycloak-manage-users-and-grant-revocation.md`(권한 회수 구조)
 7. 클라이언트에 보낸 요청: §3 표의 파일들
 
-## 2. 서비스 상태 (2026-11-16)
+## 2. 서비스 상태 (2026-11-16 오후 갱신)
 
 | 서비스 | 된 것 | 안 된 것 |
 |---|---|---|
-| backoffice-bff 0.2.0(8504, LAN PC 4) | 승인함 `GET /views/approval-inbox`(11-03), **처리 대기 `GET /views/pending-work`**(멈춘 사가 + 이행 확인 필요, OPERATOR_ADMIN), **명령 `POST /commands/order-orchestration-service/saga-requery·saga-resolve`**(11-16) | 그 밖 `/views/*`(unified-lookup·case-inbox·trip-control …)·명령 결과 조회 501, MFC 인계 거절·중지 실패 목록(mfc 에 목록 API 없음 — 사용자 "지금은 요청 안 함") |
-| case-service 0.4.1(8506, LAN PC 4) | 고객 문의 `/inquiries`(0.2.0 — **답변 때 `InquiryAnswered` 발행**, 11-16, notification 이 고객 알림함에 쌓는다. 답변 내용은 사건에 없음), 라이더 컴플레인 `/rider-complaints`(0.3.0), **사건함 `/cases`**(11-16 — 도움요청·전달 실패·위치 끊김 구독, 오배송 확인 `POST /cases` + `MisdeliveryConfirmed`, 팀 공용 목록 집기·닫기, CaseOpened·Assigned·Closed; 0.4.1 도움요청·전달 실패 사건 `refs` 에 `requestId` — 그 전에 열린 사건은 incidentId 만) | R-3(사가·결제 상신 → 사건), 이관·재개·의무·행위 요청·CS 접수(501), 사건 알림(기한은 표시만) |
+| backoffice-bff **0.3.0 배포**(8504, LAN PC 4) · 0.3.1(#27)·0.4.0(#31) PR 대기 | 승인함(11-03), 처리 대기 `pending-work`(멈춘 사가 + 이행 확인 필요, OPERATOR_ADMIN) + 명령 `saga-requery·saga-resolve`, **통합 조회 `unified-lookup`**(주문·배송·배차·클레임·사건·문의 원천별), **실시간 배송 현황 `live-delivery`**(11-16 배포). PR: 센터 관리자 자기 센터 실시간 배송(0.3.1), 처리 대기 MFC 중지 실패·인계 거절 + `stop-retry·handover-retry`(0.4.0 — 목록은 F-4 뒤 설정으로 켬), 사건함 `case-inbox`(0.5.0 — 연결 배송·주문 지금 상태, PR) | `replenishment-status`·`trip-control`·`packing-handover`·`metrics`·명령 결과 조회 501. 통합 조회 MFC 칸(F-3 대기), latestEta(tracking 미연결) |
+| case-service **0.5.1 배포**(8506, LAN PC 4) · 0.5.2(#27) PR 대기 | 고객 문의 `/inquiries`(답변 때 `InquiryAnswered`, 관리자 보기 0.4.2, `?orderId=` 0.5.0), 라이더 컴플레인, **사건함 `/cases`**(도움요청·전달 실패·위치 끊김·오배송 확인 + **사가·결제 이상 RECONCILIATION·PAYMENT_UNKNOWN(관리자, 1시간)·배차 실패 DISPATCH_FAILED(지원센터, 10분)** 0.5.0, 닫힌 사건 닫힌 시각 순 0.5.1). PR: 센터 관리자는 자기 센터 배차 실패만(0.5.2 — PC 5 DD-MFC 전엔 0건) | 이관·재개·의무·행위 요청·CS 접수·도움요청 접수·교대 인계(501), 사건 알림(ADR-0064 — 직원 알림 없음) |
 
 PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 
@@ -74,7 +74,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
 2. **case R-3** — ✅ **2026-11-16 PC 2 구현(계약 0.5.0, PR 대기 — 기한 1시간·"이상만"·멈춘 사가 안 함, `service-requests/case-service.md` R-3)**. 원래 내용: 사가·결제 이상을 사건으로(`ReconciliationRequired`·`CompensationExecuted`·`PaymentResultUnknown`·`PaymentMismatch` 구독 → RECONCILIATION·PAYMENT_UNKNOWN 사건, 담당 OPERATOR_ADMIN). 처리 기한은 그때 사용자에게. 생기면 처리 대기(BO-12)와 겹치지 않게 — 사건은 알림·기록, 조치는 처리 대기 버튼.
 3. 배송 쪽 연결이 오면 확인: delivery-execution 이 `CaseOpened`·`CaseClosed` 로 도움요청에 사건 번호 붙이기(요청 DE-CASE), dispatch 가 `MisdeliveryConfirmed` 로 회수 배차(DD-2) — PC 5 작업. 그 뒤 execution 의 임시 "도움요청 처리함 닫기"(BOD-4) 정리.
-4. 나중(배차 실패 사건은 11-16 PR #21 로 됨): MFC 인계 거절·중지 실패 목록(필요하면 PC 3 에 요청 — 사용자가 정함), bff 의 다른 화면(`/views/*` 501), 사건 알림.
+4. 나중(배차 실패 사건은 11-16 PR #21 로 됨, MFC 인계 거절·중지 실패는 PR #31 + PC 3 F-4): bff 의 다른 화면(`/views/*` 501), 사건 알림.
 5. 고객센터 문의 답변을 바꿀 때(`InquiryService.reply`) **`InquiryAnswered` 발행을 지킨다** — 고객 알림함이 이것만 보고 "답변이 등록되었어요"를 쌓는다(notification 이 구독, PC 1). 리뷰·알림 백오피스 화면은 정책이 정해질 때(리뷰 숨김·신고는 사용자 결정 "이번엔 뺌").
 - R-2(진행 중 주문 고객센터 취소)는 ADR-0060 으로 거둠 — 만들지 않는다.
 
@@ -85,6 +85,8 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 - **BO-01**: 추가·변경 = 승인, 회수 = 즉시(사유 필수), 관리자 권한(OPERATOR_ADMIN·HR_ADMIN) 회수는 운영 관리자만, 종료일 없으면 근무 기간까지, 소속 변경 시 이전 센터 권한 다음 날 00:00 종료. 권한 관리 메뉴 = 인사팀 앱, 승인 = 백오피스 승인함.
 - **ADR-0062**: 개인정보 원문은 사유 + audit 기록 뒤에만, 기록 2년, 기록 조회 OPERATOR_ADMIN 만.
 - **ADR-0063(리뷰)**: 운영자 숨김·신고 없음(정책 승인 전). **ADR-0064(알림)**: 고객 앱 알림함만, 직원·라이더 알림 없음, 푸시는 나중.
+- **고객 앱 라이더 신고 없음(2026-11-16 "추천대로 지금은 안 하는 걸로")**: 고객이 앱에서 라이더 문제를 직접 신고하는 기능은 만들지 않는다 — 고객 불만은 상담원이 문의·사건으로 기록(2026-11-15 결정), 허위 신고 위험. 다시 하려면 사용자 결정부터.
+- **처리 대기 MFC(2026-11-16 "A안")**: 중지 실패·인계 거절은 PC 3 목록 API(F-4) 뒤 처리 대기에 — bff 0.4.0 은 준비·설정으로 꺼 둠, "다시 시도"는 사유 필수, 처리 완료 표시는 MFC 종류엔 없음.
 
 ## 6. 규칙·도구
 - PR: 포크 `backoffice/<주제>` 브랜치 → PC 1 검토·병합·배포. main push 금지. 저장소마다 PR 따로(backend·clients).
