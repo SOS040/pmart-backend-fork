@@ -55,6 +55,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **어떤 문서를 어떤 순서로** 읽�
 | `docs/business/flows/pending-user-decisions.md` | 사용자 결정 대기 목록 |
 | `docs/business/*-business-logic.md` | 업무 원문(확정 정책 — 설계가 바꾸지 않는다. 없는 규칙은 사용자에게 묻는다) |
 | `docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md`, `docs/architecture/auth/employee-auth-structure.md` | 직원 로그인 구조 — 토큰·권한이 왜 이렇게 됐는지 |
+| `docs/architecture/auth/staff-roles.md` | **직원 역할 13개** — 누가 받고 어느 화면·API 가 열리는지, 승인 역할, 권한 주고 빼는 흐름, 시험 계정 |
 | `docs/adr/0057-lan-dev-https-private-ca.md` | LAN HTTPS·루트 인증서 |
 | `deploy/lan/checks/staff_auth.py` | LAN 직원 토큰 받는 스크립트 |
 | `services/<서비스>/CLAUDE.md` | 그 서비스 안 규칙·상태(고치기 전에) |
