@@ -29,6 +29,18 @@ public class CentersController implements CentersApi {
     this.mapping = mapping;
   }
 
+  /** 라이더용 픽업지 목록(라이더 앱 요청 §2, 2026-11-16) — 운영 중 MFC 만, 내부 값 없이. */
+  @Override
+  public ResponseEntity<com.pmart.center.master.api.generated.model.ListMfcPickupPoints200Response>
+      listMfcPickupPoints() {
+    return ResponseEntity.ok(
+        new com.pmart.center.master.api.generated.model.ListMfcPickupPoints200Response()
+            .items(
+                centers.centers("MFC", "ACTIVE", null, 0, 500).stream()
+                    .map(mapping::pickupPoint)
+                    .toList()));
+  }
+
   @Override
   public ResponseEntity<ListCenters200Response> listCenters(
       @Nullable CenterType type,

@@ -164,8 +164,34 @@ class CenterFlowIT extends PostgresKafkaContainerSupport {
                         "temperatureZones",
                         List.of("AMBIENT", "CHILLED", "FROZEN"),
                         "floors",
-                        1))));
+                        1,
+                        "phone",
+                        "051-000-0000",
+                        "accessPoints",
+                        List.of(
+                            Map.of(
+                                "kind",
+                                "HANDOVER_POINT",
+                                "label",
+                                "1층 라이더 인계대",
+                                "coordinates",
+                                Map.of("lat", 37.4901, "lng", 127.0101)))))));
     assertThat(awaitApplied(created)).startsWith("CREATE:" + centerId + ":v1");
+    // 라이더용 픽업지 목록(라이더 앱 요청 §2): 이름·주소·전화·인계 위치, 승인 정보 없음
+    Res points = get(TestJwt.rider("RD-IT-1"), "/mfc-pickup-points");
+    assertThat(points.status()).isEqualTo(200);
+    JsonNode mine = null;
+    for (JsonNode p : points.body().path("items")) {
+      if (centerId.equals(p.path("centerId").asString())) {
+        mine = p;
+      }
+    }
+    assertThat(mine).isNotNull();
+    assertThat(mine.path("name").asString()).isEqualTo("시험 MFC");
+    assertThat(mine.path("phone").asString()).isEqualTo("051-000-0000");
+    assertThat(mine.path("handoverPoint").path("label").asString()).isEqualTo("1층 라이더 인계대");
+    assertThat(mine.path("coordinates").path("lat").asDouble()).isEqualTo(37.49);
+    assertThat(points.body().toString()).doesNotContain("approvalRef").doesNotContain("approvedBy");
     Res center = get(OPS, "/centers/" + centerId);
     assertThat(center.status()).isEqualTo(200);
     assertThat(center.body().path("name").asString()).isEqualTo("시험 MFC");
