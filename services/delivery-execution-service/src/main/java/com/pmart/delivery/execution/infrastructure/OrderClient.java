@@ -115,6 +115,24 @@ public class OrderClient {
         });
   }
 
+  /** 라이더용 주문 요약(order 내부 — 라이더 앱 요청 §1). 못 읽으면 null(배송 조회를 막지 않는다). */
+  public @Nullable JsonNode riderSummary(String orderId) {
+    try {
+      String body =
+          Downstream.call(
+              "order-service rider-summary",
+              () ->
+                  order
+                      .get()
+                      .uri("/api/v1/internal/orders/{id}/rider-summary", orderId)
+                      .retrieve()
+                      .body(String.class));
+      return body == null ? null : mapper.readTree(body);
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
   private static @Nullable String text(JsonNode n, String field) {
     return n.path(field).isString() ? n.path(field).asString() : null;
   }

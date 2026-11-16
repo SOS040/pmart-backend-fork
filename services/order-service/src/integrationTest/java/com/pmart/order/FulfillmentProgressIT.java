@@ -265,6 +265,37 @@ class FulfillmentProgressIT extends PostgresKafkaContainerSupport {
 
   // ---------- helpers ----------
 
+  /** 라이더 앱 요청 §1(2026-11-16): 라이더용 주문 요약 — 보낼 수량·단가×수량·합계·요청사항, 이름 없으면 sku. */
+  @Test
+  void riderSummaryShowsItemsAmountsAndNote() throws Exception {
+    String orderId = order("CONFIRMED", 3, 2);
+    jdbc.update("UPDATE customer_order SET delivery_note = '문 앞에 두세요' WHERE order_id = ?", orderId);
+    jdbc.update(
+        "UPDATE customer_order_line SET product_name = '사과 1kg', cancelled_before_ship_qty = 1,"
+            + " unfulfilled_qty = 2 WHERE order_line_id = ?",
+        orderId + "-L1");
+    var res =
+        org.springframework.web.client.RestClient.create()
+            .get()
+            .uri(
+                "http://localhost:"
+                    + port
+                    + "/api/v1/internal/orders/"
+                    + orderId
+                    + "/rider-summary")
+            .header("X-Source-System", "delivery-dispatch-service")
+            .retrieve()
+            .body(String.class);
+    var n = new tools.jackson.databind.ObjectMapper().readTree(res);
+    assertThat(n.path("items").get(0).path("name").asString()).isEqualTo("사과 1kg");
+    assertThat(n.path("items").get(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(n.path("items").get(0).path("lineAmount").asInt()).isEqualTo(2000);
+    assertThat(n.path("items").get(1).path("name").asString()).isEqualTo("E-00000002");
+    assertThat(n.path("itemAmount").asInt()).isEqualTo(4000);
+    assertThat(n.path("deliveryNote").asString()).isEqualTo("문 앞에 두세요");
+    assertThat(res).doesNotContain("receiver").doesNotContain("phone");
+  }
+
   private String order(String status, int q1, int q2) {
     String orderId = "ORD-PG-" + UUID.randomUUID();
     Timestamp now = Timestamp.from(Instant.now());

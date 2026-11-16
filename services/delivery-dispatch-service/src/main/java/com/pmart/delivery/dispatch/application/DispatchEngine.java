@@ -815,6 +815,10 @@ public class DispatchEngine {
                   "MISDELIVERY_RESHIPMENT".equals(d.purpose())
                       ? reshipmentPromise(d)
                       : promise(dest)));
+      // 라이더용 주문 요약 사본(라이더 앱 요청 §1 — 사용자 "수락 전부터 전부"). 못 받으면 없이 배차한다
+      upstreams
+          .riderSummaryJson(d.orderId(), d.mfcId())
+          .ifPresent(j -> store.saveOrderSummary(d.deliveryId(), j));
       return store.delivery(d.deliveryId());
     } catch (PmartException e) {
       log.warn("배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.7.0
+  version: 0.7.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -933,6 +933,22 @@ components:
     DeliveryExecution:
       type: object
       properties:
+        orderSummary:
+          type: object
+          x-added-in: '2026-11-16'
+          description: '라이더에게 보일 주문 요약(라이더 앱 요청 §1 — 사용자 결정 2026-11-16 "수락 전부터 전부"): 품목·수량·줄 금액·상품 합계·배송 요청사항. order 에서 조회 때 읽는다(저장 안 함), 못 읽으면 없음. 고객 이름·연락처·주소는 drop-info(픽업 뒤)'
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  optionLabel: { type: [string, 'null'] }
+                  qty: { type: integer }
+                  lineAmount: { type: integer }
+            itemAmount: { type: integer }
+            deliveryNote: { type: [string, 'null'] }
         deliveryId: { type: string }
         version: { type: integer }
         type: { type: string, enum: [FORWARD, RETURN, RESHIPMENT] }

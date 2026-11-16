@@ -213,7 +213,21 @@ public class ExecutionController implements ExecutionApi {
 
   @Override
   public ResponseEntity<DeliveryExecution> getDeliveryExecution(String deliveryId) {
-    return ResponseEntity.ok(views.delivery(service.view(deliveryId)));
+    ExecutionService.View v = service.view(deliveryId);
+    DeliveryExecution out = views.delivery(v);
+    var summary =
+        v.delivery().orderId() == null ? null : dropInfos.orderSummary(v.delivery().orderId());
+    if (summary instanceof tools.jackson.databind.node.ObjectNode o) {
+      o.remove("orderId"); // 배송 조회에 이미 있다
+    }
+    if (summary != null) {
+      out.orderSummary(
+          mapper.convertValue(
+              summary,
+              com.pmart.delivery.execution.api.generated.model.DeliveryExecutionOrderSummary
+                  .class));
+    }
+    return ResponseEntity.ok(out);
   }
 
   /** 증빙 사진 보기(2026-11-16) — 앱·브라우저가 남기지 않게 no-store·private. */

@@ -375,6 +375,23 @@ public class DispatchStore {
         deliveryId);
   }
 
+  /** 라이더용 주문 요약 사본(라이더 앱 요청 §1). */
+  public void saveOrderSummary(String deliveryId, String json) {
+    jdbc.update(
+        "UPDATE delivery SET order_summary = ?::jsonb WHERE delivery_id = ?", json, deliveryId);
+  }
+
+  /** 주문 요약 사본(없으면 null). */
+  public @Nullable String orderSummary(String deliveryId) {
+    List<String> r =
+        jdbc.queryForList(
+            "SELECT order_summary::text FROM delivery WHERE delivery_id = ? AND order_summary IS NOT"
+                + " NULL",
+            String.class,
+            deliveryId);
+    return r.isEmpty() ? null : r.get(0);
+  }
+
   /** 회수 배송 좌표: 픽업 = 회수지, 도착 = MFC, 거리·시간 = 회수지 → MFC(예상 배달료 기준). */
   public void saveRecoveryGeo(
       String deliveryId,
