@@ -42,7 +42,7 @@ RAG 영역(`docs/operations/pc-split.md` §1-1)을 받는 PC 4·사람·Claude �
 
 **여기 적힌 파일만 색인한다.** 문서를 더하거나 빼면 manifest 를 고치고 재색인한다(§4).
 
-### 운영자 RAG — `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml` (49개, 1,642 청크 — 2026-11-15 LAN. 2026-11-16 manifest 52개 — ADR-0062·0063·0064 더함, LAN 재색인 전)
+### 운영자 RAG — `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml` (52개, 1,677 청크 — 2026-11-16 LAN 재색인 `0f477c29`. 그 전 11-15 는 49개·1,642 청크)
 
 **범위 = 업무 직원이 고객 응대·업무 판단에 쓰는 문서만**(사용자 2026-11-15). ADR 61개를 남김 14·뺌 41·애매함 6(뺌)으로 나눈 표와 이유: [`operator-index-scope.md`](operator-index-scope.md). 새 ADR·문서를 넣을 때 이 기준을 먼저 본다.
 
@@ -136,6 +136,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 | `README.md` | 폴더 안내(11-05 기준 상태 — **최신 상태는 이 문서**) |
 | `operator-index-scope.md` | 운영자 RAG 색인 범위 — ADR 61개 남김·뺌·애매함 표와 기준(2026-11-15) |
 | `worklog.md` | RAG 작업 일지(11-04~11-10). 영역을 나눈 뒤(2026-11-15~)는 **`docs/worklog/rag/YYYY-MM-DD.md`**(폴더 있음 — README) |
+| `rag-architecture-2026-11-16.svg` | **지금 RAG 구조도**(2026-11-16 PC 4) — LAN 배치, 임베딩·생성 모델, 색인 6단계, 질문 9단계, 운영자·고객 비교. 코드·설정 저장소 값 기준 — 값이 바뀌면 같이 고친다 |
 | `codex-opinion/` | 설계·검토 원문 1~6차(수정 금지)와 1차 계획 |
 | `references/2026-11-07/` | 사용자가 넣은 외부 자료 원본(무료 모델 추천·Spring AI 구조 검토) |
 | `planning/` | 원본 대조·운영자/고객 RAG 보고서·구조도(2026-11-07) |
