@@ -34,9 +34,9 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 | R-2 | order-orchestration | 없음(기존 S3) |
 
 ## 사건함 공통 결정 (사용자 2026-11-16 "너 추천대로")
-- **유형(처음 다섯)**: 라이더 도움요청 `RIDER_HELP`·전달 실패 `DELIVERY_FAILURE`(R-4), 위치 끊김 `RIDER_LOCATION_STALE`(R-6), 오배송 확인 `MISDELIVERY`(R-7), 사가·결제 이상 `ORDER_EXCEPTION`(R-3). 우선순위는 유형·category 로(사고 ACCIDENT 긴급).
+- **유형(처음 다섯)**: 라이더 도움요청 `RIDER_HELP`·전달 실패 `DELIVERY_FAILURE`(R-4), 위치 끊김 `RIDER_LOCATION_STALE`(R-6), 오배송 확인 `MISDELIVERY`(R-7), 사가·결제 이상 `RECONCILIATION`·`PAYMENT_UNKNOWN`(R-3 — 계약 CaseKind 에 있던 이름을 씀, 2026-11-16 구현). 우선순위는 유형·category 로(사고 ACCIDENT 긴급).
 - **담당**: 유형별 팀 — 앞 넷은 **`RIDER_OPS`(지원센터 겸함, 2026-11-16 결정)**, 사가·결제 이상은 `OPERATOR_ADMIN`. 배정은 **팀 공용 목록에서 직원이 집어 간다**(자동 배정 없음 — 집으면 담당자 기록).
-- **처리 기한**: 유형별 기한을 **표시만** 하고 넘긴 건은 목록에서 강조. 알림(Slack 등)은 나중. **값 확정(사용자 2026-11-16 "그대로 할게")**: 도움요청 10분·위치 끊김 10분·전달 실패 30분·오배송 확인 30분(설정 `pmart.cases.sla`). 사가·결제 이상(R-3)은 그때 정한다.
+- **처리 기한**: 유형별 기한을 **표시만** 하고 넘긴 건은 목록에서 강조. 알림(Slack 등)은 나중. **값 확정(사용자 2026-11-16 "그대로 할게")**: 도움요청 10분·위치 끊김 10분·전달 실패 30분·오배송 확인 30분(설정 `pmart.cases.sla`). 사가·결제 이상(R-3)은 **1시간**(사용자 2026-11-16 "한시간으로").
 
 ## R-3. 사가·결제 상신 받기 (2026-11-09 기록)
 
@@ -47,6 +47,10 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
   2. 사가 ESCALATED(S1·S3·결품 사가의 업무 거절) 상신 경로 — 사건으로 받을지 직접 호출로 받을지 함께 정한다.
 - **사용자 결정**: 문서에 없음 — 케이스 유형·담당·처리 기한은 case 구현 때 질문.
 - 근거: `docs/architecture/events.md`, `docs/business/flows/cancel-vs-handover.md`, `services/order-orchestration-service/CLAUDE.md`(상태).
+- **구현됨(2026-11-16, 보낸 영역 backoffice — case 계약 0.5.0, PR 대기)**. 사용자 결정(같은 날): 처리 기한 **1시간**(표시만), 받을 범위 **"이상만"**, 업무 거절로 멈춘 사가(ESCALATED)는 **지금은 사건으로 열지 않음**(처리 대기 BO-12 에 보인다 — 2번 항목은 하지 않음).
+  - `ReconciliationRequired` 전부·`CompensationExecuted` 중 result ≠ SUCCESS·`PaymentMismatch` 전부 → `RECONCILIATION`, `PaymentResultUnknown` 중 escalated=true → `PAYMENT_UNKNOWN`. 담당 OPERATOR_ADMIN(팀 ORDER_OPS) 만.
+  - 주문마다 같은 종류 열린 사건 하나(재발은 이력). 사건은 알림·기록, 조치는 처리 대기 버튼(BO-12)·각 메뉴.
+  - **PC 1 이 할 것**: 설정 저장소 `case-service.yml` 에 바인딩 `sagaEvents-in-0`(order.saga.v1)·`paymentEvents-in-0`(order.payment.v1), `spring.cloud.function.definition` 에 두 함수, `pmart.cases.sla."[RECONCILIATION]"`·`"[PAYMENT_UNKNOWN]"` PT1H — 시험 사본(`services/case-service/src/integrationTest/resources/pmart-config/case-service.yml`)과 같게. 배포 전 소비 그룹 case-service 의 두 토픽 시작 위치 latest(지난 이상은 처리 대기에 이미 보인다).
 
 ## R-4. 라이더 도움요청·전달 실패 등록 → 지원센터 사건 (2026-11-13, 보낸 영역 delivery — 사용자 결정 "1번")
 
@@ -85,3 +89,8 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **사용자 결정(2026-11-15 "추천대로")**: 오배송 "확인"은 **상담원·지원센터가 확인해서 기록**한다(라이더 앱 화면만으로 확정하지 않는다 — 오판 위험). 그 기록이 들어오면 dispatch 가 근처 다른 라이더로 **회수 배차를 자동으로** 낸다(DD-2, ADR-0052).
 - **case 가 할 것**: 상담원·지원센터의 오배송 확인 기록 API(배송 ID, 잘못 간 곳 — 주소·좌표는 개인정보라 사건에는 참조만, 확인 근거 사진·통화 메모 참조)와 사건 하나(예 `MisdeliveryConfirmed` — 이름·필드는 case 가 계약으로 정하고 delivery 에 알림). R-5 오배송 컴플레인(`RiderComplaintRecorded` MISDELIVERY)과는 별개 — 컴플레인은 라이더 검토용, 이 사건은 실물 회수용(같은 화면에서 둘 다 기록해도 된다).
 - **delivery 가 할 것(받은 뒤)**: dispatch 회수 배송(픽업지 = 오배송지, 도착지 = MFC) 만들기·인근 라이더 탐색(DD-2), execution 회수 수행(지금 501). MFC 새 발송(원주소)은 일반 배차로 따로.
+
+## 배차 실패 → 사건함 (2026-11-16, 보낸 영역 backoffice — 사용자 요청 "배차 실패도 사건함으로")
+- **사용자 결정(같은 날)**: 받을 범위 **중간안** — 시스템 장애(자동 재배차 없음)는 첫 실패에, 라이더 없음·반복 거절·응답 만료(10분마다 자동 재배차)는 같은 배송의 **두 번째 실패부터**. 담당 **지원센터(RIDER_OPS)**, 처리 기한 **10분**(표시만).
+- 근거: 업무 원문 Delivery §3.6(배차 지연 시 MFC 관리자·고객센터 안내 — 상담원이 배송 쪽 사건을 볼 수 있다), 사건함 공통 결정(배송 쪽 = RIDER_OPS). 한계: MFC 관리자는 사건함이 없다(배차 취소는 MFC 백오피스).
+- **구현됨(case 계약 0.5.0, V5, PR #21)**: `DispatchFailed`(delivery.delivery.v1) → `DISPATCH_FAILED`. 배송별 실패 횟수는 case 가 센다(`attempts` 는 재배차 시도마다 다시 셈). 배송마다 열린 사건 하나, 재발은 이력. 자동 종결 없음.
