@@ -27,9 +27,9 @@
 | [TR-2](delivery-tracking-service.md) | delivery-tracking | PC 5 | dispatch·case | 위치 끊김(배달 중 3분)·위치 보존 30일 | 결정됨(2026-11-14; 2026-11-15 받는 쪽은 지원센터 알림만 — 자동 배정 해제 없음) | 구현·LAN 배포(#15, 2026-11-15) — 받는 쪽 case R-6 도 구현(case 0.4.0) |
 | [RS-1](rider-service.md) | rider | PC 5 | delivery-dispatch | 라이더 단계 사건(제한·중지·종료) | 결정됨(2026-11-14: 모든 단계 픽업 전 배정 재배차·픽업분은 완료, 승인 화면 전 운영자 API; 2026-11-15 정지·계약 종료는 진행 중 배송이 끝난 뒤 로그인 끊기) | 구현·LAN 배포(#13, 2026-11-15) — 로그인 끊기 rider-auth #18 병합 |
 | [RS-3](rider-service.md) | rider | PC 5 | case·백오피스 | 컴플레인 누적 → 제한 검토 대상 자동 등록 | 결정됨(2026-11-14: 같은 종류(신고·오배송·파손) 7일 안 3건 이상, 운영자 확인) | 구현(rider — 배포 여부 PC 5 확인), case 쪽 발행 R-5 구현됨 |
-| [RS-2](rider-service.md) | rider | PC 5 | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | 대기 |
+| [RS-2](rider-service.md) | rider | PC 5 | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | **구현**(2026-11-13 — 라이더 토큰 가입, LAN 201 확인; 문서 정리 #59) |
 | [RS-확인](rider-service.md) | rider | PC 5 | backoffice(PC 2) | 확인 요청: LAN 라이더 찾기(`GET /riders`)가 0명 — 가입 라이더가 없는지, 목록이 비는 다른 이유인지 | 없음 | **회신(PC 5, 2026-11-16)** — 가입한 라이더가 없었음. LAN E2E 로 시험 라이더 2명 가입, `GET /riders` 2명 확인 |
-| [CP-1](delivery-capacity-service.md) | delivery-capacity | PC 5 | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | 결정됨(2026-11-15: 주문 유지 + 지연 가능 안내, 고객이 원하면 시간대 변경·취소) | 대기(PC 5) |
+| [CP-1](delivery-capacity-service.md) | delivery-capacity | PC 5 | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | 결정됨(2026-11-15: 주문 유지 + 지연 가능 안내, 고객이 원하면 시간대 변경·취소) | **1부 구현·LAN 배포**(2026-11-16 #59 — 지연 가능 안내), 2부(시간대 변경 S4) 남음 |
 | [O-1](order-service.md) | order | PC 1 | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태, `DeliveryCompleted` → 전달 수량·주문 완료 | 없음 | **구현·LAN 배포**(2026-11-16 PC 1, V10·계약 0.7.1, 0bd5d08a) — `DeliveryFailed` 반영은 남음 |
 | [O-2](order-service.md) | order(·orchestration) | PC 1 | 사용자 | 고객 자율 취소는 상품준비 전까지 | ADR-0052 | 대기 |
 | [O-3](order-service.md) | order(·orchestration, mfc) | PC 1 | 사용자 | 확인된 오배송 새 발송(원주소, 비용 0원) | ADR-0052 | 대기 |
