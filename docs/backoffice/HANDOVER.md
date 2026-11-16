@@ -29,7 +29,7 @@
 6. 권한 흐름: `docs/business/flows/employee-account-provisioning.md` §1(BO-01 결정·구현), `docs/architecture/auth/keycloak-manage-users-and-grant-revocation.md`(권한 회수 구조)
 7. 클라이언트에 보낸 요청: §3 표의 파일들
 
-## 2. 서비스 상태 (2026-11-16 오후 갱신)
+## 2. 서비스 상태 (2026-11-16 저녁 갱신)
 
 | 서비스 | 된 것 | 안 된 것 |
 |---|---|---|
