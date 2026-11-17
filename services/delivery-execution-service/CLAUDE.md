@@ -58,3 +58,5 @@
 - **전달 불가 = 지원센터 대화(2026-11-17, 0.14.0 — 라이더 앱 요청 §13, 사용자 "실패 등록이 대화도 열기")**: `reportFailure` 가 같은 ID(Idempotency-Key)의 `help_request`(category DELIVERY_FAILURE, stage FAILURE_REPORTED)를 넣는다 — 응답 `resultId` = 그 ID, 대화는 기존 messages API, 사건함 사건은 하나(DeliveryIncidentRaised 하나 — DE-CASE 로 사건 번호 연결). 도움요청 만들기로 DELIVERY_FAILURE 는 400. **전달 재개 요청** `POST …/failures/resume-requests`(배정 라이더, FAILURE_REPORTED 만, 메모 300자): 실패 기록 `resumeRequestedAt`(처음 한 번) + 연결된 대화에 라이더 메시지 "[전달 재개 요청] …" → 배송 조회 `failure.helpRequestId`·`resumeRequestedAt`, 직원 배송 목록 `resumeRequestedAt`. 되돌리기는 여전히 지원센터 REJECT.
 
 - **지점 전화(2026-11-17, V14)**: 배정 사건의 `mfcPhone` → `mfc_phone` → 배송 조회·내 배달 내역 `mfcPhone`(라이더 "가게 전화").
+
+- **회수지 연락처 통합(2026-11-17 — 사용자 "라이더 입장에서는 MFC 로 이동하는 배달 하나")**: `GET …/recovery-contact` 를 회수 배송 두 목적 모두로 — 오배송 회수는 전화만, 고객 반품 회수는 주소·받는 분·출입까지(`DropInfoService.recoveryContact`, purpose 함께). 열리는 상태에 FAILURE_REPORTED 더함. 라이더 앱은 회수 화면 한 벌(purpose 로 문구만).
