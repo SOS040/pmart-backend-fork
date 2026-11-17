@@ -380,4 +380,60 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
         send("GET", token, "/me/review-eligibilities?orderId=" + orderId + "&state=EXPIRED", null);
     assertThat(el.body().path("items").size()).isEqualTo(1);
   }
+
+  /**
+   * 내부 조회 — 주문의 리뷰 작성 여부(0.3.0, 2026-11-18 리뷰 요청 알림): 토큰 없이, 쓰기 전 0·한 품목 쓰면 reviewed(삭제해도 그대로), 남의
+   * 계정·없는 주문은 모두 0, 사용자 토큰은 403.
+   */
+  @Test
+  void orderReviewStatusForNotification() throws Exception {
+    String orderId = "ORD-RV-" + newId();
+    String me = "ACC-rv-" + newId();
+    String token = TestJwt.customer(me);
+    stubOrder(orderId, me, "PRD-" + newId(), 0);
+    delivered(orderId, Instant.now().minus(Duration.ofHours(1)), orderId + "-L1", orderId + "-L2");
+    await(
+        () -> count("SELECT count(*) FROM review_eligibility WHERE order_id = ?", orderId),
+        n -> n == 2);
+    String path = "/internal/orders/" + orderId + "/review-status?accountId=" + me;
+
+    Res before = send("GET", null, path, null);
+    assertThat(before.status()).isEqualTo(200);
+    assertThat(before.body().path("eligibleLineCount").asInt()).isEqualTo(2);
+    assertThat(before.body().path("reviewedLineCount").asInt()).isZero();
+    assertThat(before.body().path("openLineCount").asInt()).isEqualTo(2);
+    assertThat(before.body().path("reviewed").asBoolean()).isFalse();
+
+    String reviewId =
+        send("POST", token, "/reviews", Map.of("orderLineId", orderId + "-L1", "rating", 4))
+            .body()
+            .path("reviewId")
+            .asString();
+    Res after = send("GET", null, path, null);
+    assertThat(after.body().path("reviewedLineCount").asInt()).isEqualTo(1);
+    assertThat(after.body().path("openLineCount").asInt()).isEqualTo(1);
+    assertThat(after.body().path("reviewed").asBoolean()).isTrue();
+
+    // 삭제해도 쓴 것으로 센다(삭제 뒤 재작성 불가)
+    assertThat(send("DELETE", token, "/reviews/" + reviewId, null).status()).isEqualTo(204);
+    assertThat(send("GET", null, path, null).body().path("reviewed").asBoolean()).isTrue();
+
+    // 남의 계정·없는 주문은 0
+    Res other =
+        send(
+            "GET",
+            null,
+            "/internal/orders/" + orderId + "/review-status?accountId=ACC-x-" + newId(),
+            null);
+    assertThat(other.status()).isEqualTo(200);
+    assertThat(other.body().path("eligibleLineCount").asInt()).isZero();
+    assertThat(
+            send("GET", null, "/internal/orders/ORD-none/review-status?accountId=" + me, null)
+                .body()
+                .path("eligibleLineCount")
+                .asInt())
+        .isZero();
+    // 사용자 토큰으로 내부 경로는 403
+    assertThat(send("GET", token, path, null).status()).isEqualTo(403);
+  }
 }

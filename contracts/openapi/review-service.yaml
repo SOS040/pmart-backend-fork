@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: review-service
-  version: 0.2.0
+  version: 0.3.0
   x-stage: 2
   description: |
     리뷰·사진·평점, 작성/수정/삭제 이력(REV_ELIGIBLE→SUBMIT_PENDING→PUBLISHED→LOCKED(3일) / DELETED), 자격(품목별 실제 배송완료 후 14일 1건)의 정본. (docs/architecture/service-map.md §1, 2단계)
@@ -11,6 +11,8 @@ info:
     0.2.0(2026-11-16, 구현): 사진 올리기·보기(`/review-photos`, 리뷰당 5장·장당 10MB·JPEG/PNG/WEBP — 사용자 결정), 자격에 상품명(주문 당시 사본).
     자격은 DeliveryCompleted(품목별 첫 수령 시각)로 생긴다. 작성 때 주문 원장으로 다시 확인 — 그 품목이 받은 수량만큼 모두 반품되었으면 NOT_ELIGIBLE(사용자 결정 "전체 환불이면 새 작성 막기", 이미 쓴 리뷰는 그대로).
     작성자 표시는 고객 별명을 가린 값(customer-service 내부 조회, 작성 때 한 번 저장). 운영자 숨김·신고는 아직 없다(사용자 결정 — 정책 승인 전).
+    0.3.0(2026-11-18, 사용자 결정 "A해줘" — 리뷰 요청 알림): 내부 조회 `GET /internal/orders/{orderId}/review-status` — 그 주문에서 이 계정이 리뷰를 썼는지(삭제한 것 포함)·아직 쓸 수 있는 품목 수.
+    notification-service 가 배송 완료 1시간 뒤 "리뷰를 남겨 주세요" 알림을 보낼지 정할 때 부른다(토큰 없는 내부 호출). 반품 여부는 보지 않는다(작성 때 order 로 확인).
 servers:
   - url: /api/v1
 security:
@@ -249,8 +251,40 @@ paths:
                       deliveredAt: { type: string, format: date-time, description: 자격 근거 (order 사본) }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /internal/orders/{orderId}/review-status:
+    get:
+      tags: [internal]
+      summary: '[notification→review] 주문의 리뷰 작성 여부 (토큰 없는 내부 호출) — 리뷰 요청 알림을 보낼지'
+      description: |
+        이 계정(accountId)의 그 주문 품목 중 리뷰 자격이 있는 품목 수·리뷰를 쓴 품목 수(삭제한 리뷰 포함 — 삭제 뒤 재작성은 못 한다)·아직 쓸 수 있는 품목 수(리뷰 없음·기한 안).
+        자격이 아직 없거나 남의 주문이면 모두 0(404 아님). 반품으로 쓸 수 없게 된 품목은 여기서 가리지 않는다(작성 때 order 로 확인).
+        리뷰 본문·작성자는 주지 않는다. (0.3.0, 2026-11-18)
+      x-added-in: '2026-11-18'
+      operationId: getOrderReviewStatus
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: accountId, in: query, required: true, schema: { type: string, minLength: 1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderReviewStatus' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
 components:
   schemas:
+    OrderReviewStatus:
+      type: object
+      description: 주문 하나의 리뷰 작성 여부(본인 계정 기준). 0.3.0
+      required: [orderId, accountId, eligibleLineCount, reviewedLineCount, openLineCount, reviewed]
+      properties:
+        orderId: { type: string }
+        accountId: { type: string }
+        eligibleLineCount: { type: integer, description: 리뷰 자격이 생긴(배송 완료된) 품목 수 }
+        reviewedLineCount: { type: integer, description: 리뷰를 쓴 품목 수(삭제한 리뷰 포함) }
+        openLineCount: { type: integer, description: 리뷰가 없고 작성 기한(수령 + 14일) 안인 품목 수 }
+        reviewed: { type: boolean, description: reviewedLineCount > 0 }
     ReviewState:
       type: string
       enum: [REV_ELIGIBLE, SUBMIT_PENDING, PUBLISHED, LOCKED, DELETED, EXPIRED]

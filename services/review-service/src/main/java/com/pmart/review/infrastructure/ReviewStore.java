@@ -61,6 +61,9 @@ public class ReviewStore {
 
   public record Summary(@Nullable Double average, int count) {}
 
+  /** 주문 하나의 리뷰 작성 여부(0.3.0, 2026-11-18 — 리뷰 요청 알림). */
+  public record OrderStatus(int eligibleLines, int reviewedLines, int openLines) {}
+
   private final JdbcTemplate jdbc;
 
   public ReviewStore(JdbcTemplate jdbc) {
@@ -257,6 +260,22 @@ public class ReviewStore {
           return new Summary(rs.wasNull() ? null : a, rs.getInt("c"));
         },
         productId);
+  }
+
+  /**
+   * 이 계정의 그 주문 품목: 자격 수·리뷰 쓴 수(삭제 포함 — 재작성 불가)·아직 쓸 수 있는 수(리뷰 없음, 수령이 {@code writableSince} 이후 — 작성
+   * 기한 경계 포함).
+   */
+  public OrderStatus orderStatus(String orderId, String accountId, Instant writableSince) {
+    return jdbc.queryForObject(
+        "SELECT count(*) AS eligible, count(r.review_id) AS reviewed,"
+            + " count(*) FILTER (WHERE r.review_id IS NULL AND e.delivered_at >= ?) AS open"
+            + " FROM review_eligibility e LEFT JOIN review r ON r.order_line_id = e.order_line_id"
+            + " WHERE e.order_id = ? AND e.account_id = ?",
+        (rs, i) -> new OrderStatus(rs.getInt("eligible"), rs.getInt("reviewed"), rs.getInt("open")),
+        ts(writableSince),
+        orderId,
+        accountId);
   }
 
   // ---------------------------------------------------------------- 사진

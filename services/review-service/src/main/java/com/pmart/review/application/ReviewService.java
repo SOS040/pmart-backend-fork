@@ -351,6 +351,14 @@ public class ReviewService {
     return view(r, false);
   }
 
+  /**
+   * 내부 조회 — 주문의 리뷰 작성 여부(0.3.0, 2026-11-18 사용자 "A해줘": notification 이 배송 완료 1시간 뒤 리뷰 요청 알림을 보낼지).
+   * 자격이 없거나 남의 주문이면 모두 0. 반품은 보지 않는다(작성 때 order 로 확인).
+   */
+  public ReviewStore.OrderStatus orderReviewStatus(String orderId, String accountId) {
+    return store.orderStatus(orderId, accountId, now().minus(ReviewRules.WRITE_WINDOW));
+  }
+
   /** 내부 조회(삭제 포함, 자격 근거 시각). */
   public ReviewView internal(String reviewId) {
     ReviewRow r =
