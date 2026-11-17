@@ -64,7 +64,7 @@
 | [O-6](order-service.md) | order | PC 1 | 백오피스(고객센터·라이더 운영) | 직원용 주문 검색·상세(연락처 완전 일치, 목록 가림) | 결정됨(2026-11-15: order-service 에 둔다) | **구현·LAN 배포**(2026-11-16 확인 — `GET /orders/lookups` 200) |
 | [F-2](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | delivery-dispatch | 피킹 시작 전 포장 소요시간 입력 → 배차 요청(사용자 확인 "피킹 시작 전") | 결정됨(2026-11-13) | 대기(mfc, PC 3) |
 | [F-3](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | backoffice(PC 2) | 주문 번호로 현장 상태(직원용 — 통합 조회 MFC 칸) | 없음 | 대기(PC 3, 2026-11-16 #27) |
-| [F-4](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | backoffice(PC 2) | 멈춘 중지 요청·거절된 인계 목록 + 재시도에 운영자 ID·사유 받기(처리 대기 BO-12) | 결정됨(2026-11-16 "A안") | 대기(PC 3, 2026-11-16 #27·#31) |
+| [F-4](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | backoffice(PC 2) | 멈춘 중지 요청·거절된 인계 목록 + 재시도에 운영자 ID·사유 받기(처리 대기 BO-12) | 결정됨(2026-11-16 "A안") | **구현·LAN 배포**(2026-11-17 PC 3 #95 mfc-fulfillment 0.9.0 V14, bff 연결 #96 0.8.0 — 처리 대기 MFC 묶음 기본 켬) |
 | [F-5](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | delivery(PC 5)·클라이언트 | 포장 라벨·인계 화면에 화면용 주문번호(order 0.11.0 orderNumber, OrderConfirmed.orderNumber) | 결정됨(2026-11-16 "배달앱의 주문 번호가 고객앱에도 똑같이") | 대기(PC 3) — order 쪽은 #69 LAN 배포 |
 | [F-6](mfc-fulfillment-service.md)·[IV-3](mfc-inventory-service.md) | mfc-fulfillment·mfc-inventory·mfc_app | PC 3 | PDA 피킹 | 피킹 도착지 = 찍은 장바구니(P1), 포장 = 장바구니 → 패킹대(P2), 계약 판정(P3), 한 출고 한 장바구니(P4) — 지금 PDA 피킹 전부 400 거절, 출고 조회 ready_at NULL 500 | 결정됨(2026-11-17 사용자 "장바구니, 집품위치, 상품바코드 모두 찍혀야 해", "PC3에서") | 요청함 |
 | [F-7](mfc-fulfillment-service.md) | mfc-fulfillment·capacity 등 | PC 3 | mfc-app | 작업자 "오늘 업무 내역" — 기간 거르기·completedAt·입고·검사·이동·실사 내 내역 | 요청(사용자 2026-11-17 "본인 금일 작업내용") | 요청함 |
