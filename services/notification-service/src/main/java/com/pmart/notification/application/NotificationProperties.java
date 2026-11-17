@@ -1,5 +1,6 @@
 package com.pmart.notification.application;
 
+import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -10,10 +11,30 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param orderBaseUrl order-service(받는 고객·상품명 — {@code GET /internal/orders/{id}}, 내부 호출)
  * @param pushToken 단말 푸시 토큰(0.3.0)
  * @param fcm 휴대폰 푸시(2026-11-17 라이더, 같은 날 고객) — 키가 없으면 그 쪽은 꺼짐
+ * @param reviewBaseUrl review-service(리뷰 요청 알림 — {@code GET /internal/orders/{id}/review-status},
+ *     내부 호출, 2026-11-18). 없으면 리뷰 요청을 보내지 않는다(쌓아 둔다)
+ * @param reviewRequest 리뷰 요청 알림(2026-11-18)
  */
 @ConfigurationProperties(prefix = "pmart.notification")
 public record NotificationProperties(
-    @Nullable String orderBaseUrl, @Nullable PushToken pushToken, @Nullable Fcm fcm) {
+    @Nullable String orderBaseUrl,
+    @Nullable PushToken pushToken,
+    @Nullable Fcm fcm,
+    @Nullable String reviewBaseUrl,
+    @Nullable ReviewRequest reviewRequest) {
+
+  /**
+   * {@code pmart.notification.review-request.*} — 리뷰 요청 알림(2026-11-18 사용자 결정 "A해줘": 배송 완료 1시간 뒤,
+   * 주문당 한 번, 리뷰를 아직 안 썼을 때만, 앱 알림함만).
+   *
+   * <p>delay·maxAge 는 정책값이라 기본값을 지어내지 않는다 — 둘 중 하나라도 없으면 정리 작업이 보내지 않고(CONFIG_REQUIRED 기록) 줄은
+   * PENDING 으로 쌓인다. 설정이 생기면 그때 기한 안의 줄만 보낸다. 정리 주기·첫 시작은 운영값이라 {@code @Scheduled} 자리표시자 기본값(5분·1분)을
+   * 둔다.
+   *
+   * @param delay 배송 완료 뒤 이만큼 지나면 묻는다(설정 저장소 PT1H)
+   * @param maxAge 배송 완료 뒤 이만큼 지나도 못 보냈으면(review-service 장애 등) 포기하고 EXPIRED(설정 저장소 P3D)
+   */
+  public record ReviewRequest(@Nullable Duration delay, @Nullable Duration maxAge) {}
 
   /**
    * {@code pmart.notification.fcm.*} — FCM HTTP v1(2026-11-17 사용자 "발송 코드만 먼저, 키는 나중").

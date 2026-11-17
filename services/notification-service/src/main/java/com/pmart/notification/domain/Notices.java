@@ -128,6 +128,20 @@ public final class Notices {
   }
 
   /**
+   * 리뷰 요청(2026-11-18 사용자 결정 "A해줘") — 배송 완료 1시간 뒤, 그 주문에 리뷰를 아직 안 썼을 때 한 번. 앱 알림함만(휴대폰 푸시 종류에 넣지
+   * 않는다). 목적지는 주문 — 앱은 templateKey 로 그 주문의 리뷰 쓰기 화면을 연다. 기한 14일은 리뷰 정책(ADR-0063 — 품목별 수령 + 14일).
+   */
+  public static Notice reviewRequested(String orderId) {
+    return new Notice(
+        "REVIEW_REQUESTED",
+        ORDER,
+        "받은 상품은 어떠셨나요?",
+        "상품 리뷰를 남겨 주세요. 리뷰는 받은 날부터 14일 안에 주문 상세에서 쓸 수 있어요.",
+        "ORDER",
+        orderId);
+  }
+
+  /**
    * 오배송 다시 배송비 결제 필요(ADR-0065 — 고객이 잘못 입력한 주소로 배달됐고 실제 집이 200m 이상). 기한 30분은 ADR-0065 정한 값(결제 대기는
    * order-orchestration 이 정본 — 화면의 남은 시간은 고객 API deadlineAt). 주소는 쓰지 않는다.
    */

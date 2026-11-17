@@ -19,7 +19,9 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class OrderClient {
 
-  public record OrderInfo(String accountId, Map<String, String> productNames) {}
+  /** status 는 주문 상태(리뷰 요청 — 취소된 주문 거르기, 2026-11-18). 응답에 없으면 null. */
+  public record OrderInfo(
+      String accountId, Map<String, String> productNames, @Nullable String status) {}
 
   private final RestClient client;
   private final ObjectMapper mapper;
@@ -61,6 +63,6 @@ public class OrderClient {
       }
     }
     String account = n.path("accountId").asString(null);
-    return account == null ? null : new OrderInfo(account, names);
+    return account == null ? null : new OrderInfo(account, names, n.path("status").asString(null));
   }
 }

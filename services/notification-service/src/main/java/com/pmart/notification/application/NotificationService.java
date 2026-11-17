@@ -6,11 +6,13 @@ import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.notification.domain.Notices;
 import com.pmart.notification.domain.Notices.Notice;
+import com.pmart.notification.domain.ReviewRequestRules;
 import com.pmart.notification.infrastructure.NotificationStore;
 import com.pmart.notification.infrastructure.NotificationStore.NotificationRow;
 import com.pmart.notification.infrastructure.NotificationStore.PendingResult;
 import com.pmart.notification.infrastructure.NotificationStore.RefundLink;
 import com.pmart.notification.infrastructure.OrderClient;
+import com.pmart.notification.infrastructure.ReviewRequestStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -50,13 +52,16 @@ public class NotificationService {
 
   private final RiderPush riderPush;
   private final CustomerPush customerPush;
+  private final ReviewRequestStore reviewRequests;
 
   public NotificationService(
       NotificationStore store,
       OrderClient orders,
       Clock clock,
       RiderPush riderPush,
-      CustomerPush customerPush) {
+      CustomerPush customerPush,
+      ReviewRequestStore reviewRequests) {
+    this.reviewRequests = reviewRequests;
     this.riderPush = riderPush;
     this.customerPush = customerPush;
     this.store = store;
@@ -177,7 +182,7 @@ public class NotificationService {
           notify(e, null, orderId, Notices.returnPickupMissed(orderId), "");
         }
       }
-      case "DeliveryCompleted" -> notify(e, null, orderId, Notices.delivered(orderId), "");
+      case "DeliveryCompleted" -> delivered(e, orderId);
       case "RedeliveryPaymentRequired" ->
           notify(
               e,
@@ -189,6 +194,50 @@ public class NotificationService {
               "");
       default -> {}
     }
+  }
+
+  /**
+   * 배송 완료 알림 + 리뷰 요청 대기 기록(2026-11-18 사용자 결정 "A해줘" — 완료 약 1시간 뒤 {@link ReviewRequestSweeper} 가 리뷰를
+   * 아직 안 썼으면 알림함에 한 번). 받는 고객은 완료 알림과 같은 order 조회 한 번으로 찾는다. 주문당 한 줄이라 분할·다시 배송·재전달은 새로 만들지 않는다. 회수
+   * 목적 배송·취소된 주문은 기록하지 않는다({@link ReviewRequestRules#records}).
+   */
+  private void delivered(EventEnvelope e, String orderId) {
+    OrderClient.OrderInfo info = orders.order(orderId);
+    if (info == null) {
+      skip(e, orderId);
+      return;
+    }
+    save(e, info.accountId(), Notices.delivered(orderId), "");
+    JsonNode p = e.payload();
+    if (!ReviewRequestRules.records(text(p, "purpose"), info.status())) {
+      return;
+    }
+    Instant completedAt = instant(text(p, "deliveredAt"));
+    if (completedAt == null) {
+      completedAt = e.occurredAt() != null ? e.occurredAt() : now();
+    }
+    if (reviewRequests.record(
+        new ReviewRequestStore.Pending(
+            orderId, info.accountId(), completedAt, e.eventId().toString()),
+        now())) {
+      log.info("리뷰 요청 대기 — 주문 {}", orderId);
+    }
+  }
+
+  /**
+   * 리뷰 요청 알림 한 건(정리 작업이 review-service 확인 뒤, 같은 트랜잭션에서 대기 줄을 SENT 로 바꾸며 부른다). 주문당 한 번(dedupe_key).
+   * 고객 푸시는 종류 목록({@code customer-templates})에 REVIEW_REQUESTED 가 없으니 알림함만. 만든 알림 ID(이미 있었으면 null).
+   */
+  public @Nullable String notifyReviewRequested(
+      String accountId, String orderId, String sourceEventId, Instant completedAt) {
+    return insert(
+        CUSTOMER,
+        accountId,
+        Notices.reviewRequested(orderId),
+        sourceEventId,
+        "DeliveryCompleted",
+        completedAt,
+        "ReviewRequested:" + orderId);
   }
 
   /**
@@ -403,7 +452,7 @@ public class NotificationService {
         e.eventType() + ":" + e.eventId() + suffix);
   }
 
-  private void insert(
+  private @Nullable String insert(
       String recipientType,
       String accountId,
       Notice n,
@@ -440,7 +489,9 @@ public class NotificationService {
         customerPush.afterCommit(
             accountId, notificationId, n); // 고객 푸시(2026-11-17 — 정한 종류만, 고객 키가 있을 때만)
       }
+      return notificationId;
     }
+    return null;
   }
 
   private static void skip(EventEnvelope e, String orderId) {

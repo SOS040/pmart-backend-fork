@@ -57,7 +57,9 @@ public class CustomerPush {
               new NotificationProperties(
                   null,
                   null,
-                  new NotificationProperties.Fcm(key, null, null, f.tokenUri(), f.sendBaseUrl())),
+                  new NotificationProperties.Fcm(key, null, null, f.tokenUri(), f.sendBaseUrl()),
+                  null,
+                  null),
               builder,
               mapper,
               clock);

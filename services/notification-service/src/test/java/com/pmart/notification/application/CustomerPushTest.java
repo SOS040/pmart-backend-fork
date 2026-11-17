@@ -46,7 +46,11 @@ class CustomerPushTest {
   private static CustomerPush push(@Nullable String customerKey, @Nullable List<String> templates) {
     NotificationProperties props =
         new NotificationProperties(
-            null, null, new NotificationProperties.Fcm(null, customerKey, templates, null, null));
+            null,
+            null,
+            new NotificationProperties.Fcm(null, customerKey, templates, null, null),
+            null,
+            null);
     return new CustomerPush(
         props,
         mock(PushTokenStore.class),
