@@ -345,7 +345,10 @@ public class ReturnService {
           pickupProgress(e.eventType(), p);
         }
       }
-      case "DeliveryFailed" -> pickupFailed(p);
+      // 회수 실패: delivery 는 고객 반품 회수 실패를 ReturnPickupFailed 로 낸다(DD-3, PC 5 2026-11-17 —
+      // claimId·reason·contactAttempts).
+      // DeliveryFailed 는 claimId 가 실린 경우만 받는다(같은 처리, 두 번 와도 회수 줄 상태로 한 번만)
+      case "ReturnPickupFailed", "DeliveryFailed" -> pickupFailed(p);
       default -> {}
     }
   }

@@ -263,9 +263,10 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
       p.put("claimId", claimId);
     }
     p.put("reason", "CUSTOMER_ABSENT");
-    p.put("custody", "RIDER");
+    p.put("contactAttempts", 2);
     p.put("failedAt", "2026-11-17T05:00:00Z");
-    send("delivery.delivery.v1", "DeliveryFailed", "Delivery", deliveryId, p);
+    // delivery 가 실제로 내는 회수 실패 사건(DD-3, PC 5 — ReturnPickupFailed.v1)
+    send("delivery.delivery.v1", "ReturnPickupFailed", "Delivery", deliveryId, p);
   }
 
   void deliveryCreated(String deliveryId, String claimId, String orderId, String pickupRequestId) {
