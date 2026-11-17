@@ -58,7 +58,7 @@ public class CartView {
       @Nullable Long selectedAmount,
       Instant expiresAt,
       List<Source> sources,
-      long minOrderAmount,
+      @Nullable Long minOrderAmount,
       @Nullable Long minOrderShortfall) {}
 
   private final CartStore store;
@@ -66,11 +66,26 @@ public class CartView {
   private final CartProperties props;
   private final Clock clock;
 
-  public CartView(CartStore store, CatalogClient catalog, CartProperties props, Clock clock) {
+  /**
+   * 최소 주문 금액(BR-14, 할인·쿠폰 전 상품액 기준 — 배달팁·봉투값 제외). 설정 저장소 공통 {@code application.yml} 의 {@code
+   * pmart.commerce.min-order-amount} 하나를 order-service 와 같이 읽는다(2026-11-18 사용자 "추천대로" — 두 곳 상수였던
+   * 것). 없으면 null — 장바구니는 그대로 보이고 안내 칸만 비운다(실제 차단은 주문 초안이 CONFIG_REQUIRED).
+   */
+  private final @Nullable Long minOrderAmount;
+
+  public CartView(
+      CartStore store,
+      CatalogClient catalog,
+      CartProperties props,
+      Clock clock,
+      @org.springframework.beans.factory.annotation.Value(
+              "${pmart.commerce.min-order-amount:#{null}}")
+          @Nullable Long minOrderAmount) {
     this.store = store;
     this.catalog = catalog;
     this.props = props;
     this.clock = clock;
+    this.minOrderAmount = minOrderAmount;
   }
 
   public View view(CartRow cart) {
@@ -132,9 +147,9 @@ public class CartView {
         selectedAmount,
         cart.lastChangedAt().plus(props.retention()),
         sources,
-        CartRules.MIN_ORDER_AMOUNT,
-        // 최소주문 부족액(0.2.0) — 선택 품목 가격을 하나라도 모르면 null
-        CartRules.minOrderShortfall(CartRules.MIN_ORDER_AMOUNT, selectedAmount));
+        minOrderAmount,
+        // 최소주문 부족액(0.2.0) — 선택 품목 가격을 하나라도 모르거나 설정이 없으면 null
+        CartRules.minOrderShortfall(minOrderAmount, selectedAmount));
   }
 
   /** 출처 하나 조회. 실패하면 빈 결과 + UNAVAILABLE(화면 전체를 실패시키지 않는다). */

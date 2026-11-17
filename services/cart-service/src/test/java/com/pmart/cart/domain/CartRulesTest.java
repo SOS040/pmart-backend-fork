@@ -26,12 +26,12 @@ class CartRulesTest {
 
   @Test
   void minOrderShortfallMatchesOrderQuote() {
-    assertThat(CartRules.MIN_ORDER_AMOUNT).isEqualTo(15_000);
-    assertThat(CartRules.minOrderShortfall(15_000, 0L)).isEqualTo(15_000);
-    assertThat(CartRules.minOrderShortfall(15_000, 9_500L)).isEqualTo(5_500);
-    assertThat(CartRules.minOrderShortfall(15_000, 15_000L)).isZero();
-    assertThat(CartRules.minOrderShortfall(15_000, 40_000L)).isZero();
-    assertThat(CartRules.minOrderShortfall(15_000, null)).as("가격 불명 — 0 아님").isNull();
+    assertThat(CartRules.minOrderShortfall(15_000L, 0L)).isEqualTo(15_000);
+    assertThat(CartRules.minOrderShortfall(15_000L, 9_500L)).isEqualTo(5_500);
+    assertThat(CartRules.minOrderShortfall(15_000L, 15_000L)).isZero();
+    assertThat(CartRules.minOrderShortfall(15_000L, 40_000L)).isZero();
+    assertThat(CartRules.minOrderShortfall(15_000L, null)).as("가격 불명 — 0 아님").isNull();
+    assertThat(CartRules.minOrderShortfall(null, 9_500L)).as("설정 없음 — 0 아님").isNull();
   }
 
   @Test

@@ -216,11 +216,14 @@ public class NotificationService {
     if (completedAt == null) {
       completedAt = e.occurredAt() != null ? e.occurredAt() : now();
     }
-    if (reviewRequests.record(
+    ReviewRequestStore.Pending pending =
         new ReviewRequestStore.Pending(
-            orderId, info.accountId(), completedAt, e.eventId().toString()),
-        now())) {
+            orderId, info.accountId(), completedAt, e.eventId().toString());
+    if (reviewRequests.record(pending, now())) {
       log.info("리뷰 요청 대기 — 주문 {}", orderId);
+    } else if (reviewRequests.resume(pending)) {
+      // 오배송으로 보류했던 주문이 다시 배송돼 완료 — 이 완료부터 기다림을 다시 센다(2026-11-18)
+      log.info("리뷰 요청 보류 풀림(다시 배송 완료) — 주문 {}", orderId);
     }
   }
 
@@ -326,9 +329,18 @@ public class NotificationService {
     notifyRefund(link.get(), e.eventId().toString(), result, amount, at, e);
   }
 
-  /** platform.case.v1 — 고객센터 답변(고객), 라이더 문의 답변·도움요청 처리 끝(라이더). */
+  /** platform.case.v1 — 고객센터 답변(고객), 라이더 문의 답변·도움요청 처리 끝(라이더), 오배송 확인(리뷰 요청 보류). */
   public void onCaseEvent(EventEnvelope e) {
     JsonNode p = e.payload();
+    if ("MisdeliveryConfirmed".equals(e.eventType())) {
+      // 오배송 확인(2026-11-18 사용자 "추천대로") — 고객이 아직 못 받았으니 대기 중인 리뷰 요청을 보류. 다시 배송이 완료되면 그때부터
+      // 다시 센다(delivered → resume). 환불로 끝나면 보류 그대로(보내지 않는다). 알림함에 따로 남기는 것은 없다.
+      String orderId = text(p, "orderId");
+      if (orderId != null && reviewRequests.hold(orderId)) {
+        log.info("리뷰 요청 보류(오배송 확인) — 주문 {}", orderId);
+      }
+      return;
+    }
     if ("RiderInquiryAnswered".equals(e.eventType())) {
       String inquiryId = text(p, "inquiryId");
       String riderId = text(p, "riderId");

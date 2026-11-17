@@ -49,3 +49,4 @@
   - **delay·max-age·review-base-url 중 하나라도 없으면 보내지 않는다**(CONFIG_REQUIRED 를 로그에 한 번 — 줄은 쌓이고, 설정이 생기면 max-age 안의 것만 보낸다). 주기·첫 시작만 운영값이라 자리표시자 기본값.
   - **앱 알림함만** — `fcm.customer-templates` 에 REVIEW_REQUESTED 를 넣지 않는다(사용자 결정). 수신 설정은 지금처럼 ORDER·IN_APP 잠김(끌 수 있는 설정이 아직 없음 — 리뷰 요청을 MARKETING 으로 두면 customer 마케팅 동의가 필요해 ORDER 로 둠).
   - 시험 `ReviewRequestRulesTest`·`ReviewRequestSweeperTest`·`ReviewRequestIT`(시험 사본 notification-service.yml 에 delay·max-age).
+  - **오배송 보류(2026-11-18 사용자 "추천대로", 0.4.3 설명만)**: `caseEvents` 에 `MisdeliveryConfirmed` 더함 — 그 주문의 PENDING 을 ON_HOLD(`ReviewRequestStore.hold`, 기다림이 지나도 안 보냄). 그 주문의 다음 `DeliveryCompleted`(다시 배송 — purpose MISDELIVERY_REDELIVERY 등, 회수 목적 제외)가 오면 PENDING 으로 되돌리고 완료 시각·사건을 새것으로(`resume` — 기다림 다시). 환불로 끝나면 ON_HOLD 그대로(안 보냄). 마이그레이션 없음(state 문자열). 시험 `ReviewRequestIT.misdeliveryHoldsReviewRequestUntilRedeliveryCompletes`.

@@ -23,7 +23,6 @@ import org.jspecify.annotations.Nullable;
 public final class OrderRules {
 
   public static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-  public static final long MIN_ORDER_AMOUNT = 15_000;
   public static final long FREE_DELIVERY_AMOUNT = 30_000;
   public static final long BAG_FEE = 100;
   public static final int MAX_WEIGHT_PER_DELIVERY_G = 10_000;
@@ -71,9 +70,14 @@ public final class OrderRules {
     return new Tip(base, base, "STANDARD");
   }
 
-  public static Amounts amounts(String mode, long itemAmount, boolean firstPurchaseExpected) {
+  /**
+   * @param minOrderAmount 최소 주문 상품액(BR-14 — 설정 저장소 공통 {@code pmart.commerce.min-order-amount}, cart
+   *     와 같은 값. 2026-11-18 상수에서 설정으로)
+   */
+  public static Amounts amounts(
+      String mode, long itemAmount, boolean firstPurchaseExpected, long minOrderAmount) {
     Tip tip = tip(mode, itemAmount, firstPurchaseExpected);
-    long shortfall = Math.max(0, MIN_ORDER_AMOUNT - itemAmount);
+    long shortfall = Math.max(0, minOrderAmount - itemAmount);
     return new Amounts(
         itemAmount, tip, BAG_FEE, itemAmount + tip.applied() + BAG_FEE, shortfall == 0, shortfall);
   }

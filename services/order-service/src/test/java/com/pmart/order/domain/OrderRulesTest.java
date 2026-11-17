@@ -13,24 +13,27 @@ class OrderRulesTest {
   @Test
   void commerceExamples() {
     // 재구매·알뜰 16,000 → 배달팁 3,000 + 봉투 100 = 19,100
-    var a = OrderRules.amounts("BUNDLED", 16_000, false);
+    var a = OrderRules.amounts("BUNDLED", 16_000, false, 15_000);
     assertThat(a.tip().applied()).isEqualTo(3_000);
     assertThat(a.total()).isEqualTo(19_100);
     // 재구매·한집 30,000 → 무료(OVER_30000) → 30,100
-    var b = OrderRules.amounts("SINGLE", 30_000, false);
+    var b = OrderRules.amounts("SINGLE", 30_000, false, 15_000);
     assertThat(b.tip().applied()).isZero();
     assertThat(b.tip().reason()).isEqualTo("OVER_30000");
     assertThat(b.total()).isEqualTo(30_100);
     // 첫 구매·한집 15,000 → 무료(FIRST_PURCHASE) → 15,100
-    var c = OrderRules.amounts("SINGLE", 15_000, true);
+    var c = OrderRules.amounts("SINGLE", 15_000, true, 15_000);
     assertThat(c.tip().reason()).isEqualTo("FIRST_PURCHASE");
     assertThat(c.total()).isEqualTo(15_100);
     assertThat(c.minOrderSatisfied()).isTrue();
     // 14,500 → 최소 상품액 미달(부족 500), 7,000 → 8,000 부족
-    assertThat(OrderRules.amounts("SINGLE", 14_500, false).minOrderShortfall()).isEqualTo(500);
-    assertThat(OrderRules.amounts("SINGLE", 7_000, false).minOrderShortfall()).isEqualTo(8_000);
+    assertThat(OrderRules.amounts("SINGLE", 14_500, false, 15_000).minOrderShortfall())
+        .isEqualTo(500);
+    assertThat(OrderRules.amounts("SINGLE", 7_000, false, 15_000).minOrderShortfall())
+        .isEqualTo(8_000);
     // 30,000 이상이면 첫 구매여도 사유는 OVER_30000(중복 차감 아님)
-    assertThat(OrderRules.amounts("SINGLE", 31_000, true).tip().reason()).isEqualTo("OVER_30000");
+    assertThat(OrderRules.amounts("SINGLE", 31_000, true, 15_000).tip().reason())
+        .isEqualTo("OVER_30000");
     assertThat(OrderRules.tipBase("SINGLE")).isEqualTo(4_000);
     assertThat(OrderRules.tipBase("SCHEDULED")).isEqualTo(3_000);
   }

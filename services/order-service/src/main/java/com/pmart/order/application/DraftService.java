@@ -112,13 +112,31 @@ public class DraftService {
       DeliveryEvaluator delivery,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      @org.springframework.beans.factory.annotation.Value(
+              "${pmart.commerce.min-order-amount:#{null}}")
+          @Nullable Long minOrderAmount) {
     this.store = store;
     this.upstreams = upstreams;
     this.delivery = delivery;
     this.idempotency = idempotency;
     this.mapper = mapper;
     this.clock = clock;
+    this.minOrderAmount = minOrderAmount;
+  }
+
+  /**
+   * 최소 주문 상품액(BR-14). 설정 저장소 공통 {@code application.yml} {@code pmart.commerce.min-order-amount} —
+   * cart-service 와 같은 값(2026-11-18 사용자 "추천대로", 두 곳 상수였던 것). 없으면 새 견적만 CONFIG_REQUIRED(0·무제한으로 바꾸지
+   * 않는다).
+   */
+  private final @Nullable Long minOrderAmount;
+
+  private long requireMinOrderAmount() {
+    if (minOrderAmount == null) {
+      throw PmartException.configRequired("pmart.commerce.min-order-amount");
+    }
+    return minOrderAmount;
   }
 
   public static String currentCustomer() {
@@ -219,7 +237,10 @@ public class DraftService {
         upstreams.firstPurchaseCandidate(accountId) ? "EXPECTED" : "NOT_ELIGIBLE";
     OrderRules.Amounts amounts =
         OrderRules.amounts(
-            req.deliveryMode(), priced.itemAmount(), "EXPECTED".equals(firstPurchase));
+            req.deliveryMode(),
+            priced.itemAmount(),
+            "EXPECTED".equals(firstPurchase),
+            requireMinOrderAmount());
 
     List<OrderRules.Blocker> blockers = new ArrayList<>();
     if (!amounts.minOrderSatisfied()) {
@@ -279,7 +300,7 @@ public class DraftService {
                 amounts.bagFee(),
                 amounts.total(),
                 amounts.minOrderSatisfied(),
-                OrderRules.MIN_ORDER_AMOUNT,
+                requireMinOrderAmount(),
                 amounts.minOrderShortfall(),
                 firstPurchase,
                 totalWeight,

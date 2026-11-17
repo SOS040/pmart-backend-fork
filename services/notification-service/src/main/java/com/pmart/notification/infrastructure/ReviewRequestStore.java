@@ -45,6 +45,30 @@ public class ReviewRequestStore {
         > 0;
   }
 
+  /**
+   * 오배송 확인(2026-11-18 사용자 "추천대로") — 그 주문의 PENDING 을 ON_HOLD 로(고객이 아직 못 받았다). 이미 보냈거나 끝난 줄은 그대로.
+   * 바꿨으면 true.
+   */
+  public boolean hold(String orderId) {
+    return jdbc.update(
+            "UPDATE review_request SET state = 'ON_HOLD' WHERE order_id = ? AND state = 'PENDING'",
+            orderId)
+        > 0;
+  }
+
+  /**
+   * 보류된 주문의 다음 배송 완료(다시 배송·재발송) — ON_HOLD 를 PENDING 으로 되돌리고 완료 시각·사건을 새것으로(기다림을 다시 센다). 되돌렸으면 true.
+   */
+  public boolean resume(Pending p) {
+    return jdbc.update(
+            "UPDATE review_request SET state = 'PENDING', completed_at = ?, source_event_id = ?,"
+                + " attempts = 0, last_error = NULL WHERE order_id = ? AND state = 'ON_HOLD'",
+            Timestamp.from(p.completedAt()),
+            p.sourceEventId(),
+            p.orderId())
+        > 0;
+  }
+
   /** 완료가 {@code before} 이전인 PENDING 을 모두 EXPIRED 로. 바꾼 수. */
   public int expire(Instant before, Instant now) {
     return jdbc.update(

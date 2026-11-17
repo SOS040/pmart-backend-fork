@@ -20,20 +20,15 @@ public final class CartRules {
   /** 장바구니 주인(토큰 주체). 회원 = accountId, 비회원 = 비회원 토큰 sub. */
   public record Owner(String type, String id) {}
 
-  /**
-   * 최소 주문 금액(BR-14 확정 정책 15,000원 — order-service {@code OrderRules.MIN_ORDER_AMOUNT} 와 같은 값, 정책이
-   * 바뀌면 둘 다 고친다). 할인·쿠폰 전 상품액 기준, 배달팁·봉투값 제외. 장바구니는 표시 안내만 하고 실제 차단은 주문 초안 견적이 한다.
-   */
-  public static final long MIN_ORDER_AMOUNT = 15_000;
-
   private CartRules() {}
 
   /**
    * 최소 주문까지 더 담을 금액(0.2.0) = max(0, 최소 − 선택 품목 금액). 선택 품목 금액을 모르면(가격 불명) null — 0 으로 보지 않는다. order
    * 의 {@code Quote.minOrderShortfall} 과 같은 산식.
    */
-  public static @Nullable Long minOrderShortfall(long minOrderAmount, @Nullable Long itemAmount) {
-    if (itemAmount == null) {
+  public static @Nullable Long minOrderShortfall(
+      @Nullable Long minOrderAmount, @Nullable Long itemAmount) {
+    if (minOrderAmount == null || itemAmount == null) {
       return null;
     }
     return Math.max(0, minOrderAmount - itemAmount);

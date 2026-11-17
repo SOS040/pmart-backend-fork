@@ -33,9 +33,11 @@ class NotificationEventConsumers {
           "ReturnPickedUp",
           "ReturnPickupFailed");
 
-  /** platform.case.v1 — 고객 문의 답변, 라이더 문의 답변·도움요청 처리 끝(라이더 알림함 §11-5). */
+  /**
+   * platform.case.v1 — 고객 문의 답변, 라이더 문의 답변·도움요청 처리 끝(라이더 알림함 §11-5), 오배송 확인(리뷰 요청 보류 — 2026-11-18).
+   */
   private static final Set<String> CASE =
-      Set.of("InquiryAnswered", "RiderInquiryAnswered", "CaseClosed");
+      Set.of("InquiryAnswered", "RiderInquiryAnswered", "CaseClosed", "MisdeliveryConfirmed");
 
   @Bean
   PmartEventConsumer orderEvents(EventConsumers consumers, NotificationService n) {

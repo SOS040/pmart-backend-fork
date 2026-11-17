@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.pmart.common.test.EventEnvelopeFixtures;
@@ -16,6 +17,7 @@ import com.pmart.notification.infrastructure.NotificationStore;
 import com.pmart.notification.infrastructure.ReviewRequestStore;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,6 +161,59 @@ class ReviewRequestIT extends PostgresKafkaContainerSupport {
         .uri("http://localhost:" + port + "/api/v1/me/notifications?size=20")
         .headers(h -> h.setBearerAuth(TestJwt.customer(account)))
         .exchange((req, res) -> mapper.readTree(res.getBody().readAllBytes()));
+  }
+
+  void misdeliveryConfirmed(String orderId) {
+    kafka
+        .send(
+            "platform.case.v1",
+            "CASE-" + orderId,
+            EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+                .from("test")
+                .aggregate("Case", "CASE-" + orderId, 1)
+                .payload(
+                    Map.of(
+                        "caseId",
+                        "CASE-" + orderId,
+                        "orderId",
+                        orderId,
+                        "deliveryId",
+                        "DLV-" + orderId,
+                        "fault",
+                        "RIDER",
+                        "customerChoice",
+                        "RESHIP"))
+                .buildJson())
+        .join();
+  }
+
+  /**
+   * 오배송 확인(2026-11-18 사용자 "추천대로"): 대기 중 리뷰 요청은 보류(ON_HOLD — 기다림이 지나도 안 보냄), 다시 배송 완료가 오면 그 시각부터 다시
+   * 센다(PENDING·완료 시각 바뀜) → 지나면 보냄.
+   */
+  @Test
+  void misdeliveryHoldsReviewRequestUntilRedeliveryCompletes() throws Exception {
+    String me = "ACC-rr-" + id();
+    String orderId = "ORD-RR-" + id();
+    stubOrder(orderId, me, "COMPLETED");
+    stubReview(orderId, me, false, 1);
+    delivered(orderId, Instant.now().minus(Duration.ofHours(2)), null);
+    assertThat(awaitRow(orderId).state()).isEqualTo("PENDING");
+
+    misdeliveryConfirmed(orderId);
+    assertThat(await(() -> store.find(orderId).orElseThrow().state(), st -> st.equals("ON_HOLD")))
+        .isEqualTo("ON_HOLD");
+    sweeper.sweep();
+    assertThat(notices(me, "REVIEW_REQUESTED")).as("보류 중엔 안 보냄").isZero();
+
+    // 다시 배송 완료(방금) — 다시 세기 시작, 아직 1시간 안 지남
+    Instant redelivered = Instant.now().minus(Duration.ofMinutes(5));
+    delivered(orderId, redelivered, "MISDELIVERY_REDELIVERY");
+    ReviewRequestStore.Row row =
+        await(() -> store.find(orderId).orElseThrow(), r -> r.state().equals("PENDING"));
+    assertThat(row.completedAt()).isCloseTo(redelivered, within(1, ChronoUnit.SECONDS));
+    sweeper.sweep();
+    assertThat(notices(me, "REVIEW_REQUESTED")).as("다시 1시간 기다림").isZero();
   }
 
   @Test

@@ -32,7 +32,7 @@ final class CartMapping {
         .mfcId(v.cart().mfcId())
         .items(v.lines().stream().map(CartMapping::item).toList())
         .selectedItemAmount(v.selectedAmount() == null ? null : Math.toIntExact(v.selectedAmount()))
-        .minOrderAmount(Math.toIntExact(v.minOrderAmount()))
+        .minOrderAmount(v.minOrderAmount() == null ? null : Math.toIntExact(v.minOrderAmount()))
         .minOrderShortfall(
             v.minOrderShortfall() == null ? null : Math.toIntExact(v.minOrderShortfall()))
         .lastChangedAt(time(v.cart().lastChangedAt()))
