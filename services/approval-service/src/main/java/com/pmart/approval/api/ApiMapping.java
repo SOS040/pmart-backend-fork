@@ -3,6 +3,9 @@ package com.pmart.approval.api;
 import com.pmart.approval.api.generated.model.ApplicationReceipt;
 import com.pmart.approval.api.generated.model.ApplicationReceiptLine;
 import com.pmart.approval.api.generated.model.Approval;
+import com.pmart.approval.api.generated.model.ApprovalRefReason;
+import com.pmart.approval.api.generated.model.ApprovalRefResult;
+import com.pmart.approval.api.generated.model.ApprovalRefUse;
 import com.pmart.approval.api.generated.model.ApprovalSummary;
 import com.pmart.approval.api.generated.model.ApprovalType;
 import com.pmart.approval.api.generated.model.ChangeRequest;
@@ -12,12 +15,14 @@ import com.pmart.approval.api.generated.model.ExecutionState;
 import com.pmart.approval.api.generated.model.RequestState;
 import com.pmart.approval.api.generated.model.ReviewState;
 import com.pmart.approval.api.generated.model.SubmitChangeRequest202Response;
+import com.pmart.approval.application.ApprovalRefService;
 import com.pmart.approval.application.ApprovalService.Operator;
 import com.pmart.approval.domain.ApprovalRules;
 import com.pmart.approval.infrastructure.ApprovalStore.ApprovalRow;
 import com.pmart.approval.infrastructure.ApprovalStore.ChangeRequestRow;
 import com.pmart.approval.infrastructure.ApprovalStore.DecisionRow;
 import com.pmart.approval.infrastructure.ApprovalStore.ReceiptRow;
+import com.pmart.approval.infrastructure.ApprovalStore.UseRow;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.CommandResponse;
 import java.time.Instant;
@@ -95,6 +100,40 @@ class ApiMapping {
         .receivedAt(odt(r.receivedAt()))
         // 회신이 왔다 = 정본이 승인 사건을 받아 처리했다
         .deliveryState(DeliveryState.ACKNOWLEDGED);
+  }
+
+  /** 승인 번호 판정(AP-1). 승인이 있으면 승인 단위(행 포함)를 함께 — 정본이 자기 집행이 승인 범위 안인지 본다. */
+  ApprovalRefResult approvalRef(ApprovalRefService.Result r) {
+    ApprovalRefResult dto =
+        new ApprovalRefResult()
+            .approvalId(r.approvalId())
+            .usable(r.usable())
+            .reason(r.reason() == null ? null : ApprovalRefReason.fromValue(r.reason().name()));
+    ApprovalRow ap = r.approval();
+    if (ap != null) {
+      dto.type(ApprovalType.fromValue(ap.type()))
+          .targetService(ap.targetService())
+          .targetRef(ap.targetRef())
+          .reviewState(ReviewState.fromValue(ap.reviewState()))
+          .requesterId(ap.requesterId())
+          .effectiveFrom(odt(ap.effectiveFrom()))
+          .expiresAt(odt(ap.expiresAt()))
+          .lines(mapper.readValue(ap.unit(), Approval.class).getLines());
+    }
+    DecisionRow d = r.approved();
+    if (d != null) {
+      dto.approverId(d.approverId()).decidedAt(odt(d.decidedAt()));
+    }
+    UseRow u = r.use();
+    if (u != null) {
+      dto.use(
+          new ApprovalRefUse()
+              .useRef(u.useRef())
+              .usedByService(u.usedByService())
+              .actorId(u.actorId())
+              .usedAt(odt(u.usedAt())));
+    }
+    return dto;
   }
 
   ApprovalSummary summary(ApprovalRow r) {

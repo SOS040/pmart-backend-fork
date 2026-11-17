@@ -90,6 +90,8 @@ public final class ApprovalRules {
       case "SERVICEABILITY" -> "ServiceabilityVersion";
       case "INITIAL_STOCK" -> "InitialStockLoad";
       case "GRANT" -> "EmployeeGrant";
+      case "MFC_STOCK_ADJUSTMENT" -> "MfcStockAdjustment"; // AP-1, 원객체는 targetRef 의 kind·ref
+      case "MFC_OPERATION_RESTRICTION" -> "OperationRestriction";
       default -> type;
     };
   }

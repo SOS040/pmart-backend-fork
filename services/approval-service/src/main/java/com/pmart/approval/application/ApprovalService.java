@@ -1,6 +1,7 @@
 package com.pmart.approval.application;
 
 import com.pmart.approval.domain.ApprovalRules;
+import com.pmart.approval.domain.MfcTargets;
 import com.pmart.approval.infrastructure.ApprovalStore;
 import com.pmart.approval.infrastructure.ApprovalStore.ApprovalRow;
 import com.pmart.approval.infrastructure.ApprovalStore.ChangeRequestRow;
@@ -75,6 +76,17 @@ public class ApprovalService {
 
   public Outcome<ChangeRequestRow> createChangeRequest(
       String requestId, Operator operator, NewChangeRequest in) {
+    if (MfcTargets.isMfcType(in.type())) {
+      // MFC 종류(AP-1): 대상 <mfcId>:<kind>:<ref>·정본·재고 행 형식 — 정본이 승인 번호로 집행할 때 이 문자열로 맞춰 본다
+      List<MfcTargets.Line> lines = new ArrayList<>();
+      for (JsonNode l : mapper.<JsonNode>valueToTree(in.body()).path("lines")) {
+        lines.add(
+            new MfcTargets.Line(
+                l.path("lineKey").asString(null),
+                l.hasNonNull("requestedQty") ? l.get("requestedQty").asInt() : null));
+      }
+      MfcTargets.validate(in.type(), in.targetService(), in.targetRef(), lines);
+    }
     return idempotency.execute(
         key(requestId, "createChangeRequest", operator),
         in.body(),

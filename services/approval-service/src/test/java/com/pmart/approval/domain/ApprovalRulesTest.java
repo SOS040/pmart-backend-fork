@@ -71,6 +71,33 @@ class ApprovalRulesTest {
     assertThat(ApprovalRules.decidedState("APPROVE")).isEqualTo("APPROVED");
     assertThat(ApprovalRules.decidedState("REJECT")).isEqualTo("REJECTED");
     assertThat(ApprovalRules.targetType("PRICE")).isEqualTo("Price");
+    assertThat(ApprovalRules.targetType("MFC_STOCK_ADJUSTMENT")).isEqualTo("MfcStockAdjustment");
+    assertThat(ApprovalRules.targetType("MFC_OPERATION_RESTRICTION"))
+        .isEqualTo("OperationRestriction");
+  }
+
+  @Test
+  void mfcApprovalTypesUseTheirConfiguredRoles() {
+    // AP-1: 재고 = 본사 재고 승인자, 운영 제한 해제 = 운영 관리자(설정 저장소 approver-roles)
+    Map<String, String> roles =
+        Map.of(
+            "MFC_STOCK_ADJUSTMENT", "INVENTORY_APPROVER",
+            "MFC_OPERATION_RESTRICTION", "OPERATOR_ADMIN");
+    assertThatCode(
+            () ->
+                ApprovalRules.requireApprover(
+                    "MFC_STOCK_ADJUSTMENT", "sup-1", "hq-1", List.of("INVENTORY_APPROVER"), roles))
+        .doesNotThrowAnyException();
+    assertCode(
+        () ->
+            ApprovalRules.requireApprover(
+                "MFC_STOCK_ADJUSTMENT", "sup-1", "sup-2", List.of("MFC_SUPERVISOR"), roles),
+        "FORBIDDEN");
+    assertCode(
+        () ->
+            ApprovalRules.requireApprover(
+                "MFC_OPERATION_RESTRICTION", "sup-1", "hq-1", List.of("INVENTORY_APPROVER"), roles),
+        "FORBIDDEN");
   }
 
   @Test

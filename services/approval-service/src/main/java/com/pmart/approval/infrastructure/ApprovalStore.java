@@ -69,6 +69,16 @@ public class ApprovalStore {
       Instant receivedAt,
       String eventId) {}
 
+  /** 승인 번호 사용 기록(AP-1, V5). 한 승인에 하나. */
+  public record UseRow(
+      String approvalId,
+      String useRef,
+      String usedByService,
+      String targetService,
+      String targetRef,
+      @Nullable String actorId,
+      Instant usedAt) {}
+
   private final JdbcTemplate jdbc;
 
   public ApprovalStore(JdbcTemplate jdbc) {
@@ -260,6 +270,43 @@ public class ApprovalStore {
         executionState,
         deliveryState,
         approvalId);
+  }
+
+  /**
+   * 사용 기록. 이미 있으면(다른 요청이 먼저 썼으면) 저장하지 않고 false — 동시에 들어온 두 사용은 PK 충돌에서 뒤 것이 앞 것의 커밋을 기다린 뒤 아무것도 하지
+   * 않는다.
+   */
+  public boolean insertUseIfAbsent(UseRow r) {
+    return jdbc.update(
+            "INSERT INTO approval_ref_use (approval_id, use_ref, used_by_service, target_service,"
+                + " target_ref, actor_id, used_at) VALUES (?,?,?,?,?,?,?)"
+                + " ON CONFLICT (approval_id) DO NOTHING",
+            r.approvalId(),
+            r.useRef(),
+            r.usedByService(),
+            r.targetService(),
+            r.targetRef(),
+            r.actorId(),
+            ts(r.usedAt()))
+        == 1;
+  }
+
+  public Optional<UseRow> findUse(String approvalId) {
+    return jdbc
+        .query(
+            "SELECT * FROM approval_ref_use WHERE approval_id = ?",
+            (rs, n) ->
+                new UseRow(
+                    rs.getString("approval_id"),
+                    rs.getString("use_ref"),
+                    rs.getString("used_by_service"),
+                    rs.getString("target_service"),
+                    rs.getString("target_ref"),
+                    rs.getString("actor_id"),
+                    instant(rs, "used_at")),
+            approvalId)
+        .stream()
+        .findFirst();
   }
 
   /** 승인함: 최근 제출 순, (submitted_at, approval_id) 키셋 페이지. */
