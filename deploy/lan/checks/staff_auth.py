@@ -4,8 +4,9 @@
 (`/api/v1/internal/dev-token-exchange` — 게이트웨이에 없음, 같은 직원 상태 확인을 거친다) → PMart 직원 토큰(15분).
 
 - `claude-dev`(OPERATOR_ADMIN): 비밀번호 `.secrets/keycloak-claude-dev-password`.
-- 다른 시험 계정: `.secrets/keycloak-<계정>-password` 가 있으면 그 값, 없으면 **실행마다 Keycloak 관리 API 로 무작위 비밀번호를 새로 정한다**
-  (`.secrets/keycloak-admin-password` 필요 — 출력·저장하지 않는다). 예전 스크립트가 auth-service 로 하던 것과 같은 성격.
+- 다른 시험 계정: `.secrets/keycloak-<계정>-password` 가 있으면 그 값, 없으면 Keycloak 관리 API 로 무작위 비밀번호를 새로 정하고
+  **그 파일에 저장한다**(2026-11-18 — 전에는 저장하지 않아 실행마다 비밀번호가 바뀌어 다른 PC 파일이 무효가 되고, 옛 값 로그인이 쌓여
+  계정이 잠겼다). 새로 정하는 것은 `.secrets/keycloak-admin-password` 가 있는 PC 1 뿐 — 다른 PC 는 PC 1 에서 그 파일을 받는다. 출력하지 않는다.
 - 역할·센터(`roles`·`centers`)를 주면 employee-auth-service 관리 경로(관리자 claude-dev)로 맞춘 뒤 토큰을 받는다.
 - 계정은 만들지 않는다 — 새 직원은 hr-service 로 등록한다(Keycloak 에 없으면 멈춘다).
 토큰·비밀번호는 출력하지 않는다.
@@ -74,6 +75,8 @@ def _password(username):
     path = os.path.join(SECRETS, f"keycloak-{username}-password")
     if os.path.exists(path):
         return _secret(f"keycloak-{username}-password")
+    if not os.path.exists(os.path.join(SECRETS, "keycloak-admin-password")):
+        raise SystemExit(f"{os.path.basename(path)} 파일이 없다 — PC 1 에서 받아 .secrets 에 둔다(새로 정하기는 PC 1 만)")
     admin = _admin_token()
     st, users = _json("GET", f"{KEYCLOAK}/admin/realms/{REALM}/users?exact=true&username={urllib.parse.quote(kc_username(username))}",
                       headers={"Authorization": "Bearer " + admin})
@@ -84,6 +87,14 @@ def _password(username):
                   {"type": "password", "value": pw, "temporary": False}, {"Authorization": "Bearer " + admin})
     if st != 204:
         raise SystemExit(f"{username} 비밀번호 설정 실패: HTTP {st}")
+    # 바꾼 값을 바로 저장한다 — 다음 실행·다른 PC 가 같은 값을 쓴다. 이미 생긴 파일은 덮지 않는다(동시 실행 대비).
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        raise SystemExit(f"{username} 비밀번호 파일이 실행 중에 생겼다 — 다시 실행한다(Keycloak 값과 다를 수 있음)")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        f.write(pw)
+    print(f"  ..   {username} 비밀번호를 새로 정해 .secrets/{os.path.basename(path)} 에 저장 - 다른 PC 는 이 파일을 받는다")
     return pw
 
 
