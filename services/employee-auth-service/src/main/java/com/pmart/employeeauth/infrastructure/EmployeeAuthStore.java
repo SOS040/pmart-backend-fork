@@ -590,6 +590,32 @@ public class EmployeeAuthStore {
         operatorId);
   }
 
+  /**
+   * 지금 기준으로 끝나지 않은 grant(효력 끝이 없거나 {@code now} 보다 뒤 — 유효하거나 시작 전), 시작 순. 회수·소속 변경으로 끝난 grant 는 그
+   * 시각까지만 남는다(2026-11-17 HR-2 — 중복 권한 검사).
+   */
+  public List<GrantRow> grantsActiveOrFuture(String operatorId, Instant now) {
+    return jdbc.query(
+        "SELECT "
+            + GRANT_COLUMNS
+            + " FROM employee_grant WHERE operator_id = ? AND (valid_until IS NULL OR valid_until > ?)"
+            + " ORDER BY valid_from, grant_id",
+        (rs, i) -> grantRow(rs),
+        operatorId,
+        Timestamp.from(now));
+  }
+
+  /**
+   * 한 직원의 grant 반영을 트랜잭션 끝까지 한 줄로 세운다(PostgreSQL 트랜잭션 advisory lock — 계정 행이 아직 없을 수도 있어 행 잠금 대신).
+   * 서로 다른 승인 사건이 같은 직원에게 동시에 반영될 때 중복 검사가 서로를 못 보는 것을 막는다(2026-11-17 HR-2).
+   */
+  public void lockGrantsOf(String operatorId) {
+    jdbc.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+        rs -> {},
+        "employee_grant:" + operatorId);
+  }
+
   /** 회수할 grant 를 잠근다(그 직원 것만). */
   public Optional<GrantRow> lockGrant(String operatorId, String grantId) {
     return jdbc

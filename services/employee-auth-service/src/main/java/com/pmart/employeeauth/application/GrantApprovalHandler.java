@@ -28,6 +28,10 @@ import tools.jackson.databind.JsonNode;
  *   <li>행 속성: role·centers·validFrom(그날 00:00 Asia/Seoul 부터)·validTo(그날까지 — 다음 날 00:00 부터
  *       무효)·reason.
  *   <li>모르는 역할(설정 {@code pmart.employee-auth.roles} 밖)은 그 행만 거절(UNKNOWN_ROLE).
+ *   <li>이미 유효하거나 시작 전인 같은 권한(역할 같음 + 센터 겹침 + 기간이 지금 이후로 겹침 — {@link GrantOverlap})과 겹치는 행은 새 줄을 만들지
+ *       않고 회신에 REJECTED(GRANT_ALREADY_ACTIVE, domainRef = 기존 grantId)로 남긴다 — GrantApplied
+ *       없음(2026-11-17 HR-2 안전망: 같은 권한이 두 줄이면 회수 때 한 줄만 끝나 권한이 남는다). 요청 단계에서는 hr-service 가 409 로 먼저
+ *       막는다. 같은 직원의 반영은 advisory lock 으로 한 줄로 세운다(서로 다른 승인이 동시에 와도 서로를 본다).
  *   <li>행마다 {@code GrantApplied}(platform.auth.v1 — audit 등), 승인 전체로 {@code
  *       ApplicationReceiptRecorded} (platform.approval-receipt.v1 — approval 실행 축, ADR-0039).
  *   <li>반려(REJECTED)는 반영할 것이 없다. 이미 나간 토큰에는 다음 발급·갱신(15분 안)부터 실린다.
@@ -40,6 +44,10 @@ public class GrantApprovalHandler {
   public static final String SERVICE = "employee-auth-service";
   static final String GRANT_TOPIC = "platform.auth.v1";
   static final String RECEIPT_TOPIC = "platform.approval-receipt.v1";
+
+  /** 회신 행 거절 사유 — 이미 유효·예정인 같은 권한(HR-2). hr-service 409 코드와 같은 이름. */
+  static final String ALREADY_ACTIVE = "GRANT_ALREADY_ACTIVE";
+
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
   private final EmployeeAuthStore store;
@@ -80,6 +88,7 @@ public class GrantApprovalHandler {
     String operatorId = p.path("targetRef").path("targetId").asString();
     String approverId = p.path("approverId").asString();
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+    store.lockGrantsOf(operatorId);
 
     List<Map<String, Object>> receiptLines = new ArrayList<>();
     int applied = 0;
@@ -102,6 +111,22 @@ public class GrantApprovalHandler {
       Instant from = start(a.path("validFrom").asString(null), p);
       Instant until = untilExclusive(a.path("validTo").asString(null));
       String grantId = approvalId + ":" + lineId;
+      EmployeeAuthStore.GrantRow existing =
+          alreadyActive(operatorId, grantId, role, centers, from, until, now);
+      if (existing != null) {
+        rejected++;
+        receiptLines.add(line(lineId, "REJECTED", ALREADY_ACTIVE, existing.grantId()));
+        // 운영자 ID·역할·grant ID 만(이름·사유 글은 남기지 않는다)
+        log.warn(
+            "이미 유효·예정인 같은 권한과 겹쳐 새 grant 를 만들지 않음: approvalId={} lineId={} operatorId={} role={}"
+                + " existingGrantId={}",
+            approvalId,
+            lineId,
+            operatorId,
+            role,
+            existing.grantId());
+        continue;
+      }
       boolean inserted =
           store.insertGrant(
               grantId,
@@ -130,6 +155,32 @@ public class GrantApprovalHandler {
         result,
         applied,
         rejected);
+  }
+
+  /**
+   * 이 행과 겹치는 이미 유효·예정인 같은 권한(없으면 null). 같은 grant ID(재전달)는 빼서 재전달은 예전처럼 APPLIED 로 끝난다. 같은 승인 안에서 먼저
+   * 반영한 행도 같은 트랜잭션이라 보인다.
+   */
+  private EmployeeAuthStore.@Nullable GrantRow alreadyActive(
+      String operatorId,
+      String grantId,
+      String role,
+      List<String> centers,
+      Instant from,
+      @Nullable Instant until,
+      Instant now) {
+    boolean centerScoped = props.centerScoped(role);
+    GrantOverlap.Period requested = new GrantOverlap.Period(from, until);
+    for (EmployeeAuthStore.GrantRow g : store.grantsActiveOrFuture(operatorId, now)) {
+      if (!g.grantId().equals(grantId)
+          && g.role().equals(role)
+          && GrantOverlap.centersOverlap(centerScoped, g.centers(), centers)
+          && GrantOverlap.periodsOverlap(
+              requested, new GrantOverlap.Period(g.validFrom(), g.validUntil()), now)) {
+        return g;
+      }
+    }
+    return null;
   }
 
   private void publishGrantApplied(

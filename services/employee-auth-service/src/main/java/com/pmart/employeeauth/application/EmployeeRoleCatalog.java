@@ -28,4 +28,12 @@ public class EmployeeRoleCatalog {
     }
     return props.roleCatalog();
   }
+
+  /**
+   * 서비스 간 조회(0.11.0, 2026-11-17 HR-2 — hr-service 권한 요청 검사: 모르는 역할·센터 규칙). 내부 경로라 사용자 확인이 없다(게이트웨이가
+   * {@code /internal/**} 를 막는다). 내용은 {@link #list()} 와 같다.
+   */
+  public List<EmployeeAuthProperties.RoleView> forService() {
+    return props.roleCatalog();
+  }
 }

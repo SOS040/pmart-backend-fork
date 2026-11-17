@@ -96,6 +96,11 @@ public record EmployeeAuthProperties(
     return List.copyOf(out);
   }
 
+  /** 센터 지정 역할인가({@code role-info} 의 center-scoped — 모르는 역할은 아니다). 2026-11-17 HR-2 중복 권한 판정. */
+  public boolean centerScoped(String role) {
+    return roleInfo.stream().anyMatch(i -> i != null && role.equals(i.code()) && i.centerScoped());
+  }
+
   /** 앱별 세션 무활동 한도. 모르는 앱(시험 교환 등)은 세션 최대 길이. */
   public Duration sessionIdle(String app) {
     App a = apps.get(app);

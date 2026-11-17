@@ -2,6 +2,7 @@ package com.pmart.hr;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.matching;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -9,6 +10,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.put;
 import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -71,10 +73,14 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.hr.keycloak.client-secret=it-hr-provisioner-secret"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock(
-    @ConfigureWireMock(
-        name = "mail",
-        baseUrlProperties = {"pmart.hr.mail-provisioner.base-url"}))
+@EnableWireMock({
+  @ConfigureWireMock(
+      name = "mail",
+      baseUrlProperties = {"pmart.hr.mail-provisioner.base-url"}),
+  @ConfigureWireMock(
+      name = "employee-auth",
+      baseUrlProperties = {"pmart.hr.employee-auth-base-url"})
+})
 class HrProvisioningIT extends PostgresKafkaContainerSupport {
 
   static final Network NET = Network.newNetwork();
@@ -129,6 +135,20 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("mail")
   WireMockServer mail;
 
+  /** employee-auth-service 내부 조회 흉내(계약 employee-auth-service 0.11.0 — HR-2 권한 요청 검사). */
+  @InjectWireMock("employee-auth")
+  WireMockServer employeeAuth;
+
+  /** 설정 role-info 와 같은 센터 지정(MFC_SUPERVISOR·MFC_WORKER 만). */
+  static final String ROLES =
+      "{\"items\":["
+          + "{\"code\":\"OPERATOR_ADMIN\",\"name\":\"운영 관리자\",\"centerScoped\":false,\"order\":1},"
+          + "{\"code\":\"HR_ADMIN\",\"name\":\"인사 관리자\",\"centerScoped\":false,\"order\":2},"
+          + "{\"code\":\"CS_AGENT\",\"name\":\"고객센터 상담원\",\"centerScoped\":false,\"order\":3},"
+          + "{\"code\":\"MD\",\"name\":\"MD\",\"centerScoped\":false,\"order\":4},"
+          + "{\"code\":\"MFC_SUPERVISOR\",\"name\":\"센터 관리자\",\"centerScoped\":true,\"order\":5},"
+          + "{\"code\":\"MFC_WORKER\",\"name\":\"센터 작업자\",\"centerScoped\":true,\"order\":6}]}";
+
   RestClient http;
   final String hr = TestJwt.operator("OP-IT-HR", List.of("HR_ADMIN"), List.of());
 
@@ -151,6 +171,11 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     mail.stubFor(
         put(urlMatching("/api/v1/internal/mailboxes/.+/password"))
             .willReturn(aResponse().withStatus(204)));
+    employeeAuth.resetAll();
+    employeeAuth.stubFor(get(urlPathEqualTo("/api/v1/internal/roles")).willReturn(json(ROLES)));
+    employeeAuth.stubFor(
+        get(urlPathMatching("/api/v1/internal/employees/[^/]+/grants"))
+            .willReturn(json("{\"operatorId\":\"x\",\"items\":[]}")));
   }
 
   static com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder json(String body) {
@@ -570,6 +595,161 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     assertThat(call("POST", "/hr/employees/" + op + "/grant-requests", hr, body).status())
         .as("재직 중 아님")
         .isEqualTo(409);
+  }
+
+  static Map<String, Object> grant(String role, List<String> centers) {
+    Map<String, Object> g = new java.util.LinkedHashMap<>();
+    g.put("role", role);
+    g.put("centers", centers);
+    return g;
+  }
+
+  Res requestGrants(String op, List<Map<String, Object>> grants) {
+    return call(
+        "POST",
+        "/hr/employees/" + op + "/grant-requests",
+        hr,
+        Map.of("grants", grants, "reason", "HR-2 시험"));
+  }
+
+  int requestedGrants(String op) {
+    return jdbc.queryForObject(
+        "SELECT count(*) FROM requested_grant WHERE operator_id = ?", Integer.class, op);
+  }
+
+  static String startOf(LocalDate d) {
+    return d.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant().toString();
+  }
+
+  /**
+   * 권한 요청 검사(HR-2, 0.6.0 — permissions.md §9-11·12): 같은 역할 두 줄 400, 센터 규칙(센터 지정 역할은 센터 필수·아닌 역할은 센터
+   * 없음)·모르는 역할 400, 이미 유효·예정인 같은 권한(역할 + 센터 겹침 + 기간 겹침, 연장 포함) 409 GRANT_ALREADY_ACTIVE, 기존 권한이 끝난
+   * 뒤부터는 받음, 다른 센터는 받음, employee-auth-service 를 못 읽으면 503 — 거절된 요청은 행·사건을 남기지 않는다. 등록
+   * requestedGrants 도 같은 400·503.
+   */
+  @Test
+  void grantRequestValidation() {
+    String op = register(mailId());
+    runUntilSettled(op);
+    jdbc.update("UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?", op);
+    LocalDate today = today();
+    int before = requestedGrants(op);
+
+    // 같은 역할 두 줄 — 센터는 한 줄에 모은다
+    Res dup =
+        requestGrants(
+            op,
+            List.of(
+                grant("MFC_WORKER", List.of("MFC-IT-01")),
+                grant("MFC_WORKER", List.of("MFC-IT-02"))));
+    assertThat(dup.status()).as(dup.body().toString()).isEqualTo(400);
+    assertThat(dup.body().path("code").asText()).isEqualTo("VALIDATION_FAILED");
+    assertThat(dup.body().path("details").path(0).path("field").asText()).isEqualTo("grants");
+
+    // 센터 규칙·모르는 역할(역할 목록 = employee-auth-service)
+    Res noCenter = requestGrants(op, List.of(grant("MFC_WORKER", List.of())));
+    assertThat(noCenter.status()).as("센터 지정 역할에 센터 없음").isEqualTo(400);
+    assertThat(noCenter.body().path("details").path(0).path("field").asText())
+        .isEqualTo("grants[0].centers");
+    Res mdCenter =
+        requestGrants(op, List.of(grant("CS_AGENT", List.of()), grant("MD", List.of("MFC-IT-01"))));
+    assertThat(mdCenter.status()).as("센터가 필요 없는 역할에 센터").isEqualTo(400);
+    assertThat(mdCenter.body().path("details").path(0).path("field").asText())
+        .isEqualTo("grants[1].centers");
+    Res unknown = requestGrants(op, List.of(grant("NO_SUCH_ROLE", List.of())));
+    assertThat(unknown.status()).isEqualTo(400);
+    assertThat(unknown.body().path("details").path(0).path("field").asText())
+        .isEqualTo("grants[0].role");
+
+    // 이미 유효한 권한: MFC_WORKER@MFC-IT-01(오늘 -10일 ~ 오늘 +29일), CS_AGENT(기한 없음)
+    employeeAuth.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/employees/" + op + "/grants"))
+            .willReturn(
+                json(
+                    "{\"operatorId\":\"%s\",\"items\":[".formatted(op)
+                        + "{\"grantId\":\"AP-IT-1:1\",\"role\":\"MFC_WORKER\",\"centers\":[\"MFC-IT-01\"],"
+                        + "\"validFrom\":\"%s\",\"validUntil\":\"%s\"},"
+                            .formatted(startOf(today.minusDays(10)), startOf(today.plusDays(30)))
+                        + "{\"grantId\":\"AP-IT-2:1\",\"role\":\"CS_AGENT\",\"centers\":[],"
+                        + "\"validFrom\":\"%s\",\"validUntil\":null}]}"
+                            .formatted(startOf(today.minusDays(1))))));
+
+    Map<String, Object> overlap = grant("MFC_WORKER", List.of("MFC-IT-01", "MFC-IT-02"));
+    overlap.put("validTo", today.plusDays(29).toString());
+    Res active = requestGrants(op, List.of(overlap));
+    assertThat(active.status()).as(active.body().toString()).isEqualTo(409);
+    assertThat(active.body().path("code").asText()).isEqualTo("GRANT_ALREADY_ACTIVE");
+    assertThat(active.body().path("details").path(0).path("field").asText()).isEqualTo("grants[0]");
+    assertThat(active.body().path("details").path(0).path("reason").asText())
+        .contains("existingGrantId=AP-IT-1:1", "role=MFC_WORKER", "centers=MFC-IT-01")
+        .contains("validUntil=" + startOf(today.plusDays(30)), "extension=false");
+    assertThat(active.body().path("detail").asText()).doesNotContain("연장");
+
+    Res extension = requestGrants(op, List.of(grant("MFC_WORKER", List.of("MFC-IT-01"))));
+    assertThat(extension.status()).as("정규직 — 근무 기간까지 = 기존보다 늦게 끝남(연장)").isEqualTo(409);
+    assertThat(extension.body().path("code").asText()).isEqualTo("GRANT_ALREADY_ACTIVE");
+    assertThat(extension.body().path("detail").asText()).contains("연장");
+    assertThat(extension.body().path("details").path(0).path("reason").asText())
+        .contains("extension=true");
+
+    Res global = requestGrants(op, List.of(grant("CS_AGENT", List.of())));
+    assertThat(global.status()).as("센터가 필요 없는 역할 — 센터와 상관없이 같은 권한").isEqualTo(409);
+    assertThat(global.body().path("details").path(0).path("reason").asText())
+        .contains("existingGrantId=AP-IT-2:1", "validUntil=none");
+    assertThat(requestedGrants(op)).as("거절은 행을 남기지 않는다").isEqualTo(before);
+    assertThat(outbox(op, "GrantRequested")).isEqualTo(1);
+    employeeAuth.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/internal/employees/" + op + "/grants"))
+            .withQueryParam("activeOrFuture", matching("true")));
+
+    // 기존 권한이 끝난 날(validUntil 의 날)부터 시작 → 받음
+    Map<String, Object> after = grant("MFC_WORKER", List.of("MFC-IT-01"));
+    after.put("validFrom", today.plusDays(30).toString());
+    Res future = requestGrants(op, List.of(after));
+    assertThat(future.status()).as(future.body().toString()).isEqualTo(200);
+    assertThat(requestedGrants(op)).isEqualTo(before + 1);
+    assertThat(outbox(op, "GrantRequested")).isEqualTo(2);
+    jdbc.update("UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?", op);
+
+    // 다른 센터 → 받음
+    Res otherCenter = requestGrants(op, List.of(grant("MFC_WORKER", List.of("MFC-IT-02"))));
+    assertThat(otherCenter.status()).as(otherCenter.body().toString()).isEqualTo(200);
+    jdbc.update("UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?", op);
+
+    // 등록 requestedGrants 도 같은 400
+    Map<String, Object> regDup = registration(mailId(), "REGULAR", today, null);
+    regDup.put("requestedGrants", List.of(grant("MD", List.of()), grant("MD", List.of())));
+    Res regDupRes = call("POST", "/hr/employees", hr, regDup);
+    assertThat(regDupRes.status()).isEqualTo(400);
+    assertThat(regDupRes.body().path("details").path(0).path("field").asText())
+        .isEqualTo("requestedGrants");
+    Map<String, Object> regCenter = registration(mailId(), "REGULAR", today, null);
+    regCenter.put("requestedGrants", List.of(grant("MD", List.of("MFC-IT-01"))));
+    Res regCenterRes = call("POST", "/hr/employees", hr, regCenter);
+    assertThat(regCenterRes.status()).isEqualTo(400);
+    assertThat(regCenterRes.body().path("details").path(0).path("field").asText())
+        .isEqualTo("requestedGrants[0].centers");
+
+    // employee-auth-service 를 못 읽으면 503 — 검사 없이 받지 않는다
+    employeeAuth.stubFor(
+        get(urlPathMatching("/api/v1/internal/.*")).willReturn(aResponse().withStatus(503)));
+    int beforeDown = requestedGrants(op);
+    Res down = requestGrants(op, List.of(grant("PRICE_APPROVER", List.of())));
+    assertThat(down.status()).as(down.body().toString()).isEqualTo(503);
+    assertThat(down.body().path("code").asText()).isEqualTo("DEPENDENCY_UNAVAILABLE");
+    assertThat(requestedGrants(op)).isEqualTo(beforeDown);
+    String downMail = mailId();
+    Res regDown = call("POST", "/hr/employees", hr, registration(downMail, "REGULAR", today, null));
+    assertThat(regDown.status()).as("등록 요청 권한도 검사 못 하면 직원을 만들지 않음").isEqualTo(503);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM employee WHERE mail_id = ?", Integer.class, downMail))
+        .isZero();
+    Map<String, Object> noGrants = registration(mailId(), "REGULAR", today, null);
+    noGrants.remove("requestedGrants");
+    assertThat(call("POST", "/hr/employees", hr, noGrants).status())
+        .as("요청 권한이 없는 등록은 employee-auth-service 를 부르지 않는다")
+        .isEqualTo(201);
   }
 
   /**

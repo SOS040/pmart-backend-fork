@@ -1,6 +1,6 @@
 # 직원 계정 발급·정지·퇴사 흐름 (hr-service, ADR-0056)
 
-- 작성: 2026-11-13. 구현: `services/hr-service`(`ProvisioningWorker`·`IamSyncWorker`·`ContractEndJob`·`GrantDecisions`), approval-service `ApprovalService.intakeGrantRequest`, employee-auth-service `GrantApprovalHandler`·`EmployeeAccess`. 계약 `contracts/openapi/hr-service.yaml`·`mail-provisioner.yaml`, 사건 `contracts/events/Employee*.v1.json`·`GrantRequested.v1.json`.
+- 작성: 2026-11-13. 구현: `services/hr-service`(`ProvisioningWorker`·`IamSyncWorker`·`ContractEndJob`·`GrantDecisions`·`GrantRequestRules`), approval-service `ApprovalService.intakeGrantRequest`, employee-auth-service `GrantApprovalHandler`·`EmployeeAccess`. 계약 `contracts/openapi/hr-service.yaml`·`mail-provisioner.yaml`, 사건 `contracts/events/Employee*.v1.json`·`GrantRequested.v1.json`.
 - 근거: ADR-0056 결정 5·7·8·10·16, 설계 `docs/architecture/auth/employee-auth-structure.md` §7-③·④, §8-1.
 - 성격: 여러 시스템(사내 메일 서버·Keycloak·employee-auth-service)에 걸치는 흐름이지만 **분산 트랜잭션이 아니다**. hr-service 가 단계별 진행 상태를 자기 DB 에 남기고, 재시도는 멱등, 끝내 안 되면 이번에 만든 것만 비활성으로 되돌린다(보상).
 
@@ -43,6 +43,7 @@ approval-service: 행마다 자동 승인 규칙 표(pmart.approval.auto-approva
 employee-auth-service: 승인된 행 → employee_grant(유효 기간 = 시작일 00:00 ~ 마지막 날 다음 00:00, Asia/Seoul)
     → 행마다 GrantApplied(platform.auth.v1) + 반영 회신 ApplicationReceiptRecorded(platform.approval-receipt.v1 → approval 실행 축)
     모르는 역할 행은 그 행만 거절(UNKNOWN_ROLE, 회신 PARTIAL)
+    이미 유효·예정인 같은 권한(역할 + 센터 겹침 + 기간 겹침)과 겹치는 행도 그 행만 거절(GRANT_ALREADY_ACTIVE, grant·GrantApplied 없음 — 2026-11-17 HR-2 안전망)
 hr-service: 같은 ApprovalDecided 로 요청 권한 APPROVED·REJECTED(화면 표시용)
 토큰: 다음 로그인·갱신(15분 안)부터 역할·센터 = 계정 값 ∪ 지금 유효한 grant
 ```
@@ -60,6 +61,7 @@ hr-service: 같은 ApprovalDecided 로 요청 권한 APPROVED·REJECTED(화면 �
      - 회수 — employee-auth-service 0.8.0 `POST /employee-auth/employees/{id}/grant-revocations` `{grantId, reason}`(OPERATOR_ADMIN·HR_ADMIN) → grant `valid_until = 지금`·`revoked_at/by/reason`(V6, 행은 남김) → 그 직원 모든 세션 끊기 + `SubjectBlocked`(SESSIONS_REVOKED). 다시 로그인하면 남은 권한으로.
      - 계정에 직접 둔 역할(관리 경로 값 — 이전한 13명 등)은 회수 API 대상이 아니다 — 관리 경로 PUT(OPERATOR_ADMIN).
      - **소속 변경 자동 종료(2026-11-16, 사용자 "실서비스 추천안으로 지금")**: hr-service 0.4.0 소속 변경 → `EmployeeAffiliationChanged`(이전이 센터면 `previousCenterAccessUntil` = 다음 날 00:00 Asia/Seoul) → employee-auth-service 가 그 센터가 들어 있는 grant 의 `valid_until` 을 그 시각으로(회수 기록 `SYSTEM:hr-service`). 그날 안에 인계, 새 센터 권한은 요청 → 승인. 계정에 직접 둔 센터(관리 경로 값)는 건드리지 않는다. 인계할 일 목록(담당 작업·사건)을 소속 변경 화면에 보여 주는 것은 클라이언트·각 서비스 몫(나중).
+     - **요청 검사(2026-11-17 HR-2, 사용자 수락 "백엔드부터")**: hr-service 0.6.0 이 등록 `requestedGrants`·권한 요청 `grants` 를 받을 때 — 같은 역할 두 줄 400, 모르는 역할·센터 규칙(센터 지정 역할은 센터 1개 이상, 아닌 역할은 센터 없음) 400, 권한 요청은 이미 유효·예정인 같은 권한(역할 + 센터 겹침 + 기간이 지금 이후로 겹침) 409 `GRANT_ALREADY_ACTIVE`. 역할 목록·지금 권한은 employee-auth-service 0.11.0 내부 조회(못 읽으면 503 — 검사 없이 받지 않음). 기존 권한이 끝난 날부터 시작하는 요청은 받는다. **기간 연장**(겹치면서 더 늦게 끝남)은 지금 409 — 새 요청으로 받을지 "연장" 요청으로 나눌지 결정 대기. 반영 쪽 안전망은 위 §3. 인사팀 앱 화면은 PC 2(`docs/handoff/clients/hr-backoffice/2026-11-17-request-grant-request-validation.md`).
      - 아직: 회수를 hr 화면 표시(`requestedGrants`)에 되돌려 알리는 사건 — 필요해지면.
 
 ## 2. 정지·복귀·퇴사·계약 종료

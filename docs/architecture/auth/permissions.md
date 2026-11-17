@@ -126,10 +126,10 @@
 
 ## 5. 직원 권한을 주고 빼는 흐름 (BO-01)
 
-1. **요청** — `HR_ADMIN` 이 인사팀 앱에서(`POST /hr/employees/{id}/grant-requests`). 자기 권한은 요청 못 함. 대상은 ACTIVE·계정 준비됨, 열린 요청이 없어야 함.
+1. **요청** — `HR_ADMIN` 이 인사팀 앱에서(`POST /hr/employees/{id}/grant-requests`). 자기 권한은 요청 못 함. 대상은 ACTIVE·계정 준비됨, 열린 요청이 없어야 함. 한 요청에 역할은 한 번, 센터 지정 역할(`MFC_SUPERVISOR`·`MFC_WORKER`)만 센터를 넣고(1개 이상), 이미 유효·예정인 같은 권한(센터·기간 겹침)은 다시 요청 못 함(409 `GRANT_ALREADY_ACTIVE` — 2026-11-17 HR-2).
 2. **승인** — `OPERATOR_ADMIN`(승인 종류 GRANT, 요청자와 달라야 함).
    - 자동 승인: 역할 `MFC_WORKER` + 소속이 센터 + 권한 센터가 그 소속 센터 하나일 때만(규칙 `GRANT-MFC-WORKER-OWN-CENTER`, 승인자 기록 `RULE:…@v1`).
-3. **반영** — employee-auth-service 가 권한(grant)을 만들고 `GrantApplied`. 다음 로그인·토큰 갱신(최대 15분)부터 토큰에 들어감. MFC 작업자 명단은 이 사건으로 생긴다(인사 등록만으로는 안 생김).
+3. **반영** — employee-auth-service 가 권한(grant)을 만들고 `GrantApplied`(이미 유효·예정인 같은 권한과 겹치는 행은 만들지 않음 — 안전망, 회신 REJECTED `GRANT_ALREADY_ACTIVE`). 다음 로그인·토큰 갱신(최대 15분)부터 토큰에 들어감. MFC 작업자 명단은 이 사건으로 생긴다(인사 등록만으로는 안 생김).
 4. **회수** — 즉시, 사유 필수(`OPERATOR_ADMIN`·`HR_ADMIN`). 그 직원의 세션을 모두 끊고 차단 목록에 올린다. **`OPERATOR_ADMIN`·`HR_ADMIN` 권한은 `OPERATOR_ADMIN` 만** 회수. 자기 권한은 회수 못 함.
 5. **소속 변경** — 이전 센터 권한은 다음 날 00:00(서울)에 자동 종료.
 6. 직원 상세·지금 권한 보기: `OPERATOR_ADMIN`·`HR_ADMIN`(승인자·회수자 이름 표시 — 2026-11-17). 역할 목록 API: 직원 누구나.
@@ -242,8 +242,8 @@
 9. 차단 목록은 게이트웨이만 본다 — 서비스를 직접 부르면(LAN 안) 정지된 토큰도 만료 전까지 통한다.
 10. 운영자 RAG·배송 권역 작성은 직원 누구나(역할 결정 없음). ✅ 교대 인수인계는 역할을 정함(case 0.13.1, #74 — 2026-11-17).
 
-11. **직원 권한을 중복으로 줄 수 있다**(발견 2026-11-17) — hr-service 권한 요청은 "결정 안 된 요청이 있으면 409"만 본다. 이미 유효한 같은 역할·같은 센터 권한을 또 요청해 승인되면 employee-auth 에 권한 줄이 하나 더 생긴다(토큰 역할은 합쳐져 한 번이지만 **회수할 때 한 줄만 회수하면 다른 줄로 권한이 남는다**, 권한 목록 중복, `GrantEnded` 가 줄마다). 한 요청 안의 같은 역할 두 줄도 막지 않는다. 인사팀 앱 화면도 막지 않는다.
-12. **센터가 필요 없는 역할에도 센터를 넣을 수 있다**(발견 2026-11-17) — 역할 설정 `role-info.centerScoped`(지금 `MFC_SUPERVISOR`·`MFC_WORKER` 만 예)를 서버가 검사하지 않는 것으로 보인다(확인 전). 센터 지정 역할에 센터가 없는 요청도 같다.
+11. ✅(백엔드, 2026-11-17 — 인사팀 앱 화면은 PC 2 대기) **직원 권한을 중복으로 줄 수 있다**(발견 2026-11-17) — hr-service 권한 요청은 "결정 안 된 요청이 있으면 409"만 봤다. 이미 유효한 같은 역할·같은 센터 권한을 또 요청해 승인되면 employee-auth 에 권한 줄이 하나 더 생겼다(토큰 역할은 합쳐져 한 번이지만 **회수할 때 한 줄만 회수하면 다른 줄로 권한이 남는다**, 권한 목록 중복, `GrantEnded` 가 줄마다). 한 요청 안의 같은 역할 두 줄도 막지 않았다. → hr-service 0.6.0: 같은 역할 두 줄 400, 이미 유효·예정인 같은 권한(역할 + 센터 겹침 + 기간이 지금 이후로 겹침) 409 `GRANT_ALREADY_ACTIVE`(기간 연장도 409 — 결정 대기), 지금 권한은 employee-auth-service 내부 조회(못 읽으면 503). employee-auth-service 0.11.0 안전망: 겹치는 승인 행은 grant 를 만들지 않고 회신 REJECTED(`GRANT_ALREADY_ACTIVE`). `service-requests/hr-service.md` HR-2.
+12. ✅(백엔드, 2026-11-17 — 화면은 PC 2 대기) **센터가 필요 없는 역할에도 센터를 넣을 수 있다**(발견 2026-11-17) — 확인 결과 서버가 `role-info.centerScoped`(지금 `MFC_SUPERVISOR`·`MFC_WORKER` 만 예)를 검사하지 않았다. 센터 지정 역할에 센터가 없는 요청도 같았다. → hr-service 0.6.0 이 등록·권한 요청 모두 400(field `…[i].centers`), 모르는 역할도 400 — 역할 목록은 employee-auth-service 설정이 정본.
 
 ### 계약 표시만 틀린 것 (코드가 맞음 — 계약 고치기)
 - 코드가 역할을 요구하는데 계약은 "OPERATOR"만: audit 열람 기록(`OPERATOR_ADMIN`), order 직원 조회(3개 역할), 이행 확인 필요(센터), product(MD).
@@ -272,7 +272,7 @@
 | 9 | 리뷰 공개 경로 설정이 수정·삭제도 로그인 없이 보안 필터 통과(코드가 다시 막아 실제 피해 없음) | review-service 설정 | 아직(작은 정리) |
 | 10 | 계약 표시가 코드와 다름(실제 권한은 맞음) | 계약 yaml: audit·order·product·pricing·claim·auth-service | 아직(문서만) |
 | — | (발견 2026-11-17) 라이더 픽업 지점 `GET /mfc-pickup-points` 가 게이트웨이 경로에 없어 404 | pmart-config `api-gateway.yml` 경로 | ✅ PR 세션이 경로 추가(pmart-config c6c5ca9) |
-| 11·12 | 직원 권한 중복 부여, 센터 규칙 미검사(§9 중간 11·12) | hr-service 권한 요청 검사(중복 409 `GRANT_ALREADY_ACTIVE`, 센터 규칙 400) + employee-auth 반영 안전망 → 그 뒤 인사팀 앱(PC 2) 요청서 | 사용자 수락(2026-11-17 "백엔드부터 내쪽에서, 클라이언트엔 요청서") — 작업 예정, `service-requests/hr-service.md` HR-2 |
+| 11·12 | 직원 권한 중복 부여, 센터 규칙 미검사(§9 중간 11·12) | hr-service 권한 요청 검사(중복 409 `GRANT_ALREADY_ACTIVE`, 센터 규칙 400) + employee-auth 반영 안전망 → 그 뒤 인사팀 앱(PC 2) 요청서 | ✅ 백엔드 2026-11-17(hr-service 0.6.0·employee-auth-service 0.11.0, LAN 배포 전) — 인사팀 앱 화면 PC 2 대기(`handoff/clients/hr-backoffice/2026-11-17-request-grant-request-validation.md`), 기간 연장 결정 대기. `service-requests/hr-service.md` HR-2 |
 
 ### 10-2. PC 1 이 고치지만 다른 영역에 영향이 가는 것 (함께 정해야 함)
 | 빈틈 | 이유 | 상태 |

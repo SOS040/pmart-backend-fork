@@ -123,6 +123,18 @@ public class EmployeeAdminService {
     return view(a);
   }
 
+  /**
+   * 서비스 간 grant 조회(0.11.0, 2026-11-17 HR-2 — hr-service 가 이미 유효·예정인 같은 권한 요청을 409 로 막으려고 읽는다). 내부
+   * 경로라 사용자 확인이 없다(게이트웨이가 {@code /internal/**} 를 막는다). {@code activeOrFuture} 면 지금 기준으로 끝나지 않은
+   * grant 만(시작 순), 아니면 지난 것 포함 최근 100. 계정이 없어도 빈 목록.
+   */
+  public List<EmployeeAuthStore.GrantRow> grantsForService(
+      String operatorId, boolean activeOrFuture) {
+    return activeOrFuture
+        ? store.grantsActiveOrFuture(operatorId, clock.instant())
+        : store.grants(operatorId);
+  }
+
   /** 계정 행 → 조회 결과(유효 역할·센터, grant 목록). */
   public View view(AccountRow a) {
     return new View(a, access.of(a, clock.instant()), store.grants(a.operatorId()));

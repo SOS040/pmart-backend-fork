@@ -5,6 +5,7 @@ import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.hr.infrastructure.EmployeeAuthClient;
 import com.pmart.hr.infrastructure.HrStore;
 import com.pmart.hr.infrastructure.HrStore.EmployeeRow;
 import com.pmart.hr.infrastructure.HrStore.GrantRow;
@@ -18,6 +19,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -79,6 +81,7 @@ public class EmployeeService {
   private final ObjectProvider<KeycloakAdminClient> keycloak;
   private final ObjectProvider<MailProvisionerClient> mail;
   private final ProvisioningWorker worker;
+  private final EmployeeAuthClient employeeAuth;
 
   public EmployeeService(
       HrStore store,
@@ -89,7 +92,8 @@ public class EmployeeService {
       Clock clock,
       ObjectProvider<KeycloakAdminClient> keycloak,
       ObjectProvider<MailProvisionerClient> mail,
-      ProvisioningWorker worker) {
+      ProvisioningWorker worker,
+      EmployeeAuthClient employeeAuth) {
     this.store = store;
     this.events = events;
     this.idempotency = idempotency;
@@ -99,6 +103,7 @@ public class EmployeeService {
     this.keycloak = keycloak;
     this.mail = mail;
     this.worker = worker;
+    this.employeeAuth = employeeAuth;
   }
 
   // ------------------------------------------------------------------ 등록
@@ -126,6 +131,11 @@ public class EmployeeService {
           "이미 쓰였거나 예전에 쓰인 메일 ID 입니다(퇴사자 ID 도 다시 쓰지 않습니다).",
           false,
           List.of());
+    }
+    if (!r.grants().isEmpty()) {
+      // 역할·센터 규칙(HR-2, 역할 목록 = employee-auth-service). 새 직원이라 이미 가진 권한 검사는 없다.
+      // 못 읽으면 503 — 직원도 만들지 않는다.
+      GrantRequestRules.checkCatalog(r.grants(), employeeAuth.roles(), "requestedGrants");
     }
     Instant now = now();
     int year = LocalDate.now(clock.withZone(props.zone())).getYear();
@@ -198,6 +208,7 @@ public class EmployeeService {
         throw invalid("requestedGrants", "권한 기간이 거꾸로입니다: " + g.role());
       }
     }
+    GrantRequestRules.noDuplicateRoles(r.grants(), "requestedGrants");
   }
 
   // ------------------------------------------------------------------ 조회
@@ -340,6 +351,7 @@ public class EmployeeService {
    * 재직 중 권한 추가·변경 요청(BO-01, 2026-11-15 사용자 결정 — 추가·변경은 승인, 회수는 employee-auth-service 에서 즉시). 계정 발급이
    * 끝난 재직 중 직원만, 자기 권한은 못 올린다, 결정 안 된 권한 요청이 있으면 409(approval 이 같은 대상에 열린 승인을 하나만 둔다). 요청 행을 넣고 같은
    * 트랜잭션에서 GrantRequested(요청자 = 이 인사팀 직원) — 등록 때와 같은 길(ApprovalDecided → hr 표시·employee-auth 적용).
+   * 0.6.0(HR-2): 같은 역할 두 줄·센터 규칙 400, 이미 유효·예정인 같은 권한 409({@link GrantRequestRules}).
    */
   /**
    * 자기 인사 상태는 다른 인사 담당자가 바꾼다(권한 빈틈 정리 2026-11-17 — 권한 요청과 같은 원칙). 자기 정지·퇴사로 계정을 잠그거나, 자기 소속을 바꿔 센터
@@ -370,11 +382,17 @@ public class EmployeeService {
         throw invalid("grants", "이미 지난 종료일입니다: " + g.role());
       }
     }
+    GrantRequestRules.noDuplicateRoles(grants, "grants");
     idempotency.execute(
         new RequestKey(sourceSystem, idempotencyKey, "grant-requests:" + operatorId, hr.subject()),
         java.util.Arrays.asList(grants, reason),
         String.class,
         () -> {
+          // HR-2: 역할 목록·지금 권한의 정본은 employee-auth-service — 직원 행을 잠그기 전에 읽는다.
+          // 재생(같은 키·같은 본문)은 여기까지 오지 않는다. 못 읽으면 503(검사 없이 받지 않는다).
+          Map<String, EmployeeAuthClient.Role> roles = employeeAuth.roles();
+          GrantRequestRules.checkCatalog(grants, roles, "grants");
+          List<EmployeeAuthClient.Grant> current = employeeAuth.activeOrFutureGrants(operatorId);
           EmployeeRow e = locked(operatorId, expectedVersion);
           if (!"ACTIVE".equals(e.status())) {
             throw PmartException.invalidState("재직 중인 직원만 권한을 요청할 수 있습니다(지금 " + e.status() + ").");
@@ -398,6 +416,8 @@ public class EmployeeService {
                 List.of());
           }
           Instant now = now();
+          GrantRequestRules.checkNotActive(
+              grants, current, roles, e.startDate(), e.endDate(), now, props.zone(), "grants");
           for (GrantRequest g : grants) {
             store.insertGrant(
                 operatorId,

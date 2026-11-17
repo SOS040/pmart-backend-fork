@@ -8,7 +8,7 @@
 - **요청한 쪽에서 바꿀 것**: 같은 커밋에서 했다(`EmployeeNames`).
 - **사용자 결정 필요**: 없음.
 
-## HR-2 권한 요청 검사 — 중복 부여·센터 규칙 (2026-11-17 기록, platform PC 1 — 사용자 수락)
+## HR-2 권한 요청 검사 — 중복 부여·센터 규칙 (2026-11-17 기록·백엔드 구현, platform PC 1 — 사용자 수락)
 - **문제(2026-11-17 확인)**: `POST /hr/employees/{id}/grant-requests`(그리고 등록 때 `requestedGrants`)는 "결정 안 된 요청이 있으면 409 `GRANT_REQUEST_PENDING`"만 본다.
   - 이미 유효한 **같은 역할·센터가 겹치는·기간이 겹치는** 권한을 또 요청할 수 있다 → 승인되면 employee-auth `employee_grant` 에 줄이 하나 더 생김(회수 때 한 줄만 회수하면 권한이 남는 위험, 목록 중복, `GrantEnded` 가 줄마다).
   - 한 요청 안에 같은 역할을 두 줄 넣을 수 있다.
@@ -19,6 +19,11 @@
   1. hr-service 권한 요청 검사: 같은 요청 안 중복 역할 400, 센터 규칙(`centerScoped` 역할은 센터 1개 이상·아닌 역할은 센터 없음) 400, 이미 유효한 같은 권한(역할 같고 센터·기간 겹침) 409 `GRANT_ALREADY_ACTIVE` — 지금 권한은 employee-auth 에 묻는다(내부 조회). 역할 목록·`centerScoped` 도 employee-auth 설정을 정본으로.
   2. employee-auth 반영 안전망(`GrantApprovalHandler`): 승인된 줄이 이미 유효한 같은 권한과 겹치면 새 줄을 만들지 않고 기록만.
   3. 그 뒤 인사팀 앱 요청서(PC 2, `docs/handoff/clients/hr-backoffice/`): 센터가 필요 없는 역할이면 센터 칸 숨김·끔, 센터 지정 역할이면 센터 필수, 이미 가진 권한 표시.
-- **정할 것**: 이미 있는 권한의 **기간 연장**(종료일 늘리기)을 새 요청으로 받을지, "연장" 요청으로 구분할지.
-- **상태**: 작업 예정(LOT 바코드 일 다음).
+- **정할 것**: 이미 있는 권한의 **기간 연장**(종료일 늘리기)을 새 요청으로 받을지, "연장" 요청으로 구분할지. (그 전까지는 겹치면서 더 늦게 끝나는 요청도 409 `GRANT_ALREADY_ACTIVE` — `extension=true`, 메시지 "기간 연장은 아직 별도 기능이 없습니다(결정 대기)".)
+- **구현(2026-11-17, PC 1 — 백엔드 끝, LAN 배포 전)**:
+  - hr-service **0.6.0**(`application/GrantRequestRules`, `infrastructure/EmployeeAuthClient`, `EmployeeService.register·requestGrants`): 같은 역할 두 줄 400(field `grants`·등록은 `requestedGrants`), 모르는 역할 400(`grants[i].role`), 센터 규칙 400(`grants[i].centers` — 센터 지정 역할은 1개 이상, 아닌 역할은 센터 없음), 이미 유효·예정인 같은 권한 409 `GRANT_ALREADY_ACTIVE`(역할 같음 + 센터 겹침 — 센터 지정이 아닌 역할은 센터와 상관없이 + 기간이 지금 이후로 겹침, details `grants[i]` = `existingGrantId=…;role=…;centers=…;validFrom=…;validUntil=…|none;extension=…`). 기존 권한이 끝난 날부터 시작하는 요청·다른 센터는 받는다. 역할 목록·지금 권한은 employee-auth-service 내부 조회 — 못 읽으면 503 `DEPENDENCY_UNAVAILABLE`(검사 없이 받지 않음, 요청 권한이 있는 등록도). 외부 조회는 멱등 기록 뒤·직원 행 잠금 전(재생은 부르지 않음). 설정 `pmart.hr.employee-auth-base-url`(기본 `http://employee-auth-service:8511`, local 은 설정 저장소 `hr-service-local.yml` 에 `http://localhost:8511`).
+  - employee-auth-service **0.11.0**: 내부 조회 `GET /internal/roles`·`GET /internal/employees/{id}/grants?activeOrFuture=true`(`InternalController`, 토큰 없음). 안전망 — `GrantApprovalHandler` 가 같은 규칙(`application/GrantOverlap`)으로 겹치는 승인 행은 grant 를 만들지 않고 반영 회신 `REJECTED`(reasonCode `GRANT_ALREADY_ACTIVE`, domainRef = 기존 grantId)·경고 로그(운영자 ID·역할·grant ID 만), `GrantApplied` 없음. 같은 직원 반영은 advisory lock 으로 한 줄로. 사건 계약은 그대로.
+  - 시험: hr `HrProvisioningIT.grantRequestValidation`(employee-auth WireMock)·`GrantRequestRulesTest`, employee-auth `GrantApprovalIT.duplicateApprovedLineDoesNotCreateSecondGrant`·`GrantOverlapTest`.
+  - 클라이언트 요청서(PC 2): `docs/handoff/clients/hr-backoffice/2026-11-17-request-grant-request-validation.md`.
+- **상태**: 백엔드 구현 끝(배포 전), 인사팀 앱 화면(PC 2) 대기, 기간 연장 결정 대기.
 

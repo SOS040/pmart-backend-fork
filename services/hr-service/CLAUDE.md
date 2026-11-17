@@ -4,7 +4,7 @@
 결정: ADR-0056(결정 5·7·8·10·12·16). 흐름: `docs/business/flows/employee-account-provisioning.md`.
 
 ## 계약
-- REST: `contracts/openapi/hr-service.yaml` → `com.pmart.hr.api.generated`. 사건: `contracts/events/EmployeeRegistered·Suspended·Reinstated·Left.v1.json`·`GrantRequested.v1.json`(토픽 `platform.employee.v1`, 키 = 운영자 ID). 구독: `ApprovalDecided`(platform.approval.v1, type GRANT만 — 바인딩 `approvalEvents-in-0`). 부르는 쪽 계약: `contracts/openapi/mail-provisioner.yaml`.
+- REST: `contracts/openapi/hr-service.yaml` → `com.pmart.hr.api.generated`. 사건: `contracts/events/EmployeeRegistered·Suspended·Reinstated·Left.v1.json`·`GrantRequested.v1.json`(토픽 `platform.employee.v1`, 키 = 운영자 ID). 구독: `ApprovalDecided`(platform.approval.v1, type GRANT만 — 바인딩 `approvalEvents-in-0`). 부르는 쪽 계약: `contracts/openapi/mail-provisioner.yaml`, `employee-auth-service.yaml` 내부 조회(0.11.0 — 권한 요청 검사).
 - 계약을 먼저 고치고 코드를 맞춘다. 사건에 이름·역할을 싣지 않는다(이름은 구독자가 쓰지 않는 개인정보, 권한 정본은 employee-auth-service).
 
 ## 패키지
@@ -34,6 +34,7 @@
 - 등록 때 받은 요청 권한(`requested_grant`, PENDING)은 발급이 DONE 이 되는 트랜잭션에서 `GrantRequested`(요청 ID `GR-…`, 요청자 = `registered_by`, 행 키 = `grant_id`, 비운 기간 = 근무 기간)로 올리고 SUBMITTED. 재직 중일 때만.
 - `GrantDecisions`: `ApprovalDecided`(GRANT) 행 → APPROVED·REJECTED(+ `approval_ref`). 화면 표시용 — 효력은 employee-auth-service.
 - **재직 중 권한 추가·변경 요청(0.3.0, 2026-11-15 BO-01)**: `POST /hr/employees/{id}/grant-requests`(`EmployeeService.requestGrants`) — 재직 중·발급 DONE 직원만, 자기 권한 403, PENDING·SUBMITTED 행이 있으면 409 `GRANT_REQUEST_PENDING`(approval 이 대상마다 열린 승인 하나 — DUPLICATE_APPROVAL 을 미리 막음). 행 넣고 같은 트랜잭션에서 `GrantRequested`(요청자 = 요청한 인사팀 직원), 변경 기록 `GRANT_REQUESTED`. 회수는 employee-auth-service(즉시).
+- **권한 요청 검사(0.6.0, 2026-11-17 HR-2 — `service-requests/hr-service.md`)**: `application/GrantRequestRules` — 등록 `requestedGrants`·권한 요청 `grants` 모두. 같은 역할 두 줄 400(멱등 기록 전), 모르는 역할·센터 규칙(센터 지정 역할은 1개 이상, 아닌 역할은 센터 없음) 400(`…[i].role`·`…[i].centers`), 권한 요청만 이미 유효·예정인 같은 권한(역할 + 센터 겹침 — 센터 지정이 아닌 역할은 센터와 상관없이 + 기간이 지금 이후로 겹침, 비운 기간 = 근무 기간) 409 `GRANT_ALREADY_ACTIVE`(details `grants[i]` = `existingGrantId=…;…;extension=…` — 기간 연장도 409, 결정 대기). 역할 목록·지금 권한은 employee-auth-service 가 정본 — `infrastructure/EmployeeAuthClient` 가 `GET /internal/roles`·`/internal/employees/{id}/grants?activeOrFuture=true`(토큰 없음, 앱 공용 `RestClient.Builder` — 연결 1초·응답 5초)를 **멱등 기록 뒤·직원 행 잠금 전**에 부른다(재생은 부르지 않음). 못 읽으면 503 `DEPENDENCY_UNAVAILABLE` — 검사 없이 받지 않는다(요청 권한 없는 등록은 부르지 않음). 주소 `pmart.hr.employee-auth-base-url`(기본 `http://employee-auth-service:8511`, local 은 설정 저장소에 `http://localhost:8511`). employee-auth-service 도 반영 때 같은 규칙으로 막는다(안전망). 시험 `HrProvisioningIT.grantRequestValidation`(employee-auth WireMock)·`GrantRequestRulesTest`.
 
 ## 시험
 ```bash

@@ -15,6 +15,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param keycloak Keycloak Admin API(서비스 계정 클라이언트 hr-provisioner)
  * @param mailProvisioner 사서함 프로비저닝 사이드카
  * @param provisioning 계정 발급 재시도
+ * @param employeeAuthBaseUrl employee-auth-service 주소(권한 요청 검사 — 역할 목록·지금 권한 내부 조회, 2026-11-17
+ *     HR-2). 기본 {@code http://employee-auth-service:8511}(LAN 은 Eureka 가 이름을 푼다), local 은 설정 저장소에
+ *     {@code http://localhost:8511}
  */
 @ConfigurationProperties(prefix = "pmart.hr")
 public record HrProperties(
@@ -23,7 +26,8 @@ public record HrProperties(
     ZoneId zone,
     Keycloak keycloak,
     MailProvisioner mailProvisioner,
-    Provisioning provisioning) {
+    Provisioning provisioning,
+    String employeeAuthBaseUrl) {
 
   public HrProperties {
     mailDomain = mailDomain == null || mailDomain.isBlank() ? "pmart.com" : mailDomain;
@@ -44,6 +48,10 @@ public record HrProperties(
     keycloak = keycloak == null ? new Keycloak(null, null, null, null, null, null) : keycloak;
     mailProvisioner = mailProvisioner == null ? new MailProvisioner(null, null) : mailProvisioner;
     provisioning = provisioning == null ? new Provisioning(0, null, null, null) : provisioning;
+    employeeAuthBaseUrl =
+        employeeAuthBaseUrl == null || employeeAuthBaseUrl.isBlank()
+            ? "http://employee-auth-service:8511"
+            : employeeAuthBaseUrl.replaceAll("/+$", "");
   }
 
   /**

@@ -17,8 +17,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -45,6 +47,7 @@ class GrantApprovalIT extends PostgresKafkaContainerSupport {
   @Autowired EmployeeAuthStore store;
   @Autowired EmployeeAccess access;
   @Autowired ObjectMapper mapper;
+  @LocalServerPort int port;
 
   void decided(
       String approvalId,
@@ -158,6 +161,125 @@ class GrantApprovalIT extends PostgresKafkaContainerSupport {
             store.account(op, false).orElseThrow(),
             today.plusDays(31).atStartOfDay(SEOUL).toInstant());
     assertThat(ended.roles()).as("validTo 다음 날부터 무효").containsExactly("CS_AGENT", "PRICE_APPROVER");
+  }
+
+  JsonNode receipt(String approvalId) {
+    return mapper
+        .readTree(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE topic = 'platform.approval-receipt.v1' AND aggregateid = ?",
+                String.class,
+                approvalId))
+        .path("payload");
+  }
+
+  int grantApplied(String approvalId) {
+    return count(
+        "SELECT count(*) FROM outbox_event WHERE topic = 'platform.auth.v1' AND type = 'GrantApplied' AND aggregateid LIKE ?",
+        approvalId + ":%");
+  }
+
+  JsonNode internal(String path) {
+    String body =
+        RestClient.create()
+            .get()
+            .uri("http://localhost:" + port + "/api/v1" + path)
+            .header("X-Source-System", "hr-service")
+            .retrieve()
+            .body(String.class);
+    return mapper.readTree(body);
+  }
+
+  /**
+   * HR-2 안전망(2026-11-17): 이미 유효·예정인 같은 권한(역할 같음 + 센터 겹침 + 기간이 지금 이후로 겹침)과 겹치는 승인 행은 새 grant 를 만들지
+   * 않고 회신 REJECTED(GRANT_ALREADY_ACTIVE, domainRef = 기존 grantId) — GrantApplied 없음. 다른 센터·기존 권한이 끝난
+   * 뒤 시작·같은 승인 안의 앞 행과 겹침(같은 트랜잭션)·회수된 권한은 예전처럼. 내부 조회(0.11.0)는 토큰 없이 역할 목록과 끝나지 않은 grant 를 준다.
+   */
+  @Test
+  void duplicateApprovedLineDoesNotCreateSecondGrant() throws Exception {
+    String op = "OP-GA-" + UUID.randomUUID();
+    store.insertAccount(op, "ACTIVE", List.of(), List.of(), Instant.now());
+    LocalDate today = LocalDate.now(SEOUL);
+    String receipts =
+        "SELECT count(*) FROM outbox_event WHERE topic = 'platform.approval-receipt.v1' AND aggregateid = ?";
+
+    String first = "AP-" + UUID.randomUUID();
+    decided(
+        first,
+        "GRANT",
+        "employee-auth-service",
+        op,
+        "APPROVED",
+        List.of(line("1", "MFC_WORKER", List.of("MFC-IT-01"), today, today.plusDays(30))));
+    assertThat(awaitCount(receipts, 1, first)).isEqualTo(1);
+    assertThat(count("SELECT count(*) FROM employee_grant WHERE approval_id = ?", first))
+        .isEqualTo(1);
+
+    String second = "AP-" + UUID.randomUUID();
+    decided(
+        second,
+        "GRANT",
+        "employee-auth-service",
+        op,
+        "APPROVED",
+        List.of(
+            // 센터 하나가 겹치고 기간도 겹친다(더 늦게 끝남 = 연장도 막는다)
+            line("1", "MFC_WORKER", List.of("MFC-IT-01", "MFC-IT-02"), today, today.plusDays(60)),
+            line("2", "MFC_WORKER", List.of("MFC-IT-03"), today, null), // 다른 센터
+            line("3", "MFC_WORKER", List.of("MFC-IT-01"), today.plusDays(31), today.plusDays(40)),
+            line("4", "CS_AGENT", List.of(), today, null),
+            line("5", "CS_AGENT", List.of(), today.plusDays(5), null))); // 같은 승인의 4행과 겹침
+    assertThat(awaitCount(receipts, 1, second)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT line_id FROM employee_grant WHERE approval_id = ? ORDER BY line_id",
+                String.class,
+                second))
+        .containsExactly("2", "3", "4");
+    JsonNode r = receipt(second);
+    assertThat(r.path("result").asString()).isEqualTo("PARTIAL");
+    assertThat(r.path("lines").get(0).path("result").asString()).isEqualTo("REJECTED");
+    assertThat(r.path("lines").get(0).path("reasonCode").asString())
+        .isEqualTo("GRANT_ALREADY_ACTIVE");
+    assertThat(r.path("lines").get(0).path("domainRef").asString()).isEqualTo(first + ":1");
+    assertThat(r.path("lines").get(1).path("result").asString()).isEqualTo("APPLIED");
+    assertThat(r.path("lines").get(4).path("reasonCode").asString())
+        .isEqualTo("GRANT_ALREADY_ACTIVE");
+    assertThat(r.path("lines").get(4).path("domainRef").asString()).isEqualTo(second + ":4");
+    assertThat(grantApplied(second)).as("반영한 행만 GrantApplied").isEqualTo(3);
+
+    // 회수된 권한은 막지 않는다(효력 끝 = 회수 시각)
+    store.revokeGrant(first + ":1", Instant.now(), "OP-IT-HR", "시험 회수", "employee-auth-service");
+    String third = "AP-" + UUID.randomUUID();
+    decided(
+        third,
+        "GRANT",
+        "employee-auth-service",
+        op,
+        "APPROVED",
+        List.of(line("1", "MFC_WORKER", List.of("MFC-IT-01"), today, today.plusDays(10))));
+    assertThat(awaitCount(receipts, 1, third)).isEqualTo(1);
+    assertThat(receipt(third).path("result").asString()).isEqualTo("APPLIED");
+    assertThat(grantApplied(third)).isEqualTo(1);
+
+    // 내부 조회(0.11.0, 토큰 없음): 끝나지 않은 grant 만 / 전부
+    JsonNode activeOrFuture = internal("/internal/employees/" + op + "/grants?activeOrFuture=true");
+    List<String> ids = new java.util.ArrayList<>();
+    activeOrFuture.path("items").forEach(i -> ids.add(i.path("grantId").asString()));
+    assertThat(ids)
+        .containsExactlyInAnyOrder(second + ":2", second + ":3", second + ":4", third + ":1");
+    assertThat(activeOrFuture.path("items").get(0).has("approverId"))
+        .as("승인자·사유는 싣지 않는다")
+        .isFalse();
+    assertThat(internal("/internal/employees/" + op + "/grants").path("items")).hasSize(5);
+    assertThat(internal("/internal/employees/OP-NOBODY/grants").path("items")).isEmpty();
+    JsonNode roles = internal("/internal/roles").path("items");
+    Map<String, Boolean> scoped = new LinkedHashMap<>();
+    roles.forEach(i -> scoped.put(i.path("code").asString(), i.path("centerScoped").asBoolean()));
+    assertThat(scoped)
+        .containsEntry("MFC_WORKER", true)
+        .containsEntry("MFC_SUPERVISOR", true)
+        .containsEntry("CS_AGENT", false);
   }
 
   @Test
