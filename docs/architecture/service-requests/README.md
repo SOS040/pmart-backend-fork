@@ -37,7 +37,10 @@
 | [F-1](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | mfc-capacity | 운영 제한 사건 구독 → `OPERATION_RESTRICTED` 거절 | 진행 중 작업 처리 | 대기 |
 | [BOD-1~6](delivery-backoffice-staff-apis.md) | rider·delivery-execution·delivery-dispatch | PC 5 | platform(백오피스) | 백오피스 고객센터·라이더 운영 직원 API — RIDER_OPS 권한, CS_AGENT 배차 조회, 라이더 목록·검색, 전달 실패·도움요청 대기 목록 | 결정됨(2026-11-15, 라이더 이름 검색 없음 — 사용자) | **구현·LAN 배포**(0deb8160 — BOD-1~6 한 커밋) |
 | [MB-1~3](mfc-backoffice-staff-apis.md) | mfc-capacity·fulfillment·inbound·inventory·quality | PC 3 | platform(MFC 백오피스) | 센터 관리자 웹 목록 API·계약만(501)인 것·권한(확인 필요 포장, 정정·위치 역할) | MB-3 은 PC 3 가 정함(사용자 2026-11-15) | 대기(PC 3) |
-| [CL-1](claim-service.md) | claim | PC 1 | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | 결정됨(2026-11-17 사용자 "추천대로" — 1차 감액 없음, 면제 사유 5가지, 회수 2회 실패 뒤 상담원 재연락·회수비 1회) | 진행 중(PC 1 claim 쪽) — 회수 배송은 PC 5 |
+| [CL-1](claim-service.md) | claim | PC 1 | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | 결정됨(2026-11-17 사용자 "추천대로" — 1차 감액 없음, 면제 사유 5가지, 회수 2회 실패 뒤 상담원 재연락·회수비 1회) | **구현**(2026-11-17 claim 0.2.0·V4 — 고객센터 반품 접수·회수비 9,000원(면제 5사유)·회수 실패 2번 → 상담원·검수 뒤 원단가 환불). 받는 쪽 DD-3(PC 5)·R-8(PC 2)·O-7 대기 |
+| [DD-3](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | claim | 고객 반품 회수 배송(`ReturnPickupRequested` 구독, claimId 싣기, 실패 `DeliveryFailed`) | 결정됨(CL-1 2026-11-17) | 요청함 |
+| [R-8](case-service.md) | case | PC 2 | claim | 반품 회수 2번 실패(`ReturnRecoveryFailed`) → 상담원 재연락 사건·백오피스 화면 | 결정됨(CL-1 2026-11-17) | 요청함 |
+| [O-7](order-service.md) | order | PC 1 | claim | 반품 수량을 주문 원장에 기록(방식 결정 필요) | **필요**(claim 호출 vs 사건 구독) | 대기 |
 | [R-1](case-service.md) | case | PC 2 | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | PC 2 | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
 | [R-3](case-service.md) | case | PC 2 | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | **구현**(2026-11-16, case 0.5.0 — PR #21, LAN 배포) |
