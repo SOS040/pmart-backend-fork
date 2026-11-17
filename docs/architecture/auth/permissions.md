@@ -199,7 +199,8 @@
 | 고객 문의 | 고객: 작성·자기 문의 보기(상담원이 남긴 문의는 안 보임). 직원 보기: `CS_AGENT`·`OPERATOR_ADMIN`. **답변: `CS_AGENT` 만** |
 | CS 접수(전화·채팅·메일 기록) | `CS_AGENT`·`OPERATOR_ADMIN`. 기록만 — 취소·환불 안 함 |
 | 라이더 컴플레인 | 기록: `CS_AGENT`·`OPERATOR_ADMIN`. 보기: + `RIDER_OPS` |
-| 행위 요청·라이더 도움요청 접수(`/help-requests`) | 미구현(도움요청은 delivery-execution 이 받음) |
+| 행위 요청(`/cases/{id}/action-requests`) | 기록만(0.17.0, #85): 그 건을 다룰 수 있는 사람(`canWork` — 배송 건 `RIDER_OPS`·`OPERATOR_ADMIN`, 주문 건 `OPERATOR_ADMIN`). 대상 서비스를 부르지 않음 |
+| 라이더 도움요청 접수(`/help-requests`) | 미구현(도움요청은 delivery-execution 이 받음) |
 
 ---
 
