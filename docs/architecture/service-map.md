@@ -381,6 +381,7 @@
 - **구독**: `OrderConfirmed`, `PaymentFailed/Unknown`, `PreparationStarted`, `DeliveryAssigned`, `PickupCompleted`, `DeliveryEtaUpdated`(지연), `DeliveryCompleted`(분할은 전량 완료 1회), `ClaimDecided`, `RefundResult`, `DispatchOfferSent`, `DispatchDelayed`, `CaseAssigned`, `NotificationRequested`(범용).
 - **발행**: `NotificationDelivered`, `NotificationFailed`.
 - **1차 구현(2026-11-16, 계약 0.2.0, ADR-0064)**: 고객 앱 알림함(IN_APP)만 — 주문 확정·상품 준비·배송 출발(`PickupCompleted`)·완료·취소·결품 부분 취소(`OrderLineQuantityChanged` SHORTAGE)·환불 결과(`RefundIntentCreated` 로 주문과 이음)·고객센터 답변(`InquiryAnswered`). 받는 고객은 사건의 accountId, 없으면 order 내부 주문 조회. 푸시·라이더·운영자·발행은 아직.
+- **휴대폰 푸시(2026-11-17, ADR-0067)**: 알림함에 저장된 알림을 FCM 으로도 — 라이더 알림 전부(`RiderPush`), 고객은 정한 종류(배송 출발·완료·결품·주문 취소·환불 결과 — `CustomerPush`, 설정 `pmart.notification.fcm.customer-templates`). 서버 키는 앱의 Firebase 프로젝트마다(라이더 `pmart-123`, 고객 오늘 `pmart-42b37` — 내일 하나로). 알림함이 정본, 실패는 다시 보내지 않음.
 
 ### audit-service `[1단계]`
 - **소유**: 감사 사건(운영자 명령·사유·전후 값·대상·실행·보상 결과; 추가만, 삭제 없음), 개인정보 열람·다운로드 기록(BO-25), 보존 정책 `[결정 필요]`.

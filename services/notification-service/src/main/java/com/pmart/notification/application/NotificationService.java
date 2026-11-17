@@ -49,10 +49,16 @@ public class NotificationService {
   private final Clock clock;
 
   private final RiderPush riderPush;
+  private final CustomerPush customerPush;
 
   public NotificationService(
-      NotificationStore store, OrderClient orders, Clock clock, RiderPush riderPush) {
+      NotificationStore store,
+      OrderClient orders,
+      Clock clock,
+      RiderPush riderPush,
+      CustomerPush customerPush) {
     this.riderPush = riderPush;
+    this.customerPush = customerPush;
     this.store = store;
     this.orders = orders;
     this.clock = clock;
@@ -416,6 +422,9 @@ public class NotificationService {
       log.info("알림 {} ← {}", n.templateKey(), sourceEventType);
       if (RIDER.equals(recipientType)) {
         riderPush.afterCommit(accountId, notificationId, n); // 휴대폰 푸시(2026-11-17, 키가 있을 때만)
+      } else if (CUSTOMER.equals(recipientType)) {
+        customerPush.afterCommit(
+            accountId, notificationId, n); // 고객 푸시(2026-11-17 — 정한 종류만, 고객 키가 있을 때만)
       }
     }
   }
