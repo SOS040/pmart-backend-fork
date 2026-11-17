@@ -10,6 +10,7 @@
 #   deploy/lan/lan.sh publish-hr-backoffice <dist> 인사팀 백오피스 빌드(web/hr-backoffice build:lan 결과)를 올리고 hr-backoffice-web 만 다시 배포(:8081)
 #   deploy/lan/lan.sh publish-mfc-backoffice <dist> MFC 백오피스 빌드(build:lan 결과)를 올리고 mfc-backoffice-web 만 다시 배포(https :8445, 2026-11-15)
 #   deploy/lan/lan.sh publish-rider-backoffice <dist> 라이더 백오피스 빌드(build:lan 결과)를 올리고 rider-backoffice-web 만 다시 배포(https :8446, 2026-11-17)
+#   deploy/lan/lan.sh web-sync [--apply]            pmart-clients main 과 LAN 웹 앱 4개(version.txt) 비교 — 뒤처지면 종료 3, --apply 면 뒤처진 앱만 빌드·배포(2026-11-18)
 #   deploy/lan/lan.sh rag-pull <pc> <모델...>       그 PC 의 ollama 에 모델 받기(ADR-0051, 예: qwen3-embedding:0.6b qwen3:4b)
 #   deploy/lan/lan.sh rag-warm <pc> [모델...]       ollama 에 대화 모델을 미리 올림(첫 적재 약 30초 > 호출 시간 제한 25초). ollama 재시작 뒤 한 번.
 #                                                   임베딩 모델은 서비스가 CPU 로 올린다(embedding-num-gpu 0) — 여기서 올리면 GPU 에 올라가 대화 모델을 밀어낸다
@@ -154,6 +155,7 @@ wait_config_server() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   render|deploy|publish-*|rag-ingest|rag-ingest-customer|config-push) lan_lock "$cmd" "$@" ;;
+  web-sync) if [ "${1:-}" = --apply ]; then lan_lock "$cmd" "$@"; fi ;; # 확인만 하면 잡지 않는다
 esac
 case "$cmd" in
   render)
@@ -202,6 +204,9 @@ case "$cmd" in
       # 서비스를 지정하면 의존 컨테이너는 건드리지 않는다(--no-deps) — 지정 배포가 ollama·rag-pgvector 를 다시 만들어 모델이 내려갔다(2026-11-09)
       if [ $# -gt 0 ]; then remote_compose "$pc" up -d --no-deps "$@"; else remote_compose "$pc" up -d --remove-orphans; fi
     done ;;
+  web-sync)
+    # pmart-clients main 과 LAN 웹 앱 4개 비교, --apply 면 뒤처진 앱만 빌드·배포(2026-11-18 — web-sync.sh 첫머리)
+    bash $LAN/web-sync.sh "$@" ;;
   status)
     for pc in $(pcs "${1:-all}"); do
       echo "=== $pc"
