@@ -95,3 +95,9 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **사용자 결정(같은 날)**: 받을 범위 **중간안** — 시스템 장애(자동 재배차 없음)는 첫 실패에, 라이더 없음·반복 거절·응답 만료(10분마다 자동 재배차)는 같은 배송의 **두 번째 실패부터**. 담당 **지원센터(RIDER_OPS)**, 처리 기한 **10분**(표시만).
 - 근거: 업무 원문 Delivery §3.6(배차 지연 시 MFC 관리자·고객센터 안내 — 상담원이 배송 쪽 사건을 볼 수 있다), 사건함 공통 결정(배송 쪽 = RIDER_OPS). 한계: MFC 관리자는 사건함이 없다(배차 취소는 MFC 백오피스).
 - **구현됨(case 계약 0.5.0, V5, PR #21)**: `DispatchFailed`(delivery.delivery.v1) → `DISPATCH_FAILED`. 배송별 실패 횟수는 case 가 센다(`attempts` 는 재배차 시도마다 다시 셈). 배송마다 열린 사건 하나, 재발은 이력. 자동 종결 없음.
+
+## R-8. 반품 회수 실패 → 상담원 재연락 사건 (2026-11-17, 보낸 영역 platform — CL-1)
+- **결정(사용자 2026-11-17 "추천대로" — CL-1 ③)**: 인계 뒤 반품(고객센터 접수)의 **회수가 두 번 실패하면(고객 부재 등) 상담원이 고객에게 다시 연락**한다. 회수비는 한 번만 받는다.
+- **claim 이 주는 것(구현, 2026-11-17 — claim 0.2.0, 미배포)**: `ReturnRecoveryFailed`(order.claim.v1, 키 claimId — 계약 `contracts/events/ReturnRecoveryFailed.v1.json`): claimId, orderId, accountId(고객), mfcId, attempts, lastDeliveryId, lastFailureReason, failedAt. 클레임은 RECOVERY_FAILED. 연락 뒤 조치는 claim `POST /claims/{claimId}/recovery-actions`(CS_AGENT·OPERATOR_ADMIN — `RETRY_PICKUP` 새 회수 요청 / `CANCEL` 반품 취소, 사유 note 필수).
+- **case 가 할 것(PC 2)**: 구독 → 고객센터(CS_AGENT) 사건(예 종류 `RETURN_RECOVERY_FAILED`, 대상 = claimId·orderId·고객) — 같은 클레임은 열린 사건 하나, 또 실패하면 이력. 사건 화면에서 claim 조회(`GET /claims/{id}`)·위 조치로 이어지게. 클레임이 다시 IN_PROGRESS·CLOSED·CANCELLED 가 되면(사건 `ClaimClosed` 또는 claim 조회) 닫을지는 PC 2 가 정한다(자동 종결 규칙은 사건함 공통 결정을 따른다).
+- **백오피스 화면(PC 2)**: 고객센터 메뉴에 반품 접수(`POST /claims` type RETURN — 본인 확인 방법·회사 잘못 사유 선택)와 회수 조치. handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`.

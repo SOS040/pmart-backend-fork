@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     취소·반품·교환 신청·심사·승인 범위, 자격 판정, 신청 가능량, 회수 지시·검수 결과 연결, 환불 의도·금액·상태, 철회의 정본. (docs/architecture/service-map.md §2)
     PG 실행(payment), 회수 수행(delivery), 검수·재입고(mfc), 주문 수량 정본(order)은 소유하지 않는다.
@@ -33,8 +33,17 @@ paths:
         회수·재배달 주소는 원주문 주소 고정. 단순 변심 교환은 왕복 9,000원 청구, 상품/배달 문제는 0원.
         [2026-10-31 구현] CANCEL 만, 고객 본인 주문(CONFIRMED)의 전체 취소만 받는다(모든 행 × 미이행 수량). 접수와 함께 stopRequestId 를 발급하고
         ClaimOpened·CancellationRequested(order.claim.v1)를 발행해 orchestration S3 를 시작한다. 상태 OPENED → STOP_PENDING → IN_PROGRESS(취소 확정·환불 실행) → CLOSED(PG 환불 성공) / REJECTED(인계됨).
+        [2026-11-17 구현, 0.2.0 — CL-1·D-7·ADR-0060 결정 2] **인계 뒤 회수(type RETURN)는 고객센터만** 접수한다. 흐름 정본 docs/business/flows/return-exchange-refund.md §6.
+        - 직원 토큰(OPERATOR) + 역할 CS_AGENT·OPERATOR_ADMIN(그 밖 403). 직원은 RETURN 만(CANCEL·EXCHANGE 는 422 UNSUPPORTED_ACTION — 상품준비 뒤 고객센터 취소 없음, ADR-0060). 고객 토큰의 RETURN 은 422 UNSUPPORTED_ACTION(고객센터로 문의).
+        - identityCheck 필수(본인 확인 방법만 기록 — case CS 접수와 같은 값, OTHER 면 note 필수). channel 은 CS(기본)·OPERATOR.
+        - order `GET /internal/orders/{id}` 로 심사: 없는 주문 404, 행마다 요청 ≤ 인계 수량(handedOverQty — 라이더 픽업·전달) − 이 주문의 진행·완료 반품 수량(취소된 반품 제외). 인계된 수량이 없으면 422 NOT_HANDED_OVER, 넘으면 QUANTITY_EXCEEDS_AVAILABLE. 접수 기한(7일·24시간)은 아직 보지 않는다(상담원 판단).
+        - faultCode(회사 잘못 — 오배송·상품 불량·배송 중 파손·약속 시간 크게 지연·잘못된 대체)가 있으면 **회수비 면제** → 바로 IN_PROGRESS + 회수 요청(ReturnPickupRequested).
+          없으면(고객 사유) **회수비 9,000원**(상품 환불과 따로 결제) → FEE_PENDING, 결제 시도를 만들고 ReturnFeePaymentRequested. 고객이 앱에서 결제하면 IN_PROGRESS + 회수 요청.
+          기한(`pmart.claim.return-fee-payment-wait`, 접수 + 이 시간) 안에 결제하지 않으면 CANCELLED. 설정이 없으면 회수비 있는 접수만 422 CONFIG_REQUIRED.
+        - 회수 실패(고객 부재 등, delivery DeliveryFailed): 첫 실패는 자동으로 두 번째 회수 요청, 두 번째 실패면 RECOVERY_FAILED + ReturnRecoveryFailed(상담원 재연락) — 회수비는 다시 받지 않는다.
+        - 회수품 MFC 반입(ReturnItemReceived) → 검수(ReturnInspected)된 수량마다 **원단가 × 수량 − 할인 안분** 전액 환불(RESALE·DISPOSE 모두, 1차 감액 없음), 봉투값·배달팁은 돌려주지 않는다. 모든 행이 검수·환불되면 CLOSED.
       operationId: createClaim
-      x-pmart-user-types: [CUSTOMER]
+      x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -54,7 +63,7 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: CLAIM_WINDOW_EXPIRED / QUANTITY_EXCEEDS_AVAILABLE / DUPLICATE_CLAIM / NOT_DELIVERED_YET / EVIDENCE_REQUIRED / ORDER_NOT_CANCELLABLE / PARTIAL_CANCEL_NOT_ALLOWED (고객 취소는 주문 전체만) / UNSUPPORTED_ACTION (RETURN·EXCHANGE — 아직 미구현)
+          description: CLAIM_WINDOW_EXPIRED / QUANTITY_EXCEEDS_AVAILABLE / DUPLICATE_CLAIM / NOT_DELIVERED_YET / EVIDENCE_REQUIRED / ORDER_NOT_CANCELLABLE / PARTIAL_CANCEL_NOT_ALLOWED (고객 취소는 주문 전체만) / UNSUPPORTED_ACTION (고객 RETURN·직원 CANCEL·EXCHANGE) / NOT_HANDED_OVER (RETURN — 인계된 수량 없음, 0.2.0) / CONFIG_REQUIRED (RETURN 회수비 결제 기한 미설정, 0.2.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -225,6 +234,70 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /claims/{claimId}/fee-payment-attempts:
+    post:
+      tags: [claims]
+      summary: "[고객] 반품 회수비 결제 — 새 결제 시도 (앞 시도가 실패·취소됐을 때)"
+      description: |
+        2026-11-17(0.2.0, CL-1). 회수비 결제 대기(FEE_PENDING) 반품 클레임의 고객 본인만. 지금 결제 시도가 없거나 실패·취소면 새 시도를 만들고,
+        아직 쓸 수 있는 시도(CREATED·PENDING 등)면 그대로 돌려준다. 결제는 토스 결제위젯 `orderId = feePayment.paymentAttemptId`, amount 9,000 →
+        payment `POST /payment-confirmations`(기존 결제 승인 그대로). 결제 승인(PaymentApproved)을 받으면 클레임 IN_PROGRESS + 회수 요청.
+        - 남의 것·없는 것 404. 결제 대기가 아니거나 기한(feePayment.deadlineAt)이 지났으면 409 INVALID_STATE. payment 응답 불가 503.
+      x-added-in: '2026-11-17'
+      operationId: createReturnFeePaymentAttempt
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: claimId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 지금 쓸 결제 시도가 담긴 클레임
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Claim' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /claims/{claimId}/recovery-actions:
+    post:
+      tags: [claims]
+      summary: "[상담원] 반품 회수 후속 조치 — 다시 회수 요청 / 반품 취소"
+      description: |
+        2026-11-17(0.2.0, CL-1 ③). 역할 CS_AGENT·OPERATOR_ADMIN(그 밖 403). type RETURN 만(그 밖 422 UNSUPPORTED_ACTION).
+        - RETRY_PICKUP: RECOVERY_FAILED(두 번 실패 뒤 상담원이 고객과 다시 연락)에서만 → IN_PROGRESS + 새 회수 요청(ReturnPickupRequested). 회수비는 다시 받지 않는다.
+        - CANCEL: FEE_PENDING·RECOVERY_FAILED 이고 MFC 가 받은 회수품이 없을 때만 → CANCELLED + ClaimClosed(RETURN_CANCELLED). 결제 대기 중 회수비는 더 받지 않고(그 뒤 승인되면 자동 보상 취소), 이미 낸 회수비는 자동으로 돌려주지 않는다.
+        - 그 밖 상태 409 INVALID_STATE. note(조치 사유, 필수)는 클레임 조치 기록에만 남고 로그에 쓰지 않는다. X-Expected-Version 이 있으면 클레임 version 과 비교(다르면 409 VERSION_CONFLICT).
+      x-added-in: '2026-11-17'
+      operationId: createReturnRecoveryAction
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: claimId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecoveryActionRequest' }
+      responses:
+        '200':
+          description: 조치가 반영된 클레임 (같은 키·같은 본문은 재생)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Claim' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: UNSUPPORTED_ACTION (RETURN 아님)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /internal/claims/system-cancellations:
     post:
       tags: [internal]
@@ -383,11 +456,49 @@ components:
       description: |
         OPENED 접수. UNDER_REVIEW 심사 중. DECIDED 결정(일부 승인 가능). IN_PROGRESS 회수·환불·재배송 진행. CLOSED 모든 의무 확인 후 종결. WITHDRAWN 철회.
         CANCEL 유형은 OPENED → STOP_PENDING(출고 중지/인계 확인 중) → IN_PROGRESS → CLOSED 또는 REJECTED(취소 불가).
-      enum: [OPENED, UNDER_REVIEW, STOP_PENDING, DECIDED, IN_PROGRESS, CLOSED, WITHDRAWN, REJECTED]
+        RETURN 유형(0.2.0, 2026-11-17): FEE_PENDING(회수비 결제 대기 — 면제면 건너뜀) → IN_PROGRESS(회수·반입·검수·환불) → CLOSED(모든 행 검수·환불 완료).
+        RECOVERY_FAILED 회수 두 번 실패(상담원 재연락 — 다시 회수 요청 또는 취소). CANCELLED 회수비 미결제(기한)·상담원 취소.
+      enum: [OPENED, UNDER_REVIEW, STOP_PENDING, DECIDED, IN_PROGRESS, CLOSED, WITHDRAWN, REJECTED, FEE_PENDING, RECOVERY_FAILED, CANCELLED]
     ClaimReason:
       type: string
       description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED·OUT_OF_STOCK 는 시스템 접수만(2026-11-07, 고객 접수 불가 — OUT_OF_STOCK 은 결품 부분 환불)
       enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED, OUT_OF_STOCK]
+    ReturnFaultCode:
+      type: string
+      x-added-in: '2026-11-17'
+      description: |
+        회사 잘못 사유 — 있으면 반품 회수비 9,000원 면제(사용자 결정 2026-11-17 CL-1 ②). MISDELIVERY 오배송, DEFECTIVE 상품 불량,
+        DAMAGED_IN_DELIVERY 배송 중 파손, SEVERE_DELAY 약속 시간 크게 지연, WRONG_SUBSTITUTE 잘못된 대체. 없으면 고객 사유(회수비 고객 부담).
+      enum: [MISDELIVERY, DEFECTIVE, DAMAGED_IN_DELIVERY, SEVERE_DELAY, WRONG_SUBSTITUTE]
+    IdentityCheck:
+      type: object
+      x-added-in: '2026-11-17'
+      description: 상담원이 본인 확인을 어떻게 했는지(결과 기록만 — 고객이 말한 값은 넣지 않는다. case CS 접수와 같은 값)
+      required: [method]
+      properties:
+        method: { type: string, enum: [ORDER_DETAILS_MATCH, APP_SIGNED_IN_CHAT, OTHER] }
+        note: { type: string, maxLength: 200, description: 'OTHER 이면 필수 — 어떻게 확인했는지' }
+    RecoveryActionRequest:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [action, note]
+      properties:
+        action: { type: string, enum: [RETRY_PICKUP, CANCEL] }
+        note: { type: string, minLength: 1, maxLength: 500, description: 조치 사유(고객과 다시 연락한 결과 등) }
+    ReturnFeePayment:
+      type: object
+      x-added-in: '2026-11-17'
+      description: |
+        반품 회수비 결제(상품 환불과 별개 거래). state WAITING 결제 대기 · PAID 결제됨 · UNPAID 기한까지 미결제·취소(클레임 CANCELLED) ·
+        LATE_CANCEL_PENDING/LATE_CANCELLED/LATE_CANCEL_FAILED 기한·취소 뒤 늦게 승인된 결제의 보상 취소 진행·완료·실패(운영자 확인).
+        paymentAttemptId 가 비어 있으면 결제 시도를 준비 중(잠시 뒤 다시 조회).
+      properties:
+        amount: { $ref: '_common.yaml#/components/schemas/Money' }
+        state: { type: string, enum: [WAITING, PAID, UNPAID, LATE_CANCEL_PENDING, LATE_CANCELLED, LATE_CANCEL_FAILED] }
+        paymentAttemptId: { type: string, description: 토스 결제위젯 orderId }
+        orderName: { type: string, description: 결제창 표시용 주문명 }
+        deadlineAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time }
     SystemCancellationRequest:
       type: object
       description: 시스템 자동 전체 취소(2026-11-07)
@@ -428,6 +539,13 @@ components:
           format: date-time
           description: 하자 등을 안 날(알 수 있었던 날). 특례 30일 기산점. 불명이면 증빙 보완 심사
         channel: { type: string, enum: [CUSTOMER_APP, CS, OPERATOR] }
+        faultCode:
+          $ref: '#/components/schemas/ReturnFaultCode'
+          description: RETURN(직원 접수)만 — 있으면 회수비 면제
+        identityCheck:
+          $ref: '#/components/schemas/IdentityCheck'
+          description: RETURN(직원 접수) 필수
+        caseRef: { type: string, maxLength: 64, description: 'RETURN — 연결할 CS 접수·사건 ID(선택, 기록만)', x-added-in: '2026-11-17' }
     ClaimLine:
       type: object
       properties:
@@ -439,6 +557,7 @@ components:
         decision: { type: string, enum: [PENDING, APPROVED, REJECTED] }
         rejectReason: { type: string }
         pickupRequired: { type: boolean }
+        pickedUpQty: { type: integer, description: 'RETURN — 라이더가 회수지에서 받은 수량(ReturnPickedUp, 0.2.0)' }
         receivedQty: { type: integer, description: 점포 실수령 수량 }
         inspection:
           type: object
@@ -452,7 +571,8 @@ components:
         windowRule: { type: string, enum: [GENERAL_7D, FRESH_24H, DEFECT_3M, DEFECT_AWARE_30D] }
     PickupState:
       type: string
-      enum: [NOT_REQUIRED, REQUESTED, DISPATCHED, PICKED_UP, DELIVERED_TO_STORE, RECEIVED, INSPECTED]
+      description: 'FAILED(0.2.0) — 회수 두 번 실패(클레임 RECOVERY_FAILED)'
+      enum: [NOT_REQUIRED, REQUESTED, DISPATCHED, PICKED_UP, DELIVERED_TO_STORE, RECEIVED, INSPECTED, FAILED]
     Claim:
       type: object
       properties:
@@ -463,6 +583,13 @@ components:
         state: { $ref: '#/components/schemas/ClaimState' }
         reason: { $ref: '#/components/schemas/ClaimReason' }
         reasonDetail: { type: string }
+        channel: { type: string, enum: [CUSTOMER_APP, CS, OPERATOR, SYSTEM], x-added-in: '2026-11-17' }
+        faultCode:
+          $ref: '#/components/schemas/ReturnFaultCode'
+          description: RETURN — 회사 잘못 사유(있으면 회수비 면제)
+        feePayment:
+          $ref: '#/components/schemas/ReturnFeePayment'
+          description: RETURN 고객 사유 — 회수비 결제(면제·RETURN 아님이면 없음)
         evidenceRefs: { type: array, items: { type: string } }
         lines: { type: array, items: { $ref: '#/components/schemas/ClaimLine' } }
         stopRequestId: { type: string, description: CANCEL일 때 S3 멱등 키 }
@@ -473,6 +600,8 @@ components:
             state: { $ref: '#/components/schemas/PickupState' }
             deliveryId: { type: string, description: 회수 배송번호(dispatch) }
             addressFixedToOrder: { type: boolean, default: true }
+            attempts: { type: integer, description: '회수 요청 횟수(0.2.0)' }
+            failedAttempts: { type: integer, description: '실패한 회수 수(0.2.0) — 자동 재요청은 한 번, 두 번째 실패면 RECOVERY_FAILED' }
         fees:
           type: object
           properties:

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: payment-service
-  version: 0.1.0
+  version: 0.1.1
   description: |
     결제 시도(paymentAttemptId)·PG 거래(pgTransactionId)·승인액·취소/환불 거래·멱등키·추가 환불 가능 한도·원거래 조회 이력·보상 취소의 정본. (docs/architecture/service-map.md §2, ADR-0005)
     실제 승인·취소 사실의 정본은 PG(토스페이먼츠)다. 콜백·결제창 복귀만으로 승인을 확정하지 않고 원거래 조회로 대사한다.
@@ -447,7 +447,12 @@ components:
       properties:
         sagaId: { type: string }
         step: { type: string, description: 보상을 유발한 사가 단계 (예 CONFIRM_ORDER) }
-        reason: { type: string, enum: [ORDER_CONFIRM_FAILED, RESERVATION_LOST, OPERATION_RESTRICTED, AMOUNT_MISMATCH, OPERATOR_APPROVED] }
+        reason:
+          type: string
+          enum: [ORDER_CONFIRM_FAILED, RESERVATION_LOST, OPERATION_RESTRICTED, AMOUNT_MISMATCH, OPERATOR_APPROVED, REDELIVERY_PAYMENT_TOO_LATE, RETURN_FEE_TOO_LATE]
+          description: |
+            0.1.1(2026-11-17): REDELIVERY_PAYMENT_TOO_LATE — orchestration 오배송 다시 배송 9,000원이 기한(회수로 바꾼 뒤) 뒤 승인됨(ADR-0065, 이미 보내던 값을 계약에 올림),
+            RETURN_FEE_TOO_LATE — claim 반품 회수비 9,000원이 기한·반품 취소 뒤 승인됨(CL-1).
         approvalRef: { type: string, description: 운영자 수동 보상일 때 승인 건 ID }
     Cancellation:
       type: object

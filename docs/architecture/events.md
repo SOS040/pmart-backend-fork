@@ -48,13 +48,15 @@
 | `CompensationExecuted` | order-orchestration | audit, case | sagaId, resourceType, resourceId, result | 이번 시도 신규 자원 보상 해제 | ① |
 | `ReconciliationRequired` | order-orchestration | case, backoffice-bff | sagaId, orderId, mismatchType(AMOUNT/QTY/STATE), details | 대사 불일치·자동 복구 한도 초과 | ① |
 | `CancellationRequested` | claim-service | order-orchestration | claimId, orderId, lines[], reason(FULFILLMENT_REJECTED = 작업 거절 자동 취소), channel(SYSTEM 추가) | 고객/CS 취소 접수·시스템 자동 취소(S3 시작) | ① |
-| `ClaimOpened` | claim-service | notification, case | claimId, orderId, type(CANCEL/RETURN/EXCHANGE), lines[], reason | 접수 | ① |
+| `ClaimOpened` | claim-service | notification, case | claimId, orderId, type(CANCEL/RETURN/EXCHANGE), lines[], reason, RETURN 이면 channel·accountId·faultCode·returnFee(2026-11-17) | 접수 | ① |
 | `ClaimDecided` | claim-service | order, delivery-execution(회수), mfc-quality, notification, backoffice | claimId, decisions[{claimLineId, APPROVED/REJECTED, qty}], refundIntentId? | 심사 결과(일부 승인 가능) | ① |
-| `ReturnPickupRequested` | claim-service | delivery-dispatch | claimId, orderId, deliveryId(원), lines[], pickupAddress(원주문 주소 ref) | 회수 승인 | ② |
+| `ReturnPickupRequested` | claim-service(2026-11-17 발행 — CL-1) | delivery-dispatch(고객 반품 회수 배송 — DD-3, 구독 전) | claimId, orderId, mfcId, pickupRequestId(`<claimId>-P<n>`), attempt, purpose CLAIM_RETURN, feeWaived, lines[{orderLineId, qty, claimLineId, sku}], pickupAddressRef(`order:<orderId>` 원주문 주소), deliveryId(원 — 선택, claim 은 안 실음) | 회수 요청(회수비 결제됨·면제, 첫 실패 뒤 자동 재요청, 상담원 재요청) | ② |
+| `ReturnFeePaymentRequested` | claim-service(2026-11-17, CL-1) | notification(결제 필요 알림 — 연결 전) | claimId, orderId, accountId, amount(9,000), paymentAttemptId, deadlineAt | 반품 회수비(고객 사유) 결제 시도를 처음 만든 뒤 한 번 | ② |
+| `ReturnRecoveryFailed` | claim-service(2026-11-17, CL-1 ③) | case(상담원 재연락 사건 — R-8, 구독 전), notification(연결 전) | claimId, orderId, accountId, mfcId, attempts, lastDeliveryId, lastFailureReason, failedAt | 반품 회수 두 번 실패(또는 상담원 재요청 뒤 실패) — 클레임 RECOVERY_FAILED | ② |
 | `RefundIntentCreated` | claim-service | payment(명령은 동기; 이벤트는 기록), audit | refundIntentId, orderId, amount, basis(원안분), paymentAttemptId | 환불 의도·금액 산정 | ① |
 | `ExchangeReshipmentApproved` | claim-service | order, delivery-dispatch, mfc-fulfillment | claimId, orderId, lines[], newShipmentRef | 교환 승인(재배송은 교환 건만) | ② |
-| `ClaimClosed` | claim-service | order, notification, case | claimId, outcome | 회수·검수·환불·통지 의무 모두 확인 | ② |
-| `PaymentApproved` | payment-service | order-orchestration, audit | paymentAttemptId, pgTransactionId, orderRef, amount, currency, approvedAt | PG 승인 사실 확인 | ① |
+| `ClaimClosed` | claim-service | order, notification, case | claimId, outcome(CANCELLED_REFUNDED·REJECTED_HANDED_OVER, 반품 2026-11-17: RETURN_REFUNDED·RETURN_FEE_UNPAID·RETURN_CANCELLED) | 회수·검수·환불·통지 의무 모두 확인 | ② |
+| `PaymentApproved` | payment-service | order-orchestration, audit, claim(2026-11-17 — 반품 회수비 결제 시도만, orderRef `RTF-<claimId>`) | paymentAttemptId, pgTransactionId, orderRef, amount, currency, approvedAt | PG 승인 사실 확인 | ① |
 | `PaymentFailed` | payment-service | order-orchestration, notification | paymentAttemptId, code | 승인 실패 확정 | ① |
 | `PaymentResultUnknown` | payment-service | order-orchestration, case(장기) | paymentAttemptId, inquiryCount, nextInquiryAt | 타임아웃·응답 유실(1분×5→상신→15분) | ① |
 | `PaymentMismatch` | payment-service | order-orchestration, case | paymentAttemptId, expectedAmount, approvedAmount | 금액·통화·주문 불일치 | ① |
@@ -130,14 +132,14 @@
 | `SupplyRequestSubmitted` | mfc-inbound | replenishment | supplyRequestId, version, mfcId, lines[], requestedReadyAt, urgency, reason, recommendationRef | 로컬 DRAFT→SUBMITTED | ② |
 | `InboundArrivalRecorded` | mfc-inbound | transport-execution, replenishment | trfId, tripId, stopId, arrivedAt | 차량 도착 기록(수령 아님) | ② |
 | `ReceiptDiscrepancyReported` | mfc-inbound | cdc-inventory, transport-execution, replenishment, case | trfId, departureId, expected, received, missingQty, excessQty | 수령 차이 | ② |
-| `ReturnItemReceived` | mfc-inbound | **mfc-quality(검수 사본, 2026-11-08)**, claim(예정) | returnReceiptId, claimId, returnPickupId, lines[{sku, lot, qty, locationCode}], receivedBy, receivedAt | 회수품 점포 수령 — 격리(검수 대기, 판매 재고 아님) | ② |
+| `ReturnItemReceived` | mfc-inbound | **mfc-quality(검수 사본, 2026-11-08)**, claim(2026-11-17 — 반품 수령 수량, returnReceiptId 로 한 번) | returnReceiptId, claimId, returnPickupId, lines[{sku, lot, qty, locationCode}], receivedBy, receivedAt | 회수품 점포 수령 — 격리(검수 대기, 판매 재고 아님) | ② |
 | `MfcLocationStateChanged` | mfc-location | mfc-inventory, mfc-fulfillment | locationId, state, locationCode·zone·temperatureZone·version(전체 속성, 2026-11-07) | 위치 등록·속성 변경·폐쇄·활성(투영용 — version 큰 것만) | ① |
 | `CapacityHoldResult` | mfc-capacity | order-orchestration | holdId, orderId, result, expiresAt | HoldCapacity 결과 | ① |
 | `CapacityReduced` | mfc-capacity | delivery-capacity(2026-11-16 CP-1 구현 — 도착 시간대별 SlotCapacityReduced 로), order, notification | mfcId, window, oldCapacity, newCapacity, affectedOrders[] | 용량 축소(기존 약속 삭제 없음) | ① |
 | `ReceivingCapabilityChanged` | mfc-capacity | replenishment, transport-planning | mfcId, windows[], maxPerArrival, staff | 수령창·수용량 변경 | ② |
 | `AssignmentPublished` | mfc-capacity | mfc-fulfillment, mfc-inbound | planVersion, assignments[{taskId, workerId, assignmentVersion}] | 계획 발행(COMMITTED) | ① |
 | `QualityDecisionMade` | mfc-quality | mfc-inventory, case(리콜), order(참조) | sku, lot, decision(QUARANTINE/RELEASE/DISPOSAL_PENDING), qty, approverRef | 판정·승인 | ① |
-| `ReturnInspected` | mfc-quality | **mfc-inbound(재판매 적치 작업, 2026-11-08)**, claim(예정 — 검수 뒤 환불) | inspectionId, claimId, returnReceiptId, lines[{sku, lot, qty, disposition}], inspectedAt | 회수품 검수(상온 미개봉만 재판매, 재고 반영은 quality 가 inventory 에 직접) | ② |
+| `ReturnInspected` | mfc-quality | **mfc-inbound(재판매 적치 작업, 2026-11-08)**, claim(2026-11-17 — 검수 수량 원단가 부분 환불, RESALE·DISPOSE 모두, inspectionId 로 한 번) | inspectionId, claimId, returnReceiptId, lines[{sku, lot, qty, disposition}], inspectedAt | 회수품 검수(상온 미개봉만 재판매, 재고 반영은 quality 가 inventory 에 직접) | ② |
 | `DisposalApproved` | mfc-quality | mfc-inventory | disposalId, lines[], approverRef | 폐기 승인(실행은 inventory) | ② |
 
 ### MFC 구현 현황 (2026-11-08 코드·설정 기준)
@@ -155,6 +157,7 @@
   - `mfc.capacity.v1` → mfc-fulfillment: `AssignmentPublished`
   - `mfc.location.v1` → mfc-inventory: `MfcLocationStateChanged`
   - `mfc.sku-handling.v1` → search(Logstash)
+  - `mfc.inbound.v1` → claim: `ReturnItemReceived`(2026-11-17, 반품 수령 수량) · `mfc.quality.v1` → claim: `ReturnInspected`(2026-11-17, 검수 뒤 환불) — 같은 사건의 mfc 쪽 구독(quality·inbound)은 위 표
 - **구독자가 아직 없는 서비스**(표에 "예정"으로 읽는다): replenishment, demand-planning, transport-planning·execution, delivery-dispatch·execution, cdc-*, case, approval(사건 구독), audit, notification, BI, backoffice-bff, cart.
 
 ## 6. Middle-mile TMS
@@ -194,7 +197,7 @@
 | `InquiryAnswered` | case(구현됨 2026-11-16 — 상담원 답변 `POST /inquiries/{id}/replies`) | notification | inquiryId, customerId, caseId, orderId, answeredAt | 고객센터 문의 답변 사실(답변 내용 없음) — 고객 알림함(notification N-2). 토픽 platform.case.v1 | ① |
 | `RiderInquiryAnswered` | case(2026-11-16 — 라이더 문의 답변) | notification(라이더 알림함) | inquiryId, caseId, riderId, answeredAt | 지원센터가 라이더 문의에 답한 사실(답변 내용 없음, 라이더 앱 요청 §11-5). 토픽 platform.case.v1 | ① |
 | `RiderSupplyChanged` | rider | delivery-capacity | zoneId, activeRiders | 수급 참고 | ① |
-| `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce, case(2026-11-16 — purpose MISDELIVERY_RECOVERY·MISDELIVERY_RESHIPMENT 만, 오배송 사건에 회수·재발송 배송 번호·이력) | deliveryId, orderId, shipmentId, type(FORWARD/RETURN/RESHIPMENT — API 와 같게, 2026-11-10. 분할은 유형이 아님), mfcId, dropAddressRef, purpose·caseId·originDeliveryId(2026-11-16 — 오배송 회수면 RETURN·MISDELIVERY_RECOVERY, dropAddressRef `mfc:<mfcId>`) | 배송 단위 생성 | ① |
+| `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce, case(2026-11-16 — purpose MISDELIVERY_RECOVERY·MISDELIVERY_RESHIPMENT 만, 오배송 사건에 회수·재발송 배송 번호·이력), claim(2026-11-17 — purpose CLAIM_RETURN 만, claimId·pickupRequestId 로 회수 요청에 배송 번호를 잇는다 — DD-3) | deliveryId, orderId, shipmentId, type(FORWARD/RETURN/RESHIPMENT — API 와 같게, 2026-11-10. 분할은 유형이 아님), mfcId, dropAddressRef, purpose·caseId·originDeliveryId(2026-11-16 — 오배송 회수면 RETURN·MISDELIVERY_RECOVERY, dropAddressRef `mfc:<mfcId>`) | 배송 단위 생성 | ① |
 | `DispatchOfferSent` | delivery-dispatch | notification(라이더 알림) | offerId, attemptId, deliveryId, riderId, expiresAt(1분), fee | 제안 전송 | ① |
 | `DeliveryAssigned` | delivery-dispatch | delivery-execution, delivery-tracking, mfc-fulfillment, order, notification | deliveryId, riderId, assignmentVersion, acceptedAt, fee·vehicleType·distanceM(수락 당시 금액·조건 — execution 수행료 기준, 2026-11-13) | 유효 수락 1건 확정 | ① |
 | `DeliveryAssignmentChanged` | delivery-dispatch | delivery-execution, mfc-fulfillment(이전 기사 인계 차단), delivery-tracking(위치 감시 — 해제면 RELEASED) | deliveryId, oldRiderId, newRiderId, assignmentVersion, reason | 재배정·배차 취소 | ① |
@@ -205,10 +208,10 @@
 | `PickupCompleted` | delivery-execution | order, delivery-tracking, notification(delivery-dispatch 는 이 사건 대신 `PackageHandedOver` 를 직접 구독 — 2026-11-14) | deliveryId, packageIds[], handoverIds[], at | 모든 포장 `PackageHandedOver` 확인 후 | ① |
 | `RiderArrivedAtCustomer` | delivery-execution | notification | deliveryId, at | 고객 도착 | ① |
 | `DeliveryCompleted` | delivery-execution | order, review, notification, claim, demand-planning, BI, delivery-dispatch(배송 CLOSED — 라이더 진행 중 수에서 뺌), delivery-tracking(위치 감시 끝) | deliveryId, orderId, lines[{orderLineId, qty}], method(FACE/CONTACTLESS), evidenceRef, deliveredAt | 사진 증빙 확인 후 서버 완료(자동 완료 없음) | ① |
-| `DeliveryFailed` | delivery-execution | order, claim, case, notification, delivery-dispatch(배송 CLOSED), delivery-tracking(위치 감시 끝) | deliveryId, reason, custody(RIDER/STORE), goodsLocation, at | 운영자가 라이더 실패 등록을 확정했을 때(등록만으로는 진행 중 — 2026-11-13) | ① |
+| `DeliveryFailed` | delivery-execution | order, claim(2026-11-17 — 고객 반품 회수 배송만: 첫 실패 자동 재요청, 두 번째 RECOVERY_FAILED. claimId 를 실어 달라는 요청 DD-3), case, notification, delivery-dispatch(배송 CLOSED), delivery-tracking(위치 감시 끝) | deliveryId, reason, custody(RIDER/STORE), goodsLocation, at | 운영자가 라이더 실패 등록을 확정했을 때(등록만으로는 진행 중 — 2026-11-13) | ① |
 | `DeliveryIncidentRaised` | delivery-execution | case(구독 구현 전 — service-requests case R-4), rider, claim | incidentId, deliveryId, type(DAMAGE/MISDELIVERY/ABSENT/UNSAFE/STATUS_FIX/HELP_REQUEST), category, stage, orderId, mfcId, detail, evidenceRefs | 라이더 도움요청(HELP_REQUEST)·전달 실패 등록(category DELIVERY_FAILURE)·사고 | ① |
 | `HelpRequestReplied` | delivery-execution(2026-11-16 — 도움요청 대화의 지원센터 메시지) | notification(라이더 알림함) | deliveryId, requestId, riderId, messageSeq, repliedAt | 상담원 답장 사실(메시지 내용 없음, 라이더 앱 요청 §11-5). 배송 버전을 올리지 않는다 | ① |
-| `ReturnPickedUp` / `ReturnDelivered` | delivery-execution(2026-11-16 — 오배송 회수만 구현) | delivery-dispatch(회수 배송 PICKED_UP·CLOSED, 2026-11-16), case(오배송 회수만 — 사건 이력, 2026-11-16), delivery-tracking(ReturnDelivered — 감시 끝), claim·mfc-inbound(구독 전 — MI-1) | returnPickupId, claimId(고객 반품) 또는 caseId·originDeliveryId(오배송 회수), purpose, orderId, mfcId, lines[](오배송 회수 = 원래 배송이 전달한 줄), at | 회수지 수거 / 점포 반납 | ② |
+| `ReturnPickedUp` / `ReturnDelivered` | delivery-execution(2026-11-16 — 오배송 회수만 구현) | delivery-dispatch(회수 배송 PICKED_UP·CLOSED, 2026-11-16), case(오배송 회수만 — 사건 이력, 2026-11-16), delivery-tracking(ReturnDelivered — 감시 끝), claim(2026-11-17 구독 — purpose CLAIM_RETURN·claimId 만, 수거 수량·회수 축 상태), mfc-inbound(구독 전 — MI-1) | returnPickupId, claimId(고객 반품) 또는 caseId·originDeliveryId(오배송 회수), purpose, orderId, mfcId, lines[](오배송 회수 = 원래 배송이 전달한 줄), at | 회수지 수거 / 점포 반납 | ② |
 | `RedeliveryPaymentRequired` | delivery-dispatch(2026-11-16, ADR-0065 — 고객 잘못 다시 배송, 잘못 둔 곳 ↔ 실제 집 직선 200m 이상) | order-orchestration(2026-11-16 4단계 — `redelivery_payment` 결제 시도 → 결제되면 dispatch 배차 풀기, 30분·고객 거절이면 회수 + 상품값 − 9,000원 환불), notification(고객 안내 — N-3 요청, 구독 전) | deliveryId, orderId, caseId, originDeliveryId, straightDistanceM, fee, requiredAt | 다시 배송 결제 필요 | ① |
 | `DeliveryStatusCorrected` | delivery-execution | order, audit, notification | deliveryId, from, to, operatorId, basis | 관리자 정정 | ① |
 | `RiderEarningRecorded` | delivery-execution | BI, (회계 어댑터) | deliveryId, riderId, earningId, feeBasis, rateVersion, status, calculable, payoutDate | 수행료 근거(환불과 독립) — 완료 때 확정 대기·5시간 뒤 확정, 실패·취소는 산정 불가(2026-11-13) | ① |

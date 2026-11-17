@@ -68,3 +68,46 @@ A 20,000 + B 10,000, 쿠폰 3,000(비례 안분, 원 미만 버림, 잔여 원�
 - 환불 의도는 claim/order가 산정, PG 실행은 payment. BackOffice 독자 PG 명령 금지.
 - 회수·검수·환불 완료를 각각 표시. "검수 합격=재판매 가능=환불 완료"로 합치지 않는다.
 - 비용 결정(회수비·교환비)은 사건에 근거·승인자와 함께 기록. 지급·수납은 회계 연계 `[결정 필요]`.
+
+## 6. 구현 (2026-11-17, CL-1 — 라이더 인계 뒤 회수 반품)
+
+근거: D-7(인계 뒤 고객 취소 = 고객센터 경유 회수, 회수비 9,000원 고객 부담·회사 잘못이면 면제, 회수비는 환불과 따로, 상품 환불은 검수 뒤), ADR-0060 결정 2, 사용자 결정 2026-11-17 "추천대로"(① 1차 감액 없음 ② 면제 사유 다섯 ③ 회수 실패 2번 뒤 상담원 재연락·회수비 한 번). 조정자 claim-service(회수비 결제는 오배송 다시 배송비 — ADR-0065, `misdelivery-recovery-reshipment.md` §2.2 — 와 같은 payment 경로). 요청서 `service-requests/claim-service.md` CL-1.
+
+범위: **고객센터 접수 반품(type RETURN)** 만. 위 §0~§5 의 일반 반품·교환(고객 앱 접수·접수 기한·심사 BO-14·교환 재배송)은 아직 없다.
+
+```
+상담원(CS_AGENT·OPERATOR_ADMIN) ─ POST /claims {type RETURN, lines, reason, faultCode?, identityCheck, channel CS}
+  claim: order GET /internal/orders/{id} — 행마다 요청 ≤ 인계(handedOverQty) − 이 주문의 진행·완료 반품(취소 제외), 같은 주문은 advisory lock 으로 줄 세움
+    · faultCode 있음(MISDELIVERY·DEFECTIVE·DAMAGED_IN_DELIVERY·SEVERE_DELAY·WRONG_SUBSTITUTE) → 회수비 면제 → IN_PROGRESS + ReturnPickupRequested(attempt 1)
+    · 없음(고객 사유) → FEE_PENDING, 회수비 행(기한 = 접수 + pmart.claim.return-fee-payment-wait — 없으면 422 CONFIG_REQUIRED)
+        → 커밋 뒤 payment POST /internal/payments(주문 참조 RTF-<claimId>, 9,000원, customerRef = 주문 accountId, 만료 = 기한, 키 <claimId>:FEE:<n>)
+        → ReturnFeePaymentRequested(첫 시도만) → 고객 앱 결제(토스 위젯 orderId = paymentAttemptId → POST /payment-confirmations)
+        → PaymentApproved(order.payment.v1) 또는 재조회 APPROVED → 회수비 PAID + IN_PROGRESS + ReturnPickupRequested(attempt 1)
+        → 기한까지 승인 없음(진행 중 PENDING·UNKNOWN·MISMATCH 는 기다림) → UNPAID + CANCELLED + ClaimClosed(RETURN_FEE_UNPAID)
+        → 기한·취소 뒤 늦은 승인 → 보상 취소(compensation-cancellations, reason RETURN_FEE_TOO_LATE)
+  회수(delivery — DD-3, PC 5): ReturnPickupRequested(pickupRequestId <claimId>-P<n>, purpose CLAIM_RETURN, pickupAddressRef order:<orderId>, mfcId)
+    → DeliveryCreated(type RETURN, purpose CLAIM_RETURN, claimId, pickupRequestId) → ReturnPickedUp → ReturnDelivered(MFC 반납)
+    · DeliveryFailed(고객 부재 등, 수거 전): 1번째 시도면 자동으로 attempt 2 요청, 2번째(또는 상담원 재요청 뒤) 실패면 RECOVERY_FAILED + ReturnRecoveryFailed
+    · RECOVERY_FAILED → 상담원 POST /claims/{id}/recovery-actions: RETRY_PICKUP(새 회수 요청, 회수비 다시 받지 않음) / CANCEL(받은 회수품 없을 때만)
+  MFC: mfc-inbound POST /return-receipts → ReturnItemReceived(격리) → claim 수령 수량(receivedQty)
+       mfc-quality POST /return-inspections → ReturnInspected(줄별 RESALE·DISPOSE) → claim 검수 수량마다 환불 의도
+         금액 = 원단가 × 수량 − 할인 안분(원수량 기준 누계 비례, 원 미만 버림 — 원수량을 다 돌려주면 정확히 discountShare), 봉투값·배달팁 없음
+         RESALE·DISPOSE 모두 환불(1차 감액 없음 — 고객 잘못 파손·개봉도 회수비로 갈음)
+         → RefundIntentCreated(basis.lines) → payment 부분 취소(scope PARTIAL, reason RETURN, 키 REFUND-<의도>) → RefundResult
+  종결: 모든 행이 요청 수량만큼 검수되고 환불 의도가 모두 COMPLETED → CLOSED + ClaimClosed(RETURN_REFUNDED)
+```
+
+| 축 | 상태 |
+|---|---|
+| 클레임(RETURN) | FEE_PENDING → IN_PROGRESS → CLOSED / RECOVERY_FAILED(→ IN_PROGRESS 재요청 또는 CANCELLED) / CANCELLED |
+| 회수비 | WAITING → PAID / UNPAID(→ 늦은 승인 LATE_CANCEL_PENDING → LATE_CANCELLED·LATE_CANCEL_FAILED) |
+| 회수(클레임 pickup_state) | REQUESTED → PICKED_UP → DELIVERED_TO_STORE → RECEIVED → INSPECTED, 두 번 실패면 FAILED |
+| 회수 요청(시도마다) | REQUESTED → PICKED_UP → DELIVERED / FAILED |
+| 환불(검수마다 하나) | PENDING_EXECUTION → PG_PENDING → COMPLETED / FAILED / UNKNOWN(기존 환불 sweep) |
+
+- **회수비를 언제 받나(이 구현의 선택)**: 접수 때 결제를 요청하고 **결제된 뒤에만 회수를 요청**한다(D-7 "회수비 고객 부담" — 결제 없이 라이더가 먼저 가면 못 받을 수 있다). 결제 기한은 설정값(LAN 제안 24시간 — 사용자 확인 전), 지나면 반품 취소. 회사 잘못이면 결제 단계 없이 바로 회수.
+- 같은 반입(returnReceiptId)·검수(inspectionId)는 한 번만 센다(`return_fact` — inbox 와 별개 업무 키). 요청 수량을 넘는 반입·검수는 버리고 경고. 검수가 반입보다 먼저 와도 검수 수량으로 환불한다(검수 자체가 수령의 증거).
+- 회수 실패로 본 뒤 늦게 수거·반입·검수 사건이 오면 IN_PROGRESS 로 되돌려 이어 간다. 이미 받은 뒤의 배송 실패(반납 전 사고)는 회수 실패로 세지 않는다(기록만 — 사람).
+- 취소·종결·회수비 대기 반품에 검수가 들어오면 자동 환불하지 않는다(오류 로그 — 운영자).
+- 회수비 결제와 상품 환불은 다른 결제 거래다(회수비 = 새 결제 시도 RTF-<claimId>, 환불 = 원주문 결제의 부분 취소). 상계하지 않는다.
+- 이 단계의 한계: 접수 기한(7일·24시간)·증빙 검사 없음(상담원 판단), 주문 원장 반품 수량(returnedQty) 반영 없음(order O-7), 받은 수량이 요청보다 적으면 클레임이 IN_PROGRESS 로 남는다(닫는 조치 없음 — 사람), 이미 낸 회수비는 반품 취소 때 자동 환불하지 않는다, 고객 알림은 사건만 낸다(notification 연결 전), 상담원 재연락 사건(case R-8) 구독 전, 회수 배송(DD-3) 구현 전.

@@ -31,7 +31,7 @@
             },
             "outcome": {
               "type": "string",
-              "description": "종결 결과 코드"
+              "description": "종결 결과 코드 — CANCELLED_REFUNDED(취소 환불 완료), REJECTED_HANDED_OVER(인계돼 취소 불가), 반품(2026-11-17 CL-1): RETURN_REFUNDED(모든 행 검수·환불 완료), RETURN_FEE_UNPAID(회수비 기한 안 미결제), RETURN_CANCELLED(상담원 취소)"
             },
             "closedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"

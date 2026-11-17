@@ -47,3 +47,8 @@
 - **추가(2026-11-15, 사용자 "기록 남긴다" — 계약 order 0.4.0·audit 0.2.0, 구현, 커밋만 — 미배포)**: 상세 배송지는 **가림**(`shippingAddressMasked=true`: 이름 홍*동, 연락처 010-****-1234, 상세주소 `***`, 출입 메모·핀 없음, 도로명·우편번호·출입 방법 그대로). 원문은 `POST /orders/lookups/{orderId}/pii-reveals`(`reason` 2~200자 필수, `fields` NAME·PHONE·ADDRESS·ENTRANCE 선택 — 없으면 전부, Idempotency-Key·X-Source-System) → audit-service `POST /internal/pii-access-logs` 에 동기 기록(행위자·역할·고객 accountId·`ORDER:<orderId>`·항목·사유)된 뒤에만 원문(요청 항목만). **audit 미응답·결과 불명 → 503, 원문 없음**(BO-25 §3). 가린 GET 은 기록하지 않음. 클라이언트는 "보기" 토글 대신 사유 입력 → pii-reveals 호출로 바꿔야 한다(handoff 는 PC 1).
   - 배포 전 할 일: pmart-config `order-service-lan.yml`·`-local.yml` 에 `pmart.order.audit-base-url`, LAN 에서 audit-service 기동 확인(Flyway V2).
 - **남은 것**: 열람 기록을 누가 볼 수 있는지(직원용 조회 API)·보존기간 결정, 배송 요청사항(deliveryNote) 가림 여부. RIDER_OPS 역할의 Keycloak·employee-auth 쪽 정의는 별도.
+
+## O-7. 반품 수량(returnedQty) 반영 (2026-11-17, platform — claim CL-1 뒤)
+- **왜**: claim 이 인계 뒤 회수 반품(type RETURN)을 처리한다(2026-11-17, claim 0.2.0). 검수 뒤 환불까지 끝나도 주문 원장의 `returnedQty` 는 0 그대로다 — `line-quantity-changes` 가 reason RETURN 을 422 로 막는다. review-service 의 "받은 수량 전부 반품" 판정·고객 앱 주문 상세가 이 값을 본다.
+- **할 것(order — PC 1)**: 둘 중 하나. (가) `line-quantity-changes` reason RETURN(행마다 returnedQty +q, 상태는 그대로, 한도 = 전달(또는 인계) − 이미 반품, claimId·sourceRef = inspectionId) — claim 이 검수 환불 성공 때 부른다. (나) `ClaimClosed`(outcome RETURN_REFUNDED)·`RefundIntentCreated`(reason RETURN 의 basis.lines)를 구독해 반영. 어느 쪽인지 정한 뒤 claim 쪽 호출을 붙인다(claim 은 지금 부르지 않는다).
+- claim 의 반품 가능 수량 심사는 order 값이 아니라 claim 의 진행·완료 반품 기록으로 한다(이 값이 생겨도 이중으로 빼지 않게 그때 맞춘다).

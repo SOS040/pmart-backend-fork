@@ -40,6 +40,8 @@ import tools.jackson.databind.JsonNode;
  *       RefundService}).
  *   <li>RefundResult SUCCESS → 환불 완료·클레임 CLOSED. PG 성공 전에는 완료로 표시하지 않는다.
  * </ol>
+ *
+ * 고객센터 직원의 접수는 인계 뒤 회수 반품(RETURN)만 — {@link ReturnService}(CL-1, 2026-11-17).
  */
 @Service
 public class ClaimService {
@@ -57,7 +59,31 @@ public class ClaimService {
       @Nullable String reasonDetail,
       String channel) {}
 
-  public record ClaimView(ClaimRow claim, List<LineRow> lines, List<RefundRow> refunds) {}
+  /**
+   * @param fee 반품 회수비(RETURN 고객 사유만, 없으면 null)
+   * @param pickups 반품 회수 요청(시도 순)
+   */
+  public record ClaimView(
+      ClaimRow claim,
+      List<LineRow> lines,
+      List<RefundRow> refunds,
+      ClaimStore.@Nullable FeeRow fee,
+      List<ClaimStore.PickupRow> pickups) {
+
+    static ClaimView of(ClaimStore store, String claimId) {
+      return of(store, store.find(claimId).orElseThrow());
+    }
+
+    static ClaimView of(ClaimStore store, ClaimRow c) {
+      boolean ret = "RETURN".equals(c.type());
+      return new ClaimView(
+          c,
+          store.lines(c.claimId()),
+          store.refunds(c.claimId()),
+          ret ? store.fee(c.claimId()).orElse(null) : null,
+          ret ? store.pickups(c.claimId()) : List.of());
+    }
+  }
 
   /** 시스템 자동 취소 결과. created=false 면 이미 진행 중이던 취소 클레임. */
   public record SystemCancellation(ClaimView view, boolean created) {}
@@ -71,6 +97,7 @@ public class ClaimService {
   private final RequestIdempotency idempotency;
   private final ClaimEvents events;
   private final RefundService refunds;
+  private final ReturnService returns;
   private final Clock clock;
 
   public ClaimService(
@@ -79,24 +106,63 @@ public class ClaimService {
       RequestIdempotency idempotency,
       ClaimEvents events,
       RefundService refunds,
+      ReturnService returns,
       Clock clock) {
     this.store = store;
     this.upstreams = upstreams;
     this.idempotency = idempotency;
     this.events = events;
     this.refunds = refunds;
+    this.returns = returns;
     this.clock = clock;
   }
 
   // ---------- 접수 ----------
 
+  /** 반품 접수 추가 입력(직원 RETURN — CL-1). */
+  public record ReturnExtras(
+      @Nullable String faultCode,
+      @Nullable String identityMethod,
+      @Nullable String identityNote,
+      @Nullable String caseRef) {}
+
+  /**
+   * 고객 앱: 주문 전체 취소(CANCEL). 고객센터 직원: 인계 뒤 회수(RETURN — {@link ReturnService}, CL-1·D-7). 상품준비 뒤 고객센터
+   * 취소는 없다(ADR-0060), 고객 앱 반품은 고객센터로 안내.
+   */
   public ClaimView create(
-      String idempotencyKey, String sourceSystem, PmartPrincipal who, CreateCommand in) {
+      String idempotencyKey,
+      String sourceSystem,
+      PmartPrincipal who,
+      CreateCommand in,
+      ReturnExtras extras) {
+    if (who.type() == PmartPrincipal.PrincipalType.OPERATOR) {
+      if (!"RETURN".equals(in.type())) {
+        throw unsupported("고객센터는 인계 뒤 회수(RETURN)만 접수합니다 — 상품준비 뒤 취소는 받지 않습니다(ADR-0060).");
+      }
+      return returns.create(
+          idempotencyKey,
+          sourceSystem,
+          who,
+          new ReturnService.CreateReturn(
+              in.orderId(),
+              in.lines(),
+              in.reason(),
+              in.reasonDetail(),
+              in.channel(),
+              extras.faultCode(),
+              extras.identityMethod(),
+              extras.identityNote(),
+              extras.caseRef()));
+    }
     if (who.type() != PmartPrincipal.PrincipalType.CUSTOMER) {
-      throw unsupported("지금은 고객 앱의 취소 접수만 받습니다(운영자·CS 접수는 아직 없습니다).");
+      throw unsupported("고객 앱의 취소 접수와 고객센터의 반품 접수만 받습니다.");
+    }
+    if ("RETURN".equals(in.type())) {
+      throw unsupported("받으신 뒤 반품·회수는 고객센터로 문의해 주세요.");
     }
     if (!"CANCEL".equals(in.type())) {
-      throw unsupported("반품·교환 접수는 아직 준비 중입니다.");
+      throw unsupported("교환 접수는 아직 준비 중입니다.");
     }
     if ("FULFILLMENT_REJECTED".equals(in.reason()) || OUT_OF_STOCK.equals(in.reason())) {
       throw new PmartException(
@@ -409,7 +475,7 @@ public class ClaimService {
             .find(claimId)
             .filter(x -> canSee(who, x))
             .orElseThrow(() -> PmartException.notFound("CLAIM_NOT_FOUND", "클레임이 없습니다."));
-    return new ClaimView(c, store.lines(claimId), store.refunds(claimId));
+    return ClaimView.of(store, c);
   }
 
   public List<ClaimRow> list(
@@ -428,8 +494,7 @@ public class ClaimService {
   }
 
   private ClaimView view(String claimId) {
-    ClaimRow c = store.find(claimId).orElseThrow();
-    return new ClaimView(c, store.lines(claimId), store.refunds(claimId));
+    return ClaimView.of(store, claimId);
   }
 
   private static boolean canSee(PmartPrincipal who, ClaimRow c) {

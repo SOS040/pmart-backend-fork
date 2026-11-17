@@ -15,6 +15,12 @@
   5. `ReturnInspected` 구독 → **검수 뒤 상품 환불**: 원단가 × 회수 수량(할인 안분은 OMS 규칙), RESALE·DISPOSE 모두 환불(고객 책임 파손 시 감액 여부는 **사용자 결정 필요**). payment 부분 취소 → RefundResult → 클레임 CLOSED.
 - **결정이 더 필요한 것**: 고객 책임 파손·개봉 시 환불 감액 여부, 회수비 면제 사유 목록, 회수 실패(고객 부재) 처리.
 - **결정(2026-11-17 사용자 "추천대로")**: 1차 감액 없음(전액 환불, 회수비로 갈음) · 회수비 면제 사유 = 오배송·상품 불량·배송 중 파손·약속 시간 크게 지연·잘못된 대체 · 회수 실패 = 2번 시도 뒤 상담원 재연락, 회수비 한 번만. 구현 claim(PC 1), 고객 반품 회수 배송은 delivery(PC 5) 요청.
+- **구현(2026-11-17, PC 1 — claim 계약 0.2.0·V4, payment 계약 0.1.1, 커밋만 — 미배포)**: 흐름 정본 `docs/business/flows/return-exchange-refund.md` §6.
+  1. 접수: `POST /claims` type RETURN — 직원 CS_AGENT·OPERATOR_ADMIN 만, 본인 확인 방법(case CS 접수와 같은 값) 필수, 반품 가능 = 인계 수량 − 진행·완료 반품. faultCode(위 다섯)면 회수비 면제.
+  2. 회수비: 접수 때 payment 결제 시도(`RTF-<claimId>`, 9,000원) → 고객 앱 결제(`GET /claims/{id}` 의 feePayment, 실패 뒤 `POST /claims/{id}/fee-payment-attempts`) → **결제된 뒤에만 회수 요청**. 기한(`pmart.claim.return-fee-payment-wait`, LAN 제안 24시간 — 사용자 확인 전) 지나면 반품 취소, 그 뒤 승인은 보상 취소. 면제면 바로 회수 요청.
+  3. 회수: `ReturnPickupRequested`(시도마다 `<claimId>-P<n>`) → delivery 회수 배송(DD-3, PC 5 — 구현 전). 첫 실패 자동 재요청, 두 번째 실패 RECOVERY_FAILED + `ReturnRecoveryFailed`(case R-8 요청) → 상담원 `POST /claims/{id}/recovery-actions` RETRY_PICKUP·CANCEL.
+  4. `ReturnItemReceived` → 수령 수량. 5. `ReturnInspected` → 검수 수량 × 원단가 − 할인 안분 부분 환불(RESALE·DISPOSE 모두) → RefundResult → 모든 행 검수·환불되면 CLOSED.
+  - 남은 것: delivery DD-3(회수 배송·DeliveryFailed 에 claimId), case R-8(재연락 사건), order O-7(returnedQty), notification(결제 필요·회수 실패 안내), 클라이언트(고객 앱 회수비 결제·백오피스 반품 접수 — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`), 접수 기한 판정·받은 수량 부족 시 닫기.
 
 ## CL-D1. 고객센터 취소 없음 — ADR-0052 2번 바꾸기 (2026-11-13, 보낸 영역 delivery — 사용자 결정, platform 할 일)
 

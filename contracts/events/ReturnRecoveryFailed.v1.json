@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReturnRecoveryFailed.v1.json",
+  "title": "ReturnRecoveryFailed",
+  "description": "반품 회수가 실패해 상담원이 고객에게 다시 연락해야 함(2026-11-17, CL-1 ③ — 사용자 결정 \"2번 시도 뒤 상담원 재연락, 회수비는 한 번만\"). 자동 재요청(두 번째 회수)까지 실패했거나 상담원 재요청 뒤 또 실패했을 때. 클레임 RECOVERY_FAILED — 상담원이 POST /claims/{id}/recovery-actions(RETRY_PICKUP·CANCEL). 발행 claim-service. 구독 case(상담원 재연락 사건 — R-8, 구독 전), notification(고객 안내 — 연결 전). 토픽 order.claim.v1, 집계 Claim. 주소·연락처 없음.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReturnRecoveryFailed"
+        },
+        "aggregateType": {
+          "const": "Claim"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "claimId",
+            "orderId",
+            "accountId",
+            "attempts",
+            "failedAt"
+          ],
+          "properties": {
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "고객(주문 소유자)"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "attempts": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "지금까지 회수 요청 수"
+            },
+            "lastDeliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "마지막으로 실패한 회수 배송(알면)"
+            },
+            "lastFailureReason": {
+              "type": "string",
+              "description": "마지막 실패 사유 코드(delivery DeliveryFailed.reason 그대로)"
+            },
+            "failedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

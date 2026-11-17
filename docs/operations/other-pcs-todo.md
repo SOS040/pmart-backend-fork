@@ -74,6 +74,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [x] TR-1 `DeliveryEtaUpdated`(2026-11-16 구현 — 설정 있을 때만 켜짐)
   - [x] DE-2 도움요청 대화(#60)(2026-11-17 PC 5 구현 — 브랜치 `delivery/de-2-help-chat`) — 답장 권한을 접수 건 규칙에(CS 보기만·넘긴 건 관리자만), 새 메시지 값 `lastRiderMessageAt`, 관리자 가림, 처리 중 = 집을 때(PC 2 요청, `delivery-execution-service.md` DE-2)
   - [x] RS-2(rider-auth) — 표 참고(구현 2026-11-13, 표 "구현"). RS-3 컴플레인 검토 목록도 LAN 배포 확인(2026-11-17 PC 5 — 관리자 `GET /riders/restriction-reviews` 200)
+  - [ ] **DD-3 고객 반품 회수 배송**(2026-11-17 PC 1 — CL-1, 사용자 "추천대로"): `ReturnPickupRequested`(order.claim.v1, purpose CLAIM_RETURN·pickupRequestId·attempt) 구독 → dispatch 회수 배송(원주문 배송지 → MFC)·execution 회수 수행(`ReturnPickedUp`·`ReturnDelivered` 에 claimId), 회수 실패는 `DeliveryFailed`(claimId 도 실어서). `DeliveryCreated` 에 claimId·pickupRequestId. 요청서 `delivery-dispatch-service.md` DD-3. claim 은 구현됨(미배포)
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC
 
@@ -98,6 +99,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - 시작할 때: 공통 절 + 백엔드·클라이언트 두 저장소 포크(저장소마다 PR 따로).
 - **`web/mfc-backoffice` 도 PC 2**(사용자 2026-11-16). 화면이 쓰는 MFC API(MB-1~3)는 PC 3 — 필요하면 PC 3 에 요청.
 - 11-16 오전 마지막 갱신: case 0.4.1(`InquiryAnswered` 발행·사건 refs requestId), 백오피스 라이더·배송 화면 빌드 LAN, 리뷰·알림(PC 1 영역 — 백오피스 화면 없음). `HANDOVER.md` 첫머리 참고.
+- [ ] **R-8 반품 회수 실패 → 상담원 재연락 사건 + 백오피스 반품 접수 화면**(2026-11-17 PC 1 — CL-1): case 가 `ReturnRecoveryFailed`(order.claim.v1) 구독 → 고객센터 사건(요청서 `case-service.md` R-8). 백오피스 고객센터 메뉴에 반품 접수(`POST /claims` type RETURN)·회수 조치(`POST /claims/{id}/recovery-actions`) — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
 

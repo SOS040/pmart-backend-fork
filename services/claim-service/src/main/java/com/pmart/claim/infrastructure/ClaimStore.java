@@ -5,16 +5,25 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** 클레임·클레임 행·환불 의도 원장(JDBC). */
+/** 클레임·클레임 행·환불 의도 원장(JDBC). 반품(RETURN)의 회수비·회수 요청·반영한 MFC 사실·상담원 조치도(V4). */
 @Repository
 public class ClaimStore {
 
+  /**
+   * @param faultCode RETURN — 회사 잘못 사유(있으면 회수비 면제)
+   * @param identityMethod RETURN — 상담원 본인 확인 방법(값은 저장하지 않는다)
+   * @param createdBy RETURN — 접수 직원
+   * @param mfcId RETURN — 반납 센터(원주문 이행 센터)
+   * @param pickupState RETURN — 회수 축 상태
+   */
   public record ClaimRow(
       String claimId,
       String orderId,
@@ -35,8 +44,72 @@ public class ClaimStore {
       Instant openedAt,
       @Nullable Instant decidedAt,
       @Nullable Instant closedAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      @Nullable String faultCode,
+      @Nullable String identityMethod,
+      @Nullable String identityNote,
+      @Nullable String caseRef,
+      @Nullable String createdBy,
+      @Nullable String mfcId,
+      @Nullable String pickupState) {
 
+    /** 취소 클레임(반품 필드 없음). */
+    public ClaimRow(
+        String claimId,
+        String orderId,
+        String accountId,
+        String type,
+        String state,
+        String reason,
+        @Nullable String reasonDetail,
+        String channel,
+        @Nullable String stopRequestId,
+        int version,
+        String paymentAttemptId,
+        long approvedAmount,
+        long itemAmount,
+        long bagFee,
+        long deliveryTip,
+        @Nullable String rejectReason,
+        Instant openedAt,
+        @Nullable Instant decidedAt,
+        @Nullable Instant closedAt,
+        Instant updatedAt) {
+      this(
+          claimId,
+          orderId,
+          accountId,
+          type,
+          state,
+          reason,
+          reasonDetail,
+          channel,
+          stopRequestId,
+          version,
+          paymentAttemptId,
+          approvedAmount,
+          itemAmount,
+          bagFee,
+          deliveryTip,
+          rejectReason,
+          openedAt,
+          decidedAt,
+          closedAt,
+          updatedAt,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null);
+    }
+  }
+
+  /**
+   * @param unitPrice·originalQty·discountShare RETURN — 원주문 스냅샷(환불 근거)
+   * @param pickedUpQty·receivedQty·resaleQty·disposeQty RETURN — 회수지 수거·MFC 반입·검수 누계
+   */
   public record LineRow(
       String claimLineId,
       String claimId,
@@ -45,8 +118,50 @@ public class ClaimStore {
       int requestedQty,
       @Nullable Integer approvedQty,
       String decision,
-      long lineAmount) {}
+      long lineAmount,
+      @Nullable Long unitPrice,
+      @Nullable Integer originalQty,
+      long discountShare,
+      int pickedUpQty,
+      int receivedQty,
+      int resaleQty,
+      int disposeQty) {
 
+    public LineRow(
+        String claimLineId,
+        String claimId,
+        String orderLineId,
+        String sku,
+        int requestedQty,
+        @Nullable Integer approvedQty,
+        String decision,
+        long lineAmount) {
+      this(
+          claimLineId,
+          claimId,
+          orderLineId,
+          sku,
+          requestedQty,
+          approvedQty,
+          decision,
+          lineAmount,
+          null,
+          null,
+          0,
+          0,
+          0,
+          0,
+          0);
+    }
+
+    public int inspectedQty() {
+      return resaleQty + disposeQty;
+    }
+  }
+
+  /**
+   * @param sourceRef 환불 근거(반품 = 검수 ID). 취소·결품은 없음 — 클레임당 하나.
+   */
   public record RefundRow(
       String refundIntentId,
       String claimId,
@@ -67,6 +182,79 @@ public class ClaimStore {
       @Nullable Instant requestedAt,
       @Nullable Instant completedAt,
       Instant createdAt,
+      Instant updatedAt,
+      @Nullable String sourceRef) {
+
+    public RefundRow(
+        String refundIntentId,
+        String claimId,
+        String orderId,
+        String paymentAttemptId,
+        String scope,
+        String reason,
+        long amount,
+        long itemAmount,
+        long bagFee,
+        long deliveryTip,
+        String state,
+        String cancellationRequestId,
+        @Nullable String pgResult,
+        @Nullable String pgTransactionId,
+        @Nullable String failureCode,
+        int attempts,
+        @Nullable Instant requestedAt,
+        @Nullable Instant completedAt,
+        Instant createdAt,
+        Instant updatedAt) {
+      this(
+          refundIntentId,
+          claimId,
+          orderId,
+          paymentAttemptId,
+          scope,
+          reason,
+          amount,
+          itemAmount,
+          bagFee,
+          deliveryTip,
+          state,
+          cancellationRequestId,
+          pgResult,
+          pgTransactionId,
+          failureCode,
+          attempts,
+          requestedAt,
+          completedAt,
+          createdAt,
+          updatedAt,
+          null);
+    }
+  }
+
+  /** 반품 회수비(클레임당 하나). */
+  public record FeeRow(
+      String claimId,
+      long amount,
+      String state,
+      @Nullable String paymentAttemptId,
+      int attemptNo,
+      @Nullable String lateAttemptId,
+      Instant deadlineAt,
+      @Nullable Instant paidAt,
+      @Nullable String lastError,
+      Instant createdAt,
+      Instant updatedAt) {}
+
+  /** 반품 회수 요청(시도마다 하나). */
+  public record PickupRow(
+      String pickupRequestId,
+      String claimId,
+      int attemptNo,
+      @Nullable String deliveryId,
+      String state,
+      @Nullable String failureReason,
+      String requestedBy,
+      Instant requestedAt,
       Instant updatedAt) {}
 
   private final JdbcTemplate jdbc;
@@ -81,8 +269,9 @@ public class ClaimStore {
     jdbc.update(
         "INSERT INTO claim (claim_id, order_id, account_id, type, state, reason, reason_detail,"
             + " channel, stop_request_id, version, payment_attempt_id, approved_amount, item_amount,"
-            + " bag_fee, delivery_tip, opened_at, updated_at)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            + " bag_fee, delivery_tip, opened_at, decided_at, closed_at, updated_at, fault_code,"
+            + " identity_method, identity_note, case_ref, created_by, mfc_id, pickup_state)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         c.claimId(),
         c.orderId(),
         c.accountId(),
@@ -99,11 +288,21 @@ public class ClaimStore {
         c.bagFee(),
         c.deliveryTip(),
         ts(c.openedAt()),
-        ts(c.updatedAt()));
+        ts(c.decidedAt()),
+        ts(c.closedAt()),
+        ts(c.updatedAt()),
+        c.faultCode(),
+        c.identityMethod(),
+        c.identityNote(),
+        c.caseRef(),
+        c.createdBy(),
+        c.mfcId(),
+        c.pickupState());
     for (LineRow l : lines) {
       jdbc.update(
           "INSERT INTO claim_line (claim_line_id, claim_id, order_line_id, sku, requested_qty,"
-              + " approved_qty, decision, line_amount) VALUES (?,?,?,?,?,?,?,?)",
+              + " approved_qty, decision, line_amount, unit_price, original_qty, discount_share)"
+              + " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
           l.claimLineId(),
           l.claimId(),
           l.orderLineId(),
@@ -111,7 +310,10 @@ public class ClaimStore {
           l.requestedQty(),
           l.approvedQty(),
           l.decision(),
-          l.lineAmount());
+          l.lineAmount(),
+          l.unitPrice(),
+          l.originalQty(),
+          l.discountShare());
     }
   }
 
@@ -190,16 +392,7 @@ public class ClaimStore {
   public List<LineRow> lines(String claimId) {
     return jdbc.query(
         "SELECT * FROM claim_line WHERE claim_id = ? ORDER BY claim_line_id",
-        (rs, i) ->
-            new LineRow(
-                rs.getString("claim_line_id"),
-                rs.getString("claim_id"),
-                rs.getString("order_line_id"),
-                rs.getString("sku"),
-                rs.getInt("requested_qty"),
-                (Integer) rs.getObject("approved_qty"),
-                rs.getString("decision"),
-                rs.getLong("line_amount")),
+        (rs, i) -> line(rs),
         claimId);
   }
 
@@ -232,13 +425,249 @@ public class ClaimStore {
         orderLineId);
   }
 
+  // ---------- 반품(RETURN, V4) ----------
+
+  /** 이 주문의 진행·완료 반품 수량(행별) — 취소·거절·철회된 반품은 빼고. 반품 가능 수량 = 인계 − 이 값. */
+  public Map<String, Integer> returnOccupied(String orderId) {
+    Map<String, Integer> out = new LinkedHashMap<>();
+    jdbc.query(
+        "SELECT l.order_line_id, COALESCE(SUM(l.requested_qty), 0) AS q FROM claim_line l"
+            + " JOIN claim c ON c.claim_id = l.claim_id WHERE c.order_id = ? AND c.type = 'RETURN'"
+            + " AND c.state NOT IN ('CANCELLED', 'REJECTED', 'WITHDRAWN') GROUP BY l.order_line_id",
+        rs -> {
+          out.put(rs.getString("order_line_id"), rs.getInt("q"));
+        },
+        orderId);
+    return out;
+  }
+
+  /** 같은 주문의 반품 접수를 줄 세운다(반품 가능 수량 경합 — 트랜잭션 끝까지). */
+  public void lockOrderForReturn(String orderId) {
+    jdbc.query("SELECT pg_advisory_xact_lock(hashtext(?))", rs -> {}, "claim-return:" + orderId);
+  }
+
+  public void updatePickupState(String claimId, String pickupState, Instant now) {
+    jdbc.update(
+        "UPDATE claim SET pickup_state = ?, updated_at = ? WHERE claim_id = ?",
+        pickupState,
+        ts(now),
+        claimId);
+  }
+
+  /** 회수·반입·검수 누계를 더한다(요청 수량을 넘지 않게 호출자가 배분). */
+  public void addLineProgress(
+      String claimLineId, int pickedUp, int received, int resale, int dispose) {
+    jdbc.update(
+        "UPDATE claim_line SET picked_up_qty = picked_up_qty + ?, received_qty = received_qty + ?,"
+            + " resale_qty = resale_qty + ?, dispose_qty = dispose_qty + ? WHERE claim_line_id = ?",
+        pickedUp,
+        received,
+        resale,
+        dispose,
+        claimLineId);
+  }
+
+  /** 반영한 MFC 사실 기록. 이미 있으면 false(같은 반입·검수를 두 번 세지 않는다). */
+  public boolean markFact(String kind, String ref, String claimId, Instant now) {
+    return jdbc.update(
+            "INSERT INTO return_fact (kind, ref, claim_id, applied_at) VALUES (?,?,?,?)"
+                + " ON CONFLICT (kind, ref) DO NOTHING",
+            kind,
+            ref,
+            claimId,
+            ts(now))
+        == 1;
+  }
+
+  public void insertAction(
+      String actionId, String claimId, String action, String actor, String note, Instant now) {
+    jdbc.update(
+        "INSERT INTO claim_action (action_id, claim_id, action, actor, note, acted_at)"
+            + " VALUES (?,?,?,?,?,?)",
+        actionId,
+        claimId,
+        action,
+        actor,
+        note,
+        ts(now));
+  }
+
+  // 회수비
+
+  public void insertFee(FeeRow f) {
+    jdbc.update(
+        "INSERT INTO return_fee (claim_id, amount, state, payment_attempt_id, attempt_no,"
+            + " deadline_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+        f.claimId(),
+        f.amount(),
+        f.state(),
+        f.paymentAttemptId(),
+        f.attemptNo(),
+        ts(f.deadlineAt()),
+        ts(f.createdAt()),
+        ts(f.updatedAt()));
+  }
+
+  public Optional<FeeRow> fee(String claimId) {
+    return jdbc
+        .query("SELECT * FROM return_fee WHERE claim_id = ?", (rs, i) -> fee(rs), claimId)
+        .stream()
+        .findFirst();
+  }
+
+  public Optional<FeeRow> lockFee(String claimId) {
+    return jdbc
+        .query(
+            "SELECT * FROM return_fee WHERE claim_id = ? FOR UPDATE", (rs, i) -> fee(rs), claimId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 결제 시도 → 클레임(지금 시도·지난 시도 모두). */
+  public Optional<String> claimByFeeAttempt(String paymentAttemptId) {
+    return jdbc
+        .queryForList(
+            "SELECT claim_id FROM return_fee_attempt WHERE payment_attempt_id = ?",
+            String.class,
+            paymentAttemptId)
+        .stream()
+        .findFirst();
+  }
+
+  public void feeAttempt(String claimId, String paymentAttemptId, int attemptNo, Instant now) {
+    jdbc.update(
+        "INSERT INTO return_fee_attempt (payment_attempt_id, claim_id, attempt_no, created_at)"
+            + " VALUES (?,?,?,?) ON CONFLICT (payment_attempt_id) DO NOTHING",
+        paymentAttemptId,
+        claimId,
+        attemptNo,
+        ts(now));
+    jdbc.update(
+        "UPDATE return_fee SET payment_attempt_id = ?, attempt_no = ?, last_error = NULL,"
+            + " updated_at = ? WHERE claim_id = ?",
+        paymentAttemptId,
+        attemptNo,
+        ts(now),
+        claimId);
+  }
+
+  public void updateFee(
+      String claimId,
+      String state,
+      @Nullable String paymentAttemptId,
+      @Nullable String lateAttemptId,
+      @Nullable Instant paidAt,
+      @Nullable String lastError,
+      Instant now) {
+    jdbc.update(
+        "UPDATE return_fee SET state = ?, payment_attempt_id = COALESCE(?, payment_attempt_id),"
+            + " late_attempt_id = COALESCE(?, late_attempt_id), paid_at = COALESCE(?, paid_at),"
+            + " last_error = ?, updated_at = ? WHERE claim_id = ?",
+        state,
+        paymentAttemptId,
+        lateAttemptId,
+        ts(paidAt),
+        lastError,
+        ts(now),
+        claimId);
+  }
+
+  /** 재조회 대상 — 결제 대기(오래됐거나 기한이 지난 것)·늦은 승인 보상 취소 대기. */
+  public List<String> dueFees(Instant staleBefore, Instant now) {
+    return jdbc.queryForList(
+        "SELECT claim_id FROM return_fee WHERE state IN ('WAITING', 'LATE_CANCEL_PENDING')"
+            + " AND (updated_at < ? OR deadline_at <= ?) ORDER BY updated_at LIMIT 50",
+        String.class,
+        ts(staleBefore),
+        ts(now));
+  }
+
+  // 회수 요청
+
+  public void insertPickup(PickupRow p) {
+    jdbc.update(
+        "INSERT INTO return_pickup (pickup_request_id, claim_id, attempt_no, delivery_id, state,"
+            + " requested_by, requested_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+        p.pickupRequestId(),
+        p.claimId(),
+        p.attemptNo(),
+        p.deliveryId(),
+        p.state(),
+        p.requestedBy(),
+        ts(p.requestedAt()),
+        ts(p.updatedAt()));
+  }
+
+  public List<PickupRow> pickups(String claimId) {
+    return jdbc.query(
+        "SELECT * FROM return_pickup WHERE claim_id = ? ORDER BY attempt_no",
+        (rs, i) -> pickup(rs),
+        claimId);
+  }
+
+  public Optional<PickupRow> pickupByDelivery(String deliveryId) {
+    return jdbc
+        .query(
+            "SELECT * FROM return_pickup WHERE delivery_id = ? FOR UPDATE",
+            (rs, i) -> pickup(rs),
+            deliveryId)
+        .stream()
+        .findFirst();
+  }
+
+  public Optional<PickupRow> pickup(String pickupRequestId) {
+    return jdbc
+        .query(
+            "SELECT * FROM return_pickup WHERE pickup_request_id = ? FOR UPDATE",
+            (rs, i) -> pickup(rs),
+            pickupRequestId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 클레임의 마지막 회수 요청. */
+  public Optional<PickupRow> lastPickup(String claimId) {
+    return jdbc
+        .query(
+            "SELECT * FROM return_pickup WHERE claim_id = ? ORDER BY attempt_no DESC LIMIT 1 FOR UPDATE",
+            (rs, i) -> pickup(rs),
+            claimId)
+        .stream()
+        .findFirst();
+  }
+
+  public void linkPickupDelivery(String pickupRequestId, String deliveryId, Instant now) {
+    jdbc.update(
+        "UPDATE return_pickup SET delivery_id = ?, updated_at = ? WHERE pickup_request_id = ?"
+            + " AND delivery_id IS NULL",
+        deliveryId,
+        ts(now),
+        pickupRequestId);
+  }
+
+  public void updatePickup(
+      String pickupRequestId,
+      String state,
+      @Nullable String deliveryId,
+      @Nullable String failureReason,
+      Instant now) {
+    jdbc.update(
+        "UPDATE return_pickup SET state = ?, delivery_id = COALESCE(delivery_id, ?),"
+            + " failure_reason = COALESCE(?, failure_reason), updated_at = ? WHERE pickup_request_id = ?",
+        state,
+        deliveryId,
+        failureReason,
+        ts(now),
+        pickupRequestId);
+  }
+
   // ---------- 환불 의도 ----------
 
   public void insertRefund(RefundRow r) {
     jdbc.update(
         "INSERT INTO refund_intent (refund_intent_id, claim_id, order_id, payment_attempt_id, scope,"
             + " reason, amount, item_amount, bag_fee, delivery_tip, state, cancellation_request_id,"
-            + " attempts, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
+            + " attempts, created_at, updated_at, source_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)",
         r.refundIntentId(),
         r.claimId(),
         r.orderId(),
@@ -252,12 +681,13 @@ public class ClaimStore {
         r.state(),
         r.cancellationRequestId(),
         ts(r.createdAt()),
-        ts(r.updatedAt()));
+        ts(r.updatedAt()),
+        r.sourceRef());
   }
 
   public List<RefundRow> refunds(String claimId) {
     return jdbc.query(
-        "SELECT * FROM refund_intent WHERE claim_id = ? ORDER BY created_at",
+        "SELECT * FROM refund_intent WHERE claim_id = ? ORDER BY created_at, refund_intent_id",
         (rs, i) -> refund(rs),
         claimId);
   }
@@ -336,7 +766,33 @@ public class ClaimStore {
         rs.getTimestamp("opened_at").toInstant(),
         instant(rs.getTimestamp("decided_at")),
         instant(rs.getTimestamp("closed_at")),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("fault_code"),
+        rs.getString("identity_method"),
+        rs.getString("identity_note"),
+        rs.getString("case_ref"),
+        rs.getString("created_by"),
+        rs.getString("mfc_id"),
+        rs.getString("pickup_state"));
+  }
+
+  private static LineRow line(ResultSet rs) throws SQLException {
+    return new LineRow(
+        rs.getString("claim_line_id"),
+        rs.getString("claim_id"),
+        rs.getString("order_line_id"),
+        rs.getString("sku"),
+        rs.getInt("requested_qty"),
+        (Integer) rs.getObject("approved_qty"),
+        rs.getString("decision"),
+        rs.getLong("line_amount"),
+        (Long) rs.getObject("unit_price"),
+        (Integer) rs.getObject("original_qty"),
+        rs.getLong("discount_share"),
+        rs.getInt("picked_up_qty"),
+        rs.getInt("received_qty"),
+        rs.getInt("resale_qty"),
+        rs.getInt("dispose_qty"));
   }
 
   private static RefundRow refund(ResultSet rs) throws SQLException {
@@ -360,6 +816,35 @@ public class ClaimStore {
         instant(rs.getTimestamp("requested_at")),
         instant(rs.getTimestamp("completed_at")),
         rs.getTimestamp("created_at").toInstant(),
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("source_ref"));
+  }
+
+  private static FeeRow fee(ResultSet rs) throws SQLException {
+    return new FeeRow(
+        rs.getString("claim_id"),
+        rs.getLong("amount"),
+        rs.getString("state"),
+        rs.getString("payment_attempt_id"),
+        rs.getInt("attempt_no"),
+        rs.getString("late_attempt_id"),
+        rs.getTimestamp("deadline_at").toInstant(),
+        instant(rs.getTimestamp("paid_at")),
+        rs.getString("last_error"),
+        rs.getTimestamp("created_at").toInstant(),
+        rs.getTimestamp("updated_at").toInstant());
+  }
+
+  private static PickupRow pickup(ResultSet rs) throws SQLException {
+    return new PickupRow(
+        rs.getString("pickup_request_id"),
+        rs.getString("claim_id"),
+        rs.getInt("attempt_no"),
+        rs.getString("delivery_id"),
+        rs.getString("state"),
+        rs.getString("failure_reason"),
+        rs.getString("requested_by"),
+        rs.getTimestamp("requested_at").toInstant(),
         rs.getTimestamp("updated_at").toInstant());
   }
 

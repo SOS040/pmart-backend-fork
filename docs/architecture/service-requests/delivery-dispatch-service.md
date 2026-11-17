@@ -55,3 +55,15 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **할 것(작음, 필드 추가만)**: `DispatchEvents.failed(...)` 가 `p.put("mfcId", before.mfcId())` — 계약 `contracts/events/DispatchFailed.v1.json` payload 에 `mfcId`(선택, `_defs` CenterId) 추가(필드 추가라 하위 호환). `DispatchDelayed` 도 같은 이유로 있으면 좋다(지금 사건함은 구독 안 함).
 - **case 쪽**: 이미 읽는다(값이 없으면 센터 없음 → 지원센터·관리자만 봄). 바꿀 것 없음.
 - **구현(2026-11-16, PC 5)**: `DispatchFailed`·`DispatchDelayed` payload 에 `mfcId`(선택 — 계약 필드 추가). DispatchFlowIT 로 확인.
+
+## DD-3. 고객 반품 회수 배송 — `ReturnPickupRequested` 받기 (2026-11-17, 보낸 영역 platform — CL-1)
+- **결정(D-7·ADR-0060 결정 2, 사용자 2026-11-17 "추천대로")**: 라이더 인계 뒤(픽업·배달 시작 뒤) 고객이 더는 원하지 않으면 **고객센터가 반품(회수)을 접수**한다. 회수비 9,000원은 고객 부담(회사 잘못이면 면제 — claim 이 판정·결제를 끝낸 뒤에만 회수를 요청한다). **회수 실패(고객 부재 등) = 2번 시도 뒤 상담원 재연락** — 첫 실패 뒤 두 번째 요청은 claim 이 자동으로 다시 보낸다.
+- **claim 이 주는 것(구현, 2026-11-17 — claim 0.2.0, 미배포)**: `ReturnPickupRequested`(order.claim.v1, 키 claimId — 계약 `contracts/events/ReturnPickupRequested.v1.json`, 구독자 전이라 `deliveryId` 를 필수에서 뺐다): claimId, orderId, mfcId(반납 센터 = 원주문 센터), **pickupRequestId**(`<claimId>-P<n>` — 시도마다 하나), **attempt**(1 = 처음, 2 = 첫 실패 뒤 자동, 3~ = 상담원 재요청), purpose `CLAIM_RETURN`, feeWaived, lines[{orderLineId, qty(이번에 회수할 수량), claimLineId, sku}], pickupAddressRef `order:<orderId>`(회수지 = **원주문 배송지 고정**, 주소 원문 없음 — 좌표는 order `GET /internal/orders/{id}/delivery-destination`(O-4) 그대로), requestedAt.
+- **delivery 가 할 것(PC 5)**
+  1. dispatch: 구독 → 회수 배송(type RETURN, **purpose CLAIM_RETURN**, 배송 하나 = pickupRequestId 하나 — 같은 요청은 하나), 회수지 = 원주문 배송지, 도착지 = mfcId. `DeliveryCreated` 에 **claimId·pickupRequestId**(필드 추가)·purpose·dropAddressRef `mfc:<mfcId>`. 인근 라이더 배차·수행료는 DD-2 회수와 같은 규칙(일반 표, 회수지 → MFC)으로 보면 된다(다르면 PC 5 가 정해 알림).
+  2. 원래 배송이 아직 전달 전(라이더가 들고 있음 — 주문 IN_DELIVERY)이면: 전달 완료 뒤 회수를 시작할지, 원래 라이더가 바로 MFC 로 가져갈지 PC 5 가 정한다(claim 은 어느 쪽이든 아래 사건만 받으면 된다).
+  3. execution: 회수 수행 — 회수지 도착·사진·`returns/pickups` → **`ReturnPickedUp`**(purpose CLAIM_RETURN, **claimId**, deliveryId, lines = 실제 받은 줄·수량) → MFC 도착 `returns/store-deliveries` → **`ReturnDelivered`**(claimId). 지금 DD-2 는 오배송 회수만(`CLAIM_RETURN` 은 "아직 없음").
+  4. **회수 실패**: 고객 부재·거부로 회수하지 못하면 운영자 실패 확정 → **`DeliveryFailed`**(그 회수 배송 deliveryId, reason, custody, failedAt) — **claimId·purpose CLAIM_RETURN 도 실어 주면 좋다**(필드 추가 — claim 은 deliveryId 로도 찾지만 DeliveryCreated 를 못 받았을 때 대비). claim 은 수거 전 실패만 회수 실패로 센다(1번째면 새 `ReturnPickupRequested` attempt 2, 2번째면 상담원 재연락). 자동 재시도는 dispatch 가 따로 하지 않는다(claim 이 다음 요청을 낸다).
+  5. 회수 라이더에게 원래 고객 전화번호(execution `recovery-contact` 와 같은 방식)·회수 품목이 보여야 한다(회수지에서 고객에게 받아야 하므로).
+- **MFC 쪽(구현됨)**: 반납된 회수품은 점원이 mfc-inbound `POST /return-receipts`(claimId·returnPickupId = 회수 배송 ID·줄)로 격리 반입 → `ReturnItemReceived` → 검수 `ReturnInspected` → claim 환불. MFC 앱이 ReturnDelivered 의 claimId 를 점원에게 보여 주는지는 PC 3 확인(MI-1).
+- **claim 이 받는 delivery 사건(2026-11-17 구독, 설정 `deliveryEvents-in-0` ← delivery.delivery.v1)**: `DeliveryCreated`(purpose CLAIM_RETURN 만 — pickupRequestId 로 배송 번호 연결), `ReturnPickedUp`·`ReturnDelivered`(claimId 가 있고 purpose 가 없거나 CLAIM_RETURN), `DeliveryFailed`(회수 배송 번호 또는 claimId). 오배송 회수(MISDELIVERY_RECOVERY)는 지나간다.

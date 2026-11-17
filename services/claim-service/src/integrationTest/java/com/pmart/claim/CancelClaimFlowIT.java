@@ -609,8 +609,12 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
                     "$.amount", com.github.tomakehurst.wiremock.client.WireMock.equalTo("1900")))
             .withRequestBody(
                 com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
-                    "$.scope",
-                    com.github.tomakehurst.wiremock.client.WireMock.equalTo("PARTIAL"))));
+                    "$.scope", com.github.tomakehurst.wiremock.client.WireMock.equalTo("PARTIAL")))
+            // payment 계약의 취소 사유는 SHORTAGE(클레임 사유 OUT_OF_STOCK 그대로 보내면 400 — 2026-11-17 고침)
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
+                    "$.reason",
+                    com.github.tomakehurst.wiremock.client.WireMock.equalTo("SHORTAGE"))));
     // 같은 키 재생, 남은 1개만 더 환불 가능(2 → 422)
     assertThat(shortageRefund("S4-1:REFUND", body).body().path("claimId").asString())
         .isEqualTo(claimId);

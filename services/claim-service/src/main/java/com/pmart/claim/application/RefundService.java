@@ -3,12 +3,14 @@ package com.pmart.claim.application;
 import com.pmart.claim.domain.ClaimRules;
 import com.pmart.claim.infrastructure.ClaimStore;
 import com.pmart.claim.infrastructure.ClaimStore.ClaimRow;
+import com.pmart.claim.infrastructure.ClaimStore.LineRow;
 import com.pmart.claim.infrastructure.ClaimStore.RefundRow;
 import com.pmart.claim.infrastructure.Upstreams;
 import com.pmart.common.messaging.EventEnvelope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -148,6 +150,75 @@ public class RefundService {
     return r;
   }
 
+  /**
+   * 반품 환불 의도(CL-1, 호출자 트랜잭션 안) — 검수(inspectionId)마다 하나. 금액 = 검수 수량 × 원단가 − 할인 안분(1차 감액 없음), 봉투값·배달팁
+   * 없음(부분 취소). RefundIntentCreated(근거 행 포함)도 함께.
+   *
+   * @param itemAmount 단가 × 수량 합
+   * @param discount 할인 안분 합
+   * @param lines 근거 행(orderLineId·qty·amount)
+   */
+  RefundRow createReturnRefund(
+      ClaimRow c,
+      String inspectionId,
+      long itemAmount,
+      long discount,
+      List<Map<String, Object>> lines,
+      Instant now) {
+    String id = "RFI-" + UUID.randomUUID();
+    RefundRow r =
+        new RefundRow(
+            id,
+            c.claimId(),
+            c.orderId(),
+            c.paymentAttemptId(),
+            "PARTIAL",
+            "RETURN",
+            itemAmount - discount,
+            itemAmount,
+            0,
+            0,
+            "PENDING_EXECUTION",
+            "REFUND-" + id,
+            null,
+            null,
+            null,
+            0,
+            null,
+            null,
+            now,
+            now,
+            inspectionId);
+    store.insertRefund(r);
+    events.refundIntentCreated(r, discount, lines);
+    return r;
+  }
+
+  /**
+   * 반품 종결 판정(호출자 트랜잭션 안, 클레임 잠금 뒤): 진행 중이고 모든 행이 요청 수량만큼 검수됐고 환불 의도가 모두 완료면 CLOSED +
+   * ClaimClosed(RETURN_REFUNDED). 아니면 그대로.
+   */
+  boolean closeReturnIfDone(String claimId, Instant now) {
+    ClaimRow c = store.lock(claimId).orElse(null);
+    if (c == null || !"RETURN".equals(c.type()) || !"IN_PROGRESS".equals(c.state())) {
+      return false;
+    }
+    for (LineRow l : store.lines(claimId)) {
+      if (l.inspectedQty() < l.requestedQty()) {
+        return false;
+      }
+    }
+    for (RefundRow r : store.refunds(claimId)) {
+      if (!"COMPLETED".equals(r.state())) {
+        return false;
+      }
+    }
+    store.updateState(claimId, "CLOSED", null, null, now, now);
+    events.claimClosed(c, "RETURN_REFUNDED", now);
+    log.info("반품 {} 모든 행 검수·환불 완료 — 종결", claimId);
+    return true;
+  }
+
   void executeAsync(String refundIntentId) {
     executor.execute(
         () -> {
@@ -173,7 +244,7 @@ public class RefundService {
           body.put("orderId", r.orderId());
           body.put("amount", r.amount());
           body.put("scope", r.scope());
-          body.put("reason", r.reason());
+          body.put("reason", ClaimRules.paymentReason(r.reason()));
           Upstreams.Result res =
               upstreams.cancelPayment(r.paymentAttemptId(), r.cancellationRequestId(), body);
           Instant now = clock.instant();
@@ -289,7 +360,10 @@ public class RefundService {
                   now,
                   now);
               ClaimRow c = store.lock(r.claimId()).orElseThrow();
-              if (!"CLOSED".equals(c.state())) {
+              if ("RETURN".equals(c.type())) {
+                // 반품은 검수마다 환불이 하나씩 — 모든 행이 검수·환불됐을 때만 종결(CL-1)
+                closeReturnIfDone(c.claimId(), now);
+              } else if (!"CLOSED".equals(c.state())) {
                 store.updateState(c.claimId(), "CLOSED", null, null, now, now);
                 events.claimClosed(c, "CANCELLED_REFUNDED", now);
               }

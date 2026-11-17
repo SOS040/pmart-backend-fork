@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReturnFeePaymentRequested.v1.json",
+  "title": "ReturnFeePaymentRequested",
+  "description": "반품(인계 뒤 회수) 회수비를 고객이 앱에서 결제해야 함(2026-11-17, CL-1·D-7 — 고객 사유, 9,000원, 상품 환불과 별개 거래). 첫 결제 시도를 만든 뒤 한 번. 발행 claim-service. 구독 notification(\"결제 필요\" 알림 — 연결 전), 고객 앱은 GET /claims/{id} 의 feePayment 로 결제. 기한(deadlineAt) 안에 결제하지 않으면 클레임 CANCELLED(ClaimClosed outcome RETURN_FEE_UNPAID). 토픽 order.claim.v1, 집계 Claim. 주소·결제 비밀 없음.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReturnFeePaymentRequested"
+        },
+        "aggregateType": {
+          "const": "Claim"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "claimId",
+            "orderId",
+            "accountId",
+            "amount",
+            "paymentAttemptId",
+            "deadlineAt"
+          ],
+          "properties": {
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "결제할 고객(주문 소유자)"
+            },
+            "amount": {
+              "$ref": "_defs.v1.json#/$defs/Money",
+              "description": "회수비(원) — 9,000"
+            },
+            "paymentAttemptId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "결제 시도(토스 결제위젯 orderId)"
+            },
+            "deadlineAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "requestedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

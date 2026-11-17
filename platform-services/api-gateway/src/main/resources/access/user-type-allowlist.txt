@@ -311,8 +311,10 @@ POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 POST /api/v1/change-requests OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/submissions OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/withdrawals OPERATOR
-POST /api/v1/claims CUSTOMER
+POST /api/v1/claims CUSTOMER,OPERATOR
 POST /api/v1/claims/{claimId}/decisions OPERATOR
+POST /api/v1/claims/{claimId}/fee-payment-attempts CUSTOMER
+POST /api/v1/claims/{claimId}/recovery-actions OPERATOR
 POST /api/v1/claims/{claimId}/withdrawals CUSTOMER
 POST /api/v1/content-drafts OPERATOR
 POST /api/v1/content-drafts/{draftId}/images OPERATOR
