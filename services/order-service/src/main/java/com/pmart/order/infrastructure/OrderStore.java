@@ -114,14 +114,30 @@ public class OrderStore {
       @Nullable String optionLabel,
       int reshippedQty) {}
 
-  /** 목록 한 줄(주문 요약). */
+  /** 목록 한 줄(주문 요약). first* = 대표 상품(첫 주문행, 0.12.0) — 행이 없으면 firstSku null. */
   public record Summary(
       String orderId,
       String status,
       Instant confirmedAt,
       long totalAmount,
       int itemCount,
-      @Nullable String orderNumber) {}
+      @Nullable String orderNumber,
+      String deliveryMode,
+      @Nullable String firstProductId,
+      @Nullable String firstSku,
+      @Nullable String firstProductName,
+      @Nullable String firstOptionLabel,
+      int firstQuantity) {}
+
+  /**
+   * 고객 목록 조건(0.12.0). confirmedFrom 이상·confirmedToExclusive 미만, nameQuery 는 소문자 LIKE 패턴(이미 escape —
+   * 어느 행이든 상품명 사본에 부분 일치). null 은 거르지 않음. 숨긴 주문은 늘 뺀다.
+   */
+  public record ListCriteria(
+      @Nullable String status,
+      @Nullable Instant confirmedFrom,
+      @Nullable Instant confirmedToExclusive,
+      @Nullable String nameLikePattern) {}
 
   private final JdbcTemplate jdbc;
 
@@ -420,27 +436,48 @@ public class OrderStore {
   }
 
   /**
-   * 내 주문 목록(최근 확정 순). keyset — after 가 있으면 그 (확정 시각, 주문 ID) 다음부터.
+   * 내 주문 목록(최근 확정 순, 숨긴 주문 제외). keyset — after 가 있으면 그 (확정 시각, 주문 ID) 다음부터.
    *
    * @param limit 가져올 최대 건수(다음 쪽 판정을 위해 호출자가 +1 해서 준다)
    */
   public List<Summary> list(
       String accountId,
-      @Nullable String status,
+      ListCriteria c,
       @Nullable Instant afterConfirmedAt,
       @Nullable String afterOrderId,
       int limit) {
     StringBuilder sql =
         new StringBuilder(
             "SELECT o.order_id, o.status, o.confirmed_at, o.total_amount, o.order_number,"
+                + " o.delivery_mode, f.product_id AS first_product_id, f.sku AS first_sku,"
+                + " f.product_name AS first_product_name, f.option_label AS first_option_label,"
+                + " f.quantity AS first_quantity,"
                 + " (SELECT COALESCE(SUM(l.quantity), 0) FROM customer_order_line l"
                 + " WHERE l.order_id = o.order_id) AS item_count"
-                + " FROM customer_order o WHERE o.account_id = ?");
+                + " FROM customer_order o"
+                + " LEFT JOIN LATERAL (SELECT l.product_id, l.sku, l.product_name, l.option_label,"
+                + " l.quantity FROM customer_order_line l WHERE l.order_id = o.order_id"
+                + " ORDER BY l.line_no LIMIT 1) f ON TRUE"
+                + " WHERE o.account_id = ? AND o.hidden_at IS NULL");
     List<Object> args = new ArrayList<>();
     args.add(accountId);
-    if (status != null) {
+    if (c.status() != null) {
       sql.append(" AND o.status = ?");
-      args.add(status);
+      args.add(c.status());
+    }
+    if (c.confirmedFrom() != null) {
+      sql.append(" AND o.confirmed_at >= ?");
+      args.add(Timestamp.from(c.confirmedFrom()));
+    }
+    if (c.confirmedToExclusive() != null) {
+      sql.append(" AND o.confirmed_at < ?");
+      args.add(Timestamp.from(c.confirmedToExclusive()));
+    }
+    if (c.nameLikePattern() != null) {
+      sql.append(
+          " AND EXISTS (SELECT 1 FROM customer_order_line q WHERE q.order_id = o.order_id"
+              + " AND lower(q.product_name) LIKE ? ESCAPE '\\')");
+      args.add(c.nameLikePattern());
     }
     if (afterConfirmedAt != null && afterOrderId != null) {
       sql.append(" AND (o.confirmed_at, o.order_id) < (?, ?)");
@@ -458,8 +495,33 @@ public class OrderStore {
                 rs.getTimestamp("confirmed_at").toInstant(),
                 rs.getLong("total_amount"),
                 rs.getInt("item_count"),
-                rs.getString("order_number")),
+                rs.getString("order_number"),
+                rs.getString("delivery_mode"),
+                rs.getString("first_product_id"),
+                rs.getString("first_sku"),
+                rs.getString("first_product_name"),
+                rs.getString("first_option_label"),
+                rs.getInt("first_quantity")),
         args.toArray());
+  }
+
+  /** 고객 목록에서 숨긴 시각(0.12.0). 숨기지 않았으면 empty. */
+  public Optional<Instant> hiddenAt(String orderId) {
+    return jdbc
+        .query(
+            "SELECT hidden_at FROM customer_order WHERE order_id = ? AND hidden_at IS NOT NULL",
+            (rs, i) -> rs.getTimestamp("hidden_at").toInstant(),
+            orderId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 고객 목록에서 숨기기(0.12.0). 이미 숨겼으면 처음 시각 그대로. 상태·버전은 바꾸지 않는다. */
+  public void hide(String orderId, Instant at) {
+    jdbc.update(
+        "UPDATE customer_order SET hidden_at = ? WHERE order_id = ? AND hidden_at IS NULL",
+        Timestamp.from(at),
+        orderId);
   }
 
   /** 직원용 검색 조건(O-6). null 은 거르지 않음. phoneDigits 는 숫자만(완전 일치). */

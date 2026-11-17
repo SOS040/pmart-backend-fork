@@ -10,6 +10,7 @@ import com.pmart.common.web.CommandResponse;
 import com.pmart.common.web.CommandStatus;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.order.domain.OrderHistoryRules;
 import com.pmart.order.domain.OrderRules;
 import com.pmart.order.domain.ShippingAddress;
 import com.pmart.order.infrastructure.DraftStore;
@@ -21,6 +22,7 @@ import com.pmart.order.infrastructure.Upstreams;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -784,8 +786,26 @@ public class OrderService {
     return new OrderView(o, orders.lines(orderId), orders.shipping(orderId).orElse(null));
   }
 
-  /** 내 주문 목록(최근 확정 순). 조회 기간 정책값은 아직 없어 기간으로 자르지 않는다. */
-  public Page list(String accountId, int size, @Nullable String cursor, @Nullable String status) {
+  /**
+   * 내 주문 목록(최근 확정 순, 숨긴 주문 제외). 기간은 Asia/Seoul 날짜(둘 다 포함) — 둘 다 없으면 최근 3개월, 검색어는 상품명 사본 부분 일치
+   * (0.12.0, {@link OrderHistoryRules}).
+   */
+  public Page list(
+      String accountId,
+      int size,
+      @Nullable String cursor,
+      @Nullable String status,
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable String q) {
+    OrderHistoryRules.Period period;
+    String query;
+    try {
+      period = OrderHistoryRules.period(from, to, LocalDate.now(clock.withZone(OrderRules.SEOUL)));
+      query = OrderHistoryRules.query(q);
+    } catch (IllegalArgumentException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, e.getMessage());
+    }
     Instant afterAt = null;
     String afterId = null;
     if (cursor != null && !cursor.isBlank()) {
@@ -793,7 +813,17 @@ public class OrderService {
       afterAt = Instant.parse(p[0]);
       afterId = p[1];
     }
-    List<OrderStore.Summary> rows = orders.list(accountId, status, afterAt, afterId, size + 1);
+    List<OrderStore.Summary> rows =
+        orders.list(
+            accountId,
+            new OrderStore.ListCriteria(
+                status,
+                period.from(),
+                period.toExclusive(),
+                query == null ? null : OrderHistoryRules.likePattern(query)),
+            afterAt,
+            afterId,
+            size + 1);
     String next = null;
     if (rows.size() > size) {
       rows = rows.subList(0, size);
@@ -801,6 +831,47 @@ public class OrderService {
       next = encodeCursor(last.confirmedAt(), last.orderId());
     }
     return new Page(rows, next, size);
+  }
+
+  /**
+   * 주문 내역에서 숨기기(고객의 "삭제", 0.12.0). 본인 주문(아니면 404)·끝난 주문(아니면 409 ORDER_NOT_FINISHED)만. 이미 숨겼으면 그대로
+   * APPLIED. 주문 상태·버전·사건은 그대로 — 목록에서만 빠진다.
+   */
+  public CommandResponse hide(String accountId, String orderId, String requestId, String source) {
+    return idempotency
+        .execute(
+            new RequestKey(source, requestId, "hideOrder", accountId),
+            Map.of("orderId", orderId),
+            CommandResponse.class,
+            () -> {
+              OrderRow o =
+                  orders
+                      .lock(orderId)
+                      .filter(x -> x.accountId().equals(accountId))
+                      .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
+              if (!OrderHistoryRules.hideable(o.status())) {
+                throw new PmartException(
+                    "ORDER_NOT_FINISHED",
+                    HttpStatus.CONFLICT,
+                    "진행 중인 주문은 숨길 수 없습니다(" + o.status() + ").",
+                    false,
+                    List.of());
+              }
+              if (orders.hiddenAt(orderId).isEmpty()) {
+                orders.hide(orderId, clock.instant());
+                log.info("주문 {} 고객 목록에서 숨김", orderId);
+              }
+              return new CommandResponse(
+                  CommandStatus.APPLIED,
+                  requestId,
+                  orderId,
+                  null,
+                  o.version(),
+                  false,
+                  null,
+                  clock.instant());
+            })
+        .value();
   }
 
   static String encodeCursor(Instant at, String orderId) {

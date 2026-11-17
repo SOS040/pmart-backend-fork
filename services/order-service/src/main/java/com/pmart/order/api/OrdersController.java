@@ -1,5 +1,6 @@
 package com.pmart.order.api;
 
+import com.pmart.common.web.CommandResponse;
 import com.pmart.order.api.generated.OrdersApi;
 import com.pmart.order.api.generated.model.ArrivalWindow;
 import com.pmart.order.api.generated.model.GetWithdrawalEligibility200ResponseAsOf;
@@ -8,16 +9,20 @@ import com.pmart.order.api.generated.model.ListOrders200ResponsePage;
 import com.pmart.order.api.generated.model.Order;
 import com.pmart.order.api.generated.model.OrderLine;
 import com.pmart.order.api.generated.model.OrderPayment;
+import com.pmart.order.api.generated.model.OrderRepresentativeItem;
 import com.pmart.order.api.generated.model.OrderSourcesInner;
 import com.pmart.order.api.generated.model.OrderStatus;
 import com.pmart.order.api.generated.model.OrderSummary;
 import com.pmart.order.api.generated.model.Quote;
+import com.pmart.order.api.generated.model.StartCheckout202Response;
 import com.pmart.order.application.DraftService;
 import com.pmart.order.application.OrderService;
+import com.pmart.order.infrastructure.OrderStore;
 import com.pmart.order.infrastructure.OrderStore.LineRow;
 import com.pmart.order.infrastructure.OrderStore.OrderRow;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -155,28 +160,62 @@ public class OrdersController implements OrdersApi {
 
   @Override
   public ResponseEntity<ListOrders200Response> listOrders(
-      Integer size, @Nullable String cursor, @Nullable OrderStatus status) {
+      Integer size,
+      @Nullable String cursor,
+      @Nullable OrderStatus status,
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable String q) {
     OrderService.Page page =
         orders.list(
             DraftService.currentCustomer(),
             size,
             cursor,
-            status == null ? null : status.getValue());
+            status == null ? null : status.getValue(),
+            from,
+            to,
+            q);
     return ResponseEntity.ok(
         new ListOrders200Response()
-            .items(
-                page.items().stream()
-                    .map(
-                        s ->
-                            new OrderSummary()
-                                .orderId(s.orderId())
-                                .orderNumber(s.orderNumber())
-                                .status(OrderStatus.fromValue(s.status()))
-                                .orderedAt(time(s.confirmedAt()))
-                                .totalAmount((int) s.totalAmount())
-                                .itemCount(s.itemCount()))
-                    .toList())
+            .items(page.items().stream().map(OrdersController::summary).toList())
             .page(new ListOrders200ResponsePage().nextCursor(page.nextCursor()).size(page.size())));
+  }
+
+  /** 주문 내역에서 숨기기(0.12.0) — 200 APPLIED, resultId = orderId. */
+  @Override
+  public ResponseEntity<StartCheckout202Response> hideOrder(
+      String orderId, String idempotencyKey, String xSourceSystem) {
+    CommandResponse r =
+        orders.hide(DraftService.currentCustomer(), orderId, idempotencyKey, xSourceSystem);
+    return ResponseEntity.ok(
+        new StartCheckout202Response()
+            .status(StartCheckout202Response.StatusEnum.fromValue(r.status().name()))
+            .requestId(r.requestId())
+            .resultId(r.resultId())
+            .version(r.version())
+            .retryable(r.retryable())
+            .nextAction(r.nextAction())
+            .occurredAt(time(r.occurredAt())));
+  }
+
+  private static OrderSummary summary(OrderStore.Summary s) {
+    return new OrderSummary()
+        .orderId(s.orderId())
+        .orderNumber(s.orderNumber())
+        .status(OrderStatus.fromValue(s.status()))
+        .orderedAt(time(s.confirmedAt()))
+        .totalAmount((int) s.totalAmount())
+        .itemCount(s.itemCount())
+        .deliveryMode(OrderSummary.DeliveryModeEnum.fromValue(s.deliveryMode()))
+        .representativeItem(
+            s.firstSku() == null
+                ? null
+                : new OrderRepresentativeItem()
+                    .productId(s.firstProductId())
+                    .sku(s.firstSku())
+                    .productName(s.firstProductName())
+                    .optionLabel(s.firstOptionLabel())
+                    .quantity(s.firstQuantity()));
   }
 
   /** 주문행 → 계약 모델(고객 상세·직원 상세 공용). */
