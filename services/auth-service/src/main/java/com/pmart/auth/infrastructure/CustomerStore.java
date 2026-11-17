@@ -2,6 +2,8 @@ package com.pmart.auth.infrastructure;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,6 +13,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class CustomerStore {
 
+  /**
+   * @param requiredConsents AUTH_CONSENT 일 때 반드시 동의할 항목 {@code TYPE:version}
+   * @param optionalConsents 함께 보여 준 선택 항목
+   * @param completionKey 동의 완료(completions)의 Idempotency-Key — 끝났으면 있음
+   */
   public record AuthRequestRow(
       String authRequestId,
       String deviceId,
@@ -19,7 +26,10 @@ public class CustomerStore {
       @Nullable String failureCode,
       @Nullable String accountId,
       boolean newAccount,
-      Instant createdAt) {}
+      Instant createdAt,
+      List<String> requiredConsents,
+      List<String> optionalConsents,
+      @Nullable String completionKey) {}
 
   private final JdbcTemplate jdbc;
 
@@ -132,6 +142,64 @@ public class CustomerStore {
         Timestamp.from(at));
   }
 
+  /** 가입을 마친(한 번이라도 회원이 된) 계정인가. 동의 단계에서 나간 가입은 false — 다음 로그인도 가입으로 본다. */
+  public boolean everMember(String accountId) {
+    return !jdbc.queryForList(
+            "SELECT 1 FROM customer_account WHERE account_id = ? AND member_since IS NOT NULL",
+            accountId)
+        .isEmpty();
+  }
+
+  /** 회원이 됨(처음 한 번만 기록). */
+  public void markMember(String accountId, Instant at) {
+    jdbc.update(
+        "UPDATE customer_account SET member_since = COALESCE(member_since, ?) WHERE account_id = ?",
+        Timestamp.from(at),
+        accountId);
+  }
+
+  /** AUTH_CONSENT 로 남긴 요청이 무엇을 물었는지(같은 키 재전송·결과 조회가 같은 목록을 준다). */
+  public void recordConsentsAsked(
+      String authRequestId, List<String> requiredConsents, List<String> optionalConsents) {
+    jdbc.update(
+        "UPDATE social_auth_request SET required_consents = ?, optional_consents = ?"
+            + " WHERE auth_request_id = ?",
+        join(requiredConsents),
+        join(optionalConsents),
+        authRequestId);
+  }
+
+  /** 동의 완료 직렬화 — 같은 원인증의 completions 가 겹치지 않게 행을 잠그고 다시 읽는다. */
+  public Optional<AuthRequestRow> lockRequest(String authRequestId) {
+    return jdbc
+        .query(
+            "SELECT * FROM social_auth_request WHERE auth_request_id = ? FOR UPDATE",
+            (rs, i) -> request(rs),
+            authRequestId)
+        .stream()
+        .findFirst();
+  }
+
+  /** AUTH_CONSENT → AUTH_MEMBER(동의 완료). */
+  public void completeConsent(String authRequestId, String completionKey, Instant at) {
+    jdbc.update(
+        "UPDATE social_auth_request SET state = 'AUTH_MEMBER', completion_key = ?, completed_at = ?"
+            + " WHERE auth_request_id = ? AND state = 'AUTH_CONSENT'",
+        completionKey,
+        Timestamp.from(at),
+        authRequestId);
+  }
+
+  private static @Nullable String join(List<String> items) {
+    return items.isEmpty() ? null : String.join(",", items);
+  }
+
+  private static List<String> split(@Nullable String joined) {
+    return joined == null || joined.isBlank()
+        ? List.of()
+        : Arrays.stream(joined.split(",")).map(String::strip).filter(s -> !s.isEmpty()).toList();
+  }
+
   // ---------- 실패 제한 ----------
 
   public int failuresSince(String deviceId, Instant since) {
@@ -179,6 +247,9 @@ public class CustomerStore {
         rs.getString("failure_code"),
         rs.getString("account_id"),
         rs.getBoolean("new_account"),
-        rs.getTimestamp("created_at").toInstant());
+        rs.getTimestamp("created_at").toInstant(),
+        split(rs.getString("required_consents")),
+        split(rs.getString("optional_consents")),
+        rs.getString("completion_key"));
   }
 }

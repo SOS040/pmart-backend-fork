@@ -1,5 +1,7 @@
 package com.pmart.auth.application;
 
+import com.pmart.auth.infrastructure.CustomerConsentClient;
+import com.pmart.auth.infrastructure.CustomerConsentClient.ConsentCheck;
 import com.pmart.auth.infrastructure.CustomerStore;
 import com.pmart.auth.infrastructure.CustomerStore.AuthRequestRow;
 import com.pmart.auth.infrastructure.GoogleIdTokenVerifier;
@@ -30,11 +32,14 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <ul>
  *   <li>제공자 계정(sub)으로 내부 계정을 찾고 없으면 만든다. 이메일이 같다는 이유로 계정을 합치지 않는다.
- *   <li>필수 동의 단계는 설정({@code require-consent})이 켜졌을 때만 AUTH_CONSENT. 지금은 꺼져 있어 바로 AUTH_MEMBER(사용자 결정
- *       2026-10-30).
- *   <li>기기별 15분 내 5회 명확 실패(PROVIDER_REJECTED) → 10분 AUTH_RESTRICTED. 제공자 장애는 세지 않고, 제한 중 시도는 기간을
- *       늘리지 않는다.
- *   <li>같은 Idempotency-Key 재전송은 원인증 결과를 따른다: 회원이면 새 세션 토큰을 주고(토큰은 저장하지 않음), 실패였으면 같은 실패.
+ *   <li>필수 약관 동의(CU-1, 2026-11-17): 설정({@code require-consent})이 켜져 있으면 customer-service 에 현행 버전 기준
+ *       동의 상태를 묻고, 빠진 필수 항목이 있으면(신규 가입·약관 버전이 바뀐 뒤의 기존 회원) AUTH_CONSENT — 토큰 없이 항목 목록만 준다. 고객이 동의
+ *       화면에서 고른 값은 {@link #complete} 로 받아 customer 에 넘긴 뒤 토큰을 준다. Google
+ *       프로필(CustomerAuthenticated)도 그때 넘긴다 — 동의 전에는 개인정보를 넘기지도 저장하지도 않는다.
+ *   <li>기기별 15분 내 5회 명확 실패(PROVIDER_REJECTED) → 10분 AUTH_RESTRICTED. 제공자·customer 장애는 세지 않고, 제한 중
+ *       시도는 기간을 늘리지 않는다.
+ *   <li>같은 Idempotency-Key 재전송은 원인증 결과를 따른다: 회원이면 새 세션 토큰을 주고(토큰은 저장하지 않음), 동의 대기면 같은 항목, 실패였으면 같은
+ *       실패.
  *   <li>회원이 되면 CustomerAuthenticated(platform.auth.v1). 인증 성공은 구매 자격이 아니다.
  * </ul>
  */
@@ -44,14 +49,24 @@ public class CustomerSocialLoginService {
   public static final String TYPE = "CUSTOMER";
   public static final String TOPIC = "platform.auth.v1";
 
+  private static final String MEMBER = "AUTH_MEMBER";
+  private static final String CONSENT = "AUTH_CONSENT";
+
   private static final Logger log = LoggerFactory.getLogger(CustomerSocialLoginService.class);
 
+  /**
+   * @param newAccount 가입이 이번에 끝나는(또는 동의 뒤 끝날) 계정 — 새로 만들었거나 전에 동의 단계에서 나가 회원이 된 적이 없는 계정
+   * @param requiredConsents AUTH_CONSENT 일 때 반드시 동의할 항목 {@code TYPE:version}
+   * @param optionalConsents AUTH_CONSENT 일 때 함께 보여 줄 선택 항목
+   */
   public record Result(
       String authRequestId,
       String state,
       @Nullable String accountId,
       boolean newAccount,
       SessionTokens.@Nullable Tokens tokens,
+      List<String> requiredConsents,
+      List<String> optionalConsents,
       String nextAction,
       Instant occurredAt) {}
 
@@ -79,6 +94,7 @@ public class CustomerSocialLoginService {
   private final SessionStore sessions;
   private final SessionTokens tokens;
   private final GoogleIdTokenVerifier google;
+  private final CustomerConsentClient consents;
   private final CustomerProperties props;
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
@@ -90,6 +106,7 @@ public class CustomerSocialLoginService {
       SessionStore sessions,
       SessionTokens tokens,
       GoogleIdTokenVerifier google,
+      CustomerConsentClient consents,
       CustomerProperties props,
       EventPublisher events,
       EventEnvelopeCodec codec,
@@ -99,6 +116,7 @@ public class CustomerSocialLoginService {
     this.sessions = sessions;
     this.tokens = tokens;
     this.google = google;
+    this.consents = consents;
     this.props = props;
     this.events = events;
     this.codec = codec;
@@ -125,26 +143,25 @@ public class CustomerSocialLoginService {
       return replay(earlier.get(), deviceId, sourceSystem);
     }
     Instant now = now();
-    Optional<Instant> restricted = customers.restrictedUntil(deviceId).filter(u -> u.isAfter(now));
-    if (restricted.isPresent()) {
-      throw restrictedUntil(restricted.get(), now);
-    }
+    checkRestriction(deviceId, now);
 
     // 제공자 검증은 트랜잭션 밖(네트워크)
     GoogleIdTokenVerifier.Identity identity;
     try {
       identity = google.verify(providerToken);
     } catch (GoogleIdTokenVerifier.Unavailable e) {
-      log.warn("Google 검증 불가(실패 횟수 제외): {}", e.getMessage());
-      throw new PmartException(
-          "PROVIDER_UNAVAILABLE",
-          HttpStatus.SERVICE_UNAVAILABLE,
-          "Google 인증 확인이 잠시 안 됩니다. 잠시 뒤 다시 시도하세요.",
-          true,
-          List.of());
+      throw providerUnavailable(e);
     } catch (GoogleIdTokenVerifier.Rejected e) {
       return rejected(idempotencyKey, sourceSystem, deviceId, provider, now);
     }
+
+    // 필수 동의 판단도 트랜잭션 밖(customer-service 호출). 가입이면 만들 계정 ID 로 묻는다 — customer 에 행이 없어 모두 빠진 것으로 답한다
+    String candidate = "CU-" + UUID.randomUUID();
+    ConsentCheck check =
+        props.requireConsent()
+            ? consents.check(
+                customers.linkedAccount(provider, identity.subject()).orElse(candidate))
+            : null;
 
     Result r =
         tx.execute(
@@ -152,7 +169,6 @@ public class CustomerSocialLoginService {
               String accountId = customers.linkedAccount(provider, identity.subject()).orElse(null);
               boolean created = false;
               if (accountId == null) {
-                String candidate = "CU-" + UUID.randomUUID();
                 customers.insertAccount(candidate, now);
                 if (customers.insertIdentity(provider, identity.subject(), candidate, now) == 1) {
                   accountId = candidate;
@@ -165,14 +181,12 @@ public class CustomerSocialLoginService {
               }
               String state = customers.accountState(accountId).orElse("ACTIVE");
               if (!"ACTIVE".equals(state)) {
-                throw new PmartException(
-                    "ACCOUNT_NOT_AVAILABLE",
-                    HttpStatus.FORBIDDEN,
-                    "이용할 수 없는 계정입니다(" + state + ").",
-                    false,
-                    List.of());
+                throw accountNotAvailable(state);
               }
-              String authState = created && props.requireConsent() ? "AUTH_CONSENT" : "AUTH_MEMBER";
+              // 동의 단계에서 나갔던 가입은 다음 로그인도 가입이다(회원이 된 적 없음)
+              boolean signup = created || !customers.everMember(accountId);
+              boolean needsConsent = check != null && !check.satisfied();
+              String authState = needsConsent ? CONSENT : MEMBER;
               String authRequestId = "AR-" + UUID.randomUUID();
               customers.insertRequest(
                   authRequestId,
@@ -183,28 +197,134 @@ public class CustomerSocialLoginService {
                   authState,
                   null,
                   accountId,
-                  created,
+                  signup,
                   now);
               customers.recordLogin(provider, identity.subject(), accountId, now);
-              SessionTokens.Tokens t = null;
-              if ("AUTH_MEMBER".equals(authState)) {
-                t = openSession(accountId, deviceId, sourceSystem, now);
-                publishAuthenticated(accountId, provider, now, identity);
+              if (needsConsent) {
+                customers.recordConsentsAsked(
+                    authRequestId, check.missingRequired(), check.undecidedOptional());
+                return new Result(
+                    authRequestId,
+                    CONSENT,
+                    accountId,
+                    signup,
+                    null,
+                    check.missingRequired(),
+                    check.undecidedOptional(),
+                    "COMPLETE_CONSENT",
+                    now);
               }
+              customers.markMember(accountId, now);
+              SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);
+              publishAuthenticated(accountId, provider, now, identity);
               return new Result(
-                  authRequestId,
-                  authState,
-                  accountId,
-                  created,
-                  t,
-                  "AUTH_MEMBER".equals(authState) ? "NONE" : "COMPLETE_CONSENT",
-                  now);
+                  authRequestId, MEMBER, accountId, signup, t, List.of(), List.of(), "NONE", now);
             });
     if (r == null) {
       // 경합에서 진 요청: 이제 연결이 있으니 다시 한 번
       return login(idempotencyKey, sourceSystem, deviceId, provider, providerToken);
     }
     log.info("고객 소셜 로그인 {}: accountId={} new={}", r.state(), r.accountId(), r.newAccount());
+    return r;
+  }
+
+  /**
+   * 필수 동의 완료(AUTH_CONSENT → AUTH_MEMBER, auth-service.yaml completeSocialLogin 0.2.0). 같은 기기·로그인한 그
+   * Google 계정만. 동의는 customer-service 에 넘기고(정본), 필수 항목이 다 찼으면 세션 토큰과 CustomerAuthenticated(다시 검증한 ID
+   * 토큰의 프로필).
+   *
+   * <p>같은 Idempotency-Key 재전송(응답 유실)은 새 토큰을 준다. 다른 키로 이미 끝난 요청은 409.
+   */
+  public Result complete(
+      String authRequestId,
+      String idempotencyKey,
+      String sourceSystem,
+      String deviceId,
+      String providerToken,
+      List<ConsentDecision> decisions) {
+    AuthRequestRow row =
+        customers
+            .request(authRequestId)
+            .orElseThrow(() -> PmartException.notFound("AUTH_REQUEST_NOT_FOUND", "원인증 요청이 없습니다."));
+    if (!row.deviceId().equals(deviceId)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "로그인을 시작한 기기에서만 동의를 마칠 수 있습니다.");
+    }
+    String accountId = row.accountId();
+    boolean pending = CONSENT.equals(row.state());
+    boolean replay = MEMBER.equals(row.state()) && idempotencyKey.equals(row.completionKey());
+    if (accountId == null || row.failureCode() != null || !(pending || replay)) {
+      throw PmartException.invalidState("필수 동의를 기다리는 로그인 요청이 아닙니다(AUTH_CONSENT 아님).");
+    }
+    Instant now = now();
+    checkRestriction(deviceId, now);
+
+    // 로그인한 그 Google 계정인지 다시 확인한다(토큰이 없는 단계라 이것이 본인 확인). 프로필은 동의 뒤에만 넘긴다
+    GoogleIdTokenVerifier.Identity identity;
+    try {
+      identity = google.verify(providerToken);
+    } catch (GoogleIdTokenVerifier.Unavailable e) {
+      throw providerUnavailable(e);
+    } catch (GoogleIdTokenVerifier.Rejected e) {
+      log.warn("필수 동의 완료 거절(PROVIDER_REJECTED) provider={}", row.provider());
+      throw providerRejected();
+    }
+    if (!accountId.equals(
+        customers.linkedAccount(row.provider(), identity.subject()).orElse(null))) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "로그인한 계정과 다른 Google 계정입니다.");
+    }
+
+    if (pending) {
+      // customer 쪽 멱등 키 = 이 요청의 키(같은 키 재전송은 다시 반영하지 않는다). 트랜잭션 밖(네트워크)
+      ConsentCheck after;
+      try {
+        after =
+            consents.change(
+                accountId, idempotencyKey, row.newAccount() ? "SIGNUP" : "LOGIN", decisions);
+      } catch (PmartException e) {
+        // 가입·재동의 화면에서 필수 항목을 끈 것은 철회가 아니라 "빠짐"
+        if ("REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN".equals(e.code())) {
+          throw requiredMissing(row.requiredConsents());
+        }
+        throw e;
+      }
+      if (!after.satisfied()) {
+        throw requiredMissing(after.missingRequired());
+      }
+    }
+
+    Result r =
+        Objects.requireNonNull(
+            tx.execute(
+                status -> {
+                  AuthRequestRow locked =
+                      customers
+                          .lockRequest(authRequestId)
+                          .orElseThrow(
+                              () ->
+                                  PmartException.notFound(
+                                      "AUTH_REQUEST_NOT_FOUND", "원인증 요청이 없습니다."));
+                  if (MEMBER.equals(locked.state())) {
+                    if (!idempotencyKey.equals(locked.completionKey())) {
+                      throw PmartException.invalidState("이미 다른 요청으로 로그인을 마쳤습니다.");
+                    }
+                    // 응답 유실 재시도: 새 세션만(사건은 이미 냈다)
+                    return memberResult(
+                        locked, openSession(accountId, deviceId, sourceSystem, now), now);
+                  }
+                  if (!CONSENT.equals(locked.state())) {
+                    throw PmartException.invalidState("필수 동의를 기다리는 로그인 요청이 아닙니다.");
+                  }
+                  String state = customers.accountState(accountId).orElse("ACTIVE");
+                  if (!"ACTIVE".equals(state)) {
+                    throw accountNotAvailable(state);
+                  }
+                  customers.completeConsent(authRequestId, idempotencyKey, now);
+                  customers.markMember(accountId, now);
+                  SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);
+                  publishAuthenticated(accountId, row.provider(), now, identity);
+                  return memberResult(locked, t, now);
+                }));
+    log.info("고객 필수 동의 완료: accountId={} new={}", accountId, r.newAccount());
     return r;
   }
 
@@ -217,13 +337,16 @@ public class CustomerSocialLoginService {
     if (!row.deviceId().equals(deviceId)) {
       throw new PmartException(ErrorCode.FORBIDDEN, "로그인을 시작한 기기에서만 조회할 수 있습니다.");
     }
+    boolean consent = CONSENT.equals(row.state());
     return new Result(
         row.authRequestId(),
         row.state(),
         row.accountId(),
         row.newAccount(),
         null,
-        "AUTH_MEMBER".equals(row.state()) ? "NONE" : "QUERY_RESULT",
+        consent ? row.requiredConsents() : List.of(),
+        consent ? row.optionalConsents() : List.of(),
+        MEMBER.equals(row.state()) ? "NONE" : consent ? "COMPLETE_CONSENT" : "QUERY_RESULT",
         row.createdAt());
   }
 
@@ -235,8 +358,9 @@ public class CustomerSocialLoginService {
       throw providerRejected();
     }
     Instant now = now();
+    boolean member = MEMBER.equals(row.state());
     SessionTokens.Tokens t =
-        "AUTH_MEMBER".equals(row.state())
+        member
             ? tx.execute(
                 status ->
                     openSession(
@@ -248,8 +372,23 @@ public class CustomerSocialLoginService {
         row.accountId(),
         row.newAccount(),
         t,
-        "AUTH_MEMBER".equals(row.state()) ? "NONE" : "COMPLETE_CONSENT",
+        member ? List.of() : row.requiredConsents(),
+        member ? List.of() : row.optionalConsents(),
+        member ? "NONE" : "COMPLETE_CONSENT",
         row.createdAt());
+  }
+
+  private static Result memberResult(AuthRequestRow row, SessionTokens.Tokens t, Instant now) {
+    return new Result(
+        row.authRequestId(),
+        MEMBER,
+        row.accountId(),
+        row.newAccount(),
+        t,
+        List.of(),
+        List.of(),
+        "NONE",
+        now);
   }
 
   private Result rejected(
@@ -280,6 +419,13 @@ public class CustomerSocialLoginService {
       throw restrictedUntil(until[0], now);
     }
     throw providerRejected();
+  }
+
+  private void checkRestriction(String deviceId, Instant now) {
+    Optional<Instant> restricted = customers.restrictedUntil(deviceId).filter(u -> u.isAfter(now));
+    if (restricted.isPresent()) {
+      throw restrictedUntil(restricted.get(), now);
+    }
   }
 
   private SessionTokens.Tokens openSession(
@@ -331,6 +477,35 @@ public class CustomerSocialLoginService {
   /** DB(timestamptz, 마이크로초)에 저장한 값과 응답 값이 같도록 마이크로초로 자른다. */
   private Instant now() {
     return clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+  }
+
+  private static PmartException providerUnavailable(GoogleIdTokenVerifier.Unavailable e) {
+    log.warn("Google 검증 불가(실패 횟수 제외): {}", e.getMessage());
+    return new PmartException(
+        "PROVIDER_UNAVAILABLE",
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "Google 인증 확인이 잠시 안 됩니다. 잠시 뒤 다시 시도하세요.",
+        true,
+        List.of());
+  }
+
+  private static PmartException accountNotAvailable(String state) {
+    return new PmartException(
+        "ACCOUNT_NOT_AVAILABLE",
+        HttpStatus.FORBIDDEN,
+        "이용할 수 없는 계정입니다(" + state + ").",
+        false,
+        List.of());
+  }
+
+  /** 필수 항목이 빠졌다(422). details 에 빠진 항목 {@code TYPE:version}. */
+  private static PmartException requiredMissing(List<String> missing) {
+    return new PmartException(
+        "REQUIRED_CONSENT_MISSING",
+        HttpStatus.UNPROCESSABLE_CONTENT,
+        "필수 약관에 모두 동의해야 가입·로그인을 마칠 수 있습니다.",
+        false,
+        missing.stream().map(m -> new PmartException.Detail(m, "필수 동의 필요")).toList());
   }
 
   static PmartException providerRejected() {

@@ -31,16 +31,30 @@
             },
             "consentType": {
               "type": "string",
-              "description": "약관/마케팅 등 동의 항목 코드"
+              "description": "약관/마케팅 등 동의 항목 코드(customer-service ConsentType: TERMS_OF_SERVICE·PRIVACY_POLICY·AGE_OVER_14·MARKETING)"
             },
             "version": {
-              "$ref": "_defs.v1.json#/$defs/Version"
+              "$ref": "_defs.v1.json#/$defs/Version",
+              "description": "이 계정·항목 동의 기록의 변경 차수(1부터). 늦게 온 옛 사건은 이 값으로 버린다"
             },
             "granted": {
               "type": "boolean"
             },
             "changedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "termsVersion": {
+              "type": "string",
+              "description": "동의(또는 거부·철회)한 약관 버전(설정 pmart.customer.consents.versions, 예 2026-11-17). 2026-11-17 추가"
+            },
+            "required": {
+              "type": "boolean",
+              "description": "필수 항목인가. 2026-11-17 추가"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["SIGNUP", "LOGIN", "APP"],
+              "description": "받은 곳 — SIGNUP 가입 · LOGIN 로그인 재동의 · APP 앱. 2026-11-17 추가"
             }
           },
           "additionalProperties": true

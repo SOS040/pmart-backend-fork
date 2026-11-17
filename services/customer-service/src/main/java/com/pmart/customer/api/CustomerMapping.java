@@ -8,11 +8,18 @@ import com.pmart.customer.api.generated.model.Address;
 import com.pmart.customer.api.generated.model.AddressAllOfServiceability;
 import com.pmart.customer.api.generated.model.AddressInput;
 import com.pmart.customer.api.generated.model.AddressInputGeo;
+import com.pmart.customer.api.generated.model.ChangeMyConsentsRequestChangesInner;
+import com.pmart.customer.api.generated.model.Consent;
+import com.pmart.customer.api.generated.model.ConsentStatus;
+import com.pmart.customer.api.generated.model.ConsentType;
 import com.pmart.customer.api.generated.model.GetAccountStatusInternal200ResponseAsOf;
 import com.pmart.customer.api.generated.model.Profile;
 import com.pmart.customer.api.generated.model.ShoppingContext;
+import com.pmart.customer.application.ConsentService;
 import com.pmart.customer.application.ProfileImageService;
 import com.pmart.customer.domain.AddressData;
+import com.pmart.customer.domain.ConsentItem;
+import com.pmart.customer.domain.ConsentRules;
 import com.pmart.customer.domain.Serviceability;
 import com.pmart.customer.infrastructure.CustomerStore.AddressRow;
 import com.pmart.customer.infrastructure.CustomerStore.ContextRow;
@@ -21,6 +28,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** 계약 DTO ↔ 내부 모델 변환. */
@@ -106,6 +114,39 @@ final class CustomerMapping {
                 : Profile.SocialProviderEnum.fromValue(p.socialProvider()))
         .joinedAt(time(p.joinedAt()))
         .version(p.version());
+  }
+
+  static Consent consent(ConsentService.View v) {
+    return new Consent()
+        .consentType(ConsentType.fromValue(v.item().name()))
+        .required(v.item().required())
+        .agreed(v.agreed())
+        .version(v.version())
+        .latestVersion(v.latestVersion())
+        .agreedAt(v.agreedAt() == null ? null : time(v.agreedAt()))
+        .withdrawnAt(v.withdrawnAt() == null ? null : time(v.withdrawnAt()))
+        .channel(v.channel() == null ? null : Consent.ChannelEnum.fromValue(v.channel()));
+  }
+
+  static ConsentStatus consentStatus(ConsentService.Overview o) {
+    return new ConsentStatus()
+        .accountId(o.accountId())
+        .requiredConsentOutdated(o.status().requiredOutdated())
+        .missingRequired(o.status().missingRequired())
+        .undecidedOptional(o.status().undecidedOptional())
+        .items(o.items().stream().map(CustomerMapping::consent).toList());
+  }
+
+  /** 계약의 변경 목록 → 업무 변경(계약 enum 이름 = {@link ConsentItem} 이름). 버전은 앞뒤 공백을 뗀다. */
+  static List<ConsentRules.Change> changes(List<ChangeMyConsentsRequestChangesInner> in) {
+    return in.stream()
+        .map(
+            c ->
+                new ConsentRules.Change(
+                    ConsentItem.valueOf(c.getConsentType().getValue()),
+                    c.getVersion().strip(),
+                    Boolean.TRUE.equals(c.getAgreed())))
+        .toList();
   }
 
   /** 판정 사본의 시점. 판정하지 못한 사본(checkId 없음)은 UNAVAILABLE. */

@@ -31,9 +31,14 @@
 - 주소록 최대 건수 `pmart.customer.address-limit`(설계값 20, 비우면 CONFIG_REQUIRED). 비회원 배송지는 기기(`X-Device-Id`)별 같은 한도, 다른 기기 조회는 403.
 - 구독 `OrderConfirmed`(order.order.v1, InboxGuard, 2026-10-31): `firstPurchase=true` 면 `first_purchase_used` 에 (계정, 주문) 기록(ON CONFLICT DO NOTHING — 처음 쓴 주문 유지) → first-purchase-checks 후보 아님. `OrderCancelled`(scope FULL·firstPurchase)는 그 주문의 사용 기록만 지워 자격을 복원한다(OMS 175행 — 출고 전 전체 취소는 자격을 소진하지 않는다, 2026-10-31). 부분 취소는 그대로.
 - 프로필 변경(2026-11-03, `ProfileChangeService`): 지금은 **닉네임만**(`customer.nickname`, V2 부터 있음). 즉시 반영 APPLIED·version +1, 같은 값이면 그대로. 앞뒤 공백 제거·1~30자·제어 문자 불가(`ProfileRules`). 탈퇴 신청 이후 409 INVALID_STATE, X-Expected-Version 불일치 409. 멱등 해시는 클라이언트 값만(재시도가 처음 결과를 받게), 상태·버전 검사는 멱등 처리 안. 결과 조회는 `request_record`(본인 것만). **phone 은 본인 확인 방식을 정한 뒤 — 지금은 400.** 닉네임 값은 로그 금지. 이벤트 없음(주문 연락처는 주문 사본, BR-37).
-- 약관 동의는 아직 받지 않는다(ADR-0019) — 내부 계정 상태의 `purchasable` 은 ACTIVE 여부만, `requiredConsentOutdated=false`.
+- **약관 동의(2026-11-17, CU-1 사용자 결정 "추천대로", 계약 0.3.0, `ConsentService`)**: 필수 3 `TERMS_OF_SERVICE`·`PRIVACY_POLICY`·`AGE_OVER_14` + 선택 1 `MARKETING`(`domain/ConsentItem`). 위치기반서비스는 현재 위치 기능 때.
+  - 현행 버전은 설정 `pmart.customer.consents.versions.{terms-of-service,privacy-policy,age-over-14,marketing}`(pmart-config `customer-service.yml`, 비면 CONFIG_REQUIRED). 바꾸면(Bus 갱신으로도) 다음 조회부터 그 항목을 다시 받는다 — 필수는 다음 로그인(auth AUTH_CONSENT)·구매 가능 여부.
+  - 표 `customer_consent`(계정·항목별 마지막 결정: agreed·terms_version·agreed_at·withdrawn_at·channel·version) + `customer_consent_history`(바뀐 것 전부, V6). 같은 값·같은 버전이면 바꾸지 않는다(사건·기록 없음).
+  - `GET /me/consents`(항목 넷, `requiredConsentOutdated`), `POST /me/consent-changes`(channel APP, 즉시 APPLIED, 현행 버전만 — 아니면 422 `CONSENT_VERSION_OUTDATED`, 필수 끄기 422 `REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN`(철회 = 탈퇴, 범위 밖), 같은 항목 두 번 400, 탈퇴 신청 이후는 동의만 409), `GET /me/consent-changes/{requestId}`(본인 것만). 버전·상태 검사는 멱등 처리 안(재시도가 그 사이 바뀐 버전에 막히지 않게).
+  - auth 용 내부: `GET /internal/accounts/{id}/consents`(행이 없어도 200 — 모두 빠짐, `missingRequired`·`undecidedOptional` = `TYPE:version`), `POST /internal/accounts/{id}/consent-changes`(channel SIGNUP·LOGIN, 행이 없으면 만든다, 응답 = 반영 뒤 상태).
+  - 바뀐 항목마다 `CustomerConsentChanged`(commerce.customer.v1, version = 행 차수, termsVersion·required·channel). 내부 계정 상태 `purchasable` = ACTIVE **그리고** 필수 동의가 현행 버전(`requiredConsentOutdated` 실제 값) — 동의 전 계정은 주문(draft·checkout)이 422 ACCOUNT_NOT_PURCHASABLE.
 
 - **리뷰 작성자 표시(2026-11-16, 계약 0.2.0, ADR-0063)**: `GET /internal/accounts/{id}/review-author` → 별명 첫 글자 + `*`(최대 4개), 별명 없으면 "PMart 고객"(`ProfileRules.maskedAuthor`). 이름·이메일·전화는 내주지 않는다.
 
 ## 상태
-프로필 조회·주소록·쇼핑 주소·비회원 배송지·내부 계정 상태/쇼핑 컨텍스트 구현(2026-10-30). 첫 구매 사용 기록(OrderConfirmed). 프로필 변경 닉네임(2026-11-03). 동의·탈퇴·연락처 변경·소셜 식별 기준 첫 구매 대조는 501(연락처는 400).
+프로필 조회·주소록·쇼핑 주소·비회원 배송지·내부 계정 상태/쇼핑 컨텍스트 구현(2026-10-30). 첫 구매 사용 기록(OrderConfirmed). 프로필 변경 닉네임(2026-11-03). 약관 동의(2026-11-17, CU-1). 탈퇴·연락처 변경·소셜 식별 기준 첫 구매 대조는 501(연락처는 400).

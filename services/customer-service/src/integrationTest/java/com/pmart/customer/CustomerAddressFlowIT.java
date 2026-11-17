@@ -354,7 +354,22 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     String svc = TestJwt.service("order-service");
     Res status = get(svc, "/internal/accounts/" + cu + "/status");
     assertThat(status.status()).isEqualTo(200);
+    // 필수 약관 동의 전에는 구매 불가(CU-1, 0.3.0) → 현행 버전으로 동의하면 구매 가능
+    assertThat(status.body().path("purchasable").asBoolean()).isFalse();
+    assertThat(status.body().path("requiredConsentOutdated").asBoolean()).isTrue();
+    List<Map<String, Object>> required = new java.util.ArrayList<>();
+    for (String[] c :
+        new String[][] {
+          {"TERMS_OF_SERVICE", "2026-11-17"}, {"PRIVACY_POLICY", "2026-11-17"}, {"AGE_OVER_14", "1"}
+        }) {
+      required.add(Map.of("consentType", c[0], "version", c[1], "agreed", true));
+    }
+    assertThat(
+            send(me, HttpMethod.POST, "/me/consent-changes", Map.of("changes", required)).status())
+        .isEqualTo(200);
+    status = get(svc, "/internal/accounts/" + cu + "/status");
     assertThat(status.body().path("purchasable").asBoolean()).isTrue();
+    assertThat(status.body().path("requiredConsentOutdated").asBoolean()).isFalse();
     // 첫 구매 대조: 사용 기록 없음 → 후보
     assertThat(
             get(svc, "/internal/accounts/" + cu + "/first-purchase-checks")

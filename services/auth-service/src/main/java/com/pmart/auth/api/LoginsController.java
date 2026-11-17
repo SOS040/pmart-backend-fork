@@ -6,9 +6,9 @@ import com.pmart.auth.api.generated.model.AuthState;
 import com.pmart.auth.api.generated.model.CompleteSocialLoginRequest;
 import com.pmart.auth.api.generated.model.SocialLoginRequest;
 import com.pmart.auth.api.generated.model.StartGuestSession201Response;
+import com.pmart.auth.application.ConsentDecision;
 import com.pmart.auth.application.CustomerSocialLoginService;
 import com.pmart.auth.application.GuestSessionService;
-import com.pmart.common.web.PmartException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -63,17 +63,36 @@ public class LoginsController implements LoginsApi {
       String xSourceSystem,
       String xDeviceId,
       CompleteSocialLoginRequest body) {
-    // 필수 동의 단계(AUTH_CONSENT)는 지금 쓰지 않는다(pmart.auth.customer.require-consent=false, 2026-10-30)
-    throw PmartException.invalidState("필수 동의 단계를 쓰지 않습니다(AUTH_CONSENT 인 요청이 없음).");
+    // 필수 동의 완료(AUTH_CONSENT → AUTH_MEMBER, 0.2.0 — CU-1·BR-20). 토큰이 없는 단계라 Google ID 토큰을 다시 받아 본인을
+    // 확인한다
+    CustomerSocialLoginService.Result r =
+        logins.complete(
+            authRequestId,
+            idempotencyKey,
+            xSourceSystem,
+            xDeviceId,
+            body.getProviderToken(),
+            body.getConsents().stream()
+                .map(
+                    c ->
+                        new ConsentDecision(
+                            c.getConsentType().strip(),
+                            c.getVersion().strip(),
+                            Boolean.TRUE.equals(c.getAgreed())))
+                .toList());
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result(r));
   }
 
   private static AuthResult result(CustomerSocialLoginService.Result r) {
+    boolean consent = AuthState.AUTH_CONSENT.getValue().equals(r.state());
     return new AuthResult()
         .authRequestId(r.authRequestId())
         .state(AuthState.fromValue(r.state()))
         .accountId(r.accountId())
         .newAccount(r.newAccount())
         .tokens(r.tokens() == null ? null : AuthMapping.tokens(r.tokens()))
+        .requiredConsents(consent ? r.requiredConsents() : null)
+        .optionalConsents(consent ? r.optionalConsents() : null)
         .nextAction(AuthResult.NextActionEnum.fromValue(r.nextAction()))
         .occurredAt(AuthMapping.odt(r.occurredAt()));
   }

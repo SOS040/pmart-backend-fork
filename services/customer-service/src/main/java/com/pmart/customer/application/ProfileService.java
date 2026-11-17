@@ -16,8 +16,8 @@ import tools.jackson.databind.JsonNode;
 /**
  * 고객 프로필·이용 상태. 계정은 auth 의 CustomerAuthenticated 로 생기고(인증 성공 ≠ 구매 자격), 이벤트보다 API 가 먼저 와도 프로필을 만든다.
  *
- * <p>약관 동의는 사용자 결정(2026-10-30, ADR-0019)으로 아직 받지 않는다 — 구매 가능 여부는 계정 상태(ACTIVE)로만 판단하고
- * requiredConsentOutdated 는 false. 동의 기능을 켜면 여기서 함께 본다.
+ * <p>구매 가능 여부 = 계정 상태 ACTIVE({@link #purchasable}) + 필수 약관 동의가 현행 버전({@link ConsentService}, CU-1
+ * 2026-11-17). 내부 계정 상태 조회가 둘을 합친다.
  */
 @Service
 public class ProfileService {
@@ -50,6 +50,7 @@ public class ProfileService {
     return !store.firstPurchaseUsed(accountId);
   }
 
+  /** 계정 상태로 본 구매 가능 여부(ACTIVE). 필수 동의는 {@link ConsentService#requiredOutdated} 로 따로 본다. */
   public boolean purchasable(ProfileRow p) {
     return "ACTIVE".equals(p.status());
   }

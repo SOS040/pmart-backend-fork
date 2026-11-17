@@ -36,7 +36,12 @@
 ## 고객 소셜 로그인 (ADR-0019·0055)
 - 지금은 GOOGLE 만. 앱이 보낸 ID 토큰을 `GoogleIdTokenVerifier`(Google JWKS, iss·aud·만료)로 검증 — client secret·인가 코드 교환·Spring OAuth2 Client 는 쓰지 않는다(ADR-0055, ADR-0025 기각). 허용 aud 는 `pmart.auth.customer.google.client-ids` = **고객용 웹 클라이언트 ID 하나**(고객 앱 serverClientId). Android 클라이언트 ID·라이더 웹 ID 는 넣지 않는다. 환경별 값은 pmart-config `auth-service-<프로필>.yml`(ADR-0029)(원본 클라이언트 파일은 백엔드에 두지 않음).
 - 라이더 로그인은 이 서비스가 아니라 rider-auth-service(ADR-0054). 발급자 표의 auth-service 줄 RIDER 는 LAN 시험 라이더 토큰용으로 rider-auth-service 배치 전까지만 둔다.
-- 제공자 `sub` → 내부 계정 `CU-…`(이메일 병합 없음). 필수 동의 단계는 `require-consent=false`(사용자 결정) — 신규도 바로 AUTH_MEMBER.
+- 제공자 `sub` → 내부 계정 `CU-…`(이메일 병합 없음).
+- **필수 약관 동의 단계(2026-11-17, CU-1 — 계약 0.2.0, `require-consent=true`)**: 로그인마다 customer-service `GET /internal/accounts/{id}/consents` 로 현행 버전 동의를 묻고(가입이면 만들 계정 ID — customer 에 행이 없어 모두 빠짐), 빠진 필수가 있으면 `AUTH_CONSENT` — 토큰·세션·`CustomerAuthenticated` 없이 `requiredConsents`·`optionalConsents`(`TYPE:version`)만. 판단은 트랜잭션 밖, customer 가 응답하지 않으면 503 DEPENDENCY_UNAVAILABLE(실패 횟수 미가산, 계정도 만들지 않음).
+  - 완료 `POST /auth/social-logins/{id}/completions`(BR-20): 본문 `providerToken`(같은 Google 계정의 ID 토큰 — 다시 검증해 본인 확인, `sub` 의 연결 계정이 요청 계정과 같아야 함) + `consents[]`. 같은 기기만. customer `POST /internal/accounts/{id}/consent-changes`(channel = 가입 SIGNUP·재동의 LOGIN, 멱등 키 = 완료 요청의 키) → 필수가 다 찼으면 원인증 행 `AUTH_MEMBER`(completion_key)·세션·`CustomerAuthenticated`(다시 검증한 토큰의 프로필 — **동의 전에는 Google 프로필을 넘기지 않는다**). 빠지면 422 `REQUIRED_CONSENT_MISSING`(customer 의 `REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN` 도 이것으로), `CONSENT_VERSION_OUTDATED` 는 그대로. 같은 키 재전송 = 새 토큰(customer 재호출·사건 없음), 다른 키로 이미 끝난 요청 409.
+  - `customer_account.member_since`(V5, 기존 계정은 created_at 으로 채움): 동의 단계에서 나간 가입은 회원이 된 적이 없어 다음 로그인도 `newAccount=true`·SIGNUP. 원인증 행에 물은 항목(`required_consents`·`optional_consents`)을 남겨 같은 키 재전송·결과 조회가 같은 목록을 준다.
+  - `require-consent=false` 면 예전처럼 바로 AUTH_MEMBER(시험 `CustomerSocialLoginIT`). 켠 경로 시험은 `CustomerConsentLoginIT`(customer = WireMock).
+  - 주소 `pmart.auth.customer.customer-service-base-url`(lan `http://customer-service:8103`, local `http://localhost:8103`).
 - 기기별 15분 5회 `PROVIDER_REJECTED` → 10분 `AUTH_RESTRICTED`(423, `AuthRestrictedAdvice`). 제공자 장애(503)는 세지 않는다.
 - 세션·토큰은 비회원과 공통(`SessionTokens`, `SessionService`). 고객 토큰 `typ=CUSTOMER`. 회원이면 `CustomerAuthenticated`(platform.auth.v1).
 - Google 프로필(email·email_verified·name·picture)은 버리지 않고 `CustomerAuthenticated` 에 실어 customer-service 로 넘긴다(ADR-0024). auth 는 `sub` 만 저장한다. 개인정보 로그 금지.
@@ -47,5 +52,5 @@
 - 갱신은 `/auth/tokens`(세션 기기만), `SessionService` 의 GUEST 분기(정본 상태 없음). 자기 세션 조회·종료는 guest-paths.
 
 ## 상태
-JWKS(2026-10-23, 서비스 토큰은 2026-10-31 폐지 — ADR-0026), 운영자 로그인·계정 관리·토큰 갱신·로그아웃·현재 세션(2026-10-30), 고객 Google 로그인(2026-10-30). 동의 완료(completions)는 INVALID_STATE, 행위 검증·grant 는 501 UNSUPPORTED_ACTION.
+JWKS(2026-10-23, 서비스 토큰은 2026-10-31 폐지 — ADR-0026), 운영자 로그인·계정 관리·토큰 갱신·로그아웃·현재 세션(2026-10-30), 고객 Google 로그인(2026-10-30), 필수 약관 동의 단계·완료(completions, 2026-11-17 CU-1). 행위 검증·grant 는 501 UNSUPPORTED_ACTION.
 - 개발 환경 전용 계정 `claude-dev`(2026-11-07)는 2026-11-13 운영자 로그인과 함께 없앴다 — LAN 시험은 employee-auth-service 의 `claude-dev`(`deploy/lan/checks/staff_auth.py`).

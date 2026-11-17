@@ -1,12 +1,15 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     고객 계정·프로필·이용 상태(ACTIVE/WITHDRAW_PENDING/WITHDRAW_COMPLETED), 약관·마케팅 동의(버전·시점·철회), 주소록·현재 쇼핑 주소(shoppingContextVersion),
     비회원 배송지, 첫 구매 중복혜택 대조값(소셜 식별, 5년)의 정본. (docs/architecture/service-map.md §1)
     비정본: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
     발행: CustomerConsentChanged, CustomerWithdrawalRequested, CustomerWithdrawalCompleted, ShoppingAddressChanged. 구독: CustomerAuthenticated(auth).
+    0.3.0(2026-11-17, CU-1): 약관 동의 구현 — 필수 3(TERMS_OF_SERVICE·PRIVACY_POLICY·AGE_OVER_14) + 선택 1(MARKETING). 현행 버전은 설정
+    `pmart.customer.consents.versions.*`. 로그인 중 동의(AUTH_CONSENT)는 auth 가 내부 경로로 넘긴다. ConsentType 에서 쓰지 않던
+    MARKETING_PUSH·MARKETING_SMS·NIGHT_MARKETING 을 빼고 MARKETING 하나로(사용자 결정 2026-11-17 "선택 1 = 마케팅 수신").
 servers:
   - url: /api/v1
 security:
@@ -111,6 +114,10 @@ paths:
     get:
       tags: [consents]
       summary: 현재 동의 상태 (항목별 버전·동의 시각·철회 시각)
+      description: |
+        항목은 늘 넷(필수 TERMS_OF_SERVICE·PRIVACY_POLICY·AGE_OVER_14, 선택 MARKETING). 한 번도 고르지 않은 항목은 agreed=false·version 없음.
+        `version`(고른 버전)이 `latestVersion`(현행)과 다르면 그 항목은 다시 받아야 한다 — 필수 항목이 하나라도 그렇거나 동의하지 않았으면
+        `requiredConsentOutdated=true` 이고 주문(구매 가능 여부)이 막힌다. 다시 받는 곳은 POST /me/consent-changes.
       operationId: listMyConsents
       x-pmart-user-types: [CUSTOMER]
       responses:
@@ -120,15 +127,24 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [items, requiredConsentOutdated]
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/Consent' } }
+                  requiredConsentOutdated: { type: boolean, description: 필수 항목 중 현행 버전 동의가 없는 것이 있다 }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
 
   /me/consent-changes:
     post:
       tags: [consents]
       summary: 동의·철회 반영 (필수 약관 재동의·마케팅 수신 변경)
       description: |
-        마케팅 동의 철회는 주문 조회를 막지 않는다. 탈퇴 철회 시 마케팅 동의를 자동 복원하지 않는다. 반영 시 CustomerConsentChanged 발행.
+        즉시 반영(APPLIED). `version` 은 그 항목의 현행 버전(GET /me/consents 의 latestVersion)이어야 한다 — 다르면 422 CONSENT_VERSION_OUTDATED.
+        필수 항목은 agreed=false 로 바꿀 수 없다(422 REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN — 필수 동의 철회 = 탈퇴, 탈퇴는 /me/withdrawals).
+        마케팅(MARKETING)은 켜고 끌 수 있고, 철회는 주문 조회를 막지 않는다. 같은 값·같은 버전이면 바뀌지 않는다(사건 없음).
+        탈퇴 신청 이후(WITHDRAW_PENDING·COMPLETED)는 동의(agreed=true)만 409 INVALID_STATE, 철회는 받는다. 탈퇴 철회 시 마케팅 동의를 자동 복원하지 않는다.
+        항목마다 바뀌면 CustomerConsentChanged 발행. 결과는 GET /me/consent-changes/{requestId}(= Idempotency-Key)로 다시 본다.
+        로그인 중 필수 동의 대기(AUTH_CONSENT, 토큰 없음)는 이 경로가 아니라 auth `POST /auth/social-logins/{authRequestId}/completions`.
       operationId: changeMyConsents
       x-pmart-user-types: [CUSTOMER]
       parameters:
@@ -150,14 +166,19 @@ paths:
                     required: [consentType, version, agreed]
                     properties:
                       consentType: { $ref: '#/components/schemas/ConsentType' }
-                      version: { type: string }
+                      version: { type: string, maxLength: 32 }
                       agreed: { type: boolean }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '400':
+          description: VALIDATION_FAILED (같은 항목을 두 번 보냄 등)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN / CONSENT_VERSION_OUTDATED
+          description: REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN / CONSENT_VERSION_OUTDATED / CONFIG_REQUIRED(현행 버전 설정 없음)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -442,10 +463,74 @@ paths:
                   accountId: { type: string }
                   status: { $ref: '#/components/schemas/AccountStatus' }
                   purchasable: { type: boolean, description: ACTIVE이고 필수 동의 최신 버전이면 true }
-                  requiredConsentOutdated: { type: boolean }
+                  requiredConsentOutdated: { type: boolean, description: '필수 항목 중 현행 버전 동의가 없는 것이 있다(0.3.0 부터 실제 값 — 그 전에는 늘 false)' }
                   version: { $ref: '_common.yaml#/components/schemas/Version' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/accounts/{accountId}/consents:
+    get:
+      tags: [internal]
+      summary: '[auth→customer] 현행 버전 기준 동의 상태 — 로그인 때 필수 동의 단계(AUTH_CONSENT)를 둘지 판단 (0.3.0)'
+      description: |
+        계정 행이 아직 없어도(가입 중) 200 — 모든 필수 항목이 빠졌고 선택 항목은 고르지 않은 것으로 답한다.
+        `missingRequired`·`undecidedOptional` 항목 형식은 `TYPE:version`(예 `TERMS_OF_SERVICE:2026-11-17`) — auth 가 AuthResult 에 그대로 싣는다.
+      operationId: getAccountConsentsInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentStatus' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /internal/accounts/{accountId}/consent-changes:
+    post:
+      tags: [internal]
+      summary: '[auth→customer] 로그인 중 받은 동의 반영 (AUTH_CONSENT 완료, 0.3.0)'
+      description: |
+        auth 가 소셜 로그인 동의 완료(completions)에서 부른다 — 고객은 아직 토큰이 없다. 규칙은 POST /me/consent-changes 와 같다(현행 버전만,
+        필수 항목 agreed=false 는 422). 계정 행이 없으면 만든다(가입). 응답은 반영 뒤 동의 상태 — `requiredConsentOutdated=false` 여야 auth 가 토큰을 준다.
+        같은 Idempotency-Key·같은 본문은 처음 반영을 다시 하지 않는다(응답 상태는 지금 기준).
+      operationId: changeAccountConsentsInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, changes]
+              properties:
+                channel: { type: string, enum: [SIGNUP, LOGIN], description: 'SIGNUP 신규 가입 · LOGIN 기존 회원 재동의' }
+                changes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [consentType, version, agreed]
+                    properties:
+                      consentType: { $ref: '#/components/schemas/ConsentType' }
+                      version: { type: string, maxLength: 32 }
+                      agreed: { type: boolean }
+      responses:
+        '200':
+          description: 반영 뒤 동의 상태
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentStatus' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN / CONSENT_VERSION_OUTDATED / CONFIG_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/accounts/{accountId}/review-author:
     get:
@@ -518,17 +603,37 @@ components:
       enum: [ACTIVE, WITHDRAW_PENDING, WITHDRAW_COMPLETED]
     ConsentType:
       type: string
-      enum: [TERMS_OF_SERVICE, PRIVACY_POLICY, AGE_OVER_14, MARKETING_PUSH, MARKETING_SMS, NIGHT_MARKETING]
+      description: |
+        필수 TERMS_OF_SERVICE(이용약관)·PRIVACY_POLICY(개인정보 수집·이용)·AGE_OVER_14(만 14세 이상), 선택 MARKETING(마케팅 정보 수신).
+        위치기반서비스 약관은 현재 위치 기능 때 더한다(사용자 결정 2026-11-17).
+      enum: [TERMS_OF_SERVICE, PRIVACY_POLICY, AGE_OVER_14, MARKETING]
     Consent:
       type: object
+      required: [consentType, required, agreed, latestVersion]
       properties:
         consentType: { $ref: '#/components/schemas/ConsentType' }
         required: { type: boolean }
-        agreed: { type: boolean }
-        version: { type: string }
-        latestVersion: { type: string }
-        agreedAt: { type: [string, 'null'], format: date-time }
-        withdrawnAt: { type: [string, 'null'], format: date-time }
+        agreed: { type: boolean, description: 마지막으로 고른 값(한 번도 고르지 않았으면 false) }
+        version: { type: [string, 'null'], description: 마지막으로 고른 약관 버전. 없으면 한 번도 고르지 않음 }
+        latestVersion: { type: string, description: 현행 버전. version 과 다르면 다시 받아야 한다 }
+        agreedAt: { type: [string, 'null'], format: date-time, description: 마지막 동의 시각 }
+        withdrawnAt: { type: [string, 'null'], format: date-time, description: 동의했다가 철회한 시각(지금 동의 중이면 없음) }
+        channel: { type: [string, 'null'], enum: [SIGNUP, LOGIN, APP, null], description: '마지막으로 고른 곳 — SIGNUP 가입 · LOGIN 로그인 재동의 · APP 앱(설정·재동의)' }
+    ConsentStatus:
+      type: object
+      required: [accountId, requiredConsentOutdated, missingRequired, undecidedOptional, items]
+      properties:
+        accountId: { type: string }
+        requiredConsentOutdated: { type: boolean, description: missingRequired 가 비어 있지 않다 }
+        missingRequired:
+          type: array
+          items: { type: string }
+          description: '현행 버전 동의가 없는 필수 항목 `TYPE:version`(현행 버전)'
+        undecidedOptional:
+          type: array
+          items: { type: string }
+          description: '현행 버전으로 아직 고르지 않은 선택 항목 `TYPE:version` — 가입·재동의 화면에서 함께 보여 줄 것'
+        items: { type: array, items: { $ref: '#/components/schemas/Consent' } }
     Profile:
       type: object
       properties:

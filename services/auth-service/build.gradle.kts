@@ -20,4 +20,5 @@ dependencies {
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-security")) // ServiceTokenIT 가 호출 측 ServiceTokenProvider 를 그대로 쓴다
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox 행 확인
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // 필수 동의 판단·반영(customer-service 내부 경로) 응답 고정
 }

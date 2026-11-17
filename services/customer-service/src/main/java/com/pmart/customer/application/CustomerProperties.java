@@ -9,8 +9,10 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  *
  * @param addressLimit 주소록 최대 건수(정책값). 비우면 주소 추가는 CONFIG_REQUIRED
  * @param serviceabilityBaseUrl delivery-serviceability-service 주소(Service DNS)
+ * @param consents 약관 동의(CU-1, 2026-11-17) — 항목별 현행 버전. 비우면 동의 조회·변경은 CONFIG_REQUIRED
  *     <p>실행 중 갱신(ADR-0033): {@code @RefreshScope} — Bus 갱신 뒤 다음 사용 때 새 값으로 다시 만든다(record 는 final 이라
- *     refresh 프록시를 못 만들어 클래스). 쓰는 쪽은 호출마다 읽는다. 주소(*BaseUrl)는 클라이언트를 만들 때 한 번 읽으므로 바꾸면 재시작.
+ *     refresh 프록시를 못 만들어 클래스). 쓰는 쪽은 호출마다 읽는다. 주소(*BaseUrl)는 클라이언트를 만들 때 한 번 읽으므로 바꾸면 재시작. 약관 버전은
+ *     실행 중 바꿔도 다음 조회부터 적용된다(다음 로그인에서 필수 항목을 다시 묻는다).
  */
 @RefreshScope
 @ConfigurationProperties(prefix = "pmart.customer")
@@ -18,14 +20,17 @@ public class CustomerProperties {
 
   private final @Nullable Integer addressLimit;
   private final String serviceabilityBaseUrl;
+  private final Consents consents;
 
-  public CustomerProperties(@Nullable Integer addressLimit, String serviceabilityBaseUrl) {
+  public CustomerProperties(
+      @Nullable Integer addressLimit, String serviceabilityBaseUrl, @Nullable Consents consents) {
     serviceabilityBaseUrl =
         serviceabilityBaseUrl == null || serviceabilityBaseUrl.isBlank()
             ? "http://delivery-serviceability-service:8401"
             : serviceabilityBaseUrl;
     this.addressLimit = addressLimit;
     this.serviceabilityBaseUrl = serviceabilityBaseUrl;
+    this.consents = consents == null ? new Consents(null) : consents;
   }
 
   public @Nullable Integer addressLimit() {
@@ -35,4 +40,20 @@ public class CustomerProperties {
   public String serviceabilityBaseUrl() {
     return serviceabilityBaseUrl;
   }
+
+  public Consents consents() {
+    return consents;
+  }
+
+  /**
+   * @param versions 항목별 현행 약관 버전(문자열, 32자까지). 바꾸면 그 항목을 다시 받는다
+   */
+  public record Consents(@Nullable Versions versions) {}
+
+  /** {@code pmart.customer.consents.versions.*} — 계약 ConsentType 마다 하나. */
+  public record Versions(
+      @Nullable String termsOfService,
+      @Nullable String privacyPolicy,
+      @Nullable String ageOver14,
+      @Nullable String marketing) {}
 }

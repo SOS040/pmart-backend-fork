@@ -2,6 +2,7 @@ package com.pmart.auth.application;
 
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 
@@ -11,8 +12,9 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  * @param accessTokenTtl access token 수명
  * @param refreshTokenTtl refresh token 수명(회전)
  * @param sessionMaxAge 세션 유휴 수명 — 마지막 갱신(사용)부터 이 기간 안 쓰면 재로그인(2026-11-02, 슬라이딩)
- * @param requireConsent 신규 가입에 필수 약관 동의 단계(AUTH_CONSENT)를 둘지. 사용자 결정(2026-10-30)으로 지금은 false — 동의
- *     기능 (customer-service)이 생기면 켠다
+ * @param requireConsent 필수 약관 동의 단계(AUTH_CONSENT)를 둘지. 2026-10-30 에는 false(동의 기능 없음), 2026-11-17
+ *     CU-1 사용자 결정으로 true — 신규 가입과 필수 약관 현행 버전에 동의하지 않은 기존 회원은 동의 화면을 거친다. 판단은 customer-service
+ * @param customerServiceBaseUrl customer-service 주소(동의 상태 조회·로그인 중 동의 반영 — 내부 경로)
  * @param failureWindow 실패 집계 창(Commerce 4.9: 15분)
  * @param maxFailures 창 안의 실패 한도(5회)
  * @param restriction 제한 시간(10분)
@@ -28,6 +30,7 @@ public class CustomerProperties {
   private final Duration refreshTokenTtl;
   private final Duration sessionMaxAge;
   private final boolean requireConsent;
+  private final String customerServiceBaseUrl;
   private final Duration failureWindow;
   private final int maxFailures;
   private final Duration restriction;
@@ -38,6 +41,7 @@ public class CustomerProperties {
       Duration refreshTokenTtl,
       Duration sessionMaxAge,
       boolean requireConsent,
+      @Nullable String customerServiceBaseUrl,
       Duration failureWindow,
       int maxFailures,
       Duration restriction,
@@ -53,6 +57,10 @@ public class CustomerProperties {
     this.refreshTokenTtl = refreshTokenTtl;
     this.sessionMaxAge = sessionMaxAge;
     this.requireConsent = requireConsent;
+    this.customerServiceBaseUrl =
+        customerServiceBaseUrl == null || customerServiceBaseUrl.isBlank()
+            ? "http://customer-service:8103"
+            : customerServiceBaseUrl;
     this.failureWindow = failureWindow;
     this.maxFailures = maxFailures;
     this.restriction = restriction;
@@ -73,6 +81,10 @@ public class CustomerProperties {
 
   public boolean requireConsent() {
     return requireConsent;
+  }
+
+  public String customerServiceBaseUrl() {
+    return customerServiceBaseUrl;
   }
 
   public Duration failureWindow() {

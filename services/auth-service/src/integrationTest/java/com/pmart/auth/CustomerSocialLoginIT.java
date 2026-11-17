@@ -48,7 +48,9 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.auth.issuer=http://auth-service.test",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.auth.customer.google.client-ids=app-client.apps.googleusercontent.com,web-client.apps.googleusercontent.com",
-      "pmart.auth.customer.max-failures=3"
+      "pmart.auth.customer.max-failures=3",
+      // 이 시험은 동의 단계가 꺼진 경로(바로 AUTH_MEMBER). 켜진 경로는 CustomerConsentLoginIT
+      "pmart.auth.customer.require-consent=false"
     })
 @Import(CustomerSocialLoginIT.FakeGoogle.class)
 class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {

@@ -22,7 +22,7 @@
 | `CategoryChanged` | product-service | search, storefront, product-content | categoryId, parent, state, version | 분류 승인 발효 | ① |
 | `ProductContentPublished` | product-content | search, storefront | productId, contentVersion | 콘텐츠 발효(5분 내 반영 목표) | ① |
 | `PriceVersionEffective` | pricing-service | cart, storefront, search, order, approval | sku, price, priceVersion, effectiveAt | 가격 승인 발효(확정 주문 소급 없음) | ① |
-| `CustomerConsentChanged` | customer-service | notification, audit | accountId, consentType, version, granted, at | 약관/마케팅 동의 변경 | ① |
+| `CustomerConsentChanged` | customer-service | notification, audit | accountId, consentType, version(기록 차수), granted, changedAt, termsVersion·required·channel(2026-11-17) | 약관/마케팅 동의 변경(항목마다 한 건, 같은 값이면 없음 — CU-1 2026-11-17 구현) | ① |
 | `CustomerWithdrawalRequested` | customer-service | order, cart, notification | accountId | 탈퇴 접수(신규 구매·마케팅 중단) | ① |
 | `CustomerWithdrawalCompleted` | customer-service | auth, cart, notification, audit | accountId, completedAt | 미결 의무 종결 확인 후 완료 | ① |
 | `ShoppingAddressChanged` | customer-service | cart | accountId, shoppingAddressId, shoppingContextVersion, mfcId | 현재 쇼핑 주소 변경(늦은 응답 폐기 기준) | ① |
