@@ -49,6 +49,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [ ] MFC 시뮬레이터 요청 R-13(상온 대기 칸 — 사용자 결정 대기)·R-15/16(칸·여러 SKU 재고 조회)·R-17(작업 실적 목록)·R-19(인계 끝난 출고 `deliveryId` 비어 있음) — 시뮬레이터 저장소 `docs/backend-requests.md`(GitHub 판이 11-10 이라 아직 안 보이면 PC 1 에 요청)
 
 ## PC 5 — delivery 영역
+- [ ] **라이더 앱 휴대폰 푸시(FCM) 연결**(2026-11-17 — 요청 `docs/handoff/clients/rider-app/2026-11-17-request-rider-push-fcm.md`): 서버 푸시 켜짐(Firebase `pmart-123`). 앱에 google-services.json(사용자가 PC 1 → PC 5 복사)·firebase_messaging·토큰 등록 `PUT /me/push-tokens/{deviceId}`
 - [ ] **`web/rider-backoffice`(라이더 백오피스 — 관제 포함) 맡기**(2026-11-17 사용자 "라이더 백오피스는 PC5로"): PC 1 이 뼈대·로그인·LAN 서빙(8446)을 만들었다. 계획·남은 결정 `docs/delivery/rider-backoffice-plan.md`, 앱 문서 pmart-clients `docs/apps/rider-backoffice-web.md`. 관제는 직원용 라이더 위치 API(delivery-tracking)부터. 로그인·세션 코드는 PC 1 만, 웹 공통은 PC 2 에 요청
 - [x] **고객 반품 회수 배차(CL-1 배송 쪽, DD-3)**(2026-11-17 PC 5 — 브랜치 `delivery/claim-return-pickup`, 사용자 결정 바로 배차·일반 표·실패마다 알림·고객 사정 실패도 지급): dispatch 0.5.0 V11·execution 0.10.0 V11·tracking, 새 사건 `ReturnPickupFailed`. 라이더 앱 화면은 요청 handoff(`docs/handoff/clients/rider-app/2026-11-17-request-claim-return-pickup.md`)
 - [x] **TR-3 고객·직원 ETA 조회·실시간 구독**(2026-11-17 PC 5 구현 — 브랜치 `delivery/tr-3-eta` PR)(2026-11-17 사용자 "PC 5에 요청" — 요청서 `docs/architecture/service-requests/delivery-tracking-service.md` TR-3): `GET /deliveries/{id}/eta`·`/stream`(SSE) 구현 — 고객 본인 배송 dropEta 만, 직원은 execution `Access` 범위, ETA 계산 꺼짐이면 ETA_PENDING. 고객앱은 이미 부른다. **main 에서 새 브랜치로**(예 `delivery/tr-3-eta-api`)
