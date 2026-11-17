@@ -1,6 +1,7 @@
 # [pmart-backend → pmart-clients] 알림: 고객앱 레퍼런스 대비 빠진 기능 (2026-11-17)
 
 - 보낸 영역: platform(PC 1)
+- **갱신 2026-11-18**: B(백엔드가 먼저 필요한 것)는 `2026-11-18-notice-reference-gap-update.md` 가 지금 상태다(ETA·검색어·푸시·문의 사진·만족도·배송 사진 등 생김). A·C 는 이 문서 그대로.
 - 받는 앱: customer_app
 - 근거: pmart-clients `docs/customer-app-design/`(B마트 화면 캡처, 20개 폴더 약 170장)를 지금 앱 코드(main `c7498f8`)와 대조. `docs/apps/customer-app-gap-2026-11-04.md` 는 그 뒤 홈 개편·알림함·리뷰·고객센터 AI 채팅·다시 담기·배송 4단계가 생겨 낡았다 — 이 문서로 갱신해 주세요.
 - 범위 밖으로 둔 것: `customer-app-design-review.md` §1 "따라 하지 않음"(즉시 "취소됐어요", 재고 재촉 문구 등), 1차 제외(쿠폰·포인트·찜·재입고 알림·할인 배지·광고·자체 본인인증).
