@@ -30,7 +30,7 @@
   - 팀 공용 목록 `GET /cases`(state 비우면 열린 것, P1·기한 순, unassigned·overdue·assigneeGroup) → 집기 `POST …/assignments`(자기 자신만, 관리자는 다른 사람에게) → 닫기 `POST …/closures`(resolution·summary 필수, 남이 맡은 것은 관리자만). 보기 OPERATOR_ADMIN·RIDER_OPS·CS_AGENT(배송 쪽, CS 는 보기만).
   - 처리 기한 `pmart.cases.sla.[종류]`(맵 키는 `"[RIDER_HELP]"` 처럼 — `_` 를 지키려고) — 표시만(`overdue`), 알림 없음. 값 확정(2026-11-16 사용자 — 도움요청·위치 끊김 10분, 전달 실패·오배송 30분).
   - 사건 `CaseOpened·CaseAssigned·CaseClosed`(platform.case.v1). 고객 문의 행(CS_INQUIRY)은 `/cases` 에 나오지 않는다.
-  - 아직: 행위 요청(501). CS 접수는 0.12.0. 재개 0.6.0, 이관 0.7.0, 의무 0.8.0, 교대 0.9.0. **도움요청 접수 `/help-requests` 는 만들지 않음(0.11.1 계약에 사용 안 함 — R-4 로 delivery-execution 이 받음)**.
+  - 아직: 없음 — 행위 요청은 0.17.0(기록만), CS 접수는 0.12.0. 재개 0.6.0, 이관 0.7.0, 의무 0.8.0, 교대 0.9.0. **도움요청 접수 `/help-requests` 는 만들지 않음(0.11.1 계약에 사용 안 함 — R-4 로 delivery-execution 이 받음)**.
 - **사가·결제 이상(2026-11-16, 계약 0.5.0 — R-3, 사용자: 기한 1시간·"이상만"·멈춘 사가는 지금 안 함)**: `CaseInboxService.onOrderException`·`CaseRules.orderExceptionKind`. 마이그레이션 없음(같은 표).
   - 구독 `sagaEvents`(order.saga.v1 `ReconciliationRequired` 전부·`CompensationExecuted` 중 result ≠ SUCCESS), `paymentEvents`(order.payment.v1 `PaymentMismatch` 전부·`PaymentResultUnknown` 중 escalated=true). 앞 셋 → RECONCILIATION, 결제 불명 → PAYMENT_UNKNOWN. 정상 보상·조회 중 결제 불명은 버린다.
   - 주문(없으면 사가·결제 시도) + 종류마다 열린 사건 하나(dedupe `<종류>:<대상>`). 재발은 RECURRED 이력, 결제 불명 반복(15분마다)은 이력도 없음. refs = orderId·sagaId·paymentAttemptId·resourceId, 금액·상세 없음.
@@ -83,6 +83,10 @@
 - **문의 만족도(2026-11-17, 계약 0.15.0, V13 inquiry_satisfaction — 사용자 "답변 뒤 1~5점 + 한 줄", 업무 원문 Commerce §14.2)**: `InquirySatisfactionService`·`InquirySatisfactionStore`, `InquiriesController`.
   - 남기기 `POST /inquiries/{id}/satisfaction`(score 1~5, comment ≤200): 남긴 고객 본인만(라이더·직원 403, 남의·STAFF_INTAKE 404), 답변 전 409 INQUIRY_NOT_ANSWERED, 한 번만 409 ALREADY_RATED(고치기 없음). 상태·version 그대로, 이벤트·알림 없음, 의견 로그 금지.
   - **상담원 평가·제재에 쓰지 않는다** — 문의 상세 `satisfaction` 은 본인·OPERATOR_ADMIN 에게만(상담원·지원센터에게 없음). 모아 보기 `GET /inquiries/satisfaction-summary?answeredFrom&answeredTo`(관리자만, 92일까지): 답변된 고객 문의 수(분모)·남긴 수(분자)·점수 합·1~5 분포·평균(남긴 수 0 이면 null — BO-28). 상담원별로 나누지 않는다.
+
+- **행위 요청 기록(2026-11-17, 계약 0.17.0, V15 case_action_request — 사용자 "기록만 먼저", 업무 원문 BackOffice §2 ActionRequest)**: `ActionRequestService`·`domain/ActionRequestRules`·`ActionRequestStore`, `ActionRequestsController`. **case 는 대상 서비스를 부르지 않는다** — 직원이 처리 대기·각 메뉴에서 한 요청과 결과를 남긴다.
+  - 남기기 `POST /cases/{id}/action-requests`: 그 건을 다룰 수 있는 사람(`CaseRules.canWork`), 처리 끝난 건 409, 보상 실행은 approvalRef 필수(422 APPROVAL_REQUIRED), 명령 이름에 force·overwrite·override 면 422 UNSUPPORTED_ACTION. REQUESTED 로 시작, 이력 ACTION_REQUESTED.
+  - 결과 `…/{arId}/results`: SENT·ACCEPTED·APPLIED·REJECTED·UNKNOWN_RESULT + 결과 ID(resultSystem·resultRef 같이), APPLIED·REJECTED 뒤 409(새 요청으로). 이력 ACTION_RESULT_RECORDED. 접수 건 상세 `actionRequests`. 이벤트·알림 없음, 메모 로그 금지.
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
