@@ -314,7 +314,7 @@ EOF
         "\$\$S3_ACCESS_KEY" "\$\$S3_SECRET_KEY" > /tmp/s3.json &&
         chown seaweed /tmp/s3.json &&
         exec /entrypoint.sh mini -dir=/data -s3.config=/tmp/s3.json -admin.ui=false
-        -s3.port.iceberg=0 -s3.port.lance=0 -bucket=pmart-product-content,pmart-customer,pmart-delivery-evidence,pmart-review
+        -s3.port.iceberg=0 -s3.port.lance=0 -bucket=pmart-product-content,pmart-customer,pmart-delivery-evidence,pmart-review,pmart-case
     ports: ["8333:8333"]
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
