@@ -39,7 +39,7 @@
 | [MB-1~3](mfc-backoffice-staff-apis.md) | mfc-capacity·fulfillment·inbound·inventory·quality | PC 3 | platform(MFC 백오피스) | 센터 관리자 웹 목록 API·계약만(501)인 것·권한(확인 필요 포장, 정정·위치 역할) | MB-3 은 PC 3 가 정함(사용자 2026-11-15) | 대기(PC 3) |
 | [CL-1](claim-service.md) | claim | PC 1 | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | 결정됨(2026-11-17 사용자 "추천대로" — 1차 감액 없음, 면제 사유 5가지, 회수 2회 실패 뒤 상담원 재연락·회수비 1회) | **구현**(2026-11-17 claim 0.2.0·V4 — 고객센터 반품 접수·회수비 9,000원(면제 5사유)·회수 실패 2번 → 상담원·검수 뒤 원단가 환불). 받는 쪽 DD-3(PC 5)·R-8(PC 2)·O-7 대기 |
 | [DD-3](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | claim | 고객 반품 회수 배송(`ReturnPickupRequested` 구독, claimId 싣기, 실패 `DeliveryFailed`) | 결정됨(CL-1 2026-11-17) | **구현·LAN 배포**(2026-11-17 PC 5 #104 — dispatch 0.5.0·execution 0.10.0), #113 맞춤 0.5.1·0.10.1 — pickupRequestId·회수 품목·전달 완료 전 회수 안 만듦. 실패 `ReturnPickupFailed` 는 claim 020053c9 가 구독 |
-| [R-8](case-service.md) | case | PC 2 | claim | 반품 회수 2번 실패(`ReturnRecoveryFailed`) → 상담원 재연락 사건·백오피스 화면 | 결정됨(CL-1 2026-11-17) | 요청함 |
+| [R-8](case-service.md) | case | PC 2 | claim | 반품 회수 2번 실패(`ReturnRecoveryFailed`) → 상담원 재연락 사건·백오피스 화면 | 결정됨(CL-1 2026-11-17) | **구현·LAN 배포**(2026-11-17 PC 2 #145, case 0.22.0 — 구독 config 7a93ff7). 백오피스 화면은 웹 |
 | [O-7](order-service.md) | order | PC 1 | claim | 반품 수량을 주문 원장에 기록(방식 결정 필요) | **필요**(claim 호출 vs 사건 구독) | 대기 |
 | [R-1](case-service.md) | case | PC 2 | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | PC 2 | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
