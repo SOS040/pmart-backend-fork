@@ -221,6 +221,7 @@ GET /api/v1/riders/me RIDER
 GET /api/v1/riders/me/deliveries RIDER
 GET /api/v1/riders/me/earnings RIDER
 GET /api/v1/riders/me/locations/latest RIDER
+GET /api/v1/riders/me/operating-time RIDER
 GET /api/v1/riders/me/settings RIDER
 GET /api/v1/riders/me/state RIDER
 GET /api/v1/riders/me/withdrawals/{requestId} RIDER
