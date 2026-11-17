@@ -21,6 +21,16 @@
   3. 회수: `ReturnPickupRequested`(시도마다 `<claimId>-P<n>`) → delivery 회수 배송(DD-3, PC 5 — 구현 전). 첫 실패 자동 재요청, 두 번째 실패 RECOVERY_FAILED + `ReturnRecoveryFailed`(case R-8 요청) → 상담원 `POST /claims/{id}/recovery-actions` RETRY_PICKUP·CANCEL.
   4. `ReturnItemReceived` → 수령 수량. 5. `ReturnInspected` → 검수 수량 × 원단가 − 할인 안분 부분 환불(RESALE·DISPOSE 모두) → RefundResult → 모든 행 검수·환불되면 CLOSED.
   - 남은 것: delivery DD-3(회수 배송·DeliveryFailed 에 claimId), case R-8(재연락 사건), order O-7(returnedQty), notification(결제 필요·회수 실패 안내), 클라이언트(고객 앱 회수비 결제·백오피스 반품 접수 — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`), 접수 기한 판정·받은 수량 부족 시 닫기.
+- **추가 결정(2026-11-17 사용자 "추천대로")**:
+  1. 회수비 결제 기한 **24시간**(`return-fee-payment-wait: PT24H` 확정).
+  2. 회수 실패로 반품을 취소할 때 낸 회수비: **고객 사유**(CUSTOMER_ABSENT·UNREACHABLE·ADDRESS_ERROR·REFUSED — `ReturnPickupFailed.customerReason`) → 돌려주지 않음, **라이더·우리 잘못**(RIDER_INCIDENT) → 돌려줌, **파손·기타**(DAMAGED·OTHER) → 상담원 판단(기본 돌려주지 않음).
+  3. 회수 시도 **전체 3번**(자동 2번 + 상담원 재시도 1번) — 넘으면 상담원은 반품 취소만.
+  4. 우리 쪽 실패(RIDER_INCIDENT)는 **횟수에서 빼고** 바로 다시 회수 요청.
+  5. 반품 전체 기한 **접수 뒤 7일** — 그 안에 회수가 안 되면 자동 취소(회수비는 2번 규칙대로).
+  6. MFC 가 요청보다 적게 받으면 상담원이 **"받은 만큼만 끝내기"**(남은 수량 환불 없음·클레임 완료).
+  7. 반품 가능 기간(7일·신선 24시간)은 지금처럼 상담원 판단 — 배송 완료 시각을 받게 되면 자동 검사.
+  8. MFC 검수 결과(`ReturnInspected`)에 주문 줄 번호 — PC 3 요청(선택).
+  9. 반품 수량은 order-service 가 claim 사건을 받아 기록(O-7).
 
 ## CL-D1. 고객센터 취소 없음 — ADR-0052 2번 바꾸기 (2026-11-13, 보낸 영역 delivery — 사용자 결정, platform 할 일)
 

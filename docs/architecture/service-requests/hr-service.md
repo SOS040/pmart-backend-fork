@@ -26,4 +26,4 @@
   - 시험: hr `HrProvisioningIT.grantRequestValidation`(employee-auth WireMock)·`GrantRequestRulesTest`, employee-auth `GrantApprovalIT.duplicateApprovedLineDoesNotCreateSecondGrant`·`GrantOverlapTest`.
   - 클라이언트 요청서(PC 2): `docs/handoff/clients/hr-backoffice/2026-11-17-request-grant-request-validation.md`.
 - **상태**: 백엔드 구현 끝(배포 전), 인사팀 앱 화면(PC 2) 대기, 기간 연장 결정 대기.
-
+- **추가 결정(2026-11-17 사용자 "추천대로")**: ① 기간 연장은 따로 **"연장 요청"** 기능(새 요청 종류 — 기존 권한의 끝나는 날만 늘림, 승인 GRANT) ② 센터가 필요 없는 역할은 같은 역할이면 센터와 상관없이 중복(지금 그대로) ③ **계정에 직접 들어 있는 역할**(`employee_account.roles`, 옮긴 13명·관리 경로)도 중복으로 본다 ④ 안전망이 반영을 거절하면 인사팀 앱이 **"반영 거절"**을 보이게(hr 가 반영 결과를 알아야 함 — employee-auth 반영 결과 사건 또는 조회, 그 뒤 PC 2 화면).
