@@ -195,6 +195,68 @@ class GrantApprovalIT extends PostgresKafkaContainerSupport {
    * 않고 회신 REJECTED(GRANT_ALREADY_ACTIVE, domainRef = 기존 grantId) — GrantApplied 없음. 다른 센터·기존 권한이 끝난
    * 뒤 시작·같은 승인 안의 앞 행과 겹침(같은 트랜잭션)·회수된 권한은 예전처럼. 내부 조회(0.11.0)는 토큰 없이 역할 목록과 끝나지 않은 grant 를 준다.
    */
+  /**
+   * 역할·센터 섞임 안전망(2026-11-18): 관리자@MFC-IT-01 이 있는데 작업자@MFC-IT-02 → grant 없음·회신
+   * REJECTED(CENTER_ROLE_MIX, domainRef = 기존 grant), 같은 승인의 관리자@MFC-IT-02 는 반영. 계정 값의 센터도 본다.
+   */
+  @Test
+  void mixedCenterRolesAreNotApplied() throws Exception {
+    String op = "OP-GA-" + UUID.randomUUID();
+    store.insertAccount(op, "ACTIVE", List.of(), List.of(), Instant.now());
+    LocalDate today = LocalDate.now(SEOUL);
+    String receipts =
+        "SELECT count(*) FROM outbox_event WHERE topic = 'platform.approval-receipt.v1' AND aggregateid = ?";
+    String first = "AP-" + UUID.randomUUID();
+    decided(
+        first,
+        "GRANT",
+        "employee-auth-service",
+        op,
+        "APPROVED",
+        List.of(line("1", "MFC_SUPERVISOR", List.of("MFC-IT-01"), today, null)));
+    assertThat(awaitCount(receipts, 1, first)).isEqualTo(1);
+
+    String second = "AP-" + UUID.randomUUID();
+    decided(
+        second,
+        "GRANT",
+        "employee-auth-service",
+        op,
+        "APPROVED",
+        List.of(
+            line("1", "MFC_WORKER", List.of("MFC-IT-02"), today, null),
+            line("2", "MFC_SUPERVISOR", List.of("MFC-IT-02"), today, null),
+            line("3", "CS_AGENT", List.of(), today, null)));
+    assertThat(awaitCount(receipts, 1, second)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT line_id FROM employee_grant WHERE approval_id = ? ORDER BY line_id",
+                String.class,
+                second))
+        .containsExactly("2", "3");
+    JsonNode r = receipt(second);
+    assertThat(r.path("result").asString()).isEqualTo("PARTIAL");
+    assertThat(r.path("lines").get(0).path("reasonCode").asString()).isEqualTo("CENTER_ROLE_MIX");
+    assertThat(r.path("lines").get(0).path("domainRef").asString()).isEqualTo(first + ":1");
+
+    // 계정 값에 다른 센터가 붙은 직원 — 관리자@MFC-IT-01 은 MFC-IT-03 까지 퍼지므로 거절
+    String op2 = "OP-GA-" + UUID.randomUUID();
+    store.insertAccount(op2, "ACTIVE", List.of("CS_AGENT"), List.of("MFC-IT-03"), Instant.now());
+    String third = "AP-" + UUID.randomUUID();
+    decided(
+        third,
+        "GRANT",
+        "employee-auth-service",
+        op2,
+        "APPROVED",
+        List.of(line("1", "MFC_SUPERVISOR", List.of("MFC-IT-01"), today, null)));
+    assertThat(awaitCount(receipts, 1, third)).isEqualTo(1);
+    JsonNode r3 = receipt(third);
+    assertThat(r3.path("result").asString()).isEqualTo("REJECTED");
+    assertThat(r3.path("lines").get(0).path("domainRef").asString()).isEqualTo("account");
+    assertThat(grantApplied(third)).isZero();
+  }
+
   @Test
   void duplicateApprovedLineDoesNotCreateSecondGrant() throws Exception {
     String op = "OP-GA-" + UUID.randomUUID();

@@ -24,6 +24,7 @@ class GrantRequestRulesTest {
   static final Map<String, EmployeeAuthClient.Role> ROLES =
       Map.of(
           "MFC_WORKER", new EmployeeAuthClient.Role("MFC_WORKER", true),
+          "MFC_SUPERVISOR", new EmployeeAuthClient.Role("MFC_SUPERVISOR", true),
           "MD", new EmployeeAuthClient.Role("MD", false));
 
   static GrantRequest req(
@@ -182,5 +183,76 @@ class GrantRequestRulesTest {
                 now, now.plusSeconds(10), now.plusSeconds(10), null, now))
         .as("끝 = 다른 쪽 시작")
         .isFalse();
+  }
+
+  // ---- 역할·센터 섞임(2026-11-18 — CENTER_ROLE_MIX)
+
+  static void mix(List<GrantRequest> grants, List<EmployeeAuthClient.Grant> current) {
+    GrantRequestRules.checkCenterMix(
+        grants, current, ROLES, TODAY.minusYears(1), null, NOW, SEOUL, "grants");
+  }
+
+  @Test
+  void supervisorAtAPlusWorkerAtBIsMixed() {
+    var current = List.of(existing("AP-1:1", "MFC_SUPERVISOR", List.of("A"), TODAY, null));
+    PmartException e =
+        catchThrowableOfType(
+            PmartException.class,
+            () -> mix(List.of(req("MFC_WORKER", List.of("B"), null, null)), current));
+    assertThat(e.code()).isEqualTo("CENTER_ROLE_MIX");
+    assertThat(e.details().getFirst().field()).isEqualTo("grants[0]");
+    assertThat(e.details().getFirst().reason())
+        .contains("existingGrantId=AP-1:1", "role=MFC_SUPERVISOR");
+  }
+
+  @Test
+  void sameRoleOtherCenterOrSameCenterOtherRoleIsFine() {
+    var current = List.of(existing("AP-1:1", "MFC_SUPERVISOR", List.of("A"), TODAY, null));
+    assertThatCode(() -> mix(List.of(req("MFC_SUPERVISOR", List.of("B"), null, null)), current))
+        .as("관리자@A + 관리자@B = 관리자@{A,B}")
+        .doesNotThrowAnyException();
+    assertThatCode(() -> mix(List.of(req("MFC_WORKER", List.of("A"), null, null)), current))
+        .as("같은 센터의 다른 역할")
+        .doesNotThrowAnyException();
+    assertThatCode(() -> mix(List.of(req("MD", List.of(), null, null)), current))
+        .as("센터 없는 역할")
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void widerSupervisorPlusNarrowWorkerIsMixed() {
+    var current = List.of(existing("AP-1:1", "MFC_SUPERVISOR", List.of("A", "B"), TODAY, null));
+    PmartException e =
+        catchThrowableOfType(
+            PmartException.class,
+            () -> mix(List.of(req("MFC_WORKER", List.of("A"), null, null)), current));
+    assertThat(e.code()).as("B 에서 작업자가 됨").isEqualTo("CENTER_ROLE_MIX");
+  }
+
+  @Test
+  void nonOverlappingPeriodsAreFine() {
+    var current =
+        List.of(
+            existing(
+                "AP-1:1", "MFC_SUPERVISOR", List.of("A"), TODAY.minusDays(5), TODAY.plusDays(9)));
+    assertThatCode(
+            () -> mix(List.of(req("MFC_WORKER", List.of("B"), TODAY.plusDays(10), null)), current))
+        .as("관리자@A 가 끝난 다음 날부터 작업자@B")
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void mixedWithinOneRequestIs400() {
+    PmartException e =
+        catchThrowableOfType(
+            PmartException.class,
+            () ->
+                mix(
+                    List.of(
+                        req("MFC_SUPERVISOR", List.of("A"), null, null),
+                        req("MFC_WORKER", List.of("B"), null, null)),
+                    List.of()));
+    assertThat(e.code()).isEqualTo("VALIDATION_FAILED");
+    assertThat(e.details().getFirst().field()).isEqualTo("grants[0]");
   }
 }

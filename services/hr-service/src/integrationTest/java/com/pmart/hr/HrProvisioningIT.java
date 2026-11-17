@@ -716,6 +716,18 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     assertThat(otherCenter.status()).as(otherCenter.body().toString()).isEqualTo(200);
     jdbc.update("UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?", op);
 
+    // 역할·센터 섞임(2026-11-18): 작업자@MFC-IT-01 이 있는데 관리자@MFC-IT-02 → 409 CENTER_ROLE_MIX(행·사건 없음)
+    int beforeMix = requestedGrants(op);
+    Res mix = requestGrants(op, List.of(grant("MFC_SUPERVISOR", List.of("MFC-IT-02"))));
+    assertThat(mix.status()).as(mix.body().toString()).isEqualTo(409);
+    assertThat(mix.body().path("code").asText()).isEqualTo("CENTER_ROLE_MIX");
+    assertThat(mix.body().path("details").path(0).path("reason").asText())
+        .contains("existingGrantId=AP-IT-1:1");
+    assertThat(requestedGrants(op)).isEqualTo(beforeMix);
+    Res sameCenter = requestGrants(op, List.of(grant("MFC_SUPERVISOR", List.of("MFC-IT-01"))));
+    assertThat(sameCenter.status()).as("같은 센터 관리자는 받음 " + sameCenter.body()).isEqualTo(200);
+    jdbc.update("UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?", op);
+
     // 등록 requestedGrants 도 같은 400
     Map<String, Object> regDup = registration(mailId(), "REGULAR", today, null);
     regDup.put("requestedGrants", List.of(grant("MD", List.of()), grant("MD", List.of())));
@@ -729,6 +741,17 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     assertThat(regCenterRes.status()).isEqualTo(400);
     assertThat(regCenterRes.body().path("details").path(0).path("field").asText())
         .isEqualTo("requestedGrants[0].centers");
+
+    Map<String, Object> regMix = registration(mailId(), "REGULAR", today, null);
+    regMix.put(
+        "requestedGrants",
+        List.of(
+            grant("MFC_SUPERVISOR", List.of("MFC-IT-01")),
+            grant("MFC_WORKER", List.of("MFC-IT-02"))));
+    Res regMixRes = call("POST", "/hr/employees", hr, regMix);
+    assertThat(regMixRes.status()).as("요청 행끼리 섞임 400").isEqualTo(400);
+    assertThat(regMixRes.body().path("details").path(0).path("field").asText())
+        .isEqualTo("requestedGrants[0]");
 
     // employee-auth-service 를 못 읽으면 503 — 검사 없이 받지 않는다
     employeeAuth.stubFor(

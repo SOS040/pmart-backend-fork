@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.11.0
+  version: 0.11.1
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -30,6 +30,11 @@ info:
     GET /internal/employees/{operatorId}/grants(지금 유효하거나 시작 전인 grant). 승인 반영(ApprovalDecided GRANT)은 이미 유효·예정인 같은 권한
     (역할 같음 + 센터 겹침 + 기간 겹침)과 겹치는 행을 새 grant 로 만들지 않고 반영 회신에 REJECTED(reasonCode GRANT_ALREADY_ACTIVE, domainRef = 기존 grantId)로
     남긴다 — GrantApplied 없음(사건 계약은 그대로).
+
+    0.11.1(2026-11-18, 역할·센터 섞임 — permissions.md §9 큰 것 2): 토큰이 역할·센터를 따로 실어 생기는 섞임(A 관리자 + B 작업자 → B 에서도 관리자)을 만들지 않는다.
+    같은 때 유효한 권한(계정 값 포함) 안에서 센터 지정 역할 하나하나의 센터가 센터 전체와 같아야 한다. 승인 반영은 섞이는 행을 grant 로 만들지 않고 회신 REJECTED
+    (reasonCode CENTER_ROLE_MIX, domainRef = 충돌 grantId 또는 `account`), PUT /employee-auth/employees/{id} 는 역할·센터를 바꿔 섞이면 409 CENTER_ROLE_MIX.
+    토큰 모양은 그대로.
 servers:
   - url: /api/v1
 security:
@@ -298,6 +303,7 @@ paths:
               schema: { $ref: '#/components/schemas/Employee' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /employee-auth/employees/{operatorId}/grant-revocations:
     parameters:

@@ -135,7 +135,18 @@ public class EmployeeService {
     if (!r.grants().isEmpty()) {
       // 역할·센터 규칙(HR-2, 역할 목록 = employee-auth-service). 새 직원이라 이미 가진 권한 검사는 없다.
       // 못 읽으면 503 — 직원도 만들지 않는다.
-      GrantRequestRules.checkCatalog(r.grants(), employeeAuth.roles(), "requestedGrants");
+      Map<String, EmployeeAuthClient.Role> roles = employeeAuth.roles();
+      GrantRequestRules.checkCatalog(r.grants(), roles, "requestedGrants");
+      // 요청 행끼리 센터마다 다른 MFC 역할(2026-11-18) — 400
+      GrantRequestRules.checkCenterMix(
+          r.grants(),
+          List.of(),
+          roles,
+          r.startDate(),
+          r.endDate(),
+          now(),
+          props.zone(),
+          "requestedGrants");
     }
     Instant now = now();
     int year = LocalDate.now(clock.withZone(props.zone())).getYear();
@@ -417,6 +428,8 @@ public class EmployeeService {
           }
           Instant now = now();
           GrantRequestRules.checkNotActive(
+              grants, current, roles, e.startDate(), e.endDate(), now, props.zone(), "grants");
+          GrantRequestRules.checkCenterMix(
               grants, current, roles, e.startDate(), e.endDate(), now, props.zone(), "grants");
           for (GrantRequest g : grants) {
             store.insertGrant(

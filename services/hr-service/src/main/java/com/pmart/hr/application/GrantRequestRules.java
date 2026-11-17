@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 
@@ -136,6 +137,129 @@ public final class GrantRequestRules {
       m.append(" 기간 연장(종료일 늘리기)은 아직 별도 기능이 없습니다(결정 대기).");
     }
     throw new PmartException(ALREADY_ACTIVE, HttpStatus.CONFLICT, m.toString(), false, details);
+  }
+
+  public static final String CENTER_ROLE_MIX = "CENTER_ROLE_MIX";
+
+  /** 섞임 판정의 한 줄 — 기존 grant({@code grantId} 있음) 또는 요청 행({@code index}). */
+  private record Item(
+      @Nullable String grantId,
+      int index,
+      String role,
+      boolean centerScoped,
+      Set<String> centers,
+      Instant from,
+      @Nullable Instant until) {}
+
+  /**
+   * 역할·센터 섞임(2026-11-18, permissions.md §9 큰 것 2 — employee-auth-service {@code CenterRoleMix} 와 같은
+   * 규칙). 직원 토큰은 역할과 센터를 따로 모아 싣기 때문에, 같은 때 유효한 권한들 안에서 <b>센터 지정 역할 하나하나의 센터 = 센터 전체</b>여야 한다(A 관리자
+   * + B 작업자 → B 에서도 관리자가 됨). 요청 행마다 기간이 지금 이후로 겹치는 기존 grant·다른 요청 행과 묶어 본다. 기존 grant 와 섞이면 409
+   * {@code CENTER_ROLE_MIX}(details 에 기존 grant), 요청 행끼리만 섞이면 400. 계정에 직접 둔 역할(이전 계정·관리 경로)은 여기서 못
+   * 본다 — employee-auth-service 가 반영 때 거른다(회신 REJECTED CENTER_ROLE_MIX).
+   *
+   * @param existing employee-auth-service 의 지금 기준으로 끝나지 않은 grant(등록이면 빈 목록)
+   */
+  public static void checkCenterMix(
+      List<GrantRequest> grants,
+      List<EmployeeAuthClient.Grant> existing,
+      Map<String, EmployeeAuthClient.Role> roles,
+      LocalDate start,
+      @Nullable LocalDate end,
+      Instant now,
+      ZoneId zone,
+      String field) {
+    List<Item> items = new ArrayList<>();
+    for (EmployeeAuthClient.Grant x : existing) {
+      items.add(
+          new Item(
+              x.grantId(),
+              -1,
+              x.role(),
+              scoped(roles, x.role()),
+              new TreeSet<>(x.centers()),
+              x.validFrom(),
+              x.validUntil()));
+    }
+    for (int i = 0; i < grants.size(); i++) {
+      GrantRequest g = grants.get(i);
+      LocalDate from = g.validFrom() != null ? g.validFrom() : start;
+      LocalDate to = g.validTo() != null ? g.validTo() : end;
+      items.add(
+          new Item(
+              null,
+              i,
+              g.role(),
+              scoped(roles, g.role()),
+              new TreeSet<>(g.centers()),
+              from.atStartOfDay(zone).toInstant(),
+              to == null ? null : to.plusDays(1).atStartOfDay(zone).toInstant()));
+    }
+    for (Item c : items) {
+      if (c.grantId() != null || (!c.centerScoped() && c.centers().isEmpty())) {
+        continue;
+      }
+      List<Item> group = new ArrayList<>();
+      group.add(c);
+      for (Item o : items) {
+        if (o != c && periodsOverlap(c.from(), c.until(), o.from(), o.until(), now)) {
+          group.add(o);
+        }
+      }
+      if (group.size() == 1 || !mixed(group)) {
+        continue;
+      }
+      Item with =
+          group.stream()
+              .filter(o -> o != c && o.grantId() != null && !o.role().equals(c.role()))
+              .findFirst()
+              .orElse(
+                  group.stream()
+                      .filter(o -> o != c && o.grantId() != null)
+                      .findFirst()
+                      .orElse(null));
+      String m =
+          "센터마다 다른 MFC 역할이 생깁니다: "
+              + c.role()
+              + "@"
+              + String.join(",", c.centers())
+              + (with == null
+                  ? "(같은 요청의 다른 행과)"
+                  : " ↔ 지금 권한 " + with.role() + "@" + String.join(",", with.centers()))
+              + ". 직원 토큰은 역할과 센터를 따로 실어 다른 센터에서도 그 역할이 됩니다 — MFC 역할은 모든 권한 센터에 같게 두세요(다른 센터 권한을"
+              + " 먼저 회수하거나 같은 센터로 요청).";
+      if (with == null) {
+        throw invalid(field + "[" + c.index() + "]", m);
+      }
+      throw new PmartException(
+          CENTER_ROLE_MIX,
+          HttpStatus.CONFLICT,
+          m,
+          false,
+          List.of(
+              new PmartException.Detail(
+                  field + "[" + c.index() + "]",
+                  "existingGrantId=%s;role=%s;centers=%s"
+                      .formatted(with.grantId(), with.role(), String.join(",", with.centers())))));
+    }
+  }
+
+  private static boolean scoped(Map<String, EmployeeAuthClient.Role> roles, String role) {
+    EmployeeAuthClient.Role r = roles.get(role);
+    return r != null && r.centerScoped();
+  }
+
+  /** 한 토큰에 모았을 때 센터 지정 역할마다 센터가 전체와 다른가. */
+  private static boolean mixed(List<Item> items) {
+    Set<String> all = new TreeSet<>();
+    Map<String, Set<String>> byRole = new java.util.HashMap<>();
+    for (Item i : items) {
+      all.addAll(i.centers());
+      if (i.centerScoped()) {
+        byRole.computeIfAbsent(i.role(), k -> new TreeSet<>()).addAll(i.centers());
+      }
+    }
+    return byRole.values().stream().anyMatch(x -> !x.equals(all));
   }
 
   /** 센터 지정 역할은 센터가 하나라도 같거나 둘 다 없음, 아닌 역할은 늘 겹침. */

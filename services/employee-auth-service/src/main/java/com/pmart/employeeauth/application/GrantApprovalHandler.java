@@ -31,7 +31,11 @@ import tools.jackson.databind.JsonNode;
  *   <li>이미 유효하거나 시작 전인 같은 권한(역할 같음 + 센터 겹침 + 기간이 지금 이후로 겹침 — {@link GrantOverlap})과 겹치는 행은 새 줄을 만들지
  *       않고 회신에 REJECTED(GRANT_ALREADY_ACTIVE, domainRef = 기존 grantId)로 남긴다 — GrantApplied
  *       없음(2026-11-17 HR-2 안전망: 같은 권한이 두 줄이면 회수 때 한 줄만 끝나 권한이 남는다). 요청 단계에서는 hr-service 가 409 로 먼저
- *       막는다. 같은 직원의 반영은 advisory lock 으로 한 줄로 세운다(서로 다른 승인이 동시에 와도 서로를 본다).
+ *       막는다.
+ *   <li>더하면 한 직원이 센터마다 다른 MFC 역할을 갖게 되는 행({@link CenterRoleMix} — 토큰이 역할·센터를 따로 모아 다른 센터에서도 그 역할이
+ *       된다)도 만들지 않고 REJECTED(CENTER_ROLE_MIX, domainRef = 충돌 grantId 또는 {@code account}) —
+ *       2026-11-18. 요청 단계에서는 hr-service 가 409 로 먼저 막는다. 같은 직원의 반영은 advisory lock 으로 한 줄로 세운다(서로 다른
+ *       승인이 동시에 와도 서로를 본다).
  *   <li>행마다 {@code GrantApplied}(platform.auth.v1 — audit 등), 승인 전체로 {@code
  *       ApplicationReceiptRecorded} (platform.approval-receipt.v1 — approval 실행 축, ADR-0039).
  *   <li>반려(REJECTED)는 반영할 것이 없다. 이미 나간 토큰에는 다음 발급·갱신(15분 안)부터 실린다.
@@ -127,6 +131,20 @@ public class GrantApprovalHandler {
             existing.grantId());
         continue;
       }
+      String mixedWith = centerRoleMix(operatorId, grantId, role, centers, from, until, now);
+      if (mixedWith != null) {
+        rejected++;
+        receiptLines.add(line(lineId, "REJECTED", CenterRoleMix.CODE, mixedWith));
+        log.warn(
+            "센터마다 다른 MFC 역할이 생겨 새 grant 를 만들지 않음: approvalId={} lineId={} operatorId={} role={}"
+                + " conflictRef={}",
+            approvalId,
+            lineId,
+            operatorId,
+            role,
+            mixedWith);
+        continue;
+      }
       boolean inserted =
           store.insertGrant(
               grantId,
@@ -181,6 +199,47 @@ public class GrantApprovalHandler {
       }
     }
     return null;
+  }
+
+  /**
+   * 이 행을 더하면 역할·센터가 섞이는가({@link CenterRoleMix}) — 충돌 상대(grantId 또는 {@code account}), 아니면 null. 같은
+   * 승인 안의 앞 행도 보인다(같은 트랜잭션).
+   */
+  private @Nullable String centerRoleMix(
+      String operatorId,
+      String grantId,
+      String role,
+      List<String> centers,
+      Instant from,
+      @Nullable Instant until,
+      Instant now) {
+    List<CenterRoleMix.Entry> existing = new ArrayList<>();
+    store
+        .account(operatorId, false)
+        .ifPresent(
+            a ->
+                existing.addAll(
+                    CenterRoleMix.accountEntries(a.roles(), a.centers(), props::centerScoped)));
+    for (EmployeeAuthStore.GrantRow g : store.grantsActiveOrFuture(operatorId, now)) {
+      if (!g.grantId().equals(grantId)) {
+        existing.add(
+            new CenterRoleMix.Entry(
+                g.grantId(),
+                g.role(),
+                props.centerScoped(g.role()),
+                new java.util.TreeSet<>(g.centers()),
+                new GrantOverlap.Period(g.validFrom(), g.validUntil())));
+      }
+    }
+    return CenterRoleMix.conflict(
+        new CenterRoleMix.Entry(
+            grantId,
+            role,
+            props.centerScoped(role),
+            new java.util.TreeSet<>(centers),
+            new GrantOverlap.Period(from, until)),
+        existing,
+        now);
   }
 
   private void publishGrantApplied(

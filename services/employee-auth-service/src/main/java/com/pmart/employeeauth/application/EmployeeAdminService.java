@@ -89,6 +89,40 @@ public class EmployeeAdminService {
     }
   }
 
+  /**
+   * 계정 값을 바꾸면 지금 유효·예정인 grant 와 합쳐 센터마다 다른 MFC 역할이 생기는가({@link CenterRoleMix}, 2026-11-18) — 생기면
+   * 409 {@code CENTER_ROLE_MIX}. 역할·센터를 바꿀 때만(상태만 바꾸는 것은 예전 값이 섞여 있어도 막지 않는다).
+   */
+  private void checkCenterRoleMix(
+      String operatorId, List<String> roles, List<String> centers, Instant now) {
+    List<CenterRoleMix.Entry> account =
+        CenterRoleMix.accountEntries(roles, centers, props::centerScoped);
+    if (account.isEmpty()) {
+      return;
+    }
+    List<CenterRoleMix.Entry> others =
+        new java.util.ArrayList<>(account.subList(1, account.size()));
+    for (EmployeeAuthStore.GrantRow g : store.grantsActiveOrFuture(operatorId, now)) {
+      others.add(
+          new CenterRoleMix.Entry(
+              g.grantId(),
+              g.role(),
+              props.centerScoped(g.role()),
+              new java.util.TreeSet<>(g.centers()),
+              new GrantOverlap.Period(g.validFrom(), g.validUntil())));
+    }
+    String with = CenterRoleMix.conflict(account.get(0), others, now);
+    if (with != null) {
+      throw new PmartException(
+          CenterRoleMix.CODE,
+          org.springframework.http.HttpStatus.CONFLICT,
+          "이 역할·센터를 넣으면 센터마다 다른 MFC 역할이 생깁니다(토큰은 역할과 센터를 따로 실어 다른 센터에서도 그 역할이 됩니다)."
+              + " MFC 역할은 모든 권한 센터에 같게 두세요.",
+          false,
+          List.of(new PmartException.Detail("roles", "conflictRef=" + with)));
+    }
+  }
+
   public EmployeeAdminService(
       EmployeeAuthStore store,
       SubjectBlocks blocks,
@@ -234,6 +268,12 @@ public class EmployeeAdminService {
                   before == null ? List.of() : before.centers(),
                   roles,
                   centers);
+              if (before == null
+                  || !new java.util.TreeSet<>(before.roles()).equals(new java.util.TreeSet<>(roles))
+                  || !new java.util.TreeSet<>(before.centers())
+                      .equals(new java.util.TreeSet<>(centers))) {
+                checkCenterRoleMix(operatorId, roles, centers, now);
+              }
               if (before == null) {
                 store.insertAccount(operatorId, change.state(), roles, centers, now);
               } else if (!before.state().equals(change.state())
