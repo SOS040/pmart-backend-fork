@@ -19,6 +19,8 @@
 #   deploy/lan/lan.sh tls-trust <pc|all|pc1>       루트 CA 를 PC 의 Windows 신뢰 저장소에 설치(pc1 = 이 PC, UAC 창)
 #   deploy/lan/lan.sh config-push [메시지]        설정 저장소 사본(deploy/lan/.config-repo, 사람이 고친 내용)을 GitHub pmart-config 에 commit·push(ADR-0029)
 # deploy 는 설정 저장소 사본에 미커밋·미push 가 있으면 멈추고(config-push 먼저), config-server 를 먼저 띄운 뒤 나머지를 올린다.
+# render·deploy·publish-*·rag-ingest*·config-push 는 배포 잠금(deploy/lan/.deploy.lock)을 잡는다 — 다른 세션이 돌고 있으면 기다린다(lan_lock).
+#   누가 잡았는지 보이게 PMART_LAN_WHO=<세션 이름> 을 주고 부른다.
 # 원격 실행: deploy/remote/run-ps.sh (원격 docker 는 %USERPROFILE%\.docker-pmart 설정 — 읽기 전용 pull 토큰)
 # 원격 작업 폴더: %USERPROFILE%\pmart-lan. PMart 이외 컨테이너는 건드리지 않는다(compose 프로젝트 pmart-lan 만).
 set -euo pipefail
@@ -26,6 +28,41 @@ cd "$(dirname "$0")/../.."
 LAN=deploy/lan
 OUT=$LAN/build
 TMP="${TMPDIR:-${TEMP:-/tmp}}/pmart-lan"; mkdir -p "$TMP"
+
+# 배포 잠금(2026-11-18): 같은 작업 폴더를 쓰는 두 세션(백엔드·PR)의 render·deploy 가 겹치면 render 가 build/ 를 지우고 다시 만들어
+# 다른 쪽 배포에서 서비스가 빠졌다(2026-11-17 #112 무렵, employee-auth 503). build/ 를 쓰는 명령은 잠금 폴더를 잡고 돈다.
+# mkdir 은 이미 있으면 실패하므로 둘이 동시에 잡을 수 없다. 잠금은 build/ 밖(render 가 build/ 를 통째로 지운다).
+# 기다림 LAN_LOCK_WAIT 초(기본 300), 잠금이 LAN_LOCK_STALE 초(기본 1800)보다 오래되면 남은 잠금으로 보고 지운다.
+# 안쪽 "$0" deploy·render(publish-*·rag-ingest)는 바깥이 잡은 잠금을 그대로 쓴다(PMART_LAN_LOCK_HELD).
+LOCK=$LAN/.deploy.lock
+lan_lock() {
+  [ "${PMART_LAN_LOCK_HELD:-}" = 1 ] && return 0
+  local waited=0 wait="${LAN_LOCK_WAIT:-300}" stale="${LAN_LOCK_STALE:-1800}" now since
+  until mkdir "$LOCK" 2>/dev/null; do
+    now=$(date +%s); since=$(awk '/^since=/{sub(/^since=/,""); print; exit}' "$LOCK/owner" 2>/dev/null || true)
+    if [ -n "$since" ] && [ $((now - since)) -gt "$stale" ]; then
+      echo "배포 잠금이 $((now - since))초 묵음 — 남은 잠금으로 보고 지운다: $(tr '
+' ' ' < "$LOCK/owner" 2>/dev/null)" >&2
+      rm -rf "$LOCK"; continue
+    fi
+    if [ "$waited" -ge "$wait" ]; then
+      echo "배포 잠금을 ${wait}초 기다렸지만 풀리지 않음 — 다른 세션이 배포 중: $(tr '
+' ' ' < "$LOCK/owner" 2>/dev/null)" >&2
+      echo "  끝났는데 남았으면(그 세션이 죽음) rm -rf $LOCK" >&2
+      exit 1
+    fi
+    [ "$waited" = 0 ] && echo "다른 세션이 배포 중 — 기다림(최대 ${wait}초): $(tr '
+' ' ' < "$LOCK/owner" 2>/dev/null)" >&2
+    sleep 5; waited=$((waited + 5))
+  done
+  printf 'since=%s
+who=%s
+pid=%s
+cmd=%s
+' "$(date +%s)" "${PMART_LAN_WHO:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" "$$" "$*" > "$LOCK/owner"
+  export PMART_LAN_LOCK_HELD=1
+  trap 'rm -rf "$LOCK"' EXIT
+}
 
 # PC 폴더 = target 파일이 있는 build/<pc> (build/config-repo 등 다른 생성물은 PC 가 아니다)
 pcs() { if [ "$1" = all ]; then for d in "$OUT"/*/; do [ -f "$d/target" ] && basename "$d"; done; else [ -f "$OUT/$1/target" ] || { echo "PC 없음: $1 (render 했는지 확인)" >&2; exit 1; }; echo "$1"; fi; }
@@ -115,6 +152,9 @@ wait_config_server() {
 }
 
 cmd="${1:-}"; shift || true
+case "$cmd" in
+  render|deploy|publish-*|rag-ingest|rag-ingest-customer|config-push) lan_lock "$cmd" "$@" ;;
+esac
 case "$cmd" in
   render)
     bash $LAN/init-secrets.sh

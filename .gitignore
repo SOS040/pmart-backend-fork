@@ -59,3 +59,5 @@ client_secret_*.json
 /deploy/lan/rider-backoffice-dist/
 # 검색 재색인 진행 상태(deploy/lan/elastic/reindex.sh)
 deploy/lan/.reindex.state
+# 배포 잠금(deploy/lan/lan.sh lan_lock — 두 세션 render·deploy 겹침 방지)
+/deploy/lan/.deploy.lock/
