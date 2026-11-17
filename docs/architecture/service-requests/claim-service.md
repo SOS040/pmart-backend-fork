@@ -17,10 +17,10 @@
 - **결정(2026-11-17 사용자 "추천대로")**: 1차 감액 없음(전액 환불, 회수비로 갈음) · 회수비 면제 사유 = 오배송·상품 불량·배송 중 파손·약속 시간 크게 지연·잘못된 대체 · 회수 실패 = 2번 시도 뒤 상담원 재연락, 회수비 한 번만. 구현 claim(PC 1), 고객 반품 회수 배송은 delivery(PC 5) 요청.
 - **구현(2026-11-17, PC 1 — claim 계약 0.2.0·V4, payment 계약 0.1.1, 커밋만 — 미배포)**: 흐름 정본 `docs/business/flows/return-exchange-refund.md` §6.
   1. 접수: `POST /claims` type RETURN — 직원 CS_AGENT·OPERATOR_ADMIN 만, 본인 확인 방법(case CS 접수와 같은 값) 필수, 반품 가능 = 인계 수량 − 진행·완료 반품. faultCode(위 다섯)면 회수비 면제.
-  2. 회수비: 접수 때 payment 결제 시도(`RTF-<claimId>`, 9,000원) → 고객 앱 결제(`GET /claims/{id}` 의 feePayment, 실패 뒤 `POST /claims/{id}/fee-payment-attempts`) → **결제된 뒤에만 회수 요청**. 기한(`pmart.claim.return-fee-payment-wait`, LAN 제안 24시간 — 사용자 확인 전) 지나면 반품 취소, 그 뒤 승인은 보상 취소. 면제면 바로 회수 요청.
+  2. 회수비: 접수 때 payment 결제 시도(`RTF-<claimId>`, 9,000원) → 고객 앱 결제(`GET /claims/{id}` 의 feePayment, 실패 뒤 `POST /claims/{id}/fee-payment-attempts`) → **결제된 뒤에만 회수 요청**. 기한(`pmart.claim.return-fee-payment-wait`, 24시간 — 사용자 확정 2026-11-17 추가 결정 1) 지나면 반품 취소, 그 뒤 승인은 보상 취소. 면제면 바로 회수 요청.
   3. 회수: `ReturnPickupRequested`(시도마다 `<claimId>-P<n>`) → delivery 회수 배송(DD-3, PC 5 — 구현 전). 첫 실패 자동 재요청, 두 번째 실패 RECOVERY_FAILED + `ReturnRecoveryFailed`(case R-8 요청) → 상담원 `POST /claims/{id}/recovery-actions` RETRY_PICKUP·CANCEL.
   4. `ReturnItemReceived` → 수령 수량. 5. `ReturnInspected` → 검수 수량 × 원단가 − 할인 안분 부분 환불(RESALE·DISPOSE 모두) → RefundResult → 모든 행 검수·환불되면 CLOSED.
-  - 남은 것: delivery DD-3(회수 배송·DeliveryFailed 에 claimId), case R-8(재연락 사건), order O-7(returnedQty), notification(결제 필요·회수 실패 안내), 클라이언트(고객 앱 회수비 결제·백오피스 반품 접수 — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`), 접수 기한 판정·받은 수량 부족 시 닫기.
+  - 남은 것: delivery DD-3(회수 배송·DeliveryFailed 에 claimId), case R-8(재연락 사건), notification(결제 필요·회수 실패 안내), 클라이언트(고객 앱 회수비 결제·백오피스 반품 접수 — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`), 접수 기한 판정. order O-7(returnedQty)·받은 수량 부족 시 닫기는 아래 추가 결정 구현에서 했다.
 - **추가 결정(2026-11-17 사용자 "추천대로")**:
   1. 회수비 결제 기한 **24시간**(`return-fee-payment-wait: PT24H` 확정).
   2. 회수 실패로 반품을 취소할 때 낸 회수비: **고객 사유**(CUSTOMER_ABSENT·UNREACHABLE·ADDRESS_ERROR·REFUSED — `ReturnPickupFailed.customerReason`) → 돌려주지 않음, **라이더·우리 잘못**(RIDER_INCIDENT) → 돌려줌, **파손·기타**(DAMAGED·OTHER) → 상담원 판단(기본 돌려주지 않음).
@@ -31,6 +31,17 @@
   7. 반품 가능 기간(7일·신선 24시간)은 지금처럼 상담원 판단 — 배송 완료 시각을 받게 되면 자동 검사.
   8. MFC 검수 결과(`ReturnInspected`)에 주문 줄 번호 — PC 3 요청(선택).
   9. 반품 수량은 order-service 가 claim 사건을 받아 기록(O-7).
+- **추가 결정 구현(2026-11-17, PC 1 — claim 계약 0.3.0·V5, order 계약 0.11.2·V15, 커밋만 — 미배포)**: 흐름 정본 `docs/business/flows/return-exchange-refund.md` §6.
+  1. `return-fee-payment-wait: PT24H` 확정(설정 주석·문서에서 "제안값" 지움).
+  2. 회수 실패마다 종류를 남긴다(`return_pickup.failure_kind` — CUSTOMER: `customerReason` true 또는 CUSTOMER_ABSENT·UNREACHABLE·ADDRESS_ERROR·REFUSED / OURS: RIDER_INCIDENT / OTHER: DAMAGED·OTHER·그 밖). 반품을 취소할 때(상담원 CANCEL·기한 자동 취소) **결제된** 회수비: 고객 사유가 하나라도 있으면 돌려주지 않음(KEEP), 아니고 파손·기타가 있으면 상담원 판단(`recovery-actions` CANCEL 의 `feeRefund`, 없으면 돌려주지 않음 — 자동 취소도), 우리 잘못뿐이면 돌려줌(REFUND). 규칙과 다른 `feeRefund` 는 422 FEE_REFUND_NOT_ALLOWED. 돌려주면 환불 의도(reason RETURN_FEE·scope FULL, 회수비 결제 시도의 전액 취소 — payment 사유 RETURN, 기존 환불 실행·sweep·RefundResult 그대로) — `feePayment.refundDecision`·`refundIntentId`, `refunds[].kind` RETURN_FEE, `RefundIntentCreated.kind`.
+  3. 회수 시도 전체 3번: 횟수에 드는 실패 1번째 → 자동 재요청, 2번째 → RECOVERY_FAILED(상담원 재연락), 상담원 RETRY_PICKUP 은 횟수에 드는 실패가 3번 미만일 때만(아니면 409 PICKUP_ATTEMPTS_EXHAUSTED). `pickup.countedFailures`·`retryAllowed`, `ReturnRecoveryFailed.countedAttempts`·`retryAllowed`·`returnDeadlineAt`.
+  4. RIDER_INCIDENT 실패는 횟수에 넣지 않고 바로 새 회수 요청(`<claimId>-P<n>` 번호는 계속 늘어남).
+  5. `claim.return_deadline_at` = 접수 + `pmart.claim.return-deadline`(P7D — 없으면 반품 접수 422 CONFIG_REQUIRED, V5 가 기존 반품은 접수 + 7일로 채움). 점검 `ReturnService.expireOverdue`(`return-deadline-sweep-interval`, 기본 5분): 기한이 지났고 수거·반입·검수된 것이 없고 진행 중 회수 요청이 없는 FEE_PENDING·IN_PROGRESS·RECOVERY_FAILED 반품 → CANCELLED(reject_reason RETURN_DEADLINE) + ClaimClosed **RETURN_EXPIRED**, 회수비는 2번 규칙. 진행 중 회수는 결과를 기다리고, 기한 뒤 실패면 다시 요청하지 않고 그때 취소. 기한 뒤 상담원 다시 회수 409 RETURN_DEADLINE_PASSED.
+  6. `recovery-actions` action **CLOSE_AS_RECEIVED**(IN_PROGRESS·RECOVERY_FAILED, 진행 중 회수 요청 없을 때): 행마다 정산 수량(`approvedQty`) = 받은 수량(반입·검수 중 큰 값) → 받은 만큼 검수·환불이 끝나면 CLOSED + ClaimClosed **RETURN_SHORT_CLOSED**(남은 수량 환불 없음, 반품 가능 수량은 요청 수량으로 계속 점유). 받은 것 없음 409 NOTHING_RECEIVED, 다 받음 409 NOT_SHORT, 회수 진행 중 409 PICKUP_IN_PROGRESS. 상담원 CANCEL 은 이제 수거된 회수품이 있어도 막는다(받은 만큼만 끝내기로).
+  7. 코드 변경 없음(반품 가능 기간은 상담원 판단 그대로).
+  8. claim 은 `ReturnInspected` 줄의 `orderLineId` 가 있으면 그 주문 행에, 없으면 지금처럼 SKU 로 맞춘다(이미 그렇게 짜여 있었음 — 같은 SKU 두 행 시험 추가). MFC 쪽 요청은 `mfc-quality-service.md` **MQ-1**(PC 3).
+  9. 반품 종결 ClaimClosed(RETURN_REFUNDED·RETURN_SHORT_CLOSED)에 `type`·`returnedLines`(행별 orderLineId·qty·resaleQty·disposeQty) → order 가 구독해 `returnedQty` 기록(O-7).
+  - 배포 전: pmart-config `claim-service.yml` 에 `return-deadline: P7D`(없으면 반품 접수가 422), `order-service.yml` 에 `claimEvents` 바인딩(order.claim.v1). 배포 순서 order(구독) → claim.
 
 ## CL-D1. 고객센터 취소 없음 — ADR-0052 2번 바꾸기 (2026-11-13, 보낸 영역 delivery — 사용자 결정, platform 할 일)
 

@@ -37,4 +37,12 @@
 ## 4. 아직 없는 것
 - 알림: 사건 `ReturnFeePaymentRequested`(결제 필요)·`ReturnRecoveryFailed`(회수 실패)·`ClaimClosed` 는 나가지만 알림함 연결은 아직이다(notification). 연결되면 알림에서 이 결제 화면으로 들어오게 해 주세요.
 - 회수 배송 자체(라이더 배차·수거·반납)는 delivery DD-3(PC 5) 구현 뒤에 실제로 움직인다.
-- 회수비 결제 기한 값은 LAN 설정에서 정한다(제안 24시간 — 사용자 확인 전).
+- 회수비 결제 기한은 **24시간**(사용자 확정 2026-11-17 — 아래 5절).
+
+## 5. 추가(2026-11-17 같은 날 — 사용자 추가 결정 "추천대로", 계약 `claim-service.yaml` 0.3.0 — 백엔드 커밋만, LAN 배포 전)
+- **반품 기한**: `Claim.returnDeadlineAt` = 접수 + 7일. 그 안에 회수가 안 되면 자동 취소(`state` CANCELLED, 사건 ClaimClosed `RETURN_EXPIRED`). 백오피스에 기한을 보여 주면 좋다. 기한이 지나면 다시 회수 요청은 409 `RETURN_DEADLINE_PASSED`.
+- **회수 시도 전체 3번**(자동 2 + 상담원 다시 회수 1): `pickup.countedFailures`(횟수에 드는 실패 — 라이더·우리 잘못은 안 셈), `pickup.retryAllowed`(시도가 남았나). "다시 회수 요청" 버튼은 `state == RECOVERY_FAILED && pickup.retryAllowed && 지금 < returnDeadlineAt` 일 때만. 다 썼으면 409 `PICKUP_ATTEMPTS_EXHAUSTED` — 반품 취소만.
+- **반품 취소 때 낸 회수비**: `recovery-actions` CANCEL 에 선택 `feeRefund`(boolean). 회수 실패에 고객 사유(부재·연락 두절·주소 오류·거부)가 있었으면 돌려주지 않음(true 면 422 `FEE_REFUND_NOT_ALLOWED`), 라이더·우리 잘못뿐이면 돌려줌(false 면 422), 파손·기타면 **상담원이 고른다**(기본 false). 낸 회수비가 없는데 true 도 422. 결과는 `feePayment.refundDecision`(REFUND·KEEP)·`feePayment.refundIntentId`, 돌려주면 `refunds[]` 에 `kind: "RETURN_FEE"`(9,000원 — 상품 환불은 `kind: "ITEMS"`). 화면에서 CANCEL 때 "회수비 돌려주기" 선택은 회수 실패가 파손·기타일 때만 보여 주면 된다(그 밖엔 규칙대로 — 보내지 않아도 됨).
+- **받은 만큼만 끝내기**: `recovery-actions` `{action: "CLOSE_AS_RECEIVED", note}` — MFC 가 요청보다 적게 받았을 때(IN_PROGRESS·RECOVERY_FAILED). 줄별 `approvedQty` 가 받은 수량으로 바뀌고 그만큼만 환불, 남은 수량은 환불 없음 → 검수·환불이 끝나면 CLOSED. 409: `NOTHING_RECEIVED`(받은 게 없음 — 취소를 쓴다)·`NOT_SHORT`(다 받음)·`PICKUP_IN_PROGRESS`(회수 진행 중). 남은 수량은 같은 주문에서 다시 반품 접수되지 않는다.
+- 상담원 CANCEL 은 라이더가 이미 수거한 회수품이 있으면 409(받은 만큼만 끝내기를 쓴다).
+- 고객 앱: 화면 변화 없음. 취소된 반품에 회수비 돌려주기가 있으면 `refunds[]` 의 `kind: "RETURN_FEE"` 환불(9,000원)이 보인다(환불 알림은 기존 환불 알림 흐름).

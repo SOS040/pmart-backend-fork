@@ -83,7 +83,7 @@
 - **소유하지 않음**: 사가 진행 상태(orchestration), PG 거래(payment), 재고·슬롯 점유(mfc/delivery), 현장 사실(mfc-fulfillment), 배송 사실(delivery-execution), 클레임 심사(claim).
 - **API**: 초안 생성(`purchaseIntentId`+`requestId` 멱등; 같은 키 다른 본문=충돌), 초안/주문 조회, 결제 진입 요청(orchestration 위임), 예약 시간 변경, 탈퇴 가능 여부, 리뷰 자격 근거(품목별 배송완료 시각), 확정 수요 조회(SCM).
 - **발행**: `OrderDraftCreated`, `OrderConfirmed`, `OrderLineQuantityChanged`, `OrderPreparationStarted`(MFC 결과 반영), `OrderPartiallyDelivered`, `OrderCompleted`, `OrderCancelled`, `OrderExpired`, `ReservationTimeChanged`, `CustomerCommitmentChanged`(SCM용).
-- **구독**: `PackageHandedOver`, `DeliveryCompleted/Failed`, `ClaimDecided`, `RefundResult`, `PriceVersionEffective`(초안 재견적 안내), `OperationRestrictionApplied`.
+- **구독**: `PackageHandedOver`, `DeliveryCompleted/Failed`, `ClaimDecided`, `RefundResult`, `PriceVersionEffective`(초안 재견적 안내), `OperationRestrictionApplied`. 2026-11-17 실제 구독 추가: `ClaimClosed`(order.claim.v1 — 반품 종결의 행별 반품 수량 → 주문 행 `returnedQty`, O-7).
 - **의존**: product, pricing, customer, delivery-serviceability, fulfillment-routing, center-master, auth.
 
 ### order-orchestration-service `[1단계]`
@@ -104,7 +104,7 @@
 ### claim-service `[1단계: 취소·반품 접수 / 2단계: 교환·회수 완성]`
 - **소유**: 취소·반품·교환 신청·심사·승인 범위, 자격 판정(일반 7일, 신선 24h, 하자·오배송·광고상이 교환 3개월 또는 인지 30일; Asia/Seoul 실제 수령시각 기준, 달력 월 계산), 신청 가능량(전달량 − 완료/진행 점유), 회수 지시·검수 결과 연결, 환불 의도·금액(원가격·원안분, 봉투값 전체 취소만, 교환 왕복 9,000원), 환불 상태(접수→심사/승인→실행 대기→PG 결과 확인→완료/실패/확인 중), 쿠폰 복원 요청(3차), 철회.
 - **소유하지 않음**: PG 실행(payment), 회수 수행(delivery), 검수·재입고(mfc), 주문 수량 정본(order).
-- **API**: 취소 접수(→orchestration S3), 반품/교환 접수·심사, 환불 상태 조회, 운영자 심사(BO-12~14). **인계 뒤 회수 반품(2026-11-17, CL-1·D-7)**: 고객센터 접수(`POST /claims` type RETURN — CS_AGENT·OPERATOR_ADMIN), 회수비 9,000원 결제 시도(고객 `…/fee-payment-attempts`, 회사 잘못 사유면 면제), 회수 실패 뒤 상담원 조치(`…/recovery-actions`). 회수비는 상품 환불과 별개 결제(payment 결제 시도 `RTF-<claimId>`) — claim 이 소유(금액·면제·결제 대기·기한), 결제 실행은 payment.
+- **API**: 취소 접수(→orchestration S3), 반품/교환 접수·심사, 환불 상태 조회, 운영자 심사(BO-12~14). **인계 뒤 회수 반품(2026-11-17, CL-1·D-7)**: 고객센터 접수(`POST /claims` type RETURN — CS_AGENT·OPERATOR_ADMIN), 회수비 9,000원 결제 시도(고객 `…/fee-payment-attempts`, 회사 잘못 사유면 면제), 회수 실패 뒤 상담원 조치(`…/recovery-actions` — 다시 회수(전체 3번)·취소(낸 회수비 돌려줄지 규칙·상담원 판단)·받은 만큼만 끝내기, 2026-11-17 추가 결정), 반품 기한(접수 + 7일 — 지나면 자동 취소). 회수비는 상품 환불과 별개 결제(payment 결제 시도 `RTF-<claimId>`) — claim 이 소유(금액·면제·결제 대기·기한), 결제 실행은 payment.
 - **발행**: `CancellationRequested`, `ClaimOpened`, `ClaimDecided`, `ReturnPickupRequested`, `RefundIntentCreated`, `ExchangeReshipmentApproved`, `ClaimClosed`, `ReturnFeePaymentRequested`·`ReturnRecoveryFailed`(2026-11-17).
 - **구독**: `WorkStopResult`, `PackageHandedOver`, `ReturnPickedUp/Delivered`, `ReturnInspected`, `RefundResult`, `OrderLineQuantityChanged`. 2026-11-17 실제 구독 추가: `DeliveryCreated`(purpose CLAIM_RETURN)·`ReturnPickedUp/Delivered`·`DeliveryFailed`(delivery.delivery.v1), `ReturnItemReceived`(mfc.inbound.v1), `ReturnInspected`(mfc.quality.v1), `PaymentApproved`(회수비 결제 시도만).
 - **의존**: order, payment, delivery-execution(전달 시각), auth.

@@ -75,15 +75,16 @@ A 20,000 + B 10,000, 쿠폰 3,000(비례 안분, 원 미만 버림, 잔여 원�
 
 ## 6. 구현 (2026-11-17, CL-1 — 라이더 인계 뒤 회수 반품)
 
-근거: D-7(인계 뒤 고객 취소 = 고객센터 경유 회수, 회수비 9,000원 고객 부담·회사 잘못이면 면제, 회수비는 환불과 따로, 상품 환불은 검수 뒤), ADR-0060 결정 2, 사용자 결정 2026-11-17 "추천대로"(① 1차 감액 없음 ② 면제 사유 다섯 ③ 회수 실패 2번 뒤 상담원 재연락·회수비 한 번). 조정자 claim-service(회수비 결제는 오배송 다시 배송비 — ADR-0065, `misdelivery-recovery-reshipment.md` §2.2 — 와 같은 payment 경로). 요청서 `service-requests/claim-service.md` CL-1.
+근거: D-7(인계 뒤 고객 취소 = 고객센터 경유 회수, 회수비 9,000원 고객 부담·회사 잘못이면 면제, 회수비는 환불과 따로, 상품 환불은 검수 뒤), ADR-0060 결정 2, 사용자 결정 2026-11-17 "추천대로"(① 1차 감액 없음 ② 면제 사유 다섯 ③ 회수 실패 2번 뒤 상담원 재연락·회수비 한 번), 같은 날 추가 결정 1~9("추천대로" — 회수비 기한 24시간, 취소 때 회수비 규칙, 회수 전체 3번, 우리 잘못 안 셈, 반품 기한 7일, 받은 만큼만 끝내기, 반품 가능 기간은 상담원 판단, 검수 줄 orderLineId, order 반품 수량 — claim 0.3.0·order 0.11.2). 조정자 claim-service(회수비 결제는 오배송 다시 배송비 — ADR-0065, `misdelivery-recovery-reshipment.md` §2.2 — 와 같은 payment 경로). 요청서 `service-requests/claim-service.md` CL-1.
 
 범위: **고객센터 접수 반품(type RETURN)** 만. 위 §0~§5 의 일반 반품·교환(고객 앱 접수·접수 기한·심사 BO-14·교환 재배송)은 아직 없다.
 
 ```
 상담원(CS_AGENT·OPERATOR_ADMIN) ─ POST /claims {type RETURN, lines, reason, faultCode?, identityCheck, channel CS}
-  claim: order GET /internal/orders/{id} — 행마다 요청 ≤ 인계(handedOverQty) − 이 주문의 진행·완료 반품(취소 제외), 같은 주문은 advisory lock 으로 줄 세움
+  claim: order GET /internal/orders/{id} — 행마다 요청 ≤ 전달 완료(deliveredQty) − 이 주문의 진행·완료 반품(취소 제외), 같은 주문은 advisory lock 으로 줄 세움
+    · 반품 전체 기한 returnDeadlineAt = 접수 + pmart.claim.return-deadline(7일 — 없으면 422 CONFIG_REQUIRED)
     · faultCode 있음(MISDELIVERY·DEFECTIVE·DAMAGED_IN_DELIVERY·SEVERE_DELAY·WRONG_SUBSTITUTE) → 회수비 면제 → IN_PROGRESS + ReturnPickupRequested(attempt 1)
-    · 없음(고객 사유) → FEE_PENDING, 회수비 행(기한 = 접수 + pmart.claim.return-fee-payment-wait — 없으면 422 CONFIG_REQUIRED)
+    · 없음(고객 사유) → FEE_PENDING, 회수비 행(기한 = 접수 + pmart.claim.return-fee-payment-wait 24시간 — 없으면 422 CONFIG_REQUIRED)
         → 커밋 뒤 payment POST /internal/payments(주문 참조 RTF-<claimId>, 9,000원, customerRef = 주문 accountId, 만료 = 기한, 키 <claimId>:FEE:<n>)
         → ReturnFeePaymentRequested(첫 시도만) → 고객 앱 결제(토스 위젯 orderId = paymentAttemptId → POST /payment-confirmations)
         → PaymentApproved(order.payment.v1) 또는 재조회 APPROVED → 회수비 PAID + IN_PROGRESS + ReturnPickupRequested(attempt 1)
@@ -91,27 +92,40 @@ A 20,000 + B 10,000, 쿠폰 3,000(비례 안분, 원 미만 버림, 잔여 원�
         → 기한·취소 뒤 늦은 승인 → 보상 취소(compensation-cancellations, reason RETURN_FEE_TOO_LATE)
   회수(delivery — DD-3, PC 5): ReturnPickupRequested(pickupRequestId <claimId>-P<n>, purpose CLAIM_RETURN, pickupAddressRef order:<orderId>, mfcId)
     → DeliveryCreated(type RETURN, purpose CLAIM_RETURN, claimId, pickupRequestId) → ReturnPickedUp → ReturnDelivered(MFC 반납)
-    · DeliveryFailed(고객 부재 등, 수거 전): 1번째 시도면 자동으로 attempt 2 요청, 2번째(또는 상담원 재요청 뒤) 실패면 RECOVERY_FAILED + ReturnRecoveryFailed
-    · RECOVERY_FAILED → 상담원 POST /claims/{id}/recovery-actions: RETRY_PICKUP(새 회수 요청, 회수비 다시 받지 않음) / CANCEL(받은 회수품 없을 때만)
+    · ReturnPickupFailed(또는 claimId 있는 DeliveryFailed, 수거 전) — 실패 종류: CUSTOMER(customerReason·부재·연락 두절·주소 오류·거부) / OURS(RIDER_INCIDENT) / OTHER(파손·기타)
+        OURS → 횟수에 넣지 않고 바로 새 회수 요청
+        그 밖 → 횟수에 드는 실패 1번째면 자동으로 새 회수 요청, 2번째(상담원 재요청 뒤 3번째)면 RECOVERY_FAILED + ReturnRecoveryFailed(countedAttempts·retryAllowed)
+        반품 기한이 지난 뒤의 실패 → 다시 요청하지 않고 자동 취소(RETURN_EXPIRED — 받은 것이 있으면 RECOVERY_FAILED 로 상담원)
+    · RECOVERY_FAILED → 상담원 POST /claims/{id}/recovery-actions:
+        RETRY_PICKUP(새 회수 요청, 회수비 다시 받지 않음 — 횟수에 드는 실패 3번이면 409 PICKUP_ATTEMPTS_EXHAUSTED, 기한 뒤 409 RETURN_DEADLINE_PASSED)
+        CANCEL(수거·반입된 회수품 없을 때만 — 낸 회수비: CUSTOMER 실패가 있으면 그대로, OTHER 가 있으면 상담원 feeRefund(기본 그대로), OURS 뿐이면 돌려줌
+               → 회수비 결제 시도의 전액 취소 환불 의도 reason RETURN_FEE, payment 사유 RETURN)
+        CLOSE_AS_RECEIVED(받은 만큼만 끝내기 — IN_PROGRESS 에서도, 진행 중 회수 요청 없을 때: 행마다 정산 수량 approvedQty = 받은 수량, 남은 수량 환불 없음)
+  기한 점검(return-deadline-sweep-interval, 5분): 기한 지남 + 수거·반입·검수 없음 + 진행 중 회수 요청 없음 → CANCELLED + ClaimClosed(RETURN_EXPIRED), 회수비는 CANCEL 과 같은 규칙(상담원 판단 몫은 돌려주지 않음)
   MFC: mfc-inbound POST /return-receipts → ReturnItemReceived(격리) → claim 수령 수량(receivedQty)
-       mfc-quality POST /return-inspections → ReturnInspected(줄별 RESALE·DISPOSE) → claim 검수 수량마다 환불 의도
+       mfc-quality POST /return-inspections → ReturnInspected(줄별 RESALE·DISPOSE, orderLineId 있으면 그 행 — 없으면 SKU, MQ-1) → claim 검수 수량마다 환불 의도(정산 수량까지)
          금액 = 원단가 × 수량 − 할인 안분(원수량 기준 누계 비례, 원 미만 버림 — 원수량을 다 돌려주면 정확히 discountShare), 봉투값·배달팁 없음
          RESALE·DISPOSE 모두 환불(1차 감액 없음 — 고객 잘못 파손·개봉도 회수비로 갈음)
          → RefundIntentCreated(basis.lines) → payment 부분 취소(scope PARTIAL, reason RETURN, 키 REFUND-<의도>) → RefundResult
-  종결: 모든 행이 요청 수량만큼 검수되고 환불 의도가 모두 COMPLETED → CLOSED + ClaimClosed(RETURN_REFUNDED)
+  종결: 모든 행이 정산 수량(요청 수량, 받은 만큼만 끝냈으면 받은 수량)만큼 검수되고 환불 의도가 모두 COMPLETED
+        → CLOSED + ClaimClosed(RETURN_REFUNDED / RETURN_SHORT_CLOSED, returnedLines[{orderLineId, qty, resaleQty, disposeQty}])
+        → order(O-7): 행 returnedQty +qty(클레임 하나에 한 번, 한도 전달 − 이미 반품) + OrderLineQuantityChanged(reason RETURN)
 ```
 
 | 축 | 상태 |
 |---|---|
-| 클레임(RETURN) | FEE_PENDING → IN_PROGRESS → CLOSED / RECOVERY_FAILED(→ IN_PROGRESS 재요청 또는 CANCELLED) / CANCELLED |
-| 회수비 | WAITING → PAID / UNPAID(→ 늦은 승인 LATE_CANCEL_PENDING → LATE_CANCELLED·LATE_CANCEL_FAILED) |
+| 클레임(RETURN) | FEE_PENDING → IN_PROGRESS → CLOSED / RECOVERY_FAILED(→ IN_PROGRESS 재요청·받은 만큼만 끝내기 또는 CANCELLED) / CANCELLED(미결제·상담원 취소·기한 만료) |
+| 회수비 | WAITING → PAID / UNPAID(→ 늦은 승인 LATE_CANCEL_PENDING → LATE_CANCELLED·LATE_CANCEL_FAILED). PAID 인 반품이 취소되면 refundDecision REFUND(환불 의도 RETURN_FEE)·KEEP |
 | 회수(클레임 pickup_state) | REQUESTED → PICKED_UP → DELIVERED_TO_STORE → RECEIVED → INSPECTED, 두 번 실패면 FAILED |
-| 회수 요청(시도마다) | REQUESTED → PICKED_UP → DELIVERED / FAILED |
+| 회수 요청(시도마다) | REQUESTED → PICKED_UP → DELIVERED / FAILED(failure_kind CUSTOMER·OURS·OTHER — OURS 는 횟수에서 뺌) |
 | 환불(검수마다 하나) | PENDING_EXECUTION → PG_PENDING → COMPLETED / FAILED / UNKNOWN(기존 환불 sweep) |
 
-- **회수비를 언제 받나(이 구현의 선택)**: 접수 때 결제를 요청하고 **결제된 뒤에만 회수를 요청**한다(D-7 "회수비 고객 부담" — 결제 없이 라이더가 먼저 가면 못 받을 수 있다). 결제 기한은 설정값(LAN 제안 24시간 — 사용자 확인 전), 지나면 반품 취소. 회사 잘못이면 결제 단계 없이 바로 회수.
+- **회수비를 언제 받나(이 구현의 선택)**: 접수 때 결제를 요청하고 **결제된 뒤에만 회수를 요청**한다(D-7 "회수비 고객 부담" — 결제 없이 라이더가 먼저 가면 못 받을 수 있다). 결제 기한은 설정값(24시간 — 사용자 확정 2026-11-17 추가 결정 1), 지나면 반품 취소. 회사 잘못이면 결제 단계 없이 바로 회수.
+- **취소 때 낸 회수비(추가 결정 2, 이 구현의 해석)**: 그 반품의 회수 실패 **전부**를 본다 — 고객 사유가 한 번이라도 있으면 돌려주지 않고, 아니고 파손·기타가 있으면 상담원 판단(자동 취소는 판단이 없으니 돌려주지 않음), 우리 잘못뿐이거나 실패 없이 기한이 지났으면 돌려준다. 정해진 규칙과 반대인 상담원 값은 422(FEE_REFUND_NOT_ALLOWED).
+- **기한(추가 결정 5, 이 구현의 해석)**: 기한이 지나도 **진행 중인 회수는 끊지 않는다**(취소 사건을 delivery 가 받지 않아 라이더가 이미 가는 중일 수 있다 — 그 회수가 수거되면 이어 가고, 실패하면 그때 자동 취소). 무엇이든 수거·반입된 반품은 자동 취소하지 않고 상담원 "받은 만큼만 끝내기"에 둔다.
+- **받은 만큼만 끝내기(추가 결정 6)**: 남은 수량은 환불하지 않고, 이 주문의 반품 가능 수량에서도 계속 뺀다(같은 상품으로 반품을 다시 접수해 이중 환불되지 않게 — 다시 받아야 하면 상담원이 새 판단). 끝낸 뒤 늦게 들어온 반입·검수는 정산 수량을 넘는 몫이라 환불하지 않는다(경고 로그 — 운영자).
 - 같은 반입(returnReceiptId)·검수(inspectionId)는 한 번만 센다(`return_fact` — inbox 와 별개 업무 키). 요청 수량을 넘는 반입·검수는 버리고 경고. 검수가 반입보다 먼저 와도 검수 수량으로 환불한다(검수 자체가 수령의 증거).
 - 회수 실패로 본 뒤 늦게 수거·반입·검수 사건이 오면 IN_PROGRESS 로 되돌려 이어 간다. 이미 받은 뒤의 배송 실패(반납 전 사고)는 회수 실패로 세지 않는다(기록만 — 사람).
 - 취소·종결·회수비 대기 반품에 검수가 들어오면 자동 환불하지 않는다(오류 로그 — 운영자).
 - 회수비 결제와 상품 환불은 다른 결제 거래다(회수비 = 새 결제 시도 RTF-<claimId>, 환불 = 원주문 결제의 부분 취소). 상계하지 않는다.
-- 이 단계의 한계: 접수 기한(7일·24시간)·증빙 검사 없음(상담원 판단), 주문 원장 반품 수량(returnedQty) 반영 없음(order O-7), 받은 수량이 요청보다 적으면 클레임이 IN_PROGRESS 로 남는다(닫는 조치 없음 — 사람), 이미 낸 회수비는 반품 취소 때 자동 환불하지 않는다, 고객 알림은 사건만 낸다(notification 연결 전), 상담원 재연락 사건(case R-8) 구독 전, 회수 배송(DD-3) 구현 전.
+- 이 단계의 한계: 접수 기한(7일·24시간)·증빙 검사 없음(상담원 판단 — 추가 결정 7, 배송 완료 시각을 받게 되면 자동 검사), 고객 알림은 사건만 낸다(notification 연결 전 — 회수비 돌려주기는 환불 알림 흐름을 탄다), 반품 취소·기한 만료를 delivery 에 알리지 않는다(진행 중 회수가 없을 때만 취소하므로 1차는 필요 없음). 2026-11-17 추가 결정 구현으로 주문 원장 반품 수량(O-7)·받은 만큼만 끝내기·취소 때 회수비 돌려주기는 됐다.
