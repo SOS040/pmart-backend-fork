@@ -14,7 +14,7 @@ info:
     고객센터 답변(InquiryAnswered).
     0.3.0(2026-11-17, 클라이언트 요청 BR-09 — 사용자 승인 "백엔드 3단계"): 단말 푸시 토큰 등록·해제·목록(`/me/push-tokens`, 고객·라이더, Android 만).
     **토큰만 저장한다 — 푸시 발송(FCM)은 아직 없다**(자격증명·발송 정책 미정). 그래서 APP_PUSH 는 여전히 CHANNEL_NOT_APPROVED 이고, 응답에 토큰 값은 돌려주지 않는다.
-    0.4.0(2026-11-16 — 라이더 앱 요청 §11-5, 사용자 "라이더 알림함 먼저"): **라이더 알림함**(같은 /me/notifications, 라이더 토큰) — 도움요청 지원센터 답장(HelpRequestReplied)·도움요청 처리 끝(CaseClosed RIDER_HELP)·
+    0.4.0(2026-11-17 — 라이더 앱 요청 §11-5, 사용자 "라이더 알림함 먼저"): **라이더 알림함**(같은 /me/notifications, 라이더 토큰) — 도움요청 지원센터 답장(HelpRequestReplied)·도움요청 처리 끝(CaseClosed RIDER_HELP)·
     라이더 문의 답변(RiderInquiryAnswered)·계정 제한·해제(RiderRestricted). 휴대폰 푸시는 여전히 없음 — 앱이 알림함을 확인한다. 운영자 알림함, 수신 설정 변경 결과 조회, 내부 범용 요청·발송 이력·배차 알림 기록은 아직 501.
 servers:
   - url: /api/v1
