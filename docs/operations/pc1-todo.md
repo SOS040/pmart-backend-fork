@@ -10,6 +10,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] **Docker Hub 다시 로그인**(사용자 — Docker Desktop GUI, 잠금 풀린 뒤) → 아래 LAN 배포를 한 번에:
   - employee-auth-service·hr-service — 역할·센터 섞임 막기(253090cc), HR-2 ③ 계정 직접 역할 중복(71ddc112)
   - claim-service — 고객센터 주문 취소 0.4.0(39d86a83)
+  - 고객앱 갭 A(2026-11-18): order 0.12.0(V16)·cart 0.2.0·customer 0.4.0(V7)·notification 0.4.2(V4, 설정 5d55ddd)·review 0.3.0·case 0.23.0(V19)·customer-assistant 0.2.0(V2 — 배포 뒤 `lan.sh rag-ingest-customer pc2` 다시)·api-gateway(사용자 종류 허용 목록 5줄)
   - 2026-11-18 Jib push 가 unauthorized(저장 자격 증명 무효) → 재시도로 "too many failed login attempts" 잠김. 풀릴 때까지 push·`docker login` 재시도 금지.
 - [ ] **CL-2 결정** — 반품 취소 때 회수비 돌려주기 판정을 claim 조회에(`pickup.feeRefundOnCancel`) — 추천안 바로 만들기 / 목록에 두기(요청서 `service-requests/claim-service.md` CL-2, PR #161).
 - [ ] **Firebase `pmart-123` 합치기**(2026-11-18) — 사용자: 고객 앱 등록·`google-services.json` 다시 받기 → PC 1: 서버 고객 키 바꾸고 notification-service 다시 띄움 → 고객 휴대폰 푸시 다시 확인.

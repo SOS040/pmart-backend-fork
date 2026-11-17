@@ -69,6 +69,8 @@ GET /api/v1/content-images/{imageId} PUBLIC
 GET /api/v1/content-import-batches/{batchId} OPERATOR
 GET /api/v1/cs-intakes OPERATOR
 GET /api/v1/cs-intakes/{intakeId} OPERATOR
+GET /api/v1/customer-assistant/faqs CUSTOMER
+GET /api/v1/customer-assistant/faqs/{faqId} CUSTOMER
 GET /api/v1/customer-assistant/questions CUSTOMER
 GET /api/v1/customer-assistant/questions/{answerId} CUSTOMER
 GET /api/v1/customer-assistant/recent-orders CUSTOMER
@@ -139,6 +141,7 @@ GET /api/v1/me/notification-setting-changes/{requestId} CUSTOMER,RIDER
 GET /api/v1/me/notification-settings CUSTOMER,RIDER
 GET /api/v1/me/notifications CUSTOMER,RIDER
 GET /api/v1/me/notifications/{notificationId} CUSTOMER,RIDER
+GET /api/v1/me/order-preferences CUSTOMER
 GET /api/v1/me/profile-changes/{requestId} CUSTOMER
 GET /api/v1/me/profile-image CUSTOMER
 GET /api/v1/me/push-tokens CUSTOMER,RIDER
@@ -437,6 +440,7 @@ POST /api/v1/order-drafts CUSTOMER
 POST /api/v1/order-drafts/{draftId}/checkouts CUSTOMER
 POST /api/v1/orders/lookups/{orderId}/pii-reveals OPERATOR
 POST /api/v1/orders/lookups/{orderId}/redelivery-destinations OPERATOR
+POST /api/v1/orders/{orderId}/hides CUSTOMER
 POST /api/v1/orders/{orderId}/reservation-time-changes CUSTOMER
 POST /api/v1/packages/handover-code-authorizations RIDER
 POST /api/v1/packages/{packageId}/handover-authorizations RIDER
@@ -527,6 +531,7 @@ PUT /api/v1/content-drafts/{draftId} OPERATOR
 PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
 PUT /api/v1/hr/departments/{code} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR
+PUT /api/v1/me/order-preferences CUSTOMER
 PUT /api/v1/me/push-tokens/{deviceId} CUSTOMER,RIDER
 PUT /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 PUT /api/v1/price-import-batches/{batchId}/lines/{seedProductId} OPERATOR
