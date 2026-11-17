@@ -18,7 +18,9 @@ import mfc_layout as v1  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LABELS = os.path.join(HERE, "labels", "cart-labels-MFC-SEED-01.html")
-TARGET = {"A": ("AMBIENT", 20), "C": ("CHILLED", 12), "F": ("FROZEN", 8)}
+# 2026-11-17 사용자 "일단 상온으로 해줘. 나중에 온도대없음으로 바꿀게": 카트는 온도대와 상관없이 쓴다(서버는 카트 온도대를 보지 않음 —
+# requireCart 는 구역 CART 만). 위치 코드 규칙(ADR-0042 `{접두}-{A|C|F}-{번호}`)상 글자 하나는 필요해 전부 상온 A. 냉장·냉동 카트는 닫는다(재고 있으면 열어 둠).
+TARGET = {"A": ("AMBIENT", 40)}
 TZ_KO = {"AMBIENT": "상온", "CHILLED": "냉장", "FROZEN": "냉동"}
 
 # Code128 막대 폭 표(값 0~106) — labels/locations/*.html 의 그리기 코드와 같다
@@ -56,9 +58,9 @@ def write_labels(codes):
     cards = []
     for code, tz in codes:
         cards.append(f'<div class="label"><div class="top"><span class="kind">이동 카트</span>'
-                     f'<span class="zone z-{tz}">{TZ_KO[tz]}</span></div>{code128_svg(code)}'
+                     f'<span class="zone z-ANY">온도 구분 없음</span></div>{code128_svg(code)}'
                      f'<div class="code">{html.escape(code)}</div><div class="foot">MFC-SEED-01 · 구역 CART</div></div>')
-    counts = " · ".join(f"{TZ_KO[tz]} {n}대" for tz, n in TARGET.values())
+    counts = "온도대 구분 없이 아무 카트나 — 상온·냉장·냉동 상품을 한 카트에(한 출고 = 한 카트)"
     page = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>카트 바코드 라벨 — MFC-SEED-01</title>
 <style>
 @page {{ size: A4; margin: 12mm; }}
@@ -69,7 +71,7 @@ h1 {{ font-size: 14px; margin: 0 0 8px; }}
 .label {{ border: 1px dashed #888; padding: 5mm; text-align: center; break-inside: avoid; }}
 .top {{ display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 3mm; }}
 .zone {{ font-weight: 700; padding: 1px 8px; border-radius: 4px; color:#fff; }}
-.z-AMBIENT {{ background:#8a5a00; }} .z-CHILLED {{ background:#0b5cad; }} .z-FROZEN {{ background:#3b2a8f; }}
+.z-ANY {{ background:#444; }} .z-AMBIENT {{ background:#8a5a00; }} .z-CHILLED {{ background:#0b5cad; }} .z-FROZEN {{ background:#3b2a8f; }}
 svg {{ width: 100%; height: 24mm; }}
 .code {{ font: 700 24px/1.2 Consolas, monospace; letter-spacing: 2px; margin-top: 2mm; }}
 .foot {{ font-size: 10px; color: #555; margin-top: 1mm; }}
@@ -115,6 +117,24 @@ def main(apply, labels_only):
     after = v1.current_locations(s)
     active = [c for c, _ in want if (after.get(c) or {}).get("state") == "ACTIVE"]
     print(f"활성 카트 {len(active)}/{len(want)}")
+    # 목표 밖 카트(옛 냉장·냉동 CRT-C/F) 닫기 — 재고가 남은 카트는 열어 둔다
+    held = {r["locationCode"] for r in v1.snapshot() if r["qty"] > 0 and r["locationCode"].startswith("CRT-")}
+    wanted_codes = {c for c, _ in want}
+    closed = kept = 0
+    for code, cur in sorted(after.items()):
+        if not code.startswith("CRT-") or code in wanted_codes or cur.get("state") != "ACTIVE":
+            continue
+        if code in held:
+            kept += 1
+            print("  재고가 있어 열어 둠:", code)
+            continue
+        st, b = v1.http("POST", f"{v1.GW}/locations/{cur['locationId']}/state-changes", s.sup(),
+                        {"targetState": "CLOSED", "reason": "카트 온도대 구분 없앰 — 상온 코드 40대로 통일(2026-11-17)"})
+        closed += st in (200, 202)
+        if st not in (200, 202):
+            print("  닫기 실패", code, st, b.get("code"), b.get("detail"))
+        time.sleep(0.05)
+    print(f"목표 밖 카트 닫음 {closed}, 열어 둠 {kept}")
     write_labels(want)
 
 
