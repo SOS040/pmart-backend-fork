@@ -11,7 +11,7 @@
 | `web/mfc-backoffice`(MFC 센터 관리자) | PC 2(11-16~17) | **PC 3** | MFC API — PC 3(같은 PC) |
 | `web/rider-backoffice`(라이더 운영·관제, **새 앱**) | — | **PC 5**(뼈대·로그인은 PC 1, 2026-11-17) | 배송·라이더 API — PC 5(같은 PC) |
 | `web/backoffice`·`web/hr-backoffice` | PC 2 | PC 2 그대로 | |
-| 웹 공통 `web/core`·`web/ui` | PC 2 | **PC 2 그대로** — PC 3·5 는 고칠 일이 생기면 PC 2 에 요청(네 앱 빌드를 한 곳에서 맞춘다) | |
+| 웹 공통 `web/core`·`web/ui` | PC 2 | **PC 2 그대로**(사용자 확정 2026-11-17) — PC 3·5 는 고칠 일이 생기면 PC 2 에 요청(네 앱 빌드를 한 곳에서 맞춘다) | |
 | 로그인·세션·토큰 코드 | PC 1 | PC 1 그대로 | |
 
 ## 라이더 백오피스

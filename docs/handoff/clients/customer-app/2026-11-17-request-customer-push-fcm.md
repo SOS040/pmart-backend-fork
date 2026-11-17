@@ -6,7 +6,7 @@
 
 ## 백엔드 (notification-service, 계약 0.4.1 — 경로 변경 없음)
 
-- 고객 알림함에 저장되는 알림 중 **정한 종류만** 등록 단말로도 보낸다: 배송 출발(`DELIVERY_STARTED`)·배송 완료(`DELIVERY_COMPLETED`)·결품 부분 취소(`SHORTAGE_CANCELLED`)·주문 취소(`ORDER_CANCELLED`)·환불 완료(`REFUND_SUCCEEDED`)·환불 늦어짐(`REFUND_DELAYED`). 나머지(주문 확정·상품 준비·문의 답변 등)는 알림함만.
+- 고객 알림함에 저장되는 알림 중 **정한 종류만** 등록 단말로도 보낸다: 배송 출발(`DELIVERY_STARTED`)·배송 완료(`DELIVERY_COMPLETED`)·결품 부분 취소(`SHORTAGE_CANCELLED`)·주문 취소(`ORDER_CANCELLED`)·환불 완료(`REFUND_SUCCEEDED`)·환불 늦어짐(`REFUND_DELAYED`), **오배송 다시 배송비 결제 필요(`REDELIVERY_PAYMENT_REQUIRED`, 2026-11-17 추가 — 30분 기한)**. 이 푸시를 누르면 알림함과 같이 목적지 ORDER(orderId) → 주문 상세의 다시 배송비 결제 화면(요청 `2026-11-16-request-redelivery-payment.md`)으로. 나머지(주문 확정·상품 준비·문의 답변 등)는 알림함만.
 - 푸시 제목·본문 = 알림함과 같음(개인정보 없음). `data`: `notificationId`·`templateKey`·`destinationType`(ORDER·REFUND …)·`destinationRef` — 누르면 그 화면(또는 알림함)으로.
 - 단말 토큰 API(0.3.0, 이미 배포 — 고객 토큰 가능): `PUT /api/v1/me/push-tokens/{deviceId}` 본문 `{ "token": "<FCM 토큰>", "platform": "ANDROID" }`(헤더 `Idempotency-Key`·`X-Source-System`), 로그아웃 때 `DELETE /api/v1/me/push-tokens/{deviceId}`, 점검 `GET /api/v1/me/push-tokens`. 한 사람 단말 5대까지.
 - LAN 배포 상태는 백엔드 회신·일지로 알린다(이 문서 작성 때는 배포 전).

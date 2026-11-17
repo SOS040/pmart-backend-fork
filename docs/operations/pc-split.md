@@ -62,7 +62,7 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 | **hr-backoffice** | `web/hr-backoffice` | 같음(PC 2 로 함께 — 2026-11-15 경계 확정) |
 | **mfc-backoffice**(2026-11-15 새 앱 — 사용자 "백오피스 mfc는 떼어내고") | `web/mfc-backoffice` | **PC 3**(2026-11-17 사용자 "MFC 백오피스를 PC2에서 PC3로" — 화면과 화면이 쓰는 MFC API(MB-1~3)가 같은 PC). 2026-11-16~17 은 PC 2 가 메뉴 11개 화면을 만들었다. 요청서 `docs/handoff/clients/mfc-backoffice/` |
 | **rider-backoffice**(2026-11-17 새 앱 — 사용자 "라이더 백오피스 새로 만들어야 할 것 같아서, 관제까지") | `web/rider-backoffice` | **PC 5**(사용자 2026-11-17 "라이더 백오피스는 PC5로" — 화면과 배송·라이더 API 가 같은 PC). 뼈대·로그인은 PC 1(§1-3). LAN `https://192.168.0.40:8446`. 계획 `docs/delivery/rider-backoffice-plan.md` |
-| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(웹앱 공통 — 한 주인) | **PC 2** 그대로(2026-11-17 — 네 웹 앱이 세 PC 로 나뉘어도 공통은 한 주인. PC 3·5 는 고칠 일이 생기면 PC 2 에 요청) |
+| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(웹앱 공통 — 한 주인) | **PC 2** 그대로(2026-11-17 사용자 확정 "pc2" — 네 웹 앱이 세 PC 로 나뉘어도 공통은 한 주인. PC 3·5 는 고칠 일이 생기면 PC 2 에 요청) |
 
 - 클라이언트 정본: pmart-clients `docs/operations/pc-split.md` §1, `docs/handoff/2026-11-13-backend-client-area-pcs-decided.md`.
 
