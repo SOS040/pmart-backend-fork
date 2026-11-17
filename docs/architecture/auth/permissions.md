@@ -196,7 +196,7 @@
 | 메모 | 보기: 사건을 볼 수 있는 사람. 쓰기: `OPERATOR_ADMIN`·`RIDER_OPS`·`CS_AGENT`. 가리기(삭제): `OPERATOR_ADMIN` + 사유 |
 | 후속 처리(의무) | 만들기: 사건을 다룰 수 있는 사람. 완료·시도: `OPERATOR_ADMIN` 또는 담당 팀 역할. 면제·실패: `OPERATOR_ADMIN` |
 | 교대 인수인계 | 작성: 본인(부재 시 `OPERATOR_ADMIN`) — DELIVERY_OPS 는 `RIDER_OPS`·`OPERATOR_ADMIN`, ORDER_OPS 는 `OPERATOR_ADMIN` 만(0.13.1, #74). 수락: 후임 본인(같은 역할 조건, 없으면 403·인계서 그대로). 취소: 전임·`OPERATOR_ADMIN` |
-| 고객 문의 | 고객: 작성·자기 문의 보기(상담원이 남긴 문의는 안 보임). 직원 보기: `CS_AGENT`·`OPERATOR_ADMIN`. **답변: `CS_AGENT` 만** |
+| 고객 문의 | 고객: 작성·자기 문의 보기(상담원이 남긴 문의는 안 보임). 직원 보기: `CS_AGENT`·`OPERATOR_ADMIN`. **답변: `CS_AGENT` 만**. **닫기(0.19.0, #102)**: 남긴 고객·라이더 본인 또는 답변 역할(고객 문의·상담원 접수 `CS_AGENT`, 라이더 문의 `RIDER_OPS`) — 직원은 사유 2~500자 필수, `OPERATOR_ADMIN` 은 못 닫음, 다시 열기 없음 |
 | CS 접수(전화·채팅·메일 기록) | `CS_AGENT`·`OPERATOR_ADMIN`. 기록만 — 취소·환불 안 함 |
 | 라이더 컴플레인 | 기록: `CS_AGENT`·`OPERATOR_ADMIN`. 보기: + `RIDER_OPS` |
 | 행위 요청(`/cases/{id}/action-requests`) | 기록만(0.17.0, #85): 그 건을 다룰 수 있는 사람(`canWork` — 배송 건 `RIDER_OPS`·`OPERATOR_ADMIN`, 주문 건 `OPERATOR_ADMIN`). 대상 서비스를 부르지 않음 |
