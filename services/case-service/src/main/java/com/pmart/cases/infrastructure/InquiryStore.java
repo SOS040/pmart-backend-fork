@@ -106,6 +106,7 @@ public class InquiryStore {
       @Nullable String requesterType,
       @Nullable String status,
       @Nullable String orderId,
+      @Nullable String deliveryIssue,
       @Nullable String cursor,
       int size) {
     StringBuilder sql = new StringBuilder(SELECT + " WHERE 1=1");
@@ -125,6 +126,10 @@ public class InquiryStore {
     if (orderId != null) {
       sql.append(" AND q.order_id = ?");
       args.add(orderId);
+    }
+    if (deliveryIssue != null) {
+      sql.append(" AND q.delivery_issue = ?");
+      args.add(deliveryIssue);
     }
     if (cursor != null) {
       sql.append(

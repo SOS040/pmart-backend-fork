@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.22.0
+  version: 0.23.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -764,6 +764,10 @@ paths:
         2026-11-09 사용자 결정(C4): 고객앱 "고객센터 문의" 페이지 + 고객 RAG 가 답하지 못할 때 연결할 곳. 회원(고객 토큰)만 — 비회원 불가(C2).
         **배송 신고(0.16.0, 2026-11-17 — 사용자 결정 "기존 문의로, 배송 연결", 고객앱 빠진 기능 B 배달 지연 제보·오배송 확인)**: 고객이 category DELIVERY·orderId 와 함께
         `deliveryIssue`(DELAYED 늦음·NOT_RECEIVED 못 받음·MISDELIVERED 다른 곳에 옴)·`deliveryId`(선택)를 보낸다. 그 밖(분류·주문 없음·라이더)이면 400. 상담원(CS_AGENT)이 받는다.
+        **배송 지연 신고(0.23.0, 2026-11-18 — 사용자 "A해줘", 고객앱 빠진 기능 "배달 지연 제보")**: 지연 신고 = `deliveryIssue: DELAYED`(새 분류를 따로 두지 않는다 — 0.16.0 배송 신고의 한 종류).
+        본인 주문 확인과 같은 order `GET /orders/{orderId}`(고객 토큰) 응답의 `status` 로, 주문이 **확정 뒤 ~ 배송 완료 전**(CONFIRMED·PREPARING·PARTIALLY_HANDED_OVER·IN_DELIVERY·PARTIALLY_DELIVERED)일 때만 받는다.
+        배송 완료(COMPLETED)·취소(CANCELLED)·만료(EXPIRED)·결제 전 상태는 422 `ORDER_NOT_IN_PROGRESS`(완료 뒤 못 받음은 NOT_RECEIVED 로). 새 서비스 호출은 없다(같은 한 번의 호출).
+        `deliveryId` 는 그대로 참고값(주문의 배송인지는 보지 않는다 — order 상세에 배송 ID 가 없다). 상담원 목록에서 `deliveryIssue=DELAYED` 로 거른다. 알림·사건함 사건은 새로 만들지 않는다(다른 문의와 같음).
         **라이더(0.13.0, 2026-11-16 — 라이더 앱 요청 §11-4, 사용자 "추천대로")**: 배송과 상관없는 문의(정산·계정·앱 오류·기타)를 라이더 토큰으로 남긴다.
         분류는 SETTLEMENT·ACCOUNT·APP_ERROR·OTHER 만(그 밖 400), orderId 는 받지 않는다(400 — 배송 건은 배송 화면 도움요청).
         사건 종류 RIDER_INQUIRY, 답은 지원센터(RIDER_OPS)가 한다. 고객 분류에 SETTLEMENT·APP_ERROR 는 쓰지 않는다(400).
@@ -814,6 +818,7 @@ paths:
         - { name: status, in: query, schema: { $ref: '#/components/schemas/InquiryStatus' } }
         - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: '주문 ID 완전 일치(0.5.0 — 백오피스 통합 조회)', x-added-in: '2026-11-16' }
         - { name: requesterType, in: query, schema: { $ref: '#/components/schemas/InquiryRequesterType' }, description: '운영자 거르기(0.13.0). 비우면 볼 수 있는 것 전부 — CS_AGENT 는 고객 문의, RIDER_OPS 는 라이더 문의. 볼 수 없는 종류를 고르면 403. 고객 문의를 못 보는 직원이 orderId 로 거르면 403', x-added-in: '2026-11-16' }
+        - { name: deliveryIssue, in: query, schema: { $ref: '#/components/schemas/InquiryDeliveryIssue' }, description: '배송 신고 종류로 거르기(0.23.0 — 상담원이 지연 신고 DELAYED 만 보기 등). 배송 신고는 고객 문의에만 있다 — 고객 문의를 못 보는 직원이 거르면 403(orderId 와 같음). 고객은 본인 것 안에서', x-added-in: '2026-11-18' }
       responses:
         '200':
           description: OK
@@ -1657,7 +1662,7 @@ components:
     InquiryDeliveryIssue:
       type: string
       enum: [DELAYED, NOT_RECEIVED, MISDELIVERED]
-      description: '배송 신고 종류(0.16.0) — 늦음·완료인데 못 받음·다른 곳에 옴'
+      description: '배송 신고 종류(0.16.0) — 늦음·완료인데 못 받음·다른 곳에 옴. 0.23.0: DELAYED(배송 지연 신고)는 주문이 확정 뒤 ~ 배송 완료 전일 때만(아니면 422 ORDER_NOT_IN_PROGRESS)'
       x-added-in: '2026-11-17'
     InquiryRequesterType:
       type: string

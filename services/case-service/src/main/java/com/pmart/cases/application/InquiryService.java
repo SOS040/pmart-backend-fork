@@ -123,11 +123,21 @@ public class InquiryService {
       if (props.orderServiceBaseUrl() == null) {
         throw PmartException.configRequired("pmart.cases.order-service-base-url");
       }
-      if (!orders.ownsOrder(cmd.orderId())) {
+      var owned = orders.customerOrder(cmd.orderId());
+      if (owned.isEmpty()) {
         throw new PmartException(
             "ORDER_NOT_FOUND",
             HttpStatus.UNPROCESSABLE_CONTENT,
             "주문을 찾을 수 없습니다.",
+            false,
+            List.of());
+      }
+      // 배송 지연 신고(0.23.0): 같은 주문 조회의 상태로 — 확정 뒤 ~ 배송 완료 전만
+      if (!InquiryRules.deliveryIssueAllowed(cmd.deliveryIssue(), owned.get().status())) {
+        throw new PmartException(
+            "ORDER_NOT_IN_PROGRESS",
+            HttpStatus.UNPROCESSABLE_CONTENT,
+            "배송 지연 신고는 주문이 확정된 뒤 배송 완료 전까지만 남길 수 있습니다. 배송 완료 뒤 받지 못했다면 미수령(NOT_RECEIVED)으로 남겨 주세요.",
             false,
             List.of());
       }
@@ -180,6 +190,7 @@ public class InquiryService {
       @Nullable String status,
       @Nullable String orderId,
       @Nullable String requesterType,
+      @Nullable String deliveryIssue,
       @Nullable String cursor,
       int size) {
     PmartPrincipal p = principal();
@@ -200,7 +211,9 @@ public class InquiryService {
         throw new PmartException(ErrorCode.FORBIDDEN, "그 종류의 문의를 볼 권한이 없습니다.");
       }
       // 주문으로 찾기는 고객 문의 — 고객 문의를 못 보는 직원은 예전처럼 403(통합 조회가 원천 불가로 표시)
-      if (blankToNull(orderId) != null && !readable.contains(InquiryRules.CUSTOMER)) {
+      // 배송 신고(0.23.0 거르기)도 고객 문의에만 있다
+      if ((blankToNull(orderId) != null || deliveryIssue != null)
+          && !readable.contains(InquiryRules.CUSTOMER)) {
         throw new PmartException(ErrorCode.FORBIDDEN, "고객 문의를 볼 권한이 없습니다.");
       }
       type =
@@ -209,7 +222,7 @@ public class InquiryService {
               : readable.size() == 1 ? readable.iterator().next() : null;
     }
     List<InquiryRow> rows =
-        store.page(customerId, type, status, blankToNull(orderId), cursor, size);
+        store.page(customerId, type, status, blankToNull(orderId), deliveryIssue, cursor, size);
     boolean more = rows.size() > size;
     List<InquiryRow> items = more ? rows.subList(0, size) : rows;
     return new Page(List.copyOf(items), more ? items.get(items.size() - 1).inquiryId() : null);

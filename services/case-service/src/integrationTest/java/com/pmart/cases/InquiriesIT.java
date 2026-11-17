@@ -253,6 +253,142 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
         .isEqualTo(400);
   }
 
+  /**
+   * 배송 지연 신고(0.23.0 — 2026-11-18 사용자 "A해줘"): deliveryIssue DELAYED 는 본인 주문이 확정 뒤 ~ 배송 완료 전일 때만. 같은
+   * order 조회 한 번의 status 로 판정하고, 상담원은 deliveryIssue 로 거른다.
+   */
+  @Test
+  void delayReportOnlyWhileOrderInProgressAndAgentFiltersIt() {
+    String me = "CU-" + UUID.randomUUID().toString().substring(0, 8);
+    String meTok = TestJwt.customer(me);
+    String sfx = UUID.randomUUID().toString().substring(0, 8);
+    String inDelivery = "ORD-DLY-IN-" + sfx;
+    String preparing = "ORD-DLY-PREP-" + sfx;
+    String completed = "ORD-DLY-DONE-" + sfx;
+    String noStatus = "ORD-DLY-NONE-" + sfx;
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/" + inDelivery))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"orderId\":\"" + inDelivery + "\",\"status\":\"IN_DELIVERY\"}")));
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/" + preparing))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"orderId\":\"" + preparing + "\",\"status\":\"PREPARING\"}")));
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/" + completed))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"orderId\":\"" + completed + "\",\"status\":\"COMPLETED\"}")));
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/" + noStatus))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{}")));
+
+    Res late =
+        send(
+            "POST",
+            meTok,
+            "/inquiries",
+            Map.of(
+                "category", "DELIVERY",
+                "orderId", inDelivery,
+                "deliveryId", "DLV-" + sfx,
+                "deliveryIssue", "DELAYED",
+                "body", "도착 예정 시간이 지났어요"),
+            null);
+    assertThat(late.status()).as(late.body().toString()).isEqualTo(201);
+    assertThat(late.body().path("deliveryIssue").asString()).isEqualTo("DELAYED");
+    assertThat(late.body().path("deliveryId").asString()).isEqualTo("DLV-" + sfx);
+    String lateId = late.body().path("inquiryId").asString();
+    order.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/orders/" + inDelivery))
+            .withHeader("Authorization", equalTo("Bearer " + meTok)));
+
+    // 상품 준비 중에도 늦을 수 있다(즉시 배송의 도착 예정이 지남)
+    Res prep =
+        send(
+            "POST",
+            meTok,
+            "/inquiries",
+            Map.of(
+                "category", "DELIVERY",
+                "orderId", preparing,
+                "deliveryIssue", "DELAYED",
+                "body", "아직 출발도 안 했어요"),
+            null);
+    assertThat(prep.status()).as(prep.body().toString()).isEqualTo(201);
+
+    // 배송 완료·상태를 모르는 주문은 422 ORDER_NOT_IN_PROGRESS — 문의가 남지 않는다
+    for (String o : List.of(completed, noStatus)) {
+      Res rejected =
+          send(
+              "POST",
+              meTok,
+              "/inquiries",
+              Map.of(
+                  "category", "DELIVERY",
+                  "orderId", o,
+                  "deliveryIssue", "DELAYED",
+                  "body", "늦어요"),
+              null);
+      assertThat(rejected.status()).as(o).isEqualTo(422);
+      assertThat(rejected.body().path("code").asString()).isEqualTo("ORDER_NOT_IN_PROGRESS");
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM cs_inquiry WHERE order_id IN (?, ?)",
+                Integer.class,
+                completed,
+                noStatus))
+        .isZero();
+    // 완료 뒤 못 받음(NOT_RECEIVED)은 그대로 받는다
+    Res notReceived =
+        send(
+            "POST",
+            meTok,
+            "/inquiries",
+            Map.of(
+                "category", "DELIVERY",
+                "orderId", completed,
+                "deliveryIssue", "NOT_RECEIVED",
+                "body", "완료인데 없어요"),
+            null);
+    assertThat(notReceived.status()).as(notReceived.body().toString()).isEqualTo(201);
+
+    // 상담원 목록: 지연 신고만 거르기(다른 문의와 같이 보이고, 거르면 DELAYED 만)
+    String agent = TestJwt.operator("cs-dly", List.of("CS_AGENT"), List.of());
+    Res all = send("GET", agent, "/inquiries?size=100", null, null);
+    assertThat(all.body().path("items").findValuesAsString("inquiryId")).contains(lateId);
+    Res delayed = send("GET", agent, "/inquiries?deliveryIssue=DELAYED&size=100", null, null);
+    assertThat(delayed.status()).isEqualTo(200);
+    assertThat(delayed.body().path("items").findValuesAsString("inquiryId"))
+        .contains(lateId, prep.body().path("inquiryId").asString())
+        .doesNotContain(notReceived.body().path("inquiryId").asString());
+    assertThat(delayed.body().path("items").findValuesAsString("deliveryIssue"))
+        .containsOnly("DELAYED");
+    // 고객도 본인 것 안에서 거른다
+    Res mine = send("GET", meTok, "/inquiries?deliveryIssue=NOT_RECEIVED", null, null);
+    assertThat(mine.body().path("items").findValuesAsString("inquiryId"))
+        .containsExactly(notReceived.body().path("inquiryId").asString());
+    // 고객 문의를 못 보는 직원(지원센터만)은 403, 모르는 값은 400
+    String riderOps = TestJwt.operator("ro-dly", List.of("RIDER_OPS"), List.of());
+    assertThat(send("GET", riderOps, "/inquiries?deliveryIssue=DELAYED", null, null).status())
+        .isEqualTo(403);
+    assertThat(send("GET", agent, "/inquiries?deliveryIssue=LATE", null, null).status())
+        .isEqualTo(400);
+  }
+
   /** 라이더 문의(0.13.0 — 라이더 앱 요청 §11-4, 사용자 "추천대로"): 지원센터(RIDER_OPS)가 답하고 상담원과 나뉜다. */
   @Test
   void riderAsksSupportCenterAnswers() {

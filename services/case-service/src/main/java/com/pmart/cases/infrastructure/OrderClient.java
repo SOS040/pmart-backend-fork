@@ -33,32 +33,54 @@ public class OrderClient {
 
   /** 호출한 고객의 주문인가. */
   public boolean ownsOrder(String orderId) {
+    return customerOrder(orderId).isPresent();
+  }
+
+  /** 본인 주문의 지금 상태(order OrderStatus). 응답에 없거나 읽지 못하면 null. */
+  public record CustomerOrder(@Nullable String status) {}
+
+  /**
+   * 호출한 고객의 주문이면 그 상태(0.23.0 — 배송 지연 신고). 남의·없는 주문(200 이 아님)은 빈 값. 같은 {@code GET /orders/{id}} 한 번
+   * — 응답에서 status 만 읽는다(주소·결제 등은 읽지 않는다).
+   */
+  @SuppressWarnings("unchecked")
+  public java.util.Optional<CustomerOrder> customerOrder(String orderId) {
     String auth = currentAuthorization();
-    Integer status =
-        Downstream.call(
-            ORDER,
-            () ->
-                client
-                    .get()
-                    .uri("/api/v1/orders/{id}", orderId)
-                    .headers(
-                        h -> {
-                          if (auth != null) {
-                            h.set(HttpHeaders.AUTHORIZATION, auth);
-                          }
-                        })
-                    .exchange(
-                        (req, res) -> {
-                          int s = res.getStatusCode().value();
-                          if (s >= 500) {
-                            // 0.19.2: 원천 장애로(계약 503, 전에는 500)
-                            throw PmartException.dependencyUnavailable(
-                                "order-service 가 응답할 수 없습니다.",
-                                new IllegalStateException("order-service " + s));
-                          }
-                          return s;
-                        }));
-    return status != null && status == 200;
+    return Downstream.call(
+        ORDER,
+        () ->
+            client
+                .get()
+                .uri("/api/v1/orders/{id}", orderId)
+                .headers(
+                    h -> {
+                      if (auth != null) {
+                        h.set(HttpHeaders.AUTHORIZATION, auth);
+                      }
+                    })
+                .exchange(
+                    (req, res) -> {
+                      int s = res.getStatusCode().value();
+                      if (s >= 500) {
+                        // 0.19.2: 원천 장애로(계약 503, 전에는 500)
+                        throw PmartException.dependencyUnavailable(
+                            "order-service 가 응답할 수 없습니다.",
+                            new IllegalStateException("order-service " + s));
+                      }
+                      if (s != 200) {
+                        return java.util.Optional.<CustomerOrder>empty();
+                      }
+                      Object st = null;
+                      try {
+                        Map<String, Object> body = res.bodyTo(Map.class);
+                        st = body == null ? null : body.get("status");
+                      } catch (RuntimeException e) {
+                        // 본문을 못 읽어도 소유는 확인됨 — 상태만 모름(지연 신고는 받지 않는다)
+                        st = null;
+                      }
+                      return java.util.Optional.of(
+                          new CustomerOrder(st == null ? null : st.toString()));
+                    }));
   }
 
   /** 직원 주문 조회의 결과 — 주문이 있으면 고객 ID. */

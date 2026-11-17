@@ -42,6 +42,26 @@ public final class InquiryRules {
         .contains(category);
   }
 
+  /** 배송 지연 신고(0.23.0 — 2026-11-18 사용자 "A해줘"): 배송 신고 종류 DELAYED. */
+  public static final String DELIVERY_DELAYED = "DELAYED";
+
+  /**
+   * 지연 신고를 받는 주문 상태 — 확정 뒤 ~ 배송 완료 전(order OrderStatus). 상품 준비 중에도 도착 예정이 지나면 늦은 것이라 넣는다.
+   * 완료·취소·만료·결제 전은 뺀다(완료 뒤 못 받음은 NOT_RECEIVED).
+   */
+  public static final Set<String> DELAY_REPORTABLE_ORDER_STATUSES =
+      Set.of(
+          "CONFIRMED", "PREPARING", "PARTIALLY_HANDED_OVER", "IN_DELIVERY", "PARTIALLY_DELIVERED");
+
+  /** 배송 신고를 그 주문 상태에서 받을 수 있는가. DELAYED 만 상태를 본다(모르는 상태·없음 = 받지 않음). */
+  public static boolean deliveryIssueAllowed(
+      @Nullable String deliveryIssue, @Nullable String orderStatus) {
+    if (!DELIVERY_DELAYED.equals(deliveryIssue)) {
+      return true;
+    }
+    return orderStatus != null && DELAY_REPORTABLE_ORDER_STATUSES.contains(orderStatus);
+  }
+
   /** 그 종류 문의에 답하는 역할 — 고객 = 상담원, 라이더 = 지원센터. */
   public static String answerRole(String requesterType) {
     return RIDER.equals(requesterType) ? RIDER_OPS : CS_AGENT;
