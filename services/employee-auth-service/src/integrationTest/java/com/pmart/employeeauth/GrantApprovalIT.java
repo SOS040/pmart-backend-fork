@@ -196,6 +196,42 @@ class GrantApprovalIT extends PostgresKafkaContainerSupport {
    * 뒤 시작·같은 승인 안의 앞 행과 겹침(같은 트랜잭션)·회수된 권한은 예전처럼. 내부 조회(0.11.0)는 토큰 없이 역할 목록과 끝나지 않은 grant 를 준다.
    */
   /**
+   * 계정에 직접 둔 역할도 중복(2026-11-18 HR-2 ③): 계정 MFC_WORKER@MFC-IT-01 이면 같은 역할·센터 승인 행은 grant 없음·REJECTED
+   * (GRANT_ALREADY_ACTIVE, domainRef account), 다른 센터는 반영. 내부 조회는 account 칸을 싣는다(계정 없으면 없음).
+   */
+  @Test
+  void accountRolesCountAsDuplicates() throws Exception {
+    String op = "OP-GA-" + UUID.randomUUID();
+    store.insertAccount(op, "ACTIVE", List.of("MFC_WORKER"), List.of("MFC-IT-01"), Instant.now());
+    LocalDate today = LocalDate.now(SEOUL);
+    String receipts =
+        "SELECT count(*) FROM outbox_event WHERE topic = 'platform.approval-receipt.v1' AND aggregateid = ?";
+    String ap = "AP-" + UUID.randomUUID();
+    decided(
+        ap,
+        "GRANT",
+        "employee-auth-service",
+        op,
+        "APPROVED",
+        List.of(
+            line("1", "MFC_WORKER", List.of("MFC-IT-01"), today, null),
+            line("2", "MFC_WORKER", List.of("MFC-IT-02"), today, null)));
+    assertThat(awaitCount(receipts, 1, ap)).isEqualTo(1);
+    JsonNode r = receipt(ap);
+    assertThat(r.path("result").asString()).isEqualTo("PARTIAL");
+    assertThat(r.path("lines").get(0).path("reasonCode").asString())
+        .isEqualTo("GRANT_ALREADY_ACTIVE");
+    assertThat(r.path("lines").get(0).path("domainRef").asString()).isEqualTo("account");
+    assertThat(r.path("lines").get(1).path("result").asString()).isEqualTo("APPLIED");
+
+    JsonNode list = internal("/internal/employees/" + op + "/grants?activeOrFuture=true");
+    assertThat(list.path("account").path("roles").get(0).asString()).isEqualTo("MFC_WORKER");
+    assertThat(list.path("account").path("centers").get(0).asString()).isEqualTo("MFC-IT-01");
+    JsonNode none = internal("/internal/employees/OP-GA-NONE-" + UUID.randomUUID() + "/grants");
+    assertThat(none.path("account").isMissingNode() || none.path("account").isNull()).isTrue();
+  }
+
+  /**
    * 역할·센터 섞임 안전망(2026-11-18): 관리자@MFC-IT-01 이 있는데 작업자@MFC-IT-02 → grant 없음·회신
    * REJECTED(CENTER_ROLE_MIX, domainRef = 기존 grant), 같은 승인의 관리자@MFC-IT-02 는 반영. 계정 값의 센터도 본다.
    */

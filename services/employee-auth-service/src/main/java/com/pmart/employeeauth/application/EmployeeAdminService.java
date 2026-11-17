@@ -169,6 +169,11 @@ public class EmployeeAdminService {
         : store.grants(operatorId);
   }
 
+  /** 내부 조회용 계정 값(관리 경로·이전 계정의 역할·센터). 없으면 empty. 2026-11-18 HR-2 ③. */
+  public java.util.Optional<AccountRow> accountForService(String operatorId) {
+    return store.account(operatorId, false);
+  }
+
   /** 계정 행 → 조회 결과(유효 역할·센터, grant 목록). */
   public View view(AccountRow a) {
     return new View(a, access.of(a, clock.instant()), store.grants(a.operatorId()));

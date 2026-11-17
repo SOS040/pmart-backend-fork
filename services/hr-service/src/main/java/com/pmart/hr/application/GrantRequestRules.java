@@ -28,7 +28,7 @@ import org.springframework.http.HttpStatus;
  *   <li>이미 유효하거나 시작 전인 같은 권한 → 409 {@code GRANT_ALREADY_ACTIVE} — 역할 같음 + 센터 겹침(센터 지정이 아닌 역할은 센터와
  *       상관없이, 둘 다 센터 없음도 겹침) + 기간이 지금 이후로 겹침. 비운 기간 = 근무 기간(GrantRequested 와 같은 값), 기간은 시작일 00:00 ~
  *       마지막 날 다음 날 00:00(Asia/Seoul — employee-auth-service grant 와 같은 계산). 기존 권한이 끝난 뒤부터 시작하는 요청은
- *       받는다. 겹치면서 더 늦게 끝나는 요청(기간 연장)도 지금은 409 — 연장을 어떻게 받을지 결정 대기(HR-2 "정할 것").
+ *       받는다. 겹치면서 더 늦게 끝나는 요청(기간 연장)도 409 — 연장은 지금 권한이 끝나는 날부터 시작하는 새 요청으로(HR-2 ①, 2026-11-18).
  *       employee-auth-service 도 승인 반영 때 같은 규칙으로 새 줄을 만들지 않는다(안전망).
  * </ul>
  */
@@ -113,7 +113,7 @@ public final class GrantRequestRules {
                         x.grantId(),
                         x.role(),
                         String.join(",", x.centers()),
-                        x.validFrom(),
+                        EmployeeAuthClient.ACCOUNT.equals(x.grantId()) ? "none" : x.validFrom(),
                         x.validUntil() == null ? "none" : x.validUntil().toString(),
                         ext)));
       }
@@ -121,20 +121,26 @@ public final class GrantRequestRules {
     if (first == null) {
       return;
     }
+    boolean account = EmployeeAuthClient.ACCOUNT.equals(first.grantId());
     StringBuilder m =
-        new StringBuilder("이미 유효하거나 시작 전인 같은 권한이 있습니다: ")
+        new StringBuilder(account ? "계정에 직접 들어 있는 같은 권한이 있습니다: " : "이미 유효하거나 시작 전인 같은 권한이 있습니다: ")
             .append(first.role())
-            .append(first.centers().isEmpty() ? "" : "@" + String.join(",", first.centers()))
-            .append(" (")
-            .append(first.validFrom().atZone(zone).toLocalDate())
-            .append(" ~ ")
-            .append(
-                first.validUntil() == null
-                    ? "기한 없음"
-                    : first.validUntil().minusNanos(1).atZone(zone).toLocalDate().toString())
-            .append("). 그 권한이 끝난 다음 날부터로 요청하거나, 필요 없으면 먼저 회수하세요.");
+            .append(first.centers().isEmpty() ? "" : "@" + String.join(",", first.centers()));
+    if (account) {
+      // 2026-11-18 HR-2 ③ — 관리 경로·이전 계정의 역할. 승인 권한으로 또 주면 회수해도 계정 값이 남는다
+      m.append(" (관리 경로·이전 계정 — 기한 없음). 승인 권한으로 다시 줄 필요가 없습니다.");
+    } else {
+      m.append(" (")
+          .append(first.validFrom().atZone(zone).toLocalDate())
+          .append(" ~ ")
+          .append(
+              first.validUntil() == null
+                  ? "기한 없음"
+                  : first.validUntil().minusNanos(1).atZone(zone).toLocalDate().toString())
+          .append("). 그 권한이 끝난 다음 날부터로 요청하거나, 필요 없으면 먼저 회수하세요.");
+    }
     if (extension) {
-      m.append(" 기간 연장(종료일 늘리기)은 아직 별도 기능이 없습니다(결정 대기).");
+      m.append(" 기간을 늘리려면 지금 권한이 끝나는 날부터 시작하는 새 요청으로 하세요(인사팀 앱 \"연장\").");
     }
     throw new PmartException(ALREADY_ACTIVE, HttpStatus.CONFLICT, m.toString(), false, details);
   }
@@ -225,7 +231,12 @@ public final class GrantRequestRules {
               + String.join(",", c.centers())
               + (with == null
                   ? "(같은 요청의 다른 행과)"
-                  : " ↔ 지금 권한 " + with.role() + "@" + String.join(",", with.centers()))
+                  : (EmployeeAuthClient.ACCOUNT.equals(with.grantId())
+                          ? " ↔ 계정에 직접 든 값 "
+                          : " ↔ 지금 권한 ")
+                      + (with.role().isEmpty() ? "(역할 없음)" : with.role())
+                      + "@"
+                      + String.join(",", with.centers()))
               + ". 직원 토큰은 역할과 센터를 따로 실어 다른 센터에서도 그 역할이 됩니다 — MFC 역할은 모든 권한 센터에 같게 두세요(다른 센터 권한을"
               + " 먼저 회수하거나 같은 센터로 요청).";
       if (with == null) {

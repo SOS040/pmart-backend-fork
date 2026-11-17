@@ -728,6 +728,19 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     assertThat(sameCenter.status()).as("같은 센터 관리자는 받음 " + sameCenter.body()).isEqualTo(200);
     jdbc.update("UPDATE requested_grant SET submission = 'APPROVED' WHERE operator_id = ?", op);
 
+    // 계정에 직접 둔 역할도 중복(2026-11-18 HR-2 ③): account 칸의 MD → MD 요청 409, existingGrantId=account
+    employeeAuth.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/employees/" + op + "/grants"))
+            .willReturn(
+                json(
+                    "{\"operatorId\":\"%s\",\"account\":{\"roles\":[\"MD\"],\"centers\":[]},\"items\":[]}"
+                        .formatted(op))));
+    Res accountDup = requestGrants(op, List.of(grant("MD", List.of())));
+    assertThat(accountDup.status()).as(accountDup.body().toString()).isEqualTo(409);
+    assertThat(accountDup.body().path("code").asText()).isEqualTo("GRANT_ALREADY_ACTIVE");
+    assertThat(accountDup.body().path("details").path(0).path("reason").asText())
+        .contains("existingGrantId=account");
+
     // 등록 requestedGrants 도 같은 400
     Map<String, Object> regDup = registration(mailId(), "REGULAR", today, null);
     regDup.put("requestedGrants", List.of(grant("MD", List.of()), grant("MD", List.of())));

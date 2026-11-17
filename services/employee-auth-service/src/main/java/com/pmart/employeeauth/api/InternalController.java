@@ -3,6 +3,7 @@ package com.pmart.employeeauth.api;
 import com.pmart.employeeauth.api.generated.InternalApi;
 import com.pmart.employeeauth.api.generated.model.EmployeeRole;
 import com.pmart.employeeauth.api.generated.model.EmployeeRoleList;
+import com.pmart.employeeauth.api.generated.model.InternalAccountAccess;
 import com.pmart.employeeauth.api.generated.model.InternalGrant;
 import com.pmart.employeeauth.api.generated.model.InternalGrantList;
 import com.pmart.employeeauth.application.EmployeeAdminService;
@@ -45,9 +46,16 @@ public class InternalController implements InternalApi {
   @Override
   public ResponseEntity<InternalGrantList> getEmployeeGrantsInternal(
       String operatorId, @Nullable Boolean activeOrFuture) {
+    // 0.12.0(HR-2 ③): 계정에 직접 둔 역할·센터도 — hr-service 가 중복·섞임 검사에 쓴다
+    InternalAccountAccess account =
+        admin
+            .accountForService(operatorId)
+            .map(a -> new InternalAccountAccess().roles(a.roles()).centers(a.centers()))
+            .orElse(null);
     return ResponseEntity.ok(
         new InternalGrantList()
             .operatorId(operatorId)
+            .account(account)
             .items(
                 admin.grantsForService(operatorId, Boolean.TRUE.equals(activeOrFuture)).stream()
                     .map(

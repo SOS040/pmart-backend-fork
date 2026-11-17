@@ -65,7 +65,14 @@ public class EmployeeAuthClient {
     return out;
   }
 
-  /** 지금 기준으로 끝나지 않은 grant(유효하거나 시작 전). */
+  /** 계정에 직접 둔 값을 나타내는 grantId(2026-11-18 HR-2 ③). 기간은 기한 없음. */
+  public static final String ACCOUNT = "account";
+
+  /**
+   * 지금 기준으로 끝나지 않은 grant(유효하거나 시작 전) + 계정에 직접 둔 역할(employee-auth 0.12.0 {@code account} — 역할마다 한 줄,
+   * grantId {@link #ACCOUNT}, 시작 {@link Instant#EPOCH}·끝 없음, 센터 = 계정 센터. 역할 없이 센터만 있으면 역할 "" 한 줄 —
+   * 섞임 검사가 센터를 보게).
+   */
   public List<Grant> activeOrFutureGrants(String operatorId) {
     JsonNode body = get("/api/v1/internal/employees/{operatorId}/grants", operatorId);
     List<Grant> out = new ArrayList<>();
@@ -81,6 +88,19 @@ public class EmployeeAuthClient {
                 List.copyOf(centers),
                 Instant.parse(g.path("validFrom").asString()),
                 until == null || until.isBlank() ? null : Instant.parse(until)));
+      }
+      JsonNode account = body.path("account");
+      if (account.isObject()) {
+        List<String> centers = new ArrayList<>();
+        account.path("centers").forEach(c -> centers.add(c.asString()));
+        List<String> roles = new ArrayList<>();
+        account.path("roles").forEach(r -> roles.add(r.asString()));
+        if (roles.isEmpty() && !centers.isEmpty()) {
+          roles.add("");
+        }
+        for (String r : roles) {
+          out.add(new Grant(ACCOUNT, r, List.copyOf(centers), Instant.EPOCH, null));
+        }
       }
     } catch (RuntimeException e) {
       throw unavailable(e);

@@ -115,6 +115,18 @@ public class GrantApprovalHandler {
       Instant from = start(a.path("validFrom").asString(null), p);
       Instant until = untilExclusive(a.path("validTo").asString(null));
       String grantId = approvalId + ":" + lineId;
+      if (inAccount(operatorId, role, centers)) {
+        // 계정에 직접 둔 같은 역할(관리 경로·이전 계정, 2026-11-18 HR-2 ③) — grant 를 회수해도 계정 값이 남아 권한이 안 빠진다
+        rejected++;
+        receiptLines.add(line(lineId, "REJECTED", ALREADY_ACTIVE, CenterRoleMix.ACCOUNT_REF));
+        log.warn(
+            "계정에 직접 둔 같은 역할이 있어 새 grant 를 만들지 않음: approvalId={} lineId={} operatorId={} role={}",
+            approvalId,
+            lineId,
+            operatorId,
+            role);
+        continue;
+      }
       EmployeeAuthStore.GrantRow existing =
           alreadyActive(operatorId, grantId, role, centers, from, until, now);
       if (existing != null) {
@@ -199,6 +211,17 @@ public class GrantApprovalHandler {
       }
     }
     return null;
+  }
+
+  /** 계정 값에 같은 역할이 있는가 — 센터 지정 역할은 센터가 겹칠 때만({@link GrantOverlap#centersOverlap}). */
+  private boolean inAccount(String operatorId, String role, List<String> centers) {
+    return store
+        .account(operatorId, false)
+        .filter(
+            a ->
+                a.roles().contains(role)
+                    && GrantOverlap.centersOverlap(props.centerScoped(role), a.centers(), centers))
+        .isPresent();
   }
 
   /**

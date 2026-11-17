@@ -241,6 +241,48 @@ class GrantRequestRulesTest {
         .doesNotThrowAnyException();
   }
 
+  static EmployeeAuthClient.Grant account(String role, String... centers) {
+    return new EmployeeAuthClient.Grant(
+        EmployeeAuthClient.ACCOUNT, role, List.of(centers), Instant.EPOCH, null);
+  }
+
+  @Test
+  void accountRoleIsDuplicate() {
+    PmartException e =
+        catchThrowableOfType(
+            PmartException.class,
+            () ->
+                check(
+                    List.of(req("MFC_WORKER", List.of("A"), null, null)),
+                    List.of(account("MFC_WORKER", "A"))));
+    assertThat(e.code()).isEqualTo("GRANT_ALREADY_ACTIVE");
+    assertThat(e.getMessage()).contains("계정에 직접");
+    assertThat(e.details().getFirst().reason())
+        .contains(
+            "existingGrantId=account", "validFrom=none", "validUntil=none", "extension=false");
+    assertThatCode(
+            () ->
+                check(
+                    List.of(req("MFC_WORKER", List.of("B"), null, null)),
+                    List.of(account("MFC_WORKER", "A"))))
+        .as("다른 센터")
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void accountCentersCountForMix() {
+    // 계정 값: 센터 지정이 아닌 역할 + 센터 B → 관리자@A 를 주면 B 까지 퍼진다
+    PmartException e =
+        catchThrowableOfType(
+            PmartException.class,
+            () ->
+                mix(
+                    List.of(req("MFC_SUPERVISOR", List.of("A"), null, null)),
+                    List.of(account("MD", "B"))));
+    assertThat(e.code()).isEqualTo("CENTER_ROLE_MIX");
+    assertThat(e.getMessage()).contains("계정에 직접 든 값");
+  }
+
   @Test
   void mixedWithinOneRequestIs400() {
     PmartException e =
