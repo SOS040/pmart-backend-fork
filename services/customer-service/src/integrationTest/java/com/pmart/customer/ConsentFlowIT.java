@@ -25,14 +25,16 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 약관 동의(CU-1, 2026-11-17): 본인 조회·동의·마케팅 켜고 끄기·필수 철회 422·버전 422·멱등 재시도, 약관 버전이 바뀌면 다시 받아야 함(구매 가능
- * 여부), auth 가 부르는 내부 경로(가입 전 계정·로그인 중 동의). 현행 버전은 설정 사본(customer-service.yml)의 값. 실제 PostgreSQL.
+ * 여부), auth 가 부르는 내부 경로(가입 전 계정·로그인 중 동의). 현행 버전은 설정 사본(customer-service.yml)의 값. 구매 차단 스위치는 켠
+ * 경로(설정 사본은 false — 꺼진 경로는 CustomerAddressFlowIT). 실제 PostgreSQL.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.messaging.outbox.delete-after-insert=false"
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.customer.consents.purchase-gate=true"
     })
 @Import(TestJwtConfiguration.class)
 class ConsentFlowIT extends PostgresKafkaContainerSupport {

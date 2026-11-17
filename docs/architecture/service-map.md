@@ -29,7 +29,7 @@
 ### customer-service `[1단계]`
 - **소유**: 고객 계정·프로필·이용 상태(정상/WITHDRAW_PENDING/WITHDRAW_COMPLETED), 약관·마케팅 동의(버전·시점·철회), 주소록·현재 쇼핑 주소(`shoppingContextVersion`), 비회원 배송지, 첫 구매 중복혜택 대조값(소셜 식별, 5년).
 - **소유하지 않음**: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
-- **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(완료 전 order-service 미결 의무 조회), 계정 상태 조회(구매 가능 = ACTIVE + 필수 약관 현행 버전 동의), auth 용 내부 동의 상태·로그인 중 동의 반영(CU-1, 2026-11-17 — 필수 3 + 선택 마케팅 1, 현행 버전은 설정).
+- **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(완료 전 order-service 미결 의무 조회), 계정 상태 조회(구매 가능 = ACTIVE, 스위치 `consents.purchase-gate` 가 켜지면 + 필수 약관 현행 버전 동의 — LAN 은 고객 앱 반영 때까지 꺼짐), auth 용 내부 동의 상태·로그인 중 동의 반영(CU-1, 2026-11-17 — 필수 3 + 선택 마케팅 1, 현행 버전은 설정).
 - **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`.
 - **구독**: `CustomerAuthenticated`(auth), `OrderConfirmed`(order — 첫 구매 무료 사용 기록, 2026-10-31), `OrderCancelled`(order — 첫 구매 주문의 전체 취소면 사용 기록 복원, 2026-10-31).
 - **의존**: order(탈퇴 가능 여부), delivery-serviceability(주소 판정), S3 버킷 pmart-customer(프로필 사진 사본), 로그인 제공자 사진 호스트(googleusercontent.com — 로그인 뒤 사본 한 번, ADR-0024).
@@ -332,7 +332,7 @@
 - **API**: 고객 소셜 로그인·비회원 세션·토큰 갱신·로그아웃·현재 세션, JWKS. **운영자 로그인·계정 관리는 2026-11-13 없앴다**(ADR-0056 7단계 — 직원 토큰은 employee-auth-service). 행위 검증·grant 반영 경로는 구현 전(501)이고 정본은 employee-auth-service 로 옮긴다.
 - **발행**: `CustomerAuthenticated`. (운영자 `SubjectBlocked`·Keycloak 중계는 2026-11-13 없앰. `GrantApplied`·`DelegationStarted/Ended` 는 employee-auth-service 로.)
 - **구독**: `ApprovalDecided`(BO-01/02), `CustomerWithdrawalCompleted`(세션·소셜 연결 삭제).
-- **의존**: customer-service(필수 약관 동의 판단·로그인 중 동의 반영 — 내부 경로, `require-consent=true` 2026-11-17 CU-1. 응답이 없으면 고객 로그인 503).
+- **의존**: customer-service(필수 약관 동의 판단·로그인 중 동의 반영 — 내부 경로, 스위치 `require-consent` 가 켜졌을 때 — 2026-11-17 CU-1, LAN 은 고객 앱 반영 때까지 꺼짐. 켜져 있고 응답이 없으면 고객 로그인 503).
 
 ### rider-auth-service `[1단계]` — 라이더 로그인·라이더 토큰 발급자 (ADR-0054 E·F, ADR-0055, 2026-11-10)
 - **소유**: 라이더 Google 로그인(라이더 앱이 받은 Google ID 토큰을 Google 공개키로 검증 — `aud` = 라이더용 웹 클라이언트 ID, client secret·인가 코드 교환 없음), Google 계정(`sub`) ↔ 라이더 주체 `RD-…`, 로그인 세션·refresh token(회전·재사용 감지), 기기별 로그인 실패 제한(15분 5회→10분), 라이더 토큰(`typ=RIDER`) 서명키·JWKS.

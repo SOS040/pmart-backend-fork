@@ -12,8 +12,9 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  * @param accessTokenTtl access token 수명
  * @param refreshTokenTtl refresh token 수명(회전)
  * @param sessionMaxAge 세션 유휴 수명 — 마지막 갱신(사용)부터 이 기간 안 쓰면 재로그인(2026-11-02, 슬라이딩)
- * @param requireConsent 필수 약관 동의 단계(AUTH_CONSENT)를 둘지. 2026-10-30 에는 false(동의 기능 없음), 2026-11-17
- *     CU-1 사용자 결정으로 true — 신규 가입과 필수 약관 현행 버전에 동의하지 않은 기존 회원은 동의 화면을 거친다. 판단은 customer-service
+ * @param requireConsent 필수 약관 동의 단계(AUTH_CONSENT)를 둘지 — 켜면 신규 가입과 필수 약관 현행 버전에 동의하지 않은 기존 회원은 동의
+ *     화면을 거친다(판단은 customer-service). 서버는 2026-11-17 CU-1 로 준비됐고, LAN 은 고객 앱이 동의 흐름을 반영할 때까지 false.
+ *     켤 때는 customer-service {@code consents.purchase-gate} 와 함께 true
  * @param customerServiceBaseUrl customer-service 주소(동의 상태 조회·로그인 중 동의 반영 — 내부 경로)
  * @param failureWindow 실패 집계 창(Commerce 4.9: 15분)
  * @param maxFailures 창 안의 실패 한도(5회)

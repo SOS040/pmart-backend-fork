@@ -36,7 +36,9 @@
   - 표 `customer_consent`(계정·항목별 마지막 결정: agreed·terms_version·agreed_at·withdrawn_at·channel·version) + `customer_consent_history`(바뀐 것 전부, V6). 같은 값·같은 버전이면 바꾸지 않는다(사건·기록 없음).
   - `GET /me/consents`(항목 넷, `requiredConsentOutdated`), `POST /me/consent-changes`(channel APP, 즉시 APPLIED, 현행 버전만 — 아니면 422 `CONSENT_VERSION_OUTDATED`, 필수 끄기 422 `REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN`(철회 = 탈퇴, 범위 밖), 같은 항목 두 번 400, 탈퇴 신청 이후는 동의만 409), `GET /me/consent-changes/{requestId}`(본인 것만). 버전·상태 검사는 멱등 처리 안(재시도가 그 사이 바뀐 버전에 막히지 않게).
   - auth 용 내부: `GET /internal/accounts/{id}/consents`(행이 없어도 200 — 모두 빠짐, `missingRequired`·`undecidedOptional` = `TYPE:version`), `POST /internal/accounts/{id}/consent-changes`(channel SIGNUP·LOGIN, 행이 없으면 만든다, 응답 = 반영 뒤 상태).
-  - 바뀐 항목마다 `CustomerConsentChanged`(commerce.customer.v1, version = 행 차수, termsVersion·required·channel). 내부 계정 상태 `purchasable` = ACTIVE **그리고** 필수 동의가 현행 버전(`requiredConsentOutdated` 실제 값) — 동의 전 계정은 주문(draft·checkout)이 422 ACCOUNT_NOT_PURCHASABLE.
+  - 바뀐 항목마다 `CustomerConsentChanged`(commerce.customer.v1, version = 행 차수, termsVersion·required·channel).
+  - **구매 차단 스위치 `pmart.customer.consents.purchase-gate`**(기능 스위치, 정책값 아님 — `ConsentService.purchaseCheck`): `true` 면 내부 계정 상태 `purchasable` = ACTIVE **그리고** 필수 동의가 현행 버전(동의 전 계정은 주문 draft·checkout 422 ACCOUNT_NOT_PURCHASABLE). `false`(또는 없음)면 지금까지처럼 ACTIVE 만. `requiredConsentOutdated` 는 스위치와 상관없이 실제 값.
+  - **서버는 준비됐고 LAN 은 꺼 둔다(2026-11-17)** — 고객 앱이 동의 흐름(auth completions·`/me/consent-changes`)을 반영하기 전에 켜면 기존 회원 전부가 주문·로그인을 못 한다. 켤 때는 이 `purchase-gate: true` 와 auth `require-consent: true` 를 **함께**(pmart-config). 시험: 꺼진 경로 `CustomerAddressFlowIT`, 켠 경로 `ConsentFlowIT`(속성으로 켬).
 
 - **리뷰 작성자 표시(2026-11-16, 계약 0.2.0, ADR-0063)**: `GET /internal/accounts/{id}/review-author` → 별명 첫 글자 + `*`(최대 4개), 별명 없으면 "PMart 고객"(`ProfileRules.maskedAuthor`). 이름·이메일·전화는 내주지 않는다.
 

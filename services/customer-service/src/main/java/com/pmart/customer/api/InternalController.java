@@ -48,18 +48,21 @@ public class InternalController implements InternalApi {
             .asOf(CustomerMapping.asOf(Instant.now(), null, true)));
   }
 
-  /** 구매 가능 = ACTIVE 이고 필수 동의가 현행 버전(0.3.0 — 동의가 빠지면 주문 전 다시 받는다). */
+  /**
+   * 구매 가능 = ACTIVE, 그리고 스위치 {@code purchase-gate} 가 켜져 있으면 필수 동의가 현행 버전(0.3.0). 꺼져 있으면 지금까지처럼
+   * ACTIVE 만 (LAN 2026-11-17 — 고객 앱 동의 흐름 반영 전). requiredConsentOutdated 는 스위치와 상관없이 실제 값.
+   */
   @Override
   public ResponseEntity<GetAccountStatusInternal200Response> getAccountStatusInternal(
       String accountId) {
     ProfileRow p = profiles.profile(accountId);
-    boolean outdated = consents.requiredOutdated(accountId);
+    ConsentService.PurchaseCheck check = consents.purchaseCheck(accountId);
     return ResponseEntity.ok(
         new GetAccountStatusInternal200Response()
             .accountId(accountId)
             .status(AccountStatus.fromValue(p.status()))
-            .purchasable(profiles.purchasable(p) && !outdated)
-            .requiredConsentOutdated(outdated)
+            .purchasable(profiles.purchasable(p) && !check.blocksPurchase())
+            .requiredConsentOutdated(check.requiredOutdated())
             .version(p.version())
             .asOf(CustomerMapping.asOf(Instant.now(), p.version(), true)));
   }

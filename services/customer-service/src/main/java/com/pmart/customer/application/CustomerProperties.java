@@ -30,7 +30,7 @@ public class CustomerProperties {
             : serviceabilityBaseUrl;
     this.addressLimit = addressLimit;
     this.serviceabilityBaseUrl = serviceabilityBaseUrl;
-    this.consents = consents == null ? new Consents(null) : consents;
+    this.consents = consents == null ? new Consents(null, null) : consents;
   }
 
   public @Nullable Integer addressLimit() {
@@ -47,8 +47,16 @@ public class CustomerProperties {
 
   /**
    * @param versions 항목별 현행 약관 버전(문자열, 32자까지). 바꾸면 그 항목을 다시 받는다
+   * @param purchaseGate 구매 가능 여부(내부 계정 상태 {@code purchasable})에 필수 동의를 넣을지 — <b>기능 스위치(정책값 아님)</b>.
+   *     고객 앱이 동의 흐름을 반영하기 전에 켜면 기존 회원 전부가 주문을 못 하므로 LAN 은 {@code false} 로 둔다(2026-11-17). 켤 때는 auth
+   *     {@code require-consent} 와 함께 {@code true}. 설정 저장소에는 늘 명시하고, 값이 없으면 꺼짐(지금까지의 동작 — 코드가 설정보다
+   *     먼저 배포돼도 주문이 막히지 않게)
    */
-  public record Consents(@Nullable Versions versions) {}
+  public record Consents(@Nullable Versions versions, @Nullable Boolean purchaseGate) {
+    public boolean purchaseGateOn() {
+      return Boolean.TRUE.equals(purchaseGate);
+    }
+  }
 
   /** {@code pmart.customer.consents.versions.*} — 계약 ConsentType 마다 하나. */
   public record Versions(

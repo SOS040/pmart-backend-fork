@@ -354,8 +354,9 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     String svc = TestJwt.service("order-service");
     Res status = get(svc, "/internal/accounts/" + cu + "/status");
     assertThat(status.status()).isEqualTo(200);
-    // 필수 약관 동의 전에는 구매 불가(CU-1, 0.3.0) → 현행 버전으로 동의하면 구매 가능
-    assertThat(status.body().path("purchasable").asBoolean()).isFalse();
+    // 구매 차단 스위치(purchase-gate)가 꺼져 있으면(설정 사본 false — LAN 고객 앱 반영 전) 동의 전에도 지금처럼 ACTIVE 만으로 구매 가능.
+    // 동의가 빠진 사실은 requiredConsentOutdated 로 알린다. 켠 경로는 ConsentFlowIT
+    assertThat(status.body().path("purchasable").asBoolean()).isTrue();
     assertThat(status.body().path("requiredConsentOutdated").asBoolean()).isTrue();
     List<Map<String, Object>> required = new java.util.ArrayList<>();
     for (String[] c :
@@ -367,7 +368,7 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     assertThat(
             send(me, HttpMethod.POST, "/me/consent-changes", Map.of("changes", required)).status())
         .isEqualTo(200);
-    status = get(svc, "/internal/accounts/" + cu + "/status");
+    status = get(svc, "/internal/accounts/" + cu + "/status"); // 동의 뒤: 그대로 가능, 빠진 것 없음
     assertThat(status.body().path("purchasable").asBoolean()).isTrue();
     assertThat(status.body().path("requiredConsentOutdated").asBoolean()).isFalse();
     // 첫 구매 대조: 사용 기록 없음 → 후보

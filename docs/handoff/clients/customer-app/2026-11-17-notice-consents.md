@@ -2,7 +2,7 @@
 
 - 보낸 영역: platform
 - 받는 앱: customer_app (`lib/features/auth` — `login_screen.dart` 동의 화면, `auth_repository.dart` `completeWithConsents`)
-- 계약: `contracts/openapi/auth-service.yaml` **0.2.0**, `customer-service.yaml` **0.3.0** — 둘 다 다시 생성해 주세요. 결정 CU-1(사용자 2026-11-17 "추천대로"). 백엔드 커밋은 이 문서와 같은 커밋. LAN 은 §6.
+- 계약: `contracts/openapi/auth-service.yaml` **0.2.0**, `customer-service.yaml` **0.3.0** — 둘 다 다시 생성해 주세요. 결정 CU-1(사용자 2026-11-17 "추천대로"). 백엔드 커밋은 이 문서와 같은 커밋. **서버는 준비됐고 LAN 스위치는 앱 반영 때까지 꺼짐 — §6.**
 - **BR-20 회신**: (1) 토큰이 없는 동의 대기(AUTH_CONSENT)에서 동의를 보내는 곳 = auth `completions` 본문(customer `/me/consent-changes` 가 아님). (2) `requiredConsents` 형식 = `TYPE:version`(목에서 가정한 그대로).
 
 ## 1. 항목
@@ -24,7 +24,7 @@
    - `AUTH_MEMBER` → 지금과 같다(토큰).
    - `AUTH_CONSENT` → **토큰 없음**. `requiredConsents`(예 `["TERMS_OF_SERVICE:2026-11-17","PRIVACY_POLICY:2026-11-17","AGE_OVER_14:1"]`), `optionalConsents`(예 `["MARKETING:2026-11-17"]`, 없으면 `[]`), `accountId`, `newAccount`, `nextAction=COMPLETE_CONSENT`.
    - 언제 오나: 신규 가입, 그리고 **기존 회원도** 필수 약관의 현행 버전에 동의한 기록이 없으면(약관 버전이 바뀐 뒤 첫 로그인 포함). `newAccount=false` 면 재동의다(예: "약관이 바뀌었어요, 다시 동의해 주세요"). 동의 화면에서 나갔던 가입은 다음 로그인도 `newAccount=true`.
-   - **LAN 의 기존 회원은 모두 동의 기록이 없어 다음 로그인에서 한 번 AUTH_CONSENT 를 받는다.**
+   - **스위치를 켜면(§6) LAN 의 기존 회원은 모두 동의 기록이 없어 다음 로그인에서 한 번 AUTH_CONSENT 를 받는다.**
    - 새로 올 수 있는 오류: 503 `DEPENDENCY_UNAVAILABLE`(서버가 동의 상태를 확인하지 못함 — 같은 요청을 다시, 실패 횟수에 안 들어간다).
 2. 동의 화면: `requiredConsents` 는 모두 체크해야 버튼이 켜진다(지금 화면 그대로). `optionalConsents` 는 기본 해제 체크박스("[선택] 마케팅 정보 수신").
 3. `POST /auth/social-logins/{authRequestId}/completions` — 헤더 `Idempotency-Key`·`X-Source-System`·`X-Device-Id`(**로그인한 그 기기**). 본문:
@@ -66,7 +66,7 @@
 - `POST /me/consent-changes`(헤더 `Idempotency-Key`·`X-Source-System`) `{"changes":[{"consentType","version"(= latestVersion),"agreed"}]}` → 200 `APPLIED`. 결과 다시 보기 `GET /me/consent-changes/{requestId}`.
   - 마케팅 켜고 끄기는 여기로(설정 화면 "마케팅 정보 수신 동의"). notification `marketingConsent` 는 아직 UNKNOWN 이니 설정 화면의 마케팅 값은 이 응답의 `MARKETING` 으로.
   - 필수 항목 끄기 → 422 `REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN`(필수 동의 철회 = 탈퇴. 탈퇴는 아직 서버에 없다). 옛 버전 → 422 `CONSENT_VERSION_OUTDATED`(다시 조회).
-- **주문 전 확인(중요)**: 필수 동의가 현행 버전이 아니면 서버의 구매 가능 여부가 false 라 주문 초안·결제 진입이 422 `ACCOUNT_NOT_PURCHASABLE` 이다. 이미 로그인해 있는 고객(세션이 살아 있어 로그인을 다시 하지 않는 사람 — 지금 LAN 의 기존 회원 모두)은 로그인 동의 화면을 거치지 않으므로, **앱 시작 또는 주문서 진입 전에 `GET /me/consents` 의 `requiredConsentOutdated=true` 면 같은 동의 화면을 보여 주고 `POST /me/consent-changes` 로 받는다**(토큰이 있으니 completions 가 아님). 업무 흐름 Commerce 3장 "회원·재동의 필요 → SCR-CONSENT-001".
+- **주문 전 확인(중요)**: 서버 스위치가 켜지면(§6) 필수 동의가 현행 버전이 아닌 고객은 구매 가능 여부가 false 라 주문 초안·결제 진입이 422 `ACCOUNT_NOT_PURCHASABLE` 이다. 이미 로그인해 있는 고객(세션이 살아 있어 로그인을 다시 하지 않는 사람 — 지금 LAN 의 기존 회원 모두)은 로그인 동의 화면을 거치지 않으므로, **앱 시작 또는 주문서 진입 전에 `GET /me/consents` 의 `requiredConsentOutdated=true` 면 같은 동의 화면을 보여 주고 `POST /me/consent-changes` 로 받는다**(토큰이 있으니 completions 가 아님). 업무 흐름 Commerce 3장 "회원·재동의 필요 → SCR-CONSENT-001".
 
 ## 4. 앱에서 할 일
 
@@ -82,6 +82,11 @@
 - 같은 값·같은 버전을 다시 보내면 바뀌지 않는다(그래도 200).
 - 비회원 세션·장바구니는 바뀌지 않는다(동의와 무관).
 
-## 6. LAN
+## 6. LAN — 서버는 준비, 스위치는 앱 반영 때까지 꺼짐
 
-- **아직 배포 전.** 서버 설정 `require-consent` 를 켜는 순간 **지금 앱으로는 AUTH_CONSENT 를 받은 로그인이 끝나지 않고**(지금 코드는 토큰 없이 `/me/consent-changes` → 401), 기존 회원도 주문이 422 가 된다. 그래서 배포는 PC 1 이 앱 반영 시점과 맞춰 정하고, 배포하면 회신 파일에 적는다.
+- **서버 기능은 준비됐고, LAN 은 두 스위치를 꺼 둔다**(앱이 이 흐름을 반영할 때까지):
+  - auth `pmart.auth.customer.require-consent: false` → 로그인은 지금처럼 바로 `AUTH_MEMBER`(AUTH_CONSENT 가 오지 않는다).
+  - customer `pmart.customer.consents.purchase-gate: false` → 동의가 없어도 지금처럼 주문할 수 있다(`requiredConsentOutdated` 는 실제 값으로 온다).
+- 꺼져 있어도 `GET /me/consents`·`POST /me/consent-changes`(마케팅 켜고 끄기, 재동의)는 동작하니 앱이 먼저 붙여 시험할 수 있다. completions 새 본문은 스위치가 켜져야(AUTH_CONSENT 가 와야) 시험할 수 있다 — 앱 쪽이 준비되면 알려 주세요, PC 1 이 함께 켠다.
+- **켤 때는 둘을 함께** `true`(PC 1, pmart-config). 하나만 켜면 동의할 길 없이 주문이 막히거나, 묻기만 하고 구매 판단과 어긋난다. 켜는 순간 LAN 의 기존 회원은 모두 동의 기록이 없어 다음 로그인(또는 §3 주문 전 확인)에서 한 번 동의한다.
+- 배포·스위치를 켠 날은 회신 파일에 적는다.

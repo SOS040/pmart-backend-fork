@@ -117,9 +117,32 @@ public class ConsentService {
     return new Overview(accountId, ConsentRules.status(current, stored), List.copyOf(items));
   }
 
-  /** 필수 항목 중 현행 버전 동의가 없는 것이 있는가(구매 가능 여부). */
-  public boolean requiredOutdated(String accountId) {
-    return ConsentRules.status(currentVersions(), consents.consents(accountId)).requiredOutdated();
+  /**
+   * 구매 가능 여부에 쓰는 동의 판단(내부 계정 상태).
+   *
+   * @param requiredOutdated 필수 항목 중 현행 버전 동의가 없는 것이 있다(알림용 — 현행 버전 설정이 없으면 false)
+   * @param blocksPurchase 그래서 구매를 막는가 — 스위치 {@code pmart.customer.consents.purchase-gate} 가 켜졌을 때만
+   */
+  public record PurchaseCheck(boolean requiredOutdated, boolean blocksPurchase) {}
+
+  /**
+   * 스위치가 꺼져 있으면(LAN 2026-11-17 — 고객 앱 동의 흐름 반영 전) 구매를 막지 않고 지금까지처럼 계정 상태만으로 판단하게 한다. 켜져 있으면 현행 버전
+   * 설정이 꼭 있어야 한다(없으면 CONFIG_REQUIRED — 동의를 확인하지 못한 채 구매를 열지 않는다).
+   */
+  public PurchaseCheck purchaseCheck(String accountId) {
+    if (props.consents().purchaseGateOn()) {
+      boolean outdated =
+          ConsentRules.status(currentVersions(), consents.consents(accountId)).requiredOutdated();
+      return new PurchaseCheck(outdated, outdated);
+    }
+    boolean outdated;
+    try {
+      outdated =
+          ConsentRules.status(currentVersions(), consents.consents(accountId)).requiredOutdated();
+    } catch (PmartException e) {
+      outdated = false; // 스위치가 꺼져 있으면 버전 설정이 없어도 계정 상태 조회를 막지 않는다
+    }
+    return new PurchaseCheck(outdated, false);
   }
 
   /**

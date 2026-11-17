@@ -34,8 +34,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 필수 약관 동의 단계(CU-1, auth 0.2.0 — require-consent=true, 설정 사본 그대로): 신규 가입 → AUTH_CONSENT(토큰·프로필 사건
- * 없음) → completions(같은 Google 계정의 ID 토큰 + 동의) → customer 에 넘김 →
+ * 필수 약관 동의 단계(CU-1, auth 0.2.0 — require-consent=true 를 시험 속성으로 켠다 — 설정 사본은 false): 신규 가입 →
+ * AUTH_CONSENT(토큰·프로필 사건 없음) → completions(같은 Google 계정의 ID 토큰 + 동의) → customer 에 넘김 →
  * AUTH_MEMBER·토큰·CustomerAuthenticated. 약관 버전이 바뀐 기존 회원도 다시 묻는다. 동의를 마치지 않은 가입은 다음 로그인도 가입.
  * customer-service 는 WireMock(내부 경로), 그 밖은 실제 PostgreSQL·Kafka.
  */
@@ -46,7 +46,9 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.auth.signing.ephemeral=true",
       "pmart.auth.issuer=http://auth-service.test",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.auth.customer.google.client-ids=web-client.apps.googleusercontent.com"
+      "pmart.auth.customer.google.client-ids=web-client.apps.googleusercontent.com",
+      // 설정 사본은 false(LAN — 고객 앱 반영 전). 켠 경로를 시험한다
+      "pmart.auth.customer.require-consent=true"
     })
 @Import(CustomerSocialLoginIT.FakeGoogle.class)
 @EnableWireMock(

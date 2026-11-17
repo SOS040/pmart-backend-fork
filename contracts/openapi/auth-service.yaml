@@ -57,7 +57,7 @@ paths:
       summary: 소셜 로그인 (제공자 토큰 검증 → 내부 계정 연결/생성 → 상태 판정)
       description: |
         같은 Idempotency-Key 재전송은 원인증 결과를 반환하며 같은 제공자 응답으로 새 계정을 반복 생성하지 않는다. 동일 이메일만으로 계정을 병합하지 않는다.
-        필수 동의(0.2.0): 신규 가입이거나, 기존 회원이 필수 약관의 현행 버전에 동의하지 않았으면(약관 버전이 바뀐 뒤 첫 로그인 포함) state=AUTH_CONSENT,
+        필수 동의(0.2.0, 서버 설정 require-consent 가 켜졌을 때 — LAN 은 고객 앱 반영 전까지 꺼짐): 신규 가입이거나, 기존 회원이 필수 약관의 현행 버전에 동의하지 않았으면(약관 버전이 바뀐 뒤 첫 로그인 포함) state=AUTH_CONSENT,
         토큰 없음, `requiredConsents`(반드시 동의)·`optionalConsents`(골라도 되는 항목)를 준다. 고객이 동의 화면에서 고른 뒤
         POST /auth/social-logins/{authRequestId}/completions 로 보내면 AUTH_MEMBER 와 토큰을 준다. 동의 판단에 customer-service 가 응답하지 않으면
         503 DEPENDENCY_UNAVAILABLE(실패 횟수 미가산, 다시 시도).

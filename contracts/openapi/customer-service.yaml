@@ -117,7 +117,7 @@ paths:
       description: |
         항목은 늘 넷(필수 TERMS_OF_SERVICE·PRIVACY_POLICY·AGE_OVER_14, 선택 MARKETING). 한 번도 고르지 않은 항목은 agreed=false·version 없음.
         `version`(고른 버전)이 `latestVersion`(현행)과 다르면 그 항목은 다시 받아야 한다 — 필수 항목이 하나라도 그렇거나 동의하지 않았으면
-        `requiredConsentOutdated=true` 이고 주문(구매 가능 여부)이 막힌다. 다시 받는 곳은 POST /me/consent-changes.
+        `requiredConsentOutdated=true` 이고, 서버의 구매 차단 스위치(`pmart.customer.consents.purchase-gate`)가 켜져 있으면 주문(구매 가능 여부)이 막힌다. 다시 받는 곳은 POST /me/consent-changes.
       operationId: listMyConsents
       x-pmart-user-types: [CUSTOMER]
       responses:
@@ -462,7 +462,7 @@ paths:
                 properties:
                   accountId: { type: string }
                   status: { $ref: '#/components/schemas/AccountStatus' }
-                  purchasable: { type: boolean, description: ACTIVE이고 필수 동의 최신 버전이면 true }
+                  purchasable: { type: boolean, description: 'ACTIVE이고 필수 동의 최신 버전이면 true. 필수 동의는 스위치 pmart.customer.consents.purchase-gate 가 켜졌을 때만 본다(꺼지면 ACTIVE 만 — LAN 2026-11-17 꺼짐)' }
                   requiredConsentOutdated: { type: boolean, description: '필수 항목 중 현행 버전 동의가 없는 것이 있다(0.3.0 부터 실제 값 — 그 전에는 늘 false)' }
                   version: { $ref: '_common.yaml#/components/schemas/Version' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
