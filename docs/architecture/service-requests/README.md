@@ -30,7 +30,7 @@
 | [RS-3](rider-service.md) | rider | PC 5 | case·백오피스 | 컴플레인 누적 → 제한 검토 대상 자동 등록 | 결정됨(2026-11-14: 같은 종류(신고·오배송·파손) 7일 안 3건 이상, 운영자 확인) | 구현(rider — 배포 여부 PC 5 확인), case 쪽 발행 R-5 구현됨 |
 | [RS-2](rider-service.md) | rider | PC 5 | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | **구현**(2026-11-13 — 라이더 토큰 가입, LAN 201 확인; 문서 정리 #59) |
 | [RS-확인](rider-service.md) | rider | PC 5 | backoffice(PC 2) | 확인 요청: LAN 라이더 찾기(`GET /riders`)가 0명 — 가입 라이더가 없는지, 목록이 비는 다른 이유인지 | 없음 | **회신(PC 5, 2026-11-16)** — 가입한 라이더가 없었음. LAN E2E 로 시험 라이더 2명 가입, `GET /riders` 2명 확인 |
-| [CP-1](delivery-capacity-service.md) | delivery-capacity | PC 5 | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | 결정됨(2026-11-15: 주문 유지 + 지연 가능 안내, 고객이 원하면 시간대 변경·취소) | **1부 구현·LAN 배포**(2026-11-16 #59 — 지연 가능 안내), 2부(시간대 변경 S4) 남음 |
+| [CP-1](delivery-capacity-service.md) | delivery-capacity | PC 5 | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | 결정됨(2026-11-15: 주문 유지 + 지연 가능 안내, 고객이 원하면 시간대 변경·취소) | **끝**(1부 #59 지연 가능 안내, 2부 S4 시간대 변경 #61·#64·#65 — 모두 LAN 배포, 2026-11-17 #77 정리) |
 | [O-1](order-service.md) | order | PC 1 | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태, `DeliveryCompleted` → 전달 수량·주문 완료 | 없음 | **구현·LAN 배포**(2026-11-16 PC 1, V10·계약 0.7.1, 0bd5d08a) — `DeliveryFailed` 반영은 남음 |
 | [O-2](order-service.md) | order(·orchestration) | PC 1 | 사용자 | 고객 자율 취소는 상품준비 전까지 | ADR-0052 | 대기 |
 | [O-3](order-service.md) | order(·orchestration, mfc) | PC 1 | 사용자 | 확인된 오배송 새 발송(원주소, 비용 0원) | ADR-0052 | 대기 |
@@ -52,7 +52,7 @@
 | [EA-1](employee-auth-service.md) | employee-auth | PC 1 | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | 대기 |
 | [EA-2](employee-auth-service.md) | employee-auth | PC 1 | 클라이언트 hr-backoffice (BR-57) | 직원 역할 목록 API `GET /employee-auth/roles`(코드·이름·센터 지정·순서) | 없음(사용자 2026-11-15 "만들거야") | 구현(2026-11-15, employee-auth 0.5.0) — LAN 배포 여부 PC 1 확인 필요 |
 | [HR-1](hr-service.md) | hr | PC 1 | employee-auth | 직원 이름 내부 조회 `GET /internal/employee-names`(권한 상세 승인자·회수자 이름 — employee-auth 0.10.0 `approverName`·`revokedByName`) | 없음(사용자 2026-11-17 "백엔드에서") | 구현(2026-11-17, hr 0.5.0) — LAN 배포 전 |
-| [RC-1](approval-receipt-publishers.md) | product, product-content, center-master, delivery-serviceability, mfc-inbound | PC 1(mfc-inbound PC 3, serviceability PC 5) | approval | `ApplicationReceiptRecorded` 발행 | 없음 | 대기 |
+| [RC-1](approval-receipt-publishers.md) | product, product-content, center-master, delivery-serviceability, mfc-inbound | PC 1(mfc-inbound PC 3, serviceability PC 5) | approval | `ApplicationReceiptRecorded` 발행 | 없음 | 일부: delivery-serviceability 구현(2026-11-17 #77, LAN 배포). product·product-content·center-master·mfc-inbound 대기 |
 | [BO-12](backoffice-bff.md) | backoffice-bff | PC 2 | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 사가·이행 확인 LAN 배포(0.2.0). MFC 중지 실패·인계 거절 — bff 0.4.0 재시도 명령 배포(2026-11-16 #31), 목록은 F-4 대기(설정 꺼짐) |
 | [CU-1](customer-service.md) | customer | PC 1 | auth | 약관 동의 → `require-consent` 켜기 | **필요**(시점) | 대기 |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | PC 1 | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
