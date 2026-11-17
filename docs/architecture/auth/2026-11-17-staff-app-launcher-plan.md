@@ -1,29 +1,29 @@
 # 직원 웹 앱 바꾸기 메뉴(앱 런처) 계획 — 2026-11-17
 
-보낸 영역: platform(PC 1). 상태: **계획**(요청서·구현 전, 사용자 확인 대기).
+보낸 영역: platform(PC 1). 상태: **계획**(요청서·구현 전, 사용자 확인 대기). 범위 정함(2026-11-17 사용자): **지금 직원용 백오피스 4개**.
 
 ## 1. 무엇을 하려는가
 
 구글 오른쪽 위 점 9개(⋮⋮⋮) 메뉴처럼(참고 화면 [`2026-11-17-google-app-launcher.png`](2026-11-17-google-app-launcher.png)), 한 번 로그인한 직원이
 **비밀번호를 다시 넣지 않고** 직원 웹 앱 사이를 메뉴 하나로 오가게 한다.
 
-대상 앱(모두 PC 4 nginx, https):
+대상 앱 = **지금 직원용 백오피스 4개 모두**(사용자 2026-11-17 "앱런처 들어갈 내용은 지금 직원용 백오피스들 4개"). 모두 PC 4 nginx, https:
 
 | 앱 | `app` 이름 | LAN 주소 | 개발 주소 | 주로 쓰는 역할 |
 |---|---|---|---|---|
 | 기본 백오피스 | `backoffice` | https://192.168.0.40 | :5173 | OPERATOR_ADMIN, CS_AGENT, 상품·승인 담당 |
 | 인사팀 백오피스 | `hr-backoffice` | https://192.168.0.40:8444 | :5174 | HR_ADMIN 등 인사 역할 |
 | MFC 백오피스 | `mfc-backoffice` | https://192.168.0.40:8445 | :5175 | MFC_SUPERVISOR |
-| 라이더 백오피스(2026-11-17 뼈대 — 화면 PC 5) | `rider-backoffice` | https://192.168.0.40:8446 | :5176 | RIDER_OPS |
+| 라이더 백오피스(2026-11-17 LAN — 화면 PC 5, ADR-0068) | `rider-backoffice` | https://192.168.0.40:8446 | :5176 | RIDER_OPS |
 
 ## 2. 지금 이미 되는 것 (확인 2026-11-17)
 
 | 구글 | 우리 | 근거 |
 |---|---|---|
-| 한 번 로그인 → 모든 앱 | 됨 — Keycloak SSO | employee-auth-service `pmart.employee-auth.apps.*.sso: true`(세 앱 모두) |
+| 한 번 로그인 → 모든 앱 | 됨 — Keycloak SSO | employee-auth-service `pmart.employee-auth.apps.*.sso: true`(네 앱 모두 — rider-backoffice 2026-11-17 추가) |
 | 다른 앱을 열면 로그인 화면 없이 들어감 | 됨 — 조용한 로그인 확인 | `web/core/src/employeeAuth.ts` `beginSilentEmployeeLogin` → `GET /employee-auth/logins?silent=true` → Keycloak `prompt=none`(`EmployeeLoginService`). 세션 없으면 `?error=LOGIN_REQUIRED` → 로그인 버튼 |
 | 한 곳 로그아웃 → 전부 로그아웃 | 됨 | Keycloak 세션 종료(idpLogoutUri) + 다른 앱 세션 끊기(ADR-0061), 탭이 다시 보일 때 확인 |
-| 앱 바꾸기 메뉴 | **없음** | 세 웹 앱 코드에 다른 앱으로 가는 링크 없음 — 주소를 직접 친다 |
+| 앱 바꾸기 메뉴 | **없음** | 네 웹 앱 코드에 다른 앱으로 가는 링크 없음 — 주소를 직접 친다 |
 
 → **새로 할 일은 웹 화면의 메뉴뿐이고, 로그인·백엔드는 바꾸지 않는다.**
 
@@ -42,7 +42,7 @@
 - **보일 앱 = 내 역할로 쓸 수 있는 앱**: 이미 받는 `GET /employee-auth/sessions/current` 의 역할로 판단(아래 표). 쓸 수 있는 앱이 지금 앱 하나뿐이면 버튼을 숨긴다.
 - 앱 주소는 빌드 설정(`VITE_…`, 로컬·LAN 값)으로 받는다 — 코드에 IP 를 적지 않는다.
 - **로그인·세션 코드(`employeeAuth.ts`·`session.ts` 등)는 건드리지 않는다**(로그인 코드는 PC 1 만 — `pc-split.md` §1-3). 메뉴는 링크와 역할 읽기만.
-- 세 앱(+라이더) 빌드를 같이 확인한다(웹 공통 규칙).
+- 네 앱 빌드를 같이 확인한다(웹 공통 규칙). 앱 화면 주인은 backoffice·hr-backoffice PC 2, mfc-backoffice PC 3, rider-backoffice PC 5 — 메뉴는 `web/ui` 한 곳(PC 2)에 두고 각 앱은 머리줄에 붙이기만.
 
 역할 → 앱 표(초안, 사용자 확인 필요):
 
@@ -51,26 +51,25 @@
 | OPERATOR_ADMIN | ○ | ○ | ○ | ○ |
 | HR_ADMIN(인사 역할) | | ○ | | |
 | CS_AGENT | ○ | | | |
-| RIDER_OPS | ○(사건함 등 — 라이더 앱으로 옮기기 전까지) | | | ○ |
+| RIDER_OPS | ○(라이더 운영 메뉴가 라이더 백오피스로 옮겨지기 전까지 — ADR-0068) | | | ○ |
 | MFC_SUPERVISOR | ○(실시간 배송·배차 실패 자기 센터) | | ○ | |
 | 상품·가격·승인 담당 | ○ | | | |
 
 정확한 역할 목록은 `docs/architecture/auth/staff-roles.md` 기준으로 맞춘다. 표는 웹 공통 한 곳에 둔다(앱마다 따로 두지 않음).
 
 ### 4-2. 백엔드 (PC 1)
-- **바꿀 것 없음.** 라이더 백오피스를 만들 때만: employee-auth-service `apps.rider-backoffice`(sso: true), Keycloak post-logout URI, 게이트웨이 CORS, PC 4 배포 —
-  라이더 백오피스 계획의 1단계와 같은 일. `sso: true` 를 빠뜨리면 조용한 확인이 거절된다(`silent && !sso` — `EmployeeLoginService`).
+- **바꿀 것 없음.** 라이더 백오피스 연결(employee-auth-service `apps.rider-backoffice` sso: true, Keycloak post-logout URI, 게이트웨이 CORS, PC 4 https 8446)은
+  2026-11-17 끝남(00b0a5ae). `sso: true` 를 빠뜨리면 조용한 확인이 거절된다(`silent && !sso` — `EmployeeLoginService`).
 
 ## 5. 순서
 
 1. 사용자 확인: §6 질문
 2. 이 계획을 요청서로 — `docs/handoff/clients/all/2026-11-17-request-app-launcher.md`(웹 세션 PC 2)
-3. 웹 세션 구현(목 모드 시험) → PR → PC 1 병합 → `lan.sh publish-backoffice`·`publish-hr-backoffice`·`publish-mfc-backoffice`
-4. 확인(사용자 브라우저): 기본 백오피스 로그인 → 메뉴로 MFC·인사팀 이동(비밀번호 안 물음) → 한 곳 로그아웃 → 다른 탭 다시 보면 로그인 화면
-5. 라이더 백오피스가 생기면 메뉴 표에 한 줄 추가
+3. 웹 세션 구현(목 모드 시험) → PR → PC 1 병합 → `lan.sh publish-backoffice`·`publish-hr-backoffice`·`publish-mfc-backoffice`·`publish-rider-backoffice`
+4. 확인(사용자 브라우저): 기본 백오피스 로그인 → 메뉴로 인사팀·MFC·라이더 이동(비밀번호 안 물음) → 한 곳 로그아웃 → 다른 탭 다시 보면 로그인 화면
 
 ## 6. 정할 것
 
 1. 역할 → 앱 표(§4-1)가 맞는가 — 특히 OPERATOR_ADMIN 은 모든 앱, RIDER_OPS 는 기본 백오피스도 보이게 둘지.
 2. 메뉴 클릭 시 같은 탭(추천, 구글과 같음) / 새 탭.
-3. 라이더 백오피스와 같이 할지(추천: 메뉴 먼저 세 앱으로, 라이더는 생길 때 한 줄 추가).
+3. ~~라이더 백오피스와 같이 할지~~ — **정함(2026-11-17 사용자): 지금 직원용 백오피스 4개 모두 처음부터.**
