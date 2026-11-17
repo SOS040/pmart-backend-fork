@@ -10,3 +10,9 @@
   2. **소비기한이 지난 LOT 이 `sellable` 로 남아 있는 것** 확인 — 지난 LOT 은 출하 부적격으로 빠져야 한다(지금은 E 에 그대로 셈).
 - **요청한 쪽에서 바꿀 것(PC 1)** — order 쪽은 2026-11-16 구현(계약 0.8.0): order-service 주문 초안 생성 때 이 가용을 확인해 부족하면 초안을 만들지 않는다(422, 부족 상품·수량) — 1 이 생기기 전에는 `available` 로 확인한다(그래서 소비기한 미달은 아직 결제 단계에서 걸린다). cart 표시도 새 값으로.
 - **사용자 결정**: 필요 없음(재고 없으면 주문서 진입 금지 — 사용자 2026-11-16, 적격 기준은 이미 있는 예약 규칙).
+
+## IV-2. PDA "재고 확인" — 상품명 (2026-11-17, mfc-app 요청 전달 — platform PC 1)
+- 원 요청: pmart-clients `docs/handoff/mfc-app/2026-11-17-backend-pda-stock-check.md`(PC 3 mfc-app, 사용자 결정 "재고 확인" 메뉴).
+- Q1 답(PC 1 조사 2026-11-17, `docs/architecture/auth/permissions.md` §8): `GET /mfcs/{mfcId}/stock` 은 **이미 그 센터 직원이면 역할 없이** 된다(`CorrectionService` — OPERATOR + centers). MFC_WORKER 자기 센터 토큰 OK, 바꿀 것 없음. 계약 설명에 "그 센터 운영자(역할 무관)"를 적어 두면 좋다.
+- **요청 Q4**: 응답 줄에 `productName`(R19-1 이동·실사처럼 SKU 사본의 이름) — PC 3.
+- Q3(칸으로 재고 찾기)는 기존 MB-1 과 같다.

@@ -51,3 +51,10 @@
 - **멈춘 작업**: 고친 뒤 `ORD-ac047fd4-…-S1-PICK` 은 다시 진행하면 된다(서버 실적 없음). PDA 의 거절 표시 항목은 앱 큐에만 있다.
 - **상태**: 요청함(2026-11-17).
 
+## F-7. 작업자 본인 "오늘 업무 내역" (2026-11-17, mfc-app 요청 전달 — platform PC 1)
+- 원 요청: pmart-clients `docs/handoff/mfc-app/2026-11-17-backend-my-work-history.md`(PC 3 mfc-app, 사용자 "작업자마다 본인의 금일 작업내용을 체크할 수 있어야").
+- **요청**(PC 3 가 정함):
+  - R1 `GET /tasks`(assignee=me)에 기간 거르기(예 `activityFrom`·`To`, 서울 날짜).
+  - R2 `TaskSummary.completedAt`.
+  - R3 입고·검수·품질검사·적치·보충·이동·회수품·실사의 **내 처리 내역을 한 곳에서** — 예 mfc-capacity `GET /mfcs/{mfcId}/workers/me/activities?date=` (각 서비스 사건을 모으거나 각 서비스에 내 내역 조회). 서비스 경계는 PC 3 가 정한다.
+  - R4 (선택) 오늘 처리 건수·수량 합계를 서버가.
