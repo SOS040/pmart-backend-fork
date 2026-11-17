@@ -11,3 +11,7 @@
 
 ## 오늘 업무 내역
 - R1~R4 를 PC 3 에 요청(`service-requests/mfc-fulfillment-service.md` F-7, PC 3 할 일 목록). 서비스 경계(어디서 모아 줄지)는 PC 3 가 정한다. 생기기 전까지 지금 화면(오늘 `lastActivityAt` 으로 고르기 + "입고·검사… 아직" 안내) 그대로.
+
+## 피킹 도착지 = 장바구니 (`2026-11-17-backend-pick-to-cart.md`)
+- 백엔드 요청서 `service-requests/mfc-fulfillment-service.md` **F-6**(P1~P4 그대로 옮김) + `mfc-inventory-service.md` **IV-3**, PC 3 할 일 목록 맨 위(급함). 담당은 백엔드 mfc 영역(PC 3). 같이 고칠 서버 오류: `GET /shipments/{id}` 가 `ready_at` 이 빈 출고에서 500.
+

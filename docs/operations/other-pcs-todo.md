@@ -15,8 +15,9 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 3 — mfc 영역 (GitHub YOO196)
 
+- [ ] **EA-1 `GrantEnded` 구독**(2026-11-17 PC 1 — 요청서 `docs/architecture/service-requests/employee-auth-service.md` EA-1): mfc-capacity 가 `platform.auth.v1` 의 `GrantEnded`(역할 MFC_WORKER)도 받아 `HrLinkService` 에서 그 grant 의 작업자 센터 권한 행 `valid_to` 를 `endedAt` 으로 당기기(reason REVOKED·AFFILIATION_CHANGED, aggregateVersion 2). main 에서 새 브랜치로
 - [ ] **mfc-app 요청 2건 백엔드 반영**(2026-11-17 PC 1 전달 — 요청서 `mfc-inventory-service.md` IV-2, `mfc-fulfillment-service.md` F-7): 재고 확인 응답에 상품명(재고 조회 권한은 이미 자기 센터 작업자 OK), 오늘 업무 내역(R1 기간 거르기·R2 completedAt·R3 입고·검사·이동·실사 내 내역 한 곳·R4 합계)
-- [ ] **F-6 PDA 피킹 실적 전부 거절(급함)**(2026-11-17 사용자 "PC3에서 할 것 같아" — 요청서 `docs/architecture/service-requests/mfc-fulfillment-service.md` F-6): 서버 PICK `toLocation` 필수인데 mfc_app 이 안 보냄 → 400 → "거절된 실적". 서버는 카트(`CRT-…`)를 toLocation 으로 받고, 앱은 카트 코드를 보내기(BR-52 R19-3). 같이: `GET /shipments/{id}` ready_at NULL 500(`TaskStore.shipmentReadyAt`). **main 에서 새 브랜치로**(예 `mfc/pick-to-cart`)
+- [ ] **F-6 PDA 피킹 실적 전부 거절(급함)**(2026-11-17 사용자 "PC3에서 할 것 같아" — 요청서 `docs/architecture/service-requests/mfc-fulfillment-service.md` F-6): 서버 PICK `toLocation` 필수인데 mfc_app 이 안 보냄 → 400 → "거절된 실적". 서버는 카트(`CRT-…`)를 toLocation 으로 받고, 앱은 카트 코드를 보내기(BR-52 R19-3). 같이: `GET /shipments/{id}` ready_at NULL 500(`TaskStore.shipmentReadyAt`). **main 에서 새 브랜치로**(예 `mfc/pick-to-cart`). mfc-app 정식 요청(P1~P4, `handoff/mfc-app/2026-11-17-backend-pick-to-cart.md`)을 F-6 절에 옮겨 둠 — **mfc-inventory 도**(IV-3: PICK requireCart, PACK 장바구니 → 패킹대)
 - [x] 포크 → PR → PC 1 병합 경로 시험 — PR #1 병합 `965e7e6`(2026-11-13)
 - [x] **저장소 루트 `.secrets/` 사본 삭제**(PR #1 에서 발견. `deploy/lan/.secrets/` 쪽만 남긴다. 이제 `.gitignore` 가 막지만 사본은 지운다) — 2026-11-13 삭제(4개 파일이 `deploy/lan/.secrets/` 와 같음 확인 뒤)
 - [x] `git pull origin main`(`.gitignore`·이 문서·dev-on-other-pcs 갱신 받기) — 2026-11-13 `ddfa1f31`

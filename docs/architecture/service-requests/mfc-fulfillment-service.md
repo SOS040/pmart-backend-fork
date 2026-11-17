@@ -49,7 +49,14 @@
   3. 앱: 400 같은 **입력 오류를 "거절된 실적"과 구분**해 표시(지금은 원인이 화면에 안 보임).
 - **같이 고칠 서버 오류**: `GET /shipments/{id}` 가 `ready_at` 이 NULL 인 출고에서 500(`TaskStore.shipmentReadyAt` — `.query(...).stream().findFirst()` 가 null 원소로 NPE). LAN 에서 `ORD-bd33c14e-…-S1` 조회가 3초마다 500(PDA 포장 화면 반복 조회로 보임). `queryForList` + 첫 값 null 허용으로 고치면 된다.
 - **멈춘 작업**: 고친 뒤 `ORD-ac047fd4-…-S1-PICK` 은 다시 진행하면 된다(서버 실적 없음). PDA 의 거절 표시 항목은 앱 큐에만 있다.
-- **상태**: 요청함(2026-11-17).
+- **mfc-app 정식 요청(2026-11-17 11:24, PC 3 — pmart-clients `docs/handoff/mfc-app/2026-11-17-backend-pick-to-cart.md`, 클라이언트 PR #55)**. 사용자 결정: **"장바구니, 집품위치, 상품바코드 모두 찍혀야 해"** — PDA 순서 ① 장바구니 → ② 집품 칸 → ③ 상품 바코드. 요청 표:
+  - **P1** PICK `toLocation` = 장바구니(구역 CART·ACTIVE, 예 `CRT-A-01`) — mfc-inventory `TaskExecutionService` 의 `locations.requirePacking(toLocation)` → PICK 은 `requireCart`(IV-03 의 카트 검사). 반영: 선반 `NORMAL·STORED −q` → 장바구니 `NORMAL·PICKED +q`(예약 그대로). mfc-fulfillment `TaskService.record` 문구·판정도 같게.
+  - **P2** 포장 밀봉(`POST /shipments/{id}/packages`)이 장바구니 → 패킹대(`packingLocation`, `PAK-…`)로 옮기며 PACKED — inventory PACK `fromLocation = 그 출고 PICK 도착지(장바구니)`, `toLocation = 패킹대`, `PICKED −q`/`PACKED +q`.
+  - **P3** 계약: PICK 이면 `toLocation` 필수(구역 CART), 아니면 400 — 거절 코드(예 `TO_LOCATION_REQUIRED`·`NOT_CART`)와 `TaskDetail.packingLocations` 설명 갱신. 지금 계약은 `toLocation` 이 필수가 아닌데 서버가 필수로 판정(어긋남).
+  - **P4** 한 출고 = 한 장바구니 — 다른 장바구니로 오면 409 `CART_MISMATCH`(이동 규칙과 같게). 필요 없다고 보면 이유 회신.
+  - 같이 볼 곳: 복귀(RETURN) 작업의 `picks[].locations`(피킹 뒤·포장 전 취소면 장바구니), 집품 뒤 중지·인계의 위치(P2 뒤엔 패킹대), 결품만 있는 실적은 `toLocation` 불필요(지금 `anyPick` 조건).
+  - 회신 받을 것: P1~P4 수용 여부·PDA 가 보낼 값, mfc-fulfillment·mfc-inventory 버전과 LAN 배포 — PDA 는 그 뒤 실서버로 피킹 → 포장 → 출하대기 확인.
+- **상태**: 요청함(2026-11-17) — mfc-fulfillment·**mfc-inventory** 둘 다(IV 쪽은 `mfc-inventory-service.md` IV-3 이 이 절을 가리킨다).
 
 ## F-7. 작업자 본인 "오늘 업무 내역" (2026-11-17, mfc-app 요청 전달 — platform PC 1)
 - 원 요청: pmart-clients `docs/handoff/mfc-app/2026-11-17-backend-my-work-history.md`(PC 3 mfc-app, 사용자 "작업자마다 본인의 금일 작업내용을 체크할 수 있어야").
