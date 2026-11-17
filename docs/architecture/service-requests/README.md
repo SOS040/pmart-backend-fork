@@ -72,6 +72,7 @@
 | [F-6](mfc-fulfillment-service.md)·[IV-3](mfc-inventory-service.md) | mfc-fulfillment·mfc-inventory·mfc_app | PC 3 | PDA 피킹 | 피킹 도착지 = 찍은 장바구니(P1), 포장 = 장바구니 → 패킹대(P2), 계약 판정(P3), 한 출고 한 장바구니(P4) — 지금 PDA 피킹 전부 400 거절, 출고 조회 ready_at NULL 500 | 결정됨(2026-11-17 사용자 "장바구니, 집품위치, 상품바코드 모두 찍혀야 해", "PC3에서") | 요청함 |
 | [F-7](mfc-fulfillment-service.md) | mfc-fulfillment·capacity 등 | PC 3 | mfc-app | 작업자 "오늘 업무 내역" — 기간 거르기·completedAt·입고·검사·이동·실사 내 내역 | 요청(사용자 2026-11-17 "본인 금일 작업내용") | 요청함 |
 | [IV-2](mfc-inventory-service.md) | mfc-inventory | PC 3 | mfc-app | PDA 재고 확인 응답에 상품명(조회 권한은 이미 자기 센터 작업자 OK) | 요청 | 요청함 |
+| [IV-4](mfc-inventory-service.md) | mfc-inventory·mfc-fulfillment·mfc_app | PC 3 | PC 1(사용자) | LOT 바코드 GS1-128 — 짧은 LOT 번호·바코드로 LOT 찾기·피킹 LOT 확인 | 결정됨(2026-11-17 GS1-128, 피킹까지) | 요청함 — LAN LOT 나누기·라벨은 PC 1 |
 | [DD-MFC](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | backoffice(PC 2) | `DispatchFailed` payload 에 `mfcId`(필드 추가) — 센터 관리자 배차 실패 사건 | 결정됨(2026-11-16 "추천대로") | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |

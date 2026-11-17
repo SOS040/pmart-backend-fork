@@ -22,3 +22,13 @@
 
 ## AP-1 참조. 승인 번호 실제 확인 — 본사 승인 기준·한 번만 쓰기 (2026-11-17, platform PC 1)
 - 요청 본문은 `approval-service.md` **AP-1 "PC 3 이 할 것" 1~6**(이 서비스 몫: 실사 조정·재고 정정 — `CountService` 승인, `CorrectionService`). 기준(사용자 2026-11-17): 한 건 손실 10만 원 이상 또는 한 SKU 20개 이상이면 본사 승인, 그 아래는 센터 관리자. approval-service 쪽(승인 종류·`/internal/approval-ref-checks`·`/internal/approval-ref-uses`)은 구현됨(b969005d).
+
+## IV-4. LOT 바코드 — GS1-128 짧은 LOT 번호·바코드로 LOT 찾기·피킹 LOT 확인 (2026-11-17, platform PC 1 — 사용자 결정)
+- **사용자 결정(2026-11-17)**: 상품 바코드(EAN-13 `299…`, 상품마다 하나)로는 LOT 을 구분하지 못한다 → **LOT 단위 바코드**, 형식 **GS1-128 표준**(`(01)` 상품번호 GTIN-14 + `(10)` LOT 번호 + `(17)` 소비기한 YYMMDD, 기한 없는 LOT 은 `(17)` 생략), 쓰는 곳 **피킹에서 LOT 확인까지**(입고 검수·실사에도). 진행 방식 "(가) PC 3 에 요청".
+- **할 것(mfc 영역 — 제안, PC 3 가 정한다)**:
+  1. **짧은 LOT 번호**: LOT 마다 GS1 `(10)` 에 넣을 20자 이하 번호(예 `L2611170001` — 생성일 + 일련, 센터 안 유일). 새 LOT 부터 붙이고 기존 LOT 은 한 번 채운다(마이그레이션). 재고 조회·작업 상세·스냅샷 응답에 `lotNo` 를 싣는다.
+  2. **바코드로 LOT 찾기**: GS1-128 원문(또는 GTIN + LOT 번호)을 받아 SKU·LOT·기한을 돌려주는 조회(예 `GET /mfcs/{mfcId}/lot-resolutions?gs1=` — 직원·그 센터). GTIN 은 상품 바코드 `299…`(EAN-13 → 앞에 0 붙인 GTIN-14)로 SKU 를 찾는다(SKU 사본의 바코드).
+  3. **피킹 LOT 확인**(mfc-fulfillment·mfc_app): 작업 지시의 LOT 과 찍은 LOT 바코드가 다르면 PDA 가 막고, 실적 `lines[].lotId` 는 찍은 LOT 으로(지금은 지시 사본). 서버는 지금처럼 예약 LOT 이 아니면 거절(IV-07). 상품 바코드(EAN-13)만 찍는 경우를 계속 받을지 — PDA 화면 결정(제안: LOT 라벨이 붙은 상품은 LOT 바코드 필수).
+  4. mfc_app 스캔 해석: GS1-128 은 FNC1 으로 시작하는 Code128 — 스캐너가 주는 원문(`]C1` 접두·그룹 구분자 GS)을 AI 로 나눠 읽는다.
+- **PC 1 이 할 것**: LAN 시험 데이터 — LOT 이 1개인 상품 일부를 두 LOT(기한 다름)으로 나눔(2026-11-17, `deploy/lan/seed/mfc_split_lots.py`), LOT 번호가 생기면 GS1-128 LOT 라벨 인쇄 파일(`deploy/lan/seed/labels/`).
+- **상태**: 요청함(2026-11-17).

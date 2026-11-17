@@ -15,6 +15,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 3 — mfc 영역 (GitHub YOO196)
 
+- [ ] **IV-4 LOT 바코드(GS1-128)**(2026-11-17 사용자 결정 — 요청서 `docs/architecture/service-requests/mfc-inventory-service.md` IV-4): 짧은 LOT 번호(`lotNo`, 20자 이하), GS1-128 → LOT 찾기 조회, 피킹 때 찍은 LOT 이 지시 LOT 과 같은지 확인(mfc-fulfillment·mfc_app), 입고 검수·실사에도. LOT 번호가 생기면 PC 1 이 LOT 라벨 인쇄 파일을 만든다
 - [ ] **AP-1 MFC 승인 번호 실제 검증**(2026-11-17 PC 1 — 요청서 `docs/architecture/service-requests/approval-service.md` AP-1 "PC 3 이 할 것" 1~6): approval-service 쪽(종류 `MFC_STOCK_ADJUSTMENT`·`MFC_OPERATION_RESTRICTION`, `/internal/approval-ref-checks`·`/internal/approval-ref-uses`, 계약 0.3.0)은 PC 1 이 만듦. mfc-inventory·mfc-quality·mfc-capacity 에서 Q-11 기준 판정(한 건 손실 10만 원↑ 또는 한 SKU 20개↑ — 단가 pricing `/internal/prices`), 기준 이상이면 본사 승인 요청 본문 안내, 집행 전 승인 번호 사용 호출, `ApprovalRefs` RECORD_ONLY → 실제 확인 전환. main 에서 새 브랜치로
 - [ ] **EA-1 `GrantEnded` 구독**(2026-11-17 PC 1 — 요청서 `docs/architecture/service-requests/employee-auth-service.md` EA-1): mfc-capacity 가 `platform.auth.v1` 의 `GrantEnded`(역할 MFC_WORKER)도 받아 `HrLinkService` 에서 그 grant 의 작업자 센터 권한 행 `valid_to` 를 `endedAt` 으로 당기기(reason REVOKED·AFFILIATION_CHANGED, aggregateVersion 2). main 에서 새 브랜치로
 - [ ] **mfc-app 요청 2건 백엔드 반영**(2026-11-17 PC 1 전달 — 요청서 `mfc-inventory-service.md` IV-2, `mfc-fulfillment-service.md` F-7): 재고 확인 응답에 상품명(재고 조회 권한은 이미 자기 센터 작업자 OK), 오늘 업무 내역(R1 기간 거르기·R2 completedAt·R3 입고·검사·이동·실사 내 내역 한 곳·R4 합계)
