@@ -51,7 +51,7 @@
         "backchannel.logout.url": "http://employee-auth-service:8511/api/v1/internal/keycloak-logouts",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false",
-        "post.logout.redirect.uris": "http://localhost:5173/login##http://localhost:5174/login##https://192.168.0.40/login##https://d603-16/login##https://192.168.0.40:8444/login##https://d603-16:8444/login##http://localhost:5175/login##https://192.168.0.40:8445/login##https://d603-16:8445/login"
+        "post.logout.redirect.uris": "http://localhost:5173/login##http://localhost:5174/login##https://192.168.0.40/login##https://d603-16/login##https://192.168.0.40:8444/login##https://d603-16:8444/login##http://localhost:5175/login##https://192.168.0.40:8445/login##https://d603-16:8445/login##http://localhost:5176/login##https://192.168.0.40:8446/login##https://d603-16:8446/login"
       },
       "fullScopeAllowed": false,
       "protocolMappers": [

@@ -9,6 +9,7 @@
 #   deploy/lan/lan.sh publish-backoffice <dist>    임시 백오피스 빌드(npm run build:lan 결과)를 올리고 backoffice-web 만 다시 배포
 #   deploy/lan/lan.sh publish-hr-backoffice <dist> 인사팀 백오피스 빌드(web/hr-backoffice build:lan 결과)를 올리고 hr-backoffice-web 만 다시 배포(:8081)
 #   deploy/lan/lan.sh publish-mfc-backoffice <dist> MFC 백오피스 빌드(build:lan 결과)를 올리고 mfc-backoffice-web 만 다시 배포(https :8445, 2026-11-15)
+#   deploy/lan/lan.sh publish-rider-backoffice <dist> 라이더 백오피스 빌드(build:lan 결과)를 올리고 rider-backoffice-web 만 다시 배포(https :8446, 2026-11-17)
 #   deploy/lan/lan.sh rag-pull <pc> <모델...>       그 PC 의 ollama 에 모델 받기(ADR-0051, 예: qwen3-embedding:0.6b qwen3:4b)
 #   deploy/lan/lan.sh rag-warm <pc> [모델...]       ollama 에 대화 모델을 미리 올림(첫 적재 약 30초 > 호출 시간 제한 25초). ollama 재시작 뒤 한 번.
 #                                                   임베딩 모델은 서비스가 CPU 로 올린다(embedding-num-gpu 0) — 여기서 올리면 GPU 에 올라가 대화 모델을 밀어낸다
@@ -196,6 +197,14 @@ case "$cmd" in
     rm -rf "$LAN/mfc-backoffice-dist" && mkdir -p "$LAN/mfc-backoffice-dist" && cp -r "$src/." "$LAN/mfc-backoffice-dist/"
     echo "MFC 백오피스 빌드 $(find "$LAN/mfc-backoffice-dist" -type f | wc -l)개 파일 → $pc"
     "$0" deploy "$pc" mfc-backoffice-web ;;
+  publish-rider-backoffice)
+    src="${1:?dist 경로(index.html 이 있는 폴더)}"
+    [ -f "$src/index.html" ] || { echo "index.html 없음: $src" >&2; exit 1; }
+    pc="$(awk '/^[^#[:space:]]/ {cur = $1} {for (i = 1; i <= NF; i++) if ($i == "rider-backoffice-web") {print cur; exit}}' "$LAN/placement.conf")"
+    [ -n "$pc" ] || { echo "placement.conf 에 rider-backoffice-web 없음" >&2; exit 1; }
+    rm -rf "$LAN/rider-backoffice-dist" && mkdir -p "$LAN/rider-backoffice-dist" && cp -r "$src/." "$LAN/rider-backoffice-dist/"
+    echo "라이더 백오피스 빌드 $(find "$LAN/rider-backoffice-dist" -type f | wc -l)개 파일 → $pc"
+    "$0" deploy "$pc" rider-backoffice-web ;;
   config-push)
     # 설정 저장소 사본(사람이 고친 내용)을 commit·push. 메시지는 인자로(없으면 기본). 값은 출력하지 않고 바뀐 키만 보인다
     config_sync

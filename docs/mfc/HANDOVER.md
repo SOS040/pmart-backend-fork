@@ -4,6 +4,9 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 
 ## 0. 시작 전에
 
+> **2026-11-17 추가 — MFC 센터 관리자 웹(`web/mfc-backoffice`)도 PC 3**(사용자 "MFC 백오피스를 PC2에서 PC3로"). PC 2 가 11-16~17 에 메뉴 11개 화면을 만들었다. 시작: pmart-clients `docs/apps/mfc-backoffice-web.md`, 요청·공지 `docs/handoff/clients/mfc-backoffice/`. 로그인·세션 코드는 PC 1 만, 웹 공통(`web/core`·`web/ui`)은 PC 2 에 요청. LAN `https://192.168.0.40:8445`(올리기는 PC 1 `lan.sh publish-mfc-backoffice`).
+
+
 1. `docs/operations/pc-split.md`(영역·일지·handoff 규칙), `docs/operations/dev-on-other-pcs.md`(직원 토큰·시험 계정·비밀번호 파일)를 읽는다.
 2. 작업 일지는 `docs/worklog/mfc/YYYY-MM-DD.md`, 브랜치 `mfc/<주제>`. **main 에 직접 넣지 않는다 — PR 만, PC 1 이 검토 뒤 병합·배포.** 배포·`.secrets` 원본·Jib push 는 PC 1.
 3. 저장소 위치는 어디든 된다(드라이브 무관). 다만 **`pmart-backend`·`pmart-clients`·`pmart-mfc-simulation` 을 같은 부모 폴더의 형제로** 둔다 — 시뮬레이터·클라이언트 문서·도구가 `../pmart-…` 를 가정한다.

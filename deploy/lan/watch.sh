@@ -48,8 +48,8 @@ check() {
     s3)       [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:8333/")" != 000 ] ;;    # SeaweedFS S3: 응답만 오면 됨(익명은 403)
     # 백오피스 웹(Nginx) 두 개 — 2026-11-13 부터 HTTPS(80·8081 은 301 로 넘기기만, ADR-0057). 예전 점검(http 200)과 hr-backoffice-web 점검 없음(기본 actuator)은
     # 늘 실패해 10분마다 재시작했다(2026-11-15 발견). 사설 CA 로 HTTPS 200 을 본다
-    backoffice-web|hr-backoffice-web|mfc-backoffice-web)
-      [ "$(curl -s -m 5 --ssl-revoke-best-effort --cacert "$LAN/tls/pmart-lan-root-ca.crt" -o /dev/null -w '%{http_code}'         "https://$ip$(case "$c" in hr-backoffice-web) echo :8444 ;; mfc-backoffice-web) echo :8445 ;; esac)/")" = 200 ] ;;
+    backoffice-web|hr-backoffice-web|mfc-backoffice-web|rider-backoffice-web)
+      [ "$(curl -s -m 5 --ssl-revoke-best-effort --cacert "$LAN/tls/pmart-lan-root-ca.crt" -o /dev/null -w '%{http_code}'         "https://$ip$(case "$c" in hr-backoffice-web) echo :8444 ;; mfc-backoffice-web) echo :8445 ;; rider-backoffice-web) echo :8446 ;; esac)/")" = 200 ] ;;
     es-search|es-logs) curl -sf -m 5 "http://$ip:9200/_cluster/health" | grep -qE '"status":"(green|yellow)"' ;; # 단일 노드라 yellow 도 정상(ADR-0031·0038)
     kibana)   [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://$ip:5601/api/status")" = 200 ] ;;
     logstash-logs) timeout 3 bash -c "exec 3<>/dev/tcp/$ip/5044" 2>/dev/null ;;   # beats 포트는 HTTP 가 아니라(curl 은 항상 000) TCP 연결만 확인

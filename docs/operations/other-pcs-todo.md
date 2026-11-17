@@ -14,6 +14,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 > **2026-11-15 모든 PC — 로그인 코드는 PC 1 만**(`pc-split.md` §1-3): auth-service·employee-auth-service·common-security·게이트웨이 인증·Keycloak, 클라이언트 `web/core` 로그인·세션, 앱의 `features/auth`·`features/session`, `pmart_core` 토큰은 고치지 않는다 — 필요하면 요청. 이 경로를 바꾼 PR 은 PC 1 이 돌려보낸다. **예외: 라이더 로그인(rider-auth-service·rider_app 로그인)은 PC 5 그대로**.
 
 ## PC 3 — mfc 영역 (GitHub YOO196)
+- [ ] **`web/mfc-backoffice`(MFC 센터 관리자 웹) 이어받기**(2026-11-17 사용자 "MFC 백오피스를 PC2에서 PC3로"): pmart-clients `docs/apps/mfc-backoffice-web.md`·`docs/handoff/clients/mfc-backoffice/` 를 읽고 시작. PC 2 가 만든 메뉴 11개 화면이 있다. 로그인·세션 코드는 PC 1 만, 웹 공통(`web/core`·`web/ui`)은 PC 2 에 요청. 클라이언트도 포크 → PR(`mfc/<주제>` 브랜치)
 - [ ] **F-8 포장 라벨 숫자로 인계**(2026-11-17 PC 5 — 라이더 앱 요청 §5, 요청서 `mfc-fulfillment-service.md` F-8): 라벨에 짧은 숫자, 라이더 인계 승인을 숫자로도. main 에서 새 브랜치로
 
 - [ ] **IV-4 LOT 바코드(GS1-128)**(2026-11-17 사용자 결정 — 요청서 `docs/architecture/service-requests/mfc-inventory-service.md` IV-4): 짧은 LOT 번호(`lotNo`, 20자 이하), GS1-128 → LOT 찾기 조회, 피킹 때 찍은 LOT 이 지시 LOT 과 같은지 확인(mfc-fulfillment·mfc_app), 입고 검수·실사에도. LOT 번호가 생기면 PC 1 이 LOT 라벨 인쇄 파일을 만든다
@@ -48,6 +49,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [ ] MFC 시뮬레이터 요청 R-13(상온 대기 칸 — 사용자 결정 대기)·R-15/16(칸·여러 SKU 재고 조회)·R-17(작업 실적 목록)·R-19(인계 끝난 출고 `deliveryId` 비어 있음) — 시뮬레이터 저장소 `docs/backend-requests.md`(GitHub 판이 11-10 이라 아직 안 보이면 PC 1 에 요청)
 
 ## PC 5 — delivery 영역
+- [ ] **`web/rider-backoffice`(라이더 백오피스 — 관제 포함) 맡기**(2026-11-17 사용자 "라이더 백오피스는 PC5로"): PC 1 이 뼈대·로그인·LAN 서빙(8446)을 만들었다. 계획·남은 결정 `docs/delivery/rider-backoffice-plan.md`, 앱 문서 pmart-clients `docs/apps/rider-backoffice-web.md`. 관제는 직원용 라이더 위치 API(delivery-tracking)부터. 로그인·세션 코드는 PC 1 만, 웹 공통은 PC 2 에 요청
 - [x] **고객 반품 회수 배차(CL-1 배송 쪽, DD-3)**(2026-11-17 PC 5 — 브랜치 `delivery/claim-return-pickup`, 사용자 결정 바로 배차·일반 표·실패마다 알림·고객 사정 실패도 지급): dispatch 0.5.0 V11·execution 0.10.0 V11·tracking, 새 사건 `ReturnPickupFailed`. 라이더 앱 화면은 요청 handoff(`docs/handoff/clients/rider-app/2026-11-17-request-claim-return-pickup.md`)
 - [x] **TR-3 고객·직원 ETA 조회·실시간 구독**(2026-11-17 PC 5 구현 — 브랜치 `delivery/tr-3-eta` PR)(2026-11-17 사용자 "PC 5에 요청" — 요청서 `docs/architecture/service-requests/delivery-tracking-service.md` TR-3): `GET /deliveries/{id}/eta`·`/stream`(SSE) 구현 — 고객 본인 배송 dropEta 만, 직원은 execution `Access` 범위, ETA 계산 꺼짐이면 ETA_PENDING. 고객앱은 이미 부른다. **main 에서 새 브랜치로**(예 `delivery/tr-3-eta-api`)
 - [x] **PR #71 다시 맞추기**(2026-11-16 PC 1 — 2026-11-17 V11·0.13.0 으로 맞춰 병합·배포 09115c80): #68(PC 2 CS 접수)과 case V10·0.12.0·문의 코드 4곳이 겹침 → main 위로 rebase, `V11__rider_inquiry.sql`·case 0.13.0, 허용 목록 다시 생성. PR 댓글 참고. case-service 는 PC 2 검토도
@@ -102,7 +104,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 - **2026-11-16 인수인계 예정**(사용자 2026-11-15) — 그 전에 사용자가 브라우저·mfc_app 등 화면 확인을 마친다. 경계 확정(2026-11-15 사용자 "너의 추천대로"): backoffice-bff·case-service, 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(로그인·세션 코드는 PC 1 만). audit-service 는 PC 1 에 남는다(`pc-split.md` §1-1). **인수인계 문서 `docs/backoffice/HANDOVER.md`** — 시작하면 먼저 읽는다.
 - 시작할 때: 공통 절 + 백엔드·클라이언트 두 저장소 포크(저장소마다 PR 따로).
-- **`web/mfc-backoffice` 도 PC 2**(사용자 2026-11-16). 화면이 쓰는 MFC API(MB-1~3)는 PC 3 — 필요하면 PC 3 에 요청.
+- ~~`web/mfc-backoffice` 도 PC 2~~ — **2026-11-17 PC 3 으로 옮김**(사용자 "MFC 백오피스를 PC2에서 PC3로"). PC 2 에 남는 웹은 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui` — PC 3·5 가 웹 공통을 고칠 일은 PC 2 가 받는다.
 - 11-16 오전 마지막 갱신: case 0.4.1(`InquiryAnswered` 발행·사건 refs requestId), 백오피스 라이더·배송 화면 빌드 LAN, 리뷰·알림(PC 1 영역 — 백오피스 화면 없음). `HANDOVER.md` 첫머리 참고.
 - [ ] **MFC 센터 관리자 웹 — 본사 승인 번호·업무 내역·주문번호**(2026-11-17 PC 3 공지 `docs/handoff/clients/mfc-backoffice/2026-11-17-notice-mfc-approval-ref-and-new-fields.md`): 실사 승인·정정·폐기·격리 해제·운영 제한 해제가 기준 이상이면 422 APPROVAL_REQUIRED → details `approvalRequest`(JSON)로 승인 요청 → 승인 번호로 다시(정정은 같은 Idempotency-Key). 업무 내역(선택), orderNumber·handoverCode 표시. PR #116·#120·#123 병합·배포 뒤
 - [ ] **HR-2 인사팀 앱 권한 요청 화면**(2026-11-17 PC 1 — 백엔드 hr-service 0.6.0·employee-auth-service 0.11.0 끝, LAN 배포 전): 역할 목록 `centerScoped` 대로 센터 칸 필수/숨김, 한 요청에 역할 한 번, 이미 가진 권한·기간 표시, 새 거절 400(`…[i].centers`·`…[i].role`)·409 `GRANT_ALREADY_ACTIVE`·503 처리, 기간 연장 없음(결정 대기) — handoff `docs/handoff/clients/hr-backoffice/2026-11-17-request-grant-request-validation.md`

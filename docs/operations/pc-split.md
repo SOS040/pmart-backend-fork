@@ -22,7 +22,7 @@
 | 저장소 | PC 1 만 고치는 경로 |
 |---|---|
 | pmart-backend | `services/auth-service`(고객 Google 로그인·비회원 세션), `services/employee-auth-service`(직원 로그인·세션·refresh 쿠키·CSRF), `libraries/common-security`, 게이트웨이 인증·발급자 표·차단(`platform-services/api-gateway` 인증 부분, pmart-config `application-lan.yml` 발급자 표), Keycloak(`deploy/lan/keycloak/`·Realm·클라이언트), 각 앱의 employee-auth 앱 설정(pmart-config `employee-auth-service*.yml` `apps`), 로그인 관련 계약(`auth-service`·`employee-auth-service` yaml) |
-| pmart-clients | `web/core` 의 로그인·세션·토큰(`employeeAuth.ts`·`session.ts`·`sessionPersistence.ts`·`tokens.ts`·`pmartFetch.ts` 의 갱신 부분), 웹 앱의 `src/features/session`(backoffice·hr-backoffice·mfc-backoffice), `apps/customer_app/lib/features/auth`(Google), `apps/mfc_app/lib/features/auth`(직원 로그인), `packages/pmart_core` 의 토큰·인터셉터(`auth_tokens.dart`·`interceptors.dart`) |
+| pmart-clients | `web/core` 의 로그인·세션·토큰(`employeeAuth.ts`·`session.ts`·`sessionPersistence.ts`·`tokens.ts`·`pmartFetch.ts` 의 갱신 부분), 웹 앱의 `src/features/session`(backoffice·hr-backoffice·mfc-backoffice·rider-backoffice), `apps/customer_app/lib/features/auth`(Google), `apps/mfc_app/lib/features/auth`(직원 로그인), `packages/pmart_core` 의 토큰·인터셉터(`auth_tokens.dart`·`interceptors.dart`) |
 
 - **예외 — 라이더 로그인은 PC 5 그대로**(사용자 2026-11-15 "라이더 auth서비스는 따로 떼어내도 좋아" → 1번): `services/rider-auth-service`·그 계약, 클라이언트 `apps/rider_app` 로그인은 delivery 영역(PC 5)이 고친다. 단 공용 부분(`libraries/common-security`, 게이트웨이 발급자 표, `pmart_core` 토큰)은 위 규칙대로 PC 1.
 - 업무 API 를 부를 때 토큰을 **쓰는** 코드(헤더 붙이기, 401 처리 화면)는 각 앱 담당이 그대로 쓴다 — 바꾸는 것만 PC 1.
@@ -60,8 +60,9 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 | **rider-app** | `apps/rider_app` | **PC 5** — 백엔드 delivery 영역과 같은 PC |
 | **backoffice** | `web/backoffice` | PC 2 가 시작하기 전까지 PC 1 |
 | **hr-backoffice** | `web/hr-backoffice` | 같음(PC 2 로 함께 — 2026-11-15 경계 확정) |
-| **mfc-backoffice**(2026-11-15 새 앱 — 사용자 "백오피스 mfc는 떼어내고") | `web/mfc-backoffice`(제안) | **PC 2**(사용자 2026-11-16 "web/mfc-backoffice PC2에서 할거고" — 백오피스 웹 셋을 한 PC 가). 화면이 쓰는 MFC API(MB-1~3, `service-requests/mfc-backoffice-staff-apis.md`)는 백엔드 mfc 영역 **PC 3** 그대로. 요청서 `docs/handoff/clients/mfc-backoffice/2026-11-15-request-mfc-backoffice.md` |
-| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(두 웹앱 공통 — 한 주인) | 같음 |
+| **mfc-backoffice**(2026-11-15 새 앱 — 사용자 "백오피스 mfc는 떼어내고") | `web/mfc-backoffice` | **PC 3**(2026-11-17 사용자 "MFC 백오피스를 PC2에서 PC3로" — 화면과 화면이 쓰는 MFC API(MB-1~3)가 같은 PC). 2026-11-16~17 은 PC 2 가 메뉴 11개 화면을 만들었다. 요청서 `docs/handoff/clients/mfc-backoffice/` |
+| **rider-backoffice**(2026-11-17 새 앱 — 사용자 "라이더 백오피스 새로 만들어야 할 것 같아서, 관제까지") | `web/rider-backoffice` | **PC 5**(사용자 2026-11-17 "라이더 백오피스는 PC5로" — 화면과 배송·라이더 API 가 같은 PC). 뼈대·로그인은 PC 1(§1-3). LAN `https://192.168.0.40:8446`. 계획 `docs/delivery/rider-backoffice-plan.md` |
+| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(웹앱 공통 — 한 주인) | **PC 2** 그대로(2026-11-17 — 네 웹 앱이 세 PC 로 나뉘어도 공통은 한 주인. PC 3·5 는 고칠 일이 생기면 PC 2 에 요청) |
 
 - 클라이언트 정본: pmart-clients `docs/operations/pc-split.md` §1, `docs/handoff/2026-11-13-backend-client-area-pcs-decided.md`.
 
