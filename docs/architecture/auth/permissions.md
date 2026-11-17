@@ -195,7 +195,7 @@
 | 집기·닫기·다시 열기·넘기기 | `OPERATOR_ADMIN`, 배송 사건은 `RIDER_OPS`. 남에게 배정은 `OPERATOR_ADMIN` 만 |
 | 메모 | 보기: 사건을 볼 수 있는 사람. 쓰기: `OPERATOR_ADMIN`·`RIDER_OPS`·`CS_AGENT`. 가리기(삭제): `OPERATOR_ADMIN` + 사유 |
 | 후속 처리(의무) | 만들기: 사건을 다룰 수 있는 사람. 완료·시도: `OPERATOR_ADMIN` 또는 담당 팀 역할. 면제·실패: `OPERATOR_ADMIN` |
-| 교대 인수인계 | 작성: 본인(부재 시 `OPERATOR_ADMIN`). 수락: 후임 본인만. 취소: 전임·`OPERATOR_ADMIN` |
+| 교대 인수인계 | 작성: 본인(부재 시 `OPERATOR_ADMIN`) — DELIVERY_OPS 는 `RIDER_OPS`·`OPERATOR_ADMIN`, ORDER_OPS 는 `OPERATOR_ADMIN` 만(0.13.1, #74). 수락: 후임 본인(같은 역할 조건, 없으면 403·인계서 그대로). 취소: 전임·`OPERATOR_ADMIN` |
 | 고객 문의 | 고객: 작성·자기 문의 보기(상담원이 남긴 문의는 안 보임). 직원 보기: `CS_AGENT`·`OPERATOR_ADMIN`. **답변: `CS_AGENT` 만** |
 | CS 접수(전화·채팅·메일 기록) | `CS_AGENT`·`OPERATOR_ADMIN`. 기록만 — 취소·환불 안 함 |
 | 라이더 컴플레인 | 기록: `CS_AGENT`·`OPERATOR_ADMIN`. 보기: + `RIDER_OPS` |
@@ -239,7 +239,7 @@
 7. ✅ hr-service: `HR_ADMIN` 이 자기 자신을 정지·정지 해제·퇴사·소속 변경하는 것을 막음(403, 권한 요청과 같은 원칙).
 8. mfc-inbound `GET /initial-stock-loads` 는 센터 확인이 없다(직원 누구나). `GET /supply-requests`·`/move-orders` 는 사용자 종류를 보지 않는다(센터만).
 9. 차단 목록은 게이트웨이만 본다 — 서비스를 직접 부르면(LAN 안) 정지된 토큰도 만료 전까지 통한다.
-10. 교대 인수인계·운영자 RAG·배송 권역 작성은 직원 누구나(역할 결정 없음).
+10. 운영자 RAG·배송 권역 작성은 직원 누구나(역할 결정 없음). ✅ 교대 인수인계는 역할을 정함(case 0.13.1, #74 — 2026-11-17).
 
 ### 계약 표시만 틀린 것 (코드가 맞음 — 계약 고치기)
 - 코드가 역할을 요구하는데 계약은 "OPERATOR"만: audit 열람 기록(`OPERATOR_ADMIN`), order 직원 조회(3개 역할), 이행 확인 필요(센터), product(MD).
@@ -281,7 +281,7 @@
 |---|---|
 | **PC 3 (MFC)** | 재고 정정(`stock-corrections`)·위치 만들기/고치기/없애기·상품 취급 변경·입고 검수/적치에 역할 검사 없음(그 센터 직원 누구나). 초기 재고 조회(`GET /initial-stock-loads`)에 센터 확인 없음. 공급 요청·이동 지시 조회가 사용자 종류를 안 봄. 포장 인계 결과(`handover-resolution`)는 고객 토큰도 통과 |
 | **PC 5 (배송)** | 배송 권역 버전 조회·작성에 직원·역할 확인 없음. 배송 시간대(`/slots`)·배송 조건·주소 변환이 사용자 종류를 안 봄(라이더·직원도 통과 — 영향 작음). execution `CLAUDE.md` 30줄 실패 확정 역할에 `RIDER_OPS` 빠짐(코드는 포함) |
-| **PC 2 (case)** | 교대 인수인계를 직원이면 누구나 씀(역할 결정 없음) |
+| **PC 2 (case)** | ✅ 해결(2026-11-17, case 0.13.1 #74): 교대 인수인계 — 지원센터 팀 `RIDER_OPS`·관리자, 관리자 팀 관리자만 |
 | **PC 4 (RAG)** | 운영자 RAG 를 직원이면 누구나 씀(역할 결정 없음) |
 
 요청은 아직 보내지 않았다 — 보낼 때는 `docs/architecture/service-requests/<받는 서비스>.md` + 받는 PC 의 `docs/operations/other-pcs-todo.md` 한 줄.
