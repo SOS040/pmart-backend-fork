@@ -44,6 +44,7 @@ public class EmployeeAdminService {
 
   private final EmployeeAuthStore store;
   private final SubjectBlocks blocks;
+  private final GrantEnds grantEnds;
   private final EmployeeAuthProperties props;
   private final TransactionTemplate tx;
   private final EmployeeAccess access;
@@ -91,6 +92,7 @@ public class EmployeeAdminService {
   public EmployeeAdminService(
       EmployeeAuthStore store,
       SubjectBlocks blocks,
+      GrantEnds grantEnds,
       EmployeeAuthProperties props,
       TransactionTemplate tx,
       EmployeeAccess access,
@@ -102,6 +104,7 @@ public class EmployeeAdminService {
     this.store = store;
     this.access = access;
     this.blocks = blocks;
+    this.grantEnds = grantEnds;
     this.props = props;
     this.tx = tx;
     this.clock = clock;
@@ -132,8 +135,9 @@ public class EmployeeAdminService {
   /**
    * 권한 회수(BO-01, 2026-11-15 사용자 결정 — <b>승인 없이 즉시</b>, 사유 필수·기록). OPERATOR_ADMIN·HR_ADMIN. 자기 권한은 못
    * 뺀다, OPERATOR_ADMIN·HR_ADMIN 역할 grant 는 OPERATOR_ADMIN 만. 효력 끝 = 지금, 그 직원의 모든 세션을 끊고
-   * SubjectBlocked(이미 나간 access token 도 바로 401) — 다시 로그인하면 남은 권한으로 토큰이 나온다. 이미 회수한 grant 는 지금
-   * 상태(멱등), 이미 기한이 끝난 grant 는 409. 계정에 직접 둔 역할(관리 경로 값)은 여기서 다루지 않는다 — 관리 경로 PUT(OPERATOR_ADMIN).
+   * SubjectBlocked(이미 나간 access token 도 바로 401) — 다시 로그인하면 남은 권한으로 토큰이 나온다. 같은 트랜잭션에서 {@code
+   * GrantEnded}(REVOKED, EA-1 — 사유 글은 싣지 않음). 이미 회수한 grant 는 지금 상태(멱등), 이미 기한이 끝난 grant 는 409. 계정에
+   * 직접 둔 역할(관리 경로 값)은 여기서 다루지 않는다 — 관리 경로 PUT(OPERATOR_ADMIN).
    */
   public View revokeGrant(String operatorId, String grantId, String reason, String sourceSystem) {
     PmartPrincipal p = requireReaderPrincipal();
@@ -169,12 +173,19 @@ public class EmployeeAdminService {
                   store.revokeAllSessions(operatorId, "GRANT_REVOKED", now);
                   long version =
                       store.account(operatorId, false).map(AccountRow::version).orElse(0L);
-                  blocks.blockAll(
+                  EventEnvelope.Actor actor =
+                      new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject());
+                  blocks.blockAll(operatorId, version, now, "SESSIONS_REVOKED", actor);
+                  // EA-1: 기간 전 종료 사건(사유 글은 DB 에만) — mfc-capacity 작업자 권한 기간
+                  grantEnds.ended(
+                      grantId,
+                      g.approvalId(),
                       operatorId,
-                      version,
+                      g.role(),
+                      g.centers(),
                       now,
-                      "SESSIONS_REVOKED",
-                      new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()));
+                      GrantEnds.REVOKED,
+                      actor);
                   return true;
                 }));
     if (revoked) {

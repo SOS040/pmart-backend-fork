@@ -605,24 +605,49 @@ public class EmployeeAuthStore {
   }
 
   /**
-   * 소속 변경으로 이전 센터 grant 끝내기(2026-11-16) — 그 센터가 들어 있고 아직 회수·만료 전인 grant 의 효력 끝을 {@code until} 로(이미
-   * 그보다 이르면 그대로). 끝낸 grant ID 들.
+   * 소속 변경으로 끝낸 grant 하나(EA-1 GrantEnded 용).
+   *
+   * @param validUntil 바뀐 뒤 효력 끝
+   * @param shortened 효력 끝이 실제로 당겨졌나(원래 끝이 없거나 더 늦었음) — 원래 끝이 더 이르면 회수 기록만 붙고 끝은 그대로
    */
-  public List<String> endGrantsForCenter(
+  public record EndedGrant(
+      String grantId,
+      String role,
+      List<String> centers,
+      String approvalId,
+      Instant validUntil,
+      boolean shortened) {}
+
+  /**
+   * 소속 변경으로 이전 센터 grant 끝내기(2026-11-16) — 그 센터가 들어 있고 아직 회수·만료 전인 grant 의 효력 끝을 {@code until} 로(이미
+   * 그보다 이르면 그대로). 끝낸 grant 들(원래 끝과 비교한 {@code shortened} 포함 — 2026-11-17 EA-1).
+   */
+  public List<EndedGrant> endGrantsForCenter(
       String operatorId, String centerId, Instant until, String reason, Instant at) {
-    return jdbc.queryForList(
-        "UPDATE employee_grant SET valid_until = LEAST(COALESCE(valid_until, ?), ?), revoked_at = ?,"
-            + " revoked_by = 'SYSTEM:hr-service', revoke_reason = ?, revoke_source = 'hr-service'"
+    return jdbc.query(
+        "WITH t AS (SELECT grant_id, valid_until AS old_until FROM employee_grant"
             + " WHERE operator_id = ? AND ? = ANY(centers) AND revoked_at IS NULL"
-            + " AND (valid_until IS NULL OR valid_until > ?) RETURNING grant_id",
-        String.class,
+            + " AND (valid_until IS NULL OR valid_until > ?) FOR UPDATE)"
+            + " UPDATE employee_grant g SET valid_until = LEAST(COALESCE(g.valid_until, ?), ?),"
+            + " revoked_at = ?, revoked_by = 'SYSTEM:hr-service', revoke_reason = ?,"
+            + " revoke_source = 'hr-service' FROM t WHERE g.grant_id = t.grant_id"
+            + " RETURNING g.grant_id, g.role, g.centers, g.approval_id, g.valid_until,"
+            + " (t.old_until IS NULL OR g.valid_until < t.old_until) AS shortened",
+        (rs, i) ->
+            new EndedGrant(
+                rs.getString("grant_id"),
+                rs.getString("role"),
+                list(rs.getArray("centers")),
+                rs.getString("approval_id"),
+                instant(rs, "valid_until"),
+                rs.getBoolean("shortened")),
+        operatorId,
+        centerId,
+        Timestamp.from(at),
         Timestamp.from(until),
         Timestamp.from(until),
         Timestamp.from(at),
-        reason,
-        operatorId,
-        centerId,
-        Timestamp.from(at));
+        reason);
   }
 
   /** 직원 사건 버전만 올린다(상태는 그대로 — 소속 변경 등). */

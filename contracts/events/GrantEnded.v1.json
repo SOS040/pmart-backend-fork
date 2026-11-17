@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/GrantEnded.v1.json",
+  "title": "GrantEnded",
+  "description": "권한(grant)이 승인한 기간보다 일찍 끝남(EA-1, 2026-11-17). 발행 employee-auth — 회수(REVOKED, 즉시)·소속 변경으로 이전 센터 권한 종료(AFFILIATION_CHANGED, 다음 날 00:00 Asia/Seoul). 기간대로 끝나는 것(GrantApplied.effective.to)은 내지 않는다. grant 하나에 한 번(aggregateVersion 2 — GrantApplied 가 1). 회수 사유 글은 싣지 않는다(employee-auth DB 에만). 구독 mfc-capacity-service(예정 — 역할 MFC_WORKER 의 그 센터 작업자 권한 기간 끝을 endedAt 으로 당김). 토픽 platform.auth.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "GrantEnded"
+        },
+        "aggregateType": {
+          "const": "Grant"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "grantId",
+            "approvalRef",
+            "operatorId",
+            "roles",
+            "centerScope",
+            "endedAt",
+            "reason"
+          ],
+          "properties": {
+            "grantId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "approvalRef": {
+              "$ref": "_defs.v1.json#/$defs/ApprovalRef",
+              "description": "이 grant 를 준 승인(GrantApplied.approvalRef 와 같은 승인)"
+            },
+            "operatorId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "centerScope": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/CenterId"
+              }
+            },
+            "endedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "이 시각부터 무효(반열림 끝 — GrantApplied.effective.to 를 이 값으로 바꾼 것과 같다). 회수는 회수 시각, 소속 변경은 previousCenterAccessUntil"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "REVOKED",
+                "AFFILIATION_CHANGED"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

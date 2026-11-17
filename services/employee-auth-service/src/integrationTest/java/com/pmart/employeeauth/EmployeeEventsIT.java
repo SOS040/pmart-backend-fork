@@ -223,6 +223,16 @@ class EmployeeEventsIT extends PostgresKafkaContainerSupport {
     grant("AP-" + op + ":2", op, "MFC_WORKER", "MFC-IT-09");
 
     Instant until = today.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+    // 같은 센터지만 원래 끝이 until 보다 이른 grant(지금과 until 사이) — 끝은 그대로
+    jdbc.update(
+        "INSERT INTO employee_grant (grant_id, operator_id, role, centers, valid_from, valid_until,"
+            + " approval_id, line_id, approver_id, reason, applied_at)"
+            + " VALUES (?, ?, 'MFC_WORKER', ARRAY['MFC-IT-01']::varchar[], now() - interval '1 day',"
+            + " now() + (?::timestamptz - now()) / 2, ?, '3', 'OP-APPROVER', '시험', now())",
+        "AP-" + op + ":3",
+        op,
+        java.sql.Timestamp.from(until),
+        "AP-" + op);
     send(
         "EmployeeAffiliationChanged",
         op,
@@ -257,5 +267,40 @@ class EmployeeEventsIT extends PostgresKafkaContainerSupport {
         .as("다른 센터 권한은 그대로")
         .isNull();
     assertThat(store.account(op, false).orElseThrow().hrVersion()).isEqualTo(2L);
+
+    // EA-1: 효력 끝이 당겨진 grant(:1)만 GrantEnded(AFFILIATION_CHANGED, endedAt = until). 원래 끝이 더 이른 :3 은
+    // 회수 기록만 붙고 사건 없음, 다른 센터 :2 도 없음.
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT revoked_by FROM employee_grant WHERE grant_id = ?",
+                String.class,
+                "AP-" + op + ":3"))
+        .isEqualTo("SYSTEM:hr-service");
+    assertThat(
+            jdbc.queryForList(
+                "SELECT aggregateid FROM outbox_event WHERE type = 'GrantEnded' AND aggregateid LIKE ?",
+                String.class,
+                "AP-" + op + ":%"))
+        .containsExactly("AP-" + op + ":1");
+    tools.jackson.databind.JsonNode envelope =
+        tools.jackson.databind.json.JsonMapper.builder()
+            .build()
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE topic = 'platform.auth.v1'"
+                        + " AND type = 'GrantEnded' AND aggregateid = ?",
+                    String.class,
+                    "AP-" + op + ":1"));
+    assertThat(envelope.path("aggregateVersion").asLong()).isEqualTo(2L);
+    assertThat(envelope.path("actor").path("id").asString()).isEqualTo("hr-service");
+    tools.jackson.databind.JsonNode ev = envelope.path("payload");
+    assertThat(ev.path("grantId").asString()).isEqualTo("AP-" + op + ":1");
+    assertThat(ev.path("operatorId").asString()).isEqualTo(op);
+    assertThat(ev.path("approvalRef").path("approvalId").asString()).isEqualTo("AP-" + op);
+    assertThat(ev.path("roles").toString()).isEqualTo("[\"MFC_WORKER\"]");
+    assertThat(ev.path("centerScope").toString()).isEqualTo("[\"MFC-IT-01\"]");
+    assertThat(Instant.parse(ev.path("endedAt").asString())).isEqualTo(until);
+    assertThat(ev.path("reason").asString()).isEqualTo("AFFILIATION_CHANGED");
+    assertThat(ev.toString()).as("사유 글은 DB 에만").doesNotContain("소속 변경");
   }
 }

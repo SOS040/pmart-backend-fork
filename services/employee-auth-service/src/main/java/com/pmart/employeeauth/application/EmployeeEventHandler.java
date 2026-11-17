@@ -26,7 +26,8 @@ import tools.jackson.databind.JsonNode;
  *   <li>EmployeeReinstated: ACTIVE(권한은 그대로 — 끝난 권한은 다시 요청).
  *   <li>EmployeeAffiliationChanged(2026-11-16 BO-01): 이전 소속이 센터면 그 센터가 들어 있는 grant 를 {@code
  *       previousCenterAccessUntil}(바뀐 날 다음 날 00:00)에 끝낸다 — 그 시각 뒤 갱신부터 토큰에서 빠진다. 새 센터 권한은 주지 않는다.
- *       계정에 직접 둔 센터(관리 경로 값)는 건드리지 않는다.
+ *       계정에 직접 둔 센터(관리 경로 값)는 건드리지 않는다. 효력 끝이 당겨진 grant 마다 {@code GrantEnded}(AFFILIATION_CHANGED,
+ *       EA-1 — mfc-capacity 작업자 권한 기간).
  *   <li>사건 버전(aggregateVersion)이 이미 반영한 것보다 작거나 같으면 버린다(늦게 온 옛 사건). 등록 전에 온 상태 사건은 버린다 — hr-service
  *       는 발급이 끝난 뒤에만 상태 사건을 낸다.
  * </ul>
@@ -45,11 +46,14 @@ public class EmployeeEventHandler {
 
   private final EmployeeAuthStore store;
   private final SubjectBlocks blocks;
+  private final GrantEnds grantEnds;
   private final Clock clock;
 
-  public EmployeeEventHandler(EmployeeAuthStore store, SubjectBlocks blocks, Clock clock) {
+  public EmployeeEventHandler(
+      EmployeeAuthStore store, SubjectBlocks blocks, GrantEnds grantEnds, Clock clock) {
     this.store = store;
     this.blocks = blocks;
+    this.grantEnds = grantEnds;
     this.clock = clock;
   }
 
@@ -114,13 +118,29 @@ public class EmployeeEventHandler {
           return;
         }
         String center = prev.path("code").asText();
-        List<String> ended =
+        List<EmployeeAuthStore.EndedGrant> ended =
             store.endGrantsForCenter(
                 operatorId,
                 center,
                 Instant.parse(until),
                 "소속 변경 — 이전 센터 " + center + " 권한 자동 종료",
                 now);
+        // EA-1: 효력 끝이 실제로 당겨진 grant 만 GrantEnded(같은 inbox 트랜잭션 — outbox)
+        EventEnvelope.Actor hr =
+            new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "hr-service");
+        for (EmployeeAuthStore.EndedGrant g : ended) {
+          if (g.shortened()) {
+            grantEnds.ended(
+                g.grantId(),
+                g.approvalId(),
+                operatorId,
+                g.role(),
+                g.centers(),
+                g.validUntil(),
+                GrantEnds.AFFILIATION_CHANGED,
+                hr);
+          }
+        }
         log.info(
             "소속 변경: operatorId={} 이전 센터 {} 권한 {}개를 {} 에 끝냄",
             operatorId,

@@ -5,7 +5,7 @@
 
 ## 계약
 - REST: `contracts/openapi/employee-auth-service.yaml` → `openApiGenerate` 가 `com.pmart.employeeauth.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
-- 이벤트(2026-11-13 5-3): **구독** `platform.employee.v1`(hr-service `EmployeeRegistered·Suspended·Reinstated·Left` — `EmployeeEventHandler`, 바인딩 `employeeEvents-in-0`), **발행** `SubjectBlocked`(platform.subject-block.v1 — 직원 정지·퇴사·관리 경로 정지, issuer = 이 서비스). **구독** `platform.approval.v1`(2026-11-13 5-4 — `ApprovalDecided` type GRANT·정본 이 서비스만, `GrantApprovalHandler`, 바인딩 `approvalEvents-in-0`), **발행** `GrantApplied`(platform.auth.v1, 승인 행마다)·`ApplicationReceiptRecorded`(platform.approval-receipt.v1, 승인마다 — approval 실행 축).
+- 이벤트(2026-11-13 5-3): **구독** `platform.employee.v1`(hr-service `EmployeeRegistered·Suspended·Reinstated·Left` — `EmployeeEventHandler`, 바인딩 `employeeEvents-in-0`), **발행** `SubjectBlocked`(platform.subject-block.v1 — 직원 정지·퇴사·관리 경로 정지, issuer = 이 서비스). **구독** `platform.approval.v1`(2026-11-13 5-4 — `ApprovalDecided` type GRANT·정본 이 서비스만, `GrantApprovalHandler`, 바인딩 `approvalEvents-in-0`), **발행** `GrantApplied`(platform.auth.v1, 승인 행마다)·`GrantEnded`(platform.auth.v1, 2026-11-17 EA-1 — grant 가 기간 전에 끝날 때 grant 마다: 회수 REVOKED·소속 변경 AFFILIATION_CHANGED, `application/GrantEnds`, 사유 글 없음)·`ApplicationReceiptRecorded`(platform.approval-receipt.v1, 승인마다 — approval 실행 축).
 
 ## 패키지
 `com.pmart.employeeauth.{api, application, infrastructure}`. Controller 에 업무 규칙 금지.

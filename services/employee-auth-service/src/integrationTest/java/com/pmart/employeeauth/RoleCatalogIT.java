@@ -396,5 +396,34 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
                 op))
         .as("회수마다 이미 나간 토큰 차단")
         .isEqualTo(2);
+
+    // EA-1: 회수한 grant 마다 GrantEnded 한 번(다시 보낸 회수는 사건 없음), 사유 글은 싣지 않는다
+    assertThat(
+            jdbc.queryForList(
+                "SELECT aggregateid FROM outbox_event WHERE topic = 'platform.auth.v1'"
+                    + " AND type = 'GrantEnded' AND aggregateid IN (?, ?) ORDER BY aggregateid",
+                String.class,
+                cs,
+                hrRole))
+        .containsExactly(cs, hrRole);
+    JsonNode envelope =
+        mapper.readTree(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'GrantEnded' AND aggregateid = ?",
+                String.class,
+                cs));
+    assertThat(envelope.path("aggregateType").asText()).isEqualTo("Grant");
+    assertThat(envelope.path("aggregateVersion").asLong()).as("GrantApplied 다음").isEqualTo(2L);
+    assertThat(envelope.path("actor").path("type").asText()).isEqualTo("OPERATOR");
+    JsonNode ev = envelope.path("payload");
+    assertThat(ev.path("grantId").asText()).isEqualTo(cs);
+    assertThat(ev.path("operatorId").asText()).isEqualTo(op);
+    assertThat(ev.path("approvalRef").path("approvalId").asText()).isEqualTo("AP-" + op);
+    assertThat(ev.path("roles").toString()).isEqualTo("[\"CS_AGENT\"]");
+    assertThat(ev.path("centerScope").isArray()).isTrue();
+    assertThat(ev.path("reason").asText()).isEqualTo("REVOKED");
+    assertThat(java.time.Instant.parse(ev.path("endedAt").asText()))
+        .isEqualTo(java.time.Instant.parse(revoked.path("validUntil").asText()));
+    assertThat(ev.toString()).as("회수 사유 글은 DB 에만").doesNotContain("부서 이동");
   }
 }

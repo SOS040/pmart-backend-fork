@@ -1,6 +1,6 @@
 # employee-auth-service 에 요청
 
-## EA-1 권한 조기 회수·종료 사건 (2026-11-13)
+## EA-1 권한 조기 회수·종료 사건 (2026-11-13, 2026-11-17 구현 — PC 1)
 
 - **요청한 곳**: mfc-capacity(mfc 영역, PC 3) — 작업자 명단 ↔ 권한 연결(사용자 2026-11-13 "센터 관리자는 작업자와 별개").
 - **필요한 것**: 직원 권한(grant)이 **기간 전에 끝날 때**(BO-01 권한 변경·회수, 센터 이동 때 앞 센터 권한을 일찍 끝냄 등) 그 사실을 알리는 사건 — 예 `GrantRevoked`(또는 `GrantEnded`) `{grantId, operatorId, roles, centerScope, endedAt, reason}`, 토픽 `platform.auth.v1`(`GrantApplied` 와 같은 곳). 기간대로 끝나는 것(`GrantApplied.effective.to`)은 사건이 없어도 된다 — mfc-capacity 가 기간을 저장해 맞춘다.
@@ -8,6 +8,11 @@
 - **요청한 쪽에서 바꿀 것**: 사건이 생기면 `HrLinkService` 가 그 권한 행의 `valid_to` 를 `endedAt` 로 당기고 맞춘다(구독 필터에 사건 이름 하나 추가).
 - **사용자 결정 필요**: 없음(회수 자체는 BO-01 확정 정책 — 백오피스 영역에서 구현될 때 같이).
 - 근거: `services/mfc-capacity-service/CLAUDE.md`(작업자 명단 ↔ 인사·권한 연결), `docs/architecture/auth/employee-auth-structure.md`(센터 이동 = 소속만 바꾸고 권한은 A 종료·B 시작을 따로 요청).
+- **만든 것(2026-11-17, 사용자 "바로 할수있는거 다해줘")**: `GrantEnded` v1(`contracts/events/GrantEnded.v1.json`, 토픽 `platform.auth.v1`, aggregate `Grant`·aggregateId = grantId·aggregateVersion 2 — `GrantApplied` 가 1) `{grantId, approvalRef{approvalId}, operatorId, roles[], centerScope[], endedAt, reason}`. grant 마다 한 번, 상태 변경과 같은 트랜잭션(outbox).
+  - `REVOKED` — 회수 `POST /employee-auth/employees/{id}/grant-revocations`(`EmployeeAdminService.revokeGrant`), endedAt = 회수 시각, actor = 회수한 운영자. 이미 회수한 것을 다시 보내면 사건 없음.
+  - `AFFILIATION_CHANGED` — `EmployeeAffiliationChanged` 로 이전 센터 grant 를 끝낼 때(`EmployeeEventHandler`), endedAt = `previousCenterAccessUntil`(다음 날 00:00 Asia/Seoul), actor = SYSTEM hr-service. 원래 끝이 그보다 이르면(당겨지지 않음) 사건 없음.
+  - 내지 않는 것: 기간대로 끝남, 퇴사·정지(grant 를 바꾸지 않는다 — mfc-capacity 는 `EmployeeLeft`·`EmployeeSuspended` 를 이미 구독). 회수 사유 글은 싣지 않는다(DB 에만).
+  - 남은 것: mfc-capacity 구독(PC 3 — `other-pcs-todo.md`). endedAt 이 그 권한 시작보다 이를 수 있다(시작 전 권한을 회수) — 그때는 그 기간이 비게 처리.
 
 ## EA-2 역할 목록(BR-57) (2026-11-15 구현)
 
