@@ -39,3 +39,15 @@
 - **이미 있는 것**: `OrderConfirmed`(order.order.v1) payload `orderNumber`(이 필드 전 주문은 없음 — 기존 주문은 order DB 에 채워졌지만 사건은 다시 나가지 않는다), order 내부 `GET /internal/orders/{id}` 의 `orderNumber`.
 - **요청**: 작업 지시(fulfillment) 사본에 `orderNumber` 를 두고 포장 라벨·인계 화면·MFC 앱 작업 응답에 실어 주기. 없으면(이전 주문) orderId 그대로. 라이더 앱 요청 §5(포장 라벨 사람이 읽는 번호 입력)도 이 번호로 맞추면 라이더가 라벨 번호를 말할 때 같은 값이 된다 — 라벨 형식은 PC 3 이 정한다.
 - 급하지 않음 — PC 3 일정에 맞춰.
+
+## F-6. PDA 피킹 실적이 모두 거절됨 — 내려놓는 곳(toLocation)·카트 (2026-11-17, 보낸 영역 platform — 사용자 "PC3에서 할 것 같아")
+- **증상(LAN 2026-11-17 10:52, `mfcw-pp-01`, 작업 `ORD-ac047fd4-…-S1-PICK`)**: 위치 바코드 → 상품 바코드를 찍으면 PDA 가 "거절된 실적이 있어요 — 관리자에게 알려 주세요" 후 진행 불가. 서버 `task_execution` 은 최근 6시간 **0건**(작업은 IN_PROGRESS 로 멈춤, 재고 변동 없음).
+- **원인**: 서버 `TaskService.record` 는 PICK 에 `fromLocation`·**`toLocation`(포장 위치, PACKING 구역) 필수**(11-07부터, 없으면 400 VALIDATION_FAILED). mfc_app `pickPayload`(`features/tasks/data/task_repository.dart`)는 `toLocation` 을 보내지 않는다 — 앱 주석 "장바구니(`CRT-…`) 실행 본문에 넣을 곳이 없다(BR-52 R19-3) — 화면에만". 앱은 문제 응답(4xx)을 모두 "거절"로 표시(`executionFailureToSend`).
+- **고칠 것(제안 — PC 3 가 정한다)**:
+  1. 서버: PICK `toLocation` 으로 **카트(구역 CART, `CRT-…`)도 받기**(현장 흐름 "카트에 집고 → 포장대에서 포장", `deploy/lan/seed/labels/README.md` 스캔 표 3번). 포장 밀봉 때 카트 → 포장 위치 처리와 맞출 것. 계약 `TaskExecutionRequest.toLocation` 설명 갱신.
+  2. 앱: 피킹 시작 때 찍은 카트 코드를 `toLocation` 으로 보내기(R19-3 해소).
+  3. 앱: 400 같은 **입력 오류를 "거절된 실적"과 구분**해 표시(지금은 원인이 화면에 안 보임).
+- **같이 고칠 서버 오류**: `GET /shipments/{id}` 가 `ready_at` 이 NULL 인 출고에서 500(`TaskStore.shipmentReadyAt` — `.query(...).stream().findFirst()` 가 null 원소로 NPE). LAN 에서 `ORD-bd33c14e-…-S1` 조회가 3초마다 500(PDA 포장 화면 반복 조회로 보임). `queryForList` + 첫 값 null 허용으로 고치면 된다.
+- **멈춘 작업**: 고친 뒤 `ORD-ac047fd4-…-S1-PICK` 은 다시 진행하면 된다(서버 실적 없음). PDA 의 거절 표시 항목은 앱 큐에만 있다.
+- **상태**: 요청함(2026-11-17).
+
