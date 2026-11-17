@@ -42,3 +42,4 @@
 - `HrProvisioningIT`: 등록 → 사서함 → Keycloak 사용자 → 실제 메일 도착(Mailpit) → EmployeeRegistered, 사서함 대기, 영구 거절 보상, 요청 권한 제출(GrantRequested)·승인 결과 반영, 정지·퇴사·복귀 반영, 계약 종료, 비밀번호 미저장, 본사 부서 코드 목록(`hqDepartmentList`), **U-11(manage-users 로 역할 매핑 가능 = 204)**.
 - 시험 Realm 에는 `hr-provisioner` 의 `realm-management` 역할을 `clientScopeMappings` 로도 준다(fullScopeAllowed false — 없으면 403). LAN Realm 도 같다.
 - 로컬 포트 8512. LAN PC 5.
+- **이름 문자 검사(0.5.1, 2026-11-17)**: 등록 이름에 Keycloak firstName 규칙(person-name-prohibited-characters)이 막는 문자 `< > & " $ % ! # ? § ; * ~ / \ | ^ = [ ] { } ( )`·제어 문자가 있으면 400(field name, `EmployeeService.NAME_PROHIBITED`). 전에는 등록은 되고 발급 2단계가 `KEYCLOAK_400` 으로 실패·사서함 되돌림(2026-11-16 PC 2 "[시험] …"). Keycloak 400 응답 본문은 저장하지 않으므로 다른 400 은 Keycloak 사용자 프로필 규칙부터 본다.

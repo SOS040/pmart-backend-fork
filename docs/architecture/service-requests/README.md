@@ -33,7 +33,7 @@
 | [CP-1](delivery-capacity-service.md) | delivery-capacity | PC 5 | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | 결정됨(2026-11-15: 주문 유지 + 지연 가능 안내, 고객이 원하면 시간대 변경·취소) | **끝**(1부 #59 지연 가능 안내, 2부 S4 시간대 변경 #61·#64·#65 — 모두 LAN 배포, 2026-11-17 #77 정리) |
 | [O-1](order-service.md) | order | PC 1 | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태, `DeliveryCompleted` → 전달 수량·주문 완료 | 없음 | **구현·LAN 배포**(2026-11-16 PC 1, V10·계약 0.7.1, 0bd5d08a) — `DeliveryFailed` 반영은 남음 |
 | [O-2](order-service.md) | order(·orchestration) | PC 1 | 사용자 | 고객 자율 취소는 상품준비 전까지 | ADR-0052 | 대기 |
-| [O-3](order-service.md) | order(·orchestration, mfc) | PC 1 | 사용자 | 확인된 오배송 새 발송(원주소, 비용 0원) | ADR-0052 | 대기 |
+| [O-3](order-service.md) | order(·orchestration, mfc) | PC 1 | 사용자 | 확인된 오배송 새 발송(원주소, 비용 0원) | ADR-0052 | **구현**(2026-11-16 — 재발송 사가 #39~#41, PC 5 PR·PC 1 검토) |
 | [F-1](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | mfc-capacity | 운영 제한 사건 구독 → `OPERATION_RESTRICTED` 거절 | 진행 중 작업 처리 | 대기 |
 | [BOD-1~6](delivery-backoffice-staff-apis.md) | rider·delivery-execution·delivery-dispatch | PC 5 | platform(백오피스) | 백오피스 고객센터·라이더 운영 직원 API — RIDER_OPS 권한, CS_AGENT 배차 조회, 라이더 목록·검색, 전달 실패·도움요청 대기 목록 | 결정됨(2026-11-15, 라이더 이름 검색 없음 — 사용자) | **구현·LAN 배포**(0deb8160 — BOD-1~6 한 커밋) |
 | [MB-1~3](mfc-backoffice-staff-apis.md) | mfc-capacity·fulfillment·inbound·inventory·quality | PC 3 | platform(MFC 백오피스) | 센터 관리자 웹 목록 API·계약만(501)인 것·권한(확인 필요 포장, 정정·위치 역할) | MB-3 은 PC 3 가 정함(사용자 2026-11-15) | 대기(PC 3) |
@@ -46,7 +46,7 @@
 | [R-6](case-service.md) | case | PC 2 | delivery-tracking | 위치 끊긴 라이더(`RiderLocationStale`) → 지원센터 알림 | 결정됨(2026-11-15: 알림만, 자동 배정 해제 없음) | **구현(2026-11-16, case 0.4.0, LAN 배포)** — 사건 RIDER_LOCATION_STALE(같은 라이더·배송이면 재발 이력만) |
 | [R-7](case-service.md) | case | PC 2 | delivery-dispatch | 오배송 확인 기록 → 회수 배차 사건(DD-2 앞단) | 결정됨(2026-11-15: 상담원·지원센터가 확인해 기록) | **구현(2026-11-16, case 0.4.0, LAN 배포)** — `POST /cases`(kind MISDELIVERY) + 사건 `MisdeliveryConfirmed`(platform.case.v1). 구독·회수 배차는 delivery(PC 5, DD-2) |
 | [N-1](notification-service.md) | notification | PC 1 | order, mfc | 결품 부분 취소·환불 고객 안내 | **필요**(보류 단계 안내) | 대기 |
-| [N-2](notification-service.md) | notification(·case) | PC 1(case 쪽 PC 2) | case | 고객센터 문의 답변 알림(`InquiryAnswered`) | C4 | 대기 |
+| [N-2](notification-service.md) | notification(·case) | PC 1(case 쪽 PC 2) | case | 고객센터 문의 답변 알림(`InquiryAnswered`) | C4 | **구현**(2026-11-16 — notification `caseEvents` InquiryAnswered 구독, case 0.12.0 상담원 접수 문의는 알림 없음) |
 | [AP-1](approval-service.md) | approval | PC 1 | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | **필요**(Q-11) | 대기 — 운영 전 필수 |
 | [AP-2](approval-service.md) | approval | PC 1 | hr, employee-auth (ADR-0056) | 직원 권한 요청 유형(BO-01)·등록 때 자동 제출·자동 승인 규칙(소속 센터 `MFC_WORKER`)·반영 대상 employee-auth | 결정됨(2026-11-12) | 구현(2026-11-13 5-4) — LAN 배포 여부 PC 1 확인 필요 |
 | [EA-1](employee-auth-service.md) | employee-auth | PC 1 | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | 대기 |

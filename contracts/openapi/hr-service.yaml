@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.5.0
+  version: 0.5.1
   description: |
     직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
     hr-service 가 사서함(@pmart.com, mail-provisioner) → Keycloak 계정(hr-provisioner, Admin API) → 비밀번호 설정 메일(Keycloak) 순서로
@@ -457,7 +457,7 @@ components:
       type: object
       required: [name, mailId, employmentType, affiliation, startDate]
       properties:
-        name: { type: string, minLength: 1, maxLength: 60 }
+        name: { type: string, minLength: 1, maxLength: 60, description: '0.5.1(2026-11-17) — 로그인 계정(Keycloak) 이름 규칙상 쓸 수 없는 문자 < > & " $ % ! # ? § ; * ~ / \ | ^ = [ ] { } ( ) 가 있으면 400 VALIDATION_FAILED(field name). 전에는 등록은 되고 계정 발급이 KEYCLOAK_400 으로 실패했다' }
         mailId:
           type: string
           pattern: '^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$'

@@ -164,7 +164,20 @@ public class EmployeeService {
     return operatorId;
   }
 
+  /**
+   * 이름에 쓸 수 없는 문자 — Keycloak 사용자 프로필 firstName 검사(person-name-prohibited-characters)와 같은 목록. 이 문자가
+   * 있으면 계정 발급 2단계(Keycloak 사용자 만들기)가 400 으로 실패하고 사서함까지 되돌려졌다(2026-11-16 PC 2 "[시험] …" —
+   * KEYCLOAK_400). 등록 때 미리 막는다(2026-11-17).
+   */
+  static final java.util.regex.Pattern NAME_PROHIBITED =
+      java.util.regex.Pattern.compile("[<>&\"$%!#?§;*~/\\\\|^=\\[\\]{}()\\p{Cntrl}]");
+
   private void validate(Registration r) {
+    if (r.name() == null || r.name().isBlank() || NAME_PROHIBITED.matcher(r.name()).find()) {
+      throw invalid(
+          "name",
+          "이름에 쓸 수 없는 문자가 있습니다: < > & \" $ % ! # ? § ; * ~ / \\ | ^ = [ ] { } ( ) (로그인 계정 규칙).");
+    }
     if (!MAIL_ID.matcher(r.mailId()).matches()
         || r.mailId().contains("..")
         || props.reservedMailIds().contains(r.mailId())) {

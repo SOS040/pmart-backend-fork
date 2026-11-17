@@ -777,6 +777,12 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
             call("POST", "/hr/employees", hr, registration("Bad.ID", "REGULAR", today(), null))
                 .status())
         .isEqualTo(400);
+    // 이름에 Keycloak 이 막는 문자가 있으면 등록 때 400(발급 단계 KEYCLOAK_400 대신 — 2026-11-17)
+    Map<String, Object> bracket = registration(mailId(), "REGULAR", today(), null);
+    bracket.put("name", "[시험] 이름");
+    Res bad = call("POST", "/hr/employees", hr, bracket);
+    assertThat(bad.status()).as("이름 [ ]").isEqualTo(400);
+    assertThat(bad.body().path("details").path(0).path("field").asText()).isEqualTo("name");
     assertThat(
             call(
                     "GET",
