@@ -14,6 +14,7 @@
   1. `GET /internal/availability` 응답 줄에 **`shippableAvailable`** — 예약과 **같은 코드**(`LotAllocator.eligible`·같은 소비기한 규칙)로 기준일에 적격인 LOT 의 E − R 합(≤ `available`). 기준일 = 새 query `deliveryDate`(배송 약속일, Asia/Seoul) 없으면 오늘. 최소 잔여일 미설정으로 판정할 수 없는 SKU 는 **null**(예약은 CONFIG_REQUIRED — null 을 0·available 로 바꾸지 말 것). `available` 은 그대로(하위 호환).
   2. 지난 LOT 이 `sellable` 에 남는 것: **맞다 — E 는 실물·품질 상태 기준이라 기한이 지나도 자동으로 빠지지 않는다**(격리·폐기는 사람이 — 품질 판정, `unshippable-lots` 알림이 그 목록). 대신 `shippableAvailable` 에서는 빠진다(기한 < 기준일 + 최소 잔여일). 자동 격리가 필요하면 따로 결정.
   - **PC 1 할 것**: order 주문 초안·cart 표시를 `available` → `shippableAvailable` 로(예약 주문은 `deliveryDate` 함께). null 이면 판정 불가로 다룬다.
+    **→ 반영(2026-11-18 PC 1, PR 세션 요청)**: order 0.11.3(`Upstreams.availability` 가 `shippableAvailable`, 예약 주문은 `deliveryDate` = 도착 예정일 — orchestration promisedDate 와 같음), cart 0.1.1(`CatalogClient.stock` — 오늘 기준, 표시만 — 담기는 원래 가용으로 막지 않음). null 은 불명(available 로 바꾸지 않음).
   - 시험: inventory check 단위 61·통합 31(`StockReservationFlowIT` — 적격 3 = 예약 eligibleQty 3, 약속일 +9일이면 0).
 
 ## IV-2. PDA "재고 확인" — 상품명 (2026-11-17, mfc-app 요청 전달 — platform PC 1)

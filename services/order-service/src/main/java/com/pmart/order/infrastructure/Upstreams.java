@@ -206,10 +206,13 @@ public class Upstreams {
   // ---------- mfc-inventory ----------
 
   /**
-   * 담당 센터의 가용(2026-11-16 — 주문 초안 재고 확인). 조회 실패·결과 불명은 null(불명 — 품절로 단정하지 않는다, Commerce 7장). 결제 단계
-   * 재고 예약이 최종 판정이다.
+   * 담당 센터의 출하 가능 수량(2026-11-16 — 주문 초안 재고 확인, 2026-11-18 mfc-inventory 0.24.0 IV-1 {@code
+   * shippableAvailable}). 예약과 같은 소비기한 적격 판정이라, 기준일은 예약과 같게 예약 주문이면 도착 예정일(orchestration 의
+   * promisedDate), 아니면 null(= 오늘). {@code shippableAvailable} 이 null 이면 판정 불가 — {@code available} 로
+   * 바꾸지 않고 불명으로 둔다. 조회 실패·결과 불명은 null(불명 — 품절로 단정하지 않는다, Commerce 7장). 결제 단계 재고 예약이 최종 판정이다.
    */
-  public @Nullable Map<String, OrderRules.Stock> availability(String mfcId, List<String> skus) {
+  public @Nullable Map<String, OrderRules.Stock> availability(
+      String mfcId, List<String> skus, @Nullable LocalDate deliveryDate) {
     try {
       String raw =
           Downstream.call(
@@ -221,13 +224,16 @@ public class Upstreams {
                           u -> {
                             u.path("/api/v1/internal/availability").queryParam("mfcId", mfcId);
                             skus.forEach(s -> u.queryParam("sku", s));
+                            if (deliveryDate != null) {
+                              u.queryParam("deliveryDate", deliveryDate.toString());
+                            }
                             return u.build();
                           })
                       .retrieve()
                       .body(String.class));
       Map<String, OrderRules.Stock> out = new HashMap<>();
       for (JsonNode a : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
-        JsonNode v = a.path("available");
+        JsonNode v = a.path("shippableAvailable");
         out.put(
             a.path("sku").asString(),
             new OrderRules.Stock(

@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: cart-service
-  version: 0.1.0
+  version: 0.1.1
   description: |
+    0.1.1(2026-11-18, mfc-inventory IV-1 — PR 세션 요청 #122): 표시 가용(availability·availableQty)이 mfc-inventory 출하 가능 수량 `shippableAvailable`(예약과 같은 소비기한 적격 LOT 의 E − R, 오늘 기준 — 장바구니는 배송일을 모름). 판정 불가(null)는 UNKNOWN(available 로 바꾸지 않음). API 모양은 그대로(설명만).
     장바구니·품목·선택·cartVersion(마지막 변경 후 30일 보존), 비회원 장바구니, 로그인 병합 이관(MERGE_PENDING/PARTIAL/CONFIRMED)의 정본. (docs/architecture/service-map.md §1)
     비정본: 재고 예약(장바구니는 예약하지 않음), 견적 확정(order), 가격 정본(pricing), 구매 상한 정책(product).
     담기 성공은 재고 확보·가격 보장·주문 확정이 아니다. 모든 수량 변경은 절대값 설정 명령이며 Idempotency-Key + expectedVersion으로 충돌을 판정한다.
-    의존(동기): product(구매 상한·판매 상태), mfc-inventory(가용 A 조회. 조회 실패는 0이 아님), pricing(표시 가격).
+    의존(동기): product(구매 상한·판매 상태), mfc-inventory(출하 가능 수량 조회 — 0.1.1. 조회 실패·판정 불가는 0이 아님), pricing(표시 가격).
     발행: CartItemChangeApplied. 구독: OrderConfirmed(확정 포함분만 1회 정리), ProductSaleStateChanged.
 servers:
   - url: /api/v1
@@ -369,7 +370,7 @@ components:
               type: string
               enum: [AVAILABLE, LOW, SOLD_OUT, NOT_CARRIED, UNKNOWN]
               description: |
-                장바구니 mfcId(담당 MFC) 기준 mfc-inventory 가용 사본. 구매·예약 보장이 아니다(결제 진입 때 재고를 다시 잡는다).
+                장바구니 mfcId(담당 MFC) 기준 mfc-inventory 출하 가능 수량(shippableAvailable, 0.1.1 — 오늘 기준 소비기한 적격 LOT 만) 사본. 구매·예약 보장이 아니다(결제 진입 때 재고를 다시 잡는다).
                 AVAILABLE 담은 수량 이상, LOW 0 < 가용 < 담은 수량(부족), SOLD_OUT 가용 0, NOT_CARRIED 담당 MFC 취급 안 함,
                 UNKNOWN mfcId 없음·재고 조회 실패(0 아님). "N개 남음" 노출 임계값은 운영 설정이라 아직 쓰지 않는다.
             availableQty: { type: [integer, 'null'], description: "LOW 일 때 살 수 있는 최대 수량, SOLD_OUT 이면 0. 그 밖은 null(수량 비공개)" }

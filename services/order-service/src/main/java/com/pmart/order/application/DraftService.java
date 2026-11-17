@@ -12,6 +12,7 @@ import com.pmart.order.infrastructure.DraftStore.DraftRow;
 import com.pmart.order.infrastructure.Upstreams;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -170,11 +171,18 @@ public class DraftService {
           false,
           notSaleable);
     }
-    // 재고 확인(2026-11-16 사용자 "재고가 부족하면 주문서 진입 자체를 막기(422)") — 담당 센터 가용이 주문 수량보다 적거나 센터가
-    // 취급하지 않으면 초안을 만들지 않는다. 조회 불명은 막지 않는다(결제 단계 재고 예약이 최종). 소비기한 부적격 LOT 은 아직 가용에
-    // 들어 있어 결제 단계에서 걸릴 수 있다(mfc-inventory IV-1).
+    // 재고 확인(2026-11-16 사용자 "재고가 부족하면 주문서 진입 자체를 막기(422)") — 담당 센터 출하 가능 수량이 주문 수량보다 적거나
+    // 센터가 취급하지 않으면 초안을 만들지 않는다. 출하 가능 수량(2026-11-18, mfc-inventory 0.24.0 IV-1 shippableAvailable)은
+    // 예약과
+    // 같은 소비기한 적격 판정이라 기준일도 예약과 같게 — 예약 주문은 도착 예정일(orchestration promisedDate), 아니면 오늘.
+    // 조회 불명·판정 불가(null)는 막지 않는다(결제 단계 재고 예약이 최종).
+    LocalDate stockDate =
+        OrderRules.SCHEDULED.equals(req.deliveryMode()) && req.arrivalWindow() != null
+            ? req.arrivalWindow().date()
+            : null;
     List<PmartException.Detail> shortages =
-        OrderRules.stockShortages(qty, upstreams.availability(mfcId, List.copyOf(qty.keySet())))
+        OrderRules.stockShortages(
+                qty, upstreams.availability(mfcId, List.copyOf(qty.keySet()), stockDate))
             .stream()
             .map(x -> new PmartException.Detail(x.sku(), x.reason()))
             .toList();

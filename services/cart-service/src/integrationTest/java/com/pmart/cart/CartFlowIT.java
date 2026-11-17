@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -150,25 +151,25 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
         detail(sku, productId, base, saleState));
   }
 
-  /** mfc-inventory 가용(MFC-SEED-01). */
-  void stock(String sku, int available, boolean handlingEnabled) {
+  /**
+   * mfc-inventory 가용(MFC-SEED-01). 장바구니는 출하 가능 수량(shippableAvailable, 2026-11-18 IV-1)을 쓴다 — 시험은
+   * available 을 일부러 더 크게(소비기한 부적격 LOT 이 있는 것처럼) 줘서 available 로 판정하면 틀리게 한다.
+   */
+  void stock(String sku, int shippable, boolean handlingEnabled) {
+    stockItem(sku, shippable + 7, shippable, handlingEnabled);
+  }
+
+  void stockItem(String sku, int available, @Nullable Integer shippable, boolean handlingEnabled) {
+    Map<String, Object> item = new LinkedHashMap<>();
+    item.put("sku", sku);
+    item.put("available", available);
+    item.put("shippableAvailable", shippable);
+    item.put("handlingEnabled", handlingEnabled);
+    item.put("version", 1);
     json(
         WireMock.get(urlPathEqualTo("/api/v1/internal/availability"))
             .withQueryParam("mfcId", equalTo("MFC-SEED-01")),
-        Map.of(
-            "mfcId",
-            "MFC-SEED-01",
-            "items",
-            List.of(
-                Map.of(
-                    "sku",
-                    sku,
-                    "available",
-                    available,
-                    "handlingEnabled",
-                    handlingEnabled,
-                    "version",
-                    1))));
+        Map.of("mfcId", "MFC-SEED-01", "items", List.of(item)));
   }
 
   void json(com.github.tomakehurst.wiremock.client.MappingBuilder b, Object body) {
@@ -356,6 +357,11 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     assertThat(display.path("availability").asString()).as("불명, 0 아님").isEqualTo("UNKNOWN");
     assertThat(display.path("name").asString()).isEqualTo("[시험] 국산콩 두부 300g");
     assertThat(cart.path("sources").toString()).contains("mfc-inventory-service", "UNAVAILABLE");
+    // 출하 가능 판정 불가(shippableAvailable null — 최소 잔여일 미설정) → 불명. available(10)로 바꾸지 않는다(2026-11-18
+    // IV-1)
+    stockItem("E-00000001", 10, null, true);
+    display = get("/carts/" + guestCart, guest).body().path("items").path(0).path("display");
+    assertThat(display.path("availability").asString()).as("판정 불가 = 불명").isEqualTo("UNKNOWN");
     stock("E-00000001", 10, true);
     assertThat(cart.path("selectedItemAmount").asInt()).isEqualTo(9500);
     assertThat(cart.path("expiresAt").asString()).isNotBlank();

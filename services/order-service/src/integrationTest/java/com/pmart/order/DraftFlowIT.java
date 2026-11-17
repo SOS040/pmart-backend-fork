@@ -289,10 +289,15 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
             .willReturn(json(Map.of("mfcId", "MFC-1", "items", List.of(items)))));
   }
 
-  static Map<String, Object> avail(String sku, Integer available, boolean handling) {
+  /**
+   * 초안은 출하 가능 수량(shippableAvailable, 2026-11-18 IV-1)으로 판정한다. 시험은 available 을 일부러 다르게(값이 있으면 더 크게,
+   * 판정 불가면 0) 줘서 available 로 판정하면 틀리게 한다.
+   */
+  static Map<String, Object> avail(String sku, Integer shippable, boolean handling) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("sku", sku);
-    m.put("available", available);
+    m.put("available", shippable == null ? 0 : shippable + 7);
+    m.put("shippableAvailable", shippable);
     m.put("handlingEnabled", handling);
     return m;
   }
@@ -370,7 +375,7 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     d = create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-IN", "SINGLE", null));
     assertThat(d.status()).isEqualTo(422);
     assertThat(d.body().path("details").path(0).path("reason").asString()).isEqualTo("NOT_HANDLED");
-    // 가용 값 불명(null) → 막지 않는다
+    // 출하 가능 판정 불가(shippableAvailable null) → 막지 않는다. available(0)로 바꾸지 않는다(2026-11-18 IV-1)
     stock(avail("E-00000001", null, true));
     d = create(first, draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-IN", "SINGLE", null));
     assertThat(d.status()).as(d.body().toString()).isEqualTo(201);
@@ -419,6 +424,10 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(d.body().path("lines").path(0).path("unitPrice").asInt()).isEqualTo(1_900);
     assertThat(d.body().path("delivery").path("arrivalWindow").path("start").asString())
         .isEqualTo("10:00");
+    // 예약 주문의 재고 확인 기준일 = 도착 예정일(예약과 같게 — 2026-11-18 IV-1 shippableAvailable)
+    deps.verify(
+        WireMock.getRequestedFor(urlPathEqualTo("/api/v1/internal/availability"))
+            .withQueryParam("deliveryDate", equalTo(TOMORROW)));
     assertThat(d.body().path("delivery").path("deliveryNote").asString()).isEqualTo("문 앞");
     assertThat(d.body().path("status").asString()).isEqualTo("DRAFT");
     assertThat(d.body().path("nextAction").asString()).isEqualTo("REVIEW");

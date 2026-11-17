@@ -38,7 +38,10 @@ public class CatalogClient {
 
   public record Line(String sku, int quantity) {}
 
-  /** mfc-inventory Availability 중 장바구니가 쓰는 것. available 은 A = E − R(산출 못 하면 null). */
+  /**
+   * mfc-inventory Availability 중 장바구니가 쓰는 것. available 은 출하 가능 수량 {@code
+   * shippableAvailable}(2026-11-18 — 예약과 같은 소비기한 적격 LOT 의 E − R, 오늘 기준. 판정 못 하면 null).
+   */
   public record Stock(@Nullable Integer available, boolean handlingEnabled) {}
 
   private final RestClient product;
@@ -76,7 +79,9 @@ public class CatalogClient {
                     .body(String.class));
     Map<String, Stock> out = new HashMap<>();
     for (JsonNode a : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
-      JsonNode available = a.path("available");
+      // 출하 가능 수량(2026-11-18, mfc-inventory 0.24.0 IV-1) — 예약과 같은 소비기한 적격 LOT 만. 장바구니는 배송일을 모르므로
+      // 기준일 = 오늘(deliveryDate 없이). null 은 판정 불가 — available 로 바꾸지 않고 UNKNOWN.
+      JsonNode available = a.path("shippableAvailable");
       out.put(
           a.path("sku").asString(),
           new Stock(
