@@ -1,0 +1,7 @@
+# 통합 시험 픽스처 — FAQ 목록(2026-11-18). 본 manifest 와 같이 domain customer-faq 문서가 FAQ 항목이 된다. 업무 문서(policy.md)는 FAQ 가 아니다.
+version: 1
+defaultAccessScope: customer
+documents:
+  - { path: docs/business/customer-faq/01-help.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/customer-faq/02-cancel-test.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/business/policy.md, domain: commerce, kind: BUSINESS, authority: PROPOSAL, precedence: 3 }

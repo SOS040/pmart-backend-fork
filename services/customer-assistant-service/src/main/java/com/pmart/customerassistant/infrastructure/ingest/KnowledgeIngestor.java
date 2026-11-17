@@ -141,6 +141,8 @@ public class KnowledgeIngestor {
       snapshots.addSourceFiles(snapshotId, files);
 
       List<ChunkRow> rows = buildChunks(manifest, bytesByPath, spec);
+      // FAQ 목록(2026-11-18): 같은 바이트에서 — AI 답변 근거와 같은 스냅숏
+      List<FaqExtractor.FaqEntry> faqs = FaqExtractor.extract(manifest, bytesByPath);
 
       // 5. 색인 중 변경 감지
       for (SourceFile f : files) {
@@ -155,12 +157,14 @@ public class KnowledgeIngestor {
         throw new IngestFailedException("청크가 없습니다", null);
       }
       snapshots.addChunks(snapshotId, rows);
+      snapshots.addFaqEntries(snapshotId, faqs);
       snapshots.activate(snapshotId, rows.size(), clock.instant());
       log.info(
-          "knowledge ingest done snapshot={} files={} chunks={}",
+          "knowledge ingest done snapshot={} files={} chunks={} faqs={}",
           snapshotId,
           files.size(),
-          rows.size());
+          rows.size(),
+          faqs.size());
       return new Result(snapshotId, rows.size(), files.size());
     } catch (IngestFailedException e) {
       snapshots.fail(snapshotId, e.getMessage());

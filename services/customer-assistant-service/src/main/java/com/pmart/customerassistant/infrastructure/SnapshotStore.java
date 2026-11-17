@@ -1,6 +1,7 @@
 package com.pmart.customerassistant.infrastructure;
 
 import com.pmart.customerassistant.infrastructure.embedding.EmbeddingSpec;
+import com.pmart.customerassistant.infrastructure.ingest.FaqExtractor;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -141,6 +142,30 @@ public class SnapshotStore {
           public int getBatchSize() {
             return chunks.size();
           }
+        });
+  }
+
+  /** FAQ 항목(2026-11-18, V2) — 청크와 같은 스냅숏에. 스냅숏을 지우면 같이 지워진다. */
+  public void addFaqEntries(String snapshotId, List<FaqExtractor.FaqEntry> entries) {
+    jdbc.batchUpdate(
+        """
+        INSERT INTO faq_entry (snapshot_id, faq_id, category, category_title, category_order, item_order,
+          question, answer, search_text, document_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        entries,
+        200,
+        (ps, e) -> {
+          ps.setString(1, snapshotId);
+          ps.setString(2, e.faqId());
+          ps.setString(3, e.category());
+          ps.setString(4, e.categoryTitle());
+          ps.setInt(5, e.categoryOrder());
+          ps.setInt(6, e.itemOrder());
+          ps.setString(7, e.question());
+          ps.setString(8, e.answer());
+          ps.setString(9, e.searchText());
+          ps.setString(10, e.documentId());
         });
   }
 

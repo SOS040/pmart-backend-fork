@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: customer-assistant-service
-  version: 0.1.0
+  version: 0.2.0
   x-stage: 3
   x-stage-note: 고객앱 RAG 1차(2026-11-09, ADR-0051) — 고객 공개 안내 문서 질의응답 + 근거 표시 + 내 주문 상태 안내 + 고객센터 문의 연결.
   description: |
@@ -31,6 +31,11 @@ info:
 
     **멱등**: 범위는 (sourceSystem, 고객 subject, Idempotency-Key). 요청 해시 = sha256(정규화 질문 + "\n" + {"orderId"} JSON).
     같은 키에 다른 질문·주문이면 409 `IDEMPOTENCY_CONFLICT`. 최초 응답을 잃으면 `GET /customer-assistant/questions?requestId=`.
+
+    **FAQ 목록·검색(0.2.0, 2026-11-18 — 사용자 "A해줘", 고객앱 빠진 기능 "FAQ 목록·검색")**: `GET /customer-assistant/faqs`·`/faqs/{faqId}`.
+    AI 상담이 근거로 쓰는 **같은 고객 안내 문서·같은 색인 스냅숏(ACTIVE)** 에서 나온다 — 색인할 때 문서의 `## 질문` 절마다 한 항목(질문 = 절 제목, 답 = 절 본문)으로 나눠 두므로
+    FAQ 화면과 AI 답변의 근거가 어긋나지 않는다(안내 문서를 고치면 재색인 때 함께 바뀐다). 모델·임베딩을 부르지 않고, 요청 제한(C3)에 세지 않으며, 검색어를 저장·로그하지 않는다.
+    누가: 다른 고객 API 와 같이 로그인한 회원 고객만(C2 — 비회원·운영자 403). 색인 전이거나 이 기능 전에 만든 색인이면 422 `CONFIG_REQUIRED`(재색인 필요 — 빈 목록으로 숨기지 않는다).
 servers:
   - url: /api/v1
 security:
@@ -38,6 +43,7 @@ security:
 tags:
   - { name: ops, description: 운영 정보 }
   - { name: customer-assistant, description: 고객센터 AI 상담(읽기 전용) }
+  - { name: faqs, description: '고객센터 FAQ 목록·검색(0.2.0) — AI 상담과 같은 안내 문서' }
 
 paths:
   /actuator/health:
@@ -209,6 +215,74 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /customer-assistant/faqs:
+    get:
+      tags: [faqs]
+      summary: FAQ 목록·검색(회원 고객) — 분류·검색어로 거른다
+      x-added-in: '2026-11-18'
+      description: |
+        0.2.0(2026-11-18): AI 상담이 쓰는 ACTIVE 색인 스냅숏의 FAQ 항목. 순서 = 안내 문서 순(manifest) → 문서 안 절 순. 페이지 없음(항목 수십 개).
+        `q`: 질문·답변에서 부분 문자열(대소문자 무시, 앞뒤 공백 무시, 답변의 굵게·코드 표시는 빼고 찾는다). 비우면 전체. 맞는 것이 없으면 items 빈 배열(200).
+        `category`: 분류 하나(완전 일치, `categories[].category` 값). 모르는 분류는 빈 배열.
+        `categories` 는 거르기와 상관없이 전체 분류와 분류마다 항목 수(앱의 분류 탭).
+      operationId: listCustomerFaqs
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 100 }, description: 검색어(부분 문자열) }
+        - { name: category, in: query, schema: { type: string, maxLength: 40, pattern: '^[a-z0-9-]+$' }, description: '분류(예 cancel·delivery-status·refund)' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FaqList' }
+              example:
+                items:
+                  - faqId: cancel-1a2b3c4d5e
+                    category: cancel
+                    categoryTitle: 주문 취소
+                    question: 취소하면 봉투값도 돌려받나요?
+                    answer: "- **주문 전체를 취소하면** 결제 금액과 함께 **봉투값(100원)도 환불**돼요.
+- 결품 등으로 **일부만 취소**되면 봉투값은 환불되지 않아요."
+                categories:
+                  - { category: customer-center, title: 고객센터 이용 안내, count: 5 }
+                  - { category: cancel, title: 주문 취소, count: 6 }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: CONFIG_REQUIRED — FAQ 가 든 색인이 없다(색인 전, 또는 0.2.0 전에 만든 색인 → 재색인)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /customer-assistant/faqs/{faqId}:
+    get:
+      tags: [faqs]
+      summary: FAQ 한 항목(회원 고객)
+      x-added-in: '2026-11-18'
+      description: 0.2.0(2026-11-18). faqId 는 같은 문서·같은 질문이면 재색인해도 같다(질문 문구를 고치면 바뀐다). 지금 색인에 없으면 404.
+      operationId: getCustomerFaq
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: faqId, in: path, required: true, schema: { type: string, maxLength: 80 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FaqItem' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: NOT_FOUND — 지금 색인에 없는 항목
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONFIG_REQUIRED — FAQ 가 든 색인이 없다(재색인)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -224,6 +298,34 @@ components:
           type: [string, 'null']
           maxLength: 64
           description: '"주문 건에 대한 문의"로 고른 주문. 본인 주문이어야 한다(아니면 422 ORDER_NOT_FOUND)'
+
+    FaqItem:
+      type: object
+      required: [faqId, category, categoryTitle, question, answer]
+      x-added-in: '2026-11-18'
+      properties:
+        faqId: { type: string, description: '<분류>-<질문 해시 10자>' }
+        category: { type: string, description: 분류(안내 문서 파일 이름에서 — 예 cancel) }
+        categoryTitle: { type: string, description: 분류 이름(안내 문서 제목 — 예 "주문 취소") }
+        question: { type: string, description: 질문(절 제목, 지위 표시 태그는 뺀다) }
+        answer: { type: string, description: '답(절 본문, 마크다운 — 목록·굵게·표). 지위 표시 태그는 빼고, 다른 안내 문서 링크는 ‘그 문서 제목’ 글자로 바꾼다(파일 경로 없음)' }
+
+    FaqCategory:
+      type: object
+      required: [category, title, count]
+      x-added-in: '2026-11-18'
+      properties:
+        category: { type: string }
+        title: { type: string }
+        count: { type: integer, description: 그 분류의 전체 항목 수(검색어와 무관) }
+
+    FaqList:
+      type: object
+      required: [items, categories]
+      x-added-in: '2026-11-18'
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/FaqItem' } }
+        categories: { type: array, items: { $ref: '#/components/schemas/FaqCategory' } }
 
     CustomerAnswerState:
       type: string
