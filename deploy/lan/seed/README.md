@@ -26,3 +26,4 @@ java deploy/lan/seed/Seed.java --initial-stock --initial-stock-skus E-00000008,E
 | `mfc_fix_lot_dates.py` | 비식품 LOT 소비기한 제거, 출고 불가 식품 LOT 소비기한 다시 매김(위치 정정) |
 | `location_labels.py` | 위치 바코드 라벨 다시 만들기(`labels/locations/`). 스캔 코드·299 바코드 설명 `labels/README.md` |
 | `mfc_carts.py` | 2026-11-17 이동 카트 40대(상온 20·냉장 12·냉동 8 — 사용자 "40개까지", 있는 것은 건너뜀) + 카트 라벨 다시(Code128). `--apply`·`--labels` |
+| `mfc_split_lots.py` | 2026-11-17 LOT 변주 — LOT 1개뿐인 상품(옮길 수량 4 이상) 195개를 같은 칸에서 두 LOT 으로 반씩(새 LOT 기한·제조일 +7일, 기한 없는 것은 원천 표시만, approvalRef lot-split-2026-11-17). 적용: 성공 195·실패 0, LOT 1,064 → 1,259 |

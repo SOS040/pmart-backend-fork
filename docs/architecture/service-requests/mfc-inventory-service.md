@@ -30,5 +30,5 @@
   2. **바코드로 LOT 찾기**: GS1-128 원문(또는 GTIN + LOT 번호)을 받아 SKU·LOT·기한을 돌려주는 조회(예 `GET /mfcs/{mfcId}/lot-resolutions?gs1=` — 직원·그 센터). GTIN 은 상품 바코드 `299…`(EAN-13 → 앞에 0 붙인 GTIN-14)로 SKU 를 찾는다(SKU 사본의 바코드).
   3. **피킹 LOT 확인**(mfc-fulfillment·mfc_app): 작업 지시의 LOT 과 찍은 LOT 바코드가 다르면 PDA 가 막고, 실적 `lines[].lotId` 는 찍은 LOT 으로(지금은 지시 사본). 서버는 지금처럼 예약 LOT 이 아니면 거절(IV-07). 상품 바코드(EAN-13)만 찍는 경우를 계속 받을지 — PDA 화면 결정(제안: LOT 라벨이 붙은 상품은 LOT 바코드 필수).
   4. mfc_app 스캔 해석: GS1-128 은 FNC1 으로 시작하는 Code128 — 스캐너가 주는 원문(`]C1` 접두·그룹 구분자 GS)을 AI 로 나눠 읽는다.
-- **PC 1 이 할 것**: LAN 시험 데이터 — LOT 이 1개인 상품 일부를 두 LOT(기한 다름)으로 나눔(2026-11-17, `deploy/lan/seed/mfc_split_lots.py`), LOT 번호가 생기면 GS1-128 LOT 라벨 인쇄 파일(`deploy/lan/seed/labels/`).
+- **PC 1 이 할 것**: LAN 시험 데이터 — LOT 이 1개인 상품 일부를 두 LOT(기한 다름)으로 나눔 — **적용됨**(2026-11-17, `deploy/lan/seed/mfc_split_lots.py`: 195개, LAN LOT 1,064 → 1,259, LOT 1개 상품 1개만 남음), LOT 번호가 생기면 GS1-128 LOT 라벨 인쇄 파일(`deploy/lan/seed/labels/`).
 - **상태**: 요청함(2026-11-17).
