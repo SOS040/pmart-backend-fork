@@ -41,6 +41,7 @@
   - **서버는 준비됐고 LAN 은 꺼 둔다(2026-11-17)** — 고객 앱이 동의 흐름(auth completions·`/me/consent-changes`)을 반영하기 전에 켜면 기존 회원 전부가 주문·로그인을 못 한다. 켤 때는 이 `purchase-gate: true` 와 auth `require-consent: true` 를 **함께**(pmart-config). 시험: 꺼진 경로 `CustomerAddressFlowIT`, 켠 경로 `ConsentFlowIT`(속성으로 켬).
 
 - **리뷰 작성자 표시(2026-11-16, 계약 0.2.0, ADR-0063)**: `GET /internal/accounts/{id}/review-author` → 별명 첫 글자 + `*`(최대 4개), 별명 없으면 "PMart 고객"(`ProfileRules.maskedAuthor`). 이름·이메일·전화는 내주지 않는다.
+- **주문 기본 설정(2026-11-18, 계약 0.4.0, V7 — 고객 앱 "다음에도 이 품절 처리 적용", 사용자 "A해줘")**: `GET`·`PUT /me/order-preferences`(고객, `PreferencesController` → `OrderPreferenceService`, 표 `customer_order_preference` 계정당 한 행). 값 `outOfStockPreference` = order-service 주문 초안과 같은 `CANCEL_OOS_ONLY`·`CANCEL_ALL`(그 밖·null 400, 지우기 없음). 저장 전 null·version 0(지어내지 않음). PUT 은 Idempotency-Key·X-Source-System·(선택) X-Expected-Version — 즉시 반영, 바뀌면 version +1(같은 값 그대로), 버전 불일치 409 VERSION_CONFLICT, 탈퇴 신청 이후 409 INVALID_STATE(계정 행 잠금 안에서). 프로필 version 과 따로 센다. 이벤트 없음 — 앱 주문서 기본값일 뿐 order-service 는 읽지 않는다. 시험 `OrderPreferenceFlowIT`.
 
 ## 상태
 프로필 조회·주소록·쇼핑 주소·비회원 배송지·내부 계정 상태/쇼핑 컨텍스트 구현(2026-10-30). 첫 구매 사용 기록(OrderConfirmed). 프로필 변경 닉네임(2026-11-03). 약관 동의(2026-11-17, CU-1). 탈퇴·연락처 변경·소셜 식별 기준 첫 구매 대조는 501(연락처는 400).
