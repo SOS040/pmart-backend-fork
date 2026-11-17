@@ -263,7 +263,110 @@ class FulfillmentProgressIT extends PostgresKafkaContainerSupport {
     assertThat(qty(orderId + "-L2", "unfulfilled_qty")).isEqualTo(1);
   }
 
+  /**
+   * O-7(2026-11-17, claim CL-1 추가 결정 9): claim 반품 종결(ClaimClosed
+   * RETURN_REFUNDED·RETURN_SHORT_CLOSED)의 returnedLines → 행 반품 수량 +q(클레임 하나에 한 번), 상태 그대로·버전
+   * +1·OrderLineQuantityChanged(reason RETURN). 취소된 반품은 수량 없음, 한도(전달 − 이미 반품)를 넘으면 반영 없이 MISMATCH.
+   */
+  @Test
+  void returnClosedClaimsRecordReturnedQty() throws Exception {
+    String orderId = order("PREPARING", 3, 2);
+    String deliveryId = "DLV-" + UUID.randomUUID();
+    handover(
+        orderId,
+        "HO-" + UUID.randomUUID(),
+        deliveryId,
+        List.of(line(orderId + "-L1", 3), line(orderId + "-L2", 2)));
+    delivered(orderId, deliveryId, List.of(line(orderId + "-L1", 3), line(orderId + "-L2", 2)));
+    await(() -> "COMPLETED".equals(status(orderId)));
+    int v0 = version(orderId);
+    int changed0 = outbox(orderId, "OrderLineQuantityChanged");
+
+    String claimId = "CLM-" + UUID.randomUUID();
+    claimClosed(
+        orderId,
+        claimId,
+        "RETURN_REFUNDED",
+        List.of(returned(orderId + "-L1", 2), returned(orderId + "-L2", 1)));
+    await(() -> qty(orderId + "-L1", "returned_qty") == 2);
+    assertThat(qty(orderId + "-L2", "returned_qty")).isEqualTo(1);
+    assertThat(status(orderId)).isEqualTo("COMPLETED");
+    assertThat(version(orderId)).isEqualTo(v0 + 1);
+    assertThat(outbox(orderId, "OrderLineQuantityChanged")).isEqualTo(changed0 + 2);
+    String reason =
+        jdbc.queryForObject(
+            "SELECT payload::json -> 'payload' ->> 'reason' FROM outbox_event WHERE type ="
+                + " 'OrderLineQuantityChanged' AND aggregateid = ? ORDER BY created_at DESC LIMIT 1",
+            String.class,
+            orderId);
+    assertThat(reason).isEqualTo("RETURN");
+    // 내부 조회(claim·review 가 보는 값)
+    var res =
+        org.springframework.web.client.RestClient.create()
+            .get()
+            .uri("http://localhost:" + port + "/api/v1/internal/orders/" + orderId)
+            .header("X-Source-System", "review-service")
+            .retrieve()
+            .body(String.class);
+    var n = new tools.jackson.databind.ObjectMapper().readTree(res);
+    assertThat(n.path("lines").get(0).path("returnedQty").asInt()).isEqualTo(2);
+
+    // 같은 클레임이 다시 와도(사건 ID 다름) 한 번, 취소된 반품은 수량 없음
+    claimClosed(orderId, claimId, "RETURN_REFUNDED", List.of(returned(orderId + "-L1", 2)));
+    claimClosed(
+        orderId,
+        "CLM-" + UUID.randomUUID(),
+        "RETURN_CANCELLED",
+        List.of(returned(orderId + "-L1", 1)));
+    // 한도(전달 3 − 반품 2 = 1)를 넘음 → MISMATCH, 반영 없음
+    String over = "CLM-" + UUID.randomUUID();
+    claimClosed(orderId, over, "RETURN_REFUNDED", List.of(returned(orderId + "-L1", 2)));
+    await(
+        () ->
+            jdbc.queryForObject(
+                    "SELECT count(*) FROM order_fulfillment_fact WHERE kind = 'RETURN' AND source_ref = ?"
+                        + " AND state = 'MISMATCH'",
+                    Integer.class,
+                    over)
+                == 1);
+    assertThat(qty(orderId + "-L1", "returned_qty")).isEqualTo(2);
+    // 받은 만큼만 끝낸 반품도 반품 수량
+    claimClosed(
+        orderId,
+        "CLM-" + UUID.randomUUID(),
+        "RETURN_SHORT_CLOSED",
+        List.of(returned(orderId + "-L1", 1)));
+    await(() -> qty(orderId + "-L1", "returned_qty") == 3);
+    assertThat(qty(orderId + "-L2", "returned_qty")).isEqualTo(1);
+    assertThat(version(orderId)).isEqualTo(v0 + 2);
+  }
+
   // ---------- helpers ----------
+
+  private static Map<String, Object> returned(String orderLineId, int qty) {
+    Map<String, Object> l = new LinkedHashMap<>();
+    l.put("orderLineId", orderLineId);
+    l.put("qty", qty);
+    return l;
+  }
+
+  private void claimClosed(
+      String orderId, String claimId, String outcome, List<Map<String, Object>> lines) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("claimId", claimId);
+    p.put("orderId", orderId);
+    p.put("outcome", outcome);
+    p.put("type", "RETURN");
+    p.put("returnedLines", lines); // 취소 종결(RETURN_CANCELLED 등)에 행이 와도 반영하지 않는다
+    p.put("closedAt", Instant.now().toString());
+    String json =
+        EventEnvelopeFixtures.envelope("ClaimClosed")
+            .from("claim-service")
+            .aggregate("Claim", claimId, 5)
+            .payload(p)
+            .buildJson();
+    kafka.send("order.claim.v1", claimId, json).join();
+  }
 
   /** 라이더 앱 요청 §1(2026-11-16): 라이더용 주문 요약 — 보낼 수량·단가×수량·합계·요청사항, 이름 없으면 sku. */
   @Test

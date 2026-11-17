@@ -119,6 +119,81 @@ class ReturnRulesTest {
     assertThat(ReturnRules.autoRetryAfterFailure(3)).isFalse(); // 상담원 재요청 뒤 실패도 상담원으로
   }
 
+  /** 추가 결정 3·4: 전체 3번(자동 2 + 상담원 1), 우리 잘못은 횟수에서 뺀다. */
+  @Test
+  void threeCountedAttemptsAndRiderIncidentNotCounted() {
+    assertThat(ReturnRules.failureKind("CUSTOMER_ABSENT", null)).isEqualTo("CUSTOMER");
+    assertThat(ReturnRules.failureKind("UNREACHABLE", false)).isEqualTo("CUSTOMER");
+    assertThat(ReturnRules.failureKind("ADDRESS_ERROR", null)).isEqualTo("CUSTOMER");
+    assertThat(ReturnRules.failureKind("REFUSED", null)).isEqualTo("CUSTOMER");
+    assertThat(ReturnRules.failureKind("SOMETHING", true)).isEqualTo("CUSTOMER"); // customerReason
+    assertThat(ReturnRules.failureKind("RIDER_INCIDENT", true)).isEqualTo("OURS"); // 사유 코드가 먼저
+    assertThat(ReturnRules.failureKind("DAMAGED", null)).isEqualTo("OTHER");
+    assertThat(ReturnRules.failureKind("OTHER", false)).isEqualTo("OTHER");
+    assertThat(ReturnRules.failureKind(null, null)).isEqualTo("OTHER");
+
+    assertThat(ReturnRules.countsAsAttempt("OURS")).isFalse();
+    assertThat(ReturnRules.countsAsAttempt("CUSTOMER")).isTrue();
+    assertThat(ReturnRules.countsAsAttempt(null)).isTrue(); // 모르면 센다
+    assertThat(ReturnRules.countedFailures(List.of("CUSTOMER", "OURS", "OURS", "OTHER")))
+        .isEqualTo(2);
+
+    assertThat(ReturnRules.csRetryAllowed(2)).isTrue(); // 자동 2번 뒤 상담원 1번
+    assertThat(ReturnRules.csRetryAllowed(3)).isFalse(); // 다 씀 — 취소만
+  }
+
+  /** 추가 결정 2: 취소 때 낸 회수비 — 고객 사유 그대로, 우리 잘못 돌려줌, 파손·기타 상담원(기본 그대로). */
+  @Test
+  void feeRefundOnCancelFollowsFailureKinds() {
+    assertThat(ReturnRules.feeRefundRule(List.of("CUSTOMER", "OURS")))
+        .isEqualTo(ReturnRules.FeeRefundRule.KEEP);
+    assertThat(ReturnRules.feeRefundRule(List.of("OURS", "OTHER")))
+        .isEqualTo(ReturnRules.FeeRefundRule.CS_DECIDES);
+    assertThat(ReturnRules.feeRefundRule(List.of("CUSTOMER", "OTHER")))
+        .isEqualTo(ReturnRules.FeeRefundRule.KEEP);
+    assertThat(ReturnRules.feeRefundRule(List.of("OURS", "OURS")))
+        .isEqualTo(ReturnRules.FeeRefundRule.REFUND);
+    assertThat(ReturnRules.feeRefundRule(List.of())).isEqualTo(ReturnRules.FeeRefundRule.REFUND);
+
+    assertThat(ReturnRules.refundFee(ReturnRules.FeeRefundRule.KEEP, null)).isFalse();
+    assertThat(ReturnRules.refundFee(ReturnRules.FeeRefundRule.KEEP, false)).isFalse();
+    assertThat(code(() -> ReturnRules.refundFee(ReturnRules.FeeRefundRule.KEEP, true)))
+        .isEqualTo("FEE_REFUND_NOT_ALLOWED");
+    assertThat(ReturnRules.refundFee(ReturnRules.FeeRefundRule.REFUND, null)).isTrue();
+    assertThat(code(() -> ReturnRules.refundFee(ReturnRules.FeeRefundRule.REFUND, false)))
+        .isEqualTo("FEE_REFUND_NOT_ALLOWED");
+    assertThat(ReturnRules.refundFee(ReturnRules.FeeRefundRule.CS_DECIDES, null)).isFalse();
+    assertThat(ReturnRules.refundFee(ReturnRules.FeeRefundRule.CS_DECIDES, true)).isTrue();
+    assertThat(ClaimRules.paymentReason("RETURN_FEE")).isEqualTo("RETURN");
+  }
+
+  /** 추가 결정 5: 접수 + 7일 기한(경계 포함). */
+  @Test
+  void returnDeadline() {
+    Instant d = Instant.parse("2026-11-24T00:00:00Z");
+    assertThat(ReturnRules.pastDeadline(d, d)).isTrue();
+    assertThat(ReturnRules.pastDeadline(d, d.minusSeconds(1))).isFalse();
+    assertThat(ReturnRules.pastDeadline(null, d)).isFalse();
+  }
+
+  /** 추가 결정 6: 받은 만큼만 끝내기 — 정산 수량 = 받은 수량(반입·검수 중 큰 값). */
+  @Test
+  void shortCloseSettlesReceivedQuantity() {
+    assertThat(
+            ReturnRules.shortClose(
+                List.of(
+                    new ReturnRules.ShortLine("C-L1", 3, 2, 1),
+                    new ReturnRules.ShortLine("C-L2", 2, 0, 2),
+                    new ReturnRules.ShortLine("C-L3", 1, 0, 0))))
+        .containsExactly(Map.entry("C-L1", 2), Map.entry("C-L2", 2), Map.entry("C-L3", 0));
+    assertThat(
+            code(() -> ReturnRules.shortClose(List.of(new ReturnRules.ShortLine("C-L1", 3, 0, 0)))))
+        .isEqualTo("NOTHING_RECEIVED");
+    assertThat(
+            code(() -> ReturnRules.shortClose(List.of(new ReturnRules.ShortLine("C-L1", 3, 3, 1)))))
+        .isEqualTo("NOT_SHORT");
+  }
+
   @Test
   void feePaymentStates() {
     assertThat(ReturnRules.feeInFlight("PENDING")).isTrue();

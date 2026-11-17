@@ -201,4 +201,24 @@ class OrderRulesTest {
             () -> OrderRules.deliver(done, List.of(new OrderRules.Change("L1", 1))))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  /** 반품 수량(O-7, 2026-11-17): 행마다 반품 +q, 한도 = 전달 − 이미 반품, 없는 행·초과는 아무것도 바꾸지 않는다. */
+  @Test
+  void returnedQtyAddsUpToDeliveredMinusAlreadyReturned() {
+    var lines =
+        List.of(new OrderRules.ReturnLine("L1", 3, 1), new OrderRules.ReturnLine("L2", 2, 0));
+    assertThat(OrderRules.returned(lines, List.of(new OrderRules.Change("L1", 2))))
+        .containsExactly(java.util.Map.entry("L1", 3));
+    // 같은 행이 둘로 와도 합으로
+    assertThat(
+            OrderRules.returned(
+                lines, List.of(new OrderRules.Change("L2", 1), new OrderRules.Change("L2", 1))))
+        .containsExactly(java.util.Map.entry("L2", 2));
+    assertThatThrownBy(() -> OrderRules.returned(lines, List.of(new OrderRules.Change("L1", 3))))
+        .isInstanceOf(IllegalArgumentException.class); // 전달 3 − 반품 1 = 2 까지
+    assertThatThrownBy(() -> OrderRules.returned(lines, List.of(new OrderRules.Change("L9", 1))))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> OrderRules.returned(lines, List.of(new OrderRules.Change("L1", 0))))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

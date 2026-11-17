@@ -44,6 +44,19 @@
               "minimum": 1,
               "description": "지금까지 회수 요청 수"
             },
+            "countedAttempts": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "횟수에 드는 회수 실패 수(2026-11-17 추가 결정 3·4 — 라이더·우리 잘못 RIDER_INCIDENT 는 빼고). 전체 3번(자동 2 + 상담원 1)"
+            },
+            "retryAllowed": {
+              "type": "boolean",
+              "description": "상담원이 다시 회수를 요청할 수 있나(시도가 남았고 반품 기한 전). false 면 반품 취소만(2026-11-17)"
+            },
+            "returnDeadlineAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "반품 전체 기한(접수 + 7일, 2026-11-17 추가 결정 5) — 지나면 회수가 안 된 반품은 자동 취소"
+            },
             "lastDeliveryId": {
               "$ref": "_defs.v1.json#/$defs/Ref",
               "description": "마지막으로 실패한 회수 배송(알면)"

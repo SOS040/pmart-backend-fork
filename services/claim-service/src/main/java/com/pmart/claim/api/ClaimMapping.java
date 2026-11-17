@@ -46,6 +46,7 @@ final class ClaimMapping {
             .reasonDetail(c.reasonDetail())
             .channel(Claim.ChannelEnum.fromValue(c.channel()))
             .stopRequestId(c.stopRequestId())
+            .returnDeadlineAt(odt(c.returnDeadlineAt()))
             .openedAt(odt(c.openedAt()))
             .decidedAt(odt(c.decidedAt()))
             .closedAt(odt(c.closedAt()));
@@ -87,17 +88,29 @@ final class ClaimMapping {
                 .paymentAttemptId(f.paymentAttemptId())
                 .orderName(ReturnRules.FEE_ORDER_NAME)
                 .deadlineAt(odt(f.deadlineAt()))
-                .paidAt(odt(f.paidAt())));
+                .paidAt(odt(f.paidAt()))
+                .refundDecision(
+                    f.refundDecision() == null
+                        ? null
+                        : ReturnFeePayment.RefundDecisionEnum.fromValue(f.refundDecision()))
+                .refundIntentId(f.refundIntentId()));
       }
       PickupRow last = v.pickups().isEmpty() ? null : v.pickups().get(v.pickups().size() - 1);
+      int counted =
+          ReturnRules.countedFailures(
+              v.pickups().stream()
+                  .filter(PickupRow::failed)
+                  .map(p -> p.failureKind() == null ? ReturnRules.FAIL_OTHER : p.failureKind())
+                  .toList());
       out.pickup(
           new ClaimPickup()
               .state(c.pickupState() == null ? null : PickupState.fromValue(c.pickupState()))
               .deliveryId(last == null ? null : last.deliveryId())
               .addressFixedToOrder(true)
               .attempts(v.pickups().size())
-              .failedAttempts(
-                  (int) v.pickups().stream().filter(p -> "FAILED".equals(p.state())).count()));
+              .failedAttempts((int) v.pickups().stream().filter(PickupRow::failed).count())
+              .countedFailures(counted)
+              .retryAllowed(ReturnRules.csRetryAllowed(counted)));
     }
     return out;
   }
@@ -116,6 +129,10 @@ final class ClaimMapping {
         new Refund()
             .refundIntentId(r.refundIntentId())
             .claimId(r.claimId())
+            .kind(
+                ReturnRules.RETURN_FEE_REFUND_REASON.equals(r.reason())
+                    ? Refund.KindEnum.RETURN_FEE
+                    : Refund.KindEnum.ITEMS)
             .state(RefundState.fromValue(r.state()))
             .amount(Math.toIntExact(r.amount()))
             .breakdown(

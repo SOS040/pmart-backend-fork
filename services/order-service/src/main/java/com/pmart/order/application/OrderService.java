@@ -516,6 +516,104 @@ public class OrderService {
     log.info("주문 {} {} {} 반영 → {}", orderId, kind, sourceRef, status);
   }
 
+  static final String RETURN = "RETURN";
+
+  /** 반품 수량을 기록하는 claim 종결 결과(O-7) — 검수·환불이 끝난 반품. 취소·기한 만료된 반품은 수량 없음. */
+  private static final java.util.Set<String> RETURN_CLOSED_OUTCOMES =
+      java.util.Set.of("RETURN_REFUNDED", "RETURN_SHORT_CLOSED");
+
+  /**
+   * 반품 종결(ClaimClosed, order.claim.v1 — O-7, 2026-11-17 CL-1 추가 결정 9) 반영: outcome RETURN_REFUNDED·
+   * RETURN_SHORT_CLOSED 의 returnedLines 를 행마다 반품 수량(returnedQty) +q. 같은 claimId 는 한 번(업무 키 RETURN),
+   * 한도(전달 − 이미 반품)를 넘거나 없는 행이면 반영 없이 MISMATCH(대사). 주문 상태는 그대로, 버전 +1·행마다
+   * OrderLineQuantityChanged(reason RETURN). inbox 트랜잭션 안.
+   */
+  public void claimClosed(com.pmart.common.messaging.EventEnvelope e) {
+    var p = e.payload();
+    String outcome = p.path("outcome").asString("");
+    if (!RETURN_CLOSED_OUTCOMES.contains(outcome)) {
+      return; // 취소 클레임 종결·취소된 반품 — 반품 수량 없음
+    }
+    String orderId = p.path("orderId").asString("");
+    String claimId = p.path("claimId").asString("");
+    List<OrderRules.Change> changes = changes(p.path("returnedLines"));
+    if (orderId.isBlank() || claimId.isBlank() || changes.isEmpty()) {
+      log.warn("반품 종결 사건 {} 에 주문·클레임·반품 행이 없어 무시", e.eventId());
+      return;
+    }
+    Instant now = clock.instant();
+    Instant closedAt = instant(p.path("closedAt").asString(null));
+    OrderRow o = orders.lock(orderId).orElse(null);
+    if (o == null) {
+      log.warn("반품 종결 {} 의 주문이 없습니다: {}", claimId, orderId);
+      return;
+    }
+    List<LineRow> rows = orders.lines(orderId);
+    java.util.Map<String, Integer> after;
+    try {
+      after =
+          OrderRules.returned(
+              rows.stream()
+                  .map(
+                      l ->
+                          new OrderRules.ReturnLine(
+                              l.orderLineId(), l.deliveredQty(), l.returnedQty()))
+                  .toList(),
+              changes);
+    } catch (IllegalArgumentException ex) {
+      if (orders.recordFact(
+          RETURN,
+          claimId,
+          orderId,
+          null,
+          String.valueOf(e.eventId()),
+          "MISMATCH",
+          truncate(ex.getMessage()),
+          closedAt,
+          now)) {
+        log.warn("주문 {} 반품 {} 수량 불일치 — 반영하지 않고 대사로 남김: {}", orderId, claimId, ex.getMessage());
+      }
+      return;
+    }
+    if (!orders.recordFact(
+        RETURN,
+        claimId,
+        orderId,
+        null,
+        String.valueOf(e.eventId()),
+        "APPLIED",
+        null,
+        closedAt,
+        now)) {
+      log.info("주문 {} 반품 {} 는 이미 반영됨", orderId, claimId);
+      return;
+    }
+    int version = o.version() + 1;
+    for (LineRow l : rows) {
+      Integer returned = after.get(l.orderLineId());
+      if (returned == null) {
+        continue;
+      }
+      orders.updateLineReturned(l.orderLineId(), returned);
+      Map<String, Object> q = new LinkedHashMap<>();
+      q.put("orderId", orderId);
+      q.put("orderLineId", l.orderLineId());
+      q.put("sku", l.sku());
+      q.put("originalQty", l.originalQty());
+      q.put("unfulfilledQty", l.unfulfilledQty());
+      q.put("handedOverQty", l.handedOverQty());
+      q.put("cancelledBeforeShipQty", l.cancelledBeforeShipQty());
+      q.put("returnedQty", returned);
+      q.put("reason", RETURN);
+      q.put("claimId", claimId);
+      q.put("version", version);
+      q.put("changedAt", now.toString());
+      publishOrderEvent("OrderLineQuantityChanged", orderId, version, q);
+    }
+    orders.updateStatus(orderId, o.status(), version);
+    log.info("주문 {} 반품 {} 수량 반영({})", orderId, claimId, after);
+  }
+
   private void publishCompleted(String orderId, int version, Instant at) {
     Map<String, Object> pc = new LinkedHashMap<>();
     pc.put("orderId", orderId);

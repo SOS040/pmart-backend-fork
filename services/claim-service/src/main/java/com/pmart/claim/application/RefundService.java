@@ -1,17 +1,21 @@
 package com.pmart.claim.application;
 
 import com.pmart.claim.domain.ClaimRules;
+import com.pmart.claim.domain.ReturnRules;
 import com.pmart.claim.infrastructure.ClaimStore;
 import com.pmart.claim.infrastructure.ClaimStore.ClaimRow;
+import com.pmart.claim.infrastructure.ClaimStore.FeeRow;
 import com.pmart.claim.infrastructure.ClaimStore.LineRow;
 import com.pmart.claim.infrastructure.ClaimStore.RefundRow;
 import com.pmart.claim.infrastructure.Upstreams;
 import com.pmart.common.messaging.EventEnvelope;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import org.jspecify.annotations.Nullable;
@@ -195,17 +199,66 @@ public class RefundService {
   }
 
   /**
-   * 반품 종결 판정(호출자 트랜잭션 안, 클레임 잠금 뒤): 진행 중이고 모든 행이 요청 수량만큼 검수됐고 환불 의도가 모두 완료면 CLOSED +
-   * ClaimClosed(RETURN_REFUNDED). 아니면 그대로.
+   * 반품 회수비 돌려주기 의도(CL-1 추가 결정 2, 호출자 트랜잭션 안) — 회수 실패로 반품을 취소할 때 돌려주기로 정한 회수비. 회수비 결제
+   * 시도(RTF-<claimId>)의 전액 취소(scope FULL, payment 취소 사유 RETURN), 원주문 결제와 별개. 근거 RETURN_FEE(클레임당 하나).
+   * RefundIntentCreated(kind RETURN_FEE)도 함께.
+   */
+  RefundRow createFeeRefund(ClaimRow c, FeeRow f, Instant now) {
+    String id = "RFI-" + UUID.randomUUID();
+    RefundRow r =
+        new RefundRow(
+            id,
+            c.claimId(),
+            c.orderId(),
+            Objects.requireNonNull(f.paymentAttemptId()),
+            "FULL",
+            ReturnRules.RETURN_FEE_REFUND_REASON,
+            f.amount(),
+            0,
+            0,
+            0,
+            "PENDING_EXECUTION",
+            "REFUND-" + id,
+            null,
+            null,
+            null,
+            0,
+            null,
+            null,
+            now,
+            now,
+            ReturnRules.RETURN_FEE_REFUND_REASON);
+    store.insertRefund(r);
+    events.refundIntentCreated(r);
+    return r;
+  }
+
+  /**
+   * 반품 종결 판정(호출자 트랜잭션 안, 클레임 잠금 뒤): 진행 중이고 모든 행이 정산 수량(접수 때 요청 수량, "받은 만큼만 끝내기" 뒤엔 받은 수량 — 추가 결정
+   * 6)만큼 검수됐고 환불 의도가 모두 완료면 CLOSED + ClaimClosed(RETURN_REFUNDED, 받은 만큼만 끝냈으면 RETURN_SHORT_CLOSED —
+   * 행별 반품 수량 returnedLines, order O-7 이 받는다). 아니면 그대로.
    */
   boolean closeReturnIfDone(String claimId, Instant now) {
     ClaimRow c = store.lock(claimId).orElse(null);
     if (c == null || !"RETURN".equals(c.type()) || !"IN_PROGRESS".equals(c.state())) {
       return false;
     }
+    boolean shortClosed = false;
+    List<Map<String, Object>> returned = new ArrayList<>();
     for (LineRow l : store.lines(claimId)) {
-      if (l.inspectedQty() < l.requestedQty()) {
+      int target = settleQty(l);
+      if (l.inspectedQty() < target) {
         return false;
+      }
+      shortClosed |= target < l.requestedQty();
+      int qty = Math.min(l.inspectedQty(), target);
+      if (qty > 0) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("orderLineId", l.orderLineId());
+        m.put("qty", qty);
+        m.put("resaleQty", Math.min(l.resaleQty(), qty));
+        m.put("disposeQty", qty - Math.min(l.resaleQty(), qty));
+        returned.add(m);
       }
     }
     for (RefundRow r : store.refunds(claimId)) {
@@ -214,9 +267,14 @@ public class RefundService {
       }
     }
     store.updateState(claimId, "CLOSED", null, null, now, now);
-    events.claimClosed(c, "RETURN_REFUNDED", now);
-    log.info("반품 {} 모든 행 검수·환불 완료 — 종결", claimId);
+    events.claimClosed(c, shortClosed ? "RETURN_SHORT_CLOSED" : "RETURN_REFUNDED", now, returned);
+    log.info("반품 {} 모든 행 검수·환불 완료 — 종결{}", claimId, shortClosed ? "(받은 만큼만)" : "");
     return true;
+  }
+
+  /** 반품 행의 정산 수량 — 정해 둔 approvedQty(접수 = 요청 수량, 받은 만큼만 끝내기 = 받은 수량), 없으면 요청 수량. */
+  static int settleQty(LineRow l) {
+    return l.approvedQty() == null ? l.requestedQty() : l.approvedQty();
   }
 
   void executeAsync(String refundIntentId) {

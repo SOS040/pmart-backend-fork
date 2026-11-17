@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/ClaimClosed.v1.json",
   "title": "ClaimClosed",
-  "description": "회수·검수·환불·통지 의무 모두 확인. 발행 claim-service. 구독 order, notification, case. 토픽 order.claim.v1. 단계 ②",
+  "description": "회수·검수·환불·통지 의무 모두 확인. 발행 claim-service. 구독 order(2026-11-17 O-7 — 반품 종결의 returnedLines 를 주문 행 반품 수량 returnedQty 로), notification, case. 토픽 order.claim.v1. 단계 ②",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -31,7 +31,42 @@
             },
             "outcome": {
               "type": "string",
-              "description": "종결 결과 코드 — CANCELLED_REFUNDED(취소 환불 완료), REJECTED_HANDED_OVER(인계돼 취소 불가), 반품(2026-11-17 CL-1): RETURN_REFUNDED(모든 행 검수·환불 완료), RETURN_FEE_UNPAID(회수비 기한 안 미결제), RETURN_CANCELLED(상담원 취소)"
+              "description": "종결 결과 코드 — CANCELLED_REFUNDED(취소 환불 완료), REJECTED_HANDED_OVER(인계돼 취소 불가), 반품(2026-11-17 CL-1): RETURN_REFUNDED(모든 행 검수·환불 완료), RETURN_FEE_UNPAID(회수비 기한 안 미결제), RETURN_CANCELLED(상담원 취소), 추가 결정(2026-11-17): RETURN_SHORT_CLOSED(상담원 \"받은 만큼만 끝내기\" — 받은 수량만 환불, 남은 수량 환불 없음), RETURN_EXPIRED(반품 기한 접수 + 7일 안에 회수 안 됨 — 자동 취소)"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "CANCEL",
+                "RETURN",
+                "EXCHANGE"
+              ],
+              "description": "클레임 종류(2026-11-17 추가)"
+            },
+            "returnedLines": {
+              "type": "array",
+              "description": "반품 종결(RETURN_REFUNDED·RETURN_SHORT_CLOSED)만 — 주문 행별 반품 수량(검수·환불된 수량, 2026-11-17 CL-1 추가 결정 9). order 가 행의 returnedQty 에 더한다(클레임 하나에 한 번)",
+              "items": {
+                "type": "object",
+                "required": [
+                  "orderLineId",
+                  "qty"
+                ],
+                "properties": {
+                  "orderLineId": {
+                    "$ref": "_defs.v1.json#/$defs/Ref"
+                  },
+                  "qty": {
+                    "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  },
+                  "resaleQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  },
+                  "disposeQty": {
+                    "$ref": "_defs.v1.json#/$defs/Qty"
+                  }
+                },
+                "additionalProperties": true
+              }
             },
             "closedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"

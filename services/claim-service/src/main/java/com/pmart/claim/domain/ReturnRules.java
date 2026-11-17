@@ -18,6 +18,16 @@ import org.jspecify.annotations.Nullable;
  *   <li>1차 감액 없음: 검수 수량(RESALE·DISPOSE 모두) × 원단가 − 할인 안분 전액 환불(봉투값·배달팁 없음).
  *   <li>회수 실패: 첫 실패는 자동으로 한 번 더, 두 번째 시도부터 실패하면 상담원 재연락(RECOVERY_FAILED). 회수비는 한 번만.
  * </ul>
+ *
+ * 추가 결정(2026-11-17 사용자 "추천대로" 1~9):
+ *
+ * <ul>
+ *   <li>회수 시도는 전체 3번(자동 2 + 상담원 재시도 1) — 넘으면 상담원은 반품 취소만. 라이더·우리 잘못(RIDER_INCIDENT)은 횟수에서 빼고 바로 다시
+ *       요청.
+ *   <li>회수 실패로 반품을 취소할 때 낸 회수비: 고객 사유 → 돌려주지 않음, 우리 잘못 → 돌려줌, 파손·기타 → 상담원 판단(기본 돌려주지 않음).
+ *   <li>반품 전체 기한 = 접수 + 7일(설정) — 그 안에 회수가 안 되면 자동 취소.
+ *   <li>MFC 가 요청보다 적게 받으면 상담원이 "받은 만큼만 끝내기"(남은 수량 환불 없음).
+ * </ul>
  */
 public final class ReturnRules {
 
@@ -26,8 +36,40 @@ public final class ReturnRules {
   /** 회수비(원) — 업무 원문 Delivery 381행, D-7(사용자 "응 그대로"). */
   public static final long RECOVERY_FEE = 9_000;
 
-  /** 자동으로 내는 회수 요청 수(사용자 2026-11-17 "2번 시도 뒤 상담원 재연락"). */
+  /** 자동으로 내는 회수 요청 수(사용자 2026-11-17 "2번 시도 뒤 상담원 재연락"). 횟수에 드는 실패만 센다. */
   public static final int AUTO_PICKUP_ATTEMPTS = 2;
+
+  /** 회수 시도 전체 수(자동 2 + 상담원 재시도 1 — 추가 결정 3). 횟수에 드는 실패가 이만큼이면 상담원은 반품 취소만. */
+  public static final int MAX_PICKUP_ATTEMPTS = 3;
+
+  /** 고객 사유 회수 실패(delivery 전달 실패 코드 — ReturnPickupFailed.reason, customerReason true). */
+  public static final Set<String> CUSTOMER_FAILURE_REASONS =
+      Set.of("CUSTOMER_ABSENT", "UNREACHABLE", "ADDRESS_ERROR", "REFUSED");
+
+  /** 라이더·우리 잘못 회수 실패 — 횟수에서 빼고 바로 다시 요청(추가 결정 4), 취소되면 회수비 돌려줌(추가 결정 2). */
+  public static final String RIDER_INCIDENT = "RIDER_INCIDENT";
+
+  // 회수 실패 종류(return_pickup.failure_kind)
+  public static final String FAIL_CUSTOMER = "CUSTOMER";
+  public static final String FAIL_OURS = "OURS";
+  public static final String FAIL_OTHER = "OTHER";
+
+  // 반품 취소 때 회수비 결정(return_fee.refund_decision)
+  public static final String FEE_REFUND = "REFUND";
+  public static final String FEE_KEEP = "KEEP";
+
+  /** 회수비 돌려주기 환불 의도 사유(refund_intent.reason — payment 취소 사유는 RETURN). */
+  public static final String RETURN_FEE_REFUND_REASON = "RETURN_FEE";
+
+  /** 반품 취소 때 낸 회수비 규칙(추가 결정 2). */
+  public enum FeeRefundRule {
+    /** 우리 잘못만 있었다(또는 실패 없이 기한이 지났다) — 돌려준다. */
+    REFUND,
+    /** 고객 사유 실패가 있었다 — 돌려주지 않는다. */
+    KEEP,
+    /** 파손·기타 실패 — 상담원 판단(기본 돌려주지 않음). */
+    CS_DECIDES
+  }
 
   /** 결제창 표시용 주문명. */
   public static final String FEE_ORDER_NAME = "반품 회수비";
@@ -177,9 +219,118 @@ public final class ReturnRules {
     return !now.isBefore(deadline);
   }
 
-  /** 이 시도가 실패하면 자동으로 다음 회수를 요청하나(첫 시도만). 그 밖은 상담원 재연락. */
-  public static boolean autoRetryAfterFailure(int failedAttemptNo) {
-    return failedAttemptNo < AUTO_PICKUP_ATTEMPTS;
+  /**
+   * 횟수에 드는 실패가 이만큼일 때 자동으로 다음 회수를 요청하나(첫 실패만). 그 밖은 상담원 재연락.
+   *
+   * @param countedFailures 횟수에 드는(우리 잘못이 아닌) 실패 수 — 방금 실패 포함
+   */
+  public static boolean autoRetryAfterFailure(int countedFailures) {
+    return countedFailures < AUTO_PICKUP_ATTEMPTS;
+  }
+
+  /** 상담원이 다시 회수를 요청할 수 있나(전체 3번 — 추가 결정 3). */
+  public static boolean csRetryAllowed(int countedFailures) {
+    return countedFailures < MAX_PICKUP_ATTEMPTS;
+  }
+
+  /**
+   * 회수 실패 종류. RIDER_INCIDENT 는 우리 잘못(OURS), 고객 사유 코드 또는 customerReason true 면 CUSTOMER, 그 밖(파손
+   * DAMAGED·기타 OTHER·모르는 코드)은 OTHER.
+   */
+  public static String failureKind(@Nullable String reason, @Nullable Boolean customerReason) {
+    if (RIDER_INCIDENT.equals(reason)) {
+      return FAIL_OURS;
+    }
+    if (Boolean.TRUE.equals(customerReason)
+        || (reason != null && CUSTOMER_FAILURE_REASONS.contains(reason))) {
+      return FAIL_CUSTOMER;
+    }
+    return FAIL_OTHER;
+  }
+
+  /** 이 실패가 회수 시도 횟수에 드나(우리 잘못은 빼고). 종류를 모르면(null) 센다. */
+  public static boolean countsAsAttempt(@Nullable String failureKind) {
+    return !FAIL_OURS.equals(failureKind);
+  }
+
+  /** 횟수에 드는 실패 수. */
+  public static int countedFailures(List<@Nullable String> failureKinds) {
+    return (int) failureKinds.stream().filter(ReturnRules::countsAsAttempt).count();
+  }
+
+  /**
+   * 반품을 취소할 때 낸 회수비 규칙(추가 결정 2). 이 반품의 회수 실패 종류 전부로 본다: 고객 사유가 하나라도 있으면 KEEP, 아니고 파손·기타(또는 종류 모름)가
+   * 있으면 CS_DECIDES, 우리 잘못뿐이거나 실패가 없으면(회수하러 가지 못한 채 기한) REFUND.
+   */
+  public static FeeRefundRule feeRefundRule(List<@Nullable String> failureKinds) {
+    if (failureKinds.contains(FAIL_CUSTOMER)) {
+      return FeeRefundRule.KEEP;
+    }
+    for (String k : failureKinds) {
+      if (!FAIL_OURS.equals(k)) {
+        return FeeRefundRule.CS_DECIDES;
+      }
+    }
+    return FeeRefundRule.REFUND;
+  }
+
+  /**
+   * 회수비를 돌려주나. 상담원 선택(csChoice)은 CS_DECIDES 에서만 쓰고, 정해진 규칙과 다른 값이면 {@link ClaimRules.Rejection}
+   * FEE_REFUND_NOT_ALLOWED. 선택이 없으면 규칙 기본(CS_DECIDES 는 돌려주지 않음).
+   */
+  public static boolean refundFee(FeeRefundRule rule, @Nullable Boolean csChoice) {
+    return switch (rule) {
+      case REFUND -> {
+        if (Boolean.FALSE.equals(csChoice)) {
+          throw new ClaimRules.Rejection(
+              "FEE_REFUND_NOT_ALLOWED", "우리 쪽 잘못(RIDER_INCIDENT)으로 회수하지 못한 반품은 회수비를 돌려줍니다.");
+        }
+        yield true;
+      }
+      case KEEP -> {
+        if (Boolean.TRUE.equals(csChoice)) {
+          throw new ClaimRules.Rejection(
+              "FEE_REFUND_NOT_ALLOWED", "고객 사유(부재·연락 두절·주소 오류·거부)로 회수하지 못한 반품은 회수비를 돌려주지 않습니다.");
+        }
+        yield false;
+      }
+      case CS_DECIDES -> Boolean.TRUE.equals(csChoice);
+    };
+  }
+
+  /** 반품 전체 기한이 지났나(기한 없으면 아니다 — 기한은 접수 때 정한다). */
+  public static boolean pastDeadline(@Nullable Instant deadline, Instant now) {
+    return deadline != null && !now.isBefore(deadline);
+  }
+
+  /** "받은 만큼만 끝내기" 판정용 클레임 행. */
+  public record ShortLine(
+      String claimLineId, int requestedQty, int receivedQty, int inspectedQty) {}
+
+  /**
+   * "받은 만큼만 끝내기"(추가 결정 6): 행마다 정산 수량 = 받은 수량(반입·검수 중 큰 값, 요청 수량까지). 받은 것이 없으면 NOTHING_RECEIVED(반품
+   * 취소를 쓴다), 모든 행을 다 받았으면 NOT_SHORT(검수·환불 뒤 저절로 끝난다) — {@link ClaimRules.Rejection}.
+   *
+   * @return claimLineId → 정산 수량
+   */
+  public static Map<String, Integer> shortClose(List<ShortLine> lines) {
+    Map<String, Integer> out = new LinkedHashMap<>();
+    int got = 0;
+    boolean shortOne = false;
+    for (ShortLine l : lines) {
+      int settled = Math.min(l.requestedQty(), Math.max(l.receivedQty(), l.inspectedQty()));
+      out.put(l.claimLineId(), settled);
+      got += settled;
+      shortOne |= settled < l.requestedQty();
+    }
+    if (got == 0) {
+      throw new ClaimRules.Rejection(
+          "NOTHING_RECEIVED", "MFC 가 받은 회수품이 없습니다 — 받은 만큼만 끝낼 수 없습니다(반품 취소를 쓰세요).");
+    }
+    if (!shortOne) {
+      throw new ClaimRules.Rejection("NOT_SHORT", "요청 수량을 모두 받았습니다 — 검수·환불이 끝나면 저절로 종결됩니다.");
+    }
+    return out;
   }
 
   /**

@@ -323,7 +323,15 @@ public class OrderStore {
         orderLineId);
   }
 
-  /** 이행 사실(인계·전달)을 업무 키로 한 번만 기록. 이미 있으면 false(반영하지 않는다). */
+  /** 반품 수량 누계(O-7, 2026-11-17). */
+  public void updateLineReturned(String orderLineId, int returnedQty) {
+    jdbc.update(
+        "UPDATE customer_order_line SET returned_qty = ? WHERE order_line_id = ?",
+        returnedQty,
+        orderLineId);
+  }
+
+  /** 이행 사실(인계·전달·반품 종결)을 업무 키로 한 번만 기록. 이미 있으면 false(반영하지 않는다). */
   public boolean recordFact(
       String kind,
       String sourceRef,

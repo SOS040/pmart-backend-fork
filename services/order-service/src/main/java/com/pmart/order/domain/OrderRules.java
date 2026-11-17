@@ -369,6 +369,38 @@ public final class OrderRules {
     return out;
   }
 
+  /** 반품 수량 반영 대상 행(O-7). */
+  public record ReturnLine(String orderLineId, int deliveredQty, int returnedQty) {}
+
+  /**
+   * 반품 수량 반영(O-7, 2026-11-17 — claim 반품 종결 ClaimClosed 의 returnedLines): 행마다 반품 +q. 한도 = 전달 − 이미
+   * 반품(고객이 받은 만큼만 돌려줄 수 있다 — claim 의 반품 가능 수량 심사와 같은 기준). 넘거나 없는 행이면 {@link
+   * IllegalArgumentException}(아무것도 바꾸지 않는다 — 호출자가 대사 불일치로 남긴다). 다른 수량·주문 상태는 그대로.
+   *
+   * @return 바뀐 행만 orderLineId → 새 반품 누계(주문 순서)
+   */
+  public static java.util.Map<String, Integer> returned(
+      List<ReturnLine> lines, List<Change> changes) {
+    java.util.Map<String, Integer> req = sumByLine(changes);
+    java.util.Map<String, Integer> out = new java.util.LinkedHashMap<>();
+    for (ReturnLine l : lines) {
+      Integer q = req.remove(l.orderLineId());
+      if (q == null) {
+        continue;
+      }
+      int limit = l.deliveredQty() - l.returnedQty();
+      if (q > limit) {
+        throw new IllegalArgumentException(
+            "주문행 " + l.orderLineId() + " 반품 한도 " + limit + "(전달 − 이미 반품) 를 넘습니다: " + q);
+      }
+      out.put(l.orderLineId(), l.returnedQty() + q);
+    }
+    if (!req.isEmpty()) {
+      throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());
+    }
+    return out;
+  }
+
   /**
    * 오배송 재발송(RESHIPMENT, 2026-11-16 — ADR-0052 결정 4·5): 행마다 미이행 +q·재발송 +q. 한도 = 원수량 − 출고 전 취소 − 이미
    * 재발송(배송된 만큼만 다시 보낸다). 넘거나 없는 행이면 {@link IllegalArgumentException}. 상태는 바꾸지 않는다(뒤로 가지 않음).

@@ -96,10 +96,15 @@ public final class ClaimRules {
 
   /**
    * 환불 의도 사유 → payment 취소 사유(계약 CancellationRequest.reason). 결품 클레임 사유 OUT_OF_STOCK 은 payment 에서
-   * SHORTAGE 다(2026-11-17 발견 — 그대로 보내면 payment 가 400 으로 거절해 결품 부분 환불이 FAILED 가 됐다). 나머지는 같은 이름.
+   * SHORTAGE 다(2026-11-17 발견 — 그대로 보내면 payment 가 400 으로 거절해 결품 부분 환불이 FAILED 가 됐다). 반품 회수비 돌려주기
+   * RETURN_FEE(CL-1 추가 결정 2)는 RETURN. 나머지는 같은 이름.
    */
   public static String paymentReason(String refundReason) {
-    return "OUT_OF_STOCK".equals(refundReason) ? "SHORTAGE" : refundReason;
+    return switch (refundReason) {
+      case "OUT_OF_STOCK" -> "SHORTAGE";
+      case "RETURN_FEE" -> "RETURN";
+      default -> refundReason;
+    };
   }
 
   /** 환불 금액 구성(전체 취소). */

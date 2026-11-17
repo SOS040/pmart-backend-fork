@@ -10,6 +10,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.pmart.claim.application.ReturnFeeService;
+import com.pmart.claim.application.ReturnService;
 import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
@@ -56,6 +57,7 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.claim.order-base-url=${deps.url}",
       "pmart.claim.payment-base-url=${deps.url}",
       "pmart.claim.refund-sweep-interval=PT1H", // 시험이 재개를 직접 부른다
+      "pmart.claim.return-deadline-sweep-interval=PT1H", // 반품 기한 점검도 시험이 직접 부른다
       // 컨테이너는 클래스마다 다시 뜬다 — 취소 시험과 같은 설정이면 캐시된 컨텍스트(지난 컨테이너 주소)를 다시 쓰므로 따로
       "pmart.test.context=return-flow"
     })
@@ -70,6 +72,7 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired ReturnFeeService fees;
+  @Autowired ReturnService returns;
 
   @InjectWireMock("deps")
   WireMockServer deps;
@@ -745,5 +748,549 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
                 matchingJsonPath("$.reason", WireMock.equalTo("RETURN_FEE_TOO_LATE"))));
     assertThat(get(customer, "/claims/" + claimId).body().path("state").asString())
         .isEqualTo("CANCELLED");
+  }
+
+  // ---------- 추가 결정(2026-11-17 사용자 "추천대로" 1~9) ----------
+
+  /** 회수 실패 사건(ReturnPickupFailed) — 사유·고객 사유 여부를 고른다. 배송 번호는 새 것(클레임의 마지막 회수 요청으로 찾는다). */
+  void pickupFailed(String claimId, String reason, boolean customerReason) {
+    String deliveryId = "DLV-RF-" + UUID.randomUUID();
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", deliveryId);
+    p.put("claimId", claimId);
+    p.put("reason", reason);
+    p.put("customerReason", customerReason);
+    p.put("contactAttempts", customerReason ? 2 : 0);
+    p.put("failedAt", "2026-11-17T05:00:00Z");
+    send("delivery.delivery.v1", "ReturnPickupFailed", "Delivery", deliveryId, p);
+  }
+
+  int pickupRequests(String claimId) {
+    return outbox("ReturnPickupRequested", claimId);
+  }
+
+  /** 고객 사유 반품 접수 → 회수비 결제 승인 → IN_PROGRESS + 1번째 회수 요청. 회수비 결제 시도 ID 를 돌려준다. */
+  String paidReturn(String orderId, String customer, String[] claimHolder, int qty)
+      throws Exception {
+    String attempt = "pay-fee-" + UUID.randomUUID().toString().substring(0, 8);
+    paymentStarts("x", 1, attempt);
+    String claimId =
+        post(cs, "/claims", returnBody(orderId, qty, null)).body().path("claimId").asString();
+    claimHolder[0] = claimId;
+    await(
+        customer,
+        "/claims/" + claimId,
+        b -> attempt.equals(b.path("feePayment").path("paymentAttemptId").asString(null)));
+    send(
+        "order.payment.v1",
+        "PaymentApproved",
+        "PaymentAttempt",
+        attempt,
+        Map.of(
+            "paymentAttemptId",
+            attempt,
+            "pgTransactionId",
+            "tx-" + attempt,
+            "orderRef",
+            "RTF-" + claimId,
+            "amount",
+            9000,
+            "currency",
+            "KRW",
+            "approvedAt",
+            "2026-11-17T02:00:00Z"));
+    await(customer, "/claims/" + claimId, b -> "IN_PROGRESS".equals(b.path("state").asString()));
+    assertThat(pickupRequests(claimId)).isEqualTo(1);
+    return attempt;
+  }
+
+  void moveDeadlineToPast(String claimId) {
+    jdbc.update(
+        "UPDATE claim SET return_deadline_at = now() - interval '1 minute' WHERE claim_id = ?",
+        claimId);
+  }
+
+  /**
+   * 추가 결정 3·4·2: 라이더·우리 잘못(RIDER_INCIDENT)은 횟수에서 빼고 바로 다시 요청, 회수 시도 전체 3번(자동 2 + 상담원 1) — 다 쓰면 다시
+   * 회수 409, 고객 사유 실패가 있었던 반품을 취소하면 낸 회수비는 돌려주지 않는다(돌려 달라고 하면 422).
+   */
+  @Test
+  void riderIncidentIsNotCountedThreeAttemptsThenCancelKeepsFeeAfterCustomerFailure()
+      throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String customer = TestJwt.customer(account);
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, 10);
+    String[] holder = new String[1];
+    paidReturn(orderId, customer, holder, 2);
+    String claimId = holder[0];
+    // 반품 전체 기한 = 접수 + 7일
+    JsonNode opened = get(customer, "/claims/" + claimId).body();
+    assertThat(
+            java.time.Duration.between(
+                java.time.OffsetDateTime.parse(opened.path("openedAt").asString()),
+                java.time.OffsetDateTime.parse(opened.path("returnDeadlineAt").asString())))
+        .isEqualTo(java.time.Duration.ofDays(7));
+
+    // P1 우리 잘못 → 횟수에 넣지 않고 바로 P2
+    pickupFailed(claimId, "RIDER_INCIDENT", false);
+    until(() -> pickupRequests(claimId) == 2);
+    JsonNode afterOurs = get(customer, "/claims/" + claimId).body();
+    assertThat(afterOurs.path("state").asString()).isEqualTo("IN_PROGRESS");
+    assertThat(afterOurs.path("pickup").path("failedAttempts").asInt()).isEqualTo(1);
+    assertThat(afterOurs.path("pickup").path("countedFailures").asInt()).isZero();
+    // P2 고객 부재(첫 번째로 세는 실패) → 자동 P3
+    pickupFailed(claimId, "CUSTOMER_ABSENT", true);
+    until(() -> pickupRequests(claimId) == 3);
+    // P3 파손(두 번째) → RECOVERY_FAILED, 상담원 다시 회수 가능
+    pickupFailed(claimId, "DAMAGED", false);
+    Res failed =
+        await(
+            customer,
+            "/claims/" + claimId,
+            b -> "RECOVERY_FAILED".equals(b.path("state").asString()));
+    assertThat(failed.body().path("pickup").path("countedFailures").asInt()).isEqualTo(2);
+    assertThat(failed.body().path("pickup").path("retryAllowed").asBoolean()).isTrue();
+    JsonNode rf = outboxPayloads("ReturnRecoveryFailed", claimId).get(0);
+    assertThat(rf.path("attempts").asInt()).isEqualTo(3);
+    assertThat(rf.path("countedAttempts").asInt()).isEqualTo(2);
+    assertThat(rf.path("retryAllowed").asBoolean()).isTrue();
+
+    // feeRefund 는 CANCEL 에만
+    Map<String, Object> retryWithFee = new LinkedHashMap<>();
+    retryWithFee.put("action", "RETRY_PICKUP");
+    retryWithFee.put("note", "다시 방문");
+    retryWithFee.put("feeRefund", true);
+    assertThat(post(cs, "/claims/" + claimId + "/recovery-actions", retryWithFee).status())
+        .isEqualTo(400);
+    // 상담원 다시 회수(세 번째) → P4, 또 실패 → 다 씀
+    Res again =
+        post(
+            cs,
+            "/claims/" + claimId + "/recovery-actions",
+            Map.of("action", "RETRY_PICKUP", "note", "고객과 통화 — 재방문 동의"));
+    assertThat(again.status()).as(again.body().toString()).isEqualTo(200);
+    assertThat(pickupRequests(claimId)).isEqualTo(4);
+    pickupFailed(claimId, "OTHER", false);
+    Res exhausted =
+        await(
+            customer,
+            "/claims/" + claimId,
+            b -> "RECOVERY_FAILED".equals(b.path("state").asString()));
+    assertThat(exhausted.body().path("pickup").path("countedFailures").asInt()).isEqualTo(3);
+    assertThat(exhausted.body().path("pickup").path("retryAllowed").asBoolean()).isFalse();
+    until(() -> outbox("ReturnRecoveryFailed", claimId) == 2);
+    assertThat(
+            outboxPayloads("ReturnRecoveryFailed", claimId).get(1).path("retryAllowed").asBoolean())
+        .isFalse();
+    Res noMore =
+        post(
+            cs,
+            "/claims/" + claimId + "/recovery-actions",
+            Map.of("action", "RETRY_PICKUP", "note", "한 번 더"));
+    assertThat(noMore.status()).isEqualTo(409);
+    assertThat(noMore.body().path("code").asString()).isEqualTo("PICKUP_ATTEMPTS_EXHAUSTED");
+    assertThat(pickupRequests(claimId)).isEqualTo(4);
+
+    // 고객 사유 실패가 있었다 — 회수비 돌려 달라면 422, 그냥 취소하면 KEEP
+    Map<String, Object> cancelRefund = new LinkedHashMap<>();
+    cancelRefund.put("action", "CANCEL");
+    cancelRefund.put("note", "고객이 반품 포기");
+    cancelRefund.put("feeRefund", true);
+    Res refused = post(cs, "/claims/" + claimId + "/recovery-actions", cancelRefund);
+    assertThat(refused.status()).isEqualTo(422);
+    assertThat(refused.body().path("code").asString()).isEqualTo("FEE_REFUND_NOT_ALLOWED");
+    Res cancelled =
+        post(
+            cs,
+            "/claims/" + claimId + "/recovery-actions",
+            Map.of("action", "CANCEL", "note", "고객이 반품 포기"));
+    assertThat(cancelled.status()).as(cancelled.body().toString()).isEqualTo(200);
+    assertThat(cancelled.body().path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(cancelled.body().path("feePayment").path("state").asString()).isEqualTo("PAID");
+    assertThat(cancelled.body().path("feePayment").path("refundDecision").asString())
+        .isEqualTo("KEEP");
+    assertThat(cancelled.body().path("refunds").size()).isZero();
+    assertThat(outboxPayloads("ClaimClosed", claimId).get(0).path("outcome").asString())
+        .isEqualTo("RETURN_CANCELLED");
+  }
+
+  /**
+   * 추가 결정 5·2: 기한(접수 + 7일)이 지나도 진행 중인 회수는 결과를 기다리고, 그 회수가 우리 잘못으로 실패하면 다시 요청하지 않고 자동 취소
+   * (RETURN_EXPIRED) — 우리 잘못뿐이었으니 낸 회수비 9,000원은 회수비 결제의 전액 취소로 돌려준다(kind RETURN_FEE).
+   */
+  @Test
+  void deadlinePassedWaitsForPickupThenExpiresAndRefundsFeeForOurFault() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String customer = TestJwt.customer(account);
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, 10);
+    String[] holder = new String[1];
+    String feeAttempt = paidReturn(orderId, customer, holder, 1);
+    String claimId = holder[0];
+
+    // P1 우리 잘못 → 바로 P2(진행 중)
+    pickupFailed(claimId, "RIDER_INCIDENT", false);
+    until(() -> pickupRequests(claimId) == 2);
+    moveDeadlineToPast(claimId);
+    // 기한이 지났지만 P2 진행 중 — 자동 취소하지 않는다
+    returns.expireOverdue();
+    assertThat(get(customer, "/claims/" + claimId).body().path("state").asString())
+        .isEqualTo("IN_PROGRESS");
+
+    // P2 도 우리 잘못으로 실패 — 기한 뒤라 다시 요청하지 않고 자동 취소, 회수비 돌려줌
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/payments/" + feeAttempt + "/cancellations"))
+            .willReturn(
+                json(202, Map.of("status", "ACCEPTED", "requestId", "z", "resultId", "C-F"))));
+    pickupFailed(claimId, "RIDER_INCIDENT", false);
+    Res expired =
+        await(
+            customer,
+            "/claims/" + claimId,
+            b -> "PG_PENDING".equals(b.path("refunds").path(0).path("state").asString()));
+    assertThat(expired.body().path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(pickupRequests(claimId)).isEqualTo(2);
+    assertThat(outboxPayloads("ClaimClosed", claimId).get(0).path("outcome").asString())
+        .isEqualTo("RETURN_EXPIRED");
+    JsonNode fee = expired.body().path("feePayment");
+    assertThat(fee.path("refundDecision").asString()).isEqualTo("REFUND");
+    JsonNode refund = expired.body().path("refunds").path(0);
+    assertThat(refund.path("kind").asString()).isEqualTo("RETURN_FEE");
+    assertThat(refund.path("amount").asInt()).isEqualTo(9_000);
+    assertThat(refund.path("paymentAttemptId").asString()).isEqualTo(feeAttempt);
+    assertThat(fee.path("refundIntentId").asString())
+        .isEqualTo(refund.path("refundIntentId").asString());
+    String intentId = refund.path("refundIntentId").asString();
+    deps.verify(
+        1,
+        postRequestedFor(
+                urlPathEqualTo("/api/v1/internal/payments/" + feeAttempt + "/cancellations"))
+            .withHeader("Idempotency-Key", WireMock.equalTo("REFUND-" + intentId))
+            .withRequestBody(matchingJsonPath("$.amount", WireMock.equalTo("9000")))
+            .withRequestBody(matchingJsonPath("$.scope", WireMock.equalTo("FULL")))
+            .withRequestBody(matchingJsonPath("$.reason", WireMock.equalTo("RETURN"))));
+    assertThat(outboxPayloads("RefundIntentCreated", claimId).get(0).path("kind").asString())
+        .isEqualTo("RETURN_FEE");
+
+    // PG 성공 → 환불 완료, 클레임은 취소 그대로
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("refundRequestId", "REFUND-" + intentId);
+    result.put("refundIntentId", intentId);
+    result.put("paymentAttemptId", feeAttempt);
+    result.put("pgTransactionId", "tcxl_fee");
+    result.put("amount", 9_000);
+    result.put("result", "SUCCESS");
+    send("order.payment.v1", "RefundResult", "PaymentAttempt", feeAttempt, result);
+    Res done =
+        await(
+            customer,
+            "/claims/" + claimId,
+            b -> "COMPLETED".equals(b.path("refunds").path(0).path("state").asString()));
+    assertThat(done.body().path("state").asString()).isEqualTo("CANCELLED");
+  }
+
+  /** 추가 결정 2: 파손·기타 실패만 있었으면 상담원이 취소하면서 회수비를 돌려줄지 정한다(여기서는 돌려줌). */
+  @Test
+  void damagedFailuresLetCsRefundFeeOnCancel() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String customer = TestJwt.customer(account);
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, 10);
+    String[] holder = new String[1];
+    String feeAttempt = paidReturn(orderId, customer, holder, 1);
+    String claimId = holder[0];
+    pickupFailed(claimId, "DAMAGED", false);
+    until(() -> pickupRequests(claimId) == 2);
+    pickupFailed(claimId, "OTHER", false);
+    await(
+        customer, "/claims/" + claimId, b -> "RECOVERY_FAILED".equals(b.path("state").asString()));
+
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/payments/" + feeAttempt + "/cancellations"))
+            .willReturn(
+                json(202, Map.of("status", "ACCEPTED", "requestId", "w", "resultId", "C-D"))));
+    Map<String, Object> cancel = new LinkedHashMap<>();
+    cancel.put("action", "CANCEL");
+    cancel.put("note", "상품이 파손돼 회수 불가 — 회수비 돌려줌");
+    cancel.put("feeRefund", true);
+    Res cancelled = post(cs, "/claims/" + claimId + "/recovery-actions", cancel);
+    assertThat(cancelled.status()).as(cancelled.body().toString()).isEqualTo(200);
+    assertThat(cancelled.body().path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(cancelled.body().path("feePayment").path("refundDecision").asString())
+        .isEqualTo("REFUND");
+    assertThat(cancelled.body().path("refunds").path(0).path("kind").asString())
+        .isEqualTo("RETURN_FEE");
+    until(
+        () ->
+            !deps.findAll(
+                    postRequestedFor(
+                        urlPathEqualTo(
+                            "/api/v1/internal/payments/" + feeAttempt + "/cancellations")))
+                .isEmpty());
+    deps.verify(
+        1,
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/payments/" + feeAttempt + "/cancellations")));
+  }
+
+  /**
+   * 추가 결정 5: 기한이 지나면 상담원 다시 회수 409 RETURN_DEADLINE_PASSED, 회수가 안 된 반품(회수 실패·회수비 결제 대기)은 기한 점검이 자동
+   * 취소한다(RETURN_EXPIRED, 결제 대기 회수비는 더 받지 않음).
+   */
+  @Test
+  void overdueReturnsWithoutPickupAreExpired() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String customer = TestJwt.customer(account);
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, 10);
+    // 면제 반품 — 고객 사유 실패 두 번 → RECOVERY_FAILED
+    String claimId =
+        post(admin, "/claims", returnBody(orderId, 1, "DEFECTIVE"))
+            .body()
+            .path("claimId")
+            .asString();
+    pickupFailed(claimId, "CUSTOMER_ABSENT", true);
+    until(() -> pickupRequests(claimId) == 2);
+    pickupFailed(claimId, "UNREACHABLE", true);
+    await(
+        customer, "/claims/" + claimId, b -> "RECOVERY_FAILED".equals(b.path("state").asString()));
+    // 회수비 결제 대기 반품
+    String attempt = "pay-od-" + UUID.randomUUID().toString().substring(0, 8);
+    paymentStarts("x", 1, attempt);
+    String feeClaim =
+        post(cs, "/claims", returnBody(orderId, 1, null)).body().path("claimId").asString();
+    await(
+        customer,
+        "/claims/" + feeClaim,
+        b -> attempt.equals(b.path("feePayment").path("paymentAttemptId").asString(null)));
+
+    moveDeadlineToPast(claimId);
+    moveDeadlineToPast(feeClaim);
+    Res late =
+        post(
+            cs,
+            "/claims/" + claimId + "/recovery-actions",
+            Map.of("action", "RETRY_PICKUP", "note", "다시 방문"));
+    assertThat(late.status()).isEqualTo(409);
+    assertThat(late.body().path("code").asString()).isEqualTo("RETURN_DEADLINE_PASSED");
+
+    returns.expireOverdue();
+    JsonNode expired = get(customer, "/claims/" + claimId).body();
+    assertThat(expired.path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(expired.path("feePayment").isMissingNode() || expired.path("feePayment").isNull())
+        .isTrue(); // 면제 — 돌려줄 회수비 없음
+    assertThat(outboxPayloads("ClaimClosed", claimId).get(0).path("outcome").asString())
+        .isEqualTo("RETURN_EXPIRED");
+    JsonNode feeExpired = get(customer, "/claims/" + feeClaim).body();
+    assertThat(feeExpired.path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(feeExpired.path("feePayment").path("state").asString()).isEqualTo("UNPAID");
+    assertThat(outboxPayloads("ClaimClosed", feeClaim).get(0).path("outcome").asString())
+        .isEqualTo("RETURN_EXPIRED");
+    // 다시 돌려도 한 번만
+    returns.expireOverdue();
+    assertThat(outbox("ClaimClosed", claimId)).isEqualTo(1);
+  }
+
+  /**
+   * 추가 결정 6·8·9: 같은 SKU 가 두 주문 행에 있을 때 검수 결과의 orderLineId 로 행을 맞춰 환불(SKU 만으로 맞추면 금액이 달라진다). MFC 가
+   * 요청보다 적게 받으면 상담원 "받은 만큼만 끝내기" → 받은 수량만 환불하고 끝(RETURN_SHORT_CLOSED, 행별 반품 수량 returnedLines).
+   */
+  @Test
+  void shortCloseRefundsReceivedOnlyAndInspectionMatchesOrderLine() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String customer = TestJwt.customer(account);
+    String orderId = "ORD-" + UUID.randomUUID();
+    // 같은 SKU 두 행: L1 1,900원 × 5, L2 2,500원 × 5
+    Map<String, Object> o = new LinkedHashMap<>();
+    o.put("orderId", orderId);
+    o.put("accountId", account);
+    o.put("status", "COMPLETED");
+    o.put("version", 3);
+    o.put("mfcId", "MFC-1");
+    o.put("paymentAttemptId", "PAY-" + orderId);
+    o.put("approvedAmount", 22_100);
+    o.put("itemAmount", 22_000);
+    o.put("deliveryTip", 0);
+    o.put("bagFee", 100);
+    o.put("totalAmount", 22_100);
+    o.put("confirmedAt", "2026-11-17T01:00:00Z");
+    List<Map<String, Object>> ls = new ArrayList<>();
+    int no = 1;
+    for (int price : new int[] {1_900, 2_500}) {
+      Map<String, Object> line = new LinkedHashMap<>();
+      line.put("orderLineId", orderId + "-L" + no++);
+      line.put("sku", SKU);
+      line.put("quantity", 5);
+      line.put("unitPrice", price);
+      line.put("lineAmount", price * 5);
+      line.put("discountShare", 0);
+      line.put("originalQty", 5);
+      line.put("unfulfilledQty", 0);
+      line.put("handedOverQty", 5);
+      line.put("deliveredQty", 5);
+      line.put("cancelledBeforeShipQty", 0);
+      ls.add(line);
+    }
+    o.put("lines", ls);
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/orders/" + orderId))
+            .willReturn(json(200, o)));
+    Map<String, Object> body = new LinkedHashMap<>(returnBody(orderId, 1, "MISDELIVERY"));
+    body.put(
+        "lines",
+        List.of(
+            Map.of("orderLineId", orderId + "-L1", "qty", 3),
+            Map.of("orderLineId", orderId + "-L2", "qty", 2)));
+    Res opened = post(cs, "/claims", body);
+    assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);
+    String claimId = opened.body().path("claimId").asString();
+
+    // 회수 진행 중에는 받은 만큼만 끝낼 수 없다
+    Res inFlight =
+        post(
+            cs,
+            "/claims/" + claimId + "/recovery-actions",
+            Map.of("action", "CLOSE_AS_RECEIVED", "note", "일부만 회수"));
+    assertThat(inFlight.status()).isEqualTo(409);
+    assertThat(inFlight.body().path("code").asString()).isEqualTo("PICKUP_IN_PROGRESS");
+
+    // 라이더는 L1 2개·L2 2개만 수거(고객이 L1 1개를 못 찾음) → MFC 반입 → 검수(orderLineId 있음)
+    String deliveryId = "DLV-S-" + UUID.randomUUID();
+    deliveryCreated(deliveryId, claimId, orderId, claimId + "-P1");
+    Map<String, Object> picked = new LinkedHashMap<>();
+    picked.put("returnPickupId", deliveryId);
+    picked.put("claimId", claimId);
+    picked.put("deliveryId", deliveryId);
+    picked.put("purpose", "CLAIM_RETURN");
+    picked.put(
+        "lines",
+        List.of(
+            Map.of("orderLineId", orderId + "-L1", "qty", 2),
+            Map.of("orderLineId", orderId + "-L2", "qty", 2)));
+    picked.put("pickedUpAt", "2026-11-17T03:00:00Z");
+    send("delivery.delivery.v1", "ReturnPickedUp", "Delivery", deliveryId, picked);
+    await(
+        customer,
+        "/claims/" + claimId,
+        b -> "PICKED_UP".equals(b.path("pickup").path("state").asString()));
+    // 수거가 된 반품은 취소할 수 없다(진행 중 — 409)
+    assertThat(
+            post(
+                    cs,
+                    "/claims/" + claimId + "/recovery-actions",
+                    Map.of("action", "CANCEL", "note", "취소"))
+                .status())
+        .isEqualTo(409);
+    Map<String, Object> received = new LinkedHashMap<>();
+    received.put("returnReceiptId", "RRC-S-" + claimId);
+    received.put("claimId", claimId);
+    received.put("orderId", orderId);
+    received.put("mfcId", "MFC-1");
+    received.put(
+        "lines",
+        List.of(
+            Map.of("sku", SKU, "qty", 2, "lot", "LOT-1", "orderLineId", orderId + "-L1"),
+            Map.of("sku", SKU, "qty", 2, "lot", "LOT-1", "orderLineId", orderId + "-L2")));
+    received.put("receivedAt", "2026-11-17T04:00:00Z");
+    send("mfc.inbound.v1", "ReturnItemReceived", "ReturnReceipt", "RRC-S-" + claimId, received);
+    await(
+        customer,
+        "/claims/" + claimId,
+        b -> b.path("lines").path(1).path("receivedQty").asInt() == 2);
+
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/payments/PAY-" + orderId + "/cancellations"))
+            .willReturn(
+                json(202, Map.of("status", "ACCEPTED", "requestId", "s", "resultId", "C-S"))));
+    // L2 를 먼저 적어도 orderLineId 로 맞춘다: L1 2 × 1,900 + L2 2 × 2,500 = 8,800 (SKU 로만 맞추면 3 × 1,900 + 1
+    // × 2,500 = 8,200)
+    Map<String, Object> inspected = new LinkedHashMap<>();
+    inspected.put("inspectionId", "RIN-S-" + claimId);
+    inspected.put("claimId", claimId);
+    inspected.put("returnReceiptId", "RRC-S-" + claimId);
+    inspected.put("mfcId", "MFC-1");
+    inspected.put(
+        "lines",
+        List.of(
+            Map.of(
+                "sku",
+                SKU,
+                "lot",
+                "LOT-1",
+                "qty",
+                2,
+                "disposition",
+                "RESALE",
+                "orderLineId",
+                orderId + "-L2"),
+            Map.of(
+                "sku",
+                SKU,
+                "lot",
+                "LOT-1",
+                "qty",
+                2,
+                "disposition",
+                "DISPOSE",
+                "orderLineId",
+                orderId + "-L1")));
+    inspected.put("inspectedAt", "2026-11-17T04:30:00Z");
+    send("mfc.quality.v1", "ReturnInspected", "ReturnInspection", "RIN-S-" + claimId, inspected);
+    Res refunding =
+        await(
+            customer,
+            "/claims/" + claimId,
+            b -> "PG_PENDING".equals(b.path("refunds").path(0).path("state").asString()));
+    JsonNode refund = refunding.body().path("refunds").path(0);
+    assertThat(refund.path("amount").asInt()).isEqualTo(8_800);
+    assertThat(refund.path("kind").asString()).isEqualTo("ITEMS");
+    assertThat(refunding.body().path("lines").path(0).path("inspection").path("disposeQty").asInt())
+        .isEqualTo(2);
+    assertThat(refunding.body().path("lines").path(1).path("inspection").path("resaleQty").asInt())
+        .isEqualTo(2);
+    assertThat(refunding.body().path("state").asString()).isEqualTo("IN_PROGRESS"); // L1 1개 남음
+
+    // 받은 만큼만 끝내기 → 정산 수량 = 받은 수량, 환불이 끝나면 종결
+    Res shortClose =
+        post(
+            cs,
+            "/claims/" + claimId + "/recovery-actions",
+            Map.of("action", "CLOSE_AS_RECEIVED", "note", "고객이 1개를 못 찾음 — 받은 만큼만"));
+    assertThat(shortClose.status()).as(shortClose.body().toString()).isEqualTo(200);
+    assertThat(shortClose.body().path("state").asString()).isEqualTo("IN_PROGRESS");
+    assertThat(shortClose.body().path("lines").path(0).path("approvedQty").asInt()).isEqualTo(2);
+    assertThat(shortClose.body().path("lines").path(1).path("approvedQty").asInt()).isEqualTo(2);
+    assertThat(shortClose.body().path("pickup").path("state").asString()).isEqualTo("INSPECTED");
+    String intentId = refund.path("refundIntentId").asString();
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("refundRequestId", "REFUND-" + intentId);
+    result.put("refundIntentId", intentId);
+    result.put("paymentAttemptId", "PAY-" + orderId);
+    result.put("pgTransactionId", "tcxl_s");
+    result.put("amount", 8_800);
+    result.put("result", "SUCCESS");
+    send("order.payment.v1", "RefundResult", "PaymentAttempt", "PAY-" + orderId, result);
+    Res closed =
+        await(customer, "/claims/" + claimId, b -> "CLOSED".equals(b.path("state").asString()));
+    assertThat(closed.body().path("refunds").size()).isEqualTo(1); // 남은 1개는 환불 없음
+    JsonNode closedEvent = outboxPayloads("ClaimClosed", claimId).get(0);
+    assertThat(closedEvent.path("outcome").asString()).isEqualTo("RETURN_SHORT_CLOSED");
+    assertThat(closedEvent.path("type").asString()).isEqualTo("RETURN");
+    JsonNode returned = closedEvent.path("returnedLines");
+    assertThat(returned.size()).isEqualTo(2);
+    assertThat(returned.path(0).path("orderLineId").asString()).isEqualTo(orderId + "-L1");
+    assertThat(returned.path(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(returned.path(0).path("disposeQty").asInt()).isEqualTo(2);
+    assertThat(returned.path(1).path("orderLineId").asString()).isEqualTo(orderId + "-L2");
+    assertThat(returned.path(1).path("resaleQty").asInt()).isEqualTo(2);
+    // 끝난 반품에 받은 만큼만 끝내기 409
+    assertThat(
+            post(
+                    cs,
+                    "/claims/" + claimId + "/recovery-actions",
+                    Map.of("action", "CLOSE_AS_RECEIVED", "note", "다시"))
+                .status())
+        .isEqualTo(409);
   }
 }

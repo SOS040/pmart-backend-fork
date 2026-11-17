@@ -20,8 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 ClaimsApi — 접수(고객 전체 취소·고객센터 반품)·조회·목록, 반품 회수비 결제 시도(고객)·회수 후속 조치(상담원). 심사·결정·철회는 인터페이스
- * default 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
+ * 계약 ClaimsApi — 접수(고객 전체 취소·고객센터 반품)·조회·목록, 반품 회수비 결제 시도(고객)·회수 후속 조치(상담원 — 다시 회수·취소·받은 만큼만 끝내기,
+ * 0.3.0). 심사·결정·철회는 인터페이스 default 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
 public class ClaimsController implements ClaimsApi {
@@ -115,7 +115,7 @@ public class ClaimsController implements ClaimsApi {
                 xSourceSystem,
                 principal(),
                 new ReturnService.RecoveryAction(
-                    claimId, body.getAction().getValue(), body.getNote()),
+                    claimId, body.getAction().getValue(), body.getNote(), body.getFeeRefund()),
                 xExpectedVersion)));
   }
 

@@ -109,10 +109,17 @@ public class ClaimEvents {
     publish("ReturnFeePaymentRequested", c.claimId(), c.version(), p);
   }
 
-  /** 회수 실패 — 상담원 재연락(CL-1 ③). */
+  /**
+   * 회수 실패 — 상담원 재연락(CL-1 ③).
+   *
+   * @param countedAttempts 횟수에 드는 실패 수(라이더·우리 잘못 RIDER_INCIDENT 는 빼고 — 추가 결정 3·4)
+   * @param retryAllowed 상담원이 다시 회수를 요청할 수 있나(전체 3번 안, 아니면 반품 취소만)
+   */
   public void returnRecoveryFailed(
       ClaimRow c,
       int attempts,
+      int countedAttempts,
+      boolean retryAllowed,
       @Nullable String lastDeliveryId,
       @Nullable String lastFailureReason,
       Instant at) {
@@ -124,6 +131,11 @@ public class ClaimEvents {
       p.put("mfcId", c.mfcId());
     }
     p.put("attempts", attempts);
+    p.put("countedAttempts", countedAttempts);
+    p.put("retryAllowed", retryAllowed);
+    if (c.returnDeadlineAt() != null) {
+      p.put("returnDeadlineAt", c.returnDeadlineAt().toString());
+    }
     if (lastDeliveryId != null) {
       p.put("lastDeliveryId", lastDeliveryId);
     }
@@ -174,6 +186,8 @@ public class ClaimEvents {
     p.put("orderId", r.orderId());
     p.put("paymentAttemptId", r.paymentAttemptId());
     p.put("amount", r.amount());
+    // 반품 회수비 돌려주기(CL-1 추가 결정 2)는 상품 환불이 아니다 — 회수비 결제 시도의 취소
+    p.put("kind", ReturnRules.RETURN_FEE_REFUND_REASON.equals(r.reason()) ? "RETURN_FEE" : "ITEMS");
     Map<String, Object> basis = new LinkedHashMap<>();
     basis.put("itemAmount", r.itemAmount());
     basis.put("discountShare", discountShare);
@@ -188,10 +202,23 @@ public class ClaimEvents {
   }
 
   public void claimClosed(ClaimRow c, String outcome, Instant at) {
+    claimClosed(c, outcome, at, List.of());
+  }
+
+  /**
+   * @param returnedLines 반품 종결(RETURN_REFUNDED·RETURN_SHORT_CLOSED) — 행별 반품
+   *     수량(orderLineId·qty·resaleQty· disposeQty). order 가 반품 수량(returnedQty)으로 기록한다(O-7, 추가 결정 9)
+   */
+  public void claimClosed(
+      ClaimRow c, String outcome, Instant at, List<Map<String, Object>> returnedLines) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("claimId", c.claimId());
     p.put("orderId", c.orderId());
     p.put("outcome", outcome);
+    p.put("type", c.type());
+    if (!returnedLines.isEmpty()) {
+      p.put("returnedLines", returnedLines);
+    }
     p.put("closedAt", at.toString());
     publish("ClaimClosed", c.claimId(), c.version() + 1, p);
   }

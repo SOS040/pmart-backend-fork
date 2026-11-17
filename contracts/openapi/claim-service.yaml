@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
+    0.3.0(2026-11-17, CL-1 추가 결정 1~9 — 사용자 "추천대로"): 회수비 결제 기한 24시간 확정. 반품 전체 기한(접수 + 7일, `Claim.returnDeadlineAt`) — 그 안에 회수가 안 되면 자동 취소(ClaimClosed RETURN_EXPIRED).
+    회수 시도 전체 3번(자동 2 + 상담원 다시 회수 1 — 넘으면 409 PICKUP_ATTEMPTS_EXHAUSTED), 라이더·우리 잘못(RIDER_INCIDENT) 실패는 횟수에서 빼고 바로 다시 요청(`pickup.countedFailures`·`retryAllowed`).
+    회수 실패로 반품을 취소할 때 낸 회수비: 고객 사유 → 돌려주지 않음, 우리 잘못 → 돌려줌, 파손·기타 → 상담원 판단(`RecoveryActionRequest.feeRefund`, 기본 돌려주지 않음) — `feePayment.refundDecision`, 돌려주면 `refunds[]` 에 kind RETURN_FEE.
+    상담원 "받은 만큼만 끝내기"(recovery-actions action CLOSE_AS_RECEIVED — 받은 수량만 환불, 남은 수량 환불 없음 → CLOSED, ClaimClosed RETURN_SHORT_CLOSED). 반품 종결 ClaimClosed 에 행별 반품 수량(returnedLines — order 가 returnedQty 로 기록, O-7).
     취소·반품·교환 신청·심사·승인 범위, 자격 판정, 신청 가능량, 회수 지시·검수 결과 연결, 환불 의도·금액·상태, 철회의 정본. (docs/architecture/service-map.md §2)
     PG 실행(payment), 회수 수행(delivery), 검수·재입고(mfc), 주문 수량 정본(order)은 소유하지 않는다.
     취소(CANCEL)는 접수 후 order-orchestration S3로, 반품·교환은 S6(docs/business/flows/return-exchange-refund.md)로 진행한다.
@@ -39,8 +43,10 @@ paths:
         - order `GET /internal/orders/{id}` 로 심사: 없는 주문 404, 행마다 요청 ≤ **전달 완료 수량(deliveredQty — 2026-11-17 사용자 "배달 중이나 전달 완료 전에는 반품 불가")** − 이 주문의 진행·완료 반품 수량(취소된 반품 제외). 전달 완료된 수량이 없으면 422 NOT_DELIVERED_YET, 넘으면 QUANTITY_EXCEEDS_AVAILABLE. 접수 기한(7일·24시간)은 아직 보지 않는다(상담원 판단).
         - faultCode(회사 잘못 — 오배송·상품 불량·배송 중 파손·약속 시간 크게 지연·잘못된 대체)가 있으면 **회수비 면제** → 바로 IN_PROGRESS + 회수 요청(ReturnPickupRequested).
           없으면(고객 사유) **회수비 9,000원**(상품 환불과 따로 결제) → FEE_PENDING, 결제 시도를 만들고 ReturnFeePaymentRequested. 고객이 앱에서 결제하면 IN_PROGRESS + 회수 요청.
-          기한(`pmart.claim.return-fee-payment-wait`, 접수 + 이 시간) 안에 결제하지 않으면 CANCELLED. 설정이 없으면 회수비 있는 접수만 422 CONFIG_REQUIRED.
-        - 회수 실패(고객 부재 등, delivery DeliveryFailed): 첫 실패는 자동으로 두 번째 회수 요청, 두 번째 실패면 RECOVERY_FAILED + ReturnRecoveryFailed(상담원 재연락) — 회수비는 다시 받지 않는다.
+          기한(`pmart.claim.return-fee-payment-wait`, 접수 + 이 시간 — 사용자 확정 24시간) 안에 결제하지 않으면 CANCELLED. 설정이 없으면 회수비 있는 접수만 422 CONFIG_REQUIRED.
+        - 반품 전체 기한(0.3.0): 접수 + `pmart.claim.return-deadline`(사용자 7일) = `returnDeadlineAt`. 그 안에 회수(수거)가 하나도 안 되면 자동 취소(CANCELLED, ClaimClosed RETURN_EXPIRED — 진행 중인 회수가 있으면 그 결과를 기다림). 설정이 없으면 반품 접수 422 CONFIG_REQUIRED.
+        - 회수 실패(고객 부재 등, delivery ReturnPickupFailed): 첫 실패는 자동으로 두 번째 회수 요청, 두 번째 실패면 RECOVERY_FAILED + ReturnRecoveryFailed(상담원 재연락) — 회수비는 다시 받지 않는다.
+          (0.3.0) 전체 3번(자동 2 + 상담원 1). 라이더·우리 잘못(reason RIDER_INCIDENT)은 횟수에서 빼고 바로 다시 요청.
         - 회수품 MFC 반입(ReturnItemReceived) → 검수(ReturnInspected)된 수량마다 **원단가 × 수량 − 할인 안분** 전액 환불(RESALE·DISPOSE 모두, 1차 감액 없음), 봉투값·배달팁은 돌려주지 않는다. 모든 행이 검수·환불되면 CLOSED.
       operationId: createClaim
       x-pmart-user-types: [CUSTOMER, OPERATOR]
@@ -263,12 +269,18 @@ paths:
   /claims/{claimId}/recovery-actions:
     post:
       tags: [claims]
-      summary: "[상담원] 반품 회수 후속 조치 — 다시 회수 요청 / 반품 취소"
+      summary: "[상담원] 반품 회수 후속 조치 — 다시 회수 요청 / 반품 취소 / 받은 만큼만 끝내기"
       description: |
         2026-11-17(0.2.0, CL-1 ③). 역할 CS_AGENT·OPERATOR_ADMIN(그 밖 403). type RETURN 만(그 밖 422 UNSUPPORTED_ACTION).
         - RETRY_PICKUP: RECOVERY_FAILED(두 번 실패 뒤 상담원이 고객과 다시 연락)에서만 → IN_PROGRESS + 새 회수 요청(ReturnPickupRequested). 회수비는 다시 받지 않는다.
-        - CANCEL: FEE_PENDING·RECOVERY_FAILED 이고 MFC 가 받은 회수품이 없을 때만 → CANCELLED + ClaimClosed(RETURN_CANCELLED). 결제 대기 중 회수비는 더 받지 않고(그 뒤 승인되면 자동 보상 취소), 이미 낸 회수비는 자동으로 돌려주지 않는다.
-        - 그 밖 상태 409 INVALID_STATE. note(조치 사유, 필수)는 클레임 조치 기록에만 남고 로그에 쓰지 않는다. X-Expected-Version 이 있으면 클레임 version 과 비교(다르면 409 VERSION_CONFLICT).
+          (0.3.0) 회수 시도는 전체 3번(자동 2 + 상담원 1 — 라이더·우리 잘못 RIDER_INCIDENT 실패는 세지 않음): 다 썼으면 409 PICKUP_ATTEMPTS_EXHAUSTED, 반품 기한(returnDeadlineAt)이 지났으면 409 RETURN_DEADLINE_PASSED — 둘 다 반품 취소만 할 수 있다.
+        - CANCEL: FEE_PENDING·RECOVERY_FAILED 이고 수거·반입된 회수품이 없을 때만 → CANCELLED + ClaimClosed(RETURN_CANCELLED). 결제 대기 중 회수비는 더 받지 않는다(그 뒤 승인되면 자동 보상 취소).
+          (0.3.0) 이미 낸 회수비: 회수 실패에 고객 사유(부재·연락 두절·주소 오류·거부)가 있으면 돌려주지 않음, 우리 잘못(RIDER_INCIDENT)뿐이면 돌려줌, 파손·기타면 상담원 판단 — `feeRefund`(기본 false).
+          정해진 규칙과 다른 feeRefund(고객 사유에 true, 우리 잘못에 false)·낸 회수비가 없는데 true 는 422 FEE_REFUND_NOT_ALLOWED. 돌려주면 회수비 결제의 전액 취소(환불 kind RETURN_FEE — refunds[]·feePayment.refundIntentId).
+        - CLOSE_AS_RECEIVED(0.3.0, "받은 만큼만 끝내기"): IN_PROGRESS·RECOVERY_FAILED 에서 MFC 가 요청보다 적게 받았을 때 → 행마다 정산 수량(approvedQty) = 받은 수량, 남은 수량은 환불 없음.
+          받은 수량이 모두 검수·환불되면 바로 CLOSED(ClaimClosed RETURN_SHORT_CLOSED), 아니면 IN_PROGRESS 로 두고 검수·환불 뒤 CLOSED. 받은 것이 없으면 409 NOTHING_RECEIVED(취소를 쓴다), 다 받았으면 409 NOT_SHORT, 진행 중인 회수 요청이 있으면 409 PICKUP_IN_PROGRESS.
+          남은 수량은 이 주문에서 다시 반품 접수할 수 없다(반품 가능 수량은 요청 수량으로 계속 점유).
+        - feeRefund 는 CANCEL 에만(그 밖 400). 그 밖 상태 409 INVALID_STATE. note(조치 사유, 필수)는 클레임 조치 기록에만 남고 로그에 쓰지 않는다. X-Expected-Version 이 있으면 클레임 version 과 비교(다르면 409 VERSION_CONFLICT).
       x-added-in: '2026-11-17'
       operationId: createReturnRecoveryAction
       x-pmart-user-types: [OPERATOR]
@@ -291,9 +303,13 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / PICKUP_ATTEMPTS_EXHAUSTED / RETURN_DEADLINE_PASSED / NOTHING_RECEIVED / NOT_SHORT / PICKUP_IN_PROGRESS (0.3.0)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: UNSUPPORTED_ACTION (RETURN 아님)
+          description: UNSUPPORTED_ACTION (RETURN 아님) / FEE_REFUND_NOT_ALLOWED (0.3.0 — 회수비 규칙과 다른 feeRefund)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -457,7 +473,7 @@ components:
         OPENED 접수. UNDER_REVIEW 심사 중. DECIDED 결정(일부 승인 가능). IN_PROGRESS 회수·환불·재배송 진행. CLOSED 모든 의무 확인 후 종결. WITHDRAWN 철회.
         CANCEL 유형은 OPENED → STOP_PENDING(출고 중지/인계 확인 중) → IN_PROGRESS → CLOSED 또는 REJECTED(취소 불가).
         RETURN 유형(0.2.0, 2026-11-17): FEE_PENDING(회수비 결제 대기 — 면제면 건너뜀) → IN_PROGRESS(회수·반입·검수·환불) → CLOSED(모든 행 검수·환불 완료).
-        RECOVERY_FAILED 회수 두 번 실패(상담원 재연락 — 다시 회수 요청 또는 취소). CANCELLED 회수비 미결제(기한)·상담원 취소.
+        RECOVERY_FAILED 회수 두 번 실패(상담원 재연락 — 다시 회수 요청·취소·받은 만큼만 끝내기). CANCELLED 회수비 미결제(기한)·상담원 취소·반품 기한(접수 + 7일, 0.3.0) 안에 회수 안 됨.
       enum: [OPENED, UNDER_REVIEW, STOP_PENDING, DECIDED, IN_PROGRESS, CLOSED, WITHDRAWN, REJECTED, FEE_PENDING, RECOVERY_FAILED, CANCELLED]
     ClaimReason:
       type: string
@@ -483,8 +499,12 @@ components:
       x-added-in: '2026-11-17'
       required: [action, note]
       properties:
-        action: { type: string, enum: [RETRY_PICKUP, CANCEL] }
+        action: { type: string, enum: [RETRY_PICKUP, CANCEL, CLOSE_AS_RECEIVED], description: 'CLOSE_AS_RECEIVED(0.3.0) — 받은 만큼만 끝내기' }
         note: { type: string, minLength: 1, maxLength: 500, description: 조치 사유(고객과 다시 연락한 결과 등) }
+        feeRefund:
+          type: boolean
+          x-added-in: '2026-11-17'
+          description: 'CANCEL 만(0.3.0) — 낸 회수비를 돌려주나. 회수 실패가 파손·기타일 때만 상담원이 정한다(없으면 false). 고객 사유면 false, 우리 잘못이면 true 로 정해져 있어 다른 값은 422 FEE_REFUND_NOT_ALLOWED'
     ReturnFeePayment:
       type: object
       x-added-in: '2026-11-17'
@@ -499,6 +519,15 @@ components:
         orderName: { type: string, description: 결제창 표시용 주문명 }
         deadlineAt: { type: string, format: date-time }
         paidAt: { type: string, format: date-time }
+        refundDecision:
+          type: string
+          enum: [REFUND, KEEP]
+          x-added-in: '2026-11-17'
+          description: '0.3.0 — 결제된 회수비가 있는 반품이 취소됐을 때 회수비를 돌려주나(회수 실패 고객 사유 KEEP·우리 잘못 REFUND·파손·기타 상담원 판단). 없으면 아직 정하지 않음(진행 중·결제 안 됨)'
+        refundIntentId:
+          type: string
+          x-added-in: '2026-11-17'
+          description: '0.3.0 — 돌려줄 때 환불 의도(진행은 refunds[] 의 같은 ID, kind RETURN_FEE)'
     SystemCancellationRequest:
       type: object
       description: 시스템 자동 전체 취소(2026-11-07)
@@ -553,7 +582,7 @@ components:
         orderLineId: { type: string }
         sku: { type: string }
         requestedQty: { type: integer }
-        approvedQty: { type: integer }
+        approvedQty: { type: integer, description: 'RETURN — 정산 수량(접수 때 요청 수량, 받은 만큼만 끝내기 뒤 받은 수량 — 0.3.0)' }
         decision: { type: string, enum: [PENDING, APPROVED, REJECTED] }
         rejectReason: { type: string }
         pickupRequired: { type: boolean }
@@ -593,6 +622,7 @@ components:
         evidenceRefs: { type: array, items: { type: string } }
         lines: { type: array, items: { $ref: '#/components/schemas/ClaimLine' } }
         stopRequestId: { type: string, description: CANCEL일 때 S3 멱등 키 }
+        returnDeadlineAt: { type: string, format: date-time, x-added-in: '2026-11-17', description: 'RETURN(0.3.0) — 반품 전체 기한(접수 + 7일). 그 안에 회수가 안 되면 자동 취소' }
         sagaId: { type: string }
         pickup:
           type: object
@@ -602,6 +632,8 @@ components:
             addressFixedToOrder: { type: boolean, default: true }
             attempts: { type: integer, description: '회수 요청 횟수(0.2.0)' }
             failedAttempts: { type: integer, description: '실패한 회수 수(0.2.0) — 자동 재요청은 한 번, 두 번째 실패면 RECOVERY_FAILED' }
+            countedFailures: { type: integer, x-added-in: '2026-11-17', description: '0.3.0 — 횟수에 드는 실패 수(라이더·우리 잘못 RIDER_INCIDENT 는 빼고). 전체 3번(자동 2 + 상담원 1)' }
+            retryAllowed: { type: boolean, x-added-in: '2026-11-17', description: '0.3.0 — 회수 시도가 남았나(countedFailures < 3). 상담원 다시 회수는 state RECOVERY_FAILED 이고 이 값이 true 이고 returnDeadlineAt 전일 때만' }
         fees:
           type: object
           properties:
@@ -683,6 +715,11 @@ components:
       properties:
         refundIntentId: { type: string }
         claimId: { type: string }
+        kind:
+          type: string
+          enum: [ITEMS, RETURN_FEE]
+          x-added-in: '2026-11-17'
+          description: '0.3.0 — ITEMS 상품 환불(원주문 결제의 취소), RETURN_FEE 반품 회수비 돌려주기(회수비 결제의 전액 취소 — breakdown 은 모두 0, amount 가 회수비)'
         state: { $ref: '#/components/schemas/RefundState' }
         amount: { $ref: '_common.yaml#/components/schemas/Money', description: 원주문 가격 스냅샷·품목별 할인 안분 }
         breakdown:
