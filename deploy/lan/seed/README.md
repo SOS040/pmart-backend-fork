@@ -25,3 +25,4 @@ java deploy/lan/seed/Seed.java --initial-stock --initial-stock-skus E-00000008,E
 | `estimate_dimensions.py` · `apply_estimated_dimensions.py` | 상품 치수 추정 → 승인 경로 재적재(바코드도 함께 — 바코드 교체에도 씀) |
 | `mfc_fix_lot_dates.py` | 비식품 LOT 소비기한 제거, 출고 불가 식품 LOT 소비기한 다시 매김(위치 정정) |
 | `location_labels.py` | 위치 바코드 라벨 다시 만들기(`labels/locations/`). 스캔 코드·299 바코드 설명 `labels/README.md` |
+| `mfc_carts.py` | 2026-11-17 이동 카트 40대(상온 20·냉장 12·냉동 8 — 사용자 "40개까지", 있는 것은 건너뜀) + 카트 라벨 다시(Code128). `--apply`·`--labels` |
