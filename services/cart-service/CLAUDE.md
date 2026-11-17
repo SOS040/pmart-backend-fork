@@ -31,6 +31,7 @@
 - 병합: 회원 토큰 + `X-Guest-Token`(비회원 access token, JWKS 검증)으로 원본 소유 증명. 항목별 재검증(원본 그대로·판매 상태·상한 누적), 성공분만 대상에 더하고 원본에서 뺀다(한 트랜잭션). CONFIRMED/PARTIAL/REJECTED, mergeId 는 (회원, 키)에서 결정적.
 - 사건: `CartItemChangeApplied`(토픽 `commerce.cart.v1` 명시, 담기·변경·삭제·주문 정리). 병합은 아직 사건을 내지 않는다.
 - 구독 `OrderConfirmed`(order.order.v1, InboxGuard, 2026-10-31): 주문 계정의 진행 중 장바구니에서 주문분만 뺀다 — 줄의 cartItemId(없을 때만 SKU)로 찾고 주문 수량만큼 감소(`CartRules.remainingAfterOrder`, 0이면 삭제). 품목마다 cartVersion +1·`CartItemChangeApplied`(appliedRequestId `OrderConfirmed:<orderId>`). cart_change 는 남기지 않는다. ProductSaleStateChanged 구독은 아직.
+- **최소주문 안내(2026-11-18, 계약 0.2.0 — 고객 앱 레퍼런스 갭, 사용자 "A해줘")**: 조회 화면(`Cart`, 변경 응답 cart 포함)에 `minOrderAmount` = `CartRules.MIN_ORDER_AMOUNT`(15,000 — BR-14 확정값, order `OrderRules.MIN_ORDER_AMOUNT` 와 같은 상수라 정책이 바뀌면 둘 다 고친다)와 `minOrderShortfall` = max(0, 최소 − `selectedItemAmount`)(`CartRules.minOrderShortfall`, order `Quote.minOrderShortfall` 과 같은 산식 — 할인·쿠폰 전 상품액, 배달팁·봉투값 제외). 선택 품목 가격을 하나라도 모르면 null(0 아님). 표시 안내일 뿐 — 차단은 주문 초안 견적. cart → order 동기 호출 없음, 설정 키 없음.
 
 ## 상태
 장바구니 열기·조회·담기·수량/선택 변경·삭제·변경 결과 조회·병합·주문용 내부 조회 구현(2026-10-30), 주문 확정 후 정리·표시 가용(2026-10-31). 병합 때 가용 재검증은 아직.

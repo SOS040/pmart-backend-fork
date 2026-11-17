@@ -25,6 +25,16 @@ class CartRulesTest {
   }
 
   @Test
+  void minOrderShortfallMatchesOrderQuote() {
+    assertThat(CartRules.MIN_ORDER_AMOUNT).isEqualTo(15_000);
+    assertThat(CartRules.minOrderShortfall(15_000, 0L)).isEqualTo(15_000);
+    assertThat(CartRules.minOrderShortfall(15_000, 9_500L)).isEqualTo(5_500);
+    assertThat(CartRules.minOrderShortfall(15_000, 15_000L)).isZero();
+    assertThat(CartRules.minOrderShortfall(15_000, 40_000L)).isZero();
+    assertThat(CartRules.minOrderShortfall(15_000, null)).as("가격 불명 — 0 아님").isNull();
+  }
+
+  @Test
   void expiresThirtyDaysAfterLastChange() {
     Instant last = Instant.parse("2026-10-01T00:00:00Z");
     Duration d = Duration.ofDays(30);

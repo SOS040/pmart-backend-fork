@@ -289,6 +289,9 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
             Map.of());
     assertThat(unselect.body().path("cartVersion").asInt()).isEqualTo(2);
     assertThat(unselect.body().path("cart").path("selectedItemAmount").asInt()).isZero();
+    // 최소주문 안내(0.2.0): 선택 0원 → 부족액 = 최소 15,000 전부
+    assertThat(unselect.body().path("cart").path("minOrderAmount").asInt()).isEqualTo(15_000);
+    assertThat(unselect.body().path("cart").path("minOrderShortfall").asInt()).isEqualTo(15_000);
     assertThat(get("/carts/" + guestCart, guest).body().path("selectedItemAmount").asInt())
         .isZero();
     String patchKey = UUID.randomUUID().toString();
@@ -365,6 +368,20 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     stock("E-00000001", 10, true);
     assertThat(cart.path("selectedItemAmount").asInt()).isEqualTo(9500);
     assertThat(cart.path("expiresAt").asString()).isNotBlank();
+    // 최소주문 안내(0.2.0): 15,000 − 9,500 = 5,500 더 담기(BR-14, 배달팁·봉투값 제외)
+    assertThat(cart.path("minOrderAmount").asInt()).isEqualTo(15_000);
+    assertThat(cart.path("minOrderShortfall").asInt()).isEqualTo(5_500);
+    // 가격 조회 실패 → 선택 금액·부족액 모두 불명(null, 0 아님). 최소 금액은 그대로, 화면은 실패시키지 않는다
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/prices")).willReturn(aResponse().withStatus(503)));
+    JsonNode noPrice = get("/carts/" + guestCart, guest).body();
+    assertThat(noPrice.path("selectedItemAmount").isNumber()).as("가격 불명 = 합계 없음").isFalse();
+    assertThat(noPrice.path("minOrderShortfall").isNumber()).as("가격 불명 = 부족액 불명").isFalse();
+    assertThat(noPrice.path("minOrderAmount").asInt()).isEqualTo(15_000);
+    json(
+        WireMock.get(urlPathEqualTo("/api/v1/prices")),
+        Map.of(
+            "items", List.of(Map.of("sku", "E-00000001", "basePrice", 1900, "priceVersion", 1))));
     // 변경 원결과 조회
     assertThat(
             get("/carts/" + guestCart + "/change-requests/" + patchKey, guest)

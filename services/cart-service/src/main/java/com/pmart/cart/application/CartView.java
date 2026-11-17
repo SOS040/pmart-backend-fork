@@ -57,7 +57,9 @@ public class CartView {
       List<Line> lines,
       @Nullable Long selectedAmount,
       Instant expiresAt,
-      List<Source> sources) {}
+      List<Source> sources,
+      long minOrderAmount,
+      @Nullable Long minOrderShortfall) {}
 
   private final CartStore store;
   private final CatalogClient catalog;
@@ -123,12 +125,16 @@ public class CartView {
         }
       }
     }
+    Long selectedAmount = amountKnown ? amount : null;
     return new View(
         cart,
         lines,
-        amountKnown ? amount : null,
+        selectedAmount,
         cart.lastChangedAt().plus(props.retention()),
-        sources);
+        sources,
+        CartRules.MIN_ORDER_AMOUNT,
+        // 최소주문 부족액(0.2.0) — 선택 품목 가격을 하나라도 모르면 null
+        CartRules.minOrderShortfall(CartRules.MIN_ORDER_AMOUNT, selectedAmount));
   }
 
   /** 출처 하나 조회. 실패하면 빈 결과 + UNAVAILABLE(화면 전체를 실패시키지 않는다). */

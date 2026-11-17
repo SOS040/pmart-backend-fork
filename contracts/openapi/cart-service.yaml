@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: cart-service
-  version: 0.1.1
+  version: 0.2.0
   description: |
+    0.2.0(2026-11-18, 고객 앱 장바구니 최소주문 안내 — 사용자 "A해줘"): 장바구니 조회(`Cart`, 변경 응답의 cart 포함)에 `minOrderAmount`(최소 주문 금액 15,000원 — order-service 주문 초안과 같은 BR-14 확정값)와 `minOrderShortfall` = max(0, minOrderAmount − selectedItemAmount). 선택 품목 가격을 하나라도 모르면(selectedItemAmount null) 부족액도 null(추측하지 않음). 표시 안내일 뿐 — 실제 차단·부족액은 주문 초안 견적(`Quote.minOrderShortfall`, 할인·쿠폰 전 상품액 기준, 배달팁·봉투값 제외)이 정본. cart → order 동기 호출은 없다.
     0.1.1(2026-11-18, mfc-inventory IV-1 — PR 세션 요청 #122): 표시 가용(availability·availableQty)이 mfc-inventory 출하 가능 수량 `shippableAvailable`(예약과 같은 소비기한 적격 LOT 의 E − R, 오늘 기준 — 장바구니는 배송일을 모름). 판정 불가(null)는 UNKNOWN(available 로 바꾸지 않음). API 모양은 그대로(설명만).
     장바구니·품목·선택·cartVersion(마지막 변경 후 30일 보존), 비회원 장바구니, 로그인 병합 이관(MERGE_PENDING/PARTIAL/CONFIRMED)의 정본. (docs/architecture/service-map.md §1)
     비정본: 재고 예약(장바구니는 예약하지 않음), 견적 확정(order), 가격 정본(pricing), 구매 상한 정책(product).
@@ -386,6 +387,8 @@ components:
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
         items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
         selectedItemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 선택 품목 표시 합계. 견적 아님 }
+        minOrderAmount: { type: [integer, 'null'], minimum: 0, description: '최소 주문 금액(원, 0.2.0) — BR-14 확정값 15,000(order-service 주문 초안과 같음). 할인·쿠폰 전 상품액 기준, 배달팁·봉투값 제외', x-added-in: '2026-11-18' }
+        minOrderShortfall: { type: [integer, 'null'], minimum: 0, description: '최소 주문까지 더 담을 금액(원, 0.2.0) = max(0, minOrderAmount − selectedItemAmount). 0 이면 충족. selectedItemAmount 가 null(선택 품목 가격 불명)이면 null — 0 으로 보지 않는다. 표시 안내이며 실제 판정은 주문 초안 견적', x-added-in: '2026-11-18' }
         lastChangedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time, description: 마지막 변경 + 30일 }
         pendingMergeId: { type: [string, 'null'] }
