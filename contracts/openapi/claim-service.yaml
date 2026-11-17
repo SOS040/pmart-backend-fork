@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     0.3.0(2026-11-17, CL-1 추가 결정 1~9 — 사용자 "추천대로"): 회수비 결제 기한 24시간 확정. 반품 전체 기한(접수 + 7일, `Claim.returnDeadlineAt`) — 그 안에 회수가 안 되면 자동 취소(ClaimClosed RETURN_EXPIRED).
     회수 시도 전체 3번(자동 2 + 상담원 다시 회수 1 — 넘으면 409 PICKUP_ATTEMPTS_EXHAUSTED), 라이더·우리 잘못(RIDER_INCIDENT) 실패는 횟수에서 빼고 바로 다시 요청(`pickup.countedFailures`·`retryAllowed`).
@@ -37,8 +37,12 @@ paths:
         회수·재배달 주소는 원주문 주소 고정. 단순 변심 교환은 왕복 9,000원 청구, 상품/배달 문제는 0원.
         [2026-10-31 구현] CANCEL 만, 고객 본인 주문(CONFIRMED)의 전체 취소만 받는다(모든 행 × 미이행 수량). 접수와 함께 stopRequestId 를 발급하고
         ClaimOpened·CancellationRequested(order.claim.v1)를 발행해 orchestration S3 를 시작한다. 상태 OPENED → STOP_PENDING → IN_PROGRESS(취소 확정·환불 실행) → CLOSED(PG 환불 성공) / REJECTED(인계됨).
+        [2026-11-18 구현, 0.4.0 — 고객센터 주문 취소, 사용자 결정] 직원 토큰 + CS_AGENT·OPERATOR_ADMIN(그 밖 403)이 **상품준비 전(주문 CONFIRMED — 첫 피킹 시작 전, 작업자 배정만 된 주문 포함) 주문 전체 취소**를 고객 대신 접수한다.
+        고객 앱 취소와 범위·흐름이 같다(모든 행 × 미이행 수량, STOP_PENDING → OrderCancelled → 전액 환불, 진행 중 취소가 있으면 DUPLICATE_CLAIM). 클레임 계정은 주문의 고객이라 고객이 앱에서 본다.
+        - identityCheck 필수(OTHER 면 note — RETURN 과 같은 규칙, 없으면 400), reason 필수(시스템 사유 400), channel CS(기본)·OPERATOR(CUSTOMER_APP 400), faultCode 는 400(반품 전용), caseRef 선택. 접수 직원·본인 확인 방법·메모·CS 사건은 클레임에 남는다.
+        - 상품준비(PREPARING) 뒤는 ADR-0060 그대로 422 ORDER_NOT_CANCELLABLE(detail 에 "받으신 뒤 반품으로 안내"). 부분 취소 422 PARTIAL_CANCEL_NOT_ALLOWED.
         [2026-11-17 구현, 0.2.0 — CL-1·D-7·ADR-0060 결정 2] **인계 뒤 회수(type RETURN)는 고객센터만** 접수한다. 흐름 정본 docs/business/flows/return-exchange-refund.md §6.
-        - 직원 토큰(OPERATOR) + 역할 CS_AGENT·OPERATOR_ADMIN(그 밖 403). 직원은 RETURN 만(CANCEL·EXCHANGE 는 422 UNSUPPORTED_ACTION — 상품준비 뒤 고객센터 취소 없음, ADR-0060). 고객 토큰의 RETURN 은 422 UNSUPPORTED_ACTION(고객센터로 문의).
+        - 직원 토큰(OPERATOR) + 역할 CS_AGENT·OPERATOR_ADMIN(그 밖 403). 직원은 RETURN 과 아래 CANCEL(0.4.0)만(EXCHANGE 422 UNSUPPORTED_ACTION). 고객 토큰의 RETURN 은 422 UNSUPPORTED_ACTION(고객센터로 문의).
         - identityCheck 필수(본인 확인 방법만 기록 — case CS 접수와 같은 값, OTHER 면 note 필수). channel 은 CS(기본)·OPERATOR.
         - order `GET /internal/orders/{id}` 로 심사: 없는 주문 404, 행마다 요청 ≤ **전달 완료 수량(deliveredQty — 2026-11-17 사용자 "배달 중이나 전달 완료 전에는 반품 불가")** − 이 주문의 진행·완료 반품 수량(취소된 반품 제외). 전달 완료된 수량이 없으면 422 NOT_DELIVERED_YET, 넘으면 QUANTITY_EXCEEDS_AVAILABLE. 접수 기한(7일·24시간)은 아직 보지 않는다(상담원 판단).
         - faultCode(회사 잘못 — 오배송·상품 불량·배송 중 파손·약속 시간 크게 지연·잘못된 대체)가 있으면 **회수비 면제** → 바로 IN_PROGRESS + 회수 요청(ReturnPickupRequested).
@@ -573,8 +577,8 @@ components:
           description: RETURN(직원 접수)만 — 있으면 회수비 면제
         identityCheck:
           $ref: '#/components/schemas/IdentityCheck'
-          description: RETURN(직원 접수) 필수
-        caseRef: { type: string, maxLength: 64, description: 'RETURN — 연결할 CS 접수·사건 ID(선택, 기록만)', x-added-in: '2026-11-17' }
+          description: 직원 접수(RETURN·CANCEL — 0.4.0) 필수
+        caseRef: { type: string, maxLength: 64, description: '직원 접수(RETURN·CANCEL) — 연결할 CS 접수·사건 ID(선택, 기록만)', x-added-in: '2026-11-17' }
     ClaimLine:
       type: object
       properties:

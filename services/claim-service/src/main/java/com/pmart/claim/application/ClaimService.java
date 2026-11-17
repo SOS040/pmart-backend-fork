@@ -1,6 +1,7 @@
 package com.pmart.claim.application;
 
 import com.pmart.claim.domain.ClaimRules;
+import com.pmart.claim.domain.ReturnRules;
 import com.pmart.claim.infrastructure.ClaimStore;
 import com.pmart.claim.infrastructure.ClaimStore.ClaimRow;
 import com.pmart.claim.infrastructure.ClaimStore.LineRow;
@@ -137,8 +138,11 @@ public class ClaimService {
       CreateCommand in,
       ReturnExtras extras) {
     if (who.type() == PmartPrincipal.PrincipalType.OPERATOR) {
+      if ("CANCEL".equals(in.type())) {
+        return createStaffCancel(idempotencyKey, sourceSystem, who, in, extras);
+      }
       if (!"RETURN".equals(in.type())) {
-        throw unsupported("고객센터는 인계 뒤 회수(RETURN)만 접수합니다 — 상품준비 뒤 취소는 받지 않습니다(ADR-0060).");
+        throw unsupported("고객센터는 상품준비 전 주문 취소(CANCEL)와 인계 뒤 회수(RETURN)만 접수합니다.");
       }
       return returns.create(
           idempotencyKey,
@@ -198,6 +202,78 @@ public class ClaimService {
                 String.class,
                 () -> open(who.subject(), in, order, byLine))
             .value();
+    return view(claimId);
+  }
+
+  /**
+   * 고객센터 주문 전체 취소(2026-11-18, 사용자 "그 추천대로" — 저녁 목록 3번). 고객 앱 취소와 같은 범위·흐름: 주문 {@code
+   * CONFIRMED}(상품준비 = 첫 피킹 시작 전 — 작업자 배정만 된 주문 포함)·모든 행 × 미이행 수량. 상품준비 뒤는 ADR-0060 그대로 422
+   * ORDER_NOT_CANCELLABLE. 고객센터 상담원·운영 관리자만(403), 본인 확인 방법 필수(OTHER 면 note — 반품과 같은 규칙), 사유 필수(시스템
+   * 사유 400), 채널 CS·OPERATOR. 접수 직원·본인 확인 방법·메모·CS 사건은 클레임에 남는다(created_by·identity_*·case_ref). 뒤
+   * 흐름(현장 중지 → OrderCancelled → 전액 환불)은 고객 취소와 같다.
+   */
+  private ClaimView createStaffCancel(
+      String idempotencyKey,
+      String sourceSystem,
+      PmartPrincipal who,
+      CreateCommand in,
+      ReturnExtras extras) {
+    if (ReturnRules.STAFF_ROLES.stream().noneMatch(who::hasRole)) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.FORBIDDEN, "주문 취소 접수는 고객센터 상담원·운영 관리자만 할 수 있습니다.");
+    }
+    String identity = ReturnRules.identityRejection(extras.identityMethod(), extras.identityNote());
+    if (identity != null) {
+      throw new PmartException(com.pmart.common.web.ErrorCode.VALIDATION_FAILED, identity);
+    }
+    if (!ReturnRules.STAFF_CHANNELS.contains(in.channel())) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
+          "고객센터 취소는 채널 CS·OPERATOR 로 접수합니다: " + in.channel());
+    }
+    if ("FULFILLMENT_REJECTED".equals(in.reason()) || OUT_OF_STOCK.equals(in.reason())) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "시스템 전용 사유입니다: " + in.reason());
+    }
+    if (extras.faultCode() != null) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "회수비 면제 사유(faultCode)는 반품 접수에만 씁니다.");
+    }
+    JsonNode order = upstreams.order(in.orderId());
+    if (order == null) {
+      throw PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다.");
+    }
+    List<ClaimRules.OrderLine> lines = new ArrayList<>();
+    Map<String, JsonNode> byLine = new LinkedHashMap<>();
+    for (JsonNode l : order.path("lines")) {
+      lines.add(
+          new ClaimRules.OrderLine(
+              l.path("orderLineId").asString(),
+              l.path("sku").asString(),
+              l.path("unitPrice").asLong(),
+              l.path("originalQty").asInt(),
+              l.path("unfulfilledQty").asInt()));
+      byLine.put(l.path("orderLineId").asString(), l);
+    }
+    try {
+      ClaimRules.checkFullCancel(order.path("status").asString(), lines, in.lines());
+    } catch (ClaimRules.Rejection r) {
+      String m =
+          "ORDER_NOT_CANCELLABLE".equals(r.code())
+              ? "상품 준비가 시작된 주문은 취소할 수 없습니다(ADR-0060) — 받으신 뒤 반품으로 안내해 주세요. (" + r.getMessage() + ")"
+              : r.getMessage();
+      throw new PmartException(r.code(), HttpStatus.UNPROCESSABLE_CONTENT, m, false, List.of());
+    }
+    String accountId = order.path("accountId").asString();
+    String claimId =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, idempotencyKey, "createStaffCancel", who.subject()),
+                java.util.Arrays.asList(in, extras),
+                String.class,
+                () -> open(accountId, in, order, byLine, who.subject(), extras))
+            .value();
+    log.info("고객센터 취소 접수 {} 주문 {} 직원 {}", claimId, in.orderId(), who.subject());
     return view(claimId);
   }
 
@@ -276,6 +352,17 @@ public class ClaimService {
 
   private String open(
       String accountId, CreateCommand in, JsonNode order, Map<String, JsonNode> byLine) {
+    return open(accountId, in, order, byLine, null, null);
+  }
+
+  /** {@code staffId}·{@code staff} 있으면 고객센터 접수 — 접수 직원·본인 확인을 클레임에 남긴다. */
+  private String open(
+      String accountId,
+      CreateCommand in,
+      JsonNode order,
+      Map<String, JsonNode> byLine,
+      @Nullable String staffId,
+      @Nullable ReturnExtras staff) {
     if (store.activeCancel(in.orderId()).isPresent()) {
       throw new PmartException(
           "DUPLICATE_CLAIM",
@@ -308,7 +395,15 @@ public class ClaimService {
             now,
             null,
             null,
-            now);
+            now,
+            null,
+            staff == null ? null : staff.identityMethod(),
+            staff == null ? null : staff.identityNote(),
+            staff == null ? null : staff.caseRef(),
+            staffId,
+            null,
+            null,
+            null);
     List<LineRow> rows = new ArrayList<>();
     int n = 1;
     for (ClaimRules.Requested r : in.lines()) {

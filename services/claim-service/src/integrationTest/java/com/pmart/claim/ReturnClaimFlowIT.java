@@ -300,7 +300,7 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
     String orderId = "ORD-" + UUID.randomUUID();
     order(orderId, account, 10);
 
-    // 고객 앱 반품 422, 역할 없는 직원 403, 상담원 취소 422, 본인 확인 없음 400
+    // 고객 앱 반품 422, 역할 없는 직원 403, 상담원 취소는 상품준비 뒤라 422(ADR-0060), 본인 확인 없음 400
     assertThat(
             post(customer, "/claims", returnBody(orderId, 3, null)).body().path("code").asString())
         .isEqualTo("UNSUPPORTED_ACTION");
@@ -314,7 +314,7 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
     Map<String, Object> cancel = new LinkedHashMap<>(returnBody(orderId, 3, null));
     cancel.put("type", "CANCEL");
     assertThat(post(cs, "/claims", cancel).body().path("code").asString())
-        .isEqualTo("UNSUPPORTED_ACTION");
+        .isEqualTo("ORDER_NOT_CANCELLABLE");
     Map<String, Object> noIdentity = new LinkedHashMap<>(returnBody(orderId, 3, null));
     noIdentity.remove("identityCheck");
     assertThat(post(cs, "/claims", noIdentity).status()).isEqualTo(400);

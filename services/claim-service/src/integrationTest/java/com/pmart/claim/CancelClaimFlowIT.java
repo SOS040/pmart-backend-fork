@@ -222,6 +222,88 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
         aggregateId);
   }
 
+  /**
+   * 고객센터 주문 취소(2026-11-18, 저녁 목록 3번 — 사용자 "그 추천대로"): 상담원·운영 관리자만(403), 본인 확인 필수(400), 채널
+   * CS·OPERATOR(400), CONFIRMED 만 — 상품준비(PREPARING) 뒤 422 ORDER_NOT_CANCELLABLE(ADR-0060). 접수는 고객
+   * 취소와 같은 흐름(STOP_PENDING· CancellationRequested channel CS), 클레임 계정 = 주문 계정(고객이 앱에서 본다), 접수 직원·본인
+   * 확인·CS 사건이 남는다.
+   */
+  @Test
+  void customerCenterCancelsConfirmedOrderOnly() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "CONFIRMED");
+    paymentAccepts(orderId);
+    String cs = TestJwt.operator("STAFF-CS-9", List.of("CS_AGENT"), List.of());
+    Map<String, Object> body = new LinkedHashMap<>(cancel(orderId, 10));
+    body.put("channel", "CS");
+    body.put("reason", "CHANGE_OF_MIND");
+    body.put("reasonDetail", "고객 전화 — 다른 주소로 다시 주문");
+    body.put("identityCheck", Map.of("method", "ORDER_DETAILS_MATCH"));
+    body.put("caseRef", "CASE-IT-1");
+
+    assertThat(
+            post(
+                    TestJwt.operator("STAFF-RO", List.of("RIDER_OPS"), List.of()),
+                    UUID.randomUUID().toString(),
+                    body)
+                .status())
+        .as("역할 없는 직원")
+        .isEqualTo(403);
+    Map<String, Object> noIdentity = new LinkedHashMap<>(body);
+    noIdentity.remove("identityCheck");
+    assertThat(post(cs, UUID.randomUUID().toString(), noIdentity).status()).isEqualTo(400);
+    Map<String, Object> otherNoNote = new LinkedHashMap<>(body);
+    otherNoNote.put("identityCheck", Map.of("method", "OTHER"));
+    assertThat(post(cs, UUID.randomUUID().toString(), otherNoNote).status())
+        .as("기타면 메모 필수")
+        .isEqualTo(400);
+    Map<String, Object> appChannel = new LinkedHashMap<>(body);
+    appChannel.put("channel", "CUSTOMER_APP");
+    assertThat(post(cs, UUID.randomUUID().toString(), appChannel).status()).isEqualTo(400);
+
+    Res opened = post(cs, UUID.randomUUID().toString(), body);
+    assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);
+    String claimId = opened.body().path("claimId").asString();
+    assertThat(opened.body().path("state").asString()).isEqualTo("STOP_PENDING");
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT account_id, channel, created_by, identity_method, case_ref FROM claim WHERE claim_id = ?",
+            claimId);
+    assertThat(row.get("account_id")).isEqualTo(account);
+    assertThat(row.get("channel")).isEqualTo("CS");
+    assertThat(row.get("created_by")).isEqualTo("STAFF-CS-9");
+    assertThat(row.get("identity_method")).isEqualTo("ORDER_DETAILS_MATCH");
+    assertThat(row.get("case_ref")).isEqualTo("CASE-IT-1");
+    JsonNode rp =
+        mapper
+            .readTree(
+                (String)
+                    jdbc.queryForObject(
+                        "SELECT payload::text FROM outbox_event"
+                            + " WHERE type = 'CancellationRequested' AND aggregateid = ?",
+                        String.class,
+                        claimId))
+            .path("payload");
+    assertThat(rp.path("channel").asString()).isEqualTo("CS");
+    assertThat(get(TestJwt.customer(account), "/claims/" + claimId).status())
+        .as("고객이 앱에서 본다")
+        .isEqualTo(200);
+    Res dup = post(TestJwt.customer(account), UUID.randomUUID().toString(), cancel(orderId, 10));
+    assertThat(dup.body().path("code").asString()).isEqualTo("DUPLICATE_CLAIM");
+
+    // 상품준비 뒤는 고객센터도 못 한다(ADR-0060)
+    String preparing = "ORD-" + UUID.randomUUID();
+    order(preparing, account, "PREPARING");
+    Map<String, Object> late = new LinkedHashMap<>(body);
+    late.put("orderId", preparing);
+    late.put("lines", List.of(Map.of("orderLineId", preparing + "-L1", "qty", 10)));
+    Res rejected = post(cs, UUID.randomUUID().toString(), late);
+    assertThat(rejected.status()).isEqualTo(422);
+    assertThat(rejected.body().path("code").asString()).isEqualTo("ORDER_NOT_CANCELLABLE");
+    assertThat(rejected.body().path("detail").asString()).contains("ADR-0060", "반품");
+  }
+
   @Test
   void customerCancelsWholeOrderAndGetsRefund() throws Exception {
     String account = "CU-" + UUID.randomUUID();
