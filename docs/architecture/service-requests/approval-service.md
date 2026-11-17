@@ -10,6 +10,7 @@
 - **요청한 쪽에서 바꿀 것**: `ApprovalRefs` 를 실제 검증으로 바꾸고 RECORD_ONLY 를 LAN 시험용으로만 남긴다.
 - **사용자 결정**: Q-11 "위험 추가 승인(금액·수량 기준)" 은 기준이 정해지면(`docs/business/flows/pending-user-decisions.md`).
 - 근거: `services/mfc-*-service/.../application/ApprovalRefs.java`, `docs/business/flows/mfc-defaults-status.md` #8.
+- **결정(2026-11-17 사용자 "추천대로")**: Q-11 기준 = 한 건 손실 **10만 원 이상** 또는 한 SKU **20개 이상**이면 본사 재고 승인(`INVENTORY_APPROVER`), 그 아래는 센터 관리자. approval-service 는 MFC 승인 종류와 승인 번호 확인 내부 API 를 만든다(PC 1). 기준 판정·번호 확인 호출·`ApprovalRefs` 전환은 MFC 서비스(PC 3). LAN `RECORD_ONLY` 는 PC 3 전환 뒤 끈다.
 
 ## AP-2. 직원 권한 요청 유형(BO-01)·hr-service 자동 제출·자동 승인 규칙 (2026-11-12 기록, ADR-0056)
 

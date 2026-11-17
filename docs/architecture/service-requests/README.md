@@ -37,7 +37,7 @@
 | [F-1](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | mfc-capacity | 운영 제한 사건 구독 → `OPERATION_RESTRICTED` 거절 | 진행 중 작업 처리 | 대기 |
 | [BOD-1~6](delivery-backoffice-staff-apis.md) | rider·delivery-execution·delivery-dispatch | PC 5 | platform(백오피스) | 백오피스 고객센터·라이더 운영 직원 API — RIDER_OPS 권한, CS_AGENT 배차 조회, 라이더 목록·검색, 전달 실패·도움요청 대기 목록 | 결정됨(2026-11-15, 라이더 이름 검색 없음 — 사용자) | **구현·LAN 배포**(0deb8160 — BOD-1~6 한 커밋) |
 | [MB-1~3](mfc-backoffice-staff-apis.md) | mfc-capacity·fulfillment·inbound·inventory·quality | PC 3 | platform(MFC 백오피스) | 센터 관리자 웹 목록 API·계약만(501)인 것·권한(확인 필요 포장, 정정·위치 역할) | MB-3 은 PC 3 가 정함(사용자 2026-11-15) | 대기(PC 3) |
-| [CL-1](claim-service.md) | claim | PC 1 | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | **필요**(감액·면제 사유) | 대기 |
+| [CL-1](claim-service.md) | claim | PC 1 | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | 결정됨(2026-11-17 사용자 "추천대로" — 1차 감액 없음, 면제 사유 5가지, 회수 2회 실패 뒤 상담원 재연락·회수비 1회) | 진행 중(PC 1 claim 쪽) — 회수 배송은 PC 5 |
 | [R-1](case-service.md) | case | PC 2 | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | PC 2 | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
 | [R-3](case-service.md) | case | PC 2 | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | **구현**(2026-11-16, case 0.5.0 — PR #21, LAN 배포) |
@@ -47,14 +47,14 @@
 | [R-7](case-service.md) | case | PC 2 | delivery-dispatch | 오배송 확인 기록 → 회수 배차 사건(DD-2 앞단) | 결정됨(2026-11-15: 상담원·지원센터가 확인해 기록) | **구현(2026-11-16, case 0.4.0, LAN 배포)** — `POST /cases`(kind MISDELIVERY) + 사건 `MisdeliveryConfirmed`(platform.case.v1). 구독·회수 배차는 delivery(PC 5, DD-2) |
 | [N-1](notification-service.md) | notification | PC 1 | order, mfc | 결품 부분 취소·환불 고객 안내 | **필요**(보류 단계 안내) | 대기 |
 | [N-2](notification-service.md) | notification(·case) | PC 1(case 쪽 PC 2) | case | 고객센터 문의 답변 알림(`InquiryAnswered`) | C4 | **구현**(2026-11-16 — notification `caseEvents` InquiryAnswered 구독, case 0.12.0 상담원 접수 문의는 알림 없음) |
-| [AP-1](approval-service.md) | approval | PC 1 | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | **필요**(Q-11) | 대기 — 운영 전 필수 |
+| [AP-1](approval-service.md) | approval | PC 1 | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | 결정됨(2026-11-17 사용자 "추천대로" — Q-11: 손실 10만 원 이상 또는 한 SKU 20개 이상 = 본사 재고 승인, 그 아래 센터 관리자) | 진행 중(PC 1 approval 쪽) — MFC 쪽 판정·확인은 PC 3 |
 | [AP-2](approval-service.md) | approval | PC 1 | hr, employee-auth (ADR-0056) | 직원 권한 요청 유형(BO-01)·등록 때 자동 제출·자동 승인 규칙(소속 센터 `MFC_WORKER`)·반영 대상 employee-auth | 결정됨(2026-11-12) | 구현(2026-11-13 5-4) — LAN 배포 여부 PC 1 확인 필요 |
 | [EA-1](employee-auth-service.md) | employee-auth | PC 1 | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | **구현**(2026-11-17 — `GrantEnded` 사건(회수·소속 변경으로 일찍 끝남), mfc-capacity 구독은 PC 3) |
 | [EA-2](employee-auth-service.md) | employee-auth | PC 1 | 클라이언트 hr-backoffice (BR-57) | 직원 역할 목록 API `GET /employee-auth/roles`(코드·이름·센터 지정·순서) | 없음(사용자 2026-11-15 "만들거야") | 구현(2026-11-15, employee-auth 0.5.0) — LAN 배포 여부 PC 1 확인 필요 |
 | [HR-1](hr-service.md) | hr | PC 1 | employee-auth | 직원 이름 내부 조회 `GET /internal/employee-names`(권한 상세 승인자·회수자 이름 — employee-auth 0.10.0 `approverName`·`revokedByName`) | 없음(사용자 2026-11-17 "백엔드에서") | 구현(2026-11-17, hr 0.5.0) — LAN 배포 전 |
 | [RC-1](approval-receipt-publishers.md) | product, product-content, center-master, delivery-serviceability, mfc-inbound | PC 1(mfc-inbound PC 3, serviceability PC 5) | approval | `ApplicationReceiptRecorded` 발행 | 없음 | 일부: delivery-serviceability 구현(2026-11-17 #77, LAN 배포). product·product-content·center-master·mfc-inbound 대기 |
 | [BO-12](backoffice-bff.md) | backoffice-bff | PC 2 | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 사가·이행 확인 LAN 배포(0.2.0). MFC 중지 실패·인계 거절 — bff 0.4.0 재시도 명령 배포(2026-11-16 #31), 목록은 F-4 대기(설정 꺼짐) |
-| [CU-1](customer-service.md) | customer | PC 1 | auth | 약관 동의 → `require-consent` 켜기 | **필요**(시점) | 대기 |
+| [CU-1](customer-service.md) | customer | PC 1 | auth | 약관 동의 → `require-consent` 켜기 | 결정됨(2026-11-17 사용자 "추천대로" — 지금 켬, 필수 3·선택 1) | 진행 중(PC 1) |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | PC 1 | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
 | [MI-1](mfc-inbound-service.md) | mfc-inbound | PC 3 | delivery-execution | 오배송 회수품 MFC 반납 받기(`ReturnDelivered` purpose MISDELIVERY_RECOVERY) — 점원 수령 확인·검수(신선 폐기·상온 미개봉 재고 복구) | ADR-0052 결정 4(검수 규칙), 2026-11-16 그 전까지 MFC 도착 = 반납 | 대기(PC 3) |
