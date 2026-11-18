@@ -61,6 +61,7 @@
 | [RC-1](approval-receipt-publishers.md) | product, product-content, center-master, delivery-serviceability, mfc-inbound | PC 1(mfc-inbound PC 3, serviceability PC 5) | approval | `ApplicationReceiptRecorded` 발행 | 없음 | 일부: delivery-serviceability 구현(2026-11-17 #77, LAN 배포). product·product-content·center-master·mfc-inbound 대기 |
 | [BO-12](backoffice-bff.md) | backoffice-bff | PC 2 | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 사가·이행 확인 LAN 배포(0.2.0). MFC 중지 실패·인계 거절 — bff 0.4.0 재시도 명령 배포(2026-11-16 #31), 목록은 F-4 대기(설정 꺼짐) |
 | [CU-1](customer-service.md) | customer | PC 1 | auth | 약관 동의 → `require-consent` 켜기 | 결정됨(2026-11-17 사용자 "추천대로" — 지금 켬, 필수 3·선택 1) | **서버 구현**(2026-11-17 — customer 0.3.0 동의 API·auth 0.2.0 AUTH_CONSENT, 스위치 purchase-gate·require-consent 는 고객앱 반영까지 끔) |
+| [CU-2](customer-service.md) | customer | PC 1 | delivery(PC 5) | 배송지 저장·수정 때 `geo` 가 없으면 서버가 주소 지오코딩으로 채우기(라이더 핀 정확도) | 요청(2026-11-18 PC 5 #183 — 임시 대체: execution 0.25.1 배차 지오코딩 좌표) | 대기(PC 1) |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | PC 1 | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
 | [MI-1](mfc-inbound-service.md) | mfc-inbound | PC 3 | delivery-execution | 오배송 회수품 MFC 반납 받기(`ReturnDelivered` purpose MISDELIVERY_RECOVERY) — 점원 수령 확인·검수(신선 폐기·상온 미개봉 재고 복구) | ADR-0052 결정 4(검수 규칙), 2026-11-16 그 전까지 MFC 도착 = 반납 | 대기(PC 3) |

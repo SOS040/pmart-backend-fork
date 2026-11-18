@@ -10,6 +10,6 @@
 
 ## CU-2. 배송지 저장 때 좌표가 없으면 서버가 주소로 채우기 (2026-11-18, 보낸 영역 delivery — PC 5)
 - **증상(LAN 실주문 74089765)**: 고객이 지도 핀 없이 주소만 저장 → 주문 사본(O-5 drop-info)에 lat·lng 가 null → 라이더 앱은 제안의 대략 좌표(1km 격자)로 핀을 찍어 실제 위치와 어긋났다. 사용자 "좌표로 핀을 찍게 해야지".
-- **delivery 쪽 임시 대체(PC 5, execution 0.24.1)**: drop-info·직원 drop-location 이 핀이 없으면 배차가 도로명주소로 지오코딩한 좌표를 준다(`coordinateSource` ADDRESS_GEOCODE). 배차 좌표가 준비되기 전에는 여전히 null.
+- **delivery 쪽 임시 대체(PC 5, execution 0.25.1)**: drop-info·직원 drop-location 이 핀이 없으면 배차가 도로명주소로 지오코딩한 좌표를 준다(`coordinateSource` ADDRESS_GEOCODE). 배차 좌표가 준비되기 전에는 여전히 null.
 - **요청(근본)**: 고객 배송지 저장·수정 때 `geo` 가 없으면 서버가 delivery-serviceability `POST /internal/address-geocodes`(정확 일치) 결과로 채워 저장 → 주문 확정 사본(O-5)에도 좌표가 들어가게. 지오코딩 실패면 지금처럼 비워 둠(저장은 막지 않음 — 정책은 PC 1 이 정함).
 - **받는 쪽**: customer-service(platform PC 1). 사본은 order 가 확정 때 복사하므로 order 는 바꿀 것 없음.
