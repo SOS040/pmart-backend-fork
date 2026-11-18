@@ -39,6 +39,15 @@ def plan():
                 code = f"{t}-{area}-{r['rackNo']:02d}-{lv}-{sl:02d}"
                 want[code] = {"locationCode": code, "zone": "STORAGE", "temperatureZone": r["temp"],
                               "position": {"xM": px, "zM": pz}, "dimensions": dims}
+    # 넓은 칸(2026-11-18 mfc_wide_cells — layout-v3-wide): 합친 칸은 그 치수로, 합쳐져 닫힌 칸은 계획에서 뺀다(다시 돌려도 되돌리지 않게)
+    wide = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wide-cells-2026-11-18.json")
+    if os.path.exists(wide):
+        w = json.load(open(wide, encoding="utf-8"))
+        for code, d in w.get("merged", {}).items():
+            if code in want:
+                want[code]["dimensions"] = {"widthMm": d["widthMm"], "depthMm": d["depthMm"], "heightMm": d["heightMm"], "slotCount": 1}
+        for code in w.get("closed", []):
+            want.pop(code, None)
     return want
 
 

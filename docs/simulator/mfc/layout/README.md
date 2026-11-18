@@ -125,6 +125,7 @@ LAN `MFC-SEED-01` 의 칸을 이 도면대로 다시 등록했다(`deploy/lan/se
 - 칸 용량은 상품 실물 치수(추정, product-service 0.2.0 `dimensions` → mfc-inventory SKU 사본)로 계산한다.
 - 재고: SKU 444종을 랙 전체로 펼침(위치 정정 approvalRef `layout-v2`, `mfc_spread_stock.py`, 한 SKU 한 칸, 3단부터). 칸에 안 들어가는 59종 중 상온 28종은 H 로(`layout-v2-h`, 칸 용량 초과 상태), **냉장 16·냉동 15종은 B1·A1 그대로 — 처리 방법 사용자 결정 대기**(큰 칸·재고 줄이기·고회전).
 - 시뮬레이터 공지: `docs/handoff/simulator/mfc/2026-11-16-simulator-notice-layout-v2-slots.md`.
+- **넓은 칸(2026-11-18, 사용자 "칸 구조 바꿔서라도 들어갈 수 있게" → "이대로 해줘")**: 위의 남은 59종 + 임시 자리 `MIGRATION` 18종을 처리. 같은 단의 빈 칸 2~4개를 하나로 합침(맨 왼쪽 칸 코드, 폭만 넓힘) — 냉동 15·냉장 16·상온 H 26 + 세로로 합친 H 칸 2(`A-H2-07-1-01` 1~3단 화장지 30롤, `A-H1-02-1-01` 1~2단). 합친 칸 59, 닫힌 칸 100, 바뀐 랙 10(`F-A1-01·02`·`C-B1-01·02`·`A-H1-02~06`·`A-H2-07`, 아래·위 단부터 — 3단과 시험 랙 `A-H1-01` 은 그대로). 재고 76종 위치 정정(approvalRef `layout-v3-wide`, `mfc_wide_cells.py`) → **503종 모두 칸 용량 안·한 상품 한 자리**. 목록 `deploy/lan/seed/wide-cells-2026-11-18.json`(`mfc_layout_v2.py` 가 읽어 되돌리지 않음), 선반 열린 칸 14,459. 시뮬레이터 알림 `docs/handoff/simulator/mfc/2026-11-18-simulator-notice-wide-cells.md`.
 
 ## 백엔드와 다른 점 (SIM-6 결정: 시뮬레이터가 맞춘다)
 

@@ -22,6 +22,7 @@ java deploy/lan/seed/Seed.java --initial-stock --initial-stock-skus E-00000008,E
 | `mfc_layout.py` | 2026-11-09 시뮬레이터 평면대로 칸 등록(코드·좌표), 옛 선반 재고 이전, 고회전 시험 칸(`httest`) |
 | `mfc_layout_v2.py` | 2026-11-16 칸 수를 MFC 문서 설계로(14,559칸) — 기존 칸 치수 변경·새 칸 등록·H 6단 닫기. 다시 돌려도 남은 것만 한다 |
 | `mfc_spread_stock.py` | 재고를 랙 전체로 펼침(한 SKU 한 칸, 위치 정정 `layout-v2`) |
+| `mfc_wide_cells.py` | 2026-11-18 칸에 안 들어가는 상품 → 같은 단 빈 칸을 합친 넓은 칸(세로 합침 포함)·`MIGRATION` 상품 → 보통 칸(위치 정정 `layout-v3-wide`). 결과 `wide-cells-2026-11-18.json` |
 | `estimate_dimensions.py` · `apply_estimated_dimensions.py` | 상품 치수 추정 → 승인 경로 재적재(바코드도 함께 — 바코드 교체에도 씀) |
 | `mfc_fix_lot_dates.py` | 비식품 LOT 소비기한 제거, 출고 불가 식품 LOT 소비기한 다시 매김(위치 정정) |
 | `location_labels.py` | 위치 바코드 라벨 다시 만들기(`labels/locations/`). 스캔 코드·299 바코드 설명 `labels/README.md` |
