@@ -36,5 +36,6 @@
 - 사용자 "그냥 PMart로 해줘 그리고 진행해줘": 다섯 항목 본문을 백엔드가 썼다(시연용 초안, 회사 PMart, **법률 검토 전**). 회사 주소·대표자·책임자 연락처는 넣지 않았다(문의는 "PMart 앱 고객센터").
 - `GET /api/v1/consent-terms/{consentType}/{version}`(토큰 없음) → `{consentType, version, title, format: MARKDOWN, body}`. 없는 버전 404 `CONSENT_TERM_NOT_FOUND`. 예전에 동의한 버전도 파일이 있으면 준다.
 - `/consent-terms` 의 `documentUrl` 이 이제 채워진다(`/api/v1/consent-terms/<항목>/<현행 버전>`) — `>` 펼쳐 보기에 쓰면 된다(Markdown 표 있음).
+- **LAN**: 배포됨(2026-11-19 07:43, 이미지 2e01d504) — 본문 다섯 200 확인.
 - **앱이 알려 줄 것**: 현재 위치를 주소로 바꿀 때 어느 지도·주소 검색 서비스를 쓰는지(카카오 등). 위치기반서비스 약관 제6조에 그 서비스를 적어야 한다 — 지금은 "정해지면 적는다"로 둠.
 
