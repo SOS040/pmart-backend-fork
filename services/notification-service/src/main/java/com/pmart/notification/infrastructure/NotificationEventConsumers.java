@@ -74,11 +74,12 @@ class NotificationEventConsumers {
   /** delivery.rider.v1 — 계정 제한·해제(라이더 알림함, 2026-11-16 §11-5). */
   @Bean
   PmartEventConsumer riderEvents(EventConsumers consumers, NotificationService n) {
+    // RiderAppealDecided(소명·이의 결정, #211) — 필터에 없으면 처리기까지 오지 않는다
     return consumers.of(
         e ->
             "RiderRestricted".equals(e.eventType())
                 || "DeliveryListUpdated".equals(e.eventType())
-                || "RiderAppealDecided".equals(e.eventType()), // 소명·이의 결정(#211) — 필터에 없으면 처리기까지 오지 않는다
+                || "RiderAppealDecided".equals(e.eventType()),
         n::onRiderEvent);
   }
 
