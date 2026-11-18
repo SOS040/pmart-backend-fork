@@ -75,7 +75,10 @@ class NotificationEventConsumers {
   @Bean
   PmartEventConsumer riderEvents(EventConsumers consumers, NotificationService n) {
     return consumers.of(
-        e -> "RiderRestricted".equals(e.eventType()) || "DeliveryListUpdated".equals(e.eventType()),
+        e ->
+            "RiderRestricted".equals(e.eventType())
+                || "DeliveryListUpdated".equals(e.eventType())
+                || "RiderAppealDecided".equals(e.eventType()), // 소명·이의 결정(#211) — 필터에 없으면 처리기까지 오지 않는다
         n::onRiderEvent);
   }
 
