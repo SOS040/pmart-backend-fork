@@ -87,6 +87,7 @@
 | [DE-2](delivery-execution-service.md) | delivery-execution | PC 5 | backoffice(PC 2) | 도움요청 대화 — 답장 권한(접수 건 규칙)·새 메시지 값·관리자 가림·처리 중 = 집을 때 | 결정됨(2026-11-16 "진행해") | **구현·LAN 배포**(2026-11-17 #76, execution 0.8.0 V10) |
 | [RS-5](rider-service.md) | rider | PC 5 | rider_app | 가입 전 번호·계좌 확인, 거주지 주소 서버 확인(serviceability 주소 변환), 계좌 중복 불가, 은행 = 금융결제원 코드 | 결정됨(라이더 앱 요청 §12·§14·§15·§16-1) | **구현·LAN 배포**(2026-11-17 #125, rider 0.7.0 V8) |
 | [DE-3](delivery-execution-service.md) | delivery-execution | PC 5 | rider_app | 전달 불가 등록이 지원센터 대화도 열기, 전달 재개 요청 | 결정됨(라이더 앱 요청 §13) | **구현·LAN 배포**(2026-11-17 #127, execution 0.14.0) |
+| [DE-4](delivery-execution-service.md) | delivery-execution | PC 5 | mfc(PC 3)·rider_app | 배송 조회 `packageIds` 를 출고 포장(`shipment_package`) ∪ 인계 기록으로 — 인계 전 비어 라이더 포장 QR 이 막힘 | **급함**(2026-11-18 PC 3 #177, LAN 사용자 시험에서 발견) | 대기(PC 5) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.
