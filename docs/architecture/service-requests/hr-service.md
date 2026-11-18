@@ -47,3 +47,4 @@
 - **필요한 것**: 직원 토큰 조회 — 예 `GET /employees/display?operatorIds=OP-1&operatorIds=OP-2`(1~50개, 같은 값 한 번) → `{items: [{operatorId, name, employeeNo}]}`. 퇴사자 포함(지난 기록 표시), 모르는 ID 는 빠짐(오류 아님), 메일·전화·소속 같은 다른 인사 정보는 싣지 않음. 권한: OPERATOR_ADMIN·RIDER_OPS(라이더 백오피스), 가능하면 CS_AGENT(접수 건 처리자 칸) — 정하는 것은 PC 1(직원 이름 노출 범위가 걸리면 사용자 결정).
 - **지금(임시)**: 화면은 actorId 그대로(또는 끝 8자리 회색).
 - **받으면**: 라이더 백오피스가 바로 붙임. 기본 백오피스는 PC 2 가 bff 화면 응답(승인함 requestedBy 등)에 붙일지 검토.
+- **회신(2026-11-19 PC 1)**: 구현·LAN 배포 — hr-service 0.8.0 **`GET /api/v1/hr/employee-labels?operatorIds=…`**(요청 예시 경로 대신 — 기존 `/hr/**` 라우트 안). 응답 `{items: [{operatorId, name, employeeNo}]}`(요청과 같은 모양), 1~50개(51개·형식 틀림 400), 퇴사자 포함, 모르는 ID 빠짐. **직원 토큰이면 누구나**(RIDER_OPS·CS_AGENT·MFC 역할 포함, 사용자 2026-11-19), 이름 안 가림. 이미지 ddfaea6e. 클라이언트 알림 `docs/handoff/clients/backoffice/2026-11-19-reply-code-names-and-operator-labels.md`·`docs/handoff/clients/rider-backoffice/2026-11-19-notice-employee-labels.md`. bff 화면 응답에 싣는 것은 PC 2 BF-1.
