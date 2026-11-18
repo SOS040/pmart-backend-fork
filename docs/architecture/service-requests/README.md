@@ -42,6 +42,7 @@
 | [DD-4](delivery-dispatch-service.md) | delivery-dispatch(추천) 또는 order | PC 5 | backoffice(PC 2) | 정시 배송률 지표 — 날짜·센터별 약속 시간대 안에 전달한 배송 수(분모·분자·판정 불가), bff `ON_TIME_DELIVERY` 원천 | **결정 필요**(2026-11-18 PC 2 #165 — 누가 셀지: PC 1·PC 5·사용자) | 대기 — bff ON_TIME_DELIVERY 는 501 |
 | [R-8](case-service.md) | case | PC 2 | claim | 반품 회수 2번 실패(`ReturnRecoveryFailed`) → 상담원 재연락 사건·백오피스 화면 | 결정됨(CL-1 2026-11-17) | **구현·LAN 배포**(2026-11-17 PC 2 #145, case 0.22.0 — 구독 config 7a93ff7). 백오피스 화면은 웹 |
 | [O-7](order-service.md) | order | PC 1 | claim | 반품 수량을 주문 원장에 기록 | 결정됨(2026-11-17 CL-1 추가 결정 9 — claim 사건 구독) | **구현 — 미배포**(2026-11-17 order 0.11.2·V15 — `ClaimClosed` returnedLines → returnedQty, config `claimEvents` 바인딩 필요) |
+| [O-8](order-service.md) | order | PC 1 | backoffice(PC 2) | 기간 주문 요약·상품별 판매 집계(대시보드 D2·D3 — 확정 시각 한국 날짜, 결제 승인 금액 합, 환불은 빼지 않음) | 결정됨(2026-11-18 사용자 — PC 2 추천대로) | 대기(PC 1) |
 | [MQ-1](mfc-quality-service.md) | mfc-quality | PC 3 | claim | `ReturnInspected` 줄에 선택 필드 `orderLineId`(같은 SKU 두 주문 행이면 환불 금액이 모호) | 결정됨(2026-11-17 CL-1 추가 결정 8 — 선택) | 대기(PC 3) — claim 은 있으면 쓰고 없으면 SKU 로(이미 받음) |
 | [R-1](case-service.md) | case | PC 2 | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | PC 2 | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
@@ -54,6 +55,7 @@
 | [N-2](notification-service.md) | notification(·case) | PC 1(case 쪽 PC 2) | case | 고객센터 문의 답변 알림(`InquiryAnswered`) | C4 | **구현**(2026-11-16 — notification `caseEvents` InquiryAnswered 구독, case 0.12.0 상담원 접수 문의는 알림 없음) |
 | [AP-1](approval-service.md)(참조: [inventory](mfc-inventory-service.md)·[quality](mfc-quality-service.md)·[capacity](mfc-capacity-service.md)) | approval | PC 1 | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | 결정됨(2026-11-17 사용자 "추천대로" — Q-11: 손실 10만 원 이상 또는 한 SKU 20개 이상 = 본사 재고 승인, 그 아래 센터 관리자) | **구현·LAN 배포**(approval V5 백엔드 세션, MFC 쪽 2026-11-17 PC 3 #116 — 기준 config 99494ed). **LAN 모드는 RECORD_ONLY 유지** — 사용자 결정(2026-11-17): MFC 백오피스(PC 3)에 본사 승인 요청 흐름이 생기고 승인함에서 MFC 종류 승인이 확인된 뒤 VERIFY 전환 |
 | [AP-2](approval-service.md) | approval | PC 1 | hr, employee-auth (ADR-0056) | 직원 권한 요청 유형(BO-01)·등록 때 자동 제출·자동 승인 규칙(소속 센터 `MFC_WORKER`)·반영 대상 employee-auth | 결정됨(2026-11-12) | 구현(2026-11-13 5-4) — LAN 배포 여부 PC 1 확인 필요 |
+| [AP-3](approval-service.md) | approval | PC 1 | backoffice(PC 2) | 승인 상세·목록에 지금 보는 사람이 결정할 수 있는지(viewerCanDecide·막힌 이유, 선택 decidableByMe) | 결정 필요 없음 | 대기(PC 1) |
 | [EA-1](employee-auth-service.md) | employee-auth | PC 1 | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | **구현**(2026-11-17 — `GrantEnded` 사건(회수·소속 변경으로 일찍 끝남), mfc-capacity 구독은 PC 3) |
 | [EA-2](employee-auth-service.md) | employee-auth | PC 1 | 클라이언트 hr-backoffice (BR-57) | 직원 역할 목록 API `GET /employee-auth/roles`(코드·이름·센터 지정·순서) | 없음(사용자 2026-11-15 "만들거야") | 구현(2026-11-15, employee-auth 0.5.0) — LAN 배포 여부 PC 1 확인 필요 |
 | [HR-1](hr-service.md) | hr | PC 1 | employee-auth | 직원 이름 내부 조회 `GET /internal/employee-names`(권한 상세 승인자·회수자 이름 — employee-auth 0.10.0 `approverName`·`revokedByName`) | 없음(사용자 2026-11-17 "백엔드에서") | 구현(2026-11-17, hr 0.5.0) — LAN 배포 전 |
@@ -80,9 +82,11 @@
 | [F-7](mfc-fulfillment-service.md) | mfc-fulfillment·capacity 등 | PC 3 | mfc-app | 작업자 "오늘 업무 내역" — 기간 거르기·completedAt·입고·검사·이동·실사 내 내역 | 요청(사용자 2026-11-17 "본인 금일 작업내용") | **구현·LAN 배포**(2026-11-17 PC 3 #120 — capacity `workers/{id\|me}/activities`) |
 | [IV-2](mfc-inventory-service.md) | mfc-inventory | PC 3 | mfc-app | PDA 재고 확인 응답에 상품명(조회 권한은 이미 자기 센터 작업자 OK) | 요청 | **구현·LAN 배포**(2026-11-17 PC 3 #120 inventory 0.23.0 V22 — 재고 확인 상품명) |
 | [IV-4](mfc-inventory-service.md) | mfc-inventory·mfc-fulfillment·mfc_app | PC 3 | PC 1(사용자) | LOT 바코드 GS1-128 — 짧은 LOT 번호·바코드로 LOT 찾기·피킹 LOT 확인 | 결정됨(2026-11-17 GS1-128, 피킹까지) | 요청함 — LAN LOT 나누기·라벨은 PC 1 |
+| [IV-5](mfc-inventory-service.md) | mfc-inventory | PC 3 | backoffice(PC 2) | 센터별 품절 SKU 수(가용 A=E−R ≤ 0 — 안전재고 Q-13 전, 대시보드 D5) | 결정됨(2026-11-18 사용자) | 대기(PC 3) |
 | [DD-MFC](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | backoffice(PC 2) | `DispatchFailed` payload 에 `mfcId`(필드 추가) — 센터 관리자 배차 실패 사건 | 결정됨(2026-11-16 "추천대로") | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
+| [CL-3](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 기간 환불 금액 합·건수(대시보드 D2 — 완료 시각 한국 날짜) | 결정됨(2026-11-18 사용자 — 환불은 따로) | 대기(PC 1) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
 | [N-4](notification-service.md) | notification | PC 1 | delivery | 사고·파손 재발송 고객 안내(`DeliveryFailed` reason RIDER_INCIDENT·DAMAGED — 새 상품 재발송) | 결정됨(ADR-0069, 2026-11-18 사용자) | 대기 — 지금은 상담원 통화 안내(PC 5 #172) |
 | [DE-2](delivery-execution-service.md) | delivery-execution | PC 5 | backoffice(PC 2) | 도움요청 대화 — 답장 권한(접수 건 규칙)·새 메시지 값·관리자 가림·처리 중 = 집을 때 | 결정됨(2026-11-16 "진행해") | **구현·LAN 배포**(2026-11-17 #76, execution 0.8.0 V10) |
