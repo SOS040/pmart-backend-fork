@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.24.1
+  version: 0.24.2
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -1495,6 +1495,10 @@ components:
       enum: [OPEN, ASSIGNED, ACTION_PENDING, MONITORING, RESOLUTION_REVIEW, CLOSED, REOPENED]
     Priority:
       type: string
+      description: |
+        우선순위(0.24.2 — 클라이언트 code-names C6, 사용자 2026-11-19 "추천대로"): P1 긴급 · P2 높음 · P3 보통 · P4 낮음.
+        지금 서버가 정하는 값은 P1(사고·안전 위협 접수)과 P2(그 밖 자동 생성 건 전부)뿐이다 — P3·P4 는 만들지 않는다(수정 요청의 priority 는 무시).
+        접수 건 목록 정렬에 쓴다(P1 먼저 → 처리 기한 → 생성 순). 처리 기한(slaDueAt)은 우선순위가 아니라 종류별 규칙으로 정한다.
       enum: [P1, P2, P3, P4]
     EvidenceReference:
       type: object

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.13.0
+  version: 0.13.1
   description: |
     0.13.0(2026-11-18, O-8 — 백오피스 대시보드 D2·D3, 사용자 "PC 2 추천대로"): 직원(OPERATOR_ADMIN 만) 기간 집계 `GET /orders/metrics/summary`(상태별 주문 수·결제 승인 금액 합·건수)·`GET /orders/metrics/top-products`(SKU별 확정 수량 − 출고 전 취소 수량과 그 금액, 상위 N). 기준 날짜 = 주문 확정 시각(`confirmedAt`)의 한국 날짜(Asia/Seoul), from·to 둘 다 포함·필수, 93일 이하. **환불은 빼지 않는다**(환불은 claim-service `GET /claims/metrics/refunds` 로 따로 — 순매출을 만들지 않음). 개인정보 없음.
     0.12.1(2026-11-18, 사용자 "추천대로"): 최소 주문 상품액(BR-14, `Quote.minOrderAmount`)을 설정 저장소 공통 값 `pmart.commerce.min-order-amount`(cart-service 와 같은 한 값, LAN 15000)에서 읽는다. 설정이 없으면 새 주문 초안이 422 CONFIG_REQUIRED(0·무제한으로 바꾸지 않는다).
@@ -823,7 +823,7 @@ components:
         sku: { type: string }
         lotId: { type: [string, 'null'] }
         blockedQty: { type: integer }
-        reason: { type: string, description: 'QUALITY_HOLD(품질 격리)·COUNT_LOSS(실사 손실)·SHORT·DAMAGED(피킹 결품 보고) 등 — inventory 사유 그대로' }
+        reason: { type: string, description: 'mfc-inventory ReservationBlocked 사유 그대로(0.13.1 값 목록 — 클라이언트 code-names C4, 2026-11-18). QUALITY_HOLD 품질 격리(검수·보관 중 이상으로 묶임) · COUNT_LOSS 실사 손실(재고 조사에서 모자람) · SHORT 피킹 결품(선반에 없음) · DAMAGED 피킹 중 파손 · BLOCKED 피킹 차단(선반에서 꺼낼 수 없음). 사건에 사유가 없으면 UNKNOWN. 목록 밖 값이 오면 코드 그대로 보인다' }
         state: { type: string, enum: [OPEN, ACKNOWLEDGED, RESOLVED], description: 'RESOLVED = 피킹 시작 전에 MFC 가 보류분을 다시 잡음(자동, 2026-11-08). 피킹 시작 뒤 남은 보류는 결품 사가가 고객 사전 선택대로 처리' }
         note: { type: [string, 'null'] }
         acknowledgedBy: { type: [string, 'null'] }

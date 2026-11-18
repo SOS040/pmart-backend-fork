@@ -143,3 +143,13 @@
 - **받는 쪽(backoffice)**: bff `views/metrics?metric=SHORTAGE_RATE` — numerator = shortLines, denominator = pickedLines, 사유별은 segment. 지금 501.
 - 급함: 낮음(지표는 운영 참고 — BO-28). 정의를 바꿔야 하면 이 절에 적어 주면 bff 를 맞춘다.
 - **상태**: 요청(PC 3).
+
+## F-11. 화면에 코드 그대로 남은 사유 값 — 값 목록과 한 줄 뜻 (2026-11-19, 보낸 영역 platform — PC 1, 원 요청 backoffice)
+- **왜**: 클라이언트 요청 `pmart-clients docs/handoff/backoffice/2026-11-18-backend-code-names.md` C1~C3 — 백오피스 처리 대기·포장 인계 현황에 `PDA_OFFLINE` 같은 코드가 그대로 보인다. 계약이 자유 문자열이라 화면이 이름을 붙이지 못한다. platform 몫 C4~C7 은 PC 1 이 계약 설명에 적었다(order 0.13.1·order-orchestration 0.4.1·case 0.24.2·approval 0.4.1).
+- **요청**(계약 enum 으로 바꾸거나 description 에 표로 — 목록 밖 값이 올 수 있으면 그렇다고 적어 줌):
+  - **C1** MFC 중지 실패 사유 `StopRequest.lastError`(bff pending-work `MFC_STOP_FAILED` 의 reasonCode). 목에서는 `PDA_OFFLINE` 을 썼다 — 실제 값.
+  - **C2** 출고·작업 막힌 사유 `blockReason`(포장 인계 현황·통합 조회 현장 작업 칸).
+  - **C3** 인계 거절 사유 포장 `handoverRejectReason`(bff `MFC_HANDOVER_REJECTED` 의 reasonCode) — `RECORD_MISMATCH` 밖의 값.
+- **받는 쪽(backoffice)**: 받은 뜻을 화면 이름표에 넣는다. 받기 전에는 코드 그대로(지어내지 않음).
+- 급함: 낮음(표시만). 회신은 이 절 + 클라이언트 회신(`docs/handoff/clients/backoffice/`).
+- **상태**: 요청(PC 3).

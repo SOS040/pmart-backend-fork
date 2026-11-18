@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-orchestration-service
-  version: 0.4.0
+  version: 0.4.1
   description: |
     사가 인스턴스·단계·타임아웃·재시도·보상 로그·결과 불명 추적·운영자 수동 개입 기록의 정본. (docs/architecture/service-map.md §2)
     주문 상태(order), 결제·재고·슬롯·작업의 성공 확정(각 정본)은 소유하지 않는다.
@@ -418,7 +418,7 @@ components:
         startedAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
         timeoutAt: { type: string, format: date-time }
-        lastErrorCode: { type: string }
+        lastErrorCode: { type: string, description: '열린 값(0.4.1 — 클라이언트 code-names C5, 2026-11-18). ① 하위 서비스가 거절한 문제 코드 그대로(재고·결제·배차 등 그 서비스 계약의 오류 코드 — 예 INSUFFICIENT_STOCK·VERSION_CONFLICT) ② 사가가 붙이는 코드: UNKNOWN_RESULT 결과 모름(재조회 한도 — 다시 시도) · PAYMENT_FAILED 결제 미승인 · AMOUNT_MISMATCH 결제 금액이 주문과 다름 · RESOURCE_EXPIRED 결제 가능 시간 지남 · RESERVATION_LOST 확보한 재고·용량이 사라짐 · RESERVATION_UNKNOWN 결품 사건에 예약 ID 없음 · CONFIG_REQUIRED 필요한 설정 없음 · DELIVERY_NOT_FOUND·ORDER_UNKNOWN·ORDER_CANCELLED·NOTHING_TO_RESEND 오배송 재발송에서 배송 못 찾음·주문 모름·취소된 주문·다시 보낼 수량 없음. 뜻 설명은 lastErrorMessage' }
         lastErrorMessage: { type: string }
     CompensationLogEntry:
       type: object
@@ -477,7 +477,7 @@ components:
         state: { type: string, enum: [ESCALATED, RECONCILIATION_REQUIRED, UNKNOWN_TRACKING] }
         currentStep: { type: string }
         lastErrorStep: { type: [string, 'null'] }
-        lastErrorCode: { type: [string, 'null'] }
+        lastErrorCode: { type: [string, 'null'], description: '열린 값(0.4.1 — 클라이언트 code-names C5, 2026-11-18). ① 하위 서비스가 거절한 문제 코드 그대로(재고·결제·배차 등 그 서비스 계약의 오류 코드 — 예 INSUFFICIENT_STOCK·VERSION_CONFLICT) ② 사가가 붙이는 코드: UNKNOWN_RESULT 결과 모름(재조회 한도 — 다시 시도) · PAYMENT_FAILED 결제 미승인 · AMOUNT_MISMATCH 결제 금액이 주문과 다름 · RESOURCE_EXPIRED 결제 가능 시간 지남 · RESERVATION_LOST 확보한 재고·용량이 사라짐 · RESERVATION_UNKNOWN 결품 사건에 예약 ID 없음 · CONFIG_REQUIRED 필요한 설정 없음 · DELIVERY_NOT_FOUND·ORDER_UNKNOWN·ORDER_CANCELLED·NOTHING_TO_RESEND 오배송 재발송에서 배송 못 찾음·주문 모름·취소된 주문·다시 보낼 수량 없음. 뜻 설명은 lastErrorMessage' }
         lastErrorMessage: { type: [string, 'null'] }
         updatedAt: { type: string, format: date-time, description: 마지막으로 바뀐 시각(멈춘 시각) }
         allowedActions: { type: array, items: { $ref: '#/components/schemas/ManualActionType' } }

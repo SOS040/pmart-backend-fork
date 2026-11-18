@@ -14,7 +14,7 @@
 - 스키마는 `db/migration/V*.sql` 로만. 적용된 파일 수정 금지.
 - 비밀번호(Keycloak·사서함)를 받지도 저장하지도 로그하지도 않는다. 사서함 초기 비밀번호는 `mailbox-password-resets` 응답에만(멱등 기록에도 남기지 않으려고 `RequestIdempotency` 를 쓰지 않는다).
 - 개인정보는 이름만. 행·메일 ID·사번을 지우지 않는다(퇴사자 메일 ID 재사용 금지). 사번 `P<연도>-<5자리>`(Asia/Seoul 연도, `employee_no_counter` 원자 증가).
-- 모든 명령·목록은 `HR_ADMIN`(D3), 본인 조회(`/hr/employees/me`)만 모든 직원.
+- 모든 명령·목록은 `HR_ADMIN`(D3), 본인 조회(`/hr/employees/me`)와 표시 조회(`/hr/employee-labels`)만 모든 직원.
 - 상태 변경 명령은 `RequestIdempotency` + `X-Expected-Version`(row_version).
 
 ## 본사 부서 코드 목록(2026-11-15)
@@ -23,6 +23,9 @@
 
 ## 내부 이름 조회(0.5.0, 2026-11-17)
 - `GET /internal/employee-names?operatorIds=…`(`InternalController` → `EmployeeService.names` → `HrStore.names`) — employee-auth-service 가 직원 조회 응답의 승인자·회수자 이름을 붙인다(사용자 결정 2026-11-17). 토큰 없는 내부 호출(게이트웨이가 `/internal/**` 를 막음), 1~200개, 형식 틀림 400, 퇴사자 포함, 모르는 ID 는 빠짐, 이름 말고는 싣지 않는다. 이름은 로그 금지. 시험 `HrProvisioningIT.internalEmployeeNames`.
+
+## 표시 조회(0.8.0, 2026-11-19 — 클라이언트 operator-display-names R1, 사용자 "너가 말한대로")
+- `GET /hr/employee-labels?operatorIds=…`(`LabelsController` → `EmployeeService.labels` → `HrStore.labels`) — 백오피스·인사팀 백오피스가 처리자·요청자 칸의 OP-… 를 "이름 · 사번"으로. 직원 토큰이면 누구나(역할 제한 없음), 이름은 가리지 않는다. 1~50개, 형식 틀림·51개 400, 퇴사자 포함, 모르는 ID 는 빠짐, 이름·사번 말고는 싣지 않는다. 이름은 로그 금지. 게이트웨이 허용 목록 GET 한 줄(라우트는 `/api/v1/hr/**` 그대로). 시험 `HrProvisioningIT.employeeLabels`.
 
 ## 계정 발급·상태 맞추기
 - `ProvisioningWorker`: 행 잠금(SKIP LOCKED) 한 명씩, 단계 REQUESTED → MAILBOX_CREATED → IAM_CREATED → INVITE_SENT → DONE. 외부 호출 실패는 예외를 트랜잭션 밖으로 내지 않고 기록(같은 단계, 지수 대기). 영구 거절·횟수 소진이면 보상. 등록·재시도 직후 `kick()` 으로 바로 한 번.

@@ -163,6 +163,21 @@ public class HrStore {
     return out;
   }
 
+  /** 표시 조회(0.8.0): 운영자 ID → (이름, 사번). 퇴사자 포함, 모르는 ID 는 빠진다. */
+  public record Label(String operatorId, String name, String employeeNo) {}
+
+  public List<Label> labels(Collection<String> operatorIds) {
+    if (operatorIds.isEmpty()) {
+      return List.of();
+    }
+    return jdbc.query(
+        "SELECT operator_id, name, employee_no FROM employee WHERE operator_id = ANY (?::varchar[])",
+        (rs, i) ->
+            new Label(
+                rs.getString("operator_id"), rs.getString("name"), rs.getString("employee_no")),
+        "{" + String.join(",", operatorIds) + "}");
+  }
+
   /** 사번 내림차순(최근 등록 먼저). cursor = 이전 쪽 마지막 사번. */
   public List<EmployeeRow> list(
       @Nullable String status,

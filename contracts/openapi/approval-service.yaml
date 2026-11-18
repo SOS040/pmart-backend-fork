@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: approval-service
-  version: 0.4.0
+  version: 0.4.1
   description: |
     ChangeRequest(초안)·ApprovalDossier(승인 단위·원도메인 승인 ID 참조, 이중 발급 금지)·5축 상태·부분 집행·재심사 계보·통합 승인함(BO-10)·대량 변경(BO-26)·PolicyReference(BO-09)·ApplicationReceipt 의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 승인 결과의 업무 정본(product/pricing/replenishment/claim/quality/serviceability/auth/inventory/center-master), 사건(case-service).
@@ -505,6 +505,7 @@ components:
         - `MFC_OPERATION_RESTRICTION` 운영 제한(BO-08) 해제(재개)의 본사 승인. 승인자 역할 `approver-roles.MFC_OPERATION_RESTRICTION`(OPERATOR_ADMIN).
         두 종류는 targetRef = `<mfcId>:<kind>:<ref>` 이고 kind 가 정본(targetService)을 정한다 — ChangeRequestBody.targetRef 참조.
         CDC 쪽 OPERATION_RESTRICTION·INVENTORY_ADJUSTMENT 등은 그대로 둔다(정본 cdc-*).
+        `SUPPLY_BUSINESS`(0.4.1 뜻 — 클라이언트 code-names C7, 2026-11-18): SCM 공급 심사(BackOffice BO-18) — 센터 간 공급 요청(TRF)의 승인·부분 승인·반려. 지금 이 종류로 만들어지는 요청은 없다(SCM 공급 흐름 미구현).
       enum: [PRODUCT, PRICE, DISPLAY, CENTER_MASTER, SERVICEABILITY, INITIAL_STOCK, OPERATION_RESTRICTION, OPERATION_RESUME, POLICY, SUPPLY_BUSINESS, REFUND_CLAIM, QUALITY_RECALL, INVENTORY_ADJUSTMENT, INVENTORY_LOSS, GRANT, CENTER_CLOSURE, BATCH, MFC_STOCK_ADJUSTMENT, MFC_OPERATION_RESTRICTION]
     RequestState:
       type: string

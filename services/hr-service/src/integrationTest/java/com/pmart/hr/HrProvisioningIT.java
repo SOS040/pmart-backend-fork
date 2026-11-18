@@ -959,6 +959,48 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     assertThat(bad).isEqualTo(400);
   }
 
+  /**
+   * 표시 조회(0.8.0, 2026-11-19 — 클라이언트 operator-display-names R1): 직원 토큰이면 역할 없이도, 이름·사번만, 퇴사자 포함, 모르는
+   * ID 빠짐, 51개·형식 틀림 400, 토큰 없으면 401.
+   */
+  @Test
+  void employeeLabels() {
+    String a = register(mailId());
+    String b = register(mailId());
+    jdbc.update("UPDATE employee SET status = 'LEFT' WHERE operator_id = ?", b);
+    String anyStaff = TestJwt.operator("OP-IT-ANY", List.of(), List.of());
+    Res r =
+        call(
+            "GET",
+            "/hr/employee-labels?operatorIds="
+                + a
+                + "&operatorIds="
+                + b
+                + "&operatorIds=OP-NO-SUCH&operatorIds="
+                + a,
+            anyStaff,
+            null);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("items")).hasSize(2);
+    for (JsonNode i : r.body().path("items")) {
+      assertThat(i.path("name").asText()).isNotBlank();
+      assertThat(i.path("employeeNo").asText()).matches("P\\d{4}-\\d{5}");
+      assertThat(i.has("mailAddress")).as("이름·사번 말고는 싣지 않는다").isFalse();
+    }
+    assertThat(call("GET", "/hr/employee-labels?operatorIds=OP%20bad", anyStaff, null).status())
+        .isEqualTo(400);
+    StringBuilder many = new StringBuilder("/hr/employee-labels?operatorIds=OP-0");
+    for (int k = 1; k <= 50; k++) {
+      many.append("&operatorIds=OP-").append(k);
+    }
+    assertThat(call("GET", many.toString(), anyStaff, null).status()).as("51개").isEqualTo(400);
+    int noToken =
+        http.get()
+            .uri("/hr/employee-labels?operatorIds=" + a)
+            .exchange((q, s) -> s.getStatusCode().value());
+    assertThat(noToken).isEqualTo(401);
+  }
+
   @Test
   void validationAndAuthorization() {
     String worker = TestJwt.operator("OP-IT-WRK", List.of("MFC_WORKER"), List.of());

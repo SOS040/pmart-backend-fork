@@ -270,6 +270,27 @@ public class EmployeeService {
     return store.names(ids);
   }
 
+  static final int LABEL_LOOKUP_MAX = 50;
+
+  /**
+   * 표시 조회(0.8.0, 2026-11-19 사용자 "너가 말한대로" — 클라이언트 operator-display-names R1): 직원 토큰이면 누구나, 이름은 가리지
+   * 않는다. 퇴사자 포함, 모르는 ID 는 빠진다. 이름·사번만.
+   */
+  public List<HrStore.Label> labels(List<String> operatorIds) {
+    requireOperator();
+    java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+    for (String id : operatorIds) {
+      if (id == null || !NAME_LOOKUP_ID.matcher(id).matches()) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "운영자 ID 형식이 아닙니다.");
+      }
+      ids.add(id);
+    }
+    if (ids.isEmpty() || ids.size() > LABEL_LOOKUP_MAX) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "운영자 ID 는 1~50개입니다.");
+    }
+    return store.labels(ids);
+  }
+
   private EmployeeView view(String operatorId) {
     EmployeeRow e =
         store

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
     직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
     hr-service 가 사서함(@pmart.com, mail-provisioner) → Keycloak 계정(hr-provisioner, Admin API) → 비밀번호 설정 메일(Keycloak) 순서로
@@ -37,6 +37,8 @@ info:
     계정에 직접 둔 역할·센터(이전 계정·관리 경로)도 본다(HR-2 ③ — employee-auth-service 0.12.0 내부 조회 account): 같은 역할이 계정에 있으면 409 GRANT_ALREADY_ACTIVE
     (details reason `existingGrantId=account;…;validFrom=none;validUntil=none;extension=false`), 섞임 상대가 계정 값이면 CENTER_ROLE_MIX 의 existingGrantId=account.
     employee-auth-service 도 승인 반영 때 같은 겹침이면 새 권한 줄을 만들지 않는다(안전망).
+    0.8.0(2026-11-19, 클라이언트 요청 backoffice operator-display-names R1 — 사용자 "너가 말한대로"): 직원 토큰 일괄 표시 조회 GET /hr/employee-labels.
+    운영자 ID(OP-…) 여러 개 → 이름·사번. 모든 직원(OPERATOR)이 부를 수 있고 이름은 가리지 않는다(직원끼리 쓰는 화면 — 권한 상세 승인자도 실명). 퇴사자 포함.
 servers:
   - url: /api/v1
 security:
@@ -46,6 +48,7 @@ tags:
   - { name: employment, description: 정지·복귀·퇴사 }
   - { name: provisioning, description: 계정 발급(사서함·Keycloak·안내 메일) 진행·재시도 }
   - { name: self, description: 본인 조회 }
+  - { name: labels, description: "(0.8.0) 운영자 ID → 이름·사번 표시(모든 직원)" }
   - { name: departments, description: 본사 부서 코드 목록(소속 HQ_DEPARTMENT 고르기용) }
   - { name: internal, description: "(0.5.0) 서비스 간 전용 — 게이트웨이가 막는다(토큰 없는 내부 호출, ADR-0026)" }
 
@@ -376,6 +379,37 @@ paths:
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
+  /hr/employee-labels:
+    get:
+      tags: [labels]
+      summary: 운영자 ID 여러 개 → 이름·사번 (화면 표시용, 모든 직원 — 0.8.0)
+      description: |
+        2026-11-19 사용자 결정(클라이언트 요청 operator-display-names R1): 백오피스·인사팀 백오피스 목록의 처리자·요청자·결정자 칸에 OP-… 대신
+        "이름 · 사번"을 보이려고 한 번에 읽는다. 직원 토큰이면 누구나(역할 제한 없음), 이름은 가리지 않는다.
+        퇴사자도 돌려준다(지난 기록 표시용). 모르는 ID 는 items 에서 빠진다(오류 아님 — 화면은 "확인 불가"로). 같은 ID 는 한 번만.
+        이름·사번 외의 인사 정보(메일·소속·연락처·재직 상태)는 싣지 않는다. 이름은 로그에 남기지 않는다.
+      x-added-in: '2026-11-19'
+      operationId: getEmployeeLabels
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - name: operatorIds
+          in: query
+          required: true
+          description: '운영자 ID(반복 — ?operatorIds=OP-a&operatorIds=OP-b), 1~50개'
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 50
+            items: { type: string, pattern: '^[A-Za-z0-9_.:@-]{1,128}$' }
+      responses:
+        '200':
+          description: OK — 아는 ID 만(순서 없음)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeLabelList' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /hr/departments:
     get:
       tags: [departments]
@@ -577,6 +611,21 @@ components:
       required: [items]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/Department' } }
+    EmployeeLabelList:
+      type: object
+      required: [items]
+      description: (0.8.0) 표시 조회 응답 — 줄마다 운영자 ID·이름·사번
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/EmployeeLabel' }
+    EmployeeLabel:
+      type: object
+      required: [operatorId, name, employeeNo]
+      properties:
+        operatorId: { type: string }
+        name: { type: string }
+        employeeNo: { type: string, description: '사번(P2026-00012) — 직원 조회의 employeeNo 와 같은 값' }
     EmployeeNameList:
       type: object
       required: [items]
