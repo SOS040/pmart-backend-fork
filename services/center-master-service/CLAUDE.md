@@ -31,3 +31,4 @@
 센터 조회·목록, 영업 캘린더(공개·내부), CENTER_MASTER 승인 반영 구현(2026-10-31). 센터 변경 동기 반영(`POST /internal/centers`)·결과 조회는 501, 과거 버전 조회 없음.
 - 내부 센터 조회(2026-11-13, CM-1 — delivery PC 5 가 넣음, 계약 0.1.1): `GET /internal/centers/{id}`(내부 호출) — 공개 조회와 같은 응답. delivery-dispatch 가 MFC 좌표를 읽는다.
 - **라이더용 픽업지 목록(2026-11-16, 0.2.0 — 라이더 앱 요청 §2, 작성 PC 5)**: `GET /mfc-pickup-points`(RIDER·OPERATOR) — 운영 중 MFC 만, centerId 순, 최대 500, 이름·주소·전화·좌표·인계 위치(accessPoints 의 첫 HANDOVER_POINT). 승인·휴폐점·반입 조건은 주지 않는다. 전화번호는 profile `phone`(Center 계약에도 `phone` — 바꾸려면 BO-06 UPDATE_PROFILE 승인).
+- **승인 반영 회신(RC-1, 2026-11-19 — ADR-0039)**: `application/ApprovalReceipts` — ApprovalDecided(APPROVED·PARTIALLY_APPROVED)를 반영한 같은 inbox 트랜잭션에서 `ApplicationReceiptRecorded`(토픽 platform.approval-receipt.v1, receiverService = 이 서비스, 순번 1, 행마다 APPLIED·REJECTED + reasonCode). 반려 결정에는 회신 없음. 규칙 `docs/architecture/service-requests/approval-receipt-publishers.md` RC-1.

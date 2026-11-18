@@ -54,13 +54,16 @@ public class CenterService {
   private final EventEnvelopeCodec codec;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final ApprovalReceipts receipts;
 
   public CenterService(
       CenterStore store,
       EventPublisher events,
       EventEnvelopeCodec codec,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      ApprovalReceipts receipts) {
+    this.receipts = receipts;
     this.store = store;
     this.events = events;
     this.codec = codec;
@@ -135,7 +138,10 @@ public class CenterService {
     }
     Instant now = clock.instant();
     List<String> results = new ArrayList<>();
-    if (!"APPROVED".equals(p.path("decision").asString())) {
+    String decision = p.path("decision").asString();
+    // 반영 회신 행 사유(RC-1, 2026-11-19) — 승인 행 lineId → 거절 사유. 반영한 행은 넣지 않는다
+    java.util.Map<String, String> rejected = new java.util.LinkedHashMap<>();
+    if (!"APPROVED".equals(decision)) {
       results.add("NOT_APPROVED");
     } else {
       String approver = p.hasNonNull("approverId") ? p.get("approverId").asString() : null;
@@ -145,12 +151,25 @@ public class CenterService {
           results.add(apply(a, approvalId, approver, now));
         } catch (IllegalArgumentException invalid) {
           results.add("INVALID:" + invalid.getMessage());
+          rejected.put(line.path("lineId").asString(""), "INVALID_ATTRIBUTES");
           log.warn("센터 승인 {} 반영 안 함: {}", approvalId, invalid.getMessage());
         }
       }
     }
     store.recordApplication(approvalId, String.join(",", results), now);
     log.info("센터 승인 {} → {}", approvalId, results);
+    if (ApprovalReceipts.replies(decision)) {
+      // 일부 승인(PARTIALLY_APPROVED)은 반영하지 않는다(위 — 센터 기준정보는 전체 승인만) → 모든 행 REJECTED
+      boolean whole = "APPROVED".equals(decision);
+      receipts.publish(
+          approvalId,
+          p,
+          line -> line.path("lineId").asString(""),
+          rejected,
+          whole,
+          whole ? null : "PARTIAL_APPROVAL_NOT_APPLIED",
+          p.path("targetRef").path("targetId").asString(null));
+    }
   }
 
   private String apply(JsonNode a, String approvalId, @Nullable String approver, Instant now) {

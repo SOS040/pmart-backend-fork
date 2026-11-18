@@ -53,6 +53,7 @@ public class ApprovalApplier {
   private final CommandStore commands;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final ApprovalReceipts receipts;
 
   public ApprovalApplier(
       CategoryTreeService trees,
@@ -64,7 +65,9 @@ public class ApprovalApplier {
       EventEnvelopeCodec codec,
       CommandStore commands,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      ApprovalReceipts receipts) {
+    this.receipts = receipts;
     this.trees = trees;
     this.draftService = draftService;
     this.drafts = drafts;
@@ -114,6 +117,43 @@ public class ApprovalApplier {
     }
     catalog.recordApplication(approvalId, targetId, result, mapper.writeValueAsString(detail), at);
     log.info("approval {} target {} → {}", approvalId, targetId, result);
+    if (ApprovalReceipts.replies(decision)) {
+      reply(p, approvalId, targetId, result, detail);
+    }
+  }
+
+  /** 반영 회신(RC-1, 2026-11-19) — 초안·배치는 행(초안)마다, 카테고리 트리·판매 상태는 승인 전체가 한 결과. 같은 inbox 트랜잭션. */
+  private void reply(
+      JsonNode p, String approvalId, String targetId, String result, Map<String, Object> detail) {
+    if (targetId.startsWith(ProductDraftService.DRAFT_PREFIX)
+        || targetId.startsWith(ProductDraftService.BATCH_PREFIX)) {
+      Map<String, String> rejected = new LinkedHashMap<>();
+      if (detail.get("rejected") instanceof List<?> list) {
+        for (Object o : list) {
+          String s = String.valueOf(o);
+          int c = s.lastIndexOf(':');
+          rejected.put(c < 0 ? s : s.substring(0, c), c < 0 ? "REJECTED" : s.substring(c + 1));
+        }
+      }
+      receipts.publish(
+          approvalId,
+          p,
+          line -> line.path("attributes").path("draftId").asString(line.path("lineId").asString()),
+          rejected,
+          true,
+          null,
+          targetId);
+      return;
+    }
+    boolean ok = "APPLIED".equals(result) || "GRANTED".equals(result);
+    receipts.publish(
+        approvalId,
+        p,
+        line -> "",
+        Map.of(),
+        ok,
+        ok ? null : "IGNORED".equals(result) ? "UNKNOWN_TARGET" : result,
+        targetId);
   }
 
   private String applyDrafts(

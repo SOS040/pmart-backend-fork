@@ -471,6 +471,23 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /** 발효된 트리가 없으면 만들어 승인한다(시험 실행 순서와 무관하게). */
+  /** 반영 회신(RC-1, 2026-11-19) — outbox 의 ApplicationReceiptRecorded payload, 없으면 null. */
+  tools.jackson.databind.JsonNode receipt(String approvalId) throws InterruptedException {
+    for (int i = 0; i < 50; i++) {
+      java.util.List<String> rows =
+          jdbc.queryForList(
+              "SELECT payload::text FROM outbox_event WHERE type = 'ApplicationReceiptRecorded'"
+                  + " AND aggregateid = ? AND topic = 'platform.approval-receipt.v1'",
+              String.class,
+              approvalId);
+      if (!rows.isEmpty()) {
+        return mapper.readTree(rows.get(0)).path("payload");
+      }
+      Thread.sleep(100);
+    }
+    return null;
+  }
+
   void ensureTree() throws InterruptedException {
     if (get("/categories/tree").status() == 200) {
       return;
@@ -928,9 +945,10 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     Res a = post("/product-drafts", water(barcode));
     assertThat(a.body().path("validationState").asString()).isEqualTo("VALID");
     String aId = a.body().path("draftId").asString();
-    decide(
-        post("/product-drafts/" + aId + "/submissions", null).body().path("approvalRequest"),
-        "APPROVED");
+    String aApproval =
+        decide(
+            post("/product-drafts/" + aId + "/submissions", null).body().path("approvalRequest"),
+            "APPROVED");
     String sku =
         await("/product-drafts/" + aId, b -> "APPLIED".equals(b.path("state").asString()))
             .body()
@@ -938,6 +956,12 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
             .path(0)
             .asString();
     assertThat(get("/barcodes/" + barcode).body().path("sku").asString()).isEqualTo(sku);
+    // 반영 회신(RC-1): 같은 트랜잭션에서 APPLIED·행 APPLIED
+    JsonNode aReceipt = receipt(aApproval);
+    assertThat(aReceipt).as("반영 회신").isNotNull();
+    assertThat(aReceipt.path("receiverService").asString()).isEqualTo("product-service");
+    assertThat(aReceipt.path("result").asString()).isEqualTo("APPLIED");
+    assertThat(aReceipt.path("lines").path(0).path("result").asString()).isEqualTo("APPLIED");
 
     // 같은 바코드의 다른 초안은 충돌(자동 선택 없음), 제출도 막힌다
     Res b = post("/product-drafts", water(barcode));
@@ -955,15 +979,17 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     Integer skusBefore = jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class);
     Res c = post("/product-drafts", water(gtin("9" + barcode.substring(0, 12))));
     String cId = c.body().path("draftId").asString();
-    decide(
-        post("/product-drafts/" + cId + "/submissions", null).body().path("approvalRequest"),
-        "REJECTED");
+    String cApproval =
+        decide(
+            post("/product-drafts/" + cId + "/submissions", null).body().path("approvalRequest"),
+            "REJECTED");
     JsonNode rejected =
         await("/product-drafts/" + cId, x -> "REJECTED".equals(x.path("state").asString())).body();
     assertThat(rejected.path("problems").toString()).contains("APPROVAL_REJECTED");
     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sku", Integer.class))
         .isEqualTo(skusBefore);
     assertThat(get("/barcodes/0000").status()).isEqualTo(404);
+    assertThat(receipt(cApproval)).as("반려에는 반영 회신 없음").isNull();
   }
 
   @Test

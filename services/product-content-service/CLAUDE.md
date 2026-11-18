@@ -40,3 +40,4 @@
 - 상세·카드에 `mfcId` 를 주면 SKU 옵션마다 mfc-inventory `/internal/availability`(내부 호출, 토큰 없음) 사본을 붙인다(`ContentRules.availability`): 취급 OFF carried=false·UNKNOWN, A≤0 SOLD_OUT, 그 밖 AVAILABLE. LOW("N개 남음")는 노출 임계값이 운영 설정이라 안 쓴다.
 - 재고 조회 실패는 화면을 실패시키지 않고 UNKNOWN(0·품절 아님), 상세 sources 에 mfc-inventory-service UNAVAILABLE. mfcId 가 없으면 채우지 않는다.
 
+- **승인 반영 회신(RC-1, 2026-11-19 — ADR-0039)**: `application/ApprovalReceipts` — ApprovalDecided(APPROVED·PARTIALLY_APPROVED)를 반영한 같은 inbox 트랜잭션에서 `ApplicationReceiptRecorded`(토픽 platform.approval-receipt.v1, receiverService = 이 서비스, 순번 1, 행마다 APPLIED·REJECTED + reasonCode). 반려 결정에는 회신 없음. 규칙 `docs/architecture/service-requests/approval-receipt-publishers.md` RC-1.

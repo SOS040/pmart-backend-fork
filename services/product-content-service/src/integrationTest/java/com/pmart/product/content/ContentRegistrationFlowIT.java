@@ -252,8 +252,25 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     kafka.send("commerce.product.v1", productId, json).join();
   }
 
+  /** 반영 회신(RC-1, 2026-11-19) — outbox 의 ApplicationReceiptRecorded payload, 없으면 null. */
+  tools.jackson.databind.JsonNode receipt(String approvalId) throws InterruptedException {
+    for (int i = 0; i < 50; i++) {
+      java.util.List<String> rows =
+          jdbc.queryForList(
+              "SELECT payload::text FROM outbox_event WHERE type = 'ApplicationReceiptRecorded'"
+                  + " AND aggregateid = ? AND topic = 'platform.approval-receipt.v1'",
+              String.class,
+              approvalId);
+      if (!rows.isEmpty()) {
+        return mapper.readTree(rows.get(0)).path("payload");
+      }
+      Thread.sleep(100);
+    }
+    return null;
+  }
+
   /** approval-service 가 내는 ApprovalDecided 를 흉내 낸다(제출 준비가 돌려준 본문의 행 그대로, 필요하면 해시를 바꿔). */
-  void decide(JsonNode approvalRequest, String decision, boolean tamperHash) {
+  String decide(JsonNode approvalRequest, String decision, boolean tamperHash) {
     String approvalId = "AP-" + UUID.randomUUID();
     List<Map<String, Object>> lines = new ArrayList<>();
     for (JsonNode l : approvalRequest.path("lines")) {
@@ -293,6 +310,7 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
             .payload(payload)
             .buildJson();
     kafka.send("platform.approval.v1", approvalId, json).join();
+    return approvalId;
   }
 
   /** 합성 JPEG(시그니처 + 표식 바이트). 실제 이미지가 아니다. */
@@ -681,11 +699,19 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(
             post("/content-drafts/" + draftId + "/images", mainForm).body().path("code").asString())
         .isEqualTo("DRAFT_NOT_EDITABLE");
-    decide(sub.body().path("approvalRequest"), "APPROVED", true);
+    String mismatchApproval = decide(sub.body().path("approvalRequest"), "APPROVED", true);
     JsonNode mismatch =
         await("/content-drafts/" + draftId, x -> "REJECTED".equals(x.path("state").asString()))
             .body();
     assertThat(mismatch.path("problems").toString()).contains("APPROVAL_SCOPE_MISMATCH");
+    // 반영 회신(RC-1): 승인했지만 반영 못 함 → REJECTED, 행 사유 SCOPE_MISMATCH
+    JsonNode mismatchReceipt = receipt(mismatchApproval);
+    assertThat(mismatchReceipt).as("반영 회신").isNotNull();
+    assertThat(mismatchReceipt.path("receiverService").asString())
+        .isEqualTo("product-content-service");
+    assertThat(mismatchReceipt.path("result").asString()).isEqualTo("REJECTED");
+    assertThat(mismatchReceipt.path("lines").path(0).path("reasonCode").asString())
+        .isEqualTo("SCOPE_MISMATCH");
     assertThat(get("/product-contents/" + productId, CUSTOMER).status()).isEqualTo(404);
 
     // 반려된 초안도 게시하지 않는다

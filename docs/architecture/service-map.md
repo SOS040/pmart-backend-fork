@@ -14,7 +14,7 @@
 - **소유**: 기초상품·상품·SKU(`E-`/`B-` 8자리 발급·재사용 금지), 구성 낱개 수, 카테고리(4단계 상위>하위>칩1>칩2·노드별 필터 패널, 대표 1개 — ADR-0015), 바코드↔SKU, 판매 단위·중량(g)·물류 규격(BOX/PLT 환산·Ti/Hi), 전사 판매 상태(판매중/일시품절/판매중지), 승인 버전.
 - **소유하지 않음**: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
 - **API**: 상품/SKU 조회(버전 포함), 구매 상한 검증(`Σ 수량×구성 낱개 수 ≤ 10` per 기초상품), 바코드 해석, SKU 발급 명령(approval 승인 결과 참조), 카테고리 트리.
-- **발행**: `ProductVersionPublished`, `ProductSaleStateChanged`, `CategoryChanged`, `SkuIssued`.
+- **발행**: `ProductVersionPublished`, `ProductSaleStateChanged`, `CategoryChanged`, `SkuIssued`, `ApplicationReceiptRecorded`(PRODUCT 승인 반영 회신, RC-1 2026-11-19).
 - **구독**: `ApprovalDecided`(상품/SKU/환산 승인).
 - **의존**: auth(행위 검증).
 
@@ -23,7 +23,7 @@
 - **소유하지 않음**: 상품 정본·판매 상태(product), 리뷰 원문(review).
 - **API**: 상품 상세 조회(승인 변경 5분 내 반영 목표). `mfcId` 를 주면 옵션별 취급·가용 사본(2026-10-31).
 - **의존**: mfc-inventory(담당 센터 가용 표시 조회 — 내부 API, 조회 실패≠0).
-- **발행**: `ProductContentPublished`.
+- **발행**: `ProductContentPublished`, `ApplicationReceiptRecorded`(DISPLAY 승인 반영 회신, RC-1 2026-11-19).
 - **구독**: `ProductVersionPublished`, `ReviewPublished/Deleted`, `ApprovalDecided`(콘텐츠 승인 BO-05).
 
 ### customer-service `[1단계]`
@@ -410,7 +410,7 @@
 - **승인 종류 → 정본**: 상품/SKU/환산→product · 가격→pricing · 전시→storefront/product-content · 센터 기준정보→center-master · 권역→delivery-serviceability · 운영 중지/재개→cdc-quality/mfc-capacity/rider · 정책→각 소유 서비스 · 공급 사업승인→replenishment · 환불/클레임→claim · 품질/리콜→cdc-quality/mfc-quality · 재고 조정/손실→cdc-inventory/mfc-inventory(승인 참조 집행) · 직원 권한(GRANT)→employee-auth-service(ADR-0056).
 - **API**: 변경 요청 제출/철회, 심사·승인·부분승인·반려, 승인함 조회, 반영 상태 조회, 정책 참조 등록, 승인 번호 확인·한 번 사용(`/internal/approval-ref-checks`·`/internal/approval-ref-uses` — 승인 번호를 명령에 실어 집행하는 정본용, MFC 종류 `MFC_STOCK_ADJUSTMENT`·`MFC_OPERATION_RESTRICTION`, AP-1 2026-11-17).
 - **발행**: `ChangeRequestSubmitted`, `ApprovalDecided`, `ApprovalWithdrawn/Expired/Superseded`, `PolicyVersionApproved`, `OperationRestrictionRequested/ResumeRequested`, `BatchRowResultRecorded`.
-- **구독**: `ApplicationReceiptRecorded`(정본의 반영 회신 → 실행·전달 축, ADR-0039 — pricing, employee-auth-service), `GrantRequested`(hr-service 직원 권한 요청 → 변경 요청·승인, 자동 승인 규칙 — ADR-0056 5-4, 2026-11-13). 계획: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
+- **구독**: `ApplicationReceiptRecorded`(정본의 반영 회신 → 실행·전달 축, ADR-0039 — pricing, employee-auth-service, delivery-serviceability, product·product-content·center-master(2026-11-19)), `GrantRequested`(hr-service 직원 권한 요청 → 변경 요청·승인, 자동 승인 규칙 — ADR-0056 5-4, 2026-11-13). 계획: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
 - **의존(동기)**: auth(승인자 권한·대행), 각 정본(명령 전달, 2 hop 초과 시 이벤트).
 
 ### case-service `[1단계 — 추가 제안, ADR-0004]`
@@ -425,7 +425,7 @@
 - **소유**: 센터 코드·유형(CDC/MFC)·명칭·주소·좌표·진입/하차/인계 위치·층수·반입 조건·취급 온도대·영업 캘린더(고객 주문 운영/직원 근무/차량 진입/하차·인계/검수·적치 창 — 다섯 시간표 분리, 휴일·임시 제한·버전·승인자), 휴점/폐점 의무 목록(BO-06).
 - **소유하지 않음**: 센터 내부 LOC(cdc/mfc-location), 현장 용량(mfc-capacity), 권역(serviceability).
 - **API**: 센터 조회(버전), 캘린더 조회(일자·시간표 종류).
-- **발행**: `CenterMasterChanged`, `CenterCalendarChanged`.
+- **발행**: `CenterMasterChanged`, `CenterCalendarChanged`, `ApplicationReceiptRecorded`(CENTER_MASTER 승인 반영 회신, RC-1 2026-11-19).
 - **구독**: `ApprovalDecided`(BO-06).
 
 ---

@@ -51,7 +51,9 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.customer.address-limit=4"
+      "pmart.customer.address-limit=4",
+      // 꺼진 경로(구매 가능 = ACTIVE 만) — 켠 경로는 ConsentFlowIT. LAN 설정은 2026-11-19 부터 켬(CU-1)
+      "pmart.customer.consents.purchase-gate=false"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock(
@@ -355,7 +357,8 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     String svc = TestJwt.service("order-service");
     Res status = get(svc, "/internal/accounts/" + cu + "/status");
     assertThat(status.status()).isEqualTo(200);
-    // 구매 차단 스위치(purchase-gate)가 꺼져 있으면(설정 사본 false — LAN 고객 앱 반영 전) 동의 전에도 지금처럼 ACTIVE 만으로 구매 가능.
+    // 구매 차단 스위치(purchase-gate)가 꺼져 있으면(이 시험은 속성으로 끔 — LAN 은 2026-11-19 켬) 동의 전에도 지금처럼 ACTIVE 만으로 구매
+    // 가능.
     // 동의가 빠진 사실은 requiredConsentOutdated 로 알린다. 켠 경로는 ConsentFlowIT
     assertThat(status.body().path("purchasable").asBoolean()).isTrue();
     assertThat(status.body().path("requiredConsentOutdated").asBoolean()).isTrue();

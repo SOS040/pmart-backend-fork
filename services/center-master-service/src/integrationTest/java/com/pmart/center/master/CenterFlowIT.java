@@ -110,6 +110,23 @@ class CenterFlowIT extends PostgresKafkaContainerSupport {
     return approvalId;
   }
 
+  /** 반영 회신(RC-1, 2026-11-19) — outbox 의 ApplicationReceiptRecorded payload, 없으면 null. */
+  tools.jackson.databind.JsonNode receipt(String approvalId) throws InterruptedException {
+    for (int i = 0; i < 50; i++) {
+      java.util.List<String> rows =
+          jdbc.queryForList(
+              "SELECT payload::text FROM outbox_event WHERE type = 'ApplicationReceiptRecorded'"
+                  + " AND aggregateid = ? AND topic = 'platform.approval-receipt.v1'",
+              String.class,
+              approvalId);
+      if (!rows.isEmpty()) {
+        return mapper.readTree(rows.get(0)).path("payload");
+      }
+      Thread.sleep(100);
+    }
+    return null;
+  }
+
   String awaitApplied(String approvalId) throws InterruptedException {
     Instant until = Instant.now().plus(Duration.ofSeconds(30));
     while (Instant.now().isBefore(until)) {
@@ -177,6 +194,10 @@ class CenterFlowIT extends PostgresKafkaContainerSupport {
                                 "coordinates",
                                 Map.of("lat", 37.4901, "lng", 127.0101)))))));
     assertThat(awaitApplied(created)).startsWith("CREATE:" + centerId + ":v1");
+    // 반영 회신(RC-1, 2026-11-19)
+    assertThat(receipt(created).path("result").asString()).isEqualTo("APPLIED");
+    assertThat(receipt(created).path("receiverService").asString())
+        .isEqualTo("center-master-service");
     // 라이더용 픽업지 목록(라이더 앱 요청 §2): 이름·주소·전화·인계 위치, 승인 정보 없음
     Res points = get(TestJwt.rider("RD-IT-1"), "/mfc-pickup-points");
     assertThat(points.status()).isEqualTo(200);
@@ -229,6 +250,9 @@ class CenterFlowIT extends PostgresKafkaContainerSupport {
                     "calendar",
                     weekly("08:00", "24:30"))));
     assertThat(awaitApplied(bad)).startsWith("INVALID:");
+    assertThat(receipt(bad).path("result").asString()).isEqualTo("REJECTED");
+    assertThat(receipt(bad).path("lines").path(0).path("reasonCode").asString())
+        .isEqualTo("INVALID_ATTRIBUTES");
 
     String cal =
         approve(

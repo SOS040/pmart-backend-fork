@@ -46,6 +46,7 @@ public class ContentApprovalApplier {
   private final EventEnvelopeCodec codec;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final ApprovalReceipts receipts;
 
   public ContentApprovalApplier(
       DraftStore drafts,
@@ -53,7 +54,9 @@ public class ContentApprovalApplier {
       EventPublisher events,
       EventEnvelopeCodec codec,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      ApprovalReceipts receipts) {
+    this.receipts = receipts;
     this.drafts = drafts;
     this.catalog = catalog;
     this.events = events;
@@ -92,6 +95,34 @@ public class ContentApprovalApplier {
     }
     catalog.recordApplication(approvalId, targetId, result, mapper.writeValueAsString(detail), at);
     log.info("approval {} target {} → {}", approvalId, targetId, result);
+    if (ApprovalReceipts.replies(decision)) {
+      reply(p, approvalId, targetId, result, detail);
+    }
+  }
+
+  /** 반영 회신(RC-1, 2026-11-19) — 초안마다 행 결과. 같은 inbox 트랜잭션. */
+  private void reply(
+      JsonNode p, String approvalId, String targetId, String result, Map<String, Object> detail) {
+    if ("IGNORED".equals(result)) {
+      receipts.publish(approvalId, p, line -> "", Map.of(), false, "UNKNOWN_TARGET", targetId);
+      return;
+    }
+    Map<String, String> rejected = new LinkedHashMap<>();
+    if (detail.get("rejected") instanceof List<?> list) {
+      for (Object o : list) {
+        String s = String.valueOf(o);
+        int c = s.lastIndexOf(':');
+        rejected.put(c < 0 ? s : s.substring(0, c), c < 0 ? "REJECTED" : s.substring(c + 1));
+      }
+    }
+    receipts.publish(
+        approvalId,
+        p,
+        line -> line.path("attributes").path("draftId").asString(line.path("lineId").asString()),
+        rejected,
+        true,
+        null,
+        targetId);
   }
 
   private String applyLines(
