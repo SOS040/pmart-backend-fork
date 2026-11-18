@@ -169,9 +169,8 @@ def recover(recovery, mfc_spot):
                 version=v.get("version"))
     need("회수(RETURN_PICKED_UP)", s in (200, 202), f"HTTP {s} {b.get('code', '')}")
     locate(token, *mfc_spot)
-    s, v = http("GET", f"/deliveries/{recovery}", token)
-    s, b = http("POST", f"/deliveries/{recovery}/returns/store-deliveries", token, {"evidenceRefs": [ref]},
-                version=v.get("version"))
+    admin, _ = staff_token("claude-dev")
+    s, b, _ = r.store_delivery(recovery, token, admin, {"evidenceRefs": [ref]})
     need("MFC 반납", s in (200, 202), f"HTTP {s} {b.get('code', '')}")
     closed = wait("회수 배차 CLOSED", lambda: pg(DISPATCH, f"SELECT state FROM delivery WHERE delivery_id = '{recovery}'") == "CLOSED", 30)
     check("회수 배송 CLOSED", bool(closed))

@@ -93,6 +93,36 @@ def http(method, path, token, body=None, version=None, key=None, raw=None, conte
             return e.code, {"raw": text[:200]}
 
 
+def store_delivery(delivery, token, admin, body):
+    """MFC 반납(execution 0.28.0 반납 인증번호 — 2026-11-18). 직원 화면 목록(GET /return-handovers)에서 그 배송 번호를 읽어
+    ① 틀린 번호 → 422 MISMATCH ② 번호 없이 → 스위치(return-handover.required) 켜짐이면 422 REQUIRED, 꺼짐이면 그대로 반납
+    ③ (아직이면) 맞는 번호로 반납. 응답 (HTTP, 본문, 스위치 켜짐 여부 | None). 번호 값은 출력하지 않는다."""
+    s, lst = http("GET", f"/return-handovers?mfcId={MFC}", admin)
+    row = next((i for i in lst.get("items") or [] if i.get("deliveryId") == delivery), None)
+    check("반납 인증번호 — 직원 목록에 그 배송", s == 200 and bool(row and row.get("code")), f"HTTP {s}")
+    code = (row or {}).get("code")
+    if code:
+        wrong = f"{(int(code) + 1) % 10000:04d}"
+        _, v = http("GET", f"/deliveries/{delivery}", token)
+        s, b = http("POST", f"/deliveries/{delivery}/returns/store-deliveries", token, dict(body, handoverCode=wrong),
+                    version=v.get("version"))
+        check("틀린 반납 번호 거절(422 RETURN_HANDOVER_CODE_MISMATCH)", s == 422 and b.get("code") == "RETURN_HANDOVER_CODE_MISMATCH",
+              f"HTTP {s} {b.get('code', '')}")
+    _, v = http("GET", f"/deliveries/{delivery}", token)
+    s, b = http("POST", f"/deliveries/{delivery}/returns/store-deliveries", token, dict(body), version=v.get("version"))
+    if s in (200, 202):
+        print("  (반납 번호 필수 스위치 꺼짐 — 번호 없이 반납됨)")
+        return s, b, False
+    required = s == 422 and b.get("code") == "RETURN_HANDOVER_CODE_REQUIRED"
+    check("번호 없이 반납 거절(422 RETURN_HANDOVER_CODE_REQUIRED — 스위치 켜짐)", required, f"HTTP {s} {b.get('code', '')}")
+    if not code:
+        return s, b, required
+    _, v = http("GET", f"/deliveries/{delivery}", token)
+    s, b = http("POST", f"/deliveries/{delivery}/returns/store-deliveries", token, dict(body, handoverCode=code),
+                version=v.get("version"))
+    return s, b, required
+
+
 def check(name, ok, detail=""):
     results.append((name, ok))
     print(("  OK   " if ok else "  FAIL ") + name + (f" — {detail}" if detail else ""), flush=True)
@@ -324,7 +354,7 @@ def failed_return(delivery, rider, token, admin, photo):
     s, b = http("POST", f"/deliveries/{back}/returns/pickups", token, {"items": [], "evidenceRefs": [photo]},
                 version=r.get("version"))
     check("받음 없음(returns/pickups 409)", s == 409, f"HTTP {s} {b.get('code', '')}")
-    s, b = http("POST", f"/deliveries/{back}/returns/store-deliveries", token, {}, version=r.get("version"))
+    s, b, _ = store_delivery(back, token, admin, {})
     need("MFC 반납", s in (200, 202), f"HTTP {s} {b.get('code', '')} {str(b.get('detail', ''))[:80]}")
     s, r = http("GET", f"/deliveries/{back}", token)
     check("반납 배송 RETURNED_TO_STORE", r.get("state") == "RETURNED_TO_STORE", f"상태 {r.get('state')}")
