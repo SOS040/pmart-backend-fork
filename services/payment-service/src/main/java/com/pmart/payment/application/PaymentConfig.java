@@ -1,5 +1,6 @@
 package com.pmart.payment.application;
 
+import com.pmart.payment.infrastructure.toss.TestAutoTossClient;
 import com.pmart.payment.infrastructure.toss.TossClient;
 import com.pmart.payment.infrastructure.toss.TossProperties;
 import java.time.Clock;
@@ -22,8 +23,18 @@ class PaymentConfig {
         Clock.systemUTC(), java.time.Duration.of(1, java.time.temporal.ChronoUnit.MICROS));
   }
 
+  /**
+   * 토스 클라이언트. {@code pmart.payment.test-auto.enabled=true}(LAN 시험 전용, 2026-11-19 MFC 시뮬레이터 R-21)면
+   * {@code TEST_AUTO_<orderId>} 키만 토스 없이 답하는 {@link TestAutoTossClient} — 운영 설정에는 없다.
+   */
   @Bean
-  TossClient tossClient(TossProperties props, ObjectMapper mapper) {
-    return new TossClient(props, mapper);
+  TossClient tossClient(
+      TossProperties props,
+      ObjectMapper mapper,
+      Clock clock,
+      @org.springframework.beans.factory.annotation.Value(
+              "${pmart.payment.test-auto.enabled:false}")
+          boolean testAuto) {
+    return testAuto ? new TestAutoTossClient(props, mapper, clock) : new TossClient(props, mapper);
   }
 }

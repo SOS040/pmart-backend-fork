@@ -32,5 +32,8 @@
 - 상관 ID: 고객 요청(`confirm`·`reportFailure`)은 결제 시도를 찾은 직후부터 `CheckoutService.correlate` 로 correlationId = 시도의 sagaId(2026-11-05). 앱이 sagaId 를 모르기 때문이다. 사건 발행은 `PaymentEvents.publish` 가 따로 sagaId(환불 결과만 요청 값)를 쓴다. 새 고객 경로를 만들면 같은 규칙을 따른다.
 - 키: `pmart.payment.toss.*`(pmart-config `payment-service-<프로필>.yml`, 비밀은 {cipher}). `live_` 키는 `allow-live-keys=true` 일 때만. 시크릿 키·Authorization·카드 정보 로그 금지.
 
+## [LAN 시험 전용] 시험 결제 자동 승인 (2026-11-19, 계약 0.2.0 — MFC 시뮬레이터 R-21)
+- `pmart.payment.test-auto.enabled=true` 면 `PaymentConfig` 가 `TestAutoTossClient`(TossClient 하위)를 쓴다 — paymentKey `TEST_AUTO_<토스 orderId>` 만 토스 없이: 승인 DONE(요청 금액, method TEST_AUTO, 다른 orderId 키는 Rejected `TEST_AUTO_KEY_MISMATCH`), 취소 DONE(거래 키 `TEST_AUTO_TX_<멱등키>`, 잔액 = refundable − 취소액, 총액 null — 원장 COALESCE), 조회는 Unknown. 그 밖 키는 진짜 토스. 앞뒤 검사·원장 반영·사건은 그대로. 운영 설정에는 없다. 시험 `TestAutoPaymentIT`(토스 WireMock 호출 0).
+
 ## 상태
 결제 시작·고객 승인 요청·실패 보고·조회·원거래 조회·환불/보상 취소·불명 재조회·만료 정리·웹훅 구현(2026-10-30). 주문 쪽(order·orchestration) 연결은 그쪽 구현 때.

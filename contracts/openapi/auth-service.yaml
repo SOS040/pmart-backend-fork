@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.2.1
+  version: 0.3.0
   description: |
     고객 소셜 로그인(Google ID 토큰 검증, ADR-0019·0055)·인증 상태(AUTH_GUEST→PENDING→(CONSENT)→MEMBER, AUTH_UNKNOWN, AUTH_RESTRICTED 15분 5회→10분), 
     토큰/세션, 유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한, 행위 시점 검증, 보안 기록 90일의 정본. (docs/architecture/service-map.md §8)
@@ -20,9 +20,53 @@ tags:
   - { name: logins, description: 소셜 로그인·원인증 결과 조회 }
   - { name: tokens, description: 토큰 갱신·로그아웃·세션 }
   - { name: internal, description: "행위 시점 검증·grant 반영/조회 (서비스 간, 토큰 없음 — ADR-0026)" }
+  - { name: dev, description: "[LAN 시험 전용] 개발용 고객 토큰(0.3.0 — MFC 시뮬레이터 R-21, 설정을 켠 환경에만 경로가 생긴다)" }
   - { name: keys, description: "JWKS 공개키 — 사용자 토큰 검증용 (클러스터 내부 전용, ADR-0011·0026)" }
 
 paths:
+  /internal/dev-customer-tokens:
+    post:
+      tags: [dev]
+      summary: '[LAN 시험 전용] 허용 목록의 기존 고객 토큰 (0.3.0 — MFC 시뮬레이터 R-21 실제 주문 넣기)'
+      description: |
+        2026-11-19 사용자 "응 먼저 회신남기고 제안대로해줘". `pmart.auth.dev-customer-token.enabled=true` 일 때만 경로가 생긴다(운영 설정에는 없다 → 404).
+        게이트웨이에 없다 — LAN 포트로 직접(직원 `employee-auth /internal/dev-token-exchange` 와 같은 방식). 새 계정을 만들지 않고
+        **허용 목록(`pmart.auth.dev-customer-token.allowed-accounts`)의 기존 고객**에만 잇는다 — 목록 밖 403 `DEV_CUSTOMER_NOT_ALLOWED`,
+        auth 에 없는 계정 404 `ACCOUNT_NOT_FOUND`, ACTIVE 가 아니면 403 `ACCOUNT_NOT_AVAILABLE`.
+        Idempotency-Key 는 공통 규칙상 받지만 기록하지 않는다(부를 때마다 새 토큰). 짧은 세션(설정 ttl, 기본 15분)을 열고 access token 만 준다(refresh 없음 — 다시 받는다). 세션 행이 발급 기록이다(계정·기기·X-Source-System·시각). 토큰은 로그 금지.
+      operationId: issueDevCustomerToken
+      security: []
+      x-added-in: '2026-11-19'
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId]
+              properties:
+                accountId: { type: string, maxLength: 64 }
+      responses:
+        '200':
+          description: 발급
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accountId, accessToken, accessTokenExpiresAt, sessionId]
+                properties:
+                  accountId: { type: string }
+                  accessToken: { type: string, description: 'typ=CUSTOMER — 로그 금지' }
+                  accessTokenExpiresAt: { type: string, format: date-time }
+                  sessionId: { type: string }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /auth/guest-sessions:
     post:
       tags: [logins]

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: payment-service
-  version: 0.1.1
+  version: 0.2.0
   description: |
     결제 시도(paymentAttemptId)·PG 거래(pgTransactionId)·승인액·취소/환불 거래·멱등키·추가 환불 가능 한도·원거래 조회 이력·보상 취소의 정본. (docs/architecture/service-map.md §2, ADR-0005)
     실제 승인·취소 사실의 정본은 PG(토스페이먼츠)다. 콜백·결제창 복귀만으로 승인을 확정하지 않고 원거래 조회로 대사한다.
@@ -201,6 +201,9 @@ paths:
       tags: [checkout]
       summary: 승인 요청 (결제창 인증 성공 후 — orderId·paymentKey·amount 만)
       description: |
+        [LAN 시험 전용 — 0.2.0 2026-11-19, MFC 시뮬레이터 R-21] `pmart.payment.test-auto.enabled=true` 인 환경에서는 `paymentKey` 가 `TEST_AUTO_` 로
+        시작하면 토스를 부르지 않고 서버가 승인한다(method TEST_AUTO). 그 앞의 검사(주문·금액·만료)와 그 뒤의 반영·사건(PaymentApproved → 주문 확정)은 실제 승인과 같다.
+        그 결제의 취소·환불도 토스 없이 성공으로 처리한다. 설정이 꺼진 환경(운영)에서는 그런 키도 토스로 가서 거절된다.
         결제 명세 §6.3 순서로 처리한다: 형식 → orderId 로 결제 시도 조회(본인 것만, 아니면 404) → 저장된 paymentKey 와 다르면 409 PAYMENT_KEY_MISMATCH
         → amount 불일치면 400 AMOUNT_MISMATCH(토스 호출 없음) → 상태(APPROVED 면 기존 결과, 진행 중이면 현재 상태) → 예약 만료면 승인 API 를 부르지 않고
         EXPIRED + 422 RESERVATION_EXPIRED → READY→CONFIRMING 조건부 갱신과 paymentKey 저장 → 토스 승인 API(시도별 고정 Idempotency-Key).

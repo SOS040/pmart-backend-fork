@@ -10,3 +10,4 @@
 - 2026-11-16 회신: [R-14 토큰 발급 경로 — 계속 사용](2026-11-16-simulator-reply-token-r14.md)
 - 2026-11-16 공지(mfc, PC 3): [11-09 이후 바뀐 것 + R-05·R-08·R-09·R-11 다시 점검](2026-11-16-simulator-notice-recheck-and-changes.md) — R-13 이후는 요청서가 GitHub 에 올라온 뒤
 - 2026-11-19 회신(platform, PC 1): [R-20 출하대기 랙(PC 3 F-12) · R-21 실제 주문 넣기(PC 1 이 만든다)](2026-11-19-simulator-reply-r20-r21.md)
+- 2026-11-19 알림(platform, PC 1): [R-21 개발용 고객 토큰·시험 결제 TEST_AUTO 쓰는 법](2026-11-19-simulator-notice-r21-dev-order.md)

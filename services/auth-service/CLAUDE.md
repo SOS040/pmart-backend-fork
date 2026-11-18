@@ -49,6 +49,10 @@
 - Google 프로필(email·email_verified·name·picture)은 버리지 않고 `CustomerAuthenticated` 에 실어 customer-service 로 넘긴다(ADR-0024). auth 는 `sub` 만 저장한다. 개인정보 로그 금지.
 - 시험은 `GoogleIdTokenVerifier` 빈을 시험 키 검증기로 바꾼다(`CustomerSocialLoginIT`).
 
+## [LAN 시험 전용] 개발용 고객 토큰 (2026-11-19, 계약 0.3.0 — MFC 시뮬레이터 R-21)
+- `POST /api/v1/internal/dev-customer-tokens`(`DevCustomerTokenController`·`DevCustomerTokenService`, `@ConditionalOnProperty pmart.auth.dev-customer-token.enabled=true` — 운영 설정에 없으면 빈·경로 없음 404). 게이트웨이에 없고 permit-path(공통 auth-service.yml).
+- 허용 목록 `allowed-accounts` 의 기존 고객(customer_account ACTIVE)만 — 밖 403 `DEV_CUSTOMER_NOT_ALLOWED`, 없음 404, ACTIVE 아님 403. 새 계정을 만들지 않는다. 세션(ttl 기본 PT15M)을 열고 access token 만(refresh 없음) — 세션 행이 발급 기록. 토큰 로그 금지. 시험 `DevCustomerTokenIT`.
+
 ## 비회원 세션 (ADR-0022)
 - `POST /api/v1/auth/guest-sessions`(permit-path, `X-Device-Id` 필수): 새 비회원 주체 `GST-…` + 토큰 쌍(`typ=GUEST`). 같은 키 재전송은 같은 주체·새 세션. 수명 `pmart.auth.guest.*`(access 1시간, refresh·세션 30일).
 - 갱신은 `/auth/tokens`(세션 기기만), `SessionService` 의 GUEST 분기(정본 상태 없음). 자기 세션 조회·종료는 guest-paths.
