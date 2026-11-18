@@ -106,6 +106,11 @@ public class EmployeeSessionService {
   }
 
   /** 앱이 refresh 쿠키를 쓰는가. */
+  /** 세션 최대 길이(CSRF 쿠키 Max-Age — 2026-11-18). */
+  public java.time.Duration sessionMaxAge() {
+    return props.sessionMaxAge();
+  }
+
   public boolean refreshCookie(String app) {
     return props.refreshCookie(app);
   }

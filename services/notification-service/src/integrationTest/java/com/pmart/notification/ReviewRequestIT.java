@@ -241,6 +241,9 @@ class ReviewRequestIT extends PostgresKafkaContainerSupport {
             .findFirst()
             .orElseThrow();
     assertThat(n.path("category").asString()).isEqualTo("ORDER");
+    assertThat(n.path("templateKey").asString())
+        .as("앱이 리뷰 요청을 가른다(0.4.4)")
+        .isEqualTo("REVIEW_REQUESTED");
     assertThat(n.path("destination").path("type").asString()).isEqualTo("ORDER");
     assertThat(n.path("destination").path("ref").asString()).isEqualTo(orderId);
 

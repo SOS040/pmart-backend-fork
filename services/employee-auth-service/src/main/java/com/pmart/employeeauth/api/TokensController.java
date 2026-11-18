@@ -57,7 +57,12 @@ public class TokensController implements TokensApi {
       String sid = r.tokens().sessionId();
       res.header(
           HttpHeaders.SET_COOKIE,
-          RefreshCookies.open(sid, r.tokens().refreshToken(), sessions.csrfFor(sid))
+          RefreshCookies.open(
+                  sid,
+                  r.tokens().refreshToken(),
+                  untilNow(r.tokens().refreshTokenExpiresAt()),
+                  sessions.csrfFor(sid),
+                  sessions.sessionMaxAge())
               .toArray(String[]::new));
     }
     return res.body(EmployeeAuthMapping.login(r, cookie));
@@ -91,7 +96,10 @@ public class TokensController implements TokensApi {
             xDeviceId);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .header(HttpHeaders.SET_COOKIE, RefreshCookies.refresh(sessionId, t.refreshToken()))
+        .header(
+            HttpHeaders.SET_COOKIE,
+            RefreshCookies.refresh(
+                sessionId, t.refreshToken(), untilNow(t.refreshTokenExpiresAt())))
         .body(EmployeeAuthMapping.tokens(t, true));
   }
 
@@ -131,5 +139,10 @@ public class TokensController implements TokensApi {
                                 .centerId(id)
                                 .name(centerNames.name(id)))
                     .toList()));
+  }
+
+  /** 지금부터 그 시각까지(쿠키 Max-Age — 2026-11-18). */
+  private static java.time.Duration untilNow(java.time.Instant at) {
+    return java.time.Duration.between(java.time.Instant.now(), at);
   }
 }

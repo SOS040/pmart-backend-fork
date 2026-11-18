@@ -44,3 +44,8 @@
 
 ## 회신
 막히는 응답·틀린 줄은 `docs/handoff/clients/customer-app/` 회신 파일 또는 PR 본문으로.
+
+## 추가(같은 날) — 회신 R1 반영
+- `GET /me/notifications` 의 `Notification` 에 **`templateKey`**(notification 0.4.4) — 리뷰 요청은 `REVIEW_REQUESTED` 로 가르면 된다(sourceEventType 은 배송 완료와 같은 `DeliveryCompleted`). 모르는 값이면 destination 기본 동작.
+- 썸네일(주문 목록 이미지 URL)은 지금은 넣지 않았다 — 필요하면 따로 요청.
+- CU-1 스위치(`require-consent`·`purchase-gate`)는 앱 LAN 확인 알림이 올 때까지 끈 채로 둔다.

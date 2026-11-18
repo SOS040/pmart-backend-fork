@@ -126,6 +126,11 @@ class RefreshCookieIT extends PostgresKafkaContainerSupport {
         r.body().path("tokens").path("accessToken").asText());
   }
 
+  static long maxAge(String setCookie) {
+    var m = java.util.regex.Pattern.compile("Max-Age=(\\d+)").matcher(setCookie);
+    return m.find() ? Long.parseLong(m.group(1)) : -1;
+  }
+
   static String value(String setCookie) {
     String pair = setCookie.split(";", 2)[0];
     return pair.substring(pair.indexOf('=') + 1);
@@ -186,13 +191,15 @@ class RefreshCookieIT extends PostgresKafkaContainerSupport {
         .contains("Secure")
         .contains("SameSite=Strict")
         .contains("Path=/api/v1/employee-auth/tokens/refresh/" + sid)
-        .doesNotContain("Max-Age");
+        .containsPattern("Max-Age=[1-9][0-9]*");
+    // CSRF 쿠키도 만료가 있다(2026-11-18 clients C1 — 끝난 세션 쿠키가 쌓여 431): 세션 최대 길이 12시간
     assertThat(c.get(CSRF + sid))
         .doesNotContain("HttpOnly")
         .contains("Secure")
         .contains("SameSite=Strict")
         .contains("Path=/;")
-        .doesNotContain("Max-Age");
+        .contains("Max-Age=43200");
+    assertThat(maxAge(c.get(RT))).as("refresh 쿠키는 refresh token 만료까지").isBetween(1L, 43200L);
     assertThat(value(c.get(CSRF + sid))).matches("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+");
   }
 
@@ -210,7 +217,8 @@ class RefreshCookieIT extends PostgresKafkaContainerSupport {
     String newRt = value(ok.cookies().get(RT));
     assertThat(newRt).isNotEqualTo(t.rt());
     assertThat(ok.cookies().get(RT))
-        .contains("Path=/api/v1/employee-auth/tokens/refresh/" + t.sessionId());
+        .contains("Path=/api/v1/employee-auth/tokens/refresh/" + t.sessionId())
+        .containsPattern("Max-Age=[1-9][0-9]*");
 
     // 같은 CSRF 값으로 새 쿠키 갱신이 이어진다
     Tab next = new Tab(t.sessionId(), t.device(), newRt, t.csrf(), t.access());

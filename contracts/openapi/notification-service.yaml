@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: notification-service
-  version: 0.4.3
+  version: 0.4.4
   description: |
     알림 요청·채널(앱 푸시·카카오 알림톡 [결정 필요])·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록, 지연 안내의 정본. (docs/architecture/service-map.md §8)
     비정본: 원사건(주문·배송·환불·배차 제안은 각 소유 서비스), 마케팅 동의(customer), OS 알림 권한(단말).
@@ -18,6 +18,7 @@ info:
     라이더 문의 답변(RiderInquiryAnswered)·계정 제한·해제(RiderRestricted). 휴대폰 푸시는 여전히 없음 — 앱이 알림함을 확인한다. 운영자 알림함, 수신 설정 변경 결과 조회, 내부 범용 요청·발송 이력·배차 알림 기록은 아직 501.
     0.4.1(2026-11-17, ADR-0067 — 설명만, 경로·필드 변경 없음): **휴대폰 푸시(FCM) 발송** — 알림함에 저장된 알림을 등록 단말로도 보낸다. 라이더 알림은 전부,
     고객은 정한 종류(배송 출발·완료·결품·주문 취소·환불 결과)만. 앱의 Firebase 프로젝트마다 서버 키(없으면 그 쪽은 알림함만). 수신 설정의 APP_PUSH 변경은 여전히 CHANNEL_NOT_APPROVED(끌 수 없는 거래 안내만 보낸다).
+    0.4.4(2026-11-18, 고객 앱 요청 R1): 알림함 응답 `Notification` 에 `templateKey`(알림 종류) — 리뷰 요청(REVIEW_REQUESTED)은 sourceEventType 이 배송 완료와 같아(DeliveryCompleted) 앱이 가를 수 없었다. 필드 추가만.
     0.4.3(2026-11-18, 사용자 "추천대로" — 설명만): 리뷰 요청은 오배송 확인(case `MisdeliveryConfirmed`)이 오면 보류하고, 그 주문의 다음 배송 완료(다시 배송)부터 기다림(1시간)을 다시 센다. 환불로 끝나면 보내지 않는다.
     0.4.2(2026-11-18, 사용자 결정 "A해줘" — 설명만, 경로·필드 변경 없음): **리뷰 요청 알림** — 고객 주문 배송 완료(DeliveryCompleted, 회수 목적 배송·취소된 주문 제외) 약 1시간 뒤
     (`pmart.notification.review-request.delay`), 주문당 한 번, 그 주문에 리뷰를 아직 안 썼을 때만(review-service 내부 조회 `GET /internal/orders/{orderId}/review-status` — 삭제한 리뷰도 쓴 것으로 본다)
@@ -392,6 +393,7 @@ components:
         destination: { $ref: '#/components/schemas/Destination' }
         sourceEventId: { type: string }
         sourceEventType: { type: string }
+        templateKey: { type: string, maxLength: 64, x-added-in: '2026-11-18', description: '(0.4.4) 알림 종류(ORDER_CONFIRMED·DELIVERY_COMPLETED·REVIEW_REQUESTED 등 — 서버 문구 키). 앱이 종류별 화면을 고를 때 쓴다(예 REVIEW_REQUESTED → 그 주문의 리뷰 쓰기). 같은 사건(sourceEventType)이 여러 종류를 낼 수 있어 그것으로 가르지 않는다. 모르는 값은 기본 동작(destination)으로' }
         state: { type: string, enum: [NOTICE_UNREAD, NOTICE_READ] }
         createdAt: { type: string, format: date-time }
         readAt: { type: [string, 'null'], format: date-time }

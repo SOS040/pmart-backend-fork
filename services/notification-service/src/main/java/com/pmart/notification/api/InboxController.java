@@ -65,6 +65,7 @@ public class InboxController implements InboxApi {
             .body(r.body())
             .sourceEventId(r.sourceEventId())
             .sourceEventType(r.sourceEventType())
+            .templateKey(r.templateKey())
             .state(Notification.StateEnum.fromValue(r.state()))
             .createdAt(time(r.createdAt()))
             .readAt(time(r.readAt()));
