@@ -14,5 +14,6 @@
 | [`2026-11-07-rag-architecture-backoffice.svg`](2026-11-07-rag-architecture-backoffice.svg) | 백오피스(운영자) 경로 — 현재 구현 기준(원본 그림 문제 1~7 수정, pgvector 만, 결정 대기는 점선). 밝은·어두운 화면 둘 다 | 작성 |
 | [`2026-11-07-rag-architecture-customer.svg`](2026-11-07-rag-architecture-customer.svg) | 고객앱 경로 — 계획(운영자 경로에서 그대로 쓰는 것은 실선, 새로 만들 것·결정 대기는 점선) | 작성 |
 | [`2026-11-07-rag-architecture-backoffice.en.svg`](2026-11-07-rag-architecture-backoffice.en.svg) · [`2026-11-07-rag-architecture-customer.en.svg`](2026-11-07-rag-architecture-customer.en.svg) | 위 두 그림의 영문판(같은 배치, 글만 영어. 긴 글에 맞춰 화살표 시작점만 옮김) | 작성 |
+| [`2026-11-18-es-hybrid-restructure-plan.md`](2026-11-18-es-hybrid-restructure-plan.md) | RAG 구조 개편 계획 — RAG 전용 Elasticsearch(BM25 + kNN → RRF → 리랭커), 1,024토큰 청킹, pgvector 제외. 현재와 차이·단계·결정 대기 Q1~Q14 | 계획(실행 전) |
 
 그림을 고치면 영문판(`.en.svg`)도 같은 커밋에서 고친다.
