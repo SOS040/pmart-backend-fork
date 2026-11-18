@@ -1165,19 +1165,6 @@ paths:
         - { name: to, in: query, schema: { type: string, format: date-time } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
-
-  /return-handovers:
-    get:
-      tags: [return-handovers]
-      summary: (0.28.0) MFC 반납 기다리는 회수·반납 배송과 인증번호 — 그 센터 직원
-      x-added-in: '2026-11-18'
-      description: |
-        그 센터 운영자(작업자 포함 — PDA·센터 관리자 웹)·OPERATOR_ADMIN·RIDER_OPS·CS_AGENT. 센터 직원은 mfcId 필수(그 센터 권한).
-        대상 = 회수품을 받아 MFC 로 오는 중(RETURN_PICKED_UP) 또는 전달 실패 반납(배정 상태). 번호가 없으면 이때 만든다. 라이더 이름은 rider 요약으로(riderId).
-      operationId: listReturnHandovers
-      x-pmart-user-types: [OPERATOR]
-      parameters:
-        - { name: mfcId, in: query, schema: { type: string, maxLength: 40 } }
       responses:
         '200':
           description: OK
@@ -1204,7 +1191,27 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
-
+  /return-handovers:
+    get:
+      tags: [return-handovers]
+      summary: (0.28.0) MFC 반납 기다리는 회수·반납 배송과 인증번호 — 그 센터 직원
+      x-added-in: '2026-11-18'
+      description: |
+        그 센터 운영자(작업자 포함 — PDA·센터 관리자 웹)·OPERATOR_ADMIN·RIDER_OPS·CS_AGENT. 센터 직원은 mfcId 필수(그 센터 권한).
+        대상 = 회수품을 받아 MFC 로 오는 중(RETURN_PICKED_UP) 또는 전달 실패 반납(배정 상태). 번호가 없으면 이때 만든다. 라이더 이름은 rider 요약으로(riderId).
+      operationId: listReturnHandovers
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 40 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
                   items: { type: array, items: { $ref: '#/components/schemas/ReturnHandover' } }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
