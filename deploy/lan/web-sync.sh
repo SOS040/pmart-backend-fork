@@ -96,12 +96,18 @@ gen() { (cd "$BUILD" && npm run gen:api -w "web/$1") > "$gen_log" 2>&1 || { tail
 gen backoffice
 case " ${behind[*]} " in *" rider-backoffice "*) gen rider-backoffice ;; esac
 
+# 카카오 지도 JavaScript 키(2026-11-18 사용자 "기존 웹빌드의 자바스크립트 키랑 같아" — 라이더 백오피스 관제 지도). 빌드 환경에만 넘기고 출력하지 않는다.
+# 파일이 없으면 빈 값 — 앱은 "카카오 지도 키가 없어 표로만" 보인다. 키를 쓰는 도메인은 카카오 콘솔 Web 플랫폼에 등록돼 있어야 SDK 가 받는다.
+KAKAO_JS=""
+[ -f "$LAN/.secrets/kakao-js-key" ] && KAKAO_JS="$(tr -d '
+' < "$LAN/.secrets/kakao-js-key")"
+
 failed=0
 for app in "${behind[@]}"; do
   port=""
   for e in $APPS; do if [ "${e%%:*}" = "$app" ]; then port="${e##*:}"; fi; done
   echo "=== $app 빌드 (${target:0:8})"
-  if ! (cd "$BUILD" && npm run build:lan -w "web/$app" --silent); then
+  if ! (cd "$BUILD" && VITE_KAKAO_JS_KEY="$KAKAO_JS" npm run build:lan -w "web/$app" --silent); then
     echo "  빌드 실패: $app — 올리지 않음" >&2; failed=1; continue
   fi
   printf '%s\n%s\n' "$target" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BUILD/web/$app/dist/version.txt"
