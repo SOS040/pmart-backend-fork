@@ -4,7 +4,7 @@
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: pmart-clients `docs/handoff/customer-app/2026-11-19-backend-first-run-consents.md`(BR-59 ①~④)
 - 사용자 결정(2026-11-19): 추천안 "응" → auth 도 같이("응 그렇게 해줘")
-- 계약: customer-service **0.6.0**, auth-service 변경 없음(내부 호출만 더함). LAN: **배포 전**(배포하면 이 줄을 고친다)
+- 계약: customer-service **0.6.0**, auth-service 변경 없음(내부 호출만 더함). LAN: **배포됨**(2026-11-19 07:31, 이미지 3ffa9868 — customer·auth·api-gateway). 게이트웨이로 확인: `/consent-terms` 항목 다섯·senderName PMart, 기기 동의 200, 기기에 이용약관 400
 
 ## ① 위치기반서비스 약관 — 동의 유형 `LOCATION_BASED_SERVICE`
 - **현재 위치 기능을 쓸 때만 필수**: `required=false`, `requiredFor="CURRENT_LOCATION"`(Consent·ConsentTermList 에 새 칸).
