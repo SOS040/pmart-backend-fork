@@ -9,7 +9,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 ## 1. 사용자 확인·결정 기다림
 - [x] Docker Hub·LAN 배포 — 2026-11-18: Jib 은 push 토큰(`registry.env`)으로, employee-auth·hr(459135d8)·claim·고객앱 갭 A 7개·api-gateway 배포, 고객 FAQ 색인(63건).
 - [ ] **CL-2 결정** — 반품 취소 때 회수비 돌려주기 판정을 claim 조회에(`pickup.feeRefundOnCancel`) — 추천안 바로 만들기 / 목록에 두기(요청서 `service-requests/claim-service.md` CL-2, PR #161).
-- [ ] **Firebase `pmart-123` 합치기**(2026-11-18) — 사용자: 고객 앱 등록·`google-services.json` 다시 받기 → PC 1: 서버 고객 키 바꾸고 notification-service 다시 띄움 → 고객 휴대폰 푸시 다시 확인.
+- [x] Firebase `pmart-123` 합치기 — 서버 쪽 끝(2026-11-18, pmart-config b625d04). 남은 것(클라이언트): 새 `google-services.json` 을 `apps/customer_app/android/app/` 에 두고 다시 빌드 → 고객 휴대폰 푸시 확인(직접 확인 3번).
 
 ## 2. 어제(11-17) 저녁 목록
 - [x] 1. 역할·센터 섞임 막기 — 253090cc, LAN 배포 11-18
