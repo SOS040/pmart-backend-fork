@@ -66,3 +66,5 @@
 - **필요한 것**: 직원(OPERATOR_ADMIN) 조회 — 예 `GET /orders/metrics/summary?from&to&mfcId`(상태별 count, approvedAmount 합·건수) · `GET /orders/metrics/top-products?from&to&mfcId&limit`(sku·productId·qty·amount). from·to 한국 날짜 포함, 기간 상한(예 93일), 정수 KRW. 이름·형태는 order 가 정한다.
 - **지금(임시)**: 없음 — 화면은 칸을 만들지 않는다. bff 는 받으면 `views/metrics` 또는 새 칸으로 잇는다.
 - 근거 표: `customer_order`(status·mfc_id·approved_amount·confirmed_at, 색인 `ix_customer_order_confirmed`·`ix_customer_order_mfc`), `customer_order_line`(sku·quantity·cancelled_before_ship_qty·line_amount·discount_share).
+- **구현(2026-11-18, PC 1 — order 0.13.0)**: OPERATOR_ADMIN 만 `GET /orders/metrics/summary?from&to&mfcId`(상태별 건수, 결제 승인 금액 합·건수)·`GET /orders/metrics/top-products?from&to&mfcId&limit`(SKU 별 확정 − 출고 전 취소 수량·금액, 기본 10·최대 50). 확정 시각 한국 날짜, 93일 이하, 환불 안 뺌. 시험 `OrderMetricsRulesTest`·`StaffOrderLookupIT`.
+

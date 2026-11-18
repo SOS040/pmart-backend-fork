@@ -63,6 +63,7 @@ GET /api/v1/centers/{centerId} OPERATOR
 GET /api/v1/centers/{centerId}/calendar OPERATOR
 GET /api/v1/change-requests/{changeRequestId} OPERATOR
 GET /api/v1/claims CUSTOMER,OPERATOR
+GET /api/v1/claims/metrics/refunds OPERATOR
 GET /api/v1/claims/{claimId} CUSTOMER,OPERATOR
 GET /api/v1/claims/{claimId}/decisions/{requestId} OPERATOR
 GET /api/v1/claims/{claimId}/refunds CUSTOMER,OPERATOR
@@ -181,6 +182,8 @@ GET /api/v1/order-drafts/{draftId} CUSTOMER
 GET /api/v1/orders CUSTOMER
 GET /api/v1/orders/lookups OPERATOR
 GET /api/v1/orders/lookups/{orderId} OPERATOR
+GET /api/v1/orders/metrics/summary OPERATOR
+GET /api/v1/orders/metrics/top-products OPERATOR
 GET /api/v1/orders/{orderId} CUSTOMER
 GET /api/v1/orders/{orderId}/reservation-time-changes/{requestId} CUSTOMER
 GET /api/v1/package-handovers OPERATOR

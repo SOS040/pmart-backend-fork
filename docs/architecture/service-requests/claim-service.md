@@ -72,3 +72,5 @@
 - **요청한 곳**: 백오피스 대시보드 D2(주문 요약 O-8 과 나란히). 사용자 결정(2026-11-18): 매출에서 환불을 빼지 않고 **환불 금액을 따로** 보인다.
 - **필요한 것**: 직원(OPERATOR_ADMIN) 조회 — 기간(환불 **완료 시각 `refund_intent.completed_at` 의 한국 날짜**, 포함) 안 완료된 환불의 금액 합·건수(정수 KRW), 선택 mfcId. 예 `GET /claims/metrics/refunds?from&to`. 종류(취소·반품)별로 나눠 주면 좋음.
 - **지금(임시)**: 없음.
+- **구현(2026-11-18, PC 1 — claim 0.5.0)**: OPERATOR_ADMIN 만 `GET /claims/metrics/refunds?from&to` — 완료 환불 합·건수 + 사유 묶음 CANCEL·SHORTAGE·RETURN·RETURN_FEE·OTHER. 환불 완료 시각 한국 날짜, 93일 이하. **센터 거르기 없음**(사용자 동의 — 출고 전 취소 클레임에 센터 없음).
+

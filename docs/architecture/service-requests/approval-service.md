@@ -59,3 +59,5 @@
 - **지금(임시)**: 화면은 버튼을 두고 서버 403 을 거절 문구로 보인다(판정을 지어내지 않음).
 - **받으면 화면은**: `viewerCanDecide=false` 면 "○○ 역할이 심사해요" 안내·버튼 끔, 심사 대기 수를 그 값으로.
 - **사용자 결정**: 필요 없음(판정 규칙은 지금 결정 API 그대로).
+- **구현(2026-11-18, PC 1 — approval 0.4.0)**: `GET /approvals/{id}`·`GET /approvals` 항목에 `viewerCanDecide`·`viewerDecideBlockedReason`(NOT_PENDING·SELF_APPROVAL·CONFIG_REQUIRED·NO_ROLE·GRANT_TO_SELF — 결정 API 와 같은 검사 `ApprovalRules`), 목록 거르기 `decidableByMe=true`. 시험 `ApprovalRulesTest`·`GrantRequestIT`.
+
