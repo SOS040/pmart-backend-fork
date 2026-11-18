@@ -684,6 +684,186 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
     assertThat(reset.getBody()).doesNotContain("7777").doesNotContain("홍길동");
   }
 
+  // ---------------------------------------------------------------- O-8 기간 집계(0.13.0)
+
+  /** 집계용 주문행: SKU·상품·주문 수량·줄 금액·할인 분담·출고 전 취소 수량. */
+  record M(String sku, String productId, int qty, long lineAmount, long discount, int cancelled) {}
+
+  String metricsOrder(
+      String account, String mfc, String status, Instant confirmedAt, long approved, M... ms) {
+    String orderId = "ORD-MT-" + UUID.randomUUID();
+    var o =
+        new OrderRow(
+            orderId,
+            account,
+            "DRF-" + orderId,
+            mfc,
+            status,
+            1,
+            "SINGLE",
+            null,
+            null,
+            null,
+            "CANCEL_OOS_ONLY",
+            null,
+            "ADDR-1",
+            1,
+            1,
+            approved,
+            0,
+            0,
+            "STANDARD",
+            0,
+            approved,
+            false,
+            1_000,
+            1,
+            "PA-" + orderId,
+            "PG-" + orderId,
+            approved,
+            "RSV-" + orderId,
+            null,
+            null,
+            confirmedAt,
+            null);
+    List<LineRow> lines = new ArrayList<>();
+    int n = 1;
+    for (M m : ms) {
+      lines.add(
+          new LineRow(
+              orderId + "-L" + n,
+              orderId,
+              n,
+              null,
+              m.sku(),
+              m.productId(),
+              1,
+              m.qty(),
+              m.lineAmount() / m.qty(),
+              m.lineAmount(),
+              m.discount(),
+              100,
+              m.qty(),
+              m.qty() - m.cancelled(),
+              0,
+              m.cancelled(),
+              0,
+              0,
+              "상품" + n,
+              null,
+              0));
+      n++;
+    }
+    store.insert(o, lines);
+    return orderId;
+  }
+
+  /**
+   * O-8: OPERATOR_ADMIN 만, 확정 시각의 한국 날짜(from·to 포함), 상태별 수·승인 금액 합(환불 안 뺌), SKU별 남은 수량·금액(할인 분담 같은
+   * 비율, 원 미만 버림) 상위 N. 글자 그대로의 /orders/metrics/... 와 /orders/{orderId} 가 둘 다 맞게 간다.
+   */
+  @Test
+  void periodMetricsUseKoreanConfirmedDateAndOperatorAdminOnly() {
+    String mfc = "MFC-MT-" + UUID.randomUUID().toString().substring(0, 8);
+    String account = "ACC-MT-" + UUID.randomUUID();
+    String x = "X-" + UUID.randomUUID().toString().substring(0, 8);
+    String y = "Y-" + UUID.randomUUID().toString().substring(0, 8);
+    String z = "Z-" + UUID.randomUUID().toString().substring(0, 8);
+    // 2019-07-14 00:30 KST — 그날
+    String a =
+        metricsOrder(
+            account,
+            mfc,
+            "CONFIRMED",
+            Instant.parse("2019-07-13T15:30:00Z"),
+            30_000,
+            new M(x, "P-X", 3, 9_000, 300, 1), // 남은 2 → (9000-300)×2÷3 = 5800
+            new M(y, "P-Y", 1, 2_000, 0, 0)); // 2000
+    // 2019-07-14 23:59:59 KST — 그날, 확정 뒤 취소(승인 금액은 그대로 센다)
+    metricsOrder(
+        account,
+        mfc,
+        "CANCELLED",
+        Instant.parse("2019-07-14T14:59:59Z"),
+        12_000,
+        new M(x, "P-X", 2, 6_000, 0, 2), // 전부 출고 전 취소 → 0
+        new M(z, "P-Z", 1, 7_001, 1_000, 0)); // 6001
+    // 2019-07-13 23:59:59 KST — 전날
+    metricsOrder(
+        account,
+        mfc,
+        "CONFIRMED",
+        Instant.parse("2019-07-13T14:59:59Z"),
+        99_999,
+        new M(y, "P-Y", 5, 50_000, 0, 0));
+    // 다른 센터, 그날
+    metricsOrder(
+        account,
+        "MFC-MT-OTHER-" + UUID.randomUUID().toString().substring(0, 4),
+        "PREPARING",
+        Instant.parse("2019-07-14T03:00:00Z"),
+        5_000,
+        new M(x, "P-X", 1, 1_000, 0, 0));
+
+    String day = "from=2019-07-14&to=2019-07-14";
+    JsonNode sum = ok(ADMIN, "/orders/metrics/summary?" + day + "&mfcId=" + mfc);
+    assertThat(sum.path("orderCount").asInt()).isEqualTo(2);
+    assertThat(sum.path("approvedAmount").asLong()).isEqualTo(42_000);
+    assertThat(sum.path("approvedOrderCount").asInt()).isEqualTo(2);
+    assertThat(sum.path("mfcId").asString()).isEqualTo(mfc);
+    assertThat(sum.path("statusCounts")).hasSize(2);
+    assertThat(sum.path("statusCounts").get(0).path("status").asString()).isEqualTo("CANCELLED");
+    assertThat(sum.path("statusCounts").get(0).path("count").asInt()).isEqualTo(1);
+    assertThat(sum.path("statusCounts").get(1).path("status").asString()).isEqualTo("CONFIRMED");
+    // 센터를 안 주면 모든 센터(그날은 이 시험의 주문뿐)
+    JsonNode all = ok(ADMIN, "/orders/metrics/summary?" + day);
+    assertThat(all.path("orderCount").asInt()).isEqualTo(3);
+    assertThat(all.path("approvedAmount").asLong()).isEqualTo(47_000);
+    assertThat(all.path("mfcId").isNull() || all.path("mfcId").isMissingNode()).isTrue();
+
+    JsonNode top = ok(ADMIN, "/orders/metrics/top-products?" + day + "&mfcId=" + mfc);
+    assertThat(top.path("limit").asInt()).isEqualTo(10);
+    JsonNode items = top.path("items");
+    assertThat(items).hasSize(3);
+    assertThat(items.get(0).path("sku").asString()).isEqualTo(z);
+    assertThat(items.get(0).path("productId").asString()).isEqualTo("P-Z");
+    assertThat(items.get(0).path("qty").asInt()).isEqualTo(1);
+    assertThat(items.get(0).path("amount").asLong()).isEqualTo(6_001);
+    assertThat(items.get(1).path("sku").asString()).isEqualTo(x);
+    assertThat(items.get(1).path("qty").asInt()).isEqualTo(2);
+    assertThat(items.get(1).path("amount").asLong()).isEqualTo(5_800);
+    assertThat(items.get(2).path("sku").asString()).isEqualTo(y);
+    assertThat(items.get(2).path("amount").asLong()).isEqualTo(2_000);
+    assertThat(
+            ok(ADMIN, "/orders/metrics/top-products?" + day + "&mfcId=" + mfc + "&limit=1")
+                .path("items"))
+        .hasSize(1);
+    // 이틀(전날 포함) — 전날 주문의 Y 가 더해져 맨 위
+    JsonNode two =
+        ok(ADMIN, "/orders/metrics/top-products?from=2019-07-13&to=2019-07-14&mfcId=" + mfc)
+            .path("items");
+    assertThat(two.get(0).path("sku").asString()).isEqualTo(y);
+    assertThat(two.get(0).path("qty").asInt()).isEqualTo(6);
+    assertThat(two.get(0).path("amount").asLong()).isEqualTo(52_000);
+
+    // 권한·기간
+    assertThat(status(CS, "/orders/metrics/summary?" + day)).isEqualTo(403);
+    assertThat(status(RIDER_OPS, "/orders/metrics/top-products?" + day)).isEqualTo(403);
+    assertThat(status(TestJwt.customer(account), "/orders/metrics/summary?" + day)).isEqualTo(403);
+    assertThat(status(ADMIN, "/orders/metrics/summary?from=2019-07-15&to=2019-07-14"))
+        .isEqualTo(400);
+    assertThat(status(ADMIN, "/orders/metrics/summary?from=2019-01-01&to=2019-04-04"))
+        .isEqualTo(400); // 94일
+    assertThat(status(ADMIN, "/orders/metrics/summary?from=2019-01-01&to=2019-04-03"))
+        .isEqualTo(200); // 93일
+    assertThat(status(ADMIN, "/orders/metrics/summary?to=2019-07-14")).isEqualTo(400);
+    assertThat(status(ADMIN, "/orders/metrics/top-products?" + day + "&limit=51")).isEqualTo(400);
+
+    // 경로가 겹치지 않는다: 주문 상세는 그대로 주문 상세
+    JsonNode detail = ok(TestJwt.customer(account), "/orders/" + a);
+    assertThat(detail.path("orderId").asString()).isEqualTo(a);
+  }
+
   private static List<String> ids(JsonNode res) {
     List<String> out = new ArrayList<>();
     res.path("items").forEach(i -> out.add(i.path("orderId").asString()));
