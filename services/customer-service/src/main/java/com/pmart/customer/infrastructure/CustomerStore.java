@@ -287,9 +287,9 @@ public class CustomerStore {
     jdbc.update(
         "INSERT INTO customer_address (address_id, owner_type, owner_id, label, road_address,"
             + " detail_address, postal_code, receiver_name, receiver_phone, entrance_method,"
-            + " entrance_note, lat, lng, svc_state, svc_result, svc_mfc_id, svc_zone_id,"
+            + " entrance_note, lat, lng, geo_source, svc_state, svc_result, svc_mfc_id, svc_zone_id,"
             + " svc_mapping_version, svc_check_id, svc_as_of, version, created_at, updated_at)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
         a.addressId(),
         a.ownerType(),
         a.ownerId(),
@@ -303,6 +303,7 @@ public class CustomerStore {
         d.entranceNote(),
         d.lat(),
         d.lng(),
+        d.geoSource(),
         s.state(),
         s.result(),
         s.mfcId(),
@@ -320,7 +321,8 @@ public class CustomerStore {
     return jdbc.update(
         "UPDATE customer_address SET label = ?, road_address = ?, detail_address = ?,"
             + " postal_code = ?, receiver_name = ?, receiver_phone = ?, entrance_method = ?,"
-            + " entrance_note = ?, lat = ?, lng = ?, svc_state = ?, svc_result = ?, svc_mfc_id = ?,"
+            + " entrance_note = ?, lat = ?, lng = ?, geo_source = ?, svc_state = ?, svc_result = ?,"
+            + " svc_mfc_id = ?,"
             + " svc_zone_id = ?, svc_mapping_version = ?, svc_check_id = ?, svc_as_of = ?,"
             + " version = version + 1, updated_at = ? WHERE address_id = ? AND version = ?",
         d.label(),
@@ -333,6 +335,7 @@ public class CustomerStore {
         d.entranceNote(),
         d.lat(),
         d.lng(),
+        d.geoSource(),
         s.state(),
         s.result(),
         s.mfcId(),
@@ -444,7 +447,8 @@ public class CustomerStore {
             rs.getString("entrance_method"),
             rs.getString("entrance_note"),
             rs.getObject("lat", Double.class),
-            rs.getObject("lng", Double.class)),
+            rs.getObject("lng", Double.class),
+            rs.getString("geo_source")),
         new Serviceability(
             rs.getString("svc_state"),
             rs.getString("svc_result"),

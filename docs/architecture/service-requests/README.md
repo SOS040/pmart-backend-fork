@@ -89,6 +89,8 @@
 | [RS-5](rider-service.md) | rider | PC 5 | rider_app | 가입 전 번호·계좌 확인, 거주지 주소 서버 확인(serviceability 주소 변환), 계좌 중복 불가, 은행 = 금융결제원 코드 | 결정됨(라이더 앱 요청 §12·§14·§15·§16-1) | **구현·LAN 배포**(2026-11-17 #125, rider 0.7.0 V8) |
 | [DE-3](delivery-execution-service.md) | delivery-execution | PC 5 | rider_app | 전달 불가 등록이 지원센터 대화도 열기, 전달 재개 요청 | 결정됨(라이더 앱 요청 §13) | **구현·LAN 배포**(2026-11-17 #127, execution 0.14.0) |
 | [DE-4](delivery-execution-service.md) | delivery-execution | PC 5 | mfc(PC 3)·rider_app | 배송 조회 `packageIds` 를 출고 포장(`shipment_package`) ∪ 인계 기록으로 — 인계 전 비어 라이더 포장 QR 이 막힘 | **급함**(2026-11-18 PC 3 #177, LAN 사용자 시험에서 발견) | **구현·LAN 배포**(2026-11-18 PC 5 #178, execution 0.23.1) |
+| [DE-5](delivery-execution-service.md) | delivery-execution(·dispatch) | PC 5 | rider_app·rider-backoffice | 전달지 정확 좌표 — 주문 사본 좌표 없으면 배차 지오코딩 `drop_lat·lng`, `coordinateSource`(급함) | 요청(2026-11-18) | PC 1 customer 0.5.0 핀 없으면 지오코딩(같이) |
+| [RS-6](rider-service.md) | rider(·execution·tracking) | PC 5 | rider-backoffice | 운행 시작·대기 시간 — 운행 구간 기록, onDutySince·waitingSince, 오늘 합계(대기 = 운행 중·진행 중 배송 0건, 신규배차 꺼짐 제외) | 요청(2026-11-18, 대기 뜻 사용자 확인) | — |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.

@@ -250,6 +250,7 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     assertThat(in.body().path("serviceability").path("mfcId").asString()).isEqualTo("MFC-BSN-01");
     assertThat(in.body().path("serviceability").path("serviceabilityVersion").asInt()).isEqualTo(3);
     assertThat(in.body().path("geo").path("lat").asDouble()).isEqualTo(37.50);
+    assertThat(in.body().path("geoSource").asString()).as("고객 핀").isEqualTo("PIN");
     // 같은 키 재전송 → 같은 주소
     assertThat(
             send(me, HttpMethod.POST, "/me/addresses", address("IN"), key, null)
@@ -382,6 +383,58 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     assertThat(internalCtx.body().path("address").path("addressId").asString()).isEqualTo(inId);
     assertThat(internalCtx.body().path("phoneRef").asString()).isEqualTo("010-****-5678");
     assertThat(get(svc, "/internal/accounts/CU-NONE/status").status()).isEqualTo(404);
+  }
+
+  /**
+   * 배송지 좌표 채우기(0.5.0, 2026-11-18 — 클라이언트 요청 rider-app drop-exact-coordinates 2): 핀(geo) 없이 저장하면 서버가
+   * serviceability `/internal/address-geocodes` 로 도로명주소 좌표를 채우고 geoSource GEOCODE(같은 도로명 결과를 고름),
+   * 변환 실패면 예전처럼 좌표 없이 저장. 같은 키 재전송은 처음 결과.
+   */
+  @Test
+  void addressWithoutPinGetsGeocodedCoordinates() throws Exception {
+    String cu = "CU-" + UUID.randomUUID();
+    String me = TestJwt.customer(cu);
+    authenticated(cu);
+    serviceability.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/address-geocodes"))
+            .withRequestBody(matchingJsonPath("$.query", equalTo("IN")))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"results\":[{\"roadAddress\":\"IN 근처\",\"lat\":35.0,\"lng\":129.0},"
+                            + "{\"roadAddress\":\"IN\",\"lat\":35.1579,\"lng\":129.0594}]}")));
+    Map<String, Object> noPin = address("IN");
+    noPin.remove("geo");
+    String key = UUID.randomUUID().toString();
+    Res filled = send(me, HttpMethod.POST, "/me/addresses", noPin, key, null);
+    assertThat(filled.status()).as(filled.body().toString()).isEqualTo(201);
+    assertThat(filled.body().path("geo").path("lat").asDouble()).isEqualTo(35.1579);
+    assertThat(filled.body().path("geo").path("lng").asDouble()).isEqualTo(129.0594);
+    assertThat(filled.body().path("geoSource").asString()).isEqualTo("GEOCODE");
+    assertThat(
+            send(me, HttpMethod.POST, "/me/addresses", noPin, key, null)
+                .body()
+                .path("addressId")
+                .asString())
+        .isEqualTo(filled.body().path("addressId").asString());
+    serviceability.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/address-geocodes"))
+            .withHeader("X-Source-System", equalTo("customer-service")));
+
+    // 변환 실패(스텁 없음 → 404) — 좌표 없이 저장, geoSource 없음
+    Map<String, Object> unknownRoad = address("OUT");
+    unknownRoad.remove("geo");
+    Res plain =
+        send(me, HttpMethod.POST, "/me/addresses", unknownRoad, UUID.randomUUID().toString(), null);
+    assertThat(plain.status()).isEqualTo(201);
+    assertThat(plain.body().path("geo").isMissingNode() || plain.body().path("geo").isNull())
+        .isTrue();
+    assertThat(
+            plain.body().path("geoSource").isMissingNode()
+                || plain.body().path("geoSource").isNull())
+        .isTrue();
   }
 
   @Test

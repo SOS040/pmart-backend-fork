@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-18, 클라이언트 요청 rider-app drop-exact-coordinates 2 — 사용자 "응 해줘"): 배송지 저장(회원 주소록·비회원 배송지 추가·수정) 때 `geo`(지도 핀)가 없으면 서버가 도로명주소를 delivery-serviceability 지오코딩(배차와 같은 카카오 변환, ADR-0023)으로 바꿔 좌표를 채운다 — 주문 사본·라이더 전달지 핀이 비지 않게. 응답 `Address.geoSource`: PIN(고객 핀)·GEOCODE(서버가 채움), 좌표가 없으면 칸 없음. 변환 실패면 예전처럼 좌표 없이 저장(저장은 막지 않음). 요청 모양은 그대로.
     0.4.0(2026-11-18, 고객 앱 "다음에도 이 품절 처리 적용" — 사용자 "A해줘"): 주문 기본 설정 `GET`·`PUT /me/order-preferences` — `outOfStockPreference`(order-service 주문 초안 outOfStockPreference 와 같은 값 CANCEL_OOS_ONLY·CANCEL_ALL). 저장한 적 없으면 null(version 0). 앱이 주문서 기본값으로만 쓴다 — order-service 는 읽지 않고 주문마다 초안 값이 정본.
     고객 계정·프로필·이용 상태(ACTIVE/WITHDRAW_PENDING/WITHDRAW_COMPLETED), 약관·마케팅 동의(버전·시점·철회), 주소록·현재 쇼핑 주소(shoppingContextVersion),
     비회원 배송지, 첫 구매 중복혜택 대조값(소셜 식별, 5년)의 정본. (docs/architecture/service-map.md §1)
@@ -740,6 +741,7 @@ components:
           properties:
             addressId: { type: string }
             version: { $ref: '_common.yaml#/components/schemas/Version' }
+            geoSource: { type: string, enum: [PIN, GEOCODE], x-added-in: '2026-11-18', description: '(0.5.0) geo 좌표 출처 — PIN 고객 지도 핀, GEOCODE 핀이 없어 서버가 도로명주소로 채움. geo 가 없으면 없음' }
             serviceability:
               type: object
               description: delivery-serviceability 판정 사본

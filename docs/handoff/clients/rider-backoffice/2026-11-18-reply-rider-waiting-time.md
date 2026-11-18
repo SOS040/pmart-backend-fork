@@ -1,28 +1,13 @@
-# 회신 — 라이더 백오피스 관제 "라이더 운행 시작 시각·대기 시간"
+# [pmart-backend → pmart-clients] 회신: 라이더 운행 시작 시각·대기 시간 (2026-11-18)
 
-보낸 영역: delivery
-- 작성: pmart-backend PC 5(delivery), 2026-11-18
-- 대상: pmart-clients `web/rider-backoffice` — 요청 `docs/handoff/rider-backoffice/2026-11-18-backend-rider-waiting-time.md`(PR #123)
-- 사용자 2026-11-18 결정:
-  - **대기 = 운행 중 + 신규배차 켬 + 맡은 배송 0건**(신규배차를 꺼 둔 시간은 대기가 아님)
-  - **운행을 켜 둔 전체 시간은 "접속 시간"으로 따로** — 기존 "운행시간"(배차 수락 ~ 전달 완료)은 그대로
-- 상태: 백엔드 PR(PC 1 검토·배포 전) — `gen:api` 다시
+- 보낸 영역: platform(PC 1)
+- 받는 앱: rider-backoffice(PC 5)
+- 대상: pmart-clients `docs/handoff/rider-backoffice/2026-11-18-backend-rider-waiting-time.md`
 
-## 답한 질문
-1. `OperatingState.changedAt` 은 **신규배차 켜고 끄기에도 바뀐다**(상태 칸 하나라도 바뀌면) — "운행 시작"으로 쓰지 마세요. 대신 아래 `onDutySince`.
-2. "대기"는 원문에 정의가 없어 사용자가 위처럼 정함.
+## 질문 답
+1. **`changedAt` 의 뜻**: 운행 상태가 마지막으로 바뀐 때다 — 운행 시작·종료뿐 아니라 **신규배차 켜고 끄기**, 운행 센터 변경에도 바뀐다(rider-service `RiderStore.updateOperating`). 그래서 "운행 시작"으로 쓰면 안 된다 — 지금처럼 "상태 바뀐 때"로만 두세요.
+2. **대기의 뜻**: 업무 원문에는 정의가 없다. 사용자 확인(2026-11-18): 제안대로 **운행 중(ON_DUTY)이고 진행 중 배송이 0건인 시간**. 덧붙여 **신규배차를 꺼 둔 구간은 대기에서 뺀다**(쉬는 중 — PC 1 추천, 바뀌면 알림).
 
-## 관제 목록 — delivery-tracking **0.9.0** `GET /rider-locations` `ControlRider`
-| 값 | 뜻 |
-|---|---|
-| `onDutySince` | 지금 운행 구간 시작(rider). 신규배차 켜고 끄기로는 안 바뀜 → "운행 시작 HH:MM · N시간째" |
-| `waitingSince` | 대기 시작 — 신규배차 켜 있고 진행 중 배송 0건일 때만: (신규배차 켠 시각, 이 라이더의 마지막 배송이 끝난 시각) 중 늦은 때. 배송 중이거나 신규배차를 껐으면 null → "대기 N분째" |
-- 계정 제한은 따지지 않는다(제한이면 신규배차가 꺼져 null).
-- 배포 전(rider V9 전)부터 운행 중이던 라이더는 그 라이더의 마지막 상태 변경 시각부터로 잡힘(기록이 없어서 — 근사).
-
-## 오늘 합계 — delivery-execution **0.25.0** 직원용 `GET /rider-operating-time?riderId=&from=&to=`
-- 응답에 `connectedSeconds`(접속 — 운행을 켜 둔 시간 합)·`waitingSeconds`(대기 합), `days[]` 에도 날짜별 같은 두 값. 기존 `totalSeconds`·`seconds`(운행시간 — 수락 ~ 완료)는 그대로.
-- 대기 합 = 신규배차 켠 운행 구간 − 배송을 맡은 구간(배정 ~ 완료·실패·취소, 진행 중이면 지금).
-- rider-service 를 못 부르면 두 값은 null(운행시간은 그대로) — "불러오지 못함"으로.
-- 권한은 기존과 같음(RIDER_OPS·OPERATOR_ADMIN·CS_AGENT). **라이더 본인 조회(`/riders/me/operating-time`)에는 이 두 값이 없음**.
-- 화면 문구: "오늘 운행시간"(수락 ~ 완료)·"접속 시간"(운행 켬)·"대기 시간" 세 가지를 섞지 않게.
+## 할 일 — PC 5(백엔드 delivery) 요청서로 올림
+- 요청서 `docs/architecture/service-requests/rider-service.md` **RS-6**: 운행 구간 기록(새 표), `onDutySince`·`waitingSince`(관제 `ControlRider` — 어디서 계산할지는 PC 5), `todayOnDutySeconds`·`todayWaitingSeconds`(직원용 조회).
+- 지금은 운행 구간 이력이 없어 오늘 합계를 낼 수 없다 — 생기기 전까지 화면의 "서버 값 없음"은 그대로가 맞다.

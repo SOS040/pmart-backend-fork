@@ -43,3 +43,10 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - 다른 길(앱만 고치기 — 서버 검사에 맡기고 앱 사전 거르기를 빼기)도 되지만 회신과 어긋나 화면 "몇 개 중 몇 개 인계"도 못 그린다 → 서버 쪽을 권함.
 - **받는 쪽(PC 3 mfc)**: 할 것 없음(포장 사건은 그대로).
 - **구현(2026-11-18, PC 5 — execution 0.23.1, 브랜치 `delivery/de-4-package-ids`)**: 배송 조회 `packageIds` = 출고 포장 목록(`shipment_package`) ∪ 인계 기록 포장(`ExecutionService.View.packageIds`) — 밀봉 전이면 인계 기록만, 회수·반납은 출고가 없어 인계 기록만. 계약 설명 갱신. 시험: 첫 포장만 넘긴 상태에서 두 포장 모두 보임. 앱 변경 없음.
+
+## DE-5. 전달지 정확 좌표 — 주문 사본에 좌표가 없으면 배차 지오코딩 좌표 (2026-11-18, 보낸 영역 platform — 클라이언트 rider-app 요청, PC 5 구현, **급함**)
+- **문제**: 라이더 앱 `GET /deliveries/{id}/drop-info`·직원 `GET /deliveries/{id}/drop-location` 의 lat·lng 는 주문 사본(O-5) 좌표 — 고객이 지도 핀 없이 주소를 저장하면 null 이라 라이더는 배차 제안의 대략 좌표(약 1km 격자)로만 핀을 찍는다(11-18 실주문 74089765 부산 삼정타워가 남쪽에 찍힘).
+- **사실**: delivery-dispatch 가 배차 때 도로명주소를 serviceability `/internal/address-geocodes` 로 바꾼 정확 좌표를 `drop_lat`·`drop_lng` 에 이미 둔다(`DispatchEngine`).
+- **요청**: 주문 사본에 좌표가 없으면 그 배송의 dispatch `drop_lat`·`drop_lng` 를 lat·lng 로(사건 또는 dispatch 내부 조회 — PC 5 가 정함), 출처 `coordinateSource` = ORDER_PIN / ADDRESS_GEOCODE(계약 칸 추가). 클라이언트는 같은 lat·lng 칸이라 앱 변경 없음.
+- **PC 1 쪽(같이 함)**: customer-service 0.5.0 — 배송지 저장 때 핀이 없으면 지오코딩 좌표로 채움(`geoSource` GEOCODE). 새 주소부터 주문 사본에 좌표가 생기지만 옛 주소·옛 주문은 DE-5 가 필요.
+- 근거: pmart-clients `docs/handoff/rider-app/2026-11-18-backend-drop-exact-coordinates.md`, 회신 `docs/handoff/clients/rider-app/2026-11-18-reply-drop-exact-coordinates.md`.

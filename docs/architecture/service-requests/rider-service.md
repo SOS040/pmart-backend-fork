@@ -46,3 +46,15 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
 - 사용자 결정(2026-11-17): §12 "서버가 주소 변환으로 확인", §15 계좌 "중복 불가"(앱 요청 그대로), §16-1 은행 = "금융결제원 코드 3자리"(공개 표 — 비용 없음, 실명·1원 확인은 §9 나중에).
 - rider 0.7.0: `POST /riders/phone-checks`·`/riders/account-checks`·`GET /riders/bank-codes`, 가입·프로필 변경에 주소 422 INVALID_ADDRESS·계좌 409 DUPLICATE_ACCOUNT·은행 코드 400.
 - §13(전달 불가 ↔ 대화)는 execution 다음 PR, §18 배달료 기준은 사용자 "앱 표 그대로"(API 없음).
+
+## RS-6. 운행 시작 시각·대기 시간 (2026-11-18, 보낸 영역 platform — 클라이언트 rider-backoffice 요청, PC 5 구현)
+- **문제**: 라이더 백오피스 관제 "라이더 한눈에"에 운행 시작·대기 시간 칸이 있는데 서버 값이 없다. `OperatingState.changedAt` 은 `RiderStore.updateOperating` 이 운행 상태를 바꿀 때마다(운행 시작·종료, **신규배차 켜고 끄기**, 운행 센터 변경) 새로 쓴다 — 운행 시작 시각이 아니다. 운행(ON_DUTY) 구간 이력 표도 없어 오늘 합계를 낼 근거가 없다. 업무 원문에 라이더 "대기" 정의 없음.
+- **대기의 뜻(사용자 2026-11-18 — 클라이언트 제안 수락, PC 1 추천 하나 덧붙임)**: 운행 중(ON_DUTY)이고 진행 중 배송이 0건인 시간. **신규배차를 꺼 둔 구간은 대기에서 뺀다**(쉬는 중 — PC 1 추천, 사용자가 바꾸면 고침).
+- **요청**:
+  1. 운행 구간 기록(시작·끝, 신규배차 켜짐·꺼짐 구간 포함) — 새 표.
+  2. `onDutySince`(지금 운행 구간 시작, 운행 중 아니면 null)·`waitingSince`(위 뜻의 대기가 시작된 시각, 아니면 null) — 관제 목록 `GET /rider-locations` 의 `ControlRider`(tracking — 가벼운 값만, 어디서 계산해 실을지는 PC 5 가 정함).
+  3. `todayOnDutySeconds`·`todayWaitingSeconds`(오늘 Asia/Seoul) — 직원용 라이더 조회 또는 execution 직원 운행시간 응답.
+  - 진행 중 배송 수는 execution(배정·완료 사건)이 정본 — 대기 시작·끝은 사건으로 센다.
+  - `changedAt` 은 계약 설명에 "운행 상태(신규배차 포함)가 마지막으로 바뀐 때"로 적어 둔다.
+- 권한: 관제와 같게(RIDER_OPS·OPERATOR_ADMIN, 3 은 CS_AGENT 도).
+- 근거: pmart-clients `docs/handoff/rider-backoffice/2026-11-18-backend-rider-waiting-time.md`, 회신 `docs/handoff/clients/rider-backoffice/2026-11-18-reply-rider-waiting-time.md`.

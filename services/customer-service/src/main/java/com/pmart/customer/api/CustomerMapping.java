@@ -56,7 +56,8 @@ final class CustomerMapping {
         in.getEntranceMethod() == null ? null : in.getEntranceMethod().getValue(),
         in.getEntranceNote(),
         geo == null || geo.getLat() == null ? null : geo.getLat().doubleValue(),
-        geo == null || geo.getLng() == null ? null : geo.getLng().doubleValue());
+        geo == null || geo.getLng() == null ? null : geo.getLng().doubleValue(),
+        geo == null || geo.getLat() == null || geo.getLng() == null ? null : AddressData.GEO_PIN);
   }
 
   static Address address(AddressRow a) {
@@ -86,6 +87,11 @@ final class CustomerMapping {
     if (d.lat() != null && d.lng() != null) {
       out.geo(
           new AddressInputGeo().lat(BigDecimal.valueOf(d.lat())).lng(BigDecimal.valueOf(d.lng())));
+      // 좌표 출처(0.5.0, 2026-11-18): PIN = 고객 지도 핀, GEOCODE = 핀이 없어 서버가 도로명주소로 채움. 예전 행은 PIN
+      out.geoSource(
+          AddressData.GEO_GEOCODE.equals(d.geoSource())
+              ? Address.GeoSourceEnum.GEOCODE
+              : Address.GeoSourceEnum.PIN);
     }
     return out;
   }

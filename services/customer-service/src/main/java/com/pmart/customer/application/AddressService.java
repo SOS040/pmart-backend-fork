@@ -83,6 +83,7 @@ public class AddressService {
     Integer limit = requireLimit();
     checkLimit(limit, store.countAddresses(CustomerStore.OWNER_ACCOUNT, accountId));
     Serviceability s = judge(d);
+    AddressData stored = withCoordinates(d);
     String id =
         idempotency
             .execute(
@@ -98,7 +99,14 @@ public class AddressService {
                   String addressId = "ADR-" + UUID.randomUUID();
                   store.insertAddress(
                       new AddressRow(
-                          addressId, CustomerStore.OWNER_ACCOUNT, accountId, d, s, 0, now, now));
+                          addressId,
+                          CustomerStore.OWNER_ACCOUNT,
+                          accountId,
+                          stored,
+                          s,
+                          0,
+                          now,
+                          now));
                   log.info("주소 추가 {} 판정 {}({})", addressId, s.state(), s.result());
                   return addressId;
                 })
@@ -119,6 +127,7 @@ public class AddressService {
     }
     int base = expectedVersion != null ? expectedVersion : current.version();
     Serviceability s = judge(d);
+    AddressData stored = withCoordinates(d);
     Map<String, Object> request = new LinkedHashMap<>();
     request.put("addressId", addressId);
     request.put("expectedVersion", base);
@@ -130,7 +139,7 @@ public class AddressService {
         () -> {
           Instant now = clock.instant();
           ContextRow ctx = store.lockContext(accountId, now);
-          if (store.updateAddress(addressId, base, d, s, now) == 0) {
+          if (store.updateAddress(addressId, base, stored, s, now) == 0) {
             throw PmartException.versionConflict("주소가 그 사이 바뀌었습니다. 다시 조회하세요.");
           }
           if (addressId.equals(ctx.shoppingAddressId())) {
@@ -213,6 +222,7 @@ public class AddressService {
     Integer limit = requireLimit();
     checkLimit(limit, store.countAddresses(CustomerStore.OWNER_GUEST, deviceId));
     Serviceability s = judge(d);
+    AddressData stored = withCoordinates(d);
     String id =
         idempotency
             .execute(
@@ -225,7 +235,7 @@ public class AddressService {
                   String addressId = "GADR-" + UUID.randomUUID();
                   store.insertAddress(
                       new AddressRow(
-                          addressId, CustomerStore.OWNER_GUEST, deviceId, d, s, 0, now, now));
+                          addressId, CustomerStore.OWNER_GUEST, deviceId, stored, s, 0, now, now));
                   return addressId;
                 })
             .value();
@@ -298,6 +308,20 @@ public class AddressService {
         s.state(),
         Objects.requireNonNullElse(next.mfcId(), "-"));
     return next;
+  }
+
+  /**
+   * 핀 좌표가 없으면 도로명주소 지오코딩 좌표로 채운 사본(2026-11-18 — 주문 사본·라이더 전달지 핀이 비지 않게, geoSource GEOCODE). 트랜잭션
+   * 밖에서 먼저 부른다. 멱등 해시는 고객이 보낸 값(d) 그대로라 재시도가 지오코딩 결과에 흔들리지 않는다. 실패면 예전처럼 좌표 없이.
+   */
+  private AddressData withCoordinates(AddressData d) {
+    if (d.lat() != null && d.lng() != null) {
+      return d;
+    }
+    return serviceability
+        .geocode(d.roadAddress())
+        .map(p -> d.withGeocode(p.lat(), p.lng()))
+        .orElse(d);
   }
 
   private Serviceability judge(AddressData d) {

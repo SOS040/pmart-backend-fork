@@ -93,4 +93,52 @@ public class ServiceabilityClient {
   private static @Nullable String text(JsonNode n, String field) {
     return n.hasNonNull(field) ? n.get(field).asString() : null;
   }
+
+  /** 지오코딩 좌표 [lat, lng]. */
+  public record Point(double lat, double lng) {}
+
+  /**
+   * 도로명주소 → 좌표(2026-11-18, 클라이언트 요청 rider-app drop-exact-coordinates 2): delivery-serviceability
+   * {@code POST /internal/address-geocodes}(토큰 없는 내부 호출 — 배차와 같은 카카오 주소 변환, ADR-0023). 결과 중 도로명주소가
+   * 같은 것, 없으면 첫 번째. 실패·0건·시간 초과는 empty — 주소 저장을 막지 않는다(핀 없이 저장되는 것은 예전과 같다). 주소 원문은 로그에 남기지 않는다.
+   */
+  public java.util.Optional<Point> geocode(String roadAddress) {
+    try {
+      JsonNode r =
+          Downstream.call(
+              "delivery-serviceability-service geocodes",
+              () ->
+                  http.post()
+                      .uri("/api/v1/internal/address-geocodes")
+                      .header("Idempotency-Key", UUID.randomUUID().toString())
+                      .header("X-Source-System", "customer-service")
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .body(Map.of("query", roadAddress))
+                      .retrieve()
+                      .body(JsonNode.class));
+      if (r == null) {
+        return java.util.Optional.empty();
+      }
+      JsonNode pick = null;
+      for (JsonNode x : r.path("results")) {
+        if (!x.path("lat").isNumber() || !x.path("lng").isNumber()) {
+          continue;
+        }
+        if (pick == null) {
+          pick = x;
+        }
+        if (roadAddress.trim().equals(x.path("roadAddress").asString("").trim())) {
+          pick = x;
+          break;
+        }
+      }
+      return pick == null
+          ? java.util.Optional.empty()
+          : java.util.Optional.of(
+              new Point(pick.get("lat").asDouble(), pick.get("lng").asDouble()));
+    } catch (RuntimeException e) {
+      log.warn("주소 좌표 변환 실패({}) — 좌표 없이 저장", e.getClass().getSimpleName());
+      return java.util.Optional.empty();
+    }
+  }
 }
