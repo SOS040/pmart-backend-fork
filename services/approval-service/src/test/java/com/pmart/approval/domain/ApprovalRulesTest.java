@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.pmart.common.web.PmartException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,95 @@ class ApprovalRulesTest {
   private static void assertCode(Runnable r, String code) {
     assertThatThrownBy(r::run)
         .isInstanceOfSatisfying(PmartException.class, e -> assertThat(e.code()).isEqualTo(code));
+  }
+
+  // ---------------------------------------------------------------- AP-3 결정할 수 있는지
+
+  private static final Map<String, String> TYPES =
+      Map.of("GRANT", "OPERATOR_ADMIN", "PRODUCT", "PRODUCT_APPROVER");
+
+  private static ApprovalRules.DecideBlock block(
+      String reviewState,
+      String type,
+      String requester,
+      String target,
+      String viewer,
+      String role) {
+    return ApprovalRules.decideBlock(
+        reviewState, type, requester, target, viewer, List.of(role), TYPES);
+  }
+
+  @Test
+  void decideBlockReturnsTheFirstFailingCheckInDecisionApiOrder() {
+    assertThat(block("REVIEW_PENDING", "GRANT", "hr-1", "emp-9", "admin-1", "OPERATOR_ADMIN"))
+        .isNull();
+    assertThat(block("REVIEW_PENDING", "GRANT", "hr-1", "emp-9", "pa-1", "PRODUCT_APPROVER"))
+        .isEqualTo(ApprovalRules.DecideBlock.NO_ROLE);
+    assertThat(block("REVIEW_PENDING", "GRANT", "admin-1", "emp-9", "admin-1", "OPERATOR_ADMIN"))
+        .isEqualTo(ApprovalRules.DecideBlock.SELF_APPROVAL);
+    assertThat(block("REVIEW_PENDING", "GRANT", "hr-1", "admin-1", "admin-1", "OPERATOR_ADMIN"))
+        .isEqualTo(ApprovalRules.DecideBlock.GRANT_TO_SELF);
+    assertThat(block("REVIEW_PENDING", "PRICE", "md-1", "P-1", "admin-1", "OPERATOR_ADMIN"))
+        .isEqualTo(ApprovalRules.DecideBlock.CONFIG_REQUIRED);
+    // 심사 중이 아니면 다른 검사보다 먼저 NOT_PENDING(결정 API 와 같은 순서)
+    assertThat(block("APPROVED", "GRANT", "admin-1", "admin-1", "admin-1", "MD"))
+        .isEqualTo(ApprovalRules.DecideBlock.NOT_PENDING);
+    // 자기 요청이 역할 검사보다 먼저
+    assertThat(block("REVIEW_PENDING", "PRODUCT", "md-1", "P-1", "md-1", "MD"))
+        .isEqualTo(ApprovalRules.DecideBlock.SELF_APPROVAL);
+    // GRANT 아닌 종류는 대상 = 본인이어도 막지 않는다
+    assertThat(block("REVIEW_PENDING", "PRODUCT", "md-1", "pa-1", "pa-1", "PRODUCT_APPROVER"))
+        .isNull();
+  }
+
+  @Test
+  void requireCanDecideThrowsTheSameCodesAsBefore() {
+    List<String> admin = List.of("OPERATOR_ADMIN");
+    assertCode(
+        () ->
+            ApprovalRules.requireCanDecide("REJECTED", "GRANT", "hr-1", "emp-9", "a", admin, TYPES),
+        "INVALID_STATE");
+    assertCode(
+        () ->
+            ApprovalRules.requireCanDecide(
+                "REVIEW_PENDING", "GRANT", "a", "emp-9", "a", admin, TYPES),
+        "FORBIDDEN");
+    assertCode(
+        () ->
+            ApprovalRules.requireCanDecide(
+                "REVIEW_PENDING", "PRICE", "md-1", "P-1", "a", admin, TYPES),
+        "CONFIG_REQUIRED");
+    assertCode(
+        () ->
+            ApprovalRules.requireCanDecide(
+                "REVIEW_PENDING",
+                "GRANT",
+                "hr-1",
+                "emp-9",
+                "pa",
+                List.of("PRODUCT_APPROVER"),
+                TYPES),
+        "FORBIDDEN");
+    assertCode(
+        () ->
+            ApprovalRules.requireCanDecide(
+                "REVIEW_PENDING", "GRANT", "hr-1", "a", "a", admin, TYPES),
+        "FORBIDDEN");
+    assertThatCode(
+            () ->
+                ApprovalRules.requireCanDecide(
+                    "REVIEW_PENDING", "GRANT", "hr-1", "emp-9", "a", admin, TYPES))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void decidableTypesAreTheConfiguredTypesWhoseRoleTheViewerHas() {
+    Map<String, String> config = new HashMap<>(TYPES);
+    config.put("PRICE", " ");
+    config.put("MFC_OPERATION_RESTRICTION", "OPERATOR_ADMIN");
+    assertThat(ApprovalRules.decidableTypes(List.of("OPERATOR_ADMIN", "MD"), config))
+        .containsExactly("GRANT", "MFC_OPERATION_RESTRICTION");
+    assertThat(ApprovalRules.decidableTypes(List.of("MD"), config)).isEmpty();
   }
 
   @Test

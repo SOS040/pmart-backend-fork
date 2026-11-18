@@ -6,6 +6,8 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -17,6 +19,9 @@ import org.springframework.stereotype.Repository;
 /** change_request·approval·approval_decision 저장(JDBC — 본문은 jsonb 스냅샷). 상태 갱신은 버전 조건부. */
 @Repository
 public class ApprovalStore {
+
+  /** 승인함 decidableByMe 거르기(AP-3): 보는 사람 + 그 사람이 승인 역할을 가진 종류(비어 있지 않음). */
+  public record DecidableFilter(String viewerId, Collection<String> types) {}
 
   public record ChangeRequestRow(
       String changeRequestId,
@@ -316,6 +321,7 @@ public class ApprovalStore {
       @Nullable String executionState,
       @Nullable String requesterId,
       @Nullable String targetRef,
+      @Nullable DecidableFilter decidable,
       @Nullable Instant afterSubmittedAt,
       @Nullable String afterId,
       int limit) {
@@ -340,6 +346,17 @@ public class ApprovalStore {
     if (targetRef != null) {
       sql.append(" AND target_ref = ?");
       args.add(targetRef);
+    }
+    if (decidable != null) {
+      // ApprovalRules.decideBlock 과 같은 조건(AP-3): 심사 중 · 자기 요청 아님 · 승인 역할을 가진 종류 · 자기 권한 요청 아님
+      sql.append(" AND review_state = 'REVIEW_PENDING' AND requester_id <> ?");
+      args.add(decidable.viewerId());
+      sql.append(" AND type IN (")
+          .append(String.join(",", Collections.nCopies(decidable.types().size(), "?")))
+          .append(")");
+      args.addAll(decidable.types());
+      sql.append(" AND NOT (type = 'GRANT' AND target_ref = ?)");
+      args.add(decidable.viewerId());
     }
     if (afterSubmittedAt != null && afterId != null) {
       sql.append(" AND (submitted_at, approval_id) < (?, ?)");

@@ -5,6 +5,7 @@ import com.pmart.common.web.PmartException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 
@@ -31,9 +32,7 @@ public final class ApprovalRules {
   }
 
   public static void requireUnderReview(String reviewState) {
-    if (!"REVIEW_PENDING".equals(reviewState)) {
-      throw PmartException.invalidState("심사 중인 승인만 결정할 수 있습니다(현재 " + reviewState + ").");
-    }
+    throwIfBlocked(reviewBlock(reviewState), reviewState, "");
   }
 
   public static void requireSupported(String decision) {
@@ -53,16 +52,8 @@ public final class ApprovalRules {
       String approverId,
       List<String> approverRoles,
       Map<String, String> approverRolesByType) {
-    if (requesterId.equals(approverId)) {
-      throw forbidden("발의자는 자기 요청을 승인할 수 없습니다.");
-    }
-    String required = approverRolesByType.get(type);
-    if (required == null || required.isBlank()) {
-      throw PmartException.configRequired("pmart.approval.approver-roles." + type);
-    }
-    if (!approverRoles.contains(required)) {
-      throw forbidden(type + " 승인 권한이 없습니다.");
-    }
+    throwIfBlocked(
+        approverBlock(type, requesterId, approverId, approverRoles, approverRolesByType), "", type);
   }
 
   /**
@@ -70,9 +61,123 @@ public final class ApprovalRules {
    * 승인자만으로는 운영 관리자가 자기에게 온 권한 요청을 승인하는 것을 막지 못한다.
    */
   public static void requireNotOwnGrant(String type, String targetRef, String approverId) {
-    if ("GRANT".equals(type) && targetRef.equals(approverId)) {
-      throw forbidden("자기 권한 요청은 승인·반려할 수 없습니다.");
+    throwIfBlocked(ownGrantBlock(type, targetRef, approverId), "", type);
+  }
+
+  // ---------------------------------------------------------------- 결정할 수 있는지(AP-3)
+
+  /** 결정 API 가 막는 이유. 검사 순서 = 결정 API 의 순서(심사 중 → 자기 요청 → 역할 설정 → 역할 → 자기 권한 요청). */
+  public enum DecideBlock {
+    NOT_PENDING,
+    SELF_APPROVAL,
+    CONFIG_REQUIRED,
+    NO_ROLE,
+    GRANT_TO_SELF
+  }
+
+  /**
+   * 이 사람이 지금 이 승인을 결정할 수 있는지(AP-3). 결정 API({@link #requireCanDecide})와 같은 검사 — 예외 대신 첫 번째로 막힌 이유를
+   * 돌려준다. 결정 종류 지원 여부·기대 버전은 보지 않는다.
+   *
+   * @return 결정할 수 있으면 null
+   */
+  public static @Nullable DecideBlock decideBlock(
+      String reviewState,
+      String type,
+      String requesterId,
+      String targetRef,
+      String viewerId,
+      List<String> viewerRoles,
+      Map<String, String> approverRolesByType) {
+    DecideBlock b = reviewBlock(reviewState);
+    if (b == null) {
+      b = approverBlock(type, requesterId, viewerId, viewerRoles, approverRolesByType);
     }
+    if (b == null) {
+      b = ownGrantBlock(type, targetRef, viewerId);
+    }
+    return b;
+  }
+
+  /** 결정 API 의 권한·상태 검사. {@link #decideBlock} 이 막으면 그 이유의 오류(지금까지와 같은 코드·문구)를 던진다. */
+  public static void requireCanDecide(
+      String reviewState,
+      String type,
+      String requesterId,
+      String targetRef,
+      String approverId,
+      List<String> approverRoles,
+      Map<String, String> approverRolesByType) {
+    throwIfBlocked(
+        decideBlock(
+            reviewState,
+            type,
+            requesterId,
+            targetRef,
+            approverId,
+            approverRoles,
+            approverRolesByType),
+        reviewState,
+        type);
+  }
+
+  /**
+   * 이 사람이 결정할 수 있는 종류(설정된 승인 역할을 가진 종류). 승인함 {@code decidableByMe} 거르기를 SQL 로 할 때 쓴다 — {@link
+   * #approverBlock} 의 설정·역할 검사와 같다.
+   */
+  public static Set<String> decidableTypes(
+      List<String> viewerRoles, Map<String, String> approverRolesByType) {
+    Set<String> out = new TreeSet<>();
+    approverRolesByType.forEach(
+        (type, role) -> {
+          if (role != null && !role.isBlank() && viewerRoles.contains(role)) {
+            out.add(type);
+          }
+        });
+    return out;
+  }
+
+  private static @Nullable DecideBlock reviewBlock(String reviewState) {
+    return "REVIEW_PENDING".equals(reviewState) ? null : DecideBlock.NOT_PENDING;
+  }
+
+  private static @Nullable DecideBlock approverBlock(
+      String type,
+      String requesterId,
+      String approverId,
+      List<String> approverRoles,
+      Map<String, String> approverRolesByType) {
+    if (requesterId.equals(approverId)) {
+      return DecideBlock.SELF_APPROVAL;
+    }
+    String required = approverRolesByType.get(type);
+    if (required == null || required.isBlank()) {
+      return DecideBlock.CONFIG_REQUIRED;
+    }
+    if (!approverRoles.contains(required)) {
+      return DecideBlock.NO_ROLE;
+    }
+    return null;
+  }
+
+  private static @Nullable DecideBlock ownGrantBlock(
+      String type, String targetRef, String approverId) {
+    return "GRANT".equals(type) && targetRef.equals(approverId) ? DecideBlock.GRANT_TO_SELF : null;
+  }
+
+  private static void throwIfBlocked(@Nullable DecideBlock block, String reviewState, String type) {
+    if (block == null) {
+      return;
+    }
+    throw switch (block) {
+      case NOT_PENDING ->
+          PmartException.invalidState("심사 중인 승인만 결정할 수 있습니다(현재 " + reviewState + ").");
+      case SELF_APPROVAL -> forbidden("발의자는 자기 요청을 승인할 수 없습니다.");
+      case CONFIG_REQUIRED ->
+          PmartException.configRequired("pmart.approval.approver-roles." + type);
+      case NO_ROLE -> forbidden(type + " 승인 권한이 없습니다.");
+      case GRANT_TO_SELF -> forbidden("자기 권한 요청은 승인·반려할 수 없습니다.");
+    };
   }
 
   /** ApprovalDecided.decision (APPROVED / REJECTED). */

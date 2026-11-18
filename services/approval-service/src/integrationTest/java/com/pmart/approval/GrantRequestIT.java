@@ -211,6 +211,79 @@ class GrantRequestIT extends PostgresKafkaContainerSupport {
     assertThat(rows.getFirst().get("review_state")).isEqualTo("REVIEW_PENDING");
   }
 
+  /**
+   * AP-3: 상세·승인함의 viewerCanDecide 는 결정 API 와 같은 판정 — 승인 역할(OPERATOR_ADMIN)은 가능, 다른 승인자 역할은 NO_ROLE,
+   * 요청자는 SELF_APPROVAL, 권한을 받을 본인은 GRANT_TO_SELF, 결정된 뒤는 NOT_PENDING. decidableByMe=true 는 가능한 것만.
+   */
+  @Test
+  void viewerCanDecideMatchesTheDecisionApi() throws Exception {
+    String op = "OP-GR-" + UUID.randomUUID();
+    String hr = "OP-HR-" + UUID.randomUUID();
+    send(
+        op,
+        hr,
+        Map.of("type", "HQ_DEPARTMENT", "code", "HQ-OPS"),
+        List.of(line("1", "MFC_SUPERVISOR", List.of("MFC-IT-01"))));
+    List<Map<String, Object>> rows = awaitApprovals(op, 1);
+    assertThat(rows).hasSize(1);
+    String id = (String) rows.getFirst().get("approval_id");
+
+    RestClient http =
+        RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1")
+            .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+            .build();
+    String admin = TestJwt.operator("OP-ADMIN-V", List.of("OPERATOR_ADMIN"), List.of());
+    String productApprover = TestJwt.operator("OP-PA", List.of("PRODUCT_APPROVER"), List.of());
+    String requester = TestJwt.operator(hr, List.of("OPERATOR_ADMIN"), List.of());
+    String target = TestJwt.operator(op, List.of("OPERATOR_ADMIN"), List.of());
+
+    assertViewer(get(http, "/approvals/" + id, admin), true, null);
+    assertViewer(get(http, "/approvals/" + id, productApprover), false, "NO_ROLE");
+    assertViewer(get(http, "/approvals/" + id, requester), false, "SELF_APPROVAL");
+    assertViewer(get(http, "/approvals/" + id, target), false, "GRANT_TO_SELF");
+
+    // 승인함: 거르지 않으면 행마다 같은 값, decidableByMe=true 면 결정할 수 있는 사람에게만 보인다
+    JsonNode all = get(http, "/approvals?targetRef=" + op, productApprover).path("items");
+    assertThat(all).hasSize(1);
+    assertViewer(all.get(0), false, "NO_ROLE");
+    String mine = "/approvals?decidableByMe=true&targetRef=" + op;
+    JsonNode adminItems = get(http, mine, admin).path("items");
+    assertThat(adminItems).hasSize(1);
+    assertViewer(adminItems.get(0), true, null);
+    assertThat(get(http, mine, productApprover).path("items")).isEmpty();
+    assertThat(get(http, mine, requester).path("items")).isEmpty();
+    assertThat(get(http, mine, target).path("items")).isEmpty();
+
+    // 판정과 결정 API 가 같다: 막힌 사람은 403, 가능한 사람은 202
+    assertThat(decide(http, id, productApprover)).isEqualTo(403);
+    assertThat(decide(http, id, admin)).isEqualTo(202);
+    assertViewer(get(http, "/approvals/" + id, admin), false, "NOT_PENDING");
+    assertThat(get(http, mine, admin).path("items")).isEmpty();
+  }
+
+  JsonNode get(RestClient http, String uri, String token) {
+    return http.get()
+        .uri(uri)
+        .headers(h -> h.setBearerAuth(token))
+        .exchange(
+            (q, r) -> {
+              assertThat(r.getStatusCode().value()).isEqualTo(200);
+              return mapper.readTree(r.getBody());
+            });
+  }
+
+  static void assertViewer(JsonNode a, boolean canDecide, String reason) {
+    assertThat(a.path("viewerCanDecide").isBoolean()).isTrue();
+    assertThat(a.path("viewerCanDecide").asBoolean()).isEqualTo(canDecide);
+    if (reason == null) {
+      JsonNode r = a.path("viewerDecideBlockedReason");
+      assertThat(r.isMissingNode() || r.isNull()).isTrue();
+    } else {
+      assertThat(a.path("viewerDecideBlockedReason").asString()).isEqualTo(reason);
+    }
+  }
+
   int decide(RestClient http, String approvalId, String token) {
     return http.post()
         .uri("/approvals/{id}/decisions", approvalId)

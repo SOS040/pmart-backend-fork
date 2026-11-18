@@ -9,6 +9,7 @@ import com.pmart.approval.api.generated.model.ApprovalRefUse;
 import com.pmart.approval.api.generated.model.ApprovalSummary;
 import com.pmart.approval.api.generated.model.ApprovalType;
 import com.pmart.approval.api.generated.model.ChangeRequest;
+import com.pmart.approval.api.generated.model.DecideBlockedReason;
 import com.pmart.approval.api.generated.model.Decision;
 import com.pmart.approval.api.generated.model.DeliveryState;
 import com.pmart.approval.api.generated.model.ExecutionState;
@@ -64,7 +65,14 @@ class ApiMapping {
         .submittedAt(odt(r.submittedAt()));
   }
 
-  Approval approval(ApprovalRow r, List<DecisionRow> decisions, List<ReceiptRow> receipts) {
+  /**
+   * @param viewerBlock 보는 사람이 결정할 수 없는 이유(AP-3), 할 수 있으면 null
+   */
+  Approval approval(
+      ApprovalRow r,
+      List<DecisionRow> decisions,
+      List<ReceiptRow> receipts,
+      ApprovalRules.@Nullable DecideBlock viewerBlock) {
     Approval dto = mapper.readValue(r.unit(), Approval.class);
     return dto.approvalId(r.approvalId())
         .changeRequestId(r.changeRequestId())
@@ -79,6 +87,8 @@ class ApiMapping {
         .submittedAt(odt(r.submittedAt()))
         .expiresAt(odt(r.expiresAt()))
         .effectiveFrom(odt(r.effectiveFrom()))
+        .viewerCanDecide(viewerBlock == null)
+        .viewerDecideBlockedReason(blockedReason(viewerBlock))
         .version(r.version())
         .approvalVersion(1)
         .decisions(decisions.stream().map(this::decision).toList())
@@ -136,7 +146,7 @@ class ApiMapping {
     return dto;
   }
 
-  ApprovalSummary summary(ApprovalRow r) {
+  ApprovalSummary summary(ApprovalRow r, ApprovalRules.@Nullable DecideBlock viewerBlock) {
     Approval full = mapper.readValue(r.unit(), Approval.class);
     return new ApprovalSummary()
         .approvalId(r.approvalId())
@@ -151,7 +161,14 @@ class ApiMapping {
         .executionState(ExecutionState.fromValue(r.executionState()))
         .deliveryState(DeliveryState.fromValue(r.deliveryState()))
         .submittedAt(odt(r.submittedAt()))
-        .expiresAt(odt(r.expiresAt()));
+        .expiresAt(odt(r.expiresAt()))
+        .viewerCanDecide(viewerBlock == null)
+        .viewerDecideBlockedReason(blockedReason(viewerBlock));
+  }
+
+  private static @Nullable DecideBlockedReason blockedReason(
+      ApprovalRules.@Nullable DecideBlock block) {
+    return block == null ? null : DecideBlockedReason.fromValue(block.name());
   }
 
   Decision decision(DecisionRow r) {

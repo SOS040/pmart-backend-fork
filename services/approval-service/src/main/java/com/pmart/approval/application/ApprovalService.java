@@ -412,24 +412,52 @@ public class ApprovalService {
         .orElseThrow(() -> PmartException.notFound("DECISION_NOT_FOUND", "결정이 없습니다."));
   }
 
+  /**
+   * 승인함. {@code decidableBy} 가 있으면 그 사람이 지금 결정할 수 있는 승인만(AP-3) — {@link ApprovalRules#decideBlock}
+   * 과 같은 조건을 SQL 로(심사 중·자기 요청 아님·승인 역할을 가진 종류·자기 권한 요청 아님). 승인 역할 설정은 이 서비스 설정값이라 원격 호출 없음.
+   */
   public List<ApprovalRow> list(
       @Nullable String type,
       @Nullable String reviewState,
       @Nullable String executionState,
       @Nullable String requesterId,
       @Nullable String targetRef,
+      @Nullable Operator decidableBy,
       @Nullable Instant afterSubmittedAt,
       @Nullable String afterId,
       int limit) {
+    ApprovalStore.DecidableFilter decidable = null;
+    if (decidableBy != null) {
+      decidable =
+          new ApprovalStore.DecidableFilter(
+              decidableBy.id(),
+              ApprovalRules.decidableTypes(decidableBy.roles(), properties.getApproverRoles()));
+      if (decidable.types().isEmpty()) {
+        return List.of();
+      }
+    }
     return store.list(
         type,
         reviewState,
         executionState,
         requesterId,
         targetRef,
+        decidable,
         afterSubmittedAt,
         afterId,
         limit);
+  }
+
+  /** 보는 사람이 이 승인을 지금 결정할 수 있는지(AP-3) — 결정 API 와 같은 검사. null = 할 수 있음. */
+  public ApprovalRules.@Nullable DecideBlock viewerBlock(ApprovalRow ap, Operator viewer) {
+    return ApprovalRules.decideBlock(
+        ap.reviewState(),
+        ap.type(),
+        ap.requesterId(),
+        ap.targetRef(),
+        viewer.id(),
+        viewer.roles(),
+        properties.getApproverRoles());
   }
 
   /** 심사 결정(APPROVE / REJECT) → ApprovalDecided. */
@@ -447,14 +475,14 @@ public class ApprovalService {
           ApprovalRow ap = getApproval(approvalId);
           checkVersion(expectedVersion, ap.version());
           ApprovalRules.requireSupported(in.decision());
-          ApprovalRules.requireUnderReview(ap.reviewState());
-          ApprovalRules.requireApprover(
+          ApprovalRules.requireCanDecide(
+              ap.reviewState(),
               ap.type(),
               ap.requesterId(),
+              ap.targetRef(),
               operator.id(),
               operator.roles(),
               properties.getApproverRoles());
-          ApprovalRules.requireNotOwnGrant(ap.type(), ap.targetRef(), operator.id());
 
           Instant at = now();
           String decided = ApprovalRules.decidedState(in.decision());

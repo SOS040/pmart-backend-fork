@@ -9,6 +9,7 @@ import com.pmart.approval.infrastructure.ApprovalStore.UseRow;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import java.time.Clock;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -95,7 +96,8 @@ public class ApprovalRefService {
             q.targetService(),
             q.targetRef(),
             q.actorId(),
-            clock.instant());
+            // DB(timestamptz) 정밀도로 — 같은 useRef 재시도가 저장값을 읽어 돌려줄 때 첫 응답과 같게(Windows 시계는 100ns)
+            clock.instant().truncatedTo(ChronoUnit.MICROS));
     if (!store.insertUseIfAbsent(row)) {
       return evaluate(q); // 다른 요청이 먼저 썼다 — 같은 useRef 면 통과, 아니면 ALREADY_USED
     }

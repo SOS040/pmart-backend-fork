@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: approval-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     ChangeRequest(초안)·ApprovalDossier(승인 단위·원도메인 승인 ID 참조, 이중 발급 금지)·5축 상태·부분 집행·재심사 계보·통합 승인함(BO-10)·대량 변경(BO-26)·PolicyReference(BO-09)·ApplicationReceipt 의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 승인 결과의 업무 정본(product/pricing/replenishment/claim/quality/serviceability/auth/inventory/center-master), 사건(case-service).
@@ -15,6 +15,7 @@ info:
     부분 집행 불변식: **승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 집행 잔량**.
     발효는 approval → ApprovalDecided(이벤트) → 정본 반영 → ApplicationReceipt 회신 순. approval 이 정본을 거쳐 3자를 동기 호출하지 않는다.
     승인 번호로 집행하는 정본(MFC — AP-1, 0.3.0): 정본이 명령에 실린 승인 번호(approvalRef)를 `/internal/approval-ref-checks` 로 확인하고 `/internal/approval-ref-uses` 로 한 번만 쓴다(같은 useRef 는 같은 결과).
+    보는 사람이 결정할 수 있는지(AP-3, 0.4.0, 2026-11-18): 승인 상세·승인함 행에 `viewerCanDecide`·`viewerDecideBlockedReason` — 결정 API(`POST /approvals/{id}/decisions`)와 같은 검사(심사 중인지 → 자기 요청 → 승인 역할 설정 → 역할 → 자기 권한 요청)를 같은 순서로 하고, 첫 번째로 막힌 이유를 준다. 결정 종류(APPROVE·REJECT 지원 여부)·기대 버전은 판정에 넣지 않는다. 승인함은 `decidableByMe=true` 로 지금 결정할 수 있는 것만 거른다.
 servers:
   - url: /api/v1
 security:
@@ -138,6 +139,7 @@ paths:
         - { name: assigneeId, in: query, schema: { type: string } }
         - { name: requesterId, in: query, schema: { type: string } }
         - { name: targetRef, in: query, description: '대상 참조와 정확히 일치(예 productImportBatch:{batchId}) — 정본 화면이 자기 대상의 승인을 찾을 때(BR-41, 2026-11-03)', schema: { type: string, maxLength: 128 } }
+        - { name: decidableByMe, in: query, description: 'true 면 지금 토큰의 사람이 지금 결정할 수 있는 승인만(viewerCanDecide=true 와 같은 판정 — 심사 중·자기 요청 아님·승인 역할 보유·자기 권한 요청 아님). false·생략이면 거르지 않는다(AP-3, 2026-11-18)', schema: { type: boolean, default: false } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -614,6 +616,18 @@ components:
         caseId: { type: [string, 'null'] }
         submittedAt: { type: string, format: date-time }
         expiresAt: { type: [string, 'null'], format: date-time }
+        viewerCanDecide: { type: boolean, description: '지금 토큰의 사람이 지금 이 승인을 결정(APPROVE·REJECT)할 수 있는지 — 결정 API 와 같은 검사(AP-3, 2026-11-18)' }
+        viewerDecideBlockedReason: { $ref: '#/components/schemas/DecideBlockedReason' }
+    DecideBlockedReason:
+      type: string
+      description: |
+        viewerCanDecide=false 인 이유(true 면 생략·null). 결정 API 의 검사 순서대로 첫 번째로 막힌 것 하나(AP-3, 2026-11-18).
+        NOT_PENDING 심사 중(REVIEW_PENDING) 아님 — 결정 API 409 INVALID_STATE ·
+        SELF_APPROVAL 발의자 본인 — 403 FORBIDDEN ·
+        CONFIG_REQUIRED 이 종류의 승인 역할(`pmart.approval.approver-roles.<종류>`)이 설정되지 않음 — CONFIG_REQUIRED ·
+        NO_ROLE 이 종류의 승인 역할이 없음 — 403 FORBIDDEN ·
+        GRANT_TO_SELF 자기에게 온 직원 권한 요청(GRANT 대상 = 본인) — 403 FORBIDDEN
+      enum: [NOT_PENDING, SELF_APPROVAL, CONFIG_REQUIRED, NO_ROLE, GRANT_TO_SELF]
     Approval:
       allOf:
         - $ref: '#/components/schemas/ApprovalSummary'

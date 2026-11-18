@@ -13,6 +13,7 @@ import com.pmart.approval.api.generated.model.ReviewState;
 import com.pmart.approval.api.generated.model.SubmitChangeRequest202Response;
 import com.pmart.approval.application.ApprovalService;
 import com.pmart.approval.application.ApprovalService.NewDecision;
+import com.pmart.approval.application.ApprovalService.Operator;
 import com.pmart.approval.infrastructure.ApprovalStore.ApprovalRow;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
@@ -48,9 +49,10 @@ public class ApprovalsController implements ApprovalsApi {
       @Nullable String assigneeId,
       @Nullable String requesterId,
       @Nullable String targetRef,
+      @Nullable Boolean decidableByMe,
       Integer size,
       @Nullable String cursor) {
-    ApiMapping.operator("backoffice-web");
+    Operator viewer = ApiMapping.operator("backoffice-web");
     Cursor after = Cursor.decode(cursor);
     List<ApprovalRow> rows =
         service.list(
@@ -59,6 +61,7 @@ public class ApprovalsController implements ApprovalsApi {
             executionState == null ? null : executionState.getValue(),
             requesterId,
             targetRef,
+            Boolean.TRUE.equals(decidableByMe) ? viewer : null,
             after == null ? null : after.submittedAt(),
             after == null ? null : after.approvalId(),
             size + 1);
@@ -67,7 +70,8 @@ public class ApprovalsController implements ApprovalsApi {
     ApprovalRow last = page.isEmpty() ? null : page.get(page.size() - 1);
     return ResponseEntity.ok(
         new ListApprovals200Response()
-            .items(page.stream().map(mapping::summary).toList())
+            .items(
+                page.stream().map(r -> mapping.summary(r, service.viewerBlock(r, viewer))).toList())
             .page(
                 new ListApprovals200ResponsePage()
                     .size(page.size())
@@ -76,12 +80,14 @@ public class ApprovalsController implements ApprovalsApi {
 
   @Override
   public ResponseEntity<Approval> getApproval(String approvalId) {
-    ApiMapping.operator("backoffice-web");
+    Operator viewer = ApiMapping.operator("backoffice-web");
+    ApprovalRow ap = service.getApproval(approvalId);
     return ResponseEntity.ok(
         mapping.approval(
-            service.getApproval(approvalId),
+            ap,
             service.decisions(approvalId),
-            service.receipts(approvalId)));
+            service.receipts(approvalId),
+            service.viewerBlock(ap, viewer)));
   }
 
   @Override
