@@ -52,6 +52,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - 참고(2026-11-16 PC 1): LAN `mfc_inventory_service.sku_projection.barcodes` 486행을 PC 1 이 직접 채움(시험 바코드 — `deploy/lan/seed/barcodes-2026-11-16.csv`, 상품 DB 와 같음). 다음 ProductVersionPublished 가 오면 상품 쪽 값으로 덮인다.
   - [ ] MFC 시뮬레이터 요청 R-13(상온 대기 칸 — 사용자 결정 대기)·R-15/16(칸·여러 SKU 재고 조회)·R-17(작업 실적 목록)·R-19(인계 끝난 출고 `deliveryId` 비어 있음) — 시뮬레이터 저장소 `docs/backend-requests.md`(GitHub 판이 11-10 이라 아직 안 보이면 PC 1 에 요청)
   - [ ] **F-11 화면에 코드 그대로 남은 사유 값**(2026-11-19 PC 1 — 원 요청 backoffice code-names C1~C3): mfc-fulfillment `StopRequest.lastError`·`blockReason`·`handoverRejectReason` 값 목록과 한 줄 뜻을 계약에(enum 또는 description 표). `docs/architecture/service-requests/mfc-fulfillment-service.md` F-11
+  - [ ] **MB-2 품질 사고 — 사용자 결정 대기**(2026-11-19 PC 1 기록): PC 3 가 남긴 질문 5개(`docs/handoff/clients/mfc-backoffice/2026-11-18-reply-lists-and-roles.md` §3)를 `docs/business/flows/pending-user-decisions.md` §2 MB-2 에 옮김 — 답이 나오면 PC 3 가 mfc-quality 에 구현
 
 ## PC 5 — delivery 영역
 - [x] **DE-4 배송 `packageIds` 가 인계 전에 비어 라이더가 포장 QR 을 못 찍음**(2026-11-18 PC 3, **급함** — `delivery-execution-service.md` DE-4): `ExecutionViews.delivery` 의 packageIds 를 `shipment_package` ∪ 인계 기록으로. 지금 LAN 에서 모든 인계가 막힌다

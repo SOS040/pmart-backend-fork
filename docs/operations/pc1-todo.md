@@ -4,9 +4,10 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 
 - 고칠 때: 끝나면 줄 앞을 `- [x]` 로 바꾸고 날짜·커밋을 붙인다. 다 끝난 절은 맨 아래 "끝난 것"으로 옮긴다.
 - PR 검토·병합·PR 배포는 PR 세션 몫(이 문서에 넣지 않는다).
-- 마지막 갱신: 2026-11-18.
+- 마지막 갱신: 2026-11-19.
 
 ## 1. 사용자 확인·결정 기다림
+- [ ] **O-1 나머지 — 전달 실패를 주문에 어떻게 보일지**(2026-11-19 추가, order-service = PC 1): 사고·파손은 재발송 사가가 처리하지만, 고객 부재 같은 다른 실패는 주문에 아무것도 남지 않는다(`Order.shipments` 늘 빈 목록). (가) 지금처럼 — 상담원 안내 / (나) 주문 상세 배송 목록에 그 배송을 "전달 실패"로(주문 상태·돈은 그대로) — **추천 (나)**. 요청서 `service-requests/order-service.md` O-1.
 - [x] Docker Hub·LAN 배포 — 2026-11-18: Jib 은 push 토큰(`registry.env`)으로, employee-auth·hr(459135d8)·claim·고객앱 갭 A 7개·api-gateway 배포, 고객 FAQ 색인(63건).
 - [ ] **CL-2 결정** — 반품 취소 때 회수비 돌려주기 판정을 claim 조회에(`pickup.feeRefundOnCancel`) — 추천안 바로 만들기 / 목록에 두기(요청서 `service-requests/claim-service.md` CL-2, PR #161).
 - [x] Firebase `pmart-123` 합치기 — 서버 쪽 끝(2026-11-18, pmart-config b625d04). 남은 것(클라이언트): 새 `google-services.json` 을 `apps/customer_app/android/app/` 에 두고 다시 빌드 → 고객 휴대폰 푸시 확인(직접 확인 3번).
