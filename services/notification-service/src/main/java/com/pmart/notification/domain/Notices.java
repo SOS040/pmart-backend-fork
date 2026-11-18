@@ -106,6 +106,20 @@ public final class Notices {
         orderId);
   }
 
+  /**
+   * 사고·파손 재발송 안내(N-4, ADR-0069 — 2026-11-19). 재발송 사가가 시작되는 시점이라 "보낼 예정"으로 쓴다(출발은 출발 알림이 따로). 재고가
+   * 모자라 일부 환불되면 결품·환불 알림이 따로 간다.
+   */
+  public static Notice incidentReshipment(String orderId) {
+    return new Notice(
+        "DELIVERY_INCIDENT_RESHIPMENT",
+        DELIVERY,
+        "배송 중 문제가 생겨 새 상품으로 다시 보내 드려요",
+        "배송 중 상품을 전달하지 못했어요. 추가 비용 없이 새 상품으로 다시 보내 드릴게요. 출발하면 다시 알려 드려요. 상품이 모자라면 그만큼 환불해 드려요.",
+        "ORDER",
+        orderId);
+  }
+
   /** 받았는지 묻기(2026-11-17) — 도착 예정 20분 지남. 고객이 "받았어요"를 누르면 전달 완료. */
   public static Notice receiptCheck(String orderId) {
     return new Notice(

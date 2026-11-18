@@ -496,6 +496,83 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
         .containsExactlyInAnyOrder("반품 회수 기사를 배정하고 있어요", "반품 상품을 회수하지 못했어요", "반품 상품을 회수했어요");
   }
 
+  /** N-4(2026-11-19, ADR-0069): 사고·파손 전달 실패만 재발송 안내 — 고객 부재·오배송 다시 배송은 알리지 않는다. */
+  @Test
+  void incidentFailureNotifiesReshipment() throws Exception {
+    String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String orderId = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(orderId, me);
+    String token = TestJwt.customer(me);
+    String now = Instant.now().toString();
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryFailed",
+        "Delivery",
+        "DLV-A-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-A-" + orderId,
+            "orderId",
+            orderId,
+            "deliveryType",
+            "FORWARD",
+            "reason",
+            "CUSTOMER_ABSENT",
+            "custody",
+            "RIDER",
+            "failedAt",
+            now));
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryFailed",
+        "Delivery",
+        "DLV-B-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-B-" + orderId,
+            "orderId",
+            orderId,
+            "deliveryType",
+            "RESHIPMENT",
+            "purpose",
+            "MISDELIVERY_REDELIVERY",
+            "reason",
+            "RIDER_INCIDENT",
+            "custody",
+            "RIDER",
+            "failedAt",
+            now));
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryFailed",
+        "Delivery",
+        "DLV-C-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-C-" + orderId,
+            "orderId",
+            orderId,
+            "deliveryType",
+            "FORWARD",
+            "reason",
+            "RIDER_INCIDENT",
+            "custody",
+            "RIDER",
+            "failedAt",
+            now));
+    Res inbox =
+        await(
+            () -> send("GET", token, "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 1);
+    Thread.sleep(1500); // 알리지 않는 두 사건이 늦게 들어와 줄이 늘지 않는지
+    inbox = send("GET", token, "/me/notifications?size=20", null);
+    assertThat(inbox.body().path("items")).hasSize(1);
+    assertThat(inbox.body().path("items").get(0).path("templateKey").asString())
+        .isEqualTo("DELIVERY_INCIDENT_RESHIPMENT");
+    assertThat(inbox.body().path("items").get(0).path("title").asString())
+        .isEqualTo("배송 중 문제가 생겨 새 상품으로 다시 보내 드려요");
+  }
+
   @Test
   void redeliveryPaymentRequiredNotifiesOrderOwner() throws Exception {
     String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);

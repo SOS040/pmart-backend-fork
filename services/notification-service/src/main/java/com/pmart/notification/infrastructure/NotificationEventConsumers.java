@@ -32,7 +32,8 @@ class NotificationEventConsumers {
           // 고객 반품 회수(2026-11-17 — purpose CLAIM_RETURN 만 알린다)
           "DeliveryCreated",
           "ReturnPickedUp",
-          "ReturnPickupFailed");
+          "ReturnPickupFailed",
+          "DeliveryFailed"); // 사고·파손 재발송 안내(N-4, 2026-11-19) — 고르는 것은 DeliveryFailureRules
 
   /**
    * platform.case.v1 — 고객 문의 답변, 라이더 문의 답변·도움요청 처리 끝(라이더 알림함 §11-5), 오배송 확인(리뷰 요청 보류 — 2026-11-18).

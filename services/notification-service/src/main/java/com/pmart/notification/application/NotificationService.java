@@ -4,6 +4,7 @@ import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.notification.domain.DeliveryFailureRules;
 import com.pmart.notification.domain.Notices;
 import com.pmart.notification.domain.Notices.Notice;
 import com.pmart.notification.domain.ReviewRequestRules;
@@ -216,6 +217,14 @@ public class NotificationService {
         }
       }
       case "DeliveryCompleted" -> delivered(e, orderId);
+      // 사고·파손 재발송 안내(N-4, ADR-0069 — 2026-11-19). 기준은 order-orchestration 재발송과 같다
+      case "DeliveryFailed" -> {
+        JsonNode p = e.payload();
+        if (DeliveryFailureRules.noticeReshipment(
+            text(p, "deliveryType"), text(p, "purpose"), text(p, "reason"))) {
+          notify(e, null, orderId, Notices.incidentReshipment(orderId), "");
+        }
+      }
       case "RedeliveryPaymentRequired" ->
           notify(
               e,
