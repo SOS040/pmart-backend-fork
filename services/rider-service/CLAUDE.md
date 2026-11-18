@@ -44,4 +44,4 @@
 - **화면 라이더 번호(2026-11-18, 0.12.0·V10 — ADR-0070)**: `rider.rider_number` 6자리(INSERT 트리거 무작위·겹치지 않음, 기존 라이더는 마이그레이션이 채움) — 직원 목록·상세·본인 프로필·운행 중 목록 `riderNumber`, 직원 찾기 `riderNumber`·`riderIds`(쉼표 50개).
 - **공지 받는 라이더(2026-11-18, 0.13.0)**: `GET /internal/riders/recipients?mfcId&after&size`(탈퇴 제외, 배달지역 센터, riderId 순 1000개씩) — notification 라이더 공지.
 
-- **직원 조치 이력(2026-11-18 — 사용자 "이미 기록된 조치를 모아 보기", 관리자만)**: `GET /rider-staff-actions`(`StaffActions` — 계정 제한 걸기·풀기, 제한 검토 결정) — OPERATOR_ADMIN, 기간 기본 7일·최대 31일.
+- **직원 조치 이력(2026-11-18, 0.14.0 — 사용자 "이미 기록된 조치를 모아 보기", 관리자만)**: `GET /rider-staff-actions`(`StaffActions` — 계정 제한 걸기·풀기, 제한 검토 결정) — OPERATOR_ADMIN, 기간 기본 7일·최대 31일.
