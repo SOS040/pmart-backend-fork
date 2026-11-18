@@ -61,3 +61,6 @@ client_secret_*.json
 deploy/lan/.reindex.state
 # 배포 잠금(deploy/lan/lan.sh lan_lock — 두 세션 render·deploy 겹침 방지)
 /deploy/lan/.deploy.lock/
+# Python 캐시(2026-11-18 — PR #168·#186·#188 에 .pyc 가 섞여 들어옴). 이미 추적 중인 8개는 따로 뺀다(작업 세션)
+__pycache__/
+*.pyc
