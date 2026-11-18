@@ -11,6 +11,8 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] **CL-2 결정** — 반품 취소 때 회수비 돌려주기 판정을 claim 조회에(`pickup.feeRefundOnCancel`) — 추천안 바로 만들기 / 목록에 두기(요청서 `service-requests/claim-service.md` CL-2, PR #161).
 - [x] Firebase `pmart-123` 합치기 — 서버 쪽 끝(2026-11-18, pmart-config b625d04). 남은 것(클라이언트): 새 `google-services.json` 을 `apps/customer_app/android/app/` 에 두고 다시 빌드 → 고객 휴대폰 푸시 확인(직접 확인 3번).
 
+- [ ] **Tailscale 시험 경로 내리기**(2026-11-18 — PC 1 이 192.168.0.40/32 를 tailnet 에 광고 중, 라이더 폰 LTE 위치 시험용): 시험 끝나면 `"C:\Program Files\Tailscale	ailscale.exe" up --advertise-routes=` + 관리 화면 승인 해제(사용자).
+
 ## 2. 어제(11-17) 저녁 목록
 - [x] 1. 역할·센터 섞임 막기 — 253090cc, LAN 배포 11-18
 - [ ] 2. **MFC 앱 로그인 브라우저**(PC 1 — 로그인 코드, pmart-clients PR): ⓐ Chrome → 삼성 인터넷 → Firefox 순서로 열기 ⓑ Firefox 만 있는 기기에서도 결과가 앱으로 ⓒ `TokenPair.refreshToken` nullable(ADR-0059) 맞추기. **MFC 앱만**. ⓑ 는 실기기(S25, 기본 브라우저 Firefox)로 확인.
