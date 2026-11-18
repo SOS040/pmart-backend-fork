@@ -160,7 +160,7 @@ public class CustomerSocialLoginService {
     ConsentCheck check =
         props.requireConsent()
             ? consents.check(
-                customers.linkedAccount(provider, identity.subject()).orElse(candidate))
+                customers.linkedAccount(provider, identity.subject()).orElse(candidate), deviceId)
             : null;
 
     Result r =
@@ -225,7 +225,23 @@ public class CustomerSocialLoginService {
       return login(idempotencyKey, sourceSystem, deviceId, provider, providerToken);
     }
     log.info("고객 소셜 로그인 {}: accountId={} new={}", r.state(), r.accountId(), r.newAccount());
+    if (MEMBER.equals(r.state()) && r.accountId() != null) {
+      moveDeviceConsents(r.accountId(), deviceId);
+    }
     return r;
+  }
+
+  /**
+   * 로그인 전 기기 동의를 계정으로(2026-11-19 BR-59). 회원 토큰을 준 뒤, 트랜잭션 밖에서 한 번 — 실패해도 로그인은 그대로(기기 기록이 남아 다음 로그인
+   * 때 다시 옮긴다. 그 사이 로그인 동의 판단은 기기 결정을 결정한 것으로 본다).
+   */
+  private void moveDeviceConsents(String accountId, String deviceId) {
+    try {
+      consents.migrateDevice(accountId, deviceId);
+    } catch (RuntimeException e) {
+      log.warn(
+          "기기 동의 옮기기 실패 accountId={} ({}) — 다음 로그인 때 다시", accountId, e.getClass().getSimpleName());
+    }
   }
 
   /**
@@ -325,6 +341,7 @@ public class CustomerSocialLoginService {
                   return memberResult(locked, t, now);
                 }));
     log.info("고객 필수 동의 완료: accountId={} new={}", accountId, r.newAccount());
+    moveDeviceConsents(accountId, deviceId);
     return r;
   }
 

@@ -148,7 +148,7 @@ class ConsentFlowIT extends PostgresKafkaContainerSupport {
     Res before = get(token, "/me/consents");
     assertThat(before.status()).isEqualTo(200);
     assertThat(before.body().path("requiredConsentOutdated").asBoolean()).isTrue();
-    assertThat(before.body().path("items")).hasSize(4);
+    assertThat(before.body().path("items")).hasSize(5); // 2026-11-19 위치기반서비스 더함
     JsonNode terms = find(before.body().path("items"), "TERMS_OF_SERVICE");
     assertThat(terms.path("required").asBoolean()).isTrue();
     assertThat(terms.path("agreed").asBoolean()).isFalse();
@@ -408,5 +408,112 @@ class ConsentFlowIT extends PostgresKafkaContainerSupport {
     // 고객 토큰으로 내부 경로는 403
     assertThat(get(TestJwt.customer(cu), "/internal/accounts/" + cu + "/consents").status())
         .isEqualTo(403);
+  }
+
+  Res device(String method, String path, String deviceId, String key, Object body) {
+    var spec =
+        http.method(org.springframework.http.HttpMethod.valueOf(method))
+            .uri(path)
+            .headers(
+                h -> {
+                  h.set("X-Device-Id", deviceId);
+                  h.set("X-Source-System", "customer-app");
+                  if (key != null) {
+                    h.set("Idempotency-Key", key);
+                  }
+                });
+    if (body != null) {
+      spec = spec.contentType(MediaType.APPLICATION_JSON).body(body);
+    }
+    var e = spec.retrieve().toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  /**
+   * 처음 실행 약관(2026-11-19 BR-59): 약관 항목(토큰 없음) → 기기 동의(위치·마케팅, 필수 약관 400) → 로그인 판단(deviceId)에서 마케팅을
+   * 다시 묻지 않음 → 계정으로 옮김(channel DEVICE·사건, 기기 기록 지움, 다시 불러도 0건) → 위치기반서비스는 로그인 필수 목록에 없음.
+   */
+  @Test
+  void firstRunDeviceConsentsMoveToAccountAtLogin() {
+    Res terms = get(null, "/consent-terms");
+    assertThat(terms.status()).isEqualTo(200);
+    assertThat(terms.body().path("items")).hasSize(5);
+    JsonNode loc = find(terms.body().path("items"), "LOCATION_BASED_SERVICE");
+    assertThat(loc.path("required").asBoolean()).isFalse();
+    assertThat(loc.path("requiredFor").asString()).isEqualTo("CURRENT_LOCATION");
+    String locVersion = loc.path("latestVersion").asString();
+
+    String dev = "DEV-" + UUID.randomUUID();
+    String key = UUID.randomUUID().toString();
+    Map<String, Object> body =
+        changes(item("LOCATION_BASED_SERVICE", locVersion, true), item("MARKETING", TERMS, true));
+    Res changed = device("POST", "/device-consent-changes", dev, key, body);
+    assertThat(changed.status()).as(changed.body().toString()).isEqualTo(200);
+    assertThat(changed.body().path("items")).hasSize(2);
+    assertThat(find(changed.body().path("items"), "MARKETING").path("agreed").asBoolean()).isTrue();
+    assertThat(
+            find(changed.body().path("items"), "MARKETING").path("lastChangedAt").isMissingNode())
+        .isFalse();
+    assertThat(device("POST", "/device-consent-changes", dev, key, body).status())
+        .as("같은 키 재전송")
+        .isEqualTo(200);
+    Res terms2 =
+        device(
+            "POST",
+            "/device-consent-changes",
+            dev,
+            UUID.randomUUID().toString(),
+            changes(item("TERMS_OF_SERVICE", TERMS, true)));
+    assertThat(terms2.status()).as("필수 약관은 기기에서 받지 않는다").isEqualTo(400);
+    Res old =
+        device(
+            "POST",
+            "/device-consent-changes",
+            dev,
+            UUID.randomUUID().toString(),
+            changes(item("MARKETING", "2000-01-01", true)));
+    assertThat(old.body().path("code").asString()).isEqualTo("CONSENT_VERSION_OUTDATED");
+
+    // 로그인 판단: 가입 전 계정 + 이 기기 → 마케팅은 결정한 것(다시 묻지 않음), 위치는 목록에 없음
+    String cu = newCustomer();
+    Res judged = get(null, "/internal/accounts/" + cu + "/consents?deviceId=" + dev);
+    assertThat(judged.body().path("missingRequired")).hasSize(3);
+    assertThat(judged.body().path("undecidedOptional")).isEmpty();
+    assertThat(judged.body().path("missingRequired").toString()).doesNotContain("LOCATION");
+
+    // 옮기기 → 계정에 마케팅·위치(DEVICE), 사건 2건, 기기는 비어 있음, 다시 불러도 0
+    Res moved =
+        post(
+            null,
+            "/internal/accounts/" + cu + "/device-consent-migrations",
+            "m-" + UUID.randomUUID(),
+            Map.of("deviceId", dev));
+    assertThat(moved.status()).as(moved.body().toString()).isEqualTo(200);
+    assertThat(moved.body().path("migrated").asInt()).isEqualTo(2);
+    assertThat(events(cu)).isEqualTo(2);
+    Res account = get(null, "/internal/accounts/" + cu + "/consents");
+    JsonNode m = find(account.body().path("items"), "MARKETING");
+    assertThat(m.path("agreed").asBoolean()).isTrue();
+    assertThat(m.path("channel").asString()).isEqualTo("DEVICE");
+    assertThat(
+            device("GET", "/device-consents", dev, null, null)
+                .body()
+                .path("items")
+                .get(0)
+                .path("version")
+                .isNull())
+        .as("옮긴 뒤 기기 기록은 지운다")
+        .isTrue();
+    assertThat(
+            post(
+                    null,
+                    "/internal/accounts/" + cu + "/device-consent-migrations",
+                    "m-" + UUID.randomUUID(),
+                    Map.of("deviceId", dev))
+                .body()
+                .path("migrated")
+                .asInt())
+        .isZero();
   }
 }

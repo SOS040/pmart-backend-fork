@@ -42,6 +42,7 @@
   - `customer_account.member_since`(V5, 기존 계정은 created_at 으로 채움): 동의 단계에서 나간 가입은 회원이 된 적이 없어 다음 로그인도 `newAccount=true`·SIGNUP. 원인증 행에 물은 항목(`required_consents`·`optional_consents`)을 남겨 같은 키 재전송·결과 조회가 같은 목록을 준다.
   - `require-consent=false` 면 예전처럼 바로 AUTH_MEMBER(시험 `CustomerSocialLoginIT`). 켠 경로 시험은 `CustomerConsentLoginIT`(customer = WireMock).
   - **서버는 준비됐고 LAN 은 꺼 둔다(2026-11-17, pmart-config `auth-service.yml` `require-consent: false`)** — 고객 앱이 completions 새 본문을 반영하기 전에 켜면 AUTH_CONSENT 를 받은 로그인이 끝나지 않는다. 켤 때는 customer-service `consents.purchase-gate: true` 와 **함께** true. 시험은 두 경로 모두 속성으로 명시한다.
+  - **로그인 전 기기 동의(2026-11-19 BR-59 — customer 0.6.0)**: 동의 판단 `check(accountId, deviceId)`(customer 가 그 기기의 아직 옮기지 않은 결정을 결정한 것으로 — 기기에서 고른 마케팅을 다시 묻지 않음). 회원 토큰을 준 뒤(로그인 MEMBER·동의 완료) 트랜잭션 밖에서 `CustomerConsentClient.migrateDevice`(`POST /internal/accounts/{id}/device-consent-migrations`) 한 번 — 실패는 경고만(로그인 그대로, 다음 로그인 때 다시). require-consent 와 상관없이 부른다. 시험 `CustomerConsentLoginIT`(deviceId 쿼리·옮기기 호출 확인).
   - 주소 `pmart.auth.customer.customer-service-base-url`(lan `http://customer-service:8103`, local `http://localhost:8103`).
 - 기기별 15분 5회 `PROVIDER_REJECTED` → 10분 `AUTH_RESTRICTED`(423, `AuthRestrictedAdvice`). 제공자 장애(503)는 세지 않는다.
 - 세션·토큰은 비회원과 공통(`SessionTokens`, `SessionService`). 고객 토큰 `typ=CUSTOMER`. 회원이면 `CustomerAuthenticated`(platform.auth.v1).

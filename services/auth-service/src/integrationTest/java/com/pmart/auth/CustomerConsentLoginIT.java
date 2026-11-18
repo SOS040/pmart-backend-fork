@@ -282,6 +282,16 @@ class CustomerConsentLoginIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.changes[3].agreed", equalTo("false"))));
     assertThat(get("/auth/social-logins/" + arId, device).body().path("state").asString())
         .isEqualTo("AUTH_MEMBER");
+    // 로그인 전 기기 동의(2026-11-19 BR-59): 동의 판단에 기기를 싣고, 완료 뒤 그 기기 동의를 계정으로 옮기라고 부른다
+    // (스텁이 없어 404 — 옮기기 실패는 로그인을 막지 않는다)
+    customer.verify(
+        getRequestedFor(urlPathMatching(CONSENTS)).withQueryParam("deviceId", equalTo(device)));
+    customer.verify(
+        1,
+        postRequestedFor(
+                urlPathEqualTo(
+                    "/api/v1/internal/accounts/" + accountId + "/device-consent-migrations"))
+            .withRequestBody(matchingJsonPath("$.deviceId", equalTo(device))));
 
     // 응답 유실 재시도(같은 키) = 새 토큰, customer 는 다시 부르지 않음, 사건도 한 번
     Res again = complete(arId, doneKey, device, CustomerSocialLoginIT.google(sub), REQUIRED);

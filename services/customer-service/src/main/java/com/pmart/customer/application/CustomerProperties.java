@@ -30,7 +30,7 @@ public class CustomerProperties {
             : serviceabilityBaseUrl;
     this.addressLimit = addressLimit;
     this.serviceabilityBaseUrl = serviceabilityBaseUrl;
-    this.consents = consents == null ? new Consents(null, null) : consents;
+    this.consents = consents == null ? new Consents(null, null, null, null) : consents;
   }
 
   public @Nullable Integer addressLimit() {
@@ -52,9 +52,30 @@ public class CustomerProperties {
    *     {@code require-consent} 와 함께 {@code true}. 설정 저장소에는 늘 명시하고, 값이 없으면 꺼짐(지금까지의 동작 — 코드가 설정보다
    *     먼저 배포돼도 주문이 막히지 않게)
    */
-  public record Consents(@Nullable Versions versions, @Nullable Boolean purchaseGate) {
+  public record Consents(
+      @Nullable Versions versions,
+      @Nullable Boolean purchaseGate,
+      @Nullable String senderName,
+      java.util.@Nullable Map<String, String> documents) {
     public boolean purchaseGateOn() {
       return Boolean.TRUE.equals(purchaseGate);
+    }
+
+    /**
+     * 약관 본문 주소(2026-11-19 BR-59 — {@code pmart.customer.consents.documents.<항목 키>}, 키는 versions 와
+     * 같은 이름). 없으면 null(지어내지 않는다).
+     */
+    public @Nullable String document(String key) {
+      if (documents == null) {
+        return null;
+      }
+      String v = documents.get(key);
+      return v == null || v.isBlank() ? null : v.strip();
+    }
+
+    /** 수신 동의 처리 결과 안내의 전송자 이름(2026-11-19 BR-59). 없으면 null. */
+    public @Nullable String sender() {
+      return senderName == null || senderName.isBlank() ? null : senderName.strip();
     }
   }
 
@@ -63,5 +84,6 @@ public class CustomerProperties {
       @Nullable String termsOfService,
       @Nullable String privacyPolicy,
       @Nullable String ageOver14,
-      @Nullable String marketing) {}
+      @Nullable String marketing,
+      @Nullable String locationBasedService) {}
 }

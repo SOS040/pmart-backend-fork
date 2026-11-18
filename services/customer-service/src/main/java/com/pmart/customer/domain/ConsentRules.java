@@ -77,6 +77,8 @@ public final class ConsentRules {
         if (!decided || !s.agreed()) {
           missing.add(ref(item, latest));
         }
+      } else if (item.requiredFor() != null) {
+        continue; // 기능 필수(위치기반서비스 — 2026-11-19)는 로그인 동의 단계에서 묻지 않는다
       } else if (!decided) {
         undecided.add(ref(item, latest));
       }
@@ -120,6 +122,62 @@ public final class ConsentRules {
                 VERSION_OUTDATED,
                 c.item().name(),
                 c.item() + " 약관의 현행 버전은 " + latest + " 입니다(보낸 버전 " + c.version() + "). 다시 조회하세요."));
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * 로그인 동의 판단에 쓸 결정(2026-11-19 BR-59): 계정에 현행 버전 결정이 없는 기기 항목은 그 기기의 현행 버전 결정을 결정한 것으로 본다(옮기기 전에도
+   * 다시 묻지 않게). 계정 값이 있으면 계정 값. 쓰지 않는다 — 옮기기는 {@link #toMigrate}.
+   */
+  public static Map<ConsentItem, Stored> withDevice(
+      Map<ConsentItem, String> current,
+      Map<ConsentItem, Stored> account,
+      Map<ConsentItem, Stored> device) {
+    Map<ConsentItem, Stored> out = new java.util.EnumMap<>(ConsentItem.class);
+    out.putAll(account);
+    for (Map.Entry<ConsentItem, Stored> d : device.entrySet()) {
+      ConsentItem item = d.getKey();
+      String latest = current.get(item);
+      Stored a = account.get(item);
+      if (!item.device() || latest == null || !d.getValue().termsVersion().equals(latest)) {
+        continue;
+      }
+      if (a == null || !a.termsVersion().equals(latest)) {
+        out.put(item, d.getValue());
+      }
+    }
+    return out;
+  }
+
+  /** 계정으로 옮길 기기 결정 — 기기 항목이고, 현행 버전이며, 계정에 현행 버전 결정이 없는 것(2026-11-19 BR-59 — 계정 값이 이긴다). */
+  public static List<Change> toMigrate(
+      Map<ConsentItem, String> current,
+      Map<ConsentItem, Stored> account,
+      Map<ConsentItem, Stored> device) {
+    List<Change> out = new ArrayList<>();
+    for (ConsentItem item : ConsentItem.values()) {
+      Stored d = device.get(item);
+      String latest = current.get(item);
+      if (d == null || !item.device() || latest == null || !d.termsVersion().equals(latest)) {
+        continue;
+      }
+      Stored a = account.get(item);
+      if (a == null || !a.termsVersion().equals(latest)) {
+        out.add(new Change(item, latest, d.agreed()));
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  /** 기기 동의로 받는 항목만(2026-11-19 BR-59). 아니면 400 사유. */
+  public static Optional<Violation> checkDevice(List<Change> changes) {
+    for (Change c : changes) {
+      if (!c.item().device()) {
+        return Optional.of(
+            new Violation(
+                INVALID_REQUEST, c.item().name(), c.item() + " 은 로그인 전에 받지 않습니다(필수 약관은 가입 때)."));
       }
     }
     return Optional.empty();

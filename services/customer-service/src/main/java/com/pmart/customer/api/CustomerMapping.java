@@ -131,7 +131,12 @@ final class CustomerMapping {
         .latestVersion(v.latestVersion())
         .agreedAt(v.agreedAt() == null ? null : time(v.agreedAt()))
         .withdrawnAt(v.withdrawnAt() == null ? null : time(v.withdrawnAt()))
-        .channel(v.channel() == null ? null : Consent.ChannelEnum.fromValue(v.channel()));
+        .channel(v.channel() == null ? null : Consent.ChannelEnum.fromValue(v.channel()))
+        .requiredFor(
+            v.item().requiredFor() == null
+                ? null
+                : Consent.RequiredForEnum.fromValue(v.item().requiredFor()))
+        .lastChangedAt(v.lastChangedAt() == null ? null : time(v.lastChangedAt()));
   }
 
   static ConsentStatus consentStatus(ConsentService.Overview o) {

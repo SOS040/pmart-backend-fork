@@ -68,6 +68,7 @@ GET /api/v1/claims/{claimId} CUSTOMER,OPERATOR
 GET /api/v1/claims/{claimId}/decisions/{requestId} OPERATOR
 GET /api/v1/claims/{claimId}/refunds CUSTOMER,OPERATOR
 GET /api/v1/claims/{claimId}/withdrawals/{requestId} CUSTOMER
+GET /api/v1/consent-terms PUBLIC
 GET /api/v1/content-drafts/{draftId} OPERATOR
 GET /api/v1/content-images/{imageId} PUBLIC
 GET /api/v1/content-import-batches/{batchId} OPERATOR
@@ -98,6 +99,7 @@ GET /api/v1/delivery-list RIDER
 GET /api/v1/delivery-options CUSTOMER,GUEST
 GET /api/v1/delivery-staff-actions OPERATOR
 GET /api/v1/delivery-stats OPERATOR
+GET /api/v1/device-consents PUBLIC
 GET /api/v1/dispatch-requests/{requestId} OPERATOR
 GET /api/v1/dispatch-staff-actions OPERATOR
 GET /api/v1/disposal-approvals OPERATOR
@@ -387,6 +389,7 @@ POST /api/v1/deliveries/{deliveryId}/status-corrections OPERATOR
 POST /api/v1/deliveries/{deliveryId}/store-arrivals RIDER
 POST /api/v1/deliveries/{deliveryId}/surcharge-requests RIDER
 POST /api/v1/delivery-list/{deliveryId}/acceptances RIDER
+POST /api/v1/device-consent-changes PUBLIC
 POST /api/v1/dispatch-requests OPERATOR
 POST /api/v1/disposal-approvals OPERATOR
 POST /api/v1/disposal-approvals/{disposalApprovalId}/executions OPERATOR

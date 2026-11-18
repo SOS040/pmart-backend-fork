@@ -16,6 +16,7 @@ import com.pmart.customer.domain.ProfileRules;
 import com.pmart.customer.infrastructure.ConsentStore;
 import com.pmart.customer.infrastructure.CustomerStore;
 import com.pmart.customer.infrastructure.CustomerStore.ProfileRow;
+import com.pmart.customer.infrastructure.DeviceConsentStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -49,6 +51,9 @@ public class ConsentService {
   public static final String OPERATION_INTERNAL = "changeAccountConsentsInternal";
   public static final String CHANNEL_APP = "APP";
 
+  /** 로그인 전 기기 동의를 계정으로 옮김(2026-11-19 BR-59). */
+  public static final String CHANNEL_DEVICE = "DEVICE";
+
   private static final Logger log = LoggerFactory.getLogger(ConsentService.class);
 
   /** 항목 한 줄(계약 Consent). */
@@ -59,7 +64,11 @@ public class ConsentService {
       String latestVersion,
       @Nullable Instant agreedAt,
       @Nullable Instant withdrawnAt,
-      @Nullable String channel) {}
+      @Nullable String channel,
+      @Nullable Instant lastChangedAt) {}
+
+  /** 약관 항목 한 줄(계약 ConsentTermList, 2026-11-19 BR-59). */
+  public record Term(ConsentItem item, String latestVersion, @Nullable String documentUrl) {}
 
   /** 계정의 동의 상태(계약 ConsentStatus·GET /me/consents). */
   public record Overview(String accountId, ConsentRules.Status status, List<View> items) {}
@@ -69,6 +78,8 @@ public class ConsentService {
 
   private final CustomerStore customers;
   private final ConsentStore consents;
+  private final DeviceConsentStore devices;
+  private final TransactionTemplate tx;
   private final CustomerProperties props;
   private final RequestIdempotency idempotency;
   private final EventPublisher events;
@@ -79,6 +90,8 @@ public class ConsentService {
   public ConsentService(
       CustomerStore customers,
       ConsentStore consents,
+      DeviceConsentStore devices,
+      TransactionTemplate tx,
       CustomerProperties props,
       RequestIdempotency idempotency,
       EventPublisher events,
@@ -87,6 +100,8 @@ public class ConsentService {
       Clock clock) {
     this.customers = customers;
     this.consents = consents;
+    this.devices = devices;
+    this.tx = tx;
     this.props = props;
     this.idempotency = idempotency;
     this.events = events;
@@ -97,14 +112,37 @@ public class ConsentService {
 
   /** 현행 버전 기준 상태. 계정 행이 없어도(가입 중) 모두 고르지 않은 것으로 답한다. */
   public Overview overview(String accountId) {
+    return overview(accountId, null);
+  }
+
+  /**
+   * 현행 버전 기준 상태.
+   *
+   * @param deviceId 로그인한 기기(2026-11-19 BR-59) — 있으면 판단(missingRequired·undecidedOptional)에 그 기기의 아직
+   *     옮기지 않은 결정을 넣는다(쓰지 않음). 항목 목록은 계정 값 그대로
+   */
+  public Overview overview(String accountId, @Nullable String deviceId) {
     Map<ConsentItem, String> current = currentVersions();
     Map<ConsentItem, Stored> stored = consents.consents(accountId);
-    List<View> items = new ArrayList<>();
-    for (ConsentItem item : ConsentItem.values()) {
+    Map<ConsentItem, Stored> judged =
+        deviceId == null || deviceId.isBlank()
+            ? stored
+            : ConsentRules.withDevice(current, stored, devices.consents(deviceId.strip()));
+    return new Overview(
+        accountId,
+        ConsentRules.status(current, judged),
+        views(List.of(ConsentItem.values()), current, stored));
+  }
+
+  /** 항목 줄 — 저장된 결정이 없으면 고르지 않은 것으로. */
+  static List<View> views(
+      List<ConsentItem> items, Map<ConsentItem, String> current, Map<ConsentItem, Stored> stored) {
+    List<View> out = new ArrayList<>();
+    for (ConsentItem item : items) {
       Stored s = stored.get(item);
-      items.add(
+      out.add(
           s == null
-              ? new View(item, false, null, current.get(item), null, null, null)
+              ? new View(item, false, null, current.get(item), null, null, null, null)
               : new View(
                   item,
                   s.agreed(),
@@ -112,9 +150,92 @@ public class ConsentService {
                   current.get(item),
                   s.agreedAt(),
                   s.withdrawnAt(),
-                  s.channel()));
+                  ConsentService.CHANNEL_DEVICE.equals(s.channel()) && s.version() == 0
+                      ? null
+                      : s.channel(),
+                  s.changedAt()));
     }
-    return new Overview(accountId, ConsentRules.status(current, stored), List.copyOf(items));
+    return List.copyOf(out);
+  }
+
+  /** 수신 동의 처리 결과 안내의 전송자 이름(설정, 없으면 null — 2026-11-19 BR-59). */
+  public @Nullable String senderName() {
+    return props.consents().sender();
+  }
+
+  /** 약관 항목·현행 버전·본문 주소(2026-11-19 BR-59 — GET /consent-terms). */
+  public List<Term> terms() {
+    Map<ConsentItem, String> current = currentVersions();
+    List<Term> out = new ArrayList<>();
+    for (ConsentItem item : ConsentItem.values()) {
+      out.add(new Term(item, current.get(item), props.consents().document(key(item))));
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * 로그인한 기기의 동의를 계정으로 옮긴다(2026-11-19 BR-59 — auth 가 로그인·동의 완료 뒤 부른다). 계정에 현행 버전 결정이 없는 기기 항목만
+   * 반영(channel DEVICE, 기록·사건)하고 기기 결정은 지운다. 탈퇴 신청 이후 계정에는 동의(agreed=true)를 옮기지 않는다. 다시 불러도 안전하다.
+   *
+   * @return 옮긴 항목 수
+   */
+  public int migrateDevice(String accountId, String deviceId) {
+    String device = deviceId == null ? "" : deviceId.strip();
+    if (device.isEmpty() || device.length() > 128) {
+      throw reject(new Violation(ConsentRules.INVALID_REQUEST, "deviceId", "기기 ID 가 없거나 너무 깁니다."));
+    }
+    Map<ConsentItem, String> current = currentVersions();
+    Integer moved =
+        tx.execute(
+            status -> {
+              Instant now = clock.instant();
+              devices.lock(device);
+              Map<ConsentItem, Stored> onDevice = devices.consents(device);
+              if (onDevice.isEmpty()) {
+                return 0;
+              }
+              customers.ensureProfile(accountId, now);
+              ProfileRow locked =
+                  customers
+                      .lockProfile(accountId)
+                      .orElseThrow(
+                          () -> PmartException.notFound("ACCOUNT_NOT_FOUND", "고객 계정이 없습니다."));
+              boolean canAgree = ProfileRules.changeable(locked.status());
+              Map<ConsentItem, Stored> stored = consents.consents(accountId);
+              int n = 0;
+              for (Change c : ConsentRules.toMigrate(current, stored, onDevice)) {
+                if (c.agreed() && !canAgree) {
+                  continue;
+                }
+                Stored d = onDevice.get(c.item());
+                int version =
+                    consents.save(
+                        accountId,
+                        c.item(),
+                        c.agreed(),
+                        c.version(),
+                        d.agreedAt(),
+                        c.agreed() ? null : d.withdrawnAt(),
+                        CHANNEL_DEVICE,
+                        now);
+                consents.appendHistory(
+                    accountId,
+                    c.item(),
+                    c.agreed(),
+                    c.version(),
+                    CHANNEL_DEVICE,
+                    version,
+                    "device-consent:" + device,
+                    now);
+                publish(accountId, c, version, CHANNEL_DEVICE, now);
+                n++;
+              }
+              devices.cleared(device, accountId, n, now);
+              return n;
+            });
+    int count = moved == null ? 0 : moved;
+    log.info("기기 동의 → 계정 {} 옮긴 항목 {}건", accountId, count);
+    return count;
   }
 
   /**
@@ -239,7 +360,7 @@ public class ConsentService {
         .orElseThrow(() -> PmartException.notFound("CONSENT_CHANGE_NOT_FOUND", "동의 변경 요청이 없습니다."));
   }
 
-  private void publish(String accountId, Change c, int version, String channel, Instant at) {
+  void publish(String accountId, Change c, int version, String channel, Instant at) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("accountId", accountId);
     payload.put("consentType", c.item().name());
@@ -276,7 +397,22 @@ public class ConsentService {
         required(v == null ? null : v.privacyPolicy(), "privacy-policy"));
     out.put(ConsentItem.AGE_OVER_14, required(v == null ? null : v.ageOver14(), "age-over-14"));
     out.put(ConsentItem.MARKETING, required(v == null ? null : v.marketing(), "marketing"));
+    out.put(
+        ConsentItem.LOCATION_BASED_SERVICE,
+        required(
+            v == null ? null : v.locationBasedService(), key(ConsentItem.LOCATION_BASED_SERVICE)));
     return out;
+  }
+
+  /** 설정 키 이름(versions·documents 같은 이름). */
+  static String key(ConsentItem item) {
+    return switch (item) {
+      case TERMS_OF_SERVICE -> "terms-of-service";
+      case PRIVACY_POLICY -> "privacy-policy";
+      case AGE_OVER_14 -> "age-over-14";
+      case MARKETING -> "marketing";
+      case LOCATION_BASED_SERVICE -> "location-based-service";
+    };
   }
 
   private static String required(@Nullable String version, String key) {
@@ -288,7 +424,7 @@ public class ConsentService {
     return version.strip();
   }
 
-  private static PmartException reject(Violation v) {
+  static PmartException reject(Violation v) {
     if (ConsentRules.INVALID_REQUEST.equals(v.code())) {
       return new PmartException(
           ErrorCode.VALIDATION_FAILED,

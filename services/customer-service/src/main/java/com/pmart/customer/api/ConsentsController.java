@@ -25,7 +25,8 @@ public class ConsentsController implements ConsentsApi {
     return ResponseEntity.ok(
         new ListMyConsents200Response()
             .items(o.items().stream().map(CustomerMapping::consent).toList())
-            .requiredConsentOutdated(o.status().requiredOutdated()));
+            .requiredConsentOutdated(o.status().requiredOutdated())
+            .senderName(consents.senderName()));
   }
 
   @Override

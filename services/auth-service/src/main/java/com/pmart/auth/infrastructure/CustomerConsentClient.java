@@ -28,6 +28,7 @@ public class CustomerConsentClient {
 
   private static final String STATUS = "customer-service consents";
   private static final String CHANGE = "customer-service consent-changes";
+  private static final String MIGRATE = "customer-service device-consent-migrations";
 
   /**
    * 현행 버전 기준 동의 상태.
@@ -47,15 +48,24 @@ public class CustomerConsentClient {
     this.http = builder.clone().baseUrl(props.customerServiceBaseUrl()).build();
   }
 
-  /** 계정(가입 중이라 customer 에 행이 없어도 된다)의 동의 상태. */
-  public ConsentCheck check(String accountId) {
+  /**
+   * 계정(가입 중이라 customer 에 행이 없어도 된다)의 동의 상태.
+   *
+   * @param deviceId 로그인한 기기(2026-11-19 BR-59 — customer 0.6.0): 그 기기의 로그인 전 동의(마케팅 등)를 결정한 것으로 봐서
+   *     다시 묻지 않는다
+   */
+  public ConsentCheck check(String accountId, String deviceId) {
     try {
       JsonNode n =
           Downstream.call(
               STATUS,
               () ->
                   http.get()
-                      .uri("/api/v1/internal/accounts/{id}/consents", accountId)
+                      .uri(
+                          u ->
+                              u.path("/api/v1/internal/accounts/{id}/consents")
+                                  .queryParam("deviceId", deviceId)
+                                  .build(accountId))
                       .retrieve()
                       .body(JsonNode.class));
       return parse(n);
@@ -93,6 +103,29 @@ public class CustomerConsentClient {
                       .retrieve()
                       .body(JsonNode.class));
       return parse(n);
+    } catch (HttpClientErrorException e) {
+      throw passThrough(e);
+    }
+  }
+
+  /**
+   * 로그인한 기기의 로그인 전 동의를 계정으로 옮긴다(2026-11-19 BR-59 — customer 0.6.0, 다시 불러도 안전).
+   *
+   * @return 옮긴 항목 수
+   */
+  public int migrateDevice(String accountId, String deviceId) {
+    try {
+      JsonNode n =
+          Downstream.call(
+              MIGRATE,
+              () ->
+                  http.post()
+                      .uri("/api/v1/internal/accounts/{id}/device-consent-migrations", accountId)
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .body(Map.of("deviceId", deviceId))
+                      .retrieve()
+                      .body(JsonNode.class));
+      return n == null ? 0 : n.path("migrated").asInt(0);
     } catch (HttpClientErrorException e) {
       throw passThrough(e);
     }

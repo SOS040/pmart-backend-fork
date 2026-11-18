@@ -21,6 +21,7 @@ class ConsentRulesTest {
     m.put(ConsentItem.PRIVACY_POLICY, "2026-11-17");
     m.put(ConsentItem.AGE_OVER_14, "1");
     m.put(ConsentItem.MARKETING, "2026-11-17");
+    m.put(ConsentItem.LOCATION_BASED_SERVICE, "2026-11-19");
     return m;
   }
 
@@ -121,5 +122,51 @@ class ConsentRulesTest {
         .isTrue();
     assertThat(ConsentRules.unchanged(stored(ConsentItem.MARKETING, true, "2026-01-01"), on))
         .isFalse();
+  }
+
+  /** 위치기반서비스(기능 필수, 2026-11-19 BR-59)는 로그인 동의 판단(필수·선택 목록)에 들어가지 않는다. */
+  @Test
+  void locationBasedServiceIsNeitherMissingNorUndecided() {
+    ConsentRules.Status s = ConsentRules.status(current(), Map.of());
+    assertThat(s.missingRequired()).noneMatch(r -> r.startsWith("LOCATION_BASED_SERVICE"));
+    assertThat(s.undecidedOptional()).containsExactly("MARKETING:2026-11-17");
+  }
+
+  /** 기기 결정: 계정에 현행 버전 결정이 없을 때만 판단·옮기기에 쓰고, 계정 값이 이긴다. 낡은 버전·기기 항목 아닌 것은 무시. */
+  @Test
+  void deviceDecisionsFillOnlyWhatTheAccountHasNotDecided() {
+    Map<ConsentItem, Stored> device = new EnumMap<>(ConsentItem.class);
+    device.put(ConsentItem.MARKETING, stored(ConsentItem.MARKETING, true, "2026-11-17"));
+    device.put(
+        ConsentItem.LOCATION_BASED_SERVICE,
+        stored(ConsentItem.LOCATION_BASED_SERVICE, true, "2026-01-01")); // 낡은 버전
+    // 계정에 없음 → 마케팅만 옮김, 판단에서도 결정된 것
+    assertThat(ConsentRules.toMigrate(current(), Map.of(), device))
+        .containsExactly(new ConsentRules.Change(ConsentItem.MARKETING, "2026-11-17", true));
+    assertThat(
+            ConsentRules.status(current(), ConsentRules.withDevice(current(), Map.of(), device))
+                .undecidedOptional())
+        .isEmpty();
+    // 계정에 현행 버전 결정이 있으면 옮기지 않는다(계정 값이 이긴다)
+    Map<ConsentItem, Stored> account =
+        Map.of(ConsentItem.MARKETING, stored(ConsentItem.MARKETING, false, "2026-11-17"));
+    assertThat(ConsentRules.toMigrate(current(), account, device)).isEmpty();
+    assertThat(
+            ConsentRules.withDevice(current(), account, device).get(ConsentItem.MARKETING).agreed())
+        .isFalse();
+  }
+
+  @Test
+  void deviceAcceptsOnlyMarketingAndLocation() {
+    assertThat(
+            ConsentRules.checkDevice(
+                List.of(
+                    new ConsentRules.Change(
+                        ConsentItem.LOCATION_BASED_SERVICE, "2026-11-19", true))))
+        .isEmpty();
+    assertThat(
+            ConsentRules.checkDevice(
+                List.of(new ConsentRules.Change(ConsentItem.TERMS_OF_SERVICE, "2026-11-17", true))))
+        .isPresent();
   }
 }

@@ -69,8 +69,21 @@ public class InternalController implements InternalApi {
 
   /** [auth→customer] 현행 버전 기준 동의 상태. 계정 행이 없어도 200(가입 중 — 모두 빠짐). */
   @Override
-  public ResponseEntity<ConsentStatus> getAccountConsentsInternal(String accountId) {
-    return ResponseEntity.ok(CustomerMapping.consentStatus(consents.overview(accountId)));
+  public ResponseEntity<ConsentStatus> getAccountConsentsInternal(
+      String accountId, String deviceId) {
+    return ResponseEntity.ok(CustomerMapping.consentStatus(consents.overview(accountId, deviceId)));
+  }
+
+  /** 로그인한 기기의 동의를 계정으로(2026-11-19 BR-59 — auth 가 로그인·동의 완료 뒤). */
+  @Override
+  public ResponseEntity<
+          com.pmart.customer.api.generated.model.MigrateDeviceConsentsInternal200Response>
+      migrateDeviceConsentsInternal(
+          String accountId,
+          com.pmart.customer.api.generated.model.MigrateDeviceConsentsInternalRequest body) {
+    return ResponseEntity.ok(
+        new com.pmart.customer.api.generated.model.MigrateDeviceConsentsInternal200Response()
+            .migrated(consents.migrateDevice(accountId, body.getDeviceId())));
   }
 
   /** [auth→customer] 로그인 중(AUTH_CONSENT) 받은 동의 반영 → 반영 뒤 상태. */

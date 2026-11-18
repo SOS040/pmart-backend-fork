@@ -31,7 +31,7 @@
             },
             "consentType": {
               "type": "string",
-              "description": "약관/마케팅 등 동의 항목 코드(customer-service ConsentType: TERMS_OF_SERVICE·PRIVACY_POLICY·AGE_OVER_14·MARKETING)"
+              "description": "약관/마케팅 등 동의 항목 코드(customer-service ConsentType: TERMS_OF_SERVICE·PRIVACY_POLICY·AGE_OVER_14·MARKETING·LOCATION_BASED_SERVICE — 2026-11-19)"
             },
             "version": {
               "$ref": "_defs.v1.json#/$defs/Version",
@@ -53,7 +53,7 @@
             },
             "channel": {
               "type": "string",
-              "enum": ["SIGNUP", "LOGIN", "APP"],
+              "enum": ["SIGNUP", "LOGIN", "APP", "DEVICE"],
               "description": "받은 곳 — SIGNUP 가입 · LOGIN 로그인 재동의 · APP 앱. 2026-11-17 추가"
             }
           },
