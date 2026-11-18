@@ -92,6 +92,7 @@
 | [CL-3](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 기간 환불 금액 합·건수(대시보드 D2 — 완료 시각 한국 날짜) | 결정됨(2026-11-18 사용자 — 환불은 따로) | **구현(2026-11-18, claim 0.5.0)** — LAN 배포 대기 |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
 | [N-4](notification-service.md) | notification | PC 1 | delivery | 사고·파손 재발송 고객 안내(`DeliveryFailed` reason RIDER_INCIDENT·DAMAGED — 새 상품 재발송) | 결정됨(ADR-0069, 2026-11-18 사용자) | 대기 — 지금은 상담원 통화 안내(PC 5 #172) |
+| [N-5](notification-service.md) | notification(·rider) | PC 1 | delivery(PC 5) | 라이더 공지 보내기 — 전체·센터 라이더 알림함 + 푸시(RIDER_OPS·OPERATOR_ADMIN) | 결정됨(2026-11-18 사용자 "대상 고르기 + 알림함·푸시") | **구현·LAN 배포**(2026-11-18 PC 5 #201 — notification 0.5.0·V5, rider 0.13.0) |
 | [DE-2](delivery-execution-service.md) | delivery-execution | PC 5 | backoffice(PC 2) | 도움요청 대화 — 답장 권한(접수 건 규칙)·새 메시지 값·관리자 가림·처리 중 = 집을 때 | 결정됨(2026-11-16 "진행해") | **구현·LAN 배포**(2026-11-17 #76, execution 0.8.0 V10) |
 | [RS-5](rider-service.md) | rider | PC 5 | rider_app | 가입 전 번호·계좌 확인, 거주지 주소 서버 확인(serviceability 주소 변환), 계좌 중복 불가, 은행 = 금융결제원 코드 | 결정됨(라이더 앱 요청 §12·§14·§15·§16-1) | **구현·LAN 배포**(2026-11-17 #125, rider 0.7.0 V8) |
 | [DE-3](delivery-execution-service.md) | delivery-execution | PC 5 | rider_app | 전달 불가 등록이 지원센터 대화도 열기, 전달 재개 요청 | 결정됨(라이더 앱 요청 §13) | **구현·LAN 배포**(2026-11-17 #127, execution 0.14.0) |
