@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.6.0
+  version: 0.6.1
   description: |
+    0.6.1(2026-11-19, 사용자 "그냥 PMart로 해줘 그리고 진행해줘"): 약관 본문 `GET /consent-terms/{consentType}/{version}`(토큰 없음, Markdown) —
+    본문은 customer-service 가 버전별 파일로 가진다(시연용 초안, 법률 검토 전). `/consent-terms` 의 `documentUrl` 은 설정 값이 없으면 그 본문이 있을 때 이 경로.
     0.6.0(2026-11-19, 클라이언트 요청 BR-59 처음 실행 약관 — 사용자 "응 그렇게 해줘"): ① 동의 항목 `LOCATION_BASED_SERVICE`(위치기반서비스 이용약관) —
     **현재 위치 기능을 쓸 때만 필수**(`requiredFor=CURRENT_LOCATION`). 로그인·구매 가능 여부의 필수 목록에는 넣지 않아 기존 회원이 다시 동의하지 않는다(로그인 동의 단계에서도 묻지 않음).
     ② 로그인 전(기기) 동의 — `GET /device-consents`·`POST /device-consent-changes`(X-Device-Id, 토큰 없음 — 비회원 배송지와 같은 방식). 받는 항목은 MARKETING·LOCATION_BASED_SERVICE 뿐.
@@ -603,7 +605,7 @@ paths:
       summary: 약관 항목·현행 버전·본문 주소 (0.6.0 — 토큰 없음)
       description: |
         처음 실행·가입·설정 화면이 항목과 버전을 정하고 펼쳐 볼 본문을 연다. 항목 다섯 — 필수 셋, 선택 MARKETING, 기능 필수 LOCATION_BASED_SERVICE(requiredFor CURRENT_LOCATION).
-        `documentUrl` 은 설정 `pmart.customer.consents.documents.<항목>`(없으면 null — 본문을 지어내지 않는다).
+        `documentUrl` 은 설정 `pmart.customer.consents.documents.<항목>` → 없으면 서버가 가진 그 버전 본문의 경로 `/api/v1/consent-terms/{항목}/{버전}`(0.6.1) → 그것도 없으면 null.
       operationId: listConsentTerms
       security: []
       x-added-in: '2026-11-19'
@@ -614,6 +616,27 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ConsentTermList' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /consent-terms/{consentType}/{version}:
+    get:
+      tags: [device-consents]
+      summary: 약관 본문 (0.6.1 — 토큰 없음, Markdown)
+      description: |
+        항목·버전의 본문. 현행 버전이 아니어도 서버가 가진 버전이면 준다(예전에 동의한 버전 다시 보기). 없으면 404 CONSENT_TERM_NOT_FOUND.
+        본문은 시연용 초안(회사 PMart, 법률 검토 전)이다 — 실제 서비스 전에 검토해 버전을 올린다.
+      operationId: getConsentTermDocument
+      security: []
+      x-added-in: '2026-11-19'
+      parameters:
+        - { name: consentType, in: path, required: true, schema: { $ref: '#/components/schemas/ConsentType' } }
+        - { name: version, in: path, required: true, schema: { type: string, maxLength: 32, pattern: '^[A-Za-z0-9._-]{1,32}$' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsentTermDocument' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/accounts/{accountId}/device-consent-migrations:
     post:
@@ -826,6 +849,16 @@ components:
         deviceId: { type: string }
         senderName: { type: [string, 'null'], description: 수신 동의 처리 결과 안내의 전송자 이름 }
         items: { type: array, items: { $ref: '#/components/schemas/Consent' } }
+    ConsentTermDocument:
+      type: object
+      description: (0.6.1) 약관 본문
+      required: [consentType, version, title, format, body]
+      properties:
+        consentType: { $ref: '#/components/schemas/ConsentType' }
+        version: { type: string }
+        title: { type: string, description: 본문 첫 줄 제목(# 뒤) }
+        format: { type: string, enum: [MARKDOWN] }
+        body: { type: string, description: 'Markdown 본문(제목 줄 포함, 표 사용)' }
     ConsentTermList:
       type: object
       description: (0.6.0) 약관 항목·현행 버전·본문 주소

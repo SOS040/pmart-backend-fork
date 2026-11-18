@@ -14,6 +14,7 @@ import com.pmart.customer.domain.ConsentRules.Stored;
 import com.pmart.customer.domain.ConsentRules.Violation;
 import com.pmart.customer.domain.ProfileRules;
 import com.pmart.customer.infrastructure.ConsentStore;
+import com.pmart.customer.infrastructure.ConsentTermDocuments;
 import com.pmart.customer.infrastructure.CustomerStore;
 import com.pmart.customer.infrastructure.CustomerStore.ProfileRow;
 import com.pmart.customer.infrastructure.DeviceConsentStore;
@@ -79,6 +80,7 @@ public class ConsentService {
   private final CustomerStore customers;
   private final ConsentStore consents;
   private final DeviceConsentStore devices;
+  private final ConsentTermDocuments documents;
   private final TransactionTemplate tx;
   private final CustomerProperties props;
   private final RequestIdempotency idempotency;
@@ -91,6 +93,7 @@ public class ConsentService {
       CustomerStore customers,
       ConsentStore consents,
       DeviceConsentStore devices,
+      ConsentTermDocuments documents,
       TransactionTemplate tx,
       CustomerProperties props,
       RequestIdempotency idempotency,
@@ -101,6 +104,7 @@ public class ConsentService {
     this.customers = customers;
     this.consents = consents;
     this.devices = devices;
+    this.documents = documents;
     this.tx = tx;
     this.props = props;
     this.idempotency = idempotency;
@@ -168,9 +172,21 @@ public class ConsentService {
     Map<ConsentItem, String> current = currentVersions();
     List<Term> out = new ArrayList<>();
     for (ConsentItem item : ConsentItem.values()) {
-      out.add(new Term(item, current.get(item), props.consents().document(key(item))));
+      String latest = current.get(item);
+      String url = props.consents().document(key(item));
+      if (url == null && documents.exists(item, latest)) {
+        url = "/api/v1/consent-terms/" + item.name() + "/" + latest; // 서버가 가진 본문(0.6.1)
+      }
+      out.add(new Term(item, latest, url));
     }
     return List.copyOf(out);
+  }
+
+  /** 약관 본문(0.6.1). 없으면 404 CONSENT_TERM_NOT_FOUND. */
+  public ConsentTermDocuments.Document document(ConsentItem item, String version) {
+    return documents
+        .find(item, version)
+        .orElseThrow(() -> PmartException.notFound("CONSENT_TERM_NOT_FOUND", "그 버전의 약관 본문이 없습니다."));
   }
 
   /**

@@ -69,6 +69,7 @@ GET /api/v1/claims/{claimId}/decisions/{requestId} OPERATOR
 GET /api/v1/claims/{claimId}/refunds CUSTOMER,OPERATOR
 GET /api/v1/claims/{claimId}/withdrawals/{requestId} CUSTOMER
 GET /api/v1/consent-terms PUBLIC
+GET /api/v1/consent-terms/{consentType}/{version} PUBLIC
 GET /api/v1/content-drafts/{draftId} OPERATOR
 GET /api/v1/content-images/{imageId} PUBLIC
 GET /api/v1/content-import-batches/{batchId} OPERATOR

@@ -65,6 +65,21 @@ public class DeviceConsentsController implements DeviceConsentsApi {
                     .toList()));
   }
 
+  @Override
+  public ResponseEntity<com.pmart.customer.api.generated.model.ConsentTermDocument>
+      getConsentTermDocument(ConsentType consentType, String version) {
+    var d =
+        consents.document(
+            com.pmart.customer.domain.ConsentItem.valueOf(consentType.getValue()), version);
+    return ResponseEntity.ok(
+        new com.pmart.customer.api.generated.model.ConsentTermDocument()
+            .consentType(consentType)
+            .version(d.version())
+            .title(d.title())
+            .format(com.pmart.customer.api.generated.model.ConsentTermDocument.FormatEnum.MARKDOWN)
+            .body(d.body()));
+  }
+
   private static DeviceConsentList view(DeviceConsentService.DeviceView v) {
     return new DeviceConsentList()
         .deviceId(v.deviceId())

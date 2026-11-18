@@ -443,6 +443,19 @@ class ConsentFlowIT extends PostgresKafkaContainerSupport {
     assertThat(loc.path("required").asBoolean()).isFalse();
     assertThat(loc.path("requiredFor").asString()).isEqualTo("CURRENT_LOCATION");
     String locVersion = loc.path("latestVersion").asString();
+    // 약관 본문(0.6.1): 설정이 없으면 서버가 가진 본문 경로, 본문은 Markdown·제목
+    assertThat(loc.path("documentUrl").asString())
+        .isEqualTo("/api/v1/consent-terms/LOCATION_BASED_SERVICE/" + locVersion);
+    for (JsonNode t : terms.body().path("items")) {
+      String url = t.path("documentUrl").asString();
+      assertThat(url).as(t.path("consentType").asString() + " 본문 주소").isNotBlank();
+      Res doc = get(null, url.substring("/api/v1".length()));
+      assertThat(doc.status()).as(url).isEqualTo(200);
+      assertThat(doc.body().path("format").asString()).isEqualTo("MARKDOWN");
+      assertThat(doc.body().path("title").asString()).isNotBlank();
+      assertThat(doc.body().path("body").asString()).contains("PMart");
+    }
+    assertThat(get(null, "/consent-terms/MARKETING/1999-01-01").status()).isEqualTo(404);
 
     String dev = "DEV-" + UUID.randomUUID();
     String key = UUID.randomUUID().toString();
