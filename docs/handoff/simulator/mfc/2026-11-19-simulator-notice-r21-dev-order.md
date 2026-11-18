@@ -2,14 +2,15 @@
 
 - 보낸 영역: platform(PC 1)
 - 앞 회신: `2026-11-19-simulator-reply-r20-r21.md`
-- 계약: auth-service **0.3.0**, payment-service **0.2.0**. LAN: **배포 전**(배포하면 이 줄을 고친다)
+- 계약: auth-service **0.3.0**, payment-service **0.2.0**. LAN: **배포됨**(2026-11-19 08:37, 이미지 dcc17c4d — PC 4 auth·PC 2 payment). 확인: 허용 계정 토큰 200 → 게이트웨이 `/me` 200, 목록 밖 403, payment 시험 결제 켜짐 로그
 - 둘 다 **LAN 설정을 켠 곳에만** 있다(pmart-config `auth-service-lan.yml`·`payment-service-lan.yml`). 운영 설정에는 없다.
 
 ## 1. 고객 토큰 — `POST http://192.168.0.40:8501/api/v1/internal/dev-customer-tokens`
 - **게이트웨이가 아니라 auth-service 포트로 직접**(직원 `dev-token-exchange` 와 같은 방식). 헤더 `Idempotency-Key`(아무 UUID — 기록 안 함)·`X-Source-System`(예 `mfc-simulator`)·`X-Device-Id`, 본문 `{ "accountId": "CU-…" }`.
 - 응답 `{accountId, accessToken, accessTokenExpiresAt, sessionId}` — `typ=CUSTOMER`, **15분**, refresh 없음(만료되면 다시 받는다). 이 토큰으로 게이트웨이(`https://192.168.0.40:8443/api/v1`)의 고객 API(장바구니·주문서·결제)를 부른다.
 - **허용 목록의 기존 고객만** — 목록 밖 403 `DEV_CUSTOMER_NOT_ALLOWED`, auth 에 없는 계정 404, ACTIVE 아님 403 `ACCOUNT_NOT_AVAILABLE`.
-  - 지금 목록: `CU-fdccbd6b-9817-4e95-b55a-2c4e71539116`(PC 1 지정 고객 — 11-18 LAN 시험 주문 계정, 배송지 1). 시뮬레이터 전용 "시험 고객"은 PC 1 이 정해 목록에 더한다(사용자 결정 뒤).
+  - 지금 목록: `CU-eae131fa-886a-4733-9eee-86a158be281a`(**사용자 지정 Google 계정** — 2026-11-19, 필수 동의 끝·구매 가능·쇼핑 주소 MFC-SEED-01), `CU-fdccbd6b-9817-4e95-b55a-2c4e71539116`(PC 1 지정 고객 — 11-18 LAN 시험 주문 계정).
+  - 사용자 지정 계정은 **실제 계정**이다 — 넣은 주문이 그 사람의 고객 앱 주문 내역에 보이고, 배송 알림이 그 휴대폰으로 푸시된다(결제만 시험 결제).
 - 발급 기록: auth 세션 행(계정·기기·X-Source-System·시각). 토큰은 화면·저장소·로그에 남기지 않는다(직원 토큰과 같음).
 - 약관 동의(CU-1)는 LAN 에서 켜져 있다 — 그 고객이 필수 동의를 마치지 않았으면 주문서·결제가 422 `ACCOUNT_NOT_PURCHASABLE`. 필요하면 이 토큰으로 `POST /me/consent-changes`(현행 버전은 `GET /consent-terms`).
 
