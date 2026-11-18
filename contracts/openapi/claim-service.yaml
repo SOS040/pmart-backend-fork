@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-18, CL-3 — 백오피스 대시보드 D2, 사용자 "환불은 따로"): 직원(OPERATOR_ADMIN 만) 기간 환불 합 `GET /claims/metrics/refunds?from&to` — 환불 완료 시각(`refund_intent.completed_at`)의 한국 날짜, from·to 포함·필수, 93일 이하. 완료(COMPLETED)된 환불 의도의 금액 합·건수 + 사유 묶음(CANCEL·SHORTAGE·RETURN·RETURN_FEE·OTHER)별. **센터(mfcId) 거르기는 없다**(사용자 동의 2026-11-18 — 취소 클레임에는 센터가 없다). 주문 매출(order `GET /orders/metrics/summary`)에서 빼지 않고 나란히 보인다.
     0.3.0(2026-11-17, CL-1 추가 결정 1~9 — 사용자 "추천대로"): 회수비 결제 기한 24시간 확정. 반품 전체 기한(접수 + 7일, `Claim.returnDeadlineAt`) — 그 안에 회수가 안 되면 자동 취소(ClaimClosed RETURN_EXPIRED).
     회수 시도 전체 3번(자동 2 + 상담원 다시 회수 1 — 넘으면 409 PICKUP_ATTEMPTS_EXHAUSTED), 라이더·우리 잘못(RIDER_INCIDENT) 실패는 횟수에서 빼고 바로 다시 요청(`pickup.countedFailures`·`retryAllowed`).
     회수 실패로 반품을 취소할 때 낸 회수비: 고객 사유 → 돌려주지 않음, 우리 잘못 → 돌려줌, 파손·기타 → 상담원 판단(`RecoveryActionRequest.feeRefund`, 기본 돌려주지 않음) — `feePayment.refundDecision`, 돌려주면 `refunds[]` 에 kind RETURN_FEE.
@@ -20,6 +21,7 @@ tags:
   - { name: decisions, description: 운영자 심사 (BO-12~14) }
   - { name: refunds, description: 환불 상태 조회 }
   - { name: internal, description: 서비스 간 (mfc-inbound 회수 수령·orchestration 자동 취소) }
+  - { name: claim-metrics, description: '직원용 기간 집계(백오피스 대시보드 D2, 0.5.0) — OPERATOR_ADMIN 만' }
 
 paths:
   /claims:
@@ -243,6 +245,37 @@ paths:
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /claims/metrics/refunds:
+    get:
+      tags: [claim-metrics]
+      summary: 기간 환불 금액 합·건수 — 사유 묶음별 (0.5.0, 대시보드 D2)
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 사용자 결정(CL-3): 매출에서 환불을 빼지 않고 환불 금액을 따로 보인다. 직원 토큰(OPERATOR)의 역할 **OPERATOR_ADMIN 만**(그 밖 직원·고객·라이더 403).
+        **기준 = 환불 완료 시각(`completedAt` — PG 환불 성공을 확인한 시각)의 한국 날짜(Asia/Seoul)** — from 00:00(KST) 이상, to 다음 날 00:00(KST) 미만. from·to 필수·포함.
+        from > to 이면 400, 기간이 93일(포함)을 넘으면 400 VALIDATION_FAILED. **완료(COMPLETED)된 환불만** — 실행 중·결과 불명·실패는 세지 않는다.
+        **센터(mfcId) 거르기는 없다**(사용자 동의 2026-11-18 — 출고 전 취소 클레임에는 센터가 없다). 주문 쪽 집계(order `GET /orders/metrics/summary`)는 센터로 거를 수 있지만 이 값은 늘 모든 센터다.
+        사유 묶음(환불 의도의 근거 `reason`):
+        - `CANCEL` = CANCEL_BEFORE_SHIP — 출고 전 전체 취소(고객·고객센터·시스템 자동 취소(이행 거절·전체 결품) 모두. 앞선 결품 부분 환불이 있으면 남은 금액만)
+        - `SHORTAGE` = OUT_OF_STOCK — 결품 부분 환불(ADR-0045)
+        - `RETURN` = RETURN — 반품 검수 환불(검수마다 하나, CL-1)
+        - `RETURN_FEE` = RETURN_FEE — 반품 취소 때 돌려준 회수비(원주문 결제가 아니라 **회수비 결제**의 취소 — 주문 결제 환불만 보려면 이 묶음을 뺀다)
+        - `OTHER` = 그 밖의 근거(지금은 없음 — 새 근거가 생기면 여기에 먼저 모인다)
+        totalAmount·totalCount 는 다섯 묶음 전부의 합. byReason 은 늘 다섯 줄(0 포함, 위 순서). 정수 KRW. 개인정보 없음.
+      operationId: getRefundMetrics
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date }, description: '시작 날짜(Asia/Seoul, 포함) — 환불 완료 시각의 한국 날짜 기준' }
+        - { name: to, in: query, required: true, schema: { type: string, format: date }, description: '끝 날짜(Asia/Seoul, 포함). from 이상, from 부터 93일(포함) 이하' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefundMetrics' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /claims/{claimId}/fee-payment-attempts:
     post:
@@ -468,6 +501,26 @@ paths:
 
 components:
   schemas:
+    RefundMetrics:
+      type: object
+      x-added-in: '2026-11-18'
+      description: 기간 완료 환불 합(CL-3, 0.5.0) — 환불 완료 시각 한국 날짜 기준, 모든 센터
+      required: [from, to, totalAmount, totalCount, byReason]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        totalAmount: { type: integer, format: int64, minimum: 0, description: 완료 환불 금액 합(정수 KRW, RETURN_FEE 포함) }
+        totalCount: { type: integer, description: 완료 환불 건수(환불 의도 수) }
+        byReason:
+          type: array
+          description: 사유 묶음별 — 늘 다섯 줄(CANCEL·SHORTAGE·RETURN·RETURN_FEE·OTHER 순, 0 포함)
+          items:
+            type: object
+            required: [reason, amount, count]
+            properties:
+              reason: { type: string, enum: [CANCEL, SHORTAGE, RETURN, RETURN_FEE, OTHER] }
+              amount: { type: integer, format: int64, minimum: 0 }
+              count: { type: integer }
     ClaimType:
       type: string
       enum: [CANCEL, RETURN, EXCHANGE]

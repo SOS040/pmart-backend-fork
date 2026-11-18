@@ -744,4 +744,102 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
                 fullId))
         .isEqualTo("FULL 17200 17100 100");
   }
+
+  // ---------------------------------------------------------------- CL-3 기간 환불 집계(0.5.0)
+
+  void refundRow(
+      String claimId, String sourceRef, String reason, long amount, String state, String at) {
+    String id = "RFI-MT-" + UUID.randomUUID();
+    jdbc.update(
+        "INSERT INTO refund_intent (refund_intent_id, claim_id, order_id, payment_attempt_id, scope,"
+            + " reason, amount, item_amount, bag_fee, delivery_tip, state, cancellation_request_id,"
+            + " completed_at, created_at, updated_at, source_ref)"
+            + " VALUES (?,?,?,?,'PARTIAL',?,?,?,0,0,?,?,?::timestamptz,now(),now(),?)",
+        id,
+        claimId,
+        "ORD-" + claimId,
+        "PAY-" + claimId,
+        reason,
+        amount,
+        amount,
+        state,
+        "REFUND-" + id,
+        at,
+        sourceRef);
+  }
+
+  /**
+   * CL-3: OPERATOR_ADMIN 만, 완료(COMPLETED) 환불의 완료 시각 한국 날짜(from·to 포함), 근거 묶음 다섯 줄.
+   * /claims/metrics/refunds 와 /claims/{claimId}/refunds 가 둘 다 맞게 간다.
+   */
+  @Test
+  void refundMetricsByKoreanCompletedDate() {
+    String claimId = "CLM-MT-" + UUID.randomUUID();
+    jdbc.update(
+        "INSERT INTO claim (claim_id, order_id, account_id, type, state, reason, channel,"
+            + " payment_attempt_id, approved_amount, item_amount, bag_fee, delivery_tip, opened_at,"
+            + " updated_at) VALUES (?,?,?,'CANCEL','CLOSED','CHANGE_OF_MIND','SYSTEM',?,0,0,0,0,"
+            + " now(), now())",
+        claimId,
+        "ORD-" + claimId,
+        "ACC-MT",
+        "PAY-" + claimId);
+    // 2019-07-14 00:00 KST ~ 23:59:59 KST 안
+    refundRow(claimId, null, "CANCEL_BEFORE_SHIP", 19_100, "COMPLETED", "2019-07-13T15:00:00Z");
+    refundRow(claimId, "S1", "OUT_OF_STOCK", 1_900, "COMPLETED", "2019-07-14T14:59:59Z");
+    refundRow(claimId, "INS-1", "RETURN", 5_000, "COMPLETED", "2019-07-14T03:00:00Z");
+    refundRow(claimId, "RETURN_FEE", "RETURN_FEE", 9_000, "COMPLETED", "2019-07-14T04:00:00Z");
+    refundRow(claimId, "M", "MYSTERY", 100, "COMPLETED", "2019-07-14T05:00:00Z");
+    // 완료 아님 → 세지 않음
+    refundRow(claimId, "INS-2", "RETURN", 7_000, "PG_PENDING", null);
+    // 2019-07-13 23:59:59 KST — 전날
+    refundRow(claimId, "X", "CANCEL_BEFORE_SHIP", 3_000, "COMPLETED", "2019-07-13T14:59:59Z");
+
+    String admin = TestJwt.operator("ad-mt", List.of("OPERATOR_ADMIN"), List.of());
+    Res day = get(admin, "/claims/metrics/refunds?from=2019-07-14&to=2019-07-14");
+    assertThat(day.status()).isEqualTo(200);
+    assertThat(day.body().path("totalAmount").asLong()).isEqualTo(35_100);
+    assertThat(day.body().path("totalCount").asInt()).isEqualTo(5);
+    JsonNode by = day.body().path("byReason");
+    assertThat(by).hasSize(5);
+    List<String> reasons = new java.util.ArrayList<>();
+    by.forEach(b -> reasons.add(b.path("reason").asString()));
+    assertThat(reasons).containsExactly("CANCEL", "SHORTAGE", "RETURN", "RETURN_FEE", "OTHER");
+    assertThat(by.get(0).path("amount").asLong()).isEqualTo(19_100);
+    assertThat(by.get(1).path("amount").asLong()).isEqualTo(1_900);
+    assertThat(by.get(2).path("amount").asLong()).isEqualTo(5_000);
+    assertThat(by.get(2).path("count").asInt()).isEqualTo(1);
+    assertThat(by.get(3).path("amount").asLong()).isEqualTo(9_000);
+    assertThat(by.get(4).path("amount").asLong()).isEqualTo(100);
+
+    Res two = get(admin, "/claims/metrics/refunds?from=2019-07-13&to=2019-07-14");
+    assertThat(two.body().path("byReason").get(0).path("amount").asLong()).isEqualTo(22_100);
+    assertThat(two.body().path("byReason").get(0).path("count").asInt()).isEqualTo(2);
+    // 빈 기간도 다섯 줄 0
+    Res empty = get(admin, "/claims/metrics/refunds?from=2019-01-01&to=2019-01-01");
+    assertThat(empty.body().path("totalAmount").asLong()).isZero();
+    assertThat(empty.body().path("byReason")).hasSize(5);
+
+    // 권한·기간
+    String cs = TestJwt.operator("cs-mt", List.of("CS_AGENT"), List.of());
+    assertThat(get(cs, "/claims/metrics/refunds?from=2019-07-14&to=2019-07-14").status())
+        .isEqualTo(403);
+    assertThat(
+            get(TestJwt.customer("ACC-MT"), "/claims/metrics/refunds?from=2019-07-14&to=2019-07-14")
+                .status())
+        .isEqualTo(403);
+    assertThat(get(admin, "/claims/metrics/refunds?from=2019-07-15&to=2019-07-14").status())
+        .isEqualTo(400);
+    assertThat(get(admin, "/claims/metrics/refunds?from=2019-01-01&to=2019-04-04").status())
+        .isEqualTo(400); // 94일
+    assertThat(get(admin, "/claims/metrics/refunds?from=2019-01-01&to=2019-04-03").status())
+        .isEqualTo(200); // 93일
+    assertThat(get(admin, "/claims/metrics/refunds?to=2019-04-03").status()).isEqualTo(400);
+
+    // 경로가 겹치지 않는다: 클레임 환불 조회는 그대로
+    Res list = get(admin, "/claims/" + claimId + "/refunds");
+    assertThat(list.status()).isEqualTo(200);
+    assertThat(list.body().path("claimId").asString()).isEqualTo(claimId);
+    assertThat(list.body().path("items")).hasSize(7);
+  }
 }
