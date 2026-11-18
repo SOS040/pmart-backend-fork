@@ -83,6 +83,7 @@
 | [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
+| [N-4](notification-service.md) | notification | PC 1 | delivery | 사고·파손 재발송 고객 안내(`DeliveryFailed` reason RIDER_INCIDENT·DAMAGED — 새 상품 재발송) | 결정됨(ADR-0069, 2026-11-18 사용자) | 대기 — 지금은 상담원 통화 안내(PC 5 #172) |
 | [DE-2](delivery-execution-service.md) | delivery-execution | PC 5 | backoffice(PC 2) | 도움요청 대화 — 답장 권한(접수 건 규칙)·새 메시지 값·관리자 가림·처리 중 = 집을 때 | 결정됨(2026-11-16 "진행해") | **구현·LAN 배포**(2026-11-17 #76, execution 0.8.0 V10) |
 | [RS-5](rider-service.md) | rider | PC 5 | rider_app | 가입 전 번호·계좌 확인, 거주지 주소 서버 확인(serviceability 주소 변환), 계좌 중복 불가, 은행 = 금융결제원 코드 | 결정됨(라이더 앱 요청 §12·§14·§15·§16-1) | **구현·LAN 배포**(2026-11-17 #125, rider 0.7.0 V8) |
 | [DE-3](delivery-execution-service.md) | delivery-execution | PC 5 | rider_app | 전달 불가 등록이 지원센터 대화도 열기, 전달 재개 요청 | 결정됨(라이더 앱 요청 §13) | **구현·LAN 배포**(2026-11-17 #127, execution 0.14.0) |
