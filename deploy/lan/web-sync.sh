@@ -2,6 +2,8 @@
 # LAN 웹 맞추기(2026-11-18, 사용자 결정 "(가)·(다)") — pmart-clients main 과 LAN 에 올라간 웹 앱 4개를 비교한다.
 #   deploy/lan/lan.sh web-sync            뒤처진 앱만 보여 준다(배포 안 함). 종료 코드 0 = 모두 맞음, 3 = 뒤처짐, 1 = 확인 못 함
 #   deploy/lan/lan.sh web-sync --apply    뒤처진 앱만 빌드해 publish-<앱> 으로 올리고, 올라간 version.txt 를 확인한다(배포 잠금 안에서)
+#   deploy/lan/lan.sh web-sync --rebuild <앱>...   커밋이 같아도 그 앱을 다시 빌드·배포(--apply 포함, 2026-11-18)
+#   version.txt: 1줄 clients SHA, 2줄 올린 시각(UTC), 3줄 빌드 설정 지문 `kakao=<키 SHA-256 앞 8자리|none>` — 지문이 다르면 뒤처짐
 #
 # 왜: pmart-clients PR 은 다른 쪽(bae-easy)이 병합하고 LAN 웹 빌드·배포는 PC 1 만 하는데, 병합 뒤 PC 1 에 알리는 단계가 없어
 #   2026-11-17 오후 PR #64~#102 가 실서버에 안 들어간 채 남았다. 무엇이 올라가 있는지도 알 수 없었다.
@@ -17,7 +19,30 @@ LAN=deploy/lan
 CLIENTS="${PMART_CLIENTS_DIR:-../pmart-clients}"
 BUILD="${LAN_WEB_BUILD:-../pmart-clients-lan}"
 APPLY=0
-[ "${1:-}" = --apply ] && APPLY=1
+REBUILD=() # --rebuild <앱>... — 커밋이 같아도 그 앱을 다시 빌드(2026-11-18 PR 세션 제안)
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --apply) APPLY=1 ;;
+    --rebuild)
+      APPLY=1; shift
+      while [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; do REBUILD+=("$1"); shift; done
+      continue ;;
+    *) echo "모르는 인자: $1 (--apply, --rebuild <앱>...)" >&2; exit 1 ;;
+  esac
+  shift
+done
+
+# 카카오 지도 JavaScript 키(2026-11-18 사용자 "기존 웹빌드의 자바스크립트 키랑 같아" — 라이더 백오피스 관제 지도). 빌드 환경에만 넘기고 출력하지 않는다.
+# 파일이 없으면 빈 값 — 앱은 "카카오 지도 키가 없어 표로만" 보인다. 키를 쓰는 도메인은 카카오 콘솔 Web 플랫폼에 등록돼 있어야 SDK 가 받는다.
+KAKAO_JS=""
+[ -f "$LAN/.secrets/kakao-js-key" ] && KAKAO_JS="$(tr -d '\r\n' < "$LAN/.secrets/kakao-js-key")"
+# 빌드 설정 지문(version.txt 셋째 줄): 커밋은 같고 키만 바뀐 빌드도 "뒤처짐"으로 잡는다. 키 원문이 아니라 SHA-256 앞 8자리
+# (카카오 JavaScript 키는 웹 묶음에 실리는 공개 값이지만 그래도 원문은 적지 않는다). 키 없음 = none.
+if [ -n "$KAKAO_JS" ]; then
+  BUILD_FP="kakao=$(printf '%s' "$KAKAO_JS" | sha256sum | cut -c1-8)"
+else
+  BUILD_FP="kakao=none"
+fi
 
 # 앱 → 포트(https). 앱 이름 = web/<앱> = lan.sh publish-<앱> = 컨테이너 <앱>-web
 APPS="backoffice:443 hr-backoffice:8444 mfc-backoffice:8445 rider-backoffice:8446"
@@ -26,9 +51,13 @@ host_of() { # placement.conf 에서 <앱>-web 이 놓인 PC 의 IP
   awk -v svc="$1-web" '/^[^#[:space:]]/ {cur = $2} {for (i = 1; i <= NF; i++) if ($i == svc) {print cur; exit}}' "$LAN/placement.conf"
 }
 
+version_line() { # 올라간 version.txt 의 n 째 줄(없으면 빈 값). 1 = clients SHA, 2 = 올린 시각, 3 = 빌드 설정 지문
+  curl -sk --max-time 10 "https://$(host_of "$1"):$2/version.txt" 2>/dev/null | sed -n "${3}p" | tr -d '\r' || true
+}
+
 deployed_sha() { # 올라간 version.txt 의 SHA(없거나 SHA 모양이 아니면 빈 값)
-  local url="https://$(host_of "$1"):$2/version.txt" body
-  body="$(curl -sk --max-time 10 "$url" 2>/dev/null | head -1 | tr -d '\r' || true)"
+  local body
+  body="$(version_line "$1" "$2" 1)"
   [[ "$body" =~ ^[0-9a-f]{40}$ ]] && echo "$body" || true
 }
 
@@ -56,6 +85,8 @@ for entry in $APPS; do
   if [ "$changed" -gt 0 ]; then
     n="$(git -C "$CLIENTS" rev-list --count "$have..$target" -- "web/$app" web/core web/ui package.json package-lock.json)"
     echo "  뒤처짐 $app — 올라간 ${have:0:8}, 그 뒤 관련 커밋 ${n}개·파일 ${changed}개"; behind+=("$app")
+  elif [ "$(version_line "$app" "$port" 3)" != "$BUILD_FP" ]; then
+    echo "  뒤처짐 $app — 커밋은 같고 빌드 설정(카카오 키 등)이 다름"; behind+=("$app")
   else
     echo "  맞음   $app — ${have:0:8}"
   fi
@@ -66,6 +97,10 @@ if [ "$APPLY" = 0 ]; then
   [ "$unknown" = 1 ] && exit 1
   exit 0
 fi
+for r in "${REBUILD[@]}"; do
+  case " $APPS " in *" $r:"*) ;; *) echo "모르는 앱: $r" >&2; exit 1 ;; esac
+  case " ${behind[*]} " in *" $r "*) ;; *) behind+=("$r"); echo "  다시 빌드 $r — --rebuild" ;; esac
+done
 [ "${#behind[@]}" -eq 0 ] && { echo "올릴 것 없음"; exit 0; }
 
 # 전용 worktree 를 main 으로(이 폴더는 빌드 전용 — 손으로 고치지 않는다)
@@ -96,12 +131,6 @@ gen() { (cd "$BUILD" && npm run gen:api -w "web/$1") > "$gen_log" 2>&1 || { tail
 gen backoffice
 case " ${behind[*]} " in *" rider-backoffice "*) gen rider-backoffice ;; esac
 
-# 카카오 지도 JavaScript 키(2026-11-18 사용자 "기존 웹빌드의 자바스크립트 키랑 같아" — 라이더 백오피스 관제 지도). 빌드 환경에만 넘기고 출력하지 않는다.
-# 파일이 없으면 빈 값 — 앱은 "카카오 지도 키가 없어 표로만" 보인다. 키를 쓰는 도메인은 카카오 콘솔 Web 플랫폼에 등록돼 있어야 SDK 가 받는다.
-KAKAO_JS=""
-[ -f "$LAN/.secrets/kakao-js-key" ] && KAKAO_JS="$(tr -d '
-' < "$LAN/.secrets/kakao-js-key")"
-
 failed=0
 for app in "${behind[@]}"; do
   port=""
@@ -110,7 +139,7 @@ for app in "${behind[@]}"; do
   if ! (cd "$BUILD" && VITE_KAKAO_JS_KEY="$KAKAO_JS" npm run build:lan -w "web/$app" --silent); then
     echo "  빌드 실패: $app — 올리지 않음" >&2; failed=1; continue
   fi
-  printf '%s\n%s\n' "$target" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BUILD/web/$app/dist/version.txt"
+  printf '%s\n%s\n%s\n' "$target" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BUILD_FP" > "$BUILD/web/$app/dist/version.txt"
   bash "$LAN/lan.sh" "publish-$app" "$BUILD/web/$app/dist" | tail -2
   have="$(deployed_sha "$app" "$port")"
   if [ "$have" = "$target" ]; then

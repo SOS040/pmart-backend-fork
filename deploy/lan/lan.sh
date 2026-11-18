@@ -155,7 +155,7 @@ wait_config_server() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   render|deploy|publish-*|rag-ingest|rag-ingest-customer|config-push) lan_lock "$cmd" "$@" ;;
-  web-sync) if [ "${1:-}" = --apply ]; then lan_lock "$cmd" "$@"; fi ;; # 확인만 하면 잡지 않는다
+  web-sync) case "${1:-}" in --apply|--rebuild) lan_lock "$cmd" "$@" ;; esac ;; # 확인만 하면 잡지 않는다
 esac
 case "$cmd" in
   render)
