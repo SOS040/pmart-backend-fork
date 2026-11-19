@@ -3,7 +3,7 @@
 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 관련: PC 5 요청서 `service-requests/claim-service.md` CL-5, MFC 백오피스 배차 지연 목록(`mfc-backoffice-staff-apis.md` MB-배차지연, dispatch `GET /dispatch-delays`)
-- 상태: 백엔드 main 반영, LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다). **쿠폰(2,000원)은 아직 없다** — promotion-service 가 생길 때(사용자 결정 2026-11-19).
+- 상태: **LAN 배포됨 2026-11-19 15:09~15:15(이미지 b0a827eb — claim·order·orchestration PC 2, notification PC 4)**. **쿠폰(2,000원)은 아직 없다** — promotion-service 가 생길 때(사용자 결정 2026-11-19).
 
 ## 호출
 `POST /api/v1/claims`(직원 토큰 — 그 센터 `MFC_SUPERVISOR`, 또는 CS_AGENT·OPERATOR_ADMIN), 헤더 `Idempotency-Key`·`X-Source-System`
