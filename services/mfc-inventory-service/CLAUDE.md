@@ -62,3 +62,5 @@
 - **출하대기 랙(2026-11-19, 계약 0.29.0 — 요청 F-12)**: 작업 실행 `STAGE` — fromLocation 의 NORMAL·PACKED → toLocation(`Locations.requireStaging` — 구역 DISPATCH_STAGING)의 PACKED, 위치만(예약 줄 없음, H·E·R 불변). 인계 전기는 받은 locationCode(이제 랙)에서.
 - **LOT 번호 일괄 조회(2026-11-19, 계약 0.30.0 — ADR-0070)**: `GET /mfcs/{mfcId}/lot-numbers?lotIds=`(`application/LotNumbers` — 그 센터 운영자, 1~200, stock_lot + 상품명, 모르는 ID 빠짐). 품질·입고·이동 응답의 lotId 를 화면이 LOT 번호로.
 - **LOT 을 집품·인계한 주문 줄(2026-11-19, 계약 0.31.0 — 품질 사고 R6)**: `GET /internal/lot-orders?mfcId=&lotIds=`(`application/LotOrders` — reservation_part 의 lot·picked/handed > 0, 그 센터 예약, lotIds 1~50, 1000줄 넘으면 truncated). mfc-quality 가 영향 주문을 센다. 시험 `StockReservationFlowIT.handoverPostsPackedUnitsOutOncePerPackage`.
+
+- **결품 사유 변질(2026-11-19, 계약 0.32.0)**: `/internal/shortage-reports` reason SPOILED = DAMAGED 처럼 격리(실물 있는 이상품), SHORT·BLOCKED 는 분실 조사 보류 그대로(`ShortageService`). 시험 `StockReservationFlowIT.spoiledIsQuarantinedLikeDamaged`.

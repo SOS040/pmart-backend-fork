@@ -37,3 +37,8 @@
 - **역할**: CS_AGENT·OPERATOR_ADMIN(원천 판정 그대로). 원문 열람은 화면이 customer CU-4 ③ 을 직접.
 - **순서**: CU-4·CU-3 → bff·case 고객 거르기 → 웹. 그전에는 화면이 통합 조회(고객 ID → 주문)로 대신.
 - **상태**: 설계(PC 2), 원천 대기.
+
+## BF-MFC-S. 결품률 지표 사유에 변질 SPOILED (2026-11-19, 보낸 영역 mfc — PC 3)
+- mfc-fulfillment 0.22.0 이 결품 사유 **SPOILED(변질)** 를 더했다 — `GET /metrics/picking-lines` 의 `shortLinesByReason.SPOILED`(선택 칸, 없으면 0 으로).
+- 요청: `MetricsView.SHORT_REASONS`(SHORT·DAMAGED·BLOCKED)에 SPOILED 를 더해 대시보드 사유별 결품에 "변질"로. 지금 그대로여도 깨지지는 않는다(합계 shortLines 에는 이미 들어감).
+- **상태**: 요청(PC 2).
