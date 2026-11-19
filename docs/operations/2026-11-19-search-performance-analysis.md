@@ -3,6 +3,7 @@
 - 작성: PC 1 작업 세션, 2026-11-19 (사용자 요청 — 코드 수정·배포 없이 분석만)
 - 대상: `services/search-service`(`ProductSearch`·`SearchIndex`·`CategoryTreeClient`·`SearchController`·`products-v5.json`), 고객 앱 검색 호출(pmart-clients — 읽기만)
 - 측정 환경: LAN, 색인 `products-v5` 상품 503개(489KB, 샤드 1·복제 0), ES 8.18.0(PC 3), search-service·product-service(PC 2), 게이트웨이(PC 4). 측정은 모두 조회만, 토큰 없는 호출(인기 검색어 기록에 섞이지 않음).
+- 다음 계획(5·6·7·11): `docs/operations/2026-11-19-search-next-plan.md`.
 - 구조 안내: `docs/architecture/product-search.md`(§11 이 이 문서를 가리킨다). **상품 상세가 느린 것은 검색과 별개**(설명 이미지 원본 디코딩) — `docs/handoff/clients/customer-app/2026-11-19-request-detail-image-performance.md`.
 - 결론: **지금 규모에서 검색은 빠르다**(서버 안 약 10ms, 사용자가 겪는 30~40ms 는 대부분 네트워크). 실제 문제는 평균 속도가 아니라 **가끔 튀는 지연·장애 번짐·오류 하나**.
 

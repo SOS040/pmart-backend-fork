@@ -17,6 +17,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] **CL-5 쿠폰만 남음**(취소·환불·알림은 2026-11-19 구현 — claim 0.7.0, LAN 배포 전; 쿠폰은 promotion-service 를 만들 때 — 사용자 "추천대로") — 원래 줄: **CL-5 배차 불가 취소 → 전액 환불 + 2,000원 쿠폰**(2026-11-19 PC 5 세션 요청 — 사용자 결정은 PC 5 쪽 "1,2,3 전부"·"쿠폰 2000원"): 요청서 `service-requests/claim-service.md` CL-5(PR #228 안 — 병합 뒤). PC 1 몫: ① claim 직원 전체 취소 사유 `DISPATCH_UNAVAILABLE` — 상품준비 뒤라도 인계 전이면(MFC_SUPERVISOR·CS_AGENT·OPERATOR_ADMIN, 인계 뒤 422) ② promotion 같은 주문 한 번 2,000원 쿠폰(**유효기간·최소 주문금액은 사용자 확인 필요**) ③ notification 취소·환불 알림 문구 + `fcm.customer-templates` 에 `DISPATCH_DELAYED` ④ 게이트웨이 `/api/v1/dispatch-delays`(#228). **PC 1 사용자 지시 기다림.**
 
 - [ ] **상품 검색 개선**(2026-11-19 분석 — `docs/operations/2026-11-19-search-performance-analysis.md`, 사용자 "할일목록에 추가" — 시작은 사용자 지시 뒤). 지금 규모에서 검색은 빠르다(서버 약 10ms) — 고칠 것은 오류·튀는 지연·장애 번짐:
+  - **다음 계획(2026-11-19 밤): `docs/operations/2026-11-19-search-next-plan.md`** — 사용자 선택 5(별점·리뷰 정렬)·6(인기순)·7(동의어·오타), 순서 11(앱 쪽 크기 20, 요청서) → 5+6(products-v6 한 번에) → 7. 시작 전 결정은 그 문서 끝. ④ LAN 배포는 사용자가 나중에.
   - 1순위 ~~① 커서 위치 상한~~(2026-11-19 밤 구현) ~~② 카테고리 캐시 한 번만·미리 갱신~~(**2026-11-19 완료·배포 c2f7ff61** — 사용자 "카테고리 들어갈 때도 느려") ~~③ `ensureIndices` 서비스 시작 때 한 번·상품 색인만(검색 기록 색인 문제로 상품 검색 실패 가능) — 계약 변경 없음 — ③도 2026-11-19 밤 구현(배포는 승인 뒤)~~
   - 2순위 ~~④ ES 호출 지표·응답 시간 히스토그램~~(2026-11-19 밤 구현) ⑤ PC 3 ES·Logstash 메모리 97% — 확인함(OOM 없음·힙 밖 캐시), 한도 2GiB 로 올릴지 사용자 결정
   - 3순위 ⑥ `_source` 칸 제한 ⑦ 앱 첫 쪽 size 50→20(고객 앱 몫) ⑧ track_total_hits·search_after·1글자 조각은 규모 커지면 다시 ⑨ includeNotCarried 쓰지 않는 분기 정리
