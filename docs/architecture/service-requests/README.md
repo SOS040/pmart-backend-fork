@@ -69,6 +69,7 @@
 | [BF-1](backoffice-bff.md) | backoffice-bff | PC 2 | backoffice | 화면 응답(승인함·처리 대기·접수 건함)의 운영자 ID 에 이름·사번 — 원천 hr 0.8.0 `GET /hr/employee-labels` (선택) | 요청(2026-11-19) | 요청 |
 | [CU-1](customer-service.md) | customer | PC 1 | auth | 약관 동의 → `require-consent` 켜기 | 결정됨(2026-11-17 사용자 "추천대로" — 지금 켬, 필수 3·선택 1) | **서버 구현**(2026-11-17 — customer 0.3.0 동의 API·auth 0.2.0 AUTH_CONSENT, 스위치 purchase-gate·require-consent 는 고객앱 반영까지 끔) — **LAN 켬(2026-11-19 사용자 "켜줘", pmart-config a22982d)** |
 | [CU-2](customer-service.md) | customer | PC 1 | delivery(PC 5) | 배송지 저장·수정 때 `geo` 가 없으면 서버가 주소 지오코딩으로 채우기(라이더 핀 정확도) | 요청(2026-11-18 PC 5 #183 — 임시 대체: execution 0.25.1 배차 지오코딩 좌표) | **구현·LAN 배포**(2026-11-18 customer 0.5.0·V8 — 핀 없으면 지오코딩, geoSource, 91ba8918) |
+| [CU-3](customer-service.md) | customer | PC 1 | backoffice(PC 2) | 고객번호 6자리(무작위·유일·불변) + 직원 조회에 가린 이름 · 고객번호, 여러 고객 ID 한 번에 조회, 번호로 찾기(ADR-0070 덧붙임 2026-11-19) | 결정됨(2026-11-19 사용자 "가린 이름 · 고객번호 6자리", #219·#220) | 대기(PC 1) |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | PC 1 | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
 | [MI-1](mfc-inbound-service.md) | mfc-inbound | PC 3 | delivery-execution | 오배송 회수품 MFC 반납 받기(`ReturnDelivered` purpose MISDELIVERY_RECOVERY) — 점원 수령 확인·검수(신선 폐기·상온 미개봉 재고 복구) | ADR-0052 결정 4(검수 규칙), 2026-11-16 그 전까지 MFC 도착 = 반납 | 대기(PC 3) |
@@ -94,6 +95,7 @@
 | [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
 | [CL-3](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 기간 환불 금액 합·건수(대시보드 D2 — 완료 시각 한국 날짜) | 결정됨(2026-11-18 사용자 — 환불은 따로) | **구현·LAN 배포**(2026-11-18, claim 0.5.0 — 이미지 4ab6e04e) |
+| [CL-4](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 화면 표기 — 주문별 순번 `claimSeq`(하위 환불 등도), 주문번호로 찾기(ADR-0070 덧붙임 2026-11-19) | 결정됨(2026-11-19 — ADR-0070 추천안, #219·#220) | 대기(PC 1) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
 | [N-4](notification-service.md) | notification | PC 1 | delivery | 사고·파손 재발송 고객 안내(`DeliveryFailed` reason RIDER_INCIDENT·DAMAGED — 새 상품 재발송) | 결정됨(ADR-0069, 2026-11-18 사용자) | **구현·LAN 배포**(2026-11-19 PC 1 — notification `DeliveryFailed` → `DELIVERY_INCIDENT_RESHIPMENT` 알림함·푸시, e6761338) |
 | [N-5](notification-service.md) | notification(·rider) | PC 1 | delivery(PC 5) | 라이더 공지 보내기 — 전체·센터 라이더 알림함 + 푸시(RIDER_OPS·OPERATOR_ADMIN) | 결정됨(2026-11-18 사용자 "대상 고르기 + 알림함·푸시") | **구현·LAN 배포**(2026-11-18 PC 5 #201 — notification 0.5.0·V5, rider 0.13.0) |
