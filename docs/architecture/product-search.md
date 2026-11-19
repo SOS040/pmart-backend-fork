@@ -1,9 +1,10 @@
 # 상품 검색 — 현재 구현 정리
 
 - 기준: 2026-11-05(LAN 색인 `products-v5` 전환·확인 뒤 — 띄어쓰기·초성·센터 취급·구문/초성 순위). 지금 어떻게 동작하는지 한곳에 모은 안내서이고, 설계 결정 문서는 아니다.
+- 2026-11-19 갱신: 계약 0.2.0(최근 검색어·인기 키워드, 2026-11-17), v3·v4 정리됨, 리뷰·평점 집계 현황, 성능 분석·알려진 문제 링크(§11).
 - 정본(바뀌면 이 문서보다 우선):
   - 결정: ADR-0031(Elastic Stack, 색인은 Logstash 만), ADR-0034(이력 토픽 무제한 보관, 재색인 = Kafka 전체 재생), ADR-0021(DB 없는 소비자의 버전 비교 멱등)
-  - 계약: `contracts/openapi/search-service.yaml`(0.1.1), `contracts/events/ProductVersionPublished.v1.json` 등
+  - 계약: `contracts/openapi/search-service.yaml`(0.2.0), `contracts/events/ProductVersionPublished.v1.json` 등
   - 서비스 규칙: `services/search-service/CLAUDE.md`
   - 재색인 절차: `deploy/lan/elastic/REINDEX.md`
   - 사용자 메모(구현 순서 7단계)와의 대조: `docs/architecture/search-comparison.md`
@@ -99,9 +100,15 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 - 건수가 0 인 옵션은 나오지 않는다(집계 기반).
 
 ### 그 밖
-- `GET /search/suggestions?q=&limit=` 자동완성: 상품 검색과 같은 질의로 찾은 상품명을 중복 없이 관련도 순으로(앞부분 일치 덕분에 "두" → 두부, 초성 "ㅅㅋㄹ" → 생크림…). 전용 suggester·인기 검색어는 없다.
+- `GET /search/suggestions?q=&limit=` 자동완성: 상품 검색과 같은 질의로 찾은 상품명을 중복 없이 관련도 순으로(앞부분 일치 덕분에 "두" → 두부, 초성 "ㅅㅋㄹ" → 생크림…). 전용 suggester 는 없다. 응답의 인기 키워드(popular)는 아래 검색 기록으로(0.2.0).
 - `GET /internal/index-status` 색인 신선도: 원천 사건별 마지막 반영 시각·지연(사람이 조회 — 이 API 는 경보와 연결되지 않고, 경보는 watch.sh 지표로 한다 §8). 센터 취급(`sku-handlings`) 원천은 아직 넣지 않았다.
-- 최근 검색어·`/internal/reindex-requests` 는 **501**(재색인은 절차로 한다, §7).
+- **최근 검색어·인기 키워드(0.2.0, 2026-11-17 사용자 결정 — Commerce §6.7·6.9)**: search-service 가 쓰는 유일한 색인 두 개.
+  - 검색자는 `HMAC-SHA256(pmart.search.searcher-hash-key, 사용자 종류:주체 ID)` 해시만 남긴다(고객 ID 원문 없음). 키가 없으면 기록하지 않고 최근 검색어 조회는 CONFIG_REQUIRED.
+  - 최근 검색어 `GET·DELETE /me/recent-searches`: 고객 토큰만(고객 검색 때 자동 기록). 색인 `search-recent`(→ `search-recent-v1`), 같은 검색어는 덮어써 맨 위로, `max-items`·`retention` 안에서.
+  - 인기 키워드: 고객·비회원 검색을 `search-log`(→ `search-log-v1`, 검색 하나당 문서)에 남기고 `window` 안 결과 있는 검색을 검색어별로 세어 서로 다른 검색자 `min-searchers` 명 이상만, 숨김 목록 제외. 기록은 비동기(검색 응답을 기다리게 하지 않음).
+  - 설정 pmart-config `search-service.yml` `pmart.search.recent.*`·`pmart.search.popular.*`(없으면 기록하지 않음 — 기본값으로 대신하지 않는다). 매일 04:17 `SearchHousekeeping` 이 오래된 문서를 지운다.
+  - 자세한 규칙: `services/search-service/CLAUDE.md`.
+- `/internal/reindex-requests` 는 **501**(재색인은 절차로 한다, §7).
 
 ## 6. 필터 데이터의 흐름
 1. product-service: 카테고리 필터 패널(`filter_group`·`filter_option`·`category_filter`)과 상품별 옵션(`product_filter_option`). 상품 등록·변경 초안의 `filterOptions` 로 넣고 PRODUCT 승인으로 반영된다.
@@ -125,7 +132,7 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 - 실행 기록:
   - 2026-11-04 v2 → v3(사건 1162건 약 15초, 전 문서 대조, 같은 날 v2 삭제)
   - 2026-11-05 v3 → v4(reindex.sh 첫 실행, 사건 1440건 약 40초, 전 문서 대조 차이 없음)
-  - 2026-11-05 v4 → v5(초성 앞부분 필드, 같은 절차로 멈춤 없이). v3·v4 는 삭제 확인 대기
+  - 2026-11-05 v4 → v5(초성 앞부분 필드, 같은 절차로 멈춤 없이). v3·v4 는 이제 없다 — 2026-11-19 검색 ES(pc3) 색인 목록은 `products-v5`·`sku-prices-v1`·`sku-handlings-v1`·`search-recent-v1`·`search-log-v1` 뿐(ADR-0038 검색 ES 분리 때 v5 만 옮겨진 것으로 보임)
 
 ## 8. 감시
 | 대상 | 있는 것 | 없는 것 |
@@ -155,7 +162,16 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 |---|---|
 | 브랜드 필터 | 상품 모델·계약·업무 원문에 브랜드가 없다. product-service 모델·PVP·일괄 등록 양식·백오피스 화면부터(정책 결정 필요) |
 | 동의어·오타 교정 | 오타 교정은 자모 분리 필드(새 색인) + "결과가 적을 때만 교정하고 알림"(계약·화면 결정). 동의어 사전을 누가 관리할지 결정 필요 |
-| 랭킹(인기·별점·전환율·광고) | 판매량 집계 없음(OrderConfirmed 구독으로 가능), 리뷰 서비스는 2단계, 노출·클릭 로그 없음, 광고 도메인 없음. 집계 기간·가중치는 승인 설정(Commerce 원문 1051·1082행) |
+| 랭킹(인기·별점·전환율·광고) | 판매량 집계 없음(OrderConfirmed 구독으로 가능), 리뷰는 있음(review-service, 평점 집계 product-content `GET /product-contents/{id}/rating-summary` 0.2.1 — 2026-11-19) 하지만 검색 색인·순위에는 아직 별점·리뷰 수가 없다(색인하려면 새 색인 `-v6`), 노출·클릭 로그 없음, 광고 도메인 없음. 집계 기간·가중치는 승인 설정(Commerce 원문 1051·1082행) |
 | 여러 SKU 상품의 취급 판정 | 지금은 대표 SKU 기준. 상품 하나에 SKU 가 여러 개 생기면 "하나라도 취급"으로 바꿀지 결정(`sku-handlings` 는 SKU 별이라 그대로 쓸 수 있다). cdc-inventory 취급도 사건이 없다 |
 | SKU 옵션 검색 | 색인에 대표 SKU 하나뿐. SKU 목록(nested)·바코드·규격 색인 필요 |
 | 부하 시험·검색 품질 평가 | 도구(k6 등)·정답 검색어 세트(_rank_eval) — 새 도구 도입이라 결정 필요 |
+
+## 11. 성능·알려진 문제 (2026-11-19)
+- 분석: `docs/operations/2026-11-19-search-performance-analysis.md` — 지금 규모(상품 약 500개)에서 서버 안 약 10ms, 사용자가 겪는 30~40ms 는 대부분 네트워크.
+- 알려진 문제(1순위로 고칠 것, `docs/operations/pc1-todo.md` "상품 검색 개선"):
+  - 깊은 커서(`o:20000` 등 ES 1만 건 창 밖) → **500**. 커서 위치 상한이 없다.
+  - 카테고리 경로 캐시(5분)가 만료되면 검색 요청 안에서 동기로 다시 읽음(+약 30ms), 동시 만료 때 여러 번, 사본 없을 때 실패는 캐시하지 않아 결과마다 다시 호출. 필터 API 첫 호출 283ms(최상위 패널 17개를 차례로).
+  - `ensureIndices()` 가 요청 경로에 있어 첫 검색에 ES 확인 10번, 검색과 무관한 색인 하나가 문제여도 상품 검색 실패.
+- 관측 빈틈: ES 호출 지표·응답 시간 히스토그램 없음(운영 p95 불가). PC 3 ES·Logstash 컨테이너 메모리 한도 97%.
+- "상품 상세가 느리다"는 검색과 별개다(설명 이미지 원본 디코딩) — `docs/handoff/clients/customer-app/2026-11-19-request-detail-image-performance.md`.
