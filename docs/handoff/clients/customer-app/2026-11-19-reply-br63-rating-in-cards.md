@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: `pmart-clients docs/handoff/customer-app/2026-11-19-backend-rating-null-in-cards.md`
-- 상태: 백엔드 main 반영, LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다)
+- 상태: **LAN 배포됨 2026-11-19 18:4x(이미지 4350022c — product-content 0.3.0·storefront 0.4.0·V6, pmart-config 8469c30)**. 확인: 햇양파 상세·카드·홈 진열 모두 480개·4.1
 
 ## 원인
 - 리뷰 시드 문제가 아니었다 — 리뷰 사건은 정상으로 흘러 평점 집계(rating-summary)는 480개였다.
