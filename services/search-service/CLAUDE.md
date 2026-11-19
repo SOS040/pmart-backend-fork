@@ -27,6 +27,7 @@
 - 초성(2026-11-05): 검색어가 한글 자음만 2자 이상이면(`SearchRules.isChosungQuery`) `nameChosung`(Logstash 가 이름에서 계산, 공백 제거 n-gram)만 찾는다. 1자·섞인 검색어("ㄷ부")는 일반 검색. 순위: 낱말 앞부분 초성이 맞으면 가산(`nameChosung.edge`, products-v5 — "ㄷㅂ" → 두부가 "단백"보다 위). 자동완성도 같은 조건.
 - 검색 대상: 이름·상품 버전이 모두 있고 판매중지가 아닌 상품.
 - categoryPath: 대표 카테고리의 이름 경로 — product-service 공개 트리(`pmart.search.product-base-url`)를 5분 사본으로 둔다. 조회 실패면 이전 사본, 없으면 빈 목록(검색은 실패하지 않음). (2026-11-02)
+- 카테고리·필터 패널 사본(2026-11-19, 성능 분석 1순위 ② — 사용자 "카테고리 들어갈 때도 느려"): 검색 요청은 다시 읽기를 기다리지 않는다 — 만료된 사본을 그대로 쓰고 뒤에서 한 번만 다시 읽음(`CategoryTreeClient.once`, 가상 스레드). 처음(사본이 아예 없을 때)만 기다리고 동시 요청은 같은 읽기 하나를 기다린다. 사본 없이 실패하면 빈 사본을 30초(결과마다 다시 부르지 않음). 없는 필터 패널은 병렬로. 시험 `CategoryTreeClientTest`.
 - carried(2026-11-05, 사용자 결정): 색인 `carriedMfcIds` = 대표 SKU 를 켠 센터 목록. 원천은 mfc-inventory `SkuHandlingChanged`(`mfc.sku-handling.v1`) → Logstash 가 SKU 취급 색인 `sku-handlings`(센터별 버전 비교) → 그 SKU 를 대표로 둔 상품에 복사(상품 사건이 먼저 와도 SKU 취급 문서를 찾아 붙임 — 가격과 같은 방식). mfcId 를 주면 carried = 목록에 있는지(취급 레코드 없음 = false), includeNotCarried=false(기본)면 ES 필터로 거른다 → 페이지 크기·total 정확. 실시간 가용 조회·"더 읽어 채우기"(BR-47)는 없앴다. 품절은 색인하지 않는다(화면 표시 때 실시간). 여러 SKU 상품이 생기면 판정 기준(대표 SKU vs 하나라도)을 다시 정한다 — `sku-handlings` 는 SKU 별이라 그대로 쓸 수 있다.
 - 승인 속성 필터(2026-11-04): PVP `filterOptions` → 색인 `filters`("그룹.옵션"), 검색 `filters` 같은 그룹 OR·그룹끼리 AND, `appliedFilters` 는 실제 적용 값. `/search/filters` = 색인 집계 건수 + product-service 필터 패널 이름·선택 방식·옵션 순서(패널은 상속이 없어 그 카테고리와 조상을 가까운 것부터 합침, categoryId 없으면 최상위 노드들 — 5분 사본).
 - 최근 검색어·인기 키워드(2026-11-17 사용자 결정, Commerce §6.7·6.9):
