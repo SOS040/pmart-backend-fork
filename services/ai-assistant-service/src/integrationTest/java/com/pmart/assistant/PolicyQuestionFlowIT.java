@@ -62,11 +62,11 @@ class PolicyQuestionFlowIT extends AssistantITBase {
         .isTrue(); // 임시 저장소는 git 아님 → 재현 보장 없음
     assertThat(first.path("excerpt").asString()).contains("전체 취소 시 봉투값을 전액 환불한다.");
     assertThat(r.text("answer")).contains("[확정]").contains("봉투값은 주문당 100원 1회다.");
-    // 질문 원문은 기본 저장하지 않는다
+    // 질문 원문 저장(store-question=true — 2026-11-19 사용자 "응 해줘", 운영자 본인 질문 목록용)
     assertThat(
             jdbc.queryForObject(
                 "SELECT count(*) FROM policy_answer WHERE question IS NOT NULL", Integer.class))
-        .isZero();
+        .isPositive();
   }
 
   @Test
@@ -410,7 +410,8 @@ class PolicyQuestionFlowIT extends AssistantITBase {
         .isEqualTo(c.text("answerId"));
     assertThat(first.body().path("items").get(1).path("state").asString())
         .isEqualTo("REALTIME_DATA_REQUIRED");
-    assertThat(first.body().path("items").get(0).path("question").isNull()).isTrue(); // 원문 미저장(기본)
+    // 질문 원문 저장(설정 store-question=true — 2026-11-19 사용자 "응 해줘", 백오피스 질문 목록)
+    assertThat(first.body().path("items").get(0).path("question").asString()).isNotBlank();
     assertThat(first.body().path("items").get(0).path("answerPreview").asString()).isNotBlank();
     String cursor = first.body().path("page").path("nextCursor").asString();
     Http second = history(operator("op-h"), "backoffice-web", "?size=2&cursor=" + cursor);
