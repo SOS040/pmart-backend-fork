@@ -99,7 +99,10 @@ public class ImageVariants {
 
   private byte @Nullable [] shrink(byte[] original, int width) {
     try {
-      gate.acquire();
+      // 줄이 길면 기다리지 않고 원본을 준다(2026-11-20 리뷰 지적 5 — 사진은 게이트웨이 처리율 제한 밖이라 요청 스레드가 쌓이지 않게)
+      if (!gate.tryAcquire(5, java.util.concurrent.TimeUnit.SECONDS)) {
+        return null;
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return null;

@@ -632,6 +632,42 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
     }
     assertThat(sig).isNotNull();
     assertThat(sig.path("salesWindow").asInt()).as("3 + (2 − 1)").isEqualTo(4);
+
+    // 반품 2개(주문 버전 2, returnedQty 있음) 뒤 인계 사건(버전 3, returnedQty 없음 — order 는 반품 사건에만 싣는다): 반품은
+    // 그대로(리뷰 지적 3)
+    Map<String, Object> ret = new java.util.LinkedHashMap<>();
+    ret.putAll(Map.of("orderId", "ORD-K1", "orderLineId", "ORD-K1-L1", "sku", "E-K1"));
+    ret.putAll(Map.of("originalQty", 3, "unfulfilledQty", 0, "handedOverQty", 3));
+    ret.putAll(Map.of("cancelledBeforeShipQty", 0, "returnedQty", 2, "reason", "RETURN"));
+    ret.putAll(Map.of("version", 2, "changedAt", "2026-11-19T11:00:00Z"));
+    order("OrderLineQuantityChanged", "ORD-K1", 2, ret);
+    Map<String, Object> handover = new java.util.LinkedHashMap<>(ret);
+    handover.remove("returnedQty");
+    handover.put("reason", "HANDOVER");
+    handover.put("version", 3);
+    handover.put("changedAt", "2026-11-19T12:00:00Z");
+    order("OrderLineQuantityChanged", "ORD-K1", 3, handover);
+    Map<String, Object> line = Map.of();
+    for (int i = 0; i < 100; i++) {
+      line =
+          jdbc.queryForMap(
+              "SELECT version, qty, returned_qty FROM sku_sales_line WHERE order_line_id = 'ORD-K1-L1'");
+      if (((Number) line.get("version")).intValue() == 3) {
+        break;
+      }
+      Thread.sleep(300);
+    }
+    assertThat(((Number) line.get("version")).intValue()).isEqualTo(3);
+    assertThat(((Number) line.get("returned_qty")).intValue()).isEqualTo(2);
+    assertThat(((Number) line.get("qty")).intValue()).as("3 − 0 − 2, 인계 사건에 반품이 없어도").isEqualTo(1);
+    for (int i = 0; i < 100; i++) {
+      sig = lastSignal("PRD-K1");
+      if (sig != null && sig.path("salesWindow").asInt() == 2) {
+        break;
+      }
+      Thread.sleep(300);
+    }
+    assertThat(sig.path("salesWindow").asInt()).as("1 + 1").isEqualTo(2);
     assertThat(sig.path("salesWindowDays").asInt()).isEqualTo(30);
     assertThat(sig.path("ratingCount").asInt()).isZero();
     assertThat(sig.path("ratingScore").isNull()).as("리뷰 없으면 점수 없음").isTrue();
@@ -649,7 +685,7 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
     assertThat(sig.path("ratingAverage").asDouble()).isEqualTo(4.5);
     // 베이지안 (5 × 4.0 + 9) ÷ (5 + 2) = 4.1429
     assertThat(sig.path("ratingScore").asDouble()).isEqualTo(4.1429);
-    assertThat(sig.path("salesWindow").asInt()).isEqualTo(4);
+    assertThat(sig.path("salesWindow").asInt()).isEqualTo(2);
     int version = sig.path("version").asInt();
     // 같은 값이면 다시 내지 않는다
     review("ReviewPublished", "RV-K2", "PRD-K1", 4, 1);

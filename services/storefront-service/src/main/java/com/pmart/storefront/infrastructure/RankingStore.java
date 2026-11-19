@@ -53,19 +53,40 @@ public class RankingStore {
   }
 
   /** 줄 수량 변경(누적 값) — 더 큰 주문 버전만. 줄이 아직 없으면 확정 시각 없이 만든다(확정 사건이 오면 채움). */
+  /**
+   * 줄 수량 변경(주문 버전이 큰 것만). 순 수량 = 원수량 − 출고 전 취소 − 반품. returnedQty 는 반품 사건에만 실려 오므로(order) 없으면 마지막으로
+   * 받은 반품 수를 쓴다(2026-11-20 리뷰 지적 3).
+   */
   public void changedLine(
-      String orderLineId, String orderId, String sku, int qty, int version, Instant now) {
+      String orderLineId,
+      String orderId,
+      String sku,
+      int originalQty,
+      int cancelledBeforeShipQty,
+      @Nullable Integer returnedQty,
+      int version,
+      Instant now) {
     jdbc.update(
-        "INSERT INTO sku_sales_line (order_line_id, order_id, sku, confirmed_at, qty, version, updated_at)"
-            + " VALUES (?,?,?,NULL,?,?,?) ON CONFLICT (order_line_id) DO UPDATE SET"
-            + " qty = EXCLUDED.qty, version = EXCLUDED.version, updated_at = EXCLUDED.updated_at"
+        "INSERT INTO sku_sales_line (order_line_id, order_id, sku, confirmed_at, qty, version, updated_at, returned_qty)"
+            + " VALUES (?,?,?,NULL, GREATEST(0, ? - ? - COALESCE(?::int, 0)), ?, ?, COALESCE(?::int, 0))"
+            + " ON CONFLICT (order_line_id) DO UPDATE SET"
+            + " returned_qty = COALESCE(?::int, sku_sales_line.returned_qty),"
+            + " qty = GREATEST(0, ? - ? - COALESCE(?::int, sku_sales_line.returned_qty)),"
+            + " version = EXCLUDED.version, updated_at = EXCLUDED.updated_at"
             + " WHERE sku_sales_line.version < EXCLUDED.version",
         orderLineId,
         orderId,
         sku,
-        qty,
+        originalQty,
+        cancelledBeforeShipQty,
+        returnedQty,
         version,
-        Timestamp.from(now));
+        Timestamp.from(now),
+        returnedQty,
+        returnedQty,
+        originalQty,
+        cancelledBeforeShipQty,
+        returnedQty);
   }
 
   public long sales(String sku, Instant since) {

@@ -8,6 +8,7 @@ import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.review.domain.ReviewRules;
+import com.pmart.review.infrastructure.JpegResizer;
 import com.pmart.review.infrastructure.ReviewStore;
 import com.pmart.review.infrastructure.ReviewStore.EligibilityRow;
 import com.pmart.review.infrastructure.ReviewStore.EligibilityView;
@@ -421,6 +422,16 @@ public class ReviewService {
                   "PHOTO_INVALID", HttpStatus.UNPROCESSABLE_CONTENT, m, false, List.of());
             });
     String type = ReviewRules.photoType(bytes).orElseThrow();
+    int[] size = JpegResizer.dimensions(bytes); // WEBP 등 JDK 가 못 읽는 형식은 null — 서버가 풀지도 않는다
+    if (size != null && (long) size[0] * size[1] > JpegResizer.MAX_PIXELS) {
+      // 2026-11-20 리뷰 지적 1: 작은 파일로 거대한 그림(압축 폭탄)을 올려 서비스를 메모리 부족으로 죽이지 못하게
+      throw new PmartException(
+          "PHOTO_INVALID",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "사진 해상도가 너무 큽니다(4천만 화소 이하).",
+          false,
+          List.of());
+    }
     String sha = sha256(bytes);
     String photoId =
         idempotency

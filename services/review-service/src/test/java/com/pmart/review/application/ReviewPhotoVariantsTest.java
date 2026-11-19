@@ -108,4 +108,35 @@ class ReviewPhotoVariantsTest {
         .isInstanceOf(PmartException.class)
         .hasMessageContaining("240");
   }
+
+  /** 머리말만 있는 거대한 PNG(20000×20000) — 다 풀면 1.6GB. 풀지 않고 원본(null), 미리 만들기 0. */
+  static byte[] pngBomb(int w, int h) throws Exception {
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    out.write(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10});
+    java.nio.ByteBuffer ihdr = java.nio.ByteBuffer.allocate(17);
+    ihdr.put("IHDR".getBytes())
+        .putInt(w)
+        .putInt(h)
+        .put((byte) 8)
+        .put((byte) 2)
+        .put((byte) 0)
+        .put((byte) 0)
+        .put((byte) 0);
+    out.write(java.nio.ByteBuffer.allocate(4).putInt(13).array());
+    out.write(ihdr.array());
+    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+    crc.update(ihdr.array());
+    out.write(java.nio.ByteBuffer.allocate(4).putInt((int) crc.getValue()).array());
+    return out.toByteArray();
+  }
+
+  @Test
+  void refusesDecompressionBomb() throws Exception {
+    byte[] bomb = pngBomb(20000, 20000);
+    assertThat(JpegResizer.dimensions(bomb)).containsExactly(20000, 20000);
+    objects.put("review-photos/CU-1/RPH-1", bomb);
+    assertThat(variants.variant(row("image/png"), 240)).isNull();
+    assertThat(variants.prepare(row("image/png"))).isZero();
+    assertThat(new JpegResizer().shrink(bomb, 240)).isNull();
+  }
 }

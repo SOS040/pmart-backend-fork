@@ -51,13 +51,29 @@ public class CorrectedSearch {
     String query = SearchRules.normalizeQuery(q);
     SearchProperties.Correction cfg = props.correction();
     if (noCorrection
-        || cursor != null
         || query == null
         || SearchRules.isChosungQuery(query)
         || cfg == null
         || !cfg.complete()
         || r.total() > cfg.fewResults()) {
       return new Outcome(r, r.total(), null, null);
+    }
+    if (cursor != null) {
+      // 다음 쪽(2026-11-20 리뷰 지적 2): 원래 검색어가 0건이면 첫 쪽은 고친 검색어 결과였다 — 같은 원래 검색어 + 커서로 오면 고친 검색어로
+      // 이어 준다(전에는 커서가 있으면 교정을 건너뛰어 빈 쪽). 결과가 적어 제안만 한 경우는 원래 검색어 결과라 그대로
+      if (r.total() > 0) {
+        return new Outcome(r, r.total(), null, null);
+      }
+      Optional<String> next = correct(query);
+      if (next.isEmpty()) {
+        return new Outcome(r, 0, null, null);
+      }
+      ProductSearch.Result page =
+          search.search(
+              next.get(), categoryId, mfcId, includeNotCarried, price, filters, sort, size, cursor);
+      return page.total() > 0
+          ? new Outcome(page, 0, next.get(), null)
+          : new Outcome(r, 0, null, null);
     }
     Optional<String> fixed = correct(query);
     if (fixed.isEmpty()) {

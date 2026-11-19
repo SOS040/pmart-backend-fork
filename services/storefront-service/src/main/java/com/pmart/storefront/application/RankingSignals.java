@@ -73,13 +73,15 @@ public class RankingSignals {
       if (sku.isBlank() || lineId.isBlank()) {
         return;
       }
-      int qty =
-          RankingRules.netQty(
-              p.path("originalQty").asInt(0),
-              p.path("cancelledBeforeShipQty").asInt(0),
-              p.path("returnedQty").asInt(0));
       store.changedLine(
-          lineId, orderId, sku, qty, p.path("version").asInt((int) e.aggregateVersion()), now);
+          lineId,
+          orderId,
+          sku,
+          p.path("originalQty").asInt(0),
+          p.path("cancelledBeforeShipQty").asInt(0),
+          p.hasNonNull("returnedQty") ? p.get("returnedQty").asInt() : null, // 반품 사건에만 있다
+          p.path("version").asInt((int) e.aggregateVersion()),
+          now);
       store.productsBySku(sku).forEach(this::recompute);
     }
   }

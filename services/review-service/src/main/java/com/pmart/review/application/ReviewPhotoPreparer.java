@@ -59,7 +59,7 @@ public class ReviewPhotoPreparer implements DisposableBean {
   private void runSafely() {
     try {
       runOnce();
-    } catch (RuntimeException e) {
+    } catch (Throwable e) { // Error 도 — 주기 작업은 예외로 끝나면 다시 돌지 않는다(2026-11-20 리뷰 지적 1)
       log.warn("리뷰 사진 축소본 만들기 멈춤 — 다음에 다시: {}", e.toString());
     }
   }

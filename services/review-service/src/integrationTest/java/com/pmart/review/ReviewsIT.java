@@ -172,6 +172,21 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
         .exchange((req, res) -> read(res.getStatusCode().value(), res.getBody().readAllBytes()));
   }
 
+  /** 머리말만 있는 20000×20000 PNG(몇십 바이트, 다 풀면 1.6GB). */
+  static byte[] pngBomb() {
+    java.nio.ByteBuffer ihdr = java.nio.ByteBuffer.allocate(17);
+    ihdr.put("IHDR".getBytes()).putInt(20000).putInt(20000).put((byte) 8).put((byte) 2);
+    ihdr.put((byte) 0).put((byte) 0).put((byte) 0);
+    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+    crc.update(ihdr.array());
+    return java.nio.ByteBuffer.allocate(8 + 4 + 17 + 4)
+        .put(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10})
+        .putInt(13)
+        .put(ihdr.array())
+        .putInt((int) crc.getValue())
+        .array();
+  }
+
   /** order 내부 주문(품목 두 개). returned = 첫 품목 반품 수량. */
   void stubOrder(String orderId, String account, String productId, int returned) {
     order.stubFor(
@@ -253,6 +268,10 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
 
     // 사진: 형식이 틀리면 422, 맞으면 201
     assertThat(upload(token, "GIF89a".getBytes()).status()).isEqualTo(422);
+    // 0.4.1: 화소 수 상한(작은 파일로 거대한 그림) — 422
+    Res bomb = upload(token, pngBomb());
+    assertThat(bomb.status()).isEqualTo(422);
+    assertThat(bomb.body().path("code").asString()).isEqualTo("PHOTO_INVALID");
     Res photo = upload(token, JPEG);
     assertThat(photo.status()).isEqualTo(201);
     String photoId = photo.body().path("photoId").asString();

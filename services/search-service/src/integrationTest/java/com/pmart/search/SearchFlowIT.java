@@ -842,6 +842,13 @@ class SearchFlowIT {
     assertThat(fixed.path("correctedQuery").asString()).isEqualTo("순두부");
     assertThat(fixed.path("query").asString()).isEqualTo("순두뷰");
     assertThat(ids(fixed)).contains("PRD-Y2", "PRD-Y3");
+    // 다음 쪽(리뷰 지적 2): 같은 원래 검색어 + 커서로 오면 고친 검색어 결과를 이어 준다
+    JsonNode firstPage = search("?q=순두뷰&size=1");
+    assertThat(firstPage.path("correctedQuery").asString()).isEqualTo("순두부");
+    String next = firstPage.path("page").path("nextCursor").asString();
+    JsonNode secondPage = search("?q=순두뷰&size=1&cursor=" + next);
+    assertThat(secondPage.path("correctedQuery").asString()).isEqualTo("순두부");
+    assertThat(ids(secondPage)).hasSize(1).doesNotContainAnyElementsOf(ids(firstPage));
     JsonNode raw = search("?q=순두뷰&noCorrection=true");
     assertThat(raw.path("total").asInt()).isZero();
     assertThat(raw.path("correctedQuery").isNull() || raw.path("correctedQuery").isMissingNode())
