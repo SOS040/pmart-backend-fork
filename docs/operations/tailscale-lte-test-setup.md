@@ -29,16 +29,16 @@
 - **Machines** → PC 1 줄 `…` → **Disable key expiry** → 줄에 "Expiry disabled".
 - 켜 두면 몇 달 뒤 PC 1 인증이 만료돼 연결이 갑자기 끊긴다. 휴대폰은 만료돼도 앱에서 다시 로그인하면 되므로 그대로 둬도 된다.
 
-### 2-3. 정책(Access controls) — 게이트웨이 HTTPS 하나만
+### 2-3. 정책(Access controls) — 게이트웨이 두 포트(HTTP 8080·HTTPS 8443)만
 **Access controls** → 정책 파일을 아래로 바꾸고 Save:
 ```json
 {
-  // LAN 게이트웨이(PC 4) HTTPS 하나만 — 휴대폰 LTE 시험용(2026-11-18 계획 "ACL 8443 만")
+  // LAN 게이트웨이(PC 4) 두 포트만 — 휴대폰 LTE 시험용. 앱 LAN 실행 설정은 HTTP 8080, 웹·일부 빌드는 HTTPS 8443
   "grants": [
     {
       "src": ["autogroup:member"],
       "dst": ["192.168.0.40/32"],
-      "ip":  ["tcp:8443"]
+      "ip":  ["tcp:8080", "tcp:8443"]
     }
   ],
   // (선택) PC 1 이 이 경로를 광고하면 관리 화면 승인 없이 바로 쓰게
@@ -49,7 +49,8 @@
   }
 }
 ```
-- 앱 LAN 빌드는 `https://192.168.0.40:8443`(게이트웨이 HTTPS, `pmart_core` `lan_trust.dart`). HTTP 빌드(`http://192.168.0.40:8080`)를 쓰면 `"ip": ["tcp:8443", "tcp:8080"]`.
+- **고객 앱 LAN 실행 설정(Android Studio `customer-lan`)은 `http://192.168.0.40:8080`** — 8443 만 열면 "서버에 연결할 수 없다"가 난다(2026-11-19 처음 안내가 틀려 실제로 남). HTTPS 빌드(`https://192.168.0.40:8443`, `lan_trust.dart`)도 있어 두 포트를 다 연다.
+- Tailscale 이 켜진 휴대폰은 **와이파이에 있어도** `192.168.0.40` 요청이 PC 1 을 거친다 — 정책·PC 1 이 막으면 와이파이에서도 안 된다. 급하면 휴대폰 Tailscale 을 끄면 와이파이로 바로 간다.
 - 이 정책을 저장하면 기본 "전부 허용"이 없어진다 — 휴대폰에서 PC 1 의 다른 포트·다른 기기는 못 간다(시험 용도로 맞음).
 - `autoApprovers` 가 필요 없으면 그 블록을 지운다.
 
