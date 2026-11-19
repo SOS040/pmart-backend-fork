@@ -54,3 +54,4 @@ Spring Cloud Gateway Server WebFlux + Reactor Netty (convention plugin `pmart.sp
 
 ## 상태
 3단계 스캐폴딩(2026-10-23), 처리율 제한 적용(2026-10-23), Eureka `lb://`(LAN, 2026-11-03), 오류 응답 traceId 수정(2026-11-03). 통합 테스트 `RateLimitIT`(Redis 컨테이너)·`TraceIdIT`(실제 Netty)·`SubjectBlocklistIT`(Redis·Kafka). 주체 차단(2026-11-11, LAN 미배포).
+- **추적 http.uri 에 조회 조건 빼기(2026-11-19 — 고객 앱 질문 "좌표가 URL 에 담겨 서버 기록에 남는다")**: `observability/TraceUriWithoutQuery`(GatewayObservationConvention 빈 — DefaultGatewayObservationConvention 에서 `http.uri` 만 스킴·호스트·경로까지). 전에는 URI 전체라 `/address-reverse-geocodes?lat=&lng=` 좌표·주문 찾기 전화번호가 Zipkin 에 남았다. LAN 확인: 새 좌표 추적 0건. 시험 `TraceUriWithoutQueryTest`.
