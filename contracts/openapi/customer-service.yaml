@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-19, 사용자 "옥토모로" — 휴대폰 번호 확인): `POST /me/phone-verifications`(시작 — 프로필 휴대폰 번호로 인증 문자 본문 발급)·
+    `POST /me/phone-verifications/{verificationId}/confirmations`(확인 — 고객이 대표번호로 그 문자를 보냈는지 OCTOMO 로 조회, 맞으면 `phoneVerified=true`)·
+    `GET /me/phone-verifications/{verificationId}`. 고객이 문자를 보내는 방식(MO)이라 우리가 문자를 보내지 않는다. 010 11자리만. 번호 소유만 확인 — 이름·나이 확인 아님(주류 성인 확인에 쓰지 않음).
     0.8.0(2026-11-19, 클라이언트 BR-60 — 사용자 "응 해줘"): 주소 입력의 `receiverName`·`receiverPhone` 을 **선택**으로(회원 주소록·비회원 배송지 —
     레퍼런스 주소 화면에 받는 분·연락처 칸이 없다). PATCH 에서 빠뜨리면 저장된 값을 그대로 둔다. 응답 `Address` 의 두 값은 없을 수 있다(null).
     주문 초안용 내부 쇼핑 컨텍스트는 주소에 값이 없으면 **프로필로 채운다** — 받는 분 = 별명 → 로그인 제공자 이름, 연락처 = 프로필 `phone`(0.7.0).
@@ -39,6 +42,7 @@ tags:
   - { name: addresses, description: 주소록·현재 쇼핑 주소·비회원 배송지 }
   - { name: preferences, description: '주문 기본 설정(0.4.0 — 앱 주문서 기본값)' }
   - { name: withdrawals, description: 탈퇴 접수·철회·완료 }
+  - { name: phone-verifications, description: '휴대폰 번호 확인(0.9.0 — OCTOMO, 고객이 대표번호로 문자 보냄)' }
   - { name: internal, description: 서비스 간 조회(서비스 토큰) }
 
 paths:
@@ -129,6 +133,80 @@ paths:
             application/json:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/phone-verifications:
+    post:
+      tags: [phone-verifications]
+      summary: 휴대폰 번호 확인 시작 — 보낼 문자 본문 발급 (0.9.0)
+      description: |
+        프로필에 저장된 휴대폰 번호(`/me/profile-changes` phone)를 확인한다. 응답의 `text` 를 `sendTo`(OCTOMO 대표번호)로 고객이 직접 문자로 보낸 뒤
+        `…/confirmations` 를 부른다(앱은 문자 앱을 받는 번호·본문을 채워 연다). `expiresAt` 이 지나면 다시 시작. 새로 시작하면 이전 대기 중인 확인은 끝난다(EXPIRED).
+        - 400 `PHONE_REQUIRED`(번호 없음)·`PHONE_NOT_SUPPORTED`(010 11자리만), 409 INVALID_STATE(이미 확인됨·탈퇴 신청 이후), 429 `TOO_MANY_VERIFICATIONS`(하루 시작 횟수 초과),
+          422 CONFIG_REQUIRED(서버 설정 없음). 같은 Idempotency-Key 재시도는 같은 결과(같은 본문).
+      operationId: startPhoneVerification
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '201':
+          description: 시작됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhoneVerificationStart' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: CONFIG_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '429':
+          description: TOO_MANY_VERIFICATIONS
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /me/phone-verifications/{verificationId}:
+    get:
+      tags: [phone-verifications]
+      summary: 휴대폰 번호 확인 상태 (0.9.0)
+      operationId: getPhoneVerification
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: verificationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhoneVerification' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/phone-verifications/{verificationId}/confirmations:
+    post:
+      tags: [phone-verifications]
+      summary: 휴대폰 번호 확인 — 고객이 문자를 보냈는지 조회 (0.9.0)
+      description: |
+        고객이 "보냈어요"를 눌렀을 때만 부른다(앱이 자동으로 되풀이해 부르지 않는다 — 조회마다 OCTOMO 월 한도가 줄어든다).
+        - 문자가 확인되면 `VERIFIED` + 프로필 `phoneVerified=true`(프로필 version +1).
+        - 아직 없으면 `PENDING`·`remainingAttempts` 감소(0 이 되면 `FAILED`·TOO_MANY_ATTEMPTS). 시간이 지났으면 `EXPIRED`. 그 사이 프로필 번호가 바뀌었으면 `FAILED`·PHONE_CHANGED.
+        - 이미 끝난 확인은 OCTOMO 를 부르지 않고 그 상태를 돌려준다(재시도 안전).
+        - 503 DEPENDENCY_UNAVAILABLE: OCTOMO 조회 실패·한도 초과 — 시도 횟수를 줄이지 않는다, 잠시 뒤 다시.
+      operationId: confirmPhoneVerification
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: verificationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 확인 결과(상태)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhoneVerification' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /me/consents:
     get:
@@ -813,6 +891,28 @@ paths:
 
 components:
   schemas:
+    PhoneVerificationStart:
+      type: object
+      required: [verificationId, state, sendTo, text, expiresAt, phoneMasked]
+      properties:
+        verificationId: { type: string }
+        state: { type: string, enum: [PENDING] }
+        sendTo: { type: string, description: '받는 번호(OCTOMO 대표번호, 예 1666-3538) — 고객이 이 번호로 보낸다' }
+        text: { type: string, description: '보낼 문자 본문(숫자 6자리) — 고친 본문은 확인되지 않는다(완전 일치)' }
+        expiresAt: { type: string, format: date-time }
+        phoneMasked: { type: string, description: '확인할 번호(가림)' }
+        maxAttempts: { type: integer, description: '확인 시도 최대 횟수' }
+    PhoneVerification:
+      type: object
+      required: [verificationId, state, remainingAttempts, expiresAt, phoneMasked]
+      properties:
+        verificationId: { type: string }
+        state: { type: string, enum: [PENDING, VERIFIED, FAILED, EXPIRED] }
+        failureReason: { type: [string, 'null'], enum: [TOO_MANY_ATTEMPTS, PHONE_CHANGED, null] }
+        remainingAttempts: { type: integer, minimum: 0 }
+        expiresAt: { type: string, format: date-time }
+        phoneMasked: { type: string }
+        verifiedAt: { type: [string, 'null'], format: date-time }
     OutOfStockPreference:
       type: string
       x-added-in: '2026-11-18'

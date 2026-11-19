@@ -158,6 +158,7 @@ GET /api/v1/me/notification-settings CUSTOMER,RIDER
 GET /api/v1/me/notifications CUSTOMER,RIDER
 GET /api/v1/me/notifications/{notificationId} CUSTOMER,RIDER
 GET /api/v1/me/order-preferences CUSTOMER
+GET /api/v1/me/phone-verifications/{verificationId} CUSTOMER
 GET /api/v1/me/profile-changes/{requestId} CUSTOMER
 GET /api/v1/me/profile-image CUSTOMER
 GET /api/v1/me/push-tokens CUSTOMER,RIDER
@@ -447,6 +448,8 @@ POST /api/v1/me/addresses CUSTOMER
 POST /api/v1/me/consent-changes CUSTOMER
 POST /api/v1/me/notification-setting-changes CUSTOMER,RIDER
 POST /api/v1/me/notifications/{notificationId}/reads CUSTOMER,RIDER
+POST /api/v1/me/phone-verifications CUSTOMER
+POST /api/v1/me/phone-verifications/{verificationId}/confirmations CUSTOMER
 POST /api/v1/me/profile-changes CUSTOMER
 POST /api/v1/me/shopping-address-selections CUSTOMER
 POST /api/v1/me/withdrawals CUSTOMER
