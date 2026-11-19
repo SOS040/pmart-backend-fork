@@ -58,7 +58,14 @@
 8. **기존에 확인된 회원**(0.9.0으로 `phone_verified=true`)은 마이그레이션으로 `customer_identity`를 채운다. 같은 번호가 둘이면 먼저 확인한 쪽만 넣는다.
 9. **스위치:** `pmart.auth.customer.require-identity`(기본 false)다. 고객 앱이 새 단계를 반영하기 전에 켜면 로그인이 끝나지 않는다. require-consent와 같은 방식이다. LAN은 앱 반영 뒤 사용자 허락을 받고 켠다.
 10. **탈퇴:** 고객 탈퇴는 아직 없다(customer `/me/withdrawals` 501). 탈퇴를 만들 때 `customer_identity.released_at`을 채운다. 재가입 막기 판정은 이미 그 값을 본다.
-11. **R7(처리방침 위탁 문구):** 문구 정본은 약관 문서(consent-terms)다. 이 ADR 범위 밖이고, 회신에 할 일로 적는다.
+11. **R7(처리방침):** 새 판 초안 `customer-service/src/main/resources/consent-terms/PRIVACY_POLICY/2026-11-20.md`(2026-11-20, 사용자 "너가 알아서 작성해줄수있나")에 아래를 넣었다.
+    - 휴대폰 번호·확인 기록(목적: 본인 번호 확인·중복 가입 방지·기존 계정 안내·주문 연락처)
+    - 리뷰(별점·글·사진 — 11-16부터 받고 있었는데 빠져 있었다)
+    - 주식회사 옥토버스(OCTOMO) 처리 위탁
+    - 확인 번호 탈퇴 후 30일 보관
+    - **아직 발효하지 않았다.** 발효는 customer `consents.versions.privacy-policy`를 이 판으로 바꾸는 설정 변경이고, 바꾸면 모든 회원이 다음 로그인 때 다시 동의한다. `require-identity`를 켜는 날 같이 바꾼다(사용자 권장 동의). 이 파일이 든 customer 이미지를 먼저 배포해야 본문이 나온다.
+    - 시행일 줄은 실제 발효일로 고친다. 법률 검토는 사용자 몫이다.
+    - **할 일:** 고객 탈퇴를 만들 때 `customer_identity`의 풀린 번호를 30일 뒤 지운다(처리방침 약속).
 
 ## 결과
 - 가입과 미확인 회원 로그인이 한 단계 늘어난다(문자 보내기 1회).
