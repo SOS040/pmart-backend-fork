@@ -4,7 +4,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 
 - 고칠 때: 끝나면 줄 앞을 `- [x]` 로 바꾸고 날짜·커밋을 붙인다. 다 끝난 절은 맨 아래 "끝난 것"으로 옮긴다.
 - PR 검토·병합·PR 배포는 PR 세션 몫(이 문서에 넣지 않는다).
-- 마지막 갱신: 2026-11-19.
+- 마지막 갱신: 2026-11-20.
 
 ## 1. 사용자 확인·결정 기다림
 - [ ] **O-1 나머지 — 전달 실패를 주문에 어떻게 보일지**(2026-11-19 추가, order-service = PC 1): 사고·파손은 재발송 사가가 처리하지만, 고객 부재 같은 다른 실패는 주문에 아무것도 남지 않는다(`Order.shipments` 늘 빈 목록). (가) 지금처럼 — 상담원 안내 / (나) 주문 상세 배송 목록에 그 배송을 "전달 실패"로(주문 상태·돈은 그대로) — **추천 (나)**. 요청서 `service-requests/order-service.md` O-1.
@@ -22,6 +22,8 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
   - 2순위 ~~④ ES 호출 지표·응답 시간 히스토그램~~(2026-11-19 밤 구현) ⑤ PC 3 ES·Logstash 메모리 97% — 확인함(OOM 없음·힙 밖 캐시), 한도 2GiB 로 올릴지 사용자 결정
   - 3순위 ⑥ `_source` 칸 제한 ⑦ 앱 첫 쪽 size 50→20(고객 앱 몫) ⑧ track_total_hits·search_after·1글자 조각은 규모 커지면 다시 ⑨ includeNotCarried 쓰지 않는 분기 정리
 
+- [ ] **홈 화면 프로모션 범위**(2026-11-20, 사용자 "일단 그거 기억해주고") — 아직 안 함. 1 랭킹·신상품 탭 → 2 일반 배너·테마(BO-05) → 3 할인·쿠폰(1차 제외 — 사용자 결정) 중 무엇부터인지. 지금 홈 상태·근거: `docs/operations/2026-11-20-pending-identity-switch-and-home-promotion.md` §2.
+
 ## 2. 어제(11-17) 저녁 목록
 - [x] 1. 역할·센터 섞임 막기 — 253090cc, LAN 배포 11-18
 - [ ] 2. **MFC 앱 로그인 브라우저**(PC 1 — 로그인 코드, pmart-clients PR): ⓐ Chrome → 삼성 인터넷 → Firefox 순서로 열기 ⓑ Firefox 만 있는 기기에서도 결과가 앱으로 ⓒ `TokenPair.refreshToken` nullable(ADR-0059) 맞추기. **MFC 앱만**. ⓑ 는 실기기(S25, 기본 브라우저 Firefox)로 확인.
@@ -36,6 +38,8 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 ## 4. 기다리는 것(다른 쪽이 끝나면 PC 1 이 이어서)
 - [ ] 푸시 FID 전환 — 앱이 `register()`(FID)로 옮길 때 PC 1 이 먼저 서버를 FCM `fid` 칸으로(회신 `handoff/clients/customer-app/2026-11-18-reply-customer-push-q6-q8.md`).
 - [ ] 고객앱 레퍼런스 갭 — 고객 앱이 B-2(백엔드 없음) 중 먼저 필요한 것을 알려 오면 요청서로(`handoff/clients/customer-app/2026-11-18-notice-reference-gap-update.md`).
+
+- [ ] **휴대폰 확인 스위치 + 처리방침 새 판 켜기**(2026-11-20, 사용자 "둘 다 앱 반영 뒤") — 고객 앱이 AUTH_IDENTITY·휴대폰 확인 화면을 반영하면 같은 날: 처리방침 시행일 고치기 → customer 재배포 → 설정(privacy-policy 판·require-identity true) → auth·customer 재시작. 순서·이유 `docs/operations/2026-11-20-pending-identity-switch-and-home-promotion.md` §1.
 
 ## 5. 사용자가 직접 확인할 것 (브라우저·실기기 — 확인했다고 하면 지운다)
 1. 고객 앱 실서버: 라이더 앱으로 주문 하나 배달 → 리뷰 쓰기·사진·수정·삭제, 알림함(주문 확정 → 준비 → 출발 → 완료).
