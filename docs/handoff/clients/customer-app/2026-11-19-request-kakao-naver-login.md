@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 계기: 사용자 2026-11-19 "고객 구글 로그인 흐름처럼 카카오랑 네이버도 따라갔으면 좋겠어" — ADR-0071
-- 상태: 백엔드 main 반영, LAN 배포·키 설정은 사용자 승인·키 받은 뒤(아래에 적는다)
+- 상태: **LAN 배포됨 2026-11-19 20:5x(auth-service 0.4.0, 이미지 c4f542c9)**. 키(카카오 앱 키·네이버 Client ID)는 아직 없어 KAKAO·NAVER 는 지금 422 CONFIG_REQUIRED(확인함) — 키를 받으면 설정만 넣는다. 구글은 그대로
 
 ## 서버 쪽(바뀐 것)
 - `POST /auth/social-logins` 가 `provider: KAKAO`·`NAVER` 도 받는다. 본문·응답·동의 단계(completions)·토큰은 **구글과 똑같다** — `providerToken` 에 **제공자 OpenID Connect ID 토큰**(JWT)을 넣는다.
