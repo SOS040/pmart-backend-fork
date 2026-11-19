@@ -38,13 +38,16 @@
 | [F-1](mfc-fulfillment-service.md) | mfc-fulfillment | PC 3 | mfc-capacity | 운영 제한 사건 구독 → `OPERATION_RESTRICTED` 거절 | 진행 중 작업 처리 | 대기 |
 | [BOD-1~6](delivery-backoffice-staff-apis.md) | rider·delivery-execution·delivery-dispatch | PC 5 | platform(백오피스) | 백오피스 고객센터·라이더 운영 직원 API — RIDER_OPS 권한, CS_AGENT 배차 조회, 라이더 목록·검색, 전달 실패·도움요청 대기 목록 | 결정됨(2026-11-15, 라이더 이름 검색 없음 — 사용자) | **구현·LAN 배포**(0deb8160 — BOD-1~6 한 커밋) |
 | [MB-1~3](mfc-backoffice-staff-apis.md) | mfc-capacity·fulfillment·inbound·inventory·quality | PC 3 | platform(MFC 백오피스) | 센터 관리자 웹 목록 API·계약만(501)인 것·권한(확인 필요 포장, 정정·위치 역할) | MB-3 은 PC 3 가 정함(사용자 2026-11-15) — 2026-11-18 PC 3 결정: 정정·칸 변경 MFC_SUPERVISOR 만, 상품 취급 MFC_SUPERVISOR·MD, 확인 필요 포장 MFC_WORKER·MFC_SUPERVISOR | **MB-1·MB-3 구현**(2026-11-18 PC 3 #168 — quality 0.5.0·inventory 0.26.0(센터 재고 `stock-units` 새로)·inbound 0.12.0·capacity 0.18.0·location 0.8.0·fulfillment 0.17.0 목록 9개·권한). MB-2: 입고 예정(TRF) 나중, 품질 사고는 사용자 결정 대기 |
+| [MB-배차지연](mfc-backoffice-staff-apis.md) | mfc-backoffice(웹)·dispatch | PC 3 | delivery(PC 5) | MFC 백오피스 배차 지연 목록(dispatch `GET /dispatch-delays`, 0.12.0 LAN) + "배차 불가로 취소"(CL-5) | 결정됨(2026-11-19 사용자 "1,2,3 전부", #228·#229) | 대기(웹 — PC 3, 취소는 CL-5 뒤) |
 | [CL-1](claim-service.md) | claim | PC 1 | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | 결정됨(2026-11-17 사용자 "추천대로" — 1차 감액 없음, 면제 사유 5가지, 회수 2회 실패 뒤 상담원 재연락·회수비 1회; 추가 결정 1~9 같은 날) | **구현**(2026-11-17 claim 0.2.0·V4 — 고객센터 반품 접수·회수비 9,000원(면제 5사유)·회수 실패 2번 → 상담원·검수 뒤 원단가 환불). **추가 결정 구현 — 미배포**(2026-11-17 claim 0.3.0·V5: 회수 전체 3번·우리 잘못 안 셈·취소 때 회수비 규칙·반품 기한 7일 자동 취소·받은 만큼만 끝내기). 받는 쪽 DD-3(PC 5)·R-8(PC 2) 배포됨, MQ-1(PC 3) 대기 |
 | [DD-3](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | claim | 고객 반품 회수 배송(`ReturnPickupRequested` 구독, claimId 싣기, 실패 `DeliveryFailed`) | 결정됨(CL-1 2026-11-17) | **구현·LAN 배포**(2026-11-17 PC 5 #104 — dispatch 0.5.0·execution 0.10.0), #113 맞춤 0.5.1·0.10.1 — pickupRequestId·회수 품목·전달 완료 전 회수 안 만듦. 실패 `ReturnPickupFailed` 는 claim 020053c9 가 구독 |
 | [DD-4](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | backoffice(PC 2) | 정시 배송률 지표 — 날짜·센터별 약속 시간대 안에 전달한 배송 수(분모·분자·판정 불가), bff `ON_TIME_DELIVERY` 원천 | **결정됨**(2026-11-19 사용자 — dispatch 가 배송 단위로 셈, 시간대 지난 미전달은 늦음, #213) | 대기 — bff ON_TIME_DELIVERY 는 501 |
 | [DD-5](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | rider_app·mfc(PC 3) | 제안 조회 `pollAfterSec: null` 이면 라이더 앱이 조회를 멈춰 첫 제안을 놓침(LAN 13분 지연) | 요청(2026-11-18 PC 3 #200) | 대기(PC 5) |
 | [R-8](case-service.md) | case | PC 2 | claim | 반품 회수 2번 실패(`ReturnRecoveryFailed`) → 상담원 재연락 사건·백오피스 화면 | 결정됨(CL-1 2026-11-17) | **구현·LAN 배포**(2026-11-17 PC 2 #145, case 0.22.0 — 구독 config 7a93ff7). 백오피스 화면은 웹 |
+| [R-9](case-service.md) | case | PC 2 | delivery(PC 5) | 배차 지연(`DispatchDelayed`) → 고객센터 사건 | 결정됨(2026-11-19 사용자 "1,2,3 전부", #228) | 대기(PC 2) |
 | [O-7](order-service.md) | order | PC 1 | claim | 반품 수량을 주문 원장에 기록 | 결정됨(2026-11-17 CL-1 추가 결정 9 — claim 사건 구독) | **구현·LAN 배포**(2026-11-17 order 0.11.2·V15 — `ClaimClosed` returnedLines → returnedQty, config `claimEvents` 바인딩 있음 — order 11-18 배포에 포함) |
 | [O-8](order-service.md) | order | PC 1 | backoffice(PC 2) | 기간 주문 요약·상품별 판매 집계(대시보드 D2·D3 — 확정 시각 한국 날짜, 결제 승인 금액 합, 환불은 빼지 않음) | 결정됨(2026-11-18 사용자 — PC 2 추천대로) | **구현·LAN 배포**(2026-11-18, order 0.13.0 — 이미지 4ab6e04e) |
+| [O-9](order-service.md) | order | PC 1 | backoffice(PC 2) | 주문 조회 목록 상태별 수(목록 숫자 띠, `StatusCounts` 모양) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [MQ-1](mfc-quality-service.md) | mfc-quality | PC 3 | claim | `ReturnInspected` 줄에 선택 필드 `orderLineId`(같은 SKU 두 주문 행이면 환불 금액이 모호) | 결정됨(2026-11-17 CL-1 추가 결정 8 — 선택) | 대기(PC 3) — claim 은 있으면 쓰고 없으면 SKU 로(이미 받음) |
 | [R-1](case-service.md) | case | PC 2 | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | PC 2 | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
@@ -97,6 +100,8 @@
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
 | [CL-3](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 기간 환불 금액 합·건수(대시보드 D2 — 완료 시각 한국 날짜) | 결정됨(2026-11-18 사용자 — 환불은 따로) | **구현·LAN 배포**(2026-11-18, claim 0.5.0 — 이미지 4ab6e04e) |
 | [CL-4](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 화면 표기 — 주문별 순번 `claimSeq`(하위 환불 등도), 주문번호로 찾기(ADR-0070 덧붙임 2026-11-19) | 결정됨(2026-11-19 — ADR-0070 추천안, #219·#220) | 대기(PC 1) |
+| [CL-5](claim-service.md) | claim(·promotion·notification) | PC 1 | delivery(PC 5)·mfc-backoffice | 배차 불가 취소 — 사유 DISPATCH_UNAVAILABLE 전체 취소(인계 전), 전액 환불 + 2,000원 쿠폰 + 고객 알림 | 결정됨(2026-11-19 사용자 "1,2,3 전부"·"쿠폰 2000원", #228) | 대기(PC 1) |
+| [CL-6](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 목록 상태별 수 `GET /claims/counts`(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
 | [N-4](notification-service.md) | notification | PC 1 | delivery | 사고·파손 재발송 고객 안내(`DeliveryFailed` reason RIDER_INCIDENT·DAMAGED — 새 상품 재발송) | 결정됨(ADR-0069, 2026-11-18 사용자) | **구현·LAN 배포**(2026-11-19 PC 1 — notification `DeliveryFailed` → `DELIVERY_INCIDENT_RESHIPMENT` 알림함·푸시, e6761338) |
 | [N-5](notification-service.md) | notification(·rider) | PC 1 | delivery(PC 5) | 라이더 공지 보내기 — 전체·센터 라이더 알림함 + 푸시(RIDER_OPS·OPERATOR_ADMIN) | 결정됨(2026-11-18 사용자 "대상 고르기 + 알림함·푸시") | **구현·LAN 배포**(2026-11-18 PC 5 #201 — notification 0.5.0·V5, rider 0.13.0) |
@@ -106,8 +111,10 @@
 | [DE-4](delivery-execution-service.md) | delivery-execution | PC 5 | mfc(PC 3)·rider_app | 배송 조회 `packageIds` 를 출고 포장(`shipment_package`) ∪ 인계 기록으로 — 인계 전 비어 라이더 포장 QR 이 막힘 | **급함**(2026-11-18 PC 3 #177, LAN 사용자 시험에서 발견) | **구현·LAN 배포**(2026-11-18 PC 5 #178, execution 0.23.1) |
 | [DE-5](delivery-execution-service.md) | delivery-execution(·dispatch) | PC 5 | rider_app·rider-backoffice | 전달지 정확 좌표 — 주문 사본 좌표 없으면 배차 지오코딩 `drop_lat·lng`, `coordinateSource`(급함) | 요청(2026-11-18) | PC 1 customer 0.5.0 핀 없으면 지오코딩(같이) |
 | [DE-6](delivery-execution-service.md) | delivery-execution | PC 5 | notification(고객 앱 알림) | 묶음 배달 다음 차례 사건 `DeliveryHeadingToCustomer`(delivery.delivery.v1). 받는 쪽은 PC 1 이 만들어 둠 | 결정됨(2026-11-19 사용자 "응 해줘") |
+| [DE-7](delivery-execution-service.md) | delivery-execution | PC 5 | backoffice(PC 2) | 배송 확인 목록 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 5) |
 | [RS-6](rider-service.md) | rider(·execution·tracking) | PC 5 | rider-backoffice | 운행 시작·대기 시간 — 운행 구간 기록, onDutySince·waitingSince, 오늘 합계(대기 = 운행 중·진행 중 배송 0건, 신규배차 꺼짐 제외) | 요청(2026-11-18, 대기 뜻 사용자 확인) | — |
 | [AI-1](ai-assistant-service.md) | ai-assistant | PC 4 | backoffice(PC 2) | 업무 도우미 질문 원문 저장(`store-question` 켬) — 보존 90일(답변과 같이), 본인만 보기, 본인 지우기 API | 결정됨(2026-11-19 사용자 "추천대로", #226) | 대기(PC 4) |
+| [PD-1](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 조회 목록 판매 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.
