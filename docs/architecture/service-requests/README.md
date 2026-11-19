@@ -129,6 +129,8 @@
 | [PD-1](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 조회 목록 판매 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [PD-2](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 초안 목록 — "등록 진행 중" 탭 | 요청(2026-11-19 PC 2 #253) | 대기(PC 1) |
 | [PD-3](product-service.md) | product·product-content | PC 1 | backoffice(PC 2) | 개별 등록에서 상품 초안·콘텐츠 초안을 원천 키로 미리 잇기 — 확인 요청 | 요청(2026-11-19 PC 2 #253) | 대기(PC 1 — 답) |
+| [PD-4](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 목록 이름 검색 `GET /products?q=` 관리용 명칭 부분 일치(PN-1), 선택 고객용 상품명(PN-2 — 맡을 서비스 답 필요) | 요청(2026-11-19 웹 → 2026-11-20 PC 2 #274) | 대기(PC 1) |
+| [PCT-1](product-content-service.md) | product-content | PC 1 | backoffice(PC 2) | 직원 콘텐츠 초안 목록 `GET /content-drafts`(CD-1), 선택 상태별 수(CD-2) | 요청(2026-11-19 웹 → 2026-11-20 PC 2 #274) | 대기(PC 1) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.
