@@ -48,7 +48,9 @@ import tools.jackson.databind.ObjectMapper;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      // 오타 교정(ADR-0073) — LAN 설정에는 배포 때 넣는다
+      "pmart.search.correction.few-results=3"
     })
 @EnableWireMock(
     @ConfigureWireMock(
@@ -804,5 +806,52 @@ class SearchFlowIT {
     // 판매가 바뀌면(새 버전) 인기순이 바뀐다
     signals("PRD-R1", 2, 3, 5.0, 4.375, 50);
     await("?q=순위감자&sort=POPULAR", r -> ids(r).equals(List.of("PRD-R1", "PRD-R2", "PRD-R3")));
+  }
+
+  @Autowired com.pmart.search.application.TermDictionary dictionary;
+  @Autowired com.pmart.search.application.QueryCorrector corrector;
+
+  /**
+   * 동의어·오타 교정(ADR-0073, 2026-11-20): 동의어 집합을 바꾸면 재색인 없이 다음 검색부터("달걀" → "계란" 상품), 결과 0건이면 사전 낱말로 고쳐
+   * 찾음(correctedQuery), noCorrection 이면 고치지 않음, 결과가 적으면 고친 검색어가 더 많을 때만 suggestedQuery, 자동완성도 고친
+   * 검색어로.
+   */
+  @Test
+  @org.junit.jupiter.api.Order(5)
+  void synonymsAndTypoCorrection() throws Exception {
+    String[][] products = {
+      {"PRD-Y1", "E-Y1", "[시험] 무항생제 계란 10구"},
+      {"PRD-Y2", "E-Y2", "[시험] 부드러운 순두부 350g"},
+      {"PRD-Y3", "E-Y3", "[시험] 고소한 순두부찌개 양념"}
+    };
+    for (String[] p : products) {
+      productWith(p[0], 1, 1, p[1], "ON_SALE", "2026-11-04T02:00:00Z", List.of());
+      card(p[0], p[2], 1);
+      contentPublished(p[0], 1, "2026-11-04T02:01:00Z");
+    }
+    await("?q=계란", r -> ids(r).contains("PRD-Y1"));
+    assertThat(ids(search("?q=달걀&noCorrection=true"))).doesNotContain("PRD-Y1");
+    index.putSynonymRules(List.of(Map.of("id", "egg", "synonyms", "계란, 달걀")));
+    await("?q=달걀&noCorrection=true", r -> ids(r).contains("PRD-Y1"));
+
+    await("?q=순두부", r -> ids(r).containsAll(List.of("PRD-Y2", "PRD-Y3")));
+    assertThat(dictionary.rebuild()).isPositive();
+    Thread.sleep(1200); // 사전 색인 새로 고침
+    assertThat(corrector.correct("순두뷰")).as("교정기 직접").hasValue("순두부");
+    JsonNode fixed = search("?q=순두뷰");
+    assertThat(fixed.path("correctedQuery").asString()).isEqualTo("순두부");
+    assertThat(fixed.path("query").asString()).isEqualTo("순두뷰");
+    assertThat(ids(fixed)).contains("PRD-Y2", "PRD-Y3");
+    JsonNode raw = search("?q=순두뷰&noCorrection=true");
+    assertThat(raw.path("total").asInt()).isZero();
+    assertThat(raw.path("correctedQuery").isNull() || raw.path("correctedQuery").isMissingNode())
+        .isTrue();
+    // 결과가 이미 많으면 손대지 않는다
+    JsonNode many = search("?q=순두부");
+    assertThat(many.path("suggestedQuery").isNull() || many.path("suggestedQuery").isMissingNode())
+        .isTrue();
+    // 자동완성: 후보가 없으면 고친 검색어로
+    String suggest = http.get().uri("/search/suggestions?q=순두뷰").retrieve().body(String.class);
+    assertThat(suggest).contains("순두부");
   }
 }

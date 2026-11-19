@@ -16,6 +16,11 @@ KB_WAIT="${PMART_KIBANA_WAIT:-100}" # 3초 단위
 until curl -s -o /dev/null "$ES"; do sleep 3; done
 
 if [ "$PART" != logs ]; then
+# 상품 색인 검색 분석기가 가리키는 동의어 집합(2026-11-20 ADR-0073) — 색인보다 먼저, 없을 때만 빈 집합으로(규칙은 승인으로 search-service 가 넣는다)
+if [ "$(curl -s -o /dev/null -w '%{http_code}' "$ES/_synonyms/pmart-product-synonyms")" = 404 ]; then
+  curl -s -o /dev/null -w "synonyms set pmart-product-synonyms %{http_code}\n" -X PUT "$ES/_synonyms/pmart-product-synonyms" \
+    -H 'Content-Type: application/json' -d '{"synonyms_set":[]}'
+fi
 for f in /init/indices/*.json; do
   idx="$(basename "$f" .json)"
   code="$(curl -s -o /dev/null -w '%{http_code}' -I "$ES/$idx")"

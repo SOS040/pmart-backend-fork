@@ -23,7 +23,19 @@ public record SearchProperties(
     @DefaultValue("http://product-service:8101") String productBaseUrl,
     @Nullable Recent recent,
     @Nullable Popular popular,
-    @Nullable String searcherHashKey) {
+    @Nullable String searcherHashKey,
+    @Nullable Correction correction) {
+
+  /**
+   * 오타 교정(2026-11-20 ADR-0073). 비면 교정하지 않는다(기본값으로 대신하지 않음).
+   *
+   * @param fewResults 결과가 이 수 이하이면 "혹시 ○○?" 제안(0건이면 자동 교정)
+   */
+  public record Correction(@Nullable Integer fewResults) {
+    public boolean complete() {
+      return fewResults != null && fewResults >= 0;
+    }
+  }
 
   /**
    * @param maxItems 고객마다 남기는 최근 검색어 수(지금 10)

@@ -312,4 +312,49 @@ class SearchActivityIT extends KafkaContainerSupport {
   static void pause() throws InterruptedException {
     Thread.sleep(20);
   }
+
+  /** 결과 0건 검색어(ADR-0073, 2026-11-20): 고객 검색 기록에서 0건만 많이 나온 순, MD·OPERATOR_ADMIN 만(그 밖 403). */
+  @Test
+  void zeroResultKeywordsForOperators() throws Exception {
+    String a = TestJwt.customer("cust-" + UUID.randomUUID());
+    String b = TestJwt.customer("cust-" + UUID.randomUUID());
+    search(a, "없는상품말");
+    pause();
+    search(b, "없는상품말");
+    pause();
+    search(a, "두부"); // 결과 있음 — 세지 않는다
+    String md = TestJwt.operator("op-md", List.of("MD"), List.of());
+    JsonNode[] got = new JsonNode[1];
+    await(
+        () -> {
+          es.post().uri("/search-log/_refresh").retrieve().toBodilessEntity();
+          got[0] =
+              mapper.readTree(
+                  http.get()
+                      .uri("/search/zero-result-keywords?days=7")
+                      .header("Authorization", "Bearer " + md)
+                      .retrieve()
+                      .body(String.class));
+          for (JsonNode i : got[0].path("items")) {
+            if (i.path("keyword").asString().equals("없는상품말") && i.path("searches").asInt() == 2) {
+              return true;
+            }
+          }
+          return false;
+        },
+        () -> "0건 검색어 — 지금 " + got[0]);
+    for (JsonNode i : got[0].path("items")) {
+      assertThat(i.path("keyword").asString()).isNotEqualTo("두부");
+      if (i.path("keyword").asString().equals("없는상품말")) {
+        assertThat(i.path("searchers").asInt()).isEqualTo(2);
+      }
+    }
+    String other = TestJwt.operator("op-cs", List.of("CS_AGENT"), List.of());
+    int status =
+        http.get()
+            .uri("/search/zero-result-keywords?days=7")
+            .header("Authorization", "Bearer " + other)
+            .exchange((q, r) -> r.getStatusCode().value());
+    assertThat(status).isEqualTo(403);
+  }
 }

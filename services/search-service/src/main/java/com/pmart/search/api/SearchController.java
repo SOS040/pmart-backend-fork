@@ -5,8 +5,8 @@ import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.search.api.generated.SearchApi;
 import com.pmart.search.api.generated.model.GetSearchFilters200Response;
-import com.pmart.search.api.generated.model.GetSearchFilters200ResponseAsOf;
 import com.pmart.search.api.generated.model.GetSearchSuggestions200Response;
+import com.pmart.search.api.generated.model.ListZeroResultKeywords200ResponseAsOf;
 import com.pmart.search.api.generated.model.SearchHit;
 import com.pmart.search.api.generated.model.SearchResult;
 import com.pmart.search.api.generated.model.SearchResultPage;
@@ -37,13 +37,19 @@ public class SearchController implements SearchApi {
   private final SearchActivity activity;
   private final PopularKeywords popular;
   private final Clock clock;
+  private final com.pmart.search.application.CorrectedSearch corrected;
+  private final com.pmart.search.application.ZeroResultKeywords zeroResults;
 
   public SearchController(
       ProductSearch search,
       com.pmart.search.infrastructure.CategoryTreeClient categories,
       SearchActivity activity,
       PopularKeywords popular,
-      Clock clock) {
+      Clock clock,
+      com.pmart.search.application.CorrectedSearch corrected,
+      com.pmart.search.application.ZeroResultKeywords zeroResults) {
+    this.corrected = corrected;
+    this.zeroResults = zeroResults;
     this.search = search;
     this.categories = categories;
     this.activity = activity;
@@ -61,6 +67,7 @@ public class SearchController implements SearchApi {
       Boolean includeNotCarried,
       @Nullable Long minPrice,
       @Nullable Long maxPrice,
+      Boolean noCorrection,
       Integer size,
       @Nullable String cursor) {
     ProductSearch.PriceRange price;
@@ -69,10 +76,10 @@ public class SearchController implements SearchApi {
     } catch (IllegalArgumentException e) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "최저 가격이 최고 가격보다 큽니다.");
     }
-    ProductSearch.Result r;
+    com.pmart.search.application.CorrectedSearch.Outcome o;
     try {
-      r =
-          search.search(
+      o =
+          corrected.search(
               q,
               categoryId,
               mfcId,
@@ -81,12 +88,15 @@ public class SearchController implements SearchApi {
               SearchRules.parseFilters(filters),
               SearchRules.sort(sort == null ? null : sort.getValue()),
               size,
-              cursor);
+              cursor,
+              Boolean.TRUE.equals(noCorrection));
     } catch (SearchRules.InvalidCursorException e) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "잘못된 커서입니다. 처음부터 다시 조회하세요.");
     }
-    // 최근 검색어·인기 키워드 기록(첫 페이지·고객/비회원 토큰만, 비동기 — 실패해도 검색 응답은 그대로, 2026-11-17)
-    activity.searched(PmartPrincipal.current().orElse(null), q, cursor, r.total());
+    ProductSearch.Result r = o.result();
+    // 최근 검색어·인기 키워드 기록(첫 페이지·고객/비회원 토큰만, 비동기 — 실패해도 검색 응답은 그대로, 2026-11-17).
+    // 결과 수는 원래 검색어의 것(0건 검색어 집계 — ADR-0073)
+    activity.searched(PmartPrincipal.current().orElse(null), q, cursor, o.originalTotal());
     return ResponseEntity.ok(
         new SearchResult()
             .query(SearchRules.normalizeQuery(q))
@@ -94,6 +104,8 @@ public class SearchController implements SearchApi {
             .total((int) r.total())
             .page(new SearchResultPage().nextCursor(r.nextCursor()).size(r.items().size()))
             .appliedSort(SortKey.fromValue(r.appliedSort().name()))
+            .correctedQuery(o.correctedQuery())
+            .suggestedQuery(o.suggestedQuery())
             .appliedFilters(r.appliedFilters())
             .asOf(asOf()));
   }
@@ -103,7 +115,8 @@ public class SearchController implements SearchApi {
       String q, Integer limit) {
     return ResponseEntity.ok(
         new GetSearchSuggestions200Response()
-            .keywords(search.suggestions(q, limit == null ? 10 : limit))
+            .keywords(
+                corrected.suggestions(q, limit == null ? 10 : limit)) // 후보가 없으면 고친 검색어로(ADR-0073)
             .popular(popular.current())); // 메모리 사본. 설정 없음·집계 실패면 빈 목록(2026-11-17)
   }
 
@@ -171,9 +184,38 @@ public class SearchController implements SearchApi {
         .productVersion(h.productVersion());
   }
 
-  private GetSearchFilters200ResponseAsOf asOf() {
-    return new GetSearchFilters200ResponseAsOf()
+  private ListZeroResultKeywords200ResponseAsOf asOf() {
+    return new ListZeroResultKeywords200ResponseAsOf()
         .asOf(OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC))
-        .freshness(GetSearchFilters200ResponseAsOf.FreshnessEnum.CURRENT);
+        .freshness(ListZeroResultKeywords200ResponseAsOf.FreshnessEnum.CURRENT);
+  }
+
+  /** 결과 0건 검색어(ADR-0073) — MD·OPERATOR_ADMIN. */
+  @Override
+  public ResponseEntity<com.pmart.search.api.generated.model.ListZeroResultKeywords200Response>
+      listZeroResultKeywords(Integer days, Integer size) {
+    PmartPrincipal who = PmartPrincipal.current().orElse(null);
+    if (who == null || !(who.hasRole("MD") || who.hasRole("OPERATOR_ADMIN"))) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "상품 담당(MD)·운영 관리자만 볼 수 있습니다.");
+    }
+    var rows = zeroResults.list(days, size == null ? 50 : size);
+    return ResponseEntity.ok(
+        new com.pmart.search.api.generated.model.ListZeroResultKeywords200Response()
+            .days(days)
+            .items(
+                rows.stream()
+                    .map(
+                        x ->
+                            new com.pmart.search.api.generated.model
+                                    .ListZeroResultKeywords200ResponseItemsInner()
+                                .keyword(x.keyword())
+                                .searches((int) x.searches())
+                                .searchers((int) x.searchers())
+                                .lastSearchedAt(
+                                    x.lastSearchedAt() == null
+                                        ? null
+                                        : x.lastSearchedAt().atOffset(java.time.ZoneOffset.UTC)))
+                    .toList())
+            .asOf(asOf()));
   }
 }

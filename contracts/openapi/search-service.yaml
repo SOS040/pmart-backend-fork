@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-20 ADR-0073 — 사용자 "개발 규모 안 따지면 추천대로"): ① 동의어 — 상품명 검색에 동의어 집합 적용(운영 승인으로 바뀌면 재색인 없이 다음 검색부터).
+    ② 오타 교정(첫 쪽·검색어 있음·초성 아님): 결과 0건이면 고친 검색어로 다시 찾아 `correctedQuery`(결과는 고친 검색어 것, `query` 는 원래 검색어),
+    결과가 적으면(설정, 지금 3건 이하) 고친 검색어가 더 많이 찾을 때 `suggestedQuery`(결과는 원래 검색어 것). `noCorrection=true` 면 교정하지 않는다("원래 검색어로 찾기").
+    자동완성은 후보가 없으면 고친 검색어로. ③ 운영 `GET /search/zero-result-keywords`(MD·OPERATOR_ADMIN) — 최근 N일 결과 0건 검색어.
     0.3.0(2026-11-19 ADR-0072 — 사용자 "추천대로 5번 6번"): 정렬 `POPULAR`(최근 30일 판매 — 주문 확정 − 출고 전 취소 − 반품, 대표 SKU)·`RATING`(베이지안 별점 —
     리뷰가 적은 높은 별점은 덜 믿음)·`REVIEW_COUNT`(리뷰 많은 순, 새 값)가 실제로 동작한다(전에는 관련도로 대체). 신호가 없는 상품은 그 정렬에서 맨 뒤. 기본 순위(RELEVANCE)는 그대로.
     결과 `rating`(평균 소수 첫째)·`reviewCount` 를 채운다(storefront 순위 신호 사본 — 리뷰 등록 뒤 몇 초 늦을 수 있음).
@@ -59,6 +63,7 @@ paths:
           schema: { type: boolean, default: false }
         - { name: minPrice, in: query, description: '기본가 하한(원, 이상). 가격이 아직 없는 상품은 가격 범위를 주면 빠진다(2026-11-03)', schema: { type: integer, format: int64, minimum: 0 } }
         - { name: maxPrice, in: query, description: '기본가 상한(원, 이하). minPrice 보다 작으면 400', schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: noCorrection, in: query, schema: { type: boolean, default: false }, description: '(0.4.0) true 면 오타 교정하지 않는다 — "원래 검색어로 찾기"' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -97,6 +102,41 @@ paths:
                       지금 2)명 이상이 쓴 검색어만 — 한 사람이 되풀이한 검색어는 오르지 않는다. 토큰 없는 검색은 세지 않는다. 부적절한 낱말은
                       설정 hidden-keywords(운영 숨김 목록, 대소문자·공백 정리 후 일치)로 뺀다. 몇 분(설정 refresh) 사본이라 바로 바뀌지 않는다.
                       설정이 없거나 집계를 못 하면 빈 목록이다 — 자동완성(keywords)과 검색은 그대로 된다.
+
+  /search/zero-result-keywords:
+    get:
+      tags: [search]
+      summary: '[운영] 결과 0건 검색어 (0.4.0, ADR-0073)'
+      description: |
+        검색 기록(고객·비회원의 첫 쪽 검색)에서 최근 days 일 결과 0건 검색어를 많이 나온 순으로. 인기 키워드 숨김 목록은 뺀다. 검색자는 수만(해시 — 원문 없음).
+        동의어·상품명 개선의 근거(운영 화면). MD·OPERATOR_ADMIN 만(그 밖 운영자 403).
+      operationId: listZeroResultKeywords
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: days, in: query, required: true, schema: { type: integer, minimum: 1, maximum: 90 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, days]
+                properties:
+                  days: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [keyword, searches, searchers]
+                      properties:
+                        keyword: { type: string }
+                        searches: { type: integer }
+                        searchers: { type: integer, description: 서로 다른 검색자 수(근사) }
+                        lastSearchedAt: { type: [string, 'null'], format: date-time }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /search/filters:
     get:
@@ -291,6 +331,8 @@ components:
             검색 조건에 맞는 건수. mfcId + includeNotCarried=false 면 미취급을 거른 뒤 건수다(2026-11-05부터 정확).
         page: { $ref: '_common.yaml#/components/schemas/Page' }
         appliedSort: { $ref: '#/components/schemas/SortKey' }
+        correctedQuery: { type: [string, 'null'], description: '(0.4.0) 원래 검색어 결과가 0건이라 이 검색어로 고쳐 찾은 결과다 — 앱 "○○ 검색 결과예요 · 원래 검색어로 찾기(noCorrection=true)"' }
+        suggestedQuery: { type: [string, 'null'], description: '(0.4.0) 결과가 적어 제안하는 검색어(결과는 원래 검색어 것) — 앱 "혹시 ○○를 찾으셨나요?"' }
         appliedFilters: { type: array, items: { type: string } }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     FilterAttribute:

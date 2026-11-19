@@ -48,11 +48,14 @@ public class SearchIndex {
   /** 인기 키워드 집계용 검색 기록(2026-11-17) — 센 검색 하나당 문서 하나(검색어·검색자 해시·시각·결과 수). 이 서비스가 쓴다. */
   public static final String SEARCH_LOG = "search-log";
 
+  public static final String SEARCH_TERMS = "search-terms";
+
   /** 별칭 → 실제 색인(정의 파일 이름). 매핑을 바꾸면 새 버전 파일을 만들고 여기를 바꾼다. */
   public static final Map<String, String> INDICES =
       Map.of(
           PRODUCTS,
-          "products-v6", // 2026-11-19 ADR-0072 — 순위 신호(별점·리뷰 수·판매) 칸
+          "products-v7", // 2026-11-20 ADR-0073 — 이름 검색 분석기에 동의어(synonym_graph, 동의어 집합) / v6
+          // ADR-0072 순위 신호
           SKU_PRICES,
           "sku-prices-v1",
           SKU_HANDLINGS,
@@ -60,7 +63,15 @@ public class SearchIndex {
           RECENT_SEARCHES,
           "search-recent-v1",
           SEARCH_LOG,
-          "search-log-v1");
+          "search-log-v1",
+          SEARCH_TERMS,
+          "search-terms-v1");
+
+  /** 오타 교정 낱말 사전(2026-11-20 ADR-0073) — 상품명 낱말·자모·상품 수. 이 서비스가 주기적으로 다시 만든다. */
+  public static final String SEARCH_TERMS_ALIAS = "search-terms";
+
+  /** 상품명 검색 분석기가 쓰는 동의어 집합(ADR-0073) — 바꾸면 재색인 없이 다음 검색부터. */
+  public static final String SYNONYM_SET = "pmart-product-synonyms";
 
   private static final String TARGET = "elasticsearch";
   private static final Logger log = LoggerFactory.getLogger(SearchIndex.class);
@@ -144,6 +155,9 @@ public class SearchIndex {
     synchronized (locks.computeIfAbsent(alias, k -> new Object())) {
       if (ready.contains(alias)) {
         return;
+      }
+      if (PRODUCTS.equals(alias)) {
+        ensureSynonymSet(); // 상품 색인의 검색 분석기가 동의어 집합을 가리킨다(ADR-0073) — 색인보다 먼저
       }
       int status =
           call(
@@ -305,6 +319,116 @@ public class SearchIndex {
         .lowCardinalityKeyValue("op", op)
         .lowCardinalityKeyValue("alias", alias)
         .observe(() -> Downstream.run(TARGET, request));
+  }
+
+  /** 동의어 집합이 없으면 빈 것으로 만든다(ADR-0073). */
+  void ensureSynonymSet() {
+    int status =
+        call(
+            "synonyms",
+            SYNONYM_SET,
+            () ->
+                http.get()
+                    .uri("/_synonyms/{set}", SYNONYM_SET)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::is4xxClientError, (q, r) -> {})
+                    .toBodilessEntity()
+                    .getStatusCode()
+                    .value());
+    if (status == 404) {
+      putSynonymRules(java.util.List.of());
+      log.info("Elasticsearch 동의어 집합 {} 생성(빈 집합)", SYNONYM_SET);
+    }
+  }
+
+  /**
+   * 동의어 규칙 전체를 바꾼다(ADR-0073) — 상품 색인 검색 분석기가 다시 읽는다(재색인 없음). 규칙: id·synonyms("계란, 달걀" / "콜라 =>
+   * 코카콜라").
+   */
+  public void putSynonymRules(java.util.List<Map<String, String>> rules) {
+    run(
+        "synonyms",
+        SYNONYM_SET,
+        () ->
+            http.put()
+                .uri("/_synonyms/{set}", SYNONYM_SET)
+                .body(mapper.writeValueAsString(Map.of("synonyms_set", rules)))
+                .retrieve()
+                .toBodilessEntity());
+  }
+
+  /** 지금 동의어 규칙(id·synonyms). */
+  public JsonNode synonymRules() {
+    String raw =
+        call(
+            "synonyms",
+            SYNONYM_SET,
+            () ->
+                http.get()
+                    .uri("/_synonyms/{set}?size=10000", SYNONYM_SET)
+                    .retrieve()
+                    .body(String.class));
+    return mapper.readTree(raw == null ? "{}" : raw).path("synonyms_set");
+  }
+
+  /** 여러 문서의 한 필드 낱말(색인 분석기 기준) — 오타 사전 만들기(ADR-0073). id → 낱말 목록. */
+  public Map<String, java.util.List<String>> fieldTerms(
+      String alias, java.util.List<String> ids, String field) {
+    ensure(alias);
+    String raw =
+        call(
+            "termvectors",
+            alias,
+            () ->
+                http.post()
+                    .uri("/{alias}/_mtermvectors", alias)
+                    .body(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "ids",
+                                ids,
+                                "parameters",
+                                Map.of(
+                                    "fields",
+                                    java.util.List.of(field),
+                                    "term_statistics",
+                                    false,
+                                    "field_statistics",
+                                    false,
+                                    "positions",
+                                    false,
+                                    "offsets",
+                                    false))))
+                    .retrieve()
+                    .body(String.class));
+    Map<String, java.util.List<String>> out = new java.util.LinkedHashMap<>();
+    for (JsonNode d : mapper.readTree(raw == null ? "{}" : raw).path("docs")) {
+      java.util.List<String> terms = new java.util.ArrayList<>();
+      d.path("term_vectors").path(field).path("terms").propertyNames().forEach(terms::add);
+      out.put(d.path("_id").asString(), terms);
+    }
+    return out;
+  }
+
+  /** 한꺼번에 쓰기(ndjson 줄 — action·source 번갈아). */
+  public void bulk(String alias, java.util.List<String> lines) {
+    if (lines.isEmpty()) {
+      return;
+    }
+    ensure(alias);
+    String body = String.join("\n", lines) + "\n";
+    run(
+        "bulk",
+        alias,
+        () ->
+            http.post()
+                .uri("/{alias}/_bulk", alias)
+                // charset 을 꼭 붙인다 — 없으면 String 본문이 ISO-8859-1 로 나가 한글이 깨진다(application/json 만 UTF-8
+                // 기본)
+                .contentType(new MediaType("application", "x-ndjson", StandardCharsets.UTF_8))
+                .body(body)
+                .retrieve()
+                .toBodilessEntity());
   }
 
   /** 색인 정의(설정·매핑·별칭) JSON. es-init 도 같은 파일을 쓴다. */
