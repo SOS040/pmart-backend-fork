@@ -721,6 +721,9 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(served.status()).isEqualTo(200);
     assertThat(served.body()).isEqualTo(main);
     assertThat(served.contentType()).isEqualTo("image/jpeg");
+    // 0.3.0 축소본: 풀 수 없는 본문(시험 조각)은 원본 그대로, 허용 밖 폭은 400
+    assertThat(image(mainUrl + "?w=720", null).body()).isEqualTo(main);
+    assertThat(image(mainUrl + "?w=1000", null).status()).isEqualTo(400);
     String draftBImage = draftB.path("images").path(0).path("url").asString();
     assertThat(image(draftBImage, CUSTOMER).status()).isEqualTo(404);
     // 비회원(토큰 없음)도 게시본만: 상세·카드·게시 이미지 200, 초안 이미지 404

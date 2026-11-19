@@ -215,6 +215,16 @@ public class ContentQueries {
 
   /** 이미지 본문. 고객은 게시된 이미지만, 운영자·서비스는 초안 이미지도 읽는다. */
   public Image image(String imageId) {
+    ImageRow row = visibleImage(imageId);
+    try {
+      return new Image(row, storage.open(row.bucket(), row.objectKey()));
+    } catch (NoSuchElementException e) {
+      throw PmartException.notFound("IMAGE_NOT_FOUND", "이미지 본문이 저장소에 없습니다.");
+    }
+  }
+
+  /** 볼 수 있는 이미지의 메타(고객·비회원은 게시본만, 운영자·서비스는 초안도). 없으면 404. */
+  public ImageRow visibleImage(String imageId) {
     ImageRow row =
         drafts
             .image(imageId)
@@ -230,11 +240,7 @@ public class ContentQueries {
         && !drafts.find(row.draftId()).map(d -> "PUBLISHED".equals(d.state())).orElse(false)) {
       throw PmartException.notFound("IMAGE_NOT_FOUND", "이미지가 없습니다.");
     }
-    try {
-      return new Image(row, storage.open(row.bucket(), row.objectKey()));
-    } catch (NoSuchElementException e) {
-      throw PmartException.notFound("IMAGE_NOT_FOUND", "이미지 본문이 저장소에 없습니다.");
-    }
+    return row;
   }
 
   public record Image(ImageRow meta, ImageStorage.Stored body) {}

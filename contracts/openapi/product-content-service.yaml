@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.2.1
+  version: 0.3.0
   description: |
+    0.3.0(2026-11-19, 상품 상세 느림 — 사용자 "1 -> 해줘"): `GET /content-images/{imageId}?w=` 휴대폰용 축소본. `w` 는 240·480·720 중 하나,
+    원본 비율 그대로 원본 폭보다 작을 때만 줄여 **JPEG** 로 준다(투명 배경은 흰색). 원본이 그 폭 이하이거나 줄일 수 없는 형식(WEBP 등)이면 원본 그대로.
+    처음 요청 때 만들어 저장해 두고 다시 쓴다(내용 주소라 바뀌지 않음 — 긴 캐시, ETag `<sha256>-w<폭>`). `w` 없으면 지금처럼 원본. 응답 URL 은 그대로 — 앱이 붙인다.
     0.2.1(2026-11-19, 사용자 "리뷰에서 api 는 구현하고"): `GET /product-contents/{productId}/rating-summary` 구현(전에는 501) — review 사건
     (commerce.review.v1 `ReviewPublished`·`ReviewDeleted`)을 리뷰마다 사본으로 두고(버전 큰 것만, 삭제 반영) 조회 때 센다. **비회원도 본다**(security: [] — 상세와 같음).
     0.2.0(2026-11-19, 클라이언트 BR-19 "100g당 가격" — 사용자 "응"): 판매 옵션에 `netContent`(product 사본 — SKU 내용량 g·mL)와
@@ -383,6 +386,10 @@ paths:
       security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
       parameters:
         - { name: imageId, in: path, required: true, schema: { type: string } }
+        - name: w
+          in: query
+          description: '(0.3.0) 축소본 폭(px) — 240·480·720. 원본 폭보다 작을 때만 줄인 JPEG, 아니면 원본. 그 밖의 값은 400 VALIDATION_FAILED. 권장 — 상세 설명·대표 720, 목록 카드 480'
+          schema: { type: integer, enum: [240, 480, 720] }
       responses:
         '200':
           description: 이미지 바이트
@@ -393,6 +400,7 @@ paths:
               schema: { type: string, format: binary }
             image/webp:
               schema: { type: string, format: binary }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
