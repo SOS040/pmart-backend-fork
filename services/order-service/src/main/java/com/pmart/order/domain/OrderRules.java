@@ -36,7 +36,12 @@ public final class OrderRules {
 
   /** 차단 사유 표시 순서(주버튼은 첫 사유) — Commerce 10장: 최소금액 → 방식 → 예약시간 → 그 밖. */
   public static final List<String> BLOCKER_ORDER =
-      List.of("MIN_ORDER_AMOUNT", "DELIVERY_MODE_UNAVAILABLE", "SLOT_REQUIRED", "SLOT_UNAVAILABLE");
+      List.of(
+          "MIN_ORDER_AMOUNT",
+          "DELIVERY_MODE_UNAVAILABLE",
+          "SLOT_REQUIRED",
+          "SLOT_UNAVAILABLE",
+          "CONTACT_REQUIRED");
 
   public record Tip(long base, long applied, String reason) {}
 

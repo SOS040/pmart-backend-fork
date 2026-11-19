@@ -13,7 +13,7 @@ public record ShippingAddress(
     String roadAddress,
     String detailAddress,
     @Nullable String postalCode,
-    String receiverName,
+    @Nullable String receiverName,
     String receiverPhone,
     @Nullable String entranceMethod,
     @Nullable String entranceNote,

@@ -126,6 +126,7 @@ public class AddressService {
       throw PmartException.versionConflict("주소가 그 사이 바뀌었습니다. 다시 조회하세요.");
     }
     int base = expectedVersion != null ? expectedVersion : current.version();
+    d = d.keepingReceiverOf(current.data());
     Serviceability s = judge(d);
     AddressData stored = withCoordinates(d);
     Map<String, Object> request = new LinkedHashMap<>();

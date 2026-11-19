@@ -440,6 +440,70 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
         .isTrue();
   }
 
+  /** BR-60(0.8.0, 2026-11-19): 받는 분·연락처 없이 저장, PATCH 에서 빠지면 그대로, 주문용 내부 컨텍스트는 프로필로 채운다. */
+  @Test
+  void receiverIsOptionalAndOrderContextFallsBackToProfile() throws Exception {
+    String cu = "CU-" + UUID.randomUUID();
+    String me = TestJwt.customer(cu);
+    authenticated(cu); // 제공자 이름 홍길동, 별명·연락처 없음
+    Map<String, Object> bare = address("BR60");
+    bare.remove("receiverName");
+    bare.remove("receiverPhone");
+    Res saved = send(me, HttpMethod.POST, "/me/addresses", bare);
+    assertThat(saved.status()).as(saved.body().toString()).isEqualTo(201);
+    String addressId = saved.body().path("addressId").asString();
+    assertThat(
+            saved.body().path("receiverName").isNull()
+                || saved.body().path("receiverName").isMissingNode())
+        .isTrue();
+
+    String svc = TestJwt.service("order-service");
+    String ctxPath =
+        "/internal/accounts/" + cu + "/shopping-context?shoppingAddressId=" + addressId;
+    JsonNode ctx = get(svc, ctxPath).body();
+    assertThat(ctx.path("address").path("receiverName").asString()).isEqualTo("홍길동");
+    assertThat(
+            ctx.path("address").path("receiverPhone").isNull()
+                || ctx.path("address").path("receiverPhone").isMissingNode())
+        .as("프로필에도 연락처가 없으면 비어 있다(order 가 CONTACT_REQUIRED)")
+        .isTrue();
+
+    assertThat(
+            send(me, HttpMethod.POST, "/me/profile-changes", Map.of("phone", "010-9876-5432"))
+                .status())
+        .isEqualTo(200);
+    ctx = get(svc, ctxPath).body();
+    assertThat(ctx.path("address").path("receiverPhone").asString()).isEqualTo("01098765432");
+    assertThat(ctx.path("phoneRef").asString()).isEqualTo("010-****-5432");
+
+    // 주소에 값이 있으면 그것이 먼저, PATCH 에서 빠뜨리면 그대로 둔다
+    Res withReceiver =
+        send(
+            me,
+            HttpMethod.PATCH,
+            "/me/addresses/" + addressId,
+            address("BR60"),
+            UUID.randomUUID().toString(),
+            saved.body().path("version").asInt());
+    assertThat(withReceiver.status()).as(withReceiver.body().toString()).isEqualTo(200);
+    Map<String, Object> labelOnly = new LinkedHashMap<>(bare);
+    labelOnly.put("label", "회사");
+    Res kept =
+        send(
+            me,
+            HttpMethod.PATCH,
+            "/me/addresses/" + addressId,
+            labelOnly,
+            UUID.randomUUID().toString(),
+            withReceiver.body().path("version").asInt());
+    assertThat(kept.status()).as(kept.body().toString()).isEqualTo(200);
+    assertThat(kept.body().path("label").asString()).isEqualTo("회사");
+    assertThat(kept.body().path("receiverName").asString()).isEqualTo("홍길동");
+    assertThat(kept.body().path("receiverPhone").asString()).isEqualTo("010-1234-5678");
+    assertThat(get(svc, ctxPath).body().path("address").path("receiverPhone").asString())
+        .isEqualTo("010-1234-5678");
+  }
+
   @Test
   void guestDeliveryAddressIsBoundToDevice() {
     String device = "DEV-" + UUID.randomUUID();

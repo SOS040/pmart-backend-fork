@@ -117,7 +117,7 @@ public class InternalController implements InternalApi {
   @Override
   public ResponseEntity<GetShoppingContextInternal200Response> getShoppingContextInternal(
       String accountId, @Nullable String shoppingAddressId) {
-    profiles.profile(accountId);
+    ProfileRow profile = profiles.profile(accountId);
     ContextRow c = addresses.context(accountId);
     String target = shoppingAddressId != null ? shoppingAddressId : c.shoppingAddressId();
     var out =
@@ -129,8 +129,14 @@ public class InternalController implements InternalApi {
             .changedAt(CustomerMapping.time(c.changedAt()));
     if (target != null) {
       AddressRow a = addresses.owned(accountId, target);
-      out.address(CustomerMapping.address(a))
-          .phoneRef(AddressRules.maskPhone(a.data().receiverPhone()));
+      // 주문 초안 사본(BR-60): 주소에 받는 분·연락처가 없으면 프로필로 채운다(규칙은 AddressRules.contact)
+      AddressRules.Contact contact =
+          AddressRules.contact(a.data(), profile.nickname(), profile.name(), profile.phone());
+      out.address(
+              CustomerMapping.address(a)
+                  .receiverName(contact.receiverName())
+                  .receiverPhone(contact.receiverPhone()))
+          .phoneRef(AddressRules.maskPhone(contact.receiverPhone()));
     }
     return ResponseEntity.ok(out);
   }

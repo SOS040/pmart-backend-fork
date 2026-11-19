@@ -109,7 +109,10 @@ public final class StaffOrderRules {
   }
 
   /** 이름 가림: 첫·끝 글자만(홍길동 → 홍*동, 홍길 → 홍*, 남궁민수 → 남**수, 한 글자 → *). 앞뒤 공백은 뺀다. */
-  public static String maskName(String name) {
+  public static @Nullable String maskName(@Nullable String name) {
+    if (name == null) {
+      return null;
+    }
     int[] cp = name.strip().codePoints().toArray();
     if (cp.length <= 1) {
       return "*";

@@ -243,6 +243,10 @@ public class DraftService {
             requireMinOrderAmount());
 
     List<OrderRules.Blocker> blockers = new ArrayList<>();
+    if (address.contactMissing()) {
+      // BR-60: 배송지·프로필 모두 연락처가 없다 — 앱이 "내 연락처"를 프로필에 저장한 뒤 초안을 다시 만든다
+      blockers.add(new OrderRules.Blocker("CONTACT_REQUIRED", "받는 분 연락처를 입력해 주세요"));
+    }
     if (!amounts.minOrderSatisfied()) {
       blockers.add(
           new OrderRules.Blocker("MIN_ORDER_AMOUNT", amounts.minOrderShortfall() + "원 더 담아 주세요"));

@@ -44,8 +44,14 @@ public class Upstreams {
   public record Priced(int priceVersion, long itemAmount, Map<String, PricedLine> lines) {}
 
   /** 쇼핑 주소 판정 사본 + 주문 당시 배송지 사본(BR-37). 필수 필드가 비어 오면 shipping 은 null. */
+  /**
+   * @param contactMissing 배송지·프로필 모두 받는 분 연락처가 없다(BR-60) — 초안 CONTACT_REQUIRED
+   */
   public record Address(
-      String serviceability, @Nullable String mfcId, @Nullable ShippingAddress shipping) {}
+      String serviceability,
+      @Nullable String mfcId,
+      @Nullable ShippingAddress shipping,
+      boolean contactMissing) {}
 
   /** 운영 캘린더 결과: configRequired 면 ranges 는 비어 있다. */
   public record CenterDay(boolean configRequired, boolean open, List<int[]> ranges) {}
@@ -113,16 +119,20 @@ public class Upstreams {
     return new Address(
         svc.path("state").asString("UNKNOWN"),
         svc.hasNonNull("mfcId") ? svc.get("mfcId").asString() : null,
-        shipping(a, now));
+        shipping(a, now),
+        !a.isMissingNode() && text(a, "receiverPhone") == null);
   }
 
-  /** customer 배송지 → 주문 당시 사본. 필수(도로명·상세·수령인·연락처)가 하나라도 없으면 null(지어내지 않는다). */
+  /**
+   * customer 배송지 → 주문 당시 사본. 필수(도로명·상세·연락처)가 하나라도 없으면 null(지어내지 않는다). 받는 분·연락처는 customer 가 주소 → 프로필
+   * 순으로 채운 값이고(BR-60), 받는 분 이름은 없을 수 있다.
+   */
   private static @Nullable ShippingAddress shipping(JsonNode a, java.time.Instant now) {
     String road = text(a, "roadAddress");
     String detail = text(a, "detailAddress");
     String name = text(a, "receiverName");
     String phone = text(a, "receiverPhone");
-    if (road == null || detail == null || name == null || phone == null) {
+    if (road == null || detail == null || phone == null) {
       return null;
     }
     JsonNode geo = a.path("geo");
