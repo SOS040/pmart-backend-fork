@@ -88,7 +88,7 @@
 
 ### 2-7. 순위 신호 다시 내기 (products-v6 부터, ADR-0072)
 - 신호 토픽 `commerce.product-ranking.v1` 은 무제한 보관이 아니다 — 재생만으로는 모든 상품의 신호가 오지 않을 수 있다. 별칭을 새 색인으로 옮긴 뒤 한 번:
-  `curl -s -X POST http://192.168.0.34:8106/api/v1/internal/storefront/ranking-signal-republications` → `{published: N}`. Logstash 가 version 이 큰 것만 반영하므로 여러 번 불러도 된다.
+  `curl -s -X POST -H "Idempotency-Key: $(uuidgen)" -H "X-Source-System: pc1-ops" http://192.168.0.34:8106/api/v1/internal/storefront/ranking-signal-republications` → `{published: N}`(변경 요청 헤더 필수). **재생 시작(start) 전에** 한 번 부르면 새 그룹이 처음부터 읽을 때 모두 들어온다(2026-11-20 v6 때 그렇게 함). Logstash 가 version 이 큰 것만 반영하므로 여러 번 불러도 된다.
 
 ## 3. 부분 재처리 (DLT)
 - DLT 레코드: `search-index.DLT`, 키 = 상품 id.
@@ -110,3 +110,4 @@
 | 2026-11-04 22:42~22:52 KST | `products-v2` → `products-v3`, 그룹 `search-index-logstash` → `-v3` (커밋 0013eb7, 백업 `/d/pmart-backups/kafka/20261104T134205Z-before-reindex-v3`) | 사건 1162건(product 887·pricing 275)을 약 15초에 재생해 상품 275건. 지연 0, 영구 큐 0, DLT 0, 건수 275 = 275, 전 문서 필드 대조 결과 `updatedAtMs`(색인 시각)만 다름. `filters` 는 0건 — LAN 상품에 필터 옵션이 하나도 없음(`product_filter_option` 0행), `saleStateRowVersion` 은 판매 상태 사건이 있던 7건. LAN 확인(판매 상태·필터) 뒤 같은 날 `products-v2` 삭제(되돌림은 v2 대신 새 색인 재생 — 15초) |
 | 2026-11-05 06:09~06:15 KST | `products-v3` → `products-v4`, 그룹 `-v3` → `-v4`, 새 색인 `sku-handlings-v1`(커밋 7896f3e, **reindex.sh 첫 실행**, 백업 `/d/pmart-backups/kafka/20261104T210925Z-before-reindex-products-v4`) | 앞서 pc2 `lan.sh deploy pc2 kafka`(토픽 `mfc.sku-handling.v1` 생성·무제한), pc3 mfc-inventory 배포 → 취급 재발행 275건. 사건 1440건(product 890·pricing 275·handling 275)을 약 40초에 재생해 275건, 전 문서 대조 차이 없음. 새 필드 `carriedMfcIds` 275건(MFC-SEED-01)·`nameChosung` 275건. switch → search-service 배포 → finish(옛 그룹 삭제, pc4 옛 정의 파일 정리). 중간에 `KafkaEventRetentionNotUnlimited`(새 토픽, 지표 스크립트가 토픽 생성 전에 측정)로 check 가 한 번 멈춤 → 토픽 생성 뒤 풀림. `products-v3` 은 남김 |
 | 2026-11-05 06:49~06:55 KST | `products-v4` → `products-v5`(초성 앞부분 `nameChosung.edge`), 그룹 `-v4` → `-v5` (커밋 a806803, 백업 `/d/pmart-backups/kafka/20261104T214951Z-before-reindex-products-v5`) | reindex.sh 두 번째 실행, 멈춤 없이 끝까지. 사건 1440건 약 40초, 전 문서 대조 차이 없음. switch → search-service 배포 → "ㄷㅂ" 첫 결과가 두부, "ㅅㅋㄹ" 상위 3건 생크림 → finish. `products-v3`·`products-v4` 남김 |
+- 2026-11-20 00:00~00:06 v5 → v6(ADR-0072 순위 신호 칸, 사용자 "응 해줘"): storefront 배포·신호 504건 다시 냄 → check → start(백업 `20261119T145836Z-before-reindex-products-v6`, 첫 시도는 PC 2 이름 조회 일시 실패로 사전 확인에서 멈춤 → 다시) → wait(504/504, 다른 필드 없음) → switch → search-service 배포 → finish(그룹 search-index-logstash-v6, 옛 그룹 삭제). products-v5.json 삭제, products-v5 색인은 며칠 두었다 drop.

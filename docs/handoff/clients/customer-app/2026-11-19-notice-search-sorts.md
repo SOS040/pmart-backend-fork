@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 계기: 사용자 2026-11-19 "추천대로 5번 6번부터" — ADR-0072, 계획 `docs/operations/2026-11-19-search-next-plan.md`
-- 상태: 백엔드 main 반영, LAN 배포·새 색인(products-v6)은 사용자 승인 뒤(되면 아래에 적는다)
+- 상태: **LAN 배포됨 2026-11-20 00:06**(storefront 7e9d2ef1·search-service, 색인 products-v6). 게이트웨이 경유 확인: sort=RATING·REVIEW_COUNT·POPULAR 의 appliedSort 가 그 값, 리뷰 많은 순 1위 햇양파(480개·4.1), 결과 rating·reviewCount 채워짐
 
 ## 바뀐 것
 - `GET /search/products?sort=` — `POPULAR`(인기순 = 최근 30일 판매), `RATING`(별점순 — 리뷰가 적은 높은 별점은 덜 믿는 점수), **`REVIEW_COUNT`(리뷰 많은 순, 새 값)**. 전에는 POPULAR·RATING 이 관련도로 대체됐다(appliedSort 가 RELEVANCE).
