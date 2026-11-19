@@ -38,8 +38,15 @@ class CatalogEventConsumers {
         projector::applyReview);
   }
 
-  /** order.order.v1 — 바인딩 orderEvents-in-0(2026-11-19 ADR-0072, 인기순 판매 원장). 새 그룹은 처음부터 읽어 채운다. */
+  /**
+   * order.order.v1 — 바인딩 orderEvents-in-0(2026-11-19 ADR-0072, 인기순 판매 원장). 새 그룹은 처음부터 읽어 채운다. 순위
+   * 정책값 ({@code pmart.storefront.ranking.sales-window-days})이 있을 때만 만든다 — 바인딩
+   * 확인(ConsumerBindingVerifier)이 바인딩 없는 소비자 빈을 기동 실패로 보므로, 설정(바인딩·정책)을 넣기 전에는 이 기능만 꺼진 채로 뜬다.
+   */
   @Bean
+  @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+      prefix = "pmart.storefront.ranking",
+      name = "sales-window-days")
   PmartEventConsumer orderEvents(
       EventConsumers consumers, com.pmart.storefront.application.RankingSignals ranking) {
     return consumers.of(

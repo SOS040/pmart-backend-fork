@@ -40,7 +40,13 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       // 순위 신호 사건(ADR-0072)을 outbox 에서 확인한다
-      "pmart.messaging.outbox.delete-after-insert=false"
+      "pmart.messaging.outbox.delete-after-insert=false",
+      // 순위 신호(ADR-0072) — 주문 사건 구독·정책값. LAN 설정(pmart-config)에는 배포 승인 때 같은 값을 넣는다(시험 사본 = 정본 유지)
+      "spring.cloud.function.definition=catalogEvents;handlingEvents;reviewEvents;orderEvents",
+      "spring.cloud.stream.bindings.orderEvents-in-0.destination=order.order.v1",
+      "pmart.storefront.ranking.sales-window-days=30",
+      "pmart.storefront.ranking.rating-prior-count=5",
+      "pmart.storefront.ranking.rating-prior-mean=4.0"
     })
 @EnableWireMock(
     @ConfigureWireMock(name = "content", baseUrlProperties = "pmart.storefront.content-base-url"))
