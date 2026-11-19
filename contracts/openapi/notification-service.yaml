@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: notification-service
-  version: 0.5.1
+  version: 0.5.2
   description: |
+    0.5.2(2026-11-19, 사용자 "레퍼런스처럼" — 설명만, 설정 변경): 리뷰 요청 `REVIEW_REQUESTED` 를 배송 완료 **10분** 뒤(전 1시간)·**휴대폰 푸시에도**(전 알림함만) — 레퍼런스 10-3-6. 아래 0.4.x 의 "1시간·알림함만"은 이것으로 바뀜.
     0.5.1(2026-11-19, 고객 앱 알림 레퍼런스 10-3 — 사용자 "응 해줘", 설명만): 고객 알림 PREPARATION_STARTED 문구("예약하신 주문을 준비 중이에요" + 첫 상품명 외 N개 + 예약 도착 시간대)·휴대폰 푸시에 포함,
     DELIVERY_STARTED 목적지 DELIVERY(= deliveryId — 누르면 배송 현황, 배송 ID 가 없던 옛 사건은 ORDER), 새 종류 DELIVERY_HEADING("주문하신 곳으로 가고 있어요" — 묶음 배달 다음 차례)·
     DELIVERY_ARRIVING_SOON("라이더님이 곧 도착해요!" — 300m 안), 둘 다 목적지 DELIVERY·푸시 포함. 두 새 종류는 delivery(PC 5)가 사건을 내면 나온다(요청 DE-6·TR-4).

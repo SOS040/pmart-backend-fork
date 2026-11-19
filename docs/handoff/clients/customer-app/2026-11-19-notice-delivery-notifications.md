@@ -12,7 +12,7 @@
 | 3-3 배달 중 | `DELIVERY_HEADING`(새) | 주문하신 곳으로 가고 있어요 | 보냄 | `DELIVERY` |
 | 3-4 곧 도착 | `DELIVERY_ARRIVING_SOON`(새) | 라이더님이 곧 도착해요! | 보냄 | `DELIVERY` |
 | 3-5 배달 완료 | `DELIVERY_COMPLETED` | 배송이 완료되었어요 | 보냄 | `ORDER`(주문 상세 — 레퍼런스와 같음) |
-| 3-6 리뷰 | `REVIEW_REQUESTED` | (그대로 — 사용자 결정 대기) | 안 보냄 | ORDER → 리뷰 쓰기 |
+| 3-6 리뷰 | `REVIEW_REQUESTED` | 받은 상품은 어떠셨나요?(문구 그대로 — 포인트 적립 없음) | **이제 보냄 — 배송 완료 10분 뒤**(전 1시간·알림함만) | ORDER → 리뷰 쓰기 |
 
 ## 앱이 할 것
 - 새 templateKey 두 개(`DELIVERY_HEADING`·`DELIVERY_ARRIVING_SOON`)를 알림함·푸시에서 받기 — destination 이 `DELIVERY` 라 지금 `push_route.dart` 의 DELIVERY 처리(배송 현황)로 가면 된다.
