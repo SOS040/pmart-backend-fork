@@ -62,8 +62,9 @@
 ### storefront-service `[1단계 기본]`
 - **소유**: 홈 진열·배너·테마·랭킹/신상품 탭 구성과 발효 버전, 추천(3차).
 - **소유하지 않음**: 상품·가격·재고 정본.
-- **구독**: `ApprovalDecided`(전시 승인 BO-05), `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`.
-- **의존**: product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강, ADR-0021).
+- **발행**: `ProductRankingSignalsChanged`(ADR-0072), `ApplicationReceiptRecorded`(진열 편성 DISPLAY 승인 반영 회신, 2026-11-20 ADR-0075).
+- **구독**: `ApprovalDecided`(전시 승인 BO-05 — DISPLAY·targetService storefront-service 만, 2026-11-20 ADR-0075 구현), `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`.
+- **의존**: product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강, ADR-0021), S3 호환 저장소(배너 이미지, 버킷 pmart-storefront — ADR-0016).
 
 ### pricing-service `[1단계]`
 - **소유**: SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음), 효력일, 견적 계산(기본가·선택 오퍼→기간 프로모션→상품쿠폰→장바구니쿠폰 순서; 1차는 기본가만).

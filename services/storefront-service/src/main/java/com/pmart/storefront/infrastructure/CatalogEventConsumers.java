@@ -55,4 +55,17 @@ class CatalogEventConsumers {
                 || "OrderLineQuantityChanged".equals(e.eventType()),
         ranking::applyOrder);
   }
+
+  /**
+   * platform.approval.v1 — 바인딩 approvalEvents-in-0(2026-11-20 ADR-0075, 진열 편성 게시).
+   * DISPLAY·storefront-service 결정만 inbox 에 남긴다. 바인딩 설정이 있을 때만 만든다(설정을 넣기 전 배포에도 뜨게 — 승인돼도 그때까지는
+   * 게시되지 않음).
+   */
+  @Bean
+  @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+      name = "spring.cloud.stream.bindings.approvalEvents-in-0.destination")
+  PmartEventConsumer approvalEvents(
+      EventConsumers consumers, com.pmart.storefront.application.LayoutPublisher publisher) {
+    return consumers.of(com.pmart.storefront.application.LayoutPublisher::mine, publisher::handle);
+  }
 }

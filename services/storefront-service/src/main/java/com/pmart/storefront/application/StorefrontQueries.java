@@ -77,6 +77,11 @@ public class StorefrontQueries {
     return new Page(items, next, asOf == null ? clock.instant() : asOf, offset);
   }
 
+  /** 테마 영역 항목 — 넣은 순서, 진열 가능·센터 취급만(ADR-0075). */
+  public List<Item> themeItems(@Nullable String mfcId, List<String> productIds) {
+    return store.byIds(mfcId, productIds);
+  }
+
   /** 신상품 배지를 붙일 기준 시각(신규 기간 설정이 없으면 null — 배지 없음). */
   public @Nullable Instant newSince() {
     StorefrontProperties.Tabs tabs = props.tabs();

@@ -311,8 +311,11 @@ GET /api/v1/skus/{sku} OPERATOR
 GET /api/v1/slots CUSTOMER,GUEST
 GET /api/v1/stock-summaries OPERATOR
 GET /api/v1/stop-requests OPERATOR
+GET /api/v1/storefront/banner-images/{imageId} PUBLIC
 GET /api/v1/storefront/banners PUBLIC
 GET /api/v1/storefront/home PUBLIC
+GET /api/v1/storefront/layout-drafts OPERATOR
+GET /api/v1/storefront/layout-drafts/{draftId} OPERATOR
 GET /api/v1/storefront/layout-publications/{requestId} OPERATOR
 GET /api/v1/storefront/sections/{sectionId}/items PUBLIC
 GET /api/v1/storefront/tabs/{tabKey} PUBLIC
@@ -587,6 +590,9 @@ POST /api/v1/shipments/{shipmentId}/packages OPERATOR
 POST /api/v1/shipments/{shipmentId}/repackings OPERATOR
 POST /api/v1/sku-issuances OPERATOR
 POST /api/v1/sorting-results OPERATOR
+POST /api/v1/storefront/banner-images OPERATOR
+POST /api/v1/storefront/layout-drafts OPERATOR
+POST /api/v1/storefront/layout-drafts/{draftId}/submissions OPERATOR
 POST /api/v1/storefront/layout-publications OPERATOR
 POST /api/v1/suppliers OPERATOR
 POST /api/v1/suppliers/{supplierId}/contracts OPERATOR
@@ -625,3 +631,4 @@ PUT /api/v1/price-import-batches/{batchId}/lines/{seedProductId} OPERATOR
 PUT /api/v1/product-drafts/{draftId} OPERATOR
 PUT /api/v1/riders/me/settings RIDER
 PUT /api/v1/riders/me/state RIDER
+PUT /api/v1/storefront/layout-drafts/{draftId} OPERATOR

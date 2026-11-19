@@ -269,6 +269,63 @@ public class DisplayStore {
         args.toArray());
   }
 
+  /** 진열할 수 있는 상품인가(게시 콘텐츠·상품 버전·판매중지 아님) — 진열 편성 검사(ADR-0075). */
+  public boolean displayable(String productId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COUNT(*)" + DISPLAYABLE + " AND p.product_id = ?", Integer.class, productId);
+    return n != null && n > 0;
+  }
+
+  /**
+   * 테마 영역 항목(ADR-0075) — 넣은 순서 그대로, 진열할 수 있고(판매중지는 그 자리에서 빠짐) 센터가 취급하는 상품만. 테마는 50개 이하라 한 번에 읽고
+   * 호출자가 쪽을 나눈다.
+   */
+  public List<Item> byIds(@Nullable String mfcId, List<String> productIds) {
+    if (productIds.isEmpty()) {
+      return List.of();
+    }
+    List<Object> args = new java.util.ArrayList<>();
+    if (mfcId != null) {
+      args.add(mfcId);
+    }
+    String in = String.join(",", java.util.Collections.nCopies(productIds.size(), "?"));
+    args.addAll(productIds);
+    List<Item> found =
+        jdbc.query(
+            "SELECT d.*, r.n AS review_count, r.avg_rating FROM (SELECT p.product_id, p.name,"
+                + " p.image_url, p.representative_sku, s.price, s.price_version,"
+                + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state, p.net_content_amount,"
+                + " p.net_content_unit, p.content_published_at"
+                + DISPLAYABLE
+                + carriedAt(mfcId)
+                + " AND p.product_id IN ("
+                + in
+                + ")) d"
+                + " LEFT JOIN LATERAL (SELECT count(*) AS n, avg(rating)::float8 AS avg_rating FROM review_rating x"
+                + " WHERE x.product_id = d.product_id AND NOT x.deleted) r ON true",
+            (rs, i) ->
+                new Item(
+                    rs.getString("product_id"),
+                    rs.getString("name"),
+                    rs.getString("image_url"),
+                    rs.getString("representative_sku"),
+                    rs.getObject("price", Long.class),
+                    rs.getObject("price_version", Integer.class),
+                    rs.getString("sale_state"),
+                    rs.getObject("net_content_amount", Integer.class),
+                    rs.getString("net_content_unit"),
+                    rs.getInt("review_count"),
+                    rs.getObject("avg_rating", Double.class),
+                    rs.getTimestamp("content_published_at") == null
+                        ? null
+                        : rs.getTimestamp("content_published_at").toInstant()),
+            args.toArray());
+    java.util.Map<String, Item> byId = new java.util.HashMap<>();
+    found.forEach(i -> byId.put(i.productId(), i));
+    return productIds.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
+  }
+
   /** 그 영역의 전체 수(다음 커서 판단). */
   public int count(@Nullable String mfcId, Kind kind, @Nullable Instant since) {
     List<Object> args = new java.util.ArrayList<>();

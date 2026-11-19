@@ -41,7 +41,12 @@ PC 1 할 일 목록 `docs/operations/pc1-todo.md`에서 이 문서를 가리킨�
   - 탈퇴 API는 지금 501이다.
 - 처리방침 문구는 실제 서비스에 맞춘 초안이다. 운영 전 법률 검토는 사용자 몫이다.
 
-## 2. 홈 화면 프로모션 — 아직 안 함, 범위 결정 필요
+## 2. 홈 화면 프로모션 — 범위 정함·구현함(2026-11-20)
+
+> **갱신 2026-11-20**: 사용자 "프로모션부터 하자" → 범위 "탭 + 배너·테마"(할인·쿠폰은 1차 제외 그대로). ADR-0075.
+> ① 랭킹·신상품 탭 구현 27d08273(정책값 new-window-days·ranking-size 는 LAN 설정에 아직 없음 — 값은 사용자 결정), ② 배너·테마 편성 구현(storefront 0.7.0·V9).
+> 남은 것: LAN 배포(사용자 승인), 탭 정책값, 백오피스 편성 화면(`docs/handoff/clients/backoffice/2026-11-20-request-home-banners-themes.md`), 고객 앱 배너 표시(`customer-app/2026-11-20-request-home-banners-themes.md`).
+> 아래는 정하기 전 기록이다.
 
 ### 지금 홈(storefront) 상태
 - 홈에는 "전체 상품" 섹션(`S-ALL`) 하나만 있다.

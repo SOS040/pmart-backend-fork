@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
+    0.7.0(2026-11-20 ADR-0075 ② — BO-05 일반 배너·상품 테마 편성): 운영 초안 `/storefront/layout-drafts`(만들기·고치기·제출)·배너 이미지 `/storefront/banner-images`.
+    제출 → approval DISPLAY(정본 storefront-service) 승인 → ApprovalDecided 를 받아 새 진열 버전(layoutVersion 1부터) 게시·반영 회신. HOME 탭 = 기간 안 배너(HOME_TOP·HOME_MIDDLE)
+    + 기간 안 테마 영역(sortOrder 순, 넣은 상품 순서, 진열 가능·센터 취급만) + 마지막 "전체 상품". `POST /storefront/layout-publications` 는 쓰지 않는다(승인 반영으로 대체, 501).
+    할인·쿠폰·특가·증정 문구는 제출 때 422 PROMOTION_NOT_ALLOWED(1차 범위).
     0.6.0(2026-11-20 ADR-0075 — 사용자 "프로모션부터 하자" → "탭 + 배너·테마"): **랭킹·신상품 탭** — 정책값 `pmart.storefront.tabs.new-window-days`(신규 판정기간)·
     `ranking-size`(랭킹 상품 수)가 있을 때만 `tabs` 에 RANKING·NEW 가 있고, 없으면 그 탭은 404(TAB_NOT_CONFIGURED). 랭킹 = 최근 판매(순위 신호 집계기간, ADR-0072) 많은 순 →
     베이지안 별점 점수 → 상품 ID, 판매 0 은 빠짐, 1위부터 ranking-size 까지(영역 `S-RANKING`, badge RANK·rank). 신상품 = 처음 게시가 신규 기간 안, 최신 순(영역 `S-NEW`, badge NEW).
@@ -118,11 +122,185 @@ paths:
                   layoutVersion: { type: integer }
                   items: { type: array, items: { $ref: '#/components/schemas/Banner' } }
 
+  /storefront/layout-drafts:
+    post:
+      tags: [layouts]
+      summary: '[운영] 진열 편성 초안 만들기 — 일반 배너·상품 테마 (0.7.0, ADR-0075 BO-05)'
+      description: |
+        MD·OPERATOR_ADMIN. `fromCurrent=true` 면 지금 게시본(배너·테마)을 복사해 시작한다(본문은 무시). 초안은 고객 화면을 바꾸지 않는다.
+        본문 형식은 LayoutDraftBody — 할인·쿠폰·특가·증정 문구는 제출 때 막는다(1차 범위).
+      operationId: createLayoutDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: fromCurrent, in: query, schema: { type: boolean, default: false } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LayoutDraftBody' }
+      responses:
+        '201':
+          description: 초안
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LayoutDraft' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    get:
+      tags: [layouts]
+      summary: '[운영] 진열 편성 초안 목록 (0.7.0) — 최근 순'
+      operationId: listLayoutDrafts
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [DRAFT, SUBMITTED, PUBLISHED, REJECTED] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/LayoutDraft' } }
+                  currentLayoutVersion: { type: integer, description: 지금 게시된 버전(0 = 기본 진열) }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /storefront/layout-drafts/{draftId}:
+    get:
+      tags: [layouts]
+      summary: '[운영] 진열 편성 초안 (0.7.0)'
+      operationId: getLayoutDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LayoutDraft' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [layouts]
+      summary: '[운영] 진열 편성 초안 고치기 (DRAFT·REJECTED 만, 0.7.0)'
+      operationId: updateLayoutDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LayoutDraftBody' }
+      responses:
+        '200':
+          description: 고친 초안(REJECTED 였으면 DRAFT 로)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LayoutDraft' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /storefront/layout-drafts/{draftId}/submissions:
+    post:
+      tags: [layouts]
+      summary: '[운영] 진열 편성 초안 제출 — 검사·잠금, 승인 요청 본문 (0.7.0)'
+      description: |
+        검사를 통과하면 SUBMITTED·draftHash 를 확정하고 `approvalRequest` 를 준다 — 백오피스가 approval-service `POST /change-requests` → `/submissions`
+        로 그대로 보낸다(종류 DISPLAY, 정본 storefront-service, targetRef = draftId). DISPLAY_APPROVER 가 승인하면 storefront 가 ApprovalDecided 를 받아
+        새 진열 버전으로 게시한다(승인 행의 draftHash 가 다르면 반영하지 않음). 반려되면 초안은 REJECTED(고쳐서 다시 제출).
+        422 code LAYOUT_INVALID, 걸린 곳 모두 details(field·reason): PRODUCT_NOT_PUBLISHED(진열할 수 없는 상품 — field = productId) ·
+        IMAGE_NOT_FOUND · INVALID_LINK · INVALID_PERIOD · INVALID_PLACEMENT · DUPLICATE_ID · DUPLICATE_PRODUCT ·
+        PROMOTION_NOT_ALLOWED(할인·"N% off"·쿠폰·특가·증정·사은품·1+1·세일·최저가·신선 보장 문구 — 1차 범위. "100% 국내산" 같은 %는 통과).
+        배너·테마가 없는 본문도 제출할 수 있다(철회 = 뺀 새 버전).
+      operationId: submitLayoutDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 잠금·승인 요청 본문
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LayoutDraftSubmission' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: 검사 실패(details 위)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /storefront/banner-images:
+    post:
+      tags: [layouts]
+      summary: '[운영] 배너 이미지 올리기 (0.7.0) — JPEG·PNG·WEBP 5MB 이하'
+      operationId: uploadBannerImage
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: 저장
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BannerImage' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: IMAGE_INVALID(형식·크기)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /storefront/banner-images/{imageId}:
+    get:
+      tags: [storefront]
+      summary: 배너 이미지 본문 (0.7.0 — 토큰 없이, 게시된 진열에 쓰인 것만. 운영자 토큰이면 초안 것도)
+      operationId: getBannerImage
+      security: []
+      parameters:
+        - { name: imageId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 이미지 바이트(바뀌지 않음 — 1년 immutable)
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /storefront/layout-publications:
     post:
       tags: [layouts]
-      summary: 전시 구성 발효 (approval BO-05 승인 결과 참조)
+      summary: 전시 구성 발효 (approval BO-05 승인 결과 참조) — 0.7.0 부터 쓰지 않음(501, 승인 반영이 게시)
       description: |
+        **0.7.0(ADR-0075): 쓰지 않는다** — storefront 가 ApprovalDecided(DISPLAY·storefront-service)를 받아 바로 게시한다. 501 NOT_IMPLEMENTED.
         승인된 전시 초안(draftId)을 새 layoutVersion으로 발효한다. 참조 상품은 product 승인 버전·판매 상태를 재확인하며 판매중지 상품은 진열에서 제외한다.
         테마 진열을 새 공식 카테고리·독립 SKU로 전환하지 않는다.
       operationId: publishLayout
@@ -263,6 +441,77 @@ components:
         reviewCount: { type: integer, minimum: 0, description: '(0.4.0 BR-63) 공개 리뷰 수' }
         badge: { type: string, enum: [NEW, RANK, NONE] }
         rank: { type: integer }
+    LayoutBanner:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [bannerId, placement, imageId, altText, linkType]
+      properties:
+        bannerId: { type: string, pattern: '^[A-Za-z0-9_-]{1,40}$', description: 초안 안에서 고유 }
+        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE] }
+        imageId: { type: string, description: '`POST /storefront/banner-images` 결과' }
+        altText: { type: string, minLength: 1, maxLength: 100, description: 접근성 설명(화면 읽기) }
+        linkType: { type: string, enum: [SECTION, CATEGORY, PRODUCT, NONE] }
+        linkRef: { type: [string, 'null'], maxLength: 80, description: 'SECTION = 같은 초안의 테마 sectionId · CATEGORY = 카테고리 ID · PRODUCT = 상품 ID · NONE = 비움' }
+        sortOrder: { type: integer, minimum: 0 }
+        startsAt: { type: [string, 'null'], format: date-time, description: 비우면 게시 즉시 }
+        endsAt: { type: [string, 'null'], format: date-time, description: 비우면 끝 없음 }
+    LayoutTheme:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [sectionId, kind, title, productIds]
+      properties:
+        sectionId: { type: string, pattern: '^T-[A-Za-z0-9_-]{1,38}$', description: '테마 영역 ID(T- 로 시작, 초안 안에서 고유) — 영역 다음 묶음 경로에 쓴다' }
+        kind: { type: string, enum: [THEME, SEASON, WEEKLY_PICK] }
+        title: { type: string, minLength: 1, maxLength: 40 }
+        subtitle: { type: [string, 'null'], maxLength: 80 }
+        productIds: { type: array, minItems: 1, maxItems: 50, items: { type: string }, description: 보일 순서 그대로 }
+        sortOrder: { type: integer, minimum: 0 }
+        startsAt: { type: [string, 'null'], format: date-time }
+        endsAt: { type: [string, 'null'], format: date-time }
+    LayoutDraftBody:
+      type: object
+      x-added-in: '2026-11-20'
+      properties:
+        banners: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/LayoutBanner' } }
+        themes: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/LayoutTheme' } }
+        note: { type: [string, 'null'], maxLength: 200, description: 운영 메모(고객에게 안 보임) }
+    LayoutDraft:
+      allOf:
+        - $ref: '#/components/schemas/LayoutDraftBody'
+        - type: object
+          required: [draftId, state, version, createdBy, createdAt]
+          properties:
+            draftId: { type: string }
+            state: { type: string, enum: [DRAFT, SUBMITTED, PUBLISHED, REJECTED] }
+            version: { type: integer, description: '고칠 때 X-Expected-Version' }
+            draftHash: { type: [string, 'null'], description: 제출 때 잠근 본문 해시 }
+            approvalId: { type: [string, 'null'] }
+            layoutVersion: { type: [integer, 'null'], description: 게시된 진열 버전(PUBLISHED) }
+            rejectionReason: { type: [string, 'null'] }
+            createdBy: { type: string }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: [string, 'null'], format: date-time }
+    LayoutDraftSubmission:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [draftId, draftHash, approvalRequest]
+      properties:
+        draftId: { type: string }
+        draftHash: { type: string }
+        approvalRequest:
+          type: object
+          description: approval-service `POST /change-requests` 본문 그대로(종류 DISPLAY, 정본 storefront-service, targetRef = draftId, 행 attributes.draftHash)
+          additionalProperties: true
+    BannerImage:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [imageId, url, contentType]
+      properties:
+        imageId: { type: string }
+        url: { type: string, description: '`/api/v1/storefront/banner-images/{imageId}`' }
+        contentType: { type: string }
+        width: { type: [integer, 'null'] }
+        height: { type: [integer, 'null'] }
     Banner:
       type: object
       properties:

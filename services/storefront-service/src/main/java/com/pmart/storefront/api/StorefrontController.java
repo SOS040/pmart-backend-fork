@@ -38,9 +38,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class StorefrontController implements StorefrontApi {
 
   private final StorefrontQueries queries;
+  private final com.pmart.storefront.application.LayoutService layouts;
+  private final java.time.Clock clock;
 
-  public StorefrontController(StorefrontQueries queries) {
+  public StorefrontController(
+      StorefrontQueries queries,
+      com.pmart.storefront.application.LayoutService layouts,
+      java.time.Clock clock) {
     this.queries = queries;
+    this.layouts = layouts;
+    this.clock = clock;
   }
 
   @Override
@@ -60,8 +67,20 @@ public class StorefrontController implements StorefrontApi {
       @Nullable Integer layoutVersion,
       Integer size,
       @Nullable String cursor) {
+    int current = layouts.currentVersion();
+    if (layoutVersion != null && layoutVersion != current) {
+      throw new PmartException(
+          "LAYOUT_VERSION_CHANGED",
+          HttpStatus.CONFLICT,
+          "홈 구성이 바뀌었습니다. 홈을 다시 조회하세요.",
+          false,
+          List.of());
+    }
+    if (sectionId.startsWith("T-")) {
+      return ResponseEntity.ok(themeItems(sectionId, mfcId, size, cursor));
+    }
     DisplayStore.Kind kind = kindOf(sectionId);
-    if (layoutVersion != null && layoutVersion != DefaultLayout.VERSION) {
+    if (layoutVersion != null && layoutVersion != current) {
       throw new PmartException(
           "LAYOUT_VERSION_CHANGED",
           HttpStatus.CONFLICT,
@@ -90,7 +109,110 @@ public class StorefrontController implements StorefrontApi {
   @Override
   public ResponseEntity<ListBanners200Response> listBanners(@Nullable String placement) {
     return ResponseEntity.ok(
-        new ListBanners200Response().layoutVersion(DefaultLayout.VERSION).items(List.of()));
+        new ListBanners200Response()
+            .layoutVersion(layouts.currentVersion())
+            .items(
+                activeBanners().stream()
+                    .filter(b -> placement == null || placement.equals(b.placement()))
+                    .map(StorefrontController::banner)
+                    .toList()));
+  }
+
+  /** 배너 이미지 본문(0.7.0) — 게시된 진열에 쓰인 것만(운영자는 초안 것도). 이미지 ID 마다 바뀌지 않는다. */
+  @Override
+  public ResponseEntity<org.springframework.core.io.Resource> getBannerImage(String imageId) {
+    var img = layouts.image(imageId);
+    return ResponseEntity.ok()
+        .contentType(org.springframework.http.MediaType.parseMediaType(img.row().contentType()))
+        .contentLength(img.row().sizeBytes())
+        .eTag("\"" + img.row().sha256() + "\"")
+        .cacheControl(
+            org.springframework.http.CacheControl.maxAge(java.time.Duration.ofDays(365))
+                .cachePublic()
+                .immutable())
+        .body(new org.springframework.core.io.InputStreamResource(img.body()));
+  }
+
+  /** 지금 버전의 기간 안 배너(자리·순서). */
+  private List<com.pmart.storefront.domain.LayoutRules.Banner> activeBanners() {
+    Instant now = clock.instant();
+    return layouts.currentBody().map(b -> b.banners()).orElse(List.of()).stream()
+        .filter(b -> com.pmart.storefront.domain.LayoutRules.active(b.startsAt(), b.endsAt(), now))
+        .sorted(
+            java.util.Comparator.comparing(
+                    (com.pmart.storefront.domain.LayoutRules.Banner b) ->
+                        com.pmart.storefront.domain.LayoutRules.PLACEMENTS.indexOf(b.placement()))
+                .thenComparingInt(com.pmart.storefront.domain.LayoutRules.Banner::sortOrder))
+        .toList();
+  }
+
+  /** 지금 버전의 기간 안 테마(순서). */
+  private List<com.pmart.storefront.domain.LayoutRules.Theme> activeThemes() {
+    Instant now = clock.instant();
+    return layouts.currentBody().map(b -> b.themes()).orElse(List.of()).stream()
+        .filter(t -> com.pmart.storefront.domain.LayoutRules.active(t.startsAt(), t.endsAt(), now))
+        .sorted(
+            java.util.Comparator.comparingInt(
+                com.pmart.storefront.domain.LayoutRules.Theme::sortOrder))
+        .toList();
+  }
+
+  private static com.pmart.storefront.api.generated.model.Banner banner(
+      com.pmart.storefront.domain.LayoutRules.Banner b) {
+    return new com.pmart.storefront.api.generated.model.Banner()
+        .bannerId(b.bannerId())
+        .placement(b.placement())
+        .imageUrl(URI.create("/api/v1/storefront/banner-images/" + b.imageId()))
+        .altText(b.altText())
+        .linkType(
+            com.pmart.storefront.api.generated.model.Banner.LinkTypeEnum.fromValue(b.linkType()))
+        .linkRef(b.linkRef())
+        .sortOrder(b.sortOrder());
+  }
+
+  /** 테마 영역 한 쪽(넣은 순서, 진열 가능·취급만). */
+  private ListSectionItems200Response themeItems(
+      String sectionId, @Nullable String mfcId, int size, @Nullable String cursor) {
+    com.pmart.storefront.domain.LayoutRules.Theme theme =
+        activeThemes().stream()
+            .filter(t -> t.sectionId().equals(sectionId))
+            .findFirst()
+            .orElseThrow(
+                () -> PmartException.notFound("SECTION_NOT_FOUND", "진열 영역이 없습니다: " + sectionId));
+    ThemePage page = themePage(theme, mfcId, size, cursor);
+    return new ListSectionItems200Response()
+        .sectionId(sectionId)
+        .items(page.items())
+        .page(
+            new ListSectionItems200ResponsePage().nextCursor(page.next()).size(page.items().size()))
+        .asOf(asOf(page.asOf()));
+  }
+
+  private record ThemePage(List<DisplayItem> items, @Nullable String next, Instant asOf) {}
+
+  private ThemePage themePage(
+      com.pmart.storefront.domain.LayoutRules.Theme theme,
+      @Nullable String mfcId,
+      int size,
+      @Nullable String cursor) {
+    int offset;
+    try {
+      offset = DefaultLayout.offset(cursor);
+    } catch (IllegalArgumentException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "잘못된 커서입니다. 처음부터 다시 조회하세요.");
+    }
+    String center = mfcId == null || mfcId.isBlank() ? null : mfcId.strip();
+    List<Item> all = queries.themeItems(center, theme.productIds());
+    List<Item> slice =
+        all.subList(Math.min(offset, all.size()), Math.min(offset + size, all.size()));
+    Instant newSince = queries.newSince();
+    List<DisplayItem> items = new ArrayList<>();
+    for (int n = 0; n < slice.size(); n++) {
+      items.add(
+          item(slice.get(n), center != null, DisplayStore.Kind.LATEST, offset + n + 1, newSince));
+    }
+    String next = offset + size < all.size() ? DefaultLayout.cursor(offset + size) : null;
+    return new ThemePage(items, next, clock.instant());
   }
 
   /** 켜진 탭(HOME 은 늘, RANKING·NEW 는 설정이 있을 때). */
@@ -152,12 +274,33 @@ public class StorefrontController implements StorefrontApi {
                   DefaultLayout.VIEW_ALL_REF,
                   mfcId);
         };
+    List<Section> sections = new ArrayList<>();
+    List<com.pmart.storefront.api.generated.model.Banner> banners = List.of();
+    if (tab == TabKey.HOME) {
+      // 편성(BO-05, ADR-0075): 기간 안 배너 + 테마 영역(순서) + 마지막 "전체 상품"
+      banners = activeBanners().stream().map(StorefrontController::banner).toList();
+      for (com.pmart.storefront.domain.LayoutRules.Theme t : activeThemes()) {
+        ThemePage page = themePage(t, mfcId, DefaultLayout.FIRST_PAGE, null);
+        sections.add(
+            new Section()
+                .sectionId(t.sectionId())
+                .kind(Section.KindEnum.fromValue(t.kind()))
+                .title(t.title())
+                .subtitle(t.subtitle())
+                .state(Section.StateEnum.OK)
+                .items(page.items())
+                .nextCursor(page.next())
+                .viewAllRef("/api/v1/storefront/sections/" + t.sectionId() + "/items")
+                .asOf(asOf(page.asOf())));
+      }
+    }
+    sections.add(section);
     return new HomeLayout()
-        .layoutVersion(DefaultLayout.VERSION)
+        .layoutVersion(layouts.currentVersion())
         .tab(tab)
         .tabs(tabs)
-        .banners(List.of())
-        .sections(List.of(section));
+        .banners(banners)
+        .sections(sections);
   }
 
   private Section section(
