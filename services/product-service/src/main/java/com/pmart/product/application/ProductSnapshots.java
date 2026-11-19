@@ -42,6 +42,7 @@ public class ProductSnapshots {
         m.put("shelfLifeGuarantee", guarantee);
       }
       putDimensions(m, s);
+      putNetContent(m, s);
       m.put("state", s.state());
       m.put("barcodes", catalog.activeBarcodes(s.sku()));
       catalog
@@ -83,6 +84,17 @@ public class ProductSnapshots {
     putIfNotNull(g, "minRemainingDays", s.shelfMinRemainingDays());
     putIfNotNull(g, "maxDaysSinceManufacture", s.shelfMaxDaysSinceManufacture());
     return g;
+  }
+
+  /** 내용량(2026-11-19 BR-19). 없으면 넣지 않는다. */
+  static void putNetContent(Map<String, Object> m, SkuRow s) {
+    if (s.netContent() == null) {
+      return;
+    }
+    Map<String, Object> n = new LinkedHashMap<>();
+    n.put("amount", s.netContent().amount());
+    n.put("unit", s.netContent().unit());
+    m.put("netContent", n);
   }
 
   /** 실물 치수(2026-11-16). 없으면 넣지 않는다(치수 미등록), 출처는 알 때만. */

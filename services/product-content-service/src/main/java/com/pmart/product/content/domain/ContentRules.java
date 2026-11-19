@@ -173,4 +173,19 @@ public final class ContentRules {
   private static String nz(@Nullable String s) {
     return s == null ? "" : s;
   }
+
+  /** 단위 가격의 기준 양(2026-11-19 BR-19 — "100g당"). */
+  public static final int UNIT_PRICE_BASIS = 100;
+
+  /**
+   * 단위 가격(BR-19): 가격 × 100 ÷ 내용량, 원 단위 반올림(0.5 올림). 내용량이 0 이하면 null(계산하지 않는다).
+   *
+   * @param amount 판매 단위 전체에 든 양(g·mL)
+   */
+  public static @org.jspecify.annotations.Nullable Long unitPrice(long price, int amount) {
+    if (amount <= 0 || price < 0) {
+      return null;
+    }
+    return (price * UNIT_PRICE_BASIS * 2 + amount) / (2L * amount);
+  }
 }

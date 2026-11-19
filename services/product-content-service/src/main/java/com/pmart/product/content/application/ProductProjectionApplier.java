@@ -54,6 +54,13 @@ public class ProductProjectionApplier {
       m.put("sku", s.path("sku").asString(null));
       m.put("unitType", s.path("unitType").asString(null));
       m.put("unitsPerSku", s.hasNonNull("unitsPerSku") ? s.get("unitsPerSku").asInt() : null);
+      // 내용량(2026-11-19 BR-19) — 단위 가격 계산용. 없으면 넣지 않는다
+      JsonNode net = s.path("netContent");
+      if (net.path("amount").isNumber() && net.hasNonNull("unit")) {
+        m.put(
+            "netContent",
+            Map.of("amount", net.get("amount").asInt(), "unit", net.get("unit").asString()));
+      }
       skus.add(m);
     }
     List<String> paths = new ArrayList<>();

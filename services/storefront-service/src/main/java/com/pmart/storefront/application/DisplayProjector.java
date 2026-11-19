@@ -64,7 +64,12 @@ public class DisplayProjector {
               p.path("saleState").asString("ON_SALE"),
               rowVersion(p.path("rowVersion")),
               at(p.path("effectiveAt"), e),
-              clock.instant());
+              clock.instant(),
+              // 대표 SKU 내용량(2026-11-19 BR-19). 없으면 null(옛 사건·개수로 파는 상품)
+              p.path("skus").path(0).path("netContent").path("amount").isNumber()
+                  ? p.path("skus").path(0).path("netContent").path("amount").asInt()
+                  : null,
+              p.path("skus").path(0).path("netContent").path("unit").asString(null));
       case "ProductContentPublished" -> {
         String productId = p.path("productId").asString();
         cards

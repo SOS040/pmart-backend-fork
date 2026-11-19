@@ -236,7 +236,18 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
         "skus",
         List.of(
             Map.of(
-                "sku", sku, "unitType", "E", "unitsPerSku", 1, "weightG", 180, "state", "ACTIVE")));
+                "sku",
+                sku,
+                "unitType",
+                "E",
+                "unitsPerSku",
+                1,
+                "weightG",
+                180,
+                "state",
+                "ACTIVE",
+                "netContent",
+                Map.of("amount", 180, "unit", "G")))); // 내용량(2026-11-19 BR-19)
     payload.put("version", version);
     payload.put("saleState", "ON_SALE");
     payload.put("primaryCategoryId", "p03-c02");
@@ -575,6 +586,16 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
         .isEqualTo(3980L);
     assertThat(priced.path("options").path(0).path("price").path("priceVersion").asInt())
         .isEqualTo(2);
+    // 단위 가격(BR-19): 3980원 × 100 ÷ 180g = 2211.1 → 2211원
+    assertThat(priced.path("options").path(0).path("netContent").path("amount").asInt())
+        .isEqualTo(180);
+    JsonNode unitPrice = priced.path("options").path(0).path("unitPrice");
+    assertThat(unitPrice.path("basis").asInt()).isEqualTo(100);
+    assertThat(unitPrice.path("unit").asString()).isEqualTo("G");
+    assertThat(unitPrice.path("price").asLong()).isEqualTo(2211L);
+    assertThat(opt.path("unitPrice").isNull() || opt.path("unitPrice").isMissingNode())
+        .as("가격이 없으면 단위 가격도 없다")
+        .isTrue();
     deps.verify(
         getRequestedFor(urlPathEqualTo("/api/v1/prices")).withQueryParam("skus", equalTo(sku)));
     assertThat(opt.path("availability").isNull() || opt.path("availability").isMissingNode())

@@ -21,7 +21,9 @@ public class DisplayStore {
       @Nullable String representativeSku,
       @Nullable Long basePrice,
       @Nullable Integer priceVersion,
-      String saleState) {}
+      String saleState,
+      @Nullable Integer netContentAmount,
+      @Nullable String netContentUnit) {}
 
   private final JdbcTemplate jdbc;
 
@@ -36,12 +38,17 @@ public class DisplayStore {
       String saleState,
       @Nullable Integer saleStateRowVersion,
       Instant at,
-      Instant now) {
+      Instant now,
+      @Nullable Integer netContentAmount,
+      @Nullable String netContentUnit) {
     jdbc.update(
         "INSERT INTO display_product (product_id, product_version, representative_sku, sale_state,"
-            + " sale_state_row_version, sale_state_at, updated_at) VALUES (?,?,?,?,?,?,?)"
+            + " sale_state_row_version, sale_state_at, updated_at, net_content_amount, net_content_unit)"
+            + " VALUES (?,?,?,?,?,?,?,?,?)"
             + " ON CONFLICT (product_id) DO UPDATE SET product_version = EXCLUDED.product_version,"
             + " representative_sku = EXCLUDED.representative_sku,"
+            + " net_content_amount = EXCLUDED.net_content_amount,"
+            + " net_content_unit = EXCLUDED.net_content_unit,"
             + " sale_state = CASE WHEN (CASE WHEN EXCLUDED.sale_state_row_version IS NOT NULL"
             + "   THEN display_product.sale_state_row_version IS NULL"
             + "     OR EXCLUDED.sale_state_row_version > display_product.sale_state_row_version"
@@ -70,7 +77,9 @@ public class DisplayStore {
         saleState,
         saleStateRowVersion,
         ts(at),
-        ts(now));
+        ts(now),
+        netContentAmount,
+        netContentUnit);
   }
 
   public void upsertContent(
@@ -174,7 +183,8 @@ public class DisplayStore {
     args.add(limit);
     return jdbc.query(
         "SELECT p.product_id, p.name, p.image_url, p.representative_sku, s.price, s.price_version,"
-            + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state"
+            + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state, p.net_content_amount,"
+            + " p.net_content_unit"
             + DISPLAYABLE
             + carriedAt(mfcId)
             + " ORDER BY p.content_published_at DESC NULLS LAST, p.product_id OFFSET ? LIMIT ?",
@@ -186,7 +196,9 @@ public class DisplayStore {
                 rs.getString("representative_sku"),
                 rs.getObject("price", Long.class),
                 rs.getObject("price_version", Integer.class),
-                rs.getString("sale_state")),
+                rs.getString("sale_state"),
+                rs.getObject("net_content_amount", Integer.class),
+                rs.getString("net_content_unit")),
         args.toArray());
   }
 

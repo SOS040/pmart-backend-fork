@@ -1,11 +1,14 @@
 openapi: 3.1.0
 info:
   title: product-service
-  version: 0.3.2
+  version: 0.4.0
   description: |
     기초상품·상품·SKU(E-/B- 8자리, 재사용 금지)·구성 낱개 수·카테고리(4단계·노드별 필터, ADR-0015)·바코드↔SKU·판매 단위·중량·물류 규격·전사 판매 상태·승인 버전의 정본. (docs/architecture/service-map.md §1, ADR-0001)
     비정본: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
     발행 이벤트: ProductVersionPublished, ProductSaleStateChanged, CategoryChanged, SkuIssued.
+    0.4.0(2026-11-19, 클라이언트 BR-19 "100g당 가격" — 사용자 "응"): SKU 내용량 `netContent`(amount 정수 + unit G/ML, 판매 단위 전체, 선택) —
+    초안 입력·SkuDetail·상품 버전 조회·ProductVersionPublished.skus[]. 고객 화면 단위 가격(100g·100mL당)은 product-content·storefront 가 계산한다.
+    weightG(포장 포함 물류 무게)·volumeMl 과 다르다. 없으면 단위 가격을 내지 않는다.
     0.2.0(2026-11-16): SKU 실물 치수 `dimensions`(widthMm·depthMm·heightMm, 1~5000 mm)·`dimensionsSource`(MEASURED/ESTIMATED) 추가 —
     초안 입력·SkuDetail·상품 버전 조회·ProductVersionPublished.skus[] (선택 필드, 하위 호환). MFC 재고 적치·이동 칸 용량 계산에 쓴다.
     0.3.0(2026-11-17): 상품 정보 수정 `POST /products/{productId}/edit-drafts` — 현재 승인 버전을 그대로 옮겨 담은 수정 초안(targetProductId)을 만든다
@@ -447,7 +450,7 @@ paths:
       summary: 상품 정보 수정 시작 — 현재 승인 버전으로 채운 수정 초안 (2026-11-17)
       description: |
         기존 상품을 고쳐 PRODUCT 승인으로 새 버전을 만드는 첫 단계. 현재 승인 버전의 상품 속성(관리용 이름·기초상품·대표/노출 카테고리·필터 옵션)과
-        SKU 속성(unitType·unitsPerSku·weightG·volumeMl·storageType·alcohol·shelfLifeGuarantee·dimensions·dimensionsSource·logistics·
+        SKU 속성(unitType·unitsPerSku·weightG·volumeMl·storageType·alcohol·shelfLifeGuarantee·dimensions·dimensionsSource·netContent·logistics·
         활성 바코드 전부)을 옮겨 담은 DRAFT(input.targetProductId = productId)를 만든다. 재승인은 초안 값으로 바꾸므로(빠진 바코드·치수·소비기한
         보장은 지워짐) 손으로 옮겨 적지 말고 이 초안을 고친다. 판매 상태(product.saleState)는 넣지 않는다 — 반영 때 현재 상태 유지.
         이후 흐름은 개별 초안과 같다: PUT /product-drafts/{draftId}(바코드 추가·교체 포함) → POST /product-drafts/{draftId}/submissions →
@@ -752,6 +755,17 @@ components:
       type: string
       description: 치수 출처(2026-11-16). ESTIMATED = 추정값(먼저 일괄 적재), MEASURED = 실측값(나중에 승인으로 바꾼다). dimensions 없이 주면 DIMENSIONS_INVALID
       enum: [MEASURED, ESTIMATED]
+    NetContent:
+      type: object
+      required: [amount, unit]
+      description: |
+        SKU 내용량(2026-11-19 BR-19). 판매 단위(E 낱개 / B 묶음 전체)에 든 상품의 양 — 1kg 은 1000 G, 1.5L 는 1500 ML, 500g×2입 묶음은 1000 G.
+        포장 무게(weightG, 물류용)와 다르다. 개수로만 파는 상품(2입 등)은 비운다. 둘 다 있거나 둘 다 없다(일부만이면 NET_CONTENT_INVALID).
+        고객 화면의 100g·100mL당 가격은 이 값으로 계산한다(product-content·storefront).
+      properties:
+        amount: { type: integer, minimum: 1, maximum: 1000000, description: '양(g 또는 mL, 정수)' }
+        unit: { type: string, enum: [G, ML] }
+      additionalProperties: false
     SkuDetail:
       type: object
       required: [sku, productId, baseProductId, unitType, unitsPerSku, saleState, version]
@@ -768,6 +782,7 @@ components:
         shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
         dimensions: { $ref: '#/components/schemas/SkuDimensions' }
         dimensionsSource: { $ref: '#/components/schemas/DimensionsSource' }
+        netContent: { $ref: '#/components/schemas/NetContent' }
         barcodes: { type: array, items: { type: string } }
         logistics: { $ref: '#/components/schemas/LogisticsSpec' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
@@ -938,6 +953,7 @@ components:
               shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
               dimensions: { $ref: '#/components/schemas/SkuDimensions' }
               dimensionsSource: { $ref: '#/components/schemas/DimensionsSource' }
+              netContent: { $ref: '#/components/schemas/NetContent' }
               barcodes: { type: array, items: { type: string, maxLength: 64 }, description: '선택. 선행 0 보존. 숫자만 8·12·13·14자리면 GS1 검사 숫자를 확인한다(틀리면 BARCODE_CHECK_DIGIT_INVALID). 다른 상품 SKU 에 활성으로 연결돼 있으면 BARCODE_CONFLICT. 수정 초안에서 빼면 승인 때 그 바코드는 퇴역한다' }
               logistics: { $ref: '#/components/schemas/LogisticsSpec' }
         filterOptions:
@@ -954,7 +970,7 @@ components:
       type: object
       required: [code]
       properties:
-        code: { type: string, description: 'WEIGHT_REQUIRED / STORAGE_TYPE_REQUIRED / CATEGORY_NOT_MAPPED / CATEGORY_NOT_FOUND / BARCODE_CONFLICT / BARCODE_DUPLICATED_IN_DRAFT / BASE_PRODUCT_NOT_FOUND / FILTER_OPTION_NOT_FOUND / SHELF_LIFE_INVALID / DIMENSIONS_INVALID / TARGET_PRODUCT_NOT_FOUND / TARGET_CONFLICT / BARCODE_CHECK_DIGIT_INVALID (숫자만 8·12·13·14자리인데 GS1 검사 숫자가 틀림, 2026-11-17)' }
+        code: { type: string, description: 'WEIGHT_REQUIRED / STORAGE_TYPE_REQUIRED / CATEGORY_NOT_MAPPED / CATEGORY_NOT_FOUND / BARCODE_CONFLICT / BARCODE_DUPLICATED_IN_DRAFT / BASE_PRODUCT_NOT_FOUND / FILTER_OPTION_NOT_FOUND / SHELF_LIFE_INVALID / DIMENSIONS_INVALID / NET_CONTENT_INVALID / TARGET_PRODUCT_NOT_FOUND / TARGET_CONFLICT / BARCODE_CHECK_DIGIT_INVALID (숫자만 8·12·13·14자리인데 GS1 검사 숫자가 틀림, 2026-11-17)' }
         field: { type: string }
         detail: { type: string }
     ProductDraft:

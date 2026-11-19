@@ -125,6 +125,7 @@ public class ProductQueries {
       m.put("shelfLifeGuarantee", guarantee);
     }
     ProductSnapshots.putDimensions(m, s);
+    ProductSnapshots.putNetContent(m, s);
     m.put("barcodes", catalog.activeBarcodes(s.sku()));
     catalog
         .latestLogistics(s.sku())
@@ -167,6 +168,9 @@ public class ProductQueries {
     }
     if (s.get("dimensionsSource") != null) {
       m.put("dimensionsSource", s.get("dimensionsSource"));
+    }
+    if (s.get("netContent") != null) {
+      m.put("netContent", s.get("netContent"));
     }
     m.put("barcodes", s.getOrDefault("barcodes", List.of()));
     Map<String, Object> lg =

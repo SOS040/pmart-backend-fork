@@ -131,6 +131,27 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
             "2026-10-30T01:00:00Z"));
   }
 
+  /** 대표 SKU 에 내용량(2026-11-19 BR-19)이 있는 상품. */
+  void productWithNetContent(String id, int version, String sku, int amount, String unit) {
+    send(
+        "ProductVersionPublished",
+        id,
+        version,
+        Map.of(
+            "productId",
+            id,
+            "version",
+            version,
+            "saleState",
+            "ON_SALE",
+            "categoryIds",
+            List.of("t01-c01"),
+            "skus",
+            List.of(Map.of("sku", sku, "netContent", Map.of("amount", amount, "unit", unit))),
+            "effectiveAt",
+            "2026-10-30T01:00:00Z"));
+  }
+
   void published(String id, int version, String at) {
     send(
         "ProductContentPublished",
@@ -188,7 +209,11 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
             "effectiveAt",
             "2026-10-30T00:00:00Z"));
     for (int i = 1; i <= 12; i++) {
-      product("PRD-H" + i, 1, "E-H" + i);
+      if (i == 1) {
+        productWithNetContent("PRD-H1", 1, "E-H1", 500, "G"); // 내용량(BR-19)
+      } else {
+        product("PRD-H" + i, 1, "E-H" + i);
+      }
       published("PRD-H" + i, 1, "2026-10-30T02:%02d:00Z".formatted(i));
     }
     product("PRD-NOCONTENT", 1, "E-X"); // 콘텐츠 없음 → 진열 안 함
@@ -225,6 +250,13 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
     assertThat(ids(next.path("items"))).containsExactly("PRD-H2", "PRD-H1");
     JsonNode h1 = next.path("items").path(1);
     assertThat(h1.path("basePrice").asInt()).as("상품보다 먼저 온 가격").isEqualTo(1900);
+    // 단위 가격(BR-19): 1900원 × 100 ÷ 500g = 380원, 내용량 없는 상품은 없음
+    assertThat(h1.path("netContent").path("amount").asInt()).isEqualTo(500);
+    assertThat(h1.path("unitPrice").path("basis").asInt()).isEqualTo(100);
+    assertThat(h1.path("unitPrice").path("unit").asString()).isEqualTo("G");
+    assertThat(h1.path("unitPrice").path("price").asInt()).isEqualTo(380);
+    JsonNode h2 = next.path("items").path(0);
+    assertThat(h2.path("unitPrice").isNull() || h2.path("unitPrice").isMissingNode()).isTrue();
     assertThat(h1.path("name").asString()).isEqualTo("[시험] 상품 1");
     assertThat(h1.path("imageUrl").asString()).isEqualTo("/api/v1/content-images/IMG-PRD-H1");
     assertThat(next.path("page").path("nextCursor").isNull()).isTrue();

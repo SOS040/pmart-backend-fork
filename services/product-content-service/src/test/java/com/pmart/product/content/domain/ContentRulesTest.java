@@ -100,4 +100,16 @@ class ContentRulesTest {
     assertThatThrownBy(() -> ContentRules.objectKey("PRD-1", ImageRole.MAIN, "zz", ImageFormat.PNG))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  /** BR-19(2026-11-19) — 레퍼런스 예: 1kg 9,990원 → 999원, 500g 5,290원 → 1,058원. */
+  @org.junit.jupiter.api.Test
+  void unitPricePer100RoundsHalfUp() {
+    org.assertj.core.api.Assertions.assertThat(ContentRules.unitPrice(9990, 1000)).isEqualTo(999L);
+    org.assertj.core.api.Assertions.assertThat(ContentRules.unitPrice(5290, 500)).isEqualTo(1058L);
+    org.assertj.core.api.Assertions.assertThat(ContentRules.unitPrice(3980, 180)).isEqualTo(2211L);
+    org.assertj.core.api.Assertions.assertThat(ContentRules.unitPrice(5, 1000))
+        .as("0.5 올림")
+        .isEqualTo(1L);
+    org.assertj.core.api.Assertions.assertThat(ContentRules.unitPrice(1000, 0)).isNull();
+  }
 }

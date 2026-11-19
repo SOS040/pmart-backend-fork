@@ -9,6 +9,7 @@ import com.pmart.product.domain.DraftFacts;
 import com.pmart.product.domain.DraftProblem;
 import com.pmart.product.domain.DraftRules;
 import com.pmart.product.domain.Hashes;
+import com.pmart.product.domain.NetContent;
 import com.pmart.product.domain.SkuDimensions;
 import com.pmart.product.infrastructure.CatalogStore;
 import com.pmart.product.infrastructure.CategoryStore;
@@ -224,7 +225,7 @@ public class ProductDraftService {
       copyInt(s, sku, "volumeMl");
       copyText(s, sku, "storageType");
       sku.put("alcohol", s.path("alcohol").asBoolean(false));
-      for (String field : List.of("shelfLifeGuarantee", "dimensions", "logistics")) {
+      for (String field : List.of("shelfLifeGuarantee", "dimensions", "netContent", "logistics")) {
         if (s.path(field).isObject() && !s.path(field).isEmpty()) {
           sku.set(field, s.get(field).deepCopy());
         }
@@ -598,7 +599,9 @@ public class ProductDraftService {
         text(p, "primaryCategoryId"),
         ids,
         paths,
-        options);
+        options,
+        new NetContent.Input(
+            intOrNull(s.path("netContent"), "amount"), text(s.path("netContent"), "unit")));
   }
 
   /**
@@ -659,6 +662,10 @@ public class ProductDraftService {
       s.set("dimensions", sku.get("dimensions").deepCopy());
     }
     copyText(sku, s, "dimensionsSource");
+    // 내용량(2026-11-19 BR-19): 묶음에 있으면 그대로, 없으면 비운다(표시 문구에서 지어내지 않는다)
+    if (sku.path("netContent").isObject()) {
+      s.set("netContent", sku.get("netContent").deepCopy());
+    }
     ArrayNode derived = in.putArray("derivedFields");
     root.path("source").path("derived").forEach(derived::add);
     if (sku.hasNonNull("alcohol")) {

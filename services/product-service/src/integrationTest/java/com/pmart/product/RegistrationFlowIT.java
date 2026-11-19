@@ -239,6 +239,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     sku.put(
         "dimensions", Map.of("widthMm", 160, "depthMm", 40, "heightMm", 230)); // 추정 치수(2026-11-16)
     sku.put("dimensionsSource", "ESTIMATED");
+    sku.put("netContent", Map.of("amount", 1000, "unit", "G")); // 내용량(2026-11-19 BR-19)
     sku.put("alcohol", null);
     sku.put("barcodes", List.of());
     Map<String, Object> product = new LinkedHashMap<>();
@@ -393,6 +394,11 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     }
     assertThat(publishedSku.path("dimensions").path("widthMm").asInt()).isEqualTo(160);
     assertThat(publishedSku.path("dimensionsSource").asString()).isEqualTo("ESTIMATED");
+    // 내용량(2026-11-19 BR-19): 묶음 값 그대로 조회·ProductVersionPublished 에 나간다
+    assertThat(skuDetail.path("netContent").path("amount").asInt()).isEqualTo(1000);
+    assertThat(skuDetail.path("netContent").path("unit").asString()).isEqualTo("G");
+    assertThat(publishedSku.path("netContent").path("amount").asInt()).isEqualTo(1000);
+    assertThat(publishedSku.path("netContent").path("unit").asString()).isEqualTo("G");
     assertThat(
             get("/product-import-batches/" + batchId + "/id-map")
                 .body()
@@ -1060,6 +1066,7 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(v3.path("version").asInt()).isEqualTo(3);
     assertThat(v3.hasNonNull("dimensions")).isFalse();
     assertThat(v3.hasNonNull("dimensionsSource")).isFalse();
+    assertThat(v3.hasNonNull("netContent")).isFalse();
     assertThat(v3.hasNonNull("shelfLifeGuarantee")).isFalse();
   }
 

@@ -131,7 +131,38 @@ public class StorefrontController implements StorefrontApi {
         .priceVersion(i.priceVersion())
         .saleState(DisplayItem.SaleStateEnum.fromValue(i.saleState()))
         .carried(filtered ? Boolean.TRUE : null)
+        .netContent(netContent(i))
+        .unitPrice(unitPrice(i))
         .badge(DisplayItem.BadgeEnum.NONE);
+  }
+
+  private static com.pmart.storefront.api.generated.model.@org.jspecify.annotations.Nullable
+      DisplayItemNetContent
+      netContent(Item i) {
+    if (i.netContentAmount() == null || i.netContentUnit() == null) {
+      return null;
+    }
+    return new com.pmart.storefront.api.generated.model.DisplayItemNetContent()
+        .amount(i.netContentAmount())
+        .unit(
+            com.pmart.storefront.api.generated.model.DisplayItemNetContent.UnitEnum.fromValue(
+                i.netContentUnit()));
+  }
+
+  /** 단위 가격(BR-19) — 규칙은 domain.UnitPrice. */
+  private static com.pmart.storefront.api.generated.model.@org.jspecify.annotations.Nullable
+      DisplayItemUnitPrice
+      unitPrice(Item i) {
+    Long per = com.pmart.storefront.domain.UnitPrice.of(i.basePrice(), i.netContentAmount());
+    if (per == null || i.netContentUnit() == null) {
+      return null;
+    }
+    return new com.pmart.storefront.api.generated.model.DisplayItemUnitPrice()
+        .basis(com.pmart.storefront.domain.UnitPrice.BASIS)
+        .unit(
+            com.pmart.storefront.api.generated.model.DisplayItemUnitPrice.UnitEnum.fromValue(
+                i.netContentUnit()))
+        .price(Math.toIntExact(per));
   }
 
   private static ListSectionItems200ResponseAsOf asOf(Instant at) {

@@ -329,4 +329,45 @@ class DraftRulesTest {
         .extracting(DraftProblem::code)
         .containsExactlyInAnyOrder("BASE_PRODUCT_NOT_FOUND", "FILTER_OPTION_NOT_FOUND");
   }
+
+  static DraftFacts withNetContent(NetContent.Input n) {
+    DraftFacts f = facts(180, "FROZEN", List.of(), List.of("국·탕·찌개"));
+    return new DraftFacts(
+        f.internalName(),
+        f.baseProductId(),
+        f.unitType(),
+        f.unitsPerSku(),
+        f.weightG(),
+        f.storageType(),
+        f.shelfMinRemainingDays(),
+        f.shelfMaxDaysSinceManufacture(),
+        f.dimensions(),
+        f.barcodes(),
+        f.primaryCategoryId(),
+        f.categoryIds(),
+        f.categoryPaths(),
+        f.filterOptions(),
+        n);
+  }
+
+  /** 내용량(2026-11-19 BR-19): 없어도 되고, 있으면 양 1~1,000,000 + 단위 G·ML 둘 다. */
+  @Test
+  void netContentIsOptionalButComplete() {
+    assertThat(DraftRules.validate(withNetContent(NetContent.Input.NONE), LOOKUP, Set.of()).valid())
+        .isTrue();
+    assertThat(
+            DraftRules.validate(withNetContent(new NetContent.Input(500, "ML")), LOOKUP, Set.of())
+                .valid())
+        .isTrue();
+    assertThat(
+            DraftRules.validate(withNetContent(new NetContent.Input(500, null)), LOOKUP, Set.of())
+                .problems())
+        .extracting(DraftProblem::code)
+        .containsExactly("NET_CONTENT_INVALID");
+    assertThat(
+            DraftRules.validate(withNetContent(new NetContent.Input(0, "KG")), LOOKUP, Set.of())
+                .problems())
+        .extracting(DraftProblem::field)
+        .containsExactlyInAnyOrder("skus[0].netContent.amount", "skus[0].netContent.unit");
+  }
 }

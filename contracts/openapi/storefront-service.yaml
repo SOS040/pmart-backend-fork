@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     홈 진열·배너·일반 테마·홈/랭킹/신상품 탭 구성과 발효 버전의 정본. 추천은 3차. (docs/architecture/service-map.md §1, 1단계 기본)
     비정본: 상품·가격·재고 정본. 같은 상품을 여러 진열에 보여도 다른 SKU·독립 재고를 만들지 않는다. 특가·기간 할인·할인 탭은 1차 제외.
     구독: ApprovalDecided(전시 승인 BO-05), ProductVersionPublished, PriceVersionEffective, SkuHandlingChanged(0.2.0).
+    0.3.0(2026-11-19, 클라이언트 BR-19 "100g당 가격" — 사용자 "응"): 진열 항목에 `netContent`(대표 SKU 내용량 — ProductVersionPublished 사본)와
+    `unitPrice`(basis 100, unit G/ML, price = basePrice × 100 ÷ 내용량, 원 단위 반올림). 내용량·가격 중 하나라도 없으면 unitPrice 없음.
     0.2.0(2026-11-19, 클라이언트 BR-49 — 사용자 "진행해줘"): **mfcId 를 주면 그 센터가 취급하지 않는 상품은 홈·탭·섹션 항목에서 뺀다**(검색 기본
     includeNotCarried=false 와 같은 기준 — 상품 대표 SKU 의 센터 취급 사본, mfc-inventory SkuHandlingChanged, 레코드 없음 = 취급 안 함).
     남은 항목은 `carried=true`. mfcId 가 없으면 거르지 않고 `carried=null`(불명). 빼고 나서 섹션이 비어도 **섹션은 생략하지 않고 items=[]·nextCursor=null**
@@ -214,6 +216,21 @@ components:
         representativeSku: { $ref: '_common.yaml#/components/schemas/Sku' }
         basePrice: { $ref: '_common.yaml#/components/schemas/Money', description: pricing 사본 }
         priceVersion: { type: integer }
+        netContent:
+          type: [object, 'null']
+          description: '0.3.0 — 대표 SKU 내용량(product 사본, 판매 단위 전체). 내용량 없이 등록된 상품은 null'
+          required: [amount, unit]
+          properties:
+            amount: { type: integer, minimum: 1, description: 'g 또는 mL' }
+            unit: { type: string, enum: [G, ML] }
+        unitPrice:
+          type: [object, 'null']
+          description: '0.3.0 — 카드의 "100g당 999원". price = round(basePrice × basis ÷ netContent.amount), 0.5 올림. basePrice·netContent 가 둘 다 있을 때만. 할인가 기준이면 앱이 같은 식을 쓴다'
+          required: [basis, unit, price]
+          properties:
+            basis: { type: integer, example: 100 }
+            unit: { type: string, enum: [G, ML] }
+            price: { $ref: '_common.yaml#/components/schemas/Money' }
         saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
         carried: { type: [boolean, 'null'], description: '0.2.0 — mfcId 를 주면 미취급은 오지 않으므로 늘 true. mfcId 가 없으면 null(판정 안 함)' }
         rating: { type: number }

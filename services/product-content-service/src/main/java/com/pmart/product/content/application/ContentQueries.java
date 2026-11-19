@@ -298,6 +298,19 @@ public class ContentQueries {
         price.put("basePrice", p.basePrice());
         price.put("priceVersion", p.priceVersion());
         o.put("price", price);
+        // 단위 가격(2026-11-19 BR-19): 기본가 × 100 ÷ 내용량. 내용량이 없으면 내지 않는다
+        if (o.get("netContent") instanceof Map<?, ?> net
+            && net.get("amount") instanceof Integer amount
+            && net.get("unit") instanceof String unit) {
+          Long per = com.pmart.product.content.domain.ContentRules.unitPrice(p.basePrice(), amount);
+          if (per != null) {
+            Map<String, Object> u = new LinkedHashMap<>();
+            u.put("basis", com.pmart.product.content.domain.ContentRules.UNIT_PRICE_BASIS);
+            u.put("unit", unit);
+            u.put("price", per);
+            o.put("unitPrice", u);
+          }
+        }
       }
     }
     return true;
@@ -365,6 +378,13 @@ public class ContentQueries {
         }
         if (s.hasNonNull("unitsPerSku")) {
           m.put("unitsPerSku", s.get("unitsPerSku").asInt());
+        }
+        JsonNode net = s.path("netContent");
+        if (net.path("amount").isNumber() && net.hasNonNull("unit")) {
+          Map<String, Object> n = new LinkedHashMap<>();
+          n.put("amount", net.get("amount").asInt());
+          n.put("unit", net.get("unit").asString());
+          m.put("netContent", n);
         }
       }
       if (saleState != null) {

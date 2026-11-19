@@ -22,7 +22,42 @@ public record DraftFacts(
     @Nullable String primaryCategoryId,
     List<String> categoryIds,
     List<String> categoryPaths,
-    List<FilterOptionRef> filterOptions) {
+    List<FilterOptionRef> filterOptions,
+    NetContent.Input netContent) {
+
+  /** 내용량 없이(2026-11-19 전 시험 등). */
+  public DraftFacts(
+      @Nullable String internalName,
+      @Nullable String baseProductId,
+      @Nullable String unitType,
+      @Nullable Integer unitsPerSku,
+      @Nullable Integer weightG,
+      @Nullable String storageType,
+      @Nullable Integer shelfMinRemainingDays,
+      @Nullable Integer shelfMaxDaysSinceManufacture,
+      SkuDimensions.Input dimensions,
+      List<String> barcodes,
+      @Nullable String primaryCategoryId,
+      List<String> categoryIds,
+      List<String> categoryPaths,
+      List<FilterOptionRef> filterOptions) {
+    this(
+        internalName,
+        baseProductId,
+        unitType,
+        unitsPerSku,
+        weightG,
+        storageType,
+        shelfMinRemainingDays,
+        shelfMaxDaysSinceManufacture,
+        dimensions,
+        barcodes,
+        primaryCategoryId,
+        categoryIds,
+        categoryPaths,
+        filterOptions,
+        NetContent.Input.NONE);
+  }
 
   public record FilterOptionRef(String filterGroupId, String option) {}
 }

@@ -1,6 +1,7 @@
 package com.pmart.product.infrastructure;
 
 import com.pmart.product.domain.BarcodeType;
+import com.pmart.product.domain.NetContent;
 import com.pmart.product.domain.SkuDimensions;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -45,7 +46,8 @@ public class CatalogStore {
       Instant issuedAt,
       @Nullable Integer shelfMinRemainingDays,
       @Nullable Integer shelfMaxDaysSinceManufacture,
-      @Nullable SkuDimensions dimensions) {}
+      @Nullable SkuDimensions dimensions,
+      @Nullable NetContent netContent) {}
 
   public record LogisticsRow(
       @Nullable Integer unitsPerBox,
@@ -230,8 +232,9 @@ public class CatalogStore {
     jdbc.update(
         "INSERT INTO sku (sku, serial_no, unit_type, product_id, base_product_id, units_per_sku, weight_g, volume_ml,"
             + " storage_type, alcohol, state, issued_approval_id, issued_at, shelf_min_remaining_days,"
-            + " shelf_max_days_since_mfg, width_mm, depth_mm, height_mm, dimensions_source)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            + " shelf_max_days_since_mfg, width_mm, depth_mm, height_mm, dimensions_source,"
+            + " net_content_amount, net_content_unit)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         s.sku(),
         s.serialNo(),
         s.unitType(),
@@ -250,12 +253,14 @@ public class CatalogStore {
         s.dimensions() != null ? s.dimensions().widthMm() : null,
         s.dimensions() != null ? s.dimensions().depthMm() : null,
         s.dimensions() != null ? s.dimensions().heightMm() : null,
-        s.dimensions() != null ? s.dimensions().source() : null);
+        s.dimensions() != null ? s.dimensions().source() : null,
+        s.netContent() != null ? s.netContent().amount() : null,
+        s.netContent() != null ? s.netContent().unit() : null);
   }
 
   /**
-   * 승인된 규격 변경(중량·용량·보관 온도·주류·소비기한 보장·실물 치수). E/B·구성 낱개 수는 SKU 정체성이라 바꾸지 않는다. 소비기한 보장·실물 치수는 승인 초안 값
-   * 그대로(초안에 없으면 보장 없음·치수 미등록으로 바뀐다 — 승인 버전이 정본).
+   * 승인된 규격 변경(중량·용량·보관 온도·주류·소비기한 보장·실물 치수·내용량). E/B·구성 낱개 수는 SKU 정체성이라 바꾸지 않는다. 소비기한 보장·실물 치수는 승인
+   * 초안 값 그대로(초안에 없으면 보장 없음·치수 미등록으로 바뀐다 — 승인 버전이 정본).
    */
   public void updateSkuAttributes(
       String sku,
@@ -265,11 +270,13 @@ public class CatalogStore {
       boolean alcohol,
       @Nullable Integer shelfMinRemainingDays,
       @Nullable Integer shelfMaxDaysSinceManufacture,
-      @Nullable SkuDimensions dimensions) {
+      @Nullable SkuDimensions dimensions,
+      @Nullable NetContent netContent) {
     jdbc.update(
         "UPDATE sku SET weight_g = ?, volume_ml = ?, storage_type = ?, alcohol = ?,"
             + " shelf_min_remaining_days = ?, shelf_max_days_since_mfg = ?, width_mm = ?, depth_mm = ?,"
-            + " height_mm = ?, dimensions_source = ? WHERE sku = ?",
+            + " height_mm = ?, dimensions_source = ?, net_content_amount = ?, net_content_unit = ?"
+            + " WHERE sku = ?",
         weightG,
         volumeMl,
         storageType,
@@ -280,6 +287,8 @@ public class CatalogStore {
         dimensions != null ? dimensions.depthMm() : null,
         dimensions != null ? dimensions.heightMm() : null,
         dimensions != null ? dimensions.source() : null,
+        netContent != null ? netContent.amount() : null,
+        netContent != null ? netContent.unit() : null,
         sku);
   }
 
@@ -513,7 +522,14 @@ public class CatalogStore {
         rs.getTimestamp("issued_at").toInstant(),
         (Integer) rs.getObject("shelf_min_remaining_days"),
         (Integer) rs.getObject("shelf_max_days_since_mfg"),
-        dimensions(rs));
+        dimensions(rs),
+        netContent(rs));
+  }
+
+  private static @Nullable NetContent netContent(ResultSet rs) throws SQLException {
+    Integer amount = (Integer) rs.getObject("net_content_amount");
+    String unit = rs.getString("net_content_unit");
+    return amount == null || unit == null ? null : new NetContent(amount, unit);
   }
 
   private static @Nullable SkuDimensions dimensions(ResultSet rs) throws SQLException {

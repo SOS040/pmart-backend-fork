@@ -59,6 +59,7 @@ public final class DraftRules {
     checkShelfLife(f.shelfMinRemainingDays(), "minRemainingDays", p);
     checkShelfLife(f.shelfMaxDaysSinceManufacture(), "maxDaysSinceManufacture", p);
     checkDimensions(f.dimensions(), p);
+    checkNetContent(f.netContent(), p);
     checkBarcodes(f.barcodes(), lookup, ownSkus, p);
     List<String> categories = resolveCategories(f, lookup, p);
     for (DraftFacts.FilterOptionRef o : f.filterOptions()) {
@@ -111,6 +112,35 @@ public final class DraftRules {
               "DIMENSIONS_INVALID",
               "skus[0].dimensionsSource",
               "치수 출처는 MEASURED 또는 ESTIMATED 입니다: " + d.source()));
+    }
+  }
+
+  /** SKU 내용량(2026-11-19 BR-19): 없으면 미등록, 있으면 양(1~1,000,000 정수)과 단위(G·ML) 둘 다. */
+  private static void checkNetContent(NetContent.Input n, List<DraftProblem> p) {
+    if (n.empty()) {
+      return;
+    }
+    if (n.amount() == null || n.unit() == null) {
+      p.add(
+          DraftProblem.of(
+              "NET_CONTENT_INVALID",
+              "skus[0].netContent",
+              "내용량은 양(amount)과 단위(unit)가 둘 다 있어야 합니다."));
+      return;
+    }
+    if (n.amount() < NetContent.MIN || n.amount() > NetContent.MAX) {
+      p.add(
+          DraftProblem.of(
+              "NET_CONTENT_INVALID",
+              "skus[0].netContent.amount",
+              "내용량은 " + NetContent.MIN + "~" + NetContent.MAX + " 입니다: " + n.amount()));
+    }
+    if (!NetContent.UNITS.contains(n.unit())) {
+      p.add(
+          DraftProblem.of(
+              "NET_CONTENT_INVALID",
+              "skus[0].netContent.unit",
+              "내용량 단위는 G 또는 ML 입니다: " + n.unit()));
     }
   }
 

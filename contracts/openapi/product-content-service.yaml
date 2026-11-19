@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.1.2
+  version: 0.2.0
   description: |
+    0.2.0(2026-11-19, 클라이언트 BR-19 "100g당 가격" — 사용자 "응"): 판매 옵션에 `netContent`(product 사본 — SKU 내용량 g·mL)와
+    `unitPrice`(basis 100, unit G/ML, price = 기본가 × 100 ÷ 내용량, 원 단위 반올림). 내용량이나 가격이 없으면 둘 다(또는 unitPrice) 없다.
+    할인가 기준 단위 가격은 앱이 netContent 로 같은 식을 쓴다(이 서비스는 할인을 모른다).
     고객용 상품명·사진·설명·보관/반품 안내·판매 옵션 해석과 평점·리뷰 수 집계 투영의 정본. (docs/architecture/service-map.md §1)
     비정본: 상품 정본·판매 상태(product), 리뷰 원문(review), 가격(pricing), 재고(각 inventory).
     구독: ProductVersionPublished, ReviewPublished/Deleted, ApprovalDecided(콘텐츠 승인 BO-05). 발행: ProductContentPublished.
@@ -572,6 +575,23 @@ components:
         unitsPerSku: { type: integer }
         capacityLabel: { type: string, example: 500ml }
         saleState: { type: string, description: product 사본 }
+        netContent:
+          type: object
+          description: '0.2.0 — product 사본(SKU 내용량, 판매 단위 전체에 든 양). 상품이 내용량 없이 등록됐으면 없다(개수로 파는 상품 등)'
+          required: [amount, unit]
+          properties:
+            amount: { type: integer, minimum: 1, description: 'g 또는 mL' }
+            unit: { type: string, enum: [G, ML] }
+        unitPrice:
+          type: object
+          description: |
+            0.2.0 — 단위 가격(레퍼런스 카드 "100g당 999원"). price = round(basePrice × basis ÷ netContent.amount) 원 단위 반올림(0.5 올림).
+            basePrice·netContent 가 둘 다 있을 때만. 할인가 기준이 필요하면 앱이 같은 식을 쓴다. 화면 문구는 "{basis}{g|mL}당 {price}원".
+          required: [basis, unit, price]
+          properties:
+            basis: { type: integer, example: 100, description: 기준 양(지금은 늘 100) }
+            unit: { type: string, enum: [G, ML] }
+            price: { $ref: '_common.yaml#/components/schemas/Money' }
         price:
           type: object
           description: 'pricing 사본(0.1.2, 2026-11-19 BR-36 — 전에는 늘 null): 상세·카드를 읽을 때 pricing `GET /prices` 로 채운다. 가격 미설정 SKU 는 비어 있고, pricing 을 못 읽으면 비우고 상세 sources 에 pricing-service UNAVAILABLE(0원 아님). 견적 확정은 order 초안.'

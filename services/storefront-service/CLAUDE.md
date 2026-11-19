@@ -29,3 +29,4 @@
 ## 상태
 기본 진열 홈·섹션 다음 묶음·배너(빈 목록) 구현(2026-10-30). 편성 게시·내부 발효 버전 조회는 501.
 - **센터 미취급 빼기(2026-11-19, 계약 0.2.0, V4 — 클라이언트 BR-49, 사용자 "진행해줘")**: 구독 `handlingEvents-in-0` ← mfc.sku-handling.v1 `SkuHandlingChanged` → `sku_handling`(센터·SKU, version 큰 것만 — `DisplayStore.upsertHandling`, 새 그룹 earliest 로 처음부터 채움). `mfcId` 를 주면 홈·탭·섹션 항목은 대표 SKU 를 그 센터가 취급(handling_enabled)하는 상품만(레코드 없음 = 취급 안 함 — 검색과 같은 기준), 남은 줄 `carried=true`. mfcId 없으면 거르지 않고 null. 비면 섹션은 그대로(items=[]·nextCursor null). 정책은 숨김(검색과 같음). 시험 `HomeFlowIT.centerHidesNotCarriedProducts`.
+- **단위 가격(2026-11-19, 계약 0.3.0, V5 — 클라이언트 BR-19)**: `display_product.net_content_amount·unit` ← ProductVersionPublished.skus[0].netContent(상품 버전이 커질 때만 바뀜), 진열 항목 `netContent`·`unitPrice` = `domain.UnitPrice.of`(가격 사본 × 100 ÷ 내용량, 0.5 올림 — product-content 와 같은 식). 시험 `UnitPriceTest`·`HomeFlowIT.homeShowsPublishedProductsNewestFirst`(1900원·500g → 380).
