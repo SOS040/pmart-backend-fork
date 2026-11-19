@@ -115,13 +115,42 @@ final class ClaimMapping {
     return out;
   }
 
-  static ClaimSummary summary(ClaimRow c) {
+  static ClaimSummary summary(
+      ClaimRow c, java.util.List<com.pmart.claim.infrastructure.ClaimStore.RefundBrief> refunds) {
+    long requested = 0;
+    long refunded = 0;
+    java.time.Instant last = null;
+    for (com.pmart.claim.infrastructure.ClaimStore.RefundBrief r : refunds) {
+      requested += r.amount();
+      if ("COMPLETED".equals(r.state())) {
+        refunded += r.amount();
+        if (r.completedAt() != null && (last == null || r.completedAt().isAfter(last))) {
+          last = r.completedAt();
+        }
+      }
+    }
+    String state =
+        com.pmart.claim.domain.ClaimListRules.refundState(
+            refunds.stream()
+                .map(com.pmart.claim.infrastructure.ClaimStore.RefundBrief::state)
+                .toList());
     return new ClaimSummary()
         .claimId(c.claimId())
         .orderId(c.orderId())
         .type(ClaimType.fromValue(c.type()))
         .state(ClaimState.fromValue(c.state()))
-        .openedAt(odt(c.openedAt()));
+        .openedAt(odt(c.openedAt()))
+        .reason(com.pmart.claim.api.generated.model.ClaimReason.fromValue(c.reason()))
+        .channel(ClaimSummary.ChannelEnum.fromValue(c.channel()))
+        .closedAt(c.closedAt() == null ? null : odt(c.closedAt()))
+        .refund(
+            new com.pmart.claim.api.generated.model.ClaimRefundSummary()
+                .state(
+                    com.pmart.claim.api.generated.model.ClaimRefundSummary.StateEnum.fromValue(
+                        state))
+                .requestedAmount(Math.toIntExact(requested))
+                .refundedAmount(Math.toIntExact(refunded))
+                .completedAt(last == null ? null : odt(last)));
   }
 
   static Refund refund(RefundRow r) {

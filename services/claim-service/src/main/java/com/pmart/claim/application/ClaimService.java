@@ -573,19 +573,44 @@ public class ClaimService {
     return ClaimView.of(store, c);
   }
 
-  public List<ClaimRow> list(
+  /** 목록 한 쪽(0.6.0 BR-33): 줄, 다음 커서(없으면 끝), 클레임별 환불 의도. */
+  public record Page(
+      List<ClaimRow> rows,
+      @Nullable String nextCursor,
+      java.util.Map<String, List<ClaimStore.RefundBrief>> refunds) {}
+
+  public Page list(
       PmartPrincipal who,
       @Nullable String orderId,
       @Nullable String type,
       @Nullable String state,
-      int size) {
+      int size,
+      @Nullable String cursor) {
     String account = who.type() == PmartPrincipal.PrincipalType.CUSTOMER ? who.subject() : null;
     if (account == null
         && who.type() != PmartPrincipal.PrincipalType.OPERATOR
         && who.type() != PmartPrincipal.PrincipalType.SERVICE) {
       throw new PmartException(com.pmart.common.web.ErrorCode.FORBIDDEN, "클레임을 볼 수 없습니다.");
     }
-    return store.list(account, orderId, type, state, Math.max(1, Math.min(size, 100)));
+    com.pmart.claim.domain.ClaimListRules.Cursor after = null;
+    if (cursor != null && !cursor.isBlank()) {
+      after =
+          com.pmart.claim.domain.ClaimListRules.decode(cursor)
+              .orElseThrow(
+                  () ->
+                      new PmartException(
+                          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "커서가 올바르지 않습니다."));
+    }
+    int limit = Math.max(1, Math.min(size, 100));
+    List<ClaimRow> rows = store.list(account, orderId, type, state, after, limit + 1);
+    String next = null;
+    if (rows.size() > limit) {
+      rows = rows.subList(0, limit);
+      ClaimRow last = rows.get(limit - 1);
+      next = com.pmart.claim.domain.ClaimListRules.encode(last.openedAt(), last.claimId());
+    }
+    return new Page(
+        List.copyOf(rows), next, store.refundBriefs(rows.stream().map(ClaimRow::claimId).toList()));
   }
 
   private ClaimView view(String claimId) {

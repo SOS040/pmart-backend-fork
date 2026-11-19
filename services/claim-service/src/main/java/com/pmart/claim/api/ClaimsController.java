@@ -81,16 +81,26 @@ public class ClaimsController implements ClaimsApi {
       @Nullable ClaimState state,
       Integer size,
       @Nullable String cursor) {
-    var rows =
+    ClaimService.Page page =
         claims.list(
             principal(),
             orderId,
             type == null ? null : type.getValue(),
             state == null ? null : state.getValue(),
-            size);
+            size == null ? 20 : size,
+            cursor);
     ListClaims200Response out =
-        new ListClaims200Response().page(new ListClaims200ResponsePage().size(rows.size()));
-    rows.forEach(r -> out.addItemsItem(ClaimMapping.summary(r)));
+        new ListClaims200Response()
+            .page(
+                new ListClaims200ResponsePage()
+                    .size(page.rows().size())
+                    .nextCursor(page.nextCursor()));
+    page.rows()
+        .forEach(
+            r ->
+                out.addItemsItem(
+                    ClaimMapping.summary(
+                        r, page.refunds().getOrDefault(r.claimId(), java.util.List.of()))));
     return ResponseEntity.ok(out);
   }
 

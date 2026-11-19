@@ -401,12 +401,60 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(refundList.body().path("items").path(0).path("pgResult").asString())
         .isEqualTo("SUCCESS");
     assertThat(outbox("ClaimClosed", claimId)).isEqualTo(1);
+    // 내 클레임 목록(0.6.0 BR-33): 환불 요약 COMPLETED·금액, 사유·채널·종결 시각
+    JsonNode mine = get(me, "/claims").body().path("items");
+    JsonNode row = null;
+    for (JsonNode i : mine) {
+      if (claimId.equals(i.path("claimId").asString())) {
+        row = i;
+      }
+    }
+    assertThat(row).as("목록에 이 클레임").isNotNull();
+    assertThat(row.path("refund").path("state").asString()).isEqualTo("COMPLETED");
+    assertThat(row.path("refund").path("refundedAmount").asLong()).isEqualTo(19_100L);
+    assertThat(row.path("refund").path("requestedAmount").asLong()).isEqualTo(19_100L);
+    assertThat(row.path("channel").asString()).isEqualTo("CUSTOMER_APP");
+    assertThat(row.path("closedAt").isNull()).isFalse();
 
     // 종결 뒤에는 다시 취소 접수를 받지 않는다(주문이 CANCELLED)
     order(orderId, account, "CANCELLED");
     Res again = post(me, UUID.randomUUID().toString(), cancel(orderId, 10));
     assertThat(again.status()).isEqualTo(422);
     assertThat(again.body().path("code").asString()).isEqualTo("ORDER_NOT_CANCELLABLE");
+  }
+
+  /** 내 클레임 목록 커서(0.6.0 BR-33): 최근 순, size 만큼 + nextCursor, 마지막 쪽은 커서 없음, 남의 클레임 없음, 틀린 커서 400. */
+  @Test
+  void myClaimsPageWithCursor() {
+    String acc = "CU-PAGE-" + UUID.randomUUID().toString().substring(0, 8);
+    java.time.Instant base = java.time.Instant.parse("2026-11-19T00:00:00Z");
+    for (int i = 0; i < 3; i++) {
+      jdbc.update(
+          "INSERT INTO claim (claim_id, order_id, account_id, type, state, reason, channel,"
+              + " payment_attempt_id, approved_amount, item_amount, bag_fee, delivery_tip, opened_at,"
+              + " updated_at) VALUES (?,?,?,'CANCEL','REJECTED','CHANGE_OF_MIND','CUSTOMER_APP','PAY-x',0,0,0,0,?,?)",
+          acc + "-C" + i,
+          "ORD-" + acc + "-" + i,
+          acc,
+          java.sql.Timestamp.from(base.plusSeconds(i)),
+          java.sql.Timestamp.from(base.plusSeconds(i)));
+    }
+    String token = TestJwt.customer(acc);
+    Res first = get(token, "/claims?size=2");
+    assertThat(first.body().path("items").findValuesAsString("claimId"))
+        .containsExactly(acc + "-C2", acc + "-C1");
+    assertThat(first.body().path("items").path(0).path("refund").path("state").asString())
+        .isEqualTo("NONE");
+    String cursor = first.body().path("page").path("nextCursor").asString();
+    assertThat(cursor).isNotBlank();
+    Res second = get(token, "/claims?size=2&cursor=" + cursor);
+    assertThat(second.body().path("items").findValuesAsString("claimId"))
+        .containsExactly(acc + "-C0");
+    assertThat(
+            second.body().path("page").path("nextCursor").isNull()
+                || second.body().path("page").path("nextCursor").isMissingNode())
+        .isTrue();
+    assertThat(get(token, "/claims?cursor=bad!").status()).isEqualTo(400);
   }
 
   @Test

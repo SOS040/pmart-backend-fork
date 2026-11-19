@@ -442,9 +442,16 @@ public class ClaimStore {
       @Nullable String orderId,
       @Nullable String type,
       @Nullable String state,
+      com.pmart.claim.domain.ClaimListRules.@Nullable Cursor after,
       int limit) {
     StringBuilder sql = new StringBuilder("SELECT * FROM claim WHERE 1 = 1");
     List<Object> args = new ArrayList<>();
+    if (after != null) {
+      // 최근 순 다음 쪽(keyset, 0.6.0 BR-33)
+      sql.append(" AND (opened_at, claim_id) < (?, ?)");
+      args.add(java.sql.Timestamp.from(after.openedAt()));
+      args.add(after.claimId());
+    }
     if (accountId != null) {
       sql.append(" AND account_id = ?");
       args.add(accountId);
@@ -814,6 +821,30 @@ public class ClaimStore {
         ts(r.createdAt()),
         ts(r.updatedAt()),
         r.sourceRef());
+  }
+
+  /** 상품 환불 요약용 — 클레임별 환불 의도 (상태, 금액, 끝난 시각)(0.6.0 BR-33). */
+  public record RefundBrief(String state, long amount, @Nullable Instant completedAt) {}
+
+  public java.util.Map<String, List<RefundBrief>> refundBriefs(
+      java.util.Collection<String> claimIds) {
+    java.util.Map<String, List<RefundBrief>> out = new java.util.LinkedHashMap<>();
+    if (claimIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT claim_id, state, amount, completed_at FROM refund_intent WHERE claim_id = ANY (?::varchar[])",
+        rs -> {
+          java.sql.Timestamp t = rs.getTimestamp("completed_at");
+          out.computeIfAbsent(rs.getString("claim_id"), k -> new ArrayList<>())
+              .add(
+                  new RefundBrief(
+                      rs.getString("state"),
+                      rs.getLong("amount"),
+                      t == null ? null : t.toInstant()));
+        },
+        "{" + String.join(",", claimIds) + "}");
+    return out;
   }
 
   public List<RefundRow> refunds(String claimId) {

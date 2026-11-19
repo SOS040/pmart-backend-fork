@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     0.5.0(2026-11-18, CL-3 — 백오피스 대시보드 D2, 사용자 "환불은 따로"): 직원(OPERATOR_ADMIN 만) 기간 환불 합 `GET /claims/metrics/refunds?from&to` — 환불 완료 시각(`refund_intent.completed_at`)의 한국 날짜, from·to 포함·필수, 93일 이하. 완료(COMPLETED)된 환불 의도의 금액 합·건수 + 사유 묶음(CANCEL·SHORTAGE·RETURN·RETURN_FEE·OTHER)별. **센터(mfcId) 거르기는 없다**(사용자 동의 2026-11-18 — 취소 클레임에는 센터가 없다). 주문 매출(order `GET /orders/metrics/summary`)에서 빼지 않고 나란히 보인다.
     0.3.0(2026-11-17, CL-1 추가 결정 1~9 — 사용자 "추천대로"): 회수비 결제 기한 24시간 확정. 반품 전체 기한(접수 + 7일, `Claim.returnDeadlineAt`) — 그 안에 회수가 안 되면 자동 취소(ClaimClosed RETURN_EXPIRED).
@@ -83,6 +83,11 @@ paths:
     get:
       tags: [claims]
       summary: 클레임 목록 (고객은 본인, 운영자는 orderId·상태 필터)
+      description: |
+        0.6.0(2026-11-19, 클라이언트 BR-33 "내 취소·반품·환불 목록"): 고객 토큰이면 **본인 클레임만**, 최근 접수 순(openedAt·claimId 내림차순).
+        **커서가 실제로 동작한다**(전에는 받기만 하고 늘 첫 쪽) — 응답 `page.nextCursor` 를 다음 요청 `cursor` 로, 없으면 끝. 틀린 커서 400.
+        항목마다 `refund`(상품 환불 요약 — 환불 의도들의 합): NONE 환불 없음 · IN_PROGRESS 진행 중(PG 결과 전 — 완료로 표시하지 않는다) ·
+        COMPLETED 모두 PG 성공 · FAILED 하나라도 실패(상담 필요). 반품 회수비 돌려주기(RETURN_FEE)는 여기에 넣지 않는다 — 상세는 `GET /claims/{id}/refunds`.
       operationId: listClaims
       x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
@@ -724,6 +729,19 @@ components:
         type: { $ref: '#/components/schemas/ClaimType' }
         state: { $ref: '#/components/schemas/ClaimState' }
         openedAt: { type: string, format: date-time }
+        reason: { $ref: '#/components/schemas/ClaimReason' }
+        channel: { type: string, enum: [CUSTOMER_APP, CS, OPERATOR, SYSTEM], x-added-in: '2026-11-19' }
+        closedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-19' }
+        refund: { $ref: '#/components/schemas/ClaimRefundSummary' }
+    ClaimRefundSummary:
+      type: object
+      description: (0.6.0 BR-33) 클레임의 상품 환불 요약 — 환불 의도(refund_intent)들의 합. 회수비 돌려주기는 빼고 상세에서
+      required: [state, requestedAmount, refundedAmount]
+      properties:
+        state: { type: string, enum: [NONE, IN_PROGRESS, COMPLETED, FAILED] }
+        requestedAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 환불하기로 한 금액 합 }
+        refundedAmount: { $ref: '_common.yaml#/components/schemas/Money', description: PG 가 성공한 금액 합 }
+        completedAt: { type: [string, 'null'], format: date-time, description: 마지막으로 PG 성공한 시각 }
     ClaimDecisionRequest:
       type: object
       required: [lines]
