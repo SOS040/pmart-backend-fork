@@ -64,7 +64,9 @@ import tools.jackson.databind.ObjectMapper;
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock(
-    @ConfigureWireMock(name = "deps", baseUrlProperties = "pmart.content.inventory-base-url"))
+    @ConfigureWireMock(
+        name = "deps",
+        baseUrlProperties = {"pmart.content.inventory-base-url", "pmart.content.pricing-base-url"}))
 class ContentRegistrationFlowIT extends ContentContainerSupport {
 
   static final String SERVICE_TOKEN = TestJwt.service("product-content-service");
@@ -545,9 +547,36 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(c.path("categoryPath").toString()).isEqualTo("[\"p03\",\"p03-c02\"]");
     assertThat(c.path("options").path(0).path("sku").asString()).isEqualTo(sku);
     assertThat(c.path("options").path(0).path("capacityLabel").asString()).isEqualTo("180g");
-    // 가격은 pricing 사본을 아직 받지 않는다. 가용은 mfcId 를 줄 때만(없으면 채우지 않는다)
+    // 가격(BR-36, 2026-11-19): pricing 이 답하지 않으면(여기서는 아직 스텁 없음 — 404) 가격 없이 + 출처 UNAVAILABLE(0원 아님).
+    // 가용은 mfcId 를 줄 때만(없으면 채우지 않는다)
     JsonNode opt = c.path("options").path(0);
     assertThat(opt.path("price").isNull() || opt.path("price").isMissingNode()).isTrue();
+    assertThat(c.path("sources").toString()).contains("pricing-service").contains("UNAVAILABLE");
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/prices"))
+            .willReturn(
+                okJson(
+                    Map.of(
+                        "items",
+                        List.of(
+                            Map.of(
+                                "sku",
+                                sku,
+                                "basePrice",
+                                3980,
+                                "priceVersion",
+                                2,
+                                "effectiveFrom",
+                                "2026-11-19T00:00:00Z")),
+                        "notSet",
+                        List.of()))));
+    JsonNode priced = get("/product-contents/" + productId, null).body();
+    assertThat(priced.path("options").path(0).path("price").path("basePrice").asLong())
+        .isEqualTo(3980L);
+    assertThat(priced.path("options").path(0).path("price").path("priceVersion").asInt())
+        .isEqualTo(2);
+    deps.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/prices")).withQueryParam("skus", equalTo(sku)));
     assertThat(opt.path("availability").isNull() || opt.path("availability").isMissingNode())
         .isTrue();
     assertThat(c.path("rating").isMissingNode() || c.path("rating").isNull()).isTrue();

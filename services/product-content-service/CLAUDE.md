@@ -30,7 +30,7 @@
 
 ## 상태
 2026-10-30 임시 백오피스 등록 구현: 콘텐츠 초안(개별·seed-v1 배치 upsert)·이미지 업로드·제출 준비(DISPLAY 승인 본문), ProductVersionPublished 투영·원천 키 연결, ApprovalDecided(DISPLAY) → 게시(`product_content` 불변 버전) + ProductContentPublished(commerce.product.v1), 고객 조회(상세·카드·스냅샷·projection-status).
-미구현(501): `/product-contents/{id}/publications`(게시는 승인 이벤트로만), `rating-summary`(review 투영 전). 가격 필드는 채우지 않는다.
+미구현(501): `/product-contents/{id}/publications`(게시는 승인 이벤트로만), `rating-summary`(review 투영 전). 옵션 가격은 아래 절.
 
 ## 신규 / 기존 게시 갱신 (BR-44, 2026-11-04)
 - 심사 전 초안 응답의 `registration`(NEW/UPDATE)·`publishedContentVersion`·`publishedDraftId`·`publishedAt`, 승인 행 attributes 의 `registration`·`publishedContentVersion` — `ContentDraftService.existingPublished`(연결 상품 최신 게시본, 없으면 같은 원천 키의 최근 게시 초안).
@@ -41,3 +41,4 @@
 - 재고 조회 실패는 화면을 실패시키지 않고 UNKNOWN(0·품절 아님), 상세 sources 에 mfc-inventory-service UNAVAILABLE. mfcId 가 없으면 채우지 않는다.
 
 - **승인 반영 회신(RC-1, 2026-11-19 — ADR-0039)**: `application/ApprovalReceipts` — ApprovalDecided(APPROVED·PARTIALLY_APPROVED)를 반영한 같은 inbox 트랜잭션에서 `ApplicationReceiptRecorded`(토픽 platform.approval-receipt.v1, receiverService = 이 서비스, 순번 1, 행마다 APPLIED·REJECTED + reasonCode). 반려 결정에는 회신 없음. 규칙 `docs/architecture/service-requests/approval-receipt-publishers.md` RC-1.
+- **옵션 가격(2026-11-19, 계약 0.1.2 — 클라이언트 BR-36 "상세에 가격이 안 보임")**: 상세·카드를 읽을 때 `infrastructure/PricingClient` → pricing `GET /api/v1/prices?skus=`(공개, 100개씩, `pmart.content.pricing-base-url` 기본 http://pricing-service:8107)로 옵션 `price{basePrice, priceVersion}` 를 채운다(`ContentQueries.withPrices`). 미설정 SKU 는 빈 칸, 조회 실패는 가격 없이 + 상세 sources pricing-service UNAVAILABLE(0원 아님). 시험 `ContentRegistrationFlowIT`(스텁 전 UNAVAILABLE·스텁 뒤 3980원).

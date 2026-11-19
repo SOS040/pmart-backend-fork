@@ -14,6 +14,7 @@ spring:
 pmart:
   content:
     inventory-base-url: ${PMART_MFC_INVENTORY_BASE_URL:http://mfc-inventory-service:8301}
+    pricing-base-url: ${PMART_PRICING_BASE_URL:http://pricing-service:8107}
   storage:
     s3:
       endpoint: ${PMART_S3_ENDPOINT:}

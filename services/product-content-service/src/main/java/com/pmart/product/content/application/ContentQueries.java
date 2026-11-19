@@ -27,7 +27,8 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 고객용 조회: 최신 게시본(product_content) + product 사본(판매 상태·대표 카테고리·SKU) + mfcId 를 주면 mfc-inventory 가용 사본.
- * 가격·평점은 아직 받지 않으므로 응답에 넣지 않는다(지어내지 않는다). 결과는 계약 필드 이름의 Map 이고 api 가 DTO 로 바꾼다.
+ * 평점은 아직 받지 않으므로 넣지 않는다(지어내지 않는다). 옵션 가격은 읽을 때 pricing 사본(2026-11-19 BR-36). 결과는 계약 필드 이름의 Map 이고
+ * api 가 DTO 로 바꾼다.
  */
 @Service
 public class ContentQueries {
@@ -39,12 +40,15 @@ public class ContentQueries {
 
   public static final String INVENTORY = "mfc-inventory-service";
 
+  public static final String PRICING = "pricing-service";
+
   private static final Logger log = LoggerFactory.getLogger(ContentQueries.class);
 
   private final CatalogStore catalog;
   private final DraftStore drafts;
   private final ImageStorage storage;
   private final InventoryClient inventory;
+  private final com.pmart.product.content.infrastructure.PricingClient pricing;
   private final ObjectMapper mapper;
   private final Clock clock;
 
@@ -53,12 +57,14 @@ public class ContentQueries {
       DraftStore drafts,
       ImageStorage storage,
       InventoryClient inventory,
+      com.pmart.product.content.infrastructure.PricingClient pricing,
       ObjectMapper mapper,
       Clock clock) {
     this.catalog = catalog;
     this.drafts = drafts;
     this.storage = storage;
     this.inventory = inventory;
+    this.pricing = pricing;
     this.mapper = mapper;
     this.clock = clock;
   }
@@ -73,6 +79,7 @@ public class ContentQueries {
     Optional<ProjectionRow> p = catalog.projection(productId);
     Map<String, Object> m = card(c, p.orElse(null));
     Boolean stockOk = withAvailability(List.of(m), mfcId);
+    Boolean priceOk = withPrices(List.of(m));
     m.put("productVersion", c.productVersion());
     m.put("description", c.description());
     m.put("images", images(c));
@@ -98,6 +105,18 @@ public class ContentQueries {
                   clock.instant().toString(),
                   "freshness",
                   stockOk ? "CURRENT" : "UNAVAILABLE")));
+    }
+    if (priceOk != null) {
+      sources.add(
+          Map.of(
+              "system",
+              PRICING,
+              "asOf",
+              Map.of(
+                  "asOf",
+                  clock.instant().toString(),
+                  "freshness",
+                  priceOk ? "CURRENT" : "UNAVAILABLE")));
     }
     m.put("sources", sources);
     return m;
@@ -127,6 +146,7 @@ public class ContentQueries {
       }
     }
     withAvailability(items, mfcId);
+    withPrices(items);
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("items", items);
     out.put("missing", missing);
@@ -248,6 +268,39 @@ public class ContentQueries {
       o.put("availability", view);
     }
     return ok;
+  }
+
+  /**
+   * 옵션별 기본가 사본(2026-11-19 클라이언트 BR-36 — 전에는 늘 null). pricing 이 가격을 정한 SKU 만 {@code price{basePrice,
+   * priceVersion}}, 미설정은 빈 칸. 조회 실패는 가격 없이 두고 false(출처 UNAVAILABLE — 0원으로 바꾸지 않는다). 옵션에 SKU 가 없으면
+   * null(부르지 않음).
+   */
+  @SuppressWarnings("unchecked")
+  private @Nullable Boolean withPrices(List<Map<String, Object>> cards) {
+    List<Map<String, Object>> options = new ArrayList<>();
+    cards.forEach(c -> options.addAll((List<Map<String, Object>>) c.get("options")));
+    List<String> skus =
+        options.stream().map(o -> (String) o.get("sku")).filter(s -> s != null).toList();
+    if (skus.isEmpty()) {
+      return null;
+    }
+    Map<String, com.pmart.product.content.infrastructure.PricingClient.Price> prices;
+    try {
+      prices = pricing.prices(skus);
+    } catch (PmartException | org.springframework.web.client.RestClientException e) {
+      log.warn("상품 화면 가격 조회 실패 — 가격 없이 표시");
+      return false;
+    }
+    for (Map<String, Object> o : options) {
+      var p = prices.get((String) o.get("sku"));
+      if (p != null) {
+        Map<String, Object> price = new LinkedHashMap<>();
+        price.put("basePrice", p.basePrice());
+        price.put("priceVersion", p.priceVersion());
+        o.put("price", price);
+      }
+    }
+    return true;
   }
 
   private ContentRow latest(String productId) {
