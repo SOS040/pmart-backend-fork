@@ -10,9 +10,17 @@
   python -I deploy/lan/seed/review_bulk.py PRD-… E-… "상품명" 480            # 무엇을 넣을지 요약만(DB 안 건드림)
   python -I deploy/lan/seed/review_bulk.py PRD-… E-… "상품명" 480 --apply    # 넣기
   python -I deploy/lan/seed/review_bulk.py PRD-… E-… "상품명" 0 --delete     # 이 상품의 시험 리뷰 지우기
+
+사진 리뷰(2026-11-20, 사용자 "사진있는 리뷰 데이터 넣어줄수있어?"):
+  ... --texts=carrot --photos=<JPEG 폴더> --photo-ratio=0.6 --apply
+  - --photo-ratio 비율의 리뷰에 폴더의 JPEG 1~3장을 무작위로 붙인다. 본문은 리뷰 사진 버킷 pmart-review 의
+    review-photos/<계정>/<RPH-…>(서비스 업로드와 같은 키)에 PC 2 s3 컨테이너(SeaweedFS mini) 파일러로 올리고, review_photo 행을 리뷰에 붙여 넣는다.
+  - --texts: 본문 문장 묶음 onion(기본)·carrot. --delete 는 리뷰만 DELETED(사진은 공개 리뷰가 아니라 보이지 않는다)
 """
 import datetime
+import hashlib
 import json
+import os
 import random
 import secrets
 import subprocess
@@ -36,7 +44,22 @@ BAD = ["한두 개가 물러 있었어요.", "생각보다 작았어요.", "껍�
        "포장이 터져서 왔어요.", "싹이 난 게 섞여 있었어요."]
 
 
-def body(rating, rnd):
+# 당근(2026-11-20) — 프리미엄 Fresh 친환경 당근 500g
+CARROT_GOOD = ["당근이 단단하고 색이 진해요.", "생으로 먹어도 달고 아삭해요.", "흙이 조금 묻어 있지만 씻으니 깨끗해요.", "주스 갈아 마셨는데 단맛이 좋아요.",
+               "카레에 넣었더니 달큰하게 맛있어요.", "친환경이라 껍질째 볶아 먹었어요.", "크기가 고르고 곧게 잘 빠졌어요.", "배송이 빨라 싱싱하게 받았어요.",
+               "당근 라페 만들었는데 식감이 최고예요.", "아이 이유식용으로 샀는데 향이 진해요.", "포장이 깔끔해서 냉장고에 바로 넣었어요.", "또 살게요."]
+CARROT_MID = ["무난해요.", "크기가 조금 들쭉날쭉해요.", "평범한 당근 맛이에요.", "한두 개는 조금 휘어 있었어요.", "가격 생각하면 괜찮아요.",
+              "흙이 생각보다 많이 묻어 있었어요."]
+CARROT_BAD = ["끝부분이 조금 물렀어요.", "생각보다 작았어요.", "한 개는 갈라져 있었어요.", "단맛이 거의 없었어요.", "기대보다는 별로였어요."]
+TEXTS = {"onion": (GOOD, MID, BAD), "carrot": (CARROT_GOOD, CARROT_MID, CARROT_BAD)}
+
+
+def body(rating, rnd, good=None, mid=None, bad=None):
+    GOOD_, MID_, BAD_ = good or GOOD, mid or MID, bad or BAD
+    return _body(rating, rnd, GOOD_, MID_, BAD_)
+
+
+def _body(rating, rnd, GOOD, MID, BAD):
     if rating >= 4:
         parts = rnd.sample(GOOD, rnd.randint(1, 3))
         if rating == 4 and rnd.random() < 0.4:
@@ -81,6 +104,42 @@ def query(sql):
     return r.stdout.decode("utf-8", "replace").strip()
 
 
+def put_photos(uploads):
+    """리뷰 사진을 리뷰 사진 버킷에 올린다 — PC 2 s3 컨테이너(SeaweedFS mini) 안의 파일러로(인증 없음, 컨테이너 안에서만). S3 키 = 파일러 경로.
+    PC 2 원격 셸이 PowerShell 이라 바이트를 stdin 으로 넘기지 않는다: 사진과 올리기 스크립트를 scp → docker cp → 컨테이너 안에서 curl -T."""
+    import tempfile
+    stage = tempfile.mkdtemp(prefix="review-seed-")
+    names = {}
+    lines = ["set -e"]
+    for key, path in uploads:
+        name = names.setdefault(path, f"p{len(names)}.jpg")
+        lines.append(f"curl -sf -T /tmp/review-seed/{name} -H 'Content-Type: image/jpeg' http://127.0.0.1:8888/buckets/pmart-review/{key} >/dev/null")
+    lines.append("echo UPLOADED " + str(len(uploads)))
+    for path, name in names.items():
+        with open(path, "rb") as src, open(os.path.join(stage, name), "wb") as dst:
+            dst.write(src.read())
+    with open(os.path.join(stage, "up.sh"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    host = ["-o", "HostName=192.168.0.34", "pmart-pc2"]
+    subprocess.run(["ssh", *host, "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue review-seed"], capture_output=True)
+    r = subprocess.run(["scp", "-q", "-r", "-o", "HostName=192.168.0.34", stage, "pmart-pc2:review-seed"], capture_output=True)
+    if r.returncode != 0:
+        raise SystemExit("사진 복사(scp) 실패: " + r.stderr.decode("utf-8", "replace")[-300:])
+    r = subprocess.run(["ssh", *host, "docker exec pmart-lan-s3-1 rm -rf /tmp/review-seed; docker cp review-seed pmart-lan-s3-1:/tmp/review-seed;"
+                        " docker exec pmart-lan-s3-1 sh /tmp/review-seed/up.sh; docker exec pmart-lan-s3-1 rm -rf /tmp/review-seed;"
+                        " Remove-Item -Recurse -Force review-seed"], capture_output=True)
+    out = r.stdout.decode("utf-8", "replace")
+    if f"UPLOADED {len(uploads)}" not in out:
+        raise SystemExit("사진 올리기 실패: " + out[-300:] + r.stderr.decode("utf-8", "replace")[-300:])
+
+
+def opt(name, default=None):
+    for a in sys.argv[1:]:
+        if a.startswith(f"--{name}="):
+            return a.split("=", 1)[1]
+    return default
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     product_id, sku, name, count = args[0], args[1], args[2], int(args[3])
@@ -103,13 +162,19 @@ def main():
         return
     rnd = random.Random()
     tag = uuid.uuid4().hex[:6]
+    texts = TEXTS[opt("texts", "onion")]
+    photo_dir = opt("photos")
+    photo_ratio = float(opt("photo-ratio", "0.6"))
+    photo_files = sorted(os.path.join(photo_dir, f) for f in os.listdir(photo_dir) if f.lower().endswith(".jpg")) if photo_dir else []
+    uploads = []  # (키, 바이트)
+    photo_reviews = 0
     sql = ["BEGIN;\n"]
     dist = {r: 0 for r, _ in WEIGHTS}
     samples = []
     for i in range(count):
         rating = rnd.choices([r for r, _ in WEIGHTS], weights=[w for _, w in WEIGHTS])[0]
         dist[rating] += 1
-        text = body(rating, rnd)
+        text = body(rating, rnd, *texts)
         account = f"CU-seed-rv-{tag}-{i:04d}"
         order_id = f"ORD-SEEDRV-{tag}-{i:04d}"
         line_id = order_id + "-L1"
@@ -126,16 +191,29 @@ def main():
         sql.append(outbox(envelope("ReviewPublished", review_id, 1, account, {
             "reviewId": review_id, "orderLineId": line_id, "orderId": order_id, "productId": product_id, "accountId": account,
             "rating": rating, "publishedAt": created.isoformat().replace("+00:00", "Z")}, created)))
+        if photo_files and rnd.random() < photo_ratio:
+            photo_reviews += 1
+            for order, path in enumerate(rnd.sample(photo_files, rnd.randint(1, min(3, len(photo_files))))):
+                with open(path, "rb") as f:
+                    data = f.read()
+                photo_id = "RPH-" + str(uuid.uuid4())
+                key = f"review-photos/{account}/{photo_id}"  # 서비스 업로드와 같은 키 모양(ReviewService)
+                uploads.append((key, path))
+                sql.append("INSERT INTO review_photo (photo_id, account_id, object_key, content_type, size_bytes, sha256, uploaded_at, review_id, sort_order)"
+                           f" VALUES ({sql_str(photo_id)}, {sql_str(account)}, {sql_str(key)}, 'image/jpeg', {len(data)},"
+                           f" {sql_str(hashlib.sha256(data).hexdigest())}, {sql_str(created.isoformat())}, {sql_str(review_id)}, {order});\n")
         if i < 5:
             samples.append(f"{author} ★{rating} {text}")
     sql.append("COMMIT;\n")
     avg = sum(r * c for r, c in dist.items()) / max(count, 1)
-    print(f"{name}({product_id}) 리뷰 {count}개 — 별점 분포 {dist}, 평균 {avg:.2f}")
+    print(f"{name}({product_id}) 리뷰 {count}개 — 별점 분포 {dist}, 평균 {avg:.2f}, 사진 리뷰 {photo_reviews}개·사진 {len(uploads)}장")
     for s in samples:
         print("  예:", s)
     if "--apply" not in sys.argv:
         print("요약만(--apply 없음) — DB 는 그대로")
         return
+    if uploads:  # 사진 본문 먼저 — 행이 생기는 순간 보이게
+        put_photos(uploads)
     run_sql("".join(sql))
     print("넣음 — 묶음 표시", tag, "| DB 확인:", query(f"select count(*) from review where product_id='{product_id}' and state='PUBLISHED'"))
 
