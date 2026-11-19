@@ -40,12 +40,20 @@ public class OrdersController implements OrdersApi {
   private final OrderService orders;
   private final com.pmart.order.application.TimeChangeService timeChanges;
   private final Clock clock;
+  private final com.pmart.order.application.DeliveryLinks deliveries;
+  private final com.pmart.order.application.CenterNames centerNames;
 
   public OrdersController(
-      OrderService orders, com.pmart.order.application.TimeChangeService timeChanges, Clock clock) {
+      OrderService orders,
+      com.pmart.order.application.TimeChangeService timeChanges,
+      Clock clock,
+      com.pmart.order.application.DeliveryLinks deliveries,
+      com.pmart.order.application.CenterNames centerNames) {
     this.orders = orders;
     this.timeChanges = timeChanges;
     this.clock = clock;
+    this.deliveries = deliveries;
+    this.centerNames = centerNames;
   }
 
   /** S4 예약 시간 변경 요청(202 — 접수, 결과는 조회). */
@@ -111,6 +119,7 @@ public class OrdersController implements OrdersApi {
             .version(o.version())
             .status(OrderStatus.fromValue(o.status()))
             .mfcId(o.mfcId())
+            .mfcName(centerNames.name(o.mfcId())) // BR-62(0.15.0) — 고객에게 보이는 센터 이름
             .deliveryMode(o.deliveryMode())
             .arrivalWindow(
                 o.arrivalDate() == null
@@ -142,7 +151,7 @@ public class OrdersController implements OrdersApi {
                     .weightG(o.weightG())
                     .plannedShipments(o.plannedShipments()))
             .lines(v.lines().stream().map(OrdersController::line).toList())
-            .shipments(List.of())
+            .shipments(shipments(o.orderId(), v.lines()))
             .payment(new OrderPayment().paymentAttemptId(o.paymentAttemptId()).state("APPROVED"))
             .claims(List.of())
             .sources(
@@ -241,5 +250,29 @@ public class OrdersController implements OrdersApi {
 
   private static OffsetDateTime time(Instant i) {
     return OffsetDateTime.ofInstant(i, ZoneOffset.UTC);
+  }
+
+  /** 배송 짝(BR-61, 0.15.0) — 첫 출고(<orderId>-S1)는 주문 줄 전체, 재발송 출고는 줄 없이. */
+  private List<com.pmart.order.api.generated.model.Shipment> shipments(
+      String orderId, List<LineRow> lines) {
+    return deliveries.byOrder(orderId).stream()
+        .map(
+            d ->
+                new com.pmart.order.api.generated.model.Shipment()
+                    .shipmentId(d.shipmentId())
+                    .deliveryId(d.deliveryId())
+                    .state(
+                        com.pmart.order.api.generated.model.Shipment.StateEnum.fromValue(d.state()))
+                    .lines(
+                        d.shipmentId().equals(orderId + "-S1")
+                            ? lines.stream()
+                                .map(
+                                    l ->
+                                        new com.pmart.order.api.generated.model.ShipmentLinesInner()
+                                            .orderLineId(l.orderLineId())
+                                            .qty(l.originalQty()))
+                                .toList()
+                            : List.of()))
+        .toList();
   }
 }

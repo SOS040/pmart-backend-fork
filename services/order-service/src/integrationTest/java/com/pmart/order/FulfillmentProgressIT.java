@@ -189,6 +189,131 @@ class FulfillmentProgressIT extends PostgresKafkaContainerSupport {
     return Map.of("orderLineId", orderLineId, "qty", qty);
   }
 
+  /** BR-61(0.15.0, 2026-11-19): 배송 생성 → 고객 주문 조회 shipments(deliveryId), 회수는 빼고, 상태는 앞으로만. */
+  @Test
+  void customerOrderShowsDeliveryAfterDispatch() throws Exception {
+    String orderId = order("PREPARING", 3, 2);
+    // 이 시험 도우미의 품절 선택(CANCEL_ITEM)·배달팁 사유(BASE)는 계약 밖 — 고객 조회 응답을 만들 수 있게 계약 값으로
+    jdbc.update(
+        "UPDATE customer_order SET out_of_stock_preference = 'CANCEL_OOS_ONLY',"
+            + " delivery_tip_reason = 'STANDARD' WHERE order_id = ?",
+        orderId);
+    String token = com.pmart.common.test.TestJwt.customer("ACC-PG");
+    var http =
+        org.springframework.web.client.RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1")
+            .defaultStatusHandler(org.springframework.http.HttpStatusCode::isError, (q, r) -> {})
+            .build();
+    java.util.function.Supplier<tools.jackson.databind.JsonNode> view =
+        () ->
+            new tools.jackson.databind.ObjectMapper()
+                .readTree(
+                    http.get()
+                        .uri("/orders/" + orderId)
+                        .headers(h -> h.setBearerAuth(token))
+                        .retrieve()
+                        .body(String.class));
+    tools.jackson.databind.JsonNode before = view.get();
+    assertThat(before.path("orderId").asString()).as(before.toString()).isEqualTo(orderId);
+    assertThat(before.path("shipments").isArray() && before.path("shipments").isEmpty())
+        .as("배송 전에는 빈 배열")
+        .isTrue();
+
+    String deliveryId = "DLV-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryCreated",
+        deliveryId,
+        Map.of(
+            "deliveryId",
+            deliveryId,
+            "orderId",
+            orderId,
+            "shipmentId",
+            orderId + "-S1",
+            "type",
+            "FORWARD",
+            "mfcId",
+            "MFC-PG",
+            "dropAddressRef",
+            "order:" + orderId),
+        1);
+    String returnId = "DLV-RT-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryCreated",
+        returnId,
+        Map.of(
+            "deliveryId",
+            returnId,
+            "orderId",
+            orderId,
+            "shipmentId",
+            orderId + "-R1",
+            "type",
+            "RETURN",
+            "mfcId",
+            "MFC-PG",
+            "dropAddressRef",
+            "mfc:MFC-PG"),
+        1);
+    await(() -> view.get().path("shipments").size() == 1);
+    tools.jackson.databind.JsonNode sh = view.get().path("shipments").get(0);
+    assertThat(sh.path("deliveryId").asString()).isEqualTo(deliveryId);
+    assertThat(sh.path("shipmentId").asString()).isEqualTo(orderId + "-S1");
+    assertThat(sh.path("state").asString()).isEqualTo("READY");
+    assertThat(sh.path("lines")).hasSize(2);
+
+    deliveryEvent(
+        "PickupCompleted",
+        deliveryId,
+        Map.of(
+            "deliveryId",
+            deliveryId,
+            "orderId",
+            orderId,
+            "packageIds",
+            List.of("PKG-1"),
+            "handoverIds",
+            List.of("HO-1"),
+            "pickedUpAt",
+            Instant.now().toString()),
+        3);
+    await(() -> "IN_DELIVERY".equals(view.get().path("shipments").get(0).path("state").asString()));
+    // 늦게 온 배정 사건은 되돌리지 않는다
+    deliveryEvent(
+        "DeliveryAssigned",
+        deliveryId,
+        Map.of(
+            "deliveryId",
+            deliveryId,
+            "orderId",
+            orderId,
+            "riderId",
+            "RD-PG",
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()),
+        2);
+    Thread.sleep(1500);
+    assertThat(view.get().path("shipments").get(0).path("state").asString())
+        .isEqualTo("IN_DELIVERY");
+    assertThat(view.get().path("shipments")).as("회수 배송은 고객 주문에 없다").hasSize(1);
+  }
+
+  private void deliveryEvent(
+      String type, String deliveryId, Map<String, Object> payload, int version) {
+    String json =
+        EventEnvelopeFixtures.envelope(type)
+            .from(
+                type.equals("PickupCompleted")
+                    ? "delivery-execution-service"
+                    : "delivery-dispatch-service")
+            .aggregate("Delivery", deliveryId, version)
+            .payload(payload)
+            .buildJson();
+    kafka.send("delivery.delivery.v1", deliveryId, json).join();
+  }
+
   @Test
   void handoverThenDeliveryCompletesOrderOnce() throws Exception {
     String orderId = order("PREPARING", 3, 2);

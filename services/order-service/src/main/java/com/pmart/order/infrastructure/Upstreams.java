@@ -302,6 +302,18 @@ public class Upstreams {
 
   // ---------- center-master · capacity ----------
 
+  /** 센터 이름(center-master 내부 센터 조회 name, 2026-11-19 BR-62). 없는 센터는 null. */
+  public @Nullable String centerName(String mfcId) {
+    try {
+      JsonNode n =
+          get(center, "center-master-service center", "/api/v1/internal/centers/{id}", mfcId);
+      String name = n.path("name").asString("");
+      return name.isBlank() ? null : name;
+    } catch (HttpClientErrorException.NotFound e) {
+      return null;
+    }
+  }
+
   public CenterDay centerDay(String mfcId, LocalDate date) {
     JsonNode n;
     try {

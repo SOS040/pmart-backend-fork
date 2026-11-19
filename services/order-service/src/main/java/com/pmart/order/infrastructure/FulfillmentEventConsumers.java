@@ -36,9 +36,14 @@ class FulfillmentEventConsumers {
    * 아직 — 자동 환불 없음).
    */
   @Bean
-  PmartEventConsumer deliveryEvents(EventConsumers consumers, OrderService orders) {
+  PmartEventConsumer deliveryEvents(
+      EventConsumers consumers,
+      OrderService orders,
+      com.pmart.order.application.DeliveryLinks links) {
     return consumers.of(
         e -> {
+          // 고객 주문의 배송 짝·상태(2026-11-19 BR-61) — 배송 생성·배정·픽업·전달·실패·픽업 전 취소
+          links.on(e);
           if ("DeliveryCompleted".equals(e.eventType())) {
             orders.deliveryCompleted(e);
           }

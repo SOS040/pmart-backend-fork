@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.14.2
+  version: 0.15.0
   description: |
+    0.15.0(2026-11-19, 고객 앱 BR-61·BR-62 — 사용자 "응 바로 만들고 고객이 센터 이름 보여도 돼"): 고객 주문 조회 `GET /orders/{orderId}` 에
+    ① `shipments[]` — **배차로 배송이 생긴 뒤부터**(delivery-dispatch `DeliveryCreated`) `{shipmentId, deliveryId, state, lines[]}`, 고객에게 가는 배송(FORWARD·RESHIPMENT)만,
+    분할·재발송이면 배송마다 한 줄, 배송 전에는 빈 배열. state: 배송 생성·배정 READY → 픽업 IN_DELIVERY → 전달 DELIVERED / 실패 FAILED / 픽업 전 취소 CANCELLED(뒤로 가지 않음).
+    ② `mfcName` — 주문한 센터 이름(center-master 센터 이름, 고객 공개 — 사용자 결정 2026-11-19). 모르면 null.
     0.14.2(2026-11-19, CL-5): 수량 변경 요청에 선택 `cancelReason`(클레임 취소 사유 — CHANGE_OF_MIND·OUT_OF_STOCK·DISPATCH_UNAVAILABLE 등) → `OrderCancelled.cancelReason` 에 싣는다.
     `reason` 은 그대로 수량 의미(CANCEL_BEFORE_SHIP). 알림이 사유별 문구(품절·배차 불가)를 고른다.
     0.14.1(2026-11-19, 고객 앱 알림 레퍼런스 — 사용자 "응 해줘"): 내부 주문 조회 `InternalOrder` 에 `deliveryMode`·`arrivalWindow`(예약배달만) — notification 의 "준비 중" 알림 문구용.
@@ -1115,6 +1119,7 @@ components:
         returnedQty: { type: integer, description: '반품 완료 수량(0.11.2 — claim 반품 종결로 채워짐, O-7)' }
     Shipment:
       type: object
+      description: '(0.15.0) 고객 주문의 배송 — 배차로 배송이 생긴 뒤부터 채운다(그 전에는 주문 shipments 가 빈 배열). deliveryId 로 배송 현황(tracking /deliveries/{deliveryId}/eta·stream)을 연다. lines 는 첫 출고(<orderId>-S1)만 주문 줄 전체, 재발송 출고는 비어 있다. weightG·eta 는 채우지 않는다'
       properties:
         shipmentId: { type: string }
         deliveryId: { type: string }
@@ -1130,6 +1135,7 @@ components:
         version: { type: integer }
         status: { $ref: '#/components/schemas/OrderStatus' }
         mfcId: { type: string }
+        mfcName: { type: [string, 'null'], description: '(0.15.0) 주문한 센터 이름(center-master — 고객 공개, 사용자 결정 2026-11-19). 모르면 null' }
         deliveryMode: { type: string }
         arrivalWindow: { $ref: '#/components/schemas/ArrivalWindow' }
         confirmedAt: { type: string, format: date-time, description: 주문 확정 시각 }
