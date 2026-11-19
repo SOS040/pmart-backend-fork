@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-20 ADR-0073 단계 B): 동의어 규칙 관리 — 운영 `GET /search/synonym-rules`(지금 버전·규칙)·`GET /search/synonym-rule-applications`(승인 반영 기록), MD·OPERATOR_ADMIN.
+    바꾸기는 approval-service 변경 요청(종류 `SEARCH_SYNONYM`, targetRef `pmart-product-synonyms`, `targetExpectedVersion` = 여기 version, 행 = 규칙 UPSERT·DELETE)으로만 —
+    운영 관리자가 승인하면 이 서비스가 ApprovalDecided 를 받아 기준 버전이 같을 때만 전부 반영(재색인 없이 다음 검색부터)하고 ApplicationReceiptRecorded 로 회신한다.
     0.4.0(2026-11-20 ADR-0073 — 사용자 "개발 규모 안 따지면 추천대로"): ① 동의어 — 상품명 검색에 동의어 집합 적용(운영 승인으로 바뀌면 재색인 없이 다음 검색부터).
     ② 오타 교정(첫 쪽·검색어 있음·초성 아님): 결과 0건이면 고친 검색어로 다시 찾아 `correctedQuery`(결과는 고친 검색어 것, `query` 는 원래 검색어),
     결과가 적으면(설정, 지금 3건 이하) 고친 검색어가 더 많이 찾을 때 `suggestedQuery`(결과는 원래 검색어 것). `noCorrection=true` 면 교정하지 않는다("원래 검색어로 찾기").
@@ -23,6 +26,7 @@ security:
 tags:
   - { name: search, description: 상품 검색·자동완성·필터 속성 }
   - { name: recent-searches, description: 본인 최근 검색어 }
+  - { name: synonyms, description: '[운영] 동의어 규칙(0.5.0) — 바꾸기는 approval-service SEARCH_SYNONYM' }
   - { name: internal, description: 색인 관리(서비스 토큰) }
 
 paths:
@@ -136,6 +140,47 @@ paths:
                         searchers: { type: integer, description: 서로 다른 검색자 수(근사) }
                         lastSearchedAt: { type: [string, 'null'], format: date-time }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /search/synonym-rules:
+    get:
+      tags: [synonyms]
+      summary: '[운영] 지금 동의어 규칙 (0.5.0, ADR-0073)'
+      description: |
+        상품명 검색에 쓰는 동의어 규칙 전체와 버전. 바꾸려면 이 version 을 기준 버전(targetExpectedVersion)으로 approval-service 에 변경 요청
+        (`SEARCH_SYNONYM`)을 만든다 — 승인 전에 다른 변경이 반영되면 그 요청은 반영되지 않는다(회신 REJECTED·STALE_VERSION, 다시 조회해 새로 요청).
+        낱말은 소문자·앞뒤 공백 없이 저장된다. MD·OPERATOR_ADMIN 만(그 밖 운영자 403).
+      operationId: getSynonymRules
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SynonymRuleSet' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /search/synonym-rule-applications:
+    get:
+      tags: [synonyms]
+      summary: '[운영] 동의어 승인 반영 기록 (0.5.0, ADR-0073)'
+      description: |
+        승인된 동의어 변경 요청마다 반영 결과(최근 순). 반영하지 않은 까닭: `STALE_VERSION`(승인 전에 다른 변경이 반영됨)·`LINE_REJECTED`(행이 어긋남 —
+        lineReasons: `RULE_NOT_FOUND` 지울 규칙 없음·`INVALID_TERMS`·`INVALID_OP`·`DUPLICATE_RULE`). 반려된 요청은 오지 않는다. MD·OPERATOR_ADMIN 만.
+      operationId: listSynonymRuleApplications
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/SynonymRuleApplication' } }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /search/filters:
@@ -349,6 +394,36 @@ components:
               value: { type: string }
               label: { type: string }
               count: { type: integer, description: 현재 조건에서의 결과 수. 0이면 선택 불가 표시 }
+    SynonymRule:
+      type: object
+      required: [ruleId, terms]
+      properties:
+        ruleId: { type: string, description: '규칙 ID(영문·숫자·_.- 1~64자) — 변경 요청 행의 lineKey' }
+        terms: { type: array, items: { type: string }, description: 같은 뜻 낱말(2~20개, 소문자) }
+    SynonymRuleSet:
+      type: object
+      required: [version, rules]
+      properties:
+        version: { type: integer, format: int64, description: '규칙 버전(처음 0, 반영마다 1씩)' }
+        rules: { type: array, items: { $ref: '#/components/schemas/SynonymRule' } }
+        lastApprovalId: { type: [string, 'null'], description: 마지막으로 반영한 승인 }
+        updatedAt: { type: [string, 'null'], format: date-time }
+    SynonymRuleApplication:
+      type: object
+      required: [approvalId, result, baseVersion, version, at]
+      properties:
+        approvalId: { type: string }
+        changeRequestId: { type: [string, 'null'] }
+        approverId: { type: [string, 'null'] }
+        result: { type: string, enum: [APPLIED, REJECTED] }
+        reason: { type: [string, 'null'], description: 'REJECTED 까닭 STALE_VERSION·LINE_REJECTED' }
+        baseVersion: { type: [integer, 'null'], format: int64, description: 요청의 기준 버전 }
+        version: { type: integer, format: int64, description: '반영 뒤 버전(반영하지 않았으면 그때 버전)' }
+        lineReasons:
+          type: object
+          additionalProperties: { type: string }
+          description: 규칙 ID → 어긋난 까닭
+        at: { type: string, format: date-time }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

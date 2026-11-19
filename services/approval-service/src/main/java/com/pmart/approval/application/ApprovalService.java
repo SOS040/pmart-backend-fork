@@ -2,6 +2,7 @@ package com.pmart.approval.application;
 
 import com.pmart.approval.domain.ApprovalRules;
 import com.pmart.approval.domain.MfcTargets;
+import com.pmart.approval.domain.SearchSynonymTargets;
 import com.pmart.approval.infrastructure.ApprovalStore;
 import com.pmart.approval.infrastructure.ApprovalStore.ApprovalRow;
 import com.pmart.approval.infrastructure.ApprovalStore.ChangeRequestRow;
@@ -86,6 +87,33 @@ public class ApprovalService {
                 l.hasNonNull("requestedQty") ? l.get("requestedQty").asInt() : null));
       }
       MfcTargets.validate(in.type(), in.targetService(), in.targetRef(), lines);
+    }
+    ApprovalRules.requireRequesterRole(
+        in.type(), operator.roles(), properties.getRequesterRoles().get(in.type()));
+    if (SearchSynonymTargets.isSynonymType(in.type())) {
+      // 검색 동의어(ADR-0073 단계 B): 대상·기준 버전·행(규칙 ID·op·같은 뜻 낱말) 형식
+      JsonNode body = mapper.valueToTree(in.body());
+      List<SearchSynonymTargets.Line> lines = new ArrayList<>();
+      for (JsonNode l : body.path("lines")) {
+        JsonNode attrs = l.path("attributes");
+        List<String> terms = null;
+        if (attrs.path("terms").isArray()) {
+          terms = new ArrayList<>();
+          for (JsonNode t : attrs.get("terms")) {
+            terms.add(t.isString() ? t.asString() : null);
+          }
+        }
+        lines.add(
+            new SearchSynonymTargets.Line(
+                l.path("lineKey").asString(null), attrs.path("op").asString(null), terms));
+      }
+      SearchSynonymTargets.validate(
+          in.targetService(),
+          in.targetRef(),
+          body.hasNonNull("targetExpectedVersion")
+              ? body.get("targetExpectedVersion").asInt()
+              : null,
+          lines);
     }
     return idempotency.execute(
         key(requestId, "createChangeRequest", operator),

@@ -1,0 +1,50 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "kind": {
+        "type": "keyword"
+      },
+      "version": {
+        "type": "long"
+      },
+      "rules": {
+        "type": "object",
+        "enabled": false
+      },
+      "approvalId": {
+        "type": "keyword"
+      },
+      "changeRequestId": {
+        "type": "keyword"
+      },
+      "approverId": {
+        "type": "keyword"
+      },
+      "result": {
+        "type": "keyword"
+      },
+      "reason": {
+        "type": "keyword"
+      },
+      "baseVersion": {
+        "type": "long"
+      },
+      "changes": {
+        "type": "object",
+        "enabled": false
+      },
+      "lineReasons": {
+        "type": "object",
+        "enabled": false
+      },
+      "at": {
+        "type": "date"
+      }
+    }
+  }
+}

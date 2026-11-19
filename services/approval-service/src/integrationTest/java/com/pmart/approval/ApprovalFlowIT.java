@@ -36,7 +36,10 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.approval.approver-roles.PRICE=PRICE_APPROVER"
+      "pmart.approval.approver-roles.PRICE=PRICE_APPROVER",
+      // 검색 동의어(ADR-0073 단계 B) — 설정 저장소에 넣기 전이라 여기서
+      "pmart.approval.approver-roles.SEARCH_SYNONYM=OPERATOR_ADMIN",
+      "pmart.approval.requester-roles.SEARCH_SYNONYM=MD,OPERATOR_ADMIN"
     })
 @Import(TestJwtConfiguration.class)
 class ApprovalFlowIT extends PostgresKafkaContainerSupport {
@@ -50,6 +53,7 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
 
   static final String MD = TestJwt.operator("md-1", List.of("MD"), List.of());
   static final String LEAD = TestJwt.operator("lead-1", List.of("PRICE_APPROVER"), List.of());
+  static final String ADMIN = TestJwt.operator("admin-1", List.of("OPERATOR_ADMIN"), List.of());
 
   @BeforeEach
   void client() {
@@ -371,5 +375,78 @@ class ApprovalFlowIT extends PostgresKafkaContainerSupport {
     assertThat(
             approval.body().get("receipts").get(0).get("lines").get(0).get("domainVersion").asInt())
         .isEqualTo(2);
+  }
+
+  /** 검색 동의어(ADR-0073 단계 B): MD 요청 → 운영 관리자 승인 → ApprovalDecided 에 기준 버전·규칙 행이 실린다. */
+  @Test
+  void searchSynonymRequestedByMdApprovedByAdmin() {
+    Map<String, Object> change =
+        new LinkedHashMap<>(
+            Map.of(
+                "type", "SEARCH_SYNONYM",
+                "targetService", "search-service",
+                "targetRef", "pmart-product-synonyms",
+                "targetExpectedVersion", 0,
+                "allowedActions", List.of("APPLY_SYNONYM_RULES"),
+                "summary", "계란·달걀 동의어",
+                "lines",
+                    List.of(
+                        Map.of(
+                            "lineKey",
+                            "egg",
+                            "attributes",
+                            Map.of("op", "UPSERT", "terms", List.of("계란", "달걀"))))));
+    // 요청 역할(MD·OPERATOR_ADMIN)이 아니면 403
+    assertThat(post("/change-requests", LEAD, UUID.randomUUID().toString(), change).status())
+        .isEqualTo(403);
+    // 기준 버전이 없으면 400
+    Map<String, Object> noVersion = new LinkedHashMap<>(change);
+    noVersion.remove("targetExpectedVersion");
+    Res bad = post("/change-requests", MD, UUID.randomUUID().toString(), noVersion);
+    assertThat(bad.status()).isEqualTo(400);
+    assertThat(bad.body().toString()).contains("targetExpectedVersion");
+
+    Res created = post("/change-requests", MD, UUID.randomUUID().toString(), change);
+    assertThat(created.status()).isEqualTo(201);
+    String crId = created.body().get("changeRequestId").asString();
+    Res submitted =
+        post("/change-requests/" + crId + "/submissions", MD, UUID.randomUUID().toString(), null);
+    assertThat(submitted.status()).isEqualTo(202);
+    String approvalId = submitted.body().get("resultId").asString();
+
+    Map<String, Object> approve = Map.of("decision", "APPROVE");
+    // 승인자 역할 OPERATOR_ADMIN 만(가격 승인자는 403)
+    assertThat(
+            post(
+                    "/approvals/" + approvalId + "/decisions",
+                    LEAD,
+                    UUID.randomUUID().toString(),
+                    approve)
+                .status())
+        .isEqualTo(403);
+    assertThat(
+            post(
+                    "/approvals/" + approvalId + "/decisions",
+                    ADMIN,
+                    UUID.randomUUID().toString(),
+                    approve)
+                .status())
+        .isEqualTo(202);
+
+    JsonNode p =
+        mapper
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'ApprovalDecided'",
+                    String.class,
+                    approvalId))
+            .get("payload");
+    assertThat(p.get("type").asString()).isEqualTo("SEARCH_SYNONYM");
+    assertThat(p.get("decision").asString()).isEqualTo("APPROVED");
+    assertThat(p.at("/targetRef/targetType").asString()).isEqualTo("SynonymSet");
+    assertThat(p.at("/targetRef/targetService").asString()).isEqualTo("search-service");
+    assertThat(p.at("/targetRef/expectedVersion").asInt()).isEqualTo(0);
+    assertThat(p.at("/lines/0/lineId").asString()).isEqualTo("egg");
+    assertThat(p.at("/lines/0/attributes/terms").toString()).isEqualTo("[\"계란\",\"달걀\"]");
   }
 }

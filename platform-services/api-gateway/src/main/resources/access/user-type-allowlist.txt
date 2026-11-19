@@ -291,6 +291,9 @@ GET /api/v1/riders/{riderId}/restrictions OPERATOR
 GET /api/v1/search/filters PUBLIC
 GET /api/v1/search/products PUBLIC
 GET /api/v1/search/suggestions PUBLIC
+GET /api/v1/search/synonym-rule-applications OPERATOR
+GET /api/v1/search/synonym-rules OPERATOR
+GET /api/v1/search/zero-result-keywords OPERATOR
 GET /api/v1/serviceability-checks/{checkId} PUBLIC
 GET /api/v1/serviceability-versions/{version} OPERATOR
 GET /api/v1/shift-handovers OPERATOR

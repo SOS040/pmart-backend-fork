@@ -51,9 +51,10 @@
 - **의존**(2026-11-16 1차 구현, ADR-0063): order `GET /internal/orders/{id}`(자격 사본·반품 수량), customer `GET /internal/accounts/{id}/review-author`(가린 별명), S3 버킷 pmart-review(사진). 운영자 숨김·신고 없음.
 
 ### search-service `[1단계 기본]`
-- **소유**: 검색 색인, 키워드·자동완성·필터 속성, 최근 검색어.
+- **소유**: 검색 색인, 키워드·자동완성·필터 속성, 최근 검색어, 동의어 규칙·오타 사전(ADR-0073 — 색인 `search-synonym-rules`·`search-terms`, DB 없음).
 - **소유하지 않음**: 판매 가능 판단(색인 지연≠재고 있음).
-- **API**: 검색/필터.
+- **API**: 검색/필터, 운영 결과 0건 검색어·동의어 규칙 조회(MD·OPERATOR_ADMIN). 동의어 바꾸기는 approval-service 승인(`SEARCH_SYNONYM`)으로만.
+- **동의어 승인 반영(ADR-0073 단계 B, 2026-11-20)**: 구독 `ApprovalDecided`(platform.approval.v1, 바인딩 `approvalEvents` — SEARCH_SYNONYM 만, inbox 대신 승인 ID·규칙 버전으로 멱등) → ES 동의어 집합 갱신(재색인 없음) → 발행 `ApplicationReceiptRecorded`(outbox 없이 Kafka 로 바로).
 - **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`(표시 가격·가격순), `SkuHandlingChanged`(센터 취급 — 상품 carriedMfcIds, 2026-11-05) — **search 소유 Logstash 파이프라인**(`services/search-service/src/main/logstash/search-index.conf`, 소비 그룹은 `deploy/lan/elastic/search-index.env`)이 받아 색인한다. 서비스 자체는 조회만(ADR-0031). `CategoryChanged` 는 아직 쓰지 않는다(이름 경로는 공개 트리 조회).
 - **의존**: Elasticsearch 8.18 + nori(색인, ADR-0031), Logstash(색인 주체), product-content(공개 카드 API — Logstash 가 이름·이미지 보강), product(공개 카테고리 트리). 취급 여부는 동기 조회가 아니라 `SkuHandlingChanged` 색인 사본(2026-11-05).
 
@@ -407,10 +408,10 @@
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).
 - **소유하지 않음**: 승인 결과의 업무 정본(product/pricing/replenishment/claim/quality/serviceability/auth), 사건(case).
-- **승인 종류 → 정본**: 상품/SKU/환산→product · 가격→pricing · 전시→storefront/product-content · 센터 기준정보→center-master · 권역→delivery-serviceability · 운영 중지/재개→cdc-quality/mfc-capacity/rider · 정책→각 소유 서비스 · 공급 사업승인→replenishment · 환불/클레임→claim · 품질/리콜→cdc-quality/mfc-quality · 재고 조정/손실→cdc-inventory/mfc-inventory(승인 참조 집행) · 직원 권한(GRANT)→employee-auth-service(ADR-0056).
+- **승인 종류 → 정본**: 상품/SKU/환산→product · 가격→pricing · 전시→storefront/product-content · 센터 기준정보→center-master · 권역→delivery-serviceability · 운영 중지/재개→cdc-quality/mfc-capacity/rider · 정책→각 소유 서비스 · 공급 사업승인→replenishment · 환불/클레임→claim · 품질/리콜→cdc-quality/mfc-quality · 재고 조정/손실→cdc-inventory/mfc-inventory(승인 참조 집행) · 직원 권한(GRANT)→employee-auth-service(ADR-0056) · 검색 동의어(SEARCH_SYNONYM)→search-service(ADR-0073, 요청 MD·OPERATOR_ADMIN, 승인 OPERATOR_ADMIN).
 - **API**: 변경 요청 제출/철회, 심사·승인·부분승인·반려, 승인함 조회, 반영 상태 조회, 정책 참조 등록, 승인 번호 확인·한 번 사용(`/internal/approval-ref-checks`·`/internal/approval-ref-uses` — 승인 번호를 명령에 실어 집행하는 정본용, MFC 종류 `MFC_STOCK_ADJUSTMENT`·`MFC_OPERATION_RESTRICTION`, AP-1 2026-11-17).
 - **발행**: `ChangeRequestSubmitted`, `ApprovalDecided`, `ApprovalWithdrawn/Expired/Superseded`, `PolicyVersionApproved`, `OperationRestrictionRequested/ResumeRequested`, `BatchRowResultRecorded`.
-- **구독**: `ApplicationReceiptRecorded`(정본의 반영 회신 → 실행·전달 축, ADR-0039 — pricing, employee-auth-service, delivery-serviceability, product·product-content·center-master(2026-11-19)), `GrantRequested`(hr-service 직원 권한 요청 → 변경 요청·승인, 자동 승인 규칙 — ADR-0056 5-4, 2026-11-13). 계획: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
+- **구독**: `ApplicationReceiptRecorded`(정본의 반영 회신 → 실행·전달 축, ADR-0039 — pricing, employee-auth-service, delivery-serviceability, product·product-content·center-master(2026-11-19), search(SEARCH_SYNONYM, 2026-11-20)), `GrantRequested`(hr-service 직원 권한 요청 → 변경 요청·승인, 자동 승인 규칙 — ADR-0056 5-4, 2026-11-13). 계획: 각 정본의 반영 결과(`ProductVersionPublished`, `PriceVersionEffective`, `ServiceabilityVersionApplied`, `TransferApproved`, `GrantApplied`, `OperationRestrictionApplied/Lifted`, `InventoryAdjustmentPosted` 등 → 실행/전달 축 갱신).
 - **의존(동기)**: auth(승인자 권한·대행), 각 정본(명령 전달, 2 hop 초과 시 이벤트).
 
 ### case-service `[1단계 — 추가 제안, ADR-0004]`

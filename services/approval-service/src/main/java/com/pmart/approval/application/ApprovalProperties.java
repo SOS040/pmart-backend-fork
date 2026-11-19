@@ -21,6 +21,20 @@ public class ApprovalProperties {
   private Map<String, String> approverRoles = new LinkedHashMap<>();
   private List<AutoApprovalRule> autoApprovalRules = new ArrayList<>();
 
+  /**
+   * 승인 종류 → 변경 요청을 만들 수 있는 역할(하나라도 있으면). 없는 종류는 누구나(운영자 토큰) 만든다 — 예전 그대로. 첫 사용: 검색 동의어 (ADR-0073,
+   * 사용자 2026-11-20 "MD 요청, 관리자 승인") {@code SEARCH_SYNONYM: [MD, OPERATOR_ADMIN]}.
+   */
+  private Map<String, List<String>> requesterRoles = new LinkedHashMap<>();
+
+  public Map<String, List<String>> getRequesterRoles() {
+    return requesterRoles;
+  }
+
+  public void setRequesterRoles(Map<String, List<String>> requesterRoles) {
+    this.requesterRoles = requesterRoles;
+  }
+
   public Map<String, String> getApproverRoles() {
     return approverRoles;
   }

@@ -39,3 +39,8 @@
 
 ## 진행
 - 2026-11-20 단계 A 구현·시험 통과(search 단위 22·통합 15) — products-v7·동의어 집합·오타 사전·교정·0건 검색어 API, 계약 search 0.4.0. **LAN 배포 전**(배포 때: pmart-config `pmart.search.correction.few-results: 3`, products-v7 재색인, es-init 동의어 집합). 시험에서 잡은 것: 오타 사전 bulk 본문 charset 누락으로 한글이 깨짐, nori 가 "순두부" 를 "순·두부" 로 나눠 사전에 원래 낱말도 넣음.
+- 2026-11-20 단계 B 구현·시험 통과(approval 단위 31·통합 14, search 단위 26·통합 16) — 계약 approval 0.5.0·search 0.5.0. **LAN 배포 전.**
+  - 요청: 백오피스가 `GET /search/synonym-rules` 의 version 을 기준 버전으로 approval-service 변경 요청(`SEARCH_SYNONYM`, targetRef `pmart-product-synonyms`, 행 = 규칙 ID·`op` UPSERT/DELETE·`terms`) → 제출. 요청 역할은 새 설정 `requester-roles`(MD·OPERATOR_ADMIN), 승인 OPERATOR_ADMIN, 자기 승인 금지. 대상이 하나라 심사 중인 동의어 승인은 한 번에 하나.
+  - 반영: search-service 가 `ApprovalDecided` 를 받아 기준 버전 = 지금 버전이고 모든 행이 맞을 때만 전부 반영(아니면 STALE_VERSION·LINE_REJECTED 로 아무것도 안 바꿈) → 동의어 집합 → 규칙 색인 state → 반영 기록 → 회신. DB 가 없어 inbox·outbox 대신 승인 ID·버전으로 멱등, 회신은 Kafka 로 바로(실패하면 사건을 다시 받아 같은 회신). 반려 결정은 회신 없음.
+  - 한계: 재시도를 다 쓴 사건은 `platform.approval.v1.DLT` 로만 가고(dead_letter 기록·재처리 API 없음) — 그때는 다시 승인 요청. 소비는 한 인스턴스 전제.
+  - 배포 때(사용자 허락 뒤): pmart-config(search 바인딩·few-results, approval 역할) → 시험 사본 맞춤 → es-init 동의어 집합 → products-v7 재색인 → search·approval·api-gateway 배포.

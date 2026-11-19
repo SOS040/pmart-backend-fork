@@ -50,6 +50,12 @@ public class SearchIndex {
 
   public static final String SEARCH_TERMS = "search-terms";
 
+  /**
+   * 동의어 규칙의 정본(ADR-0073 단계 B) — 문서 {@code state}(지금 버전·규칙·마지막 반영 승인)와 승인마다 반영 기록 {@code
+   * approval-<승인 ID>}. 이 서비스만 쓴다(DB 없음). 실제 적용은 ES 동의어 집합 {@link #SYNONYM_SET}.
+   */
+  public static final String SYNONYM_RULES = "search-synonym-rules";
+
   /** 별칭 → 실제 색인(정의 파일 이름). 매핑을 바꾸면 새 버전 파일을 만들고 여기를 바꾼다. */
   public static final Map<String, String> INDICES =
       Map.of(
@@ -65,7 +71,9 @@ public class SearchIndex {
           SEARCH_LOG,
           "search-log-v1",
           SEARCH_TERMS,
-          "search-terms-v1");
+          "search-terms-v1",
+          SYNONYM_RULES,
+          "search-synonym-rules-v1");
 
   /** 오타 교정 낱말 사전(2026-11-20 ADR-0073) — 상품명 낱말·자모·상품 수. 이 서비스가 주기적으로 다시 만든다. */
   public static final String SEARCH_TERMS_ALIAS = "search-terms";
@@ -273,6 +281,25 @@ public class SearchIndex {
                     .getStatusCode()
                     .value());
     return status != 409;
+  }
+
+  /** 문서 하나(_source)를 id 로 — 실시간(새로 고침을 기다리지 않음). 없으면 빈 값. */
+  public java.util.Optional<JsonNode> get(String alias, String id) {
+    ensure(alias);
+    String raw =
+        call(
+            "get",
+            alias,
+            () ->
+                http.get()
+                    .uri("/{alias}/_doc/{id}", alias, id)
+                    .retrieve()
+                    .onStatus(s -> s.value() == 404, (q, r) -> {})
+                    .body(String.class));
+    JsonNode doc = mapper.readTree(raw == null ? "{}" : raw);
+    return doc.path("found").asBoolean(false)
+        ? java.util.Optional.of(doc.path("_source"))
+        : java.util.Optional.empty();
   }
 
   /** 문서 하나를 지운다. 없으면(404) 그대로 성공(멱등). */

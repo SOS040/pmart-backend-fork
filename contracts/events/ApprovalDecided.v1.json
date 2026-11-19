@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/ApprovalDecided.v1.json",
   "title": "ApprovalDecided",
-  "description": "심사 확정(정본 반영은 별도 Receipt). 발행 approval. 구독 product, pricing, storefront, product-content, center-master, delivery-serviceability, auth, replenishment, claim, cdc-quality, mfc-quality, mfc-capacity, rider, cdc-inventory, mfc-inventory, notification, audit. 토픽 platform.approval.v1. 단계 ①",
+  "description": "심사 확정(정본 반영은 별도 Receipt). 발행 approval. 구독 product, pricing, storefront, product-content, search(SEARCH_SYNONYM, ADR-0073), center-master, delivery-serviceability, auth, replenishment, claim, cdc-quality, mfc-quality, mfc-capacity, rider, cdc-inventory, mfc-inventory, notification, audit. 토픽 platform.approval.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

@@ -197,6 +197,7 @@ public final class ApprovalRules {
       case "GRANT" -> "EmployeeGrant";
       case "MFC_STOCK_ADJUSTMENT" -> "MfcStockAdjustment"; // AP-1, 원객체는 targetRef 의 kind·ref
       case "MFC_OPERATION_RESTRICTION" -> "OperationRestriction";
+      case "SEARCH_SYNONYM" -> "SynonymSet"; // ADR-0073, 원객체 = 동의어 집합
       default -> type;
     };
   }
@@ -243,6 +244,24 @@ public final class ApprovalRules {
         && affiliationCode != null
         && centers.size() == 1
         && affiliationCode.equals(centers.getFirst());
+  }
+
+  /**
+   * 변경 요청을 만들 수 있는 역할인가(설정 {@code requester-roles.<종류>}). 설정이 없으면 막지 않는다.
+   *
+   * @throws PmartException FORBIDDEN — 설정 역할이 하나도 없을 때
+   */
+  public static void requireRequesterRole(
+      String type, List<String> operatorRoles, @Nullable List<String> requesterRoles) {
+    if (requesterRoles == null || requesterRoles.isEmpty()) {
+      return;
+    }
+    for (String r : requesterRoles) {
+      if (operatorRoles.contains(r)) {
+        return;
+      }
+    }
+    throw forbidden(type + " 변경 요청은 " + requesterRoles + " 역할만 만들 수 있습니다.");
   }
 
   public static PmartException forbidden(String message) {
