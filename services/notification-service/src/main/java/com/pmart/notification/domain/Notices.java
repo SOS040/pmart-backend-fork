@@ -54,23 +54,92 @@ public final class Notices {
   }
 
   public static Notice preparationStarted(String orderId) {
+    return preparationStarted(orderId, null, 0, null, null, null);
+  }
+
+  /**
+   * 준비 중(고객 앱 레퍼런스 10-3-1, 2026-11-19): "예약하신 주문을 준비 중이에요" + 첫 상품명 외 N개 + 예약이면 도착 시간대. 상품명 사본이 없으면
+   * 이름 없이. 휴대폰 푸시 종류(설정 customer-templates)에 들어간다. 배송지 이름(우리집 등)은 쓰지 않는다.
+   */
+  public static Notice preparationStarted(
+      String orderId,
+      @Nullable String firstProductName,
+      int lineCount,
+      @Nullable String arrivalDate,
+      @Nullable String start,
+      @Nullable String end) {
+    boolean scheduled = arrivalDate != null && start != null && end != null;
+    StringBuilder b = new StringBuilder();
+    if (firstProductName != null && !firstProductName.isBlank()) {
+      // 상품명 끝 글자에 따라 을/를이 바뀌므로 "상품(…)을" 꼴로 쓴다
+      b.append("주문하신 상품(").append(firstProductName);
+      if (lineCount > 1) {
+        b.append(" 외 ").append(lineCount - 1).append("개");
+      }
+      b.append(")을 준비하고 있어요. ");
+    } else {
+      b.append("주문하신 상품을 준비하고 있어요. ");
+    }
+    if (scheduled) {
+      b.append(koreanDate(arrivalDate))
+          .append(' ')
+          .append(start)
+          .append('~')
+          .append(end)
+          .append(" 사이에 도착할 예정이에요. 이제 배송 시간은 바꿀 수 없어요.");
+    } else {
+      b.append("준비가 끝나면 라이더가 출발해요.");
+    }
     return new Notice(
         "PREPARATION_STARTED",
         ORDER,
-        "상품 준비를 시작했어요",
-        "준비가 끝나면 라이더가 출발해요. 이제 배송 시간은 바꿀 수 없어요.",
+        scheduled ? "예약하신 주문을 준비 중이에요" : "주문하신 상품을 준비 중이에요",
+        b.toString(),
         "ORDER",
         orderId);
   }
 
   public static Notice pickedUp(String orderId) {
+    return pickedUp(orderId, null);
+  }
+
+  /** 배송 출발(레퍼런스 10-3-2). 누르면 배송 현황 — 배송 ID 가 있으면 목적지 DELIVERY(2026-11-19), 없으면 주문. */
+  public static Notice pickedUp(String orderId, @Nullable String deliveryId) {
     return new Notice(
         "DELIVERY_STARTED",
         DELIVERY,
         "배송이 출발했어요",
-        "라이더가 상품을 받아 출발했어요. 배송 현황은 주문 상세에서 볼 수 있어요.",
-        "ORDER",
-        orderId);
+        "라이더가 상품을 받아 출발했어요. 배송 현황에서 도착 예정 시간을 볼 수 있어요.",
+        deliveryId != null ? "DELIVERY" : "ORDER",
+        deliveryId != null ? deliveryId : orderId);
+  }
+
+  /**
+   * 다음이 고객님 차례(레퍼런스 10-3-3, 묶음 배달 — delivery-execution `DeliveryHeadingToCustomer`, PC 5 요청 DE-6).
+   * 누르면 배송 현황.
+   */
+  public static Notice headingToCustomer(String orderId, @Nullable String deliveryId) {
+    return new Notice(
+        "DELIVERY_HEADING",
+        DELIVERY,
+        "주문하신 곳으로 가고 있어요",
+        "안전하게 배달해 드릴게요. 조금만 기다려 주세요.",
+        deliveryId != null ? "DELIVERY" : "ORDER",
+        deliveryId != null ? deliveryId : orderId);
+  }
+
+  /**
+   * 곧 도착(레퍼런스 10-3-4 — 업무 문서 "일정 거리 안에 도착하면 곧 도착" — 300m, delivery-tracking
+   * `RiderApproachingCustomer`, PC 5 요청 TR-4).
+   */
+  public static Notice arrivingSoon(String orderId, @Nullable String deliveryId) {
+    return new Notice(
+        "DELIVERY_ARRIVING_SOON",
+        DELIVERY,
+        "라이더님이 곧 도착해요!",
+        "배달을 받을 수 있게 준비해 주세요.",
+        deliveryId != null ? "DELIVERY" : "ORDER",
+        deliveryId != null ? deliveryId : orderId);
   }
 
   /** 고객 반품 회수 배송이 생김(2026-11-17) — 근처 기사를 찾는 중. */

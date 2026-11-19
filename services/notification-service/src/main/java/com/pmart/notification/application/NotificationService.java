@@ -91,8 +91,25 @@ public class NotificationService {
                 orderId, total, text(w, "date"), text(w, "start"), text(w, "end")),
             "");
       }
-      case "OrderPreparationStarted" ->
-          notify(e, null, orderId, Notices.preparationStarted(orderId), "");
+      case "OrderPreparationStarted" -> {
+        // 준비 중(레퍼런스 10-3-1): 첫 상품명 외 N개·예약 도착 시간대 — 같은 주문 조회로 받는 고객도 찾는다
+        OrderClient.OrderInfo info = orders.order(orderId);
+        if (info == null) {
+          skip(e, orderId);
+          return;
+        }
+        save(
+            e,
+            info.accountId(),
+            Notices.preparationStarted(
+                orderId,
+                info.firstProductName(),
+                info.lineCount(),
+                info.arrivalDate(),
+                info.arrivalStart(),
+                info.arrivalEnd()),
+            "");
+      }
       case "ReservationTimeChanged" -> {
         JsonNode w = p.path("arrivalWindow");
         notify(
@@ -198,7 +215,20 @@ public class NotificationService {
       return;
     }
     switch (e.eventType()) {
-      case "PickupCompleted" -> notify(e, null, orderId, Notices.pickedUp(orderId), "");
+      case "PickupCompleted" ->
+          notify(e, null, orderId, Notices.pickedUp(orderId, text(e.payload(), "deliveryId")), "");
+      // 레퍼런스 10-3-3(2026-11-19): 발행은 PC 5 delivery-execution(요청 DE-6) — 고객 주문 배송만(회수 목적 등은 지나감).
+      // 3-4 곧 도착은 tracking 토픽(onTrackingEvent)
+      case "DeliveryHeadingToCustomer" -> {
+        if (customerDelivery(e)) {
+          notify(
+              e,
+              null,
+              orderId,
+              Notices.headingToCustomer(orderId, text(e.payload(), "deliveryId")),
+              "");
+        }
+      }
       // 고객 반품 회수(2026-11-17 — 사용자 "추가하면 좋은 기능": 회수 배정·회수함·회수 못 함). 오배송 회수 등 다른 목적은 알리지 않는다
       case "DeliveryCreated" -> {
         if ("CLAIM_RETURN".equals(text(e.payload(), "purpose"))) {
@@ -294,12 +324,15 @@ public class NotificationService {
    * DeliveryReceiptCheckRequested → 고객 알림함. 고객 앱은 주문 상세에서 "받았어요"(execution receipt-confirmations).
    */
   public void onTrackingEvent(EventEnvelope e) {
-    if (!"DeliveryReceiptCheckRequested".equals(e.eventType())) {
+    String orderId = e.payload().path("orderId").asString("");
+    if (orderId.isBlank()) {
       return;
     }
-    String orderId = e.payload().path("orderId").asString("");
-    if (!orderId.isBlank()) {
+    if ("DeliveryReceiptCheckRequested".equals(e.eventType())) {
       notify(e, null, orderId, Notices.receiptCheck(orderId), "");
+    } else if ("RiderApproachingCustomer".equals(e.eventType()) && customerDelivery(e)) {
+      // 곧 도착(레퍼런스 10-3-4, 2026-11-19 — 300m, PC 5 요청 TR-4). 배송당 한 번은 발행 쪽이 지키고, 같은 사건은 dedupe
+      notify(e, null, orderId, Notices.arrivingSoon(orderId, text(e.payload(), "deliveryId")), "");
     }
   }
 
@@ -490,6 +523,16 @@ public class NotificationService {
   }
 
   /** accountId 가 없으면 order 에서 찾는다. */
+  /** 고객 주문 배송인가 — purpose 가 없거나(옛 사건) 일반 주문 배송. 회수·오배송 회수 등은 고객 진행 알림을 보내지 않는다. */
+  private static boolean customerDelivery(EventEnvelope e) {
+    String purpose = text(e.payload(), "purpose");
+    // 계약 DeliveryCreated.purpose — 고객에게 가는 것: DELIVERY(없으면 DELIVERY)·오배송 재발송·다시 배송
+    return purpose == null
+        || "DELIVERY".equals(purpose)
+        || "MISDELIVERY_RESHIPMENT".equals(purpose)
+        || "MISDELIVERY_REDELIVERY".equals(purpose);
+  }
+
   private void notify(
       EventEnvelope e, @Nullable String accountId, String orderId, Notice n, String suffix) {
     String account = accountId;

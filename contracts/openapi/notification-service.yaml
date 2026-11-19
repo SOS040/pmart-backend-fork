@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: notification-service
-  version: 0.5.0
+  version: 0.5.1
   description: |
+    0.5.1(2026-11-19, 고객 앱 알림 레퍼런스 10-3 — 사용자 "응 해줘", 설명만): 고객 알림 PREPARATION_STARTED 문구("예약하신 주문을 준비 중이에요" + 첫 상품명 외 N개 + 예약 도착 시간대)·휴대폰 푸시에 포함,
+    DELIVERY_STARTED 목적지 DELIVERY(= deliveryId — 누르면 배송 현황, 배송 ID 가 없던 옛 사건은 ORDER), 새 종류 DELIVERY_HEADING("주문하신 곳으로 가고 있어요" — 묶음 배달 다음 차례)·
+    DELIVERY_ARRIVING_SOON("라이더님이 곧 도착해요!" — 300m 안), 둘 다 목적지 DELIVERY·푸시 포함. 두 새 종류는 delivery(PC 5)가 사건을 내면 나온다(요청 DE-6·TR-4).
     알림 요청·채널(앱 푸시·카카오 알림톡 [결정 필요])·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록, 지연 안내의 정본. (docs/architecture/service-map.md §8)
     비정본: 원사건(주문·배송·환불·배차 제안은 각 소유 서비스), 마케팅 동의(customer), OS 알림 권한(단말).
     같은 원사건 재전달은 알림을 중복 생성하지 않는다. 알림 실패로 주문·배송·환불을 재실행하지 않는다. 알림함 저장·단말 도달·고객 읽음은 별개 상태다.

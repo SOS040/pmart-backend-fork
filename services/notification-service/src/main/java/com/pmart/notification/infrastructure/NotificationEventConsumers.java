@@ -33,7 +33,8 @@ class NotificationEventConsumers {
           "DeliveryCreated",
           "ReturnPickedUp",
           "ReturnPickupFailed",
-          "DeliveryFailed"); // 사고·파손 재발송 안내(N-4, 2026-11-19) — 고르는 것은 DeliveryFailureRules
+          "DeliveryFailed", // 사고·파손 재발송 안내(N-4, 2026-11-19) — 고르는 것은 DeliveryFailureRules
+          "DeliveryHeadingToCustomer"); // 가고 있어요(레퍼런스 10-3-3, 2026-11-19 — PC 5 요청 DE-6)
 
   /**
    * platform.case.v1 — 고객 문의 답변, 라이더 문의 답변·도움요청 처리 끝(라이더 알림함 §11-5), 오배송 확인(리뷰 요청 보류 — 2026-11-18).
@@ -85,11 +86,15 @@ class NotificationEventConsumers {
   }
 
   /**
-   * delivery.tracking.v1 — 고객에게 받았는지 묻기(2026-11-17, DeliveryReceiptCheckRequested). 시작 위치 latest.
+   * delivery.tracking.v1 — 고객에게 받았는지 묻기(2026-11-17, DeliveryReceiptCheckRequested), 곧 도착(2026-11-19
+   * RiderApproachingCustomer — 레퍼런스 10-3-4, PC 5 요청 TR-4). 시작 위치 latest.
    */
   @Bean
   PmartEventConsumer trackingEvents(EventConsumers consumers, NotificationService n) {
     return consumers.of(
-        e -> "DeliveryReceiptCheckRequested".equals(e.eventType()), n::onTrackingEvent);
+        e ->
+            "DeliveryReceiptCheckRequested".equals(e.eventType())
+                || "RiderApproachingCustomer".equals(e.eventType()),
+        n::onTrackingEvent);
   }
 }

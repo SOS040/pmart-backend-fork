@@ -20,8 +20,26 @@ import tools.jackson.databind.ObjectMapper;
 public class OrderClient {
 
   /** status 는 주문 상태(리뷰 요청 — 취소된 주문 거르기, 2026-11-18). 응답에 없으면 null. */
+  /**
+   * @param firstProductName 첫 주문행 상품명 사본(없으면 null)
+   * @param lineCount 주문행 수
+   * @param arrivalDate 예약배달 도착 날짜(Asia/Seoul, order 0.14.1) — 없으면 null
+   */
   public record OrderInfo(
-      String accountId, Map<String, String> productNames, @Nullable String status) {}
+      String accountId,
+      Map<String, String> productNames,
+      @Nullable String status,
+      @Nullable String firstProductName,
+      int lineCount,
+      @Nullable String deliveryMode,
+      @Nullable String arrivalDate,
+      @Nullable String arrivalStart,
+      @Nullable String arrivalEnd) {
+
+    public OrderInfo(String accountId, Map<String, String> productNames, @Nullable String status) {
+      this(accountId, productNames, status, null, 0, null, null, null, null);
+    }
+  }
 
   private final RestClient client;
   private final ObjectMapper mapper;
@@ -63,6 +81,20 @@ public class OrderClient {
       }
     }
     String account = n.path("accountId").asString(null);
-    return account == null ? null : new OrderInfo(account, names, n.path("status").asString(null));
+    if (account == null) {
+      return null;
+    }
+    JsonNode first = n.path("lines").path(0).path("productName");
+    JsonNode w = n.path("arrivalWindow");
+    return new OrderInfo(
+        account,
+        names,
+        n.path("status").asString(null),
+        first.isString() ? first.asString() : null,
+        n.path("lines").size(),
+        n.path("deliveryMode").asString(null),
+        w.path("date").asString(null),
+        w.path("start").asString(null),
+        w.path("end").asString(null));
   }
 }

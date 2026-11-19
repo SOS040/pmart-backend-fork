@@ -25,3 +25,11 @@ delivery-tracking-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **PC 1 쪽(같이 할 일)**: ETA 계산 켜기 — `pmart.tracking.eta.interval`·`min-change` 값(카카오 길찾기 사용량)은 사용자 결정 뒤 pmart-config 에 넣는다. 게이트웨이 경로 `/api/v1/deliveries/**` 가 tracking 의 `/eta`·`/stream` 으로 가는지(SSE 버퍼링 끄기 포함) 병합 때 PC 1 이 확인한다.
 - **상태**: **구현(PC 5, 2026-11-17 — tracking 0.5.0, V5, 브랜치 `delivery/tr-3-eta`)**. 고객 소유 = order 내부 `GET /internal/orders/{id}` accountId(배송 사본의 주문으로 — 사본은 tracking 이 배송 사건으로 만든다, 배포 전 배송은 404). 스트림은 SSE 만(WebSocket 없음) — 3초마다 사본을 읽어 바뀐 것만, 15초 HEARTBEAT, 끝나면 STREAM_END 뒤 닫힘, 30분 넘으면 닫힘(다시 접속). ETA 값은 PC 1 이 `pmart.tracking.eta.*` 를 넣어야 나온다(그 전 ETA_PENDING). **값 결정(사용자 2026-11-17)**: `pmart.tracking.eta.interval: PT1M`, `pmart.tracking.eta.min-change: PT1M` — 배송 중 라이더 1명당 1분마다 카카오 길찾기 1회(예: 20명·16시간 ≈ 하루 1만 9천 회), 1분 넘게 바뀔 때만 저장·사건. PC 1 이 pmart-config `delivery-tracking-service.yml`(모든 프로필 — LAN 키는 이미 `-lan.yml`)에 넣는다. 게이트웨이는 이미 `/api/v1/deliveries/*/eta`·`/stream` → tracking — SSE 버퍼링은 PC 1 확인.
 
+
+## TR-4. 곧 도착 사건 — 라이더가 고객 도착지 300m 안 (2026-11-19, platform PC 1 → delivery PC 5)
+- **요청한 곳**: notification(고객 휴대폰 알림 "라이더님이 곧 도착해요!" — 고객 앱 레퍼런스 `10. 알림/3-4`). 업무 문서 근거: `Delivery-business-logic.md` 10.3 "일정 거리 안에 도착하면 곧 도착합니다 알림 자동 전송", Commerce 알림 "준비/출발/곧 도착/완료".
+- **사용자 결정(2026-11-19 "응 해줘")**: 거리 **300m**(PC 1 추천값).
+- **필요한 것**: `RiderApproachingCustomer`(토픽 **delivery.tracking.v1**, aggregate Delivery, 키 deliveryId) — 픽업 뒤(PickupCompleted) 진행 중 배송에서 라이더 마지막 위치(정상 품질)가 **전달지 좌표 300m 안**에 처음 들어올 때 **배송당 한 번**(다시 나갔다 들어와도 한 번). 거리 기준은 설정값으로(없으면 내지 않음 — CONFIG_REQUIRED).
+  - payload: `deliveryId`, `orderId`, `purpose`(DeliveryCreated 와 같은 값 — 고객 배송만 알림), `distanceM`(정수), `at`. 라이더 좌표는 넣지 않는다.
+  - 전달지 좌표는 TR-1 과 같은 `route-points`(dispatch) 또는 DE-5 의 drop 좌표.
+- **받는 쪽(PC 1, 만들어 둠 — 2026-11-19)**: notification `onTrackingEvent` 가 `RiderApproachingCustomer` → 고객 알림 `DELIVERY_ARRIVING_SOON`(목적지 DELIVERY = deliveryId, 휴대폰 푸시 포함). 사건만 나오면 된다(바인딩 `trackingEvents-in-0` 이미 있음). 사건 스키마 `contracts/events/RiderApproachingCustomer.v1.json` 는 PC 5 가 만든다(위 칸).

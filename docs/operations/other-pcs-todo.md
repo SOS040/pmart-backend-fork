@@ -56,6 +56,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [ ] **MB-2 품질 사고 — 사용자 결정 대기**(2026-11-19 PC 1 기록): PC 3 가 남긴 질문 5개(`docs/handoff/clients/mfc-backoffice/2026-11-18-reply-lists-and-roles.md` §3)를 `docs/business/flows/pending-user-decisions.md` §2 MB-2 에 옮김 — 답이 나오면 PC 3 가 mfc-quality 에 구현
 
 ## PC 5 — delivery 영역
+- [ ] **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
+- [ ] **DE-6 "가고 있어요" 사건**(2026-11-19 PC 1 — 레퍼런스 3-3): delivery-execution `DeliveryHeadingToCustomer`(delivery.delivery.v1, 묶음 배달 다음 차례) — 요청서 `delivery-execution-service.md` DE-6
 - [x] **DE-4 배송 `packageIds` 가 인계 전에 비어 라이더가 포장 QR 을 못 찍음**(2026-11-18 PC 3, **급함** — `delivery-execution-service.md` DE-4): `ExecutionViews.delivery` 의 packageIds 를 `shipment_package` ∪ 인계 기록으로. 지금 LAN 에서 모든 인계가 막힌다
 - [ ] **DD-5 제안 조회 `pollAfterSec: null` 이면 앱이 조회를 멈춤**(2026-11-18 PC 3 — `delivery-dispatch-service.md` DD-5): 첫 제안을 놓쳐 라이더 1명 LAN 에서 13분 지연. null 대신 긴 간격, 조회 실패는 평소 간격. 같이 보기: 라이더 앱 센터 연락처 알림 `docs/handoff/clients/rider-app/2026-11-18-notice-mfc-staff-contacts.md`
 - [ ] **DD-4 정시 배송률 지표**(2026-11-18 PC 2 — 요청서 `delivery-dispatch-service.md` DD-4, **2026-11-19 사용자 결정**: delivery-dispatch 가 배송 단위로 셈, 시간대 지난 미전달은 늦음): 날짜·센터별 due·onTime·unjudged API → bff ON_TIME_DELIVERY

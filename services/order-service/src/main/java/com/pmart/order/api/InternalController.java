@@ -188,7 +188,12 @@ public class InternalController implements InternalApi {
             .bagFee(Math.toIntExact(o.bagFee()))
             .totalAmount(Math.toIntExact(o.totalAmount()))
             .firstPurchase(o.firstPurchaseApplied())
+            .deliveryMode(InternalOrder.DeliveryModeEnum.fromValue(o.deliveryMode()))
             .confirmedAt(OffsetDateTime.ofInstant(o.confirmedAt(), ZoneOffset.UTC));
+    if (o.arrivalDate() != null && o.arrivalStart() != null && o.arrivalEnd() != null) {
+      out.arrivalWindow(
+          new ArrivalWindow().date(o.arrivalDate()).start(o.arrivalStart()).end(o.arrivalEnd()));
+    }
     for (LineRow l : v.lines()) {
       out.addLinesItem(
           new InternalOrderLinesInner()

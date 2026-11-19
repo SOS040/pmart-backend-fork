@@ -51,3 +51,10 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **PC 1 쪽(같이 함)**: customer-service 0.5.0 — 배송지 저장 때 핀이 없으면 지오코딩 좌표로 채움(`geoSource` GEOCODE). 새 주소부터 주문 사본에 좌표가 생기지만 옛 주소·옛 주문은 DE-5 가 필요.
 - 근거: pmart-clients `docs/handoff/rider-app/2026-11-18-backend-drop-exact-coordinates.md`, 회신 `docs/handoff/clients/rider-app/2026-11-18-reply-drop-exact-coordinates.md`.
 - **구현(2026-11-18, PC 5 — 이미 PR #183 으로 반영·배포, execution 0.25.1)**: drop-info·직원 drop-location 이 사본 핀이 없으면 dispatch `route-points`(배차 지오코딩 — 반품 회수는 픽업지, 그 밖 도착지) + `coordinateSource`(ORDER_PIN·ADDRESS_GEOCODE). customer 0.5.0(새 주소 좌표 채움)과 함께 옛 주소·주문도 핀이 찍힌다.
+
+## DE-6. "주문하신 곳으로 가고 있어요" 사건 — 묶음 배달에서 다음 차례가 이 고객 (2026-11-19, platform PC 1 → delivery PC 5)
+- **요청한 곳**: notification(고객 휴대폰 알림 — 고객 앱 레퍼런스 `10. 알림/3-3` "주문하신 곳으로 가고 있어요 / 안전하게 배달해드릴게요"). 레퍼런스 3-2 "근처 주문을 함께 배달하고 있어요" 다음 단계.
+- **사용자 결정(2026-11-19 "응 해줘")**: 넣는다.
+- **필요한 것**: `DeliveryHeadingToCustomer`(토픽 **delivery.delivery.v1**, aggregate Delivery) — 한 라이더가 여러 배송을 들고 있을 때(알뜰·묶음), **앞 배송이 전달 완료(DeliveryCompleted)되고 다음 전달 차례가 이 배송이 될 때 한 번**. 단건 배송(픽업 = 바로 이 고객으로)은 내지 않는다 — 배송 출발 알림이 그 역할.
+  - payload: `deliveryId`, `orderId`, `purpose`, `at`. 순서는 execution 이 아는 전달 순서(경로)대로.
+- **받는 쪽(PC 1, 만들어 둠 — 2026-11-19)**: notification `deliveryEvents` 가 `DeliveryHeadingToCustomer` → 고객 알림 `DELIVERY_HEADING`(목적지 DELIVERY, 휴대폰 푸시 포함). 스키마 `contracts/events/DeliveryHeadingToCustomer.v1.json` 는 PC 5 가 만든다.

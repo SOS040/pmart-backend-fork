@@ -328,6 +328,60 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
 
   /** N-3(ADR-0065): 오배송 다시 배송비 결제 필요 → 주문 소유자 알림함(결제 분류, 주문 상세로). */
   /** 고객 반품 회수(2026-11-17): 배정 중·회수함·고객 사정 회수 실패만 알린다 — 시스템 거절·오배송 회수·일반 배송 생성은 알리지 않는다. */
+  /** 레퍼런스 10-3-3·3-4(2026-11-19): 가고 있어요(execution)·곧 도착(tracking) → 목적지 배송 현황. 회수 목적은 알리지 않는다. */
+  @Test
+  void headingAndArrivingSoonOpenTracking() throws Exception {
+    String me = "ACC-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    String order = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(order, me);
+    String dlv = "DLV-hd-" + order;
+    String now = Instant.now().toString();
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryHeadingToCustomer",
+        "Delivery",
+        dlv,
+        m("deliveryId", dlv, "orderId", order, "purpose", "DELIVERY", "at", now));
+    publish(
+        "delivery.tracking.v1",
+        "RiderApproachingCustomer",
+        "Delivery",
+        dlv,
+        m("deliveryId", dlv, "orderId", order, "purpose", "DELIVERY", "distanceM", 280, "at", now));
+    publish(
+        "delivery.tracking.v1",
+        "RiderApproachingCustomer",
+        "Delivery",
+        "DLV-rt-" + order,
+        m(
+            "deliveryId",
+            "DLV-rt-" + order,
+            "orderId",
+            order,
+            "purpose",
+            "CLAIM_RETURN",
+            "distanceM",
+            100,
+            "at",
+            now));
+    await(
+        () -> send("GET", TestJwt.customer(me), "/me/notifications?size=20", null),
+        r -> r.body().path("items").size() >= 2);
+    Thread.sleep(1500); // 회수 목적 사건이 늦게 와도 늘지 않는지
+    Res mine = send("GET", TestJwt.customer(me), "/me/notifications?size=20", null);
+    assertThat(mine.body().path("items")).hasSize(2);
+    List<String> keys =
+        mine.body().path("items").valueStream().map(n -> n.path("templateKey").asString()).toList();
+    assertThat(keys).containsExactlyInAnyOrder("DELIVERY_HEADING", "DELIVERY_ARRIVING_SOON");
+    mine.body()
+        .path("items")
+        .forEach(
+            n -> {
+              assertThat(n.path("destination").path("type").asString()).isEqualTo("DELIVERY");
+              assertThat(n.path("destination").path("ref").asString()).isEqualTo(dlv);
+            });
+  }
+
   /**
    * 받았는지 묻기(2026-11-17 — tracking DeliveryReceiptCheckRequested, delivery.tracking.v1) → 주문한 고객
    * 알림함.
@@ -757,7 +811,7 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     assertThat(titles)
         .containsExactlyInAnyOrder(
             "주문이 확정되었어요",
-            "상품 준비를 시작했어요",
+            "주문하신 상품을 준비 중이에요",
             "일부 상품이 품절되어 취소되었어요",
             "배송이 출발했어요",
             "배송이 완료되었어요",
@@ -773,6 +827,26 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
             .findFirst()
             .orElseThrow();
     assertThat(refund.path("body").asString()).startsWith("5,000원을");
+    // 레퍼런스 10-3(2026-11-19): 준비 중 문구에 첫 상품명, 배송 출발은 누르면 배송 현황(DELIVERY = deliveryId)
+    JsonNode preparing =
+        inbox
+            .body()
+            .path("items")
+            .valueStream()
+            .filter(n -> n.path("templateKey").asString().equals("PREPARATION_STARTED"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(preparing.path("body").asString()).startsWith("주문하신 상품(사과 1kg)을 준비하고 있어요.");
+    JsonNode started =
+        inbox
+            .body()
+            .path("items")
+            .valueStream()
+            .filter(n -> n.path("templateKey").asString().equals("DELIVERY_STARTED"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(started.path("destination").path("type").asString()).isEqualTo("DELIVERY");
+    assertThat(started.path("destination").path("ref").asString()).isEqualTo("DLV-" + orderId);
     assertThat(refund.path("destination").path("ref").asString()).isEqualTo("CLM-" + orderId);
     JsonNode shortage =
         inbox

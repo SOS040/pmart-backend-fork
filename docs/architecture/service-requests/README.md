@@ -26,6 +26,7 @@
 | [TR-1](delivery-tracking-service.md) | delivery-tracking | PC 5 | mfc-fulfillment, order | `DeliveryEtaUpdated` (라이더 ETA) | 없음 | **구현·LAN 배포**(2026-11-16 #57 3c362e12) — **꺼짐**(eta.interval·min-change 설정 없음 — 카카오 사용량, 켤지 사용자 결정), 받는 쪽(order·mfc·notification) 구독 없음 |
 | [TR-2](delivery-tracking-service.md) | delivery-tracking | PC 5 | dispatch·case | 위치 끊김(배달 중 3분)·위치 보존 30일 | 결정됨(2026-11-14; 2026-11-15 받는 쪽은 지원센터 알림만 — 자동 배정 해제 없음) | 구현·LAN 배포(#15, 2026-11-15) — 받는 쪽 case R-6 도 구현(case 0.4.0) |
 | [TR-3](delivery-tracking-service.md) | delivery-tracking | PC 5 | 고객앱·백오피스(BFF) | 고객·직원 ETA 조회 `GET /deliveries/{id}/eta`·실시간 구독 `/stream`(지금 501) | 결정됨(2026-11-17 사용자 "PC 5에 요청") | **구현·LAN 배포**(2026-11-17 #75·#81, tracking 0.6.0 V5 — 라이더 위치 고객은 픽업 뒤). ETA 계산 켜기(카카오 호출, 설정)는 아직 — 사용자 확인 대기 |
+| [TR-4](delivery-tracking-service.md) | delivery-tracking | PC 5 | notification(고객 앱 알림) | 곧 도착 사건 `RiderApproachingCustomer` — 전달지 300m 안 처음 들어올 때 배송당 한 번(delivery.tracking.v1). 받는 쪽은 PC 1 이 만들어 둠 | 결정됨(2026-11-19 사용자 "응 해줘" — 300m) |
 | [RS-1](rider-service.md) | rider | PC 5 | delivery-dispatch | 라이더 단계 사건(제한·중지·종료) | 결정됨(2026-11-14: 모든 단계 픽업 전 배정 재배차·픽업분은 완료, 승인 화면 전 운영자 API; 2026-11-15 정지·계약 종료는 진행 중 배송이 끝난 뒤 로그인 끊기) | 구현·LAN 배포(#13, 2026-11-15) — 로그인 끊기 rider-auth #18 병합 |
 | [RS-3](rider-service.md) | rider | PC 5 | case·백오피스 | 컴플레인 누적 → 제한 검토 대상 자동 등록 | 결정됨(2026-11-14: 같은 종류(신고·오배송·파손) 7일 안 3건 이상, 운영자 확인) | **구현·LAN 배포 확인**(2026-11-17 PC 5 — `GET /riders/restriction-reviews` 관리자 200, #103 PR 본문), case 쪽 발행 R-5 구현됨 |
 | [RS-2](rider-service.md) | rider | PC 5 | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | **구현**(2026-11-13 — 라이더 토큰 가입, LAN 201 확인; 문서 정리 #59) |
@@ -104,6 +105,7 @@
 | [DE-3](delivery-execution-service.md) | delivery-execution | PC 5 | rider_app | 전달 불가 등록이 지원센터 대화도 열기, 전달 재개 요청 | 결정됨(라이더 앱 요청 §13) | **구현·LAN 배포**(2026-11-17 #127, execution 0.14.0) |
 | [DE-4](delivery-execution-service.md) | delivery-execution | PC 5 | mfc(PC 3)·rider_app | 배송 조회 `packageIds` 를 출고 포장(`shipment_package`) ∪ 인계 기록으로 — 인계 전 비어 라이더 포장 QR 이 막힘 | **급함**(2026-11-18 PC 3 #177, LAN 사용자 시험에서 발견) | **구현·LAN 배포**(2026-11-18 PC 5 #178, execution 0.23.1) |
 | [DE-5](delivery-execution-service.md) | delivery-execution(·dispatch) | PC 5 | rider_app·rider-backoffice | 전달지 정확 좌표 — 주문 사본 좌표 없으면 배차 지오코딩 `drop_lat·lng`, `coordinateSource`(급함) | 요청(2026-11-18) | PC 1 customer 0.5.0 핀 없으면 지오코딩(같이) |
+| [DE-6](delivery-execution-service.md) | delivery-execution | PC 5 | notification(고객 앱 알림) | 묶음 배달 다음 차례 사건 `DeliveryHeadingToCustomer`(delivery.delivery.v1). 받는 쪽은 PC 1 이 만들어 둠 | 결정됨(2026-11-19 사용자 "응 해줘") |
 | [RS-6](rider-service.md) | rider(·execution·tracking) | PC 5 | rider-backoffice | 운행 시작·대기 시간 — 운행 구간 기록, onDutySince·waitingSince, 오늘 합계(대기 = 운행 중·진행 중 배송 0건, 신규배차 꺼짐 제외) | 요청(2026-11-18, 대기 뜻 사용자 확인) | — |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)

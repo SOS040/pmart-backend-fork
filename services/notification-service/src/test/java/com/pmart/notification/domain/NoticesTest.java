@@ -88,4 +88,24 @@ class NoticesTest {
     assertThat(Notices.shortage("ORD-1", "사과 1kg").body()).startsWith("사과 1kg의");
     assertThat(Notices.shortage("ORD-1", null).body()).startsWith("주문한 상품의");
   }
+
+  /** 레퍼런스 10-3(2026-11-19): 준비 중 문구, 배송 진행 알림의 목적지. */
+  @org.junit.jupiter.api.Test
+  void referenceDeliveryNotices() {
+    var scheduled = Notices.preparationStarted("O-1", "사과 1kg", 5, "2026-11-20", "08:00", "09:00");
+    org.assertj.core.api.Assertions.assertThat(scheduled.title()).isEqualTo("예약하신 주문을 준비 중이에요");
+    org.assertj.core.api.Assertions.assertThat(scheduled.body())
+        .startsWith("주문하신 상품(사과 1kg 외 4개)을 준비하고 있어요.")
+        .contains("08:00~09:00 사이에 도착할 예정이에요");
+    var now = Notices.preparationStarted("O-1", null, 0, null, null, null);
+    org.assertj.core.api.Assertions.assertThat(now.title()).isEqualTo("주문하신 상품을 준비 중이에요");
+    org.assertj.core.api.Assertions.assertThat(now.body()).startsWith("주문하신 상품을 준비하고 있어요.");
+    org.assertj.core.api.Assertions.assertThat(Notices.arrivingSoon("O-1", "D-1").destinationType())
+        .isEqualTo("DELIVERY");
+    org.assertj.core.api.Assertions.assertThat(
+            Notices.headingToCustomer("O-1", null).destinationRef())
+        .isEqualTo("O-1");
+    org.assertj.core.api.Assertions.assertThat(Notices.pickedUp("O-1", "D-1").destinationRef())
+        .isEqualTo("D-1");
+  }
 }
