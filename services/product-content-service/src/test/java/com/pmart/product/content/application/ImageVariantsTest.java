@@ -97,4 +97,21 @@ class ImageVariantsTest {
         .isInstanceOf(PmartException.class)
         .hasMessageContaining("240");
   }
+
+  /** 미리 만들기(2026-11-20): 원본보다 작은 폭만, 이미 있는 것은 건너뛴다, 다시 불러도 새로 만들지 않는다. */
+  @Test
+  void preparesSmallerWidthsOnce() {
+    objects.put("products/x/" + SHA + ".jpg", new byte[] {1, 2, 3});
+    objects.put("variants/w240/" + SHA + ".jpg", "old-240".getBytes());
+    assertThat(variants.prepare(row("image/jpeg", 600)))
+        .isEqualTo(1); // 240 은 있음, 480 만듦, 720 은 원본이 더 작음
+    assertThat(objects).containsKey("variants/w480/" + SHA + ".jpg");
+    assertThat(objects).doesNotContainKey("variants/w720/" + SHA + ".jpg");
+    assertThat(variants.prepare(row("image/jpeg", 600))).isZero();
+    assertThat(variants.prepare(row("image/webp", 1080))).isZero();
+    assertThat(made).hasValue(1);
+    // 미리 만든 것은 요청 때 그대로 쓴다
+    assertThat(variants.variant(row("image/jpeg", 600), 480)).isNotNull();
+    assertThat(made).hasValue(1);
+  }
 }

@@ -272,6 +272,28 @@ public class DraftStore {
         .findFirst();
   }
 
+  /**
+   * 축소본을 아직 만들지 않은 이미지 내용(sha256 하나에 행 하나, 오래된 것부터 limit 개) — JPEG·PNG 만(WEBP 는 줄이지 못한다).
+   * VariantPreparer 가 차례로 만든다(2026-11-20).
+   */
+  public List<ImageRow> imagesWithoutVariants(int limit) {
+    return jdbc.query(
+        "SELECT * FROM (SELECT DISTINCT ON (c.sha256) c.* FROM content_image c"
+            + " WHERE c.content_type IN ('image/jpeg','image/png')"
+            + " AND NOT EXISTS (SELECT 1 FROM content_image_variant v WHERE v.sha256 = c.sha256)"
+            + " ORDER BY c.sha256, c.created_at) x ORDER BY x.created_at LIMIT ?",
+        (rs, n) -> image(rs),
+        limit);
+  }
+
+  /** 그 내용의 축소본을 다 만들었다(이미 있으면 그대로). */
+  public void markVariantsPrepared(String sha256, Instant at) {
+    jdbc.update(
+        "INSERT INTO content_image_variant (sha256, prepared_at) VALUES (?, ?) ON CONFLICT (sha256) DO NOTHING",
+        sha256,
+        Timestamp.from(at));
+  }
+
   public long imageCount() {
     Long n = jdbc.queryForObject("SELECT COUNT(*) FROM content_image", Long.class);
     return n == null ? 0 : n;

@@ -63,6 +63,9 @@ public class ContentDraftService {
   private final ObjectMapper mapper;
   private final Clock clock;
 
+  /** 올린 이미지의 축소본을 뒤에서 미리 만든다(2026-11-20). */
+  private final VariantPreparer variantPreparer;
+
   public ContentDraftService(
       DraftStore drafts,
       CatalogStore catalog,
@@ -71,7 +74,9 @@ public class ContentDraftService {
       ContentBundleReader bundles,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      VariantPreparer variantPreparer) {
+    this.variantPreparer = variantPreparer;
     this.drafts = drafts;
     this.catalog = catalog;
     this.storage = storage;
@@ -598,6 +603,7 @@ public class ContentDraftService {
             sha,
             now());
     drafts.insert(row);
+    variantPreparer.afterUpload(); // 커밋 뒤(5초) 축소본을 뒤에서 만든다
     return new Stored(row, uploaded);
   }
 

@@ -751,6 +751,26 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     // 0.3.0 축소본: 풀 수 없는 본문(시험 조각)은 원본 그대로, 허용 밖 폭은 400
     assertThat(image(mainUrl + "?w=720", null).body()).isEqualTo(main);
     assertThat(image(mainUrl + "?w=1000", null).status()).isEqualTo(400);
+    // 2026-11-20 축소본 미리 만들기: 올린 이미지 내용은 뒤에서 차례가 돌아 기록된다(시험 조각은 풀 수 없어 만든 것은 없음)
+    String mainSha =
+        jdbc.queryForObject(
+            "SELECT sha256 FROM content_image WHERE image_id = ?",
+            String.class,
+            mainUrl.substring(mainUrl.lastIndexOf('/') + 1));
+    long prepDeadline = System.currentTimeMillis() + 60_000;
+    Integer prepared = 0;
+    while (System.currentTimeMillis() < prepDeadline) {
+      prepared =
+          jdbc.queryForObject(
+              "SELECT count(*) FROM content_image_variant WHERE sha256 = ?",
+              Integer.class,
+              mainSha);
+      if (prepared != null && prepared > 0) {
+        break;
+      }
+      Thread.sleep(500);
+    }
+    assertThat(prepared).as("축소본 미리 만들기 기록").isEqualTo(1);
     String draftBImage = draftB.path("images").path(0).path("url").asString();
     assertThat(image(draftBImage, CUSTOMER).status()).isEqualTo(404);
     // 비회원(토큰 없음)도 게시본만: 상세·카드·게시 이미지 200, 초안 이미지 404
