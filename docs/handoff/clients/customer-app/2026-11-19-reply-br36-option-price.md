@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: pmart-clients `docs/backend-requests.md` BR-36(요청 `docs/handoff/archive/2026-11-02-backend-product-detail-price.md`)
-- 계약: product-content-service **0.1.2**(설명만 — 모양 그대로). LAN: **배포 전**(배포하면 이 줄을 고친다)
+- 계약: product-content-service **0.1.2**(설명만 — 모양 그대로). LAN: **배포됨**(2026-11-19 09:22, 이미지 64e844c2 — PC 2)
 
 ## 바뀐 것
 - 상품 상세(`GET /product-contents/{id}`)와 카드(`GET /product-contents?productIds=`)의 옵션마다 **`price{basePrice, priceVersion}` 를 채운다** — 읽을 때 pricing `GET /prices` 사본(전에는 늘 null).

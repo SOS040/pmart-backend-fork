@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: pmart-clients `docs/backend-requests.md` BR-33(요청 `docs/handoff/archive/2026-10-31-backend-customer-profile-and-refunds.md` §3)
-- 계약: claim-service **0.6.0**. LAN: **배포 전**(배포하면 이 줄을 고친다)
+- 계약: claim-service **0.6.0**. LAN: **배포됨**(2026-11-19 09:22, 이미지 64e844c2 — PC 2)
 
 ## 새 경로를 만들지 않고 있던 `GET /api/v1/claims` 를 고쳤다
 - 고객 토큰이면 **본인 클레임만**, 최근 접수 순. `type`(CANCEL·RETURN·EXCHANGE)·`state` 거르기, `size`(기본 20, 최대 100).
