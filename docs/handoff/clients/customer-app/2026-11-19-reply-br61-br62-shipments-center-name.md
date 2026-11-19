@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: `pmart-clients docs/handoff/customer-app/2026-11-19-backend-delivery-status-screen.md`·`…-order-shipments-empty.md` (사용자 "응 바로 만들고 고객이 센터 이름 보여도 돼")
-- 상태: 백엔드 main 반영(order-service 0.15.0), LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다)
+- 상태: **LAN 배포됨 2026-11-19 17:31(이미지 7b36baea — order-service 0.15.0, V18)**. 확인: 진행 중 주문 조회에 mfcName 있음, 배포 전 배송이라 shipments 빈 배열(예상대로) — 새 주문부터
 
 ## R1(BR-61) `GET /orders/{orderId}` 의 `shipments[]` — 채운다
 - **언제부터:** 배차로 배송이 생긴 뒤(delivery-dispatch `DeliveryCreated` — 포장이 끝나 배차 요청이 나가면). 그 전(준비 중)에는 빈 배열 → 앱은 단계만.
