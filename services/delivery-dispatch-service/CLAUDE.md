@@ -77,3 +77,5 @@
 
 - **실패 확정 되돌리기(2026-11-19)**: executionEvents `DeliveryFailureReverted` → 원래 배송 CLOSED → PICKED_UP(같은 라이더), 반납 배송(받기 전)은 픽업 전 취소(FAILURE_REVERSED).
 - **DD-5 제안 조회 간격(2026-11-19, 0.12.2)**: `GET /offers` 의 `pollAfterSec` 를 null 로 주지 않는다 — 제안이 있거나 받을 수 있으면 `poll-after-sec`(5), 못 받는 상태·rider 조회 실패면 `idle-poll-after-sec`(30).
+
+- **배정 사건 묶음 순서(2026-11-19, DE-6)**: DeliveryAssigned 에 bundleId·stopSequence(묶음 배정일 때).
