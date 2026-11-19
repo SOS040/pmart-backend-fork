@@ -76,3 +76,4 @@
 | [0070](0070-display-numbers.md) | 화면 번호 규칙 — 시스템 ID 는 그대로, 화면에는 주문 8자리·배송 "주문번호-순번"·라이더 6자리 + 가린 이름, 상세에 시스템 번호 | 승인 2026-11-18 |
 | [0071](0071-kakao-naver-login-id-token-only.md) | 카카오·네이버 소셜 로그인도 ID 토큰 검증만 — 구글과 같은 흐름(제공자 JWKS·iss·aud, secret·access token 조회 없음), 계정은 제공자별 | 승인 (2026-11-19) |
 | [0072](0072-product-ranking-signals.md) | 상품 순위 신호 — storefront 가 별점(베이지안)·최근 30일 판매를 세어 `ProductRankingSignalsChanged`, 검색 색인 products-v6 가 인기순·별점순·리뷰 많은 순에 씀 | 승인 (2026-11-19) |
+| [0073](0073-search-synonyms-and-typo-correction.md) | 검색 동의어(백오피스 관리·승인·ES 동의어 집합으로 즉시 반영)와 오타 교정(자모 기준 — 0건 자동 교정·적음 제안·자동완성) | 제안 (2026-11-20) |
