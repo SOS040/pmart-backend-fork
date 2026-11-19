@@ -28,6 +28,15 @@ public class DeliveryLinks {
     DeliveryLinkRules.Step step = DeliveryLinkRules.step(e.eventType());
     JsonNode p = e.payload();
     String deliveryId = p.path("deliveryId").asString("");
+    if (DeliveryLinkRules.FAILURE_REVERTED.equals(e.eventType()) && !deliveryId.isBlank()) {
+      // O-10(2026-11-19) — 잘못 누른 전달 실패 확정을 되돌림: 같은 라이더가 전달을 이어 간다
+      store.revertFailure(
+          deliveryId,
+          DeliveryLinkRules.REVERTED_TO.state(),
+          DeliveryLinkRules.REVERTED_TO.rank(),
+          clock.instant());
+      return;
+    }
     if (step == null || deliveryId.isBlank()) {
       return;
     }

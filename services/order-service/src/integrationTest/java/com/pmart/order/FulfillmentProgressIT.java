@@ -298,6 +298,40 @@ class FulfillmentProgressIT extends PostgresKafkaContainerSupport {
     assertThat(view.get().path("shipments").get(0).path("state").asString())
         .isEqualTo("IN_DELIVERY");
     assertThat(view.get().path("shipments")).as("회수 배송은 고객 주문에 없다").hasSize(1);
+
+    // O-10(2026-11-19): 실패 확정 → 되돌리기면 다시 진행 중(순위를 뒤로 돌리는 유일한 사건)
+    deliveryEvent(
+        "DeliveryFailed",
+        deliveryId,
+        Map.of(
+            "deliveryId",
+            deliveryId,
+            "orderId",
+            orderId,
+            "reason",
+            "RIDER_INCIDENT",
+            "failedAt",
+            Instant.now().toString()),
+        4);
+    await(() -> "FAILED".equals(view.get().path("shipments").get(0).path("state").asString()));
+    deliveryEvent(
+        "DeliveryFailureReverted",
+        deliveryId,
+        Map.of(
+            "deliveryId",
+            deliveryId,
+            "orderId",
+            orderId,
+            "deliveryType",
+            "FORWARD",
+            "originalReason",
+            "RIDER_INCIDENT",
+            "restoredState",
+            "PICKED_UP",
+            "revertedAt",
+            Instant.now().toString()),
+        5);
+    await(() -> "IN_DELIVERY".equals(view.get().path("shipments").get(0).path("state").asString()));
   }
 
   private void deliveryEvent(

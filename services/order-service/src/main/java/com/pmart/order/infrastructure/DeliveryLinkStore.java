@@ -45,6 +45,17 @@ public class DeliveryLinkStore {
         rank);
   }
 
+  /** 실패 확정 되돌리기(O-10) — FAILED 인 배송만 진행 중으로. 바뀌었으면 1. */
+  public int revertFailure(String deliveryId, String state, int rank, Instant at) {
+    return jdbc.update(
+        "UPDATE order_delivery SET state = ?, state_rank = ?, updated_at = ?"
+            + " WHERE delivery_id = ? AND state = 'FAILED'",
+        state,
+        rank,
+        Timestamp.from(at),
+        deliveryId);
+  }
+
   public List<Link> byOrder(String orderId) {
     return jdbc.query(
         "SELECT delivery_id, order_id, shipment_id, type, state FROM order_delivery WHERE order_id = ?"
