@@ -94,3 +94,5 @@
 
 - **결정 대기 전달 불가 대화(2026-11-19, 0.31.2 — 라이더 앱 요청)**: 배송 FAILURE_REPORTED 동안 그 실패가 연 도움요청은 처리함 닫기 409 FAILURE_DECISION_PENDING. 닫혀 있어도 라이더 메시지·재개 요청이면 다시 열기(`HelpRequestService.reopenForPendingFailure`) + `HelpRequestReopened`(case R-10).
 - **처리 주인 하나(2026-11-19, 0.31.3 — 사용자 "라이더 백오피스만")**: `Access.operatorCanDecide` = RIDER_OPS·OPERATOR_ADMIN 만 — 전달 실패 확정·반려, 도움요청 처리함 닫기. 상담원·센터 관리자는 보기만(403).
+
+- **DE-7 상태별 수(2026-11-19, 0.33.0)**: 직원 `GET /deliveries/counts`(목록과 같은 거르기, state 제외) — ExecutionState 13개 모두 0 까지, capped 늘 false.
