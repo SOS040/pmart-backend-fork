@@ -63,7 +63,9 @@ public class ReviewService {
   public record ReviewPage(
       List<ReviewView> items, @Nullable String nextCursor, @Nullable Double average, int count) {}
 
-  public record Photo(PhotoRow row, InputStream body) {}
+  /** 사진 본문 — 원본이거나 축소본(JPEG). */
+  public record Photo(
+      PhotoRow row, InputStream body, String contentType, long length, String etag) {}
 
   public record CreateCommand(
       String orderLineId, int rating, @Nullable String text, List<String> photoIds) {}
@@ -78,13 +80,22 @@ public class ReviewService {
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
+  /** 사진 축소본(2026-11-20, 계약 0.4.0). */
+  private final ReviewPhotoVariants variants;
+
+  private final ReviewPhotoPreparer preparer;
+
   public ReviewService(
       ReviewStore store,
       Upstreams upstreams,
       ReviewPhotoStorage photos,
       EventPublisher events,
       RequestIdempotency idempotency,
-      Clock clock) {
+      Clock clock,
+      ReviewPhotoVariants variants,
+      ReviewPhotoPreparer preparer) {
+    this.variants = variants;
+    this.preparer = preparer;
     this.store = store;
     this.upstreams = upstreams;
     this.photos = photos;
@@ -426,11 +437,15 @@ public class ReviewService {
                   return id;
                 })
             .value();
+    preparer.afterUpload(); // 커밋 뒤(5초) 축소본을 뒤에서 만든다
     return store.photo(photoId).orElseThrow();
   }
 
-  /** 공개 리뷰에 붙은 사진만 본문을 준다. */
-  public Photo photo(String photoId) {
+  /** 공개 리뷰에 붙은 사진만 본문을 준다. width 가 있으면 축소본(0.4.0, 줄일 수 없는 형식이면 원본). */
+  public Photo photo(String photoId, @Nullable Integer width) {
+    if (width != null) {
+      ReviewPhotoVariants.checkWidth(width);
+    }
     PhotoRow p =
         store
             .photo(photoId)
@@ -442,7 +457,13 @@ public class ReviewService {
                             .map(r -> ReviewRules.PUBLISHED.equals(r.state()))
                             .orElse(false))
             .orElseThrow(() -> PmartException.notFound("PHOTO_NOT_FOUND", "사진이 없습니다."));
-    return new Photo(p, photos.get(p.objectKey()));
+    if (width != null) {
+      ReviewPhotoVariants.Variant v = variants.variant(p, width);
+      if (v != null) {
+        return new Photo(p, v.body(), "image/jpeg", v.length(), v.etag());
+      }
+    }
+    return new Photo(p, photos.get(p.objectKey()), p.contentType(), p.sizeBytes(), p.sha256());
   }
 
   /** 붙지 않은(또는 떨어진) 지 하루 지난 사진 정리. */
@@ -450,6 +471,7 @@ public class ReviewService {
     int n = 0;
     for (PhotoRow p : store.orphanPhotos(now().minus(ReviewRules.ORPHAN_PHOTO_TTL), 100)) {
       if (photos.delete(p.objectKey())) {
+        variants.delete(p.photoId()); // 축소본도(있으면)
         store.deletePhoto(p.photoId());
         n++;
       }

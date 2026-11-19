@@ -40,12 +40,12 @@ public class PhotosController implements PhotosApi {
   }
 
   @Override
-  public ResponseEntity<Resource> getReviewPhoto(String photoId) {
-    var p = reviews.photo(photoId);
+  public ResponseEntity<Resource> getReviewPhoto(String photoId, Integer w) {
+    var p = reviews.photo(photoId, w);
     return ResponseEntity.ok()
-        .contentType(MediaType.parseMediaType(p.row().contentType()))
-        .contentLength(p.row().sizeBytes())
-        .eTag("\"" + p.row().sha256() + "\"")
+        .contentType(MediaType.parseMediaType(p.contentType()))
+        .contentLength(p.length())
+        .eTag("\"" + p.etag() + "\"")
         // 삭제되면 닫혀야 하므로 공유 캐시에는 두지 않는다(private)
         .cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePrivate())
         .body(new InputStreamResource(p.body()));

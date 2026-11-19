@@ -84,7 +84,11 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
 
         @Override
         public InputStream get(String key) {
-          return new ByteArrayInputStream(STORED.get(key));
+          byte[] b = STORED.get(key);
+          if (b == null) { // 실제 저장소와 같게(ReviewPhotoStorage 계약 — 없으면 404 PHOTO_NOT_FOUND)
+            throw com.pmart.common.web.PmartException.notFound("PHOTO_NOT_FOUND", "사진이 없습니다.");
+          }
+          return new ByteArrayInputStream(b);
         }
 
         @Override
@@ -296,6 +300,12 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
 
     // 공개: 사진 본문·단건·목록 요약
     assertThat(send("GET", null, "/review-photos/" + photoId, null).status()).isEqualTo(200);
+    // 0.4.0 축소본: 풀 수 없는 시험 조각은 원본 그대로, 허용 밖 폭은 400
+    Res small = send("GET", null, "/review-photos/" + photoId + "?w=240", null);
+    assertThat(small.status()).isEqualTo(200);
+    assertThat(small.body().path("raw").asInt()).isEqualTo(JPEG.length);
+    assertThat(send("GET", null, "/review-photos/" + photoId + "?w=1000", null).status())
+        .isEqualTo(400);
     assertThat(send("GET", null, "/reviews/" + reviewId, null).status()).isEqualTo(200);
     Res list = send("GET", null, "/products/" + productId + "/reviews?withPhotoOnly=true", null);
     assertThat(list.body().path("items").size()).isEqualTo(1);

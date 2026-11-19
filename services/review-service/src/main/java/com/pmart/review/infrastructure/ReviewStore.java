@@ -367,6 +367,23 @@ public class ReviewStore {
         limit);
   }
 
+  /**
+   * 축소본을 아직 만들지 않은 사진(JPEG·PNG, 오래된 것부터 limit 장) — ReviewPhotoPreparer 가 차례로 만든다(2026-11-20, V3).
+   * 리뷰에 붙지 않은 사진도 — 작성 직후 보이게.
+   */
+  public List<PhotoRow> photosWithoutVariants(int limit) {
+    return jdbc.query(
+        "SELECT * FROM review_photo WHERE variants_at IS NULL"
+            + " AND content_type IN ('image/jpeg','image/png') ORDER BY uploaded_at LIMIT ?",
+        (rs, i) -> photoRow(rs),
+        limit);
+  }
+
+  public void markVariants(String photoId, Instant at) {
+    jdbc.update(
+        "UPDATE review_photo SET variants_at = ? WHERE photo_id = ?", Timestamp.from(at), photoId);
+  }
+
   public void deletePhoto(String photoId) {
     jdbc.update("DELETE FROM review_photo WHERE photo_id = ? AND review_id IS NULL", photoId);
   }

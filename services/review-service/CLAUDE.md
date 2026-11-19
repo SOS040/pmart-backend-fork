@@ -33,3 +33,4 @@
 
 ## 상태
 리뷰 자격·작성·수정·삭제·공개 조회·사진·내부 조회 구현(2026-11-16). 운영자 숨김·신고 없음(사용자 결정). 평점 집계 투영은 product-content(아직 구독 안 함).
+- **사진 축소본(2026-11-20, 계약 0.4.0 — 리뷰 사진 느림)**: `GET /review-photos/{id}?w=240|480|720` → `ReviewPhotoVariants`(버킷 `review-photo-variants/w<폭>/<photoId>.jpg`, 원본보다 크면 원본 크기 JPEG, WEBP 는 원본, 요청 때 만들기 동시 2). `ReviewPhotoPreparer` 가 올린 5초 뒤·기동 30초 뒤·2분마다 미리 만든다(`review_photo.variants_at`, V3). 고아 사진 정리 때 축소본도 지운다. `JpegResizer` 는 product-content 와 같은 방식(복사 — 라이브러리로 뺄지는 셋째가 생기면).

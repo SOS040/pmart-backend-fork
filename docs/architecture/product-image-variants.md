@@ -102,3 +102,26 @@
   - 계약 `w` enum
   - `ImageVariants.WIDTHS`
   - `prepare`의 폭 목록
+
+## 5. 리뷰 사진 (review-service 0.4.0, 2026-11-20)
+- 같은 방식으로 리뷰 사진에도 축소본을 둔다. `GET /api/v1/review-photos/{photoId}?w=240|480|720`
+  - 키: 사진 버킷 `pmart-review`의 `review-photo-variants/w<폭>/<photoId>.jpg`. 사진 ID마다 본문이 바뀌지 않는다.
+  - 원본이 그 폭보다 작으면 원본 크기 그대로 JPEG로 만든다. 축소본이 늘 있게 해서, 요청 때 원본을 다시 풀 일이 없다.
+  - WEBP는 원본을 준다.
+- 미리 만들기는 `ReviewPhotoPreparer`가 한다.
+  - 올린 5초 뒤, 기동 30초 뒤, 그 뒤 2분마다 돈다.
+  - 기록은 `review_photo.variants_at`(V3)에 남긴다.
+  - 요청 때 만들 때는 동시 2장까지만 만든다.
+- 붙지 않은 사진을 정리할 때 축소본도 함께 지운다.
+- 캐시는 `max-age=1일, private`이다. 리뷰가 지워지면 사진도 닫혀야 해서 상품 사진처럼 1년으로 두지 않았다.
+- 고치기 전 측정(앱 업로드 크기 2048px·약 0.5MB 사진, 유선 PC 기준):
+
+| 화면 | 사진 | 받는 양 |
+|---|---|---|
+| 리뷰 목록 첫 쪽 | 15장 | 7.9MB |
+| 사진 리뷰만 | 35장 | 18.3MB |
+
+- 앱 요청: `docs/handoff/clients/customer-app/2026-11-20-request-review-photo-thumbnails.md`
+  - 썸네일은 `?w=240`, 크게 보기는 `?w=720`을 붙인다.
+  - 세 곳에 `cacheWidth`를 준다.
+

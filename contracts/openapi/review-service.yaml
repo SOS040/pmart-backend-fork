@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: review-service
-  version: 0.3.0
+  version: 0.4.0
   x-stage: 2
   description: |
     리뷰·사진·평점, 작성/수정/삭제 이력(REV_ELIGIBLE→SUBMIT_PENDING→PUBLISHED→LOCKED(3일) / DELETED), 자격(품목별 실제 배송완료 후 14일 1건)의 정본. (docs/architecture/service-map.md §1, 2단계)
@@ -12,6 +12,7 @@ info:
     자격은 DeliveryCompleted(품목별 첫 수령 시각)로 생긴다. 작성 때 주문 원장으로 다시 확인 — 그 품목이 받은 수량만큼 모두 반품되었으면 NOT_ELIGIBLE(사용자 결정 "전체 환불이면 새 작성 막기", 이미 쓴 리뷰는 그대로).
     작성자 표시는 고객 별명을 가린 값(customer-service 내부 조회, 작성 때 한 번 저장). 운영자 숨김·신고는 아직 없다(사용자 결정 — 정책 승인 전).
     0.3.0(2026-11-18, 사용자 결정 "A해줘" — 리뷰 요청 알림): 내부 조회 `GET /internal/orders/{orderId}/review-status` — 그 주문에서 이 계정이 리뷰를 썼는지(삭제한 것 포함)·아직 쓸 수 있는 품목 수.
+    0.4.0(2026-11-20, 사용자 "응 해주는데" — 리뷰 사진 느림): 사진 본문 `?w=240|480|720` 축소본(JPEG). 올린 뒤 뒤에서 미리 만든다(앱 업로드 2048px·300~550KB 사진을 썸네일에 그대로 받던 것).
     notification-service 가 배송 완료 1시간 뒤 "리뷰를 남겨 주세요" 알림을 보낼지 정할 때 부른다(토큰 없는 내부 호출). 반품 여부는 보지 않는다(작성 때 order 로 확인).
 servers:
   - url: /api/v1
@@ -215,6 +216,10 @@ paths:
       security: []
       parameters:
         - { name: photoId, in: path, required: true, schema: { type: string } }
+        - name: w
+          in: query
+          description: '(0.4.0) 축소본 폭(px) — 240·480·720. 원본 폭보다 크면 원본 크기 그대로 JPEG. JPEG·PNG 만(WEBP 는 원본). 그 밖의 값은 400 VALIDATION_FAILED. 권장 — 목록·미리보기 썸네일 240, 크게 보기 720'
+          schema: { type: integer, enum: [240, 480, 720] }
       responses:
         '200':
           description: 이미지 바이트(바뀌지 않으므로 긴 캐시)
@@ -225,6 +230,7 @@ paths:
               schema: { type: string, format: binary }
             image/webp:
               schema: { type: string, format: binary }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
