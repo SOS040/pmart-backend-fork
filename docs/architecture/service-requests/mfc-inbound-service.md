@@ -19,3 +19,15 @@
   3. 오배송 회수(MISDELIVERY_RECOVERY)는 claim 이 없으니 MI-1 검수 규칙(신선·냉장·냉동 폐기, 상온 미개봉만 재고 복구)으로.
 - delivery 는 바꿀 것 없음. 점원 수령 확인을 반납 조건으로 바꾸는 것(execution `receivedByStaffRef`)은 나중 사용자 결정.
 - **보충(2026-11-17 PC 5)**: 세 번째 purpose `FAILED_DELIVERY_RETURN` — 지원센터가 전달 실패를 확정하고 상품이 라이더 손이면 같은 라이더가 MFC 에 반납한다(originDeliveryId = 실패한 배송, lines = 그 배송이 인계받은 줄, claim·case 없음). 대기 목록에 같이 올리고, 검수는 MI-1 규칙(신선·냉장·냉동 폐기, 상온 미개봉만 재고 복구) — 이 주문의 환불·재배송은 고객센터가 정한다(자동 환불 없음).
+
+## MI-3. [LAN 시험 전용] 승인 없이 시험 입고 예정 만들기 — 시뮬레이터가 재고 채우기 (2026-11-19, 보낸 영역 platform — MFC 시뮬레이터 R-23)
+- **요청한 곳**: MFC 시뮬레이터(pmart-mfc-simulation `docs/backend-requests.md` R-23, 중간). 실서버로 주문·가상 작업자를 계속 돌리면 재고가 줄어 품절 — 지금 재고를 넣는 길은 PC 1 의 seed(`Seed.java --initial-stock`)뿐.
+- **사용자 결정(시뮬레이터 쪽 2026-11-19)**: "정식 구현은 아니고 mfc 재고를 채우는 기능만". PC 1 사용자 "요청서 쓰고"(2026-11-19).
+- **필요한 것**(이름·경로·한도는 PC 3 이 정한다):
+  1. **시험 입고 예정 만들기** — 설정을 켠 LAN 에서만(예 `pmart.inbound.dev-arrivals.enabled`, 운영 설정에 없음 → 404). 본문 예 `{ mfcId, lines: [{ sku, qty }] }` → **INITIAL_STOCK 승인이 만드는 것과 같은 모양의 입고 예정(EXPECTED)** 하나(출처 표시 예 trfId `DEV-<id>`). 응답 `receiptId`. 조회는 지금처럼 `GET /initial-stock-loads?mfcId=&state=EXPECTED`.
+     - 그 센터가 취급하는 SKU 만, 줄 수·수량 상한(시뮬레이터 예 40줄·SKU 당 500). **재고는 지금 수령 → ConfirmReceipt → INSPECT → PUTAWAY 그대로**(조정 `/internal/adjustments` 로 넣지 않는다 — seed 원칙 D2).
+     - 호출자: 그 센터 운영자 토큰(시뮬레이터 관찰 계정 `claude-mfc-wrk`) 또는 내부 경로 — PC 3 이 정함.
+  2. (선택) SKU 를 서버가 고르기 — `{ mfcId, auto: { maxLines, targetQty } }` 면 출하 가능 수량이 낮은 SKU 부터. 어려우면 1 만.
+  3. 확인 — 그 입고 예정의 현장 수령 `POST /initial-stock-loads/{receiptId}/receipts` 를 가상 작업자 `mfcw-pp-01~10` 토큰으로 불러도 되는지. 안 되면 1 에 `receive: true`(수령 위치로 바로) 선택지.
+- **하지 않는 것**: 정식 입고(`/inbound-promises`)·CDC·SCM 흉내. 정식 입고가 생기면 이 시험 입구는 없앤다.
+- 회신: 시뮬레이터 handoff `docs/handoff/simulator/mfc/` 에(PC 3 이 써도 된다).

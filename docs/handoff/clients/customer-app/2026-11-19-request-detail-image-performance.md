@@ -19,4 +19,4 @@
 ## 덧붙임 — 평점 집계 API(product-content 0.2.1)
 - `GET /product-contents/{productId}/rating-summary` — **비회원도**(토큰 없이). `{productId, reviewCount, averageRating(리뷰 없으면 null — 0점 아님, 소수 첫째 자리), ratingCounts{"1"~"5"}, asOf}`.
 - 리뷰 등록·수정·삭제 사건으로 채워서 등록 직후 몇 초 늦을 수 있다. 상세의 별점·리뷰 수·별점 막대에 쓰면 된다(리뷰를 다 받아 앱이 세지 말 것).
-- 상태: 백엔드 main 반영, LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다).
+- 상태: LAN 배포됨 2026-11-19 14:40(product-content c8bd692b·게이트웨이 공개 경로) — 비회원 조회 확인.

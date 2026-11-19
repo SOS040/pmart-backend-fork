@@ -77,6 +77,7 @@
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | PC 1 | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
 | [MI-1](mfc-inbound-service.md) | mfc-inbound | PC 3 | delivery-execution | 오배송 회수품 MFC 반납 받기(`ReturnDelivered` purpose MISDELIVERY_RECOVERY) — 점원 수령 확인·검수(신선 폐기·상온 미개봉 재고 복구) | ADR-0052 결정 4(검수 규칙), 2026-11-16 그 전까지 MFC 도착 = 반납 | 대기(PC 3) |
+| [MI-3](mfc-inbound-service.md) | mfc-inbound | PC 3 | MFC 시뮬레이터(R-23) | [LAN 시험 전용] 승인 없이 시험 입고 예정 만들기 — 버튼 하나로 재고 채우기(수령·검수·적치는 지금 흐름) | 요청(2026-11-19) |
 | [CM-1](center-master-service.md) | center-master | PC 1 | delivery-dispatch | 내부 센터 조회(MFC 좌표) | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
 | [O-4](order-service.md) | order | PC 1 | delivery-dispatch | 배차용 배송지 조회 | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) — 도로명주소 null 고침도 배포(#15, 2026-11-15) |
 | [O-5](order-service.md) | order | PC 1 | delivery-execution | 라이더용 전달지(BR-24 — 고객 전화번호 그대로) | 결정됨(2026-11-14: 안심번호 대신 고객 전화번호) | 구현·LAN 배포(#15, 2026-11-15) |
