@@ -133,6 +133,12 @@ public class StorefrontController implements StorefrontApi {
         .carried(filtered ? Boolean.TRUE : null)
         .netContent(netContent(i))
         .unitPrice(unitPrice(i))
+        // BR-63(0.4.0) — 공개 리뷰 수·평균(소수 첫째, 리뷰 없으면 null)
+        .reviewCount(i.reviewCount())
+        .rating(
+            i.rating() == null
+                ? null
+                : java.math.BigDecimal.valueOf(Math.round(i.rating() * 10) / 10.0))
         .badge(DisplayItem.BadgeEnum.NONE);
   }
 

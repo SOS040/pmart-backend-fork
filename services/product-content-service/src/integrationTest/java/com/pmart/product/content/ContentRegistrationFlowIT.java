@@ -653,13 +653,40 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
         getRequestedFor(urlPathEqualTo("/api/v1/prices")).withQueryParam("skus", equalTo(sku)));
     assertThat(opt.path("availability").isNull() || opt.path("availability").isMissingNode())
         .isTrue();
-    assertThat(c.path("rating").isMissingNode() || c.path("rating").isNull()).isTrue();
+    // BR-63(0.3.0): 리뷰가 없으면 rating 은 개수 0·평균 없음
+    assertThat(c.path("rating").path("reviewCount").asInt(-1)).isZero();
+    assertThat(
+            c.path("rating").path("averageRating").isNull()
+                || c.path("rating").path("averageRating").isMissingNode())
+        .isTrue();
     String mainUrl = c.path("mainImage").path("url").asString();
     assertThat(mainUrl).startsWith("/api/v1/content-images/IMG-");
 
     Res cards = get("/product-contents?productIds=" + productId + ",PRD-none", CUSTOMER);
     assertThat(cards.body().path("items")).hasSize(1);
     assertThat(cards.body().path("missing").path(0).asString()).isEqualTo("PRD-none");
+    // BR-63(0.3.0): 리뷰 사건 → 상세·카드 rating 이 평점 집계와 같다
+    review("ReviewPublished", "RV-A-" + productId, productId, 5, 1);
+    review("ReviewPublished", "RV-B-" + productId, productId, 2, 1);
+    JsonNode rated = null;
+    for (int i = 0; i < 100; i++) {
+      rated = get("/product-contents/" + productId, null).body().path("rating");
+      if (rated.path("reviewCount").asInt() == 2) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(rated.path("reviewCount").asInt()).isEqualTo(2);
+    assertThat(rated.path("averageRating").asDouble()).isEqualTo(3.5);
+    assertThat(rated.path("ratingCounts").path("5").asInt()).isEqualTo(1);
+    JsonNode cardRating =
+        get("/product-contents?productIds=" + productId, null)
+            .body()
+            .path("items")
+            .path(0)
+            .path("rating");
+    assertThat(cardRating.path("reviewCount").asInt()).isEqualTo(2);
+    assertThat(cardRating.path("averageRating").asDouble()).isEqualTo(3.5);
 
     // 담당 센터(mfcId) 가용 사본 — mfc-inventory 내부 API(서비스 토큰)
     stock(sku, 7, true);

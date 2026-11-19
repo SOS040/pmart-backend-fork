@@ -83,6 +83,7 @@ public class ContentQueries {
     Map<String, Object> m = card(c, p.orElse(null));
     Boolean stockOk = withAvailability(List.of(m), mfcId);
     Boolean priceOk = withPrices(List.of(m));
+    withRatings(List.of(m));
     m.put("productVersion", c.productVersion());
     m.put("description", c.description());
     m.put("images", images(c));
@@ -127,8 +128,24 @@ public class ContentQueries {
 
   /** 평점 집계(0.2.1, 2026-11-19) — 리뷰 사본으로 센다. 리뷰가 없으면 개수 0·평균 없음(0점 아님). 평균은 소수 첫째 자리 반올림. */
   public Map<String, Object> ratingSummary(String productId) {
-    com.pmart.product.content.infrastructure.ReviewRatingStore.Summary s =
-        reviewRatings.summary(productId);
+    return ratingMap(productId, reviewRatings.summary(productId));
+  }
+
+  /** 상세·카드의 rating 을 평점 집계와 같은 값으로(0.3.0, 2026-11-19 BR-63). */
+  private void withRatings(List<Map<String, Object>> cards) {
+    if (cards.isEmpty()) {
+      return;
+    }
+    List<String> ids = cards.stream().map(c -> (String) c.get("productId")).toList();
+    var summaries = reviewRatings.summaries(ids);
+    for (Map<String, Object> c : cards) {
+      String id = (String) c.get("productId");
+      c.put("rating", ratingMap(id, summaries.get(id)));
+    }
+  }
+
+  private Map<String, Object> ratingMap(
+      String productId, com.pmart.product.content.infrastructure.ReviewRatingStore.Summary s) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("productId", productId);
     m.put("reviewCount", s.count());
@@ -165,6 +182,7 @@ public class ContentQueries {
     }
     withAvailability(items, mfcId);
     withPrices(items);
+    withRatings(items);
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("items", items);
     out.put("missing", missing);

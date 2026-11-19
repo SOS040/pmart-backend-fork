@@ -112,4 +112,24 @@ public class DisplayProjector {
   private static Instant at(JsonNode n, EventEnvelope e) {
     return n.isString() ? Instant.parse(n.asString()) : e.occurredAt();
   }
+
+  /**
+   * review 사건(commerce.review.v1, 바인딩 reviewEvents-in-0 — 2026-11-19 BR-63) → 리뷰 별점 사본.
+   * ReviewPublished(작성·수정)는 공개, ReviewDeleted 는 삭제. 버전 = 봉투 aggregateVersion(리뷰 버전), 큰 것만.
+   */
+  public void applyReview(com.pmart.common.messaging.EventEnvelope e) {
+    boolean deleted = "ReviewDeleted".equals(e.eventType());
+    if (!deleted && !"ReviewPublished".equals(e.eventType())) {
+      return;
+    }
+    var p = e.payload();
+    String reviewId = p.path("reviewId").asString(null);
+    String productId = p.path("productId").asString(null);
+    int rating = p.path("rating").asInt(0);
+    if (reviewId == null || productId == null || rating < 1 || rating > 5) {
+      return;
+    }
+    store.upsertReviewRating(
+        reviewId, productId, rating, deleted, (int) e.aggregateVersion(), clock.instant());
+  }
 }

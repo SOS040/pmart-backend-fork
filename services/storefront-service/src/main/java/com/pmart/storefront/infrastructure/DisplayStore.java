@@ -23,7 +23,9 @@ public class DisplayStore {
       @Nullable Integer priceVersion,
       String saleState,
       @Nullable Integer netContentAmount,
-      @Nullable String netContentUnit) {}
+      @Nullable String netContentUnit,
+      int reviewCount,
+      @Nullable Double rating) {}
 
   private final JdbcTemplate jdbc;
 
@@ -145,6 +147,23 @@ public class DisplayStore {
           + " WHERE p.name IS NOT NULL AND p.product_version IS NOT NULL"
           + " AND COALESCE(p.sale_state, 'ON_SALE') <> 'SALE_STOPPED'";
 
+  /** 리뷰 별점 사본(V6, BR-63) — 리뷰 버전이 큰 사건만. 반영했으면 1. */
+  public int upsertReviewRating(
+      String reviewId, String productId, int rating, boolean deleted, int version, Instant at) {
+    return jdbc.update(
+        "INSERT INTO review_rating (review_id, product_id, rating, deleted, version, updated_at)"
+            + " VALUES (?,?,?,?,?,?) ON CONFLICT (review_id) DO UPDATE SET"
+            + " product_id = EXCLUDED.product_id, rating = EXCLUDED.rating, deleted = EXCLUDED.deleted,"
+            + " version = EXCLUDED.version, updated_at = EXCLUDED.updated_at"
+            + " WHERE review_rating.version < EXCLUDED.version",
+        reviewId,
+        productId,
+        rating,
+        deleted,
+        version,
+        Timestamp.from(at));
+  }
+
   /** 센터 취급 사본(BR-49, V4) — version 이 더 큰 사건만 반영(재발행·늦게 온 사건은 무시). */
   public void upsertHandling(
       String mfcId, String sku, boolean enabled, int version, Instant changedAt) {
@@ -182,12 +201,17 @@ public class DisplayStore {
     args.add(offset);
     args.add(limit);
     return jdbc.query(
-        "SELECT p.product_id, p.name, p.image_url, p.representative_sku, s.price, s.price_version,"
+        "SELECT d.*, r.n AS review_count, r.avg_rating FROM (SELECT p.product_id, p.name,"
+            + " p.image_url, p.representative_sku, s.price, s.price_version,"
             + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state, p.net_content_amount,"
-            + " p.net_content_unit"
+            + " p.net_content_unit, p.content_published_at"
             + DISPLAYABLE
             + carriedAt(mfcId)
-            + " ORDER BY p.content_published_at DESC NULLS LAST, p.product_id OFFSET ? LIMIT ?",
+            + " ORDER BY p.content_published_at DESC NULLS LAST, p.product_id OFFSET ? LIMIT ?) d"
+            // 평점(BR-63) — 고른 쪽의 상품만 색인으로 센다
+            + " LEFT JOIN LATERAL (SELECT count(*) AS n, avg(rating)::float8 AS avg_rating FROM review_rating x"
+            + " WHERE x.product_id = d.product_id AND NOT x.deleted) r ON true"
+            + " ORDER BY d.content_published_at DESC NULLS LAST, d.product_id",
         (rs, i) ->
             new Item(
                 rs.getString("product_id"),
@@ -198,7 +222,9 @@ public class DisplayStore {
                 rs.getObject("price_version", Integer.class),
                 rs.getString("sale_state"),
                 rs.getObject("net_content_amount", Integer.class),
-                rs.getString("net_content_unit")),
+                rs.getString("net_content_unit"),
+                rs.getInt("review_count"),
+                rs.getObject("avg_rating", Double.class)),
         args.toArray());
   }
 

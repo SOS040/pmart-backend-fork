@@ -412,6 +412,91 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
             "changedAt", "2026-11-19T00:0" + version + ":00Z"));
   }
 
+  void review(String type, String reviewId, String productId, int rating, int version) {
+    kafka
+        .send(
+            "commerce.review.v1",
+            reviewId,
+            EventEnvelopeFixtures.envelope(type)
+                .from("review-service")
+                .aggregate("Review", reviewId, version)
+                .payload(
+                    Map.of(
+                        "reviewId", reviewId,
+                        "productId", productId,
+                        "rating", rating,
+                        "orderLineId", "OL-" + reviewId))
+                .buildJson())
+        .join();
+  }
+
+  /**
+   * BR-63(0.4.0, 2026-11-19): 리뷰 사건 → 진열 항목 rating(평균, 소수 첫째)·reviewCount, 수정·삭제·옛 버전 무시, 리뷰 없으면
+   * 0·null.
+   */
+  @Test
+  void itemsShowReviewRating() throws Exception {
+    card("PRD-R1", "[시험] 평점 상품", 1);
+    card("PRD-R2", "[시험] 리뷰 없는 상품", 1);
+    product("PRD-R1", 1, "E-R1");
+    published("PRD-R1", 1, "2026-09-01T00:01:00Z"); // 다른 시험보다 뒤로
+    product("PRD-R2", 1, "E-R2");
+    published("PRD-R2", 1, "2026-09-01T00:00:30Z");
+    review("ReviewPublished", "RV-R1", "PRD-R1", 5, 1);
+    review("ReviewPublished", "RV-R2", "PRD-R1", 4, 1);
+    review("ReviewPublished", "RV-R3", "PRD-R1", 1, 1);
+    review("ReviewPublished", "RV-R2", "PRD-R1", 2, 2); // 수정 4 → 2
+    review("ReviewPublished", "RV-R2", "PRD-R1", 4, 1); // 늦게 온 옛 버전 — 무시
+    review("ReviewDeleted", "RV-R3", "PRD-R1", 1, 2); // 삭제
+    String path = "/storefront/sections/S-ALL/items?layoutVersion=0&size=50";
+    JsonNode r1 = null;
+    JsonNode r2 = null;
+    for (int i = 0; i < 100; i++) {
+      JsonNode items = get(path).path("items");
+      r1 = null;
+      r2 = null;
+      for (JsonNode it : items) {
+        if ("PRD-R1".equals(it.path("productId").asString())) {
+          r1 = it;
+        }
+        if ("PRD-R2".equals(it.path("productId").asString())) {
+          r2 = it;
+        }
+      }
+      if (r1 != null
+          && r2 != null
+          && r1.path("reviewCount").asInt() == 2
+          && r1.path("rating").asDouble() == 3.5) {
+        break;
+      }
+      Thread.sleep(300);
+    }
+    assertThat(r1).isNotNull();
+    assertThat(r1.path("reviewCount").asInt()).isEqualTo(2);
+    assertThat(r1.path("rating").asDouble()).isEqualTo(3.5); // (5 + 2) / 2
+    assertThat(r2.path("reviewCount").asInt()).isZero();
+    assertThat(r2.path("rating").isNull() || r2.path("rating").isMissingNode()).isTrue();
+    // 같은 DB 를 쓰는 다른 시험에 섞이지 않게 판매중지로 치운다
+    for (String id : List.of("PRD-R1", "PRD-R2")) {
+      send(
+          "ProductSaleStateChanged",
+          id,
+          2,
+          Map.of(
+              "productId",
+              id,
+              "sku",
+              id.equals("PRD-R1") ? "E-R1" : "E-R2",
+              "state",
+              "DISCONTINUED",
+              "effectiveAt",
+              "2026-11-19T06:00:00Z"));
+    }
+    for (int i = 0; i < 100 && ids(get(path).path("items")).contains("PRD-R1"); i++) {
+      Thread.sleep(300);
+    }
+  }
+
   /**
    * BR-49(0.2.0, 2026-11-19): mfcId 를 주면 그 센터가 대표 SKU 를 취급하지 않는 상품은 뺀다 — 남은 것은 carried=true, 늦게 온 옛
    * version 은 무시, 모르는 센터는 빈 섹션(생략 안 함)·다음 커서 없음, mfcId 없으면 거르지 않고 carried=null.

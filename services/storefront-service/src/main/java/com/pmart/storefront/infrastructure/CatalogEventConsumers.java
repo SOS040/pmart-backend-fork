@@ -29,4 +29,12 @@ class CatalogEventConsumers {
   PmartEventConsumer handlingEvents(EventConsumers consumers, DisplayProjector projector) {
     return consumers.of(projector::applyHandling);
   }
+
+  /** commerce.review.v1 — 바인딩 reviewEvents-in-0(2026-11-19 BR-63, 진열 평점). 새 그룹은 처음부터 읽어 채운다. */
+  @Bean
+  PmartEventConsumer reviewEvents(EventConsumers consumers, DisplayProjector projector) {
+    return consumers.of(
+        e -> "ReviewPublished".equals(e.eventType()) || "ReviewDeleted".equals(e.eventType()),
+        projector::applyReview);
+  }
 }

@@ -37,6 +37,39 @@ public class ReviewRatingStore {
         Timestamp.from(at));
   }
 
+  /** 여러 상품의 집계(카드·상세 rating, 2026-11-19 BR-63). 리뷰가 없는 상품도 개수 0 으로 들어 있다. */
+  public Map<String, Summary> summaries(java.util.Collection<String> productIds) {
+    Map<String, Map<Integer, Long>> counts = new LinkedHashMap<>();
+    for (String id : productIds) {
+      Map<Integer, Long> c = new LinkedHashMap<>();
+      for (int i = 1; i <= 5; i++) {
+        c.put(i, 0L);
+      }
+      counts.put(id, c);
+    }
+    if (!counts.isEmpty()) {
+      jdbc.query(
+          "SELECT product_id, rating, count(*) AS n FROM review_rating"
+              + " WHERE product_id = ANY(?) AND NOT deleted GROUP BY product_id, rating",
+          rs -> {
+            counts.get(rs.getString("product_id")).put(rs.getInt("rating"), rs.getLong("n"));
+          },
+          (Object) counts.keySet().toArray(String[]::new));
+    }
+    Map<String, Summary> out = new LinkedHashMap<>();
+    counts.forEach(
+        (id, c) -> {
+          long n = 0;
+          long sum = 0;
+          for (var e : c.entrySet()) {
+            n += e.getValue();
+            sum += e.getValue() * e.getKey();
+          }
+          out.put(id, new Summary(n, sum, c));
+        });
+    return out;
+  }
+
   public Summary summary(String productId) {
     Map<Integer, Long> counts = new LinkedHashMap<>();
     for (int i = 1; i <= 5; i++) {
