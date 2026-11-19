@@ -81,6 +81,7 @@
 | [CU-3](customer-service.md) | customer | PC 1 | backoffice(PC 2) | 고객번호 6자리(무작위·유일·불변) + 직원 조회에 가린 이름 · 고객번호, 여러 고객 ID 한 번에 조회, 번호로 찾기(ADR-0070 덧붙임 2026-11-19) | 결정됨(2026-11-19 사용자 "가린 이름 · 고객번호 6자리", #219·#220) | 대기(PC 1) |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | PC 1 | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
+| [CO-2](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound(PDA BR-53 R17) | 이송 박스 바코드 형식·입수·LPN 단위 | 사용자 결정(박스 라벨 형식) | 대기(PC 1 — cdc-outbound 없음) |
 | [MI-1](mfc-inbound-service.md) | mfc-inbound | PC 3 | delivery-execution | 오배송 회수품 MFC 반납 받기(`ReturnDelivered` purpose MISDELIVERY_RECOVERY) — 점원 수령 확인·검수(신선 폐기·상온 미개봉 재고 복구) | ADR-0052 결정 4(검수 규칙), 2026-11-16 그 전까지 MFC 도착 = 반납 | **구현·LAN 배포**(2026-11-19 #249 — mfc-inbound 0.14.0 V10·mfc-quality 0.8.0 V5·V6·inventory 0.31.0) |
 | [MI-3](mfc-inbound-service.md) | mfc-inbound | PC 3 | MFC 시뮬레이터(R-23) | [LAN 시험 전용] 승인 없이 시험 입고 예정 만들기 — 버튼 하나로 재고 채우기(수령·검수·적치는 지금 흐름) | **구현·LAN 배포**(2026-11-19 #249 — mfc-inbound 0.14.0 V10·mfc-quality 0.8.0 V5·V6·inventory 0.31.0) |
 | [CM-1](center-master-service.md) | center-master | PC 1 | delivery-dispatch | 내부 센터 조회(MFC 좌표) | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
@@ -101,7 +102,7 @@
 | [IV-2](mfc-inventory-service.md) | mfc-inventory | PC 3 | mfc-app | PDA 재고 확인 응답에 상품명(조회 권한은 이미 자기 센터 작업자 OK) | 요청 | **구현·LAN 배포**(2026-11-17 PC 3 #120 inventory 0.23.0 V22 — 재고 확인 상품명) |
 | [IV-4](mfc-inventory-service.md) | mfc-inventory·mfc-fulfillment·mfc_app | PC 3 | PC 1(사용자) | LOT 바코드 GS1-128 — 짧은 LOT 번호·바코드로 LOT 찾기·피킹 LOT 확인 | 결정됨(2026-11-17 GS1-128, 피킹까지) | **구현·LAN 배포**(2026-11-17 PC 3 `mfc/lot-gs1`, mfc-inventory 0.21.0 V21·mfc-fulfillment 0.11.0 — lotNo·GS1-128 조회·피킹 LOT 대조). PC 1 몫도 끝: LAN LOT 나누기(`mfc_split_lots.py`, 1,064 → 1,259)·라벨 인쇄 파일(`deploy/lan/seed/labels/lots/`) |
 | [IV-5](mfc-inventory-service.md) | mfc-inventory | PC 3 | backoffice(PC 2) | 센터별 품절 SKU 수(가용 A=E−R ≤ 0 — 안전재고 Q-13 전, 대시보드 D5) | 결정됨(2026-11-18 사용자) | **구현·LAN 배포**(2026-11-19 inventory 0.28.0 `GET /stock-summaries`, #218) — bff 연결은 PC 2 |
-| [IV-6](mfc-inventory-service.md) | mfc-inventory | PC 3 | mfc-inbound·mfc_app(PDA BR-52 R19-5) | 품질검사 격리분을 입고 구역에서 격리 구역(온도대별)으로 옮기는 이동 — 지금은 옮길 길이 없음 | 사용자 결정 필요(누가 옮기나·격리 칸 코드) | 요청(2026-11-20 PC 3 #271) |
+| [IV-6](mfc-inventory-service.md) | mfc-inventory | PC 3 | mfc-inbound·mfc_app(PDA BR-52 R19-5) | 품질검사 격리분을 입고 구역에서 격리 구역(온도대별)으로 옮기는 이동 — 지금은 옮길 길이 없음 | 결정됨(사용자 2026-11-20 — 검수자·반입자·보고자가 격리 구역으로) | **구현·LAN 배포**(2026-11-20 PC 3 #276 inventory 0.35.0 V25 QUARANTINE_MOVE·#278 inbound 0.17.0 V13 격리 이동 작업) |
 | [DD-MFC](delivery-dispatch-service.md) | delivery-dispatch | PC 5 | backoffice(PC 2) | `DispatchFailed` payload 에 `mfcId`(필드 추가) — 센터 관리자 배차 실패 사건 | 결정됨(2026-11-16 "추천대로") | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
@@ -124,6 +125,7 @@
 | [RS-6](rider-service.md) | rider(·execution·tracking) | PC 5 | rider-backoffice | 운행 시작·대기 시간 — 운행 구간 기록, onDutySince·waitingSince, 오늘 합계(대기 = 운행 중·진행 중 배송 0건, 신규배차 꺼짐 제외) | 요청(2026-11-18, 대기 뜻 사용자 확인) | — |
 | [RS-MFC](rider-service.md) | rider | PC 5 | mfc-backoffice·mfc-app(PC 3) | MFC 직원(MFC_SUPERVISOR·MFC_WORKER)이 라이더 화면 표기(가린 이름 · 라이더 번호)만 묶음으로 보기(ADR-0070) | 결정됨(사용자 승인 2026-11-20) | **구현·LAN 배포**(2026-11-20 PC 5 #261, rider 0.18.0 `GET /riders/display-names` — 번호·가린 이름만, 찾기·상세는 그대로 403) |
 | [MC-1](mfc-capacity-service.md) | mfc-capacity | PC 3 | mfc-inventory·mfc-app(BR-52 R2·R14) | 다음 작업 받기에 재고 실사 CYCLE_COUNT — `/internal/count-work` 후보, 재계수 첫 계수자 제외 | 순서 자리(Q-08 전 임시) | **구현·LAN 배포**(2026-11-20 PC 3 #272, capacity 0.24.0 — CYCLE_COUNT·RETURN_RECEIPT·RETURN_INSPECT, 한 사람만) |
+| [MC-2](mfc-capacity-service.md) | mfc-capacity | PC 3 | mfc-inbound(0.17.0) | 다음 작업 받기에 격리 이동 QUARANTINE_MOVE — 미리 정한 담당에게만 | 사용자 결정(우선순위·업무 영역) | 요청(2026-11-20 PC 3 #278) |
 | [ML-1](mfc-location-service.md) | mfc-location | PC 3 | mfc-inventory | 실사 계획 잠금 칸 화면 표시(사건 구독 또는 화면이 inventory 직접) | 화면 요청 올 때 | 요청(낮음, 2026-11-20 PC 3 #270) |
 | [AI-1](ai-assistant-service.md) | ai-assistant | PC 4 | backoffice(PC 2) | 업무 도우미 질문 원문 저장(`store-question` 켬) — 보존 90일(답변과 같이), 본인만 보기, 본인 지우기 API | 결정됨(2026-11-19 사용자 "추천대로", #226) | 대기(PC 4) |
 | [PD-1](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 조회 목록 판매 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
