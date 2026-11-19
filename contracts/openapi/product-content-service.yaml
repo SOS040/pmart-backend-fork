@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.2.0
+  version: 0.2.1
   description: |
+    0.2.1(2026-11-19, 사용자 "리뷰에서 api 는 구현하고"): `GET /product-contents/{productId}/rating-summary` 구현(전에는 501) — review 사건
+    (commerce.review.v1 `ReviewPublished`·`ReviewDeleted`)을 리뷰마다 사본으로 두고(버전 큰 것만, 삭제 반영) 조회 때 센다. **비회원도 본다**(security: [] — 상세와 같음).
     0.2.0(2026-11-19, 클라이언트 BR-19 "100g당 가격" — 사용자 "응"): 판매 옵션에 `netContent`(product 사본 — SKU 내용량 g·mL)와
     `unitPrice`(basis 100, unit G/ML, price = 기본가 × 100 ÷ 내용량, 원 단위 반올림). 내용량이나 가격이 없으면 둘 다(또는 unitPrice) 없다.
     할인가 기준 단위 가격은 앱이 netContent 로 같은 식을 쓴다(이 서비스는 할인을 모른다).
@@ -78,9 +80,11 @@ paths:
     get:
       tags: [product-contents]
       summary: 평점·리뷰 수 집계 (review 이벤트 투영)
+      description: |
+        (0.2.1) 공개 리뷰(삭제 제외)의 개수·평균 별점(소수 첫째 자리 반올림)·별점별 개수. 리뷰가 없으면 reviewCount 0·averageRating 없음(0점으로 쓰지 않는다).
+        리뷰 사본은 사건으로 채우므로 리뷰 등록 직후 몇 초 늦을 수 있다(asOf). 게시 콘텐츠가 없어도 리뷰 사본으로 센다.
       operationId: getRatingSummary
-      x-pmart-user-types: [CUSTOMER, OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 고객 상품 화면 평점 집계(비회원 경로 아님)·운영자 조회"
+      security: []   # 비회원 둘러보기(상세와 같음, 2026-11-19)
       parameters:
         - { name: productId, in: path, required: true, schema: { type: string } }
       responses:
@@ -638,10 +642,15 @@ components:
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     RatingSummary:
       type: object
+      required: [productId, reviewCount]
       properties:
         productId: { type: string }
-        averageRating: { type: number, minimum: 0, maximum: 5 }
+        averageRating: { type: [number, 'null'], minimum: 0, maximum: 5, description: '리뷰가 없으면 null(0점 아님)' }
         reviewCount: { type: integer, minimum: 0 }
+        ratingCounts:
+          type: object
+          description: '0.2.1 — 별점별 개수(키 "1"~"5", 없는 별점은 0)'
+          additionalProperties: { type: integer, minimum: 0 }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     ContentSnapshot:
       type: object

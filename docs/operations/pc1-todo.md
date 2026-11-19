@@ -14,6 +14,8 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 
 - [ ] **Tailscale 시험 경로 내리기**(2026-11-18 — PC 1 이 192.168.0.40/32 를 tailnet 에 광고 중, 라이더 폰 LTE 위치 시험용): 시험 끝나면 `"C:\Program Files\Tailscale	ailscale.exe" up --advertise-routes=` + 관리 화면 승인 해제(사용자).
 
+- [ ] **CL-5 배차 불가 취소 → 전액 환불 + 2,000원 쿠폰**(2026-11-19 PC 5 세션 요청 — 사용자 결정은 PC 5 쪽 "1,2,3 전부"·"쿠폰 2000원"): 요청서 `service-requests/claim-service.md` CL-5(PR #228 안 — 병합 뒤). PC 1 몫: ① claim 직원 전체 취소 사유 `DISPATCH_UNAVAILABLE` — 상품준비 뒤라도 인계 전이면(MFC_SUPERVISOR·CS_AGENT·OPERATOR_ADMIN, 인계 뒤 422) ② promotion 같은 주문 한 번 2,000원 쿠폰(**유효기간·최소 주문금액은 사용자 확인 필요**) ③ notification 취소·환불 알림 문구 + `fcm.customer-templates` 에 `DISPATCH_DELAYED` ④ 게이트웨이 `/api/v1/dispatch-delays`(#228). **PC 1 사용자 지시 기다림.**
+
 ## 2. 어제(11-17) 저녁 목록
 - [x] 1. 역할·센터 섞임 막기 — 253090cc, LAN 배포 11-18
 - [ ] 2. **MFC 앱 로그인 브라우저**(PC 1 — 로그인 코드, pmart-clients PR): ⓐ Chrome → 삼성 인터넷 → Firefox 순서로 열기 ⓑ Firefox 만 있는 기기에서도 결과가 앱으로 ⓒ `TokenPair.refreshToken` nullable(ADR-0059) 맞추기. **MFC 앱만**. ⓑ 는 실기기(S25, 기본 브라우저 Firefox)로 확인.

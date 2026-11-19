@@ -25,6 +25,16 @@ public class ProductContentsController implements ProductContentsApi {
     this.mapper = mapper;
   }
 
+  /** 평점 집계(0.2.1 — 비회원도). */
+  @Override
+  public ResponseEntity<com.pmart.product.content.api.generated.model.RatingSummary>
+      getRatingSummary(String productId) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            queries.ratingSummary(productId),
+            com.pmart.product.content.api.generated.model.RatingSummary.class));
+  }
+
   @Override
   public ResponseEntity<ProductContent> getProductContent(
       String productId, @Nullable String mfcId) {

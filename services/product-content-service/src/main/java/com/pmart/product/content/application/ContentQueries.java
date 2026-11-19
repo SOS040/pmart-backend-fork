@@ -51,6 +51,7 @@ public class ContentQueries {
   private final com.pmart.product.content.infrastructure.PricingClient pricing;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final com.pmart.product.content.infrastructure.ReviewRatingStore reviewRatings;
 
   public ContentQueries(
       CatalogStore catalog,
@@ -59,7 +60,9 @@ public class ContentQueries {
       InventoryClient inventory,
       com.pmart.product.content.infrastructure.PricingClient pricing,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      com.pmart.product.content.infrastructure.ReviewRatingStore reviewRatings) {
+    this.reviewRatings = reviewRatings;
     this.catalog = catalog;
     this.drafts = drafts;
     this.storage = storage;
@@ -119,6 +122,21 @@ public class ContentQueries {
                   priceOk ? "CURRENT" : "UNAVAILABLE")));
     }
     m.put("sources", sources);
+    return m;
+  }
+
+  /** 평점 집계(0.2.1, 2026-11-19) — 리뷰 사본으로 센다. 리뷰가 없으면 개수 0·평균 없음(0점 아님). 평균은 소수 첫째 자리 반올림. */
+  public Map<String, Object> ratingSummary(String productId) {
+    com.pmart.product.content.infrastructure.ReviewRatingStore.Summary s =
+        reviewRatings.summary(productId);
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("productId", productId);
+    m.put("reviewCount", s.count());
+    m.put("averageRating", s.count() == 0 ? null : Math.round(s.sum() * 10.0 / s.count()) / 10.0);
+    Map<String, Object> counts = new LinkedHashMap<>();
+    s.counts().forEach((k, v) -> counts.put(String.valueOf(k), v));
+    m.put("ratingCounts", counts);
+    m.put("asOf", Map.of("asOf", clock.instant().toString(), "freshness", "CURRENT"));
     return m;
   }
 

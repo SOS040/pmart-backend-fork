@@ -227,6 +227,59 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     return r;
   }
 
+  /** review 사건(commerce.review.v1) 흉내. */
+  void review(String type, String reviewId, String productId, int rating, int version) {
+    String json =
+        EventEnvelopeFixtures.envelope(type)
+            .from("review-service")
+            .aggregate("Review", reviewId, version)
+            .payload(
+                Map.of(
+                    "reviewId", reviewId,
+                    "orderLineId", "OL-" + reviewId,
+                    "productId", productId,
+                    "rating", rating))
+            .buildJson();
+    kafka.send("commerce.review.v1", reviewId, json).join();
+  }
+
+  /** 평점 집계(0.2.1, 2026-11-19): 등록·수정(새 버전)·옛 버전 무시·삭제, 비회원 조회. */
+  @Test
+  void ratingSummaryCountsPublishedReviews() throws Exception {
+    String productId = "PRD-RS-" + UUID.randomUUID().toString().substring(0, 8);
+    Res empty = get("/product-contents/" + productId + "/rating-summary", null);
+    assertThat(empty.status()).isEqualTo(200);
+    assertThat(empty.body().path("reviewCount").asInt()).isZero();
+    assertThat(
+            empty.body().path("averageRating").isNull()
+                || empty.body().path("averageRating").isMissingNode())
+        .as("리뷰 없으면 0점이 아니라 없음")
+        .isTrue();
+
+    String r1 = "RV-1-" + productId;
+    String r2 = "RV-2-" + productId;
+    String r3 = "RV-3-" + productId;
+    review("ReviewPublished", r1, productId, 5, 1);
+    review("ReviewPublished", r2, productId, 4, 1);
+    review("ReviewPublished", r3, productId, 1, 1);
+    review("ReviewPublished", r2, productId, 2, 2); // 수정 — 별점 4 → 2
+    review("ReviewPublished", r2, productId, 4, 1); // 늦게 온 옛 버전 — 무시
+    review("ReviewDeleted", r3, productId, 1, 2); // 삭제
+    JsonNode s = null;
+    for (int i = 0; i < 100; i++) {
+      s = get("/product-contents/" + productId + "/rating-summary", null).body();
+      if (s.path("reviewCount").asInt() == 2 && s.path("ratingCounts").path("2").asInt() == 1) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(s.path("reviewCount").asInt()).isEqualTo(2);
+    assertThat(s.path("averageRating").asDouble()).isEqualTo(3.5); // (5 + 2) / 2
+    assertThat(s.path("ratingCounts").path("5").asInt()).isEqualTo(1);
+    assertThat(s.path("ratingCounts").path("4").asInt()).isZero();
+    assertThat(s.path("ratingCounts").path("1").asInt()).isZero();
+  }
+
   /** product-service 가 내는 ProductVersionPublished 를 흉내 낸다(sources 로 초안 연결). */
   void productPublished(String productId, int version, String sku, String sourceKey) {
     Map<String, Object> payload = new LinkedHashMap<>();
