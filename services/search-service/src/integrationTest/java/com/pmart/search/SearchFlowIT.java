@@ -453,6 +453,19 @@ class SearchFlowIT {
                 .getStatusCode()
                 .value())
         .isEqualTo(400);
+    // 2순위 ④(2026-11-19): ES 호출 관측(pmart.search.es — op·alias 태그)과 응답 시간 버킷(p95 용)이 Prometheus 로 나간다
+    String prom =
+        org.springframework.web.client.RestClient.create()
+            .get()
+            .uri("http://localhost:" + port + "/actuator/prometheus")
+            .retrieve()
+            .body(String.class);
+    assertThat(prom)
+        .contains("pmart_search_es_seconds_bucket{")
+        .containsPattern(
+            "pmart_search_es_seconds_count\\{[^}]*alias=\"products\"[^}]*op=\"search\"")
+        .containsPattern(
+            "http_server_requests_seconds_bucket\\{[^}]*uri=\"/api/v1/search/products\"");
     // 1순위 ①(2026-11-19): ES 창(1만) 밖 커서 — 전에는 500, 이제 잘못된 커서 400
     String deep =
         java.util.Base64.getUrlEncoder()

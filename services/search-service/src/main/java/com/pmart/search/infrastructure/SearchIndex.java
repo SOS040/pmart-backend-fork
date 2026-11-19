@@ -2,6 +2,8 @@ package com.pmart.search.infrastructure;
 
 import com.pmart.common.web.Downstream;
 import com.pmart.search.application.SearchProperties;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.http.HttpClient;
@@ -10,6 +12,7 @@ import java.time.Duration;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -65,12 +68,23 @@ public class SearchIndex {
   private final RestClient http;
   private final ObjectMapper mapper;
 
+  /**
+   * ES 호출 관측(2026-11-19, 성능 분석 2순위 ④): 호출마다 {@code pmart.search.es} 관측 — 지표(타이머, 태그 op·alias·error,
+   * 버킷은 pmart-config)와 추적의 자식 span. 이 클라이언트는 공용 Builder 가 아니라 자동 관측이 붙지 않아서 직접 감싼다. 검색어·문서 내용은 태그에
+   * 넣지 않는다.
+   */
+  private final ObservationRegistry observations;
+
   /** 확인을 마친 별칭(2026-11-19 1순위 ③ — 색인마다 따로, 검색과 무관한 색인 문제가 상품 검색을 막지 않게). */
   private final java.util.Set<String> ready = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
   private final Map<String, Object> locks = new java.util.concurrent.ConcurrentHashMap<>();
 
-  public SearchIndex(SearchProperties props, ObjectMapper mapper) {
+  public SearchIndex(
+      SearchProperties props,
+      ObjectMapper mapper,
+      ObjectProvider<ObservationRegistry> observations) {
+    this.observations = observations.getIfAvailable(() -> ObservationRegistry.NOOP);
     HttpClient client =
         HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
@@ -132,8 +146,9 @@ public class SearchIndex {
         return;
       }
       int status =
-          Downstream.call(
-              TARGET,
+          call(
+              "ensure",
+              alias,
               () ->
                   http.head()
                       .uri("/{index}", index)
@@ -145,8 +160,9 @@ public class SearchIndex {
       if (status == 404) {
         String body = definition(index);
         try {
-          Downstream.run(
-              TARGET,
+          run(
+              "ensure",
+              alias,
               () -> http.put().uri("/{index}", index).body(body).retrieve().toBodilessEntity());
           log.info("Elasticsearch 색인 생성 {} (별칭 {})", index, alias);
         } catch (HttpClientErrorException.BadRequest already) {
@@ -164,8 +180,9 @@ public class SearchIndex {
    */
   void ensureAlias(String alias, String index) {
     int status =
-        Downstream.call(
-            TARGET,
+        call(
+            "ensure",
+            alias,
             () ->
                 http.head()
                     .uri("/_alias/{alias}", alias)
@@ -178,8 +195,10 @@ public class SearchIndex {
       String body =
           "{\"actions\":[{\"add\":{\"index\":\"" + index + "\",\"alias\":\"" + alias + "\"}}]}";
       try {
-        Downstream.run(
-            TARGET, () -> http.post().uri("/_aliases").body(body).retrieve().toBodilessEntity());
+        run(
+            "ensure",
+            alias,
+            () -> http.post().uri("/_aliases").body(body).retrieve().toBodilessEntity());
         log.info("Elasticsearch 별칭 {} → {}", alias, index);
       } catch (HttpClientErrorException.BadRequest race) {
         log.info("Elasticsearch 별칭 {} 는 다른 곳에서 먼저 붙였다", alias);
@@ -190,8 +209,9 @@ public class SearchIndex {
   public JsonNode search(String alias, Map<String, Object> request) {
     ensure(alias);
     String raw =
-        Downstream.call(
-            TARGET,
+        call(
+            "search",
+            alias,
             () ->
                 http.post()
                     .uri("/{alias}/_search", alias)
@@ -204,8 +224,9 @@ public class SearchIndex {
   /** 문서를 id 로 넣거나 덮어쓴다(별칭으로 — 별칭은 색인 하나만 가리킨다). 새로 고침을 기다리지 않는다 — 다음 조회에는 색인 새로 고침(기본 1초) 뒤 보인다. */
   public void put(String alias, String id, Map<String, Object> document) {
     ensure(alias);
-    Downstream.run(
-        TARGET,
+    run(
+        "put",
+        alias,
         () ->
             http.put()
                 .uri("/{alias}/_doc/{id}", alias, id)
@@ -221,8 +242,9 @@ public class SearchIndex {
   public boolean putIfNewer(String alias, String id, long version, Map<String, Object> document) {
     ensure(alias);
     int status =
-        Downstream.call(
-            TARGET,
+        call(
+            "put",
+            alias,
             () ->
                 http.put()
                     .uri(
@@ -242,8 +264,9 @@ public class SearchIndex {
   /** 문서 하나를 지운다. 없으면(404) 그대로 성공(멱등). */
   public void delete(String alias, String id) {
     ensure(alias);
-    Downstream.run(
-        TARGET,
+    run(
+        "delete",
+        alias,
         () ->
             http.delete()
                 .uri("/{alias}/_doc/{id}?refresh=wait_for", alias, id)
@@ -256,8 +279,9 @@ public class SearchIndex {
   public long deleteByQuery(String alias, Map<String, Object> query) {
     ensure(alias);
     String raw =
-        Downstream.call(
-            TARGET,
+        call(
+            "delete_by_query",
+            alias,
             () ->
                 http.post()
                     .uri("/{alias}/_delete_by_query?conflicts=proceed&refresh=true", alias)
@@ -265,6 +289,22 @@ public class SearchIndex {
                     .retrieve()
                     .body(String.class));
     return mapper.readTree(raw == null ? "{}" : raw).path("deleted").asLong(0);
+  }
+
+  private <T> T call(String op, String alias, java.util.function.Supplier<T> request) {
+    return Observation.createNotStarted("pmart.search.es", observations)
+        .contextualName("es " + op)
+        .lowCardinalityKeyValue("op", op)
+        .lowCardinalityKeyValue("alias", alias)
+        .observe(() -> Downstream.call(TARGET, request));
+  }
+
+  private void run(String op, String alias, Runnable request) {
+    Observation.createNotStarted("pmart.search.es", observations)
+        .contextualName("es " + op)
+        .lowCardinalityKeyValue("op", op)
+        .lowCardinalityKeyValue("alias", alias)
+        .observe(() -> Downstream.run(TARGET, request));
   }
 
   /** 색인 정의(설정·매핑·별칭) JSON. es-init 도 같은 파일을 쓴다. */
