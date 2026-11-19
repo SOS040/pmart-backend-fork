@@ -99,3 +99,7 @@
 - **필요한 것**: `GET /claims/counts?<목록과 같은 거르기>` — `GET /claims` 와 같은 거르기(orderId 등, `state` 제외)로 `state`(ClaimState)별 수, 가능하면 `type`(ClaimType)별도(예 `?by=type` 또는 응답에 두 묶음).
 - 응답 모양(웹 요청 그대로, case 0.26.0 `StatusCounts` 와 같게): `{"counts":[{"key":"<상태>","count":12,"capped":false}],"asOf":"…"}` — **모든 상태 값을 0 까지 빠짐없이**, 셀 상한을 넘으면 `capped=true`(화면 "N+"), 원천을 못 읽으면 503(화면 "?").
 - **받는 쪽**: 웹 클레임 목록은 bff `views/claims`(0.18.0)를 쓰지만 수는 claim 이 정확히 센다 — 웹이 claim 을 직접 부른다(bff 로 묶지 않음).
+- **처리(2026-11-19 PC 1 — 사용자 "추천대로 일단 해줘")**: 1·3 구현, **2(쿠폰)는 미룸** — promotion-service 가 "3단계 1차 비활성"으로 코드가 없어 쿠폰 발급·보관·견적 적용·사용·복원을 새로 만들어야 함, promotion 을 만들 때 같이(쿠폰 종류별 유효기간·최소 주문금액은 그때 사용자 결정).
+  - claim 0.7.0: `POST /claims` 직원 토큰 type CANCEL·reason `DISPATCH_UNAVAILABLE` → `ClaimService.createDispatchUnavailableCancel` — 그 센터 `MFC_SUPERVISOR`(센터 권한, 남의 센터 404)·`CS_AGENT`·`OPERATOR_ADMIN`, 채널 CS·OPERATOR, **본인 확인 없음**, `checkFullCancel(…, system=true)`(PREPARING 도, 인계 뒤·미이행 0 은 422). 고객 접수에서 이 사유는 400. `CancellationRequested.reason` 에 그대로.
+  - orchestration S3 → order 수량 변경 `cancelReason` → order 0.14.2 `OrderCancelled.cancelReason` → notification 취소 알림 "배달 기사를 찾지 못해 주문이 취소되었어요 / …결제 금액은 전액 환불돼요."(쿠폰 문구는 쿠폰이 생기면). 덤: 품절 전체 취소 문구도 이제 나간다(전에는 reason 이 늘 CANCEL_BEFORE_SHIP 이라 못 나감).
+  - dispatch 는 원래대로 주문 전체 취소(FULL)로 픽업 전 배송을 거둔다(코드 변경 없음).

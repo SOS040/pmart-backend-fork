@@ -80,6 +80,12 @@ public final class ReturnRules {
   /** 반품 접수·후속 조치를 할 수 있는 역할(고객센터 — CS 접수와 같은 역할). */
   public static final Set<String> STAFF_ROLES = Set.of(CS_AGENT, OPERATOR_ADMIN);
 
+  /** 배차 불가 취소 사유(CL-5, 2026-11-19) — 회사 사유라 본인 확인 없음, 상품준비 뒤라도 인계 전이면. */
+  public static final String DISPATCH_UNAVAILABLE = "DISPATCH_UNAVAILABLE";
+
+  /** 배차 불가 취소를 할 수 있는 센터 역할(그 센터 권한이 있어야 — CS·운영 관리자는 센터 무관). */
+  public static final String MFC_SUPERVISOR = "MFC_SUPERVISOR";
+
   /** 회사 잘못 — 회수비 면제(사용자 2026-11-17 ②). */
   public static final Set<String> FAULT_CODES =
       Set.of("MISDELIVERY", "DEFECTIVE", "DAMAGED_IN_DELIVERY", "SEVERE_DELAY", "WRONG_SUBSTITUTE");

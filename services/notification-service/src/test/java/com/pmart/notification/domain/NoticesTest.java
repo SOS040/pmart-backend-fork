@@ -108,4 +108,18 @@ class NoticesTest {
     org.assertj.core.api.Assertions.assertThat(Notices.pickedUp("O-1", "D-1").destinationRef())
         .isEqualTo("D-1");
   }
+
+  /** CL-5(2026-11-19): 사유별 취소 문구 — 배차 불가·품절·그 밖. */
+  @org.junit.jupiter.api.Test
+  void cancelNoticeByReason() {
+    org.assertj.core.api.Assertions.assertThat(
+            Notices.orderCancelled("O-1", "DISPATCH_UNAVAILABLE").body())
+        .startsWith("배달 기사를 찾지 못해 주문을 취소했어요. 결제 금액은 전액 환불돼요.");
+    org.assertj.core.api.Assertions.assertThat(
+            Notices.orderCancelled("O-1", "OUT_OF_STOCK").title())
+        .isEqualTo("품절로 주문이 취소되었어요");
+    org.assertj.core.api.Assertions.assertThat(
+            Notices.orderCancelled("O-1", "CHANGE_OF_MIND").title())
+        .isEqualTo("주문이 취소되었어요");
+  }
 }

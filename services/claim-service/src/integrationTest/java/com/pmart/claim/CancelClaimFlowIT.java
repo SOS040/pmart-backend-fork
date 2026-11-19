@@ -228,6 +228,73 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
    * 취소와 같은 흐름(STOP_PENDING· CancellationRequested channel CS), 클레임 계정 = 주문 계정(고객이 앱에서 본다), 접수 직원·본인
    * 확인·CS 사건이 남는다.
    */
+  /** CL-5(2026-11-19): 배차 불가 직원 취소 — 상품준비 뒤라도 인계 전이면, 그 센터 관리자·상담원, 본인 확인 없음. */
+  @Test
+  void dispatchUnavailableCancelsPreparedOrderBeforeHandover() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "PREPARING");
+    paymentAccepts(orderId);
+    Map<String, Object> body = new LinkedHashMap<>(cancel(orderId, 10));
+    body.put("channel", "OPERATOR");
+    body.put("reason", "DISPATCH_UNAVAILABLE");
+    body.put("reasonDetail", "배달 기사 74분 못 찾음");
+
+    assertThat(
+            post(
+                    TestJwt.operator("STAFF-RO", List.of("RIDER_OPS"), List.of()),
+                    UUID.randomUUID().toString(),
+                    body)
+                .status())
+        .as("역할 없는 직원")
+        .isEqualTo(403);
+    assertThat(
+            post(
+                    TestJwt.operator("STAFF-SUP-2", List.of("MFC_SUPERVISOR"), List.of("MFC-2")),
+                    UUID.randomUUID().toString(),
+                    body)
+                .status())
+        .as("다른 센터 관리자")
+        .isEqualTo(404);
+    Map<String, Object> asCustomer = new LinkedHashMap<>(cancel(orderId, 10));
+    asCustomer.put("reason", "DISPATCH_UNAVAILABLE");
+    assertThat(post(TestJwt.customer(account), UUID.randomUUID().toString(), asCustomer).status())
+        .as("고객은 이 사유로 접수 못 함")
+        .isEqualTo(400);
+
+    Res opened =
+        post(
+            TestJwt.operator("STAFF-SUP-1", List.of("MFC_SUPERVISOR"), List.of("MFC-1")),
+            UUID.randomUUID().toString(),
+            body);
+    assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);
+    String claimId = opened.body().path("claimId").asString();
+    JsonNode rp =
+        mapper
+            .readTree(
+                (String)
+                    jdbc.queryForObject(
+                        "SELECT payload::text FROM outbox_event"
+                            + " WHERE type = 'CancellationRequested' AND aggregateid = ?",
+                        String.class,
+                        claimId))
+            .path("payload");
+    assertThat(rp.path("reason").asString()).isEqualTo("DISPATCH_UNAVAILABLE");
+
+    // 인계 뒤(미이행 0) — 반품으로
+    String handed = "ORD-" + UUID.randomUUID();
+    order(handed, account, "PREPARING", 10);
+    Map<String, Object> late = new LinkedHashMap<>(body);
+    late.put("orderId", handed);
+    late.put("lines", List.of(Map.of("orderLineId", handed + "-L1", "qty", 10)));
+    Res lateRes =
+        post(
+            TestJwt.operator("STAFF-CS-9", List.of("CS_AGENT"), List.of()),
+            UUID.randomUUID().toString(),
+            late);
+    assertThat(lateRes.status()).as(lateRes.body().toString()).isEqualTo(422);
+  }
+
   @Test
   void customerCenterCancelsConfirmedOrderOnly() throws Exception {
     String account = "CU-" + UUID.randomUUID();

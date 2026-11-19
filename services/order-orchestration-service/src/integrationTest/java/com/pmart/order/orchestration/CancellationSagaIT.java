@@ -316,6 +316,9 @@ class CancellationSagaIT extends PostgresKafkaContainerSupport {
             .withHeader("Idempotency-Key", WireMock.equalTo(s.sagaId() + ":APPLY_ORDER_CANCEL"))
             .withRequestBody(matchingJsonPath("$.reason", WireMock.equalTo("CANCEL_BEFORE_SHIP")))
             .withRequestBody(matchingJsonPath("$.claimId", WireMock.equalTo("CLM-1")))
+            // 클레임 사유를 주문 취소 사건으로(2026-11-19 CL-5)
+            .withRequestBody(
+                matchingJsonPath("$.cancelReason", WireMock.equalTo("CUSTOMER_REQUEST")))
             .withRequestBody(matchingJsonPath("$.changes[0].qty", WireMock.equalTo("2"))));
     // 결제 승인은 해제 대상이 아니다(환불은 claim 이 한다)
     parts.verify(

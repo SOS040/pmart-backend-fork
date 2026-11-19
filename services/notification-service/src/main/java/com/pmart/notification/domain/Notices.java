@@ -311,13 +311,16 @@ public final class Notices {
   /** 주문 전체 취소. 환불은 결과가 나온 뒤 따로 알린다. */
   public static Notice orderCancelled(String orderId, @Nullable String reason) {
     boolean outOfStock = "OUT_OF_STOCK".equals(reason);
+    // 배차 불가(CL-5, 2026-11-19 — 쿠폰은 promotion 이 생기면 문구에 더한다)
+    boolean noRider = "DISPATCH_UNAVAILABLE".equals(reason);
+    String title =
+        outOfStock ? "품절로 주문이 취소되었어요" : noRider ? "배달 기사를 찾지 못해 주문이 취소되었어요" : "주문이 취소되었어요";
+    String lead =
+        outOfStock
+            ? "준비하던 상품이 모두 품절되어 주문을 취소했어요. "
+            : noRider ? "배달 기사를 찾지 못해 주문을 취소했어요. 결제 금액은 전액 환불돼요. " : "";
     return new Notice(
-        "ORDER_CANCELLED",
-        ORDER,
-        outOfStock ? "품절로 주문이 취소되었어요" : "주문이 취소되었어요",
-        (outOfStock ? "준비하던 상품이 모두 품절되어 주문을 취소했어요. " : "") + "결제 금액 환불 결과가 나오면 다시 알려 드릴게요.",
-        "ORDER",
-        orderId);
+        "ORDER_CANCELLED", ORDER, title, lead + "결제 금액 환불 결과가 나오면 다시 알려 드릴게요.", "ORDER", orderId);
   }
 
   /** 결품으로 품목 일부·전부 취소(주문은 계속). */

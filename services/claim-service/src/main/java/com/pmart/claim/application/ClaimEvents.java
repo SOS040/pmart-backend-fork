@@ -159,10 +159,14 @@ public class ClaimEvents {
     }
     p.put("lines", ls);
     // S3 취소 사유: 시스템 자동 취소는 그 사유(FULFILLMENT_REJECTED D6-4, OUT_OF_STOCK 결품 전체 취소 ADR-0046),
+    // 배차 불가 직원 취소(DISPATCH_UNAVAILABLE, CL-5 2026-11-19)도 그대로 — 주문 취소 사건의 cancelReason 으로 알림 문구가
+    // 갈린다.
     // 그 밖(고객 접수)은 CUSTOMER_REQUEST
     p.put(
         "reason",
-        "FULFILLMENT_REJECTED".equals(c.reason()) || "OUT_OF_STOCK".equals(c.reason())
+        "FULFILLMENT_REJECTED".equals(c.reason())
+                || "OUT_OF_STOCK".equals(c.reason())
+                || "DISPATCH_UNAVAILABLE".equals(c.reason())
             ? c.reason()
             : "CUSTOMER_REQUEST");
     p.put("channel", c.channel());

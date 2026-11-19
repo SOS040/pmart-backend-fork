@@ -168,9 +168,11 @@ public class ClaimService {
     if (!"CANCEL".equals(in.type())) {
       throw unsupported("교환 접수는 아직 준비 중입니다.");
     }
-    if ("FULFILLMENT_REJECTED".equals(in.reason()) || OUT_OF_STOCK.equals(in.reason())) {
+    if ("FULFILLMENT_REJECTED".equals(in.reason())
+        || OUT_OF_STOCK.equals(in.reason())
+        || ReturnRules.DISPATCH_UNAVAILABLE.equals(in.reason())) {
       throw new PmartException(
-          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "시스템 전용 사유입니다: " + in.reason());
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "시스템·직원 전용 사유입니다: " + in.reason());
     }
     JsonNode order = upstreams.order(in.orderId());
     if (order == null || !who.subject().equals(order.path("accountId").asString())) {
@@ -218,6 +220,9 @@ public class ClaimService {
       PmartPrincipal who,
       CreateCommand in,
       ReturnExtras extras) {
+    if (ReturnRules.DISPATCH_UNAVAILABLE.equals(in.reason())) {
+      return createDispatchUnavailableCancel(idempotencyKey, sourceSystem, who, in, extras);
+    }
     if (ReturnRules.STAFF_ROLES.stream().noneMatch(who::hasRole)) {
       throw new PmartException(
           com.pmart.common.web.ErrorCode.FORBIDDEN, "주문 취소 접수는 고객센터 상담원·운영 관리자만 할 수 있습니다.");
@@ -274,6 +279,74 @@ public class ClaimService {
                 () -> open(accountId, in, order, byLine, who.subject(), extras))
             .value();
     log.info("고객센터 취소 접수 {} 주문 {} 직원 {}", claimId, in.orderId(), who.subject());
+    return view(claimId);
+  }
+
+  /**
+   * 배차 불가 취소(CL-5, 2026-11-19 — 원문 Delivery §3.6 "배차 불가로 취소 시 환불 및 쿠폰 보상", 쿠폰은 promotion 이 생길 때).
+   * 회사 사유라 본인 확인 없이, 상품준비 뒤라도 인계 전이면 시스템 취소와 같은 범위({@code checkFullCancel(…, system=true)} — 인계
+   * 뒤·미이행 0 은 422). 그 센터 MFC_SUPERVISOR(그 센터 권한)·CS_AGENT·OPERATOR_ADMIN. 뒤 흐름은 고객센터 취소와 같다(S3 →
+   * OrderCancelled → 원 승인액 전액 환불, dispatch 는 주문 취소 사건으로 픽업 전 배송을 거둔다).
+   */
+  private ClaimView createDispatchUnavailableCancel(
+      String idempotencyKey,
+      String sourceSystem,
+      PmartPrincipal who,
+      CreateCommand in,
+      ReturnExtras extras) {
+    boolean staff = ReturnRules.STAFF_ROLES.stream().anyMatch(who::hasRole);
+    if (!staff && !who.hasRole(ReturnRules.MFC_SUPERVISOR)) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.FORBIDDEN, "배차 불가 취소는 센터 관리자·고객센터 상담원·운영 관리자만 할 수 있습니다.");
+    }
+    if (!ReturnRules.STAFF_CHANNELS.contains(in.channel())) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
+          "배차 불가 취소는 채널 CS·OPERATOR 로 접수합니다: " + in.channel());
+    }
+    if (extras.faultCode() != null) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "회수비 면제 사유(faultCode)는 반품 접수에만 씁니다.");
+    }
+    JsonNode order = upstreams.order(in.orderId());
+    if (order == null) {
+      throw PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다.");
+    }
+    if (!staff && !who.canAccessCenter(order.path("mfcId").asString(""))) {
+      // 센터 관리자는 자기 센터 주문만 — 남의 센터 주문은 있는지도 알리지 않는다
+      throw PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다.");
+    }
+    List<ClaimRules.OrderLine> lines = new ArrayList<>();
+    Map<String, JsonNode> byLine = new LinkedHashMap<>();
+    for (JsonNode l : order.path("lines")) {
+      lines.add(
+          new ClaimRules.OrderLine(
+              l.path("orderLineId").asString(),
+              l.path("sku").asString(),
+              l.path("unitPrice").asLong(),
+              l.path("originalQty").asInt(),
+              l.path("unfulfilledQty").asInt()));
+      byLine.put(l.path("orderLineId").asString(), l);
+    }
+    try {
+      ClaimRules.checkFullCancel(order.path("status").asString(), lines, in.lines(), true);
+    } catch (ClaimRules.Rejection r) {
+      String m =
+          "ORDER_NOT_CANCELLABLE".equals(r.code())
+              ? "이미 라이더에게 넘긴 주문은 배차 불가로 취소할 수 없습니다 — 받으신 뒤 반품으로. (" + r.getMessage() + ")"
+              : r.getMessage();
+      throw new PmartException(r.code(), HttpStatus.UNPROCESSABLE_CONTENT, m, false, List.of());
+    }
+    String accountId = order.path("accountId").asString();
+    String claimId =
+        idempotency
+            .execute(
+                new RequestKey(sourceSystem, idempotencyKey, "createStaffCancel", who.subject()),
+                java.util.Arrays.asList(in, extras),
+                String.class,
+                () -> open(accountId, in, order, byLine, who.subject(), extras))
+            .value();
+    log.info("배차 불가 취소 접수 {} 주문 {} 직원 {}", claimId, in.orderId(), who.subject());
     return view(claimId);
   }
 

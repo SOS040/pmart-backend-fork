@@ -101,7 +101,7 @@
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
 | [CL-3](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 기간 환불 금액 합·건수(대시보드 D2 — 완료 시각 한국 날짜) | 결정됨(2026-11-18 사용자 — 환불은 따로) | **구현·LAN 배포**(2026-11-18, claim 0.5.0 — 이미지 4ab6e04e) |
 | [CL-4](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 화면 표기 — 주문별 순번 `claimSeq`(하위 환불 등도), 주문번호로 찾기(ADR-0070 덧붙임 2026-11-19) | 결정됨(2026-11-19 — ADR-0070 추천안, #219·#220) | 대기(PC 1) |
-| [CL-5](claim-service.md) | claim(·promotion·notification) | PC 1 | delivery(PC 5)·mfc-backoffice | 배차 불가 취소 — 사유 DISPATCH_UNAVAILABLE 전체 취소(인계 전), 전액 환불 + 2,000원 쿠폰 + 고객 알림 | 결정됨(2026-11-19 사용자 "1,2,3 전부"·"쿠폰 2000원", #228) | 대기(PC 1) |
+| [CL-5](claim-service.md) | claim(·promotion·notification) | PC 1 | delivery(PC 5)·mfc-backoffice | 배차 불가 취소 — 사유 DISPATCH_UNAVAILABLE 전체 취소(인계 전), 전액 환불 + 2,000원 쿠폰 + 고객 알림 | 결정됨(2026-11-19 사용자 "1,2,3 전부"·"쿠폰 2000원", #228) | **구현(쿠폰 제외) 2026-11-19 PC 1** — claim 0.7.0·order 0.14.2·notification(문구). 쿠폰은 promotion-service 가 생길 때(사용자 "추천대로") — LAN 배포 전 |
 | [CL-6](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 목록 상태별 수 `GET /claims/counts`(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
 | [N-4](notification-service.md) | notification | PC 1 | delivery | 사고·파손 재발송 고객 안내(`DeliveryFailed` reason RIDER_INCIDENT·DAMAGED — 새 상품 재발송) | 결정됨(ADR-0069, 2026-11-18 사용자) | **구현·LAN 배포**(2026-11-19 PC 1 — notification `DeliveryFailed` → `DELIVERY_INCIDENT_RESHIPMENT` 알림함·푸시, e6761338) |

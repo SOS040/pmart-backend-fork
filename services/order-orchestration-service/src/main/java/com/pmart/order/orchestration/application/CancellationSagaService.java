@@ -470,6 +470,9 @@ public class CancellationSagaService {
   private boolean applyOrderCancel(CancellationRow s) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("reason", "CANCEL_BEFORE_SHIP");
+    if (s.reason() != null) {
+      body.put("cancelReason", s.reason()); // 클레임 사유(2026-11-19 CL-5) — 주문 취소 사건으로 알림이 사유별 문구를 고른다
+    }
     body.put("sourceRef", s.stopRequestId());
     body.put("claimId", s.claimId());
     body.put("changes", mapper.convertValue(s.lines(), List.class));

@@ -87,7 +87,8 @@ public class InternalController implements InternalApi {
                 body.getClaimId(),
                 body.getChanges().stream()
                     .map(c -> new OrderRules.Change(c.getOrderLineId(), c.getQty()))
-                    .toList()),
+                    .toList(),
+                body.getCancelReason()),
             xExpectedVersion);
     return ResponseEntity.ok(command(r));
   }

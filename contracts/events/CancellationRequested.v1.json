@@ -56,7 +56,7 @@
             },
             "reason": {
               "type": "string",
-              "description": "취소 사유 코드(ClaimReason). FULFILLMENT_REJECTED = MFC 작업 거절 뒤 자동 전체 취소(D6-4, 2026-11-07 추가)"
+              "description": "취소 사유 코드(ClaimReason). FULFILLMENT_REJECTED = MFC 작업 거절 뒤 자동 전체 취소(D6-4, 2026-11-07 추가), OUT_OF_STOCK = 결품 전체 취소, DISPATCH_UNAVAILABLE = 배차 불가 직원 취소(CL-5, 2026-11-19), 그 밖 고객·상담 접수는 CUSTOMER_REQUEST"
             },
             "requestedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"

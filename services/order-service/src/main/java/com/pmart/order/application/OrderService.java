@@ -172,7 +172,17 @@ public class OrderService {
       String reason,
       @Nullable String sourceRef,
       @Nullable String claimId,
-      List<OrderRules.Change> changes) {}
+      List<OrderRules.Change> changes,
+      @Nullable String cancelReason) {
+
+    public QuantityChange(
+        String reason,
+        @Nullable String sourceRef,
+        @Nullable String claimId,
+        List<OrderRules.Change> changes) {
+      this(reason, sourceRef, claimId, changes, null);
+    }
+  }
 
   public static final String CANCEL_BEFORE_SHIP = "CANCEL_BEFORE_SHIP";
 
@@ -744,6 +754,9 @@ public class OrderService {
     }
     p.put("lines", ls);
     p.put("reason", in.reason());
+    if (in.cancelReason() != null && !in.cancelReason().isBlank()) {
+      p.put("cancelReason", in.cancelReason()); // 클레임 사유(2026-11-19 CL-5) — 알림 문구용
+    }
     if (in.claimId() != null) {
       p.put("claimId", in.claimId());
     }

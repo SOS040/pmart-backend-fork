@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
+    0.7.0(2026-11-19, CL-5 — PC 5 요청, PC 1 사용자 "추천대로 일단" — 쿠폰은 promotion 이 생길 때): 사유 **`DISPATCH_UNAVAILABLE`**(배차 불가) 직원 전체 취소 —
+    그 센터 `MFC_SUPERVISOR`·`CS_AGENT`·`OPERATOR_ADMIN`, **상품준비(PREPARING) 뒤라도 인계 전이면**(시스템 취소와 같은 범위 — 인계 뒤·미이행 0 은 422), 본인 확인 필요 없음(회사 사유),
+    채널 CS·OPERATOR. 뒤 흐름은 그대로(CancellationRequested → S3 → OrderCancelled → 원 승인액 전액 환불). 2,000원 쿠폰은 아직 없다(promotion 미구현).
     0.5.0(2026-11-18, CL-3 — 백오피스 대시보드 D2, 사용자 "환불은 따로"): 직원(OPERATOR_ADMIN 만) 기간 환불 합 `GET /claims/metrics/refunds?from&to` — 환불 완료 시각(`refund_intent.completed_at`)의 한국 날짜, from·to 포함·필수, 93일 이하. 완료(COMPLETED)된 환불 의도의 금액 합·건수 + 사유 묶음(CANCEL·SHORTAGE·RETURN·RETURN_FEE·OTHER)별. **센터(mfcId) 거르기는 없다**(사용자 동의 2026-11-18 — 취소 클레임에는 센터가 없다). 주문 매출(order `GET /orders/metrics/summary`)에서 빼지 않고 나란히 보인다.
     0.3.0(2026-11-17, CL-1 추가 결정 1~9 — 사용자 "추천대로"): 회수비 결제 기한 24시간 확정. 반품 전체 기한(접수 + 7일, `Claim.returnDeadlineAt`) — 그 안에 회수가 안 되면 자동 취소(ClaimClosed RETURN_EXPIRED).
     회수 시도 전체 3번(자동 2 + 상담원 다시 회수 1 — 넘으면 409 PICKUP_ATTEMPTS_EXHAUSTED), 라이더·우리 잘못(RIDER_INCIDENT) 실패는 횟수에서 빼고 바로 다시 요청(`pickup.countedFailures`·`retryAllowed`).
@@ -539,8 +542,8 @@ components:
       enum: [OPENED, UNDER_REVIEW, STOP_PENDING, DECIDED, IN_PROGRESS, CLOSED, WITHDRAWN, REJECTED, FEE_PENDING, RECOVERY_FAILED, CANCELLED]
     ClaimReason:
       type: string
-      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED·OUT_OF_STOCK 는 시스템 접수만(2026-11-07, 고객 접수 불가 — OUT_OF_STOCK 은 결품 부분 환불)
-      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED, OUT_OF_STOCK]
+      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED·OUT_OF_STOCK 는 시스템 접수만(2026-11-07, 고객 접수 불가 — OUT_OF_STOCK 은 결품 부분 환불). DISPATCH_UNAVAILABLE(0.7.0 CL-5) 은 직원 전체 취소만(고객 접수 불가)
+      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED, OUT_OF_STOCK, DISPATCH_UNAVAILABLE]
     ReturnFaultCode:
       type: string
       x-added-in: '2026-11-17'

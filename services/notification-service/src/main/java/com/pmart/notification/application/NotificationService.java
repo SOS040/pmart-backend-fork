@@ -125,7 +125,10 @@ public class NotificationService {
               e,
               text(p, "accountId"),
               orderId,
-              Notices.orderCancelled(orderId, text(p, "reason")),
+              // 클레임 사유(cancelReason, 2026-11-19)가 있으면 그것 — reason 은 수량 의미(CANCEL_BEFORE_SHIP)
+              Notices.orderCancelled(
+                  orderId,
+                  text(p, "cancelReason") != null ? text(p, "cancelReason") : text(p, "reason")),
               "");
       case "OrderLineQuantityChanged" -> {
         // 결품 부분 취소만(N-1). 주문 전체가 취소되면 OrderCancelled 가 따로 알린다

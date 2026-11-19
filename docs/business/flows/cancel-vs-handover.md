@@ -102,3 +102,8 @@ S3 단계
 - 재고 해제는 현장 중지 확정 뒤에만, 환불은 주문 취소 반영 뒤에만. 재판매 가능(재고 해제)과 환불 완료는 서로 독립(§3).
 - 후속(슬라이스 6~): 작업 지시가 생기면 STOPPED 포장별 판정·피킹 후 복귀(CANCEL_RETURN_PENDING — 2026-11-08 ADR-0046 구현)·fence 대기(6c), 작업 요청이 중지 기록을 반영. 피킹 뒤 부분 중지는 아직 없다. 배차 취소(b)는 슬라이스 7.
 - 인계 fence(2026-11-08, ADR-0047 구현): 살아 있는 fence·결과 대기 인계가 있으면 중지 PENDING(그 포장 HANDOVER_IN_PROGRESS) → 확정되면 HANDED_OVER, 확정 요청 없이 만료되면 fence 를 닫고 중지 진행. 인계된 포장이 하나라도 있으면 전체 중지는 RESOLVED + HANDED_OVER 로 거절(작업 유지, S3 ESCALATED·클레임 REJECTED). 중지 기록이 있는 주문은 새 인계 허가를 받지 않는다. 계약 정본 [package-handover-contract.md](package-handover-contract.md).
+
+## 7. 배차 불가 취소 (2026-11-19, CL-5 — 원문 Delivery §3.6)
+- 라이더를 끝내 못 찾은 주문은 **직원**(그 센터 MFC_SUPERVISOR·CS_AGENT·OPERATOR_ADMIN)이 사유 `DISPATCH_UNAVAILABLE` 로 전체 취소한다. 회사 사유라 본인 확인이 없고, **상품준비 뒤라도 인계 전이면** 받는다(시스템 자동 취소와 같은 범위 — §1 의 고객 취소 시점과 다름). 인계 뒤는 422(반품 흐름).
+- 흐름은 §2 그대로: ClaimOpened·CancellationRequested(reason DISPATCH_UNAVAILABLE) → S3(현장 중지 — 포장분은 취소 복귀, 자원 해제, 주문 CANCELLED) → OrderCancelled(`cancelReason` DISPATCH_UNAVAILABLE) → claim 원 승인액 전액 환불(봉투값·배달팁 포함), dispatch 는 FULL 취소로 픽업 전 배송을 거둔다, notification 은 "배달 기사를 찾지 못해" 문구.
+- 보상 쿠폰(2,000원)은 promotion-service 가 생길 때(아직 없음).

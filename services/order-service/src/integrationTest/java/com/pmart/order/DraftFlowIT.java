@@ -1190,6 +1190,8 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
             "STOP-1",
             "claimId",
             "CLM-1",
+            "cancelReason",
+            "DISPATCH_UNAVAILABLE", // 클레임 사유(0.14.2 CL-5) — OrderCancelled 로 그대로
             "changes",
             List.of(Map.of("orderLineId", line, "qty", 10)));
     String key = "SAGA-C:APPLY_ORDER_CANCEL";
@@ -1219,6 +1221,8 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     JsonNode p = mapper.readTree((String) ev.get("payload")).path("payload");
     assertThat(p.path("scope").asString()).isEqualTo("FULL");
     assertThat(p.path("claimId").asString()).isEqualTo("CLM-1");
+    assertThat(p.path("reason").asString()).isEqualTo("CANCEL_BEFORE_SHIP");
+    assertThat(p.path("cancelReason").asString()).isEqualTo("DISPATCH_UNAVAILABLE");
     assertThat(p.path("accountId").asString()).isEqualTo(REPEAT);
     assertThat(p.path("lines").path(0).path("qty").asInt()).isEqualTo(10);
 
