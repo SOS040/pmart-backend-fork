@@ -175,6 +175,21 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     return out.toByteArray();
   }
 
+  /** 압축이 잘 안 되는 PNG(무작위 점) — 크기 시험용. */
+  static byte[] noisyPng(int w, int h) throws Exception {
+    java.awt.image.BufferedImage img =
+        new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    java.util.Random r = new java.util.Random(7);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        img.setRGB(x, y, r.nextInt(0xFFFFFF));
+      }
+    }
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    javax.imageio.ImageIO.write(img, "png", out);
+    return out.toByteArray();
+  }
+
   void product(String id, String saleState) {
     jdbc.update(
         "INSERT INTO display_product (product_id, product_version, representative_sku, name, content_version,"
@@ -266,6 +281,11 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     String imageId = img.body().path("imageId").asString();
     assertThat(img.body().path("width").asInt()).isEqualTo(40);
     assertThat(upload(MD, "GIF89a".getBytes()).status()).isEqualTo(422);
+    // 1MB 넘는 배너(실제 배너 PNG 2.3MB 가 기본 multipart 1MB 에 413 이었음 — 설정 6MB)
+    byte[] big = noisyPng(900, 700);
+    assertThat(big.length).isGreaterThan(1_500_000);
+    Res bigRes = upload(MD, big);
+    assertThat(bigRes.status()).as(bigRes.body().toString()).isEqualTo(201);
     // 게시 전 이미지는 고객에게 안 보인다(운영자는 보임)
     assertThat(send("GET", null, "/storefront/banner-images/" + imageId, null).status())
         .isEqualTo(404);
