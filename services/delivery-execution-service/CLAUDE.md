@@ -89,3 +89,4 @@
 - **반납할 사람(2026-11-19, 0.31.1 — 라이더 앱 요청)**: 배송 조회 `failure.returnBy`(SAME_RIDER·OTHER_RIDER) — OTHER_RIDER 면 원래 라이더는 returnDeliveryId 배송을 열 수 없다(404), 앱은 넘겨 주라는 안내.
 
 - **실패 확정 되돌리기(2026-11-19, 0.32.0 — 사용자 "확정 되돌리기 기능 만들기", LAN 28767701-1)**: `POST /deliveries/{id}/failure-reversals`(`FailureReversalService`) — RIDER_OPS·OPERATOR_ADMIN, 확정 뒤 `failure-reversal-window`(30분) 안·custody RIDER·일반/재발송·반납 배송 받기 전·수행료 확정 전(그 줄 지움). 실패 등록 전 상태로, 실패 기록 decision REJECT + reversed*, `DeliveryFailureReverted`. 조치 이력 FAILURE_REVERSED.
+  - **사고·파손은 막음**(사용자 2026-11-19 "사고·파손은 막기"): RIDER_INCIDENT·DAMAGED(재발송 걸리는 사유, orchestration 과 같은 기준)는 409 — 관리자가 재발송 출고를 멈춘 뒤 `reshipmentStopped: true` 일 때만(그 밖 403).
