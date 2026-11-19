@@ -156,8 +156,9 @@ class ProfileChangeFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void 연락처_빈값_긴값_제어문자는_400() {
     String token = TestJwt.customer(newCustomer());
+    // 휴대폰 형식이 아니면 400(0.7.0 — 그 전에는 휴대폰도 400)
     Map<String, Object> phone = new HashMap<>();
-    phone.put("phone", "010-1234-5678");
+    phone.put("phone", "02-123-4567");
     Res p = change(token, UUID.randomUUID().toString(), phone, null);
     assertThat(p.status()).isEqualTo(400);
     assertThat(p.body().path("code").asString()).isEqualTo("VALIDATION_FAILED");
@@ -173,6 +174,39 @@ class ProfileChangeFlowIT extends PostgresKafkaContainerSupport {
     assertThat(
             get(token, "/me").body().path("nickname").isNull()
                 || get(token, "/me").body().path("nickname").isMissingNode())
+        .isTrue();
+  }
+
+  /**
+   * BR-32(0.7.0, 2026-11-19): 휴대폰을 확인 안 된 연락처로 저장 → /me 에 가리지 않은 번호·가린 번호·phoneVerified=false, 같은 값
+   * 그대로, 빈 값은 지우기.
+   */
+  @Test
+  void 휴대폰은_확인_안_된_연락처로_저장된다() {
+    String token = TestJwt.customer(newCustomer());
+    Map<String, Object> phone = new HashMap<>();
+    phone.put("phone", "010-1234-5678");
+    Res saved = change(token, UUID.randomUUID().toString(), phone, null);
+    assertThat(saved.status()).as(saved.body().toString()).isEqualTo(200);
+    JsonNode me = get(token, "/me").body();
+    assertThat(me.path("phone").asString()).isEqualTo("01012345678");
+    assertThat(me.path("phoneMasked").asString()).isEqualTo("010-****-5678");
+    assertThat(me.path("phoneVerified").asBoolean()).isFalse();
+    int v = me.path("version").asInt();
+
+    Map<String, Object> same = new HashMap<>();
+    same.put("phone", "010 1234 5678");
+    assertThat(
+            change(token, UUID.randomUUID().toString(), same, null).body().path("version").asInt())
+        .as("같은 번호는 그대로")
+        .isEqualTo(v);
+
+    Map<String, Object> clear = new HashMap<>();
+    clear.put("phone", "");
+    assertThat(change(token, UUID.randomUUID().toString(), clear, null).status()).isEqualTo(200);
+    JsonNode after = get(token, "/me").body();
+    assertThat(after.path("phone").isNull() || after.path("phone").isMissingNode()).isTrue();
+    assertThat(after.path("phoneMasked").isNull() || after.path("phoneMasked").isMissingNode())
         .isTrue();
   }
 

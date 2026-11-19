@@ -29,7 +29,9 @@ public class CustomerStore {
       @Nullable Boolean emailVerified,
       @Nullable String profileImageSha256,
       Instant joinedAt,
-      int version) {}
+      int version,
+      @Nullable String phone,
+      boolean phoneVerified) {}
 
   /** 로그인 제공자가 준 프로필(CustomerAuthenticated, ADR-0024). 값은 scope 에 따라 없을 수 있다. 개인정보 — 로그 금지. */
   public record ProviderProfile(
@@ -122,7 +124,8 @@ public class CustomerStore {
     return jdbc
         .query(
             "SELECT account_id, status, social_provider, nickname, name, email, email_verified,"
-                + " profile_image_sha256, joined_at, version FROM customer WHERE account_id = ?",
+                + " profile_image_sha256, joined_at, version, phone, phone_verified FROM customer"
+                + " WHERE account_id = ?",
             (rs, i) ->
                 new ProfileRow(
                     rs.getString("account_id"),
@@ -134,7 +137,9 @@ public class CustomerStore {
                     rs.getObject("email_verified", Boolean.class),
                     rs.getString("profile_image_sha256"),
                     rs.getTimestamp("joined_at").toInstant(),
-                    rs.getInt("version")),
+                    rs.getInt("version"),
+                    rs.getString("phone"),
+                    rs.getBoolean("phone_verified")),
             accountId)
         .stream()
         .findFirst();
@@ -152,6 +157,31 @@ public class CustomerStore {
         "UPDATE customer SET nickname = ?, version = version + 1, updated_at = ?"
             + " WHERE account_id = ? AND version = ?",
         nickname,
+        ts(now),
+        accountId,
+        expectedVersion);
+  }
+
+  /**
+   * 닉네임·휴대폰(확인 안 됨 — 2026-11-19 BR-32)을 한 번에 바꾼다(버전 +1). nickname null 이면 그대로. phone 은 값 그대로(null =
+   * 지우기).
+   */
+  public int updateProfile(
+      String accountId,
+      int expectedVersion,
+      @Nullable String nickname,
+      boolean setPhone,
+      @Nullable String phone,
+      Instant now) {
+    return jdbc.update(
+        "UPDATE customer SET nickname = COALESCE(?, nickname),"
+            + " phone = CASE WHEN ? THEN ? ELSE phone END,"
+            + " phone_verified = CASE WHEN ? THEN false ELSE phone_verified END,"
+            + " version = version + 1, updated_at = ? WHERE account_id = ? AND version = ?",
+        nickname,
+        setPhone,
+        phone,
+        setPhone,
         ts(now),
         accountId,
         expectedVersion);

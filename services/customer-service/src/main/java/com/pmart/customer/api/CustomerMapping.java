@@ -119,7 +119,10 @@ final class CustomerMapping {
                 ? null
                 : Profile.SocialProviderEnum.fromValue(p.socialProvider()))
         .joinedAt(time(p.joinedAt()))
-        .version(p.version());
+        .version(p.version())
+        .phone(p.phone())
+        .phoneMasked(com.pmart.customer.domain.ProfileRules.maskPhone(p.phone()))
+        .phoneVerified(p.phone() != null && p.phoneVerified());
   }
 
   static Consent consent(ConsentService.View v) {

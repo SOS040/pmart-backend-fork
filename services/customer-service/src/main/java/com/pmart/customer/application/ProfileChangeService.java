@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 프로필 변경(계약 POST /me/profile-changes) — 지금은 닉네임만(2026-11-03 사용자 결정). 연락처(phone)는 본인 확인 방식을 정한 뒤에
- * 한다: 그 전까지 phone 이 오면 400.
+ * 한다: 그 전까지 phone 이 오면 400. 2026-11-19(BR-32) — 본인 확인은 미루고 확인 안 된 연락처로 저장한다.
  *
  * <ul>
  *   <li>즉시 반영(APPLIED), 버전 +1. 같은 닉네임이면 바꾸지 않고 현재 버전으로 APPLIED.
@@ -63,18 +63,28 @@ public class ProfileChangeService {
       @Nullable Integer expectedVersion,
       @Nullable String nickname,
       @Nullable String phone) {
-    if (phone != null) {
-      throw invalid("phone", "연락처 변경은 아직 지원하지 않습니다.");
-    }
-    if (nickname == null) {
+    if (nickname == null && phone == null) {
       throw invalid("nickname", "바꿀 값이 없습니다.");
     }
-    ProfileRules.nicknameProblem(nickname)
-        .ifPresent(
-            reason -> {
-              throw invalid("nickname", reason);
-            });
-    String nick = Objects.requireNonNull(ProfileRules.normalizeNickname(nickname));
+    if (nickname != null) {
+      ProfileRules.nicknameProblem(nickname)
+          .ifPresent(
+              reason -> {
+                throw invalid("nickname", reason);
+              });
+    }
+    // 휴대폰(2026-11-19 BR-32): 확인 안 된 연락처 — 형식만 본다, 빈 문자열은 지우기. 값은 로그에 남기지 않는다
+    if (phone != null) {
+      ProfileRules.phoneProblem(phone)
+          .ifPresent(
+              reason -> {
+                throw invalid("phone", reason);
+              });
+    }
+    String nick =
+        nickname == null ? null : Objects.requireNonNull(ProfileRules.normalizeNickname(nickname));
+    boolean setPhone = phone != null;
+    String newPhone = phone == null ? null : ProfileRules.normalizePhone(phone).orElse(null);
 
     store.ensureProfile(accountId, clock.instant());
 
@@ -82,6 +92,9 @@ public class ProfileChangeService {
     // 상태·버전 검사는 멱등 처리 안에서 한다: 밖에서 먼저 보면 이미 반영된 요청의 재시도가 409 가 된다
     Map<String, Object> request = new LinkedHashMap<>();
     request.put("nickname", nick);
+    if (setPhone) {
+      request.put("phone", newPhone == null ? "" : newPhone);
+    }
     request.put("expectedVersion", expectedVersion);
     return idempotency
         .execute(
@@ -92,13 +105,27 @@ public class ProfileChangeService {
               Instant now = clock.instant();
               ProfileRow locked = store.lockProfile(accountId).orElseThrow(this::noAccount);
               check(locked, expectedVersion);
-              if (nick.equals(locked.nickname())) {
+              boolean nickSame = nick == null || nick.equals(locked.nickname());
+              boolean phoneSame = !setPhone || Objects.equals(newPhone, locked.phone());
+              if (nickSame && phoneSame) {
                 return new Result(requestId, locked.version(), now.toString(), false);
               }
-              if (store.updateNickname(accountId, locked.version(), nick, now) == 0) {
+              if (store.updateProfile(
+                      accountId,
+                      locked.version(),
+                      nickSame ? null : nick,
+                      !phoneSame,
+                      newPhone,
+                      now)
+                  == 0) {
                 throw versionConflict();
               }
-              log.info("닉네임 변경 {} 버전 {}", accountId, locked.version() + 1);
+              log.info(
+                  "프로필 변경 {} 버전 {} (닉네임 {}, 연락처 {})",
+                  accountId,
+                  locked.version() + 1,
+                  !nickSame,
+                  !phoneSame);
               return new Result(requestId, locked.version() + 1, now.toString(), true);
             })
         .value();

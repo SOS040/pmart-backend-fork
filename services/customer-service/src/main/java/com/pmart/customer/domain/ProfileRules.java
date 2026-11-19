@@ -54,4 +54,40 @@ public final class ProfileRules {
   public static boolean changeable(String status) {
     return "ACTIVE".equals(status);
   }
+
+  /** 휴대폰 번호(2026-11-19 BR-32): 01X 로 시작하는 10~11자리. 하이픈·공백·괄호는 뗀다. */
+  private static final java.util.regex.Pattern MOBILE =
+      java.util.regex.Pattern.compile("^01[016789][0-9]{7,8}$");
+
+  /**
+   * 저장할 휴대폰 번호(숫자만). 빈 문자열이면 지우기({@code Optional.empty()}). 형식이 틀리면 예외 대신 null 을 돌려주지 않고 — 호출자가
+   * {@link #phoneProblem} 으로 먼저 본다.
+   */
+  public static java.util.Optional<String> normalizePhone(String phone) {
+    String digits = phone.replaceAll("[\\s\\-()]", "");
+    return digits.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(digits);
+  }
+
+  /** 휴대폰 번호 문제(사유). 빈 문자열(지우기)은 문제 아님. */
+  public static java.util.Optional<String> phoneProblem(String phone) {
+    java.util.Optional<String> n = normalizePhone(phone);
+    if (n.isEmpty()) {
+      return java.util.Optional.empty();
+    }
+    return MOBILE.matcher(n.get()).matches()
+        ? java.util.Optional.empty()
+        : java.util.Optional.of("휴대폰 번호 형식이 아닙니다(01X 로 시작하는 10~11자리).");
+  }
+
+  /** 가린 번호 010-****-5678(10자리는 011-***-5678). 번호가 없으면 null. */
+  public static @org.jspecify.annotations.Nullable String maskPhone(
+      @org.jspecify.annotations.Nullable String digits) {
+    if (digits == null || digits.length() < 10) {
+      return null;
+    }
+    String head = digits.substring(0, 3);
+    String tail = digits.substring(digits.length() - 4);
+    String mid = "*".repeat(digits.length() - 7);
+    return head + "-" + mid + "-" + tail;
+  }
 }
