@@ -107,6 +107,7 @@
 | [DE-5](delivery-execution-service.md) | delivery-execution(·dispatch) | PC 5 | rider_app·rider-backoffice | 전달지 정확 좌표 — 주문 사본 좌표 없으면 배차 지오코딩 `drop_lat·lng`, `coordinateSource`(급함) | 요청(2026-11-18) | PC 1 customer 0.5.0 핀 없으면 지오코딩(같이) |
 | [DE-6](delivery-execution-service.md) | delivery-execution | PC 5 | notification(고객 앱 알림) | 묶음 배달 다음 차례 사건 `DeliveryHeadingToCustomer`(delivery.delivery.v1). 받는 쪽은 PC 1 이 만들어 둠 | 결정됨(2026-11-19 사용자 "응 해줘") |
 | [RS-6](rider-service.md) | rider(·execution·tracking) | PC 5 | rider-backoffice | 운행 시작·대기 시간 — 운행 구간 기록, onDutySince·waitingSince, 오늘 합계(대기 = 운행 중·진행 중 배송 0건, 신규배차 꺼짐 제외) | 요청(2026-11-18, 대기 뜻 사용자 확인) | — |
+| [AI-1](ai-assistant-service.md) | ai-assistant | PC 4 | backoffice(PC 2) | 업무 도우미 질문 원문 저장(`store-question` 켬) — 보존 90일(답변과 같이), 본인만 보기, 본인 지우기 API | 결정됨(2026-11-19 사용자 "추천대로", #226) | 대기(PC 4) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.
