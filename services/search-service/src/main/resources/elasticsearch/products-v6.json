@@ -1,0 +1,189 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "char_filter": {
+        "strip_spaces": {
+          "type": "pattern_replace",
+          "pattern": "\\s+",
+          "replacement": ""
+        }
+      },
+      "tokenizer": {
+        "name_nori": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed"
+        },
+        "name_ngram": {
+          "type": "ngram",
+          "min_gram": 1,
+          "max_gram": 2,
+          "token_chars": [
+            "letter",
+            "digit"
+          ]
+        },
+        "name_edge": {
+          "type": "edge_ngram",
+          "min_gram": 1,
+          "max_gram": 10,
+          "token_chars": [
+            "letter",
+            "digit"
+          ]
+        }
+      },
+      "analyzer": {
+        "name_nori": {
+          "type": "custom",
+          "tokenizer": "name_nori",
+          "filter": [
+            "nori_part_of_speech",
+            "lowercase"
+          ]
+        },
+        "name_ngram": {
+          "type": "custom",
+          "tokenizer": "name_ngram",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "name_edge": {
+          "type": "custom",
+          "tokenizer": "name_edge",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "name_edge_search": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "name_compact": {
+          "type": "custom",
+          "char_filter": [
+            "strip_spaces"
+          ],
+          "tokenizer": "name_ngram",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "chosung_edge_search": {
+          "type": "custom",
+          "tokenizer": "whitespace"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "productId": {
+        "type": "keyword"
+      },
+      "productVersion": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "text",
+        "analyzer": "name_nori",
+        "fields": {
+          "edge": {
+            "type": "text",
+            "analyzer": "name_edge",
+            "search_analyzer": "name_edge_search"
+          },
+          "partial": {
+            "type": "text",
+            "analyzer": "name_ngram"
+          },
+          "compact": {
+            "type": "text",
+            "analyzer": "name_compact"
+          }
+        }
+      },
+      "nameChosung": {
+        "type": "text",
+        "analyzer": "name_compact",
+        "fields": {
+          "edge": {
+            "type": "text",
+            "analyzer": "name_edge",
+            "search_analyzer": "chosung_edge_search"
+          }
+        }
+      },
+      "imageUrl": {
+        "type": "keyword",
+        "index": false
+      },
+      "contentVersion": {
+        "type": "integer"
+      },
+      "contentPublishedAtMs": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+      "primaryCategoryId": {
+        "type": "keyword"
+      },
+      "categoryIds": {
+        "type": "keyword"
+      },
+      "categoryScope": {
+        "type": "keyword"
+      },
+      "representativeSku": {
+        "type": "keyword"
+      },
+      "carriedMfcIds": {
+        "type": "keyword"
+      },
+      "saleState": {
+        "type": "keyword"
+      },
+      "saleStateAtMs": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+      "saleStateRowVersion": {
+        "type": "integer"
+      },
+      "filters": {
+        "type": "keyword"
+      },
+      "basePrice": {
+        "type": "long"
+      },
+      "priceVersion": {
+        "type": "integer"
+      },
+      "updatedAtMs": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+      "ratingCount": {
+        "type": "integer"
+      },
+      "ratingAverage": {
+        "type": "float"
+      },
+      "ratingScore": {
+        "type": "float"
+      },
+      "salesWindow": {
+        "type": "integer"
+      },
+      "signalsVersion": {
+        "type": "long"
+      }
+    }
+  }
+}

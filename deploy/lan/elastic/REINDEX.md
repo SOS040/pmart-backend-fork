@@ -86,6 +86,10 @@
    - search-service `SearchIndex.INDICES`·정의 파일은 이미 v3 다.
 7. **되돌림**: 별칭을 v2 로 다시 교체한다(§2-5 의 remove/add 반대). v2 는 3단계부터 사건을 받지 않았으므로, 되돌린 뒤 원인을 고쳐 다시 §2 를 한다.
 
+### 2-7. 순위 신호 다시 내기 (products-v6 부터, ADR-0072)
+- 신호 토픽 `commerce.product-ranking.v1` 은 무제한 보관이 아니다 — 재생만으로는 모든 상품의 신호가 오지 않을 수 있다. 별칭을 새 색인으로 옮긴 뒤 한 번:
+  `curl -s -X POST http://192.168.0.34:8106/api/v1/internal/storefront/ranking-signal-republications` → `{published: N}`. Logstash 가 version 이 큰 것만 반영하므로 여러 번 불러도 된다.
+
 ## 3. 부분 재처리 (DLT)
 - DLT 레코드: `search-index.DLT`, 키 = 상품 id.
   - 본문의 `pmartDeadLetter{op, id, tags, topic, partition, offset, at}` 가 원래 위치를 담는다.

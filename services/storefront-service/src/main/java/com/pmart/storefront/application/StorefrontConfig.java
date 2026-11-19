@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(StorefrontProperties.class)
+@org.springframework.scheduling.annotation.EnableScheduling
 class StorefrontConfig {
 
   /** UTC(ADR-0010). DB(마이크로초)와 응답 값이 같도록 마이크로초로 자른다. */

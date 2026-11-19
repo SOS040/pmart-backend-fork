@@ -38,7 +38,9 @@ import tools.jackson.databind.ObjectMapper;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      // 순위 신호 사건(ADR-0072)을 outbox 에서 확인한다
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 @EnableWireMock(
     @ConfigureWireMock(name = "content", baseUrlProperties = "pmart.storefront.content-base-url"))
@@ -495,6 +497,172 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
     for (int i = 0; i < 100 && ids(get(path).path("items")).contains("PRD-R1"); i++) {
       Thread.sleep(300);
     }
+  }
+
+  void order(String type, String orderId, long version, Map<String, Object> payload) {
+    kafka
+        .send(
+            "order.order.v1",
+            orderId,
+            EventEnvelopeFixtures.envelope(type)
+                .from("order-service")
+                .aggregate("Order", orderId, version)
+                .payload(payload)
+                .buildJson())
+        .join();
+  }
+
+  /** 그 상품의 마지막 ProductRankingSignalsChanged 본문(outbox). 없으면 null. */
+  tools.jackson.databind.JsonNode lastSignal(String productId) {
+    var rows =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'ProductRankingSignalsChanged'"
+                + " AND aggregateid = ? ORDER BY created_at DESC LIMIT 1",
+            String.class,
+            productId);
+    return rows.isEmpty() ? null : mapper.readTree(rows.get(0)).path("payload");
+  }
+
+  /**
+   * 순위 신호(ADR-0072, 2026-11-19): 주문 확정 → 판매, 줄 수량 변경(출고 전 취소·반품, 주문 버전 큰 것만) → 순 판매, 리뷰 → 별점·베이지안
+   * 점수. 바뀔 때마다 ProductRankingSignalsChanged(version +1), 같으면 다시 내지 않는다.
+   */
+  @Test
+  void rankingSignalsFromOrdersAndReviews() throws Exception {
+    card("PRD-K1", "[시험] 순위 상품", 1);
+    product("PRD-K1", 1, "E-K1");
+    published("PRD-K1", 1, "2026-08-01T00:00:00Z");
+    for (int i = 0;
+        i < 100
+            && jdbc.queryForObject(
+                    "SELECT count(*) FROM display_product WHERE product_id = 'PRD-K1' AND representative_sku = 'E-K1'",
+                    Integer.class)
+                == 0;
+        i++) {
+      Thread.sleep(200);
+    }
+    order(
+        "OrderConfirmed",
+        "ORD-K1",
+        1,
+        Map.of(
+            "orderId",
+            "ORD-K1",
+            "orderVersion",
+            1,
+            "lines",
+            List.of(
+                Map.of("orderLineId", "ORD-K1-L1", "sku", "E-K1", "qty", 3),
+                Map.of("orderLineId", "ORD-K1-L2", "sku", "E-OTHER", "qty", 9))));
+    order(
+        "OrderConfirmed",
+        "ORD-K2",
+        1,
+        Map.of(
+            "orderId",
+            "ORD-K2",
+            "orderVersion",
+            1,
+            "lines",
+            List.of(Map.of("orderLineId", "ORD-K2-L1", "sku", "E-K1", "qty", 2))));
+    // 출고 전 1개 취소(주문 버전 2) — 늦게 온 옛 버전(1)은 무시
+    order(
+        "OrderLineQuantityChanged",
+        "ORD-K2",
+        2,
+        Map.of(
+            "orderId",
+            "ORD-K2",
+            "orderLineId",
+            "ORD-K2-L1",
+            "sku",
+            "E-K1",
+            "originalQty",
+            2,
+            "unfulfilledQty",
+            0,
+            "handedOverQty",
+            0,
+            "cancelledBeforeShipQty",
+            1,
+            "returnedQty",
+            0,
+            "version",
+            2,
+            "changedAt",
+            "2026-11-19T10:00:00Z"));
+    order(
+        "OrderLineQuantityChanged",
+        "ORD-K2",
+        1,
+        Map.of(
+            "orderId",
+            "ORD-K2",
+            "orderLineId",
+            "ORD-K2-L1",
+            "sku",
+            "E-K1",
+            "originalQty",
+            2,
+            "unfulfilledQty",
+            0,
+            "handedOverQty",
+            0,
+            "cancelledBeforeShipQty",
+            0,
+            "returnedQty",
+            0,
+            "version",
+            1,
+            "changedAt",
+            "2026-11-19T09:00:00Z"));
+    tools.jackson.databind.JsonNode sig = null;
+    for (int i = 0; i < 100; i++) {
+      sig = lastSignal("PRD-K1");
+      if (sig != null && sig.path("salesWindow").asInt() == 4) {
+        break;
+      }
+      Thread.sleep(300);
+    }
+    assertThat(sig).isNotNull();
+    assertThat(sig.path("salesWindow").asInt()).as("3 + (2 − 1)").isEqualTo(4);
+    assertThat(sig.path("salesWindowDays").asInt()).isEqualTo(30);
+    assertThat(sig.path("ratingCount").asInt()).isZero();
+    assertThat(sig.path("ratingScore").isNull()).as("리뷰 없으면 점수 없음").isTrue();
+
+    review("ReviewPublished", "RV-K1", "PRD-K1", 5, 1);
+    review("ReviewPublished", "RV-K2", "PRD-K1", 4, 1);
+    for (int i = 0; i < 100; i++) {
+      sig = lastSignal("PRD-K1");
+      if (sig.path("ratingCount").asInt() == 2) {
+        break;
+      }
+      Thread.sleep(300);
+    }
+    assertThat(sig.path("ratingCount").asInt()).isEqualTo(2);
+    assertThat(sig.path("ratingAverage").asDouble()).isEqualTo(4.5);
+    // 베이지안 (5 × 4.0 + 9) ÷ (5 + 2) = 4.1429
+    assertThat(sig.path("ratingScore").asDouble()).isEqualTo(4.1429);
+    assertThat(sig.path("salesWindow").asInt()).isEqualTo(4);
+    int version = sig.path("version").asInt();
+    // 같은 값이면 다시 내지 않는다
+    review("ReviewPublished", "RV-K2", "PRD-K1", 4, 1);
+    Thread.sleep(1500);
+    assertThat(lastSignal("PRD-K1").path("version").asInt()).isEqualTo(version);
+    // 판매중지로 치워 다른 시험의 진열에 섞이지 않게
+    send(
+        "ProductSaleStateChanged",
+        "PRD-K1",
+        2,
+        Map.of(
+            "productId",
+            "PRD-K1",
+            "sku",
+            "E-K1",
+            "state",
+            "DISCONTINUED",
+            "effectiveAt",
+            "2026-11-19T06:00:00Z"));
   }
 
   /**

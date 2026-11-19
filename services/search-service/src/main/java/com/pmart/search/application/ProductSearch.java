@@ -40,7 +40,9 @@ public class ProductSearch {
       @Nullable Integer productVersion,
       @Nullable String primaryCategoryId,
       List<String> categoryPath,
-      @Nullable Boolean carried) {}
+      @Nullable Boolean carried,
+      @Nullable Double ratingAverage,
+      @Nullable Integer ratingCount) {}
 
   public record Result(
       List<Hit> items,
@@ -134,7 +136,9 @@ public class ProductSearch {
         h.productVersion(),
         primary,
         primary == null ? List.of() : categories.path(primary),
-        h.carried());
+        h.carried(),
+        h.ratingAverage(),
+        h.ratingCount());
   }
 
   /** 검색어를 포함하는 상품명(중복 제거, 관련도 순). */
@@ -280,6 +284,25 @@ public class ProductSearch {
           hasQuery
               ? List.of(Map.of("_score", Map.of("order", "desc")), newest, tie)
               : List.of(newest, tie);
+      // ADR-0072 — 순위 신호(storefront). 신호가 없으면 맨 뒤(missing _last), 같으면 다음 기준
+      case POPULAR ->
+          List.of(
+              Map.of("salesWindow", Map.of("order", "desc", "missing", "_last")),
+              Map.of("ratingScore", Map.of("order", "desc", "missing", "_last")),
+              newest,
+              tie);
+      case RATING ->
+          List.of(
+              Map.of("ratingScore", Map.of("order", "desc", "missing", "_last")),
+              Map.of("ratingCount", Map.of("order", "desc", "missing", "_last")),
+              newest,
+              tie);
+      case REVIEW_COUNT ->
+          List.of(
+              Map.of("ratingCount", Map.of("order", "desc", "missing", "_last")),
+              Map.of("ratingScore", Map.of("order", "desc", "missing", "_last")),
+              newest,
+              tie);
     };
   }
 
@@ -309,6 +332,8 @@ public class ProductSearch {
         s.hasNonNull("productVersion") ? s.get("productVersion").asInt() : null,
         s.hasNonNull("primaryCategoryId") ? s.get("primaryCategoryId").asString() : null,
         List.of(),
-        carried);
+        carried,
+        s.hasNonNull("ratingAverage") ? s.get("ratingAverage").asDouble() : null,
+        s.hasNonNull("ratingCount") ? s.get("ratingCount").asInt() : null);
   }
 }

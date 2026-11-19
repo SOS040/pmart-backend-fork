@@ -52,7 +52,7 @@ public class SearchIndex {
   public static final Map<String, String> INDICES =
       Map.of(
           PRODUCTS,
-          "products-v5",
+          "products-v6", // 2026-11-19 ADR-0072 — 순위 신호(별점·리뷰 수·판매) 칸
           SKU_PRICES,
           "sku-prices-v1",
           SKU_HANDLINGS,

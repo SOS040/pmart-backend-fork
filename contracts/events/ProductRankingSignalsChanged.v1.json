@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ProductRankingSignalsChanged.v1.json",
+  "title": "ProductRankingSignalsChanged",
+  "description": "2026-11-19 ADR-0072 — 상품 순위 신호(별점·리뷰 수·판매량)가 바뀌었다. 발행 storefront-service(리뷰 사건·주문 사건 사본으로 셈, 매일 판매 창 다시 셈). 토픽 commerce.product-ranking.v1, aggregate ProductRanking(productId). 구독 search-service 색인(Logstash — products-v6 정렬 칸). version 이 큰 것만 반영한다. 개인정보 없음.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ProductRankingSignalsChanged"
+        },
+        "aggregateType": {
+          "const": "ProductRanking"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "productId",
+            "version",
+            "ratingCount",
+            "salesWindow",
+            "salesWindowDays",
+            "computedAt"
+          ],
+          "properties": {
+            "productId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "상품마다 1부터 — 큰 것만 반영"
+            },
+            "ratingCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "공개 리뷰 수"
+            },
+            "ratingAverage": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "공개 리뷰 평균(소수 첫째). 리뷰 없으면 null"
+            },
+            "ratingScore": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "별점순 정렬 점수 — 베이지안 평균(사전 개수·평균은 설정). 리뷰 없으면 null(정렬 맨 뒤)"
+            },
+            "salesWindow": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "최근 salesWindowDays 일 동안 주문 확정 수량 − 출고 전 취소 − 반품(대표 SKU)"
+            },
+            "salesWindowDays": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "computedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

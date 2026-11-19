@@ -15,12 +15,18 @@ public final class SearchRules {
   public static final String TEMPORARILY_SOLD_OUT = "TEMPORARILY_SOLD_OUT";
   public static final String SALE_STOPPED = "SALE_STOPPED";
 
-  /** 1차에 지원하는 정렬. 나머지(인기·평점)는 집계 원천이 없어 관련도로 대체하고 appliedSort 로 알린다. */
+  /**
+   * 지원 정렬. POPULAR(최근 판매)·RATING(베이지안 별점)·REVIEW_COUNT(리뷰 수)는 2026-11-19 ADR-0072 부터 — storefront
+   * 순위 신호가 색인 (products-v6)에 들어온다. 신호가 없는 상품은 그 정렬에서 맨 뒤.
+   */
   public enum Sort {
     RELEVANCE,
     NEWEST,
     PRICE_ASC,
-    PRICE_DESC
+    PRICE_DESC,
+    POPULAR,
+    RATING,
+    REVIEW_COUNT
   }
 
   private SearchRules() {}
@@ -57,7 +63,7 @@ public final class SearchRules {
     };
   }
 
-  /** 계약 SortKey → 지원 정렬. POPULAR·RATING 은 원천(주문 집계·리뷰)이 없어 RELEVANCE. */
+  /** 계약 SortKey → 지원 정렬(모르는 값은 RELEVANCE). */
   public static Sort sort(@Nullable String key) {
     if (key == null) {
       return Sort.RELEVANCE;
@@ -66,6 +72,9 @@ public final class SearchRules {
       case "NEWEST" -> Sort.NEWEST;
       case "PRICE_ASC" -> Sort.PRICE_ASC;
       case "PRICE_DESC" -> Sort.PRICE_DESC;
+      case "POPULAR" -> Sort.POPULAR;
+      case "RATING" -> Sort.RATING;
+      case "REVIEW_COUNT" -> Sort.REVIEW_COUNT;
       default -> Sort.RELEVANCE;
     };
   }

@@ -241,6 +241,7 @@ class SearchFlowIT {
         switch (type) {
           case "PriceVersionEffective" -> "commerce.pricing.v1";
           case "SkuHandlingChanged" -> HANDLING_TOPIC;
+          case "ProductRankingSignalsChanged" -> "commerce.product-ranking.v1";
           default -> "commerce.product.v1";
         };
     String json =
@@ -249,6 +250,7 @@ class SearchFlowIT {
                 switch (topic) {
                   case "commerce.pricing.v1" -> "pricing-service";
                   case HANDLING_TOPIC -> "mfc-inventory-service";
+                  case "commerce.product-ranking.v1" -> "storefront-service";
                   default -> "product-service";
                 })
             .aggregate(aggregate, id, version)
@@ -436,7 +438,8 @@ class SearchFlowIT {
                 .getStatusCode()
                 .value())
         .isEqualTo(400);
-    assertThat(search("?sort=POPULAR").path("appliedSort").asString()).isEqualTo("RELEVANCE");
+    // 2026-11-19 ADR-0072 부터 POPULAR 은 실제 정렬(전에는 RELEVANCE 로 대체) — rankingSignalsDriveSorts
+    assertThat(search("?sort=POPULAR").path("appliedSort").asString()).isEqualTo("POPULAR");
 
     // 쪽 나누기
     JsonNode first = search("?size=2");
@@ -753,5 +756,53 @@ class SearchFlowIT {
     // 자동완성도 같은 조건
     String suggest = http.get().uri("/search/suggestions?q=ㅅㅋㄹ").retrieve().body(String.class);
     assertThat(suggest).contains("생 크림").contains("생크림");
+  }
+
+  void signals(String productId, int version, int reviews, Double avg, Double score, int sales) {
+    Map<String, Object> p = new java.util.LinkedHashMap<>();
+    p.put("productId", productId);
+    p.put("version", version);
+    p.put("ratingCount", reviews);
+    p.put("ratingAverage", avg);
+    p.put("ratingScore", score);
+    p.put("salesWindow", sales);
+    p.put("salesWindowDays", 30);
+    p.put("computedAt", "2026-11-19T12:00:00Z");
+    send("ProductRankingSignalsChanged", "ProductRanking", productId, version, p);
+  }
+
+  /**
+   * 순위 신호 정렬(ADR-0072, 2026-11-19): POPULAR = 최근 판매, RATING = 베이지안 점수, REVIEW_COUNT = 리뷰 수, 신호 없는
+   * 상품은 맨 뒤, 옛 버전 무시, 결과에 rating·reviewCount.
+   */
+  @Test
+  @org.junit.jupiter.api.Order(4)
+  void rankingSignalsDriveSorts() throws Exception {
+    String[][] products = {
+      {"PRD-R1", "E-R1", "[시험] 순위감자 A"},
+      {"PRD-R2", "E-R2", "[시험] 순위감자 B"},
+      {"PRD-R3", "E-R3", "[시험] 순위감자 C"}
+    };
+    for (String[] p : products) {
+      productWith(p[0], 1, 1, p[1], "ON_SALE", "2026-11-04T02:00:00Z", List.of());
+      card(p[0], p[2], 1);
+      contentPublished(p[0], 1, "2026-11-04T02:01:00Z");
+    }
+    // R1: 리뷰 3개 5.0(점수 4.375) 판매 2, R2: 리뷰 400개 4.6(점수 4.59) 판매 9, R3: 신호 없음
+    signals("PRD-R1", 1, 3, 5.0, 4.375, 2);
+    signals("PRD-R2", 1, 400, 4.6, 4.59, 9);
+    signals("PRD-R2", 0, 1, 1.0, 1.0, 0); // 옛 버전 — 무시
+    await("?q=순위감자&sort=RATING", r -> ids(r).equals(List.of("PRD-R2", "PRD-R1", "PRD-R3")));
+    assertThat(ids(search("?q=순위감자&sort=POPULAR"))).containsExactly("PRD-R2", "PRD-R1", "PRD-R3");
+    assertThat(ids(search("?q=순위감자&sort=REVIEW_COUNT")))
+        .containsExactly("PRD-R2", "PRD-R1", "PRD-R3");
+    JsonNode res = search("?q=순위감자&sort=RATING");
+    assertThat(res.path("appliedSort").asString()).isEqualTo("RATING");
+    JsonNode top = res.path("items").path(0);
+    assertThat(top.path("rating").asDouble()).isEqualTo(4.6);
+    assertThat(top.path("reviewCount").asInt()).isEqualTo(400);
+    // 판매가 바뀌면(새 버전) 인기순이 바뀐다
+    signals("PRD-R1", 2, 3, 5.0, 4.375, 50);
+    await("?q=순위감자&sort=POPULAR", r -> ids(r).equals(List.of("PRD-R1", "PRD-R2", "PRD-R3")));
   }
 }

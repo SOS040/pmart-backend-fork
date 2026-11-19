@@ -27,7 +27,8 @@
 | `CustomerWithdrawalCompleted` | customer-service | auth, cart, notification, audit | accountId, completedAt | 미결 의무 종결 확인 후 완료 | ① |
 | `ShoppingAddressChanged` | customer-service | cart | accountId, shoppingAddressId, shoppingContextVersion, mfcId | 현재 쇼핑 주소 변경(늦은 응답 폐기 기준) | ① |
 | `CartItemChangeApplied` | cart-service | BI | cartId, cartItemId, sku, qty, cartVersion, appliedRequestId | 장바구니 변경 확정 | ① |
-| `ReviewPublished` / `ReviewDeleted` | review-service | product-content, audit | reviewId, orderLineId, productId, rating | 리뷰 등록/삭제(삭제 후 재작성 불가) | ② |
+| `ReviewPublished` / `ReviewDeleted` | review-service | product-content, storefront(진열 평점·순위 신호), audit | reviewId, orderLineId, productId, rating | 리뷰 등록/삭제(삭제 후 재작성 불가) | ② |
+| `ProductRankingSignalsChanged` | storefront | search(Logstash — products-v6 정렬 칸) | productId, version, ratingCount, ratingAverage, ratingScore, salesWindow, salesWindowDays | 상품 순위 신호가 바뀜(리뷰·주문 사건, 매일 판매 창) — 토픽 commerce.product-ranking.v1, ADR-0072 | ② |
 
 ## 2. Order & Payment
 

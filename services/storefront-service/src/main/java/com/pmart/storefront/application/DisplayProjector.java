@@ -23,8 +23,11 @@ public class DisplayProjector {
   private final DisplayStore store;
   private final ContentCardClient cards;
   private final Clock clock;
+  private final RankingSignals rankingSignals;
 
-  public DisplayProjector(DisplayStore store, ContentCardClient cards, Clock clock) {
+  public DisplayProjector(
+      DisplayStore store, ContentCardClient cards, Clock clock, RankingSignals rankingSignals) {
+    this.rankingSignals = rankingSignals;
     this.store = store;
     this.cards = cards;
     this.clock = clock;
@@ -129,7 +132,10 @@ public class DisplayProjector {
     if (reviewId == null || productId == null || rating < 1 || rating > 5) {
       return;
     }
-    store.upsertReviewRating(
-        reviewId, productId, rating, deleted, (int) e.aggregateVersion(), clock.instant());
+    if (store.upsertReviewRating(
+            reviewId, productId, rating, deleted, (int) e.aggregateVersion(), clock.instant())
+        == 1) {
+      rankingSignals.recompute(productId); // 별점순 신호(ADR-0072)
+    }
   }
 }

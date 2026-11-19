@@ -41,7 +41,8 @@
   - 설정(pmart-config `search-service.yml`): `pmart.search.recent.{max-items,retention}`, `pmart.search.popular.{window,size,min-searchers,hidden-keywords,refresh}`. 하나라도 없으면 기록하지 않고 인기 키워드는 빈 목록(WARN 한 번) — 기본값으로 대신하지 않는다.
   - 정리: 매일 04:17(Asia/Seoul) `SearchHousekeeping` 이 retention 지난 최근 검색어·window+1일 지난 검색 기록을 조건 삭제.
   - 시험: `SearchActivityIT`(실제 ES, 상품 문서를 직접 넣음), `SearchKeywordsTest`·`PopularKeywordsTest`.
-- 아직 없음: 인기·평점 정렬(관련도로 대체, appliedSort 로 알림), 재색인 API(501 — 재색인은 `deploy/lan/elastic/REINDEX.md` 절차), 숨김 목록 운영 API(지금은 설정).
+- **순위 신호 정렬(2026-11-19 ADR-0072, 계약 0.3.0, products-v6)**: Logstash 가 `ProductRankingSignalsChanged`(commerce.product-ranking.v1 — storefront 가 셈)를 상품 문서 ratingCount·ratingAverage·ratingScore·salesWindow 에 쓴다(signalsVersion 큰 것만). 정렬 POPULAR(판매 → 점수)·RATING(베이지안 점수 → 리뷰 수)·REVIEW_COUNT(새, 리뷰 수 → 점수), 신호 없으면 맨 뒤, RELEVANCE 는 그대로. 결과 `rating`·`reviewCount`. 재색인 뒤 storefront 다시 내기(REINDEX.md §2-7). 시험 `SearchFlowIT.rankingSignalsDriveSorts`.
+- 아직 없음: 재색인 API(501 — 재색인은 `deploy/lan/elastic/REINDEX.md` 절차), 숨김 목록 운영 API(지금은 설정).
 - 재색인(ADR-0034): Kafka 전체 재생 → 별칭 교체, 절차 `deploy/lan/elastic/REINDEX.md`, 실행 `deploy/lan/elastic/reindex.sh`(check·start·wait·switch·finish). 색인 정의(`products-v5`)에는 별칭을 넣지 않는다 — 별칭이 없을 때만 붙이고(새 환경) 전환은 절차가 한다. Logstash 대상 색인·소비 그룹은 `deploy/lan/elastic/search-index.env`.
 - 판매 상태(2026-11-04): 상품 행 버전(PVP `rowVersion`·PSSC `version`)이 큰 것만. 행 버전 없는 옛 사건은 행 버전 기준 상태가 없을 때만 시각 비교. storefront 도 같은 규칙.
 - 콘텐츠 보강 실패(2026-11-04): 2초 간격 2번 더 시도 → 그래도 실패면 색인하지 않고 `search-index.DLT`(원래 토픽·파티션·오프셋) + 경보 `SearchIndexDeadLetter`.

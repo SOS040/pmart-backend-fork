@@ -8,4 +8,21 @@ import org.springframework.web.bind.annotation.RestController;
  * 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
-public class InternalController implements InternalApi {}
+public class InternalController implements InternalApi {
+
+  private final com.pmart.storefront.application.RankingSignals ranking;
+
+  public InternalController(com.pmart.storefront.application.RankingSignals ranking) {
+    this.ranking = ranking;
+  }
+
+  /** 순위 신호 모두 다시 내기(ADR-0072 — 새 검색 색인 채우기). */
+  @Override
+  public org.springframework.http.ResponseEntity<
+          com.pmart.storefront.api.generated.model.RepublishRankingSignals200Response>
+      republishRankingSignals() {
+    return org.springframework.http.ResponseEntity.ok(
+        new com.pmart.storefront.api.generated.model.RepublishRankingSignals200Response()
+            .published(ranking.republishAll()));
+  }
+}

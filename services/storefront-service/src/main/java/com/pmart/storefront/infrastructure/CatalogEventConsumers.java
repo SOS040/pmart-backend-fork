@@ -37,4 +37,15 @@ class CatalogEventConsumers {
         e -> "ReviewPublished".equals(e.eventType()) || "ReviewDeleted".equals(e.eventType()),
         projector::applyReview);
   }
+
+  /** order.order.v1 — 바인딩 orderEvents-in-0(2026-11-19 ADR-0072, 인기순 판매 원장). 새 그룹은 처음부터 읽어 채운다. */
+  @Bean
+  PmartEventConsumer orderEvents(
+      EventConsumers consumers, com.pmart.storefront.application.RankingSignals ranking) {
+    return consumers.of(
+        e ->
+            "OrderConfirmed".equals(e.eventType())
+                || "OrderLineQuantityChanged".equals(e.eventType()),
+        ranking::applyOrder);
+  }
 }

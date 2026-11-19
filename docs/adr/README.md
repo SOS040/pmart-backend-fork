@@ -75,3 +75,4 @@
 | [0069](0069-delivery-incident-reshipment-and-distance-fee.md) | 배송 중 사고·파손은 새 상품 재발송(오배송 재발송 사가 재사용, `DeliveryFailed` 로 시작), 사고 수행료 = 수락 금액 × 간 거리 비율 | 승인 2026-11-18 |
 | [0070](0070-display-numbers.md) | 화면 번호 규칙 — 시스템 ID 는 그대로, 화면에는 주문 8자리·배송 "주문번호-순번"·라이더 6자리 + 가린 이름, 상세에 시스템 번호 | 승인 2026-11-18 |
 | [0071](0071-kakao-naver-login-id-token-only.md) | 카카오·네이버 소셜 로그인도 ID 토큰 검증만 — 구글과 같은 흐름(제공자 JWKS·iss·aud, secret·access token 조회 없음), 계정은 제공자별 | 승인 (2026-11-19) |
+| [0072](0072-product-ranking-signals.md) | 상품 순위 신호 — storefront 가 별점(베이지안)·최근 30일 판매를 세어 `ProductRankingSignalsChanged`, 검색 색인 products-v6 가 인기순·별점순·리뷰 많은 순에 씀 | 승인 (2026-11-19) |

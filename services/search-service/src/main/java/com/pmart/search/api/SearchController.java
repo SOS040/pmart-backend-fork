@@ -165,6 +165,9 @@ public class SearchController implements SearchApi {
         .priceVersion(h.priceVersion())
         .saleState(SearchHit.SaleStateEnum.fromValue(h.saleState()))
         .carried(h.carried())
+        // ADR-0072 — 순위 신호 사본(리뷰 없으면 비움)
+        .rating(h.ratingAverage() == null ? null : java.math.BigDecimal.valueOf(h.ratingAverage()))
+        .reviewCount(h.ratingCount())
         .productVersion(h.productVersion());
   }
 

@@ -26,8 +26,11 @@ class SearchRulesTest {
   @Test
   void unsupportedSortFallsBackToRelevance() {
     assertThat(SearchRules.sort("PRICE_ASC")).isEqualTo(SearchRules.Sort.PRICE_ASC);
-    assertThat(SearchRules.sort("POPULAR")).isEqualTo(SearchRules.Sort.RELEVANCE);
-    assertThat(SearchRules.sort("RATING")).isEqualTo(SearchRules.Sort.RELEVANCE);
+    // ADR-0072(2026-11-19): 순위 신호 정렬이 실제로 동작한다
+    assertThat(SearchRules.sort("POPULAR")).isEqualTo(SearchRules.Sort.POPULAR);
+    assertThat(SearchRules.sort("RATING")).isEqualTo(SearchRules.Sort.RATING);
+    assertThat(SearchRules.sort("REVIEW_COUNT")).isEqualTo(SearchRules.Sort.REVIEW_COUNT);
+    assertThat(SearchRules.sort("DISCOUNT")).isEqualTo(SearchRules.Sort.RELEVANCE);
     assertThat(SearchRules.sort(null)).isEqualTo(SearchRules.Sort.RELEVANCE);
   }
 
