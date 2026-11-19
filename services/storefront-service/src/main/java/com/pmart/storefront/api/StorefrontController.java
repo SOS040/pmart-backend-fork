@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 계약 StorefrontApi — 기본 진열(layoutVersion 0: HOME 탭, "전체 상품" 섹션 하나). 진열 편성·배너 승인 전이라 배너는 비어 있고
- * RANKING·NEW 탭은 아직 없다(404). 취급 여부(carried)는 MFC 취급 사건이 없어 불명(null).
+ * RANKING·NEW 탭은 아직 없다(404). mfcId 를 주면 그 센터 미취급 상품은 빼고 carried=true(0.2.0, BR-49), 없으면 null.
  */
 @RestController
 public class StorefrontController implements StorefrontApi {
@@ -42,7 +42,7 @@ public class StorefrontController implements StorefrontApi {
     if (tab != null && tab != TabKey.HOME) {
       throw tabNotConfigured(tab);
     }
-    return ResponseEntity.ok(home());
+    return ResponseEntity.ok(home(mfcId));
   }
 
   @Override
@@ -50,7 +50,7 @@ public class StorefrontController implements StorefrontApi {
     if (tabKey != TabKey.HOME) {
       throw tabNotConfigured(tabKey);
     }
-    return ResponseEntity.ok(home());
+    return ResponseEntity.ok(home(mfcId));
   }
 
   @Override
@@ -71,11 +71,12 @@ public class StorefrontController implements StorefrontApi {
           false,
           List.of());
     }
-    StorefrontQueries.Page page = page(cursor, size);
+    StorefrontQueries.Page page = page(mfcId, cursor, size);
+    boolean filtered = mfcId != null && !mfcId.isBlank();
     return ResponseEntity.ok(
         new ListSectionItems200Response()
             .sectionId(sectionId)
-            .items(page.items().stream().map(StorefrontController::item).toList())
+            .items(page.items().stream().map(i -> item(i, filtered)).toList())
             .page(
                 new ListSectionItems200ResponsePage()
                     .nextCursor(page.nextCursor())
@@ -89,8 +90,9 @@ public class StorefrontController implements StorefrontApi {
         new ListBanners200Response().layoutVersion(DefaultLayout.VERSION).items(List.of()));
   }
 
-  private HomeLayout home() {
-    StorefrontQueries.Page page = page(null, DefaultLayout.FIRST_PAGE);
+  private HomeLayout home(@Nullable String mfcId) {
+    StorefrontQueries.Page page = page(mfcId, null, DefaultLayout.FIRST_PAGE);
+    boolean filtered = mfcId != null && !mfcId.isBlank();
     Section all =
         new Section()
             .sectionId(DefaultLayout.SECTION_ID)
@@ -98,7 +100,7 @@ public class StorefrontController implements StorefrontApi {
             .title(DefaultLayout.TITLE)
             .subtitle(DefaultLayout.SUBTITLE)
             .state(Section.StateEnum.OK)
-            .items(page.items().stream().map(StorefrontController::item).toList())
+            .items(page.items().stream().map(i -> item(i, filtered)).toList())
             .nextCursor(page.nextCursor())
             .viewAllRef(DefaultLayout.VIEW_ALL_REF)
             .asOf(asOf(page.asOf()));
@@ -110,15 +112,16 @@ public class StorefrontController implements StorefrontApi {
         .sections(List.of(all));
   }
 
-  private StorefrontQueries.Page page(@Nullable String cursor, int size) {
+  private StorefrontQueries.Page page(@Nullable String mfcId, @Nullable String cursor, int size) {
     try {
-      return queries.sectionPage(cursor, size);
+      return queries.sectionPage(mfcId, cursor, size);
     } catch (IllegalArgumentException e) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "잘못된 커서입니다. 처음부터 다시 조회하세요.");
     }
   }
 
-  private static DisplayItem item(Item i) {
+  /** filtered = mfcId 로 미취급을 뺐다 → 남은 것은 취급(true). 아니면 판정 안 함(null). */
+  private static DisplayItem item(Item i, boolean filtered) {
     return new DisplayItem()
         .productId(i.productId())
         .name(i.name())
@@ -127,7 +130,7 @@ public class StorefrontController implements StorefrontApi {
         .basePrice(i.basePrice() == null ? null : Math.toIntExact(i.basePrice()))
         .priceVersion(i.priceVersion())
         .saleState(DisplayItem.SaleStateEnum.fromValue(i.saleState()))
-        .carried(null)
+        .carried(filtered ? Boolean.TRUE : null)
         .badge(DisplayItem.BadgeEnum.NONE);
   }
 

@@ -91,7 +91,9 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
 
   void send(String type, String id, long version, Map<String, Object> payload) {
     String topic =
-        type.equals("PriceVersionEffective") ? "commerce.pricing.v1" : "commerce.product.v1";
+        type.equals("PriceVersionEffective")
+            ? "commerce.pricing.v1"
+            : type.equals("SkuHandlingChanged") ? "mfc.sku-handling.v1" : "commerce.product.v1";
     kafka
         .send(
             topic,
@@ -99,7 +101,11 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
             EventEnvelopeFixtures.envelope(type)
                 .from("it")
                 .aggregate(
-                    type.equals("PriceVersionEffective") ? "PriceVersion" : "Product", id, version)
+                    type.equals("PriceVersionEffective")
+                        ? "PriceVersion"
+                        : type.equals("SkuHandlingChanged") ? "SkuHandling" : "Product",
+                    id,
+                    version)
                 .payload(payload)
                 .buildJson())
         .join();
@@ -359,5 +365,83 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
       Thread.sleep(300);
     }
     throw new AssertionError(productId + " 판매 상태가 " + state + " 가 되지 않음");
+  }
+
+  void handling(String mfcId, String sku, boolean enabled, int version) {
+    send(
+        "SkuHandlingChanged",
+        mfcId + ":" + sku,
+        version,
+        Map.of(
+            "mfcId", mfcId,
+            "sku", sku,
+            "handlingEnabled", enabled,
+            "version", version,
+            "changedAt", "2026-11-19T00:0" + version + ":00Z"));
+  }
+
+  /**
+   * BR-49(0.2.0, 2026-11-19): mfcId 를 주면 그 센터가 대표 SKU 를 취급하지 않는 상품은 뺀다 — 남은 것은 carried=true, 늦게 온 옛
+   * version 은 무시, 모르는 센터는 빈 섹션(생략 안 함)·다음 커서 없음, mfcId 없으면 거르지 않고 carried=null.
+   */
+  @Test
+  void centerHidesNotCarriedProducts() throws Exception {
+    card("PRD-C1", "[시험] 취급 상품", 1);
+    card("PRD-C2", "[시험] 미취급 상품", 1);
+    product("PRD-C1", 1, "E-C1");
+    published("PRD-C1", 1, "2026-10-01T00:01:00Z"); // 다른 시험(최근 게시 순)보다 뒤로
+    product("PRD-C2", 1, "E-C2");
+    published("PRD-C2", 1, "2026-10-01T00:02:00Z");
+    handling("MFC-T", "E-C1", true, 1);
+    handling("MFC-T", "E-C2", true, 1);
+    handling("MFC-T", "E-C2", false, 2); // 꺼짐
+    handling("MFC-T", "E-C2", true, 1); // 늦게 온 옛 사건 — 무시
+    String path = "/storefront/sections/S-ALL/items?layoutVersion=0&size=50&mfcId=MFC-T";
+    JsonNode page = get(path);
+    for (int i = 0;
+        i < 100 && !(ids(page.path("items")).contains("PRD-C1") && page.path("items").size() >= 1);
+        i++) {
+      Thread.sleep(300);
+      page = get(path);
+    }
+    Thread.sleep(1500); // 꺼짐·옛 사건까지 반영
+    page = get(path);
+    assertThat(ids(page.path("items"))).contains("PRD-C1").doesNotContain("PRD-C2");
+    page.path("items").forEach(i -> assertThat(i.path("carried").asBoolean()).isTrue());
+
+    JsonNode unknown = get("/storefront/home?mfcId=MFC-NONE");
+    JsonNode section = unknown.path("sections").path(0);
+    assertThat(section.path("sectionId").asString()).as("섹션은 생략하지 않는다").isEqualTo("S-ALL");
+    assertThat(section.path("items")).isEmpty();
+    assertThat(section.path("nextCursor").isNull() || section.path("nextCursor").isMissingNode())
+        .isTrue();
+
+    JsonNode all = get("/storefront/sections/S-ALL/items?layoutVersion=0&size=50");
+    assertThat(ids(all.path("items"))).contains("PRD-C1", "PRD-C2");
+    all.path("items")
+        .forEach(
+            i ->
+                assertThat(i.path("carried").isNull() || i.path("carried").isMissingNode())
+                    .isTrue());
+    // 같은 DB 를 쓰는 다른 시험(전체 진열 순서·쪽)에 섞이지 않게 판매중지로 치운다
+    for (String id : List.of("PRD-C1", "PRD-C2")) {
+      send(
+          "ProductSaleStateChanged",
+          id,
+          2,
+          Map.of(
+              "productId",
+              id,
+              "sku",
+              id.equals("PRD-C1") ? "E-C1" : "E-C2",
+              "state",
+              "DISCONTINUED",
+              "effectiveAt",
+              "2026-11-19T06:00:00Z"));
+    }
+    String allPath = "/storefront/sections/S-ALL/items?layoutVersion=0&size=50";
+    for (int i = 0; i < 100 && ids(get(allPath).path("items")).contains("PRD-C1"); i++) {
+      Thread.sleep(300);
+    }
   }
 }

@@ -118,7 +118,7 @@
 | `InventoryExecutionApplied` | mfc-inventory | **mfc-inbound(자동 보충 즉시 점검, 2026-11-08)**, mfc-fulfillment(예정), mfc-quality(예정) | requestId, commitId, executionType, appliedQty, result | 작업 실행 반영 결과 — 성공만 발행(2026-11-08), 거절은 동기 응답 | ① |
 | `StockAdjusted` | mfc-inventory | approval, audit, replenishment | adjId, lines[], approvalRef | 실사 ADJ | ② |
 | `MfcStockAvailable` | mfc-inventory | notification(재입고 알림) | mfcId, sku, availableQty | 정상 판정·판매 준비 후 A>0 전환 | ③ |
-| `SkuHandlingChanged` | mfc-inventory | search(Logstash — 상품 carriedMfcIds) | mfcId, sku, productId?, handlingEnabled, version, changedAt, republished? | 센터 취급 ON/OFF 변경(바뀔 때만). 토픽 `mfc.sku-handling.v1`(무제한 보관 — 재색인 재생). `/internal/sku-handling-republications` 가 지금 상태를 같은 버전으로 다시 알림 (2026-11-05) | ① |
+| `SkuHandlingChanged` | mfc-inventory | search(Logstash — 상품 carriedMfcIds), storefront(2026-11-19 BR-49 — mfcId 진열에서 미취급 빼기, sku_handling 사본) | mfcId, sku, productId?, handlingEnabled, version, changedAt, republished? | 센터 취급 ON/OFF 변경(바뀔 때만). 토픽 `mfc.sku-handling.v1`(무제한 보관 — 재색인 재생). `/internal/sku-handling-republications` 가 지금 상태를 같은 버전으로 다시 알림 (2026-11-05) | ① |
 | `WorkAccepted` / `WorkRejected` | mfc-fulfillment | order-orchestration(6a 는 동기 응답으로 진행, 사건은 기록) | orderId, fulfillmentId, workVersion, sagaId, taskIds[], rejectReason?·retryable? | ConfirmOrder 결과(수락≠완료). 거절 사유 WorkRejectReason | ① |
 | `PreparationStarted` | mfc-fulfillment | order, delivery-dispatch(준비 예상) | orderId, fulfillmentId, startedAt, estimatedPackDuration | 실제 준비 시작 확정 | ① |
 | `LineShortageReported` | mfc-fulfillment | order-orchestration, case(동의 없음 시), mfc-quality(파손) | orderId, orderLineId, shortQty, reason(SHORT/DAMAGED/BLOCKED), alreadyHandedOverQty | 피킹 결품·파손 | ① |

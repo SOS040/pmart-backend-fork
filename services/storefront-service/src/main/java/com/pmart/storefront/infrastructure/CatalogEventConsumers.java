@@ -20,4 +20,13 @@ class CatalogEventConsumers {
   PmartEventConsumer catalogEvents(EventConsumers consumers, DisplayProjector projector) {
     return consumers.of(projector::apply);
   }
+
+  /**
+   * mfc.sku-handling.v1 — 바인딩 handlingEvents-in-0(설정 저장소, 2026-11-19 BR-49). 새 그룹은 처음부터(earliest)
+   * 읽어 사본을 채운다.
+   */
+  @Bean
+  PmartEventConsumer handlingEvents(EventConsumers consumers, DisplayProjector projector) {
+    return consumers.of(projector::applyHandling);
+  }
 }

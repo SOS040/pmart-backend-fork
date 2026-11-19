@@ -24,10 +24,16 @@ public class StorefrontQueries {
   }
 
   public Page sectionPage(@Nullable String cursor, int size) {
+    return sectionPage(null, cursor, size);
+  }
+
+  /** mfcId 가 있으면 그 센터 미취급 상품은 뺀다(BR-49). 비면 빈 쪽·다음 커서 없음. */
+  public Page sectionPage(@Nullable String mfcId, @Nullable String cursor, int size) {
+    String center = mfcId == null || mfcId.isBlank() ? null : mfcId.strip();
     int offset = DefaultLayout.offset(cursor);
-    List<Item> items = store.latest(offset, size);
+    List<Item> items = store.latest(center, offset, size);
     String next =
-        items.size() == size && offset + size < store.countDisplayable()
+        items.size() == size && offset + size < store.countDisplayable(center)
             ? DefaultLayout.cursor(offset + size)
             : null;
     Instant asOf = store.lastUpdated();

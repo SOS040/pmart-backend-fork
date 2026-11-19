@@ -136,12 +136,47 @@ public class DisplayStore {
           + " WHERE p.name IS NOT NULL AND p.product_version IS NOT NULL"
           + " AND COALESCE(p.sale_state, 'ON_SALE') <> 'SALE_STOPPED'";
 
+  /** 센터 취급 사본(BR-49, V4) — version 이 더 큰 사건만 반영(재발행·늦게 온 사건은 무시). */
+  public void upsertHandling(
+      String mfcId, String sku, boolean enabled, int version, Instant changedAt) {
+    jdbc.update(
+        "INSERT INTO sku_handling (mfc_id, sku, handling_enabled, version, changed_at) VALUES (?,?,?,?,?)"
+            + " ON CONFLICT (mfc_id, sku) DO UPDATE SET handling_enabled = EXCLUDED.handling_enabled,"
+            + " version = EXCLUDED.version, changed_at = EXCLUDED.changed_at"
+            + " WHERE sku_handling.version < EXCLUDED.version",
+        mfcId,
+        sku,
+        enabled,
+        version,
+        Timestamp.from(changedAt));
+  }
+
+  /** mfcId 가 있으면 그 센터가 대표 SKU 를 취급하는 상품만(BR-49 — 레코드 없음 = 취급 안 함). */
+  private static String carriedAt(@Nullable String mfcId) {
+    return mfcId == null
+        ? ""
+        : " AND EXISTS (SELECT 1 FROM sku_handling h WHERE h.mfc_id = ? AND h.sku = p.representative_sku"
+            + " AND h.handling_enabled)";
+  }
+
   /** 진열 가능한 상품(게시 콘텐츠·상품 버전 있음, 판매중지 아님) 최신 게시 순. */
   public List<Item> latest(int offset, int limit) {
+    return latest(null, offset, limit);
+  }
+
+  /** mfcId 가 있으면 그 센터 미취급 상품은 뺀다(BR-49). */
+  public List<Item> latest(@Nullable String mfcId, int offset, int limit) {
+    List<Object> args = new java.util.ArrayList<>();
+    if (mfcId != null) {
+      args.add(mfcId);
+    }
+    args.add(offset);
+    args.add(limit);
     return jdbc.query(
         "SELECT p.product_id, p.name, p.image_url, p.representative_sku, s.price, s.price_version,"
             + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state"
             + DISPLAYABLE
+            + carriedAt(mfcId)
             + " ORDER BY p.content_published_at DESC NULLS LAST, p.product_id OFFSET ? LIMIT ?",
         (rs, i) ->
             new Item(
@@ -152,12 +187,19 @@ public class DisplayStore {
                 rs.getObject("price", Long.class),
                 rs.getObject("price_version", Integer.class),
                 rs.getString("sale_state")),
-        offset,
-        limit);
+        args.toArray());
   }
 
   public int countDisplayable() {
-    Integer n = jdbc.queryForObject("SELECT COUNT(*)" + DISPLAYABLE, Integer.class);
+    return countDisplayable(null);
+  }
+
+  public int countDisplayable(@Nullable String mfcId) {
+    Integer n =
+        mfcId == null
+            ? jdbc.queryForObject("SELECT COUNT(*)" + DISPLAYABLE, Integer.class)
+            : jdbc.queryForObject(
+                "SELECT COUNT(*)" + DISPLAYABLE + carriedAt(mfcId), Integer.class, mfcId);
     return n == null ? 0 : n;
   }
 

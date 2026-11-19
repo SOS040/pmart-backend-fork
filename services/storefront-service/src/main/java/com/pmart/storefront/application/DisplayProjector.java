@@ -30,6 +30,29 @@ public class DisplayProjector {
     this.clock = clock;
   }
 
+  /**
+   * mfc.sku-handling.v1 SkuHandlingChanged(BR-49) — 센터 취급 사본. 재발행(republished)도 같은 규칙(version 이 같으면
+   * 바뀌지 않음).
+   */
+  public void applyHandling(EventEnvelope e) {
+    if (!"SkuHandlingChanged".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String mfcId = p.path("mfcId").asString(null);
+    String sku = p.path("sku").asString(null);
+    if (mfcId == null || sku == null) {
+      log.warn("SkuHandlingChanged {} 에 센터·SKU 가 없다 — 건너뜀", e.eventId());
+      return;
+    }
+    store.upsertHandling(
+        mfcId,
+        sku,
+        p.path("handlingEnabled").asBoolean(false),
+        p.path("version").asInt(0),
+        at(p.path("changedAt"), e));
+  }
+
   public void apply(EventEnvelope e) {
     JsonNode p = e.payload();
     switch (e.eventType()) {
