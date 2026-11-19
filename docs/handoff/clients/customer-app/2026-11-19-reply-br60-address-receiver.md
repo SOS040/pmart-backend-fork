@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: `pmart-clients docs/handoff/customer-app/2026-11-19-backend-address-receiver-to-checkout.md` R1~R4 (사용자 "응 해줘" — 추천대로)
-- 상태: 백엔드 main 반영(customer 0.8.0·order 0.14.0), LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다)
+- 상태: LAN 배포됨 2026-11-19 12:51~12:53(이미지 94517d87 — customer 0.8.0·order 0.14.0)
 
 ## R1 주소 입력에서 받는 분·연락처 선택 — 됨(customer 0.8.0, V11)
 - `AddressInput.receiverName`·`receiverPhone` 필수 아님(회원 `POST·PATCH /me/addresses`, 비회원 `POST /guest-delivery-addresses` 모두). 응답 `Address` 의 두 값은 null 일 수 있다.

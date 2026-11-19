@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: `pmart-clients docs/handoff/hr-backoffice/2026-11-19-backend-hr-dashboard.md` (사용자 "응 해줘" — 추천대로)
-- 상태: 백엔드 main 반영(hr-service 0.9.0, 마이그레이션 없음), LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다). 둘 다 `HR_ADMIN` 만(아니면 403).
+- 상태: LAN 배포됨 2026-11-19(이미지 94517d87 — hr-service 0.9.0, 마이그레이션 없음). 둘 다 `HR_ADMIN` 만(아니면 403).
 
 ## H-D1 직원 목록 거르기 — `GET /hr/employees`
 | 쿼리 | 뜻 |
