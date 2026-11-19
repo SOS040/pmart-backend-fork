@@ -79,3 +79,5 @@
 - **DD-5 제안 조회 간격(2026-11-19, 0.12.2)**: `GET /offers` 의 `pollAfterSec` 를 null 로 주지 않는다 — 제안이 있거나 받을 수 있으면 `poll-after-sec`(5), 못 받는 상태·rider 조회 실패면 `idle-poll-after-sec`(30).
 
 - **배정 사건 묶음 순서(2026-11-19, DE-6)**: DeliveryAssigned 에 bundleId·stopSequence(묶음 배정일 때).
+
+- **DD-4 정시 배송률(2026-11-19, 0.13.0·V15)**: `GET /metrics/on-time-deliveries?from&to&mfcId`(`OnTimeMetrics`) — 약속 끝(promised_at) KST 날짜·센터별 onTime·late(약속 지났는데 정시 아님 — 전달 전·실패 포함)·unjudged(CUSTOMER_CONFIRMED·AUTO_COMPLETED — `completion_method` 사본)·pending, due = onTime + late. FORWARD·RESHIPMENT, 주문 취소 제외. OPERATOR_ADMIN 모든 센터, 그 밖 mfcId.

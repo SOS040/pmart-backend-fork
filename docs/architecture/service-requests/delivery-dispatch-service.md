@@ -91,7 +91,7 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **요청 모양**(예 — 경로·이름은 받는 PC 가 정한다): `GET /api/v1/metrics/on-time-deliveries?from=&to=&mfcId=` → 날짜·센터별 `due`(분모)·`onTime`(분자)·`unjudged`·`asOf`. 직원 토큰(본사 관리자 모든 센터).
 - **받는 쪽(backoffice)**: bff `views/metrics?metric=ON_TIME_DELIVERY` 를 이 수로 채운다.
 - 급함: 낮음(운영 참고 지표).
-- **상태**: 결정됨(2026-11-19) — **PC 5 구현 차례**.
+- **상태**: 구현(2026-11-19 PC 5, dispatch 0.13.0·V15) — `GET /metrics/on-time-deliveries?from&to&mfcId` → 날짜·센터별 due·onTime·late·unjudged·pending. 약속 끝 = promised_at(한집·알뜰은 확정 + 50분, 예약은 시간대 끝). 판정 불가 = 고객 수령 확인·자동 완료(라이더 실제 전달 시각이 따로 없음 — 그 둘은 실제 전달 시각이 기록되지 않는다).
 
 ## DD-5. 제안 조회 `pollAfterSec: null` 이면 라이더 앱이 조회를 영영 멈춤 → 첫 제안을 놓쳐 13분 지연 (2026-11-18, 보낸 영역 mfc — PC 3)
 - **구현(2026-11-19, dispatch 0.12.2 — PC 5)**: `pollAfterSec` 를 null 로 주지 않음 — 제안이 있거나 받을 수 있으면 5초, 못 받는 상태·rider 조회 실패면 `idle-poll-after-sec` 30초. 재요청 간격(LAN 10분)은 그대로.
