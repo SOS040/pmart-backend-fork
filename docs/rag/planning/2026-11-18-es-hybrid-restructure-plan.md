@@ -1,7 +1,10 @@
 # RAG 구조 개편 계획 — Elasticsearch 하이브리드 검색 + 1,024토큰 청킹
 
+> **취소(2026-11-19 사용자 "개편 일단 취소할거야")** — 이 개편(RAG 전용 Elasticsearch 하이브리드 검색·1,024토큰 청킹)은 하지 않는다. 지금 구현(pgvector)을 그대로 쓴다. 이 문서는 기록으로만 남긴다(다시 하게 되면 새 날짜 문서로).
+
+
 - 작성: 2026-11-18, PC 4 (RAG 영역)
-- 상태: **계획만 세운 상태. 코드·설정·배포는 아무것도 바꾸지 않았다.**
+- 상태: **취소(2026-11-19 사용자)** — 계획만 세운 상태에서 멈춤. 코드·설정·배포는 아무것도 바꾸지 않았다.
 - 기준: `origin/main` `674ce5ac`
 - 갱신(2026-11-18): **유료 기능 제외.** ES 8.18.0 Basic에서 실제로 호출해 보고 거부된 기능(RRF·linear retriever, `text_similarity_reranker`, inference API, ML 모델)을 계획에서 뺐고, 각각 무료 대체안을 적었다(Q1·Q2). 확인 기록은 [`../verification/2026-11-18/es-basic-license-check.md`](../verification/2026-11-18/es-basic-license-check.md).
 
