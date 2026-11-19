@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-19, 고객 앱 BR-66 — 사용자 "라이더 쪽 콜백중계도 해줘"): 네이버 로그인 콜백 중계 `GET /auth/oauth-callbacks/naver/customer`·`…/rider`.
+    네이버는 콘솔에 등록한 웹 주소로만 인가 코드를 돌려주는데 우리는 도메인이 없어, 받은 쿼리를 **바꾸지 않고** 고정된 앱 주소로 302 한다
+    (고객 `com.pmart.customer://oauth/naver`, 라이더 `com.pmart.rider://oauth/naver`). 서버는 코드를 토큰으로 바꾸지 않고 저장·기록하지 않는다(교환은 앱이 PKCE 로).
     0.4.0(2026-11-19, ADR-0071 — 사용자 "고객 구글 로그인 흐름처럼 카카오랑 네이버도"): `POST /auth/social-logins` 가 provider **KAKAO·NAVER** 도 받는다 —
     Google 과 같은 방식(앱이 받은 OpenID Connect ID 토큰을 providerToken 으로, 서버는 제공자 공개키로 iss·aud·만료·서명 검증, 비밀값 없음).
     카카오 aud = 앱이 카카오 SDK 초기화에 쓴 앱 키(콘솔에서 OpenID Connect 활성화), 네이버 aud = 애플리케이션 Client ID(scope openid). APPLE 은 501 UNSUPPORTED_ACTION.
@@ -259,6 +262,44 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /auth/oauth-callbacks/naver/customer:
+    get:
+      tags: [oauth-callbacks]
+      summary: '네이버 로그인 콜백 중계 — customer 앱으로 302 (0.5.0)'
+      description: |
+        네이버 콘솔 Callback URL 에 이 주소를 넣는다. 받은 쿼리 문자열(code·state 또는 error·error_description)을 **그대로** `com.pmart.customer://oauth/naver?<같은 쿼리>` 로 302.
+        넘길 곳은 고정(쿼리로 목적지를 받지 않는다 — 열린 리다이렉트 없음). 코드를 쓰거나 저장·로그하지 않는다. 쿼리가 4096자를 넘으면 400.
+      operationId: naverCallbackCustomer
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string }, description: '인가 코드(그대로 넘김, 로그 금지)' }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+        - { name: error_description, in: query, schema: { type: string } }
+      responses:
+        '302':
+          description: '앱 주소로 넘김(Location = com.pmart.customer://oauth/naver?…, Cache-Control no-store)'
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /auth/oauth-callbacks/naver/rider:
+    get:
+      tags: [oauth-callbacks]
+      summary: '네이버 로그인 콜백 중계 — rider 앱으로 302 (0.5.0)'
+      description: |
+        네이버 콘솔 Callback URL 에 이 주소를 넣는다. 받은 쿼리 문자열(code·state 또는 error·error_description)을 **그대로** `com.pmart.rider://oauth/naver?<같은 쿼리>` 로 302.
+        넘길 곳은 고정(쿼리로 목적지를 받지 않는다 — 열린 리다이렉트 없음). 코드를 쓰거나 저장·로그하지 않는다. 쿼리가 4096자를 넘으면 400.
+      operationId: naverCallbackRider
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string }, description: '인가 코드(그대로 넘김, 로그 금지)' }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+        - { name: error_description, in: query, schema: { type: string } }
+      responses:
+        '302':
+          description: '앱 주소로 넘김(Location = com.pmart.rider://oauth/naver?…, Cache-Control no-store)'
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /auth/tokens:
     post:

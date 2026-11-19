@@ -29,6 +29,8 @@ GET /api/v1/assistant/policy-questions/{answerId} OPERATOR
 GET /api/v1/assistant/question-history OPERATOR
 GET /api/v1/audit-entries OPERATOR
 GET /api/v1/audit-entries/{auditEntryId} OPERATOR
+GET /api/v1/auth/oauth-callbacks/naver/customer PUBLIC
+GET /api/v1/auth/oauth-callbacks/naver/rider PUBLIC
 GET /api/v1/auth/sessions/current CUSTOMER,GUEST,OPERATOR
 GET /api/v1/auth/social-logins/{authRequestId} PUBLIC
 GET /api/v1/backoffice/commands/{targetService}/{command}/{requestId} OPERATOR

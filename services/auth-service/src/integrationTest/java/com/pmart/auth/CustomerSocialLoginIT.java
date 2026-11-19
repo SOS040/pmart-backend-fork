@@ -334,6 +334,62 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
     assertThat(apple.status()).isEqualTo(501);
   }
 
+  /** 네이버 콜백 중계(0.5.0, 2026-11-19 BR-66): 쿼리를 바꾸지 않고 고정 앱 주소로 302, 캐시 금지, 토큰 없이, 너무 긴 쿼리 400. */
+  @Test
+  void naverCallbackRelaysQueryToFixedAppAddress() throws Exception {
+    var client =
+        java.net.http.HttpClient.newBuilder()
+            .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+            .build();
+    String q = "code=a%2Bb%3D%3D&state=xY_-9.~";
+    for (var c :
+        List.of(
+            List.of("customer", "com.pmart.customer://oauth/naver"),
+            List.of("rider", "com.pmart.rider://oauth/naver"))) {
+      var res =
+          client.send(
+              java.net.http.HttpRequest.newBuilder(
+                      java.net.URI.create(
+                          "http://localhost:"
+                              + port
+                              + "/api/v1/auth/oauth-callbacks/naver/"
+                              + c.get(0)
+                              + "?"
+                              + q))
+                  .GET()
+                  .build(),
+              java.net.http.HttpResponse.BodyHandlers.discarding());
+      assertThat(res.statusCode()).isEqualTo(302);
+      assertThat(res.headers().firstValue("Location")).hasValue(c.get(1) + "?" + q);
+      assertThat(res.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+    }
+    var error =
+        client.send(
+            java.net.http.HttpRequest.newBuilder(
+                    java.net.URI.create(
+                        "http://localhost:"
+                            + port
+                            + "/api/v1/auth/oauth-callbacks/naver/customer?error=access_denied&error_description=Canceled+By+User"))
+                .GET()
+                .build(),
+            java.net.http.HttpResponse.BodyHandlers.discarding());
+    assertThat(error.headers().firstValue("Location"))
+        .hasValue(
+            "com.pmart.customer://oauth/naver?error=access_denied&error_description=Canceled+By+User");
+    var tooLong =
+        client.send(
+            java.net.http.HttpRequest.newBuilder(
+                    java.net.URI.create(
+                        "http://localhost:"
+                            + port
+                            + "/api/v1/auth/oauth-callbacks/naver/customer?code="
+                            + "a".repeat(4100)))
+                .GET()
+                .build(),
+            java.net.http.HttpResponse.BodyHandlers.discarding());
+    assertThat(tooLong.statusCode()).isEqualTo(400);
+  }
+
   @Test
   void rejectedTokensRestrictTheDeviceAndRestrictionDoesNotExtend() {
     String device = "phone-" + UUID.randomUUID();
