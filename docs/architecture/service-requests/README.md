@@ -120,7 +120,7 @@
 | [DE-6](delivery-execution-service.md) | delivery-execution | PC 5 | notification(고객 앱 알림) | 묶음 배달 다음 차례 사건 `DeliveryHeadingToCustomer`(delivery.delivery.v1). 받는 쪽은 PC 1 이 만들어 둠 | 결정됨(2026-11-19 사용자 "응 해줘") | **구현·LAN 배포**(2026-11-19 execution V23 #245) |
 | [DE-7](delivery-execution-service.md) | delivery-execution | PC 5 | backoffice(PC 2) | 배송 확인 목록 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | **구현·LAN 배포**(2026-11-19 execution 0.33.0 GET /deliveries/counts #246, bff 지금 일 건수 #248) |
 | [RS-6](rider-service.md) | rider(·execution·tracking) | PC 5 | rider-backoffice | 운행 시작·대기 시간 — 운행 구간 기록, onDutySince·waitingSince, 오늘 합계(대기 = 운행 중·진행 중 배송 0건, 신규배차 꺼짐 제외) | 요청(2026-11-18, 대기 뜻 사용자 확인) | — |
-| [RS-MFC](rider-service.md) | rider | PC 5 | mfc-backoffice·mfc-app(PC 3) | MFC 직원(MFC_SUPERVISOR·MFC_WORKER)이 라이더 화면 표기(가린 이름 · 라이더 번호)만 묶음으로 보기(ADR-0070) | 요청(2026-11-19 PC 3 #242) | 대기(PC 5) |
+| [RS-MFC](rider-service.md) | rider | PC 5 | mfc-backoffice·mfc-app(PC 3) | MFC 직원(MFC_SUPERVISOR·MFC_WORKER)이 라이더 화면 표기(가린 이름 · 라이더 번호)만 묶음으로 보기(ADR-0070) | 결정됨(사용자 승인 2026-11-20) | **구현·LAN 배포**(2026-11-20 PC 5 #261, rider 0.18.0 `GET /riders/display-names` — 번호·가린 이름만, 찾기·상세는 그대로 403) |
 | [AI-1](ai-assistant-service.md) | ai-assistant | PC 4 | backoffice(PC 2) | 업무 도우미 질문 원문 저장(`store-question` 켬) — 보존 90일(답변과 같이), 본인만 보기, 본인 지우기 API | 결정됨(2026-11-19 사용자 "추천대로", #226) | 대기(PC 4) |
 | [PD-1](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 조회 목록 판매 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [PD-2](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 초안 목록 — "등록 진행 중" 탭 | 요청(2026-11-19 PC 2 #253) | 대기(PC 1) |
