@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 근거: 사용자 2026-11-19 "레퍼런스 이미지 참고해서 상품준비·배송시작 등 구현되어 있는지 확인" → 확인 결과(아래 표) → "응 해줘"
-- 상태: 백엔드 main 반영(notification 0.5.1·order 0.14.1), LAN 배포는 사용자 승인 뒤. **3-3·3-4 는 delivery(PC 5) 사건이 나와야 보인다**(요청 DE-6·TR-4).
+- 상태: LAN 배포됨 2026-11-19 14:08~14:11(이미지 26aa0f2b — notification 0.5.2·order 0.14.1, pmart-config 1dede52). **3-3·3-4 는 delivery(PC 5) 사건이 나와야 보인다**(요청 DE-6·TR-4).
 
 | 레퍼런스 | templateKey | 제목 | 휴대폰 푸시 | 누르면(destination) |
 |---|---|---|---|---|
