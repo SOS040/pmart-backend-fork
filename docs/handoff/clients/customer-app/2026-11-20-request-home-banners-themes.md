@@ -28,4 +28,5 @@ RANKING·NEW 탭에는 배너·테마가 붙지 않는다.
 할인율·쿠폰·특가 표시. 배너 노출 통계.
 
 ## 배포 상태
-- 백엔드 구현·시험 끝. LAN 배포는 사용자 승인 뒤, 실제 배너는 백오피스 편성 화면이 생기고 승인돼야 나온다.
+- **LAN 배포 2026-11-20**(storefront·게이트웨이 6e2f6d8a).
+- LAN 예시 편성 1건이 게시돼 있다(layoutVersion 1): 배너 `B-WINTER-VEG`(HOME_TOP, SECTION → `T-WINTER-VEG`), 테마 `T-WINTER-VEG` "겨울 제철 채소"(SEASON, 상품 6개). 화면 확인에 쓰면 된다.

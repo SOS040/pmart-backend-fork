@@ -22,7 +22,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
   - 2순위 ~~④ ES 호출 지표·응답 시간 히스토그램~~(2026-11-19 밤 구현) ⑤ PC 3 ES·Logstash 메모리 97% — 확인함(OOM 없음·힙 밖 캐시), 한도 2GiB 로 올릴지 사용자 결정
   - 3순위 ⑥ `_source` 칸 제한 ⑦ 앱 첫 쪽 size 50→20(고객 앱 몫) ⑧ track_total_hits·search_after·1글자 조각은 규모 커지면 다시 ⑨ includeNotCarried 쓰지 않는 분기 정리
 
-- [ ] **홈 화면 프로모션**(2026-11-20) — 범위 정함(사용자 "탭 + 배너·테마", ADR-0075), 탭·배너·테마 구현함. 남은 것: LAN 배포(승인)·탭 정책값(new-window-days·ranking-size, 사용자 결정)·백오피스 편성 화면·고객 앱 배너. 옛 메모: 1 랭킹·신상품 탭 → 2 일반 배너·테마(BO-05) → 3 할인·쿠폰(1차 제외 — 사용자 결정) 중 무엇부터인지. 지금 홈 상태·근거: `docs/operations/2026-11-20-pending-identity-switch-and-home-promotion.md` §2.
+- [ ] **홈 화면 프로모션**(2026-11-20) — 범위 정함(사용자 "탭 + 배너·테마", ADR-0075), 탭·배너·테마 구현·LAN 배포(6e2f6d8a, 예시 편성 layoutVersion 1). 남은 것: 탭 정책값(new-window-days·ranking-size, 사용자 결정)·백오피스 편성 화면·고객 앱 배너. 옛 메모: 1 랭킹·신상품 탭 → 2 일반 배너·테마(BO-05) → 3 할인·쿠폰(1차 제외 — 사용자 결정) 중 무엇부터인지. 지금 홈 상태·근거: `docs/operations/2026-11-20-pending-identity-switch-and-home-promotion.md` §2.
 
 ## 2. 어제(11-17) 저녁 목록
 - [x] 1. 역할·센터 섞임 막기 — 253090cc, LAN 배포 11-18
