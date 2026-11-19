@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
+    0.10.0(2026-11-20, ADR-0074 — 고객 BR-64, 사용자 "가입하자마자·한 번호 한 계정·기존 계정 안내·탈퇴 1달", 기존 회원 "(가)"): 가입·로그인 단계 휴대폰 확인을
+    auth-service 가 대신 부르는 내부 API(`/internal/accounts/{id}/identity`·`…/identity-verifications`·`…/{vid}/confirmations`) — 토큰 없는 로그인 중 계정용.
+    확인된 번호는 한 계정만(`customer_identity`, 유효 번호 해시 고유). 다른 계정의 번호면 확인 결과 outcome IDENTITY_ALREADY_REGISTERED(그 계정 ID·가린 이메일 — auth 가
+    제공자·가입일을 붙여 앱에 줌), 탈퇴로 풀린 지 30일(설정) 안의 번호면 IDENTITY_REJOIN_BLOCKED. `/me/phone-verifications` 로 확인해도 같은 번호 규칙(다른 계정 번호면
+    FAILED·PHONE_ALREADY_REGISTERED — 안내 없음). 확인된 번호는 프로필 phone·phoneVerified=true(주문 연락처 기본값).
     0.9.0(2026-11-19, 사용자 "옥토모로" — 휴대폰 번호 확인): `POST /me/phone-verifications`(시작 — 프로필 휴대폰 번호로 인증 문자 본문 발급)·
     `POST /me/phone-verifications/{verificationId}/confirmations`(확인 — 고객이 대표번호로 그 문자를 보냈는지 OCTOMO 로 조회, 맞으면 `phoneVerified=true`)·
     `GET /me/phone-verifications/{verificationId}`. 고객이 문자를 보내는 방식(MO)이라 우리가 문자를 보내지 않는다. 010 11자리만. 번호 소유만 확인 — 이름·나이 확인 아님(주류 성인 확인에 쓰지 않음).
@@ -824,6 +829,88 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /internal/accounts/{accountId}/identity:
+    get:
+      tags: [internal]
+      summary: '[auth→customer] 계정의 확인된 휴대폰 번호가 있는지 (0.10.0, ADR-0074)'
+      description: 로그인마다 auth 가 묻는다(require-identity 켰을 때). 번호는 주지 않는다. 계정이 아직 없으면(가입 전) verified=false.
+      operationId: getAccountIdentityInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accountId, verified]
+                properties:
+                  accountId: { type: string }
+                  verified: { type: boolean }
+                  verifiedAt: { type: [string, 'null'], format: date-time }
+
+  /internal/accounts/{accountId}/identity-verifications:
+    post:
+      tags: [internal]
+      summary: '[auth→customer] 가입·로그인 단계 휴대폰 확인 시작 (0.10.0, ADR-0074)'
+      description: |
+        `/me/phone-verifications` 와 같은 방식(고객이 OCTOMO 대표번호로 숫자 6자리를 보냄 — MO)이지만 번호를 본문으로 받는다(가입 전이라 프로필이 없을 수 있다).
+        010 11자리(하이픈·공백은 뗀다). 이미 확인된 계정이면 409 IDENTITY_ALREADY_VERIFIED. 다른 계정의 번호인지는 **확인이 통과한 뒤에만** 알려 준다(번호만 넣어 남의 가입 여부를 알 수 없게).
+        하루 시작 횟수·유효 시간은 phone-verification 설정과 같다. 같은 Idempotency-Key 는 같은 결과.
+      operationId: startIdentityVerificationInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, description: '확인할 휴대폰 번호(010 11자리)' }
+      responses:
+        '201':
+          description: 시작 — 보낼 문자 본문
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PhoneVerificationStart' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '429':
+          description: TOO_MANY_VERIFICATIONS — 하루 시작 횟수 초과
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/accounts/{accountId}/identity-verifications/{verificationId}/confirmations:
+    post:
+      tags: [internal]
+      summary: '[auth→customer] 가입·로그인 단계 휴대폰 확인 (0.10.0, ADR-0074)'
+      description: |
+        OCTOMO 에 문자가 왔는지 묻는다(끝난 확인은 다시 묻지 않음 — 같은 결과). 왔으면 번호 규칙을 본다:
+        그 번호가 다른 유효 계정의 확인 번호면 state FAILED·outcome IDENTITY_ALREADY_REGISTERED(existingAccountId·existingEmailMasked),
+        탈퇴로 풀린 지 `pmart.customer.identity.rejoin-block` 안이면 FAILED·IDENTITY_REJOIN_BLOCKED(rejoinAvailableAt),
+        아니면 VERIFIED·outcome VERIFIED — 계정의 확인 번호로 남기고 프로필 phone·phoneVerified=true(프로필이 없으면 만든다).
+        아직 문자가 없으면 PENDING(남은 횟수), 기한 지나면 EXPIRED. OCTOMO 장애는 503(시도로 세지 않음).
+      operationId: confirmIdentityVerificationInternal
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+        - { name: verificationId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 확인 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdentityVerificationResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   /internal/accounts/{accountId}/review-author:
     get:
       tags: [internal]
@@ -908,11 +995,29 @@ components:
       properties:
         verificationId: { type: string }
         state: { type: string, enum: [PENDING, VERIFIED, FAILED, EXPIRED] }
-        failureReason: { type: [string, 'null'], enum: [TOO_MANY_ATTEMPTS, PHONE_CHANGED, null] }
+        failureReason: { type: [string, 'null'], enum: [TOO_MANY_ATTEMPTS, PHONE_CHANGED, PHONE_ALREADY_REGISTERED, null], description: 'PHONE_ALREADY_REGISTERED(0.10.0) — 다른 계정의 확인 번호' }
         remainingAttempts: { type: integer, minimum: 0 }
         expiresAt: { type: string, format: date-time }
         phoneMasked: { type: string }
         verifiedAt: { type: [string, 'null'], format: date-time }
+    IdentityVerificationResult:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [verificationId, state, remainingAttempts, expiresAt]
+      properties:
+        verificationId: { type: string }
+        state: { type: string, enum: [PENDING, VERIFIED, FAILED, EXPIRED] }
+        failureReason: { type: [string, 'null'], description: 'TOO_MANY_ATTEMPTS·IDENTITY_ALREADY_REGISTERED·IDENTITY_REJOIN_BLOCKED' }
+        remainingAttempts: { type: integer, minimum: 0 }
+        expiresAt: { type: string, format: date-time }
+        verifiedAt: { type: [string, 'null'], format: date-time }
+        outcome:
+          type: [string, 'null']
+          enum: [VERIFIED, IDENTITY_ALREADY_REGISTERED, IDENTITY_REJOIN_BLOCKED, null]
+          description: 문자가 확인된 뒤의 번호 규칙 결과. 문자가 아직이면 null
+        existingAccountId: { type: [string, 'null'], description: 'IDENTITY_ALREADY_REGISTERED — 그 번호의 계정(auth 가 제공자·가입일을 붙인다. 앱에는 주지 않음)' }
+        existingEmailMasked: { type: [string, 'null'], description: '그 계정의 가린 이메일(예 a***@k***), 없으면 null' }
+        rejoinAvailableAt: { type: [string, 'null'], format: date-time, description: IDENTITY_REJOIN_BLOCKED — 다시 가입할 수 있는 때 }
     OutOfStockPreference:
       type: string
       x-added-in: '2026-11-18'

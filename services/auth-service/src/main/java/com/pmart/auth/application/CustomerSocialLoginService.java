@@ -2,6 +2,7 @@ package com.pmart.auth.application;
 
 import com.pmart.auth.infrastructure.CustomerConsentClient;
 import com.pmart.auth.infrastructure.CustomerConsentClient.ConsentCheck;
+import com.pmart.auth.infrastructure.CustomerIdentityClient;
 import com.pmart.auth.infrastructure.CustomerStore;
 import com.pmart.auth.infrastructure.CustomerStore.AuthRequestRow;
 import com.pmart.auth.infrastructure.IdTokenVerifier;
@@ -52,6 +53,8 @@ public class CustomerSocialLoginService {
 
   private static final String MEMBER = "AUTH_MEMBER";
   private static final String CONSENT = "AUTH_CONSENT";
+  private static final String IDENTITY = "AUTH_IDENTITY";
+  private static final String VERIFY_IDENTITY = "VERIFY_IDENTITY";
 
   private static final Logger log = LoggerFactory.getLogger(CustomerSocialLoginService.class);
 
@@ -69,7 +72,40 @@ public class CustomerSocialLoginService {
       List<String> requiredConsents,
       List<String> optionalConsents,
       String nextAction,
-      Instant occurredAt) {}
+      Instant occurredAt,
+      @Nullable IdentityStatus identity) {
+
+    Result(
+        String authRequestId,
+        String state,
+        @Nullable String accountId,
+        boolean newAccount,
+        SessionTokens.@Nullable Tokens tokens,
+        List<String> requiredConsents,
+        List<String> optionalConsents,
+        String nextAction,
+        Instant occurredAt) {
+      this(
+          authRequestId,
+          state,
+          accountId,
+          newAccount,
+          tokens,
+          requiredConsents,
+          optionalConsents,
+          nextAction,
+          occurredAt,
+          null);
+    }
+  }
+
+  /** 휴대폰 확인 진행 상태(확인을 눌렀는데 아직 끝나지 않음 — ADR-0074). */
+  public record IdentityStatus(
+      String verificationId,
+      String state,
+      @Nullable String failureReason,
+      int remainingAttempts,
+      Instant expiresAt) {}
 
   /** AUTH_RESTRICTED(423). */
   public static class RestrictedException extends RuntimeException {
@@ -101,6 +137,7 @@ public class CustomerSocialLoginService {
   private final EventEnvelopeCodec codec;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final CustomerIdentityClient identities;
 
   public CustomerSocialLoginService(
       CustomerStore customers,
@@ -112,7 +149,9 @@ public class CustomerSocialLoginService {
       EventPublisher events,
       EventEnvelopeCodec codec,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      CustomerIdentityClient identities) {
+    this.identities = identities;
     this.customers = customers;
     this.sessions = sessions;
     this.tokens = tokens;
@@ -159,6 +198,11 @@ public class CustomerSocialLoginService {
                 customers.linkedAccount(provider, identity.subject()).orElse(candidate), deviceId)
             : null;
 
+    // 휴대폰 확인 판단(ADR-0074, 스위치) — 트랜잭션 밖. 가입(연결 없음)은 늘 필요, 기존 계정은 customer 에 확인 번호가 있는지
+    String linkedBefore = customers.linkedAccount(provider, identity.subject()).orElse(null);
+    boolean needsIdentity =
+        props.requireIdentity() && (linkedBefore == null || !identities.verified(linkedBefore));
+
     Result r =
         tx.execute(
             status -> {
@@ -182,7 +226,7 @@ public class CustomerSocialLoginService {
               // 동의 단계에서 나갔던 가입은 다음 로그인도 가입이다(회원이 된 적 없음)
               boolean signup = created || !customers.everMember(accountId);
               boolean needsConsent = check != null && !check.satisfied();
-              String authState = needsConsent ? CONSENT : MEMBER;
+              String authState = needsConsent ? CONSENT : needsIdentity ? IDENTITY : MEMBER;
               String authRequestId = "AR-" + UUID.randomUUID();
               customers.insertRequest(
                   authRequestId,
@@ -208,6 +252,18 @@ public class CustomerSocialLoginService {
                     check.missingRequired(),
                     check.undecidedOptional(),
                     "COMPLETE_CONSENT",
+                    now);
+              }
+              if (needsIdentity) {
+                return new Result(
+                    authRequestId,
+                    IDENTITY,
+                    accountId,
+                    signup,
+                    null,
+                    List.of(),
+                    List.of(),
+                    VERIFY_IDENTITY,
                     now);
               }
               customers.markMember(accountId, now);
@@ -264,6 +320,10 @@ public class CustomerSocialLoginService {
     String accountId = row.accountId();
     boolean pending = CONSENT.equals(row.state());
     boolean replay = MEMBER.equals(row.state()) && idempotencyKey.equals(row.completionKey());
+    if (accountId != null && row.failureCode() == null && IDENTITY.equals(row.state())) {
+      // 동의는 이미 반영됐고 휴대폰 확인이 남음(응답 유실 재시도) — 같은 안내
+      return identityResult(row, now());
+    }
     if (accountId == null || row.failureCode() != null || !(pending || replay)) {
       throw PmartException.invalidState("필수 동의를 기다리는 로그인 요청이 아닙니다(AUTH_CONSENT 아님).");
     }
@@ -303,6 +363,7 @@ public class CustomerSocialLoginService {
         throw requiredMissing(after.missingRequired());
       }
     }
+    boolean needsIdentity = pending && props.requireIdentity() && !identities.verified(accountId);
 
     Result r =
         Objects.requireNonNull(
@@ -330,14 +391,21 @@ public class CustomerSocialLoginService {
                   if (!"ACTIVE".equals(state)) {
                     throw accountNotAvailable(state);
                   }
+                  if (needsIdentity) {
+                    // 동의는 끝, 휴대폰 확인이 남음(ADR-0074) — 토큰·사건은 확인 뒤
+                    customers.consentDoneIdentityNext(authRequestId);
+                    return identityResult(locked, now);
+                  }
                   customers.completeConsent(authRequestId, idempotencyKey, now);
                   customers.markMember(accountId, now);
                   SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);
                   publishAuthenticated(accountId, row.provider(), now, identity);
                   return memberResult(locked, t, now);
                 }));
-    log.info("고객 필수 동의 완료: accountId={} new={}", accountId, r.newAccount());
-    moveDeviceConsents(accountId, deviceId);
+    log.info("고객 필수 동의 완료: accountId={} new={} → {}", accountId, r.newAccount(), r.state());
+    if (MEMBER.equals(r.state())) {
+      moveDeviceConsents(accountId, deviceId);
+    }
     return r;
   }
 
@@ -359,7 +427,11 @@ public class CustomerSocialLoginService {
         null,
         consent ? row.requiredConsents() : List.of(),
         consent ? row.optionalConsents() : List.of(),
-        MEMBER.equals(row.state()) ? "NONE" : consent ? "COMPLETE_CONSENT" : "QUERY_RESULT",
+        MEMBER.equals(row.state())
+            ? "NONE"
+            : consent
+                ? "COMPLETE_CONSENT"
+                : IDENTITY.equals(row.state()) ? VERIFY_IDENTITY : "QUERY_RESULT",
         row.createdAt());
   }
 
@@ -385,10 +457,226 @@ public class CustomerSocialLoginService {
         row.accountId(),
         row.newAccount(),
         t,
-        member ? List.of() : row.requiredConsents(),
-        member ? List.of() : row.optionalConsents(),
-        member ? "NONE" : "COMPLETE_CONSENT",
+        member || IDENTITY.equals(row.state()) ? List.of() : row.requiredConsents(),
+        member || IDENTITY.equals(row.state()) ? List.of() : row.optionalConsents(),
+        member ? "NONE" : IDENTITY.equals(row.state()) ? VERIFY_IDENTITY : "COMPLETE_CONSENT",
         row.createdAt());
+  }
+
+  // ---------------------------------------------------------------- 휴대폰 확인(ADR-0074)
+
+  /**
+   * 휴대폰 확인 시작(AUTH_IDENTITY). 같은 기기·로그인한 그 소셜 계정만(토큰이 없는 단계라 ID 토큰을 다시 검증해 본인 확인). 번호 정본은 customer
+   * — 같은 Idempotency-Key 는 customer 가 같은 결과를 준다. 번호는 로그에 남기지 않는다.
+   */
+  public CustomerIdentityClient.Started startIdentity(
+      String authRequestId,
+      String idempotencyKey,
+      String deviceId,
+      String providerToken,
+      String phone) {
+    AuthRequestRow row = identityRequest(authRequestId, deviceId);
+    checkRestriction(deviceId, now());
+    reverify(row, providerToken);
+    return identities.start(Objects.requireNonNull(row.accountId()), phone, idempotencyKey);
+  }
+
+  /**
+   * 휴대폰 확인 → 회원(AUTH_IDENTITY → AUTH_MEMBER). customer 가 문자를 확인하고 번호 규칙을 본다:
+   *
+   * <ul>
+   *   <li>VERIFIED → 원인증 AUTH_MEMBER·세션·CustomerAuthenticated(다시 검증한 토큰의 프로필)
+   *   <li>아직 문자가 없음·횟수 다 씀·시간 지남 → AUTH_IDENTITY 그대로·진행 상태
+   *   <li>다른 계정의 번호 → 409 IDENTITY_ALREADY_REGISTERED(그 계정의 제공자·가입일·가린 이메일), 탈퇴 막기 → 409
+   *       IDENTITY_REJOIN_BLOCKED. 이번에 만든(회원이 된 적 없는) 계정은 버린다
+   * </ul>
+   *
+   * 같은 Idempotency-Key 재전송(이미 MEMBER)은 새 토큰.
+   */
+  public Result confirmIdentity(
+      String authRequestId,
+      String verificationId,
+      String idempotencyKey,
+      String sourceSystem,
+      String deviceId,
+      String providerToken) {
+    AuthRequestRow row =
+        customers
+            .request(authRequestId)
+            .orElseThrow(() -> PmartException.notFound("AUTH_REQUEST_NOT_FOUND", "원인증 요청이 없습니다."));
+    if (!row.deviceId().equals(deviceId)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "로그인을 시작한 기기에서만 확인할 수 있습니다.");
+    }
+    String accountId = row.accountId();
+    boolean replay = MEMBER.equals(row.state()) && idempotencyKey.equals(row.completionKey());
+    if (accountId == null
+        || row.failureCode() != null
+        || !(IDENTITY.equals(row.state()) || replay)) {
+      throw PmartException.invalidState("휴대폰 확인을 기다리는 로그인 요청이 아닙니다(AUTH_IDENTITY 아님).");
+    }
+    Instant now = now();
+    checkRestriction(deviceId, now);
+    IdTokenVerifier.Identity identity = reverify(row, providerToken);
+
+    CustomerIdentityClient.Confirmed c =
+        replay ? null : identities.confirm(accountId, verificationId);
+    if (c != null && !"VERIFIED".equals(c.outcome())) {
+      if (IDENTITY_ALREADY_REGISTERED.equals(c.outcome())) {
+        throw alreadyRegistered(row, c);
+      }
+      if (IDENTITY_REJOIN_BLOCKED.equals(c.outcome())) {
+        throw rejoinBlocked(row, c);
+      }
+      // 아직 문자가 없음(PENDING) · 횟수 다 씀(FAILED) · 시간 지남(EXPIRED) — 원인증은 그대로
+      return new Result(
+          row.authRequestId(),
+          IDENTITY,
+          accountId,
+          row.newAccount(),
+          null,
+          List.of(),
+          List.of(),
+          VERIFY_IDENTITY,
+          now,
+          new IdentityStatus(
+              c.verificationId(),
+              c.state(),
+              c.failureReason(),
+              c.remainingAttempts(),
+              c.expiresAt()));
+    }
+    Result r =
+        Objects.requireNonNull(
+            tx.execute(
+                status -> {
+                  AuthRequestRow locked =
+                      customers
+                          .lockRequest(authRequestId)
+                          .orElseThrow(
+                              () ->
+                                  PmartException.notFound(
+                                      "AUTH_REQUEST_NOT_FOUND", "원인증 요청이 없습니다."));
+                  if (MEMBER.equals(locked.state())) {
+                    if (!idempotencyKey.equals(locked.completionKey())) {
+                      throw PmartException.invalidState("이미 다른 요청으로 로그인을 마쳤습니다.");
+                    }
+                    return memberResult(
+                        locked, openSession(accountId, deviceId, sourceSystem, now), now);
+                  }
+                  if (!IDENTITY.equals(locked.state())) {
+                    throw PmartException.invalidState("휴대폰 확인을 기다리는 로그인 요청이 아닙니다.");
+                  }
+                  String state = customers.accountState(accountId).orElse("ACTIVE");
+                  if (!"ACTIVE".equals(state)) {
+                    throw accountNotAvailable(state);
+                  }
+                  customers.completeIdentity(authRequestId, idempotencyKey, now);
+                  customers.markMember(accountId, now);
+                  SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);
+                  publishAuthenticated(accountId, row.provider(), now, identity);
+                  return memberResult(locked, t, now);
+                }));
+    log.info("고객 휴대폰 확인 완료: accountId={} new={}", accountId, r.newAccount());
+    moveDeviceConsents(accountId, deviceId);
+    return r;
+  }
+
+  static final String IDENTITY_ALREADY_REGISTERED = "IDENTITY_ALREADY_REGISTERED";
+  static final String IDENTITY_REJOIN_BLOCKED = "IDENTITY_REJOIN_BLOCKED";
+
+  private AuthRequestRow identityRequest(String authRequestId, String deviceId) {
+    AuthRequestRow row =
+        customers
+            .request(authRequestId)
+            .orElseThrow(() -> PmartException.notFound("AUTH_REQUEST_NOT_FOUND", "원인증 요청이 없습니다."));
+    if (!row.deviceId().equals(deviceId)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "로그인을 시작한 기기에서만 확인할 수 있습니다.");
+    }
+    if (row.accountId() == null || row.failureCode() != null || !IDENTITY.equals(row.state())) {
+      throw PmartException.invalidState("휴대폰 확인을 기다리는 로그인 요청이 아닙니다(AUTH_IDENTITY 아님).");
+    }
+    return row;
+  }
+
+  /** 로그인한 그 소셜 계정인지 다시 확인(토큰이 없는 단계의 본인 확인). */
+  private IdTokenVerifier.Identity reverify(AuthRequestRow row, String providerToken) {
+    IdTokenVerifier.Identity identity;
+    try {
+      identity = verifiers.require(row.provider()).verify(providerToken);
+    } catch (IdTokenVerifier.Unavailable e) {
+      throw providerUnavailable(e);
+    } catch (IdTokenVerifier.Rejected e) {
+      log.warn("휴대폰 확인 단계 거절(PROVIDER_REJECTED) provider={}", row.provider());
+      throw providerRejected();
+    }
+    if (!Objects.equals(
+        row.accountId(),
+        customers.linkedAccount(row.provider(), identity.subject()).orElse(null))) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "로그인한 계정과 다른 소셜 계정입니다.");
+    }
+    return identity;
+  }
+
+  /** 휴대폰 확인 단계로 넘어감(동의 완료 뒤 — ADR-0074). */
+  private static Result identityResult(AuthRequestRow row, Instant now) {
+    return new Result(
+        row.authRequestId(),
+        IDENTITY,
+        row.accountId(),
+        row.newAccount(),
+        null,
+        List.of(),
+        List.of(),
+        VERIFY_IDENTITY,
+        now);
+  }
+
+  /** 그 번호로 가입한 다른 계정 — 확인을 통과한 본인에게만 그 계정의 제공자·가입일·가린 이메일(계정 ID·번호는 주지 않음). 이번에 만든 계정은 버린다. */
+  private PmartException alreadyRegistered(AuthRequestRow row, CustomerIdentityClient.Confirmed c) {
+    String existing = c.existingAccountId();
+    List<PmartException.Detail> details = new java.util.ArrayList<>();
+    if (existing != null) {
+      customers
+          .provider(existing)
+          .ifPresent(p -> details.add(new PmartException.Detail("provider", p)));
+      customers
+          .memberSince(existing)
+          .ifPresent(t -> details.add(new PmartException.Detail("joinedAt", t.toString())));
+    }
+    if (c.existingEmailMasked() != null) {
+      details.add(new PmartException.Detail("emailMasked", c.existingEmailMasked()));
+    }
+    endIdentity(row, IDENTITY_ALREADY_REGISTERED);
+    return new PmartException(
+        IDENTITY_ALREADY_REGISTERED,
+        HttpStatus.CONFLICT,
+        "이 휴대폰 번호로 가입한 계정이 있습니다. 그 계정으로 로그인해 주세요.",
+        false,
+        details);
+  }
+
+  private PmartException rejoinBlocked(AuthRequestRow row, CustomerIdentityClient.Confirmed c) {
+    endIdentity(row, IDENTITY_REJOIN_BLOCKED);
+    return new PmartException(
+        IDENTITY_REJOIN_BLOCKED,
+        HttpStatus.CONFLICT,
+        "탈퇴한 번호는 한 달 동안 다시 가입할 수 없습니다.",
+        false,
+        c.rejoinAvailableAt() == null
+            ? List.of()
+            : List.of(
+                new PmartException.Detail("rejoinAvailableAt", c.rejoinAvailableAt().toString())));
+  }
+
+  /** 막힌 확인: 원인증을 끝내고, 이번에 만든(회원이 된 적 없는) 계정은 버린다(그 소셜 계정의 다음 로그인은 새 가입). */
+  private void endIdentity(AuthRequestRow row, String code) {
+    tx.executeWithoutResult(
+        status -> {
+          customers.failIdentity(row.authRequestId(), code);
+          boolean discarded =
+              customers.discardIfNeverMember(Objects.requireNonNull(row.accountId()));
+          log.info("고객 휴대폰 확인 막힘 {}: accountId={} 버림={}", code, row.accountId(), discarded);
+        });
   }
 
   private static Result memberResult(AuthRequestRow row, SessionTokens.Tokens t, Instant now) {

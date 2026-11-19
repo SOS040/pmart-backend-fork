@@ -22,6 +22,8 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  * @param google Google ID 토큰 검증
  * @param kakao 카카오 ID 토큰 검증(ADR-0071, 2026-11-19) — client-ids = 앱이 카카오 SDK 초기화에 쓴 앱 키(ID 토큰 aud)
  * @param naver 네이버 ID 토큰 검증(ADR-0071) — client-ids = 네이버 애플리케이션 Client ID(ID 토큰 aud)
+ * @param requireIdentity 휴대폰 확인 단계(AUTH_IDENTITY, ADR-0074 2026-11-20) — 켜면 가입과 확인 번호가 없는 기존 회원은 필수
+ *     동의 뒤 휴대폰 확인을 거친다(번호 정본 customer-service). 고객 앱이 새 단계를 반영한 뒤 켠다(기본 false)
  *     <p>실행 중 갱신(ADR-0033): {@code @RefreshScope} — Bus 갱신 뒤 다음 사용 때 새 값으로 다시 만든다(record 는 final 이라
  *     refresh 프록시를 못 만들어 클래스). 쓰는 쪽은 호출마다 읽는다. 주소(*BaseUrl)는 클라이언트를 만들 때 한 번 읽으므로 바꾸면 재시작.
  */
@@ -40,6 +42,7 @@ public class CustomerProperties {
   private final Google google;
   private final Oidc kakao;
   private final Oidc naver;
+  private final boolean requireIdentity;
 
   public CustomerProperties(
       Duration accessTokenTtl,
@@ -52,7 +55,9 @@ public class CustomerProperties {
       Duration restriction,
       Google google,
       @Nullable Oidc kakao,
-      @Nullable Oidc naver) {
+      @Nullable Oidc naver,
+      boolean requireIdentity) {
+    this.requireIdentity = requireIdentity;
     accessTokenTtl = accessTokenTtl == null ? Duration.ofMinutes(30) : accessTokenTtl;
     refreshTokenTtl = refreshTokenTtl == null ? Duration.ofDays(30) : refreshTokenTtl;
     sessionMaxAge = sessionMaxAge == null ? Duration.ofDays(30) : sessionMaxAge;
@@ -95,6 +100,10 @@ public class CustomerProperties {
 
   public boolean requireConsent() {
     return requireConsent;
+  }
+
+  public boolean requireIdentity() {
+    return requireIdentity;
   }
 
   public String customerServiceBaseUrl() {

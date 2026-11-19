@@ -90,4 +90,15 @@ public final class ProfileRules {
     String mid = "*".repeat(digits.length() - 7);
     return head + "-" + mid + "-" + tail;
   }
+
+  /** 가린 이메일(예 a***@k***) — 기존 계정 안내(2026-11-20 ADR-0074, 라이더와 같은 모양). 없거나 형식이 아니면 null. */
+  public static @Nullable String maskEmail(@Nullable String email) {
+    if (email == null || !email.contains("@")) {
+      return null;
+    }
+    String[] parts = email.split("@", 2);
+    String local = parts[0].isEmpty() ? "*" : parts[0].substring(0, 1);
+    String domain = parts[1].isEmpty() ? "*" : parts[1].substring(0, 1);
+    return local + "***@" + domain + "***";
+  }
 }

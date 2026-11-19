@@ -28,9 +28,14 @@ public class InternalController implements InternalApi {
   private final ProfileService profiles;
   private final AddressService addresses;
   private final ConsentService consents;
+  private final com.pmart.customer.application.IdentityService identities;
 
   public InternalController(
-      ProfileService profiles, AddressService addresses, ConsentService consents) {
+      ProfileService profiles,
+      AddressService addresses,
+      ConsentService consents,
+      com.pmart.customer.application.IdentityService identities) {
+    this.identities = identities;
     this.profiles = profiles;
     this.addresses = addresses;
     this.consents = consents;
@@ -139,5 +144,69 @@ public class InternalController implements InternalApi {
           .phoneRef(AddressRules.maskPhone(contact.receiverPhone()));
     }
     return ResponseEntity.ok(out);
+  }
+
+  /** 계정의 확인된 휴대폰 번호가 있는지(2026-11-20 ADR-0074) — 번호는 주지 않는다. */
+  @Override
+  public ResponseEntity<
+          com.pmart.customer.api.generated.model.GetAccountIdentityInternal200Response>
+      getAccountIdentityInternal(String accountId) {
+    java.util.Optional<Instant> at = identities.verifiedAt(accountId);
+    return ResponseEntity.ok(
+        new com.pmart.customer.api.generated.model.GetAccountIdentityInternal200Response()
+            .accountId(accountId)
+            .verified(at.isPresent())
+            .verifiedAt(at.map(t -> t.atOffset(java.time.ZoneOffset.UTC)).orElse(null)));
+  }
+
+  /** 가입·로그인 단계 휴대폰 확인 시작(auth 가 부름, ADR-0074). */
+  @Override
+  public ResponseEntity<com.pmart.customer.api.generated.model.PhoneVerificationStart>
+      startIdentityVerificationInternal(
+          String accountId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.customer.api.generated.model.StartIdentityVerificationInternalRequest body) {
+    var s = identities.start(accountId, body.getPhone(), idempotencyKey, xSourceSystem);
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(
+            new com.pmart.customer.api.generated.model.PhoneVerificationStart()
+                .verificationId(s.verificationId())
+                .state(
+                    com.pmart.customer.api.generated.model.PhoneVerificationStart.StateEnum.PENDING)
+                .sendTo(s.sendTo())
+                .text(s.text())
+                .expiresAt(java.time.OffsetDateTime.parse(s.expiresAt()))
+                .phoneMasked(s.phoneMasked())
+                .maxAttempts(s.maxAttempts()));
+  }
+
+  /** 가입·로그인 단계 휴대폰 확인(ADR-0074) — 문자가 확인되면 번호 규칙 결과(outcome). */
+  @Override
+  public ResponseEntity<com.pmart.customer.api.generated.model.IdentityVerificationResult>
+      confirmIdentityVerificationInternal(String accountId, String verificationId) {
+    var r = identities.confirm(accountId, verificationId);
+    return ResponseEntity.ok(
+        new com.pmart.customer.api.generated.model.IdentityVerificationResult()
+            .verificationId(r.verificationId())
+            .state(
+                com.pmart.customer.api.generated.model.IdentityVerificationResult.StateEnum
+                    .fromValue(r.state()))
+            .failureReason(r.failureReason())
+            .remainingAttempts(r.remainingAttempts())
+            .expiresAt(r.expiresAt().atOffset(java.time.ZoneOffset.UTC))
+            .verifiedAt(
+                r.verifiedAt() == null ? null : r.verifiedAt().atOffset(java.time.ZoneOffset.UTC))
+            .outcome(
+                r.outcome() == null
+                    ? null
+                    : com.pmart.customer.api.generated.model.IdentityVerificationResult.OutcomeEnum
+                        .fromValue(r.outcome()))
+            .existingAccountId(r.existingAccountId())
+            .existingEmailMasked(r.existingEmailMasked())
+            .rejoinAvailableAt(
+                r.rejoinAvailableAt() == null
+                    ? null
+                    : r.rejoinAvailableAt().atOffset(java.time.ZoneOffset.UTC)));
   }
 }

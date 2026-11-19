@@ -28,6 +28,7 @@
 
 ### customer-service `[1단계]`
 - **소유**: 고객 계정·프로필·이용 상태(정상/WITHDRAW_PENDING/WITHDRAW_COMPLETED), 약관·마케팅 동의(버전·시점·철회), 주소록·현재 쇼핑 주소(`shoppingContextVersion`), 비회원 배송지, 첫 구매 중복혜택 대조값(소셜 식별, 5년).
+- **휴대폰 확인 번호(2026-11-20 ADR-0074)**: 계정마다 확인된 번호 정본(`customer_identity`, 한 번호 한 계정·탈퇴 30일 재가입 막기). auth 가 로그인 단계(AUTH_IDENTITY)에서 내부 API 로 시작·확인을 대신 부른다.
 - **소유하지 않음**: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
 - **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(완료 전 order-service 미결 의무 조회), 계정 상태 조회(구매 가능 = ACTIVE, 스위치 `consents.purchase-gate` 가 켜지면 + 필수 약관 현행 버전 동의 — LAN 은 고객 앱 반영 때까지 꺼짐), auth 용 내부 동의 상태·로그인 중 동의 반영(CU-1, 2026-11-17 — 필수 3 + 선택 마케팅 1, 현행 버전은 설정).
 - **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`.
@@ -328,6 +329,7 @@
 
 ### auth-service `[1단계 — 2026-11-13 고객·비회원 전용]`
 - **소유**: 고객(Google ID 토큰 검증 — ADR-0019·0055, `AUTH_GUEST→PENDING→(CONSENT)→MEMBER`, `AUTH_UNKNOWN`, `AUTH_RESTRICTED` 15분 5회→10분), 운영자 신원(Keycloak 으로 옮기기 전까지 — ADR-0054)·비회원(서비스 간은 인증 없음 — ADR-0026), 토큰/세션(`[팀 확인 필요]` 쿠키/CSRF), **유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한 정본**(BackOffice 3장), 행위 시점 검증 API(역할·센터 범위·대행 기간·대상 소유권·자기승인 분리), 보안 기록 90일.
+- **로그인 단계 휴대폰 확인(2026-11-20 ADR-0074, 0.6.0)**: 필수 동의 다음 `AUTH_IDENTITY` — 번호 정본은 customer(내부 API), auth 는 원인증 상태·막힘 안내(다른 계정의 제공자·가입일)·버린 가입 계정만.
 - **소유하지 않음**: 권한 **부여 승인 흐름**(approval BO-01/02), 고객 프로필(customer), 라이더 로그인·토큰(rider-auth-service, ADR-0054).
 - **ADR-0056(2026-11-12, 구현 전)**: 직원 신원·직원 토큰과 **직원 RoleGrant·Delegation·긴급권한 정본·행위 시점 검증 API·`GrantApplied`·직원 `SubjectBlocked`** 은 employee-auth-service 로 옮긴다. 전환이 끝나면 auth-service 는 고객·비회원·서비스 신원 토큰만 — 운영자 로그인·`operator_account`·`StaffBlockRelay` 를 내린다. 지금 코드에 RoleGrant·Delegation 기능은 없고 `operator_account.roles·centers` 만 있다.
 - **API**: 고객 소셜 로그인·비회원 세션·토큰 갱신·로그아웃·현재 세션, JWKS. **운영자 로그인·계정 관리는 2026-11-13 없앴다**(ADR-0056 7단계 — 직원 토큰은 employee-auth-service). 행위 검증·grant 반영 경로는 구현 전(501)이고 정본은 employee-auth-service 로 옮긴다.

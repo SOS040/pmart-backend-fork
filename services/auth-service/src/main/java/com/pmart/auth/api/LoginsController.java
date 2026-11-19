@@ -83,6 +83,50 @@ public class LoginsController implements LoginsApi {
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result(r));
   }
 
+  /** 휴대폰 확인 시작(AUTH_IDENTITY, 0.6.0 — ADR-0074). 번호는 로그에 남기지 않는다. */
+  @Override
+  public ResponseEntity<com.pmart.auth.api.generated.model.IdentityVerificationStart>
+      startSocialLoginIdentityVerification(
+          String authRequestId,
+          String idempotencyKey,
+          String xSourceSystem,
+          String xDeviceId,
+          com.pmart.auth.api.generated.model.StartSocialLoginIdentityVerificationRequest body) {
+    var s =
+        logins.startIdentity(
+            authRequestId, idempotencyKey, xDeviceId, body.getProviderToken(), body.getPhone());
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .cacheControl(CacheControl.noStore())
+        .body(
+            new com.pmart.auth.api.generated.model.IdentityVerificationStart()
+                .verificationId(s.verificationId())
+                .sendTo(s.sendTo())
+                .text(s.text())
+                .expiresAt(AuthMapping.odt(s.expiresAt()))
+                .phoneMasked(s.phoneMasked())
+                .maxAttempts(s.maxAttempts()));
+  }
+
+  /** 휴대폰 확인 → 회원 토큰(0.6.0 — ADR-0074). 막힘(다른 계정의 번호·재가입 막기)은 409. */
+  @Override
+  public ResponseEntity<AuthResult> confirmSocialLoginIdentityVerification(
+      String authRequestId,
+      String verificationId,
+      String idempotencyKey,
+      String xSourceSystem,
+      String xDeviceId,
+      com.pmart.auth.api.generated.model.ConfirmSocialLoginIdentityVerificationRequest body) {
+    CustomerSocialLoginService.Result r =
+        logins.confirmIdentity(
+            authRequestId,
+            verificationId,
+            idempotencyKey,
+            xSourceSystem,
+            xDeviceId,
+            body.getProviderToken());
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result(r));
+  }
+
   private static AuthResult result(CustomerSocialLoginService.Result r) {
     boolean consent = AuthState.AUTH_CONSENT.getValue().equals(r.state());
     return new AuthResult()
@@ -94,6 +138,17 @@ public class LoginsController implements LoginsApi {
         .requiredConsents(consent ? r.requiredConsents() : null)
         .optionalConsents(consent ? r.optionalConsents() : null)
         .nextAction(AuthResult.NextActionEnum.fromValue(r.nextAction()))
-        .occurredAt(AuthMapping.odt(r.occurredAt()));
+        .occurredAt(AuthMapping.odt(r.occurredAt()))
+        .identityVerification(
+            r.identity() == null
+                ? null
+                : new com.pmart.auth.api.generated.model.IdentityVerificationStatus()
+                    .verificationId(r.identity().verificationId())
+                    .state(
+                        com.pmart.auth.api.generated.model.IdentityVerificationStatus.StateEnum
+                            .fromValue(r.identity().state()))
+                    .failureReason(r.identity().failureReason())
+                    .remainingAttempts(r.identity().remainingAttempts())
+                    .expiresAt(AuthMapping.odt(r.identity().expiresAt())));
   }
 }

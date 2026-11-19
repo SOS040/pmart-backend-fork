@@ -64,6 +64,7 @@ public class PhoneVerificationService {
   private final PhoneVerificationProperties props;
   private final RequestIdempotency idempotency;
   private final Clock clock;
+  private final IdentityService identities;
 
   public PhoneVerificationService(
       CustomerStore customers,
@@ -71,7 +72,9 @@ public class PhoneVerificationService {
       OctomoClient octomo,
       PhoneVerificationProperties props,
       RequestIdempotency idempotency,
-      Clock clock) {
+      Clock clock,
+      IdentityService identities) {
+    this.identities = identities;
     this.customers = customers;
     this.store = store;
     this.octomo = octomo;
@@ -177,8 +180,10 @@ public class PhoneVerificationService {
         octomo.exists(cfg.octomoBaseUrl(), cfg.apiKey(), phone, r.code(), cfg.withinMinutes());
     Instant at = clock.instant();
     if (arrived) {
-      store.verify(verificationId, accountId, phone, at);
-      log.info("휴대폰 번호 확인됨 {} {}", accountId, verificationId);
+      // 한 번호 한 계정(2026-11-20 ADR-0074): 다른 계정의 확인 번호면 FAILED·PHONE_ALREADY_REGISTERED, 아니면 계정 확인
+      // 번호·프로필
+      IdentityService.Settled s = identities.settle(verificationId, accountId, phone, false);
+      log.info("휴대폰 번호 확인 {} {} → {}", accountId, verificationId, s.outcome());
     } else {
       store.miss(verificationId, cfg.maxAttempts(), at);
     }

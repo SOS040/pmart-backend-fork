@@ -43,6 +43,15 @@ public class PhoneVerificationStore {
   /** 새 확인 — 이 계정의 대기 중인 확인은 EXPIRED 로 끝낸다. */
   @Transactional
   public void start(Row r) {
+    start(r, null);
+  }
+
+  /**
+   * 새 확인(가입 단계 — 2026-11-20 ADR-0074): 프로필이 없을 수 있어 번호 원문을 확인 행에 둔다(OCTOMO 조회용). /me 확인은 null(프로필
+   * 번호를 쓴다).
+   */
+  @Transactional
+  public void start(Row r, @Nullable String phone) {
     jdbc.update(
         "UPDATE phone_verification SET state = 'EXPIRED', finished_at = ?"
             + " WHERE account_id = ? AND state = 'PENDING'",
@@ -50,13 +59,35 @@ public class PhoneVerificationStore {
         r.accountId());
     jdbc.update(
         "INSERT INTO phone_verification (verification_id, account_id, phone_hash, code, state, attempts,"
-            + " expires_at, created_at) VALUES (?,?,?,?,'PENDING',0,?,?)",
+            + " expires_at, created_at, phone) VALUES (?,?,?,?,'PENDING',0,?,?,?)",
         r.verificationId(),
         r.accountId(),
         r.phoneHash(),
         r.code(),
         Timestamp.from(r.expiresAt()),
-        Timestamp.from(r.createdAt()));
+        Timestamp.from(r.createdAt()),
+        phone);
+  }
+
+  /** 가입 단계 확인의 번호 원문(/me 확인이면 빈 값). */
+  public Optional<String> phone(String verificationId) {
+    return jdbc
+        .query(
+            "SELECT phone FROM phone_verification WHERE verification_id = ? AND phone IS NOT NULL",
+            (rs, i) -> rs.getString(1),
+            verificationId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 확인됨(대기 중일 때만) — 번호 규칙·프로필은 IdentityService 가 같은 트랜잭션에서. */
+  public boolean markVerified(String verificationId, Instant at) {
+    return jdbc.update(
+            "UPDATE phone_verification SET state = 'VERIFIED', finished_at = ?"
+                + " WHERE verification_id = ? AND state = 'PENDING'",
+            Timestamp.from(at),
+            verificationId)
+        == 1;
   }
 
   public Optional<Row> find(String verificationId) {

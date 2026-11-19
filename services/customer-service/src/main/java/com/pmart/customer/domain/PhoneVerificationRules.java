@@ -22,6 +22,9 @@ public final class PhoneVerificationRules {
   public static final String TOO_MANY_ATTEMPTS = "TOO_MANY_ATTEMPTS";
   public static final String PHONE_CHANGED = "PHONE_CHANGED";
 
+  /** /me 확인에서 다른 계정의 확인 번호(2026-11-20 ADR-0074) — 그 계정은 알려 주지 않는다. */
+  public static final String PHONE_ALREADY_REGISTERED = "PHONE_ALREADY_REGISTERED";
+
   private static final SecureRandom RANDOM = new SecureRandom();
 
   /** 저장된(숫자만) 번호가 OCTOMO 로 확인할 수 있는 번호인가 — 010 + 8자리. */

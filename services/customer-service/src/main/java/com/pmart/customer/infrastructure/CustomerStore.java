@@ -120,6 +120,16 @@ public class CustomerStore {
         ts(now));
   }
 
+  /** 확인된 번호를 프로필 번호로(2026-11-20 ADR-0074 R6) — phone_verified, version +1. */
+  public void setVerifiedPhone(String accountId, String phone, Instant at) {
+    jdbc.update(
+        "UPDATE customer SET phone = ?, phone_verified = true, version = version + 1, updated_at = ?"
+            + " WHERE account_id = ?",
+        phone,
+        ts(at),
+        accountId);
+  }
+
   public Optional<ProfileRow> profile(String accountId) {
     return jdbc
         .query(

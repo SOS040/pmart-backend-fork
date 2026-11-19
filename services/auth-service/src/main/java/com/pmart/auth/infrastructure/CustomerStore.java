@@ -190,6 +190,73 @@ public class CustomerStore {
         authRequestId);
   }
 
+  // ---------- 휴대폰 확인 단계(2026-11-20 ADR-0074) ----------
+
+  /** 동의는 끝났고 휴대폰 확인이 남음: AUTH_CONSENT → AUTH_IDENTITY. */
+  public void consentDoneIdentityNext(String authRequestId) {
+    jdbc.update(
+        "UPDATE social_auth_request SET state = 'AUTH_IDENTITY'"
+            + " WHERE auth_request_id = ? AND state = 'AUTH_CONSENT'",
+        authRequestId);
+  }
+
+  /** 휴대폰 확인 완료: AUTH_IDENTITY → AUTH_MEMBER. */
+  public void completeIdentity(String authRequestId, String completionKey, Instant at) {
+    jdbc.update(
+        "UPDATE social_auth_request SET state = 'AUTH_MEMBER', completion_key = ?, completed_at = ?"
+            + " WHERE auth_request_id = ? AND state = 'AUTH_IDENTITY'",
+        completionKey,
+        Timestamp.from(at),
+        authRequestId);
+  }
+
+  /** 휴대폰 확인이 막힘(다른 계정의 번호·재가입 막기) — 이 원인증은 끝(AUTH_GUEST·사유). */
+  public void failIdentity(String authRequestId, String code) {
+    jdbc.update(
+        "UPDATE social_auth_request SET state = 'AUTH_GUEST', failure_code = ?"
+            + " WHERE auth_request_id = ? AND state = 'AUTH_IDENTITY'",
+        code,
+        authRequestId);
+  }
+
+  /**
+   * 회원이 된 적 없는 계정을 버린다(제공자 연결·계정) — 같은 번호의 다른 계정이 있어 가입을 확정하지 않을 때(ADR-0074 R2 "만들었으면 버린다"). 그 소셜
+   * 계정의 다음 로그인은 새 가입이다. 회원이 된 적 있으면 아무것도 하지 않는다.
+   *
+   * @return 지웠으면 true
+   */
+  public boolean discardIfNeverMember(String accountId) {
+    if (everMember(accountId)) {
+      return false;
+    }
+    jdbc.update("DELETE FROM social_identity WHERE account_id = ?", accountId);
+    return jdbc.update(
+            "DELETE FROM customer_account WHERE account_id = ? AND member_since IS NULL", accountId)
+        == 1;
+  }
+
+  /** 계정의 가입 제공자(처음 연결된 것). */
+  public Optional<String> provider(String accountId) {
+    return jdbc
+        .query(
+            "SELECT provider FROM social_identity WHERE account_id = ? ORDER BY linked_at LIMIT 1",
+            (rs, i) -> rs.getString(1),
+            accountId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 회원이 된 때(가입일). */
+  public Optional<Instant> memberSince(String accountId) {
+    return jdbc
+        .query(
+            "SELECT member_since FROM customer_account WHERE account_id = ? AND member_since IS NOT NULL",
+            (rs, i) -> rs.getTimestamp(1).toInstant(),
+            accountId)
+        .stream()
+        .findFirst();
+  }
+
   private static @Nullable String join(List<String> items) {
     return items.isEmpty() ? null : String.join(",", items);
   }
