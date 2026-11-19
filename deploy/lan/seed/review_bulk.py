@@ -144,6 +144,31 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     product_id, sku, name, count = args[0], args[1], args[2], int(args[3])
     now = datetime.datetime.now(datetime.timezone.utc)
+    if opt("replace-photos"):
+        # 이 상품 시험 리뷰의 사진 본문을 폴더의 JPEG 로 바꾼다(키·photoId 그대로, 크기·sha256 갱신) — 실제 폰 사진 크기로 시험할 때(2026-11-20)
+        folder = opt("replace-photos")
+        files = sorted(os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(".jpg"))
+        rows = query("select p.photo_id||'|'||p.object_key from review_photo p join review r on r.review_id = p.review_id"
+                     f" where r.product_id='{product_id}' and r.order_id like 'ORD-SEEDRV-%'")
+        rnd = random.Random()
+        uploads, sql = [], ["BEGIN;\n"]
+        for line in filter(None, rows.splitlines()):
+            photo_id, key = line.split("|")
+            path = rnd.choice(files)
+            with open(path, "rb") as f:
+                data = f.read()
+            uploads.append((key, path))
+            sql.append(f"UPDATE review_photo SET size_bytes={len(data)}, sha256={sql_str(hashlib.sha256(data).hexdigest())}"
+                       f" WHERE photo_id={sql_str(photo_id)};\n")
+        sql.append("COMMIT;\n")
+        if "--apply" not in sys.argv:
+            print(f"바꿀 사진 {len(uploads)}장 — 요약만(--apply 없음)")
+            return
+        if uploads:
+            put_photos(uploads)
+            run_sql("".join(sql))
+        print("바꾼 사진", len(uploads))
+        return
     if "--delete" in sys.argv:
         rows = query(f"select review_id||'|'||account_id||'|'||rating||'|'||version from review where product_id='{product_id}' and order_id like 'ORD-SEEDRV-%' and state='PUBLISHED'")
         sql = ["BEGIN;\n"]
