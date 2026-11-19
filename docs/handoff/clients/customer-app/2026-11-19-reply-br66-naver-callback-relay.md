@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: `pmart-clients docs/handoff/customer-app/2026-11-19-backend-naver-oauth-callback-relay.md`
-- 상태: 백엔드 main 반영, LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다)
+- 상태: **LAN 배포됨 2026-11-19 21:5x(이미지 32ae443b — PC 4 auth-service 0.5.0·api-gateway, pmart-config cf50142)**. 게이트웨이 경유 확인: 두 경로 모두 302, Location = 앱 주소 + 쿼리 그대로, no-store
 
 ## R1·R2 경로(앱마다 고정)
 | 앱 | 네이버 콘솔 Callback URL (= 앱의 `redirect_uri`) | 서버가 넘기는 곳(302) |
