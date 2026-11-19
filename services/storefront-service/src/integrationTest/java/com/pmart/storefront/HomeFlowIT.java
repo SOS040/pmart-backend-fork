@@ -385,7 +385,9 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("ON_SALE");
 
     // 오류·미구성
+    // 탭 정책값이 없으면 랭킹·신상품 탭은 없다(404 — ADR-0075, 이 시험 문맥은 tabs 설정 없음)
     assertThat(status("/storefront/tabs/RANKING")).isEqualTo(404);
+    assertThat(status("/storefront/sections/S-NEW/items")).isEqualTo(404);
     assertThat(status("/storefront/sections/S-NONE/items")).isEqualTo(404);
     assertThat(status("/storefront/sections/S-ALL/items?layoutVersion=3")).isEqualTo(409);
     assertThat(status("/storefront/sections/S-ALL/items?cursor=garbage")).isEqualTo(400);

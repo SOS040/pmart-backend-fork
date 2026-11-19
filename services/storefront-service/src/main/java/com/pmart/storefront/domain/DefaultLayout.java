@@ -18,6 +18,12 @@ public final class DefaultLayout {
   /** 같은 조건의 일반 상품 목록(search-service 최신순). */
   public static final String VIEW_ALL_REF = "/api/v1/search/products?sort=NEWEST";
 
+  /** 랭킹 탭 영역(2026-11-20 ADR-0075) — 최근 판매 많은 순. */
+  public static final String RANKING_SECTION_ID = "S-RANKING";
+
+  /** 신상품 탭 영역 — 신규 기간 안 처음 게시, 최신 순. */
+  public static final String NEW_SECTION_ID = "S-NEW";
+
   /** 홈 응답에 싣는 첫 묶음 크기. */
   public static final int FIRST_PAGE = 10;
 

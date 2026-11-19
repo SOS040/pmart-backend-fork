@@ -25,7 +25,15 @@ public class DisplayStore {
       @Nullable Integer netContentAmount,
       @Nullable String netContentUnit,
       int reviewCount,
-      @Nullable Double rating) {}
+      @Nullable Double rating,
+      @Nullable Instant publishedAt) {}
+
+  /** 진열 영역 종류(2026-11-20 탭 — ADR-0075): 전체 최신순 · 판매 순위 · 신규 기간 안. */
+  public enum Kind {
+    LATEST,
+    RANKING,
+    NEW
+  }
 
   private final JdbcTemplate jdbc;
 
@@ -194,7 +202,34 @@ public class DisplayStore {
 
   /** mfcId 가 있으면 그 센터 미취급 상품은 뺀다(BR-49). */
   public List<Item> latest(@Nullable String mfcId, int offset, int limit) {
+    return items(mfcId, Kind.LATEST, null, offset, limit);
+  }
+
+  /**
+   * 진열 영역의 한 쪽(2026-11-20 ADR-0075). LATEST = 최신 게시 순, RANKING = 순위 신호의 최근 판매 수(판매 0 은 빼고) 많은 순 →
+   * 베이지안 별점 점수 → 상품 ID, NEW = 처음 게시가 since 이후인 것 최신 순. 진열 가능(게시 콘텐츠·상품 버전·판매중지 아님)·센터 취급(mfcId)은
+   * 같다.
+   */
+  public List<Item> items(
+      @Nullable String mfcId, Kind kind, @Nullable Instant since, int offset, int limit) {
     List<Object> args = new java.util.ArrayList<>();
+    String from = DISPLAYABLE;
+    String extra = "";
+    String order = " ORDER BY p.content_published_at DESC NULLS LAST, p.product_id";
+    String outer = " ORDER BY d.content_published_at DESC NULLS LAST, d.product_id";
+    String rankCols = ", NULL::int AS sales_window, NULL::float8 AS rating_score";
+    if (kind == Kind.RANKING) {
+      from =
+          DISPLAYABLE.replace(
+              " WHERE ",
+              " JOIN product_ranking_signal g ON g.product_id = p.product_id WHERE g.sales_window > 0 AND ");
+      rankCols = ", g.sales_window, g.rating_score::float8 AS rating_score";
+      order = " ORDER BY g.sales_window DESC, g.rating_score DESC NULLS LAST, p.product_id";
+      outer = " ORDER BY d.sales_window DESC, d.rating_score DESC NULLS LAST, d.product_id";
+    } else if (kind == Kind.NEW) {
+      extra = " AND p.content_published_at >= ?";
+      args.add(Timestamp.from(java.util.Objects.requireNonNull(since)));
+    }
     if (mfcId != null) {
       args.add(mfcId);
     }
@@ -205,13 +240,16 @@ public class DisplayStore {
             + " p.image_url, p.representative_sku, s.price, s.price_version,"
             + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state, p.net_content_amount,"
             + " p.net_content_unit, p.content_published_at"
-            + DISPLAYABLE
+            + rankCols
+            + from
+            + extra
             + carriedAt(mfcId)
-            + " ORDER BY p.content_published_at DESC NULLS LAST, p.product_id OFFSET ? LIMIT ?) d"
+            + order
+            + " OFFSET ? LIMIT ?) d"
             // 평점(BR-63) — 고른 쪽의 상품만 색인으로 센다
             + " LEFT JOIN LATERAL (SELECT count(*) AS n, avg(rating)::float8 AS avg_rating FROM review_rating x"
             + " WHERE x.product_id = d.product_id AND NOT x.deleted) r ON true"
-            + " ORDER BY d.content_published_at DESC NULLS LAST, d.product_id",
+            + outer,
         (rs, i) ->
             new Item(
                 rs.getString("product_id"),
@@ -224,8 +262,34 @@ public class DisplayStore {
                 rs.getObject("net_content_amount", Integer.class),
                 rs.getString("net_content_unit"),
                 rs.getInt("review_count"),
-                rs.getObject("avg_rating", Double.class)),
+                rs.getObject("avg_rating", Double.class),
+                rs.getTimestamp("content_published_at") == null
+                    ? null
+                    : rs.getTimestamp("content_published_at").toInstant()),
         args.toArray());
+  }
+
+  /** 그 영역의 전체 수(다음 커서 판단). */
+  public int count(@Nullable String mfcId, Kind kind, @Nullable Instant since) {
+    List<Object> args = new java.util.ArrayList<>();
+    String from = DISPLAYABLE;
+    String extra = "";
+    if (kind == Kind.RANKING) {
+      from =
+          DISPLAYABLE.replace(
+              " WHERE ",
+              " JOIN product_ranking_signal g ON g.product_id = p.product_id WHERE g.sales_window > 0 AND ");
+    } else if (kind == Kind.NEW) {
+      extra = " AND p.content_published_at >= ?";
+      args.add(Timestamp.from(java.util.Objects.requireNonNull(since)));
+    }
+    if (mfcId != null) {
+      args.add(mfcId);
+    }
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COUNT(*)" + from + extra + carriedAt(mfcId), Integer.class, args.toArray());
+    return n == null ? 0 : n;
   }
 
   public int countDisplayable() {
