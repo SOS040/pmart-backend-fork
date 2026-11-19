@@ -70,6 +70,22 @@ public final class SearchRules {
     };
   }
 
+  /**
+   * 깊은 쪽 상한(2026-11-19, 성능 분석 1순위 ①) — Elasticsearch {@code index.max_result_window}(기본 10000). 이
+   * 위치를 넘는 커서는 잘못된 커서(400)이고, 이 너머로는 다음 커서를 주지 않는다(전에는 {@code o:20000} 이 ES 오류로 500).
+   */
+  public static final int MAX_WINDOW = 10_000;
+
+  /** 이 쪽에서 실제로 읽을 수 있는 크기 — from + size 가 창을 넘지 않게. */
+  public static int pageSize(int from, int size) {
+    return Math.max(0, Math.min(size, MAX_WINDOW - from));
+  }
+
+  /** 다음 커서를 줄지 — 남은 결과가 있고 창 안일 때만. */
+  public static boolean hasNext(int pos, long total, boolean pageNotEmpty) {
+    return pageNotEmpty && pos < total && pos < MAX_WINDOW;
+  }
+
   /** 커서 = 다음 시작 위치(불투명 문자열). 잘못된 커서는 처음부터가 아니라 오류. */
   public static String cursor(int offset) {
     return Base64.getUrlEncoder()
@@ -87,7 +103,7 @@ public final class SearchRules {
         throw new InvalidCursorException();
       }
       int offset = Integer.parseInt(raw.substring(2));
-      if (offset < 0) {
+      if (offset < 0 || offset >= MAX_WINDOW) {
         throw new InvalidCursorException();
       }
       return offset;

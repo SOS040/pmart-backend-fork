@@ -143,6 +143,7 @@ class SearchFlowIT {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.search.infrastructure.SearchIndex index;
 
   @InjectWireMock("content")
   WireMockServer content;
@@ -157,8 +158,8 @@ class SearchFlowIT {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     content.resetAll();
-    // 색인은 Logstash 가 쓰므로 먼저 만든다(LAN 은 es-init — 같은 정의 파일)
-    search("");
+    // 색인은 Logstash 가 쓰므로 먼저 만든다(LAN 은 es-init — 같은 정의 파일). 2026-11-19 부터 검색은 자기 색인만 확인하므로 전부를 직접
+    index.ensureIndices();
     startLogstash();
     card("PRD-1", "[시험] 소고기 미역국 500g", 1);
     card("PRD-2", "[시험] 국산콩 두부 300g", 1);
@@ -447,6 +448,19 @@ class SearchFlowIT {
     assertThat(
             http.get()
                 .uri("/search/products?cursor=garbage!")
+                .retrieve()
+                .toBodilessEntity()
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+    // 1순위 ①(2026-11-19): ES 창(1만) 밖 커서 — 전에는 500, 이제 잘못된 커서 400
+    String deep =
+        java.util.Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString("o:20000".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    assertThat(
+            http.get()
+                .uri("/search/products?cursor=" + deep)
                 .retrieve()
                 .toBodilessEntity()
                 .getStatusCode()

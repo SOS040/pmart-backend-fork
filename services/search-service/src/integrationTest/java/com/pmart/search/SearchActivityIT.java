@@ -127,8 +127,11 @@ class SearchActivityIT extends KafkaContainerSupport {
     List<String> keywords = awaitRecent(token, k -> k.size() == 10 && k.get(0).equals("열개시험12"));
     assertThat(keywords).hasSize(10).first().isEqualTo("열개시험12");
     assertThat(keywords).doesNotContain("열개시험1", "열개시험2");
-    // 색인에도 10개만 남는다(쓸 때 정리)
+    // 색인에도 10개만 남는다(쓸 때 정리). 정리는 새로 고침(1초)된 문서만 보므로 20ms 간격으로 몰아 쓰면 덜 지워질 수 있고, 설계대로 다음 기록 때
+    // 정리된다(RecentSearches.trim) — 2026-11-19 시험이 이 타이밍에 기대 실패하던 것을 고침: 새로 고친 뒤 한 번 더 기록하고 본다
     String hash = SearchKeywords.searcherHash("it-searcher-hash-key", "CUSTOMER", subject);
+    countRecentDocs(hash); // 새로 고침
+    search(token, "열개시험12");
     await(() -> countRecentDocs(hash) == 10, () -> "색인의 최근 검색어 " + countRecentDocs(hash));
   }
 

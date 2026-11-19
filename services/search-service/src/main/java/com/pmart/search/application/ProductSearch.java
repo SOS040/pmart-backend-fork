@@ -99,7 +99,7 @@ public class ProductSearch {
     String center = mfcId == null || mfcId.isBlank() ? null : mfcId;
     Map<String, Object> req = new LinkedHashMap<>();
     req.put("from", from);
-    req.put("size", size);
+    req.put("size", SearchRules.pageSize(from, size)); // 1순위 ① — from + size 가 ES 창(1만)을 넘지 않게
     req.put("track_total_hits", true);
     req.put("query", query(query, categoryId, price, filters, includeNotCarried ? null : center));
     req.put("sort", sort(sort, query != null));
@@ -110,7 +110,7 @@ public class ProductSearch {
     }
     long total = res.path("hits").path("total").path("value").asLong(0);
     int pos = from + out.size();
-    String next = !out.isEmpty() && pos < total ? SearchRules.cursor(pos) : null;
+    String next = SearchRules.hasNext(pos, total, !out.isEmpty()) ? SearchRules.cursor(pos) : null;
     List<String> applied = new ArrayList<>();
     filters.forEach((k, vs) -> vs.forEach(v -> applied.add(k + "." + v)));
     return new Result(out, total, next, sort, List.copyOf(applied));

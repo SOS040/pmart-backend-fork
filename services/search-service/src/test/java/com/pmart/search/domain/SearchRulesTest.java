@@ -58,4 +58,20 @@ class SearchRulesTest {
     assertThat(SearchRules.isChosungQuery("ab")).isFalse();
     assertThat(SearchRules.isChosungQuery(null)).isFalse();
   }
+
+  /** 깊은 쪽 상한(2026-11-19 1순위 ①): 창(1만) 밖 커서는 잘못된 커서, 창 끝에서는 크기를 줄이고 다음 커서를 주지 않는다. */
+  @Test
+  void cursorStaysInsideTheResultWindow() {
+    assertThat(SearchRules.offset(SearchRules.cursor(9_999))).isEqualTo(9_999);
+    assertThatThrownBy(() -> SearchRules.offset(SearchRules.cursor(SearchRules.MAX_WINDOW)))
+        .isInstanceOf(SearchRules.InvalidCursorException.class);
+    assertThatThrownBy(() -> SearchRules.offset(SearchRules.cursor(20_000)))
+        .isInstanceOf(SearchRules.InvalidCursorException.class);
+    assertThat(SearchRules.pageSize(0, 50)).isEqualTo(50);
+    assertThat(SearchRules.pageSize(9_980, 50)).isEqualTo(20);
+    assertThat(SearchRules.hasNext(9_000, 50_000, true)).isTrue();
+    assertThat(SearchRules.hasNext(10_000, 50_000, true)).as("창 끝 — 다음 없음").isFalse();
+    assertThat(SearchRules.hasNext(40, 40, true)).isFalse();
+    assertThat(SearchRules.hasNext(10, 40, false)).isFalse();
+  }
 }

@@ -169,9 +169,9 @@ mfc-inventory ── SkuHandlingChanged ─────▶ Kafka mfc.sku-handlin
 
 ## 11. 성능·알려진 문제 (2026-11-19)
 - 분석: `docs/operations/2026-11-19-search-performance-analysis.md` — 지금 규모(상품 약 500개)에서 서버 안 약 10ms, 사용자가 겪는 30~40ms 는 대부분 네트워크.
-- 알려진 문제(1순위, `docs/operations/pc1-todo.md` "상품 검색 개선" — ② 는 끝남):
-  - 깊은 커서(`o:20000` 등 ES 1만 건 창 밖) → **500**. 커서 위치 상한이 없다.
+- 알려진 문제(1순위, `docs/operations/pc1-todo.md` "상품 검색 개선" — ①②③ 끝남):
+  - ~~깊은 커서 500~~ — **2026-11-19 고침**: 1만 이상 위치 커서는 400, 창 너머 다음 커서 없음.
   - ~~카테고리 경로 캐시 동기 갱신·필터 패널 차례로 읽기~~ — **2026-11-19 고침(배포 19:45)**: 만료 사본을 그대로 쓰고 뒤에서 한 번만 다시 읽음, 사본 없는 실패 30초 기억, 없는 패널 병렬(`CategoryTreeClient`). 처음(재시작 직후)만 기다린다.
-  - `ensureIndices()` 가 요청 경로에 있어 첫 검색에 ES 확인 10번, 검색과 무관한 색인 하나가 문제여도 상품 검색 실패.
+  - ~~`ensureIndices()` 가 요청 경로에서 색인 10개 확인~~ — **2026-11-19 고침**: 시작 때 뒤에서 한 번, 요청은 자기 색인만.
 - 관측 빈틈: ES 호출 지표·응답 시간 히스토그램 없음(운영 p95 불가). PC 3 ES·Logstash 컨테이너 메모리 한도 97%.
 - "상품 상세가 느리다"는 검색과 별개다(설명 이미지 원본 디코딩) — `docs/handoff/clients/customer-app/2026-11-19-request-detail-image-performance.md`.

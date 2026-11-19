@@ -8,7 +8,6 @@ import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
@@ -65,7 +64,11 @@ public class SearchIndex {
 
   private final RestClient http;
   private final ObjectMapper mapper;
-  private final AtomicBoolean ready = new AtomicBoolean();
+
+  /** 확인을 마친 별칭(2026-11-19 1순위 ③ — 색인마다 따로, 검색과 무관한 색인 문제가 상품 검색을 막지 않게). */
+  private final java.util.Set<String> ready = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  private final Map<String, Object> locks = new java.util.concurrent.ConcurrentHashMap<>();
 
   public SearchIndex(SearchProperties props, ObjectMapper mapper) {
     HttpClient client =
@@ -84,13 +87,50 @@ public class SearchIndex {
     this.mapper = mapper;
   }
 
-  /** 색인·별칭이 없으면 만든다(처음 읽을 때 한 번). 동시에 만들면 한쪽은 이미 있음(400)을 받는다. */
+  /**
+   * 서비스가 뜨면 모든 색인을 뒤에서 한 번 확인한다(2026-11-19 1순위 ③ — 첫 검색이 확인 10번을 기다리지 않게). 실패는 경고만 — 그 색인을 처음 쓸 때
+   * 다시 확인한다.
+   */
+  @org.springframework.context.event.EventListener(
+      org.springframework.boot.context.event.ApplicationReadyEvent.class)
+  public void warmUp() {
+    Thread.ofVirtual()
+        .name("search-index-warmup")
+        .start(
+            () -> {
+              for (String alias : INDICES.keySet()) {
+                try {
+                  ensure(alias);
+                } catch (RuntimeException e) {
+                  log.warn("Elasticsearch 색인 확인 실패 {} — 처음 쓸 때 다시: {}", alias, e.toString());
+                }
+              }
+            });
+  }
+
+  /** 모든 색인·별칭(시험·로컬에서 Logstash 를 띄우기 전에). */
   public void ensureIndices() {
-    if (ready.get()) {
+    for (String alias : INDICES.keySet()) {
+      ensure(alias);
+    }
+  }
+
+  /**
+   * 그 별칭의 색인·별칭이 없으면 만든다(처음 쓸 때 한 번). 같은 별칭은 동시에 하나만 확인한다(다른 요청은 기다렸다가 결과를 쓴다). 실패하면 다음 요청이 다시
+   * 확인한다. 동시에 만들면 한쪽은 이미 있음(400)을 받는다.
+   */
+  public void ensure(String alias) {
+    if (ready.contains(alias)) {
       return;
     }
-    for (Map.Entry<String, String> e : INDICES.entrySet()) {
-      String index = e.getValue();
+    String index = INDICES.get(alias);
+    if (index == null) {
+      throw new IllegalArgumentException("모르는 별칭 " + alias);
+    }
+    synchronized (locks.computeIfAbsent(alias, k -> new Object())) {
+      if (ready.contains(alias)) {
+        return;
+      }
       int status =
           Downstream.call(
               TARGET,
@@ -108,14 +148,14 @@ public class SearchIndex {
           Downstream.run(
               TARGET,
               () -> http.put().uri("/{index}", index).body(body).retrieve().toBodilessEntity());
-          log.info("Elasticsearch 색인 생성 {} (별칭 {})", index, e.getKey());
+          log.info("Elasticsearch 색인 생성 {} (별칭 {})", index, alias);
         } catch (HttpClientErrorException.BadRequest already) {
           log.info("Elasticsearch 색인 {} 는 다른 곳에서 먼저 만들었다", index);
         }
       }
-      ensureAlias(e.getKey(), index);
+      ensureAlias(alias, index);
+      ready.add(alias);
     }
-    ready.set(true);
   }
 
   /**
@@ -148,7 +188,7 @@ public class SearchIndex {
   }
 
   public JsonNode search(String alias, Map<String, Object> request) {
-    ensureIndices();
+    ensure(alias);
     String raw =
         Downstream.call(
             TARGET,
@@ -163,7 +203,7 @@ public class SearchIndex {
 
   /** 문서를 id 로 넣거나 덮어쓴다(별칭으로 — 별칭은 색인 하나만 가리킨다). 새로 고침을 기다리지 않는다 — 다음 조회에는 색인 새로 고침(기본 1초) 뒤 보인다. */
   public void put(String alias, String id, Map<String, Object> document) {
-    ensureIndices();
+    ensure(alias);
     Downstream.run(
         TARGET,
         () ->
@@ -179,7 +219,7 @@ public class SearchIndex {
    * false.
    */
   public boolean putIfNewer(String alias, String id, long version, Map<String, Object> document) {
-    ensureIndices();
+    ensure(alias);
     int status =
         Downstream.call(
             TARGET,
@@ -201,7 +241,7 @@ public class SearchIndex {
 
   /** 문서 하나를 지운다. 없으면(404) 그대로 성공(멱등). */
   public void delete(String alias, String id) {
-    ensureIndices();
+    ensure(alias);
     Downstream.run(
         TARGET,
         () ->
@@ -214,7 +254,7 @@ public class SearchIndex {
 
   /** 조건에 맞는 문서를 지운다(버전 충돌은 건너뜀 — 다시 돌리면 된다). 지운 건수. */
   public long deleteByQuery(String alias, Map<String, Object> query) {
-    ensureIndices();
+    ensure(alias);
     String raw =
         Downstream.call(
             TARGET,
