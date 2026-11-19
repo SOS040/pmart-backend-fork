@@ -3,7 +3,7 @@
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-19
 - 계기: 사용자 2026-11-19 "옥토모로" — 고객 휴대폰 번호 확인. 고객이 **직접 문자를 보내는** 방식(우리가 인증번호 문자를 보내지 않는다)
-- 상태: 백엔드 main 반영, LAN 배포는 사용자 승인 뒤(배포되면 아래에 적는다)
+- 상태: **LAN 배포됨 2026-11-19 20:2x(이미지 b864d12f — customer-service 0.9.0·V12, api-gateway 허용 목록, pmart-config 37f31ad)**. 게이트웨이 경유 경로 확인(없는 확인 404). 실제 문자 확인은 아직 — 사용자 폰으로 볼 것
 
 ## 흐름
 1. 번호 저장은 지금처럼 `POST /me/profile-changes {phone}` → `GET /me` 의 `phoneVerified=false`.
