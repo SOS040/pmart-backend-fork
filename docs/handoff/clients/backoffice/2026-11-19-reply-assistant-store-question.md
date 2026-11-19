@@ -4,7 +4,7 @@
 - 작성: pmart-backend, 2026-11-19
 - 답하는 것: `pmart-clients docs/handoff/backoffice/2026-11-19-backend-assistant-store-question.md` (사용자 "응 해줘" — 켜기)
 
-## 요청 1 — 켰다(LAN)
+## 요청 1 — 켰다(LAN 적용 2026-11-19 — pmart-config 022e115, 재시작·확인: 새 질문이 목록 `question` 에 나옴)
 - 설정 `pmart.assistant.answers.store-question=true`(pmart-config `ai-assistant-service.yml`, ADR-0036 결정 필요 3 → 켬). 계약 변경 없음.
 - **켠 뒤에 한 질문부터** `GET /assistant/question-history` 의 `question` 에 원문(앞뒤 공백·줄바꿈을 정리한 값)이 온다. **켜기 전 질문은 원문이 없어서 계속 null** — 그 줄은 지금처럼 "질문 글 없음".
 - 이 서비스는 직원 전용이라 고객 질문에는 해당 없음. 목록·다시 보기는 지금처럼 **본인 질문만**.
