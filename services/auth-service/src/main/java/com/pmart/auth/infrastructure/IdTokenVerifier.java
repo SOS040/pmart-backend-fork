@@ -16,15 +16,16 @@ import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 /**
- * Google ID 토큰 검증(고객 앱 Google 로그인). 서명은 Google 공개키(JWKS), iss·aud(허용 클라이언트 ID)·만료를 본다. 제공자 비밀값은 쓰지
- * 않는다(ID 토큰 검증에는 필요 없음).
+ * 소셜 제공자 OpenID Connect ID 토큰 검증(Google·카카오·네이버 — ADR-0055·ADR-0071). 서명은 제공자 공개키(JWKS), iss·aud(허용
+ * 클라이언트 ID·앱 키)·만료를 본다. 제공자 비밀값은 쓰지 않는다(ID 토큰 검증에는 필요 없음). 2026-11-19 GoogleIdTokenVerifier 에서 이름을
+ * 바꿨다.
  *
  * <ul>
  *   <li>{@link Rejected}: 토큰이 명확히 무효(서명·aud·iss·만료) — 실패 횟수에 넣는다.
  *   <li>{@link Unavailable}: 공개키를 못 받는 등 제공자 쪽 장애 — 실패 횟수에서 뺀다(Commerce 4.9).
  * </ul>
  */
-public class GoogleIdTokenVerifier {
+public class IdTokenVerifier {
 
   /**
    * 검증된 제공자 계정과 Google 이 준 프로필(ADR-0024). auth 는 subject 만 저장하고, 프로필은 CustomerAuthenticated 로
@@ -51,31 +52,41 @@ public class GoogleIdTokenVerifier {
 
   private final JwtDecoder decoder;
 
-  public GoogleIdTokenVerifier(JwtDecoder decoder) {
+  public IdTokenVerifier(JwtDecoder decoder) {
     this.decoder = decoder;
   }
 
   /** 운영: Google JWKS 를 쓰는 검증기. */
-  public static GoogleIdTokenVerifier forGoogle(CustomerProperties.Google google) {
-    NimbusJwtDecoder d = NimbusJwtDecoder.withJwkSetUri(google.jwkSetUri()).build();
-    d.setJwtValidator(validator(google));
-    return new GoogleIdTokenVerifier(d);
+  public static IdTokenVerifier forGoogle(CustomerProperties.Google google) {
+    return forProvider(google.jwkSetUri(), google.clientIds(), google.issuers());
+  }
+
+  /** 운영: 제공자 JWKS 를 쓰는 검증기(카카오·네이버 — ADR-0071). */
+  public static IdTokenVerifier forProvider(
+      String jwkSetUri, List<String> clientIds, List<String> issuers) {
+    NimbusJwtDecoder d = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+    d.setJwtValidator(validator(clientIds, issuers));
+    return new IdTokenVerifier(d);
   }
 
   /** 서명 이외의 검증(운영·시험 공통). */
   public static OAuth2TokenValidator<Jwt> validator(CustomerProperties.Google google) {
+    return validator(google.clientIds(), google.issuers());
+  }
+
+  /** 서명 이외의 검증 — 만료·iss(허용 목록)·aud(허용 클라이언트 ID 중 하나). */
+  public static OAuth2TokenValidator<Jwt> validator(List<String> clientIds, List<String> issuers) {
     List<OAuth2TokenValidator<Jwt>> v = new ArrayList<>();
     v.add(new JwtTimestampValidator());
     v.add(
         jwt ->
-            google.issuers().contains(jwt.getClaimAsString("iss"))
+            issuers.contains(jwt.getClaimAsString("iss"))
                 ? OAuth2TokenValidatorResult.success()
                 : OAuth2TokenValidatorResult.failure(
                     new OAuth2Error("invalid_token", "iss", null)));
     v.add(
         jwt ->
-            jwt.getAudience() != null
-                    && jwt.getAudience().stream().anyMatch(google.clientIds()::contains)
+            jwt.getAudience() != null && jwt.getAudience().stream().anyMatch(clientIds::contains)
                 ? OAuth2TokenValidatorResult.success()
                 : OAuth2TokenValidatorResult.failure(
                     new OAuth2Error("invalid_token", "aud", null)));
@@ -91,7 +102,7 @@ public class GoogleIdTokenVerifier {
       throw new Rejected(e.getMessage());
     } catch (JwtException e) {
       // 공개키 조회 실패 등
-      throw new Unavailable("Google 공개키를 확인할 수 없습니다.", e);
+      throw new Unavailable("제공자 공개키를 확인할 수 없습니다.", e);
     }
     if (jwt.getSubject() == null || jwt.getSubject().isBlank()) {
       throw new Rejected("sub 없음");
@@ -100,7 +111,11 @@ public class GoogleIdTokenVerifier {
         jwt.getSubject(),
         blankToNull(jwt.getClaimAsString("email")),
         jwt.hasClaim("email_verified") ? jwt.getClaimAsBoolean("email_verified") : null,
-        blankToNull(jwt.getClaimAsString("name")),
+        // 카카오 ID 토큰은 name 대신 nickname(동의했을 때), 네이버 ID 토큰은 프로필 클레임이 없다
+        blankToNull(
+            jwt.getClaimAsString("name") != null
+                ? jwt.getClaimAsString("name")
+                : jwt.getClaimAsString("nickname")),
         blankToNull(jwt.getClaimAsString("picture")));
   }
 

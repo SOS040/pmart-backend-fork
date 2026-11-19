@@ -7,7 +7,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.pmart.auth.application.CustomerProperties;
-import com.pmart.auth.infrastructure.GoogleIdTokenVerifier;
+import com.pmart.auth.infrastructure.IdTokenVerifier;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import java.time.Instant;
 import java.util.List;
@@ -48,6 +48,9 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.auth.issuer=http://auth-service.test",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.auth.customer.google.client-ids=app-client.apps.googleusercontent.com,web-client.apps.googleusercontent.com",
+      // 카카오·네이버(ADR-0071) — aud = 카카오 SDK 앱 키·네이버 Client ID
+      "pmart.auth.customer.kakao.client-ids=kakao-native-app-key",
+      "pmart.auth.customer.naver.client-ids=naver-client-id",
       "pmart.auth.customer.max-failures=3",
       // 이 시험은 동의 단계가 꺼진 경로(바로 AUTH_MEMBER). 켜진 경로는 CustomerConsentLoginIT
       "pmart.auth.customer.require-consent=false"
@@ -65,15 +68,26 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
     }
   }
 
-  /** Google 공개키 대신 시험 키로 서명을 확인하고, 그 밖의 검증은 운영 규칙 그대로. */
+  /** 제공자(Google·카카오·네이버) 공개키 대신 시험 키로 서명을 확인하고, 그 밖의 검증(iss·aud·만료)은 운영 규칙 그대로. */
   @TestConfiguration
   static class FakeGoogle {
     @Bean
     @Primary
-    GoogleIdTokenVerifier testGoogleVerifier(CustomerProperties props) throws Exception {
+    com.pmart.auth.infrastructure.IdTokenVerifiers testVerifiers(CustomerProperties props)
+        throws Exception {
+      return new com.pmart.auth.infrastructure.IdTokenVerifiers(
+          Map.of(
+              "GOOGLE", entry(props.google().clientIds(), props.google().issuers()),
+              "KAKAO", entry(props.kakao().clientIds(), props.kakao().issuers()),
+              "NAVER", entry(props.naver().clientIds(), props.naver().issuers())));
+    }
+
+    static com.pmart.auth.infrastructure.IdTokenVerifiers.Entry entry(
+        List<String> clientIds, List<String> issuers) throws Exception {
       NimbusJwtDecoder d = NimbusJwtDecoder.withPublicKey(GOOGLE_KEY.toRSAPublicKey()).build();
-      d.setJwtValidator(GoogleIdTokenVerifier.validator(props.google()));
-      return new GoogleIdTokenVerifier(d);
+      d.setJwtValidator(IdTokenVerifier.validator(clientIds, issuers));
+      return new com.pmart.auth.infrastructure.IdTokenVerifiers.Entry(
+          new IdTokenVerifier(d), clientIds);
     }
   }
 
@@ -274,8 +288,50 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
                 mapper.readTree(refreshed.getBody()).path("refreshTokenExpiresAt").asString()))
         .isAfter(java.time.Instant.now().plus(java.time.Duration.ofDays(29)));
 
-    // 다른 제공자는 아직 없음
-    assertThat(login(UUID.randomUUID().toString(), device, "KAKAO", "x").status()).isEqualTo(501);
+    // APPLE 은 아직 없음(카카오·네이버는 2026-11-19 ADR-0071 부터 지원 — kakaoAndNaverFollowTheGoogleFlow)
+    assertThat(login(UUID.randomUUID().toString(), device, "APPLE", "x").status()).isEqualTo(501);
+  }
+
+  /**
+   * 카카오·네이버(ADR-0071, 2026-11-19): 구글과 같은 흐름 — 제공자 ID 토큰으로 가입·재로그인, 계정은 (제공자, sub)로 따로(같은 sub 라도
+   * 제공자가 다르면 다른 계정), 다른 제공자 발급자·aud 는 거절, APPLE 은 501.
+   */
+  @Test
+  void kakaoAndNaverFollowTheGoogleFlow() {
+    String sub = "same-sub-" + UUID.randomUUID();
+    String kakao = idToken(sub, "kakao-native-app-key", "https://kauth.kakao.com");
+    String naver = idToken(sub, "naver-client-id", "https://nid.naver.com");
+
+    Res k1 = login(UUID.randomUUID().toString(), "phone-" + UUID.randomUUID(), "KAKAO", kakao);
+    assertThat(k1.status()).as(k1.body().toString()).isEqualTo(200);
+    assertThat(k1.body().path("state").asString()).isEqualTo("AUTH_MEMBER");
+    String kakaoAccount = k1.body().path("accountId").asString();
+    assertThat(kakaoAccount).startsWith("CU-");
+    Res k2 = login(UUID.randomUUID().toString(), "phone-" + UUID.randomUUID(), "KAKAO", kakao);
+    assertThat(k2.body().path("accountId").asString()).as("재로그인 = 같은 계정").isEqualTo(kakaoAccount);
+
+    Res n1 = login(UUID.randomUUID().toString(), "phone-" + UUID.randomUUID(), "NAVER", naver);
+    assertThat(n1.status()).as(n1.body().toString()).isEqualTo(200);
+    assertThat(n1.body().path("accountId").asString())
+        .as("제공자가 다르면 다른 계정")
+        .startsWith("CU-")
+        .isNotEqualTo(kakaoAccount);
+
+    // 카카오 토큰을 네이버로, 다른 앱 키는 거절
+    assertThat(
+            login(UUID.randomUUID().toString(), "phone-" + UUID.randomUUID(), "NAVER", kakao)
+                .status())
+        .isEqualTo(401);
+    assertThat(
+            login(
+                    UUID.randomUUID().toString(),
+                    "phone-" + UUID.randomUUID(),
+                    "KAKAO",
+                    idToken(sub, "other-app-key", "https://kauth.kakao.com"))
+                .status())
+        .isEqualTo(401);
+    Res apple = login(UUID.randomUUID().toString(), "phone-" + UUID.randomUUID(), "APPLE", kakao);
+    assertThat(apple.status()).isEqualTo(501);
   }
 
   @Test

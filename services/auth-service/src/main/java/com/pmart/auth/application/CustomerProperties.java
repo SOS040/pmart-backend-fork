@@ -20,6 +20,8 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  * @param maxFailures 창 안의 실패 한도(5회)
  * @param restriction 제한 시간(10분)
  * @param google Google ID 토큰 검증
+ * @param kakao 카카오 ID 토큰 검증(ADR-0071, 2026-11-19) — client-ids = 앱이 카카오 SDK 초기화에 쓴 앱 키(ID 토큰 aud)
+ * @param naver 네이버 ID 토큰 검증(ADR-0071) — client-ids = 네이버 애플리케이션 Client ID(ID 토큰 aud)
  *     <p>실행 중 갱신(ADR-0033): {@code @RefreshScope} — Bus 갱신 뒤 다음 사용 때 새 값으로 다시 만든다(record 는 final 이라
  *     refresh 프록시를 못 만들어 클래스). 쓰는 쪽은 호출마다 읽는다. 주소(*BaseUrl)는 클라이언트를 만들 때 한 번 읽으므로 바꾸면 재시작.
  */
@@ -36,6 +38,8 @@ public class CustomerProperties {
   private final int maxFailures;
   private final Duration restriction;
   private final Google google;
+  private final Oidc kakao;
+  private final Oidc naver;
 
   public CustomerProperties(
       Duration accessTokenTtl,
@@ -46,7 +50,9 @@ public class CustomerProperties {
       Duration failureWindow,
       int maxFailures,
       Duration restriction,
-      Google google) {
+      Google google,
+      @Nullable Oidc kakao,
+      @Nullable Oidc naver) {
     accessTokenTtl = accessTokenTtl == null ? Duration.ofMinutes(30) : accessTokenTtl;
     refreshTokenTtl = refreshTokenTtl == null ? Duration.ofDays(30) : refreshTokenTtl;
     sessionMaxAge = sessionMaxAge == null ? Duration.ofDays(30) : sessionMaxAge;
@@ -66,6 +72,13 @@ public class CustomerProperties {
     this.maxFailures = maxFailures;
     this.restriction = restriction;
     this.google = google;
+    this.kakao =
+        Oidc.of(
+            kakao,
+            "https://kauth.kakao.com/.well-known/jwks.json",
+            List.of("https://kauth.kakao.com"));
+    this.naver =
+        Oidc.of(naver, "https://nid.naver.com/oauth2/jwks", List.of("https://nid.naver.com"));
   }
 
   public Duration accessTokenTtl() {
@@ -102,6 +115,53 @@ public class CustomerProperties {
 
   public Google google() {
     return google;
+  }
+
+  public Oidc kakao() {
+    return kakao;
+  }
+
+  public Oidc naver() {
+    return naver;
+  }
+
+  /**
+   * 카카오·네이버 OpenID Connect(ADR-0071). 공개키 주소·발급자는 제공자 고정값이라 비면 그 값을 쓴다(각 제공자의
+   * .well-known/openid-configuration, 2026-11-19 확인). 허용 클라이언트 ID 는 비면 그 제공자 로그인 CONFIG_REQUIRED.
+   *
+   * @param clientIds 허용할 ID 토큰 aud
+   * @param jwkSetUri 제공자 공개키
+   * @param issuers 허용 iss
+   */
+  public record Oidc(
+      @Nullable List<String> clientIds,
+      @Nullable String jwkSetUri,
+      @Nullable List<String> issuers) {
+
+    static Oidc of(@Nullable Oidc o, String defaultJwks, List<String> defaultIssuers) {
+      List<String> ids =
+          o == null || o.clientIds() == null
+              ? List.of()
+              : o.clientIds().stream().map(String::strip).filter(s -> !s.isEmpty()).toList();
+      return new Oidc(
+          ids,
+          o == null || o.jwkSetUri() == null || o.jwkSetUri().isBlank()
+              ? defaultJwks
+              : o.jwkSetUri(),
+          o == null || o.issuers() == null || o.issuers().isEmpty()
+              ? defaultIssuers
+              : List.copyOf(o.issuers()));
+    }
+
+    @Override
+    public List<String> clientIds() {
+      return clientIds == null ? List.of() : clientIds;
+    }
+
+    @Override
+    public List<String> issuers() {
+      return issuers == null ? List.of() : issuers;
+    }
   }
 
   /**

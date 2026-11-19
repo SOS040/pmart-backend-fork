@@ -4,7 +4,8 @@ import com.pmart.auth.infrastructure.CustomerConsentClient;
 import com.pmart.auth.infrastructure.CustomerConsentClient.ConsentCheck;
 import com.pmart.auth.infrastructure.CustomerStore;
 import com.pmart.auth.infrastructure.CustomerStore.AuthRequestRow;
-import com.pmart.auth.infrastructure.GoogleIdTokenVerifier;
+import com.pmart.auth.infrastructure.IdTokenVerifier;
+import com.pmart.auth.infrastructure.IdTokenVerifiers;
 import com.pmart.auth.infrastructure.SessionStore;
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.messaging.EventEnvelopeCodec;
@@ -93,7 +94,7 @@ public class CustomerSocialLoginService {
   private final CustomerStore customers;
   private final SessionStore sessions;
   private final SessionTokens tokens;
-  private final GoogleIdTokenVerifier google;
+  private final IdTokenVerifiers verifiers;
   private final CustomerConsentClient consents;
   private final CustomerProperties props;
   private final EventPublisher events;
@@ -105,7 +106,7 @@ public class CustomerSocialLoginService {
       CustomerStore customers,
       SessionStore sessions,
       SessionTokens tokens,
-      GoogleIdTokenVerifier google,
+      IdTokenVerifiers verifiers,
       CustomerConsentClient consents,
       CustomerProperties props,
       EventPublisher events,
@@ -115,7 +116,7 @@ public class CustomerSocialLoginService {
     this.customers = customers;
     this.sessions = sessions;
     this.tokens = tokens;
-    this.google = google;
+    this.verifiers = verifiers;
     this.consents = consents;
     this.props = props;
     this.events = events;
@@ -130,13 +131,8 @@ public class CustomerSocialLoginService {
       String deviceId,
       String provider,
       String providerToken) {
-    if (!"GOOGLE".equals(provider)) {
-      throw new PmartException(
-          ErrorCode.UNSUPPORTED_ACTION, provider + " 로그인은 아직 지원하지 않습니다(GOOGLE 만).");
-    }
-    if (props.google().clientIds().isEmpty()) {
-      throw PmartException.configRequired("pmart.auth.customer.google.client-ids");
-    }
+    // GOOGLE·KAKAO·NAVER 는 같은 방식(ID 토큰 검증, ADR-0055·ADR-0071). APPLE 은 501, 클라이언트 ID 설정이 없으면 422
+    IdTokenVerifier verifier = verifiers.require(provider);
     // 같은 키 재전송: 원결과를 따른다
     Optional<AuthRequestRow> earlier = customers.requestByKey(sourceSystem, idempotencyKey);
     if (earlier.isPresent()) {
@@ -146,12 +142,12 @@ public class CustomerSocialLoginService {
     checkRestriction(deviceId, now);
 
     // 제공자 검증은 트랜잭션 밖(네트워크)
-    GoogleIdTokenVerifier.Identity identity;
+    IdTokenVerifier.Identity identity;
     try {
-      identity = google.verify(providerToken);
-    } catch (GoogleIdTokenVerifier.Unavailable e) {
+      identity = verifier.verify(providerToken);
+    } catch (IdTokenVerifier.Unavailable e) {
       throw providerUnavailable(e);
-    } catch (GoogleIdTokenVerifier.Rejected e) {
+    } catch (IdTokenVerifier.Rejected e) {
       return rejected(idempotencyKey, sourceSystem, deviceId, provider, now);
     }
 
@@ -274,19 +270,19 @@ public class CustomerSocialLoginService {
     Instant now = now();
     checkRestriction(deviceId, now);
 
-    // 로그인한 그 Google 계정인지 다시 확인한다(토큰이 없는 단계라 이것이 본인 확인). 프로필은 동의 뒤에만 넘긴다
-    GoogleIdTokenVerifier.Identity identity;
+    // 로그인한 그 소셜 계정인지 다시 확인한다(토큰이 없는 단계라 이것이 본인 확인). 프로필은 동의 뒤에만 넘긴다
+    IdTokenVerifier.Identity identity;
     try {
-      identity = google.verify(providerToken);
-    } catch (GoogleIdTokenVerifier.Unavailable e) {
+      identity = verifiers.require(row.provider()).verify(providerToken);
+    } catch (IdTokenVerifier.Unavailable e) {
       throw providerUnavailable(e);
-    } catch (GoogleIdTokenVerifier.Rejected e) {
+    } catch (IdTokenVerifier.Rejected e) {
       log.warn("필수 동의 완료 거절(PROVIDER_REJECTED) provider={}", row.provider());
       throw providerRejected();
     }
     if (!accountId.equals(
         customers.linkedAccount(row.provider(), identity.subject()).orElse(null))) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "로그인한 계정과 다른 Google 계정입니다.");
+      throw new PmartException(ErrorCode.FORBIDDEN, "로그인한 계정과 다른 소셜 계정입니다.");
     }
 
     if (pending) {
@@ -461,7 +457,7 @@ public class CustomerSocialLoginService {
 
   /** Google 이 준 프로필(이름·이메일·사진)은 저장하지 않고 사건으로 customer-service 에 넘긴다(ADR-0024). 없는 값은 싣지 않는다. */
   private void publishAuthenticated(
-      String accountId, String provider, Instant at, GoogleIdTokenVerifier.Identity identity) {
+      String accountId, String provider, Instant at, IdTokenVerifier.Identity identity) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("accountId", accountId);
     payload.put("provider", provider);
@@ -496,12 +492,12 @@ public class CustomerSocialLoginService {
     return clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
   }
 
-  private static PmartException providerUnavailable(GoogleIdTokenVerifier.Unavailable e) {
-    log.warn("Google 검증 불가(실패 횟수 제외): {}", e.getMessage());
+  private static PmartException providerUnavailable(IdTokenVerifier.Unavailable e) {
+    log.warn("소셜 제공자 검증 불가(실패 횟수 제외): {}", e.getMessage());
     return new PmartException(
         "PROVIDER_UNAVAILABLE",
         HttpStatus.SERVICE_UNAVAILABLE,
-        "Google 인증 확인이 잠시 안 됩니다. 잠시 뒤 다시 시도하세요.",
+        "로그인 제공자 인증 확인이 잠시 안 됩니다. 잠시 뒤 다시 시도하세요.",
         true,
         List.of());
   }

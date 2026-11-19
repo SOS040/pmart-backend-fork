@@ -9,9 +9,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 class CustomerLoginConfig {
 
+  /** 제공자별 ID 토큰 검증기(GOOGLE·KAKAO·NAVER — ADR-0055·ADR-0071). */
   @Bean
   @ConditionalOnMissingBean
-  GoogleIdTokenVerifier googleIdTokenVerifier(CustomerProperties props) {
-    return GoogleIdTokenVerifier.forGoogle(props.google());
+  IdTokenVerifiers idTokenVerifiers(CustomerProperties props) {
+    return IdTokenVerifiers.forProperties(props);
   }
 }

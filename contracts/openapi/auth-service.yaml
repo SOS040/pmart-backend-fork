@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-19, ADR-0071 — 사용자 "고객 구글 로그인 흐름처럼 카카오랑 네이버도"): `POST /auth/social-logins` 가 provider **KAKAO·NAVER** 도 받는다 —
+    Google 과 같은 방식(앱이 받은 OpenID Connect ID 토큰을 providerToken 으로, 서버는 제공자 공개키로 iss·aud·만료·서명 검증, 비밀값 없음).
+    카카오 aud = 앱이 카카오 SDK 초기화에 쓴 앱 키(콘솔에서 OpenID Connect 활성화), 네이버 aud = 애플리케이션 Client ID(scope openid). APPLE 은 501 UNSUPPORTED_ACTION.
+    그 제공자의 허용 클라이언트 ID 설정이 없으면 422 CONFIG_REQUIRED. 계정은 (제공자, 제공자 사용자 ID)로 따로 — 같은 이메일이어도 합치지 않는다.
     고객 소셜 로그인(Google ID 토큰 검증, ADR-0019·0055)·인증 상태(AUTH_GUEST→PENDING→(CONSENT)→MEMBER, AUTH_UNKNOWN, AUTH_RESTRICTED 15분 5회→10분), 
     토큰/세션, 유효 RoleGrant·Delegation(교집합, 원권한보다 넓게 불가)·긴급권한, 행위 시점 검증, 보안 기록 90일의 정본. (docs/architecture/service-map.md §8)
     비정본: 권한 부여 승인 흐름(approval BO-01/02), 고객 프로필·동의(customer).
@@ -121,7 +125,7 @@ paths:
               required: [provider, providerToken]
               properties:
                 provider: { $ref: '#/components/schemas/Provider' }
-                providerToken: { type: string, description: "Google ID 토큰(JWT, aud = 고객용 웹 클라이언트 ID — 고객 앱 serverClientId). 인가 코드는 받지 않는다(ADR-0055). 로그 금지" }
+                providerToken: { type: string, description: "제공자 OpenID Connect ID 토큰(JWT). GOOGLE: aud = 고객용 웹 클라이언트 ID(serverClientId). KAKAO(0.4.0): aud = 카카오 SDK 앱 키. NAVER(0.4.0): aud = 네이버 Client ID. 인가 코드·access token 은 받지 않는다(ADR-0055·0071). 로그 금지" }
                 purpose: { type: string, enum: [GENERAL, CHECKOUT], default: GENERAL, description: 'CHECKOUT이면 장바구니 병합 확인 흐름으로 복귀 — 서버 응답은 GENERAL 과 같고(CART_MERGE_CONFIRM 을 보내지 않음, 0.2.1), 병합 확인은 앱이 한다' }
       responses:
         '200':
