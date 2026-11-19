@@ -179,14 +179,75 @@ public class HrStore {
   }
 
   /** 사번 내림차순(최근 등록 먼저). cursor = 이전 쪽 마지막 사번. */
+  /** 직원 목록 거르기(0.9.0 H-D1). 값이 null 이면 거르지 않는다. */
+  public record ListFilter(
+      @Nullable String status,
+      @Nullable String affiliationCode,
+      @Nullable String q,
+      List<String> provisioningSteps,
+      @Nullable String grantSubmission,
+      @Nullable LocalDate endDateFrom,
+      @Nullable LocalDate endDateTo,
+      @Nullable Instant createdFrom,
+      @Nullable Instant createdTo,
+      boolean endDateAsc) {}
+
   public List<EmployeeRow> list(
       @Nullable String status,
       @Nullable String affiliationCode,
       @Nullable String q,
       @Nullable String cursor,
       int size) {
-    StringBuilder sql = new StringBuilder("SELECT * FROM employee WHERE true");
+    return list(
+        new ListFilter(status, affiliationCode, q, List.of(), null, null, null, null, null, false),
+        cursor,
+        null,
+        size);
+  }
+
+  /**
+   * 거른 목록. 기본은 사번 내림차순(cursor = 사번). endDateAsc 면 (종료일, 사번) 오름차순 — 종료일 없는 직원은 빠지고 커서는 afterEndDate
+   * + cursor(사번).
+   */
+  public List<EmployeeRow> list(
+      ListFilter f, @Nullable String cursor, @Nullable LocalDate afterEndDate, int size) {
+    @Nullable String status = f.status();
+    @Nullable String affiliationCode = f.affiliationCode();
+    @Nullable String q = f.q();
+    StringBuilder sql = new StringBuilder("SELECT * FROM employee e WHERE true");
     List<Object> args = new ArrayList<>();
+    if (!f.provisioningSteps().isEmpty()) {
+      sql.append(
+              " AND EXISTS (SELECT 1 FROM provisioning p WHERE p.operator_id = e.operator_id AND p.step IN (")
+          .append(
+              String.join(",", java.util.Collections.nCopies(f.provisioningSteps().size(), "?")))
+          .append("))");
+      args.addAll(f.provisioningSteps());
+    }
+    if (f.grantSubmission() != null) {
+      sql.append(
+          " AND EXISTS (SELECT 1 FROM requested_grant g WHERE g.operator_id = e.operator_id AND g.submission = ?)");
+      args.add(f.grantSubmission());
+    }
+    if (f.endDateFrom() != null) {
+      sql.append(" AND e.end_date >= ?");
+      args.add(f.endDateFrom());
+    }
+    if (f.endDateTo() != null) {
+      sql.append(" AND e.end_date <= ?");
+      args.add(f.endDateTo());
+    }
+    if (f.createdFrom() != null) {
+      sql.append(" AND e.created_at >= ?");
+      args.add(Timestamp.from(f.createdFrom()));
+    }
+    if (f.createdTo() != null) {
+      sql.append(" AND e.created_at <= ?");
+      args.add(Timestamp.from(f.createdTo()));
+    }
+    if (f.endDateAsc()) {
+      sql.append(" AND e.end_date IS NOT NULL");
+    }
     if (status != null) {
       sql.append(" AND status = ?");
       args.add(status);
@@ -202,6 +263,16 @@ public class HrStore {
       args.add(like.toLowerCase());
       args.add(like.toUpperCase());
     }
+    if (f.endDateAsc()) {
+      if (cursor != null && afterEndDate != null) {
+        sql.append(" AND (e.end_date, e.employee_no) > (?, ?)");
+        args.add(afterEndDate);
+        args.add(cursor);
+      }
+      sql.append(" ORDER BY e.end_date, e.employee_no LIMIT ?");
+      args.add(size);
+      return jdbc.query(sql.toString(), (rs, i) -> employee(rs), args.toArray());
+    }
     if (cursor != null) {
       sql.append(" AND employee_no < ?");
       args.add(cursor);
@@ -209,6 +280,47 @@ public class HrStore {
     sql.append(" ORDER BY employee_no DESC LIMIT ?");
     args.add(size);
     return jdbc.query(sql.toString(), (rs, i) -> employee(rs), args.toArray());
+  }
+
+  /** 인원 세기(0.9.0 H-D2) — 상태별. 없는 상태는 0. */
+  public java.util.Map<String, Long> countByStatus() {
+    java.util.Map<String, Long> out = new java.util.HashMap<>();
+    jdbc.query(
+        "SELECT status, count(*) AS n FROM employee GROUP BY status",
+        rs -> {
+          out.put(rs.getString("status"), rs.getLong("n"));
+        });
+    return out;
+  }
+
+  /** 계정 발급 실패(FAILED·COMPENSATED) 직원 수. */
+  public long countProvisioningFailed() {
+    Long n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM provisioning WHERE step IN ('FAILED', 'COMPENSATED')",
+            Long.class);
+    return n == null ? 0 : n;
+  }
+
+  /** 요청 권한 중 SUBMITTED(승인 대기)가 있는 직원 수 — 퇴사자 제외. */
+  public long countGrantPendingApproval() {
+    Long n =
+        jdbc.queryForObject(
+            "SELECT count(DISTINCT g.operator_id) FROM requested_grant g JOIN employee e"
+                + " ON e.operator_id = g.operator_id WHERE g.submission = 'SUBMITTED' AND e.status <> 'LEFT'",
+            Long.class);
+    return n == null ? 0 : n;
+  }
+
+  /** 재직 중 계약 종료일이 from~to(포함)인 직원 수. */
+  public long countEndingBetween(LocalDate from, LocalDate to) {
+    Long n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM employee WHERE status = 'ACTIVE' AND end_date BETWEEN ? AND ?",
+            Long.class,
+            from,
+            to);
+    return n == null ? 0 : n;
   }
 
   public void setKeycloakUserId(String operatorId, String keycloakUserId, Instant at) {

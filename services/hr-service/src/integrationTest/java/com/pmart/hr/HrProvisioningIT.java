@@ -445,6 +445,112 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
         .isEqualTo(409);
   }
 
+  /** 인사 대시보드(0.9.0 H-D1·H-D2, 2026-11-19): 목록 거르기·정렬·인원 세기. 같은 DB 를 쓰는 다른 시험이 있어 세기는 늘어난 만큼 본다. */
+  @Test
+  void dashboardFiltersAndCounts() throws Exception {
+    JsonNode before = call("GET", "/hr/employees/counts", hr, null).body();
+    LocalDate end = today().plusDays(3);
+    Res ending =
+        call("POST", "/hr/employees", hr, registration(mailId(), "PART_TIME", today(), end));
+    assertThat(ending.status()).as(ending.body().toString()).isEqualTo(201);
+    String a = ending.body().path("operatorId").asText();
+    String b = register(mailId());
+    jdbc.update("UPDATE provisioning SET step = 'FAILED' WHERE operator_id = ?", a);
+
+    Res counts = call("GET", "/hr/employees/counts", hr, null);
+    assertThat(counts.status()).as(counts.body().toString()).isEqualTo(200);
+    JsonNode after = counts.body();
+    assertThat(after.path("endingWithinDays").asInt()).isEqualTo(7);
+    assertThat(after.path("endingFrom").asText()).isEqualTo(today().toString());
+    assertThat(after.path("endingTo").asText()).isEqualTo(today().plusDays(6).toString());
+    assertThat(after.path("endingSoon").path("complete").asBoolean()).isTrue();
+    assertThat(
+            after.path("active").path("value").asInt()
+                - before.path("active").path("value").asInt())
+        .isEqualTo(2);
+    assertThat(
+            after.path("endingSoon").path("value").asInt()
+                - before.path("endingSoon").path("value").asInt())
+        .isEqualTo(1);
+    assertThat(
+            after.path("provisioningFailed").path("value").asInt()
+                - before.path("provisioningFailed").path("value").asInt())
+        .isEqualTo(1);
+    assertThat(
+            call("GET", "/hr/employees/counts?endingWithinDays=3", hr, null)
+                    .body()
+                    .path("endingSoon")
+                    .path("value")
+                    .asInt()
+                - before.path("endingSoon").path("value").asInt())
+        .as("3일 안(오늘~+2)에는 +3일 종료가 없다")
+        .isLessThanOrEqualTo(0);
+
+    assertThat(
+            ids(
+                call(
+                    "GET", "/hr/employees?provisioningStep=FAILED,COMPENSATED&size=200", hr, null)))
+        .contains(a)
+        .doesNotContain(b);
+    assertThat(ids(call("GET", "/hr/employees?grantSubmission=PENDING&size=200", hr, null)))
+        .contains(b);
+    String range = "endDateFrom=" + today() + "&endDateTo=" + today().plusDays(6);
+    assertThat(ids(call("GET", "/hr/employees?" + range + "&size=200", hr, null)))
+        .contains(a)
+        .doesNotContain(b);
+    assertThat(
+            ids(
+                call(
+                    "GET",
+                    "/hr/employees?createdFrom="
+                        + java.time.Instant.now().minusSeconds(300)
+                        + "&size=200",
+                    hr,
+                    null)))
+        .contains(a, b);
+    // 종료일 빠른 순 — 종료일 없는 직원은 빠지고 커서로 이어진다
+    Res sorted = call("GET", "/hr/employees?sort=END_DATE_ASC&size=1", hr, null);
+    assertThat(sorted.status()).isEqualTo(200);
+    assertThat(sorted.body().path("items").path(0).path("endDate").isMissingNode()).isFalse();
+    assertThat(ids(call("GET", "/hr/employees?sort=END_DATE_ASC&size=200", hr, null)))
+        .contains(a)
+        .doesNotContain(b);
+    if (sorted.body().hasNonNull("nextCursor")) {
+      assertThat(sorted.body().path("nextCursor").asText()).contains("|");
+      assertThat(
+              call(
+                      "GET",
+                      "/hr/employees?sort=END_DATE_ASC&size=1&cursor="
+                          + sorted.body().path("nextCursor").asText(),
+                      hr,
+                      null)
+                  .status())
+          .isEqualTo(200);
+    }
+
+    assertThat(call("GET", "/hr/employees?provisioningStep=NOPE", hr, null).status())
+        .isEqualTo(400);
+    assertThat(
+            call("GET", "/hr/employees?endDateFrom=" + end + "&endDateTo=" + today(), hr, null)
+                .status())
+        .isEqualTo(400);
+    assertThat(
+            call(
+                    "GET",
+                    "/hr/employees/counts",
+                    TestJwt.operator("OP-IT-X", List.of("CS_AGENT"), List.of()),
+                    null)
+                .status())
+        .isEqualTo(403);
+  }
+
+  static List<String> ids(Res r) {
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    List<String> out = new java.util.ArrayList<>();
+    r.body().path("items").forEach(i -> out.add(i.path("operatorId").asText()));
+    return out;
+  }
+
   @Test
   void waitsUntilMailboxReceivesBeforeCreatingAccount() throws Exception {
     mail.stubFor(

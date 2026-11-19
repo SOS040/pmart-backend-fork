@@ -241,6 +241,124 @@ public class EmployeeService {
         .toList();
   }
 
+  static final java.util.Set<String> PROVISIONING_STEPS =
+      java.util.Set.of(
+          "REQUESTED",
+          "MAILBOX_CREATED",
+          "IAM_CREATED",
+          "INVITE_SENT",
+          "DONE",
+          "FAILED",
+          "COMPENSATED");
+
+  /** 한 쪽 + 다음 커서(같은 sort 로만). */
+  public record Page(List<EmployeeView> items, @Nullable String nextCursor) {}
+
+  /**
+   * 거른 목록(0.9.0 H-D1). 거르기 값 검사(모르는 발급 단계·from > to → 400)는 여기서. END_DATE_ASC 커서는 {@code 종료일|사번}.
+   */
+  public Page list(
+      HrStore.ListFilter f,
+      @Nullable String provisioningStepCsv,
+      @Nullable String cursor,
+      int size) {
+    requireHrAdmin();
+    List<String> steps = new java.util.ArrayList<>();
+    if (provisioningStepCsv != null && !provisioningStepCsv.isBlank()) {
+      for (String s : provisioningStepCsv.split(",")) {
+        String v = s.strip();
+        if (!PROVISIONING_STEPS.contains(v)) {
+          throw invalidParam("provisioningStep", "모르는 계정 발급 단계입니다: " + v);
+        }
+        steps.add(v);
+      }
+    }
+    if (f.endDateFrom() != null
+        && f.endDateTo() != null
+        && f.endDateFrom().isAfter(f.endDateTo())) {
+      throw invalidParam("endDateFrom", "endDateFrom 이 endDateTo 보다 늦습니다.");
+    }
+    if (f.createdFrom() != null
+        && f.createdTo() != null
+        && f.createdFrom().isAfter(f.createdTo())) {
+      throw invalidParam("createdFrom", "createdFrom 이 createdTo 보다 늦습니다.");
+    }
+    HrStore.ListFilter filter =
+        new HrStore.ListFilter(
+            f.status(),
+            f.affiliationCode(),
+            f.q(),
+            List.copyOf(steps),
+            f.grantSubmission(),
+            f.endDateFrom(),
+            f.endDateTo(),
+            f.createdFrom(),
+            f.createdTo(),
+            f.endDateAsc());
+    int n = Math.min(Math.max(size, 1), 200);
+    String after = cursor;
+    LocalDate afterEnd = null;
+    if (f.endDateAsc() && cursor != null) {
+      int bar = cursor.indexOf('|');
+      try {
+        afterEnd = LocalDate.parse(cursor.substring(0, bar));
+        after = cursor.substring(bar + 1);
+      } catch (RuntimeException e) {
+        throw invalidParam("cursor", "잘못된 커서입니다. 처음부터 다시 조회하세요.");
+      }
+    }
+    List<EmployeeRow> rows = store.list(filter, after, afterEnd, n);
+    List<EmployeeView> items = rows.stream().map(e -> view(e.operatorId())).toList();
+    String next = null;
+    if (rows.size() == n) {
+      EmployeeRow last = rows.getLast();
+      next = f.endDateAsc() ? last.endDate() + "|" + last.employeeNo() : last.employeeNo();
+    }
+    return new Page(items, next);
+  }
+
+  /** 인원 세기 결과(0.9.0 H-D2). DB 집계라 모두 다 센 값(complete). */
+  public record Counts(
+      Instant asOf,
+      long active,
+      long suspended,
+      long left,
+      long provisioningFailed,
+      long grantPendingApproval,
+      long endingSoon,
+      int endingWithinDays,
+      LocalDate endingFrom,
+      LocalDate endingTo) {}
+
+  /** 계약 종료 임박 = 재직 중 종료일이 오늘(Asia/Seoul) ~ 오늘 + (days − 1). */
+  public Counts counts(@Nullable Integer endingWithinDays) {
+    requireHrAdmin();
+    int days = endingWithinDays == null ? 7 : endingWithinDays;
+    if (days < 1 || days > 90) {
+      throw invalidParam("endingWithinDays", "1~90 입니다.");
+    }
+    Instant now = clock.instant();
+    LocalDate today = LocalDate.ofInstant(now, props.zone());
+    LocalDate to = today.plusDays(days - 1L);
+    java.util.Map<String, Long> byStatus = store.countByStatus();
+    return new Counts(
+        now,
+        byStatus.getOrDefault("ACTIVE", 0L),
+        byStatus.getOrDefault("SUSPENDED", 0L),
+        byStatus.getOrDefault("LEFT", 0L),
+        store.countProvisioningFailed(),
+        store.countGrantPendingApproval(),
+        store.countEndingBetween(today, to),
+        days,
+        today,
+        to);
+  }
+
+  private static PmartException invalidParam(String field, String reason) {
+    return new PmartException(
+        ErrorCode.VALIDATION_FAILED, reason, List.of(new PmartException.Detail(field, reason)));
+  }
+
   /** 본인(토큰의 운영자 ID). */
   public EmployeeRow me() {
     PmartPrincipal p = requireOperator();

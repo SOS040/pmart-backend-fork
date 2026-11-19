@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-19, 인사 백오피스 대시보드 H-D1·H-D2 — 사용자 "응 해줘"): 직원 목록 거르기(provisioningStep·grantSubmission·endDateFrom/To·
+    createdFrom/To·sort)와 인원 세기 `GET /hr/employees/counts`(상태별·계정 발급 실패·권한 승인 대기·계약 종료 임박, 값마다 value·complete). 둘 다 HR_ADMIN 만.
     직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
     hr-service 가 사서함(@pmart.com, mail-provisioner) → Keycloak 계정(hr-provisioner, Admin API) → 비밀번호 설정 메일(Keycloak) 순서로
     계정을 발급하고(뒤에서 — 진행 상태를 조회), 끝나면 `EmployeeRegistered` 를 발행한다(employee-auth-service 가 로그인 상태로 반영).
@@ -95,6 +97,13 @@ paths:
         - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/EmploymentStatus' } }
         - { name: affiliationCode, in: query, required: false, schema: { type: string, maxLength: 64 } }
         - { name: q, in: query, required: false, schema: { type: string, maxLength: 60 }, description: 이름·메일 ID·사번 앞부분 }
+        - { name: provisioningStep, in: query, required: false, schema: { type: string, maxLength: 120 }, description: '0.9.0 — 계정 발급 단계(ProvisioningStep, 쉼표로 여럿 — 예 FAILED,COMPENSATED). 모르는 값 400' }
+        - { name: grantSubmission, in: query, required: false, schema: { type: string, enum: [PENDING, SUBMITTED, APPROVED, REJECTED] }, description: '0.9.0 — 요청 권한 중 이 상태가 하나라도 있는 직원' }
+        - { name: endDateFrom, in: query, required: false, schema: { type: string, format: date }, description: '0.9.0 — 계약 종료일 ≥ (Asia/Seoul 날짜, 포함). 종료일 없는 직원은 빠진다' }
+        - { name: endDateTo, in: query, required: false, schema: { type: string, format: date }, description: '0.9.0 — 계약 종료일 ≤ (포함). from > to 400' }
+        - { name: createdFrom, in: query, required: false, schema: { type: string, format: date-time }, description: '0.9.0 — 등록 시각 ≥' }
+        - { name: createdTo, in: query, required: false, schema: { type: string, format: date-time }, description: '0.9.0 — 등록 시각 ≤. from > to 400' }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [CREATED_DESC, END_DATE_ASC], default: CREATED_DESC }, description: '0.9.0 — CREATED_DESC 등록 최근 순(사번 내림차순 — 기본, 지금과 같음), END_DATE_ASC 계약 종료일 빠른 순(종료일 없는 직원은 빠진다). 커서는 같은 sort 로만' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -103,6 +112,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EmployeePage' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /hr/employees/counts:
+    get:
+      tags: [employees]
+      summary: 인원 세기 — 인사팀 대시보드(H-D2, 0.9.0)
+      description: |
+        한 번에 센다(서버 DB 집계 — 다 세므로 complete 는 늘 true, 다 못 세는 경우가 생기면 false). 원천을 못 읽으면 오류(0 으로 바꾸지 않는다).
+        endingSoon = 재직(ACTIVE) 중 계약 종료일이 오늘(Asia/Seoul) ~ 오늘 + (endingWithinDays − 1) 인 직원(7 이면 오늘 포함 7일). 업무 문서에 정한 값이 없어 기본 7(사용자 2026-11-19 추천대로).
+        provisioningFailed = 계정 발급 FAILED·COMPENSATED, grantPendingApproval = 요청 권한 중 SUBMITTED 가 있는 직원 수(퇴사자 제외).
+      operationId: countEmployees
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: endingWithinDays, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 90, default: 7 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeCounts' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /hr/employees/me:
@@ -582,6 +613,26 @@ components:
         version: { type: integer, format: int64 }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    CountValue:
+      type: object
+      required: [value, complete]
+      properties:
+        value: { type: integer, minimum: 0 }
+        complete: { type: boolean, description: 'false 면 "N명 이상"' }
+    EmployeeCounts:
+      type: object
+      required: [asOf, active, suspended, left, provisioningFailed, grantPendingApproval, endingSoon, endingWithinDays, endingFrom, endingTo]
+      properties:
+        asOf: { type: string, format: date-time }
+        active: { $ref: '#/components/schemas/CountValue' }
+        suspended: { $ref: '#/components/schemas/CountValue' }
+        left: { $ref: '#/components/schemas/CountValue' }
+        provisioningFailed: { $ref: '#/components/schemas/CountValue' }
+        grantPendingApproval: { $ref: '#/components/schemas/CountValue' }
+        endingSoon: { $ref: '#/components/schemas/CountValue' }
+        endingWithinDays: { type: integer }
+        endingFrom: { type: string, format: date, description: '오늘(Asia/Seoul) — 목록은 ?endDateFrom=이 값&endDateTo=endingTo&status=ACTIVE&sort=END_DATE_ASC' }
+        endingTo: { type: string, format: date }
     EmployeePage:
       type: object
       required: [items]

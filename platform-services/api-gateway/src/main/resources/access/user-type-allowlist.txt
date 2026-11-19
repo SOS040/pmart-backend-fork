@@ -126,6 +126,7 @@ GET /api/v1/holds/{holdId} OPERATOR
 GET /api/v1/hr/departments OPERATOR
 GET /api/v1/hr/employee-labels OPERATOR
 GET /api/v1/hr/employees OPERATOR
+GET /api/v1/hr/employees/counts OPERATOR
 GET /api/v1/hr/employees/me OPERATOR
 GET /api/v1/hr/employees/{operatorId} OPERATOR
 GET /api/v1/inbound-promises OPERATOR
