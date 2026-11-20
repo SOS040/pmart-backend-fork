@@ -2,8 +2,8 @@
 
 - 보낸 영역: platform (PC 1)
 - 작성: pmart-backend, 2026-11-21 — 사용자 "쿠폰 기능 만들고싶어. 그리고 프로모션으로 해당 상품들 전체적으로 적용하는 것까지", 2·3단계 "응"
-- 서버 상태: **LAN 배포 2026-11-21** — promotion-service 0.2.0(80d1a952), pricing 0.2.0·order 0.18.0·claim(1a5b6d6f).
-- 계약: `contracts/openapi/promotion-service.yaml`, `order-service.yaml` 0.18.0. 결정: `docs/adr/0082-coupons-and-period-promotions.md`.
+- 서버 상태: **LAN 배포 2026-11-21** — promotion-service 0.2.0(80d1a952), pricing 0.2.0·order 0.18.0·claim(1a5b6d6f), 할인가 표시 pricing 0.3.0·cart 0.4.0·storefront 0.8.0·search 0.6.0(7e9a2851).
+- 계약: `contracts/openapi/promotion-service.yaml`, `order-service.yaml` 0.18.0, 할인가 칸은 `pricing`·`cart`·`storefront`·`search-service.yaml`(7번). 결정: `docs/adr/0082-coupons-and-period-promotions.md`.
 
 ## 무엇이 바뀌었나
 - 원문의 "쿠폰·할인 1차 제외"를 사용자가 바꿨다. 이번 범위 = **기간 할인(상품 할인)** + **장바구니 쿠폰**(주문 1건에 1장). 상품 쿠폰·1+1·배송비 쿠폰은 없다.
