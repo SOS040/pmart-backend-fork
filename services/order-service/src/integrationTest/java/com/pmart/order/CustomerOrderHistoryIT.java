@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import com.pmart.order.application.CenterNames;
 import com.pmart.order.infrastructure.OrderStore;
 import com.pmart.order.infrastructure.OrderStore.LineRow;
 import com.pmart.order.infrastructure.OrderStore.OrderRow;
+import com.pmart.order.infrastructure.Upstreams;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -18,8 +21,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -38,8 +44,23 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.security.service-token.client-secret=history-test"
     })
-@Import(TestJwtConfiguration.class)
+@Import({TestJwtConfiguration.class, CustomerOrderHistoryIT.Centers.class})
 class CustomerOrderHistoryIT extends PostgresKafkaContainerSupport {
+
+  /** 센터 이름(BR-68 mfcName) — center-master 대신 고정 이름. 상세와 같은 CenterNames 를 쓰는지 본다. */
+  @TestConfiguration
+  static class Centers {
+    @Bean
+    @Primary
+    CenterNames fixedCenterNames(Upstreams upstreams, Clock clock) {
+      return new CenterNames(upstreams, clock) {
+        @Override
+        public @Nullable String name(@Nullable String mfcId) {
+          return "MFC-HS-01".equals(mfcId) ? "강남 MFC" : null;
+        }
+      };
+    }
+  }
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
@@ -199,6 +220,67 @@ class CustomerOrderHistoryIT extends PostgresKafkaContainerSupport {
     assertThat(old.path("deliveryMode").asString()).isEqualTo("SINGLE");
     assertThat(old.path("representativeItem").path("sku").asString()).isEqualTo("E-00000001");
     assertThat(old.path("representativeItem").path("productName").isNull()).isTrue();
+  }
+
+  /** BR-68(0.17.0): 앞 주문행 최대 5개(line 순, 사본 그대로)·센터 이름. 쪽 안 주문마다 따로 — 행이 섞이지 않는다. */
+  @Test
+  void summaryCarriesFirstFiveLinesAndCenterName() {
+    String acc = account();
+    String token = TestJwt.customer(acc);
+    String seven =
+        order(
+            acc,
+            "CONFIRMED",
+            Instant.now().minus(Duration.ofHours(1)),
+            "SINGLE",
+            "두부",
+            "우유",
+            "계란",
+            "콩나물",
+            "대파",
+            "양파",
+            "감자");
+    String two =
+        order(acc, "COMPLETED", Instant.now().minus(Duration.ofHours(2)), "SINGLE", "사과", null);
+
+    JsonNode items = ok(token, "/orders").path("items");
+    assertThat(items.findValuesAsString("orderId")).containsExactly(seven, two);
+    JsonNode first = items.path(0);
+    assertThat(first.path("mfcName").asString()).isEqualTo("강남 MFC");
+    assertThat(first.path("itemCount").asInt()).isEqualTo(8); // 전체 수량(2 + 1×6)은 그대로
+    JsonNode lines = first.path("lines");
+    assertThat(lines.size()).isEqualTo(5);
+    assertThat(lines.findValuesAsString("orderLineId"))
+        .containsExactly(seven + "-L1", seven + "-L2", seven + "-L3", seven + "-L4", seven + "-L5");
+    assertThat(lines.findValuesAsString("productName"))
+        .containsExactly("두부", "우유", "계란", "콩나물", "대파");
+    JsonNode l1 = lines.path(0);
+    assertThat(l1.path("productId").asString()).isEqualTo("P-1");
+    assertThat(l1.path("sku").asString()).isEqualTo("E-00000001");
+    assertThat(l1.path("optionLabel").asString()).isEqualTo("300g");
+    assertThat(l1.path("quantity").asInt()).isEqualTo(2);
+    assertThat(l1.path("lineAmount").asInt()).isEqualTo(10_000);
+    assertThat(lines.path(1).path("optionLabel").isNull()).isTrue();
+    assertThat(lines.path(1).path("lineAmount").asInt()).isEqualTo(5_000);
+
+    JsonNode second = items.path(1);
+    assertThat(second.path("lines").findValuesAsString("orderLineId"))
+        .containsExactly(two + "-L1", two + "-L2");
+    assertThat(second.path("lines").path(1).path("productName").isNull()).isTrue();
+  }
+
+  /** BR-68: to 만으로도 거른다(그날 포함) — to < from 은 400(0.12.0 그대로). */
+  @Test
+  void toOnlyFiltersInclusiveAndToBeforeFromIs400() {
+    String acc = account();
+    String token = TestJwt.customer(acc);
+    // 2026-03-10 23:30 KST = 14:30Z, 2026-03-11 00:10 KST = 2026-03-10T15:10Z
+    String tenth = order(acc, "COMPLETED", Instant.parse("2026-03-10T14:30:00Z"), "SINGLE", "a");
+    String eleventh = order(acc, "COMPLETED", Instant.parse("2026-03-10T15:10:00Z"), "SINGLE", "b");
+    assertThat(ids(token, "/orders?to=2026-03-10")).containsExactly(tenth);
+    assertThat(ids(token, "/orders?to=2026-03-11")).containsExactly(eleventh, tenth);
+    assertThat(get(token, "/orders?from=2026-03-11&to=2026-03-10").getStatusCode().value())
+        .isEqualTo(400);
   }
 
   @Test

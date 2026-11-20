@@ -15,6 +15,9 @@ public final class OrderHistoryRules {
   /** from·to 둘 다 없을 때 보는 기간(오늘에서 이만큼 전 날짜 0시부터). */
   public static final int DEFAULT_MONTHS = 3;
 
+  /** 목록 한 줄에 싣는 앞 주문행 수(BR-68, 0.17.0 — 사용자 "추천대로"). 전체 수량은 itemCount. */
+  public static final int PREVIEW_LINES = 5;
+
   /** 검색어 상한(계약 maxLength 와 같다). */
   public static final int MAX_QUERY_LENGTH = 100;
 

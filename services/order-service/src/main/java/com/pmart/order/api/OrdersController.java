@@ -13,6 +13,7 @@ import com.pmart.order.api.generated.model.OrderRepresentativeItem;
 import com.pmart.order.api.generated.model.OrderSourcesInner;
 import com.pmart.order.api.generated.model.OrderStatus;
 import com.pmart.order.api.generated.model.OrderSummary;
+import com.pmart.order.api.generated.model.OrderSummaryLine;
 import com.pmart.order.api.generated.model.Quote;
 import com.pmart.order.api.generated.model.StartCheckout202Response;
 import com.pmart.order.application.DraftService;
@@ -186,7 +187,10 @@ public class OrdersController implements OrdersApi {
             q);
     return ResponseEntity.ok(
         new ListOrders200Response()
-            .items(page.items().stream().map(OrdersController::summary).toList())
+            .items(
+                page.items().stream()
+                    .map(s -> summary(s, page.lines().getOrDefault(s.orderId(), List.of())))
+                    .toList())
             .page(new ListOrders200ResponsePage().nextCursor(page.nextCursor()).size(page.size())));
   }
 
@@ -207,7 +211,8 @@ public class OrdersController implements OrdersApi {
             .occurredAt(time(r.occurredAt())));
   }
 
-  private static OrderSummary summary(OrderStore.Summary s) {
+  /** 목록 한 줄. lines·mfcName 은 BR-68(0.17.0) — 센터 이름은 상세와 같은 {@code CenterNames}(10분 사본). */
+  private OrderSummary summary(OrderStore.Summary s, List<OrderStore.PreviewLine> lines) {
     return new OrderSummary()
         .orderId(s.orderId())
         .orderNumber(s.orderNumber())
@@ -224,7 +229,21 @@ public class OrdersController implements OrdersApi {
                     .sku(s.firstSku())
                     .productName(s.firstProductName())
                     .optionLabel(s.firstOptionLabel())
-                    .quantity(s.firstQuantity()));
+                    .quantity(s.firstQuantity()))
+        .mfcName(centerNames.name(s.mfcId()))
+        .lines(
+            lines.stream()
+                .map(
+                    l ->
+                        new OrderSummaryLine()
+                            .orderLineId(l.orderLineId())
+                            .productId(l.productId())
+                            .sku(l.sku())
+                            .productName(l.productName())
+                            .optionLabel(l.optionLabel())
+                            .quantity(l.quantity())
+                            .lineAmount((int) l.lineAmount()))
+                .toList());
   }
 
   /** 주문행 → 계약 모델(고객 상세·직원 상세 공용). */

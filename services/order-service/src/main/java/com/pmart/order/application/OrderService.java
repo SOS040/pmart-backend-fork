@@ -66,7 +66,12 @@ public class OrderService {
   public record OrderView(
       OrderRow order, List<LineRow> lines, @Nullable ShippingAddress shipping) {}
 
-  public record Page(List<OrderStore.Summary> items, @Nullable String nextCursor, int size) {}
+  /** lines = 주문 ID → 앞 주문행(최대 {@link OrderHistoryRules#PREVIEW_LINES}개, BR-68 0.17.0). */
+  public record Page(
+      List<OrderStore.Summary> items,
+      Map<String, List<OrderStore.PreviewLine>> lines,
+      @Nullable String nextCursor,
+      int size) {}
 
   private final DraftStore drafts;
   private final OrderStore orders;
@@ -843,7 +848,11 @@ public class OrderService {
       OrderStore.Summary last = rows.getLast();
       next = encodeCursor(last.confirmedAt(), last.orderId());
     }
-    return new Page(rows, next, size);
+    Map<String, List<OrderStore.PreviewLine>> lines =
+        orders.previewLines(
+            rows.stream().map(OrderStore.Summary::orderId).toList(),
+            OrderHistoryRules.PREVIEW_LINES);
+    return new Page(rows, lines, next, size);
   }
 
   /**

@@ -9,7 +9,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -127,7 +130,19 @@ public class OrderStore {
       @Nullable String firstSku,
       @Nullable String firstProductName,
       @Nullable String firstOptionLabel,
-      int firstQuantity) {}
+      int firstQuantity,
+      String mfcId) {}
+
+  /** 목록 한 줄의 앞 주문행(BR-68, 0.17.0) — 주문 당시 사본 그대로(다른 서비스 조회 없음). */
+  public record PreviewLine(
+      String orderId,
+      String orderLineId,
+      @Nullable String productId,
+      String sku,
+      @Nullable String productName,
+      @Nullable String optionLabel,
+      int quantity,
+      long lineAmount) {}
 
   /**
    * 고객 목록 조건(0.12.0). confirmedFrom 이상·confirmedToExclusive 미만, nameQuery 는 소문자 LIKE 패턴(이미 escape —
@@ -467,7 +482,7 @@ public class OrderStore {
     StringBuilder sql =
         new StringBuilder(
             "SELECT o.order_id, o.status, o.confirmed_at, o.total_amount, o.order_number,"
-                + " o.delivery_mode, f.product_id AS first_product_id, f.sku AS first_sku,"
+                + " o.delivery_mode, o.mfc_id, f.product_id AS first_product_id, f.sku AS first_sku,"
                 + " f.product_name AS first_product_name, f.option_label AS first_option_label,"
                 + " f.quantity AS first_quantity,"
                 + " (SELECT COALESCE(SUM(l.quantity), 0) FROM customer_order_line l"
@@ -519,8 +534,45 @@ public class OrderStore {
                 rs.getString("first_sku"),
                 rs.getString("first_product_name"),
                 rs.getString("first_option_label"),
-                rs.getInt("first_quantity")),
+                rs.getInt("first_quantity"),
+                rs.getString("mfc_id")),
         args.toArray());
+  }
+
+  /**
+   * 목록 쪽의 주문마다 앞 주문행 perOrder 개(line_no 순, BR-68 0.17.0) — 쪽 하나에 질의 한 번(N+1 없음). 주문 ID 순서는 받은 대로,
+   * 행이 없는 주문은 빈 목록.
+   */
+  public Map<String, List<PreviewLine>> previewLines(Collection<String> orderIds, int perOrder) {
+    Map<String, List<PreviewLine>> out = new LinkedHashMap<>();
+    orderIds.forEach(id -> out.put(id, new ArrayList<>()));
+    if (orderIds.isEmpty() || perOrder <= 0) {
+      return out;
+    }
+    String in = String.join(",", java.util.Collections.nCopies(orderIds.size(), "?"));
+    List<Object> args = new ArrayList<>(orderIds);
+    args.add(perOrder);
+    jdbc.query(
+        "SELECT order_id, order_line_id, product_id, sku, product_name, option_label, quantity,"
+            + " line_amount FROM (SELECT l.*, ROW_NUMBER() OVER (PARTITION BY l.order_id"
+            + " ORDER BY l.line_no) AS rn FROM customer_order_line l WHERE l.order_id IN ("
+            + in
+            + ")) t WHERE rn <= ? ORDER BY order_id, rn",
+        rs -> {
+          PreviewLine l =
+              new PreviewLine(
+                  rs.getString("order_id"),
+                  rs.getString("order_line_id"),
+                  rs.getString("product_id"),
+                  rs.getString("sku"),
+                  rs.getString("product_name"),
+                  rs.getString("option_label"),
+                  rs.getInt("quantity"),
+                  rs.getLong("line_amount"));
+          out.computeIfAbsent(l.orderId(), k -> new ArrayList<>()).add(l);
+        },
+        args.toArray());
+    return out;
   }
 
   /** 고객 목록에서 숨긴 시각(0.12.0). 숨기지 않았으면 empty. */

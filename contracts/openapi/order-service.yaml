@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.16.0
+  version: 0.17.0
   description: |
+    0.17.0(2026-11-20 BR-68 — 사용자 "추천대로"): 고객 주문 목록 `GET /orders` 한 줄(OrderSummary)에 ① `lines` — 앞 주문행 최대 5개(line 순, 주문 당시 사본 — orderLineId·productId·sku·productName·optionLabel·quantity·lineAmount, 전체 수량은 그대로 itemCount)
+    ② `mfcName` — 주문한 센터 이름(상세 0.15.0 `mfcName` 과 같은 값, 모르면 null). 지금 구매 가능 여부(R3)는 싣지 않는다(사용자 결정). 기간 `to` 는 0.12.0 부터 있다(그대로 — Asia/Seoul 날짜, 포함, from > to 400).
     0.16.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `GET /internal/accounts/{accountId}/withdrawal-eligibility` 구현 — 끝나지 않은 주문(ORDER_IN_PROGRESS)·결과 모르는 결제(PAYMENT_UNKNOWN).
     0.15.0(2026-11-19, 고객 앱 BR-61·BR-62 — 사용자 "응 바로 만들고 고객이 센터 이름 보여도 돼"): 고객 주문 조회 `GET /orders/{orderId}` 에
     ① `shipments[]` — **배차로 배송이 생긴 뒤부터**(delivery-dispatch `DeliveryCreated`) `{shipmentId, deliveryId, state, lines[]}`, 고객에게 가는 배송(FORWARD·RESHIPMENT)만,
@@ -200,6 +202,7 @@ paths:
         고객 토큰만(그 밖 403). 본인의 확정 주문만 최근 확정 순(confirmedAt 내림차순). 결제 진입 전·확정 전 주문 ID 는 나오지 않는다 — 진행은 초안 조회로.
         page.nextCursor 는 불투명 문자열(다음 쪽 cursor 로 그대로 — 다음 쪽도 같은 status·from·to·q 를 함께 보낸다).
         itemCount 는 주문행 수량 합.
+        0.17.0(2026-11-20 BR-68): 한 줄에 앞 주문행 `lines`(최대 5개, 주문 당시 사본)·센터 이름 `mfcName`.
         0.12.0(2026-11-18): 기간 `from`·`to` 는 Asia/Seoul 달력 날짜(확정 시각 기준, 둘 다 그 날을 포함). **둘 다 없으면 최근 3개월** — 오늘(Asia/Seoul)에서 3개월 전 날짜 0시부터 지금까지.
         하나만 주면 그쪽만 자른다(from 만 → 그날부터 지금까지, to 만 → 처음부터 그날까지). from > to 는 400.
         `q` 는 어느 주문행이든 주문 당시 상품명 사본(productName)에 부분 일치(대소문자 무시, 앞뒤 공백 제거 — 비면 무시, 100자 상한). 상품명 사본이 없는 행(2026-11-02 이전)은 검색되지 않는다.
@@ -1177,6 +1180,25 @@ components:
         itemCount: { type: integer }
         deliveryMode: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED], description: '한집 / 알뜰 / 예약(0.12.0)', x-added-in: '2026-11-18' }
         representativeItem: { $ref: '#/components/schemas/OrderRepresentativeItem', description: '대표 상품(0.12.0) = 첫 주문행(line 1). 앱은 "<productName> 외 N개" 처럼 보이고 썸네일은 productId 로 따로 받는다. 행이 없으면 null', x-added-in: '2026-11-18' }
+        mfcName: { type: [string, 'null'], description: '(0.17.0, BR-68) 주문한 센터 이름 — 상세 `Order.mfcName`(0.15.0)과 같은 값(center-master, 고객 공개). 모르면 null', x-added-in: '2026-11-20' }
+        lines:
+          type: array
+          maxItems: 5
+          x-added-in: '2026-11-20'
+          description: '(0.17.0, BR-68) 앞 주문행 최대 5개(line 순 — 첫 줄 = representativeItem). 주문 당시 사본 그대로(상품명·옵션 라벨이 없는 옛 주문은 null). 전체 수량 합은 itemCount'
+          items: { $ref: '#/components/schemas/OrderSummaryLine' }
+    OrderSummaryLine:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [orderLineId, sku, quantity, lineAmount]
+      properties:
+        orderLineId: { type: string }
+        productId: { type: [string, 'null'] }
+        sku: { type: string }
+        productName: { type: [string, 'null'], description: '주문 당시 상품명 사본(BR-35). 없으면 null — 앱은 sku 로 대신' }
+        optionLabel: { type: [string, 'null'], description: 옵션 라벨의 주문 당시 사본(BR-35) }
+        quantity: { type: integer, description: 주문 수량 }
+        lineAmount: { type: integer, description: '줄 금액(원, 단가 × 주문 수량 — 할인 분담 전)' }
     OrderRepresentativeItem:
       type: object
       x-added-in: '2026-11-18'
