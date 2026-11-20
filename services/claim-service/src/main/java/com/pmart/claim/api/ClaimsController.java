@@ -55,9 +55,11 @@ public class ClaimsController implements ClaimsApi {
             new ClaimService.CreateCommand(
                 body.getOrderId(),
                 body.getType().getValue(),
-                body.getLines().stream()
-                    .map(l -> new ClaimRules.Requested(l.getOrderLineId(), l.getQty()))
-                    .toList(),
+                body.getLines() == null
+                    ? java.util.List.<ClaimRules.Requested>of()
+                    : body.getLines().stream()
+                        .map(l -> new ClaimRules.Requested(l.getOrderLineId(), l.getQty()))
+                        .toList(),
                 body.getReason().getValue(),
                 body.getReasonDetail(),
                 channel),

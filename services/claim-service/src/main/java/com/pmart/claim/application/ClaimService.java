@@ -141,6 +141,15 @@ public class ClaimService {
       PmartPrincipal who,
       CreateCommand in,
       ReturnExtras extras) {
+    // 0.11.0 DC-1: 회사 사유 전체 취소만 lines 생략 가능(서버가 채움). 그 밖은 필요
+    boolean companyCancel =
+        who.type() == PmartPrincipal.PrincipalType.OPERATOR
+            && "CANCEL".equals(in.type())
+            && ReturnRules.COMPANY_CANCEL_REASONS.contains(in.reason());
+    if (!companyCancel && in.lines().isEmpty()) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "취소·반품할 행(lines)이 필요합니다.");
+    }
     if (who.type() == PmartPrincipal.PrincipalType.OPERATOR) {
       if ("CANCEL".equals(in.type())) {
         return createStaffCancel(idempotencyKey, sourceSystem, who, in, extras);
@@ -351,8 +360,22 @@ public class ClaimService {
               l.path("unfulfilledQty").asInt()));
       byLine.put(l.path("orderLineId").asString(), l);
     }
+    // 0.11.0 DC-1: lines 를 생략했으면 모든 행 × 미이행 수량(시스템 취소와 같은 채우기). 멱등 해시는 받은 본문 그대로
+    CreateCommand filled =
+        in.lines().isEmpty()
+            ? new CreateCommand(
+                in.orderId(),
+                in.type(),
+                lines.stream()
+                    .filter(l -> l.unfulfilledQty() > 0)
+                    .map(l -> new ClaimRules.Requested(l.orderLineId(), l.unfulfilledQty()))
+                    .toList(),
+                in.reason(),
+                in.reasonDetail(),
+                in.channel())
+            : in;
     try {
-      ClaimRules.checkFullCancel(order.path("status").asString(), lines, in.lines(), true);
+      ClaimRules.checkFullCancel(order.path("status").asString(), lines, filled.lines(), true);
     } catch (ClaimRules.Rejection r) {
       String m =
           "ORDER_NOT_CANCELLABLE".equals(r.code())
@@ -367,7 +390,7 @@ public class ClaimService {
                 new RequestKey(sourceSystem, idempotencyKey, "createStaffCancel", who.subject()),
                 java.util.Arrays.asList(in, extras),
                 String.class,
-                () -> open(accountId, in, order, byLine, who.subject(), extras))
+                () -> open(accountId, filled, order, byLine, who.subject(), extras))
             .value();
     log.info("{} 접수 {} 주문 {} 직원 {}", label, claimId, in.orderId(), who.subject());
     return view(claimId);

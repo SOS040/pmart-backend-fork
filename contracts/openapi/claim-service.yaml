@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-21, MFC 백오피스 요청 DC-1 — 사용자 "dc-1로 할게"): 직원 회사 사유 전체 취소(`DISPATCH_UNAVAILABLE`·`OPERATOR_DECISION`)는 `lines` 를
+    **생략할 수 있다** — 서버가 order 원장에서 "모든 행 × 미이행 수량"을 채운다(센터 관리자가 주문 행을 읽을 API 가 없어서, 화면이 들고 있던 수량이 그 사이 바뀌어 422 가 나지 않게).
+    주면 지금처럼 검사한다. 그 밖의 접수(고객 취소·고객센터 취소·반품)는 `lines` 가 필요하다(없으면 400).
     0.10.0(2026-11-20, CL-4 ADR-0070 화면 번호): Claim·ClaimSummary `claimSeq`(같은 주문·같은 종류 안 순번), Refund `refundSeq`(같은 주문의 환불 순번) — 기존 행은 생성순으로 채움(V7).
     0.10.0(2026-11-20, 백오피스 CL-7·CL-6 — PC 2 요청 #251·#227, 사용자 "진행해라"): 직원 `GET /claims?customerId=`(클레임 계정 = 주문 고객, 완전 일치 — 고객 토큰은 무시하고 늘 본인),
     `GET /claims/counts`(목록과 같은 거르기 — state 제외 — 로 상태별 수, `by=type` 이면 종류별. 모든 값을 0 까지, 정확히 세므로 capped 는 늘 false, case StatusCounts 와 같은 모양).
@@ -689,11 +692,14 @@ components:
           description: EXCHANGE일 때 교환 대상 SKU (동일 SKU 기본)
     CreateClaimRequest:
       type: object
-      required: [orderId, type, lines, reason]
+      required: [orderId, type, reason]
       properties:
         orderId: { type: string }
         type: { $ref: '#/components/schemas/ClaimType' }
-        lines: { type: array, minItems: 1, items: { $ref: '#/components/schemas/ClaimLineRequest' } }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/ClaimLineRequest' }
+          description: '취소·반품할 행. 0.11.0 — 직원 회사 사유 전체 취소(DISPATCH_UNAVAILABLE·OPERATOR_DECISION)는 생략하면 서버가 모든 행 × 미이행 수량으로 채운다. 그 밖은 필수(없거나 비면 400)'
         reason: { $ref: '#/components/schemas/ClaimReason' }
         reasonDetail: { type: string, maxLength: 1000 }
         evidenceRefs:

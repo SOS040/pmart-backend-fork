@@ -98,6 +98,8 @@
 
 - **쿠폰(2번) 구현(2026-11-21 PC 1, ADR-0082 5단계)**: claim 은 바뀌지 않는다 — promotion 이 OrderCancelled(cancelReason DISPATCH_UNAVAILABLE)를 받아 주문마다 한 번 보상 쿠폰(설정한 ADMIN 쿠폰 행사, LAN 2,000원·30일·최소 주문 없음 — 사용자 결정). 직원 취소·자동 취소 모두. 고객 알림(3번)은 **쿠폰이 실제로 나갈 때 따로**("보상 쿠폰이 도착했어요", notification — promotion CouponIssued, 2026-11-21) — 보상 행사 승인 대기로 늦게 나갈 수 있어 취소 알림 문구에는 넣지 않았다.
 
+- **MFC 백오피스 주문 행(DC-1, 2026-11-21 사용자 "dc-1로 할게", claim 0.11.0)**: 센터 관리자가 주문 행을 읽을 API 가 없어 "배차 불가로 취소" 단추가 막혀 있던 것 — 회사 사유 전체 취소는 `lines` 를 생략하면 서버가 모든 행 × 미이행 수량으로 채운다. 회신 `docs/handoff/clients/mfc-backoffice/2026-11-21-reply-dispatch-cancel-lines.md`.
+
 ## CL-6. 클레임 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2)
 
 - **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).

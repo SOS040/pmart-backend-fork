@@ -383,6 +383,52 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(lateRes.status()).as(lateRes.body().toString()).isEqualTo(422);
   }
 
+  /** 0.11.0 DC-1(2026-11-21): 회사 사유 전체 취소는 lines 를 생략하면 서버가 모든 행 × 미이행 수량으로 채운다. 그 밖은 lines 필요. */
+  @Test
+  void dispatchUnavailableWithoutLinesFillsAllUnfulfilled() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "PREPARING");
+    paymentAccepts(orderId);
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("orderId", orderId);
+    body.put("type", "CANCEL");
+    body.put("channel", "OPERATOR");
+    body.put("reason", "DISPATCH_UNAVAILABLE");
+    body.put("reasonDetail", "배달 기사 못 찾음");
+    Res opened =
+        post(
+            TestJwt.operator("STAFF-SUP-1", List.of("MFC_SUPERVISOR"), List.of("MFC-1")),
+            UUID.randomUUID().toString(),
+            body);
+    assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);
+    JsonNode lines = opened.body().path("lines");
+    assertThat(lines.size()).isEqualTo(1);
+    assertThat(lines.path(0).path("orderLineId").asString()).isEqualTo(orderId + "-L1");
+    assertThat(lines.path(0).path("requestedQty").asInt(lines.path(0).path("qty").asInt()))
+        .isEqualTo(10);
+
+    // 인계 뒤(미이행 0) — 채울 행이 없으니 422
+    String handed = "ORD-" + UUID.randomUUID();
+    order(handed, account, "PREPARING", 10);
+    Map<String, Object> late = new LinkedHashMap<>(body);
+    late.put("orderId", handed);
+    Res lateRes =
+        post(
+            TestJwt.operator("STAFF-CS-9", List.of("CS_AGENT"), List.of()),
+            UUID.randomUUID().toString(),
+            late);
+    assertThat(lateRes.status()).as(lateRes.body().toString()).isEqualTo(422);
+
+    // 고객 취소는 lines 필요(400)
+    Map<String, Object> customer = new LinkedHashMap<>();
+    customer.put("orderId", orderId);
+    customer.put("type", "CANCEL");
+    customer.put("reason", "CHANGE_OF_MIND");
+    assertThat(post(TestJwt.customer(account), UUID.randomUUID().toString(), customer).status())
+        .isEqualTo(400);
+  }
+
   /**
    * ADR-0076(2026-11-20, 사용자 "관리자 사유 취소만 넓힘" — MFC 시뮬레이터 R-29): 관리자 판단 취소 OPERATOR_DECISION — 배차
    * 불가와 같은 범위(상품준비 뒤라도 인계 전)·역할, 사유 메모 필수, 고객은 못 씀(고객 취소는 상품준비 전만 그대로).
