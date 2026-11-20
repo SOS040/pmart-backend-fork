@@ -261,6 +261,18 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
   void packIsAssignedToPickerWhenPickingEnds() throws Exception {
     String picker = "pk-" + UUID.randomUUID().toString().substring(0, 6);
     register(picker, List.of("PICK", "PACK"), List.of("AMBIENT"));
+    // 지금 근무 중이어야 바로 배정한다 — 근무를 등록해 둔다(미등록이면 center-master 직원 시간표를 묻는데 이 시험엔 없다)
+    java.time.Instant now = java.time.Instant.now();
+    send(
+        "POST",
+        SUPERVISOR,
+        "/mfcs/" + MFC + "/workers/" + picker + "/shifts",
+        Map.of(
+            "startAt",
+            now.minusSeconds(3600).toString(),
+            "endAt",
+            now.plusSeconds(4 * 3600).toString()),
+        null);
     String pack = "S-" + UUID.randomUUID() + "-PACK";
     packReleased(pack, picker);
     awaitActive(pack, picker);
