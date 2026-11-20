@@ -79,7 +79,18 @@ public class AddressService {
     return owned(accountId, addressId);
   }
 
+  /**
+   * 회원 주소록은 상세 주소 필수(배송에 쓴다). 비회원 배송지는 선택(0.14.0, 2026-11-20 — 로그아웃 뒤 둘러보기용 도로명·위치만, 비회원은 주문하지
+   * 않는다).
+   */
+  static void requireDetail(AddressData d) {
+    if (d.detailAddress() == null || d.detailAddress().isBlank()) {
+      throw new PmartException(com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "상세 주소를 입력해 주세요.");
+    }
+  }
+
   public AddressRow add(String accountId, String requestId, String sourceSystem, AddressData d) {
+    requireDetail(d);
     Integer limit = requireLimit();
     checkLimit(limit, store.countAddresses(CustomerStore.OWNER_ACCOUNT, accountId));
     Serviceability s = judge(d);
@@ -121,6 +132,7 @@ public class AddressService {
       String sourceSystem,
       @Nullable Integer expectedVersion,
       AddressData d) {
+    requireDetail(d);
     AddressRow current = owned(accountId, addressId);
     if (expectedVersion != null && expectedVersion != current.version()) {
       throw PmartException.versionConflict("주소가 그 사이 바뀌었습니다. 다시 조회하세요.");

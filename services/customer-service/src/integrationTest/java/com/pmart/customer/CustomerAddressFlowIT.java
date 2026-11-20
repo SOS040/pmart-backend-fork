@@ -544,6 +544,42 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(403);
   }
 
+  /**
+   * 0.14.0(2026-11-20 — 로그아웃 때 "지금 주소로 계속 둘러볼까요?"): 비회원 배송지는 상세 주소 없이(도로명·위치만) 저장, 회원 주소록은 상세 주소
+   * 필수(400).
+   */
+  @Test
+  void guestAddressWithoutDetailButMemberNeedsDetail() {
+    String device = "DEV-" + UUID.randomUUID();
+    Map<String, Object> roadOnly = new LinkedHashMap<>();
+    roadOnly.put("roadAddress", "IN");
+    roadOnly.put("geo", Map.of("lat", 37.50, "lng", 127.02));
+    Res guest =
+        call(
+            HttpMethod.POST,
+            "/guest-delivery-addresses",
+            roadOnly,
+            h -> {
+              h.set("Idempotency-Key", UUID.randomUUID().toString());
+              h.set("X-Source-System", "customer-app");
+              h.set("X-Device-Id", device);
+            });
+    assertThat(guest.status()).as(guest.body().toString()).isEqualTo(201);
+    assertThat(
+            guest.body().path("detailAddress").isMissingNode()
+                || guest.body().path("detailAddress").isNull())
+        .isTrue();
+    assertThat(guest.body().path("serviceability").path("state").asString())
+        .isEqualTo("SERVICEABLE");
+
+    String member = TestJwt.customer("CU-DT-" + UUID.randomUUID());
+    Res noDetail = send(member, HttpMethod.POST, "/me/addresses", roadOnly);
+    assertThat(noDetail.status()).isEqualTo(400);
+    Map<String, Object> blank = new LinkedHashMap<>(roadOnly);
+    blank.put("detailAddress", "  ");
+    assertThat(send(member, HttpMethod.POST, "/me/addresses", blank).status()).isEqualTo(400);
+  }
+
   void orderConfirmed(UUID eventId, String accountId, String orderId, boolean firstPurchase)
       throws InterruptedException {
     String json =

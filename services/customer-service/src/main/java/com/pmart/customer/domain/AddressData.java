@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
 public record AddressData(
     @Nullable String label,
     String roadAddress,
-    String detailAddress,
+    @Nullable String detailAddress,
     @Nullable String postalCode,
     @Nullable String receiverName,
     @Nullable String receiverPhone,

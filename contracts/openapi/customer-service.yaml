@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.13.1
+  version: 0.14.0
   description: |
+    0.14.0(2026-11-20 — 사용자 "추천대로 해줘": 로그아웃 때 "지금 주소로 계속 둘러볼까요?"): 비회원 배송지(`POST /guest-delivery-addresses`)는 `detailAddress` 없이도 저장(도로명·위치만 —
+    상품 둘러보기용. 비회원은 주문하지 않으므로 상세 주소는 로그인·주문 때 회원 주소록에서). 회원 주소록(`/me/addresses`)은 지금처럼 detailAddress 필수(빠지면 400).
     0.13.1(2026-11-20 BR-72 — 사용자 "(가)로 해줘, 1번"): 내부 동의 상태 `GET /internal/accounts/{id}/consents` 에 `fresh=true` — 저장된 계정 동의·기기 동의를 무시하고
     필수·선택 전부를 고르지 않은 것으로 답한다(가입을 끝내지 않은 계정이 다시 로그인하면 auth 가 동의부터 다시 받는다).
     0.13.0(2026-11-20, ADR-0081 — 사용자 "찜 기능 넣고 싶어"): 찜(위시리스트) — 회원만, 상품(productId) 단위, 최대 200개(정책값 `pmart.customer.wishlist.max-items`).
@@ -1423,11 +1425,11 @@ components:
         version: { $ref: '_common.yaml#/components/schemas/Version' }
     AddressInput:
       type: object
-      required: [roadAddress, detailAddress]
+      required: [roadAddress]
       properties:
         label: { type: string, maxLength: 20 }
         roadAddress: { type: string, maxLength: 200 }
-        detailAddress: { type: string, maxLength: 200 }
+        detailAddress: { type: string, maxLength: 200, description: '회원 주소록은 필수(없거나 비면 400 VALIDATION_FAILED). 비회원 배송지는 선택(0.14.0 — 로그아웃 뒤 둘러보기용, 응답에서도 없을 수 있음)' }
         postalCode: { type: string, maxLength: 10 }
         receiverName: { type: [string, 'null'], maxLength: 50, description: '0.8.0 선택 — 없으면 주문 때 프로필 이름. PATCH 에서 빠지면 그대로' }
         receiverPhone: { type: [string, 'null'], maxLength: 20, description: '0.8.0 선택 — 없으면 주문 때 프로필 phone. PATCH 에서 빠지면 그대로' }
