@@ -257,6 +257,39 @@ public class CustomerStore {
         .findFirst();
   }
 
+  // ---------- 고객 탈퇴(2026-11-20 ADR-0077) ----------
+
+  /** 제공자 연결 한 줄(제공자, sub). sub 는 개인 식별값 — 로그 금지. */
+  public record LinkedIdentity(String provider, String subject) {}
+
+  /** 계정 상태를 행 잠금으로 읽는다(탈퇴 반영 직렬화). */
+  public Optional<String> lockAccountState(String accountId) {
+    return jdbc
+        .queryForList(
+            "SELECT state FROM customer_account WHERE account_id = ? FOR UPDATE",
+            String.class,
+            accountId)
+        .stream()
+        .findFirst();
+  }
+
+  public List<LinkedIdentity> identities(String accountId) {
+    return jdbc.query(
+        "SELECT provider, provider_subject FROM social_identity WHERE account_id = ?",
+        (rs, i) -> new LinkedIdentity(rs.getString(1), rs.getString(2)),
+        accountId);
+  }
+
+  /** 계정의 제공자 연결을 모두 지운다 — 같은 소셜 계정의 다음 로그인은 새 가입. */
+  public int deleteIdentities(String accountId) {
+    return jdbc.update("DELETE FROM social_identity WHERE account_id = ?", accountId);
+  }
+
+  /** 계정 사용 안 함(WITHDRAWN) — 이 accountId 로는 다시 토큰이 나가지 않는다. */
+  public void markWithdrawn(String accountId) {
+    jdbc.update("UPDATE customer_account SET state = 'WITHDRAWN' WHERE account_id = ?", accountId);
+  }
+
   private static @Nullable String join(List<String> items) {
     return items.isEmpty() ? null : String.join(",", items);
   }

@@ -51,6 +51,10 @@
 - Google 프로필(email·email_verified·name·picture)은 버리지 않고 `CustomerAuthenticated` 에 실어 customer-service 로 넘긴다(ADR-0024). auth 는 `sub` 만 저장한다. 개인정보 로그 금지.
 - 시험은 `GoogleIdTokenVerifier` 빈을 시험 키 검증기로 바꾼다(`CustomerSocialLoginIT`).
 
+## 고객 탈퇴 (2026-11-20 ADR-0077, 계약 0.9.0)
+- 재인증 `POST /internal/customers/{accountId}/reauthentications`(`CustomerWithdrawalService.verifyReauthentication`): 로그인과 같은 `IdTokenVerifiers` 검증 + (제공자, sub) 연결이 이 accountId 인지. 200·401 PROVIDER_REJECTED·403 REAUTHENTICATION_MISMATCH·503. 상태 변경 없음, internal-paths 기본값이라 permit-path 불필요. 조회성 POST(계약에 Idempotency-Key 없음)라 `pmart.web.excluded-paths` 에 `/api/v1/internal/customers/*/reauthentications`.
+- `CustomerWithdrawalCompleted`(commerce.customer.v1, 바인딩 `customerEvents`) 구독 — inbox 트랜잭션 하나에서 소셜 연결 해시(`WithdrawnIdentifierRules` SHA-256 "provider:subject")를 격리 표 `withdrawn_social_identifier`(V6, 계정 ID·FK 없음, 완료 + 5년)로 옮기고 `social_identity` 삭제(같은 소셜은 새 가입)·계정 WITHDRAWN·세션 REVOKED(WITHDRAWN)·SubjectBlocked(ACCOUNT_DISABLED). 이미 WITHDRAWN·없는 계정은 건너뜀. **격리 표는 첫 구매 혜택 중복 판정만 읽는다.** 만료 행은 `WithdrawnIdentifierPurger`(@Scheduled, 기본 P1D). 시험 `CustomerWithdrawalIT`·`WithdrawnIdentifierRulesTest`.
+
 ## [LAN 시험 전용] 개발용 고객 토큰 (2026-11-19, 계약 0.3.0 — MFC 시뮬레이터 R-21)
 - `POST /api/v1/internal/dev-customer-tokens`(`DevCustomerTokenController`·`DevCustomerTokenService`, `@ConditionalOnProperty pmart.auth.dev-customer-token.enabled=true` — 운영 설정에 없으면 빈·경로 없음 404). 게이트웨이에 없고 permit-path(공통 auth-service.yml).
 - 허용 목록 `allowed-accounts` 의 기존 고객(customer_account ACTIVE)만 — 밖 403 `DEV_CUSTOMER_NOT_ALLOWED`, 없음 404, ACTIVE 아님 403. 새 계정을 만들지 않는다. 세션(ttl 기본 PT15M)을 열고 access token 만(refresh 없음) — 세션 행이 발급 기록. 토큰 로그 금지. 시험 `DevCustomerTokenIT`.

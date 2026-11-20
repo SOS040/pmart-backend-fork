@@ -793,7 +793,7 @@ public class CustomerSocialLoginService {
     return clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
   }
 
-  private static PmartException providerUnavailable(IdTokenVerifier.Unavailable e) {
+  static PmartException providerUnavailable(IdTokenVerifier.Unavailable e) {
     log.warn("소셜 제공자 검증 불가(실패 횟수 제외): {}", e.getMessage());
     return new PmartException(
         "PROVIDER_UNAVAILABLE",
