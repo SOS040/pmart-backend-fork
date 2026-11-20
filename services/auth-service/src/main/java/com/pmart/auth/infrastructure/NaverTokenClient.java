@@ -20,7 +20,8 @@ import tools.jackson.databind.JsonNode;
 
 /**
  * 네이버 토큰 엔드포인트({@code POST {token-base-url}/oauth2/token}, client_secret_post) — 인가 코드를 ID 토큰으로
- * 교환한다(2026-11-20 ADR-0078, BR-69). 응답의 {@code id_token} 만 돌려주고 access/refresh token 은 읽지 않고 버린다.
+ * 교환한다(2026-11-20 ADR-0078, BR-69). 응답의 {@code id_token} 과 access token 을 돌려주고 refresh token 은 읽지
+ * 않는다. access token 은 호출한 쪽이 프로필 API({@link #profileImage}, BR-70)에 한 번 쓰고 버린다 — 저장·응답·로그 금지.
  *
  * <p>공용 RestClient.Builder 를 쓰지 않는다 — 사용자 토큰 전달 설정이 밖(네이버)으로 새지 않게(customer-service OctomoClient 와
  * 같은 방식). 코드·verifier·secret·토큰은 로그에 남기지 않고, 네이버 오류는 오류 코드 문자열만 남긴다.
@@ -67,25 +68,49 @@ public class NaverTokenClient {
     }
   }
 
+  /**
+   * 교환 결과. access token 은 프로필 API 한 번에만 쓴다(없을 수 있음). toString 은 값을 가린다.
+   *
+   * @param idToken 네이버 OIDC id_token
+   * @param accessToken 네이버 access token(없으면 null)
+   */
+  public record Tokens(String idToken, @Nullable String accessToken) {
+    @Override
+    public String toString() {
+      return "NaverTokenClient.Tokens[***]";
+    }
+  }
+
+  /** 프로필 API 응답 대기 상한 — 로그인 앞길이라 짧게(token-timeout 이 더 짧으면 그 값). */
+  static final Duration PROFILE_TIMEOUT_MAX = Duration.ofSeconds(3);
+
   private final RestClient http;
+  private final RestClient profileHttp;
 
   public NaverTokenClient(CustomerProperties props) {
     Duration timeout = props.naverExchange().tokenTimeout();
+    this.http = client(timeout);
+    this.profileHttp =
+        client(timeout.compareTo(PROFILE_TIMEOUT_MAX) < 0 ? timeout : PROFILE_TIMEOUT_MAX);
+  }
+
+  private static RestClient client(Duration readTimeout) {
     var factory =
         new JdkClientHttpRequestFactory(
             HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1) // 시험 WireMock(평문 http)에서 h2c 업그레이드 시도 없이
                 .connectTimeout(Duration.ofSeconds(2))
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build());
-    factory.setReadTimeout(timeout);
-    this.http = RestClient.builder().requestFactory(factory).build();
+    factory.setReadTimeout(readTimeout);
+    return RestClient.builder().requestFactory(factory).build();
   }
 
   /**
    * @param tokenBaseUrl 기준 주소(끝 / 없음)
-   * @return 네이버 OIDC id_token
+   * @return 네이버 OIDC id_token 과 access token
    */
-  public String exchange(String tokenBaseUrl, Request r) {
+  public Tokens exchange(String tokenBaseUrl, Request r) {
     MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
     form.add("grant_type", "authorization_code");
     form.add("client_id", r.clientId());
@@ -136,7 +161,51 @@ public class NaverTokenClient {
       log.warn("네이버 토큰 교환 응답에 id_token 없음(scope openid 확인)");
       throw new Rejected("missing_id_token");
     }
-    return idToken;
+    String accessToken = body.path("access_token").asString("");
+    return new Tokens(idToken, accessToken.isBlank() ? null : accessToken);
+  }
+
+  /**
+   * 네이버 프로필 API({@code GET {profileBaseUrl}/v1/nid/me}, Bearer access token)의 {@code
+   * response.profile_image} 원문(2026-11-20 BR-70). 어떤 실패도 예외 없이 null — 교환은 그대로 성공한다. 로그는 짧은 까닭
+   * 코드만(토큰·주소 금지). 주소 검사는 호출한 쪽({@code ProviderPictureRules.naver}).
+   *
+   * @param profileBaseUrl 기준 주소(끝 / 없음)
+   */
+  public @Nullable String profileImage(String profileBaseUrl, String accessToken) {
+    JsonNode body;
+    try {
+      body =
+          profileHttp
+              .get()
+              .uri(profileBaseUrl + "/v1/nid/me")
+              .header("Authorization", "Bearer " + accessToken)
+              .accept(MediaType.APPLICATION_JSON)
+              .retrieve()
+              .body(JsonNode.class);
+    } catch (HttpStatusCodeException e) {
+      log.info("네이버 프로필 사진 생략 reason=http_{}", e.getStatusCode().value());
+      return null;
+    } catch (RuntimeException e) {
+      log.info("네이버 프로필 사진 생략 reason={}", e.getClass().getSimpleName());
+      return null;
+    }
+    if (body == null || !body.isObject()) {
+      log.info("네이버 프로필 사진 생략 reason=empty_response");
+      return null;
+    }
+    // 네이버는 실패도 200 + resultcode ≠ "00" 으로 줄 수 있다
+    String resultCode = body.path("resultcode").asString("");
+    if (!resultCode.isEmpty() && !"00".equals(resultCode)) {
+      log.info("네이버 프로필 사진 생략 reason=resultcode");
+      return null;
+    }
+    String image = body.path("response").path("profile_image").asString("");
+    if (image.isBlank()) {
+      log.info("네이버 프로필 사진 생략 reason=missing_profile_image");
+      return null;
+    }
+    return image;
   }
 
   private static String errorCode(HttpClientErrorException e) {

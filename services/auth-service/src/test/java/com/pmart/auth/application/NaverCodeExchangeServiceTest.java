@@ -31,7 +31,7 @@ class NaverCodeExchangeServiceTest {
         null,
         null,
         null,
-        new CustomerProperties.Naver(clientIds, null, null, secret, callback, null, null),
+        new CustomerProperties.Naver(clientIds, null, null, secret, callback, null, null, null),
         false);
   }
 
@@ -44,9 +44,31 @@ class NaverCodeExchangeServiceTest {
     }
 
     @Override
-    public String exchange(String tokenBaseUrl, Request r) {
+    public Tokens exchange(String tokenBaseUrl, Request r) {
       calls.incrementAndGet();
-      return "id-token";
+      return new Tokens("id-token", "access");
+    }
+  }
+
+  /** 프로필 API 결과를 정해 두는 가짜 클라이언트(BR-70). */
+  static class ProfileClient extends NaverTokenClient {
+    final @Nullable String image;
+    final boolean fail;
+    final AtomicInteger calls = new AtomicInteger();
+
+    ProfileClient(CustomerProperties p, @Nullable String image, boolean fail) {
+      super(p);
+      this.image = image;
+      this.fail = fail;
+    }
+
+    @Override
+    public @Nullable String profileImage(String profileBaseUrl, String accessToken) {
+      calls.incrementAndGet();
+      if (fail) {
+        throw new IllegalStateException("boom");
+      }
+      return image;
     }
   }
 
@@ -95,6 +117,7 @@ class NaverCodeExchangeServiceTest {
     assertThat(x.clientSecret()).isEqualTo("secret");
     assertThat(x.tokenBaseUrl()).isEqualTo("https://nid.naver.com");
     assertThat(x.tokenTimeout()).isEqualTo(Duration.ofSeconds(5));
+    assertThat(x.profileBaseUrl()).isEqualTo("https://openapi.naver.com");
     assertThat(x.toString()).doesNotContain("secret=secret").contains("clientSecret=***");
     // ID 토큰 검증 쪽 값은 예전 그대로
     assertThat(p.naver().clientIds()).containsExactly("naver-client", "other");
@@ -105,10 +128,52 @@ class NaverCodeExchangeServiceTest {
   void requestToStringHidesValues() {
     var r = new NaverTokenClient.Request("id", "sec", "code", VERIFIER, CALLBACK, "st");
     assertThat(r.toString()).doesNotContain("sec").doesNotContain("code").doesNotContain(VERIFIER);
+    assertThat(new NaverTokenClient.Tokens("id.token", "access-secret").toString())
+        .doesNotContain("id.token")
+        .doesNotContain("access-secret");
+    assertThat(new NaverCodeExchangeService.Exchanged("id.token", "https://a.pstatic.net/p.jpg"))
+        .asString()
+        .doesNotContain("id.token")
+        .doesNotContain("pstatic");
     assertThatThrownBy(
             () -> {
               throw new NaverTokenClient.Rejected("invalid_grant");
             })
         .hasMessageContaining("invalid_grant");
+  }
+
+  @Test
+  void profileImageOnlyPstaticHttpsAndNeverFails() {
+    CustomerProperties p = props(List.of("naver-client"), "secret", CALLBACK);
+    String ok = "https://phinf.pstatic.net/contact/a.jpg";
+    var cfg = p.naverExchange();
+
+    assertThat(
+            new NaverCodeExchangeService(p, new ProfileClient(p, ok, false), null)
+                .profileImage(cfg, "access"))
+        .isEqualTo(ok);
+    assertThat(
+            new NaverCodeExchangeService(
+                    p, new ProfileClient(p, "http://phinf.pstatic.net/a.jpg", false), null)
+                .profileImage(cfg, "access"))
+        .isNull();
+    assertThat(
+            new NaverCodeExchangeService(
+                    p, new ProfileClient(p, "https://evil.example/a.jpg", false), null)
+                .profileImage(cfg, "access"))
+        .isNull();
+    assertThat(
+            new NaverCodeExchangeService(p, new ProfileClient(p, null, false), null)
+                .profileImage(cfg, "access"))
+        .isNull();
+    // 클라이언트가 예외를 던져도 교환은 그대로(사진만 없음)
+    assertThat(
+            new NaverCodeExchangeService(p, new ProfileClient(p, ok, true), null)
+                .profileImage(cfg, "access"))
+        .isNull();
+    // access token 이 없으면 부르지 않는다
+    ProfileClient none = new ProfileClient(p, ok, false);
+    assertThat(new NaverCodeExchangeService(p, none, null).profileImage(cfg, null)).isNull();
+    assertThat(none.calls.get()).isZero();
   }
 }

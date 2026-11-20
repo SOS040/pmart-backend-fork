@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.10.0
+  version: 0.10.1
   description: |
+    0.10.1(2026-11-20 BR-70 — 사용자 "추천대로"): `POST /auth/naver-token-exchanges` 응답에 선택 `profileImageUrl` — 교환 직후 서버가 네이버 access token 으로
+    프로필 API(`/v1/nid/me`)를 한 번 불러 `profile_image` 를 https·`*.pstatic.net` 일 때만 준다(프로필 호출 실패는 교환 실패가 아님 — 빠질 뿐). access/refresh token 은 여전히 저장·응답하지 않는다.
     0.10.0(2026-11-20 BR-69 — 사용자 "응 해줘", ADR-0078): `POST /auth/naver-token-exchanges` — 네이버는 client secret 없는 토큰 교환을 거절해 서버가 대신 교환하고 id_token 만 돌려준다.
     0.9.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `POST /internal/customers/{accountId}/reauthentications`(customer 가 탈퇴 접수·철회 전 재인증 확인 — 로그인과 같은 ID 토큰 검증 +
     그 제공자 계정이 이 accountId 에 연결됐는지). `CustomerWithdrawalCompleted` 구독 — 세션 끊기·소셜 연결 지움·계정 WITHDRAWN(로그인 403 ACCOUNT_NOT_AVAILABLE 아님 —
@@ -125,7 +127,7 @@ paths:
         네이버 토큰 엔드포인트는 client secret 없는 요청을 받지 않는다(token_endpoint_auth_methods_supported = client_secret_post, 2026-11-20 확인 —
         ADR-0071 의 "앱이 secret 없이 PKCE 로 교환" 전제가 네이버에서는 맞지 않음, ADR-0078). 앱은 인가 요청(PKCE S256)까지만 하고 받은 코드를
         여기로 보낸다. 서버가 설정의 Client ID·Secret 과 앱의 `codeVerifier`·`redirectUri` 로 `https://nid.naver.com/oauth2/token` 에 교환해
-        **id_token 만** 돌려준다(access/refresh token 은 버린다). 앱은 그 id_token 을 지금처럼 `providerToken` 으로 쓴다(로그인·동의·휴대폰 확인·재인증).
+        **id_token 만** 돌려준다(access/refresh token 은 버린다 — 0.10.1 부터 access token 은 버리기 전에 프로필 API 에 한 번 써 선택 `profileImageUrl` 을 함께 준다). 앱은 그 id_token 을 지금처럼 `providerToken` 으로 쓴다(로그인·동의·휴대폰 확인·재인증).
         - `redirectUri` 는 설정의 이 앱 콜백 주소(/api/v1/auth/oauth-callbacks/naver/customer)와 같아야 한다(아니면 400 VALIDATION_FAILED).
         - 같은 Idempotency-Key 재전송(응답 유실)은 처음 받은 결과를 그대로 준다 — 코드를 두 번 교환하지 않는다(네이버가 두 번째를 거절).
         - 네이버 거절(invalid_grant 등) 401 PROVIDER_REJECTED, 네이버 응답 없음·5xx 503 PROVIDER_UNAVAILABLE, Client Secret 미설정 422 CONFIG_REQUIRED.
@@ -157,6 +159,10 @@ paths:
                 required: [idToken]
                 properties:
                   idToken: { type: string, description: 네이버 OIDC id_token. 로그 금지 }
+                  profileImageUrl:
+                    type: string
+                    maxLength: 1000
+                    description: 네이버 프로필 API profile_image, https·*.pstatic.net 만, 없을 수 있음 — 앱은 로그인 본문 profileImageUrl(0.8.0)로 그대로 보낸다. 로그 금지
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '401':
           description: PROVIDER_REJECTED

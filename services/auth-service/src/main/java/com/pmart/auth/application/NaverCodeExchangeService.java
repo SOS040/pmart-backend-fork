@@ -1,5 +1,6 @@
 package com.pmart.auth.application;
 
+import com.pmart.auth.domain.ProviderPictureRules;
 import com.pmart.auth.infrastructure.NaverTokenClient;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.RequestKey;
@@ -9,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -24,17 +27,28 @@ import org.springframework.stereotype.Service;
  *       않는다(결과는 request_record 에 남는다, ADR-0078 결정 3). 실패는 기록되지 않아 같은 키로 다시 부를 수 있다.
  *   <li>네이버 거절 401 PROVIDER_REJECTED, 응답 없음·5xx 503 PROVIDER_UNAVAILABLE(로그인 흐름과 같은 코드). 실패 횟수
  *       (AUTH_RESTRICTED)에는 세지 않는다 — 기기 ID 를 받지 않는 API 다.
+ *   <li>프로필 사진(2026-11-20 BR-70, 계약 0.10.1 — 사용자 "추천대로"): 교환이 되면 네이버 access token 으로 프로필 API 를 한 번
+ *       불러 {@code profile_image} 를 {@link ProviderPictureRules#naver}(https·*.pstatic.net)로 걸러 함께
+ *       준다. 프로필 호출이 어떻게 실패해도 교환은 성공(사진만 없음). access/refresh token 은 저장·응답하지 않는다 — 멱등 기록에도
+ *       id_token·사진 주소만.
  * </ul>
  *
- * <p>코드·verifier·secret·id_token 은 로그에 남기지 않는다.
+ * <p>코드·verifier·secret·id_token·access token·사진 주소는 로그에 남기지 않는다.
  */
 @Service
 public class NaverCodeExchangeService {
 
+  private static final Logger log = LoggerFactory.getLogger(NaverCodeExchangeService.class);
+
   static final String OPERATION = "exchangeNaverCode";
 
-  /** 저장·재생되는 결과(JSON 왕복). */
-  public record Exchanged(String idToken) {
+  /**
+   * 저장·재생되는 결과(JSON 왕복). 0.10.0 때 기록은 profileImageUrl 이 없어 null 로 읽힌다.
+   *
+   * @param idToken 네이버 OIDC id_token
+   * @param profileImageUrl 걸러진 네이버 프로필 사진 주소(없을 수 있음)
+   */
+  public record Exchanged(String idToken, @Nullable String profileImageUrl) {
     @Override
     public String toString() {
       return "Exchanged[***]";
@@ -52,7 +66,7 @@ public class NaverCodeExchangeService {
     this.idempotency = idempotency;
   }
 
-  public String exchange(
+  public Exchanged exchange(
       String requestId,
       String sourceSystem,
       String authorizationCode,
@@ -82,12 +96,39 @@ public class NaverCodeExchangeService {
             new RequestKey(sourceSystem, requestId, OPERATION, RequestIdempotency.ANONYMOUS),
             request,
             Exchanged.class,
-            () -> new Exchanged(call(cfg, authorizationCode, codeVerifier, redirectUri, state)))
-        .value()
-        .idToken();
+            () -> {
+              NaverTokenClient.Tokens tokens =
+                  call(cfg, authorizationCode, codeVerifier, redirectUri, state);
+              return new Exchanged(tokens.idToken(), profileImage(cfg, tokens.accessToken()));
+            })
+        .value();
   }
 
-  private String call(
+  /** 프로필 API 한 번 — 어떤 실패도 null(교환은 그대로). access token 은 여기서 쓰고 버린다. */
+  @Nullable String profileImage(
+      CustomerProperties.NaverExchange cfg, @Nullable String accessToken) {
+    if (accessToken == null) {
+      log.info("네이버 프로필 사진 생략 reason=missing_access_token");
+      return null;
+    }
+    String raw;
+    try {
+      raw = naver.profileImage(cfg.profileBaseUrl(), accessToken);
+    } catch (RuntimeException e) {
+      log.info("네이버 프로필 사진 생략 reason={}", e.getClass().getSimpleName());
+      return null;
+    }
+    if (raw == null) {
+      return null;
+    }
+    String picked = ProviderPictureRules.naver(raw);
+    if (picked == null) {
+      log.info("네이버 프로필 사진 생략 reason=not_allowed_url");
+    }
+    return picked;
+  }
+
+  private NaverTokenClient.Tokens call(
       CustomerProperties.NaverExchange cfg,
       String code,
       String verifier,

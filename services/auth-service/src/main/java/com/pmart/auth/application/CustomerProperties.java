@@ -158,6 +158,8 @@ public class CustomerProperties {
    * @param tokenBaseUrl 네이버 토큰 엔드포인트 기준 주소(기본 {@code https://nid.naver.com}, 경로 {@code
    *     /oauth2/token})
    * @param tokenTimeout 토큰 요청 응답 대기(기본 5초) — 클라이언트를 만들 때 한 번 읽는다(바꾸면 재시작)
+   * @param profileBaseUrl 네이버 프로필 API 기준 주소(2026-11-20 BR-70, 기본 {@code https://openapi.naver.com},
+   *     경로 {@code /v1/nid/me}) — 교환 직후 access token 으로 한 번만 부른다
    */
   public record Naver(
       @Nullable List<String> clientIds,
@@ -166,7 +168,8 @@ public class CustomerProperties {
       @Nullable String clientSecret,
       @Nullable String callbackUrl,
       @Nullable String tokenBaseUrl,
-      @Nullable Duration tokenTimeout) {
+      @Nullable Duration tokenTimeout,
+      @Nullable String profileBaseUrl) {
 
     Oidc oidc() {
       return new Oidc(clientIds, jwkSetUri, issuers);
@@ -190,13 +193,15 @@ public class CustomerProperties {
    * @param callbackUrl 허용 redirect_uri
    * @param tokenBaseUrl 토큰 엔드포인트 기준 주소(끝 / 없음)
    * @param tokenTimeout 응답 대기
+   * @param profileBaseUrl 프로필 API 기준 주소(끝 / 없음, BR-70)
    */
   public record NaverExchange(
       @Nullable String clientId,
       @Nullable String clientSecret,
       @Nullable String callbackUrl,
       String tokenBaseUrl,
-      Duration tokenTimeout) {
+      Duration tokenTimeout,
+      String profileBaseUrl) {
 
     static NaverExchange of(List<String> clientIds, @Nullable Naver n) {
       return new NaverExchange(
@@ -208,7 +213,10 @@ public class CustomerProperties {
               : n.tokenBaseUrl().strip().replaceAll("/+$", ""),
           n == null || n.tokenTimeout() == null || n.tokenTimeout().isZero()
               ? Duration.ofSeconds(5)
-              : n.tokenTimeout());
+              : n.tokenTimeout(),
+          n == null || blankToNull(n.profileBaseUrl()) == null
+              ? "https://openapi.naver.com"
+              : n.profileBaseUrl().strip().replaceAll("/+$", ""));
     }
 
     private static @Nullable String blankToNull(@Nullable String v) {

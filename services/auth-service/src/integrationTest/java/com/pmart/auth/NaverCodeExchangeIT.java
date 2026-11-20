@@ -3,6 +3,7 @@ package com.pmart.auth;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +31,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 네이버 인가 코드 → ID 토큰 서버 교환(ADR-0078, auth 0.10.0 exchangeNaverCode). 네이버 토큰 엔드포인트는 WireMock. 성공·같은 키
  * 재전송(네이버 한 번)·거절 401·장애/시간 초과 503·redirectUri 불일치 400. 공개 경로는 설정 사본 permit-paths. Client Secret
- * 미설정 422 는 {@code NaverCodeExchangeServiceTest}(설정값으로).
+ * 미설정 422 는 {@code NaverCodeExchangeServiceTest}(설정값으로). 프로필 사진(0.10.1 BR-70): 같은 WireMock 의 {@code
+ * /v1/nid/me} — pstatic https 면 profileImageUrl, 실패·다른 호스트·시간 초과면 빠지고 교환은 200.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -47,12 +49,17 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock(
     @ConfigureWireMock(
         name = "naver",
-        baseUrlProperties = "pmart.auth.customer.naver.token-base-url"))
+        baseUrlProperties = {
+          "pmart.auth.customer.naver.token-base-url",
+          "pmart.auth.customer.naver.profile-base-url"
+        }))
 class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
 
   static final String CALLBACK =
       "http://192.168.0.40:8080/api/v1/auth/oauth-callbacks/naver/customer";
   static final String TOKEN = "/oauth2/token";
+  static final String PROFILE = "/v1/nid/me";
+  static final String PICTURE = "https://phinf.pstatic.net/contact/20261120_1/profile.jpg";
   static final String VERIFIER = "a".repeat(43);
 
   @LocalServerPort int port;
@@ -107,8 +114,46 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
                     .withBody(new ObjectMapper().writeValueAsString(body))));
   }
 
+  void stubProfile(int status, Object body) {
+    naver.stubFor(
+        WireMock.get(urlPathEqualTo(PROFILE))
+            .willReturn(
+                aResponse()
+                    .withStatus(status)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(new ObjectMapper().writeValueAsString(body))));
+  }
+
+  /** 사진 없음 — 필드가 없거나 null. */
+  static boolean noPicture(Res r) {
+    JsonNode p = r.body().path("profileImageUrl");
+    return p.isMissingNode() || p.isNull();
+  }
+
+  static Map<String, Object> profileBody(String image) {
+    return Map.of(
+        "resultcode",
+        "00",
+        "message",
+        "success",
+        "response",
+        Map.of("id", "n-1", "profile_image", image));
+  }
+
+  void stubTokens() {
+    stub(
+        200,
+        Map.of(
+            "access_token", "naver-access",
+            "refresh_token", "naver-refresh",
+            "token_type", "bearer",
+            "expires_in", 3600,
+            "id_token", "naver.id.token"));
+  }
+
   @Test
   void exchangesCodeReturnsOnlyIdTokenAndReplaysSameKeyWithoutCallingNaverAgain() {
+    stubProfile(200, profileBody(PICTURE));
     stub(
         200,
         Map.of(
@@ -125,6 +170,12 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     assertThat(first.body().path("idToken").asString()).isEqualTo("naver.id.token");
     assertThat(first.body().has("accessToken")).isFalse();
     assertThat(first.body().toString()).doesNotContain("naver-access").doesNotContain("refresh");
+    // 프로필 사진(BR-70): access token 으로 프로필 API 한 번
+    assertThat(first.body().path("profileImageUrl").asString()).isEqualTo(PICTURE);
+    naver.verify(
+        1,
+        getRequestedFor(urlPathEqualTo(PROFILE))
+            .withHeader("Authorization", equalTo("Bearer naver-access")));
 
     // client_secret_post — 설정의 첫 Client ID·Secret, 앱의 코드·verifier·redirect_uri·state
     naver.verify(
@@ -143,11 +194,83 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     Res again = exchange(key, code, CALLBACK);
     assertThat(again.status()).isEqualTo(200);
     assertThat(again.body().path("idToken").asString()).isEqualTo("naver.id.token");
+    assertThat(again.body().path("profileImageUrl").asString()).isEqualTo(PICTURE);
     naver.verify(1, postRequestedFor(urlPathEqualTo(TOKEN)));
+    naver.verify(1, getRequestedFor(urlPathEqualTo(PROFILE)));
 
     // 같은 키·다른 코드는 409
     assertThat(exchange(key, "other-code", CALLBACK).status()).isEqualTo(409);
     naver.verify(1, postRequestedFor(urlPathEqualTo(TOKEN)));
+  }
+
+  @Test
+  void profileFailureOrForeignHostOmitsPictureButExchangeSucceeds() {
+    // 프로필 API 401 → 사진 없음, 교환은 200
+    stubTokens();
+    stubProfile(401, Map.of("resultcode", "024", "message", "Authentication failed"));
+    String key = UUID.randomUUID().toString();
+    Res r = exchange(key, "code-p1", CALLBACK);
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.body().path("idToken").asString()).isEqualTo("naver.id.token");
+    assertThat(noPicture(r)).isTrue();
+    // 재전송은 저장된 결과 그대로(사진 없음) — 네이버·프로필 다시 안 부름
+    naver.resetRequests();
+    stubProfile(200, profileBody(PICTURE));
+    Res again = exchange(key, "code-p1", CALLBACK);
+    assertThat(again.status()).isEqualTo(200);
+    assertThat(noPicture(again)).isTrue();
+    naver.verify(0, postRequestedFor(urlPathEqualTo(TOKEN)));
+    naver.verify(0, getRequestedFor(urlPathEqualTo(PROFILE)));
+
+    // pstatic 이 아닌 주소·http 는 버린다
+    for (String bad :
+        new String[] {"https://evil.example/p.jpg", "http://phinf.pstatic.net/p.jpg"}) {
+      naver.resetAll();
+      stubTokens();
+      stubProfile(200, profileBody(bad));
+      Res b = exchange(UUID.randomUUID().toString(), "code-bad", CALLBACK);
+      assertThat(b.status()).isEqualTo(200);
+      assertThat(noPicture(b)).isTrue();
+    }
+
+    // profile_image 없음·200 + resultcode 오류
+    naver.resetAll();
+    stubTokens();
+    stubProfile(
+        200, Map.of("resultcode", "00", "message", "success", "response", Map.of("id", "n-1")));
+    assertThat(noPicture(exchange(UUID.randomUUID().toString(), "c-none", CALLBACK))).isTrue();
+    naver.resetAll();
+    stubTokens();
+    stubProfile(
+        200,
+        Map.of(
+            "resultcode", "024", "message", "fail", "response", Map.of("profile_image", PICTURE)));
+    assertThat(noPicture(exchange(UUID.randomUUID().toString(), "c-rc", CALLBACK))).isTrue();
+
+    // 프로필 시간 초과(token-timeout 1초 → 프로필도 1초) — 교환은 200
+    naver.resetAll();
+    stubTokens();
+    naver.stubFor(
+        WireMock.get(urlPathEqualTo(PROFILE))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(new ObjectMapper().writeValueAsString(profileBody(PICTURE)))
+                    .withFixedDelay(2000)));
+    Res slow = exchange(UUID.randomUUID().toString(), "c-slow", CALLBACK);
+    assertThat(slow.status()).isEqualTo(200);
+    assertThat(slow.body().path("idToken").asString()).isEqualTo("naver.id.token");
+    assertThat(noPicture(slow)).isTrue();
+
+    // access_token 없는 응답은 프로필을 부르지 않는다
+    naver.resetAll();
+    stub(200, Map.of("id_token", "only-id"));
+    stubProfile(200, profileBody(PICTURE));
+    Res noAccess = exchange(UUID.randomUUID().toString(), "c-noaccess", CALLBACK);
+    assertThat(noAccess.status()).isEqualTo(200);
+    assertThat(noPicture(noAccess)).isTrue();
+    naver.verify(0, getRequestedFor(urlPathEqualTo(PROFILE)));
   }
 
   @Test

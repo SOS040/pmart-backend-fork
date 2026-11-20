@@ -31,7 +31,8 @@ public final class ProviderPictureRules {
     return "NAVER".equals(provider) ? naver(fromApp) : null;
   }
 
-  static @Nullable String naver(@Nullable String url) {
+  /** 네이버 사진 주소 검사 — 맞으면 정리한 주소, 아니면 null(코드 교환 때 프로필 API 값에도 쓴다, BR-70). */
+  public static @Nullable String naver(@Nullable String url) {
     if (url == null || url.isBlank() || url.length() > MAX_LENGTH) {
       return null;
     }

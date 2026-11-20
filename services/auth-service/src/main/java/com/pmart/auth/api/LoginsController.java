@@ -34,11 +34,11 @@ public class LoginsController implements LoginsApi {
     this.naver = naver;
   }
 
-  /** 네이버 인가 코드 → ID 토큰(0.10.0, ADR-0078). 코드·verifier·토큰은 로그 금지. */
+  /** 네이버 인가 코드 → ID 토큰(0.10.0, ADR-0078) + 선택 프로필 사진(0.10.1 BR-70). 코드·verifier·토큰·사진 주소는 로그 금지. */
   @Override
   public ResponseEntity<ExchangeNaverCode200Response> exchangeNaverCode(
       String idempotencyKey, String xSourceSystem, ExchangeNaverCodeRequest body) {
-    String idToken =
+    NaverCodeExchangeService.Exchanged r =
         naver.exchange(
             idempotencyKey,
             xSourceSystem,
@@ -48,7 +48,10 @@ public class LoginsController implements LoginsApi {
             body.getState());
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(new ExchangeNaverCode200Response().idToken(idToken));
+        .body(
+            new ExchangeNaverCode200Response()
+                .idToken(r.idToken())
+                .profileImageUrl(r.profileImageUrl()));
   }
 
   @Override
