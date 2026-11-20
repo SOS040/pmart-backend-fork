@@ -523,7 +523,7 @@ public class CustomerSocialLoginService {
     IdTokenVerifier.Identity identity = reverify(row, providerToken);
 
     CustomerIdentityClient.Confirmed c =
-        replay ? null : identities.confirm(accountId, verificationId);
+        replay ? null : identities.confirm(accountId, verificationId, idempotencyKey);
     if (c != null && !"VERIFIED".equals(c.outcome())) {
       if (IDENTITY_ALREADY_REGISTERED.equals(c.outcome())) {
         throw alreadyRegistered(row, c);

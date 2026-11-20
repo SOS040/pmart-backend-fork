@@ -100,7 +100,11 @@ public class CustomerIdentityClient {
     }
   }
 
-  public Confirmed confirm(String accountId, String verificationId) {
+  /**
+   * customer 는 모든 변경 요청(POST)에 Idempotency-Key 를 요구한다 — 빠지면 400(2026-11-20 LAN "보냈어요" 400 원인). 고객이
+   * 누른 확인 요청의 키를 그대로 넘긴다(같은 키 재전송 = 같은 결과).
+   */
+  public Confirmed confirm(String accountId, String verificationId, String idempotencyKey) {
     try {
       JsonNode n =
           Downstream.call(
@@ -111,6 +115,7 @@ public class CustomerIdentityClient {
                           "/api/v1/internal/accounts/{id}/identity-verifications/{vid}/confirmations",
                           accountId,
                           verificationId)
+                      .header("Idempotency-Key", idempotencyKey)
                       .contentType(MediaType.APPLICATION_JSON)
                       .body(Map.of())
                       .retrieve()

@@ -293,7 +293,11 @@ class CustomerConsentLoginIT extends PostgresKafkaContainerSupport {
         postRequestedFor(
                 urlPathEqualTo(
                     "/api/v1/internal/accounts/" + accountId + "/device-consent-migrations"))
-            .withRequestBody(matchingJsonPath("$.deviceId", equalTo(device))));
+            .withRequestBody(matchingJsonPath("$.deviceId", equalTo(device)))
+            // customer 는 변경 요청에 Idempotency-Key 필수(2026-11-20 LAN 400)
+            .withHeader(
+                "Idempotency-Key",
+                com.github.tomakehurst.wiremock.client.WireMock.matching("[0-9a-f-]{36}")));
 
     // 응답 유실 재시도(같은 키) = 새 토큰, customer 는 다시 부르지 않음, 사건도 한 번
     Res again = complete(arId, doneKey, device, CustomerSocialLoginIT.google(sub), REQUIRED);

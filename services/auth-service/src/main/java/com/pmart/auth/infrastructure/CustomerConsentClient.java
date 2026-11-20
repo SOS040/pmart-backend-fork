@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -121,6 +122,9 @@ public class CustomerConsentClient {
               () ->
                   http.post()
                       .uri("/api/v1/internal/accounts/{id}/device-consent-migrations", accountId)
+                      // customer 는 변경 요청에 Idempotency-Key 필수(없으면 400 — 2026-11-20 LAN 에서 늘 실패하던 것).
+                      // 옮기기는 남은 기기 기록을 옮길 뿐이라 부를 때마다 새 키
+                      .header("Idempotency-Key", UUID.randomUUID().toString())
                       .contentType(MediaType.APPLICATION_JSON)
                       .body(Map.of("deviceId", deviceId))
                       .retrieve()

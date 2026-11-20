@@ -29,8 +29,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 휴대폰 확인 단계(ADR-0074, auth 0.6.0 — require-identity 를 시험 속성으로 켠다 — 설정 사본도 2026-11-20 부터 켜짐): 신규 가입 →
- * AUTH_IDENTITY(토큰·사건 없음) → identity-verifications(번호) → confirmations: 아직이면 AUTH_IDENTITY·진행 상태,
+ * 휴대폰 확인 단계(ADR-0074, auth 0.6.0 — require-identity 를 시험 속성으로 켠다 — 설정 사본도 2026-11-20 부터 켜짐): 신규 가입
+ * → AUTH_IDENTITY(토큰·사건 없음) → identity-verifications(번호) → confirmations: 아직이면 AUTH_IDENTITY·진행 상태,
  * 확인되면 AUTH_MEMBER·토큰·CustomerAuthenticated. 다른 계정의 번호면 409 IDENTITY_ALREADY_REGISTERED(제공자·가입일·가린
  * 이메일)이고 새 계정은 버린다, 탈퇴 막기는 409 IDENTITY_REJOIN_BLOCKED. 확인된 기존 회원은 바로 들어가고, 확인 번호가 없는 기존 회원은 다음 로그인
  * 때 막는다(사용자 (가)). customer-service 는 WireMock.
@@ -221,8 +221,13 @@ class CustomerIdentityLoginIT extends PostgresKafkaContainerSupport {
 
     // 아직 문자가 없음 → AUTH_IDENTITY·진행 상태
     stubConfirm("PENDING", null, null, null);
-    Res pending = confirm(arId, UUID.randomUUID().toString(), device, token);
+    String pendingKey = UUID.randomUUID().toString();
+    Res pending = confirm(arId, pendingKey, device, token);
     assertThat(pending.status()).isEqualTo(200);
+    // customer 는 변경 요청에 Idempotency-Key 가 없으면 400(2026-11-20 LAN) — 고객이 보낸 키를 넘긴다
+    customer.verify(
+        postRequestedFor(urlPathMatching(CONFIRM))
+            .withHeader("Idempotency-Key", WireMock.equalTo(pendingKey)));
     assertThat(pending.body().path("state").asString()).isEqualTo("AUTH_IDENTITY");
     assertThat(pending.body().path("identityVerification").path("state").asString())
         .isEqualTo("PENDING");
