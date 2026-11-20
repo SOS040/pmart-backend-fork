@@ -583,4 +583,27 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
             .exchange((q, r) -> new Res(r.getStatusCode().value(), read(r.bodyTo(byte[].class))));
     assertThat(kakao.status()).isEqualTo(400); // 계약 enum 밖(GOOGLE·KAKAO·NAVER 만 — 2026-11-19)
   }
+
+  /** 네이버 코드 교환(ADR-0078) — 이 시험 설정에는 네이버 Client ID·Secret 이 없다 → 네이버를 부르지 않고 422. */
+  @Test
+  void naverCodeExchangeWithoutNaverConfigIsConfigRequired() {
+    Res r =
+        http.post()
+            .uri("/rider-auth/naver-token-exchanges")
+            .headers(
+                h -> {
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "rider-app");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(
+                Map.of(
+                    "authorizationCode", "code-x",
+                    "codeVerifier", "v".repeat(43),
+                    "redirectUri", "http://callback.test/naver/rider"))
+            .exchange(
+                (q, r2) -> new Res(r2.getStatusCode().value(), read(r2.bodyTo(byte[].class))));
+    assertThat(r.status()).isEqualTo(422);
+    assertThat(r.body().path("code").asString()).isEqualTo("CONFIG_REQUIRED");
+  }
 }
