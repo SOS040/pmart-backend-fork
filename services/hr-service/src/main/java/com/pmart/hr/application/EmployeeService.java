@@ -214,11 +214,8 @@ public class EmployeeService {
     if (r.endDate() != null && r.endDate().isBefore(r.startDate())) {
       throw invalid("endDate", "계약 종료일이 근무 시작일보다 앞입니다.");
     }
-    for (GrantRequest g : r.grants()) {
-      if (g.validFrom() != null && g.validTo() != null && g.validTo().isBefore(g.validFrom())) {
-        throw invalid("requestedGrants", "권한 기간이 거꾸로입니다: " + g.role());
-      }
-    }
+    // 근무 기간 안의 권한 기간 순서 — 비운 값은 근무 시작일·계약 종료일로 채워 본다(GP-1)
+    GrantRequestRules.checkPeriodOrder(r.grants(), r.startDate(), r.endDate(), "requestedGrants");
     GrantRequestRules.noDuplicateRoles(r.grants(), "requestedGrants");
   }
 
@@ -526,7 +523,7 @@ public class EmployeeService {
     }
     for (GrantRequest g : grants) {
       if (g.validFrom() != null && g.validTo() != null && g.validTo().isBefore(g.validFrom())) {
-        throw invalid("grants", "권한 기간이 거꾸로입니다: " + g.role());
+        throw GrantRequestRules.reversed("grants", grants.indexOf(g), g);
       }
       if (g.validTo() != null && g.validTo().isBefore(today())) {
         throw invalid("grants", "이미 지난 종료일입니다: " + g.role());
@@ -565,6 +562,8 @@ public class EmployeeService {
                 false,
                 List.of());
           }
+          // 서버가 채우는 값(근무 시작일·계약 종료일)으로도 순서 확인(GP-1)
+          GrantRequestRules.checkPeriodOrder(grants, e.startDate(), e.endDate(), "grants");
           Instant now = now();
           GrantRequestRules.checkNotActive(
               grants, current, roles, e.startDate(), e.endDate(), now, props.zone(), "grants");
@@ -618,6 +617,10 @@ public class EmployeeService {
           LocalDate newEnd = endDate != null ? endDate : e.endDate();
           if (contract && (newEnd == null || newEnd.isBefore(today()))) {
             throw invalid("endDate", "파트타임·일일크루는 앞으로의 계약 종료일이 필요합니다.");
+          }
+          LocalDate newStart = startDate != null ? startDate : e.startDate();
+          if (contract && newEnd.isBefore(newStart)) {
+            throw invalid("endDate", "계약 종료일이 근무 시작일보다 앞입니다."); // GP-1
           }
           changeStatus(
               e,

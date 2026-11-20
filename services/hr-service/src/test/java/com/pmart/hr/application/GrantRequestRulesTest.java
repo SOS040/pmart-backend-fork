@@ -297,4 +297,52 @@ class GrantRequestRulesTest {
     assertThat(e.code()).isEqualTo("VALIDATION_FAILED");
     assertThat(e.details().getFirst().field()).isEqualTo("grants[0]");
   }
+
+  /** GP-1(2026-11-20): 권한 기간 끝 < 시작 — 비운 값은 근무 시작일·계약 종료일로 채워 판정, field = <field>[i].validTo. */
+  @Test
+  void periodOrderUsesFilledValues() {
+    LocalDate start = LocalDate.of(2026, 11, 20);
+    LocalDate end = LocalDate.of(2026, 12, 31);
+    // 둘 다 보냄 — 거꾸로
+    PmartException both =
+        catchThrowableOfType(
+            PmartException.class,
+            () ->
+                GrantRequestRules.checkPeriodOrder(
+                    List.of(
+                        new GrantRequest("MD", List.of(), null, null, null),
+                        new GrantRequest(
+                            "MD",
+                            List.of(),
+                            LocalDate.of(2027, 3, 1),
+                            LocalDate.of(2026, 11, 20),
+                            null)),
+                    start,
+                    null,
+                    "grants"));
+    assertThat(both.details().get(0).field()).isEqualTo("grants[1].validTo");
+    // 시작만 보냄 — 끝은 계약 종료일(2026-12-31)로 채워져 거꾸로
+    PmartException filled =
+        catchThrowableOfType(
+            PmartException.class,
+            () ->
+                GrantRequestRules.checkPeriodOrder(
+                    List.of(
+                        new GrantRequest("MD", List.of(), LocalDate.of(2027, 3, 1), null, null)),
+                    start,
+                    end,
+                    "requestedGrants"));
+    assertThat(filled.details().get(0).field()).isEqualTo("requestedGrants[0].validTo");
+    // 정규직(종료일 없음)·순서 맞음·같은 날은 통과
+    assertThatCode(
+            () ->
+                GrantRequestRules.checkPeriodOrder(
+                    List.of(
+                        new GrantRequest("MD", List.of(), LocalDate.of(2027, 3, 1), null, null),
+                        new GrantRequest("MD", List.of(), start, start, null)),
+                    start,
+                    null,
+                    "grants"))
+        .doesNotThrowAnyException();
+  }
 }

@@ -39,6 +39,33 @@ public final class GrantRequestRules {
   private GrantRequestRules() {}
 
   /** 같은 역할 두 줄(외부 조회 없이 먼저). */
+  /**
+   * 권한 기간 순서(2026-11-20 GP-1 — 인사 백오피스 제보 "2027-03-01 ~ 2026-11-20 이 자동 승인"). 서버가 채우는 값(시작 = 근무
+   * 시작일, 끝 = 계약 종료일)으로도 본다 — 끝이 시작보다 앞이면 400(field {@code <field>[i].validTo}).
+   */
+  public static void checkPeriodOrder(
+      List<GrantRequest> grants, LocalDate start, @Nullable LocalDate end, String field) {
+    for (int i = 0; i < grants.size(); i++) {
+      GrantRequest g = grants.get(i);
+      LocalDate from = g.validFrom() != null ? g.validFrom() : start;
+      LocalDate to = g.validTo() != null ? g.validTo() : end;
+      if (to != null && to.isBefore(from)) {
+        String f = field + "[" + i + "].validTo";
+        String msg = "권한 기간의 끝(" + to + ")이 시작(" + from + ")보다 앞입니다: " + g.role();
+        throw new PmartException(
+            ErrorCode.VALIDATION_FAILED, msg, List.of(new PmartException.Detail(f, msg)));
+      }
+    }
+  }
+
+  /** 둘 다 보낸 값이 거꾸로(요청 받자마자 — 직원 조회 전). */
+  static PmartException reversed(String field, int i, GrantRequest g) {
+    String f = field + "[" + i + "].validTo";
+    String msg = "권한 기간의 끝(" + g.validTo() + ")이 시작(" + g.validFrom() + ")보다 앞입니다: " + g.role();
+    return new PmartException(
+        ErrorCode.VALIDATION_FAILED, msg, List.of(new PmartException.Detail(f, msg)));
+  }
+
   public static void noDuplicateRoles(List<GrantRequest> grants, String field) {
     Set<String> seen = new HashSet<>();
     for (GrantRequest g : grants) {

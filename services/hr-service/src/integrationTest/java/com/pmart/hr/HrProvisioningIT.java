@@ -741,6 +741,16 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
     LocalDate today = today();
     int before = requestedGrants(op);
 
+    // GP-1(2026-11-20): 권한 기간 끝 < 시작 → 400 grants[i].validTo, 행 안 남김
+    Map<String, Object> reversed = grant("MD", List.of());
+    reversed.put("validFrom", today.plusDays(100).toString());
+    reversed.put("validTo", today.plusDays(10).toString());
+    Res rev = requestGrants(op, List.of(reversed));
+    assertThat(rev.status()).as(rev.body().toString()).isEqualTo(400);
+    assertThat(rev.body().path("details").path(0).path("field").asText())
+        .isEqualTo("grants[0].validTo");
+    assertThat(requestedGrants(op)).isEqualTo(before);
+
     // 같은 역할 두 줄 — 센터는 한 줄에 모은다
     Res dup =
         requestGrants(

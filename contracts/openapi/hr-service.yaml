@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.9.0
+  version: 0.9.1
   description: |
+    0.9.1(2026-11-20 GP-1 — 인사 백오피스 제보 "2027-03-01 ~ 2026-11-20 이 자동 승인", 사용자 "해줘"): 권한 기간 순서 검사 — 등록 requestedGrants·grant-requests grants 에서
+    끝(validTo) < 시작(validFrom)이면 400 VALIDATION_FAILED(field `requestedGrants[i].validTo`·`grants[i].validTo`). 비운 값은 서버가 채우는 값(시작 = 근무 시작일, 끝 = 계약 종료일)으로 판정.
+    복귀(reinstate)도 계약 종료일 < 근무 시작일이면 400(field endDate). 등록의 endDate < startDate 400 은 전부터.
     0.9.0(2026-11-19, 인사 백오피스 대시보드 H-D1·H-D2 — 사용자 "응 해줘"): 직원 목록 거르기(provisioningStep·grantSubmission·endDateFrom/To·
     createdFrom/To·sort)와 인원 세기 `GET /hr/employees/counts`(상태별·계정 발급 실패·권한 승인 대기·계약 종료 임박, 값마다 value·complete). 둘 다 HR_ADMIN 만.
     직원 등록·인사 정보·계정 발급(ADR-0056 결정 5·7·8·10·12·16). 인사팀(HR_ADMIN)이 한 화면에서 기본 정보와 요청 권한을 받아 직원을 등록하면
