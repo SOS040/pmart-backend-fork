@@ -54,13 +54,22 @@ public class CouponService {
   private final TransactionTemplate tx;
   private final PromotionProperties props;
   private final Clock clock;
+  private final com.pmart.common.messaging.EventPublisher events;
+  private final com.pmart.common.messaging.EventEnvelopeCodec codec;
+
+  /** 쿠폰 발급 알림 사건 토픽(CouponIssued — notification 구독). */
+  public static final String COUPON_TOPIC = "commerce.coupon.v1";
 
   public CouponService(
       PromotionStore store,
       RequestIdempotency idempotency,
       TransactionTemplate tx,
       PromotionProperties props,
-      Clock clock) {
+      Clock clock,
+      com.pmart.common.messaging.EventPublisher events,
+      com.pmart.common.messaging.EventEnvelopeCodec codec) {
+    this.events = events;
+    this.codec = codec;
     this.store = store;
     this.idempotency = idempotency;
     this.tx = tx;
@@ -171,7 +180,7 @@ public class CouponService {
       String channel,
       @Nullable String issuedBy,
       @Nullable String reason) {
-    return issue(p, accountId, channel, issuedBy, reason, false);
+    return issue(p, accountId, channel, issuedBy, reason, false, null);
   }
 
   /** perCustomerLimitIgnored = 회사 사유 보상(주문마다 한 번 — 1인 한도로 막지 않는다, 중복은 호출자가 주문으로 막음). */
@@ -181,7 +190,8 @@ public class CouponService {
       String channel,
       @Nullable String issuedBy,
       @Nullable String reason,
-      boolean perCustomerLimitIgnored) {
+      boolean perCustomerLimitIgnored,
+      @Nullable String orderId) {
     int limit = p.perCustomerLimit() == null ? 1 : p.perCustomerLimit();
     if (!perCustomerLimitIgnored && store.issuedTo(p.promotionId(), accountId) >= limit) {
       return "!LIMIT";
@@ -207,6 +217,36 @@ public class CouponService {
             null,
             null),
         at);
+    // 서버가 준 쿠폰(가입 축하·보상·직원 지정)은 알린다 — 앱에서 직접 받은 것(DOWNLOAD)은 고객이 이미 안다(2026-11-21 5단계)
+    if (!"DOWNLOAD".equals(channel)) {
+      Instant validUntil = PromotionRules.validUntil(policy, at, props.zoneOrDefault());
+      java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+      payload.put("couponId", id);
+      payload.put("accountId", accountId);
+      payload.put("promotionId", p.promotionId());
+      payload.put("promotionName", p.name());
+      payload.put("channel", channel);
+      payload.put("reason", orderId == null ? null : "DISPATCH_UNAVAILABLE");
+      payload.put("orderId", orderId);
+      payload.put("discountType", p.discountType());
+      payload.put("discountValue", p.discountValue());
+      payload.put("discountMax", p.discountMax());
+      payload.put("validUntil", validUntil.toString());
+      payload.put("issuedAt", at.toString());
+      events.publish(
+          codec.create(
+              events.sourceSystem(),
+              "CouponIssued",
+              1,
+              "Coupon",
+              id,
+              1,
+              new com.pmart.common.messaging.EventEnvelope.Actor(
+                  com.pmart.common.messaging.EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+              com.pmart.common.messaging.EventEnvelope.EventSource.REAL,
+              payload),
+          COUPON_TOPIC);
+    }
     return id;
   }
 

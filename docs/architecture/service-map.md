@@ -78,7 +78,7 @@
 - **소유**: 행사(기간 할인 PRICE_DISCOUNT·장바구니 쿠폰 COUPON)·대상(SKU·카테고리)·승인 반영, 쿠폰 발급(내려받기·지정·가입 축하)·점유·사용 확정·해제·복원, 행사 수량(총 수량·1인 한도·발급/사용 수).
 - **소유하지 않음**: 견적 계산·안분(pricing), 주문 금액 확정·스냅샷(order), 점유·확정·복원의 사가 조율(orchestration), 승인 심사(approval).
 - **API**: 직원 행사 만들기·고치기·제출·조기 종료 제출·지정 발급, 고객 쿠폰 행사 목록·내려받기·내 쿠폰함, 내부 SKU 기간 할인 조회·쿠폰 계산·점유/확정/해제/복원.
-- **발행**: `ApplicationReceiptRecorded`(PROMOTION 승인 반영 회신), `SkuDisplayDiscountChanged`(표시 할인 — 토픽 `commerce.sku-display-discount.v1` compact, 2026-11-21 ADR-0082 4단계).
+- **발행**: `ApplicationReceiptRecorded`(PROMOTION 승인 반영 회신), `SkuDisplayDiscountChanged`(표시 할인 — 토픽 `commerce.sku-display-discount.v1` compact, 2026-11-21 ADR-0082 4단계), `CouponIssued`(서버가 준 쿠폰 — notification 쿠폰 도착 알림, 2026-11-21 5단계).
 - **구독**: `ProductVersionPublished`(SKU → 카테고리 사본), `PriceVersionEffective`(기본가 사본 — 표시 할인 고르기, 2026-11-21), `ApprovalDecided`(PROMOTION), `CustomerIdentityVerified`(가입 축하 쿠폰, 2026-11-21 5단계), `OrderCancelled`(DISPATCH_UNAVAILABLE → 보상 쿠폰 CL-5, 2026-11-21).
 - **아직**: pricing·order·orchestration 연결, 화면 할인가 표시, 가입 쿠폰 자동 발급(ADR-0083 나누어 만들기 2~5). 첫 구매 무료배달 자격은 그대로 order-service.
 ---

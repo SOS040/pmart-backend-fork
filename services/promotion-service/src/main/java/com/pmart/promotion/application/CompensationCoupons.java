@@ -105,7 +105,8 @@ public class CompensationCoupons {
     }
     PromotionRow p = java.util.Objects.requireNonNull(promo);
     String r =
-        coupons.issue(p, x.accountId(), "ADMIN", "system", "배차 불가 보상 · 주문 " + x.orderId(), true);
+        coupons.issue(
+            p, x.accountId(), "ADMIN", "system", "배차 불가 보상 · 주문 " + x.orderId(), true, x.orderId());
     if (r.startsWith("!")) {
       log.warn("보상 쿠폰 행사 {} 가 다 나갔다 — 주문 {} 대기", p.promotionId(), x.orderId());
       return false;

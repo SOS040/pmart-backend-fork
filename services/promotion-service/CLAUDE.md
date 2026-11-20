@@ -29,3 +29,4 @@
 ./gradlew :services:promotion-service:check
 ```
 로컬 포트 8109. LAN PC 2.
+- **쿠폰 도착 알림(2026-11-21)**: `CouponService.issue` 가 DOWNLOAD 가 아닌 발급(SIGNUP·ADMIN — 보상·직원 지정)마다 같은 트랜잭션에서 `CouponIssued`(토픽 `commerce.coupon.v1`, 보상이면 reason DISPATCH_UNAVAILABLE·orderId) → notification.

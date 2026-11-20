@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CouponIssued.v1.json",
+  "title": "CouponIssued",
+  "description": "서버가 고객에게 쿠폰을 줌(2026-11-21 ADR-0082 5단계) — 가입 축하(SIGNUP)·보상(ADMIN + reason DISPATCH_UNAVAILABLE·orderId)·직원 지정(ADMIN). 앱에서 직접 받은 쿠폰(DOWNLOAD)은 내지 않는다. 발행 promotion-service. 구독 notification(쿠폰 도착 알림). 토픽 commerce.coupon.v1.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CouponIssued"
+        },
+        "aggregateType": {
+          "const": "Coupon"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "couponId",
+            "accountId",
+            "promotionId",
+            "promotionName",
+            "channel",
+            "discountType",
+            "discountValue",
+            "validUntil",
+            "issuedAt"
+          ],
+          "properties": {
+            "couponId": {
+              "type": "string"
+            },
+            "accountId": {
+              "type": "string"
+            },
+            "promotionId": {
+              "type": "string"
+            },
+            "promotionName": {
+              "type": "string"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "SIGNUP",
+                "ADMIN"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "회사 사유 보상이면 DISPATCH_UNAVAILABLE"
+            },
+            "orderId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "discountType": {
+              "type": "string",
+              "enum": [
+                "RATE",
+                "AMOUNT"
+              ]
+            },
+            "discountValue": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "discountMax": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "validUntil": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "issuedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -102,6 +102,14 @@ class NotificationEventConsumers {
   }
 
   /**
+   * commerce.coupon.v1 — 바인딩 couponEvents-in-0: CouponIssued → 쿠폰 도착 알림(2026-11-21 ADR-0082 5단계).
+   */
+  @Bean
+  PmartEventConsumer couponEvents(EventConsumers consumers, NotificationService n) {
+    return consumers.of(e -> "CouponIssued".equals(e.eventType()), n::onCouponEvent);
+  }
+
+  /**
    * commerce.customer.v1 — 고객 탈퇴 완료(ADR-0077, 2026-11-20): CustomerWithdrawalCompleted → 그 고객 단말 푸시
    * 토큰 지움 (알림함은 남김). 나머지 고객 사건은 버린다.
    */

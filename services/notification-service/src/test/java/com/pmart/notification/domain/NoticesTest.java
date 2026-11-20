@@ -122,4 +122,27 @@ class NoticesTest {
             Notices.orderCancelled("O-1", "CHANGE_OF_MIND").title())
         .isEqualTo("주문이 취소되었어요");
   }
+
+  /** 쿠폰 도착(2026-11-21 ADR-0082 5단계): 배차 불가 보상은 그 주문으로, 가입 축하는 목적지 없음, 기한은 서울 날짜. */
+  @Test
+  void couponIssuedNotices() {
+    Notices.Notice comp =
+        Notices.couponIssued(
+            "ADMIN",
+            "DISPATCH_UNAVAILABLE",
+            "O-9",
+            "배차 불가 보상 2,000원",
+            "AMOUNT",
+            2000,
+            "2026-12-20T14:59:59.999Z");
+    assertThat(comp.title()).isEqualTo("보상 쿠폰이 도착했어요");
+    assertThat(comp.body()).contains("2,000원 할인 쿠폰").endsWith("12월 20일까지 쓸 수 있어요.");
+    assertThat(comp.destinationType()).isEqualTo("ORDER");
+    assertThat(comp.destinationRef()).isEqualTo("O-9");
+    Notices.Notice signup =
+        Notices.couponIssued("SIGNUP", null, null, "가입 축하 10%", "RATE", 10, "2026-12-20T15:00:00Z");
+    assertThat(signup.title()).isEqualTo("가입 축하 쿠폰이 도착했어요");
+    assertThat(signup.body()).startsWith("'가입 축하 10%' 쿠폰을 드렸어요.").endsWith("12월 21일까지 쓸 수 있어요.");
+    assertThat(signup.destinationType()).isEqualTo("NONE");
+  }
 }

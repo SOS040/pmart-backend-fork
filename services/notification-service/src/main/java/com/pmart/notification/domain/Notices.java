@@ -544,6 +544,52 @@ public final class Notices {
     };
   }
 
+  /**
+   * 쿠폰 도착(2026-11-21 ADR-0082 5단계, promotion CouponIssued). 배차 불가 보상은 그 주문으로(분류 ORDER), 가입 축하·직원
+   * 지정은 분류 SYSTEM·목적지 없음(쿠폰함 목적지는 계약에 아직 없다). validUntil 은 UTC 시각 — 날짜는 Asia/Seoul.
+   */
+  public static Notice couponIssued(
+      @Nullable String channel,
+      @Nullable String reason,
+      @Nullable String orderId,
+      @Nullable String promotionName,
+      @Nullable String discountType,
+      long discountValue,
+      @Nullable String validUntil) {
+    String amount =
+        "RATE".equals(discountType) ? discountValue + "% 할인" : won(discountValue) + " 할인";
+    String until = "";
+    if (validUntil != null) {
+      try {
+        LocalDate d =
+            java.time.Instant.parse(validUntil)
+                .atZone(java.time.ZoneId.of("Asia/Seoul"))
+                .toLocalDate();
+        until = " " + d.getMonthValue() + "월 " + d.getDayOfMonth() + "일까지 쓸 수 있어요.";
+      } catch (RuntimeException e) {
+        until = "";
+      }
+    }
+    if ("DISPATCH_UNAVAILABLE".equals(reason) && orderId != null) {
+      return new Notice(
+          "COUPON_COMPENSATION",
+          ORDER,
+          "보상 쿠폰이 도착했어요",
+          "배달 기사를 찾지 못해 주문을 취소한 데 대한 보상으로 " + amount + " 쿠폰을 드렸어요. 쿠폰함에서 확인해 주세요." + until,
+          "ORDER",
+          orderId);
+    }
+    String name = promotionName == null || promotionName.isBlank() ? amount : promotionName;
+    boolean signup = "SIGNUP".equals(channel);
+    return new Notice(
+        signup ? "COUPON_SIGNUP" : "COUPON_ISSUED",
+        SYSTEM,
+        signup ? "가입 축하 쿠폰이 도착했어요" : "쿠폰이 도착했어요",
+        "'" + name + "' 쿠폰을 드렸어요. 쿠폰함에서 확인해 주세요." + until,
+        "NONE",
+        null);
+  }
+
   /** 12,300원. */
   public static String won(long amount) {
     return String.format(Locale.ROOT, "%,d원", amount);

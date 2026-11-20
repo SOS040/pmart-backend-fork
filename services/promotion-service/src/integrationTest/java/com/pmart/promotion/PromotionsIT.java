@@ -576,6 +576,20 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
     JsonNode mine =
         send("GET", TestJwt.customer(cust), "/me/coupons?status=AVAILABLE", null).body();
     assertThat(mine.path("items").size()).isEqualTo(2);
+    // 쿠폰 발급 알림 사건(CouponIssued) — 보상은 주문·사유, 가입은 채널 SIGNUP
+    List<String> issued =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'CouponIssued' AND topic = 'commerce.coupon.v1'"
+                + " AND (payload::text LIKE ? OR payload::text LIKE ?)",
+            String.class,
+            "%" + cust + "%",
+            "%" + a + "%");
+    assertThat(issued).hasSize(3);
+    assertThat(
+            issued.stream().filter(t -> t.contains("ORD-C1-" + suffix)).findFirst().orElseThrow())
+        .contains("DISPATCH_UNAVAILABLE");
+    assertThat(issued.stream().filter(t -> t.contains(a)).findFirst().orElseThrow())
+        .contains("SIGNUP");
   }
 
   @Test

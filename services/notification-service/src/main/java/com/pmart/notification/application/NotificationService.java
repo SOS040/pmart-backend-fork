@@ -384,6 +384,30 @@ public class NotificationService {
     }
   }
 
+  /** commerce.coupon.v1 — 서버가 준 쿠폰 도착(가입 축하·보상·직원 지정, 2026-11-21 ADR-0082 5단계). 사건마다 한 번. */
+  public void onCouponEvent(EventEnvelope e) {
+    if (!"CouponIssued".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String accountId = text(p, "accountId");
+    if (accountId == null) {
+      return;
+    }
+    save(
+        e,
+        accountId,
+        Notices.couponIssued(
+            text(p, "channel"),
+            text(p, "reason"),
+            text(p, "orderId"),
+            text(p, "promotionName"),
+            text(p, "discountType"),
+            p.path("discountValue").asLong(0),
+            text(p, "validUntil")),
+        "");
+  }
+
   /** order.claim.v1 — 환불 의도로 주문·클레임을 잇고, 먼저 와 있던 결과가 있으면 알린다. */
   public void onClaimEvent(EventEnvelope e) {
     if (!"RefundIntentCreated".equals(e.eventType())) {
