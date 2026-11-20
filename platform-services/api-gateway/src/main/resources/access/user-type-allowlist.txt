@@ -6,6 +6,7 @@ DELETE /api/v1/me/addresses/{addressId} CUSTOMER
 DELETE /api/v1/me/push-tokens/{deviceId} CUSTOMER,RIDER
 DELETE /api/v1/me/recent-searches CUSTOMER
 DELETE /api/v1/me/recent-searches/{keyword} CUSTOMER
+DELETE /api/v1/me/wishlist-items/{productId} CUSTOMER
 DELETE /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 DELETE /api/v1/operation-restrictions/{restrictionId} OPERATOR
 DELETE /api/v1/reviews/{reviewId} CUSTOMER
@@ -173,6 +174,8 @@ GET /api/v1/me/push-tokens CUSTOMER,RIDER
 GET /api/v1/me/recent-searches CUSTOMER
 GET /api/v1/me/review-eligibilities CUSTOMER
 GET /api/v1/me/shopping-context CUSTOMER
+GET /api/v1/me/wishlist-items CUSTOMER
+GET /api/v1/me/wishlist-product-ids CUSTOMER
 GET /api/v1/me/withdrawals CUSTOMER
 GET /api/v1/me/withdrawals/{withdrawalId} CUSTOMER
 GET /api/v1/metrics/on-time-deliveries OPERATOR
@@ -638,6 +641,7 @@ PUT /api/v1/hr/departments/{code} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR
 PUT /api/v1/me/order-preferences CUSTOMER
 PUT /api/v1/me/push-tokens/{deviceId} CUSTOMER,RIDER
+PUT /api/v1/me/wishlist-items/{productId} CUSTOMER
 PUT /api/v1/mfcs/{mfcId}/break-pin OPERATOR
 PUT /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 PUT /api/v1/mfcs/{mfcId}/staff-contacts/me OPERATOR

@@ -30,6 +30,7 @@
 - **소유**: 고객 계정·프로필·이용 상태(정상/WITHDRAW_PENDING/WITHDRAW_COMPLETED), 약관·마케팅 동의(버전·시점·철회), 주소록·현재 쇼핑 주소(`shoppingContextVersion`), 비회원 배송지, 첫 구매 중복혜택 대조값(소셜 식별, 5년).
 - **휴대폰 확인 번호(2026-11-20 ADR-0074)**: 계정마다 확인된 번호 정본(`customer_identity`, 한 번호 한 계정·탈퇴 30일 재가입 막기). auth 가 로그인 단계(AUTH_IDENTITY)에서 내부 API 로 시작·확인을 대신 부른다.
 - **소유하지 않음**: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
+- **찜(2026-11-20 ADR-0081)**: 회원·상품 단위 찜 목록(최대 200 — 정책값), 표시 값은 조회 때 product-content 카드. 재입고 알림은 없음.
 - **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(2026-11-20 ADR-0077 — 같은 소셜 재인증은 auth 내부 API, 완료 전 order·claim 미결 의무 조회), 계정 상태 조회(구매 가능 = ACTIVE, 스위치 `consents.purchase-gate` 가 켜지면 + 필수 약관 현행 버전 동의 — LAN 은 고객 앱 반영 때까지 꺼짐), auth 용 내부 동의 상태·로그인 중 동의 반영(CU-1, 2026-11-17 — 필수 3 + 선택 마케팅 1, 현행 버전은 설정).
 - **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`.
 - **구독**: `CustomerAuthenticated`(auth), `OrderConfirmed`(order — 첫 구매 무료 사용 기록, 2026-10-31), `OrderCancelled`(order — 첫 구매 주문의 전체 취소면 사용 기록 복원, 2026-10-31).

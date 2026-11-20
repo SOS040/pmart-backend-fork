@@ -150,6 +150,8 @@ public class WithdrawalStore {
     jdbc.update("DELETE FROM phone_verification WHERE account_id = ?", accountId);
     jdbc.update("DELETE FROM customer_device_consent_migration WHERE account_id = ?", accountId);
     jdbc.update(
+        "DELETE FROM customer_wishlist_item WHERE account_id = ?", accountId); // 찜(ADR-0081)
+    jdbc.update(
         "UPDATE customer_identity SET released_at = ? WHERE account_id = ? AND released_at IS NULL",
         ts(now),
         accountId);

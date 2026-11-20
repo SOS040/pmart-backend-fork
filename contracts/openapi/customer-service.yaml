@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
+    0.13.0(2026-11-20, ADR-0081 — 사용자 "찜 기능 넣고 싶어"): 찜(위시리스트) — 회원만, 상품(productId) 단위, 최대 200개(정책값 `pmart.customer.wishlist.max-items`).
+    `PUT`·`DELETE /me/wishlist-items/{productId}`(멱등 — 이미 있으면 그대로, 없으면 204), `GET /me/wishlist-items`(최근 찜한 순, 상품명·대표 사진·가격·판매 상태는
+    조회 때 product-content 카드에서 — 실패하면 그 칸만 null), `GET /me/wishlist-product-ids`(하트 표시용 전체 ID). 품절·판매 종료도 남긴다. 재입고 알림 없음.
     0.12.0(2026-11-20, ADR-0077 — 사용자 "고객 탈퇴 만들어줘"): 탈퇴 접수·조회·철회 구현. 접수·철회는 같은 소셜로 다시 로그인한 ID 토큰(`provider`·`providerToken`)이 필요하다
     (auth-service 가 그 계정의 소셜인지 검증 — 다르면 403 REAUTHENTICATION_MISMATCH, 거절 401 PROVIDER_REJECTED, auth 장애 503). 접수 즉시 신규 구매만 막고
     주문 조회·클레임·고객센터는 그대로. 완료는 order·claim 의 미결 의무가 모두 없을 때 서버가 비동기로(이름·연락처·주소록 등 지움). `GET /me/withdrawals` = 최근 탈퇴 요청.
@@ -54,6 +57,7 @@ tags:
   - { name: addresses, description: 주소록·현재 쇼핑 주소·비회원 배송지 }
   - { name: preferences, description: '주문 기본 설정(0.4.0 — 앱 주문서 기본값)' }
   - { name: withdrawals, description: 탈퇴 접수·철회·완료 }
+  - { name: wishlist, description: "찜(0.13.0, ADR-0081)" }
   - { name: phone-verifications, description: '휴대폰 번호 확인(0.9.0 — OCTOMO, 고객이 대표번호로 문자 보냄)' }
   - { name: internal, description: 서비스 간 조회(서비스 토큰) }
   - { name: staff, description: '직원용 고객 조회(0.11.0 — 백오피스 고객 메뉴, CS_AGENT·OPERATOR_ADMIN)' }
@@ -539,6 +543,94 @@ paths:
               schema: { $ref: '#/components/schemas/Address' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/wishlist-items:
+    get:
+      tags: [wishlist]
+      summary: 내 찜 목록 — 최근 찜한 순 (0.13.0, ADR-0081)
+      description: |
+        상품명·대표 사진·대표 가격·판매 상태는 저장하지 않고 조회 때 product-content 카드(지금 쇼핑 주소의 담당 센터 기준 가용)로 채운다.
+        카드를 못 읽거나 게시되지 않은 상품이면 그 칸은 null·saleState UNKNOWN(찜은 그대로 보인다).
+        saleState — ON_SALE(살 수 있음) · SOLD_OUT(판매 중이나 담당 센터 가용 없음·일시 품절) · ENDED(판매 중지) · UNKNOWN(정보 없음).
+      operationId: listWishlistItems
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/WishlistItem' } }
+                  total: { type: integer, description: 전체 찜 수 }
+                  limit: { type: integer, description: 최대 찜 수(설정, 지금 200) }
+
+  /me/wishlist-product-ids:
+    get:
+      tags: [wishlist]
+      summary: 내 찜 상품 ID 전체 — 상세·목록 카드 하트 표시용 (0.13.0)
+      operationId: listWishlistProductIds
+      x-pmart-user-types: [CUSTOMER]
+      responses:
+        '200':
+          description: OK (최근 찜한 순, 최대 limit 개)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [productIds, total]
+                properties:
+                  productIds: { type: array, items: { type: string } }
+                  total: { type: integer }
+
+  /me/wishlist-items/{productId}:
+    put:
+      tags: [wishlist]
+      summary: 찜하기 (멱등 — 이미 찜했으면 그대로 200, 0.13.0)
+      operationId: addWishlistItem
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string, maxLength: 64, pattern: '^[A-Za-z0-9_-]{1,64}$' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 찜 상태(새로 찜했든 이미 있었든)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [productId, addedAt, total]
+                properties:
+                  productId: { type: string }
+                  addedAt: { type: string, format: date-time, description: 처음 찜한 시각 }
+                  total: { type: integer }
+        '409':
+          description: INVALID_STATE (탈퇴 신청 이후)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: WISHLIST_LIMIT_EXCEEDED (최대 수 넘음 — details limit) / CONFIG_REQUIRED (max-items 미설정)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [wishlist]
+      summary: 찜 빼기 (멱등 — 없어도 204, 0.13.0)
+      operationId: removeWishlistItem
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '204': { description: 빠짐(또는 원래 없음) }
 
   /me/withdrawals:
     post:
@@ -1366,6 +1458,17 @@ components:
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
         shoppingContextVersion: { type: integer }
         changedAt: { type: string, format: date-time }
+    WishlistItem:
+      type: object
+      required: [productId, addedAt, saleState]
+      description: (0.13.0) 찜 한 줄. 표시 값은 조회 때 product-content 카드에서 — 모르면 null.
+      properties:
+        productId: { type: string }
+        addedAt: { type: string, format: date-time }
+        name: { type: [string, 'null'], description: 고객용 상품명 }
+        imageUrl: { type: [string, 'null'], description: '대표 사진 `/api/v1/content-images/{id}` — `?w=` 축소 가능' }
+        price: { type: [integer, 'null'], format: int64, description: '대표 가격(원) — 판매 중 옵션 중 첫 옵션의 기본가, 가격 미설정이면 null' }
+        saleState: { type: string, enum: [ON_SALE, SOLD_OUT, ENDED, UNKNOWN] }
     Withdrawal:
       type: object
       required: [withdrawalId, state, requestedAt]
