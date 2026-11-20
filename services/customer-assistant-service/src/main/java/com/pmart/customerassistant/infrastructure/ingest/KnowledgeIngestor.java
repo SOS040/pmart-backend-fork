@@ -210,6 +210,11 @@ public class KnowledgeIngestor {
     List<ChunkRow> rows = new ArrayList<>();
     Set<String> seen = new LinkedHashSet<>();
     for (Doc doc : manifest.documents()) {
+      // FAQ 목록 전용 문서(domain customer-faq)는 AI 답변 근거로 쓰지 않는다 — 답변은 docs/rag/rag-docs/customer_app 만
+      // (사용자 2026-11-20 "고객용 RAG 는 customer_app 만", FAQ 화면은 옛 FAQ 문서에서).
+      if (FaqExtractor.FAQ_DOMAIN.equals(doc.domain())) {
+        continue;
+      }
       DocHeader h = headers.get(doc.path());
       Authority docDefault = doc.kind() == Kind.ADR ? adrAuthority(doc, h) : defaultAuthority(doc);
       List<Relation> relations = relationsByTarget.getOrDefault(doc.path(), List.of());

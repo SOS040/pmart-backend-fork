@@ -2,7 +2,7 @@
 
 서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `customer-assistant-service` 절과 ADR-0051 이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다.
 
-고객앱 고객센터 채팅의 AI 상담(RAG). 승인된 고객 안내 문서(`docs/business/customer-faq/`)만 근거로 답하고, 내 주문 상태는 order-service 에서 읽어 정해진 문장으로 답하며, 답하지 못하면 고객센터 문의(case-service `POST /inquiries`)로 연결한다.
+고객앱 고객센터 채팅의 AI 상담(RAG). 승인된 고객 안내 문서(2026-11-20 부터 `docs/rag/rag-docs/customer_app/`, README 제외)만 근거로 답하고, 내 주문 상태는 order-service 에서 읽어 정해진 문장으로 답하며, 답하지 못하면 고객센터 문의(case-service `POST /inquiries`)로 연결한다.
 
 ## 사용자 결정(2026-11-09)
 - C1 고객 안내 문서 = Claude 초안·사용자 승인(승인됨). C2 회원만(비회원·운영자 403). C3 고객별 1분 5개·하루 50개(서울 자정). C4 근거 없음 → 고객센터 문의 연결. C5 질문 원문 저장 안 함(해시만 — 설정으로도 켤 수 없다). C6 order `GET /orders`·`GET /orders/{id}` 를 고객 토큰으로. C8 운영자와 같은 Ollama 모델로 시작.
@@ -22,6 +22,7 @@
 - 주문 정보는 응답할 때 order-service 에서 새로 읽는다(저장은 `order_id` 만). 주소·결제 정보는 옮기지 않는다(`OrderClient.OrderView`).
 - 질문·문서 본문·토큰·주문 내용을 로그에 남기지 않는다.
 - 색인 대상은 `src/main/resources/knowledge/manifest.yml` 의 명시 목록(고객 안내 문서)뿐. 업무 문서·상담 대본·ADR 은 내부 문서라 넣지 않는다. 고객 안내 문서를 고치면 사용자 승인 뒤 재색인.
+  - **2026-11-20 사용자**: AI 답변 근거는 `docs/rag/rag-docs/customer_app/*`(README 제외)만. 옛 `docs/business/customer-faq/*`(domain `customer-faq`)는 manifest 에 남지만 **FAQ 목록 화면 전용** — `KnowledgeIngestor.buildChunks` 가 청크로 만들지 않고 `FaqExtractor` 만 읽는다(사용자 "FAQ 는 옛 FAQ 문서에서" — customer_app 은 약관 형식이라 `##` 절이 "제N조"). 시험 `CustomerScopeIngestTest`.
 
 ## 데이터
 - `V1__init.sql`: `index_snapshot`·`index_source_file`·`doc_chunk`·`embedding_cache`·`customer_answer`(질문 원문 컬럼 없음, `order_id`, 요청 제한 색인).

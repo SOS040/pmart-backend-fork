@@ -104,7 +104,14 @@ class FaqExtractorTest {
       bytes.put(d.path(), Files.readAllBytes(repo.resolve(d.path())));
     }
     List<FaqEntry> all = FaqExtractor.extract(manifest, bytes);
-    assertThat(all).extracting(FaqEntry::documentId).containsAll(bytes.keySet());
+    // FAQ 는 domain customer-faq 문서에서만(customer_app 은 AI 답변 근거 전용 — 2026-11-20)
+    var faqDocs =
+        manifest.documents().stream()
+            .filter(d -> FaqExtractor.FAQ_DOMAIN.equals(d.domain()))
+            .map(d -> d.path())
+            .toList();
+    assertThat(faqDocs).isNotEmpty();
+    assertThat(all).extracting(FaqEntry::documentId).containsAll(faqDocs).allMatch(faqDocs::contains);
     assertThat(all).extracting(FaqEntry::faqId).doesNotHaveDuplicates();
     assertThat(all)
         .allSatisfy(

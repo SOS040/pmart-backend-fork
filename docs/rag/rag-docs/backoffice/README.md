@@ -5,12 +5,14 @@
 - 문서 버전: 0.1 (**초안 — 사용자 승인 전**)
 - 작성: Claude, 2026-11-20 (사용자 "백오피스 관련 다른 문서에 적지 않은 규정에 대한 부분도 문서로 작성해줘")
 - 근거:
-  - 계정·로그인: ADR-0056(직원 로그인·계정 발급·정지/퇴사·사내 메일·D8 공용 PDA·OTP 넣지 않음), ADR-0059·0061(웹 로그인 유지·로그아웃 전파), `services/employee-auth-service/CLAUDE.md`, `services/hr-service/CLAUDE.md`, 설정 `deploy/lan/.config-repo/employee-auth-service.yml`(LAN 아님 — 세션 12시간, PDA 무활동 30분, 백오피스 SSO), `docs/architecture/auth/employee-auth-structure.md`(IAM·사서함 비밀번호 둘)
-  - 역할·권한: `docs/architecture/auth/staff-roles.md`, `docs/architecture/backoffice-role-menus.md`, `docs/backoffice/HANDOVER.md` §5(BO-01 결정), `services/hr-service/CLAUDE.md`(권한 요청 검사 HR-2·센터 섞임), `services/employee-auth-service/CLAUDE.md`(회수·안전망), `docs/business/BackOffice-business-logic.md` BO-01 처리 원칙(행위마다 서버 판정)
-  - 승인: `services/approval-service/CLAUDE.md`(AP-1 승인 번호·AP-3 결정 가능 여부·SEARCH_SYNONYM), 설정 `deploy/lan/.config-repo/approval-service.yml`(approver-roles·requester-roles·auto-approval-rules)
-  - 개인정보: ADR-0062, `services/audit-service/CLAUDE.md`, `services/customer-service/CLAUDE.md`(CU-3·CU-4), `services/rider-service/CLAUDE.md`(0.4.0·0.10.0), BO-25
+  - 계정·로그인: ADR-0056(직원 로그인·계정 발급·정지/퇴사·사내 메일·D8 공용 PDA·OTP 넣지 않음), ADR-0059·0061(웹 로그인 유지·로그아웃 전파 — 같은 브라우저만, 다른 탭은 다시 볼 때 확인), `docs/business/flows/employee-account-provisioning.md`(비밀번호 설정 메일 3일·아이디 칸·메일함 비밀번호 재발급·승인 전 업무 화면 불가·퇴사 때 메일함 중지), `services/employee-auth-service/CLAUDE.md`, `services/hr-service/CLAUDE.md`, 설정 `deploy/lan/.config-repo/employee-auth-service.yml`(LAN 아님 — 세션 12시간, PDA 무활동 30분, 백오피스 SSO), `docs/architecture/auth/employee-auth-structure.md`(IAM·사서함 비밀번호 둘)
+  - 역할·권한: `docs/architecture/auth/staff-roles.md`, `docs/business/flows/employee-account-provisioning.md` §1(회수 주체 나눔·소속 변경 그날 인계·권한 유효 기간 시작일 0시~마지막 날 끝), `docs/architecture/backoffice-role-menus.md`, `docs/backoffice/HANDOVER.md` §5(BO-01 결정), `services/hr-service/CLAUDE.md`(권한 요청 검사 HR-2·센터 섞임), `services/employee-auth-service/CLAUDE.md`(회수·안전망), `docs/business/BackOffice-business-logic.md` BO-01 처리 원칙(행위마다 서버 판정)
+  - 승인: `services/approval-service/CLAUDE.md`(AP-1 승인 번호·AP-3 결정 가능 여부·내가 결정할 수 있는 것만 거르기·SEARCH_SYNONYM), 반영 회신(ADR-0039 — pricing·product·product-content·search 가 회신, 각 서비스 CLAUDE.md), `docs/business/overview.md` §5(요청 ≠ 반영), 설정 `deploy/lan/.config-repo/approval-service.yml`(approver-roles·requester-roles·auto-approval-rules)
+  - 개인정보: ADR-0062(결정 11 배송 요청사항·결정 14 검색어 기록 안 함·적용 범위 "같은 방식"), `services/audit-service/CLAUDE.md`, `services/customer-service/CLAUDE.md`(CU-3·CU-4), `services/rider-service/CLAUDE.md`(0.4.0·0.10.0), BO-25
   - 고객센터·접수 건: `docs/backoffice/HANDOVER.md` §5(사건함·재개·이관·의무·교대·메모·문의 닫기·만족도·R-8·BO-12), `services/case-service/CLAUDE.md`(0.19.0~0.29.0, 배차 지연 1시간), 계약 `contracts/openapi/case-service.yaml`(본인 확인 방법·대리), ADR-0060, `services/claim-service/CLAUDE.md`(고객센터 취소 0.4.0·반품 CL-1)
   - 상품·전시·검색: `services/product-service/CLAUDE.md`, `services/pricing-service/CLAUDE.md`, `services/product-content-service/CLAUDE.md`, ADR-0075(배너·테마·금지 문구), ADR-0073(동의어)
+  - 인사 관리(08): ADR-0056 결정 5·7·8·12(등록 항목·고용 형태·사번·재입사), `docs/business/flows/employee-account-provisioning.md`(발급 단계·실패·다시 시작·메일함 처음 비밀번호·발급 중 정지·퇴사), `services/hr-service/CLAUDE.md`(본사 부서 목록·이름 문자 검사 0.5.1·표시 조회 "이름 · 사번" 0.8.0·인사 대시보드 0.9.0·계약 종료 자동 정지)
+  - 통합 조회·현황·지표(09): `services/backoffice-bff/CLAUDE.md`(통합 조회 0.3.0·0.9.0, 실시간 배송 0.3.1·0.7.0, 포장 인계 현황 0.11.0, 지금 일 건수 0.15.0·0.16.0, 지표 CASE_SLA 0.13.0·결품률 0.20.0·정시 배송률 0.21.0), `services/case-service/CLAUDE.md`(지표 0.18.0·0.24.0 — 운영 관리자만, 직원 개인별 없음), `services/delivery-dispatch-service/CLAUDE.md`(DD-4)·`services/mfc-fulfillment-service/CLAUDE.md`(F-10 — 운영 관리자 모든 센터·그 밖 담당 센터), `docs/backoffice/HANDOVER.md` §5(2026-11-17 밤 "가가가나" — 사건 알림 = 화면 안 표시·직원별 마지막 본 시각, 2026-11-18 지표 정의), ADR-0064(직원 알림 없음), `docs/business/overview.md` §5(화면 사본으로 성공을 확정하지 않음)
   - 라이더 운영: `services/rider-service/CLAUDE.md`(RS-1 제한·RS-3 검토·0.14.0 조치 이력·0.15.0 소명·0.19.0 탈퇴 목록), ADR-0068, `docs/architecture/backoffice-role-menus.md`(2026-11-18 라이더 백오피스 분리·지원센터 나누지 않음)
 - 작성 규칙(라이더·고객·MFC 문서와 같음): 앱 약관 문서 형식 — 제목·시행일·제N조(제목)·번호 항목, "회사"·"직원"·"관리자" 표현, ~합니다 체. 내부 코드·API·클래스·역할 코드 이름은 넣지 않고 역할은 표시 이름(운영 관리자·인사 관리자·고객센터 상담원·라이더 운영·MD·센터 관리자·각 승인자)으로 쓴다. 결정·구현된 규칙만 넣고, 확실하지 않은 것은 본문이 아니라 아래 "확인 필요"에 둔다.
 
@@ -18,13 +20,15 @@
 
 | 파일 | 주제 |
 |---|---|
-| [01-staff-account-login.md](01-staff-account-login.md) | 계정 발급(인사팀 등록·1인 1계정·@pmart.com·비밀번호 설정 메일), 회사 메일(밖으로 안 나감·비밀번호 둘), 로그인(OTP 없음·잠금), 로그인 유지(12시간·백오피스 SSO·업무 단말 30분), 로그아웃 전파, 정지·퇴사·계약 종료 |
-| [02-roles-permissions.md](02-roles-permissions.md) | 권한 원칙(행위마다 서버 판정·상사 ≠ 권한), 역할 13개, 센터 지정 역할·센터 섞임 금지, 권한 요청 검사(중복·센터 규칙·대기 중 요청·연장), 승인·자동 승인·반영 시점, 즉시 회수(관리자 권한은 운영 관리자만), 소속 변경 다음 날 0시 종료 |
-| [03-approval.md](03-approval.md) | 승인 종류별 승인자 표, 요청 역할(동의어), 자기 승인 금지(요청자·본인 권한·승인 번호 실행자), 제출 잠금·대상마다 심사 하나, 승인함 결정 가능 여부, 자동 반영·어긋나면 반영 안 함·반영 결과, 승인 번호 한 번 사용, 자동 승인 규칙 |
-| [04-personal-info-access.md](04-personal-info-access.md) | 기본 가린 값(이름·전화·상세주소·출입 메모·계좌·거주지), 찾기는 번호·전화 완전 일치만(이름 검색 없음), 원문 열람(사유 2~200자·기록 뒤에만·기록 실패면 원문 없음·고른 항목만), 열람 기록(남는 것·고칠 수 없음·2년·운영 관리자만 조회), 본인 확인은 방법만 기록 |
-| [05-customer-center-cases.md](05-customer-center-cases.md) | 문의 답변·닫기·사진·만족도(평가에 안 씀), 상담 접수(본인 확인 방법·대리 경고), 라이더 컴플레인 기록, 고객센터 주문 취소(상품 준비 전·전체만)·준비 뒤 취소 없음, 반품·회수비 9,000원·면제, 접수 건 종류·담당 팀·처리 기한(표시만), 완료·다시 처리·넘기기, 후속 처리, 메모, 교대 인계, 처리 대기 |
-| [06-product-display-search.md](06-product-display-search.md) | 상품 등록·변경 승인, 판매 상태(MD 만·판매중지 승인·재등록으로 안 풀림), 가격 승인·일괄 등록, 콘텐츠 게시 승인, 홈 배너·테마 편성(제출 검사·금지 문구·50개·이미지 5MB·버전), 검색 동의어(MD 요청·관리자 승인·같은 뜻 묶음만·하나씩·바로 반영) |
-| [07-rider-operations.md](07-rider-operations.md) | 라이더 백오피스와 통합 백오피스의 역할 나눔, 계정 제한(사유 필수·기한), 계정 검토(자동 제재 없음·제한 먼저), 소명 결정(설명 필수), 조치 이력(운영 관리자·31일), 탈퇴 신청 목록(번호만), 픽업 전 배차 취소(상담원 불가) |
+| [01-staff-account-login.md](01-staff-account-login.md) | 계정 발급(인사팀 등록·1인 1계정·@pmart.com·비밀번호 설정 메일 3일·승인 전 업무 화면 없음), 회사 메일(밖으로 안 나감·비밀번호 둘·메일함 비밀번호 재발급은 인사팀), 로그인(아이디 칸·OTP 없음·잠금), 로그인 유지(12시간·백오피스 SSO·업무 단말 30분), 로그아웃 전파(같은 브라우저만·다른 PC·단말 영향 없음), 정지·복귀·퇴사·계약 종료 |
+| [02-roles-permissions.md](02-roles-permissions.md) | 권한 원칙(행위마다 서버 판정·상사 ≠ 권한), 역할 13개, 센터 지정 역할·센터 섞임 금지, 권한 요청 검사(중복·센터 규칙·대기 중 요청·연장), 승인·자동 승인·반영 시점, 즉시 회수(관리자 권한은 운영 관리자만), 소속 변경 다음 날 0시 종료·그날 인계, 권한 유효 기간·권한 이력 보기, 회수 주체(인사 이동·퇴사 = 인사팀, 보안상 급한 회수 = 운영 관리자) |
+| [03-approval.md](03-approval.md) | 승인 종류별 승인자 표, 요청 역할(동의어), 자기 승인 금지(요청자·본인 권한·승인 번호 실행자), 제출 잠금·대상마다 심사 하나, 승인함 결정 가능 여부, 자동 반영·어긋나면 반영 안 함·반영 결과(승인 ≠ 반영), 내가 결정할 수 있는 것만 보기, 승인 번호 한 번 사용, 자동 승인 규칙 |
+| [04-personal-info-access.md](04-personal-info-access.md) | 기본 가린 값(이름·전화·상세주소·출입 메모·계좌·거주지), 찾기는 번호·전화 완전 일치만(이름 검색 없음), 원문 열람(사유 2~200자·기록 뒤에만·기록 실패면 원문 없음·고른 항목만), 열람 기록(남는 것·고칠 수 없음·2년·운영 관리자만 조회), 검색 번호는 기록 안 함, 배송 요청사항은 출입 메모와 함께 열람, 새 화면도 같은 방식, 본인 확인은 방법만 기록 |
+| [05-customer-center-cases.md](05-customer-center-cases.md) | 문의 답변·닫기·사진·만족도(평가에 안 씀), 상담 접수(본인 확인 방법·대리 경고), 라이더 컴플레인 기록, 주문 취소·반품 접수는 `order_claim/` 정책으로 안내, 접수 건 종류·담당 팀·처리 기한(표시만), 완료·다시 처리·넘기기, 후속 처리, 메모, 교대 인계, 처리 대기 |
+| [06-product-display-search.md](06-product-display-search.md) | 상품 등록·변경 승인, 수정 초안(MD 만·하나만·통째로 바뀜), 바코드 검사, 판매 상태(MD 만·판매중지 승인·재등록으로 안 풀림), 가격 승인·일괄 등록·적용 시각(소급 없음), 콘텐츠 게시 승인, 홈 배너·테마 편성(제출 검사·금지 문구·50개·이미지 5MB·버전), 검색 동의어(MD 요청·관리자 승인·같은 뜻 묶음만·하나씩·전부 또는 전무·바로 반영). 고객 화면에 적용되는 기준은 `commerce/` |
+| [07-rider-operations.md](07-rider-operations.md) | 라이더 백오피스와 통합 백오피스의 역할 나눔, 계정 제한(사유 필수·기한), 계정 검토(자동 제재 없음·제한 먼저), 소명 결정(설명 필수·수행료 인정은 보상금), 조치 이력(운영 관리자·31일), 탈퇴 신청 목록(번호만). 배차 취소 등 배송 운영 업무는 `delivery/` 로 옮김(2026-11-20) |
+| [08-hr-employee-management.md](08-hr-employee-management.md) | 인사팀 담당, 직원 등록(기본 정보 즉시·요청 권한 승인 뒤·이름 문자 제한·재입사 복귀), 사번(자동·바뀌지 않음·"이름 · 사번" 표시), 계정 발급 단계·실패·다시 시작, 메일함 처음 비밀번호(저장 안 함), 본사 부서 목록, 소속 변경, 정지·복귀·퇴사, 인사 현황(종료 임박 7일) |
+| [09-lookup-status-metrics.md](09-lookup-status-metrics.md) | 조회 화면 원칙(합치지 않음·못 읽으면 알 수 없음), 통합 조회(번호 완전 일치·개인정보 안 실음), 실시간 배송 현황(센터 관리자 자기 센터), 포장 인계 현황(단계), 지금 할 일 건수(운영 관리자·"적어도"), 새 접수 건 표시(직원 알림 없음), 운영 지표(처리 기한 지킴·결품률·정시 배송률 — 분자·분모·목표 없음·개인별 없음) |
 
 ## 색인에 넣으려면 (아직 안 함)
 - 지금 RAG 는 운영자용·고객용. 이 문서는 운영자용 RAG(ai-assistant-service) 색인 대상 후보 — 넣을지는 사용자 결정, 승인 뒤.
@@ -35,15 +39,17 @@
 - **화면이 아직 없는 것**: 검색 동의어 관리·결과 0건 검색어 화면(ADR-0073 단계 C 요청서만), 홈 편성 화면(요청서) — 규칙만 적고 화면 위치는 적지 않음.
 - **다른 문서 몫**: MFC 현장·센터 관리자 조작·운영 제한·관리자 판단 취소·MFC 재고 본사 승인 기준(10만 원·20개)은 `mfc/`, 라이더가 보는 제한·검토·탈퇴 기준은 `rider_app/`, 고객이 보는 취소·반품 안내는 고객 FAQ.
 - **품질 사고 고객 영향 접수 건**(case 0.31.0, 2026-11-20 — 설정 바인딩 PC 1 반영 전), 처리 대기의 운송·재고 보충 칸(원천 없음 501).
+- **이번 보강(01~04·08·09)에서 뺀 것**: BackOffice 원문의 [제안]·[명칭 제안]·[논리 필드 제안]·설명용 수치 태그·[제안·미실행] 내용 전부(예: 1.2 금지되는 통합 관리자 기능, 3.1 역할별 기본 업무, 4.2 승인 상태 5축·`contracts/states/platform-states.md` 의 상태 이름, BO-02 대행·교대·긴급 권한, BO-09 정책 발효, BO-26 대량 변경·일괄 승인, BO-27 일일 마감, 13~18장), 11장 결정 대장 BO-Q01~Q23(모두 미결정), 감사 사건 기록(audit 501), 보충 현황·운행 관제 화면(원천 없음 501), 운송 정시·계획 밖 지표(원천 없음), 결제 불명 지표(만들지 않음), 역할별 메뉴 목록(`backoffice-role-menus.md` "임시 기본값"·확정 미룸), 직원 본인 인사 정보 화면(API 만 확인), 인사팀 소속 변경 화면의 인계할 일 목록("나중"), 열람 기록 화면 위치(화면 만드는 중).
 
 ## 확인 필요
 1. **비밀번호 잠금 값**: `keycloak-structure.md` 표는 "15분 안에 5회 → 10분 잠금", `employee-auth-structure.md` 는 "잠금(5회)"만. 본문은 "여러 번 틀리면 잠시 잠김"으로만 적음 — 운영 Realm 값 확정 뒤 숫자를 넣을지.
-2. **직원 비밀번호 분실·변경**: `keycloak-structure.md` 는 "비밀번호 찾기 끔(계정은 관리자가 만든다)", `employee-auth-structure.md` 는 Keycloak 이 "비밀번호 설정/재설정 메일 발송". 직원이 로그인 비밀번호를 스스로 바꾸는 곳(Keycloak 계정 화면?)과 잊었을 때 누구에게 요청하는지 정해진 기록을 못 찾아 본문에 넣지 않음.
+2. **직원 로그인 비밀번호 분실·변경**: `keycloak-structure.md` 는 "비밀번호 찾기 끔(계정은 관리자가 만든다)", `employee-auth-structure.md` 는 Keycloak 이 "비밀번호 설정/재설정 메일 발송". 직원이 로그인 비밀번호를 스스로 바꾸는 곳(Keycloak 계정 화면?)과 잊었을 때 누구에게 요청하는지 정해진 기록을 못 찾아 본문에 넣지 않음. (메일함 비밀번호는 흐름 문서에 "잊었으면 인사팀이 다시 발급"이 있어 01 제4조·08 제6조에 넣음.)
 3. **계정 공유 금지·공용 PC 로그아웃 의무**: 1인 1계정(ADR-0056 결정 5)은 있지만 "다른 사람과 함께 쓰지 않는다"를 명시한 결정은 BO 원문의 긴급 권한 문맥("관리자 계정 공유로 우회하지 않는다")뿐 — 일반 규칙으로 넣을지.
 4. **PDA 교대 종료 뒤 자동 로그아웃**(ADR-0056 결정 14): 결정은 있으나 구현 확인 못 함 — 본문에는 무활동 30분만 넣음.
 5. **승인 만료**: 승인 번호 확인 결과에 EXPIRED·NOT_YET_EFFECTIVE 가 있으나 승인의 만료 기간 값·규칙을 못 찾음 — 본문에 만료를 넣지 않음.
-6. **전달 실패 확정 권한**: `staff-roles.md` §1 은 라이더 운영의 일로 "전달 실패 확정"을 적었고, 같은 문서 §5(delivery-execution)는 그 센터 센터 관리자·운영 관리자·상담원만(라이더 운영 없음). 또 case 0.30.0(2026-11-20)부터 지원센터가 전달 불가 접수 건을 완료 처리하면 배송 실패가 확정된다. 누가 확정하는지가 문서마다 달라 본문에서 뺌.
-7. **소속 변경 뒤 새 센터 권한**(02 제8조 2항): "새 소속 센터 권한은 따로 요청"은 grant 가 소속 변경으로 자동 생기지 않는다는 구조에서 읽은 것 — 맞는지.
+6. ~~**전달 실패 확정 권한**~~ — 해결(사용자 결정 2026-11-20: 구현을 따름): delivery-execution 0.31.3(2026-11-19, 사용자 "라이더 백오피스만") — 확정·반려는 라이더 운영·운영 관리자만, 상담원·센터 관리자는 보기만. 정본은 `delivery/04` 제4조(지원센터의 전달 불가 접수 건 완료 = 확정도 같은 조 4항). `staff-roles.md` §5 의 "센터 관리자·상담원"은 0.31.3 전 내용. 백오피스 본문에는 따로 적지 않고 `05` 표(전달 실패 = 지원센터)·`07` 제1조(배송 운영 정책 참조)만 둠 — 서로 어긋나지 않음.
+7. ~~소속 변경 뒤 새 센터 권한~~ — 해결(2026-11-20): `docs/business/flows/employee-account-provisioning.md` §1 "그날 안에 인계, 새 센터 권한은 요청 → 승인"으로 확인. 02 제8조·08 제8조 그대로.
 8. **검색 동의어·홈 편성 요청 역할**: 동의어는 설정 `requester-roles` 로 MD·운영 관리자만 요청 가능. 다른 승인 종류(상품·가격·전시)는 `requester-roles` 가 없어 승인 서비스로는 "직원 누구나" 요청 가능 — 실제로는 초안을 만드는 서비스(MD·운영 관리자)에서 막히는지 서비스마다 확인하지 않음(본문은 "각 업무 정책을 따릅니다"로만).
-9. **반품 회수비 면제 사유 목록**(05 제8조 3항): claim 코드의 faultCode 5개(오배송·불량·배송 중 파손·심한 지연·잘못된 대체)를 그대로 옮김 — 고객 안내 문구와 맞는지.
+9. ~~반품 회수비 면제 사유 목록~~ — 해결: service-requests CL-1 사용자 결정(2026-11-17)으로 정해짐. 세부 규칙은 `order_claim/06-return-exchange.md` 로 옮김.
 10. **조치 이력 기간**(07 제6조): 기본 7일·최대 31일은 조회 API 값 — 정책으로 적어도 되는지(본문은 31일만).
+11. **정지 때 메일함**(01 제8조·08 제9조): ADR-0056 결정 8 은 "퇴사·정지 … 계정·사서함은 지우지 않고 비활성"으로 읽히지만, 구현(`hr-service` IamSyncWorker — 흐름 문서 §2)은 퇴사만 사서함을 비활성으로 하고 정지는 로그인만 막음. 본문은 구현대로 "퇴사하면 메일함도 쓸 수 없음"으로 적음.
