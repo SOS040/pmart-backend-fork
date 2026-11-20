@@ -39,7 +39,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [x] 4. 직원 권한 요청 검사 HR-2 — ①③④ 결정(2026-11-18), ③ 71ddc112, ① PC 2 요청서, ④ 나중(L-3)
 
 ## 3. 남은 권한 빈틈 (`docs/architecture/auth/permissions.md` §9·§10 — 고치기 전 사용자 승인)
-- [ ] 게이트웨이 사용자 종류 허용 목록 `mode: RECORD` → ENFORCE — **2026-11-21 사용자 "추천대로"(기록 확인 → 걸린 것 없으면 전환 → 하루 지켜보기)**: 로그(es-logs 3일치) 53건 — 실제 경로의 NOT_LISTED·TYPE_NOT_ALLOWED 는 그 뒤 허용 목록 재생성(마지막 4c5fdec4, 11-21 00:26)으로 모두 고쳐졌고, `/control`·`/bff`·`/tracking` 등은 라우트에 없는 경로(어차피 404). 마지막 재생성 뒤 깨끗한 시간이 밤 7시간뿐이라 **낮 하루(11-21 업무 시간) 경고 0 이면 전환**. 확인: `curl es-logs:9200/pmart-logs-*/_search` match_phrase "user-type allowlist" 이후 시각. 전환 뒤 새 경로 PR 이 허용 목록 재생성을 빠뜨리면 바로 403 — PR 세션 점검 항목.
+- [ ] 게이트웨이 사용자 종류 허용 목록 `mode: RECORD` → ENFORCE — **2026-11-21 사용자 "추천대로"(기록 확인 → 걸린 것 없으면 전환 → 하루 지켜보기)**: 로그(es-logs 3일치) 53건 — 실제 경로의 NOT_LISTED·TYPE_NOT_ALLOWED 는 그 뒤 허용 목록 재생성(마지막 4c5fdec4, 11-21 00:26)으로 모두 고쳐졌고, `/control`·`/bff`·`/tracking` 등은 라우트에 없는 경로(어차피 404). 마지막 재생성 뒤 깨끗한 시간이 밤 7시간뿐이라 **낮 하루(11-21 업무 시간) 경고 0 이면 전환**. 확인: `curl es-logs:9200/pmart-logs-*/_search` match_phrase "user-type allowlist" 이후 시각. 전환 뒤 새 경로 PR 이 허용 목록 재생성을 빠뜨리면 바로 403 — PR 세션 점검 항목. **전환하면 PR 처리용 백엔드 세션에 시각·설정 커밋을 알린다**(그 세션 요청 2026-11-21).
 - [ ] `/internal/**` 호출자 확인 없음(네트워크로만 막힘 — orchestration manual-actions operatorId 본문, order 내부 배송지)
 - [ ] (PC 3 영역 — 요청만) MFC 재고 정정 등 역할 검사 없음, approvalRef 확인(RECORD_ONLY)
 
