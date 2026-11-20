@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
+    0.16.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `GET /internal/accounts/{accountId}/withdrawal-eligibility` 구현 — 끝나지 않은 주문(ORDER_IN_PROGRESS)·결과 모르는 결제(PAYMENT_UNKNOWN).
     0.15.0(2026-11-19, 고객 앱 BR-61·BR-62 — 사용자 "응 바로 만들고 고객이 센터 이름 보여도 돼"): 고객 주문 조회 `GET /orders/{orderId}` 에
     ① `shipments[]` — **배차로 배송이 생긴 뒤부터**(delivery-dispatch `DeliveryCreated`) `{shipmentId, deliveryId, state, lines[]}`, 고객에게 가는 배송(FORWARD·RESHIPMENT)만,
     분할·재발송이면 배송마다 한 줄, 배송 전에는 빈 배열. state: 배송 생성·배정 READY → 픽업 IN_DELIVERY → 전달 DELIVERED / 실패 FAILED / 픽업 전 취소 CANCELLED(뒤로 가지 않음).
@@ -631,7 +632,11 @@ paths:
   /internal/accounts/{accountId}/withdrawal-eligibility:
     get:
       tags: [internal]
-      summary: '[customer→order] 탈퇴 가능 여부 (미결 주문·불명 결제·환불·회수·분쟁)'
+      summary: '[customer→order] 탈퇴 가능 여부 (미결 주문·불명 결제) — 0.16.0 구현'
+      description: |
+        (0.16.0, ADR-0077) 그 고객의 주문 중 끝 상태(취소·배송 완료·구매 확정 등 더 바뀌지 않는 상태)가 아닌 것은 ORDER_IN_PROGRESS(ref = orderId),
+        결제 결과를 모르는 것은 PAYMENT_UNKNOWN(ref = orderId). 둘 다 없으면 eligible=true. 환불·반품·분쟁은 claim-service 같은 이름의 API 가 본다.
+        주문 초안(결제 전, 만료되는 것)은 의무가 아니다. 주문이 없는 고객도 eligible=true.
       operationId: getWithdrawalEligibility
       parameters:
         - { name: accountId, in: path, required: true, schema: { type: string } }

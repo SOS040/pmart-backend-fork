@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `GET /internal/accounts/{accountId}/withdrawal-eligibility` — 끝나지 않은 클레임(취소·반품·교환)·환불·분쟁.
     0.8.0(2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터 R-29 "니가 바로 고쳐"): 사유 **`OPERATOR_DECISION`**(관리자 판단) 직원 전체 취소 —
     역할은 그 센터 `MFC_SUPERVISOR`·`OPERATOR_ADMIN` 만(**CS_AGENT 403** — 배차 불가와 다름), 배차 불가(0.7.0)와 같은 범위(**상품준비 뒤라도 인계 전**, 인계 뒤·미이행 0 은 422)·흐름, 본인 확인 없음,
     **사유 메모 `reasonDetail` 필수**(비면 400). 고객 접수 400. CancellationRequested·OrderCancelled `cancelReason` 에 그대로 실린다. 고객 취소 범위(상품준비 전만, ADR-0060)는 그대로.
@@ -363,6 +364,32 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/accounts/{accountId}/withdrawal-eligibility:
+    get:
+      tags: [internal]
+      summary: '[customer→claim] 탈퇴 가능 여부 (진행 중 클레임·환불·분쟁) — 0.9.0, ADR-0077'
+      description: |
+        그 고객이 낸 클레임 중 끝 상태(완료·거절·철회 등 더 바뀌지 않는 상태)가 아닌 것을 돌려준다.
+        kind — CLAIM_IN_PROGRESS(취소·반품·교환 진행), REFUND_IN_PROGRESS(환불 요청됐으나 결과 전·결과 모름), DISPUTE_OPEN(분쟁·사건 열림). ref = claimId.
+        하나도 없으면 eligible=true. 클레임이 없는 고객도 eligible=true.
+      operationId: getWithdrawalEligibility
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [eligible, openObligations]
+                properties:
+                  eligible: { type: boolean }
+                  openObligations:
+                    type: array
+                    items: { type: object, properties: { kind: { type: string }, ref: { type: string } } }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
 
   /internal/claims/system-cancellations:
     post:

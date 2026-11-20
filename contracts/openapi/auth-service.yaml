@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `POST /internal/customers/{accountId}/reauthentications`(customer 가 탈퇴 접수·철회 전 재인증 확인 — 로그인과 같은 ID 토큰 검증 +
+    그 제공자 계정이 이 accountId 에 연결됐는지). `CustomerWithdrawalCompleted` 구독 — 세션 끊기·소셜 연결 지움·계정 WITHDRAWN(로그인 403 ACCOUNT_NOT_AVAILABLE 아님 —
+    연결이 없으니 같은 소셜은 새 가입), 식별값 해시는 회원 테이블과 분리된 `withdrawn_social_identifier` 에 5년(만료 파기).
     0.8.0(2026-11-20 — 사용자 "네이버 프로필 넣어줘야지"): 로그인 본문 세 곳(`social-logins`·`completions`·`identity-verifications/…/confirmations`)에 선택 `profileImageUrl`.
     네이버 ID 토큰에는 프로필 사진이 없어(ADR-0071 — 서버는 access token 을 쓰지 않는다) 앱이 네이버 프로필 API 로 받은 사진 주소를 넘긴다. **NAVER 이고 ID 토큰에 사진이 없을 때만**,
     https·호스트 `*.pstatic.net`·1000자 이하일 때만 쓰고(customer-service 가 같은 호스트 목록으로 받아 사본을 둔다) 아니면 조용히 무시(로그인은 그대로). 카카오는 ID 토큰 `picture`(사진 동의 때) 그대로.
@@ -503,6 +506,50 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- keys (JWKS — 사용자 토큰 검증, ADR-0011). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  /internal/customers/{accountId}/reauthentications:
+    post:
+      tags: [internal]
+      summary: '[customer→auth] 고객 재인증 확인 (탈퇴 접수·철회, 0.9.0 — ADR-0077)'
+      description: |
+        로그인과 같은 ID 토큰 검증(서명·iss·aud·exp, 제공자별 허용 aud)을 하고, 그 제공자 계정(provider + sub)이 이 accountId 에 연결된 소셜 계정인지 본다.
+        상태를 바꾸지 않는다(세션·토큰을 만들지 않음). 결과: 맞으면 200 `{verified: true, provider}`, 토큰 거절 401 PROVIDER_REJECTED,
+        다른 계정의 소셜이거나 연결 없음 403 REAUTHENTICATION_MISMATCH, 제공자 키 조회 실패 503. 토큰·sub 는 로그 금지.
+      operationId: verifyCustomerReauthentication
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, providerToken]
+              properties:
+                provider: { type: string, enum: [GOOGLE, KAKAO, NAVER, APPLE] }
+                providerToken: { type: string }
+      responses:
+        '200':
+          description: 재인증 확인됨
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verified, provider]
+                properties:
+                  verified: { type: boolean, const: true }
+                  provider: { type: string }
+        '401':
+          description: PROVIDER_REJECTED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: REAUTHENTICATION_MISMATCH
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   /internal/jwks:
     get:
       tags: [keys]
