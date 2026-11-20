@@ -24,8 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
 /**
- * 고객용 RAG 의 답변 근거 범위(사용자 2026-11-20): {@code docs/rag/rag-docs/customer_app} 문서만(README 제외). FAQ 목록 전용
- * 문서(domain customer-faq)는 청크가 되지 않는다.
+ * 고객용 RAG 의 답변 근거 범위(사용자 2026-11-20): {@code docs/rag/rag-docs/customer_app} 문서만(README 제외). FAQ 목록
+ * 전용 문서(domain customer-faq)는 청크가 되지 않는다.
  */
 class CustomerScopeIngestTest {
 
