@@ -46,7 +46,7 @@
 | [R-8](case-service.md) | case | PC 2 | claim | 반품 회수 2번 실패(`ReturnRecoveryFailed`) → 상담원 재연락 사건·백오피스 화면 | 결정됨(CL-1 2026-11-17) | **구현·LAN 배포**(2026-11-17 PC 2 #145, case 0.22.0 — 구독 config 7a93ff7). 백오피스 화면은 웹 |
 | [R-9](case-service.md) | case | PC 2 | delivery(PC 5) | 배차 지연(`DispatchDelayed`) → 고객센터 사건 | 결정됨(2026-11-19 사용자 "1,2,3 전부", #228) | **구현·LAN 배포**(2026-11-19 case 0.27.0 #230, 기한 1시간 #232) |
 | [R-10](case-service.md) | case(·delivery-execution) | PC 2·PC 5 | delivery(PC 5) | 결정 대기 전달 불가 — 접수 건 닫기 막기, 라이더가 다시 쓰면 다시 열기(`HelpRequestReopened`) | 결정됨(2026-11-19 사용자) | **구현·LAN 배포**(2026-11-19 case 0.28.0 #240·execution 0.32.1 #239 — 자동 재개는 이력만 #252). **닫기 막기는 case 0.30.0(#295, 2026-11-20)에서 뺌** — 닫기 = 실패 확정(execution #291 1a2f0feb), 계속 전달은 닫기 전 REJECT |
-| [CS-MFC-Q](case-service.md) | case | PC 2 | mfc(PC 3) | 품질 사고 고객 영향 → 고객 사건 열기(MB-2 2차 R6) | 요청(2026-11-19 PC 3 #249) | 대기(PC 2) |
+| [CS-MFC-Q](case-service.md) | case | PC 2 | mfc(PC 3) | 품질 사고 고객 영향 → 고객 사건 열기(MB-2 2차 R6) | 결정됨(2026-11-20 사용자 "추천대로") | **구현·LAN 배포**(2026-11-20 case 0.31.0 #300 — 영향 주문마다 MFC_QUALITY_IMPACT 상담원 사건, caseId 는 CaseOpened 로 — PC 3 구독 남음) |
 | [O-7](order-service.md) | order | PC 1 | claim | 반품 수량을 주문 원장에 기록 | 결정됨(2026-11-17 CL-1 추가 결정 9 — claim 사건 구독) | **구현·LAN 배포**(2026-11-17 order 0.11.2·V15 — `ClaimClosed` returnedLines → returnedQty, config `claimEvents` 바인딩 있음 — order 11-18 배포에 포함) |
 | [O-8](order-service.md) | order | PC 1 | backoffice(PC 2) | 기간 주문 요약·상품별 판매 집계(대시보드 D2·D3 — 확정 시각 한국 날짜, 결제 승인 금액 합, 환불은 빼지 않음) | 결정됨(2026-11-18 사용자 — PC 2 추천대로) | **구현·LAN 배포**(2026-11-18, order 0.13.0 — 이미지 4ab6e04e) |
 | [O-9](order-service.md) | order | PC 1 | backoffice(PC 2) | 주문 조회 목록 상태별 수(목록 숫자 띠, `StatusCounts` 모양) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
