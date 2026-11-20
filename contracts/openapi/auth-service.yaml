@@ -536,7 +536,7 @@ paths:
                 type: object
                 required: [verified, provider]
                 properties:
-                  verified: { type: boolean, const: true }
+                  verified: { type: boolean, description: '늘 true(확인 실패는 401·403)' }
                   provider: { type: string }
         '401':
           description: PROVIDER_REJECTED
