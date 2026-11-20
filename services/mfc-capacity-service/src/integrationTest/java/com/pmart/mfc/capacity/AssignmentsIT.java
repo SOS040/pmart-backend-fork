@@ -244,6 +244,13 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
             .body();
     assertThat(old.path("items").path(0).path("workerId").asString()).isEqualTo("wrk-1");
     assertThat(get(OTHER_SUP, "/assignments?mfcId=" + MFC).status()).isEqualTo(403);
+    // 본사 운영 관리자는 모든 센터 배정을 읽는다(0.30.0 — fulfillment 관리자 막힘 해제, R-29)
+    JsonNode byAdmin =
+        get(
+                TestJwt.operator("OP-admin", List.of("OPERATOR_ADMIN"), List.of()),
+                "/assignments?mfcId=" + MFC + "&taskId=" + task)
+            .body();
+    assertThat(byAdmin.path("items").path(0).path("workerId").asString()).isEqualTo("wrk-2");
 
     // 사건: 바뀐 두 번만(같은 작업자 재지정은 없음)
     List<String> payloads =

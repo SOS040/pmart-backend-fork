@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.29.0
+  version: 0.30.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -43,6 +43,8 @@ info:
       재계수에서 담당이 첫 계수자면 누구나. 담당 없는 실사는 예전처럼 순서 끝. ② **오래 기다린 작업 앞당기기** — 설정 `pmart.capacity.next-task.aging.<작업 유형>`(기간, 예 30m)을
       넘게 기다린 후보는 보충 자리(피킹·포장 바로 뒤). 기본값(사용자 결정 2026-11-20) **복귀(RETURN) 30분·회수품 검수(RETURN_INSPECT) 1시간**, 그 밖 유형은 설정해야 켜짐, 값 `off` 면 끔. 기다린 기준 = 순서 비교에 쓰는 시각
       (작업 READY 시각·반입 시각·도착 시각 등). 모양 변화 없음. 순서 자체는 확정(임시 아님).
+    0.30.0(2026-11-20, MFC 시뮬레이터 R-29 2단계 — ADR-0077): `GET /assignments` 를 본사 운영 관리자 `OPERATOR_ADMIN` 도 모든 센터로 읽는다
+      (mfc-fulfillment 관리자 막힘 해제가 호출자 토큰으로 활성 배정·`workerEligibility` 를 본다). 모양 변화 없음(권한만).
 servers:
   - url: /api/v1
 security:
@@ -303,7 +305,7 @@ paths:
       tags: [assignments]
       summary: 작업 배정 조회 (fulfillment·점원 단말; 활성 담당 1명, assignment_version)
       description: |
-        그 센터 운영자 또는 서비스 토큰. 기본은 ACTIVE 만(작업마다 최대 1건). taskId 로 한 작업의 현재 담당을, workerId 로 한 작업자의 담당 작업을 본다.
+        그 센터 운영자 또는 서비스 토큰(0.30.0 — 본사 `OPERATOR_ADMIN` 은 모든 센터). 기본은 ACTIVE 만(작업마다 최대 1건). taskId 로 한 작업의 현재 담당을, workerId 로 한 작업자의 담당 작업을 본다.
         date 는 배정 시각(Asia/Seoul) 날짜로 거른다(0.2.0 부터 선택).
       operationId: listAssignments
       x-pmart-user-types: [OPERATOR]

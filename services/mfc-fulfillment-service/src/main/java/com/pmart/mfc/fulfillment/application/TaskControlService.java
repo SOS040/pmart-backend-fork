@@ -6,6 +6,8 @@ import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.fulfillment.domain.TaskRules;
+import com.pmart.mfc.fulfillment.domain.TaskRules.ActiveAssignment;
+import com.pmart.mfc.fulfillment.infrastructure.CapacityClient;
 import com.pmart.mfc.fulfillment.infrastructure.TaskStore;
 import com.pmart.mfc.fulfillment.infrastructure.TaskStore.ControlRow;
 import com.pmart.mfc.fulfillment.infrastructure.TaskStore.TaskInfo;
@@ -76,13 +78,19 @@ public class TaskControlService {
   private final TaskStore store;
   private final RequestIdempotency idempotency;
   private final FulfillmentEvents events;
+  private final CapacityClient capacity;
   private final Clock clock;
 
   public TaskControlService(
-      TaskStore store, RequestIdempotency idempotency, FulfillmentEvents events, Clock clock) {
+      TaskStore store,
+      RequestIdempotency idempotency,
+      FulfillmentEvents events,
+      CapacityClient capacity,
+      Clock clock) {
     this.store = store;
     this.idempotency = idempotency;
     this.events = events;
+    this.capacity = capacity;
     this.clock = clock;
   }
 
@@ -133,6 +141,102 @@ public class TaskControlService {
               return Control.of(c);
             })
         .value();
+  }
+
+  // ---------- 막힘 해제 ----------
+
+  /** 실물 확인 표시가 없음(422, 0.29.0). */
+  public static final String PHYSICAL_CHECK_REQUIRED = "PHYSICAL_CHECK_REQUIRED";
+
+  /** 결품으로 막힌 작업 — 결품 사가가 푼다(409, 0.29.0). */
+  public static final String BLOCKED_BY_SHORTAGE = "BLOCKED_BY_SHORTAGE";
+
+  /**
+   * 관리자 중지 해제(WK-05): capacity 활성 배정이 있고 그 작업자가 지금 맡을 수 있으면 ASSIGNED(그 담당, 시작 점유는 지움 — 재개는 WK-03
+   * 시작), 아니면 capacity 배정을 풀고 READY. capacity 조회·해제는 트랜잭션 밖(실패면 503, 작업은 그대로). 같은 키 재전송은 capacity 를
+   * 다시 부르지 않는다.
+   */
+  public Control unblock(
+      String taskId,
+      String requestId,
+      String sourceSystem,
+      @Nullable String reason,
+      @Nullable Boolean cartChecked,
+      @Nullable Integer expectedVersion) {
+    TaskInfo t0 = task(taskId);
+    String actor = requireSupervisor(t0.mfcId());
+    String why = requireReason(reason);
+    if (!Boolean.TRUE.equals(cartChecked)) {
+      throw new PmartException(
+          PHYSICAL_CHECK_REQUIRED,
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "장바구니·집은 물건을 실물로 확인한 뒤(cartChecked: true) 해제합니다.",
+          false,
+          List.of());
+    }
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("taskId", taskId);
+    req.put("reason", why);
+    req.put("cartChecked", true);
+    req.put("expectedVersion", expectedVersion);
+    // 같은 키로 이미 처리됐으면 capacity 를 다시 부르지 않고 기록을 재생한다
+    ActiveAssignment[] keep = {null};
+    if (store.findControl(taskId, requestId).isEmpty()) {
+      checkVersion(t0, expectedVersion);
+      requireSupervisorBlock(t0);
+      ActiveAssignment a = capacity.active(t0.mfcId(), taskId); // 실패면 503 — 기록 없음
+      if (a != null && a.workerRejection() == null) {
+        keep[0] = a;
+      } else if (a != null) {
+        // 정지·퇴사·업무 변경 — 배정을 풀어 누구나 받게(실패면 503, 작업은 그대로 BLOCKED)
+        capacity.release(taskId, a.workerId(), "막힘 해제(" + a.workerRejection() + "): " + why);
+      }
+    }
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "unblockTask", actor),
+            req,
+            Control.class,
+            () -> {
+              TaskInfo t = store.lock(taskId).orElseThrow();
+              checkVersion(t, expectedVersion);
+              requireSupervisorBlock(t);
+              Instant now = clock.instant();
+              ActiveAssignment a = keep[0];
+              String to;
+              String worker;
+              if (a != null) {
+                if (!a.workerId().equals(t.workerId())) {
+                  // 배정 사건보다 먼저 왔다 — capacity 정본으로 투영을 맞춘다(더 새 버전만)
+                  store.applyAssignment(taskId, a.workerId(), null, a.assignmentVersion(), now);
+                }
+                store.setState(taskId, "ASSIGNED", null, true, now);
+                to = "ASSIGNED";
+                worker = a.workerId();
+              } else {
+                store.releaseToReady(taskId, now);
+                to = "READY";
+                worker = null;
+              }
+              events.taskControlled(
+                  t, to, "BLOCKED", t.version() + 1, worker, actor, null, why, now);
+              ControlRow c =
+                  record(t, "UNBLOCK", to, t.version() + 1, why, actor, worker, requestId);
+              log.info("작업 {} 막힘 해제 by {} → {} (담당 {}): {}", taskId, actor, to, worker, why);
+              return Control.of(c);
+            })
+        .value();
+  }
+
+  static void requireSupervisorBlock(TaskInfo t) {
+    if (!"BLOCKED".equals(t.state())) {
+      throw TaskService.conflict(
+          TaskRules.INVALID_STATE, "막힌(BLOCKED) 작업만 해제합니다(지금 " + t.state() + ").");
+    }
+    if (!KIND_SUPERVISOR.equals(t.blockKind())) {
+      throw TaskService.conflict(
+          BLOCKED_BY_SHORTAGE, "결품·예약 보류로 막힌 작업입니다 — 결품 처리가 풉니다(" + t.blockReason() + ").");
+    }
   }
 
   /** 관리자 조작 기록(최근 순). 권한은 작업 상세와 같고, OPERATOR_ADMIN 은 다른 센터 작업도. */

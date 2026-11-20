@@ -14,7 +14,7 @@
 - 막힌 동안 작업자의 시작·실적·포장 밀봉은 409 `TASK_BLOCKED`.
 
 ### 2. 막힘 해제
-- 같은 역할, 사유 + **실물 확인 완료 표시(`cartChecked: true`) 필수**(없으면 422) — WK-05 "미확정 실물 확인" 을 사람이 확인했다는 기록.
+- 같은 역할, 사유 + **실물 확인 완료 표시(`cartChecked: true`) 필수**(빠지면 400, false 면 422) — WK-05 "미확정 실물 확인" 을 사람이 확인했다는 기록.
 - 원래 담당의 배정이 아직 살아 있고(capacity ACTIVE) 그 작업자가 지금 맡을 수 있으면(capacity `workerEligibility` 없음 — 정지·퇴사·업무 변경 아님) **ASSIGNED** 로 그 사람에게(시작 점유는 지운다 — 재개는 WK-03 시작으로). 아니면 capacity 배정을 풀고 **READY**(누구나 받을 수 있게). 완료량은 그대로. 관리자 중지(`blockKind` SUPERVISOR)만 푼다 — 결품으로 막힌 작업은 결품 사가가 푼다.
 - 근무표(OFF_SHIFT)는 보지 않는다 — capacity 가 근무 밖을 경고로만 다루고 있어(Q-09 미결) 같은 기준을 따른다.
 
@@ -30,6 +30,7 @@
 
 ## 적용
 - mfc-fulfillment 0.28.0(V22): `POST /tasks/{taskId}/blocks`, `GET /tasks/{taskId}/controls`, 작업 상세 `blockKind`, 시작·실적·밀봉 `TASK_BLOCKED`. `application/TaskControlService`, 기록 `task_control`(조작마다 한 행, 지우지 않음), `task.block_kind`. 사건 TaskProgressed 에 controlledBy·blockKind·reason.
+- mfc-fulfillment 0.29.0: `POST /tasks/{taskId}/unblocks`(`cartChecked` 필수 — 빠지면 400, false 면 422 PHYSICAL_CHECK_REQUIRED, 결품 BLOCKED 409 BLOCKED_BY_SHORTAGE). capacity 활성 배정을 호출자 토큰으로 읽고(실패 503), 맡을 수 없으면 `/internal/assignments/{taskId}/releases` 뒤 READY. mfc-capacity 0.30.0: `GET /assignments` 를 OPERATOR_ADMIN 도 모든 센터로(본사 관리자의 해제가 배정을 읽게).
 
 ## 결과
 - 현장이 멈추면 관리자가 작업을 멈추고(재고·배정 그대로) 확인 뒤 이어서 하거나 잔량만 끝낼 수 있다. 조작은 누가·언제·왜로 남는다.

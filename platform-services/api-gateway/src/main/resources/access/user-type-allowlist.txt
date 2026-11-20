@@ -614,6 +614,7 @@ POST /api/v1/tasks/{taskId}/executions OPERATOR
 POST /api/v1/tasks/{taskId}/pick-results OPERATOR
 POST /api/v1/tasks/{taskId}/releases OPERATOR
 POST /api/v1/tasks/{taskId}/starts OPERATOR
+POST /api/v1/tasks/{taskId}/unblocks OPERATOR
 POST /api/v1/transfers/{trfId}/cancellations OPERATOR
 POST /api/v1/transfers/{trfId}/changes OPERATOR
 POST /api/v1/transfers/{trfId}/pre-departure-cancellations OPERATOR

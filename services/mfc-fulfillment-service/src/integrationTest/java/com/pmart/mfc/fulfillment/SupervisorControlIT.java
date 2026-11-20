@@ -437,4 +437,124 @@ class SupervisorControlIT extends PostgresKafkaContainerSupport {
     assertThat(byAdmin.body().path("fromState").asString()).isEqualTo("READY");
     assertThat(outbox("TaskProgressed", pick2)).isEqualTo(1);
   }
+
+  Res unblock(String token, String taskId, String key, Map<String, Object> body) {
+    return call("POST", token, "/tasks/" + taskId + "/unblocks", key, body);
+  }
+
+  // ---------- 2. 막힘 해제 ----------
+
+  @Test
+  void unblockGoesBackToLiveAssigneeOtherwiseReadyAndReleased() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String pick = accept(o) + "-PICK";
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    assertThat(pickOne(pick).status()).isEqualTo(202);
+    assertThat(block(SUP, pick, UUID.randomUUID().toString(), Map.of("reason", "고장")).status())
+        .isEqualTo(200);
+
+    // 실물 확인 표시 필수 — 빠지면 400(계약 필수 칸), false 면 422 PHYSICAL_CHECK_REQUIRED, 작업자 403
+    assertThat(unblock(SUP, pick, UUID.randomUUID().toString(), Map.of("reason", "수리 끝")).status())
+        .isEqualTo(400);
+    Res noCheck =
+        unblock(
+            SUP,
+            pick,
+            UUID.randomUUID().toString(),
+            Map.of("reason", "수리 끝", "cartChecked", false));
+    assertThat(noCheck.status()).isEqualTo(422);
+    assertThat(noCheck.body().path("code").asString()).isEqualTo("PHYSICAL_CHECK_REQUIRED");
+    assertThat(
+            unblock(
+                    W1,
+                    pick,
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "수리 끝", "cartChecked", true))
+                .status())
+        .isEqualTo(403);
+
+    // 담당 배정이 살아 있고 맡을 수 있음 → ASSIGNED(그 사람, 시작은 다시), 완료량 그대로
+    Res back =
+        unblock(
+            SUP, pick, UUID.randomUUID().toString(), Map.of("reason", "수리 끝", "cartChecked", true));
+    assertThat(back.status()).as(back.body().toString()).isEqualTo(200);
+    assertThat(back.body().path("toState").asString()).isEqualTo("ASSIGNED");
+    assertThat(back.body().path("workerId").asString()).isEqualTo("w1");
+    JsonNode t = task(pick);
+    assertThat(t.path("state").asString()).isEqualTo("ASSIGNED");
+    assertThat(t.path("blockKind").isNull()).isTrue();
+    assertThat(t.path("completedQty").asInt()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT started_by FROM task WHERE task_id = ?", String.class, pick))
+        .isNull();
+    cap.verify(0, WireMock.postRequestedFor(urlPathMatching("/api/v1/internal/assignments/.*")));
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201); // 이어서 — 남은 양만
+
+    // 다시 멈춤 → 담당이 정지됨(workerEligibility) → capacity 배정 해제 → READY(누구나)
+    assertThat(block(SUP, pick, UUID.randomUUID().toString(), Map.of("reason", "교대")).status())
+        .isEqualTo(200);
+    activeAssignment(pick, "w1", 1, "WORKER_NOT_ACTIVE");
+    cap.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/assignments/" + pick + "/releases"))
+            .willReturn(json(200, Map.of("taskId", pick, "released", true))));
+    String key = UUID.randomUUID().toString();
+    Map<String, Object> body = Map.of("reason", "담당 퇴근", "cartChecked", true);
+    Res ready = unblock(ADMIN, pick, key, body);
+    assertThat(ready.status()).as(ready.body().toString()).isEqualTo(200);
+    assertThat(ready.body().path("toState").asString()).isEqualTo("READY");
+    assertThat(ready.body().path("workerId").isNull()).isTrue();
+    assertThat(unblock(ADMIN, pick, key, body).body().path("controlId").asString())
+        .isEqualTo(ready.body().path("controlId").asString());
+    cap.verify(
+        1,
+        WireMock.postRequestedFor(
+                urlPathEqualTo("/api/v1/internal/assignments/" + pick + "/releases"))
+            .withRequestBody(matchingJsonPath("$.workerId", equalTo("w1"))));
+    t = task(pick);
+    assertThat(t.path("state").asString()).isEqualTo("READY");
+    assertThat(t.path("assignment").path("workerId").isNull()).isTrue();
+    assertThat(t.path("completedQty").asInt()).isEqualTo(1);
+    assertThat(lastEvent("TaskProgressed", pick))
+        .contains("\"state\": \"READY\"")
+        .contains("\"controlledBy\": \"OP-admin\"");
+    assertThat(call("GET", SUP, "/tasks/" + pick + "/controls", null, null).body().path("items"))
+        .hasSize(4);
+    // 이미 풀림 → 409 INVALID_STATE
+    assertThat(
+            unblock(SUP, pick, UUID.randomUUID().toString(), body).body().path("code").asString())
+        .isEqualTo("INVALID_STATE");
+  }
+
+  @Test
+  void unblockRefusesShortageBlockAndKeepsBlockWhenCapacityIsDown() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String pick = accept(o) + "-PICK";
+    // 결품으로 막힌 작업(block_kind 없음)은 관리자가 풀지 않는다
+    jdbc.update(
+        "UPDATE task SET state = 'BLOCKED', block_reason = '결품 보고: L1 1개 SHORT(재확보 못 함)'"
+            + " WHERE task_id = ?",
+        pick);
+    Map<String, Object> body = Map.of("reason", "확인", "cartChecked", true);
+    Res shortage = unblock(SUP, pick, UUID.randomUUID().toString(), body);
+    assertThat(shortage.status()).isEqualTo(409);
+    assertThat(shortage.body().path("code").asString()).isEqualTo("BLOCKED_BY_SHORTAGE");
+
+    // 관리자 중지 + capacity 조회 실패 → 503, 그대로 BLOCKED
+    jdbc.update("UPDATE task SET state = 'READY', block_reason = NULL WHERE task_id = ?", pick);
+    assertThat(block(SUP, pick, UUID.randomUUID().toString(), Map.of("reason", "점검")).status())
+        .isEqualTo(200);
+    cap.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/assignments"))
+            .willReturn(aResponse().withStatus(503)));
+    Res down = unblock(SUP, pick, UUID.randomUUID().toString(), body);
+    assertThat(down.status()).isEqualTo(503);
+    assertThat(task(pick).path("state").asString()).isEqualTo("BLOCKED");
+    // 담당이 없던 작업 → READY
+    activeAssignment(pick, null, 0, null);
+    Res ok = unblock(SUP, pick, UUID.randomUUID().toString(), body);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("toState").asString()).isEqualTo("READY");
+  }
 }

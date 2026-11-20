@@ -27,6 +27,7 @@ import com.pmart.mfc.fulfillment.api.generated.model.TaskStart;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskState;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskSummary;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskType;
+import com.pmart.mfc.fulfillment.api.generated.model.UnblockTaskRequest;
 import com.pmart.mfc.fulfillment.application.TaskControlService;
 import com.pmart.mfc.fulfillment.application.TaskService;
 import com.pmart.mfc.fulfillment.application.TaskService.ExecCommand;
@@ -427,6 +428,25 @@ public class TasksController implements TasksApi {
         control(
             controls.block(
                 taskId, idempotencyKey, xSourceSystem, body.getReason(), xExpectedVersion)));
+  }
+
+  /** 관리자 막힘 해제(0.29.0, R-29 — ADR-0077). */
+  @Override
+  public ResponseEntity<TaskControl> unblockTask(
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      UnblockTaskRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        control(
+            controls.unblock(
+                taskId,
+                idempotencyKey,
+                xSourceSystem,
+                body.getReason(),
+                body.getCartChecked(),
+                xExpectedVersion)));
   }
 
   /** 관리자 조작 기록(0.28.0). */

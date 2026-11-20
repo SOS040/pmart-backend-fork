@@ -823,7 +823,7 @@ public class AssignmentService {
       @Nullable String workerId,
       @Nullable String state,
       @Nullable LocalDate date) {
-    requireReader(mfcId);
+    requireAssignmentReader(mfcId);
     String s = state == null ? "ACTIVE" : state;
     if (!STATES.contains(s)) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "state 는 ACTIVE/SUPERSEDED/RELEASED.");
@@ -890,6 +890,20 @@ public class AssignmentService {
     if (crewOnly && (workerId == null || !workerId.equals(p.subject()))) {
       throw new PmartException(ErrorCode.FORBIDDEN, "작업자는 본인 정보만 볼 수 있습니다 — 센터 작업자 목록은 센터 관리자만.");
     }
+  }
+
+  /**
+   * 배정 조회 — 그 센터 운영자·서비스, 그리고 본사 운영 관리자 OPERATOR_ADMIN(모든 센터, 0.30.0 — mfc-fulfillment 관리자 막힘 해제가
+   * 호출자 토큰으로 활성 배정을 읽는다, R-29 ADR-0077).
+   */
+  static void requireAssignmentReader(String mfcId) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "토큰이 필요합니다."));
+    if (p.type() == PmartPrincipal.PrincipalType.OPERATOR && p.hasRole("OPERATOR_ADMIN")) {
+      return;
+    }
+    requireReader(mfcId);
   }
 
   static void requireReader(String mfcId) {
