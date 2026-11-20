@@ -54,3 +54,6 @@ MD 가 고객 앱 홈의 **배너**와 **상품 테마 영역**(예: "겨울 제
 ## 배포 상태
 - **LAN 배포 2026-11-20**(storefront·게이트웨이 6e2f6d8a).
 - LAN 예시 편성 1건이 게시돼 있다(layoutVersion 1): 배너 `B-WINTER-VEG`(HOME_TOP, SECTION → `T-WINTER-VEG`), 테마 `T-WINTER-VEG` "겨울 제철 채소"(SEASON, 상품 6개). 화면 확인에 쓰면 된다.
+
+## 회신 — 승인자 초안 조회 403(PC 2 질문 ①, 2026-11-20)
+- storefront **0.7.1**: `DISPLAY_APPROVER` 도 `GET /api/v1/storefront/layout-drafts/{draftId}`·`GET …/layout-drafts`·초안 배너 이미지 `GET /api/v1/storefront/banner-images/{imageId}` 를 읽는다. 승인함에서 targetRef(draftId)로 초안을 불러 내용을 보여 주면 된다. 만들기·고치기·제출은 그대로 MD·OPERATOR_ADMIN.

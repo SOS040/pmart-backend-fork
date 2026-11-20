@@ -40,6 +40,9 @@ public class LayoutService {
   public static final String TARGET_SERVICE = "storefront-service";
   public static final List<String> EDITORS = List.of("MD", "OPERATOR_ADMIN");
 
+  /** 초안 읽기(조회·목록·초안 이미지) — 편성 담당 + DISPLAY 승인자(승인 전에 내용을 본다, 0.7.1). */
+  public static final List<String> READERS = List.of("MD", "OPERATOR_ADMIN", "DISPLAY_APPROVER");
+
   /** 초안 보기(본문은 도메인 모양). */
   public record Draft(DraftRow row, Body body) {}
 
@@ -76,6 +79,15 @@ public class LayoutService {
     PmartPrincipal who = PmartPrincipal.current().orElse(null);
     if (who == null || EDITORS.stream().noneMatch(who::hasRole)) {
       throw new PmartException(ErrorCode.FORBIDDEN, "상품·전시 담당(MD)·운영 관리자만 진열을 편성할 수 있습니다.");
+    }
+    return who;
+  }
+
+  static PmartPrincipal reader() {
+    PmartPrincipal who = PmartPrincipal.current().orElse(null);
+    if (who == null || READERS.stream().noneMatch(who::hasRole)) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, "상품·전시 담당(MD)·운영 관리자·전시 승인자만 진열 초안을 볼 수 있습니다.");
     }
     return who;
   }
@@ -124,13 +136,13 @@ public class LayoutService {
   }
 
   public Draft get(String draftId) {
-    editor();
+    reader();
     DraftRow d = find(draftId);
     return new Draft(d, body(d.body()));
   }
 
   public List<Draft> list(@Nullable String state) {
-    editor();
+    reader();
     return store.drafts(state, 50).stream().map(d -> new Draft(d, body(d.body()))).toList();
   }
 
@@ -243,14 +255,14 @@ public class LayoutService {
     return store.image(imageId).orElseThrow();
   }
 
-  /** 게시된 진열에 쓰인 이미지만(운영자 토큰이면 초안 것도). */
+  /** 게시된 진열에 쓰인 이미지만(편성 담당·전시 승인자 토큰이면 초안 것도). */
   public Image image(String imageId) {
     LayoutStore.ImageRow row =
         store
             .image(imageId)
             .orElseThrow(() -> PmartException.notFound("IMAGE_NOT_FOUND", "이미지가 없습니다."));
     boolean operator =
-        PmartPrincipal.current().map(p -> EDITORS.stream().anyMatch(p::hasRole)).orElse(false);
+        PmartPrincipal.current().map(p -> READERS.stream().anyMatch(p::hasRole)).orElse(false);
     if (!operator && !store.imagePublished(imageId)) {
       throw PmartException.notFound("IMAGE_NOT_FOUND", "이미지가 없습니다.");
     }

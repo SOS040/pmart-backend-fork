@@ -93,6 +93,8 @@ class LayoutIT extends PostgresKafkaContainerSupport {
   }
 
   static final String MD = TestJwt.operator("md-1", List.of("MD"), List.of());
+  static final String APPROVER =
+      TestJwt.operator("approver-1", List.of("DISPLAY_APPROVER"), List.of());
   static final String STAFF = TestJwt.operator("staff-1", List.of("MFC_WORKER"), List.of());
 
   @LocalServerPort int port;
@@ -291,6 +293,8 @@ class LayoutIT extends PostgresKafkaContainerSupport {
         .isEqualTo(404);
     assertThat(send("GET", MD, "/storefront/banner-images/" + imageId, null).status())
         .isEqualTo(200);
+    assertThat(send("GET", APPROVER, "/storefront/banner-images/" + imageId, null).status())
+        .isEqualTo(200);
 
     // 할인 문구 → 제출 422, 고쳐서 다시
     Res draft = send("POST", MD, "/storefront/layout-drafts", body(imageId, "겨울 채소 특가"));
@@ -325,6 +329,14 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     assertThat(req.path("targetService").asString()).isEqualTo("storefront-service");
     assertThat(req.path("targetRef").asString()).isEqualTo(draftId);
     assertThat(req.at("/lines/0/attributes/draftHash").asString()).isEqualTo(hash);
+
+    // 전시 승인자: 승인 전에 초안·초안 이미지를 볼 수 있다(고치기·만들기는 안 됨, 0.7.1)
+    Res seen = send("GET", APPROVER, "/storefront/layout-drafts/" + draftId, null);
+    assertThat(seen.status()).as(seen.body().toString()).isEqualTo(200);
+    assertThat(send("GET", APPROVER, "/storefront/layout-drafts", null).status()).isEqualTo(200);
+    assertThat(send("POST", APPROVER, "/storefront/layout-drafts", Map.of()).status()).isEqualTo(403);
+    assertThat(send("GET", STAFF, "/storefront/layout-drafts/" + draftId, null).status())
+        .isEqualTo(403);
 
     // 승인 전: 홈은 기본 진열 그대로
     JsonNode before = send("GET", null, "/storefront/home", null).body();

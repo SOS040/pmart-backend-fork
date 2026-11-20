@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.7.0
+  version: 0.7.1
   description: |
+    0.7.1(2026-11-20 PC 2 요청): DISPLAY_APPROVER 도 초안 조회·목록·초안 배너 이미지를 읽는다(승인 전 내용 확인, 고치기·제출은 그대로 MD·OPERATOR_ADMIN).
     0.7.0(2026-11-20 ADR-0075 ② — BO-05 일반 배너·상품 테마 편성): 운영 초안 `/storefront/layout-drafts`(만들기·고치기·제출)·배너 이미지 `/storefront/banner-images`.
     제출 → approval DISPLAY(정본 storefront-service) 승인 → ApprovalDecided 를 받아 새 진열 버전(layoutVersion 1부터) 게시·반영 회신. HOME 탭 = 기간 안 배너(HOME_TOP·HOME_MIDDLE)
     + 기간 안 테마 영역(sortOrder 순, 넣은 상품 순서, 진열 가능·센터 취급만) + 마지막 "전체 상품". `POST /storefront/layout-publications` 는 쓰지 않는다(승인 반영으로 대체, 501).
@@ -151,6 +152,7 @@ paths:
     get:
       tags: [layouts]
       summary: '[운영] 진열 편성 초안 목록 (0.7.0) — 최근 순'
+      description: MD·OPERATOR_ADMIN·DISPLAY_APPROVER(승인 전 내용 확인, 0.7.1).
       operationId: listLayoutDrafts
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -172,6 +174,7 @@ paths:
     get:
       tags: [layouts]
       summary: '[운영] 진열 편성 초안 (0.7.0)'
+      description: MD·OPERATOR_ADMIN·DISPLAY_APPROVER(승인 전 내용 확인, 0.7.1). 초안 이미지(banner-images)도 같은 역할이면 읽을 수 있다.
       operationId: getLayoutDraft
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -278,7 +281,7 @@ paths:
   /storefront/banner-images/{imageId}:
     get:
       tags: [storefront]
-      summary: 배너 이미지 본문 (0.7.0 — 토큰 없이, 게시된 진열에 쓰인 것만. 운영자 토큰이면 초안 것도)
+      summary: 배너 이미지 본문 (0.7.0 — 토큰 없이, 게시된 진열에 쓰인 것만. MD·OPERATOR_ADMIN·DISPLAY_APPROVER 토큰이면 초안 것도, 0.7.1)
       operationId: getBannerImage
       security: []
       parameters:
