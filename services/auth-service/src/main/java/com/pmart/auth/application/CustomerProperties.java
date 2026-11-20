@@ -169,7 +169,8 @@ public class CustomerProperties {
       @Nullable String callbackUrl,
       @Nullable String tokenBaseUrl,
       @Nullable Duration tokenTimeout,
-      @Nullable String profileBaseUrl) {
+      @Nullable String profileBaseUrl,
+      @Nullable Boolean unlinkAfterExchange) {
 
     Oidc oidc() {
       return new Oidc(clientIds, jwkSetUri, issuers);
@@ -201,7 +202,8 @@ public class CustomerProperties {
       @Nullable String callbackUrl,
       String tokenBaseUrl,
       Duration tokenTimeout,
-      String profileBaseUrl) {
+      String profileBaseUrl,
+      boolean unlinkAfterExchange) {
 
     static NaverExchange of(List<String> clientIds, @Nullable Naver n) {
       return new NaverExchange(
@@ -216,7 +218,8 @@ public class CustomerProperties {
               : n.tokenTimeout(),
           n == null || blankToNull(n.profileBaseUrl()) == null
               ? "https://openapi.naver.com"
-              : n.profileBaseUrl().strip().replaceAll("/+$", ""));
+              : n.profileBaseUrl().strip().replaceAll("/+$", ""),
+          n != null && Boolean.TRUE.equals(n.unlinkAfterExchange()));
     }
 
     private static @Nullable String blankToNull(@Nullable String v) {

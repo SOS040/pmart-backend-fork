@@ -172,6 +172,44 @@ public class NaverTokenClient {
    *
    * @param profileBaseUrl 기준 주소(끝 / 없음)
    */
+  /**
+   * 네이버 앱 연결 끊기(연동 해제, 2026-11-20 BR-74) — {@code grant_type=delete}. 끊으면 다음 네이버 로그인에서 정보 제공 동의를 다시
+   * 받는다. 어떤 실패도 예외 없이 false(교환·로그인은 그대로). access token·secret 은 로그 금지 — 결과 코드만.
+   */
+  public boolean unlink(
+      String tokenBaseUrl, String clientId, String clientSecret, String accessToken) {
+    MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+    form.add("grant_type", "delete");
+    form.add("client_id", clientId);
+    form.add("client_secret", clientSecret);
+    form.add("access_token", accessToken);
+    form.add("service_provider", "NAVER");
+    try {
+      JsonNode body =
+          profileHttp
+              .post()
+              .uri(tokenBaseUrl + "/oauth2.0/token")
+              .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+              .accept(MediaType.APPLICATION_JSON)
+              .body(form)
+              .retrieve()
+              .body(JsonNode.class);
+      if (body == null || !"success".equals(body.path("result").asString(""))) {
+        log.info(
+            "네이버 연결 끊기 실패 reason={}",
+            body == null ? "empty_response" : safe(body.path("error").asString("no_result")));
+        return false;
+      }
+      return true;
+    } catch (HttpStatusCodeException e) {
+      log.info("네이버 연결 끊기 실패 reason=http_{}", e.getStatusCode().value());
+      return false;
+    } catch (RuntimeException e) {
+      log.info("네이버 연결 끊기 실패 reason={}", e.getClass().getSimpleName());
+      return false;
+    }
+  }
+
   public @Nullable String profileImage(String profileBaseUrl, String accessToken) {
     JsonNode body;
     try {

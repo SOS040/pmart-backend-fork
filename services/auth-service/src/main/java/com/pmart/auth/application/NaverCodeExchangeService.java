@@ -73,6 +73,22 @@ public class NaverCodeExchangeService {
       String codeVerifier,
       String redirectUri,
       @Nullable String state) {
+    return exchange(
+        requestId, sourceSystem, authorizationCode, codeVerifier, redirectUri, state, false);
+  }
+
+  /**
+   * @param withdrawal 탈퇴 재인증(purpose WITHDRAWAL, 2026-11-20 BR-74 (C)) — 교환 뒤 네이버 앱 연결을 끊는다. 로그인은
+   *     설정 {@code unlink-after-exchange}(LAN 시험용 (A))가 켜졌을 때만 끊는다
+   */
+  public Exchanged exchange(
+      String requestId,
+      String sourceSystem,
+      String authorizationCode,
+      String codeVerifier,
+      String redirectUri,
+      @Nullable String state,
+      boolean withdrawal) {
     CustomerProperties.NaverExchange cfg = props.naverExchange();
     if (cfg.clientId() == null) {
       throw PmartException.configRequired("pmart.auth.customer.naver.client-ids");
@@ -99,7 +115,19 @@ public class NaverCodeExchangeService {
             () -> {
               NaverTokenClient.Tokens tokens =
                   call(cfg, authorizationCode, codeVerifier, redirectUri, state);
-              return new Exchanged(tokens.idToken(), profileImage(cfg, tokens.accessToken()));
+              Exchanged out =
+                  new Exchanged(tokens.idToken(), profileImage(cfg, tokens.accessToken()));
+              // 프로필을 읽은 뒤 끊는다(끊으면 access token 이 무효)
+              if ((withdrawal || cfg.unlinkAfterExchange()) && tokens.accessToken() != null) {
+                boolean ok =
+                    naver.unlink(
+                        cfg.tokenBaseUrl(),
+                        cfg.clientId(),
+                        cfg.clientSecret(),
+                        tokens.accessToken());
+                log.info("네이버 연결 끊기 purpose={} ok={}", withdrawal ? "WITHDRAWAL" : "LOGIN", ok);
+              }
+              return out;
             })
         .value();
   }

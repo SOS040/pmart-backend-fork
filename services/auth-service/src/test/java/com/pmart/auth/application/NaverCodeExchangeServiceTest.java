@@ -31,7 +31,8 @@ class NaverCodeExchangeServiceTest {
         null,
         null,
         null,
-        new CustomerProperties.Naver(clientIds, null, null, secret, callback, null, null, null),
+        new CustomerProperties.Naver(
+            clientIds, null, null, secret, callback, null, null, null, null),
         false);
   }
 

@@ -83,7 +83,14 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
   record Res(int status, JsonNode body) {}
 
   Res exchange(String key, String code, String redirectUri) {
+    return exchange(key, code, redirectUri, null);
+  }
+
+  Res exchange(String key, String code, String redirectUri, String purpose) {
     Map<String, Object> body = new LinkedHashMap<>();
+    if (purpose != null) {
+      body.put("purpose", purpose);
+    }
     body.put("authorizationCode", code);
     body.put("codeVerifier", VERIFIER);
     body.put("redirectUri", redirectUri);
@@ -149,6 +156,46 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
             "token_type", "bearer",
             "expires_in", 3600,
             "id_token", "naver.id.token"));
+  }
+
+  /**
+   * BR-74 (C): 탈퇴 재인증(WITHDRAWAL)은 프로필을 읽은 뒤 네이버 연결을 끊고, 로그인(기본)은 끊지 않는다(LAN 스위치 꺼짐). 끊기 실패도 교환
+   * 200.
+   */
+  @Test
+  void withdrawalPurposeUnlinksNaverAfterExchangeButLoginDoesNot() {
+    stubTokens();
+    stubProfile(200, profileBody(PICTURE));
+    naver.stubFor(
+        WireMock.post(urlPathEqualTo("/oauth2.0/token"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"access_token\":\"naver-access\",\"result\":\"success\"}")));
+
+    Res login = exchange(java.util.UUID.randomUUID().toString(), "code-login", CALLBACK);
+    assertThat(login.status()).isEqualTo(200);
+    naver.verify(0, WireMock.postRequestedFor(urlPathEqualTo("/oauth2.0/token")));
+
+    Res withdrawal =
+        exchange(java.util.UUID.randomUUID().toString(), "code-wd", CALLBACK, "WITHDRAWAL");
+    assertThat(withdrawal.status()).isEqualTo(200);
+    assertThat(withdrawal.body().path("idToken").asString()).isEqualTo("naver.id.token");
+    naver.verify(
+        1,
+        WireMock.postRequestedFor(urlPathEqualTo("/oauth2.0/token"))
+            .withRequestBody(WireMock.containing("grant_type=delete"))
+            .withRequestBody(WireMock.containing("access_token=naver-access"))
+            .withRequestBody(WireMock.containing("service_provider=NAVER")));
+
+    // 끊기 실패해도 교환은 성공
+    naver.stubFor(
+        WireMock.post(urlPathEqualTo("/oauth2.0/token")).willReturn(aResponse().withStatus(500)));
+    assertThat(
+            exchange(java.util.UUID.randomUUID().toString(), "code-wd2", CALLBACK, "WITHDRAWAL")
+                .status())
+        .isEqualTo(200);
   }
 
   @Test

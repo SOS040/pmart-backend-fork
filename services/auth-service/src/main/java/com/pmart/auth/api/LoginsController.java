@@ -45,7 +45,9 @@ public class LoginsController implements LoginsApi {
             body.getAuthorizationCode(),
             body.getCodeVerifier(),
             body.getRedirectUri(),
-            body.getState());
+            body.getState(),
+            body.getPurpose() != null
+                && "WITHDRAWAL".equals(body.getPurpose().getValue())); // BR-74 (C)
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(

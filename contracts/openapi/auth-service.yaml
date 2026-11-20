@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.10.1
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-20 BR-74 — 사용자 "(A)+(C)"): `POST /auth/naver-token-exchanges` 본문 `purpose`(LOGIN 기본·WITHDRAWAL). WITHDRAWAL(탈퇴 재인증)이면 서버가 교환 뒤
+    네이버 앱 연결을 끊는다(다음 네이버 로그인에서 정보 제공 동의를 다시 받음). LOGIN 은 설정 `naver.unlink-after-exchange`(LAN 시험용, 기본 꺼짐)가 켜졌을 때만 끊는다.
+    끊기 실패는 교환을 막지 않는다. 네이버 사용자 ID(sub)는 앱마다 고정이라 끊었다 다시 이어도 같은 계정으로 로그인한다(실기기 확인 대상).
     0.10.1(2026-11-20 BR-70 — 사용자 "추천대로"): `POST /auth/naver-token-exchanges` 응답에 선택 `profileImageUrl` — 교환 직후 서버가 네이버 access token 으로
     프로필 API(`/v1/nid/me`)를 한 번 불러 `profile_image` 를 https·`*.pstatic.net` 일 때만 준다(프로필 호출 실패는 교환 실패가 아님 — 빠질 뿐). access/refresh token 은 여전히 저장·응답하지 않는다.
     0.10.0(2026-11-20 BR-69 — 사용자 "응 해줘", ADR-0078): `POST /auth/naver-token-exchanges` — 네이버는 client secret 없는 토큰 교환을 거절해 서버가 대신 교환하고 id_token 만 돌려준다.
@@ -149,6 +152,7 @@ paths:
                 codeVerifier: { type: string, minLength: 43, maxLength: 128, description: PKCE code_verifier(인가 요청의 S256 challenge 원본) }
                 redirectUri: { type: string, maxLength: 300, description: 인가 요청에 쓴 redirect_uri 그대로 }
                 state: { type: string, maxLength: 200, description: '(선택) 인가 요청 state — 네이버 토큰 요청에 함께 보낸다' }
+                purpose: { type: string, enum: [LOGIN, WITHDRAWAL], default: LOGIN, description: '(0.11.0, BR-74) WITHDRAWAL = 탈퇴 재인증 — 교환 뒤 네이버 앱 연결을 끊는다. LOGIN 은 설정 unlink-after-exchange(LAN 시험용)일 때만 끊는다' }
       responses:
         '200':
           description: 교환됨
