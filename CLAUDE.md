@@ -28,7 +28,7 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 - 업무 원문: `docs/business/*-business-logic.md` (확정 정책은 설계가 바꾸지 않는다. 문서에 없는 비즈니스 규칙은 추측하지 말고 질문)
 
 ## PC 나눠 작업하기 (2026-11-13)
-- 영역: **platform**(PC 1 — 인증·HR·승인·게이트웨이·라이브러리·배포, 그 밖 서비스), **mfc**(PC 3), **delivery**(PC 5). 영역·서비스·계약 주인·규칙: `docs/operations/pc-split.md`. 배포는 PC 1 만.
+- 영역: **platform**(PC 1 — 인증·HR·승인·게이트웨이·라이브러리·배포, 그 밖 서비스), **backoffice**(PC 2 — backoffice-bff·case-service, 백오피스 화면), **mfc**(PC 3), **rag**(PC 4 — ai-assistant·customer-assistant, LAN 배포·재색인은 PC 1), **delivery**(PC 5). 영역·서비스·계약 주인·규칙: `docs/operations/pc-split.md`. 배포는 PC 1 만.
 - 작업 일지는 **`docs/worklog/<영역>/YYYY-MM-DD.md`**(자기 영역 파일에만, 2026-11-14 부터 — 2026-11-13 까지의 일지는 `docs/worklog/YYYY-MM-DD.md` 루트에 그대로 둔다). 클라이언트 handoff 는 받는 앱 영역 폴더(`docs/handoff/clients/<앱 영역>/YYYY-MM-DD-<종류>-<주제>.md`, 여럿이면 `all/`, 끝나면 `archive/`)와 첫머리 `보낸 영역:`.
 - **PR**: 다른 PC 는 main 에 push 하지 않는다 — 포크에서 `<영역>/<주제>` 브랜치로 PR(바꾼 것·실행한 시험·영향 영역·공용 표 갱신 필요), PC 1 이 검토·병합·배포(순서 `docs/operations/dev-on-other-pcs.md` §0). PC 1 은 병합할 때 자기 일지 `## PR` 절에 한 줄(검토·배포 상태·후속 — `docs/worklog/README.md` 규칙 6), PR 기록 파일은 따로 두지 않는다.
 - 영역 인수인계: mfc `docs/mfc/HANDOVER.md`, delivery `docs/delivery/HANDOVER.md`, rag `docs/rag/HANDOVER.md`, backoffice `docs/backoffice/HANDOVER.md`(2026-11-16 PC 2).
