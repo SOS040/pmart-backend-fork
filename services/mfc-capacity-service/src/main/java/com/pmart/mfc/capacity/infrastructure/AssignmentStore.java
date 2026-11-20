@@ -59,18 +59,49 @@ public class AssignmentStore {
     return v == null ? 0 : v;
   }
 
-  public void supersede(String assignmentId, Instant at) {
+  /** 재배정 — ACTIVE → SUPERSEDED, 끝(누가·왜 — 0.31.0 배정 이력). */
+  public void supersede(String assignmentId, Instant at, String endedBy, String endReason) {
     jdbc.update(
-        "UPDATE task_assignment SET state = 'SUPERSEDED', ended_at = ? WHERE assignment_id = ?",
+        "UPDATE task_assignment SET state = 'SUPERSEDED', ended_at = ?, ended_by = ?, end_reason = ?"
+            + " WHERE assignment_id = ?",
         Timestamp.from(at),
+        endedBy,
+        endReason,
         assignmentId);
   }
 
-  /** 작업 내놓기 — ACTIVE → RELEASED. */
-  public void release(String assignmentId, Instant at) {
+  /** 작업 내놓기·막힘 해제·다음 사람에게 넘김 — ACTIVE → RELEASED, 끝(누가·왜 — 0.31.0). */
+  public void release(String assignmentId, Instant at, String endedBy, @Nullable String endReason) {
     jdbc.update(
-        "UPDATE task_assignment SET state = 'RELEASED' WHERE assignment_id = ? AND state = 'ACTIVE'",
+        "UPDATE task_assignment SET state = 'RELEASED', ended_at = ?, ended_by = ?, end_reason = ?"
+            + " WHERE assignment_id = ? AND state = 'ACTIVE'",
+        Timestamp.from(at),
+        endedBy,
+        endReason,
         assignmentId);
+  }
+
+  /** 배정 이력 한 행(0.31.0). */
+  public record HistoryRow(
+      AssignmentRow assignment,
+      @Nullable Instant endedAt,
+      @Nullable String endedBy,
+      @Nullable String endReason) {}
+
+  /** 한 작업의 배정 행 전부(버전 순). */
+  public List<HistoryRow> history(String mfcId, String taskId) {
+    return jdbc.query(
+        "SELECT * FROM task_assignment WHERE mfc_id = ? AND task_id = ? ORDER BY assignment_version",
+        (rs, i) -> {
+          Timestamp ended = rs.getTimestamp("ended_at");
+          return new HistoryRow(
+              row(rs),
+              ended == null ? null : ended.toInstant(),
+              rs.getString("ended_by"),
+              rs.getString("end_reason"));
+        },
+        mfcId,
+        taskId);
   }
 
   public void insert(AssignmentRow r) {

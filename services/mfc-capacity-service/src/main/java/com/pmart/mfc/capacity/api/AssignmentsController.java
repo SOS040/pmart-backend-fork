@@ -254,7 +254,43 @@ public class AssignmentsController implements AssignmentsApi {
           com.pmart.mfc.capacity.api.generated.model.ReleaseTaskAssignmentRequest body) {
     var out = new com.pmart.mfc.capacity.api.generated.model.ReleaseTaskAssignment200Response();
     out.setTaskId(taskId);
-    out.setReleased(service.releaseTask(taskId, body.getWorkerId()));
+    out.setReleased(
+        service.releaseTask(taskId, body.getWorkerId(), body.getReleasedBy(), body.getReason()));
+    return ResponseEntity.ok(out);
+  }
+
+  /** 배정 이력(0.31.0, R-29 — ADR-0077). */
+  @Override
+  public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.ListAssignmentHistory200Response>
+      listAssignmentHistory(String mfcId, String taskId) {
+    var out = new com.pmart.mfc.capacity.api.generated.model.ListAssignmentHistory200Response();
+    out.setItems(
+        service.history(mfcId, taskId).stream()
+            .map(
+                h -> {
+                  AssignmentRow r = h.assignment();
+                  var e = new com.pmart.mfc.capacity.api.generated.model.AssignmentHistoryEntry();
+                  e.setAssignmentId(r.assignmentId());
+                  e.setTaskId(r.taskId());
+                  e.setTaskType(r.taskType());
+                  e.setWorkerId(r.workerId());
+                  e.setAssignmentVersion(r.assignmentVersion());
+                  e.setState(
+                      com.pmart.mfc.capacity.api.generated.model.AssignmentHistoryEntry.StateEnum
+                          .fromValue(r.state()));
+                  e.setSource(
+                      com.pmart.mfc.capacity.api.generated.model.AssignmentHistoryEntry.SourceEnum
+                          .fromValue(dto(r).getSource().getValue()));
+                  e.setPlanId(r.planId());
+                  e.setAssignedBy(r.assignedBy());
+                  e.setReason(r.reason());
+                  e.setAssignedAt(r.assignedAt().atOffset(ZoneOffset.UTC));
+                  e.setEndedAt(h.endedAt() == null ? null : h.endedAt().atOffset(ZoneOffset.UTC));
+                  e.setEndedBy(h.endedBy());
+                  e.setEndReason(h.endReason());
+                  return e;
+                })
+            .toList());
     return ResponseEntity.ok(out);
   }
 

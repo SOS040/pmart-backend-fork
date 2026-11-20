@@ -1462,7 +1462,7 @@ public class TaskService {
           true,
           List.of());
     }
-    capacity.release(taskId, workerId, reason); // 실패면 503 — 바꾸지 않음
+    capacity.release(taskId, workerId, p.subject(), reason); // 실패면 503 — 바꾸지 않음
     return Objects.requireNonNull(
         tx.execute(
             s -> {

@@ -32,6 +32,7 @@
 - mfc-fulfillment 0.28.0(V22): `POST /tasks/{taskId}/blocks`, `GET /tasks/{taskId}/controls`, 작업 상세 `blockKind`, 시작·실적·밀봉 `TASK_BLOCKED`. `application/TaskControlService`, 기록 `task_control`(조작마다 한 행, 지우지 않음), `task.block_kind`. 사건 TaskProgressed 에 controlledBy·blockKind·reason.
 - mfc-fulfillment 0.29.0: `POST /tasks/{taskId}/unblocks`(`cartChecked` 필수 — 빠지면 400, false 면 422 PHYSICAL_CHECK_REQUIRED, 결품 BLOCKED 409 BLOCKED_BY_SHORTAGE). capacity 활성 배정을 호출자 토큰으로 읽고(실패 503), 맡을 수 없으면 `/internal/assignments/{taskId}/releases` 뒤 READY. mfc-capacity 0.30.0: `GET /assignments` 를 OPERATOR_ADMIN 도 모든 센터로(본사 관리자의 해제가 배정을 읽게).
 - mfc-fulfillment 0.30.0: `POST /tasks/{taskId}/partial-closes`, 사건 LineShortageReported reason `PARTIAL_CLOSE`, `resolveShortage` 가 PARTIAL_CLOSE 막힘을 CLOSED_PARTIAL 로. mfc-inventory 0.41.0: `shortfall-releases` 사유 `PARTIAL_CLOSE_CANCELLED`(집지 않은 예약 해제). order-orchestration 0.4.2: 결품 사가 RELEASE_SHORTFALL 사유를 결품 사유로 고름(`ShortageRules.releaseReason`). 사건 스키마 `LineShortageReported.reason` 에 PARTIAL_CLOSE. 흐름 `order-checkout-saga.md` §2.1.
+- mfc-capacity 0.31.0(V19): 배정 이력 `GET /assignments/history`(그 센터 MFC_SUPERVISOR·OPERATOR_ADMIN) — 배정 행을 지우지 않던 표에 끝(누가·왜) 칸을 더함. 결정(사용자 2026-11-20 "배정 이력"): 누가 언제 배정·재배정·해제했나와 사유·버전을 관리자가 본다.
 
 ## 결과
 - 현장이 멈추면 관리자가 작업을 멈추고(재고·배정 그대로) 확인 뒤 이어서 하거나 잔량만 끝낼 수 있다. 조작은 누가·언제·왜로 남는다.

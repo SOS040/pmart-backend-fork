@@ -61,10 +61,17 @@ public class CapacityClient {
     return null;
   }
 
-  /** 작업 내놓기 — capacity 배정 해제(내부 경로, 공용 RestClient 가 서비스 토큰). 409 NOT_ASSIGNEE 는 그대로. */
-  public void release(String taskId, String workerId, @Nullable String reason) {
+  /**
+   * 작업 내놓기·막힘 해제 — capacity 배정 해제(내부 경로). 409 NOT_ASSIGNEE 는 그대로. releasedBy = 해제를 일으킨 운영자(capacity
+   * 0.31.0 배정 이력 endedBy).
+   */
+  public void release(
+      String taskId, String workerId, @Nullable String releasedBy, @Nullable String reason) {
     java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
     body.put("workerId", workerId);
+    if (releasedBy != null) {
+      body.put("releasedBy", releasedBy);
+    }
     if (reason != null) {
       body.put("reason", reason);
     }

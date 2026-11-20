@@ -608,7 +608,7 @@ public class AssignmentService {
                   return null; // 다른 작업자가 먼저(또는 센터 관리자 배정)
                 }
                 // 제 몫을 끝낸 사람의 배정(실사 첫 계수) — 닫고 다음 사람에게(사건 없음, 새 배정 버전이 담당을 바꾼다)
-                store.release(active.get().assignmentId(), at);
+                store.release(active.get().assignmentId(), at, SYSTEM, "NEXT_TASK_HANDOFF");
               }
               AssignmentRow row =
                   new AssignmentRow(
@@ -636,6 +636,16 @@ public class AssignmentService {
    */
   @Transactional
   public boolean releaseTask(String taskId, String workerId) {
+    return releaseTask(taskId, workerId, null, null);
+  }
+
+  /**
+   * @param releasedBy 해제를 일으킨 운영자(fulfillment 가 넘김 — 작업자 본인·센터 관리자), 없으면 담당 작업자
+   * @param reason 내놓기·막힘 해제 사유(배정 이력 endReason, 0.31.0)
+   */
+  @Transactional
+  public boolean releaseTask(
+      String taskId, String workerId, @Nullable String releasedBy, @Nullable String reason) {
     var active = store.lockActive(taskId);
     if (active.isEmpty()) {
       return false;
@@ -648,7 +658,11 @@ public class AssignmentService {
           false,
           List.of());
     }
-    store.release(active.get().assignmentId(), clock.instant());
+    store.release(
+        active.get().assignmentId(),
+        clock.instant(),
+        releasedBy == null || releasedBy.isBlank() ? workerId : releasedBy,
+        reason == null || reason.isBlank() ? "RELEASED" : reason);
     log.info("작업 {} 배정 해제(작업 내놓기) — {}", taskId, workerId);
     return true;
   }
@@ -751,7 +765,9 @@ public class AssignmentService {
                 }
               }
               Instant at = clock.instant();
-              active.ifPresent(a -> store.supersede(a.assignmentId(), at));
+              int next = store.maxVersion(cmd.taskId()) + 1;
+              active.ifPresent(
+                  a -> store.supersede(a.assignmentId(), at, supervisor, "SUPERSEDED_BY_V" + next));
               AssignmentRow row =
                   new AssignmentRow(
                       "ASG-" + UUID.randomUUID(),
@@ -759,7 +775,7 @@ public class AssignmentService {
                       cmd.taskId(),
                       cmd.taskType(),
                       cmd.workerId(),
-                      store.maxVersion(cmd.taskId()) + 1,
+                      next,
                       "ACTIVE",
                       null,
                       supervisor,
@@ -890,6 +906,30 @@ public class AssignmentService {
     if (crewOnly && (workerId == null || !workerId.equals(p.subject()))) {
       throw new PmartException(ErrorCode.FORBIDDEN, "작업자는 본인 정보만 볼 수 있습니다 — 센터 작업자 목록은 센터 관리자만.");
     }
+  }
+
+  /**
+   * 배정 이력(0.31.0, R-29 관리 탭 — ADR-0077): 한 작업의 배정 행 전부(버전 순, 배정·끝 누가·언제·왜). 그 센터 MFC_SUPERVISOR,
+   * OPERATOR_ADMIN(모든 센터), 서비스 토큰.
+   */
+  @Transactional(readOnly = true)
+  public List<AssignmentStore.HistoryRow> history(String mfcId, String taskId) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "토큰이 필요합니다."));
+    boolean ok =
+        p.isService()
+            || (p.type() == PmartPrincipal.PrincipalType.OPERATOR
+                && (p.hasRole("OPERATOR_ADMIN")
+                    || (p.canAccessCenter(mfcId) && p.hasRole(SUPERVISOR_ROLE))));
+    if (!ok) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, "배정 이력은 그 센터 " + SUPERVISOR_ROLE + "·OPERATOR_ADMIN 만 볼 수 있습니다.");
+    }
+    if (taskId == null || taskId.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "taskId 가 필요합니다.");
+    }
+    return store.history(mfcId, taskId);
   }
 
   /**

@@ -209,6 +209,53 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
         .isEqualTo(403);
   }
 
+  /** 배정 이력(0.31.0, R-29 ADR-0077): 배정·재배정·해제를 버전 순으로 — 누가·언제·왜. 센터 관리자·본사 관리자만. */
+  @Test
+  void assignmentHistoryShowsWhoAssignedReassignedAndReleased() {
+    register("wrk-1", List.of("PICK", "PACK"), List.of("AMBIENT"));
+    register("wrk-2", List.of("PICK"), List.of("AMBIENT"));
+    String task = "TSK-H-" + UUID.randomUUID();
+    assertThat(assign(SUPERVISOR, with(body(task, "wrk-1"), "reason", "첫 배정"), 0).status())
+        .isEqualTo(201);
+    assertThat(assign(SUPERVISOR, body(task, "wrk-2"), 1).status()).isEqualTo(201);
+    Res released =
+        send(
+            "POST",
+            TestJwt.service("mfc-fulfillment-service"),
+            "/internal/assignments/" + task + "/releases",
+            Map.of("workerId", "wrk-2", "releasedBy", "sup-1", "reason", "막힘 해제: 퇴근"),
+            null);
+    assertThat(released.status()).as(released.body().toString()).isEqualTo(200);
+
+    String path = "/assignments/history?mfcId=" + MFC + "&taskId=" + task;
+    assertThat(get(WORKER, path).status()).isEqualTo(403);
+    assertThat(get(OTHER_SUP, path).status()).isEqualTo(403);
+    Res h = get(SUPERVISOR, path);
+    assertThat(h.status()).as(h.body().toString()).isEqualTo(200);
+    JsonNode items = h.body().path("items");
+    assertThat(items).hasSize(2);
+    JsonNode v1 = items.get(0);
+    assertThat(v1.path("assignmentVersion").asInt()).isEqualTo(1);
+    assertThat(v1.path("workerId").asString()).isEqualTo("wrk-1");
+    assertThat(v1.path("state").asString()).isEqualTo("SUPERSEDED");
+    assertThat(v1.path("assignedBy").asString()).isEqualTo("sup-1");
+    assertThat(v1.path("reason").asString()).isEqualTo("첫 배정");
+    assertThat(v1.path("source").asString()).isEqualTo("MANUAL");
+    assertThat(v1.path("endedBy").asString()).isEqualTo("sup-1");
+    assertThat(v1.path("endReason").asString()).isEqualTo("SUPERSEDED_BY_V2");
+    assertThat(v1.path("endedAt").isNull()).isFalse();
+    JsonNode v2 = items.get(1);
+    assertThat(v2.path("state").asString()).isEqualTo("RELEASED");
+    assertThat(v2.path("endedBy").asString()).isEqualTo("sup-1");
+    assertThat(v2.path("endReason").asString()).isEqualTo("막힘 해제: 퇴근");
+    assertThat(v2.path("endedAt").isNull()).isFalse();
+    assertThat(
+            get(TestJwt.operator("OP-admin", List.of("OPERATOR_ADMIN"), List.of()), path)
+                .body()
+                .path("items"))
+        .hasSize(2);
+  }
+
   @Test
   void supervisorAssignsAndReassignsWithVersions() {
     register("wrk-1", List.of("PICK", "PACK"), List.of("AMBIENT"));

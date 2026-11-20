@@ -189,7 +189,7 @@ public class TaskControlService {
         keep[0] = a;
       } else if (a != null) {
         // 정지·퇴사·업무 변경 — 배정을 풀어 누구나 받게(실패면 503, 작업은 그대로 BLOCKED)
-        capacity.release(taskId, a.workerId(), "막힘 해제(" + a.workerRejection() + "): " + why);
+        capacity.release(taskId, a.workerId(), actor, "막힘 해제(" + a.workerRejection() + "): " + why);
       }
     }
     return idempotency

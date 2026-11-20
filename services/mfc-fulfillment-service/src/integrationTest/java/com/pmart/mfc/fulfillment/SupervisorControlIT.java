@@ -511,7 +511,8 @@ class SupervisorControlIT extends PostgresKafkaContainerSupport {
         1,
         WireMock.postRequestedFor(
                 urlPathEqualTo("/api/v1/internal/assignments/" + pick + "/releases"))
-            .withRequestBody(matchingJsonPath("$.workerId", equalTo("w1"))));
+            .withRequestBody(matchingJsonPath("$.workerId", equalTo("w1")))
+            .withRequestBody(matchingJsonPath("$.releasedBy", equalTo("OP-admin"))));
     t = task(pick);
     assertThat(t.path("state").asString()).isEqualTo("READY");
     assertThat(t.path("assignment").path("workerId").isNull()).isTrue();
