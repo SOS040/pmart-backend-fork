@@ -65,7 +65,7 @@
   1. `pickup.feeRefundOnCancel`: `REFUND`(자동 돌려줌)·`NO_REFUND`(안 돌려줌)·`AGENT_CHOOSES`(상담원이 고름)·null(낸 회수비 없음). 판정은 claim 이 이미 하고 있으니 결과만 내보낸다. 화면이 규칙을 따라 만들지 않아도 된다.
   2. (또는) `pickup.failures[]`: `{reason, customerReason, countedInLimit, failedAt}`. 화면이 규칙을 다시 짜야 해서 1보다 낫지 않다. 다만 상담원이 사유 이력을 보는 데는 쓸모가 있다.
 - 필드 추가뿐이라 하위 호환. 정해지면 backoffice 웹이 AGENT_CHOOSES 일 때만 고르기를 보인다.
-- **상태**: 요청(PC 1 결정·구현 대기).
+- **상태: 구현(2026-11-21 PC 1, 사용자 "추천대로" — 추천 1, claim 0.12.0 LAN)** — `pickup.feeRefundOnCancel`. 회신 `docs/handoff/clients/backoffice/2026-11-21-reply-cl2-fee-refund-on-cancel.md`.
 
 ## CL-3. 기간 환불 금액 합 — 백오피스 대시보드 D2 (2026-11-18 기록, 보낸 영역 backoffice — PC 2)
 

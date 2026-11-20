@@ -11,6 +11,7 @@
 - **LAN 에서 본 것(2026-11-16, PC 5 라이더 E2E)**: 주문 `ORD-0e67de38-7acf-3e71-8a28-7aeadd986bb0` 이 포장 인계(`PackageHandedOver`)·픽업(`PickupCompleted`)·전달 완료(`DeliveryCompleted`)까지 갔는데 주문 상태는 **PREPARING 그대로**다. delivery-execution 은 이미 이 사건들을 낸다(DE-1 구현·배포) — 위 3 도 할 수 있다. 고객 앱 주문 상태·리뷰 작성 가능 여부가 이 사건들에 걸려 있으면 같이 확인 필요.
 - **사용자 결정**: 필요 없음(계약 문서에 규칙 있음).
 - **구현(2026-11-16, PC 1)**: `PackageHandedOver`(mfc.fulfillment.v1) → 행마다 미이행 −q·인계 +q(같은 행 LOT 여러 줄은 합), `OrderLineQuantityChanged`(reason `HANDOVER`, `handoverId`). `DeliveryCompleted`(delivery.delivery.v1, 새 바인딩 `deliveryEvents-in-0`) → 전달 +q, 다 전달되면 `OrderCompleted`(deliveryIds), 아니면 `OrderPartiallyDelivered`. 상태는 수량으로 정하고 뒤로 가지 않는다(PARTIALLY_HANDED_OVER → IN_DELIVERY → PARTIALLY_DELIVERED → COMPLETED, `OrderRules.progressStatus`). 같은 handoverId·deliveryId 는 한 번(`order_fulfillment_fact`, V10), 역순(전달 먼저)도 받는다, 수량이 맞지 않으면 반영하지 않고 MISMATCH 로 남긴다. 일부 인계 뒤 남은 미이행을 출고 전 취소·결품으로 지우면 진행 상태도 앞으로. **남은 것**: `DeliveryFailed` 반영(실패 수량·상태 — 규칙 미정, 자동 환불 없음), 반품 수량(returnedQty).
+- **결정(2026-11-21 사용자 "추천대로" — (나) 주문 상세 배송 목록에 "전달 실패")**: 이미 그렇게 동작한다 — 2026-11-19 BR-61 배송 연결(`DeliveryLinkRules`·`DeliveryLinks`)이 `DeliveryFailed`(고객 부재 포함 모든 사유)를 그 배송의 `Shipment.state` FAILED 로 보인다(주문 상태·수량·돈은 그대로, 되돌리기 O-10 은 IN_DELIVERY 로). 시험 `FulfillmentProgressIT`. 코드 변경 없음.
 
 ## O-2. 고객 자율 취소 마감 = 상품준비 전 (2026-11-09, ADR-0052)
 - 고객 앱(주문 내역)의 취소는 주문이 `PREPARING` 이 되기 전까지만 받는다. 그 뒤는 고객센터 문의 접수 → 출고 중지 확인된 미인계 수량만 취소.

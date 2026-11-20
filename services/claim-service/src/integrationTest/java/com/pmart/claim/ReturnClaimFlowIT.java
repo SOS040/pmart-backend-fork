@@ -892,6 +892,9 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(noMore.body().path("code").asString()).isEqualTo("PICKUP_ATTEMPTS_EXHAUSTED");
     assertThat(pickupRequests(claimId)).isEqualTo(4);
 
+    // CL-2(0.12.0): 고객 사유 실패가 있으면 취소 때 회수비를 안 돌려준다고 미리 보인다
+    assertThat(exhausted.body().path("pickup").path("feeRefundOnCancel").asString())
+        .isEqualTo("NO_REFUND");
     // 고객 사유 실패가 있었다 — 회수비 돌려 달라면 422, 그냥 취소하면 KEEP
     Map<String, Object> cancelRefund = new LinkedHashMap<>();
     cancelRefund.put("action", "CANCEL");
@@ -1003,8 +1006,14 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
     pickupFailed(claimId, "DAMAGED", false);
     until(() -> pickupRequests(claimId) == 2);
     pickupFailed(claimId, "OTHER", false);
-    await(
-        customer, "/claims/" + claimId, b -> "RECOVERY_FAILED".equals(b.path("state").asString()));
+    Res failedView =
+        await(
+            customer,
+            "/claims/" + claimId,
+            b -> "RECOVERY_FAILED".equals(b.path("state").asString()));
+    // CL-2(0.12.0): 파손·기타 — 상담원이 고른다
+    assertThat(failedView.body().path("pickup").path("feeRefundOnCancel").asString())
+        .isEqualTo("AGENT_CHOOSES");
 
     deps.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/payments/" + feeAttempt + "/cancellations"))

@@ -111,7 +111,24 @@ final class ClaimMapping {
               .attempts(v.pickups().size())
               .failedAttempts((int) v.pickups().stream().filter(PickupRow::failed).count())
               .countedFailures(counted)
-              .retryAllowed(ReturnRules.csRetryAllowed(counted)));
+              .retryAllowed(ReturnRules.csRetryAllowed(counted))
+              // CL-2(0.12.0) — 지금 취소하면 낸 회수비를 어떻게 하나(취소 때 쓰는 같은 규칙). 낸 회수비가 없으면 null
+              .feeRefundOnCancel(
+                  v.fee() == null || !ReturnRules.FEE_PAID.equals(v.fee().state())
+                      ? null
+                      : switch (ReturnRules.feeRefundRule(
+                          v.pickups().stream()
+                              .filter(PickupRow::failed)
+                              .map(
+                                  p ->
+                                      p.failureKind() == null
+                                          ? ReturnRules.FAIL_OTHER
+                                          : p.failureKind())
+                              .toList())) {
+                        case REFUND -> ClaimPickup.FeeRefundOnCancelEnum.REFUND;
+                        case KEEP -> ClaimPickup.FeeRefundOnCancelEnum.NO_REFUND;
+                        case CS_DECIDES -> ClaimPickup.FeeRefundOnCancelEnum.AGENT_CHOOSES;
+                      }));
     }
     return out;
   }

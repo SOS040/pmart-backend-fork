@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
+    0.12.0(2026-11-21 CL-2 — 백오피스 요청, 사용자 "추천대로"): 반품 `pickup.feeRefundOnCancel` — 지금 반품을 취소하면 낸 회수비를 어떻게 하는지(서버 판정 그대로):
+    `REFUND`(우리 잘못뿐·실패 없음 — 돌려줌)·`NO_REFUND`(고객 사유 있음 — 안 돌려줌)·`AGENT_CHOOSES`(파손·기타 — 상담원이 `feeRefund` 로 고름, 기본 안 돌려줌)·null(낸 회수비 없음). 화면은 AGENT_CHOOSES 일 때만 고르기를 보이면 된다.
     0.11.0(2026-11-21, MFC 백오피스 요청 DC-1 — 사용자 "dc-1로 할게"): 직원 회사 사유 전체 취소(`DISPATCH_UNAVAILABLE`·`OPERATOR_DECISION`)는 `lines` 를
     **생략할 수 있다** — 서버가 order 원장에서 "모든 행 × 미이행 수량"을 채운다(센터 관리자가 주문 행을 읽을 API 가 없어서, 화면이 들고 있던 수량이 그 사이 바뀌어 422 가 나지 않게).
     주면 지금처럼 검사한다. 그 밖의 접수(고객 취소·고객센터 취소·반품)는 `lines` 가 필요하다(없으면 400).
@@ -782,6 +784,11 @@ components:
             failedAttempts: { type: integer, description: '실패한 회수 수(0.2.0) — 자동 재요청은 한 번, 두 번째 실패면 RECOVERY_FAILED' }
             countedFailures: { type: integer, x-added-in: '2026-11-17', description: '0.3.0 — 횟수에 드는 실패 수(라이더·우리 잘못 RIDER_INCIDENT 는 빼고). 전체 3번(자동 2 + 상담원 1)' }
             retryAllowed: { type: boolean, x-added-in: '2026-11-17', description: '0.3.0 — 회수 시도가 남았나(countedFailures < 3). 상담원 다시 회수는 state RECOVERY_FAILED 이고 이 값이 true 이고 returnDeadlineAt 전일 때만' }
+            feeRefundOnCancel:
+              type: [string, 'null']
+              enum: [REFUND, NO_REFUND, AGENT_CHOOSES]
+              x-added-in: '2026-11-21'
+              description: '0.12.0 CL-2 — 지금 취소하면 낸 회수비: REFUND 자동 돌려줌, NO_REFUND 안 돌려줌, AGENT_CHOOSES 상담원이 recovery-actions CANCEL 의 feeRefund 로 고름(없으면 안 돌려줌). 낸 회수비(PAID)가 없으면 null'
         fees:
           type: object
           properties:

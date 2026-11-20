@@ -365,7 +365,9 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     List<Map<String, Object>> required = new java.util.ArrayList<>();
     for (String[] c :
         new String[][] {
-          {"TERMS_OF_SERVICE", "2026-11-17"}, {"PRIVACY_POLICY", "2026-11-21"}, {"AGE_OVER_14", "1"}
+          {"TERMS_OF_SERVICE", "2026-11-17"},
+          {"PRIVACY_POLICY", "2026-11-21.2"},
+          {"AGE_OVER_14", "1"}
         }) {
       required.add(Map.of("consentType", c[0], "version", c[1], "agreed", true));
     }

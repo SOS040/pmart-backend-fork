@@ -16,7 +16,8 @@ import tools.jackson.databind.JsonNode;
 /**
  * 가입 축하 쿠폰(ADR-0082 결정 4 SIGNUP, 2026-11-21 5단계). customer-service CustomerIdentityVerified(stage
  * SIGNUP — 로그인 단계 휴대폰 확인 = 가입)를 받아 지금 진행 중인 SIGNUP 쿠폰 행사마다 한 장씩 준다. 같은 번호(signupKey — 번호의 HMAC)에는
- * 다시 주지 않는다(재가입 포함, 사용자 "계속 막기" — 키는 탈퇴 뒤에도 남긴다). 행사가 하나도 없거나 모두 한도·소진이면 키를 잡지 않는다. inbox 트랜잭션 안.
+ * 다시 주지 않는다(재가입 포함 — 키는 탈퇴 뒤에도 남기고, 지급 후 {@code signup-grant-retention}(5년, 처리방침)이 지나면 지운다). 행사가
+ * 하나도 없거나 모두 한도·소진이면 키를 잡지 않는다. inbox 트랜잭션 안.
  */
 @Service
 public class SignupCoupons {
@@ -28,13 +29,32 @@ public class SignupCoupons {
   private final PromotionStore promotions;
   private final CouponService coupons;
   private final Clock clock;
+  private final PromotionProperties props;
 
   public SignupCoupons(
-      CouponGrantStore grants, PromotionStore promotions, CouponService coupons, Clock clock) {
+      CouponGrantStore grants,
+      PromotionStore promotions,
+      CouponService coupons,
+      Clock clock,
+      PromotionProperties props) {
+    this.props = props;
     this.grants = grants;
     this.promotions = promotions;
     this.coupons = coupons;
     this.clock = clock;
+  }
+
+  /** 하루 한 번(04:50 Asia/Seoul) 보관 기간 지난 지급 키 파기. 설정이 없으면 지우지 않는다(기본값으로 대신하지 않음). */
+  @org.springframework.scheduling.annotation.Scheduled(cron = "0 50 4 * * *", zone = "Asia/Seoul")
+  public void purgeExpiredKeys() {
+    java.time.Duration keep = props.signupGrantRetention();
+    if (keep == null) {
+      return;
+    }
+    int n = grants.purgeSignupGrants(clock.instant().minus(keep));
+    if (n > 0) {
+      log.info("보관 기간 지난 가입 쿠폰 지급 키 {}건 파기", n);
+    }
   }
 
   public static boolean wanted(EventEnvelope e) {

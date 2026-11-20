@@ -43,6 +43,12 @@ public class CouponGrantStore {
         == 1;
   }
 
+  /** 보관 기간이 지난 가입 쿠폰 지급 키를 지운다(처리방침 "지급 후 5년"). 지운 수. */
+  public int purgeSignupGrants(Instant grantedBefore) {
+    return jdbc.update(
+        "DELETE FROM signup_grant WHERE granted_at < ?", Timestamp.from(grantedBefore));
+  }
+
   /** 한 장도 못 줬으면 키를 놓는다(같은 트랜잭션 — 다음 가입 행사 때 받을 수 있게). */
   public void releaseSignup(String signupKey) {
     jdbc.update("DELETE FROM signup_grant WHERE signup_key = ?", signupKey);

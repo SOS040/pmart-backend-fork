@@ -6,7 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** pmart.promotion.* — zone: 쿠폰 "받은 날부터 N일"의 날짜 경계(없으면 Asia/Seoul, ADR-0010). */
 @ConfigurationProperties("pmart.promotion")
-public record PromotionProperties(@Nullable ZoneId zone, @Nullable Compensation compensation) {
+public record PromotionProperties(
+    @Nullable ZoneId zone,
+    @Nullable Compensation compensation,
+    java.time.@Nullable Duration signupGrantRetention) {
 
   /**
    * 회사 사유 보상 쿠폰(ADR-0082 5단계, CL-5) — dispatch-unavailable-promotion-id = 배차 불가 취소 때 줄 쿠폰

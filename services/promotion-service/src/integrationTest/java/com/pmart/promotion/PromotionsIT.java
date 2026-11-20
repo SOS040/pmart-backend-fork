@@ -57,6 +57,7 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.promotion.application.SignupCoupons signupCoupons;
   RestClient http;
 
   @BeforeEach
@@ -590,6 +591,31 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
         .contains("DISPATCH_UNAVAILABLE");
     assertThat(issued.stream().filter(t -> t.contains(a)).findFirst().orElseThrow())
         .contains("SIGNUP");
+  }
+
+  /** 처리방침 "지급 후 5년"(2026-11-21): 보관 기간(설정 P1826D) 지난 가입 쿠폰 지급 키만 지운다. */
+  @Test
+  void signupGrantKeysArePurgedAfterRetention() {
+    String old = signupKey();
+    String recent = signupKey();
+    jdbc.update(
+        "INSERT INTO signup_grant (signup_key, account_id, granted_at) VALUES (?, 'CU-OLD', now() - interval '6 years')",
+        old);
+    jdbc.update(
+        "INSERT INTO signup_grant (signup_key, account_id, granted_at) VALUES (?, 'CU-NEW', now() - interval '4 years')",
+        recent);
+    signupCoupons.purgeExpiredKeys();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM signup_grant WHERE signup_key IN (?, ?)",
+                Integer.class,
+                old,
+                recent))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM signup_grant WHERE signup_key = ?", Integer.class, recent))
+        .isEqualTo(1);
   }
 
   @Test
