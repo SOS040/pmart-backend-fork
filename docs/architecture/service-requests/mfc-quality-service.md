@@ -29,4 +29,4 @@
 - **문서도 본인이 고쳐 주세요(사용자 2026-11-20 "그 문서 본인이 변경하라고 알려줘")**:
   - `services/mfc-fulfillment-service/CLAUDE.md` 0.13.0 절 — 인계 라벨 번호를 "6자리"로 적음. 코드는 V19(0.23.0)부터 **4자리·5번 틀리면 잠김**.
   - `services/mfc-inventory-service/CLAUDE.md` — UTF-8 로 읽히지 않는(깨진) 줄이 있음. UTF-8(LF)로 다시 저장.
-- **상태**: 요청(PC 3).
+- **상태**: 됨(2026-11-20, MFC 시뮬레이터 세션 — 사용자 결정 "가"·"고쳐"). mfc-quality 계약 0.11.0: 회수품 검수자 = 그 센터 MFC_WORKER 또는 MFC_SUPERVISOR(반입자 본인 422 SELF_APPROVAL 그대로), `ReturnInspectionIT` 오배송 회수 검수를 MFC_WORKER 로. 문서: `mfc-fulfillment-service/CLAUDE.md` 0.13.0 절 인계 번호 → 0.23.0(V19)부터 4자리·5번 틀리면 잠김으로 고침. `mfc-inventory-service/CLAUDE.md` 는 저장소(main·최근 6개 판)에서 UTF-8(LF)로 정상 — 깨진 줄 없음(PC 1 작업 복사본 문제로 보임, 다시 받기 권함).
