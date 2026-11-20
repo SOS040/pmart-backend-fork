@@ -59,4 +59,27 @@ class PushTokenServiceTest {
         .hasMessageContaining("push-token.max-devices");
     verifyNoInteractions(store);
   }
+
+  /** 고객 탈퇴 완료(ADR-0077): 그 고객(CUSTOMER) 단말만 지운다. accountId 가 비면 저장소를 건드리지 않는다. */
+  @Test
+  void forgetCustomerDeletesCustomerOwnerOnly() {
+    PushTokenStore store = mock(PushTokenStore.class);
+    org.mockito.Mockito.when(store.deleteOwner("CUSTOMER", "ACC-wd")).thenReturn(2);
+    var service =
+        new PushTokenService(
+            store, new NotificationProperties(null, null, null, null, null), Clock.systemUTC());
+    org.assertj.core.api.Assertions.assertThat(service.forgetCustomer("ACC-wd")).isEqualTo(2);
+    org.mockito.Mockito.verify(store).deleteOwner("CUSTOMER", "ACC-wd");
+    org.mockito.Mockito.verifyNoMoreInteractions(store);
+  }
+
+  @Test
+  void forgetCustomerWithBlankIdIsNoop() {
+    PushTokenStore store = mock(PushTokenStore.class);
+    var service =
+        new PushTokenService(
+            store, new NotificationProperties(null, null, null, null, null), Clock.systemUTC());
+    org.assertj.core.api.Assertions.assertThat(service.forgetCustomer("")).isZero();
+    verifyNoInteractions(store);
+  }
 }

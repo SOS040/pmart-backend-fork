@@ -578,6 +578,74 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(2);
   }
 
+  void withdrawalCompleted(UUID eventId, String accountId) {
+    String json =
+        EventEnvelopeFixtures.envelope("CustomerWithdrawalCompleted")
+            .eventId(eventId)
+            .from("customer-service")
+            .aggregate("Customer", accountId, 1)
+            .payload(Map.of("accountId", accountId, "completedAt", Instant.now().toString()))
+            .buildJson();
+    kafka.send("commerce.customer.v1", accountId, json).join();
+  }
+
+  int count(String sql, Object... args) {
+    Integer n = jdbc.queryForObject(sql, Integer.class, args);
+    return n == null ? 0 : n;
+  }
+
+  /**
+   * 고객 탈퇴 완료(ADR-0077): CustomerWithdrawalCompleted → 그 회원의 장바구니(진행 중·만료)·품목·변경 결과를 모두 지운다. 다른 회원
+   * 장바구니는 그대로. 같은 사건 재전달은 inbox 가 막는다(그 뒤 새로 연 장바구니를 지우지 않음).
+   */
+  @Test
+  void customerWithdrawalDeletesMemberCarts() throws Exception {
+    String account = "CU-wd-" + UUID.randomUUID();
+    String member = TestJwt.customer(account);
+    String cartId = post("/carts", member, null).body().path("cartId").asString();
+    Res added = add(member, cartId, "E-00000001", 2, 0, null);
+    assertThat(added.status()).as(added.body().toString()).isEqualTo(200);
+    // 만료 장바구니도 지운다
+    String expired = "CART-EXP-" + UUID.randomUUID();
+    jdbc.update(
+        "INSERT INTO cart (cart_id, owner_type, owner_id, state, created_at, last_changed_at)"
+            + " VALUES (?, 'MEMBER', ?, 'EXPIRED', now(), now())",
+        expired,
+        account);
+    String other = "CU-keep-" + UUID.randomUUID();
+    String otherJwt = TestJwt.customer(other);
+    String otherCart = post("/carts", otherJwt, null).body().path("cartId").asString();
+    assertThat(add(otherJwt, otherCart, "E-00000001", 1, 0, null).status()).isEqualTo(200);
+
+    UUID e1 = UUID.randomUUID();
+    withdrawalCompleted(e1, account);
+    awaitInbox(e1);
+    assertThat(
+            count(
+                "SELECT COUNT(*) FROM cart WHERE owner_type = 'MEMBER' AND owner_id = ?", account))
+        .isZero();
+    assertThat(count("SELECT COUNT(*) FROM cart_item WHERE cart_id IN (?, ?)", cartId, expired))
+        .isZero();
+    assertThat(count("SELECT COUNT(*) FROM cart_change WHERE cart_id = ?", cartId)).isZero();
+    assertThat(count("SELECT COUNT(*) FROM cart_item WHERE cart_id = ?", otherCart)).isEqualTo(1);
+
+    // 같은 사건 재전달 → inbox 가 막는다. 그 사이 새로 연 장바구니는 남는다(표지 사건으로 처리 순서 확인 — 같은 키·파티션)
+    String reopened = post("/carts", member, null).body().path("cartId").asString();
+    withdrawalCompleted(e1, account);
+    UUID marker = UUID.randomUUID();
+    String markerJson =
+        EventEnvelopeFixtures.envelope("CustomerWithdrawalCompleted")
+            .eventId(marker)
+            .from("customer-service")
+            .aggregate("Customer", account, 2)
+            .payload(Map.of("accountId", "CU-none-" + UUID.randomUUID(), "completedAt", "x"))
+            .buildJson();
+    kafka.send("commerce.customer.v1", account, markerJson).join();
+    awaitInbox(marker);
+    assertThat(count("SELECT COUNT(*) FROM cart WHERE cart_id = ?", reopened)).isEqualTo(1);
+    assertThat(count("SELECT COUNT(*) FROM inbox_event WHERE event_id = ?", e1)).isEqualTo(1);
+  }
+
   String subject(String jwt) {
     return mapper
         .readTree(java.util.Base64.getUrlDecoder().decode(jwt.split("\\.")[1]))

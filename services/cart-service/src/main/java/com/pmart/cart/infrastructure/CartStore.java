@@ -165,6 +165,20 @@ public class CartStore {
     jdbc.update("DELETE FROM cart_item WHERE cart_item_id = ?", cartItemId);
   }
 
+  /**
+   * 그 주체의 장바구니를 상태(ACTIVE·EXPIRED)와 상관없이 품목·변경 결과·병합 결과(대상)까지 모두 지운다 — 고객 탈퇴 완료(ADR-0077). 지운 장바구니
+   * 수를 돌려준다(없으면 0 — 멱등).
+   */
+  public int deleteOwnerCarts(String ownerType, String ownerId) {
+    String carts = "SELECT cart_id FROM cart WHERE owner_type = ? AND owner_id = ?";
+    jdbc.update("DELETE FROM cart_item WHERE cart_id IN (" + carts + ")", ownerType, ownerId);
+    jdbc.update("DELETE FROM cart_change WHERE cart_id IN (" + carts + ")", ownerType, ownerId);
+    jdbc.update(
+        "DELETE FROM cart_merge WHERE target_cart_id IN (" + carts + ")", ownerType, ownerId);
+    return jdbc.update(
+        "DELETE FROM cart WHERE owner_type = ? AND owner_id = ?", ownerType, ownerId);
+  }
+
   // ---------- 변경·병합 결과 ----------
 
   public void insertChange(String cartId, String requestId, String resultJson, Instant at) {

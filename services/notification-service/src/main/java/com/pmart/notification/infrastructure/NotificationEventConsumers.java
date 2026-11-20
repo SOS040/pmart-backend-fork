@@ -102,6 +102,18 @@ class NotificationEventConsumers {
   }
 
   /**
+   * commerce.customer.v1 — 고객 탈퇴 완료(ADR-0077, 2026-11-20): CustomerWithdrawalCompleted → 그 고객 단말 푸시
+   * 토큰 지움 (알림함은 남김). 나머지 고객 사건은 버린다.
+   */
+  @Bean
+  PmartEventConsumer customerEvents(
+      EventConsumers consumers, com.pmart.notification.application.PushTokenService pushTokens) {
+    return consumers.of(
+        e -> "CustomerWithdrawalCompleted".equals(e.eventType()),
+        e -> pushTokens.forgetCustomer(e.payload().path("accountId").asString("")));
+  }
+
+  /**
    * delivery.tracking.v1 — 고객에게 받았는지 묻기(2026-11-17, DeliveryReceiptCheckRequested), 곧 도착(2026-11-19
    * RiderApproachingCustomer — 레퍼런스 10-3-4, PC 5 요청 TR-4). 시작 위치 latest.
    */

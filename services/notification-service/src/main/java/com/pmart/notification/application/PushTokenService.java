@@ -131,4 +131,19 @@ public class PushTokenService {
     }
     return n;
   }
+
+  /**
+   * 고객 탈퇴 완료(ADR-0077, customer {@code CustomerWithdrawalCompleted}): 그 고객(accountId)의 단말 푸시 토큰을 모두
+   * 지운다 — 탈퇴한 폰으로 알림이 가지 않게. 알림함 줄은 남는다(재가입은 새 계정). 멱등.
+   */
+  public int forgetCustomer(String accountId) {
+    if (accountId.isBlank()) {
+      return 0;
+    }
+    int n = store.deleteOwner("CUSTOMER", accountId);
+    if (n > 0) {
+      log.info("고객 탈퇴 — 단말 푸시 토큰 {}개 지움", n);
+    }
+    return n;
+  }
 }

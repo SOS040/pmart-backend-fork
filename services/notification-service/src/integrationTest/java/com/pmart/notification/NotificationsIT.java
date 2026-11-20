@@ -609,6 +609,87 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     assertThat(after.body().path("items")).isEmpty();
   }
 
+  void customerWithdrawn(UUID eventId, String key, String accountId) {
+    kafka
+        .send(
+            "commerce.customer.v1",
+            key,
+            EventEnvelopeFixtures.envelope("CustomerWithdrawalCompleted")
+                .eventId(eventId)
+                .from("customer-service")
+                .aggregate("Customer", key, 1)
+                .payload(m("accountId", accountId, "completedAt", Instant.now().toString()))
+                .buildJson())
+        .join();
+  }
+
+  /**
+   * 고객 탈퇴 완료(ADR-0077): CustomerWithdrawalCompleted → 그 고객의 단말 푸시 토큰을 모두 지운다. 알림함은 남긴다. 같은 사건 재전달은
+   * inbox 가 막는다(그 사이 다시 등록한 토큰을 지우지 않음 — 같은 키의 표지 사건으로 처리 순서 확인).
+   */
+  @Test
+  void customerWithdrawalForgetsPushTokensKeepsInbox() throws Exception {
+    String me = "ACC-wd-" + UUID.randomUUID().toString().substring(0, 8);
+    String orderId = "ORD-WD-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(orderId, me);
+    String jwt = TestJwt.customer(me);
+    Map<String, Object> body = m("token", "fcm-" + UUID.randomUUID(), "platform", "ANDROID");
+    assertThat(send("PUT", jwt, "/me/push-tokens/dev-1", body).status()).isIn(200, 201);
+    body = m("token", "fcm-" + UUID.randomUUID(), "platform", "ANDROID");
+    assertThat(send("PUT", jwt, "/me/push-tokens/dev-2", body).status()).isIn(200, 201);
+    publish(
+        "delivery.delivery.v1",
+        "DispatchDelayed",
+        "Delivery",
+        "DLV-WD-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-WD-" + orderId,
+            "orderId",
+            orderId,
+            "mfcId",
+            "MFC-1",
+            "delayedMinutes",
+            23,
+            "threshold",
+            20,
+            "detectedAt",
+            Instant.now().toString()));
+    await(
+        () -> send("GET", jwt, "/me/notifications?size=20", null),
+        r -> r.body().path("items").size() >= 1);
+
+    UUID e1 = UUID.randomUUID();
+    customerWithdrawn(e1, me, me);
+    Res after =
+        await(
+            () -> send("GET", jwt, "/me/push-tokens", null),
+            r -> r.body().path("items").size() == 0);
+    assertThat(after.body().path("items")).isEmpty();
+    assertThat(send("GET", jwt, "/me/notifications?size=20", null).body().path("items").size())
+        .as("알림함은 남긴다")
+        .isEqualTo(1);
+
+    // 같은 사건 재전달 → inbox 가 막는다
+    body = m("token", "fcm-" + UUID.randomUUID(), "platform", "ANDROID");
+    assertThat(send("PUT", jwt, "/me/push-tokens/dev-3", body).status()).isIn(200, 201);
+    customerWithdrawn(e1, me, me);
+    // 표지: 같은 키(같은 파티션)로 다른 고객의 탈퇴 — 그 고객 토큰이 지워지면 앞선 재전달도 처리된 뒤다
+    String other = "ACC-wd2-" + UUID.randomUUID().toString().substring(0, 8);
+    String otherJwt = TestJwt.customer(other);
+    body = m("token", "fcm-" + UUID.randomUUID(), "platform", "ANDROID");
+    assertThat(send("PUT", otherJwt, "/me/push-tokens/dev-1", body).status()).isIn(200, 201);
+    customerWithdrawn(UUID.randomUUID(), me, other);
+    assertThat(
+            await(
+                    () -> send("GET", otherJwt, "/me/push-tokens", null),
+                    r -> r.body().path("items").size() == 0)
+                .body()
+                .path("items"))
+        .isEmpty();
+    assertThat(send("GET", jwt, "/me/push-tokens", null).body().path("items").size()).isEqualTo(1);
+  }
+
   /** N-4(2026-11-19, ADR-0069): 사고·파손 전달 실패만 재발송 안내 — 고객 부재·오배송 다시 배송은 알리지 않는다. */
   @Test
   void incidentFailureNotifiesReshipment() throws Exception {
