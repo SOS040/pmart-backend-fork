@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -35,18 +36,44 @@ public class OrderLookupService {
       String orderId, List<WorkOrderView> workOrders, List<Stop> stops, Instant asOf) {}
 
   private final OrderLookupStore store;
+  private final OrderNumbers orderNumbers;
   private final Clock clock;
 
-  public OrderLookupService(OrderLookupStore store, Clock clock) {
+  public OrderLookupService(OrderLookupStore store, OrderNumbers orderNumbers, Clock clock) {
     this.store = store;
+    this.orderNumbers = orderNumbers;
     this.clock = clock;
   }
 
+  /**
+   * orderId 또는 화면용 주문번호(0.27.0, R-29) 중 정확히 하나로 찾는다. 번호는 order OrderConfirmed 사본에서 orderId 로 바꾸고,
+   * 사본이 없으면 404(주문이 아직 MFC 에 오지 않은 것과 같게).
+   */
+  public View find(@Nullable String orderId, @Nullable String orderNumber) {
+    boolean byId = orderId != null && !orderId.isBlank();
+    boolean byNumber = orderNumber != null && !orderNumber.isBlank();
+    if (byId == byNumber) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "orderId 와 orderNumber 중 하나만 주세요.");
+    }
+    if (byId) {
+      return byOrder(orderId);
+    }
+    requireOperator();
+    String id = orderNumbers.orderIdOf(OrderNumbers.normalize(orderNumber));
+    if (id == null) {
+      throw PmartException.notFound("WORK_ORDER_NOT_FOUND", "이 주문번호의 작업 지시가 없습니다.");
+    }
+    return byOrder(id);
+  }
+
+  private static PmartPrincipal requireOperator() {
+    return PmartPrincipal.current()
+        .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+        .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "직원 토큰만 볼 수 있습니다."));
+  }
+
   public View byOrder(String orderId) {
-    PmartPrincipal p =
-        PmartPrincipal.current()
-            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
-            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "직원 토큰만 볼 수 있습니다."));
+    PmartPrincipal p = requireOperator();
     boolean allCenters = ALL_CENTER_ROLES.stream().anyMatch(p::hasRole);
     Instant asOf = clock.instant();
     List<WorkOrder> all = store.workOrders(orderId);

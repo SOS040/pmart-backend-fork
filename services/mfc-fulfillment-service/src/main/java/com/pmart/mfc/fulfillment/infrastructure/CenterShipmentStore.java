@@ -51,9 +51,16 @@ public class CenterShipmentStore {
     this.jdbc = jdbc;
   }
 
-  /** 센터의 출고 — 상태로 거름, 만든 순(같으면 ID), 커서 = 마지막 shipmentId. */
+  /** (0.27.0, R-29) 더 거르기 — 주문(번호를 바꾼 orderId), 출고 만든 시각 [from, to), recent 면 만든 순 거꾸로. */
+  public record Filter(
+      @Nullable String orderId, @Nullable Instant from, @Nullable Instant to, boolean recent) {}
+
+  /**
+   * 센터의 출고 — 상태로 거름, 만든 순(같으면 ID, recent 면 거꾸로), 커서 = 마지막 shipmentId. 두 방향 모두 (만든 시각, ID) 키 — 만든
+   * 시각은 바뀌지 않아 쪽이 흔들리지 않는다.
+   */
   public List<ShipmentRow> shipments(
-      String mfcId, Collection<String> states, @Nullable String after, int limit) {
+      String mfcId, Collection<String> states, Filter f, @Nullable String after, int limit) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("mfc", mfcId);
     args.put("states", states);
@@ -64,13 +71,30 @@ public class CenterShipmentStore {
                 + " s.created_at, s.ready_at, s.dispatch_requested_at FROM shipment s"
                 + " JOIN work_order w ON w.fulfillment_id = s.fulfillment_id"
                 + " WHERE w.mfc_id = :mfc AND s.state IN (:states)");
+    if (f.orderId() != null) {
+      sql.append(" AND w.order_id = :order");
+      args.put("order", f.orderId());
+    }
+    if (f.from() != null) {
+      sql.append(" AND s.created_at >= :from");
+      args.put("from", Timestamp.from(f.from()));
+    }
+    if (f.to() != null) {
+      sql.append(" AND s.created_at < :to");
+      args.put("to", Timestamp.from(f.to()));
+    }
+    String cmp = f.recent() ? "<" : ">";
     if (after != null) {
       sql.append(
-          " AND (s.created_at, s.shipment_id) > (SELECT created_at, shipment_id FROM shipment"
-              + " WHERE shipment_id = :after)");
+          " AND (s.created_at, s.shipment_id) "
+              + cmp
+              + " (SELECT created_at, shipment_id FROM shipment WHERE shipment_id = :after)");
       args.put("after", after);
     }
-    sql.append(" ORDER BY s.created_at, s.shipment_id LIMIT :limit");
+    sql.append(
+        f.recent()
+            ? " ORDER BY s.created_at DESC, s.shipment_id DESC LIMIT :limit"
+            : " ORDER BY s.created_at, s.shipment_id LIMIT :limit");
     return jdbc.query(
         sql.toString(),
         args,

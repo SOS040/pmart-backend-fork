@@ -83,6 +83,16 @@ public final class ReturnRules {
   /** 배차 불가 취소 사유(CL-5, 2026-11-19) — 회사 사유라 본인 확인 없음, 상품준비 뒤라도 인계 전이면. */
   public static final String DISPATCH_UNAVAILABLE = "DISPATCH_UNAVAILABLE";
 
+  /**
+   * 관리자 판단 취소 사유(2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터 R-29). 배차 불가와 같은 범위·역할(상품준비
+   * 뒤라도 인계 전, 본인 확인 없음)이고 사유 메모(reasonDetail)가 필수다. 고객 취소 범위는 그대로.
+   */
+  public static final String OPERATOR_DECISION = "OPERATOR_DECISION";
+
+  /** 직원 회사 사유 전체 취소(인계 전이면 상품준비 뒤라도) — 배차 불가·관리자 판단. */
+  public static final Set<String> COMPANY_CANCEL_REASONS =
+      Set.of(DISPATCH_UNAVAILABLE, OPERATOR_DECISION);
+
   /** 배차 불가 취소를 할 수 있는 센터 역할(그 센터 권한이 있어야 — CS·운영 관리자는 센터 무관). */
   public static final String MFC_SUPERVISOR = "MFC_SUPERVISOR";
 

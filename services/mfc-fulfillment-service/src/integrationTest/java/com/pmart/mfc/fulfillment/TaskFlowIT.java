@@ -2186,6 +2186,78 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
         List.of(Map.of("orderLineId", "L1", "qty", 2), Map.of("orderLineId", "L2", "qty", 1)));
   }
 
+  /** R-29(0.27.0): 주문번호로 현장 상태·센터 출고 목록(지난 주문 — 날짜·최근 순). 번호 사본 12345678 이 있는 주문. */
+  private void orderNumberLookups(String o, String shipmentId) {
+    // 작업 지시 조회 — orderId 대신 번호(공백·하이픈 무시), 그 센터 직원도
+    Res byNumber = call("GET", CS, "/work-orders?orderNumber=1234-5678", null, null);
+    assertThat(byNumber.status()).as(byNumber.body().toString()).isEqualTo(200);
+    assertThat(byNumber.body().path("orderId").asString()).isEqualTo(o);
+    assertThat(call("GET", VIEWER, "/work-orders?orderNumber=12345678", null, null).status())
+        .isEqualTo(200);
+    assertThat(call("GET", OTHER_CENTER, "/work-orders?orderNumber=12345678", null, null).status())
+        .isEqualTo(403);
+    // 둘 다·둘 다 없음·8자리 아님 400, 사본 없는 번호 404
+    assertThat(
+            call("GET", CS, "/work-orders?orderId=" + o + "&orderNumber=12345678", null, null)
+                .status())
+        .isEqualTo(400);
+    assertThat(call("GET", CS, "/work-orders", null, null).status()).isEqualTo(400);
+    assertThat(call("GET", CS, "/work-orders?orderNumber=123", null, null).status()).isEqualTo(400);
+    assertThat(call("GET", CS, "/work-orders?orderNumber=99999998", null, null).status())
+        .isEqualTo(404);
+
+    // 센터 출고 목록 — 번호로 그 주문 출고만
+    JsonNode one =
+        call("GET", VIEWER, "/shipments?mfcId=" + MFC + "&orderNumber=12345678", null, null).body();
+    assertThat(one.path("items").findValuesAsString("shipmentId")).containsExactly(shipmentId);
+    assertThat(
+            call("GET", VIEWER, "/shipments?mfcId=" + MFC + "&orderNumber=99999998", null, null)
+                .body()
+                .path("items"))
+        .isEmpty();
+    // 오늘(서울) 만든 출고, 최근 순 — 커서로 넘겨도 만든 시각이 줄어드는 순서, 이 출고가 있다
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    List<String> created = new java.util.ArrayList<>();
+    List<String> ids = new java.util.ArrayList<>();
+    String cursor = null;
+    do {
+      JsonNode page =
+          call(
+                  "GET",
+                  VIEWER,
+                  "/shipments?mfcId="
+                      + MFC
+                      + "&createdTo="
+                      + today
+                      + "&sort=recent&size=2"
+                      + (cursor == null ? "" : "&cursor=" + cursor),
+                  null,
+                  null)
+              .body();
+      for (JsonNode it : page.path("items")) {
+        created.add(it.path("createdAt").asString());
+        ids.add(it.path("shipmentId").asString());
+      }
+      cursor = page.path("nextCursor").isNull() ? null : page.path("nextCursor").asString(null);
+    } while (cursor != null);
+    assertThat(ids).contains(shipmentId).doesNotHaveDuplicates();
+    List<java.time.Instant> times =
+        created.stream().map(t -> java.time.OffsetDateTime.parse(t).toInstant()).toList();
+    assertThat(times).isSortedAccordingTo(java.util.Comparator.reverseOrder());
+    // 잘못된 값 400
+    assertThat(call("GET", VIEWER, "/shipments?mfcId=" + MFC + "&sort=newest", null, null).status())
+        .isEqualTo(400);
+    assertThat(
+            call(
+                    "GET",
+                    VIEWER,
+                    "/shipments?mfcId=" + MFC + "&createdFrom=2026-01-01&createdTo=2026-03-01",
+                    null,
+                    null)
+                .status())
+        .isEqualTo(400);
+  }
+
   /** 배정 라이더만 QR 인계 → 재고 인계 전기 → 포장 HANDED_OVER·출고 부분/전체 인계, 인계된 주문의 전체 중지는 거절. */
   /** F-5·F-8(0.13.0): 화면용 주문번호 사본, 라벨 숫자로 인계 허가(QR 과 같은 허가). */
   @Test
@@ -2231,6 +2303,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
                 .path("orderNumber")
                 .asString())
         .isEqualTo("12345678");
+    orderNumberLookups(o, s);
 
     // 숫자 인계: 배정 전 → DELIVERY_MISMATCH, 틀린 숫자 → HANDOVER_CODE_MISMATCH, 맞으면 QR 과 같은 허가
     Map<String, Object> byCode =

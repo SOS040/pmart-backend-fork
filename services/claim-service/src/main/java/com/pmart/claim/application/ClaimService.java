@@ -170,7 +170,7 @@ public class ClaimService {
     }
     if ("FULFILLMENT_REJECTED".equals(in.reason())
         || OUT_OF_STOCK.equals(in.reason())
-        || ReturnRules.DISPATCH_UNAVAILABLE.equals(in.reason())) {
+        || ReturnRules.COMPANY_CANCEL_REASONS.contains(in.reason())) {
       throw new PmartException(
           com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "시스템·직원 전용 사유입니다: " + in.reason());
     }
@@ -220,8 +220,8 @@ public class ClaimService {
       PmartPrincipal who,
       CreateCommand in,
       ReturnExtras extras) {
-    if (ReturnRules.DISPATCH_UNAVAILABLE.equals(in.reason())) {
-      return createDispatchUnavailableCancel(idempotencyKey, sourceSystem, who, in, extras);
+    if (ReturnRules.COMPANY_CANCEL_REASONS.contains(in.reason())) {
+      return createCompanyReasonCancel(idempotencyKey, sourceSystem, who, in, extras);
     }
     if (ReturnRules.STAFF_ROLES.stream().noneMatch(who::hasRole)) {
       throw new PmartException(
@@ -287,22 +287,32 @@ public class ClaimService {
    * 회사 사유라 본인 확인 없이, 상품준비 뒤라도 인계 전이면 시스템 취소와 같은 범위({@code checkFullCancel(…, system=true)} — 인계
    * 뒤·미이행 0 은 422). 그 센터 MFC_SUPERVISOR(그 센터 권한)·CS_AGENT·OPERATOR_ADMIN. 뒤 흐름은 고객센터 취소와 같다(S3 →
    * OrderCancelled → 원 승인액 전액 환불, dispatch 는 주문 취소 사건으로 픽업 전 배송을 거둔다).
+   *
+   * <p>관리자 판단 취소(사유 {@code OPERATOR_DECISION}, 2026-11-20 ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터
+   * R-29)도 같은 범위·역할·흐름이고, 사유 메모(reasonDetail)가 필수다(빈 값 400). 고객 취소 범위(상품준비 전만)는 그대로.
    */
-  private ClaimView createDispatchUnavailableCancel(
+  private ClaimView createCompanyReasonCancel(
       String idempotencyKey,
       String sourceSystem,
       PmartPrincipal who,
       CreateCommand in,
       ReturnExtras extras) {
+    boolean decision = ReturnRules.OPERATOR_DECISION.equals(in.reason());
+    String label = decision ? "관리자 판단 취소" : "배차 불가 취소";
     boolean staff = ReturnRules.STAFF_ROLES.stream().anyMatch(who::hasRole);
     if (!staff && !who.hasRole(ReturnRules.MFC_SUPERVISOR)) {
       throw new PmartException(
-          com.pmart.common.web.ErrorCode.FORBIDDEN, "배차 불가 취소는 센터 관리자·고객센터 상담원·운영 관리자만 할 수 있습니다.");
+          com.pmart.common.web.ErrorCode.FORBIDDEN, label + "는 센터 관리자·고객센터 상담원·운영 관리자만 할 수 있습니다.");
+    }
+    if (decision && (in.reasonDetail() == null || in.reasonDetail().isBlank())) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
+          "관리자 판단 취소는 사유 메모(reasonDetail)가 필요합니다.");
     }
     if (!ReturnRules.STAFF_CHANNELS.contains(in.channel())) {
       throw new PmartException(
           com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
-          "배차 불가 취소는 채널 CS·OPERATOR 로 접수합니다: " + in.channel());
+          label + "는 채널 CS·OPERATOR 로 접수합니다: " + in.channel());
     }
     if (extras.faultCode() != null) {
       throw new PmartException(
@@ -333,7 +343,7 @@ public class ClaimService {
     } catch (ClaimRules.Rejection r) {
       String m =
           "ORDER_NOT_CANCELLABLE".equals(r.code())
-              ? "이미 라이더에게 넘긴 주문은 배차 불가로 취소할 수 없습니다 — 받으신 뒤 반품으로. (" + r.getMessage() + ")"
+              ? "이미 라이더에게 넘긴 주문은 " + label + "로 처리할 수 없습니다 — 받으신 뒤 반품으로. (" + r.getMessage() + ")"
               : r.getMessage();
       throw new PmartException(r.code(), HttpStatus.UNPROCESSABLE_CONTENT, m, false, List.of());
     }
@@ -346,7 +356,7 @@ public class ClaimService {
                 String.class,
                 () -> open(accountId, in, order, byLine, who.subject(), extras))
             .value();
-    log.info("배차 불가 취소 접수 {} 주문 {} 직원 {}", claimId, in.orderId(), who.subject());
+    log.info("{} 접수 {} 주문 {} 직원 {}", label, claimId, in.orderId(), who.subject());
     return view(claimId);
   }
 

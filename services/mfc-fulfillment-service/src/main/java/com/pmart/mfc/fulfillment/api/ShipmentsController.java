@@ -50,6 +50,10 @@ public class ShipmentsController implements ShipmentsApi {
           String mfcId,
           @org.jspecify.annotations.Nullable
               List<com.pmart.mfc.fulfillment.api.generated.model.ShipmentState> state,
+          @org.jspecify.annotations.Nullable String orderNumber,
+          java.time.@org.jspecify.annotations.Nullable LocalDate createdFrom,
+          java.time.@org.jspecify.annotations.Nullable LocalDate createdTo,
+          @org.jspecify.annotations.Nullable String sort,
           Integer size,
           @org.jspecify.annotations.Nullable String cursor) {
     int limit = size == null ? 50 : size;
@@ -57,6 +61,10 @@ public class ShipmentsController implements ShipmentsApi {
         centerShipments.list(
             mfcId,
             state == null ? null : state.stream().map(x -> x.getValue()).toList(),
+            orderNumber,
+            createdFrom,
+            createdTo,
+            sort,
             limit + 1,
             cursor);
     boolean more = rows.size() > limit;

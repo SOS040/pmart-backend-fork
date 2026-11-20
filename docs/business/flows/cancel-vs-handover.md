@@ -107,3 +107,9 @@ S3 단계
 - 라이더를 끝내 못 찾은 주문은 **직원**(그 센터 MFC_SUPERVISOR·CS_AGENT·OPERATOR_ADMIN)이 사유 `DISPATCH_UNAVAILABLE` 로 전체 취소한다. 회사 사유라 본인 확인이 없고, **상품준비 뒤라도 인계 전이면** 받는다(시스템 자동 취소와 같은 범위 — §1 의 고객 취소 시점과 다름). 인계 뒤는 422(반품 흐름).
 - 흐름은 §2 그대로: ClaimOpened·CancellationRequested(reason DISPATCH_UNAVAILABLE) → S3(현장 중지 — 포장분은 취소 복귀, 자원 해제, 주문 CANCELLED) → OrderCancelled(`cancelReason` DISPATCH_UNAVAILABLE) → claim 원 승인액 전액 환불(봉투값·배달팁 포함), dispatch 는 FULL 취소로 픽업 전 배송을 거둔다, notification 은 "배달 기사를 찾지 못해" 문구.
 - 보상 쿠폰(2,000원)은 promotion-service 가 생길 때(아직 없음).
+
+## 8. 관리자 판단 취소 (2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘")
+- 직원이 회사 사유로 준비 중 주문을 멈출 때 사유 `OPERATOR_DECISION`(관리자 판단)으로 전체 취소한다. **§7 배차 불가와 같은 사람(그 센터 MFC_SUPERVISOR·CS_AGENT·OPERATOR_ADMIN)·같은 범위(상품준비 뒤라도 인계 전, 인계 뒤 422)·같은 흐름**, 본인 확인 없음, **사유 메모(reasonDetail) 필수**.
+- 고객 요청 취소는 바뀌지 않는다 — 상품준비 전만(§1, ADR-0060). 고객 토큰은 이 사유를 쓸 수 없다(400).
+- OrderCancelled `cancelReason` OPERATOR_DECISION — 고객 알림은 일반 취소 문구.
+- 작업 단위(PICK·PACK) 중지·BLOCKED 해제·부분 종료·다시 열기는 아직 없다(업무 규칙 결정 필요).

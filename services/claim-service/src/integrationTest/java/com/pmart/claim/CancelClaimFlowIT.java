@@ -295,6 +295,81 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(lateRes.status()).as(lateRes.body().toString()).isEqualTo(422);
   }
 
+  /**
+   * ADR-0076(2026-11-20, 사용자 "관리자 사유 취소만 넓힘" — MFC 시뮬레이터 R-29): 관리자 판단 취소 OPERATOR_DECISION — 배차
+   * 불가와 같은 범위(상품준비 뒤라도 인계 전)·역할, 사유 메모 필수, 고객은 못 씀(고객 취소는 상품준비 전만 그대로).
+   */
+  @Test
+  void operatorDecisionCancelsPreparedOrderWithMemo() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "PREPARING");
+    paymentAccepts(orderId);
+    Map<String, Object> body = new LinkedHashMap<>(cancel(orderId, 10));
+    body.put("channel", "OPERATOR");
+    body.put("reason", "OPERATOR_DECISION");
+    String sup = TestJwt.operator("STAFF-SUP-1", List.of("MFC_SUPERVISOR"), List.of("MFC-1"));
+
+    Map<String, Object> noMemo = new LinkedHashMap<>(body);
+    noMemo.put("reasonDetail", "  ");
+    assertThat(post(sup, UUID.randomUUID().toString(), noMemo).status())
+        .as("사유 메모 없음")
+        .isEqualTo(400);
+    body.put("reasonDetail", "냉장 설비 고장으로 출고 불가");
+    assertThat(
+            post(
+                    TestJwt.operator("STAFF-W", List.of("MFC_WORKER"), List.of("MFC-1")),
+                    UUID.randomUUID().toString(),
+                    body)
+                .status())
+        .as("센터 작업자")
+        .isEqualTo(403);
+    assertThat(
+            post(
+                    TestJwt.operator("STAFF-SUP-2", List.of("MFC_SUPERVISOR"), List.of("MFC-2")),
+                    UUID.randomUUID().toString(),
+                    body)
+                .status())
+        .as("다른 센터 관리자")
+        .isEqualTo(404);
+    Map<String, Object> asCustomer = new LinkedHashMap<>(cancel(orderId, 10));
+    asCustomer.put("reason", "OPERATOR_DECISION");
+    asCustomer.put("reasonDetail", "그냥");
+    assertThat(post(TestJwt.customer(account), UUID.randomUUID().toString(), asCustomer).status())
+        .as("고객은 이 사유로 접수 못 함")
+        .isEqualTo(400);
+
+    Res opened = post(sup, UUID.randomUUID().toString(), body);
+    assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);
+    assertThat(opened.body().path("reason").asString()).isEqualTo("OPERATOR_DECISION");
+    assertThat(opened.body().path("reasonDetail").asString()).isEqualTo("냉장 설비 고장으로 출고 불가");
+    String claimId = opened.body().path("claimId").asString();
+    JsonNode rp =
+        mapper
+            .readTree(
+                (String)
+                    jdbc.queryForObject(
+                        "SELECT payload::text FROM outbox_event"
+                            + " WHERE type = 'CancellationRequested' AND aggregateid = ?",
+                        String.class,
+                        claimId))
+            .path("payload");
+    assertThat(rp.path("reason").asString()).isEqualTo("OPERATOR_DECISION");
+
+    // 인계 뒤(미이행 0) — 반품으로
+    String handed = "ORD-" + UUID.randomUUID();
+    order(handed, account, "PREPARING", 10);
+    Map<String, Object> late = new LinkedHashMap<>(body);
+    late.put("orderId", handed);
+    late.put("lines", List.of(Map.of("orderLineId", handed + "-L1", "qty", 10)));
+    Res lateRes =
+        post(
+            TestJwt.operator("OP-ADMIN-9", List.of("OPERATOR_ADMIN"), List.of()),
+            UUID.randomUUID().toString(),
+            late);
+    assertThat(lateRes.status()).as(lateRes.body().toString()).isEqualTo(422);
+  }
+
   @Test
   void customerCenterCancelsConfirmedOrderOnly() throws Exception {
     String account = "CU-" + UUID.randomUUID();

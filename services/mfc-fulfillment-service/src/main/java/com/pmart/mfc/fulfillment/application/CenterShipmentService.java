@@ -51,9 +51,20 @@ public class CenterShipmentService {
     this.orderNumbers = orderNumbers;
   }
 
+  /**
+   * (0.27.0, R-29 — 지난 주문 조회) 주문번호·출고 만든 날짜(Asia/Seoul, 최대 31일)로 거르고 {@code sort}
+   * oldest(기본)/recent. 번호나 날짜를 주고 상태를 비우면 모든 상태. 번호 사본이 없으면 빈 목록.
+   */
   @Transactional(readOnly = true)
   public List<Board> list(
-      String mfcId, @Nullable List<String> states, int size, @Nullable String cursor) {
+      String mfcId,
+      @Nullable List<String> states,
+      @Nullable String orderNumber,
+      java.time.@Nullable LocalDate createdFrom,
+      java.time.@Nullable LocalDate createdTo,
+      @Nullable String sort,
+      int size,
+      @Nullable String cursor) {
     PmartPrincipal p =
         PmartPrincipal.current()
             .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
@@ -62,13 +73,49 @@ public class CenterShipmentService {
     if (!allCenters && !p.canAccessCenter(mfcId)) {
       throw new PmartException(ErrorCode.FORBIDDEN, "이 센터의 출고를 볼 권한이 없습니다.");
     }
-    List<String> s = states == null || states.isEmpty() ? OPEN : states;
+    boolean recent;
+    if (sort == null || sort.isBlank() || "oldest".equals(sort)) {
+      recent = false;
+    } else if ("recent".equals(sort)) {
+      recent = true;
+    } else {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "sort 는 oldest 또는 recent 입니다.");
+    }
+    java.time.Instant from = null;
+    java.time.Instant to = null;
+    if (createdFrom != null || createdTo != null) {
+      java.time.LocalDate a = createdFrom != null ? createdFrom : createdTo;
+      java.time.LocalDate b = createdTo != null ? createdTo : createdFrom;
+      if (b.isBefore(a) || java.time.temporal.ChronoUnit.DAYS.between(a, b) > 30) {
+        throw new PmartException(
+            ErrorCode.VALIDATION_FAILED, "createdFrom ≤ createdTo, 최대 31일입니다.");
+      }
+      java.time.ZoneId seoul = java.time.ZoneId.of("Asia/Seoul");
+      from = a.atStartOfDay(seoul).toInstant();
+      to = b.plusDays(1).atStartOfDay(seoul).toInstant();
+    }
+    String orderId = null;
+    if (orderNumber != null && !orderNumber.isBlank()) {
+      orderId = orderNumbers.orderIdOf(OrderNumbers.normalize(orderNumber));
+      if (orderId == null) {
+        return List.of(); // 번호 사본 없음(번호 전 주문·사건 미도착)
+      }
+    }
+    boolean pastLookup = orderId != null || from != null;
+    List<String> s =
+        states != null && !states.isEmpty() ? states : pastLookup ? List.copyOf(STATES) : OPEN;
     for (String x : s) {
       if (!STATES.contains(x)) {
         throw new PmartException(ErrorCode.VALIDATION_FAILED, "모르는 출고 상태: " + x);
       }
     }
-    List<ShipmentRow> rows = store.shipments(mfcId, s, cursor, Math.max(1, Math.min(size, 200)));
+    List<ShipmentRow> rows =
+        store.shipments(
+            mfcId,
+            s,
+            new CenterShipmentStore.Filter(orderId, from, to, recent),
+            cursor,
+            Math.max(1, Math.min(size, 200)));
     List<String> ids = rows.stream().map(ShipmentRow::shipmentId).toList();
     Map<String, TaskRow> picks = new LinkedHashMap<>();
     Map<String, TaskRow> packs = new LinkedHashMap<>();

@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
+    0.8.0(2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터 R-29 "니가 바로 고쳐"): 사유 **`OPERATOR_DECISION`**(관리자 판단) 직원 전체 취소 —
+    배차 불가(0.7.0)와 같은 역할(그 센터 `MFC_SUPERVISOR`·`CS_AGENT`·`OPERATOR_ADMIN`)·범위(**상품준비 뒤라도 인계 전**, 인계 뒤·미이행 0 은 422)·흐름, 본인 확인 없음,
+    **사유 메모 `reasonDetail` 필수**(비면 400). 고객 접수 400. CancellationRequested·OrderCancelled `cancelReason` 에 그대로 실린다. 고객 취소 범위(상품준비 전만, ADR-0060)는 그대로.
     0.7.0(2026-11-19, CL-5 — PC 5 요청, PC 1 사용자 "추천대로 일단" — 쿠폰은 promotion 이 생길 때): 사유 **`DISPATCH_UNAVAILABLE`**(배차 불가) 직원 전체 취소 —
     그 센터 `MFC_SUPERVISOR`·`CS_AGENT`·`OPERATOR_ADMIN`, **상품준비(PREPARING) 뒤라도 인계 전이면**(시스템 취소와 같은 범위 — 인계 뒤·미이행 0 은 422), 본인 확인 필요 없음(회사 사유),
     채널 CS·OPERATOR. 뒤 흐름은 그대로(CancellationRequested → S3 → OrderCancelled → 원 승인액 전액 환불). 2,000원 쿠폰은 아직 없다(promotion 미구현).
@@ -46,6 +49,8 @@ paths:
         고객 앱 취소와 범위·흐름이 같다(모든 행 × 미이행 수량, STOP_PENDING → OrderCancelled → 전액 환불, 진행 중 취소가 있으면 DUPLICATE_CLAIM). 클레임 계정은 주문의 고객이라 고객이 앱에서 본다.
         - identityCheck 필수(OTHER 면 note — RETURN 과 같은 규칙, 없으면 400), reason 필수(시스템 사유 400), channel CS(기본)·OPERATOR(CUSTOMER_APP 400), faultCode 는 400(반품 전용), caseRef 선택. 접수 직원·본인 확인 방법·메모·CS 사건은 클레임에 남는다.
         - 상품준비(PREPARING) 뒤는 ADR-0060 그대로 422 ORDER_NOT_CANCELLABLE(detail 에 "받으신 뒤 반품으로 안내"). 부분 취소 422 PARTIAL_CANCEL_NOT_ALLOWED.
+        - 예외(회사 사유 — 본인 확인 없음, 인계 전이면 상품준비 뒤라도): reason `DISPATCH_UNAVAILABLE`(0.7.0 배차 불가)·`OPERATOR_DECISION`(0.8.0 관리자 판단, ADR-0076 — reasonDetail 필수).
+          그 센터 MFC_SUPERVISOR(남의 센터 404)·CS_AGENT·OPERATOR_ADMIN, 채널 CS·OPERATOR.
         [2026-11-17 구현, 0.2.0 — CL-1·D-7·ADR-0060 결정 2] **인계 뒤 회수(type RETURN)는 고객센터만** 접수한다. 흐름 정본 docs/business/flows/return-exchange-refund.md §6.
         - 직원 토큰(OPERATOR) + 역할 CS_AGENT·OPERATOR_ADMIN(그 밖 403). 직원은 RETURN 과 아래 CANCEL(0.4.0)만(EXCHANGE 422 UNSUPPORTED_ACTION). 고객 토큰의 RETURN 은 422 UNSUPPORTED_ACTION(고객센터로 문의).
         - identityCheck 필수(본인 확인 방법만 기록 — case CS 접수와 같은 값, OTHER 면 note 필수). channel 은 CS(기본)·OPERATOR.
@@ -542,8 +547,8 @@ components:
       enum: [OPENED, UNDER_REVIEW, STOP_PENDING, DECIDED, IN_PROGRESS, CLOSED, WITHDRAWN, REJECTED, FEE_PENDING, RECOVERY_FAILED, CANCELLED]
     ClaimReason:
       type: string
-      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED·OUT_OF_STOCK 는 시스템 접수만(2026-11-07, 고객 접수 불가 — OUT_OF_STOCK 은 결품 부분 환불). DISPATCH_UNAVAILABLE(0.7.0 CL-5) 은 직원 전체 취소만(고객 접수 불가)
-      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED, OUT_OF_STOCK, DISPATCH_UNAVAILABLE]
+      description: DEFECT·WRONG_ITEM·NOT_AS_ADVERTISED는 교환 특례 기한(3개월/인지 30일) 대상. FULFILLMENT_REJECTED·OUT_OF_STOCK 는 시스템 접수만(2026-11-07, 고객 접수 불가 — OUT_OF_STOCK 은 결품 부분 환불). DISPATCH_UNAVAILABLE(0.7.0 CL-5)·OPERATOR_DECISION(0.8.0 ADR-0076 관리자 판단 — reasonDetail 필수) 은 직원 전체 취소만(고객 접수 불가)
+      enum: [CHANGE_OF_MIND, DEFECT, WRONG_ITEM, NOT_AS_ADVERTISED, DAMAGED_IN_DELIVERY, MISSING_ITEM, LATE_DELIVERY, CUSTOMER_ABSENT, ADDRESS_ERROR, OTHER, FULFILLMENT_REJECTED, OUT_OF_STOCK, DISPATCH_UNAVAILABLE, OPERATOR_DECISION]
     ReturnFaultCode:
       type: string
       x-added-in: '2026-11-17'

@@ -1,6 +1,8 @@
 package com.pmart.mfc.fulfillment.application;
 
 import com.pmart.common.messaging.EventEnvelope;
+import com.pmart.common.web.ErrorCode;
+import com.pmart.common.web.PmartException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.util.Collection;
@@ -38,6 +40,25 @@ public class OrderNumbers {
             + " VALUES (:o, :n, :at) ON CONFLICT (order_id) DO UPDATE SET order_number ="
             + " EXCLUDED.order_number, updated_at = EXCLUDED.updated_at",
         Map.of("o", orderId, "n", number, "at", Timestamp.from(clock.instant())));
+  }
+
+  /** 화면에서 받은 주문번호를 8자리 숫자로(공백·하이픈 무시 — order-service 주문 찾기와 같다, 0.27.0 R-29). 아니면 400. */
+  public static String normalize(String raw) {
+    String n = raw.replaceAll("[\\s-]", "");
+    if (!n.matches("[0-9]{8}")) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "orderNumber 는 숫자 8자리입니다.");
+    }
+    return n;
+  }
+
+  /** 번호 → 주문 ID(사본에서). 번호는 전체에서 겹치지 않는다(order-service 유일 색인). 사본이 없으면 null. */
+  public @Nullable String orderIdOf(String number) {
+    List<String> ids =
+        jdbc.queryForList(
+            "SELECT order_id FROM order_display_number WHERE order_number = :n",
+            Map.of("n", number),
+            String.class);
+    return ids.isEmpty() ? null : ids.get(0);
   }
 
   public @Nullable String of(String orderId) {

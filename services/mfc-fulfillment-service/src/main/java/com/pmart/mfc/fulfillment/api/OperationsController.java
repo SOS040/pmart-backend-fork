@@ -47,8 +47,9 @@ public class OperationsController implements OperationsApi {
   }
 
   @Override
-  public ResponseEntity<OrderFulfillmentView> getOrderFulfillment(String orderId) {
-    var v = lookups.byOrder(orderId);
+  public ResponseEntity<OrderFulfillmentView> getOrderFulfillment(
+      @Nullable String orderId, @Nullable String orderNumber) {
+    var v = lookups.find(orderId, orderNumber);
     var out = new OrderFulfillmentView();
     out.setOrderId(v.orderId());
     out.setWorkOrders(v.workOrders().stream().map(OperationsController::workOrder).toList());
