@@ -71,6 +71,7 @@ GET /api/v1/centers/{centerId} OPERATOR
 GET /api/v1/centers/{centerId}/calendar OPERATOR
 GET /api/v1/change-requests/{changeRequestId} OPERATOR
 GET /api/v1/claims CUSTOMER,OPERATOR
+GET /api/v1/claims/counts CUSTOMER,OPERATOR
 GET /api/v1/claims/metrics/refunds OPERATOR
 GET /api/v1/claims/{claimId} CUSTOMER,OPERATOR
 GET /api/v1/claims/{claimId}/decisions/{requestId} OPERATOR
@@ -78,6 +79,8 @@ GET /api/v1/claims/{claimId}/refunds CUSTOMER,OPERATOR
 GET /api/v1/claims/{claimId}/withdrawals/{requestId} CUSTOMER
 GET /api/v1/consent-terms PUBLIC
 GET /api/v1/consent-terms/{consentType}/{version} PUBLIC
+GET /api/v1/content-drafts OPERATOR
+GET /api/v1/content-drafts/counts OPERATOR
 GET /api/v1/content-drafts/{draftId} OPERATOR
 GET /api/v1/content-images/{imageId} PUBLIC
 GET /api/v1/content-import-batches/{batchId} OPERATOR
