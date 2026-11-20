@@ -5,7 +5,7 @@
 - 문서 버전: 0.1 (**초안 — 사용자 승인 전**)
 - 작성: Claude, 2026-11-20 (사용자 "고객앱 정책 관련해서 md 파일을 docs/rag/ragdocs 안에 만들어줘")
 - 근거: ADR-0074(가입 휴대폰 확인), ADR-0077(탈퇴), ADR-0078(네이버 로그인), ADR-0081(찜), BR-72(가입 다시 시작), 개인정보 처리방침 2026-11-20판(`services/customer-service/src/main/resources/consent-terms/PRIVACY_POLICY/2026-11-20.md`)
-- 작성 규칙: `docs/business/customer-faq/README.md` 와 같음 — 고객에게 말하는 말투, 절 끝 지위 태그(`[확정 정책]`·`[채택 설계]`·`[설계안]`), 내부 처리·내부 용어 넣지 않음.
+- 작성 규칙: `docs/business/customer-faq/README.md` 와 같음 — 고객에게 말하는 말투, 내부 처리·내부 용어 넣지 않음. 절 제목에 지위 태그는 달지 않는다(사용자 2026-11-20).
 
 ## 문서 목록
 
