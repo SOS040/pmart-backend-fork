@@ -4,7 +4,15 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 
 - 고칠 때: 끝나면 줄 앞을 `- [x]` 로 바꾸고 날짜·커밋을 붙인다. 다 끝난 절은 맨 아래 "끝난 것"으로 옮긴다.
 - PR 검토·병합·PR 배포는 PR 세션 몫(이 문서에 넣지 않는다).
-- 마지막 갱신: 2026-11-20.
+- 마지막 갱신: 2026-11-21.
+
+## 0. 2026-11-21 정리 — 사용자 "9시 이후에 할게"
+- [ ] **LAN 행사 승인 2건(사용자)** — 백오피스 승인 화면, MARKETING·OPERATOR_ADMIN: 배차 불가 보상 2,000원 `AP-477d415d-…`(행사 `PRM-f1be8d6d-…`), 가입 축하 3,000원 `AP-5b307c83-…`(`PRM-45734b27-…`). 내가 다른 시험 계정으로 승인하는 것은 자동 모드가 막음(감독 우회). 승인 뒤 PC 1: 행사 RUNNING·대기 보상 발급·"보상 쿠폰이 도착했어요" 알림 확인.
+- [ ] **처리방침 "가입 쿠폰 지급 기록 탈퇴 후에도 보관" 기간** — 지금 기간 없음(사용자 "계속 막기"). 다른 항목은 기간을 적는다(첫 구매 5년) — 기간을 정할지 사용자 결정.
+- [ ] **RAG 채팅 14일 자동 삭제 켜기** — PC 4 가 `PolicyQuestionFlowIT` 시험을 고친 뒤 pmart-config `pmart.assistant.answers.retention: 14d` → 켜면 프론트 백오피스 세션에 알림(#339 화면 안내 문구가 이것을 말함).
+- [ ] **결제 모니터링(Grafana) 마무리** — 2026-11-20 초안(지표·경보·대시보드), 커밋·시험·배포 안 함(작업 트리에 그대로).
+- [ ] 고객 앱 회신 기다림 — 쿠폰·할인가·BR-71 LAN 실기기 확인, 쿠폰 알림 목적지(쿠폰함) 필요 여부(`handoff/clients/customer-app/2026-11-21-reply-coupons-questions.md`).
+- [ ] 나중(ADR-0082 범위 밖): 할인가 기준 가격순·할인율순 정렬, 상품 쿠폰·1+1.
 
 ## 1. 사용자 확인·결정 기다림
 - [ ] **O-1 나머지 — 전달 실패를 주문에 어떻게 보일지**(2026-11-19 추가, order-service = PC 1): 사고·파손은 재발송 사가가 처리하지만, 고객 부재 같은 다른 실패는 주문에 아무것도 남지 않는다(`Order.shipments` 늘 빈 목록). (가) 지금처럼 — 상담원 안내 / (나) 주문 상세 배송 목록에 그 배송을 "전달 실패"로(주문 상태·돈은 그대로) — **추천 (나)**. 요청서 `service-requests/order-service.md` O-1.
@@ -14,7 +22,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 
 - [ ] **Tailscale 시험 경로 내리기**(설정·계정 바꾸기·내리기 방법 `docs/operations/tailscale-lte-test-setup.md`, 2026-11-19 — 사용자가 계정 바꾸는 중)(2026-11-18 — PC 1 이 192.168.0.40/32 를 tailnet 에 광고 중, 라이더 폰 LTE 위치 시험용): 시험 끝나면 `"C:\Program Files\Tailscale	ailscale.exe" up --advertise-routes=` + 관리 화면 승인 해제(사용자).
 
-- [ ] **CL-5 쿠폰만 남음**(취소·환불·알림은 2026-11-19 구현 — claim 0.7.0, LAN 배포 전; 쿠폰은 promotion-service 를 만들 때 — 사용자 "추천대로") — 원래 줄: **CL-5 배차 불가 취소 → 전액 환불 + 2,000원 쿠폰**(2026-11-19 PC 5 세션 요청 — 사용자 결정은 PC 5 쪽 "1,2,3 전부"·"쿠폰 2000원"): 요청서 `service-requests/claim-service.md` CL-5(PR #228 안 — 병합 뒤). PC 1 몫: ① claim 직원 전체 취소 사유 `DISPATCH_UNAVAILABLE` — 상품준비 뒤라도 인계 전이면(MFC_SUPERVISOR·CS_AGENT·OPERATOR_ADMIN, 인계 뒤 422) ② promotion 같은 주문 한 번 2,000원 쿠폰(**유효기간·최소 주문금액은 사용자 확인 필요**) ③ notification 취소·환불 알림 문구 + `fcm.customer-templates` 에 `DISPATCH_DELAYED` ④ 게이트웨이 `/api/v1/dispatch-delays`(#228). **PC 1 사용자 지시 기다림.**
+- [x] **CL-5 쿠폰** — 2026-11-21 ADR-0082 5단계(a0d2c884) + 쿠폰 도착 알림(3404d76b) + MFC 백오피스 DC-1(claim 0.11.0 c5a4fc54). 남은 것은 아래 §0 행사 승인.
 
 - [ ] **상품 검색 개선**(2026-11-19 분석 — `docs/operations/2026-11-19-search-performance-analysis.md`, 사용자 "할일목록에 추가" — 시작은 사용자 지시 뒤). 지금 규모에서 검색은 빠르다(서버 약 10ms) — 고칠 것은 오류·튀는 지연·장애 번짐:
   - **다음 계획(2026-11-19 밤): `docs/operations/2026-11-19-search-next-plan.md`** — 사용자 선택 5(별점·리뷰 정렬)·6(인기순)·7(동의어·오타), 순서 11(앱 쪽 크기 20, 요청서) → 5+6(products-v6 한 번에) → 7. 시작 전 결정은 그 문서 끝. ④ LAN 배포는 사용자가 나중에.
@@ -39,7 +47,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] 푸시 FID 전환 — 앱이 `register()`(FID)로 옮길 때 PC 1 이 먼저 서버를 FCM `fid` 칸으로(회신 `handoff/clients/customer-app/2026-11-18-reply-customer-push-q6-q8.md`).
 - [ ] 고객앱 레퍼런스 갭 — 고객 앱이 B-2(백엔드 없음) 중 먼저 필요한 것을 알려 오면 요청서로(`handoff/clients/customer-app/2026-11-18-notice-reference-gap-update.md`).
 
-- [ ] **휴대폰 확인 스위치 + 처리방침 새 판 켜기**(2026-11-20, 사용자 "둘 다 앱 반영 뒤") — 고객 앱이 AUTH_IDENTITY·휴대폰 확인 화면을 반영하면 같은 날: 처리방침 시행일 고치기 → customer 재배포 → 설정(privacy-policy 판·require-identity true) → auth·customer 재시작. 순서·이유 `docs/operations/2026-11-20-pending-identity-switch-and-home-promotion.md` §1.
+- [x] **휴대폰 확인 스위치 + 처리방침** — 2026-11-20 켬(require-identity·처리방침 2026-11-20), 2026-11-21 처리방침 2026-11-21 판(가입 쿠폰 지급 기록).
 
 ## 5. 사용자가 직접 확인할 것 (브라우저·실기기 — 확인했다고 하면 지운다)
 1. 고객 앱 실서버: 라이더 앱으로 주문 하나 배달 → 리뷰 쓰기·사진·수정·삭제, 알림함(주문 확정 → 준비 → 출발 → 완료).
