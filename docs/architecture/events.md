@@ -130,7 +130,7 @@
 | `PackageHandedOver` | mfc-fulfillment | order, delivery-execution, delivery-dispatch, claim, demand-planning, BI | orderId, shipmentId, deliveryId, packageId, riderId, handoverId, inventoryCommitId, lines[], handedAt | QR 전수 스캔·fence·inventory 커밋 후 | ① |
 | `WorkStopResult` | mfc-fulfillment | order-orchestration, claim | orderId, stopRequestId, perPackage[{packageId, STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER}], notStartedLines[] (작업 지시 전 중지), claimId | 중지 요청 판정 | ① |
 | `PackageInvalidated` | mfc-fulfillment | delivery-dispatch, delivery-execution | packageId, newPackageId, reason | 재포장(구 라벨 무효) | ① |
-| `TaskProgressed` | mfc-fulfillment / mfc-inbound | mfc-capacity, backoffice-bff | taskId, type, state, qty | 작업 전이 | ① |
+| `TaskProgressed` | mfc-fulfillment / mfc-inbound | mfc-capacity(PACK WAITING→READY + pickedBy → 피커에게 바로 배정, 2026-11-20 ADR-0078), backoffice-bff | taskId, type, state, qty, pickedBy(PACK), controlledBy·blockKind·reason(관리자 조작) | 작업 전이 | ① |
 | `SupplyRequestSubmitted` | mfc-inbound | replenishment | supplyRequestId, version, mfcId, lines[], requestedReadyAt, urgency, reason, recommendationRef | 로컬 DRAFT→SUBMITTED | ② |
 | `InboundArrivalRecorded` | mfc-inbound(2026-11-20 발행 — 도착 등록 때, mfc.inbound.v1) | transport-execution, replenishment(둘 다 구독 전) | trfId, tripId, stopId, arrivedAt | 차량 도착 기록(수령 아님) | ② |
 | `ReceiptDiscrepancyReported` | mfc-inbound(2026-11-20 발행 — 수령이 재고 반영되고 SKU 별 출발 수량 ≠ 인수일 때, mfc.inbound.v1) | cdc-inventory, transport-execution, replenishment, case(모두 구독 전) | trfId, departureId, expected, received, missingQty, excessQty | 수령 차이 | ② |
@@ -154,7 +154,7 @@
   - mfc-quality: `QualityDecisionMade`, `DisposalApproved`, `ReturnInspected`, `QualityIncidentImpactAssessed`(2026-11-19 R6 — 품질 사고 영향 LOT 이 인계된 주문, 바뀔 때마다 전체 목록; 구독 case-service 요청 CS-MFC-Q) · mfc-location: `MfcLocationStateChanged` · mfc-inbound: `SupplyRequestSubmitted`, `ReturnItemReceived`, `InboundArrivalRecorded`·`ReceiptDiscrepancyReported`(2026-11-20 — 입고 예정, 원천 사건이 아직 없어 실제로는 안 나감)
 - **아직 발행 안 함**(동기 응답으로 대신하거나 앞 흐름이 없음): `InventoryHeld`(예약은 동기 응답 — orchestration 이 응답으로 진행), `MfcReceiptPosted`·`ReceiptCorrectionPosted`(CDC 이송 흐름 없음), `MfcStockAvailable`(③), `CapacityHoldResult`(동기 응답), `ReceivingCapabilityChanged`(구독자 없음 — 값은 설정), (회수품 사건은 2026-11-08 부터 발행)
 - **실제 구독(토픽 → 서비스: 처리하는 사건, 나머지는 inbox 만)**
-  - `mfc.fulfillment.v1` → order-orchestration: `LineShortageReported` · mfc-quality: `LineShortageReported`(DAMAGED → 품질 사고, 2026-11-19) · order: `PreparationStarted` · claim: `WorkStopResult`
+  - `mfc.fulfillment.v1` → order-orchestration: `LineShortageReported` · mfc-quality: `LineShortageReported`(DAMAGED → 품질 사고, 2026-11-19) · order: `PreparationStarted` · claim: `WorkStopResult` · mfc-capacity: `TaskProgressed`(PACK 피킹 끝 → 피커 배정, 2026-11-20 ADR-0078 — 설정 저장소에 바인딩 `fulfillmentEvents-in-0` 필요)
   - `mfc.inventory.v1` → order: `ReservationBlocked`(이행 확인 필요)·`ReservationBlockCleared`(자동 종결) · mfc-inbound: `InventoryExecutionApplied`·`InventoryReleased`·`InventoryHoldExpired`·`StockAdjusted`(보충 즉시 점검)·`StockHoldResolved`(찾은 양 적치 작업, 2026-11-20) · mfc-fulfillment: `ReservationBlocked`(피킹 중 보류 점검)
   - `mfc.capacity.v1` → mfc-fulfillment: `AssignmentPublished`
   - `mfc.location.v1` → mfc-inventory: `MfcLocationStateChanged`

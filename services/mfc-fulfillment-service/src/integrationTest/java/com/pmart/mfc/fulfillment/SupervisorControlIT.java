@@ -681,6 +681,10 @@ class SupervisorControlIT extends PostgresKafkaContainerSupport {
     JsonNode p = task(pack);
     assertThat(p.path("state").asString()).isEqualTo("READY");
     assertThat(p.path("remainingQty").asInt()).isEqualTo(1); // 집은 1개만 포장
+    // 포장 준비 사건에 피커(0.31.0, ADR-0078 — capacity 가 바로 배정)
+    assertThat(lastEvent("TaskProgressed", pack))
+        .contains("\"previousState\": \"WAITING\"")
+        .contains("\"pickedBy\": \"w1\"");
     // 결품 목록에는 사유 PARTIAL_CLOSE 로 남고, 결품률 지표에는 세지 않는다
     JsonNode list =
         call("GET", SUP, "/shortages?mfcId=" + MFC + "&reason=PARTIAL_CLOSE", null, null).body();

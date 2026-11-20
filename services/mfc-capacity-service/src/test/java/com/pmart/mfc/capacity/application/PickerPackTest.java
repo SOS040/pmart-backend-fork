@@ -25,6 +25,47 @@ class PickerPackTest {
     assertThat(AssignmentService.pickerMayTake(pick, "w2")).isTrue();
   }
 
+  static com.pmart.common.messaging.EventEnvelope progressed(java.util.Map<String, Object> p) {
+    return com.pmart.common.test.EventEnvelopeFixtures.envelope("TaskProgressed")
+        .from("mfc-fulfillment-service")
+        .aggregate("Task", "S1-PACK", 2)
+        .payload(p)
+        .build();
+  }
+
+  /** 피킹 끝 PACK 바로 배정(ADR-0078) — PACK 이 WAITING → READY 로 풀린 사건 + 피커가 있을 때만. */
+  @Test
+  void onlyPackReleasedFromWaitingWithPickerIsAssignedToPicker() {
+    var base =
+        new java.util.HashMap<String, Object>(
+            java.util.Map.of(
+                "taskId",
+                "S1-PACK",
+                "mfcId",
+                "MFC-1",
+                "type",
+                "PACK",
+                "state",
+                "READY",
+                "previousState",
+                "WAITING",
+                "pickedBy",
+                "w1"));
+    assertThat(AssignmentService.packReleasedToPicker(progressed(base))).isTrue();
+    var noPicker = new java.util.HashMap<>(base);
+    noPicker.remove("pickedBy");
+    assertThat(AssignmentService.packReleasedToPicker(progressed(noPicker))).isFalse();
+    var assigned = new java.util.HashMap<>(base);
+    assigned.put("state", "ASSIGNED");
+    assertThat(AssignmentService.packReleasedToPicker(progressed(assigned))).isFalse();
+    var pick = new java.util.HashMap<>(base);
+    pick.put("type", "PICK");
+    assertThat(AssignmentService.packReleasedToPicker(progressed(pick))).isFalse();
+    var started = new java.util.HashMap<>(base);
+    started.put("previousState", "READY");
+    assertThat(AssignmentService.packReleasedToPicker(progressed(started))).isFalse();
+  }
+
   @Test
   void ownPackComesBeforeAnyOtherCandidate() {
     for (String type :

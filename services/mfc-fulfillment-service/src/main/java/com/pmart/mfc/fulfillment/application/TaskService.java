@@ -1393,6 +1393,13 @@ public class TaskService {
                 events.taskProgressed(
                     t, "COMPLETED", t.state(), t.version() + 1, t.startedBy(), null, now);
                 store.releasePack(t.shipmentId(), now);
+                // 포장 준비 사건(0.31.0) — 피킹 실적으로 끝날 때와 같게(capacity 가 피커에게 PACK 배정, ADR-0078)
+                store
+                    .sibling(t.shipmentId(), "PACK")
+                    .ifPresent(
+                        p ->
+                            events.taskProgressed(
+                                p, p.state(), "WAITING", p.version(), null, null, now));
               } else if (closing
                   || ("BLOCKED".equals(t.state())
                       && TaskControlService.KIND_SUPERVISOR.equals(t.blockKind()))) {

@@ -908,6 +908,75 @@ public class AssignmentService {
     }
   }
 
+  // ---------- 피킹 끝 → 그 출고 PACK 을 피커에게(0.32.0, ADR-0078) ----------
+
+  public static final String PICKER_PACK = "PICKER_PACK";
+
+  /** mfc.fulfillment.v1 TaskProgressed 중 PACK 이 대기에서 풀린 것(피킹 끝)·피커가 실린 것만. */
+  public static boolean packReleasedToPicker(EventEnvelope e) {
+    if (!"TaskProgressed".equals(e.eventType())) {
+      return false;
+    }
+    var p = e.payload();
+    return "PACK".equals(p.path("type").asString(""))
+        && "WAITING".equals(p.path("previousState").asString(""))
+        && "READY".equals(p.path("state").asString(""))
+        && !p.path("pickedBy").asString("").isBlank()
+        && !p.path("mfcId").asString("").isBlank();
+  }
+
+  /**
+   * 피킹이 끝나 PACK 이 READY 가 되면 바로 피커에게 SYSTEM 배정(사용자 결정 2026-11-20 "응" — PDA 에서 "다음 작업 받기"를 누르지 않아도,
+   * 사건 83072555 PACK 14분 미배정). inbox 트랜잭션 안. 이미 활성 배정이 있거나 피커가 지금 PACK 을 맡을 수 없으면(등록·ACTIVE·일일크루
+   * 등록·유효 업무에 PACK — {@link WorkerService#rejection}, 휴게 중, 근무 밖·근무 판단 실패) 아무것도 안 함 — 예전처럼 READY(다음
+   * 작업 받기가 피커에게만 준다). 같은 사건 재전달은 inbox, 다른 경로와 경합은 활성 1건 유일 색인(실패면 사건 재처리 → 이미 배정 → 그대로).
+   */
+  public void assignPackToPicker(EventEnvelope e) {
+    var p = e.payload();
+    String mfcId = p.path("mfcId").asString("");
+    String taskId = p.path("taskId").asString("");
+    String picker = p.path("pickedBy").asString("");
+    if (store.lockActive(taskId).isPresent()) {
+      return; // 센터 관리자·다음 작업 받기가 먼저 — 덮지 않는다
+    }
+    String reject = workers.rejection(mfcId, picker, "PACK", null);
+    if (reject != null) {
+      log.info("PACK {} 피커 {} 자동 배정 안 함({}) — READY 그대로", taskId, picker, reject);
+      return;
+    }
+    if (workers.onBreak(mfcId, picker)) {
+      log.info("PACK {} 피커 {} 휴게 중 — READY 그대로", taskId, picker);
+      return;
+    }
+    Instant at = clock.instant();
+    try {
+      if (workers.offShift(mfcId, picker, at)) {
+        log.info("PACK {} 피커 {} 근무 밖 — READY 그대로", taskId, picker);
+        return;
+      }
+    } catch (RuntimeException ex) {
+      log.warn("PACK {} 피커 {} 근무 판단 못 함 — READY 그대로: {}", taskId, picker, ex.getMessage());
+      return;
+    }
+    AssignmentRow row =
+        new AssignmentRow(
+            "ASG-" + UUID.randomUUID(),
+            mfcId,
+            taskId,
+            "PACK",
+            picker,
+            store.maxVersion(taskId) + 1,
+            "ACTIVE",
+            null,
+            SYSTEM,
+            PICKER_PACK,
+            at,
+            null);
+    store.insert(row);
+    publish(row, SYSTEM);
+    log.info("PACK {} 피킹 끝 → 피커 {} 에게 바로 배정(v{})", taskId, picker, row.assignmentVersion());
+  }
+
   /**
    * 배정 이력(0.31.0, R-29 관리 탭 — ADR-0077): 한 작업의 배정 행 전부(버전 순, 배정·끝 누가·언제·왜). 그 센터 MFC_SUPERVISOR,
    * OPERATOR_ADMIN(모든 센터), 서비스 토큰.

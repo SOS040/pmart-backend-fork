@@ -45,6 +45,7 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired org.springframework.kafka.core.KafkaTemplate<String, String> kafka;
 
   RestClient http;
 
@@ -207,6 +208,108 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
                     null)
                 .status())
         .isEqualTo(403);
+  }
+
+  void packReleased(String pack, String picker) {
+    kafka
+        .send(
+            "mfc.fulfillment.v1",
+            pack,
+            com.pmart.common.test.EventEnvelopeFixtures.envelope("TaskProgressed")
+                .from("mfc-fulfillment-service")
+                .aggregate("Task", pack, 2)
+                .payload(
+                    Map.of(
+                        "taskId",
+                        pack,
+                        "mfcId",
+                        MFC,
+                        "type",
+                        "PACK",
+                        "state",
+                        "READY",
+                        "previousState",
+                        "WAITING",
+                        "pickedBy",
+                        picker))
+                .buildJson())
+        .join();
+  }
+
+  int activeCount(String task, String worker) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM task_assignment WHERE task_id = ? AND worker_id = ? AND state = 'ACTIVE'",
+        Integer.class,
+        task,
+        worker);
+  }
+
+  void awaitActive(String task, String worker) {
+    long until = System.currentTimeMillis() + 20_000;
+    while (System.currentTimeMillis() < until && activeCount(task, worker) == 0) {
+      try {
+        Thread.sleep(200);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
+  }
+
+  /** 피킹 끝 PACK → 피커에게 바로 SYSTEM 배정(0.32.0, ADR-0078). 맡을 수 없음·이미 배정이면 그대로. */
+  @Test
+  void packIsAssignedToPickerWhenPickingEnds() throws Exception {
+    String picker = "pk-" + UUID.randomUUID().toString().substring(0, 6);
+    register(picker, List.of("PICK", "PACK"), List.of("AMBIENT"));
+    String pack = "S-" + UUID.randomUUID() + "-PACK";
+    packReleased(pack, picker);
+    awaitActive(pack, picker);
+    assertThat(activeCount(pack, picker)).isEqualTo(1);
+    var row =
+        jdbc.queryForMap(
+            "SELECT assigned_by, reason, assignment_version FROM task_assignment WHERE task_id = ?",
+            pack);
+    assertThat(row.get("assigned_by")).isEqualTo("SYSTEM");
+    assertThat(row.get("reason")).isEqualTo("PICKER_PACK");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'AssignmentPublished' AND aggregateid = ?",
+                Integer.class,
+                "MANUAL:" + pack))
+        .isEqualTo(1);
+    // 같은 내용 다시(다른 사건) → 이미 활성 배정 — 늘지 않음
+    packReleased(pack, picker);
+    // PACK 업무가 없는 피커 → 배정 안 함
+    String pickOnly = "po-" + UUID.randomUUID().toString().substring(0, 6);
+    register(pickOnly, List.of("PICK"), List.of("AMBIENT"));
+    String pack2 = "S-" + UUID.randomUUID() + "-PACK";
+    packReleased(pack2, pickOnly);
+    // 센터 관리자가 먼저 다른 사람에게 배정 → 덮지 않음
+    String pack3 = "S-" + UUID.randomUUID() + "-PACK";
+    register("wrk-1", List.of("PICK", "PACK"), List.of("AMBIENT"));
+    assertThat(
+            assign(
+                    SUPERVISOR,
+                    Map.of("mfcId", MFC, "taskId", pack3, "taskType", "PACK", "workerId", "wrk-1"),
+                    0)
+                .status())
+        .isEqualTo(201);
+    packReleased(pack3, picker);
+    // 마지막 사건까지 처리됐는지는 앞 사건과 같은 파티션 순서로 본다 — 표지 사건 하나 더
+    String marker = "S-" + UUID.randomUUID() + "-PACK";
+    packReleased(marker, picker);
+    awaitActive(marker, picker);
+    Thread.sleep(500);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM task_assignment WHERE task_id = ?", Integer.class, pack))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM task_assignment WHERE task_id = ?", Integer.class, pack2))
+        .isZero();
+    assertThat(activeCount(pack3, "wrk-1")).isEqualTo(1);
+    assertThat(activeCount(pack3, picker)).isZero();
   }
 
   /** 배정 이력(0.31.0, R-29 ADR-0077): 배정·재배정·해제를 버전 순으로 — 누가·언제·왜. 센터 관리자·본사 관리자만. */

@@ -58,6 +58,10 @@
             "trfId": {
               "$ref": "_defs.v1.json#/$defs/Ref"
             },
+            "pickedBy": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "(2026-11-20, ADR-0078) PACK 만 — 같은 출고 PICK 을 끝낸 작업자. 피킹 끝으로 PACK 이 WAITING → READY 가 된 사건이면 mfc-capacity 가 이 사람에게 바로 배정"
+            },
             "controlledBy": {
               "$ref": "_defs.v1.json#/$defs/Ref",
               "description": "(2026-11-20, R-29) 센터 관리자 조작이면 그 운영자"

@@ -62,6 +62,10 @@ public class FulfillmentEvents {
     if (t.assignmentVersion() > 0) {
       p.put("assignmentVersion", t.assignmentVersion());
     }
+    if ("PACK".equals(t.taskType()) && t.pickedBy() != null) {
+      // 같은 출고 PICK 을 끝낸 사람(0.31.0, ADR-0078) — mfc-capacity 가 PACK 을 그 사람에게 바로 배정
+      p.put("pickedBy", t.pickedBy());
+    }
     p.put("orderId", t.orderId());
     p.put("progressedAt", at.toString());
     publish("TaskProgressed", "Task", t.taskId(), version, workerId, p);

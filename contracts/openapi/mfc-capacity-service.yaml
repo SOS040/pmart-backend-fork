@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.31.0
+  version: 0.32.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -48,6 +48,9 @@ info:
     0.31.0(2026-11-20, R-29 2단계 관리 탭 "배정 이력" — ADR-0077): `GET /assignments/history?mfcId=&taskId=`(그 센터 MFC_SUPERVISOR·OPERATOR_ADMIN·서비스) — 한 작업의 배정 행 전부(버전 순):
       누가·언제 배정, 언제·누가·왜 끝(재배정·내놓기·막힘 해제). 배정이 끝날 때 `endedAt`·`endedBy`·`endReason` 을 이제 기록한다(V19 — 그 전 행은 null).
       내놓기 `/internal/assignments/{taskId}/releases` 본문에 `releasedBy`(선택 — fulfillment 가 내놓은 사람·해제한 관리자를 넘긴다)·`reason` 을 저장.
+    0.32.0(2026-11-20, 사용자 결정 "응" — ADR-0078): **피킹이 끝나면 그 출고 PACK 을 피커에게 바로 SYSTEM 배정**(mfc.fulfillment.v1 `TaskProgressed` PACK WAITING → READY + `pickedBy` 구독, 바인딩 `fulfillmentEvents-in-0`).
+      이미 활성 배정이 있거나, 피커가 등록·ACTIVE·(일일크루 그날 등록)·유효 업무에 PACK 이 아니거나, 휴게 중·근무 밖(근무 판단 실패 포함)이면 하지 않는다(READY 그대로 — 다음 작업 받기가 예전처럼 피커에게만).
+      배정은 다음 작업 받기와 같은 행(assignedBy SYSTEM, reason `PICKER_PACK`)·같은 AssignmentPublished. PDA 의 다음 작업 받기는 들고 있는 이 배정을 돌려준다. API 모양 변화 없음.
 servers:
   - url: /api/v1
 security:
