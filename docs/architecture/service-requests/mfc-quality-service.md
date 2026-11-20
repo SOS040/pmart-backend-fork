@@ -22,3 +22,11 @@
 - 사건 상태(접수·처리 중·닫힘)를 사고 상세에 보이려면 `CaseAssigned`·`CaseClosed`·`CaseReopened`(같은 토픽, caseId) — 또는 센터 관리자 토큰으로 case `GET /cases/{caseId}`(자기 센터 MFC_QUALITY_IMPACT 보기 가능).
 - 근거: `case-service.md` CS-MFC-Q 상태 절, 계약 `contracts/events/CaseOpened.v1.json`·`case-service.yaml` 0.31.0.
 - **상태**: 요청(PC 3).
+
+## MQ-3. 회수품 검수 담당이 작업 배정과 어긋남 + 서비스 문서 정리 (2026-11-20, 보낸 영역 platform — PC 1)
+- **왜**: MFC 사내 정책 문서(`docs/rag/rag-docs/mfc/`)를 쓰다 찾음. mfc-capacity 0.24.0 은 **회수품 검수** 작업을 다음 작업 받기로 업무에 품질검사가 있는 작업자에게 준다. 그런데 mfc-quality 검수 접수는 **반입한 사람이 아닌 MFC_SUPERVISOR** 만 받는다 → 관리자가 아닌 작업자는 작업을 받고도 검수가 거절된다.
+- **요청**: 둘 중 하나로 맞추기 — (가) quality 가 업무 자격(품질검사) 작업자도 받게, 또는 (나) capacity 가 회수품 검수를 센터 관리자에게만 주게. 어느 쪽이 업무 규칙인지 사용자 결정이 필요하면 PC 3 이 묻기.
+- **문서도 본인이 고쳐 주세요(사용자 2026-11-20 "그 문서 본인이 변경하라고 알려줘")**:
+  - `services/mfc-fulfillment-service/CLAUDE.md` 0.13.0 절 — 인계 라벨 번호를 "6자리"로 적음. 코드는 V19(0.23.0)부터 **4자리·5번 틀리면 잠김**.
+  - `services/mfc-inventory-service/CLAUDE.md` — UTF-8 로 읽히지 않는(깨진) 줄이 있음. UTF-8(LF)로 다시 저장.
+- **상태**: 요청(PC 3).
