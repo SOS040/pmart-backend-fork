@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.13.0
+  version: 0.13.1
   description: |
+    0.13.1(2026-11-20 BR-72 — 사용자 "(가)로 해줘, 1번"): 내부 동의 상태 `GET /internal/accounts/{id}/consents` 에 `fresh=true` — 저장된 계정 동의·기기 동의를 무시하고
+    필수·선택 전부를 고르지 않은 것으로 답한다(가입을 끝내지 않은 계정이 다시 로그인하면 auth 가 동의부터 다시 받는다).
     0.13.0(2026-11-20, ADR-0081 — 사용자 "찜 기능 넣고 싶어"): 찜(위시리스트) — 회원만, 상품(productId) 단위, 최대 200개(정책값 `pmart.customer.wishlist.max-items`).
     `PUT`·`DELETE /me/wishlist-items/{productId}`(멱등 — 이미 있으면 그대로, 없으면 204), `GET /me/wishlist-items`(최근 찜한 순, 상품명·대표 사진·가격·판매 상태는
     조회 때 product-content 카드에서 — 실패하면 그 칸만 null), `GET /me/wishlist-product-ids`(하트 표시용 전체 ID). 품절·판매 종료도 남긴다. 재입고 알림 없음.
@@ -1013,6 +1015,11 @@ paths:
           required: false
           description: '(0.6.0) 로그인한 기기 — 계정에 현행 버전 결정이 없는 항목은 그 기기의 (아직 옮기지 않은) 현행 버전 결정을 결정한 것으로 본다(쓰지 않음 — 옮기기는 device-consent-migrations)'
           schema: { type: string, maxLength: 128 }
+        - name: fresh
+          in: query
+          required: false
+          description: '(0.13.1, BR-72) true 면 저장된 계정·기기 동의를 무시하고 모든 필수를 missingRequired·모든 선택을 undecidedOptional 로(가입 다시 시작). 항목 목록(items)은 저장값 그대로'
+          schema: { type: boolean, default: false }
       responses:
         '200':
           description: OK

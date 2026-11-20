@@ -375,6 +375,58 @@ class CustomerConsentLoginIT extends PostgresKafkaContainerSupport {
     assertThat(back.body().path("newAccount").asBoolean()).isTrue();
   }
 
+  /**
+   * 가입을 끝내지 않고 나간 계정(회원이 된 적 없음)은 다음 로그인에서 동의부터 다시(2026-11-20 BR-72, 사용자 "(가)·1번") — 저장된 동의가 충족이어도
+   * customer 에 fresh=true 로 물어 필수·선택 전부를 다시 받는다. 회원이 된 계정은 fresh 없이 그대로.
+   */
+  @Test
+  void 가입을_끝내지_않은_계정은_다음_로그인에서_동의부터_다시() {
+    String sub = "g-" + UUID.randomUUID();
+    String device = "phone-" + UUID.randomUUID();
+    Res first = login(UUID.randomUUID().toString(), device, CustomerSocialLoginIT.google(sub));
+    assertThat(first.body().path("state").asString()).isEqualTo("AUTH_CONSENT");
+    String accountId = first.body().path("accountId").asString();
+    // 지난번에 동의를 저장해 둔 것처럼 — fresh 없이 물으면 충족, fresh=true 면 전부 다시
+    String path = "/api/v1/internal/accounts/" + accountId + "/consents";
+    stubStatus(urlPathEqualTo(path), List.of(), List.of());
+    customer.stubFor(
+        WireMock.get(urlPathEqualTo(path))
+            .withQueryParam("fresh", equalTo("true"))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(status(REQUIRED, List.of("MARKETING:2026-11-17")))));
+
+    Res again = login(UUID.randomUUID().toString(), device, CustomerSocialLoginIT.google(sub));
+    assertThat(again.body().path("state").asString()).isEqualTo("AUTH_CONSENT");
+    assertThat(again.body().path("accountId").asString()).isEqualTo(accountId);
+    assertThat(strings(again.body().path("requiredConsents"))).containsExactlyElementsOf(REQUIRED);
+    assertThat(strings(again.body().path("optionalConsents")))
+        .containsExactly("MARKETING:2026-11-17");
+    customer.verify(
+        WireMock.getRequestedFor(urlPathEqualTo(path)).withQueryParam("fresh", equalTo("true")));
+
+    // 동의 완료로 회원이 되면 다음 로그인은 fresh 없이(이미 회원 — 저장된 동의로 판단)
+    assertThat(
+            complete(
+                    again.body().path("authRequestId").asString(),
+                    UUID.randomUUID().toString(),
+                    device,
+                    CustomerSocialLoginIT.google(sub),
+                    REQUIRED)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("AUTH_MEMBER");
+    customer.resetRequests();
+    Res member = login(UUID.randomUUID().toString(), device, CustomerSocialLoginIT.google(sub));
+    assertThat(member.body().path("state").asString()).isEqualTo("AUTH_MEMBER");
+    customer.verify(
+        0, WireMock.getRequestedFor(urlPathEqualTo(path)).withQueryParam("fresh", equalTo("true")));
+  }
+
   @Test
   void 약관_버전이_바뀐_기존_회원은_다음_로그인에서_다시_동의한다() {
     String sub = "g-" + UUID.randomUUID();

@@ -126,12 +126,21 @@ public class ConsentService {
    *     옮기지 않은 결정을 넣는다(쓰지 않음). 항목 목록은 계정 값 그대로
    */
   public Overview overview(String accountId, @Nullable String deviceId) {
+    return overview(accountId, deviceId, false);
+  }
+
+  /**
+   * @param fresh 가입 다시 시작(2026-11-20 BR-72, 사용자 "(가)·1번") — 저장된 계정·기기 동의를 판단에 쓰지 않는다(모두 다시 묻는다)
+   */
+  public Overview overview(String accountId, @Nullable String deviceId, boolean fresh) {
     Map<ConsentItem, String> current = currentVersions();
     Map<ConsentItem, Stored> stored = consents.consents(accountId);
     Map<ConsentItem, Stored> judged =
-        deviceId == null || deviceId.isBlank()
-            ? stored
-            : ConsentRules.withDevice(current, stored, devices.consents(deviceId.strip()));
+        fresh
+            ? Map.of()
+            : deviceId == null || deviceId.isBlank()
+                ? stored
+                : ConsentRules.withDevice(current, stored, devices.consents(deviceId.strip()));
     return new Overview(
         accountId,
         ConsentRules.status(current, judged),

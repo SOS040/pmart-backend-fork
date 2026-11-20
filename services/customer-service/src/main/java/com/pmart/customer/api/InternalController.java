@@ -75,8 +75,10 @@ public class InternalController implements InternalApi {
   /** [auth→customer] 현행 버전 기준 동의 상태. 계정 행이 없어도 200(가입 중 — 모두 빠짐). */
   @Override
   public ResponseEntity<ConsentStatus> getAccountConsentsInternal(
-      String accountId, String deviceId) {
-    return ResponseEntity.ok(CustomerMapping.consentStatus(consents.overview(accountId, deviceId)));
+      String accountId, String deviceId, Boolean fresh) {
+    return ResponseEntity.ok(
+        CustomerMapping.consentStatus(
+            consents.overview(accountId, deviceId, Boolean.TRUE.equals(fresh))));
   }
 
   /** 로그인한 기기의 동의를 계정으로(2026-11-19 BR-59 — auth 가 로그인·동의 완료 뒤). */

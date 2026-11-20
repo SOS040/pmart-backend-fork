@@ -330,6 +330,10 @@ class ConsentFlowIT extends PostgresKafkaContainerSupport {
     assertThat(internal.path("missingRequired").get(0).asString())
         .isEqualTo("TERMS_OF_SERVICE:" + TERMS);
     assertThat(internal.path("undecidedOptional")).isEmpty(); // 마케팅 거부는 현행 버전의 결정
+    // fresh=true(2026-11-20 BR-72 — 가입 다시 시작): 저장된 결정을 무시하고 필수 전부·선택 전부를 다시
+    JsonNode fresh = get(null, "/internal/accounts/" + cu + "/consents?fresh=true").body();
+    assertThat(fresh.path("missingRequired")).hasSize(3);
+    assertThat(fresh.path("undecidedOptional").toString()).contains("MARKETING:" + TERMS);
     assertThat(
             get(null, "/internal/accounts/" + cu + "/status")
                 .body()

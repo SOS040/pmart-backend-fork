@@ -56,6 +56,14 @@ public class CustomerConsentClient {
    *     다시 묻지 않는다
    */
   public ConsentCheck check(String accountId, String deviceId) {
+    return check(accountId, deviceId, false);
+  }
+
+  /**
+   * @param fresh 가입을 끝내지 않은 계정의 다시 로그인(2026-11-20 BR-72) — customer 가 저장된 계정·기기 동의를 무시하고 전부 다시 묻게
+   *     한다
+   */
+  public ConsentCheck check(String accountId, String deviceId, boolean fresh) {
     try {
       JsonNode n =
           Downstream.call(
@@ -66,6 +74,11 @@ public class CustomerConsentClient {
                           u ->
                               u.path("/api/v1/internal/accounts/{id}/consents")
                                   .queryParam("deviceId", deviceId)
+                                  .queryParamIfPresent(
+                                      "fresh",
+                                      fresh
+                                          ? java.util.Optional.of(true)
+                                          : java.util.Optional.empty())
                                   .build(accountId))
                       .retrieve()
                       .body(JsonNode.class));

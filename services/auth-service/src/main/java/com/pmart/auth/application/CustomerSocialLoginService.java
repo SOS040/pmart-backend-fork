@@ -193,10 +193,14 @@ public class CustomerSocialLoginService {
 
     // 필수 동의 판단도 트랜잭션 밖(customer-service 호출). 가입이면 만들 계정 ID 로 묻는다 — customer 에 행이 없어 모두 빠진 것으로 답한다
     String candidate = "CU-" + UUID.randomUUID();
+    // 가입을 끝내지 않고 나갔던 계정(연결은 있으나 회원이 된 적 없음)은 처음부터 — 저장된 동의·기기 동의를 무시하고 전부 다시 묻는다
+    // (2026-11-20 BR-72, 사용자 "(가)로 해줘, 1번"). 이미 회원인 계정의 재동의·첫 가입은 그대로
+    String linkedForConsent = customers.linkedAccount(provider, identity.subject()).orElse(null);
+    boolean restartSignup = linkedForConsent != null && !customers.everMember(linkedForConsent);
     ConsentCheck check =
         props.requireConsent()
             ? consents.check(
-                customers.linkedAccount(provider, identity.subject()).orElse(candidate), deviceId)
+                linkedForConsent == null ? candidate : linkedForConsent, deviceId, restartSignup)
             : null;
 
     // 휴대폰 확인 판단(ADR-0074, 스위치) — 트랜잭션 밖. 가입(연결 없음)은 늘 필요, 기존 계정은 customer 에 확인 번호가 있는지
