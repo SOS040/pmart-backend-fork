@@ -1040,4 +1040,81 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(list.body().path("claimId").asString()).isEqualTo(claimId);
     assertThat(list.body().path("items")).hasSize(7);
   }
+
+  Res eligibility(String accountId) {
+    var e =
+        http.get()
+            .uri("/internal/accounts/{id}/withdrawal-eligibility", accountId)
+            .headers(h -> h.set("X-Source-System", "customer-service"))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  static List<String> obligations(JsonNode body) {
+    List<String> out = new java.util.ArrayList<>();
+    body.path("openObligations")
+        .forEach(o -> out.add(o.path("kind").asString() + ":" + o.path("ref").asString()));
+    return out;
+  }
+
+  /**
+   * 고객 탈퇴 가능 여부(0.9.0, ADR-0077): 클레임 없음 eligible → 접수(STOP_PENDING) CLAIM_IN_PROGRESS → 취소 확정·PG
+   * 결과 대기 CLAIM_IN_PROGRESS + REFUND_IN_PROGRESS → 환불 완료·종결 eligible → (환불이 FAILED 였다면) 종결 상태여도
+   * REFUND_IN_PROGRESS. 남의 클레임은 보이지 않는다.
+   */
+  @Test
+  void withdrawalEligibilityFollowsClaimAndRefund() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    String me = TestJwt.customer(account);
+
+    Res none = eligibility(account);
+    assertThat(none.status()).isEqualTo(200);
+    assertThat(none.body().path("eligible").asBoolean()).isTrue();
+    assertThat(none.body().path("openObligations")).isEmpty();
+    assertThat(none.body().path("asOf").path("asOf").asString()).isNotEmpty();
+
+    order(orderId, account, "CONFIRMED");
+    paymentAccepts(orderId);
+    Res created = post(me, UUID.randomUUID().toString(), cancel(orderId, 10));
+    assertThat(created.status()).isEqualTo(201);
+    String claimId = created.body().path("claimId").asString();
+
+    Res open = eligibility(account);
+    assertThat(open.body().path("eligible").asBoolean()).isFalse();
+    assertThat(obligations(open.body())).containsExactly("CLAIM_IN_PROGRESS:" + claimId);
+    assertThat(eligibility("CU-OTHER-" + UUID.randomUUID()).body().path("eligible").asBoolean())
+        .isTrue();
+
+    orderCancelled(orderId, claimId);
+    Res pending =
+        await(
+            me,
+            "/claims/" + claimId,
+            b -> "PG_PENDING".equals(b.path("refunds").path(0).path("state").asString()));
+    String intentId = pending.body().path("refunds").path(0).path("refundIntentId").asString();
+    assertThat(obligations(eligibility(account).body()))
+        .containsExactly("CLAIM_IN_PROGRESS:" + claimId, "REFUND_IN_PROGRESS:" + claimId);
+
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("refundRequestId", "REFUND-" + intentId);
+    result.put("refundIntentId", intentId);
+    result.put("paymentAttemptId", "PAY-" + orderId);
+    result.put("pgTransactionId", "tcxl_w");
+    result.put("amount", 19_100);
+    result.put("result", "SUCCESS");
+    send("order.payment.v1", "RefundResult", "PaymentAttempt", "PAY-" + orderId, result);
+    await(me, "/claims/" + claimId, b -> "CLOSED".equals(b.path("state").asString()));
+    Res done = eligibility(account);
+    assertThat(done.body().path("eligible").asBoolean()).isTrue();
+    assertThat(done.body().path("openObligations")).isEmpty();
+
+    // 실패한 환불은 돈을 못 돌려준 것 — 클레임이 끝 상태여도 미결(OMS: 환불 실패·장기 미결이면 종결하지 않는다)
+    jdbc.update("UPDATE refund_intent SET state = 'FAILED' WHERE refund_intent_id = ?", intentId);
+    Res failed = eligibility(account);
+    assertThat(failed.body().path("eligible").asBoolean()).isFalse();
+    assertThat(obligations(failed.body())).containsExactly("REFUND_IN_PROGRESS:" + claimId);
+  }
 }

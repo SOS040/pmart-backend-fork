@@ -436,6 +436,25 @@ public class ClaimStore {
         orderId);
   }
 
+  /**
+   * 탈퇴 가능 여부 판정용 — 그 고객의 모든 클레임(접수 순) × (상태, 환불 의도 상태들, 회수비 상태). 판정은 {@link
+   * com.pmart.claim.domain.WithdrawalRules}. 고객 한 명의 클레임은 적어 거르지 않고 다 읽는다(ix_claim_account).
+   */
+  public List<com.pmart.claim.domain.WithdrawalRules.ClaimFacts> withdrawalFacts(String accountId) {
+    return jdbc.query(
+        "SELECT c.claim_id, c.state, f.state AS fee_state,"
+            + " ARRAY(SELECT r.state FROM refund_intent r WHERE r.claim_id = c.claim_id) AS refund_states"
+            + " FROM claim c LEFT JOIN return_fee f ON f.claim_id = c.claim_id"
+            + " WHERE c.account_id = ? ORDER BY c.opened_at, c.claim_id",
+        (rs, i) -> {
+          java.sql.Array a = rs.getArray("refund_states");
+          List<String> refunds = a == null ? List.of() : List.of((String[]) a.getArray());
+          return new com.pmart.claim.domain.WithdrawalRules.ClaimFacts(
+              rs.getString("claim_id"), rs.getString("state"), refunds, rs.getString("fee_state"));
+        },
+        accountId);
+  }
+
   /** 목록(최근 접수 순). accountId 가 있으면 그 고객 것만. */
   public List<ClaimRow> list(
       @Nullable String accountId,

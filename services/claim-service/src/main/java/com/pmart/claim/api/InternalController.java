@@ -2,24 +2,52 @@ package com.pmart.claim.api;
 
 import com.pmart.claim.api.generated.InternalApi;
 import com.pmart.claim.api.generated.model.Claim;
+import com.pmart.claim.api.generated.model.GetWithdrawalEligibility200Response;
+import com.pmart.claim.api.generated.model.GetWithdrawalEligibility200ResponseOpenObligationsInner;
+import com.pmart.claim.api.generated.model.ListClaimRefunds200ResponseAsOf;
 import com.pmart.claim.api.generated.model.SystemCancellationRequest;
 import com.pmart.claim.application.ClaimService;
+import com.pmart.claim.application.WithdrawalEligibilityService;
+import java.time.ZoneOffset;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 InternalApi — 시스템 자동 전체 취소(슬라이스 6a, D6-4). 회수 수령 확인은 인터페이스 default 가 501 을 돌려준다. 업무 규칙은
- * application/domain 에 두고 여기서는 요청·응답 변환만 한다.
+ * 계약 InternalApi — 시스템 자동 전체 취소(슬라이스 6a, D6-4), 고객 탈퇴 가능 여부(0.9.0, ADR-0077). 회수 수령 확인은 인터페이스
+ * default 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
 public class InternalController implements InternalApi {
 
   private final ClaimService claims;
+  private final WithdrawalEligibilityService withdrawals;
 
-  public InternalController(ClaimService claims) {
+  public InternalController(ClaimService claims, WithdrawalEligibilityService withdrawals) {
     this.claims = claims;
+    this.withdrawals = withdrawals;
+  }
+
+  @Override
+  public ResponseEntity<GetWithdrawalEligibility200Response> getWithdrawalEligibility(
+      String accountId) {
+    WithdrawalEligibilityService.Result r = withdrawals.check(accountId);
+    return ResponseEntity.ok(
+        new GetWithdrawalEligibility200Response()
+            .eligible(r.eligible())
+            .openObligations(
+                r.openObligations().stream()
+                    .map(
+                        o ->
+                            new GetWithdrawalEligibility200ResponseOpenObligationsInner()
+                                .kind(o.kind())
+                                .ref(o.ref()))
+                    .toList())
+            .asOf(
+                new ListClaimRefunds200ResponseAsOf()
+                    .asOf(r.asOf().atOffset(ZoneOffset.UTC))
+                    .freshness(ListClaimRefunds200ResponseAsOf.FreshnessEnum.CURRENT)));
   }
 
   @Override
