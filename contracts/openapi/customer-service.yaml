@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-20, CU-3·CU-4 — 백오피스 "고객" 메뉴, 사용자 "가린 이름 · 고객번호 6자리"·"응 그대로 진행해", ADR-0070·ADR-0062): 고객번호 `customerNumber`
+    (숫자 6자리, 첫 자리 1~9, 무작위·겹치지 않음·바뀌지 않음 — 가입 때 서버가 정하고 기존 고객도 채움, 라이더 번호와 같은 방식). 직원 조회(CS_AGENT·OPERATOR_ADMIN):
+    `GET /customers`(고객번호·전화 완전 일치, 또는 고객 ID 여러 개 — 이름 검색·목록 훑기 없음), `GET /customers/{customerId}`(가린 값만),
+    `POST /customers/{customerId}/pii-reveals`(이름·전화 원문 — 사유 + audit-service 기록 뒤에만, 기록 실패면 503). `/me` 에도 customerNumber.
     0.10.0(2026-11-20, ADR-0074 — 고객 BR-64, 사용자 "가입하자마자·한 번호 한 계정·기존 계정 안내·탈퇴 1달", 기존 회원 "(가)"): 가입·로그인 단계 휴대폰 확인을
     auth-service 가 대신 부르는 내부 API(`/internal/accounts/{id}/identity`·`…/identity-verifications`·`…/{vid}/confirmations`) — 토큰 없는 로그인 중 계정용.
     확인된 번호는 한 계정만(`customer_identity`, 유효 번호 해시 고유). 다른 계정의 번호면 확인 결과 outcome IDENTITY_ALREADY_REGISTERED(그 계정 ID·가린 이메일 — auth 가
@@ -49,6 +53,7 @@ tags:
   - { name: withdrawals, description: 탈퇴 접수·철회·완료 }
   - { name: phone-verifications, description: '휴대폰 번호 확인(0.9.0 — OCTOMO, 고객이 대표번호로 문자 보냄)' }
   - { name: internal, description: 서비스 간 조회(서비스 토큰) }
+  - { name: staff, description: '직원용 고객 조회(0.11.0 — 백오피스 고객 메뉴, CS_AGENT·OPERATOR_ADMIN)' }
 
 paths:
   /me:
@@ -598,6 +603,86 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- internal (서비스 토큰) ----------
+  /customers:
+    get:
+      tags: [staff]
+      summary: '[직원] 고객 찾기 — 고객번호·전화 완전 일치, 또는 고객 ID 여러 개 (0.11.0, CU-3·CU-4)'
+      description: |
+        권한 CS_AGENT·OPERATOR_ADMIN(그 밖·고객·라이더 403). `customerNumber`·`phone`·`customerIds` 중 **하나만**(둘 이상이거나 없으면 400).
+        - `customerNumber`: 6자리 완전 일치. `phone`: 휴대전화 숫자(01로 시작 10~11자리, 하이픈·공백 무시) 완전 일치 — 프로필 휴대폰 번호 기준.
+        - `customerIds`: 쉼표로 50개까지(백오피스 bff 가 목록·표에 "김*수 · 482913" 를 붙일 때). 없는 ID 는 빠진다.
+        이름 검색·전체 목록은 없다(BackOffice 개인정보 — 목적별 제한). 응답은 가린 값만. 찾는 전화번호는 로그에 남기지 않는다. 찾기는 열람 기록을 남기지 않는다(원문이 없으므로).
+      operationId: searchCustomersForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerNumber, in: query, schema: { type: string, pattern: '^[1-9][0-9]{5}$' } }
+        - { name: phone, in: query, schema: { type: string, maxLength: 20 } }
+        - { name: customerIds, in: query, schema: { type: string, maxLength: 4000 }, description: '쉼표로 구분한 고객 ID(50개까지)' }
+      responses:
+        '200':
+          description: OK — 찾은 고객(없으면 빈 목록)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffCustomerList' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /customers/{customerId}:
+    get:
+      tags: [staff]
+      summary: '[직원] 고객 상세 — 가린 값만 (0.11.0, CU-4)'
+      description: |
+        권한 CS_AGENT·OPERATOR_ADMIN. 없는 고객 404 CUSTOMER_NOT_FOUND. 이름·전화·이메일은 가린 값만 — 원문은 `POST /customers/{customerId}/pii-reveals`.
+        탈퇴한 고객은 지워진 값 그대로(가린 값 null). 상세 조회 자체는 기록하지 않는다.
+      operationId: getCustomerForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffCustomerDetail' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /customers/{customerId}/pii-reveals:
+    post:
+      tags: [staff]
+      summary: '[직원] 고객 이름·전화 원문 열람 — 사유 필수, 열람 기록 남김 (0.11.0, CU-4, ADR-0062)'
+      description: |
+        권한은 상세와 같다. 처리: 권한 → 고객 확인(없으면 404, 기록하지 않음) → audit-service `POST /internal/pii-access-logs` 에 **동기로** 기록
+        (subjectType CUSTOMER, subjectRef = customerId, caseRef CUSTOMER:<customerId>, 항목·사유·역할) → 기록된 뒤에만 고른 항목 원문.
+        **audit-service 에 닿지 않거나 결과를 모르면 503(DEPENDENCY_UNAVAILABLE·UNKNOWN_RESULT), 원문 없음**.
+        멱등: 같은 직원·같은 고객·같은 Idempotency-Key 면 같은 열람 기록(같은 키에 다른 사유·항목이면 409 — audit 판정). 원문 응답은 저장하지 않는다. 사유·원문은 로그 금지.
+      operationId: revealCustomerPiiForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerPiiRevealRequest' }
+      responses:
+        '200':
+          description: 기록됨 — 고른 항목만 원문, 나머지는 null
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerPiiReveal' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503':
+          description: 열람 기록을 남기지 못함(audit-service 미응답·결과 불명) — 원문을 주지 않는다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /internal/accounts/{accountId}/status:
     get:
       tags: [internal]
@@ -978,6 +1063,61 @@ paths:
 
 components:
   schemas:
+    StaffCustomerSummary:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [customerId, status]
+      properties:
+        customerId: { type: string }
+        customerNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', description: '고객번호 6자리(ADR-0070) — 화면 "김*수 · 482913"' }
+        nameMasked: { type: [string, 'null'], description: '가린 이름(첫·끝 글자). 이름이 없으면 별명을 가려서, 둘 다 없으면 null' }
+        phoneMasked: { type: [string, 'null'], description: '예 010-****-5678' }
+        status: { $ref: '#/components/schemas/AccountStatus' }
+    StaffCustomerList:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/StaffCustomerSummary' } }
+    StaffCustomerDetail:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [customerId, status, phoneVerified, joinedAt]
+      properties:
+        customerId: { type: string }
+        customerNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$' }
+        nameMasked: { type: [string, 'null'] }
+        phoneMasked: { type: [string, 'null'] }
+        emailMasked: { type: [string, 'null'], description: '예 a***@k***' }
+        status: { $ref: '#/components/schemas/AccountStatus' }
+        socialProvider: { type: [string, 'null'], description: '가입 방식 KAKAO·NAVER·APPLE·GOOGLE(화면 배지)' }
+        phoneVerified: { type: boolean, description: '휴대폰 번호 확인됨(0.9.0 OCTOMO·0.10.0 가입 확인)' }
+        joinedAt: { type: string, format: date-time }
+    CustomerPiiField:
+      type: string
+      enum: [NAME, PHONE]
+    CustomerPiiRevealRequest:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 2, maxLength: 200, description: '열람 사유(예 "주문 문의 — 연락"). 앞뒤 공백 제외 2자 이상. audit 에 남고 로그에는 남기지 않는다' }
+        fields:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/CustomerPiiField' }
+          description: 볼 항목. 없으면 둘 다
+    CustomerPiiReveal:
+      type: object
+      x-added-in: '2026-11-20'
+      properties:
+        customerId: { type: string }
+        piiAccessLogId: { type: string, description: audit-service 열람 기록 ID }
+        recordedAt: { type: string, format: date-time }
+        fields: { type: array, items: { $ref: '#/components/schemas/CustomerPiiField' } }
+        name: { type: [string, 'null'], description: NAME 을 골랐을 때만 }
+        phone: { type: [string, 'null'], description: PHONE 을 골랐을 때만 }
     PhoneVerificationStart:
       type: object
       required: [verificationId, state, sendTo, text, expiresAt, phoneMasked]
@@ -1119,6 +1259,7 @@ components:
         phoneVerified: { type: boolean, description: '0.7.0 — 본인 확인을 거친 번호인가. 본인 확인이 아직 없어 늘 false(번호가 없어도 false)' }
         socialProvider: { type: string, enum: [KAKAO, NAVER, APPLE, GOOGLE] }
         joinedAt: { type: string, format: date-time }
+        customerNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', x-added-in: '2026-11-20', description: '(0.11.0) 고객번호 6자리 — 고객센터 문의 때 알려 주는 번호(ADR-0070)' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
     AddressInput:
       type: object

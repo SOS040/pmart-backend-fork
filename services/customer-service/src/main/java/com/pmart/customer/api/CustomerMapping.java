@@ -119,6 +119,7 @@ final class CustomerMapping {
                 ? null
                 : Profile.SocialProviderEnum.fromValue(p.socialProvider()))
         .joinedAt(time(p.joinedAt()))
+        .customerNumber(p.customerNumber())
         .version(p.version())
         .phone(p.phone())
         .phoneMasked(com.pmart.customer.domain.ProfileRules.maskPhone(p.phone()))

@@ -31,7 +31,8 @@ public class CustomerStore {
       Instant joinedAt,
       int version,
       @Nullable String phone,
-      boolean phoneVerified) {}
+      boolean phoneVerified,
+      @Nullable String customerNumber) {}
 
   /** 로그인 제공자가 준 프로필(CustomerAuthenticated, ADR-0024). 값은 scope 에 따라 없을 수 있다. 개인정보 — 로그 금지. */
   public record ProviderProfile(
@@ -132,27 +133,63 @@ public class CustomerStore {
 
   public Optional<ProfileRow> profile(String accountId) {
     return jdbc
-        .query(
-            "SELECT account_id, status, social_provider, nickname, name, email, email_verified,"
-                + " profile_image_sha256, joined_at, version, phone, phone_verified FROM customer"
-                + " WHERE account_id = ?",
-            (rs, i) ->
-                new ProfileRow(
-                    rs.getString("account_id"),
-                    rs.getString("status"),
-                    rs.getString("social_provider"),
-                    rs.getString("nickname"),
-                    rs.getString("name"),
-                    rs.getString("email"),
-                    rs.getObject("email_verified", Boolean.class),
-                    rs.getString("profile_image_sha256"),
-                    rs.getTimestamp("joined_at").toInstant(),
-                    rs.getInt("version"),
-                    rs.getString("phone"),
-                    rs.getBoolean("phone_verified")),
-            accountId)
+        .query(PROFILE_SELECT + " WHERE account_id = ?", CustomerStore::profileRow, accountId)
         .stream()
         .findFirst();
+  }
+
+  private static final String PROFILE_SELECT =
+      "SELECT account_id, status, social_provider, nickname, name, email, email_verified,"
+          + " profile_image_sha256, joined_at, version, phone, phone_verified, customer_number"
+          + " FROM customer";
+
+  private static ProfileRow profileRow(java.sql.ResultSet rs, int i) throws java.sql.SQLException {
+    return new ProfileRow(
+        rs.getString("account_id"),
+        rs.getString("status"),
+        rs.getString("social_provider"),
+        rs.getString("nickname"),
+        rs.getString("name"),
+        rs.getString("email"),
+        rs.getObject("email_verified", Boolean.class),
+        rs.getString("profile_image_sha256"),
+        rs.getTimestamp("joined_at").toInstant(),
+        rs.getInt("version"),
+        rs.getString("phone"),
+        rs.getBoolean("phone_verified"),
+        rs.getString("customer_number"));
+  }
+
+  /** 직원 찾기(2026-11-20 CU-4): 고객번호 완전 일치. */
+  public List<ProfileRow> byCustomerNumber(String customerNumber) {
+    return jdbc.query(
+        PROFILE_SELECT + " WHERE customer_number = ?", CustomerStore::profileRow, customerNumber);
+  }
+
+  /** 직원 찾기(CU-4): 프로필 휴대폰 번호(숫자만) 완전 일치 — 가입 순. 번호는 로그 금지. */
+  public List<ProfileRow> byPhone(String digits) {
+    return jdbc.query(
+        PROFILE_SELECT + " WHERE phone = ? ORDER BY joined_at LIMIT 20",
+        CustomerStore::profileRow,
+        digits);
+  }
+
+  /** 여러 고객 한 번에(CU-3 — bff 화면 표기). 없는 ID 는 빠진다, 요청 순서대로. */
+  public List<ProfileRow> byIds(List<String> accountIds) {
+    if (accountIds.isEmpty()) {
+      return List.of();
+    }
+    List<ProfileRow> rows =
+        jdbc.query(
+            PROFILE_SELECT
+                + " WHERE account_id IN ("
+                + String.join(",", java.util.Collections.nCopies(accountIds.size(), "?"))
+                + ")",
+            CustomerStore::profileRow,
+            accountIds.toArray());
+    java.util.Map<String, ProfileRow> m = new java.util.HashMap<>();
+    rows.forEach(r -> m.put(r.accountId(), r));
+    return accountIds.stream().map(m::get).filter(java.util.Objects::nonNull).toList();
   }
 
   /** 프로필 변경 직렬화 — 같은 계정의 변경·탈퇴 신청이 겹치지 않게 행을 잠그고 상태·버전을 본다. */

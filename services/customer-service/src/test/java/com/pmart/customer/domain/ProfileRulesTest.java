@@ -40,4 +40,14 @@ class ProfileRulesTest {
     assertThat(ProfileRules.changeable("WITHDRAW_PENDING")).isFalse();
     assertThat(ProfileRules.changeable("WITHDRAW_COMPLETED")).isFalse();
   }
+
+  @Test
+  void staffNameMaskKeepsFirstAndLast() {
+    assertThat(ProfileRules.maskName("김철수", null)).isEqualTo("김*수");
+    assertThat(ProfileRules.maskName("남궁민수", null)).isEqualTo("남**수");
+    assertThat(ProfileRules.maskName("이영", null)).isEqualTo("이*");
+    assertThat(ProfileRules.maskName("김", null)).isEqualTo("*");
+    assertThat(ProfileRules.maskName(" ", "장보기왕")).isEqualTo("장**왕"); // 이름 없으면 별명
+    assertThat(ProfileRules.maskName(null, null)).isNull();
+  }
 }

@@ -91,6 +91,25 @@ public final class ProfileRules {
     return head + "-" + mid + "-" + tail;
   }
 
+  /**
+   * 직원 화면용 이름 가림(2026-11-20 CU-3·CU-4): 첫·끝 글자만, 두 글자면 첫 글자 + *, 한 글자면 * — 라이더·주문 직원 상세와 같은 방식
+   * (ADR-0062). 이름이 없으면 별명, 둘 다 없으면 null.
+   */
+  public static @Nullable String maskName(@Nullable String name, @Nullable String nickname) {
+    String v = name != null && !name.isBlank() ? name : nickname;
+    if (v == null || v.isBlank()) {
+      return null;
+    }
+    int[] cp = v.strip().codePoints().toArray();
+    if (cp.length <= 1) {
+      return "*";
+    }
+    if (cp.length == 2) {
+      return new String(cp, 0, 1) + "*";
+    }
+    return new String(cp, 0, 1) + "*".repeat(cp.length - 2) + new String(cp, cp.length - 1, 1);
+  }
+
   /** 가린 이메일(예 a***@k***) — 기존 계정 안내(2026-11-20 ADR-0074, 라이더와 같은 모양). 없거나 형식이 아니면 null. */
   public static @Nullable String maskEmail(@Nullable String email) {
     if (email == null || !email.contains("@")) {
