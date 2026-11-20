@@ -10,11 +10,15 @@ import com.pmart.order.api.generated.model.DeliveryDestination;
 import com.pmart.order.api.generated.model.DeliveryDestinationGeo;
 import com.pmart.order.api.generated.model.DropInfo;
 import com.pmart.order.api.generated.model.DropInfoGeo;
+import com.pmart.order.api.generated.model.GetWithdrawalEligibility200Response;
+import com.pmart.order.api.generated.model.GetWithdrawalEligibility200ResponseAsOf;
+import com.pmart.order.api.generated.model.GetWithdrawalEligibility200ResponseOpenObligationsInner;
 import com.pmart.order.api.generated.model.InternalOrder;
 import com.pmart.order.api.generated.model.InternalOrderLinesInner;
 import com.pmart.order.api.generated.model.OrderStatus;
 import com.pmart.order.api.generated.model.StartCheckout202Response;
 import com.pmart.order.application.OrderService;
+import com.pmart.order.application.WithdrawalEligibilityService;
 import com.pmart.order.domain.OrderRules;
 import com.pmart.order.infrastructure.OrderStore.LineRow;
 import com.pmart.order.infrastructure.OrderStore.OrderRow;
@@ -26,8 +30,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 InternalApi — 주문 확정·주문 원장 조회·배차용 배송지(O-4)·주문행 수량 변경(출고 전 취소). 나머지 내부 API(탈퇴 확인·배송 사실·고객 약속)는
- * 인터페이스 default 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
+ * 계약 InternalApi — 주문 확정·주문 원장 조회·배차용 배송지(O-4)·주문행 수량 변경(출고 전 취소)·탈퇴 의무 확인(ADR-0077). 나머지 내부 API(배송
+ * 사실·고객 약속)는 인터페이스 default 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
 public class InternalController implements InternalApi {
@@ -37,10 +41,14 @@ public class InternalController implements InternalApi {
   private final OrderService orders;
   private final com.pmart.order.application.StaffOrderService staff;
 
+  private final WithdrawalEligibilityService withdrawals;
+
   public InternalController(
       OrderService orders,
       com.pmart.order.application.StaffOrderService staff,
-      com.pmart.order.application.TimeChangeService timeChanges) {
+      com.pmart.order.application.TimeChangeService timeChanges,
+      WithdrawalEligibilityService withdrawals) {
+    this.withdrawals = withdrawals;
     this.timeChanges = timeChanges;
     this.orders = orders;
     this.staff = staff;
@@ -215,6 +223,30 @@ public class InternalController implements InternalApi {
               .reshippedQty(l.reshippedQty()));
     }
     return ResponseEntity.ok(out);
+  }
+
+  /** 탈퇴 의무 확인(2026-11-20, ADR-0077) — customer 가 부른다. 판정은 {@code WithdrawalEligibilityService}. */
+  @Override
+  public ResponseEntity<GetWithdrawalEligibility200Response> getWithdrawalEligibility(
+      String accountId) {
+    var e = withdrawals.check(accountId);
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.noStore())
+        .body(
+            new GetWithdrawalEligibility200Response()
+                .eligible(e.eligible())
+                .openObligations(
+                    e.openObligations().stream()
+                        .map(
+                            o ->
+                                new GetWithdrawalEligibility200ResponseOpenObligationsInner()
+                                    .kind(o.kind())
+                                    .ref(o.ref()))
+                        .toList())
+                .asOf(
+                    new GetWithdrawalEligibility200ResponseAsOf()
+                        .asOf(OffsetDateTime.ofInstant(e.asOf(), ZoneOffset.UTC))
+                        .freshness(GetWithdrawalEligibility200ResponseAsOf.FreshnessEnum.CURRENT)));
   }
 
   /** S4 사가 결과(2026-11-16). */

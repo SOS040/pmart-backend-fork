@@ -57,6 +57,19 @@ public class DraftStore {
         .findFirst();
   }
 
+  /** 결제 진입(주문 ID·사가)은 있는데 확정 주문이 없는 초안 — 탈퇴 의무 확인(ADR-0077)이 사가 상태를 묻는다. */
+  public record Checkout(String orderId, String sagaId) {}
+
+  public java.util.List<Checkout> checkoutsWithoutOrder(String accountId) {
+    return jdbc.query(
+        "SELECT d.order_id, d.saga_id FROM order_draft d WHERE d.account_id = ?"
+            + " AND d.order_id IS NOT NULL AND d.saga_id IS NOT NULL"
+            + " AND NOT EXISTS (SELECT 1 FROM customer_order o WHERE o.order_id = d.order_id)"
+            + " ORDER BY d.created_at, d.draft_id",
+        (rs, i) -> new Checkout(rs.getString("order_id"), rs.getString("saga_id")),
+        accountId);
+  }
+
   /** 결제 진입 시작 — 주문 ID·사가 참조를 남기고 버전을 올린다. */
   public void checkoutStarted(
       String draftId, String orderId, String sagaId, String requestId, Instant at) {

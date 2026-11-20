@@ -399,6 +399,24 @@ public class OrderStore {
         .findFirst();
   }
 
+  /** 탈퇴 의무 확인(ADR-0077) — 그 고객의 끝나지 않은 주문(상태가 finished 에 없는 것). 숨긴 주문도 센다. */
+  public List<StatusRow> unfinishedByAccount(
+      String accountId, java.util.Collection<String> finished) {
+    String in = String.join(",", java.util.Collections.nCopies(finished.size(), "?"));
+    List<Object> args = new ArrayList<>();
+    args.add(accountId);
+    args.addAll(finished);
+    return jdbc.query(
+        "SELECT order_id, status FROM customer_order WHERE account_id = ? AND status NOT IN ("
+            + in
+            + ") ORDER BY confirmed_at, order_id",
+        (rs, i) -> new StatusRow(rs.getString("order_id"), rs.getString("status")),
+        args.toArray());
+  }
+
+  /** 주문 ID·상태(탈퇴 의무 확인). */
+  public record StatusRow(String orderId, String status) {}
+
   public boolean exists(String orderId) {
     Integer n =
         jdbc.queryForObject(
