@@ -51,7 +51,7 @@
 | [O-8](order-service.md) | order | PC 1 | backoffice(PC 2) | 기간 주문 요약·상품별 판매 집계(대시보드 D2·D3 — 확정 시각 한국 날짜, 결제 승인 금액 합, 환불은 빼지 않음) | 결정됨(2026-11-18 사용자 — PC 2 추천대로) | **구현·LAN 배포**(2026-11-18, order 0.13.0 — 이미지 4ab6e04e) |
 | [O-9](order-service.md) | order | PC 1 | backoffice(PC 2) | 주문 조회 목록 상태별 수(목록 숫자 띠, `StatusCounts` 모양) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [MQ-1](mfc-quality-service.md) | mfc-quality | PC 3 | claim | `ReturnInspected` 줄에 선택 필드 `orderLineId`(같은 SKU 두 주문 행이면 환불 금액이 모호) | 결정됨(2026-11-17 CL-1 추가 결정 8 — 선택) | **구현·LAN 배포**(2026-11-19 #249 — mfc-inbound 0.14.0 V10·mfc-quality 0.8.0 V5·V6·inventory 0.31.0) |
-| [MQ-2](mfc-quality-service.md) | mfc-quality | PC 3 | backoffice(PC 2)·case | 품질 사고 `caseId` 채우기 — case `CaseOpened`(type MFC_QUALITY_IMPACT, refs incidentId·orderId) 구독(CS-MFC-Q 회신) | 요청(2026-11-20 PC 2 #303) | 대기(PC 3) |
+| [MQ-2](mfc-quality-service.md) | mfc-quality | PC 3 | backoffice(PC 2)·case | 품질 사고 `caseId` 채우기 — case `CaseOpened`(type MFC_QUALITY_IMPACT, refs incidentId·orderId) 구독(CS-MFC-Q 회신) | 요청(2026-11-20 PC 2 #303) | **구현·LAN 배포**(2026-11-20 mfc-quality #307 — platform.case.v1 CaseOpened 구독, 첫 caseId) |
 | [R-1](case-service.md) | case | PC 2 | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | PC 2 | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
 | [R-3](case-service.md) | case | PC 2 | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | **구현**(2026-11-16, case 0.5.0 — PR #21, LAN 배포) |
