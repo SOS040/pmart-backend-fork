@@ -28,8 +28,8 @@ import org.junit.jupiter.api.Test;
 /**
  * 실제 저장소 문서(manifest 전체)로 색인 범위·청크 회귀를 고정한다. DB 없이 — 임베딩 캐시만 모의.
  *
- * <p>2026-11-20 사용자: 운영자용 RAG 는 {@code docs/rag/rag-docs} 아래 모든 문서(README 제외)만 참고한다. 옛 색인 문서
- * 52개(업무 원문·ADR 등)는 목록에서 뺐다. 지위·생애 판정 규칙 자체는 MarkdownChunker·SupersessionResolver 단위 시험이 지킨다.
+ * <p>2026-11-20 사용자: 운영자용 RAG 는 {@code docs/rag/rag-docs} 아래 모든 문서(README 제외)만 참고한다. 옛 색인 문서 52개(업무
+ * 원문·ADR 등)는 목록에서 뺐다. 지위·생애 판정 규칙 자체는 MarkdownChunker·SupersessionResolver 단위 시험이 지킨다.
  */
 class RealDocumentsIngestTest {
 

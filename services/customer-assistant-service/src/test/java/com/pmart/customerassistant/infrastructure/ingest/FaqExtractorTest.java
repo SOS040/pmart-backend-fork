@@ -111,7 +111,10 @@ class FaqExtractorTest {
             .map(d -> d.path())
             .toList();
     assertThat(faqDocs).isNotEmpty();
-    assertThat(all).extracting(FaqEntry::documentId).containsAll(faqDocs).allMatch(faqDocs::contains);
+    assertThat(all)
+        .extracting(FaqEntry::documentId)
+        .containsAll(faqDocs)
+        .allMatch(faqDocs::contains);
     assertThat(all).extracting(FaqEntry::faqId).doesNotHaveDuplicates();
     assertThat(all)
         .allSatisfy(
