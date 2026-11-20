@@ -21,7 +21,11 @@
    - 결제 실패·중단이면 쿠폰은 자동으로 풀린다(최대 약 30초 뒤 쿠폰함 AVAILABLE).
 5. **주문 상세**: `quote.couponDiscount`·`promotionDiscount`, 줄 `discountShare`.
 6. **취소·환불**: 주문 **전체 취소**면 쿠폰이 돌아온다(원래 기한 안일 때만 — 지났으면 만료로 보임). 부분 취소·결품·반품은 쿠폰 그대로, 환불은 할인 뺀 금액.
-7. **상품 할인가 표시**(카드·상세·장바구니)는 **서버 다음 단계**(4단계 — 검색 색인·홈·상세에 할인가). 지금은 주문서 견적에서만 할인이 보인다.
+7. **상품 할인가 표시**(2026-11-21 4단계 LAN 배포 7e9a2851) — 정가 `basePrice` 옆에 할인가·할인율(값이 null 이면 정가만):
+   - 검색 결과(search 0.6.0)·홈 진열(storefront 0.8.0) 카드: `salePrice`·`discountRatePercent`·`discountName`·`discountEndsAt`.
+   - 상세(pricing 0.3.0 `GET /prices/{sku}`·`/prices?skus=`): `discount`{promotionId, name, unitDiscount, salePrice, ratePercent, endsAt}. `discountAvailable=false` 면 할인을 몰라 정가만(오류 아님).
+   - 장바구니(cart 0.4.0): 품목 `display.salePrice`·`discountRatePercent`·`discountName`, `selectedItemAmount` 는 할인가 합계, `selectedDiscountAmount` = 할인 합계.
+   - 카드·상세는 행사 시작·끝에서 최대 약 30초 늦을 수 있다. 실제 결제 금액은 주문서 견적. 가격순 정렬·가격 필터는 정가 기준, 100g당 가격도 정가 기준(할인가 기준으로 보이려면 같은 식을 앱이).
 
 ## 확인 필요 없음 / 참고
 - 쿠폰 할인 계산: 정률은 원 미만 버림, 최대 할인액, 상품액을 넘지 않음. 품목 안분은 금액 비례(남은 원은 금액 큰 품목).
