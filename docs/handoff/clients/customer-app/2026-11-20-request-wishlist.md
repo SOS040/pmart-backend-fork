@@ -22,4 +22,4 @@
 - 탈퇴하면 찜도 지워진다(탈퇴 안내 화면 "지워지는 것"에 찜 추가).
 
 ## 배포 상태
-- (작성 시점) 서버 구현·시험 끝, LAN 배포 전 — 배포하면 이 줄을 고친다.
+- **LAN 배포 2026-11-20 17:23 KST** — customer-service(PC 2, V16)·api-gateway(PC 4) bb402fd9, pmart-config 0fec3ba. 게이트웨이 `/me/wishlist-items` 토큰 없이 401(경로 열림) 확인.
