@@ -1,4 +1,4 @@
--- 센터 관리자 작업 조작(2026-11-20, 계약 0.28.0 — MFC 시뮬레이터 R-29 2단계, ADR-0077).
+-- 센터 관리자 작업 조작(2026-11-20, 계약 0.28.0 — MFC 시뮬레이터 R-29 2단계, ADR-0079).
 -- BLOCKED 를 누가 걸었나: SUPERVISOR = 관리자 작업 중지, NULL = 결품·예약 보류(결품 사가가 푼다). 상태가 바뀌면 지운다.
 ALTER TABLE task ADD COLUMN block_kind varchar(16);
 

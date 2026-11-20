@@ -908,7 +908,7 @@ public class AssignmentService {
     }
   }
 
-  // ---------- 피킹 끝 → 그 출고 PACK 을 피커에게(0.32.0, ADR-0078) ----------
+  // ---------- 피킹 끝 → 그 출고 PACK 을 피커에게(0.32.0, ADR-0080) ----------
 
   public static final String PICKER_PACK = "PICKER_PACK";
 
@@ -978,7 +978,7 @@ public class AssignmentService {
   }
 
   /**
-   * 배정 이력(0.31.0, R-29 관리 탭 — ADR-0077): 한 작업의 배정 행 전부(버전 순, 배정·끝 누가·언제·왜). 그 센터 MFC_SUPERVISOR,
+   * 배정 이력(0.31.0, R-29 관리 탭 — ADR-0079): 한 작업의 배정 행 전부(버전 순, 배정·끝 누가·언제·왜). 그 센터 MFC_SUPERVISOR,
    * OPERATOR_ADMIN(모든 센터), 서비스 토큰.
    */
   @Transactional(readOnly = true)
@@ -1003,7 +1003,7 @@ public class AssignmentService {
 
   /**
    * 배정 조회 — 그 센터 운영자·서비스, 그리고 본사 운영 관리자 OPERATOR_ADMIN(모든 센터, 0.30.0 — mfc-fulfillment 관리자 막힘 해제가
-   * 호출자 토큰으로 활성 배정을 읽는다, R-29 ADR-0077).
+   * 호출자 토큰으로 활성 배정을 읽는다, R-29 ADR-0079).
    */
   static void requireAssignmentReader(String mfcId) {
     PmartPrincipal p =

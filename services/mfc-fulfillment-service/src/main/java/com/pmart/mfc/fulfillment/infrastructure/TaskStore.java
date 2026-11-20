@@ -342,7 +342,7 @@ public class TaskStore {
         taskId);
   }
 
-  /** 관리자 작업 중지(0.28.0, R-29 — ADR-0077): BLOCKED + 누가 걸었나(kind). 담당·시작 점유·완료량은 그대로(버전 +1). */
+  /** 관리자 작업 중지(0.28.0, R-29 — ADR-0079): BLOCKED + 누가 걸었나(kind). 담당·시작 점유·완료량은 그대로(버전 +1). */
   public void setBlocked(String taskId, String kind, String blockReason, Instant at) {
     jdbc.update(
         "UPDATE task SET state = 'BLOCKED', block_kind = ?, block_reason = ?, version = version + 1,"

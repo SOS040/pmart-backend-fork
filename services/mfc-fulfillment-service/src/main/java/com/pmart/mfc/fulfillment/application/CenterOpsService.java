@@ -32,7 +32,7 @@ public class CenterOpsService {
           "DAMAGED",
           "SPOILED",
           "BLOCKED",
-          "PARTIAL_CLOSE"); // PARTIAL_CLOSE 0.30.0(ADR-0077)
+          "PARTIAL_CLOSE"); // PARTIAL_CLOSE 0.30.0(ADR-0079)
   private static final Logger log = LoggerFactory.getLogger(CenterOpsService.class);
 
   public record ShortageItem(ShortageRow row, @Nullable String productName) {}

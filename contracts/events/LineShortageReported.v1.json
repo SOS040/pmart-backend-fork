@@ -53,7 +53,7 @@
                 "BLOCKED",
                 "PARTIAL_CLOSE"
               ],
-              "description": "PARTIAL_CLOSE(2026-11-20, R-29 ADR-0077) = 센터 관리자 부분 종료로 끝낸 피킹 잔량 — 재고 결품이 아님(선반에 있음). 결품 사가가 같은 단계로 부분 취소·환불하고 예약은 집지 않은 양을 해제(mfc-inventory PARTIAL_CLOSE_CANCELLED). 품질 사고·결품률 지표 대상 아님. lot 없음"
+              "description": "PARTIAL_CLOSE(2026-11-20, R-29 ADR-0079) = 센터 관리자 부분 종료로 끝낸 피킹 잔량 — 재고 결품이 아님(선반에 있음). 결품 사가가 같은 단계로 부분 취소·환불하고 예약은 집지 않은 양을 해제(mfc-inventory PARTIAL_CLOSE_CANCELLED). 품질 사고·결품률 지표 대상 아님. lot 없음"
             },
             "alreadyHandedOverQty": {
               "$ref": "_defs.v1.json#/$defs/Qty"

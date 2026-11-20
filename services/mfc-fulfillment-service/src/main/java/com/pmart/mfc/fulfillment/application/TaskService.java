@@ -1376,7 +1376,7 @@ public class TaskService {
                   "BLOCKED".equals(t.state())
                       && TaskControlService.KIND_PARTIAL_CLOSE.equals(t.blockKind());
               if (done && closing) {
-                // 관리자 부분 종료(0.30.0, ADR-0077 — WK-04 "실행>0/잔량취소 후 CLOSED_PARTIAL"): 집은 양만 포장으로
+                // 관리자 부분 종료(0.30.0, ADR-0079 — WK-04 "실행>0/잔량취소 후 CLOSED_PARTIAL"): 집은 양만 포장으로
                 store.setState(pickId, "CLOSED_PARTIAL", null, false, now);
                 events.taskProgressed(
                     t, "CLOSED_PARTIAL", t.state(), t.version() + 1, t.startedBy(), null, now);
@@ -1393,7 +1393,7 @@ public class TaskService {
                 events.taskProgressed(
                     t, "COMPLETED", t.state(), t.version() + 1, t.startedBy(), null, now);
                 store.releasePack(t.shipmentId(), now);
-                // 포장 준비 사건(0.31.0) — 피킹 실적으로 끝날 때와 같게(capacity 가 피커에게 PACK 배정, ADR-0078)
+                // 포장 준비 사건(0.31.0) — 피킹 실적으로 끝날 때와 같게(capacity 가 피커에게 PACK 배정, ADR-0080)
                 store
                     .sibling(t.shipmentId(), "PACK")
                     .ifPresent(

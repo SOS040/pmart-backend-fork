@@ -33,7 +33,7 @@ class PickerPackTest {
         .build();
   }
 
-  /** 피킹 끝 PACK 바로 배정(ADR-0078) — PACK 이 WAITING → READY 로 풀린 사건 + 피커가 있을 때만. */
+  /** 피킹 끝 PACK 바로 배정(ADR-0080) — PACK 이 WAITING → READY 로 풀린 사건 + 피커가 있을 때만. */
   @Test
   void onlyPackReleasedFromWaitingWithPickerIsAssignedToPicker() {
     var base =

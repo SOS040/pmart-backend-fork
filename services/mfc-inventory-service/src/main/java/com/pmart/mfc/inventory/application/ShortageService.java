@@ -276,14 +276,14 @@ public class ShortageService {
   public record ShortfallRelease(
       String reservationId, String orderLineId, int qty, String reason) {}
 
-  /** 관리자 부분 종료로 취소된 잔량(0.41.0, R-29 ADR-0077) — 아직 집지 않은 확정 예약까지 해제한다. */
+  /** 관리자 부분 종료로 취소된 잔량(0.41.0, R-29 ADR-0079) — 아직 집지 않은 확정 예약까지 해제한다. */
   public static final String PARTIAL_CLOSE_CANCELLED = "PARTIAL_CLOSE_CANCELLED";
 
   /**
    * 이행부족(BLOCKED 조각) 해제 — 결품 수량을 주문에서 취소했을 때(ADR-0045). BLOCKED 는 R 이 아니라 D 라 현물·요약 변화 없음. 같은 요청은
    * 재생.
    *
-   * <p>사유 {@link #PARTIAL_CLOSE_CANCELLED}(센터 관리자 부분 종료, ADR-0077): 잔량은 아직 선반에 있는 확정 예약이라 BLOCKED 를
+   * <p>사유 {@link #PARTIAL_CLOSE_CANCELLED}(센터 관리자 부분 종료, ADR-0079): 잔량은 아직 선반에 있는 확정 예약이라 BLOCKED 를
    * 먼저 풀고, 모자라면 그 줄의 HELD·CONFIRMED 조각 중 <b>아직 집지 않은 양</b>(qty − picked)을 해제한다 — IV-08 "피킹 전 취소
    * R−q/A+q"(H·E 그대로, LOT·센터 요약 R−q). 집은 양은 건드리지 않는다.
    */

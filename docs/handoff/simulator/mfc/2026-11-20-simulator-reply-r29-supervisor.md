@@ -17,7 +17,7 @@
 2. **막힘 해제** `POST /tasks/{taskId}/unblocks`(0.29.0) — `reason`·`cartChecked: true` 필수(빠지면 400, false 422 PHYSICAL_CHECK_REQUIRED). 담당 배정이 살아 있고 맡을 수 있으면 ASSIGNED(다시 시작), 아니면 배정 해제 → READY. 결품 막힘은 409 BLOCKED_BY_SHORTAGE.
 3. **부분 종료** `POST /tasks/{taskId}/partial-closes`(0.30.0) — PICK 만, `reason` 필수, 집은 양 0 이면 422 NOTHING_EXECUTED(주문 취소 OPERATOR_DECISION 으로). BLOCKED(`blockKind` PARTIAL_CLOSE) → 결품 사가가 잔량 취소·예약 해제·부분 환불 → **CLOSED_PARTIAL**, 집은 양은 포장으로. 처리 중 409 PARTIAL_CLOSE_PENDING.
 4. **배정 이력** `GET /assignments/history?mfcId=&taskId=`(capacity 0.31.0) — 그 센터 MFC_SUPERVISOR·OPERATOR_ADMIN. 버전 순으로 배정한 사람·시각·사유와 끝(endedAt·endedBy·endReason). 0.31.0 전에 끝난 배정은 끝 정보 없음.
-5. **피킹 끝 PACK 바로 배정**(capacity 0.32.0, ADR-0078) — PICK 이 끝나면 그 출고 PACK 이 피커에게 SYSTEM 배정(맡을 수 없음·휴게·근무 밖·이미 배정이면 예전처럼 READY). **설정 저장소 바인딩이 들어가야 켜짐**(PC 1).
+5. **피킹 끝 PACK 바로 배정**(capacity 0.32.0, ADR-0080) — PICK 이 끝나면 그 출고 PACK 이 피커에게 SYSTEM 배정(맡을 수 없음·휴게·근무 밖·이미 배정이면 예전처럼 READY). **설정 저장소 바인딩이 들어가야 켜짐**(PC 1).
 6. **다시 열기(후속 작업)** — 이번에 안 함(아래).
 
 ## 후속 작업(결품 뒤 찾은 물건 다시 집기) — 설계 메모, 사용자 결정 대기

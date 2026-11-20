@@ -63,7 +63,7 @@ public class FulfillmentEvents {
       p.put("assignmentVersion", t.assignmentVersion());
     }
     if ("PACK".equals(t.taskType()) && t.pickedBy() != null) {
-      // 같은 출고 PICK 을 끝낸 사람(0.31.0, ADR-0078) — mfc-capacity 가 PACK 을 그 사람에게 바로 배정
+      // 같은 출고 PICK 을 끝낸 사람(0.31.0, ADR-0080) — mfc-capacity 가 PACK 을 그 사람에게 바로 배정
       p.put("pickedBy", t.pickedBy());
     }
     p.put("orderId", t.orderId());
@@ -72,7 +72,7 @@ public class FulfillmentEvents {
   }
 
   /**
-   * 센터 관리자 조작(작업 중지·해제·부분 종료 — 0.28.0, R-29 ADR-0077)의 TaskProgressed. workerId = 조작 뒤 담당, 행위자 =
+   * 센터 관리자 조작(작업 중지·해제·부분 종료 — 0.28.0, R-29 ADR-0079)의 TaskProgressed. workerId = 조작 뒤 담당, 행위자 =
    * 관리자(controlledBy).
    */
   public void taskControlled(

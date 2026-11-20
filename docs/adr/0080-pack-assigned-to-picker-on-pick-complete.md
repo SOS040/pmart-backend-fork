@@ -1,9 +1,9 @@
-# ADR-0078 피킹이 끝나면 그 출고 PACK 을 피커에게 바로 배정
+# ADR-0080 피킹이 끝나면 그 출고 PACK 을 피커에게 바로 배정
 
 - 상태: **승인** (2026-11-20)
 - 사용자 결정 2026-11-20 (시뮬레이터 세션 경유, "응"): 피킹을 끝낸 작업자가 PDA 에서 "다음 작업 받기"·"패킹대로"를 누르지 않아도 그 출고의 포장 작업이 바로 그 사람에게 간다.
 - 계기: 주문 83072555 — PICK 이 14:27 에 끝났는데 PACK 이 담당 없이 14분 READY 로 있었다(capacity 다음 작업 받기는 피커가 당길 때만 준다).
-- 관련: 2026-11-18 사용자 결정 "피커만 받음"(capacity 0.19.0 `pickerMayTake`·`OWN_PACK_RANK`), ADR-0043(배정 정본 = capacity), ADR-0077
+- 관련: 2026-11-18 사용자 결정 "피커만 받음"(capacity 0.19.0 `pickerMayTake`·`OWN_PACK_RANK`), ADR-0043(배정 정본 = capacity), ADR-0079
 
 ## 결정
 1. 배정 정본인 **mfc-capacity** 가 한다. mfc-fulfillment 가 PACK 을 대기에서 풀 때 내는 `TaskProgressed`(type PACK, previousState WAITING, state READY)에 `pickedBy`(같은 출고 PICK 을 끝낸 작업자)를 싣고, capacity 가 이 사건을 구독해 다음 작업 받기와 **같은 SYSTEM 배정**(reason `PICKER_PACK`, 같은 `AssignmentPublished`)을 만든다 → fulfillment 투영이 READY → ASSIGNED.

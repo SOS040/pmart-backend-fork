@@ -417,7 +417,7 @@ public class TasksController implements TasksApi {
     return ResponseEntity.ok(attention(summary(t), t));
   }
 
-  /** 관리자 작업 중지(0.28.0, R-29 — ADR-0077). */
+  /** 관리자 작업 중지(0.28.0, R-29 — ADR-0079). */
   @Override
   public ResponseEntity<TaskControl> blockTask(
       String taskId,
@@ -431,7 +431,7 @@ public class TasksController implements TasksApi {
                 taskId, idempotencyKey, xSourceSystem, body.getReason(), xExpectedVersion)));
   }
 
-  /** 관리자 막힘 해제(0.29.0, R-29 — ADR-0077). */
+  /** 관리자 막힘 해제(0.29.0, R-29 — ADR-0079). */
   @Override
   public ResponseEntity<TaskControl> unblockTask(
       String taskId,
@@ -450,7 +450,7 @@ public class TasksController implements TasksApi {
                 xExpectedVersion)));
   }
 
-  /** 관리자 부분 종료(0.30.0, R-29 — ADR-0077). */
+  /** 관리자 부분 종료(0.30.0, R-29 — ADR-0079). */
   @Override
   public ResponseEntity<TaskControl> partialCloseTask(
       String taskId,

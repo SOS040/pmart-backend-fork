@@ -51,7 +51,7 @@ public final class TaskRules {
   public static final String INVALID_STATE = "INVALID_STATE";
   public static final String VERSION_CONFLICT = "VERSION_CONFLICT";
 
-  /** 작업이 BLOCKED — 관리자 작업 중지 또는 결품 처리 중(0.28.0, R-29 ADR-0077). 시작·실적·포장 밀봉 거절. */
+  /** 작업이 BLOCKED — 관리자 작업 중지 또는 결품 처리 중(0.28.0, R-29 ADR-0079). 시작·실적·포장 밀봉 거절. */
   public static final String TASK_BLOCKED = "TASK_BLOCKED";
 
   /** 결과를 기다리는 실적·열린 포장이 있음(내놓기·관리자 조작 — 결과가 난 뒤). */

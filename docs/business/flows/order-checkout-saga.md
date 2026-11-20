@@ -154,7 +154,7 @@ D6-5 세부(사용자 결정 2026-11-07):
 
 부분 취소 PG 요청은 `추가 환불 가능 한도 = 승인액 − 성공 누적 − 불명 점유` 안에서만, 같은 요청 ID로 1회.
 
-**관리자 부분 종료(2026-11-20, ADR-0077 — 사용자 결정, MFC 시뮬레이터 R-29)**: 센터 관리자가 집품이 일부 된 PICK 의 **아직 집지 않은 잔량**을 끝내면(`POST /tasks/{id}/partial-closes`) mfc-fulfillment 가 줄마다 `LineShortageReported`(reason `PARTIAL_CLOSE`, shortQty = 잔량)를 내고 작업을 BLOCKED(`blockKind` PARTIAL_CLOSE)로 둔다. 결품 사가가 **같은 단계**로 처리한다 — RESOLVE_WORK(작업 잔량 취소 → 잔량 0 이면 PICK **CLOSED_PARTIAL**·포장 준비) → RELEASE_SHORTFALL(mfc-inventory 사유 `PARTIAL_CLOSE_CANCELLED` — 이행부족이 아니라 **집지 않은 확정 예약 해제**, R−q·A+q) → 주문 수량 변경(SHORTAGE) → 그 품목 부분 환불. 집은 양은 그대로 포장·인계. 집은 양이 0 이면 부분 종료가 아니라 주문 취소(관리자 판단 OPERATOR_DECISION, ADR-0076).
+**관리자 부분 종료(2026-11-20, ADR-0079 — 사용자 결정, MFC 시뮬레이터 R-29)**: 센터 관리자가 집품이 일부 된 PICK 의 **아직 집지 않은 잔량**을 끝내면(`POST /tasks/{id}/partial-closes`) mfc-fulfillment 가 줄마다 `LineShortageReported`(reason `PARTIAL_CLOSE`, shortQty = 잔량)를 내고 작업을 BLOCKED(`blockKind` PARTIAL_CLOSE)로 둔다. 결품 사가가 **같은 단계**로 처리한다 — RESOLVE_WORK(작업 잔량 취소 → 잔량 0 이면 PICK **CLOSED_PARTIAL**·포장 준비) → RELEASE_SHORTFALL(mfc-inventory 사유 `PARTIAL_CLOSE_CANCELLED` — 이행부족이 아니라 **집지 않은 확정 예약 해제**, R−q·A+q) → 주문 수량 변경(SHORTAGE) → 그 품목 부분 환불. 집은 양은 그대로 포장·인계. 집은 양이 0 이면 부분 종료가 아니라 주문 취소(관리자 판단 OPERATOR_DECISION, ADR-0076).
 
 ## 2.2 사가 S4: 예약배달 시간 변경 (2026-11-16 — CP-1 2부, 규칙 OMS §4·A.2.5, Commerce §9.4)
 고객 `POST /orders/{id}/reservation-time-changes`(order: 본인·예약배달·CONFIRMED·다른 시간대·진행 중 없음 → PENDING, 202) → orchestration `time_change_saga`.

@@ -60,7 +60,7 @@ public final class ShortageRules {
     return remainingUnfulfilled - shortQty <= 0;
   }
 
-  /** 센터 관리자 부분 종료(mfc-fulfillment 0.30.0, ADR-0077) — 결품과 같은 사가로 잔량만 부분 취소·환불. */
+  /** 센터 관리자 부분 종료(mfc-fulfillment 0.30.0, ADR-0079) — 결품과 같은 사가로 잔량만 부분 취소·환불. */
   public static final String PARTIAL_CLOSE = "PARTIAL_CLOSE";
 
   /**

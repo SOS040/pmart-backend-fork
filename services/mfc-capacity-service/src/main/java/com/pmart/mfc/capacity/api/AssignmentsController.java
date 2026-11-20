@@ -259,7 +259,7 @@ public class AssignmentsController implements AssignmentsApi {
     return ResponseEntity.ok(out);
   }
 
-  /** 배정 이력(0.31.0, R-29 — ADR-0077). */
+  /** 배정 이력(0.31.0, R-29 — ADR-0079). */
   @Override
   public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.ListAssignmentHistory200Response>
       listAssignmentHistory(String mfcId, String taskId) {

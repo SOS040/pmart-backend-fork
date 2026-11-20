@@ -78,5 +78,5 @@
 | [0072](0072-product-ranking-signals.md) | 상품 순위 신호 — storefront 가 별점(베이지안)·최근 30일 판매를 세어 `ProductRankingSignalsChanged`, 검색 색인 products-v6 가 인기순·별점순·리뷰 많은 순에 씀 | 승인 (2026-11-19) |
 | [0073](0073-search-synonyms-and-typo-correction.md) | 검색 동의어(백오피스 관리·승인·ES 동의어 집합으로 즉시 반영)와 오타 교정(자모 기준 — 0건 자동 교정·적음 제안·자동완성) | 승인 (2026-11-20) |
 | [0076](0076-operator-decision-cancel.md) | 관리자 판단 취소 `OPERATOR_DECISION` — 배차 불가와 같은 역할·범위(상품준비 뒤라도 인계 전), 사유 메모 필수. 고객 취소는 상품준비 전만 그대로 | 승인 (2026-11-20) |
-| [0077](0077-supervisor-task-control.md) | 센터 관리자 작업 조작 — 작업 중지(BLOCKED, 배정·재고 그대로)·해제(실물 확인 필수, 담당 살아 있으면 ASSIGNED 아니면 READY)·부분 종료(PICK 잔량만, 결품 사가로 부분 환불·예약 해제, CLOSED_PARTIAL). 다시 열기 없음 | 승인 (2026-11-20) |
-| [0078](0078-pack-assigned-to-picker-on-pick-complete.md) | 피킹이 끝나면 그 출고 PACK 을 피커에게 바로 SYSTEM 배정(capacity 가 TaskProgressed 구독) — 활성 배정 있음·맡을 수 없음·휴게·근무 밖이면 READY 그대로 | 승인 (2026-11-20) |
+| [0079](0079-supervisor-task-control.md) | 센터 관리자 작업 조작 — 작업 중지(BLOCKED, 배정·재고 그대로)·해제(실물 확인 필수, 담당 살아 있으면 ASSIGNED 아니면 READY)·부분 종료(PICK 잔량만, 결품 사가로 부분 환불·예약 해제, CLOSED_PARTIAL). 다시 열기 없음 | 승인 (2026-11-20) |
+| [0080](0080-pack-assigned-to-picker-on-pick-complete.md) | 피킹이 끝나면 그 출고 PACK 을 피커에게 바로 SYSTEM 배정(capacity 가 TaskProgressed 구독) — 활성 배정 있음·맡을 수 없음·휴게·근무 밖이면 READY 그대로 | 승인 (2026-11-20) |

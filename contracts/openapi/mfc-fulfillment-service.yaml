@@ -70,10 +70,10 @@ info:
     0.25.0(2026-11-20, PDA 피패킹·복귀 — mfc-app BR-52 R19·R20): 작업 상세 줄 `temperatureZone`(SKU 보관 온도대 AMBIENT·CHILLED·FROZEN — mfc-inventory SKU 사본, 조회 때 읽음, 모르면 null — R19-2). 작업 목록 `cartCode`(장바구니 `CRT-…` 를 찍으면 그 장바구니로 집품한 출고의 작업 — R20-5). 포장 밀봉·조회 `icePackCount`(아이스팩 수, 선택 — R19-9 사용자 결정 2026-11-20 "아이스팩 수만 기록"). 복귀(RETURN) 실적: 냉장·냉동 상품 줄은 보낸 resultQuality 와 상관없이 **늘 QUARANTINED**(격리로 선반에 — 품질 판정 뒤에만 판매, R19-8 사용자 결정 2026-11-20 "항상 품질 검사"), 복귀 예외 보고(`shortage` — 한 줄·옮긴 양 0, 사유 SHORT·DAMAGED·SPOILED·BLOCKED, R19-7)를 기록만 한다(재고·작업 상태 그대로).
     0.26.0(2026-11-20, 복귀 예외 처리 — mfc-app BR-52 R19-7 사용자 결정 2026-11-20 "응"): 복귀(RETURN) 예외 보고가 기록만에서 처리로. **DAMAGED·SPOILED** = `toLocation`(격리로 둘 선반) 필수(없으면 400 TO_LOCATION_REQUIRED) — 일반 복귀와 같은 재고 MOVE 를 resultQuality QUARANTINED 로(격리·보관 — 해제·폐기는 mfc-quality), 실적 appliedQty = 예외 수량, 작업 줄 완료량에 더한다. **SHORT·BLOCKED** = 재고 호출 없이 실적 APPLIED(appliedQty = 예외 수량), 작업 줄 취소량에 더한다 — 포장·장바구니 위치에 CANCEL_RETURN_PENDING 으로 남은 재고는 관리자가 재고 정정(승인)으로 맞춘다. 둘 다 남은 복귀량이 줄고 다 처리되면 작업 COMPLETED, `GET /shortages` 에 taskType RETURN 줄로 남는다(locationCode = 복귀 대상이 놓인 위치). LineShortageReported 는 내지 않는다(취소된 주문). 0.25.0 에 기록만 한 예외 보고(appliedQty 0)는 처리한 양으로 세지 않는다. 결품률 지표는 그대로(PICK 작업 줄만).
     0.27.0(2026-11-20, 센터 관리자 지난 주문 조회 — MFC 시뮬레이터 R-29 3번, 사용자 "R-29 … 니가 바로 고쳐"): `GET /work-orders` 가 `orderId` 대신 화면용 주문번호 `orderNumber`(8자리, 공백·하이픈 무시)로도 찾는다 — 둘 중 정확히 하나(아니면 400), 번호 사본이 없으면 404. `GET /shipments` 에 `orderNumber`·`createdFrom`/`createdTo`(출고 만든 날, Asia/Seoul, 최대 31일)·`sort`(oldest 기본 = 예전 그대로 / recent = 만든 순 거꾸로) — 번호·날짜를 주고 state 를 안 주면 모든 상태(지난 주문). 권한은 그대로. 추가 칸만.
-    0.28.0(2026-11-20, 관리자 작업 중지 — MFC 시뮬레이터 R-29 2단계, 사용자 결정 2026-11-20, ADR-0077): `POST /tasks/{taskId}/blocks`(그 센터 `MFC_SUPERVISOR` 또는 `OPERATOR_ADMIN`, 사유 필수) — READY·ASSIGNED·IN_PROGRESS 작업을 BLOCKED(`blockKind` SUPERVISOR)로. 담당·시작·집품분·재고·예약·배차 요청은 그대로(WK-04 "고장만으로 예약 해제 안 됨"). 결과를 기다리는 실적·열린 포장이 있으면 409 EXECUTION_IN_FLIGHT. 막힌 작업의 시작·실적·포장 밀봉은 409 **TASK_BLOCKED**(결품으로 막힌 것도 같은 코드). `GET /tasks/{taskId}/controls`(관리자 조작 기록, 최근 순), 작업 상세 `blockKind`. 작업자는 예전처럼 PDA 문제 보고(결품)만.
-    0.29.0(2026-11-20, 관리자 막힘 해제 — R-29 2단계, ADR-0077): `POST /tasks/{taskId}/unblocks`(같은 역할, 사유 + 실물 확인 `cartChecked: true` 필수 — 빠지면 400, false 면 422 PHYSICAL_CHECK_REQUIRED). 관리자 중지(blockKind SUPERVISOR)만 푼다(결품 BLOCKED 409 BLOCKED_BY_SHORTAGE). mfc-capacity 활성 배정이 있고 그 작업자가 지금 맡을 수 있으면(workerEligibility 없음) ASSIGNED(그 사람, 시작은 다시), 아니면 capacity 배정을 풀고 READY. 완료량 그대로. capacity 조회·해제 실패 503(바꾸지 않음).
-    0.30.0(2026-11-20, 관리자 부분 종료 — R-29 2단계, ADR-0077): `POST /tasks/{taskId}/partial-closes`(같은 역할, 사유 필수, **PICK 만**). 아직 집지 않은 잔량만 끝낸다 — 집은 양이 0 이면 422 NOTHING_EXECUTED(주문 취소 OPERATOR_DECISION·복귀로). 작업은 BLOCKED(`blockKind` PARTIAL_CLOSE) + 줄마다 `LineShortageReported`(reason **PARTIAL_CLOSE**, shortQty = 잔량) — 결품과 같은 사가가 잔량 취소(shortage-resolutions) → 예약 해제(inventory PARTIAL_CLOSE_CANCELLED) → 주문 수량 변경 → 그 품목 부분 환불. 잔량이 다 취소되면 PICK **CLOSED_PARTIAL**·포장 준비(집은 양은 그대로 포장). 결품 목록 사유에 PARTIAL_CLOSE(결품률 지표에는 세지 않음). 결품으로 막힌 작업은 409 BLOCKED_BY_SHORTAGE, 처리 중이면 409 PARTIAL_CLOSE_PENDING(해제도 같은 코드).
-    0.31.0(2026-11-20, 피킹 끝 PACK 바로 배정 — ADR-0078, 사용자 "응"): API 모양 변화 없음. PACK 이 대기에서 풀릴 때 내는 TaskProgressed(state READY/ASSIGNED, previousState WAITING)에 `pickedBy`(그 출고 PICK 을 끝낸 작업자)를 싣고, 결품 해결로 PICK 이 끝날 때도 이 사건을 낸다 — mfc-capacity 가 그 사람에게 PACK 을 바로 배정(→ AssignmentPublished → ASSIGNED).
+    0.28.0(2026-11-20, 관리자 작업 중지 — MFC 시뮬레이터 R-29 2단계, 사용자 결정 2026-11-20, ADR-0079): `POST /tasks/{taskId}/blocks`(그 센터 `MFC_SUPERVISOR` 또는 `OPERATOR_ADMIN`, 사유 필수) — READY·ASSIGNED·IN_PROGRESS 작업을 BLOCKED(`blockKind` SUPERVISOR)로. 담당·시작·집품분·재고·예약·배차 요청은 그대로(WK-04 "고장만으로 예약 해제 안 됨"). 결과를 기다리는 실적·열린 포장이 있으면 409 EXECUTION_IN_FLIGHT. 막힌 작업의 시작·실적·포장 밀봉은 409 **TASK_BLOCKED**(결품으로 막힌 것도 같은 코드). `GET /tasks/{taskId}/controls`(관리자 조작 기록, 최근 순), 작업 상세 `blockKind`. 작업자는 예전처럼 PDA 문제 보고(결품)만.
+    0.29.0(2026-11-20, 관리자 막힘 해제 — R-29 2단계, ADR-0079): `POST /tasks/{taskId}/unblocks`(같은 역할, 사유 + 실물 확인 `cartChecked: true` 필수 — 빠지면 400, false 면 422 PHYSICAL_CHECK_REQUIRED). 관리자 중지(blockKind SUPERVISOR)만 푼다(결품 BLOCKED 409 BLOCKED_BY_SHORTAGE). mfc-capacity 활성 배정이 있고 그 작업자가 지금 맡을 수 있으면(workerEligibility 없음) ASSIGNED(그 사람, 시작은 다시), 아니면 capacity 배정을 풀고 READY. 완료량 그대로. capacity 조회·해제 실패 503(바꾸지 않음).
+    0.30.0(2026-11-20, 관리자 부분 종료 — R-29 2단계, ADR-0079): `POST /tasks/{taskId}/partial-closes`(같은 역할, 사유 필수, **PICK 만**). 아직 집지 않은 잔량만 끝낸다 — 집은 양이 0 이면 422 NOTHING_EXECUTED(주문 취소 OPERATOR_DECISION·복귀로). 작업은 BLOCKED(`blockKind` PARTIAL_CLOSE) + 줄마다 `LineShortageReported`(reason **PARTIAL_CLOSE**, shortQty = 잔량) — 결품과 같은 사가가 잔량 취소(shortage-resolutions) → 예약 해제(inventory PARTIAL_CLOSE_CANCELLED) → 주문 수량 변경 → 그 품목 부분 환불. 잔량이 다 취소되면 PICK **CLOSED_PARTIAL**·포장 준비(집은 양은 그대로 포장). 결품 목록 사유에 PARTIAL_CLOSE(결품률 지표에는 세지 않음). 결품으로 막힌 작업은 409 BLOCKED_BY_SHORTAGE, 처리 중이면 409 PARTIAL_CLOSE_PENDING(해제도 같은 코드).
+    0.31.0(2026-11-20, 피킹 끝 PACK 바로 배정 — ADR-0080, 사용자 "응"): API 모양 변화 없음. PACK 이 대기에서 풀릴 때 내는 TaskProgressed(state READY/ASSIGNED, previousState WAITING)에 `pickedBy`(그 출고 PICK 을 끝낸 작업자)를 싣고, 결품 해결로 PICK 이 끝날 때도 이 사건을 낸다 — mfc-capacity 가 그 사람에게 PACK 을 바로 배정(→ AssignmentPublished → ASSIGNED).
     **사유 값(2026-11-19, 요청 F-11 — 화면 이름표용. 목록 밖 값이 올 수 있다: 재고 서비스가 새 거절 코드를 더하면 그대로 온다 → 화면은 코드 그대로)**
     - C1 작업 중지 실패 `lastError`(StopRequest·처리 대기 MFC_STOP_FAILED) = `코드: 상세`. 코드:
       `RECORD_MISMATCH` 집품·포장 기록이 재고 서비스와 맞지 않음(현장 확인 필요) · `RETURN_MISMATCH` 복귀할 위치별 수량 합이 집품·포장량과 다름 ·
@@ -239,7 +239,7 @@ paths:
         2026-11-07(ADR-0045). 고객 선택 CANCEL_OOS_ONLY 로 결품 수량을 취소할 때. 그 주문 줄의 PICK·PACK 작업 행에서 qty 만큼 취소(cancelledQty)하고,
         결품으로 BLOCKED 였던 PICK 작업을 다시 진행 상태로(시작한 작업자가 있으면 IN_PROGRESS, 없으면 담당 따라 READY/ASSIGNED). 남은 집품이 0 이면
         PICK COMPLETED, 포장 작업 준비. PICK 남은 양보다 많으면 409 INVALID_STATE. 같은 Idempotency-Key·같은 본문은 재생.
-        (0.30.0, ADR-0077) 관리자 부분 종료로 막힌 PICK(`blockKind` PARTIAL_CLOSE)은 잔량이 남아 있는 동안 BLOCKED 그대로, 잔량이 0 이 되면 **CLOSED_PARTIAL**(완료가 아니라 부분 종료)·포장 준비.
+        (0.30.0, ADR-0079) 관리자 부분 종료로 막힌 PICK(`blockKind` PARTIAL_CLOSE)은 잔량이 남아 있는 동안 BLOCKED 그대로, 잔량이 0 이 되면 **CLOSED_PARTIAL**(완료가 아니라 부분 종료)·포장 준비.
         관리자 작업 중지(`blockKind` SUPERVISOR)로 막힌 PICK 은 취소량만 더하고 막힘은 그대로(관리자가 푼다).
       operationId: resolveShortage
       parameters:
@@ -520,7 +520,7 @@ paths:
   /tasks/{taskId}/blocks:
     post:
       tags: [tasks]
-      summary: 관리자 작업 중지 — READY·ASSIGNED·IN_PROGRESS → BLOCKED (0.28.0, ADR-0077)
+      summary: 관리자 작업 중지 — READY·ASSIGNED·IN_PROGRESS → BLOCKED (0.28.0, ADR-0079)
       description: |
         MFC 시뮬레이터 R-29 2단계(사용자 결정 2026-11-20). 현장이 멈췄을 때(설비 고장·오주문 확인 등) 센터 관리자가 작업을 멈춘다(WK-04 해결 대기 BLOCKED).
         - 누가: 그 센터 `MFC_SUPERVISOR` 또는 `OPERATOR_ADMIN`(모든 센터). 작업자는 이 경로를 쓰지 않는다 — PDA 문제 보고(결품)만.
@@ -564,7 +564,7 @@ paths:
   /tasks/{taskId}/unblocks:
     post:
       tags: [tasks]
-      summary: 관리자 막힘 해제 — BLOCKED → ASSIGNED(담당 살아 있으면) 또는 READY (0.29.0, ADR-0077)
+      summary: 관리자 막힘 해제 — BLOCKED → ASSIGNED(담당 살아 있으면) 또는 READY (0.29.0, ADR-0079)
       description: |
         MFC 시뮬레이터 R-29 2단계(사용자 결정 2026-11-20). 관리자 작업 중지(`blockKind` SUPERVISOR)를 푼다.
         - 누가: 작업 중지와 같다(그 센터 `MFC_SUPERVISOR` 또는 `OPERATOR_ADMIN`).
@@ -616,7 +616,7 @@ paths:
   /tasks/{taskId}/partial-closes:
     post:
       tags: [tasks]
-      summary: 관리자 부분 종료 — PICK 의 아직 집지 않은 잔량만 취소, 집은 양은 포장으로 (0.30.0, ADR-0077)
+      summary: 관리자 부분 종료 — PICK 의 아직 집지 않은 잔량만 취소, 집은 양은 포장으로 (0.30.0, ADR-0079)
       description: |
         MFC 시뮬레이터 R-29 2단계(사용자 결정 2026-11-20). WK-04 "취소 가능한 잔량만 cancelled_qty, 실행>0/잔량취소 후 CLOSED_PARTIAL".
         - 누가: 작업 중지와 같다(그 센터 `MFC_SUPERVISOR` 또는 `OPERATOR_ADMIN`). 사유 필수. **PICK 만**(그 밖 422 UNSUPPORTED_TASK_TYPE — 집은 물건 취소는 주문 취소·복귀).

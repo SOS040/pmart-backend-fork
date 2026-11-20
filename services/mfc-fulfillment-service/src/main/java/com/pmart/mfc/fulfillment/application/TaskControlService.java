@@ -25,7 +25,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
- * 센터 관리자 작업 조작(MFC 시뮬레이터 R-29 2단계, 사용자 결정 2026-11-20 — ADR-0077). 현장이 멈췄을 때 관리자가 작업을 멈춘다(WK-04 해결
+ * 센터 관리자 작업 조작(MFC 시뮬레이터 R-29 2단계, 사용자 결정 2026-11-20 — ADR-0079). 현장이 멈췄을 때 관리자가 작업을 멈춘다(WK-04 해결
  * 대기 BLOCKED).
  *
  * <ul>

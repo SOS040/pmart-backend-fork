@@ -36,7 +36,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 센터 관리자 작업 조작(MFC 시뮬레이터 R-29 2단계, ADR-0077): 작업 중지(BLOCKED, 담당·재고 그대로) · 해제 · 부분 종료. 재고·배정 정본은
+ * 센터 관리자 작업 조작(MFC 시뮬레이터 R-29 2단계, ADR-0079): 작업 중지(BLOCKED, 담당·재고 그대로) · 해제 · 부분 종료. 재고·배정 정본은
  * WireMock.
  */
 @SpringBootTest(
@@ -681,7 +681,7 @@ class SupervisorControlIT extends PostgresKafkaContainerSupport {
     JsonNode p = task(pack);
     assertThat(p.path("state").asString()).isEqualTo("READY");
     assertThat(p.path("remainingQty").asInt()).isEqualTo(1); // 집은 1개만 포장
-    // 포장 준비 사건에 피커(0.31.0, ADR-0078 — capacity 가 바로 배정)
+    // 포장 준비 사건에 피커(0.31.0, ADR-0080 — capacity 가 바로 배정)
     assertThat(lastEvent("TaskProgressed", pack))
         .contains("\"previousState\": \"WAITING\"")
         .contains("\"pickedBy\": \"w1\"");

@@ -14,7 +14,7 @@ spring:
           destination: platform.employee.v1
         authEvents-in-0:
           destination: platform.auth.v1
-        # mfc.fulfillment.v1 TaskProgressed — 피킹 끝난 PACK 을 피커에게 바로 배정(2026-11-20, ADR-0078)
+        # mfc.fulfillment.v1 TaskProgressed — 피킹 끝난 PACK 을 피커에게 바로 배정(2026-11-20, ADR-0080)
         fulfillmentEvents-in-0:
           destination: mfc.fulfillment.v1
 pmart:

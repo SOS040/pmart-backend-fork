@@ -74,7 +74,7 @@ info:
     0.40.0(2026-11-20, 사용자 결정 "실사는 다음 작업 순서에 넣지 않고 계획 때 담당자 지정 — 그 사람에게 맨 먼저"): 실사 계획 `POST /mfcs/{mfcId}/count-plans` 에 `assigneeId`(선택 — 작업자 ID),
       `CountPlan.assigneeId`, `/internal/count-work` 항목 `assigneeId`(지정 없으면 null). mfc-capacity 가 그 사람에게 다른 새 작업보다 먼저 주고, 다른 사람에게는 주지 않는다
       (재계수에서 담당자가 첫 계수자라 셀 수 없으면 누구나). 추가만 — 하위 호환.
-    0.41.0(2026-11-20, MFC 시뮬레이터 R-29 2단계 — ADR-0077 관리자 부분 종료): `shortfall-releases` 사유 `PARTIAL_CLOSE_CANCELLED` — 센터 관리자가 피킹 잔량을 끝내면
+    0.41.0(2026-11-20, MFC 시뮬레이터 R-29 2단계 — ADR-0079 관리자 부분 종료): `shortfall-releases` 사유 `PARTIAL_CLOSE_CANCELLED` — 센터 관리자가 피킹 잔량을 끝내면
       결품과 같은 사가가 부른다. 그 줄의 이행부족(BLOCKED)을 먼저, 모자라면 **아직 집지 않은 확정·점유 예약**(qty − picked)을 해제(R−q, A+q, H·E 그대로 — IV-08 피킹 전 취소, 확정 단위 RELEASE).
       집은 양은 건드리지 않는다. 합보다 많으면 409 INVALID_STATE. 기존 사유 OUT_OF_STOCK_CANCELLED 는 그대로(BLOCKED 만).
 servers:
@@ -570,7 +570,7 @@ paths:
       summary: '[orchestration→inventory] 이행부족(BLOCKED) 해제 — 결품 수량을 주문에서 취소했을 때 (IV-09 2부, 0.6.0)'
       description: |
         ADR-0045. 그 주문 줄의 BLOCKED 조각을 qty 만큼 RELEASED 로(현물·R 변화 없음 — BLOCKED 는 R 이 아니라 D). BLOCKED 합보다 많으면 409 INVALID_STATE.
-        (0.41.0, ADR-0077) 사유 `PARTIAL_CLOSE_CANCELLED`(센터 관리자 부분 종료) = BLOCKED 먼저, 모자라면 그 줄의 아직 집지 않은 HELD·CONFIRMED 예약(qty − picked)을 해제 —
+        (0.41.0, ADR-0079) 사유 `PARTIAL_CLOSE_CANCELLED`(센터 관리자 부분 종료) = BLOCKED 먼저, 모자라면 그 줄의 아직 집지 않은 HELD·CONFIRMED 예약(qty − picked)을 해제 —
         R−q·A+q(현물·판매가능 실물 그대로, 확정 단위 RELEASE). BLOCKED + 집지 않은 예약 합보다 많으면 409 INVALID_STATE.
         같은 Idempotency-Key·같은 본문은 재생.
       operationId: releaseShortfall

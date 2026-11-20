@@ -3174,7 +3174,7 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * 관리자 부분 종료(0.41.0, R-29 ADR-0077): 결품 사가가 사유 PARTIAL_CLOSE_CANCELLED 로 부르면 아직 집지 않은 확정 예약을 해제 —
+   * 관리자 부분 종료(0.41.0, R-29 ADR-0079): 결품 사가가 사유 PARTIAL_CLOSE_CANCELLED 로 부르면 아직 집지 않은 확정 예약을 해제 —
    * R−q, 판매 가능 +q, 현물 그대로(IV-08 피킹 전 취소).
    */
   @Test

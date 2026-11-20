@@ -256,7 +256,7 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
     }
   }
 
-  /** 피킹 끝 PACK → 피커에게 바로 SYSTEM 배정(0.32.0, ADR-0078). 맡을 수 없음·이미 배정이면 그대로. */
+  /** 피킹 끝 PACK → 피커에게 바로 SYSTEM 배정(0.32.0, ADR-0080). 맡을 수 없음·이미 배정이면 그대로. */
   @Test
   void packIsAssignedToPickerWhenPickingEnds() throws Exception {
     String picker = "pk-" + UUID.randomUUID().toString().substring(0, 6);
@@ -312,7 +312,7 @@ class AssignmentsIT extends PostgresKafkaContainerSupport {
     assertThat(activeCount(pack3, picker)).isZero();
   }
 
-  /** 배정 이력(0.31.0, R-29 ADR-0077): 배정·재배정·해제를 버전 순으로 — 누가·언제·왜. 센터 관리자·본사 관리자만. */
+  /** 배정 이력(0.31.0, R-29 ADR-0079): 배정·재배정·해제를 버전 순으로 — 누가·언제·왜. 센터 관리자·본사 관리자만. */
   @Test
   void assignmentHistoryShowsWhoAssignedReassignedAndReleased() {
     register("wrk-1", List.of("PICK", "PACK"), List.of("AMBIENT"));
