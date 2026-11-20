@@ -492,6 +492,36 @@ public class ClaimStore {
     return jdbc.query(sql.toString(), (rs, i) -> claim(rs), args.toArray());
   }
 
+  /** 0.10.0 CL-6: 상태(byType 이면 종류)별 수 — 목록과 같은 거르기, state 제외. */
+  public java.util.Map<String, Long> counts(
+      @Nullable String accountId, @Nullable String orderId, @Nullable String type, boolean byType) {
+    String col = byType ? "type" : "state";
+    StringBuilder sql =
+        new StringBuilder("SELECT " + col + " AS k, count(*) AS n FROM claim WHERE 1 = 1");
+    List<Object> args = new ArrayList<>();
+    if (accountId != null) {
+      sql.append(" AND account_id = ?");
+      args.add(accountId);
+    }
+    if (orderId != null) {
+      sql.append(" AND order_id = ?");
+      args.add(orderId);
+    }
+    if (type != null) {
+      sql.append(" AND type = ?");
+      args.add(type);
+    }
+    sql.append(" GROUP BY ").append(col);
+    java.util.Map<String, Long> out = new java.util.HashMap<>();
+    jdbc.query(
+        sql.toString(),
+        rs -> {
+          out.put(rs.getString("k"), rs.getLong("n"));
+        },
+        args.toArray());
+    return out;
+  }
+
   public List<LineRow> lines(String claimId) {
     return jdbc.query(
         "SELECT * FROM claim_line WHERE claim_id = ? ORDER BY claim_line_id",
@@ -844,6 +874,33 @@ public class ClaimStore {
 
   /** 상품 환불 요약용 — 클레임별 환불 의도 (상태, 금액, 끝난 시각)(0.6.0 BR-33). */
   public record RefundBrief(String state, long amount, @Nullable Instant completedAt) {}
+
+  /** 0.10.0 CL-4: 클레임 순번(같은 주문·같은 종류 안, V7 트리거가 매김). */
+  public java.util.Map<String, Integer> claimSeqs(java.util.Collection<String> claimIds) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    if (claimIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT claim_id, claim_seq FROM claim WHERE claim_id = ANY (?::varchar[])",
+        rs -> {
+          out.put(rs.getString("claim_id"), rs.getInt("claim_seq"));
+        },
+        "{" + String.join(",", claimIds) + "}");
+    return out;
+  }
+
+  /** 0.10.0 CL-4: 이 클레임 환불들의 순번(같은 주문의 환불 순번). */
+  public java.util.Map<String, Integer> refundSeqs(String claimId) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    jdbc.query(
+        "SELECT refund_intent_id, refund_seq FROM refund_intent WHERE claim_id = ?",
+        rs -> {
+          out.put(rs.getString("refund_intent_id"), rs.getInt("refund_seq"));
+        },
+        claimId);
+    return out;
+  }
 
   public java.util.Map<String, List<RefundBrief>> refundBriefs(
       java.util.Collection<String> claimIds) {

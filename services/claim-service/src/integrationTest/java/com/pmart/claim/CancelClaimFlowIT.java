@@ -546,6 +546,9 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(closed.body().path("state").asString()).isEqualTo("CLOSED");
     Res refundList = get(me, "/claims/" + claimId + "/refunds");
     assertThat(refundList.status()).isEqualTo(200);
+    assertThat(refundList.body().path("items").path(0).path("refundSeq").asInt())
+        .as("CL-4 환불 순번")
+        .isEqualTo(1);
     assertThat(refundList.body().path("items").path(0).path("state").asString())
         .isEqualTo("COMPLETED");
     assertThat(refundList.body().path("items").path(0).path("pgResult").asString())
@@ -605,6 +608,91 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
                 || second.body().path("page").path("nextCursor").isMissingNode())
         .isTrue();
     assertThat(get(token, "/claims?cursor=bad!").status()).isEqualTo(400);
+  }
+
+  /** 0.10.0 CL-7 직원 customerId 거르기, CL-6 상태별·종류별 수(모든 값 0 까지). */
+  @Test
+  void staffCustomerFilterAndCounts() {
+    String acc = "CU-CNT-" + UUID.randomUUID().toString().substring(0, 8);
+    java.time.Instant base = java.time.Instant.parse("2026-11-20T00:00:00Z");
+    String[][] rows = {{"CANCEL", "REJECTED"}, {"CANCEL", "CLOSED"}, {"RETURN", "CLOSED"}};
+    for (int i = 0; i < rows.length; i++) {
+      jdbc.update(
+          "INSERT INTO claim (claim_id, order_id, account_id, type, state, reason, channel,"
+              + " payment_attempt_id, approved_amount, item_amount, bag_fee, delivery_tip, opened_at,"
+              + " updated_at) VALUES (?,?,?,?,?,'CHANGE_OF_MIND','CUSTOMER_APP','PAY-x',0,0,0,0,?,?)",
+          acc + "-C" + i,
+          "ORD-" + acc + "-" + i,
+          acc,
+          rows[i][0],
+          rows[i][1],
+          java.sql.Timestamp.from(base.plusSeconds(i)),
+          java.sql.Timestamp.from(base.plusSeconds(i)));
+    }
+    String staff = TestJwt.operator("STAFF-CS", List.of("CS_AGENT"), List.of());
+    Res list = get(staff, "/claims?customerId=" + acc);
+    assertThat(list.status()).isEqualTo(200);
+    assertThat(list.body().path("items").findValuesAsString("claimId"))
+        .containsExactly(acc + "-C2", acc + "-C1", acc + "-C0");
+    // 고객 토큰의 customerId 는 무시(늘 본인)
+    assertThat(
+            get(TestJwt.customer("CU-OTHER"), "/claims?customerId=" + acc)
+                .body()
+                .path("items")
+                .size())
+        .isZero();
+
+    Res byState = get(staff, "/claims/counts?customerId=" + acc);
+    assertThat(byState.status()).as(byState.body().toString()).isEqualTo(200);
+    JsonNode counts = byState.body().path("counts");
+    assertThat(counts.size()).as("ClaimState 모든 값").isEqualTo(11);
+    java.util.Map<String, Long> m = new java.util.HashMap<>();
+    counts.forEach(c -> m.put(c.path("key").asString(), c.path("count").asLong()));
+    assertThat(m)
+        .containsEntry("CLOSED", 2L)
+        .containsEntry("REJECTED", 1L)
+        .containsEntry("OPENED", 0L);
+    assertThat(counts.path(0).path("capped").asBoolean()).isFalse();
+    assertThat(byState.body().path("asOf").asString()).isNotBlank();
+
+    Res cancelOnly = get(staff, "/claims/counts?customerId=" + acc + "&type=CANCEL");
+    java.util.Map<String, Long> c2 = new java.util.HashMap<>();
+    cancelOnly
+        .body()
+        .path("counts")
+        .forEach(c -> c2.put(c.path("key").asString(), c.path("count").asLong()));
+    assertThat(c2).containsEntry("CLOSED", 1L).containsEntry("REJECTED", 1L);
+
+    Res byType = get(staff, "/claims/counts?customerId=" + acc + "&by=type");
+    java.util.Map<String, Long> t = new java.util.HashMap<>();
+    byType
+        .body()
+        .path("counts")
+        .forEach(c -> t.put(c.path("key").asString(), c.path("count").asLong()));
+    assertThat(t).containsOnlyKeys("CANCEL", "RETURN", "EXCHANGE");
+    assertThat(t)
+        .containsEntry("CANCEL", 2L)
+        .containsEntry("RETURN", 1L)
+        .containsEntry("EXCHANGE", 0L);
+
+    // CL-4(0.10.0): 같은 주문·같은 종류 안 순번(V7 트리거) — 주문이 다르면 각각 1, 같은 주문 같은 종류면 2
+    java.util.Map<String, Integer> seqs = new java.util.HashMap<>();
+    list.body()
+        .path("items")
+        .forEach(i -> seqs.put(i.path("claimId").asString(), i.path("claimSeq").asInt()));
+    assertThat(seqs).containsEntry(acc + "-C0", 1).containsEntry(acc + "-C2", 1);
+    for (String[] r : new String[][] {{"-C3", "CANCEL"}, {"-C4", "RETURN"}}) {
+      jdbc.update(
+          "INSERT INTO claim (claim_id, order_id, account_id, type, state, reason, channel,"
+              + " payment_attempt_id, approved_amount, item_amount, bag_fee, delivery_tip, opened_at,"
+              + " updated_at) VALUES (?,?,?,?,'CLOSED','CHANGE_OF_MIND','CUSTOMER_APP','PAY-x',0,0,0,0,now(),now())",
+          acc + r[0],
+          "ORD-" + acc + "-0",
+          acc,
+          r[1]);
+    }
+    assertThat(get(staff, "/claims/" + acc + "-C3").body().path("claimSeq").asInt()).isEqualTo(2);
+    assertThat(get(staff, "/claims/" + acc + "-C4").body().path("claimSeq").asInt()).isEqualTo(1);
   }
 
   @Test

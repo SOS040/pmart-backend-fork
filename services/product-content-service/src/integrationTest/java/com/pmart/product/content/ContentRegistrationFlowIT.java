@@ -821,6 +821,41 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     String draftId = created.body().path("draftId").asString();
     assertThat(created.body().path("problems").toString()).contains("MAIN_IMAGE_REQUIRED");
 
+    // PCT-1(0.4.0): 초안 목록(최근 바뀐 순·state·productId·커서)과 상태별 수
+    Res listDraft2 = post("/content-drafts", Map.of("productId", productId, "name", "삼다수 2L"));
+    String draft2 = listDraft2.body().path("draftId").asString();
+    Res listed = get("/content-drafts?productId=" + productId + "&state=DRAFT&size=1");
+    assertThat(listed.status()).as(listed.body().toString()).isEqualTo(200);
+    assertThat(listed.body().path("items").findValuesAsString("draftId")).containsExactly(draft2);
+    assertThat(listed.body().path("items").path(0).path("name").asString()).isEqualTo("삼다수 2L");
+    String next = listed.body().path("page").path("nextCursor").asString();
+    assertThat(next).isNotBlank();
+    assertThat(
+            get("/content-drafts?productId=" + productId + "&state=DRAFT&size=1&cursor=" + next)
+                .body()
+                .path("items")
+                .findValuesAsString("draftId"))
+        .containsExactly(draftId);
+    assertThat(
+            get("/content-drafts?productId=" + productId + "&state=PUBLISHED").body().path("items"))
+        .isEmpty();
+    assertThat(get("/content-drafts?state=NOPE").status()).isEqualTo(400);
+    assertThat(get("/content-drafts?cursor=bad!").status()).isEqualTo(400);
+    assertThat(get("/content-drafts", CUSTOMER).status()).isEqualTo(403);
+    Res counts = get("/content-drafts/counts?productId=" + productId);
+    assertThat(counts.status()).isEqualTo(200);
+    Map<String, Long> byState = new java.util.LinkedHashMap<>();
+    counts
+        .body()
+        .path("counts")
+        .forEach(c -> byState.put(c.path("key").asString(), c.path("count").asLong()));
+    assertThat(byState)
+        .containsExactly(
+            Map.entry("DRAFT", 2L),
+            Map.entry("SUBMITTED", 0L),
+            Map.entry("PUBLISHED", 0L),
+            Map.entry("REJECTED", 0L));
+
     // 이미지 규칙: 형식·MAIN 자리
     var notImage = file("not an image".getBytes(StandardCharsets.UTF_8), "a.txt");
     notImage.add("role", "MAIN");

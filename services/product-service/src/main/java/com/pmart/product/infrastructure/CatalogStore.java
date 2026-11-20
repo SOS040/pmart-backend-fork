@@ -158,11 +158,30 @@ public class CatalogStore {
   /** 목록(키셋 페이지: product_id 오름차순). categoryId 는 노출 카테고리 어느 것이든. */
   public List<ProductRow> listProducts(
       @Nullable String categoryId,
+      @Nullable String q,
       @Nullable String saleState,
       @Nullable String afterId,
       int limit) {
     StringBuilder sql = new StringBuilder("SELECT p.* FROM product p WHERE 1=1");
     List<Object> args = new ArrayList<>();
+    String term = q == null ? "" : q.strip();
+    if (!term.isEmpty()) {
+      // PD-4(0.5.0): 관리용 명칭 부분 일치(대소문자·띄어쓰기 무시) 또는 SKU·사용 중 바코드 완전 일치
+      String needle =
+          term.toLowerCase(java.util.Locale.ROOT)
+              .replaceAll("\\s+", "")
+              .replace("\\", "\\\\")
+              .replace("%", "\\%")
+              .replace("_", "\\_");
+      sql.append(
+          " AND (replace(lower(p.internal_name), ' ', '') LIKE ? ESCAPE '\\'"
+              + " OR EXISTS (SELECT 1 FROM sku s WHERE s.product_id = p.product_id AND s.sku = ?)"
+              + " OR EXISTS (SELECT 1 FROM sku s JOIN sku_barcode b ON b.sku = s.sku"
+              + " WHERE s.product_id = p.product_id AND b.state = 'ACTIVE' AND b.barcode = ?))");
+      args.add("%" + needle + "%");
+      args.add(term.toUpperCase(java.util.Locale.ROOT));
+      args.add(term);
+    }
     if (categoryId != null) {
       sql.append(
           " AND EXISTS (SELECT 1 FROM product_category pc WHERE pc.product_id = p.product_id AND pc.category_id = ?)");

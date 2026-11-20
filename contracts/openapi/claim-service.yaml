@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.9.1
+  version: 0.10.0
   description: |
+    0.10.0(2026-11-20, CL-4 ADR-0070 화면 번호): Claim·ClaimSummary `claimSeq`(같은 주문·같은 종류 안 순번), Refund `refundSeq`(같은 주문의 환불 순번) — 기존 행은 생성순으로 채움(V7).
+    0.10.0(2026-11-20, 백오피스 CL-7·CL-6 — PC 2 요청 #251·#227, 사용자 "진행해라"): 직원 `GET /claims?customerId=`(클레임 계정 = 주문 고객, 완전 일치 — 고객 토큰은 무시하고 늘 본인),
+    `GET /claims/counts`(목록과 같은 거르기 — state 제외 — 로 상태별 수, `by=type` 이면 종류별. 모든 값을 0 까지, 정확히 세므로 capped 는 늘 false, case StatusCounts 와 같은 모양).
     0.9.1(2026-11-20, PC 5 요청 — 사용자 "쿠폰 안 되면 자동취소만", "약속+30분"): 내부 시스템 취소 `POST /internal/claims/system-cancellations` 사유에 **`DISPATCH_UNAVAILABLE`** — delivery-dispatch 가 배송 약속 시각 + 30분이 지나도 라이더가 배정되지 않은(픽업 전) 고객 배송의 주문을 자동 취소. 범위·흐름은 시스템 취소 그대로(CONFIRMED·PREPARING, 전액 환불, 고객 알림은 배차 불가 문구). 2,000원 쿠폰은 promotion 이 생길 때.
     0.9.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `GET /internal/accounts/{accountId}/withdrawal-eligibility` — 끝나지 않은 클레임(취소·반품·교환)·환불·분쟁.
     0.8.0(2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터 R-29 "니가 바로 고쳐"): 사유 **`OPERATOR_DECISION`**(관리자 판단) 직원 전체 취소 —
@@ -102,6 +105,7 @@ paths:
       x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - { name: orderId, in: query, schema: { type: string } }
+        - { name: customerId, in: query, x-added-in: '2026-11-20', schema: { type: string, maxLength: 64 }, description: '0.10.0 CL-7 — 직원만: 그 고객(클레임 계정 = 주문 고객)의 클레임. 고객 토큰은 무시(늘 본인)' }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/ClaimType' } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/ClaimState' } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
@@ -116,6 +120,29 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/ClaimSummary' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /claims/counts:
+    get:
+      tags: [claims]
+      summary: 클레임 상태별(또는 종류별) 수 — 목록 숫자 띠 (0.10.0 CL-6)
+      description: |
+        `GET /claims` 와 같은 거르기(orderId·customerId·type, state 는 없음)로 센다. `by=state`(기본)면 ClaimState 모든 값, `by=type` 이면 ClaimType 모든 값을
+        0 까지 빠짐없이 돌려준다. 정확히 세므로 `capped` 는 늘 false. 고객 토큰은 본인 클레임만. 웹이 claim 을 직접 부른다(bff 거치지 않음).
+      operationId: countClaims
+      x-pmart-user-types: [CUSTOMER, OPERATOR]
+      parameters:
+        - { name: orderId, in: query, schema: { type: string } }
+        - { name: customerId, in: query, schema: { type: string, maxLength: 64 }, description: 직원만(고객 토큰은 무시) }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/ClaimType' }, description: by=state 일 때 이 종류만 }
+        - { name: by, in: query, schema: { type: string, enum: [state, type], default: state } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusCounts' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /claims/{claimId}:
     get:
@@ -565,6 +592,22 @@ components:
     ClaimType:
       type: string
       enum: [CANCEL, RETURN, EXCHANGE]
+    StatusCounts:
+      type: object
+      x-added-in: '2026-11-20'
+      description: (0.10.0) 목록 상태별 수 — 웹 숫자 띠 공통 모양(case-service StatusCounts 와 같음)
+      required: [counts, asOf]
+      properties:
+        counts:
+          type: array
+          items:
+            type: object
+            required: [key, count, capped]
+            properties:
+              key: { type: string, description: ClaimState(by=state) 또는 ClaimType(by=type) 값 }
+              count: { type: integer, format: int64 }
+              capped: { type: boolean, description: 셀 수 있는 상한을 넘었으면 true — claim 은 늘 false }
+        asOf: { type: string, format: date-time }
     ClaimState:
       type: string
       description: |
@@ -704,6 +747,7 @@ components:
       type: object
       properties:
         claimId: { type: string }
+        claimSeq: { type: integer, x-added-in: '2026-11-20', description: '0.10.0 CL-4 — 같은 주문·같은 종류 안에서 몇 번째 클레임(1부터). 화면 표기 "<주문번호> <종류> <claimSeq>"(예 74939255 반품 1, ADR-0070)' }
         version: { type: integer }
         orderId: { type: string }
         type: { $ref: '#/components/schemas/ClaimType' }
@@ -761,6 +805,7 @@ components:
       type: object
       properties:
         claimId: { type: string }
+        claimSeq: { type: integer, x-added-in: '2026-11-20', description: '0.10.0 CL-4 — 같은 주문·같은 종류 안에서 몇 번째 클레임(1부터). 화면 표기 "<주문번호> <종류> <claimSeq>"(예 74939255 반품 1, ADR-0070)' }
         orderId: { type: string }
         type: { $ref: '#/components/schemas/ClaimType' }
         state: { $ref: '#/components/schemas/ClaimState' }
@@ -825,6 +870,7 @@ components:
       type: object
       properties:
         refundIntentId: { type: string }
+        refundSeq: { type: integer, x-added-in: '2026-11-20', description: '0.10.0 CL-4 — 같은 주문의 몇 번째 환불(상품·회수비 모두, 1부터). 화면 "<주문번호> 환불 <refundSeq>"' }
         claimId: { type: string }
         kind:
           type: string

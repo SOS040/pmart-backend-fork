@@ -56,10 +56,11 @@ public class ProductQueries {
 
   public List<ProductRow> list(
       @Nullable String categoryId,
+      @Nullable String q,
       @Nullable String saleState,
       @Nullable String afterId,
       int limit) {
-    return catalog.listProducts(categoryId, saleState, afterId, limit);
+    return catalog.listProducts(categoryId, q, saleState, afterId, limit);
   }
 
   /** 원천 키 → 발급된 상품·SKU(계약 lookupSourceLinks 모양의 Map). 발급 전·모르는 키는 missing. */

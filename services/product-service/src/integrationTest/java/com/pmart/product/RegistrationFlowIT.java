@@ -431,6 +431,35 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(links.path("items").path(0).path("skus").path(0).asString()).isEqualTo(sku);
     assertThat(links.path("missing").toString()).contains("bm-none");
     assertThat(get("/products?categoryId=p03-c02").body().path("items")).hasSize(1);
+    // PD-4(0.5.0): q — 관리용 명칭 부분 일치(대소문자·띄어쓰기 무시), SKU·사용 중 바코드 완전 일치
+    String internal =
+        jdbc.queryForObject(
+            "SELECT internal_name FROM product WHERE product_id = ?", String.class, productId);
+    String part =
+        internal.replace(" ", "").substring(0, Math.min(3, internal.replace(" ", "").length()));
+    assertThat(
+            get("/products?q=" + part.toUpperCase())
+                .body()
+                .path("items")
+                .findValuesAsString("productId"))
+        .contains(productId);
+    assertThat(
+            get("/products?q=" + sku.toLowerCase())
+                .body()
+                .path("items")
+                .findValuesAsString("productId"))
+        .containsExactly(productId);
+    // 바코드 완전 일치 — 이 묶음 상품에 바코드가 있으면
+    for (String barcode :
+        jdbc.queryForList(
+            "SELECT barcode FROM sku_barcode WHERE sku = ? AND state = 'ACTIVE'",
+            String.class,
+            sku)) {
+      assertThat(get("/products?q=" + barcode).body().path("items").findValuesAsString("productId"))
+          .containsExactly(productId);
+    }
+    assertThat(get("/products?q=%25").body().path("items")).as("% 는 글자 그대로").isEmpty();
+    assertThat(get("/products?q=zz-no-such-name-zz").body().path("items")).isEmpty();
 
     Integer published =
         jdbc.queryForObject(
@@ -962,6 +991,9 @@ class RegistrationFlowIT extends PostgresKafkaContainerSupport {
             .path(0)
             .asString();
     assertThat(get("/barcodes/" + barcode).body().path("sku").asString()).isEqualTo(sku);
+    // PD-4: 사용 중 바코드로 상품 목록 찾기
+    assertThat(get("/products?q=" + barcode).body().path("items").findValuesAsString("productId"))
+        .hasSize(1);
     // 반영 회신(RC-1): 같은 트랜잭션에서 APPLIED·행 APPLIED
     JsonNode aReceipt = receipt(aApproval);
     assertThat(aReceipt).as("반영 회신").isNotNull();

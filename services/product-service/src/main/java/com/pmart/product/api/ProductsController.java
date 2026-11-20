@@ -46,6 +46,7 @@ public class ProductsController implements ProductsApi {
   @Override
   public ResponseEntity<ListProducts200Response> listProducts(
       @Nullable String categoryId,
+      @Nullable String q,
       @Nullable SaleState saleState,
       @Nullable Integer size,
       @Nullable String cursor) {
@@ -53,7 +54,7 @@ public class ProductsController implements ProductsApi {
     int limit = Math.min(size == null ? DEFAULT_SIZE : Math.max(size, 1), MAX_SIZE);
     List<ProductRow> rows =
         queries.list(
-            categoryId, saleState == null ? null : saleState.getValue(), cursor, limit + 1);
+            categoryId, q, saleState == null ? null : saleState.getValue(), cursor, limit + 1);
     boolean more = rows.size() > limit;
     List<ProductRow> page = more ? rows.subList(0, limit) : rows;
     List<Map<String, Object>> items =

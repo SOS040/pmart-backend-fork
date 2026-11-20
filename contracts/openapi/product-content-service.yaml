@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-20, 백오피스 PCT-1 CD-1·CD-2 — PC 2 요청 #274, 사용자 "진행해라"): 직원 `GET /content-drafts`(초안 목록 — state 여럿·productId 거르기, 최근 바뀐 것 먼저, 커서),
+    `GET /content-drafts/counts`(같은 거르기 — state 제외 — 로 상태별 수, 모든 상태 0 까지, capped 늘 false).
     0.3.0(2026-11-19, 상품 상세 느림 — 사용자 "1 -> 해줘"): `GET /content-images/{imageId}?w=` 휴대폰용 축소본. `w` 는 240·480·720 중 하나,
     원본 비율 그대로 원본 폭보다 작을 때만 줄여 **JPEG** 로 준다(투명 배경은 흰색). 원본이 그 폭 이하이거나 줄일 수 없는 형식(WEBP 등)이면 원본 그대로.
     처음 요청 때 만들어 저장해 두고 다시 쓴다(내용 주소라 바뀌지 않음 — 긴 캐시, ETag `<sha256>-w<폭>`). `w` 없으면 지금처럼 원본. 응답 URL 은 그대로 — 앱이 붙인다.
@@ -192,6 +194,54 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+    get:
+      tags: [registration]
+      summary: 콘텐츠 초안 목록 (0.4.0 PCT-1 CD-1 — 백오피스 콘텐츠 조회)
+      description: |
+        작성 중·승인 대기·게시·반려 초안을 최근 바뀐 순(updatedAt·draftId 내림차순)으로. `state` 는 여러 번 줄 수 있다(?state=DRAFT&state=SUBMITTED).
+        커서는 응답 `page.nextCursor` 그대로(틀리면 400). 권한은 초안 만들기와 같다(운영자).
+      operationId: listContentDrafts
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - name: state
+          in: query
+          style: form
+          explode: true
+          schema: { type: array, items: { type: string, enum: [DRAFT, SUBMITTED, PUBLISHED, REJECTED] } }
+        - { name: productId, in: query, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ContentDraftSummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /content-drafts/counts:
+    get:
+      tags: [registration]
+      summary: 콘텐츠 초안 상태별 수 (0.4.0 PCT-1 CD-2)
+      description: 목록과 같은 거르기(productId, state 제외)로 상태별 수 — 모든 상태를 0 까지. 정확히 세므로 capped 는 늘 false.
+      operationId: countContentDrafts
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: productId, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusCounts' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /content-drafts/{draftId}:
     get:
@@ -525,6 +575,35 @@ components:
         publishedAt: { type: [string, 'null'], format: date-time, description: registration=UPDATE 일 때 지금 게시본의 게시 시각 }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
         updatedAt: { type: string, format: date-time }
+    ContentDraftSummary:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [draftId, state, updatedAt, version]
+      properties:
+        draftId: { type: string }
+        productId: { type: [string, 'null'] }
+        state: { type: string, enum: [DRAFT, SUBMITTED, PUBLISHED, REJECTED] }
+        name: { type: [string, 'null'], description: 고객용 상품명 }
+        imageId: { type: [string, 'null'], description: '대표(MAIN 첫째) 이미지 — GET /content-images/{imageId}' }
+        approvalId: { type: [string, 'null'] }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer }
+    StatusCounts:
+      type: object
+      x-added-in: '2026-11-20'
+      description: 목록 상태별 수 — 웹 숫자 띠 공통 모양(case-service StatusCounts 와 같음)
+      required: [counts, asOf]
+      properties:
+        counts:
+          type: array
+          items:
+            type: object
+            required: [key, count, capped]
+            properties:
+              key: { type: string, description: 초안 상태 값 }
+              count: { type: integer, format: int64 }
+              capped: { type: boolean, description: 셀 수 있는 상한을 넘었으면 true — 여기서는 늘 false }
+        asOf: { type: string, format: date-time }
     ContentImportBatch:
       type: object
       required: [batchId, state, productCount]

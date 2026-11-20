@@ -8,6 +8,8 @@ import com.pmart.claim.api.generated.model.CreateClaimRequest;
 import com.pmart.claim.api.generated.model.ListClaims200Response;
 import com.pmart.claim.api.generated.model.ListClaims200ResponsePage;
 import com.pmart.claim.api.generated.model.RecoveryActionRequest;
+import com.pmart.claim.api.generated.model.StatusCounts;
+import com.pmart.claim.api.generated.model.StatusCountsCountsInner;
 import com.pmart.claim.application.ClaimService;
 import com.pmart.claim.application.ReturnService;
 import com.pmart.claim.domain.ClaimRules;
@@ -69,6 +71,27 @@ public class ClaimsController implements ClaimsApi {
     return ResponseEntity.status(HttpStatus.CREATED).body(ClaimMapping.claim(v));
   }
 
+  /** 0.10.0 CL-6: 목록 숫자 띠 — 상태별(또는 종류별) 수, 모든 값 0 까지. */
+  @Override
+  public ResponseEntity<StatusCounts> countClaims(
+      @Nullable String orderId, @Nullable String customerId, @Nullable ClaimType type, String by) {
+    boolean byType = "type".equals(by);
+    java.util.Map<String, Long> counts =
+        claims.counts(
+            principal(), orderId, customerId, type == null ? null : type.getValue(), byType);
+    java.util.List<String> keys =
+        byType
+            ? java.util.Arrays.stream(ClaimType.values()).map(ClaimType::getValue).toList()
+            : java.util.Arrays.stream(ClaimState.values()).map(ClaimState::getValue).toList();
+    StatusCounts out =
+        new StatusCounts().asOf(java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC));
+    for (String k : keys) {
+      out.addCountsItem(
+          new StatusCountsCountsInner().key(k).count(counts.getOrDefault(k, 0L)).capped(false));
+    }
+    return ResponseEntity.ok(out);
+  }
+
   @Override
   public ResponseEntity<Claim> getClaim(String claimId) {
     return ResponseEntity.ok(ClaimMapping.claim(claims.get(principal(), claimId)));
@@ -77,6 +100,7 @@ public class ClaimsController implements ClaimsApi {
   @Override
   public ResponseEntity<ListClaims200Response> listClaims(
       @Nullable String orderId,
+      @Nullable String customerId,
       @Nullable ClaimType type,
       @Nullable ClaimState state,
       Integer size,
@@ -85,6 +109,7 @@ public class ClaimsController implements ClaimsApi {
         claims.list(
             principal(),
             orderId,
+            customerId,
             type == null ? null : type.getValue(),
             state == null ? null : state.getValue(),
             size == null ? 20 : size,
@@ -100,7 +125,9 @@ public class ClaimsController implements ClaimsApi {
             r ->
                 out.addItemsItem(
                     ClaimMapping.summary(
-                        r, page.refunds().getOrDefault(r.claimId(), java.util.List.of()))));
+                        r,
+                        page.refunds().getOrDefault(r.claimId(), java.util.List.of()),
+                        page.claimSeqs().get(r.claimId()))));
     return ResponseEntity.ok(out);
   }
 

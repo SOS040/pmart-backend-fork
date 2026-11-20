@@ -5,6 +5,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -425,5 +426,78 @@ public class DraftStore {
         rs.getLong("bytes"),
         rs.getString("sha256"),
         rs.getTimestamp("created_at").toInstant());
+  }
+
+  /** 0.4.0 PCT-1: 목록 한 줄 — 대표 이미지는 MAIN 첫째. */
+  public record SummaryRow(
+      String draftId,
+      @Nullable String productId,
+      String state,
+      @Nullable String name,
+      @Nullable String imageId,
+      @Nullable String approvalId,
+      Instant updatedAt,
+      int version) {}
+
+  /** 최근 바뀐 순(updated_at·draft_id 내림차순) keyset 목록. */
+  public List<SummaryRow> summaries(
+      List<String> states,
+      @Nullable String productId,
+      @Nullable Instant afterUpdatedAt,
+      @Nullable String afterDraftId,
+      int limit) {
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT d.draft_id, d.product_id, d.state, d.name, d.approval_id, d.updated_at, d.version,"
+                + " (SELECT i.image_id FROM content_image i WHERE i.draft_id = d.draft_id AND i.role = 'MAIN'"
+                + " ORDER BY i.sort_order LIMIT 1) AS image_id FROM content_draft d WHERE 1 = 1");
+    List<Object> args = new ArrayList<>();
+    if (!states.isEmpty()) {
+      sql.append(" AND d.state IN (")
+          .append(String.join(",", java.util.Collections.nCopies(states.size(), "?")))
+          .append(")");
+      args.addAll(states);
+    }
+    if (productId != null) {
+      sql.append(" AND d.product_id = ?");
+      args.add(productId);
+    }
+    if (afterUpdatedAt != null && afterDraftId != null) {
+      sql.append(" AND (d.updated_at, d.draft_id) < (?, ?)");
+      args.add(java.sql.Timestamp.from(afterUpdatedAt));
+      args.add(afterDraftId);
+    }
+    sql.append(" ORDER BY d.updated_at DESC, d.draft_id DESC LIMIT ?");
+    args.add(limit);
+    return jdbc.query(
+        sql.toString(),
+        (rs, n) ->
+            new SummaryRow(
+                rs.getString("draft_id"),
+                rs.getString("product_id"),
+                rs.getString("state"),
+                rs.getString("name"),
+                rs.getString("image_id"),
+                rs.getString("approval_id"),
+                rs.getTimestamp("updated_at").toInstant(),
+                rs.getInt("version")),
+        args.toArray());
+  }
+
+  /** 0.4.0 PCT-1 CD-2: 상태별 수(없는 상태는 빠짐 — 호출자가 0 으로 채운다). */
+  public java.util.Map<String, Long> countByState(@Nullable String productId) {
+    java.util.Map<String, Long> out = new java.util.HashMap<>();
+    String sql =
+        "SELECT state, count(*) AS n FROM content_draft"
+            + (productId == null ? "" : " WHERE product_id = ?")
+            + " GROUP BY state";
+    Object[] args = productId == null ? new Object[0] : new Object[] {productId};
+    jdbc.query(
+        sql,
+        rs -> {
+          out.put(rs.getString("state"), rs.getLong("n"));
+        },
+        args);
+    return out;
   }
 }

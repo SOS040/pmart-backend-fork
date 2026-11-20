@@ -5,15 +5,25 @@ import com.pmart.common.web.PmartException;
 import com.pmart.product.content.api.generated.RegistrationApi;
 import com.pmart.product.content.api.generated.model.ContentDraft;
 import com.pmart.product.content.api.generated.model.ContentDraftInput;
+import com.pmart.product.content.api.generated.model.ContentDraftSummary;
 import com.pmart.product.content.api.generated.model.ContentImage;
 import com.pmart.product.content.api.generated.model.ContentImportBatch;
 import com.pmart.product.content.api.generated.model.ContentSubmissionResult;
 import com.pmart.product.content.api.generated.model.ImageRole;
+import com.pmart.product.content.api.generated.model.ListContentDrafts200Response;
+import com.pmart.product.content.api.generated.model.ListContentDrafts200ResponsePage;
+import com.pmart.product.content.api.generated.model.StatusCounts;
+import com.pmart.product.content.api.generated.model.StatusCountsCountsInner;
+import com.pmart.product.content.application.ContentDraftListing;
 import com.pmart.product.content.application.ContentDraftService;
 import com.pmart.product.content.application.Operator;
 import com.pmart.product.content.domain.ContentInput;
+import com.pmart.product.content.infrastructure.DraftStore;
 import com.pmart.product.content.infrastructure.DraftStore.BatchRow;
 import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,12 +38,59 @@ public class RegistrationController implements RegistrationApi {
   private final ContentDraftService drafts;
   private final RegistrationMapping mapping;
   private final ObjectMapper mapper;
+  private final ContentDraftListing listing;
 
   public RegistrationController(
-      ContentDraftService drafts, RegistrationMapping mapping, ObjectMapper mapper) {
+      ContentDraftService drafts,
+      RegistrationMapping mapping,
+      ObjectMapper mapper,
+      ContentDraftListing listing) {
     this.drafts = drafts;
     this.mapping = mapping;
     this.mapper = mapper;
+    this.listing = listing;
+  }
+
+  /** 0.4.0 PCT-1 CD-1: 초안 목록(최근 바뀐 순). */
+  @Override
+  public ResponseEntity<ListContentDrafts200Response> listContentDrafts(
+      @Nullable List<String> state,
+      @Nullable String productId,
+      Integer size,
+      @Nullable String cursor) {
+    ContentDraftListing.Page page =
+        listing.list(state, productId, size == null ? 50 : size, cursor);
+    ListContentDrafts200Response out =
+        new ListContentDrafts200Response()
+            .page(
+                new ListContentDrafts200ResponsePage()
+                    .size(page.rows().size())
+                    .nextCursor(page.nextCursor()));
+    for (DraftStore.SummaryRow r : page.rows()) {
+      out.addItemsItem(
+          new ContentDraftSummary()
+              .draftId(r.draftId())
+              .productId(r.productId())
+              .state(ContentDraftSummary.StateEnum.fromValue(r.state()))
+              .name(r.name())
+              .imageId(r.imageId())
+              .approvalId(r.approvalId())
+              .updatedAt(r.updatedAt().atOffset(ZoneOffset.UTC))
+              .version(r.version()));
+    }
+    return ResponseEntity.ok(out);
+  }
+
+  /** 0.4.0 PCT-1 CD-2: 상태별 수(모든 상태 0 까지). */
+  @Override
+  public ResponseEntity<StatusCounts> countContentDrafts(@Nullable String productId) {
+    StatusCounts out = new StatusCounts().asOf(OffsetDateTime.now(ZoneOffset.UTC));
+    listing
+        .counts(productId)
+        .forEach(
+            (k, n) ->
+                out.addCountsItem(new StatusCountsCountsInner().key(k).count(n).capped(false)));
+    return ResponseEntity.ok(out);
   }
 
   @Override

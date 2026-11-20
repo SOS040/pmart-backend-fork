@@ -29,7 +29,9 @@ public class RefundsController implements RefundsApi {
                 new ListClaimRefunds200ResponseAsOf()
                     .asOf(OffsetDateTime.now(ZoneOffset.UTC))
                     .freshness(ListClaimRefunds200ResponseAsOf.FreshnessEnum.CURRENT));
-    v.refunds().forEach(r -> out.addItemsItem(ClaimMapping.refund(r)));
+    v.refunds()
+        .forEach(
+            r -> out.addItemsItem(ClaimMapping.refund(r, v.refundSeqs().get(r.refundIntentId()))));
     return ResponseEntity.ok(out);
   }
 }

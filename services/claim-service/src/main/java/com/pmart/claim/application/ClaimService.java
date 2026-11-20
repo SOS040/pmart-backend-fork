@@ -69,7 +69,9 @@ public class ClaimService {
       List<LineRow> lines,
       List<RefundRow> refunds,
       ClaimStore.@Nullable FeeRow fee,
-      List<ClaimStore.PickupRow> pickups) {
+      List<ClaimStore.PickupRow> pickups,
+      int claimSeq,
+      java.util.Map<String, Integer> refundSeqs) {
 
     static ClaimView of(ClaimStore store, String claimId) {
       return of(store, store.find(claimId).orElseThrow());
@@ -82,7 +84,9 @@ public class ClaimService {
           store.lines(c.claimId()),
           store.refunds(c.claimId()),
           ret ? store.fee(c.claimId()).orElse(null) : null,
-          ret ? store.pickups(c.claimId()) : List.of());
+          ret ? store.pickups(c.claimId()) : List.of(),
+          store.claimSeqs(List.of(c.claimId())).getOrDefault(c.claimId(), 0),
+          store.refundSeqs(c.claimId()));
     }
   }
 
@@ -669,21 +673,18 @@ public class ClaimService {
   public record Page(
       List<ClaimRow> rows,
       @Nullable String nextCursor,
-      java.util.Map<String, List<ClaimStore.RefundBrief>> refunds) {}
+      java.util.Map<String, List<ClaimStore.RefundBrief>> refunds,
+      java.util.Map<String, Integer> claimSeqs) {}
 
   public Page list(
       PmartPrincipal who,
       @Nullable String orderId,
+      @Nullable String customerId,
       @Nullable String type,
       @Nullable String state,
       int size,
       @Nullable String cursor) {
-    String account = who.type() == PmartPrincipal.PrincipalType.CUSTOMER ? who.subject() : null;
-    if (account == null
-        && who.type() != PmartPrincipal.PrincipalType.OPERATOR
-        && who.type() != PmartPrincipal.PrincipalType.SERVICE) {
-      throw new PmartException(com.pmart.common.web.ErrorCode.FORBIDDEN, "클레임을 볼 수 없습니다.");
-    }
+    String account = listAccount(who, customerId);
     com.pmart.claim.domain.ClaimListRules.Cursor after = null;
     if (cursor != null && !cursor.isBlank()) {
       after =
@@ -701,8 +702,33 @@ public class ClaimService {
       ClaimRow last = rows.get(limit - 1);
       next = com.pmart.claim.domain.ClaimListRules.encode(last.openedAt(), last.claimId());
     }
-    return new Page(
-        List.copyOf(rows), next, store.refundBriefs(rows.stream().map(ClaimRow::claimId).toList()));
+    List<String> ids = rows.stream().map(ClaimRow::claimId).toList();
+    return new Page(List.copyOf(rows), next, store.refundBriefs(ids), store.claimSeqs(ids));
+  }
+
+  /**
+   * 목록·수의 계정 거르기: 고객은 늘 본인(customerId 무시), 직원·서비스는 customerId(CL-7 0.10.0 — 완전 일치, 없으면 전체). 그 밖
+   * 403.
+   */
+  private static @Nullable String listAccount(PmartPrincipal who, @Nullable String customerId) {
+    if (who.type() == PmartPrincipal.PrincipalType.CUSTOMER) {
+      return who.subject();
+    }
+    if (who.type() != PmartPrincipal.PrincipalType.OPERATOR
+        && who.type() != PmartPrincipal.PrincipalType.SERVICE) {
+      throw new PmartException(com.pmart.common.web.ErrorCode.FORBIDDEN, "클레임을 볼 수 없습니다.");
+    }
+    return customerId == null || customerId.isBlank() ? null : customerId;
+  }
+
+  /** 0.10.0 CL-6: 목록과 같은 거르기(state 제외)로 상태별(byType 이면 종류별) 수. 없는 값은 호출자가 0 으로 채운다. */
+  public java.util.Map<String, Long> counts(
+      PmartPrincipal who,
+      @Nullable String orderId,
+      @Nullable String customerId,
+      @Nullable String type,
+      boolean byType) {
+    return store.counts(listAccount(who, customerId), orderId, type, byType);
   }
 
   private ClaimView view(String claimId) {

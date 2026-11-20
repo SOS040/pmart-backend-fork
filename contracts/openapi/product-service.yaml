@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: product-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-20, 백오피스 PD-4 PN-1 — PC 2 요청 #274, 사용자 "진행해라"): `GET /products?q=` — 관리용 명칭 부분 일치(대소문자·띄어쓰기 무시), SKU 코드·바코드 완전 일치도. 고객용 상품명(PN-2)은 넣지 않음.
     기초상품·상품·SKU(E-/B- 8자리, 재사용 금지)·구성 낱개 수·카테고리(4단계·노드별 필터, ADR-0015)·바코드↔SKU·판매 단위·중량·물류 규격·전사 판매 상태·승인 버전의 정본. (docs/architecture/service-map.md §1, ADR-0001)
     비정본: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
     발행 이벤트: ProductVersionPublished, ProductSaleStateChanged, CategoryChanged, SkuIssued.
@@ -38,6 +39,7 @@ paths:
       x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 고객은 product-content·search 를 씀(백오피스 상품 목록)"
       parameters:
         - { name: categoryId, in: query, schema: { type: string } }
+        - { name: q, in: query, x-added-in: '2026-11-20', schema: { type: string, minLength: 1, maxLength: 50 }, description: '0.5.0 PD-4 — 관리용 명칭(internalName) 부분 일치(대소문자·띄어쓰기 무시) 또는 SKU 코드·사용 중 바코드 완전 일치. 다른 거르기와 함께, 순서·커서는 그대로' }
         - { name: saleState, in: query, schema: { $ref: '#/components/schemas/SaleState' } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'

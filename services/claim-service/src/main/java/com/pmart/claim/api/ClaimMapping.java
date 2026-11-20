@@ -38,6 +38,7 @@ final class ClaimMapping {
     Claim out =
         new Claim()
             .claimId(c.claimId())
+            .claimSeq(v.claimSeq())
             .version(c.version())
             .orderId(c.orderId())
             .type(ClaimType.fromValue(c.type()))
@@ -72,7 +73,7 @@ final class ClaimMapping {
       out.addLinesItem(line);
     }
     for (RefundRow r : v.refunds()) {
-      out.addRefundsItem(refund(r));
+      out.addRefundsItem(refund(r, v.refundSeqs().get(r.refundIntentId())));
     }
     if (isReturn) {
       if (c.faultCode() != null) {
@@ -116,7 +117,9 @@ final class ClaimMapping {
   }
 
   static ClaimSummary summary(
-      ClaimRow c, java.util.List<com.pmart.claim.infrastructure.ClaimStore.RefundBrief> refunds) {
+      ClaimRow c,
+      java.util.List<com.pmart.claim.infrastructure.ClaimStore.RefundBrief> refunds,
+      @org.jspecify.annotations.Nullable Integer claimSeq) {
     long requested = 0;
     long refunded = 0;
     java.time.Instant last = null;
@@ -136,6 +139,7 @@ final class ClaimMapping {
                 .toList());
     return new ClaimSummary()
         .claimId(c.claimId())
+        .claimSeq(claimSeq)
         .orderId(c.orderId())
         .type(ClaimType.fromValue(c.type()))
         .state(ClaimState.fromValue(c.state()))
@@ -153,10 +157,11 @@ final class ClaimMapping {
                 .completedAt(last == null ? null : odt(last)));
   }
 
-  static Refund refund(RefundRow r) {
+  static Refund refund(RefundRow r, @org.jspecify.annotations.Nullable Integer refundSeq) {
     Refund out =
         new Refund()
             .refundIntentId(r.refundIntentId())
+            .refundSeq(refundSeq)
             .claimId(r.claimId())
             .kind(
                 ReturnRules.RETURN_FEE_REFUND_REASON.equals(r.reason())
