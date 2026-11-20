@@ -65,7 +65,8 @@ public class AssistantConfig {
       AssistantProperties props,
       ObjectProvider<ChatModel> chatModel,
       ObjectProvider<RestClient.Builder> rest,
-      ObjectMapper json) {
+      ObjectMapper json,
+      DescribedEmbeddingModel embeddings) {
     var r = props.getRetrieval();
     ExtractiveAnswerGenerator extractive =
         new ExtractiveAnswerGenerator(r.getMaxAnswerChars(), r.getTopK());
@@ -79,7 +80,11 @@ public class AssistantConfig {
       return new GenerativeAnswerGenerator(
           OllamaModels.chat(OllamaModels.api(o, rest.getIfAvailable(RestClient::builder)), o),
           "ollama:" + o.getChatModel(),
-          new CitationVerifier(r.getMinSentenceOverlap()),
+          // 인용 검사: bigram 이 모자란 문장은 의미 유사도로 다시 본다(2026-11-21)
+          new CitationVerifier(
+              r.getMinSentenceOverlap(),
+              r.getMinSentenceSimilarity(),
+              new EmbeddingSentenceSimilarity(embeddings)),
           extractive,
           json,
           r::getFallbackMinSimilarity);
