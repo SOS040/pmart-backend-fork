@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ai-assistant-service
-  version: 1.1.0
+  version: 1.2.0
   x-stage: 3
   x-stage-note: 1차(문서 질의응답·근거 표시)를 2026-11-04 앞당겨 구현 — ADR-0036. 도메인 API 호출·명령 위임은 후속.
   description: |
@@ -11,6 +11,9 @@ info:
     **상태**
     - 특정 주문·재고·결제의 현재 상태는 문서로 추정하지 않는다 → `REALTIME_DATA_REQUIRED`.
     - 환불·승인·재고 변경 같은 실행 요청은 하지 않는다 → `OUT_OF_SCOPE`.
+    - (1.2.0, ADR-0083) 상품의 가격·판매 여부를 묻는 질문은 search-service 상품 검색 결과를 정해진 문장으로 답한다 → `PRODUCT_INFO`
+      (`answerMode` `PRODUCT_TEMPLATE`, 근거 문서 없음). 검색 결과가 없거나 검색이 안 되면 문서 검색으로 답한다. context.centerId 가 있으면
+      그 센터 취급 여부를 붙인다. 실시간 재고 수량·주문 상태는 여전히 `REALTIME_DATA_REQUIRED`.
     - 근거 부족은 `NO_GROUNDING`(정상 결과). 임베딩·검색·모델 장애는 503 `DEPENDENCY_UNAVAILABLE` 로 구분하고 완료 결과를 저장하지 않는다.
     - 같은 키가 처리 중이면 202 `PROCESSING`.
 
@@ -216,16 +219,17 @@ components:
 
     AnswerState:
       type: string
-      enum: [ANSWERED, NO_GROUNDING, REALTIME_DATA_REQUIRED, OUT_OF_SCOPE, FORBIDDEN_SCOPE, PROCESSING]
+      enum: [ANSWERED, NO_GROUNDING, REALTIME_DATA_REQUIRED, OUT_OF_SCOPE, FORBIDDEN_SCOPE, PRODUCT_INFO, PROCESSING]
       description: |
         ANSWERED: 근거로 뒷받침되는 답. NO_GROUNDING: 허용된 문서에서 근거를 찾지 못함(정상 결과).
         REALTIME_DATA_REQUIRED: 특정 대상의 현재 상태 질문. OUT_OF_SCOPE: 실행 요청.
         FORBIDDEN_SCOPE: 명시적 접근 요청이 정책상 거부됨(1차 정상 경로에서는 나오지 않는다). PROCESSING: 처리 중(202 에서만).
+        PRODUCT_INFO(1.2.0): 상품 검색 결과를 정해진 문장으로 답함(근거 문서 없음, ADR-0083).
 
     AnswerMode:
       type: string
-      enum: [GENERATIVE, BASELINE_EXTRACTIVE, NONE]
-      description: GENERATIVE=모델 생성, BASELINE_EXTRACTIVE=서버 발췌(생성 없음 — 기준선), NONE=답변 생성 안 함(분류·근거 없음)
+      enum: [GENERATIVE, BASELINE_EXTRACTIVE, PRODUCT_TEMPLATE, NONE]
+      description: GENERATIVE=모델 생성, BASELINE_EXTRACTIVE=서버 발췌(생성 없음 — 기준선), PRODUCT_TEMPLATE=상품 검색 결과를 정해진 문장으로(1.2.0), NONE=답변 생성 안 함(분류·근거 없음)
 
     RetrievalMode:
       type: string

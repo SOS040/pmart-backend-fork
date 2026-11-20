@@ -74,13 +74,13 @@
 - **발행**: `PriceVersionEffective`, `ApplicationReceiptRecorded`(가격 승인 반영 회신, ADR-0039).
 - **구독**: `ApprovalDecided`(가격 승인 BO-04: MD팀장 발의→가격/영업총괄 승인).
 
-### promotion-service `[활성 — 2026-11-20 ADR-0082]`
+### promotion-service `[활성 — 2026-11-20 ADR-0083]`
 - **소유**: 행사(기간 할인 PRICE_DISCOUNT·장바구니 쿠폰 COUPON)·대상(SKU·카테고리)·승인 반영, 쿠폰 발급(내려받기·지정·가입 축하)·점유·사용 확정·해제·복원, 행사 수량(총 수량·1인 한도·발급/사용 수).
 - **소유하지 않음**: 견적 계산·안분(pricing), 주문 금액 확정·스냅샷(order), 점유·확정·복원의 사가 조율(orchestration), 승인 심사(approval).
 - **API**: 직원 행사 만들기·고치기·제출·조기 종료 제출·지정 발급, 고객 쿠폰 행사 목록·내려받기·내 쿠폰함, 내부 SKU 기간 할인 조회·쿠폰 계산·점유/확정/해제/복원.
 - **발행**: `ApplicationReceiptRecorded`(PROMOTION 승인 반영 회신).
 - **구독**: `ProductVersionPublished`(SKU → 카테고리 사본), `ApprovalDecided`(PROMOTION).
-- **아직**: pricing·order·orchestration 연결, 화면 할인가 표시, 가입 쿠폰 자동 발급(ADR-0082 나누어 만들기 2~5). 첫 구매 무료배달 자격은 그대로 order-service.
+- **아직**: pricing·order·orchestration 연결, 화면 할인가 표시, 가입 쿠폰 자동 발급(ADR-0083 나누어 만들기 2~5). 첫 구매 무료배달 자격은 그대로 order-service.
 ---
 
 ## 2. Order & Payment (5)
@@ -401,7 +401,7 @@
 - **1차(2026-11-04, ADR-0036)**: 내부 운영자의 정책·업무 절차 질의응답 + 근거 표시만. 실시간 조회·명령 위임은 하지 않는다(`REALTIME_DATA_REQUIRED`·`OUT_OF_SCOPE`).
 - **소유**: 명시 목록 문서의 사본 색인(`index_snapshot`·`doc_chunk`·`embedding_cache`)과 답변 기록(`policy_answer` — 선점·lease·인용). 업무 정본은 없다.
 - **API**: `POST/GET /assistant/policy-questions`, `GET /assistant/policy-questions/{answerId}`(운영자만).
-- **발행·구독**: 없음. **의존(동기)**: 없음 — 다른 서비스 DB·API 를 부르지 않는다.
+- **발행·구독**: 없음. **의존(동기)**: search-service `GET /search/products`(공개 작업, 토큰 없이 — 2026-11-20 ADR-0083 상품 질문을 정해진 문장으로, 실패하면 문서로). 그 밖의 서비스 DB·API 는 부르지 않는다.
 - **운영자(백오피스) 전용**(2026-11-09, ADR-0051): 고객앱 질문은 아래 `customer-assistant-service` 가 받는다. DB 는 RAG 전용 pgvector 컨테이너의 `ai_assistant_service`. 모델은 LAN Ollama(ADR-0051 결정 6).
 
 ### customer-assistant-service `[ADR-0051 — 2026-11-09 추가·1차 구현]`
@@ -410,7 +410,7 @@
 - **소유**: 고객 안내 문서의 사본 색인과 고객 답변 기록(DB `customer_assistant_service`, RAG 전용 pgvector — 운영자 DB 와 계정 분리). 질문 원문은 저장하지 않는다(C5, 해시만). 업무 정본은 없다.
 - **소유하지 않음**: 운영자 문서·답변(ai-assistant-service), 고객 안내 문서의 작성·승인(Claude 초안·사용자 승인, C1), 주문(order), 문의 접수(case `/inquiries` — 앱이 handoff 를 받아 직접 연다).
 - **API**(계약 0.1.0): `POST/GET /customer-assistant/questions`, `GET /customer-assistant/questions/{answerId}`, `GET /customer-assistant/recent-orders`. 회원 고객만(C2), 고객별 1분 5개·하루 50개(C3, 429).
-- **발행·구독**: 없음. **의존(동기)**: order-service `GET /orders`·`GET /orders/{id}`(고객 토큰 전달, 1 hop). 모델 서버 Ollama 는 인프라.
+- **발행·구독**: 없음. **의존(동기)**: order-service `GET /orders`·`GET /orders/{id}`(고객 토큰 전달, 1 hop), search-service `GET /search/products`(공개 작업, 토큰 없이 — 2026-11-20 ADR-0083 상품 질문, 센터 없이 전체 기준). 모델 서버 Ollama 는 인프라.
 
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).

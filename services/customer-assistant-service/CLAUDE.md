@@ -40,6 +40,7 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 로컬 포트 8509. LAN 색인 `deploy/lan/lan.sh rag-ingest-customer pc5`.
 
 ## 상태
+- **상품 질문(2026-11-20, ADR-0083, 계약 0.3.0)**: 운영자용과 같은 `domain/ProductQuestion` 규칙·`ProductSearchClient`(토큰 없이 — 최근 검색어 기록에 안 남음). **센터 없이 전체 기준**(질문 요청에 주소·센터가 없음, 사용자 "취급 여부는 답하지 않음") — `ProductAnswerText.customer` 정해진 문장, `PRODUCT_INFO`·`PRODUCT_TEMPLATE`, handoff 없음. 0건·실패면 안내 문서로. `product-search.base-url` 이 없으면 꺼짐. 시험 `ProductQuestionTest`·`ProductQuestionIT`.
 - 1차 구현 2026-11-09. 남은 결정: 답변 보존 기간(`answers.retention`, 운영자용과 같이 미설정 — 지우지 않음).
 - 평가(2026-11-10, `docs/rag/verification/2026-11-10/customer-eval/`): 37문항 37/37. 확인: `python -I deploy/lan/checks/customer_rag_eval.py`(고객 토큰 필요).
 - **FAQ 목록·검색(2026-11-18, 계약 0.2.0, V2 — 사용자 "A해줘", 고객앱 빠진 기능)**: `GET /customer-assistant/faqs?q=&category=`·`/faqs/{faqId}`(`FaqService`·`FaqStore`·`FaqsController`). 색인할 때 manifest 의 domain `customer-faq` 문서를 `infrastructure/ingest/FaqExtractor` 가 `##` 절마다 항목으로(질문 = 절 제목, 답 = 절 본문 마크다운 — 지위 태그 뺌, 다른 안내 문서 링크는 ‘제목’), 분류 = 파일 이름(앞 번호 뺌). 청크와 **같은 바이트·같은 스냅숏**에 넣어(`SnapshotStore.addFaqEntries`) AI 답변 근거와 어긋나지 않는다. 읽기는 FAQ 가 든 ACTIVE 스냅숏 하나를 먼저 정해 그 ID 로만. 검색 = `search_text`(소문자 질문 + 굵게·코드 뺀 답) `strpos` 부분 문자열 — 모델·임베딩 호출 없음, 요청 제한에 안 셈, 검색어 저장·로그 안 함. 회원 고객만(C2, 다른 고객 API 와 같이). FAQ 가 든 색인이 없으면 422 CONFIG_REQUIRED — **이 기능 전 색인(LAN)은 재색인해야 찬다**(`lan.sh rag-ingest-customer pc2`, 새 이미지 배포 뒤). 게이트웨이 경로는 기존 `/api/v1/customer-assistant/**` 그대로.

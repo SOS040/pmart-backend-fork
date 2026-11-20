@@ -120,7 +120,8 @@ public class AssistantConfig {
       AssistantProperties props,
       ExecutorService assistantExecutor,
       ObjectMapper json,
-      Clock clock) {
+      Clock clock,
+      com.pmart.assistant.infrastructure.ProductSearchClient products) {
     validate(props);
     return new PolicyQuestionService(
         answers,
@@ -132,7 +133,8 @@ public class AssistantConfig {
         props,
         assistantExecutor,
         json,
-        clock);
+        clock,
+        products);
   }
 
   @Bean

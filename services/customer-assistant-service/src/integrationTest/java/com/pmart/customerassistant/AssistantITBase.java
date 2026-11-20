@@ -45,11 +45,13 @@ import tools.jackson.databind.json.JsonMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.assistant.customer.order-service-base-url=${order.url}"
+      "pmart.assistant.customer.order-service-base-url=${order.url}",
+      "pmart.assistant.product-search.base-url=${search.url}"
     })
 @Import({TestJwtConfiguration.class, AssistantITBase.TestBeans.class})
 @org.wiremock.spring.EnableWireMock({
-  @org.wiremock.spring.ConfigureWireMock(name = "order", baseUrlProperties = "order.url")
+  @org.wiremock.spring.ConfigureWireMock(name = "order", baseUrlProperties = "order.url"),
+  @org.wiremock.spring.ConfigureWireMock(name = "search", baseUrlProperties = "search.url")
 })
 abstract class AssistantITBase extends PgvectorContainerSupport {
 
@@ -115,6 +117,10 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
 
   @org.wiremock.spring.InjectWireMock("order")
   com.github.tomakehurst.wiremock.WireMockServer order;
+
+  /** search-service 상품 검색(ADR-0083). 스텁이 없으면 404 → 상품 답 없이 안내 문서로 답한다. */
+  @org.wiremock.spring.InjectWireMock("search")
+  com.github.tomakehurst.wiremock.WireMockServer search;
 
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;

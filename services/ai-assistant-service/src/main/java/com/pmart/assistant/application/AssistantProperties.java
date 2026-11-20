@@ -17,6 +17,40 @@ public class AssistantProperties {
   private Retrieval retrieval = new Retrieval();
   private Answers answers = new Answers();
   private Ingest ingest = new Ingest();
+  private ProductSearch productSearch = new ProductSearch();
+
+  /** 상품 검색 연결(2026-11-20, ADR-0083). base-url 이 없으면 꺼짐 — 상품 질문도 문서 검색으로 답한다. */
+  public static class ProductSearch {
+    /** search-service 주소(LAN 은 Eureka 이름 http://search-service:8105). */
+    private @Nullable String baseUrl;
+
+    /** 답에 보일 상품 수. */
+    private int maxItems = 3;
+
+    public @Nullable String getBaseUrl() {
+      return baseUrl;
+    }
+
+    public void setBaseUrl(@Nullable String baseUrl) {
+      this.baseUrl = baseUrl;
+    }
+
+    public int getMaxItems() {
+      return maxItems;
+    }
+
+    public void setMaxItems(int maxItems) {
+      this.maxItems = maxItems;
+    }
+  }
+
+  public ProductSearch getProductSearch() {
+    return productSearch;
+  }
+
+  public void setProductSearch(ProductSearch productSearch) {
+    this.productSearch = productSearch;
+  }
 
   public static class Model {
     /**
