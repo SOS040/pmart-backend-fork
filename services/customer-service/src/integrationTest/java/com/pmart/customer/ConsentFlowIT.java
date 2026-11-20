@@ -40,6 +40,7 @@ import tools.jackson.databind.ObjectMapper;
 class ConsentFlowIT extends PostgresKafkaContainerSupport {
 
   static final String TERMS = "2026-11-17";
+  static final String PRIVACY = "2026-11-20"; // 처리방침 새 판(2026-11-20 발효, ADR-0074 과 같은 날)
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
@@ -112,7 +113,7 @@ class ConsentFlowIT extends PostgresKafkaContainerSupport {
   static Map<String, Object> allRequired(boolean marketing) {
     return changes(
         item("TERMS_OF_SERVICE", TERMS, true),
-        item("PRIVACY_POLICY", TERMS, true),
+        item("PRIVACY_POLICY", PRIVACY, true),
         item("AGE_OVER_14", "1", true),
         item("MARKETING", TERMS, marketing));
   }
@@ -266,7 +267,7 @@ class ConsentFlowIT extends PostgresKafkaContainerSupport {
             token,
             "/me/consent-changes",
             UUID.randomUUID().toString(),
-            changes(item("PRIVACY_POLICY", TERMS, false)));
+            changes(item("PRIVACY_POLICY", PRIVACY, false)));
     assertThat(withdraw.status()).isEqualTo(422);
     assertThat(withdraw.body().path("code").asString())
         .isEqualTo("REQUIRED_CONSENT_CANNOT_BE_WITHDRAWN");

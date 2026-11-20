@@ -112,11 +112,15 @@ public class SearchController implements SearchApi {
 
   @Override
   public ResponseEntity<GetSearchSuggestions200Response> getSearchSuggestions(
-      String q, Integer limit) {
+      @Nullable String q, Integer limit) {
+    // q 없음·공백뿐 = 검색 첫 화면 — 인기 키워드만(0.5.2, 2026-11-20)
+    List<String> keywords =
+        SearchRules.normalizeQuery(q) == null
+            ? List.of()
+            : corrected.suggestions(q, limit == null ? 10 : limit); // 후보가 없으면 고친 검색어로(ADR-0073)
     return ResponseEntity.ok(
         new GetSearchSuggestions200Response()
-            .keywords(
-                corrected.suggestions(q, limit == null ? 10 : limit)) // 후보가 없으면 고친 검색어로(ADR-0073)
+            .keywords(keywords)
             .popular(popular.current())); // 메모리 사본. 설정 없음·집계 실패면 빈 목록(2026-11-17)
   }
 

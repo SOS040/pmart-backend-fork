@@ -212,6 +212,11 @@ class SearchActivityIT extends KafkaContainerSupport {
         mapper.readTree(
             http.get().uri("/search/suggestions?q={q}", "두").retrieve().body(String.class));
     assertThat(suggestions.path("popular").toString()).isEqualTo("[\"우유\",\"국산콩\"]");
+    // 검색 첫 화면: q 없이 인기 키워드만(0.5.2)
+    JsonNode first =
+        mapper.readTree(http.get().uri("/search/suggestions").retrieve().body(String.class));
+    assertThat(first.path("keywords").toString()).isEqualTo("[]");
+    assertThat(first.path("popular").toString()).isEqualTo("[\"우유\",\"국산콩\"]");
     // 색인에는 검색자 원래 ID 가 없다(해시만)
     String raw =
         es.post()
