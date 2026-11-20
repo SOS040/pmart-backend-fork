@@ -21,3 +21,7 @@
 
 ## 상태
 - 2026-11-20: 요청. 서버 쪽은 끝(콜백 페이지).
+
+## 처리 — 2026-11-20 PC 1(사용자 "세 앱 다 고쳐줘")
+- pmart-clients main dbee5438: customer_app·rider_app·mfc_app MainActivity 의 `android:taskAffinity=""` 삭제. mfc_app 의 flutter_web_auth_2 CallbackActivity 는 그대로.
+- 11:01 시도도 같은 증상(콜백 200 뒤 social-logins 없음). 앱 다시 빌드·설치 뒤 네이버 로그인으로 확인 — 아직 안 함.
