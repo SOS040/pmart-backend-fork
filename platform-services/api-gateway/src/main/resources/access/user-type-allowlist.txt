@@ -172,6 +172,7 @@ GET /api/v1/me/push-tokens CUSTOMER,RIDER
 GET /api/v1/me/recent-searches CUSTOMER
 GET /api/v1/me/review-eligibilities CUSTOMER
 GET /api/v1/me/shopping-context CUSTOMER
+GET /api/v1/me/withdrawals CUSTOMER
 GET /api/v1/me/withdrawals/{withdrawalId} CUSTOMER
 GET /api/v1/metrics/on-time-deliveries OPERATOR
 GET /api/v1/metrics/picking-lines OPERATOR
