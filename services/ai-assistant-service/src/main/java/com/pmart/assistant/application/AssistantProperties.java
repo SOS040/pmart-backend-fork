@@ -298,6 +298,21 @@ public class AssistantProperties {
     /** 생성 답변 문장별 근거 bigram 겹침 하한(보조 휴리스틱). */
     private double minSentenceOverlap = 0.5;
 
+    /**
+     * 생성 답변 문장의 의미 유사도 하한(2026-11-21 — bigram 이 모자란 문장도 근거 단위와 이 이상 비슷하면 뒷받침). 의미 임베딩(ollama)일 때만
+     * 쓴다. 2026-11-21 시험 측정(qwen3-embedding:0.6b, 문장 20개): 지어낸 문장 최고 0.618, 옳게 바꿔 말한 문장 0.612~1.0 →
+     * 0.65. 실제 모델 답으로 다시 맞춘다.
+     */
+    private double minSentenceSimilarity = 0.65;
+
+    public double getMinSentenceSimilarity() {
+      return minSentenceSimilarity;
+    }
+
+    public void setMinSentenceSimilarity(double minSentenceSimilarity) {
+      this.minSentenceSimilarity = minSentenceSimilarity;
+    }
+
     public int getCandidates() {
       return candidates;
     }
