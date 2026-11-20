@@ -20,4 +20,4 @@
 - 그래서 기존 회원은 다음 로그인에서 **동의 화면(AUTH_CONSENT, 처리방침 새 판) → 휴대폰 확인(AUTH_IDENTITY)** 을 한 번씩 거친다. 본문은 `GET /api/v1/consent-terms/PRIVACY_POLICY/2026-11-20`.
 
 ## 배포 상태
-- 아래 "LAN 배포" 줄 참고(작성 뒤 갱신).
+- **LAN 배포 2026-11-20 11:15 KST**: search-service 6a4f6e4e(0.5.2 — 게이트웨이 경유 `GET /api/v1/search/suggestions` → `{"keywords":[],"popular":["쌀"]}` 확인), customer-service 재시작(pmart-config 089d637 — 처리방침 2026-11-20), auth-service require-identity(4749e22, 10:46).
