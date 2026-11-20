@@ -334,7 +334,10 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
     assertThat(apple.status()).isEqualTo(501);
   }
 
-  /** 네이버 콜백 중계(0.5.0, 2026-11-19 BR-66): 쿼리를 바꾸지 않고 고정 앱 주소로 302, 캐시 금지, 토큰 없이, 너무 긴 쿼리 400. */
+  /**
+   * 네이버 콜백 중계(0.5.0 BR-66 · 0.7.0 페이지): 쿼리를 바꾸지 않고 고정 앱 주소로 넘기는 페이지(200 HTML — 302 는 Chrome 이 앱을 안
+   * 열었음), 캐시 금지·리퍼러 없음·CSP, 토큰 없이, 너무 긴 쿼리 400.
+   */
   @Test
   void naverCallbackRelaysQueryToFixedAppAddress() throws Exception {
     var client =
@@ -358,10 +361,15 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
                               + q))
                   .GET()
                   .build(),
-              java.net.http.HttpResponse.BodyHandlers.discarding());
-      assertThat(res.statusCode()).isEqualTo(302);
-      assertThat(res.headers().firstValue("Location")).hasValue(c.get(1) + "?" + q);
+              java.net.http.HttpResponse.BodyHandlers.ofString());
+      assertThat(res.statusCode()).isEqualTo(200);
+      assertThat(res.headers().firstValue("Location")).isEmpty();
+      assertThat(res.headers().firstValue("Content-Type").orElse("")).startsWith("text/html");
       assertThat(res.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+      assertThat(res.headers().firstValue("Referrer-Policy")).hasValue("no-referrer");
+      assertThat(res.headers().firstValue("Content-Security-Policy").orElse(""))
+          .contains("script-src 'sha256-");
+      assertThat(res.body()).contains("href=\"" + c.get(1) + "?" + q.replace("&", "&amp;") + "\"");
     }
     var error =
         client.send(
@@ -372,10 +380,10 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
                             + "/api/v1/auth/oauth-callbacks/naver/customer?error=access_denied&error_description=Canceled+By+User"))
                 .GET()
                 .build(),
-            java.net.http.HttpResponse.BodyHandlers.discarding());
-    assertThat(error.headers().firstValue("Location"))
-        .hasValue(
-            "com.pmart.customer://oauth/naver?error=access_denied&error_description=Canceled+By+User");
+            java.net.http.HttpResponse.BodyHandlers.ofString());
+    assertThat(error.body())
+        .contains(
+            "href=\"com.pmart.customer://oauth/naver?error=access_denied&amp;error_description=Canceled+By+User\"");
     var tooLong =
         client.send(
             java.net.http.HttpRequest.newBuilder(

@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
+    0.7.0(2026-11-20 — 네이버 로그인이 동의 뒤 멈춤, 사용자 "그렇게 고쳐주고 배포해줘"): 네이버 콜백 중계가 302 대신 **"앱으로 돌아가기" 페이지(200 text/html)**.
+    네이버는 동의 뒤 스크립트로 콜백에 보내는데, 그 이동에 이어진 302 → 앱 주소(`com.pmart.customer://…`)는 Chrome 이 사용자 동작이 없다며 앱을 열지 않았다
+    (LAN 2026-11-20 09:19 — 콜백 302 는 나갔으나 앱 수신 화면이 뜨지 않고 네이버 일반 오류). 페이지는 같은 앱 주소로 한 번 넘겨 보고, 안 되면 버튼(사용자가 누름 → Chrome 이 앱을 연다).
     0.6.0(2026-11-20, ADR-0074 — 고객 BR-64, 사용자 "가입하자마자 휴대폰 확인·한 번호 한 계정·기존 계정 안내·탈퇴 1달", 기존 회원 "(가) 다음 로그인 때"):
     로그인 상태 `AUTH_IDENTITY`(nextAction `VERIFY_IDENTITY`) — 필수 동의 다음, 회원 토큰 전에 휴대폰 확인(OCTOMO, 고객이 대표번호로 숫자를 보냄).
     `POST /auth/social-logins/{id}/identity-verifications`(번호 → 보낼 숫자) · `…/{verificationId}/confirmations`(확인 → AUTH_MEMBER·토큰, 아직이면 진행 상태).
@@ -381,10 +384,11 @@ paths:
   /auth/oauth-callbacks/naver/customer:
     get:
       tags: [oauth-callbacks]
-      summary: '네이버 로그인 콜백 중계 — customer 앱으로 302 (0.5.0)'
+      summary: '네이버 로그인 콜백 중계 — customer 앱으로 돌아가기 페이지 (0.5.0, 0.7.0 페이지)'
       description: |
-        네이버 콘솔 Callback URL 에 이 주소를 넣는다. 받은 쿼리 문자열(code·state 또는 error·error_description)을 **그대로** `com.pmart.customer://oauth/naver?<같은 쿼리>` 로 302.
-        넘길 곳은 고정(쿼리로 목적지를 받지 않는다 — 열린 리다이렉트 없음). 코드를 쓰거나 저장·로그하지 않는다. 쿼리가 4096자를 넘으면 400.
+        네이버 콘솔 Callback URL 에 이 주소를 넣는다. 받은 쿼리 문자열(code·state 또는 error·error_description)을 **그대로** 붙인 `com.pmart.customer://oauth/naver?<같은 쿼리>` 로
+        넘기는 HTML 페이지(0.7.0 — 전에는 302): 열리면 한 번 넘겨 보고, "PMart 앱으로 돌아가기" 버튼(같은 주소). 넘길 곳은 고정(쿼리로 목적지를 받지 않는다 — 열린 리다이렉트 없음).
+        코드를 쓰거나 저장·로그하지 않는다. 응답 `Cache-Control: no-store`·`Referrer-Policy: no-referrer`·CSP(스크립트는 고정 해시 하나). 쿼리가 4096자를 넘으면 400.
       operationId: naverCallbackCustomer
       security: []
       parameters:
@@ -393,17 +397,21 @@ paths:
         - { name: error, in: query, schema: { type: string } }
         - { name: error_description, in: query, schema: { type: string } }
       responses:
-        '302':
-          description: '앱 주소로 넘김(Location = com.pmart.customer://oauth/naver?…, Cache-Control no-store)'
+        '200':
+          description: '앱으로 돌아가기 페이지 — 링크 = com.pmart.customer://oauth/naver?<받은 쿼리 그대로>(HTML 속성 이스케이프만)'
+          content:
+            text/html:
+              schema: { type: string }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /auth/oauth-callbacks/naver/rider:
     get:
       tags: [oauth-callbacks]
-      summary: '네이버 로그인 콜백 중계 — rider 앱으로 302 (0.5.0)'
+      summary: '네이버 로그인 콜백 중계 — rider 앱으로 돌아가기 페이지 (0.5.0, 0.7.0 페이지)'
       description: |
-        네이버 콘솔 Callback URL 에 이 주소를 넣는다. 받은 쿼리 문자열(code·state 또는 error·error_description)을 **그대로** `com.pmart.rider://oauth/naver?<같은 쿼리>` 로 302.
-        넘길 곳은 고정(쿼리로 목적지를 받지 않는다 — 열린 리다이렉트 없음). 코드를 쓰거나 저장·로그하지 않는다. 쿼리가 4096자를 넘으면 400.
+        네이버 콘솔 Callback URL 에 이 주소를 넣는다. 받은 쿼리 문자열(code·state 또는 error·error_description)을 **그대로** 붙인 `com.pmart.rider://oauth/naver?<같은 쿼리>` 로
+        넘기는 HTML 페이지(0.7.0 — 전에는 302): 열리면 한 번 넘겨 보고, "PMart 앱으로 돌아가기" 버튼(같은 주소). 넘길 곳은 고정(쿼리로 목적지를 받지 않는다 — 열린 리다이렉트 없음).
+        코드를 쓰거나 저장·로그하지 않는다. 응답 `Cache-Control: no-store`·`Referrer-Policy: no-referrer`·CSP(스크립트는 고정 해시 하나). 쿼리가 4096자를 넘으면 400.
       operationId: naverCallbackRider
       security: []
       parameters:
@@ -412,8 +420,11 @@ paths:
         - { name: error, in: query, schema: { type: string } }
         - { name: error_description, in: query, schema: { type: string } }
       responses:
-        '302':
-          description: '앱 주소로 넘김(Location = com.pmart.rider://oauth/naver?…, Cache-Control no-store)'
+        '200':
+          description: '앱으로 돌아가기 페이지 — 링크 = com.pmart.rider://oauth/naver?<받은 쿼리 그대로>(HTML 속성 이스케이프만)'
+          content:
+            text/html:
+              schema: { type: string }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /auth/tokens:
