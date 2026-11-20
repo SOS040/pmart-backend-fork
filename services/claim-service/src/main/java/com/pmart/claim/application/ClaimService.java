@@ -289,7 +289,8 @@ public class ClaimService {
    * OrderCancelled → 원 승인액 전액 환불, dispatch 는 주문 취소 사건으로 픽업 전 배송을 거둔다).
    *
    * <p>관리자 판단 취소(사유 {@code OPERATOR_DECISION}, 2026-11-20 ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터
-   * R-29)도 같은 범위·역할·흐름이고, 사유 메모(reasonDetail)가 필수다(빈 값 400). 고객 취소 범위(상품준비 전만)는 그대로.
+   * R-29)도 같은 범위·흐름이고, 사유 메모(reasonDetail)가 필수다(빈 값 400). 역할은 그 센터 MFC_SUPERVISOR·OPERATOR_ADMIN
+   * 만(CS_AGENT 403). 고객 취소 범위(상품준비 전만)는 그대로.
    */
   private ClaimView createCompanyReasonCancel(
       String idempotencyKey,
@@ -299,10 +300,18 @@ public class ClaimService {
       ReturnExtras extras) {
     boolean decision = ReturnRules.OPERATOR_DECISION.equals(in.reason());
     String label = decision ? "관리자 판단 취소" : "배차 불가 취소";
-    boolean staff = ReturnRules.STAFF_ROLES.stream().anyMatch(who::hasRole);
+    // 센터와 무관하게 할 수 있는 역할 — 관리자 판단은 운영 관리자만(CS_AGENT 제외, 사용자 "관리자 사유 취소만 넓힘"),
+    // 배차 불가는 고객센터 상담원·운영 관리자(그대로)
+    boolean staff =
+        decision
+            ? who.hasRole(ReturnRules.OPERATOR_ADMIN)
+            : ReturnRules.STAFF_ROLES.stream().anyMatch(who::hasRole);
     if (!staff && !who.hasRole(ReturnRules.MFC_SUPERVISOR)) {
       throw new PmartException(
-          com.pmart.common.web.ErrorCode.FORBIDDEN, label + "는 센터 관리자·고객센터 상담원·운영 관리자만 할 수 있습니다.");
+          com.pmart.common.web.ErrorCode.FORBIDDEN,
+          decision
+              ? label + "는 센터 관리자·운영 관리자만 할 수 있습니다."
+              : label + "는 센터 관리자·고객센터 상담원·운영 관리자만 할 수 있습니다.");
     }
     if (decision && (in.reasonDetail() == null || in.reasonDetail().isBlank())) {
       throw new PmartException(

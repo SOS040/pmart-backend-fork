@@ -6,8 +6,8 @@
 - 관련: ADR-0060(상품준비 뒤 고객센터 취소 없음 — 그대로), ADR-0046(피킹 뒤 취소 복귀), `docs/business/flows/cancel-vs-handover.md` §7
 
 ## 결정
-1. claim 사유 **`OPERATOR_DECISION`**(관리자 판단)을 더한다. 배차 불가(`DISPATCH_UNAVAILABLE`)와 **같은 사람·같은 범위·같은 흐름**이다.
-   - 누가: 그 센터 `MFC_SUPERVISOR`(남의 센터 주문은 404)·`CS_AGENT`·`OPERATOR_ADMIN` — 배차 불가와 같게(그대로 따름). 작업자·그 밖 직원 403.
+1. claim 사유 **`OPERATOR_DECISION`**(관리자 판단)을 더한다. 배차 불가(`DISPATCH_UNAVAILABLE`)와 **같은 범위·같은 흐름**이고, 사람은 관리자로 좁힌다.
+   - 누가: 그 센터 `MFC_SUPERVISOR`(남의 센터 주문은 404)·`OPERATOR_ADMIN` 만. **`CS_AGENT` 는 403**(사용자 선택 "관리자 사유 취소만 넓힘" — 상담원은 배차 불가 취소만 그대로). 작업자·그 밖 직원 403.
    - 언제: 주문 전체, **상품준비 뒤라도 라이더 인계 전**이면(시스템 취소와 같은 범위 `checkFullCancel(…, system=true)`). 인계 뒤·미이행 0 은 422 — 반품으로.
    - 본인 확인 없음(회사 사유). **사유 메모 `reasonDetail` 필수**(비면 400) — 왜 멈췄는지 남긴다.
    - 고객 토큰은 이 사유를 쓸 수 없다(400).

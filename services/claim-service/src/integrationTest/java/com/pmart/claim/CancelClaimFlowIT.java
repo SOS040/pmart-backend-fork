@@ -326,6 +326,14 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(403);
     assertThat(
             post(
+                    TestJwt.operator("STAFF-CS-1", List.of("CS_AGENT"), List.of()),
+                    UUID.randomUUID().toString(),
+                    body)
+                .status())
+        .as("고객센터 상담원은 관리자 판단 취소 못 함(배차 불가만)")
+        .isEqualTo(403);
+    assertThat(
+            post(
                     TestJwt.operator("STAFF-SUP-2", List.of("MFC_SUPERVISOR"), List.of("MFC-2")),
                     UUID.randomUUID().toString(),
                     body)

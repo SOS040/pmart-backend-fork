@@ -84,8 +84,9 @@ public final class ReturnRules {
   public static final String DISPATCH_UNAVAILABLE = "DISPATCH_UNAVAILABLE";
 
   /**
-   * 관리자 판단 취소 사유(2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터 R-29). 배차 불가와 같은 범위·역할(상품준비
-   * 뒤라도 인계 전, 본인 확인 없음)이고 사유 메모(reasonDetail)가 필수다. 고객 취소 범위는 그대로.
+   * 관리자 판단 취소 사유(2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터 R-29). 배차 불가와 같은 범위(상품준비 뒤라도
+   * 인계 전, 본인 확인 없음)이고 사유 메모(reasonDetail)가 필수다. 역할은 그 센터 MFC_SUPERVISOR·OPERATOR_ADMIN 만(CS_AGENT
+   * 제외). 고객 취소 범위는 그대로.
    */
   public static final String OPERATOR_DECISION = "OPERATOR_DECISION";
 
