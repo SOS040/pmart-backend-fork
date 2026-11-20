@@ -21,4 +21,4 @@
 - 탈퇴·철회 재인증의 네이버 교환에 `purpose: "WITHDRAWAL"`.
 
 ## 배포 상태
-- (작성 시점) 서버 구현·시험 끝(auth check 통과), LAN 배포 전.
+- **LAN 배포 2026-11-20 20:12 KST** — auth-service(PC 4) 50cac7db, pmart-config 1f633e9(스위치 false). (C) 탈퇴 끊기는 바로 동작, (A) 는 sub 유지 확인 뒤 켬.
