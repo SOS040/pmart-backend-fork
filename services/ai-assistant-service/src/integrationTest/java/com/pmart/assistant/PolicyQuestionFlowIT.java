@@ -479,6 +479,10 @@ class PolicyQuestionFlowIT extends AssistantITBase {
         now);
     jdbc.update(
         "UPDATE policy_answer SET created_at = ?", Timestamp.from(now.minus(Duration.ofDays(40))));
+    // 보존 기준은 세션의 마지막 질문 시각(ADR-0084) — 처리 중 답변이 있는 세션은 지우지 않는다
+    jdbc.update(
+        "UPDATE chat_session SET last_asked_at = ?",
+        Timestamp.from(now.minus(Duration.ofDays(40))));
     jobs.purgeExpiredAnswers(); // 기간 미설정 → 지우지 않는다
     assertThat(answers.findAllBySubject("op-1")).hasSize(2);
     props.getAnswers().setRetention(Duration.ofDays(30));

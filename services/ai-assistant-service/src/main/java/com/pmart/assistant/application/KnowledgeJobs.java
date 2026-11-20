@@ -102,16 +102,19 @@ public class KnowledgeJobs implements ApplicationRunner {
     return snapshots.prune(clock.instant().minus(props.getIngest().getPruneGrace()));
   }
 
-  /** 보존 정리. 기간이 설정되지 않았으면 아무것도 지우지 않는다([결정 필요]). PROCESSING 은 지우지 않는다. */
+  /**
+   * 보존 정리(ADR-0084, 사용자 2026-11-20 "14일 — 마지막 질문에서"): 마지막 질문 뒤 기간이 지난 채팅 세션을 답변째 지운다. 기간이 설정되지 않았으면
+   * 아무것도 지우지 않는다. 처리 중 답변이 있는 세션은 지우지 않는다.
+   */
   @Scheduled(fixedDelayString = "PT1H", initialDelayString = "PT10M")
   public void purgeExpiredAnswers() {
     Duration retention = props.getAnswers().getRetention();
     if (retention == null) {
       return;
     }
-    int n = answers.deleteFinishedBefore(clock.instant().minus(retention));
+    int n = answers.deleteSessionsLastAskedBefore(clock.instant().minus(retention));
     if (n > 0) {
-      log.info("assistant answers purged={}", n);
+      log.info("assistant chat sessions purged={}", n);
     }
   }
 }

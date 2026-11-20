@@ -1,5 +1,6 @@
 package com.pmart.assistant.application;
 
+import com.pmart.assistant.domain.FollowUp;
 import com.pmart.assistant.domain.HistoryPager;
 import com.pmart.assistant.domain.ProductAnswerText;
 import com.pmart.assistant.domain.ProductQuestion;
@@ -61,6 +62,9 @@ public class PolicyQuestionService {
   public static final String CONFIG_REQUIRED = "CONFIG_REQUIRED";
   public static final String DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE";
 
+  /** 앞 대화로 넘기는 최근 턴 수(ADR-0084) — 문맥 창을 근거 문서에 남긴다. */
+  static final int HISTORY_TURNS = 2;
+
   /** 응답: 완료(200) 또는 처리 중(202). 그 밖은 PmartException. */
   public sealed interface Outcome {
     AnswerRow row();
@@ -121,14 +125,24 @@ public class PolicyQuestionService {
       String requestId,
       String question,
       @Nullable String screen,
-      @Nullable String centerId) {
+      @Nullable String centerId,
+      @Nullable String sessionId) {
     PmartPrincipal p = requireOperatorAndSource(principal, sourceHeader);
     String src = sourceHeader;
-    String requestHash = RequestHashing.requestHash(question, screen, centerId);
+    String chosen = sessionId == null || sessionId.isBlank() ? null : sessionId.strip();
+    String requestHash = RequestHashing.requestHash(question, screen, centerId, chosen);
     Instant now = clock.instant();
     Instant lease = now.plus(props.getProcessing().getLease());
 
+    // 채팅 세션(ADR-0084): 고른 세션은 본인(출처·주체) 것이어야 한다 — 아니면 없는 것과 같다(404). 고르지 않으면 새 세션
+    if (chosen != null) {
+      var s = answers.findSession(chosen).orElseThrow(PolicyQuestionService::sessionNotFound);
+      if (!s.ownerSubject().equals(p.subject()) || !s.sourceSystem().equals(src)) {
+        throw sessionNotFound();
+      }
+    }
     String answerId = "ANS-" + UUID.randomUUID();
+    String session = chosen != null ? chosen : "SES-" + answerId.substring(4);
     int attempt;
     if (answers.insertClaim(
         answerId,
@@ -138,7 +152,9 @@ public class PolicyQuestionService {
         requestHash,
         lease,
         props.getAnswers().isStoreQuestion() ? RequestHashing.normalize(question) : null,
-        now)) {
+        now,
+        session,
+        chosen == null)) {
       attempt = 1;
     } else {
       AnswerRow existing =
@@ -200,11 +216,24 @@ public class PolicyQuestionService {
     Set<String> scopes = access.allowedScopes(p);
     AnswerGenerator.Generated generated;
     String retrievalMode = embeddings.spec().semantic() ? "SEMANTIC" : "BASELINE_HASH";
+    // 앞 대화(ADR-0084): 같은 세션의 근거 있는 완료 답변 중 질문 원문이 있는 것(최근 HISTORY_TURNS 턴). 이어지는 질문이면 직전 질문을
+    // 붙여 검색하고, 생성에는 늘 참고로 넘긴다(근거 아님)
+    List<AnswerGenerator.PriorTurn> history =
+        answers
+            .previousTurns(
+                answers.findById(answerId).orElseThrow().sessionId(), answerId, HISTORY_TURNS)
+            .stream()
+            .map(t -> new AnswerGenerator.PriorTurn(t.question(), t.answer()))
+            .toList();
+    String searchQuery =
+        FollowUp.retrievalQuery(
+            question, history.stream().map(AnswerGenerator.PriorTurn::question).toList());
     Future<AnswerGenerator.Generated> work =
         executor.submit(
             () -> {
-              Retriever.Retrieval r = retriever.retrieve(snapshot, question, cls.history(), scopes);
-              return generator.generate(question, r.ranked(), r.companions());
+              Retriever.Retrieval r =
+                  retriever.retrieve(snapshot, searchQuery, cls.history(), scopes);
+              return generator.generate(question, r.ranked(), r.companions(), history);
             });
     try {
       generated = work.get(props.getProcessing().getTimeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -391,6 +420,91 @@ public class PolicyQuestionService {
     return new HistoryPage(page.items(), next);
   }
 
+  // ---- 채팅 세션(ADR-0084) ----
+
+  public record SessionPage(List<AnswerStore.SessionSummary> items, @Nullable String nextCursor) {}
+
+  /** 세션 하나와 그 안의 질문·답변(질문 순). 지금 권한으로 볼 수 없는 완료 답변과 실패한 시도는 빼고 보인다. */
+  public record SessionView(AnswerStore.SessionRow session, List<Outcome> messages) {}
+
+  /** 내 채팅 목록: 출처 + 본인 범위, 마지막 질문 최근 순. */
+  public SessionPage sessions(
+      @Nullable PmartPrincipal principal,
+      @Nullable String sourceHeader,
+      int size,
+      @Nullable String cursor) {
+    PmartPrincipal p = requireOperatorAndSource(principal, sourceHeader);
+    Instant beforeAt = null;
+    String beforeId = null;
+    if (cursor != null && !cursor.isBlank()) {
+      try {
+        String raw =
+            new String(
+                java.util.Base64.getUrlDecoder().decode(cursor),
+                java.nio.charset.StandardCharsets.UTF_8);
+        int bar = raw.indexOf('|');
+        beforeAt = Instant.parse(raw.substring(0, bar));
+        beforeId = raw.substring(bar + 1);
+      } catch (RuntimeException e) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
+      }
+    }
+    List<AnswerStore.SessionSummary> rows =
+        answers.listSessions(sourceHeader, p.subject(), beforeAt, beforeId, size + 1);
+    String next = null;
+    if (rows.size() > size) {
+      rows = rows.subList(0, size);
+      AnswerStore.SessionRow last = rows.getLast().session();
+      next =
+          java.util.Base64.getUrlEncoder()
+              .withoutPadding()
+              .encodeToString(
+                  (last.lastAskedAt() + "|" + last.sessionId())
+                      .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+    return new SessionPage(List.copyOf(rows), next);
+  }
+
+  public SessionView session(
+      @Nullable PmartPrincipal principal, @Nullable String sourceHeader, String sessionId) {
+    PmartPrincipal p = requireOperatorAndSource(principal, sourceHeader);
+    AnswerStore.SessionRow s =
+        answers.findSession(sessionId).orElseThrow(PolicyQuestionService::sessionNotFound);
+    if (!s.ownerSubject().equals(p.subject()) || !s.sourceSystem().equals(sourceHeader)) {
+      throw sessionNotFound();
+    }
+    Instant now = clock.instant();
+    List<Outcome> messages = new java.util.ArrayList<>();
+    for (AnswerRow r : answers.sessionAnswers(sessionId)) {
+      switch (r.state()) {
+        case COMPLETED -> {
+          List<CitationRecord> cites = citations(r);
+          if (access.stillAllowed(
+              p, r.askerSubject(), cites.stream().map(CitationRecord::accessScope).toList())) {
+            messages.add(new Outcome.Completed(r, cites));
+          }
+        }
+        case PROCESSING -> {
+          if (r.leaseValid(now)) {
+            messages.add(new Outcome.Processing(r, List.of()));
+          }
+        }
+        case FAILED_RETRYABLE -> {
+          // 같은 키로 다시 보내야 하는 시도 — 대화에는 싣지 않는다
+        }
+      }
+    }
+    return new SessionView(s, List.copyOf(messages));
+  }
+
+  /** 본인 채팅 삭제(질문·답변째). 없거나 남의 것이면 아무것도 지우지 않고 성공(멱등 — 존재를 드러내지 않는다). */
+  public void deleteSession(
+      @Nullable PmartPrincipal principal, @Nullable String sourceHeader, String sessionId) {
+    PmartPrincipal p = requireOperatorAndSource(principal, sourceHeader);
+    int n = answers.deleteSession(sessionId, sourceHeader, p.subject());
+    log.info("assistant chat session delete session={} deleted={}", sessionId, n);
+  }
+
   /** 목록에 보일 항목. 완료 답변은 현재 권한을 다시 확인해 볼 수 없으면 비어 있다. */
   private java.util.Optional<HistoryItem> historyItem(AnswerRow r, PmartPrincipal p) {
     if (r.state() != AnswerStore.State.COMPLETED) {
@@ -471,6 +585,10 @@ public class PolicyQuestionService {
 
   private static PmartException notFound() {
     return PmartException.notFound(ErrorCode.NOT_FOUND.name(), "답변을 찾을 수 없습니다.");
+  }
+
+  private static PmartException sessionNotFound() {
+    return PmartException.notFound(ErrorCode.NOT_FOUND.name(), "채팅을 찾을 수 없습니다.");
   }
 
   private static PmartException retryWithPost(String why) {
