@@ -634,6 +634,9 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(list.status()).isEqualTo(200);
     assertThat(list.body().path("items").findValuesAsString("claimId"))
         .containsExactly(acc + "-C2", acc + "-C1", acc + "-C0");
+    assertThat(get(staff, "/claims?customerId=CU-NONE").body().path("items").isArray())
+        .as("빈 목록도 []")
+        .isTrue();
     // 고객 토큰의 customerId 는 무시(늘 본인)
     assertThat(
             get(TestJwt.customer("CU-OTHER"), "/claims?customerId=" + acc)

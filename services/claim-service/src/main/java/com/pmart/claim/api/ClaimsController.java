@@ -116,6 +116,7 @@ public class ClaimsController implements ClaimsApi {
             cursor);
     ListClaims200Response out =
         new ListClaims200Response()
+            .items(new java.util.ArrayList<>()) // 빈 목록도 [] (null 아님)
             .page(
                 new ListClaims200ResponsePage()
                     .size(page.rows().size())
