@@ -29,7 +29,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 휴대폰 확인 단계(ADR-0074, auth 0.6.0 — require-identity 를 시험 속성으로 켠다, 설정 사본은 꺼짐): 신규 가입 →
+ * 휴대폰 확인 단계(ADR-0074, auth 0.6.0 — require-identity 를 시험 속성으로 켠다 — 설정 사본도 2026-11-20 부터 켜짐): 신규 가입 →
  * AUTH_IDENTITY(토큰·사건 없음) → identity-verifications(번호) → confirmations: 아직이면 AUTH_IDENTITY·진행 상태,
  * 확인되면 AUTH_MEMBER·토큰·CustomerAuthenticated. 다른 계정의 번호면 409 IDENTITY_ALREADY_REGISTERED(제공자·가입일·가린
  * 이메일)이고 새 계정은 버린다, 탈퇴 막기는 409 IDENTITY_REJOIN_BLOCKED. 확인된 기존 회원은 바로 들어가고, 확인 번호가 없는 기존 회원은 다음 로그인

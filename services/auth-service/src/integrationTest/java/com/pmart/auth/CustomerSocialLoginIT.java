@@ -47,6 +47,8 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.auth.signing.ephemeral=true",
       "pmart.auth.issuer=http://auth-service.test",
       "pmart.messaging.outbox.delete-after-insert=false",
+      // 설정 사본은 require-identity true(LAN 2026-11-20). 휴대폰 확인 단계는 CustomerIdentityLoginIT 가 본다
+      "pmart.auth.customer.require-identity=false",
       "pmart.auth.customer.google.client-ids=app-client.apps.googleusercontent.com,web-client.apps.googleusercontent.com",
       // 카카오·네이버(ADR-0071) — aud = 카카오 SDK 앱 키·네이버 Client ID
       "pmart.auth.customer.kakao.client-ids=kakao-native-app-key",

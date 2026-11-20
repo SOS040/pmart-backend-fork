@@ -46,6 +46,8 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.auth.signing.ephemeral=true",
       "pmart.auth.issuer=http://auth-service.test",
       "pmart.messaging.outbox.delete-after-insert=false",
+      // 설정 사본은 require-identity true(LAN 2026-11-20). 휴대폰 확인 단계는 CustomerIdentityLoginIT 가 본다
+      "pmart.auth.customer.require-identity=false",
       "pmart.auth.customer.google.client-ids=web-client.apps.googleusercontent.com",
       // 설정 사본은 false(LAN — 고객 앱 반영 전). 켠 경로를 시험한다
       "pmart.auth.customer.require-consent=true"
