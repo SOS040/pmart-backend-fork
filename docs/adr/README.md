@@ -81,3 +81,4 @@
 | [0079](0079-supervisor-task-control.md) | 센터 관리자 작업 조작 — 작업 중지(BLOCKED, 배정·재고 그대로)·해제(실물 확인 필수, 담당 살아 있으면 ASSIGNED 아니면 READY)·부분 종료(PICK 잔량만, 결품 사가로 부분 환불·예약 해제, CLOSED_PARTIAL). 다시 열기 없음 | 승인 (2026-11-20) |
 | [0080](0080-pack-assigned-to-picker-on-pick-complete.md) | 피킹이 끝나면 그 출고 PACK 을 피커에게 바로 SYSTEM 배정(capacity 가 TaskProgressed 구독) — 활성 배정 있음·맡을 수 없음·휴게·근무 밖이면 READY 그대로 | 승인 (2026-11-20) |
 | [0082](0082-coupons-and-period-promotions.md) | 쿠폰·기간 할인 도입 — promotion-service 활성. 기간 할인(SKU·카테고리, 가장 큰 1개)+장바구니 쿠폰(내려받기·지정·가입 축하), 승인 PROMOTION(MARKETING), 전체 취소만 복원. 원문 "1차 제외"를 대체 | 승인 (2026-11-20) |
+| [0083](0083-rag-product-search-answers.md) | 운영자·고객 RAG 의 상품 질문(가격·판매 여부)은 search-service 상품 검색 결과를 정해진 문장으로(PRODUCT_INFO) — 운영자는 화면 센터 취급 여부까지, 재고 수량·주문 상태는 그대로 거절, 결과 없거나 실패하면 문서로. ADR-0036 결정 1 일부 대체 | 승인 (2026-11-20) |

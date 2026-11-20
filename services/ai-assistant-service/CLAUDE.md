@@ -37,6 +37,7 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 로컬 포트 8508.
 
 ## 상태
+- **상품 질문(2026-11-20, ADR-0083, 계약 1.2.0)**: `domain/ProductQuestion`(규칙 — 상품 이름 + 가격·판매 여부, 업무 규칙·요금·재고 수량 말이 있으면 아님)이 고르면 `infrastructure/ProductSearchClient` 가 search-service `GET /api/v1/search/products` 를 **토큰 없이**(공용 Builder 가 전파한 토큰을 뗀다) 불러 상위 `pmart.assistant.product-search.max-items`(3)개를 `domain/ProductAnswerText.operator` 정해진 문장으로 — `PRODUCT_INFO`·`PRODUCT_TEMPLATE`, 근거 없음. context.centerId 가 있으면 `mfcId`+`includeNotCarried=true` 로 그 센터 취급 여부. 0건·실패면 문서 검색으로. `product-search.base-url` 이 없으면 꺼짐. 고객용(customer-assistant-service)과 같은 규칙 — 한쪽을 고치면 다른 쪽도. 시험 `ProductQuestionTest`·`ProductQuestionIT`(WireMock).
 - 내 질문 목록 `GET /assistant/question-history`(BR-46, 계약 1.1.0) — 본인·출처 범위, 완료 답변은 현재 권한 재검사 후만. 쪽 계산은 `domain/HistoryPager`: 보이는 행을 size+1 개째까지 찾아 그때만 nextCursor(2026-11-05 결함 수정 — 숨김 행 뒤 누락).
 - 검색 평가 `RetrievalEvalIT`: 문서 경로 기준(`expected`) + 절 기준(`sections`, 원문을 읽어 정함). 정답 절은 검색 결과에 맞춰 넓히지 않는다.
 - 1차 구현(2026-11-04, ADR-0036): 기준선(해시 임베딩 + 발췌).

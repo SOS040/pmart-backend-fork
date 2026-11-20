@@ -1,6 +1,8 @@
 package com.pmart.assistant.application;
 
 import com.pmart.assistant.domain.HistoryPager;
+import com.pmart.assistant.domain.ProductAnswerText;
+import com.pmart.assistant.domain.ProductQuestion;
 import com.pmart.assistant.domain.QuestionClassifier;
 import com.pmart.assistant.domain.QuestionClassifier.Classification;
 import com.pmart.assistant.domain.QuestionClassifier.Intent;
@@ -10,6 +12,7 @@ import com.pmart.assistant.infrastructure.AnswerStore;
 import com.pmart.assistant.infrastructure.AnswerStore.AnswerRow;
 import com.pmart.assistant.infrastructure.AnswerStore.Completion;
 import com.pmart.assistant.infrastructure.AnswerStore.PinResult;
+import com.pmart.assistant.infrastructure.ProductSearchClient;
 import com.pmart.assistant.infrastructure.SnapshotStore;
 import com.pmart.assistant.infrastructure.SnapshotStore.SnapshotRow;
 import com.pmart.assistant.infrastructure.embedding.DescribedEmbeddingModel;
@@ -19,6 +22,7 @@ import com.pmart.common.web.PmartException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -84,6 +88,7 @@ public class PolicyQuestionService {
   private final ExecutorService executor;
   private final ObjectMapper json;
   private final Clock clock;
+  private final ProductSearchClient products;
 
   public PolicyQuestionService(
       AnswerStore answers,
@@ -95,7 +100,8 @@ public class PolicyQuestionService {
       AssistantProperties props,
       ExecutorService executor,
       ObjectMapper json,
-      Clock clock) {
+      Clock clock,
+      ProductSearchClient products) {
     this.answers = answers;
     this.snapshots = snapshots;
     this.retriever = retriever;
@@ -106,6 +112,7 @@ public class PolicyQuestionService {
     this.executor = executor;
     this.json = json;
     this.clock = clock;
+    this.products = products;
   }
 
   public Outcome ask(
@@ -150,10 +157,11 @@ public class PolicyQuestionService {
       answerId = existing.answerId();
       attempt = existing.attempt() + 1;
     }
-    return process(p, answerId, attempt, question);
+    return process(p, answerId, attempt, question, centerId);
   }
 
-  private Outcome process(PmartPrincipal p, String answerId, int attempt, String question) {
+  private Outcome process(
+      PmartPrincipal p, String answerId, int attempt, String question, @Nullable String centerId) {
     long started = System.nanoTime();
     Classification cls = QuestionClassifier.classify(question);
     if (cls.intent() != Intent.POLICY) {
@@ -167,6 +175,12 @@ public class PolicyQuestionService {
           new Completion(state, text, "[]", null, "NONE", "NONE", null, null),
           started,
           0);
+    }
+
+    // 상품 질문(2026-11-20, ADR-0083): 상품 검색 결과를 정해진 문장으로. 결과가 없거나 검색이 안 되면 문서 검색으로 넘어간다
+    Optional<Completion> product = productAnswer(answerId, question, centerId);
+    if (product.isPresent()) {
+      return finish(p, answerId, attempt, product.get(), started, 0);
     }
 
     PinResult pin = answers.pinActiveSnapshot(answerId, attempt, snapshots);
@@ -240,6 +254,43 @@ public class PolicyQuestionService {
             generated.chatModel(),
             embeddings.spec().describe());
     return finish(p, answerId, attempt, completion, started, citations.size());
+  }
+
+  /** 상품 질문이고 검색 결과가 있으면 PRODUCT_INFO 완료값. 아니면 비어 있다(검색어·질문은 로그에 남기지 않는다). */
+  private Optional<Completion> productAnswer(
+      String answerId, String question, @Nullable String centerId) {
+    if (!products.enabled()) {
+      return Optional.empty();
+    }
+    Optional<String> keyword = ProductQuestion.keyword(question);
+    if (keyword.isEmpty()) {
+      return Optional.empty();
+    }
+    Optional<ProductSearchClient.Result> found;
+    try {
+      found = products.search(keyword.get(), centerId);
+    } catch (RuntimeException e) {
+      log.warn(
+          "assistant answer={} product search failed {} — 문서 검색으로",
+          answerId,
+          e.getClass().getSimpleName());
+      return Optional.empty();
+    }
+    if (found.isEmpty() || found.get().items().isEmpty()) {
+      return Optional.empty();
+    }
+    boolean center = centerId != null && !centerId.isBlank();
+    return Optional.of(
+        new Completion(
+            "PRODUCT_INFO",
+            ProductAnswerText.operator(
+                keyword.get(), found.get().items(), found.get().total(), center),
+            "[]",
+            null,
+            "PRODUCT_TEMPLATE",
+            "NONE",
+            null,
+            null));
   }
 
   private Outcome finish(

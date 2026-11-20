@@ -44,10 +44,18 @@ import tools.jackson.databind.json.JsonMapper;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      "pmart.assistant.product-search.base-url=${search.url}"
     })
 @Import({TestJwtConfiguration.class, AssistantITBase.TestBeans.class})
+@org.wiremock.spring.EnableWireMock({
+  @org.wiremock.spring.ConfigureWireMock(name = "search", baseUrlProperties = "search.url")
+})
 abstract class AssistantITBase extends PgvectorContainerSupport {
+
+  /** search-service 상품 검색(ADR-0083). 스텁이 없으면 404 → 상품 답 없이 문서 검색으로 답한다. */
+  @org.wiremock.spring.InjectWireMock("search")
+  com.github.tomakehurst.wiremock.WireMockServer search;
 
   static final List<String> FIXTURE_FILES =
       List.of(

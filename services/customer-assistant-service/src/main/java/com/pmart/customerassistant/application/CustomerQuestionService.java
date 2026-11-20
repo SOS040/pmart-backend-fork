@@ -4,6 +4,8 @@ import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.customerassistant.domain.OrderStatusText;
+import com.pmart.customerassistant.domain.ProductAnswerText;
+import com.pmart.customerassistant.domain.ProductQuestion;
 import com.pmart.customerassistant.domain.QuestionClassifier;
 import com.pmart.customerassistant.domain.QuestionClassifier.Classification;
 import com.pmart.customerassistant.domain.QuestionClassifier.Intent;
@@ -16,6 +18,7 @@ import com.pmart.customerassistant.infrastructure.AnswerStore.Completion;
 import com.pmart.customerassistant.infrastructure.AnswerStore.PinResult;
 import com.pmart.customerassistant.infrastructure.OrderClient;
 import com.pmart.customerassistant.infrastructure.OrderClient.OrderView;
+import com.pmart.customerassistant.infrastructure.ProductSearchClient;
 import com.pmart.customerassistant.infrastructure.SnapshotStore;
 import com.pmart.customerassistant.infrastructure.SnapshotStore.SnapshotRow;
 import com.pmart.customerassistant.infrastructure.embedding.DescribedEmbeddingModel;
@@ -103,6 +106,7 @@ public class CustomerQuestionService {
   private final ObjectMapper json;
   private final Clock clock;
   private final OrderClient orders;
+  private final ProductSearchClient products;
 
   public CustomerQuestionService(
       AnswerStore answers,
@@ -115,7 +119,8 @@ public class CustomerQuestionService {
       ExecutorService executor,
       ObjectMapper json,
       Clock clock,
-      OrderClient orders) {
+      OrderClient orders,
+      ProductSearchClient products) {
     this.answers = answers;
     this.snapshots = snapshots;
     this.retriever = retriever;
@@ -127,6 +132,7 @@ public class CustomerQuestionService {
     this.json = json;
     this.clock = clock;
     this.orders = orders;
+    this.products = products;
   }
 
   public Outcome ask(
@@ -272,6 +278,12 @@ public class CustomerQuestionService {
           0);
     }
 
+    // 상품 질문(2026-11-20, ADR-0083): 상품 검색 결과를 정해진 문장으로. 결과가 없거나 검색이 안 되면 안내 문서 검색으로 넘어간다
+    Optional<Completion> product = productAnswer(answerId, question);
+    if (product.isPresent()) {
+      return finish(p, answerId, attempt, product.get(), started, 0);
+    }
+
     PinResult pin = answers.pinActiveSnapshot(answerId, attempt, snapshots);
     SnapshotRow snapshot;
     switch (pin) {
@@ -339,6 +351,40 @@ public class CustomerQuestionService {
             generated.chatModel(),
             embeddings.spec().describe());
     return finish(p, answerId, attempt, completion, started, citations.size());
+  }
+
+  /** 상품 질문이고 검색 결과가 있으면 PRODUCT_INFO 완료값. 아니면 비어 있다(검색어·질문은 로그에 남기지 않는다). */
+  private Optional<Completion> productAnswer(String answerId, String question) {
+    if (!products.enabled()) {
+      return Optional.empty();
+    }
+    Optional<String> keyword = ProductQuestion.keyword(question);
+    if (keyword.isEmpty()) {
+      return Optional.empty();
+    }
+    Optional<ProductSearchClient.Result> found;
+    try {
+      found = products.search(keyword.get(), null);
+    } catch (RuntimeException e) {
+      log.warn(
+          "customer-assistant answer={} product search failed {} — 안내 문서로",
+          answerId,
+          e.getClass().getSimpleName());
+      return Optional.empty();
+    }
+    if (found.isEmpty() || found.get().items().isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new Completion(
+            "PRODUCT_INFO",
+            ProductAnswerText.customer(keyword.get(), found.get().items()),
+            "[]",
+            null,
+            "PRODUCT_TEMPLATE",
+            "NONE",
+            null,
+            null));
   }
 
   private Outcome finish(

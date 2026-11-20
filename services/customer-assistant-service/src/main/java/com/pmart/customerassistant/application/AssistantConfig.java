@@ -121,7 +121,8 @@ public class AssistantConfig {
       ExecutorService assistantExecutor,
       ObjectMapper json,
       Clock clock,
-      com.pmart.customerassistant.infrastructure.OrderClient orders) {
+      com.pmart.customerassistant.infrastructure.OrderClient orders,
+      com.pmart.customerassistant.infrastructure.ProductSearchClient products) {
     validate(props);
     return new CustomerQuestionService(
         answers,
@@ -134,7 +135,8 @@ public class AssistantConfig {
         assistantExecutor,
         json,
         clock,
-        orders);
+        orders,
+        products);
   }
 
   @Bean

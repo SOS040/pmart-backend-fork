@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: customer-assistant-service
-  version: 0.2.0
+  version: 0.3.0
   x-stage: 3
   x-stage-note: 고객앱 RAG 1차(2026-11-09, ADR-0051) — 고객 공개 안내 문서 질의응답 + 근거 표시 + 내 주문 상태 안내 + 고객센터 문의 연결.
   description: |
@@ -22,6 +22,8 @@ info:
     - `NO_GROUNDING`: 안내 문서에서 근거를 못 찾음 → `handoff`(고객센터 문의 남기기, C4).
     - `REALTIME_DATA_REQUIRED`: 특정 주문의 지금 상태를 물었는데 주문을 고르지 않음 → `recentOrders`(최근 주문 최대 5개)에서 고르게 한다(C6).
     - `ORDER_STATUS`: 고른 주문의 지금 상태를 물음 → 주문 상태를 order-service 에서 읽어 정해진 문장으로 답한다(모델이 상태를 지어내지 않는다).
+    - `PRODUCT_INFO`(0.3.0, ADR-0083): 상품의 가격·판매 여부를 물음 → search-service 상품 검색 결과를 정해진 문장으로 답한다(`answerMode`
+      `PRODUCT_TEMPLATE`, 근거 문서 없음, 센터 취급 여부는 답하지 않음). 검색 결과가 없거나 검색이 안 되면 안내 문서로 답한다.
     - `OUT_OF_SCOPE`: 취소·환불·반품 같은 실행 요청, 지시 무력화 시도 → 하지 않음 + `handoff`.
     - `PROCESSING`: 같은 키가 처리 중(202).
 
@@ -329,12 +331,12 @@ components:
 
     CustomerAnswerState:
       type: string
-      enum: [ANSWERED, NO_GROUNDING, REALTIME_DATA_REQUIRED, ORDER_STATUS, OUT_OF_SCOPE, PROCESSING]
+      enum: [ANSWERED, NO_GROUNDING, REALTIME_DATA_REQUIRED, ORDER_STATUS, PRODUCT_INFO, OUT_OF_SCOPE, PROCESSING]
 
     AnswerMode:
       type: string
-      enum: [GENERATIVE, BASELINE_EXTRACTIVE, ORDER_TEMPLATE, NONE]
-      description: GENERATIVE=모델 생성(인용 검사 통과), BASELINE_EXTRACTIVE=안내 문서 원문 발췌, ORDER_TEMPLATE=주문 상태를 정해진 문장으로, NONE=답 생성 안 함
+      enum: [GENERATIVE, BASELINE_EXTRACTIVE, ORDER_TEMPLATE, PRODUCT_TEMPLATE, NONE]
+      description: GENERATIVE=모델 생성(인용 검사 통과), BASELINE_EXTRACTIVE=안내 문서 원문 발췌, ORDER_TEMPLATE=주문 상태를 정해진 문장으로, PRODUCT_TEMPLATE=상품 검색 결과를 정해진 문장으로(0.3.0), NONE=답 생성 안 함
 
     Citation:
       type: object
