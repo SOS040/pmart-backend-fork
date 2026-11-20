@@ -40,7 +40,7 @@ import tools.jackson.databind.ObjectMapper;
 class ConsentFlowIT extends PostgresKafkaContainerSupport {
 
   static final String TERMS = "2026-11-17";
-  static final String PRIVACY = "2026-11-20"; // 처리방침 새 판(2026-11-20 발효, ADR-0074 과 같은 날)
+  static final String PRIVACY = "2026-11-21"; // 처리방침 새 판(2026-11-21 — 가입 쿠폰 지급 기록, ADR-0082 5단계)
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;

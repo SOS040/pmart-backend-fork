@@ -96,6 +96,8 @@
 
 - **자동 취소 추가(2026-11-20, PC 5 — 사용자 "쿠폰 안 되면 자동취소만"·"약속+30분")**: 내부 시스템 취소 `POST /internal/claims/system-cancellations` 사유에 `DISPATCH_UNAVAILABLE`(계약 0.9.1) — delivery-dispatch 가 약속 + 30분 라이더 없는 고객 배송의 주문을 자동 취소. claim 코드는 계약 enum 만(범위·흐름은 시스템 취소 그대로), 시험 `CancelClaimFlowIT.systemCancellationForDispatchUnavailable`. **상태: PR 올림(PC 5, platform 영역 — PC 1 검토)**.
 
+- **쿠폰(2번) 구현(2026-11-21 PC 1, ADR-0082 5단계)**: claim 은 바뀌지 않는다 — promotion 이 OrderCancelled(cancelReason DISPATCH_UNAVAILABLE)를 받아 주문마다 한 번 보상 쿠폰(설정한 ADMIN 쿠폰 행사, LAN 2,000원·30일·최소 주문 없음 — 사용자 결정). 직원 취소·자동 취소 모두. 고객 알림 문구(3번의 "2,000원 쿠폰을 드렸어요")는 아직 — notification 이 쿠폰 발급을 모른다(다음).
+
 ## CL-6. 클레임 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2)
 
 - **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).

@@ -49,6 +49,23 @@ public final class PhoneVerificationRules {
     }
   }
 
+  /**
+   * 가입 쿠폰 중복 방지 키(2026-11-21 ADR-0082 5단계) — HMAC-SHA256(비밀값, 번호). 비밀값 없이는 번호로 되돌릴 수 없다(번호 공간이 작아
+   * 그냥 해시는 대입으로 풀린다). promotion 이 탈퇴 뒤에도 보관한다(처리방침 2026-11-21).
+   */
+  public static String signupKey(String secret, String phone) {
+    try {
+      javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+      mac.init(
+          new javax.crypto.spec.SecretKeySpec(
+              secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+      return HexFormat.of()
+          .formatHex(mac.doFinal(("signup-coupon:" + phone).getBytes(StandardCharsets.UTF_8)));
+    } catch (java.security.GeneralSecurityException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   public static int remaining(int maxAttempts, int attempts) {
     return Math.max(0, maxAttempts - attempts);
   }

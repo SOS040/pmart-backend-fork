@@ -41,7 +41,10 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.it.context=PromotionsIT",
       "pmart.promotion.display-sync-interval=PT0.5S",
-      "pmart.promotion.display-sync-initial-delay=PT1S"
+      "pmart.promotion.display-sync-initial-delay=PT1S",
+      "pmart.promotion.compensation.dispatch-unavailable-promotion-id=PRM-COMP-IT",
+      "pmart.promotion.compensation.retry-interval=PT1S",
+      "pmart.promotion.compensation.retry-initial-delay=PT1S"
     })
 @Import(TestJwtConfiguration.class)
 class PromotionsIT extends PostgresKafkaContainerSupport {
@@ -426,6 +429,153 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
     assertThat(c2.get(1).path("promotionId").isNull()).isTrue();
     Thread.sleep(1500);
     assertThat(displayEvents(skuC)).hasSize(2);
+  }
+
+  void identityVerified(String accountId, String stage, String signupKey) {
+    Map<String, Object> p = new java.util.HashMap<>();
+    p.put("accountId", accountId);
+    p.put("stage", stage);
+    p.put("signupKey", signupKey);
+    p.put("verifiedAt", Instant.now().toString());
+    kafka
+        .send(
+            "commerce.customer.v1",
+            accountId,
+            EventEnvelopeFixtures.envelope("CustomerIdentityVerified")
+                .from("customer-service")
+                .aggregate("CustomerIdentity", accountId, System.currentTimeMillis())
+                .payload(p)
+                .buildJson())
+        .join();
+  }
+
+  void orderCancelled(String orderId, String accountId, String cancelReason) {
+    kafka
+        .send(
+            "order.order.v1",
+            orderId,
+            EventEnvelopeFixtures.envelope("OrderCancelled")
+                .from("order-service")
+                .aggregate("Order", orderId, 3)
+                .payload(
+                    Map.of(
+                        "orderId",
+                        orderId,
+                        "scope",
+                        "FULL",
+                        "lines",
+                        List.of(),
+                        "reason",
+                        "CANCELLED",
+                        "cancelReason",
+                        cancelReason,
+                        "accountId",
+                        accountId))
+                .buildJson())
+        .join();
+  }
+
+  int couponsOf(String accountId, String promotionId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM coupon WHERE account_id = ? AND promotion_id = ?",
+            Integer.class,
+            accountId,
+            promotionId);
+    return n == null ? 0 : n;
+  }
+
+  static String signupKey() {
+    return (UUID.randomUUID().toString() + UUID.randomUUID()).replace("-", "");
+  }
+
+  /** ADR-0082 5단계: 가입 축하 쿠폰(같은 번호 키는 다시 안 줌)·배차 불가 보상 쿠폰(주문마다 한 번, 행사 전이면 대기). */
+  @Test
+  void signupAndDispatchUnavailableCompensationCoupons() throws Exception {
+    String signup =
+        approved(
+            coupon(
+                "가입 축하 3천원",
+                Map.of("type", "AMOUNT", "value", 3000),
+                Map.of(
+                    "issueMode",
+                    "SIGNUP",
+                    "minOrderAmount",
+                    0,
+                    "perCustomerLimit",
+                    1,
+                    "useDays",
+                    30)));
+    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    String a = "CU-SA-" + suffix;
+    String rejoin = "CU-SR-" + suffix;
+    String profile = "CU-SP-" + suffix;
+    String noKey = "CU-SN-" + suffix;
+    String other = "CU-SO-" + suffix;
+    String keyA = signupKey();
+    identityVerified(a, "SIGNUP", keyA);
+    identityVerified(rejoin, "SIGNUP", keyA); // 같은 번호로 재가입 — 다시 안 줌
+    identityVerified(profile, "PROFILE", signupKey()); // 가입이 아닌 /me 확인
+    identityVerified(noKey, "SIGNUP", null); // 키 없음(비밀값 미설정)
+    identityVerified(other, "SIGNUP", signupKey());
+    // 한 파티션이 아닐 수 있어 각각 기다린다
+    await(() -> couponsOf(a, signup), n -> n == 1);
+    await(() -> couponsOf(other, signup), n -> n == 1);
+    Thread.sleep(1500);
+    assertThat(couponsOf(a, signup)).isEqualTo(1);
+    assertThat(couponsOf(other, signup)).isEqualTo(1);
+    assertThat(couponsOf(rejoin, signup)).isZero();
+    assertThat(couponsOf(profile, signup)).isZero();
+    assertThat(couponsOf(noKey, signup)).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT issue_channel FROM coupon WHERE account_id = ? AND promotion_id = ?",
+                String.class,
+                a,
+                signup))
+        .isEqualTo("SIGNUP");
+
+    // 보상: 행사(PRM-COMP-IT)가 아직 없으면 대기
+    String cust = "CU-COMP-" + suffix;
+    orderCancelled("ORD-C0-" + suffix, cust, "DISPATCH_UNAVAILABLE");
+    await(
+        () ->
+            jdbc.queryForObject(
+                "SELECT count(*) FROM compensation_grant WHERE order_id = ? AND state = 'PENDING'",
+                Integer.class,
+                "ORD-C0-" + suffix),
+        n -> n != null && n == 1);
+    // 보상 행사(ADMIN 2,000원, 1인 한도 1)를 만들어 설정한 ID 로 — 대기분도 주기 작업이 준다
+    String comp =
+        approved(
+            coupon(
+                "배차 불가 보상 2천원",
+                Map.of("type", "AMOUNT", "value", 2000),
+                Map.of(
+                    "issueMode",
+                    "ADMIN",
+                    "minOrderAmount",
+                    0,
+                    "perCustomerLimit",
+                    1,
+                    "useDays",
+                    30)));
+    jdbc.update("UPDATE promotion SET promotion_id = 'PRM-COMP-IT' WHERE promotion_id = ?", comp);
+    orderCancelled("ORD-C1-" + suffix, cust, "DISPATCH_UNAVAILABLE");
+    orderCancelled("ORD-C1-" + suffix, cust, "DISPATCH_UNAVAILABLE"); // 같은 주문 두 번 — 한 번만
+    orderCancelled("ORD-C2-" + suffix, cust, "CUSTOMER_REQUEST"); // 다른 사유 — 없음
+    await(() -> couponsOf(cust, "PRM-COMP-IT"), n -> n == 2);
+    Thread.sleep(1500);
+    assertThat(couponsOf(cust, "PRM-COMP-IT")).as("주문 두 건(대기 + 바로), 1인 한도로 막지 않음").isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM compensation_grant WHERE account_id = ? AND state = 'ISSUED'",
+                Integer.class,
+                cust))
+        .isEqualTo(2);
+    JsonNode mine =
+        send("GET", TestJwt.customer(cust), "/me/coupons?status=AVAILABLE", null).body();
+    assertThat(mine.path("items").size()).isEqualTo(2);
   }
 
   @Test

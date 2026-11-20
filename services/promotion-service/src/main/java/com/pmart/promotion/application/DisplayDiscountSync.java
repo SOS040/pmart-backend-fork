@@ -24,9 +24,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * 할인가 표시(ADR-0082 4단계). 주기마다 "지금 진행 중인 기간 할인이 걸린 SKU + 지금 할인으로 보이는 SKU" 의 표시 할인을 다시 계산하고(견적과 같은
  * {@link PriceDiscounts} — 가장 큰 1개), 달라진 SKU 만 {@code
- * SkuDisplayDiscountChanged}(commerce.sku-display-discount.v1, 키 = SKU)로 알린다. 행사 시작·끝·조기 종료·가격 변경·카테고리 상품 추가가
- * 모두 주기 안에 반영된다. 받는 쪽(검색 색인·홈·…)은 seq 가 큰 것만, 그리고 자기 가격 사본의 priceVersion 이 같을 때만 할인가를 보인다(가격이 막 바뀐
- * 사이에는 정가).
+ * SkuDisplayDiscountChanged}(commerce.sku-display-discount.v1, 키 = SKU)로 알린다. 행사 시작·끝·조기 종료·가격
+ * 변경·카테고리 상품 추가가 모두 주기 안에 반영된다. 받는 쪽(검색 색인·홈·…)은 seq 가 큰 것만, 그리고 자기 가격 사본의 priceVersion 이 같을 때만
+ * 할인가를 보인다(가격이 막 바뀐 사이에는 정가).
  */
 @Service
 public class DisplayDiscountSync {

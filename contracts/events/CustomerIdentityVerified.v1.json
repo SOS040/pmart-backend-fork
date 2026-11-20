@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerIdentityVerified.v1.json",
+  "title": "CustomerIdentityVerified",
+  "description": "고객 휴대폰 번호 확정(2026-11-21 ADR-0082 5단계 — ADR-0074 한 번호 한 계정의 VERIFIED). stage SIGNUP = 로그인 단계 확인(가입), PROFILE = /me 확인. signupKey = 번호의 HMAC-SHA256(customer-service 비밀값 — 되돌릴 수 없음, 같은 번호면 같은 값; 비밀값 미설정이면 null). 번호 원문·해시는 싣지 않는다. 발행 customer-service. 구독 promotion(가입 쿠폰 — 같은 키에는 다시 주지 않음). 토픽 commerce.customer.v1.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerIdentityVerified"
+        },
+        "aggregateType": {
+          "const": "CustomerIdentity"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "accountId",
+            "stage",
+            "verifiedAt"
+          ],
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string",
+              "enum": [
+                "SIGNUP",
+                "PROFILE"
+              ]
+            },
+            "signupKey": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "verifiedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

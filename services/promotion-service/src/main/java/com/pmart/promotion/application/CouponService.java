@@ -171,8 +171,19 @@ public class CouponService {
       String channel,
       @Nullable String issuedBy,
       @Nullable String reason) {
+    return issue(p, accountId, channel, issuedBy, reason, false);
+  }
+
+  /** perCustomerLimitIgnored = 회사 사유 보상(주문마다 한 번 — 1인 한도로 막지 않는다, 중복은 호출자가 주문으로 막음). */
+  String issue(
+      PromotionRow p,
+      String accountId,
+      String channel,
+      @Nullable String issuedBy,
+      @Nullable String reason,
+      boolean perCustomerLimitIgnored) {
     int limit = p.perCustomerLimit() == null ? 1 : p.perCustomerLimit();
-    if (store.issuedTo(p.promotionId(), accountId) >= limit) {
+    if (!perCustomerLimitIgnored && store.issuedTo(p.promotionId(), accountId) >= limit) {
       return "!LIMIT";
     }
     if (!store.incrementIssued(p.promotionId())) {

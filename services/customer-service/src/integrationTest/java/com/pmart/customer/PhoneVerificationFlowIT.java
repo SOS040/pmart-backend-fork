@@ -43,7 +43,9 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.customer.phone-verification.api-key=test-octomo-key",
       "pmart.customer.phone-verification.max-attempts=3",
       // 한 번호 한 계정(ADR-0074) — 설정 저장소에 넣기 전이라 여기서
-      "pmart.customer.identity.rejoin-block=P30D"
+      "pmart.customer.identity.rejoin-block=P30D",
+      "pmart.customer.identity.signup-key-secret=it-signup-secret",
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock(
@@ -286,6 +288,11 @@ class PhoneVerificationFlowIT extends PostgresKafkaContainerSupport {
         .isTrue();
     JsonNode me = get(TestJwt.customer(first), "/me").body();
     assertThat(me.path("phoneVerified").asBoolean()).isTrue();
+    // 가입 쿠폰용 사건(2026-11-21 ADR-0082 5단계): 번호 원문·해시 없이 HMAC 키만
+    JsonNode signupEvent = identityEvent(first);
+    assertThat(signupEvent.path("stage").asString()).isEqualTo("SIGNUP");
+    assertThat(signupEvent.path("signupKey").asString()).hasSize(64);
+    assertThat(signupEvent.toString()).doesNotContain("01077770001").doesNotContain("7777");
     // 이미 확인된 계정은 다시 시작 못 함
     assertThat(
             internalPost(
@@ -336,7 +343,21 @@ class PhoneVerificationFlowIT extends PostgresKafkaContainerSupport {
         "UPDATE customer_identity SET released_at = ? WHERE account_id = ?",
         java.sql.Timestamp.from(java.time.Instant.now().minus(java.time.Duration.ofDays(31))),
         first);
-    Res later = signupVerify("CU-ID-" + UUID.randomUUID(), "01077770001");
+    String rejoined = "CU-ID-" + UUID.randomUUID();
+    Res later = signupVerify(rejoined, "01077770001");
     assertThat(later.body().path("outcome").asString()).isEqualTo("VERIFIED");
+    // 같은 번호 재가입은 같은 키(promotion 이 가입 쿠폰을 다시 주지 않는다)
+    assertThat(identityEvent(rejoined).path("signupKey").asString())
+        .isEqualTo(signupEvent.path("signupKey").asString());
+  }
+
+  JsonNode identityEvent(String accountId) {
+    String raw =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'CustomerIdentityVerified'"
+                + " AND aggregateid = ? AND topic = 'commerce.customer.v1' ORDER BY created_at DESC LIMIT 1",
+            String.class,
+            accountId);
+    return mapper.readTree(raw).path("payload");
   }
 }

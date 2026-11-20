@@ -32,7 +32,7 @@
 - **소유하지 않음**: 인증·세션·토큰(auth), 주문 이력(order), 권역 판정(delivery-serviceability).
 - **찜(2026-11-20 ADR-0081)**: 회원·상품 단위 찜 목록(최대 200 — 정책값), 표시 값은 조회 때 product-content 카드. 재입고 알림은 없음.
 - **API**: 프로필/동의/주소록 CRUD, 탈퇴 접수·철회·완료(2026-11-20 ADR-0077 — 같은 소셜 재인증은 auth 내부 API, 완료 전 order·claim 미결 의무 조회), 계정 상태 조회(구매 가능 = ACTIVE, 스위치 `consents.purchase-gate` 가 켜지면 + 필수 약관 현행 버전 동의 — LAN 은 고객 앱 반영 때까지 꺼짐), auth 용 내부 동의 상태·로그인 중 동의 반영(CU-1, 2026-11-17 — 필수 3 + 선택 마케팅 1, 현행 버전은 설정).
-- **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`.
+- **발행**: `CustomerConsentChanged`, `CustomerWithdrawalRequested`, `CustomerWithdrawalCompleted`, `ShoppingAddressChanged`, `CustomerIdentityVerified`(휴대폰 번호 확정 — 가입 쿠폰 키, 2026-11-21 ADR-0082 5단계).
 - **구독**: `CustomerAuthenticated`(auth), `OrderConfirmed`(order — 첫 구매 무료 사용 기록, 2026-10-31), `OrderCancelled`(order — 첫 구매 주문의 전체 취소면 사용 기록 복원, 2026-10-31).
 - **의존**: order(탈퇴 가능 여부), delivery-serviceability(주소 판정), S3 버킷 pmart-customer(프로필 사진 사본), 로그인 제공자 사진 호스트(googleusercontent.com — 로그인 뒤 사본 한 번, ADR-0024).
 
@@ -79,7 +79,7 @@
 - **소유하지 않음**: 견적 계산·안분(pricing), 주문 금액 확정·스냅샷(order), 점유·확정·복원의 사가 조율(orchestration), 승인 심사(approval).
 - **API**: 직원 행사 만들기·고치기·제출·조기 종료 제출·지정 발급, 고객 쿠폰 행사 목록·내려받기·내 쿠폰함, 내부 SKU 기간 할인 조회·쿠폰 계산·점유/확정/해제/복원.
 - **발행**: `ApplicationReceiptRecorded`(PROMOTION 승인 반영 회신), `SkuDisplayDiscountChanged`(표시 할인 — 토픽 `commerce.sku-display-discount.v1` compact, 2026-11-21 ADR-0082 4단계).
-- **구독**: `ProductVersionPublished`(SKU → 카테고리 사본), `PriceVersionEffective`(기본가 사본 — 표시 할인 고르기, 2026-11-21), `ApprovalDecided`(PROMOTION).
+- **구독**: `ProductVersionPublished`(SKU → 카테고리 사본), `PriceVersionEffective`(기본가 사본 — 표시 할인 고르기, 2026-11-21), `ApprovalDecided`(PROMOTION), `CustomerIdentityVerified`(가입 축하 쿠폰, 2026-11-21 5단계), `OrderCancelled`(DISPATCH_UNAVAILABLE → 보상 쿠폰 CL-5, 2026-11-21).
 - **아직**: pricing·order·orchestration 연결, 화면 할인가 표시, 가입 쿠폰 자동 발급(ADR-0083 나누어 만들기 2~5). 첫 구매 무료배달 자격은 그대로 order-service.
 ---
 

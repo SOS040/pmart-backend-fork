@@ -74,6 +74,8 @@ public class IdentityService {
   private final RequestIdempotency idempotency;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final com.pmart.common.messaging.EventPublisher events;
+  private final com.pmart.common.messaging.EventEnvelopeCodec codec;
 
   public IdentityService(
       CustomerStore customers,
@@ -84,7 +86,11 @@ public class IdentityService {
       IdentityProperties identityProps,
       RequestIdempotency idempotency,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      com.pmart.common.messaging.EventPublisher events,
+      com.pmart.common.messaging.EventEnvelopeCodec codec) {
+    this.events = events;
+    this.codec = codec;
     this.customers = customers;
     this.verifications = verifications;
     this.identities = identities;
@@ -236,7 +242,37 @@ public class IdentityService {
     identities.claim(accountId, hash, phone, at);
     customers.ensureProfile(accountId, at);
     customers.setVerifiedPhone(accountId, phone, at);
+    publishVerified(accountId, phone, signup, at);
     return Settled.verified();
+  }
+
+  /**
+   * 번호 확정 사건(2026-11-21 ADR-0082 5단계 — 가입 쿠폰). stage SIGNUP = 로그인 단계 확인(가입), PROFILE = /me 확인.
+   * signupKey = 번호의 HMAC(비밀값 — 되돌릴 수 없음, 번호 원문·해시는 싣지 않는다). 비밀값이 없으면 키 없이.
+   */
+  private void publishVerified(String accountId, String phone, boolean signup, Instant at) {
+    java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("accountId", accountId);
+    payload.put("stage", signup ? "SIGNUP" : "PROFILE");
+    payload.put(
+        "signupKey",
+        identityProps.signupKeySecret() == null || identityProps.signupKeySecret().isBlank()
+            ? null
+            : PhoneVerificationRules.signupKey(identityProps.signupKeySecret(), phone));
+    payload.put("verifiedAt", at.toString());
+    events.publish(
+        codec.create(
+            events.sourceSystem(),
+            "CustomerIdentityVerified",
+            1,
+            "CustomerIdentity",
+            accountId,
+            at.toEpochMilli(),
+            new com.pmart.common.messaging.EventEnvelope.Actor(
+                com.pmart.common.messaging.EventEnvelope.ActorType.CUSTOMER, accountId),
+            com.pmart.common.messaging.EventEnvelope.EventSource.REAL,
+            payload),
+        AddressService.TOPIC);
   }
 
   private Result result(Row r, PhoneVerificationProperties cfg) {
