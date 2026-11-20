@@ -56,6 +56,7 @@ val services = listOf<String>(
     "center-master-service",
     "case-service",
     "review-service", // 리뷰(2026-11-16 1차 구현 — ADR-0063)
+    "promotion-service", // 쿠폰·기간 할인(2026-11-20 활성 — ADR-0082)
     "approval-service",
     "ai-assistant-service", // 1차 RAG 앞당김(ADR-0036)
     "customer-assistant-service", // 고객앱 RAG(ADR-0051)

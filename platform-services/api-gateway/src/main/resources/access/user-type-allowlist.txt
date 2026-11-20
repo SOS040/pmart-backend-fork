@@ -84,6 +84,7 @@ GET /api/v1/content-drafts/counts OPERATOR
 GET /api/v1/content-drafts/{draftId} OPERATOR
 GET /api/v1/content-images/{imageId} PUBLIC
 GET /api/v1/content-import-batches/{batchId} OPERATOR
+GET /api/v1/coupon-campaigns CUSTOMER
 GET /api/v1/cs-intakes OPERATOR
 GET /api/v1/cs-intakes/{intakeId} OPERATOR
 GET /api/v1/customer-assistant/faqs CUSTOMER
@@ -254,6 +255,8 @@ GET /api/v1/products OPERATOR
 GET /api/v1/products/{productId} OPERATOR
 GET /api/v1/products/{productId}/reviews PUBLIC
 GET /api/v1/products/{productId}/sale-state-changes/{requestId} OPERATOR
+GET /api/v1/promotions OPERATOR
+GET /api/v1/promotions/{promotionId} OPERATOR
 GET /api/v1/purchase-orders/{purchaseOrderId} OPERATOR
 GET /api/v1/putaway-candidates OPERATOR
 GET /api/v1/putaway-tasks/{taskId} OPERATOR
@@ -422,6 +425,7 @@ POST /api/v1/content-drafts/{draftId}/images OPERATOR
 POST /api/v1/content-drafts/{draftId}/submissions OPERATOR
 POST /api/v1/content-import-batches OPERATOR
 POST /api/v1/content-import-batches/{batchId}/submissions OPERATOR
+POST /api/v1/coupon-campaigns/{promotionId}/downloads CUSTOMER
 POST /api/v1/cs-intakes OPERATOR
 POST /api/v1/customer-assistant/questions CUSTOMER
 POST /api/v1/customers/{customerId}/pii-reveals OPERATOR
@@ -562,6 +566,10 @@ POST /api/v1/product-import-batches OPERATOR
 POST /api/v1/product-import-batches/{batchId}/submissions OPERATOR
 POST /api/v1/products/{productId}/edit-drafts OPERATOR
 POST /api/v1/products/{productId}/sale-state-changes OPERATOR
+POST /api/v1/promotions OPERATOR
+POST /api/v1/promotions/{promotionId}/coupon-grants OPERATOR
+POST /api/v1/promotions/{promotionId}/end-submissions OPERATOR
+POST /api/v1/promotions/{promotionId}/submissions OPERATOR
 POST /api/v1/purchase-orders OPERATOR
 POST /api/v1/purchase-orders/{purchaseOrderId}/cancellations OPERATOR
 POST /api/v1/putaway-tasks OPERATOR
@@ -657,6 +665,7 @@ PUT /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 PUT /api/v1/mfcs/{mfcId}/staff-contacts/me OPERATOR
 PUT /api/v1/price-import-batches/{batchId}/lines/{seedProductId} OPERATOR
 PUT /api/v1/product-drafts/{draftId} OPERATOR
+PUT /api/v1/promotions/{promotionId} OPERATOR
 PUT /api/v1/riders/me/settings RIDER
 PUT /api/v1/riders/me/state RIDER
 PUT /api/v1/storefront/layout-drafts/{draftId} OPERATOR

@@ -74,10 +74,13 @@
 - **발행**: `PriceVersionEffective`, `ApplicationReceiptRecorded`(가격 승인 반영 회신, ADR-0039).
 - **구독**: `ApprovalDecided`(가격 승인 BO-04: MD팀장 발의→가격/영업총괄 승인).
 
-### promotion-service `[3단계 — 1차 비활성]`
-- **소유(목표)**: 할인 규칙·오퍼·기간 프로모션·쿠폰 발급/점유/사용 확정/복원, 행사 한도(승인 총한도 − 사용 확정 − 유효 점유).
-- **1차**: 서비스 경계·이벤트 이름만 예약. 첫 구매 무료배달 자격 점유는 1차 `order-service`가 담당 `[결정 필요]`.
-
+### promotion-service `[활성 — 2026-11-20 ADR-0082]`
+- **소유**: 행사(기간 할인 PRICE_DISCOUNT·장바구니 쿠폰 COUPON)·대상(SKU·카테고리)·승인 반영, 쿠폰 발급(내려받기·지정·가입 축하)·점유·사용 확정·해제·복원, 행사 수량(총 수량·1인 한도·발급/사용 수).
+- **소유하지 않음**: 견적 계산·안분(pricing), 주문 금액 확정·스냅샷(order), 점유·확정·복원의 사가 조율(orchestration), 승인 심사(approval).
+- **API**: 직원 행사 만들기·고치기·제출·조기 종료 제출·지정 발급, 고객 쿠폰 행사 목록·내려받기·내 쿠폰함, 내부 SKU 기간 할인 조회·쿠폰 계산·점유/확정/해제/복원.
+- **발행**: `ApplicationReceiptRecorded`(PROMOTION 승인 반영 회신).
+- **구독**: `ProductVersionPublished`(SKU → 카테고리 사본), `ApprovalDecided`(PROMOTION).
+- **아직**: pricing·order·orchestration 연결, 화면 할인가 표시, 가입 쿠폰 자동 발급(ADR-0082 나누어 만들기 2~5). 첫 구매 무료배달 자격은 그대로 order-service.
 ---
 
 ## 2. Order & Payment (5)

@@ -1,0 +1,489 @@
+package com.pmart.promotion;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.pmart.common.test.EventEnvelopeFixtures;
+import com.pmart.common.test.PostgresKafkaContainerSupport;
+import com.pmart.common.test.TestJwt;
+import com.pmart.common.test.TestJwtConfiguration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.web.client.RestClient;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * 쿠폰·기간 할인(ADR-0082): 행사 만들기 → 제출(해시 잠금·승인 요청 본문) → ApprovalDecided(PROMOTION) → 발효·반영 회신, SKU·카테고리
+ * 기간 할인(가장 큰 1개), 쿠폰 내려받기(1인 한도·총 수량), 지정 발급, 계산·점유·확정·복원, 조기 종료. 실제 PostgreSQL·Kafka.
+ */
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+      "spring.main.banner-mode=off",
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.it.context=PromotionsIT"
+    })
+@Import(TestJwtConfiguration.class)
+class PromotionsIT extends PostgresKafkaContainerSupport {
+
+  static final String MKT = TestJwt.operator("mkt-1", List.of("MARKETING"), List.of());
+  static final String CS = TestJwt.operator("cs-1", List.of("CS_AGENT"), List.of());
+  static final String MD = TestJwt.operator("md-1", List.of("MD"), List.of());
+
+  @LocalServerPort int port;
+  @Autowired ObjectMapper mapper;
+  @Autowired JdbcTemplate jdbc;
+  @Autowired KafkaTemplate<String, String> kafka;
+  RestClient http;
+
+  @BeforeEach
+  void setUp() {
+    http =
+        RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1")
+            .requestFactory(new JdkClientHttpRequestFactory())
+            .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+            .build();
+  }
+
+  record Res(int status, JsonNode body) {}
+
+  Res send(String method, String token, String path, Object body) {
+    return send(method, token, path, body, UUID.randomUUID().toString());
+  }
+
+  Res send(String method, String token, String path, Object body, String key) {
+    var spec =
+        http.method(org.springframework.http.HttpMethod.valueOf(method))
+            .uri(path)
+            .headers(
+                h -> {
+                  if (token != null) {
+                    h.setBearerAuth(token);
+                  }
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "it");
+                });
+    if (body != null) {
+      spec = spec.contentType(MediaType.APPLICATION_JSON).body(body);
+    }
+    return spec.exchange(
+        (q, r) -> {
+          byte[] b = r.getBody().readAllBytes();
+          return new Res(
+              r.getStatusCode().value(), mapper.readTree(b.length == 0 ? "{}" : new String(b)));
+        });
+  }
+
+  static <T> T await(Supplier<T> s, Predicate<T> ok) throws InterruptedException {
+    T v = s.get();
+    for (int i = 0; i < 80 && !ok.test(v); i++) {
+      Thread.sleep(250);
+      v = s.get();
+    }
+    return v;
+  }
+
+  Map<String, Object> priceDiscount(String name, Map<String, Object> discount, List<?> targets) {
+    Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("kind", "PRICE_DISCOUNT");
+    m.put("name", name);
+    m.put("startsAt", now.minus(1, ChronoUnit.MINUTES).toString());
+    m.put("endsAt", now.plus(1, ChronoUnit.DAYS).toString());
+    m.put("discount", discount);
+    m.put("targets", targets);
+    return m;
+  }
+
+  Map<String, Object> coupon(
+      String name, Map<String, Object> discount, Map<String, Object> policy) {
+    Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("kind", "COUPON");
+    m.put("name", name);
+    m.put("startsAt", now.minus(1, ChronoUnit.MINUTES).toString());
+    m.put("endsAt", now.plus(1, ChronoUnit.DAYS).toString());
+    m.put("discount", discount);
+    m.put("coupon", policy);
+    return m;
+  }
+
+  /** 만들기 → 제출 → 승인(ACTIVATE) → APPROVED 까지. 행사 ID. */
+  String approved(Map<String, Object> input) throws InterruptedException {
+    Res created = send("POST", MKT, "/promotions", input);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String id = created.body().path("promotionId").asString();
+    assertThat(created.body().path("problems").size()).as(created.body().toString()).isZero();
+    Res sub = send("POST", MKT, "/promotions/" + id + "/submissions", null);
+    assertThat(sub.status()).as(sub.body().toString()).isEqualTo(200);
+    JsonNode req = sub.body().path("approvalRequest");
+    assertThat(req.path("type").asString()).isEqualTo("PROMOTION");
+    assertThat(req.path("targetService").asString()).isEqualTo("promotion-service");
+    decide(
+        "AP-" + UUID.randomUUID(),
+        id,
+        "APPROVED",
+        "ACTIVATE",
+        sub.body().path("draftHash").asString());
+    Res got =
+        await(
+            () -> send("GET", MKT, "/promotions/" + id, null),
+            r -> "APPROVED".equals(r.body().path("state").asString()));
+    assertThat(got.body().path("state").asString()).isEqualTo("APPROVED");
+    assertThat(got.body().path("phase").asString()).isEqualTo("RUNNING");
+    return id;
+  }
+
+  void decide(String approvalId, String promotionId, String decision, String action, String hash) {
+    Map<String, Object> attrs = new LinkedHashMap<>();
+    attrs.put("promotionId", promotionId);
+    attrs.put("action", action);
+    attrs.put("draftHash", hash);
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("approvalId", approvalId);
+    payload.put("changeRequestId", "CR-" + approvalId);
+    payload.put("type", "PROMOTION");
+    payload.put("decision", decision);
+    payload.put(
+        "targetRef",
+        Map.of(
+            "targetType",
+            "Promotion",
+            "targetId",
+            promotionId,
+            "targetService",
+            "promotion-service"));
+    payload.put(
+        "lines", List.of(Map.of("lineId", promotionId, "decision", decision, "attributes", attrs)));
+    payload.put("approverId", "mkt-2");
+    payload.put("dossierVersion", 2);
+    kafka
+        .send(
+            "platform.approval.v1",
+            approvalId,
+            EventEnvelopeFixtures.envelope("ApprovalDecided")
+                .from("approval-service")
+                .aggregate("Approval", approvalId, 2)
+                .payload(payload)
+                .buildJson())
+        .join();
+  }
+
+  void productPublished(String productId, String sku, List<String> categoryIds) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("productId", productId);
+    payload.put("baseProductId", "BP-" + productId);
+    payload.put("version", 1);
+    payload.put("categoryIds", categoryIds);
+    payload.put("skus", List.of(Map.of("sku", sku, "unitsPerSku", 1, "weightG", 100)));
+    kafka
+        .send(
+            "commerce.product.v1",
+            productId,
+            EventEnvelopeFixtures.envelope("ProductVersionPublished")
+                .from("product-service")
+                .aggregate("Product", productId, 1)
+                .payload(payload)
+                .buildJson())
+        .join();
+  }
+
+  JsonNode discounts(Map<String, Integer> prices) {
+    List<Map<String, Object>> items =
+        prices.entrySet().stream()
+            .map(e -> Map.<String, Object>of("sku", e.getKey(), "unitPrice", e.getValue()))
+            .toList();
+    Res r = send("POST", null, "/internal/price-discounts", Map.of("items", items));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    return r.body().path("items");
+  }
+
+  static String randomSku() {
+    return "E-" + String.format("%08d", (int) (Math.random() * 90_000_000) + 10_000_000);
+  }
+
+  @Test
+  void periodDiscountsBySkuAndCategoryTakeTheLargestAndEndEarly() throws Exception {
+    String skuA = randomSku();
+    String skuB = randomSku();
+    String cat = "p" + (int) (Math.random() * 900 + 100);
+    productPublished("PRD-" + UUID.randomUUID(), skuB, List.of(cat + "-c01-l01"));
+    await(
+        () ->
+            jdbc.queryForObject(
+                "SELECT count(*) FROM sku_category WHERE sku = ?", Integer.class, skuB),
+        n -> n != null && n == 3);
+
+    // 권한: MD 는 만들 수 없다
+    assertThat(
+            send(
+                    "POST",
+                    MD,
+                    "/promotions",
+                    priceDiscount("x", Map.of("type", "RATE", "value", 10), List.of()))
+                .status())
+        .isEqualTo(403);
+    // 초안은 고칠 곳이 있어도 저장, 제출은 막힌다
+    Res draft =
+        send(
+            "POST",
+            MKT,
+            "/promotions",
+            priceDiscount("빈 대상", Map.of("type", "RATE", "value", 10), List.of()));
+    assertThat(draft.body().path("problems").toString()).contains("targets");
+    Res blocked =
+        send(
+            "POST",
+            MKT,
+            "/promotions/" + draft.body().path("promotionId").asString() + "/submissions",
+            null);
+    assertThat(blocked.status()).isEqualTo(422);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("PROMOTION_INVALID");
+
+    // SKU A 10%, 카테고리(상위) 500원, SKU B 직접 5%
+    approved(
+        priceDiscount(
+            "A 10%",
+            Map.of("type", "RATE", "value", 10), List.of(Map.of("type", "SKU", "id", skuA))));
+    String catPromo =
+        approved(
+            priceDiscount(
+                "카테고리 500원",
+                Map.of("type", "AMOUNT", "value", 500),
+                List.of(Map.of("type", "CATEGORY", "id", cat))));
+    approved(
+        priceDiscount(
+            "B 5%",
+            Map.of("type", "RATE", "value", 5), List.of(Map.of("type", "SKU", "id", skuB))));
+
+    JsonNode items = discounts(Map.of(skuA, 9990, skuB, 3000));
+    Map<String, JsonNode> bySku = new LinkedHashMap<>();
+    items.forEach(i -> bySku.put(i.path("sku").asString(), i));
+    assertThat(bySku.get(skuA).path("unitDiscount").asInt()).isEqualTo(999);
+    assertThat(bySku.get(skuA).path("discountedUnitPrice").asInt()).isEqualTo(8991);
+    // B: 카테고리 500원 > 5%(150원) — 가장 큰 1개
+    assertThat(bySku.get(skuB).path("unitDiscount").asInt()).isEqualTo(500);
+    assertThat(bySku.get(skuB).path("promotionId").asString()).isEqualTo(catPromo);
+    assertThat(bySku.get(skuB).path("ratePercent").asInt()).isEqualTo(16);
+
+    // 반영 회신
+    Integer receipts =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE type = 'ApplicationReceiptRecorded' AND payload::text LIKE ?",
+            Integer.class,
+            "%" + catPromo + "%");
+    assertThat(receipts).isPositive();
+
+    // 조기 종료 → B 는 5% 로
+    Res end =
+        send(
+            "POST", MKT, "/promotions/" + catPromo + "/end-submissions", Map.of("reason", "재고 소진"));
+    assertThat(end.status()).as(end.body().toString()).isEqualTo(200);
+    decide(
+        "AP-" + UUID.randomUUID(),
+        catPromo,
+        "APPROVED",
+        "END",
+        end.body().path("draftHash").asString());
+    await(
+        () -> send("GET", MKT, "/promotions/" + catPromo, null),
+        r -> "ENDED".equals(r.body().path("state").asString()));
+    JsonNode after = discounts(Map.of(skuB, 3000));
+    assertThat(after.path(0).path("unitDiscount").asInt()).isEqualTo(150);
+  }
+
+  @Test
+  void couponDownloadLimitsHoldConfirmRestoreAndGrant() throws Exception {
+    String a = "CU-A-" + UUID.randomUUID().toString().substring(0, 8);
+    String b = "CU-B-" + UUID.randomUUID().toString().substring(0, 8);
+    String ta = TestJwt.customer(a);
+    String tb = TestJwt.customer(b);
+    String promo =
+        approved(
+            coupon(
+                "10% 최대 2천원",
+                Map.of("type", "RATE", "value", 10, "maxAmount", 2000),
+                Map.of(
+                    "issueMode",
+                    "DOWNLOAD",
+                    "minOrderAmount",
+                    15000,
+                    "totalQuantity",
+                    1,
+                    "perCustomerLimit",
+                    1,
+                    "useDays",
+                    7)));
+
+    Res campaigns = send("GET", ta, "/coupon-campaigns", null);
+    assertThat(campaigns.body().path("items").findValuesAsString("promotionId")).contains(promo);
+
+    String key = UUID.randomUUID().toString();
+    Res got = send("POST", ta, "/coupon-campaigns/" + promo + "/downloads", null, key);
+    assertThat(got.status()).as(got.body().toString()).isEqualTo(201);
+    String couponId = got.body().path("couponId").asString();
+    assertThat(
+            send("POST", ta, "/coupon-campaigns/" + promo + "/downloads", null, key)
+                .body()
+                .path("couponId")
+                .asString())
+        .as("같은 키는 같은 결과")
+        .isEqualTo(couponId);
+    assertThat(
+            send("POST", ta, "/coupon-campaigns/" + promo + "/downloads", null)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("COUPON_LIMIT_REACHED");
+    assertThat(
+            send("POST", tb, "/coupon-campaigns/" + promo + "/downloads", null)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("COUPON_SOLD_OUT");
+    assertThat(
+            send("GET", ta, "/me/coupons?status=AVAILABLE", null)
+                .body()
+                .path("items")
+                .findValuesAsString("couponId"))
+        .containsExactly(couponId);
+
+    // 계산: 최소 금액·최대 할인액
+    Res under =
+        send(
+            "POST",
+            null,
+            "/internal/coupon-quotes",
+            Map.of("couponId", couponId, "accountId", a, "itemAmount", 10000));
+    assertThat(under.body().path("reason").asString()).isEqualTo("MIN_ORDER_NOT_MET");
+    Res q =
+        send(
+            "POST",
+            null,
+            "/internal/coupon-quotes",
+            Map.of("couponId", couponId, "accountId", a, "itemAmount", 30000));
+    assertThat(q.body().path("discountAmount").asInt()).isEqualTo(2000);
+    assertThat(
+            send(
+                    "POST",
+                    null,
+                    "/internal/coupon-quotes",
+                    Map.of("couponId", couponId, "accountId", b, "itemAmount", 30000))
+                .body()
+                .path("reason")
+                .asString())
+        .isEqualTo("NOT_OWNER");
+
+    // 점유 → 다른 주문은 못 씀 → 확정 → USED → 복원 → AVAILABLE
+    Map<String, Object> hold =
+        Map.of("couponId", couponId, "accountId", a, "itemAmount", 30000, "orderId", "ORD-1");
+    Res h = send("POST", null, "/internal/coupon-holds", hold);
+    assertThat(h.status()).as(h.body().toString()).isEqualTo(201);
+    String holdId = h.body().path("holdId").asString();
+    assertThat(h.body().path("discountAmount").asInt()).isEqualTo(2000);
+    Res other =
+        send(
+            "POST",
+            null,
+            "/internal/coupon-holds",
+            Map.of("couponId", couponId, "accountId", a, "itemAmount", 30000, "orderId", "ORD-2"));
+    assertThat(other.status()).isEqualTo(422);
+    assertThat(other.body().path("details").path(0).path("reason").asString()).isEqualTo("HELD");
+    assertThat(send("POST", null, "/internal/coupon-holds", hold).body().path("holdId").asString())
+        .as("같은 주문의 점유는 그대로")
+        .isEqualTo(holdId);
+    assertThat(
+            send("POST", null, "/internal/coupon-holds/" + holdId + "/restorations", null).status())
+        .as("확정 전 복원 불가")
+        .isEqualTo(409);
+    assertThat(
+            send("POST", null, "/internal/coupon-holds/" + holdId + "/confirmations", null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("CONFIRMED");
+    assertThat(
+            send("GET", ta, "/me/coupons?status=USED", null)
+                .body()
+                .path("items")
+                .findValuesAsString("couponId"))
+        .containsExactly(couponId);
+    assertThat(send("POST", null, "/internal/coupon-holds/" + holdId + "/releases", null).status())
+        .isEqualTo(409);
+    Res restored = send("POST", null, "/internal/coupon-holds/" + holdId + "/restorations", null);
+    assertThat(restored.body().path("state").asString()).isEqualTo("RESTORED");
+    assertThat(restored.body().path("couponUsable").asBoolean()).isTrue();
+    assertThat(
+            send("GET", ta, "/me/coupons?status=AVAILABLE", null)
+                .body()
+                .path("items")
+                .findValuesAsString("couponId"))
+        .containsExactly(couponId);
+
+    // 지정 발급(ADMIN): CS 가 a·a·b → 두 명에게 1장씩
+    String admin =
+        approved(
+            coupon(
+                "배차 지연 보상 2천원",
+                Map.of("type", "AMOUNT", "value", 2000),
+                Map.of(
+                    "issueMode",
+                    "ADMIN",
+                    "minOrderAmount",
+                    0,
+                    "perCustomerLimit",
+                    1,
+                    "useDays",
+                    30)));
+    assertThat(
+            send("POST", ta, "/coupon-campaigns/" + admin + "/downloads", null)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("UNSUPPORTED_ACTION");
+    Res granted =
+        send(
+            "POST",
+            CS,
+            "/promotions/" + admin + "/coupon-grants",
+            Map.of("accountIds", List.of(a, a, b), "reason", "배차 지연"));
+    assertThat(granted.status()).as(granted.body().toString()).isEqualTo(200);
+    assertThat(granted.body().path("results").findValuesAsString("result"))
+        .containsExactly("ISSUED", "ISSUED");
+    Res again =
+        send(
+            "POST",
+            CS,
+            "/promotions/" + admin + "/coupon-grants",
+            Map.of("accountIds", List.of(a), "reason", "배차 지연"));
+    assertThat(again.body().path("results").path(0).path("result").asString())
+        .isEqualTo("SKIPPED_LIMIT");
+    assertThat(
+            send(
+                    "POST",
+                    MD,
+                    "/promotions/" + admin + "/coupon-grants",
+                    Map.of("accountIds", List.of(a), "reason", "x"))
+                .status())
+        .isEqualTo(403);
+  }
+}

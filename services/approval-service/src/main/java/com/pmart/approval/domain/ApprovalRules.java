@@ -130,11 +130,24 @@ public final class ApprovalRules {
     Set<String> out = new TreeSet<>();
     approverRolesByType.forEach(
         (type, role) -> {
-          if (role != null && !role.isBlank() && viewerRoles.contains(role)) {
+          if (role != null && !role.isBlank() && holdsAny(viewerRoles, role)) {
             out.add(type);
           }
         });
     return out;
+  }
+
+  /**
+   * 설정 승인 역할 — 하나("PRICE_APPROVER") 또는 쉼표로 여럿("MARKETING,OPERATOR_ADMIN", 2026-11-20 ADR-0082
+   * PROMOTION) 중 하나라도 가졌는가.
+   */
+  static boolean holdsAny(List<String> roles, String configured) {
+    for (String r : configured.split(",")) {
+      if (!r.isBlank() && roles.contains(r.strip())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static @Nullable DecideBlock reviewBlock(String reviewState) {
@@ -154,7 +167,7 @@ public final class ApprovalRules {
     if (required == null || required.isBlank()) {
       return DecideBlock.CONFIG_REQUIRED;
     }
-    if (!approverRoles.contains(required)) {
+    if (!holdsAny(approverRoles, required)) {
       return DecideBlock.NO_ROLE;
     }
     return null;
@@ -198,6 +211,7 @@ public final class ApprovalRules {
       case "MFC_STOCK_ADJUSTMENT" -> "MfcStockAdjustment"; // AP-1, 원객체는 targetRef 의 kind·ref
       case "MFC_OPERATION_RESTRICTION" -> "OperationRestriction";
       case "SEARCH_SYNONYM" -> "SynonymSet"; // ADR-0073, 원객체 = 동의어 집합
+      case "PROMOTION" -> "Promotion"; // ADR-0082, 원객체 = 행사(기간 할인·쿠폰)
       default -> type;
     };
   }

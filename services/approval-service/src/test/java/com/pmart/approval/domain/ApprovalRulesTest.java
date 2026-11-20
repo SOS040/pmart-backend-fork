@@ -252,4 +252,18 @@ class ApprovalRulesTest {
         .as("다른 역할")
         .isFalse();
   }
+
+  /** ADR-0082: 승인 역할 설정을 쉼표로 여럿 — 그중 하나면 결정할 수 있다(PROMOTION = MARKETING,OPERATOR_ADMIN). */
+  @Test
+  void commaSeparatedApproverRolesMeanAnyOf() {
+    Map<String, String> config = Map.of("PROMOTION", "MARKETING, OPERATOR_ADMIN");
+    assertThat(ApprovalRules.decidableTypes(List.of("MARKETING"), config))
+        .containsExactly("PROMOTION");
+    assertThat(ApprovalRules.decidableTypes(List.of("OPERATOR_ADMIN"), config))
+        .containsExactly("PROMOTION");
+    assertThat(ApprovalRules.decidableTypes(List.of("MD"), config)).isEmpty();
+    assertThat(ApprovalRules.holdsAny(List.of("MARKETING"), "MARKETING,OPERATOR_ADMIN")).isTrue();
+    assertThat(ApprovalRules.holdsAny(List.of("PRICE_APPROVER"), "PRICE_APPROVER")).isTrue();
+    assertThat(ApprovalRules.holdsAny(List.of("MD"), "MARKETING,OPERATOR_ADMIN")).isFalse();
+  }
 }

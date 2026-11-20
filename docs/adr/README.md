@@ -80,3 +80,4 @@
 | [0076](0076-operator-decision-cancel.md) | 관리자 판단 취소 `OPERATOR_DECISION` — 배차 불가와 같은 역할·범위(상품준비 뒤라도 인계 전), 사유 메모 필수. 고객 취소는 상품준비 전만 그대로 | 승인 (2026-11-20) |
 | [0079](0079-supervisor-task-control.md) | 센터 관리자 작업 조작 — 작업 중지(BLOCKED, 배정·재고 그대로)·해제(실물 확인 필수, 담당 살아 있으면 ASSIGNED 아니면 READY)·부분 종료(PICK 잔량만, 결품 사가로 부분 환불·예약 해제, CLOSED_PARTIAL). 다시 열기 없음 | 승인 (2026-11-20) |
 | [0080](0080-pack-assigned-to-picker-on-pick-complete.md) | 피킹이 끝나면 그 출고 PACK 을 피커에게 바로 SYSTEM 배정(capacity 가 TaskProgressed 구독) — 활성 배정 있음·맡을 수 없음·휴게·근무 밖이면 READY 그대로 | 승인 (2026-11-20) |
+| [0082](0082-coupons-and-period-promotions.md) | 쿠폰·기간 할인 도입 — promotion-service 활성. 기간 할인(SKU·카테고리, 가장 큰 1개)+장바구니 쿠폰(내려받기·지정·가입 축하), 승인 PROMOTION(MARKETING), 전체 취소만 복원. 원문 "1차 제외"를 대체 | 승인 (2026-11-20) |

@@ -155,6 +155,7 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
             "CS_AGENT",
             "DISPLAY_APPROVER",
             "INVENTORY_APPROVER",
+            "MARKETING",
             "MD",
             "MFC_SUPERVISOR",
             "MFC_WORKER",
@@ -174,9 +175,10 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
         });
     assertThat(centerScoped).containsExactly("MFC_SUPERVISOR", "MFC_WORKER");
     assertThat(items.get(0).path("name").asText()).isEqualTo("운영 관리자");
-    assertThat(items.get(7).path("name").asText()).isEqualTo("센터 관리자");
-    assertThat(items.get(11).path("name").asText()).isEqualTo("라이더 운영");
-    assertThat(items.get(12).path("name").asText()).isEqualTo("배송 권역 승인자");
+    assertThat(items.get(6).path("name").asText()).isEqualTo("마케팅(행사·쿠폰)");
+    assertThat(items.get(8).path("name").asText()).isEqualTo("센터 관리자");
+    assertThat(items.get(12).path("name").asText()).isEqualTo("라이더 운영");
+    assertThat(items.get(13).path("name").asText()).isEqualTo("배송 권역 승인자");
   }
 
   @Test
