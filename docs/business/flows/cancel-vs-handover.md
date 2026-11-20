@@ -41,7 +41,7 @@ S3 단계
   d. order-service: 취소 확정 수량 반영(OrderLineQuantityChanged, scope FULL/PARTIAL), 미인계 잔량·인계량 분리
   e. claim-service: 환불 의도(원가격·원안분; 봉투값은 전체 취소만 환불; 배달팁은 확정 기준) → payment.Cancel/PartialCancel(멱등키)
      ← RefundResult SUCCESS → 취소 완료 안내 / FAILED → 재심사 / UNKNOWN → 원거래 조회(1분×5→상신→15분)
-  f. (3차) 쿠폰 복원: PG 취소 성공 확인 시각에 원유효기간 남아 있으면 1회 요청. 만료 연장·신규 발급 없음
+  f. 쿠폰 복원(2026-11-21 ADR-0082 — 전체 취소만): order 주기 작업 `CouponHoldSync` 가 주문 CANCELLED 를 보면 promotion `…/restorations` 1회(멱등, 실패하면 다음 회차). 원래 사용 기한이 남았을 때만 다시 쓸 수 있다 — 연장·새 발급 없음. 부분 취소·결품·반품은 쿠폰 그대로(환불은 품목 할인 안분 뒤 금액, claim `ReturnRules.refundAmount`)
   g. HANDED_OVER 수량이 있으면 → S6(회수·반품)으로 분기, 고객 안내
 ```
 

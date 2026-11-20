@@ -81,7 +81,8 @@ public class DraftsController implements DraftsApi {
                     body.getArrivalWindow().getStart(),
                     body.getArrivalWindow().getEnd()),
             body.getOutOfStockPreference().getValue(),
-            body.getDeliveryNote());
+            body.getDeliveryNote(),
+            body.getCouponId());
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(draft(drafts.create(accountId, idempotencyKey, xSourceSystem, req)));
   }
@@ -218,6 +219,18 @@ public class DraftsController implements DraftsApi {
                 .quoteExpiresAt(time(v.row().quoteExpiresAt()))
                 .priceVersion(q.priceVersion())
                 .itemAmount((int) q.itemAmount())
+                .baseItemAmount(
+                    (int) (q.baseItemAmount() == 0 ? q.itemAmount() : q.baseItemAmount()))
+                .promotionDiscount((int) q.promotionDiscount())
+                .couponDiscount((int) q.couponDiscount())
+                .coupon(
+                    q.coupon() == null
+                        ? null
+                        : new com.pmart.order.api.generated.model.QuoteCoupon()
+                            .couponId(q.coupon().couponId())
+                            .applicable(q.coupon().applicable())
+                            .reason(q.coupon().reason())
+                            .name(q.coupon().name()))
                 .deliveryTipBase((int) q.deliveryTipBase())
                 .deliveryTip((int) q.deliveryTip())
                 .deliveryTipReason(Quote.DeliveryTipReasonEnum.fromValue(q.deliveryTipReason()))
@@ -243,6 +256,7 @@ public class DraftsController implements DraftsApi {
                             .quantity(l.quantity())
                             .unitPrice((int) l.unitPrice())
                             .lineAmount((int) l.lineAmount())
+                            .discountShare((int) l.discountShare())
                             .weightG(l.weightG()))
                 .toList())
         .delivery(

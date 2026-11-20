@@ -484,7 +484,8 @@ public class ClaimService {
             1,
             order.path("paymentAttemptId").asString(),
             order.path("approvedAmount").asLong(),
-            order.path("itemAmount").asLong(),
+            // ADR-0082: 상품 환불액은 쿠폰 할인을 뺀 값(결제액 = 상품액 − 쿠폰 + 배달팁 + 봉투값)
+            order.path("itemAmount").asLong() - order.path("couponDiscount").asLong(0),
             order.path("bagFee").asLong(),
             order.path("deliveryTip").asLong(),
             null,
@@ -566,10 +567,6 @@ public class ClaimService {
                       throw unprocessable(
                           "QUANTITY_EXCEEDS_AVAILABLE", "주문에 없는 행입니다: " + r.orderLineId());
                     }
-                    if (l.path("discountShare").asLong(0) != 0) {
-                      throw unprocessable(
-                          "UNSUPPORTED_ACTION", "할인 안분이 있는 행의 부분 환불은 아직 지원하지 않습니다(1차 할인 제외).");
-                    }
                     int cancelled = l.path("cancelledBeforeShipQty").asInt(0);
                     int refunded = store.shortageRefundedQty(in.orderId(), r.orderLineId());
                     if (r.qty() > cancelled - refunded) {
@@ -584,7 +581,14 @@ public class ClaimService {
                               + " − 이미 결품 환불 "
                               + refunded);
                     }
-                    amount += l.path("unitPrice").asLong() * r.qty();
+                    // ADR-0082: 할인(기간 할인 + 쿠폰 안분)이 있는 행은 원수량 기준 누계 비례로 이번 몫을 뺀다(반품과 같은 산식)
+                    amount +=
+                        com.pmart.claim.domain.ReturnRules.refundAmount(
+                            l.path("unitPrice").asLong(),
+                            l.path("originalQty").asInt(),
+                            l.path("discountShare").asLong(0),
+                            refunded,
+                            r.qty());
                   }
                   Instant now = clock.instant();
                   String id = "CLM-" + UUID.randomUUID();
@@ -627,7 +631,12 @@ public class ClaimService {
                             r.qty(),
                             r.qty(),
                             "APPROVED",
-                            l.path("unitPrice").asLong() * r.qty()));
+                            com.pmart.claim.domain.ReturnRules.refundAmount(
+                                l.path("unitPrice").asLong(),
+                                l.path("originalQty").asInt(),
+                                l.path("discountShare").asLong(0),
+                                store.shortageRefundedQty(in.orderId(), r.orderLineId()),
+                                r.qty())));
                   }
                   store.insert(c, rows);
                   events.claimOpened(c, rows);

@@ -81,4 +81,31 @@ public final class PriceRules {
   public static long lineAmount(long unitPrice, int quantity) {
     return Math.multiplyExact(unitPrice, (long) quantity);
   }
+
+  /**
+   * 장바구니 쿠폰 안분(ADR-0082 — 부록 C §8.8): 대상 금액에 비례, 원 미만 버림, 남은 원은 대상 금액이 가장 큰 품목(같으면 앞 품목)에. 품목 몫은 그
+   * 품목 금액을 넘지 않는다(total ≤ 합이면 성립).
+   */
+  public static long[] allocate(long total, long[] bases) {
+    long[] out = new long[bases.length];
+    long sum = 0;
+    for (long b : bases) {
+      sum = Math.addExact(sum, b);
+    }
+    if (total <= 0 || sum <= 0) {
+      return out;
+    }
+    long t = Math.min(total, sum);
+    long given = 0;
+    int largest = 0;
+    for (int i = 0; i < bases.length; i++) {
+      out[i] = Math.multiplyExact(t, bases[i]) / sum;
+      given += out[i];
+      if (bases[i] > bases[largest]) {
+        largest = i;
+      }
+    }
+    out[largest] += t - given;
+    return out;
+  }
 }

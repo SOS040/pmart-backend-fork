@@ -51,7 +51,9 @@ public class DraftService {
       String deliveryMode,
       DeliveryEvaluator.@Nullable Window arrivalWindow,
       String outOfStockPreference,
-      @Nullable String deliveryNote) {}
+      @Nullable String deliveryNote,
+      // ADR-0082(0.18.0): 장바구니 쿠폰 1장. 없으면 null
+      @Nullable String couponId) {}
 
   public record Line(
       String cartItemId,
@@ -65,7 +67,9 @@ public class DraftService {
       @Nullable Integer unitsPerSku,
       // 고객용 상품명·옵션 라벨의 주문 당시 사본(BR-35, 2026-11-02). 조회 실패·그 전 초안은 null(지어내지 않음)
       @Nullable String productName,
-      @Nullable String optionLabel) {}
+      @Nullable String optionLabel,
+      // ADR-0082(0.18.0): 기간 할인 + 쿠폰 안분. 그 전 초안 JSON 은 0
+      long discountShare) {}
 
   /**
    * @param shippingAddress 주문 당시 배송지·수령 연락처 사본(BR-37). 2026-11-02 이전 초안은 null(JSON 에 없음)
@@ -92,7 +96,16 @@ public class DraftService {
       long minOrderShortfall,
       String firstPurchaseBenefit,
       int weightG,
-      int plannedShipments) {}
+      int plannedShipments,
+      // ADR-0082(0.18.0): 정가 상품액·기간 할인·쿠폰. 그 전 초안 JSON 은 0·null
+      long baseItemAmount,
+      long promotionDiscount,
+      long couponDiscount,
+      @Nullable CouponChoice coupon) {}
+
+  /** 고른 쿠폰 결과(0.18.0). applicable=false 면 차단 사유 COUPON_NOT_APPLICABLE. */
+  public record CouponChoice(
+      String couponId, boolean applicable, @Nullable String reason, @Nullable String name) {}
 
   public record Snapshot(
       List<Line> lines, Delivery delivery, Quote quote, List<OrderRules.Blocker> blockers) {}
@@ -150,7 +163,9 @@ public class DraftService {
     Instant now = clock.instant();
     // 같은 구매 의도의 유효 초안 → 그대로(새 견적·새 초안을 만들지 않는다)
     var existing = store.latestByIntent(accountId, req.purchaseIntentId());
-    if (existing.isPresent() && now.isBefore(existing.get().quoteExpiresAt())) {
+    if (existing.isPresent()
+        && now.isBefore(existing.get().quoteExpiresAt())
+        && java.util.Objects.equals(couponOf(existing.get()), blankToNull(req.couponId()))) {
       return view(existing.get(), now);
     }
     if (!upstreams.purchasable(accountId)) {
@@ -232,7 +247,7 @@ public class DraftService {
     if (shipments < 0) {
       throw reject("WEIGHT_UNSPLITTABLE", "한 개가 10kg 을 넘는 상품은 배송할 수 없습니다.");
     }
-    Upstreams.Priced priced = upstreams.quote(accountId, mfcId, qty);
+    Upstreams.Priced priced = upstreams.quote(accountId, mfcId, qty, blankToNull(req.couponId()));
     String firstPurchase =
         upstreams.firstPurchaseCandidate(accountId) ? "EXPECTED" : "NOT_ELIGIBLE";
     OrderRules.Amounts amounts =
@@ -246,6 +261,10 @@ public class DraftService {
     if (address.contactMissing()) {
       // BR-60: 배송지·프로필 모두 연락처가 없다 — 앱이 "내 연락처"를 프로필에 저장한 뒤 초안을 다시 만든다
       blockers.add(new OrderRules.Blocker("CONTACT_REQUIRED", "받는 분 연락처를 입력해 주세요"));
+    }
+    if (priced.coupon() != null && !priced.coupon().applicable()) {
+      // ADR-0082: 쓸 수 없는 쿠폰 — 쿠폰 없이 몰래 결제하지 않는다(빼고 주문서를 다시 만든다)
+      blockers.add(new OrderRules.Blocker("COUPON_NOT_APPLICABLE", priced.coupon().reason()));
     }
     if (!amounts.minOrderSatisfied()) {
       blockers.add(
@@ -282,7 +301,8 @@ public class DraftService {
               s.weightG() * i.quantity(),
               s.unitsPerSku(),
               name.productName(),
-              name.optionLabel()));
+              name.optionLabel(),
+              p == null ? 0 : p.discountShare()));
     }
     Snapshot snapshot =
         new Snapshot(
@@ -302,13 +322,23 @@ public class DraftService {
                 amounts.tip().applied(),
                 amounts.tip().reason(),
                 amounts.bagFee(),
-                amounts.total(),
+                amounts.total() - priced.couponDiscount(),
                 amounts.minOrderSatisfied(),
                 requireMinOrderAmount(),
                 amounts.minOrderShortfall(),
                 firstPurchase,
                 totalWeight,
-                shipments),
+                shipments,
+                priced.baseItemAmount(),
+                priced.promotionDiscount(),
+                priced.couponDiscount(),
+                priced.coupon() == null
+                    ? null
+                    : new CouponChoice(
+                        priced.coupon().couponId(),
+                        priced.coupon().applicable(),
+                        priced.coupon().reason(),
+                        priced.coupon().name())),
             OrderRules.ordered(blockers));
     String draftId =
         idempotency
@@ -339,6 +369,15 @@ public class DraftService {
   }
 
   /** 내 초안. 남의 초안은 404(존재를 드러내지 않음). */
+  private @Nullable String couponOf(DraftRow row) {
+    CouponChoice c = mapper.readValue(row.snapshot(), Snapshot.class).quote().coupon();
+    return c == null ? null : c.couponId();
+  }
+
+  private static @Nullable String blankToNull(@Nullable String s) {
+    return s == null || s.isBlank() ? null : s;
+  }
+
   public View get(String accountId, String draftId) {
     DraftRow row =
         store

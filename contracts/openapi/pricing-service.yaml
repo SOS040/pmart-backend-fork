@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: pricing-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
+    0.2.0(2026-11-21, ADR-0082 쿠폰·기간 할인 2단계 — 사용자 "응"): 견적이 **기간 할인(PROMOTION)·장바구니 쿠폰(CART_COUPON)** 을 적용한다(promotion-service 내부 조회).
+    순서 기본가 → 기간 할인(SKU 마다 가장 큰 1개, 개당) → 장바구니 쿠폰(1장, `couponIds[0]` + `accountId`). `itemAmount` = 기간 할인 뒤·쿠폰 전 상품액(최소 주문·무료 배달 판정용),
+    `couponDiscount` 는 따로. 품목 `discountShare` = 기간 할인 + 쿠폰 안분(대상 금액 비례, 원 미만 버림, 남은 원은 금액 큰 품목 — 같으면 앞 품목), `netAmount` = lineAmount − discountShare.
+    쿠폰을 쓸 수 없으면 거절하지 않고 `coupon.applicable=false`·`reason` 으로 알려 주고 쿠폰 없이 계산한다. promotion 을 못 읽으면 503(할인 없이 정가로 계산하지 않는다).
     SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음)·효력일과 견적 계산의 정본. (docs/architecture/service-map.md §1)
     견적 순서는 기본가 → 선택 오퍼 → 기간 프로모션 → 상품쿠폰 → 장바구니쿠폰이나 1차는 기본가만 적용한다(promotion 비활성).
     비정본: 최종 청구액·가격 동결(order 초안), 배달팁·봉투값·최소주문(order), 할인 권리(promotion).
@@ -437,7 +441,7 @@ components:
               sku: { $ref: '_common.yaml#/components/schemas/Sku' }
               quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
               offerId: { type: string, description: 3차. 1차는 무시 }
-        couponIds: { type: array, items: { type: string }, description: 3차. 1차는 무시 }
+        couponIds: { type: array, maxItems: 1, items: { type: string }, description: '0.2.0 — 장바구니 쿠폰 1장(accountId 필요). 비우면 쿠폰 없음' }
     QuoteLine:
       type: object
       properties:
@@ -447,8 +451,11 @@ components:
         unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
         priceVersion: { type: integer }
         lineAmount: { $ref: '_common.yaml#/components/schemas/Money', description: unitPrice × quantity }
-        discountShare: { $ref: '_common.yaml#/components/schemas/Money', description: 할인 안분. 1차는 0 }
+        discountShare: { $ref: '_common.yaml#/components/schemas/Money', description: '할인 합(기간 할인 × 수량 + 쿠폰 안분)' }
         netAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+        promotionDiscount: { $ref: '_common.yaml#/components/schemas/Money', description: '0.2.0 — 기간 할인(개당 × 수량)' }
+        couponShare: { $ref: '_common.yaml#/components/schemas/Money', description: '0.2.0 — 쿠폰 할인 안분' }
+        promotionId: { type: [string, 'null'], description: '0.2.0 — 걸린 기간 할인 행사' }
     Quote:
       type: object
       required: [quoteId, lines, itemAmount, calculatedAt]
@@ -458,10 +465,26 @@ components:
         priceVersion: { type: integer, description: 견적에 쓰인 가격 버전 집합의 대표 버전(최대값) }
         lines: { type: array, items: { $ref: '#/components/schemas/QuoteLine' } }
         itemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 오퍼·프로모션 후·쿠폰 전 상품액 }
-        discountTotal: { $ref: '_common.yaml#/components/schemas/Money' }
+        discountTotal: { $ref: '_common.yaml#/components/schemas/Money', description: '기간 할인 + 쿠폰 할인' }
+        baseItemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: '0.2.0 — 정가 상품액(기본가 × 수량 합)' }
+        promotionDiscount: { $ref: '_common.yaml#/components/schemas/Money', description: '0.2.0 — 기간 할인 합' }
+        couponDiscount: { $ref: '_common.yaml#/components/schemas/Money', description: '0.2.0 — 쿠폰 할인(itemAmount 에서 뺀다)' }
+        coupon:
+          description: '0.2.0 — 요청한 쿠폰 결과(요청에 없으면 null)'
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [couponId, applicable]
+              properties:
+                couponId: { type: string }
+                applicable: { type: boolean }
+                reason: { type: [string, 'null'], description: 'NOT_FOUND·NOT_OWNER·EXPIRED·HELD·USED·MIN_ORDER_NOT_MET' }
+                discountAmount: { type: integer }
+                promotionId: { type: [string, 'null'] }
+                name: { type: [string, 'null'] }
         appliedStages:
           type: array
-          description: 적용된 계산 단계. 1차는 BASE만
+          description: 적용된 계산 단계(BASE·PROMOTION·CART_COUPON)
           items: { type: string, enum: [BASE, OFFER, PROMOTION, PRODUCT_COUPON, CART_COUPON] }
         calculatedAt: { type: string, format: date-time }
     PriceImportBatch:

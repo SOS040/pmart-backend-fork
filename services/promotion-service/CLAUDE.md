@@ -16,7 +16,7 @@
 - 상태 어긋남은 409 INVALID_STATE(공통 ErrorCode). 조회성 POST(`/internal/price-discounts`·`/internal/coupon-quotes`)는 Idempotency-Key 없음(`pmart.web.excluded-paths`).
 
 ## 아직 없는 것 (ADR-0082 나누어 만들기 2~6)
-pricing 견적 반영, order·orchestration 점유·확정·해제·복원 호출, 화면 할인가 표시(검색·홈·상세), 가입 쿠폰 자동 발급(SIGNUP — 발급 방식만 있음), CL-5 보상 쿠폰 호출.
+화면 할인가 표시(검색·홈·상세), 가입 쿠폰 자동 발급(SIGNUP — 발급 방식만 있음), CL-5 보상 쿠폰 호출. (2026-11-21: pricing 견적·order 점유/확정/해제/복원·claim 환불은 연결됨 — 각 서비스 CLAUDE.md)
 
 ## 실행
 ```bash

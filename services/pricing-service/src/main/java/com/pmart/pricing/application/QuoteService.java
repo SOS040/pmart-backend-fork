@@ -22,8 +22,8 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 견적 계산(1차는 기본가만: BASE 단계). 결과는 quoteId 로 보존해 응답 유실 시 재조회한다. 가격 미설정 SKU 가 하나라도 있으면 전체
- * PRICE_NOT_SET. 배달팁·봉투값·최소주문은 order 책임이라 계산하지 않는다.
+ * 견적 계산 — 기본가 → 기간 할인 → 장바구니 쿠폰(ADR-0082, 0.2.0). 결과는 quoteId 로 보존해 응답 유실 시 재조회한다. 가격 미설정 SKU 가
+ * 하나라도 있으면 전체 PRICE_NOT_SET. 배달팁·봉투값·최소주문은 order 책임이라 계산하지 않는다.
  */
 @Service
 public class QuoteService {
@@ -38,7 +38,20 @@ public class QuoteService {
       int priceVersion,
       long lineAmount,
       long discountShare,
-      long netAmount) {}
+      long netAmount,
+      // ADR-0082(0.2.0): 기간 할인(개당 × 수량)·쿠폰 안분·걸린 행사. 그 전 견적 JSON 은 0·null
+      long promotionDiscount,
+      long couponShare,
+      @Nullable String promotionId) {}
+
+  /** 요청 쿠폰 결과(0.2.0). */
+  public record CouponResult(
+      String couponId,
+      boolean applicable,
+      @Nullable String reason,
+      long discountAmount,
+      @Nullable String promotionId,
+      @Nullable String name) {}
 
   public record Quote(
       String quoteId,
@@ -49,16 +62,26 @@ public class QuoteService {
       long discountTotal,
       List<String> appliedStages,
       Instant priceAt,
-      Instant calculatedAt) {}
+      Instant calculatedAt,
+      long baseItemAmount,
+      long promotionDiscount,
+      long couponDiscount,
+      @Nullable CouponResult coupon) {}
 
   private final PriceStore store;
+  private final com.pmart.pricing.infrastructure.PromotionClient promotion;
   private final RequestIdempotency idempotency;
   private final ObjectMapper mapper;
   private final Clock clock;
 
   public QuoteService(
-      PriceStore store, RequestIdempotency idempotency, ObjectMapper mapper, Clock clock) {
+      PriceStore store,
+      com.pmart.pricing.infrastructure.PromotionClient promotion,
+      RequestIdempotency idempotency,
+      ObjectMapper mapper,
+      Clock clock) {
     this.store = store;
+    this.promotion = promotion;
     this.idempotency = idempotency;
     this.mapper = mapper;
     this.clock = clock;
@@ -68,6 +91,8 @@ public class QuoteService {
       String requestId,
       String sourceSystem,
       @Nullable Instant at,
+      @Nullable String accountId,
+      @Nullable String couponId,
       List<QuoteItem> items,
       Object body) {
     String actor =
@@ -77,7 +102,7 @@ public class QuoteService {
             new RequestKey(sourceSystem, requestId, "createQuote", actor),
             body,
             Quote.class,
-            () -> calculate(requestId, at, items))
+            () -> calculate(requestId, at, accountId, couponId, items))
         .value();
   }
 
@@ -88,7 +113,12 @@ public class QuoteService {
         .orElseThrow(() -> PmartException.notFound("QUOTE_NOT_FOUND", "견적이 없습니다."));
   }
 
-  private Quote calculate(String requestId, @Nullable Instant at, List<QuoteItem> items) {
+  private Quote calculate(
+      String requestId,
+      @Nullable Instant at,
+      @Nullable String accountId,
+      @Nullable String couponId,
+      List<QuoteItem> items) {
     Set<String> refs = new HashSet<>();
     for (QuoteItem i : items) {
       if (!refs.add(i.lineRef())) {
@@ -104,9 +134,7 @@ public class QuoteService {
         store.versions(items.stream().map(QuoteItem::sku).distinct().toList());
 
     List<PmartException.Detail> missing = new ArrayList<>();
-    List<QuoteLine> lines = new ArrayList<>();
-    long itemAmount = 0;
-    int maxVersion = 0;
+    List<PriceVersion> chosen = new ArrayList<>();
     for (QuoteItem i : items) {
       Optional<PriceVersion> v =
           PriceRules.effectiveAt(versions.getOrDefault(i.sku(), List.of()), priceAt);
@@ -114,19 +142,7 @@ public class QuoteService {
         missing.add(new PmartException.Detail(i.sku(), "PRICE_NOT_SET"));
         continue;
       }
-      long amount = PriceRules.lineAmount(v.get().basePrice(), i.quantity());
-      lines.add(
-          new QuoteLine(
-              i.lineRef(),
-              i.sku(),
-              i.quantity(),
-              v.get().basePrice(),
-              v.get().version(),
-              amount,
-              0,
-              amount));
-      itemAmount = Math.addExact(itemAmount, amount);
-      maxVersion = Math.max(maxVersion, v.get().version());
+      chosen.add(v.get());
     }
     if (!missing.isEmpty()) {
       throw new PmartException(
@@ -136,6 +152,83 @@ public class QuoteService {
           false,
           missing);
     }
+    // 기간 할인(ADR-0082): SKU 마다 가장 큰 1개(promotion 이 고른다), 개당
+    Map<String, Long> unitPrices = new java.util.LinkedHashMap<>();
+    for (int k = 0; k < items.size(); k++) {
+      unitPrices.put(items.get(k).sku(), chosen.get(k).basePrice());
+    }
+    Map<String, com.pmart.pricing.infrastructure.PromotionClient.Discount> discounts =
+        promotion.discounts(unitPrices, priceAt);
+    long baseItemAmount = 0;
+    long promotionTotal = 0;
+    long[] afterPromotion = new long[items.size()];
+    long[] promoShare = new long[items.size()];
+    int maxVersion = 0;
+    for (int k = 0; k < items.size(); k++) {
+      QuoteItem i = items.get(k);
+      PriceVersion v = chosen.get(k);
+      long amount = PriceRules.lineAmount(v.basePrice(), i.quantity());
+      var d = discounts.get(i.sku());
+      long promo =
+          d == null ? 0 : Math.min(amount, PriceRules.lineAmount(d.unitDiscount(), i.quantity()));
+      promoShare[k] = promo;
+      afterPromotion[k] = amount - promo;
+      baseItemAmount = Math.addExact(baseItemAmount, amount);
+      promotionTotal += promo;
+      maxVersion = Math.max(maxVersion, v.version());
+    }
+    long itemAmount = baseItemAmount - promotionTotal;
+    // 장바구니 쿠폰(ADR-0082): 기간 할인 뒤·쿠폰 전 상품액으로 판정·계산, 품목에 비례 안분
+    CouponResult coupon = null;
+    long[] couponShare = new long[items.size()];
+    if (couponId != null && !couponId.isBlank()) {
+      if (accountId == null || accountId.isBlank()) {
+        coupon = new CouponResult(couponId, false, "NOT_OWNER", 0, null, null);
+      } else {
+        var c = promotion.coupon(couponId, accountId, itemAmount, priceAt);
+        coupon =
+            new CouponResult(
+                couponId,
+                c.applicable(),
+                c.reason(),
+                c.discountAmount(),
+                c.promotionId(),
+                c.name());
+        if (c.applicable()) {
+          couponShare = PriceRules.allocate(c.discountAmount(), afterPromotion);
+        }
+      }
+    }
+    long couponTotal = 0;
+    List<QuoteLine> lines = new ArrayList<>();
+    for (int k = 0; k < items.size(); k++) {
+      QuoteItem i = items.get(k);
+      PriceVersion v = chosen.get(k);
+      long amount = PriceRules.lineAmount(v.basePrice(), i.quantity());
+      long share = promoShare[k] + couponShare[k];
+      couponTotal += couponShare[k];
+      var d = discounts.get(i.sku());
+      lines.add(
+          new QuoteLine(
+              i.lineRef(),
+              i.sku(),
+              i.quantity(),
+              v.basePrice(),
+              v.version(),
+              amount,
+              share,
+              amount - share,
+              promoShare[k],
+              couponShare[k],
+              d == null || promoShare[k] == 0 ? null : d.promotionId()));
+    }
+    List<String> stages = new ArrayList<>(List.of("BASE"));
+    if (promotionTotal > 0) {
+      stages.add("PROMOTION");
+    }
+    if (couponTotal > 0) {
+      stages.add("CART_COUPON");
+    }
     Quote quote =
         new Quote(
             "QT-" + UUID.randomUUID(),
@@ -143,10 +236,14 @@ public class QuoteService {
             maxVersion,
             lines,
             itemAmount,
-            0,
-            List.of("BASE"),
+            promotionTotal + couponTotal,
+            stages,
             priceAt,
-            now);
+            now,
+            baseItemAmount,
+            promotionTotal,
+            couponTotal,
+            coupon);
     store.insertQuote(quote.quoteId(), requestId, mapper.writeValueAsString(quote), now);
     return quote;
   }

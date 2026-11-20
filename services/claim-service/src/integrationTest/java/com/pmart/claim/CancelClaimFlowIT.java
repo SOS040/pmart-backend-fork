@@ -138,6 +138,94 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
             .willReturn(json(200, o)));
   }
 
+  /** ADR-0082 쿠폰 주문: 상품 19,000 − 쿠폰 2,000 + 봉투 100 = 결제 17,100, 행 할인 안분 2,000. */
+  void couponOrder(String orderId, String accountId, String status, int cancelled) {
+    Map<String, Object> o = new LinkedHashMap<>();
+    o.put("orderId", orderId);
+    o.put("accountId", accountId);
+    o.put("status", status);
+    o.put("version", 1);
+    o.put("mfcId", "MFC-1");
+    o.put("paymentAttemptId", "PAY-" + orderId);
+    o.put("approvedAmount", 17_100);
+    o.put("itemAmount", 19_000);
+    o.put("couponDiscount", 2_000);
+    o.put("deliveryTip", 0);
+    o.put("bagFee", 100);
+    o.put("totalAmount", 17_100);
+    o.put("firstPurchase", true);
+    o.put("confirmedAt", "2026-10-31T01:00:00Z");
+    Map<String, Object> line = new LinkedHashMap<>();
+    line.put("orderLineId", orderId + "-L1");
+    line.put("sku", "E-00000001");
+    line.put("quantity", 10);
+    line.put("unitPrice", 1_900);
+    line.put("lineAmount", 19_000);
+    line.put("discountShare", 2_000);
+    line.put("originalQty", 10);
+    line.put("unfulfilledQty", 10 - cancelled);
+    line.put("handedOverQty", 0);
+    line.put("cancelledBeforeShipQty", cancelled);
+    o.put("lines", List.of(line));
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/orders/" + orderId))
+            .willReturn(json(200, o)));
+  }
+
+  /** ADR-0082: 쿠폰 주문 전체 취소의 상품 환불은 쿠폰 뺀 값, 결품 부분 환불은 단가 × 수량 − 할인 안분(원수량 비례). */
+  @Test
+  void couponOrderRefundsNetOfDiscount() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    couponOrder(orderId, account, "CONFIRMED", 0);
+    paymentAccepts(orderId);
+    Res opened = post(TestJwt.customer(account), UUID.randomUUID().toString(), cancel(orderId, 10));
+    assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT item_amount FROM claim WHERE claim_id = ?",
+                Long.class,
+                opened.body().path("claimId").asString()))
+        .as("결제 17,100 = 상품 17,000 + 봉투 100")
+        .isEqualTo(17_000L);
+
+    String other = "ORD-" + UUID.randomUUID();
+    couponOrder(other, account, "PREPARING", 3);
+    paymentAccepts(other);
+    Res r =
+        shortageRefund(
+            "C-1:REFUND",
+            Map.of(
+                "orderId",
+                other,
+                "lines",
+                List.of(Map.of("orderLineId", other + "-L1", "qty", 1))));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    // 1,900 − ⌊2,000 × 1 / 10⌋ = 1,700
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT amount FROM refund_intent WHERE claim_id = ?",
+                Long.class,
+                r.body().path("claimId").asString()))
+        .isEqualTo(1_700L);
+    Res r2 =
+        shortageRefund(
+            "C-2:REFUND",
+            Map.of(
+                "orderId",
+                other,
+                "lines",
+                List.of(Map.of("orderLineId", other + "-L1", "qty", 2))));
+    assertThat(r2.status()).as(r2.body().toString()).isEqualTo(201);
+    // 누계 3개: ⌊2,000 × 3 / 10⌋ − ⌊2,000 × 1 / 10⌋ = 400 → 3,800 − 400 = 3,400
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT amount FROM refund_intent WHERE claim_id = ?",
+                Long.class,
+                r2.body().path("claimId").asString()))
+        .isEqualTo(3_400L);
+  }
+
   Res post(String token, String key, Map<String, Object> body) {
     var e =
         http.post()

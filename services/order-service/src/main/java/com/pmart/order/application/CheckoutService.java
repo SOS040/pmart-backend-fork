@@ -53,6 +53,7 @@ public class CheckoutService {
   private final DraftService drafts;
   private final DraftStore store;
   private final OrchestrationClient orchestration;
+  private final com.pmart.order.infrastructure.CouponHolds coupons;
   private final OrderService orders;
   private final Upstreams upstreams;
   private final RequestIdempotency idempotency;
@@ -62,6 +63,7 @@ public class CheckoutService {
       DraftService drafts,
       DraftStore store,
       OrchestrationClient orchestration,
+      com.pmart.order.infrastructure.CouponHolds coupons,
       OrderService orders,
       Upstreams upstreams,
       RequestIdempotency idempotency,
@@ -69,6 +71,7 @@ public class CheckoutService {
     this.drafts = drafts;
     this.store = store;
     this.orchestration = orchestration;
+    this.coupons = coupons;
     this.orders = orders;
     this.upstreams = upstreams;
     this.idempotency = idempotency;
@@ -122,6 +125,8 @@ public class CheckoutService {
               if (!upstreams.purchasable(accountId)) {
                 throw reject("ACCOUNT_NOT_PURCHASABLE", "지금 주문할 수 없는 계정 상태입니다.");
               }
+              // 쿠폰 점유(ADR-0082) — 점유 키는 초안. 견적의 쿠폰 할인과 다르면 다시 견적
+              holdCoupon(accountId, v, now);
               // 같은 진입 요청의 재시도가 같은 주문 ID·사가 키를 쓰도록 결정적으로 만든다
               String orderId =
                   "ORD-"
@@ -134,6 +139,35 @@ public class CheckoutService {
               return orderId;
             })
         .value();
+  }
+
+  /**
+   * 고른 쿠폰을 점유한다(ADR-0082). 이미 이 초안의 살아 있는 점유가 있으면 그대로. 쓸 수 없으면 422 COUPON_NOT_APPLICABLE, 할인액이 견적과
+   * 다르면 해제하고 422 RE_QUOTE_REQUIRED.
+   */
+  private void holdCoupon(String accountId, DraftService.View v, Instant now) {
+    DraftService.Quote q = v.snapshot().quote();
+    if (q.coupon() == null || !q.coupon().applicable() || q.couponDiscount() <= 0) {
+      return;
+    }
+    String draftId = v.row().draftId();
+    var existing = coupons.find(draftId);
+    if (existing.isPresent()
+        && ("HELD".equals(existing.get().state()) || "CONFIRMED".equals(existing.get().state()))) {
+      return;
+    }
+    tools.jackson.databind.JsonNode h =
+        coupons.hold(draftId, q.coupon().couponId(), accountId, q.itemAmount());
+    String holdId = h.path("holdId").asString();
+    long discount = h.path("discountAmount").asLong();
+    if (discount != q.couponDiscount()) {
+      coupons.transition(holdId, "RELEASE");
+      throw reject("RE_QUOTE_REQUIRED", "쿠폰 할인이 바뀌었습니다. 주문서를 다시 만들어 주세요.");
+    }
+    coupons.save(
+        new com.pmart.order.infrastructure.CouponHolds.HoldRow(
+            draftId, accountId, q.coupon().couponId(), holdId, discount, "HELD"),
+        now);
   }
 
   /** 초안의 결제 진입 진행. 결제 진입 전이면 null. */

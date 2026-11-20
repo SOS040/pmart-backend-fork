@@ -63,7 +63,8 @@ import tools.jackson.databind.ObjectMapper;
           "pmart.order.capacity-base-url",
           "pmart.order.orchestration-base-url",
           "pmart.order.content-base-url",
-          "pmart.order.inventory-base-url"
+          "pmart.order.inventory-base-url",
+          "pmart.order.promotion-base-url"
         }))
 class DraftFlowIT extends PostgresKafkaContainerSupport {
 
@@ -75,6 +76,7 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
   @Autowired org.springframework.kafka.core.KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.order.application.CouponHoldSync couponSync;
 
   @InjectWireMock("deps")
   WireMockServer deps;
@@ -300,6 +302,199 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     m.put("shippableAvailable", shippable);
     m.put("handlingEnabled", handling);
     return m;
+  }
+
+  /**
+   * ADR-0082 쿠폰(0.18.0): 견적의 쿠폰 할인이 주문서 총액에서 빠지고 품목 할인으로 들어간다. 쓸 수 없는 쿠폰은 차단 사유. 결제 진입 때 쿠폰 점유(키 =
+   * 초안), 사가가 주문 없이 닫히면 주기 작업이 해제한다.
+   */
+  @Test
+  void couponDraftCheckoutHoldsThenReleasesWhenSagaEnds() {
+    String repeat = TestJwt.customer(REPEAT);
+    // 10개 × 1,900 = 19,000 에 쿠폰 2,000
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/quotes"))
+            .atPriority(0)
+            .withRequestBody(matchingJsonPath("$.couponIds[0]", equalTo("CPN-OK")))
+            .willReturn(
+                json(
+                    Map.of(
+                        "quoteId", "Q-C",
+                        "priceVersion", 4,
+                        "itemAmount", 19_000,
+                        "baseItemAmount", 19_000,
+                        "promotionDiscount", 0,
+                        "couponDiscount", 2_000,
+                        "coupon",
+                            Map.of(
+                                "couponId",
+                                "CPN-OK",
+                                "applicable",
+                                true,
+                                "discountAmount",
+                                2_000,
+                                "name",
+                                "2천원 쿠폰"),
+                        "lines",
+                            List.of(
+                                Map.of(
+                                    "sku", "E-00000001",
+                                    "quantity", 10,
+                                    "unitPrice", 1_900,
+                                    "lineAmount", 19_000,
+                                    "discountShare", 2_000,
+                                    "netAmount", 17_000)),
+                        "calculatedAt", Instant.now().toString()))));
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/quotes"))
+            .atPriority(0)
+            .withRequestBody(matchingJsonPath("$.couponIds[0]", equalTo("CPN-BAD")))
+            .willReturn(
+                json(
+                    Map.of(
+                        "quoteId",
+                        "Q-B",
+                        "priceVersion",
+                        4,
+                        "itemAmount",
+                        19_000,
+                        "couponDiscount",
+                        0,
+                        "coupon",
+                        Map.of(
+                            "couponId",
+                            "CPN-BAD",
+                            "applicable",
+                            false,
+                            "reason",
+                            "EXPIRED",
+                            "discountAmount",
+                            0),
+                        "lines",
+                        List.of(
+                            Map.of(
+                                "sku", "E-00000001",
+                                "quantity", 10,
+                                "unitPrice", 1_900,
+                                "lineAmount", 19_000)),
+                        "calculatedAt",
+                        Instant.now().toString()))));
+
+    Map<String, Object> bad =
+        new LinkedHashMap<>(
+            draft(
+                "PI-" + UUID.randomUUID(),
+                "E-00000001",
+                10,
+                "ADR-IN",
+                "SCHEDULED",
+                window("10:00", "11:00")));
+    bad.put("couponId", "CPN-BAD");
+    Res b = create(repeat, bad);
+    assertThat(b.body().path("blockers").findValuesAsString("code"))
+        .contains("COUPON_NOT_APPLICABLE");
+    assertThat(b.body().path("quote").path("coupon").path("reason").asString())
+        .isEqualTo("EXPIRED");
+
+    Map<String, Object> ok =
+        new LinkedHashMap<>(
+            draft(
+                "PI-" + UUID.randomUUID(),
+                "E-00000001",
+                10,
+                "ADR-IN",
+                "SCHEDULED",
+                window("10:00", "11:00")));
+    ok.put("couponId", "CPN-OK");
+    Res d = create(repeat, ok);
+    assertThat(d.body().path("blockers")).as(d.body().toString()).isEmpty();
+    JsonNode q = d.body().path("quote");
+    assertThat(q.path("itemAmount").asInt()).isEqualTo(19_000);
+    assertThat(q.path("couponDiscount").asInt()).isEqualTo(2_000);
+    // 19,000 − 2,000 + 예약 3,000(30,000 미만·재구매) + 봉투 100
+    assertThat(q.path("totalAmount").asInt()).isEqualTo(20_100);
+    assertThat(q.path("coupon").path("applicable").asBoolean()).isTrue();
+    assertThat(d.body().path("lines").path(0).path("discountShare").asInt()).isEqualTo(2_000);
+    String draftId = d.body().path("draftId").asString();
+
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/coupon-holds"))
+            .willReturn(
+                aResponse()
+                    .withStatus(201)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "holdId", "CPH-1",
+                                "couponId", "CPN-OK",
+                                "orderId", draftId,
+                                "state", "HELD",
+                                "discountAmount", 2_000)))));
+    String sagaId = "SAGA-" + UUID.randomUUID();
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/checkout-sagas"))
+            .willReturn(
+                aResponse()
+                    .withStatus(202)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of("status", "ACCEPTED", "requestId", "k", "resultId", sagaId)))));
+    saga(
+        sagaId,
+        Map.of(
+            "sagaId",
+            sagaId,
+            "state",
+            "RUNNING",
+            "currentStep",
+            "RESERVE_INVENTORY",
+            "steps",
+            List.of()));
+    Res c = checkout(repeat, draftId, UUID.randomUUID().toString(), q.path("quoteVersion").asInt());
+    assertThat(c.status()).as(c.body().toString()).isEqualTo(202);
+    deps.verify(
+        WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/coupon-holds"))
+            .withRequestBody(matchingJsonPath("$.orderId", equalTo(draftId)))
+            .withRequestBody(matchingJsonPath("$.itemAmount", equalTo("19000"))));
+    deps.verify(
+        WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/checkout-sagas"))
+            .withRequestBody(matchingJsonPath("$.amount", equalTo("20100"))));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM order_coupon_hold WHERE draft_id = ?", String.class, draftId))
+        .isEqualTo("HELD");
+
+    // 사가가 열려 있는 동안은 그대로, 주문 없이 닫히면 해제
+    couponSync.run();
+    deps.verify(
+        0,
+        WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/coupon-holds/CPH-1/releases")));
+    saga(
+        sagaId,
+        Map.of(
+            "sagaId", sagaId, "state", "COMPENSATED", "currentStep", "DONE", "steps", List.of()));
+    deps.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/coupon-holds/CPH-1/releases"))
+            .willReturn(
+                json(
+                    Map.of(
+                        "holdId",
+                        "CPH-1",
+                        "couponId",
+                        "CPN-OK",
+                        "orderId",
+                        draftId,
+                        "state",
+                        "RELEASED",
+                        "discountAmount",
+                        2_000))));
+    couponSync.run();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM order_coupon_hold WHERE draft_id = ?", String.class, draftId))
+        .isEqualTo("RELEASED");
   }
 
   void stub(MappingBuilder b, Object body) {

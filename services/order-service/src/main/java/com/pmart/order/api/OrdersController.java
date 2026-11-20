@@ -145,6 +145,14 @@ public class OrdersController implements OrdersApi {
                     .deliveryTipReason(Quote.DeliveryTipReasonEnum.fromValue(o.deliveryTipReason()))
                     .bagFee((int) o.bagFee())
                     .totalAmount((int) o.totalAmount())
+                    // ADR-0082: 쿠폰 할인 = 상품액 + 배달팁 + 봉투값 − 총액, 기간 할인 = 줄 할인 합 − 쿠폰
+                    .couponDiscount(couponDiscount(o))
+                    .promotionDiscount(
+                        (int)
+                            Math.max(
+                                0,
+                                v.lines().stream().mapToLong(l -> l.discountShare()).sum()
+                                    - couponDiscount(o)))
                     .firstPurchaseBenefit(
                         o.firstPurchaseApplied()
                             ? Quote.FirstPurchaseBenefitEnum.CONFIRMED
@@ -293,5 +301,9 @@ public class OrdersController implements OrdersApi {
                                 .toList()
                             : List.of()))
         .toList();
+  }
+
+  private static int couponDiscount(com.pmart.order.infrastructure.OrderStore.OrderRow o) {
+    return (int) Math.max(0, o.itemAmount() + o.deliveryTip() + o.bagFee() - o.totalAmount());
   }
 }

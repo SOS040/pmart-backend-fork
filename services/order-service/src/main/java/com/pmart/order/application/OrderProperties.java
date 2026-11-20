@@ -13,7 +13,8 @@ public record OrderProperties(
     String orchestrationBaseUrl,
     String contentBaseUrl,
     String auditBaseUrl,
-    String inventoryBaseUrl) {
+    String inventoryBaseUrl,
+    String promotionBaseUrl) {
 
   public OrderProperties {
     customerBaseUrl = or(customerBaseUrl, "http://customer-service:8103");
@@ -28,6 +29,8 @@ public record OrderProperties(
     auditBaseUrl = or(auditBaseUrl, "http://audit-service:8503");
     // 주문 초안 재고 확인(2026-11-16 사용자 "재고 없으면 주문서 진입 금지") — mfc-inventory /internal/availability
     inventoryBaseUrl = or(inventoryBaseUrl, "http://mfc-inventory-service:8301");
+    // 쿠폰 점유·확정·해제·복원(ADR-0082) — promotion /internal/coupon-holds
+    promotionBaseUrl = or(promotionBaseUrl, "http://promotion-service:8109");
   }
 
   private static String or(String v, String d) {

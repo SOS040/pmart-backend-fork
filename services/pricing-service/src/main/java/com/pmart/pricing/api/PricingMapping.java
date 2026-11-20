@@ -74,10 +74,26 @@ final class PricingMapping {
                             .priceVersion(l.priceVersion())
                             .lineAmount(money(l.lineAmount()))
                             .discountShare(money(l.discountShare()))
-                            .netAmount(money(l.netAmount())))
+                            .netAmount(money(l.netAmount()))
+                            .promotionDiscount(money(l.promotionDiscount()))
+                            .couponShare(money(l.couponShare()))
+                            .promotionId(l.promotionId()))
                 .toList())
         .itemAmount(money(q.itemAmount()))
         .discountTotal(money(q.discountTotal()))
+        .baseItemAmount(money(q.baseItemAmount() == 0 ? q.itemAmount() : q.baseItemAmount()))
+        .promotionDiscount(money(q.promotionDiscount()))
+        .couponDiscount(money(q.couponDiscount()))
+        .coupon(
+            q.coupon() == null
+                ? null
+                : new com.pmart.pricing.api.generated.model.QuoteCoupon()
+                    .couponId(q.coupon().couponId())
+                    .applicable(q.coupon().applicable())
+                    .reason(q.coupon().reason())
+                    .discountAmount(money(q.coupon().discountAmount()))
+                    .promotionId(q.coupon().promotionId())
+                    .name(q.coupon().name()))
         .appliedStages(q.appliedStages().stream().map(Quote.AppliedStagesEnum::fromValue).toList())
         .calculatedAt(odt(q.calculatedAt()));
   }

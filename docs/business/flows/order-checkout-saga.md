@@ -74,7 +74,7 @@ PG 진입 전 두 타이머 모두 유효해야 하며 더 이른 만료를 고�
 | b | RESERVE_INVENTORY | mfc-inventory 전부 또는 전무, TTL 10분, 부족 → INSUFFICIENT_STOCK, 취급 OFF → SKU_NOT_HANDLED. LOT 단위 조각(FEFO, 줄당 LOT 수 제한 없음), 최소 잔여일 기준일 = `promisedDate`(예약 배송 = 슬롯 날짜, 즉시 = 예약 날짜) — 적격 LOT 부족도 INSUFFICIENT_STOCK(NO_ELIGIBLE_LOT), ADR-0040 |
 | c | HOLD_CAPACITY | mfc-capacity 1시간 창(예약배달은 도착 슬롯, 즉시는 지금 시간 KST). LAN 시험값 주문 1건=1단위·시간당 30 |
 | d | HOLD_SLOT | 예약배달만(그 밖 SKIPPED). delivery-capacity 정원 20 |
-| e | (쿠폰) | 1차 생략 |
+| e | 쿠폰 점유(2026-11-21 ADR-0082) | **order 가 결제 진입 때 사가 시작 전에** promotion `POST /internal/coupon-holds`(점유 키 = 초안 ID). 쓸 수 없으면 422 COUPON_NOT_APPLICABLE(사가 시작 안 함), 할인액이 견적과 다르면 해제 + RE_QUOTE_REQUIRED. 사가는 쿠폰을 모른다 — 확정·해제는 order 주기 작업 `CouponHoldSync`(확정 주문 → 사용 확정 / 사가가 주문 없이 닫힘·사가 없이 견적 만료 → 해제). 결제 금액 = 상품액(기간 할인 뒤) − 쿠폰 + 배달팁 + 봉투값 |
 | f | START_PAYMENT | payment 결제 시도 생성, `resourceExpiresAt` = 자원 만료·가격 동결 중 이른 것 → 사가 WAITING_RESULT, 초안 `nextAction=PAY` 와 결제창 정보 |
 | g | AWAIT_PAYMENT_RESULT | 결제 사건(order.payment.v1)은 깨우는 신호, 정본은 결제 시도 조회. 승인 → 보상 로그에 PAYMENT_APPROVAL. 실패 → 즉시 해제. 불명 → UNKNOWN_TRACKING. 불일치 → RECONCILIATION_REQUIRED |
 | h | RECONCILE_PAYMENT | 승인액·통화 = 청구액(KRW). 다르면 RECONCILIATION_REQUIRED + `ReconciliationRequired`(확정·취소·해제 모두 멈춤, 강제 출고 금지) |

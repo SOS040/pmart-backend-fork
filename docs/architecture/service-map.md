@@ -68,7 +68,7 @@
 - **의존**: product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강, ADR-0021), S3 호환 저장소(배너 이미지, 버킷 pmart-storefront — ADR-0016).
 
 ### pricing-service `[1단계]`
-- **소유**: SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음), 효력일, 견적 계산(기본가·선택 오퍼→기간 프로모션→상품쿠폰→장바구니쿠폰 순서; 1차는 기본가만).
+- **소유**: SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음), 효력일, 견적 계산(기본가·선택 오퍼→기간 프로모션→상품쿠폰→장바구니쿠폰 순서; 2026-11-21 ADR-0082 부터 기본가→기간 할인→장바구니 쿠폰, 오퍼·상품쿠폰은 아직).
 - **소유하지 않음**: 최종 청구액·동결(order 초안), 배달팁·봉투값·최소주문(order), 할인 권리(promotion).
 - **API**: 가격 버전 조회, 견적 계산(품목 금액·안분), 가격 일괄 등록(seed-v1 basePrice → 운영자 설정 → PRICE 승인 요청 본문, 2026-11-03). 원천 키 → SKU 는 product-service `/internal/source-link-lookups` 로 조회한다.
 - **발행**: `PriceVersionEffective`, `ApplicationReceiptRecorded`(가격 승인 반영 회신, ADR-0039).

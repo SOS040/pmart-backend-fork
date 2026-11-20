@@ -39,9 +39,23 @@ public class Upstreams {
       String saleState,
       int unitsPerSku) {}
 
-  public record PricedLine(String sku, long unitPrice, long lineAmount) {}
+  public record PricedLine(String sku, long unitPrice, long lineAmount, long discountShare) {}
 
-  public record Priced(int priceVersion, long itemAmount, Map<String, PricedLine> lines) {}
+  /** 견적 쿠폰 결과(pricing 0.2.0). */
+  public record PricedCoupon(
+      String couponId, boolean applicable, @Nullable String reason, @Nullable String name) {}
+
+  /**
+   * @param itemAmount 기간 할인 뒤·쿠폰 전 상품액(최소 주문·무료 배달 판정)
+   */
+  public record Priced(
+      int priceVersion,
+      long itemAmount,
+      Map<String, PricedLine> lines,
+      long baseItemAmount,
+      long promotionDiscount,
+      long couponDiscount,
+      @Nullable PricedCoupon coupon) {}
 
   /** 쇼핑 주소 판정 사본 + 주문 당시 배송지 사본(BR-37). 필수 필드가 비어 오면 shipping 은 null. */
   /**
@@ -258,13 +272,17 @@ public class Upstreams {
 
   // ---------- pricing ----------
 
-  public Priced quote(String accountId, String mfcId, Map<String, Integer> qty) {
+  public Priced quote(
+      String accountId, String mfcId, Map<String, Integer> qty, @Nullable String couponId) {
     List<Map<String, Object>> items = new ArrayList<>();
     qty.forEach((sku, q) -> items.add(Map.of("lineRef", sku, "sku", sku, "quantity", q)));
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("accountId", accountId);
     body.put("mfcId", mfcId);
     body.put("items", items);
+    if (couponId != null) {
+      body.put("couponIds", List.of(couponId));
+    }
     JsonNode r;
     try {
       r =
@@ -295,9 +313,27 @@ public class Upstreams {
           new PricedLine(
               l.path("sku").asString(),
               l.path("unitPrice").asLong(),
-              l.path("lineAmount").asLong()));
+              l.path("lineAmount").asLong(),
+              l.path("discountShare").asLong(0)));
     }
-    return new Priced(r.path("priceVersion").asInt(0), r.path("itemAmount").asLong(), lines);
+    JsonNode c = r.path("coupon");
+    PricedCoupon coupon =
+        c.isObject()
+            ? new PricedCoupon(
+                c.path("couponId").asString(),
+                c.path("applicable").asBoolean(false),
+                c.hasNonNull("reason") ? c.get("reason").asString() : null,
+                c.hasNonNull("name") ? c.get("name").asString() : null)
+            : null;
+    long item = r.path("itemAmount").asLong();
+    return new Priced(
+        r.path("priceVersion").asInt(0),
+        item,
+        lines,
+        r.path("baseItemAmount").asLong(item),
+        r.path("promotionDiscount").asLong(0),
+        r.path("couponDiscount").asLong(0),
+        coupon);
   }
 
   // ---------- center-master · capacity ----------

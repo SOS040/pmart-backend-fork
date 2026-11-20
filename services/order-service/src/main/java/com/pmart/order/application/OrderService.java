@@ -998,7 +998,7 @@ public class OrderService {
               l.quantity(),
               l.unitPrice(),
               l.lineAmount(),
-              0, // 1차는 할인·쿠폰 없음
+              l.discountShare(), // ADR-0082: 기간 할인 + 쿠폰 안분(그 전 초안은 0)
               l.weightG(),
               l.quantity(),
               l.quantity(),

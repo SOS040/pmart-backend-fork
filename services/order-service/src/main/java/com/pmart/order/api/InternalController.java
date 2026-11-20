@@ -196,6 +196,10 @@ public class InternalController implements InternalApi {
             .deliveryTip(Math.toIntExact(o.deliveryTip()))
             .bagFee(Math.toIntExact(o.bagFee()))
             .totalAmount(Math.toIntExact(o.totalAmount()))
+            // ADR-0082: 쿠폰 할인 = 상품액 + 배달팁 + 봉투값 − 결제 총액(쿠폰 없으면 0)
+            .couponDiscount(
+                Math.toIntExact(
+                    Math.max(0, o.itemAmount() + o.deliveryTip() + o.bagFee() - o.totalAmount())))
             .firstPurchase(o.firstPurchaseApplied())
             .deliveryMode(InternalOrder.DeliveryModeEnum.fromValue(o.deliveryMode()))
             .confirmedAt(OffsetDateTime.ofInstant(o.confirmedAt(), ZoneOffset.UTC));

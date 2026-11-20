@@ -36,7 +36,15 @@ public class InternalController implements InternalApi {
     return ResponseEntity.ok(
         PricingMapping.quote(
             quotes.create(
-                idempotencyKey, xSourceSystem, PricingMapping.instant(body.getAt()), items, body)));
+                idempotencyKey,
+                xSourceSystem,
+                PricingMapping.instant(body.getAt()),
+                body.getAccountId(),
+                body.getCouponIds() == null || body.getCouponIds().isEmpty()
+                    ? null
+                    : body.getCouponIds().getFirst(),
+                items,
+                body)));
   }
 
   @Override

@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
+    0.18.0(2026-11-21, ADR-0082 쿠폰·기간 할인 3단계 — 사용자 "응"): 주문서 `couponId`(장바구니 쿠폰 1장, 고객만). 견적이 기간 할인·쿠폰을 넣는다(pricing 0.2.0) —
+    Quote `baseItemAmount`(정가)·`promotionDiscount`·`itemAmount`(기간 할인 뒤·쿠폰 전 — 최소 주문·무료 배달 판정)·`couponDiscount`·`coupon`{couponId, applicable, reason, name},
+    `totalAmount` = itemAmount − couponDiscount + 배달팁 + 봉투값. 쓸 수 없는 쿠폰을 골랐으면 차단 사유 `COUPON_NOT_APPLICABLE`(detail = 사유) — 쿠폰을 빼고 주문서를 다시 만든다.
+    DraftLine·OrderLine `discountShare`(기간 할인 + 쿠폰 안분). 결제 진입 때 쿠폰을 점유하고(promotion), 주문 확정 → 사용, 결제 실패·중단 → 해제, 주문 전체 취소 → 복원(원래 기한 안).
+    내부 주문 `couponDiscount`(claim 환불 — 상품 환불액 = itemAmount − couponDiscount).
     0.17.0(2026-11-20 BR-68 — 사용자 "추천대로"): 고객 주문 목록 `GET /orders` 한 줄(OrderSummary)에 ① `lines` — 앞 주문행 최대 5개(line 순, 주문 당시 사본 — orderLineId·productId·sku·productName·optionLabel·quantity·lineAmount, 전체 수량은 그대로 itemCount)
     ② `mfcName` — 주문한 센터 이름(상세 0.15.0 `mfcName` 과 같은 값, 모르면 null). 지금 구매 가능 여부(R3)는 싣지 않는다(사용자 결정). 기간 `to` 는 0.12.0 부터 있다(그대로 — Asia/Seoul 날짜, 포함, from > to 400).
     0.16.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `GET /internal/accounts/{accountId}/withdrawal-eligibility` 구현 — 끝나지 않은 주문(ORDER_IN_PROGRESS)·결과 모르는 결제(PAYMENT_UNKNOWN).
@@ -904,6 +909,7 @@ components:
         itemAmount: { $ref: '_common.yaml#/components/schemas/Money' }
         deliveryTip: { $ref: '_common.yaml#/components/schemas/Money' }
         bagFee: { $ref: '_common.yaml#/components/schemas/Money' }
+        couponDiscount: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 쿠폰 할인(itemAmount 에 들어 있음 — 결제액 = itemAmount − couponDiscount + deliveryTip + bagFee)' }
         totalAmount: { $ref: '_common.yaml#/components/schemas/Money' }
         firstPurchase: { type: boolean }
         deliveryMode: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED], description: '0.14.1 — 한집 / 알뜰 / 예약' }
@@ -963,6 +969,7 @@ components:
         contact: { type: object, deprecated: true, description: '쓰지 않는다(BR-37) — 수령인·연락처는 shoppingAddressId 배송지의 값을 초안 때 사본으로 고정한다', properties: { phoneRef: { type: string } } }
         deliveryNote: { type: string, maxLength: 200 }
         bagOptOut: { type: boolean, description: 봉투 미사용 선택이어도 봉투값 100원은 청구 }
+        couponId: { type: string, maxLength: 64, x-added-in: '2026-11-21', description: '0.18.0 — 장바구니 쿠폰 1장(promotion GET /me/coupons 의 AVAILABLE). 바꾸려면 주문서를 다시 만든다' }
     Quote:
       type: object
       properties:
@@ -970,6 +977,21 @@ components:
         quoteExpiresAt: { type: string, format: date-time, description: 초안 생성 + 10분 }
         priceVersion: { type: integer }
         itemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 오퍼·프로모션 후, 쿠폰 전 상품액 }
+        baseItemAmount: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 정가 상품액(기간 할인 전)' }
+        promotionDiscount: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 기간 할인 합' }
+        couponDiscount: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 쿠폰 할인(totalAmount 에서 뺌)' }
+        coupon:
+          x-added-in: '2026-11-21'
+          description: '0.18.0 — 고른 쿠폰 결과(고르지 않았으면 null). 주문 조회는 couponId·applicable 만'
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [couponId, applicable]
+              properties:
+                couponId: { type: string }
+                applicable: { type: boolean }
+                reason: { type: [string, 'null'], description: 'NOT_FOUND·NOT_OWNER·EXPIRED·HELD·USED·MIN_ORDER_NOT_MET' }
+                name: { type: [string, 'null'] }
         deliveryTip: { $ref: '_common.yaml#/components/schemas/Money' }
         deliveryTipReason: { type: string, enum: [STANDARD, OVER_30000, FIRST_PURCHASE, NONE] }
         bagFee: { $ref: '_common.yaml#/components/schemas/Money', example: 100 }
@@ -998,6 +1020,7 @@ components:
         productName: { type: [string, 'null'], description: 고객용 상품명 사본(BR-35). 조회 실패면 null }
         optionLabel: { type: [string, 'null'], description: 옵션 라벨 사본. 단일 옵션 상품은 null 일 수 있다 }
         quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+        discountShare: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 기간 할인 + 쿠폰 안분' }
         unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
         lineAmount: { $ref: '_common.yaml#/components/schemas/Money' }
         weightG: { type: integer }
@@ -1037,7 +1060,7 @@ components:
       description: '결제 진입을 막는 사유. 모두 보여 주고 주버튼에는 첫 사유(MIN_ORDER_AMOUNT → DELIVERY_MODE_UNAVAILABLE → SLOT_REQUIRED/SLOT_UNAVAILABLE → CONTACT_REQUIRED 순). CONTACT_REQUIRED(0.14.0) = 받는 분 연락처 없음 — 프로필 phone 을 저장한 뒤 초안을 다시 만든다'
       required: [code]
       properties:
-        code: { type: string, enum: [MIN_ORDER_AMOUNT, DELIVERY_MODE_UNAVAILABLE, SLOT_REQUIRED, SLOT_UNAVAILABLE, CONTACT_REQUIRED] }
+        code: { type: string, enum: [MIN_ORDER_AMOUNT, DELIVERY_MODE_UNAVAILABLE, SLOT_REQUIRED, SLOT_UNAVAILABLE, CONTACT_REQUIRED, COUPON_NOT_APPLICABLE], description: "COUPON_NOT_APPLICABLE(0.18.0) — 고른 쿠폰을 쓸 수 없음(detail = 사유), 쿠폰을 빼고 주문서를 다시 만든다" }
         detail: { type: string }
     DeliveryOption:
       type: object

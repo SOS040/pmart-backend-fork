@@ -27,7 +27,8 @@
 - 반영 회신(ADR-0039): 승인(APPROVED·PARTIALLY_APPROVED)을 반영한 같은 트랜잭션에서 `ApplicationReceiptRecorded`(receiverService `pricing-service`, receiptSeq 1, result APPLIED·PARTIAL·REJECTED, 행별 `lineKey`=ApprovalDecided 의 lineId·`reasonCode`·`domainVersion`)를 `platform.approval-receipt.v1` 로 outbox. 반려된 결정에는 회신하지 않는다.
 - 소급 없음: 요청 효력 시각이 지났으면 반영 시각부터. 효력 시각이 된 버전은 그 트랜잭션에서, 예약 버전은 `PriceActivator` 주기 작업(`pmart.pricing.activation-interval`, 기본 10초)이 발효하고 `PriceVersionEffective` 를 토픽 `commerce.pricing.v1` 로 발행한다(집합 이름 기본 토픽이 아님).
 - `/price-version-applications` 는 새 버전을 만들지 않는다. 요청이 받은 승인 범위와 같은지 대조하고 반영 결과를 requestId 로 묶는다. 승인을 아직 못 받았으면 `APPROVAL_REQUIRED`(같은 키로 재시도).
-- 견적(`/internal/quotes`)은 1차 기본가만(`BASE`). 가격 없는 SKU 가 하나라도 있으면 `PRICE_NOT_SET` 전체 거절. 결과는 `price_quote` 에 보존.
+- 견적(`/internal/quotes`): 가격 없는 SKU 가 하나라도 있으면 `PRICE_NOT_SET` 전체 거절. 결과는 `price_quote` 에 보존.
+- **할인(2026-11-21 ADR-0082, 계약 0.2.0)**: 기본가 → 기간 할인(promotion `/internal/price-discounts` — SKU 마다 가장 큰 1개, 개당 × 수량) → 장바구니 쿠폰(`couponIds[0]` + accountId, promotion `/internal/coupon-quotes` — 기간 할인 뒤 금액으로 판정, `PriceRules.allocate` 비례 안분·원 미만 버림·남은 원은 큰 품목). `itemAmount` = 기간 할인 뒤·쿠폰 전, `couponDiscount` 따로. 쓸 수 없는 쿠폰은 거절 없이 `coupon.applicable=false`. promotion 장애 → 503(정가로 계산하지 않음). 주소 `pmart.pricing.promotion-base-url`(비우면 할인 단계 없음 — 시험 기본). 클라이언트 `infrastructure.PromotionClient`, 시험 `QuoteDiscountIT`.
 
 ## 가격 일괄 등록 (2026-11-03, 사용자 결정)
 - `/price-import-batches`: seed-v1 묶음(zip, 상품 일괄 등록과 같은 파일)의 `product.json` 에서 seedProductId·`product.internalName`(없으면 `content.name`)·`price.basePrice`·`source.system` 만 읽는다(`SeedPriceReader`). 원천 키 → SKU 는 product-service `POST /api/v1/internal/source-link-lookups`(`ProductLinks`, `pmart.pricing.product-base-url`). 조회는 트랜잭션 밖, 저장은 `RequestIdempotency` 안.
@@ -37,4 +38,4 @@
 - 업로드 상한 300MB(pmart-config `pricing-service.yml` multipart).
 
 ## 상태
-가격 버전·승인 반영·발효·조회·기본가 견적 구현(2026-10-30). 오퍼·프로모션·쿠폰 단계는 미구현(promotion 비활성).
+가격 버전·승인 반영·발효·조회·견적 구현(2026-10-30). 기간 할인·장바구니 쿠폰 2026-11-21(ADR-0082). 오퍼·상품 쿠폰은 미구현.

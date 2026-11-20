@@ -41,7 +41,8 @@ public final class OrderRules {
           "DELIVERY_MODE_UNAVAILABLE",
           "SLOT_REQUIRED",
           "SLOT_UNAVAILABLE",
-          "CONTACT_REQUIRED");
+          "CONTACT_REQUIRED",
+          "COUPON_NOT_APPLICABLE"); // ADR-0082 — 쓸 수 없는 쿠폰(빼고 다시)
 
   public record Tip(long base, long applied, String reason) {}
 
