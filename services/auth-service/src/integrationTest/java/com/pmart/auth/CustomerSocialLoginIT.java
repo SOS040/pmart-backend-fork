@@ -129,6 +129,82 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
         .getTokenValue();
   }
 
+  /** 네이버처럼 프로필 클레임이 없는 ID 토큰. */
+  static String bareIdToken(String sub, String aud, String iss) {
+    Instant now = Instant.now();
+    JwtClaimsSet claims =
+        JwtClaimsSet.builder()
+            .issuer(iss)
+            .subject(sub)
+            .audience(List.of(aud))
+            .issuedAt(now)
+            .expiresAt(now.plusSeconds(600))
+            .build();
+    return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(GOOGLE_KEY)))
+        .encode(
+            JwtEncoderParameters.from(
+                JwsHeader.with(SignatureAlgorithm.RS256).keyId("google-test").build(), claims))
+        .getTokenValue();
+  }
+
+  Res loginWithPicture(String device, String provider, String token, String picture) {
+    var e =
+        http.post()
+            .uri("/auth/social-logins")
+            .headers(
+                h -> {
+                  h.set("Idempotency-Key", UUID.randomUUID().toString());
+                  h.set("X-Source-System", "customer-app");
+                  h.set("X-Device-Id", device);
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of("provider", provider, "providerToken", token, "profileImageUrl", picture))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(),
+        mapper.readTree(e.getBody() == null ? "{}" : e.getBody()),
+        e.getHeaders().getFirst("Retry-After"));
+  }
+
+  String authenticatedPicture(String accountId) {
+    return mapper
+        .readTree(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'CustomerAuthenticated'"
+                    + " AND aggregateid = ? ORDER BY created_at DESC LIMIT 1",
+                String.class,
+                accountId))
+        .path("payload")
+        .path("pictureUrl")
+        .asString(null);
+  }
+
+  /** 0.8.0: 네이버 ID 토큰엔 사진이 없어 앱이 넘긴 pstatic.net 주소를 사건에 싣는다. 다른 호스트·다른 제공자는 무시(로그인은 그대로). */
+  @Test
+  void naverPictureFromAppOnlyForPstatic() {
+    String naver =
+        bareIdToken("nv-" + UUID.randomUUID(), "naver-client-id", "https://nid.naver.com");
+    String pic = "https://phinf.pstatic.net/contact/profile/a.jpg";
+    Res ok = loginWithPicture("phone-" + UUID.randomUUID(), "NAVER", naver, pic);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(authenticatedPicture(ok.body().path("accountId").asString())).isEqualTo(pic);
+
+    String naver2 =
+        bareIdToken("nv-" + UUID.randomUUID(), "naver-client-id", "https://nid.naver.com");
+    Res evil =
+        loginWithPicture(
+            "phone-" + UUID.randomUUID(), "NAVER", naver2, "https://evil.example/x.jpg");
+    assertThat(evil.status()).isEqualTo(200);
+    assertThat(authenticatedPicture(evil.body().path("accountId").asString())).isNull();
+
+    String kakao =
+        bareIdToken("kk-" + UUID.randomUUID(), "kakao-native-app-key", "https://kauth.kakao.com");
+    Res k = loginWithPicture("phone-" + UUID.randomUUID(), "KAKAO", kakao, pic);
+    assertThat(k.status()).isEqualTo(200);
+    assertThat(authenticatedPicture(k.body().path("accountId").asString())).isNull();
+  }
+
   static String google(String sub) {
     return idToken(sub, "web-client.apps.googleusercontent.com", "https://accounts.google.com");
   }

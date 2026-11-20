@@ -169,7 +169,8 @@ public class CustomerSocialLoginService {
       String sourceSystem,
       String deviceId,
       String provider,
-      String providerToken) {
+      String providerToken,
+      @Nullable String profileImageUrl) {
     // GOOGLE·KAKAO·NAVER 는 같은 방식(ID 토큰 검증, ADR-0055·ADR-0071). APPLE 은 501, 클라이언트 ID 설정이 없으면 422
     IdTokenVerifier verifier = verifiers.require(provider);
     // 같은 키 재전송: 원결과를 따른다
@@ -268,13 +269,14 @@ public class CustomerSocialLoginService {
               }
               customers.markMember(accountId, now);
               SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);
-              publishAuthenticated(accountId, provider, now, identity);
+              publishAuthenticated(accountId, provider, now, identity, profileImageUrl);
               return new Result(
                   authRequestId, MEMBER, accountId, signup, t, List.of(), List.of(), "NONE", now);
             });
     if (r == null) {
       // 경합에서 진 요청: 이제 연결이 있으니 다시 한 번
-      return login(idempotencyKey, sourceSystem, deviceId, provider, providerToken);
+      return login(
+          idempotencyKey, sourceSystem, deviceId, provider, providerToken, profileImageUrl);
     }
     log.info("고객 소셜 로그인 {}: accountId={} new={}", r.state(), r.accountId(), r.newAccount());
     if (MEMBER.equals(r.state()) && r.accountId() != null) {
@@ -309,7 +311,8 @@ public class CustomerSocialLoginService {
       String sourceSystem,
       String deviceId,
       String providerToken,
-      List<ConsentDecision> decisions) {
+      List<ConsentDecision> decisions,
+      @Nullable String profileImageUrl) {
     AuthRequestRow row =
         customers
             .request(authRequestId)
@@ -399,7 +402,7 @@ public class CustomerSocialLoginService {
                   customers.completeConsent(authRequestId, idempotencyKey, now);
                   customers.markMember(accountId, now);
                   SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);
-                  publishAuthenticated(accountId, row.provider(), now, identity);
+                  publishAuthenticated(accountId, row.provider(), now, identity, profileImageUrl);
                   return memberResult(locked, t, now);
                 }));
     log.info("고객 필수 동의 완료: accountId={} new={} → {}", accountId, r.newAccount(), r.state());
@@ -499,7 +502,8 @@ public class CustomerSocialLoginService {
       String idempotencyKey,
       String sourceSystem,
       String deviceId,
-      String providerToken) {
+      String providerToken,
+      @Nullable String profileImageUrl) {
     AuthRequestRow row =
         customers
             .request(authRequestId)
@@ -573,7 +577,7 @@ public class CustomerSocialLoginService {
                   customers.completeIdentity(authRequestId, idempotencyKey, now);
                   customers.markMember(accountId, now);
                   SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);
-                  publishAuthenticated(accountId, row.provider(), now, identity);
+                  publishAuthenticated(accountId, row.provider(), now, identity, profileImageUrl);
                   return memberResult(locked, t, now);
                 }));
     log.info("고객 휴대폰 확인 완료: accountId={} new={}", accountId, r.newAccount());
@@ -745,7 +749,11 @@ public class CustomerSocialLoginService {
 
   /** Google 이 준 프로필(이름·이메일·사진)은 저장하지 않고 사건으로 customer-service 에 넘긴다(ADR-0024). 없는 값은 싣지 않는다. */
   private void publishAuthenticated(
-      String accountId, String provider, Instant at, IdTokenVerifier.Identity identity) {
+      String accountId,
+      String provider,
+      Instant at,
+      IdTokenVerifier.Identity identity,
+      @Nullable String appPictureUrl) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("accountId", accountId);
     payload.put("provider", provider);
@@ -753,7 +761,12 @@ public class CustomerSocialLoginService {
     putIfPresent(payload, "email", identity.email());
     putIfPresent(payload, "emailVerified", identity.emailVerified());
     putIfPresent(payload, "name", identity.name());
-    putIfPresent(payload, "pictureUrl", identity.pictureUrl());
+    // 네이버는 ID 토큰에 사진이 없어 앱이 넘긴 주소(0.8.0, ProviderPictureRules — 맞을 때만)
+    putIfPresent(
+        payload,
+        "pictureUrl",
+        com.pmart.auth.domain.ProviderPictureRules.pick(
+            provider, identity.pictureUrl(), appPictureUrl));
     EventEnvelope envelope =
         codec.create(
             events.sourceSystem(),

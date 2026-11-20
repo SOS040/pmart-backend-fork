@@ -22,3 +22,8 @@
 - auth-service 0.4.0: `GoogleIdTokenVerifier` → `IdTokenVerifier`(제공자 공통), `IdTokenVerifiers`(제공자별 고르기). 시험 `CustomerSocialLoginIT.kakaoAndNaverFollowTheGoogleFlow`·`IdTokenVerifiersTest`.
 - 고객 앱: 카카오 SDK 로그인 결과의 `idToken`(콘솔 OIDC 켬), 네이버는 OIDC(인가 코드 + PKCE)로 받은 `id_token` 을 보낸다 — 네이버 SDK 가 OIDC ID 토큰을 주지 않으면 AppAuth 같은 OIDC 라이브러리(앱 쪽 결정).
 - 사용자 할 일: 카카오 콘솔 카카오 로그인·OpenID Connect 켜기·Android 키 해시·앱 키 알려 주기, 네이버 애플리케이션 등록·Client ID 알려 주기(secret 불필요).
+
+## 덧붙임 (2026-11-20) — 네이버 프로필 사진
+- 사용자 "네이버 프로필 넣어줘야지". 네이버 ID 토큰에는 프로필 클레임(사진)이 없다. 결정 2(서버는 access token 을 쓰지 않는다)는 그대로 두고, **앱이 자기 access token 으로 네이버 회원 프로필 API(`openapi.naver.com/v1/nid/me`)를 읽어 사진 주소만** 로그인 본문 `profileImageUrl` 로 넘긴다(auth 0.8.0 — social-logins·completions·identity confirmations).
+- 서버는 NAVER 이고 ID 토큰에 사진이 없을 때만, https·`*.pstatic.net`·1000자 이하일 때만 CustomerAuthenticated `pictureUrl` 로 싣는다(`ProviderPictureRules`) — 아니면 무시(로그인은 그대로). 앱이 넘긴 값이라 검증된 신원 정보가 아니다 — 본인 프로필 사진 표시에만 쓰고, customer-service 가 같은 호스트 목록(pstatic.net·kakaocdn.net 추가)·리다이렉트 안 따름·1MB 로 받아 사본을 둔다.
+- 카카오는 ID 토큰 `picture`(동의 때) 그대로 — 받을 호스트에 kakaocdn.net 만 더함.

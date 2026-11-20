@@ -35,7 +35,8 @@ public class LoginsController implements LoginsApi {
             xSourceSystem,
             xDeviceId,
             body.getProvider().getValue(),
-            body.getProviderToken());
+            body.getProviderToken(),
+            body.getProfileImageUrl());
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result(r));
   }
 
@@ -79,7 +80,8 @@ public class LoginsController implements LoginsApi {
                             c.getConsentType().strip(),
                             c.getVersion().strip(),
                             Boolean.TRUE.equals(c.getAgreed())))
-                .toList());
+                .toList(),
+            body.getProfileImageUrl());
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result(r));
   }
 
@@ -123,7 +125,8 @@ public class LoginsController implements LoginsApi {
             idempotencyKey,
             xSourceSystem,
             xDeviceId,
-            body.getProviderToken());
+            body.getProviderToken(),
+            body.getProfileImageUrl());
     return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result(r));
   }
 

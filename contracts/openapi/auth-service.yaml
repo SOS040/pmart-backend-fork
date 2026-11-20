@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
+    0.8.0(2026-11-20 — 사용자 "네이버 프로필 넣어줘야지"): 로그인 본문 세 곳(`social-logins`·`completions`·`identity-verifications/…/confirmations`)에 선택 `profileImageUrl`.
+    네이버 ID 토큰에는 프로필 사진이 없어(ADR-0071 — 서버는 access token 을 쓰지 않는다) 앱이 네이버 프로필 API 로 받은 사진 주소를 넘긴다. **NAVER 이고 ID 토큰에 사진이 없을 때만**,
+    https·호스트 `*.pstatic.net`·1000자 이하일 때만 쓰고(customer-service 가 같은 호스트 목록으로 받아 사본을 둔다) 아니면 조용히 무시(로그인은 그대로). 카카오는 ID 토큰 `picture`(사진 동의 때) 그대로.
     0.7.0(2026-11-20 — 네이버 로그인이 동의 뒤 멈춤, 사용자 "그렇게 고쳐주고 배포해줘"): 네이버 콜백 중계가 302 대신 **"앱으로 돌아가기" 페이지(200 text/html)**.
     네이버는 동의 뒤 스크립트로 콜백에 보내는데, 그 이동에 이어진 302 → 앱 주소(`com.pmart.customer://…`)는 Chrome 이 사용자 동작이 없다며 앱을 열지 않았다
     (LAN 2026-11-20 09:19 — 콜백 302 는 나갔으나 앱 수신 화면이 뜨지 않고 네이버 일반 오류). 페이지는 같은 앱 주소로 한 번 넘겨 보고, 안 되면 버튼(사용자가 누름 → Chrome 이 앱을 연다).
@@ -137,6 +140,7 @@ paths:
               properties:
                 provider: { $ref: '#/components/schemas/Provider' }
                 providerToken: { type: string, description: "제공자 OpenID Connect ID 토큰(JWT). GOOGLE: aud = 고객용 웹 클라이언트 ID(serverClientId). KAKAO(0.4.0): aud = 카카오 SDK 앱 키. NAVER(0.4.0): aud = 네이버 Client ID. 인가 코드·access token 은 받지 않는다(ADR-0055·0071). 로그 금지" }
+                profileImageUrl: { type: string, maxLength: 1000, x-added-in: '2026-11-20', description: '(0.8.0) NAVER 만 — 앱이 네이버 프로필 API(profile_image)로 받은 사진 주소. https·*.pstatic.net 만, 아니면 무시. ID 토큰에 사진이 있으면 그것을 쓴다. 로그 금지' }
                 purpose: { type: string, enum: [GENERAL, CHECKOUT], default: GENERAL, description: 'CHECKOUT이면 장바구니 병합 확인 흐름으로 복귀 — 서버 응답은 GENERAL 과 같고(CART_MERGE_CONFIRM 을 보내지 않음, 0.2.1), 병합 확인은 앱이 한다' }
       responses:
         '200':
@@ -277,6 +281,7 @@ paths:
               required: [providerToken]
               properties:
                 providerToken: { type: string, description: "로그인한 그 계정의 ID 토큰. 로그 금지" }
+                profileImageUrl: { type: string, maxLength: 1000, x-added-in: '2026-11-20', description: '(0.8.0) NAVER 만 — 앱이 네이버 프로필 API(profile_image)로 받은 사진 주소. https·*.pstatic.net 만, 아니면 무시. ID 토큰에 사진이 있으면 그것을 쓴다. 로그 금지' }
       responses:
         '200':
           description: AUTH_MEMBER·토큰 또는 AUTH_IDENTITY·진행 상태
@@ -330,6 +335,7 @@ paths:
               required: [providerToken, consents]
               properties:
                 providerToken: { type: string, description: "로그인한 그 계정의 Google ID 토큰(검증·프로필 전달용). 로그 금지" }
+                profileImageUrl: { type: string, maxLength: 1000, x-added-in: '2026-11-20', description: '(0.8.0) NAVER 만 — 앱이 네이버 프로필 API(profile_image)로 받은 사진 주소. https·*.pstatic.net 만, 아니면 무시. ID 토큰에 사진이 있으면 그것을 쓴다. 로그 금지' }
                 consents:
                   type: array
                   minItems: 1
