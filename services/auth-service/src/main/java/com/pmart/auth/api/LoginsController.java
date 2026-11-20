@@ -4,11 +4,14 @@ import com.pmart.auth.api.generated.LoginsApi;
 import com.pmart.auth.api.generated.model.AuthResult;
 import com.pmart.auth.api.generated.model.AuthState;
 import com.pmart.auth.api.generated.model.CompleteSocialLoginRequest;
+import com.pmart.auth.api.generated.model.ExchangeNaverCode200Response;
+import com.pmart.auth.api.generated.model.ExchangeNaverCodeRequest;
 import com.pmart.auth.api.generated.model.SocialLoginRequest;
 import com.pmart.auth.api.generated.model.StartGuestSession201Response;
 import com.pmart.auth.application.ConsentDecision;
 import com.pmart.auth.application.CustomerSocialLoginService;
 import com.pmart.auth.application.GuestSessionService;
+import com.pmart.auth.application.NaverCodeExchangeService;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,10 +23,32 @@ public class LoginsController implements LoginsApi {
 
   private final CustomerSocialLoginService logins;
   private final GuestSessionService guests;
+  private final NaverCodeExchangeService naver;
 
-  public LoginsController(CustomerSocialLoginService logins, GuestSessionService guests) {
+  public LoginsController(
+      CustomerSocialLoginService logins,
+      GuestSessionService guests,
+      NaverCodeExchangeService naver) {
     this.logins = logins;
     this.guests = guests;
+    this.naver = naver;
+  }
+
+  /** 네이버 인가 코드 → ID 토큰(0.10.0, ADR-0078). 코드·verifier·토큰은 로그 금지. */
+  @Override
+  public ResponseEntity<ExchangeNaverCode200Response> exchangeNaverCode(
+      String idempotencyKey, String xSourceSystem, ExchangeNaverCodeRequest body) {
+    String idToken =
+        naver.exchange(
+            idempotencyKey,
+            xSourceSystem,
+            body.getAuthorizationCode(),
+            body.getCodeVerifier(),
+            body.getRedirectUri(),
+            body.getState());
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(new ExchangeNaverCode200Response().idToken(idToken));
   }
 
   @Override
