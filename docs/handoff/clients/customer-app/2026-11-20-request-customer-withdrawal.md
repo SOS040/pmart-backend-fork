@@ -39,4 +39,4 @@
 - `providerToken`·사유 원문은 로그에 남기지 않는다(앱 요청 로그의 본문 가리기 확인).
 
 ## 배포 상태
-- (작성 시점) 서버 구현·시험 끝, LAN 배포 전 — 배포하면 이 줄을 고친다.
+- **LAN 배포 2026-11-20 15:01 KST**: customer·order·claim·cart(PC 2), auth·notification·api-gateway(PC 4) b9c7aeca, pmart-config c3ad4d6. 게이트웨이 `GET /api/v1/me/withdrawals` 토큰 없이 401(경로 열림) 확인. 실제 탈퇴는 앱 화면으로 확인.
