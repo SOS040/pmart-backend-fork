@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.27.0
+  version: 0.28.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -70,6 +70,7 @@ info:
     0.25.0(2026-11-20, PDA 피패킹·복귀 — mfc-app BR-52 R19·R20): 작업 상세 줄 `temperatureZone`(SKU 보관 온도대 AMBIENT·CHILLED·FROZEN — mfc-inventory SKU 사본, 조회 때 읽음, 모르면 null — R19-2). 작업 목록 `cartCode`(장바구니 `CRT-…` 를 찍으면 그 장바구니로 집품한 출고의 작업 — R20-5). 포장 밀봉·조회 `icePackCount`(아이스팩 수, 선택 — R19-9 사용자 결정 2026-11-20 "아이스팩 수만 기록"). 복귀(RETURN) 실적: 냉장·냉동 상품 줄은 보낸 resultQuality 와 상관없이 **늘 QUARANTINED**(격리로 선반에 — 품질 판정 뒤에만 판매, R19-8 사용자 결정 2026-11-20 "항상 품질 검사"), 복귀 예외 보고(`shortage` — 한 줄·옮긴 양 0, 사유 SHORT·DAMAGED·SPOILED·BLOCKED, R19-7)를 기록만 한다(재고·작업 상태 그대로).
     0.26.0(2026-11-20, 복귀 예외 처리 — mfc-app BR-52 R19-7 사용자 결정 2026-11-20 "응"): 복귀(RETURN) 예외 보고가 기록만에서 처리로. **DAMAGED·SPOILED** = `toLocation`(격리로 둘 선반) 필수(없으면 400 TO_LOCATION_REQUIRED) — 일반 복귀와 같은 재고 MOVE 를 resultQuality QUARANTINED 로(격리·보관 — 해제·폐기는 mfc-quality), 실적 appliedQty = 예외 수량, 작업 줄 완료량에 더한다. **SHORT·BLOCKED** = 재고 호출 없이 실적 APPLIED(appliedQty = 예외 수량), 작업 줄 취소량에 더한다 — 포장·장바구니 위치에 CANCEL_RETURN_PENDING 으로 남은 재고는 관리자가 재고 정정(승인)으로 맞춘다. 둘 다 남은 복귀량이 줄고 다 처리되면 작업 COMPLETED, `GET /shortages` 에 taskType RETURN 줄로 남는다(locationCode = 복귀 대상이 놓인 위치). LineShortageReported 는 내지 않는다(취소된 주문). 0.25.0 에 기록만 한 예외 보고(appliedQty 0)는 처리한 양으로 세지 않는다. 결품률 지표는 그대로(PICK 작업 줄만).
     0.27.0(2026-11-20, 센터 관리자 지난 주문 조회 — MFC 시뮬레이터 R-29 3번, 사용자 "R-29 … 니가 바로 고쳐"): `GET /work-orders` 가 `orderId` 대신 화면용 주문번호 `orderNumber`(8자리, 공백·하이픈 무시)로도 찾는다 — 둘 중 정확히 하나(아니면 400), 번호 사본이 없으면 404. `GET /shipments` 에 `orderNumber`·`createdFrom`/`createdTo`(출고 만든 날, Asia/Seoul, 최대 31일)·`sort`(oldest 기본 = 예전 그대로 / recent = 만든 순 거꾸로) — 번호·날짜를 주고 state 를 안 주면 모든 상태(지난 주문). 권한은 그대로. 추가 칸만.
+    0.28.0(2026-11-20, 관리자 작업 중지 — MFC 시뮬레이터 R-29 2단계, 사용자 결정 2026-11-20, ADR-0077): `POST /tasks/{taskId}/blocks`(그 센터 `MFC_SUPERVISOR` 또는 `OPERATOR_ADMIN`, 사유 필수) — READY·ASSIGNED·IN_PROGRESS 작업을 BLOCKED(`blockKind` SUPERVISOR)로. 담당·시작·집품분·재고·예약·배차 요청은 그대로(WK-04 "고장만으로 예약 해제 안 됨"). 결과를 기다리는 실적·열린 포장이 있으면 409 EXECUTION_IN_FLIGHT. 막힌 작업의 시작·실적·포장 밀봉은 409 **TASK_BLOCKED**(결품으로 막힌 것도 같은 코드). `GET /tasks/{taskId}/controls`(관리자 조작 기록, 최근 순), 작업 상세 `blockKind`. 작업자는 예전처럼 PDA 문제 보고(결품)만.
     **사유 값(2026-11-19, 요청 F-11 — 화면 이름표용. 목록 밖 값이 올 수 있다: 재고 서비스가 새 거절 코드를 더하면 그대로 온다 → 화면은 코드 그대로)**
     - C1 작업 중지 실패 `lastError`(StopRequest·처리 대기 MFC_STOP_FAILED) = `코드: 상세`. 코드:
       `RECORD_MISMATCH` 집품·포장 기록이 재고 서비스와 맞지 않음(현장 확인 필요) · `RETURN_MISMATCH` 복귀할 위치별 수량 합이 집품·포장량과 다름 ·
@@ -78,6 +79,7 @@ info:
     - C2 작업·출고 막힘 `blockReason`(작업 BLOCKED) = **한국어 문장**(코드 아님) 두 가지 —
       `예약 보류(격리·실사 손실 — 재확보 못 함): <주문 줄> <수량>개, …`(피킹 시작 때 재고가 보류한 양) ·
       `결품 보고: <주문 줄> <수량>개 <사유>(재확보 못 함), …`(사유 SHORT 부족·DAMAGED 파손·BLOCKED 보류). 화면은 앞부분(`예약 보류`·`결품 보고`)으로 이름표를 붙이고 문장은 상세에.
+      (0.28.0) `관리자 작업 중지: <사유>`(센터 관리자가 멈춤 — `blockKind` SUPERVISOR, 결품 둘은 blockKind null).
       문장 안 주문 줄은 시스템 ID 다(ADR-0070 — 목록에는 보이지 않게).
     - C3 포장 인계 거절 `rejectReason`(PackageHandover·처리 대기 MFC_HANDOVER_REJECTED) = `코드: 상세`. 코드(재고 인계 전기):
       `INSUFFICIENT_STOCK` 포장 위치에 포장분이 모자람(다른 곳에 놓였거나 이미 나감) · `HANDOVER_QTY_EXCEEDED` 포장한 양보다 많이 넘기려 함 ·
@@ -509,6 +511,75 @@ paths:
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
+  /tasks/{taskId}/blocks:
+    post:
+      tags: [tasks]
+      summary: 관리자 작업 중지 — READY·ASSIGNED·IN_PROGRESS → BLOCKED (0.28.0, ADR-0077)
+      description: |
+        MFC 시뮬레이터 R-29 2단계(사용자 결정 2026-11-20). 현장이 멈췄을 때(설비 고장·오주문 확인 등) 센터 관리자가 작업을 멈춘다(WK-04 해결 대기 BLOCKED).
+        - 누가: 그 센터 `MFC_SUPERVISOR` 또는 `OPERATOR_ADMIN`(모든 센터). 작업자는 이 경로를 쓰지 않는다 — PDA 문제 보고(결품)만.
+        - 언제: READY·ASSIGNED·IN_PROGRESS(업무 §6 상태표). 그 밖 409 INVALID_STATE. 결과를 기다리는 실적(RECORDED·UNKNOWN_RESULT)·열린 포장이 있으면 409 EXECUTION_IN_FLIGHT(retryable — 결과가 난 뒤).
+        - 바뀌는 것: 작업 상태 BLOCKED(`blockKind` SUPERVISOR, `blockReason` = `관리자 작업 중지: <사유>`), 버전 +1, TaskProgressed(state BLOCKED, blockKind·reason·controlledBy).
+        - 그대로인 것: 담당(capacity 배정)·시작 점유·완료량·장바구니에 집은 물건·재고 수량·예약·배차 요청(WK-04 "고장만으로 예약 해제 안 됨", IV-07/08/09 그대로).
+        - 막힌 동안 작업자의 시작·실적·포장 밀봉은 409 TASK_BLOCKED. 해제는 `POST /tasks/{taskId}/unblocks`(0.29.0).
+        같은 Idempotency-Key·같은 본문은 같은 결과(200), 다른 본문이면 409 IDEMPOTENCY_CONFLICT.
+      operationId: blockTask
+      x-pmart-user-types: [OPERATOR]
+      x-added-in: '2026-11-20'
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200, description: 멈춘 이유(필수 — 기록·화면 표시) }
+      responses:
+        '200':
+          description: 멈춤(BLOCKED)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskControl' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / EXECUTION_IN_FLIGHT / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /tasks/{taskId}/controls:
+    get:
+      tags: [tasks]
+      summary: 관리자 조작 기록 — 작업 중지·해제·부분 종료 (0.28.0, 최근 순)
+      description: |
+        이 작업에 센터 관리자가 한 조작(누가·언제·사유·전후 상태·작업 버전). 권한은 작업 상세와 같다(그 센터 운영자·OPERATOR_ADMIN 은 다른 센터 작업도 — 0.28.0).
+        담당 바뀜 이력은 mfc-capacity 배정 이력이 정본.
+      operationId: listTaskControls
+      x-pmart-user-types: [OPERATOR]
+      x-added-in: '2026-11-20'
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TaskControl' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /tasks/{taskId}/starts:
     post:
       tags: [tasks]
@@ -557,7 +628,7 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
-          description: ALREADY_STARTED (다른 시작 점유가 이미 성공) / NOT_ASSIGNEE (활성 담당자 불일치) / PREDECESSOR_NOT_COMPLETED / INVALID_STATE / VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
+          description: ALREADY_STARTED (다른 시작 점유가 이미 성공) / NOT_ASSIGNEE (활성 담당자 불일치) / PREDECESSOR_NOT_COMPLETED / TASK_BLOCKED (0.28.0 — 작업이 BLOCKED, 관리자 해제·결품 처리 뒤) / INVALID_STATE / VERSION_CONFLICT / IDEMPOTENCY_CONFLICT
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -647,7 +718,7 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409':
-          description: INVALID_STATE (Task가 ASSIGNED/IN_PROGRESS 아님) / NOT_ASSIGNEE (활성 담당자 불일치) / VERSION_CONFLICT / CART_MISMATCH (이 출고가 쓰는 장바구니와 다름)
+          description: INVALID_STATE (Task가 ASSIGNED/IN_PROGRESS 아님) / TASK_BLOCKED (0.28.0 — 작업이 BLOCKED) / NOT_ASSIGNEE (활성 담당자 불일치) / VERSION_CONFLICT / CART_MISMATCH (이 출고가 쓰는 장바구니와 다름)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -957,7 +1028,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Package' }
         '409':
-          description: INVALID_STATE (Shipment CANCELLED/HANDED_OVER) / CONTENT_MISMATCH (패킹 완료 수량 초과)
+          description: INVALID_STATE (Shipment CANCELLED/HANDED_OVER) / TASK_BLOCKED (0.28.0 — 포장 작업이 BLOCKED) / CONTENT_MISMATCH (패킹 완료 수량 초과)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -1702,6 +1773,11 @@ components:
                 - $ref: '#/components/schemas/TaskLastExecution'
                 - type: 'null'
             blockReason: { type: [string, 'null'], description: "막힌 사유 — 한국어 문장(코드 아님). (F-11) 값 목록은 info 설명 '사유 값' C2" }
+            blockKind:
+              type: [string, 'null']
+              enum: [SUPERVISOR, null]
+              description: '(0.28.0, R-29) BLOCKED 를 누가 걸었나 — SUPERVISOR = 센터 관리자 작업 중지(해제는 관리자). null = 결품·예약 보류(결품 처리가 푼다) 또는 BLOCKED 아님'
+              x-added-in: '2026-11-20'
             packingLocations:
               type: array
               description: PACK — 이 출고의 집품분이 놓인 위치(PICK 실적의 도착지 — 장바구니 또는 포장 위치, 0.2.0)
@@ -1711,6 +1787,21 @@ components:
               enum: [ROUTING, NEAREST_FALLBACK, CODE_ORDER, null]
               description: '(0.4.10, PICK 만) 방문 순서를 정한 방법 — ROUTING(mfc-capacity OR-Tools), NEAREST_FALLBACK(가까운 칸부터), CODE_ORDER(순서를 못 받아 칸 코드 순). 피킹 시작 때 정한다'
             asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+    TaskControl:
+      type: object
+      description: '(0.28.0, R-29) 센터 관리자 작업 조작 한 건 — 작업 중지(BLOCK)·해제(UNBLOCK, 0.29.0)·부분 종료(PARTIAL_CLOSE, 0.30.0)'
+      required: [controlId, taskId, action, fromState, toState, taskVersion, reason, actorId, at]
+      properties:
+        controlId: { type: string }
+        taskId: { type: string }
+        action: { type: string, description: 'BLOCK · UNBLOCK · PARTIAL_CLOSE(뒤 버전에서 더할 수 있다 — 모르는 값은 그대로 표시)' }
+        fromState: { $ref: '#/components/schemas/TaskState' }
+        toState: { $ref: '#/components/schemas/TaskState' }
+        taskVersion: { type: integer, description: 조작 뒤 작업 버전 }
+        reason: { type: string }
+        actorId: { type: string, description: 조작한 운영자 ID(직원 화면용 식별자) }
+        workerId: { type: [string, 'null'], description: 조작 뒤 담당(없으면 null) }
+        at: { type: string, format: date-time }
     TaskStart:
       type: object
       properties:

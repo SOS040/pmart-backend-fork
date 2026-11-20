@@ -67,6 +67,42 @@ public class FulfillmentEvents {
     publish("TaskProgressed", "Task", t.taskId(), version, workerId, p);
   }
 
+  /**
+   * 센터 관리자 조작(작업 중지·해제·부분 종료 — 0.28.0, R-29 ADR-0077)의 TaskProgressed. workerId = 조작 뒤 담당, 행위자 =
+   * 관리자(controlledBy).
+   */
+  public void taskControlled(
+      TaskInfo t,
+      String state,
+      String previousState,
+      int version,
+      @Nullable String workerId,
+      String controlledBy,
+      @Nullable String blockKind,
+      String reason,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("taskId", t.taskId());
+    p.put("mfcId", t.mfcId());
+    p.put("type", t.taskType());
+    p.put("state", state);
+    p.put("previousState", previousState);
+    if (workerId != null) {
+      p.put("workerId", workerId);
+      if (t.assignmentVersion() > 0) {
+        p.put("assignmentVersion", t.assignmentVersion());
+      }
+    }
+    p.put("orderId", t.orderId());
+    p.put("controlledBy", controlledBy);
+    if (blockKind != null) {
+      p.put("blockKind", blockKind);
+    }
+    p.put("reason", reason);
+    p.put("progressedAt", at.toString());
+    publish("TaskProgressed", "Task", t.taskId(), version, controlledBy, p);
+  }
+
   public void preparationStarted(TaskInfo t, Instant at) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("orderId", t.orderId());

@@ -2,6 +2,8 @@ package com.pmart.mfc.fulfillment.api;
 
 import com.pmart.common.web.PmartException;
 import com.pmart.mfc.fulfillment.api.generated.TasksApi;
+import com.pmart.mfc.fulfillment.api.generated.model.BlockTaskRequest;
+import com.pmart.mfc.fulfillment.api.generated.model.ListTaskControls200Response;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200Response;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponseAsOf;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponsePage;
@@ -9,6 +11,7 @@ import com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response;
 import com.pmart.mfc.fulfillment.api.generated.model.StartTaskRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskActiveStart;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskAssignment;
+import com.pmart.mfc.fulfillment.api.generated.model.TaskControl;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskDetail;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskExecution;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskExecutionLine;
@@ -24,6 +27,7 @@ import com.pmart.mfc.fulfillment.api.generated.model.TaskStart;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskState;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskSummary;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskType;
+import com.pmart.mfc.fulfillment.application.TaskControlService;
 import com.pmart.mfc.fulfillment.application.TaskService;
 import com.pmart.mfc.fulfillment.application.TaskService.ExecCommand;
 import com.pmart.mfc.fulfillment.application.TaskService.ExecLine;
@@ -55,12 +59,15 @@ public class TasksController implements TasksApi {
   private final ObjectMapper mapper;
 
   private final com.pmart.mfc.fulfillment.application.OrderNumbers orderNumbers;
+  private final TaskControlService controls;
 
   public TasksController(
       TaskService service,
       ObjectMapper mapper,
-      com.pmart.mfc.fulfillment.application.OrderNumbers orderNumbers) {
+      com.pmart.mfc.fulfillment.application.OrderNumbers orderNumbers,
+      TaskControlService controls) {
     this.orderNumbers = orderNumbers;
+    this.controls = controls;
     this.service = service;
     this.mapper = mapper;
   }
@@ -208,6 +215,10 @@ public class TasksController implements TasksApi {
     out.setLastExecution(
         service.executions(taskId, 1).stream().findFirst().map(this::last).orElse(null));
     out.setBlockReason(t.blockReason());
+    out.setBlockKind(
+        "BLOCKED".equals(t.state()) && t.blockKind() != null
+            ? TaskDetail.BlockKindEnum.fromValue(t.blockKind())
+            : null);
     out.setPackingLocations(d.packingLocations());
     out.setAsOf(asOf(d.planFresh()));
     return ResponseEntity.ok(out);
@@ -402,6 +413,43 @@ public class TasksController implements TasksApi {
       com.pmart.mfc.fulfillment.api.generated.model.ReleaseTaskRequest body) {
     TaskInfo t = service.release(taskId, body.getWorkerId(), body.getReason());
     return ResponseEntity.ok(attention(summary(t), t));
+  }
+
+  /** 관리자 작업 중지(0.28.0, R-29 — ADR-0077). */
+  @Override
+  public ResponseEntity<TaskControl> blockTask(
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      BlockTaskRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        control(
+            controls.block(
+                taskId, idempotencyKey, xSourceSystem, body.getReason(), xExpectedVersion)));
+  }
+
+  /** 관리자 조작 기록(0.28.0). */
+  @Override
+  public ResponseEntity<ListTaskControls200Response> listTaskControls(String taskId) {
+    var out = new ListTaskControls200Response();
+    out.setItems(controls.controls(taskId).stream().map(TasksController::control).toList());
+    return ResponseEntity.ok(out);
+  }
+
+  static TaskControl control(TaskControlService.Control c) {
+    var out = new TaskControl();
+    out.setControlId(c.controlId());
+    out.setTaskId(c.taskId());
+    out.setAction(c.action());
+    out.setFromState(TaskState.fromValue(c.fromState()));
+    out.setToState(TaskState.fromValue(c.toState()));
+    out.setTaskVersion(c.taskVersion());
+    out.setReason(c.reason());
+    out.setActorId(c.actorId());
+    out.setWorkerId(c.workerId());
+    out.setAt(time(c.at()));
+    return out;
   }
 
   private static TaskSummary summary(TaskInfo t) {

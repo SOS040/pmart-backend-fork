@@ -51,6 +51,12 @@ public final class TaskRules {
   public static final String INVALID_STATE = "INVALID_STATE";
   public static final String VERSION_CONFLICT = "VERSION_CONFLICT";
 
+  /** 작업이 BLOCKED — 관리자 작업 중지 또는 결품 처리 중(0.28.0, R-29 ADR-0077). 시작·실적·포장 밀봉 거절. */
+  public static final String TASK_BLOCKED = "TASK_BLOCKED";
+
+  /** 결과를 기다리는 실적·열린 포장이 있음(내놓기·관리자 조작 — 결과가 난 뒤). */
+  public static final String EXECUTION_IN_FLIGHT = "EXECUTION_IN_FLIGHT";
+
   /** 활성 담당(mfc-capacity 정본 동기 조회). 없으면 null. */
   /**
    * @param workerRejection 배정 작업자가 지금 맡을 수 없는 이유(capacity 조회 때 계산 — 정지·퇴사·업무 변경), null 이면 적격
@@ -78,6 +84,9 @@ public final class TaskRules {
     }
     if ("WAITING".equals(taskState) && !predecessorCompleted) {
       return PREDECESSOR_NOT_COMPLETED;
+    }
+    if ("BLOCKED".equals(taskState)) {
+      return TASK_BLOCKED; // 관리자 작업 중지·결품 처리 중(0.28.0 — 해제·결품 처리 뒤)
     }
     if (!"READY".equals(taskState) && !"ASSIGNED".equals(taskState)) {
       return INVALID_STATE;

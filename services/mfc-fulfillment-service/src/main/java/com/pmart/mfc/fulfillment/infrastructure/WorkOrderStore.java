@@ -346,9 +346,12 @@ public class WorkOrderStore {
    */
   public void closeEmptyTasks(String fulfillmentId, Instant now) {
     jdbc.update(
-        "UPDATE task t SET state = 'CANCELLED', hold_reason = NULL, version = t.version + 1,"
+        "UPDATE task t SET state = 'CANCELLED', hold_reason = NULL, block_reason = NULL,"
+            + " block_kind = NULL, version = t.version + 1,"
             + " updated_at = ? FROM shipment s WHERE s.shipment_id = t.shipment_id"
-            + " AND s.fulfillment_id = ? AND t.state IN ('WAITING', 'READY', 'ASSIGNED')"
+            + " AND s.fulfillment_id = ? AND (t.state IN ('WAITING', 'READY', 'ASSIGNED')"
+            // 관리자 중지(0.28.0)로 시작 전에 멈춘 작업도 — 시작 전 중지는 그대로 취소
+            + " OR (t.state = 'BLOCKED' AND t.block_kind = 'SUPERVISOR' AND t.started_at IS NULL))"
             + " AND NOT EXISTS (SELECT 1 FROM task_line l WHERE l.task_id = t.task_id"
             + " AND l.planned_qty - l.completed_qty - l.cancelled_qty > 0)",
         ts(now),

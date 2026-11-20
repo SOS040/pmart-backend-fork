@@ -43,7 +43,8 @@ public class TaskStore {
       String shipmentState,
       @Nullable String outOfStockPreference,
       Instant updatedAt,
-      @Nullable String pickedBy) {}
+      @Nullable String pickedBy,
+      @Nullable String blockKind) {}
 
   /** 작업 행 + 출고 행 사본(SKU·상품명). */
   public record LineView(
@@ -325,11 +326,12 @@ public class TaskStore {
         orderLineId);
   }
 
-  /** 상태 전이(+버전). clearStart 면 시작 점유를 지운다(재배정·종료). */
+  /** 상태 전이(+버전). clearStart 면 시작 점유를 지운다(재배정·종료). block_kind 는 지운다(관리자 중지는 {@link #setBlocked}). */
   public void setState(
       String taskId, String state, @Nullable String blockReason, boolean clearStart, Instant at) {
     jdbc.update(
-        "UPDATE task SET state = ?, block_reason = ?, version = version + 1, updated_at = ?"
+        "UPDATE task SET state = ?, block_reason = ?, block_kind = NULL, version = version + 1,"
+            + " updated_at = ?"
             + (clearStart
                 ? ", start_request_id = NULL, started_by = NULL, started_at = NULL, device_id = NULL"
                 : "")
@@ -340,11 +342,23 @@ public class TaskStore {
         taskId);
   }
 
+  /** 관리자 작업 중지(0.28.0, R-29 — ADR-0077): BLOCKED + 누가 걸었나(kind). 담당·시작 점유·완료량은 그대로(버전 +1). */
+  public void setBlocked(String taskId, String kind, String blockReason, Instant at) {
+    jdbc.update(
+        "UPDATE task SET state = 'BLOCKED', block_kind = ?, block_reason = ?, version = version + 1,"
+            + " updated_at = ? WHERE task_id = ?",
+        kind,
+        blockReason,
+        ts(at),
+        taskId);
+  }
+
   /** 작업 내놓기 — READY, 담당·시작 지움(assignment_version 은 그대로 — 다음 배정이 더 큰 버전). */
   public void releaseToReady(String taskId, Instant at) {
     jdbc.update(
         "UPDATE task SET state = 'READY', worker_id = NULL, assignment_id = NULL, start_request_id = NULL,"
-            + " started_by = NULL, started_at = NULL, version = version + 1, updated_at = ? WHERE task_id = ?",
+            + " started_by = NULL, started_at = NULL, block_reason = NULL, block_kind = NULL,"
+            + " version = version + 1, updated_at = ? WHERE task_id = ?",
         ts(at),
         taskId);
   }
@@ -936,6 +950,77 @@ public class TaskStore {
 
   // ---------- 변환 ----------
 
+  // ---------- 관리자 조작 기록(0.28.0, R-29) ----------
+
+  /** 관리자 조작 한 건(task_control). */
+  public record ControlRow(
+      String controlId,
+      String taskId,
+      String action,
+      String fromState,
+      String toState,
+      int taskVersion,
+      String reason,
+      String actorId,
+      @Nullable String workerId,
+      String requestId,
+      @Nullable String details,
+      Instant at) {}
+
+  public void insertControl(ControlRow c) {
+    jdbc.update(
+        "INSERT INTO task_control (control_id, task_id, action, from_state, to_state, task_version,"
+            + " reason, actor_id, worker_id, request_id, details, created_at)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?::jsonb,?)",
+        c.controlId(),
+        c.taskId(),
+        c.action(),
+        c.fromState(),
+        c.toState(),
+        c.taskVersion(),
+        c.reason(),
+        c.actorId(),
+        c.workerId(),
+        c.requestId(),
+        c.details(),
+        ts(c.at()));
+  }
+
+  public Optional<ControlRow> findControl(String taskId, String requestId) {
+    return jdbc
+        .query(
+            "SELECT * FROM task_control WHERE task_id = ? AND request_id = ?",
+            (rs, i) -> control(rs),
+            taskId,
+            requestId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 최근 순. */
+  public List<ControlRow> controls(String taskId) {
+    return jdbc.query(
+        "SELECT * FROM task_control WHERE task_id = ? ORDER BY created_at DESC, control_id DESC",
+        (rs, i) -> control(rs),
+        taskId);
+  }
+
+  private static ControlRow control(ResultSet rs) throws SQLException {
+    return new ControlRow(
+        rs.getString("control_id"),
+        rs.getString("task_id"),
+        rs.getString("action"),
+        rs.getString("from_state"),
+        rs.getString("to_state"),
+        rs.getInt("task_version"),
+        rs.getString("reason"),
+        rs.getString("actor_id"),
+        rs.getString("worker_id"),
+        rs.getString("request_id"),
+        rs.getString("details"),
+        rs.getTimestamp("created_at").toInstant());
+  }
+
   private static TaskInfo info(ResultSet rs) throws SQLException {
     return new TaskInfo(
         rs.getString("task_id"),
@@ -962,7 +1047,8 @@ public class TaskStore {
         rs.getString("shipment_state"),
         rs.getString("out_of_stock_preference"),
         rs.getTimestamp("updated_at").toInstant(),
-        rs.getString("picked_by"));
+        rs.getString("picked_by"),
+        rs.getString("block_kind"));
   }
 
   private static ExecutionRow execution(ResultSet rs) throws SQLException {

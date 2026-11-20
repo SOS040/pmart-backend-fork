@@ -817,6 +817,9 @@ public class TaskService {
       return existing.get(); // 같은 키 — 끝났으면 그 결과, 열려 있으면 같은 실행 ID 로 다시 보낸다
     }
     TaskInfo t = store.lock(taskId).orElseThrow();
+    if ("BLOCKED".equals(t.state())) {
+      throw conflict(TaskRules.TASK_BLOCKED, blockedMessage(t));
+    }
     if (!"IN_PROGRESS".equals(t.state())) {
       throw conflict(
           TaskRules.INVALID_STATE, "작업 " + taskId + " 은 " + t.state() + " 상태입니다(시작한 작업만).");
@@ -1530,6 +1533,13 @@ public class TaskService {
     m.put("taskVersion", r.taskVersion());
     m.put("decidedAt", r.decidedAt());
     return m;
+  }
+
+  /** TASK_BLOCKED 안내(0.28.0) — 관리자 중지면 관리자 해제를, 결품이면 결품 처리를 기다린다. */
+  static String blockedMessage(TaskInfo t) {
+    return "SUPERVISOR".equals(t.blockKind())
+        ? "센터 관리자가 작업을 멈췄습니다 — 관리자가 해제한 뒤 이어서 합니다(" + t.blockReason() + ")."
+        : "작업이 막혀 있습니다(" + t.blockReason() + ") — 처리가 끝난 뒤 이어서 합니다.";
   }
 
   /** 집품 도착지가 이 출고가 쓰는 장바구니와 다름(409, 2026-11-17). */

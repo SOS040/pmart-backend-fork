@@ -333,6 +333,7 @@ GET /api/v1/surcharge-requests OPERATOR
 GET /api/v1/task-exceptions OPERATOR
 GET /api/v1/tasks OPERATOR
 GET /api/v1/tasks/{taskId} OPERATOR
+GET /api/v1/tasks/{taskId}/controls OPERATOR
 GET /api/v1/tasks/{taskId}/executions OPERATOR
 GET /api/v1/tasks/{taskId}/executions/{executionId} OPERATOR
 GET /api/v1/tasks/{taskId}/starts/{requestId} OPERATOR
@@ -608,6 +609,7 @@ POST /api/v1/suppliers/{supplierId}/contracts OPERATOR
 POST /api/v1/supply-requests OPERATOR
 POST /api/v1/supply-requests/{supplyRequestId}/withdrawals OPERATOR
 POST /api/v1/surcharge-requests/{requestId}/decisions OPERATOR
+POST /api/v1/tasks/{taskId}/blocks OPERATOR
 POST /api/v1/tasks/{taskId}/executions OPERATOR
 POST /api/v1/tasks/{taskId}/pick-results OPERATOR
 POST /api/v1/tasks/{taskId}/releases OPERATOR

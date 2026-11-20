@@ -148,6 +148,9 @@ public class PackageService {
       return again.get();
     }
     TaskInfo pack = store.lock(packTask(shipmentId).taskId()).orElseThrow();
+    if ("BLOCKED".equals(pack.state())) {
+      throw TaskService.conflict(TaskRules.TASK_BLOCKED, TaskService.blockedMessage(pack));
+    }
     if (!"IN_PROGRESS".equals(pack.state())) {
       throw TaskService.conflict(
           TaskRules.INVALID_STATE, "포장 작업은 " + pack.state() + " 상태입니다(시작한 포장 작업만 밀봉).");
