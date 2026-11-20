@@ -39,6 +39,12 @@ public class SearchIndex {
   public static final String PRODUCTS = "products";
   public static final String SKU_PRICES = "sku-prices";
 
+  /**
+   * SKU 표시 할인(2026-11-21 ADR-0082 4단계) — Logstash 가 SkuDisplayDiscountChanged 로 쓰고 검색이 결과 대표 SKU 로
+   * 읽는다.
+   */
+  public static final String SKU_DISCOUNTS = "sku-discounts";
+
   /** SKU 별 센터 취급(SkuHandlingChanged, 2026-11-05) — Logstash 만 쓰고 읽는다(상품 문서 carriedMfcIds 의 원천). */
   public static final String SKU_HANDLINGS = "sku-handlings";
 
@@ -64,6 +70,8 @@ public class SearchIndex {
           // ADR-0072 순위 신호
           SKU_PRICES,
           "sku-prices-v1",
+          SKU_DISCOUNTS,
+          "sku-discounts-v1",
           SKU_HANDLINGS,
           "sku-handlings-v1",
           RECENT_SEARCHES,

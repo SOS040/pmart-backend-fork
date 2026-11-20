@@ -39,7 +39,9 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.it.context=PromotionsIT"
+      "pmart.it.context=PromotionsIT",
+      "pmart.promotion.display-sync-interval=PT0.5S",
+      "pmart.promotion.display-sync-initial-delay=PT1S"
     })
 @Import(TestJwtConfiguration.class)
 class PromotionsIT extends PostgresKafkaContainerSupport {
@@ -217,6 +219,42 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
     return r.body().path("items");
   }
 
+  void priceEffective(String sku, long price, int version) {
+    kafka
+        .send(
+            "commerce.pricing.v1",
+            sku,
+            EventEnvelopeFixtures.envelope("PriceVersionEffective")
+                .from("pricing-service")
+                .aggregate("Price", sku, version)
+                .payload(
+                    Map.of(
+                        "sku",
+                        sku,
+                        "price",
+                        price,
+                        "priceVersion",
+                        version,
+                        "effectiveAt",
+                        Instant.now().toString()))
+                .buildJson())
+        .join();
+  }
+
+  /** 그 SKU 의 SkuDisplayDiscountChanged payload(seq 순). */
+  List<JsonNode> displayEvents(String sku) {
+    return jdbc
+        .queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'SkuDisplayDiscountChanged'"
+                + " AND aggregateid = ? AND topic = 'commerce.sku-display-discount.v1'",
+            String.class,
+            sku)
+        .stream()
+        .map(t -> mapper.readTree(t).path("payload"))
+        .sorted(java.util.Comparator.comparingInt(n -> n.path("seq").asInt()))
+        .toList();
+  }
+
   static String randomSku() {
     return "E-" + String.format("%08d", (int) (Math.random() * 90_000_000) + 10_000_000);
   }
@@ -309,6 +347,85 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
         r -> "ENDED".equals(r.body().path("state").asString()));
     JsonNode after = discounts(Map.of(skuB, 3000));
     assertThat(after.path(0).path("unitDiscount").asInt()).isEqualTo(150);
+  }
+
+  @Test
+  void displayDiscountFollowsPriceStartEndAndCategoryProducts() throws Exception {
+    String skuA = randomSku();
+    String skuC = randomSku();
+    String cat = "q" + (int) (Math.random() * 900 + 100);
+    priceEffective(skuA, 10_000, 1);
+    priceEffective(skuC, 3_000, 1);
+    await(
+        () ->
+            jdbc.queryForObject(
+                "SELECT count(*) FROM sku_price WHERE sku IN (?, ?)", Integer.class, skuA, skuC),
+        n -> n != null && n == 2);
+    // 더 오래된 가격 버전은 무시
+    priceEffective(skuA, 1, 0);
+
+    // A: SKU 10% 와 정액 300원 → 큰 쪽(1,000원)
+    String rate =
+        approved(
+            priceDiscount(
+                "A 10%",
+                Map.of("type", "RATE", "value", 10), List.of(Map.of("type", "SKU", "id", skuA))));
+    approved(
+        priceDiscount(
+            "A 300원",
+            Map.of("type", "AMOUNT", "value", 300),
+            List.of(Map.of("type", "SKU", "id", skuA))));
+    List<JsonNode> a = await(() -> displayEvents(skuA), l -> !l.isEmpty());
+    assertThat(a).hasSize(1);
+    assertThat(a.get(0).path("seq").asInt()).isEqualTo(1);
+    assertThat(a.get(0).path("basePrice").asLong()).isEqualTo(10_000);
+    assertThat(a.get(0).path("unitDiscount").asLong()).isEqualTo(1_000);
+    assertThat(a.get(0).path("salePrice").asLong()).isEqualTo(9_000);
+    assertThat(a.get(0).path("ratePercent").asInt()).isEqualTo(10);
+    assertThat(a.get(0).path("promotionId").asString()).isEqualTo(rate);
+    assertThat(a.get(0).path("priceVersion").asInt()).isEqualTo(1);
+    // 바뀐 것이 없으면 다시 알리지 않는다
+    Thread.sleep(1500);
+    assertThat(displayEvents(skuA)).hasSize(1);
+
+    // 가격이 바뀌면 새 기본가로(2,000원 → 10% = 200원 < 300원 → 정액 행사)
+    priceEffective(skuA, 2_000, 2);
+    List<JsonNode> a2 = await(() -> displayEvents(skuA), l -> l.size() >= 2);
+    assertThat(a2.get(1).path("seq").asInt()).isEqualTo(2);
+    assertThat(a2.get(1).path("priceVersion").asInt()).isEqualTo(2);
+    assertThat(a2.get(1).path("unitDiscount").asLong()).isEqualTo(300);
+    assertThat(a2.get(1).path("salePrice").asLong()).isEqualTo(1_700);
+
+    // 카테고리 행사 뒤에 그 카테고리에 들어온 상품도 할인가로
+    String catPromo =
+        approved(
+            priceDiscount(
+                "카테고리 20%",
+                Map.of("type", "RATE", "value", 20),
+                List.of(Map.of("type", "CATEGORY", "id", cat))));
+    Thread.sleep(1500);
+    assertThat(displayEvents(skuC)).isEmpty();
+    productPublished("PRD-" + UUID.randomUUID(), skuC, List.of(cat + "-c01"));
+    List<JsonNode> c = await(() -> displayEvents(skuC), l -> !l.isEmpty());
+    assertThat(c.get(0).path("salePrice").asLong()).isEqualTo(2_400);
+    assertThat(c.get(0).path("promotionName").asString()).isEqualTo("카테고리 20%");
+
+    // 조기 종료 → 할인 없음(unitDiscount 0, promotionId 없음)
+    Res end =
+        send("POST", MKT, "/promotions/" + catPromo + "/end-submissions", Map.of("reason", "끝"));
+    decide(
+        "AP-" + UUID.randomUUID(),
+        catPromo,
+        "APPROVED",
+        "END",
+        end.body().path("draftHash").asString());
+    List<JsonNode> c2 = await(() -> displayEvents(skuC), l -> l.size() >= 2);
+    assertThat(c2.get(1).path("seq").asInt()).isEqualTo(2);
+    assertThat(c2.get(1).path("unitDiscount").asLong()).isZero();
+    assertThat(c2.get(1).path("salePrice").asLong()).isEqualTo(3_000);
+    assertThat(c2.get(1).path("promotionId").isNull()).isTrue();
+    Thread.sleep(1500);
+    assertThat(displayEvents(skuC)).hasSize(2);
   }
 
   @Test

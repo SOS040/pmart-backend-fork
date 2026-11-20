@@ -107,7 +107,11 @@ class SearchFlowIT {
             Map.of("bootstrap.servers", KAFKA.getBootstrapServers()))) {
       var existing = admin.listTopics().names().get();
       var wanted =
-          java.util.stream.Stream.of("commerce.product.v1", "commerce.pricing.v1", HANDLING_TOPIC)
+          java.util.stream.Stream.of(
+                  "commerce.product.v1",
+                  "commerce.pricing.v1",
+                  HANDLING_TOPIC,
+                  "commerce.sku-display-discount.v1")
               .filter(t -> !existing.contains(t))
               .map(t -> new org.apache.kafka.clients.admin.NewTopic(t, 1, (short) 1))
               .toList();
@@ -244,6 +248,7 @@ class SearchFlowIT {
           case "PriceVersionEffective" -> "commerce.pricing.v1";
           case "SkuHandlingChanged" -> HANDLING_TOPIC;
           case "ProductRankingSignalsChanged" -> "commerce.product-ranking.v1";
+          case "SkuDisplayDiscountChanged" -> "commerce.sku-display-discount.v1";
           default -> "commerce.product.v1";
         };
     String json =
@@ -253,6 +258,7 @@ class SearchFlowIT {
                   case "commerce.pricing.v1" -> "pricing-service";
                   case HANDLING_TOPIC -> "mfc-inventory-service";
                   case "commerce.product-ranking.v1" -> "storefront-service";
+                  case "commerce.sku-display-discount.v1" -> "promotion-service";
                   default -> "product-service";
                 })
             .aggregate(aggregate, id, version)
@@ -297,6 +303,21 @@ class SearchFlowIT {
             "price", amount,
             "priceVersion", priceVersion,
             "effectiveAt", "2026-10-30T00:00:00Z"));
+  }
+
+  void discount(String sku, int seq, int priceVersion, long base, long unit) {
+    Map<String, Object> p = new java.util.HashMap<>();
+    p.put("sku", sku);
+    p.put("seq", seq);
+    p.put("priceVersion", priceVersion);
+    p.put("basePrice", base);
+    p.put("unitDiscount", unit);
+    p.put("salePrice", base - unit);
+    p.put("ratePercent", (int) (unit * 100 / base));
+    p.put("promotionId", unit > 0 ? "PRM-D" : null);
+    p.put("promotionName", unit > 0 ? "두부 할인" : null);
+    p.put("endsAt", unit > 0 ? "2099-01-01T00:00:00Z" : null);
+    send("SkuDisplayDiscountChanged", "SkuDisplayDiscount", sku, seq, p);
   }
 
   static final String HANDLING_TOPIC = "mfc.sku-handling.v1";
@@ -417,6 +438,30 @@ class SearchFlowIT {
     assertThat(ids(search("?minPrice=2000&maxPrice=5000"))).containsExactly("PRD-1");
     assertThat(ids(search("?maxPrice=1900"))).containsExactly("PRD-2");
     assertThat(ids(search("?q=두부&minPrice=2000"))).isEmpty();
+
+    // 기간 할인(0.6.0, ADR-0082 4단계): 할인 색인 → 결과 대표 SKU 에 붙인다. seq 역순 무시, 가격 버전이 다르면 정가
+    discount("E-2", 2, 1, 1900, 380);
+    discount("E-2", 1, 1, 1900, 100); // 늦게 온 옛 seq — 무시
+    discount("E-1", 1, 9, 4900, 490); // 가격 사본(1)과 다른 버전 — 붙이지 않는다
+    JsonNode sale = await("?q=두부", r -> r.path("items").path(0).path("salePrice").asInt() == 1520);
+    JsonNode tofuSale = sale.path("items").path(0);
+    assertThat(tofuSale.path("basePrice").asInt()).isEqualTo(1900);
+    assertThat(tofuSale.path("discountRatePercent").asInt()).isEqualTo(20);
+    assertThat(tofuSale.path("discountName").asString()).isEqualTo("두부 할인");
+    assertThat(tofuSale.path("discountEndsAt").asString()).startsWith("2099-01-01");
+    JsonNode soupNoSale = search("?q=미역").path("items").path(0);
+    assertThat(
+            soupNoSale.path("salePrice").isNull() || soupNoSale.path("salePrice").isMissingNode())
+        .isTrue();
+    // 가격순은 기본가 그대로
+    assertThat(ids(search("?sort=PRICE_ASC"))).containsExactly("PRD-2", "PRD-1", "PRD-3");
+    // 할인 끝(unitDiscount 0) → 정가
+    discount("E-2", 3, 1, 1900, 0);
+    await(
+        "?q=두부",
+        r ->
+            r.path("items").path(0).path("salePrice").isNull()
+                || r.path("items").path(0).path("salePrice").isMissingNode());
 
     // 색인 신선도(내부): 문서 수, 마지막 반영(ANY)·가격 사건 시각
     JsonNode status =

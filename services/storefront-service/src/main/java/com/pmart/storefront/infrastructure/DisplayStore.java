@@ -21,6 +21,10 @@ public class DisplayStore {
       @Nullable String representativeSku,
       @Nullable Long basePrice,
       @Nullable Integer priceVersion,
+      @Nullable Long salePrice,
+      @Nullable Integer discountRatePercent,
+      @Nullable String discountName,
+      @Nullable Instant discountEndsAt,
       String saleState,
       @Nullable Integer netContentAmount,
       @Nullable String netContentUnit,
@@ -34,6 +38,16 @@ public class DisplayStore {
     RANKING,
     NEW
   }
+
+  /** 대표 SKU 의 표시 할인(ADR-0082 4단계) — 가격 사본과 같은 priceVersion 이고 끝 시각 전일 때만(끝 사건이 늦게 와도 끝나면 바로 정가). */
+  private static final String DISCOUNT_JOIN =
+      " LEFT JOIN display_sku_discount k ON k.sku = d.representative_sku"
+          + " AND k.price_version = d.price_version AND k.unit_discount > 0"
+          + " AND (k.ends_at IS NULL OR k.ends_at > now())";
+
+  private static final String DISCOUNT_COLS =
+      " k.sale_price AS k_sale_price, k.rate_percent AS k_rate_percent,"
+          + " k.promotion_name AS k_promotion_name, k.ends_at AS k_ends_at";
 
   private final JdbcTemplate jdbc;
 
@@ -138,6 +152,39 @@ public class DisplayStore {
         ts(now));
   }
 
+  /** 표시 할인 사본(SkuDisplayDiscountChanged) — seq 가 큰 것만. */
+  public void upsertDiscount(
+      String sku,
+      int seq,
+      int priceVersion,
+      long unitDiscount,
+      long salePrice,
+      int ratePercent,
+      @Nullable String promotionId,
+      @Nullable String promotionName,
+      @Nullable Instant endsAt,
+      Instant now) {
+    jdbc.update(
+        "INSERT INTO display_sku_discount (sku, seq, price_version, unit_discount, sale_price,"
+            + " rate_percent, promotion_id, promotion_name, ends_at, updated_at)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT (sku) DO UPDATE SET seq = EXCLUDED.seq,"
+            + " price_version = EXCLUDED.price_version, unit_discount = EXCLUDED.unit_discount,"
+            + " sale_price = EXCLUDED.sale_price, rate_percent = EXCLUDED.rate_percent,"
+            + " promotion_id = EXCLUDED.promotion_id, promotion_name = EXCLUDED.promotion_name,"
+            + " ends_at = EXCLUDED.ends_at, updated_at = EXCLUDED.updated_at"
+            + " WHERE EXCLUDED.seq > display_sku_discount.seq",
+        sku,
+        seq,
+        priceVersion,
+        unitDiscount,
+        salePrice,
+        ratePercent,
+        promotionId,
+        promotionName,
+        ts(endsAt),
+        ts(now));
+  }
+
   public void upsertPrice(String sku, long price, int priceVersion, @Nullable Instant at) {
     jdbc.update(
         "INSERT INTO display_sku_price (sku, price, price_version, effective_at) VALUES (?,?,?,?)"
@@ -236,7 +283,9 @@ public class DisplayStore {
     args.add(offset);
     args.add(limit);
     return jdbc.query(
-        "SELECT d.*, r.n AS review_count, r.avg_rating FROM (SELECT p.product_id, p.name,"
+        "SELECT d.*, r.n AS review_count, r.avg_rating,"
+            + DISCOUNT_COLS
+            + " FROM (SELECT p.product_id, p.name,"
             + " p.image_url, p.representative_sku, s.price, s.price_version,"
             + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state, p.net_content_amount,"
             + " p.net_content_unit, p.content_published_at"
@@ -246,6 +295,7 @@ public class DisplayStore {
             + carriedAt(mfcId)
             + order
             + " OFFSET ? LIMIT ?) d"
+            + DISCOUNT_JOIN
             // 평점(BR-63) — 고른 쪽의 상품만 색인으로 센다
             + " LEFT JOIN LATERAL (SELECT count(*) AS n, avg(rating)::float8 AS avg_rating FROM review_rating x"
             + " WHERE x.product_id = d.product_id AND NOT x.deleted) r ON true"
@@ -258,6 +308,12 @@ public class DisplayStore {
                 rs.getString("representative_sku"),
                 rs.getObject("price", Long.class),
                 rs.getObject("price_version", Integer.class),
+                rs.getObject("k_sale_price", Long.class),
+                rs.getObject("k_rate_percent", Integer.class),
+                rs.getString("k_promotion_name"),
+                rs.getTimestamp("k_ends_at") == null
+                    ? null
+                    : rs.getTimestamp("k_ends_at").toInstant(),
                 rs.getString("sale_state"),
                 rs.getObject("net_content_amount", Integer.class),
                 rs.getString("net_content_unit"),
@@ -293,7 +349,9 @@ public class DisplayStore {
     args.addAll(productIds);
     List<Item> found =
         jdbc.query(
-            "SELECT d.*, r.n AS review_count, r.avg_rating FROM (SELECT p.product_id, p.name,"
+            "SELECT d.*, r.n AS review_count, r.avg_rating,"
+                + DISCOUNT_COLS
+                + " FROM (SELECT p.product_id, p.name,"
                 + " p.image_url, p.representative_sku, s.price, s.price_version,"
                 + " COALESCE(p.sale_state, 'ON_SALE') AS sale_state, p.net_content_amount,"
                 + " p.net_content_unit, p.content_published_at"
@@ -302,6 +360,7 @@ public class DisplayStore {
                 + " AND p.product_id IN ("
                 + in
                 + ")) d"
+                + DISCOUNT_JOIN
                 + " LEFT JOIN LATERAL (SELECT count(*) AS n, avg(rating)::float8 AS avg_rating FROM review_rating x"
                 + " WHERE x.product_id = d.product_id AND NOT x.deleted) r ON true",
             (rs, i) ->
@@ -312,6 +371,12 @@ public class DisplayStore {
                     rs.getString("representative_sku"),
                     rs.getObject("price", Long.class),
                     rs.getObject("price_version", Integer.class),
+                    rs.getObject("k_sale_price", Long.class),
+                    rs.getObject("k_rate_percent", Integer.class),
+                    rs.getString("k_promotion_name"),
+                    rs.getTimestamp("k_ends_at") == null
+                        ? null
+                        : rs.getTimestamp("k_ends_at").toInstant(),
                     rs.getString("sale_state"),
                     rs.getObject("net_content_amount", Integer.class),
                     rs.getString("net_content_unit"),

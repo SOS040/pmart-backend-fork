@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: pricing-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
+    0.3.0(2026-11-21, ADR-0082 4단계 할인가 표시): 표시용 가격 조회(`/prices`·`/prices/{sku}`)에 지금(또는 at) 기간 할인 `discount`
+    (promotion-service 와 같은 계산 — 가장 큰 1개, 정률 원 미만 버림)와 `discountAvailable`. promotion 을 못 읽으면 정가만 + `discountAvailable=false`
+    (표시용이라 거절하지 않는다 — 결제 금액은 견적이 정하고 그때는 503). 내부 `/internal/prices` 는 할인을 붙이지 않는다.
     0.2.0(2026-11-21, ADR-0082 쿠폰·기간 할인 2단계 — 사용자 "응"): 견적이 **기간 할인(PROMOTION)·장바구니 쿠폰(CART_COUPON)** 을 적용한다(promotion-service 내부 조회).
     순서 기본가 → 기간 할인(SKU 마다 가장 큰 1개, 개당) → 장바구니 쿠폰(1장, `couponIds[0]` + `accountId`). `itemAmount` = 기간 할인 뒤·쿠폰 전 상품액(최소 주문·무료 배달 판정용),
     `couponDiscount` 는 따로. 품목 `discountShare` = 기간 할인 + 쿠폰 안분(대상 금액 비례, 원 미만 버림, 남은 원은 금액 큰 품목 — 같으면 앞 품목), `netAmount` = lineAmount − discountShare.
@@ -407,12 +410,27 @@ components:
         basePrice: { $ref: '_common.yaml#/components/schemas/Money' }
         priceVersion: { type: integer }
         effectiveFrom: { type: string, format: date-time }
+        discount: { $ref: '#/components/schemas/DisplayDiscount' }
+        discountAvailable:
+          type: boolean
+          description: '(0.3.0) false = promotion 을 읽지 못해 할인을 모름(정가만 보임). 내부 조회에는 없다'
         nextChange:
           type: object
           description: 예약된 다음 버전이 있으면 표시
           properties:
             basePrice: { $ref: '_common.yaml#/components/schemas/Money' }
             effectiveFrom: { type: string, format: date-time }
+    DisplayDiscount:
+      type: object
+      description: '(0.3.0 ADR-0082 4단계) 화면 표시용 기간 할인(개당). 결제 금액은 견적(order 주문서)이 정한다'
+      required: [promotionId, name, unitDiscount, salePrice, ratePercent, endsAt]
+      properties:
+        promotionId: { type: string }
+        name: { type: string, description: 행사 이름 }
+        unitDiscount: { $ref: '_common.yaml#/components/schemas/Money' }
+        salePrice: { $ref: '_common.yaml#/components/schemas/Money', description: 할인가 = basePrice − unitDiscount }
+        ratePercent: { type: integer, description: '할인율(내림, %)' }
+        endsAt: { type: string, format: date-time, description: 행사 끝(조기 종료 반영) }
     PriceVersion:
       type: object
       properties:

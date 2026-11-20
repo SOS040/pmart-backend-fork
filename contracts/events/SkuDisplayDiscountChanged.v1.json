@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/SkuDisplayDiscountChanged.v1.json",
+  "title": "SkuDisplayDiscountChanged",
+  "description": "SKU 의 화면 표시용 현재 기간 할인이 바뀜(ADR-0082 4단계, 2026-11-21) — 행사 시작·끝·조기 종료·기본가 변경·카테고리 상품 추가를 promotion-service 주기 작업이 반영. 할인이 없어지면 unitDiscount 0·promotionId null. 받는 쪽은 seq(= aggregateVersion)가 큰 것만, 그리고 자기 가격 사본의 priceVersion 이 같을 때만 salePrice 를 보인다. 결제 금액은 견적(pricing)이 정한다 — 이 사건은 표시용. 발행 promotion-service. 구독 search(Logstash), storefront. 토픽 commerce.sku-display-discount.v1(키 SKU).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "SkuDisplayDiscountChanged"
+        },
+        "aggregateType": {
+          "const": "SkuDisplayDiscount"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sku",
+            "seq",
+            "priceVersion",
+            "basePrice",
+            "unitDiscount",
+            "salePrice",
+            "ratePercent"
+          ],
+          "properties": {
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "seq": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "priceVersion": {
+              "$ref": "_defs.v1.json#/$defs/Version"
+            },
+            "basePrice": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "unitDiscount": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "salePrice": {
+              "$ref": "_defs.v1.json#/$defs/Money"
+            },
+            "ratePercent": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "promotionId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "promotionName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "endsAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            },
+            "computedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

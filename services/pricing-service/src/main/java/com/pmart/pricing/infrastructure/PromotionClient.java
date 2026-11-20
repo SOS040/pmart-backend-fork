@@ -26,6 +26,15 @@ public class PromotionClient {
 
   public record Discount(String sku, String promotionId, long unitDiscount) {}
 
+  /** 화면 표시용(ADR-0082 4단계) — 행사 이름·할인율·끝 시각까지. */
+  public record DisplayDiscount(
+      String sku,
+      String promotionId,
+      String name,
+      long unitDiscount,
+      int ratePercent,
+      Instant endsAt) {}
+
   public record CouponResult(
       String couponId,
       boolean applicable,
@@ -64,6 +73,30 @@ public class PromotionClient {
               i.path("sku").asString(),
               i.path("promotionId").asString(),
               i.path("unitDiscount").asLong()));
+    }
+    return out;
+  }
+
+  /** 표시용 할인. 걸린 할인이 있는 SKU 만. 꺼져 있으면 빈 결과, 실패는 예외(Downstream). */
+  public Map<String, DisplayDiscount> displayDiscounts(Map<String, Long> unitPrices, Instant at) {
+    Map<String, DisplayDiscount> out = new HashMap<>();
+    if (promotion == null || unitPrices.isEmpty()) {
+      return out;
+    }
+    List<Map<String, Object>> items = new ArrayList<>();
+    unitPrices.forEach((sku, price) -> items.add(Map.of("sku", sku, "unitPrice", price)));
+    JsonNode body =
+        post("/api/v1/internal/price-discounts", Map.of("at", at.toString(), "items", items));
+    for (JsonNode i : body.path("items")) {
+      out.put(
+          i.path("sku").asString(),
+          new DisplayDiscount(
+              i.path("sku").asString(),
+              i.path("promotionId").asString(),
+              i.path("name").asString(""),
+              i.path("unitDiscount").asLong(),
+              i.path("ratePercent").asInt(0),
+              Instant.parse(i.path("endsAt").asString())));
     }
     return out;
   }

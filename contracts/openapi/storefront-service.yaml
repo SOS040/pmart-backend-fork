@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.7.1
+  version: 0.8.0
   description: |
+    0.8.0(2026-11-21, ADR-0082 4단계 할인가 표시): 진열 항목에 기간 할인 `salePrice`·`discountRatePercent`·`discountName`·`discountEndsAt`
+    (promotion-service SkuDisplayDiscountChanged — commerce.sku-display-discount.v1 사본). 대표 SKU 가격 사본과 같은 priceVersion 이고 끝 시각 전일 때만, 아니면 null(정가).
+    표시용 — 결제 금액은 주문서 견적. 구독 추가: SkuDisplayDiscountChanged.
     0.7.1(2026-11-20 PC 2 요청): DISPLAY_APPROVER 도 초안 조회·목록·초안 배너 이미지를 읽는다(승인 전 내용 확인, 고치기·제출은 그대로 MD·OPERATOR_ADMIN).
     0.7.0(2026-11-20 ADR-0075 ② — BO-05 일반 배너·상품 테마 편성): 운영 초안 `/storefront/layout-drafts`(만들기·고치기·제출)·배너 이미지 `/storefront/banner-images`.
     제출 → approval DISPLAY(정본 storefront-service) 승인 → ApprovalDecided 를 받아 새 진열 버전(layoutVersion 1부터) 게시·반영 회신. HOME 탭 = 기간 안 배너(HOME_TOP·HOME_MIDDLE)
@@ -423,6 +426,10 @@ components:
         representativeSku: { $ref: '_common.yaml#/components/schemas/Sku' }
         basePrice: { $ref: '_common.yaml#/components/schemas/Money', description: pricing 사본 }
         priceVersion: { type: integer }
+        salePrice: { type: [integer, 'null'], minimum: 0, description: '(0.8.0) 기간 할인가(대표 SKU 개당). 할인 없음·가격 버전 다름·끝남이면 null' }
+        discountRatePercent: { type: [integer, 'null'], description: '(0.8.0) 할인율(내림, %)' }
+        discountName: { type: [string, 'null'], description: '(0.8.0) 행사 이름' }
+        discountEndsAt: { type: [string, 'null'], format: date-time, description: '(0.8.0) 행사 끝' }
         netContent:
           type: [object, 'null']
           description: '0.3.0 — 대표 SKU 내용량(product 사본, 판매 단위 전체). 내용량 없이 등록된 상품은 null'

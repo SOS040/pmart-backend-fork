@@ -4,6 +4,8 @@ import com.pmart.search.domain.SearchRules;
 import com.pmart.search.domain.SearchRules.Sort;
 import com.pmart.search.infrastructure.CategoryTreeClient;
 import com.pmart.search.infrastructure.SearchIndex;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -11,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 
@@ -28,6 +32,8 @@ import tools.jackson.databind.JsonNode;
 @Service
 public class ProductSearch {
 
+  private static final Logger log = LoggerFactory.getLogger(ProductSearch.class);
+
   public record Hit(
       String productId,
       String name,
@@ -42,7 +48,34 @@ public class ProductSearch {
       List<String> categoryPath,
       @Nullable Boolean carried,
       @Nullable Double ratingAverage,
-      @Nullable Integer ratingCount) {}
+      @Nullable Integer ratingCount,
+      @Nullable Discount discount) {
+
+    Hit withDiscount(@Nullable Discount d) {
+      return new Hit(
+          productId,
+          name,
+          imageUrl,
+          categoryIds,
+          representativeSku,
+          basePrice,
+          priceVersion,
+          saleState,
+          productVersion,
+          primaryCategoryId,
+          categoryPath,
+          carried,
+          ratingAverage,
+          ratingCount,
+          d);
+    }
+  }
+
+  /**
+   * 대표 SKU 의 기간 할인(ADR-0082 4단계, 색인 sku-discounts — promotion SkuDisplayDiscountChanged 사본). 표시용.
+   */
+  public record Discount(
+      long salePrice, int ratePercent, @Nullable String name, @Nullable Instant endsAt) {}
 
   public record Result(
       List<Hit> items,
@@ -71,10 +104,12 @@ public class ProductSearch {
 
   private final SearchIndex index;
   private final CategoryTreeClient categories;
+  private final Clock clock;
 
-  public ProductSearch(SearchIndex index, CategoryTreeClient categories) {
+  public ProductSearch(SearchIndex index, CategoryTreeClient categories, Clock clock) {
     this.index = index;
     this.categories = categories;
+    this.clock = clock;
   }
 
   public Result search(
@@ -110,12 +145,61 @@ public class ProductSearch {
     for (JsonNode h : res.path("hits").path("hits")) {
       out.add(withPath(hit(h.path("_source"), center)));
     }
+    out = withDiscounts(out);
     long total = res.path("hits").path("total").path("value").asLong(0);
     int pos = from + out.size();
     String next = SearchRules.hasNext(pos, total, !out.isEmpty()) ? SearchRules.cursor(pos) : null;
     List<String> applied = new ArrayList<>();
     filters.forEach((k, vs) -> vs.forEach(v -> applied.add(k + "." + v)));
     return new Result(out, total, next, sort, List.copyOf(applied));
+  }
+
+  /**
+   * 쪽의 대표 SKU 할인을 붙인다(ADR-0082 4단계). 가격 사본과 같은 priceVersion·할인 있음·끝 전일 때만. 할인 색인을 못 읽으면 정가로(검색은
+   * 실패시키지 않는다). 가격순 정렬·가격 범위는 기본가 기준 그대로.
+   */
+  private List<Hit> withDiscounts(List<Hit> hits) {
+    List<String> skus =
+        hits.stream().map(Hit::representativeSku).filter(java.util.Objects::nonNull).toList();
+    if (skus.isEmpty()) {
+      return hits;
+    }
+    Map<String, JsonNode> bySku = new java.util.HashMap<>();
+    try {
+      JsonNode res =
+          index.search(
+              SearchIndex.SKU_DISCOUNTS,
+              Map.of("size", skus.size(), "query", Map.of("terms", Map.of("sku", skus))));
+      for (JsonNode d : res.path("hits").path("hits")) {
+        bySku.put(d.path("_source").path("sku").asString(), d.path("_source"));
+      }
+    } catch (RuntimeException ex) {
+      log.warn("할인 색인을 못 읽음 — 정가로: {}", ex.toString());
+      return hits;
+    }
+    long now = clock.millis();
+    List<Hit> out = new ArrayList<>(hits.size());
+    for (Hit h : hits) {
+      JsonNode d = h.representativeSku() == null ? null : bySku.get(h.representativeSku());
+      out.add(h.withDiscount(discount(d, h.priceVersion(), now)));
+    }
+    return out;
+  }
+
+  static @Nullable Discount discount(
+      @Nullable JsonNode d, @Nullable Integer priceVersion, long now) {
+    if (d == null
+        || priceVersion == null
+        || d.path("priceVersion").asInt(-1) != priceVersion
+        || d.path("unitDiscount").asLong(0) <= 0
+        || (d.path("endsAtMs").isNumber() && d.path("endsAtMs").asLong() <= now)) {
+      return null;
+    }
+    return new Discount(
+        d.path("salePrice").asLong(),
+        d.path("ratePercent").asInt(0),
+        d.path("promotionName").asString(null),
+        d.path("endsAtMs").isNumber() ? Instant.ofEpochMilli(d.path("endsAtMs").asLong()) : null);
   }
 
   /** 이름 경로(대표 카테고리 — 없으면 첫 카테고리)를 붙인다. */
@@ -138,7 +222,8 @@ public class ProductSearch {
         primary == null ? List.of() : categories.path(primary),
         h.carried(),
         h.ratingAverage(),
-        h.ratingCount());
+        h.ratingCount(),
+        h.discount());
   }
 
   /** 검색어를 포함하는 상품명(중복 제거, 관련도 순). */
@@ -334,6 +419,7 @@ public class ProductSearch {
         List.of(),
         carried,
         s.hasNonNull("ratingAverage") ? s.get("ratingAverage").asDouble() : null,
-        s.hasNonNull("ratingCount") ? s.get("ratingCount").asInt() : null);
+        s.hasNonNull("ratingCount") ? s.get("ratingCount").asInt() : null,
+        null);
   }
 }

@@ -56,6 +56,30 @@ public class DisplayProjector {
         at(p.path("changedAt"), e));
   }
 
+  /**
+   * commerce.sku-display-discount.v1 SkuDisplayDiscountChanged(ADR-0082 4단계) — 표시 할인 사본. seq 가 큰 것만. 할인가는 조회 때
+   * 가격 사본과 priceVersion 이 같을 때만 보인다.
+   */
+  public void applyDiscount(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String sku = p.path("sku").asString(null);
+    if (sku == null || !p.path("seq").isNumber()) {
+      log.warn("SkuDisplayDiscountChanged {} 에 SKU·seq 가 없다 — 건너뜀", e.eventId());
+      return;
+    }
+    store.upsertDiscount(
+        sku,
+        p.path("seq").asInt(),
+        p.path("priceVersion").asInt(),
+        p.path("unitDiscount").asLong(0),
+        p.path("salePrice").asLong(0),
+        p.path("ratePercent").asInt(0),
+        p.path("promotionId").asString(null),
+        p.path("promotionName").asString(null),
+        p.path("endsAt").isString() ? Instant.parse(p.path("endsAt").asString()) : null,
+        clock.instant());
+  }
+
   public void apply(EventEnvelope e) {
     JsonNode p = e.payload();
     switch (e.eventType()) {

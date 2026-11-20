@@ -35,6 +35,19 @@ for t in $TOPICS; do
   echo "kafka-topics-init: $t OK (partitions=$parts, rf=$RF, $CONFIGS)"
 done
 
+# 표시 할인 상태 토픽(2026-11-21 ADR-0082 4단계) — 사건 종류 하나(SkuDisplayDiscountChanged, 키 SKU, 매번 전체 상태)라
+# Log Compaction 으로 SKU 마다 마지막 상태만 오래 남긴다(검색 재색인·새 구독자가 처음부터 읽어도 지금 할인을 받는다). 이력 토픽과 다른 규칙.
+# 발행(Debezium)·구독(바인더)이 먼저 만들었어도 설정을 보정한다
+CT="commerce.sku-display-discount.v1"
+if ! $B/kafka-topics.sh --bootstrap-server $S --describe --topic "$CT" >/dev/null 2>&1; then
+  $B/kafka-topics.sh --bootstrap-server $S --create --if-not-exists --topic "$CT"     --partitions 1 --replication-factor "$RF" --config cleanup.policy=compact >/dev/null
+  echo "kafka-topics-init: $CT 생성(compact, 복제 $RF)"
+fi
+$B/kafka-configs.sh --bootstrap-server $S --alter --entity-type topics --entity-name "$CT" --add-config cleanup.policy=compact >/dev/null
+$B/kafka-configs.sh --bootstrap-server $S --describe --entity-type topics --entity-name "$CT" | grep -q "cleanup.policy=compact "   || { echo "kafka-topics-init: $CT 에 cleanup.policy=compact 가 없다" >&2; exit 1; }
+check_rf "$CT"
+echo "kafka-topics-init: $CT OK (compact, rf=$RF)"
+
 # 검색 색인 DLT(search-index.conf — 콘텐츠 보강이 재시도 뒤에도 실패한 사건). 이력 토픽이 아니라 30일 보관(2026-11-04).
 # Logstash 가 발행하는 토픽이라 바인더·Connect 가 만들어 주지 않는다 — 여기서 만든다
 DLT="search-index.DLT"

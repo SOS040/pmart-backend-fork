@@ -30,6 +30,8 @@
 - 견적(`/internal/quotes`): 가격 없는 SKU 가 하나라도 있으면 `PRICE_NOT_SET` 전체 거절. 결과는 `price_quote` 에 보존.
 - **할인(2026-11-21 ADR-0082, 계약 0.2.0)**: 기본가 → 기간 할인(promotion `/internal/price-discounts` — SKU 마다 가장 큰 1개, 개당 × 수량) → 장바구니 쿠폰(`couponIds[0]` + accountId, promotion `/internal/coupon-quotes` — 기간 할인 뒤 금액으로 판정, `PriceRules.allocate` 비례 안분·원 미만 버림·남은 원은 큰 품목). `itemAmount` = 기간 할인 뒤·쿠폰 전, `couponDiscount` 따로. 쓸 수 없는 쿠폰은 거절 없이 `coupon.applicable=false`. promotion 장애 → 503(정가로 계산하지 않음). 주소 `pmart.pricing.promotion-base-url`(비우면 할인 단계 없음 — 시험 기본). 클라이언트 `infrastructure.PromotionClient`, 시험 `QuoteDiscountIT`.
 
+- **표시 할인(2026-11-21 ADR-0082 4단계, 계약 0.3.0)**: 공개 `/prices`·`/prices/{sku}` 에 `discount`(행사·할인액·salePrice·할인율·끝)와 `discountAvailable` — `DisplayPrices` 가 promotion `/internal/price-discounts` 를 묻는다(견적과 같은 계산). promotion 장애면 정가 + `discountAvailable=false`(표시용이라 거절 안 함 — 견적은 503). 내부 `/internal/prices` 는 할인 없음. 시험 `QuoteDiscountIT.displayPricesCarryTheCurrentDiscountAndFallBackToBasePrice`.
+
 ## 가격 일괄 등록 (2026-11-03, 사용자 결정)
 - `/price-import-batches`: seed-v1 묶음(zip, 상품 일괄 등록과 같은 파일)의 `product.json` 에서 seedProductId·`product.internalName`(없으면 `content.name`)·`price.basePrice`·`source.system` 만 읽는다(`SeedPriceReader`). 원천 키 → SKU 는 product-service `POST /api/v1/internal/source-link-lookups`(`ProductLinks`, `pmart.pricing.product-base-url`). 조회는 트랜잭션 밖, 저장은 `RequestIdempotency` 안.
 - 행 분류(`PriceImportRules`): SKU 없음 → `SKU_NOT_FOUND`, 뒤에 다시 나온 SKU → `DUPLICATE_SKU`, 가격 없음·0 이하 → `PRICE_REQUIRED`, 그 밖에는 현재 유효 가격과 비교해 NEW(가격 없던 SKU)·CHANGE(다름)·UNCHANGED(같음 → 제출 제외). 운영자 설정은 행 가격 고치기·빼기·공통 효력 시각(A안)만.

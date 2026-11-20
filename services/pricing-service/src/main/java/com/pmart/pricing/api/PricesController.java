@@ -5,6 +5,7 @@ import com.pmart.pricing.api.generated.model.ListPriceVersions200Response;
 import com.pmart.pricing.api.generated.model.ListPriceVersions200ResponsePage;
 import com.pmart.pricing.api.generated.model.ListPrices200Response;
 import com.pmart.pricing.api.generated.model.Price;
+import com.pmart.pricing.application.DisplayPrices;
 import com.pmart.pricing.application.PriceImportService;
 import com.pmart.pricing.application.PriceQueries;
 import java.time.OffsetDateTime;
@@ -18,19 +19,24 @@ import org.springframework.web.bind.annotation.RestController;
 public class PricesController implements PricesApi {
 
   private final PriceQueries queries;
+  private final DisplayPrices display;
 
-  public PricesController(PriceQueries queries) {
+  public PricesController(PriceQueries queries, DisplayPrices display) {
     this.queries = queries;
+    this.display = display;
   }
 
   @Override
   public ResponseEntity<Price> getPrice(String sku, @Nullable OffsetDateTime at) {
-    return ResponseEntity.ok(PricingMapping.price(queries.price(sku, PricingMapping.instant(at))));
+    PriceQueries.CurrentPrice p = queries.price(sku, PricingMapping.instant(at));
+    DisplayPrices.Shown s = display.withDiscounts(p, PricingMapping.instant(at));
+    return ResponseEntity.ok(PricingMapping.shown(p, s.discounts(), s.available()));
   }
 
   @Override
   public ResponseEntity<ListPrices200Response> listPrices(List<String> skus) {
-    return ResponseEntity.ok(PricingMapping.priceList(queries.prices(skus, null)));
+    PriceQueries.PriceList list = queries.prices(skus, null);
+    return ResponseEntity.ok(PricingMapping.shownList(display.withDiscounts(list, list.asOf())));
   }
 
   @Override

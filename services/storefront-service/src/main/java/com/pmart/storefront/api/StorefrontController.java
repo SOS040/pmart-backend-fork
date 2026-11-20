@@ -378,6 +378,14 @@ public class StorefrontController implements StorefrontApi {
         .representativeSku(i.representativeSku())
         .basePrice(i.basePrice() == null ? null : Math.toIntExact(i.basePrice()))
         .priceVersion(i.priceVersion())
+        // 기간 할인(0.8.0 ADR-0082 4단계) — 가격 사본과 같은 버전·끝 전일 때만(DisplayStore)
+        .salePrice(i.salePrice() == null ? null : Math.toIntExact(i.salePrice()))
+        .discountRatePercent(i.discountRatePercent())
+        .discountName(i.discountName())
+        .discountEndsAt(
+            i.discountEndsAt() == null
+                ? null
+                : java.time.OffsetDateTime.ofInstant(i.discountEndsAt(), java.time.ZoneOffset.UTC))
         .saleState(DisplayItem.SaleStateEnum.fromValue(i.saleState()))
         .carried(filtered ? Boolean.TRUE : null)
         .netContent(netContent(i))

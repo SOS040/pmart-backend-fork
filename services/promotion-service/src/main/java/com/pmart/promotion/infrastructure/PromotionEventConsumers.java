@@ -2,6 +2,7 @@ package com.pmart.promotion.infrastructure;
 
 import com.pmart.common.messaging.EventConsumers;
 import com.pmart.common.messaging.PmartEventConsumer;
+import com.pmart.promotion.application.PriceProjection;
 import com.pmart.promotion.application.ProductProjection;
 import com.pmart.promotion.application.PromotionApprovals;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +16,12 @@ class PromotionEventConsumers {
   @Bean
   PmartEventConsumer productEvents(EventConsumers consumers, ProductProjection projection) {
     return consumers.of(ProductProjection::wanted, projection::apply);
+  }
+
+  /** commerce.pricing.v1 — 바인딩 pricingEvents-in-0: SKU 기본가 사본(표시 할인 계산, ADR-0082 4단계). */
+  @Bean
+  PmartEventConsumer pricingEvents(EventConsumers consumers, PriceProjection projection) {
+    return consumers.of(PriceProjection::wanted, projection::apply);
   }
 
   /** platform.approval.v1 — 바인딩 approvalEvents-in-0: PROMOTION·promotion-service 결정만. */

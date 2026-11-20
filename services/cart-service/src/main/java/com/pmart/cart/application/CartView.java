@@ -47,6 +47,9 @@ public class CartView {
       @Nullable String imageUrl,
       @Nullable Long unitPrice,
       @Nullable Integer priceVersion,
+      @Nullable Long salePrice,
+      @Nullable Integer discountRatePercent,
+      @Nullable String discountName,
       String saleState,
       CartRules.Availability availability) {}
 
@@ -56,6 +59,7 @@ public class CartView {
       CartRow cart,
       List<Line> lines,
       @Nullable Long selectedAmount,
+      @Nullable Long selectedDiscount,
       Instant expiresAt,
       List<Source> sources,
       @Nullable Long minOrderAmount,
@@ -115,6 +119,7 @@ public class CartView {
 
     List<Line> lines = new ArrayList<>();
     long amount = 0;
+    long discount = 0;
     boolean amountKnown = pricingOk;
     for (ItemRow i : items) {
       CatalogClient.Card card = i.productId() == null ? null : cards.get(i.productId());
@@ -128,6 +133,9 @@ public class CartView {
               card == null ? null : card.imageUrl(),
               price == null ? null : price.amount(),
               price == null ? null : price.version(),
+              price == null ? null : price.salePrice(),
+              price == null ? null : price.ratePercent(),
+              price == null ? null : price.discountName(),
               d == null ? "UNKNOWN" : d.saleState(),
               s == null
                   ? CartRules.Availability.UNKNOWN
@@ -136,7 +144,8 @@ public class CartView {
         if (price == null) {
           amountKnown = false;
         } else {
-          amount += price.amount() * i.quantity();
+          amount += price.effective() * i.quantity();
+          discount += (price.amount() - price.effective()) * i.quantity();
         }
       }
     }
@@ -145,6 +154,7 @@ public class CartView {
         cart,
         lines,
         selectedAmount,
+        amountKnown ? discount : null,
         cart.lastChangedAt().plus(props.retention()),
         sources,
         minOrderAmount,

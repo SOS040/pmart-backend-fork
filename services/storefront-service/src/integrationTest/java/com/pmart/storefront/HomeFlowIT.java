@@ -42,7 +42,7 @@ import tools.jackson.databind.ObjectMapper;
       // 순위 신호 사건(ADR-0072)을 outbox 에서 확인한다
       "pmart.messaging.outbox.delete-after-insert=false",
       // 순위 신호(ADR-0072) — 주문 사건 구독·정책값. LAN 설정(pmart-config)에는 배포 승인 때 같은 값을 넣는다(시험 사본 = 정본 유지)
-      "spring.cloud.function.definition=catalogEvents;handlingEvents;reviewEvents;orderEvents;approvalEvents",
+      "spring.cloud.function.definition=catalogEvents;handlingEvents;reviewEvents;orderEvents;approvalEvents;promotionEvents",
       "spring.cloud.stream.bindings.orderEvents-in-0.destination=order.order.v1",
       "pmart.storefront.ranking.sales-window-days=30",
       "pmart.storefront.ranking.rating-prior-count=5",
@@ -505,6 +505,112 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
     for (int i = 0; i < 100 && ids(get(path).path("items")).contains("PRD-R1"); i++) {
       Thread.sleep(300);
     }
+  }
+
+  void discount(String sku, int seq, int priceVersion, long base, long unit, String endsAt) {
+    Map<String, Object> p = new java.util.HashMap<>();
+    p.put("sku", sku);
+    p.put("seq", seq);
+    p.put("priceVersion", priceVersion);
+    p.put("basePrice", base);
+    p.put("unitDiscount", unit);
+    p.put("salePrice", base - unit);
+    p.put("ratePercent", (int) (unit * 100 / base));
+    p.put("promotionId", unit > 0 ? "PRM-D" : null);
+    p.put("promotionName", unit > 0 ? "두부 할인" : null);
+    p.put("endsAt", unit > 0 ? endsAt : null);
+    kafka
+        .send(
+            "commerce.sku-display-discount.v1",
+            sku,
+            EventEnvelopeFixtures.envelope("SkuDisplayDiscountChanged")
+                .from("promotion-service")
+                .aggregate("SkuDisplayDiscount", sku, seq)
+                .payload(p)
+                .buildJson())
+        .join();
+  }
+
+  JsonNode awaitItem(String productId, Predicate<JsonNode> ok) throws InterruptedException {
+    String path = "/storefront/sections/S-ALL/items?layoutVersion=0&size=50";
+    JsonNode last = null;
+    for (int i = 0; i < 100; i++) {
+      for (JsonNode it : get(path).path("items")) {
+        if (productId.equals(it.path("productId").asString())) {
+          last = it;
+        }
+      }
+      if (last != null && ok.test(last)) {
+        return last;
+      }
+      Thread.sleep(300);
+    }
+    throw new AssertionError("항목 조건 미충족: " + last);
+  }
+
+  /** ADR-0082 4단계(0.8.0): 표시 할인 사건 → 할인가. seq 역순 무시, 가격 버전이 다르면·끝났으면 정가. */
+  @Test
+  void itemsShowDisplayDiscount() throws Exception {
+    card("PRD-D1", "[시험] 할인 상품", 1);
+    product("PRD-D1", 1, "E-D1");
+    published("PRD-D1", 1, "2026-09-01T00:02:00Z");
+    send(
+        "PriceVersionEffective",
+        "E-D1",
+        1,
+        Map.of(
+            "sku",
+            "E-D1",
+            "price",
+            2000,
+            "priceVersion",
+            1,
+            "effectiveAt",
+            "2026-10-30T00:00:00Z"));
+    discount("E-D1", 2, 1, 2000, 400, "2099-01-01T00:00:00Z");
+    discount("E-D1", 1, 1, 2000, 100, "2099-01-01T00:00:00Z"); // 늦게 온 옛 seq — 무시
+    JsonNode it = awaitItem("PRD-D1", n -> n.path("salePrice").asInt() == 1600);
+    assertThat(it.path("basePrice").asInt()).isEqualTo(2000);
+    assertThat(it.path("discountRatePercent").asInt()).isEqualTo(20);
+    assertThat(it.path("discountName").asString()).isEqualTo("두부 할인");
+    assertThat(it.path("discountEndsAt").asString()).startsWith("2099-01-01");
+    // 가격이 바뀌었는데 할인 사건은 아직 옛 가격 버전 → 정가
+    send(
+        "PriceVersionEffective",
+        "E-D1",
+        2,
+        Map.of(
+            "sku",
+            "E-D1",
+            "price",
+            2500,
+            "priceVersion",
+            2,
+            "effectiveAt",
+            "2026-10-31T00:00:00Z"));
+    it = awaitItem("PRD-D1", n -> n.path("basePrice").asInt() == 2500);
+    assertThat(it.path("salePrice").isNull() || it.path("salePrice").isMissingNode()).isTrue();
+    discount("E-D1", 3, 2, 2500, 500, "2099-01-01T00:00:00Z");
+    awaitItem("PRD-D1", n -> n.path("salePrice").asInt() == 2000);
+    // 끝 시각이 지난 할인은 끝 사건 전에도 정가
+    discount("E-D1", 4, 2, 2500, 500, "2020-01-01T00:00:00Z");
+    awaitItem("PRD-D1", n -> n.path("salePrice").isNull() || n.path("salePrice").isMissingNode());
+    // 할인 없음 사건
+    discount("E-D1", 5, 2, 2500, 0, null);
+    awaitItem("PRD-D1", n -> n.path("salePrice").isNull() || n.path("salePrice").isMissingNode());
+    send(
+        "ProductSaleStateChanged",
+        "PRD-D1",
+        2,
+        Map.of(
+            "productId",
+            "PRD-D1",
+            "sku",
+            "E-D1",
+            "state",
+            "DISCONTINUED",
+            "effectiveAt",
+            "2026-11-19T06:00:00Z"));
   }
 
   void order(String type, String orderId, long version, Map<String, Object> payload) {

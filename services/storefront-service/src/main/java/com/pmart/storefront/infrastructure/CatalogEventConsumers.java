@@ -30,6 +30,16 @@ class CatalogEventConsumers {
     return consumers.of(projector::applyHandling);
   }
 
+  /**
+   * commerce.sku-display-discount.v1 — 바인딩 promotionEvents-in-0(2026-11-21 ADR-0082 4단계, 할인가 표시). 새 그룹은 처음부터
+   * 읽어 채운다.
+   */
+  @Bean
+  PmartEventConsumer promotionEvents(EventConsumers consumers, DisplayProjector projector) {
+    return consumers.of(
+        e -> "SkuDisplayDiscountChanged".equals(e.eventType()), projector::applyDiscount);
+  }
+
   /** commerce.review.v1 — 바인딩 reviewEvents-in-0(2026-11-19 BR-63, 진열 평점). 새 그룹은 처음부터 읽어 채운다. */
   @Bean
   PmartEventConsumer reviewEvents(EventConsumers consumers, DisplayProjector projector) {

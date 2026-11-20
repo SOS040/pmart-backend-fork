@@ -32,6 +32,7 @@
 ## 진행
 - 2026-11-20 1단계 LAN 배포(80d1a952).
 - 2026-11-21 2·3단계: pricing 0.2.0 견적 할인, order 0.18.0 주문서 쿠폰·결제 진입 점유·주기 작업(확정·해제·복원), claim 환불(쿠폰 뺀 상품액·결품 부분 환불 할인 안분). 사가(orchestration)는 쿠폰을 모른다 — order 가 맡는다(flows 문서 S1-e·S3-f).
+- 2026-11-21 4단계 할인가 표시: promotion 이 기본가 사본(PriceVersionEffective)으로 SKU 마다 지금 표시 할인을 30초마다 다시 계산해 바뀐 것만 `SkuDisplayDiscountChanged`(토픽 `commerce.sku-display-discount.v1`, compact). 검색(Logstash 색인 `sku-discounts` → 결과 대표 SKU)·홈(storefront 사본)은 가격 사본과 priceVersion 이 같고 끝 전일 때만 할인가. 상세·장바구니는 pricing `/prices` 가 promotion 을 바로 묻는다(못 읽으면 정가 + discountAvailable=false). 가격순 정렬·가격 범위는 기본가 그대로. 계약 pricing 0.3.0·cart 0.4.0·storefront 0.8.0·search 0.6.0.
 
 ## 결과
 - service-map promotion-service 를 "1차 비활성"에서 활성으로. 원문 1차 제외 문구와 다른 부분은 이 ADR 을 따른다.

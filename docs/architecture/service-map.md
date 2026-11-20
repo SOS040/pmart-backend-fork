@@ -57,14 +57,14 @@
 - **소유하지 않음**: 판매 가능 판단(색인 지연≠재고 있음).
 - **API**: 검색/필터, 운영 결과 0건 검색어·동의어 규칙 조회(MD·OPERATOR_ADMIN). 동의어 바꾸기는 approval-service 승인(`SEARCH_SYNONYM`)으로만.
 - **동의어 승인 반영(ADR-0073 단계 B, 2026-11-20)**: 구독 `ApprovalDecided`(platform.approval.v1, 바인딩 `approvalEvents` — SEARCH_SYNONYM 만, inbox 대신 승인 ID·규칙 버전으로 멱등) → ES 동의어 집합 갱신(재색인 없음) → 발행 `ApplicationReceiptRecorded`(outbox 없이 Kafka 로 바로).
-- **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`(표시 가격·가격순), `SkuHandlingChanged`(센터 취급 — 상품 carriedMfcIds, 2026-11-05) — **search 소유 Logstash 파이프라인**(`services/search-service/src/main/logstash/search-index.conf`, 소비 그룹은 `deploy/lan/elastic/search-index.env`)이 받아 색인한다. 서비스 자체는 조회만(ADR-0031). `CategoryChanged` 는 아직 쓰지 않는다(이름 경로는 공개 트리 조회).
+- **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`(표시 가격·가격순), `SkuHandlingChanged`(센터 취급 — 상품 carriedMfcIds, 2026-11-05), `SkuDisplayDiscountChanged`(표시 할인 → 색인 `sku-discounts`, 결과 대표 SKU 에 붙임 — 2026-11-21 ADR-0082 4단계) — **search 소유 Logstash 파이프라인**(`services/search-service/src/main/logstash/search-index.conf`, 소비 그룹은 `deploy/lan/elastic/search-index.env`)이 받아 색인한다. 서비스 자체는 조회만(ADR-0031). `CategoryChanged` 는 아직 쓰지 않는다(이름 경로는 공개 트리 조회).
 - **의존**: Elasticsearch 8.18 + nori(색인, ADR-0031), Logstash(색인 주체), product-content(공개 카드 API — Logstash 가 이름·이미지 보강), product(공개 카테고리 트리). 취급 여부는 동기 조회가 아니라 `SkuHandlingChanged` 색인 사본(2026-11-05).
 
 ### storefront-service `[1단계 기본]`
 - **소유**: 홈 진열·배너·테마·랭킹/신상품 탭 구성과 발효 버전, 추천(3차).
 - **소유하지 않음**: 상품·가격·재고 정본.
 - **발행**: `ProductRankingSignalsChanged`(ADR-0072), `ApplicationReceiptRecorded`(진열 편성 DISPLAY 승인 반영 회신, 2026-11-20 ADR-0075).
-- **구독**: `ApprovalDecided`(전시 승인 BO-05 — DISPLAY·targetService storefront-service 만, 2026-11-20 ADR-0075 구현), `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`.
+- **구독**: `ApprovalDecided`(전시 승인 BO-05 — DISPLAY·targetService storefront-service 만, 2026-11-20 ADR-0075 구현), `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`, `SkuDisplayDiscountChanged`(진열 할인가, 2026-11-21 ADR-0082 4단계).
 - **의존**: product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강, ADR-0021), S3 호환 저장소(배너 이미지, 버킷 pmart-storefront — ADR-0016).
 
 ### pricing-service `[1단계]`
@@ -78,8 +78,8 @@
 - **소유**: 행사(기간 할인 PRICE_DISCOUNT·장바구니 쿠폰 COUPON)·대상(SKU·카테고리)·승인 반영, 쿠폰 발급(내려받기·지정·가입 축하)·점유·사용 확정·해제·복원, 행사 수량(총 수량·1인 한도·발급/사용 수).
 - **소유하지 않음**: 견적 계산·안분(pricing), 주문 금액 확정·스냅샷(order), 점유·확정·복원의 사가 조율(orchestration), 승인 심사(approval).
 - **API**: 직원 행사 만들기·고치기·제출·조기 종료 제출·지정 발급, 고객 쿠폰 행사 목록·내려받기·내 쿠폰함, 내부 SKU 기간 할인 조회·쿠폰 계산·점유/확정/해제/복원.
-- **발행**: `ApplicationReceiptRecorded`(PROMOTION 승인 반영 회신).
-- **구독**: `ProductVersionPublished`(SKU → 카테고리 사본), `ApprovalDecided`(PROMOTION).
+- **발행**: `ApplicationReceiptRecorded`(PROMOTION 승인 반영 회신), `SkuDisplayDiscountChanged`(표시 할인 — 토픽 `commerce.sku-display-discount.v1` compact, 2026-11-21 ADR-0082 4단계).
+- **구독**: `ProductVersionPublished`(SKU → 카테고리 사본), `PriceVersionEffective`(기본가 사본 — 표시 할인 고르기, 2026-11-21), `ApprovalDecided`(PROMOTION).
 - **아직**: pricing·order·orchestration 연결, 화면 할인가 표시, 가입 쿠폰 자동 발급(ADR-0083 나누어 만들기 2~5). 첫 구매 무료배달 자격은 그대로 order-service.
 ---
 

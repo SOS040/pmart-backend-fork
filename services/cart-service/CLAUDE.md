@@ -37,3 +37,4 @@
 ## 상태
 장바구니 열기·조회·담기·수량/선택 변경·삭제·변경 결과 조회·병합·주문용 내부 조회 구현(2026-10-30), 주문 확정 후 정리·표시 가용(2026-10-31). 병합 때 가용 재검증은 아직.
 - **최소 주문 금액 설정으로(2026-11-18 사용자 "추천대로", 계약 0.2.1)**: `CartRules.MIN_ORDER_AMOUNT` 상수를 없애고 `CartView` 가 설정 저장소 공통 `pmart.commerce.min-order-amount`(order-service 와 같은 한 값)를 읽는다. 없으면 `minOrderAmount`·`minOrderShortfall` null(장바구니는 그대로).
+- **기간 할인 표시(2026-11-21 ADR-0082 4단계, 계약 0.4.0)**: pricing `/prices` 의 discount 사본 → 품목 `salePrice`·`discountRatePercent`·`discountName`. `selectedItemAmount` 는 할인가 기준(주문 초안 최소주문 판정과 같은 기간 할인 뒤·쿠폰 전), `selectedDiscountAmount` = 그 할인 합계. 시험 `CartFlowIT`(1,900 → 1,710 × 5).

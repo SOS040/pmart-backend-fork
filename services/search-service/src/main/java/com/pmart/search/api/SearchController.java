@@ -180,6 +180,14 @@ public class SearchController implements SearchApi {
         .representativeSku(h.representativeSku())
         .basePrice(h.basePrice() == null ? null : Math.toIntExact(h.basePrice()))
         .priceVersion(h.priceVersion())
+        // 기간 할인(0.x ADR-0082 4단계) — 가격 사본과 같은 버전·끝 전일 때만(ProductSearch)
+        .salePrice(h.discount() == null ? null : Math.toIntExact(h.discount().salePrice()))
+        .discountRatePercent(h.discount() == null ? null : h.discount().ratePercent())
+        .discountName(h.discount() == null ? null : h.discount().name())
+        .discountEndsAt(
+            h.discount() == null || h.discount().endsAt() == null
+                ? null
+                : OffsetDateTime.ofInstant(h.discount().endsAt(), ZoneOffset.UTC))
         .saleState(SearchHit.SaleStateEnum.fromValue(h.saleState()))
         .carried(h.carried())
         // ADR-0072 — 순위 신호 사본(리뷰 없으면 비움)

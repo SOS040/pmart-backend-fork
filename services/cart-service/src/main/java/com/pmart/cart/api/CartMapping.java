@@ -32,6 +32,8 @@ final class CartMapping {
         .mfcId(v.cart().mfcId())
         .items(v.lines().stream().map(CartMapping::item).toList())
         .selectedItemAmount(v.selectedAmount() == null ? null : Math.toIntExact(v.selectedAmount()))
+        .selectedDiscountAmount(
+            v.selectedDiscount() == null ? null : Math.toIntExact(v.selectedDiscount()))
         .minOrderAmount(v.minOrderAmount() == null ? null : Math.toIntExact(v.minOrderAmount()))
         .minOrderShortfall(
             v.minOrderShortfall() == null ? null : Math.toIntExact(v.minOrderShortfall()))
@@ -68,6 +70,9 @@ final class CartMapping {
                 .imageUrl(l.imageUrl() == null ? null : URI.create(l.imageUrl()))
                 .unitPrice(l.unitPrice() == null ? null : Math.toIntExact(l.unitPrice()))
                 .priceVersion(l.priceVersion())
+                .salePrice(l.salePrice() == null ? null : Math.toIntExact(l.salePrice()))
+                .discountRatePercent(l.discountRatePercent())
+                .discountName(l.discountName())
                 .saleState(CartItemDisplay.SaleStateEnum.fromValue(l.saleState()))
                 // 담당 MFC 가용 사본(불명은 UNKNOWN, 0 아님). 담기를 막지 않는다
                 .availability(CartItemDisplay.AvailabilityEnum.fromValue(l.availability().state()))

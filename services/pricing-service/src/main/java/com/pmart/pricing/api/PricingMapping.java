@@ -1,5 +1,6 @@
 package com.pmart.pricing.api;
 
+import com.pmart.pricing.api.generated.model.DisplayDiscount;
 import com.pmart.pricing.api.generated.model.ListPrices200Response;
 import com.pmart.pricing.api.generated.model.ListPrices200ResponseAsOf;
 import com.pmart.pricing.api.generated.model.Price;
@@ -7,9 +8,11 @@ import com.pmart.pricing.api.generated.model.PriceNextChange;
 import com.pmart.pricing.api.generated.model.PriceVersion;
 import com.pmart.pricing.api.generated.model.Quote;
 import com.pmart.pricing.api.generated.model.QuoteLine;
+import com.pmart.pricing.application.DisplayPrices;
 import com.pmart.pricing.application.PriceQueries.CurrentPrice;
 import com.pmart.pricing.application.PriceQueries.PriceList;
 import com.pmart.pricing.application.QuoteService;
+import com.pmart.pricing.infrastructure.PromotionClient;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -34,6 +37,31 @@ final class PricingMapping {
               .effectiveFrom(odt(p.next().effectiveFrom())));
     }
     return out;
+  }
+
+  /** 표시용(ADR-0082 4단계) — 할인과 discountAvailable 를 붙인다. */
+  static Price shown(
+      CurrentPrice p,
+      java.util.Map<String, PromotionClient.DisplayDiscount> discounts,
+      boolean ok) {
+    Price out = price(p).discountAvailable(ok);
+    PromotionClient.DisplayDiscount d = discounts.get(p.current().sku());
+    if (d != null && d.unitDiscount() > 0) {
+      out.discount(
+          new DisplayDiscount()
+              .promotionId(d.promotionId())
+              .name(d.name())
+              .unitDiscount(money(d.unitDiscount()))
+              .salePrice(money(p.current().basePrice() - d.unitDiscount()))
+              .ratePercent(d.ratePercent())
+              .endsAt(odt(d.endsAt())));
+    }
+    return out;
+  }
+
+  static ListPrices200Response shownList(DisplayPrices.Shown s) {
+    return priceList(s.list())
+        .items(s.list().items().stream().map(p -> shown(p, s.discounts(), s.available())).toList());
   }
 
   static ListPrices200Response priceList(PriceList list) {

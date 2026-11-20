@@ -28,6 +28,7 @@
 | `ShoppingAddressChanged` | customer-service | cart | accountId, shoppingAddressId, shoppingContextVersion, mfcId | 현재 쇼핑 주소 변경(늦은 응답 폐기 기준) | ① |
 | `CartItemChangeApplied` | cart-service | BI | cartId, cartItemId, sku, qty, cartVersion, appliedRequestId | 장바구니 변경 확정 | ① |
 | `ReviewPublished` / `ReviewDeleted` | review-service | product-content, storefront(진열 평점·순위 신호), audit | reviewId, orderLineId, productId, rating | 리뷰 등록/삭제(삭제 후 재작성 불가) | ② |
+| `SkuDisplayDiscountChanged` | promotion | search(Logstash — 색인 sku-discounts), storefront(display_sku_discount) | sku, seq, priceVersion, basePrice, unitDiscount, salePrice, ratePercent, promotionId?, promotionName?, endsAt? | SKU 표시 할인이 바뀜(행사 시작·끝·조기 종료·가격 변경·카테고리 상품 추가 — promotion 30초 주기 작업이 달라진 것만). 할인 없음 = unitDiscount 0. 받는 쪽은 seq 큰 것만, 가격 사본 priceVersion 이 같을 때만 할인가. 토픽 `commerce.sku-display-discount.v1`(키 SKU, **compact** — SKU 마다 마지막 상태 보존), 2026-11-21 ADR-0082 4단계 | ② |
 | `ProductRankingSignalsChanged` | storefront | search(Logstash — products-v6 정렬 칸) | productId, version, ratingCount, ratingAverage, ratingScore, salesWindow, salesWindowDays | 상품 순위 신호가 바뀜(리뷰·주문 사건, 매일 판매 창) — 토픽 commerce.product-ranking.v1, ADR-0072 | ② |
 
 ## 2. Order & Payment

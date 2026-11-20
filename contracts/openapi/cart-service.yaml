@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cart-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-21, ADR-0082 4단계 할인가 표시): 품목 표시에 기간 할인 `salePrice`·`discountRatePercent`·`discountName`(pricing `/prices` 의 discount 사본).
+    `selectedItemAmount` 는 **기간 할인 뒤** 단가 합계(주문 초안 최소주문 판정과 같은 기준 — 쿠폰 전), `selectedDiscountAmount` = 그 기간 할인 합계. 결제 금액은 주문서 견적.
     0.3.0(2026-11-20, ADR-0077 고객 탈퇴): 구독 CustomerWithdrawalCompleted(commerce.customer.v1) — 그 회원(MEMBER = accountId)의 장바구니(진행 중·만료)·품목·변경/병합 결과를 모두 지운다(재가입은 새 계정, 복원 없음). API 모양은 그대로.
     0.2.1(2026-11-18, 사용자 "추천대로"): 최소 주문 금액을 설정 저장소 공통 값 `pmart.commerce.min-order-amount`(order-service 와 같은 한 값, LAN 15000)에서 읽는다 — 상수 두 곳이던 것. 설정이 없으면 `minOrderAmount`·`minOrderShortfall` 이 null(장바구니는 그대로).
     0.2.0(2026-11-18, 고객 앱 장바구니 최소주문 안내 — 사용자 "A해줘"): 장바구니 조회(`Cart`, 변경 응답의 cart 포함)에 `minOrderAmount`(최소 주문 금액 15,000원 — order-service 주문 초안과 같은 BR-14 확정값)와 `minOrderShortfall` = max(0, minOrderAmount − selectedItemAmount). 선택 품목 가격을 하나라도 모르면(selectedItemAmount null) 부족액도 null(추측하지 않음). 표시 안내일 뿐 — 실제 차단·부족액은 주문 초안 견적(`Quote.minOrderShortfall`, 할인·쿠폰 전 상품액 기준, 배달팁·봉투값 제외)이 정본. cart → order 동기 호출은 없다.
@@ -373,6 +375,9 @@ components:
             imageUrl: { type: string, format: uri }
             unitPrice: { $ref: '_common.yaml#/components/schemas/Money' }
             priceVersion: { type: integer }
+            salePrice: { type: [integer, 'null'], minimum: 0, description: '(0.4.0) 기간 할인가(개당). 할인 없거나 모르면 null — unitPrice 를 보인다' }
+            discountRatePercent: { type: [integer, 'null'], description: '(0.4.0) 할인율(내림, %)' }
+            discountName: { type: [string, 'null'], description: '(0.4.0) 행사 이름' }
             saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
             availability:
               type: string
@@ -393,7 +398,8 @@ components:
         shoppingAddressId: { type: [string, 'null'] }
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
         items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
-        selectedItemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: 선택 품목 표시 합계. 견적 아님 }
+        selectedItemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: '선택 품목 표시 합계(0.4.0 부터 기간 할인 뒤·쿠폰 전 — 주문 초안 최소주문 판정과 같은 기준). 견적 아님' }
+        selectedDiscountAmount: { type: [integer, 'null'], minimum: 0, description: '(0.4.0) 선택 품목 기간 할인 합계(원). selectedItemAmount 가 null 이면 null' }
         minOrderAmount: { type: [integer, 'null'], minimum: 0, description: '최소 주문 금액(원, 0.2.0) — BR-14 확정값 15,000(order-service 주문 초안과 같음). 할인·쿠폰 전 상품액 기준, 배달팁·봉투값 제외', x-added-in: '2026-11-18' }
         minOrderShortfall: { type: [integer, 'null'], minimum: 0, description: '최소 주문까지 더 담을 금액(원, 0.2.0) = max(0, minOrderAmount − selectedItemAmount). 0 이면 충족. selectedItemAmount 가 null(선택 품목 가격 불명)이면 null — 0 으로 보지 않는다. 표시 안내이며 실제 판정은 주문 초안 견적', x-added-in: '2026-11-18' }
         lastChangedAt: { type: string, format: date-time }

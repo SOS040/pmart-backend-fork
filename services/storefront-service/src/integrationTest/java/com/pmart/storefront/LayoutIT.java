@@ -51,7 +51,7 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.storefront.content-base-url=http://localhost:1",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "spring.cloud.function.definition=catalogEvents;handlingEvents;reviewEvents;orderEvents;approvalEvents",
+      "spring.cloud.function.definition=catalogEvents;handlingEvents;reviewEvents;orderEvents;approvalEvents;promotionEvents",
       "spring.cloud.stream.bindings.orderEvents-in-0.destination=order.order.v1",
       "spring.cloud.stream.bindings.approvalEvents-in-0.destination=platform.approval.v1",
       "pmart.storefront.ranking.sales-window-days=30",
@@ -334,7 +334,8 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     Res seen = send("GET", APPROVER, "/storefront/layout-drafts/" + draftId, null);
     assertThat(seen.status()).as(seen.body().toString()).isEqualTo(200);
     assertThat(send("GET", APPROVER, "/storefront/layout-drafts", null).status()).isEqualTo(200);
-    assertThat(send("POST", APPROVER, "/storefront/layout-drafts", Map.of()).status()).isEqualTo(403);
+    assertThat(send("POST", APPROVER, "/storefront/layout-drafts", Map.of()).status())
+        .isEqualTo(403);
     assertThat(send("GET", STAFF, "/storefront/layout-drafts/" + draftId, null).status())
         .isEqualTo(403);
 

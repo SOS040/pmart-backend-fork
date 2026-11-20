@@ -51,5 +51,7 @@
 - 띄어쓰기(2026-11-05 products-v4): 띄어 쓴 ↔ 붙여 쓴 검색어·상품명을 양쪽으로 찾는다(nori 형태소 또는 `name.compact`). 낱말 순서가 다르면 형태소로만 찾는다. 동의어 없음(`SearchFlowIT.spacingVariants`).
 - 파이프라인 감시(2026-11-04): watch.sh 가 소비 지연·Logstash 큐·DLQ·ES 거절·마지막 반영 시각을 지표로 → 경보 `SearchIndexStalled` 등(`deploy/lan/monitoring/alert-rules.yml`).
 
+- **할인가 표시(2026-11-21 ADR-0082 4단계, 계약 0.6.0)**: Logstash 가 commerce.sku-display-discount.v1 `SkuDisplayDiscountChanged` → 색인 `sku-discounts`(→ `sku-discounts-v1`, 문서 = SKU, seq 큰 것만, env `PMART_SEARCH_DISCOUNTS_INDEX`). 상품 색인은 그대로(재색인 없음) — `ProductSearch.withDiscounts` 가 쪽의 대표 SKU 로 terms 조회해 priceVersion 같고·unitDiscount>0·끝 전일 때만 `salePrice`·`discountRatePercent`·`discountName`·`discountEndsAt`. 할인 색인을 못 읽으면 정가(검색은 성공). 가격순·가격 범위는 기본가. 토픽은 compact(LAN topics-init) — 재색인 재생에도 SKU 마다 마지막 상태가 남는다. **LAN: Logstash 가 처음 쓰기 전에 es-init(또는 검색 첫 요청)이 색인을 만들어야 한다**(없으면 ES 가 동적 매핑 색인을 만들어 별칭이 막힘). 시험 `SearchFlowIT.eventsBecomeSearchableAndStayConsistent`.
+
 ## 상태
 상품 검색·자동완성·필터(빈 목록) 구현(2026-10-30). 최근 검색어·인기 키워드 구현(2026-11-17, 계약 0.2.0).

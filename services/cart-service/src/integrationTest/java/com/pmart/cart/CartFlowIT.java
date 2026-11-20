@@ -378,6 +378,44 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     assertThat(noPrice.path("selectedItemAmount").isNumber()).as("가격 불명 = 합계 없음").isFalse();
     assertThat(noPrice.path("minOrderShortfall").isNumber()).as("가격 불명 = 부족액 불명").isFalse();
     assertThat(noPrice.path("minOrderAmount").asInt()).isEqualTo(15_000);
+    // 기간 할인(0.4.0, ADR-0082 4단계): 1,900 → 1,710(10%) × 5 — 합계·최소주문은 할인 뒤 기준
+    json(
+        WireMock.get(urlPathEqualTo("/api/v1/prices")),
+        Map.of(
+            "items",
+            List.of(
+                Map.of(
+                    "sku",
+                    "E-00000001",
+                    "basePrice",
+                    1900,
+                    "priceVersion",
+                    1,
+                    "discountAvailable",
+                    true,
+                    "discount",
+                    Map.of(
+                        "promotionId",
+                        "PRM-1",
+                        "name",
+                        "두부 10%",
+                        "unitDiscount",
+                        190,
+                        "salePrice",
+                        1710,
+                        "ratePercent",
+                        10,
+                        "endsAt",
+                        "2026-12-01T00:00:00Z")))));
+    JsonNode sale = get("/carts/" + guestCart, guest).body();
+    JsonNode saleDisplay = sale.path("items").path(0).path("display");
+    assertThat(saleDisplay.path("unitPrice").asInt()).isEqualTo(1900);
+    assertThat(saleDisplay.path("salePrice").asInt()).isEqualTo(1710);
+    assertThat(saleDisplay.path("discountRatePercent").asInt()).isEqualTo(10);
+    assertThat(saleDisplay.path("discountName").asString()).isEqualTo("두부 10%");
+    assertThat(sale.path("selectedItemAmount").asInt()).isEqualTo(8_550);
+    assertThat(sale.path("selectedDiscountAmount").asInt()).isEqualTo(950);
+    assertThat(sale.path("minOrderShortfall").asInt()).isEqualTo(6_450);
     json(
         WireMock.get(urlPathEqualTo("/api/v1/prices")),
         Map.of(

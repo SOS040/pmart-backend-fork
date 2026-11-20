@@ -34,7 +34,19 @@ public class CatalogClient {
 
   public record Card(String name, @Nullable String imageUrl) {}
 
-  public record Price(long amount, int version) {}
+  /** 표시 가격. sale* 는 기간 할인(ADR-0082 4단계 — 없으면 null). */
+  public record Price(
+      long amount,
+      int version,
+      @Nullable Long salePrice,
+      @Nullable Integer ratePercent,
+      @Nullable String discountName) {
+
+    /** 합계에 쓰는 단가 — 할인가가 있으면 할인가. */
+    public long effective() {
+      return salePrice == null ? amount : salePrice;
+    }
+  }
 
   public record Line(String sku, int quantity) {}
 
@@ -206,9 +218,16 @@ public class CatalogClient {
                     .body(String.class));
     Map<String, Price> out = new HashMap<>();
     for (JsonNode p : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
+      JsonNode d = p.path("discount");
+      boolean sale = d.path("salePrice").isNumber();
       out.put(
           p.path("sku").asString(),
-          new Price(p.path("basePrice").asLong(), p.path("priceVersion").asInt()));
+          new Price(
+              p.path("basePrice").asLong(),
+              p.path("priceVersion").asInt(),
+              sale ? d.path("salePrice").asLong() : null,
+              sale ? d.path("ratePercent").asInt() : null,
+              sale ? d.path("name").asString(null) : null));
     }
     return out;
   }

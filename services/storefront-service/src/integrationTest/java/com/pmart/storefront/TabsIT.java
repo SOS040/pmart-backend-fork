@@ -30,7 +30,7 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.storefront.content-base-url=http://localhost:1",
-      "spring.cloud.function.definition=catalogEvents;handlingEvents;reviewEvents;orderEvents;approvalEvents",
+      "spring.cloud.function.definition=catalogEvents;handlingEvents;reviewEvents;orderEvents;approvalEvents;promotionEvents",
       "spring.cloud.stream.bindings.orderEvents-in-0.destination=order.order.v1",
       "pmart.storefront.ranking.sales-window-days=30",
       "pmart.storefront.ranking.rating-prior-count=20",

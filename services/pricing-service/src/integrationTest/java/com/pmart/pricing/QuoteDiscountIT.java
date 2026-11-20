@@ -190,4 +190,57 @@ class QuoteDiscountIT extends PostgresKafkaContainerSupport {
     Res r = quote(body(null));
     assertThat(r.status()).isEqualTo(503);
   }
+
+  Res get(String path) {
+    return http.get()
+        .uri(path)
+        .exchange(
+            (q, r) ->
+                new Res(r.getStatusCode().value(), mapper.readTree(r.getBody().readAllBytes())));
+  }
+
+  @Test
+  void displayPricesCarryTheCurrentDiscountAndFallBackToBasePrice() {
+    stubDiscounts(
+        """
+        {"asOf":"2026-11-21T00:00:00Z","items":[
+          {"sku":"%s","promotionId":"PRM-A","name":"A 10%%","unitPrice":10000,"unitDiscount":1000,
+           "discountedUnitPrice":9000,"ratePercent":10,"endsAt":"2026-12-01T00:00:00Z"}]}
+        """
+            .formatted(A));
+    // 비회원도 본다(토큰 없음)
+    Res list = get("/prices?skus=" + A + "," + B);
+    assertThat(list.status()).as(list.body().toString()).isEqualTo(200);
+    JsonNode a = list.body().path("items").path(0);
+    JsonNode b = list.body().path("items").path(1);
+    assertThat(a.path("sku").asString()).isEqualTo(A);
+    assertThat(a.path("discountAvailable").asBoolean()).isTrue();
+    assertThat(a.path("discount").path("salePrice").asInt()).isEqualTo(9_000);
+    assertThat(a.path("discount").path("unitDiscount").asInt()).isEqualTo(1_000);
+    assertThat(a.path("discount").path("ratePercent").asInt()).isEqualTo(10);
+    assertThat(a.path("discount").path("name").asString()).isEqualTo("A 10%");
+    assertThat(b.path("discount").isMissingNode() || b.path("discount").isNull()).isTrue();
+    Res one = get("/prices/" + A);
+    assertThat(one.status()).isEqualTo(200);
+    assertThat(one.body().path("discount").path("salePrice").asInt()).isEqualTo(9_000);
+    // 내부 조회에는 할인을 붙이지 않는다
+    assertThat(
+            promotion.findAll(
+                WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/price-discounts"))))
+        .hasSize(2);
+
+    // promotion 장애 → 정가만, discountAvailable=false(거절하지 않는다)
+    promotion.resetAll();
+    promotion.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/price-discounts"))
+            .willReturn(aResponse().withStatus(503)));
+    Res down = get("/prices?skus=" + A);
+    assertThat(down.status()).isEqualTo(200);
+    assertThat(down.body().path("items").path(0).path("basePrice").asInt()).isEqualTo(10_000);
+    assertThat(down.body().path("items").path(0).path("discountAvailable").asBoolean()).isFalse();
+    assertThat(
+            down.body().path("items").path(0).path("discount").isMissingNode()
+                || down.body().path("items").path(0).path("discount").isNull())
+        .isTrue();
+  }
 }

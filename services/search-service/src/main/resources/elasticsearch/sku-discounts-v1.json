@@ -1,0 +1,18 @@
+{
+  "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "sku": { "type": "keyword" },
+      "seq": { "type": "integer" },
+      "priceVersion": { "type": "integer" },
+      "unitDiscount": { "type": "long" },
+      "salePrice": { "type": "long" },
+      "ratePercent": { "type": "integer" },
+      "promotionName": { "type": "keyword", "index": false },
+      "endsAtMs": { "type": "date", "format": "epoch_millis" },
+      "updatedAtMs": { "type": "date", "format": "epoch_millis" }
+    }
+  },
+  "aliases": { "sku-discounts": {} }
+}

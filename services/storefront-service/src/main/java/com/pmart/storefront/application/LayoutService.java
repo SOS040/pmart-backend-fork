@@ -86,8 +86,7 @@ public class LayoutService {
   static PmartPrincipal reader() {
     PmartPrincipal who = PmartPrincipal.current().orElse(null);
     if (who == null || READERS.stream().noneMatch(who::hasRole)) {
-      throw new PmartException(
-          ErrorCode.FORBIDDEN, "상품·전시 담당(MD)·운영 관리자·전시 승인자만 진열 초안을 볼 수 있습니다.");
+      throw new PmartException(ErrorCode.FORBIDDEN, "상품·전시 담당(MD)·운영 관리자·전시 승인자만 진열 초안을 볼 수 있습니다.");
     }
     return who;
   }
