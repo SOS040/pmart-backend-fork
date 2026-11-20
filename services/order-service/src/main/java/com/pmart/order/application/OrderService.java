@@ -63,15 +63,29 @@ public class OrderService {
       @Nullable String slotHoldId) {}
 
   /** shipping: 주문 당시 배송지 사본(BR-37) — 본인 조회만 채운다(내부 조회는 null). */
+  /**
+   * images = productId → 지금 대표 사진(BR-71 0.19.0, 없으면 빠짐), coupon = 주문서 견적의 쿠폰(쓰지 않았으면 null — 0.19.0
+   * 이름 포함).
+   */
   public record OrderView(
-      OrderRow order, List<LineRow> lines, @Nullable ShippingAddress shipping) {}
+      OrderRow order,
+      List<LineRow> lines,
+      @Nullable ShippingAddress shipping,
+      Map<String, String> images,
+      DraftService.@Nullable CouponChoice coupon) {
+
+    public OrderView(OrderRow order, List<LineRow> lines, @Nullable ShippingAddress shipping) {
+      this(order, lines, shipping, Map.of(), null);
+    }
+  }
 
   /** lines = 주문 ID → 앞 주문행(최대 {@link OrderHistoryRules#PREVIEW_LINES}개, BR-68 0.17.0). */
   public record Page(
       List<OrderStore.Summary> items,
       Map<String, List<OrderStore.PreviewLine>> lines,
       @Nullable String nextCursor,
-      int size) {}
+      int size,
+      Map<String, String> images) {}
 
   private final DraftStore drafts;
   private final OrderStore orders;
@@ -801,7 +815,27 @@ public class OrderService {
             .order(orderId)
             .filter(x -> x.accountId().equals(accountId))
             .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
-    return new OrderView(o, orders.lines(orderId), orders.shipping(orderId).orElse(null));
+    List<LineRow> lines = orders.lines(orderId);
+    return new OrderView(
+        o,
+        lines,
+        orders.shipping(orderId).orElse(null),
+        upstreams.productImages(
+            lines.stream().map(LineRow::productId).filter(java.util.Objects::nonNull).toList()),
+        coupon(o));
+  }
+
+  /** 주문서 견적의 쿠폰(쿠폰 할인이 있었을 때만). 초안을 못 읽으면 null. */
+  private DraftService.@Nullable CouponChoice coupon(OrderRow o) {
+    try {
+      return drafts
+          .draft(o.draftId())
+          .map(d -> mapper.readValue(d.snapshot(), DraftService.Snapshot.class).quote().coupon())
+          .filter(c -> c.applicable())
+          .orElse(null);
+    } catch (RuntimeException e) {
+      return null;
+    }
   }
 
   /**
@@ -852,7 +886,17 @@ public class OrderService {
         orders.previewLines(
             rows.stream().map(OrderStore.Summary::orderId).toList(),
             OrderHistoryRules.PREVIEW_LINES);
-    return new Page(rows, lines, next, size);
+    return new Page(
+        rows,
+        lines,
+        next,
+        size,
+        upstreams.productImages(
+            lines.values().stream()
+                .flatMap(List::stream)
+                .map(OrderStore.PreviewLine::productId)
+                .filter(java.util.Objects::nonNull)
+                .toList()));
   }
 
   /**

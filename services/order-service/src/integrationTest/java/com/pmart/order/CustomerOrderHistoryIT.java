@@ -45,7 +45,14 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.security.service-token.client-secret=history-test"
     })
 @Import({TestJwtConfiguration.class, CustomerOrderHistoryIT.Centers.class})
+@org.wiremock.spring.EnableWireMock(
+    @org.wiremock.spring.ConfigureWireMock(
+        name = "content",
+        baseUrlProperties = {"pmart.order.content-base-url"}))
 class CustomerOrderHistoryIT extends PostgresKafkaContainerSupport {
+
+  @org.wiremock.spring.InjectWireMock("content")
+  com.github.tomakehurst.wiremock.WireMockServer content;
 
   /** 센터 이름(BR-68 mfcName) — center-master 대신 고정 이름. 상세와 같은 CenterNames 를 쓰는지 본다. */
   @TestConfiguration
@@ -243,8 +250,25 @@ class CustomerOrderHistoryIT extends PostgresKafkaContainerSupport {
     String two =
         order(acc, "COMPLETED", Instant.now().minus(Duration.ofHours(2)), "SINGLE", "사과", null);
 
+    // BR-71(0.19.0): 지금 대표 사진 — P-1 만 게시(카드 있음), 나머지는 null
+    content.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/product-contents"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"items\":[{\"productId\":\"P-1\",\"mainImage\":{\"url\":\"/api/v1/content-images/IMG-P1\"}}]}")));
     JsonNode items = ok(token, "/orders").path("items");
     assertThat(items.findValuesAsString("orderId")).containsExactly(seven, two);
+    assertThat(items.path(0).path("lines").path(0).path("imageUrl").asString())
+        .isEqualTo("/api/v1/content-images/IMG-P1");
+    assertThat(items.path(0).path("lines").path(1).path("imageUrl").isNull()).isTrue();
+    JsonNode detailLines = ok(token, "/orders/" + seven).path("lines");
+    assertThat(detailLines.path(0).path("imageUrl").asString())
+        .isEqualTo("/api/v1/content-images/IMG-P1");
+    assertThat(detailLines.path(2).path("imageUrl").isNull()).isTrue();
     JsonNode first = items.path(0);
     assertThat(first.path("mfcName").asString()).isEqualTo("강남 MFC");
     assertThat(first.path("itemCount").asInt()).isEqualTo(8); // 전체 수량(2 + 1×6)은 그대로

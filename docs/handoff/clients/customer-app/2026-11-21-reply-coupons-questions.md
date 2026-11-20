@@ -5,7 +5,7 @@
 - 작성: pmart-backend, 2026-11-21 — 사용자 "응"(회신 → BR-71 → 쿠폰 도착 알림 순서)
 
 ## 답
-- **R1. BR-71 주문 줄 상품 사진** — 11-20 요청에 회신이 빠져 있었다(미안). 이 회신 바로 다음에 만든다: `OrderSummary.lines[]`·`OrderLine` 에 `imageUrl`(review `Eligibility.imageUrl` 과 같은 값·규칙 — 지금 상품의 대표 사진, 게시 안 된 상품 null). 같이 **주문상세 견적에 쿠폰 이름**(`quote.coupon.name`)도 넣는다 — 지금 "쿠폰 할인"으로 보이는 줄. 배포되면 이 파일에 적는다.
+- **R1. BR-71 주문 줄 상품 사진 — 반영(order 0.19.0, LAN 배포 2026-11-21)**. 11-20 요청에 회신이 빠져 있었다(미안). `GET /orders` `lines[].imageUrl`·`GET /orders/{id}` `lines[].imageUrl` = 지금 상품의 대표 사진(product-content 공개 카드 `mainImage.url` — review `Eligibility.imageUrl` 과 같은 값). 게시 안 된 상품·조회 실패는 null(주문 조회는 그대로). 앱은 주문상세의 줄마다 상품 조회를 걷어도 된다. 같이 **주문상세 `quote.coupon`** = `{couponId, applicable: true, name}`(쿠폰을 썼을 때만, 안 썼으면 null) — "쿠폰 할인" 대신 쿠폰 이름을 쓸 수 있다.
 - **Q1. 찜 한도 `details`** — 맞다. 422 `WISHLIST_LIMIT_EXCEEDED` 의 details 는 한 줄 `{field: "limit", reason: "200"}`(reason 은 문자열 숫자).
 - **Q2. BR-64 기존 계정 안내 `details`** — 맞다. `field` = 이름, `reason` = 값. 409 `IDENTITY_ALREADY_REGISTERED` 는 `provider`·`joinedAt`(ISO 시각)·`emailMasked`(있는 것만), 409 `IDENTITY_REJOIN_BLOCKED` 는 `rejoinAvailableAt`(ISO 시각).
 - **Q3. 탈퇴 대기 중 주문** — 따로 알리는 code·detail 은 없다. 지금처럼 `ACCOUNT_NOT_PURCHASABLE` 일반 문구를 쓰면 된다.

@@ -430,6 +430,38 @@ public class Upstreams {
     }
   }
 
+  /**
+   * 지금 상품의 대표 사진(BR-71 0.19.0) — product-content 공개 카드 {@code GET
+   * /product-contents?productIds=}(100개씩). 게시 안 된 상품은 빠진다. 조회 실패면 빈 결과(주문 조회는 사진 없이) — 사진을 지어내지
+   * 않는다.
+   */
+  public Map<String, String> productImages(java.util.Collection<String> productIds) {
+    Map<String, String> out = new java.util.HashMap<>();
+    List<String> ids = List.copyOf(new java.util.LinkedHashSet<>(productIds));
+    try {
+      for (int from = 0; from < ids.size(); from += 100) {
+        String joined = String.join(",", ids.subList(from, Math.min(ids.size(), from + 100)));
+        JsonNode body =
+            get(
+                content,
+                "product-content-service cards",
+                "/api/v1/product-contents?productIds={ids}",
+                joined);
+        for (JsonNode card : body.path("items")) {
+          String productId = text(card, "productId");
+          String url = text(card.path("mainImage"), "url");
+          if (productId != null && url != null && !url.isBlank()) {
+            out.put(productId, url);
+          }
+        }
+      }
+    } catch (RuntimeException e) {
+      log.warn("상품 사진 조회 실패({}개) — 사진 없이: {}", ids.size(), e.toString());
+      return Map.of();
+    }
+    return out;
+  }
+
   private JsonNode get(RestClient client, String target, String uri, Object... vars) {
     String raw =
         Downstream.call(target, () -> client.get().uri(uri, vars).retrieve().body(String.class));

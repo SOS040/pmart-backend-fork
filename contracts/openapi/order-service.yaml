@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.18.0
+  version: 0.19.0
   description: |
+    0.19.0(2026-11-21 BR-71 — 고객 앱 요청 "주문 줄 상품 사진"): `GET /orders` `lines[]`(OrderSummaryLine)·`GET /orders/{id}` `lines[]`(OrderLine)에
+    `imageUrl` — **지금** 상품의 대표 사진(product-content 공개 카드 `mainImage.url`, review `Eligibility.imageUrl` 과 같은 값·규칙). 게시 안 된 상품·조회 실패는 null(주문은 그대로).
+    주문 상세 `quote.coupon` 에 쿠폰 이름(`name`, 주문서 견적 그대로) — 쿠폰을 안 썼으면 null.
     0.18.0(2026-11-21, ADR-0082 쿠폰·기간 할인 3단계 — 사용자 "응"): 주문서 `couponId`(장바구니 쿠폰 1장, 고객만). 견적이 기간 할인·쿠폰을 넣는다(pricing 0.2.0) —
     Quote `baseItemAmount`(정가)·`promotionDiscount`·`itemAmount`(기간 할인 뒤·쿠폰 전 — 최소 주문·무료 배달 판정)·`couponDiscount`·`coupon`{couponId, applicable, reason, name},
     `totalAmount` = itemAmount − couponDiscount + 배달팁 + 봉투값. 쓸 수 없는 쿠폰을 골랐으면 차단 사유 `COUPON_NOT_APPLICABLE`(detail = 사유) — 쿠폰을 빼고 주문서를 다시 만든다.
@@ -982,7 +985,7 @@ components:
         couponDiscount: { $ref: '_common.yaml#/components/schemas/Money', x-added-in: '2026-11-21', description: '0.18.0 — 쿠폰 할인(totalAmount 에서 뺌)' }
         coupon:
           x-added-in: '2026-11-21'
-          description: '0.18.0 — 고른 쿠폰 결과(고르지 않았으면 null). 주문 조회는 couponId·applicable 만'
+          description: '0.18.0 — 고른 쿠폰 결과(고르지 않았으면 null). 주문 조회(0.19.0)는 couponId·applicable·name'
           oneOf:
             - type: 'null'
             - type: object
@@ -1136,6 +1139,7 @@ components:
         sku: { type: string }
         productName: { type: [string, 'null'], description: 고객용 상품명의 주문 당시 사본(BR-35, 초안 때 고정). 조회 실패·2026-11-02 이전 주문은 null — 앱은 그때만 sku 로 대신 }
         optionLabel: { type: [string, 'null'], description: 옵션 라벨의 주문 당시 사본(BR-35) }
+        imageUrl: { type: [string, 'null'], description: '(0.19.0 BR-71) 지금 상품의 대표 사진(주문 당시 사본 아님). 게시 안 됨·조회 실패면 null. 고객 상세만 — 직원 상세는 null' }
         productId: { type: string }
         cartItemId: { type: string, description: 주문 대상이던 장바구니 품목(장바구니 정리용) }
         lineAmount: { $ref: '_common.yaml#/components/schemas/Money' }
@@ -1220,6 +1224,7 @@ components:
         sku: { type: string }
         productName: { type: [string, 'null'], description: '주문 당시 상품명 사본(BR-35). 없으면 null — 앱은 sku 로 대신' }
         optionLabel: { type: [string, 'null'], description: 옵션 라벨의 주문 당시 사본(BR-35) }
+        imageUrl: { type: [string, 'null'], description: '(0.19.0 BR-71) 지금 상품의 대표 사진. 게시 안 됨·조회 실패면 null' }
         quantity: { type: integer, description: 주문 수량 }
         lineAmount: { type: integer, description: '줄 금액(원, 단가 × 주문 수량 — 할인 분담 전)' }
     OrderRepresentativeItem:

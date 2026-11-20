@@ -158,8 +158,23 @@ public class OrdersController implements OrdersApi {
                             ? Quote.FirstPurchaseBenefitEnum.CONFIRMED
                             : Quote.FirstPurchaseBenefitEnum.NOT_ELIGIBLE)
                     .weightG(o.weightG())
-                    .plannedShipments(o.plannedShipments()))
-            .lines(v.lines().stream().map(OrdersController::line).toList())
+                    .plannedShipments(o.plannedShipments())
+                    // 0.19.0 — 주문서 견적의 쿠폰(이름 포함), 안 썼으면 null
+                    .coupon(
+                        v.coupon() == null
+                            ? null
+                            : new com.pmart.order.api.generated.model.QuoteCoupon()
+                                .couponId(v.coupon().couponId())
+                                .applicable(true)
+                                .name(v.coupon().name())))
+            .lines(
+                v.lines().stream()
+                    .map(
+                        l ->
+                            line(l)
+                                .imageUrl(
+                                    l.productId() == null ? null : v.images().get(l.productId())))
+                    .toList())
             .shipments(shipments(o.orderId(), v.lines()))
             .payment(new OrderPayment().paymentAttemptId(o.paymentAttemptId()).state("APPROVED"))
             .claims(List.of())
@@ -197,7 +212,12 @@ public class OrdersController implements OrdersApi {
         new ListOrders200Response()
             .items(
                 page.items().stream()
-                    .map(s -> summary(s, page.lines().getOrDefault(s.orderId(), List.of())))
+                    .map(
+                        s ->
+                            summary(
+                                s,
+                                page.lines().getOrDefault(s.orderId(), List.of()),
+                                page.images()))
                     .toList())
             .page(new ListOrders200ResponsePage().nextCursor(page.nextCursor()).size(page.size())));
   }
@@ -220,7 +240,10 @@ public class OrdersController implements OrdersApi {
   }
 
   /** 목록 한 줄. lines·mfcName 은 BR-68(0.17.0) — 센터 이름은 상세와 같은 {@code CenterNames}(10분 사본). */
-  private OrderSummary summary(OrderStore.Summary s, List<OrderStore.PreviewLine> lines) {
+  private OrderSummary summary(
+      OrderStore.Summary s,
+      List<OrderStore.PreviewLine> lines,
+      java.util.Map<String, String> images) {
     return new OrderSummary()
         .orderId(s.orderId())
         .orderNumber(s.orderNumber())
@@ -249,6 +272,8 @@ public class OrdersController implements OrdersApi {
                             .sku(l.sku())
                             .productName(l.productName())
                             .optionLabel(l.optionLabel())
+                            // BR-71(0.19.0) — 지금 대표 사진
+                            .imageUrl(l.productId() == null ? null : images.get(l.productId()))
                             .quantity(l.quantity())
                             .lineAmount((int) l.lineAmount()))
                 .toList());
