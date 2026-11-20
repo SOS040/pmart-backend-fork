@@ -110,10 +110,10 @@
 | [DE-CASE](delivery-execution-service.md) | delivery-execution | PC 5 | platform(case R-4 뒤) | `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태 | 없음 | **구현·LAN 배포**(2026-11-16 #55 2cd11ad5) |
 | [CL-D1](claim-service.md) | claim·order·orchestration | PC 1 | delivery(사용자 결정) | 고객센터 취소 없음 — ADR-0052 2번 대체 | 결정됨(2026-11-13) | **처리**(ADR-0060, 코드 변경 없음) |
 | [CL-3](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 기간 환불 금액 합·건수(대시보드 D2 — 완료 시각 한국 날짜) | 결정됨(2026-11-18 사용자 — 환불은 따로) | **구현·LAN 배포**(2026-11-18, claim 0.5.0 — 이미지 4ab6e04e) |
-| [CL-4](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 화면 표기 — 주문별 순번 `claimSeq`(하위 환불 등도), 주문번호로 찾기(ADR-0070 덧붙임 2026-11-19) | 결정됨(2026-11-19 — ADR-0070 추천안, #219·#220) | 대기(PC 1) |
+| [CL-4](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 화면 표기 — 주문별 순번 `claimSeq`(하위 환불 등도), 주문번호로 찾기(ADR-0070 덧붙임 2026-11-19) | 결정됨(2026-11-19 — ADR-0070 추천안, #219·#220) | **구현·LAN 배포**(2026-11-20 PC 1 — 사용자 "진행해라", claim 0.10.0 claimSeq·refundSeq — 주문번호로 찾기는 bff 가 order 에서 orderId 를 얻어 ?orderId=, 54344e57·a548a628) |
 | [CL-5](claim-service.md) | claim(·promotion·notification) | PC 1 | delivery(PC 5)·mfc-backoffice | 배차 불가 취소 — 사유 DISPATCH_UNAVAILABLE 전체 취소(인계 전), 전액 환불 + 2,000원 쿠폰 + 고객 알림 | 결정됨(2026-11-19 사용자 "1,2,3 전부"·"쿠폰 2000원", #228) | **구현(쿠폰 제외) 2026-11-19 PC 1** — claim 0.7.0·order 0.14.2·notification(문구), **LAN 배포 2026-11-19 15:15**. 쿠폰은 promotion-service 가 생길 때(사용자 "추천대로"). **자동 취소 2026-11-20 #298** — dispatch V17 약속+30분 라이더 없음 → claim 시스템 취소(DISPATCH_UNAVAILABLE, claim 0.9.1) |
-| [CL-6](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 목록 상태별 수 `GET /claims/counts`(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
-| [CL-7](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 직원 `GET /claims?customerId=` — 백오피스 "고객" 상세 | 요청(2026-11-19 PC 2 #251) | 대기(PC 1) |
+| [CL-6](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 클레임 목록 상태별 수 `GET /claims/counts`(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | **구현·LAN 배포**(2026-11-20 PC 1 — 사용자 "진행해라", claim 0.10.0 GET /claims/counts, 54344e57·a548a628) |
+| [CL-7](claim-service.md) | claim | PC 1 | backoffice(PC 2) | 직원 `GET /claims?customerId=` — 백오피스 "고객" 상세 | 요청(2026-11-19 PC 2 #251) | **구현·LAN 배포**(2026-11-20 PC 1 — 사용자 "진행해라", claim 0.10.0 ?customerId=, 54344e57·a548a628) |
 | [N-3](notification-service.md) | notification | PC 1 | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | 결정됨(ADR-0065) | **구현**(2026-11-16 #53 d3f00691) |
 | [N-4](notification-service.md) | notification | PC 1 | delivery | 사고·파손 재발송 고객 안내(`DeliveryFailed` reason RIDER_INCIDENT·DAMAGED — 새 상품 재발송) | 결정됨(ADR-0069, 2026-11-18 사용자) | **구현·LAN 배포**(2026-11-19 PC 1 — notification `DeliveryFailed` → `DELIVERY_INCIDENT_RESHIPMENT` 알림함·푸시, e6761338) |
 | [N-5](notification-service.md) | notification(·rider) | PC 1 | delivery(PC 5) | 라이더 공지 보내기 — 전체·센터 라이더 알림함 + 푸시(RIDER_OPS·OPERATOR_ADMIN) | 결정됨(2026-11-18 사용자 "대상 고르기 + 알림함·푸시") | **구현·LAN 배포**(2026-11-18 PC 5 #201 — notification 0.5.0·V5, rider 0.13.0) |
@@ -134,8 +134,8 @@
 | [PD-1](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 조회 목록 판매 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [PD-2](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 초안 목록 — "등록 진행 중" 탭 | 요청(2026-11-19 PC 2 #253) | 대기(PC 1) |
 | [PD-3](product-service.md) | product·product-content | PC 1 | backoffice(PC 2) | 개별 등록에서 상품 초안·콘텐츠 초안을 원천 키로 미리 잇기 — 확인 요청 | 요청(2026-11-19 PC 2 #253) | 대기(PC 1 — 답) |
-| [PD-4](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 목록 이름 검색 `GET /products?q=` 관리용 명칭 부분 일치(PN-1), 선택 고객용 상품명(PN-2 — 맡을 서비스 답 필요) | 요청(2026-11-19 웹 → 2026-11-20 PC 2 #274) | 대기(PC 1) |
-| [PCT-1](product-content-service.md) | product-content | PC 1 | backoffice(PC 2) | 직원 콘텐츠 초안 목록 `GET /content-drafts`(CD-1), 선택 상태별 수(CD-2) | 요청(2026-11-19 웹 → 2026-11-20 PC 2 #274) | 대기(PC 1) |
+| [PD-4](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 목록 이름 검색 `GET /products?q=` 관리용 명칭 부분 일치(PN-1), 선택 고객용 상품명(PN-2 — 맡을 서비스 답 필요) | 요청(2026-11-19 웹 → 2026-11-20 PC 2 #274) | **구현·LAN 배포**(2026-11-20 PC 1 — 사용자 "진행해라", product 0.5.0 ?q= — PN-1 만, PN-2 안 함, 54344e57·a548a628) |
+| [PCT-1](product-content-service.md) | product-content | PC 1 | backoffice(PC 2) | 직원 콘텐츠 초안 목록 `GET /content-drafts`(CD-1), 선택 상태별 수(CD-2) | 요청(2026-11-19 웹 → 2026-11-20 PC 2 #274) | **구현·LAN 배포**(2026-11-20 PC 1 — 사용자 "진행해라", product-content 0.4.0 CD-1·CD-2, 54344e57·a548a628) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.

@@ -8,3 +8,4 @@
 - 상품 초안 목록(PD-2)과 줄 모양이 비슷하면 웹 "등록 진행 중" 탭이 한 표로 합친다(상품·콘텐츠 화면 합치기 — 사용자 결정 2026-11-19).
 - **받는 쪽**: 웹 콘텐츠 조회에 직접. 받기 전까지 웹은 게시된 콘텐츠만 보이고 안내 상자에 적어 둔다.
 - **상태**: 요청(PC 1 대기, 급하지 않음).
+- **처리(2026-11-20 PC 1 — 사용자 "진행해라", product-content 0.4.0, LAN 배포)**: CD-1 `GET /content-drafts?state=&state=&productId=&size=&cursor=`(state 반복 또는 쉼표, 모르는 값 400) → `ContentDraftSummary`{draftId·productId·state·name·imageId(MAIN 첫째)·approvalId·updatedAt·version}, 최근 바뀐 순. CD-2 `GET /content-drafts/counts?productId=` → `StatusCounts`(4 상태 0 까지, capped 늘 false). 권한은 운영자(고객 403).
