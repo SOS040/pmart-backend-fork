@@ -26,7 +26,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class CenterOpsService {
 
   public static final int DEFAULT_DUE_MINUTES = 15;
-  static final List<String> REASONS = List.of("SHORT", "DAMAGED", "SPOILED", "BLOCKED");
+  static final List<String> REASONS =
+      List.of(
+          "SHORT",
+          "DAMAGED",
+          "SPOILED",
+          "BLOCKED",
+          "PARTIAL_CLOSE"); // PARTIAL_CLOSE 0.30.0(ADR-0077)
   private static final Logger log = LoggerFactory.getLogger(CenterOpsService.class);
 
   public record ShortageItem(ShortageRow row, @Nullable String productName) {}

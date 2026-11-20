@@ -276,12 +276,22 @@ public class ShortageService {
   public record ShortfallRelease(
       String reservationId, String orderLineId, int qty, String reason) {}
 
+  /** 관리자 부분 종료로 취소된 잔량(0.41.0, R-29 ADR-0077) — 아직 집지 않은 확정 예약까지 해제한다. */
+  public static final String PARTIAL_CLOSE_CANCELLED = "PARTIAL_CLOSE_CANCELLED";
+
   /**
    * 이행부족(BLOCKED 조각) 해제 — 결품 수량을 주문에서 취소했을 때(ADR-0045). BLOCKED 는 R 이 아니라 D 라 현물·요약 변화 없음. 같은 요청은
    * 재생.
+   *
+   * <p>사유 {@link #PARTIAL_CLOSE_CANCELLED}(센터 관리자 부분 종료, ADR-0077): 잔량은 아직 선반에 있는 확정 예약이라 BLOCKED 를
+   * 먼저 풀고, 모자라면 그 줄의 HELD·CONFIRMED 조각 중 <b>아직 집지 않은 양</b>(qty − picked)을 해제한다 — IV-08 "피킹 전 취소
+   * R−q/A+q"(H·E 그대로, LOT·센터 요약 R−q). 집은 양은 건드리지 않는다.
    */
   public com.pmart.common.web.CommandResponse releaseShortfall(
       String requestId, String sourceSystem, ShortfallRelease in) {
+    if (PARTIAL_CLOSE_CANCELLED.equals(in.reason())) {
+      return releaseClosedRemainder(requestId, sourceSystem, in);
+    }
     return idempotency
         .execute(
             Callers.key(sourceSystem, requestId, "releaseShortfall"),
@@ -334,6 +344,111 @@ public class ShortageService {
                   in.orderLineId(),
                   in.qty(),
                   in.reason());
+              return new com.pmart.common.web.CommandResponse(
+                  com.pmart.common.web.CommandStatus.APPLIED,
+                  requestId,
+                  r.reservationId(),
+                  in.qty(),
+                  r.version(),
+                  false,
+                  null,
+                  at);
+            })
+        .value();
+  }
+
+  private com.pmart.common.web.CommandResponse releaseClosedRemainder(
+      String requestId, String sourceSystem, ShortfallRelease in) {
+    return idempotency
+        .execute(
+            Callers.key(sourceSystem, requestId, "releaseShortfall"),
+            in,
+            com.pmart.common.web.CommandResponse.class,
+            () -> {
+              ReservationRow r =
+                  reservations
+                      .lock(in.reservationId())
+                      .orElseThrow(
+                          () ->
+                              PmartException.notFound(
+                                  ReservationService.RESERVATION_NOT_FOUND,
+                                  "예약이 없습니다: " + in.reservationId()));
+              List<PickPart> line =
+                  reservations.pickParts(in.reservationId(), true).stream()
+                      .filter(p -> in.orderLineId().equals(p.orderLineId()))
+                      .toList();
+              int blocked =
+                  line.stream()
+                      .filter(p -> p.state() == ReservationState.BLOCKED)
+                      .mapToInt(PickPart::qty)
+                      .sum();
+              int unpicked =
+                  line.stream()
+                      .filter(p -> p.state().holdsStock())
+                      .mapToInt(p -> p.qty() - p.pickedQty())
+                      .sum();
+              if (in.qty() > blocked + unpicked) {
+                throw PmartException.invalidState(
+                    "주문 줄 "
+                        + in.orderLineId()
+                        + " 의 집지 않은 예약은 "
+                        + (blocked + unpicked)
+                        + " 입니다(요청 "
+                        + in.qty()
+                        + ").");
+              }
+              Instant at = clock.instant();
+              int left = in.qty();
+              // 1. 이행부족(D) 먼저 — 현물·R 변화 없음
+              for (PickPart p : line) {
+                if (left == 0 || p.state() != ReservationState.BLOCKED) {
+                  continue;
+                }
+                int take = Math.min(left, p.qty());
+                if (take == p.qty()) {
+                  reservations.setPartState(p.partId(), ReservationState.RELEASED, in.reason(), at);
+                } else {
+                  reservations.shrinkPart(p.partId(), p.qty() - take, at);
+                }
+                left -= take;
+              }
+              // 2. 집지 않은 확정 예약 — R−q(피킹 전 취소와 같은 RELEASE 확정 단위)
+              List<ReservedChange> deltas = new ArrayList<>();
+              int released = 0;
+              for (PickPart p : line) {
+                int room = p.qty() - p.pickedQty();
+                if (left == 0 || !p.state().holdsStock() || room <= 0) {
+                  continue;
+                }
+                int take = Math.min(left, room);
+                if (take == p.qty()) {
+                  reservations.setPartState(p.partId(), ReservationState.RELEASED, in.reason(), at);
+                } else {
+                  reservations.shrinkPart(p.partId(), p.qty() - take, at);
+                }
+                deltas.add(new ReservedChange(p.sku(), p.lotId(), -take));
+                released += take;
+                left -= take;
+              }
+              if (released > 0) {
+                ledger.post(
+                    "RELEASE",
+                    r.mfcId(),
+                    requestId,
+                    sourceSystem,
+                    r.reservationId(),
+                    released,
+                    List.of(),
+                    deltas,
+                    at);
+              }
+              log.info(
+                  "예약 {} 줄 {} 부분 종료 잔량 {} 해제(이행부족 {}, 집지 않은 예약 {})",
+                  r.reservationId(),
+                  in.orderLineId(),
+                  in.qty(),
+                  in.qty() - released,
+                  released);
               return new com.pmart.common.web.CommandResponse(
                   com.pmart.common.web.CommandStatus.APPLIED,
                   requestId,

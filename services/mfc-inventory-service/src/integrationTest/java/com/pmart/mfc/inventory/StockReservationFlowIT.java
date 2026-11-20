@@ -3173,6 +3173,64 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(409);
   }
 
+  /**
+   * 관리자 부분 종료(0.41.0, R-29 ADR-0077): 결품 사가가 사유 PARTIAL_CLOSE_CANCELLED 로 부르면 아직 집지 않은 확정 예약을 해제 —
+   * R−q, 판매 가능 +q, 현물 그대로(IV-08 피킹 전 취소).
+   */
+  @Test
+  void partialCloseReleasesUnpickedConfirmedReservation() {
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    String sku = newSku();
+    handlingOn(sku);
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(line(sku, 5, 0, "LOT-PC", today.plusDays(60).toString())));
+    String rid = confirmedReservation("ORD-PC1", sku, 3);
+    assertThat(availability(sku).path("reserved").asInt()).isEqualTo(3);
+    String path = "/internal/reservations/" + rid + "/shortfall-releases";
+    Map<String, Object> rel =
+        Map.of("orderLineId", "L1", "qty", 2, "reason", "PARTIAL_CLOSE_CANCELLED");
+    String key = UUID.randomUUID().toString();
+    Res released = post(ORCH, "order-orchestration-service", path, key, rel);
+    assertThat(released.status()).as(released.body().toString()).isEqualTo(200);
+    assertThat(released.body().path("appliedQty").asInt()).isEqualTo(2);
+    // 같은 키 다시 → 재생(두 번 빼지 않음)
+    assertThat(post(ORCH, "order-orchestration-service", path, key, rel).status()).isEqualTo(200);
+    JsonNode av = availability(sku);
+    assertThat(av.path("onHand").asInt()).isEqualTo(5);
+    assertThat(av.path("reserved").asInt()).isEqualTo(1);
+    assertThat(av.path("sellable").asInt()).isEqualTo(5);
+    // 남은 집지 않은 예약(1)보다 많이 → 409, 같은 사유가 아닌 결품 해제(BLOCKED 없음)도 409
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    path,
+                    UUID.randomUUID().toString(),
+                    Map.of("orderLineId", "L1", "qty", 2, "reason", "PARTIAL_CLOSE_CANCELLED"))
+                .status())
+        .isEqualTo(409);
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    path,
+                    UUID.randomUUID().toString(),
+                    Map.of("orderLineId", "L1", "qty", 1, "reason", "OUT_OF_STOCK_CANCELLED"))
+                .status())
+        .isEqualTo(409);
+    assertThat(
+            post(
+                    ORCH,
+                    "order-orchestration-service",
+                    path,
+                    UUID.randomUUID().toString(),
+                    Map.of("orderLineId", "L1", "qty", 1, "reason", "PARTIAL_CLOSE_CANCELLED"))
+                .status())
+        .isEqualTo(200);
+    assertThat(availability(sku).path("reserved").asInt()).isZero();
+  }
+
   @Test
   void inspectionSplitsTheReceivedLotByManufacturerLotAndExpiry() {
     // 수령은 상품·수량만(LOT 미확정) → 품질검사에서 제조 LOT·소비기한별로 나누고 격리분을 가른다

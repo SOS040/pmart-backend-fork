@@ -55,7 +55,8 @@ public class MetricsStore {
             + " AND w.preparation_started_at < :to"
             + centerFilter
             + "), marked AS (SELECT x.d, x.mfc_id,"
-            + " EXISTS (SELECT 1 FROM line_shortage z WHERE z.task_id = x.task_id AND z.order_line_id = x.order_line_id) AS any_short,"
+            // 관리자 부분 종료(PARTIAL_CLOSE, 0.30.0)는 재고 결품이 아니라 세지 않는다
+            + " EXISTS (SELECT 1 FROM line_shortage z WHERE z.task_id = x.task_id AND z.order_line_id = x.order_line_id AND z.reason <> 'PARTIAL_CLOSE') AS any_short,"
             + " EXISTS (SELECT 1 FROM line_shortage z WHERE z.task_id = x.task_id AND z.order_line_id = x.order_line_id AND z.reason = 'SHORT') AS s_short,"
             + " EXISTS (SELECT 1 FROM line_shortage z WHERE z.task_id = x.task_id AND z.order_line_id = x.order_line_id AND z.reason = 'DAMAGED') AS s_damaged,"
             + " EXISTS (SELECT 1 FROM line_shortage z WHERE z.task_id = x.task_id AND z.order_line_id = x.order_line_id AND z.reason = 'BLOCKED') AS s_blocked,"

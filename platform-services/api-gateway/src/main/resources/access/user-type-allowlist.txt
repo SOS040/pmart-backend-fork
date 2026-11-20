@@ -611,6 +611,7 @@ POST /api/v1/supply-requests/{supplyRequestId}/withdrawals OPERATOR
 POST /api/v1/surcharge-requests/{requestId}/decisions OPERATOR
 POST /api/v1/tasks/{taskId}/blocks OPERATOR
 POST /api/v1/tasks/{taskId}/executions OPERATOR
+POST /api/v1/tasks/{taskId}/partial-closes OPERATOR
 POST /api/v1/tasks/{taskId}/pick-results OPERATOR
 POST /api/v1/tasks/{taskId}/releases OPERATOR
 POST /api/v1/tasks/{taskId}/starts OPERATOR

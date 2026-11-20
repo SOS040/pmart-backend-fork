@@ -557,4 +557,143 @@ class SupervisorControlIT extends PostgresKafkaContainerSupport {
     assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
     assertThat(ok.body().path("toState").asString()).isEqualTo("READY");
   }
+
+  // ---------- 3. 부분 종료 ----------
+
+  @Test
+  void partialCloseCancelsOnlyRemainderThroughShortageSagaAndClosesPartially() {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String s = accept(o);
+    String pick = s + "-PICK";
+    String pack = s + "-PACK";
+    Map<String, Object> why = Map.of("reason", "컨베이어 고장 — 남은 건 못 집음");
+    // PACK·집은 양 0 은 부분 종료 아님(422)
+    Res notPick =
+        call("POST", SUP, "/tasks/" + pack + "/partial-closes", UUID.randomUUID().toString(), why);
+    assertThat(notPick.status()).isEqualTo(422);
+    assertThat(notPick.body().path("code").asString()).isEqualTo("UNSUPPORTED_TASK_TYPE");
+    Res nothing =
+        call("POST", SUP, "/tasks/" + pick + "/partial-closes", UUID.randomUUID().toString(), why);
+    assertThat(nothing.status()).isEqualTo(422);
+    assertThat(nothing.body().path("code").asString()).isEqualTo("NOTHING_EXECUTED");
+
+    assigned(pick, "w1", 1);
+    assertThat(start(W1, pick, "w1", 1).status()).isEqualTo(201);
+    assertThat(pickOne(pick).status()).isEqualTo(202); // L1 2개 중 1개
+    assertThat(block(SUP, pick, UUID.randomUUID().toString(), Map.of("reason", "고장")).status())
+        .isEqualTo(200);
+    assertThat(
+            call(
+                    "POST",
+                    W1,
+                    "/tasks/" + pick + "/partial-closes",
+                    UUID.randomUUID().toString(),
+                    why)
+                .status())
+        .isEqualTo(403);
+
+    // 관리자가 멈춘 작업 → 부분 종료: BLOCKED(PARTIAL_CLOSE) + 줄마다 결품 사건(PARTIAL_CLOSE, 잔량)
+    String key = UUID.randomUUID().toString();
+    Res closed = call("POST", SUP, "/tasks/" + pick + "/partial-closes", key, why);
+    assertThat(closed.status()).as(closed.body().toString()).isEqualTo(200);
+    assertThat(closed.body().path("action").asString()).isEqualTo("PARTIAL_CLOSE");
+    assertThat(closed.body().path("fromState").asString()).isEqualTo("BLOCKED");
+    assertThat(closed.body().path("toState").asString()).isEqualTo("BLOCKED");
+    assertThat(
+            call("POST", SUP, "/tasks/" + pick + "/partial-closes", key, why)
+                .body()
+                .path("controlId")
+                .asString())
+        .isEqualTo(closed.body().path("controlId").asString());
+    JsonNode t = task(pick);
+    assertThat(t.path("blockKind").asString()).isEqualTo("PARTIAL_CLOSE");
+    assertThat(t.path("blockReason").asString()).startsWith("부분 종료(잔량 취소 처리 중): L1 1개, L2 1개");
+    List<String> shortages =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'LineShortageReported' AND aggregateid = ?",
+            String.class,
+            o);
+    assertThat(shortages).hasSize(2);
+    assertThat(String.join(" ", shortages))
+        .contains("\"reason\": \"PARTIAL_CLOSE\"")
+        .contains("\"orderLineId\": \"L1\"")
+        .contains("\"orderLineId\": \"L2\"")
+        .contains("\"reservationId\": \"RSV-" + o + "\"");
+    // 처리 중에는 해제·다시 부분 종료 409, 작업자 실적 TASK_BLOCKED, 재고 호출 없음
+    assertThat(
+            unblock(
+                    SUP,
+                    pick,
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "x", "cartChecked", true))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("PARTIAL_CLOSE_PENDING");
+    assertThat(
+            call(
+                    "POST",
+                    SUP,
+                    "/tasks/" + pick + "/partial-closes",
+                    UUID.randomUUID().toString(),
+                    why)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("PARTIAL_CLOSE_PENDING");
+    assertThat(pickOne(pick).body().path("code").asString()).isEqualTo("TASK_BLOCKED");
+    inv.verify(
+        0,
+        WireMock.postRequestedFor(
+            urlPathMatching(
+                "/api/v1/internal/reservations/.*/(releases|shortfall-releases|cancel-returns)")));
+    inv.verify(0, WireMock.postRequestedFor(urlPathEqualTo("/api/v1/internal/shortage-reports")));
+
+    // 결품 사가 RESOLVE_WORK(줄마다): 첫 줄 뒤에는 막힘 그대로, 다 취소되면 CLOSED_PARTIAL·포장 준비
+    String fid =
+        call("GET", SVC, "/internal/work-orders?orderId=" + o, null, null)
+            .body()
+            .path("fulfillmentId")
+            .asString();
+    Res r1 =
+        call(
+            "POST",
+            SVC,
+            "/internal/work-orders/" + fid + "/shortage-resolutions",
+            UUID.randomUUID().toString(),
+            Map.of("orderLineId", "L1", "qty", 1, "resolution", "CANCEL_ITEM"));
+    assertThat(r1.status()).as(r1.body().toString()).isEqualTo(200);
+    assertThat(task(pick).path("state").asString()).isEqualTo("BLOCKED");
+    Res r2 =
+        call(
+            "POST",
+            SVC,
+            "/internal/work-orders/" + fid + "/shortage-resolutions",
+            UUID.randomUUID().toString(),
+            Map.of("orderLineId", "L2", "qty", 1, "resolution", "CANCEL_ITEM"));
+    assertThat(r2.status()).as(r2.body().toString()).isEqualTo(200);
+    t = task(pick);
+    assertThat(t.path("state").asString()).isEqualTo("CLOSED_PARTIAL");
+    assertThat(t.path("blockKind").isNull()).isTrue();
+    assertThat(t.path("completedQty").asInt()).isEqualTo(1);
+    assertThat(t.path("remainingQty").asInt()).isZero();
+    JsonNode p = task(pack);
+    assertThat(p.path("state").asString()).isEqualTo("READY");
+    assertThat(p.path("remainingQty").asInt()).isEqualTo(1); // 집은 1개만 포장
+    // 결품 목록에는 사유 PARTIAL_CLOSE 로 남고, 결품률 지표에는 세지 않는다
+    JsonNode list =
+        call("GET", SUP, "/shortages?mfcId=" + MFC + "&reason=PARTIAL_CLOSE", null, null).body();
+    assertThat(list.path("items").findValuesAsString("taskId")).contains(pick);
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    JsonNode m =
+        call("GET", SUP, "/metrics/picking-lines?from=" + today + "&to=" + today, null, null)
+            .body();
+    for (JsonNode it : m.path("items")) {
+      if (MFC.equals(it.path("mfcId").asString())) {
+        assertThat(it.path("shortLines").asInt()).isZero();
+      }
+    }
+    assertThat(call("GET", SUP, "/tasks/" + pick + "/controls", null, null).body().path("items"))
+        .hasSize(2);
+  }
 }

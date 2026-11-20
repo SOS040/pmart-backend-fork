@@ -114,7 +114,8 @@ public class DispatchRequestService {
   }
 
   static final java.util.Set<String> PICK_OPEN =
-      java.util.Set.of("READY", "ASSIGNED", "IN_PROGRESS", "BLOCKED", "COMPLETED");
+      java.util.Set.of(
+          "READY", "ASSIGNED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "CLOSED_PARTIAL");
 
   /** 요청 가능(F-2): 출고·포장이 살아 있고, 피킹이 열렸거나(대기 아님) 포장이 이미 시작됨. */
   static boolean requestable(

@@ -233,10 +233,154 @@ public class TaskControlService {
       throw TaskService.conflict(
           TaskRules.INVALID_STATE, "막힌(BLOCKED) 작업만 해제합니다(지금 " + t.state() + ").");
     }
+    requireNotClosing(t);
     if (!KIND_SUPERVISOR.equals(t.blockKind())) {
       throw TaskService.conflict(
           BLOCKED_BY_SHORTAGE, "결품·예약 보류로 막힌 작업입니다 — 결품 처리가 풉니다(" + t.blockReason() + ").");
     }
+  }
+
+  // ---------- 부분 종료 ----------
+
+  public static final String KIND_PARTIAL_CLOSE = "PARTIAL_CLOSE";
+
+  /** 결품 사건·line_shortage 사유(0.30.0) — 재고 결품이 아니라 관리자 부분 종료로 끝낸 잔량. */
+  public static final String PARTIAL_CLOSE_REASON = "PARTIAL_CLOSE";
+
+  /** 집은 양이 없음 — 주문 취소(관리자 판단 OPERATOR_DECISION)로(422, 0.30.0). */
+  public static final String NOTHING_EXECUTED = "NOTHING_EXECUTED";
+
+  /** 부분 종료가 결품 사가에서 처리 중(409, 0.30.0). */
+  public static final String PARTIAL_CLOSE_PENDING = "PARTIAL_CLOSE_PENDING";
+
+  static final Set<String> CLOSABLE = Set.of("READY", "ASSIGNED", "IN_PROGRESS", "BLOCKED");
+
+  /**
+   * 부분 종료(WK-04 잔량 취소 — 사용자 결정 2026-11-20): PICK 의 아직 집지 않은 잔량만 끝낸다. 작업을 BLOCKED(PARTIAL_CLOSE)로 두고
+   * 줄마다 LineShortageReported(reason PARTIAL_CLOSE) — 결품과 같은 사가가 잔량 취소(→ CLOSED_PARTIAL, {@link
+   * TaskService#resolveShortage})·예약 해제·주문 수량 변경·부분 환불. 집은 양 0 은 422(주문 취소로), 재고·환불은 여기서 부르지 않는다.
+   */
+  public Control partialClose(
+      String taskId,
+      String requestId,
+      String sourceSystem,
+      @Nullable String reason,
+      @Nullable Integer expectedVersion) {
+    TaskInfo t0 = task(taskId);
+    String actor = requireSupervisor(t0.mfcId());
+    String why = requireReason(reason);
+    if (!"PICK".equals(t0.taskType())) {
+      throw new PmartException(
+          "UNSUPPORTED_TASK_TYPE",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "부분 종료는 피킹(PICK) 작업만 — 집은 물건을 취소하려면 주문 취소(관리자 판단)와 복귀로 합니다.",
+          false,
+          List.of());
+    }
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("taskId", taskId);
+    req.put("reason", why);
+    req.put("expectedVersion", expectedVersion);
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "partialCloseTask", actor),
+            req,
+            Control.class,
+            () -> {
+              TaskInfo t = store.lock(taskId).orElseThrow();
+              checkVersion(t, expectedVersion);
+              if (!CLOSABLE.contains(t.state())) {
+                throw TaskService.conflict(
+                    TaskRules.INVALID_STATE,
+                    "대기·배정·진행 중이거나 관리자가 멈춘 작업만 부분 종료합니다(지금 " + t.state() + ").");
+              }
+              if ("BLOCKED".equals(t.state())) {
+                requireNotClosing(t);
+                if (!KIND_SUPERVISOR.equals(t.blockKind())) {
+                  throw TaskService.conflict(
+                      BLOCKED_BY_SHORTAGE,
+                      "결품 처리 중인 작업입니다 — 결품 처리가 끝난 뒤 부분 종료합니다(" + t.blockReason() + ").");
+                }
+              }
+              requireNothingInFlight(t);
+              List<TaskStore.LineView> lines = store.lines(taskId);
+              int executed = lines.stream().mapToInt(TaskStore.LineView::completedQty).sum();
+              if (executed == 0) {
+                throw new PmartException(
+                    NOTHING_EXECUTED,
+                    HttpStatus.UNPROCESSABLE_CONTENT,
+                    "아직 집은 양이 없습니다 — 부분 종료가 아니라 주문 취소(관리자 판단 취소 OPERATOR_DECISION)로 합니다.",
+                    false,
+                    List.of());
+              }
+              List<TaskStore.LineView> open =
+                  lines.stream().filter(l -> l.remaining() > 0).toList();
+              if (open.isEmpty()) {
+                throw TaskService.conflict(TaskRules.INVALID_STATE, "끝낼 잔량이 없습니다.");
+              }
+              Instant now = clock.instant();
+              String summary =
+                  String.join(
+                      ", ",
+                      open.stream().map(l -> l.orderLineId() + " " + l.remaining() + "개").toList());
+              store.setBlocked(
+                  taskId,
+                  KIND_PARTIAL_CLOSE,
+                  truncate("부분 종료(잔량 취소 처리 중): " + summary + " — " + why, 300),
+                  now);
+              events.taskControlled(
+                  t,
+                  "BLOCKED",
+                  t.state(),
+                  t.version() + 1,
+                  t.workerId(),
+                  actor,
+                  KIND_PARTIAL_CLOSE,
+                  why,
+                  now);
+              for (TaskStore.LineView l : open) {
+                // 결품과 같은 사가(ADR-0049) — 그 품목만 부분 취소·환불, 예약은 집지 않은 양 해제
+                events.lineShortage(
+                    t,
+                    l.orderLineId(),
+                    l.sku(),
+                    null,
+                    new TaskService.Shortage(l.remaining(), PARTIAL_CLOSE_REASON, why),
+                    now,
+                    null,
+                    actor);
+              }
+              ControlRow c =
+                  record(
+                      t,
+                      "PARTIAL_CLOSE",
+                      "BLOCKED",
+                      t.version() + 1,
+                      why,
+                      actor,
+                      t.workerId(),
+                      requestId);
+              log.warn(
+                  "작업 {} 관리자 부분 종료 by {} — 잔량 {} (집은 양 {}): {}",
+                  taskId,
+                  actor,
+                  summary,
+                  executed,
+                  why);
+              return Control.of(c);
+            })
+        .value();
+  }
+
+  static void requireNotClosing(TaskInfo t) {
+    if ("BLOCKED".equals(t.state()) && KIND_PARTIAL_CLOSE.equals(t.blockKind())) {
+      throw TaskService.conflict(
+          PARTIAL_CLOSE_PENDING, "부분 종료를 처리하고 있습니다(결품 사가 — 잔량 취소·환불) — 끝나면 CLOSED_PARTIAL.");
+    }
+  }
+
+  private static String truncate(String s, int max) {
+    return s.length() <= max ? s : s.substring(0, max - 1) + "…";
   }
 
   /** 관리자 조작 기록(최근 순). 권한은 작업 상세와 같고, OPERATOR_ADMIN 은 다른 센터 작업도. */

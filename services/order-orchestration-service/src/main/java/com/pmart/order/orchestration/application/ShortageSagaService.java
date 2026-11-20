@@ -232,7 +232,7 @@ public class ShortageSagaService {
                       Map.of(
                           "orderLineId", s.orderLineId(),
                           "qty", s.shortQty(),
-                          "reason", "OUT_OF_STOCK_CANCELLED"));
+                          "reason", ShortageRules.releaseReason(s.reason())));
           case ShortageRules.APPLY_ORDER_CHANGE -> {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("reason", "SHORTAGE");

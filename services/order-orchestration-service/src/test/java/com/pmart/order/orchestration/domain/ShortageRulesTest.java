@@ -25,4 +25,13 @@ class ShortageRulesTest {
     assertThat(ShortageRules.wholeOrder(5, 5)).isTrue();
     assertThat(ShortageRules.wholeOrder(5, 1)).isFalse();
   }
+
+  /** 관리자 부분 종료 잔량(ADR-0077)은 집지 않은 예약까지 해제하는 사유로, 그 밖 결품은 이행부족 해제. */
+  @Test
+  void partialCloseReleasesUnpickedReservation() {
+    assertThat(ShortageRules.releaseReason("PARTIAL_CLOSE")).isEqualTo("PARTIAL_CLOSE_CANCELLED");
+    for (String r : new String[] {"SHORT", "DAMAGED", "SPOILED", "BLOCKED", null}) {
+      assertThat(ShortageRules.releaseReason(r)).isEqualTo("OUT_OF_STOCK_CANCELLED");
+    }
+  }
 }

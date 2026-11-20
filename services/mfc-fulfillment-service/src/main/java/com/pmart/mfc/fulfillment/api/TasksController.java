@@ -7,6 +7,7 @@ import com.pmart.mfc.fulfillment.api.generated.model.ListTaskControls200Response
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200Response;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponseAsOf;
 import com.pmart.mfc.fulfillment.api.generated.model.ListTasks200ResponsePage;
+import com.pmart.mfc.fulfillment.api.generated.model.PartialCloseTaskRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response;
 import com.pmart.mfc.fulfillment.api.generated.model.StartTaskRequest;
 import com.pmart.mfc.fulfillment.api.generated.model.TaskActiveStart;
@@ -447,6 +448,20 @@ public class TasksController implements TasksApi {
                 body.getReason(),
                 body.getCartChecked(),
                 xExpectedVersion)));
+  }
+
+  /** 관리자 부분 종료(0.30.0, R-29 — ADR-0077). */
+  @Override
+  public ResponseEntity<TaskControl> partialCloseTask(
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      PartialCloseTaskRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        control(
+            controls.partialClose(
+                taskId, idempotencyKey, xSourceSystem, body.getReason(), xExpectedVersion)));
   }
 
   /** 관리자 조작 기록(0.28.0). */

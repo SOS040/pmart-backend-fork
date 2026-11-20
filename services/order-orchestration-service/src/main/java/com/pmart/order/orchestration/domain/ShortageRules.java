@@ -60,6 +60,19 @@ public final class ShortageRules {
     return remainingUnfulfilled - shortQty <= 0;
   }
 
+  /** 센터 관리자 부분 종료(mfc-fulfillment 0.30.0, ADR-0077) — 결품과 같은 사가로 잔량만 부분 취소·환불. */
+  public static final String PARTIAL_CLOSE = "PARTIAL_CLOSE";
+
+  /**
+   * RELEASE_SHORTFALL 의 mfc-inventory 사유. 결품은 이행부족(BLOCKED) 해제, 관리자 부분 종료 잔량은 아직 집지 않은 확정 예약까지
+   * 해제(inventory 0.41.0 PARTIAL_CLOSE_CANCELLED — IV-08 피킹 전 취소).
+   */
+  public static String releaseReason(@Nullable String shortageReason) {
+    return PARTIAL_CLOSE.equals(shortageReason)
+        ? "PARTIAL_CLOSE_CANCELLED"
+        : "OUT_OF_STOCK_CANCELLED";
+  }
+
   public static String requestId(String sagaId, String step) {
     return sagaId + ":" + step;
   }

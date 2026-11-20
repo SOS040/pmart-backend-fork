@@ -1372,11 +1372,31 @@ public class TaskService {
                   .sibling(t.shipmentId(), "PACK")
                   .ifPresent(p -> store.addCancelled(p.taskId(), orderLineId, qty));
               boolean done = store.lines(pickId).stream().allMatch(l -> l.remaining() == 0);
-              if (done) {
+              boolean closing =
+                  "BLOCKED".equals(t.state())
+                      && TaskControlService.KIND_PARTIAL_CLOSE.equals(t.blockKind());
+              if (done && closing) {
+                // 관리자 부분 종료(0.30.0, ADR-0077 — WK-04 "실행>0/잔량취소 후 CLOSED_PARTIAL"): 집은 양만 포장으로
+                store.setState(pickId, "CLOSED_PARTIAL", null, false, now);
+                events.taskProgressed(
+                    t, "CLOSED_PARTIAL", t.state(), t.version() + 1, t.startedBy(), null, now);
+                store.releasePack(t.shipmentId(), now);
+                store
+                    .sibling(t.shipmentId(), "PACK")
+                    .ifPresent(
+                        p ->
+                            events.taskProgressed(
+                                p, p.state(), "WAITING", p.version(), null, null, now));
+                log.info("작업 {} 부분 종료 — 잔량 취소 끝, CLOSED_PARTIAL·포장 준비", pickId);
+              } else if (done) {
                 store.setState(pickId, "COMPLETED", null, false, now);
                 events.taskProgressed(
                     t, "COMPLETED", t.state(), t.version() + 1, t.startedBy(), null, now);
                 store.releasePack(t.shipmentId(), now);
+              } else if (closing
+                  || ("BLOCKED".equals(t.state())
+                      && TaskControlService.KIND_SUPERVISOR.equals(t.blockKind()))) {
+                // 부분 종료의 다른 줄이 아직 남았거나 관리자가 멈춘 작업 — 막힘은 그대로(취소량만)
               } else if ("BLOCKED".equals(t.state())) {
                 String next =
                     t.startedBy() != null
