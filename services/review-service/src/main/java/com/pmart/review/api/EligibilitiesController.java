@@ -29,6 +29,8 @@ public class EligibilitiesController implements EligibilitiesApi {
     return ResponseEntity.ok(
         new ListMyReviewEligibilities200Response()
             .items(p.items().stream().map(ReviewViews::eligibility).toList())
-            .page(ReviewViews.page(p.nextCursor(), n)));
+            .page(ReviewViews.page(p.nextCursor(), n))
+            .total(p.counts().total())
+            .counts(ReviewViews.counts(p.counts())));
   }
 }

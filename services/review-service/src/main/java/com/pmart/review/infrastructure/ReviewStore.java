@@ -24,7 +24,9 @@ public class ReviewStore {
       @Nullable String productName,
       int deliveredQty,
       Instant deliveredAt,
-      @Nullable String deliveryId) {}
+      @Nullable String deliveryId,
+      @Nullable Instant orderedAt,
+      @Nullable String mfcId) {}
 
   /** 자격 목록 한 줄(리뷰가 있으면 그 상태·등록 시각). */
   public record EligibilityView(
@@ -61,6 +63,12 @@ public class ReviewStore {
 
   public record Summary(@Nullable Double average, int count) {}
 
+  /**
+   * 본인 자격 개수(0.5.0, 2026-11-20 BR-67) — total 은 요청 조건(orderId·state)에 맞는 전체, 나머지는 탭 머리 개수(state
+   * 무시).
+   */
+  public record EligibilityCounts(int total, int writable, int written) {}
+
   /** 주문 하나의 리뷰 작성 여부(0.3.0, 2026-11-18 — 리뷰 요청 알림). */
   public record OrderStatus(int eligibleLines, int reviewedLines, int openLines) {}
 
@@ -74,16 +82,18 @@ public class ReviewStore {
 
   /**
    * 수령 사실 반영: 처음이면 행을 만들고, 이미 있으면 수량을 더하고 수령 시각은 이른 것을 둔다(분할 수령 — 첫 수령부터 14일). 같은 사건의 재전달은 inbox 가
-   * 막는다.
+   * 막는다. 주문 확정 시각·센터(V4)는 비어 있던 행만 채운다.
    */
   public void upsertEligibility(EligibilityRow r, Instant now) {
     jdbc.update(
         "INSERT INTO review_eligibility (order_line_id, order_id, account_id, sku, product_id,"
-            + " product_name, delivered_qty, delivered_at, delivery_id, created_at)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?)"
+            + " product_name, delivered_qty, delivered_at, delivery_id, created_at, ordered_at, mfc_id)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
             + " ON CONFLICT (order_line_id) DO UPDATE SET"
             + " delivered_qty = review_eligibility.delivered_qty + EXCLUDED.delivered_qty,"
-            + " delivered_at = LEAST(review_eligibility.delivered_at, EXCLUDED.delivered_at)",
+            + " delivered_at = LEAST(review_eligibility.delivered_at, EXCLUDED.delivered_at),"
+            + " ordered_at = COALESCE(review_eligibility.ordered_at, EXCLUDED.ordered_at),"
+            + " mfc_id = COALESCE(review_eligibility.mfc_id, EXCLUDED.mfc_id)",
         r.orderLineId(),
         r.orderId(),
         r.accountId(),
@@ -93,7 +103,19 @@ public class ReviewStore {
         r.deliveredQty(),
         ts(r.deliveredAt()),
         r.deliveryId(),
-        ts(now));
+        ts(now),
+        r.orderedAt() == null ? null : ts(r.orderedAt()),
+        r.mfcId());
+  }
+
+  /** V4 전에 만든 행의 주문 확정 시각·센터를 채운다(비어 있는 것만 — 이미 있는 값은 바꾸지 않는다). */
+  public void fillOrderFacts(String orderId, @Nullable Instant orderedAt, @Nullable String mfcId) {
+    jdbc.update(
+        "UPDATE review_eligibility SET ordered_at = COALESCE(ordered_at, ?),"
+            + " mfc_id = COALESCE(mfc_id, ?) WHERE order_id = ?",
+        orderedAt == null ? null : ts(orderedAt),
+        mfcId,
+        orderId);
   }
 
   public Optional<EligibilityRow> eligibility(String orderLineId) {
@@ -116,6 +138,13 @@ public class ReviewStore {
         .findFirst();
   }
 
+  /** 계약 상태를 시각으로 계산하는 식(자리표시자 둘 다 now). LOCKED·EXPIRED 는 저장하지 않는다. */
+  private static final String STATE_EXPR =
+      "CASE WHEN r.review_id IS NULL THEN"
+          + " CASE WHEN e.delivered_at + interval '14 days' >= ? THEN 'REV_ELIGIBLE' ELSE 'EXPIRED' END"
+          + " WHEN r.state = 'DELETED' THEN 'DELETED'"
+          + " WHEN r.created_at + interval '3 days' > ? THEN 'PUBLISHED' ELSE 'LOCKED' END";
+
   /** 본인 자격 목록(최근 수령 순). state 는 계약 상태(시각으로 계산) — SQL 에서 같은 식으로 걸러 페이지가 어긋나지 않게 한다. */
   public List<EligibilityView> eligibilities(
       String accountId,
@@ -124,25 +153,9 @@ public class ReviewStore {
       Instant now,
       int offset,
       int limit) {
-    String stateExpr =
-        "CASE WHEN r.review_id IS NULL THEN"
-            + " CASE WHEN e.delivered_at + interval '14 days' >= ? THEN 'REV_ELIGIBLE' ELSE 'EXPIRED' END"
-            + " WHEN r.state = 'DELETED' THEN 'DELETED'"
-            + " WHEN r.created_at + interval '3 days' > ? THEN 'PUBLISHED' ELSE 'LOCKED' END";
+    List<Object> args = new ArrayList<>();
     StringBuilder sql =
-        new StringBuilder(
-            "SELECT * FROM (SELECT e.*, r.review_id AS r_id, r.state AS r_state,"
-                + " r.created_at AS r_created_at, "
-                + stateExpr
-                + " AS computed_state FROM review_eligibility e"
-                + " LEFT JOIN review r ON r.order_line_id = e.order_line_id"
-                + " WHERE e.account_id = ?");
-    List<Object> args = new ArrayList<>(List.of(ts(now), ts(now), accountId));
-    if (orderId != null) {
-      sql.append(" AND e.order_id = ?");
-      args.add(orderId);
-    }
-    sql.append(") x");
+        new StringBuilder("SELECT * FROM " + eligibilityFrom(accountId, orderId, now, args) + " x");
     if (state != null) {
       sql.append(" WHERE computed_state = ?");
       args.add(state);
@@ -159,6 +172,54 @@ public class ReviewStore {
                 rs.getString("r_state"),
                 instant(rs, "r_created_at")),
         args.toArray());
+  }
+
+  /**
+   * 자격 개수(0.5.0 BR-67): total = 목록과 같은 조건(orderId·state)의 전체 수, writable = 지금 쓸 수 있는
+   * 것(REV_ELIGIBLE), written = 쓴 리뷰 중 삭제 안 된 것(PUBLISHED·LOCKED). writable·written 은 state 조건을 보지
+   * 않는다(탭 머리 두 개를 한 번에).
+   */
+  public EligibilityCounts eligibilityCounts(
+      String accountId, @Nullable String orderId, @Nullable String state, Instant now) {
+    List<Object> args = new ArrayList<>();
+    String countState = state == null ? "count(*)" : "count(*) FILTER (WHERE computed_state = ?)";
+    if (state != null) {
+      args.add(state);
+    }
+    String sql =
+        "SELECT "
+            + countState
+            + " AS total,"
+            + " count(*) FILTER (WHERE computed_state = 'REV_ELIGIBLE') AS writable,"
+            + " count(*) FILTER (WHERE computed_state IN ('PUBLISHED','LOCKED')) AS written FROM "
+            + eligibilityFrom(accountId, orderId, now, args)
+            + " x";
+    return jdbc.queryForObject(
+        sql,
+        (rs, i) ->
+            new EligibilityCounts(rs.getInt("total"), rs.getInt("writable"), rs.getInt("written")),
+        args.toArray());
+  }
+
+  /** 본인 자격 + 리뷰 + 계산 상태(computed_state) 부분 질의. 자리표시자 값은 args 뒤에 붙인다. */
+  private static String eligibilityFrom(
+      String accountId, @Nullable String orderId, Instant now, List<Object> args) {
+    StringBuilder sql =
+        new StringBuilder(
+            "(SELECT e.*, r.review_id AS r_id, r.state AS r_state,"
+                + " r.created_at AS r_created_at, "
+                + STATE_EXPR
+                + " AS computed_state FROM review_eligibility e"
+                + " LEFT JOIN review r ON r.order_line_id = e.order_line_id"
+                + " WHERE e.account_id = ?");
+    args.add(ts(now));
+    args.add(ts(now));
+    args.add(accountId);
+    if (orderId != null) {
+      sql.append(" AND e.order_id = ?");
+      args.add(orderId);
+    }
+    return sql.append(")").toString();
   }
 
   // ---------------------------------------------------------------- 리뷰
@@ -400,7 +461,9 @@ public class ReviewStore {
         rs.getString("product_name"),
         rs.getInt("delivered_qty"),
         rs.getTimestamp("delivered_at").toInstant(),
-        rs.getString("delivery_id"));
+        rs.getString("delivery_id"),
+        instant(rs, "ordered_at"),
+        rs.getString("mfc_id"));
   }
 
   private static ReviewRow reviewRow(ResultSet rs) throws SQLException {

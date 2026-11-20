@@ -1,6 +1,7 @@
 package com.pmart.review;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
@@ -59,12 +60,16 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.review.order-base-url=${order.url}",
       "pmart.review.customer-base-url=${customer.url}",
+      "pmart.review.center-master-base-url=${center.url}",
+      "pmart.review.content-base-url=${content.url}",
       "pmart.test.context=reviews"
     })
 @Import({TestJwtConfiguration.class, ReviewsIT.MemoryPhotos.class})
 @EnableWireMock({
   @ConfigureWireMock(name = "order", baseUrlProperties = "order.url"),
-  @ConfigureWireMock(name = "customer", baseUrlProperties = "customer.url")
+  @ConfigureWireMock(name = "customer", baseUrlProperties = "customer.url"),
+  @ConfigureWireMock(name = "center", baseUrlProperties = "center.url"),
+  @ConfigureWireMock(name = "content", baseUrlProperties = "content.url")
 })
 class ReviewsIT extends PostgresKafkaContainerSupport {
 
@@ -110,6 +115,14 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("customer")
   WireMockServer customer;
+
+  @InjectWireMock("center")
+  WireMockServer center;
+
+  @InjectWireMock("content")
+  WireMockServer content;
+
+  static final String CONFIRMED_AT = "2026-11-10T01:00:00Z";
 
   record Res(int status, JsonNode body) {}
 
@@ -196,11 +209,11 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
                     .withHeader("Content-Type", "application/json")
                     .withBody(
                         """
-                        {"orderId":"%1$s","accountId":"%2$s","lines":[
+                        {"orderId":"%1$s","accountId":"%2$s","mfcId":"MFC-%1$s","confirmedAt":"%5$s","lines":[
                           {"orderLineId":"%1$s-L1","sku":"E-00000001","productId":"%3$s","productName":"사과","deliveredQty":0,"returnedQty":%4$d},
                           {"orderLineId":"%1$s-L2","sku":"E-00000002","productId":"%3$s","productName":"배","deliveredQty":0,"returnedQty":0}
                         ]}"""
-                            .formatted(orderId, account, productId, returned))));
+                            .formatted(orderId, account, productId, returned, CONFIRMED_AT))));
     customer.stubFor(
         get(urlPathMatching("/api/v1/internal/accounts/.*/review-author"))
             .willReturn(
@@ -464,5 +477,142 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
         .isZero();
     // 사용자 토큰으로 내부 경로는 403
     assertThat(send("GET", token, path, null).status()).isEqualTo(403);
+  }
+
+  void stubCenter(String mfcId, @Nullable String name) {
+    center.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/centers/" + mfcId))
+            .willReturn(
+                name == null
+                    ? aResponse().withStatus(404)
+                    : aResponse()
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"centerId\":\"" + mfcId + "\",\"name\":\"" + name + "\"}")));
+  }
+
+  void stubCards(String productId, String body) {
+    content.stubFor(
+        get(urlPathEqualTo("/api/v1/product-contents"))
+            .withQueryParam("productIds", equalTo(productId))
+            .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody(body)));
+  }
+
+  /**
+   * 리뷰관리 표시 값(0.5.0, 2026-11-20 BR-67): total(조건에 맞는 전체 — 쪽 크기 아님)·counts(쓸 수 있는 것·쓴 것), 품목마다 주문
+   * 시각·센터 이름(center-master)·지금 상품 사진·옵션 라벨(product-content 카드 일괄 조회). V4 전 행은 order 를 다시 읽어 채운다.
+   */
+  @Test
+  void eligibilityListCarriesTotalsAndDisplayValues() throws Exception {
+    String orderId = "ORD-RV-" + newId();
+    String me = "ACC-rv-" + newId();
+    String productId = "PRD-" + newId();
+    String token = TestJwt.customer(me);
+    stubOrder(orderId, me, productId, 0);
+    stubCenter("MFC-" + orderId, "강남센터");
+    stubCards(
+        productId,
+        """
+        {"items":[{"productId":"%s","name":"사과",
+          "mainImage":{"imageId":"IMG-1","url":"/api/v1/content-images/IMG-1","role":"MAIN"},
+          "options":[{"sku":"E-00000001","label":"1팩(6입)"},{"sku":"E-00000002"}]}],
+         "missing":[]}"""
+            .formatted(productId));
+    delivered(orderId, Instant.now().minus(Duration.ofDays(1)), orderId + "-L1", orderId + "-L2");
+    await(
+        () -> count("SELECT count(*) FROM review_eligibility WHERE order_id = ?", orderId),
+        n -> n == 2);
+    assertThat(
+            count(
+                "SELECT count(*) FROM review_eligibility WHERE order_id = ? AND mfc_id = ?"
+                    + " AND ordered_at IS NOT NULL",
+                orderId,
+                "MFC-" + orderId))
+        .as("자격을 만들 때 주문 확정 시각·센터 사본")
+        .isEqualTo(2);
+    assertThat(
+            send("POST", token, "/reviews", Map.of("orderLineId", orderId + "-L2", "rating", 5))
+                .status())
+        .isEqualTo(201);
+
+    // 쪽 크기 1 이어도 total 은 전체(2), counts 는 탭 머리(쓸 수 있는 1·쓴 1)
+    Res page = send("GET", token, "/me/review-eligibilities?orderId=" + orderId + "&size=1", null);
+    assertThat(page.status()).isEqualTo(200);
+    assertThat(page.body().path("items").size()).isEqualTo(1);
+    assertThat(page.body().path("total").asInt()).isEqualTo(2);
+    assertThat(page.body().path("counts").path("writable").asInt()).isEqualTo(1);
+    assertThat(page.body().path("counts").path("written").asInt()).isEqualTo(1);
+
+    Res writable =
+        send(
+            "GET",
+            token,
+            "/me/review-eligibilities?orderId=" + orderId + "&state=REV_ELIGIBLE",
+            null);
+    assertThat(writable.body().path("total").asInt()).as("total 은 state 조건을 따른다").isEqualTo(1);
+    assertThat(writable.body().path("counts").path("written").asInt())
+        .as("counts 는 state 를 보지 않는다")
+        .isEqualTo(1);
+    JsonNode l1 = writable.body().path("items").get(0);
+    assertThat(l1.path("orderLineId").asString()).isEqualTo(orderId + "-L1");
+    assertThat(Instant.parse(l1.path("orderedAt").asString()))
+        .isEqualTo(Instant.parse(CONFIRMED_AT));
+    assertThat(l1.path("mfcName").asString()).isEqualTo("강남센터");
+    assertThat(l1.path("imageUrl").asString()).isEqualTo("/api/v1/content-images/IMG-1");
+    assertThat(l1.path("optionLabel").asString()).isEqualTo("1팩(6입)");
+
+    Res all = send("GET", token, "/me/review-eligibilities?orderId=" + orderId, null);
+    JsonNode l2 = null;
+    for (JsonNode i : all.body().path("items")) {
+      if (i.path("orderLineId").asString().endsWith("-L2")) {
+        l2 = i;
+      }
+    }
+    assertThat(l2).isNotNull();
+    assertThat(l2.hasNonNull("optionLabel")).as("옵션 이름 없는 SKU 는 null").isFalse();
+    assertThat(l2.path("imageUrl").asString()).isEqualTo("/api/v1/content-images/IMG-1");
+
+    // V4 전 행(사본 없음) → 목록 조회가 order 를 다시 읽어 채운다
+    jdbc.update(
+        "UPDATE review_eligibility SET ordered_at = NULL, mfc_id = NULL WHERE order_id = ?",
+        orderId);
+    Res refilled = send("GET", token, "/me/review-eligibilities?orderId=" + orderId, null);
+    assertThat(refilled.body().path("items").get(0).path("mfcName").asString()).isEqualTo("강남센터");
+    assertThat(
+            count(
+                "SELECT count(*) FROM review_eligibility WHERE order_id = ? AND mfc_id IS NOT NULL",
+                orderId))
+        .isEqualTo(2);
+  }
+
+  /** 센터 없음(404)·게시 안 된 상품(missing)이면 그 값만 null — 지어내지 않고 목록은 그대로. 자격이 없으면 total·counts 0. */
+  @Test
+  void eligibilityDisplayValuesAreNullWhenUnknown() throws Exception {
+    String orderId = "ORD-RV-" + newId();
+    String me = "ACC-rv-" + newId();
+    String productId = "PRD-" + newId();
+    String token = TestJwt.customer(me);
+    stubOrder(orderId, me, productId, 0);
+    stubCenter("MFC-" + orderId, null);
+    stubCards(productId, "{\"items\":[],\"missing\":[\"" + productId + "\"]}");
+    delivered(orderId, Instant.now().minus(Duration.ofDays(1)), orderId + "-L1");
+    await(
+        () -> count("SELECT count(*) FROM review_eligibility WHERE order_id = ?", orderId),
+        n -> n == 1);
+
+    Res res = send("GET", token, "/me/review-eligibilities?orderId=" + orderId, null);
+    assertThat(res.status()).isEqualTo(200);
+    assertThat(res.body().path("total").asInt()).isEqualTo(1);
+    JsonNode item = res.body().path("items").get(0);
+    assertThat(item.path("orderedAt").isString()).isTrue();
+    assertThat(item.hasNonNull("mfcName")).isFalse();
+    assertThat(item.hasNonNull("imageUrl")).isFalse();
+    assertThat(item.hasNonNull("optionLabel")).isFalse();
+
+    Res none =
+        send("GET", TestJwt.customer("ACC-none-" + newId()), "/me/review-eligibilities", null);
+    assertThat(none.status()).isEqualTo(200);
+    assertThat(none.body().path("total").asInt()).isZero();
+    assertThat(none.body().path("counts").path("writable").asInt()).isZero();
+    assertThat(none.body().path("counts").path("written").asInt()).isZero();
   }
 }

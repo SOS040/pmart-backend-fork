@@ -10,6 +10,7 @@ import com.pmart.common.web.PmartException;
 import com.pmart.review.domain.ReviewRules;
 import com.pmart.review.infrastructure.JpegResizer;
 import com.pmart.review.infrastructure.ReviewStore;
+import com.pmart.review.infrastructure.ReviewStore.EligibilityCounts;
 import com.pmart.review.infrastructure.ReviewStore.EligibilityRow;
 import com.pmart.review.infrastructure.ReviewStore.EligibilityView;
 import com.pmart.review.infrastructure.ReviewStore.PhotoRow;
@@ -57,9 +58,16 @@ public class ReviewService {
   public record ReviewView(
       ReviewRow row, List<PhotoRow> photos, String state, @Nullable Instant deliveredAt) {}
 
-  public record EligibilityPage(List<EligibilityItem> items, @Nullable String nextCursor) {}
+  /** 자격 한 쪽과 개수(0.5.0 BR-67 — total·writable·written). */
+  public record EligibilityPage(
+      List<EligibilityItem> items, @Nullable String nextCursor, EligibilityCounts counts) {}
 
-  public record EligibilityItem(EligibilityRow row, String state, @Nullable String reviewId) {}
+  /** 자격 한 줄. display 는 리뷰관리 표시 값(0.5.0 BR-67 — 주문 시각·센터 이름·지금 상품 사진·옵션 라벨, 모르면 null). */
+  public record EligibilityItem(
+      EligibilityRow row,
+      String state,
+      @Nullable String reviewId,
+      EligibilityDisplay.Display display) {}
 
   public record ReviewPage(
       List<ReviewView> items, @Nullable String nextCursor, @Nullable Double average, int count) {}
@@ -86,6 +94,9 @@ public class ReviewService {
 
   private final ReviewPhotoPreparer preparer;
 
+  /** 리뷰관리 표시 값(2026-11-20 BR-67). */
+  private final EligibilityDisplay display;
+
   public ReviewService(
       ReviewStore store,
       Upstreams upstreams,
@@ -94,7 +105,9 @@ public class ReviewService {
       RequestIdempotency idempotency,
       Clock clock,
       ReviewPhotoVariants variants,
-      ReviewPhotoPreparer preparer) {
+      ReviewPhotoPreparer preparer,
+      EligibilityDisplay display) {
+    this.display = display;
     this.variants = variants;
     this.preparer = preparer;
     this.store = store;
@@ -144,7 +157,9 @@ public class ReviewService {
               ol.productName(),
               qty,
               at,
-              text(p, "deliveryId")),
+              text(p, "deliveryId"),
+              order.confirmedAt(),
+              order.mfcId()),
           now);
       n++;
     }
@@ -159,16 +174,23 @@ public class ReviewService {
     List<EligibilityView> rows =
         store.eligibilities(c.subject(), blankToNull(orderId), state, now, offset, size + 1);
     boolean more = rows.size() > size;
+    List<EligibilityView> page = rows.subList(0, Math.min(size, rows.size()));
+    List<EligibilityDisplay.Display> shown =
+        display.of(page.stream().map(EligibilityView::e).toList());
     List<EligibilityItem> items = new ArrayList<>();
-    for (EligibilityView v : rows.subList(0, Math.min(size, rows.size()))) {
+    for (int i = 0; i < page.size(); i++) {
+      EligibilityView v = page.get(i);
       items.add(
           new EligibilityItem(
               v.e(),
               ReviewRules.eligibilityState(
                   v.reviewState(), v.reviewCreatedAt(), v.e().deliveredAt(), now),
-              v.reviewId()));
+              v.reviewId(),
+              shown.get(i)));
     }
-    return new EligibilityPage(items, more ? String.valueOf(offset + size) : null);
+    EligibilityCounts counts =
+        store.eligibilityCounts(c.subject(), blankToNull(orderId), state, now);
+    return new EligibilityPage(items, more ? String.valueOf(offset + size) : null, counts);
   }
 
   // ---------------------------------------------------------------- 작성·수정·삭제

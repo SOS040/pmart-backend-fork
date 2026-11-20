@@ -2,6 +2,7 @@ package com.pmart.review.api;
 
 import com.pmart.review.api.generated.model.Eligibility;
 import com.pmart.review.api.generated.model.GetReviewInternal200Response;
+import com.pmart.review.api.generated.model.ListMyReviewEligibilities200ResponseCounts;
 import com.pmart.review.api.generated.model.ListMyReviewEligibilities200ResponsePage;
 import com.pmart.review.api.generated.model.Review;
 import com.pmart.review.api.generated.model.ReviewPhoto;
@@ -10,6 +11,7 @@ import com.pmart.review.api.generated.model.ReviewState;
 import com.pmart.review.application.ReviewService.EligibilityItem;
 import com.pmart.review.application.ReviewService.ReviewView;
 import com.pmart.review.domain.ReviewRules;
+import com.pmart.review.infrastructure.ReviewStore.EligibilityCounts;
 import com.pmart.review.infrastructure.ReviewStore.PhotoRow;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -79,7 +81,17 @@ final class ReviewViews {
         .deliveredAt(time(e.deliveredAt()))
         .eligibleUntil(time(ReviewRules.eligibleUntil(e.deliveredAt())))
         .state(ReviewState.fromValue(i.state()))
-        .reviewId(i.reviewId());
+        .reviewId(i.reviewId())
+        .orderedAt(time(i.display().orderedAt()))
+        .mfcName(i.display().mfcName())
+        .imageUrl(i.display().imageUrl())
+        .optionLabel(i.display().optionLabel());
+  }
+
+  static ListMyReviewEligibilities200ResponseCounts counts(EligibilityCounts c) {
+    return new ListMyReviewEligibilities200ResponseCounts()
+        .writable(c.writable())
+        .written(c.written());
   }
 
   static ReviewPhoto photo(PhotoRow p) {
