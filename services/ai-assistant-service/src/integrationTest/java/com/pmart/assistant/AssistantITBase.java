@@ -75,6 +75,9 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
     final AtomicBoolean wrongDimension = new AtomicBoolean();
     final AtomicReference<@Nullable Runnable> onNextEmbed = new AtomicReference<>();
 
+    /** 검색에 쓴 질문(ADR-0084 이어 묻기 시험). */
+    final java.util.List<String> queries = new java.util.concurrent.CopyOnWriteArrayList<>();
+
     @Override
     public EmbeddingSpec spec() {
       return delegate.spec();
@@ -92,6 +95,7 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
 
     @Override
     public float[] embedQuery(String question) {
+      queries.add(question);
       if (failing.get()) {
         throw new IllegalStateException("embedding down (test)");
       }
@@ -130,7 +134,9 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
 
   @BeforeEach
   void resetState() throws IOException {
+    jdbc.update("DELETE FROM chat_session"); // 답변도 함께(ON DELETE CASCADE, ADR-0084)
     jdbc.update("DELETE FROM policy_answer");
+    embedding.queries.clear();
     jdbc.update("DELETE FROM index_snapshot");
     embedding.failing.set(false);
     embedding.wrongDimension.set(false);

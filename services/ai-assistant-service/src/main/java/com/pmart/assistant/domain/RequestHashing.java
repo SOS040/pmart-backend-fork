@@ -46,6 +46,18 @@ public final class RequestHashing {
     return sb.append('}').toString();
   }
 
+  /** 세션을 고른 질문(ADR-0084)은 세션 ID 도 해시에 넣는다 — 같은 키로 다른 세션에 보내면 충돌. 세션을 고르지 않으면 예전과 같은 해시. */
+  public static String requestHash(
+      String question,
+      @Nullable String screen,
+      @Nullable String centerId,
+      @Nullable String sessionId) {
+    String base = requestHash(question, screen, centerId);
+    return normalize(sessionId).isEmpty()
+        ? base
+        : sha256(base + "\nsession:" + normalize(sessionId));
+  }
+
   public static String requestHash(
       String question, @Nullable String screen, @Nullable String centerId) {
     return sha256(normalize(question) + "\n" + normalizedContext(screen, centerId));

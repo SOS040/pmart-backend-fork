@@ -48,7 +48,8 @@ public class AnswerStore {
       @Nullable String embeddingModel,
       @Nullable String question,
       Instant createdAt,
-      @Nullable Instant completedAt) {
+      @Nullable Instant completedAt,
+      String sessionId) {
 
     public boolean leaseValid(Instant now) {
       return state == State.PROCESSING && leaseUntil != null && leaseUntil.isAfter(now);
@@ -66,6 +67,29 @@ public class AnswerStore {
       @Nullable String chatModel,
       @Nullable String embeddingModel) {}
 
+  /** 채팅 세션(ADR-0084). */
+  public record SessionRow(
+      String sessionId,
+      String sourceSystem,
+      String ownerSubject,
+      Instant createdAt,
+      Instant lastAskedAt) {}
+
+  /**
+   * 세션 목록 한 줄.
+   *
+   * @param firstQuestion 첫 질문 원문(저장했을 때만)
+   * @param firstAnswer 첫 답변(완료됐을 때만) — 질문이 없을 때 제목 대신
+   */
+  public record SessionSummary(
+      SessionRow session,
+      @Nullable String firstQuestion,
+      @Nullable String firstAnswer,
+      int questionCount) {}
+
+  /** 앞 대화 한 턴(질문 원문이 저장된 완료 답변만). */
+  public record Turn(String question, String answer) {}
+
   public sealed interface PinResult {
     record Pinned(SnapshotRow snapshot) implements PinResult {}
 
@@ -82,7 +106,7 @@ public class AnswerStore {
     this.tx = tx;
   }
 
-  /** 새 선점. 같은 (출처, 주체, 키) 행이 이미 있으면 false. */
+  /** 새 선점 + 새 세션(세션 ID = 답변 ID 의 SES- 짝). 시험·도구용 — 질문 흐름은 아래 세션 인자 판을 쓴다. */
   public boolean insertClaim(
       String answerId,
       String sourceSystem,
@@ -92,26 +116,82 @@ public class AnswerStore {
       Instant leaseUntil,
       @Nullable String question,
       Instant now) {
-    try {
-      return jdbc.update(
-              """
-              INSERT INTO policy_answer (answer_id, source_system, asker_subject, request_id, request_hash, state,
-                lease_until, attempt, question, created_at)
-              VALUES (?, ?, ?, ?, ?, 'PROCESSING', ?, 1, ?, ?)
-              ON CONFLICT (source_system, asker_subject, request_id) DO NOTHING
-              """,
-              answerId,
-              sourceSystem,
-              subject,
-              requestId,
-              requestHash,
-              Timestamp.from(leaseUntil),
-              question,
-              Timestamp.from(now))
-          == 1;
-    } catch (DuplicateKeyException e) {
-      return false;
-    }
+    return insertClaim(
+        answerId,
+        sourceSystem,
+        subject,
+        requestId,
+        requestHash,
+        leaseUntil,
+        question,
+        now,
+        "SES-" + answerId.substring(answerId.indexOf('-') + 1),
+        true);
+  }
+
+  /**
+   * 새 선점. 같은 (출처, 주체, 키) 행이 이미 있으면 false. 한 TX 에서 답변 행을 넣고, 넣었으면 새 세션을 만들거나({@code newSession}) 기존
+   * 세션의 마지막 질문 시각을 올린다 — 선점에 지면 세션을 만들지 않는다.
+   */
+  public boolean insertClaim(
+      String answerId,
+      String sourceSystem,
+      String subject,
+      String requestId,
+      String requestHash,
+      Instant leaseUntil,
+      @Nullable String question,
+      Instant now,
+      String sessionId,
+      boolean newSession) {
+    Boolean inserted =
+        tx.execute(
+            st -> {
+              int n;
+              try {
+                n =
+                    jdbc.update(
+                        """
+                        INSERT INTO policy_answer (answer_id, source_system, asker_subject, request_id, request_hash,
+                          state, lease_until, attempt, question, created_at, session_id)
+                        VALUES (?, ?, ?, ?, ?, 'PROCESSING', ?, 1, ?, ?, ?)
+                        ON CONFLICT (source_system, asker_subject, request_id) DO NOTHING
+                        """,
+                        answerId,
+                        sourceSystem,
+                        subject,
+                        requestId,
+                        requestHash,
+                        Timestamp.from(leaseUntil),
+                        question,
+                        Timestamp.from(now),
+                        sessionId);
+              } catch (DuplicateKeyException e) {
+                return false;
+              }
+              if (n != 1) {
+                return false;
+              }
+              if (newSession) {
+                jdbc.update(
+                    """
+                    INSERT INTO chat_session (session_id, source_system, owner_subject, created_at, last_asked_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    sessionId,
+                    sourceSystem,
+                    subject,
+                    Timestamp.from(now),
+                    Timestamp.from(now));
+              } else {
+                jdbc.update(
+                    "UPDATE chat_session SET last_asked_at = GREATEST(last_asked_at, ?) WHERE session_id = ?",
+                    Timestamp.from(now),
+                    sessionId);
+              }
+              return true;
+            });
+    return Boolean.TRUE.equals(inserted);
   }
 
   /** 만료된 PROCESSING 또는 FAILED_RETRYABLE 을 다시 선점(attempt+1). 같은 행을 두 요청이 동시에 노려도 하나만 1건. */
@@ -244,10 +324,99 @@ public class AnswerStore {
         limit);
   }
 
-  /** 보존 정리: 오래된 COMPLETED·FAILED_RETRYABLE 만(PROCESSING 은 지우지 않는다). */
-  public int deleteFinishedBefore(Instant cutoff) {
+  // ---- 채팅 세션(ADR-0084) ----
+
+  public Optional<SessionRow> findSession(String sessionId) {
+    return jdbc
+        .query("SELECT * FROM chat_session WHERE session_id = ?", AnswerStore::session, sessionId)
+        .stream()
+        .findFirst();
+  }
+
+  /**
+   * 내 세션 목록: (출처, 주체) 범위, 마지막 질문 최근 순. 커서 = (last_asked_at, session_id) 이전. 첫 질문·첫 답변·질문 수를 함께.
+   *
+   * @param limit 한 번에 읽을 행 수(호출자가 size+1 로 다음 여부를 판단)
+   */
+  public List<SessionSummary> listSessions(
+      String sourceSystem,
+      String subject,
+      @Nullable Instant beforeLastAskedAt,
+      @Nullable String beforeSessionId,
+      int limit) {
+    String sql =
+        """
+        SELECT s.*, f.question AS first_question, f.answer AS first_answer,
+          (SELECT count(*) FROM policy_answer c WHERE c.session_id = s.session_id) AS question_count
+        FROM chat_session s
+        LEFT JOIN LATERAL (
+          SELECT a.question, a.answer FROM policy_answer a WHERE a.session_id = s.session_id
+          ORDER BY a.created_at, a.answer_id LIMIT 1) f ON true
+        WHERE s.source_system = ? AND s.owner_subject = ?
+        """;
+    if (beforeLastAskedAt == null || beforeSessionId == null) {
+      return jdbc.query(
+          sql + " ORDER BY s.last_asked_at DESC, s.session_id DESC LIMIT ?",
+          AnswerStore::summary,
+          sourceSystem,
+          subject,
+          limit);
+    }
+    return jdbc.query(
+        sql
+            + " AND (s.last_asked_at, s.session_id) < (?, ?)"
+            + " ORDER BY s.last_asked_at DESC, s.session_id DESC LIMIT ?",
+        AnswerStore::summary,
+        sourceSystem,
+        subject,
+        Timestamp.from(beforeLastAskedAt),
+        beforeSessionId,
+        limit);
+  }
+
+  /** 세션의 답변(질문 순). */
+  public List<AnswerRow> sessionAnswers(String sessionId) {
+    return jdbc.query(
+        "SELECT * FROM policy_answer WHERE session_id = ? ORDER BY created_at, answer_id",
+        AnswerStore::row,
+        sessionId);
+  }
+
+  /** 앞 대화: 이 답변보다 먼저 만든, 같은 세션의 완료·근거 있는 답변 중 질문 원문이 있는 것. 오래된 순으로 최대 {@code limit} 턴. */
+  public List<Turn> previousTurns(String sessionId, String answerId, int limit) {
+    List<Turn> recent =
+        jdbc.query(
+            """
+            SELECT p.question, p.answer FROM policy_answer p, policy_answer me
+            WHERE me.answer_id = ? AND p.session_id = ? AND p.answer_id <> me.answer_id
+              AND p.created_at <= me.created_at AND p.state = 'COMPLETED' AND p.result_state = 'ANSWERED'
+              AND p.question IS NOT NULL AND p.answer IS NOT NULL
+            ORDER BY p.created_at DESC, p.answer_id DESC LIMIT ?
+            """,
+            (rs, i) -> new Turn(rs.getString(1), rs.getString(2)),
+            answerId,
+            sessionId,
+            limit);
+    return recent.reversed();
+  }
+
+  /** 본인 세션 삭제(답변도 함께). 본인 세션이 아니거나 없으면 0. */
+  public int deleteSession(String sessionId, String sourceSystem, String subject) {
     return jdbc.update(
-        "DELETE FROM policy_answer WHERE state IN ('COMPLETED', 'FAILED_RETRYABLE') AND created_at < ?",
+        "DELETE FROM chat_session WHERE session_id = ? AND source_system = ? AND owner_subject = ?",
+        sessionId,
+        sourceSystem,
+        subject);
+  }
+
+  /** 보존 정리: 마지막 질문이 기준 시각보다 앞선 세션(답변도 함께). 처리 중 답변이 있는 세션은 지우지 않는다. */
+  public int deleteSessionsLastAskedBefore(Instant cutoff) {
+    return jdbc.update(
+        """
+        DELETE FROM chat_session s WHERE s.last_asked_at < ?
+          AND NOT EXISTS (SELECT 1 FROM policy_answer a WHERE a.session_id = s.session_id
+                          AND a.state = 'PROCESSING')
+        """,
         Timestamp.from(cutoff));
   }
 
@@ -280,6 +449,24 @@ public class AnswerStore {
         rs.getString("embedding_model"),
         rs.getString("question"),
         rs.getTimestamp("created_at").toInstant(),
-        SnapshotStore.instant(rs.getTimestamp("completed_at")));
+        SnapshotStore.instant(rs.getTimestamp("completed_at")),
+        rs.getString("session_id"));
+  }
+
+  private static SessionRow session(ResultSet rs, int n) throws SQLException {
+    return new SessionRow(
+        rs.getString("session_id"),
+        rs.getString("source_system"),
+        rs.getString("owner_subject"),
+        rs.getTimestamp("created_at").toInstant(),
+        rs.getTimestamp("last_asked_at").toInstant());
+  }
+
+  private static SessionSummary summary(ResultSet rs, int n) throws SQLException {
+    return new SessionSummary(
+        session(rs, n),
+        rs.getString("first_question"),
+        rs.getString("first_answer"),
+        rs.getInt("question_count"));
   }
 }

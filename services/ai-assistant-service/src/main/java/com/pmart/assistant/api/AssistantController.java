@@ -49,7 +49,66 @@ public class AssistantController implements AssistantApi {
             idempotencyKey,
             body.getQuestion(),
             ctx == null ? null : ctx.getScreen(),
-            ctx == null ? null : ctx.getCenterId()));
+            ctx == null ? null : ctx.getCenterId(),
+            body.getSessionId()));
+  }
+
+  // ---- 채팅 세션(ADR-0084) ----
+
+  @Override
+  public ResponseEntity<com.pmart.assistant.api.generated.model.ChatSessionPage> listMyChatSessions(
+      String xSourceSystem, Integer size, @org.jspecify.annotations.Nullable String cursor) {
+    var page = service.sessions(PmartPrincipal.current().orElse(null), xSourceSystem, size, cursor);
+    var items =
+        page.items().stream()
+            .map(
+                s ->
+                    new com.pmart.assistant.api.generated.model.ChatSessionSummary()
+                        .sessionId(s.session().sessionId())
+                        .title(title(s.firstQuestion(), s.firstAnswer()))
+                        .questionCount(s.questionCount())
+                        .createdAt(odt(s.session().createdAt()))
+                        .lastAskedAt(odt(s.session().lastAskedAt())))
+            .toList();
+    return ResponseEntity.ok(
+        new com.pmart.assistant.api.generated.model.ChatSessionPage()
+            .items(items)
+            .page(
+                new com.pmart.assistant.api.generated.model.ChatSessionPagePage()
+                    .nextCursor(page.nextCursor())
+                    .size(items.size())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.assistant.api.generated.model.ChatSession> getMyChatSession(
+      String xSourceSystem, String sessionId) {
+    var view = service.session(PmartPrincipal.current().orElse(null), xSourceSystem, sessionId);
+    return ResponseEntity.ok(
+        new com.pmart.assistant.api.generated.model.ChatSession()
+            .sessionId(view.session().sessionId())
+            .createdAt(odt(view.session().createdAt()))
+            .lastAskedAt(odt(view.session().lastAskedAt()))
+            .messages(view.messages().stream().map(AssistantController::toDto).toList()));
+  }
+
+  @Override
+  public ResponseEntity<Void> deleteMyChatSession(
+      String idempotencyKey, String xSourceSystem, String sessionId) {
+    service.deleteSession(PmartPrincipal.current().orElse(null), xSourceSystem, sessionId);
+    return ResponseEntity.noContent().build();
+  }
+
+  /** 세션 제목: 첫 질문(원문 저장 때) → 없으면 첫 답변 앞부분 60자. */
+  static @org.jspecify.annotations.Nullable String title(
+      @org.jspecify.annotations.Nullable String firstQuestion,
+      @org.jspecify.annotations.Nullable String firstAnswer) {
+    if (firstQuestion != null && !firstQuestion.isBlank()) {
+      return firstQuestion;
+    }
+    if (firstAnswer != null && !firstAnswer.isBlank()) {
+      return firstAnswer.length() > 60 ? firstAnswer.substring(0, 60) : firstAnswer;
+    }
+    return null;
   }
 
   @Override
@@ -98,7 +157,7 @@ public class AssistantController implements AssistantApi {
         new com.pmart.assistant.api.generated.model.QuestionHistoryPage()
             .items(items)
             .page(
-                new com.pmart.assistant.api.generated.model.QuestionHistoryPagePage()
+                new com.pmart.assistant.api.generated.model.ChatSessionPagePage()
                     .nextCursor(page.nextCursor())
                     .size(items.size())));
   }
@@ -119,6 +178,8 @@ public class AssistantController implements AssistantApi {
     PolicyAnswer dto =
         new PolicyAnswer()
             .answerId(row.answerId())
+            .sessionId(row.sessionId())
+            .question(row.question())
             .requestId(row.requestId())
             .state(processing ? AnswerState.PROCESSING : AnswerState.fromValue(row.resultState()))
             .answer(processing || row.answer() == null ? "" : row.answer())
