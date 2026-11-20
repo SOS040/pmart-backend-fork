@@ -46,6 +46,11 @@
 3. 교환 응답에 `id_token` 이 있는지(scope `openid`). 없으면 네이버 앱 설정(OIDC) 확인.
 4. 서버 확인은 PC 1 에 시각만 알려 주면 된다 — 위와 같은 기록(Prometheus·로그 ES·auth DB)으로 서버 도착 여부를 본다. 인가 코드·토큰·세션 쿠키는 보내지 않는다.
 
+## 4. 2026-11-20 폰 연결 진단 뒤 (갱신)
+- 09:19 시도: 콜백 09:19:48 서버 302 → **앱 수신 화면 실행 없음**(adb logcat) → 원인 = 네이버가 스크립트로 보낸 이동에 이어진 302 의 앱 주소를 Chrome 이 안 엶. **고침: auth 0.7.0 콜백 = "PMart 앱으로 돌아가기" 페이지**(LAN 배포 1d3df48a).
+- 09:46·09:48 시도: Chrome 이 앱 주소로 **앱을 엶**(RedirectUriReceiverActivity) → `W/AppAuth: No stored state - unable to handle response`. 원인 = 고객 앱 MainActivity `android:taskAffinity=""` — 요청을 시작한 화면과 응답을 받는 화면이 다른 task. **앱에서 그 줄을 빼야 함**: 요청서 `docs/handoff/clients/customer-app/2026-11-20-request-naver-login-task-affinity.md`(라이더·MFC 앱도 같은 줄).
+- 네이버 콘솔: Callback URL = 앱 `redirect_uri`(맞음). 연결 끊기 Callback URL 은 로그인 주소와 같으면 안 됨 — 비우기 권함.
+
 ---
 
 ## 원문(사용자가 가져온 일반 점검표, 2026-11-20)
