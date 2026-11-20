@@ -16,4 +16,4 @@
 - 바꿀 것 없음 — 서버가 준 단계 그대로(`AUTH_CONSENT` → `AUTH_IDENTITY` → 회원). 실기기로 "동의 → 휴대폰 확인 전에 나감 → 같은 소셜로 다시 로그인 → 동의 화면이 다시 나옴(선택 항목 포함)" 확인 부탁.
 
 ## 배포 상태
-- (작성 시점) 서버 구현·시험 끝(auth·customer check 통과), LAN 배포 전.
+- **LAN 배포 2026-11-20 18:32 KST** — customer-service(PC 2)·auth-service(PC 4) bc730a63. 설정 변경 없음.
