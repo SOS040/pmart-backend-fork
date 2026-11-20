@@ -1,96 +1,95 @@
 # ai-assistant-service 색인 대상 명시 목록 (ADR-0036). 여기에 없는 파일은 색인하지 않는다.
-# 넣지 않는 것: worklog·handoff·그 밖의 architecture 문서·코드·시험·배포·비밀.
-#
-# precedence (우선순위 등급, 클수록 우선) — docs/business/domain-map.md:35 그대로:
-#   CLAUDE.md 서비스 목록 > 2026-10-20 이후 문서(WMS v8.1, SCM, TMS, MFC v2.0, BackOffice v2.0) > OMS > Commerce > Delivery(Draft)
-#   5 = ADR(업무 정책만 — 아래). 서비스 목록 service-map.md 는 2026-11-15 뺌(문서 충돌을 해결한 결정 기록 — 지위는 상태 줄이 정한다)
-#   4 = 2026-10-20 이후 업무 문서 + 저장소 설계 문서(overview·domain-map·glossary·flows·states, 2026-10-23 이후)
-#   3 = OMS, 2 = Commerce, 1 = Delivery(Draft)
-#   단 [확정 정책] 은 등급과 무관하게 유지 — 지위(authority) 가중으로 반영한다.
-#
-# authority: 문서 기본 지위. 절·문단 태그([확정 정책]·[채택 설계]·[설계안]·[가정]·[결정 필요]…)가 덮는다.
-#   ADR 은 비워 둔다 — 상태 줄("- 상태: 승인 …")로 판정(승인=CONFIRMED, 그 밖=PROPOSAL).
+# 2026-11-20 사용자: 운영자용 RAG 는 docs/rag/rag-docs 아래 모든 문서(고객용 customer_app 포함)를 참고한다. README 는 색인하지 않는다.
+#   옛 색인 문서 52개(업무 원문·상담 대본·흐름·상태표·ADR)는 목록에서 뺐다 — 그 문서들의 직원용 내용은 rag-docs 로 옮겨 정리했다
+#   (결정된 내용만, 2026-11-20 "운영자용 RAG 문서 정비"). 정해지지 않은 내용은 rag-docs 에 넣지 않았으므로 지위는 모두 CONFIRMED 로 둔다.
+# 새 문서를 rag-docs 에 더하면 여기에도 한 줄 넣는다 — RealDocumentsIngestTest 가 rag-docs 의 README 밖 .md 가 모두 목록에 있는지 본다.
+# domain = rag-docs 하위 폴더 이름.
 version: 1
 defaultAccessScope: operator
 documents:
-  # --- 저장소 설계 문서 ---
-  - { path: docs/business/overview.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: docs/business/domain-map.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: docs/business/glossary.md, domain: overview, kind: REFERENCE, authority: ADOPTED_DESIGN, precedence: 4 }
-  # docs/architecture/service-map.md 는 뺌(2026-11-15 사용자 "응 너가 말한 문서빼줘") — 서비스 책임 경계는 업무 직원이 볼 내용이 아니고, "직원 휴가 신청"에 이 문서의 hr-service 절로 없는 API 를 지어 답했다
-  # --- 업무 명세 (대부분 "설계안" — 문단 태그가 지위를 정한다) ---
-  - { path: docs/business/WMS-business-logic.md, domain: wms, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/SCM-business-logic.md, domain: scm, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/TMS-business-logic.md, domain: tms, kind: BUSINESS, authority: ADOPTED_DESIGN, precedence: 4 } # "설계 확정본(수치 일부 가정값)"
-  - { path: docs/business/MFC-business-logic.md, domain: mfc, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/BackOffice-business-logic.md, domain: backoffice, kind: BUSINESS, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/OMS-business-logic.md, domain: oms, kind: BUSINESS, authority: PROPOSAL, precedence: 3 }
-  - { path: docs/business/Commerce-business-logic.md, domain: commerce, kind: BUSINESS, authority: PROPOSAL, precedence: 2 }
-  - { path: docs/business/Delivery-business-logic.md, domain: delivery, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  # --- 고객센터 상담 대응(2026-11-09, 운영자용) — 대본·절차는 [설계안], 업무 문서에서 옮긴 절만 [확정 정책]·[채택 설계]. 업무 원문과 다르면 원문이 앞선다(precedence 1) ---
-  - { path: docs/business/cs-scripts/README.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/01-common-greeting-identity.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/02-order-cancel.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/03-refund-partial-cancel.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/04-shortage.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/05-delivery-delay.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/06-wrong-delivery.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/07-missing-wrong-item.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/08-damage-quality.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/09-return-exchange.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  - { path: docs/business/cs-scripts/10-records-notifications.md, domain: cs, kind: BUSINESS, authority: PROPOSAL, precedence: 1 }
-  # --- 사가 흐름 (버전 0.1 설계안) ---
-  - { path: docs/business/flows/cancel-vs-handover.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/flows/order-checkout-saga.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/flows/replenishment-transfer.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/flows/return-exchange-refund.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/flows/employee-account-provisioning.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 } # 직원 등록·권한 요청·승인(ADR-0056 의 업무 부분 — ADR 자체는 인증 구현이라 뺌, 2026-11-15)
-  # --- 상태표 ---
-  - { path: contracts/states/cdc-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: contracts/states/claim-refund-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: contracts/states/delivery-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: contracts/states/mfc-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: contracts/states/order-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: contracts/states/platform-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: contracts/states/scm-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  - { path: contracts/states/tms-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
-  # --- ADR: 업무 정책 결정만 (지위는 상태 줄) — 2026-11-15 사용자 "그건 일반 운영자쪽에서 안봐도되는내용인데" ---
-  # 운영자 RAG 를 쓰는 사람은 백오피스 업무 직원(상담원·MD·승인자·라이더 운영·센터 관리자)이다. 고객 응대·업무 판단에 쓰는 결정만 넣고,
-  # 서비스 경계·인프라·인증 구현·배포·관측·RAG 자체 설계 ADR 은 넣지 않는다(업무 질문에 기술 문서가 근거로 끼어들고 내부 구조가 답으로 나간다).
-  # 새 ADR 이 생기면 여기 넣을지 정하고, 빼면 RealDocumentsIngestTest.EXCLUDED_ADRS 에 이유와 함께 더한다(정하지 않으면 시험이 실패).
-  - { path: docs/adr/0014-master-data-and-initial-stock-loading.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0015-category-tree-follows-reference-data.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0040-mfc-inventory-model-v2.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0041-per-product-shelf-life-guarantee.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0042-mfc-open-decisions-lot-substitution-hold-ttl-location-code-bulk-inbound.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0043-slice-6b-picking-packing.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0044-pick-shortage-hold-and-resecure.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0045-shortage-saga-cancel-out-of-stock-only.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0046-cancel-after-pick-return.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0047-package-handover-fence.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0048-mfc-overnight-quality-count-restrictions.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0049-shortage-always-partial-cancel.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0052-customer-cancel-deadline-and-misdelivery-parallel-resend.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0060-no-customer-center-cancel-after-preparing.md, domain: adr, kind: ADR, precedence: 5 }
-  # 2026-11-16 애매함에서 남김으로(사용자 "셋 다 넣고") — 직원 응대 규칙이 이 ADR 에만 있음(docs/rag/operator-index-scope.md §1)
-  - { path: docs/adr/0062-staff-pii-reveal-recorded-in-audit-service.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0063-review-service-first-implementation.md, domain: adr, kind: ADR, precedence: 5 }
-  - { path: docs/adr/0064-notification-in-app-inbox-first.md, domain: adr, kind: ADR, precedence: 5 }
-
-# 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
-overrides:
-  - path: docs/business/OMS-business-logic.md
-    contains: "주문 당시 고객은 `품절 상품만 취소` 또는 `전체 취소`를 선택한다"
-    lifecycle: SUPERSEDED
-    supersededBy: docs/adr/0049-shortage-always-partial-cancel.md
-    reason: >-
-      ADR-0049(상태: 승인, 2026-11-08 사용자 "무조건 부분취소환불임")가 대체 줄에 "업무 원문 OMS 8.2(사전 선택별 처리, 선택 없으면
-      CS 이관)를 사용자가 바꿨다"고 적었다. 대상이 업무 문서라 결정 번호가 없어 대체 규칙(결정 4)으로는 활성화되지 않는 예외 →
-      OMS 8.2 결품 처리 문단만 SUPERSEDED. 현재 질문에서 빠지고 이력 질문에서만 나온다(2026-11-09 답변 평가 A13 이 옛 규칙을 섞어 답함).
-  - path: docs/business/Commerce-business-logic.md
-    contains: "고객 분류는 1·2단계"
-    lifecycle: SUPERSESSION_PROPOSED
-    proposedSupersededBy: [docs/adr/0015-category-tree-follows-reference-data.md]
-    reason: >-
-      ADR-0015(상태: 제안)가 카테고리 트리를 업무 문서 정책 대신 참고 자료 구조로 따르기로 했지만 승인 전이고 대체 선언에
-      결정 번호가 없다 → 대체 제안 표시만, [확정 정책](CONFIRMED) 지위는 유지.
+  # --- backoffice ---
+  - { path: docs/rag/rag-docs/backoffice/01-staff-account-login.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/02-roles-permissions.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/03-approval.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/04-personal-info-access.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/05-customer-center-cases.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/06-product-display-search.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/07-rider-operations.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/08-hr-employee-management.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/backoffice/09-lookup-status-metrics.md, domain: backoffice, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- cdc_wms ---
+  - { path: docs/rag/rag-docs/cdc_wms/01-opening-location-sku-handling.md, domain: cdc_wms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/cdc_wms/02-lot-shelf-life.md, domain: cdc_wms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/cdc_wms/03-replenishment-transfer-departure.md, domain: cdc_wms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/cdc_wms/04-operation-restrictions.md, domain: cdc_wms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- commerce ---
+  - { path: docs/rag/rag-docs/commerce/01-product-sku.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/commerce/02-pricing-promotions.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/commerce/03-home-display.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/commerce/04-search.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/commerce/05-reviews.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/commerce/06-customer-notifications.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/commerce/07-cart.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/commerce/08-display-numbers.md, domain: commerce, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- common ---
+  - { path: docs/rag/rag-docs/common/01-glossary.md, domain: common, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/common/02-business-overview.md, domain: common, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- customer_app ---
+  - { path: docs/rag/rag-docs/customer_app/01-signup-login.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/02-withdrawal.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/03-wishlist.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/04-consents-privacy.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/05-customer-center.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/06-order-payment-fees.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/07-delivery-area-address.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/08-order-cancel.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/09-delivery-status.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/10-not-received-misdelivery.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/11-shortage.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/12-missing-damaged-item.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/13-return-exchange.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/14-refund.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/15-notifications.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/customer_app/16-reviews.md, domain: customer_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- delivery ---
+  - { path: docs/rag/rag-docs/delivery/01-service-area.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/delivery/02-arrival-slots-promise.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/delivery/03-dispatch.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/delivery/04-pickup-completion-failure.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/delivery/05-incidents-help-recovery.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/delivery/06-control-location.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/delivery/07-earnings-operations.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/delivery/08-rider-notifications.md, domain: delivery, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- mfc ---
+  - { path: docs/rag/rag-docs/mfc/01-worker-qualification-shift.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/mfc/02-task-assignment.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/mfc/03-inbound-putaway-move.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/mfc/04-picking-packing.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/mfc/05-dispatch-handover.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/mfc/06-inventory-quality.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/mfc/07-supervisor-controls.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/mfc/08-center-zones-throughput.md, domain: mfc, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- order_claim ---
+  - { path: docs/rag/rag-docs/order_claim/01-order-amount.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/02-payment-order-status.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/03-cancel.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/04-shortage.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/05-refund.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/06-return-exchange.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/07-misdelivery.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/08-delivery-issue-consult.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/order_claim/09-consult-records-notifications.md, domain: order_claim, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- rider_app ---
+  - { path: docs/rag/rag-docs/rider_app/01-signup.md, domain: rider_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/rider_app/02-operation-dispatch.md, domain: rider_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/rider_app/03-pickup-delivery.md, domain: rider_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/rider_app/04-earnings.md, domain: rider_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/rider_app/05-restriction-withdrawal.md, domain: rider_app, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- scm ---
+  - { path: docs/rag/rag-docs/scm/01-supply-principles.md, domain: scm, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  # --- tms ---
+  - { path: docs/rag/rag-docs/tms/01-transfer-request-intake.md, domain: tms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/tms/02-dispatch-planning.md, domain: tms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/tms/03-loading-departure-monitoring.md, domain: tms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/tms/04-arrival-handover-exceptions.md, domain: tms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }
+  - { path: docs/rag/rag-docs/tms/05-completion-settlement.md, domain: tms, kind: REFERENCE, authority: CONFIRMED, precedence: 4 }

@@ -19,7 +19,7 @@
 - 질문·문서 본문·토큰을 로그에 남기지 않는다(답변 ID·상태·소요 시간·청크 수만).
 - 모델은 LAN Ollama 만(ADR-0051 결정 6 — 외부 유료 API 없음). 운영 연결은 Spring AI Ollama 모듈로, 임베딩 모델을 고른 뒤 만든다(아직 없음). `provider=fake` 는 시험 전용이다.
 - 임베딩 비교 평가: `-PevalOllamaModel=<모델>`(로컬 Ollama, `OllamaEvalEmbedding` — 시험 전용)로 `RetrievalEvalIT` → `build/reports/eval/<모델>/`.
-- 색인 대상은 `src/main/resources/knowledge/manifest.yml` 의 명시 목록뿐이다. 문서를 더하면 목록에 넣는다. **ADR 은 업무 정책 결정만**(2026-11-15 사용자 — 서비스 경계·인프라·인증 구현·배포·RAG 설계는 업무 직원이 볼 내용이 아님). 새 ADR 은 manifest 에 넣거나 `RealDocumentsIngestTest.EXCLUDED_ADRS` 에 더한다 — 둘 다 아니면 시험이 실패한다.
+- 색인 대상은 `src/main/resources/knowledge/manifest.yml` 의 명시 목록뿐이다. **2026-11-20 사용자: `docs/rag/rag-docs` 아래 모든 문서(고객용 `customer_app` 포함, README 제외)만** — 옛 색인 문서 52개(업무 원문·상담 대본·흐름·상태표·ADR)는 뺐다(직원용 결정 내용은 rag-docs 로 옮겨 정리). rag-docs 에 문서를 더하면 manifest 에도 한 줄(domain = 하위 폴더) — `RealDocumentsIngestTest` 가 README 밖 .md 가 모두 목록에 있는지, 금지 표현("가정"·"설계안"·"확정 정책")이 없는지 본다. 옛 범위 기록은 `docs/rag/operator-index-scope.md`.
 
 ## 데이터
 - `V1__init.sql`: `index_snapshot`·`index_source_file`·`doc_chunk`(vector·pg_trgm)·`embedding_cache`·`policy_answer`. 적용된 파일은 수정하지 않는다.

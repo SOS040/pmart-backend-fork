@@ -1,31 +1,63 @@
-# 고객앱 정책 안내 문서 — 고객용 RAG 원고 추가분 (초안)
+# 고객앱 정책 안내 문서 — 고객용 RAG 원고
 
-고객앱 고객센터 채팅에서 AI 가 답할 때 근거로 쓸 **고객 공개 안내 문서** 초안입니다. 2026-11-09 판(`docs/business/customer-faq/`) 뒤에 정해진 회원·로그인·탈퇴·찜·동의 정책을 담았습니다.
+고객앱 고객센터 채팅에서 AI 가 답할 때 근거로 쓸 **고객 공개 안내 문서**입니다. 2026-11-09 고객센터 안내 문서(`docs/business/customer-faq/` 13개)를 약관 형식으로 옮겨 이 폴더로 모으고, 그 뒤 승인된 회원·로그인·탈퇴·찜·동의·오배송·알림·리뷰 정책을 함께 담았습니다.
 
-- 문서 버전: 0.1 (**초안 — 사용자 승인 전**)
-- 작성: Claude, 2026-11-20 (사용자 "고객앱 정책 관련해서 md 파일을 docs/rag/ragdocs 안에 만들어줘")
-- 근거: ADR-0074(가입 휴대폰 확인), ADR-0077(탈퇴), ADR-0078(네이버 로그인), ADR-0081(찜), BR-72(가입 다시 시작), 개인정보 처리방침 2026-11-20판(`services/customer-service/src/main/resources/consent-terms/PRIVACY_POLICY/2026-11-20.md`)
-- 작성 규칙(사용자 2026-11-20 "약관 문서처럼"): 앱 약관 문서(`services/customer-service/src/main/resources/consent-terms/`)와 같은 형식 — 제목·시행일·제N조(제목)·번호 항목, "회사"·"회원" 표현, ~합니다 체. 내부 처리·내부 용어는 넣지 않고 지위 태그도 달지 않는다.
+- 문서 버전: 0.3 (**사용자 승인 2026-11-20 — "새 문서 기준으로 대답을 작성한다"**: 01~16 을 고객 답변의 근거로 씀. 같은 날 아래 "2026-11-20 사용자 결정 반영"을 고침)
+- 작성: Claude, 2026-11-20 (사용자 "고객앱 정책 관련해서 md 파일을 docs/rag/ragdocs 안에 만들어줘", 이어서 "customer-faq 13개를 customer_app 으로 옮겨 약관 형식으로 합치기", "미정 내용은 모두 제외")
+- 근거
+  - `docs/business/customer-faq/README.md`·`01`~`13` (**2026-11-09 사용자 승인판**) — 원본은 고치지 않았다
+  - ADR-0049(결품은 늘 부분 취소), ADR-0052(고객 취소는 상품준비 전 — 결정 1·3·5), ADR-0060(상품준비 뒤 고객센터 취소 없음), ADR-0063(리뷰), ADR-0064(앱 알림함), ADR-0065(오배송 귀책별 처리), ADR-0067(휴대폰 푸시 — 고객은 정한 종류만), ADR-0069(배송 중 사고·파손 재발송), ADR-0071(카카오·네이버 로그인), ADR-0074(가입 휴대폰 확인), ADR-0076(회사 사유 전체 취소 전액 환불), ADR-0077(탈퇴), ADR-0078(네이버 로그인), ADR-0081(찜)
+  - BR-72(가입 다시 시작), 개인정보 처리방침 2026-11-20판(`services/customer-service/src/main/resources/consent-terms/PRIVACY_POLICY/2026-11-20.md`), `services/customer-assistant-service/CLAUDE.md`(채팅 상담은 회원만·질문 횟수 제한 — C2·C3)
+  - 상태가 "제안"인 ADR(0019·0022·0024)은 근거로 쓰지 않았다
+  - 2026-11-20 사용자 결정 반영 근거: `services/cart-service/CLAUDE.md`(비회원 장바구니 옮기기 — 구현), `docs/architecture/service-requests/claim-service.md` CL-1·`services/claim-service/CLAUDE.md`(반품 회수비 9,000원·면제 사유·24시간 결제 기한·7일 회수 기한·회수 실패·고객 앱 반품 신청 막힘 → 고객센터 접수·전달 완료 뒤에만 반품), `services/case-service/CLAUDE.md`(문의 사진 — 5장·10MB·JPEG/PNG/WEBP)
+- 작성 규칙(사용자 2026-11-20 "약관 문서처럼"): 앱 약관 문서(`services/customer-service/src/main/resources/consent-terms/`)와 같은 형식 — 제목·시행일·제N조(제목)·번호 항목, "회사"·"회원" 표현, ~합니다 체. 내부 처리·내부 용어는 넣지 않고 지위 태그도 달지 않는다. 같은 규칙은 한 파일에만 두고 다른 파일은 「문서 제목」 제N조로 가리킨다.
 
 ## 문서 목록
 
-| 파일 | 주제 |
-|---|---|
-| [01-signup-login.md](01-signup-login.md) | 가입·로그인(구글·카카오·네이버), 약관 동의, 휴대폰 번호 확인, 한 번호 한 계정 |
-| [02-withdrawal.md](02-withdrawal.md) | 회원 탈퇴, 탈퇴 처리 대기, 철회, 재가입 |
-| [03-wishlist.md](03-wishlist.md) | 찜 |
-| [04-consents-privacy.md](04-consents-privacy.md) | 약관·개인정보 처리방침 재동의, 마케팅 수신, 개인정보 보관 기간, 프로필 사진 |
+| 파일 | 주제 | 옮겨 온 customer-faq |
+|---|---|---|
+| [01-signup-login.md](01-signup-login.md) | 가입·로그인(구글·카카오·네이버), 약관 동의, 휴대폰 번호 확인, 한 번호 한 계정, 비회원·장바구니 | 12 |
+| [02-withdrawal.md](02-withdrawal.md) | 회원 탈퇴, 탈퇴 처리 대기, 철회, 재가입 | 12(탈퇴) |
+| [03-wishlist.md](03-wishlist.md) | 찜 | — |
+| [04-consents-privacy.md](04-consents-privacy.md) | 약관·개인정보 처리방침 재동의, 마케팅 수신, 개인정보 보관 기간, 프로필 사진 | — |
+| [05-customer-center.md](05-customer-center.md) | 고객센터 채팅 상담, AI 상담, 문의 남기기, 사진, 중복 문의, 회원 정보 문의 | 01, 12(회원 정보 문의) |
+| [06-order-payment-fees.md](06-order-payment-fees.md) | 최소 주문금액, 배달팁, 봉투값, 첫 주문 혜택, 결제 수단, 결제 확인 중, 주류 | 11, 13, 02(결제 확인 중) |
+| [07-delivery-area-address.md](07-delivery-area-address.md) | 배송 가능 지역, 주소 검색, 요청 사항, 결제 뒤 주소 변경 불가 | 10 |
+| [08-order-cancel.md](08-order-cancel.md) | 주문 취소 시점·절차, 회사 사정 취소, 취소 뒤 재주문 | 02 |
+| [09-delivery-status.md](09-delivery-status.md) | 배송 현황·주문 상태, 지연, 예약 시간 변경, 나눠 보내는 배송, 배송 중 사고·파손 | 03 |
+| [10-not-received-misdelivery.md](10-not-received-misdelivery.md) | 배송 완료 미수령, 다른 주문 수령, 오배송 처리(회원 사유·회사 사유) | 04 |
+| [11-shortage.md](11-shortage.md) | 결품 처리, 대체 상품 없음, 최소 주문금액 미달, 결품 환불 금액 | 09 |
+| [12-missing-damaged-item.md](12-missing-damaged-item.md) | 상품 누락, 다른 상품·규격, 파손, 신선식품 품질 | 05, 06 |
+| [13-return-exchange.md](13-return-exchange.md) | 반품·교환 기한, 비용(반품 회수비 9,000원·교환 왕복 9,000원·회사 잘못 면제·24시간 결제), 신청 방법(고객센터 접수·전달 완료 뒤), 처리 절차(회수 실패·7일 회수 기한) | 08 (05·06 의 기한·비용) |
+| [14-refund.md](14-refund.md) | 환불 대상, 금액 산정, 봉투값, 환불 시기, 확인 중, 쿠폰 | 07 |
+| [15-notifications.md](15-notifications.md) | 앱 알림함, 취소·환불 알림, 휴대폰 알림 | — |
+| [16-reviews.md](16-reviews.md) | 리뷰 작성 기한·수정·삭제·사진·작성자 표시 | — |
 
-## 색인에 넣으려면 (아직 안 함)
-1. 사용자 승인.
-2. `services/customer-assistant-service/src/main/resources/knowledge/manifest.yml` 에 파일 경로 추가(지금 색인 대상은 `docs/business/customer-faq/*` 만).
-3. 겹치는 옛 내용 정리 — **`docs/business/customer-faq/12-account.md` 가 낡음**("Google 로그인만", "탈퇴는 고객센터 문의") — 이 문서와 맞게 고치거나 manifest 에서 빼기.
-4. `deploy/lan/lan.sh render` → `lan.sh rag-ingest-customer pc2`(customer-assistant-service 재색인).
+## 2026-11-09 판에서 바뀐 고객 규칙
+- 로그인: "Google 만" → Google·카카오·네이버(ADR-0071·0078) — 01
+- 탈퇴: "고객센터 문의" → 앱에서 직접 신청(ADR-0077) — 02·05
+- 고객센터 답변: "내 문의에서 확인"에 "앱 알림함으로도 알림" 추가(ADR-0064) — 05·15
+- 오배송: "늘 회수 + 새 발송 동시" → 회원 사유(200m 안 무료 다시 배송, 200m 이상 9,000원 결제 또는 회수 후 상품값 − 9,000원 환불, 30분)·회사 사유(환불·새 발송 중 선택)(ADR-0065) — 10
+- 새로: 배송 중 사고·파손이면 새 상품 재발송(ADR-0069) — 09, 회사 사정 전체 취소는 전액 환불(ADR-0076) — 08, 알림·휴대폰 알림(ADR-0064·0067) — 15, 리뷰(ADR-0063) — 16, 탈퇴 뒤 재가입해도 첫 주문 혜택 없음(02 의 혜택 중복 확인 보관과 같은 뜻) — 06
+
+## 2026-11-20 사용자 결정 반영
+- 비회원 장바구니 옮기기(구현을 따름): "로그인하면 합쳐짐" → 일반 로그인은 합치지 않음, 주문하려고 로그인했을 때 회원이 확인한 상품만 옮김·판매 여부와 구매 수량 상한 재확인 — 01 제8조 3항(`commerce/07` 제6조와 같은 뜻)
+- 단순 변심 반품 회수비(2026-11-17 CL-1 결정): 9,000원 회원 부담, 회사 잘못이면 면제, 상품 환불과 따로 결제, 24시간 안 결제 — 13 제3조(`order_claim/06` 제4조와 같은 뜻). 예전 "정해지지 않은 내용"에서 뺌
+- 반품 신청 경로(구현을 따름): 주문 상세 신청 → 고객센터 문의로 신청, 본인 확인 뒤 접수, 전달 완료 뒤에만(2026-11-17 사용자 "배달 중이나 전달 완료 전에는 반품 불가") — 13 제4조, 05 제4조 1항, 02 제3조 4항(`order_claim/06` 제3조와 같은 뜻). 예전 "라이더 출발 뒤 회수 요청의 접수 방법"도 이것으로 정리(전달 완료 뒤 고객센터 반품)
+- 처리 절차에 회수 실패(한 번 더 방문 뒤 고객센터 연락)·7일 회수 기한·회원 사정 취소 때 회수비 안 돌려줌 추가 — 13 제5조
+- 사진 제출(구현을 따름): customer-faq 01 의 "반품·교환 신청 화면에서 사진, 문의에는 첨부 불가"는 고객 앱 반품 신청이 막혀 맞지 않고, case-service 문의 사진(2026-11-17)이 구현돼 있어 "문의에 사진 5장·10MB·JPEG/PNG/WEBP, 문의가 끝나기 전 추가 가능"으로 고침 — 05 제5조. **고객 앱 화면에 문의 사진 올리기가 나와 있는지는 확인하지 못함**
 
 ## 넣지 않은 것
+- 정해지지 않은 내용: 리뷰 신고·숨김, 야간 알림 제한·알림 끄기, 사고 재발송 고객 알림, 쿠폰이 생긴 뒤의 환불 기준.
+- 앞으로 생길 기능의 예고 문구("생기면 안내" 등).
 - 앱 화면이 아직 없는 기능의 화면 위치(탈퇴·찜 화면은 고객 앱 반영 뒤 문구를 맞춘다).
 - 로그아웃 뒤 "지금 주소로 계속 둘러보기"(서버 작업 중, 2026-11-20).
 - 네이버 앱 "개발 중" 테스터 제한(내부 시험 사정 — 고객 안내 아님).
+
+## 색인에 넣으려면 (아직 안 함)
+1. ~~사용자 승인~~ — 됨(2026-11-20).
+2. `services/customer-assistant-service/src/main/resources/knowledge/manifest.yml` 의 색인 대상을 바꾼다 — 지금은 `docs/business/customer-faq/*` 만 가리킨다. 이 폴더 파일로 바꾸고 customer-faq 는 빼야 같은 내용이 두 번 색인되지 않는다(customer-faq 12 는 낡은 로그인·탈퇴 문구가 남아 있다).
+3. `deploy/lan/lan.sh render` → `lan.sh rag-ingest-customer pc2`(customer-assistant-service 재색인).
 
 ## LAN 과 다른 값 (문서는 운영 기준값)
 - 탈퇴 뒤 같은 휴대폰 번호 재가입 막기·확인 번호 보관: 문서 30일, **LAN 1분**(사용자 2026-11-20 개발용 — pmart-config `customer-service-lan.yml` identity.rejoin-block PT1M).

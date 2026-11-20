@@ -1,10 +1,31 @@
 # customer-assistant-service 색인 대상 명시 목록(ADR-0051). 여기에 없는 파일은 색인하지 않는다.
-# 고객 공개 안내 문서만 — Claude 초안·사용자 승인(2026-11-09 결정 C1, 승인 2026-11-09). 업무 문서(docs/business/*-business-logic.md·cs-scripts·ADR)는
-# 내부 문서라 넣지 않는다. README(작성 규칙)도 넣지 않는다. 문서를 더하거나 고치면 사용자 승인 뒤 여기에 넣고 재색인(lan.sh rag-ingest-customer).
+# 2026-11-20 사용자: 고객용 RAG 는 docs/rag/rag-docs/customer_app 의 문서만 참고한다(README 제외 — README 는 작성 규칙이라 색인하지 않는다).
+#   customer_app 문서는 사용자 승인(2026-11-20 "새 문서 기준으로 대답을 작성한다"). 업무 문서·ADR·운영자 문서는 넣지 않는다.
+# domain customer-faq 문서(docs/business/customer-faq, 2026-11-09 승인판)는 고객앱 FAQ 목록 화면 전용 — AI 답변 근거(청크)로는 쓰지 않는다
+#   (사용자 2026-11-20 "FAQ 는 옛 FAQ 문서에서", KnowledgeIngestor.buildChunks 가 건너뜀, FaqExtractor 만 읽음).
+# 문서를 더하거나 고치면 사용자 승인 뒤 여기에 넣고 재색인(lan.sh rag-ingest-customer).
 # 지위·우선순위 가중은 설정에서 0 — 승인된 고객 안내는 모두 같은 지위로 본다.
 version: 1
 defaultAccessScope: customer
 documents:
+  # --- AI 답변 근거: 고객앱 정책 안내(customer_app) ---
+  - { path: docs/rag/rag-docs/customer_app/01-signup-login.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/02-withdrawal.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/03-wishlist.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/04-consents-privacy.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/05-customer-center.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/06-order-payment-fees.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/07-delivery-area-address.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/08-order-cancel.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/09-delivery-status.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/10-not-received-misdelivery.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/11-shortage.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/12-missing-damaged-item.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/13-return-exchange.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/14-refund.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/15-notifications.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  - { path: docs/rag/rag-docs/customer_app/16-reviews.md, domain: customer-app, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
+  # --- FAQ 목록 화면 전용(답변 근거 아님) ---
   - { path: docs/business/customer-faq/01-customer-center.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
   - { path: docs/business/customer-faq/02-cancel.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
   - { path: docs/business/customer-faq/03-delivery-status.md, domain: customer-faq, kind: REFERENCE, authority: CONFIRMED, precedence: 1 }
