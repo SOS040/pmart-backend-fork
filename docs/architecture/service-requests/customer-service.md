@@ -24,7 +24,7 @@
   4. 찾기: `customerNumber` 완전 일치(직원) — 화면 찾기 칸이 번호로 찾는다(ADR-0070 "찾기는 화면 표기로").
 - **개인정보**: 번호·가린 이름만. 탈퇴하면 이름은 지우는 쪽 규칙 그대로(번호는 이력 표시용으로 남겨도 됨 — PC 1 판단).
 - **받는 쪽(backoffice)**: bff 가 일괄 조회로 붙인다(case·claim 에 사본 두지 않음).
-- **상태(2026-11-20, PC 1 — 사용자 "PC 2가 정한 순서로")**: 구현 customer **0.11.0**·V14. `customerNumber`(트리거로 가입 때, 기존 고객 채움, 탈퇴해도 남김 — 이력 표시용), `/me` 에도. 일괄 = `GET /customers?customerIds=`(50개, 요청 순서, 없는 ID 빠짐) → `StaffCustomerSummary`(customerId·customerNumber·nameMasked·phoneMasked·status). 가린 이름은 이름이 없으면 별명을 가림. 권한은 CU-4 와 같다(CS_AGENT·OPERATOR_ADMIN — MFC·라이더 운영 화면에도 고객 표기가 필요하면 역할을 넓히는 요청을 다시). LAN 배포 전.
+- **상태(2026-11-20, PC 1 — 사용자 "PC 2가 정한 순서로")**: 구현 customer **0.11.0**·V14. `customerNumber`(트리거로 가입 때, 기존 고객 채움, 탈퇴해도 남김 — 이력 표시용), `/me` 에도. 일괄 = `GET /customers?customerIds=`(50개, 요청 순서, 없는 ID 빠짐) → `StaffCustomerSummary`(customerId·customerNumber·nameMasked·phoneMasked·status). 가린 이름은 이름이 없으면 별명을 가림. 권한은 CU-4 와 같다(CS_AGENT·OPERATOR_ADMIN — MFC·라이더 운영 화면에도 고객 표기가 필요하면 역할을 넓히는 요청을 다시). LAN 배포(2026-11-20 905bffe7).
 
 ## CU-4. 직원용 고객 조회 — 백오피스 "고객" 메뉴 (2026-11-19, 보낸 영역 backoffice — PC 2, 받는 쪽 platform PC 1)
 
@@ -38,4 +38,4 @@
 - **필요한 것(2단계)**: 동의 현황 보기(항목별 마지막 동의 — `/me/consents` 와 같은 모양), 저장된 배송지 목록(가린 값, 기본 배송지 표시).
 - **받는 쪽**: backoffice-bff `views/customer`(PC 2 — `backoffice-bff.md` BF-2)가 고객 + 최근 주문·클레임·문의·접수 건을 한 번에 묶는다. 화면은 프론트 백오피스.
 - 개인정보: 응답은 가린 값만, 원문·찾는 전화번호는 로그 금지.
-- **상태(2026-11-20, PC 1)**: 1단계 구현 customer **0.11.0**. 찾기 `GET /customers?customerNumber=|phone=|customerIds=`(셋 중 하나만 — 둘 이상·없음 400, 전화는 01로 시작 10~11자리·하이픈 무시, 프로필 휴대폰 번호 기준, 같은 번호 여러 계정이면 가입 순 20개까지), 상세 `GET /customers/{id}`(customerNumber·nameMasked·phoneMasked·emailMasked·status·socialProvider·phoneVerified·joinedAt — 가입 방식 값은 문자열, 없을 수 있음), 원문 `POST /customers/{id}/pii-reveals`(사유 2~200자, fields NAME·PHONE, audit subjectType CUSTOMER·caseRef `CUSTOMER:<id>`, 기록 실패 503 원문 없음). 게이트웨이 라우트 `/api/v1/customers/**`(pmart-config). 2단계(동의 현황·배송지 목록)는 아직. LAN 배포 전.
+- **상태(2026-11-20, PC 1)**: 1단계 구현 customer **0.11.0**. 찾기 `GET /customers?customerNumber=|phone=|customerIds=`(셋 중 하나만 — 둘 이상·없음 400, 전화는 01로 시작 10~11자리·하이픈 무시, 프로필 휴대폰 번호 기준, 같은 번호 여러 계정이면 가입 순 20개까지), 상세 `GET /customers/{id}`(customerNumber·nameMasked·phoneMasked·emailMasked·status·socialProvider·phoneVerified·joinedAt — 가입 방식 값은 문자열, 없을 수 있음), 원문 `POST /customers/{id}/pii-reveals`(사유 2~200자, fields NAME·PHONE, audit subjectType CUSTOMER·caseRef `CUSTOMER:<id>`, 기록 실패 503 원문 없음). 게이트웨이 라우트 `/api/v1/customers/**`(pmart-config). 2단계(동의 현황·배송지 목록)는 아직. LAN 배포(2026-11-20 905bffe7).
