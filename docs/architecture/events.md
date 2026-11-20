@@ -24,7 +24,7 @@
 | `PriceVersionEffective` | pricing-service | cart, storefront, search, order, approval | sku, price, priceVersion, effectiveAt | 가격 승인 발효(확정 주문 소급 없음) | ① |
 | `CustomerConsentChanged` | customer-service | notification, audit | accountId, consentType, version(기록 차수), granted, changedAt, termsVersion·required·channel(2026-11-17) | 약관/마케팅 동의 변경(항목마다 한 건, 같은 값이면 없음 — CU-1 2026-11-17 구현) | ① |
 | `CustomerWithdrawalRequested` | customer-service | order, cart, notification | accountId | 탈퇴 접수(신규 구매·마케팅 중단) | ① |
-| `CustomerWithdrawalCompleted` | customer-service | auth, cart, notification, audit | accountId, completedAt | 미결 의무 종결 확인 후 완료 | ① |
+| `CustomerWithdrawalCompleted` | customer-service | auth(세션 끊기·소셜 연결 지움·식별값 해시 분리 보관 5년), cart(회원 장바구니 지움), notification(고객 푸시 토큰 지움), audit(예정) | accountId, completedAt | 미결 의무(order·claim) 종결 확인 후 완료(2026-11-20 ADR-0077) | ① |
 | `ShoppingAddressChanged` | customer-service | cart | accountId, shoppingAddressId, shoppingContextVersion, mfcId | 현재 쇼핑 주소 변경(늦은 응답 폐기 기준) | ① |
 | `CartItemChangeApplied` | cart-service | BI | cartId, cartItemId, sku, qty, cartVersion, appliedRequestId | 장바구니 변경 확정 | ① |
 | `ReviewPublished` / `ReviewDeleted` | review-service | product-content, storefront(진열 평점·순위 신호), audit | reviewId, orderLineId, productId, rating | 리뷰 등록/삭제(삭제 후 재작성 불가) | ② |
