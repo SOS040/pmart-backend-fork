@@ -66,6 +66,7 @@
 - 세션이 끝났을 때 구글은 계정 선택 없이 조용히 다시 로그인을 먼저 시도한다(`attemptLightweightAuthentication`) — 로그인 버튼이 아니라 그대로 둔다.
 - LAN 배포: auth-service 2b3eca38(BR-77)·289a989a(카카오 연결 끊기) PC 4 11-21 16:05, 설정 80bbe9d·4c25f19 반영.
 - 고객앱 반영: pmart-clients 2e3ec6da(11-21 18:11) — 회신 `pmart-clients/docs/handoff/customer-app/2026-11-21-backend-social-login-chooser-and-revoke-reply.md`. 서버 변경 요청 없음. 백엔드 요청서 `docs/handoff/clients/customer-app/2026-11-21-request-google-revoke-on-withdrawal.md`·`…-request-login-account-chooser.md`.
+- **BR-79(11-21 밤, auth 0.11.1)**: 네이버는 앱이 연결을 끊을 수 없어(토큰 없음) 서버가 교환 때 그 sub 로 가입을 마친 계정이 없으면 끊는다 — 동의만 하고 가입을 그만두면 다음 로그인에 동의를 다시 받는다. 카카오·구글은 앱이 가입 중단 때 끊는다(SDK unlink·disconnect). 실기기 확인 끝(사용자 "로그인 이제 된다") — 끊었다 다시 이어도 sub 가 같아 같은 계정으로 들어온다. 회신 `docs/handoff/clients/archive/2026-11-21-reply-br79-naver-unlink-on-signup-abandon.md`.
 - 라이더 앱(rider-auth-service, PC 5)은 아직 이 방식으로 맞추지 않았다 — 맞추려면 라이더용 카카오 Admin 키(`deploy/lan/.secrets/kakao-rider-admin-key.txt`)가 필요할 수 있다(사용자 답 기다림).
 
 ## 남은 일

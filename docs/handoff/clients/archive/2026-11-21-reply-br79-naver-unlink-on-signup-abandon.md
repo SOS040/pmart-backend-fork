@@ -25,3 +25,4 @@
 ## 상태
 - 서버 시험 통과(auth-service check — 단위·통합, 새 시험 `NaverCodeExchangeIT.unlinksNaverWhenSignupNotFinishedButNotForMembers`).
 - **LAN 배포 2026-11-21 20:5x KST** — PC 4 auth-service(이미지 7b5bb37f, digest sha256:39e88bd4…), 시작 정상·ERROR 0. 실기기 확인 부탁(위 순서).
+- **실기기 확인 끝(2026-11-21, PC1 프론트 전달 — 사용자 "로그인 이제 된다")**: 가입 중단 뒤 동의 화면 다시, 가입 뒤 같은 계정(sub 유지) 확인. 끝 → archive.
