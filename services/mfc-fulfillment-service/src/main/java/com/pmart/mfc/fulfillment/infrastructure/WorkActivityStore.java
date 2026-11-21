@@ -52,4 +52,26 @@ public class WorkActivityStore {
               rs.getTimestamp("at").toInstant());
         });
   }
+
+  /** 작업자 한 명의 마지막 스캔 칸(작업자 도면 위치, 2026-11-21). */
+  public record LastLocation(
+      String workerId, String locationCode, String activityType, Instant at) {}
+
+  private static final String LAST_SQL =
+      "SELECT DISTINCT ON (worker_id) worker_id, location_code, activity_type, at FROM ("
+          + "SELECT x.worker_id, CASE WHEN x.execution_type = 'RETURN' THEN COALESCE(x.to_location, x.from_location) ELSE COALESCE(x.from_location, x.to_location) END AS location_code, x.execution_type AS activity_type, x.recorded_at AS at FROM task_execution x JOIN task t ON t.task_id = x.task_id JOIN shipment s ON s.shipment_id = t.shipment_id JOIN work_order w ON w.fulfillment_id = s.fulfillment_id WHERE w.mfc_id = :mfc AND x.recorded_at >= :since"
+          + " UNION ALL SELECT p.packed_by, p.packing_location, 'PACK', COALESCE(p.sealed_at, p.created_at) FROM package p JOIN shipment s ON s.shipment_id = p.shipment_id JOIN work_order w ON w.fulfillment_id = s.fulfillment_id WHERE w.mfc_id = :mfc AND p.packed_by IS NOT NULL AND COALESCE(p.sealed_at, p.created_at) >= :since"
+          + ") a WHERE location_code IS NOT NULL ORDER BY worker_id, at DESC";
+
+  public List<LastLocation> lastLocations(String mfcId, Instant since, int limit) {
+    return jdbc.query(
+        "SELECT * FROM (" + LAST_SQL + ") b ORDER BY at DESC LIMIT :limit",
+        Map.of("mfc", mfcId, "since", Timestamp.from(since), "limit", limit),
+        (rs, i) ->
+            new LastLocation(
+                rs.getString("worker_id"),
+                rs.getString("location_code"),
+                rs.getString("activity_type"),
+                rs.getTimestamp("at").toInstant()));
+  }
 }

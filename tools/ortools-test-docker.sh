@@ -6,6 +6,9 @@
 #   .git·build·.gradle·deploy/lan/.secrets·.config-repo 는 복사하지 않는다.
 # - Gradle 캐시는 Docker 볼륨 pmart-ortools-gradle 에 남겨 두 번째부터 빠르다.
 # - 결과(test-results·reports)는 build/ortools-docker/<서비스>/ 로 꺼낸다. 종료 코드 = Gradle 종료 코드.
+# - 통합시험(Testcontainers)용으로 호스트 Docker 소켓을 붙인다(//var/run/docker.sock — Docker Desktop 이 리눅스 컨테이너에 주는 경로, MSYS 경로 변환 피하려 // 시작).
+#   Testcontainers 가 띄운 컨테이너는 형제라 포트가 호스트에 열린다 → TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal.
+#   단위 시험에는 영향 없음.
 # - 베이스 이미지는 운영 이미지와 같은 digest(build-logic pmart.container-image.gradle.kts)를 읽어 쓴다.
 set -eu
 cd "$(dirname "$0")/.."
@@ -22,7 +25,7 @@ out="$(cd build/ortools-docker && (pwd -W 2>/dev/null || pwd))"
 MSYS_NO_PATHCONV=1 docker run --rm \
   -v "$src:/src:ro" \
   -v pmart-ortools-gradle:/root/.gradle \
-  -v "$out:/out" \
+  -v "$out:/out"   -v //var/run/docker.sock:/var/run/docker.sock   -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal   --add-host=host.docker.internal:host-gateway \
   -e TASKS="$tasks" \
   "$image" sh -c '
     set -u

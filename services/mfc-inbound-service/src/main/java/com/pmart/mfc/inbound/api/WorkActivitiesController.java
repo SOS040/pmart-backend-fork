@@ -2,7 +2,9 @@ package com.pmart.mfc.inbound.api;
 
 import com.pmart.mfc.inbound.api.generated.WorkActivitiesApi;
 import com.pmart.mfc.inbound.api.generated.model.ListWorkActivities200Response;
+import com.pmart.mfc.inbound.api.generated.model.ListWorkerLastLocations200Response;
 import com.pmart.mfc.inbound.api.generated.model.WorkActivity;
+import com.pmart.mfc.inbound.api.generated.model.WorkerLastLocation;
 import com.pmart.mfc.inbound.application.WorkActivities;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -35,6 +37,25 @@ public class WorkActivitiesController implements WorkActivitiesApi {
                   w.setQty(a.qty());
                   w.setResult(a.result());
                   w.setAt(a.at().atOffset(ZoneOffset.UTC));
+                  return w;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<ListWorkerLastLocations200Response> listWorkerLastLocations(
+      String mfcId, OffsetDateTime since) {
+    var out = new ListWorkerLastLocations200Response();
+    out.setItems(
+        activities.lastLocations(mfcId, since.toInstant()).stream()
+            .map(
+                l -> {
+                  var w = new WorkerLastLocation();
+                  w.setWorkerId(l.workerId());
+                  w.setLocationCode(l.locationCode());
+                  w.setActivityType(l.activityType());
+                  w.setAt(l.at().atOffset(ZoneOffset.UTC));
                   return w;
                 })
             .toList());

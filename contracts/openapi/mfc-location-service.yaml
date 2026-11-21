@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-location-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
     MFC 센터 내부 Area/Location 마스터·온도구역·격리/출하대기 구역·위치 상태의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량·공간 예약 잔여량 V(mfc-inventory), 센터 마스터(center-master).
@@ -12,6 +12,7 @@ info:
     mfc-inventory 가 투영해 수령·적치 위치를 검증한다. 위치 폐지(DELETE, 2026-11-08)는 CLOSED 위치만, mfc-inventory 스냅샷(locationCode)으로 재고 0 을 확인한 뒤 RETIRED.
     0.8.0(2026-11-18, 권한 — 요청 MB-3, PC 3 결정): 칸 등록·수정·닫기/열기·폐지는 그 센터 **MFC_SUPERVISOR 만**(아니면 403 FORBIDDEN). 조회는 그대로(그 센터 운영자).
     0.9.0(2026-11-21, 보충재고 칸 — MFC 시뮬레이터 R-30, 사용자 결정 2026-11-20 "선반칸이 가득차면 남는 건 입고 창고에"): 위치 속성 `reserveStock`(보관 STORAGE 칸만, 고회전과 같이 쓰면 400). MfcLocationStateChanged 에 reserveStock. 규칙(한 상품 한 자리 예외·피킹 마지막 순위·보충 출발지)은 mfc-inventory.
+    0.10.0(2026-11-21, 작업자 도면 위치 — mfc-backoffice 요청): `/internal/location-distances` 의 `attributes[].position`(칸 도면 좌표) — mfc-capacity `GET /mfcs/{mfcId}/worker-positions` 가 마지막 스캔 칸을 좌표로 바꾼다.
 servers:
   - url: /api/v1
 security:
@@ -210,6 +211,11 @@ paths:
                         zone: { $ref: '#/components/schemas/ZoneKind' }
                         temperatureZone: { $ref: '#/components/schemas/TemperatureZone' }
                         areaCode: { type: [string, 'null'] }
+                        position:
+                          description: '(0.10.0) 칸 도면 좌표(서는 지점) — codes 에 든 칸은 늘 좌표가 있다'
+                          oneOf:
+                            - $ref: '#/components/schemas/FloorPosition'
+                            - { type: 'null' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /locations/{locationId}/state-changes/{requestId}:

@@ -133,6 +133,7 @@ public class LocationsController implements LocationsApi {
       a.setZone(ZoneKind.fromValue(v.zone()));
       a.setTemperatureZone(TemperatureZone.fromValue(v.temperatureZone()));
       a.setAreaCode(v.areaCode());
+      a.setPosition(position(v)); // 0.10.0 — 작업자 도면 위치(capacity)
       attrs.add(a);
     }
     out.setAttributes(attrs);
@@ -258,12 +259,7 @@ public class LocationsController implements LocationsApi {
     out.setHighTurnover(v.highTurnover());
     out.setReserveStock(v.reserveStock());
     out.setCategoryId(v.categoryId());
-    if (v.posXM() != null && v.posZM() != null) {
-      var pos = new com.pmart.mfc.location.api.generated.model.FloorPosition();
-      pos.setxM(java.math.BigDecimal.valueOf(v.posXM()));
-      pos.setzM(java.math.BigDecimal.valueOf(v.posZM()));
-      out.setPosition(pos);
-    }
+    out.setPosition(position(v));
     out.setVersion(v.version());
     out.setState(LocationState.fromValue(v.state()));
     out.setStateReason(v.stateReason());
@@ -286,5 +282,18 @@ public class LocationsController implements LocationsApi {
 
   static OffsetDateTime time(Instant at) {
     return at.atOffset(ZoneOffset.UTC);
+  }
+
+  private static com.pmart.mfc.location.api.generated.model.@Nullable FloorPosition position(
+      LocationView v) {
+    Double x = v.posXM();
+    Double z = v.posZM();
+    if (x == null || z == null) {
+      return null;
+    }
+    var pos = new com.pmart.mfc.location.api.generated.model.FloorPosition();
+    pos.setxM(java.math.BigDecimal.valueOf(x));
+    pos.setzM(java.math.BigDecimal.valueOf(z));
+    return pos;
   }
 }

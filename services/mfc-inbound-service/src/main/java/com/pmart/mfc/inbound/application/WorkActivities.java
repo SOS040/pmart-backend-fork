@@ -33,4 +33,15 @@ public class WorkActivities {
     }
     return store.list(mfcId, operatorId, from, to, MAX);
   }
+
+  static final Duration MAX_LOOKBACK = Duration.ofHours(24);
+
+  /** 작업자마다 마지막 스캔 칸(작업자 도면 위치, 2026-11-21) — since 는 최대 24시간 전, 최대 500명. */
+  @Transactional(readOnly = true)
+  public List<WorkActivityStore.LastLocation> lastLocations(String mfcId, Instant since) {
+    if (since.isBefore(Instant.now().minus(MAX_LOOKBACK).minusSeconds(60))) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "since 는 최대 24시간 전입니다.");
+    }
+    return store.lastLocations(mfcId, since, 500);
+  }
 }

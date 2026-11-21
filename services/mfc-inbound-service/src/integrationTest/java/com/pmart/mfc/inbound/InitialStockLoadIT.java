@@ -687,6 +687,15 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
     }
     assertThat(inspected.path("taskId").asString()).isEqualTo(taskId);
     assertThat(inspected.path("result").asString()).isEqualTo("APPLIED");
+    // 작업자 도면 위치(0.20.0): ops-1 의 마지막 스캔 칸
+    JsonNode last =
+        get(
+                SERVICE_TOKEN,
+                "/internal/worker-last-locations?mfcId=" + m + "&since=" + now.minusSeconds(3600))
+            .body()
+            .path("items");
+    assertThat(last.findValuesAsString("workerId")).containsExactly("ops-1");
+    assertThat(last.path(0).path("locationCode").asString()).isNotBlank();
     assertThat(
             get(SERVICE_TOKEN, "/internal/work-activities?mfcId=MFC-NONE&operatorId=ops-1" + window)
                 .body()

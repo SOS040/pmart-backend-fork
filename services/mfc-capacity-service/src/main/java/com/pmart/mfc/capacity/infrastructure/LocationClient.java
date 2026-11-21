@@ -81,4 +81,45 @@ public class LocationClient {
     }
     return new Table(got, m, missing, attrs);
   }
+
+  /** 도면 좌표(작업자 도면 위치, mfc-location 0.10.0) — x 동쪽·z 남쪽 m. */
+  public record Position(double xM, double zM) {}
+
+  /**
+   * 칸 코드 → 도면 좌표(거리표의 attributes[].position). 좌표 없는 칸·없는 코드는 결과에 없다. 300칸씩 나눠 부른다. 주소가 없으면
+   * CONFIG_REQUIRED.
+   */
+  public Map<String, Position> positions(String mfcId, List<String> codes) {
+    RestClient c = client;
+    if (c == null) {
+      throw PmartException.configRequired(BASE_URL_KEY);
+    }
+    Map<String, Position> out = new LinkedHashMap<>();
+    List<String> uniq = new ArrayList<>(new java.util.LinkedHashSet<>(codes));
+    for (int from = 0; from < uniq.size(); from += 300) {
+      List<String> part = uniq.subList(from, Math.min(uniq.size(), from + 300));
+      String raw =
+          Downstream.call(
+              LOCATION,
+              () ->
+                  c.post()
+                      .uri("/api/v1/internal/location-distances")
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .header("Idempotency-Key", UUID.randomUUID().toString())
+                      .header("X-Source-System", "mfc-capacity-service")
+                      .body(Map.of("mfcId", mfcId, "locationCodes", part))
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+      for (JsonNode a : n.path("attributes")) {
+        JsonNode pos = a.path("position");
+        if (pos.hasNonNull("xM") && pos.hasNonNull("zM")) {
+          out.put(
+              a.path("locationCode").asString(""),
+              new Position(pos.get("xM").asDouble(), pos.get("zM").asDouble()));
+        }
+      }
+    }
+    return out;
+  }
 }

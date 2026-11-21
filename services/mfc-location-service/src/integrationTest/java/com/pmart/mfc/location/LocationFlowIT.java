@@ -277,6 +277,11 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(r.body().path("attributes").path(0).path("temperatureZone").asString())
         .isEqualTo("AMBIENT");
     assertThat(r.body().path("attributes").path(1).path("areaCode").asString()).isEqualTo("C1");
+    // 0.10.0 칸 도면 좌표(작업자 도면 위치 — capacity)
+    assertThat(r.body().path("attributes").path(0).path("position").path("xM").asDouble())
+        .isEqualTo(4.0);
+    assertThat(r.body().path("attributes").path(1).path("position").path("zM").asDouble())
+        .isEqualTo(2.0);
   }
 
   @Test

@@ -734,6 +734,24 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
       }
     }
     assertThat(myPicks).as("이 작업의 피킹 실적").contains("PICK:APPLIED");
+    // 작업자 도면 위치(0.33.0): 작업자마다 마지막 스캔 칸 — w2 는 포장(패킹대), w1 은 피킹 선반
+    JsonNode last =
+        call(
+                "GET",
+                SVC,
+                "/internal/worker-last-locations?mfcId="
+                    + MFC
+                    + "&since="
+                    + java.time.Instant.now().minusSeconds(3600),
+                null,
+                null)
+            .body()
+            .path("items");
+    java.util.Map<String, JsonNode> byWorker = new java.util.HashMap<>();
+    last.forEach(n -> byWorker.put(n.path("workerId").asString(), n));
+    assertThat(byWorker).containsKeys("w1", "w2");
+    assertThat(byWorker.get("w1").path("locationCode").asString()).isNotBlank();
+    assertThat(byWorker.get("w2").path("activityType").asString()).isEqualTo("PACK");
     String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
     String yesterday =
         java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).minusDays(1).toString();

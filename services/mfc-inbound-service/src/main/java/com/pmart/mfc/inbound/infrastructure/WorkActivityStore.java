@@ -55,4 +55,29 @@ public class WorkActivityStore {
               rs.getTimestamp("at").toInstant());
         });
   }
+
+  /** 작업자 한 명의 마지막 스캔 칸(작업자 도면 위치, 2026-11-21). */
+  public record LastLocation(
+      String workerId, String locationCode, String activityType, Instant at) {}
+
+  private static final String LAST_SQL =
+      "SELECT DISTINCT ON (worker_id) worker_id, location_code, activity_type, at FROM ("
+          + "SELECT x.executed_by AS worker_id, COALESCE(CASE WHEN jsonb_typeof(x.body) = 'object' THEN x.body->>'toLocationCode' END, t.location_code) AS location_code, t.task_type AS activity_type, x.created_at AS at FROM inbound_task_execution x JOIN inbound_task t ON t.task_id = x.task_id WHERE t.mfc_id = :mfc AND x.created_at >= :since"
+          + " UNION ALL SELECT l.received_by, l.receiving_location, 'RECEIVE', l.received_at FROM initial_stock_load l WHERE l.mfc_id = :mfc AND l.received_by IS NOT NULL AND l.received_at >= :since"
+          + " UNION ALL SELECT m.picked_by, CASE WHEN m.dropped_qty > 0 THEN m.to_location ELSE m.from_location END, 'MOVE', m.updated_at FROM move_order m WHERE m.mfc_id = :mfc AND m.picked_by IS NOT NULL AND m.updated_at >= :since"
+          + " UNION ALL SELECT r.received_by, r.to_location, 'RETURN_RECEIPT', r.received_at FROM return_receipt r WHERE r.mfc_id = :mfc AND r.received_by IS NOT NULL AND r.received_at >= :since"
+          + " UNION ALL SELECT pr.received_by, (SELECT e->>'toLocationCode' FROM jsonb_array_elements(pr.lines) e WHERE e->>'toLocationCode' IS NOT NULL LIMIT 1), 'RECEIVE', pr.received_at FROM promise_receipt pr WHERE pr.mfc_id = :mfc AND pr.received_by IS NOT NULL AND pr.received_at >= :since"
+          + ") a WHERE worker_id IS NOT NULL AND location_code IS NOT NULL ORDER BY worker_id, at DESC";
+
+  public List<LastLocation> lastLocations(String mfcId, Instant since, int limit) {
+    return jdbc.query(
+        "SELECT * FROM (" + LAST_SQL + ") b ORDER BY at DESC LIMIT :limit",
+        Map.of("mfc", mfcId, "since", Timestamp.from(since), "limit", limit),
+        (rs, i) ->
+            new LastLocation(
+                rs.getString("worker_id"),
+                rs.getString("location_code"),
+                rs.getString("activity_type"),
+                rs.getTimestamp("at").toInstant()));
+  }
 }

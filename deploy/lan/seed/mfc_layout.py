@@ -11,6 +11,7 @@
             예약·배정이 걸린 SKU 는 옮기지 않는다(그 옛 칸은 열어 둔다).
   close     비게 된 옛 선반을 CLOSED(기록은 남음).
 실행: python -I deploy/lan/seed/mfc_layout.py [register support move close ...]   (단계 없이 = 계획만 출력)
+다른 센터·배치: PMART_MFC=<센터 ID> PMART_LAYOUT=<layout.json 경로> 로 같은 단계(register·support)를 다시 돌린다.
 필요: deploy/lan/.secrets/keycloak-admin-password. 센터 관리자 시험 계정 claude-mfc-sup 의 Keycloak 비밀번호를 새로 정해 직원 토큰을 받는다(checks/staff_auth.py).
 코드 대응: 시뮬레이터 `A01-01-101`(그룹-랙-단·칸) → `F-A1-01-1-01`({온도대 A/C/F}-{그룹 글자+줄 번호}-{랙}-{단}-{칸}). 팔레트 → `{온도대}-R1-{번호}-1-01`.
 좌표 = 도면의 작업자 서는 지점(m, x 동쪽·z 남쪽). 도면: docs/simulator/mfc/layout/ (layout.json).
@@ -31,7 +32,8 @@ from staff_auth import staff_token  # noqa: E402
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 INV = os.environ.get("PMART_INVENTORY", "http://192.168.0.222:8301/api/v1")
 MFC = os.environ.get("PMART_MFC", "MFC-SEED-01")
-LAYOUT = os.path.join(ROOT, "docs", "simulator", "mfc", "layout", "layout.json")
+# 배치 파일 — 배치가 바뀌거나 새 센터면 PMART_MFC 와 함께 바꿔 다시 돌린다(칸 코드로 맞춰 좌표만 덮어씀, 2026-11-21)
+LAYOUT = os.environ.get("PMART_LAYOUT", os.path.join(ROOT, "docs", "simulator", "mfc", "layout", "layout.json"))
 APPROVAL_REF = "layout-v1"
 TEMP_LETTER = {"FROZEN": "F", "CHILLED": "C", "AMBIENT": "A"}
 OLD_SHELF_AREAS = ("S1", "S9")  # 옛 시험 선반 A-S1-*, C-S1-*, F-S1-* 와 옛 고회전 시험 칸 A-S9-01-1-01
