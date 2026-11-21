@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.14.0
+  version: 0.15.0
   description: |
+    0.15.0(2026-11-21 BR-80 — 고객앱 요청 "프로필 사진 바꾸기"): 프로필 사진을 고객이 고른다. `PUT /me/profile-image`(직접 올리기, multipart `file`,
+    JPEG·PNG·WebP 파일 앞부분으로 판정, 2MB 이하 — 넘거나 다른 형식이면 400 VALIDATION_FAILED field file), `DELETE /me/profile-image`(기본 이미지 = 사진 없음),
+    `POST /me/profile-image/provider-restorations`(로그인 계정 사진으로 되돌리기). 셋 다 본인 토큰·Idempotency-Key, 결과 CommandResponse(APPLIED) — 새 주소는 `GET /me` 의
+    `profileImageUrl`(`?v=` 가 바뀜). `Profile.photoSource`(PROVIDER·CUSTOM·NONE): CUSTOM·NONE 을 고른 뒤에는 로그인해도 제공자 사진으로 덮지 않는다.
+    탈퇴 신청 이후는 409 INVALID_STATE. 사진·주소는 로그에 남기지 않는다.
     0.14.0(2026-11-20 — 사용자 "추천대로 해줘": 로그아웃 때 "지금 주소로 계속 둘러볼까요?"): 비회원 배송지(`POST /guest-delivery-addresses`)는 `detailAddress` 없이도 저장(도로명·위치만 —
     상품 둘러보기용. 비회원은 주문하지 않으므로 상세 주소는 로그인·주문 때 회원 주소록에서). 회원 주소록(`/me/addresses`)은 지금처럼 detailAddress 필수(빠지면 400).
     0.13.1(2026-11-20 BR-72 — 사용자 "(가)로 해줘, 1번"): 내부 동의 상태 `GET /internal/accounts/{id}/consents` 에 `fresh=true` — 저장된 계정 동의·기기 동의를 무시하고
@@ -81,31 +86,6 @@ paths:
               schema: { $ref: '#/components/schemas/Profile' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
-  /me/profile-image:
-    get:
-      tags: [profile]
-      summary: 본인 프로필 사진(로그인 제공자 사진의 우리 사본, ADR-0024)
-      description: |
-        제공자(Google) 사진 URL 을 그대로 주지 않는다. 로그인 뒤 서버가 한 번 받아 비공개 저장소에 둔 사본이다. 본인 토큰이 있어야 읽는다
-        (`Authorization` 헤더 — `<img src>` 만으로는 안 된다). 주소는 `Profile.profileImageUrl` 을 쓴다(사본이 바뀌면 `v` 가 바뀐다).
-      operationId: getMyProfileImage
-      x-pmart-user-types: [CUSTOMER]
-      responses:
-        '200':
-          description: 이미지 바이트
-          content:
-            image/jpeg:
-              schema: { type: string, format: binary }
-            image/png:
-              schema: { type: string, format: binary }
-            image/webp:
-              schema: { type: string, format: binary }
-            image/gif:
-              schema: { type: string, format: binary }
-        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
-
   /me/profile-changes:
     post:
       tags: [profile]
@@ -154,6 +134,102 @@ paths:
             application/json:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /me/profile-image:
+    get:
+      tags: [profile]
+      summary: 본인 프로필 사진(로그인 제공자 사진의 우리 사본, ADR-0024)
+      description: |
+        제공자(Google) 사진 URL 을 그대로 주지 않는다. 로그인 뒤 서버가 한 번 받아 비공개 저장소에 둔 사본이다. 본인 토큰이 있어야 읽는다
+        (`Authorization` 헤더 — `<img src>` 만으로는 안 된다). 주소는 `Profile.profileImageUrl` 을 쓴다(사본이 바뀌면 `v` 가 바뀐다).
+      operationId: getMyProfileImage
+      x-pmart-user-types: [CUSTOMER]
+      responses:
+        '200':
+          description: 이미지 바이트
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+    put:
+      tags: [profile]
+      summary: (0.15.0 BR-80) 프로필 사진 직접 올리기 — photoSource CUSTOM
+      description: |
+        multipart `file` 한 장. 형식은 파일 앞부분으로 판정(JPEG·PNG·WebP), 2MB 이하. 앱이 정사각형으로 자르고 줄여(예 512px JPEG) 보낸다 — 서버는 크기를 다시 바꾸지 않는다.
+        올린 뒤에는 로그인해도 제공자 사진으로 덮지 않는다. 같은 Idempotency-Key 재전송은 처음 결과. 같은 사진을 다시 올리면 바뀌지 않고 APPLIED.
+      operationId: uploadMyProfileImage
+      x-pmart-user-types: [CUSTOMER]
+      x-added-in: '2026-11-21'
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: INVALID_STATE (탈퇴 신청 이후)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+    delete:
+      tags: [profile]
+      summary: (0.15.0 BR-80) 기본 이미지로(사진 없음) — photoSource NONE
+      description: 직접 올린 사진·로그인 계정 사진 모두 보이지 않는다(profileImageUrl 없음). 로그인해도 제공자 사진으로 덮지 않는다. 이미 NONE 이어도 APPLIED.
+      operationId: clearMyProfileImage
+      x-pmart-user-types: [CUSTOMER]
+      x-added-in: '2026-11-21'
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: INVALID_STATE (탈퇴 신청 이후)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /me/profile-image/provider-restorations:
+    post:
+      tags: [profile]
+      summary: (0.15.0 BR-80) 로그인 계정 사진으로 되돌리기 — photoSource PROVIDER
+      description: |
+        직접 올린 사진을 지우고 로그인 제공자 사진 사본을 다시 쓴다. 사본은 응답 뒤 서버가 받아 둔다(잠깐 profileImageUrl 이 없을 수 있음 — 잠시 뒤 `GET /me`).
+        제공자가 사진을 준 적이 없으면 사진 없음. 이미 PROVIDER 이어도 APPLIED.
+      operationId: restoreMyProviderProfileImage
+      x-pmart-user-types: [CUSTOMER]
+      x-added-in: '2026-11-21'
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: INVALID_STATE (탈퇴 신청 이후)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /me/phone-verifications:
     post:
@@ -1416,6 +1492,7 @@ components:
         email: { type: string, description: 로그인 제공자가 준 이메일. 없을 수 있다 }
         emailVerified: { type: boolean, description: 제공자가 이메일을 확인했는지 }
         profileImageUrl: { type: string, description: '프로필 사진 사본 경로(게이트웨이 상대 경로 `/api/v1/me/profile-image?v=…`, 본인 토큰 필요). 사본이 없으면 비어 있다' }
+        photoSource: { type: string, enum: [PROVIDER, CUSTOM, NONE], x-added-in: '2026-11-21', description: '(0.15.0 BR-80) 사진 출처 — PROVIDER 로그인 계정 사진(로그인마다 최신), CUSTOM 직접 올림, NONE 기본 이미지. CUSTOM·NONE 이면 로그인해도 덮지 않는다' }
         phoneMasked: { type: [string, 'null'], description: '가린 번호(예 010-****-5678). 저장 안 했으면 null' }
         phone: { type: [string, 'null'], description: '0.7.0 — 본인에게만 가리지 않은 번호(숫자만). 배송지 받는 분 연락처 채우기용. 저장 안 했으면 null' }
         phoneVerified: { type: boolean, description: '0.7.0 — 본인 확인을 거친 번호인가. 본인 확인이 아직 없어 늘 false(번호가 없어도 false)' }

@@ -114,6 +114,7 @@ final class CustomerMapping {
         .email(p.email())
         .emailVerified(p.emailVerified())
         .profileImageUrl(ProfileImageService.url(p.profileImageSha256()))
+        .photoSource(Profile.PhotoSourceEnum.fromValue(p.photoSource()))
         .socialProvider(
             p.socialProvider() == null
                 ? null

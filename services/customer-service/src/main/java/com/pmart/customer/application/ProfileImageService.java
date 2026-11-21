@@ -103,6 +103,10 @@ public class ProfileImageService {
     if (s == null || row == null || row.sourceUrl() == null) {
       return;
     }
+    // 고객이 고른 사진(CUSTOM)·기본(NONE)은 로그인해도 덮지 않는다(BR-80)
+    if (!CustomerStore.PHOTO_PROVIDER.equals(row.photoSource())) {
+      return;
+    }
     String source = row.sourceUrl();
     if (source.equals(row.copiedFrom())) {
       return;
@@ -175,7 +179,7 @@ public class ProfileImageService {
     return PmartException.notFound("PROFILE_IMAGE_NOT_FOUND", "프로필 사진이 없습니다.");
   }
 
-  private static void deleteQuietly(ProfileImageStorage s, String key, String accountId) {
+  static void deleteQuietly(ProfileImageStorage s, String key, String accountId) {
     try {
       s.delete(key);
     } catch (RuntimeException e) {
@@ -183,7 +187,7 @@ public class ProfileImageService {
     }
   }
 
-  private static String sha256(byte[] b) {
+  static String sha256(byte[] b) {
     try {
       return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(b));
     } catch (NoSuchAlgorithmException e) {

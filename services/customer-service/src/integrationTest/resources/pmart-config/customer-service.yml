@@ -60,6 +60,11 @@ pmart:
       - /api/v1/consent-terms # GET 만
       - /api/v1/consent-terms/*/* # 약관 본문(0.6.1) — GET 만
 spring:
+  # 프로필 사진 올리기(2026-11-21 BR-80, 0.15.0) — 사진 상한은 ProfilePhotoService.MAX_BYTES(2MB, 넘으면 400 VALIDATION_FAILED). 그보다 조금 크게
+  servlet:
+    multipart:
+      max-file-size: 3MB
+      max-request-size: 4MB
   # 이벤트 소비(Spring Cloud Stream, ADR-0035): 함수(빈) 이름 → 토픽. 그룹·재시도·DLQ({토픽}.DLT)·커밋은 common-messaging 기본값.
   # 함수를 더하거나 빼면 코드(PmartEventConsumer 빈)와 함께 바꾼다 — 빠지면 기동이 멈춘다. 바꾸면 재시작한다
   cloud:

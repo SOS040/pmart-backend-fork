@@ -302,4 +302,154 @@ class ProfileImageIT extends PostgresKafkaContainerSupport {
     assertThat(image(token).getStatusCode().value()).isEqualTo(404);
     assertThat(keys(cu)).isEmpty();
   }
+
+  // ---------- 0.15.0 BR-80: 고객이 고르는 사진 ----------
+
+  /** 로그인 사건만 보내고 원본 URL 반영까지 기다린다(CUSTOM·NONE 이면 사본을 받지 않으므로 copied_from 을 기다리지 않는다). */
+  void loginNoCopy(String accountId, String at, String pictureUrl) throws Exception {
+    String json =
+        EventEnvelopeFixtures.envelope("CustomerAuthenticated")
+            .from("auth-service")
+            .aggregate("Account", accountId, 1)
+            .payload(
+                Map.of(
+                    "accountId",
+                    accountId,
+                    "provider",
+                    "GOOGLE",
+                    "authenticatedAt",
+                    at,
+                    "pictureUrl",
+                    pictureUrl))
+            .buildJson();
+    kafka.send("platform.auth.v1", accountId, json).join();
+    await(
+        () ->
+            pictureUrl.equals(
+                jdbc.queryForObject(
+                    "SELECT profile_image_source_url FROM customer WHERE account_id = ?",
+                    String.class,
+                    accountId)),
+        "로그인 반영 " + at);
+  }
+
+  ResponseEntity<String> upload(String token, String key, byte[] bytes) {
+    org.springframework.util.LinkedMultiValueMap<String, Object> form =
+        new org.springframework.util.LinkedMultiValueMap<>();
+    form.add(
+        "file",
+        new org.springframework.core.io.ByteArrayResource(bytes) {
+          @Override
+          public String getFilename() {
+            return "photo.jpg";
+          }
+        });
+    return http.put()
+        .uri("/me/profile-image")
+        .headers(
+            h -> {
+              h.setBearerAuth(token);
+              h.set("Idempotency-Key", key);
+              h.set("X-Source-System", "customer-app");
+            })
+        .contentType(org.springframework.http.MediaType.MULTIPART_FORM_DATA)
+        .body(form)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  ResponseEntity<String> command(String token, String method, String path) {
+    return http.method(org.springframework.http.HttpMethod.valueOf(method))
+        .uri(path)
+        .headers(
+            h -> {
+              h.setBearerAuth(token);
+              h.set("Idempotency-Key", UUID.randomUUID().toString());
+              h.set("X-Source-System", "customer-app");
+            })
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  static byte[] jpeg(int fill) {
+    byte[] b = new byte[128];
+    Arrays.fill(b, (byte) fill);
+    b[0] = (byte) 0xFF;
+    b[1] = (byte) 0xD8;
+    b[2] = (byte) 0xFF;
+    return b;
+  }
+
+  @Test
+  void customerChoosesPhotoAndLoginDoesNotOverwriteIt() throws Exception {
+    String cu = "CU-" + UUID.randomUUID();
+    String token = TestJwt.customer(cu);
+    login(cu, "2026-11-21T00:00:00Z", google.baseUrl() + "/a/photo1=s96-c");
+    assertThat(me(token).path("photoSource").asString()).isEqualTo("PROVIDER");
+    String providerUrl = me(token).path("profileImageUrl").asString();
+
+    // R1 직접 올리기 → CUSTOM, 새 주소, 제공자 사본은 지움. 같은 키 재전송은 같은 결과
+    byte[] mine = jpeg(7);
+    String key = UUID.randomUUID().toString();
+    ResponseEntity<String> up = upload(token, key, mine);
+    assertThat(up.getStatusCode().value()).isEqualTo(200);
+    assertThat(mapper.readTree(up.getBody()).path("status").asString()).isEqualTo("APPLIED");
+    assertThat(upload(token, key, mine).getStatusCode().value()).isEqualTo(200);
+    JsonNode me = me(token);
+    assertThat(me.path("photoSource").asString()).isEqualTo("CUSTOM");
+    assertThat(me.path("profileImageUrl").asString()).isNotEqualTo(providerUrl);
+    ResponseEntity<byte[]> img = image(token);
+    assertThat(img.getHeaders().getContentType()).hasToString("image/jpeg");
+    assertThat(img.getBody()).isEqualTo(mine);
+    await(() -> keys(cu).size() == 1, "제공자 사본 삭제");
+
+    // R4 로그인(새 제공자 사진)해도 덮지 않는다
+    loginNoCopy(cu, "2026-11-21T01:00:00Z", google.baseUrl() + "/a/photo2=s96-c");
+    Thread.sleep(500);
+    google.verify(0, getRequestedFor(urlEqualTo("/a/photo2=s256-c")));
+    assertThat(image(token).getBody()).isEqualTo(mine);
+
+    // 형식·크기 검사 — 400 VALIDATION_FAILED field file
+    ResponseEntity<String> notImage =
+        upload(token, UUID.randomUUID().toString(), "hello".getBytes());
+    assertThat(notImage.getStatusCode().value()).isEqualTo(400);
+    assertThat(notImage.getBody()).contains("\"field\":\"file\"");
+    byte[] big = new byte[2 * 1024 * 1024 + 1];
+    System.arraycopy(jpeg(1), 0, big, 0, 3);
+    assertThat(upload(token, UUID.randomUUID().toString(), big).getStatusCode().value())
+        .isEqualTo(400);
+
+    // R2 기본 이미지 → NONE, 사진 없음, 저장소도 비움
+    assertThat(command(token, "DELETE", "/me/profile-image").getStatusCode().value())
+        .isEqualTo(200);
+    me = me(token);
+    assertThat(me.path("photoSource").asString()).isEqualTo("NONE");
+    assertThat(me.path("profileImageUrl").isMissingNode() || me.path("profileImageUrl").isNull())
+        .isTrue();
+    assertThat(image(token).getStatusCode().value()).isEqualTo(404);
+    await(() -> keys(cu).isEmpty(), "올린 사진 삭제");
+    loginNoCopy(cu, "2026-11-21T02:00:00Z", google.baseUrl() + "/a/photo1=s96-c");
+    Thread.sleep(500);
+    assertThat(image(token).getStatusCode().value()).isEqualTo(404);
+
+    // R3 로그인 계정 사진으로 되돌리기 → PROVIDER, 마지막 제공자 사진(photo1)을 다시 받는다
+    assertThat(
+            command(token, "POST", "/me/profile-image/provider-restorations")
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    await(() -> image(token).getStatusCode().value() == 200, "제공자 사진 다시 받기");
+    assertThat(me(token).path("photoSource").asString()).isEqualTo("PROVIDER");
+    assertThat(image(token).getBody()).isEqualTo(PNG_1);
+
+    // 다른 사람·운영자는 못 바꾼다(운영자 토큰 403)
+    assertThat(
+            command(
+                    TestJwt.operator("ops-1", java.util.List.of("OPS"), java.util.List.of()),
+                    "DELETE",
+                    "/me/profile-image")
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+  }
 }

@@ -4,6 +4,7 @@ DELETE /api/v1/assistant/chat-sessions/{sessionId} OPERATOR
 DELETE /api/v1/carts/{cartId}/items/{itemId} CUSTOMER,GUEST
 DELETE /api/v1/locations/{locationId} OPERATOR
 DELETE /api/v1/me/addresses/{addressId} CUSTOMER
+DELETE /api/v1/me/profile-image CUSTOMER
 DELETE /api/v1/me/push-tokens/{deviceId} CUSTOMER,RIDER
 DELETE /api/v1/me/recent-searches CUSTOMER
 DELETE /api/v1/me/recent-searches/{keyword} CUSTOMER
@@ -510,6 +511,7 @@ POST /api/v1/me/notifications/{notificationId}/reads CUSTOMER,RIDER
 POST /api/v1/me/phone-verifications CUSTOMER
 POST /api/v1/me/phone-verifications/{verificationId}/confirmations CUSTOMER
 POST /api/v1/me/profile-changes CUSTOMER
+POST /api/v1/me/profile-image/provider-restorations CUSTOMER
 POST /api/v1/me/shopping-address-selections CUSTOMER
 POST /api/v1/me/withdrawals CUSTOMER
 POST /api/v1/me/withdrawals/{withdrawalId}/revocations CUSTOMER
@@ -664,6 +666,7 @@ PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
 PUT /api/v1/hr/departments/{code} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR
 PUT /api/v1/me/order-preferences CUSTOMER
+PUT /api/v1/me/profile-image CUSTOMER
 PUT /api/v1/me/push-tokens/{deviceId} CUSTOMER,RIDER
 PUT /api/v1/me/wishlist-items/{productId} CUSTOMER
 PUT /api/v1/mfcs/{mfcId}/break-pin OPERATOR

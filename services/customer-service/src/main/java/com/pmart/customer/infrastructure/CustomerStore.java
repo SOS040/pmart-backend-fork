@@ -28,6 +28,7 @@ public class CustomerStore {
       @Nullable String email,
       @Nullable Boolean emailVerified,
       @Nullable String profileImageSha256,
+      String photoSource,
       Instant joinedAt,
       int version,
       @Nullable String phone,
@@ -140,8 +141,8 @@ public class CustomerStore {
 
   private static final String PROFILE_SELECT =
       "SELECT account_id, status, social_provider, nickname, name, email, email_verified,"
-          + " profile_image_sha256, joined_at, version, phone, phone_verified, customer_number"
-          + " FROM customer";
+          + " profile_image_sha256, profile_photo_source, joined_at, version, phone, phone_verified,"
+          + " customer_number FROM customer";
 
   private static ProfileRow profileRow(java.sql.ResultSet rs, int i) throws java.sql.SQLException {
     return new ProfileRow(
@@ -153,6 +154,7 @@ public class CustomerStore {
         rs.getString("email"),
         rs.getObject("email_verified", Boolean.class),
         rs.getString("profile_image_sha256"),
+        rs.getString("profile_photo_source"),
         rs.getTimestamp("joined_at").toInstant(),
         rs.getInt("version"),
         rs.getString("phone"),
@@ -255,20 +257,27 @@ public class CustomerStore {
       @Nullable String copiedFrom,
       @Nullable String key,
       @Nullable String contentType,
-      @Nullable String sha256) {}
+      @Nullable String sha256,
+      String photoSource) {}
+
+  public static final String PHOTO_PROVIDER = "PROVIDER";
+  public static final String PHOTO_CUSTOM = "CUSTOM";
+  public static final String PHOTO_NONE = "NONE";
 
   public Optional<ProfileImageRow> profileImage(String accountId) {
     return jdbc
         .query(
             "SELECT profile_image_source_url, profile_image_copied_from, profile_image_key,"
-                + " profile_image_content_type, profile_image_sha256 FROM customer WHERE account_id = ?",
+                + " profile_image_content_type, profile_image_sha256, profile_photo_source"
+                + " FROM customer WHERE account_id = ?",
             (rs, i) ->
                 new ProfileImageRow(
                     rs.getString("profile_image_source_url"),
                     rs.getString("profile_image_copied_from"),
                     rs.getString("profile_image_key"),
                     rs.getString("profile_image_content_type"),
-                    rs.getString("profile_image_sha256")),
+                    rs.getString("profile_image_sha256"),
+                    rs.getString("profile_photo_source")),
             accountId)
         .stream()
         .findFirst();
@@ -292,7 +301,8 @@ public class CustomerStore {
                 + " profile_image_updated_at = ?"
                 + " FROM (SELECT profile_image_key AS old_key FROM customer WHERE account_id = ?"
                 + " FOR UPDATE) o"
-                + " WHERE c.account_id = ? AND c.profile_image_source_url = ? RETURNING o.old_key",
+                + " WHERE c.account_id = ? AND c.profile_image_source_url = ?"
+                + " AND c.profile_photo_source = 'PROVIDER' RETURNING o.old_key",
             (rs, i) -> Optional.ofNullable(rs.getString("old_key")),
             key,
             contentType,
@@ -302,6 +312,36 @@ public class CustomerStore {
             accountId,
             accountId,
             copiedFrom);
+    return old.stream().findFirst();
+  }
+
+  /**
+   * 사진 출처 바꾸기(BR-80). CUSTOM 이면 올린 사진을 지금 사진으로, PROVIDER·NONE 이면 지금 사진을 비운다(PROVIDER 는 copied_from
+   * 도 비워 제공자 사진을 다시 받게). 바꾸기 전 사진 키(지울 것)를 돌려준다 — 행이 없으면 빈 값.
+   */
+  public Optional<Optional<String>> setProfilePhoto(
+      String accountId,
+      String source,
+      @Nullable String key,
+      @Nullable String contentType,
+      @Nullable String sha256,
+      Instant now) {
+    List<Optional<String>> old =
+        jdbc.query(
+            "UPDATE customer c SET profile_photo_source = ?, profile_image_key = ?,"
+                + " profile_image_content_type = ?, profile_image_sha256 = ?,"
+                + " profile_image_copied_from = NULL, profile_image_updated_at = ?"
+                + " FROM (SELECT profile_image_key AS old_key FROM customer WHERE account_id = ?"
+                + " FOR UPDATE) o"
+                + " WHERE c.account_id = ? RETURNING o.old_key",
+            (rs, i) -> Optional.ofNullable(rs.getString("old_key")),
+            source,
+            key,
+            contentType,
+            sha256,
+            ts(now),
+            accountId,
+            accountId);
     return old.stream().findFirst();
   }
 

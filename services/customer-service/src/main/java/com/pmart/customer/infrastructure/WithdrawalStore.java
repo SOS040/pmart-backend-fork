@@ -140,6 +140,7 @@ public class WithdrawalStore {
             + " email_verified = NULL, phone = NULL, phone_verified = false,"
             + " profile_image_source_url = NULL, profile_image_key = NULL, profile_image_content_type = NULL,"
             + " profile_image_sha256 = NULL, profile_image_copied_from = NULL, profile_image_updated_at = NULL,"
+            + " profile_photo_source = 'PROVIDER',"
             + " version = version + 1, updated_at = ? WHERE account_id = ?",
         ts(now),
         accountId);
