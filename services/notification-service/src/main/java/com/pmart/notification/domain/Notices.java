@@ -270,7 +270,7 @@ public final class Notices {
         "DISPATCH_DELAYED",
         DELIVERY,
         "배송이 늦어지고 있어요",
-        "주문하신 상품을 배달할 기사를 찾고 있어 약속한 시간보다 " + late + ". 기다리기 어려우시면 고객센터로 취소를 요청해 주세요. 취소하면 전액 환불돼요.",
+        "주문하신 상품을 배달할 기사를 찾고 있어 약속한 시간보다 " + late + ". 늦어져서 죄송해요. 기다리기 어려우시면 고객센터로 취소를 요청해 주세요. 취소하면 전액 환불돼요.",
         "ORDER",
         orderId);
   }
@@ -322,14 +322,17 @@ public final class Notices {
   /** 주문 전체 취소. 환불은 결과가 나온 뒤 따로 알린다. */
   public static Notice orderCancelled(String orderId, @Nullable String reason) {
     boolean outOfStock = "OUT_OF_STOCK".equals(reason);
-    // 배차 불가(CL-5, 2026-11-19 — 쿠폰은 promotion 이 생기면 문구에 더한다)
+    // 배차 불가(CL-5, 2026-11-19) — 자동 취소 포함. 2026-11-21 사용자: 취소·환불·보상 쿠폰 2,000원을 한 알림에.
+    // 쿠폰 발급은 promotion CompensationCoupons(보상 행사 설정 필요), 도착은 COUPON_ISSUED 알림이 따로 알린다.
     boolean noRider = "DISPATCH_UNAVAILABLE".equals(reason);
     String title =
         outOfStock ? "품절로 주문이 취소되었어요" : noRider ? "배달 기사를 찾지 못해 주문이 취소되었어요" : "주문이 취소되었어요";
     String lead =
         outOfStock
             ? "준비하던 상품이 모두 품절되어 주문을 취소했어요. "
-            : noRider ? "배달 기사를 찾지 못해 주문을 취소했어요. 결제 금액은 전액 환불돼요. " : "";
+            : noRider
+                ? "배달 기사를 찾지 못해 주문을 취소했어요. 늦어져서 죄송해요. 결제 금액은 전액 환불되고, 보상으로 2,000원 쿠폰을 드려요(쿠폰함에 들어오면 따로 알려 드려요). "
+                : "";
     return new Notice(
         "ORDER_CANCELLED", ORDER, title, lead + "결제 금액 환불 결과가 나오면 다시 알려 드릴게요.", "ORDER", orderId);
   }

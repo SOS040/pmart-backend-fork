@@ -114,7 +114,7 @@ class NoticesTest {
   void cancelNoticeByReason() {
     org.assertj.core.api.Assertions.assertThat(
             Notices.orderCancelled("O-1", "DISPATCH_UNAVAILABLE").body())
-        .startsWith("배달 기사를 찾지 못해 주문을 취소했어요. 결제 금액은 전액 환불돼요.");
+        .startsWith("배달 기사를 찾지 못해 주문을 취소했어요. 늦어져서 죄송해요. 결제 금액은 전액 환불되고, 보상으로 2,000원 쿠폰을 드려요");
     org.assertj.core.api.Assertions.assertThat(
             Notices.orderCancelled("O-1", "OUT_OF_STOCK").title())
         .isEqualTo("품절로 주문이 취소되었어요");
