@@ -26,4 +26,4 @@
 - 게이트웨이 사용자 유형 허용 목록 3줄 추가.
 
 ## 상태
-- LAN 배포 전 — 사용자 "배포" 뒤 PC 2 customer-service(V18) + PC 4 게이트웨이 + 설정(업로드 상한). 배포되면 이 줄을 고친다.
+- **LAN 배포 2026-11-21** — pmart-config d9045ea(업로드 상한) → PC 2 customer-service(이미지 9a30dc9f, Flyway V18, ERROR 0) → PC 4 게이트웨이(허용 목록, ERROR 0). 새 경로 3개가 게이트웨이에서 401(토큰 없음) 확인. 실기기 확인 부탁.
