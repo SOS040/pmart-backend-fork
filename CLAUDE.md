@@ -54,6 +54,9 @@ Windows는 `.\gradlew.bat`. 실행 전 프로젝트 경로와 task 존재 여부
 
 설정(ADR-0029): 서비스 `application.yml` 은 부트스트랩만. 설정의 정본은 GitHub `code-and-pick/pmart-config`(로컬 사본 `deploy/lan/.config-repo`, 프로필 local·lan·prod) — 설정을 바꾸면 그 저장소와 각 서비스의 시험 사본(`src/integrationTest/resources/pmart-config/`)을 같이 고친다. 로컬 `bootRun` 전에 `./gradlew :platform-services:config-server:bootRun --args='--spring.profiles.active=local'`.
 
+## 작업 방식 (2026-11-21 사용자 결정)
+- **토큰 사용량을 줄이기 위해 다른 에이전트(서브에이전트·Agent·Workflow·fork)를 쓰지 않는다.** 검색·조사·구현·검토 모두 지금 세션에서 직접 한다.
+
 ## 절대 규칙
 - 다른 서비스의 구현 클래스·DB·JPA 엔티티에 직접 접근하지 않는다. API 또는 이벤트만.
 - 요청 없이 서비스 경계 병합, 새 프레임워크 도입, 프레임워크 주 버전 변경 금지.
