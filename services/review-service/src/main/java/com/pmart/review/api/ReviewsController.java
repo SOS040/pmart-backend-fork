@@ -66,6 +66,28 @@ public class ReviewsController implements ReviewsApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.review.api.generated.model.HelpfulResult> markReviewHelpful(
+      String reviewId, String idempotencyKey, String xSourceSystem) {
+    return ResponseEntity.ok(
+        helpful(reviews.helpful(reviewId, true, idempotencyKey, xSourceSystem)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.review.api.generated.model.HelpfulResult> unmarkReviewHelpful(
+      String reviewId, String idempotencyKey, String xSourceSystem) {
+    return ResponseEntity.ok(
+        helpful(reviews.helpful(reviewId, false, idempotencyKey, xSourceSystem)));
+  }
+
+  private static com.pmart.review.api.generated.model.HelpfulResult helpful(
+      com.pmart.review.application.ReviewService.Helpful h) {
+    return new com.pmart.review.api.generated.model.HelpfulResult()
+        .reviewId(h.reviewId())
+        .helpfulCount(h.helpfulCount())
+        .helpedByMe(h.helpedByMe());
+  }
+
+  @Override
   public ResponseEntity<Review> getReview(String reviewId) {
     return ResponseEntity.ok(ReviewViews.review(reviews.get(reviewId)));
   }
@@ -75,10 +97,12 @@ public class ReviewsController implements ReviewsApi {
       String productId,
       @Nullable String sort,
       @Nullable Boolean withPhotoOnly,
+      @Nullable String sku,
       @Nullable Integer size,
       @Nullable String cursor) {
     int n = size == null ? 50 : size;
-    var p = reviews.productReviews(productId, sort, Boolean.TRUE.equals(withPhotoOnly), cursor, n);
+    var p =
+        reviews.productReviews(productId, sort, Boolean.TRUE.equals(withPhotoOnly), sku, cursor, n);
     return ResponseEntity.ok(
         new ListProductReviews200Response()
             .items(p.items().stream().map(ReviewViews::review).toList())

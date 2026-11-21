@@ -44,7 +44,10 @@ final class ReviewViews {
         .version(r.version())
         .createdAt(time(r.createdAt()))
         .editableUntil(time(ReviewRules.editableUntil(r.createdAt())))
-        .updatedAt(time(r.updatedAt()));
+        .updatedAt(time(r.updatedAt()))
+        // BR-76(0.6.0)
+        .helpfulCount(r.helpfulCount())
+        .helpedByMe(v.helpedByMe());
   }
 
   static GetReviewInternal200Response internal(ReviewView v) {

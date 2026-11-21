@@ -394,6 +394,77 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
     assertThat(el2.body().path("items").get(0).path("reviewId").asString()).isEqualTo(reviewId);
   }
 
+  /** BR-76(0.6.0): 추천순(도움돼요 많은 순)·옵션(SKU) 거르기·거른 수, 도움돼요 누르기·취소(회원만, 멱등, 내 리뷰 422, 삭제 409). */
+  @Test
+  void recommendedSortSkuFilterAndHelpful() throws Exception {
+    String orderId = "ORD-HP-" + newId();
+    String me = "ACC-hp-" + newId();
+    String productId = "PRD-" + newId();
+    String token = TestJwt.customer(me);
+    String other = TestJwt.customer("ACC-hp-other-" + newId());
+    stubOrder(orderId, me, productId, 0);
+    delivered(orderId, Instant.now().minus(Duration.ofDays(1)), orderId + "-L1", orderId + "-L2");
+    await(
+        () -> send("GET", token, "/me/review-eligibilities?orderId=" + orderId, null),
+        r -> r.body().path("items").size() == 2);
+    String first =
+        send("POST", token, "/reviews", Map.of("orderLineId", orderId + "-L1", "rating", 5))
+            .body()
+            .path("reviewId")
+            .asString();
+    String second =
+        send("POST", token, "/reviews", Map.of("orderLineId", orderId + "-L2", "rating", 3))
+            .body()
+            .path("reviewId")
+            .asString();
+
+    // 도움돼요: 내 리뷰 422, 다른 회원 누르기(두 번 눌러도 1), 비회원 401·403
+    Res own = send("PUT", token, "/reviews/" + second + "/helpful", null);
+    assertThat(own.status()).isEqualTo(422);
+    assertThat(own.body().path("code").asString()).isEqualTo("HELPFUL_OWN_REVIEW");
+    Res mark = send("PUT", other, "/reviews/" + second + "/helpful", null);
+    assertThat(mark.status()).as(mark.body().toString()).isEqualTo(200);
+    assertThat(mark.body().path("helpfulCount").asInt()).isEqualTo(1);
+    assertThat(mark.body().path("helpedByMe").asBoolean()).isTrue();
+    assertThat(
+            send("PUT", other, "/reviews/" + second + "/helpful", null)
+                .body()
+                .path("helpfulCount")
+                .asInt())
+        .isEqualTo(1);
+    assertThat(send("PUT", null, "/reviews/" + second + "/helpful", null).status()).isIn(401, 403);
+
+    // 추천순: 도움돼요 많은 second 먼저(최근 등록은 second 지만 별점순이 아님을 보려고 first 를 1위로 만들지 않는다)
+    Res rec = send("GET", other, "/products/" + productId + "/reviews?sort=RECOMMENDED", null);
+    assertThat(rec.body().path("items").path(0).path("reviewId").asString()).isEqualTo(second);
+    assertThat(rec.body().path("items").path(0).path("helpfulCount").asInt()).isEqualTo(1);
+    assertThat(rec.body().path("items").path(0).path("helpedByMe").asBoolean()).isTrue();
+    assertThat(rec.body().path("items").path(1).path("helpedByMe").asBoolean()).isFalse();
+    Res anon = send("GET", null, "/products/" + productId + "/reviews?sort=RECOMMENDED", null);
+    assertThat(anon.body().path("items").path(0).path("helpedByMe").isNull()).isTrue();
+    // 옵션 거르기 — 거른 수
+    Res bySku = send("GET", null, "/products/" + productId + "/reviews?sku=E-00000001", null);
+    assertThat(bySku.body().path("items").size()).isEqualTo(1);
+    assertThat(bySku.body().path("items").path(0).path("reviewId").asString()).isEqualTo(first);
+    assertThat(bySku.body().path("summary").path("reviewCount").asInt()).isEqualTo(1);
+    assertThat(bySku.body().path("summary").path("averageRating").asDouble()).isEqualTo(4.0);
+
+    // 취소(두 번 해도 0), 삭제된 리뷰 누르기 409
+    Res unmark = send("DELETE", other, "/reviews/" + second + "/helpful", null);
+    assertThat(unmark.body().path("helpfulCount").asInt()).isZero();
+    assertThat(unmark.body().path("helpedByMe").asBoolean()).isFalse();
+    assertThat(
+            send("DELETE", other, "/reviews/" + second + "/helpful", null)
+                .body()
+                .path("helpfulCount")
+                .asInt())
+        .isZero();
+    assertThat(send("DELETE", token, "/reviews/" + first, null).status()).isEqualTo(204);
+    Res gone = send("PUT", other, "/reviews/" + first + "/helpful", null);
+    assertThat(gone.status()).isEqualTo(409);
+    assertThat(gone.body().path("code").asString()).isEqualTo("REVIEW_NOT_PUBLISHED");
+  }
+
   @Test
   void fullyReturnedAndExpiredLinesCannotBeReviewed() throws Exception {
     String orderId = "ORD-RV-" + newId();

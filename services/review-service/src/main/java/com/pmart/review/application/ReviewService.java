@@ -55,8 +55,22 @@ public class ReviewService {
   private static final String ANONYMOUS_AUTHOR = "PMart 고객";
 
   /** 리뷰 한 건과 사진·계약 상태. deliveredAt 은 내부 조회에만. */
+  /** helpedByMe = 회원 토큰으로 볼 때 내가 도움돼요를 눌렀는지(0.6.0 BR-76), 비회원·모름 null. */
   public record ReviewView(
-      ReviewRow row, List<PhotoRow> photos, String state, @Nullable Instant deliveredAt) {}
+      ReviewRow row,
+      List<PhotoRow> photos,
+      String state,
+      @Nullable Instant deliveredAt,
+      @Nullable Boolean helpedByMe) {
+
+    public ReviewView(
+        ReviewRow row, List<PhotoRow> photos, String state, @Nullable Instant deliveredAt) {
+      this(row, photos, state, deliveredAt, null);
+    }
+  }
+
+  /** 도움돼요 결과(바뀐 수·눌림). */
+  public record Helpful(String reviewId, int helpfulCount, boolean helpedByMe) {}
 
   /** 자격 한 쪽과 개수(0.5.0 BR-67 — total·writable·written). */
   public record EligibilityPage(
@@ -339,6 +353,41 @@ public class ReviewService {
   }
 
   /** 삭제(멱등 — 이미 삭제면 그대로 성공). 행은 남겨 재작성을 막는다. 사진은 증빙 보존을 위해 지우지 않는다(공개만 닫힘). */
+  /**
+   * 도움돼요 누르기·취소(0.6.0 BR-76) — 회원만, 멱등(이미 그렇게 돼 있으면 그대로). 누르기는 공개 리뷰만(삭제 409 REVIEW_NOT_PUBLISHED)·
+   * 내 리뷰 422 HELPFUL_OWN_REVIEW. 취소는 상태와 상관없이 받는다. 리뷰 행을 잠가 수를 맞춘다.
+   */
+  public Helpful helpful(String reviewId, boolean mark, String requestId, String sourceSystem) {
+    PmartPrincipal c = customer();
+    return idempotency
+        .execute(
+            new RequestKey(
+                sourceSystem,
+                requestId,
+                (mark ? "markHelpful:" : "unmarkHelpful:") + reviewId,
+                c.subject()),
+            Map.of("reviewId", reviewId),
+            Helpful.class,
+            () -> {
+              ReviewRow r =
+                  store
+                      .lockReview(reviewId)
+                      .orElseThrow(() -> PmartException.notFound("REVIEW_NOT_FOUND", "리뷰가 없습니다."));
+              if (!mark) {
+                return new Helpful(reviewId, store.unmarkHelpful(reviewId, c.subject()), false);
+              }
+              if (r.accountId().equals(c.subject())) {
+                throw rejected("HELPFUL_OWN_REVIEW", "내가 쓴 리뷰에는 도움돼요를 누를 수 없습니다.");
+              }
+              if (!ReviewRules.PUBLISHED.equals(r.state())) {
+                throw new PmartException(
+                    "REVIEW_NOT_PUBLISHED", HttpStatus.CONFLICT, "공개된 리뷰가 아닙니다.", false, List.of());
+              }
+              return new Helpful(reviewId, store.markHelpful(reviewId, c.subject(), now()), true);
+            })
+        .value();
+  }
+
   public void delete(String reviewId, String requestId, String sourceSystem) {
     PmartPrincipal c = customer();
     idempotency.execute(
@@ -406,18 +455,29 @@ public class ReviewService {
       String productId,
       @Nullable String sort,
       boolean withPhotoOnly,
+      @Nullable String sku,
       @Nullable String cursor,
       int size) {
     int offset = offset(cursor);
     List<ReviewRow> rows =
         store.productReviews(
-            productId, sort == null ? "NEWEST" : sort, withPhotoOnly, offset, size + 1);
+            productId, sort == null ? "NEWEST" : sort, withPhotoOnly, sku, offset, size + 1);
     boolean more = rows.size() > size;
     List<ReviewRow> page = rows.subList(0, Math.min(size, rows.size()));
     Map<String, List<PhotoRow>> byReview =
         store.photosOf(page.stream().map(ReviewRow::reviewId).toList()).stream()
             .collect(Collectors.groupingBy(p -> Objects.requireNonNull(p.reviewId())));
     Instant now = now();
+    // 회원 토큰이 있으면 내가 누른 리뷰(0.6.0 BR-76) — 공개 목록이라 토큰이 없을 수 있다(그때 null)
+    String viewer =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.CUSTOMER)
+            .map(PmartPrincipal::subject)
+            .orElse(null);
+    java.util.Set<String> helped =
+        viewer == null
+            ? java.util.Set.of()
+            : store.helpedBy(viewer, page.stream().map(ReviewRow::reviewId).toList());
     List<ReviewView> items =
         page.stream()
             .map(
@@ -426,11 +486,16 @@ public class ReviewService {
                         r,
                         byReview.getOrDefault(r.reviewId(), List.of()),
                         ReviewRules.reviewState(r.state(), r.createdAt(), now),
-                        null))
+                        null,
+                        viewer == null ? null : helped.contains(r.reviewId())))
             .toList();
     ReviewStore.Summary s = store.summary(productId);
-    return new ReviewPage(
-        items, more ? String.valueOf(offset + size) : null, s.average(), s.count());
+    // reviewCount 는 거른 수(0.6.0), 평균은 상품 전체
+    int count =
+        (sku == null && !withPhotoOnly)
+            ? s.count()
+            : store.filteredCount(productId, withPhotoOnly, sku);
+    return new ReviewPage(items, more ? String.valueOf(offset + size) : null, s.average(), count);
   }
 
   // ---------------------------------------------------------------- 사진

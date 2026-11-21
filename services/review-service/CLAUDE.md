@@ -3,7 +3,7 @@
 서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `review-service` 절이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다. 결정은 ADR-0063.
 
 ## 계약
-- REST: `contracts/openapi/review-service.yaml`(0.5.0) → `openApiGenerate` 가 `com.pmart.review.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
+- REST: `contracts/openapi/review-service.yaml`(0.6.0) → `openApiGenerate` 가 `com.pmart.review.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
 - 이벤트: 구독 `DeliveryCompleted`(delivery.delivery.v1, 바인딩 `deliveryEvents-in-0`), 발행 `ReviewPublished`·`ReviewDeleted`(commerce.review.v1). 발행은 `EventPublisher`(Outbox, Debezium), 소비는 `EventConsumers`(inbox).
 
 ## 패키지
@@ -35,3 +35,4 @@
 리뷰 자격·작성·수정·삭제·공개 조회·사진·내부 조회 구현(2026-11-16). 운영자 숨김·신고 없음(사용자 결정). 평점 집계 투영은 product-content(아직 구독 안 함).
 - **사진 축소본(2026-11-20, 계약 0.4.0 — 리뷰 사진 느림)**: `GET /review-photos/{id}?w=240|480|720` → `ReviewPhotoVariants`(버킷 `review-photo-variants/w<폭>/<photoId>.jpg`, 원본보다 크면 원본 크기 JPEG, WEBP 는 원본, 요청 때 만들기 동시 2). `ReviewPhotoPreparer` 가 올린 5초 뒤·기동 30초 뒤·2분마다 미리 만든다(`review_photo.variants_at`, V3). 고아 사진 정리 때 축소본도 지운다. `JpegResizer` 는 product-content 와 같은 방식(복사 — 라이브러리로 뺄지는 셋째가 생기면).
 - **리뷰관리 표시 값(2026-11-20, 계약 0.5.0 — 고객 앱 BR-67, 사용자 "추천대로")**: `GET /me/review-eligibilities` 에 `total`(조건에 맞는 전체)·`counts{writable,written}`(탭 머리, state 무시 — `/me/reviews` 는 없다), 품목에 `orderedAt`·`mfcName`·`imageUrl`·`optionLabel`(`EligibilityDisplay`). 주문 확정 시각·센터 ID 는 자격 만들 때 order 사본(`review_eligibility.ordered_at·mfc_id`, V4 — 그 전 행은 목록 조회 때 주문마다 order 를 한 번 읽어 채움), 센터 이름은 center-master `/internal/centers/{id}` 10분 사본, 사진·옵션 라벨은 product-content `GET /product-contents?productIds=`(한 쪽에 한 번, 100개씩) 의 **지금** 대표 사진. 못 읽으면 그 값만 null. 설정 `pmart.review.center-master-base-url`·`content-base-url`(없으면 그 값 null). 시험 `EligibilityDisplayTest`·`ReviewsIT.eligibility*`.
+- **추천순·옵션 필터·도움돼요(2026-11-21 BR-76, 계약 0.6.0·V5 — 사용자 "BR-76부터 해줘")**: 목록 `sort=RECOMMENDED`(helpful_count DESC → created_at DESC)·`sku` 거르기, `summary.reviewCount` = 거른 수(평균은 상품 전체). `review.helpful_count` + 표 `review_helpful`(리뷰·회원 PK). `PUT`·`DELETE /reviews/{id}/helpful`(회원만, `ReviewService.helpful` — 멱등 처리 안에서 리뷰 행 잠금, 내 리뷰 422 HELPFUL_OWN_REVIEW, 공개 아님 409 REVIEW_NOT_PUBLISHED, 취소는 상태 무관). 목록은 회원 토큰이 있으면 `helpedByMe`(없으면 null). 게이트웨이 라우트에 `/api/v1/reviews/*/helpful`. 시험 `ReviewsIT.recommendedSortSkuFilterAndHelpful`.

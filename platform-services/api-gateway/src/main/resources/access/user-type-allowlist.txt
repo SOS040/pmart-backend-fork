@@ -11,6 +11,7 @@ DELETE /api/v1/me/wishlist-items/{productId} CUSTOMER
 DELETE /api/v1/mfcs/{mfcId}/replenishment-policies OPERATOR
 DELETE /api/v1/operation-restrictions/{restrictionId} OPERATOR
 DELETE /api/v1/reviews/{reviewId} CUSTOMER
+DELETE /api/v1/reviews/{reviewId}/helpful CUSTOMER
 GET /api/v1/actuator/health PUBLIC
 GET /api/v1/address-geocodes CUSTOMER,GUEST
 GET /api/v1/address-reverse-geocodes CUSTOMER,GUEST
@@ -670,6 +671,7 @@ PUT /api/v1/mfcs/{mfcId}/staff-contacts/me OPERATOR
 PUT /api/v1/price-import-batches/{batchId}/lines/{seedProductId} OPERATOR
 PUT /api/v1/product-drafts/{draftId} OPERATOR
 PUT /api/v1/promotions/{promotionId} OPERATOR
+PUT /api/v1/reviews/{reviewId}/helpful CUSTOMER
 PUT /api/v1/riders/me/settings RIDER
 PUT /api/v1/riders/me/state RIDER
 PUT /api/v1/storefront/layout-drafts/{draftId} OPERATOR

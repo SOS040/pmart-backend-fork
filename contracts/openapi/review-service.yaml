@@ -1,9 +1,12 @@
 openapi: 3.1.0
 info:
   title: review-service
-  version: 0.5.0
+  version: 0.6.0
   x-stage: 2
   description: |
+    0.6.0(2026-11-21 BR-76 — 고객 앱 요청, 사용자 "BR-76부터 해줘"): 상품 리뷰 목록 `sort=RECOMMENDED`(도움돼요 많은 순 → 같으면 최근 등록순, 기본 정렬은 NEWEST 그대로)·`sku`(옵션 하나로 거르기),
+    `summary.reviewCount` = **거른 수**(sku·withPhotoOnly 적용 — averageRating 은 상품 전체 그대로). 리뷰 `helpfulCount`·`helpedByMe`(회원 토큰이 있을 때만, 없으면 null).
+    도움돼요 `PUT`·`DELETE /reviews/{reviewId}/helpful`(회원만 — 멱등: 이미 눌렀으면·안 눌렀으면 그대로 200) — 내 리뷰 422 `HELPFUL_OWN_REVIEW`, 공개 아닌 리뷰(삭제) 409 `REVIEW_NOT_PUBLISHED`. 도움돼요 수는 그대로 공개(숨김·반올림 없음), 반복은 게이트웨이 요청 제한만.
     0.5.0(2026-11-20 BR-67 — 사용자 "추천대로"): 리뷰관리 화면 값. `GET /me/review-eligibilities` 응답에 `total`(조건에 맞는 전체 수)·`counts`(탭 머리 — 지금 쓸 수 있는 품목 수·쓴 리뷰 수),
     `Eligibility` 에 `orderedAt`(주문 확정 시각)·`mfcName`(주문한 센터 이름 — order 0.15.0 `mfcName` 과 같은 center-master 이름)·`imageUrl`(상품의 **지금** 대표 사진 — 주문 당시 사본 아님)·`optionLabel`(지금 콘텐츠의 그 SKU 옵션 이름).
     넷 다 모르면 null(지어내지 않는다 — 사진은 게시 안 된 상품·product-content 장애, 센터 이름은 center-master 장애). 내 리뷰 목록 경로(`/me/reviews`)는 따로 없다 — "내가 쓴 리뷰"는 이 목록의 reviewId 로 조합하고 개수는 `counts.written`.
@@ -159,6 +162,50 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /reviews/{reviewId}/helpful:
+    put:
+      tags: [reviews]
+      summary: 도움돼요 누르기 (0.6.0 BR-76 — 회원만, 멱등)
+      description: 이미 눌렀으면 그대로 200. 내 리뷰 422 HELPFUL_OWN_REVIEW, 공개 아닌 리뷰(삭제) 409 REVIEW_NOT_PUBLISHED, 없는 리뷰 404.
+      operationId: markReviewHelpful
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 바뀐 수와 눌림
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HelpfulResult' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: HELPFUL_OWN_REVIEW
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [reviews]
+      summary: 도움돼요 취소 (0.6.0 BR-76 — 회원만, 멱등)
+      description: 안 눌렀으면 그대로 200. 공개 아닌 리뷰도 취소는 받는다(수만 줄인다).
+      operationId: unmarkReviewHelpful
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 바뀐 수와 눌림
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HelpfulResult' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /products/{productId}/reviews:
     get:
       tags: [reviews]
@@ -167,8 +214,9 @@ paths:
       security: []
       parameters:
         - { name: productId, in: path, required: true, schema: { type: string } }
-        - { name: sort, in: query, schema: { type: string, enum: [NEWEST, RATING_DESC, RATING_ASC], default: NEWEST } }
+        - { name: sort, in: query, schema: { type: string, enum: [NEWEST, RECOMMENDED, RATING_DESC, RATING_ASC], default: NEWEST }, description: '0.6.0 RECOMMENDED = 도움돼요 많은 순 → 최근 등록순' }
         - { name: withPhotoOnly, in: query, schema: { type: boolean, default: false } }
+        - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' }, description: '0.6.0 — 이 옵션(SKU)의 리뷰만' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -184,8 +232,8 @@ paths:
                   summary:
                     type: object
                     properties:
-                      averageRating: { type: number }
-                      reviewCount: { type: integer }
+                      averageRating: { type: number, description: 상품 전체 공개 리뷰 평균(거르기와 상관없음) }
+                      reviewCount: { type: integer, description: '0.6.0 — 거른 수(sku·withPhotoOnly 적용). 거르지 않으면 상품 전체 공개 리뷰 수' }
 
   /review-photos:
     post:
@@ -354,6 +402,15 @@ components:
         createdAt: { type: string, format: date-time }
         editableUntil: { type: string, format: date-time, description: createdAt + 3일 }
         updatedAt: { type: [string, 'null'], format: date-time }
+        helpfulCount: { type: integer, minimum: 0, description: '0.6.0 BR-76 — 도움돼요 수(그대로 공개)' }
+        helpedByMe: { type: [boolean, 'null'], description: '0.6.0 — 회원 토큰으로 볼 때 내가 눌렀는지. 비회원·토큰 없음은 null' }
+    HelpfulResult:
+      type: object
+      required: [reviewId, helpfulCount, helpedByMe]
+      properties:
+        reviewId: { type: string }
+        helpfulCount: { type: integer, minimum: 0 }
+        helpedByMe: { type: boolean }
     ReviewPhoto:
       type: object
       required: [photoId, contentType, sizeBytes, uploadedAt]

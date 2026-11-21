@@ -49,7 +49,43 @@ public class ReviewStore {
       int version,
       Instant createdAt,
       @Nullable Instant updatedAt,
-      @Nullable Instant deletedAt) {}
+      @Nullable Instant deletedAt,
+      int helpfulCount) {
+
+    /** 도움돼요 수 없이(새 리뷰·수정 사건 — 0.6.0 전과 같은 자리). */
+    public ReviewRow(
+        String reviewId,
+        String orderLineId,
+        String orderId,
+        String accountId,
+        String productId,
+        @Nullable String sku,
+        String authorName,
+        int rating,
+        @Nullable String body,
+        String state,
+        int version,
+        Instant createdAt,
+        @Nullable Instant updatedAt,
+        @Nullable Instant deletedAt) {
+      this(
+          reviewId,
+          orderLineId,
+          orderId,
+          accountId,
+          productId,
+          sku,
+          authorName,
+          rating,
+          body,
+          state,
+          version,
+          createdAt,
+          updatedAt,
+          deletedAt,
+          0);
+    }
+  }
 
   public record PhotoRow(
       String photoId,
@@ -291,25 +327,113 @@ public class ReviewStore {
 
   /** 상품 공개 리뷰(PUBLISHED — LOCKED 도 저장은 PUBLISHED). */
   public List<ReviewRow> productReviews(
-      String productId, String sort, boolean withPhotoOnly, int offset, int limit) {
+      String productId,
+      String sort,
+      boolean withPhotoOnly,
+      @Nullable String sku,
+      int offset,
+      int limit) {
     String order =
         switch (sort) {
           case "RATING_DESC" -> "rating DESC, created_at DESC, review_id";
           case "RATING_ASC" -> "rating ASC, created_at DESC, review_id";
+          // BR-76(0.6.0) — 도움돼요 많은 순, 같으면 최근 등록순
+          case "RECOMMENDED" -> "helpful_count DESC, created_at DESC, review_id";
           default -> "created_at DESC, review_id";
         };
+    List<Object> args = new ArrayList<>();
+    args.add(productId);
+    if (sku != null) {
+      args.add(sku);
+    }
+    args.add(limit);
+    args.add(offset);
     return jdbc.query(
         "SELECT * FROM review r WHERE product_id = ? AND state = 'PUBLISHED'"
-            + (withPhotoOnly
-                ? " AND EXISTS (SELECT 1 FROM review_photo p WHERE p.review_id = r.review_id)"
-                : "")
+            + filters(withPhotoOnly, sku)
             + " ORDER BY "
             + order
             + " LIMIT ? OFFSET ?",
         (rs, i) -> reviewRow(rs),
-        productId,
-        limit,
-        offset);
+        args.toArray());
+  }
+
+  /** 목록과 같은 거르기의 공개 리뷰 수(0.6.0 — summary.reviewCount). */
+  public int filteredCount(String productId, boolean withPhotoOnly, @Nullable String sku) {
+    Integer n =
+        sku == null
+            ? jdbc.queryForObject(
+                "SELECT count(*) FROM review r WHERE product_id = ? AND state = 'PUBLISHED'"
+                    + filters(withPhotoOnly, null),
+                Integer.class,
+                productId)
+            : jdbc.queryForObject(
+                "SELECT count(*) FROM review r WHERE product_id = ? AND state = 'PUBLISHED'"
+                    + filters(withPhotoOnly, sku),
+                Integer.class,
+                productId,
+                sku);
+    return n == null ? 0 : n;
+  }
+
+  private static String filters(boolean withPhotoOnly, @Nullable String sku) {
+    return (withPhotoOnly
+            ? " AND EXISTS (SELECT 1 FROM review_photo p WHERE p.review_id = r.review_id)"
+            : "")
+        + (sku == null ? "" : " AND r.sku = ?");
+  }
+
+  // ---------------------------------------------------------------- 도움돼요(BR-76)
+
+  /** 누름. 새로 눌렀으면 수 +1. 바뀐 수. */
+  public int markHelpful(String reviewId, String accountId, Instant at) {
+    int added =
+        jdbc.update(
+            "INSERT INTO review_helpful (review_id, account_id, created_at) VALUES (?,?,?)"
+                + " ON CONFLICT DO NOTHING",
+            reviewId,
+            accountId,
+            ts(at));
+    if (added == 1) {
+      jdbc.update(
+          "UPDATE review SET helpful_count = helpful_count + 1 WHERE review_id = ?", reviewId);
+    }
+    return helpfulCount(reviewId);
+  }
+
+  /** 취소. 지웠으면 수 −1. 바뀐 수. */
+  public int unmarkHelpful(String reviewId, String accountId) {
+    int removed =
+        jdbc.update(
+            "DELETE FROM review_helpful WHERE review_id = ? AND account_id = ?",
+            reviewId,
+            accountId);
+    if (removed == 1) {
+      jdbc.update(
+          "UPDATE review SET helpful_count = GREATEST(helpful_count - 1, 0) WHERE review_id = ?",
+          reviewId);
+    }
+    return helpfulCount(reviewId);
+  }
+
+  private int helpfulCount(String reviewId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT helpful_count FROM review WHERE review_id = ?", Integer.class, reviewId);
+    return n == null ? 0 : n;
+  }
+
+  /** 이 회원이 누른 리뷰(쪽 안). */
+  public java.util.Set<String> helpedBy(String accountId, java.util.Collection<String> reviewIds) {
+    if (reviewIds.isEmpty()) {
+      return java.util.Set.of();
+    }
+    return new java.util.HashSet<>(
+        jdbc.queryForList(
+            "SELECT review_id FROM review_helpful WHERE account_id = ? AND review_id = ANY (?::varchar[])",
+            String.class,
+            accountId,
+            "{" + String.join(",", reviewIds) + "}"));
   }
 
   public Summary summary(String productId) {
@@ -481,7 +605,8 @@ public class ReviewStore {
         rs.getInt("version"),
         rs.getTimestamp("created_at").toInstant(),
         instant(rs, "updated_at"),
-        instant(rs, "deleted_at"));
+        instant(rs, "deleted_at"),
+        rs.getInt("helpful_count"));
   }
 
   private static PhotoRow photoRow(ResultSet rs) throws SQLException {
