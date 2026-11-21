@@ -364,10 +364,14 @@ def build_sejong():
     ZD = 39.4                                  # 방 남쪽 벽(아래는 복도)
     # 맨 왼쪽 열: 화물 승강기 2대 → 입고·검수 → 휴게·사무(사용자 "화물승강기·입고검수·휴게사무를 제일 왼쪽")
     OFF_M2 = 18.0 * PY  # 휴게·사무는 18평 고정(사용자 2026-11-21 — 비율로 늘리지 않음)
-    wL = round((m2("RCV", ratio) + OFF_M2 + 45.0) / (ZD - 0.4), 3)
+    # 동선(2026-11-21 사용자 "통로랑 문을 최대한 효율적으로"): 휴게·사무 동쪽에 1.3 m 통로를 두어 입고·검수가 남쪽 복도로 바로 나간다
+    #   (상온 물건 → 복도 → 입고창고). 넓이는 그대로: 승강기 45 ㎡ + 입고·검수 + 휴게·사무 18평 + 통로.
+    PASS = 1.3
+    wL = 6.42
     rELV = R(0, 0, wL, round(45.0 / wL, 3))
     rRCV = R(0, rELV["z1"] + 0.2, wL, round(rELV["z1"] + 0.2 + m2("RCV", ratio) / wL, 3))
-    rOFF = R(0, rRCV["z1"] + 0.2, wL, round(rRCV["z1"] + 0.2 + OFF_M2 / wL, 3))
+    rOFF = R(0, round(ZD - OFF_M2 / (wL - PASS - 0.2), 3), round(wL - PASS - 0.2, 3), ZD)
+    assert rOFF["z0"] >= rRCV["z1"] + 0.2, (rOFF, rRCV)
     # 그 옆 냉동 A(입고·검수와 벽 하나 — 사용자 "입고검수는 반드시 냉동구역 근처"), 냉장 B
     x = wL + 0.2
     rA = R(x, 0, round(x + m2("A", ratio) / ZD, 3), ZD)
@@ -406,19 +410,24 @@ def build_sejong():
     Z("CQ", "QUARANTINE", "상온 격리", rCQ, round(BUSAN_DOC["Q"] * ratio, 1))
     Z("PARK", "PARKING", "라이더 대기(1층)", R(26.0, BD + 2.4, 46.0, BD + 6.0))
     # 건물 밖 서쪽 1층: 입고 차량 진입로 — 화물 승강기 바로 아래(사용자 "화물 승강기 있는 곳 건물 외부에 입고차량 진입로")
-    Z("TRUCK", "PARKING", "입고 차량 진입로(1층)", R(-7.6, 0, -0.4, 16.0))
+    Z("TRUCK", "PARKING", "입고 차량 진입로(1층)", R(-7.6, 0, -0.4, 12.0))
     bw = b.box_walls
     bw(R(0, 0, W, BD))
-    bw(rELV, doors=[("W", 1.0, round(rELV["z1"] - 1.0, 2)), ("S", 1.0, round(wL - 1.0, 2))])
+    # 문 = 물건·사람이 실제로 지나가는 곳만, 가장 짧은 쪽으로
+    #   승강기: 서쪽(1층 진입로 쪽 — 실을 때) · 남쪽 전체(입고·검수로 바로 내림)
+    #   입고·검수 → 냉동 A: 동쪽 벽 가운데(저온 물건은 바로 냉동, 냉동을 거쳐 냉장) / → 남쪽 통로(상온 물건 → 입고창고)
+    #   냉장 B → 패킹: 동쪽 벽 패킹 높이(피커가 가장 짧게), 냉동 A → 남쪽 복도 동쪽 끝(패킹 쪽)
+    #   상온 C~H ↔ 패킹: 벽 없음(사용자 "자유롭게 오갈 수 있게"), 패킹 ↔ 출하대기: 벽 없음
+    #   입고창고: 서쪽 벽 상온 쪽(보충 — 상온 줄 끝으로 바로), 남쪽 작업 바닥 쪽(입고 물건이 들어옴)
+    bw(rELV, doors=[("W", 1.0, round(rELV["z1"] - 1.0, 2)), ("S", 0.4, round(wL - 0.4, 2))])
     rcv_mid = (rRCV["z0"] + rRCV["z1"]) / 2
-    bw(rRCV, doors=[("E", rcv_mid - 1.5, rcv_mid + 1.5)])
-    bw(rOFF, doors=[("S", 2.0, 4.0)])
-    bw(rA, doors=[("W", rcv_mid - 1.5, rcv_mid + 1.5), ("S", rA["x1"] - 4.0, rA["x1"] - 1.0)])
-    bw(rB, doors=[("S", rB["x0"] + 4.0, rB["x0"] + 7.0)])
-    bw(rC, doors=[("S", rPK["x0"] + 1.0, rPK["x0"] + 3.0), ("S", rPK["x1"] - 3.0, rPK["x1"] - 1.0)])
-    bw(rPK, doors=[("N", rPK["x0"] + 1.0, rPK["x0"] + 3.0), ("N", rPK["x1"] - 3.0, rPK["x1"] - 1.0),
-                   ("S", rSHIP["x0"], rSHIP["x1"])], glass=True)
-    bw(rWH, doors=[("W", 23.0, 26.0)])
+    bw(rRCV, doors=[("E", rcv_mid - 1.5, rcv_mid + 1.5), ("S", rOFF["x1"] + 0.1, wL - 0.1)])
+    bw(rOFF, doors=[("E", ZD - 3.0, ZD - 1.2)])
+    pk_mid = (rPK["z0"] + rPK["z1"]) / 2
+    bw(rA, doors=[("W", rcv_mid - 1.5, rcv_mid + 1.5), ("S", rA["x1"] - 3.0, rA["x1"] - 0.6)])
+    bw(rB, doors=[("E", pk_mid - 1.5, pk_mid + 1.5), ("S", rB["x1"] - 3.0, rB["x1"] - 0.6)])
+    bw(rC, doors=[("S", rC["x0"], rC["x1"])])
+    bw(rWH, doors=[("W", 8.0, 12.0), ("W", rC["z1"] + 1.0, rC["z1"] + 4.0)])
     for r in (rAQ, rBQ, rCQ):
         bw(r, doors=[("E", r["z0"] + 0.5, r["z0"] + 1.7)])
     b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.6, zA + 1.2, rA["x1"] - 0.4, ZD - 0.4), 1.5, axis="x"), scaled(4, ratio)))
@@ -500,12 +509,17 @@ def build_changwon():
     out = (xr0 + 0.8, xr0 + 3.2)                # 남쪽 출하 문(패킹)
     bw(R(0, 0, W, BD), doors=[("N", *dock), ("S", *out)])
     rcv_mid = (rRCV["z0"] + rRCV["z1"]) / 2
-    bw(rB, doors=[("S", 2.5, 5.0)])
-    bw(rA, doors=[("E", rcv_mid - 1.0, rcv_mid + 1.0), ("E", 8.0, 10.5), ("S", rA["x0"] + 3.0, rA["x0"] + 5.5)])
-    bw(rRCV, doors=[("N", *dock), ("W", rcv_mid - 1.0, rcv_mid + 1.0), ("S", xm0 + 6.0, xm0 + 9.0)])
-    bw(rC, doors=[("N", xm0 + 1.0, xm0 + 3.0), ("W", ZD + 0.1, BD - 0.1), ("E", rPK["z0"] + 1.0, rPK["z0"] + 3.0)])
-    bw(rWH, doors=[("W", 8.0, 11.0)])
-    bw(rPK, doors=[("W", rPK["z0"] + 1.0, rPK["z0"] + 3.0), ("S", *out)], glass=True)
+    # 문(2026-11-21 사용자 "통로랑 문을 최대한 효율적으로"):
+    #   입고·검수 → 냉동 A: 서쪽 벽 가운데 / → 작업 바닥: 남쪽(상온 물건 → 입고창고)
+    #   냉동 A → 작업 바닥: 동쪽 벽(피커 — 상온·패킹으로 가장 짧게), 냉장 B → 남쪽 복도 → 상온 서쪽 문(벽 없는 상온·패킹으로)
+    #   상온 C~H ↔ 패킹: 벽 없음(사용자), 입고창고 → 상온: 서쪽 벽 아래(보충), 입고창고 ← 작업 바닥: 서쪽 벽 위(입고)
+    bw(rB, doors=[("S", rB["x1"] - 2.6, rB["x1"] - 0.4)])
+    bw(rA, doors=[("E", rcv_mid - 1.0, rcv_mid + 1.0), ("E", rC["z0"] - 3.0, rC["z0"] - 0.6),
+                  ("S", rA["x1"] - 2.6, rA["x1"] - 0.4)])
+    bw(rRCV, doors=[("N", *dock), ("W", rcv_mid - 1.0, rcv_mid + 1.0), ("S", xm1 - 4.0, xm1 - 0.6)])
+    bw(rC, doors=[("N", xm0 + 0.4, xm1 - 0.4), ("W", ZD + 0.1, BD - 0.1), ("E", rC["z0"], BD)])
+    bw(rWH, doors=[("W", rRCV["z1"] + 1.0, rRCV["z1"] + 3.5), ("W", rC["z0"] + 1.0, rC["z0"] + 4.0)])
+    bw(rPK, doors=[("W", rPK["z0"], rPK["z1"]), ("S", *out)], glass=True)
     for r in (rBQ, rAQ):
         bw(r, doors=[("E", r["z0"] + 0.4, r["z0"] + 1.4)])
     bw(rCQ, doors=[("W", rCQ["z0"] + 0.4, rCQ["z0"] + 1.4)])
