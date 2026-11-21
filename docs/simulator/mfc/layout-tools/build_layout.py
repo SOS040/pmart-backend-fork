@@ -288,14 +288,20 @@ def allocate_ambient(total):
     return alloc
 
 
-# ---------- 부산 진구점 비율로 키우고 줄이기(2026-11-21 사용자 검토 2차) ----------
-# 사용자: "기준 MFC 설계도 비율대로", "SKU 수가 많고 적은 건 설계도에 문제가 안 될 텐데 — 다품종 소량 적재", "평수에 맞게 랙 갯수를 늘리고 줄이는 것뿐".
-# → 방 면적·랙·보충 팔레트·패킹대·격리·하차 칸을 부산 값 × 면적 비(세종 2,688/1,536 = 1.75, 창원 932.4/1,536 = 0.607)로.
-#   SKU 85 % 판정은 하지 않는다(칸 하나에 여러 SKU 를 소량 적재 — 사용자). 랙 모양(1.25 × 0.45 m)·통로 0.7 m·칸 구조는 그대로.
-# 세종 추가 조건: 출하 리프트 없음 — 그 자리에 출하대기(3층), 화물 승강기는 냉동·냉장 옆, 패킹대는 상온 바로 옆.
+# ---------- 부산 진구점 비율로 키우고 줄이기(2026-11-21 사용자 검토 2·3차) ----------
+# 사용자: "기준 MFC 설계도 비율대로", "다품종 소량 적재 — 평수에 맞게 랙 갯수를 늘리고 줄이는 것뿐",
+#        "입고검수는 반드시 냉동구역 근처", "직사각형 아니어도 되니까 평수 정확하게".
+# → 방 평수 = 부산 문서 평수(MFC 문서 1장 표) × (센터 평수 / 463). 건물 바닥 = 정확히 812평·282평.
+#   랙·보충 팔레트·패킹대·하차 칸도 같은 비율. 랙 모양(1.25 × 0.45 m)·통로 0.7 m·칸 구조는 그대로. SKU 판정 없음(다품종 소량 적재).
+BUSAN_PY = 463.0
+BUSAN_DOC = {"A": 109, "B": 100, "C-H": 65, "WH": 55, "RCV": 22, "OFF": 18, "PK": 24, "Q": 4, "SHIP": 3}
 BUSAN_RACKS = {"A": 105, "B": 125, "AMB": 138}
 BUSAN_AMB = {"C": 24, "D": 24, "E": 21, "F": 24, "G": 25, "H": 20}
-BUSAN_AREA = 48.0 * 32.0
+
+
+def m2(zone, ratio):
+    """부산 문서 평수 × 비율 → ㎡."""
+    return BUSAN_DOC[zone] * ratio * PY
 
 
 def split_amb(total):
@@ -343,168 +349,190 @@ def take(items, n):
     return items[:n]
 
 
+def square(x0, z1, a):
+    """왼쪽 아래 모서리(x0, z1)에서 넓이 a ㎡ 정사각형."""
+    q = round(math.sqrt(a), 3)
+    return R(x0, z1 - q, x0 + q, z1)
+
+
 # ---------- 세종: 3층 한 층 812평 ----------
 def build_sejong():
-    W, BD = 64.0, 42.0          # 64 × 42 = 2,688 ㎡ = 813.1평 [가정 — 3층 한 층 812평 직사각형]
-    ratio = W * BD / BUSAN_AREA  # 1.75
+    ratio = 812.0 / BUSAN_PY                   # 1.7538
+    W = 64.0
+    BD = round(812.0 * PY / W, 3)              # 41.942 m → 바닥 정확히 812평
     b = Builder(W, BD, 8.0)
-    COLD_Z1 = 39.4
-    # 서쪽: 냉동 A·냉장 B(부산 12·10.8 m × 30 m → 가로 × 1.33, 세로 × 1.31)
-    rA = R(0, 0, 16.0, COLD_Z1)
-    rB = R(16.2, 0, 30.6, COLD_Z1)
-    # 냉장 바로 동쪽: 화물 승강기 2대 → 입고·검수(사용자 "화물 승강기는 냉동·냉장 근처") — 냉장실과 문 하나로 붙음
-    rELV = R(30.8, 0, 38.8, 6.0)
-    rRCV = R(30.8, 6.2, 38.8, 20.2)
-    # 가운데 위: 상온 C~H, 바로 아래 유리벽 패킹(사용자 "패킹대 근처에는 무조건 상온"), 그 아래 출하대기(옛 출하 리프트 자리)
-    rC = R(39.0, 0, 57.4, 20.2)
-    rPK = R(40.4, 22.0, 54.4, 32.4)
-    rSHIP = R(43.0, 35.0, 51.8, 39.4)
-    # 동쪽 끝: 입고창고(상온 보충재고) — 상온 옆
-    rWH = R(57.6, 0, W, COLD_Z1)
-    rOFF = R(30.8, 26.4, 38.8, COLD_Z1)
-    q = round(math.sqrt(4 * ratio * PY), 2)  # 격리 4평 × 1.75 = 7평 정사각형 한 변
-    rAQ = R(0.3, COLD_Z1 - 0.3 - q, 0.3 + q, COLD_Z1 - 0.3)
-    rBQ = R(16.5, COLD_Z1 - 0.3 - q, 16.5 + q, COLD_Z1 - 0.3)
-    rCQ = R(rWH["x0"] + 0.2, COLD_Z1 - 0.3 - q, rWH["x0"] + 0.2 + q, COLD_Z1 - 0.3)
-    # 랙 = 부산 × 1.75
+    ZD = 39.4                                  # 방 남쪽 벽(아래는 복도)
+    # 맨 왼쪽 열: 화물 승강기 2대 → 입고·검수 → 휴게·사무(사용자 "화물승강기·입고검수·휴게사무를 제일 왼쪽")
+    wL = round((m2("RCV", ratio) + m2("OFF", ratio) + 45.0) / (ZD - 0.4), 3)
+    rELV = R(0, 0, wL, round(45.0 / wL, 3))
+    rRCV = R(0, rELV["z1"] + 0.2, wL, round(rELV["z1"] + 0.2 + m2("RCV", ratio) / wL, 3))
+    rOFF = R(0, rRCV["z1"] + 0.2, wL, round(rRCV["z1"] + 0.2 + m2("OFF", ratio) / wL, 3))
+    # 그 옆 냉동 A(입고·검수와 벽 하나 — 사용자 "입고검수는 반드시 냉동구역 근처"), 냉장 B
+    x = wL + 0.2
+    rA = R(x, 0, round(x + m2("A", ratio) / ZD, 3), ZD)
+    x = rA["x1"] + 0.2
+    rB = R(x, 0, round(x + m2("B", ratio) / ZD, 3), ZD)
+    # 동쪽 끝 입고창고(전체 깊이), 그 사이 상온 C~H → 바로 아래 패킹 → 출하대기
+    wWH = round(m2("WH", ratio) / ZD, 3)
+    rWH = R(round(W - wWH, 3), 0, W, ZD)
+    xc0, xc1 = rB["x1"] + 0.2, rWH["x0"] - 0.2
+    rC = R(xc0, 0, xc1, round(m2("C-H", ratio) / (xc1 - xc0), 3))
+    pk_w = 14.0
+    pk_x0 = round((xc0 + xc1 - pk_w) / 2, 3)
+    rPK = R(pk_x0, rC["z1"] + 1.8, pk_x0 + pk_w, round(rC["z1"] + 1.8 + m2("PK", ratio) / pk_w, 3))
+    sh_w = 5.0
+    rSHIP = R(round((xc0 + xc1 - sh_w) / 2, 3), round(ZD - m2("SHIP", ratio) / sh_w, 3), round((xc0 + xc1 + sh_w) / 2, 3), ZD)
+    qa = BUSAN_DOC["Q"] * ratio * PY
+    rAQ = square(rA["x0"] + 0.3, ZD - 0.3, qa)
+    rBQ = square(rB["x0"] + 0.3, ZD - 0.3, qa)
+    rCQ = square(rWH["x0"] + 0.2, ZD - 0.3, qa)
     tA, tB, tC = (scaled(BUSAN_RACKS[k], ratio) for k in ("A", "B", "AMB"))
     nA, capA, zA = cold_block(b, "FROZEN", "A", rA, tA, 1.3, 31.0)
     nB, capB, zB = cold_block(b, "CHILLED", "B", rB, tB, 1.3, 31.0)
     nC, capC, alloc = amb_block(b, rC, tC, 0.9)
     Z = b.zone
-    Z("A", "FROZEN", "냉동 A", rA, None)
-    Z("B", "CHILLED", "냉장 B", rB, None)
     Z("ELV", "LIFT", "화물 승강기 2대", rELV, None)
-    Z("RCV", "RECEIVING", "입고·검수", rRCV, None)
-    Z("C-H", "AMBIENT", "상온 C~H", rC, None)
-    Z("PK", "PACKING", "패킹", rPK, None)
-    Z("SHIP", "SHIPPING", "출하대기", rSHIP, round(3 * ratio, 1))
-    Z("WH", "INBOUND_STORE", "입고창고", rWH, None)
-    Z("OFF", "OFFICE", "휴게·사무", rOFF, None)
-    Z("AQ", "QUARANTINE", "냉동 격리", rAQ, 7)
-    Z("BQ", "QUARANTINE", "냉장 격리", rBQ, 7)
-    Z("CQ", "QUARANTINE", "상온 격리", rCQ, 7)
-    Z("PARK", "PARKING", "라이더 대기(1층)", R(36.0, 44.4, 56.0, 48.0))
+    Z("RCV", "RECEIVING", "입고·검수", rRCV, round(BUSAN_DOC["RCV"] * ratio, 1))
+    Z("OFF", "OFFICE", "휴게·사무", rOFF, round(BUSAN_DOC["OFF"] * ratio, 1))
+    Z("A", "FROZEN", "냉동 A", rA, round(BUSAN_DOC["A"] * ratio, 1))
+    Z("B", "CHILLED", "냉장 B", rB, round(BUSAN_DOC["B"] * ratio, 1))
+    Z("C-H", "AMBIENT", "상온 C~H", rC, round(BUSAN_DOC["C-H"] * ratio, 1))
+    Z("PK", "PACKING", "패킹", rPK, round(BUSAN_DOC["PK"] * ratio, 1))
+    Z("SHIP", "SHIPPING", "출하대기", rSHIP, round(BUSAN_DOC["SHIP"] * ratio, 1))
+    Z("WH", "INBOUND_STORE", "입고창고", rWH, round(BUSAN_DOC["WH"] * ratio, 1))
+    Z("AQ", "QUARANTINE", "냉동 격리", rAQ, round(BUSAN_DOC["Q"] * ratio, 1))
+    Z("BQ", "QUARANTINE", "냉장 격리", rBQ, round(BUSAN_DOC["Q"] * ratio, 1))
+    Z("CQ", "QUARANTINE", "상온 격리", rCQ, round(BUSAN_DOC["Q"] * ratio, 1))
+    Z("PARK", "PARKING", "라이더 대기(1층)", R(26.0, BD + 2.4, 46.0, BD + 6.0))
     bw = b.box_walls
     bw(R(0, 0, W, BD))
-    bw(rA, doors=[("S", 5.0, 8.0)])
-    bw(rB, doors=[("S", 20.0, 23.0), ("E", 8.0, 11.0)])
-    bw(rELV, doors=[("S", 31.6, 34.6), ("S", 35.0, 38.0)])
-    bw(rRCV, doors=[("S", 33.0, 36.5)])
-    bw(rC, doors=[("S", 41.0, 43.5), ("S", 51.5, 54.0)])
-    bw(rPK, doors=[("N", 41.5, 43.5), ("N", 51.5, 53.5), ("S", 46.0, 48.8)], glass=True)
+    bw(rELV, doors=[("S", 1.0, 3.5), ("S", 4.0, 6.5)])
+    rcv_mid = (rRCV["z0"] + rRCV["z1"]) / 2
+    bw(rRCV, doors=[("E", rcv_mid - 1.5, rcv_mid + 1.5)])
+    bw(rOFF, doors=[("S", 2.0, 4.0)])
+    bw(rA, doors=[("W", rcv_mid - 1.5, rcv_mid + 1.5), ("S", rA["x1"] - 4.0, rA["x1"] - 1.0)])
+    bw(rB, doors=[("S", rB["x0"] + 4.0, rB["x0"] + 7.0)])
+    bw(rC, doors=[("S", rPK["x0"] + 1.0, rPK["x0"] + 3.0), ("S", rPK["x1"] - 3.0, rPK["x1"] - 1.0)])
+    bw(rPK, doors=[("N", rPK["x0"] + 1.0, rPK["x0"] + 3.0), ("N", rPK["x1"] - 3.0, rPK["x1"] - 1.0),
+                   ("S", rSHIP["x0"], rSHIP["x1"])], glass=True)
     bw(rWH, doors=[("W", 23.0, 26.0)])
-    bw(rOFF, doors=[("E", 30.0, 32.0)])
-    for r in (rAQ, rBQ):
+    for r in (rAQ, rBQ, rCQ):
         bw(r, doors=[("E", r["z0"] + 0.5, r["z0"] + 1.7)])
-    bw(rCQ, doors=[("E", rCQ["z0"] + 0.5, rCQ["z0"] + 1.7)])
-    # 보충재고 팔레트 = 부산(4·4·24) × 1.75
-    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.6, zA + 1.2, rA["x1"] - 0.4, COLD_Z1 - 0.4), 1.5, axis="x"), scaled(4, ratio)))
-    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.6, zB + 1.2, rB["x1"] - 0.4, COLD_Z1 - 0.4), 1.5, axis="x"), scaled(4, ratio)))
+    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.6, zA + 1.2, rA["x1"] - 0.4, ZD - 0.4), 1.5, axis="x"), scaled(4, ratio)))
+    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.6, zB + 1.2, rB["x1"] - 0.4, ZD - 0.4), 1.5, axis="x"), scaled(4, ratio)))
     b.reserves("AMBIENT", "WR", take(pallet_grid(R(rWH["x0"] + 0.4, 0.6, rWH["x1"] - 0.3, rCQ["z0"] - 0.4), 1.8), scaled(24, ratio)))
-    # 패킹 = 부산 8대 × 1.75 = 14대(7 × 2줄)
-    b.stations(rPK["x0"] + 0.2, round(rPK["z0"] + 0.65, 2), round(rPK["z1"] - 0.65, 2), scaled(8, ratio) // 2)
-    b.L["obstacles"].append({"rect": R(rPK["x1"] - 0.9, 25.0, rPK["x1"] - 0.15, 26.4), "height": 1.6, "kind": "MATERIAL"})
-    b.L["obstacles"].append({"rect": R(rPK["x1"] - 0.9, 27.6, rPK["x1"] - 0.15, 29.0), "height": 1.6, "kind": "MATERIAL"})
-    b.ship_racks([45.0, 47.4, 49.8], 36.0)
-    b.docks(31.4, 6.8, 9, scaled(36, ratio) // 9)
+    b.stations(rPK["x0"] + 0.2, round(rPK["z0"] + 0.65, 2), round(rPK["z1"] - 0.65, 2), math.ceil(scaled(8, ratio) / 2))
+    b.ship_racks([rSHIP["x0"] + 1.2, rSHIP["x1"] - 1.2], round(rSHIP["z0"] + 0.8, 2))
+    b.docks(0.6, rRCV["z0"] + 0.6, 9, scaled(36, ratio) // 9)
     P = b.L["points"]
-    P["truckDoor"] = {"x": 34.8, "z": 6.1}
-    P["truckDock"] = {"x": 33.0, "z": 1.4}
-    P["inboundIdle"] = [{"x": round(31.6 + 0.8 * i, 2), "z": round(17.6 + 0.9 * j, 2)} for j in range(2) for i in range(4)]
-    P["cartDepot"] = {"x": 39.6, "z": 21.0}
-    P["idle"] = [{"x": round(30.8 + 0.8 * i, 2), "z": round(21.6 + 0.8 * j, 2)} for j in range(2) for i in range(12)]
-    P["packQueue"] = {"x": 55.6, "z": 27.2}
-    P["shipDrop"] = {"x": 47.4, "z": 34.6}
-    P["riderPickup"] = {"x": 50.6, "z": 38.9}
-    P["riderParking"] = [{"x": round(38.0 + 1.6 * i, 2), "z": 46.8} for i in range(10)]
-    P["riderEntry"] = {"x": 57.0, "z": 46.2}
+    P["truckDoor"] = {"x": 2.25, "z": rELV["z1"]}
+    P["truckDock"] = {"x": 2.25, "z": 1.6}
+    P["inboundIdle"] = [{"x": round(0.8 + 0.8 * i, 2), "z": round(rRCV["z1"] - 1.6 + 0.8 * j, 2)} for j in range(2) for i in range(4)]
+    P["cartDepot"] = {"x": round(xc0 + 0.6, 2), "z": round(rC["z1"] + 0.9, 2)}
+    P["idle"] = [{"x": round(xc0 + 2.0 + 0.8 * i, 2), "z": round(rC["z1"] + 0.6 + 0.6 * j, 2)} for j in range(2) for i in range(12)]
+    P["packQueue"] = {"x": round(rPK["x1"] + 0.8, 2), "z": round((rPK["z0"] + rPK["z1"]) / 2, 2)}
+    P["shipDrop"] = {"x": round(rSHIP["x0"] + 0.6, 2), "z": round(rSHIP["z0"] - 0.4, 2)}
+    P["riderPickup"] = {"x": round(rSHIP["x1"] + 0.6, 2), "z": round(rSHIP["z1"] - 0.6, 2)}
+    P["riderParking"] = [{"x": round(28.0 + 1.6 * i, 2), "z": round(BD + 4.8, 2)} for i in range(10)]
+    P["riderEntry"] = {"x": 47.0, "z": round(BD + 4.0, 2)}
     b.L["drawing"] = {
-        "name": "세종 MFC(설계안)", "drawWidth": W + 7, "yard": R(34, BD, 58, BD + 8),
+        "name": "세종 MFC(설계안)", "drawWidth": W + 7, "yard": R(24, BD, 50, BD + 8),
         "yardLabel": "1층 — 라이더는 승객용 승강기로 3층 출하대기에서 픽업(가정)",
-        "title": "세종지점 MFC 설계안 — 3층 한 층 812평(64 × 42 m 가정) · 부산 진구점 × 1.75",
-        "labelZ": {"A": 37.0, "B": 37.0, "C-H": 19.4, "ELV": 4.6, "RCV": 15.0, "SHIP": 37.4}, "doorLabels": [],
+        "title": "세종지점 MFC 설계안 — 3층 한 층 812평 · 부산 진구점 평수 × 812/463",
+        "labelZ": {"A": 37.0, "B": 37.0, "C-H": round(rC["z1"] - 0.8, 2), "ELV": round(rELV["z1"] - 1.0, 2),
+                   "SHIP": round(rSHIP["z1"] - 0.8, 2)}, "doorLabels": [],
         "stationNote": "(번호, 7대 × 2줄)",
-        "scaleNote": "위 = 북(z=0) · 가로 64 m × 건물 깊이 42 m (+ 1층 8 m, 다른 층) · x = 동쪽, z = 남쪽",
+        "scaleNote": f"위 = 북(z=0) · 가로 64 m × 깊이 {BD} m = 812평 (+ 1층 8 m, 다른 층) · x = 동쪽, z = 남쪽",
         "notes": ["세종특별자치시 어진동 513, 지상 3층(평면은 3층 한 층)", "건물 모양·승강기 위치는 가정(실측 도면 아님)",
-                  "방·랙·팔레트·패킹대 = 부산 진구점 × 1.75(면적 비)", "화물 승강기는 냉장실 옆, 패킹은 상온 바로 아래, 출하대기는 3층",
+                  "방 평수·랙·팔레트·패킹대 = 부산 진구점 × 812/463", "입고·검수는 냉동 A 와 벽 하나, 패킹은 상온 바로 아래, 출하대기 3층",
                   "설명: layout-sejong/README.md"]}
     return b.finish(), {"A": (nA, capA), "B": (nB, capB), "AMB": (nC, capC)}, alloc
 
 
-# ---------- 창원: 지하 1층 282평 — 부산 진구점 배치 그대로 × 0.607 ----------
+# ---------- 창원: 지하 1층 282평 ----------
 def build_changwon():
-    W, BD = 36.0, 25.9          # 36 × 25.9 = 932.4 ㎡ = 282.05평 [가정 — 282평 직사각형]
-    ratio = W * BD / BUSAN_AREA  # 0.607
+    ratio = 282.0 / BUSAN_PY                   # 0.6091
+    W = 36.0
+    BD = round(282.0 * PY / W, 3)              # 25.895 m → 바닥 정확히 282평
     b = Builder(W, BD, 8.0)
-    COLD_Z1 = 24.0
-    rA = R(0, 0, 9.0, COLD_Z1)
-    rB = R(9.2, 0, 17.3, COLD_Z1)
-    rC = R(17.5, 0, 27.85, 12.5)
-    rPK = R(18.75, 15.4, 26.25, 21.9)
-    rWH = R(28.05, 0, W, 14.2)
-    rOFF = R(28.05, 14.4, W, 19.0)
-    rRCV = R(28.05, 19.2, W, BD)
-    q = round(math.sqrt(4 * ratio * PY), 2)
-    rAQ = R(0.3, COLD_Z1 - 0.3 - q, 0.3 + q, COLD_Z1 - 0.3)
-    rBQ = R(9.5, COLD_Z1 - 0.3 - q, 9.5 + q, COLD_Z1 - 0.3)
-    rCQ = R(W - 0.3 - q, 14.2 - 0.3 - q, W - 0.3, 14.2 - 0.3)
+    ZD = 24.0
+    # 서쪽부터 냉장 B → 냉동 A(사용자 "냉동이랑 냉장 위치를 서로 바꾸게") → 휴게·사무 + 입고·검수(상온 자리와 바꿈) → 입고창고 + 상온
+    rB = R(0, 0, round(m2("B", ratio) / ZD, 3), ZD)
+    x = rB["x1"] + 0.2
+    rA = R(x, 0, round(x + m2("A", ratio) / ZD, 3), ZD)
+    wE = round((m2("WH", ratio) + m2("C-H", ratio)) / (BD - 0.2), 3)
+    rWH = R(round(W - wE, 3), 0, W, round(m2("WH", ratio) / wE, 3))
+    rC = R(rWH["x0"], rWH["z1"] + 0.2, W, BD)
+    xm0, xm1 = rA["x1"] + 0.2, rWH["x0"] - 0.2
+    wm = xm1 - xm0
+    rOFF = R(xm0, 0, xm1, round(m2("OFF", ratio) / wm, 3))
+    rRCV = R(xm0, rOFF["z1"] + 0.2, xm1, round(rOFF["z1"] + 0.2 + m2("RCV", ratio) / wm, 3))
+    pk_w = 6.5
+    rPK = R(round(xm1 - pk_w, 3), 14.0, xm1, round(14.0 + m2("PK", ratio) / pk_w, 3))
+    qa = BUSAN_DOC["Q"] * ratio * PY
+    rBQ = square(0.3, ZD - 0.3, qa)
+    rAQ = square(rA["x0"] + 0.3, ZD - 0.3, qa)
+    rCQ = square(rWH["x1"] - 0.3 - math.sqrt(qa), rWH["z1"] - 0.3, qa)
     tA, tB, tC = (scaled(BUSAN_RACKS[k], ratio) for k in ("A", "B", "AMB"))
-    nA, capA, zA = cold_block(b, "FROZEN", "A", rA, tA, 0.8, 19.0)
     nB, capB, zB = cold_block(b, "CHILLED", "B", rB, tB, 0.8, 19.0)
-    nC, capC, alloc = amb_block(b, rC, tC, 0.9)
+    nA, capA, zA = cold_block(b, "FROZEN", "A", rA, tA, 0.8, 19.0)
+    nC, capC, alloc = amb_block(b, rC, tC, round(rC["z0"] + 0.8, 3))
     Z = b.zone
-    Z("A", "FROZEN", "냉동 A", rA, None)
-    Z("B", "CHILLED", "냉장 B", rB, None)
-    Z("C-H", "AMBIENT", "상온 C~H", rC, None)
-    Z("PK", "PACKING", "패킹", rPK, None)
-    Z("WH", "INBOUND_STORE", "입고창고", rWH, None)
-    Z("OFF", "OFFICE", "휴게·사무", rOFF, None)
-    Z("RCV", "RECEIVING", "입고·검수", rRCV, None)
-    Z("AQ", "QUARANTINE", "냉동 격리", rAQ, 2.4)
-    Z("BQ", "QUARANTINE", "냉장 격리", rBQ, 2.4)
-    Z("CQ", "QUARANTINE", "상온 격리", rCQ, 2.4)
-    Z("SHIP", "SHIPPING", "외부 출하대기(B1 하역장)", R(19.5, 27.2, 25.5, 29.8), 3)
-    Z("PARK", "PARKING", "라이더 대기(B1 주차장)", R(12.0, 30.4, 24.0, 33.4))
+    Z("B", "CHILLED", "냉장 B", rB, round(BUSAN_DOC["B"] * ratio, 1))
+    Z("A", "FROZEN", "냉동 A", rA, round(BUSAN_DOC["A"] * ratio, 1))
+    Z("OFF", "OFFICE", "휴게·사무", rOFF, round(BUSAN_DOC["OFF"] * ratio, 1))
+    Z("RCV", "RECEIVING", "입고·검수", rRCV, round(BUSAN_DOC["RCV"] * ratio, 1))
+    Z("PK", "PACKING", "패킹", rPK, round(BUSAN_DOC["PK"] * ratio, 1))
+    Z("WH", "INBOUND_STORE", "입고창고", rWH, round(BUSAN_DOC["WH"] * ratio, 1))
+    Z("C-H", "AMBIENT", "상온 C~H", rC, round(BUSAN_DOC["C-H"] * ratio, 1))
+    Z("BQ", "QUARANTINE", "냉장 격리", rBQ, round(BUSAN_DOC["Q"] * ratio, 1))
+    Z("AQ", "QUARANTINE", "냉동 격리", rAQ, round(BUSAN_DOC["Q"] * ratio, 1))
+    Z("CQ", "QUARANTINE", "상온 격리", rCQ, round(BUSAN_DOC["Q"] * ratio, 1))
+    Z("SHIP", "SHIPPING", "외부 출하대기(B1 하역장)", R(rPK["x0"] + 0.5, BD + 1.0, rPK["x0"] + 0.5 + 3.1, BD + 1.0 + 1.95),
+      round(BUSAN_DOC["SHIP"] * ratio, 1))
+    Z("PARK", "PARKING", "라이더 대기(B1 주차장)", R(4.0, BD + 4.0, 16.0, BD + 7.0))
     bw = b.box_walls
-    bw(R(0, 0, W, BD), doors=[("S", 21.0, 23.5), ("S", 30.0, 34.0)])
-    bw(rA, doors=[("S", 3.0, 5.5)])
-    bw(rB, doors=[("S", 12.0, 14.5)])
-    bw(rC, doors=[("S", 18.4, 20.4), ("S", 24.6, 26.6)])
-    bw(rPK, doors=[("N", 19.5, 21.5), ("N", 23.5, 25.5), ("S", 21.0, 23.5)], glass=True)
-    bw(rWH, doors=[("W", 12.6, 14.1)])
-    bw(rOFF, doors=[("W", 15.5, 17.5)])
-    bw(rRCV, doors=[("W", 21.0, 24.0), ("S", 30.0, 34.0)])
-    for r in (rAQ, rBQ):
+    dock = (xm0 + 0.2, xm0 + 1.8)
+    out = (rPK["x0"] + 0.6, rPK["x0"] + 3.0)
+    bw(R(0, 0, W, BD), doors=[("S", *dock), ("S", *out)])
+    rcv_mid = (rRCV["z0"] + rRCV["z1"]) / 2
+    bw(rB, doors=[("S", 2.5, 5.0)])
+    bw(rA, doors=[("E", rcv_mid - 1.2, rcv_mid + 1.2), ("S", rA["x0"] + 3.0, rA["x0"] + 5.5)])
+    bw(rOFF, doors=[("S", xm1 - 2.2, xm1 - 0.6)])
+    bw(rRCV, doors=[("W", rcv_mid - 1.2, rcv_mid + 1.2), ("S", xm0 + 0.3, xm0 + 2.5)])
+    bw(rPK, doors=[("E", 15.0, 17.0), ("S", rPK["x0"] + 0.6, rPK["x0"] + 3.0)], glass=True)
+    bw(rWH, doors=[("W", rWH["z1"] - 2.4, rWH["z1"] - 0.8)])
+    bw(rC, doors=[("W", 15.0, 17.0), ("W", 21.0, 23.0)])
+    for r in (rBQ, rAQ):
         bw(r, doors=[("E", r["z0"] + 0.4, r["z0"] + 1.4)])
     bw(rCQ, doors=[("W", rCQ["z0"] + 0.4, rCQ["z0"] + 1.4)])
-    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.5, zA + 1.0, rA["x1"] - 0.3, COLD_Z1 - 0.3), 1.2, axis="x"), scaled(4, ratio)))
-    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.5, zB + 1.0, rB["x1"] - 0.3, COLD_Z1 - 0.3), 1.2, axis="x"), scaled(4, ratio)))
+    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.5, zB + 1.0, rB["x1"] - 0.3, ZD - 0.3), 1.2, axis="x"), scaled(4, ratio)))
+    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.5, zA + 1.0, rA["x1"] - 0.3, ZD - 0.3), 1.2, axis="x"), scaled(4, ratio)))
     b.reserves("AMBIENT", "WR", take(pallet_grid(R(rWH["x0"] + 0.3, 0.5, rWH["x1"] - 0.2, rCQ["z0"] - 0.3), 1.8), scaled(24, ratio)))
-    b.stations(rPK["x0"] + 0.4, round(rPK["z0"] + 0.6, 2), round(rPK["z1"] - 0.6, 2), math.ceil(scaled(8, ratio) / 2), pitch=2.2)
-    b.ship_racks([21.2, 23.8], 28.5)
-    b.docks(28.6, 19.8, 9, max(1, scaled(36, ratio) // 9))
+    b.stations(rPK["x0"] + 0.4, round(rPK["z0"] + 0.6, 2), round(rPK["z1"] - 0.6, 2), math.ceil(scaled(8, ratio) / 2))
+    b.ship_racks([rPK["x0"] + 2.05], round(BD + 1.9, 2))
+    b.docks(xm0 + 0.4, rRCV["z0"] + 0.4, 9, max(1, scaled(36, ratio) // 9))
     P = b.L["points"]
-    P["truckDoor"] = {"x": 32.0, "z": BD - 0.6}
-    P["truckDock"] = {"x": 32.0, "z": BD + 4.5}
-    P["inboundIdle"] = [{"x": round(28.8 + 0.8 * i, 2), "z": round(23.4 + 0.8 * j, 2)} for j in range(2) for i in range(4)]
-    P["cartDepot"] = {"x": 17.9, "z": 13.4}
-    P["idle"] = [{"x": round(17.8 + 0.8 * i, 2), "z": round(13.0 + 0.7 * j, 2)} for j in range(2) for i in range(12)]
-    P["packQueue"] = {"x": 27.2, "z": 18.6}
-    P["shipDrop"] = {"x": 22.5, "z": BD + 0.6}
-    P["riderPickup"] = {"x": 22.5, "z": 30.2}
-    P["riderParking"] = [{"x": round(12.6 + 1.2 * i, 2), "z": 32.4} for i in range(10)]
-    P["riderEntry"] = {"x": 18.0, "z": 33.9}
+    P["truckDoor"] = {"x": round((dock[0] + dock[1]) / 2, 2), "z": round(BD - 0.6, 2)}
+    P["truckDock"] = {"x": round((dock[0] + dock[1]) / 2, 2), "z": round(BD + 4.5, 2)}
+    P["inboundIdle"] = [{"x": round(xm0 + 3.0 + 0.8 * i, 2), "z": round(rRCV["z1"] - 1.2 + 0.6 * j, 2)} for j in range(2) for i in range(4)]
+    P["cartDepot"] = {"x": round(xm0 + 0.8, 2), "z": round(rRCV["z1"] + 1.0, 2)}
+    P["idle"] = [{"x": round(xm0 + 0.5 + 0.6 * i, 2), "z": round(rRCV["z1"] + 1.8 + 0.6 * j, 2)} for j in range(2) for i in range(12)]
+    P["packQueue"] = {"x": round(rPK["x0"] + 0.4, 2), "z": round(rPK["z0"] - 0.6, 2)}
+    P["shipDrop"] = {"x": round(out[0] - 2.6, 2), "z": round(BD + 0.6, 2)}
+    P["riderPickup"] = {"x": round(rPK["x0"] + 6.8, 2), "z": round(BD + 2.4, 2)}
+    P["riderParking"] = [{"x": round(4.6 + 1.2 * i, 2), "z": round(BD + 6.0, 2)} for i in range(10)]
+    P["riderEntry"] = {"x": 17.0, "z": round(BD + 7.6, 2)}
     b.L["drawing"] = {
         "name": "창원 MFC(설계안)", "drawWidth": W + 4, "yard": R(0, BD, 36, BD + 8),
         "yardLabel": "B1 하역장·주차장(경사로 → 지상)",
-        "title": "창원지점 MFC 설계안 — 라이크빌 지하 1층 282평(36 × 25.9 m 가정) · 부산 진구점 × 0.61",
-        "labelZ": {"A": 18.0, "B": 20.5, "C-H": 12.0, "RCV": 21.0, "SHIP": 29.3}, "doorLabels": [],
+        "title": "창원지점 MFC 설계안 — 라이크빌 지하 1층 282평 · 부산 진구점 평수 × 282/463",
+        "labelZ": {"A": 18.5, "B": 10.2, "C-H": round(rC["z1"] - 0.6, 2), "RCV": round(rRCV["z0"] + 1.0, 2), "SHIP": round(BD + 2.7, 2)}, "doorLabels": [],
         "stationNote": "(번호, 3대 × 2줄)",
-        "scaleNote": "위 = 북(z=0) · 가로 36 m × 깊이 25.9 m (+ B1 하역장 8 m) · x = 동쪽, z = 남쪽",
+        "scaleNote": f"위 = 북(z=0) · 가로 36 m × 깊이 {BD} m = 282평 (+ B1 하역장 8 m) · x = 동쪽, z = 남쪽",
         "notes": ["창원시 성산구 용호동 73-2 라이크빌 B1", "건물 모양·문·경사로 위치는 가정(실측 도면 아님)",
-                  "방 배치 = 부산 진구점 그대로, 방·랙·팔레트·패킹대 = × 0.61(면적 비)",
-                  "입고·출고 모두 남쪽 B1 하역장", "설명: layout-changwon/README.md"]}
+                  "방 평수·랙·팔레트·패킹대 = 부산 진구점 × 282/463",
+                  "냉장 B 서쪽·냉동 A 가운데, 입고·검수는 냉동 A 와 벽 하나", "설명: layout-changwon/README.md"]}
     return b.finish(), {"A": (nA, capA), "B": (nB, capB), "AMB": (nC, capC)}, alloc
 
 
