@@ -476,12 +476,17 @@ def build_changwon():
     BD = round(282.0 * PY / W, 3)              # 25.895 m → 바닥 정확히 282평
     b = Builder(W, BD, 8.0)
     NC, SC, VP = 1.5, 1.5, 1.0                 # 북쪽·남쪽 통로, 세로 통로 폭
+    # 9차(사용자 "냉장이랑 냉동 각각 6평씩 줄여서 상온구역 늘려"): 냉장·냉동 −6평씩, 상온 +12평.
+    # 랙은 평수를 따른다(부산 평당 랙: 냉장 125/100 · 냉동 105/109 · 상온 138/65).
+    PY_B = BUSAN_DOC["B"] * ratio - 6.0
+    PY_A = BUSAN_DOC["A"] * ratio - 6.0
+    PY_C = BUSAN_DOC["C-H"] * ratio + 12.0
     Z0 = NC + 0.2
     Z1 = round(BD - SC - 0.2, 3)
     D = Z1 - Z0
-    rB = R(0, Z0, round(m2("B", ratio) / D, 3), Z1)
+    rB = R(0, Z0, round(PY_B * PY / D, 3), Z1)
     x = rB["x1"] + 0.2
-    rA = R(x, Z0, round(x + m2("A", ratio) / D, 3), Z1)
+    rA = R(x, Z0, round(x + PY_A * PY / D, 3), Z1)
     xv0 = rA["x1"] + 0.2                       # 세로 통로 xv0 ~ xv0 + VP
     xm0 = round(xv0 + VP + 0.2, 3)
     wh_m2 = m2("WH", ratio) + m2("OFF", ratio)   # 휴게·사무 자리까지 상온 입고창고(사용자)
@@ -490,7 +495,7 @@ def build_changwon():
     xm1 = round(xr0 - 0.2, 3)
     wm = xm1 - xm0
     rRCV = R(xm0, 0, xm1, round(m2("RCV", ratio) / wm, 3))
-    rC = R(xm0, round(Z1 - m2("C-H", ratio) / wm, 3), xm1, Z1)
+    rC = R(xm0, round(Z1 - PY_C * PY / wm, 3), xm1, Z1)
     rCA = R(xm0, rRCV["z1"] + 0.2, xm1, rC["z0"])          # 가운데 통로·장바구니 거치대(남는 넓이)
     assert rCA["z1"] - rCA["z0"] >= 1.5, rCA
     rWH = R(xr0, 0, W, round(wh_m2 / wr, 3))
@@ -501,16 +506,18 @@ def build_changwon():
     rBQ = square(0.3, Z1 - 0.3, qa)
     rAQ = square(rA["x0"] + 0.3, Z1 - 0.3, qa)
     rCQ = square(W - 0.3 - math.sqrt(qa), rWH["z1"] - 0.3, qa)
-    tA, tB, tC = (scaled(BUSAN_RACKS[k], ratio) for k in ("A", "B", "AMB"))
+    tB = round(BUSAN_RACKS["B"] / BUSAN_DOC["B"] * PY_B)
+    tA = round(BUSAN_RACKS["A"] / BUSAN_DOC["A"] * PY_A)
+    tC = round(BUSAN_RACKS["AMB"] / BUSAN_DOC["C-H"] * PY_C)
     nB, capB, zB = cold_block(b, "CHILLED", "B", rB, tB, Z0 + 1.0, 13.0)
     nA, capA, zA = cold_block(b, "FROZEN", "A", rA, tA, Z0 + 1.0, 13.0)
     nC, capC, alloc = amb_block(b, rC, tC, round(rC["z0"] + 0.5, 3))
     Z = b.zone
-    Z("B", "CHILLED", "냉장 B", rB, round(BUSAN_DOC["B"] * ratio, 1))
-    Z("A", "FROZEN", "냉동 A", rA, round(BUSAN_DOC["A"] * ratio, 1))
+    Z("B", "CHILLED", "냉장 B", rB, round(PY_B, 1))
+    Z("A", "FROZEN", "냉동 A", rA, round(PY_A, 1))
     Z("RCV", "RECEIVING", "입고·검수", rRCV, round(BUSAN_DOC["RCV"] * ratio, 1))
     Z("CA", "SPARE", "가운데 통로", rCA, round((rCA["x1"] - rCA["x0"]) * (rCA["z1"] - rCA["z0"]) / PY, 1))
-    Z("C-H", "AMBIENT", "상온 C~H", rC, round(BUSAN_DOC["C-H"] * ratio, 1))
+    Z("C-H", "AMBIENT", "상온 C~H", rC, round(PY_C, 1))
     Z("WH", "INBOUND_STORE", "상온 입고창고", rWH, round((BUSAN_DOC["WH"] + BUSAN_DOC["OFF"]) * ratio, 1))
     Z("PK", "PACKING", "패킹", rPK, round(BUSAN_DOC["PK"] * ratio, 1))
     Z("BQ", "QUARANTINE", "격리", rBQ, round(BUSAN_DOC["Q"] * ratio, 1))
@@ -527,9 +534,10 @@ def build_changwon():
     bw(rB, doors=[("N", b_mid - 1.2, b_mid + 1.2), ("S", b_mid - 1.2, b_mid + 1.2)])
     bw(rA, doors=[("N", rA["x1"] - 2.8, rA["x1"] - 0.4), ("S", a_mid - 1.2, a_mid + 1.2)])
     # 입고·검수: 북쪽 차량문, 서쪽 문(북쪽 통로·세로 통로로 — 저온), 남쪽 문(가운데 통로 — 상온)
-    bw(rRCV, doors=[("N", *truck), ("W", 0.2, min(NC + 1.2, rRCV["z1"] - 0.2)), ("S", xm0 + 0.6, xm1 - 0.6)])
+    rcv_door = (round(rRCV["z1"] / 2 - 1.2, 2), round(rRCV["z1"] / 2 + 1.2, 2))   # 9차: 입고·검수 ↔ 상온 입고창고 바로
+    bw(rRCV, doors=[("N", *truck), ("W", 0.2, min(NC + 1.2, rRCV["z1"] - 0.2)), ("S", xm0 + 0.6, xm1 - 0.6), ("E", *rcv_door)])
     # 상온 C~H·패킹·가운데 통로: 벽 없음(사용자). 입고창고: 서쪽 문 위(가운데 통로) · 아래(상온 쪽 보충)
-    bw(rWH, doors=[("W", rCA["z0"] + 0.2, rCA["z1"] - 0.2), ("W", rC["z0"] + 1.0, rC["z0"] + 4.0), ("S", xr0 + 0.6, W - 0.6)])
+    bw(rWH, doors=[("W", *rcv_door), ("W", rCA["z0"] + 0.2, rCA["z1"] - 0.2), ("W", rC["z0"] + 1.0, rC["z0"] + 4.0), ("S", xr0 + 0.6, W - 0.6)])
     for r in (rBQ, rAQ):
         bw(r, doors=[("E", r["z0"] + 0.4, r["z0"] + 1.4)])
     bw(rCQ, doors=[("W", rCQ["z0"] + 0.4, rCQ["z0"] + 1.4)])
