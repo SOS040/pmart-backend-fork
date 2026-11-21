@@ -1,6 +1,7 @@
 # 네이버 소셜 로그인 적용 — 문제와 해결 정리 (2026-11-19 ~ 11-20)
 
 - 작성: PC 1, 2026-11-20 (사용자 "여태 네이버 소셜로그인 적용과 관련된 에러사항 md 로 만들어줘")
+- 갱신: 2026-11-21 — 구글·카카오·네이버 공통으로 바뀐 것(계정 고르기·동의는 처음 가입 때만·탈퇴 때 연결 끊기·네이버 이메일, 고객앱 회신 반영). 아래 "2026-11-21 추가" 절
 - 대상: 고객 앱(customer_app)·라이더 앱(rider_app) 네이버 로그인, 백엔드 auth-service·rider-auth-service
 - 관련 결정: ADR-0055·ADR-0071(소셜 로그인 = ID 토큰 검증), **ADR-0078**(네이버만 서버가 인가 코드 교환), ADR-0074(가입 휴대폰 확인)
 - 관련 문서: `docs/operations/2026-11-19-naver-oauth-lan-callback-diagnosis.md`(콜백 진단), `docs/handoff/clients/customer-app/` 의 2026-11-20 요청·회신들
@@ -15,6 +16,8 @@
   → 앱 → POST /auth/social-logins {provider: NAVER, providerToken: id_token, profileImageUrl}
   → 약관 동의(AUTH_CONSENT) → 휴대폰 확인(AUTH_IDENTITY) → 회원 토큰
 ```
+
+- 2026-11-21 바뀐 점: 네이버 인가 요청에 `auth_type=reauthenticate`(로그인마다 아이디·비밀번호). 서버는 교환 때 네이버 **연결을 끊지 않는다**(동의는 처음 가입 때만 — 아래). 교환 때 이메일도 받아 둔다(BR-77).
 
 ## 겪은 문제와 해결 (순서대로)
 
@@ -49,9 +52,27 @@
 | **서비스 적용** | 모든 네이버 사용자 | 네이버에 검수 요청(서비스 소개·개인정보 처리방침 주소·화면 캡처 등 제출 → 네이버 확인) |
 - 개발·시연 단계는 "개발 중 + 테스터 등록"으로 충분하다. 검수는 정식 공개 때만. 지금은 콜백이 LAN 사설 주소라 검수 대상으로도 맞지 않는다.
 
+## 2026-11-21 추가 — 세 제공자 공통 동작 (사용자 결정 "처음 가입할 때만"·"1, 2 둘다")
+
+정한 것: **로그인 버튼을 누를 때마다 계정을 고르거나 다시 로그인한다. 정보 제공 동의 화면은 처음 가입할 때만 나온다. 탈퇴하면 그 제공자와 앱 연결을 끊어서, 다시 가입할 때 동의 화면이 다시 나온다.**
+
+| | 구글 | 카카오 | 네이버 |
+|---|---|---|---|
+| 로그인 버튼마다(앱) | `GoogleSignIn.authenticate()` — 늘 계정 선택 창, 자동 선택 없음. 로그아웃 때 `signOut()` | 카카오톡 앱 자동 로그인 대신 늘 `loginWithKakaoAccount(prompts: [Prompt.login])`. 로그아웃·탈퇴 때 SDK `logout()` | 인가 요청 `auth_type=reauthenticate`(`reprompt` 안 씀) |
+| 동의 화면 | 처음 가입 때만(앱이 `consent` 류 값을 보내지 않음) | 같음 | 같음 — 11-20 에 켰던 "교환마다 연결 끊기"(BR-74, `naver.unlink-after-exchange`)를 **11-21 끔**(pmart-config 80bbe9d) |
+| 탈퇴 때 연결 끊기 | **앱**이 탈퇴 성공 응답 뒤 `GoogleSignIn.disconnect()` → `signOut()`. 실패·취소·결과 불명이면 안 끊음, 로그인·로그아웃 때도 안 끊음 | **서버**(auth-service)가 Admin 키로 카카오 앱 연결 끊기(289a989a, 키 pmart-config 4c25f19 `{cipher}`, 원본 `deploy/lan/.secrets/kakao-admin-key.txt`) | **서버**가 탈퇴 재인증 교환 때 끊음(BR-74 의 탈퇴 경로는 그대로) |
+| 이메일 | ID 토큰 `email` | ID 토큰 `email`(카카오 비즈 앱 전환·이메일 동의항목 켬 — 사용자 11-21) | ID 토큰에 없음 → **BR-77**(2b3eca38, auth V7 `naver_profile_email`): 교환 때 `GET /v1/nid/me` 의 email 을 그 id_token `sub` 에 10분 묶어 두었다가(원 sub 대신 SHA-256) 로그인 때 싣는다. 앱이 보낸 값은 받지 않음. 동의 안 함·실패·10분 지남이면 이메일 없이 로그인 성공. 네이버 콘솔 "이메일 주소" 켬(사용자) |
+
+- 세션이 끝났을 때 구글은 계정 선택 없이 조용히 다시 로그인을 먼저 시도한다(`attemptLightweightAuthentication`) — 로그인 버튼이 아니라 그대로 둔다.
+- LAN 배포: auth-service 2b3eca38(BR-77)·289a989a(카카오 연결 끊기) PC 4 11-21 16:05, 설정 80bbe9d·4c25f19 반영.
+- 고객앱 반영: pmart-clients 2e3ec6da(11-21 18:11) — 회신 `pmart-clients/docs/handoff/customer-app/2026-11-21-backend-social-login-chooser-and-revoke-reply.md`. 서버 변경 요청 없음. 백엔드 요청서 `docs/handoff/clients/customer-app/2026-11-21-request-google-revoke-on-withdrawal.md`·`…-request-login-account-chooser.md`.
+- 라이더 앱(rider-auth-service, PC 5)은 아직 이 방식으로 맞추지 않았다 — 맞추려면 라이더용 카카오 Admin 키(`deploy/lan/.secrets/kakao-rider-admin-key.txt`)가 필요할 수 있다(사용자 답 기다림).
+
 ## 남은 일
 - [ ] 시험에 쓰는 네이버 ID 를 고객 앱(`GKQj…`)·라이더 앱(`Q5oG…`) 테스터로 등록 (사용자)
 - [ ] 네이버 콘솔 제공 정보 "프로필 사진" 체크 (사용자)
 - [ ] 네이버 콘솔 "연결 끊기 Callback URL" 이 로그인 콜백과 같음 → 비우기 권장(네이버가 사설 IP 에 못 닿고 받는 기능 없음)
 - [ ] 앱 빌드 설정의 `NAVER_CLIENT_SECRET` 삭제(고객 `apps/customer_app/.secrets/customer.env`, 라이더 PC 5 `.secrets/rider.env`) — 서버로 옮김. 필요하면 콘솔에서 Secret 재발급 후 서버 값만 바꾸기
 - [ ] 고객·라이더 앱: 코드 교환 API(BR-69 회신) 반영 빌드로 실기기 확인
+- [ ] (11-21) 새 고객앱 APK 로 실기기 확인(사용자): ① 로그아웃 → 로그인 버튼 — 제공자마다 계정 선택·로그인 화면, 같은 계정이면 동의 없이 들어감 ② 구글·카카오·네이버 각각 가입 → 탈퇴 → 다시 가입 때 동의 화면이 다시 뜸 ③ 네이버·카카오 로그인 뒤 내 정보 이메일. 확인 뒤 customer_service DB 에서 provider 별 `count(email)` 숫자만 본다(원문 보지 않음)
+- [ ] (11-21) 라이더 앱도 "동의는 처음 가입 때만"으로 맞출지 — 사용자 답 기다림
