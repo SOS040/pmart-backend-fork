@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
+    0.10.0(2026-11-21 — 사용자 "넘김 간격 MD 가 편성 가능하도록, 순서 섞기도 추천대로"):
+    ① 배너 넘김 간격 — 편성 `bannerIntervalSeconds`(2~30초, 비우면 앱 기본값). 홈 응답 `bannerIntervalSeconds`·배너 묶음 영역 `intervalSeconds`. 배너가 1개면 앱이 넘기지 않는다.
+    ② 배너·테마 순서 섞기 — 배너 자리 `HOME_INLINE` + `groupId`(`G-…`, 같은 묶음은 한 자리에서 넘기기), 편성 `homeOrder`(배너 묶음 groupId·테마 sectionId 를 보일 순서대로).
+    홈 `sections` 가 그 순서를 따르고 배너 묶음은 `kind: BANNER` 영역(`banners`·`intervalSeconds`, items 비움)으로 온다. homeOrder 에 없는 테마는 그 뒤에 예전처럼 sortOrder 순, 마지막은 "전체 상품".
+    HOME_TOP(맨 위 넘기기)·HOME_MIDDLE 은 그대로 — `banners` 칸도 그대로(예전 앱).
     0.9.0(2026-11-21 홈 프로모션 보충 — 사용자 "1.(가) 2.풀어줘 진행순서대로"):
     ① 배너 자리 `POPUP`(앱 첫 화면 팝업)·`SPLASH`(처음 로딩 화면) — 홈 `banners` 에는 나오지 않고 `GET /storefront/banners?placement=POPUP|SPLASH` 로(placement 없으면 HOME_TOP·HOME_MIDDLE 만). "오늘 그만 보기"는 앱이 bannerId 로 기억한다.
     ② 타이머 테마 — 테마 `showTimer`(endsAt 필수), 홈 영역(Section)에 `endsAt`·`showTimer`(앱이 남은 시간 표시, 끝나면 서버가 자동으로 뺌).
@@ -480,7 +485,8 @@ components:
       required: [bannerId, placement, imageId, altText, linkType]
       properties:
         bannerId: { type: string, pattern: '^[A-Za-z0-9_-]{1,40}$', description: 초안 안에서 고유 }
-        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, POPUP, SPLASH], description: '0.9.0 POPUP = 앱 첫 화면 팝업, SPLASH = 처음 로딩 화면' }
+        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, POPUP, SPLASH, HOME_INLINE], description: '0.9.0 POPUP = 앱 첫 화면 팝업, SPLASH = 처음 로딩 화면. 0.10.0 HOME_INLINE = 홈 순서(homeOrder) 안의 배너 묶음 자리(groupId 필수)' }
+        groupId: { type: [string, 'null'], pattern: '^G-[A-Za-z0-9_-]{1,38}$', description: '0.10.0 HOME_INLINE 배너 묶음 ID(같은 묶음은 한 자리에서 넘기기). 다른 자리면 비움(INVALID_GROUP)' }
         imageId: { type: string, description: '`POST /storefront/banner-images` 결과' }
         altText: { type: string, minLength: 1, maxLength: 100, description: 접근성 설명(화면 읽기) }
         linkType: { type: string, enum: [SECTION, CATEGORY, PRODUCT, NONE] }
@@ -510,6 +516,12 @@ components:
         banners: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/LayoutBanner' } }
         themes: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/LayoutTheme' } }
         tabs: { type: array, maxItems: 5, items: { $ref: '#/components/schemas/LayoutTab' }, description: '0.9.0 MD 탭' }
+        homeOrder:
+          type: array
+          maxItems: 40
+          items: { type: string }
+          description: '0.10.0 홈 순서 — 배너 묶음 groupId(G-…)·테마 sectionId(T-…)를 보일 순서대로. 없는 것·MD 탭에 넣은 테마 UNKNOWN_SECTION, 중복 DUPLICATE_ID, HOME_INLINE 묶음이 빠지면 UNPLACED_GROUP. 비우면 예전 순서(테마 sortOrder)'
+        bannerIntervalSeconds: { type: [integer, 'null'], minimum: 2, maximum: 30, description: '0.10.0 배너 자동 넘김 간격(초) — 맨 위 넘기기·배너 묶음 모두. 비우면 앱 기본값(INVALID_INTERVAL)' }
         note: { type: [string, 'null'], maxLength: 200, description: 운영 메모(고객에게 안 보임) }
     LayoutTab:
       type: object
@@ -570,13 +582,14 @@ components:
         linkType: { type: string, enum: [SECTION, CATEGORY, PRODUCT, NOTICE, NONE] }
         linkRef: { type: string }
         sortOrder: { type: integer }
+        groupId: { type: [string, 'null'], description: '0.10.0 HOME_INLINE 배너 묶음 ID' }
     Section:
       type: object
       properties:
         sectionId: { type: string }
         kind:
           type: string
-          enum: [THEME, SEASON, WEEKLY_PICK, NEW, RANKING, HIGH_RATING, IN_PROGRESS_ORDER]
+          enum: [THEME, SEASON, WEEKLY_PICK, NEW, RANKING, HIGH_RATING, IN_PROGRESS_ORDER, BANNER]
           description: |
             IN_PROGRESS_ORDER 는 지금 storefront 가 만들지 않는다(2026-11-05). 진행 중 주문은 홈 진열이 아니라 주문 정보라
             클라이언트가 order-service `GET /orders`(+ delivery-tracking ETA)로 조합한다. 이 영역을 서버가 만들게 되면 항목 모양(상품이 아닌 주문 요약)을 먼저 계약으로 정한다.
@@ -588,6 +601,8 @@ components:
         nextCursor: { type: [string, 'null'] }
         viewAllRef: { type: string, description: 전체보기 연결(같은 조건의 일반 상품 목록) }
         endsAt: { type: [string, 'null'], format: date-time, description: '0.9.0 편성 테마의 끝 시각(지나면 서버가 뺀다). 없으면 null' }
+        banners: { type: array, items: { $ref: '#/components/schemas/Banner' }, description: '0.10.0 kind BANNER 영역의 배너(순서대로 넘기기). 그 밖 영역은 없음' }
+        intervalSeconds: { type: [integer, 'null'], description: '0.10.0 kind BANNER 영역의 넘김 간격(초) — 편성 bannerIntervalSeconds, 비면 null(앱 기본값)' }
         showTimer: { type: boolean, description: '0.9.0 true 면 앱이 endsAt 까지 남은 시간을 보인다' }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     HomeLayout:
@@ -601,6 +616,7 @@ components:
         banners: { type: array, items: { $ref: '#/components/schemas/Banner' }, description: 'HOME_TOP·HOME_MIDDLE 만(0.9.0 — POPUP·SPLASH 는 /storefront/banners?placement=)' }
         sections: { type: array, items: { $ref: '#/components/schemas/Section' } }
         customTabs: { type: array, items: { $ref: '#/components/schemas/CustomTab' }, description: '0.9.0 지금 기간 안 MD 탭(순서). 내용은 /storefront/custom-tabs/{tabKey}' }
+        bannerIntervalSeconds: { type: [integer, 'null'], description: '0.10.0 맨 위 배너 넘김 간격(초). 비면 앱 기본값. 배너가 1개면 넘기지 않는다' }
     CustomTab:
       type: object
       x-added-in: '2026-11-21'

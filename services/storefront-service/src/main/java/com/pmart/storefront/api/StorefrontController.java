@@ -271,7 +271,31 @@ public class StorefrontController implements StorefrontApi {
         .linkType(
             com.pmart.storefront.api.generated.model.Banner.LinkTypeEnum.fromValue(b.linkType()))
         .linkRef(b.linkRef())
-        .sortOrder(b.sortOrder());
+        .sortOrder(b.sortOrder())
+        .groupId(b.groupId());
+  }
+
+  /** 0.10.0 배너 묶음 영역(HOME_INLINE, 기간 안 배너가 없으면 null). */
+  private @Nullable Section bannerSection(String groupId, @Nullable Integer interval) {
+    List<com.pmart.storefront.api.generated.model.Banner> group =
+        activeBanners().stream()
+            .filter(
+                b ->
+                    com.pmart.storefront.domain.LayoutRules.HOME_INLINE.equals(b.placement())
+                        && groupId.equals(b.groupId()))
+            .map(StorefrontController::banner)
+            .toList();
+    if (group.isEmpty()) {
+      return null;
+    }
+    return new Section()
+        .sectionId(groupId)
+        .kind(Section.KindEnum.BANNER)
+        .state(Section.StateEnum.OK)
+        .items(List.of())
+        .banners(group)
+        .intervalSeconds(interval)
+        .asOf(asOf(clock.instant()));
   }
 
   /** 테마 영역 한 쪽(넣은 순서, 진열 가능·취급만). */
@@ -395,7 +419,23 @@ public class StorefrontController implements StorefrontApi {
                           b.placement()))
               .map(StorefrontController::banner)
               .toList();
-      for (com.pmart.storefront.domain.LayoutRules.Theme t : homeThemes()) {
+      // 0.10.0 홈 순서(homeOrder): 배너 묶음·테마를 적힌 순서로, 빠진 테마는 그 뒤 sortOrder 순
+      var body = layouts.currentBody().orElse(null);
+      List<String> order = body == null ? List.of() : body.homeOrder();
+      Integer interval = body == null ? null : body.bannerIntervalSeconds();
+      java.util.Map<String, com.pmart.storefront.domain.LayoutRules.Theme> themesById =
+          new java.util.LinkedHashMap<>();
+      homeThemes().forEach(x -> themesById.put(x.sectionId(), x));
+      for (String ref : order) {
+        Section s =
+            themesById.containsKey(ref)
+                ? themeSection(themesById.remove(ref), mfcId)
+                : ref.startsWith("G-") ? bannerSection(ref, interval) : null;
+        if (s != null) {
+          sections.add(s);
+        }
+      }
+      for (com.pmart.storefront.domain.LayoutRules.Theme t : themesById.values()) {
         Section s = themeSection(t, mfcId);
         if (s != null) {
           sections.add(s);
@@ -409,7 +449,9 @@ public class StorefrontController implements StorefrontApi {
         .tabs(tabs)
         .banners(banners)
         .sections(sections)
-        .customTabs(activeTabs().stream().map(StorefrontController::customTab).toList());
+        .customTabs(activeTabs().stream().map(StorefrontController::customTab).toList())
+        .bannerIntervalSeconds(
+            layouts.currentBody().map(b -> b.bannerIntervalSeconds()).orElse(null));
   }
 
   private Section section(

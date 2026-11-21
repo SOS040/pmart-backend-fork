@@ -12,3 +12,8 @@
 4. **자동 랭킹 테마**: 편성의 "실시간 인기 랭킹" 같은 영역은 `kind: RANKING` 으로 온다(항목에 `rank`·badge RANK — 랭킹 탭과 같은 모양). 다음 묶음 없음(nextCursor null).
 5. **MD 탭**: 홈 응답 `customTabs`([{tabKey `X-…`, title, endsAt, showTimer}] — 순서대로). 고정 탭(HOME·랭킹·신상품) 뒤에 붙인다. 탭 내용 `GET /storefront/custom-tabs/{tabKey}?mfcId=` → `{layoutVersion, tab, sections}`(영역 모양은 홈과 같다). 기간이 지나면 404 `TAB_NOT_FOUND` → 탭을 지우고 HOME 으로. 탭에 넣은 테마는 HOME 에서 빠진다.
 6. 할인·특가 문구가 들어간 배너·테마가 올 수 있다(서버 문구 검사 완화). 할인가 칸(salePrice 등)은 0.8.0 그대로.
+
+## 추가 — storefront 0.10.0(2026-11-21)
+7. **배너 자동 넘김**: 홈 응답 `bannerIntervalSeconds`(초, null 이면 앱 기본값 — 예 4초). 맨 위 배너가 2개 이상이면 그 간격으로 자동으로 넘긴다(손으로 넘기면 잠깐 멈춤), **1개면 넘기지 않는다**.
+8. **배너·테마 순서 섞기**: 홈 `sections` 에 `kind: BANNER` 영역이 올 수 있다 — `banners`(순서대로 넘기기)·`intervalSeconds`, `items` 는 빈 목록. **sections 를 받은 순서 그대로** 그리면 "배너, 테마, 배너" 순서가 된다. 맨 위 `banners`(HOME_TOP)와 HOME_MIDDLE 은 그대로.
+

@@ -580,4 +580,103 @@ class LayoutIT extends PostgresKafkaContainerSupport {
         .isEqualTo("PRD-M2");
     assertThat(send("GET", null, "/storefront/custom-tabs/X-NONE", null).status()).isEqualTo(404);
   }
+
+  /** 0.10.0(2026-11-21): 홈 순서 — 배너 묶음, 테마, 배너 묶음 순서 그대로, 넘김 간격. */
+  @Test
+  void homeOrderMixesBannerGroupsAndThemes() throws Exception {
+    product("PRD-O1", "ON_SALE");
+    String imageId = upload(MD, png()).body().path("imageId").asString();
+    Map<String, Object> body =
+        Map.of(
+            "banners",
+            List.of(
+                Map.of(
+                    "bannerId",
+                    "B-G1A",
+                    "placement",
+                    "HOME_INLINE",
+                    "groupId",
+                    "G-ONE",
+                    "imageId",
+                    imageId,
+                    "altText",
+                    "첫 묶음 1",
+                    "linkType",
+                    "NONE",
+                    "sortOrder",
+                    0),
+                Map.of(
+                    "bannerId",
+                    "B-G1B",
+                    "placement",
+                    "HOME_INLINE",
+                    "groupId",
+                    "G-ONE",
+                    "imageId",
+                    imageId,
+                    "altText",
+                    "첫 묶음 2",
+                    "linkType",
+                    "NONE",
+                    "sortOrder",
+                    1),
+                Map.of(
+                    "bannerId",
+                    "B-G2",
+                    "placement",
+                    "HOME_INLINE",
+                    "groupId",
+                    "G-TWO",
+                    "imageId",
+                    imageId,
+                    "altText",
+                    "둘째 묶음",
+                    "linkType",
+                    "NONE",
+                    "sortOrder",
+                    0)),
+            "themes",
+            List.of(
+                Map.of(
+                    "sectionId",
+                    "T-ORDER",
+                    "kind",
+                    "THEME",
+                    "title",
+                    "가운데 테마",
+                    "productIds",
+                    List.of("PRD-O1"),
+                    "sortOrder",
+                    0)),
+            "homeOrder",
+            List.of("G-ONE", "T-ORDER", "G-TWO"),
+            "bannerIntervalSeconds",
+            5);
+    Res draft = send("POST", MD, "/storefront/layout-drafts", body);
+    assertThat(draft.status()).as(draft.body().toString()).isEqualTo(201);
+    assertThat(draft.body().path("homeOrder").size()).isEqualTo(3);
+    String draftId = draft.body().path("draftId").asString();
+    Res submitted = send("POST", MD, "/storefront/layout-drafts/" + draftId + "/submissions", null);
+    assertThat(submitted.status()).as(submitted.body().toString()).isEqualTo(200);
+    approvalDecided(
+        "APR-" + UUID.randomUUID(),
+        draftId,
+        "APPROVED",
+        submitted.body().path("draftHash").asString());
+    JsonNode home =
+        await(
+            () -> send("GET", null, "/storefront/home", null).body(),
+            h -> h.path("sections").findValuesAsString("sectionId").contains("G-TWO"));
+    List<String> ids = home.path("sections").findValuesAsString("sectionId");
+    assertThat(ids.subList(0, 3)).containsExactly("G-ONE", "T-ORDER", "G-TWO");
+    assertThat(ids.get(ids.size() - 1)).isEqualTo("S-ALL");
+    JsonNode first = home.path("sections").path(0);
+    assertThat(first.path("kind").asString()).isEqualTo("BANNER");
+    assertThat(first.path("banners").findValuesAsString("bannerId"))
+        .containsExactly("B-G1A", "B-G1B");
+    assertThat(first.path("intervalSeconds").asInt()).isEqualTo(5);
+    assertThat(home.path("bannerIntervalSeconds").asInt()).isEqualTo(5);
+    // 맨 위 배너 칸에는 섞이지 않는다
+    assertThat(home.path("banners").findValuesAsString("bannerId")).doesNotContain("B-G1A", "B-G2");
+  }
 }

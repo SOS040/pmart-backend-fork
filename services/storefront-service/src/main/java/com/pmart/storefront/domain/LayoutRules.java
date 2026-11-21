@@ -39,7 +39,12 @@ public final class LayoutRules {
 
   /** 배너 자리 — 홈(HOME_TOP·HOME_MIDDLE), 0.9.0 팝업(POPUP)·처음 로딩 화면(SPLASH). */
   public static final List<String> PLACEMENTS =
-      List.of("HOME_TOP", "HOME_MIDDLE", "POPUP", "SPLASH");
+      List.of("HOME_TOP", "HOME_MIDDLE", "POPUP", "SPLASH", "HOME_INLINE");
+
+  /** 0.10.0 홈 순서 안 배너 묶음 자리(groupId 필수). */
+  public static final String HOME_INLINE = "HOME_INLINE";
+
+  private static final Pattern GROUP_ID = Pattern.compile("^G-[A-Za-z0-9_-]{1,38}$");
 
   /** 홈 응답 banners 에 들어가는 자리. */
   public static final List<String> HOME_PLACEMENTS = List.of("HOME_TOP", "HOME_MIDDLE");
@@ -53,7 +58,24 @@ public final class LayoutRules {
       @Nullable String linkRef,
       int sortOrder,
       @Nullable Instant startsAt,
-      @Nullable Instant endsAt) {}
+      @Nullable Instant endsAt,
+      @Nullable String groupId) {
+
+    public Banner(
+        String bannerId,
+        String placement,
+        String imageId,
+        String altText,
+        String linkType,
+        @Nullable String linkRef,
+        int sortOrder,
+        @Nullable Instant startsAt,
+        @Nullable Instant endsAt) {
+      this(
+          bannerId, placement, imageId, altText, linkType, linkRef, sortOrder, startsAt, endsAt,
+          null);
+    }
+  }
 
   public record Theme(
       String sectionId,
@@ -102,19 +124,29 @@ public final class LayoutRules {
   }
 
   public record Body(
-      List<Banner> banners, List<Theme> themes, List<Tab> tabs, @Nullable String note) {
+      List<Banner> banners,
+      List<Theme> themes,
+      List<Tab> tabs,
+      @Nullable String note,
+      List<String> homeOrder,
+      @Nullable Integer bannerIntervalSeconds) {
     public Body {
       banners = banners == null ? List.of() : List.copyOf(banners);
       themes = themes == null ? List.of() : List.copyOf(themes);
       tabs = tabs == null ? List.of() : List.copyOf(tabs);
+      homeOrder = homeOrder == null ? List.of() : List.copyOf(homeOrder);
+    }
+
+    public Body(List<Banner> banners, List<Theme> themes, List<Tab> tabs, @Nullable String note) {
+      this(banners, themes, tabs, note, List.of(), null);
     }
 
     public Body(List<Banner> banners, List<Theme> themes, @Nullable String note) {
-      this(banners, themes, List.of(), note);
+      this(banners, themes, List.of(), note, List.of(), null);
     }
 
     public static Body empty() {
-      return new Body(List.of(), List.of(), List.of(), null);
+      return new Body(List.of(), List.of(), List.of(), null, List.of(), null);
     }
 
     /** MD 탭에 넣은 테마(HOME 에서 뺀다). */
@@ -152,6 +184,12 @@ public final class LayoutRules {
       }
       if (!PLACEMENTS.contains(b.placement())) {
         out.add(new Problem(at + ".placement", "INVALID_PLACEMENT"));
+      }
+      boolean inline = HOME_INLINE.equals(b.placement());
+      if (inline
+          ? b.groupId() == null || !GROUP_ID.matcher(b.groupId()).matches()
+          : b.groupId() != null) {
+        out.add(new Problem(at + ".groupId", "INVALID_GROUP"));
       }
       if (!imageExists.test(b.imageId())) {
         out.add(new Problem(at + ".imageId", "IMAGE_NOT_FOUND"));
@@ -225,6 +263,34 @@ public final class LayoutRules {
         } else if (!tabbed.add(s)) {
           out.add(new Problem(at + ".sectionIds", "DUPLICATE_ID"));
         }
+      }
+    }
+    // 0.10.0 넘김 간격·홈 순서
+    Integer iv = body.bannerIntervalSeconds();
+    if (iv != null && (iv < 2 || iv > 30)) {
+      out.add(new Problem("bannerIntervalSeconds", "INVALID_INTERVAL"));
+    }
+    Set<String> groups = new HashSet<>();
+    for (Banner b : body.banners()) {
+      if (HOME_INLINE.equals(b.placement()) && b.groupId() != null) {
+        groups.add(b.groupId());
+      }
+    }
+    Set<String> homeThemes = new HashSet<>(sections);
+    homeThemes.removeAll(body.tabbedSections());
+    Set<String> ordered = new HashSet<>();
+    for (int i = 0; i < body.homeOrder().size(); i++) {
+      String ref = body.homeOrder().get(i);
+      String at = "homeOrder[" + i + "]";
+      if (!ordered.add(ref)) {
+        out.add(new Problem(at, "DUPLICATE_ID"));
+      } else if (!groups.contains(ref) && !homeThemes.contains(ref)) {
+        out.add(new Problem(at, "UNKNOWN_SECTION"));
+      }
+    }
+    for (String g : groups) {
+      if (!ordered.contains(g)) {
+        out.add(new Problem("homeOrder", "UNPLACED_GROUP"));
       }
     }
     return out;

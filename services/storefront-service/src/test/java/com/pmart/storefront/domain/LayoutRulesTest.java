@@ -118,4 +118,39 @@ class LayoutRulesTest {
                     null)))
         .isEmpty();
   }
+
+  /** 0.10.0: 넘김 간격 2~30, HOME_INLINE 은 G- 묶음 필수, 홈 순서는 있는 묶음·HOME 테마만·중복 없음·묶음은 빠짐없이. */
+  @Test
+  void homeOrderAndInterval() {
+    Banner inline =
+        new Banner("B-IN", "HOME_INLINE", "IMG-1", "아침", "NONE", null, 0, null, null, "G-MID");
+    Banner noGroup =
+        new Banner("B-IN2", "HOME_INLINE", "IMG-1", "x", "NONE", null, 0, null, null, null);
+    Banner topWithGroup =
+        new Banner("B-TOP", "HOME_TOP", "IMG-1", "x", "NONE", null, 0, null, null, "G-X");
+    Banner orphan =
+        new Banner("B-OR", "HOME_INLINE", "IMG-1", "x", "NONE", null, 0, null, null, "G-LOST");
+    Theme a = theme("T-A", "A", List.of("P1"));
+    Theme b = theme("T-B", "B", List.of("P2"));
+    LayoutRules.Tab tab = new LayoutRules.Tab("X-B", "탭", List.of("T-B"), 0, null, null, false);
+    Body ok = new Body(List.of(inline), List.of(a), List.of(), null, List.of("G-MID", "T-A"), 5);
+    assertThat(reasons(ok)).isEmpty();
+    Body bad =
+        new Body(
+            List.of(inline, noGroup, topWithGroup, orphan),
+            List.of(a, b),
+            List.of(tab),
+            null,
+            List.of("G-MID", "T-A", "T-A", "T-B", "G-NONE"),
+            1);
+    assertThat(reasons(bad))
+        .containsExactlyInAnyOrder(
+            "INVALID_GROUP",
+            "INVALID_GROUP",
+            "INVALID_INTERVAL",
+            "DUPLICATE_ID",
+            "UNKNOWN_SECTION",
+            "UNKNOWN_SECTION",
+            "UNPLACED_GROUP");
+  }
 }

@@ -20,3 +20,9 @@
 
 ## LAN 시험 데이터
 - 시험 배너 2개("주말엔 고기 파티", "10분 완성 간편 한 끼" — HOME_TOP) 를 넣은 편성 초안 `LD-7a5244aa-…` 을 제출하고 진열 승인 요청 `AP-4a6848b9-…` 을 올렸다 — **DISPLAY_APPROVER 승인 대기**(백오피스 승인 화면).
+
+## 추가 — storefront 0.10.0(2026-11-21, 사용자 "넘김 간격 MD 가 편성 가능하도록, 순서 섞기도 추천대로")
+- **배너 넘김 간격** 편성 `bannerIntervalSeconds`(2~30초, 비우면 앱 기본값 — `INVALID_INTERVAL`). 맨 위 넘기기·배너 묶음 모두.
+- **순서 섞기**: 배너 자리 `HOME_INLINE` + `groupId`(`G-…` — 같은 묶음은 한 자리에서 넘기기, 다른 자리에 groupId 를 넣거나 HOME_INLINE 에 빼면 `INVALID_GROUP`). 편성 `homeOrder` = 배너 묶음 groupId·테마 sectionId 를 보일 순서대로(최대 40). 없는 것·MD 탭에 넣은 테마 `UNKNOWN_SECTION`(field `homeOrder[i]`), 중복 `DUPLICATE_ID`, HOME_INLINE 묶음이 homeOrder 에 없으면 `UNPLACED_GROUP`(field `homeOrder`). 비우면 예전 순서(테마 sortOrder).
+- 화면 제안: 편성 화면에 "홈 순서" 목록(배너 묶음·테마를 위아래로 옮기기 — 칸반·끌어 옮기기는 나중, 지금은 위/아래 단추나 순번이면 충분), 배너 편집에 "홈 중간 묶음" 자리와 묶음 고르기, 편성 위쪽에 "넘김 간격(초)".
+

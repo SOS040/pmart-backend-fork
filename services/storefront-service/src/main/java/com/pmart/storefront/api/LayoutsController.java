@@ -123,7 +123,8 @@ public class LayoutsController implements LayoutsApi {
                             x.getLinkRef(),
                             x.getSortOrder() == null ? 0 : x.getSortOrder(),
                             instant(x.getStartsAt()),
-                            instant(x.getEndsAt())))
+                            instant(x.getEndsAt()),
+                            x.getGroupId()))
                 .toList();
     List<LayoutRules.Theme> themes =
         b.getThemes() == null
@@ -158,7 +159,13 @@ public class LayoutsController implements LayoutsApi {
                             instant(x.getEndsAt()),
                             Boolean.TRUE.equals(x.getShowTimer())))
                 .toList();
-    return new LayoutRules.Body(banners, themes, tabs, b.getNote());
+    return new LayoutRules.Body(
+        banners,
+        themes,
+        tabs,
+        b.getNote(),
+        b.getHomeOrder() == null ? List.of() : b.getHomeOrder(),
+        b.getBannerIntervalSeconds());
   }
 
   static LayoutDraft view(LayoutService.Draft d) {
@@ -188,8 +195,11 @@ public class LayoutsController implements LayoutsApi {
                             .linkRef(x.linkRef())
                             .sortOrder(x.sortOrder())
                             .startsAt(x.startsAt() == null ? null : odt(x.startsAt()))
-                            .endsAt(x.endsAt() == null ? null : odt(x.endsAt())))
+                            .endsAt(x.endsAt() == null ? null : odt(x.endsAt()))
+                            .groupId(x.groupId()))
                 .toList())
+        .homeOrder(d.body().homeOrder())
+        .bannerIntervalSeconds(d.body().bannerIntervalSeconds())
         .themes(
             d.body().themes().stream()
                 .map(
