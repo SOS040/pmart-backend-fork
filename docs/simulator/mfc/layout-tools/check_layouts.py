@@ -4,7 +4,7 @@
   2. 랙끼리·랙과 장애물(팔레트·작업대)·격리 구역이 겹치지 않음, 랙이 같은 온도 구역 사각형 안에 있음
   3. 모든 랙 앞(작업자 서는 쪽)에 0.7 m 통로가 비어 있음(다른 랙·팔레트가 막지 않음), 건물 밖으로 나가지 않음
   4. 백엔드 칸 코드(Q-03 문법, deploy/lan/seed/mfc_layout.py 와 같은 변환)가 형식에 맞고 유일
-  5. 85 % 운영 상한 슬롯 ≥ 부산 SKU 목표(온도대별·상온 그룹별)
+  5. (참고만) 85 % 칸 수 vs 부산 SKU — 2026-11-21 사용자 결정으로 실패로 보지 않는다(다품종 소량 적재, 랙은 면적에 비례)
 실행: python -I docs/simulator/mfc/layout-tools/check_layouts.py   (실패하면 종료 코드 1)
 """
 import collections
@@ -128,14 +128,9 @@ def check(name, sub):
             errs.append(f"mfc_layout.py 가 찾는 구역 {zid} 없음")
     # 5. 수용량
     c = counts(L)
-    for t, tn in (("FROZEN", "냉동"), ("CHILLED", "냉장"), ("AMBIENT", "상온")):
-        if int(c[f"{tn} 칸"] * 0.85) < SKU[t]:
-            errs.append(f"{tn} 85% 슬롯 {c[f'{tn} 칸'] * 0.85:.0f} < SKU {SKU[t]}")
-    for g, need in SKU_G.items():
-        rs = [r for r in racks if r["temp"] == "AMBIENT" and r["group"][0] == g]
-        cap = sum(r["levels"] * r["slotsPerLevel"] for r in rs) * 0.85
-        if cap < need:
-            errs.append(f"상온 {g} 85% 슬롯 {cap:.0f} < SKU {need}")
+    # 5. SKU: 2026-11-21 사용자 "다품종 소량 적재 — 평수에 맞게 랙 갯수를 늘리고 줄이는 것뿐" → 실패가 아니라 참고(칸 하나 = SKU 여러 개)
+    notes = [f"{tn} 85% 칸 {c[f'{tn} 칸'] * 0.85:.0f} / SKU {SKU[t]}" for t, tn in (("FROZEN", "냉동"), ("CHILLED", "냉장"), ("AMBIENT", "상온"))]
+    print(f"[{name}] 참고(실패 아님): " + ", ".join(notes))
     # 1. README
     t = readme_table(os.path.join(MFC_DIR, sub, "README.md"))
     if t is None:
