@@ -357,27 +357,30 @@ def square(x0, z1, a):
 
 # ---------- 세종: 3층 한 층 812평 ----------
 # 2026-11-21 사용자 검토 6차: "세종에 북쪽 통로가 없네", "입고검수가 북쪽에 있는데 … 냉동·냉장 출입구는 오직 하나만, 남쪽에 있네?"
-# → 북쪽 벽을 따라 통로(입고·검수·냉동·냉장 문이 모두 여기로), 냉동·냉장은 북쪽 문 하나씩. 남쪽 복도는 없앰(쓰는 흐름이 없음).
+# → 북쪽 벽을 따라 통로(입고·검수·냉동·냉장 문이 모두 여기로).
+# 7차("냉동냉장 북쪽남쪽 문 2개", "왜 남쪽 통로를 또 없앴니"): 냉동·냉장 문 = 북쪽 하나 + 남쪽 하나, 남쪽 통로 되살림.
 def build_sejong():
     ratio = 812.0 / BUSAN_PY                   # 1.7538
     W = 64.0
     BD = round(812.0 * PY / W, 3)              # 41.942 m → 바닥 정확히 812평
     b = Builder(W, BD, 8.0)
     NC = 2.4                                   # 북쪽 통로 폭(카트 양방향)
+    SC = 2.4                                   # 남쪽 통로 폭
     Z0 = NC + 0.2                              # 왼쪽 열·저온실 북쪽 벽
-    D = BD - Z0
+    Z1 = round(BD - SC - 0.2, 3)               # 왼쪽 열·저온실 남쪽 벽
+    D = Z1 - Z0
     OFF_M2 = 18.0 * PY                         # 휴게·사무 18평 고정(사용자)
     PASS = 1.3                                 # 입고·검수 → 휴게·사무 통로
-    wL = 7.0
+    wL = 7.4
     rRCV = R(0, Z0, wL, round(Z0 + m2("RCV", ratio) / wL, 3))
     wW = round(wL - PASS - 0.2, 3)
     rELV = R(0, rRCV["z1"] + 0.2, wW, round(rRCV["z1"] + 0.2 + 45.0 / wW, 3))
     rOFF = R(0, rELV["z1"] + 0.2, wW, round(rELV["z1"] + 0.2 + OFF_M2 / wW, 3))
-    assert rOFF["z1"] <= BD, rOFF
+    assert rOFF["z1"] <= Z1, rOFF
     x = wL + 0.2
-    rA = R(x, Z0, round(x + m2("A", ratio) / D, 3), BD)
+    rA = R(x, Z0, round(x + m2("A", ratio) / D, 3), Z1)
     x = rA["x1"] + 0.2
-    rB = R(x, Z0, round(x + m2("B", ratio) / D, 3), BD)
+    rB = R(x, Z0, round(x + m2("B", ratio) / D, 3), Z1)
     rN = R(0, 0, rB["x1"], NC)                 # 북쪽 통로(왼쪽 열·냉동·냉장 위)
     wWH = round(m2("WH", ratio) / BD, 3)
     rWH = R(round(W - wWH, 3), 0, W, BD)
@@ -390,8 +393,8 @@ def build_sejong():
     rSHIP = R(round((xc0 + xc1 - sh_w) / 2, 3), rPK["z1"] + 0.6, round((xc0 + xc1 + sh_w) / 2, 3),
               round(rPK["z1"] + 0.6 + m2("SHIP", ratio) / sh_w, 3))
     qa = BUSAN_DOC["Q"] * ratio * PY
-    rAQ = square(rA["x0"] + 0.3, BD - 0.3, qa)
-    rBQ = square(rB["x0"] + 0.3, BD - 0.3, qa)
+    rAQ = square(rA["x0"] + 0.3, Z1 - 0.3, qa)
+    rBQ = square(rB["x0"] + 0.3, Z1 - 0.3, qa)
     rCQ = square(rWH["x0"] + 0.2, BD - 0.3, qa)
     tA, tB, tC = (scaled(BUSAN_RACKS[k], ratio) for k in ("A", "B", "AMB"))
     nA, capA, zA = cold_block(b, "FROZEN", "A", rA, tA, Z0 + 1.2, 31.0)
@@ -417,20 +420,19 @@ def build_sejong():
     # 문(흐름마다 하나, 가장 짧은 쪽):
     #   승강기: 서쪽(1층 진입로) · 북쪽(입고·검수로 바로 올림)
     #   입고·검수 → 북쪽 통로(저온은 냉동·냉장 북쪽 문, 상온은 통로 동쪽 끝 → 상온 → 입고창고) / → 남쪽 통로(휴게·사무)
-    #   냉동 A·냉장 B: 북쪽 통로 문 하나씩(사용자 "출입구는 오직 하나")
+    #   냉동 A·냉장 B: 북쪽 통로 문(입고) + 남쪽 통로 문(피킹 — 가운데 작업 바닥·패킹 쪽, 동쪽 끝)
     #   상온 C~H: 서쪽 벽 북쪽 끝 문(북쪽 통로와 이어짐), 남쪽은 벽 없음(패킹·출하대기까지 열림)
     #   입고창고: 서쪽 벽 상온 쪽 문(상온 물건 입고·보충 — 상온 줄 끝으로 바로)
     bw(rRCV, doors=[("N", 0.6, wL - 0.6), ("S", wW + 0.1, wL - 0.1)])
     bw(rELV, doors=[("W", rELV["z0"] + 1.0, rELV["z1"] - 1.0), ("N", 0.4, wW - 0.4)])
     bw(rOFF, doors=[("E", rOFF["z0"] + 0.6, rOFF["z0"] + 2.4)])
-    bw(R(wL - PASS, rRCV["z1"], wL, rOFF["z1"]), doors=[("N", wL - PASS, wL), ("W", rOFF["z0"] + 0.6, rOFF["z0"] + 2.4)])
     a_mid, b_mid = (rA["x0"] + rA["x1"]) / 2, (rB["x0"] + rB["x1"]) / 2
-    bw(rA, doors=[("N", a_mid - 1.5, a_mid + 1.5)])
-    bw(rB, doors=[("N", b_mid - 1.5, b_mid + 1.5)])
+    bw(rA, doors=[("N", a_mid - 1.5, a_mid + 1.5), ("S", rA["x1"] - 3.4, rA["x1"] - 0.6)])
+    bw(rB, doors=[("N", b_mid - 1.5, b_mid + 1.5), ("S", rB["x1"] - 3.4, rB["x1"] - 0.6)])
     bw(rC, doors=[("W", 0.2, NC), ("S", rC["x0"], rC["x1"])])
     bw(rWH, doors=[("W", 6.0, 10.0)])
-    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.6, zA + 1.2, rA["x1"] - 0.4, BD - 0.4), 1.5, axis="x"), scaled(4, ratio)))
-    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.6, zB + 1.2, rB["x1"] - 0.4, BD - 0.4), 1.5, axis="x"), scaled(4, ratio)))
+    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.6, zA + 1.2, rA["x1"] - 3.8, Z1 - 0.4), 1.5, axis="x"), scaled(4, ratio)))
+    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.6, zB + 1.2, rB["x1"] - 3.8, Z1 - 0.4), 1.5, axis="x"), scaled(4, ratio)))
     b.reserves("AMBIENT", "WR", take(pallet_grid(R(rWH["x0"] + 0.4, 0.6, rWH["x1"] - 0.3, rCQ["z0"] - 0.4), 1.8), scaled(24, ratio)))
     b.stations(rPK["x0"] + 0.2, round(rPK["z0"] + 0.65, 2), round(rPK["z1"] - 0.65, 2), math.ceil(scaled(8, ratio) / 2))
     b.ship_racks([rSHIP["x0"] + 1.2, rSHIP["x1"] - 1.2], round(rSHIP["z0"] + 0.8, 2))
@@ -450,18 +452,18 @@ def build_sejong():
         "name": "세종 MFC(설계안)", "drawWidth": W + 7, "drawLeft": 8.0, "yard": R(34, BD, 58, BD + 8),
         "yardLabel": "1층 — 라이더는 승객용 승강기로 3층 출하대기에서 픽업(가정)",
         "title": "세종지점 MFC 설계안 — 3층 한 층 812평 · 부산 진구점 평수 × 812/463",
-        "labelZ": {"A": 39.0, "B": 39.0, "C-H": round(rC["z1"] - 0.8, 2), "TRUCK": round(rELV["z1"] + 1.2, 2),
+        "labelZ": {"A": 36.6, "B": 36.6, "C-H": round(rC["z1"] - 0.8, 2), "TRUCK": round(rELV["z1"] + 1.2, 2),
                    "SHIP": round(rSHIP["z1"] - 0.8, 2), "RCV": round(rRCV["z0"] + 9.0, 2)}, "doorLabels": [],
         "stationNote": "(번호, 7대 × 2줄)",
         "scaleNote": f"위 = 북(z=0) · 가로 64 m × 깊이 {BD} m = 812평 (+ 1층 8 m, 다른 층) · x = 동쪽, z = 남쪽",
         "notes": ["세종특별자치시 어진동 513, 지상 3층(평면은 3층 한 층)", "건물 모양·승강기 위치는 가정(실측 도면 아님)",
                   "방 평수·랙·팔레트·패킹대 = 부산 진구점 × 812/463, 휴게·사무 18평",
-                  "북쪽 통로: 입고·검수·냉동·냉장 문이 모두 여기로(냉동·냉장 문은 하나씩)", "설명: layout-sejong/README.md"]}
+                  "냉동·냉장 문 = 북쪽(입고) + 남쪽(피킹), 북쪽·남쪽 통로", "설명: layout-sejong/README.md"]}
     return b.finish(), {"A": (nA, capA), "B": (nB, capB), "AMB": (nC, capC)}, alloc
 
 
 # ---------- 창원: 지하 1층 282평 ----------
-# 사용자 스케치(검토 4차) + 6차: 북쪽 통로를 따라 냉장·냉동 문 하나씩(북쪽), 입고·검수도 이 통로에. 남쪽 복도 없음.
+# 사용자 스케치(검토 4차) + 6·7차: 북쪽 통로(입고·검수·냉장·냉동 북쪽 문) + 남쪽 통로(냉장·냉동 남쪽 문 → 상온·패킹).
 #   냉동 동쪽 벽과 입고·검수 사이 남북 통로가 북쪽 통로 ↔ 가운데 작업 바닥(상온·패킹)을 잇는다.
 def build_changwon():
     ratio = 282.0 / BUSAN_PY                   # 0.6091
@@ -469,14 +471,16 @@ def build_changwon():
     BD = round(282.0 * PY / W, 3)              # 25.895 m → 바닥 정확히 282평
     b = Builder(W, BD, 8.0)
     NC = 2.0
+    SC = 1.8
     Z0 = NC + 0.2
-    D = BD - Z0
-    rB = R(0, Z0, round(m2("B", ratio) / D, 3), BD)
+    Z1 = round(BD - SC - 0.2, 3)
+    D = Z1 - Z0
+    rB = R(0, Z0, round(m2("B", ratio) / D, 3), Z1)
     x = rB["x1"] + 0.2
-    rA = R(x, Z0, round(x + m2("A", ratio) / D, 3), BD)
+    rA = R(x, Z0, round(x + m2("A", ratio) / D, 3), Z1)
     SP = 1.4                                   # 남북 통로(냉동 동쪽)
     xm0 = rA["x1"] + 0.2
-    wm = 9.8
+    wm = 8.0
     xm1 = round(xm0 + wm, 3)
     rN = R(0, 0, xm0 + SP, NC)
     rRCV = R(round(xm0 + SP, 3), 0, xm1, round(m2("RCV", ratio) / (xm1 - xm0 - SP), 3))
@@ -488,12 +492,12 @@ def build_changwon():
     rPK = R(xr0, round(BD - m2("PK", ratio) / wr, 3), W, BD)
     assert rPK["z0"] >= rWH["z1"] + 0.2, (rPK, rWH)
     qa = BUSAN_DOC["Q"] * ratio * PY
-    rBQ = square(0.3, BD - 0.3, qa)
-    rAQ = square(rA["x0"] + 0.3, BD - 0.3, qa)
+    rBQ = square(0.3, Z1 - 0.3, qa)
+    rAQ = square(rA["x0"] + 0.3, Z1 - 0.3, qa)
     rCQ = square(W - 0.3 - math.sqrt(qa), rWH["z1"] - 0.3, qa)
     tA, tB, tC = (scaled(BUSAN_RACKS[k], ratio) for k in ("A", "B", "AMB"))
-    nB, capB, zB = cold_block(b, "CHILLED", "B", rB, tB, Z0 + 1.0, 18.0)
-    nA, capA, zA = cold_block(b, "FROZEN", "A", rA, tA, Z0 + 1.0, 18.0)
+    nB, capB, zB = cold_block(b, "CHILLED", "B", rB, tB, Z0 + 1.0, 13.0)
+    nA, capA, zA = cold_block(b, "FROZEN", "A", rA, tA, Z0 + 1.0, 13.0)
     nC, capC, alloc = amb_block(b, rC, tC, round(rC["z0"] + 0.5, 3))
     Z = b.zone
     Z("B", "CHILLED", "냉장 B", rB, round(BUSAN_DOC["B"] * ratio, 1))
@@ -515,21 +519,24 @@ def build_changwon():
     # 문: 입고·검수 → 서쪽(북쪽 통로·남북 통로 모서리), 냉장·냉동 북쪽 문 하나씩, 상온 북쪽은 작업 바닥으로 열림,
     #     상온 ↔ 패킹 벽 없음, 입고창고 서쪽 위(입고) · 서쪽 아래(상온으로 보충)
     b_mid, a_mid = (rB["x0"] + rB["x1"]) / 2, (rA["x0"] + rA["x1"]) / 2
-    bw(rB, doors=[("N", b_mid - 1.2, b_mid + 1.2)])
-    bw(rA, doors=[("N", a_mid - 1.2, a_mid + 1.2)])
+    bw(rB, doors=[("N", b_mid - 1.2, b_mid + 1.2), ("S", rB["x1"] - 3.0, rB["x1"] - 0.6)])
+    bw(rA, doors=[("N", a_mid - 1.2, a_mid + 1.2), ("S", rA["x1"] - 3.0, rA["x1"] - 0.6)])
     bw(rRCV, doors=[("N", *dock), ("W", 0.3, min(NC, rRCV["z1"]) - 0.1)])
-    bw(rC, doors=[("N", xm0, xm1), ("E", rC["z0"], BD)])
+    bw(rC, doors=[("N", xm0, xm1), ("W", Z1 + 0.1, BD - 0.1), ("E", rC["z0"], BD)])
     bw(rWH, doors=[("W", rRCV["z1"] + 0.8, rRCV["z1"] + 3.3), ("W", rC["z0"] + 0.8, rC["z0"] + 3.8)])
     bw(rPK, doors=[("W", rPK["z0"], rPK["z1"]), ("S", *out)], glass=True)
     for r in (rBQ, rAQ):
         bw(r, doors=[("E", r["z0"] + 0.4, r["z0"] + 1.4)])
     bw(rCQ, doors=[("W", rCQ["z0"] + 0.4, rCQ["z0"] + 1.4)])
-    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.5, zB + 1.0, rB["x1"] - 0.3, BD - 0.3), 1.2, axis="x"), scaled(4, ratio)))
-    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.5, zA + 1.0, rA["x1"] - 0.3, BD - 0.3), 1.2, axis="x"), scaled(4, ratio)))
+    # 남쪽 문 앞(문 폭 + 1.4 m)은 비워 둔다
+    b.reserves("CHILLED", "BR", take(pallet_grid(R(rBQ["x1"] + 0.5, zB + 0.8, rB["x1"] - 0.3, Z1 - 0.3), 1.2, axis="x",
+                                                 skip=[R(rB["x1"] - 3.2, Z1 - 1.6, rB["x1"], Z1)]), scaled(4, ratio)))
+    b.reserves("FROZEN", "AR", take(pallet_grid(R(rAQ["x1"] + 0.5, zA + 0.8, rA["x1"] - 0.3, Z1 - 0.3), 1.2, axis="x",
+                                                skip=[R(rA["x1"] - 3.2, Z1 - 1.6, rA["x1"], Z1)]), scaled(4, ratio)))
     b.reserves("AMBIENT", "WR", take(pallet_grid(R(rWH["x0"] + 0.3, 0.5, rWH["x1"] - 0.2, rCQ["z0"] - 0.3), 1.8), scaled(24, ratio)))
     b.stations(rPK["x0"] + 0.6, round(rPK["z0"] + 0.6, 2), round(rPK["z1"] - 0.6, 2), math.ceil(scaled(8, ratio) / 2))
     b.ship_racks([xr0 + 2.15], round(BD + 1.9, 2))
-    b.docks(rRCV["x0"] + 0.4, 0.5, 11, max(1, scaled(36, ratio) // 11))
+    b.docks(rRCV["x0"] + 0.4, 0.5, 11, max(1, scaled(36, ratio) // 11), pitch=0.58)
     P = b.L["points"]
     P["truckDoor"] = {"x": round((dock[0] + dock[1]) / 2, 2), "z": 0.3}
     P["truckDock"] = {"x": round(rRCV["x1"] - 2.6, 2), "z": round(rRCV["z1"] - 0.4, 2)}
@@ -545,13 +552,13 @@ def build_changwon():
         "name": "창원 MFC(설계안)", "drawWidth": W + 4, "yard": R(0, BD, 36, BD + 8),
         "yardLabel": "B1 주차장(남쪽 — 출하·라이더)",
         "title": "창원지점 MFC 설계안 — 라이크빌 지하 1층 282평 · 부산 진구점 평수 × 282/463",
-        "labelZ": {"A": 21.0, "B": 13.0, "C-H": round(rC["z1"] - 0.6, 2), "RCV": round(rRCV["z1"] - 1.9, 2),
+        "labelZ": {"A": 19.0, "B": 13.0, "C-H": round(rC["z1"] - 0.6, 2), "RCV": round(rRCV["z1"] - 1.9, 2),
                    "SHIP": round(BD + 2.7, 2)}, "doorLabels": [],
         "stationNote": "(번호, 3대 × 2줄)",
         "scaleNote": f"위 = 북(z=0) · 가로 36 m × 깊이 {BD} m = 282평 (+ B1 주차장 8 m) · x = 동쪽, z = 남쪽",
         "notes": ["창원시 성산구 용호동 73-2 라이크빌 B1", "건물 모양·문 위치는 가정(실측 도면 아님)",
                   "방 평수·랙·팔레트·패킹대 = 부산 × 282/463, 휴게·사무 없음(상온 입고창고)",
-                  "북쪽 통로: 입고·검수·냉동·냉장 문(냉동·냉장은 하나씩)", "설명: layout-changwon/README.md"]}
+                  "냉동·냉장 문 = 북쪽(입고) + 남쪽(피킹), 북쪽·남쪽 통로", "설명: layout-changwon/README.md"]}
     return b.finish(), {"A": (nA, capA), "B": (nB, capB), "AMB": (nC, capC)}, alloc
 
 
