@@ -24,4 +24,4 @@
 
 ## 상태
 - 서버 시험 통과(auth-service check — 단위·통합, 새 시험 `NaverCodeExchangeIT.unlinksNaverWhenSignupNotFinishedButNotForMembers`).
-- LAN 배포: 사용자 "배포" 뒤(PC 4 auth-service). 배포되면 이 줄을 고친다.
+- **LAN 배포 2026-11-21 20:5x KST** — PC 4 auth-service(이미지 7b5bb37f, digest sha256:39e88bd4…), 시작 정상·ERROR 0. 실기기 확인 부탁(위 순서).
