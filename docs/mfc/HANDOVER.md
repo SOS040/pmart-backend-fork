@@ -11,16 +11,16 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 3. 시뮬레이터 회신 두 개(지금 진행 중인 일의 정본)
    - `docs/handoff/simulator/mfc/2026-11-21-simulator-reply-r30-reserve-stock.md`(보충재고 칸)
    - `docs/handoff/simulator/mfc/2026-11-21-simulator-reply-r31-cold-receiving.md`(입고칸, R-32 포함)
-4. 손댈 서비스의 `services/<서비스>/CLAUDE.md` "상태" 끝 줄들. 최근 것은 inventory 0.44.x, inbound 0.19.0, location 0.9.0, fulfillment 0.33.0 이다.
+4. 손댈 서비스의 `services/<서비스>/CLAUDE.md` "상태" 끝 줄들. 최근 것은 inventory 0.44.x, inbound 0.19.0, location 0.9.0, fulfillment 0.34.0 이다(0.33.0 은 PC 1 작업자 도면 위치).
 5. 프론트 요청을 받으면 `pmart-clients/docs/handoff/mfc-backoffice/`(읽기만)를 읽는다. 회신은 이 저장소 `docs/handoff/clients/mfc-backoffice/` 에 쓴다.
 
-### 열린 PR — PC 1 병합 대기 (같은 일지 파일이라 차례로 쌓음, 이 순서로 병합)
+### PR — 11-21 저녁 PC 1 이 모두 병합·배포 끝(아래 표는 병합 순서 기록. #325 는 계약 0.33.0 이 main 과 겹쳐 **0.34.0** 으로 들어감)
 | PR | 브랜치 | 내용 | 병합 뒤 PC 1 할 일 |
 |---|---|---|---|
 | #320 | `mfc/r30-hold-followup` | R-30 입고칸 보류 정정 결과, 회신 "나눠 정정" 안내 고침(문서) | — |
 | #322 | `mfc/shared-shelf-capacity` | inventory 0.44.1: 일반 선반도 칸 합산 용량(`LocationCapacity`) | 배포 |
 | #323 | `mfc/r31-cold-receiving` | R-31 저온 입고칸 LAN seed(코드 변경 없음) | — (#326 과 함께 실행) |
-| #325 | `mfc/hourly-picking-metrics` | fulfillment 0.33.0: 결품률 지표 `bucket` HOUR·DAY·WEEK·MONTH, DD-6·O-11 요청 | 배포, 공용 표에 DD-6·O-11 줄 |
+| #325 | `mfc/hourly-picking-metrics` | fulfillment 0.34.0(PR 에선 0.33.0): 결품률 지표 `bucket` HOUR·DAY·WEEK·MONTH, DD-6·O-11 요청 | 배포, 공용 표에 DD-6·O-11 줄 |
 | #326 | `mfc/r32-ambient-receiving` | R-32 RCV-A-02 LAN seed(`r31` 단계에 묶음) | `python -I deploy/lan/seed/mfc_layout.py support r31` |
 - 앞의 PR 은 병합이 끝났고 LAN 에 배포됐다: #318 R-30 보충재고 칸(location 0.9.0, inventory 0.44.0, inbound 0.19.0, LAN `reserve` 표시 끝).
 - 새 작업은 **origin/main 에서 새 브랜치**로 시작한다. 단, 아직 병합 안 된 PR 과 같은 파일(특히 그날 일지)을 고치면 그 PR 브랜치 위에 쌓고, PR 본문에 병합 순서를 적는다.

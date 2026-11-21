@@ -96,7 +96,7 @@
   - 새 `r31` 단계: C/F-R1-03·04-1-01 을 CLOSED 로 바꾼다. 재고 0 은 확인했다.
 - **회신**: `docs/handoff/simulator/mfc/2026-11-21-simulator-reply-r31-cold-receiving.md`
 
-### 1-7. 대시보드 시간대별 지표 — PR #325 (mfc-fulfillment 0.33.0)
+### 1-7. 대시보드 시간대별 지표 — PR #325 (mfc-fulfillment 0.34.0 — PR 은 0.33.0 이었으나 main 과 겹쳐 PC 1 이 0.34.0 으로 옮김)
 - 프론트 요청서(pmart-clients `docs/handoff/mfc-backoffice/`)
   - `2026-11-21-backend-hourly-metrics.md`
   - `2026-11-21-backend-center-order-metrics.md`
@@ -134,12 +134,12 @@
 | PR | 브랜치 | 상태 | 병합 뒤 PC 1 |
 |---|---|---|---|
 | #318 | `mfc/reserve-stock` | **병합·배포 끝** | `reserve` 실행 끝 |
-| #320 | `mfc/r30-hold-followup` | 대기 | — |
-| #322 | `mfc/shared-shelf-capacity` | 대기 | inventory 배포 |
-| #323 | `mfc/r31-cold-receiving` | 대기 | (#326 과 함께) |
-| #325 | `mfc/hourly-picking-metrics` | 대기 | fulfillment 배포, README 표에 DD-6·O-11 |
-| #326 | `mfc/r32-ambient-receiving` | 대기 | `mfc_layout.py support r31` |
-| #327 | `mfc/handover-2026-11-21` | 대기 | — |
+| #320 | `mfc/r30-hold-followup` | 병합 aa53e3f8 | — |
+| #322 | `mfc/shared-shelf-capacity` | 병합 2ca86de2·배포 끝 | inventory 배포 |
+| #323 | `mfc/r31-cold-receiving` | 병합 c66665ae·seed 끝 | (#326 과 함께) |
+| #325 | `mfc/hourly-picking-metrics` | 병합 4de94420(0.34.0)·배포 끝 | fulfillment 배포, README 표에 DD-6·O-11 |
+| #326 | `mfc/r32-ambient-receiving` | 병합 8f8a6491·seed 끝 | `mfc_layout.py support r31` |
+| #327 | `mfc/handover-2026-11-21` | 병합(#328 과 함께) | — |
 | (이 파일) | `mfc/session-log-2026-11-21` | 대기 | — |
 
 - 병합 순서는 위 표 순서다(같은 일지 파일이라 차례로 쌓았다).
