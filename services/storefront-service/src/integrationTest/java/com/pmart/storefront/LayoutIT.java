@@ -60,6 +60,8 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.it.context=LayoutIT"
     })
 @Import({TestJwtConfiguration.class, LayoutIT.MemoryImages.class})
+// 같은 DB 를 쓰는 시험 — 기본 진열(버전 0)에서 시작하는 draftSubmit… 이 먼저(이름 순)
+@org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.MethodName.class)
 class LayoutIT extends PostgresKafkaContainerSupport {
 
   @TestConfiguration
@@ -296,8 +298,8 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     assertThat(send("GET", APPROVER, "/storefront/banner-images/" + imageId, null).status())
         .isEqualTo(200);
 
-    // 할인 문구 → 제출 422, 고쳐서 다시
-    Res draft = send("POST", MD, "/storefront/layout-drafts", body(imageId, "겨울 채소 특가"));
+    // 근거 없는 약속 문구 → 제출 422, 고쳐서 다시(0.9.0 부터 할인·특가 문구는 허용)
+    Res draft = send("POST", MD, "/storefront/layout-drafts", body(imageId, "겨울 채소 신선 보장"));
     assertThat(draft.status()).as(draft.body().toString()).isEqualTo(201);
     String draftId = draft.body().path("draftId").asString();
     assertThat(draft.body().path("state").asString()).isEqualTo("DRAFT");
@@ -419,5 +421,163 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     assertThat(rejected.path("rejectionReason").asString()).isEqualTo("SCOPE_MISMATCH");
     assertThat(send("GET", null, "/storefront/home", null).body().path("layoutVersion").asInt())
         .isEqualTo(version);
+  }
+
+  /** 0.9.0(2026-11-21): 팝업·로딩 화면 배너, 타이머 테마, MD 탭(탭에 넣은 테마는 HOME 에서 빠짐), 특가 문구 허용. */
+  @Test
+  void popupSplashTimerThemeAndCustomTab() throws Exception {
+    product("PRD-M1", "ON_SALE");
+    product("PRD-M2", "ON_SALE");
+    String imageId = upload(MD, png()).body().path("imageId").asString();
+    String ends =
+        java.time.Instant.now()
+            .plus(java.time.Duration.ofDays(2))
+            .truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+            .toString();
+    Map<String, Object> body =
+        Map.of(
+            "banners",
+            List.of(
+                Map.of(
+                    "bannerId",
+                    "B-POP",
+                    "placement",
+                    "POPUP",
+                    "imageId",
+                    imageId,
+                    "altText",
+                    "주말 특가 안내",
+                    "linkType",
+                    "SECTION",
+                    "linkRef",
+                    "T-DEAL",
+                    "sortOrder",
+                    0),
+                Map.of(
+                    "bannerId",
+                    "B-SPL",
+                    "placement",
+                    "SPLASH",
+                    "imageId",
+                    imageId,
+                    "altText",
+                    "PMart",
+                    "linkType",
+                    "NONE",
+                    "sortOrder",
+                    0),
+                Map.of(
+                    "bannerId",
+                    "B-TOP",
+                    "placement",
+                    "HOME_TOP",
+                    "imageId",
+                    imageId,
+                    "altText",
+                    "아침 한 상",
+                    "linkType",
+                    "SECTION",
+                    "linkRef",
+                    "T-TIMER",
+                    "sortOrder",
+                    0)),
+            "themes",
+            List.of(
+                Map.of(
+                    "sectionId",
+                    "T-TIMER",
+                    "kind",
+                    "THEME",
+                    "title",
+                    "오늘만 이 가격",
+                    "productIds",
+                    List.of("PRD-M1"),
+                    "sortOrder",
+                    0,
+                    "endsAt",
+                    ends,
+                    "showTimer",
+                    true),
+                Map.of(
+                    "sectionId",
+                    "T-DEAL",
+                    "kind",
+                    "THEME",
+                    "title",
+                    "MD 특가",
+                    "productIds",
+                    List.of("PRD-M2"),
+                    "sortOrder",
+                    1)),
+            "tabs",
+            List.of(
+                Map.of(
+                    "tabKey",
+                    "X-DEAL",
+                    "title",
+                    "특가",
+                    "sectionIds",
+                    List.of("T-DEAL"),
+                    "sortOrder",
+                    0,
+                    "endsAt",
+                    ends,
+                    "showTimer",
+                    true)));
+    Res draft = send("POST", MD, "/storefront/layout-drafts", body);
+    assertThat(draft.status()).as(draft.body().toString()).isEqualTo(201);
+    String draftId = draft.body().path("draftId").asString();
+    assertThat(draft.body().path("tabs").path(0).path("tabKey").asString()).isEqualTo("X-DEAL");
+    Res submitted = send("POST", MD, "/storefront/layout-drafts/" + draftId + "/submissions", null);
+    assertThat(submitted.status()).as(submitted.body().toString()).isEqualTo(200);
+    int before = send("GET", null, "/storefront/home", null).body().path("layoutVersion").asInt();
+    approvalDecided(
+        "APR-" + UUID.randomUUID(),
+        draftId,
+        "APPROVED",
+        submitted.body().path("draftHash").asString());
+    JsonNode home =
+        await(
+            () -> send("GET", null, "/storefront/home", null).body(),
+            h ->
+                h.path("layoutVersion").asInt() > before
+                    && h.path("banners").findValuesAsString("bannerId").contains("B-TOP"));
+    assertThat(home.path("layoutVersion").asInt()).as("새 버전 게시").isGreaterThan(before);
+    // 홈 배너는 HOME_* 만, 팝업·로딩 화면은 자리로 따로
+    assertThat(home.path("banners").findValuesAsString("bannerId")).containsExactly("B-TOP");
+    assertThat(
+            send("GET", null, "/storefront/banners", null)
+                .body()
+                .path("items")
+                .findValuesAsString("bannerId"))
+        .containsExactly("B-TOP");
+    assertThat(
+            send("GET", null, "/storefront/banners?placement=POPUP", null)
+                .body()
+                .path("items")
+                .findValuesAsString("bannerId"))
+        .containsExactly("B-POP");
+    assertThat(
+            send("GET", null, "/storefront/banners?placement=SPLASH", null)
+                .body()
+                .path("items")
+                .findValuesAsString("bannerId"))
+        .containsExactly("B-SPL");
+    // 타이머 테마는 HOME 에, 탭에 넣은 테마는 HOME 에서 빠진다
+    List<String> sections = home.path("sections").findValuesAsString("sectionId");
+    assertThat(sections).contains("T-TIMER").doesNotContain("T-DEAL");
+    JsonNode timer = home.path("sections").path(sections.indexOf("T-TIMER"));
+    assertThat(timer.path("showTimer").asBoolean()).isTrue();
+    assertThat(
+            java.time.OffsetDateTime.parse(timer.path("endsAt").asString()).toInstant().toString())
+        .isEqualTo(ends);
+    assertThat(home.path("customTabs").path(0).path("tabKey").asString()).isEqualTo("X-DEAL");
+    assertThat(home.path("customTabs").path(0).path("showTimer").asBoolean()).isTrue();
+    JsonNode tab = send("GET", null, "/storefront/custom-tabs/X-DEAL", null).body();
+    assertThat(tab.path("tab").path("title").asString()).isEqualTo("특가");
+    assertThat(tab.path("sections").findValuesAsString("sectionId")).containsExactly("T-DEAL");
+    assertThat(tab.path("sections").path(0).path("items").path(0).path("productId").asString())
+        .isEqualTo("PRD-M2");
+    assertThat(send("GET", null, "/storefront/custom-tabs/X-NONE", null).status()).isEqualTo(404);
   }
 }

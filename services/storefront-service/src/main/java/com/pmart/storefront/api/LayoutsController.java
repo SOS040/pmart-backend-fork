@@ -139,9 +139,26 @@ public class LayoutsController implements LayoutsApi {
                             x.getProductIds(),
                             x.getSortOrder() == null ? 0 : x.getSortOrder(),
                             instant(x.getStartsAt()),
-                            instant(x.getEndsAt())))
+                            instant(x.getEndsAt()),
+                            Boolean.TRUE.equals(x.getShowTimer()),
+                            x.getAutoSize()))
                 .toList();
-    return new LayoutRules.Body(banners, themes, b.getNote());
+    List<LayoutRules.Tab> tabs =
+        b.getTabs() == null
+            ? List.of()
+            : b.getTabs().stream()
+                .map(
+                    x ->
+                        new LayoutRules.Tab(
+                            x.getTabKey(),
+                            x.getTitle(),
+                            x.getSectionIds(),
+                            x.getSortOrder() == null ? 0 : x.getSortOrder(),
+                            instant(x.getStartsAt()),
+                            instant(x.getEndsAt()),
+                            Boolean.TRUE.equals(x.getShowTimer())))
+                .toList();
+    return new LayoutRules.Body(banners, themes, tabs, b.getNote());
   }
 
   static LayoutDraft view(LayoutService.Draft d) {
@@ -185,7 +202,22 @@ public class LayoutsController implements LayoutsApi {
                             .productIds(x.productIds())
                             .sortOrder(x.sortOrder())
                             .startsAt(x.startsAt() == null ? null : odt(x.startsAt()))
-                            .endsAt(x.endsAt() == null ? null : odt(x.endsAt())))
+                            .endsAt(x.endsAt() == null ? null : odt(x.endsAt()))
+                            .showTimer(x.showTimer())
+                            .autoSize(x.autoSize()))
+                .toList())
+        .tabs(
+            d.body().tabs().stream()
+                .map(
+                    x ->
+                        new com.pmart.storefront.api.generated.model.LayoutTab()
+                            .tabKey(x.tabKey())
+                            .title(x.title())
+                            .sectionIds(x.sectionIds())
+                            .sortOrder(x.sortOrder())
+                            .startsAt(x.startsAt() == null ? null : odt(x.startsAt()))
+                            .endsAt(x.endsAt() == null ? null : odt(x.endsAt()))
+                            .showTimer(x.showTimer()))
                 .toList());
   }
 

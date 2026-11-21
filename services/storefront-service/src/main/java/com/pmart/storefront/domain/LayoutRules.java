@@ -21,20 +21,28 @@ import org.jspecify.annotations.Nullable;
  *   <li>배너 이미지는 올린 것이어야 한다 — IMAGE_NOT_FOUND. 링크: SECTION = 같은 초안의 테마, PRODUCT = 진열 가능 상품, CATEGORY
  *       = 값 있음, NONE = 비움 — INVALID_LINK
  *   <li>기간: startsAt &lt; endsAt — INVALID_PERIOD
- *   <li>1차 범위: 할인·N% off·쿠폰·특가·증정·1+1·세일, 근거 없는 최저가·신선 보장 문구("100% 국내산" 같은 %는 막지 않는다) —
- *       PROMOTION_NOT_ALLOWED(BackOffice BO-05 §3)
+ *   <li>문구: 근거 없는 최저가·신선 보장 — PROMOTION_NOT_ALLOWED. 할인·특가·쿠폰·세일·1+1 문구는 2026-11-21 부터 허용(ADR-0082
+ *       쿠폰·기간 할인 활성, 사용자 "풀어줘")
+ *   <li>0.9.0: 자동 랭킹 테마(RANKING_AUTO — 상품 비움·autoSize 1~30, INVALID_AUTO_THEME), 그 밖 테마는 상품 1개
+ *       이상(EMPTY_THEME), 타이머는 끝 시각 필수(TIMER_NEEDS_END), MD 탭(테마 sectionId 가 있어야·한 테마는 한 탭 —
+ *       UNKNOWN_SECTION·DUPLICATE_ID)
  *   <li>배너·테마가 하나도 없는 본문도 게시할 수 있다(철회 = 뺀 새 버전 — ADR-0075 ⑧)
  * </ul>
  */
 public final class LayoutRules {
 
-  /** 1차 범위 밖 문구(할인·쿠폰·특가·증정) + 근거 없는 약속. 대소문자·띄어쓰기 무시. */
+  /** 근거 없는 약속(최저가·신선 보장). 할인·쿠폰·특가 문구는 2026-11-21 부터 허용. */
   private static final Pattern PROMOTION =
-      Pattern.compile(
-          "할인|\\d+\\s*%\\s*off|쿠폰|특가|증정|사은품|1\\+1|2\\+1|최저가|신선\\s*보장|세일|\\bsale\\b",
-          Pattern.CASE_INSENSITIVE);
+      Pattern.compile("최저가|신선\\s*보장", Pattern.CASE_INSENSITIVE);
 
-  public static final List<String> PLACEMENTS = List.of("HOME_TOP", "HOME_MIDDLE");
+  public static final String RANKING_AUTO = "RANKING_AUTO";
+
+  /** 배너 자리 — 홈(HOME_TOP·HOME_MIDDLE), 0.9.0 팝업(POPUP)·처음 로딩 화면(SPLASH). */
+  public static final List<String> PLACEMENTS =
+      List.of("HOME_TOP", "HOME_MIDDLE", "POPUP", "SPLASH");
+
+  /** 홈 응답 banners 에 들어가는 자리. */
+  public static final List<String> HOME_PLACEMENTS = List.of("HOME_TOP", "HOME_MIDDLE");
 
   public record Banner(
       String bannerId,
@@ -55,20 +63,65 @@ public final class LayoutRules {
       List<String> productIds,
       int sortOrder,
       @Nullable Instant startsAt,
-      @Nullable Instant endsAt) {
+      @Nullable Instant endsAt,
+      boolean showTimer,
+      @Nullable Integer autoSize) {
     public Theme {
-      productIds = List.copyOf(productIds);
+      productIds = productIds == null ? List.of() : List.copyOf(productIds);
+    }
+
+    public Theme(
+        String sectionId,
+        String kind,
+        String title,
+        @Nullable String subtitle,
+        List<String> productIds,
+        int sortOrder,
+        @Nullable Instant startsAt,
+        @Nullable Instant endsAt) {
+      this(sectionId, kind, title, subtitle, productIds, sortOrder, startsAt, endsAt, false, null);
+    }
+
+    public boolean auto() {
+      return RANKING_AUTO.equals(kind);
     }
   }
 
-  public record Body(List<Banner> banners, List<Theme> themes, @Nullable String note) {
+  /** MD 탭(0.9.0) — 그 탭에 보일 테마 sectionId(순서). */
+  public record Tab(
+      String tabKey,
+      String title,
+      List<String> sectionIds,
+      int sortOrder,
+      @Nullable Instant startsAt,
+      @Nullable Instant endsAt,
+      boolean showTimer) {
+    public Tab {
+      sectionIds = sectionIds == null ? List.of() : List.copyOf(sectionIds);
+    }
+  }
+
+  public record Body(
+      List<Banner> banners, List<Theme> themes, List<Tab> tabs, @Nullable String note) {
     public Body {
       banners = banners == null ? List.of() : List.copyOf(banners);
       themes = themes == null ? List.of() : List.copyOf(themes);
+      tabs = tabs == null ? List.of() : List.copyOf(tabs);
+    }
+
+    public Body(List<Banner> banners, List<Theme> themes, @Nullable String note) {
+      this(banners, themes, List.of(), note);
     }
 
     public static Body empty() {
-      return new Body(List.of(), List.of(), null);
+      return new Body(List.of(), List.of(), List.of(), null);
+    }
+
+    /** MD 탭에 넣은 테마(HOME 에서 뺀다). */
+    public Set<String> tabbedSections() {
+      Set<String> out = new HashSet<>();
+      tabs.forEach(x -> out.addAll(x.sectionIds()));
+      return out;
     }
   }
 
@@ -126,12 +179,51 @@ public final class LayoutRules {
       if (promotional(t.title()) || promotional(t.subtitle())) {
         out.add(new Problem(at + ".title", "PROMOTION_NOT_ALLOWED"));
       }
+      if (t.showTimer() && t.endsAt() == null) {
+        out.add(new Problem(at + ".endsAt", "TIMER_NEEDS_END"));
+      }
+      if (t.auto()) {
+        Integer n = t.autoSize();
+        if (!t.productIds().isEmpty() || n == null || n < 1 || n > 30) {
+          out.add(new Problem(at + ".autoSize", "INVALID_AUTO_THEME"));
+        }
+      } else if (t.productIds().isEmpty()) {
+        out.add(new Problem(at + ".productIds", "EMPTY_THEME"));
+      }
       Set<String> seenProducts = new HashSet<>();
       for (String p : t.productIds()) {
         if (!seenProducts.add(p)) {
           out.add(new Problem(at + ".productIds", "DUPLICATE_PRODUCT"));
         } else if (!displayable.test(p)) {
           out.add(new Problem(p, "PRODUCT_NOT_PUBLISHED"));
+        }
+      }
+    }
+    Set<String> tabKeys = new HashSet<>();
+    Set<String> tabbed = new HashSet<>();
+    for (int i = 0; i < body.tabs().size(); i++) {
+      Tab tab = body.tabs().get(i);
+      String at = "tabs[" + i + "]";
+      if (!tabKeys.add(tab.tabKey())) {
+        out.add(new Problem(at + ".tabKey", "DUPLICATE_ID"));
+      }
+      if (promotional(tab.title())) {
+        out.add(new Problem(at + ".title", "PROMOTION_NOT_ALLOWED"));
+      }
+      if (!periodOk(tab.startsAt(), tab.endsAt())) {
+        out.add(new Problem(at + ".endsAt", "INVALID_PERIOD"));
+      }
+      if (tab.showTimer() && tab.endsAt() == null) {
+        out.add(new Problem(at + ".endsAt", "TIMER_NEEDS_END"));
+      }
+      if (tab.sectionIds().isEmpty()) {
+        out.add(new Problem(at + ".sectionIds", "UNKNOWN_SECTION"));
+      }
+      for (String s : tab.sectionIds()) {
+        if (!sections.contains(s)) {
+          out.add(new Problem(at + ".sectionIds", "UNKNOWN_SECTION"));
+        } else if (!tabbed.add(s)) {
+          out.add(new Problem(at + ".sectionIds", "DUPLICATE_ID"));
         }
       }
     }

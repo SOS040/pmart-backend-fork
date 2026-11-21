@@ -55,6 +55,35 @@ public class StorefrontController implements StorefrontApi {
     return ResponseEntity.ok(layout(tab == null ? TabKey.HOME : tab, mfcId));
   }
 
+  /** MD 탭(0.9.0) — 기간 안 탭의 테마 영역(넣은 순서). 없거나 기간 밖이면 404. */
+  @Override
+  public ResponseEntity<com.pmart.storefront.api.generated.model.CustomTabLayout> getCustomTab(
+      String tabKey, @Nullable String mfcId) {
+    com.pmart.storefront.domain.LayoutRules.Tab tab =
+        activeTabs().stream()
+            .filter(x -> x.tabKey().equals(tabKey))
+            .findFirst()
+            .orElseThrow(() -> PmartException.notFound("TAB_NOT_FOUND", "탭이 없습니다: " + tabKey));
+    java.util.Map<String, com.pmart.storefront.domain.LayoutRules.Theme> byId =
+        new java.util.HashMap<>();
+    activeThemes().forEach(x -> byId.put(x.sectionId(), x));
+    List<Section> sections = new ArrayList<>();
+    for (String id : tab.sectionIds()) {
+      var theme = byId.get(id);
+      if (theme != null) {
+        Section s = themeSection(theme, mfcId);
+        if (s != null) {
+          sections.add(s);
+        }
+      }
+    }
+    return ResponseEntity.ok(
+        new com.pmart.storefront.api.generated.model.CustomTabLayout()
+            .layoutVersion(layouts.currentVersion())
+            .tab(customTab(tab))
+            .sections(sections));
+  }
+
   @Override
   public ResponseEntity<HomeLayout> getTab(TabKey tabKey, @Nullable String mfcId) {
     return ResponseEntity.ok(layout(tabKey, mfcId));
@@ -113,7 +142,12 @@ public class StorefrontController implements StorefrontApi {
             .layoutVersion(layouts.currentVersion())
             .items(
                 activeBanners().stream()
-                    .filter(b -> placement == null || placement.equals(b.placement()))
+                    .filter(
+                        b ->
+                            placement == null
+                                ? com.pmart.storefront.domain.LayoutRules.HOME_PLACEMENTS.contains(
+                                    b.placement())
+                                : placement.equals(b.placement()))
                     .map(StorefrontController::banner)
                     .toList()));
   }
@@ -144,6 +178,76 @@ public class StorefrontController implements StorefrontApi {
                         com.pmart.storefront.domain.LayoutRules.PLACEMENTS.indexOf(b.placement()))
                 .thenComparingInt(com.pmart.storefront.domain.LayoutRules.Banner::sortOrder))
         .toList();
+  }
+
+  /** HOME 에 보일 기간 안 테마 — MD 탭에 넣은 테마는 뺀다(0.9.0). */
+  private List<com.pmart.storefront.domain.LayoutRules.Theme> homeThemes() {
+    java.util.Set<String> tabbed =
+        layouts
+            .currentBody()
+            .map(com.pmart.storefront.domain.LayoutRules.Body::tabbedSections)
+            .orElse(java.util.Set.of());
+    return activeThemes().stream().filter(t -> !tabbed.contains(t.sectionId())).toList();
+  }
+
+  /** 지금 버전의 기간 안 MD 탭(순서, 0.9.0). */
+  private List<com.pmart.storefront.domain.LayoutRules.Tab> activeTabs() {
+    Instant now = clock.instant();
+    return layouts.currentBody().map(b -> b.tabs()).orElse(List.of()).stream()
+        .filter(x -> com.pmart.storefront.domain.LayoutRules.active(x.startsAt(), x.endsAt(), now))
+        .sorted(
+            java.util.Comparator.comparingInt(
+                com.pmart.storefront.domain.LayoutRules.Tab::sortOrder))
+        .toList();
+  }
+
+  private static com.pmart.storefront.api.generated.model.CustomTab customTab(
+      com.pmart.storefront.domain.LayoutRules.Tab x) {
+    return new com.pmart.storefront.api.generated.model.CustomTab()
+        .tabKey(x.tabKey())
+        .title(x.title())
+        .endsAt(x.endsAt() == null ? null : x.endsAt().atOffset(java.time.ZoneOffset.UTC))
+        .showTimer(x.showTimer());
+  }
+
+  /** 편성 테마 → 홈 영역(첫 묶음). 자동 랭킹은 랭킹이 꺼져 있으면 null(영역 생략). */
+  private @Nullable Section themeSection(
+      com.pmart.storefront.domain.LayoutRules.Theme t, @Nullable String mfcId) {
+    ThemePage page;
+    if (t.auto()) {
+      if (!rankingOn()) {
+        return null;
+      }
+      page = autoPage(t, mfcId);
+    } else {
+      page = themePage(t, mfcId, DefaultLayout.FIRST_PAGE, null);
+    }
+    return new Section()
+        .sectionId(t.sectionId())
+        .kind(t.auto() ? Section.KindEnum.RANKING : Section.KindEnum.fromValue(t.kind()))
+        .title(t.title())
+        .subtitle(t.subtitle())
+        .state(Section.StateEnum.OK)
+        .items(page.items())
+        .nextCursor(page.next())
+        .viewAllRef("/api/v1/storefront/sections/" + t.sectionId() + "/items")
+        .endsAt(t.endsAt() == null ? null : t.endsAt().atOffset(java.time.ZoneOffset.UTC))
+        .showTimer(t.showTimer())
+        .asOf(asOf(page.asOf()));
+  }
+
+  /** 자동 랭킹 테마(RANKING_AUTO) — 랭킹 탭과 같은 순위 상위 autoSize 개, 한 번에(다음 묶음 없음). */
+  private ThemePage autoPage(
+      com.pmart.storefront.domain.LayoutRules.Theme t, @Nullable String mfcId) {
+    int n = t.autoSize() == null ? 10 : t.autoSize();
+    StorefrontQueries.Page page = page(DisplayStore.Kind.RANKING, mfcId, null, n);
+    boolean filtered = mfcId != null && !mfcId.isBlank();
+    Instant newSince = queries.newSince();
+    List<DisplayItem> items = new ArrayList<>();
+    for (int i = 0; i < page.items().size(); i++) {
+      items.add(item(page.items().get(i), filtered, DisplayStore.Kind.RANKING, i + 1, newSince));
+    }
+    return new ThemePage(items, null, page.asOf());
   }
 
   /** 지금 버전의 기간 안 테마(순서). */
@@ -179,7 +283,12 @@ public class StorefrontController implements StorefrontApi {
             .findFirst()
             .orElseThrow(
                 () -> PmartException.notFound("SECTION_NOT_FOUND", "진열 영역이 없습니다: " + sectionId));
-    ThemePage page = themePage(theme, mfcId, size, cursor);
+    ThemePage page =
+        theme.auto()
+            ? (cursor == null && rankingOn()
+                ? autoPage(theme, mfcId)
+                : new ThemePage(List.of(), null, clock.instant()))
+            : themePage(theme, mfcId, size, cursor);
     return new ListSectionItems200Response()
         .sectionId(sectionId)
         .items(page.items())
@@ -278,20 +387,19 @@ public class StorefrontController implements StorefrontApi {
     List<com.pmart.storefront.api.generated.model.Banner> banners = List.of();
     if (tab == TabKey.HOME) {
       // 편성(BO-05, ADR-0075): 기간 안 배너 + 테마 영역(순서) + 마지막 "전체 상품"
-      banners = activeBanners().stream().map(StorefrontController::banner).toList();
-      for (com.pmart.storefront.domain.LayoutRules.Theme t : activeThemes()) {
-        ThemePage page = themePage(t, mfcId, DefaultLayout.FIRST_PAGE, null);
-        sections.add(
-            new Section()
-                .sectionId(t.sectionId())
-                .kind(Section.KindEnum.fromValue(t.kind()))
-                .title(t.title())
-                .subtitle(t.subtitle())
-                .state(Section.StateEnum.OK)
-                .items(page.items())
-                .nextCursor(page.next())
-                .viewAllRef("/api/v1/storefront/sections/" + t.sectionId() + "/items")
-                .asOf(asOf(page.asOf())));
+      banners =
+          activeBanners().stream()
+              .filter(
+                  b ->
+                      com.pmart.storefront.domain.LayoutRules.HOME_PLACEMENTS.contains(
+                          b.placement()))
+              .map(StorefrontController::banner)
+              .toList();
+      for (com.pmart.storefront.domain.LayoutRules.Theme t : homeThemes()) {
+        Section s = themeSection(t, mfcId);
+        if (s != null) {
+          sections.add(s);
+        }
       }
     }
     sections.add(section);
@@ -300,7 +408,8 @@ public class StorefrontController implements StorefrontApi {
         .tab(tab)
         .tabs(tabs)
         .banners(banners)
-        .sections(sections);
+        .sections(sections)
+        .customTabs(activeTabs().stream().map(StorefrontController::customTab).toList());
   }
 
   private Section section(

@@ -339,6 +339,7 @@ GET /api/v1/stock-summaries OPERATOR
 GET /api/v1/stop-requests OPERATOR
 GET /api/v1/storefront/banner-images/{imageId} PUBLIC
 GET /api/v1/storefront/banners PUBLIC
+GET /api/v1/storefront/custom-tabs/{tabKey} PUBLIC
 GET /api/v1/storefront/home PUBLIC
 GET /api/v1/storefront/layout-drafts OPERATOR
 GET /api/v1/storefront/layout-drafts/{draftId} OPERATOR

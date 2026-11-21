@@ -31,8 +31,8 @@ class CatalogEventConsumers {
   }
 
   /**
-   * commerce.sku-display-discount.v1 — 바인딩 promotionEvents-in-0(2026-11-21 ADR-0082 4단계, 할인가 표시). 새 그룹은 처음부터
-   * 읽어 채운다.
+   * commerce.sku-display-discount.v1 — 바인딩 promotionEvents-in-0(2026-11-21 ADR-0082 4단계, 할인가 표시). 새
+   * 그룹은 처음부터 읽어 채운다.
    */
   @Bean
   PmartEventConsumer promotionEvents(EventConsumers consumers, DisplayProjector projector) {

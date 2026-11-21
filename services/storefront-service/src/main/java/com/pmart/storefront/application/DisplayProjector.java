@@ -57,8 +57,8 @@ public class DisplayProjector {
   }
 
   /**
-   * commerce.sku-display-discount.v1 SkuDisplayDiscountChanged(ADR-0082 4단계) — 표시 할인 사본. seq 가 큰 것만. 할인가는 조회 때
-   * 가격 사본과 priceVersion 이 같을 때만 보인다.
+   * commerce.sku-display-discount.v1 SkuDisplayDiscountChanged(ADR-0082 4단계) — 표시 할인 사본. seq 가 큰
+   * 것만. 할인가는 조회 때 가격 사본과 priceVersion 이 같을 때만 보인다.
    */
   public void applyDiscount(EventEnvelope e) {
     JsonNode p = e.payload();
