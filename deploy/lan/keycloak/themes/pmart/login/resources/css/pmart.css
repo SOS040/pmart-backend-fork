@@ -130,9 +130,10 @@ body#keycloak-bg {
 .pf-v5-c-form__group-label {
   padding-bottom: 0.5rem !important;
 }
+/* 칸 이름(아이디·비밀번호): 2026-11-21 사용자 "글자 너무 얇아서 없어 보여" → 굵게(700 — 맑은 고딕은 600 이 보통 굵기로 보인다)·조금 크게 */
 .pf-v5-c-form__label-text {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.0625rem;
+  font-weight: 700;
   color: var(--pm-ink);
 }
 
@@ -157,10 +158,15 @@ body#keycloak-bg {
   border-color: var(--pf-v5-global--danger-color--100) !important;
 }
 .pf-v5-c-form-control > input {
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--pm-ink);
   min-height: 3.25rem;
   padding: 0 0.875rem;
   align-self: stretch;
+}
+.pf-v5-c-form-control > input::placeholder {
+  color: #8a867f;
 }
 .pf-v5-c-form-control > input:focus,
 .pf-v5-c-form-control > input:focus-visible {
