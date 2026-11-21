@@ -210,7 +210,27 @@ public class NaverTokenClient {
     }
   }
 
+  /** 프로필 API 결과(원문). 값은 없을 수 있다. 이메일은 개인정보 — 로그·toString 금지. */
+  public record Profile(@Nullable String image, @Nullable String email) {
+    public static final Profile NONE = new Profile(null, null);
+
+    @Override
+    public String toString() {
+      return "NaverTokenClient.Profile[***]";
+    }
+  }
+
+  /** {@link #profile} 의 사진만(BR-70 호환). */
   public @Nullable String profileImage(String profileBaseUrl, String accessToken) {
+    return profile(profileBaseUrl, accessToken).image();
+  }
+
+  /**
+   * 네이버 프로필 API({@code GET {profileBaseUrl}/v1/nid/me}) 한 번 — {@code
+   * response.profile_image}(BR-70)·{@code response.email}(BR-77, 고객이 이메일 제공에 동의했을 때만). 어떤 실패도 예외 없이
+   * {@link Profile#NONE}. 로그는 짧은 까닭 코드만.
+   */
+  public Profile profile(String profileBaseUrl, String accessToken) {
     JsonNode body;
     try {
       body =
@@ -222,28 +242,31 @@ public class NaverTokenClient {
               .retrieve()
               .body(JsonNode.class);
     } catch (HttpStatusCodeException e) {
-      log.info("네이버 프로필 사진 생략 reason=http_{}", e.getStatusCode().value());
-      return null;
+      log.info("네이버 프로필 생략 reason=http_{}", e.getStatusCode().value());
+      return Profile.NONE;
     } catch (RuntimeException e) {
-      log.info("네이버 프로필 사진 생략 reason={}", e.getClass().getSimpleName());
-      return null;
+      log.info("네이버 프로필 생략 reason={}", e.getClass().getSimpleName());
+      return Profile.NONE;
     }
     if (body == null || !body.isObject()) {
-      log.info("네이버 프로필 사진 생략 reason=empty_response");
-      return null;
+      log.info("네이버 프로필 생략 reason=empty_response");
+      return Profile.NONE;
     }
     // 네이버는 실패도 200 + resultcode ≠ "00" 으로 줄 수 있다
     String resultCode = body.path("resultcode").asString("");
     if (!resultCode.isEmpty() && !"00".equals(resultCode)) {
-      log.info("네이버 프로필 사진 생략 reason=resultcode");
-      return null;
+      log.info("네이버 프로필 생략 reason=resultcode");
+      return Profile.NONE;
     }
     String image = body.path("response").path("profile_image").asString("");
+    String email = body.path("response").path("email").asString("");
     if (image.isBlank()) {
       log.info("네이버 프로필 사진 생략 reason=missing_profile_image");
-      return null;
     }
-    return image;
+    if (email.isBlank()) {
+      log.info("네이버 프로필 이메일 생략 reason=missing_email");
+    }
+    return new Profile(image.isBlank() ? null : image, email.isBlank() ? null : email);
   }
 
   private static String errorCode(HttpClientErrorException e) {

@@ -64,12 +64,12 @@ class NaverCodeExchangeServiceTest {
     }
 
     @Override
-    public @Nullable String profileImage(String profileBaseUrl, String accessToken) {
+    public NaverTokenClient.Profile profile(String profileBaseUrl, String accessToken) {
       calls.incrementAndGet();
       if (fail) {
         throw new IllegalStateException("boom");
       }
-      return image;
+      return new NaverTokenClient.Profile(image, null);
     }
   }
 
@@ -176,5 +176,19 @@ class NaverCodeExchangeServiceTest {
     ProfileClient none = new ProfileClient(p, ok, false);
     assertThat(new NaverCodeExchangeService(p, none, null).profileImage(cfg, null)).isNull();
     assertThat(none.calls.get()).isZero();
+  }
+
+  @Test
+  void subjectOfReadsIdTokenSubWithoutTrustingAnythingElse() {
+    java.util.Base64.Encoder b64 = java.util.Base64.getUrlEncoder().withoutPadding();
+    String payload =
+        b64.encodeToString(
+            "{\"sub\":\"naver-sub-1\",\"iss\":\"https://nid.naver.com\"}".getBytes());
+    assertThat(NaverCodeExchangeService.subjectOf("h." + payload + ".sig"))
+        .isEqualTo("naver-sub-1");
+    assertThat(NaverCodeExchangeService.subjectOf("not-a-jwt")).isNull();
+    assertThat(NaverCodeExchangeService.subjectOf("h.%%%.sig")).isNull();
+    String noSub = b64.encodeToString("{\"iss\":\"x\"}".getBytes());
+    assertThat(NaverCodeExchangeService.subjectOf("h." + noSub + ".s")).isNull();
   }
 }

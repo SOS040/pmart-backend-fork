@@ -64,6 +64,8 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
+  @Autowired com.pmart.auth.infrastructure.NaverProfileEmailStore naverEmails;
+  @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   @InjectWireMock("naver")
   WireMockServer naver;
@@ -376,5 +378,63 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     assertThat(r.status()).isEqualTo(400);
     assertThat(r.body().path("code").asString()).isEqualTo("VALIDATION_FAILED");
     naver.verify(0, postRequestedFor(urlPathEqualTo(TOKEN)));
+  }
+
+  /**
+   * BR-77: 교환 때 프로필의 이메일을 id_token sub 에 묶어 두고(응답에는 싣지 않음), 로그인 때 그 sub 로 한 번 꺼낸다. 이메일이 없거나 프로필이
+   * 실패하면 묶지 않고 교환은 그대로 200.
+   */
+  @Test
+  void profileEmailIsHeldForTheIdTokenSubjectNotReturnedToApp() {
+    String sub = "naver-sub-" + UUID.randomUUID();
+    var b64 = java.util.Base64.getUrlEncoder().withoutPadding();
+    String idToken =
+        b64.encodeToString("{\"alg\":\"RS256\"}".getBytes())
+            + "."
+            + b64.encodeToString(("{\"sub\":\"" + sub + "\"}").getBytes())
+            + ".sig";
+    stub(200, Map.of("access_token", "naver-access", "id_token", idToken));
+    stubProfile(
+        200,
+        Map.of(
+            "resultcode",
+            "00",
+            "message",
+            "success",
+            "response",
+            Map.of("id", "n-1", "profile_image", PICTURE, "email", "naver.user@naver.com")));
+    Res r = exchange(UUID.randomUUID().toString(), "code-email", CALLBACK);
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.body().toString()).doesNotContain("naver.user@naver.com");
+    assertThat(r.body().path("profileImageUrl").asString()).isEqualTo(PICTURE);
+    // 원래 sub 는 남기지 않는다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM naver_profile_email WHERE subject_hash = ?",
+                Integer.class,
+                com.pmart.auth.infrastructure.NaverProfileEmailStore.hash(sub)))
+        .isEqualTo(1);
+    java.time.Instant now = java.time.Instant.now();
+    assertThat(naverEmails.take(sub, now)).isEqualTo("naver.user@naver.com");
+    assertThat(naverEmails.take(sub, now)).isNull(); // 한 번만
+
+    // 이메일 없음 → 묶지 않음
+    naver.resetAll();
+    String sub2 = "naver-sub-" + UUID.randomUUID();
+    stub(
+        200,
+        Map.of(
+            "access_token",
+            "naver-access",
+            "id_token",
+            "h." + b64.encodeToString(("{\"sub\":\"" + sub2 + "\"}").getBytes()) + ".s"));
+    stubProfile(200, profileBody(PICTURE));
+    assertThat(exchange(UUID.randomUUID().toString(), "code-noemail", CALLBACK).status())
+        .isEqualTo(200);
+    assertThat(naverEmails.take(sub2, now)).isNull();
+
+    // 만료가 지난 값은 주지 않는다
+    naverEmails.save(sub2, "old@naver.com", now.minusSeconds(1));
+    assertThat(naverEmails.take(sub2, now)).isNull();
   }
 }

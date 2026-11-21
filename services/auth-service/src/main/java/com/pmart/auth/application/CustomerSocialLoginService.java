@@ -139,6 +139,9 @@ public class CustomerSocialLoginService {
   private final Clock clock;
   private final CustomerIdentityClient identities;
 
+  /** 네이버 교환 때 받은 이메일(BR-77). */
+  private final com.pmart.auth.infrastructure.NaverProfileEmailStore naverEmails;
+
   public CustomerSocialLoginService(
       CustomerStore customers,
       SessionStore sessions,
@@ -150,7 +153,9 @@ public class CustomerSocialLoginService {
       EventEnvelopeCodec codec,
       TransactionTemplate tx,
       Clock clock,
-      CustomerIdentityClient identities) {
+      CustomerIdentityClient identities,
+      com.pmart.auth.infrastructure.NaverProfileEmailStore naverEmails) {
+    this.naverEmails = naverEmails;
     this.identities = identities;
     this.customers = customers;
     this.sessions = sessions;
@@ -762,8 +767,16 @@ public class CustomerSocialLoginService {
     payload.put("accountId", accountId);
     payload.put("provider", provider);
     payload.put("authenticatedAt", at.toString());
-    putIfPresent(payload, "email", identity.email());
-    putIfPresent(payload, "emailVerified", identity.emailVerified());
+    String email = identity.email();
+    Boolean emailVerified = identity.emailVerified();
+    if (email == null && "NAVER".equals(provider)) {
+      // 네이버 ID 토큰에는 이메일이 없다 — 교환 때 서버가 네이버 프로필 API 에서 직접 받아 이 sub 에 묶어 둔 값(BR-77).
+      // 네이버는 확인 여부를 주지 않아 emailVerified 는 싣지 않는다. 없으면 이메일 없이(customer 의 기존 값은 그대로).
+      email = naverEmails.take(identity.subject(), at);
+      emailVerified = null;
+    }
+    putIfPresent(payload, "email", email);
+    putIfPresent(payload, "emailVerified", emailVerified);
     putIfPresent(payload, "name", identity.name());
     // 네이버는 ID 토큰에 사진이 없어 앱이 넘긴 주소(0.8.0, ProviderPictureRules — 맞을 때만)
     putIfPresent(
