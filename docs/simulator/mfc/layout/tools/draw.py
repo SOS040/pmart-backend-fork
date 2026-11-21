@@ -14,16 +14,17 @@ DR = L.get('drawing', {})
 S = 18.0  # px per m
 M = 40
 W_M = DR.get('drawWidth', 55.0)  # include truck outside east wall
+LEFT = DR.get('drawLeft', 0.0)  # 건물 서쪽 밖에 그릴 폭(m) — 세종 입고 차량 진입로(2026-11-21). 없으면 0(부산 그대로)
 D_M = L['depth']
 BD = L['buildingDepth']
 BW = L['width']
 LEG = 300
-Wpx = int(W_M * S + 2 * M + LEG)
+Wpx = int((W_M + LEFT) * S + 2 * M + LEG)
 Hpx = int(D_M * S + 2 * M + 30)
 
 
 def X(x):
-    return M + x * S
+    return M + (x + LEFT) * S
 
 
 def Z(z):
@@ -155,7 +156,7 @@ a(f'<rect x="{sx}" y="{sy}" width="{5 * S}" height="4" fill="#333"/>'
   f'<text x="{sx + 5 * S + 6}" y="{sy + 6}" font-size="10" fill="#333">5 m</text>')
 a(f'<text x="{X(8)}" y="{sy + 6}" font-size="10" fill="#666">{e(DR.get("scaleNote", "위 = 북(z=0) · 가로 48 m × 건물 깊이 32 m (+ 앞마당 8 m) · x = 동쪽, z = 남쪽"))}</text>')
 
-lx = M + W_M * S + 20
+lx = M + (W_M + LEFT) * S + 20
 y = M + 10
 a(f'<text x="{lx}" y="{y}" font-size="13" font-weight="700" fill="#222">범례</text>')
 y += 18
