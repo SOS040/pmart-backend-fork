@@ -1,6 +1,7 @@
 package com.pmart.auth.application;
 
 import com.pmart.auth.domain.ProviderPictureRules;
+import com.pmart.auth.infrastructure.CustomerStore;
 import com.pmart.auth.infrastructure.NaverProfileEmailStore;
 import com.pmart.auth.infrastructure.NaverTokenClient;
 import com.pmart.common.messaging.RequestIdempotency;
@@ -42,6 +43,10 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>이메일(2026-11-21 BR-77): 같은 프로필 응답의 {@code email} 을 id_token {@code sub} 에 10분 묶어 둔다({@link
  *       NaverProfileEmailStore}) — 그 sub 의 검증된 id_token 으로 로그인할 때 CustomerAuthenticated 에 싣고 지운다.
  *       앱에는 주지 않는다(앱이 보내는 이메일은 바꿔치기할 수 있다). 없거나 실패면 이메일 없이 그대로.
+ *   <li>가입 전 연결 끊기(2026-11-21 BR-79, 사용자 "(가)·네이버 1번 서버 변경으로"): 그 id_token {@code sub} 로 <b>가입을 마친
+ *       계정이 없으면</b>(연결 없음 = 처음, 또는 동의·휴대폰 확인 단계에서 나간 가입 = {@code member_since} 없음) 프로필을 읽은 뒤 네이버 앱
+ *       연결을 끊는다 — 가입을 끝내지 않고 나가면 다음 네이버 로그인에서 동의 화면이 다시 나온다. 가입을 마친 회원은 끊지 않는다 (동의는 처음 가입 때만). 끊기
+ *       실패·계정 조회 실패는 교환을 막지 않는다(조회 실패면 끊지 않음). sub 를 읽을 수 없으면 끊지 않는다.
  * </ul>
  *
  * <p>코드·verifier·secret·id_token·access token·사진 주소는 로그에 남기지 않는다.
@@ -70,6 +75,7 @@ public class NaverCodeExchangeService {
   private final NaverTokenClient naver;
   private final RequestIdempotency idempotency;
   private final @Nullable NaverProfileEmailStore emails;
+  private final @Nullable CustomerStore customers;
   private final Clock clock;
 
   /** 교환 때 받은 이메일을 묶어 두는 시간(그 안에 같은 id_token 으로 로그인한다). */
@@ -80,7 +86,7 @@ public class NaverCodeExchangeService {
   /** 단위 시험용 — 이메일을 묶어 두지 않는다. */
   public NaverCodeExchangeService(
       CustomerProperties props, NaverTokenClient naver, @Nullable RequestIdempotency idempotency) {
-    this(props, naver, idempotency, null, Clock.systemUTC());
+    this(props, naver, idempotency, null, null, Clock.systemUTC());
   }
 
   @Autowired
@@ -89,11 +95,13 @@ public class NaverCodeExchangeService {
       NaverTokenClient naver,
       @Nullable RequestIdempotency idempotency,
       @Nullable NaverProfileEmailStore emails,
+      @Nullable CustomerStore customers,
       Clock clock) {
     this.props = props;
     this.naver = naver;
     this.idempotency = idempotency;
     this.emails = emails;
+    this.customers = customers;
     this.clock = clock;
   }
 
@@ -150,18 +158,43 @@ public class NaverCodeExchangeService {
               Exchanged out = new Exchanged(tokens.idToken(), pickImage(profile.image()));
               holdEmail(tokens.idToken(), profile.email());
               // 프로필을 읽은 뒤 끊는다(끊으면 access token 이 무효)
-              if ((withdrawal || cfg.unlinkAfterExchange()) && tokens.accessToken() != null) {
+              String reason =
+                  withdrawal
+                      ? "WITHDRAWAL"
+                      : cfg.unlinkAfterExchange()
+                          ? "LOGIN"
+                          : signupPending(tokens.idToken()) ? "SIGNUP_PENDING" : null;
+              if (reason != null && tokens.accessToken() != null) {
                 boolean ok =
                     naver.unlink(
                         cfg.tokenBaseUrl(),
                         cfg.clientId(),
                         cfg.clientSecret(),
                         tokens.accessToken());
-                log.info("네이버 연결 끊기 purpose={} ok={}", withdrawal ? "WITHDRAWAL" : "LOGIN", ok);
+                log.info("네이버 연결 끊기 purpose={} ok={}", reason, ok);
               }
               return out;
             })
         .value();
+  }
+
+  /**
+   * 이 네이버 계정(sub)으로 가입을 마친 PMart 계정이 없는가(BR-79). sub 를 못 읽거나 조회가 실패하면 false(끊지 않음). sub 는 로그 금지.
+   */
+  boolean signupPending(String idToken) {
+    if (customers == null) {
+      return false;
+    }
+    String sub = subjectOf(idToken);
+    if (sub == null) {
+      return false;
+    }
+    try {
+      return customers.linkedAccount("NAVER", sub).map(a -> !customers.everMember(a)).orElse(true);
+    } catch (RuntimeException e) {
+      log.warn("네이버 가입 전 끊기 판단 생략 reason={}", e.getClass().getSimpleName());
+      return false;
+    }
   }
 
   /** 프로필 사진만(시험·BR-70). */

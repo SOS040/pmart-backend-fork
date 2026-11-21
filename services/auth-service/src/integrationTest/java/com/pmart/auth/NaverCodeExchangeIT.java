@@ -161,8 +161,8 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * BR-74 (C): 탈퇴 재인증(WITHDRAWAL)은 프로필을 읽은 뒤 네이버 연결을 끊고, 로그인(기본)은 끊지 않는다(LAN 스위치 꺼짐). 끊기 실패도 교환
-   * 200.
+   * BR-74 (C): 탈퇴 재인증(WITHDRAWAL)은 프로필을 읽은 뒤 네이버 연결을 끊고, 로그인(기본)은 끊지 않는다(LAN 스위치 꺼짐 — 이 id_token 은
+   * sub 를 읽을 수 없는 모양이라 BR-79 가입 전 끊기도 하지 않는다). 끊기 실패도 교환 200.
    */
   @Test
   void withdrawalPurposeUnlinksNaverAfterExchangeButLoginDoesNot() {
@@ -197,6 +197,97 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     assertThat(
             exchange(java.util.UUID.randomUUID().toString(), "code-wd2", CALLBACK, "WITHDRAWAL")
                 .status())
+        .isEqualTo(200);
+  }
+
+  @Autowired com.pmart.auth.infrastructure.CustomerStore customers;
+
+  /** 서명 없는 id_token 모양(교환 응답은 네이버가 직접 준 것이라 서버가 sub 만 읽는다). */
+  static String idTokenWithSub(String sub) {
+    java.util.Base64.Encoder b = java.util.Base64.getUrlEncoder().withoutPadding();
+    return b.encodeToString("{\"alg\":\"RS256\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        + "."
+        + b.encodeToString(
+            ("{\"sub\":\"" + sub + "\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        + ".sig";
+  }
+
+  int unlinkCalls() {
+    return naver
+        .findAll(
+            WireMock.postRequestedFor(urlPathEqualTo("/oauth2.0/token"))
+                .withRequestBody(WireMock.containing("grant_type=delete")))
+        .size();
+  }
+
+  /**
+   * BR-79 (가): 그 sub 로 가입을 마친 계정이 없으면(처음·동의 단계에서 나간 가입) 교환 뒤 네이버 연결을 끊고, 가입을 마친 회원이면 끊지 않는다. 끊기 실패도
+   * 교환 200.
+   */
+  @Test
+  void unlinksNaverWhenSignupNotFinishedButNotForMembers() {
+    stubProfile(200, profileBody(PICTURE));
+    naver.stubFor(
+        WireMock.post(urlPathEqualTo("/oauth2.0/token"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"access_token\":\"naver-access\",\"result\":\"success\"}")));
+    java.time.Instant now = java.time.Instant.now();
+    String fresh = "naver-new-" + UUID.randomUUID();
+    String pending = "naver-pending-" + UUID.randomUUID();
+    String member = "naver-member-" + UUID.randomUUID();
+    String pendingAccount = "CU-" + UUID.randomUUID();
+    customers.insertAccount(pendingAccount, now);
+    customers.insertIdentity("NAVER", pending, pendingAccount, now);
+    String memberAccount = "CU-" + UUID.randomUUID();
+    customers.insertAccount(memberAccount, now);
+    customers.insertIdentity("NAVER", member, memberAccount, now);
+    customers.markMember(memberAccount, now);
+
+    int before = unlinkCalls();
+    for (String sub : new String[] {fresh, pending}) {
+      stub(
+          200,
+          Map.of(
+              "access_token",
+              "naver-access",
+              "token_type",
+              "bearer",
+              "id_token",
+              idTokenWithSub(sub)));
+      assertThat(exchange(UUID.randomUUID().toString(), "code-" + sub, CALLBACK).status())
+          .isEqualTo(200);
+    }
+    assertThat(unlinkCalls() - before).isEqualTo(2);
+
+    stub(
+        200,
+        Map.of(
+            "access_token",
+            "naver-access",
+            "token_type",
+            "bearer",
+            "id_token",
+            idTokenWithSub(member)));
+    assertThat(exchange(UUID.randomUUID().toString(), "code-member", CALLBACK).status())
+        .isEqualTo(200);
+    assertThat(unlinkCalls() - before).isEqualTo(2);
+
+    // 끊기 실패해도 교환은 성공
+    naver.stubFor(
+        WireMock.post(urlPathEqualTo("/oauth2.0/token")).willReturn(aResponse().withStatus(500)));
+    stub(
+        200,
+        Map.of(
+            "access_token",
+            "naver-access",
+            "token_type",
+            "bearer",
+            "id_token",
+            idTokenWithSub(fresh)));
+    assertThat(exchange(UUID.randomUUID().toString(), "code-fresh-2", CALLBACK).status())
         .isEqualTo(200);
   }
 
