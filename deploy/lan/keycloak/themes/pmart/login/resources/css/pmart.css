@@ -3,7 +3,15 @@
    pmart-clients web/rider-backoffice/src/features/session/LoginShell.tsx 를 옮긴 모양: 넓은 화면은 둘로 나눠 왼쪽 짙은 남색(neutral)에 P 로고·이름,
    오른쪽 흰 바탕에 상자 없이 로그인 칸. 좁은 화면은 위에 로고 줄만. 색은 web/ui/src/console.css 밝은 테마 값, 주 버튼만 짙은 남색.
    keycloak.v2(PatternFly v5) 템플릿(FTL)은 건드리지 않고 CSS·문구(messages)만 덮는다 — Keycloak 버전을 올려도 깨질 곳을 줄이려고.
-   글꼴: Pretendard 를 테마에 싣지 않는다(설치된 PC 만 Pretendard, 아니면 맑은 고딕). */
+   글꼴(2026-11-21 사용자 "폰트랑 글자 크기만 이 사진 참고해서" — MFC 백오피스 로그인): 백오피스와 같은 Pretendard 가변 글꼴을 테마에 싣는다
+   (fonts/PretendardVariable.woff2, npm pretendard 1.3.9, OFL-1.1 — 라이선스 fonts/Pretendard-LICENSE.txt). 크기도 그 화면 값(제목 36px·안내 16px·버튼 16px). */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('../fonts/PretendardVariable.woff2') format('woff2-variations');
+}
 :root {
   --pm-neutral: oklch(26% 0.03 262);
   --pm-neutral-content: oklch(92% 0.01 262);
@@ -64,9 +72,9 @@ body#keycloak-bg {
   align-items: center;
   gap: 0.625rem;
   color: var(--pm-ink) !important;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
   line-height: 1.4;
   text-transform: none;
   text-align: left !important;
@@ -107,12 +115,9 @@ body#keycloak-bg {
   padding-top: 0;
   margin-bottom: 2.75rem;
 }
-/* 2026-11-21 사용자 "직원로그인 글자도 얇아서 없어 보여" — 맑은 고딕은 굵기가 700 하나뿐이라 800·900 이 더 굵어지지 않는다.
-   같은 색 외곽선을 얇게 더해 한 단계 굵게 보이게 한다(Pretendard 가 있으면 900 그대로) */
 #kc-page-title {
-  font-size: 2.5rem;
-  font-weight: 900;
-  -webkit-text-stroke: 0.04em currentColor;
+  font-size: 2.25rem;
+  font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.2;
   color: var(--pm-ink);
@@ -121,8 +126,9 @@ body#keycloak-bg {
 .pf-v5-c-login__main-header::after {
   content: "회사 직원 계정으로 로그인해 주세요";
   display: block;
-  margin-top: 1rem;
-  font-size: 1.125rem;
+  margin-top: 0.875rem;
+  font-size: 1rem;
+  font-weight: 500;
   color: var(--pm-ink-sub);
 }
 
@@ -133,9 +139,9 @@ body#keycloak-bg {
 .pf-v5-c-form__group-label {
   padding-bottom: 0.5rem !important;
 }
-/* 칸 이름(아이디·비밀번호): 2026-11-21 사용자 "글자 너무 얇아서 없어 보여" → 굵게(700 — 맑은 고딕은 600 이 보통 굵기로 보인다)·조금 크게 */
+/* 칸 이름(아이디·비밀번호): 2026-11-21 사용자 "글자 너무 얇아서 없어 보여" → 굵게 */
 .pf-v5-c-form__label-text {
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   font-weight: 700;
   color: var(--pm-ink);
 }
@@ -161,7 +167,7 @@ body#keycloak-bg {
   border-color: var(--pf-v5-global--danger-color--100) !important;
 }
 .pf-v5-c-form-control > input {
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 500;
   color: var(--pm-ink);
   min-height: 3.25rem;
@@ -213,7 +219,7 @@ body#keycloak-bg {
   --pf-v5-c-button--m-primary--active--Color: var(--pm-btn-main-fg);
   --pf-v5-c-button--BorderRadius: 8px;
   min-height: 3.5rem;
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 .pf-v5-c-button.pf-m-primary:focus-visible {
@@ -253,7 +259,7 @@ body#keycloak-bg {
     align-items: flex-start;
     gap: 1.25rem;
     color: var(--pm-neutral-content) !important;
-    font-size: 2.75rem;
+    font-size: 2.25rem;
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1.2;
@@ -268,8 +274,8 @@ body#keycloak-bg {
   #kc-header-wrapper::after {
     content: "운영·인사·MFC·라이더 백오피스에 같은 직원 계정으로 로그인해요";
     max-width: 26rem;
-    font-size: 1.125rem;
-    font-weight: 400;
+    font-size: 1rem;
+    font-weight: 500;
     letter-spacing: 0;
     line-height: 1.55;
     color: color-mix(in oklab, var(--pm-neutral-content) 70%, transparent);
@@ -292,6 +298,6 @@ body#keycloak-bg {
     padding: 3rem 5rem;
   }
   #kc-page-title {
-    font-size: 2.75rem;
+    font-size: 2.25rem;
   }
 }
