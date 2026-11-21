@@ -252,10 +252,11 @@ body#keycloak-bg {
     margin: 0;
     padding: 3.5rem;
     color: var(--pm-neutral-content);
-    /* 장식 빛(오른쪽 위 파랑, 왼쪽 아래 민트) — 2026-11-21 사용자 "빛 비치는 효과가 좀 약해" → 더 밝고 넓게 */
+    /* 장식 빛(오른쪽 위 파랑, 왼쪽 아래 민트) — 2026-11-21 사용자 "빛 비치는 효과가 좀 약해"·"이 정도는"(MFC 백오피스 로그인 판):
+       모서리 밖이 아니라 판 안쪽에 큰 둥근 빛 — 가운데는 고르게 밝고 가장자리에서 부드럽게 사라진다 */
     background:
-      radial-gradient(34rem 34rem at calc(100% + 3rem) -3rem, color-mix(in oklab, var(--pm-primary) 62%, transparent), color-mix(in oklab, var(--pm-primary) 18%, transparent) 45%, transparent 72%),
-      radial-gradient(34rem 34rem at -3rem calc(100% + 4rem), color-mix(in oklab, var(--pm-accent) 38%, transparent), color-mix(in oklab, var(--pm-accent) 10%, transparent) 45%, transparent 72%),
+      radial-gradient(circle 24rem at 86% 12%, color-mix(in oklab, var(--pm-primary) 42%, transparent) 0%, color-mix(in oklab, var(--pm-primary) 36%, transparent) 38%, transparent 78%),
+      radial-gradient(circle 26rem at 6% 104%, color-mix(in oklab, var(--pm-accent) 26%, transparent) 0%, color-mix(in oklab, var(--pm-accent) 20%, transparent) 35%, transparent 78%),
       var(--pm-neutral);
   }
   #kc-header-wrapper {
