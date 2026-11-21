@@ -4,6 +4,7 @@ import com.pmart.auth.domain.WithdrawnIdentifierRules;
 import com.pmart.auth.infrastructure.CustomerStore;
 import com.pmart.auth.infrastructure.IdTokenVerifier;
 import com.pmart.auth.infrastructure.IdTokenVerifiers;
+import com.pmart.auth.infrastructure.KakaoUnlinkClient;
 import com.pmart.auth.infrastructure.SessionStore;
 import com.pmart.auth.infrastructure.WithdrawnIdentifierStore;
 import com.pmart.common.messaging.EventEnvelope;
@@ -17,6 +18,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * 고객 탈퇴(2026-11-20 ADR-0077) 중 auth 몫.
@@ -43,6 +46,7 @@ public class CustomerWithdrawalService {
   private final SessionBlocks blocks;
   private final WithdrawnIdentifierStore withdrawn;
   private final Clock clock;
+  private final KakaoUnlinkClient kakao;
 
   public CustomerWithdrawalService(
       IdTokenVerifiers verifiers,
@@ -50,7 +54,9 @@ public class CustomerWithdrawalService {
       SessionStore sessions,
       SessionBlocks blocks,
       WithdrawnIdentifierStore withdrawn,
-      Clock clock) {
+      Clock clock,
+      KakaoUnlinkClient kakao) {
+    this.kakao = kakao;
     this.verifiers = verifiers;
     this.customers = customers;
     this.sessions = sessions;
@@ -128,6 +134,25 @@ public class CustomerWithdrawalService {
         "ACCOUNT_DISABLED",
         new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "auth-service"));
     log.info("고객 탈퇴 반영 accountId={} 연결 {}개 정리", accountId, links.size());
+    // 카카오는 연결된 동안 동의를 기억한다 — 끊어 두면 다시 가입할 때 동의 화면이 뜬다(2026-11-21 사용자 "처음 가입할 때만").
+    // 커밋 뒤 한 번, 실패는 로그만(탈퇴는 그대로). 재처리로 다시 와도 위에서 WITHDRAWN 이라 다시 부르지 않는다.
+    List<String> kakaoIds =
+        links.stream().filter(l -> "KAKAO".equals(l.provider())).map(l -> l.subject()).toList();
+    if (!kakaoIds.isEmpty()) {
+      Runnable unlink =
+          () -> kakaoIds.forEach(id -> log.info("카카오 연결 끊기(탈퇴) ok={}", kakao.unlink(id)));
+      if (TransactionSynchronizationManager.isSynchronizationActive()) {
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+              @Override
+              public void afterCommit() {
+                unlink.run();
+              }
+            });
+      } else {
+        unlink.run();
+      }
+    }
     return true;
   }
 
