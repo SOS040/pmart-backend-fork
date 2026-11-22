@@ -97,3 +97,5 @@
 - **정의**: 매출 = 승인 금액(환불 빼지 않음, Q-19 전) — O-8 과 같다.
 - **지금(임시)**: 화면은 목 모드에서만 그리고, 실서버는 "센터 주문·매출 지표 API 없음"을 보인다.
 - 같은 모양 참고: mfc-fulfillment 0.34.0 피킹 지표 칸 단위(`date`·`hour`, date_trunc Asia/Seoul).
+- **권한 결정(2026-11-23 사용자, PC 3 전달 — pmart-clients `docs/handoff/mfc-backoffice/2026-11-23-backend-order-metrics-supervisor.md`)**: MFC_SUPERVISOR 도 연다 — **토큰 센터만**(mfcId 필수·검사, 다른 센터 403). 범위 = O-11 계열 + 지금 있는 `summary`·`top-products`(O-8 의 OPERATOR_ADMIN 만을 이만큼 바꿈). OPERATOR_ADMIN 은 그대로 모든 센터. 매출 정의·개인정보 없음 그대로.
+- **카테고리(3번) 확인(PC 1, 2026-11-23)**: 주문 줄에 카테고리 사본이 없다(order 마이그레이션 V1~V9 에 category 열 없음) — 상품별 카테고리는 product 공개 트리(또는 search 색인)에서 붙여야 한다. 구현 때 정함.
