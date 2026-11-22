@@ -67,3 +67,13 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
 - 급함: 중간(표시만 — 그 전엔 "라이더"로).
 - **상태**: **구현(2026-11-20, PC 5 — rider 0.18.0)**: 표기 전용 `GET /riders/display-names?riderIds=`(쉼표 50개) — OPERATOR_ADMIN·RIDER_OPS·CS_AGENT·MFC_SUPERVISOR·MFC_WORKER, 응답 `items[{riderId, riderNumber, nameMasked}]`만(전화·상태·제한 없음, 없는 ID 는 빠짐, 탈퇴는 nameMasked null). 라이더 찾기·상세 `GET /riders`·`/riders/{id}` 권한은 그대로. 회신 `docs/handoff/clients/mfc-backoffice/2026-11-20-reply-rider-display-names.md`.
 
+
+## RS-7. 라이더 목록을 센터(배달 지역)로 거르기 — 라이더 백오피스 센터 고르기 (2026-11-23, 보낸 영역 platform — PC 5 구현)
+- **사용자(2026-11-23)**: "백오피스에서 센터를 고르면 그 해당 센터에 해당하는 라이더 정보를 볼 수 있게 해주면 좋겠는데. 여러 센터 라이더 다 보면 헷갈리지 않을까?" — 2호점 목포 MFC(MFC-MOKPO-01, R-39)가 생겨 센터가 둘.
+- **권한은 그대로**: `RIDER_OPS`·`OPERATOR_ADMIN`·`CS_AGENT` 는 모든 센터(staff-roles.md, 2026-11-15). 이 요청은 **보기 거르기**(화면에서 고른 센터)다 — 고르지 않으면 지금처럼 전부.
+- **문제**: `GET /riders` 는 `operatingMfcId`(지금 운행 중인 센터)로만 거른다. 운행을 끈 라이더·가입만 한 라이더는 어느 센터 라이더인지로 찾을 수 없다. 라이더의 센터 = 가입 때 고른 배달 지역 `deliveryAreas[].mfcId`.
+- **요청**:
+  1. `GET /riders?mfcId=` — 배달 지역에 그 센터가 있는 라이더만(`operatingMfcId` 와 함께 쓰면 AND). 배달 지역이 여러 센터면 각 센터에서 보인다.
+  2. `GET /riders/withdrawals?mfcId=` — 같은 뜻(탈퇴 시점 배달 지역 기준, 어려우면 지금 저장된 값).
+  3. (PC 5 판단) execution 직원 목록 중 `mfcId` 가 없는 것 — `surcharge-requests`·`rider-payouts`·`rider-earnings/adjustment-queue` — 와 dispatch `rider-assignments` 에도 같은 `mfcId`(배송의 센터 또는 라이더 배달 지역 중 맞는 쪽). 이미 있는 것: execution `deliveries`·`delivery-help-requests`·`delivery-stats`·`return-handovers`, dispatch `dispatch-delays`·`metrics/on-time-deliveries`, tracking `rider-locations`.
+- 화면 쪽(센터 고르기 → 모든 목록에 `mfcId`)은 pmart-clients rider-backoffice 에 따로 알린다(`docs/handoff/clients/rider-backoffice/2026-11-23-request-center-filter.md`).
