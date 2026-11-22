@@ -4,7 +4,7 @@
 받는 앱: backoffice (통합 백오피스 웹 — 진열 편성 화면)
 작성: pmart-backend, 2026-11-22 — 사용자 "통합백오피스 프론트 세션으로 넘겨줘"(고객 앱 BR-82 R1 의 백오피스 몫)
 계약: **storefront-service 0.11.0**(`contracts/openapi/storefront-service.yaml`)
-상태: (배포 줄 아래)
+상태: **백엔드 LAN 반영 2026-11-22**(storefront 62087c9e) — 시험 CATEGORY 배너 2장(진열 버전 7: B-CAT-VEG·B-CAT-MEAT). 남은 것 = 이 화면 작업
 
 ## 바뀐 것
 - 편성 초안 배너 `placement` enum 에 `CATEGORY` 추가 — 고객 앱 **카테고리 화면 맨 위** 배너(모든 카테고리 화면 공통, 카테고리별 따로가 아님).
