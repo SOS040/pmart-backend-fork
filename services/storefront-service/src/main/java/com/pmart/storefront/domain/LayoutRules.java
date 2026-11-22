@@ -90,9 +90,42 @@ public final class LayoutRules {
       @Nullable Instant startsAt,
       @Nullable Instant endsAt,
       boolean showTimer,
-      @Nullable Integer autoSize) {
+      @Nullable Integer autoSize,
+      @Nullable String timerStyle) {
+    /** 0.12.0 BR-84 남은 시간 머리 모양. */
+    public static final String TIMER_LABEL = "LABEL";
+
+    public static final String TIMER_BAND = "BAND";
+
     public Theme {
       productIds = productIds == null ? List.of() : List.copyOf(productIds);
+      // 타이머가 꺼져 있으면 모양은 뜻이 없다(null), 켜져 있는데 비면 LABEL
+      timerStyle = !showTimer ? null : TIMER_BAND.equals(timerStyle) ? TIMER_BAND : TIMER_LABEL;
+    }
+
+    public Theme(
+        String sectionId,
+        String kind,
+        String title,
+        @Nullable String subtitle,
+        List<String> productIds,
+        int sortOrder,
+        @Nullable Instant startsAt,
+        @Nullable Instant endsAt,
+        boolean showTimer,
+        @Nullable Integer autoSize) {
+      this(
+          sectionId,
+          kind,
+          title,
+          subtitle,
+          productIds,
+          sortOrder,
+          startsAt,
+          endsAt,
+          showTimer,
+          autoSize,
+          null);
     }
 
     public Theme(

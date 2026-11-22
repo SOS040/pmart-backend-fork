@@ -153,4 +153,20 @@ class LayoutRulesTest {
             "UNKNOWN_SECTION",
             "UNPLACED_GROUP");
   }
+
+  @org.junit.jupiter.api.Test
+  void timerStyleOnlyWithTimerDefaultLabel() {
+    assertThat(
+            new Theme("T-A", "THEME", "a", null, List.of("P1"), 0, null, T0, true, null, null)
+                .timerStyle())
+        .isEqualTo("LABEL");
+    assertThat(
+            new Theme("T-B", "THEME", "b", null, List.of("P1"), 0, null, T0, true, null, "BAND")
+                .timerStyle())
+        .isEqualTo("BAND");
+    assertThat(
+            new Theme("T-C", "THEME", "c", null, List.of("P1"), 0, null, null, false, null, "BAND")
+                .timerStyle())
+        .isNull();
+  }
 }

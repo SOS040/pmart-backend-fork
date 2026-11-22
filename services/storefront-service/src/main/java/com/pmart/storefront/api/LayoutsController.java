@@ -142,7 +142,8 @@ public class LayoutsController implements LayoutsApi {
                             instant(x.getStartsAt()),
                             instant(x.getEndsAt()),
                             Boolean.TRUE.equals(x.getShowTimer()),
-                            x.getAutoSize()))
+                            x.getAutoSize(),
+                            x.getTimerStyle() == null ? null : x.getTimerStyle().getValue()))
                 .toList();
     List<LayoutRules.Tab> tabs =
         b.getTabs() == null
@@ -214,6 +215,10 @@ public class LayoutsController implements LayoutsApi {
                             .startsAt(x.startsAt() == null ? null : odt(x.startsAt()))
                             .endsAt(x.endsAt() == null ? null : odt(x.endsAt()))
                             .showTimer(x.showTimer())
+                            .timerStyle(
+                                x.timerStyle() == null
+                                    ? null
+                                    : LayoutTheme.TimerStyleEnum.fromValue(x.timerStyle()))
                             .autoSize(x.autoSize()))
                 .toList())
         .tabs(

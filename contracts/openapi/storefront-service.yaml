@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
+    0.12.0(2026-11-23, 클라이언트 BR-84 — 사용자 "그 타이머 선택하는걸 백오피스에 기능을 넣고 싶고"): 편성 테마 `timerStyle`(LABEL 제목 위 글자 · BAND 띠 + 시·분·초 칸, 기본 LABEL) — `showTimer=true` 일 때만 뜻이 있고 false 면 null 로 저장·응답.
+      홈·MD 탭 내용의 영역(Section)에도 같은 값. MD 탭 자체 타이머(`CustomTab.showTimer`)는 모양이 하나라 그대로.
     0.11.0(2026-11-22, 클라이언트 BR-82 "카테고리 화면 배너"): 편성 배너 자리에 `CATEGORY`(카테고리 화면 맨 위 — 모든 카테고리 화면 공통). 홈 `banners`·placement 없는
     배너 목록에는 나오지 않고 `GET /storefront/banners?placement=CATEGORY` 로만(POPUP·SPLASH 와 같음).
     0.10.0(2026-11-21 — 사용자 "넘김 간격 MD 가 편성 가능하도록, 순서 섞기도 추천대로"):
@@ -508,6 +510,7 @@ components:
         productIds: { type: array, maxItems: 50, items: { type: string }, description: '보일 순서 그대로. RANKING_AUTO 가 아니면 1개 이상(EMPTY_THEME), RANKING_AUTO 는 비움(INVALID_AUTO_THEME)' }
         autoSize: { type: [integer, 'null'], minimum: 1, maximum: 30, description: '0.9.0 RANKING_AUTO 의 상위 몇 개(필수)' }
         showTimer: { type: boolean, default: false, description: '0.9.0 남은 시간 표시 — endsAt 필수(TIMER_NEEDS_END)' }
+        timerStyle: { type: [string, 'null'], enum: [LABEL, BAND, null], x-added-in: '2026-11-23', description: '0.12.0 BR-84 남은 시간 머리 모양 — LABEL(제목 위 분홍 글자, 기본)·BAND(연분홍 띠 + 시·분·초 칸). showTimer=false 면 무시(null 로 저장)' }
         sortOrder: { type: integer, minimum: 0 }
         startsAt: { type: [string, 'null'], format: date-time }
         endsAt: { type: [string, 'null'], format: date-time }
@@ -606,6 +609,7 @@ components:
         banners: { type: array, items: { $ref: '#/components/schemas/Banner' }, description: '0.10.0 kind BANNER 영역의 배너(순서대로 넘기기). 그 밖 영역은 없음' }
         intervalSeconds: { type: [integer, 'null'], description: '0.10.0 kind BANNER 영역의 넘김 간격(초) — 편성 bannerIntervalSeconds, 비면 null(앱 기본값)' }
         showTimer: { type: boolean, description: '0.9.0 true 면 앱이 endsAt 까지 남은 시간을 보인다' }
+        timerStyle: { type: [string, 'null'], enum: [LABEL, BAND, null], x-added-in: '2026-11-23', description: '0.12.0 BR-84 — showTimer 일 때 머리 모양(LABEL·BAND), 아니면 null. 없으면 앱은 LABEL' }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     HomeLayout:
       type: object

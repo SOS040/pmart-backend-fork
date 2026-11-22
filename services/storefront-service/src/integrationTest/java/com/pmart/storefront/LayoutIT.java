@@ -510,7 +510,9 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                     "endsAt",
                     ends,
                     "showTimer",
-                    true),
+                    true,
+                    "timerStyle",
+                    "BAND"),
                 Map.of(
                     "sectionId",
                     "T-DEAL",
@@ -521,7 +523,9 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                     "productIds",
                     List.of("PRD-M2"),
                     "sortOrder",
-                    1)),
+                    1,
+                    "timerStyle",
+                    "BAND")),
             "tabs",
             List.of(
                 Map.of(
@@ -541,6 +545,9 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     assertThat(draft.status()).as(draft.body().toString()).isEqualTo(201);
     String draftId = draft.body().path("draftId").asString();
     assertThat(draft.body().path("tabs").path(0).path("tabKey").asString()).isEqualTo("X-DEAL");
+    // 0.12.0 BR-84: 타이머가 꺼진 테마의 모양은 null 로 저장된다
+    assertThat(draft.body().path("themes").path(0).path("timerStyle").asString()).isEqualTo("BAND");
+    assertThat(draft.body().path("themes").path(1).path("timerStyle").isNull()).isTrue();
     Res submitted = send("POST", MD, "/storefront/layout-drafts/" + draftId + "/submissions", null);
     assertThat(submitted.status()).as(submitted.body().toString()).isEqualTo(200);
     int before = send("GET", null, "/storefront/home", null).body().path("layoutVersion").asInt();
@@ -587,6 +594,7 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     assertThat(sections).contains("T-TIMER").doesNotContain("T-DEAL");
     JsonNode timer = home.path("sections").path(sections.indexOf("T-TIMER"));
     assertThat(timer.path("showTimer").asBoolean()).isTrue();
+    assertThat(timer.path("timerStyle").asString()).as("BR-84 띠형").isEqualTo("BAND");
     assertThat(
             java.time.OffsetDateTime.parse(timer.path("endsAt").asString()).toInstant().toString())
         .isEqualTo(ends);
@@ -595,6 +603,7 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     JsonNode tab = send("GET", null, "/storefront/custom-tabs/X-DEAL", null).body();
     assertThat(tab.path("tab").path("title").asString()).isEqualTo("특가");
     assertThat(tab.path("sections").findValuesAsString("sectionId")).containsExactly("T-DEAL");
+    assertThat(tab.path("sections").path(0).path("timerStyle").isNull()).as("타이머 없음").isTrue();
     assertThat(tab.path("sections").path(0).path("items").path(0).path("productId").asString())
         .isEqualTo("PRD-M2");
     assertThat(send("GET", null, "/storefront/custom-tabs/X-NONE", null).status()).isEqualTo(404);

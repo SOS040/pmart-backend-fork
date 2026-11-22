@@ -233,6 +233,8 @@ public class StorefrontController implements StorefrontApi {
         .viewAllRef("/api/v1/storefront/sections/" + t.sectionId() + "/items")
         .endsAt(t.endsAt() == null ? null : t.endsAt().atOffset(java.time.ZoneOffset.UTC))
         .showTimer(t.showTimer())
+        .timerStyle(
+            t.timerStyle() == null ? null : Section.TimerStyleEnum.fromValue(t.timerStyle()))
         .asOf(asOf(page.asOf()));
   }
 
