@@ -13,7 +13,7 @@ LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록�
 |---|---|---|---|---|
 | `claude-dev` | `OPERATOR_ADMIN` | 모든 센터 | `keycloak-claude-dev-password` | 관리자 시험, 백오피스 관리자 메뉴, RAG 확인(`rag_e2e.py`) |
 | `test-cs-rider@pmart.com` | `CS_AGENT`·`RIDER_OPS` | 모든 센터 | `keycloak-test-cs-rider@pmart.com-password` | 고객센터·라이더 운영·지원센터 메뉴 |
-| `claude-approver` | 승인 역할들 + `HR_ADMIN` | — | `keycloak-claude-approver-password` | 승인함, 인사팀 앱(직원 등록·권한 관리) |
+| `claude-approver` | 승인 역할들 + `HR_ADMIN` + `MD`(2026-11-22 동의어 요청) | — | `keycloak-claude-approver-password` | 승인함, 인사팀 앱(직원 등록·권한 관리) |
 | `claude-mfc-sup` | `MFC_SUPERVISOR` | `MFC-SEED-01` | `keycloak-claude-mfc-sup-password` | MFC 백오피스(:8445), 센터 관리자 시험 — 직원 번호 `OP-88399b05-87b7-48e2-aa33-229a3ab36f93`(2026-11-16 로그인 확인) |
 | `claude-mfc-wrk` | `MFC_WORKER` | `MFC-SEED-01` | `keycloak-claude-mfc-wrk-password` | 시뮬레이터 작업자·`mfc_e2e.py` — 직원 번호 `OP-d696814f-4cd7-4263-86a6-032b591e5b42` |
 
