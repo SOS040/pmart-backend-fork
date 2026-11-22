@@ -47,3 +47,8 @@
 - **왜**: 웹 BR-73(pmart-clients `docs/handoff/backoffice/2026-11-20-backend-shortage-by-sku.md`) — 대시보드 "결품 많은 상품 상위 N". 웹은 bff 로 묶든 원천을 바로 부르든 괜찮다고 했고, PC 2 는 지금 SHORTAGE_RATE 와 같은 길(`views/metrics`, 권한·실패 표시 같게)로 묶기로 웹에 답함(2026-11-20).
 - **기다림**: mfc-fulfillment F-13(SKU별 원천, PC 3). 들어오면 bff 에서 원천 그대로 넘기고(SKU·분자·분모·사유별), 상품명이 없으면 product 조회로 채울지는 그때.
 - **상태: 구현(2026-11-20, bff 0.23.0 — PC 2)**. F-13(mfc-fulfillment 0.32.0, #308) 배포 뒤. `views/metrics` 의 날짜별 점(points) 모양과 달라 **새 경로 `GET /views/metrics/shortage-by-sku`**(from·to·centerId·sort·limit·minPickedLines) — 원천 값 그대로(sku·productName·pickedLines·shortLines·shortLinesByReason, 원천이 적용한 sort·minPickedLines), 비율은 화면이. 상품명이 없으면 null(bff 가 product 로 채우지 않음 — 화면은 SKU). 원천 4xx 그대로, 장애 503.
+
+## BF-4. 클레임·라이더 컴플레인·처리 대기 화면 센터 거르기 (2026-11-23, 보낸 영역 platform — 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기 #390)
+- **요청**: `GET /views/claims`(→ claim CL-8 `mfcId`), `GET /views/rider-complaints`(→ case `centerId`), `GET /views/pending-work`·`/views/work-counts`(묶는 원천마다 센터 인자를 넘기고, 센터를 못 거르는 원천은 응답에 표시)에 선택 `centerId`(bff 의 다른 view 와 같은 이름).
+- 원천 쪽: claim CL-8(PC 1), case R-12(PC 2).
+- **범위 밖(사용자 결정)**: `views/unified-lookup`(통합 조회) — 그대로.

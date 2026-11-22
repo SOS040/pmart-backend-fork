@@ -44,6 +44,8 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] `/internal/**` 호출자 확인 없음(네트워크로만 막힘 — orchestration manual-actions operatorId 본문, order 내부 배송지)
 - [ ] (PC 3 영역 — 요청만) MFC 재고 정정 등 역할 검사 없음, approvalRef 확인(RECORD_ONLY)
 
+- [ ] **CL-8 클레임 센터 거르기**(2026-11-23 사용자 "주문에 붙은 것만") — claim `GET /claims`·`/claims/counts`·`/claims/metrics/refunds` `mfcId`, 취소·교환 행 센터 채우기. 시작은 사용자 지시 뒤.
+
 ## 4. 기다리는 것(다른 쪽이 끝나면 PC 1 이 이어서)
 - [x] **R-39 목포 MFC(MFC-MOKPO-01)** — 끝(2026-11-23 시뮬레이터 대조: 9,671 NORMAL·STORED, SKU 503, SKU·소비기한별 1호점과 같음, 칸 다른 줄 67 = 나눠 넣기·기타 칸)(2026-11-22~23): 센터·실제 주소, 계정 30+관리자, 설정, 권역 v2, 칸 15,529, 재고 9,671 전부 선반(마지막 1개는 #357 뒤 적치), 시험 고객 `CU-d58124e3`·취급 503. **남은 것**: 라이더 목록 센터별 거르기 필요하면 PC 5 요청(사용자 판단).
 - [ ] 푸시 FID 전환 — 앱이 `register()`(FID)로 옮길 때 PC 1 이 먼저 서버를 FCM `fid` 칸으로(회신 `handoff/clients/customer-app/2026-11-18-reply-customer-push-q6-q8.md`).

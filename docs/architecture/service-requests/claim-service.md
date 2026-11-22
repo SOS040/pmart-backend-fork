@@ -118,3 +118,8 @@
 - **필요한 것**: 직원 `GET /claims?customerId=`(완전 일치 — 클레임 계정 = 주문 고객, CS·OPERATOR 접수 포함), 최근 접수 순·커서. 권한은 지금 목록 그대로.
 - **받는 쪽**: bff `views/customer`(BF-2)·`views/claims`(0.18.0 — 같은 거르기를 넘기게).
 - **처리(2026-11-20 PC 1, claim 0.10.0, LAN 배포)**: 직원·서비스 토큰의 `GET /claims?customerId=`(완전 일치, 최근 접수 순·커서 그대로). 고객 토큰은 무시하고 늘 본인. 덤: 빈 목록이 `items: null` 이던 것을 `[]` 로.
+
+## CL-8. 직원 클레임 목록·수·환불 지표 센터 거르기 `mfcId` (2026-11-23, 보낸 영역 platform — 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기 #390)
+- **왜**: 2호점 목포 MFC 가 생겨 통합 백오피스에 센터 고르기(pmart-clients #390). 클레임 화면은 서버에 센터 조건이 없어 "모든 센터"로만 보인다.
+- **요청**: `GET /claims`·`/claims/counts`·`/claims/metrics/refunds` 에 선택 `mfcId`(원주문 이행 센터). 없으면 지금처럼 전부.
+- **빈틈**: `claim.mfc_id` 는 RETURN 만 채운다(V4). 취소·교환은 비어 있다 → 접수 때 원주문 센터를 같이 저장 + 기존 행은 order 조회로 채우기(또는 order `orders/lookups` 의 mfcId 로 bff 가 거르기 — 구현 때 정함). 받는 쪽 platform(PC 1).
