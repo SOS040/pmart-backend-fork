@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-22, 클라이언트 BR-83 "할인 목록 필터·할인율순" — 사용자 "가로 진행해줘"): `GET /search/filters?onSale=true` 는 할인 중인 상품만으로 속성·건수를 센다(검색 onSale 과 같은 판정).
+    정렬 `DISCOUNT_RATE`(할인율 높은 순 → 할인가 낮은 순 → 상품 ID) — **onSale=true 일 때만**(아니면 400). 할인 상품(상한 1000) 안에서 서버가 줄 세운다.
     0.8.0(2026-11-22, 클라이언트 BR-82 "할인 상품 목록"): `GET /search/products?onSale=true` — 대표 SKU 에 지금 기간 할인이 있는 상품만(결과의 salePrice 가 붙는 것과 같은 판정:
     할인 금액 > 0, 끝 시각 전, 가격 사본과 같은 priceVersion). 정렬·필터·검색어는 그대로 함께 쓴다. 할인율순 정렬은 아직 없다. 할인 정보를 못 읽으면 503.
     0.7.0(2026-11-22, 클라이언트 BR-81 "필터가 안 보임"): `GET /search/filters` 의 속성 이름을 모든 카테고리 필터 패널에서 찾는다(전에는 그 카테고리·조상만이라
@@ -203,6 +205,7 @@ paths:
         - { name: q, in: query, schema: { type: string, maxLength: 100 } }
         - { name: categoryId, in: query, schema: { type: string } }
         - { name: mfcId, in: query, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: onSale, in: query, x-added-in: '0.9.0', schema: { type: boolean, default: false }, description: '(0.9.0 BR-83) true 면 할인 중인 상품만으로 센다 — 검색 onSale 과 같은 판정' }
       responses:
         '200':
           description: OK
@@ -356,8 +359,8 @@ components:
   schemas:
     SortKey:
       type: string
-      description: 할인율순(DISCOUNT)은 1차 제외
-      enum: [RELEVANCE, POPULAR, NEWEST, PRICE_ASC, PRICE_DESC, RATING, REVIEW_COUNT]
+      description: '0.9.0 DISCOUNT_RATE = 할인율 높은 순(같으면 할인가 낮은 순) — onSale=true 와 함께만(아니면 400 VALIDATION_FAILED)'
+      enum: [RELEVANCE, POPULAR, NEWEST, PRICE_ASC, PRICE_DESC, RATING, REVIEW_COUNT, DISCOUNT_RATE]
       default: RELEVANCE
     SearchHit:
       type: object

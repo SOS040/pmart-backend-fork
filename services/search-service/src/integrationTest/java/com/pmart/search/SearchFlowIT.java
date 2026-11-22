@@ -984,9 +984,13 @@ class SearchFlowIT {
   @Test
   @org.junit.jupiter.api.Order(7)
   void onSaleKeepsOnlyDiscountedProducts() throws Exception {
-    for (String n : List.of("1", "2", "3")) {
+    for (String n : List.of("1", "2", "3", "4")) {
       product("PRD-D" + n, 1, "E-D" + n, "t08-c01", "2026-11-22T02:00:00Z");
-      card("PRD-D" + n, "[시험] 할인 목록 상품 " + n, 1);
+      Map<String, Object> searchFields = new java.util.HashMap<>();
+      searchFields.put("originType", n.equals("1") || n.equals("2") ? "DOMESTIC" : null);
+      searchFields.put("originText", n.equals("1") || n.equals("2") ? "국내산" : null);
+      searchFields.put("description", null);
+      card("PRD-D" + n, "[시험] 할인 목록 상품 " + n, 1, searchFields);
       contentPublished("PRD-D" + n, 1, "2026-11-22T02:01:00Z");
       price("E-D" + n, 1000, 1);
     }
@@ -994,13 +998,56 @@ class SearchFlowIT {
     discount("E-D2", 1, 2, 1000, 200); // 가격 버전이 다름 → 표시 안 함·목록에서도 빠짐
     discount("E-D3", 1, 1, 1000, 300);
     discount("E-D3", 2, 1, 1000, 0); // 할인 끝
+    discount("E-D4", 1, 1, 1000, 400); // 40% — 할인율순 맨 앞
     await(
         "?categoryId=t08",
-        r -> r.path("total").asInt() == 3 && r.toString().contains("\"salePrice\":800"));
-    JsonNode sale = await("?categoryId=t08&onSale=true", r -> r.path("total").asInt() == 1);
-    assertThat(ids(sale)).containsExactly("PRD-D1");
-    assertThat(sale.path("items").path(0).path("salePrice").asInt()).isEqualTo(800);
-    assertThat(ids(search("?categoryId=t08&onSale=false"))).hasSize(3);
+        r ->
+            r.path("total").asInt() == 4
+                && r.toString().contains("\"salePrice\":800")
+                && r.toString().contains("\"salePrice\":600"));
+    JsonNode sale = await("?categoryId=t08&onSale=true", r -> r.path("total").asInt() == 2);
+    assertThat(ids(sale)).containsExactlyInAnyOrder("PRD-D1", "PRD-D4");
+    assertThat(ids(search("?categoryId=t08&onSale=false"))).hasSize(4);
+    // 0.9.0 BR-83 할인율순 — onSale 과 함께만, 높은 할인율 먼저, 쪽 나누기
+    JsonNode byRate = search("?categoryId=t08&onSale=true&sort=DISCOUNT_RATE&size=1");
+    assertThat(ids(byRate)).containsExactly("PRD-D4");
+    assertThat(byRate.path("items").path(0).path("discountRatePercent").asInt()).isEqualTo(40);
+    JsonNode second =
+        search(
+            "?categoryId=t08&onSale=true&sort=DISCOUNT_RATE&size=1&cursor="
+                + byRate.path("page").path("nextCursor").asString());
+    assertThat(ids(second)).containsExactly("PRD-D1");
+    assertThat(second.path("items").path(0).path("salePrice").asInt()).isEqualTo(800);
+    int withoutOnSale =
+        http.get()
+            .uri("/search/products?categoryId=t08&sort=DISCOUNT_RATE")
+            .exchange((req, res) -> res.getStatusCode().value());
+    assertThat(withoutOnSale).isEqualTo(400);
     assertThat(ids(search("?categoryId=t08&onSale=true&q=상품 2"))).isEmpty();
+    // 0.9.0 BR-83 /search/filters?onSale=true — 할인 상품만으로 센다
+    JsonNode all =
+        mapper.readTree(
+            http.get().uri("/search/filters?categoryId=t08").retrieve().body(String.class));
+    JsonNode onSaleOnly =
+        mapper.readTree(
+            http.get()
+                .uri("/search/filters?categoryId=t08&onSale=true")
+                .retrieve()
+                .body(String.class));
+    assertThat(originCount(all, "국내산")).as("D1·D2").isEqualTo(2);
+    assertThat(originCount(onSaleOnly, "국내산")).as("할인 중인 D1 만").isEqualTo(1);
+  }
+
+  static int originCount(JsonNode filters, String value) {
+    for (JsonNode a : filters.path("attributes")) {
+      if ("origin".equals(a.path("key").asString())) {
+        for (JsonNode v : a.path("values")) {
+          if (value.equals(v.path("value").asString())) {
+            return v.path("count").asInt();
+          }
+        }
+      }
+    }
+    return 0;
   }
 }

@@ -135,9 +135,20 @@ public class ProductSearch {
     int from = SearchRules.offset(cursor);
     String query = SearchRules.normalizeQuery(q);
     String center = mfcId == null || mfcId.isBlank() ? null : mfcId;
+    boolean byDiscount = sort == Sort.DISCOUNT_RATE;
+    if (byDiscount && !onSale) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
+          "할인율순은 할인 상품 목록(onSale=true)에서만 쓸 수 있습니다.");
+    }
     Map<String, Object> req = new LinkedHashMap<>();
-    req.put("from", from);
-    req.put("size", SearchRules.pageSize(from, size)); // 1순위 ① — from + size 가 ES 창(1만)을 넘지 않게
+    // 할인율순(0.9.0 BR-83): 할인 상품 전부(상한 MAX_ON_SALE_SKUS — onSale 거르기와 같은 수)를 읽어 할인 사본으로 줄 세운 뒤 쪽을 자른다
+    req.put("from", byDiscount ? 0 : from);
+    req.put(
+        "size",
+        byDiscount
+            ? SearchRules.MAX_ON_SALE_SKUS
+            : SearchRules.pageSize(from, size)); // 1순위 ① — from + size 가 ES 창(1만)을 넘지 않게
     req.put("track_total_hits", true);
     req.put(
         "query",
@@ -157,6 +168,9 @@ public class ProductSearch {
     }
     out = withDiscounts(out);
     long total = res.path("hits").path("total").path("value").asLong(0);
+    if (byDiscount) {
+      out = SearchRules.pageOf(sortByDiscount(out), from, size);
+    }
     int pos = from + out.size();
     String next = SearchRules.hasNext(pos, total, !out.isEmpty()) ? SearchRules.cursor(pos) : null;
     List<String> applied = new ArrayList<>();
@@ -218,6 +232,19 @@ public class ProductSearch {
       return Map.of("match_none", Map.of());
     }
     return Map.of("bool", Map.of("should", any, "minimum_should_match", 1));
+  }
+
+  /** 할인율 높은 순 → 할인가 낮은 순 → 상품 ID(할인이 없는 항목은 뒤 — onSale 결과라 보통 없다). */
+  static List<Hit> sortByDiscount(List<Hit> hits) {
+    List<Hit> sorted = new ArrayList<>(hits);
+    sorted.sort(
+        java.util.Comparator.comparingInt(
+                (Hit h) -> h.discount() == null ? Integer.MIN_VALUE : h.discount().ratePercent())
+            .reversed()
+            .thenComparingLong(
+                h -> h.discount() == null ? Long.MAX_VALUE : h.discount().salePrice())
+            .thenComparing(Hit::productId));
+    return sorted;
   }
 
   /**
@@ -309,10 +336,24 @@ public class ProductSearch {
 
   /** 현재 조건(검색어·카테고리, 판매중지 제외)에서 선택 가능한 승인 속성 값과 건수 — 색인 {@code filters}("그룹.옵션") 집계(2026-11-04). */
   public List<Facet> facets(@Nullable String q, @Nullable String categoryId) {
+    return facets(q, categoryId, false);
+  }
+
+  /** onSale(0.9.0 BR-83) 이면 할인 중인 상품만으로 센다 — 검색 onSale 과 같은 거르기. */
+  public List<Facet> facets(@Nullable String q, @Nullable String categoryId, boolean onSale) {
     String query = SearchRules.normalizeQuery(q);
     Map<String, Object> req = new LinkedHashMap<>();
     req.put("size", 0);
-    req.put("query", query(query, categoryId, PriceRange.ANY, Map.of()));
+    req.put(
+        "query",
+        query(
+            query,
+            categoryId,
+            PriceRange.ANY,
+            Map.of(),
+            null,
+            Map.of(),
+            onSale ? onSaleFilter() : null));
     req.put(
         "aggs",
         Map.of(
@@ -506,6 +547,8 @@ public class ProductSearch {
               Map.of("ratingScore", Map.of("order", "desc", "missing", "_last")),
               newest,
               tie);
+      // 0.9.0 BR-83 — ES 가 아니라 search() 가 할인 사본으로 줄 세운다. 여기서는 같은 할인율일 때를 위한 기본 순서만
+      case DISCOUNT_RATE -> List.of(newest, tie);
     };
   }
 

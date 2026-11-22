@@ -26,7 +26,9 @@ public final class SearchRules {
     PRICE_DESC,
     POPULAR,
     RATING,
-    REVIEW_COUNT
+    REVIEW_COUNT,
+    /** 0.9.0 BR-83 — onSale=true 와 함께만. 할인 상품 안에서 할인율 높은 순. */
+    DISCOUNT_RATE
   }
 
   private SearchRules() {}
@@ -75,6 +77,7 @@ public final class SearchRules {
       case "POPULAR" -> Sort.POPULAR;
       case "RATING" -> Sort.RATING;
       case "REVIEW_COUNT" -> Sort.REVIEW_COUNT;
+      case "DISCOUNT_RATE" -> Sort.DISCOUNT_RATE;
       default -> Sort.RELEVANCE;
     };
   }
@@ -168,6 +171,14 @@ public final class SearchRules {
    * 커지면 상품 문서에 할인을 싣는다.
    */
   public static final int MAX_ON_SALE_SKUS = 1000;
+
+  /** 메모리에서 줄 세운 목록의 한 쪽(from 부터 size 개, 범위 밖이면 빈 목록). */
+  public static <T> java.util.List<T> pageOf(java.util.List<T> all, int from, int size) {
+    if (from >= all.size()) {
+      return java.util.List.of();
+    }
+    return java.util.List.copyOf(all.subList(from, Math.min(all.size(), from + size)));
+  }
 
   public static final String ORIGIN_LABEL = "원산지";
 

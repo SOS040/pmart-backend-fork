@@ -128,9 +128,9 @@ public class SearchController implements SearchApi {
 
   @Override
   public ResponseEntity<GetSearchFilters200Response> getSearchFilters(
-      @Nullable String q, @Nullable String categoryId, @Nullable String mfcId) {
+      @Nullable String q, @Nullable String categoryId, @Nullable String mfcId, Boolean onSale) {
     // 색인 집계(현재 조건의 건수) + product-service 필터 패널의 이름·선택 방식·옵션 순서(그 카테고리와 조상, 없으면 최상위 노드들)
-    var facets = search.facets(q, categoryId);
+    var facets = search.facets(q, categoryId, Boolean.TRUE.equals(onSale)); // 0.9.0 BR-83
     // 이름은 가까운 패널 → 모든 패널, 같은 이름 그룹은 한 줄(n:<이름>) — 2026-11-22 BR-81
     List<com.pmart.search.api.generated.model.FilterAttribute> attributes =
         com.pmart.search.application.FilterAttributes.build(
