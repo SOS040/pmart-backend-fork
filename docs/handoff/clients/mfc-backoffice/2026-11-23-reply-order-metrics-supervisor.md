@@ -27,4 +27,4 @@
 - order-service `check` 94 통과(`StaffOrderLookupIT.centerSupervisorSeesOwnCenterMetricsAndSeries` — 400·403·자기 센터, HOUR·DAY·WEEKDAY_HOUR, sku·카테고리 거르기, top-products 카테고리).
 - LAN 반영은 아래 "상태" 줄.
 
-상태: LAN 배포 2026-11-23(아래 일지 참고)
+상태: **LAN 배포 2026-11-23**(order dd0510a8, PC 2) — claude-mfc-sup 로 자기 센터 200·mfcId 없음 400·다른 센터 403, series DAY·WEEKDAY_HOUR·top-products 카테고리 확인
