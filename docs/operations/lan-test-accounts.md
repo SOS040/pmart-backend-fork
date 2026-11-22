@@ -126,6 +126,8 @@ LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록�
 
 ## 3. 고객·라이더 시험 계정
 
+- **목포 MFC 시험 고객** `CU-d58124e3-f13a-4d5f-a7ed-7c851b32160e`(2026-11-23 사용자 시험용 Google 로그인, R-39): 쇼핑 주소 `ADR-9e541718-…` "전남 목포시 평화로83번길 16 101동 101호 (시험)" → 쇼핑 센터 `MFC-MOKPO-01`. 개발용 고객 토큰 허용 목록(pmart-config d88fc70 `auth-service-lan.yml`) — `POST :8501/api/v1/internal/dev-customer-tokens`(헤더 Idempotency-Key·X-Source-System·X-Device-Id). 목포 취급 SKU 503(1호점과 같게).
+
 - 고객: 실서버 로그인은 Google 만이라 고정 시험 계정이 없다. 고객 RAG 평가 등에서 쓰는 가상 계정 `ACC-claude-rag-eval` 토큰은 PC 1 이 auth-service LAN 서명키로 만든다(**쓸 때마다 사용자 허락**, 15~20분, `.secrets/customer-token`).
 - 라이더: rider-auth 로그인도 Google — 고정 시험 계정 없음.
 
