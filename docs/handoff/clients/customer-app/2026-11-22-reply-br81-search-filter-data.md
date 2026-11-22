@@ -5,7 +5,7 @@
 답하는 것: `pmart-clients/docs/handoff/customer-app/2026-11-22-backend-search-filter-data.md`
 작성: pmart-backend, 2026-11-22 — 사용자 "전체 카테고리 해주고" · "다하고나서 영양 안했다고 고지해줘"
 계약: **search-service 0.7.0**, product-content-service 0.5.0(앱은 그대로)
-상태: 데이터(R1·R2) LAN 반영 2026-11-22 · search-service 0.7.0·products-v8 은 아래 "배포" 줄
+상태: **LAN 반영 2026-11-22** — 데이터(R1·R2) + search-service 0.7.0·products-v8(12:19)
 
 ## R2 카테고리 필터 패널 — LAN 반영
 - 카테고리 트리 v12 발효: 노드 84개 그대로 + 필터 그룹 282개(참고 자료의 카테고리별 패널). 시험 카테고리 `t01`~`t03` 은 패널 없음.
@@ -37,4 +37,5 @@
 - 제조사가 상품명에 쓴 "저당"·"제로"·"고단백" 은 지금도 검색어로 찾힌다. 상품 상세의 영양 표시(notices)는 그대로 보인다.
 
 ## 배포
-- (배포 뒤 채움)
+- 2026-11-22 12:19 KST: product-content-service·search-service 3acc81e6(PC 2), 검색 색인 products-v8(재색인 504/504).
+- LAN 확인: `/search/filters`(조건 없음 51줄·q=우유 17줄·categoryId=p02-c01-l01 7줄) — `filter_…` 로 보이는 이름 0, 같은 이름 중복 0, 원산지 줄 국내산 152·수입산 275. `filters=n:개당 수량.6개 이하`(q=라면) → 9건 = 집계 9건. "국내산 삼겹살"·"칠레산" 검색 됨.
