@@ -138,7 +138,15 @@ public class ProductSearch {
     req.put("from", from);
     req.put("size", SearchRules.pageSize(from, size)); // 1순위 ① — from + size 가 ES 창(1만)을 넘지 않게
     req.put("track_total_hits", true);
-    req.put("query", query(query, categoryId, price, filters, includeNotCarried ? null : center));
+    req.put(
+        "query",
+        query(
+            query,
+            categoryId,
+            price,
+            filters,
+            includeNotCarried ? null : center,
+            namesFor(filters)));
     req.put("sort", sort(sort, query != null));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Hit> out = new ArrayList<>();
@@ -227,13 +235,31 @@ public class ProductSearch {
   }
 
   /** 검색어를 포함하는 상품명(중복 제거, 관련도 순). */
+  /** 이름 키가 있을 때만 그룹 이름 사본을 읽는다(없으면 빈 맵 — 패널 읽기 없음). */
+  private Map<String, String> namesFor(Map<String, List<String>> filters) {
+    return filters.keySet().stream().anyMatch(SearchRules::isNameFilterKey)
+        ? groupNames()
+        : Map.of();
+  }
+
+  /** 모든 카테고리 패널의 그룹 id → 이름(필터 패널 사본). */
+  public Map<String, String> groupNames() {
+    Map<String, String> out = new LinkedHashMap<>();
+    categories.allFilterGroups().forEach((id, g) -> out.put(id, g.name()));
+    return out;
+  }
+
   /** 현재 조건(검색어·카테고리, 판매중지 제외)에서 선택 가능한 승인 속성 값과 건수 — 색인 {@code filters}("그룹.옵션") 집계(2026-11-04). */
   public List<Facet> facets(@Nullable String q, @Nullable String categoryId) {
     String query = SearchRules.normalizeQuery(q);
     Map<String, Object> req = new LinkedHashMap<>();
     req.put("size", 0);
     req.put("query", query(query, categoryId, PriceRange.ANY, Map.of()));
-    req.put("aggs", Map.of("f", Map.of("terms", Map.of("field", "filters", "size", 500))));
+    req.put(
+        "aggs",
+        Map.of(
+            "f", Map.of("terms", Map.of("field", "filters", "size", 500)),
+            "o", Map.of("terms", Map.of("field", "originType", "size", 5))));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Facet> out = new ArrayList<>();
     for (JsonNode b : res.path("aggregations").path("f").path("buckets")) {
@@ -242,6 +268,12 @@ public class ProductSearch {
       if (dot > 0 && dot < key.length() - 1) {
         out.add(
             new Facet(key.substring(0, dot), key.substring(dot + 1), b.path("doc_count").asLong()));
+      }
+    }
+    for (JsonNode b : res.path("aggregations").path("o").path("buckets")) {
+      String label = SearchRules.originLabel(b.path("key").asString(""));
+      if (label != null) {
+        out.add(new Facet(SearchRules.ORIGIN_KEY, label, b.path("doc_count").asLong()));
       }
     }
     return out;
@@ -272,29 +304,37 @@ public class ProductSearch {
       @Nullable String categoryId,
       PriceRange price,
       Map<String, List<String>> filters) {
-    return query(q, categoryId, price, filters, null);
+    return query(q, categoryId, price, filters, null, Map.of());
   }
 
   /**
    * @param carriedAt 이 센터가 대표 SKU 를 취급하는 상품만(색인 carriedMfcIds). null 이면 거르지 않는다
+   * @param names 그룹 id → 이름(이름 키 n:<이름> 을 풀 때만 — {@link #namesFor})
    */
   static Map<String, Object> query(
       @Nullable String q,
       @Nullable String categoryId,
       PriceRange price,
       Map<String, List<String>> filters,
-      @Nullable String carriedAt) {
+      @Nullable String carriedAt,
+      Map<String, String> names) {
     List<Object> filter = new ArrayList<>();
     if (carriedAt != null) {
       filter.add(Map.of("term", Map.of("carriedMfcIds", carriedAt)));
     }
-    // 승인 속성 필터: 같은 그룹 안의 값은 OR(terms), 그룹끼리는 AND(2026-11-04)
+    // 승인 속성 필터: 같은 그룹 안의 값은 OR(terms), 그룹끼리는 AND(2026-11-04).
+    // 이름 키(n:<그룹 이름>, 2026-11-22 BR-81)는 같은 이름의 그룹 id 모두로 — 카테고리마다 따로 정의된 "중량" 등을 한 줄로 고른다.
     filters.forEach(
-        (group, values) ->
-            filter.add(
-                Map.of(
-                    "terms",
-                    Map.of("filters", values.stream().map(v -> group + "." + v).toList()))));
+        (group, values) -> {
+          if (SearchRules.ORIGIN_KEY.equals(group)) { // 원산지 국내산·수입산(products-v8, 2026-11-22)
+            filter.add(Map.of("terms", Map.of("originType", SearchRules.originTypes(values))));
+            return;
+          }
+          List<String> ids = SearchRules.filterGroupIds(group, names);
+          List<String> terms = new ArrayList<>();
+          ids.forEach(id -> values.forEach(v -> terms.add(id + "." + v)));
+          filter.add(Map.of("terms", Map.of("filters", terms)));
+        });
     filter.add(Map.of("exists", Map.of("field", "name")));
     filter.add(Map.of("exists", Map.of("field", "productVersion")));
     if (categoryId != null && !categoryId.isBlank()) {
@@ -339,7 +379,23 @@ public class ProductSearch {
                               Map.of("name.partial", Map.of("query", q, "operator", "and"))),
                           Map.of(
                               "match",
-                              Map.of("name.compact", Map.of("query", q, "operator", "and")))),
+                              Map.of("name.compact", Map.of("query", q, "operator", "and"))),
+                          // products-v8(2026-11-22): 낱말이 이름·원산지 글·설명에 나뉘어 있어도 모두 있으면("국내산 삼겹살", "아이
+                          // 간식").
+                          // 낮은 비중 — 이름으로 찾은 상품이 늘 앞(이름 일치는 아래 should 가산을 더 받는다)
+                          Map.of(
+                              "multi_match",
+                              Map.of(
+                                  "query",
+                                  q,
+                                  "type",
+                                  "cross_fields",
+                                  "fields",
+                                  List.of("name", "originText", "description"),
+                                  "operator",
+                                  "and",
+                                  "boost",
+                                  SearchRules.CONTENT_MATCH_BOOST))),
                       "minimum_should_match",
                       1))));
       // 순위: 형태소 일치 > 앞부분 일치 > 조각 일치. 검색어 낱말이 그 순서로 붙어 있으면(사이 1낱말까지) 가산 — 구문 검색

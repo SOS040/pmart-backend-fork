@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
+    0.7.0(2026-11-22, 클라이언트 BR-81 "필터가 안 보임"): `GET /search/filters` 의 속성 이름을 모든 카테고리 필터 패널에서 찾는다(전에는 그 카테고리·조상만이라
+    하위 카테고리 상품의 그룹이 id 로 보였다). 카테고리마다 따로 정의된 같은 이름 그룹("중량" 등)은 한 줄로 묶고 key 를 `n:<그룹 이름>` 으로 준다(같은 옵션은 건수 합).
+    검색 `filters=n:<그룹 이름>.<옵션>` 은 그 이름의 그룹 모두로 거른다. 그룹 id 키(예전 형식)도 그대로 받는다. key 는 그대로 돌려보내는 불투명 값으로 쓴다.
     0.6.0(2026-11-21, ADR-0082 4단계 할인가 표시): 검색 결과 항목에 대표 SKU 기간 할인 `salePrice`·`discountRatePercent`·`discountName`·`discountEndsAt`
     (promotion-service SkuDisplayDiscountChanged → Logstash 색인 `sku-discounts`). 가격 사본과 같은 priceVersion·끝 전일 때만, 아니면 null(정가).
     가격순 정렬·가격 범위는 **기본가 기준 그대로**(할인율순 정렬은 이번 범위 밖). 표시용 — 결제 금액은 주문서 견적.
@@ -57,7 +60,7 @@ paths:
         - { name: sort, in: query, schema: { $ref: '#/components/schemas/SortKey' } }
         - name: filters
           in: query
-          description: 승인 속성 필터. 형식은 attributeKey.value (예 capacity.500ml)
+          description: '승인 속성 필터. 형식은 attributeKey.value (예 n:중량.200g 이하) — attributeKey 는 /search/filters 의 key 그대로(0.7.0 부터 n:<그룹 이름> 또는 그룹 id)'
           style: form
           explode: true
           schema: { type: array, items: { type: string, maxLength: 100 } }
@@ -391,7 +394,7 @@ components:
     FilterAttribute:
       type: object
       properties:
-        key: { type: string, example: capacity }
+        key: { type: string, example: 'n:용량', description: '0.7.0 — 같은 이름 그룹을 묶은 n:<그룹 이름>, 이름에 . 이 있거나 이름을 모르면 그룹 id' }
         label: { type: string, example: 용량 }
         multiSelect: { type: boolean }
         values:

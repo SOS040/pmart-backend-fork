@@ -157,6 +157,65 @@ public final class SearchRules {
     }
   }
 
+  /**
+   * 원산지 필터 키(products-v8, 2026-11-22 사용자 "원산지는 필터와 검색"). 값은 국내산·수입산, 색인 originType
+   * DOMESTIC·IMPORTED.
+   */
+  public static final String ORIGIN_KEY = "origin";
+
+  public static final String ORIGIN_LABEL = "원산지";
+
+  /** 화면 순서. */
+  public static final java.util.List<String> ORIGIN_OPTIONS = java.util.List.of("국내산", "수입산");
+
+  /** 이름·원산지·설명을 같이 보는 찾기의 비중 — 이름 일치(3·2·2 가산)보다 훨씬 낮게. */
+  public static final double CONTENT_MATCH_BOOST = 0.2;
+
+  public static java.util.List<String> originTypes(java.util.List<String> labels) {
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (String l : labels) {
+      if ("국내산".equals(l)) {
+        out.add("DOMESTIC");
+      } else if ("수입산".equals(l)) {
+        out.add("IMPORTED");
+      }
+    }
+    return out; // 모르는 값만이면 빈 목록 — 아무것도 맞지 않음
+  }
+
+  public static @org.jspecify.annotations.Nullable String originLabel(String originType) {
+    return switch (originType) {
+      case "DOMESTIC" -> "국내산";
+      case "IMPORTED" -> "수입산";
+      default -> null;
+    };
+  }
+
+  /** 같은 이름 그룹을 묶은 필터 키 앞머리(2026-11-22 BR-81) — "n:중량.200g 이하". 그룹 이름에 '.' 이 있으면 묶지 않는다(키가 갈림). */
+  public static final String NAME_FILTER_PREFIX = "n:";
+
+  public static boolean isNameFilterKey(String key) {
+    return key.startsWith(NAME_FILTER_PREFIX);
+  }
+
+  /** 이름 키면 그 이름의 그룹 id 전부(없으면 빈 목록 — 아무것도 맞지 않음), 아니면 그 키 자체(그룹 id). */
+  public static java.util.List<String> filterGroupIds(
+      String key, java.util.Map<String, String> namesById) {
+    if (!isNameFilterKey(key)) {
+      return java.util.List.of(key);
+    }
+    String name = key.substring(NAME_FILTER_PREFIX.length());
+    return namesById.entrySet().stream()
+        .filter(e -> e.getValue().equals(name))
+        .map(java.util.Map.Entry::getKey)
+        .toList();
+  }
+
+  /** 필터 화면에 내보낼 키 — 이름에 '.' 이 없으면 이름 키, 있으면 그룹 id. */
+  public static String filterKey(String groupId, String name) {
+    return name.isBlank() || name.contains(".") ? groupId : NAME_FILTER_PREFIX + name;
+  }
+
   /** 한 요청의 승인 속성 필터 값 상한. */
   public static final int MAX_FILTERS = 30;
 

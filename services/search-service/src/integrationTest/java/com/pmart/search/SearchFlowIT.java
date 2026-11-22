@@ -220,6 +220,23 @@ class SearchFlowIT {
   }
 
   void card(String productId, String name, int contentVersion) {
+    card(productId, name, contentVersion, null);
+  }
+
+  /** search = 카드 include=search 의 원산지·설명(product-content 0.5.0, products-v8). null 이면 싣지 않는다. */
+  void card(
+      String productId,
+      String name,
+      int contentVersion,
+      @org.jspecify.annotations.Nullable Map<String, Object> search) {
+    Map<String, Object> item = new java.util.LinkedHashMap<>();
+    item.put("productId", productId);
+    item.put("name", name);
+    item.put("contentVersion", contentVersion);
+    item.put("mainImage", Map.of("url", "/api/v1/content-images/IMG-" + productId));
+    if (search != null) {
+      item.put("search", search);
+    }
     content.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/product-contents"))
             .withQueryParam("productIds", equalTo(productId))
@@ -228,18 +245,7 @@ class SearchFlowIT {
                     .withHeader("Content-Type", "application/json")
                     .withBody(
                         mapper.writeValueAsString(
-                            Map.of(
-                                "items",
-                                List.of(
-                                    Map.of(
-                                        "productId", productId,
-                                        "name", name,
-                                        "contentVersion", contentVersion,
-                                        "mainImage",
-                                            Map.of(
-                                                "url", "/api/v1/content-images/IMG-" + productId))),
-                                "missing",
-                                List.of())))));
+                            Map.of("items", List.of(item), "missing", List.of())))));
   }
 
   void send(String type, String aggregate, String id, long version, Map<String, Object> payload) {
@@ -671,7 +677,7 @@ class SearchFlowIT {
             http.get().uri("/search/filters?categoryId=t09").retrieve().body(String.class));
     JsonNode capacity = null;
     for (JsonNode a : attrs.path("attributes")) {
-      if ("capacity".equals(a.path("key").asString())) {
+      if ("n:용량".equals(a.path("key").asString())) { // 같은 이름 그룹을 묶는 이름 키(2026-11-22 BR-81)
         capacity = a;
       }
     }
@@ -680,14 +686,18 @@ class SearchFlowIT {
     assertThat(capacity.path("label").asString()).isEqualTo("용량");
     // 패널 옵션 순서(1L, 500ml)를 따른다
     assertThat(capacity.path("values").path(0).path("value").asString()).isEqualTo("1L");
-    // 하위 카테고리(패널 없음)는 조상 t09 의 패널로, 카테고리 없음은 최상위 노드 패널로 이름을 찾는다. 패널에 없는 그룹(pack)은 id 그대로
+    // 이름 키로 거르면 그 이름의 그룹 id 모두로 — 그룹 id 키와 같은 결과
+    JsonNode byName = search("?categoryId=t09&filters=n:용량.500ml");
+    assertThat(ids(byName)).containsExactly("PRD-F1");
+    assertThat(byName.path("appliedFilters").toString()).isEqualTo("[\"n:용량.500ml\"]");
+    // 하위 카테고리(패널 없음)는 조상 t09 의 패널로, 카테고리 없음은 모든 노드 패널로 이름을 찾는다. 어느 패널에도 없는 그룹(pack)은 id 그대로
     for (String query : List.of("?categoryId=t09-c01", "")) {
       JsonNode all =
           mapper.readTree(http.get().uri("/search/filters" + query).retrieve().body(String.class));
       java.util.Map<String, String> labels = new java.util.HashMap<>();
       all.path("attributes")
           .forEach(a -> labels.put(a.path("key").asString(), a.path("label").asString()));
-      assertThat(labels).containsEntry("capacity", "용량").containsEntry("pack", "pack");
+      assertThat(labels).containsEntry("n:용량", "용량").containsEntry("pack", "pack");
     }
 
     // 판매 상태: 행 버전이 큰 사건만. 시각이 더 이른 재적재(PVP rowVersion 3)가 일시품절(rv 2)을 풀고, 늦은 시각의 옛 사건(rv 2)은 무시
@@ -905,5 +915,65 @@ class SearchFlowIT {
     // 자동완성: 후보가 없으면 고친 검색어로
     String suggest = http.get().uri("/search/suggestions?q=순두뷰").retrieve().body(String.class);
     assertThat(suggest).contains("순두부");
+  }
+
+  /**
+   * products-v8(2026-11-22 사용자 "원산지는 필터와 검색, 설명은 낮은 비중 검색"): 카드 include=search 의 원산지 구분으로
+   * 거르기(origin.국내산·수입산)와 /search/filters 의 원산지 줄, 낱말이 이름·원산지 글·설명에 나뉘어 있어도 찾기 — 이름으로 찾은 상품이 앞.
+   */
+  @Test
+  @org.junit.jupiter.api.Order(6)
+  void originFilterAndDescriptionSearch() throws Exception {
+    product("PRD-O1", 1, "E-O1", "t07-c01", "2026-11-22T01:00:00Z");
+    product("PRD-O2", 1, "E-O2", "t07-c01", "2026-11-22T01:00:00Z");
+    product("PRD-O3", 1, "E-O3", "t07-c01", "2026-11-22T01:00:00Z");
+    Map<String, Object> o1 = new java.util.HashMap<>();
+    o1.put("originType", "DOMESTIC");
+    o1.put("originText", "돼지고기: 국내산");
+    o1.put("description", "바삭하게 굽는 캠핑 고기예요.");
+    Map<String, Object> o2 = new java.util.HashMap<>();
+    o2.put("originType", "IMPORTED");
+    o2.put("originText", "돼지고기: 캐나다산");
+    o2.put("description", "캠핑 고기로 좋은 부위예요.");
+    Map<String, Object> o3 = new java.util.HashMap<>();
+    o3.put("originType", null);
+    o3.put("originText", null);
+    o3.put("description", null);
+    card("PRD-O1", "[시험] 원산지 삼겹살 구이용", 1, o1);
+    card("PRD-O2", "[시험] 원산지 목살 구이용", 1, o2);
+    card("PRD-O3", "[시험] 원산지 캠핑 고기 세트", 1, o3);
+    contentPublished("PRD-O1", 1, "2026-11-22T01:01:00Z");
+    contentPublished("PRD-O2", 1, "2026-11-22T01:01:00Z");
+    contentPublished("PRD-O3", 1, "2026-11-22T01:01:00Z");
+    await("?categoryId=t07", r -> r.path("total").asInt() == 3);
+
+    assertThat(ids(search("?categoryId=t07&filters=origin.국내산"))).containsExactly("PRD-O1");
+    assertThat(ids(search("?categoryId=t07&filters=origin.수입산"))).containsExactly("PRD-O2");
+    assertThat(ids(search("?categoryId=t07&filters=origin.국내산&filters=origin.수입산")))
+        .containsExactlyInAnyOrder("PRD-O1", "PRD-O2");
+    assertThat(ids(search("?categoryId=t07&filters=origin.모름"))).isEmpty();
+
+    JsonNode attrs =
+        mapper.readTree(
+            http.get().uri("/search/filters?categoryId=t07").retrieve().body(String.class));
+    JsonNode origin = null;
+    for (JsonNode a : attrs.path("attributes")) {
+      if ("origin".equals(a.path("key").asString())) {
+        origin = a;
+      }
+    }
+    assertThat(origin).isNotNull();
+    assertThat(origin.path("label").asString()).isEqualTo("원산지");
+    assertThat(origin.path("values").path(0).path("value").asString()).isEqualTo("국내산");
+    assertThat(origin.path("values").path(0).path("count").asInt()).isEqualTo(1);
+    assertThat(origin.path("values").path(1).path("value").asString()).isEqualTo("수입산");
+
+    // 설명에만 있는 낱말로도 찾되, 이름에 있는 상품이 앞
+    JsonNode camping = search("?categoryId=t07&q=캠핑 고기");
+    assertThat(ids(camping)).hasSize(3);
+    assertThat(ids(camping).get(0)).isEqualTo("PRD-O3");
+    // 원산지 글 + 이름
+    assertThat(ids(search("?categoryId=t07&q=국내산 삼겹살"))).containsExactly("PRD-O1");
+    assertThat(ids(search("?categoryId=t07&q=캐나다산"))).containsExactly("PRD-O2");
   }
 }

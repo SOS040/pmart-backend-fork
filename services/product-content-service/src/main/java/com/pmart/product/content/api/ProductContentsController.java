@@ -44,9 +44,10 @@ public class ProductContentsController implements ProductContentsApi {
 
   @Override
   public ResponseEntity<ListProductContents200Response> listProductContents(
-      List<String> productIds, @Nullable String mfcId) {
+      List<String> productIds, @Nullable String mfcId, @Nullable String include) {
     return ResponseEntity.ok(
         mapper.convertValue(
-            queries.cards(productIds, mfcId), ListProductContents200Response.class));
+            queries.cards(productIds, mfcId, "search".equals(include)),
+            ListProductContents200Response.class));
   }
 }

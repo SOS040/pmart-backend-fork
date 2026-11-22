@@ -129,45 +129,30 @@ public class SearchController implements SearchApi {
       @Nullable String q, @Nullable String categoryId, @Nullable String mfcId) {
     // 색인 집계(현재 조건의 건수) + product-service 필터 패널의 이름·선택 방식·옵션 순서(그 카테고리와 조상, 없으면 최상위 노드들)
     var facets = search.facets(q, categoryId);
-    var groups = categories.filterGroupsFor(categoryId);
-    java.util.Map<String, java.util.List<ProductSearch.Facet>> byKey =
-        new java.util.LinkedHashMap<>();
-    for (var g : groups) {
-      byKey.put(g.id(), new java.util.ArrayList<>());
-    }
-    for (var f : facets) {
-      byKey.computeIfAbsent(f.key(), k -> new java.util.ArrayList<>()).add(f);
-    }
+    // 이름은 가까운 패널 → 모든 패널, 같은 이름 그룹은 한 줄(n:<이름>) — 2026-11-22 BR-81
     List<com.pmart.search.api.generated.model.FilterAttribute> attributes =
-        new java.util.ArrayList<>();
-    byKey.forEach(
-        (key, fs) -> {
-          var group = groups.stream().filter(g -> g.id().equals(key)).findFirst().orElse(null);
-          List<String> order = group == null ? List.of() : group.options();
-          var values =
-              fs.stream()
-                  .sorted(
-                      java.util.Comparator.comparingInt(
-                          (ProductSearch.Facet f) -> {
-                            int i = order.indexOf(f.value());
-                            return i < 0 ? Integer.MAX_VALUE : i;
-                          }))
-                  .map(
-                      f ->
-                          new com.pmart.search.api.generated.model.FilterAttributeValuesInner()
-                              .value(f.value())
-                              .label(f.value())
-                              .count((int) f.count()))
-                  .toList();
-          if (!values.isEmpty()) {
-            attributes.add(
-                new com.pmart.search.api.generated.model.FilterAttribute()
-                    .key(key)
-                    .label(group == null ? key : group.name())
-                    .multiSelect(group == null || group.multiSelect())
-                    .values(values));
-          }
-        });
+        com.pmart.search.application.FilterAttributes.build(
+                facets,
+                categories.filterGroupsFor(categoryId),
+                facets.isEmpty() ? java.util.Map.of() : categories.allFilterGroups())
+            .stream()
+            .map(
+                a ->
+                    new com.pmart.search.api.generated.model.FilterAttribute()
+                        .key(a.key())
+                        .label(a.label())
+                        .multiSelect(a.multiSelect())
+                        .values(
+                            a.values().stream()
+                                .map(
+                                    v ->
+                                        new com.pmart.search.api.generated.model
+                                                .FilterAttributeValuesInner()
+                                            .value(v.value())
+                                            .label(v.value())
+                                            .count((int) v.count()))
+                                .toList()))
+            .toList();
     return ResponseEntity.ok(new GetSearchFilters200Response().attributes(attributes).asOf(asOf()));
   }
 

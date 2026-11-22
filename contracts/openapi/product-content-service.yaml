@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-22, 검색 products-v8 — 사용자 "원산지는 필터와 검색, 설명은 낮은 비중 검색, 영양은 넣지 않음"): 카드 일괄 조회
+    `GET /product-contents?include=search` 면 카드마다 `search`(originType DOMESTIC·IMPORTED·null, originText, description)를 붙인다.
+    원산지는 게시 콘텐츠 notices 의 "원산지:" 줄을 읽어 나눈다 — 적힌 원산지가 모두 국내면 DOMESTIC, 하나라도 외국이면 IMPORTED,
+    그 밖(줄 없음·원양산만·판독 못 함)은 null(지어내지 않는다). 검색 색인(Logstash)용 — 앱 카드에는 include 없이 지금과 같다. 영양은 싣지 않는다.
     0.4.0(2026-11-20, 백오피스 PCT-1 CD-1·CD-2 — PC 2 요청 #274, 사용자 "진행해라"): 직원 `GET /content-drafts`(초안 목록 — state 여럿·productId 거르기, 최근 바뀐 것 먼저, 커서),
     `GET /content-drafts/counts`(같은 거르기 — state 제외 — 로 상태별 수, 모든 상태 0 까지, capped 늘 false).
     0.3.0(2026-11-19, 상품 상세 느림 — 사용자 "1 -> 해줘"): `GET /content-images/{imageId}?w=` 휴대폰용 축소본. `w` 는 240·480·720 중 하나,
@@ -71,6 +75,7 @@ paths:
           explode: false
           schema: { type: array, maxItems: 100, items: { type: string } }
         - { name: mfcId, in: query, description: 현재 쇼핑 주소의 담당 센터. 주면 옵션별 취급·가용(availability)을 채운다, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: include, in: query, x-added-in: '0.5.0', description: 'search 면 카드에 search(원산지·설명 — 검색 색인용)를 붙인다', schema: { type: string, enum: [search] } }
       responses:
         '200':
           description: OK (미게시 상품은 items에서 제외하고 missing에 나열)
@@ -709,6 +714,15 @@ components:
         rating: { $ref: '#/components/schemas/RatingSummary', description: '(0.3.0 BR-63) 평점 집계(rating-summary)와 같은 값 — 상세·카드 모두' }
         options: { type: array, items: { $ref: '#/components/schemas/SaleOption' } }
         contentVersion: { type: integer }
+        search: { $ref: '#/components/schemas/CardSearchFields' }
+    CardSearchFields:
+      type: object
+      description: '(0.5.0) include=search 일 때만 — 검색 색인용'
+      required: [originType]
+      properties:
+        originType: { type: [string, 'null'], enum: [DOMESTIC, IMPORTED, null], description: '원산지가 모두 국내 DOMESTIC, 하나라도 외국 IMPORTED, 판단 못 하면 null' }
+        originText: { type: [string, 'null'], description: '"원산지:" 줄의 값(앞머리 뺀 그대로)' }
+        description: { type: [string, 'null'], description: 게시 콘텐츠 설명 }
     ProductContent:
       allOf:
         - $ref: '#/components/schemas/ProductCard'

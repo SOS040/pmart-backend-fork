@@ -665,6 +665,25 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     Res cards = get("/product-contents?productIds=" + productId + ",PRD-none", CUSTOMER);
     assertThat(cards.body().path("items")).hasSize(1);
     assertThat(cards.body().path("missing").path(0).asString()).isEqualTo("PRD-none");
+    // 0.5.0(2026-11-22 products-v8): include=search 일 때만 원산지·설명 — 원산지 구분은 상세 notices 의 "원산지:" 줄
+    JsonNode noSearch = cards.body().path("items").path(0).path("search");
+    assertThat(noSearch.isNull() || noSearch.isMissingNode()).isTrue();
+    JsonNode search =
+        get("/product-contents?productIds=" + productId + "&include=search", null)
+            .body()
+            .path("items")
+            .path(0)
+            .path("search");
+    java.util.List<String> notices = new java.util.ArrayList<>();
+    c.path("notices").forEach(n -> notices.add(n.asString()));
+    var origin = com.pmart.product.content.domain.OriginRules.of(notices);
+    assertThat(search.path("originText").asString(null))
+        .isEqualTo(
+            origin.map(com.pmart.product.content.domain.OriginRules.Origin::text).orElse(null));
+    assertThat(search.path("originType").asString(null))
+        .isEqualTo(origin.map(o -> o.type() == null ? null : o.type().name()).orElse(null));
+    assertThat(search.path("description").asString(null))
+        .isEqualTo(c.path("description").asString(null));
     // BR-63(0.3.0): 리뷰 사건 → 상세·카드 rating 이 평점 집계와 같다
     review("ReviewPublished", "RV-A-" + productId, productId, 5, 1);
     review("ReviewPublished", "RV-B-" + productId, productId, 2, 1);

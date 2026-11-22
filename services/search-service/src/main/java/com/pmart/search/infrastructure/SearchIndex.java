@@ -66,7 +66,9 @@ public class SearchIndex {
   public static final Map<String, String> INDICES =
       Map.of(
           PRODUCTS,
-          "products-v7", // 2026-11-20 ADR-0073 — 이름 검색 분석기에 동의어(synonym_graph, 동의어 집합) / v6
+          "products-v8", // 2026-11-22 원산지(originType·originText)·설명(description) + 동의어 낱말 사용자 사전 /
+          // v7
+          // 2026-11-20 ADR-0073 — 이름 검색 분석기에 동의어(synonym_graph, 동의어 집합) / v6
           // ADR-0072 순위 신호
           SKU_PRICES,
           "sku-prices-v1",

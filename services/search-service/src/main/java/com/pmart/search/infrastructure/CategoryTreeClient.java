@@ -210,6 +210,43 @@ public class CategoryTreeClient {
     return List.copyOf(merged.values());
   }
 
+  /**
+   * 트리의 모든 노드 패널을 합친 그룹 id → 그룹(2026-11-22 BR-81). 위 {@link #filterGroupsFor} 는 그 카테고리와 조상만 보므로 하위
+   * 노드·다른 카테고리 상품의 그룹은 이름을 못 찾는다 — 이름 찾기와 같은 이름 그룹 묶기에 쓴다. 사본 없는 패널만 병렬로 읽고, 만료된 것은 뒤에서.
+   */
+  public Map<String, FilterGroup> allFilterGroups() {
+    Snapshot s = current();
+    if (s == null) {
+      return Map.of();
+    }
+    java.util.Set<String> nodes = new java.util.LinkedHashSet<>(s.tops());
+    nodes.addAll(s.paths().keySet());
+    List<CompletableFuture<Void>> missing = new java.util.ArrayList<>();
+    for (String id : nodes) {
+      if (!panels.containsKey(id)) {
+        missing.add(once("panel:" + id, () -> loadPanel(id)));
+      }
+    }
+    if (!missing.isEmpty()) {
+      CompletableFuture.allOf(missing.toArray(CompletableFuture[]::new)).join();
+    }
+    Instant now = clock.instant();
+    Map<String, FilterGroup> all = new java.util.LinkedHashMap<>();
+    for (String id : nodes) {
+      Panel p = panels.get(id);
+      if (p == null) {
+        continue;
+      }
+      if (stale(p.fetchedAt(), now)) {
+        once("panel:" + id, () -> loadPanel(id));
+      }
+      for (FilterGroup g : p.groups()) {
+        all.putIfAbsent(g.id(), g);
+      }
+    }
+    return all;
+  }
+
   /** 패널을 읽어 사본을 바꾼다. 실패하면 이전 사본(없으면 빈 목록)을 30초 뒤 다시 읽게 둔다. */
   void loadPanel(String categoryId) {
     Instant now = clock.instant();

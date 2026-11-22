@@ -3,6 +3,7 @@ package com.pmart.product.content.application;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.PmartException;
 import com.pmart.product.content.domain.ContentRules;
+import com.pmart.product.content.domain.OriginRules;
 import com.pmart.product.content.infrastructure.CatalogStore;
 import com.pmart.product.content.infrastructure.CatalogStore.ContentRow;
 import com.pmart.product.content.infrastructure.CatalogStore.ProjectionRow;
@@ -163,6 +164,15 @@ public class ContentQueries {
 
   /** 상품 카드 일괄. 미게시 상품은 missing. mfcId 를 주면 옵션별 취급·가용 사본을 붙인다. */
   public Map<String, Object> cards(List<String> productIds, @Nullable String mfcId) {
+    return cards(productIds, mfcId, false);
+  }
+
+  /**
+   * withSearch 면 카드마다 {@code search}(원산지 구분·원산지 글·설명 — 검색 색인용, 계약 0.5.0). 원산지는 notices 의 "원산지:"
+   * 줄({@link OriginRules}), 판단 못 하면 originType null. 영양은 싣지 않는다(2026-11-22 사용자).
+   */
+  public Map<String, Object> cards(
+      List<String> productIds, @Nullable String mfcId, boolean withSearch) {
     List<String> ids = productIds.stream().distinct().toList();
     Map<String, ContentRow> contents =
         catalog.latestContents(ids).stream()
@@ -177,7 +187,11 @@ public class ContentQueries {
       if (c == null) {
         missing.add(id);
       } else {
-        items.add(card(c, projections.get(id)));
+        Map<String, Object> card = card(c, projections.get(id));
+        if (withSearch) {
+          card.put("search", searchFields(c));
+        }
+        items.add(card);
       }
     }
     withAvailability(items, mfcId);
@@ -363,6 +377,17 @@ public class ContentQueries {
         .latestContent(productId)
         .orElseThrow(
             () -> PmartException.notFound("CONTENT_NOT_PUBLISHED", "게시된 콘텐츠가 없습니다: " + productId));
+  }
+
+  private Map<String, Object> searchFields(ContentRow c) {
+    List<String> notices = new ArrayList<>();
+    mapper.readTree(c.notices()).forEach(n -> notices.add(n.asString("")));
+    var origin = OriginRules.of(notices);
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("originType", origin.map(o -> o.type() == null ? null : o.type().name()).orElse(null));
+    m.put("originText", origin.map(OriginRules.Origin::text).orElse(null));
+    m.put("description", c.description());
+    return m;
   }
 
   private Map<String, Object> card(ContentRow c, @Nullable ProjectionRow p) {
