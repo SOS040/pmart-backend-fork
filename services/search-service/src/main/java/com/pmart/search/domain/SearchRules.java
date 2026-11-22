@@ -163,6 +163,12 @@ public final class SearchRules {
    */
   public static final String ORIGIN_KEY = "origin";
 
+  /**
+   * onSale=true 일 때 읽는 할인 SKU 상한(ES bool 절 상한 1024 안, 2026-11-22 BR-82). 넘으면 그 뒤 할인 상품은 빠진다 — 규모가
+   * 커지면 상품 문서에 할인을 싣는다.
+   */
+  public static final int MAX_ON_SALE_SKUS = 1000;
+
   public static final String ORIGIN_LABEL = "원산지";
 
   /** 화면 순서. */

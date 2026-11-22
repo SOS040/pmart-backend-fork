@@ -466,6 +466,19 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                     "NONE",
                     "sortOrder",
                     0),
+                Map.of( // 0.11.0 BR-82 카테고리 화면 맨 위 — 홈에는 안 나온다
+                    "bannerId",
+                    "B-CAT",
+                    "placement",
+                    "CATEGORY",
+                    "imageId",
+                    imageId,
+                    "altText",
+                    "카테고리 배너",
+                    "linkType",
+                    "NONE",
+                    "sortOrder",
+                    0),
                 Map.of(
                     "bannerId",
                     "B-TOP",
@@ -563,6 +576,12 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("bannerId"))
         .containsExactly("B-SPL");
+    assertThat(
+            send("GET", null, "/storefront/banners?placement=CATEGORY", null)
+                .body()
+                .path("items")
+                .findValuesAsString("bannerId"))
+        .containsExactly("B-CAT");
     // 타이머 테마는 HOME 에, 탭에 넣은 테마는 HOME 에서 빠진다
     List<String> sections = home.path("sections").findValuesAsString("sectionId");
     assertThat(sections).contains("T-TIMER").doesNotContain("T-DEAL");

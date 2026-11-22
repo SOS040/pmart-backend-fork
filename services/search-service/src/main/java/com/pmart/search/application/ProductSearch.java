@@ -118,7 +118,7 @@ public class ProductSearch {
       Sort sort,
       int size,
       @Nullable String cursor) {
-    return search(q, categoryId, null, true, PriceRange.ANY, Map.of(), sort, size, cursor);
+    return search(q, categoryId, null, true, PriceRange.ANY, Map.of(), false, sort, size, cursor);
   }
 
   public Result search(
@@ -128,6 +128,7 @@ public class ProductSearch {
       boolean includeNotCarried,
       PriceRange price,
       Map<String, List<String>> filters,
+      boolean onSale,
       Sort sort,
       int size,
       @Nullable String cursor) {
@@ -146,7 +147,8 @@ public class ProductSearch {
             price,
             filters,
             includeNotCarried ? null : center,
-            namesFor(filters)));
+            namesFor(filters),
+            onSale ? onSaleFilter() : null));
     req.put("sort", sort(sort, query != null));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Hit> out = new ArrayList<>();
@@ -160,6 +162,62 @@ public class ProductSearch {
     List<String> applied = new ArrayList<>();
     filters.forEach((k, vs) -> vs.forEach(v -> applied.add(k + "." + v)));
     return new Result(out, total, next, sort, List.copyOf(applied));
+  }
+
+  /**
+   * 할인 중인 상품만(2026-11-22 클라이언트 BR-82, 계약 0.8.0 {@code onSale=true}). 할인 색인에서 지금 할인 중인
+   * SKU(unitDiscount > 0, 끝 시각 전이거나 없음)와 가격 버전을 읽어, 대표 SKU·가격 버전이 같은 상품만 남긴다 — 결과에 할인가를 붙이는 {@link
+   * #discount} 와 같은 판정. 할인 상품이 없으면 아무것도 맞지 않는다. 할인 색인을 못 읽으면 503(할인 여부를 모르는데 전체를 보여 주지 않는다).
+   */
+  private Object onSaleFilter() {
+    long now = clock.millis();
+    JsonNode res;
+    try {
+      res =
+          index.search(
+              SearchIndex.SKU_DISCOUNTS,
+              Map.of(
+                  "size",
+                  SearchRules.MAX_ON_SALE_SKUS,
+                  "_source",
+                  List.of("sku", "priceVersion"),
+                  "query",
+                  Map.of(
+                      "bool",
+                      Map.of(
+                          "filter",
+                          List.of(Map.of("range", Map.of("unitDiscount", Map.of("gt", 0)))),
+                          "should",
+                          List.of(
+                              Map.of("range", Map.of("endsAtMs", Map.of("gt", now))),
+                              Map.of(
+                                  "bool",
+                                  Map.of(
+                                      "must_not",
+                                      List.of(Map.of("exists", Map.of("field", "endsAtMs")))))),
+                          "minimum_should_match",
+                          1))));
+    } catch (RuntimeException ex) {
+      throw com.pmart.common.web.PmartException.dependencyUnavailable("할인 상품을 확인할 수 없습니다.", ex);
+    }
+    List<Object> any = new ArrayList<>();
+    for (JsonNode d : res.path("hits").path("hits")) {
+      JsonNode s = d.path("_source");
+      if (s.hasNonNull("sku") && s.path("priceVersion").isNumber()) {
+        any.add(
+            Map.of(
+                "bool",
+                Map.of(
+                    "filter",
+                    List.of(
+                        Map.of("term", Map.of("representativeSku", s.path("sku").asString())),
+                        Map.of("term", Map.of("priceVersion", s.path("priceVersion").asInt()))))));
+      }
+    }
+    if (any.isEmpty()) {
+      return Map.of("match_none", Map.of());
+    }
+    return Map.of("bool", Map.of("should", any, "minimum_should_match", 1));
   }
 
   /**
@@ -304,7 +362,7 @@ public class ProductSearch {
       @Nullable String categoryId,
       PriceRange price,
       Map<String, List<String>> filters) {
-    return query(q, categoryId, price, filters, null, Map.of());
+    return query(q, categoryId, price, filters, null, Map.of(), null);
   }
 
   /**
@@ -317,8 +375,12 @@ public class ProductSearch {
       PriceRange price,
       Map<String, List<String>> filters,
       @Nullable String carriedAt,
-      Map<String, String> names) {
+      Map<String, String> names,
+      @Nullable Object onSale) {
     List<Object> filter = new ArrayList<>();
+    if (onSale != null) {
+      filter.add(onSale);
+    }
     if (carriedAt != null) {
       filter.add(Map.of("term", Map.of("carriedMfcIds", carriedAt)));
     }

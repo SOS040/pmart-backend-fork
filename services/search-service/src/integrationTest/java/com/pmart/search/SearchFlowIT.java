@@ -976,4 +976,31 @@ class SearchFlowIT {
     assertThat(ids(search("?categoryId=t07&q=국내산 삼겹살"))).containsExactly("PRD-O1");
     assertThat(ids(search("?categoryId=t07&q=캐나다산"))).containsExactly("PRD-O2");
   }
+
+  /**
+   * 할인 중인 상품만(2026-11-22 클라이언트 BR-82, 계약 0.8.0 onSale=true): 대표 SKU 할인이 있고 가격 사본과 같은 priceVersion 인
+   * 상품만 — 결과의 salePrice 와 같은 판정. 할인이 끝난(unitDiscount 0) 상품과 가격 버전이 다른 할인은 빠진다.
+   */
+  @Test
+  @org.junit.jupiter.api.Order(7)
+  void onSaleKeepsOnlyDiscountedProducts() throws Exception {
+    for (String n : List.of("1", "2", "3")) {
+      product("PRD-D" + n, 1, "E-D" + n, "t08-c01", "2026-11-22T02:00:00Z");
+      card("PRD-D" + n, "[시험] 할인 목록 상품 " + n, 1);
+      contentPublished("PRD-D" + n, 1, "2026-11-22T02:01:00Z");
+      price("E-D" + n, 1000, 1);
+    }
+    discount("E-D1", 1, 1, 1000, 200); // 할인 중
+    discount("E-D2", 1, 2, 1000, 200); // 가격 버전이 다름 → 표시 안 함·목록에서도 빠짐
+    discount("E-D3", 1, 1, 1000, 300);
+    discount("E-D3", 2, 1, 1000, 0); // 할인 끝
+    await(
+        "?categoryId=t08",
+        r -> r.path("total").asInt() == 3 && r.toString().contains("\"salePrice\":800"));
+    JsonNode sale = await("?categoryId=t08&onSale=true", r -> r.path("total").asInt() == 1);
+    assertThat(ids(sale)).containsExactly("PRD-D1");
+    assertThat(sale.path("items").path(0).path("salePrice").asInt()).isEqualTo(800);
+    assertThat(ids(search("?categoryId=t08&onSale=false"))).hasSize(3);
+    assertThat(ids(search("?categoryId=t08&onSale=true&q=상품 2"))).isEmpty();
+  }
 }

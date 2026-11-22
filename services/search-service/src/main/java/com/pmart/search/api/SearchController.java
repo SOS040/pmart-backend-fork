@@ -68,6 +68,7 @@ public class SearchController implements SearchApi {
       @Nullable Long minPrice,
       @Nullable Long maxPrice,
       Boolean noCorrection,
+      Boolean onSale,
       Integer size,
       @Nullable String cursor) {
     ProductSearch.PriceRange price;
@@ -86,6 +87,7 @@ public class SearchController implements SearchApi {
               includeNotCarried == null || includeNotCarried,
               price,
               SearchRules.parseFilters(filters),
+              Boolean.TRUE.equals(onSale), // 0.8.0 BR-82 할인 중인 상품만
               SearchRules.sort(sort == null ? null : sort.getValue()),
               size,
               cursor,

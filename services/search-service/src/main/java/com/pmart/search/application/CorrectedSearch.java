@@ -42,12 +42,14 @@ public class CorrectedSearch {
       boolean includeNotCarried,
       ProductSearch.PriceRange price,
       Map<String, List<String>> filters,
+      boolean onSale,
       SearchRules.Sort sort,
       int size,
       @Nullable String cursor,
       boolean noCorrection) {
     ProductSearch.Result r =
-        search.search(q, categoryId, mfcId, includeNotCarried, price, filters, sort, size, cursor);
+        search.search(
+            q, categoryId, mfcId, includeNotCarried, price, filters, onSale, sort, size, cursor);
     String query = SearchRules.normalizeQuery(q);
     SearchProperties.Correction cfg = props.correction();
     if (noCorrection
@@ -70,7 +72,16 @@ public class CorrectedSearch {
       }
       ProductSearch.Result page =
           search.search(
-              next.get(), categoryId, mfcId, includeNotCarried, price, filters, sort, size, cursor);
+              next.get(),
+              categoryId,
+              mfcId,
+              includeNotCarried,
+              price,
+              filters,
+              onSale,
+              sort,
+              size,
+              cursor);
       return page.total() > 0
           ? new Outcome(page, 0, next.get(), null)
           : new Outcome(r, 0, null, null);
@@ -81,7 +92,16 @@ public class CorrectedSearch {
     }
     ProductSearch.Result again =
         search.search(
-            fixed.get(), categoryId, mfcId, includeNotCarried, price, filters, sort, size, null);
+            fixed.get(),
+            categoryId,
+            mfcId,
+            includeNotCarried,
+            price,
+            filters,
+            onSale,
+            sort,
+            size,
+            null);
     if (r.total() == 0) {
       return again.total() > 0
           ? new Outcome(again, 0, fixed.get(), null)

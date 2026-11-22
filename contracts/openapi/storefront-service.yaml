@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-22, 클라이언트 BR-82 "카테고리 화면 배너"): 편성 배너 자리에 `CATEGORY`(카테고리 화면 맨 위 — 모든 카테고리 화면 공통). 홈 `banners`·placement 없는
+    배너 목록에는 나오지 않고 `GET /storefront/banners?placement=CATEGORY` 로만(POPUP·SPLASH 와 같음).
     0.10.0(2026-11-21 — 사용자 "넘김 간격 MD 가 편성 가능하도록, 순서 섞기도 추천대로"):
     ① 배너 넘김 간격 — 편성 `bannerIntervalSeconds`(2~30초, 비우면 앱 기본값). 홈 응답 `bannerIntervalSeconds`·배너 묶음 영역 `intervalSeconds`. 배너가 1개면 앱이 넘기지 않는다.
     ② 배너·테마 순서 섞기 — 배너 자리 `HOME_INLINE` + `groupId`(`G-…`, 같은 묶음은 한 자리에서 넘기기), 편성 `homeOrder`(배너 묶음 groupId·테마 sectionId 를 보일 순서대로).
@@ -485,7 +487,7 @@ components:
       required: [bannerId, placement, imageId, altText, linkType]
       properties:
         bannerId: { type: string, pattern: '^[A-Za-z0-9_-]{1,40}$', description: 초안 안에서 고유 }
-        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, POPUP, SPLASH, HOME_INLINE], description: '0.9.0 POPUP = 앱 첫 화면 팝업, SPLASH = 처음 로딩 화면. 0.10.0 HOME_INLINE = 홈 순서(homeOrder) 안의 배너 묶음 자리(groupId 필수)' }
+        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, POPUP, SPLASH, HOME_INLINE, CATEGORY], description: '0.11.0 CATEGORY = 카테고리 화면 맨 위(홈에는 안 나옴). 0.9.0 POPUP = 앱 첫 화면 팝업, SPLASH = 처음 로딩 화면. 0.10.0 HOME_INLINE = 홈 순서(homeOrder) 안의 배너 묶음 자리(groupId 필수)' }
         groupId: { type: [string, 'null'], pattern: '^G-[A-Za-z0-9_-]{1,38}$', description: '0.10.0 HOME_INLINE 배너 묶음 ID(같은 묶음은 한 자리에서 넘기기). 다른 자리면 비움(INVALID_GROUP)' }
         imageId: { type: string, description: '`POST /storefront/banner-images` 결과' }
         altText: { type: string, minLength: 1, maxLength: 100, description: 접근성 설명(화면 읽기) }

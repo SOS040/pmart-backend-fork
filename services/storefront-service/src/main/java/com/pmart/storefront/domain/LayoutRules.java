@@ -37,9 +37,12 @@ public final class LayoutRules {
 
   public static final String RANKING_AUTO = "RANKING_AUTO";
 
-  /** 배너 자리 — 홈(HOME_TOP·HOME_MIDDLE), 0.9.0 팝업(POPUP)·처음 로딩 화면(SPLASH). */
+  /**
+   * 배너 자리 — 홈(HOME_TOP·HOME_MIDDLE), 0.9.0 팝업(POPUP)·처음 로딩 화면(SPLASH), 0.11.0 카테고리 화면 맨 위(CATEGORY
+   * — 홈에는 섞지 않는다, 2026-11-22 클라이언트 BR-82).
+   */
   public static final List<String> PLACEMENTS =
-      List.of("HOME_TOP", "HOME_MIDDLE", "POPUP", "SPLASH", "HOME_INLINE");
+      List.of("HOME_TOP", "HOME_MIDDLE", "POPUP", "SPLASH", "HOME_INLINE", "CATEGORY");
 
   /** 0.10.0 홈 순서 안 배너 묶음 자리(groupId 필수). */
   public static final String HOME_INLINE = "HOME_INLINE";

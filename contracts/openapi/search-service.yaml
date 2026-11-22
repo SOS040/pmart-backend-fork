@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
+    0.8.0(2026-11-22, 클라이언트 BR-82 "할인 상품 목록"): `GET /search/products?onSale=true` — 대표 SKU 에 지금 기간 할인이 있는 상품만(결과의 salePrice 가 붙는 것과 같은 판정:
+    할인 금액 > 0, 끝 시각 전, 가격 사본과 같은 priceVersion). 정렬·필터·검색어는 그대로 함께 쓴다. 할인율순 정렬은 아직 없다. 할인 정보를 못 읽으면 503.
     0.7.0(2026-11-22, 클라이언트 BR-81 "필터가 안 보임"): `GET /search/filters` 의 속성 이름을 모든 카테고리 필터 패널에서 찾는다(전에는 그 카테고리·조상만이라
     하위 카테고리 상품의 그룹이 id 로 보였다). 카테고리마다 따로 정의된 같은 이름 그룹("중량" 등)은 한 줄로 묶고 key 를 `n:<그룹 이름>` 으로 준다(같은 옵션은 건수 합).
     검색 `filters=n:<그룹 이름>.<옵션>` 은 그 이름의 그룹 모두로 거른다. 그룹 id 키(예전 형식)도 그대로 받는다. key 는 그대로 돌려보내는 불투명 값으로 쓴다.
@@ -75,6 +77,7 @@ paths:
         - { name: minPrice, in: query, description: '기본가 하한(원, 이상). 가격이 아직 없는 상품은 가격 범위를 주면 빠진다(2026-11-03)', schema: { type: integer, format: int64, minimum: 0 } }
         - { name: maxPrice, in: query, description: '기본가 상한(원, 이하). minPrice 보다 작으면 400', schema: { type: integer, format: int64, minimum: 0 } }
         - { name: noCorrection, in: query, schema: { type: boolean, default: false }, description: '(0.4.0) true 면 오타 교정하지 않는다 — "원래 검색어로 찾기"' }
+        - { name: onSale, in: query, x-added-in: '0.8.0', schema: { type: boolean, default: false }, description: '(0.8.0 BR-82) true 면 대표 SKU 에 지금 기간 할인이 있는 상품만 — 결과의 salePrice 와 같은 판정' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
