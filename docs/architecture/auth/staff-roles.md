@@ -105,7 +105,7 @@ PMart 직원(운영자) 역할 13개가 무엇이고, 누가 받고, 어느 화�
 |---|---|
 | `claude-dev` | `OPERATOR_ADMIN` |
 | `test-cs-rider@pmart.com` | `CS_AGENT`·`RIDER_OPS` |
-| `claude-approver` | 승인 역할들 + `HR_ADMIN` |
+| `claude-approver` | 승인 역할들 + `HR_ADMIN` + `MD`(2026-11-22, 동의어 요청) |
 | `claude-mfc-sup` | `MFC_SUPERVISOR` · `MFC-SEED-01` |
 | `claude-mfc-wrk`, `mfcw-<분야>-NN@pmart.com`(70명) | `MFC_WORKER` · `MFC-SEED-01` |
 
