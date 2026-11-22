@@ -119,6 +119,7 @@ GET /api/v1/deliveries/{deliveryId}/stream CUSTOMER,OPERATOR,RIDER
 GET /api/v1/delivery-conditions CUSTOMER,GUEST
 GET /api/v1/delivery-help-requests OPERATOR
 GET /api/v1/delivery-list RIDER
+GET /api/v1/delivery-metrics OPERATOR
 GET /api/v1/delivery-options CUSTOMER,GUEST
 GET /api/v1/delivery-staff-actions OPERATOR
 GET /api/v1/delivery-stats OPERATOR
@@ -189,6 +190,7 @@ GET /api/v1/me/wishlist-items CUSTOMER
 GET /api/v1/me/wishlist-product-ids CUSTOMER
 GET /api/v1/me/withdrawals CUSTOMER
 GET /api/v1/me/withdrawals/{withdrawalId} CUSTOMER
+GET /api/v1/metrics/dispatch OPERATOR
 GET /api/v1/metrics/on-time-deliveries OPERATOR
 GET /api/v1/metrics/picking-lines OPERATOR
 GET /api/v1/metrics/picking-lines/by-sku OPERATOR
