@@ -23,8 +23,9 @@ public class ClaimMetricsController implements ClaimMetricsApi {
   }
 
   @Override
-  public ResponseEntity<RefundMetrics> getRefundMetrics(LocalDate from, LocalDate to) {
-    RefundMetricsService.Result r = service.refunds(from, to);
+  public ResponseEntity<RefundMetrics> getRefundMetrics(
+      LocalDate from, LocalDate to, @org.jspecify.annotations.Nullable String mfcId) {
+    RefundMetricsService.Result r = service.refunds(from, to, mfcId); // 0.13.0 CL-8
     return ResponseEntity.ok(
         new RefundMetrics()
             .from(from)

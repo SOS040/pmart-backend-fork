@@ -62,6 +62,7 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired RefundService refunds;
+  @Autowired com.pmart.claim.application.ClaimCenterBackfill centerBackfill;
 
   @InjectWireMock("deps")
   WireMockServer deps;
@@ -1371,5 +1372,99 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     Res failed = eligibility(account);
     assertThat(failed.body().path("eligible").asBoolean()).isFalse();
     assertThat(obligations(failed.body())).containsExactly("REFUND_IN_PROGRESS:" + claimId);
+  }
+
+  /**
+   * 0.13.0 CL-8(2026-11-23): 접수 때 원주문 센터를 저장하고(취소도), 옛 클레임(센터 없음)은 order 원장으로 채운다. 직원 목록·수·환불 지표는
+   * {@code mfcId} 로 거르고, 고객 토큰의 mfcId 는 무시한다.
+   */
+  @Test
+  void staffListsFilterByOrderCenter() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "CONFIRMED");
+    paymentAccepts(orderId);
+    Res opened = post(TestJwt.customer(account), UUID.randomUUID().toString(), cancel(orderId, 10));
+    assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);
+    String claimId = opened.body().path("claimId").asString();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT mfc_id FROM claim WHERE claim_id = ?", String.class, claimId))
+        .as("취소 클레임도 원주문 센터")
+        .isEqualTo("MFC-1");
+
+    // 옛 클레임: 센터 없이 들어간 행 → 채우기(order 원장 MFC-1). 주문이 없는 행은 그대로 비어 있다
+    String oldOrder = "ORD-" + UUID.randomUUID();
+    order(oldOrder, account, "CANCELLED");
+    String gone = "ORD-GONE-" + UUID.randomUUID();
+    for (String[] r : new String[][] {{account + "-OLD", oldOrder}, {account + "-GONE", gone}}) {
+      jdbc.update(
+          "INSERT INTO claim (claim_id, order_id, account_id, type, state, reason, channel,"
+              + " payment_attempt_id, approved_amount, item_amount, bag_fee, delivery_tip, opened_at,"
+              + " updated_at) VALUES (?,?,?,'CANCEL','CLOSED','CHANGE_OF_MIND','CUSTOMER_APP','PAY-x',0,0,0,0,now(),now())",
+          r[0],
+          r[1],
+          account);
+    }
+    deps.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/orders/" + gone))
+            .willReturn(aResponse().withStatus(404)));
+    centerBackfill.run(); // 기동 때 한 번 도는 것과 같은 일(이미 채워졌으면 0)
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT mfc_id FROM claim WHERE claim_id = ?", String.class, account + "-OLD"))
+        .isEqualTo("MFC-1");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT mfc_id FROM claim WHERE claim_id = ?", String.class, account + "-GONE"))
+        .isNull();
+
+    String staff = TestJwt.operator("STAFF-CS", List.of("CS_AGENT"), List.of());
+    assertThat(
+            get(staff, "/claims?customerId=" + account + "&mfcId=MFC-1")
+                .body()
+                .path("items")
+                .findValuesAsString("claimId"))
+        .containsExactlyInAnyOrder(claimId, account + "-OLD");
+    assertThat(
+            get(staff, "/claims?customerId=" + account + "&mfcId=MFC-2")
+                .body()
+                .path("items")
+                .size())
+        .isZero();
+    assertThat(get(staff, "/claims?customerId=" + account).body().path("items").size())
+        .as("센터 없이 = 전부")
+        .isEqualTo(3);
+    java.util.Map<String, Long> byType = new java.util.HashMap<>();
+    get(staff, "/claims/counts?customerId=" + account + "&mfcId=MFC-1&by=type")
+        .body()
+        .path("counts")
+        .forEach(c -> byType.put(c.path("key").asString(), c.path("count").asLong()));
+    assertThat(byType).containsEntry("CANCEL", 2L);
+    assertThat(get(TestJwt.customer(account), "/claims?mfcId=MFC-2").body().path("items").size())
+        .as("고객 토큰의 mfcId 는 무시")
+        .isEqualTo(3);
+
+    // 환불 지표: 완료 환불 하나를 MFC-1 클레임에 붙여 센터별로
+    jdbc.update(
+        "INSERT INTO refund_intent (refund_intent_id, claim_id, order_id, payment_attempt_id, scope, reason,"
+            + " amount, item_amount, bag_fee, delivery_tip, state, cancellation_request_id, created_at,"
+            + " updated_at, completed_at)"
+            + " VALUES (?,?,?,'PAY-x','FULL','CANCEL_BEFORE_SHIP',1234,1234,0,0,'COMPLETED',?,now(),now(),?)",
+        "RI-" + account,
+        account + "-OLD",
+        oldOrder,
+        "REFUND-RI-" + account,
+        java.sql.Timestamp.from(java.time.Instant.parse("2019-08-01T03:00:00Z")));
+    String admin = TestJwt.operator("STAFF-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    Res mine = get(admin, "/claims/metrics/refunds?from=2019-08-01&to=2019-08-01&mfcId=MFC-1");
+    assertThat(mine.status()).as(mine.body().toString()).isEqualTo(200);
+    assertThat(mine.body().path("totalAmount").asLong()).isEqualTo(1234L);
+    assertThat(
+            get(admin, "/claims/metrics/refunds?from=2019-08-01&to=2019-08-01&mfcId=MFC-2")
+                .body()
+                .path("totalAmount")
+                .asLong())
+        .isZero();
   }
 }

@@ -4,6 +4,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -23,12 +24,31 @@ public class RefundMetricsStore {
   }
 
   public List<ReasonRow> completedByReason(Instant from, Instant toExclusive) {
+    return completedByReason(from, toExclusive, null);
+  }
+
+  /** {@code mfcId} 가 있으면 그 센터 주문의 환불만(클레임의 원주문 센터 — 0.13.0 CL-8). */
+  public List<ReasonRow> completedByReason(
+      Instant from, Instant toExclusive, @org.jspecify.annotations.Nullable String mfcId) {
+    RowMapper<ReasonRow> row =
+        (rs, n) -> new ReasonRow(rs.getString("reason"), rs.getInt("n"), rs.getLong("amount"));
+    if (mfcId == null) {
+      return jdbc.query(
+          "SELECT reason, count(*) AS n, coalesce(sum(amount), 0) AS amount FROM refund_intent"
+              + " WHERE state = 'COMPLETED' AND completed_at >= ? AND completed_at < ?"
+              + " GROUP BY reason",
+          row,
+          Timestamp.from(from),
+          Timestamp.from(toExclusive));
+    }
     return jdbc.query(
-        "SELECT reason, count(*) AS n, coalesce(sum(amount), 0) AS amount FROM refund_intent"
-            + " WHERE state = 'COMPLETED' AND completed_at >= ? AND completed_at < ?"
-            + " GROUP BY reason",
-        (rs, n) -> new ReasonRow(rs.getString("reason"), rs.getInt("n"), rs.getLong("amount")),
+        "SELECT r.reason, count(*) AS n, coalesce(sum(r.amount), 0) AS amount FROM refund_intent r"
+            + " JOIN claim c ON c.claim_id = r.claim_id"
+            + " WHERE r.state = 'COMPLETED' AND r.completed_at >= ? AND r.completed_at < ?"
+            + " AND c.mfc_id = ? GROUP BY r.reason",
+        row,
         Timestamp.from(from),
-        Timestamp.from(toExclusive));
+        Timestamp.from(toExclusive),
+        mfcId);
   }
 }

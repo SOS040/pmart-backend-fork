@@ -55,6 +55,39 @@ public class ClaimStore {
       @Nullable String pickupState,
       @Nullable Instant returnDeadlineAt) {
 
+    /** 0.13.0 CL-8: 원주문 이행 센터를 붙인 사본(취소 클레임도 센터를 저장). */
+    public ClaimRow withMfcId(@Nullable String centerId) {
+      return new ClaimRow(
+          claimId,
+          orderId,
+          accountId,
+          type,
+          state,
+          reason,
+          reasonDetail,
+          channel,
+          stopRequestId,
+          version,
+          paymentAttemptId,
+          approvedAmount,
+          itemAmount,
+          bagFee,
+          deliveryTip,
+          rejectReason,
+          openedAt,
+          decidedAt,
+          closedAt,
+          updatedAt,
+          faultCode,
+          identityMethod,
+          identityNote,
+          caseRef,
+          createdBy,
+          centerId,
+          pickupState,
+          returnDeadlineAt);
+    }
+
     /** 취소 클레임(반품 필드 없음). */
     public ClaimRow(
         String claimId,
@@ -461,6 +494,7 @@ public class ClaimStore {
       @Nullable String orderId,
       @Nullable String type,
       @Nullable String state,
+      @Nullable String mfcId,
       com.pmart.claim.domain.ClaimListRules.@Nullable Cursor after,
       int limit) {
     StringBuilder sql = new StringBuilder("SELECT * FROM claim WHERE 1 = 1");
@@ -487,6 +521,10 @@ public class ClaimStore {
       sql.append(" AND state = ?");
       args.add(state);
     }
+    if (mfcId != null) {
+      sql.append(" AND mfc_id = ?");
+      args.add(mfcId);
+    }
     sql.append(" ORDER BY opened_at DESC, claim_id DESC LIMIT ?");
     args.add(limit);
     return jdbc.query(sql.toString(), (rs, i) -> claim(rs), args.toArray());
@@ -494,7 +532,11 @@ public class ClaimStore {
 
   /** 0.10.0 CL-6: 상태(byType 이면 종류)별 수 — 목록과 같은 거르기, state 제외. */
   public java.util.Map<String, Long> counts(
-      @Nullable String accountId, @Nullable String orderId, @Nullable String type, boolean byType) {
+      @Nullable String accountId,
+      @Nullable String orderId,
+      @Nullable String type,
+      @Nullable String mfcId,
+      boolean byType) {
     String col = byType ? "type" : "state";
     StringBuilder sql =
         new StringBuilder("SELECT " + col + " AS k, count(*) AS n FROM claim WHERE 1 = 1");
@@ -511,6 +553,10 @@ public class ClaimStore {
       sql.append(" AND type = ?");
       args.add(type);
     }
+    if (mfcId != null) {
+      sql.append(" AND mfc_id = ?");
+      args.add(mfcId);
+    }
     sql.append(" GROUP BY ").append(col);
     java.util.Map<String, Long> out = new java.util.HashMap<>();
     jdbc.query(
@@ -520,6 +566,20 @@ public class ClaimStore {
         },
         args.toArray());
     return out;
+  }
+
+  /** 0.13.0 CL-8: 센터를 아직 모르는 클레임의 주문(채우기 대상, 주문별 하나). */
+  public List<String> ordersWithoutCenter(int limit) {
+    return jdbc.queryForList(
+        "SELECT DISTINCT order_id FROM claim WHERE mfc_id IS NULL ORDER BY order_id LIMIT ?",
+        String.class,
+        limit);
+  }
+
+  /** 0.13.0 CL-8: 그 주문의 클레임 중 센터가 비어 있는 것에 원주문 센터를 채운다(이미 있는 값은 그대로). */
+  public int fillCenter(String orderId, String centerId) {
+    return jdbc.update(
+        "UPDATE claim SET mfc_id = ? WHERE order_id = ? AND mfc_id IS NULL", centerId, orderId);
   }
 
   public List<LineRow> lines(String claimId) {

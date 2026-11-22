@@ -521,7 +521,7 @@ public class ClaimService {
             staff == null ? null : staff.identityNote(),
             staff == null ? null : staff.caseRef(),
             staffId,
-            null,
+            order.path("mfcId").asString(null), // 0.13.0 CL-8 원주문 이행 센터(취소도 저장)
             null,
             null);
     List<LineRow> rows = new ArrayList<>();
@@ -620,27 +620,28 @@ public class ClaimService {
                   boolean nothing = refund == 0;
                   ClaimRow c =
                       new ClaimRow(
-                          id,
-                          in.orderId(),
-                          order.path("accountId").asString(),
-                          "CANCEL",
-                          nothing ? "CLOSED" : "IN_PROGRESS",
-                          OUT_OF_STOCK,
-                          (in.reasonDetail() == null ? "결품" : in.reasonDetail())
-                              + (in.sourceRef() == null ? "" : " [" + in.sourceRef() + "]"),
-                          SYSTEM_CHANNEL,
-                          null,
-                          1,
-                          order.path("paymentAttemptId").asString(),
-                          order.path("approvedAmount").asLong(),
-                          amount,
-                          0,
-                          0,
-                          null,
-                          now,
-                          now,
-                          nothing ? now : null,
-                          now);
+                              id,
+                              in.orderId(),
+                              order.path("accountId").asString(),
+                              "CANCEL",
+                              nothing ? "CLOSED" : "IN_PROGRESS",
+                              OUT_OF_STOCK,
+                              (in.reasonDetail() == null ? "결품" : in.reasonDetail())
+                                  + (in.sourceRef() == null ? "" : " [" + in.sourceRef() + "]"),
+                              SYSTEM_CHANNEL,
+                              null,
+                              1,
+                              order.path("paymentAttemptId").asString(),
+                              order.path("approvedAmount").asLong(),
+                              amount,
+                              0,
+                              0,
+                              null,
+                              now,
+                              now,
+                              nothing ? now : null,
+                              now)
+                          .withMfcId(order.path("mfcId").asString(null));
                   List<LineRow> rows = new ArrayList<>();
                   int n = 1;
                   for (ClaimRules.Requested r : in.lines()) {
@@ -714,9 +715,11 @@ public class ClaimService {
       @Nullable String customerId,
       @Nullable String type,
       @Nullable String state,
+      @Nullable String mfcId,
       int size,
       @Nullable String cursor) {
     String account = listAccount(who, customerId);
+    String center = listCenter(who, mfcId);
     com.pmart.claim.domain.ClaimListRules.Cursor after = null;
     if (cursor != null && !cursor.isBlank()) {
       after =
@@ -727,7 +730,7 @@ public class ClaimService {
                           com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "커서가 올바르지 않습니다."));
     }
     int limit = Math.max(1, Math.min(size, 100));
-    List<ClaimRow> rows = store.list(account, orderId, type, state, after, limit + 1);
+    List<ClaimRow> rows = store.list(account, orderId, type, state, center, after, limit + 1);
     String next = null;
     if (rows.size() > limit) {
       rows = rows.subList(0, limit);
@@ -759,8 +762,18 @@ public class ClaimService {
       @Nullable String orderId,
       @Nullable String customerId,
       @Nullable String type,
+      @Nullable String mfcId,
       boolean byType) {
-    return store.counts(listAccount(who, customerId), orderId, type, byType);
+    return store.counts(
+        listAccount(who, customerId), orderId, type, listCenter(who, mfcId), byType);
+  }
+
+  /** 0.13.0 CL-8: 센터 거르기는 직원·서비스만(고객 토큰은 무시 — 늘 본인 것 전부). */
+  private static @Nullable String listCenter(PmartPrincipal who, @Nullable String mfcId) {
+    if (who.type() == PmartPrincipal.PrincipalType.CUSTOMER || mfcId == null || mfcId.isBlank()) {
+      return null;
+    }
+    return mfcId;
   }
 
   private ClaimView view(String claimId) {

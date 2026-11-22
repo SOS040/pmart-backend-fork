@@ -76,11 +76,20 @@ public class ClaimsController implements ClaimsApi {
   /** 0.10.0 CL-6: 목록 숫자 띠 — 상태별(또는 종류별) 수, 모든 값 0 까지. */
   @Override
   public ResponseEntity<StatusCounts> countClaims(
-      @Nullable String orderId, @Nullable String customerId, @Nullable ClaimType type, String by) {
+      @Nullable String orderId,
+      @Nullable String customerId,
+      @Nullable ClaimType type,
+      @Nullable String mfcId,
+      String by) {
     boolean byType = "type".equals(by);
     java.util.Map<String, Long> counts =
         claims.counts(
-            principal(), orderId, customerId, type == null ? null : type.getValue(), byType);
+            principal(),
+            orderId,
+            customerId,
+            type == null ? null : type.getValue(),
+            mfcId, // 0.13.0 CL-8
+            byType);
     java.util.List<String> keys =
         byType
             ? java.util.Arrays.stream(ClaimType.values()).map(ClaimType::getValue).toList()
@@ -105,6 +114,7 @@ public class ClaimsController implements ClaimsApi {
       @Nullable String customerId,
       @Nullable ClaimType type,
       @Nullable ClaimState state,
+      @Nullable String mfcId,
       Integer size,
       @Nullable String cursor) {
     ClaimService.Page page =
@@ -114,6 +124,7 @@ public class ClaimsController implements ClaimsApi {
             customerId,
             type == null ? null : type.getValue(),
             state == null ? null : state.getValue(),
+            mfcId, // 0.13.0 CL-8
             size == null ? 20 : size,
             cursor);
     ListClaims200Response out =

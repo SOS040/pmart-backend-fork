@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
+    0.13.0(2026-11-23 CL-8 — 통합 백오피스 센터 고르기, 사용자 "주문에 붙은 것만"): 직원 `GET /claims`·`/claims/counts`·`/claims/metrics/refunds` 에 선택 `mfcId`(원주문 이행 센터 — 취소·반품 모두).
+      클레임은 접수 때 원주문 센터를 저장하고, 그 전 행은 서버가 order 원장으로 채운다(채우기 전·주문에 센터가 없으면 센터를 고를 때 빠진다). 고객 토큰은 무시(늘 본인).
     0.12.0(2026-11-21 CL-2 — 백오피스 요청, 사용자 "추천대로"): 반품 `pickup.feeRefundOnCancel` — 지금 반품을 취소하면 낸 회수비를 어떻게 하는지(서버 판정 그대로):
     `REFUND`(우리 잘못뿐·실패 없음 — 돌려줌)·`NO_REFUND`(고객 사유 있음 — 안 돌려줌)·`AGENT_CHOOSES`(파손·기타 — 상담원이 `feeRefund` 로 고름, 기본 안 돌려줌)·null(낸 회수비 없음). 화면은 AGENT_CHOOSES 일 때만 고르기를 보이면 된다.
     0.11.0(2026-11-21, MFC 백오피스 요청 DC-1 — 사용자 "dc-1로 할게"): 직원 회사 사유 전체 취소(`DISPATCH_UNAVAILABLE`·`OPERATOR_DECISION`)는 `lines` 를
@@ -113,6 +115,7 @@ paths:
         - { name: customerId, in: query, x-added-in: '2026-11-20', schema: { type: string, maxLength: 64 }, description: '0.10.0 CL-7 — 직원만: 그 고객(클레임 계정 = 주문 고객)의 클레임. 고객 토큰은 무시(늘 본인)' }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/ClaimType' } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/ClaimState' } }
+        - { name: mfcId, in: query, x-added-in: '2026-11-23', schema: { type: string, maxLength: 32 }, description: '0.13.0 CL-8 — 직원만: 원주문 이행 센터. 고객 토큰은 무시' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -139,6 +142,7 @@ paths:
         - { name: orderId, in: query, schema: { type: string } }
         - { name: customerId, in: query, schema: { type: string, maxLength: 64 }, description: 직원만(고객 토큰은 무시) }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/ClaimType' }, description: by=state 일 때 이 종류만 }
+        - { name: mfcId, in: query, x-added-in: '2026-11-23', schema: { type: string, maxLength: 32 }, description: '0.13.0 CL-8 — 직원만: 원주문 이행 센터. 고객 토큰은 무시' }
         - { name: by, in: query, schema: { type: string, enum: [state, type], default: state } }
       responses:
         '200':
@@ -302,7 +306,7 @@ paths:
         2026-11-18 사용자 결정(CL-3): 매출에서 환불을 빼지 않고 환불 금액을 따로 보인다. 직원 토큰(OPERATOR)의 역할 **OPERATOR_ADMIN 만**(그 밖 직원·고객·라이더 403).
         **기준 = 환불 완료 시각(`completedAt` — PG 환불 성공을 확인한 시각)의 한국 날짜(Asia/Seoul)** — from 00:00(KST) 이상, to 다음 날 00:00(KST) 미만. from·to 필수·포함.
         from > to 이면 400, 기간이 93일(포함)을 넘으면 400 VALIDATION_FAILED. **완료(COMPLETED)된 환불만** — 실행 중·결과 불명·실패는 세지 않는다.
-        **센터(mfcId) 거르기는 없다**(사용자 동의 2026-11-18 — 출고 전 취소 클레임에는 센터가 없다). 주문 쪽 집계(order `GET /orders/metrics/summary`)는 센터로 거를 수 있지만 이 값은 늘 모든 센터다.
+        0.13.0(CL-8): `mfcId` 를 주면 그 센터 주문의 환불만(클레임의 원주문 센터 — 2026-11-18 의 "센터 거르기 없음"을 바꿈). 없으면 모든 센터.
         사유 묶음(환불 의도의 근거 `reason`):
         - `CANCEL` = CANCEL_BEFORE_SHIP — 출고 전 전체 취소(고객·고객센터·시스템 자동 취소(이행 거절·전체 결품) 모두. 앞선 결품 부분 환불이 있으면 남은 금액만)
         - `SHORTAGE` = OUT_OF_STOCK — 결품 부분 환불(ADR-0045)
@@ -315,6 +319,7 @@ paths:
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date }, description: '시작 날짜(Asia/Seoul, 포함) — 환불 완료 시각의 한국 날짜 기준' }
         - { name: to, in: query, required: true, schema: { type: string, format: date }, description: '끝 날짜(Asia/Seoul, 포함). from 이상, from 부터 93일(포함) 이하' }
+        - { name: mfcId, in: query, x-added-in: '2026-11-23', schema: { type: string, maxLength: 32 }, description: '0.13.0 CL-8 — 그 센터 주문의 환불만(클레임의 원주문 센터)' }
       responses:
         '200':
           description: OK

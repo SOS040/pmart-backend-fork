@@ -37,6 +37,12 @@ public class RefundMetricsService {
 
   @Transactional(readOnly = true)
   public Result refunds(@Nullable LocalDate from, @Nullable LocalDate to) {
+    return refunds(from, to, null);
+  }
+
+  /** 0.13.0 CL-8: {@code mfcId} 가 있으면 그 센터 주문의 환불만. */
+  @Transactional(readOnly = true)
+  public Result refunds(@Nullable LocalDate from, @Nullable LocalDate to, @Nullable String mfcId) {
     PmartPrincipal.current()
         .filter(p -> p.type() == PmartPrincipal.PrincipalType.OPERATOR)
         .filter(p -> RefundMetricsRules.allowed(p.roles()))
@@ -47,7 +53,9 @@ public class RefundMetricsService {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, problem);
     }
     RefundMetricsRules.Range r = RefundMetricsRules.range(from, to);
-    return group(store.completedByReason(r.from(), r.toExclusive()));
+    return group(
+        store.completedByReason(
+            r.from(), r.toExclusive(), mfcId == null || mfcId.isBlank() ? null : mfcId));
   }
 
   /** 근거별 행 → 묶음별 합(없는 묶음은 0). */

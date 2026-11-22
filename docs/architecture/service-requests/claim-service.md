@@ -123,3 +123,4 @@
 - **왜**: 2호점 목포 MFC 가 생겨 통합 백오피스에 센터 고르기(pmart-clients #390). 클레임 화면은 서버에 센터 조건이 없어 "모든 센터"로만 보인다.
 - **요청**: `GET /claims`·`/claims/counts`·`/claims/metrics/refunds` 에 선택 `mfcId`(원주문 이행 센터). 없으면 지금처럼 전부.
 - **빈틈**: `claim.mfc_id` 는 RETURN 만 채운다(V4). 취소·교환은 비어 있다 → 접수 때 원주문 센터를 같이 저장 + 기존 행은 order 조회로 채우기(또는 order `orders/lookups` 의 mfcId 로 bff 가 거르기 — 구현 때 정함). 받는 쪽 platform(PC 1).
+- **구현(2026-11-23, PC 1 — claim 0.13.0)**: 접수 때 모든 클레임에 원주문 센터 저장 + 옛 행 기동 때 채우기(`ClaimCenterBackfill`), `GET /claims`·`/claims/counts`·`/claims/metrics/refunds` `mfcId`. 시험 claim check 53 통과(`CancelClaimFlowIT.staffListsFilterByOrderCenter`).
