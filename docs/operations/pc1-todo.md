@@ -45,6 +45,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] (PC 3 영역 — 요청만) MFC 재고 정정 등 역할 검사 없음, approvalRef 확인(RECORD_ONLY)
 
 ## 4. 기다리는 것(다른 쪽이 끝나면 PC 1 이 이어서)
+- [ ] **R-39 목포 MFC(MFC-MOKPO-01)** — 2026-11-22 사용자 "이 값으로 전부 진행". **끝**: center-master 센터·시간표, 작업자 30(`mfcw-mk-*`)·`claude-mfc-sup-mk`·`claude-mfc-wrk` 목포 권한(`lan-test-accounts.md` §2-1), pmart-config d7a133d(order-orchestration retry-window·max-new-versions, mfc-fulfillment pick-lead-time — 두 서비스 재시작). **남은 것**: ⓐ PR #353 병합 뒤 `Seed.java` 로 배송 권역 Z-SEED-MOKPO(LAN 권역 부산진구·목포 2개) ⓑ PR #354 병합 뒤 `mfc_clone_center.py locations --apply`(R-38 r33 끝난 뒤) → `stock` 계획 → `stock --apply --max-loads 1` → `stock --apply`(단계마다 사용자 확인, 목포 가상 작업자 꺼 둠) ⓒ 목포 주소 시험 고객 — 고객 계정은 소셜 로그인으로만 생겨서 사용자가 시험용 소셜 계정으로 한 번 로그인해야 함 → 그 accountId 를 `auth-service-lan.yml` dev-customer-token 허용 목록에 + 목포 주소 등록.
 - [ ] 푸시 FID 전환 — 앱이 `register()`(FID)로 옮길 때 PC 1 이 먼저 서버를 FCM `fid` 칸으로(회신 `handoff/clients/customer-app/2026-11-18-reply-customer-push-q6-q8.md`).
 - [ ] 고객앱 레퍼런스 갭 — 고객 앱이 B-2(백엔드 없음) 중 먼저 필요한 것을 알려 오면 요청서로(`handoff/clients/customer-app/2026-11-18-notice-reference-gap-update.md`).
 

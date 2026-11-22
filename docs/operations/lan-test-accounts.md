@@ -15,7 +15,9 @@ LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록�
 | `test-cs-rider@pmart.com` | `CS_AGENT`·`RIDER_OPS` | 모든 센터 | `keycloak-test-cs-rider@pmart.com-password` | 고객센터·라이더 운영·지원센터 메뉴 |
 | `claude-approver` | 승인 역할들 + `HR_ADMIN` + `MD`(2026-11-22 동의어 요청) | — | `keycloak-claude-approver-password` | 승인함, 인사팀 앱(직원 등록·권한 관리) |
 | `claude-mfc-sup` | `MFC_SUPERVISOR` | `MFC-SEED-01` | `keycloak-claude-mfc-sup-password` | MFC 백오피스(:8445), 센터 관리자 시험 — 직원 번호 `OP-88399b05-87b7-48e2-aa33-229a3ab36f93`(2026-11-16 로그인 확인) |
-| `claude-mfc-wrk` | `MFC_WORKER` | `MFC-SEED-01` | `keycloak-claude-mfc-wrk-password` | 시뮬레이터 작업자·`mfc_e2e.py` — 직원 번호 `OP-d696814f-4cd7-4263-86a6-032b591e5b42` |
+| `claude-mfc-wrk` | `MFC_WORKER` | `MFC-SEED-01`·`MFC-MOKPO-01`(2026-11-22 R-39) | `keycloak-claude-mfc-wrk-password` | 시뮬레이터 작업자·`mfc_e2e.py` — 직원 번호 `OP-d696814f-4cd7-4263-86a6-032b591e5b42` |
+| `claude-mfc-sup-mk` | `MFC_SUPERVISOR` | `MFC-MOKPO-01` | `keycloak-claude-mfc-sup-mk-password` | 2호점 목포 MFC 센터 관리자(R-39, 2026-11-22 인사 등록·권한 승인 `AP-c2214661-…`) — 직원 번호 `OP-d9fbce5f-26ba-47aa-9cd2-fafd52ca8916`, 메일 `claude-mfc-sup-mk@pmart.com` |
+| `seed-approver` | Seed.java 승인 역할들(`CENTER_MASTER_APPROVER` 등) | — | `keycloak-seed-approver-password` | `deploy/lan/seed/Seed.java`·R-39 목포 센터 생성 승인. 2026-11-22 비밀번호 파일을 새로 만들었다(그 전 값은 파일 없이 실행마다 바뀌던 것) |
 
 - 실제 직원 계정(예: 인사팀 `heeji`)은 시험용이 아니다 — 시험에 쓰지 않는다.
 - 배송 쪽 직원 시험 계정은 따로 없다(필요하면 인사팀 등록으로 만든다).
@@ -110,6 +112,17 @@ LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록�
 | `mfcw-rtn-08@pmart.com` | MFC시험 반품 08 | 알바(~2026-12-31) | 반품 | `OP-8ac742b7-5d98-4065-a111-21cc1a3c2908` |
 | `mfcw-rtn-09@pmart.com` | MFC시험 반품 09 | 정규직 | 반품 | `OP-ab09b1b5-5f20-4f5d-96d0-ebca434d4add` |
 | `mfcw-rtn-10@pmart.com` | MFC시험 반품 10 | 알바(~2026-12-31) | 반품 | `OP-aa4238cd-013d-4e76-939e-2c54bdf7677c` |
+
+## 2-1. 목포 MFC 시험 작업자 30명 — 센터 `MFC-MOKPO-01`(R-39, 2026-11-22)
+
+- 만든 것: `mfc_test_workers.py --center mokpo`(센터 관리자 `claude-mfc-sup-mk` 도 없으면 등록). 1호점과 같은 흐름·같은 **공용 비밀번호 파일** `keycloak-mfc-test-workers-password`, 홀수 정규직·짝수 알바.
+- 센터: center-master `MFC-MOKPO-01` "목포 MFC", 전남 목포시 평화광장 부근(시험 좌표 34.7985, 126.4334), 상온·냉장·냉동, 1층, 고객 주문 08~24시·직원 근무 07~24시 — 1호점과 같게(승인 `AP-c4f46a98-…`·`AP-47929bca-…`).
+
+| 분야 | 아이디 범위 | 인원 | 업무 |
+|---|---|---|---|
+| 피킹·포장 | `mfcw-mk-pp-01` ~ `mfcw-mk-pp-10` | 10 | `PICK·PACK` |
+| 품질검사 | `mfcw-mk-qc-01` ~ `mfcw-mk-qc-10` | 10 | `INSPECT` |
+| 입고 | `mfcw-mk-rcv-01` ~ `mfcw-mk-rcv-10` | 10 | `RECEIVE·PUTAWAY` |
 
 ## 3. 고객·라이더 시험 계정
 

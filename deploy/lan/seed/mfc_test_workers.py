@@ -12,6 +12,8 @@ LAN 전용. 운영 금지. 토큰·비밀번호는 출력하지 않는다.
 
   python -X utf8 deploy/lan/seed/mfc_test_workers.py            # 전부
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --check    # 상태만 보기
+  python -X utf8 deploy/lan/seed/mfc_test_workers.py --center mokpo [--check]
+      # 2호점 목포 MFC(MFC-MOKPO-01, R-39 2026-11-22): mfcw-mk-pp·qc·rcv 01~10(같은 공용 비밀번호) + 센터 관리자 claude-mfc-sup-mk
 """
 import json
 import os
@@ -31,6 +33,8 @@ PART_TIME_END = "2026-12-31"
 NS = uuid.UUID("6f1d0c7e-7a0b-4c1e-9d55-3b1f0a2c9e11")
 PW_FILE = os.path.join(staff_auth.SECRETS, "keycloak-mfc-test-workers-password")
 
+SUPERVISOR = "claude-mfc-sup"
+LABEL = "MFC시험"
 GROUPS = [  # (메일 ID 앞부분, 표시 이름, 인원, 작업 유형)
     ("pp", "피킹포장", 30, ["PICK", "PACK"]),
     ("rcv", "입고", 10, ["RECEIVE", "PUTAWAY"]),
@@ -38,13 +42,18 @@ GROUPS = [  # (메일 ID 앞부분, 표시 이름, 인원, 작업 유형)
     ("mv", "재고이동", 10, ["MOVE", "REPLENISH"]),
     ("rtn", "반품", 10, ["RETURN"]),
 ]
+CENTERS = {  # --center 값 → (센터, 센터 관리자, 표시 이름 앞부분, 분야)
+    "mokpo": ("MFC-MOKPO-01", "claude-mfc-sup-mk", "MFC시험 목포",
+              [("mk-pp", "피킹포장", 10, ["PICK", "PACK"]), ("mk-qc", "품질검사", 10, ["INSPECT"]),
+               ("mk-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
+}
 
 
 def people():
     for code, label, n, types in GROUPS:
         for i in range(1, n + 1):
             et = "REGULAR" if i % 2 else "PART_TIME"
-            yield {"mailId": f"mfcw-{code}-{i:02d}", "name": f"MFC시험 {label} {i:02d}", "employmentType": et, "taskTypes": types}
+            yield {"mailId": f"mfcw-{code}-{i:02d}", "name": f"{LABEL} {label} {i:02d}", "employmentType": et, "taskTypes": types}
 
 
 def call(method, path, token, body=None, version=None, key=None):
@@ -73,13 +82,13 @@ def find_employee(hr, mail_id):
     return None
 
 
-def register(hr, p):
+def register(hr, p, role="MFC_WORKER"):
     e = find_employee(hr, p["mailId"])
     if e:
         return e, "있음"
     body = {"name": p["name"], "mailId": p["mailId"], "employmentType": p["employmentType"],
             "affiliation": {"type": "CENTER", "code": MFC}, "startDate": TODAY,
-            "requestedGrants": [{"role": "MFC_WORKER", "centers": [MFC], "reason": "LAN 시험 작업자(seed)"}]}
+            "requestedGrants": [{"role": role, "centers": [MFC], "reason": "LAN 시험 " + ("작업자" if role == "MFC_WORKER" else "센터 관리자") + "(seed)"}]}
     if p["employmentType"] != "REGULAR":
         body["endDate"] = PART_TIME_END
     st, b = call("POST", "/hr/employees", hr, body, key=str(uuid.uuid5(NS, "register:" + p["mailId"])))
@@ -152,10 +161,23 @@ def set_types(sup, op, types):
             raise SystemExit(f"{op} 업무 변경 실패: HTTP {st} {b.get('code', '')} {b.get('detail', '')}")
 
 
+def supervisor(hr):
+    """2호점 등 — 센터 관리자 계정이 아직 없으면 인사 등록(MFC_SUPERVISOR·그 센터)·발급. 비밀번호는 staff_auth 가 자기 파일로."""
+    p = {"mailId": SUPERVISOR, "name": f"{LABEL} 센터관리자", "employmentType": "REGULAR"}
+    e, how = register(hr, p, role="MFC_SUPERVISOR")
+    wait_done(hr, e["operatorId"], SUPERVISOR)
+    print(f"센터 관리자 {SUPERVISOR} {e['operatorId']} ({how})", flush=True)
+
+
 def main():
+    global MFC, SUPERVISOR, LABEL, GROUPS
     check = "--check" in sys.argv
     hr, _ = staff_auth.staff_token("claude-approver")
-    sup, _ = staff_auth.staff_token("claude-mfc-sup", ["MFC_SUPERVISOR"], [MFC])
+    if "--center" in sys.argv:
+        MFC, SUPERVISOR, LABEL, GROUPS = CENTERS[sys.argv[sys.argv.index("--center") + 1]]
+        if not check:
+            supervisor(hr)
+    sup, _ = staff_auth.staff_token(SUPERVISOR, ["MFC_SUPERVISOR"], [MFC])
     pw = None if check else shared_password()
     counts = {}
     for p in people():
@@ -171,8 +193,9 @@ def main():
         counts[how] = counts.get(how, 0) + 1
         print(f"OK {p['mailId']} {op} {p['employmentType']} {'+'.join(p['taskTypes'])} ({how})", flush=True)
     if not check:
-        tok, op = staff_auth._exchange("mfcw-pp-01@pmart.com", pw)
-        print("로그인 확인 mfcw-pp-01:", "OK" if tok and op else "실패")
+        first = next(people())["mailId"]
+        tok, op = staff_auth._exchange(first + "@pmart.com", pw)
+        print(f"로그인 확인 {first}:", "OK" if tok and op else "실패")
         print("요약:", json.dumps(counts, ensure_ascii=False))
 
 
