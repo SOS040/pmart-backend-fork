@@ -58,7 +58,7 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock(
     @ConfigureWireMock(
         name = "audit",
-        baseUrlProperties = {"pmart.order.audit-base-url"}))
+        baseUrlProperties = {"pmart.order.audit-base-url", "pmart.order.product-base-url"}))
 class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
 
   static final String AUDIT_PATH = "/api/v1/internal/pii-access-logs";
@@ -67,6 +67,7 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
   @Autowired ObjectMapper mapper;
   @Autowired OrderStore store;
   @Autowired JdbcTemplate jdbc;
+  @Autowired com.pmart.order.application.ProductCategories productCategories;
 
   @InjectWireMock("audit")
   WireMockServer audit;
@@ -862,6 +863,159 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
     // 경로가 겹치지 않는다: 주문 상세는 그대로 주문 상세
     JsonNode detail = ok(TestJwt.customer(account), "/orders/" + a);
     assertThat(detail.path("orderId").asString()).isEqualTo(a);
+  }
+
+  /**
+   * 0.20.0 O-11(2026-11-23 사용자): 센터 관리자는 자기 센터만(mfcId 필수 400, 다른 센터 403), 관리자는 모든 센터. 추이 HOUR·DAY·
+   * WEEKDAY_HOUR(한국 시각), sku·카테고리 거르기(하위 포함 — product 지금 값), top-products 줄의 카테고리.
+   */
+  @Test
+  void centerSupervisorSeesOwnCenterMetricsAndSeries() {
+    String mfc = "MFC-SR-" + UUID.randomUUID().toString().substring(0, 8);
+    String account = "ACC-SR-" + UUID.randomUUID();
+    String x = "X-" + UUID.randomUUID().toString().substring(0, 8);
+    String y = "Y-" + UUID.randomUUID().toString().substring(0, 8);
+    String px = "PRD-X-" + x;
+    String py = "PRD-Y-" + y;
+    audit.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/categories/tree"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"version\":1,\"nodes\":["
+                            + "{\"categoryId\":\"c1\",\"name\":\"라면\",\"path\":\"라면\"},"
+                            + "{\"categoryId\":\"c1-a\",\"parentId\":\"c1\",\"name\":\"봉지\",\"path\":\"라면 > 봉지\"},"
+                            + "{\"categoryId\":\"c2\",\"name\":\"우유\",\"path\":\"우유\"}]}")));
+    audit.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/products"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"items\":[{\"productId\":\""
+                            + px
+                            + "\",\"primaryCategoryId\":\"c1-a\"},{\"productId\":\""
+                            + py
+                            + "\",\"primaryCategoryId\":\"c2\"}],\"page\":{\"nextCursor\":null}}")));
+    productCategories.invalidate(); // 앞 시험이 빈 사본을 읽어 두었을 수 있다
+    // 2019-08-05(월) 10:20·10:40 KST, 11:05 KST, 2019-08-06(화) 10:00 KST — 다른 센터 한 건
+    metricsOrder(
+        account,
+        mfc,
+        "CONFIRMED",
+        Instant.parse("2019-08-05T01:20:00Z"),
+        10_000,
+        new M(x, px, 2, 10_000, 0, 0));
+    metricsOrder(
+        account,
+        mfc,
+        "CONFIRMED",
+        Instant.parse("2019-08-05T01:40:00Z"),
+        5_000,
+        new M(y, py, 1, 5_000, 0, 0));
+    metricsOrder(
+        account,
+        mfc,
+        "CONFIRMED",
+        Instant.parse("2019-08-05T02:05:00Z"),
+        3_000,
+        new M(x, px, 1, 3_000, 0, 0));
+    metricsOrder(
+        account,
+        mfc,
+        "CONFIRMED",
+        Instant.parse("2019-08-06T01:00:00Z"),
+        7_000,
+        new M(x, px, 1, 4_000, 0, 0),
+        new M(y, py, 1, 3_000, 0, 0));
+    metricsOrder(
+        account,
+        "MFC-OTHER-" + mfc,
+        "CONFIRMED",
+        Instant.parse("2019-08-05T01:30:00Z"),
+        99_000,
+        new M(x, px, 9, 99_000, 0, 0));
+
+    String sup = TestJwt.operator("sup-1", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    String days = "from=2019-08-05&to=2019-08-06";
+    // 권한: mfcId 없음 400, 다른 센터 403, 자기 센터 200
+    assertThat(status(sup, "/orders/metrics/summary?" + days)).isEqualTo(400);
+    assertThat(status(sup, "/orders/metrics/summary?" + days + "&mfcId=MFC-OTHER-" + mfc))
+        .isEqualTo(403);
+    assertThat(status(sup, "/orders/metrics/series?" + days + "&bucket=DAY")).isEqualTo(400);
+    assertThat(status(CS, "/orders/metrics/series?" + days + "&bucket=DAY&mfcId=" + mfc))
+        .isEqualTo(403);
+    JsonNode sum = ok(sup, "/orders/metrics/summary?" + days + "&mfcId=" + mfc);
+    assertThat(sum.path("orderCount").asInt()).isEqualTo(4);
+    assertThat(sum.path("approvedAmount").asLong()).isEqualTo(25_000);
+
+    // 상위 상품 + 카테고리, 카테고리 거르기(c1 → 하위 c1-a 의 X 만)
+    JsonNode top = ok(sup, "/orders/metrics/top-products?" + days + "&mfcId=" + mfc).path("items");
+    assertThat(top.get(0).path("sku").asString()).isEqualTo(x);
+    assertThat(top.get(0).path("categoryId").asString()).isEqualTo("c1-a");
+    assertThat(top.get(0).path("categoryName").asString()).isEqualTo("라면 > 봉지");
+    JsonNode ramen =
+        ok(sup, "/orders/metrics/top-products?" + days + "&mfcId=" + mfc + "&categoryId=c1")
+            .path("items");
+    assertThat(ramen.findValuesAsString("sku")).containsExactly(x);
+
+    // 시간별: 10시 2건(15,000), 11시 1건, 다음 날 10시 1건 — 0건 칸 없음
+    JsonNode hours =
+        ok(sup, "/orders/metrics/series?" + days + "&bucket=HOUR&mfcId=" + mfc).path("items");
+    assertThat(hours.size()).isEqualTo(3);
+    assertThat(hours.get(0).path("start").asString()).startsWith("2019-08-05T10:00");
+    assertThat(hours.get(0).path("orderCount").asInt()).isEqualTo(2);
+    assertThat(hours.get(0).path("approvedAmount").asLong()).isEqualTo(15_000);
+    assertThat(hours.get(0).path("qty").asInt()).isEqualTo(3);
+    // 날짜별 + sku 거르기: 그 상품 줄이 든 주문·줄 금액만, approvedAmount 없음
+    JsonNode dayX =
+        ok(sup, "/orders/metrics/series?" + days + "&bucket=DAY&mfcId=" + mfc + "&sku=" + x)
+            .path("items");
+    assertThat(dayX.size()).isEqualTo(2);
+    assertThat(dayX.get(0).path("orderCount").asInt()).isEqualTo(2);
+    assertThat(dayX.get(0).path("lineAmount").asLong()).isEqualTo(13_000);
+    assertThat(dayX.get(0).path("approvedAmount").isNull()).isTrue();
+    assertThat(dayX.get(1).path("lineAmount").asLong()).isEqualTo(4_000);
+    // 카테고리 거르기(c2 → Y)
+    JsonNode milk =
+        ok(sup, "/orders/metrics/series?" + days + "&bucket=DAY&mfcId=" + mfc + "&categoryId=c2")
+            .path("items");
+    assertThat(milk.size()).isEqualTo(2);
+    assertThat(milk.get(0).path("orderCount").asInt()).isEqualTo(1);
+    // 요일×시간대: 8일(월 두 번) — 월 10시 2건 → 평균 1.00
+    JsonNode wh =
+        ok(
+                sup,
+                "/orders/metrics/series?from=2019-08-05&to=2019-08-12&bucket=WEEKDAY_HOUR&mfcId="
+                    + mfc)
+            .path("items");
+    JsonNode mon10 = wh.get(0);
+    assertThat(mon10.path("weekday").asInt()).isEqualTo(1);
+    assertThat(mon10.path("hour").asInt()).isEqualTo(10);
+    assertThat(mon10.path("days").asInt()).isEqualTo(2);
+    assertThat(mon10.path("avgOrderCount").asDouble()).isEqualTo(1.0);
+    // 기간: HOUR 94일 400, WEEKDAY_HOUR 366일 200 / 367일 400
+    assertThat(
+            status(
+                sup,
+                "/orders/metrics/series?from=2019-01-01&to=2019-04-04&bucket=HOUR&mfcId=" + mfc))
+        .isEqualTo(400);
+    assertThat(
+            status(
+                sup,
+                "/orders/metrics/series?from=2019-01-01&to=2020-01-01&bucket=WEEKDAY_HOUR&mfcId="
+                    + mfc))
+        .isEqualTo(200);
+    assertThat(
+            status(
+                sup,
+                "/orders/metrics/series?from=2019-01-01&to=2020-01-02&bucket=WEEKDAY_HOUR&mfcId="
+                    + mfc))
+        .isEqualTo(400);
+    // 관리자는 센터 없이 모든 센터
+    assertThat(ok(ADMIN, "/orders/metrics/series?" + days + "&bucket=DAY").path("items").size())
+        .isGreaterThanOrEqualTo(2);
   }
 
   private static List<String> ids(JsonNode res) {

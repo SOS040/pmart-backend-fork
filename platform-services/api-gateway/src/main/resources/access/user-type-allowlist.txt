@@ -230,6 +230,7 @@ GET /api/v1/order-drafts/{draftId} CUSTOMER
 GET /api/v1/orders CUSTOMER
 GET /api/v1/orders/lookups OPERATOR
 GET /api/v1/orders/lookups/{orderId} OPERATOR
+GET /api/v1/orders/metrics/series OPERATOR
 GET /api/v1/orders/metrics/summary OPERATOR
 GET /api/v1/orders/metrics/top-products OPERATOR
 GET /api/v1/orders/{orderId} CUSTOMER

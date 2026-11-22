@@ -50,7 +50,11 @@ public class OrderMetricsController implements OrderMetricsApi {
 
   @Override
   public ResponseEntity<OrderTopProductMetrics> getTopProductMetrics(
-      LocalDate from, LocalDate to, @Nullable String mfcId, Integer limit) {
+      LocalDate from,
+      LocalDate to,
+      @Nullable String mfcId,
+      @Nullable String categoryId,
+      Integer limit) {
     return ResponseEntity.ok(
         new OrderTopProductMetrics()
             .from(from)
@@ -58,14 +62,86 @@ public class OrderMetricsController implements OrderMetricsApi {
             .mfcId(blankToNull(mfcId))
             .limit(limit)
             .items(
-                service.topProducts(from, to, mfcId, limit).stream()
+                service.topProducts(from, to, mfcId, categoryId, limit).stream()
                     .map(
-                        r ->
+                        t ->
                             new OrderTopProductMetricsItemsInner()
-                                .sku(r.sku())
-                                .productId(r.productId())
-                                .qty(r.qty())
-                                .amount(r.amount()))
+                                .sku(t.row().sku())
+                                .productId(t.row().productId())
+                                .qty(t.row().qty())
+                                .amount(t.row().amount())
+                                .categoryId(t.categoryId())
+                                .categoryName(t.categoryName()))
+                    .toList()));
+  }
+
+  /** 0.20.0 O-11 — 시간·날짜별, 요일×시간대. */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.OrderMetricsSeries>
+      getOrderMetricsSeries(
+          LocalDate from,
+          LocalDate to,
+          String bucket,
+          @Nullable String mfcId,
+          @Nullable String sku,
+          @Nullable String categoryId) {
+    com.pmart.order.domain.OrderMetricsRules.Bucket b;
+    try {
+      b = com.pmart.order.domain.OrderMetricsRules.Bucket.valueOf(bucket);
+    } catch (IllegalArgumentException e) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "bucket 은 HOUR·DAY·WEEKDAY_HOUR 입니다.");
+    }
+    java.time.ZoneId seoul = com.pmart.order.domain.OrderMetricsRules.SEOUL;
+    return ResponseEntity.ok(
+        new com.pmart.order.api.generated.model.OrderMetricsSeries()
+            .from(from)
+            .to(to)
+            .mfcId(blankToNull(mfcId))
+            .bucket(
+                com.pmart.order.api.generated.model.OrderMetricsSeries.BucketEnum.fromValue(bucket))
+            .sku(blankToNull(sku))
+            .categoryId(blankToNull(categoryId))
+            .items(
+                service.series(from, to, mfcId, b, sku, categoryId).stream()
+                    .map(
+                        p -> {
+                          var r = p.row();
+                          var item =
+                              new com.pmart.order.api.generated.model.OrderMetricsSeriesItemsInner()
+                                  .orderCount(r.orderCount())
+                                  .approvedAmount(r.approvedAmount())
+                                  .qty(Math.toIntExact(r.qty()))
+                                  .lineAmount(r.lineAmount());
+                          if (p.days() == null) {
+                            item.start(
+                                r.start() == null
+                                    ? null
+                                    : r.start().atZone(seoul).toOffsetDateTime());
+                          } else {
+                            int d = p.days();
+                            item.weekday(r.weekday())
+                                .hour(r.hour())
+                                .days(d)
+                                .avgOrderCount(
+                                    d == 0
+                                        ? null
+                                        : java.math.BigDecimal.valueOf(r.orderCount())
+                                            .divide(
+                                                java.math.BigDecimal.valueOf(d),
+                                                2,
+                                                java.math.RoundingMode.HALF_UP))
+                                .avgLineAmount(
+                                    d == 0
+                                        ? null
+                                        : java.math.BigDecimal.valueOf(r.lineAmount())
+                                            .divide(
+                                                java.math.BigDecimal.valueOf(d),
+                                                2,
+                                                java.math.RoundingMode.HALF_UP));
+                          }
+                          return item;
+                        })
                     .toList()));
   }
 

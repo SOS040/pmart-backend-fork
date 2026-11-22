@@ -462,6 +462,18 @@ public class Upstreams {
     return out;
   }
 
+  /** 0.20.0 O-11: product 공개 카테고리 트리(이름·부모). */
+  public JsonNode categoryTree() {
+    return get(product, "product-service categories", "/api/v1/categories/tree");
+  }
+
+  /** 0.20.0 O-11: product 상품 목록 한 쪽(productId·primaryCategoryId) — 커서 없으면 첫 쪽. */
+  public JsonNode productsPage(@Nullable String cursor) {
+    return cursor == null
+        ? get(product, "product-service products", "/api/v1/products?size=200")
+        : get(product, "product-service products", "/api/v1/products?size=200&cursor={c}", cursor);
+  }
+
   private JsonNode get(RestClient client, String target, String uri, Object... vars) {
     String raw =
         Downstream.call(target, () -> client.get().uri(uri, vars).retrieve().body(String.class));

@@ -37,4 +37,26 @@ class OrderMetricsRulesTest {
     assertThat(OrderMetricsRules.allowed(List.of("OPERATOR_ADMIN"))).isTrue();
     assertThat(OrderMetricsRules.allowed(List.of("CS_AGENT", "RIDER_OPS"))).isFalse();
   }
+
+  @org.junit.jupiter.api.Test
+  void supervisorNeedsOwnCenter() {
+    var c = List.of("MFC-1");
+    assertThat(OrderMetricsRules.access(List.of("OPERATOR_ADMIN"), List.of(), null))
+        .isEqualTo(OrderMetricsRules.Access.ALLOWED);
+    assertThat(OrderMetricsRules.access(List.of("MFC_SUPERVISOR"), c, null))
+        .isEqualTo(OrderMetricsRules.Access.CENTER_REQUIRED);
+    assertThat(OrderMetricsRules.access(List.of("MFC_SUPERVISOR"), c, "MFC-2"))
+        .isEqualTo(OrderMetricsRules.Access.DENIED);
+    assertThat(OrderMetricsRules.access(List.of("MFC_SUPERVISOR"), c, "MFC-1"))
+        .isEqualTo(OrderMetricsRules.Access.ALLOWED);
+    assertThat(OrderMetricsRules.access(List.of("CS_AGENT"), c, "MFC-1"))
+        .isEqualTo(OrderMetricsRules.Access.DENIED);
+  }
+
+  @org.junit.jupiter.api.Test
+  void weekdayDaysCountsEachWeekdayInRange() {
+    var mon = java.time.LocalDate.of(2019, 8, 5);
+    assertThat(OrderMetricsRules.weekdayDays(mon, mon.plusDays(7), 1)).isEqualTo(2);
+    assertThat(OrderMetricsRules.weekdayDays(mon, mon.plusDays(7), 2)).isEqualTo(1);
+  }
 }
