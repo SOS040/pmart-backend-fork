@@ -1,8 +1,8 @@
 package com.pmart.cases.application;
 
+import com.pmart.cases.infrastructure.CustomerRestrictionStore;
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.web.PmartException;
-import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 /**
@@ -26,11 +25,11 @@ public class CustomerRestrictions {
 
   public static final String EVENT = "CustomerRestricted";
 
-  private final JdbcTemplate jdbc;
+  private final CustomerRestrictionStore store;
   private final Clock clock;
 
-  public CustomerRestrictions(JdbcTemplate jdbc, Clock clock) {
-    this.jdbc = jdbc;
+  public CustomerRestrictions(CustomerRestrictionStore store, Clock clock) {
+    this.store = store;
     this.clock = clock;
   }
 
@@ -42,39 +41,29 @@ public class CustomerRestrictions {
       return;
     }
     Instant until = instant(e.payload().path("until").asString(""));
-    jdbc.update(
-        "INSERT INTO customer_restriction_copy (account_id, restriction, until_at, version)"
-            + " VALUES (?,?,?,?) ON CONFLICT (account_id) DO UPDATE SET restriction ="
-            + " EXCLUDED.restriction, until_at = EXCLUDED.until_at, version = EXCLUDED.version"
-            + " WHERE customer_restriction_copy.version < EXCLUDED.version",
-        accountId,
-        restriction,
-        until == null ? null : Timestamp.from(until),
-        e.aggregateVersion());
+    store.upsert(accountId, restriction, until, e.aggregateVersion());
   }
 
   /** 기한 안의 제한이면 403. */
   public void checkCanWrite(String accountId) {
-    Instant now = clock.instant();
-    List<Timestamp> until =
-        jdbc.queryForList(
-            "SELECT until_at FROM customer_restriction_copy WHERE account_id = ?"
-                + " AND restriction IN ('RESTRICTED', 'SUSPENDED') AND until_at > ?",
-            Timestamp.class,
-            accountId,
-            Timestamp.from(now));
-    if (!until.isEmpty()) {
-      Instant u = until.get(0).toInstant();
-      throw new PmartException(
-          "ACCOUNT_RESTRICTED",
-          HttpStatus.FORBIDDEN,
-          "운영 정책 위반으로 "
-              + DateTimeFormatter.ofPattern("M월 d일 HH:mm", Locale.KOREAN)
-                  .format(u.atZone(ZoneId.of("Asia/Seoul")))
-              + "까지 문의를 쓸 수 없어요.",
-          false,
-          List.of(new PmartException.Detail("until", u.toString())));
-    }
+    store
+        .activeUntil(accountId, clock.instant())
+        .ifPresent(
+            u -> {
+              throw restricted(u);
+            });
+  }
+
+  private static PmartException restricted(Instant u) {
+    return new PmartException(
+        "ACCOUNT_RESTRICTED",
+        HttpStatus.FORBIDDEN,
+        "운영 정책 위반으로 "
+            + DateTimeFormatter.ofPattern("M월 d일 HH:mm", Locale.KOREAN)
+                .format(u.atZone(ZoneId.of("Asia/Seoul")))
+            + "까지 문의를 쓸 수 없어요.",
+        false,
+        List.of(new PmartException.Detail("until", u.toString())));
   }
 
   private static @Nullable Instant instant(String s) {
