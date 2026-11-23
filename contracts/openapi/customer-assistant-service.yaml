@@ -1,10 +1,14 @@
 openapi: 3.1.0
 info:
   title: customer-assistant-service
-  version: 0.3.0
+  version: 0.4.0
   x-stage: 3
   x-stage-note: 고객앱 RAG 1차(2026-11-09, ADR-0051) — 고객 공개 안내 문서 질의응답 + 근거 표시 + 내 주문 상태 안내 + 고객센터 문의 연결.
   description: |
+    0.4.0(2026-11-23, 고객앱 BR-91 — 사용자 "2번으로"(PC 1 이 넣음, PC 4 확인)·"추천대로"(글 없이)): FAQ 답 의견 [도움이 되었어요]/[수정이 필요해요].
+    `POST /customer-assistant/faqs/{faqId}/feedback` {helpful} — 회원 고객, 한 고객 한 FAQ 하나(다시 누르면 마지막 값으로 바꿈 — 같은 요청을 다시 보내도 안전), 글은 받지 않는다.
+    FAQ 항목 `myFeedback`(회원이 누른 값, 없으면 null). 운영 집계 `GET /customer-assistant/faq-feedback`(CS_AGENT·OPERATOR_ADMIN) — 고객 화면엔 숫자 없음.
+    faqId 는 같은 문서·같은 질문이면 재색인해도 같아 의견이 이어진다(질문 문구를 고치면 새 faqId — 옛 의견은 집계에 옛 id 로 남는다).
     고객앱 고객센터 채팅의 AI 상담(RAG). 승인된 고객 공개 안내 문서(`docs/business/customer-faq/`)만 검색해 근거와 함께 답한다.
     운영자 문서·답변은 다른 서비스(ai-assistant-service)가 갖고, 이 서비스는 그 DB 에 접속할 계정이 없다(ADR-0051).
 
@@ -285,6 +289,79 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /customer-assistant/faqs/{faqId}/feedback:
+    post:
+      tags: [faqs]
+      summary: (0.4.0 BR-91) FAQ 답 의견 — 도움이 되었어요(true) / 수정이 필요해요(false)
+      description: 회원 고객만. 한 고객 한 FAQ 에 하나 — 다시 누르면 마지막 값으로 바꾼다(같은 요청 재전송 안전). 지금 색인에 없는 FAQ 404. 글은 받지 않는다.
+      operationId: sendFaqFeedback
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: faqId, in: path, required: true, schema: { type: string, maxLength: 80 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [helpful]
+              properties:
+                helpful: { type: boolean }
+      responses:
+        '200':
+          description: 지금 내 값
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [faqId, helpful]
+                properties:
+                  faqId: { type: string }
+                  helpful: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: NOT_FOUND — 지금 색인에 없는 FAQ
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONFIG_REQUIRED — FAQ 가 든 색인이 없다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /customer-assistant/faq-feedback:
+    get:
+      tags: [faqs]
+      summary: (0.4.0 BR-91) FAQ 의견 집계 — 운영(CS_AGENT·OPERATOR_ADMIN)
+      description: faqId 마다 도움 수·수정 필요 수·마지막 의견 시각, 지금 색인의 질문·분류(지금 색인에 없으면 null). 수정 필요 많은 순.
+      operationId: listFaqFeedbackStats
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [faqId, helpfulCount, notHelpfulCount, lastAt]
+                      properties:
+                        faqId: { type: string }
+                        category: { type: [string, 'null'] }
+                        question: { type: [string, 'null'], description: 지금 색인의 질문(없어진 FAQ 면 null) }
+                        helpfulCount: { type: integer }
+                        notHelpfulCount: { type: integer }
+                        lastAt: { type: string, format: date-time }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -311,6 +388,7 @@ components:
         categoryTitle: { type: string, description: 분류 이름(안내 문서 제목 — 예 "주문 취소") }
         question: { type: string, description: 질문(절 제목, 지위 표시 태그는 뺀다) }
         answer: { type: string, description: '답(절 본문, 마크다운 — 목록·굵게·표). 지위 표시 태그는 빼고, 다른 안내 문서 링크는 ‘그 문서 제목’ 글자로 바꾼다(파일 경로 없음)' }
+        myFeedback: { type: [boolean, 'null'], description: '(0.4.0 BR-91) 내가 남긴 의견 — true 도움이 되었어요, false 수정이 필요해요, 안 남겼으면 null' }
 
     FaqCategory:
       type: object

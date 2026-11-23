@@ -93,6 +93,7 @@ GET /api/v1/content-import-batches/{batchId} OPERATOR
 GET /api/v1/coupon-campaigns CUSTOMER
 GET /api/v1/cs-intakes OPERATOR
 GET /api/v1/cs-intakes/{intakeId} OPERATOR
+GET /api/v1/customer-assistant/faq-feedback OPERATOR
 GET /api/v1/customer-assistant/faqs CUSTOMER
 GET /api/v1/customer-assistant/faqs/{faqId} CUSTOMER
 GET /api/v1/customer-assistant/questions CUSTOMER
@@ -441,6 +442,7 @@ POST /api/v1/content-import-batches OPERATOR
 POST /api/v1/content-import-batches/{batchId}/submissions OPERATOR
 POST /api/v1/coupon-campaigns/{promotionId}/downloads CUSTOMER
 POST /api/v1/cs-intakes OPERATOR
+POST /api/v1/customer-assistant/faqs/{faqId}/feedback CUSTOMER
 POST /api/v1/customer-assistant/questions CUSTOMER
 POST /api/v1/customer-notes OPERATOR
 POST /api/v1/customer-notes/{noteId}/deletions OPERATOR

@@ -155,4 +155,71 @@ class FaqIT extends AssistantITBase {
     assertThat(get(guest, "/api/v1/customer-assistant/faqs/" + id, "customer-app").status())
         .isEqualTo(403);
   }
+
+  Http feedback(String token, String faqId, boolean helpful, String key) {
+    return org.springframework.web.client.RestClient.builder()
+        .requestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory())
+        .build()
+        .post()
+        .uri("http://localhost:" + port + "/api/v1/customer-assistant/faqs/" + faqId + "/feedback")
+        .header(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer " + token)
+        .header("Idempotency-Key", key)
+        .header("X-Source-System", "customer-app")
+        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+        .body("{\"helpful\":" + helpful + "}")
+        .exchange(
+            (req, res) -> {
+              byte[] b = res.getBody().readAllBytes();
+              return new Http(
+                  res.getStatusCode().value(),
+                  json.readTree(b.length == 0 ? "{}".getBytes() : b),
+                  res.getHeaders());
+            });
+  }
+
+  /**
+   * BR-91(0.4.0): 답 의견 — 회원만, 한 고객 한 FAQ 하나(마지막 값), 내 값 myFeedback, 운영 집계(CS_AGENT·OPERATOR_ADMIN).
+   */
+  @Test
+  void feedbackKeepsLastValuePerCustomerAndCountsForOperators() {
+    ingestor.ingest(repo, faqManifest());
+    String me = customer("CU-fb-1");
+    String other = customer("CU-fb-2");
+    String id = faqs(me, "").body().path("items").path(0).path("faqId").asString();
+    assertThat(faqs(me, "").body().path("items").path(0).path("myFeedback").isNull()).isTrue();
+
+    Http first = feedback(me, id, true, "fb-1");
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(200);
+    assertThat(first.body().path("helpful").asBoolean()).isTrue();
+    assertThat(feedback(me, id, false, "fb-2").body().path("helpful").asBoolean()).isFalse();
+    assertThat(feedback(other, id, true, "fb-3").status()).isEqualTo(200);
+    assertThat(feedback(me, "help-0000000000", true, "fb-4").status()).isEqualTo(404);
+    String op = TestJwt.operator("op-fb", List.of("OPERATOR_ADMIN"), List.of());
+    assertThat(feedback(op, id, true, "fb-5").status()).isEqualTo(403);
+
+    // 내 값: 목록·단건
+    assertThat(faqs(me, "").body().path("items").path(0).path("myFeedback").asBoolean()).isFalse();
+    assertThat(
+            get(me, "/api/v1/customer-assistant/faqs/" + id, "customer-app")
+                .body()
+                .path("myFeedback")
+                .asBoolean())
+        .isFalse();
+    assertThat(faqs(other, "").body().path("items").path(0).path("myFeedback").asBoolean())
+        .isTrue();
+
+    // 운영 집계: 마지막 값만 — 도움 1·수정 필요 1. 고객·다른 역할 403
+    Http stats = get(op, "/api/v1/customer-assistant/faq-feedback", "backoffice-web");
+    assertThat(stats.status()).as(stats.body().toString()).isEqualTo(200);
+    var row = stats.body().path("items").path(0);
+    assertThat(row.path("faqId").asString()).isEqualTo(id);
+    assertThat(row.path("helpfulCount").asInt()).isEqualTo(1);
+    assertThat(row.path("notHelpfulCount").asInt()).isEqualTo(1);
+    assertThat(row.path("question").asString()).isNotBlank();
+    assertThat(get(me, "/api/v1/customer-assistant/faq-feedback", "customer-app").status())
+        .isEqualTo(403);
+    String picker = TestJwt.operator("op-mfc", List.of("MFC_WORKER"), List.of());
+    assertThat(get(picker, "/api/v1/customer-assistant/faq-feedback", "backoffice-web").status())
+        .isEqualTo(403);
+  }
 }

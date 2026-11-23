@@ -23,10 +23,15 @@ public class FaqsController implements FaqsApi {
 
   @Override
   public ResponseEntity<FaqList> listCustomerFaqs(@Nullable String q, @Nullable String category) {
-    var listing = service.list(PmartPrincipal.current().orElse(null), q, category);
+    PmartPrincipal who = PmartPrincipal.current().orElse(null);
+    var listing = service.list(who, q, category);
+    var mine = service.myFeedback(who, listing.items().stream().map(FaqRow::faqId).toList());
     return ResponseEntity.ok(
         new FaqList()
-            .items(listing.items().stream().map(FaqsController::item).toList())
+            .items(
+                listing.items().stream()
+                    .map(r -> item(r).myFeedback(mine.get(r.faqId()))) // 0.4.0 BR-91
+                    .toList())
             .categories(
                 listing.categories().stream()
                     .map(
@@ -40,7 +45,51 @@ public class FaqsController implements FaqsApi {
 
   @Override
   public ResponseEntity<FaqItem> getCustomerFaq(String faqId) {
-    return ResponseEntity.ok(item(service.get(PmartPrincipal.current().orElse(null), faqId)));
+    PmartPrincipal who = PmartPrincipal.current().orElse(null);
+    FaqRow r = service.get(who, faqId);
+    return ResponseEntity.ok(
+        item(r).myFeedback(service.myFeedback(who, java.util.List.of(faqId)).get(faqId)));
+  }
+
+  /** 0.4.0 BR-91 — FAQ 답 의견(마지막 값, 재전송 안전). */
+  @Override
+  public ResponseEntity<com.pmart.customerassistant.api.generated.model.SendFaqFeedback200Response>
+      sendFaqFeedback(
+          String faqId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.customerassistant.api.generated.model.SendFaqFeedbackRequest body) {
+    boolean v =
+        service.sendFeedback(
+            PmartPrincipal.current().orElse(null), faqId, Boolean.TRUE.equals(body.getHelpful()));
+    return ResponseEntity.ok(
+        new com.pmart.customerassistant.api.generated.model.SendFaqFeedback200Response()
+            .faqId(faqId)
+            .helpful(v));
+  }
+
+  /** 0.4.0 BR-91 — 운영 집계. */
+  @Override
+  public ResponseEntity<
+          com.pmart.customerassistant.api.generated.model.ListFaqFeedbackStats200Response>
+      listFaqFeedbackStats() {
+    return ResponseEntity.ok(
+        new com.pmart.customerassistant.api.generated.model.ListFaqFeedbackStats200Response()
+            .items(
+                service.feedbackStats(PmartPrincipal.current().orElse(null)).stream()
+                    .map(
+                        x ->
+                            new com.pmart.customerassistant.api.generated.model
+                                    .ListFaqFeedbackStats200ResponseItemsInner()
+                                .faqId(x.faqId())
+                                .category(x.category())
+                                .question(x.question())
+                                .helpfulCount(x.helpful())
+                                .notHelpfulCount(x.notHelpful())
+                                .lastAt(
+                                    java.time.OffsetDateTime.ofInstant(
+                                        x.lastAt(), java.time.ZoneOffset.UTC)))
+                    .toList()));
   }
 
   private static FaqItem item(FaqRow r) {
