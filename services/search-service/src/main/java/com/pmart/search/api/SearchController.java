@@ -91,7 +91,8 @@ public class SearchController implements SearchApi {
               q,
               categoryId,
               mfcId,
-              includeNotCarried == null || includeNotCarried,
+              Boolean.TRUE.equals(
+                  includeNotCarried), // 계약 기본 false(생성 코드가 채움 — 2026-11-23 닿지 않던 null→true 분기 정리)
               price,
               SearchRules.parseFilters(filters),
               Boolean.TRUE.equals(onSale), // 0.8.0 BR-82 할인 중인 상품만

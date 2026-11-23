@@ -142,15 +142,6 @@ public class ProductSearch {
   public Result search(
       @Nullable String q,
       @Nullable String categoryId,
-      Sort sort,
-      int size,
-      @Nullable String cursor) {
-    return search(q, categoryId, null, true, PriceRange.ANY, Map.of(), false, sort, size, cursor);
-  }
-
-  public Result search(
-      @Nullable String q,
-      @Nullable String categoryId,
       @Nullable String mfcId,
       boolean includeNotCarried,
       PriceRange price,
