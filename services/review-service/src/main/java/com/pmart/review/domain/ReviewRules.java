@@ -29,6 +29,10 @@ public final class ReviewRules {
 
   public static final String PUBLISHED = "PUBLISHED";
   public static final String DELETED = "DELETED";
+
+  /** 운영자가 신고 확인 뒤 숨김(0.7.0 BR-90) — 저장 값만, 계약 상태로는 LOCKED(값을 새로 늘리지 않음). */
+  public static final String HIDDEN = "HIDDEN";
+
   public static final String LOCKED = "LOCKED";
   public static final String ELIGIBLE = "REV_ELIGIBLE";
   public static final String EXPIRED = "EXPIRED";
@@ -71,6 +75,9 @@ public final class ReviewRules {
   public static String reviewState(String stored, Instant createdAt, Instant now) {
     if (DELETED.equals(stored)) {
       return DELETED;
+    }
+    if (HIDDEN.equals(stored)) {
+      return LOCKED; // 0.7.0 — 숨긴 리뷰는 고칠 수 없다(작성자에게는 쓴 리뷰로 보임)
     }
     return editable(createdAt, now) ? PUBLISHED : LOCKED;
   }

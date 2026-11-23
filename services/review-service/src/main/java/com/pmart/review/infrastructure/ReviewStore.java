@@ -179,6 +179,7 @@ public class ReviewStore {
       "CASE WHEN r.review_id IS NULL THEN"
           + " CASE WHEN e.delivered_at + interval '14 days' >= ? THEN 'REV_ELIGIBLE' ELSE 'EXPIRED' END"
           + " WHEN r.state = 'DELETED' THEN 'DELETED'"
+          + " WHEN r.state = 'HIDDEN' THEN 'LOCKED'"
           + " WHEN r.created_at + interval '3 days' > ? THEN 'PUBLISHED' ELSE 'LOCKED' END";
 
   /** 본인 자격 목록(최근 수령 순). state 는 계약 상태(시각으로 계산) — SQL 에서 같은 식으로 걸러 페이지가 어긋나지 않게 한다. */
@@ -334,6 +335,15 @@ public class ReviewStore {
         "UPDATE review SET rating = ?, body = ?, version = ?, updated_at = ? WHERE review_id = ?",
         rating,
         body,
+        version,
+        ts(now),
+        reviewId);
+  }
+
+  /** 운영자 숨김(0.7.0 BR-90) — 공개 목록·집계는 state = 'PUBLISHED' 만 본다. */
+  public void markHidden(String reviewId, int version, Instant now) {
+    jdbc.update(
+        "UPDATE review SET state = 'HIDDEN', version = ?, updated_at = ? WHERE review_id = ?",
         version,
         ts(now),
         reviewId);

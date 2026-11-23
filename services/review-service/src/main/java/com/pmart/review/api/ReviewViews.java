@@ -47,7 +47,10 @@ final class ReviewViews {
         .updatedAt(time(r.updatedAt()))
         // BR-76(0.6.0)
         .helpfulCount(r.helpfulCount())
-        .helpedByMe(v.helpedByMe());
+        .helpedByMe(v.helpedByMe())
+        // 0.7.0 BR-90
+        .reportedByMe(v.reportedByMe())
+        .mine(v.mine());
   }
 
   static GetReviewInternal200Response internal(ReviewView v) {

@@ -51,6 +51,8 @@ import tools.jackson.databind.JsonNode;
 public class ReviewService {
 
   private static final Logger log = LoggerFactory.getLogger(ReviewService.class);
+
+  private final com.pmart.review.infrastructure.ReviewReportStore reportStore;
   private static final String AGGREGATE = "Review";
   private static final String ANONYMOUS_AUTHOR = "PMart 고객";
 
@@ -61,11 +63,22 @@ public class ReviewService {
       List<PhotoRow> photos,
       String state,
       @Nullable Instant deliveredAt,
-      @Nullable Boolean helpedByMe) {
+      @Nullable Boolean helpedByMe,
+      @Nullable Boolean reportedByMe,
+      @Nullable Boolean mine) {
 
     public ReviewView(
         ReviewRow row, List<PhotoRow> photos, String state, @Nullable Instant deliveredAt) {
-      this(row, photos, state, deliveredAt, null);
+      this(row, photos, state, deliveredAt, null, null, null);
+    }
+
+    public ReviewView(
+        ReviewRow row,
+        List<PhotoRow> photos,
+        String state,
+        @Nullable Instant deliveredAt,
+        @Nullable Boolean helpedByMe) {
+      this(row, photos, state, deliveredAt, helpedByMe, null, null);
     }
   }
 
@@ -126,7 +139,9 @@ public class ReviewService {
       Clock clock,
       ReviewPhotoVariants variants,
       ReviewPhotoPreparer preparer,
-      EligibilityDisplay display) {
+      EligibilityDisplay display,
+      com.pmart.review.infrastructure.ReviewReportStore reportStore) {
+    this.reportStore = reportStore;
     this.display = display;
     this.variants = variants;
     this.preparer = preparer;
@@ -322,6 +337,9 @@ public class ReviewService {
         () -> {
           Instant now = now();
           ReviewRow r = own(store.lockReview(reviewId), c);
+          if (ReviewRules.HIDDEN.equals(r.state())) { // 0.7.0 운영자가 숨긴 리뷰는 고칠 수 없다
+            throw new PmartException(ErrorCode.INVALID_STATE, "운영 정책으로 숨겨진 리뷰는 고칠 수 없습니다.");
+          }
           if (ReviewRules.DELETED.equals(r.state())) {
             throw PmartException.invalidState("삭제된 리뷰는 고칠 수 없습니다.");
           }
@@ -434,12 +452,18 @@ public class ReviewService {
 
   // ---------------------------------------------------------------- 조회
 
-  /** 공개 단건(삭제된 것은 404). */
+  /** 공개 단건(삭제된 것은 404, 0.7.0 숨긴 것은 작성자 본인에게만 — LOCKED 로). */
   public ReviewView get(String reviewId) {
+    String viewer =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.CUSTOMER)
+            .map(PmartPrincipal::subject)
+            .orElse(null);
     ReviewRow r =
         store
             .review(reviewId)
             .filter(x -> !ReviewRules.DELETED.equals(x.state()))
+            .filter(x -> !ReviewRules.HIDDEN.equals(x.state()) || x.accountId().equals(viewer))
             .orElseThrow(() -> PmartException.notFound("REVIEW_NOT_FOUND", "리뷰가 없습니다."));
     return view(r, false);
   }
@@ -488,6 +512,11 @@ public class ReviewService {
         viewer == null
             ? java.util.Set.of()
             : store.helpedBy(viewer, page.stream().map(ReviewRow::reviewId).toList());
+    // 0.7.0 BR-90 — 내가 신고했는지·내 리뷰인지(회원 토큰일 때만)
+    java.util.Set<String> reported =
+        viewer == null
+            ? java.util.Set.of()
+            : reportStore.reportedBy(viewer, page.stream().map(ReviewRow::reviewId).toList());
     List<ReviewView> items =
         page.stream()
             .map(
@@ -497,7 +526,9 @@ public class ReviewService {
                         byReview.getOrDefault(r.reviewId(), List.of()),
                         ReviewRules.reviewState(r.state(), r.createdAt(), now),
                         null,
-                        viewer == null ? null : helped.contains(r.reviewId())))
+                        viewer == null ? null : helped.contains(r.reviewId()),
+                        viewer == null ? null : reported.contains(r.reviewId()),
+                        viewer == null ? null : r.accountId().equals(viewer)))
             .toList();
     ReviewStore.Summary s = store.summary(productId);
     // reviewCount 는 거른 수(0.6.0), 평균은 상품 전체

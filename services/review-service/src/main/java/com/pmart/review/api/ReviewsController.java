@@ -20,9 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class ReviewsController implements ReviewsApi {
 
+  private final com.pmart.review.application.ReviewReports reports;
+
   private final ReviewService reviews;
 
-  public ReviewsController(ReviewService reviews) {
+  public ReviewsController(
+      ReviewService reviews, com.pmart.review.application.ReviewReports reports) {
+    this.reports = reports;
     this.reviews = reviews;
   }
 
@@ -85,6 +89,25 @@ public class ReviewsController implements ReviewsApi {
         .reviewId(h.reviewId())
         .helpfulCount(h.helpfulCount())
         .helpedByMe(h.helpedByMe());
+  }
+
+  /** 0.7.0 BR-90 — 리뷰 신고(바로 기록, APPLIED). */
+  @Override
+  public ResponseEntity<com.pmart.review.api.generated.model.ReportReview201Response> reportReview(
+      String reviewId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.review.api.generated.model.ReportReviewRequest body) {
+    var r =
+        reports.report(
+            reviewId, body.getReason().getValue(), body.getDetail(), idempotencyKey, xSourceSystem);
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(
+            new com.pmart.review.api.generated.model.ReportReview201Response()
+                .status(
+                    com.pmart.review.api.generated.model.ReportReview201Response.StatusEnum.APPLIED)
+                .requestId(idempotencyKey)
+                .resultId(r.reportId()));
   }
 
   @Override

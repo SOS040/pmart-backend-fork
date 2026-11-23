@@ -465,6 +465,123 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
     assertThat(gone.body().path("code").asString()).isEqualTo("REVIEW_NOT_PUBLISHED");
   }
 
+  /**
+   * BR-90(0.7.0): 신고 — 회원만·한 번·내 리뷰 422·기타는 글 필수, 목록 카드 reportedByMe·mine, 운영자 목록·처리(CS_AGENT), 숨기면
+   * 공개 목록·단건에서 빠지고 ReviewDeleted(OPERATOR_HIDDEN), 작성자에게는 LOCKED, 다른 역할 403.
+   */
+  @Test
+  void reportAndOperatorHide() throws Exception {
+    String orderId = "ORD-RP-" + newId();
+    String me = "ACC-rp-" + newId();
+    String productId = "PRD-" + newId();
+    String token = TestJwt.customer(me);
+    String other = TestJwt.customer("ACC-rp-other-" + newId());
+    String third = TestJwt.customer("ACC-rp-third-" + newId());
+    String cs = TestJwt.operator("OP-cs-" + newId(), List.of("CS_AGENT"), List.of());
+    String picker = TestJwt.operator("OP-mfc-" + newId(), List.of("MFC_WORKER"), List.of());
+    stubOrder(orderId, me, productId, 0);
+    delivered(orderId, Instant.now().minus(Duration.ofDays(1)), orderId + "-L1");
+    await(
+        () -> send("GET", token, "/me/review-eligibilities?orderId=" + orderId, null),
+        r -> r.body().path("items").size() == 1);
+    String reviewId =
+        send("POST", token, "/reviews", Map.of("orderLineId", orderId + "-L1", "rating", 1))
+            .body()
+            .path("reviewId")
+            .asString();
+
+    // 고객 신고: 내 리뷰 422, 기타 글 없음 400, 신고 201 APPLIED, 두 번째 409, 비회원 401·403
+    Res own = send("POST", token, "/reviews/" + reviewId + "/reports", Map.of("reason", "AD"));
+    assertThat(own.status()).isEqualTo(422);
+    assertThat(own.body().path("code").asString()).isEqualTo("REPORT_OWN_REVIEW");
+    assertThat(
+            send("POST", other, "/reviews/" + reviewId + "/reports", Map.of("reason", "OTHER"))
+                .status())
+        .isEqualTo(400);
+    Res ok =
+        send(
+            "POST",
+            other,
+            "/reviews/" + reviewId + "/reports",
+            Map.of("reason", "OTHER", "detail", "주문과 상관없는 글"));
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(201);
+    assertThat(ok.body().path("status").asString()).isEqualTo("APPLIED");
+    Res again = send("POST", other, "/reviews/" + reviewId + "/reports", Map.of("reason", "AD"));
+    assertThat(again.status()).isEqualTo(409);
+    assertThat(again.body().path("code").asString()).isEqualTo("ALREADY_REPORTED");
+    assertThat(
+            send("POST", third, "/reviews/" + reviewId + "/reports", Map.of("reason", "ABUSE"))
+                .status())
+        .isEqualTo(201);
+    assertThat(
+            send("POST", null, "/reviews/" + reviewId + "/reports", Map.of("reason", "AD"))
+                .status())
+        .isIn(401, 403);
+
+    // 목록 카드: 신고한 회원 reportedByMe true·mine false, 작성자 mine true, 비회원 null
+    JsonNode seenByOther =
+        send("GET", other, "/products/" + productId + "/reviews", null)
+            .body()
+            .path("items")
+            .path(0);
+    assertThat(seenByOther.path("reportedByMe").asBoolean()).isTrue();
+    assertThat(seenByOther.path("mine").asBoolean()).isFalse();
+    assertThat(
+            send("GET", token, "/products/" + productId + "/reviews", null)
+                .body()
+                .path("items")
+                .path(0)
+                .path("mine")
+                .asBoolean())
+        .isTrue();
+
+    // 운영자: 다른 역할 403, 목록에 2건(사유별·기타 글), 숨김 처리
+    assertThat(send("GET", picker, "/review-reports", null).status()).isEqualTo(403);
+    JsonNode group = null;
+    for (JsonNode g : send("GET", cs, "/review-reports?size=100", null).body().path("items")) {
+      if (reviewId.equals(g.path("reviewId").asString())) {
+        group = g;
+      }
+    }
+    assertThat(group).isNotNull();
+    assertThat(group.path("reportCount").asInt()).isEqualTo(2);
+    assertThat(group.path("reasonCounts").path("ABUSE").asInt()).isEqualTo(1);
+    assertThat(group.path("otherDetails").path(0).asString()).isEqualTo("주문과 상관없는 글");
+    assertThat(group.path("state").asString()).isEqualTo("OPEN");
+    Res hide =
+        send("POST", cs, "/review-reports/" + reviewId + "/resolutions", Map.of("action", "HIDE"));
+    assertThat(hide.status()).as(hide.body().toString()).isEqualTo(200);
+    assertThat(
+            send(
+                    "POST",
+                    cs,
+                    "/review-reports/" + reviewId + "/resolutions",
+                    Map.of("action", "KEEP"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_OPEN_REPORTS");
+
+    // 숨김: 공개 목록·단건에서 빠짐, 작성자는 LOCKED 로, ReviewDeleted 한 번
+    assertThat(send("GET", null, "/products/" + productId + "/reviews", null).body().path("items"))
+        .isEmpty();
+    assertThat(send("GET", other, "/reviews/" + reviewId, null).status()).isEqualTo(404);
+    Res mine = send("GET", token, "/reviews/" + reviewId, null);
+    assertThat(mine.status()).isEqualTo(200);
+    assertThat(mine.body().path("state").asString()).isEqualTo("LOCKED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'ReviewDeleted'",
+                Integer.class,
+                reviewId))
+        .isEqualTo(1);
+    assertThat(
+            send("GET", cs, "/review-reports?state=RESOLVED&size=100", null)
+                .body()
+                .findValuesAsString("reviewId"))
+        .contains(reviewId);
+  }
+
   @Test
   void fullyReturnedAndExpiredLinesCannotBeReviewed() throws Exception {
     String orderId = "ORD-RV-" + newId();
