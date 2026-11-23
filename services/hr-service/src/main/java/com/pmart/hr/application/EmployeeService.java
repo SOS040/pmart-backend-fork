@@ -392,6 +392,45 @@ public class EmployeeService {
    * 않는다. 퇴사자 포함, 모르는 ID 는 빠진다. 이름·사번만.
    */
   public List<HrStore.Label> labels(List<String> operatorIds) {
+    return labels(operatorIds, null);
+  }
+
+  static final java.util.regex.Pattern EMPLOYEE_NO =
+      java.util.regex.Pattern.compile("^P\\d{4}-\\d{5}$");
+
+  /**
+   * 0.10.0 HR-5(2026-11-24): 운영자 ID 또는 사번 — 둘 중 하나만. 사번은 쉼표로 붙여 와도 나눈다(화면 편의). 권한·응답·퇴사자 포함은 ID 조회와
+   * 같다.
+   */
+  public List<HrStore.Label> labels(
+      @Nullable List<String> operatorIds, @Nullable List<String> employeeNos) {
+    boolean byId = operatorIds != null && !operatorIds.isEmpty();
+    boolean byNo = employeeNos != null && !employeeNos.isEmpty();
+    if (byId == byNo) {
+      requireOperator();
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "operatorIds·employeeNos 중 하나만 주세요.");
+    }
+    if (byNo) {
+      requireOperator();
+      java.util.Set<String> nos = new java.util.LinkedHashSet<>();
+      for (String v : employeeNos) {
+        for (String no : (v == null ? "" : v).split(",")) {
+          String t = no.strip();
+          if (!EMPLOYEE_NO.matcher(t).matches()) {
+            throw new PmartException(ErrorCode.VALIDATION_FAILED, "사번 형식이 아닙니다(P2026-00012).");
+          }
+          nos.add(t);
+        }
+      }
+      if (nos.size() > LABEL_LOOKUP_MAX) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "사번은 1~50개입니다.");
+      }
+      return store.labelsByEmployeeNo(nos);
+    }
+    return labelsById(operatorIds);
+  }
+
+  private List<HrStore.Label> labelsById(List<String> operatorIds) {
     requireOperator();
     java.util.Set<String> ids = new java.util.LinkedHashSet<>();
     for (String id : operatorIds) {

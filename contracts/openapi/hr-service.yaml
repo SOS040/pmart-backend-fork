@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.9.1
+  version: 0.10.0
   description: |
+    0.10.0(2026-11-24 HR-5 — PC 2·통합백오피스 프론트 요청, 사용자 "정해진 것만"): `GET /hr/employee-labels` 에 `employeeNos`(사번 → 운영자 ID·이름) —
+    교대 인계 "후임"·접수 건 넘기기 칸에서 사번으로 사람을 찾으려고. `operatorIds`·`employeeNos` 중 **하나만**(둘 다·둘 다 없음 400), 1~50개,
+    사번 형식 `P<연도 4>-<5자리>`(틀리면 400). 응답·권한(직원 토큰이면 누구나)·퇴사자 포함·모르는 값 빠짐은 operatorIds 와 같다. 재직자만 거르기(activeOnly)는 아직 없다.
     0.9.1(2026-11-20 GP-1 — 인사 백오피스 제보 "2027-03-01 ~ 2026-11-20 이 자동 승인", 사용자 "해줘"): 권한 기간 순서 검사 — 등록 requestedGrants·grant-requests grants 에서
     끝(validTo) < 시작(validFrom)이면 400 VALIDATION_FAILED(field `requestedGrants[i].validTo`·`grants[i].validTo`). 비운 값은 서버가 채우는 값(시작 = 근무 시작일, 끝 = 계약 종료일)으로 판정.
     복귀(reinstate)도 계약 종료일 < 근무 시작일이면 400(field endDate). 등록의 endDate < startDate 400 은 전부터.
@@ -416,7 +419,7 @@ paths:
   /hr/employee-labels:
     get:
       tags: [labels]
-      summary: 운영자 ID 여러 개 → 이름·사번 (화면 표시용, 모든 직원 — 0.8.0)
+      summary: 운영자 ID 여러 개 → 이름·사번, 또는 사번 여러 개 → 운영자 ID·이름 (화면 표시용, 모든 직원 — 0.8.0, 사번은 0.10.0)
       description: |
         2026-11-19 사용자 결정(클라이언트 요청 operator-display-names R1): 백오피스·인사팀 백오피스 목록의 처리자·요청자·결정자 칸에 OP-… 대신
         "이름 · 사번"을 보이려고 한 번에 읽는다. 직원 토큰이면 누구나(역할 제한 없음), 이름은 가리지 않는다.
@@ -428,13 +431,23 @@ paths:
       parameters:
         - name: operatorIds
           in: query
-          required: true
-          description: '운영자 ID(반복 — ?operatorIds=OP-a&operatorIds=OP-b), 1~50개'
+          required: false
+          description: '운영자 ID(반복 — ?operatorIds=OP-a&operatorIds=OP-b), 1~50개. employeeNos 와 둘 중 하나'
           schema:
             type: array
-            minItems: 1
             maxItems: 50
             items: { type: string, pattern: '^[A-Za-z0-9_.:@-]{1,128}$' }
+        - name: employeeNos
+          in: query
+          required: false
+          x-added-in: '2026-11-24'
+          description: '(0.10.0 HR-5) 사번(반복 또는 쉼표 — ?employeeNos=P2026-00012,P2026-00013), 1~50개. operatorIds 와 둘 중 하나'
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 50
+            items: { type: string, maxLength: 700, pattern: '^P[0-9]{4}-[0-9]{5}(,P[0-9]{4}-[0-9]{5})*$', description: '사번 하나 또는 쉼표로 이은 여러 개' }
       responses:
         '200':
           description: OK — 아는 ID 만(순서 없음)

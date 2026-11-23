@@ -1115,6 +1115,34 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
             .uri("/hr/employee-labels?operatorIds=" + a)
             .exchange((q, s) -> s.getStatusCode().value());
     assertThat(noToken).isEqualTo(401);
+
+    // 0.10.0 HR-5 — 사번으로(반복·쉼표 둘 다), 퇴사자 포함, 모르는 사번 빠짐, 둘 다·형식 틀림 400
+    String noA =
+        jdbc.queryForObject(
+            "SELECT employee_no FROM employee WHERE operator_id = ?", String.class, a);
+    String noB =
+        jdbc.queryForObject(
+            "SELECT employee_no FROM employee WHERE operator_id = ?", String.class, b);
+    Res byNo =
+        call(
+            "GET",
+            "/hr/employee-labels?employeeNos=" + noA + "," + noB + "&employeeNos=P1999-99999",
+            anyStaff,
+            null);
+    assertThat(byNo.status()).as(byNo.body().toString()).isEqualTo(200);
+    assertThat(byNo.body().path("items")).hasSize(2);
+    assertThat(byNo.body().findValuesAsString("operatorId")).containsExactlyInAnyOrder(a, b);
+    assertThat(
+            call(
+                    "GET",
+                    "/hr/employee-labels?employeeNos=" + noA + "&operatorIds=" + a,
+                    anyStaff,
+                    null)
+                .status())
+        .isEqualTo(400);
+    assertThat(call("GET", "/hr/employee-labels", anyStaff, null).status()).isEqualTo(400);
+    assertThat(call("GET", "/hr/employee-labels?employeeNos=12345", anyStaff, null).status())
+        .isEqualTo(400);
   }
 
   @Test
