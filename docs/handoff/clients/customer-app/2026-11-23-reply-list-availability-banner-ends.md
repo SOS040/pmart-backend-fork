@@ -6,7 +6,7 @@
 - 백엔드 요청 `docs/handoff/clients/customer-app/2026-11-20-request-availability-display.md` §2(앱 반영 알림 `pmart-clients docs/handoff/customer-app/2026-11-20-backend-availability-display-applied.md` "§2 는 계약 대기")
 - 앱 회신 `pmart-clients docs/handoff/customer-app/2026-11-21-backend-splash-popup-display-reply.md` R1 "막아야 하면 `Banner.endsAt` 를 응답에"(선택)
 작성: pmart-backend, 2026-11-23 — 사용자 "모든 옵션 품절일 때만"·"조회 때 바로 묻기", endsAt "응 넣어주고"
-상태: **코드·시험 끝, LAN 배포 전**(배포하면 여기에 날짜를 적는다)
+상태: **LAN 배포 2026-11-23**(search·storefront 이미지 0b9c38be, PC 2). LAN 상품은 지금 모두 AVAILABLE(품절 0건)이라 SOLD_OUT 표시는 재고를 0 으로 만든 뒤에 볼 수 있다
 
 ## 1. 목록 카드 `availability` — search 0.10.0 · storefront 0.13.0
 - 칸: `SearchHit.availability`(`GET /search/products`), `DisplayItem.availability`(홈·탭·MD 탭·`/storefront/sections/{id}/items`).

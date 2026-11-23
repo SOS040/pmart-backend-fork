@@ -21,3 +21,6 @@
 
 ## 시험
 - storefront `check`: `LayoutIT`(타이머 테마 BAND 게시·홈 영역 BAND·타이머 없는 테마 null)·`LayoutRulesTest.timerStyleOnlyWithTimerDefaultLabel` 통과. `HomeFlowIT.rankingSignalsFromOrdersAndReviews` 1건 실패는 이 변경 전부터(main, 2026-11-22 기록).
+
+## LAN 배포
+- 2026-11-23: storefront 이미지 0b9c38be(0.12.0 timerStyle + 0.13.0 목록 판매 가능 여부·배너 기간) PC 2. 이전 세션 배포가 PC 1 메모리 부족으로 끊겨 늦어졌다.
