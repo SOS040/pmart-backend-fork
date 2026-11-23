@@ -21,6 +21,8 @@
   - **정지 단어**(위협·거친 말 — `pmart.cases.profanity-words` 와 같은 목록)가 있으면 사건 `CustomerProfanityDetected`(source **AI_CHAT** — case 0.37.0 에서 값만 더함, 스키마 `contracts/events/CustomerProfanityDetected.v1.json`) — customer(CU-7)가 7일 정지·알림.
 - 대조 방식: 소문자로 바꾸고 띄어쓰기·문장부호를 지운 뒤 포함 비교(case `domain/ProfanityRules` 와 같게 — 코드 복제 대신 같은 규칙으로 구현). 목록 정본은 pmart-config(사용자 승인 뒤 PC 1 반영) — 서비스마다 키를 둘지 공통으로 둘지 PC 1·PC 4 가 정해 주세요.
 - 검색과의 순서: 금칙어 검사를 상품 검색·문서 검색·모델 호출보다 먼저 — `docs/architecture/product-search.md` §13-3.
+- **상태(2026-11-23 PC 4)**: **막기 구현**(customer-assistant 0.5.0) — 질문에 막기 단어가 있으면 422 `BLOCKED_WORDS`("쓸 수 없는 말이 들어 있어요. 고쳐서 다시 보내 주세요."), 멱등 기록·요청 제한보다 먼저 거절해 질문·요청 해시를 남기지 않는다. 키는 delivery-execution 처럼 **서비스 키** `pmart.assistant.customer.blocked-words`(제안 — 값은 case 와 같은 목록, PC 1 이 pmart-config 에 넣을 때까지 비어서 꺼짐). 고객앱은 422 `BLOCKED_WORDS` 의 detail 을 그대로 보여 주면 된다.
+  - **정지 단어는 아직**(사용자 2026-11-23 "이번엔 막기만 PR"): customer-assistant 는 사건을 내는 기능(common-messaging·outbox)이 없고, `CustomerProfanityDetected` 스키마는 `aggregateType` 이 `Case` 고정·`inquiryId`·`caseId` 필수라 AI 채팅에 맞지 않으며, customer 는 `platform.case.v1` 만 구독한다. 정할 것(PC 1): ① 토픽(이 서비스 자체 토픽 + customer 바인딩 추가 / 다른 길) ② 스키마(AI_CHAT 일 때 inquiryId·caseId 대신 answerId, aggregateType) — 정해지면 PC 4 가 다음 PR.
 
 ## CA-3. FAQ 의견 집계 줄에 분류 이름 `categoryTitle` (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "지금 안하면 언제 할건데?")
 - **왜**: 통합 백오피스 FAQ 의견 집계 화면(BR-91, 프론트 #419·#421)이 분류 이름을 받아 올 곳이 없다 — 고객용 FAQ 목록 API 는 고객 토큰만이라 직원 화면이 부를 수 없어, 지금은 13개 이름을 화면에 박아 두었다. 분류는 안내 문서(`docs/business/customer-faq/NN-<키>.md`)가 늘면 같이 는다.
