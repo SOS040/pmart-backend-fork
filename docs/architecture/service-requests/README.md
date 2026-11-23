@@ -149,6 +149,8 @@
 | [MC-2](mfc-capacity-service.md) | mfc-capacity | PC 3 | mfc-inbound(0.17.0) | 다음 작업 받기에 격리 이동 QUARANTINE_MOVE — 미리 정한 담당에게만 | 사용자 결정(우선순위·업무 영역) | 요청(2026-11-20 PC 3 #278) |
 | [ML-1](mfc-location-service.md) | mfc-location | PC 3 | mfc-inventory | 실사 계획 잠금 칸 화면 표시(사건 구독 또는 화면이 inventory 직접) | 화면 요청 올 때 | 요청(낮음, 2026-11-20 PC 3 #270) |
 | [AI-1](ai-assistant-service.md) | ai-assistant | PC 4 | backoffice(PC 2) | 업무 도우미 질문 원문 저장(`store-question` 켬) — 보존 90일(답변과 같이), 본인만 보기, 본인 지우기 API | 결정됨(2026-11-19 사용자 "추천대로", #226) | **구현·LAN 적용**(9cef6b80·0cda687d — LAN `store-question: true`). 보존 기간은 뒤에 ADR-0084(채팅 세션 V2, #314)로 옮겨 14일 예정 — LAN `answers.retention` 은 아직 비어 있음(PC 4 PolicyQuestionFlowIT 고친 뒤 켬). 2026-11-21 #329 로 갱신 |
+| [AI-2](ai-assistant-service.md) | ai-assistant | PC 4 | platform(PC 1) | 상품 영양·알레르기 질문을 정해진 문장으로(search 0.11.0 `nutrition`·`allergens`, 영양 필터) — 없음과 모름 구분 | 요청(2026-11-23 사용자 "다 하면 될 것") | PC 4 구현 차례 |
+| [CA-1](customer-assistant-service.md) | customer-assistant | PC 4 | platform(PC 1) | 고객 상담 상품 영양·알레르기 질문(AI-2 와 같은 규칙, 알레르기 확인 안내) | 요청(2026-11-23) | PC 4 구현 차례 |
 | [PD-1](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 조회 목록 판매 상태별 수(목록 숫자 띠) | 요청(2026-11-19 PC 2 #227) | 대기(PC 1) |
 | [PD-2](product-service.md) | product | PC 1 | backoffice(PC 2) | 상품 초안 목록 — "등록 진행 중" 탭 | 요청(2026-11-19 PC 2 #253) | 대기(PC 1) |
 | [PD-3](product-service.md) | product·product-content | PC 1 | backoffice(PC 2) | 개별 등록에서 상품 초안·콘텐츠 초안을 원천 키로 미리 잇기 — 확인 요청 | 요청(2026-11-19 PC 2 #253) | 대기(PC 1 — 답) |
