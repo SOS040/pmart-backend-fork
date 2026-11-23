@@ -42,7 +42,10 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.cases.order-service-base-url=${order.url}",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.cases.profanity-words[0]=테스트금칙어",
-      "pmart.cases.blocked-words[0]=막기금칙어"
+      "pmart.cases.blocked-words[0]=막기금칙어",
+      // CU-7 고객 제한 사본 구독 — 정본 case-service.yml 에 넣기 전에도 돌게(배포 때 정본·사본에 같이)
+      "spring.cloud.function.definition=deliveryEvents;trackingEvents;sagaEvents;paymentEvents;claimEvents;qualityEvents;customerEvents",
+      "spring.cloud.stream.bindings.customerEvents-in-0.destination=commerce.customer.v1"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({@ConfigureWireMock(name = "order", baseUrlProperties = "order.url")})
@@ -722,5 +725,62 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
             send("POST", agent, "/inquiries", Map.of("category", "OTHER", "body", "x"), null)
                 .status())
         .isEqualTo(403);
+  }
+
+  @org.springframework.beans.factory.annotation.Autowired
+  org.springframework.kafka.core.KafkaTemplate<String, String> kafka;
+
+  /**
+   * CU-7(2026-11-23): customer CustomerRestricted 사본 — 이용제한·정지 고객은 새 문의 403 ACCOUNT_RESTRICTED, 풀면
+   * 다시 된다.
+   */
+  @Test
+  void restrictedCustomerCannotWriteInquiry() throws Exception {
+    String me = "CU-rs-" + java.util.UUID.randomUUID();
+    String tok = TestJwt.customer(me);
+    restricted(me, "RESTRICTED", java.time.Instant.now().plus(java.time.Duration.ofDays(7)), 1);
+    Res blocked =
+        send("POST", tok, "/inquiries", Map.of("category", "OTHER", "body", "문의해요"), null);
+    assertThat(blocked.status()).isEqualTo(403);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("ACCOUNT_RESTRICTED");
+    restricted(me, "NONE", null, 2);
+    assertThat(
+            send("POST", tok, "/inquiries", Map.of("category", "OTHER", "body", "문의해요"), null)
+                .status())
+        .isEqualTo(201);
+  }
+
+  void restricted(String accountId, String restriction, java.time.Instant until, long version)
+      throws InterruptedException {
+    java.util.UUID id = java.util.UUID.randomUUID();
+    java.util.Map<String, Object> p = new java.util.HashMap<>();
+    p.put("accountId", accountId);
+    p.put("restriction", restriction);
+    p.put("previous", "NONE");
+    p.put("from", java.time.Instant.now().toString());
+    p.put("until", until == null ? null : until.toString());
+    p.put("source", "STAFF");
+    kafka
+        .send(
+            "commerce.customer.v1",
+            accountId,
+            com.pmart.common.test.EventEnvelopeFixtures.envelope("CustomerRestricted")
+                .eventId(id)
+                .from("customer-service")
+                .aggregate("CustomerRestriction", accountId, version)
+                .payload(p)
+                .buildJson())
+        .join();
+    java.time.Instant end = java.time.Instant.now().plusSeconds(30);
+    while (java.time.Instant.now().isBefore(end)) {
+      Integer n =
+          jdbc.queryForObject(
+              "SELECT COUNT(*) FROM inbox_event WHERE event_id = ?", Integer.class, id);
+      if (n != null && n > 0) {
+        return;
+      }
+      Thread.sleep(200);
+    }
+    throw new AssertionError("CustomerRestricted 미반영 " + id);
   }
 }

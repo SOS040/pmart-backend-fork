@@ -102,6 +102,7 @@ GET /api/v1/customer-assistant/recent-orders CUSTOMER
 GET /api/v1/customer-notes OPERATOR
 GET /api/v1/customers OPERATOR
 GET /api/v1/customers/{customerId} OPERATOR
+GET /api/v1/customers/{customerId}/restrictions OPERATOR
 GET /api/v1/deliveries OPERATOR
 GET /api/v1/deliveries/counts OPERATOR
 GET /api/v1/deliveries/{deliveryId} OPERATOR,RIDER
@@ -448,6 +449,8 @@ POST /api/v1/customer-notes OPERATOR
 POST /api/v1/customer-notes/{noteId}/deletions OPERATOR
 POST /api/v1/customer-notes/{noteId}/revisions OPERATOR
 POST /api/v1/customers/{customerId}/pii-reveals OPERATOR
+POST /api/v1/customers/{customerId}/restriction-releases OPERATOR
+POST /api/v1/customers/{customerId}/restrictions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/assignment-cancellations OPERATOR,RIDER
 POST /api/v1/deliveries/{deliveryId}/completions RIDER
 POST /api/v1/deliveries/{deliveryId}/customer-arrivals RIDER

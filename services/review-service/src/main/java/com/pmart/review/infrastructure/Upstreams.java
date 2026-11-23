@@ -197,8 +197,17 @@ public class Upstreams {
     return out;
   }
 
+  /** 작성자 조회 결과(2026-11-23 CU-7 — customer 0.16.0 restriction·restrictedUntil). */
+  public record Author(@Nullable String displayName, @Nullable String restrictedUntil) {}
+
   /** 작성자 표시(가린 별명). 못 읽으면 null — 호출자가 기본 표시를 쓴다(리뷰 작성을 막지 않는다). */
   public @Nullable String authorName(String accountId) {
+    Author a = author(accountId);
+    return a == null ? null : a.displayName();
+  }
+
+  /** 작성자 표시 + 제한(RESTRICTED·SUSPENDED 면 기한). 못 읽으면 null — 막지 않는다(정본은 customer). */
+  public @Nullable Author author(String accountId) {
     try {
       String raw =
           Downstream.call(
@@ -209,7 +218,13 @@ public class Upstreams {
                       .uri("/api/v1/internal/accounts/{id}/review-author", accountId)
                       .retrieve()
                       .body(String.class));
-      return raw == null ? null : text(mapper.readTree(raw), "displayName");
+      if (raw == null) {
+        return null;
+      }
+      JsonNode n = mapper.readTree(raw);
+      String r = text(n, "restriction");
+      boolean limited = "RESTRICTED".equals(r) || "SUSPENDED".equals(r);
+      return new Author(text(n, "displayName"), limited ? text(n, "restrictedUntil") : null);
     } catch (RuntimeException e) {
       log.warn("작성자 표시를 읽지 못함 — 기본 표시: {}", e.toString());
       return null;

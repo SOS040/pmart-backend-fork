@@ -142,6 +142,8 @@ public class CustomerSocialLoginService {
   /** 네이버 교환 때 받은 이메일(BR-77). */
   private final com.pmart.auth.infrastructure.NaverProfileEmailStore naverEmails;
 
+  private final CustomerSuspensions suspensions; // 2026-11-23 CU-7
+
   public CustomerSocialLoginService(
       CustomerStore customers,
       SessionStore sessions,
@@ -154,8 +156,10 @@ public class CustomerSocialLoginService {
       TransactionTemplate tx,
       Clock clock,
       CustomerIdentityClient identities,
-      com.pmart.auth.infrastructure.NaverProfileEmailStore naverEmails) {
+      com.pmart.auth.infrastructure.NaverProfileEmailStore naverEmails,
+      CustomerSuspensions suspensions) {
     this.naverEmails = naverEmails;
+    this.suspensions = suspensions;
     this.identities = identities;
     this.customers = customers;
     this.sessions = sessions;
@@ -233,6 +237,7 @@ public class CustomerSocialLoginService {
               if (!"ACTIVE".equals(state)) {
                 throw accountNotAvailable(state);
               }
+              suspensions.check(accountId); // 2026-11-23 CU-7 정지 기한 안이면 403
               // 동의 단계에서 나갔던 가입은 다음 로그인도 가입이다(회원이 된 적 없음)
               boolean signup = created || !customers.everMember(accountId);
               boolean needsConsent = check != null && !check.satisfied();
@@ -403,6 +408,7 @@ public class CustomerSocialLoginService {
                   if (!"ACTIVE".equals(state)) {
                     throw accountNotAvailable(state);
                   }
+                  suspensions.check(accountId); // 2026-11-23 CU-7 정지 기한 안이면 403
                   if (needsIdentity) {
                     // 동의는 끝, 휴대폰 확인이 남음(ADR-0074) — 토큰·사건은 확인 뒤
                     customers.consentDoneIdentityNext(authRequestId);
@@ -583,6 +589,7 @@ public class CustomerSocialLoginService {
                   if (!"ACTIVE".equals(state)) {
                     throw accountNotAvailable(state);
                   }
+                  suspensions.check(accountId); // 2026-11-23 CU-7 정지 기한 안이면 403
                   customers.completeIdentity(authRequestId, idempotencyKey, now);
                   customers.markMember(accountId, now);
                   SessionTokens.Tokens t = openSession(accountId, deviceId, sourceSystem, now);

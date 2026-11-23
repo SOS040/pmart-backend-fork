@@ -145,4 +145,22 @@ class NoticesTest {
     assertThat(signup.body()).startsWith("'가입 축하 10%' 쿠폰을 드렸어요.").endsWith("12월 21일까지 쓸 수 있어요.");
     assertThat(signup.destinationType()).isEqualTo("NONE");
   }
+
+  /** CU-7(2026-11-23): 고객 정지 "7일 계정 정지"·이용제한·풀기(제한이 있던 경우만), 기한은 KST, 사유 없음. */
+  @org.junit.jupiter.api.Test
+  void customerRestrictionNotices() {
+    java.time.Instant until = java.time.Instant.parse("2026-11-30T09:00:00Z");
+    var s = Notices.customerRestriction("SUSPENDED", "NONE", until);
+    org.assertj.core.api.Assertions.assertThat(s.templateKey()).isEqualTo("CUSTOMER_SUSPENDED");
+    org.assertj.core.api.Assertions.assertThat(s.title()).isEqualTo("7일 계정 정지");
+    org.assertj.core.api.Assertions.assertThat(s.body()).contains("11월 30일 18:00까지");
+    org.assertj.core.api.Assertions.assertThat(
+            Notices.customerRestriction("RESTRICTED", "NONE", until).templateKey())
+        .isEqualTo("CUSTOMER_RESTRICTED");
+    org.assertj.core.api.Assertions.assertThat(
+            Notices.customerRestriction("NONE", "SUSPENDED", null).templateKey())
+        .isEqualTo("CUSTOMER_RESTRICTION_LIFTED");
+    org.assertj.core.api.Assertions.assertThat(Notices.customerRestriction("NONE", "NONE", null))
+        .isNull();
+  }
 }

@@ -270,7 +270,9 @@ public final class Notices {
         "DISPATCH_DELAYED",
         DELIVERY,
         "배송이 늦어지고 있어요",
-        "주문하신 상품을 배달할 기사를 찾고 있어 약속한 시간보다 " + late + ". 늦어져서 죄송해요. 기다리기 어려우시면 고객센터로 취소를 요청해 주세요. 취소하면 전액 환불돼요.",
+        "주문하신 상품을 배달할 기사를 찾고 있어 약속한 시간보다 "
+            + late
+            + ". 늦어져서 죄송해요. 기다리기 어려우시면 고객센터로 취소를 요청해 주세요. 취소하면 전액 환불돼요.",
         "ORDER",
         orderId);
   }
@@ -543,6 +545,52 @@ public final class Notices {
               "지금 맡은 배송은 끝까지 전달해 주세요. 자세한 내용은 지원센터에 문의해 주세요.",
               "NONE",
               null);
+      default -> null;
+    };
+  }
+
+  /**
+   * 고객 계정 제한(2026-11-23 CU-7, customer CustomerRestricted — 사용자 "고객에게 7일 계정 정지라고 알려야지"). 사유는 싣지
+   * 않는다, 기한은 KST. 풀기(NONE)는 제한이 있던 경우만.
+   */
+  public static @Nullable Notice customerRestriction(
+      String restriction, @Nullable String previous, @Nullable Instant until) {
+    String untilText =
+        until == null
+            ? ""
+            : " "
+                + DateTimeFormatter.ofPattern("M월 d일 HH:mm", Locale.KOREAN)
+                    .format(until.atZone(ZoneId.of("Asia/Seoul")))
+                + "까지예요.";
+    return switch (restriction) {
+      case "SUSPENDED" ->
+          new Notice(
+              "CUSTOMER_SUSPENDED",
+              SYSTEM,
+              "7일 계정 정지",
+              "운영 정책 위반으로 계정이 7일 정지되었어요. 정지 동안 로그인·주문을 할 수 없어요."
+                  + untilText
+                  + " 자세한 내용은 고객센터로 문의해 주세요.",
+              "NONE",
+              null);
+      case "RESTRICTED" ->
+          new Notice(
+              "CUSTOMER_RESTRICTED",
+              SYSTEM,
+              "계정 이용이 제한되었어요",
+              "운영 정책 위반으로 7일 동안 문의·리뷰를 쓸 수 없어요." + untilText,
+              "NONE",
+              null);
+      case "NONE" ->
+          previous == null || "NONE".equals(previous)
+              ? null
+              : new Notice(
+                  "CUSTOMER_RESTRICTION_LIFTED",
+                  SYSTEM,
+                  "계정 제한이 풀렸어요",
+                  "이제 PMart 를 다시 이용할 수 있어요.",
+                  "NONE",
+                  null);
       default -> null;
     };
   }

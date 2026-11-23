@@ -1,6 +1,7 @@
 package com.pmart.customer.api;
 
 import com.pmart.customer.api.generated.StaffApi;
+import com.pmart.customer.api.generated.model.AccountRestriction;
 import com.pmart.customer.api.generated.model.AccountStatus;
 import com.pmart.customer.api.generated.model.CustomerPiiField;
 import com.pmart.customer.api.generated.model.CustomerPiiReveal;
@@ -23,9 +24,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class StaffController implements StaffApi {
 
   private final StaffCustomerService staff;
+  private final com.pmart.customer.application.RestrictionService restrictions;
 
-  public StaffController(StaffCustomerService staff) {
+  public StaffController(
+      StaffCustomerService staff, com.pmart.customer.application.RestrictionService restrictions) {
     this.staff = staff;
+    this.restrictions = restrictions;
   }
 
   @Override
@@ -52,7 +56,86 @@ public class StaffController implements StaffApi {
             .status(AccountStatus.fromValue(c.status()))
             .socialProvider(c.socialProvider())
             .phoneVerified(c.phone() != null && c.phoneVerified())
-            .joinedAt(c.joinedAt().atOffset(ZoneOffset.UTC)));
+            .joinedAt(c.joinedAt().atOffset(ZoneOffset.UTC))
+            .restriction(restriction(c))
+            .restrictedUntil(until(c)));
+  }
+
+  /** 0.16.0 CU-7 — 제한 이력. */
+  @Override
+  public ResponseEntity<
+          com.pmart.customer.api.generated.model.ListCustomerRestrictionsForStaff200Response>
+      listCustomerRestrictionsForStaff(String customerId) {
+    var h = restrictions.history(customerId);
+    return ResponseEntity.ok(
+        new com.pmart.customer.api.generated.model.ListCustomerRestrictionsForStaff200Response()
+            .customerId(customerId)
+            .restriction(restriction(h.customer()))
+            .restrictedUntil(until(h.customer()))
+            .items(
+                h.items().stream()
+                    .map(
+                        r ->
+                            new com.pmart.customer.api.generated.model.CustomerRestrictionRecord()
+                                .recordId(r.recordId())
+                                .restriction(AccountRestriction.fromValue(r.restriction()))
+                                .previous(AccountRestriction.fromValue(r.previous()))
+                                .restrictedUntil(
+                                    r.until() == null ? null : r.until().atOffset(ZoneOffset.UTC))
+                                .source(
+                                    com.pmart.customer.api.generated.model.CustomerRestrictionRecord
+                                        .SourceEnum.fromValue(r.source()))
+                                .reason(r.reason())
+                                .actor(r.actor())
+                                .createdAt(r.createdAt().atOffset(ZoneOffset.UTC)))
+                    .toList()));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.customer.api.generated.model.ChangeMyProfile200Response>
+      restrictCustomerForStaff(
+          String customerId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.customer.api.generated.model.RestrictCustomerForStaffRequest body) {
+    var r =
+        restrictions.restrict(
+            customerId,
+            body.getRestriction().getValue(),
+            body.getReason(),
+            idempotencyKey,
+            xSourceSystem);
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(applied(idempotencyKey, r.recordId()));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.customer.api.generated.model.ChangeMyProfile200Response>
+      releaseCustomerRestrictionForStaff(
+          String customerId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.customer.api.generated.model.ReleaseCustomerRestrictionForStaffRequest body) {
+    var r = restrictions.release(customerId, body.getReason(), idempotencyKey, xSourceSystem);
+    return ResponseEntity.ok(applied(idempotencyKey, r.recordId()));
+  }
+
+  private static com.pmart.customer.api.generated.model.ChangeMyProfile200Response applied(
+      String requestId, String resultId) {
+    return new com.pmart.customer.api.generated.model.ChangeMyProfile200Response()
+        .status(
+            com.pmart.customer.api.generated.model.ChangeMyProfile200Response.StatusEnum.APPLIED)
+        .requestId(requestId)
+        .resultId(resultId);
+  }
+
+  static AccountRestriction restriction(ProfileRow c) {
+    return AccountRestriction.fromValue(c.restrictionAt(java.time.Instant.now()));
+  }
+
+  static java.time.@Nullable OffsetDateTime until(ProfileRow c) {
+    java.time.Instant u = c.restrictionUntilAt(java.time.Instant.now());
+    return u == null ? null : u.atOffset(ZoneOffset.UTC);
   }
 
   @Override
@@ -86,6 +169,8 @@ public class StaffController implements StaffApi {
         .customerNumber(c.customerNumber())
         .nameMasked(ProfileRules.maskName(c.name(), c.nickname()))
         .phoneMasked(ProfileRules.maskPhone(c.phone()))
-        .status(AccountStatus.fromValue(c.status()));
+        .status(AccountStatus.fromValue(c.status()))
+        .restriction(restriction(c))
+        .restrictedUntil(until(c));
   }
 }

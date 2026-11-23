@@ -115,10 +115,20 @@ class NotificationEventConsumers {
    */
   @Bean
   PmartEventConsumer customerEvents(
-      EventConsumers consumers, com.pmart.notification.application.PushTokenService pushTokens) {
+      EventConsumers consumers,
+      com.pmart.notification.application.PushTokenService pushTokens,
+      NotificationService n) {
     return consumers.of(
-        e -> "CustomerWithdrawalCompleted".equals(e.eventType()),
-        e -> pushTokens.forgetCustomer(e.payload().path("accountId").asString("")));
+        e ->
+            "CustomerWithdrawalCompleted".equals(e.eventType())
+                || "CustomerRestricted".equals(e.eventType()),
+        e -> {
+          if ("CustomerRestricted".equals(e.eventType())) {
+            n.onCustomerRestricted(e); // 2026-11-23 CU-7 — 정지·제한 알림(알림함 + 정한 종류면 푸시)
+          } else {
+            pushTokens.forgetCustomer(e.payload().path("accountId").asString(""));
+          }
+        });
   }
 
   /**

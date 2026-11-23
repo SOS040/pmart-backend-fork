@@ -48,6 +48,20 @@ class CaseEventConsumers {
         });
   }
 
+  /**
+   * commerce.customer.v1 — 고객 이용제한·정지 사본(2026-11-23 CU-7, CustomerRestricted). 바인딩이 설정에 있을 때만
+   * 만든다(설정에 없는 함수 빈은 기동을 멈춘다 — 이미지·설정 순서 상관없게).
+   */
+  @Bean
+  @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+      "spring.cloud.stream.bindings.customerEvents-in-0.destination")
+  PmartEventConsumer customerEvents(
+      EventConsumers consumers, com.pmart.cases.application.CustomerRestrictions restrictions) {
+    return consumers.of(
+        e -> com.pmart.cases.application.CustomerRestrictions.EVENT.equals(e.eventType()),
+        restrictions::onEvent);
+  }
+
   @Bean
   PmartEventConsumer trackingEvents(EventConsumers consumers, CaseInboxService cases) {
     return consumers.of(e -> "RiderLocationStale".equals(e.eventType()), cases::onLocationStale);

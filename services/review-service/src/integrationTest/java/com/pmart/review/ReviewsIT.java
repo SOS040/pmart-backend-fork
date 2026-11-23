@@ -582,6 +582,31 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
         .contains(reviewId);
   }
 
+  /** CU-7(2026-11-23): customer review-author 가 이용제한(RESTRICTED)이면 리뷰 작성 403 ACCOUNT_RESTRICTED. */
+  @Test
+  void restrictedCustomerCannotWriteReview() throws Exception {
+    String orderId = "ORD-RX-" + newId();
+    String me = "ACC-rx-" + newId();
+    String token = TestJwt.customer(me);
+    stubOrder(orderId, me, "PRD-" + newId(), 0);
+    delivered(orderId, Instant.now().minus(Duration.ofDays(1)), orderId + "-L1");
+    await(
+        () -> send("GET", token, "/me/review-eligibilities?orderId=" + orderId, null),
+        r -> r.body().path("items").size() == 1);
+    customer.stubFor(
+        get(urlPathMatching("/api/v1/internal/accounts/" + me + "/review-author"))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"accountId\":\"x\",\"displayName\":\"장***\",\"restriction\":\"RESTRICTED\","
+                            + "\"restrictedUntil\":\"2099-01-01T00:00:00Z\"}")));
+    Res r = send("POST", token, "/reviews", Map.of("orderLineId", orderId + "-L1", "rating", 5));
+    assertThat(r.status()).isEqualTo(403);
+    assertThat(r.body().path("code").asString()).isEqualTo("ACCOUNT_RESTRICTED");
+  }
+
   @Test
   void fullyReturnedAndExpiredLinesCannotBeReviewed() throws Exception {
     String orderId = "ORD-RV-" + newId();

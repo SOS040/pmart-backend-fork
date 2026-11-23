@@ -232,6 +232,67 @@ class CustomerWithdrawalIT extends PostgresKafkaContainerSupport {
         .isEqualTo(403);
   }
 
+  /**
+   * CU-7(2026-11-23): customer CustomerRestricted SUSPENDED → 세션 끝·SubjectBlocked·기한 안 로그인 403
+   * ACCOUNT_SUSPENDED, 옛 차수 무시, 풀기(NONE) 뒤 로그인 됨. 이용제한(RESTRICTED)은 로그인을 막지 않는다.
+   */
+  @Test
+  void suspensionBlocksLoginAndRefreshUntilReleased() throws Exception {
+    String sub = "g-" + UUID.randomUUID();
+    String device = "phone-" + UUID.randomUUID();
+    Res first = login(device, CustomerSocialLoginIT.google(sub));
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(200);
+    String accountId = first.body().path("accountId").asString();
+    String refreshToken = first.body().path("tokens").path("refreshToken").asString();
+
+    Instant until = Instant.now().plus(Duration.ofDays(7));
+    UUID ev = UUID.randomUUID();
+    restricted(ev, accountId, "SUSPENDED", until, 2);
+    awaitInbox(ev);
+    assertThat(refresh(device, refreshToken).status()).isEqualTo(401);
+    Res blocked = login("phone-" + UUID.randomUUID(), CustomerSocialLoginIT.google(sub));
+    assertThat(blocked.status()).isEqualTo(403);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("ACCOUNT_SUSPENDED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'SubjectBlocked' AND aggregateid = ?",
+                Integer.class,
+                accountId))
+        .isEqualTo(1);
+
+    // 늦게 온 옛 차수(1) 풀기는 무시 — 여전히 막힘
+    UUID old = UUID.randomUUID();
+    restricted(old, accountId, "NONE", null, 1);
+    awaitInbox(old);
+    assertThat(login("phone-" + UUID.randomUUID(), CustomerSocialLoginIT.google(sub)).status())
+        .isEqualTo(403);
+
+    // 이용제한(차수 3)은 로그인 막지 않음
+    UUID rs = UUID.randomUUID();
+    restricted(rs, accountId, "RESTRICTED", until, 3);
+    awaitInbox(rs);
+    assertThat(login("phone-" + UUID.randomUUID(), CustomerSocialLoginIT.google(sub)).status())
+        .isEqualTo(200);
+  }
+
+  void restricted(UUID eventId, String accountId, String restriction, Instant until, long version) {
+    java.util.Map<String, Object> p = new java.util.HashMap<>();
+    p.put("accountId", accountId);
+    p.put("restriction", restriction);
+    p.put("previous", "NONE");
+    p.put("from", Instant.now().toString());
+    p.put("until", until == null ? null : until.toString());
+    p.put("source", "STAFF");
+    String json =
+        EventEnvelopeFixtures.envelope("CustomerRestricted")
+            .eventId(eventId)
+            .from("customer-service")
+            .aggregate("CustomerRestriction", accountId, version)
+            .payload(p)
+            .buildJson();
+    kafka.send("commerce.customer.v1", accountId, json).join();
+  }
+
   @Test
   void purgeDeletesOnlyExpiredRows() {
     String expired = WithdrawnIdentifierRules.hash("KAKAO", "k-" + UUID.randomUUID());

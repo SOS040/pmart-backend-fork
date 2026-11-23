@@ -384,6 +384,24 @@ public class NotificationService {
     }
   }
 
+  /** commerce.customer.v1 — 고객 계정 제한(2026-11-23 CU-7, CustomerRestricted). 사건마다 한 번. */
+  public void onCustomerRestricted(EventEnvelope e) {
+    if (!"CustomerRestricted".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String accountId = text(p, "accountId");
+    String restriction = text(p, "restriction");
+    if (accountId == null || restriction == null) {
+      return;
+    }
+    Notice n =
+        Notices.customerRestriction(restriction, text(p, "previous"), instant(text(p, "until")));
+    if (n != null) {
+      save(e, accountId, n, "");
+    }
+  }
+
   /** commerce.coupon.v1 — 서버가 준 쿠폰 도착(가입 축하·보상·직원 지정, 2026-11-21 ADR-0082 5단계). 사건마다 한 번. */
   public void onCouponEvent(EventEnvelope e) {
     if (!"CouponIssued".equals(e.eventType())) {

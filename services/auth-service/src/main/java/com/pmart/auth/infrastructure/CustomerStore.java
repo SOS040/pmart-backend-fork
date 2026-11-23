@@ -285,6 +285,32 @@ public class CustomerStore {
     return jdbc.update("DELETE FROM social_identity WHERE account_id = ?", accountId);
   }
 
+  /** 2026-11-23 CU-7 — 정지 기한(사본). 없거나 정지가 아니면 empty. */
+  public Optional<Instant> suspendedUntil(String accountId) {
+    return jdbc
+        .queryForList(
+            "SELECT suspended_until FROM customer_account WHERE account_id = ?"
+                + " AND suspended_until IS NOT NULL",
+            java.sql.Timestamp.class,
+            accountId)
+        .stream()
+        .findFirst()
+        .map(java.sql.Timestamp::toInstant);
+  }
+
+  /** CustomerRestricted 반영 — 더 새 차수일 때만. 반영했으면 true(auth 에 없는 계정·옛 사건은 false). */
+  public boolean applyRestriction(
+      String accountId, @Nullable Instant suspendedUntil, long version) {
+    return jdbc.update(
+            "UPDATE customer_account SET suspended_until = ?, restriction_version = ?"
+                + " WHERE account_id = ? AND restriction_version < ?",
+            suspendedUntil == null ? null : java.sql.Timestamp.from(suspendedUntil),
+            version,
+            accountId,
+            version)
+        == 1;
+  }
+
   /** 계정 사용 안 함(WITHDRAWN) — 이 accountId 로는 다시 토큰이 나가지 않는다. */
   public void markWithdrawn(String accountId) {
     jdbc.update("UPDATE customer_account SET state = 'WITHDRAWN' WHERE account_id = ?", accountId);

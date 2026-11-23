@@ -131,6 +131,10 @@ public class SessionService {
         if (!"ACTIVE".equals(customers.accountState(s.principalId()).orElse(null))) {
           yield null;
         }
+        // 2026-11-23 CU-7 — 정지 기한 안이면 연장하지 않는다(정지 때 세션도 끝냈다)
+        if (customers.suspendedUntil(s.principalId()).filter(now::isBefore).isPresent()) {
+          yield null;
+        }
         // 고객 세션은 마지막 사용 기준으로 연장한다(사용자 결정 2026-11-02): 갱신할 때마다 만료 = 지금 + session-max-age.
         // 그래서 session-max-age 동안 앱을 쓰지 않아야 다시 로그인한다.
         Instant extended = now.plus(customerProps.sessionMaxAge());

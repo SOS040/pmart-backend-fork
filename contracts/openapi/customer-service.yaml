@@ -1,8 +1,16 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
+    0.16.0(2026-11-23 CU-7 — 사용자 결정: 이용제한 = 문의·리뷰 작성 막기, 정지 = 주문·로그인까지 막기, 기간 7일 자동 해제, 영구 정지 없음, 라이더와 따로):
+    계정 제한 `restriction` NONE·RESTRICTED(이용제한)·SUSPENDED(정지)와 `restrictedUntil`(늘 기한 있음 — 지나면 NONE 으로 본다). 거는 길 둘:
+    ① case `CustomerProfanityDetected`(platform.case.v1 — 문의 정지 단어, AI 채팅 예정)를 받아 **자동 7일 정지**(찾은 시각부터),
+    ② 직원(CS_AGENT·OPERATOR_ADMIN) `POST /customers/{customerId}/restrictions`(RESTRICTED·SUSPENDED 고름, 사유 필수, 지금부터 7일)·
+    `POST /customers/{customerId}/restriction-releases`(오인식 풀기, 사유 필수)·이력 `GET /customers/{customerId}/restrictions`.
+    바뀔 때마다 `CustomerRestricted`(commerce.customer.v1) — auth(정지면 로그인·토큰 연장 막고 나간 토큰 끊음), case(제한·정지면 문의 작성 403),
+    notification(고객 알림 "7일 계정 정지"). 정지면 내부 상태 `purchasable` false(주문 draft·checkout 422 ACCOUNT_NOT_PURCHASABLE). 리뷰 작성은
+    review 가 `review-author` 의 `restriction` 으로 막는다. `/me`·직원 상세·찾기·내부 상태에 restriction·restrictedUntil. 사유는 로그·사건에 넣지 않는다.
     0.15.0(2026-11-21 BR-80 — 고객앱 요청 "프로필 사진 바꾸기"): 프로필 사진을 고객이 고른다. `PUT /me/profile-image`(직접 올리기, multipart `file`,
     JPEG·PNG·WebP 파일 앞부분으로 판정, 2MB 이하 — 넘거나 다른 형식이면 400 VALIDATION_FAILED field file), `DELETE /me/profile-image`(기본 이미지 = 사진 없음),
     `POST /me/profile-image/provider-restorations`(로그인 계정 사진으로 되돌리기). 셋 다 본인 토큰·Idempotency-Key, 결과 CommandResponse(APPLIED) — 새 주소는 `GET /me` 의
@@ -916,6 +924,93 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /customers/{customerId}/restrictions:
+    get:
+      tags: [staff]
+      summary: '[직원] 계정 제한 이력 (0.16.0, CU-7)'
+      description: 권한 CS_AGENT·OPERATOR_ADMIN. 최근 것부터 50개. 자동 정지는 source AUTO_PROFANITY·actor system.
+      operationId: listCustomerRestrictionsForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [customerId, restriction, items]
+                properties:
+                  customerId: { type: string }
+                  restriction: { $ref: '#/components/schemas/AccountRestriction' }
+                  restrictedUntil: { type: [string, 'null'], format: date-time }
+                  items: { type: array, items: { $ref: '#/components/schemas/CustomerRestrictionRecord' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    post:
+      tags: [staff]
+      summary: '[직원] 이용제한·정지 걸기 — 사유 필수, 지금부터 7일 (0.16.0, CU-7)'
+      description: |
+        권한 CS_AGENT·OPERATOR_ADMIN. `restriction` RESTRICTED(문의·리뷰 작성 막기)·SUSPENDED(주문·로그인까지 막기). 기한 = 지금 + 7일(설정
+        `pmart.customer.restriction.period`, 기본 P7D — 영구 정지 없음). 지금 제한이 있으면 새 값·새 기한으로 바꾼다. 탈퇴 완료 고객 409 INVALID_STATE.
+        사유 2~200자(로그·사건에 넣지 않음). 결과 CommandResponse APPLIED, resultId = 이력 ID.
+      operationId: restrictCustomerForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restriction, reason]
+              properties:
+                restriction: { type: string, enum: [RESTRICTED, SUSPENDED] }
+                reason: { type: string, minLength: 2, maxLength: 200 }
+      responses:
+        '201':
+          description: 걸었음
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /customers/{customerId}/restriction-releases:
+    post:
+      tags: [staff]
+      summary: '[직원] 제한·정지 풀기 — 오인식 등, 사유 필수 (0.16.0, CU-7)'
+      description: 권한 CS_AGENT·OPERATOR_ADMIN. 지금 제한이 없으면 409 NOT_RESTRICTED. 사유 2~200자. 결과 CommandResponse APPLIED.
+      operationId: releaseCustomerRestrictionForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 2, maxLength: 200 }
+      responses:
+        '200':
+          description: 풀었음
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
   /internal/accounts/{accountId}/status:
     get:
       tags: [internal]
@@ -936,6 +1031,8 @@ paths:
                   status: { $ref: '#/components/schemas/AccountStatus' }
                   purchasable: { type: boolean, description: 'ACTIVE이고 필수 동의 최신 버전이면 true. 필수 동의는 스위치 pmart.customer.consents.purchase-gate 가 켜졌을 때만 본다(꺼지면 ACTIVE 만 — LAN 2026-11-17 꺼짐)' }
                   requiredConsentOutdated: { type: boolean, description: '필수 항목 중 현행 버전 동의가 없는 것이 있다(0.3.0 부터 실제 값 — 그 전에는 늘 false)' }
+                  restriction: { $ref: '#/components/schemas/AccountRestriction' }
+                  restrictedUntil: { type: [string, 'null'], format: date-time, description: '(0.16.0) 제한 끝 시각 — NONE 이면 null' }
                   version: { $ref: '_common.yaml#/components/schemas/Version' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
@@ -1254,6 +1351,8 @@ paths:
                 properties:
                   accountId: { type: string }
                   displayName: { type: string }
+                  restriction: { $ref: '#/components/schemas/AccountRestriction' }
+                  restrictedUntil: { type: [string, 'null'], format: date-time, description: '(0.16.0 CU-7 — RESTRICTED·SUSPENDED 면 리뷰 작성 막기) 제한 끝 시각 — NONE 이면 null' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/accounts/{accountId}/shopping-context:
@@ -1311,6 +1410,8 @@ components:
         nameMasked: { type: [string, 'null'], description: '가린 이름(첫·끝 글자). 이름이 없으면 별명을 가려서, 둘 다 없으면 null' }
         phoneMasked: { type: [string, 'null'], description: '예 010-****-5678' }
         status: { $ref: '#/components/schemas/AccountStatus' }
+        restriction: { $ref: '#/components/schemas/AccountRestriction' }
+        restrictedUntil: { type: [string, 'null'], format: date-time }
     StaffCustomerList:
       type: object
       x-added-in: '2026-11-20'
@@ -1331,6 +1432,8 @@ components:
         socialProvider: { type: [string, 'null'], description: '가입 방식 KAKAO·NAVER·APPLE·GOOGLE(화면 배지)' }
         phoneVerified: { type: boolean, description: '휴대폰 번호 확인됨(0.9.0 OCTOMO·0.10.0 가입 확인)' }
         joinedAt: { type: string, format: date-time }
+        restriction: { $ref: '#/components/schemas/AccountRestriction' }
+        restrictedUntil: { type: [string, 'null'], format: date-time }
     CustomerPiiField:
       type: string
       enum: [NAME, PHONE]
@@ -1412,6 +1515,24 @@ components:
     AccountStatus:
       type: string
       enum: [ACTIVE, WITHDRAW_PENDING, WITHDRAW_COMPLETED]
+    AccountRestriction:
+      type: string
+      x-added-in: '2026-11-23'
+      description: '(0.16.0 CU-7) 계정 제한 — NONE 없음, RESTRICTED 이용제한(문의·리뷰 작성 막기), SUSPENDED 정지(주문·로그인까지). 늘 기한(7일)이 있고 지나면 NONE'
+      enum: [NONE, RESTRICTED, SUSPENDED]
+    CustomerRestrictionRecord:
+      type: object
+      x-added-in: '2026-11-23'
+      required: [recordId, restriction, previous, source, actor, createdAt]
+      properties:
+        recordId: { type: string }
+        restriction: { $ref: '#/components/schemas/AccountRestriction' }
+        previous: { $ref: '#/components/schemas/AccountRestriction' }
+        restrictedUntil: { type: [string, 'null'], format: date-time }
+        source: { type: string, enum: [STAFF, AUTO_PROFANITY], description: 'AUTO_PROFANITY = 문의(·AI 채팅) 정지 단어 자동 7일 정지' }
+        reason: { type: [string, 'null'], description: '직원이 적은 사유(자동은 "문의에 위협·거친 말 — 자동 7일 정지")' }
+        actor: { type: string, description: '건 직원 ID 또는 system:case-profanity' }
+        createdAt: { type: string, format: date-time }
     ConsentType:
       type: string
       description: |
@@ -1499,6 +1620,8 @@ components:
         socialProvider: { type: string, enum: [KAKAO, NAVER, APPLE, GOOGLE] }
         joinedAt: { type: string, format: date-time }
         customerNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', x-added-in: '2026-11-20', description: '(0.11.0) 고객번호 6자리 — 고객센터 문의 때 알려 주는 번호(ADR-0070)' }
+        restriction: { $ref: '#/components/schemas/AccountRestriction' }
+        restrictedUntil: { type: [string, 'null'], format: date-time, description: '(0.16.0 CU-7) 이용제한 끝 시각(앱 안내 "~까지 문의·리뷰를 쓸 수 없어요") — NONE 이면 null' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
     AddressInput:
       type: object

@@ -121,6 +121,8 @@ final class CustomerMapping {
                 : Profile.SocialProviderEnum.fromValue(p.socialProvider()))
         .joinedAt(time(p.joinedAt()))
         .customerNumber(p.customerNumber())
+        .restriction(StaffController.restriction(p))
+        .restrictedUntil(StaffController.until(p))
         .version(p.version())
         .phone(p.phone())
         .phoneMasked(com.pmart.customer.domain.ProfileRules.maskPhone(p.phone()))

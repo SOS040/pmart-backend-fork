@@ -62,11 +62,20 @@ public class InternalController implements InternalApi {
       String accountId) {
     ProfileRow p = profiles.profile(accountId);
     ConsentService.PurchaseCheck check = consents.purchaseCheck(accountId);
+    java.time.Instant now = Instant.now();
+    String restriction = p.restrictionAt(now);
     return ResponseEntity.ok(
         new GetAccountStatusInternal200Response()
             .accountId(accountId)
             .status(AccountStatus.fromValue(p.status()))
-            .purchasable(profiles.purchasable(p) && !check.blocksPurchase())
+            // 0.16.0 CU-7 — 정지면 구매 불가
+            .purchasable(
+                profiles.purchasable(p)
+                    && !check.blocksPurchase()
+                    && !com.pmart.customer.domain.RestrictionRules.blocksPurchase(restriction))
+            .restriction(
+                com.pmart.customer.api.generated.model.AccountRestriction.fromValue(restriction))
+            .restrictedUntil(StaffController.until(p))
             .requiredConsentOutdated(check.requiredOutdated())
             .version(p.version())
             .asOf(CustomerMapping.asOf(Instant.now(), p.version(), true)));
@@ -118,7 +127,10 @@ public class InternalController implements InternalApi {
     return ResponseEntity.ok(
         new GetReviewAuthorInternal200Response()
             .accountId(accountId)
-            .displayName(ProfileRules.maskedAuthor(p.nickname())));
+            .displayName(ProfileRules.maskedAuthor(p.nickname()))
+            // 0.16.0 CU-7 — 제한·정지면 review 가 작성을 막는다
+            .restriction(StaffController.restriction(p))
+            .restrictedUntil(StaffController.until(p)));
   }
 
   @Override

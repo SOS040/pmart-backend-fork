@@ -255,7 +255,17 @@ public class ReviewService {
     if (ol != null && ReviewRules.fullyReturned(e.deliveredQty(), ol.returnedQty())) {
       throw rejected("NOT_ELIGIBLE", "받은 수량이 모두 반품된 품목은 리뷰를 쓸 수 없습니다.");
     }
-    String author = Objects.requireNonNullElse(upstreams.authorName(c.subject()), ANONYMOUS_AUTHOR);
+    Upstreams.Author who = upstreams.author(c.subject());
+    if (who != null && who.restrictedUntil() != null) { // 2026-11-23 CU-7 이용제한·정지 고객은 리뷰를 새로 못 쓴다
+      throw new PmartException(
+          "ACCOUNT_RESTRICTED",
+          org.springframework.http.HttpStatus.FORBIDDEN,
+          "운영 정책 위반으로 이용이 제한되어 리뷰를 쓸 수 없어요.",
+          false,
+          java.util.List.of(new PmartException.Detail("until", who.restrictedUntil())));
+    }
+    String author =
+        Objects.requireNonNullElse(who == null ? null : who.displayName(), ANONYMOUS_AUTHOR);
     Map<String, Object> req = new LinkedHashMap<>();
     req.put("orderLineId", lineId);
     req.put("rating", cmd.rating());

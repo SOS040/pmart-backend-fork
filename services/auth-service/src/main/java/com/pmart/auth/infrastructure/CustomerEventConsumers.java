@@ -19,9 +19,19 @@ class CustomerEventConsumers {
   /** commerce.customer.v1 — 바인딩 customerEvents-in-0(설정 저장소). */
   @Bean
   PmartEventConsumer customerEvents(
-      EventConsumers consumers, CustomerWithdrawalService withdrawals) {
+      EventConsumers consumers,
+      CustomerWithdrawalService withdrawals,
+      com.pmart.auth.application.CustomerSuspensions suspensions) {
     return consumers.of(
-        e -> CustomerWithdrawalService.COMPLETED.equals(e.eventType()),
-        withdrawals::onWithdrawalCompleted);
+        e ->
+            CustomerWithdrawalService.COMPLETED.equals(e.eventType())
+                || com.pmart.auth.application.CustomerSuspensions.EVENT.equals(e.eventType()),
+        e -> {
+          if (CustomerWithdrawalService.COMPLETED.equals(e.eventType())) {
+            withdrawals.onWithdrawalCompleted(e);
+          } else {
+            suspensions.onRestricted(e); // 2026-11-23 CU-7 고객 정지
+          }
+        });
   }
 }

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerRestricted.v1.json",
+  "title": "CustomerRestricted",
+  "description": "고객 계정 제한이 바뀐 사실(CU-7, 2026-11-23 — 사용자: 이용제한 = 문의·리뷰 작성 막기, 정지 = 주문·로그인까지, 7일 자동 해제, 영구 정지 없음). restriction NONE 은 직원이 푼 것(기한이 지나 저절로 풀릴 때는 사건 없음 — 구독자는 until 로 판단). 발행 customer. 구독 auth(SUSPENDED 면 로그인·토큰 연장 막고 그 전 토큰 끊음), case(RESTRICTED·SUSPENDED 면 문의 작성 403), notification(고객 알림). 사유 글은 싣지 않는다. 토픽 commerce.customer.v1. aggregate CustomerRestriction(계정마다 따로 센 version).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerRestricted"
+        },
+        "aggregateType": {
+          "const": "CustomerRestriction"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "accountId",
+            "restriction",
+            "previous",
+            "from",
+            "source"
+          ],
+          "properties": {
+            "accountId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "restriction": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "RESTRICTED",
+                "SUSPENDED"
+              ]
+            },
+            "previous": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "RESTRICTED",
+                "SUSPENDED"
+              ]
+            },
+            "from": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "until": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time",
+              "description": "제한 끝 — NONE 이면 null"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "STAFF",
+                "AUTO_PROFANITY"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -64,6 +64,8 @@ public class InquiryService {
   private final ProfanityGuard profanity;
   private final Clock clock;
 
+  private final CustomerRestrictions restrictions; // 2026-11-23 CU-7
+
   public InquiryService(
       InquiryStore store,
       InquiryPhotoStore photos,
@@ -73,7 +75,9 @@ public class InquiryService {
       TransactionTemplate tx,
       EventPublisher events,
       Clock clock,
-      ProfanityGuard profanity) {
+      ProfanityGuard profanity,
+      CustomerRestrictions restrictions) {
+    this.restrictions = restrictions;
     this.profanity = profanity;
     this.store = store;
     this.photos = photos;
@@ -96,6 +100,9 @@ public class InquiryService {
         who.type() == PmartPrincipal.PrincipalType.RIDER
             ? InquiryRules.RIDER
             : InquiryRules.CUSTOMER;
+    if (InquiryRules.CUSTOMER.equals(requesterType)) {
+      restrictions.checkCanWrite(customerId); // 2026-11-23 CU-7 이용제한·정지 고객은 새 문의 403
+    }
     if (!InquiryRules.categoryAllowed(requesterType, cmd.category())) {
       throw new PmartException(
           ErrorCode.VALIDATION_FAILED,

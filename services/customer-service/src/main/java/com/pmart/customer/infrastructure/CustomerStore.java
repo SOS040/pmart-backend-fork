@@ -33,7 +33,22 @@ public class CustomerStore {
       int version,
       @Nullable String phone,
       boolean phoneVerified,
-      @Nullable String customerNumber) {}
+      @Nullable String customerNumber,
+      String restriction,
+      @Nullable Instant restrictionUntil,
+      int restrictionVersion) {
+
+    /** 0.16.0 CU-7 — 지금 효력의 제한(기한 지나면 NONE). */
+    public String restrictionAt(Instant now) {
+      return com.pmart.customer.domain.RestrictionRules.effective(
+          restriction, restrictionUntil, now);
+    }
+
+    public @Nullable Instant restrictionUntilAt(Instant now) {
+      return com.pmart.customer.domain.RestrictionRules.effectiveUntil(
+          restriction, restrictionUntil, now);
+    }
+  }
 
   /** 로그인 제공자가 준 프로필(CustomerAuthenticated, ADR-0024). 값은 scope 에 따라 없을 수 있다. 개인정보 — 로그 금지. */
   public record ProviderProfile(
@@ -142,7 +157,7 @@ public class CustomerStore {
   private static final String PROFILE_SELECT =
       "SELECT account_id, status, social_provider, nickname, name, email, email_verified,"
           + " profile_image_sha256, profile_photo_source, joined_at, version, phone, phone_verified,"
-          + " customer_number FROM customer";
+          + " customer_number, restriction, restriction_until, restriction_version FROM customer";
 
   private static ProfileRow profileRow(java.sql.ResultSet rs, int i) throws java.sql.SQLException {
     return new ProfileRow(
@@ -159,7 +174,12 @@ public class CustomerStore {
         rs.getInt("version"),
         rs.getString("phone"),
         rs.getBoolean("phone_verified"),
-        rs.getString("customer_number"));
+        rs.getString("customer_number"),
+        rs.getString("restriction"),
+        rs.getTimestamp("restriction_until") == null
+            ? null
+            : rs.getTimestamp("restriction_until").toInstant(),
+        rs.getInt("restriction_version"));
   }
 
   /** 직원 찾기(2026-11-20 CU-4): 고객번호 완전 일치. */
