@@ -14,6 +14,8 @@ LAN 전용. 운영 금지. 토큰·비밀번호는 출력하지 않는다.
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --check    # 상태만 보기
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --center mokpo [--check]
       # 2호점 목포 MFC(MFC-MOKPO-01, R-39 2026-11-22): mfcw-mk-pp·qc·rcv 01~10(같은 공용 비밀번호) + 센터 관리자 claude-mfc-sup-mk
+  python -X utf8 deploy/lan/seed/mfc_test_workers.py --center sejong [--check]
+      # 3호점 세종 MFC(MFC-SEJ-01, 2026-11-23): mfcw-sj-pp·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-sj
 """
 import json
 import os
@@ -46,6 +48,9 @@ CENTERS = {  # --center 값 → (센터, 센터 관리자, 표시 이름 앞부�
     "mokpo": ("MFC-MOKPO-01", "claude-mfc-sup-mk", "MFC시험 목포",
               [("mk-pp", "피킹포장", 10, ["PICK", "PACK"]), ("mk-qc", "품질검사", 10, ["INSPECT"]),
                ("mk-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
+    "sejong": ("MFC-SEJ-01", "claude-mfc-sup-sj", "MFC시험 세종",
+               [("sj-pp", "피킹포장", 10, ["PICK", "PACK"]), ("sj-qc", "품질검사", 10, ["INSPECT"]),
+                ("sj-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
 }
 
 
