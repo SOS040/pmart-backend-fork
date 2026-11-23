@@ -4,7 +4,7 @@
 받는 앱: customer-app
 요청: pmart-clients `docs/handoff/customer-app/2026-11-23-backend-coupon-used-at.md`(BR-85)·`2026-11-23-backend-review-order-writable-count.md`(BR-86)
 작성: pmart-backend, 2026-11-23 — 사용자 "응 두개부터 해줘"
-상태: 코드·시험 끝(promotion 단위 7·통합 6, review 단위 15·통합 7 실패 0), **LAN 배포는 사용자 "배포" 뒤**(배포하면 여기에 적는다)
+상태: 코드·시험 끝(promotion 단위 7·통합 6, review 단위 15·통합 7 실패 0), **LAN 배포 2026-11-23**(이미지 a314622e, PC 2 promotion·review). 고객 토큰 API 라 LAN 응답은 실기기에서 확인 부탁
 
 ## BR-85 — promotion-service 0.2.1 `Coupon.usedAt`
 - `GET /me/coupons` 의 `usedAt`(date-time | null): 쿠폰 사용이 **확정된 시각** — 결제 성공 → 주문 확정 때 점유를 확정한 시각(UTC). status USED 일 때만.
