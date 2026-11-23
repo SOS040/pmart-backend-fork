@@ -1137,6 +1137,31 @@ class SearchFlowIT {
   }
 
   /**
+   * 0.12.0 BR-87(사용자 "비슷한 이름 먼저"): 첫 쪽 0건이면 similarItems — 이름 조각이 절반 이상 맞는 상품을 먼저, 그래도 없으면 인기 상품.
+   * 결과가 있으면 null. (영양 시험의 t11 상품을 쓴다 — Order 8 뒤)
+   */
+  @Test
+  @org.junit.jupiter.api.Order(9)
+  void zeroResultsShowSimilarItems() throws Exception {
+    await("?categoryId=t11", r -> r.path("total").asInt() == 4);
+    JsonNode none = search("?q=닭가슴살볶음밥&noCorrection=true");
+    assertThat(none.path("total").asInt()).isZero();
+    assertThat(ids(none)).isEmpty();
+    java.util.List<String> similar = new java.util.ArrayList<>();
+    none.path("similarItems").forEach(i -> similar.add(i.path("productId").asString()));
+    assertThat(similar).as("이름이 비슷한 상품 먼저").startsWith("PRD-N1");
+    // 비슷한 이름이 없으면 인기 상품으로 채운다
+    JsonNode popular = search("?q=쿼크쿼크쿼크&noCorrection=true");
+    assertThat(popular.path("total").asInt()).isZero();
+    assertThat(popular.path("similarItems").size()).isBetween(1, 20);
+    // 결과가 있으면 null
+    JsonNode found = search("?q=닭가슴살");
+    assertThat(found.path("total").asInt()).isPositive();
+    assertThat(found.path("similarItems").isNull() || found.path("similarItems").isMissingNode())
+        .isTrue();
+  }
+
+  /**
    * 할인 중인 상품만(2026-11-22 클라이언트 BR-82, 계약 0.8.0 onSale=true): 대표 SKU 할인이 있고 가격 사본과 같은 priceVersion 인
    * 상품만 — 결과의 salePrice 와 같은 판정. 할인이 끝난(unitDiscount 0) 상품과 가격 버전이 다른 할인은 빠진다.
    */

@@ -378,6 +378,83 @@ public class ProductSearch {
     return out;
   }
 
+  /** 비슷한 상품 상한(0.12.0 BR-87). */
+  public static final int SIMILAR_MAX = 20;
+
+  /**
+   * 0건일 때 비슷한 상품(0.12.0 BR-87, 사용자 "비슷한 이름 먼저"): 검색어의 1~2글자 조각(name.partial) 중 절반 이상이 맞는 상품명을 관련도
+   * 순으로, 없으면 인기 상품(최근 판매 → 별점)으로. 센터 취급 거르기·판매중지 제외·이름·상품 버전 있음은 검색과 같다. 할인가·이름 경로를 붙인다.
+   */
+  public List<Hit> similar(String q, @Nullable String mfcId, boolean includeNotCarried) {
+    String center = mfcId == null || mfcId.isBlank() ? null : mfcId;
+    List<Object> filter = new ArrayList<>();
+    if (center != null && !includeNotCarried) {
+      filter.add(Map.of("term", Map.of("carriedMfcIds", center)));
+    }
+    filter.add(Map.of("exists", Map.of("field", "name")));
+    filter.add(Map.of("exists", Map.of("field", "productVersion")));
+    List<Object> mustNot = List.of(Map.of("term", Map.of("saleState", SearchRules.SALE_STOPPED)));
+    Map<String, Object> bool = new LinkedHashMap<>();
+    bool.put(
+        "must",
+        List.of(
+            Map.of(
+                "match",
+                Map.of(
+                    "name.partial",
+                    Map.of("query", q, "operator", "or", "minimum_should_match", "50%")))));
+    bool.put("should", List.of(Map.of("match", Map.of("name", Map.of("query", q, "boost", 2)))));
+    bool.put("filter", filter);
+    bool.put("must_not", mustNot);
+    List<Hit> out =
+        similarHits(
+            Map.of("bool", bool), List.of(Map.of("_score", Map.of("order", "desc"))), center);
+    if (out.isEmpty()) { // 이름이 비슷한 것이 없으면 인기 상품
+      out =
+          similarHits(
+              Map.of("bool", Map.of("filter", filter, "must_not", mustNot)),
+              sort(Sort.POPULAR, false),
+              center);
+    }
+    return out;
+  }
+
+  private List<Hit> similarHits(Object query, List<Object> sort, @Nullable String center) {
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("size", SIMILAR_MAX);
+    req.put("_source", HIT_FIELDS);
+    req.put("query", query);
+    req.put("sort", sort);
+    List<Hit> out = new ArrayList<>();
+    for (JsonNode h : index.search(SearchIndex.PRODUCTS, req).path("hits").path("hits")) {
+      out.add(withPath(hit(h.path("_source"), center)));
+    }
+    return withDiscounts(out);
+  }
+
+  /** 검색어가 상품명에 형태소로 그대로 맞는 상품이 있는가(0.12.0 BR-88 — 정상 상품명이면 결과가 적어도 다른 검색어를 제안하지 않는다). 판매중지 제외. */
+  public boolean nameMatches(String q) {
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("size", 0);
+    req.put("track_total_hits", 1);
+    req.put(
+        "query",
+        Map.of(
+            "bool",
+            Map.of(
+                "must",
+                List.of(Map.of("match", Map.of("name", Map.of("query", q, "operator", "and")))),
+                "must_not",
+                List.of(Map.of("term", Map.of("saleState", SearchRules.SALE_STOPPED))))));
+    return index
+            .search(SearchIndex.PRODUCTS, req)
+            .path("hits")
+            .path("total")
+            .path("value")
+            .asLong(0)
+        > 0;
+  }
+
   /** 현재 조건(검색어·카테고리, 판매중지 제외)에서 선택 가능한 승인 속성 값과 건수 — 색인 {@code filters}("그룹.옵션") 집계(2026-11-04). */
   public List<Facet> facets(@Nullable String q, @Nullable String categoryId) {
     return facets(q, categoryId, false);

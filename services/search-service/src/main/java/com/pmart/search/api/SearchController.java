@@ -107,9 +107,20 @@ public class SearchController implements SearchApi {
     // 최근 검색어·인기 키워드 기록(첫 페이지·고객/비회원 토큰만, 비동기 — 실패해도 검색 응답은 그대로, 2026-11-17).
     // 결과 수는 원래 검색어의 것(0건 검색어 집계 — ADR-0073)
     activity.searched(PmartPrincipal.current().orElse(null), q, cursor, o.originalTotal());
+    // 0.12.0 BR-87 — 첫 쪽이 0건(교정해도 0건)이면 비슷한 상품
+    List<ProductSearch.Hit> similar =
+        cursor == null && r.total() == 0 && SearchRules.normalizeQuery(q) != null
+            ? search.similar(
+                SearchRules.normalizeQuery(q), mfcId, Boolean.TRUE.equals(includeNotCarried))
+            : List.of();
     // 0.10.0 목록 판매 가능 여부 — mfcId 를 줬을 때만, 실패는 UNKNOWN(ProductAvailability)
     java.util.Map<String, String> avail =
-        availability.of(r.items().stream().map(ProductSearch.Hit::productId).toList(), mfcId);
+        availability.of(
+            java.util.stream.Stream.concat(r.items().stream(), similar.stream())
+                .map(ProductSearch.Hit::productId)
+                .distinct()
+                .toList(),
+            mfcId);
     return ResponseEntity.ok(
         new SearchResult()
             .query(SearchRules.normalizeQuery(q))
@@ -132,6 +143,10 @@ public class SearchController implements SearchApi {
             .correctedQuery(o.correctedQuery())
             .suggestedQuery(o.suggestedQuery())
             .appliedFilters(r.appliedFilters())
+            .similarItems(
+                similar.isEmpty()
+                    ? null
+                    : similar.stream().map(h -> withAvailability(hit(h), h, avail)).toList())
             .asOf(asOf()));
   }
 
@@ -179,6 +194,17 @@ public class SearchController implements SearchApi {
                                 .toList()))
             .toList();
     return ResponseEntity.ok(new GetSearchFilters200Response().attributes(attributes).asOf(asOf()));
+  }
+
+  /** 0.10.0 판매 가능 여부를 붙인다 — mfcId 가 없으면(avail null) 비운다. */
+  private static SearchHit withAvailability(
+      SearchHit sh, ProductSearch.Hit h, java.util.@Nullable Map<String, String> avail) {
+    return sh.availability(
+        avail == null
+            ? null
+            : SearchHit.AvailabilityEnum.fromValue(
+                avail.getOrDefault(
+                    h.productId(), com.pmart.search.domain.ListAvailability.UNKNOWN)));
   }
 
   private static SearchHit hit(ProductSearch.Hit h) {

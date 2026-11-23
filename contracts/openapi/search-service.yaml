@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
+    0.12.0(2026-11-23, 고객앱 BR-87·BR-88 — 사용자 "추천대로, 비슷한 이름 먼저"): ① 첫 쪽이 0건이고 고친 검색어로도 0건이면 `similarItems`(최대 20개) —
+    검색어 낱말 일부만 맞는 상품명(1~2글자 조각, 절반 이상 일치 — 관련도 순)을 먼저, 그래도 없으면 인기 상품(최근 판매). 센터(mfcId) 거르기·판매중지 제외는 검색과 같다.
+    카드는 items 와 같은 SearchHit(할인·availability 포함). 결과가 있으면 null. ② `suggestedQuery`(결과가 적을 때 제안)는 원래 검색어가 상품명에 형태소로 그대로
+    맞으면 주지 않는다 — "서울우유"처럼 정상 이름이 결과가 적다는 이유만으로 "우유" 제안을 받지 않게(0건 자동 교정 correctedQuery 는 그대로).
     0.11.0(2026-11-23, 사용자 "영양 넣어줘"·"알레르기는 필터 빼고 표시·검색만" — products-v9): 결과 항목 `nutrition`(100g·100mL 기준 열량·나트륨·당류·
     단백질·지방, product-content 0.6.0 표시사항 값)·`allergens`(함유 contains·같은 시설 제조 mayContain·원문). 없으면 null = 모름(없음이 아니다).
     영양 필터 키 `nutrition` 값 저당·저나트륨·고단백 — 같은 키 값은 **모두 만족**(AND). 기준값은 설정(`pmart.search.nutrition.*` — 식품 표시기준 강조표시:
@@ -429,6 +433,10 @@ components:
         correctedQuery: { type: [string, 'null'], description: '(0.4.0) 원래 검색어 결과가 0건이라 이 검색어로 고쳐 찾은 결과다 — 앱 "○○ 검색 결과예요 · 원래 검색어로 찾기(noCorrection=true)"' }
         suggestedQuery: { type: [string, 'null'], description: '(0.4.0) 결과가 적어 제안하는 검색어(결과는 원래 검색어 것) — 앱 "혹시 ○○를 찾으셨나요?"' }
         appliedFilters: { type: array, items: { type: string } }
+        similarItems:
+          type: [array, 'null']
+          items: { $ref: '#/components/schemas/SearchHit' }
+          description: '(0.12.0 BR-87) 첫 쪽 0건(교정해도 0건)일 때만 — 이름이 비슷한 상품 먼저, 없으면 인기 상품. 최대 20개, 다음 쪽 없음. 결과가 있으면 null'
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     FilterAttribute:
       type: object

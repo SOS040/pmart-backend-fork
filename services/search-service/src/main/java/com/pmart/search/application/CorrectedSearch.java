@@ -107,7 +107,11 @@ public class CorrectedSearch {
           ? new Outcome(again, 0, fixed.get(), null)
           : new Outcome(r, 0, null, null);
     }
-    return new Outcome(r, r.total(), null, again.total() > r.total() ? fixed.get() : null);
+    // 0.12.0 BR-88 — 원래 검색어가 상품명에 그대로 맞으면(정상 이름) 결과가 적어도 제안하지 않는다
+    if (again.total() <= r.total() || search.nameMatches(query)) {
+      return new Outcome(r, r.total(), null, null);
+    }
+    return new Outcome(r, r.total(), null, fixed.get());
   }
 
   public List<String> suggestions(String q, int limit) {
