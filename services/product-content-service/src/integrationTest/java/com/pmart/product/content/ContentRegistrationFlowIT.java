@@ -419,6 +419,18 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     content.put("returnGuide", null);
     content.put("notices", List.of("원산지: 국내산", "용량: 180g"));
     content.put("rating", null);
+    // 0.6.0 표시사항 값(2026-11-23) — 100g 기준 영양(모르는 칸은 없음)·알레르기 함유/같은 시설
+    content.put(
+        "nutrition", Map.of("basisUnit", "G", "energyKcal", 206, "sodiumMg", 277, "proteinG", 13));
+    content.put(
+        "allergens",
+        Map.of(
+            "contains",
+            List.of("닭고기"),
+            "mayContain",
+            List.of("땅콩"),
+            "text",
+            "닭고기 함유 / 땅콩을 사용한 제품과 같은 제조시설에서 제조"));
     return Map.of(
         "format",
         "seed-v1",
@@ -502,6 +514,9 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(draftA.path("images")).hasSize(4);
     assertThat(draftA.path("images").path(0).path("role").asString()).isEqualTo("MAIN");
     assertThat(draftA.path("input").path("notices").path(0).asString()).isEqualTo("원산지: 국내산");
+    assertThat(draftA.path("input").path("nutrition").path("energyKcal").asInt()).isEqualTo(206);
+    assertThat(draftA.path("input").path("allergens").path("mayContain").path(0).asString())
+        .isEqualTo("땅콩");
     assertThat(draftA.path("submittable").asBoolean()).isFalse();
     assertThat(draftA.path("problems").toString()).contains("PRODUCT_NOT_LINKED");
     assertThat(draftB.path("problems").toString()).contains("MAIN_IMAGE_REQUIRED");
@@ -591,6 +606,14 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(content.status()).isEqualTo(200);
     JsonNode c = content.body();
     assertThat(c.path("name").asString()).isEqualTo("[냉동]호밍스 부대찌개 180g");
+    // 0.6.0 표시사항 값은 승인 게시본에 그대로 — 모르는 칸(당류·지방)은 null
+    assertThat(c.path("nutrition").path("basisUnit").asString()).isEqualTo("G");
+    assertThat(c.path("nutrition").path("proteinG").asDouble()).isEqualTo(13.0);
+    assertThat(
+            c.path("nutrition").path("sugarsG").isNull()
+                || c.path("nutrition").path("sugarsG").isMissingNode())
+        .isTrue();
+    assertThat(c.path("allergens").path("contains").path(0).asString()).isEqualTo("닭고기");
     assertThat(c.path("contentVersion").asInt()).isEqualTo(1);
     assertThat(c.path("productVersion").asInt()).isEqualTo(1);
     // BR-44: 게시된 상품에 새 초안을 만들면 기존 게시 콘텐츠 갱신(UPDATE, 지금 게시 버전 1)
@@ -665,6 +688,18 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     Res cards = get("/product-contents?productIds=" + productId + ",PRD-none", CUSTOMER);
     assertThat(cards.body().path("items")).hasSize(1);
     assertThat(cards.body().path("missing").path(0).asString()).isEqualTo("PRD-none");
+    assertThat(cards.body().path("items").path(0).path("nutrition").path("energyKcal").asInt())
+        .isEqualTo(206);
+    assertThat(
+            cards
+                .body()
+                .path("items")
+                .path(0)
+                .path("allergens")
+                .path("mayContain")
+                .path(0)
+                .asString())
+        .isEqualTo("땅콩");
     // 0.5.0(2026-11-22 products-v8): include=search 일 때만 원산지·설명 — 원산지 구분은 상세 notices 의 "원산지:" 줄
     JsonNode noSearch = cards.body().path("items").path(0).path("search");
     assertThat(noSearch.isNull() || noSearch.isMissingNode()).isTrue();
@@ -836,6 +871,31 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
         post(
             "/content-drafts",
             Map.of("productId", productId, "name", "삼다수 500mL", "notices", List.of("용량: 500mL")));
+    // 0.6.0 표시사항 값 검사 — 법정 이름이 아닌 알레르기(계란 → 알류로 적어야 함)·음수 영양값은 400
+    assertThat(
+            post(
+                    "/content-drafts",
+                    Map.of(
+                        "productId",
+                        productId,
+                        "name",
+                        "삼다수 500mL",
+                        "allergens",
+                        Map.of("contains", List.of("계란"))))
+                .status())
+        .isEqualTo(400);
+    assertThat(
+            post(
+                    "/content-drafts",
+                    Map.of(
+                        "productId",
+                        productId,
+                        "name",
+                        "삼다수 500mL",
+                        "nutrition",
+                        Map.of("basisUnit", "ML", "sodiumMg", -1)))
+                .status())
+        .isEqualTo(400);
     assertThat(created.status()).isEqualTo(201);
     String draftId = created.body().path("draftId").asString();
     assertThat(created.body().path("problems").toString()).contains("MAIN_IMAGE_REQUIRED");

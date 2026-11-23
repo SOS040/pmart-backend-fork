@@ -434,7 +434,8 @@ public class ContentDraftService {
             in.returnGuide(),
             noticesJson,
             optionsJson,
-            incoming);
+            incoming,
+            labelFacts(in));
 
     Optional<DraftRow> open = drafts.findOpen(in.sourceSystem(), in.sourceKey());
     DraftRow target;
@@ -481,6 +482,7 @@ public class ContentDraftService {
     Instant at = now();
     String notices = json(in.noticesOrEmpty());
     String options = json(in.optionsOrEmpty());
+    String facts = labelFacts(in);
     DraftRow row =
         new DraftRow(
             "CD-" + UUID.randomUUID(),
@@ -501,7 +503,8 @@ public class ContentDraftService {
                 in.returnGuide(),
                 notices,
                 options,
-                List.of()),
+                List.of(),
+                facts),
             null,
             null,
             null,
@@ -509,7 +512,8 @@ public class ContentDraftService {
             1,
             op.id(),
             at,
-            at);
+            at,
+            facts);
     drafts.insert(row);
     return row;
   }
@@ -530,8 +534,26 @@ public class ContentDraftService {
         in.returnGuide(),
         json(in.noticesOrEmpty()),
         json(in.optionsOrEmpty()),
+        labelFacts(in),
         now());
     refreshHash(d.draftId());
+  }
+
+  /**
+   * 표시사항 값(0.6.0) 저장 모양 — 둘 다 없으면 null. 법정 이름이 아닌 알레르기·음수 영양값 등은 400 VALIDATION_FAILED(지어낸 값·오타를
+   * 막는다).
+   */
+  private @Nullable String labelFacts(ContentInput in) {
+    if (in.nutrition() == null && in.allergens() == null) {
+      return null;
+    }
+    List<String> problems =
+        com.pmart.product.content.domain.LabelFacts.problems(in.nutrition(), in.allergens());
+    if (!problems.isEmpty()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, String.join(" ", problems));
+    }
+    return json(
+        new com.pmart.product.content.domain.LabelFacts.Stored(in.nutrition(), in.allergens()));
   }
 
   /** 명시 productId 는 수신한 상품이어야 한다. 없으면 원천 키로 이미 받은 상품을 찾는다. */
@@ -620,7 +642,12 @@ public class ContentDraftService {
             json(
                 java.util.Arrays.asList(
                     mapper.readValue(d.options(), ContentInput.Option[].class))),
-            slots(images(draftId)));
+            slots(images(draftId)),
+            d.labelFacts() == null
+                ? null
+                : json(
+                    mapper.readValue(
+                        d.labelFacts(), com.pmart.product.content.domain.LabelFacts.Stored.class)));
     if (!hash.equals(d.contentHash())) {
       drafts.updateContentHash(draftId, hash, now());
     }

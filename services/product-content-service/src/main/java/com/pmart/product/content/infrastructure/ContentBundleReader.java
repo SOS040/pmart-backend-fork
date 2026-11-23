@@ -132,7 +132,16 @@ public class ContentBundleReader {
             text(c, "storageGuide"),
             text(c, "returnGuide"),
             notices,
-            options);
+            options,
+            // 0.6.0 표시사항 값(seed-v1 content 블록의 같은 이름, 없으면 null)
+            c.hasNonNull("nutrition")
+                ? mapper.treeToValue(
+                    c.get("nutrition"), com.pmart.product.content.domain.LabelFacts.Nutrition.class)
+                : null,
+            c.hasNonNull("allergens")
+                ? mapper.treeToValue(
+                    c.get("allergens"), com.pmart.product.content.domain.LabelFacts.Allergens.class)
+                : null);
     return new SeedContent(id, input, images(id, c.path("images"), files));
   }
 

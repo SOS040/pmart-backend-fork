@@ -16,7 +16,34 @@ public record ContentInput(
     @Nullable String storageGuide,
     @Nullable String returnGuide,
     @Nullable List<String> notices,
-    @Nullable List<Option> options) {
+    @Nullable List<Option> options,
+    LabelFacts.@Nullable Nutrition nutrition,
+    LabelFacts.@Nullable Allergens allergens) {
+
+  /** 0.6.0 이전 모양(표시사항 값 없음). */
+  public ContentInput(
+      @Nullable String sourceSystem,
+      @Nullable String sourceKey,
+      @Nullable String productId,
+      @Nullable String name,
+      @Nullable String description,
+      @Nullable String storageGuide,
+      @Nullable String returnGuide,
+      @Nullable List<String> notices,
+      @Nullable List<Option> options) {
+    this(
+        sourceSystem,
+        sourceKey,
+        productId,
+        name,
+        description,
+        storageGuide,
+        returnGuide,
+        notices,
+        options,
+        null,
+        null);
+  }
 
   /** 판매 옵션 라벨(실제 구매 단위는 product 의 sku). */
   public record Option(String label, @Nullable String capacityLabel) {}

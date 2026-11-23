@@ -36,7 +36,8 @@ public class DraftStore {
       int version,
       String createdBy,
       Instant createdAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      @Nullable String labelFacts) {}
 
   public record ImageRow(
       String imageId,
@@ -82,8 +83,8 @@ public class DraftStore {
     jdbc.update(
         "INSERT INTO content_draft (draft_id, source_system, source_key, product_id, state, name, description,"
             + " storage_guide, return_guide, notices, options, content_hash, draft_hash, approval_id, content_version,"
-            + " problems, version, created_by, created_at, updated_at)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?::jsonb,?::jsonb,?,?,?,?,?::jsonb,?,?,?,?)",
+            + " problems, version, created_by, created_at, updated_at, label_facts)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?::jsonb,?::jsonb,?,?,?,?,?::jsonb,?,?,?,?,?::jsonb)",
         r.draftId(),
         r.sourceSystem(),
         r.sourceKey(),
@@ -103,7 +104,8 @@ public class DraftStore {
         r.version(),
         r.createdBy(),
         Timestamp.from(r.createdAt()),
-        Timestamp.from(r.updatedAt()));
+        Timestamp.from(r.updatedAt()),
+        r.labelFacts());
   }
 
   /** DRAFT 상태에서 입력 교체(재적재·수정). */
@@ -117,11 +119,13 @@ public class DraftStore {
       @Nullable String returnGuide,
       String notices,
       String options,
+      @Nullable String labelFacts,
       Instant at) {
     int n =
         jdbc.update(
             "UPDATE content_draft SET product_id = ?, name = ?, description = ?, storage_guide = ?, return_guide = ?,"
-                + " notices = ?::jsonb, options = ?::jsonb, version = version + 1, updated_at = ?"
+                + " notices = ?::jsonb, options = ?::jsonb, label_facts = ?::jsonb, version = version + 1,"
+                + " updated_at = ?"
                 + " WHERE draft_id = ? AND version = ? AND state = 'DRAFT'",
             productId,
             name,
@@ -130,6 +134,7 @@ public class DraftStore {
             returnGuide,
             notices,
             options,
+            labelFacts,
             Timestamp.from(at),
             draftId,
             expectedVersion);
@@ -409,7 +414,8 @@ public class DraftStore {
         rs.getInt("version"),
         rs.getString("created_by"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("label_facts"));
   }
 
   private static ImageRow image(ResultSet rs) throws SQLException {

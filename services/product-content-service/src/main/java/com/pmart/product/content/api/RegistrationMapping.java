@@ -57,6 +57,11 @@ class RegistrationMapping {
     input.put("returnGuide", d.returnGuide());
     input.put("notices", mapper.readTree(d.notices()));
     input.put("options", mapper.readTree(d.options()));
+    if (d.labelFacts() != null) { // 0.6.0 표시사항 값
+      tools.jackson.databind.JsonNode f = mapper.readTree(d.labelFacts());
+      input.put("nutrition", f.get("nutrition"));
+      input.put("allergens", f.get("allergens"));
+    }
     var problems = drafts.problems(d);
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("draftId", d.draftId());

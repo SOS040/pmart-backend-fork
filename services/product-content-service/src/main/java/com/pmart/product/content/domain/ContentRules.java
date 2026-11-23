@@ -104,6 +104,20 @@ public final class ContentRules {
       String noticesJson,
       String optionsJson,
       List<ImageSlot> images) {
+    return contentHash(
+        name, description, storageGuide, returnGuide, noticesJson, optionsJson, images, null);
+  }
+
+  /** 표시사항 값(0.6.0 label_facts)이 있으면 해시에 더한다 — 없으면 0.6.0 이전과 같은 해시(이미 있는 초안이 "바뀜"으로 보이지 않게). */
+  public static String contentHash(
+      @Nullable String name,
+      @Nullable String description,
+      @Nullable String storageGuide,
+      @Nullable String returnGuide,
+      String noticesJson,
+      String optionsJson,
+      List<ImageSlot> images,
+      @Nullable String labelFactsJson) {
     List<ImageSlot> sorted = new ArrayList<>(images);
     sorted.sort(
         Comparator.comparing((ImageSlot i) -> i.role().ordinal())
@@ -113,14 +127,24 @@ public final class ContentRules {
       sig.append(i.role()).append(':').append(i.sortOrder()).append(':').append(i.sha256());
       sig.append(';');
     }
-    return sha256(
-        nz(name),
-        nz(description),
-        nz(storageGuide),
-        nz(returnGuide),
-        noticesJson,
-        optionsJson,
-        sig.toString());
+    return labelFactsJson == null
+        ? sha256(
+            nz(name),
+            nz(description),
+            nz(storageGuide),
+            nz(returnGuide),
+            noticesJson,
+            optionsJson,
+            sig.toString())
+        : sha256(
+            nz(name),
+            nz(description),
+            nz(storageGuide),
+            nz(returnGuide),
+            noticesJson,
+            optionsJson,
+            sig.toString(),
+            labelFactsJson);
   }
 
   /** 제출 시 잠그는 해시: 내용 + 연결 상품. 승인 행의 draftHash 와 대조한다. */

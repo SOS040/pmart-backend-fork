@@ -188,7 +188,8 @@ public class ContentApprovalApplier {
             d.notices(),
             d.options(),
             mapper.writeValueAsString(images),
-            at));
+            at,
+            d.labelFacts()));
     drafts.markPublished(d.draftId(), approvalId, version, at);
 
     Map<String, Object> payload = new LinkedHashMap<>();

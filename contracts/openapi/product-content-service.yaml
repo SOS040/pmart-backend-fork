@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
+    0.6.0(2026-11-23, 검색 영양·알레르기 — 사용자 "영양 넣어줘"·"알레르기도 넣어주는데 필터는 빼고 표시·검색만"): 콘텐츠에 표시사항 값 `nutrition`
+    (100g 또는 100mL 기준 열량·나트륨·당류·단백질·지방 — 표시사항에서 읽은 값만, 모르는 칸은 null)과 `allergens`(함유 contains·같은 시설 제조 mayContain·
+    원문 text — 법정 알레르기 유발물질 이름으로)를 둔다. 초안 입력(`ContentDraftInput`, seed-v1 content 블록 같은 이름)으로 받고 DISPLAY 승인으로 게시,
+    상세·카드에 그대로. **값이 없으면 "모름"이다 — 없음(무첨가·알레르기 없음)이 아니다.** 지어내지 않는다.
     0.5.0(2026-11-22, 검색 products-v8 — 사용자 "원산지는 필터와 검색, 설명은 낮은 비중 검색, 영양은 넣지 않음"): 카드 일괄 조회
     `GET /product-contents?include=search` 면 카드마다 `search`(originType DOMESTIC·IMPORTED·null, originText, description)를 붙인다.
     원산지는 게시 콘텐츠 notices 의 "원산지:" 줄을 읽어 나눈다 — 적힌 원산지가 모두 국내면 DOMESTIC, 하나라도 외국이면 IMPORTED,
@@ -532,6 +536,26 @@ components:
         returnGuide: { type: [string, 'null'] }
         notices: { type: array, items: { type: string, maxLength: 500 }, description: '"항목: 값" 고시 정보' }
         options: { type: array, items: { $ref: '#/components/schemas/ContentOption' } }
+        nutrition: { $ref: '#/components/schemas/Nutrition' }
+        allergens: { $ref: '#/components/schemas/Allergens' }
+    Nutrition:
+      type: [object, 'null']
+      description: '(0.6.0) 표시사항 영양정보를 100g(basisUnit G) 또는 100mL(ML) 기준으로 환산한 값. 표시에 없거나 "1g 미만"처럼 정확한 값이 아니면 그 칸은 null'
+      required: [basisUnit]
+      properties:
+        basisUnit: { type: string, enum: [G, ML] }
+        energyKcal: { type: [number, 'null'], minimum: 0 }
+        sodiumMg: { type: [number, 'null'], minimum: 0 }
+        sugarsG: { type: [number, 'null'], minimum: 0 }
+        proteinG: { type: [number, 'null'], minimum: 0 }
+        fatG: { type: [number, 'null'], minimum: 0 }
+    Allergens:
+      type: [object, 'null']
+      description: '(0.6.0) 표시사항 알레르기 유발물질. 이름은 법정 표시 이름(알류·우유·메밀·땅콩·대두·밀·고등어·게·새우·돼지고기·복숭아·토마토·아황산류·호두·닭고기·쇠고기·오징어·조개류·잣). 비어 있거나 null 이면 모름 — 없다는 뜻이 아니다'
+      properties:
+        contains: { type: array, items: { type: string }, description: 함유 }
+        mayContain: { type: array, items: { type: string }, description: '같은 제조시설에서 제조(혼입 가능) — 함유와 겹치지 않음' }
+        text: { type: [string, 'null'], maxLength: 1000, description: 표시사항 원문 }
     ContentImage:
       type: object
       required: [imageId, role, sortOrder]
@@ -714,6 +738,8 @@ components:
         rating: { $ref: '#/components/schemas/RatingSummary', description: '(0.3.0 BR-63) 평점 집계(rating-summary)와 같은 값 — 상세·카드 모두' }
         options: { type: array, items: { $ref: '#/components/schemas/SaleOption' } }
         contentVersion: { type: integer }
+        nutrition: { $ref: '#/components/schemas/Nutrition' }
+        allergens: { $ref: '#/components/schemas/Allergens' }
         search: { $ref: '#/components/schemas/CardSearchFields' }
     CardSearchFields:
       type: object

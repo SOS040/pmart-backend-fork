@@ -40,7 +40,8 @@ public class CatalogStore {
       String notices,
       String options,
       String images,
-      Instant publishedAt) {}
+      Instant publishedAt,
+      @Nullable String labelFacts) {}
 
   private final JdbcTemplate jdbc;
   private final NamedParameterJdbcTemplate named;
@@ -118,8 +119,8 @@ public class CatalogStore {
   public void insertContent(ContentRow c) {
     jdbc.update(
         "INSERT INTO product_content (product_id, content_version, product_version, draft_id, approval_id, name,"
-            + " description, storage_guide, return_guide, notices, options, images, published_at)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?::jsonb,?::jsonb,?::jsonb,?)",
+            + " description, storage_guide, return_guide, notices, options, images, published_at,"
+            + " label_facts) VALUES (?,?,?,?,?,?,?,?,?,?::jsonb,?::jsonb,?::jsonb,?,?::jsonb)",
         c.productId(),
         c.contentVersion(),
         c.productVersion(),
@@ -132,7 +133,8 @@ public class CatalogStore {
         c.notices(),
         c.options(),
         c.images(),
-        Timestamp.from(c.publishedAt()));
+        Timestamp.from(c.publishedAt()),
+        c.labelFacts());
   }
 
   public Optional<ContentRow> latestContent(String productId) {
@@ -216,6 +218,7 @@ public class CatalogStore {
         rs.getString("notices"),
         rs.getString("options"),
         rs.getString("images"),
-        rs.getTimestamp("published_at").toInstant());
+        rs.getTimestamp("published_at").toInstant(),
+        rs.getString("label_facts"));
   }
 }

@@ -400,6 +400,14 @@ public class ContentQueries {
         .ifPresent(i -> m.put("mainImage", i));
     m.put("options", options(c, p));
     m.put("contentVersion", c.contentVersion());
+    // 0.6.0 표시사항 값 — 없으면 null(모름, 없음이 아니다)
+    JsonNode facts = c.labelFacts() == null ? null : mapper.readTree(c.labelFacts());
+    m.put(
+        "nutrition",
+        facts == null || facts.path("nutrition").isNull() ? null : facts.get("nutrition"));
+    m.put(
+        "allergens",
+        facts == null || facts.path("allergens").isNull() ? null : facts.get("allergens"));
     return m;
   }
 
