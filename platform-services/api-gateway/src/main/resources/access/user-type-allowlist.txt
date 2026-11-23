@@ -288,6 +288,7 @@ GET /api/v1/return-inspections/{returnInspectionId} OPERATOR
 GET /api/v1/return-receipts OPERATOR
 GET /api/v1/return-receipts/{returnReceiptId} OPERATOR
 GET /api/v1/review-photos/{photoId} PUBLIC
+GET /api/v1/review-reports OPERATOR
 GET /api/v1/reviews/{reviewId} PUBLIC
 GET /api/v1/rider-appeals OPERATOR
 GET /api/v1/rider-assignments OPERATOR
@@ -605,7 +606,9 @@ POST /api/v1/return-handovers/{deliveryId}/code-reissues OPERATOR
 POST /api/v1/return-inspections OPERATOR
 POST /api/v1/return-receipts OPERATOR
 POST /api/v1/review-photos CUSTOMER
+POST /api/v1/review-reports/{reviewId}/resolutions OPERATOR
 POST /api/v1/reviews CUSTOMER
+POST /api/v1/reviews/{reviewId}/reports CUSTOMER
 POST /api/v1/rider-appeals/{appealId}/decisions OPERATOR
 POST /api/v1/rider-auth/logouts RIDER
 POST /api/v1/rider-auth/naver-token-exchanges PUBLIC
