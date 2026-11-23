@@ -4,7 +4,7 @@
 받는 앱: customer-app
 요청: pmart-clients `docs/handoff/customer-app/2026-11-23-backend-search-zero-similar-and-typo-only.md`
 작성: pmart-backend, 2026-11-23 — 사용자 "추천대로 해주고 비슷한 이름 먼저로"
-상태: 코드·시험 끝(search check 통과, 새 IT `SearchFlowIT.zeroResultsShowSimilarItems`), **LAN 배포는 사용자 "배포" 뒤**
+상태: 코드·시험 끝(search check 통과, 새 IT `SearchFlowIT.zeroResultsShowSimilarItems`), **LAN 배포 2026-11-23**(search 이미지 dfcff6d2 — 아보카도·없는 말 → 인기 20, 바나나킥 → 바나나맛우유, 닭가슴살샐러드 → 닭가슴살 15)
 
 ## BR-87 — search 0.12.0 `SearchResult.similarItems`
 - Q1 답: 이름 `similarItems` 그대로.
