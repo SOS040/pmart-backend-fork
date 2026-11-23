@@ -83,6 +83,7 @@ public class FaqsController implements FaqsApi {
                                     .ListFaqFeedbackStats200ResponseItemsInner()
                                 .faqId(x.faqId())
                                 .category(x.category())
+                                .categoryTitle(x.categoryTitle())
                                 .question(x.question())
                                 .helpfulCount(x.helpful())
                                 .notHelpfulCount(x.notHelpful())

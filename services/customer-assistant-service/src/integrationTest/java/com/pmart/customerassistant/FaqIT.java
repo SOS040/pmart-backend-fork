@@ -216,6 +216,7 @@ class FaqIT extends AssistantITBase {
     assertThat(row.path("helpfulCount").asInt()).isEqualTo(1);
     assertThat(row.path("notHelpfulCount").asInt()).isEqualTo(1);
     assertThat(row.path("question").asString()).isNotBlank();
+    assertThat(row.path("categoryTitle").asString()).isNotBlank(); // 0.4.1 CA-3
     assertThat(get(me, "/api/v1/customer-assistant/faq-feedback", "customer-app").status())
         .isEqualTo(403);
     String picker = TestJwt.operator("op-mfc", List.of("MFC_WORKER"), List.of());

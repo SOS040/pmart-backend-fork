@@ -1,13 +1,14 @@
 openapi: 3.1.0
 info:
   title: customer-assistant-service
-  version: 0.4.0
+  version: 0.4.1
   x-stage: 3
   x-stage-note: 고객앱 RAG 1차(2026-11-09, ADR-0051) — 고객 공개 안내 문서 질의응답 + 근거 표시 + 내 주문 상태 안내 + 고객센터 문의 연결.
   description: |
     0.4.0(2026-11-23, 고객앱 BR-91 — 사용자 "2번으로"(PC 1 이 넣음, PC 4 확인)·"추천대로"(글 없이)): FAQ 답 의견 [도움이 되었어요]/[수정이 필요해요].
     `POST /customer-assistant/faqs/{faqId}/feedback` {helpful} — 회원 고객, 한 고객 한 FAQ 하나(다시 누르면 마지막 값으로 바꿈 — 같은 요청을 다시 보내도 안전), 글은 받지 않는다.
     FAQ 항목 `myFeedback`(회원이 누른 값, 없으면 null). 운영 집계 `GET /customer-assistant/faq-feedback`(CS_AGENT·OPERATOR_ADMIN) — 고객 화면엔 숫자 없음.
+    0.4.1(2026-11-23 CA-3 — PC 2 요청): 집계 줄에 `categoryTitle`(안내 문서 제목 — FaqItem.categoryTitle 과 같은 값, 지금 색인에 없으면 null). 직원 화면이 분류 이름을 고정하지 않게.
     faqId 는 같은 문서·같은 질문이면 재색인해도 같아 의견이 이어진다(질문 문구를 고치면 새 faqId — 옛 의견은 집계에 옛 id 로 남는다).
     고객앱 고객센터 채팅의 AI 상담(RAG). 승인된 고객 공개 안내 문서(`docs/business/customer-faq/`)만 검색해 근거와 함께 답한다.
     운영자 문서·답변은 다른 서비스(ai-assistant-service)가 갖고, 이 서비스는 그 DB 에 접속할 계정이 없다(ADR-0051).
@@ -356,6 +357,7 @@ paths:
                       properties:
                         faqId: { type: string }
                         category: { type: [string, 'null'] }
+                        categoryTitle: { type: [string, 'null'], description: '(0.4.1 CA-3) 분류 이름(안내 문서 제목) — 지금 색인에 없는 FAQ 면 null' }
                         question: { type: [string, 'null'], description: 지금 색인의 질문(없어진 FAQ 면 null) }
                         helpfulCount: { type: integer }
                         notHelpfulCount: { type: integer }

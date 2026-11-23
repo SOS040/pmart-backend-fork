@@ -39,6 +39,7 @@ public class FaqService {
   public record FeedbackStat(
       String faqId,
       @Nullable String category,
+      @Nullable String categoryTitle,
       @Nullable String question,
       int helpful,
       int notHelpful,
@@ -75,6 +76,7 @@ public class FaqService {
               return new FeedbackStat(
                   x.faqId(),
                   r == null ? null : r.category(),
+                  r == null ? null : r.categoryTitle(),
                   r == null ? null : r.question(),
                   x.helpful(),
                   x.notHelpful(),
