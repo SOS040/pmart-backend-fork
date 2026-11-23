@@ -18,6 +18,8 @@ LAN 전용. 운영 금지. 토큰·비밀번호는 출력하지 않는다.
       # 3호점 세종 MFC(MFC-SEJ-01, 2026-11-23): mfcw-sj-pp·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-sj
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --center chuncheon [--check]
       # 4호점 춘천 MFC(MFC-CHC-01, 2026-11-24): mfcw-cc-pp·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-cc
+  python -X utf8 deploy/lan/seed/mfc_test_workers.py --center busan-namgu [--check]
+      # 5호점 부산남구 MFC(MFC-BNG-01, 2026-11-24): mfcw-bn-pp·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-bn
 """
 import json
 import os
@@ -56,6 +58,9 @@ CENTERS = {  # --center 값 → (센터, 센터 관리자, 표시 이름 앞부�
     "chuncheon": ("MFC-CHC-01", "claude-mfc-sup-cc", "MFC시험 춘천",
                   [("cc-pp", "피킹포장", 10, ["PICK", "PACK"]), ("cc-qc", "품질검사", 10, ["INSPECT"]),
                    ("cc-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
+    "busan-namgu": ("MFC-BNG-01", "claude-mfc-sup-bn", "MFC시험 부산남구",
+                    [("bn-pp", "피킹포장", 10, ["PICK", "PACK"]), ("bn-qc", "품질검사", 10, ["INSPECT"]),
+                     ("bn-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
 }
 
 
