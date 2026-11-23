@@ -4,7 +4,7 @@
 받는 앱: customer-app
 요청: pmart-clients `docs/handoff/customer-app/2026-11-23-backend-faq-feedback.md`
 작성: pmart-backend, 2026-11-23 — 사용자 "2번으로"(customer-assistant 는 PC 4 영역이지만 PC 1 이 넣음, PC 4 확인), Q1 "추천대로"
-상태: 코드·시험 끝(customer-assistant 단위 139·통합 30), **LAN 배포는 사용자 "배포" 뒤**
+상태: 코드·시험 끝(customer-assistant 단위 139·통합 30), **LAN 배포 2026-11-23**(customer-assistant 0.4.0·V3, 이미지 eaa73751). 회원 토큰으로 누르기는 LAN 에서 아직 안 해 봄(통합 시험으로 확인)
 
 ## R1 — customer-assistant 0.4.0 `POST /customer-assistant/faqs/{faqId}/feedback` (회원, Idempotency-Key·X-Source-System)
 - 본문 `{helpful: boolean}` — true 도움이 되었어요, false 수정이 필요해요.
