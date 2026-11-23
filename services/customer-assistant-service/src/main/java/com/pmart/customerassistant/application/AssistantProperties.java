@@ -1,6 +1,7 @@
 package com.pmart.customerassistant.application;
 
 import java.time.Duration;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -455,6 +456,20 @@ public class AssistantProperties {
 
     /** REALTIME_DATA_REQUIRED 응답에 붙일 최근 주문 수. */
     private int recentOrders = 5;
+
+    /**
+     * CA-2 막기 단어(욕설 — case {@code pmart.cases.blocked-words} 와 같은 목록). 질문에 있으면 422 BLOCKED_WORDS(정지
+     * 없음). 목록 정본은 설정 저장소(사용자 승인 뒤 PC 1). 비우면 없음.
+     */
+    private List<String> blockedWords = List.of();
+
+    public List<String> getBlockedWords() {
+      return blockedWords;
+    }
+
+    public void setBlockedWords(@Nullable List<String> blockedWords) {
+      this.blockedWords = blockedWords == null ? List.of() : List.copyOf(blockedWords);
+    }
 
     public @Nullable String getOrderServiceBaseUrl() {
       return orderServiceBaseUrl;
