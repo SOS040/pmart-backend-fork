@@ -46,7 +46,9 @@ import tools.jackson.databind.json.JsonMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.assistant.customer.order-service-base-url=${order.url}",
-      "pmart.assistant.product-search.base-url=${search.url}"
+      "pmart.assistant.product-search.base-url=${search.url}",
+      // CA-2: 목록 정본은 설정 저장소(PC 1) — 시험 사본을 정본과 같게 두려고 시험 단어는 여기서만 준다
+      "pmart.assistant.customer.blocked-words=시험막기말"
     })
 @Import({TestJwtConfiguration.class, AssistantITBase.TestBeans.class})
 @org.wiremock.spring.EnableWireMock({

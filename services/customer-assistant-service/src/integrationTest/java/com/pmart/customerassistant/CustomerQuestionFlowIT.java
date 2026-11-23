@@ -233,6 +233,31 @@ class CustomerQuestionFlowIT extends AssistantITBase {
   }
 
   @Test
+  void blockedWordIs422AndNothingIsStoredOrCounted() {
+    ingest();
+    String me = "CU-blk";
+    String tok = customer(me);
+    String k = key();
+    // 띄어 쓰거나 문장부호를 끼워도 잡는다
+    Http r = ask(tok, k, "봉투값 시험 막기.말 얼마예요?");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(422);
+    assertThat(r.text("code")).isEqualTo("BLOCKED_WORDS");
+    assertThat(r.body().toString()).contains("쓸 수 없는 말").doesNotContain("시험막기말");
+    // 답하지 않고 아무것도 남기지 않는다 — 요청 제한에도 세지 않는다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM customer_answer WHERE asker_subject = ?", Integer.class, me))
+        .isZero();
+    for (int i = 0; i < 5; i++) {
+      assertThat(ask(tok, key(), "시험막기말 " + i).status()).isEqualTo(422);
+    }
+    // 같은 키로 고쳐 보내면 정상 답
+    Http fixed = ask(tok, k, "봉투값은 얼마인가요?");
+    assertThat(fixed.status()).isEqualTo(200);
+    assertThat(fixed.text("state")).isEqualTo("ANSWERED");
+  }
+
+  @Test
   void noActiveIndexIs422ThenRetrySucceeds() {
     String tok = customer("CU-noidx");
     String k = key();

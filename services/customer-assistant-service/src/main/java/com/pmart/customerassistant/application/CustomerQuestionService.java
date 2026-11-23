@@ -6,6 +6,7 @@ import com.pmart.common.web.PmartException;
 import com.pmart.customerassistant.domain.OrderStatusText;
 import com.pmart.customerassistant.domain.ProductAnswerText;
 import com.pmart.customerassistant.domain.ProductQuestion;
+import com.pmart.customerassistant.domain.ProfanityRules;
 import com.pmart.customerassistant.domain.QuestionClassifier;
 import com.pmart.customerassistant.domain.QuestionClassifier.Classification;
 import com.pmart.customerassistant.domain.QuestionClassifier.Intent;
@@ -142,6 +143,7 @@ public class CustomerQuestionService {
       String question,
       @Nullable String orderId) {
     PmartPrincipal p = requireCustomerAndSource(principal, sourceHeader);
+    rejectBlocked(question);
     String src = sourceHeader;
     String order = orderId == null || orderId.isBlank() ? null : orderId.strip();
     String requestHash = RequestHashing.requestHash(question, order);
@@ -205,6 +207,22 @@ public class CustomerQuestionService {
       return reread(existing.answerId(), p, ReadMode.POST);
     }
     return null;
+  }
+
+  /**
+   * CA-2 막기 단어(욕설): 받지 않는다 — 422 BLOCKED_WORDS, 정지 없음. 멱등 기록·요청 제한보다 먼저 불러 질문·요청 해시를 남기지 않는다(같은 키로
+   * 고쳐 보내도 된다). 질문·걸린 단어는 응답·로그에 싣지 않는다.
+   */
+  private void rejectBlocked(String question) {
+    if (ProfanityRules.contains(props.getCustomer().getBlockedWords(), question)) {
+      log.info("customer-assistant question rejected reason=blocked_words");
+      throw new PmartException(
+          "BLOCKED_WORDS",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "쓸 수 없는 말이 들어 있어요. 고쳐서 다시 보내 주세요.",
+          false,
+          List.of());
+    }
   }
 
   private void checkRateLimit(String subject, Instant now) {
