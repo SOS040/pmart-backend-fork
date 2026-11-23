@@ -69,10 +69,17 @@ spring:
   # 함수를 더하거나 빼면 코드(PmartEventConsumer 빈)와 함께 바꾼다 — 빠지면 기동이 멈춘다. 바꾸면 재시작한다
   cloud:
     function:
-      definition: authEvents;orderEvents
+      definition: authEvents;orderEvents;caseEvents
     stream:
       bindings:
         authEvents-in-0:
           destination: platform.auth.v1
         orderEvents-in-0:
           destination: order.order.v1
+        caseEvents-in-0: # case CustomerProfanityDetected → 7일 정지(2026-11-23 CU-7)
+          destination: platform.case.v1
+      kafka:
+        bindings:
+          caseEvents-in-0:
+            consumer:
+              start-offset: earliest # CU-7 전에 쌓인 정지 단어 사건도 읽는다 — 7일 지난 것은 버리고 남은 기간만(사용자 2026-11-23)
