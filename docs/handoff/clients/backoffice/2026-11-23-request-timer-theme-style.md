@@ -14,3 +14,6 @@
 2. 미리보기가 있으면 두 모양을 그림으로(고객 앱 초안 `고객앱 ui/06_홈_타이머테마` C·D).
 3. 초안 읽기(`GET /storefront/layout-drafts/{id}`)에도 `timerStyle` 이 온다 — 고칠 때 그대로 돌려보낸다.
 - MD 탭 타이머(`tabs[].showTimer`)는 모양이 하나라 그대로다.
+
+## 상태
+- 2026-11-23: 백오피스 반영 확인 — pmart-clients 2202eca7(편성 남은 시간 모양 라벨형·띠형)·c0785e15(미리보기 색), LAN backoffice c0785e15(web-sync 맞음). 고객 앱 54a854f4. 홈 편성 8 에 두 모양 실제 사용(LABEL·BAND).
