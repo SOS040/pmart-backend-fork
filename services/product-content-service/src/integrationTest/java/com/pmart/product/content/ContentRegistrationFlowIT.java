@@ -690,6 +690,22 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
     assertThat(cards.body().path("missing").path(0).asString()).isEqualTo("PRD-none");
     assertThat(cards.body().path("items").path(0).path("nutrition").path("energyKcal").asInt())
         .isEqualTo(206);
+    // 0.7.0 view=availability — productId·options[sku, availability] 만(이름·가격·평점 없음)
+    JsonNode slim =
+        get("/product-contents?productIds=" + productId + ",PRD-none&view=availability", null)
+            .body();
+    assertThat(slim.path("items").path(0).path("productId").asString()).isEqualTo(productId);
+    assertThat(slim.path("items").path(0).path("options").path(0).path("sku").asString())
+        .isEqualTo(sku);
+    assertThat(
+            slim.path("items").path(0).path("name").isNull()
+                || slim.path("items").path(0).path("name").isMissingNode())
+        .isTrue();
+    assertThat(
+            slim.path("items").path(0).path("rating").isNull()
+                || slim.path("items").path(0).path("rating").isMissingNode())
+        .isTrue();
+    assertThat(slim.path("missing").path(0).asString()).isEqualTo("PRD-none");
     assertThat(
             cards
                 .body()

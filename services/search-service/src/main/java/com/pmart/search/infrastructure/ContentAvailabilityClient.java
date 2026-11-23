@@ -69,6 +69,8 @@ public class ContentAvailabilityClient {
                               u.path("/api/v1/product-contents")
                                   .queryParam("productIds", ids)
                                   .queryParam("mfcId", mfcId)
+                                  .queryParam(
+                                      "view", "availability") // product-content 0.7.0 가벼운 보기
                                   .build())
                       .retrieve()
                       .body(String.class));

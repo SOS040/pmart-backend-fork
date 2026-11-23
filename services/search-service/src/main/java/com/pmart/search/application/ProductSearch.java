@@ -107,6 +107,25 @@ public class ProductSearch {
     }
   }
 
+  /** 결과 항목을 만드는 데 읽는 색인 칸({@link #hit}) — 이것만 가져온다. */
+  static final List<String> HIT_FIELDS =
+      List.of(
+          "productId",
+          "name",
+          "imageUrl",
+          "categoryIds",
+          "representativeSku",
+          "basePrice",
+          "priceVersion",
+          "saleState",
+          "productVersion",
+          "primaryCategoryId",
+          "carriedMfcIds",
+          "ratingAverage",
+          "ratingCount",
+          "nutrition",
+          "allergens");
+
   private final SearchIndex index;
   private final CategoryTreeClient categories;
   private final Clock clock;
@@ -158,6 +177,7 @@ public class ProductSearch {
             ? SearchRules.MAX_ON_SALE_SKUS
             : SearchRules.pageSize(from, size)); // 1순위 ① — from + size 가 ES 창(1만)을 넘지 않게
     req.put("track_total_hits", true);
+    req.put("_source", HIT_FIELDS); // 결과에 쓰는 칸만(설명·원산지 글·초성 등 긴 칸은 찾기에만 — 3순위 ⑥, 2026-11-23)
     Map<String, List<String>> rest = new LinkedHashMap<>(filters);
     List<String> nut = rest.remove(LabelRules.NUTRITION_KEY);
     req.put(

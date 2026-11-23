@@ -168,6 +168,51 @@ public class ContentQueries {
   }
 
   /**
+   * 목록 품절 판정용 가벼운 카드(계약 0.7.0 {@code view=availability}) — productId·options[sku, availability] 만.
+   * 가격·평점·이미지·표시사항은 만들지 않는다(search·storefront 가 쪽마다 부른다). 미게시는 missing.
+   */
+  public Map<String, Object> availabilityCards(List<String> productIds, @Nullable String mfcId) {
+    List<String> ids = productIds.stream().distinct().toList();
+    Map<String, ContentRow> contents =
+        catalog.latestContents(ids).stream()
+            .collect(Collectors.toMap(ContentRow::productId, Function.identity()));
+    Map<String, ProjectionRow> projections =
+        catalog.projections(ids).stream()
+            .collect(Collectors.toMap(ProjectionRow::productId, Function.identity()));
+    List<Map<String, Object>> items = new ArrayList<>();
+    List<String> missing = new ArrayList<>();
+    for (String id : ids) {
+      ContentRow c = contents.get(id);
+      if (c == null) {
+        missing.add(id);
+        continue;
+      }
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("productId", id);
+      m.put("options", options(c, projections.get(id)));
+      items.add(m);
+    }
+    withAvailability(items, mfcId);
+    for (Map<String, Object> m : items) { // sku·availability 만 남긴다
+      @SuppressWarnings("unchecked")
+      List<Map<String, Object>> opts = (List<Map<String, Object>>) m.get("options");
+      List<Map<String, Object>> slim = new ArrayList<>();
+      for (Map<String, Object> o : opts) {
+        Map<String, Object> s = new LinkedHashMap<>();
+        s.put("sku", o.get("sku"));
+        s.put("availability", o.get("availability"));
+        slim.add(s);
+      }
+      m.put("options", slim);
+    }
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("items", items);
+    out.put("missing", missing);
+    out.put("asOf", Map.of("asOf", clock.instant().toString(), "freshness", "CURRENT"));
+    return out;
+  }
+
+  /**
    * withSearch 면 카드마다 {@code search}(원산지 구분·원산지 글·설명 — 검색 색인용, 계약 0.5.0). 원산지는 notices 의 "원산지:"
    * 줄({@link OriginRules}), 판단 못 하면 originType null. 영양은 싣지 않는다(2026-11-22 사용자).
    */

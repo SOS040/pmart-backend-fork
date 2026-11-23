@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
+    0.7.0(2026-11-23, 검색·홈 목록 판매 가능 여부가 느림 — 사용자 "다 하면 될 것"): 카드 일괄 조회 `view=availability` 면 카드마다 `productId`·`options[{sku, availability}]` 만
+    (이름·이미지·가격·평점·표시사항·search 없음 — 가격 조회·평점 집계를 하지 않는다). mfcId 와 같이 쓴다(없으면 availability 도 비어 있다). 쓰는 곳 search·storefront 목록 품절 판정.
     0.6.0(2026-11-23, 검색 영양·알레르기 — 사용자 "영양 넣어줘"·"알레르기도 넣어주는데 필터는 빼고 표시·검색만"): 콘텐츠에 표시사항 값 `nutrition`
     (100g 또는 100mL 기준 열량·나트륨·당류·단백질·지방 — 표시사항에서 읽은 값만, 모르는 칸은 null)과 `allergens`(함유 contains·같은 시설 제조 mayContain·
     원문 text — 법정 알레르기 유발물질 이름으로)를 둔다. 초안 입력(`ContentDraftInput`, seed-v1 content 블록 같은 이름)으로 받고 DISPLAY 승인으로 게시,
@@ -80,6 +82,7 @@ paths:
           schema: { type: array, maxItems: 100, items: { type: string } }
         - { name: mfcId, in: query, description: 현재 쇼핑 주소의 담당 센터. 주면 옵션별 취급·가용(availability)을 채운다, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: include, in: query, x-added-in: '0.5.0', description: 'search 면 카드에 search(원산지·설명 — 검색 색인용)를 붙인다', schema: { type: string, enum: [search] } }
+        - { name: view, in: query, x-added-in: '0.7.0', description: 'availability 면 productId·options[sku, availability] 만(가격·평점 조회 안 함 — 목록 품절 판정용)', schema: { type: string, enum: [availability] } }
       responses:
         '200':
           description: OK (미게시 상품은 items에서 제외하고 missing에 나열)

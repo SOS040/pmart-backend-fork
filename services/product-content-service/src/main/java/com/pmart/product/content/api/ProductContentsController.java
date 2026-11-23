@@ -44,10 +44,15 @@ public class ProductContentsController implements ProductContentsApi {
 
   @Override
   public ResponseEntity<ListProductContents200Response> listProductContents(
-      List<String> productIds, @Nullable String mfcId, @Nullable String include) {
+      List<String> productIds,
+      @Nullable String mfcId,
+      @Nullable String include,
+      @Nullable String view) {
     return ResponseEntity.ok(
         mapper.convertValue(
-            queries.cards(productIds, mfcId, "search".equals(include)),
+            "availability".equals(view) // 0.7.0 목록 품절 판정용 가벼운 보기
+                ? queries.availabilityCards(productIds, mfcId)
+                : queries.cards(productIds, mfcId, "search".equals(include)),
             ListProductContents200Response.class));
   }
 }
