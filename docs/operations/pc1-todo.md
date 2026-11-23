@@ -16,6 +16,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] 나중(ADR-0082 범위 밖): 할인가 기준 가격순·할인율순 정렬, 상품 쿠폰·1+1.
 
 ## 1. 사용자 확인·결정 기다림
+- [ ] **HR-5 `activeOnly`(재직자만)** — 2026-11-24 사용자 "정해진 것만" → 사번 찾기(hr 0.10.0)만 만들고 이것은 결정 대기. 요청서 "있으면 좋음"(`service-requests/hr-service.md` HR-5). PC 1 추천: 기본은 지금처럼 퇴사자 포함, `activeOnly=true` 면 재직(ACTIVE·SUSPENDED?) 직원만 — 후임·넘길 사람 고르기용. 정할 것: 넣을지, SUSPENDED(정지) 직원을 재직으로 볼지.
 - [x] **O-1 전달 실패 표시** — 2026-11-21 사용자 "추천대로"(나): 이미 동작(2026-11-19 BR-61 — 배송 목록 FAILED). 코드 변경 없음.
 - [x] Docker Hub·LAN 배포 — 2026-11-18: Jib 은 push 토큰(`registry.env`)으로, employee-auth·hr(459135d8)·claim·고객앱 갭 A 7개·api-gateway 배포, 고객 FAQ 색인(63건).
 - [x] **CL-2** — 2026-11-21 사용자 "추천대로": claim 0.12.0 `pickup.feeRefundOnCancel`(REFUND·NO_REFUND·AGENT_CHOOSES·null).
