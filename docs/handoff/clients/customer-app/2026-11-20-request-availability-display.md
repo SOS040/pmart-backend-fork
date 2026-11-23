@@ -26,3 +26,4 @@
 
 ## 상태
 - 2026-11-20: 요청. 서버 2 는 방식 결정 뒤 구현.
+- 2026-11-23: 서버 2 구현(사용자 "모든 옵션 품절일 때만"·"조회 때 바로 묻기") — search 0.10.0 `SearchHit.availability`·storefront 0.13.0 `DisplayItem.availability`. 회신 `2026-11-23-reply-list-availability-banner-ends.md`. LAN 배포 전.

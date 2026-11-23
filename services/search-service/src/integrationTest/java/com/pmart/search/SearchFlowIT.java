@@ -56,7 +56,7 @@ import tools.jackson.databind.ObjectMapper;
     @ConfigureWireMock(
         name = "content",
         // 카드(Logstash 가 부름)·카테고리 트리(서비스가 부름)를 한 WireMock 이 맡는다(경로가 서로 다르다)
-        baseUrlProperties = {"pmart.search.product-base-url"}))
+        baseUrlProperties = {"pmart.search.product-base-url", "pmart.search.content-base-url"}))
 @Testcontainers
 @org.junit.jupiter.api.TestMethodOrder(org.junit.jupiter.api.MethodOrderer.OrderAnnotation.class)
 class SearchFlowIT {
@@ -424,6 +424,68 @@ class SearchFlowIT {
     assertThat(withNotCarried.path("items").path(2).path("carried").asBoolean()).isTrue();
     assertThat(ids(await("?mfcId=MFC-2", r -> r.path("total").asInt() == 1)))
         .containsExactly("PRD-1");
+    // 목록 판매 가능 여부(0.10.0, 2026-11-23 "모든 옵션 품절일 때만"): 쪽 상품으로 카드 일괄 조회(mfcId) 한 번.
+    // PRD-1 = 취급 옵션 둘 다 품절 → SOLD_OUT, PRD-2 = 하나라도 가능 → AVAILABLE, PRD-3 = 카드 없음(미게시) → UNKNOWN
+    assertThat(atMfc.path("items").path(0).path("availability").isNull()).isFalse();
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/product-contents"))
+            .withQueryParam("mfcId", equalTo("MFC-1"))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "items",
+                                List.of(
+                                    Map.of(
+                                        "productId",
+                                        "PRD-1",
+                                        "options",
+                                        List.of(
+                                            Map.of(
+                                                "availability",
+                                                Map.of("carried", true, "state", "SOLD_OUT")),
+                                            Map.of(
+                                                "availability",
+                                                Map.of("carried", true, "state", "SOLD_OUT")))),
+                                    Map.of(
+                                        "productId",
+                                        "PRD-2",
+                                        "options",
+                                        List.of(
+                                            Map.of(
+                                                "availability",
+                                                Map.of("carried", true, "state", "SOLD_OUT")),
+                                            Map.of(
+                                                "availability",
+                                                Map.of("carried", true, "state", "AVAILABLE"))))),
+                                "missing",
+                                List.of("PRD-3"))))));
+    content.resetRequests(); // 검색 한 번에 카드 조회 한 번(쪽 상품을 묶어서)
+    JsonNode avail = search("?mfcId=MFC-1&includeNotCarried=true");
+    assertThat(ids(avail)).containsExactly("PRD-3", "PRD-2", "PRD-1");
+    assertThat(avail.path("items").findValuesAsString("availability"))
+        .containsExactly("UNKNOWN", "AVAILABLE", "SOLD_OUT");
+    content.verify(
+        1,
+        WireMock.getRequestedFor(urlPathEqualTo("/api/v1/product-contents"))
+            .withQueryParam("mfcId", equalTo("MFC-1"))
+            .withQueryParam("productIds", equalTo("PRD-3,PRD-2,PRD-1")));
+    // 카드 조회 실패면 모두 UNKNOWN(품절이라고 하지 않음), 검색은 성공
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/product-contents"))
+            .withQueryParam("mfcId", equalTo("MFC-2"))
+            .atPriority(1)
+            .willReturn(aResponse().withStatus(503)));
+    JsonNode failed = search("?mfcId=MFC-2");
+    assertThat(failed.path("items").findValuesAsString("availability")).containsOnly("UNKNOWN");
+    // mfcId 가 없으면 칸을 비운다
+    assertThat(
+            all.path("items").path(0).path("availability").isNull()
+                || all.path("items").path(0).path("availability").isMissingNode())
+        .isTrue();
     // 모르는 센터: 아무 상품도 취급하지 않음(빈 결과, total 0)
     JsonNode unknown = search("?mfcId=MFC-NONE");
     assertThat(ids(unknown)).isEmpty();

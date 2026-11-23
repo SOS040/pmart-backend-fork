@@ -40,11 +40,14 @@ public class StorefrontController implements StorefrontApi {
   private final StorefrontQueries queries;
   private final com.pmart.storefront.application.LayoutService layouts;
   private final java.time.Clock clock;
+  private final com.pmart.storefront.application.ProductAvailability availability;
 
   public StorefrontController(
       StorefrontQueries queries,
       com.pmart.storefront.application.LayoutService layouts,
-      java.time.Clock clock) {
+      java.time.Clock clock,
+      com.pmart.storefront.application.ProductAvailability availability) {
+    this.availability = availability;
     this.queries = queries;
     this.layouts = layouts;
     this.clock = clock;
@@ -52,7 +55,7 @@ public class StorefrontController implements StorefrontApi {
 
   @Override
   public ResponseEntity<HomeLayout> getHome(@Nullable String mfcId, @Nullable TabKey tab) {
-    return ResponseEntity.ok(layout(tab == null ? TabKey.HOME : tab, mfcId));
+    return ResponseEntity.ok(fill(layout(tab == null ? TabKey.HOME : tab, mfcId), mfcId));
   }
 
   /** MD 탭(0.9.0) — 기간 안 탭의 테마 영역(넣은 순서). 없거나 기간 밖이면 404. */
@@ -77,6 +80,7 @@ public class StorefrontController implements StorefrontApi {
         }
       }
     }
+    fillSections(sections, mfcId);
     return ResponseEntity.ok(
         new com.pmart.storefront.api.generated.model.CustomTabLayout()
             .layoutVersion(layouts.currentVersion())
@@ -86,7 +90,7 @@ public class StorefrontController implements StorefrontApi {
 
   @Override
   public ResponseEntity<HomeLayout> getTab(TabKey tabKey, @Nullable String mfcId) {
-    return ResponseEntity.ok(layout(tabKey, mfcId));
+    return ResponseEntity.ok(fill(layout(tabKey, mfcId), mfcId));
   }
 
   @Override
@@ -106,7 +110,9 @@ public class StorefrontController implements StorefrontApi {
           List.of());
     }
     if (sectionId.startsWith("T-")) {
-      return ResponseEntity.ok(themeItems(sectionId, mfcId, size, cursor));
+      ListSectionItems200Response theme = themeItems(sectionId, mfcId, size, cursor);
+      fillItems(theme.getItems(), mfcId);
+      return ResponseEntity.ok(theme);
     }
     DisplayStore.Kind kind = kindOf(sectionId);
     if (layoutVersion != null && layoutVersion != current) {
@@ -124,6 +130,7 @@ public class StorefrontController implements StorefrontApi {
     for (int n = 0; n < page.items().size(); n++) {
       items.add(item(page.items().get(n), filtered, kind, page.offset() + n + 1, newSince));
     }
+    fillItems(items, mfcId);
     return ResponseEntity.ok(
         new ListSectionItems200Response()
             .sectionId(sectionId)
@@ -274,7 +281,16 @@ public class StorefrontController implements StorefrontApi {
             com.pmart.storefront.api.generated.model.Banner.LinkTypeEnum.fromValue(b.linkType()))
         .linkRef(b.linkRef())
         .sortOrder(b.sortOrder())
-        .groupId(b.groupId());
+        .groupId(b.groupId())
+        // 0.13.0 — 앱이 저장해 둔 배너(SPLASH)를 기간 뒤에 그리지 않게
+        .startsAt(
+            b.startsAt() == null
+                ? null
+                : java.time.OffsetDateTime.ofInstant(b.startsAt(), java.time.ZoneOffset.UTC))
+        .endsAt(
+            b.endsAt() == null
+                ? null
+                : java.time.OffsetDateTime.ofInstant(b.endsAt(), java.time.ZoneOffset.UTC));
   }
 
   /** 0.10.0 배너 묶음 영역(HOME_INLINE, 기간 안 배너가 없으면 null). */
@@ -520,6 +536,41 @@ public class StorefrontController implements StorefrontApi {
                 ? DisplayItem.BadgeEnum.NEW
                 : DisplayItem.BadgeEnum.NONE;
     return item(i, filtered).badge(badge).rank(kind == DisplayStore.Kind.RANKING ? position : null);
+  }
+
+  private HomeLayout fill(HomeLayout h, @Nullable String mfcId) {
+    fillSections(h.getSections(), mfcId);
+    return h;
+  }
+
+  private void fillSections(@Nullable List<Section> sections, @Nullable String mfcId) {
+    if (sections == null) {
+      return;
+    }
+    fillItems(
+        sections.stream()
+            .flatMap(
+                x -> x.getItems() == null ? java.util.stream.Stream.empty() : x.getItems().stream())
+            .toList(),
+        mfcId);
+  }
+
+  /** 0.13.0 목록 판매 가능 여부 — 응답에 담긴 상품을 모아 한 번 묻는다(ProductAvailability, mfcId 없으면 비움·실패는 UNKNOWN). */
+  private void fillItems(@Nullable List<DisplayItem> items, @Nullable String mfcId) {
+    if (items == null || items.isEmpty()) {
+      return;
+    }
+    java.util.Map<String, String> avail =
+        availability.of(items.stream().map(DisplayItem::getProductId).distinct().toList(), mfcId);
+    if (avail == null) {
+      return;
+    }
+    for (DisplayItem i : items) {
+      i.setAvailability(
+          DisplayItem.AvailabilityEnum.fromValue(
+              avail.getOrDefault(
+                  i.getProductId(), com.pmart.storefront.domain.ListAvailability.UNKNOWN)));
+    }
   }
 
   /** filtered = mfcId 로 미취급을 뺐다 → 남은 것은 취급(true). 아니면 판정 안 함(null). */

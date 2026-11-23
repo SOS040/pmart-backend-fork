@@ -58,14 +58,14 @@
 - **API**: 검색/필터, 운영 결과 0건 검색어·동의어 규칙 조회(MD·OPERATOR_ADMIN). 동의어 바꾸기는 approval-service 승인(`SEARCH_SYNONYM`)으로만.
 - **동의어 승인 반영(ADR-0073 단계 B, 2026-11-20)**: 구독 `ApprovalDecided`(platform.approval.v1, 바인딩 `approvalEvents` — SEARCH_SYNONYM 만, inbox 대신 승인 ID·규칙 버전으로 멱등) → ES 동의어 집합 갱신(재색인 없음) → 발행 `ApplicationReceiptRecorded`(outbox 없이 Kafka 로 바로).
 - **구독**: `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`(표시 가격·가격순), `SkuHandlingChanged`(센터 취급 — 상품 carriedMfcIds, 2026-11-05), `SkuDisplayDiscountChanged`(표시 할인 → 색인 `sku-discounts`, 결과 대표 SKU 에 붙임 — 2026-11-21 ADR-0082 4단계) — **search 소유 Logstash 파이프라인**(`services/search-service/src/main/logstash/search-index.conf`, 소비 그룹은 `deploy/lan/elastic/search-index.env`)이 받아 색인한다. 서비스 자체는 조회만(ADR-0031). `CategoryChanged` 는 아직 쓰지 않는다(이름 경로는 공개 트리 조회).
-- **의존**: Elasticsearch 8.18 + nori(색인, ADR-0031), Logstash(색인 주체), product-content(공개 카드 API — Logstash 가 이름·이미지 보강), product(공개 카테고리 트리). 취급 여부는 동기 조회가 아니라 `SkuHandlingChanged` 색인 사본(2026-11-05).
+- **의존**: Elasticsearch 8.18 + nori(색인, ADR-0031), Logstash(색인 주체), product-content(공개 카드 API — Logstash 가 이름·이미지 보강), product(공개 카테고리 트리). 취급 여부는 동기 조회가 아니라 `SkuHandlingChanged` 색인 사본(2026-11-05). 목록 판매 가능 여부 `availability`(계약 0.10.0, 2026-11-23)는 mfcId 를 줄 때 검색 요청마다 product-content 카드 일괄 조회(`GET /product-contents?productIds=&mfcId=` — 그 뒤 mfc-inventory 가용, search 기준 2 hop) — 응답 1초 넘거나 실패면 UNKNOWN.
 
 ### storefront-service `[1단계 기본]`
 - **소유**: 홈 진열·배너·테마·랭킹/신상품 탭 구성과 발효 버전, 추천(3차).
 - **소유하지 않음**: 상품·가격·재고 정본.
 - **발행**: `ProductRankingSignalsChanged`(ADR-0072), `ApplicationReceiptRecorded`(진열 편성 DISPLAY 승인 반영 회신, 2026-11-20 ADR-0075).
 - **구독**: `ApprovalDecided`(전시 승인 BO-05 — DISPLAY·targetService storefront-service 만, 2026-11-20 ADR-0075 구현), `ProductVersionPublished`, `ProductContentPublished`, `ProductSaleStateChanged`, `PriceVersionEffective`, `SkuDisplayDiscountChanged`(진열 할인가, 2026-11-21 ADR-0082 4단계).
-- **의존**: product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강, ADR-0021), S3 호환 저장소(배너 이미지, 버킷 pmart-storefront — ADR-0016).
+- **의존**: product-content(공개 카드 API — 콘텐츠 사건에 없는 이름·이미지 보강, ADR-0021. 2026-11-23 계약 0.13.0 부터 mfcId 를 준 홈·탭·섹션 응답마다 카드 일괄 조회로 목록 판매 가능 여부 `availability` — 실패면 UNKNOWN), S3 호환 저장소(배너 이미지, 버킷 pmart-storefront — ADR-0016).
 
 ### pricing-service `[1단계]`
 - **소유**: SKU별 기본 판매가격 버전(전사 동일, 센터 예외 없음), 효력일, 견적 계산(기본가·선택 오퍼→기간 프로모션→상품쿠폰→장바구니쿠폰 순서; 2026-11-21 ADR-0082 부터 기본가→기간 할인→장바구니 쿠폰, 오퍼·상품쿠폰은 아직).

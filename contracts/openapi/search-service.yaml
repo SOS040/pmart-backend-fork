@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
+    0.10.0(2026-11-23, 백엔드 요청 availability-display §2 — 사용자 "모든 옵션 품절일 때만"·"조회 때 바로 묻기"): 검색 결과 항목 `availability`
+    (AVAILABLE·SOLD_OUT·UNKNOWN). mfcId 를 줬을 때만 — product-content 카드 일괄 조회(옵션별 mfc-inventory 가용 사본)를 그 쪽 상품으로 한 번 불러,
+    그 센터가 취급하는 옵션 중 하나라도 팔 수 있으면 AVAILABLE, 취급하는 옵션이 모두 품절이면 SOLD_OUT, 그 밖(취급 옵션 없음·모름·조회 실패·시간 초과)은 UNKNOWN.
+    mfcId 가 없으면 null. 구매·예약 보장이 아니다(상세·장바구니와 같은 사본). 정렬·거르기에는 쓰지 않는다.
     0.9.0(2026-11-22, 클라이언트 BR-83 "할인 목록 필터·할인율순" — 사용자 "가로 진행해줘"): `GET /search/filters?onSale=true` 는 할인 중인 상품만으로 속성·건수를 센다(검색 onSale 과 같은 판정).
     정렬 `DISCOUNT_RATE`(할인율 높은 순 → 할인가 낮은 순 → 상품 ID) — **onSale=true 일 때만**(아니면 400). 할인 상품(상한 1000) 안에서 서버가 줄 세운다.
     0.8.0(2026-11-22, 클라이언트 BR-82 "할인 상품 목록"): `GET /search/products?onSale=true` — 대표 SKU 에 지금 기간 할인이 있는 상품만(결과의 salePrice 가 붙는 것과 같은 판정:
@@ -378,6 +382,10 @@ components:
         discountEndsAt: { type: [string, 'null'], format: date-time, description: '(0.6.0) 행사 끝' }
         saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
         carried: { type: [boolean, 'null'], description: 'mfcId 지정 시 그 센터의 대표 SKU 취급 여부(색인 사본, 취급 레코드 없음 = false). mfcId 가 없으면 null' }
+        availability:
+          type: [string, 'null']
+          enum: [AVAILABLE, SOLD_OUT, UNKNOWN, null]
+          description: '(0.10.0) mfcId 지정 시 그 센터의 판매 가능 여부 — 취급 옵션 하나라도 가능 AVAILABLE, 취급 옵션 모두 품절 SOLD_OUT, 그 밖·조회 실패 UNKNOWN(품절이라고 하지 않음). mfcId 없으면 null'
         rating: { type: [number, 'null'], description: '(0.3.0) 공개 리뷰 평균(소수 첫째). 리뷰 없으면 비움' }
         reviewCount: { type: [integer, 'null'], description: '(0.3.0) 공개 리뷰 수' }
         productVersion: { type: integer, description: 색인된 product 버전 }

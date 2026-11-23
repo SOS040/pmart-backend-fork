@@ -39,6 +39,7 @@ public class SearchController implements SearchApi {
   private final Clock clock;
   private final com.pmart.search.application.CorrectedSearch corrected;
   private final com.pmart.search.application.ZeroResultKeywords zeroResults;
+  private final com.pmart.search.application.ProductAvailability availability;
 
   public SearchController(
       ProductSearch search,
@@ -47,7 +48,9 @@ public class SearchController implements SearchApi {
       PopularKeywords popular,
       Clock clock,
       com.pmart.search.application.CorrectedSearch corrected,
-      com.pmart.search.application.ZeroResultKeywords zeroResults) {
+      com.pmart.search.application.ZeroResultKeywords zeroResults,
+      com.pmart.search.application.ProductAvailability availability) {
+    this.availability = availability;
     this.corrected = corrected;
     this.zeroResults = zeroResults;
     this.search = search;
@@ -99,10 +102,25 @@ public class SearchController implements SearchApi {
     // 최근 검색어·인기 키워드 기록(첫 페이지·고객/비회원 토큰만, 비동기 — 실패해도 검색 응답은 그대로, 2026-11-17).
     // 결과 수는 원래 검색어의 것(0건 검색어 집계 — ADR-0073)
     activity.searched(PmartPrincipal.current().orElse(null), q, cursor, o.originalTotal());
+    // 0.10.0 목록 판매 가능 여부 — mfcId 를 줬을 때만, 실패는 UNKNOWN(ProductAvailability)
+    java.util.Map<String, String> avail =
+        availability.of(r.items().stream().map(ProductSearch.Hit::productId).toList(), mfcId);
     return ResponseEntity.ok(
         new SearchResult()
             .query(SearchRules.normalizeQuery(q))
-            .items(r.items().stream().map(SearchController::hit).toList())
+            .items(
+                r.items().stream()
+                    .map(
+                        h ->
+                            hit(h)
+                                .availability(
+                                    avail == null
+                                        ? null
+                                        : SearchHit.AvailabilityEnum.fromValue(
+                                            avail.getOrDefault(
+                                                h.productId(),
+                                                com.pmart.search.domain.ListAvailability.UNKNOWN))))
+                    .toList())
             .total((int) r.total())
             .page(new SearchResultPage().nextCursor(r.nextCursor()).size(r.items().size()))
             .appliedSort(SortKey.fromValue(r.appliedSort().name()))

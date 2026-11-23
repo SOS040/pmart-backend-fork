@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
+    0.13.0(2026-11-23, 백엔드 요청 availability-display §2 — 사용자 "모든 옵션 품절일 때만"·"조회 때 바로 묻기", 고객앱 SPLASH 회신 — 사용자 "넣어줘"):
+      ① 진열 항목 `availability`(AVAILABLE·SOLD_OUT·UNKNOWN) — mfcId 를 줬을 때만. 응답에 담긴 상품으로 product-content 카드 일괄 조회(옵션별 mfc-inventory 가용 사본)를
+      한 번(100건씩) 불러, 그 센터가 취급하는 옵션 중 하나라도 팔 수 있으면 AVAILABLE, 취급 옵션이 모두 품절이면 SOLD_OUT, 그 밖·조회 실패·시간 초과는 UNKNOWN. 없으면 null.
+      검색 0.10.0 과 같은 판정. 거르기·정렬에는 쓰지 않는다. ② 고객용 배너(`Banner` — 홈 banners·BANNER 영역·`GET /storefront/banners`)에 편성의 `startsAt`·`endsAt`
+      (없으면 null) — 앱이 저장해 둔 로딩 화면(SPLASH) 이미지를 기간이 지나면 그리지 않게.
     0.12.0(2026-11-23, 클라이언트 BR-84 — 사용자 "그 타이머 선택하는걸 백오피스에 기능을 넣고 싶고"): 편성 테마 `timerStyle`(LABEL 제목 위 글자 · BAND 띠 + 시·분·초 칸, 기본 LABEL) — `showTimer=true` 일 때만 뜻이 있고 false 면 null 로 저장·응답.
       홈·MD 탭 내용의 영역(Section)에도 같은 값. MD 탭 자체 타이머(`CustomTab.showTimer`)는 모양이 하나라 그대로.
     0.11.0(2026-11-22, 클라이언트 BR-82 "카테고리 화면 배너"): 편성 배너 자리에 `CATEGORY`(카테고리 화면 맨 위 — 모든 카테고리 화면 공통). 홈 `banners`·placement 없는
@@ -479,6 +484,10 @@ components:
             price: { $ref: '_common.yaml#/components/schemas/Money' }
         saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
         carried: { type: [boolean, 'null'], description: '0.2.0 — mfcId 를 주면 미취급은 오지 않으므로 늘 true. mfcId 가 없으면 null(판정 안 함)' }
+        availability:
+          type: [string, 'null']
+          enum: [AVAILABLE, SOLD_OUT, UNKNOWN, null]
+          description: '(0.13.0) mfcId 지정 시 그 센터의 판매 가능 여부 — 취급 옵션 하나라도 가능 AVAILABLE, 취급 옵션 모두 품절 SOLD_OUT, 그 밖·조회 실패 UNKNOWN(품절이라고 하지 않음). mfcId 없으면 null'
         rating: { type: [number, 'null'], description: '(0.4.0 BR-63) 공개 리뷰 평균 별점(소수 첫째). 리뷰가 없으면 null(0점 아님)' }
         reviewCount: { type: integer, minimum: 0, description: '(0.4.0 BR-63) 공개 리뷰 수' }
         badge: { type: string, enum: [NEW, RANK, NONE] }
@@ -588,6 +597,8 @@ components:
         linkRef: { type: string }
         sortOrder: { type: integer }
         groupId: { type: [string, 'null'], description: '0.10.0 HOME_INLINE 배너 묶음 ID' }
+        startsAt: { type: [string, 'null'], format: date-time, description: '(0.13.0) 편성 배너 시작 시각(없으면 null). 응답에는 지금 기간 안 배너만 온다' }
+        endsAt: { type: [string, 'null'], format: date-time, description: '(0.13.0) 편성 배너 끝 시각(없으면 null — 끝 없음). 앱이 저장해 둔 배너(SPLASH 등)는 이 시각이 지나면 그리지 않는다' }
     Section:
       type: object
       properties:

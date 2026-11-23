@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param popular 인기 키워드 정책(사용자 결정 2026-11-17). 없으면 인기 키워드는 빈 목록
  * @param searcherHashKey 검색자 해시(HMAC-SHA256) 비밀키 — 고객 ID 를 짐작해 해시를 되돌리지 못하게(비밀값, LAN 은 {cipher}).
  *     없으면 최근 검색어·인기 키워드 기록을 하지 않는다
+ * @param contentBaseUrl product-content-service 주소 — 목록 판매 가능 여부(계약 0.10.0 availability, 카드 일괄 조회).
+ *     없으면 availability 를 비운다(꺼짐)
  */
 @ConfigurationProperties(prefix = "pmart.search")
 public record SearchProperties(
@@ -24,7 +26,8 @@ public record SearchProperties(
     @Nullable Recent recent,
     @Nullable Popular popular,
     @Nullable String searcherHashKey,
-    @Nullable Correction correction) {
+    @Nullable Correction correction,
+    @Nullable String contentBaseUrl) {
 
   /**
    * 오타 교정(2026-11-20 ADR-0073). 비면 교정하지 않는다(기본값으로 대신하지 않음).

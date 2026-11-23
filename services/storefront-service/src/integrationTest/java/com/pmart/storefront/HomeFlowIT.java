@@ -844,6 +844,47 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
     assertThat(ids(page.path("items"))).contains("PRD-C1").doesNotContain("PRD-C2");
     page.path("items").forEach(i -> assertThat(i.path("carried").asBoolean()).isTrue());
 
+    // 0.13.0 판매 가능 여부(사용자 2026-11-23 "모든 옵션 품절일 때만"): 응답 상품으로 카드 일괄 조회(mfcId) — 취급 옵션 모두 품절이면
+    // SOLD_OUT
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/product-contents"))
+            .withQueryParam("mfcId", equalTo("MFC-T"))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "items",
+                                List.of(
+                                    Map.of(
+                                        "productId",
+                                        "PRD-C1",
+                                        "options",
+                                        List.of(
+                                            Map.of(
+                                                "availability",
+                                                Map.of("carried", true, "state", "SOLD_OUT"))))),
+                                "missing",
+                                List.of())))));
+    JsonNode withAvail = get(path);
+    for (JsonNode i : withAvail.path("items")) {
+      assertThat(i.path("availability").asString())
+          .isEqualTo("PRD-C1".equals(i.path("productId").asString()) ? "SOLD_OUT" : "UNKNOWN");
+    }
+    JsonNode home = get("/storefront/home?mfcId=MFC-T");
+    boolean seen = false;
+    for (JsonNode sec : home.path("sections")) {
+      for (JsonNode i : sec.path("items")) {
+        if ("PRD-C1".equals(i.path("productId").asString())) {
+          assertThat(i.path("availability").asString()).isEqualTo("SOLD_OUT");
+          seen = true;
+        }
+      }
+    }
+    assertThat(seen).as("홈 영역 항목에도 붙는다").isTrue();
+
     JsonNode unknown = get("/storefront/home?mfcId=MFC-NONE");
     JsonNode section = unknown.path("sections").path(0);
     assertThat(section.path("sectionId").asString()).as("섹션은 생략하지 않는다").isEqualTo("S-ALL");
@@ -857,6 +898,13 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
         .forEach(
             i ->
                 assertThat(i.path("carried").isNull() || i.path("carried").isMissingNode())
+                    .isTrue());
+    // mfcId 가 없으면 판매 가능 여부를 비운다
+    all.path("items")
+        .forEach(
+            i ->
+                assertThat(
+                        i.path("availability").isNull() || i.path("availability").isMissingNode())
                     .isTrue());
     // 같은 DB 를 쓰는 다른 시험(전체 진열 순서·쪽)에 섞이지 않게 판매중지로 치운다
     for (String id : List.of("PRD-C1", "PRD-C2")) {

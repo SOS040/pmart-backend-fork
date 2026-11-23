@@ -465,7 +465,9 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                     "linkType",
                     "NONE",
                     "sortOrder",
-                    0),
+                    0,
+                    "endsAt",
+                    ends),
                 Map.of( // 0.11.0 BR-82 카테고리 화면 맨 위 — 홈에는 안 나온다
                     "bannerId",
                     "B-CAT",
@@ -583,6 +585,17 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("bannerId"))
         .containsExactly("B-SPL");
+    // 0.13.0 고객용 배너에 편성 기간 — 앱이 저장한 로딩 화면을 끝 뒤에 그리지 않게
+    JsonNode splash =
+        send("GET", null, "/storefront/banners?placement=SPLASH", null)
+            .body()
+            .path("items")
+            .path(0);
+    assertThat(java.time.Instant.parse(splash.path("endsAt").asString()))
+        .isEqualTo(java.time.Instant.parse(ends));
+    JsonNode popup =
+        send("GET", null, "/storefront/banners?placement=POPUP", null).body().path("items").path(0);
+    assertThat(popup.path("endsAt").isNull() || popup.path("endsAt").isMissingNode()).isTrue();
     assertThat(
             send("GET", null, "/storefront/banners?placement=CATEGORY", null)
                 .body()

@@ -1,0 +1,51 @@
+package com.pmart.search.application;
+
+import com.pmart.search.domain.ListAvailability;
+import com.pmart.search.infrastructure.ContentAvailabilityClient;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+/**
+ * 검색 결과 쪽 상품의 센터 판매 가능 여부(계약 0.10.0 {@code availability}, 2026-11-23 — 사용자 "조회 때 바로 묻기"). mfcId 를
+ * 줬을 때만 product-content 카드 일괄 조회를 한 번(100건씩) 부른다. 실패·시간 초과는 모두 UNKNOWN — 검색은 실패시키지 않는다.
+ */
+@Service
+public class ProductAvailability {
+
+  private static final Logger log = LoggerFactory.getLogger(ProductAvailability.class);
+
+  private final ContentAvailabilityClient content;
+
+  public ProductAvailability(ContentAvailabilityClient content) {
+    this.content = content;
+  }
+
+  /** 상품 ID → AVAILABLE·SOLD_OUT·UNKNOWN. mfcId 가 없거나 주소 설정이 없으면 null(칸을 비운다). */
+  public @Nullable Map<String, String> of(List<String> productIds, @Nullable String mfcId) {
+    if (mfcId == null || mfcId.isBlank() || !content.enabled()) {
+      return null;
+    }
+    Map<String, String> out = new HashMap<>();
+    if (productIds.isEmpty()) {
+      return out;
+    }
+    Map<String, List<ListAvailability.Option>> options;
+    try {
+      options = content.options(productIds, mfcId);
+    } catch (RuntimeException e) {
+      // 상품 ID·센터는 남기지 않는다(예외 종류만)
+      log.warn("목록 가용 조회 실패 — UNKNOWN 으로: {}", e.getClass().getSimpleName());
+      options = Map.of();
+    }
+    for (String id : productIds) {
+      List<ListAvailability.Option> o = options.get(id);
+      out.put(id, o == null ? ListAvailability.UNKNOWN : ListAvailability.of(o));
+    }
+    return out;
+  }
+}
