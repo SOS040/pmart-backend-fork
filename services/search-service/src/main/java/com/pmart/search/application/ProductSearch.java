@@ -381,6 +381,9 @@ public class ProductSearch {
   /** 비슷한 상품 상한(0.12.0 BR-87). */
   public static final int SIMILAR_MAX = 20;
 
+  /** 비슷한 이름으로 볼 1~2글자 조각 일치 비율. */
+  static final String SIMILAR_PARTIAL = "70%";
+
   /**
    * 0건일 때 비슷한 상품(0.12.0 BR-87, 사용자 "비슷한 이름 먼저"): 검색어의 1~2글자 조각(name.partial) 중 절반 이상이 맞는 상품명을 관련도
    * 순으로, 없으면 인기 상품(최근 판매 → 별점)으로. 센터 취급 거르기·판매중지 제외·이름·상품 버전 있음은 검색과 같다. 할인가·이름 경로를 붙인다.
@@ -395,14 +398,24 @@ public class ProductSearch {
     filter.add(Map.of("exists", Map.of("field", "productVersion")));
     List<Object> mustNot = List.of(Map.of("term", Map.of("saleState", SearchRules.SALE_STOPPED)));
     Map<String, Object> bool = new LinkedHashMap<>();
+    // 둘 중 하나: 형태소 하나라도 맞음("닭가슴살샐러드" → 닭가슴살) 또는 1~2글자 조각 70% 이상("바나나킥" → 바나나맛우유).
+    // 조각 50% 는 "아보카도" → "아미카 알프레도" 처럼 한 글자 일치로 엉뚱한 것이 걸렸다(2026-11-23 LAN 비교)
     bool.put(
         "must",
         List.of(
             Map.of(
-                "match",
+                "bool",
                 Map.of(
-                    "name.partial",
-                    Map.of("query", q, "operator", "or", "minimum_should_match", "50%")))));
+                    "should",
+                    List.of(
+                        Map.of("match", Map.of("name", Map.of("query", q, "operator", "or"))),
+                        Map.of(
+                            "match",
+                            Map.of(
+                                "name.partial",
+                                Map.of("query", q, "minimum_should_match", SIMILAR_PARTIAL)))),
+                    "minimum_should_match",
+                    1))));
     bool.put("should", List.of(Map.of("match", Map.of("name", Map.of("query", q, "boost", 2)))));
     bool.put("filter", filter);
     bool.put("must_not", mustNot);
