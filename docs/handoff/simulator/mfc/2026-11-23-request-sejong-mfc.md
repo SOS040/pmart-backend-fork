@@ -3,6 +3,8 @@
 보낸 영역: platform(PC 1)
 받는 곳: MFC 시뮬레이터(pmart-mfc-simulation) · mfc 백엔드(PC 3)
 사용자: 2026-11-23 "이 평면도대로 세종 MFC 1개 더 만들어줘. 필요하면 MFC 백엔드 세션이랑 mfc 시뮬레이션에 바로 보내" — 평면도 그림(사용자 제공, "PMart 세종점 MFC 평면도 — MFC-SEJ-01")과 아래 표.
+평면도 그림(사용자가 준 원본 그대로): [`2026-11-23-sejong-floorplan-user.webp`](2026-11-23-sejong-floorplan-user.webp)
+회신·위치 파일(시뮬레이터 결정 2026-11-23): 시뮬레이터 `docs/backend-requests.md` **R-41**, 위치 파일 시뮬레이터 `docs/layout-export/sejong/`(1호점 location-positions.json 과 같은 모양). 백엔드 쪽 회신 문서는 PC 3 가 쓴다.
 목포(R-39)와 다른 점: **랙 수·평수가 부산(1호점)과 다르다** → 1호점 칸 복사(`mfc_clone_center.py locations`)로는 안 된다. 새 평면에서 칸을 만들어야 한다.
 이 요청이 11-21 문서상 설계안 `docs/simulator/mfc/layout-sejong/`(812평)을 **대신한다**(그 설계안은 LAN 에 등록한 적 없음).
 
