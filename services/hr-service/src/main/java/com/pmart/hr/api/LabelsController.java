@@ -21,11 +21,12 @@ public class LabelsController implements LabelsApi {
   @Override
   public ResponseEntity<EmployeeLabelList> getEmployeeLabels(
       @org.jspecify.annotations.Nullable List<String> operatorIds,
-      @org.jspecify.annotations.Nullable List<String> employeeNos) {
+      @org.jspecify.annotations.Nullable List<String> employeeNos,
+      @org.jspecify.annotations.Nullable Boolean activeOnly) {
     return ResponseEntity.ok(
         new EmployeeLabelList()
             .items(
-                employees.labels(operatorIds, employeeNos).stream()
+                employees.labels(operatorIds, employeeNos, Boolean.TRUE.equals(activeOnly)).stream()
                     .map(
                         l ->
                             new EmployeeLabel()

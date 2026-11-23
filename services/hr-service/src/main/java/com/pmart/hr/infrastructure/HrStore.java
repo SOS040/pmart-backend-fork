@@ -167,11 +167,17 @@ public class HrStore {
   public record Label(String operatorId, String name, String employeeNo) {}
 
   public List<Label> labels(Collection<String> operatorIds) {
+    return labels(operatorIds, false);
+  }
+
+  /** activeOnly(0.11.0) = 퇴사자(LEFT) 뺌. */
+  public List<Label> labels(Collection<String> operatorIds, boolean activeOnly) {
     if (operatorIds.isEmpty()) {
       return List.of();
     }
     return jdbc.query(
-        "SELECT operator_id, name, employee_no FROM employee WHERE operator_id = ANY (?::varchar[])",
+        "SELECT operator_id, name, employee_no FROM employee WHERE operator_id = ANY (?::varchar[])"
+            + (activeOnly ? " AND status <> 'LEFT'" : ""),
         (rs, i) ->
             new Label(
                 rs.getString("operator_id"), rs.getString("name"), rs.getString("employee_no")),
@@ -179,12 +185,13 @@ public class HrStore {
   }
 
   /** 0.10.0 HR-5: 사번 → (운영자 ID, 이름, 사번). 퇴사자 포함, 모르는 사번은 빠진다. */
-  public List<Label> labelsByEmployeeNo(Collection<String> employeeNos) {
+  public List<Label> labelsByEmployeeNo(Collection<String> employeeNos, boolean activeOnly) {
     if (employeeNos.isEmpty()) {
       return List.of();
     }
     return jdbc.query(
-        "SELECT operator_id, name, employee_no FROM employee WHERE employee_no = ANY (?::varchar[])",
+        "SELECT operator_id, name, employee_no FROM employee WHERE employee_no = ANY (?::varchar[])"
+            + (activeOnly ? " AND status <> 'LEFT'" : ""),
         (rs, i) ->
             new Label(
                 rs.getString("operator_id"), rs.getString("name"), rs.getString("employee_no")),

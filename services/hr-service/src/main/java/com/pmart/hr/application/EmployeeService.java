@@ -392,7 +392,7 @@ public class EmployeeService {
    * 않는다. 퇴사자 포함, 모르는 ID 는 빠진다. 이름·사번만.
    */
   public List<HrStore.Label> labels(List<String> operatorIds) {
-    return labels(operatorIds, null);
+    return labels(operatorIds, null, false);
   }
 
   static final java.util.regex.Pattern EMPLOYEE_NO =
@@ -403,7 +403,7 @@ public class EmployeeService {
    * 같다.
    */
   public List<HrStore.Label> labels(
-      @Nullable List<String> operatorIds, @Nullable List<String> employeeNos) {
+      @Nullable List<String> operatorIds, @Nullable List<String> employeeNos, boolean activeOnly) {
     boolean byId = operatorIds != null && !operatorIds.isEmpty();
     boolean byNo = employeeNos != null && !employeeNos.isEmpty();
     if (byId == byNo) {
@@ -425,12 +425,12 @@ public class EmployeeService {
       if (nos.size() > LABEL_LOOKUP_MAX) {
         throw new PmartException(ErrorCode.VALIDATION_FAILED, "사번은 1~50개입니다.");
       }
-      return store.labelsByEmployeeNo(nos);
+      return store.labelsByEmployeeNo(nos, activeOnly);
     }
-    return labelsById(operatorIds);
+    return labelsById(operatorIds, activeOnly);
   }
 
-  private List<HrStore.Label> labelsById(List<String> operatorIds) {
+  private List<HrStore.Label> labelsById(List<String> operatorIds, boolean activeOnly) {
     requireOperator();
     java.util.Set<String> ids = new java.util.LinkedHashSet<>();
     for (String id : operatorIds) {
@@ -442,7 +442,7 @@ public class EmployeeService {
     if (ids.isEmpty() || ids.size() > LABEL_LOOKUP_MAX) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "운영자 ID 는 1~50개입니다.");
     }
-    return store.labels(ids);
+    return store.labels(ids, activeOnly);
   }
 
   private EmployeeView view(String operatorId) {

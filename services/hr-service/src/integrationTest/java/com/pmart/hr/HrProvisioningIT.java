@@ -1141,6 +1141,25 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
                 .status())
         .isEqualTo(400);
     assertThat(call("GET", "/hr/employee-labels", anyStaff, null).status()).isEqualTo(400);
+    // 0.11.0 activeOnly — 퇴사자(b) 빠짐, 사번·ID 둘 다
+    assertThat(
+            call(
+                    "GET",
+                    "/hr/employee-labels?activeOnly=true&employeeNos=" + noA + "," + noB,
+                    anyStaff,
+                    null)
+                .body()
+                .findValuesAsString("operatorId"))
+        .containsExactly(a);
+    assertThat(
+            call(
+                    "GET",
+                    "/hr/employee-labels?activeOnly=true&operatorIds=" + a + "&operatorIds=" + b,
+                    anyStaff,
+                    null)
+                .body()
+                .findValuesAsString("operatorId"))
+        .containsExactly(a);
     assertThat(call("GET", "/hr/employee-labels?employeeNos=12345", anyStaff, null).status())
         .isEqualTo(400);
   }

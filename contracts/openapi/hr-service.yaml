@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-24 HR-5 activeOnly — 사용자 "정정된걸로 해서 넣어", PC 2 전달): `GET /hr/employee-labels` 에 `activeOnly`(기본 false). true 면 퇴사자(LEFT)를 뺀다 —
+    정지(SUSPENDED)는 재직이라 남는다. 교대 인계 후임·접수 건 넘기기에서 퇴사자를 고르지 않게(case·인계가 재직 여부를 보지 않음). operatorIds·employeeNos 둘 다에 쓴다. 응답 모양 그대로.
     0.10.0(2026-11-24 HR-5 — PC 2·통합백오피스 프론트 요청, 사용자 "정해진 것만"): `GET /hr/employee-labels` 에 `employeeNos`(사번 → 운영자 ID·이름) —
     교대 인계 "후임"·접수 건 넘기기 칸에서 사번으로 사람을 찾으려고. `operatorIds`·`employeeNos` 중 **하나만**(둘 다·둘 다 없음 400), 1~50개,
-    사번 형식 `P<연도 4>-<5자리>`(틀리면 400). 응답·권한(직원 토큰이면 누구나)·퇴사자 포함·모르는 값 빠짐은 operatorIds 와 같다. 재직자만 거르기(activeOnly)는 아직 없다.
+    사번 형식 `P<연도 4>-<5자리>`(틀리면 400). 응답·권한(직원 토큰이면 누구나)·퇴사자 포함·모르는 값 빠짐은 operatorIds 와 같다. 재직자만 거르기는 0.11.0 activeOnly.
     0.9.1(2026-11-20 GP-1 — 인사 백오피스 제보 "2027-03-01 ~ 2026-11-20 이 자동 승인", 사용자 "해줘"): 권한 기간 순서 검사 — 등록 requestedGrants·grant-requests grants 에서
     끝(validTo) < 시작(validFrom)이면 400 VALIDATION_FAILED(field `requestedGrants[i].validTo`·`grants[i].validTo`). 비운 값은 서버가 채우는 값(시작 = 근무 시작일, 끝 = 계약 종료일)으로 판정.
     복귀(reinstate)도 계약 종료일 < 근무 시작일이면 400(field endDate). 등록의 endDate < startDate 400 은 전부터.
@@ -448,6 +450,12 @@ paths:
             type: array
             maxItems: 50
             items: { type: string, maxLength: 700, pattern: '^P[0-9]{4}-[0-9]{5}(,P[0-9]{4}-[0-9]{5})*$', description: '사번 하나 또는 쉼표로 이은 여러 개' }
+        - name: activeOnly
+          in: query
+          required: false
+          x-added-in: '2026-11-24'
+          description: '(0.11.0) true 면 퇴사자(LEFT) 빼고 — 정지(SUSPENDED)는 남음. 기본 false(지난 기록 표시용 — 퇴사자 포함)'
+          schema: { type: boolean, default: false }
       responses:
         '200':
           description: OK — 아는 ID 만(순서 없음)
