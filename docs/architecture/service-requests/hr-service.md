@@ -56,4 +56,4 @@
   - 직원 토큰이면 누구나(HR-4 와 같은 범위 — ADR-0070, 직원끼리 이름 안 가림).
   - (있으면 좋음) `activeOnly=true` — 재직자만.
 - 받는 화면: 백오피스 "사번 입력 → '[이름] · 사번 에게 넘겨요' 확인 → 운영자 ID 로 보냄". bff 변경 없음(화면이 hr 를 직접).
-- **회신(2026-11-24 PC 1, 사용자 "정해진 것만")**: hr-service 0.10.0 — `GET /hr/employee-labels?employeeNos=P2026-00012,P2026-00013`(반복·쉼표 둘 다, 1~50개, 형식 `P<연도 4>-<5자리>` 아니면 400). `operatorIds` 와 **둘 중 하나만**(둘 다·둘 다 없음 400). 응답·권한(직원 토큰 누구나)·퇴사자 포함·모르는 사번 빠짐은 operatorIds 와 같다. **`activeOnly` 는 넣지 않았다**(사용자 "정해진 것만" — 정하면 추가). 시험 `HrProvisioningIT.employeeLabels`. LAN 배포는 사용자 "배포" 뒤.
+- **회신(2026-11-24 PC 1, 사용자 "정해진 것만")**: hr-service 0.10.0 — `GET /hr/employee-labels?employeeNos=P2026-00012,P2026-00013`(반복·쉼표 둘 다, 1~50개, 형식 `P<연도 4>-<5자리>` 아니면 400). `operatorIds` 와 **둘 중 하나만**(둘 다·둘 다 없음 400). 응답·권한(직원 토큰 누구나)·퇴사자 포함·모르는 사번 빠짐은 operatorIds 와 같다. **`activeOnly` 는 넣지 않았다**(사용자 "정해진 것만" — 정하면 추가). 시험 `HrProvisioningIT.employeeLabels`. **LAN 배포 2026-11-24**(이미지 ee1ed1bd).
