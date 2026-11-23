@@ -28,3 +28,4 @@
 - **사용자**: 2026-11-23 "다 하면 될 것 같은데"(검색 개선 남은 항목 순서 — 1번 이 요청).
 - **운영자 쪽 차이**: 상품 정보만 답한다는 ADR-0083 운영자 범위 그대로, 같은 문장 틀.
 - **상태**: 요청 — PC 4 구현 차례. 고객 쪽 CA-1(`customer-assistant-service.md`)과 같은 규칙(`domain/ProductQuestion` 처럼 두 서비스 같은 규칙).
+- 검색 쪽에서 지킬 것: `docs/architecture/product-search.md` §13(2026-11-23 — 운영자도 같다, 단 센터를 줄 수 있으면 `availability` 를 쓸 수 있음).
