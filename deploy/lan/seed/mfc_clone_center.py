@@ -23,6 +23,9 @@ LAN 전용, API 로만. 실행은 PC 1(PC 3 은 읽기만). 토큰·비밀번호
   wide        (2026-11-24 세종) 1호점 넓은 칸 합침 중 대상 파일에 같은 코드가 없는 것을 같은 온도대·구역 글자의 빈 랙에 같은 모양으로
               (기준 칸 치수 넓힘 + 합친 칸 닫기) 뒤 그 상품의 수령 칸 적치 작업을 그 칸으로 적치. 세종은 A-H2-07-1-01(B-00000006 전용)
               하나 → 빈 H 랙(A-H4-05). 서버 추천의 기타 칸 후보가 코드 순 50칸뿐이라 stock-retry 로는 닿지 않는다.
+              (2026-11-24 춘천) 1호점 랙 하나를 대상 랙 하나로 통째로(A-H1-06 넓은 칸 3개 + 닫힌 3칸). 자리 지정
+              PMART_WIDE_RACKS="A-H1-06=A-H3-02,A-H2-07=A-H3-03". 재고 전에 돌려 칸을 만들고, 재고 뒤 다시 돌리면 적치만 한다.
+              상품이 이미 수령 칸 밖에 있으면 그 랙은 건너뛴다(다시 돌려도 새 랙을 잡지 않음).
   stock-plan  원본 재고 스냅샷(SKU·LOT·칸·수량)을 요약하고 파일(--out)로 쓴다. 재고는 넣지 않는다.
   stock       원본과 같은 SKU·수량·칸 분포를 **정식 입고 흐름**으로 넣는다(사용자 결정 2026-11-22 "정식 입고 흐름으로" —
               위치 정정 같은 직접 복사는 하지 않음). 기본 계획만, --apply 로 실행(실서버 재고 등록 — 사용자 확인 뒤에만).
@@ -200,7 +203,10 @@ def layout_want(src):
     1호점 규칙 그대로·랙·칸 수만 다름: 같은 코드가 원본에 있으면 그 칸 속성(구역·온도대·보충재고·치수 — 넓은 칸 합침 포함, 닫힘)을,
     없으면 같은 모양의 원본 칸(선반 = 온도대·구역 글자·단·칸이 같은 칸 중 가장 흔한 치수, 보조 칸 = 접두어·온도대가 같은 칸)을 본뜬다.
     보충재고 랙·대형재고 칸은 그 센터 사본(PMART_RESERVE_RACKS·PMART_BULK_PALLETS)의 치수. pickSequence = 파일의 선반 순서.
-    고회전은 모두 끈다(F 구역은 등록 뒤 mfc_layout.py r40). 반환 = (본문 {코드: body}, 닫을 코드, 본뜬 방식 개수, 못 만드는 칸)."""
+    고회전은 모두 끈다(F 구역은 등록 뒤 mfc_layout.py r40). 반환 = (본문 {코드: body}, 닫을 코드, 본뜬 방식 개수, 못 만드는 칸).
+    2026-11-24 춘천(랙당 단·칸 수가 1호점과 다름): 파일 선반 줄에 dimMm {w,d,h} 가 있으면 그 치수가 먼저(구역·온도대는 같은 온도대·
+    구역 글자의 1호점 선반, 넓은 칸 합침·닫힘은 따라 하지 않음). 랙 모양(단마다 칸 수)이 1호점 그 구역 글자와 다른 랙은 dimMm 이
+    없으면 못 만드는 칸. 본뜨기는 1호점의 열린 칸만(닫힌 H 6단 치수를 주지 않게)."""
     rows = json.load(open(v1.POSITIONS, encoding="utf-8"))
     extra = {}
     for path in (v1.RESERVE_RACKS, v1.BULK_PALLETS):
@@ -210,13 +216,30 @@ def layout_want(src):
     live = {c: v for c, v in src.items() if v["state"] != "RETIRED"}
     by_shelf = collections.defaultdict(collections.Counter)
     sample = {}
+    by_group = {}  # (온도대 글자, 구역 글자) → 1호점 선반 한 칸(구역·온도대만 본뜸 — 치수는 파일 dimMm, 2026-11-24 춘천)
+    src_shape = collections.defaultdict(lambda: collections.defaultdict(set))  # (온도대, 구역 글자) → 단 → 칸 번호
     for c, v in live.items():
         k = shelf_key(c)
-        if k and v["zone"] in ("STORAGE", "PICKING") and not v.get("reserveStock") and v.get("dimensions"):
-            d = v["dimensions"]
-            dk = (d.get("widthMm"), d.get("depthMm"), d.get("heightMm"), d.get("slotCount") or 1)
-            by_shelf[k][dk] += 1
-            sample.setdefault((k, dk), v)
+        # 본뜨기는 열린 칸만(2026-11-24 춘천): 1호점 H 6단은 닫힌 칸(281×450×350 — v2 에서 H 를 5단으로)이라 6단 랙에 주면 안 된다.
+        if not (k and v["zone"] in ("STORAGE", "PICKING") and not v.get("reserveStock") and v["state"] != "CLOSED"
+                and v.get("dimensions")):
+            continue
+        by_group.setdefault(k[:2], v)
+        src_shape[k[:2]][k[2]].add(k[3])
+        d = v["dimensions"]
+        dk = (d.get("widthMm"), d.get("depthMm"), d.get("heightMm"), d.get("slotCount") or 1)
+        by_shelf[k][dk] += 1
+        sample.setdefault((k, dk), v)
+    # 대상 랙 모양(단마다 칸 수)이 1호점 구역 글자와 다르면(춘천 — 냉장 5×8·상온 C 72칸 등) 같은 코드·같은 모양 칸을 본뜨면
+    # 칸 폭·높이가 틀린다 → 그 랙 칸은 파일 치수(dimMm)가 있어야 만든다(없으면 못 만드는 칸으로 멈춤).
+    tgt_shape = collections.defaultdict(lambda: collections.defaultdict(set))
+    for e in rows:
+        k = shelf_key(e["locationCode"]) if e["kind"] == "SHELF" else None
+        if k:
+            tgt_shape["-".join(e["locationCode"].split("-")[:3])][k[2]].add(k[3])
+    odd_racks = {r for r, lv in tgt_shape.items()
+                 if {a: len(b) for a, b in lv.items()}
+                 != {a: len(b) for a, b in src_shape.get((r.split("-")[0], r.split("-")[1][0]), {}).items()}}
     by_support = {}
     for c, v in sorted(live.items()):
         k = support_key(c)
@@ -229,7 +252,18 @@ def layout_want(src):
         if e["kind"] == "SHELF":
             seq += 1
         t = live.get(code)
-        if t is not None:
+        fd = e.get("dimMm") if e["kind"] == "SHELF" else None
+        odd = e["kind"] == "SHELF" and "-".join(code.split("-")[:3]) in odd_racks
+        if odd and not fd:
+            bad.append(code)
+            continue
+        if fd and shelf_key(code) and shelf_key(code)[:2] in by_group:
+            # 위치 파일이 칸 치수를 주면 그 값(2026-11-24 춘천 — 랙당 단·칸 수가 1호점과 달라 같은 코드라도 칸 폭·높이가 다르다).
+            # 구역·온도대는 같은 온도대·구역 글자의 1호점 선반. 넓은 칸 합침·닫힘은 따라 하지 않는다(파일이 정본).
+            t = dict(by_group[shelf_key(code)[:2]])
+            t["dimensions"] = {"widthMm": fd["w"], "depthMm": fd["d"], "heightMm": fd["h"], "slotCount": 1}
+            how["파일 치수 선반"] += 1
+        elif t is not None:
             how["원본 같은 코드"] += 1
             # 닫는 것은 넓은 칸 합침으로 닫힌 칸만(wide-cells-2026-11-18.json closed). 1호점에서 다른 까닭으로 닫힌 칸
             # (취소된 R-35 랙 19~21, 지게차 통로로 빠진 A-R1-37~42 등)은 대상 평면에서는 쓰는 칸이다(세종 계획 11-23 — 1,221 → 100).
@@ -273,7 +307,11 @@ def layout_step(apply):
     temps = collections.Counter(b["temperatureZone"] for b in bodies.values())
     print(f"파일 칸 {len(bodies) + len(bad)}: 만들 본문 {len(bodies)} {dict(kinds)} {dict(temps)}, 본뜬 방식 {dict(how)}")
     if bad:
+        racks = sorted({"-".join(c.split("-")[:3]) for c in bad if shelf_key(c)})
         print(f"  본뜰 원본 칸이 없어 못 만드는 칸 {len(bad)}(멈춤):", bad[:10])
+        if racks:
+            print(f"  그중 선반 랙 {len(racks)}(랙 모양이 1호점과 다르거나 본뜰 모양 없음 — 위치 파일 선반 줄에 dimMm {{w,d,h}} 필요):",
+                  racks[:10])
         return 1
     tgt_tok = Tok(TARGET_SUP)
     try:
@@ -291,36 +329,59 @@ def layout_step(apply):
     return create_and_close(tgt_tok, [bodies[c] for c in todo], close, f"{SOURCE} 와 같게(원본에서 닫힌 칸)")
 
 
+WIDE_RACKS = os.environ.get("PMART_WIDE_RACKS", "")  # 예 "A-H1-06=A-H3-02,A-H2-07=A-H3-03"(춘천 — 시뮬레이터 제안 자리)
+
+
 def wide_plan(src_dims):
     """1호점 넓은 칸 합침(wide-cells-2026-11-18.json, 사용자 11-18 "칸 구조 바꿔서라도 들어갈 수 있게") 중 대상 위치 파일에 같은 코드가
-    없는 것 → 같은 온도대·구역 글자의 빈 랙(그 칸들이 모두 파일에 있고 재고 없음, 코드 뒤쪽 랙부터)에 같은 모양으로.
-    반환 [(1호점 기준 칸, 대상 기준 칸, 대상 닫을 칸들, 치수)] 와 자리를 못 찾은 1호점 칸."""
+    없는 것 → 1호점 **랙 하나를 대상 랙 하나로 통째로**(그 랙의 넓은 칸 모두 같은 단·칸 번호, 닫힌 칸도 그 랙 것 — 2026-11-24 춘천:
+    A-H1-06 은 넓은 칸 3개가 한 랙이라 랙마다 따로 두면 남의 닫힌 칸까지 닫았다).
+    대상 랙 = PMART_WIDE_RACKS 지정(원본 랙=대상 랙) 또는 같은 온도대·구역 글자의 빈 랙(그 칸들이 모두 파일에 있고 재고 없음,
+    다른 넓은 칸 합침 코드가 없음, 코드 뒤쪽 랙부터). 반환 [(1호점 기준 칸, 대상 기준 칸, 대상 닫을 칸들, 치수, 상품)] 와 못 찾은 1호점 칸."""
     w = json.load(open(WIDE_CELLS, encoding="utf-8"))
     codes = {x["locationCode"] for x in json.load(open(v1.POSITIONS, encoding="utf-8"))}
-    busy = {"-".join(r["locationCode"].split("-")[:3]) for r in snapshot(TARGET) if r["qty"] > 0}
-    racks = sorted({"-".join(c.split("-")[:3]) for c in codes if len(c.split("-")) == 5}, reverse=True)
+    snap = [r for r in snapshot(TARGET) if r["qty"] > 0]
+    busy = {"-".join(r["locationCode"].split("-")[:3]) for r in snap}
+    # 이미 수령 칸 밖에 적치된 상품(넓은 칸을 만든 뒤 다시 돌림 — 세종 A-H4-05)은 다시 자리를 잡지 않는다
+    placed = {r["sku"] for r in snap if not r["locationCode"].startswith("RCV-")}
+    rack_of = lambda c: "-".join(c.split("-")[:3])  # noqa: E731
+    taken = {rack_of(c) for c in list(w["merged"]) + list(w["closed"]) if c in codes}  # layout 이 이미 합치는 랙
+    racks = sorted({rack_of(c) for c in codes if len(c.split("-")) == 5}, reverse=True)
+    fixed = dict(x.split("=", 1) for x in WIDE_RACKS.split(",") if "=" in x)
+    groups = collections.defaultdict(list)
+    for anchor in sorted(w["merged"]):
+        if anchor not in codes:
+            groups[rack_of(anchor)].append(anchor)
     used, plans, none = set(), [], []
-    for anchor, info in sorted(w["merged"].items()):
-        if anchor in codes:
-            continue  # layout 이 같은 코드로 이미 넓은 칸을 만든다
-        rack = "-".join(anchor.split("-")[:3])
-        tail = anchor[len(rack):]
-        tails = [c[len(rack):] for c in w["closed"] if c.startswith(rack + "-")]
-        pick = None
-        for r in racks:
-            p = r.split("-")
-            if p[0] != anchor[0] or p[1][0] != anchor.split("-")[1][0] or r in busy or r in used:
-                continue
-            if all(r + t in codes for t in [tail] + tails):
-                pick = r
-                break
+    for src_rack, anchors in sorted(groups.items()):
+        if all(w["merged"][a].get("sku") in placed for a in anchors):
+            print(f"  {src_rack} 의 넓은 칸 상품이 이미 적치됨 — 건너뜀:", [w["merged"][a].get("sku") for a in anchors])
+            continue
+        tails = [a[len(src_rack):] for a in anchors]
+        closed = [c[len(src_rack):] for c in w["closed"] if c.startswith(src_rack + "-")]
+        pick = fixed.get(src_rack)
+        if pick is not None:
+            if not all(pick + t in codes for t in tails + closed) or pick in taken:
+                print(f"  지정 자리 {src_rack}={pick} 를 쓸 수 없다(칸이 파일에 없거나 다른 넓은 칸 랙)")
+                pick = None
+        else:
+            for r in racks:
+                p = r.split("-")
+                if p[0] != src_rack[0] or p[1][0] != src_rack.split("-")[1][0] or r in busy or r in used or r in taken:
+                    continue
+                if all(r + t in codes for t in tails + closed):
+                    pick = r
+                    break
         if pick is None:
-            none.append(anchor)
+            none.extend(anchors)
             continue
         used.add(pick)
-        dims = dict(src_dims.get(anchor) or {"widthMm": info["widthMm"], "depthMm": info["depthMm"],
-                                             "heightMm": info["heightMm"], "slotCount": 1})
-        plans.append((anchor, pick + tail, [pick + t for t in tails], dims, info.get("sku")))
+        for i, (anchor, tail) in enumerate(zip(anchors, tails)):
+            info = w["merged"][anchor]
+            dims = dict(src_dims.get(anchor) or {"widthMm": info["widthMm"], "depthMm": info["depthMm"],
+                                                 "heightMm": info["heightMm"], "slotCount": 1})
+            # 닫을 칸은 랙의 첫 넓은 칸에 몰아 둔다(한 번만 닫음)
+            plans.append((anchor, pick + tail, [pick + t for t in closed] if i == 0 else [], dims, info.get("sku")))
     return plans, none
 
 
@@ -332,7 +393,7 @@ def wide_step(apply):
     plans, none = wide_plan(src_dims)
     for a, t, cl, d, sku in plans:
         print(f"넓은 칸: 1호점 {a} → 대상 {t} 치수 {d.get('widthMm')}×{d.get('depthMm')}×{d.get('heightMm')}"
-              f"(상품 {sku}), 닫을 칸 {len(cl)} {cl[0]}…{cl[-1] if cl else ''}")
+              f"(상품 {sku}), 닫을 칸 {len(cl)} {(cl[0] + '…' + cl[-1]) if cl else ''}")
     if none:
         print("  자리를 못 찾은 넓은 칸(빈 같은 구역 랙 없음):", none)
     if not plans:
@@ -345,31 +406,39 @@ def wide_step(apply):
     now = locations_of(TARGET, tok)
     failed = 0
     for a, t, cl, d, sku in plans:
+        cur = now.get(t)
+        cd = (cur or {}).get("dimensions") or {}
+        done = (cur is not None and cur["state"] == "ACTIVE" and cd.get("widthMm") == d.get("widthMm")
+                and cd.get("heightMm") == d.get("heightMm") and all(c in now and now[c]["state"] == "CLOSED" for c in cl))
         busy = [c for c in [t] + cl if c not in now or now[c]["state"] != "ACTIVE"]
+        if done:
+            print(f"  {t} 이미 넓힘 — 적치만")
+            busy = []
         if busy:
             print("  대상 칸이 없거나 ACTIVE 가 아님 — 건너뜀:", busy[:5])
             failed += 1
             continue
-        cur = now[t]
         b = {"mfcId": TARGET, "locationCode": t, "zone": cur["zone"], "temperatureZone": cur["temperatureZone"],
              "highTurnover": bool(cur.get("highTurnover")), "reserveStock": bool(cur.get("reserveStock")),
              "position": cur.get("position"), "dimensions": d}
         for k in ("areaCode", "pickSequence", "categoryId"):
             if cur.get(k) is not None:
                 b[k] = cur[k]
-        st, r = v1.http("PUT", f"{v1.GW}/locations/{cur['locationId']}", tok(), b, version=cur["version"])
+        st, r = (200, {}) if done else v1.http("PUT", f"{v1.GW}/locations/{cur['locationId']}", tok(), b,
+                                               version=cur["version"])
         if st != 200:
             failed += 1
             print("  넓은 칸 치수 실패", t, st, r.get("code"), r.get("detail"))
             continue
-        for c in cl:
+        for c in ([] if done else cl):
             st, r = v1.http("POST", f"{v1.GW}/locations/{now[c]['locationId']}/state-changes", tok(),
                             {"targetState": "CLOSED", "reason": f"넓은 칸 {t} 에 합침({SOURCE} {a} 와 같은 모양)"})
             if st != 202:
                 failed += 1
                 print("  닫기 실패", c, st, r.get("code"), r.get("detail"))
             time.sleep(0.05)
-        print(f"  {t} 넓힘, 닫음 {len(cl)}")
+        if not done:
+            print(f"  {t} 넓힘, 닫음 {len(cl)}")
         # 그 상품의 수령 칸 적치 작업을 이 칸으로(정식 적치 — 용량 검사는 서버). stock-retry 의 서버 추천은 기타 칸 후보를
         # 위치 코드 순 50칸만 봐서 H 구역 넓은 칸까지 닿지 않는다.
         tasks, _ = open_putaways(tok)
