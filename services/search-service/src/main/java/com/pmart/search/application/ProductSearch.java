@@ -1,5 +1,6 @@
 package com.pmart.search.application;
 
+import com.pmart.search.domain.LabelRules;
 import com.pmart.search.domain.SearchRules;
 import com.pmart.search.domain.SearchRules.Sort;
 import com.pmart.search.infrastructure.CategoryTreeClient;
@@ -49,7 +50,9 @@ public class ProductSearch {
       @Nullable Boolean carried,
       @Nullable Double ratingAverage,
       @Nullable Integer ratingCount,
-      @Nullable Discount discount) {
+      @Nullable Discount discount,
+      @Nullable JsonNode nutrition,
+      @Nullable JsonNode allergens) {
 
     Hit withDiscount(@Nullable Discount d) {
       return new Hit(
@@ -67,7 +70,9 @@ public class ProductSearch {
           carried,
           ratingAverage,
           ratingCount,
-          d);
+          d,
+          nutrition,
+          allergens);
     }
   }
 
@@ -105,8 +110,11 @@ public class ProductSearch {
   private final SearchIndex index;
   private final CategoryTreeClient categories;
   private final Clock clock;
+  private final LabelRules.@Nullable Thresholds nutrition;
 
-  public ProductSearch(SearchIndex index, CategoryTreeClient categories, Clock clock) {
+  public ProductSearch(
+      SearchIndex index, CategoryTreeClient categories, Clock clock, SearchProperties props) {
+    this.nutrition = props.nutrition() == null ? null : props.nutrition().thresholds();
     this.index = index;
     this.categories = categories;
     this.clock = clock;
@@ -150,16 +158,18 @@ public class ProductSearch {
             ? SearchRules.MAX_ON_SALE_SKUS
             : SearchRules.pageSize(from, size)); // 1순위 ① — from + size 가 ES 창(1만)을 넘지 않게
     req.put("track_total_hits", true);
+    Map<String, List<String>> rest = new LinkedHashMap<>(filters);
+    List<String> nut = rest.remove(LabelRules.NUTRITION_KEY);
     req.put(
         "query",
         query(
             query,
             categoryId,
             price,
-            filters,
+            rest,
             includeNotCarried ? null : center,
-            namesFor(filters),
-            onSale ? onSaleFilter() : null));
+            namesFor(rest),
+            extra(onSale ? onSaleFilter() : null, nut)));
     req.put("sort", sort(sort, query != null));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Hit> out = new ArrayList<>();
@@ -176,6 +186,27 @@ public class ProductSearch {
     List<String> applied = new ArrayList<>();
     filters.forEach((k, vs) -> vs.forEach(v -> applied.add(k + "." + v)));
     return new Result(out, total, next, sort, List.copyOf(applied));
+  }
+
+  /**
+   * 덧붙일 거르기 — 할인 중(onSale)과 영양(products-v9 0.11.0, 값 모두 만족). 영양을 골랐는데 기준값 설정이 없으면 422
+   * CONFIG_REQUIRED(기준을 지어내지 않는다).
+   */
+  private @Nullable Object extra(@Nullable Object onSale, @Nullable List<String> nut) {
+    List<Object> all = new ArrayList<>();
+    if (onSale != null) {
+      all.add(onSale);
+    }
+    if (nut != null && !nut.isEmpty()) {
+      if (nutrition == null) {
+        throw new com.pmart.common.web.PmartException(
+            com.pmart.common.web.ErrorCode.CONFIG_REQUIRED, "영양 필터 기준값이 설정되지 않았습니다.");
+      }
+      all.add(LabelRules.nutritionFilter(nut, nutrition));
+    }
+    return all.isEmpty()
+        ? null
+        : all.size() == 1 ? all.get(0) : Map.of("bool", Map.of("filter", all));
   }
 
   /**
@@ -316,7 +347,9 @@ public class ProductSearch {
         h.carried(),
         h.ratingAverage(),
         h.ratingCount(),
-        h.discount());
+        h.discount(),
+        h.nutrition(),
+        h.allergens());
   }
 
   /** 검색어를 포함하는 상품명(중복 제거, 관련도 순). */
@@ -354,11 +387,17 @@ public class ProductSearch {
             null,
             Map.of(),
             onSale ? onSaleFilter() : null));
-    req.put(
-        "aggs",
-        Map.of(
-            "f", Map.of("terms", Map.of("field", "filters", "size", 500)),
-            "o", Map.of("terms", Map.of("field", "originType", "size", 5))));
+    Map<String, Object> aggs = new LinkedHashMap<>();
+    aggs.put("f", Map.of("terms", Map.of("field", "filters", "size", 500)));
+    aggs.put("o", Map.of("terms", Map.of("field", "originType", "size", 5)));
+    if (nutrition != null) { // products-v9 영양 — 값마다 그 조건에 맞는 건수
+      Map<String, Object> named = new LinkedHashMap<>();
+      for (String o : LabelRules.NUTRITION_OPTIONS) {
+        named.put(o, LabelRules.nutritionClause(o, nutrition));
+      }
+      aggs.put("n", Map.of("filters", Map.of("filters", named)));
+    }
+    req.put("aggs", aggs);
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     List<Facet> out = new ArrayList<>();
     for (JsonNode b : res.path("aggregations").path("f").path("buckets")) {
@@ -373,6 +412,13 @@ public class ProductSearch {
       String label = SearchRules.originLabel(b.path("key").asString(""));
       if (label != null) {
         out.add(new Facet(SearchRules.ORIGIN_KEY, label, b.path("doc_count").asLong()));
+      }
+    }
+    JsonNode nb = res.path("aggregations").path("n").path("buckets");
+    for (String o : LabelRules.NUTRITION_OPTIONS) {
+      long c = nb.path(o).path("doc_count").asLong(0);
+      if (c > 0) {
+        out.add(new Facet(LabelRules.NUTRITION_KEY, o, c));
       }
     }
     return out;
@@ -498,7 +544,20 @@ public class ProductSearch {
                                   "operator",
                                   "and",
                                   "boost",
-                                  SearchRules.CONTENT_MATCH_BOOST))),
+                                  SearchRules.CONTENT_MATCH_BOOST)),
+                          // products-v9(0.11.0): 알레르기를 묻는 검색어("땅콩 함유", "계란 알레르기")면 그 성분을 함유한 상품
+                          // (같은 시설 제조는 빼고). 성분 이름만("우유")이면 넣지 않는다 — 우유를 사려는 검색에 과자를 섞지 않게
+                          LabelRules.allergenOf(q) == null
+                              ? Map.of("match_none", Map.of())
+                              : Map.of(
+                                  "term",
+                                  Map.of(
+                                      "allergens.contains",
+                                      Map.of(
+                                          "value",
+                                          LabelRules.allergenOf(q),
+                                          "boost",
+                                          SearchRules.CONTENT_MATCH_BOOST)))),
                       "minimum_should_match",
                       1))));
       // 순위: 형태소 일치 > 앞부분 일치 > 조각 일치. 검색어 낱말이 그 순서로 붙어 있으면(사이 1낱말까지) 가산 — 구문 검색
@@ -581,6 +640,9 @@ public class ProductSearch {
         carried,
         s.hasNonNull("ratingAverage") ? s.get("ratingAverage").asDouble() : null,
         s.hasNonNull("ratingCount") ? s.get("ratingCount").asInt() : null,
-        null);
+        null,
+        // products-v9(0.11.0) 표시사항 값 — 없으면 null(모름)
+        s.hasNonNull("nutrition") ? s.get("nutrition") : null,
+        s.hasNonNull("allergens") ? s.get("allergens") : null);
   }
 }

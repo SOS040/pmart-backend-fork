@@ -1,8 +1,14 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-23, 사용자 "영양 넣어줘"·"알레르기는 필터 빼고 표시·검색만" — products-v9): 결과 항목 `nutrition`(100g·100mL 기준 열량·나트륨·당류·
+    단백질·지방, product-content 0.6.0 표시사항 값)·`allergens`(함유 contains·같은 시설 제조 mayContain·원문). 없으면 null = 모름(없음이 아니다).
+    영양 필터 키 `nutrition` 값 저당·저나트륨·고단백 — 같은 키 값은 **모두 만족**(AND). 기준값은 설정(`pmart.search.nutrition.*` — 식품 표시기준 강조표시:
+    저당 당류 100g 당 5g·100mL 당 2.5g 미만, 저나트륨 120mg 미만, 고단백 100g 당 11g·100mL 당 5.5g 이상), 설정이 없으면 이 필터는 422 CONFIG_REQUIRED·
+    `/search/filters` 에 줄이 없다. 영양 값이 없는 상품은 영양 필터에 걸리지 않는다. 알레르기는 거르기 없음 — 검색어가 알레르기를 묻는 꼴("땅콩 함유", "계란
+    알레르기")이면 그 성분을 **함유**한 상품도 찾는다(같은 시설 제조는 빼고, 낮은 순위). 성분 이름만("우유")이면 지금과 같다.
     0.10.0(2026-11-23, 백엔드 요청 availability-display §2 — 사용자 "모든 옵션 품절일 때만"·"조회 때 바로 묻기"): 검색 결과 항목 `availability`
     (AVAILABLE·SOLD_OUT·UNKNOWN). mfcId 를 줬을 때만 — product-content 카드 일괄 조회(옵션별 mfc-inventory 가용 사본)를 그 쪽 상품으로 한 번 불러,
     그 센터가 취급하는 옵션 중 하나라도 팔 수 있으면 AVAILABLE, 취급하는 옵션이 모두 품절이면 SOLD_OUT, 그 밖(취급 옵션 없음·모름·조회 실패·시간 초과)은 UNKNOWN.
@@ -386,9 +392,28 @@ components:
           type: [string, 'null']
           enum: [AVAILABLE, SOLD_OUT, UNKNOWN, null]
           description: '(0.10.0) mfcId 지정 시 그 센터의 판매 가능 여부 — 취급 옵션 하나라도 가능 AVAILABLE, 취급 옵션 모두 품절 SOLD_OUT, 그 밖·조회 실패 UNKNOWN(품절이라고 하지 않음). mfcId 없으면 null'
+        nutrition: { $ref: '#/components/schemas/Nutrition' }
+        allergens: { $ref: '#/components/schemas/Allergens' }
         rating: { type: [number, 'null'], description: '(0.3.0) 공개 리뷰 평균(소수 첫째). 리뷰 없으면 비움' }
         reviewCount: { type: [integer, 'null'], description: '(0.3.0) 공개 리뷰 수' }
         productVersion: { type: integer, description: 색인된 product 버전 }
+    Nutrition:
+      type: [object, 'null']
+      description: '(0.11.0) 표시사항 영양정보 100g(G)·100mL(ML) 기준. 모르는 칸은 null'
+      properties:
+        basisUnit: { type: string, enum: [G, ML] }
+        energyKcal: { type: [number, 'null'] }
+        sodiumMg: { type: [number, 'null'] }
+        sugarsG: { type: [number, 'null'] }
+        proteinG: { type: [number, 'null'] }
+        fatG: { type: [number, 'null'] }
+    Allergens:
+      type: [object, 'null']
+      description: '(0.11.0) 표시사항 알레르기 유발물질(법정 이름). 비면 모름 — 없다는 뜻이 아니다'
+      properties:
+        contains: { type: array, items: { type: string } }
+        mayContain: { type: array, items: { type: string }, description: 같은 제조시설에서 제조 }
+        text: { type: [string, 'null'] }
     SearchResult:
       type: object
       required: [items, page]

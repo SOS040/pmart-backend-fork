@@ -12,7 +12,7 @@ class DiscountSortTest {
   static ProductSearch.Hit hit(String id, ProductSearch.Discount d) {
     return new ProductSearch.Hit(
         id, id, null, List.of(), "E-" + id, 1000L, 1, "ON_SALE", 1, null, List.of(), null, null,
-        null, d);
+        null, d, null, null);
   }
 
   static ProductSearch.Discount d(int rate, long sale) {

@@ -1039,6 +1039,103 @@ class SearchFlowIT {
     assertThat(ids(search("?categoryId=t07&q=캐나다산"))).containsExactly("PRD-O2");
   }
 
+  /** 카드에 표시사항 값(product-content 0.6.0 nutrition·allergens)을 싣는다. null 이면 칸 없음. */
+  void cardWithFacts(
+      String productId,
+      String name,
+      @org.jspecify.annotations.Nullable Map<String, Object> nutrition,
+      @org.jspecify.annotations.Nullable Map<String, Object> allergens) {
+    Map<String, Object> item = new java.util.LinkedHashMap<>();
+    item.put("productId", productId);
+    item.put("name", name);
+    item.put("contentVersion", 1);
+    item.put("mainImage", Map.of("url", "/api/v1/content-images/IMG-" + productId));
+    item.put("nutrition", nutrition);
+    item.put("allergens", allergens);
+    content.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/product-contents"))
+            .withQueryParam("productIds", equalTo(productId))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of("items", List.of(item), "missing", List.of())))));
+  }
+
+  /**
+   * products-v9(2026-11-23 사용자 "영양 넣어줘"·"알레르기는 필터 빼고 표시·검색만"): 카드의 표시사항 값이 결과 칸으로, 영양 필터(같은 키 AND,
+   * 100mL 는 액체 기준), /search/filters 영양 줄, 알레르기를 묻는 검색어("땅콩 함유")는 함유 상품만(같은 시설 제조는 빼고), 성분 이름만은 지금과
+   * 같다.
+   */
+  @Test
+  @org.junit.jupiter.api.Order(8)
+  void nutritionFilterAndAllergenSearch() throws Exception {
+    for (String n : List.of("1", "2", "3", "4")) {
+      product("PRD-N" + n, 1, "E-N" + n, "t11-c01", "2026-11-23T01:00:00Z");
+    }
+    // N1: 100g 당류 3g·나트륨 100mg·단백질 13g → 저당·저나트륨·고단백, 땅콩 함유
+    cardWithFacts(
+        "PRD-N1",
+        "[시험] 영양 닭가슴살",
+        Map.of("basisUnit", "G", "energyKcal", 120, "sugarsG", 3, "sodiumMg", 100, "proteinG", 13),
+        Map.of("contains", List.of("닭고기", "땅콩"), "mayContain", List.of(), "text", "닭고기, 땅콩 함유"));
+    // N2: 100mL 당류 2g(액체 저당 2.5g 미만)·단백질 6g(액체 고단백 5.5g 이상), 같은 시설에서만 땅콩
+    cardWithFacts(
+        "PRD-N2",
+        "[시험] 영양 두유",
+        Map.of("basisUnit", "ML", "sugarsG", 2, "proteinG", 6),
+        Map.of("contains", List.of("대두"), "mayContain", List.of("땅콩"), "text", "대두 함유"));
+    // N3: 100g 당류 4g 이지만 나트륨 500mg·단백질 5g, 표시사항 값 없음은 N4
+    cardWithFacts(
+        "PRD-N3",
+        "[시험] 영양 과자",
+        Map.of("basisUnit", "G", "sugarsG", 4, "sodiumMg", 500, "proteinG", 5),
+        null);
+    cardWithFacts("PRD-N4", "[시험] 영양 땅콩 모름", null, null);
+    for (String n : List.of("1", "2", "3", "4")) {
+      contentPublished("PRD-N" + n, 1, "2026-11-23T01:01:00Z");
+    }
+    JsonNode all = await("?categoryId=t11", r -> r.path("total").asInt() == 4);
+    for (JsonNode i : all.path("items")) {
+      if ("PRD-N1".equals(i.path("productId").asString())) {
+        assertThat(i.path("nutrition").path("proteinG").asDouble()).isEqualTo(13.0);
+        assertThat(i.path("allergens").path("contains").toString()).contains("땅콩");
+      }
+      if ("PRD-N4".equals(i.path("productId").asString())) {
+        assertThat(i.path("nutrition").isNull() || i.path("nutrition").isMissingNode()).isTrue();
+      }
+    }
+    assertThat(ids(search("?categoryId=t11&filters=nutrition.저당")))
+        .containsExactlyInAnyOrder("PRD-N1", "PRD-N2", "PRD-N3");
+    assertThat(ids(search("?categoryId=t11&filters=nutrition.저나트륨"))).containsExactly("PRD-N1");
+    assertThat(ids(search("?categoryId=t11&filters=nutrition.고단백")))
+        .containsExactlyInAnyOrder("PRD-N1", "PRD-N2");
+    // 같은 키 값은 모두 만족
+    assertThat(ids(search("?categoryId=t11&filters=nutrition.저당&filters=nutrition.고단백")))
+        .containsExactlyInAnyOrder("PRD-N1", "PRD-N2");
+    assertThat(ids(search("?categoryId=t11&filters=nutrition.모름"))).isEmpty();
+
+    JsonNode attrs =
+        mapper.readTree(
+            http.get().uri("/search/filters?categoryId=t11").retrieve().body(String.class));
+    JsonNode nut = null;
+    for (JsonNode a : attrs.path("attributes")) {
+      if ("nutrition".equals(a.path("key").asString())) {
+        nut = a;
+      }
+    }
+    assertThat(nut).isNotNull();
+    assertThat(nut.path("label").asString()).isEqualTo("영양");
+    assertThat(nut.path("values").path(0).path("value").asString()).isEqualTo("저당");
+    assertThat(nut.path("values").path(0).path("count").asInt()).isEqualTo(3);
+
+    // 알레르기를 묻는 검색어 — 함유만(같은 시설 N2·모름 N4 는 이름에 땅콩이 없으면 안 나옴)
+    assertThat(ids(search("?categoryId=t11&q=땅콩 함유"))).containsExactly("PRD-N1");
+    // 성분 이름만이면 지금처럼 이름으로만
+    assertThat(ids(search("?categoryId=t11&q=땅콩"))).containsExactly("PRD-N4");
+  }
+
   /**
    * 할인 중인 상품만(2026-11-22 클라이언트 BR-82, 계약 0.8.0 onSale=true): 대표 SKU 할인이 있고 가격 사본과 같은 priceVersion 인
    * 상품만 — 결과의 salePrice 와 같은 판정. 할인이 끝난(unitDiscount 0) 상품과 가격 버전이 다른 할인은 빠진다.

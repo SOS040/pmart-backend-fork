@@ -27,7 +27,31 @@ public record SearchProperties(
     @Nullable Popular popular,
     @Nullable String searcherHashKey,
     @Nullable Correction correction,
-    @Nullable String contentBaseUrl) {
+    @Nullable String contentBaseUrl,
+    @Nullable Nutrition nutrition) {
+
+  /**
+   * 영양 필터 기준값(products-v9 0.11.0, 2026-11-23 — 식품 표시기준 강조표시 기준). 하나라도 없으면 영양 필터는 CONFIG_REQUIRED·필터
+   * 목록에서 빠짐(기본값으로 대신하지 않음).
+   */
+  public record Nutrition(
+      @Nullable Double lowSugarG,
+      @Nullable Double lowSugarMl,
+      @Nullable Double lowSodiumMg,
+      @Nullable Double highProteinG,
+      @Nullable Double highProteinMl) {
+    public com.pmart.search.domain.LabelRules.@Nullable Thresholds thresholds() {
+      if (lowSugarG == null
+          || lowSugarMl == null
+          || lowSodiumMg == null
+          || highProteinG == null
+          || highProteinMl == null) {
+        return null;
+      }
+      return new com.pmart.search.domain.LabelRules.Thresholds(
+          lowSugarG, lowSugarMl, lowSodiumMg, highProteinG, highProteinMl);
+    }
+  }
 
   /**
    * 오타 교정(2026-11-20 ADR-0073). 비면 교정하지 않는다(기본값으로 대신하지 않음).

@@ -32,6 +32,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class SearchController implements SearchApi {
 
+  /** 색인 사본(JsonNode) → 생성 모델. 상태 없는 변환만. */
+  private static final tools.jackson.databind.json.JsonMapper JSON =
+      tools.jackson.databind.json.JsonMapper.builder().build();
+
   private final ProductSearch search;
   private final com.pmart.search.infrastructure.CategoryTreeClient categories;
   private final SearchActivity activity;
@@ -198,6 +202,17 @@ public class SearchController implements SearchApi {
         // ADR-0072 — 순위 신호 사본(리뷰 없으면 비움)
         .rating(h.ratingAverage() == null ? null : java.math.BigDecimal.valueOf(h.ratingAverage()))
         .reviewCount(h.ratingCount())
+        // products-v9(0.11.0) 표시사항 값 — 색인 사본 그대로(없으면 null)
+        .nutrition(
+            h.nutrition() == null
+                ? null
+                : JSON.convertValue(
+                    h.nutrition(), com.pmart.search.api.generated.model.Nutrition.class))
+        .allergens(
+            h.allergens() == null
+                ? null
+                : JSON.convertValue(
+                    h.allergens(), com.pmart.search.api.generated.model.Allergens.class))
         .productVersion(h.productVersion());
   }
 

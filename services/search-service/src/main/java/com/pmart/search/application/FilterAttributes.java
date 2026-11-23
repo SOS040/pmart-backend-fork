@@ -41,6 +41,19 @@ public final class FilterAttributes {
           new Acc(g.name(), g.multiSelect(), new ArrayList<>(g.options()), new LinkedHashMap<>()));
     }
     for (ProductSearch.Facet f : facets) {
+      if (com.pmart.search.domain.LabelRules.NUTRITION_KEY.equals(f.key())) { // 영양(products-v9)
+        rows.computeIfAbsent(
+                f.key(),
+                k ->
+                    new Acc(
+                        com.pmart.search.domain.LabelRules.NUTRITION_LABEL,
+                        true,
+                        new ArrayList<>(com.pmart.search.domain.LabelRules.NUTRITION_OPTIONS),
+                        new LinkedHashMap<>()))
+            .counts()
+            .merge(f.value(), f.count(), Long::sum);
+        continue;
+      }
       if (SearchRules.ORIGIN_KEY.equals(f.key())) { // 원산지 — 패널이 아니라 콘텐츠의 원산지 줄(products-v8)
         rows.computeIfAbsent(
                 f.key(),

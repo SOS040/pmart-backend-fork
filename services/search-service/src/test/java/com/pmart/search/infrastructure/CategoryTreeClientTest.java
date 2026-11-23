@@ -57,7 +57,8 @@ class CategoryTreeClientTest {
   CategoryTreeClient client(Executor background, long panelDelayMs) {
     return new CategoryTreeClient(
         RestClient.builder(),
-        new SearchProperties("http://es:9200", "http://product:8101", null, null, null, null, null),
+        new SearchProperties(
+            "http://es:9200", "http://product:8101", null, null, null, null, null, null),
         JsonMapper.builder().build(),
         clock,
         background) {

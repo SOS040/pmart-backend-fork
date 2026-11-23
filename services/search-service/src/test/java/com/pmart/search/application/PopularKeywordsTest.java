@@ -30,7 +30,8 @@ class PopularKeywordsTest {
   final SearchIndex index = mock(SearchIndex.class);
 
   static SearchProperties props(SearchProperties.Popular popular) {
-    return new SearchProperties("http://es", "http://product", null, popular, "k", null, null);
+    return new SearchProperties(
+        "http://es", "http://product", null, popular, "k", null, null, null);
   }
 
   @Test
