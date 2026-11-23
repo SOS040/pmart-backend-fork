@@ -612,6 +612,8 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
     assertThat(page.body().path("total").asInt()).isEqualTo(2);
     assertThat(page.body().path("counts").path("writable").asInt()).isEqualTo(1);
     assertThat(page.body().path("counts").path("written").asInt()).isEqualTo(1);
+    // 0.6.1 BR-86 — 쪽 크기 1 이어도 그 주문의 쓸 수 있는 품목 수(1)
+    assertThat(page.body().path("items").path(0).path("orderWritableCount").asInt(-1)).isEqualTo(1);
 
     Res writable =
         send(

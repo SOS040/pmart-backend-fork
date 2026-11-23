@@ -73,8 +73,14 @@ public class ReviewService {
   public record Helpful(String reviewId, int helpfulCount, boolean helpedByMe) {}
 
   /** 자격 한 쪽과 개수(0.5.0 BR-67 — total·writable·written). */
+  /**
+   * @param orderWritable 쪽에 나온 주문마다 지금 쓸 수 있는 품목 수(0.6.1 BR-86 — state·쪽과 상관없이 주문 기준)
+   */
   public record EligibilityPage(
-      List<EligibilityItem> items, @Nullable String nextCursor, EligibilityCounts counts) {}
+      List<EligibilityItem> items,
+      @Nullable String nextCursor,
+      EligibilityCounts counts,
+      java.util.Map<String, Integer> orderWritable) {}
 
   /** 자격 한 줄. display 는 리뷰관리 표시 값(0.5.0 BR-67 — 주문 시각·센터 이름·지금 상품 사진·옵션 라벨, 모르면 null). */
   public record EligibilityItem(
@@ -204,7 +210,11 @@ public class ReviewService {
     }
     EligibilityCounts counts =
         store.eligibilityCounts(c.subject(), blankToNull(orderId), state, now);
-    return new EligibilityPage(items, more ? String.valueOf(offset + size) : null, counts);
+    java.util.Map<String, Integer> orderWritable =
+        store.writableByOrder(
+            c.subject(), page.stream().map(v -> v.e().orderId()).distinct().toList(), now);
+    return new EligibilityPage(
+        items, more ? String.valueOf(offset + size) : null, counts, orderWritable);
   }
 
   // ---------------------------------------------------------------- 작성·수정·삭제

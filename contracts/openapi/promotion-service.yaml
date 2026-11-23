@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: promotion-service
-  version: 0.2.0
+  version: 0.2.1
   description: |
+    0.2.1(2026-11-23, 고객앱 BR-85 — 사용자 "응"): 내 쿠폰 `Coupon.usedAt` — 쿠폰 사용이 확정된 시각(결제 성공 → 주문 확정 때 점유를 확정한 시각, UTC). status USED 일 때만, 그 밖은 null.
+    쓴 주문이 전체 취소돼 쿠폰이 돌아오면(원래 사용 기간 안) 다시 null. 결제 중 점유는 쓴 것이 아니라 null.
     0.2.0(2026-11-20, ADR-0082 쿠폰·기간 할인 — 사용자 결정): 서비스 활성화. 기간 할인(상품 할인)·장바구니 쿠폰 행사의 정본 —
     행사 만들기·승인 반영(종류 PROMOTION)·조기 종료, 쿠폰 내려받기·지정 발급·내 쿠폰함, SKU 별 지금 할인(pricing·화면용), 쿠폰 할인 계산·점유·사용 확정·해제·복원.
     계산 규칙(부록 C §8.5 — ADR-0082 결정 2): 같은 SKU 에 걸린 기간 할인은 **가장 큰 할인 1개**, 정률은 원 미만 버림, 할인 뒤 단가 ≥ 0.
@@ -580,6 +582,7 @@ components:
         issuedAt: { type: string, format: date-time }
         validUntil: { type: string, format: date-time }
         usedOrderId: { type: [string, 'null'] }
+        usedAt: { type: [string, 'null'], format: date-time, description: '(0.2.1 BR-85) 사용 확정 시각(주문 확정 때) — USED 일 때만' }
     PriceDiscount:
       type: object
       required: [sku, promotionId, name, unitPrice, unitDiscount, discountedUnitPrice, endsAt]

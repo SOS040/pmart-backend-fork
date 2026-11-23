@@ -30,3 +30,4 @@
 ```
 로컬 포트 8109. LAN PC 2.
 - **쿠폰 도착 알림(2026-11-21)**: `CouponService.issue` 가 DOWNLOAD 가 아닌 발급(SIGNUP·ADMIN — 보상·직원 지정)마다 같은 트랜잭션에서 `CouponIssued`(토픽 `commerce.coupon.v1`, 보상이면 reason DISPATCH_UNAVAILABLE·orderId) → notification.
+- **쿠폰 사용 시각(2026-11-23, 계약 0.2.1 — 고객앱 BR-85)**: `GET /me/coupons` `usedAt` = `coupon.used_at`(점유 확정 = 주문 확정 때 기록, 해제·복원 때 null) — USED 일 때만. 시험 `PromotionsIT`(확정 뒤 있음·복원 뒤 없음).

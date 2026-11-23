@@ -129,7 +129,12 @@ final class PromotionMapping {
         .status(Coupon.StatusEnum.fromValue(v.status()))
         .issuedAt(odt(v.coupon().issuedAt()))
         .validUntil(odt(v.coupon().validUntil()))
-        .usedOrderId("USED".equals(v.status()) ? v.coupon().orderId() : null);
+        .usedOrderId("USED".equals(v.status()) ? v.coupon().orderId() : null)
+        // 0.2.1 BR-85 — 사용 확정 시각(주문 확정 때 coupon.used_at), 돌아온 쿠폰은 null
+        .usedAt(
+            "USED".equals(v.status()) && v.coupon().usedAt() != null
+                ? odt(v.coupon().usedAt())
+                : null);
   }
 
   static CouponHold hold(HoldRow h) {

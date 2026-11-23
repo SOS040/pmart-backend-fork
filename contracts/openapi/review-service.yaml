@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: review-service
-  version: 0.6.0
+  version: 0.6.1
   x-stage: 2
   description: |
+    0.6.1(2026-11-23, 고객앱 BR-86 — 사용자 "응"): `Eligibility.orderWritableCount` — 같은 주문에서 지금 리뷰를 쓸 수 있는(REV_ELIGIBLE) 품목 수. 조회 조건(state·쪽)과 상관없이 그 주문 기준 — 쪽 경계에 걸려도 주문 머리 "N개"가 맞게.
     0.6.0(2026-11-21 BR-76 — 고객 앱 요청, 사용자 "BR-76부터 해줘"): 상품 리뷰 목록 `sort=RECOMMENDED`(도움돼요 많은 순 → 같으면 최근 등록순, 기본 정렬은 NEWEST 그대로)·`sku`(옵션 하나로 거르기),
     `summary.reviewCount` = **거른 수**(sku·withPhotoOnly 적용 — averageRating 은 상품 전체 그대로). 리뷰 `helpfulCount`·`helpedByMe`(회원 토큰이 있을 때만, 없으면 null).
     도움돼요 `PUT`·`DELETE /reviews/{reviewId}/helpful`(회원만 — 멱등: 이미 눌렀으면·안 눌렀으면 그대로 200) — 내 리뷰 422 `HELPFUL_OWN_REVIEW`, 공개 아닌 리뷰(삭제) 409 `REVIEW_NOT_PUBLISHED`. 도움돼요 수는 그대로 공개(숨김·반올림 없음), 반복은 게이트웨이 요청 제한만.
@@ -371,6 +372,7 @@ components:
         orderedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-20', description: '(0.5.0 BR-67) 주문 확정 시각(order 사본). 모르면 null' }
         mfcName: { type: [string, 'null'], x-added-in: '2026-11-20', description: '(0.5.0 BR-67) 주문한 센터 이름(center-master — order 0.15.0 mfcName 과 같은 값). 모르면 null' }
         imageUrl: { type: [string, 'null'], x-added-in: '2026-11-20', description: '(0.5.0 BR-67) 상품의 지금 대표 사진 경로(product-content 카드 mainImage.url — 예 /api/v1/content-images/{imageId}, ?w= 축소본 가능). 게시 안 된 상품·조회 실패면 null' }
+        orderWritableCount: { type: [integer, 'null'], minimum: 0, x-added-in: '2026-11-23', description: '(0.6.1 BR-86) 같은 주문에서 지금 쓸 수 있는 품목 수 — state·쪽과 상관없이 주문 기준' }
         optionLabel: { type: [string, 'null'], x-added-in: '2026-11-20', description: '(0.5.0 BR-67) 그 SKU 의 옵션 이름(지금 콘텐츠 — 주문 당시 사본 아님). 콘텐츠에 옵션 이름이 없거나 모르면 null' }
     CreateReviewRequest:
       type: object

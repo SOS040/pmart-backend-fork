@@ -734,6 +734,15 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("couponId"))
         .containsExactly(couponId);
+    // 0.2.1 BR-85 — 사용 확정 시각(주문 확정 때)
+    assertThat(
+            send("GET", ta, "/me/coupons?status=USED", null)
+                .body()
+                .path("items")
+                .path(0)
+                .path("usedAt")
+                .asString(""))
+        .isNotBlank();
     assertThat(send("POST", null, "/internal/coupon-holds/" + holdId + "/releases", null).status())
         .isEqualTo(409);
     Res restored = send("POST", null, "/internal/coupon-holds/" + holdId + "/restorations", null);
@@ -745,6 +754,10 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("couponId"))
         .containsExactly(couponId);
+    // 돌아온 쿠폰은 usedAt 없음
+    JsonNode back =
+        send("GET", ta, "/me/coupons?status=AVAILABLE", null).body().path("items").path(0);
+    assertThat(back.path("usedAt").isNull() || back.path("usedAt").isMissingNode()).isTrue();
 
     // 지정 발급(ADMIN): CS 가 a·a·b → 두 명에게 1장씩
     String admin =

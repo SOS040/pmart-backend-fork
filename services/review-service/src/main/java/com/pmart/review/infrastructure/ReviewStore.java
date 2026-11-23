@@ -237,6 +237,30 @@ public class ReviewStore {
         args.toArray());
   }
 
+  /** 주문마다 지금 쓸 수 있는(REV_ELIGIBLE) 품목 수 — 0.6.1 BR-86. 자격이 없는 주문은 맵에 없다. */
+  public java.util.Map<String, Integer> writableByOrder(
+      String accountId, List<String> orderIds, Instant now) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    if (orderIds.isEmpty()) {
+      return out;
+    }
+    List<Object> args = new ArrayList<>();
+    String from = eligibilityFrom(accountId, null, now, args);
+    String marks = String.join(",", java.util.Collections.nCopies(orderIds.size(), "?"));
+    args.addAll(orderIds);
+    jdbc.query(
+        "SELECT order_id, count(*) FILTER (WHERE computed_state = 'REV_ELIGIBLE') AS writable FROM "
+            + from
+            + " x WHERE order_id IN ("
+            + marks
+            + ") GROUP BY order_id",
+        rs -> {
+          out.put(rs.getString("order_id"), rs.getInt("writable"));
+        },
+        args.toArray());
+    return out;
+  }
+
   /** 본인 자격 + 리뷰 + 계산 상태(computed_state) 부분 질의. 자리표시자 값은 args 뒤에 붙인다. */
   private static String eligibilityFrom(
       String accountId, @Nullable String orderId, Instant now, List<Object> args) {
