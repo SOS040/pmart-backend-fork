@@ -3,7 +3,7 @@
 보낸 영역: platform
 받는 앱: backoffice(PC 2)
 작성: pmart-backend, 2026-11-23 — CU-7 사용자 결정(#379·#382 포함), 사용자 "2번해줘"
-상태: 코드·시험 끝, LAN 배포는 사용자 "배포" 뒤
+상태: **LAN 배포 2026-11-23**(이미지 2fcb52a3, pmart-config 2e14a35) — claude-dev 로 이력·걸기 경로 확인(없는 고객 404)
 
 - `POST /customers/{customerId}/restrictions` (Idempotency-Key) `{restriction: RESTRICTED|SUSPENDED, reason(2~200자)}` → 201 CommandResponse APPLIED(resultId = 이력 ID). 늘 지금 + 7일, 지금 제한이 있으면 새 값·새 기한으로 바꿈. 탈퇴 완료 409.
 - `POST /customers/{customerId}/restriction-releases` `{reason}` → 200 APPLIED. 제한이 없으면 409 NOT_RESTRICTED(오인식 풀기).
