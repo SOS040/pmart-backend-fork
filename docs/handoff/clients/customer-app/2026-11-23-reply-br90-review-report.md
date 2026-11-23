@@ -4,7 +4,7 @@
 받는 앱: customer-app
 요청: pmart-clients `docs/handoff/customer-app/2026-11-23-backend-review-report.md`
 작성: pmart-backend, 2026-11-23 — 사용자 정책(요청서) + "추천대로"(처리 CS_AGENT·OPERATOR_ADMIN, 숨기면 별점·리뷰 수에서 뺌)
-상태: 코드·시험 끝(review 단위 15·통합 8), **LAN 배포는 사용자 "배포" 뒤**(게이트웨이 경로 추가와 같이)
+상태: 코드·시험 끝(review 단위 15·통합 8), **LAN 배포 2026-11-23**(review 0.7.0·V6, 게이트웨이 경로 — 이미지 6ba50de4, pmart-config ea6c5f8)
 
 ## R1 — review 0.7.0 `POST /reviews/{reviewId}/reports` (회원, Idempotency-Key)
 - 본문 `{reason: ABUSE|AD|IRRELEVANT|PRIVACY|OTHER, detail?}` — detail 300자, OTHER 일 때만 필수·저장(다른 사유면 버림).
