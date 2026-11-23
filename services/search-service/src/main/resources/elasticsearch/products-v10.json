@@ -1,0 +1,286 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "char_filter": {
+        "strip_spaces": {
+          "type": "pattern_replace",
+          "pattern": "\\s+",
+          "replacement": ""
+        }
+      },
+      "tokenizer": {
+        "name_nori": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed",
+          "user_dictionary_rules": [
+            "가라아게",
+            "궈바로우",
+            "그릭요거트",
+            "그릭요구르트",
+            "꿔바로우",
+            "땅콩버터",
+            "또띠아",
+            "또띠야",
+            "모짜렐라",
+            "모차렐라",
+            "무설탕",
+            "생크림",
+            "슈가프리",
+            "스위트콘",
+            "스파클링",
+            "어묵",
+            "오뎅",
+            "옥수수콘",
+            "요거트",
+            "요구르트",
+            "즉석밥",
+            "카라아게",
+            "탄산수",
+            "토르티야",
+            "피넛버터",
+            "햇반",
+            "화장지",
+            "휘핑크림",
+            "휴지"
+          ]
+        },
+        "name_ngram": {
+          "type": "ngram",
+          "min_gram": 1,
+          "max_gram": 2,
+          "token_chars": [
+            "letter",
+            "digit"
+          ]
+        },
+        "name_edge": {
+          "type": "edge_ngram",
+          "min_gram": 1,
+          "max_gram": 10,
+          "token_chars": [
+            "letter",
+            "digit"
+          ]
+        }
+      },
+      "analyzer": {
+        "name_nori": {
+          "type": "custom",
+          "tokenizer": "name_nori",
+          "filter": [
+            "nori_part_of_speech",
+            "lowercase"
+          ]
+        },
+        "name_ngram": {
+          "type": "custom",
+          "tokenizer": "name_ngram",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "name_edge": {
+          "type": "custom",
+          "tokenizer": "name_edge",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "name_edge_search": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "name_compact": {
+          "type": "custom",
+          "char_filter": [
+            "strip_spaces"
+          ],
+          "tokenizer": "name_ngram",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "chosung_edge_search": {
+          "type": "custom",
+          "tokenizer": "whitespace"
+        },
+        "name_nori_search": {
+          "type": "custom",
+          "tokenizer": "name_nori",
+          "filter": [
+            "nori_part_of_speech",
+            "lowercase",
+            "pmart_synonyms"
+          ]
+        }
+      },
+      "filter": {
+        "pmart_synonyms": {
+          "type": "synonym_graph",
+          "synonyms_set": "pmart-product-synonyms",
+          "updateable": true
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "productId": {
+        "type": "keyword"
+      },
+      "productVersion": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "text",
+        "analyzer": "name_nori",
+        "fields": {
+          "edge": {
+            "type": "text",
+            "analyzer": "name_edge",
+            "search_analyzer": "name_edge_search"
+          },
+          "partial": {
+            "type": "text",
+            "analyzer": "name_ngram"
+          },
+          "compact": {
+            "type": "text",
+            "analyzer": "name_compact"
+          }
+        },
+        "search_analyzer": "name_nori_search"
+      },
+      "nameChosung": {
+        "type": "text",
+        "analyzer": "name_compact",
+        "fields": {
+          "edge": {
+            "type": "text",
+            "analyzer": "name_edge",
+            "search_analyzer": "chosung_edge_search"
+          }
+        }
+      },
+      "imageUrl": {
+        "type": "keyword",
+        "index": false
+      },
+      "contentVersion": {
+        "type": "integer"
+      },
+      "contentPublishedAtMs": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+      "primaryCategoryId": {
+        "type": "keyword"
+      },
+      "categoryIds": {
+        "type": "keyword"
+      },
+      "categoryScope": {
+        "type": "keyword"
+      },
+      "representativeSku": {
+        "type": "keyword"
+      },
+      "carriedMfcIds": {
+        "type": "keyword"
+      },
+      "saleState": {
+        "type": "keyword"
+      },
+      "saleStateAtMs": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+      "saleStateRowVersion": {
+        "type": "integer"
+      },
+      "filters": {
+        "type": "keyword"
+      },
+      "basePrice": {
+        "type": "long"
+      },
+      "priceVersion": {
+        "type": "integer"
+      },
+      "updatedAtMs": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+      "ratingCount": {
+        "type": "integer"
+      },
+      "ratingAverage": {
+        "type": "float"
+      },
+      "ratingScore": {
+        "type": "float"
+      },
+      "salesWindow": {
+        "type": "integer"
+      },
+      "signalsVersion": {
+        "type": "long"
+      },
+      "originType": {
+        "type": "keyword"
+      },
+      "originText": {
+        "type": "text",
+        "analyzer": "name_nori",
+        "search_analyzer": "name_nori_search"
+      },
+      "description": {
+        "type": "text",
+        "analyzer": "name_nori",
+        "search_analyzer": "name_nori_search"
+      },
+      "nutrition": {
+        "properties": {
+          "basisUnit": {
+            "type": "keyword"
+          },
+          "energyKcal": {
+            "type": "float"
+          },
+          "sodiumMg": {
+            "type": "float"
+          },
+          "sugarsG": {
+            "type": "float"
+          },
+          "proteinG": {
+            "type": "float"
+          },
+          "fatG": {
+            "type": "float"
+          }
+        }
+      },
+      "allergens": {
+        "properties": {
+          "contains": {
+            "type": "keyword"
+          },
+          "mayContain": {
+            "type": "keyword"
+          },
+          "text": {
+            "type": "text",
+            "index": false
+          }
+        }
+      }
+    }
+  }
+}

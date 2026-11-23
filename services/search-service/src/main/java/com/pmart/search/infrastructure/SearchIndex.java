@@ -66,7 +66,8 @@ public class SearchIndex {
   public static final Map<String, String> INDICES =
       Map.of(
           PRODUCTS,
-          "products-v9", // 2026-11-23 표시사항 값 nutrition·allergens(product-content 0.6.0) / v8
+          "products-v10", // 2026-11-23 사용자 사전에 그릭요구르트·스파클링(동의어가 안 잇던 2낱말) / v9 표시사항 값
+          // nutrition·allergens / v8
           // 2026-11-22 원산지(originType·originText)·설명(description) + 동의어 낱말 사용자 사전 /
           // v7
           // 2026-11-20 ADR-0073 — 이름 검색 분석기에 동의어(synonym_graph, 동의어 집합) / v6
