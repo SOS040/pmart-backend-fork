@@ -360,6 +360,8 @@ pmart:
       - method: GET
         path: /api/v1/search/filters # search-service
       - method: GET
+        path: /api/v1/search/category-images # search-service (0.13.0 BR-89)
+      - method: GET
         path: /api/v1/storefront/home # storefront-service
       - method: GET
         path: /api/v1/storefront/tabs/* # storefront-service

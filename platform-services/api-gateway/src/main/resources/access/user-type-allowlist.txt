@@ -324,6 +324,7 @@ GET /api/v1/riders/stats OPERATOR
 GET /api/v1/riders/withdrawals OPERATOR
 GET /api/v1/riders/{riderId} OPERATOR
 GET /api/v1/riders/{riderId}/restrictions OPERATOR
+GET /api/v1/search/category-images PUBLIC
 GET /api/v1/search/filters PUBLIC
 GET /api/v1/search/products PUBLIC
 GET /api/v1/search/suggestions PUBLIC

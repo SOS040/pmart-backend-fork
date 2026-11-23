@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
+    0.13.0(2026-11-23, 고객앱 BR-89 — 사용자 "응"(대표 상품 사진 자동)): `GET /search/category-images?mfcId=` — 카테고리마다 대표 사진 하나(그 카테고리와 하위의
+    판매 가능 상품 중 최근 판매 많은 → 별점 → 최근 게시 순 1위 상품의 대표 사진). 상위·하위·칩 모두(상품이 있는 것만). mfcId 를 주면 그 센터가 취급하는 상품만.
+    사진은 상품 콘텐츠 사진 경로 — 앱은 `?w=240`(정사각에 가깝게 자른 축소본 아님, 원본 비율 JPEG)을 붙여 쓴다. 5분 사본.
     0.12.0(2026-11-23, 고객앱 BR-87·BR-88 — 사용자 "추천대로, 비슷한 이름 먼저"): ① 첫 쪽이 0건이고 고친 검색어로도 0건이면 `similarItems`(최대 20개) —
     검색어 형태소가 하나라도 맞거나 1~2글자 조각이 70% 이상 맞는 상품명(관련도 순)을 먼저, 그래도 없으면 인기 상품(최근 판매). 센터(mfcId) 거르기·판매중지 제외는 검색과 같다.
     카드는 items 와 같은 SearchHit(할인·availability 포함). 결과가 있으면 null. ② `suggestedQuery`(결과가 적을 때 제안)는 원래 검색어가 상품명에 형태소로 그대로
@@ -209,6 +212,33 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/SynonymRuleApplication' } }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /search/category-images:
+    get:
+      tags: [search]
+      summary: '(0.13.0 BR-89) 카테고리 대표 사진 — 카테고리마다 인기 1위 상품의 대표 사진'
+      operationId: getCategoryImages
+      security: []
+      parameters:
+        - { name: mfcId, in: query, schema: { $ref: '_common.yaml#/components/schemas/CenterId' }, description: 주면 그 센터가 취급하는 상품만 }
+      responses:
+        '200':
+          description: OK — 상품이 하나도 없는 카테고리는 items 에 없다(앱 그림으로)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [categoryId, imageUrl, productId]
+                      properties:
+                        categoryId: { type: string }
+                        imageUrl: { type: string, description: '상품 대표 사진 경로(/api/v1/content-images/{id}) — ?w=240 을 붙여 쓴다' }
+                        productId: { type: string, description: 사진을 가져온 상품 }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
   /search/filters:
     get:
       tags: [search]

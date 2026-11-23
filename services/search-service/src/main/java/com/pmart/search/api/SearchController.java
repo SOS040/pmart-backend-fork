@@ -44,6 +44,7 @@ public class SearchController implements SearchApi {
   private final com.pmart.search.application.CorrectedSearch corrected;
   private final com.pmart.search.application.ZeroResultKeywords zeroResults;
   private final com.pmart.search.application.ProductAvailability availability;
+  private final com.pmart.search.application.CategoryImages categoryImages;
 
   public SearchController(
       ProductSearch search,
@@ -53,7 +54,9 @@ public class SearchController implements SearchApi {
       Clock clock,
       com.pmart.search.application.CorrectedSearch corrected,
       com.pmart.search.application.ZeroResultKeywords zeroResults,
-      com.pmart.search.application.ProductAvailability availability) {
+      com.pmart.search.application.ProductAvailability availability,
+      com.pmart.search.application.CategoryImages categoryImages) {
+    this.categoryImages = categoryImages;
     this.availability = availability;
     this.corrected = corrected;
     this.zeroResults = zeroResults;
@@ -147,6 +150,25 @@ public class SearchController implements SearchApi {
                 similar.isEmpty()
                     ? null
                     : similar.stream().map(h -> withAvailability(hit(h), h, avail)).toList())
+            .asOf(asOf()));
+  }
+
+  /** 0.13.0 BR-89 — 카테고리 대표 사진(인기 1위 상품, 5분 사본). */
+  @Override
+  public ResponseEntity<com.pmart.search.api.generated.model.GetCategoryImages200Response>
+      getCategoryImages(@Nullable String mfcId) {
+    return ResponseEntity.ok(
+        new com.pmart.search.api.generated.model.GetCategoryImages200Response()
+            .items(
+                categoryImages.of(mfcId).stream()
+                    .map(
+                        i ->
+                            new com.pmart.search.api.generated.model
+                                    .GetCategoryImages200ResponseItemsInner()
+                                .categoryId(i.categoryId())
+                                .imageUrl(i.imageUrl())
+                                .productId(i.productId()))
+                    .toList())
             .asOf(asOf()));
   }
 

@@ -31,6 +31,7 @@ pmart:
       - /api/v1/search/products
       - /api/v1/search/suggestions
       - /api/v1/search/filters
+      - /api/v1/search/category-images # 0.13.0 BR-89 카테고리 대표 사진(공개)
   search:
     # 영양 필터 기준값(products-v9 계약 0.11.0, 2026-11-23 사용자 "저당·저나트륨, 고단백" — 식품 표시기준 강조표시: 저당 당류 100g 5g·100mL 2.5g 미만,
     # 저나트륨 100g(mL) 120mg 미만, 고단백 단백질 기준치 55g 의 20% = 100g 11g·100mL 5.5g 이상). 하나라도 없으면 영양 필터 422 CONFIG_REQUIRED·필터 목록에서 빠짐

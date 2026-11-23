@@ -1159,6 +1159,17 @@ class SearchFlowIT {
     assertThat(found.path("total").asInt()).isPositive();
     assertThat(found.path("similarItems").isNull() || found.path("similarItems").isMissingNode())
         .isTrue();
+
+    // 0.13.0 BR-89 카테고리 대표 사진 — 상위(t11)·하위(t11-c01) 모두, 사진은 상품 대표 사진 경로
+    JsonNode images =
+        mapper.readTree(http.get().uri("/search/category-images").retrieve().body(String.class));
+    java.util.Map<String, String> byCategory = new java.util.HashMap<>();
+    images
+        .path("items")
+        .forEach(
+            i -> byCategory.put(i.path("categoryId").asString(), i.path("imageUrl").asString()));
+    assertThat(byCategory).containsKeys("t11", "t11-c01");
+    assertThat(byCategory.get("t11-c01")).startsWith("/api/v1/content-images/IMG-PRD-N");
   }
 
   /**
