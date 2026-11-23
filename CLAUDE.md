@@ -56,6 +56,7 @@ Windows는 `.\gradlew.bat`. 실행 전 프로젝트 경로와 task 존재 여부
 
 ## 작업 방식 (2026-11-21 사용자 결정)
 - **토큰 사용량을 줄이기 위해 다른 에이전트(서브에이전트·Agent·Workflow·fork)를 쓰지 않는다.** 검색·조사·구현·검토 모두 지금 세션에서 직접 한다.
+- **메모리(2026-11-23 사용자 지시, PC 1 모든 세션)**: 무거운 시험(gradle·vitest·flutter) 전에 실메모리 남은 양을 본다(`powershell -NoProfile -Command "[int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024)"`, MB). 4GB 아래면 미루고 사용자에게 알린다. `flutter test` 는 `--concurrency=1` 이나 폴더·파일별로 돌리고, 끝난 뒤 남은 `flutter_tester` 가 없는지 본다(flutter_tester 하나가 약 20GB 를 잡아 PC 1 이 0.1GB 까지 떨어졌고, 메모리 부족으로 배포 세션이 멈춘 적이 있다). 글: `../PR처리용 - 클라이언트/docs/handoff/clients-session/2026-11-23-flutter-test-memory.md`.
 
 ## 절대 규칙
 - 다른 서비스의 구현 클래스·DB·JPA 엔티티에 직접 접근하지 않는다. API 또는 이벤트만.
