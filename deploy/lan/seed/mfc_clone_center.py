@@ -1,4 +1,4 @@
-"""1호점(MFC-SEED-01)과 같은 칸 구성을 다른 센터에 만든다 — 2호점 목포 MFC-MOKPO-01(시뮬레이터 R-39, 2026-11-22).
+"""1호점(MFC-BJG-01)과 같은 칸 구성을 다른 센터에 만든다 — 2호점 목포 MFC-MOKPO-01(시뮬레이터 R-39, 2026-11-22).
 
 사용자 결정(시뮬레이터 세션 전달): "여기랑 평수, 구조, sku 수, 랙 갯수 등 완전 똑같이 해서 목포 MFC 만들어줘".
 LAN 전용, API 로만. 실행은 PC 1(PC 3 은 읽기만). 토큰·비밀번호는 출력하지 않는다.
@@ -9,7 +9,7 @@ LAN 전용, API 로만. 실행은 PC 1(PC 3 은 읽기만). 토큰·비밀번호
 
 단계:
   freeze      (2026-11-24) 1호점 칸·재고를 seed-template-2026-11-24.json 으로 고정 — 1호점을 다시 설계하기 전에 한 번. 그 뒤
-              원본이 MFC-SEED-01 인 모든 단계는 이 파일을 읽는다(PMART_SOURCE_LIVE=1 이면 실시간). LOT 라벨만 실시간(LOT 은 정정 뒤에도 같음).
+              원본이 MFC-BJG-01 인 모든 단계는 이 파일을 읽는다(PMART_SOURCE_LIVE=1 이면 실시간). LOT 라벨만 실시간(LOT 은 정정 뒤에도 같음).
   locations   원본 센터의 모든 칸(RETIRED 빼고)을 대상 센터에 같은 코드·구역·온도대·고회전·보충재고·pickSequence·
               areaCode·categoryId·치수로 등록한다. 위치(xM·zM)는 위치 파일(location-positions.json, R-38 c7d4b7b)에 있으면
               그 값, 없으면 원본 값. 원본이 CLOSED 면 등록 뒤 닫는다(COUNT_LOCKED 는 ACTIVE 로 둔다).
@@ -61,7 +61,7 @@ LAN 전용, API 로만. 실행은 PC 1(PC 3 은 읽기만). 토큰·비밀번호
     python -I deploy/lan/seed/mfc_clone_center.py layout [--apply]          # 세종 칸
   PMART_TARGET_MFC=MFC-SEJ-01 PMART_TARGET_SUP=claude-mfc-sup-sj PMART_LOT_PREFIX=SEJ
     python -I deploy/lan/seed/mfc_clone_center.py stock --placement mixed [--apply]  # 세종 재고
-환경: PMART_SOURCE_MFC(기본 MFC-SEED-01), PMART_TARGET_MFC(기본 MFC-MOKPO-01), PMART_SOURCE_SUP(기본 claude-mfc-sup),
+환경: PMART_SOURCE_MFC(기본 MFC-BJG-01), PMART_TARGET_MFC(기본 MFC-MOKPO-01), PMART_SOURCE_SUP(기본 claude-mfc-sup),
       PMART_TARGET_SUP(기본 claude-mfc-sup-mk), PMART_POSITIONS(위치 파일), PMART_GATEWAY·PMART_INVENTORY.
 """
 import argparse
@@ -76,7 +76,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mfc_layout as v1  # noqa: E402  http()·pos_of()·same_pos()·GW·INV
 
-SOURCE = os.environ.get("PMART_SOURCE_MFC", "MFC-SEED-01")
+SOURCE = os.environ.get("PMART_SOURCE_MFC", "MFC-BJG-01")
 TARGET = os.environ.get("PMART_TARGET_MFC", "MFC-MOKPO-01")
 SOURCE_SUP = os.environ.get("PMART_SOURCE_SUP", "claude-mfc-sup")
 TARGET_SUP = os.environ.get("PMART_TARGET_SUP", "claude-mfc-sup-mk")
@@ -85,7 +85,7 @@ LOT_PREFIX = os.environ.get("PMART_LOT_PREFIX", "R39")  # 품질검사 LOT 표�
 
 
 # 1호점 원본 고정(2026-11-24 — 사용자 "부산 진구 mfc 수정해야해"로 1호점 칸을 다시 설계한다). 2~5호점 layout·wide·stock 은 1호점
-# 옛 판(랙당 칸 1호점 SLOT_DESIGN, 넓은 칸 wide-cells-2026-11-18.json 코드)을 정본으로 쓰므로, 원본이 MFC-SEED-01 이면 이 파일을 읽는다.
+# 옛 판(랙당 칸 1호점 SLOT_DESIGN, 넓은 칸 wide-cells-2026-11-18.json 코드)을 정본으로 쓰므로, 원본이 MFC-BJG-01 이면 이 파일을 읽는다.
 # 실시간 1호점을 쓰려면 PMART_SOURCE_LIVE=1. 파일은 `freeze` 단계가 만든다(다시 설계 전에 한 번).
 FROZEN = os.environ.get("PMART_SOURCE_FROZEN",
                         os.path.join(os.path.dirname(os.path.abspath(__file__)), "seed-template-2026-11-24.json"))
@@ -95,9 +95,9 @@ _FROZEN = None
 
 
 def frozen():
-    """고정 파일(있고 원본이 MFC-SEED-01 이고 PMART_SOURCE_LIVE 가 아니면) — {"locations": {코드: 칸}, "stock": [줄]} 또는 None."""
+    """고정 파일(있고 원본이 MFC-BJG-01 이고 PMART_SOURCE_LIVE 가 아니면) — {"locations": {코드: 칸}, "stock": [줄]} 또는 None."""
     global _FROZEN
-    if SOURCE != "MFC-SEED-01" or os.environ.get("PMART_SOURCE_LIVE") == "1" or not os.path.exists(FROZEN):
+    if SOURCE != "MFC-BJG-01" or os.environ.get("PMART_SOURCE_LIVE") == "1" or not os.path.exists(FROZEN):
         return None
     if _FROZEN is None:
         _FROZEN = json.load(open(FROZEN, encoding="utf-8"))

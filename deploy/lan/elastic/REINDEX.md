@@ -28,6 +28,8 @@
   - es-init 과 search-service 는 **별칭이 없을 때만** 붙인다. 이전 버전을 가리키고 있으면 그대로 두고, 전환은 아래 §2-5 에서 사람이 한다.
 - search-service 는 항상 별칭(`products`)을 읽는다. 재색인 중에는 이전 색인을 읽고, 별칭 교체 순간에 새 색인으로 바뀐다.
 
+- **(2026-11-24 R-46) 1호점 센터 ID 바꿈 `MFC-SEED-01` → `MFC-BJG-01`**: 색인은 `_update_by_query` 로 고쳤지만 토픽 `mfc.sku-handling.v1` 의 지난 사건은 옛 ID 그대로다. 전체 재생으로 새 색인을 만든 뒤에는 `sku-handlings`·`products` 에 `MFC-SEED-01`(없는 센터)이 다시 생긴다 — switch 전에 같은 스크립트(centers 키·carriedMfcIds 의 옛 ID → 새 ID)로 고친다. 스크립트는 `docs/handoff/simulator/mfc/2026-11-24-reply-r46-center-id.md` §3.
+
 ## 2. 전체 재생으로 새 색인 만들기 (예: products-v3)
 
 **스크립트(2026-11-05)**: `deploy/lan/elastic/reindex.sh` 가 아래 1~6 을 단계별로 실행하고, 단계마다 조건을 확인한다. 조건이 어긋나면 그 자리에서 멈춘다.

@@ -1,4 +1,4 @@
-"""1호점 부산진구(MFC-SEED-01) 다시 설계 R-45(2026-11-24 사용자 확정 — 시뮬레이터 f2d145c) — 모두 API 로(DB 직접 입력 없음).
+"""1호점 부산진구(MFC-BJG-01) 다시 설계 R-45(2026-11-24 사용자 확정 — 시뮬레이터 f2d145c) — 모두 API 로(DB 직접 입력 없음).
 
 요청서 docs/handoff/simulator/mfc/2026-11-24-request-busanjin-redesign.md §0·§3. 칸 코드 체계는 그대로(새 코드 0) — 랙 수·평수·배치만 바뀐다.
   새 위치 파일  docs/simulator/mfc/layout-busanjin-r45/location-positions.json(9,185 = 피킹 8,696·보충 420·SUPPORT 59·대형 10)
@@ -30,8 +30,8 @@ OLD = os.environ.get("PMART_R45_OLD", os.path.join(ROOT, "docs", "simulator", "m
 sys.path.insert(0, HERE)
 import mfc_layout as v1  # noqa: E402
 
-if v1.MFC != "MFC-SEED-01":
-    raise SystemExit("R-45 는 1호점(MFC-SEED-01) 전용이다")
+if v1.MFC != "MFC-BJG-01":
+    raise SystemExit("R-45 는 1호점(MFC-BJG-01) 전용이다")
 REASON = "1호점 다시 설계 R-45(2026-11-24 사용자 확정) — 없어지는 칸"
 APPROVAL_REF = "layout-r45"
 

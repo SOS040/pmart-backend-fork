@@ -15,7 +15,7 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  *     없으면 새 결제 진입은 CONFIG_REQUIRED 로 거절하고, 진행 중 사가는 값이 들어올 때까지 재개 대기
  * @param fulfillment S2 이행 요청(슬라이스 6a). {@code start-orders-confirmed-after} = 이 시각 이후 확정된 주문만 S2 를
  *     시작한다(새 구독 그룹이 토픽 처음부터 읽어 옛 주문까지 오므로 — 없으면 S2 를 시작하지 않는다). {@code retry-window}·{@code
- *     max-new-versions} 는 센터별 운영 설정(D6-5, 키 {@code "[MFC-SEED-01]"}) — 없는 센터는 재시도 대상 거절 때
+ *     max-new-versions} 는 센터별 운영 설정(D6-5, 키 {@code "[MFC-BJG-01]"}) — 없는 센터는 재시도 대상 거절 때
  *     CONFIG_REQUIRED 보류.
  *     <p>실행 중 갱신(ADR-0033): {@code @RefreshScope} — Bus 갱신 뒤 다음 사용 때 새 값으로 다시 만든다(record 는 final 이라
  *     refresh 프록시를 못 만들어 클래스). 쓰는 쪽은 호출마다 읽는다. 주소(*BaseUrl)는 클라이언트를 만들 때 한 번 읽으므로 바꾸면 재시작.

@@ -24,7 +24,7 @@ from staff_auth import staff_token  # noqa: E402 — 직원 토큰(employee-auth
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 INV = os.environ.get("PMART_INVENTORY", "http://192.168.0.222:8301/api/v1")
 FUL = os.environ.get("PMART_FULFILLMENT", "http://192.168.0.222:8302/api/v1")
-MFC = os.environ.get("PMART_MFC", "MFC-SEED-01")
+MFC = os.environ.get("PMART_MFC", "MFC-BJG-01")
 ORCH_SRC = "order-orchestration-service"
 results = []
 

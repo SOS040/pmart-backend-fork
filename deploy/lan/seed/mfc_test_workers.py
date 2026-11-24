@@ -2,10 +2,10 @@
 
 사용자: "mfc 작업자계정 너가 임의로 만들고, 30명 피패킹, 그외 분야별로 10명씩" → 전부 인사 등록, 분야는 PDA 업무 기준 4개.
   피킹·포장(PICK·PACK) 30, 입고(RECEIVE·PUTAWAY) 10, 품질검사(INSPECT) 10, 재고 이동(MOVE·REPLENISH) 10, 반품(RETURN) 10.
-센터 MFC-SEED-01, 고용 형태는 정규직·알바 번갈아(알바 계약 종료 2026-12-31). 일일크루는 하루만 유효해 시험 계정으로 두지 않는다.
+센터 MFC-BJG-01, 고용 형태는 정규직·알바 번갈아(알바 계약 종료 2026-12-31). 일일크루는 하루만 유효해 시험 계정으로 두지 않는다.
 
 흐름(다시 돌려도 안전 — 있는 것은 건너뛴다):
-1. hr-service 등록(인사 관리자 claude-approver) + 요청 권한 MFC_WORKER·MFC-SEED-01(소속 센터라 자동 승인) → 사서함·Keycloak 계정·안내 메일.
+1. hr-service 등록(인사 관리자 claude-approver) + 요청 권한 MFC_WORKER·MFC-BJG-01(소속 센터라 자동 승인) → 사서함·Keycloak 계정·안내 메일.
 2. Keycloak 비밀번호를 공용 시험 비밀번호로(파일 `.secrets/keycloak-mfc-test-workers-password`, 없으면 만든다 — 출력하지 않는다).
 3. mfc-capacity 가 인사 사건으로 작업자를 만들면(d46671c) 센터 관리자(claude-mfc-sup)로 자격·업무를 분야대로.
 LAN 전용. 운영 금지. 토큰·비밀번호는 출력하지 않는다.
@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import staff_auth  # noqa: E402
 
 GW = staff_auth.GW
-MFC = "MFC-SEED-01"
+MFC = "MFC-BJG-01"
 TODAY = time.strftime("%Y-%m-%d")
 PART_TIME_END = "2026-12-31"
 NS = uuid.UUID("6f1d0c7e-7a0b-4c1e-9d55-3b1f0a2c9e11")

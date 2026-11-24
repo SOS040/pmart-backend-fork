@@ -1,10 +1,10 @@
-"""LAN 시험 센터 MFC-SEED-01 이동 카트(장바구니)를 40대로 늘리고 카트 라벨을 다시 만든다(2026-11-17, 사용자 "40개까지").
+"""LAN 시험 센터 MFC-BJG-01 이동 카트(장바구니)를 40대로 늘리고 카트 라벨을 다시 만든다(2026-11-17, 사용자 "40개까지").
 
 지금 카트는 4대(CRT-A-01·A-02·C-01·F-01, 11-09 mfc_layout 이 만든 시험 데이터)라 동시에 피킹할 수 있는 사람이 4명뿐이었다.
 목표(사용자 "응 진행해줘" — 칸 수 비율): 상온 A 20대, 냉장 C 12대, 냉동 F 8대. 이름 규칙 그대로 `CRT-<온도대>-NN`, 구역 CART,
 위치는 기존 카트와 같은 카트 보관소 자리(도면 cartDepot). 있는 카트는 건너뛴다(다시 돌려도 안전).
 
-라벨: `labels/cart-labels-MFC-SEED-01.html` — 카트마다 Code128(스캔 값 = 위치 코드)을 미리 그린 SVG 로 넣는다(인쇄 때 인터넷·스크립트 불필요).
+라벨: `labels/cart-labels-MFC-BJG-01.html` — 카트마다 Code128(스캔 값 = 위치 코드)을 미리 그린 SVG 로 넣는다(인쇄 때 인터넷·스크립트 불필요).
 QR 은 이 스크립트에 없다(QR 라이브러리 없음 — 필요하면 따로).
 
 사용: python -I deploy/lan/seed/mfc_carts.py            # 계획만
@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mfc_layout as v1  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LABELS = os.path.join(HERE, "labels", "cart-labels-MFC-SEED-01.html")
+LABELS = os.path.join(HERE, "labels", "cart-labels-MFC-BJG-01.html")
 # 2026-11-17 사용자 "일단 상온으로 해줘. 나중에 온도대없음으로 바꿀게": 카트는 온도대와 상관없이 쓴다(서버는 카트 온도대를 보지 않음 —
 # requireCart 는 구역 CART 만). 위치 코드 규칙(ADR-0042 `{접두}-{A|C|F}-{번호}`)상 글자 하나는 필요해 전부 상온 A. 냉장·냉동 카트는 닫는다(재고 있으면 열어 둠).
 TARGET = {"A": ("AMBIENT", 40)}
@@ -59,9 +59,9 @@ def write_labels(codes):
     for code, tz in codes:
         cards.append(f'<div class="label"><div class="top"><span class="kind">이동 카트</span>'
                      f'<span class="zone z-ANY">온도 구분 없음</span></div>{code128_svg(code)}'
-                     f'<div class="code">{html.escape(code)}</div><div class="foot">MFC-SEED-01 · 구역 CART</div></div>')
+                     f'<div class="code">{html.escape(code)}</div><div class="foot">MFC-BJG-01 · 구역 CART</div></div>')
     counts = "온도대 구분 없이 아무 카트나 — 상온·냉장·냉동 상품을 한 카트에(한 출고 = 한 카트)"
-    page = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>카트 바코드 라벨 — MFC-SEED-01</title>
+    page = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>카트 바코드 라벨 — MFC-BJG-01</title>
 <style>
 @page {{ size: A4; margin: 12mm; }}
 body {{ font-family: "Malgun Gothic", sans-serif; margin: 0; background: #fff; color: #000; }}
@@ -77,7 +77,7 @@ svg {{ width: 100%; height: 24mm; }}
 .foot {{ font-size: 10px; color: #555; margin-top: 1mm; }}
 @media print {{ .note {{ display:none; }} }}
 </style></head><body>
-<h1>MFC-SEED-01 이동 카트 라벨 (Code128) — {len(codes)}대</h1>
+<h1>MFC-BJG-01 이동 카트 라벨 (Code128) — {len(codes)}대</h1>
 <div class="note">2026-11-17 · {counts}. 브라우저에서 인쇄(Ctrl+P, 배율 100%, A4 한 장에 10장). 바코드 값은 위치 코드 그대로 —
 PDA 가 찍으면 mfc-location 의 카트 위치(구역 CART)로 읽는다. 다시 만들기: python -I deploy/lan/seed/mfc_carts.py --labels</div>
 <div class="grid">{"".join(cards)}</div>

@@ -1,4 +1,4 @@
-"""MFC-SEED-01 LOT 바코드 라벨(GS1-128)을 지금 LAN 재고로 만든다(2026-11-17, IV-4 — PC 1 몫).
+"""MFC-BJG-01 LOT 바코드 라벨(GS1-128)을 지금 LAN 재고로 만든다(2026-11-17, IV-4 — PC 1 몫).
 
 값은 서버가 주는 그대로: mfc-inventory `GET /mfcs/{mfcId}/lot-labels?sku=` 의 `gs1`(괄호 꼴 `(01)GTIN-14(17)YYMMDD(10)lotNo`,
 기한 없는 LOT 은 `(17)` 생략). 고정 길이(01·17)가 앞, 가변(10)이 끝이라 FNC1 구분자 없이 한 줄로 이어진다.
@@ -171,7 +171,7 @@ def main(check_n):
     index_rows = []
     for key in sorted(groups, key=lambda k: (k == "기타", k)):
         d = sorted(groups[key], key=lambda x: (x["loc"], x["exp"] or "9999", x["lotNo"]))
-        title = f"MFC-SEED-01 LOT 라벨 — {key} ({len(d)}개 LOT)"
+        title = f"MFC-BJG-01 LOT 라벨 — {key} ({len(d)}개 LOT)"
         with open(os.path.join(OUT, key + ".html"), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(page(title, d))
         temps = sorted({TZ.get(x["t"], x["t"] or "?") for x in d})
@@ -179,9 +179,9 @@ def main(check_n):
                           f'<td>{-(-len(d) // PER_PAGE)}</td></tr>')
     total = sum(len(v) for v in groups.values())
     skip_html = "".join(f"<li>{a} {b} — {c}</li>" for a, b, c in skipped)
-    index = ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>MFC-SEED-01 LOT 라벨 목록</title><style>body{font-family:"Malgun Gothic",sans-serif;'
+    index = ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>MFC-BJG-01 LOT 라벨 목록</title><style>body{font-family:"Malgun Gothic",sans-serif;'
              'margin:16px;background:#fff;color:#000}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 10px;font-size:13px}</style></head><body>'
-             '<h1 style="font-size:16px">MFC-SEED-01 LOT 바코드 라벨 (GS1-128, 2026-11-17)</h1>'
+             '<h1 style="font-size:16px">MFC-BJG-01 LOT 바코드 라벨 (GS1-128, 2026-11-17)</h1>'
              f'<p style="font-size:12px">지금 보유가 있는 LOT {total}개 — 위치 라벨(../locations/)과 같은 온도대-구역마다 한 파일, 칸 순서. '
              '값 = mfc-inventory lot-labels 의 gs1 그대로. 시험용으로 LOT 마다 1장.</p>'
              '<table><tr><th>파일</th><th>온도대</th><th>LOT 수</th><th>A4 장 수</th></tr>' + "".join(index_rows) + "</table>"

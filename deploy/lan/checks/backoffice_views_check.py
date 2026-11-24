@@ -19,7 +19,7 @@
   2026-11-23 F 절 더함(PC 2) — 같은 날 수동 확인으로 모두 200(센터 거르기·고객 상세 여덟 칸·restriction NONE·담당 이름).
   --cs: 상담원 시험 계정(test-cs-rider@pmart.com)도 — PC 1 에서 받은 최신 비밀번호 파일이 있을 때만(옛 값으로 여러 번 실패하면 계정이 잠긴다).
 필요: deploy/lan/.secrets/keycloak-claude-dev-password(·--cs 면 keycloak-test-cs-rider@pmart.com-password).
-환경 변수: PMART_GATEWAY(기본 http://192.168.0.40:8080/api/v1), PMART_MFC(기본 MFC-SEED-01).
+환경 변수: PMART_GATEWAY(기본 http://192.168.0.40:8080/api/v1), PMART_MFC(기본 MFC-BJG-01).
 """
 import base64
 import datetime
@@ -35,7 +35,7 @@ sys.path.insert(0, HERE)
 from staff_auth import staff_token  # noqa: E402
 
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
-MFC = os.environ.get("PMART_MFC", "MFC-SEED-01")
+MFC = os.environ.get("PMART_MFC", "MFC-BJG-01")
 BO = "/backoffice"
 CS_USER = "test-cs-rider@pmart.com"
 results = []

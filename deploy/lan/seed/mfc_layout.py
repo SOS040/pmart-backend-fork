@@ -52,7 +52,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from staff_auth import staff_token  # noqa: E402
 GW = os.environ.get("PMART_GATEWAY", "http://192.168.0.40:8080/api/v1")
 INV = os.environ.get("PMART_INVENTORY", "http://192.168.0.222:8301/api/v1")
-MFC = os.environ.get("PMART_MFC", "MFC-SEED-01")
+MFC = os.environ.get("PMART_MFC", "MFC-BJG-01")
 # 배치 파일 — 배치가 바뀌거나 새 센터면 PMART_MFC 와 함께 바꿔 다시 돌린다(칸 코드로 맞춰 좌표만 덮어씀, 2026-11-21)
 LAYOUT = os.environ.get("PMART_LAYOUT", os.path.join(ROOT, "docs", "simulator", "mfc", "layout", "layout.json"))
 APPROVAL_REF = "layout-v1"
@@ -134,7 +134,7 @@ class Session:
     def sup(self):
         if self.token and time.time() - self.at < 600:
             return self.token
-        # 역할·센터는 그대로(MFC_SUPERVISOR, MFC-SEED-01). 다른 센터는 PMART_MFC 와 함께 그 센터 관리자(예 claude-mfc-sup-mk, R-40)
+        # 역할·센터는 그대로(MFC_SUPERVISOR, MFC-BJG-01). 다른 센터는 PMART_MFC 와 함께 그 센터 관리자(예 claude-mfc-sup-mk, R-40)
         self.token, _ = staff_token(os.environ.get("PMART_SUP_ACCOUNT", "claude-mfc-sup"))
         self.at = time.time()
         return self.token
