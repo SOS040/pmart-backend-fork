@@ -230,6 +230,35 @@ public class CategoryTreeService {
     return store.nodes(version);
   }
 
+  /**
+   * 화면용 노드(BR-94 R4, 2026-11-24 — 사용자 "상품 없는 카테고리 일단 숨기고"): 저장된 노출 값 그대로이되, 그 노드와 아래 노드에 판매중지 아닌
+   * 상품이 하나도 없으면 exposed = false. 상품이 들어오면 다시 보인다(따로 할 일 없음).
+   */
+  public List<NodeRow> nodesForDisplay(int version) {
+    List<NodeRow> rows = store.nodes(version);
+    java.util.Set<String> withProducts =
+        com.pmart.product.domain.CategoryExposure.withProducts(
+            rows.stream()
+                .collect(
+                    java.util.HashMap<String, @org.jspecify.annotations.Nullable String>::new,
+                    (m, r) -> m.put(r.categoryId(), r.parentId()),
+                    java.util.HashMap::putAll),
+            store.categoriesWithProducts());
+    return rows.stream()
+        .map(
+            r ->
+                new NodeRow(
+                    r.categoryId(),
+                    r.parentId(),
+                    r.level(),
+                    r.section(),
+                    r.name(),
+                    r.path(),
+                    r.sortOrder(),
+                    r.exposed() && withProducts.contains(r.categoryId())))
+        .toList();
+  }
+
   public List<GroupRow> filters(int version, String categoryId) {
     if (!store.nodeExists(version, categoryId)) {
       throw PmartException.notFound("CATEGORY_NOT_FOUND", "카테고리가 없습니다: " + categoryId);

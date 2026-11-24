@@ -28,7 +28,7 @@ public class CategoriesController implements CategoriesApi {
   public ResponseEntity<GetCategoryTree200Response> getCategoryTree(@Nullable Integer version) {
     VersionRow v = trees.readable(version);
     List<Map<String, Object>> nodes =
-        trees.nodes(v.version()).stream()
+        trees.nodesForDisplay(v.version()).stream()
             .map(
                 n -> {
                   Map<String, Object> m = new LinkedHashMap<>();

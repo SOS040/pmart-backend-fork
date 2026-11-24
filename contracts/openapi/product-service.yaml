@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: product-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     0.5.0(2026-11-20, 백오피스 PD-4 PN-1 — PC 2 요청 #274, 사용자 "진행해라"): `GET /products?q=` — 관리용 명칭 부분 일치(대소문자·띄어쓰기 무시), SKU 코드·바코드 완전 일치도. 고객용 상품명(PN-2)은 넣지 않음.
     기초상품·상품·SKU(E-/B- 8자리, 재사용 금지)·구성 낱개 수·카테고리(4단계·노드별 필터, ADR-0015)·바코드↔SKU·판매 단위·중량·물류 규격·전사 판매 상태·승인 버전의 정본. (docs/architecture/service-map.md §1, ADR-0001)
@@ -822,7 +822,7 @@ components:
         name: { type: string }
         path: { type: string, description: '이름 경로 (예: 국·탕·찌개 > 국·국밥)' }
         sortOrder: { type: integer }
-        exposed: { type: boolean }
+        exposed: { type: boolean, description: "0.6.0(2026-11-24 BR-94 R4 — 사용자 '상품 없는 카테고리 일단 숨기고') — 그 노드와 아래 노드에 판매중지 아닌 상품이 하나도 없으면 false(조회할 때 계산, 상품이 들어오면 다시 true). 앱은 false 를 그리지 않는다" }
     FilterGroup:
       type: object
       required: [filterGroupId, name, selectionMode, options]

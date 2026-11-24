@@ -165,6 +165,15 @@ public class CategoryStore {
         version);
   }
 
+  /** 판매중지 아닌 상품이 하나라도 걸린 카테고리 id(대표·노출 경로 모두 — BR-94 R4 노출 계산). */
+  public java.util.Set<String> categoriesWithProducts() {
+    return new java.util.HashSet<>(
+        jdbc.queryForList(
+            "SELECT DISTINCT pc.category_id FROM product_category pc JOIN product p ON p.product_id = pc.product_id"
+                + " WHERE p.sale_state <> 'SALE_STOPPED'",
+            String.class));
+  }
+
   public List<NodeRow> nodes(int version) {
     return jdbc.query(
         "SELECT * FROM category_node WHERE version = ? ORDER BY level, parent_id NULLS FIRST, sort_order",
