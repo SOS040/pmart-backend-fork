@@ -14,7 +14,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 - 로컬 브랜치 `mfc/r45-reshape`(02cab2de, push 안 함)는 main 의 R-45 커밋(1cd6a0f0·27a9e5fa·d1109ecd)으로 대체된 것으로 보인다 — 지워도 된다(사용자 확인 후).
 - MI-4 근거: `docs/architecture/service-requests/mfc-inbound-service.md` MI-4 회신, `services/mfc-inbound-service/CLAUDE.md` 끝 줄, 시뮬레이터 회신 `docs/handoff/simulator/mfc/2026-11-24-simulator-reply-r48-supply-order.md`. 시작값(사용자 확인 2026-11-24): R 1일·L 1일·SS 1일치·배수 1·최소 1·이동평균 28일·최소 이력 7일(`supply_policy` '*' 줄).
 
-### 하다 멈춘 일 — mfc-inventory 재고 실시간 SSE 스트림 (코드 0줄, 설계만)
+### 재고 실시간 SSE 스트림(IV-7) — 구현함(2026-11-24 새 계정 세션, 브랜치 `mfc/inventory-stock-stream`, mfc-inventory 0.46.0·V31). 아래는 정한 설계 기록 — 실제 모습은 `services/mfc-inventory-service/CLAUDE.md` 끝 줄. 남은 것: PC 1 이 pmart-config 라우트·응답 시간 제한을 맞추고 배포, 화면(mfc 프론트·프론트2)이 붙이기
 - **요청**: PC 1 사용자 결정(2026-11-24) "실시간 재고 차감 취소 시 증감이 바로바로 백오피스에 반영 되어야 해" → 방식 B(서버가 밀어 주기), MFC 백오피스·통합 백오피스 둘 다. 요청서 없이 세션 메시지로 받음(PC 1 백엔드 세션). 받는 화면: mfc 프론트(MFC 백오피스), 통합백오피스 프론트2(PC 2).
 - **요청 내용(PC 1)**: 직원용 SSE, 권한 = 그 센터 운영자 + 본사(OPERATOR_ADMIN). 커밋마다 이벤트 하나 — mfcId·sku·바뀐 뒤 H·Q·E·R·A·원인·commitId·at, 위치 단위 변화면 locationCode·lotId·workState. 대상: 예약 증감(주문 확정·취소), 피킹·포장, 인계 차감, 집품 뒤 취소 복귀, 결품·파손 보류, 정정, 입고. 커밋 뒤 전송, 여러 인스턴스에서도 빠짐없이. heartbeat·재연결 후 다시 읽기를 계약에. 게이트웨이(pmart-config api-gateway.yml) SSE 경로는 PC 1 이 넣는다 → **PR 본문에 경로를 적을 것**.
 - **추가 요청(PC 2 프론트2 — PC 1 이 전달)**: 칸 eventId·mfcId·sku·availableQty·onHandQty·reservedQty·cause·occurredAt·version, SSE `id:` = eventId 와 `Last-Event-ID` 이어 받기, (선택) 센터 품절 요약이 바뀌면 `SUMMARY_CHANGED`, **여러 센터(또는 전부)를 한 연결로**, 권한은 `GET /stock-summaries` 와 같게(본사 관리자 = 모든 센터, 센터 계정 = 자기 센터), heartbeat(주석 줄) **5초 안팎**(게이트웨이 전역 response-timeout 10s), 화면은 fetch 스트림 + Authorization 헤더.
@@ -29,6 +29,10 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
   8. 시험: 통합 시험에서 스트림을 열고 예약·해제·수령 하나씩 → 이벤트 순서·값·heartbeat·권한 403·Last-Event-ID 재생 확인(`StockReservationFlowIT` 를 참고해 새 IT, `pmart.test.context=<이름>` 으로 컨텍스트 분리 — 안 하면 다른 IT 의 멈춘 DB 컨테이너를 물려받아 실패한 적 있음, 2026-11-24 SupplyOrderIT).
   9. 문서: 서비스 CLAUDE.md 상태 끝 줄, `docs/worklog/mfc/<날짜>.md`, PR 본문에 게이트웨이 경로 `/api/v1/stock-stream`(GET, SSE, 시간 제한 해제 필요)·"공용 표 갱신 필요: IV-7"(2026-11-24 PC 2 #426 이 요청서 `service-requests/mfc-inventory-service.md` IV-7 — mfcId 비우면 볼 수 있는 모든 센터 한 연결, 최소 `{eventId, mfcId, occurredAt}`, heartbeat 5초 — 를 더했고 공용 표에 "요청(PC 3)" 줄이 있음). 끝나면 PC 1 백엔드 세션(+ mfc 프론트·프론트2)에 알린다.
 - 브랜치 `mfc/inventory-stock-stream`(origin/main 에서 만들기만 함, 커밋 없음, push 안 함). 새 계정에서는 origin/main 에서 다시 만들어도 된다.
+
+### 2026-11-24 새 계정 세션 결과
+- #428(재고 SSE, `mfc/inventory-stock-stream`) 열림 — PC 1 병합 뒤 pmart-config 라우트·시간 제한. #424 지적 고쳐 e4592865 push(PR 댓글).
+- PC 5 질문(반납 상한 음식 폐기) — 경로 확인만, 고친 것 없음(일지).
 
 ### 정리 대기(사용자에게 물을 것)
 - 데모 DB 컨테이너 `pmart-mfc-demo-pg`(포트 15433)와 내려받은 UCI 원본(`demos/mfc-demand-replenishment/data/` — git 밖)을 지울지.
