@@ -39,6 +39,23 @@ public class WishlistController implements WishlistApi {
     return ResponseEntity.noContent().build();
   }
 
+  /** 상품별 찜 수(0.17.0 BR-100 R3, 공개). */
+  @Override
+  public ResponseEntity<com.pmart.customer.api.generated.model.ListProductWishCounts200Response>
+      listProductWishCounts(String productIds) {
+    return ResponseEntity.ok(
+        new com.pmart.customer.api.generated.model.ListProductWishCounts200Response()
+            .items(
+                wishlist.counts(productIds).stream()
+                    .map(
+                        e ->
+                            new com.pmart.customer.api.generated.model
+                                    .ListProductWishCounts200ResponseItemsInner()
+                                .productId(e.getKey())
+                                .wishCount(e.getValue()))
+                    .toList()));
+  }
+
   @Override
   public ResponseEntity<ListWishlistProductIds200Response> listWishlistProductIds() {
     List<String> ids = wishlist.productIds(CustomerMapping.currentCustomer());

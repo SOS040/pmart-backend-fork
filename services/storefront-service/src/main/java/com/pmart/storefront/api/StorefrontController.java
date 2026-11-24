@@ -42,15 +42,18 @@ public class StorefrontController implements StorefrontApi {
   private final java.time.Clock clock;
   private final com.pmart.storefront.application.ProductAvailability availability;
   private final com.pmart.storefront.application.BannerImageVariants variants;
+  private final com.pmart.storefront.infrastructure.RankingStore rankingStore;
 
   public StorefrontController(
       StorefrontQueries queries,
       com.pmart.storefront.application.LayoutService layouts,
       java.time.Clock clock,
       com.pmart.storefront.application.ProductAvailability availability,
-      com.pmart.storefront.application.BannerImageVariants variants) {
+      com.pmart.storefront.application.BannerImageVariants variants,
+      com.pmart.storefront.infrastructure.RankingStore rankingStore) {
     this.availability = availability;
     this.variants = variants;
+    this.rankingStore = rankingStore;
     this.queries = queries;
     this.layouts = layouts;
     this.clock = clock;
@@ -386,6 +389,30 @@ public class StorefrontController implements StorefrontApi {
     }
     String next = offset + size < all.size() ? DefaultLayout.cursor(offset + size) : null;
     return new ThemePage(items, next, clock.instant());
+  }
+
+  /** 함께 산 상품(0.19.0 BR-100 R5). */
+  @Override
+  public ResponseEntity<com.pmart.storefront.api.generated.model.ListRelatedProducts200Response>
+      listRelatedProducts(
+          String productId, String kind, @Nullable String mfcId, @Nullable Integer size) {
+    String center = mfcId == null || mfcId.isBlank() ? null : mfcId.strip();
+    int n = size == null ? 10 : size;
+    Instant newSince = queries.newSince();
+    List<Item> found = queries.boughtTogether(rankingStore, productId, center, n);
+    List<DisplayItem> items = new ArrayList<>();
+    for (int i = 0; i < found.size(); i++) {
+      items.add(item(found.get(i), center != null, DisplayStore.Kind.LATEST, i + 1, newSince));
+    }
+    fillItems(items, center);
+    return ResponseEntity.ok(
+        new com.pmart.storefront.api.generated.model.ListRelatedProducts200Response()
+            .productId(productId)
+            .kind(
+                com.pmart.storefront.api.generated.model.ListRelatedProducts200Response.KindEnum
+                    .fromValue(kind))
+            .items(items)
+            .asOf(asOf(clock.instant())));
   }
 
   /** 켜진 탭(HOME 은 늘, RANKING·NEW 는 설정이 있을 때). */

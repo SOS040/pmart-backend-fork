@@ -99,6 +99,30 @@ class WishlistFlowIT extends PostgresKafkaContainerSupport {
     // 형식 아닌 ID
     assertThat(call("PUT", token, "/me/wishlist-items/bad id!").status()).isIn(400, 404);
 
+    // 0.17.0 BR-100 R3: 상품별 찜 수(공개 — 토큰 없이). 다른 회원도 P-APPLE 을 찜하면 2
+    String other = TestJwt.customer("CU-WL-" + UUID.randomUUID());
+    assertThat(call("PUT", other, "/me/wishlist-items/P-APPLE").status()).isEqualTo(200);
+    var pub =
+        http.get()
+            .uri("/product-wish-counts?productIds=P-APPLE,P-STOP,P-NONE,P-APPLE")
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(pub.getStatusCode().value()).isEqualTo(200);
+    JsonNode counts = mapper.readTree(pub.getBody()).path("items");
+    assertThat(counts.toString())
+        .isEqualTo(
+            "[{\"productId\":\"P-APPLE\",\"wishCount\":2},{\"productId\":\"P-STOP\",\"wishCount\":1},"
+                + "{\"productId\":\"P-NONE\",\"wishCount\":0}]");
+    assertThat(
+            http.get()
+                .uri("/product-wish-counts?productIds=,")
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+    call("DELETE", other, "/me/wishlist-items/P-APPLE");
+
     // ID 전체(최근 순)
     JsonNode ids = call("GET", token, "/me/wishlist-product-ids").body();
     assertThat(ids.path("productIds").toString()).isEqualTo("[\"P-STOP\",\"P-APPLE\"]");

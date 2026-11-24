@@ -77,6 +77,28 @@ public class StorefrontQueries {
     return new Page(items, next, asOf == null ? clock.instant() : asOf, offset);
   }
 
+  /**
+   * 함께 산 상품(BR-100 R5) — 판매 집계 기간(ranking.sales-window-days)이 없으면 빈 목록. 후보를 넉넉히(size × 3, 최대 90) 뽑아
+   * 진열 가능·센터 취급만 남긴 뒤 size 개.
+   */
+  public List<Item> boughtTogether(
+      com.pmart.storefront.infrastructure.RankingStore ranking,
+      String productId,
+      @Nullable String mfcId,
+      int size) {
+    StorefrontProperties.Ranking r = props.ranking();
+    if (r == null || r.salesWindowDays() == null || r.salesWindowDays() <= 0) {
+      return List.of();
+    }
+    List<String> ids =
+        ranking.boughtTogether(
+            productId,
+            clock.instant().minus(java.time.Duration.ofDays(r.salesWindowDays())),
+            Math.min(size * 3, 90));
+    List<Item> items = store.byIds(mfcId, ids);
+    return items.size() > size ? items.subList(0, size) : items;
+  }
+
   /** 테마 영역 항목 — 넣은 순서, 진열 가능·센터 취급만(ADR-0075). */
   public List<Item> themeItems(@Nullable String mfcId, List<String> productIds) {
     return store.byIds(mfcId, productIds);

@@ -133,7 +133,7 @@ spring:
             - id: customer-service
               uri: ${pmart.gateway.upstream.customer-service}
               predicates:
-                - Path=/api/v1/guest-delivery-addresses/**,/api/v1/device-consents,/api/v1/device-consent-changes,/api/v1/consent-terms,/api/v1/consent-terms/**,/api/v1/customers,/api/v1/customers/** # 직원 고객 조회(customer 0.11.0 CU-3·CU-4, 2026-11-20)
+                - Path=/api/v1/guest-delivery-addresses/**,/api/v1/device-consents,/api/v1/device-consent-changes,/api/v1/consent-terms,/api/v1/consent-terms/**,/api/v1/customers,/api/v1/customers/**,/api/v1/product-wish-counts # 직원 고객 조회(customer 0.11.0 CU-3·CU-4, 2026-11-20)
             - id: cart-service
               uri: ${pmart.gateway.upstream.cart-service}
               predicates:
@@ -328,6 +328,8 @@ pmart:
       - method: GET
         path: /api/v1/consent-terms/*/* # customer-service 약관 본문(0.6.1)
       - method: GET
+        path: /api/v1/product-wish-counts # customer-service 상품별 찜 수(0.17.0 BR-100 R3)
+      - method: GET
         path: /api/v1/categories/tree # product-service
       - method: GET
         path: /api/v1/categories/*/filters # product-service
@@ -369,6 +371,8 @@ pmart:
         path: /api/v1/storefront/custom-tabs/* # storefront-service MD 탭(0.9.0, 2026-11-21)
       - method: GET
         path: /api/v1/storefront/sections/*/items # storefront-service
+      - method: GET
+        path: /api/v1/storefront/products/*/related # storefront-service 함께 산 상품(0.19.0 BR-100 R5)
       - method: GET
         path: /api/v1/storefront/banners # storefront-service
       - method: GET

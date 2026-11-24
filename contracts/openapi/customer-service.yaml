@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.16.0
+  version: 0.17.0
   description: |
+    0.17.0(2026-11-25, 클라이언트 BR-100 R3 "하트 아래 숫자"): `GET /product-wish-counts?productIds=` — 상품마다 찜한 회원 수(공개, 토큰 없이). 쉼표로 100개까지,
+      찜이 없는 상품은 0. 누가 찜했는지는 주지 않는다. 탈퇴 완료 회원의 찜은 지워져 세지 않는다.
     0.16.0(2026-11-23 CU-7 — 사용자 결정: 이용제한 = 문의·리뷰 작성 막기, 정지 = 주문·로그인까지 막기, 기간 7일 자동 해제, 영구 정지 없음, 라이더와 따로):
     계정 제한 `restriction` NONE·RESTRICTED(이용제한)·SUSPENDED(정지)와 `restrictedUntil`(늘 기한 있음 — 지나면 NONE 으로 본다). 거는 길 둘:
     ① case `CustomerProfanityDetected`(platform.case.v1 — 문의 정지 단어, AI 채팅 예정)를 받아 **자동 7일 정지**(찾은 시각부터),
@@ -675,6 +677,33 @@ paths:
                 properties:
                   productIds: { type: array, items: { type: string } }
                   total: { type: integer }
+
+  /product-wish-counts:
+    get:
+      tags: [wishlist]
+      summary: 상품별 찜 수 (공개 — 상세 하트 아래 숫자, 0.17.0 BR-100 R3)
+      operationId: listProductWishCounts
+      security: []
+      parameters:
+        - { name: productIds, in: query, required: true, schema: { type: string, maxLength: 4000 }, description: '쉼표로 구분한 상품 ID(100개까지)' }
+      responses:
+        '200':
+          description: OK — 요청한 순서, 찜 없으면 0
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [productId, wishCount]
+                      properties:
+                        productId: { type: string }
+                        wishCount: { type: integer, minimum: 0 }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /me/wishlist-items/{productId}:
     put:

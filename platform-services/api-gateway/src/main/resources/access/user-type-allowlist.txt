@@ -269,6 +269,7 @@ GET /api/v1/product-contents/{productId}/rating-summary PUBLIC
 GET /api/v1/product-drafts/{draftId} OPERATOR
 GET /api/v1/product-import-batches/{batchId} OPERATOR
 GET /api/v1/product-import-batches/{batchId}/id-map OPERATOR
+GET /api/v1/product-wish-counts PUBLIC
 GET /api/v1/products OPERATOR
 GET /api/v1/products/{productId} OPERATOR
 GET /api/v1/products/{productId}/reviews PUBLIC
@@ -367,6 +368,7 @@ GET /api/v1/storefront/home PUBLIC
 GET /api/v1/storefront/layout-drafts OPERATOR
 GET /api/v1/storefront/layout-drafts/{draftId} OPERATOR
 GET /api/v1/storefront/layout-publications/{requestId} OPERATOR
+GET /api/v1/storefront/products/{productId}/related PUBLIC
 GET /api/v1/storefront/sections/{sectionId}/items PUBLIC
 GET /api/v1/storefront/tabs/{tabKey} PUBLIC
 GET /api/v1/suppliers OPERATOR
@@ -442,6 +444,7 @@ POST /api/v1/category-tree-additions OPERATOR
 POST /api/v1/category-tree-versions OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
+POST /api/v1/cdcs/{cdcId}/workers/{workerId}/next-tasks OPERATOR
 POST /api/v1/change-requests OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/submissions OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/withdrawals OPERATOR

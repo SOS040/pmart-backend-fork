@@ -89,6 +89,27 @@ public class RankingStore {
         returnedQty);
   }
 
+  /**
+   * 함께 산 상품(BR-100 R5) — since 뒤 확정된, 이 상품 대표 SKU 가 든 주문에 같이 담긴 다른 상품(대표 SKU 로 상품에 맞춤)을 같이 담긴 주문 수가
+   * 많은 순으로 limit 개. 순 수량 0 인 줄(다 취소·반품)은 세지 않는다.
+   */
+  public List<String> boughtTogether(String productId, Instant since, int limit) {
+    return jdbc.queryForList(
+        "WITH me AS (SELECT representative_sku AS sku FROM display_product WHERE product_id = ?"
+            + " AND representative_sku IS NOT NULL),"
+            + " o AS (SELECT DISTINCT l.order_id FROM sku_sales_line l JOIN me ON l.sku = me.sku"
+            + " WHERE l.qty > 0 AND l.confirmed_at >= ?)"
+            + " SELECT p.product_id FROM sku_sales_line l JOIN o ON o.order_id = l.order_id"
+            + " JOIN display_product p ON p.representative_sku = l.sku"
+            + " WHERE l.qty > 0 AND p.product_id <> ?"
+            + " GROUP BY p.product_id ORDER BY count(DISTINCT l.order_id) DESC, p.product_id LIMIT ?",
+        String.class,
+        productId,
+        Timestamp.from(since),
+        productId,
+        limit);
+  }
+
   public long sales(String sku, Instant since) {
     Long n =
         jdbc.queryForObject(

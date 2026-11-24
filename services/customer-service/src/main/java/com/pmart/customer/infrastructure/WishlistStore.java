@@ -30,6 +30,24 @@ public class WishlistStore {
         .findFirst();
   }
 
+  /** 상품마다 찜한 회원 수(BR-100 R3). 없는 상품은 빠진다. */
+  public java.util.Map<String, Integer> countsByProduct(List<String> productIds) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    if (productIds.isEmpty()) {
+      return out;
+    }
+    String in = String.join(",", java.util.Collections.nCopies(productIds.size(), "?"));
+    jdbc.query(
+        "SELECT product_id, COUNT(*) AS n FROM customer_wishlist_item WHERE product_id IN ("
+            + in
+            + ") GROUP BY product_id",
+        rs -> {
+          out.put(rs.getString("product_id"), rs.getInt("n"));
+        },
+        productIds.toArray());
+    return out;
+  }
+
   public int count(String accountId) {
     Integer n =
         jdbc.queryForObject(

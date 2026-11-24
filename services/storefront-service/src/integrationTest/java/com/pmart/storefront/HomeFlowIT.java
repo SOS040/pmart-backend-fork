@@ -620,6 +620,8 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
             orderId,
             EventEnvelopeFixtures.envelope(type)
                 .from("order-service")
+                // 확정 시각 = 판매 창(30일) 안 — 고정 기본값(2026-10-23)은 11-22 부터 창 밖이라 순위·함께 산 시험이 늘 실패했다
+                .occurredAt(java.time.Instant.now())
                 .aggregate("Order", orderId, version)
                 .payload(payload)
                 .buildJson())
@@ -641,6 +643,53 @@ class HomeFlowIT extends PostgresKafkaContainerSupport {
    * 순위 신호(ADR-0072, 2026-11-19): 주문 확정 → 판매, 줄 수량 변경(출고 전 취소·반품, 주문 버전 큰 것만) → 순 판매, 리뷰 → 별점·베이지안
    * 점수. 바뀔 때마다 ProductRankingSignalsChanged(version +1), 같으면 다시 내지 않는다.
    */
+  /** 0.19.0 BR-100 R5: 함께 산 상품 — 같은 주문에 같이 담긴 주문 수 많은 순, 자기 자신 빼고. */
+  @Test
+  void relatedBoughtTogetherFromOrderLines() throws Exception {
+    for (String n : List.of("1", "2", "3")) {
+      card("PRD-RB" + n, "[시험] 함께 산 " + n, 1);
+      product("PRD-RB" + n, 1, "E-RB" + n);
+      published("PRD-RB" + n, 1, "2026-08-01T00:00:00Z");
+    }
+    for (int i = 0;
+        i < 100
+            && jdbc.queryForObject(
+                    "SELECT count(*) FROM display_product WHERE product_id LIKE 'PRD-RB%' AND representative_sku IS NOT NULL",
+                    Integer.class)
+                < 3;
+        i++) {
+      Thread.sleep(200);
+    }
+    String[][] orders = {{"1", "2"}, {"1", "2", "3"}, {"1", "2"}, {"2", "3"}};
+    for (int o = 0; o < orders.length; o++) {
+      String id = "ORD-RB" + o;
+      List<Object> lines = new java.util.ArrayList<>();
+      for (String n : orders[o]) {
+        lines.add(Map.of("orderLineId", id + "-L" + n, "sku", "E-RB" + n, "qty", 1));
+      }
+      order("OrderConfirmed", id, 1, Map.of("orderId", id, "orderVersion", 1, "lines", lines));
+    }
+    for (int i = 0;
+        i < 150
+            && jdbc.queryForObject(
+                    "SELECT count(*) FROM sku_sales_line WHERE order_id LIKE 'ORD-RB%'",
+                    Integer.class)
+                < 9;
+        i++) {
+      Thread.sleep(200);
+    }
+    JsonNode r = get("/storefront/products/PRD-RB1/related?kind=BOUGHT_TOGETHER");
+    assertThat(r.path("kind").asString()).isEqualTo("BOUGHT_TOGETHER");
+    assertThat(r.path("items").findValuesAsString("productId"))
+        .containsExactly("PRD-RB2", "PRD-RB3");
+    assertThat(
+            get("/storefront/products/PRD-RB1/related?kind=BOUGHT_TOGETHER&size=1").path("items"))
+        .hasSize(1);
+    assertThat(get("/storefront/products/PRD-NONE/related?kind=BOUGHT_TOGETHER").path("items"))
+        .isEmpty(); // 다른 시험(홈 최근 순)에 섞이지 않게 진열 사본을 지운다
+    jdbc.update("DELETE FROM display_product WHERE product_id LIKE 'PRD-RB%'");
+  }
+
   @Test
   void rankingSignalsFromOrdersAndReviews() throws Exception {
     card("PRD-K1", "[시험] 순위 상품", 1);

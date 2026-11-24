@@ -113,6 +113,22 @@ public class WishlistService {
     store.delete(accountId, productId);
   }
 
+  /** 상품별 찜 수(공개, BR-100 R3) — 쉼표 목록 1~100개, 요청 순서·중복 제거, 없으면 0. */
+  public List<java.util.Map.Entry<String, Integer>> counts(String productIdsCsv) {
+    List<String> ids =
+        java.util.Arrays.stream(productIdsCsv.split(","))
+            .map(String::strip)
+            .filter(s -> !s.isEmpty())
+            .distinct()
+            .toList();
+    if (ids.isEmpty() || ids.size() > 100) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "productIds 는 1~100개입니다.");
+    }
+    java.util.Map<String, Integer> found = store.countsByProduct(ids);
+    return ids.stream().map(id -> java.util.Map.entry(id, found.getOrDefault(id, 0))).toList();
+  }
+
   public List<String> productIds(String accountId) {
     return store.page(accountId, 0, Math.max(limitOrDefault(), store.count(accountId))).stream()
         .map(Item::productId)

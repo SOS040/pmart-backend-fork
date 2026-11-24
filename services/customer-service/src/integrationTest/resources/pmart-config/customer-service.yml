@@ -59,6 +59,7 @@ pmart:
       - /api/v1/device-consent-changes # POST 만
       - /api/v1/consent-terms # GET 만
       - /api/v1/consent-terms/*/* # 약관 본문(0.6.1) — GET 만
+      - /api/v1/product-wish-counts # 상품별 찜 수(0.17.0 BR-100 R3) — GET 만, 공개
 spring:
   # 프로필 사진 올리기(2026-11-21 BR-80, 0.15.0) — 사진 상한은 ProfilePhotoService.MAX_BYTES(2MB, 넘으면 400 VALIDATION_FAILED). 그보다 조금 크게
   servlet:
