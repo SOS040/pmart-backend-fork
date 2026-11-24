@@ -13,13 +13,13 @@ LAN 전용. 운영 금지. 토큰·비밀번호는 출력하지 않는다.
   python -X utf8 deploy/lan/seed/mfc_test_workers.py            # 전부
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --check    # 상태만 보기
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --center mokpo [--check]
-      # 2호점 목포 MFC(MFC-MOKPO-01, R-39 2026-11-22): mfcw-mk-pp·qc·rcv 01~10(같은 공용 비밀번호) + 센터 관리자 claude-mfc-sup-mk
+      # 2호점 목포 MFC(MFC-MOKPO-01, R-39 2026-11-22): mfcw-mk-pp 01~13(11~13 은 2026-11-24 사용자 "피패킹 직원들 계정 3명 각 센터별로 추가")·qc·rcv 01~10(같은 공용 비밀번호) + 센터 관리자 claude-mfc-sup-mk
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --center sejong [--check]
-      # 3호점 세종 MFC(MFC-SEJ-01, 2026-11-23): mfcw-sj-pp·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-sj
+      # 3호점 세종 MFC(MFC-SEJ-01, 2026-11-23): mfcw-sj-pp 01~13·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-sj
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --center chuncheon [--check]
-      # 4호점 춘천 MFC(MFC-CHC-01, 2026-11-24): mfcw-cc-pp·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-cc
+      # 4호점 춘천 MFC(MFC-CHC-01, 2026-11-24): mfcw-cc-pp 01~13·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-cc
   python -X utf8 deploy/lan/seed/mfc_test_workers.py --center busan-namgu [--check]
-      # 5호점 부산남구 MFC(MFC-BNG-01, 2026-11-24): mfcw-bn-pp·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-bn
+      # 5호점 부산남구 MFC(MFC-BNG-01, 2026-11-24): mfcw-bn-pp 01~13·qc·rcv 01~10 + 센터 관리자 claude-mfc-sup-bn
 """
 import json
 import os
@@ -50,16 +50,16 @@ GROUPS = [  # (메일 ID 앞부분, 표시 이름, 인원, 작업 유형)
 ]
 CENTERS = {  # --center 값 → (센터, 센터 관리자, 표시 이름 앞부분, 분야)
     "mokpo": ("MFC-MOKPO-01", "claude-mfc-sup-mk", "MFC시험 목포",
-              [("mk-pp", "피킹포장", 10, ["PICK", "PACK"]), ("mk-qc", "품질검사", 10, ["INSPECT"]),
+              [("mk-pp", "피킹포장", 13, ["PICK", "PACK"]), ("mk-qc", "품질검사", 10, ["INSPECT"]),
                ("mk-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
     "sejong": ("MFC-SEJ-01", "claude-mfc-sup-sj", "MFC시험 세종",
-               [("sj-pp", "피킹포장", 10, ["PICK", "PACK"]), ("sj-qc", "품질검사", 10, ["INSPECT"]),
+               [("sj-pp", "피킹포장", 13, ["PICK", "PACK"]), ("sj-qc", "품질검사", 10, ["INSPECT"]),
                 ("sj-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
     "chuncheon": ("MFC-CHC-01", "claude-mfc-sup-cc", "MFC시험 춘천",
-                  [("cc-pp", "피킹포장", 10, ["PICK", "PACK"]), ("cc-qc", "품질검사", 10, ["INSPECT"]),
+                  [("cc-pp", "피킹포장", 13, ["PICK", "PACK"]), ("cc-qc", "품질검사", 10, ["INSPECT"]),
                    ("cc-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
     "busan-namgu": ("MFC-BNG-01", "claude-mfc-sup-bn", "MFC시험 부산남구",
-                    [("bn-pp", "피킹포장", 10, ["PICK", "PACK"]), ("bn-qc", "품질검사", 10, ["INSPECT"]),
+                    [("bn-pp", "피킹포장", 13, ["PICK", "PACK"]), ("bn-qc", "품질검사", 10, ["INSPECT"]),
                      ("bn-rcv", "입고", 10, ["RECEIVE", "PUTAWAY"])]),
 }
 
