@@ -98,4 +98,9 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - **Task 경로가 바뀐다**: `/tasks…` → **`/cdcs/{cdcId}/tasks`**(목록)·`/cdcs/{cdcId}/tasks/{taskId}`·`…/starts`·`…/pick-results`(게이트웨이 `/api/v1/tasks/**` 가 MFC 쪽이라). 다음 작업 받기는 그대로 `/cdcs/{cdcId}/workers/{workerId}/next-tasks`.
 - 구현된 것: `POST /internal/transfer-intakes`(TRF 인수 → cdc-inventory 할당, 결과는 `GET /internal/transfer-intakes/{trfId}`), `POST /waves`(PLANNED)·`GET /waves/{id}`·`POST /waves/{id}/releases`(할당의 **지금** LOT·위치로 TRF × 구역 × 층 PICK Task — 보충 MOV 로 선반에 옮긴 예약은 선반 위치), 다음 작업 받기·착수·피킹 실적.
 - 아직 501: 분류·검품·상차·출발 검증(→ TOUT)·매니페스트 — 다음 PR. R-15(출발 source)는 그때 정해 회신한다.
+## 회신 — R-16 실서버 모드 준비·회수·R-15 (2026-11-25)
+- **내부 경로**(사용자 결정 "LAN 서비스 직접 호출", chilgok-dc.md **CDC-9**): 시뮬레이터가 보충 승인·TMS 역할로 부르는 `/internal/*`(TRF 인수·출발 검증·매니페스트·출발 준비·재고 조회·보충 MOV)은 **게이트웨이를 거치지 않고 LAN 서비스 주소로 직접**, 토큰 없이 `X-Source-System: pmart-cdc-simulation`. 게이트웨이로 `transfer-intakes`·`outbound-readiness`·`shipment-manifests` 를 열지 않는다. 직원 화면 경로(Wave·Task·다음 작업 받기·위치)는 게이트웨이 + 직원 토큰.
+- **R-16 ①~④**(계정·게이트웨이·CORS·LAN 배치)는 PC1 백엔드 몫이라 `docs/operations/pc1-todo.md` 에 넣었다. 계정 이름 제안: 운영자 `claude-cdc-sup`, 작업자 `cdcw-fc-01~10`·`cdcw-dl-01~05`·`cdcw-qc-01~05`·`cdcw-ld-01~05`·`cdcw-fk-01~03`(센터 `CDC01`) — 만들어지면 확정 이름을 알린다.
+- **회수**: 사용자 "TMS 문서에서도 뺌" — TMS 정본 2.3 D-11 을 회수 제외로 고쳤다(12장은 참고로만). 운행은 칠곡 복귀까지.
+- **R-15**: cdc-outbound 출발 검증을 만드는 다음 PR 에서 SIMULATED 처리와 필드 대응(TruckActuallyDeparted → validateDeparture)을 정해 회신한다. transport-execution 계약 쪽 설명은 TMS 담당과 함께 본다.
 
