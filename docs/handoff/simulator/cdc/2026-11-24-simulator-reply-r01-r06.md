@@ -54,3 +54,6 @@
 - **피킹 = 랙 → 91 MOVE**: 재고 쪽 이동 전기(`/internal/move-postings`)는 아직 501. 그동안 할당·예약은 랙 위치에 남으므로 TOUT(`/internal/departure-postings`) 줄의 `locationCode` 는 비우거나 랙 위치를 쓴다. 목적 MFC 는 새 칸 `toMfcId` 로 보낸다(TransferDeparted.toMfc → mfc-inbound 입고 예정).
 - **출발 뒤 잔량 RESIDUAL_CLOSED 해제**: 계약과 같다 — 출발 전기는 남은 할당을 풀지 않는다.
 - createWave PLANNED·Task = TRF × 층·구역·PARTIAL = 부족을 남기고 끝남: cdc-outbound 설계 때 반영 여부를 다시 본다(지금 백엔드에 서비스 없음).
+
+## 회신 — R-12 랙 규격·4단 (2026-11-25)
+반영(CDC-2 랙 줄). 모든 랙 4단(6m × 2.6m × 1m, 단 2m·5,200L·2톤, 팔레트 1.1 × 1.1m 단당 2개). 단 구간은 1~4(1 피킹면·2 보충 대기·3~4 리저브). 팔레트 위치 22,400 → **19,840**(상온 10,240·냉장 5,760·냉동 3,840). 통로·베이·슬롯·층 배치(R-10)는 그대로. 예 `CDC01-C-5-02-24-3-1` 은 그대로 맞고, 단 `5` 가 든 코드는 없다. R-11 회신은 cdc-inventory PR(#439)의 이 문서 "회신 — R-11" 절에 있다.
