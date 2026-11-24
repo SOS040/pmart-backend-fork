@@ -552,6 +552,15 @@ public class ClaimStore {
         orderId);
   }
 
+  /** 이 주문에 이미 나간(실패 아닌) 요금 환불 — [봉투값, 배달팁](ADR-0086 결정 8, 한 번만 돌려주려고). 반품 회수비(RETURN_FEE)는 빼고. */
+  public long[] refundedFeesForOrder(String orderId) {
+    return jdbc.queryForObject(
+        "SELECT COALESCE(SUM(bag_fee), 0) AS b, COALESCE(SUM(delivery_tip), 0) AS t FROM refund_intent"
+            + " WHERE order_id = ? AND state <> 'FAILED' AND reason <> 'RETURN_FEE'",
+        (rs, n) -> new long[] {rs.getLong("b"), rs.getLong("t")},
+        orderId);
+  }
+
   /**
    * 탈퇴 가능 여부 판정용 — 그 고객의 모든 클레임(접수 순) × (상태, 환불 의도 상태들, 회수비 상태). 판정은 {@link
    * com.pmart.claim.domain.WithdrawalRules}. 고객 한 명의 클레임은 적어 거르지 않고 다 읽는다(ix_claim_account).

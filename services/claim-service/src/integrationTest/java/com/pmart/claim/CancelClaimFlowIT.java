@@ -1115,6 +1115,51 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
         .isZero();
   }
 
+  /** ADR-0086 결정 8: 라이더·우리 잘못 오배송 환불은 주문 요금(배달팁·봉투값)까지 — 한 번만(이미 돌려준 요금은 빼고). */
+  @Test
+  void shortageRefundWithOrderFeesRefundsFeesOnce() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, "CU-" + UUID.randomUUID(), "COMPLETED", 10); // 봉투값 100·배달팁 0(공통 주문 스텁)
+    paymentAccepts(orderId);
+    Res first =
+        shortageRefund(
+            "OF-1",
+            Map.of(
+                "orderId",
+                orderId,
+                "lines",
+                List.of(Map.of("orderLineId", orderId + "-L1", "qty", 6)),
+                "refundOrderFees",
+                true));
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(201);
+    // 1,900 × 6 = 11,400 + 봉투값 100
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT amount || ' ' || item_amount || ' ' || bag_fee || ' ' || delivery_tip"
+                    + " FROM refund_intent WHERE claim_id = ?",
+                String.class,
+                first.body().path("claimId").asString()))
+        .isEqualTo("11500 11400 100 0");
+    Res second =
+        shortageRefund(
+            "OF-2",
+            Map.of(
+                "orderId",
+                orderId,
+                "lines",
+                List.of(Map.of("orderLineId", orderId + "-L1", "qty", 4)),
+                "refundOrderFees",
+                true));
+    assertThat(second.status()).isEqualTo(201);
+    // 요금은 이미 돌려줬다 — 1,900 × 4 = 7,600 만
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT amount || ' ' || bag_fee FROM refund_intent WHERE claim_id = ?",
+                String.class,
+                second.body().path("claimId").asString()))
+        .isEqualTo("7600 0");
+  }
+
   /** IV-09 2부(ADR-0045): 결품 부분 환불 — 단가 × 수량, 봉투·배달팁 없음, 출고 전 취소 누계 안에서만, 두 번 환불 안 함. */
   @Test
   void shortageRefundIsUnitPriceTimesQtyWithinCancelledQty() throws Exception {

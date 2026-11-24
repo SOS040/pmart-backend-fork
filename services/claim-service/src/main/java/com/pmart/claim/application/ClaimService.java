@@ -555,13 +555,24 @@ public class ClaimService {
   /** 결품 부분 환불 요청 행. */
   /**
    * @param feeDeduction 공제액(회수비 등 — ADR-0065 고객 잘못 오배송 9,000원). 환불 = 상품값 − 공제(0 이상)
+   * @param refundOrderFees 배달팁·봉투값도 돌려준다(ADR-0086 결정 8 — 라이더·우리 잘못 오배송 전 품목 환불). 이미 돌려준 요금은 뺀다
    */
   public record ShortageRefund(
       String orderId,
       List<ClaimRules.Requested> lines,
       @Nullable String reasonDetail,
       @Nullable String sourceRef,
-      long feeDeduction) {}
+      long feeDeduction,
+      boolean refundOrderFees) {
+    public ShortageRefund(
+        String orderId,
+        List<ClaimRules.Requested> lines,
+        @Nullable String reasonDetail,
+        @Nullable String sourceRef,
+        long feeDeduction) {
+      this(orderId, lines, reasonDetail, sourceRef, feeDeduction, false);
+    }
+  }
 
   /**
    * 품절 상품만 취소(CANCEL_OOS_ONLY) 의 부분 환불. 주문 수량 변경(SHORTAGE) 뒤에 부른다 — 요청 수량 ≤ 출고 전 취소 누계 − 이미 결품 환불한
@@ -617,7 +628,14 @@ public class ClaimService {
                   Instant now = clock.instant();
                   String id = "CLM-" + UUID.randomUUID();
                   long items = amount;
-                  long refund = Math.max(0, items - Math.max(0, in.feeDeduction()));
+                  long bag = 0;
+                  long tip = 0;
+                  if (in.refundOrderFees()) {
+                    long[] done = store.refundedFeesForOrder(in.orderId());
+                    bag = Math.max(0, order.path("bagFee").asLong(0) - done[0]);
+                    tip = Math.max(0, order.path("deliveryTip").asLong(0) - done[1]);
+                  }
+                  long refund = Math.max(0, items - Math.max(0, in.feeDeduction())) + bag + tip;
                   boolean nothing = refund == 0;
                   ClaimRow c =
                       new ClaimRow(
@@ -635,8 +653,8 @@ public class ClaimService {
                               order.path("paymentAttemptId").asString(),
                               order.path("approvedAmount").asLong(),
                               amount,
-                              0,
-                              0,
+                              bag,
+                              tip,
                               null,
                               now,
                               now,
@@ -671,7 +689,8 @@ public class ClaimService {
                     log.info("부분 환불 {} 주문 {} 공제 뒤 0원 — 환불 없이 닫음", id, in.orderId());
                     return id;
                   }
-                  RefundRow refundRow = refunds.createShortageRefund(c, items, refund, now);
+                  RefundRow refundRow =
+                      refunds.createShortageRefund(c, items, bag, tip, refund, now);
                   String refundId = refundRow.refundIntentId();
                   TransactionSynchronizationManager.registerSynchronization(
                       new TransactionSynchronization() {
@@ -681,7 +700,12 @@ public class ClaimService {
                         }
                       });
                   log.info(
-                      "결품 부분 환불 {} 주문 {} {}원(공제 {})", id, in.orderId(), refund, items - refund);
+                      "결품 부분 환불 {} 주문 {} {}원(상품 {}·요금 {})",
+                      id,
+                      in.orderId(),
+                      refund,
+                      items,
+                      bag + tip);
                   return id;
                 })
             .value();

@@ -123,9 +123,12 @@ public class RefundService {
    */
   /**
    * @param itemAmount 상품값(단가 × 수량)
-   * @param amount 실제 환불액(공제 뒤 — ADR-0065)
+   * @param bagFee 함께 돌려주는 봉투값(ADR-0086 결정 8, 아니면 0)
+   * @param deliveryTip 함께 돌려주는 배달팁(같음)
+   * @param amount 실제 환불액(상품값 − 공제 + 요금 — ADR-0065·0086)
    */
-  RefundRow createShortageRefund(ClaimRow c, long itemAmount, long amount, Instant now) {
+  RefundRow createShortageRefund(
+      ClaimRow c, long itemAmount, long bagFee, long deliveryTip, long amount, Instant now) {
     String id = "RFI-" + UUID.randomUUID();
     RefundRow r =
         new RefundRow(
@@ -137,8 +140,8 @@ public class RefundService {
             "OUT_OF_STOCK",
             amount,
             itemAmount,
-            0,
-            0,
+            bagFee,
+            deliveryTip,
             "PENDING_EXECUTION",
             "REFUND-" + id,
             null,

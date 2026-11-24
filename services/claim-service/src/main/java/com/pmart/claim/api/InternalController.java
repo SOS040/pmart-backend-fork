@@ -86,7 +86,8 @@ public class InternalController implements InternalApi {
                     .toList(),
                 body.getReasonDetail(),
                 body.getSourceRef(),
-                body.getFeeDeduction() == null ? 0 : body.getFeeDeduction()));
+                body.getFeeDeduction() == null ? 0 : body.getFeeDeduction(),
+                Boolean.TRUE.equals(body.getRefundOrderFees())));
     return ResponseEntity.status(HttpStatus.CREATED).body(ClaimMapping.claim(view));
   }
 

@@ -125,7 +125,9 @@ class ReshipmentSagaIT extends PostgresKafkaContainerSupport {
     parts.verify(
         postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds"))
             .withRequestBody(matchingJsonPath("$.lines[0].qty", WireMock.equalTo("2")))
-            .withRequestBody(matchingJsonPath("$.lines[1].qty", WireMock.equalTo("1"))));
+            .withRequestBody(matchingJsonPath("$.lines[1].qty", WireMock.equalTo("1")))
+            // ADR-0086 결정 8: 라이더 잘못 환불은 배달팁·봉투값까지
+            .withRequestBody(matchingJsonPath("$.refundOrderFees", WireMock.equalTo("true"))));
   }
 
   /** ADR-0065: 고객 잘못 + 환불 → 재고·작업 없이 전 줄 SHORTAGE, 환불에 회수비 9,000원 공제. */
@@ -143,7 +145,8 @@ class ReshipmentSagaIT extends PostgresKafkaContainerSupport {
     parts.verify(
         postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds"))
             .withRequestBody(matchingJsonPath("$.feeDeduction", WireMock.equalTo("9000")))
-            .withRequestBody(matchingJsonPath("$.lines[1].qty", WireMock.equalTo("1"))));
+            .withRequestBody(matchingJsonPath("$.lines[1].qty", WireMock.equalTo("1")))
+            .withRequestBody(WireMock.notContaining("refundOrderFees")));
   }
 
   void confirmed(String caseId, String deliveryId, Instant at) {

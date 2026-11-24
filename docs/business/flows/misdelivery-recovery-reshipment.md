@@ -62,6 +62,9 @@
 - **주문 원장(2026-11-24 고침)**: 전달 실패 재발송(근거 `DF-…`)은 order 에서 미이행만 +q 하고 **재발송 수량은 늘리지 않는다** — 실패한 출고 대신 보내는 것이라 보낼 수량(원수량 − 출고 전 취소 + 재발송)이 그대로다. 한도 = 원수량 − 출고 전 취소 − 전달됨. 전에는 +q 해서 재발송이 전달돼도 PARTIALLY_DELIVERED 에 멈추고, 그 재발송이 오배송으로 확인되면 오배송 재발송이 "다시 보낼 수량 없음"(NOTHING_TO_RESEND)으로 상신됐다(LAN 주문 28767701). 이미 그렇게 쌓인 주문은 고치지 않았다(데이터 정리는 따로).
 - 실패한 상품은 따로 반납(같은 라이더·다른 라이더 — dispatch FAILED_DELIVERY_RETURN). 사고 수행료 = 수락 금액 × 간 거리 비율(execution, dispatch `incident-distance`), 파손은 지원센터 조정.
 
+## 2.3.1 환불 금액(2026-11-24, ADR-0086 결정 8)
+- 라이더·우리 잘못 REFUND = 전 품목 상품값 + **배달팁·봉투값**(주문당 한 번) — claim `shortage-refunds` `refundOrderFees: true`. 고객 잘못 CUSTOMER_REFUND(− 9,000원)·재발송 재고 부족 부분 환불은 요금 없음 그대로.
+
 ## 2.4 고객 오배송 문의로 시작 (2026-11-24, ADR-0086 — 설계, 구현 전)
 - 고객 `POST /inquiries` NOT_RECEIVED + 전달 완료 배송 → case 가 오배송 사건 자동 → 문의 채팅에서 고객이 RESHIP/REFUND 선택(5시간 안 고르면 자동 REFUND) → `MisdeliveryConfirmed`(fault RIDER, source CUSTOMER_INQUIRY) → 이 문서 §2(재발송 사가)·DD-2(회수) 그대로.
 - 회수 배송 24시간 미배정이면 포기(dispatch `RECOVERY_ABANDONED`) → execution 라이더 차감 예정(결제액 − 배달팁) → 이의 5일 → 확정·다음 정산 이월. 요청 case R-16·execution DE-9.

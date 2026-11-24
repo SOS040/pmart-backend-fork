@@ -300,6 +300,10 @@ public class ReshipmentSagaService {
     if ("CUSTOMER_REFUND".equals(s.mode())) {
       m.put("feeDeduction", ReshipmentRules.CUSTOMER_FAULT_FEE);
     }
+    if ("REFUND".equals(s.mode())) {
+      // ADR-0086 결정 8(사용자 2026-11-24): 라이더·우리 잘못 오배송 환불은 배달팁·봉투값까지 전액
+      m.put("refundOrderFees", true);
+    }
     return m;
   }
 

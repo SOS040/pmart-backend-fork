@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.14.0
+  version: 0.15.0
   description: |
     0.14.0(2026-11-24 BR-92 — 고객 앱 요청 "취소·반품 내역에 상품이 SKU 로 보여"): `ClaimLine` 에 접수 때의 주문 품목 사본 `productName`·`optionLabel`·`imageUrl`
       (order 내부 원장 — 이름·옵션은 주문 당시 사본, 사진은 접수 때의 대표 사진). 이름 사본이 없는 옛 주문(2026-11-02 이전)·이 판 전에 접수된 클레임·사진 조회 실패는 null.
@@ -517,6 +517,11 @@ paths:
                   minimum: 0
                   x-added-in: '2026-11-16'
                   description: '공제액(원) — 환불 = 단가 × 수량 − 공제(0 아래로 내려가지 않음). ADR-0065 고객 잘못 오배송 회수 후 환불은 회수비 9,000원. 환불액이 0 이면 환불 의도 없이 클레임을 바로 닫는다'
+                refundOrderFees:
+                  type: boolean
+                  default: false
+                  x-added-in: '2026-11-24'
+                  description: '0.15.0(ADR-0086 결정 8) — 주문 요금(배달팁·봉투값)도 함께 돌려준다. 라이더·우리 잘못 오배송 전 품목 환불(orchestration 재발송 사가 REFUND). 이 주문에 이미 돌려준 요금은 빼고(한 번만), 공제는 상품값에서만'
       responses:
         '201':
           description: 접수됨(환불 실행은 비동기)
