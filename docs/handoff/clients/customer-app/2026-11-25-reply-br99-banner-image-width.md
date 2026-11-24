@@ -4,7 +4,7 @@
 받는 앱: customer-app
 원 문서: `pmart-clients docs/handoff/customer-app/2026-11-25-backend-banner-image-size.md`(R1~R3·Q1)
 작성: pmart-backend, 2026-11-25 — 사용자 "클라이언트 br 99 확인해주고"
-상태: **구현(storefront 계약 0.16.0) — LAN 배포 전**(배포되면 이 줄을 고친다)
+상태: **LAN 배포 끝**(2026-11-25, storefront f2881907, 계약 0.16.0) — 앱이 `w` 를 붙이면 된다
 
 ## 답
 - **R1 — 쿼리 이름은 `w`**(요청서의 `width` 가 아니라 상품 사진 content-images `?w=` 와 같은 이름 — 앱의 `withImageWidth` 를 그대로 쓰면 된다). `GET /api/v1/storefront/banner-images/{imageId}?w=<화면 폭 × 화소 비율>`(1~4096).
@@ -14,5 +14,14 @@
 - **Q1 — 캐시 헤더 같음**: `Cache-Control: public, max-age=31536000, immutable`, `Content-Type: image/jpeg`, ETag `"<sha256>-w<단계>"`(원본은 `"<sha256>"`).
 - 배너 목록·홈 응답의 `imageUrl` 은 그대로(`w` 없음) — 앱이 붙인다.
 
+## LAN 확인(2026-11-25, 게이트웨이 :8080)
+| 배너 | 원본 PNG | `?w=1080` JPEG | `?w=720` JPEG |
+|---|---|---|---|
+| `BIMG-40f4e8c3-…` | 2,313,526B | 97,676B(첫 요청 0.46초, 다음 0.03초) | 51,000B |
+| `BIMG-850983d5-…` | 2,229,461B | 112,273B | 59,012B |
+| `BIMG-64d9ddfe-…` | 2,103,108B | 109,103B | 57,339B |
+
+약 20~45분의 1. Content-Type `image/jpeg`, ETag `…-w1080`·`…-w720`.
+
 ## 앱
-- 배너 그림 주소에 `w` 를 붙인다(LAN 배포 뒤). 배포 전에는 `w` 를 붙여도 원본이 와서 지금과 같다 — 먼저 붙여 둬도 된다.
+- 배너 그림 주소에 `w` 를 붙인다(LAN 에 이미 들어가 있음).
