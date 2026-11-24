@@ -100,6 +100,7 @@
 | [PY-1](payment-service.md) | payment | PC 1 | backoffice(PC 2) | 직원 결제 조회 `GET /payments?orderId=`(상태·결제수단 종류·승인·취소 금액, 카드번호 없음) | 결정됨(2026-11-23 사용자 "고객관리" 목록) | **요청**(2026-11-23 PC 2 #365) |
 | [RV-1](review-service.md) | review | PC 1 | backoffice(PC 2) | 직원 리뷰 조회 `GET /reviews?customerId=`(상품·별점·작성일·상태·신고 수) | 결정됨(2026-11-23 사용자 "고객관리" 목록) | **요청**(2026-11-23 PC 2 #365) |
 | [PRM-1](promotion-service.md) | promotion | PC 1 | backoffice(PC 2) | 직원 고객 쿠폰 조회 `GET /customer-coupons?customerId=`(보유·사용·소멸·받은 경로) — 적립금은 1차 제외 | 결정됨(2026-11-23 사용자 "고객관리" 목록) | **요청**(2026-11-23 PC 2 #365) |
+| [PRM-2](promotion-service.md) | promotion(·storefront) | PC 1(구현 PC 2) | backoffice(PC 2 웹) | 기간 할인 대상 진열 테마 THEME(storefront 내부 `GET /internal/storefront/themes` → promotion 1분 사본) · 지정 발급(ADMIN) 쿠폰 받을 고객 `coupon.recipients`(≤100, 시작 때 발급·결과 `recipientResults`) | 결정됨(2026-11-24 사용자 "행사 대상에 테마도 추가"·"고객 id 를 넣는 칸", 세부 "추천안대로") | **구현·LAN 배포**(2026-11-24 PC 2 #414 59391368, promotion 0.3.0 V5·storefront 0.14.0 — `GET /promotions/theme-targets`, 라우트·설정 변경 없음. LAN 첫 사본 진열 버전 10·테마 10개) |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | PC 1 | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
 | [CO-2](cdc-outbound-service.md) | cdc-outbound | PC 1 | mfc-inbound(PDA BR-53 R17) | 이송 박스 바코드 형식·입수·LPN 단위 | 사용자 결정(박스 라벨 형식) | 대기(PC 1 — cdc-outbound 없음) |
