@@ -47,6 +47,43 @@ public class KakaoUnlinkClient {
     this.http = RestClient.builder().requestFactory(factory).build();
   }
 
+  /**
+   * 카카오 사용자 정보의 이메일(2026-11-25 — 고객 auth 와 같은 문제: 카카오 ID 토큰에 email 이 안 실린다). {@code GET
+   * {api-base-url}/v2/user/me} Admin 키·회원번호, 유효·확인된 이메일만. 어떤 실패도 null. 값은 로그 금지.
+   */
+  public @Nullable String email(String kakaoUserId) {
+    if (adminKey == null) {
+      return null;
+    }
+    tools.jackson.databind.JsonNode body;
+    try {
+      body =
+          http.get()
+              .uri(apiBaseUrl + "/v2/user/me?target_id_type=user_id&target_id={id}", kakaoUserId)
+              .header("Authorization", "KakaoAK " + adminKey)
+              .accept(MediaType.APPLICATION_JSON)
+              .retrieve()
+              .body(tools.jackson.databind.JsonNode.class);
+    } catch (HttpStatusCodeException e) {
+      log.info("카카오 사용자 정보 생략 reason=http_{}", e.getStatusCode().value());
+      return null;
+    } catch (RuntimeException e) {
+      log.info("카카오 사용자 정보 생략 reason={}", e.getClass().getSimpleName());
+      return null;
+    }
+    if (body == null || !body.isObject()) {
+      return null;
+    }
+    var account = body.path("kakao_account");
+    if (!account.path("email").isString()
+        || !account.path("is_email_valid").asBoolean(false)
+        || !account.path("is_email_verified").asBoolean(false)) {
+      return null;
+    }
+    String email = account.path("email").asString().strip();
+    return email.isEmpty() ? null : email;
+  }
+
   public boolean configured() {
     return adminKey != null;
   }

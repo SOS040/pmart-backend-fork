@@ -76,6 +76,15 @@ public class RiderLoginService {
   private final RiderSessionCuts cuts;
   private final Clock clock;
 
+  /** 카카오 이메일 보충(2026-11-25). 시험에서는 없을 수 있다. */
+  private com.pmart.riderauth.infrastructure.@org.jspecify.annotations.Nullable KakaoUnlinkClient
+      kakao;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  void setKakao(com.pmart.riderauth.infrastructure.KakaoUnlinkClient kakao) {
+    this.kakao = kakao;
+  }
+
   public RiderLoginService(
       RiderAuthStore store,
       RiderTokens tokens,
@@ -91,6 +100,19 @@ public class RiderLoginService {
     this.tx = tx;
     this.cuts = cuts;
     this.clock = clock;
+  }
+
+  private GoogleIdTokenVerifier.Identity withKakaoEmail(
+      String provider, GoogleIdTokenVerifier.Identity identity) {
+    if (!"KAKAO".equals(provider) || kakao == null || identity.email() != null) {
+      return identity;
+    }
+    String email = kakao.email(identity.subject());
+    if (email == null) {
+      return identity;
+    }
+    return new GoogleIdTokenVerifier.Identity(
+        identity.subject(), email, true, identity.name(), identity.pictureUrl());
   }
 
   public Result login(
@@ -126,9 +148,9 @@ public class RiderLoginService {
     }
 
     // Google 검증은 트랜잭션 밖(네트워크)
-    GoogleIdTokenVerifier.Identity identity;
+    GoogleIdTokenVerifier.Identity verified;
     try {
-      identity = verifier.verify(providerToken);
+      verified = verifier.verify(providerToken);
     } catch (GoogleIdTokenVerifier.Unavailable e) {
       log.warn("{} 검증 불가(실패 횟수 제외): {}", provider, e.getMessage());
       throw new PmartException(
@@ -140,6 +162,8 @@ public class RiderLoginService {
     } catch (GoogleIdTokenVerifier.Rejected e) {
       return rejected(idempotencyKey, sourceSystem, deviceId, provider, now);
     }
+    // 카카오 ID 토큰에 이메일이 없으면 카카오 사용자 API 에서(2026-11-25, 트랜잭션 밖) — 가린 이메일 안내용
+    final GoogleIdTokenVerifier.Identity identity = withKakaoEmail(provider, verified);
 
     Result r =
         tx.execute(
