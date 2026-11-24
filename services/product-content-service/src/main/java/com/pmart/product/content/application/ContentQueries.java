@@ -54,6 +54,9 @@ public class ContentQueries {
   private final Clock clock;
   private final com.pmart.product.content.infrastructure.ReviewRatingStore reviewRatings;
 
+  /** "N개 남음" 임계값(BR-100 R7, 정책값 — 없으면 LOW 안 씀). */
+  private final @Nullable Integer lowStockThreshold;
+
   public ContentQueries(
       CatalogStore catalog,
       DraftStore drafts,
@@ -62,8 +65,12 @@ public class ContentQueries {
       com.pmart.product.content.infrastructure.PricingClient pricing,
       ObjectMapper mapper,
       Clock clock,
-      com.pmart.product.content.infrastructure.ReviewRatingStore reviewRatings) {
+      com.pmart.product.content.infrastructure.ReviewRatingStore reviewRatings,
+      @org.springframework.beans.factory.annotation.Value(
+              "${pmart.content.low-stock-threshold:#{null}}")
+          @Nullable Integer lowStockThreshold) {
     this.reviewRatings = reviewRatings;
+    this.lowStockThreshold = lowStockThreshold;
     this.catalog = catalog;
     this.drafts = drafts;
     this.storage = storage;
@@ -373,12 +380,15 @@ public class ContentQueries {
       ContentRules.Availability a =
           s == null
               ? ContentRules.Availability.UNKNOWN
-              : ContentRules.availability(s.available(), s.handlingEnabled());
+              : ContentRules.availability(s.available(), s.handlingEnabled(), lowStockThreshold);
       Map<String, Object> view = new LinkedHashMap<>();
       if (a.carried() != null) {
         view.put("carried", a.carried());
       }
       view.put("state", a.state());
+      if (a.lowStockQty() != null) {
+        view.put("lowStockQty", a.lowStockQty());
+      }
       o.put("availability", view);
     }
     return ok;

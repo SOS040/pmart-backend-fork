@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: search-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
+    0.14.0(2026-11-25, 클라이언트 BR-100 R7 "N개 남음" — 사용자 "10개 이하"): 결과 카드 `lowStockQty` — storefront 0.18.0 과 같은 판정(product-content 0.10.0 옵션 LOW 수량 합, 넉넉한 옵션이 있으면 null).
     0.13.0(2026-11-23, 고객앱 BR-89 — 사용자 "응"(대표 상품 사진 자동)): `GET /search/category-images?mfcId=` — 카테고리마다 대표 사진 하나(그 카테고리와 하위의
     판매 가능 상품 중 최근 판매 많은 → 별점 → 최근 게시 순 1위 상품의 대표 사진). 상위·하위·칩 모두(상품이 있는 것만). mfcId 를 주면 그 센터가 취급하는 상품만.
     사진은 상품 콘텐츠 사진 경로 — 앱은 `?w=240`(정사각에 가깝게 자른 축소본 아님, 원본 비율 JPEG)을 붙여 쓴다. 5분 사본.
@@ -426,6 +427,7 @@ components:
           type: [string, 'null']
           enum: [AVAILABLE, SOLD_OUT, UNKNOWN, null]
           description: '(0.10.0) mfcId 지정 시 그 센터의 판매 가능 여부 — 취급 옵션 하나라도 가능 AVAILABLE, 취급 옵션 모두 품절 SOLD_OUT, 그 밖·조회 실패 UNKNOWN(품절이라고 하지 않음). mfcId 없으면 null'
+        lowStockQty: { type: [integer, 'null'], minimum: 1, x-added-in: '2026-11-25', description: '(0.14.0 BR-100 R7) "N개 남음" — 넉넉한 취급 옵션이 없고 LOW 옵션이 있을 때 그 수량 합. 아니면·mfcId 없으면 null' }
         nutrition: { $ref: '#/components/schemas/Nutrition' }
         allergens: { $ref: '#/components/schemas/Allergens' }
         rating: { type: [number, 'null'], description: '(0.3.0) 공개 리뷰 평균(소수 첫째). 리뷰 없으면 비움' }

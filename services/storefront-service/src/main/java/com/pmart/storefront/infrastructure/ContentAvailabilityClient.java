@@ -81,7 +81,8 @@ public class ContentAvailabilityClient {
           opts.add(
               new ListAvailability.Option(
                   a.path("carried").isBoolean() ? a.path("carried").asBoolean() : null,
-                  a.path("state").isString() ? a.path("state").asString() : null));
+                  a.path("state").isString() ? a.path("state").asString() : null,
+                  a.path("lowStockQty").isInt() ? a.path("lowStockQty").asInt() : null));
         }
         out.put(c.path("productId").asString(), opts);
       }

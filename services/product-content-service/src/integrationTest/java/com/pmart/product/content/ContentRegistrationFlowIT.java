@@ -774,7 +774,9 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
             .path(0)
             .path("availability");
     assertThat(av.path("carried").asBoolean()).isTrue();
-    assertThat(av.path("state").asString()).isEqualTo("AVAILABLE");
+    // 0.10.0 BR-100 R7: 임계값 10 이하 → LOW·lowStockQty
+    assertThat(av.path("state").asString()).isEqualTo("LOW");
+    assertThat(av.path("lowStockQty").asInt()).isEqualTo(7);
     deps.verify(
         getRequestedFor(urlPathEqualTo("/api/v1/internal/availability"))
             .withQueryParam("mfcId", equalTo("MFC-1"))
@@ -791,7 +793,17 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
                 .path("availability")
                 .path("state")
                 .asString())
-        .isEqualTo("AVAILABLE");
+        .isEqualTo("LOW");
+    stock(sku, 11, true);
+    JsonNode plenty =
+        get("/product-contents/" + productId + "?mfcId=MFC-1", null)
+            .body()
+            .path("options")
+            .path(0)
+            .path("availability");
+    assertThat(plenty.path("state").asString()).isEqualTo("AVAILABLE");
+    assertThat(plenty.path("lowStockQty").isNull() || plenty.path("lowStockQty").isMissingNode())
+        .isTrue();
     stock(sku, 0, true);
     assertThat(
             get("/product-contents/" + productId + "?mfcId=MFC-1", CUSTOMER)

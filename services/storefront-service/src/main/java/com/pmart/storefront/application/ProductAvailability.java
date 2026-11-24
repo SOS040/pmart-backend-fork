@@ -27,10 +27,22 @@ public class ProductAvailability {
 
   /** 상품 ID → AVAILABLE·SOLD_OUT·UNKNOWN. mfcId 가 없거나 주소 설정이 없으면 null(칸을 비운다). */
   public @Nullable Map<String, String> of(List<String> productIds, @Nullable String mfcId) {
-    if (mfcId == null || mfcId.isBlank() || !content.enabled()) {
+    Map<String, ListAvailability.Result> d = detailed(productIds, mfcId);
+    if (d == null) {
       return null;
     }
     Map<String, String> out = new HashMap<>();
+    d.forEach((k, v) -> out.put(k, v.state()));
+    return out;
+  }
+
+  /** 상품 ID → 판매 가능 여부 + "N개 남음"(BR-100 R7). mfcId 가 없으면 null. */
+  public @Nullable Map<String, ListAvailability.Result> detailed(
+      List<String> productIds, @Nullable String mfcId) {
+    if (mfcId == null || mfcId.isBlank() || !content.enabled()) {
+      return null;
+    }
+    Map<String, ListAvailability.Result> out = new HashMap<>();
     if (productIds.isEmpty()) {
       return out;
     }
@@ -44,7 +56,12 @@ public class ProductAvailability {
     }
     for (String id : productIds) {
       List<ListAvailability.Option> o = options.get(id);
-      out.put(id, o == null ? ListAvailability.UNKNOWN : ListAvailability.of(o));
+      out.put(
+          id,
+          o == null
+              ? new ListAvailability.Result(ListAvailability.UNKNOWN, null)
+              : new ListAvailability.Result(
+                  ListAvailability.of(o), ListAvailability.lowStockQty(o)));
     }
     return out;
   }

@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
+    0.18.0(2026-11-25, 클라이언트 BR-100 R7 "N개 남음" — 사용자 "10개 이하"): 진열 항목 `lowStockQty` — mfcId 를 줬을 때, 그 센터 취급 옵션 중 넉넉한(AVAILABLE) 것이 없고
+      product-content 0.10.0 옵션 LOW(0 < 가용 ≤ 임계값 10)가 있으면 LOW 옵션 수량의 합, 아니면 null. availability 판정은 그대로(LOW 는 AVAILABLE).
     0.17.0(2026-11-25, 클라이언트 BR-100 R9 "상품페이지 배너"): 편성 배너 자리에 `PRODUCT_DETAIL`(상품 상세 화면 — 모든 상품 공통, 홈·카테고리 배너와 같은
       2.8:1 권장 1960×700·최소 1080×386). 홈 `banners`·placement 없는 목록에는 안 나오고 `GET /storefront/banners?placement=PRODUCT_DETAIL` 로만(CATEGORY 와 같음).
     0.16.0(2026-11-25, 클라이언트 BR-99 "홈 배너 그림이 장당 2MB PNG라 홈이 늦다"): `GET /storefront/banner-images/{imageId}?w=` 휴대폰용 축소본 —
@@ -570,6 +572,7 @@ components:
           type: [string, 'null']
           enum: [AVAILABLE, SOLD_OUT, UNKNOWN, null]
           description: '(0.13.0) mfcId 지정 시 그 센터의 판매 가능 여부 — 취급 옵션 하나라도 가능 AVAILABLE, 취급 옵션 모두 품절 SOLD_OUT, 그 밖·조회 실패 UNKNOWN(품절이라고 하지 않음). mfcId 없으면 null'
+        lowStockQty: { type: [integer, 'null'], minimum: 1, x-added-in: '2026-11-25', description: '(0.18.0 BR-100 R7) "N개 남음" — 넉넉한 취급 옵션이 없고 LOW 옵션이 있을 때 그 수량 합. 아니면·mfcId 없으면 null' }
         rating: { type: [number, 'null'], description: '(0.4.0 BR-63) 공개 리뷰 평균 별점(소수 첫째). 리뷰가 없으면 null(0점 아님)' }
         reviewCount: { type: integer, minimum: 0, description: '(0.4.0 BR-63) 공개 리뷰 수' }
         badge: { type: string, enum: [NEW, RANK, NONE] }

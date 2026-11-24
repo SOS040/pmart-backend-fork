@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
+    0.10.0(2026-11-25, 클라이언트 BR-100 R7 "N개 남음" — 사용자 "10개 이하"): 옵션 `availability` 에 LOW 를 쓴다 — 취급하고 가용 A 가 0 < A ≤ 임계값이면
+      state LOW + `lowStockQty` = A. 임계값은 정책값 `pmart.content.low-stock-threshold`(설정 저장소, LAN 10) — 없으면 LOW 를 쓰지 않는다(예전처럼 AVAILABLE).
     0.9.0(2026-11-25, 클라이언트 BR-100 R1 "상품 정보 칸"): 상세(`ProductContent`)에 `origin`(원산지 값)·`expiryGuide`(소비기한·제조일 안내 값)·
       `legalInfo[]`(상품정보제공고시 `{label, value}` — notices 줄마다 첫 ":" 앞·뒤, ":" 가 없으면 label null). 저장은 그대로 notices 글줄이고
       조회 때 나눈다(`notices` 는 그대로 준다). 줄이 없으면 null·빈 목록 — 지어내지 않는다. 백오피스 입력(R11)은 지금처럼 notices 글줄.
@@ -769,10 +771,11 @@ components:
           description: |
             요청 mfcId(담당 센터) 기준 mfc-inventory 취급·가용 사본. mfcId 를 주고 옵션에 sku 가 있을 때만 채운다. 구매·예약 보장이 아니다.
             carried=false 면 그 센터가 취급하지 않는다(state UNKNOWN). 취급하면 가용 0 이하 SOLD_OUT, 그 밖 AVAILABLE.
-            재고 조회 실패는 carried 없음 + UNKNOWN(0 아님). LOW("N개 남음")는 노출 임계값이 운영 설정이라 아직 쓰지 않는다.
+            재고 조회 실패는 carried 없음 + UNKNOWN(0 아님). LOW("N개 남음", 0.10.0) = 0 < 가용 ≤ 임계값(정책값, 없으면 LOW 안 씀).
           properties:
             carried: { type: boolean }
             state: { type: string, enum: [AVAILABLE, LOW, SOLD_OUT, UNKNOWN] }
+            lowStockQty: { type: [integer, 'null'], minimum: 1, x-added-in: '2026-11-25', description: '(0.10.0 BR-100 R7) state LOW 일 때만 — 남은 가용 수량' }
     ProductCard:
       type: object
       properties:

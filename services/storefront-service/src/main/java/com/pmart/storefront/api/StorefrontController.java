@@ -582,16 +582,19 @@ public class StorefrontController implements StorefrontApi {
     if (items == null || items.isEmpty()) {
       return;
     }
-    java.util.Map<String, String> avail =
-        availability.of(items.stream().map(DisplayItem::getProductId).distinct().toList(), mfcId);
+    java.util.Map<String, com.pmart.storefront.domain.ListAvailability.Result> avail =
+        availability.detailed(
+            items.stream().map(DisplayItem::getProductId).distinct().toList(), mfcId);
     if (avail == null) {
       return;
     }
     for (DisplayItem i : items) {
+      var r = avail.get(i.getProductId());
       i.setAvailability(
           DisplayItem.AvailabilityEnum.fromValue(
-              avail.getOrDefault(
-                  i.getProductId(), com.pmart.storefront.domain.ListAvailability.UNKNOWN)));
+              r == null ? com.pmart.storefront.domain.ListAvailability.UNKNOWN : r.state()));
+      // "N개 남음"(0.18.0 BR-100 R7)
+      i.setLowStockQty(r == null ? null : r.lowStockQty());
     }
   }
 

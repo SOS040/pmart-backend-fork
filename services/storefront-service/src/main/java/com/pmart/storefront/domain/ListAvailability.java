@@ -14,7 +14,37 @@ public final class ListAvailability {
   public static final String UNKNOWN = "UNKNOWN";
 
   /** 옵션 하나의 사본. carried 가 null 이면 조회 실패(모름). state 는 AVAILABLE·LOW·SOLD_OUT·UNKNOWN. */
-  public record Option(@Nullable Boolean carried, @Nullable String state) {}
+  public record Option(
+      @Nullable Boolean carried, @Nullable String state, @Nullable Integer lowStockQty) {
+    public Option(@Nullable Boolean carried, @Nullable String state) {
+      this(carried, state, null);
+    }
+  }
+
+  /** 상품 하나의 판매 가능 여부와 "N개 남음"(2026-11-25 BR-100 R7). */
+  public record Result(String state, @Nullable Integer lowStockQty) {}
+
+  /**
+   * "N개 남음"(BR-100 R7 — product-content 0.10.0 옵션 LOW·lowStockQty): 취급 옵션 중 넉넉한(AVAILABLE) 것이 없고
+   * LOW 가 있으면 LOW 옵션 수량의 합, 아니면 null.
+   */
+  public static @Nullable Integer lowStockQty(List<Option> options) {
+    int sum = 0;
+    boolean anyLow = false;
+    for (Option o : options) {
+      if (!Boolean.TRUE.equals(o.carried())) {
+        continue;
+      }
+      if (AVAILABLE.equals(o.state())) {
+        return null;
+      }
+      if ("LOW".equals(o.state()) && o.lowStockQty() != null && o.lowStockQty() > 0) {
+        anyLow = true;
+        sum += o.lowStockQty();
+      }
+    }
+    return anyLow ? sum : null;
+  }
 
   private ListAvailability() {}
 

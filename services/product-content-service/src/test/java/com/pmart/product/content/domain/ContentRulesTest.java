@@ -112,4 +112,14 @@ class ContentRulesTest {
         .isEqualTo(1L);
     org.assertj.core.api.Assertions.assertThat(ContentRules.unitPrice(1000, 0)).isNull();
   }
+
+  @Test
+  void lowStockOnlyWithThresholdAndPositiveStock() {
+    assertThat(ContentRules.availability(10, true, 10))
+        .isEqualTo(new ContentRules.Availability(true, "LOW", 10));
+    assertThat(ContentRules.availability(11, true, 10).state()).isEqualTo("AVAILABLE");
+    assertThat(ContentRules.availability(0, true, 10).state()).isEqualTo("SOLD_OUT");
+    assertThat(ContentRules.availability(3, true, null).state()).isEqualTo("AVAILABLE");
+    assertThat(ContentRules.availability(3, false, 10).state()).isEqualTo("UNKNOWN");
+  }
 }

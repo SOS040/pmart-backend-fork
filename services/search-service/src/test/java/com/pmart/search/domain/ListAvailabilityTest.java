@@ -48,4 +48,17 @@ class ListAvailabilityTest {
             ListAvailability.of(List.of(new Option(true, "SOLD_OUT"), new Option(true, "UNKNOWN"))))
         .isEqualTo("UNKNOWN");
   }
+
+  @Test
+  void lowStockQtyOnlyWhenNoPlentifulCarriedOption() {
+    var low3 = new ListAvailability.Option(true, "LOW", 3);
+    var low4 = new ListAvailability.Option(true, "LOW", 4);
+    var plenty = new ListAvailability.Option(true, "AVAILABLE");
+    var notCarried = new ListAvailability.Option(false, "UNKNOWN");
+    assertThat(ListAvailability.lowStockQty(java.util.List.of(low3, low4, notCarried)))
+        .isEqualTo(7);
+    assertThat(ListAvailability.lowStockQty(java.util.List.of(low3, plenty))).isNull();
+    assertThat(ListAvailability.lowStockQty(java.util.List.of(plenty))).isNull();
+    assertThat(ListAvailability.of(java.util.List.of(low3))).isEqualTo(ListAvailability.AVAILABLE);
+  }
 }

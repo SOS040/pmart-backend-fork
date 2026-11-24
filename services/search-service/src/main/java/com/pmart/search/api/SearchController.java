@@ -117,13 +117,14 @@ public class SearchController implements SearchApi {
                 SearchRules.normalizeQuery(q), mfcId, Boolean.TRUE.equals(includeNotCarried))
             : List.of();
     // 0.10.0 목록 판매 가능 여부 — mfcId 를 줬을 때만, 실패는 UNKNOWN(ProductAvailability)
-    java.util.Map<String, String> avail =
-        availability.of(
+    java.util.Map<String, com.pmart.search.domain.ListAvailability.Result> detail =
+        availability.detailed(
             java.util.stream.Stream.concat(r.items().stream(), similar.stream())
                 .map(ProductSearch.Hit::productId)
                 .distinct()
                 .toList(),
             mfcId);
+    java.util.Map<String, String> avail = states(detail);
     return ResponseEntity.ok(
         new SearchResult()
             .query(SearchRules.normalizeQuery(q))
@@ -132,6 +133,7 @@ public class SearchController implements SearchApi {
                     .map(
                         h ->
                             hit(h)
+                                .lowStockQty(lowOf(detail, h.productId()))
                                 .availability(
                                     avail == null
                                         ? null
@@ -149,7 +151,12 @@ public class SearchController implements SearchApi {
             .similarItems(
                 similar.isEmpty()
                     ? null
-                    : similar.stream().map(h -> withAvailability(hit(h), h, avail)).toList())
+                    : similar.stream()
+                        .map(
+                            h ->
+                                withAvailability(hit(h), h, avail)
+                                    .lowStockQty(lowOf(detail, h.productId())))
+                        .toList())
             .asOf(asOf()));
   }
 
@@ -216,6 +223,27 @@ public class SearchController implements SearchApi {
                                 .toList()))
             .toList();
     return ResponseEntity.ok(new GetSearchFilters200Response().attributes(attributes).asOf(asOf()));
+  }
+
+  private static java.util.@Nullable Map<String, String> states(
+      java.util.@Nullable Map<String, com.pmart.search.domain.ListAvailability.Result> d) {
+    if (d == null) {
+      return null;
+    }
+    java.util.Map<String, String> out = new java.util.HashMap<>();
+    d.forEach((k, v) -> out.put(k, v.state()));
+    return out;
+  }
+
+  /** "N개 남음"(0.14.0 BR-100 R7) — 없으면 null. */
+  private static @Nullable Integer lowOf(
+      java.util.@Nullable Map<String, com.pmart.search.domain.ListAvailability.Result> d,
+      String productId) {
+    if (d == null) {
+      return null;
+    }
+    var r = d.get(productId);
+    return r == null ? null : r.lowStockQty();
   }
 
   /** 0.10.0 판매 가능 여부를 붙인다 — mfcId 가 없으면(avail null) 비운다. */

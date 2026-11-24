@@ -25,8 +25,13 @@ public final class ContentRules {
   private ContentRules() {}
 
   /** 옵션 표시 가용(계약 SaleOption.availability). carried 가 null 이면 취급 여부도 모른다. */
-  public record Availability(@Nullable Boolean carried, String state) {
-    public static final Availability UNKNOWN = new Availability(null, "UNKNOWN");
+  public record Availability(
+      @Nullable Boolean carried, String state, @Nullable Integer lowStockQty) {
+    public static final Availability UNKNOWN = new Availability(null, "UNKNOWN", null);
+
+    public Availability(@Nullable Boolean carried, String state) {
+      this(carried, state, null);
+    }
   }
 
   /**
@@ -34,6 +39,23 @@ public final class ContentRules {
    * SOLD_OUT, 그 밖 AVAILABLE. "N개 남음"(LOW) 노출 임계값은 운영 설정이라(Commerce 6.11) 쓰지 않는다.
    */
   public static Availability availability(@Nullable Integer available, boolean handlingEnabled) {
+    return availability(available, handlingEnabled, null);
+  }
+
+  /**
+   * 위와 같고, "N개 남음" 임계값(2026-11-25 사용자 "10개 이하", BR-100 R7 — 정책값 {@code
+   * pmart.content.low-stock-threshold})이 있으면 0 < A ≤ 임계값을 LOW·lowStockQty = A 로. 임계값이 없으면 LOW 를 쓰지
+   * 않는다.
+   */
+  public static Availability availability(
+      @Nullable Integer available, boolean handlingEnabled, @Nullable Integer lowStockThreshold) {
+    if (handlingEnabled
+        && available != null
+        && lowStockThreshold != null
+        && available > 0
+        && available <= lowStockThreshold) {
+      return new Availability(true, "LOW", available);
+    }
     if (!handlingEnabled) {
       return new Availability(false, "UNKNOWN");
     }
