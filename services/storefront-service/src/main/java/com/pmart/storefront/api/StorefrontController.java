@@ -41,13 +41,16 @@ public class StorefrontController implements StorefrontApi {
   private final com.pmart.storefront.application.LayoutService layouts;
   private final java.time.Clock clock;
   private final com.pmart.storefront.application.ProductAvailability availability;
+  private final com.pmart.storefront.application.BannerImageVariants variants;
 
   public StorefrontController(
       StorefrontQueries queries,
       com.pmart.storefront.application.LayoutService layouts,
       java.time.Clock clock,
-      com.pmart.storefront.application.ProductAvailability availability) {
+      com.pmart.storefront.application.ProductAvailability availability,
+      com.pmart.storefront.application.BannerImageVariants variants) {
     this.availability = availability;
+    this.variants = variants;
     this.queries = queries;
     this.layouts = layouts;
     this.clock = clock;
@@ -159,10 +162,29 @@ public class StorefrontController implements StorefrontApi {
                     .toList()));
   }
 
-  /** 배너 이미지 본문(0.7.0) — 게시된 진열에 쓰인 것만(운영자는 초안 것도). 이미지 ID 마다 바뀌지 않는다. */
+  /**
+   * 배너 이미지 본문(0.7.0) — 게시된 진열에 쓰인 것만(운영자는 초안 것도). 이미지 ID 마다 바뀌지 않는다. {@code w} 가 있으면 JPEG
+   * 축소본(0.16.0 BR-99), 줄일 수 없으면 원본.
+   */
   @Override
-  public ResponseEntity<org.springframework.core.io.Resource> getBannerImage(String imageId) {
+  public ResponseEntity<org.springframework.core.io.Resource> getBannerImage(
+      String imageId, @Nullable Integer w) {
     var img = layouts.image(imageId);
+    if (w != null) {
+      var v = variants.variant(img.row(), img.body(), w);
+      if (v != null) {
+        return ResponseEntity.ok()
+            .contentType(org.springframework.http.MediaType.IMAGE_JPEG)
+            .contentLength(v.body().length)
+            .eTag("\"" + v.etag() + "\"")
+            .cacheControl(
+                org.springframework.http.CacheControl.maxAge(java.time.Duration.ofDays(365))
+                    .cachePublic()
+                    .immutable())
+            .body(new org.springframework.core.io.ByteArrayResource(v.body()));
+      }
+      img = layouts.image(imageId); // 원본 본문은 축소 시도에서 읽었으니 다시 연다
+    }
     return ResponseEntity.ok()
         .contentType(org.springframework.http.MediaType.parseMediaType(img.row().contentType()))
         .contentLength(img.row().sizeBytes())

@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
+    0.16.0(2026-11-25, 클라이언트 BR-99 "홈 배너 그림이 장당 2MB PNG라 홈이 늦다"): `GET /storefront/banner-images/{imageId}?w=` 휴대폰용 축소본 —
+      `w`(1~4096, 상품 사진 content-images 와 같은 이름)를 360·720·1080·1440 중 그 이상인 가장 작은 단계로 올려(1440 넘으면 1440) 원본 비율 그대로
+      **JPEG**(품질 0.82, 투명 배경은 흰색)로 준다. 원본 폭이 그 단계 이하면 원본 크기 그대로 JPEG. 줄일 수 없는 형식(WEBP)·너무 큰 그림(4천만 화소 넘음)이면 원본.
+      처음 요청 때 만들어 저장해 두고 다시 쓴다(이미 올라간 배너도). 캐시는 원본과 같이 1년 immutable, ETag `<sha256>-w<단계>`. `w` 없으면 지금처럼 원본. 응답의 imageUrl 은 그대로 — 앱이 붙인다.
     0.15.0(2026-11-24, 사용자 "사진이 들어가는 곳 옆에 사진 규격 필요"·"가로 세로 크기나 비율이 필요한건데"·"저 대안대로 작업"): 배너 자리별 그림 규격 —
       홈·카테고리 배너(HOME_TOP·HOME_MIDDLE·HOME_INLINE·CATEGORY) 2.8:1 권장 1960×700·최소 1080×386, 팝업(POPUP) 4:5 권장 1080×1350·최소 720×900,
       로딩 화면(SPLASH) 9:16 권장 1080×1920·최소 720×1280(고객 앱이 그리는 비율 그대로 — 칸을 채우고 넘치면 자름). **막지 않고 경고만**(사용자 2026-11-24
@@ -368,9 +372,14 @@ paths:
       security: []
       parameters:
         - { name: imageId, in: path, required: true, schema: { type: string } }
+        - name: w
+          in: query
+          required: false
+          description: 화면 폭 × 화소 비율(0.16.0). 360·720·1080·1440 중 그 이상인 가장 작은 단계의 JPEG 축소본. 없으면 원본
+          schema: { type: integer, minimum: 1, maximum: 4096 }
       responses:
         '200':
-          description: 이미지 바이트(바뀌지 않음 — 1년 immutable)
+          description: 이미지 바이트(바뀌지 않음 — 1년 immutable, 축소본도 같음)
           content:
             image/jpeg:
               schema: { type: string, format: binary }

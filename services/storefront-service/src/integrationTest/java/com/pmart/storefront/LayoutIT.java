@@ -397,6 +397,11 @@ class LayoutIT extends PostgresKafkaContainerSupport {
         .hasSize(1);
     assertThat(send("GET", null, "/storefront/banner-images/" + imageId, null).status())
         .isEqualTo(200);
+    // 축소본(0.16.0 BR-99) — 처음은 만들어 저장, 두 번째는 저장본
+    assertThat(send("GET", null, "/storefront/banner-images/" + imageId + "?w=720", null).status())
+        .isEqualTo(200);
+    assertThat(send("GET", null, "/storefront/banner-images/" + imageId + "?w=700", null).status())
+        .isEqualTo(200);
     // 초안 PUBLISHED·반영 회신 APPLIED
     JsonNode published = send("GET", MD, "/storefront/layout-drafts/" + draftId, null).body();
     assertThat(published.path("state").asString()).isEqualTo("PUBLISHED");
