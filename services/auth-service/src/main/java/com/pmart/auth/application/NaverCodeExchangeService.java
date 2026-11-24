@@ -156,7 +156,7 @@ public class NaverCodeExchangeService {
                   call(cfg, authorizationCode, codeVerifier, redirectUri, state);
               NaverTokenClient.Profile profile = profile(tokens.accessToken());
               Exchanged out = new Exchanged(tokens.idToken(), pickImage(profile.image()));
-              holdEmail(tokens.idToken(), profile.email());
+              holdProfile(tokens.idToken(), profile.email(), profile.name());
               // 프로필을 읽은 뒤 끊는다(끊으면 access token 이 무효)
               String reason =
                   withdrawal
@@ -217,23 +217,38 @@ public class NaverCodeExchangeService {
     }
   }
 
-  /** 이메일을 id_token sub 에 묶어 둔다. 실패는 경고만(로그인은 이메일 없이). 이메일·sub 는 로그 금지. */
-  private void holdEmail(String idToken, @Nullable String email) {
-    if (emails == null || email == null) {
+  /**
+   * 이메일·이름(2026-11-25)을 id_token sub 에 묶어 둔다. 실패는 경고만(로그인은 그 값 없이). 이메일·이름·sub 는 로그 금지. 이름은 100자
+   * 이하·제어 문자 없을 때만.
+   */
+  private void holdProfile(String idToken, @Nullable String email, @Nullable String name) {
+    if (emails == null) {
       return;
     }
-    String e = email.strip();
-    if (e.length() > 320 || e.indexOf('@') < 1 || e.chars().anyMatch(Character::isWhitespace)) {
+    String e = email == null ? null : email.strip();
+    if (e != null
+        && (e.length() > 320
+            || e.indexOf('@') < 1
+            || e.chars().anyMatch(Character::isWhitespace))) {
       log.info("네이버 프로필 이메일 생략 reason=invalid_email");
+      e = null;
+    }
+    String n = name == null ? null : name.strip();
+    if (n != null
+        && (n.isEmpty() || n.length() > 100 || n.chars().anyMatch(Character::isISOControl))) {
+      log.info("네이버 프로필 이름 생략 reason=invalid_name");
+      n = null;
+    }
+    if (e == null && n == null) {
       return;
     }
     String sub = subjectOf(idToken);
     if (sub == null) {
-      log.info("네이버 프로필 이메일 생략 reason=missing_sub");
+      log.info("네이버 프로필 이메일·이름 생략 reason=missing_sub");
       return;
     }
     try {
-      emails.save(sub, e, clock.instant().plus(EMAIL_HOLD));
+      emails.save(sub, e, n, clock.instant().plus(EMAIL_HOLD));
     } catch (RuntimeException ex) {
       log.warn("네이버 프로필 이메일 보관 실패 reason={}", ex.getClass().getSimpleName());
     }

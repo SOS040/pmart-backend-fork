@@ -776,15 +776,22 @@ public class CustomerSocialLoginService {
     payload.put("authenticatedAt", at.toString());
     String email = identity.email();
     Boolean emailVerified = identity.emailVerified();
-    if (email == null && "NAVER".equals(provider)) {
-      // 네이버 ID 토큰에는 이메일이 없다 — 교환 때 서버가 네이버 프로필 API 에서 직접 받아 이 sub 에 묶어 둔 값(BR-77).
-      // 네이버는 확인 여부를 주지 않아 emailVerified 는 싣지 않는다. 없으면 이메일 없이(customer 의 기존 값은 그대로).
-      email = naverEmails.take(identity.subject(), at);
-      emailVerified = null;
+    String name = identity.name();
+    if ((email == null || name == null) && "NAVER".equals(provider)) {
+      // 네이버 ID 토큰에는 이메일·이름이 없다 — 교환 때 서버가 네이버 프로필 API 에서 직접 받아 이 sub 에 묶어 둔 값(BR-77,
+      // 이름 2026-11-25). 네이버는 확인 여부를 주지 않아 emailVerified 는 싣지 않는다. 없으면 그 값 없이(customer 기존 값 유지).
+      var held = naverEmails.takeProfile(identity.subject(), at);
+      if (email == null) {
+        email = held.email();
+        emailVerified = null;
+      }
+      if (name == null) {
+        name = held.name();
+      }
     }
     putIfPresent(payload, "email", email);
     putIfPresent(payload, "emailVerified", emailVerified);
-    putIfPresent(payload, "name", identity.name());
+    putIfPresent(payload, "name", name);
     // 네이버는 ID 토큰에 사진이 없어 앱이 넘긴 주소(0.8.0, ProviderPictureRules — 맞을 때만)
     putIfPresent(
         payload,

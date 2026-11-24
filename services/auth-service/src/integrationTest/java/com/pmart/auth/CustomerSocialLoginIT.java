@@ -96,6 +96,7 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired com.pmart.auth.infrastructure.NaverProfileEmailStore naverEmails;
 
   RestClient http;
 
@@ -180,6 +181,28 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
         .path("payload")
         .path("pictureUrl")
         .asString(null);
+  }
+
+  /** 2026-11-25: 네이버 ID 토큰엔 이름이 없어 교환 때 묶어 둔 프로필 이름·이메일을 사건에 싣는다(한 번만). */
+  @Test
+  void naverNameAndEmailFromHeldProfile() {
+    String sub = "nv-" + UUID.randomUUID();
+    naverEmails.save(sub, "gd@naver.com", "홍길동", java.time.Instant.now().plusSeconds(600));
+    String naver = bareIdToken(sub, "naver-client-id", "https://nid.naver.com");
+    Res ok = login(UUID.randomUUID().toString(), "phone-" + UUID.randomUUID(), "NAVER", naver);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    var payload =
+        mapper
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE type = 'CustomerAuthenticated'"
+                        + " AND aggregateid = ? ORDER BY created_at DESC LIMIT 1",
+                    String.class,
+                    ok.body().path("accountId").asString()))
+            .path("payload");
+    assertThat(payload.path("name").asString()).isEqualTo("홍길동");
+    assertThat(payload.path("email").asString()).isEqualTo("gd@naver.com");
+    assertThat(naverEmails.takeProfile(sub, java.time.Instant.now()).name()).isNull();
   }
 
   /** 0.8.0: 네이버 ID 토큰엔 사진이 없어 앱이 넘긴 pstatic.net 주소를 사건에 싣는다. 다른 호스트·다른 제공자는 무시(로그인은 그대로). */

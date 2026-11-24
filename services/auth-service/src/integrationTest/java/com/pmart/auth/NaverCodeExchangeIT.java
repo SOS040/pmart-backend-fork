@@ -528,4 +528,49 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     naverEmails.save(sub2, "old@naver.com", now.minusSeconds(1));
     assertThat(naverEmails.take(sub2, now)).isNull();
   }
+
+  /** 2026-11-25: 프로필 이름(name, 없으면 nickname)도 이메일과 함께 묶는다 — 이메일이 없어도 이름만으로. 응답에는 싣지 않는다. */
+  @Test
+  void profileNameIsHeldWithOrWithoutEmail() {
+    var b64 = java.util.Base64.getUrlEncoder().withoutPadding();
+    java.time.Instant now = java.time.Instant.now();
+    String sub = "naver-sub-" + UUID.randomUUID();
+    stub(
+        200,
+        Map.of(
+            "access_token",
+            "naver-access",
+            "id_token",
+            "h." + b64.encodeToString(("{\"sub\":\"" + sub + "\"}").getBytes()) + ".s"));
+    stubProfile(
+        200,
+        Map.of(
+            "resultcode",
+            "00",
+            "response",
+            Map.of("id", "n-1", "name", "홍길동", "nickname", "길동", "email", "gd@naver.com")));
+    Res r = exchange(UUID.randomUUID().toString(), "code-name", CALLBACK);
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.body().toString()).doesNotContain("홍길동");
+    var held = naverEmails.takeProfile(sub, now);
+    assertThat(held.email()).isEqualTo("gd@naver.com");
+    assertThat(held.name()).isEqualTo("홍길동");
+
+    // 이름 없이 별명만, 이메일 없음 → 별명만 묶는다
+    naver.resetAll();
+    String sub2 = "naver-sub-" + UUID.randomUUID();
+    stub(
+        200,
+        Map.of(
+            "access_token",
+            "naver-access",
+            "id_token",
+            "h." + b64.encodeToString(("{\"sub\":\"" + sub2 + "\"}").getBytes()) + ".s"));
+    stubProfile(200, Map.of("resultcode", "00", "response", Map.of("id", "n-2", "nickname", "길동")));
+    assertThat(exchange(UUID.randomUUID().toString(), "code-nick", CALLBACK).status())
+        .isEqualTo(200);
+    var nick = naverEmails.takeProfile(sub2, now);
+    assertThat(nick.email()).isNull();
+    assertThat(nick.name()).isEqualTo("길동");
+  }
 }
