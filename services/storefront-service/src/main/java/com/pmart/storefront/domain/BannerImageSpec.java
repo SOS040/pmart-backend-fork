@@ -30,7 +30,14 @@ public record BannerImageSpec(
 
   /** 계약 순서(화면 표시용). */
   public static final java.util.List<String> ORDER =
-      java.util.List.of("HOME_TOP", "HOME_MIDDLE", "HOME_INLINE", "CATEGORY", "POPUP", "SPLASH");
+      java.util.List.of(
+          "HOME_TOP",
+          "HOME_MIDDLE",
+          "HOME_INLINE",
+          "CATEGORY",
+          "PRODUCT_DETAIL",
+          "POPUP",
+          "SPLASH");
 
   public static final Map<String, BannerImageSpec> BY_PLACEMENT =
       Map.of(
@@ -38,6 +45,7 @@ public record BannerImageSpec(
           "HOME_MIDDLE", WIDE,
           "HOME_INLINE", WIDE,
           "CATEGORY", WIDE,
+          "PRODUCT_DETAIL", WIDE,
           "POPUP", POPUP,
           "SPLASH", SPLASH);
 

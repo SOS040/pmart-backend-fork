@@ -733,6 +733,13 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
             origin.map(com.pmart.product.content.domain.OriginRules.Origin::text).orElse(null));
     assertThat(search.path("originType").asString(null))
         .isEqualTo(origin.map(o -> o.type() == null ? null : o.type().name()).orElse(null));
+    // 0.9.0 BR-100 R1: 상세의 상품 정보 칸 = notices 를 나눈 값
+    assertThat(c.path("origin").asString(null))
+        .isEqualTo(com.pmart.product.content.domain.NoticeRules.origin(notices));
+    assertThat(c.path("expiryGuide").asString(null))
+        .isEqualTo(com.pmart.product.content.domain.NoticeRules.expiryGuide(notices));
+    assertThat(c.path("legalInfo"))
+        .hasSize(com.pmart.product.content.domain.NoticeRules.legalInfo(notices).size());
     assertThat(search.path("description").asString(null))
         .isEqualTo(c.path("description").asString(null));
     // BR-63(0.3.0): 리뷰 사건 → 상세·카드 rating 이 평점 집계와 같다

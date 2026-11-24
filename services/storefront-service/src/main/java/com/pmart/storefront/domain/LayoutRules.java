@@ -43,7 +43,14 @@ public final class LayoutRules {
    * — 홈에는 섞지 않는다, 2026-11-22 클라이언트 BR-82).
    */
   public static final List<String> PLACEMENTS =
-      List.of("HOME_TOP", "HOME_MIDDLE", "POPUP", "SPLASH", "HOME_INLINE", "CATEGORY");
+      List.of(
+          "HOME_TOP",
+          "HOME_MIDDLE",
+          "POPUP",
+          "SPLASH",
+          "HOME_INLINE",
+          "CATEGORY",
+          "PRODUCT_DETAIL");
 
   /** 0.10.0 홈 순서 안 배너 묶음 자리(groupId 필수). */
   public static final String HOME_INLINE = "HOME_INLINE";

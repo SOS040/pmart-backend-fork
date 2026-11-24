@@ -91,6 +91,19 @@ public class ContentQueries {
     m.put("storageGuide", c.storageGuide());
     m.put("returnGuide", c.returnGuide());
     m.put("notices", mapper.readTree(c.notices()));
+    // 상품 정보 칸(0.9.0 BR-100 R1) — notices 글줄을 나눈다
+    List<String> noticeLines = new ArrayList<>();
+    mapper.readTree(c.notices()).forEach(n -> noticeLines.add(n.asString("")));
+    m.put("origin", com.pmart.product.content.domain.NoticeRules.origin(noticeLines));
+    m.put("expiryGuide", com.pmart.product.content.domain.NoticeRules.expiryGuide(noticeLines));
+    List<Map<String, Object>> legal = new ArrayList<>();
+    for (var info : com.pmart.product.content.domain.NoticeRules.legalInfo(noticeLines)) {
+      Map<String, Object> row = new java.util.LinkedHashMap<>();
+      row.put("label", info.label());
+      row.put("value", info.value());
+      legal.add(row);
+    }
+    m.put("legalInfo", legal);
     p.flatMap(this::categoryPath).ifPresent(path -> m.put("categoryPath", path));
     List<Map<String, Object>> sources = new ArrayList<>();
     sources.add(source(SYSTEM, c.publishedAt().toString(), c.contentVersion(), "CURRENT"));

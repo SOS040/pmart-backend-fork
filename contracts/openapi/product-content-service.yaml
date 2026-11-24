@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-25, 클라이언트 BR-100 R1 "상품 정보 칸"): 상세(`ProductContent`)에 `origin`(원산지 값)·`expiryGuide`(소비기한·제조일 안내 값)·
+      `legalInfo[]`(상품정보제공고시 `{label, value}` — notices 줄마다 첫 ":" 앞·뒤, ":" 가 없으면 label null). 저장은 그대로 notices 글줄이고
+      조회 때 나눈다(`notices` 는 그대로 준다). 줄이 없으면 null·빈 목록 — 지어내지 않는다. 백오피스 입력(R11)은 지금처럼 notices 글줄.
     0.8.0(2026-11-24, 사용자 "사진이 들어가는 곳 옆에 사진 규격 필요"·"가로 세로 크기나 비율이 필요한건데"·"저 대안대로 작업"): 상품 사진 규격 —
       대표(MAIN) 1:1 권장 1000×1000 이상, 상세 설명(DESCRIPTION)·상세정보 표(DETAIL) 가로 1000px 권장·세로 자유(고객 앱이 대표는 정사각형 칸,
       상세는 화면 폭에 맞춰 그림). **막지 않고 경고만** — 초안 `warnings`(MAIN_IMAGE_NOT_SQUARE ±10% 밖 · MAIN_IMAGE_SMALL · IMAGE_NARROW ·
@@ -801,6 +804,18 @@ components:
             storageGuide: { type: string }
             returnGuide: { type: string }
             notices: { type: array, items: { type: string } }
+            origin: { type: [string, 'null'], x-added-in: '2026-11-25', description: '(0.9.0 BR-100) notices "원산지:" 줄의 값. 없으면 null' }
+            expiryGuide: { type: [string, 'null'], x-added-in: '2026-11-25', description: '(0.9.0 BR-100) 항목 이름에 소비기한·유통기한·품질유지기한·제조연월일이 든 첫 줄의 값. 없으면 null' }
+            legalInfo:
+              type: array
+              x-added-in: '2026-11-25'
+              description: '(0.9.0 BR-100) 상품정보제공고시 표 — notices 줄 순서 그대로'
+              items:
+                type: object
+                required: [value]
+                properties:
+                  label: { type: [string, 'null'], description: '첫 ":" 앞(없으면 null)' }
+                  value: { type: string }
             categoryPath: { type: array, items: { type: string }, description: 대표 노출 경로 }
             sources:
               type: array

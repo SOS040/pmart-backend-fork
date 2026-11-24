@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.16.0
+  version: 0.17.0
   description: |
+    0.17.0(2026-11-25, 클라이언트 BR-100 R9 "상품페이지 배너"): 편성 배너 자리에 `PRODUCT_DETAIL`(상품 상세 화면 — 모든 상품 공통, 홈·카테고리 배너와 같은
+      2.8:1 권장 1960×700·최소 1080×386). 홈 `banners`·placement 없는 목록에는 안 나오고 `GET /storefront/banners?placement=PRODUCT_DETAIL` 로만(CATEGORY 와 같음).
     0.16.0(2026-11-25, 클라이언트 BR-99 "홈 배너 그림이 장당 2MB PNG라 홈이 늦다"): `GET /storefront/banner-images/{imageId}?w=` 휴대폰용 축소본 —
       `w`(1~4096, 상품 사진 content-images 와 같은 이름)를 360·720·1080·1440 중 그 이상인 가장 작은 단계로 올려(1440 넘으면 1440) 원본 비율 그대로
       **JPEG**(품질 0.82, 투명 배경은 흰색)로 준다. 원본 폭이 그 단계 이하면 원본 크기 그대로 JPEG. 줄일 수 없는 형식(WEBP)·너무 큰 그림(4천만 화소 넘음)이면 원본.
@@ -162,7 +164,7 @@ paths:
       operationId: listBanners
       security: []
       parameters:
-        - { name: placement, in: query, schema: { type: string, enum: [HOME_TOP, HOME_MIDDLE, CATEGORY, POPUP, SPLASH] }, description: '없으면 HOME_TOP·HOME_MIDDLE(0.9.0). POPUP·SPLASH 는 지정해야 나온다' }
+        - { name: placement, in: query, schema: { type: string, enum: [HOME_TOP, HOME_MIDDLE, CATEGORY, PRODUCT_DETAIL, POPUP, SPLASH] }, description: '없으면 HOME_TOP·HOME_MIDDLE(0.9.0). POPUP·SPLASH·CATEGORY·PRODUCT_DETAIL 은 지정해야 나온다' }
       responses:
         '200':
           description: OK
@@ -324,7 +326,7 @@ paths:
                       type: object
                       required: [placement, ratio, ratioLabel, recommendedWidth, recommendedHeight, minWidth, minHeight]
                       properties:
-                        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, HOME_INLINE, CATEGORY, POPUP, SPLASH] }
+                        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, HOME_INLINE, CATEGORY, PRODUCT_DETAIL, POPUP, SPLASH] }
                         ratio: { type: number, description: '가로 ÷ 세로' }
                         ratioLabel: { type: string, description: '예 "2.8:1"·"4:5"·"9:16"' }
                         recommendedWidth: { type: integer }
@@ -578,7 +580,7 @@ components:
       required: [bannerId, placement, imageId, altText, linkType]
       properties:
         bannerId: { type: string, pattern: '^[A-Za-z0-9_-]{1,40}$', description: 초안 안에서 고유 }
-        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, POPUP, SPLASH, HOME_INLINE, CATEGORY], description: '0.11.0 CATEGORY = 카테고리 화면 맨 위(홈에는 안 나옴). 0.9.0 POPUP = 앱 첫 화면 팝업, SPLASH = 처음 로딩 화면. 0.10.0 HOME_INLINE = 홈 순서(homeOrder) 안의 배너 묶음 자리(groupId 필수)' }
+        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, POPUP, SPLASH, HOME_INLINE, CATEGORY, PRODUCT_DETAIL], description: '0.17.0 PRODUCT_DETAIL = 상품 상세 화면(모든 상품 공통). 0.11.0 CATEGORY = 카테고리 화면 맨 위(홈에는 안 나옴). 0.9.0 POPUP = 앱 첫 화면 팝업, SPLASH = 처음 로딩 화면. 0.10.0 HOME_INLINE = 홈 순서(homeOrder) 안의 배너 묶음 자리(groupId 필수)' }
         groupId: { type: [string, 'null'], pattern: '^G-[A-Za-z0-9_-]{1,38}$', description: '0.10.0 HOME_INLINE 배너 묶음 ID(같은 묶음은 한 자리에서 넘기기). 다른 자리면 비움(INVALID_GROUP)' }
         imageId: { type: string, description: '`POST /storefront/banner-images` 결과' }
         altText: { type: string, minLength: 1, maxLength: 100, description: 접근성 설명(화면 읽기) }
