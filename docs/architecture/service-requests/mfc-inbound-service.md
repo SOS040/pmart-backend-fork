@@ -51,7 +51,7 @@
      - R·L·SS·박스 입수·MOQ 값은 원문에 "승인 전" 이다 — 값이 없으면 추천하지 않고 사유를 준다(0·무제한으로 채우지 않는다). 시작 값은 PC 3 가 데모 값으로 제안하고 사용자 확인을 받는다.
      - 데모의 센터 ID 는 옛 `MFC-SEED-01` — 지금 1호점은 `MFC-BJG-01`(R-46).
 - **받는 쪽**: MFC 시뮬레이터(계약이 생기면 추천 채우기·발주를 바꿈), MFC 백오피스(PC 3).
-- **상태**: 구현·LAN 배포(2026-11-24 PC 3 #424 → PC 1 B 방식 075b069f·7fce390e, pc3 mfc-inbound Flyway v14, pmart-config f317f6f 라우트 `/supply-recommendations`). **추천 조회는 LAN 에서 500** — mfc-inventory availability `asOf`(객체)를 문자열로 읽음, PC 3 이 0.21.1 로 고침(#424 댓글). 승인·거절·목록은 됨.
+- **상태**: 구현·LAN 배포(2026-11-24 PC 3 #424 → PC 1 B 방식 075b069f·7fce390e, pc3 mfc-inbound Flyway v14, pmart-config f317f6f 라우트 `/supply-recommendations`). 추천 조회 LAN 500(availability `asOf` 객체를 문자열로 읽음)은 0.21.1(#432 08e3a731)로 고쳐 LAN 200 확인.
 - **회신(PC 3, 2026-11-24)**:
   1. 여러 줄 발주: 지금 `POST /supply-requests` 가 이미 여러 줄(1~200)이다 — 그대로 쓴다(같은 센터·SKU 미해결 요청이 있으면 409 `DUPLICATE_OPEN_REQUEST`).
   2. 승인·거절: `POST /supply-requests/{id}/approvals` `{lines?: [{sku, approvedQty}], note?}`(생략 줄 = 요청 수량 그대로, 줄이면 note 필수, 전부 0 은 400) · `POST …/rejections` `{reason}`. 그 센터 MFC_SUPERVISOR, SUBMITTED 만. **approval-service 는 거치지 않고 센터 안에서 끝낸다**(Q-15 = SCM 전까지 센터 관리자, 요청자 본인 승인 허용). 승인 → 상태 APPROVED, `approvedLines`·`decidedBy`·`decisionNote`·`linkedReceiptId` + 입고 예정 EXPECTED 하나 — 수령 전 수량은 `GET /initial-stock-loads?mfcId=&state=EXPECTED`(또는 `?approvalId=<요청 ID>`), 수령·품질검사·적치는 지금 흐름.
