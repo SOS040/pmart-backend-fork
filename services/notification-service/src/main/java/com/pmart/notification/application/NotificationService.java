@@ -213,7 +213,8 @@ public class NotificationService {
               e.eventType(),
               text(p, "deliveryNumber"),
               p.path("amount").isNumber() ? p.path("amount").asLong() : null,
-              deadline == null ? null : java.time.Instant.parse(deadline));
+              deadline == null ? null : java.time.Instant.parse(deadline),
+              text(p, "source"));
       if (riderId != null && n != null) {
         saveFor(e, RIDER, riderId, n);
       }

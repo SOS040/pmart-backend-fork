@@ -16,6 +16,9 @@
 6. **이의 5일**: 차감 예정이 생기면 라이더 앱에 알리고 **5일** 동안 이의를 받는다. 이의가 오면 지원센터(RIDER_OPS)가 받아들이거나(차감 취소) 거절(차감 확정). 이의 없이 5일이 지나면 차감 확정.
 7. **이월**: 확정된 차감은 다음 정산에서 뺀다. 그 정산금보다 크면 남은 금액을 **다음 정산으로 넘겨** 다 뺄 때까지 이어 간다(상한 없음). 남은 차감액은 라이더 백오피스·라이더 앱에 서버 값으로 보인다.
 8. **환불은 배달팁·봉투값까지 전액**(사용자 2026-11-24 "고객한텐 배달팁 포함한 전액 환불해줘야지 … 물건을 못 받았는데 배달금액을 빼고 돌려주는 게 말이 되냐?"): 라이더·우리 잘못 오배송의 REFUND(전 품목 환불)는 상품값에 **주문 요금(배달팁·봉투값)** 을 더해 돌려준다 — ADR-0065 의 REFUND 금액(상품값만)을 이것으로 바꾼다. 요금은 주문당 한 번(이미 돌려준 요금은 뺀다). 고객 잘못(CUSTOMER_REFUND, 회수비 9,000원 공제)과 재발송 중 재고 부족 부분 환불은 그대로(요금 없음). 구현: claim 0.15.0 `shortage-refunds` `refundOrderFees`, orchestration 재발송 사가 REFUND 가 켠다.
+9. **지급 실패 자동 넘김은 줄마다 3번까지**(사용자 2026-11-24 "지급 실패를 다음 지급일로 넘기는 횟수에 상한을 둬. 3번 안에는 반드시 줘야해" — PC 5 가 옮김, execution 0.43.0·V30 PR #429): 3번째 넘김이 마지막 자동 시도(`finalAttempt`). 그 뒤 또 실패하면 넘기지 않고 PAYMENT_FAILED 로 남겨 묶음 `escalated` — 지원센터가 직접 지급하고 관리자가 PAID 로 표시(`GET /rider-payouts?escalated=true`). 넘긴 묶음에서 뺀 차감은 되돌려 새 묶음에서 다시 뺀다(결정 7 그대로). 직원에게 알리는 사건 `RiderPayoutEscalated` 는 요청 DE-10.
+10. **지원센터 직접 차감**(사용자 2026-11-24 "직접 차감하는 API도 만들자", execution 0.43.0): `POST /rider-deductions`(RIDER_OPS·OPERATOR_ADMIN) — 배송·오배송 사건 번호·사유(라이더도 봄), 금액은 비우면 결정 5 금액·주면 그 이하. 배송·사건당 한 번. 그 뒤는 자동 차감과 같다(이의 5일·확정·이월). 차감 사건 3종 payload 에 선택 칸 `source`(MISDELIVERY_RECOVERY·MANUAL, 버전 그대로) — notification 은 MANUAL 예정 알림을 "회수가 끝나지 않아" 대신 "지원센터가 … 건으로" 로 쓴다.
+11. **회수해서 돌려놓은 상품이 상했으면 폐기·재고 차감**(사용자 2026-11-24 "회수해서 MFC에 돌려놓았는데 음식이 상했으면 폐기처분하고 재고 차감해야지"): 새 규칙이 아니라 mfc-quality 회수품 검수(신선 RESALE 불가 → DISPOSE)·mfc-inventory 폐기 차감 길을 그대로 쓴다(확인은 PC 3). 회수에 성공했으므로 결정 5 의 라이더 차감은 생기지 않는다 — 상품 손실을 라이더에게 물릴지는 정하지 않았다(필요하면 결정 10 직접 차감).
 
 ## 서비스별 몫
 | 서비스 | PC | 할 일 |
@@ -23,7 +26,9 @@
 | customer-app | 클라이언트(PC 1 프론트) | 주문 상세 "못 받았어요" 진입, 문의 채팅에 선택 메시지·버튼(다시 보내기/환불)·기한, 고른 뒤 진행 표시 |
 | case-service | PC 2 | 결정 1~3 — NOT_RECEIVED + 전달 완료 배송이면 오배송 사건 자동, 고객 채팅(지금은 라이더 대화만 0.21.0), 선택 API, 5시간 자동 REFUND, `MisdeliveryConfirmed` 에 `source`·`inquiryId`·`orderId`·`autoResolved`. 통합 백오피스 오배송 문의 처리 화면(대신 고르기·이력) |
 | delivery-dispatch | PC 5 | 결정 4 — 회수 24시간 포기(PR #416) |
-| delivery-execution | PC 5 | 결정 5~7 — 차감 예정·이의 5일·확정·이월, 라이더 앱 이의 API, 지원센터 판정 API, 정산에 반영 |
+| delivery-execution | PC 5 | 결정 5~7 — 차감 예정·이의 5일·확정·이월, 라이더 앱 이의 API, 지원센터 판정 API, 정산에 반영 · 결정 9~10(0.43.0) 넘김 상한·직접 차감, DE-10 `RiderPayoutEscalated` |
+| notification | PC 1 | 차감 알림 3종, MANUAL 예정 문구(결정 10) |
+| mfc-quality·mfc-inventory | PC 3 | 결정 11 — 회수품 검수 DISPOSE·폐기 차감(이미 있는 길) |
 | order-orchestration·order·claim | PC 1 | 기존 사가 그대로(RESHIP/REFUND). `source: CUSTOMER_INQUIRY` 도 같은 길(시작 기준 시각만 확인). 실패 재발송 수량 버그 고침 0ae3a416. 차감 금액용 order 내부 조회 필드 확인 |
 
 ## 남은 것

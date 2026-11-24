@@ -59,6 +59,25 @@ class NoticesTest {
         .isNull();
   }
 
+  @org.junit.jupiter.api.Test
+  void manualRiderDeductionSaysSupportCenterNotRecovery() {
+    var m =
+        Notices.riderDeduction(
+            "RiderDeductionScheduled",
+            "D1-2",
+            5000L,
+            java.time.Instant.parse("2026-11-29T06:00:00Z"),
+            "MANUAL");
+    org.assertj.core.api.Assertions.assertThat(m.body())
+        .contains("지원센터가")
+        .contains("5,000원")
+        .doesNotContain("회수가 끝나지 않아");
+    var auto =
+        Notices.riderDeduction(
+            "RiderDeductionScheduled", "D1-2", 5000L, null, "MISDELIVERY_RECOVERY");
+    org.assertj.core.api.Assertions.assertThat(auto.body()).contains("회수가 끝나지 않아");
+  }
+
   @Test
   void earningAdjustedShowsAmountAndDateOnlyWhenPaid() {
     var paid = Notices.earningAdjusted("DLV-1", true, 3900L, "2026-11-20");

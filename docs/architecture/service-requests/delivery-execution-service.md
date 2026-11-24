@@ -85,4 +85,12 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
   2. 라이더 앱 알림 + **이의 5일**(라이더 API — 사유·사진). 지원센터(RIDER_OPS) 받아들임 = 차감 취소, 거절 = 확정. 이의 없이 5일 → 확정.
   3. 확정 차감은 다음 정산에서 빼고, 모자라면 **다음 정산으로 넘김**(상한 없음). 남은 차감액을 라이더 앱·라이더 백오피스에 서버 값으로.
   4. 사건(이름은 PC 5 가 정함): 차감 예정·확정·취소 — rider·라이더 백오피스가 보이게.
-- **사용자 결정**: 끝(ADR-0086). 상태: 요청.
+- **사용자 결정**: 끝(ADR-0086). 상태: **구현**(execution 0.41.0 #418·#420, LAN 배포 — 첫 차감 D28767701-3 15,970원). 넘김 상한·직접 차감은 ADR-0086 결정 9~10(#429).
+
+## DE-10. 지급 넘김 상한을 다 쓴 묶음 → 직원에게 알리는 사건 `RiderPayoutEscalated` (2026-11-24, 보낸 영역 platform — PC 1, 받는 쪽 delivery PC 5)
+- **근거**: [ADR-0086](../../adr/0086-customer-misdelivery-inquiry-choice-and-rider-deduction.md) 결정 9(execution 0.43.0 — 3번 넘긴 뒤 또 실패하면 PAYMENT_FAILED·`escalated`). 지금은 `GET /rider-payouts?escalated=true` 목록과 오류 로그뿐이라 직원이 먼저 찾아봐야 안다. 사용자 2026-11-24 "직원 지급 알림 사건 요청".
+- **필요한 것**:
+  1. 묶음이 `escalated` 로 바뀌는 순간 사건 `RiderPayoutEscalated` 한 번(같은 묶음 두 번 내지 않음) — 차감 사건과 같은 토픽(delivery.delivery.v1). payload 최소 `batchId`·`riderId`·`payoutDate`·`amount`·`rollCount`·`failureReason`(직원용)·`escalatedAt`. 계약 `contracts/events/RiderPayoutEscalated.v1.json`, events.md 줄.
+  2. 관리자가 PAID 로 끝내면 따로 사건은 필요 없음(지금 지급 결과 사건이 있으면 그것으로).
+- **받는 쪽**: notification 에는 직원 알림함이 없다(고객·라이더만). 사건이 생기면 PC 1 이 받을 곳(라이더 백오피스 배지·운영 경보 등)을 사용자와 정한다 — 이 요청은 사건만.
+- **사용자 결정**: 사건을 낸다(2026-11-24). 상태: 요청.

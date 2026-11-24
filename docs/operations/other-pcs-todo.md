@@ -69,7 +69,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [x] (2026-11-19 delivery) MFC 백오피스 "배차 지연" 목록 + "배차 불가로 취소" — dispatch `GET /dispatch-delays`(0.12.0), claim CL-5. 요청 `service-requests/mfc-backoffice-staff-apis.md` 끝 절 — **끝**(2026-11-20 정리: 화면 있음 — pmart-clients web/mfc-backoffice DispatchDelayPage)
 
 ## PC 5 — delivery 영역
-- [ ] **DE-9 오배송 회수 포기 → 라이더 정산 차감**(2026-11-24 PC 1 — ADR-0086, 요청서 `delivery-execution-service.md` DE-9): 차감 금액 결제액 − 배달팁, 이의 5일, 정산 이월. 회수 24시간 포기는 PR #416
+- [x] **DE-9 오배송 회수 포기 → 라이더 정산 차감**(2026-11-24 PC 1 — ADR-0086, 요청서 `delivery-execution-service.md` DE-9): 차감 금액 결제액 − 배달팁, 이의 5일, 정산 이월. 회수 24시간 포기는 PR #416 — 끝(#418·#420, 2026-11-24 LAN)
+- [ ] **DE-10 지급 넘김 상한 다 쓴 묶음 → `RiderPayoutEscalated` 사건**(2026-11-24 PC 1 — ADR-0086 결정 9, 요청서 `delivery-execution-service.md` DE-10): 묶음이 escalated 될 때 한 번, 받는 곳은 PC 1 이 뒤에 정함.
 - [x] **RS-8 라이더 문의 정지 단어 → 7일 정지**(2026-11-23 PC 2 — `rider-service.md` RS-8): case 0.37.0 `RiderProfanityDetected` 구독 → 7일 정지(자동 해제)·라이더 알림 "7일 계정 정지", 오인식은 지원센터·관리자가 사유 적고 해제 — **구현**(PC 5 #378)
 - [ ] **RS-7 라이더 목록 센터로 거르기**(2026-11-23 PC 1 — 사용자 "센터를 고르면 그 해당 센터에 해당하는 라이더 정보", 요청서 `service-requests/rider-service.md` RS-7): `GET /riders?mfcId=`(배달 지역 기준)·`/riders/withdrawals?mfcId=`, mfcId 없는 execution·dispatch 직원 목록 판단. 권한은 그대로.
 - [x] **RA-1 라이더 소셜 로그인 "동의는 처음 가입할 때만"**(2026-11-22 PC 1 — 사용자 "라이더쪽을 수정해야해, 소셜로그인부분때문에", 요청서 `docs/architecture/service-requests/rider-auth-service.md` RA-1): ① 탈퇴 때 카카오 연결 끊기(라이더 카카오 Admin 키 — 사용자에게) ② 탈퇴 때 네이버 끊기 ③ 네이버 가입 전 끊기(rider-service 가입 여부 내부 조회 필요) ④ 네이버 이메일 → 가린 이메일. 고객 auth-service 구현을 같은 모양으로. 라이더 앱 몫은 요청서 끝. — **구현(2026-11-22 PC 5, rider-auth 0.4.0·V4, 브랜치 `delivery/rider-social-consent-once`)** — rider-service 변경 없음(기존 `GET /internal/riders/{id}` 로 가입 판단). 남음: 라이더 카카오 Admin 키(사용자·PC 1), 라이더 앱(탈퇴 네이버 재인증 purpose WITHDRAWAL 등)

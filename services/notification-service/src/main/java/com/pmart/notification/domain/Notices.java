@@ -495,6 +495,20 @@ public final class Notices {
       @Nullable String deliveryNumber,
       @Nullable Long amount,
       java.time.@Nullable Instant objectionDeadline) {
+    return riderDeduction(eventType, deliveryNumber, amount, objectionDeadline, null);
+  }
+
+  /**
+   * {@code source} — MISDELIVERY_RECOVERY(회수 포기 자동, 기본)·MANUAL(지원센터 직접 차감, execution 0.43.0 {@code
+   * POST /rider-deductions}, ADR-0086 결정 10). MANUAL 예정 알림은 "회수가 끝나지 않아" 대신 지원센터 차감으로 쓴다.
+   */
+  public static @Nullable Notice riderDeduction(
+      String eventType,
+      @Nullable String deliveryNumber,
+      @Nullable Long amount,
+      java.time.@Nullable Instant objectionDeadline,
+      @Nullable String source) {
+    boolean manual = "MANUAL".equals(source);
     String which = deliveryNumber == null ? "오배송 배송" : "오배송 배송(" + deliveryNumber + ")";
     String money = amount == null ? "" : String.format(Locale.KOREAN, " %,d원", amount);
     return switch (eventType) {
@@ -510,8 +524,7 @@ public final class Notices {
             "RIDER_DEDUCTION_SCHEDULED",
             SYSTEM,
             "정산 차감 예정이 있어요",
-            which
-                + " 회수가 끝나지 않아 수행료에서"
+            (manual ? "지원센터가 " + which + " 건으로 수행료에서" : which + " 회수가 끝나지 않아 수행료에서")
                 + money
                 + "이 빠질 예정이에요. 이의가 있으면"
                 + until
