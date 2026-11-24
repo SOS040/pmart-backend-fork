@@ -269,6 +269,21 @@ class CustomerOrderHistoryIT extends PostgresKafkaContainerSupport {
     assertThat(detailLines.path(0).path("imageUrl").asString())
         .isEqualTo("/api/v1/content-images/IMG-P1");
     assertThat(detailLines.path(2).path("imageUrl").isNull()).isTrue();
+    // BR-92(0.21.0): 내부 원장 — 옵션 라벨은 늘, 사진은 includeImages=true 일 때만
+    String svc = TestJwt.service("claim-service");
+    JsonNode plain = ok(svc, "/internal/orders/" + seven).path("lines");
+    assertThat(plain.path(0).path("optionLabel").asString()).isEqualTo("300g");
+    assertThat(
+            plain.path(0).path("imageUrl").isMissingNode()
+                || plain.path(0).path("imageUrl").isNull())
+        .isTrue();
+    JsonNode withImages =
+        ok(svc, "/internal/orders/" + seven + "?includeImages=true").path("lines");
+    assertThat(withImages.path(0).path("productName").asString()).isEqualTo("두부");
+    assertThat(withImages.path(0).path("imageUrl").asString())
+        .isEqualTo("/api/v1/content-images/IMG-P1");
+    assertThat(withImages.path(1).path("optionLabel").isNull()).isTrue();
+    assertThat(withImages.path(2).path("imageUrl").isNull()).isTrue();
     JsonNode first = items.path(0);
     assertThat(first.path("mfcName").asString()).isEqualTo("강남 MFC");
     assertThat(first.path("itemCount").asInt()).isEqualTo(8); // 전체 수량(2 + 1×6)은 그대로

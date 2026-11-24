@@ -121,19 +121,21 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     o.put("totalAmount", 19_100);
     o.put("firstPurchase", true);
     o.put("confirmedAt", "2026-10-31T01:00:00Z");
-    o.put(
-        "lines",
-        List.of(
-            Map.of(
-                "orderLineId", orderId + "-L1",
-                "sku", "E-00000001",
-                "quantity", 10,
-                "unitPrice", 1_900,
-                "lineAmount", 19_000,
-                "originalQty", 10,
-                "unfulfilledQty", 10 - cancelled,
-                "handedOverQty", 0,
-                "cancelledBeforeShipQty", cancelled)));
+    Map<String, Object> line = new LinkedHashMap<>();
+    line.put("orderLineId", orderId + "-L1");
+    line.put("sku", "E-00000001");
+    line.put("quantity", 10);
+    line.put("unitPrice", 1_900);
+    line.put("lineAmount", 19_000);
+    line.put("originalQty", 10);
+    line.put("unfulfilledQty", 10 - cancelled);
+    line.put("handedOverQty", 0);
+    line.put("cancelledBeforeShipQty", cancelled);
+    // BR-92: 주문 줄 상품 사본(order 0.21.0 — 사진은 includeImages=true)
+    line.put("productName", "국산콩 두부");
+    line.put("optionLabel", "300g");
+    line.put("imageUrl", "/api/v1/content-images/IMG-TOFU");
+    o.put("lines", List.of(line));
     deps.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/internal/orders/" + orderId))
             .willReturn(json(200, o)));
@@ -189,6 +191,10 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
                 opened.body().path("claimId").asString()))
         .as("결제 17,100 = 상품 17,000 + 봉투 100")
         .isEqualTo(17_000L);
+    // BR-92: 이름 사본이 없는 주문 — 클레임 품목도 비운다(SKU 로 채우지 않는다)
+    JsonNode noCopy = opened.body().path("lines").path(0);
+    assertThat(noCopy.path("productName").isNull() || noCopy.path("productName").isMissingNode())
+        .isTrue();
 
     String other = "ORD-" + UUID.randomUUID();
     couponOrder(other, account, "PREPARING", 3);
@@ -621,6 +627,14 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(stopId).startsWith("STOP-");
     assertThat(opened.body().path("lines").path(0).path("decision").asString())
         .isEqualTo("PENDING");
+    // BR-92: 접수 때 주문 줄 상품 사본 — 이름·옵션·사진, order 에 사진을 요청했다
+    JsonNode copy = get(me, "/claims/" + claimId).body().path("lines").path(0);
+    assertThat(copy.path("productName").asString()).isEqualTo("국산콩 두부");
+    assertThat(copy.path("optionLabel").asString()).isEqualTo("300g");
+    assertThat(copy.path("imageUrl").asString()).isEqualTo("/api/v1/content-images/IMG-TOFU");
+    deps.verify(
+        WireMock.getRequestedFor(urlPathEqualTo("/api/v1/internal/orders/" + orderId))
+            .withQueryParam("includeImages", WireMock.equalTo("true")));
     assertThat(post(me, key, cancel(orderId, 10)).body().path("claimId").asString())
         .isEqualTo(claimId);
     Res dup = post(me, UUID.randomUUID().toString(), cancel(orderId, 10));

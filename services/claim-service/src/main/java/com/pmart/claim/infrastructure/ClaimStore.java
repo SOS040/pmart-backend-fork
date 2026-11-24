@@ -161,7 +161,48 @@ public class ClaimStore {
       int pickedUpQty,
       int receivedQty,
       int resaleQty,
-      int disposeQty) {
+      int disposeQty,
+      @Nullable String productName,
+      @Nullable String optionLabel,
+      @Nullable String imageUrl) {
+
+    /** 상품 사본 없이(BR-92 전 모양). */
+    public LineRow(
+        String claimLineId,
+        String claimId,
+        String orderLineId,
+        String sku,
+        int requestedQty,
+        @Nullable Integer approvedQty,
+        String decision,
+        long lineAmount,
+        @Nullable Long unitPrice,
+        @Nullable Integer originalQty,
+        long discountShare,
+        int pickedUpQty,
+        int receivedQty,
+        int resaleQty,
+        int disposeQty) {
+      this(
+          claimLineId,
+          claimId,
+          orderLineId,
+          sku,
+          requestedQty,
+          approvedQty,
+          decision,
+          lineAmount,
+          unitPrice,
+          originalQty,
+          discountShare,
+          pickedUpQty,
+          receivedQty,
+          resaleQty,
+          disposeQty,
+          null,
+          null,
+          null);
+    }
 
     public LineRow(
         String claimLineId,
@@ -188,6 +229,44 @@ public class ClaimStore {
           0,
           0,
           0);
+    }
+
+    /**
+     * 접수 때 주문 줄의 상품 사본(BR-92 — order 내부 원장 productName·optionLabel·imageUrl). 줄이 없거나 값이 없으면
+     * null(지어내지 않는다).
+     */
+    public LineRow withProduct(tools.jackson.databind.@Nullable JsonNode orderLine) {
+      if (orderLine == null) {
+        return this;
+      }
+      return new LineRow(
+          claimLineId,
+          claimId,
+          orderLineId,
+          sku,
+          requestedQty,
+          approvedQty,
+          decision,
+          lineAmount,
+          unitPrice,
+          originalQty,
+          discountShare,
+          pickedUpQty,
+          receivedQty,
+          resaleQty,
+          disposeQty,
+          text(orderLine, "productName"),
+          text(orderLine, "optionLabel"),
+          text(orderLine, "imageUrl"));
+    }
+
+    private static @Nullable String text(tools.jackson.databind.JsonNode n, String field) {
+      tools.jackson.databind.JsonNode v = n.path(field);
+      if (v.isNull() || v.isMissingNode()) {
+        return null;
+      }
+      String t = v.asString();
+      return t.isBlank() ? null : t;
     }
 
     public int inspectedQty() {
@@ -408,8 +487,9 @@ public class ClaimStore {
     for (LineRow l : lines) {
       jdbc.update(
           "INSERT INTO claim_line (claim_line_id, claim_id, order_line_id, sku, requested_qty,"
-              + " approved_qty, decision, line_amount, unit_price, original_qty, discount_share)"
-              + " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+              + " approved_qty, decision, line_amount, unit_price, original_qty, discount_share,"
+              + " product_name, option_label, image_url)"
+              + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           l.claimLineId(),
           l.claimId(),
           l.orderLineId(),
@@ -420,7 +500,10 @@ public class ClaimStore {
           l.lineAmount(),
           l.unitPrice(),
           l.originalQty(),
-          l.discountShare());
+          l.discountShare(),
+          l.productName(),
+          l.optionLabel(),
+          l.imageUrl());
     }
   }
 
@@ -1091,7 +1174,10 @@ public class ClaimStore {
         rs.getInt("picked_up_qty"),
         rs.getInt("received_qty"),
         rs.getInt("resale_qty"),
-        rs.getInt("dispose_qty"));
+        rs.getInt("dispose_qty"),
+        rs.getString("product_name"),
+        rs.getString("option_label"),
+        rs.getString("image_url"));
   }
 
   private static RefundRow refund(ResultSet rs) throws SQLException {

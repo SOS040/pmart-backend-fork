@@ -197,6 +197,10 @@ public class ReturnService {
     }
     Map<String, ReturnRules.OrderLine> byLine = new HashMap<>();
     orderLines.forEach(l -> byLine.put(l.orderLineId(), l));
+    Map<String, JsonNode> orderLineNodes = new HashMap<>(); // BR-92 — 품목 상품 사본
+    for (JsonNode l : order.path("lines")) {
+      orderLineNodes.put(l.path("orderLineId").asString(), l);
+    }
     Instant now = clock.instant();
     String claimId = "CLM-" + UUID.randomUUID();
     long items = 0;
@@ -207,21 +211,22 @@ public class ReturnService {
       items += l.unitPrice() * r.qty();
       rows.add(
           new LineRow(
-              claimId + "-L" + n++,
-              claimId,
-              r.orderLineId(),
-              l.sku(),
-              r.qty(),
-              r.qty(),
-              "APPROVED",
-              l.unitPrice() * r.qty(),
-              l.unitPrice(),
-              l.originalQty(),
-              l.discountShare(),
-              0,
-              0,
-              0,
-              0));
+                  claimId + "-L" + n++,
+                  claimId,
+                  r.orderLineId(),
+                  l.sku(),
+                  r.qty(),
+                  r.qty(),
+                  "APPROVED",
+                  l.unitPrice() * r.qty(),
+                  l.unitPrice(),
+                  l.originalQty(),
+                  l.discountShare(),
+                  0,
+                  0,
+                  0,
+                  0)
+              .withProduct(orderLineNodes.get(r.orderLineId())));
     }
     ClaimRow c =
         new ClaimRow(

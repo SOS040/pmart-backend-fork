@@ -531,14 +531,15 @@ public class ClaimService {
       long unitPrice = l == null ? 0 : l.path("unitPrice").asLong();
       rows.add(
           new LineRow(
-              claimId + "-L" + n++,
-              claimId,
-              r.orderLineId(),
-              l == null ? "" : l.path("sku").asString(),
-              r.qty(),
-              null,
-              "PENDING",
-              unitPrice * r.qty()));
+                  claimId + "-L" + n++,
+                  claimId,
+                  r.orderLineId(),
+                  l == null ? "" : l.path("sku").asString(),
+                  r.qty(),
+                  null,
+                  "PENDING",
+                  unitPrice * r.qty())
+              .withProduct(l));
     }
     store.insert(c, rows);
     events.claimOpened(c, rows);
@@ -648,19 +649,20 @@ public class ClaimService {
                     JsonNode l = byLine.get(r.orderLineId());
                     rows.add(
                         new LineRow(
-                            id + "-L" + n++,
-                            id,
-                            r.orderLineId(),
-                            l.path("sku").asString(),
-                            r.qty(),
-                            r.qty(),
-                            "APPROVED",
-                            com.pmart.claim.domain.ReturnRules.refundAmount(
-                                l.path("unitPrice").asLong(),
-                                l.path("originalQty").asInt(),
-                                l.path("discountShare").asLong(0),
-                                store.shortageRefundedQty(in.orderId(), r.orderLineId()),
-                                r.qty())));
+                                id + "-L" + n++,
+                                id,
+                                r.orderLineId(),
+                                l.path("sku").asString(),
+                                r.qty(),
+                                r.qty(),
+                                "APPROVED",
+                                com.pmart.claim.domain.ReturnRules.refundAmount(
+                                    l.path("unitPrice").asLong(),
+                                    l.path("originalQty").asInt(),
+                                    l.path("discountShare").asLong(0),
+                                    store.shortageRefundedQty(in.orderId(), r.orderLineId()),
+                                    r.qty()))
+                            .withProduct(l));
                   }
                   store.insert(c, rows);
                   events.claimOpened(c, rows);

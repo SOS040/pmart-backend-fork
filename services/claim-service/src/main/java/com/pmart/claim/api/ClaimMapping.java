@@ -57,6 +57,9 @@ final class ClaimMapping {
               .claimLineId(l.claimLineId())
               .orderLineId(l.orderLineId())
               .sku(l.sku())
+              .productName(l.productName()) // BR-92 — 접수 때 사본
+              .optionLabel(l.optionLabel())
+              .imageUrl(l.imageUrl())
               .requestedQty(l.requestedQty())
               .approvedQty(l.approvedQty())
               .decision(ClaimLine.DecisionEnum.fromValue(l.decision()))

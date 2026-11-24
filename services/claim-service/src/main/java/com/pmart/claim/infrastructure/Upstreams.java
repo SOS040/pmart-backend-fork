@@ -40,8 +40,13 @@ public class Upstreams {
     this.mapper = mapper;
   }
 
-  /** 주문 원장(심사 근거). 없으면 null. 미전달·불명은 PmartException(503 등) 그대로. */
+  /** 주문 원장(심사 근거) — 줄 사진 포함(BR-92, 접수 때 클레임 품목 사본). 없으면 null. 미전달·불명은 PmartException(503 등) 그대로. */
   public @Nullable JsonNode order(String orderId) {
+    return order(orderId, true);
+  }
+
+  /** {@code images} false 면 사진 없이(order 가 product-content 를 부르지 않는다 — 센터 채우기 등). */
+  public @Nullable JsonNode order(String orderId, boolean images) {
     try {
       String raw =
           Downstream.call(
@@ -49,7 +54,7 @@ public class Upstreams {
               () ->
                   order
                       .get()
-                      .uri("/api/v1/internal/orders/{id}", orderId)
+                      .uri("/api/v1/internal/orders/{id}?includeImages={i}", orderId, images)
                       .retrieve()
                       .body(String.class));
       return raw == null ? null : mapper.readTree(raw);

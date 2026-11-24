@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.20.0
+  version: 0.21.0
   description: |
+    0.21.0(2026-11-24 BR-92 — 고객 앱 요청 "취소·반품 내역에 상품이 SKU 로 보여", claim 경유): 내부 `GET /internal/orders/{orderId}` `lines[]` 에
+      `optionLabel`(주문 당시 사본 — 고객 `OrderLine` 과 같음)과, 선택 `includeImages=true` 일 때만 `imageUrl`(BR-71 과 같은 값 — **지금** 대표 사진, 없으면 null).
+      사진은 product-content 를 한 번 더 부르므로 기본은 끈다(claim 접수만 켠다). 조회 실패는 사진 없이 그대로.
     0.20.0(2026-11-23 O-11 — MFC 백오피스, 사용자 결정 "센터 관리자에게 토큰 센터만"): 주문 지표 권한 = OPERATOR_ADMIN(모든 센터, mfcId 선택) 또는 **MFC_SUPERVISOR(mfcId 필수 — 없으면 400, 토큰 센터가 아니면 403)**.
       `summary`·`top-products` 에 적용, top-products 줄에 `categoryId`·`categoryName`(상품의 대표 카테고리 — product 지금 값, 주문 줄에는 카테고리 사본이 없다)과 `categoryId` 거르기(하위 카테고리 포함).
       새 `GET /orders/metrics/series`(시간·날짜별, 요일×시간대 합·평균). 매출 정의(승인 금액, 환불 빼지 않음)·기준 시각(confirmedAt 한국 시각)은 그대로.
@@ -582,6 +585,7 @@ paths:
       operationId: getInternalOrder
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string } }
+        - { name: includeImages, in: query, required: false, schema: { type: boolean, default: false }, description: '0.21.0 BR-92 — true 면 lines[].imageUrl 을 채운다(product-content 조회 1번 더)' }
       responses:
         '200':
           description: OK
@@ -970,6 +974,8 @@ components:
               cancelledBeforeShipQty: { type: integer }
               productId: { type: [string, 'null'], description: 0.7.0 — 리뷰 자격(review-service) }
               productName: { type: [string, 'null'], description: 0.7.0 — 주문 당시 상품명 사본 }
+              optionLabel: { type: [string, 'null'], description: '0.21.0 BR-92 — 옵션 라벨의 주문 당시 사본(고객 OrderLine 과 같음)' }
+              imageUrl: { type: [string, 'null'], description: '0.21.0 BR-92 — includeImages=true 일 때만. 지금 상품의 대표 사진(BR-71 과 같은 값), 없거나 조회 실패면 null' }
               deliveredQty: { type: integer, description: '0.7.0 — 전달 완료 수량. 0.7.1(2026-11-16, O-1) DeliveryCompleted 반영으로 채워진다' }
               returnedQty: { type: integer, description: '0.7.0 — 반품 완료 수량. 0.11.2(2026-11-17, O-7) claim 반품 종결(검수·환불 끝 — 받은 만큼만 끝내기 포함)로 채워진다. review 가 "받은 수량 전부 반품" 판정에 쓴다' }
               reshippedQty: { type: integer, description: '0.9.0(2026-11-16) — 오배송 재발송 수량 누계. 불변식 원수량 + 재발송 = 미이행 + 인계 + 출고 전 취소, 보낼 수량 = 원수량 − 출고 전 취소 + 재발송' }

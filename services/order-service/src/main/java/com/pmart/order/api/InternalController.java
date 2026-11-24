@@ -179,8 +179,12 @@ public class InternalController implements InternalApi {
   }
 
   @Override
-  public ResponseEntity<InternalOrder> getInternalOrder(String orderId) {
-    OrderService.OrderView v = orders.internal(orderId);
+  public ResponseEntity<InternalOrder> getInternalOrder(String orderId, Boolean includeImages) {
+    // 0.21.0 BR-92 — 사진은 요청할 때만(claim 접수). product-content 를 한 번 더 부른다
+    OrderService.OrderView v =
+        Boolean.TRUE.equals(includeImages)
+            ? orders.internalWithImages(orderId)
+            : orders.internal(orderId);
     OrderRow o = v.order();
     InternalOrder out =
         new InternalOrder()
@@ -222,6 +226,8 @@ public class InternalController implements InternalApi {
               .cancelledBeforeShipQty(l.cancelledBeforeShipQty())
               .productId(l.productId())
               .productName(l.productName())
+              .optionLabel(l.optionLabel())
+              .imageUrl(l.productId() == null ? null : v.images().get(l.productId()))
               .deliveredQty(l.deliveredQty())
               .returnedQty(l.returnedQty())
               .reshippedQty(l.reshippedQty()));

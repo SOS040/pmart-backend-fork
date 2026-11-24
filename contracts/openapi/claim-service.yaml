@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
+    0.14.0(2026-11-24 BR-92 — 고객 앱 요청 "취소·반품 내역에 상품이 SKU 로 보여"): `ClaimLine` 에 접수 때의 주문 품목 사본 `productName`·`optionLabel`·`imageUrl`
+      (order 내부 원장 — 이름·옵션은 주문 당시 사본, 사진은 접수 때의 대표 사진). 이름 사본이 없는 옛 주문(2026-11-02 이전)·이 판 전에 접수된 클레임·사진 조회 실패는 null.
     0.13.0(2026-11-23 CL-8 — 통합 백오피스 센터 고르기, 사용자 "주문에 붙은 것만"): 직원 `GET /claims`·`/claims/counts`·`/claims/metrics/refunds` 에 선택 `mfcId`(원주문 이행 센터 — 취소·반품 모두).
       클레임은 접수 때 원주문 센터를 저장하고, 그 전 행은 서버가 order 원장으로 채운다(채우기 전·주문에 센터가 없으면 센터를 고를 때 빠진다). 고객 토큰은 무시(늘 본인).
     0.12.0(2026-11-21 CL-2 — 백오피스 요청, 사용자 "추천대로"): 반품 `pickup.feeRefundOnCancel` — 지금 반품을 취소하면 낸 회수비를 어떻게 하는지(서버 판정 그대로):
@@ -735,6 +737,9 @@ components:
         claimLineId: { type: string }
         orderLineId: { type: string }
         sku: { type: string }
+        productName: { type: [string, 'null'], description: '0.14.0 BR-92 — 접수 때 주문 줄의 상품명 사본. 옛 주문·이 판 전 클레임은 null' }
+        optionLabel: { type: [string, 'null'], description: '0.14.0 BR-92 — 접수 때 주문 줄의 옵션 라벨 사본(단일 옵션 상품은 null 일 수 있음 — 주문 줄과 같은 규칙)' }
+        imageUrl: { type: [string, 'null'], description: '0.14.0 BR-92 — 접수 때의 대표 사진(BR-71 주문 줄과 같은 값). 없거나 조회 실패·이 판 전 클레임은 null' }
         requestedQty: { type: integer }
         approvedQty: { type: integer, description: 'RETURN — 정산 수량(접수 때 요청 수량, 받은 만큼만 끝내기 뒤 받은 수량 — 0.3.0)' }
         decision: { type: string, enum: [PENDING, APPROVED, REJECTED] }

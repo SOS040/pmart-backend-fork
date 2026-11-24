@@ -145,6 +145,7 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
     line.put("handedOverQty", handedOver);
     line.put("deliveredQty", delivered < 0 ? handedOver : delivered); // 전달 완료(2026-11-17)
     line.put("cancelledBeforeShipQty", 0);
+    line.put("productName", "국산콩 두부"); // BR-92 — 사진은 없는 주문(null 로 남는다)
     o.put("lines", List.of(line));
     deps.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/internal/orders/" + orderId))
@@ -401,6 +402,12 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
     assertThat(paid.body().path("feePayment").path("state").asString()).isEqualTo("PAID");
     assertThat(paid.body().path("pickup").path("state").asString()).isEqualTo("REQUESTED");
     assertThat(paid.body().path("pickup").path("attempts").asInt()).isEqualTo(1);
+    // BR-92: 반품 품목도 접수 때 상품 사본 — 이름은 있고, 옵션·사진은 주문에 없어 null
+    JsonNode copy = paid.body().path("lines").path(0);
+    assertThat(copy.path("productName").asString()).isEqualTo("국산콩 두부");
+    assertThat(copy.path("optionLabel").isNull() || copy.path("optionLabel").isMissingNode())
+        .isTrue();
+    assertThat(copy.path("imageUrl").isNull() || copy.path("imageUrl").isMissingNode()).isTrue();
     JsonNode req = outboxPayloads("ReturnPickupRequested", claimId).get(0);
     assertThat(req.path("attempt").asInt()).isEqualTo(1);
     assertThat(req.path("purpose").asString()).isEqualTo("CLAIM_RETURN");

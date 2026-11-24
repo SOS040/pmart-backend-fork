@@ -49,7 +49,7 @@ public class ClaimCenterBackfill {
           break;
         }
         for (String orderId : todo) {
-          JsonNode order = upstreams.order(orderId);
+          JsonNode order = upstreams.order(orderId, false);
           String center = order == null ? null : order.path("mfcId").asString(null);
           if (center == null || center.isBlank()) {
             skipped.add(orderId);

@@ -718,6 +718,21 @@ public class OrderService {
   }
 
   /**
+   * {@link #internal} + 지금 대표 사진(0.21.0 BR-92 — claim 이 클레임 품목에 사본으로 남긴다). 사진 조회 실패면 사진 없이(BR-71 과
+   * 같은 규칙).
+   */
+  public OrderView internalWithImages(String orderId) {
+    OrderView v = internal(orderId);
+    return new OrderView(
+        v.order(),
+        v.lines(),
+        null,
+        upstreams.productImages(
+            v.lines().stream().map(LineRow::productId).filter(java.util.Objects::nonNull).toList()),
+        null);
+  }
+
+  /**
    * 배송 쪽 내부 조회 — 주문 당시 배송지 사본 포함(배차 좌표 O-4, 라이더 전달지 O-5). {@link #internal} 은 사본을 싣지 않아(claim 용)
    * 배차용 배송지의 도로명주소가 늘 비던 것을 2026-11-14 고침. 확정 전 주문 ID 는 404.
    */
