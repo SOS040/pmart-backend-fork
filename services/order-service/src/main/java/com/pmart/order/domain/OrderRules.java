@@ -411,11 +411,33 @@ public final class OrderRules {
     return out;
   }
 
-  /**
-   * 오배송 재발송(RESHIPMENT, 2026-11-16 — ADR-0052 결정 4·5): 행마다 미이행 +q·재발송 +q. 한도 = 원수량 − 출고 전 취소 − 이미
-   * 재발송(배송된 만큼만 다시 보낸다). 넘거나 없는 행이면 {@link IllegalArgumentException}. 상태는 바꾸지 않는다(뒤로 가지 않음).
-   */
+  /** 전달 실패 재발송의 근거 ID 접두사(orchestration {@code DF-<deliveryId>}, ADR-0069). */
+  public static final String FAILURE_REF_PREFIX = "DF-";
+
+  /** 근거가 전달 실패 재발송({@code DF-…})인가. */
+  public static boolean isFailureReshipment(@org.jspecify.annotations.Nullable String sourceRef) {
+    return sourceRef != null && sourceRef.startsWith(FAILURE_REF_PREFIX);
+  }
+
+  /** 오배송 재발송 — {@link #reship(List, List, boolean)} 의 failure = false. */
   public static List<Progress> reship(List<Progress> lines, List<Change> changes) {
+    return reship(lines, changes, false);
+  }
+
+  /**
+   * 재발송(RESHIPMENT). 행마다 미이행 +q.
+   *
+   * <ul>
+   *   <li>오배송 재발송(2026-11-16 — ADR-0052 결정 4·5): 오배송 상품은 전달로 세어졌으므로 재발송 +q(보낼 수량이 는다). 한도 = 원수량 −
+   *       출고 전 취소 − 이미 재발송(배송된 만큼만 다시 보낸다).
+   *   <li>전달 실패 재발송({@code failure}, 2026-11-24 고침 — ADR-0069): 실패한 출고는 전달되지 않았으므로 같은 상품을 <b>대신</b>
+   *       보낸다 — 재발송 수량은 그대로(보낼 수량이 늘지 않는다). 전에는 +q 해서 보낼 수량이 두 배가 되어 재발송이 전달돼도 PARTIALLY_DELIVERED
+   *       에 멈추고, 그 뒤 오배송 재발송이 "다시 보낼 수량 없음"으로 상신됐다(주문 28767701). 한도 = 원수량 − 출고 전 취소 − 전달됨.
+   * </ul>
+   *
+   * 넘거나 없는 행이면 {@link IllegalArgumentException}. 상태는 바꾸지 않는다(뒤로 가지 않음).
+   */
+  public static List<Progress> reship(List<Progress> lines, List<Change> changes, boolean failure) {
     java.util.Map<String, Integer> req = sumByLine(changes);
     List<Progress> out = new ArrayList<>();
     for (Progress l : lines) {
@@ -424,7 +446,10 @@ public final class OrderRules {
         out.add(l);
         continue;
       }
-      int limit = l.originalQty() - l.cancelledBeforeShipQty() - l.reshippedQty();
+      int limit =
+          failure
+              ? l.originalQty() - l.cancelledBeforeShipQty() - l.deliveredQty()
+              : l.originalQty() - l.cancelledBeforeShipQty() - l.reshippedQty();
       if (q > limit) {
         throw new IllegalArgumentException(
             "주문행 " + l.orderLineId() + " 재발송 한도 " + limit + " 를 넘습니다: " + q);
@@ -437,7 +462,7 @@ public final class OrderRules {
               l.handedOverQty(),
               l.cancelledBeforeShipQty(),
               l.deliveredQty(),
-              l.reshippedQty() + q));
+              failure ? l.reshippedQty() : l.reshippedQty() + q));
     }
     if (!req.isEmpty()) {
       throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());

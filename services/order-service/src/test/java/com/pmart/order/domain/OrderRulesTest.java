@@ -185,6 +185,32 @@ class OrderRulesTest {
     assertThat(name).hasSize(OrderRules.ORDER_NAME_MAX).endsWith("… 외 1건");
   }
 
+  /**
+   * 전달 실패 재발송(2026-11-24 고침 — 주문 28767701): 첫 배송이 실패한 뒤 재발송은 보낼 수량을 늘리지 않는다. 재발송이 전달되면 COMPLETED, 그
+   * 뒤 오배송이 확인되면 오배송 재발송을 다시 보낼 수 있다.
+   */
+  @org.junit.jupiter.api.Test
+  void failureReshipmentReplacesFailedShipmentAndLeavesRoomForMisdeliveryResend() {
+    // 원수량 1 — 인계 1 뒤 전달 실패(전달 0)
+    var failed = new OrderRules.Progress("L1", 1, 0, 1, 0, 0, 0);
+    var r = OrderRules.reship(List.of(failed), List.of(new OrderRules.Change("L1", 1)), true);
+    assertThat(r.get(0)).isEqualTo(new OrderRules.Progress("L1", 1, 1, 1, 0, 0, 0));
+    assertThat(r.get(0).deliverable()).isEqualTo(1);
+    var handed = OrderRules.handOver(r, List.of(new OrderRules.Change("L1", 1)));
+    var done = OrderRules.deliver(handed, List.of(new OrderRules.Change("L1", 1)));
+    assertThat(OrderRules.progressStatus("IN_DELIVERY", done)).isEqualTo("COMPLETED");
+    // 그 재발송이 오배송으로 확인되면 오배송 재발송 1 을 더 보낼 수 있다(한도 = 원 − 취소 − 이미 재발송 = 1)
+    var mis = OrderRules.reship(done, List.of(new OrderRules.Change("L1", 1)));
+    assertThat(mis.get(0).deliverable()).isEqualTo(2);
+    // 이미 전달된 만큼은 실패 재발송으로 다시 보낼 수 없다(한도 = 원 − 취소 − 전달 = 0)
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> OrderRules.reship(done, List.of(new OrderRules.Change("L1", 1)), true))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(OrderRules.isFailureReshipment("DF-DLV-1")).isTrue();
+    assertThat(OrderRules.isFailureReshipment("CASE-1")).isFalse();
+    assertThat(OrderRules.isFailureReshipment(null)).isFalse();
+  }
+
   /** 오배송 재발송(2026-11-16): 미이행 +q·재발송 +q, 한도 = 원수량 − 출고 전 취소 − 이미 재발송. 재발송분까지 전달돼야 COMPLETED. */
   @org.junit.jupiter.api.Test
   void reshipmentAddsDeliverableAndCompletesOnlyAfterResentDelivered() {

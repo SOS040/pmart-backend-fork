@@ -337,7 +337,9 @@ public class OrderService {
                   rows.stream().map(OrderService::progressOf).toList();
               List<OrderRules.Progress> after;
               try {
-                after = OrderRules.reship(before, in.changes());
+                after =
+                    OrderRules.reship(
+                        before, in.changes(), OrderRules.isFailureReshipment(in.sourceRef()));
               } catch (IllegalArgumentException e) {
                 throw PmartException.invalidState(e.getMessage());
               }

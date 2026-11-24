@@ -59,6 +59,7 @@
 사용자 "사고나면 재배송해야지. 음식이 어떤 상태일줄 알고", "파손도 재배송".
 - 시작: execution `DeliveryFailed`(delivery.delivery.v1 — 지원센터가 실패 확정) reason **RIDER_INCIDENT·DAMAGED**, deliveryType FORWARD 또는 RESHIPMENT·purpose MISDELIVERY_RESHIPMENT → orchestration `ReshipmentSagaService.onDeliveryEvent`. 근거 ID(`case_id` 칸) = `DF-<deliveryId>` — 실패마다 하나. 시작 기준 시각은 오배송과 같은 `start-cases-confirmed-after`(failedAt 으로 비교).
 - 단계는 §2 와 같다(mode RESHIP). 다른 점: RESOLVE_ORDER 의 보낼 수량 = 원수량 − 출고 전 취소 − **전달됨**(오배송은 − 이미 재발송). 출고 ID·작업 지시 `reshipmentRef` = `DF-…`. MFC·배송 쪽 purpose 는 MISDELIVERY_RESHIPMENT 그대로(계약을 바꾸지 않음), 약속 = 재발송 배송 생성 + 50분(사건 첫 시각이 없으므로).
+- **주문 원장(2026-11-24 고침)**: 전달 실패 재발송(근거 `DF-…`)은 order 에서 미이행만 +q 하고 **재발송 수량은 늘리지 않는다** — 실패한 출고 대신 보내는 것이라 보낼 수량(원수량 − 출고 전 취소 + 재발송)이 그대로다. 한도 = 원수량 − 출고 전 취소 − 전달됨. 전에는 +q 해서 재발송이 전달돼도 PARTIALLY_DELIVERED 에 멈추고, 그 재발송이 오배송으로 확인되면 오배송 재발송이 "다시 보낼 수량 없음"(NOTHING_TO_RESEND)으로 상신됐다(LAN 주문 28767701). 이미 그렇게 쌓인 주문은 고치지 않았다(데이터 정리는 따로).
 - 실패한 상품은 따로 반납(같은 라이더·다른 라이더 — dispatch FAILED_DELIVERY_RETURN). 사고 수행료 = 수락 금액 × 간 거리 비율(execution, dispatch `incident-distance`), 파손은 지원센터 조정.
 
 ## 3. 남은 것
