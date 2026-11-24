@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: cart-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-25, 클라이언트 BR-97 "할인가 표시해" — 장바구니 막대 할인 전 합계 줄긋기): `Cart.selectedListAmount` = 선택 품목의 기간 할인 **전** 단가(기본가) 합계(주문 초안 `Quote.baseItemAmount` 와 같은 기준). `selectedItemAmount` 가 null 이면 null. 언제나 selectedItemAmount + selectedDiscountAmount 와 같다.
     0.4.0(2026-11-21, ADR-0082 4단계 할인가 표시): 품목 표시에 기간 할인 `salePrice`·`discountRatePercent`·`discountName`(pricing `/prices` 의 discount 사본).
     `selectedItemAmount` 는 **기간 할인 뒤** 단가 합계(주문 초안 최소주문 판정과 같은 기준 — 쿠폰 전), `selectedDiscountAmount` = 그 기간 할인 합계. 결제 금액은 주문서 견적.
     0.3.0(2026-11-20, ADR-0077 고객 탈퇴): 구독 CustomerWithdrawalCompleted(commerce.customer.v1) — 그 회원(MEMBER = accountId)의 장바구니(진행 중·만료)·품목·변경/병합 결과를 모두 지운다(재가입은 새 계정, 복원 없음). API 모양은 그대로.
@@ -400,6 +401,7 @@ components:
         items: { type: array, items: { $ref: '#/components/schemas/CartItem' } }
         selectedItemAmount: { $ref: '_common.yaml#/components/schemas/Money', description: '선택 품목 표시 합계(0.4.0 부터 기간 할인 뒤·쿠폰 전 — 주문 초안 최소주문 판정과 같은 기준). 견적 아님' }
         selectedDiscountAmount: { type: [integer, 'null'], minimum: 0, description: '(0.4.0) 선택 품목 기간 할인 합계(원). selectedItemAmount 가 null 이면 null' }
+        selectedListAmount: { type: [integer, 'null'], minimum: 0, x-added-in: '2026-11-25', description: '(0.5.0 BR-97) 선택 품목 기간 할인 전 단가(기본가) 합계(원) — 주문 초안 Quote.baseItemAmount 와 같은 기준. selectedItemAmount 가 null 이면 null' }
         minOrderAmount: { type: [integer, 'null'], minimum: 0, description: '최소 주문 금액(원, 0.2.0) — BR-14 확정값 15,000(order-service 주문 초안과 같음). 할인·쿠폰 전 상품액 기준, 배달팁·봉투값 제외', x-added-in: '2026-11-18' }
         minOrderShortfall: { type: [integer, 'null'], minimum: 0, description: '최소 주문까지 더 담을 금액(원, 0.2.0) = max(0, minOrderAmount − selectedItemAmount). 0 이면 충족. selectedItemAmount 가 null(선택 품목 가격 불명)이면 null — 0 으로 보지 않는다. 표시 안내이며 실제 판정은 주문 초안 견적', x-added-in: '2026-11-18' }
         lastChangedAt: { type: string, format: date-time }

@@ -111,6 +111,8 @@ public class DraftsController implements DraftsApi {
       }
     }
     final boolean expected = firstPurchase;
+    // 최소 주문 상품액(0.22.0 BR-96) — 주문 초안과 같은 설정값, 없으면 NOT_SET(0 으로 채우지 않는다)
+    Long minOrder = drafts.configuredMinOrderAmount();
     List<DeliveryOption> options =
         OrderRules.MODES.stream()
             .map(
@@ -135,12 +137,41 @@ public class DraftsController implements DraftsApi {
                                   itemAmount == null
                                       ? null
                                       : DeliveryOptionDeliveryTip.ReasonEnum.fromValue(
-                                          tip.reason())))
+                                          tip.reason()))
+                              .tiers(
+                                  OrderRules.tipTiers(mode).stream()
+                                      .map(
+                                          t ->
+                                              new com.pmart.order.api.generated.model
+                                                      .DeliveryOptionDeliveryTipTiersInner()
+                                                  .fromAmount((int) t.fromAmount())
+                                                  .tip((int) t.tip()))
+                                      .toList()))
+                      .minOrderAmount(
+                          minOrder == null
+                              ? new com.pmart.order.api.generated.model
+                                      .DeliveryOptionMinOrderAmount()
+                                  .state(
+                                      com.pmart.order.api.generated.model
+                                          .DeliveryOptionMinOrderAmount.StateEnum.NOT_SET)
+                              : new com.pmart.order.api.generated.model
+                                      .DeliveryOptionMinOrderAmount()
+                                  .state(
+                                      com.pmart.order.api.generated.model
+                                          .DeliveryOptionMinOrderAmount.StateEnum.VALUE)
+                                  .value(minOrder))
                       .earliestSlot(window(m.earliestSlot()));
                 })
             .toList();
     return ResponseEntity.ok(
-        new DeliveryOptions().mfcId(mfcId).evaluatedAt(time(now)).options(options));
+        new DeliveryOptions()
+            .mfcId(mfcId)
+            .evaluatedAt(time(now))
+            .options(options)
+            .serviceHours(
+                new com.pmart.order.api.generated.model.DeliveryOptionsServiceHours()
+                    .start(OrderRules.SERVICE_START)
+                    .end(OrderRules.SERVICE_END)));
   }
 
   @Override

@@ -415,6 +415,8 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     assertThat(saleDisplay.path("discountName").asString()).isEqualTo("두부 10%");
     assertThat(sale.path("selectedItemAmount").asInt()).isEqualTo(8_550);
     assertThat(sale.path("selectedDiscountAmount").asInt()).isEqualTo(950);
+    assertThat(sale.path("selectedListAmount").asInt())
+        .isEqualTo(9_500); // 0.5.0 BR-97 할인 전 1900 × 5
     assertThat(sale.path("minOrderShortfall").asInt()).isEqualTo(6_450);
     json(
         WireMock.get(urlPathEqualTo("/api/v1/prices")),

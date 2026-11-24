@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.21.0
+  version: 0.22.0
   description: |
+    0.22.0(2026-11-25, 클라이언트 BR-96 홈 배달 안내 "최소주문 15,000원 · 30,000원부터 배달팁 0원 · 운영 시간"): `GET /delivery-options` 에
+      방식마다 `minOrderAmount`(PolicyValue — 설정 저장소 공통 `pmart.commerce.min-order-amount`, 없으면 NOT_SET, 주문 초안과 같은 값)·
+      `deliveryTip.tiers[]`(`{fromAmount, tip}` 높은 금액부터 — 상품액 구간만, 첫 구매 무료 같은 개인 사유는 빼고. 지금 30,000원 이상 0원 · 0원 이상 기본 배달팁),
+      전체에 `serviceHours`(`{start, end}` Asia/Seoul, 한집·알뜰 실제 배송 시간 — 지금 08:00~24:00, 그 밖은 예약만). 다 선택 필드.
     0.21.0(2026-11-24 BR-92 — 고객 앱 요청 "취소·반품 내역에 상품이 SKU 로 보여", claim 경유): 내부 `GET /internal/orders/{orderId}` `lines[]` 에
       `optionLabel`(주문 당시 사본 — 고객 `OrderLine` 과 같음)과, 선택 `includeImages=true` 일 때만 `imageUrl`(BR-71 과 같은 값 — **지금** 대표 사진, 없으면 null).
       사진은 product-content 를 한 번 더 부르므로 기본은 끈다(claim 접수만 켠다). 조회 실패는 사진 없이 그대로.
@@ -1122,6 +1126,17 @@ components:
             base: { $ref: '_common.yaml#/components/schemas/Money' }
             applied: { type: [integer, 'null'], description: itemAmount 를 주면 무료 사유 적용 금액. 안 주면 null }
             reason: { type: [string, 'null'], enum: [STANDARD, OVER_30000, FIRST_PURCHASE, null] }
+            tiers:
+              type: array
+              x-added-in: '2026-11-25'
+              description: '(0.22.0 BR-96) 상품액 구간별 배달팁, fromAmount 높은 순. 상품액 ≥ fromAmount 인 첫 구간의 tip. 첫 구매 무료 등 개인 사유는 없다'
+              items:
+                type: object
+                required: [fromAmount, tip]
+                properties:
+                  fromAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+                  tip: { $ref: '_common.yaml#/components/schemas/Money' }
+        minOrderAmount: { $ref: '_common.yaml#/components/schemas/PolicyValue', x-added-in: '2026-11-25', description: '(0.22.0 BR-96) 최소 주문 상품액(원, value 정수) — 주문 초안 minOrderAmount 와 같은 설정값. 미설정이면 NOT_SET(0 이 아님)' }
         earliestSlot: { $ref: '#/components/schemas/ArrivalWindow' }
     DeliveryOptions:
       type: object
@@ -1129,6 +1144,14 @@ components:
         mfcId: { type: string }
         evaluatedAt: { type: string, format: date-time }
         options: { type: array, items: { $ref: '#/components/schemas/DeliveryOption' } }
+        serviceHours:
+          type: object
+          x-added-in: '2026-11-25'
+          description: '(0.22.0 BR-96) 한집·알뜰 실제 배송 시간(Asia/Seoul, HH:mm, end 24:00 = 자정). 주문은 24시간 받고 그 밖은 예약만'
+          required: [start, end]
+          properties:
+            start: { type: string, example: '08:00' }
+            end: { type: string, example: '24:00' }
     ResourceState:
       type: object
       properties:

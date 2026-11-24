@@ -125,6 +125,19 @@ public final class OrderRules {
     return loads.size();
   }
 
+  /** 상품액 구간 배달팁(BR-96 안내) — fromAmount 높은 순. 첫 구매 무료 같은 개인 사유는 없다({@link #tip} 과 같은 기준). */
+  public record TipTier(long fromAmount, long tip) {}
+
+  public static List<TipTier> tipTiers(String mode) {
+    return List.of(new TipTier(FREE_DELIVERY_AMOUNT, 0), new TipTier(0, tipBase(mode)));
+  }
+
+  /** 한집·알뜰 실제 배송 시간(Asia/Seoul, BR-96 안내) — {@link #nightTime} 밖. */
+  public static final String SERVICE_START =
+      String.format("%02d:%02d", NIGHT_END_MINUTE / 60, NIGHT_END_MINUTE % 60);
+
+  public static final String SERVICE_END = "24:00";
+
   /** 00:00~08:00(Asia/Seoul)인가 — 한집·알뜰 불가 시간. */
   public static boolean nightTime(Instant now) {
     ZonedDateTime local = now.atZone(SEOUL);

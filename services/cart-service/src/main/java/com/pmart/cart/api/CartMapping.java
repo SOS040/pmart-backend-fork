@@ -34,6 +34,7 @@ final class CartMapping {
         .selectedItemAmount(v.selectedAmount() == null ? null : Math.toIntExact(v.selectedAmount()))
         .selectedDiscountAmount(
             v.selectedDiscount() == null ? null : Math.toIntExact(v.selectedDiscount()))
+        .selectedListAmount(v.selectedList() == null ? null : Math.toIntExact(v.selectedList()))
         .minOrderAmount(v.minOrderAmount() == null ? null : Math.toIntExact(v.minOrderAmount()))
         .minOrderShortfall(
             v.minOrderShortfall() == null ? null : Math.toIntExact(v.minOrderShortfall()))

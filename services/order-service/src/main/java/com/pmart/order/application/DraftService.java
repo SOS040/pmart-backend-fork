@@ -138,6 +138,11 @@ public class DraftService {
     this.minOrderAmount = minOrderAmount;
   }
 
+  /** 최소 주문 상품액 설정값(BR-14, 배달 안내 BR-96). 없으면 null. */
+  public @Nullable Long configuredMinOrderAmount() {
+    return minOrderAmount;
+  }
+
   /**
    * 최소 주문 상품액(BR-14). 설정 저장소 공통 {@code application.yml} {@code pmart.commerce.min-order-amount} —
    * cart-service 와 같은 값(2026-11-18 사용자 "추천대로", 두 곳 상수였던 것). 없으면 새 견적만 CONFIG_REQUIRED(0·무제한으로 바꾸지

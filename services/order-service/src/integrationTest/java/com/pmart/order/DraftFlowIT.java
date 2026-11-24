@@ -754,6 +754,27 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(single.path("deliveryTip").path("base").asInt()).isEqualTo(4_000);
     assertThat(single.path("deliveryTip").path("applied").asInt()).isZero();
     assertThat(single.path("deliveryTip").path("reason").asString()).isEqualTo("OVER_30000");
+    // 0.22.0 BR-96: 최소 주문·배달팁 구간·운영 시간
+    assertThat(single.path("minOrderAmount").path("state").asString()).isEqualTo("VALUE");
+    assertThat(single.path("minOrderAmount").path("value").asInt()).isEqualTo(15_000);
+    JsonNode tiers = single.path("deliveryTip").path("tiers");
+    assertThat(tiers).hasSize(2);
+    assertThat(tiers.path(0).path("fromAmount").asInt()).isEqualTo(30_000);
+    assertThat(tiers.path(0).path("tip").asInt()).isZero();
+    assertThat(tiers.path(1).path("fromAmount").asInt()).isZero();
+    assertThat(tiers.path(1).path("tip").asInt()).isEqualTo(4_000);
+    assertThat(
+            o.body()
+                .path("options")
+                .path(1)
+                .path("deliveryTip")
+                .path("tiers")
+                .path(1)
+                .path("tip")
+                .asInt())
+        .isEqualTo(3_000);
+    assertThat(o.body().path("serviceHours").path("start").asString()).isEqualTo("08:00");
+    assertThat(o.body().path("serviceHours").path("end").asString()).isEqualTo("24:00");
     assertThat(single.path("availability").asString())
         .isEqualTo(OrderRules.nightTime(Instant.now()) ? "UNAVAILABLE" : "AVAILABLE");
     JsonNode scheduled = o.body().path("options").path(2);

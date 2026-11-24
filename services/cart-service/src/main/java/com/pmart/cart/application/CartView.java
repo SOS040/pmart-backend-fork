@@ -60,6 +60,7 @@ public class CartView {
       List<Line> lines,
       @Nullable Long selectedAmount,
       @Nullable Long selectedDiscount,
+      @Nullable Long selectedList,
       Instant expiresAt,
       List<Source> sources,
       @Nullable Long minOrderAmount,
@@ -120,6 +121,7 @@ public class CartView {
     List<Line> lines = new ArrayList<>();
     long amount = 0;
     long discount = 0;
+    long list = 0;
     boolean amountKnown = pricingOk;
     for (ItemRow i : items) {
       CatalogClient.Card card = i.productId() == null ? null : cards.get(i.productId());
@@ -146,6 +148,7 @@ public class CartView {
         } else {
           amount += price.effective() * i.quantity();
           discount += (price.amount() - price.effective()) * i.quantity();
+          list += price.amount() * i.quantity();
         }
       }
     }
@@ -155,6 +158,8 @@ public class CartView {
         lines,
         selectedAmount,
         amountKnown ? discount : null,
+        // 할인 전 합계(0.5.0 BR-97)
+        amountKnown ? list : null,
         cart.lastChangedAt().plus(props.retention()),
         sources,
         minOrderAmount,
