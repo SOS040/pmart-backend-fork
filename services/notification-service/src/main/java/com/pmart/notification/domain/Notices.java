@@ -486,6 +486,59 @@ public final class Notices {
         null);
   }
 
+  /**
+   * 오배송 정산 차감(ADR-0086 결정 5~7, execution DE-9 — RiderDeductionScheduled·Confirmed·Cancelled). 모르는
+   * 사건은 null. 예정 알림에 금액·이의 기한(5일), 확정은 금액·다음 정산부터, 취소는 이의 받아들임.
+   */
+  public static @Nullable Notice riderDeduction(
+      String eventType,
+      @Nullable String deliveryNumber,
+      @Nullable Long amount,
+      java.time.@Nullable Instant objectionDeadline) {
+    String which = deliveryNumber == null ? "오배송 배송" : "오배송 배송(" + deliveryNumber + ")";
+    String money = amount == null ? "" : String.format(Locale.KOREAN, " %,d원", amount);
+    return switch (eventType) {
+      case "RiderDeductionScheduled" -> {
+        String until =
+            objectionDeadline == null
+                ? ""
+                : " "
+                    + DateTimeFormatter.ofPattern("M월 d일 HH:mm", Locale.KOREAN)
+                        .format(objectionDeadline.atZone(ZoneId.of("Asia/Seoul")))
+                    + "까지";
+        yield new Notice(
+            "RIDER_DEDUCTION_SCHEDULED",
+            SYSTEM,
+            "정산 차감 예정이 있어요",
+            which
+                + " 회수가 끝나지 않아 수행료에서"
+                + money
+                + "이 빠질 예정이에요. 이의가 있으면"
+                + until
+                + " 앱에서 이의를 남겨 주세요.",
+            "NONE",
+            null);
+      }
+      case "RiderDeductionConfirmed" ->
+          new Notice(
+              "RIDER_DEDUCTION_CONFIRMED",
+              SYSTEM,
+              "정산 차감이 확정되었어요",
+              which + " 차감" + money + "이 확정되어 다음 정산부터 빠져요. 남은 금액은 다음 정산으로 넘어가요.",
+              "NONE",
+              null);
+      case "RiderDeductionCancelled" ->
+          new Notice(
+              "RIDER_DEDUCTION_CANCELLED",
+              SYSTEM,
+              "정산 차감이 취소되었어요",
+              "지원센터가 이의를 받아들여 " + which + " 차감" + money + "을 취소했어요.",
+              "NONE",
+              null);
+      default -> null;
+    };
+  }
+
   public static Notice riderInquiryAnswered(String inquiryId) {
     return new Notice(
         "RIDER_INQUIRY_ANSWERED",

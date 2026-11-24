@@ -35,6 +35,31 @@ class NoticesTest {
   }
 
   @org.junit.jupiter.api.Test
+  void riderDeductionNoticesCarryAmountAndDeadline() {
+    var s =
+        Notices.riderDeduction(
+            "RiderDeductionScheduled",
+            "D28767701-3",
+            15970L,
+            java.time.Instant.parse("2026-11-29T06:00:00Z"));
+    org.assertj.core.api.Assertions.assertThat(s).isNotNull();
+    org.assertj.core.api.Assertions.assertThat(s.templateKey())
+        .isEqualTo("RIDER_DEDUCTION_SCHEDULED");
+    org.assertj.core.api.Assertions.assertThat(s.body())
+        .contains("D28767701-3")
+        .contains("15,970원")
+        .contains("11월 29일 15:00까지");
+    var c = Notices.riderDeduction("RiderDeductionConfirmed", null, 15970L, null);
+    org.assertj.core.api.Assertions.assertThat(c.body()).contains("15,970원").contains("다음 정산");
+    var x = Notices.riderDeduction("RiderDeductionCancelled", "D1", 100L, null);
+    org.assertj.core.api.Assertions.assertThat(x.templateKey())
+        .isEqualTo("RIDER_DEDUCTION_CANCELLED");
+    org.assertj.core.api.Assertions.assertThat(
+            Notices.riderDeduction("RiderDeductionOther", null, null, null))
+        .isNull();
+  }
+
+  @Test
   void earningAdjustedShowsAmountAndDateOnlyWhenPaid() {
     var paid = Notices.earningAdjusted("DLV-1", true, 3900L, "2026-11-20");
     assertThat(paid.body()).contains("3,900원").contains("11월 20일");

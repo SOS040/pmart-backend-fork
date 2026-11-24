@@ -36,7 +36,11 @@ class NotificationEventConsumers {
           "ReturnPickedUp",
           "ReturnPickupFailed",
           "DeliveryFailed", // 사고·파손 재발송 안내(N-4, 2026-11-19) — 고르는 것은 DeliveryFailureRules
-          "DeliveryHeadingToCustomer"); // 가고 있어요(레퍼런스 10-3-3, 2026-11-19 — PC 5 요청 DE-6)
+          "DeliveryHeadingToCustomer", // 가고 있어요(레퍼런스 10-3-3, 2026-11-19 — PC 5 요청 DE-6)
+          // 오배송 정산 차감 라이더 알림(2026-11-24, ADR-0086 — PC 5 DE-9 요청)
+          "RiderDeductionScheduled",
+          "RiderDeductionConfirmed",
+          "RiderDeductionCancelled");
 
   /**
    * platform.case.v1 — 고객 문의 답변, 라이더 문의 답변·도움요청 처리 끝(라이더 알림함 §11-5), 오배송 확인(리뷰 요청 보류 — 2026-11-18).

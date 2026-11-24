@@ -203,6 +203,22 @@ public class NotificationService {
       }
       return;
     }
+    if (e.eventType().startsWith("RiderDeduction")) {
+      // 오배송 정산 차감 예정·확정·취소(ADR-0086, execution DE-9) — 라이더 알림함
+      JsonNode p = e.payload();
+      String riderId = text(p, "riderId");
+      String deadline = text(p, "objectionDeadline");
+      Notice n =
+          Notices.riderDeduction(
+              e.eventType(),
+              text(p, "deliveryNumber"),
+              p.path("amount").isNumber() ? p.path("amount").asLong() : null,
+              deadline == null ? null : java.time.Instant.parse(deadline));
+      if (riderId != null && n != null) {
+        saveFor(e, RIDER, riderId, n);
+      }
+      return;
+    }
     if ("HelpRequestReplied".equals(e.eventType())) {
       JsonNode h = e.payload();
       String riderId = text(h, "riderId");
