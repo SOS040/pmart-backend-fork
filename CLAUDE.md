@@ -32,7 +32,7 @@ demos/              # 운영과 따로 도는 독립 Gradle 데모(루트 서비
 - 영역: **platform**(PC 1 — 인증·HR·승인·게이트웨이·라이브러리·배포, 그 밖 서비스), **backoffice**(PC 2 — backoffice-bff·case-service, 백오피스 화면), **mfc**(PC 3), **rag**(PC 4 — ai-assistant·customer-assistant, LAN 배포·재색인은 PC 1), **delivery**(PC 5). 영역·서비스·계약 주인·규칙: `docs/operations/pc-split.md`. 배포는 PC 1 만.
 - 작업 일지는 **`docs/worklog/<영역>/YYYY-MM-DD.md`**(자기 영역 파일에만, 2026-11-14 부터 — 2026-11-13 까지의 일지는 `docs/worklog/YYYY-MM-DD.md` 루트에 그대로 둔다). 클라이언트 handoff 는 받는 앱 영역 폴더(`docs/handoff/clients/<앱 영역>/YYYY-MM-DD-<종류>-<주제>.md`, 여럿이면 `all/`, 끝나면 `archive/`)와 첫머리 `보낸 영역:`.
 - **PR**: 다른 PC 는 main 에 push 하지 않는다 — 포크에서 `<영역>/<주제>` 브랜치로 PR(바꾼 것·실행한 시험·영향 영역·공용 표 갱신 필요), PC 1 이 검토·병합·배포(순서 `docs/operations/dev-on-other-pcs.md` §0). PC 1 은 병합할 때 자기 일지 `## PR` 절에 한 줄(검토·배포 상태·후속 — `docs/worklog/README.md` 규칙 6), PR 기록 파일은 따로 두지 않는다.
-- 영역 인수인계: mfc `docs/mfc/HANDOVER.md`, delivery `docs/delivery/HANDOVER.md`, rag `docs/rag/HANDOVER.md`, backoffice `docs/backoffice/HANDOVER.md`(2026-11-16 PC 2).
+- 영역 인수인계: mfc `docs/mfc/HANDOVER.md`, delivery `docs/delivery/HANDOVER.md`, rag `docs/rag/HANDOVER.md`, backoffice `docs/backoffice/HANDOVER.md`(2026-11-16 PC 2), cdc `docs/cdc/HANDOVER.md`(2026-11-24 PC 1 — D 드라이브 클론에서 작업).
 - PC 1 이 아닌 곳에서는 먼저 `docs/operations/dev-on-other-pcs.md`(방법)와 `docs/operations/other-pcs-todo.md`(PC 별 할 일 체크리스트), 읽을 문서 지도 `docs/operations/other-pcs-docs.md` — 직원 토큰 받는 법(로컬 `dev-tokens`·LAN `staff_auth.py`), 시험 계정·비밀번호 파일, 없어진 auth-service 운영자 로그인.
 
 ## 상세 규칙 (작업 영역에 따라 자동 로드)
