@@ -93,4 +93,4 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
   1. 묶음이 `escalated` 로 바뀌는 순간 사건 `RiderPayoutEscalated` 한 번(같은 묶음 두 번 내지 않음) — 차감 사건과 같은 토픽(delivery.delivery.v1). payload 최소 `batchId`·`riderId`·`payoutDate`·`amount`·`rollCount`·`failureReason`(직원용)·`escalatedAt`. 계약 `contracts/events/RiderPayoutEscalated.v1.json`, events.md 줄.
   2. 관리자가 PAID 로 끝내면 따로 사건은 필요 없음(지금 지급 결과 사건이 있으면 그것으로).
 - **받는 쪽**: notification 에는 직원 알림함이 없다(고객·라이더만). 사건이 생기면 PC 1 이 받을 곳(라이더 백오피스 배지·운영 경보 등)을 사용자와 정한다 — 이 요청은 사건만.
-- **사용자 결정**: 사건을 낸다(2026-11-24). 상태: 요청.
+- **사용자 결정**: 사건을 낸다(2026-11-24). 상태: **구현·LAN 배포**(2026-11-24 PC 5 #431 21d7cd9d, execution 0.43.1·V31 `rider_payout_escalation` — 상한을 다 쓴 줄이 남을 때 묶음(라이더 × 지급일)마다 한 번, pc5 Flyway v31). 받는 곳은 PC 1 이 사용자와 정함.
