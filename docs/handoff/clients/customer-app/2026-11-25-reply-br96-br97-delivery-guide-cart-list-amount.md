@@ -4,7 +4,7 @@
 받는 앱: customer-app
 원 문서: `pmart-clients docs/handoff/customer-app/2026-11-24-backend-delivery-guide.md`(BR-96 R1~R3)·`2026-11-24-backend-cart-list-amount.md`(BR-97 R1)
 작성: pmart-backend, 2026-11-25 — 사용자 "응"(BR-97·96 먼저)
-상태: **구현(order 계약 0.22.0·cart 계약 0.5.0) — LAN 배포 전**(배포되면 이 줄을 고친다)
+상태: **LAN 배포 끝**(2026-11-25, order·cart 09c347ef) — LAN `GET /delivery-options?mfcId=MFC-BJG-01` 에 minOrderAmount VALUE 15000·tiers [30000→0, 0→4000]·serviceHours 08:00~24:00 확인
 
 ## BR-97 (cart 0.5.0)
 - R1 `Cart.selectedListAmount`(정수 원, nullable) — 선택 품목 기간 할인 **전** 단가 합계. `selectedItemAmount` 가 null 이면 null. 주문 초안 `Quote.baseItemAmount` 와 같은 기준이고 늘 `selectedItemAmount + selectedDiscountAmount`. 변경 응답의 cart 에도 있다. 앱의 더하기를 이 값으로 바꾸면 된다.
