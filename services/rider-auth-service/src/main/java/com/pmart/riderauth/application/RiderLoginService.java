@@ -117,7 +117,7 @@ public class RiderLoginService {
                             + ".client-ids"));
     Optional<AuthRequestRow> earlier = store.requestByKey(sourceSystem, idempotencyKey);
     if (earlier.isPresent()) {
-      return replay(earlier.get(), deviceId, sourceSystem);
+      return replay(earlier.get(), deviceId, sourceSystem, provider);
     }
     Instant now = now();
     Optional<Instant> restricted = store.restrictedUntil(deviceId).filter(u -> u.isAfter(now));
@@ -134,7 +134,7 @@ public class RiderLoginService {
       throw new PmartException(
           "PROVIDER_UNAVAILABLE",
           HttpStatus.SERVICE_UNAVAILABLE,
-          "Google 인증 확인이 잠시 안 됩니다. 잠시 뒤 다시 시도하세요.",
+          providerName(provider) + " 인증 확인이 잠시 안 됩니다. 잠시 뒤 다시 시도하세요.",
           true,
           List.of());
     } catch (GoogleIdTokenVerifier.Rejected e) {
@@ -220,12 +220,12 @@ public class RiderLoginService {
         row.createdAt());
   }
 
-  private Result replay(AuthRequestRow row, String deviceId, String sourceSystem) {
+  private Result replay(AuthRequestRow row, String deviceId, String sourceSystem, String provider) {
     if (!row.deviceId().equals(deviceId)) {
       throw PmartException.idempotencyConflict("같은 Idempotency-Key 로 다른 기기의 요청이 이미 처리되었습니다.");
     }
     if (row.failureCode() != null || row.riderId() == null) {
-      throw providerRejected();
+      throw providerRejected(provider);
     }
     String riderId = row.riderId();
     if (!"ACTIVE".equals(store.accountState(riderId).orElse(null))) {
@@ -268,7 +268,7 @@ public class RiderLoginService {
     if (until[0] != null) {
       throw restrictedUntil(until[0], now);
     }
-    throw providerRejected();
+    throw providerRejected(provider);
   }
 
   private RiderTokens.Tokens openSession(
@@ -296,11 +296,21 @@ public class RiderLoginService {
     return local + "***@" + domain + "***";
   }
 
-  static PmartException providerRejected() {
+  /** 안내 문구에 쓰는 제공자 이름 — GOOGLE "Google"·KAKAO "카카오"·NAVER "네이버", 그 밖 "로그인 제공자". */
+  static String providerName(@org.jspecify.annotations.Nullable String provider) {
+    return switch (provider == null ? "" : provider) {
+      case "GOOGLE" -> "Google";
+      case "KAKAO" -> "카카오";
+      case "NAVER" -> "네이버";
+      default -> "로그인 제공자";
+    };
+  }
+
+  static PmartException providerRejected(@org.jspecify.annotations.Nullable String provider) {
     return new PmartException(
         "PROVIDER_REJECTED",
         HttpStatus.UNAUTHORIZED,
-        "Google 인증 결과를 확인할 수 없습니다. 다시 로그인하세요.",
+        providerName(provider) + " 인증 결과를 확인할 수 없습니다. 다시 로그인하세요.",
         false,
         List.of());
   }

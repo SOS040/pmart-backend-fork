@@ -355,7 +355,7 @@ public class CustomerSocialLoginService {
       throw providerUnavailable(e);
     } catch (IdTokenVerifier.Rejected e) {
       log.warn("필수 동의 완료 거절(PROVIDER_REJECTED) provider={}", row.provider());
-      throw providerRejected();
+      throw providerRejected(row.provider());
     }
     if (!accountId.equals(
         customers.linkedAccount(row.provider(), identity.subject()).orElse(null))) {
@@ -458,7 +458,7 @@ public class CustomerSocialLoginService {
       throw PmartException.idempotencyConflict("같은 Idempotency-Key 로 다른 기기의 요청이 이미 처리되었습니다.");
     }
     if (row.failureCode() != null) {
-      throw providerRejected();
+      throw providerRejected(row.provider());
     }
     Instant now = now();
     boolean member = MEMBER.equals(row.state());
@@ -627,7 +627,7 @@ public class CustomerSocialLoginService {
       throw providerUnavailable(e);
     } catch (IdTokenVerifier.Rejected e) {
       log.warn("휴대폰 확인 단계 거절(PROVIDER_REJECTED) provider={}", row.provider());
-      throw providerRejected();
+      throw providerRejected(row.provider());
     }
     if (!Objects.equals(
         row.accountId(),
@@ -739,7 +739,7 @@ public class CustomerSocialLoginService {
     if (until[0] != null) {
       throw restrictedUntil(until[0], now);
     }
-    throw providerRejected();
+    throw providerRejected(provider);
   }
 
   private void checkRestriction(String deviceId, Instant now) {
@@ -846,11 +846,21 @@ public class CustomerSocialLoginService {
         missing.stream().map(m -> new PmartException.Detail(m, "필수 동의 필요")).toList());
   }
 
-  static PmartException providerRejected() {
+  /** 안내 문구에 쓰는 제공자 이름 — GOOGLE "Google"·KAKAO "카카오"·NAVER "네이버", 그 밖 "로그인 제공자". */
+  static String providerName(@Nullable String provider) {
+    return switch (provider == null ? "" : provider) {
+      case "GOOGLE" -> "Google";
+      case "KAKAO" -> "카카오";
+      case "NAVER" -> "네이버";
+      default -> "로그인 제공자";
+    };
+  }
+
+  static PmartException providerRejected(@Nullable String provider) {
     return new PmartException(
         "PROVIDER_REJECTED",
         HttpStatus.UNAUTHORIZED,
-        "Google 인증 결과를 확인할 수 없습니다. 다시 로그인하세요.",
+        providerName(provider) + " 인증 결과를 확인할 수 없습니다. 다시 로그인하세요.",
         false,
         List.of());
   }

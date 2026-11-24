@@ -78,7 +78,7 @@ public class CustomerWithdrawalService {
       throw CustomerSocialLoginService.providerUnavailable(e);
     } catch (IdTokenVerifier.Rejected e) {
       log.warn("재인증 거절(PROVIDER_REJECTED) provider={} accountId={}", provider, accountId);
-      throw CustomerSocialLoginService.providerRejected();
+      throw CustomerSocialLoginService.providerRejected(provider);
     }
     Optional<String> linked = customers.linkedAccount(provider, identity.subject());
     if (linked.isEmpty() || !linked.get().equals(accountId)) {
