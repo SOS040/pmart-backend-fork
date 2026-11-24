@@ -16,3 +16,4 @@
 - **지금(임시 방식)**: 저장소 어디에도 CDC 센터가 없다. 시뮬레이터는 `CDC01` 을 상수로 쓴다. cdc-inventory 는 centerId 를 검증하지 않는다.
 - **요청한 쪽에서 바꿀 것**: 없음. 등록되면 cdc 쪽에서 센터 조회로 바꿀 곳을 찾는다.
 - **사용자 결정 필요**: 없음(코드·고정값은 사용자 2026-11-24 결정 — `docs/simulator/cdc/chilgok-dc.md` CDC-1·§1). 등록은 BO-06 승인 흐름이면 승인자 확인 필요.
+- **상태(2026-11-25 PC 1)**: LAN 등록 — `deploy/lan/seed/cdc_center.py --apply`(CENTER_MASTER CREATE, seed-md 요청·seed-approver 승인 AP-858d6c29, version 1). 좌표 35.954308·128.442821(카카오 주소 검색, 도로명 그대로). 면적·보관 용량은 칸이 없어 안 넣음, 전화·진입 위치 없음. 픽업지 목록은 type MFC 만이라 CDC01 은 라이더 쪽에 안 나온다. local 은 로컬 스택에서 같은 스크립트를 돌린다(아직).
