@@ -48,6 +48,72 @@ public class KakaoUnlinkClient {
     this.http = RestClient.builder().requestFactory(factory).build();
   }
 
+  /** 카카오 사용자 정보(동의한 것만). 없는 값은 null. */
+  public record Profile(
+      @Nullable String email,
+      @Nullable Boolean emailVerified,
+      @Nullable String nickname,
+      @Nullable String imageUrl) {
+    @Override
+    public String toString() {
+      return "KakaoUnlinkClient.Profile[***]";
+    }
+  }
+
+  /**
+   * 카카오 사용자 정보 {@code GET {api-base-url}/v2/user/me}(2026-11-25 — 사용자 "카카오 프로필·이름·이메일 들어가는지"). LAN
+   * 의 카카오 ID 토큰에 nickname·picture·email 이 실리지 않아(11-20 로그인 4번 모두 없음) 로그인 때 Admin 키로 그 회원번호의 정보를 직접
+   * 읽는다. 이메일은 유효·확인된 것만, 사진은 기본 사진이 아닐 때만(https 주소 — secure_resource). 어떤 실패도 null(로그인은 그대로). 값은 로그
+   * 금지.
+   */
+  public @Nullable Profile profile(String kakaoUserId) {
+    if (adminKey == null) {
+      return null;
+    }
+    tools.jackson.databind.JsonNode body;
+    try {
+      body =
+          http.get()
+              .uri(
+                  apiBaseUrl
+                      + "/v2/user/me?target_id_type=user_id&secure_resource=true&target_id={id}",
+                  kakaoUserId)
+              .header("Authorization", "KakaoAK " + adminKey)
+              .accept(MediaType.APPLICATION_JSON)
+              .retrieve()
+              .body(tools.jackson.databind.JsonNode.class);
+    } catch (HttpStatusCodeException e) {
+      log.info("카카오 사용자 정보 생략 reason=http_{}", e.getStatusCode().value());
+      return null;
+    } catch (RuntimeException e) {
+      log.info("카카오 사용자 정보 생략 reason={}", e.getClass().getSimpleName());
+      return null;
+    }
+    if (body == null || !body.isObject()) {
+      return null;
+    }
+    var account = body.path("kakao_account");
+    String email = null;
+    Boolean verified = null;
+    if (account.path("email").isString()
+        && account.path("is_email_valid").asBoolean(false)
+        && account.path("is_email_verified").asBoolean(false)) {
+      email = account.path("email").asString().strip();
+      verified = true;
+    }
+    var profile = account.path("profile");
+    String nickname = profile.path("nickname").asString("").strip();
+    String image =
+        profile.path("is_default_image").asBoolean(false)
+            ? ""
+            : profile.path("profile_image_url").asString("").strip();
+    return new Profile(
+        email == null || email.isEmpty() ? null : email,
+        email == null || email.isEmpty() ? null : verified,
+        nickname.isEmpty() ? null : nickname,
+        image.isEmpty() ? null : image);
+  }
+
   public boolean configured() {
     return adminKey != null;
   }

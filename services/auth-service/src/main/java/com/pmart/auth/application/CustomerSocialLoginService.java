@@ -144,6 +144,14 @@ public class CustomerSocialLoginService {
 
   private final CustomerSuspensions suspensions; // 2026-11-23 CU-7
 
+  /** 카카오 사용자 정보(2026-11-25 — ID 토큰에 프로필이 없을 때). 시험에서는 없을 수 있다. */
+  private com.pmart.auth.infrastructure.@Nullable KakaoUnlinkClient kakao;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  void setKakao(com.pmart.auth.infrastructure.KakaoUnlinkClient kakao) {
+    this.kakao = kakao;
+  }
+
   public CustomerSocialLoginService(
       CustomerStore customers,
       SessionStore sessions,
@@ -191,14 +199,15 @@ public class CustomerSocialLoginService {
     checkRestriction(deviceId, now);
 
     // 제공자 검증은 트랜잭션 밖(네트워크)
-    IdTokenVerifier.Identity identity;
+    IdTokenVerifier.Identity verified;
     try {
-      identity = verifier.verify(providerToken);
+      verified = verifier.verify(providerToken);
     } catch (IdTokenVerifier.Unavailable e) {
       throw providerUnavailable(e);
     } catch (IdTokenVerifier.Rejected e) {
       return rejected(idempotencyKey, sourceSystem, deviceId, provider, now);
     }
+    final IdTokenVerifier.Identity identity = withProviderProfile(provider, verified);
 
     // 필수 동의 판단도 트랜잭션 밖(customer-service 호출). 가입이면 만들 계정 ID 로 묻는다 — customer 에 행이 없어 모두 빠진 것으로 답한다
     String candidate = "CU-" + UUID.randomUUID();
@@ -348,15 +357,16 @@ public class CustomerSocialLoginService {
     checkRestriction(deviceId, now);
 
     // 로그인한 그 소셜 계정인지 다시 확인한다(토큰이 없는 단계라 이것이 본인 확인). 프로필은 동의 뒤에만 넘긴다
-    IdTokenVerifier.Identity identity;
+    IdTokenVerifier.Identity verified;
     try {
-      identity = verifiers.require(row.provider()).verify(providerToken);
+      verified = verifiers.require(row.provider()).verify(providerToken);
     } catch (IdTokenVerifier.Unavailable e) {
       throw providerUnavailable(e);
     } catch (IdTokenVerifier.Rejected e) {
       log.warn("필수 동의 완료 거절(PROVIDER_REJECTED) provider={}", row.provider());
       throw providerRejected(row.provider());
     }
+    final IdTokenVerifier.Identity identity = withProviderProfile(row.provider(), verified);
     if (!accountId.equals(
         customers.linkedAccount(row.provider(), identity.subject()).orElse(null))) {
       throw new PmartException(ErrorCode.FORBIDDEN, "로그인한 계정과 다른 소셜 계정입니다.");
@@ -629,6 +639,7 @@ public class CustomerSocialLoginService {
       log.warn("휴대폰 확인 단계 거절(PROVIDER_REJECTED) provider={}", row.provider());
       throw providerRejected(row.provider());
     }
+    identity = withProviderProfile(row.provider(), identity);
     if (!Objects.equals(
         row.accountId(),
         customers.linkedAccount(row.provider(), identity.subject()).orElse(null))) {
@@ -761,6 +772,32 @@ public class CustomerSocialLoginService {
         props.accessTokenTtl(),
         props.refreshTokenTtl(),
         now);
+  }
+
+  /**
+   * 카카오 ID 토큰에 이름·이메일·사진이 빠졌으면 카카오 사용자 API 에서 채운다(2026-11-25, 트랜잭션 밖 — 네트워크). 토큰 값이 있으면 그것이 우선. 사진은
+   * https·*.kakaocdn.net 만. 실패하면 토큰 그대로.
+   */
+  private IdTokenVerifier.Identity withProviderProfile(
+      String provider, IdTokenVerifier.Identity identity) {
+    if (!"KAKAO".equals(provider)
+        || kakao == null
+        || (identity.email() != null && identity.name() != null && identity.pictureUrl() != null)) {
+      return identity;
+    }
+    var p = kakao.profile(identity.subject());
+    if (p == null) {
+      return identity;
+    }
+    boolean useEmail = identity.email() == null && p.email() != null;
+    return new IdTokenVerifier.Identity(
+        identity.subject(),
+        useEmail ? p.email() : identity.email(),
+        useEmail ? p.emailVerified() : identity.emailVerified(),
+        identity.name() != null ? identity.name() : p.nickname(),
+        identity.pictureUrl() != null
+            ? identity.pictureUrl()
+            : com.pmart.auth.domain.ProviderPictureRules.kakao(p.imageUrl()));
   }
 
   /** Google 이 준 프로필(이름·이메일·사진)은 저장하지 않고 사건으로 customer-service 에 넘긴다(ADR-0024). 없는 값은 싣지 않는다. */

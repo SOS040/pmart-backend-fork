@@ -31,4 +31,13 @@ class ProviderPictureRulesTest {
     assertThat(ProviderPictureRules.naver("not a url")).isNull();
     assertThat(ProviderPictureRules.naver(OK)).isEqualTo(OK);
   }
+
+  @Test
+  void kakaoOnlyHttpsKakaocdn() {
+    assertThat(ProviderPictureRules.kakao("https://k.kakaocdn.net/dn/a.jpg"))
+        .isEqualTo("https://k.kakaocdn.net/dn/a.jpg");
+    assertThat(ProviderPictureRules.kakao("http://k.kakaocdn.net/dn/a.jpg")).isNull();
+    assertThat(ProviderPictureRules.kakao("https://evil.example/a.jpg")).isNull();
+    assertThat(ProviderPictureRules.kakao(null)).isNull();
+  }
 }

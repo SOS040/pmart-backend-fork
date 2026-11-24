@@ -31,8 +31,19 @@ public final class ProviderPictureRules {
     return "NAVER".equals(provider) ? naver(fromApp) : null;
   }
 
+  public static final String KAKAO_HOST_SUFFIX = "kakaocdn.net";
+
+  /** 카카오 사용자 API 사진 주소 검사(2026-11-25) — https·*.kakaocdn.net 만, 아니면 null. */
+  public static @Nullable String kakao(@Nullable String url) {
+    return hosted(url, KAKAO_HOST_SUFFIX);
+  }
+
   /** 네이버 사진 주소 검사 — 맞으면 정리한 주소, 아니면 null(코드 교환 때 프로필 API 값에도 쓴다, BR-70). */
   public static @Nullable String naver(@Nullable String url) {
+    return hosted(url, NAVER_HOST_SUFFIX);
+  }
+
+  private static @Nullable String hosted(@Nullable String url, String suffix) {
     if (url == null || url.isBlank() || url.length() > MAX_LENGTH) {
       return null;
     }
@@ -43,7 +54,7 @@ public final class ProviderPictureRules {
       return null;
     }
     String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
-    boolean hostOk = host.equals(NAVER_HOST_SUFFIX) || host.endsWith("." + NAVER_HOST_SUFFIX);
+    boolean hostOk = host.equals(suffix) || host.endsWith("." + suffix);
     if (!"https".equalsIgnoreCase(u.getScheme())
         || !hostOk
         || u.getUserInfo() != null
