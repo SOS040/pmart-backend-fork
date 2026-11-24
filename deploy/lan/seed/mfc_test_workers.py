@@ -192,7 +192,8 @@ def main():
         MFC, SUPERVISOR, LABEL, GROUPS = CENTERS[sys.argv[sys.argv.index("--center") + 1]]
         if not check:
             supervisor(hr)
-    sup, _ = staff_auth.staff_token(SUPERVISOR, ["MFC_SUPERVISOR"], [MFC])
+    # claude-mfc-sup 은 다섯 센터 관리자(2026-11-24 사용자 "claude-mfc-sup 를 다섯 센터로 넓혀") — 되돌리지 않게
+    sup, _ = staff_auth.staff_token(SUPERVISOR, ["MFC_SUPERVISOR"], ["MFC-BJG-01", "MFC-MOKPO-01", "MFC-SEJ-01", "MFC-CHC-01", "MFC-BNG-01"] if SUPERVISOR == "claude-mfc-sup" else [MFC])
     pw = None if check else shared_password()
     counts = {}
     for p in people():

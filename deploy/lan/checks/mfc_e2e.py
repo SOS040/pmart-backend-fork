@@ -86,7 +86,7 @@ def sub(token):
 
 
 admin, _ = staff_token("claude-dev")
-sup, _ = staff_token("claude-mfc-sup", ["MFC_SUPERVISOR"], [MFC])
+sup, _ = staff_token("claude-mfc-sup", ["MFC_SUPERVISOR"], ["MFC-BJG-01", "MFC-MOKPO-01", "MFC-SEJ-01", "MFC-CHC-01", "MFC-BNG-01"])  # 다섯 센터(2026-11-24)
 wrk, _ = staff_token("claude-mfc-wrk", ["MFC_WORKER"], [MFC])
 wid = sub(wrk)
 # 0. 작업자 등록(이미 있으면 409)

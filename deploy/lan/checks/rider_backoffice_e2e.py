@@ -54,7 +54,7 @@ def main():
     if "--sup" in sys.argv:
         if not os.path.exists(os.path.join(HERE, "..", ".secrets", "keycloak-claude-mfc-sup-password")):
             sys.exit("--sup: keycloak-claude-mfc-sup-password 파일이 없음 — PC 1 에서 받은 뒤 다시(파일 없이 돌리면 비밀번호가 바뀜)")
-        sup = staff_token("claude-mfc-sup", ["MFC_SUPERVISOR"], [MFC])
+        sup = staff_token("claude-mfc-sup", ["MFC_SUPERVISOR"], ["MFC-BJG-01", "MFC-MOKPO-01", "MFC-SEJ-01", "MFC-CHC-01", "MFC-BNG-01"])  # 다섯 센터(2026-11-24)
         sup = sup[0] if isinstance(sup, tuple) else sup
     else:
         print("  --   센터 관리자 403 확인 건너뜀(--sup 로 켬 — PC 1 에서 받은 비밀번호 파일이 있을 때만)")
