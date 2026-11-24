@@ -101,7 +101,7 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - (선택, LAN 시험 편의) 라이더가 한 명뿐인 LAN 에서 한 번 놓치면 재요청 `retry-interval` 10분을 기다린다 — LAN 프로필만 줄일지 결정.
 - **받는 쪽(mfc, PC 3)**: 할 것 없음(배차 요청은 제때 나간다 — DispatchRequested → DeliveryCreated 1초, 첫 제안 2초).
 
-## DD-6. 정시 배송 지표 시간 칸 — `bucket=HOUR`(·WEEK·MONTH) (2026-11-21, 보낸 영역 mfc — PC 3) — **구현 2026-11-25 PC 5(dispatch 0.18.0, 브랜치 `delivery/dd6-on-time-buckets`)**
+## DD-6. 정시 배송 지표 시간 칸 — `bucket=HOUR`(·WEEK·MONTH) (2026-11-21, 보낸 영역 mfc — PC 3) — **구현·LAN 배포 2026-11-25 PC 5(dispatch 0.18.0, #441 2fd739b3 — pc5)**
 - **요청한 곳**: MFC 백오피스 대시보드 추이(pmart-clients `docs/handoff/mfc-backoffice/2026-11-21-backend-hourly-metrics.md`). 사용자 2026-11-21 "시간대별 기록 1일·7일·한 달·년 단위".
 - **필요한 것**: `GET /metrics/on-time-deliveries`(DD-4)에 칸 단위 `bucket=HOUR|DAY`(기본 DAY = 지금 그대로).
   - HOUR 면 줄에 `hour`(칸 시작 시각, Asia/Seoul +09:00, 예 `2026-11-21T14:00:00+09:00`). 기간은 7일까지면 된다(168칸). 0건 칸은 줄 없음(날짜와 같은 규칙).
