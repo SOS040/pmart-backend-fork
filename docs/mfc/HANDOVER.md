@@ -9,7 +9,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 ### 열린 PR(2026-11-24 기준)
 | PR | 브랜치 | 내용 | 상태 |
 |---|---|---|---|
-| #424 | `mfc/mi4-supply-order` | MI-4 센터 발주 승인(부분 승인·거절 사유) → 입고 예정 EXPECTED, 발주 수량 추천 `GET /supply-recommendations`(mfc-inbound 0.21.0, V14) | 열림 — PC 1 검토·병합·배포 대기. `mfc-inbound check` 34·데모 `check` 41 통과 |
+| #424 | `mfc/mi4-supply-order` | MI-4 센터 발주 승인(부분 승인·거절 사유) → 입고 예정 EXPECTED, 발주 수량 추천 `GET /supply-recommendations`(mfc-inbound 0.21.0, V14) | 열림 — PC 1 검토·병합·배포 대기. `mfc-inbound check` 34·데모 `check` 41 통과. **PC 1 지적(PR 댓글 11-24 09:05Z)**: 게이트웨이 허용 목록에 새 경로 3개(`POST …/supply-requests/{id}/approvals`·`/rejections`, `GET /supply-recommendations`)가 없고, 시험 사본 `api-gateway.yml` mfc-inbound 라우트에 `/api/v1/supply-recommendations` 가 없음 — 고쳐 다시 올릴 것 |
 - #411(수요예측 데모 `demos/mfc-demand-replenishment`)은 병합됨.
 - 로컬 브랜치 `mfc/r45-reshape`(02cab2de, push 안 함)는 main 의 R-45 커밋(1cd6a0f0·27a9e5fa·d1109ecd)으로 대체된 것으로 보인다 — 지워도 된다(사용자 확인 후).
 - MI-4 근거: `docs/architecture/service-requests/mfc-inbound-service.md` MI-4 회신, `services/mfc-inbound-service/CLAUDE.md` 끝 줄, 시뮬레이터 회신 `docs/handoff/simulator/mfc/2026-11-24-simulator-reply-r48-supply-order.md`. 시작값(사용자 확인 2026-11-24): R 1일·L 1일·SS 1일치·배수 1·최소 1·이동평균 28일·최소 이력 7일(`supply_policy` '*' 줄).
@@ -27,7 +27,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
   6. 이어 받기: `Last-Event-ID` 가 보존 기간(예 1시간, 주기 삭제) 안이면 그 행의 created_at − 10초 이후 행을 다시 보낸다(stream_id 는 커밋 순서와 다를 수 있어 여유를 둠). 같은 이벤트가 다시 올 수 있음 → 화면은 SKU 별 `version` 으로 거른다(계약에 적기). 보존 밖이면 `resync`.
   7. 권한: `StockSummaryService.summaries` 와 같은 판정(서비스·OPERATOR_ADMIN = 모든 센터, 그 밖 운영자 = `p.centerScope()`/`canAccessCenter`). 접속 때 한 번.
   8. 시험: 통합 시험에서 스트림을 열고 예약·해제·수령 하나씩 → 이벤트 순서·값·heartbeat·권한 403·Last-Event-ID 재생 확인(`StockReservationFlowIT` 를 참고해 새 IT, `pmart.test.context=<이름>` 으로 컨텍스트 분리 — 안 하면 다른 IT 의 멈춘 DB 컨테이너를 물려받아 실패한 적 있음, 2026-11-24 SupplyOrderIT).
-  9. 문서: 서비스 CLAUDE.md 상태 끝 줄, `docs/worklog/mfc/<날짜>.md`, PR 본문에 게이트웨이 경로 `/api/v1/stock-stream`(GET, SSE, 시간 제한 해제 필요)·"공용 표 갱신 필요: 없음". 끝나면 PC 1 백엔드 세션(+ mfc 프론트·프론트2)에 알린다.
+  9. 문서: 서비스 CLAUDE.md 상태 끝 줄, `docs/worklog/mfc/<날짜>.md`, PR 본문에 게이트웨이 경로 `/api/v1/stock-stream`(GET, SSE, 시간 제한 해제 필요)·"공용 표 갱신 필요: IV-7"(2026-11-24 PC 2 #426 이 요청서 `service-requests/mfc-inventory-service.md` IV-7 — mfcId 비우면 볼 수 있는 모든 센터 한 연결, 최소 `{eventId, mfcId, occurredAt}`, heartbeat 5초 — 를 더했고 공용 표에 "요청(PC 3)" 줄이 있음). 끝나면 PC 1 백엔드 세션(+ mfc 프론트·프론트2)에 알린다.
 - 브랜치 `mfc/inventory-stock-stream`(origin/main 에서 만들기만 함, 커밋 없음, push 안 함). 새 계정에서는 origin/main 에서 다시 만들어도 된다.
 
 ### 정리 대기(사용자에게 물을 것)
