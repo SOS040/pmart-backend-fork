@@ -50,6 +50,8 @@ pmart:
       - HR_ADMIN
       - CENTER_MASTER_APPROVER
       - CS_AGENT
+      - CDC_SUPERVISOR # 칠곡 DC 등 CDC 센터 관리자(2026-11-25 cdc R-16, 사용자 "그대로 진행해") — 센터 지정
+      - CDC_WORKER # CDC 작업자(FC·분배·검품·상차·지게차) — 센터 지정
       - DISPLAY_APPROVER
       - INVENTORY_APPROVER
       - MARKETING # 기간 할인·쿠폰 행사 만들기·승인(ADR-0082, 사용자 2026-11-20 "새 역할 MARKETING")
@@ -69,6 +71,8 @@ pmart:
       - { code: HR_ADMIN, name: 인사 관리자 }
       - { code: CENTER_MASTER_APPROVER, name: 센터 기준정보 승인자 }
       - { code: CS_AGENT, name: 고객센터 상담원 }
+      - { code: CDC_SUPERVISOR, name: CDC 센터 관리자, center-scoped: true }
+      - { code: CDC_WORKER, name: CDC 작업자, center-scoped: true }
       - { code: DISPLAY_APPROVER, name: 전시 승인자 }
       - { code: INVENTORY_APPROVER, name: 재고 승인자 }
       - { code: MARKETING, name: 마케팅(행사·쿠폰) }
