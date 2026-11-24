@@ -72,6 +72,8 @@ GET /api/v1/categories/tree PUBLIC
 GET /api/v1/categories/{categoryId}/filters PUBLIC
 GET /api/v1/category-tree-versions/{version} OPERATOR
 GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
+GET /api/v1/cdcs/{cdcId}/tasks OPERATOR
+GET /api/v1/cdcs/{cdcId}/tasks/{taskId} OPERATOR
 GET /api/v1/centers OPERATOR
 GET /api/v1/centers/{centerId} OPERATOR
 GET /api/v1/centers/{centerId}/calendar OPERATOR
@@ -444,6 +446,8 @@ POST /api/v1/category-tree-additions OPERATOR
 POST /api/v1/category-tree-versions OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
+POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/pick-results OPERATOR
+POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/starts OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/next-tasks OPERATOR
 POST /api/v1/change-requests OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/submissions OPERATOR
@@ -681,7 +685,6 @@ POST /api/v1/surcharge-requests/{requestId}/decisions OPERATOR
 POST /api/v1/tasks/{taskId}/blocks OPERATOR
 POST /api/v1/tasks/{taskId}/executions OPERATOR
 POST /api/v1/tasks/{taskId}/partial-closes OPERATOR
-POST /api/v1/tasks/{taskId}/pick-results OPERATOR
 POST /api/v1/tasks/{taskId}/releases OPERATOR
 POST /api/v1/tasks/{taskId}/starts OPERATOR
 POST /api/v1/tasks/{taskId}/unblocks OPERATOR

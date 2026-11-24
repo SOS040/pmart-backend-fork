@@ -172,6 +172,11 @@ spring:
               predicates:
                 - Path=/api/v1/cdcs/*/sku-handlings/**,/api/v1/cdcs/*/sku-handling-batches/**
               order: -89
+            - id: cdc-outbound-service
+              uri: ${pmart.gateway.upstream.cdc-outbound-service}
+              predicates:
+                - Path=/api/v1/waves/**,/api/v1/cdcs/*/tasks/**,/api/v1/cdcs/*/workers/*/next-tasks,/api/v1/sorting-results,/api/v1/inspection-results,/api/v1/loading-results,/api/v1/work-results/** # CDC 출고(2026-11-25 R-16, cdc 시뮬레이터 실서버 모드)
+              order: -88
             - id: mfc-fulfillment-service
               uri: ${pmart.gateway.upstream.mfc-fulfillment-service}
               predicates:
@@ -284,6 +289,7 @@ pmart:
       mfc-inventory-service: http://mfc-inventory-service:8301
       mfc-fulfillment-service: http://mfc-fulfillment-service:8302
       cdc-inventory-service: http://cdc-inventory-service:8601
+      cdc-outbound-service: http://cdc-outbound-service:8603
       mfc-capacity-service: http://mfc-capacity-service:8303
       mfc-location-service: http://mfc-location-service:8304
       mfc-quality-service: http://mfc-quality-service:8305

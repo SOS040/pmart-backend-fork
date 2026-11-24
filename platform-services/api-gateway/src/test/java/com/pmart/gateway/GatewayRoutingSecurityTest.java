@@ -85,9 +85,9 @@ class GatewayRoutingSecurityTest {
   void everyScaffoldedServiceHasAnUpstreamAndAtLeastOneRoute() {
     List<String> routeIds = routeLocator.getRoutes().map(Route::getId).collectList().block();
     assertThat(properties.upstream())
-        .hasSize(40); // + ai-assistant-service(ADR-0036), customer-assistant-service(ADR-0051),
+        .hasSize(41); // + ai-assistant-service(ADR-0036), customer-assistant-service(ADR-0051),
     // rider-auth-service(ADR-0054 E), employee-auth-service·keycloak(/iam)·hr-service(ADR-0056),
-    // review-service(ADR-0063), promotion-service(ADR-0082)
+    // review-service(ADR-0063), promotion-service(ADR-0082), cdc-outbound-service(2026-11-25 R-16)
     for (String service : properties.upstream().keySet()) {
       if (INTERNAL_ONLY.contains(service)) {
         continue;
