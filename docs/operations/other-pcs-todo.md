@@ -14,6 +14,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 > **2026-11-15 모든 PC — 로그인 코드는 PC 1 만**(`pc-split.md` §1-3): auth-service·employee-auth-service·common-security·게이트웨이 인증·Keycloak, 클라이언트 `web/core` 로그인·세션, 앱의 `features/auth`·`features/session`, `pmart_core` 토큰은 고치지 않는다 — 필요하면 요청. 이 경로를 바꾼 PR 은 PC 1 이 돌려보낸다. **예외: 라이더 로그인(rider-auth-service·rider_app 로그인)은 PC 5 그대로**.
 
 ## PC 3 — mfc 영역 (GitHub YOO196)
+- [ ] **MI-4 센터 발주·승인·입고 예정 + 발주 수량 추천**(2026-11-24 PC 1 — MFC 시뮬레이터 R-48, 사용자 "B", 요청서 `mfc-inbound-service.md` MI-4): 여러 줄 발주, 센터 관리자 승인 → EXPECTED, 추천 조회(근거·사유 포함, R·L·SS 값 없으면 추천 안 함)
 - [x] **MQ-3 회수품 검수 담당 어긋남 + 문서 정리**(2026-11-20 PC 1, 요청서 `mfc-quality-service.md` MQ-3): capacity 는 품질검사 작업자에게 회수품 검수를 주는데 quality 는 센터 관리자만 받음 — 하나로 맞추기. 그리고 `mfc-fulfillment-service/CLAUDE.md`(인계 번호 6자리 → 4자리), `mfc-inventory-service/CLAUDE.md`(깨진 줄 UTF-8) 직접 고치기 — **끝**(2026-11-20 main d94fdeff: quality 0.11.0 검수자 MFC_WORKER 도, fulfillment 문서 4자리)
 - [x] **F-13 상품(SKU)별 피킹·결품 줄**(2026-11-20 PC 2 — 웹 BR-73, 요청서 `mfc-fulfillment-service.md` F-13): F-10 picking-lines 를 SKU 로 나눔(sort shortLines·shortRate, limit 10~50), 비율 정렬 하한 값은 PC 3·사용자가 정해 적기. 받는 쪽 bff BF-3 — **구현**(PC 3 2026-11-20, 브랜치 `mfc/shortage-by-sku` fulfillment 0.32.0, 하한 기본 20·응답에 실음)
 - [x] **MQ-2 품질 사고 caseId 채우기**(2026-11-20 PC 2 — CS-MFC-Q 회신, 요청서 `mfc-quality-service.md` MQ-2): case 0.31.0 배포됨 — `CaseOpened`(type MFC_QUALITY_IMPACT, refs incidentId) 구독해 `QualityIncident.caseId`(첫 것) — **구현**(PC 3 2026-11-20, 브랜치 `mfc/case-link`, 첫 caseId 만·설정 바인딩 PC 1)

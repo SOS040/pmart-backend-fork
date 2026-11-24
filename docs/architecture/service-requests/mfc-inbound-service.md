@@ -39,3 +39,16 @@
 - **하지 않는 것**: 정식 입고(`/inbound-promises`)·CDC·SCM 흉내. 정식 입고가 생기면 이 시험 입구는 없앤다.
 - 회신: 시뮬레이터 handoff `docs/handoff/simulator/mfc/` 에(PC 3 이 써도 된다).
 - **회신(PC 3, 2026-11-19 — 브랜치 `mfc/return-arrivals`, mfc-inbound 0.14.0)**: `POST /dev-initial-stock-loads`(설정 `pmart.inbound.dev-arrivals.enabled` 켠 곳만, 그 밖 404 — **PC 1: LAN `mfc-inbound-service-lan.yml` 에 켬, 라우트 `/api/v1/dev-initial-stock-loads`**). 그 센터 운영자, 줄 1~40·SKU 당 1~500, 모르는 SKU 400 UNKNOWN_SKU. EXPECTED 하나(approvalId `DEV-…`) → 현장 수령은 가상 작업자 토큰으로 됨(그래서 `receive: true` 없음). 선택 2(auto)는 안 함. 회신 `docs/handoff/simulator/mfc/2026-11-19-simulator-reply-r23-dev-stock.md`.
+
+## MI-4. 센터 발주(여러 줄) → 센터 관리자 승인 → 입고 예정, 발주 수량 추천 조회 (2026-11-24, 보낸 영역 platform — PC 1, 받는 쪽 mfc PC 3)
+- **계기**: MFC 시뮬레이터 R-48(pmart-mfc-simulation `docs/backend-requests.md`) — 사용자 "입고할 때 사용자 지정하여 입고 발주를 넣을 수 있는 기능, 동시에 mfc 추천 시스템의 값을 불러와 자동으로 채우는 기능, 입고 전에 입고 수량을 볼 수 있는 기능이 필요해."
+- **사용자 결정(2026-11-24, PC 1 이 올린 안 중 "B")**: SCM(replenishment·demand-planning) 없이 **MFC 안에서 작게 시작**한다. `forecast-based-supply-request.md` 의 보류는 이 범위만큼 푼다. Q-15 의 승인 주체는 지금 **그 센터 관리자(MFC_SUPERVISOR)** 로 한다. 최종 목표는 그대로다 — SCM 이 생기면 추천·승인을 replenishment 로 옮긴다.
+- **필요한 것**
+  1. **여러 줄 발주**: 센터 관리자가 SKU·수량 여러 줄을 한 번에 낸다(지금 공급 요청 WK-14 는 한 줄). 지금 `/supply-requests` 를 넓히든 새 자원을 만들든 PC 3 가 정한다.
+  2. **센터 관리자 승인 → 입고 예정**: 승인되면 줄마다 입고 예정(EXPECTED — 지금 `GET /initial-stock-loads?state=EXPECTED` 와 같이 수령 전 수량 조회)이 생기고, 수령은 지금 입고 흐름 그대로. 부분 승인(줄별 수량 줄이기)·거절 사유. 승인은 approval-service 를 거칠지 센터 안에서 끝낼지 PC 3 가 정해 적는다.
+  3. **발주 수량 추천 조회**(직원 API — 시뮬레이터·MFC 백오피스가 "추천값으로 채우기"에 쓴다): 입력 센터·(선택) 온도대·SKU 목록 → SKU 별 추천 수량 + 근거(예측 일 판매량, 지금 판매 가능 수량, 입고 예정, 목표 재고, 계산 기준 시각, 추천 없음 사유). 산식은 `forecast-based-supply-request.md` 의 S = d × (R + L) + SS, Q = max(0, S − IP)(데모 `demos/mfc-demand-replenishment` #411 의 계산을 서비스로).
+     - 예측 d 는 이번에는 센터 안의 단순 이동평균(판매 = 인계 실적)으로 둔다 — **임시**이고, demand-planning 이 생기면 그 예측을 읽는다(서비스 경계 메모: 보류 문서 "MFC 안에서 예측을 계산하면 서비스 경계를 어긴다" — 사용자가 이 범위에서 받아들임).
+     - R·L·SS·박스 입수·MOQ 값은 원문에 "승인 전" 이다 — 값이 없으면 추천하지 않고 사유를 준다(0·무제한으로 채우지 않는다). 시작 값은 PC 3 가 데모 값으로 제안하고 사용자 확인을 받는다.
+     - 데모의 센터 ID 는 옛 `MFC-SEED-01` — 지금 1호점은 `MFC-BJG-01`(R-46).
+- **받는 쪽**: MFC 시뮬레이터(계약이 생기면 추천 채우기·발주를 바꿈), MFC 백오피스(PC 3).
+- **상태**: 요청.
