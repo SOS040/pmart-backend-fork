@@ -179,3 +179,4 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 ## R-17. 문의 목록 센터 거르기 (2026-11-24, 보낸 영역 backoffice — PC 2 웹, pmart-clients `docs/handoff/backoffice/2026-11-24-backend-inquiry-center-filter.md`)
 - **사용자 결정(2026-11-24)**: "b 로 하고 라이더는 운행 센터로 요청 보내" — 주문 없는 문의는 센터를 골라도 늘 함께(b), 라이더 문의는 운행 센터. 11-23 "주문에 붙은 것만" 때 문의는 빠졌었다.
 - **구현(2026-11-24 PC 2, case-service 0.40.0·V25 — 사용자 "어 진행해")**: `GET /inquiries?centerId=`(직원만, 보기 거르기) — 그 센터 + **센터 없는 문의(늘 함께)**, 목록 줄 `centerId`(직원에게만). 고객 문의 = 주문 이행 센터(받을 때 order `GET /orders/{id}` 의 mfcId 저장, 그 전 문의는 `InquiryCenterBackfill` 이 기동 때 order `/internal/orders/{id}` 로 한 번), 라이더 문의 = **접수 때 운행 센터**(rider `GET /riders/me` operating.mfcId — 라이더 본인 토큰, 나중에 바뀌어도 그대로, 못 읽으면 없음). 지난 라이더 문의는 채울 길이 없어 센터 없음. 수 세기 경로는 문의에 없음.
+- **상태: 구현·LAN 배포**(2026-11-24 PC 1 — #423 squash f43a1505, pc4 case-service Flyway v25. 기동 채우기 "주문 3건 확인", 게이트웨이로 다른 센터를 고르면 BJG-01 문의가 빠지고 센터 없는 문의만 남음 확인).
