@@ -4,7 +4,7 @@
 받는 앱: customer-app
 원 문서: `pmart-clients docs/handoff/customer-app/2026-11-24-backend-claim-line-product-name.md`(R1·Q1)
 작성: pmart-backend, 2026-11-24 — 사용자 "BR-92 해줘. 배포까지"
-상태: 구현·시험 끝, LAN 배포는 아래 §3
+상태: **LAN 배포 2026-11-24**(이미지 7a322fcf, PC 2 order-service·claim-service — Started·ERROR 0·health 200, claim V8 적용). 새 칸은 배포 뒤 접수한 클레임부터 채워진다
 
 ## 1. R1 — claim 0.14.0 `ClaimLine` 상품 사본
 - 새 칸(모두 nullable): `productName`·`optionLabel`·`imageUrl`. `GET /claims/{claimId}`·`GET /claims` 의 `lines[]` 에 들어 있다(같은 `ClaimLine`).
@@ -23,4 +23,4 @@
 - order 0.21.0: 내부 `GET /internal/orders/{orderId}` `lines[]` 에 `optionLabel`, 선택 `includeImages=true` 일 때만 `imageUrl`(product-content 조회를 한 번 더 하므로 기본은 끈다 — claim 접수만 켠다). 고객 API 는 바뀌지 않음.
 - claim 0.14.0: `ClaimLine` 세 칸, `claim_line` 열 세 개(V8).
 - 시험: `:services:claim-service:check`·`:services:order-service:check`.
-- 배포: order-service·claim-service(PC 2).
+- 배포: order-service·claim-service(PC 2), 이미지 7a322fcf. 실제 LAN 클레임으로 새 칸을 보는 것은 아직(배포 뒤 새로 접수해야 채워짐).
