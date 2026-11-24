@@ -126,4 +126,6 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 항목 = 가용 조회와 같은 모양 + **`lots[].locations[]`**(locationCode·qualityState·onHand·reserved) — 칸별로 무슨 SKU·LOT 가 몇 개, 얼마나 예약됐는지.
 - 취급 OFF·안전량 미설정이어도 거절하지 않는다(`handlingActive`, `safety.state` NOT_SET 이면 `available` null). 매번 지금 장부(보관하는 스냅샷 없음).
 - 주기 조회 권장: 작업에 나온 SKU 만 `sku=` 로, 전체는 드물게(시작·재동기화 때) — MFC SIM-5 와 같은 원칙.
+### B-1 회신 받음 — 위치 목록 dd3d185 (2026-11-25)
+32,436칸(선반 12,480 = 냉동 2,400·냉장 3,360·상온 6,720) 모두 cdc-location 규칙 통과(중복 0). 백엔드 사본·`ChilgokLayoutIT`·시드 안내를 바꿨다.
 
