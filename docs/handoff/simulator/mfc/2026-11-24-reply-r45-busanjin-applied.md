@@ -1,7 +1,7 @@
 # 회신 — 1호점 부산진구 MFC-SEED-01 다시 설계 반영 (2026-11-24, R-45)
 
 보낸 영역: platform (PC 1 — PC 3 가 꺼져 있어 사용자 "너가 맡아"). 요청: `2026-11-24-request-busanjin-redesign.md`, 시뮬레이터 R-45 f2d145c(사용자 "확정").
-상태: **LAN 반영 끝** — 시뮬레이터 대조 대기.
+상태: **LAN 반영 끝·시뮬레이터 대조 끝(어긋남 0)** — 2026-11-24 mfc 시뮬4: 새 파일 9,185칸 빠짐 0·xM·zM 차이 0, 파일 밖 CLOSED 아닌 칸은 RTN-A-01 하나, 재고 1,334줄 9,671개·CLOSED 칸 재고 0.
 
 ## 1. 사본·도구
 - `docs/simulator/mfc/layout-busanjin-r45/`: `location-positions.json` 9,185(SHELF 8,696·RESERVE_RACK 420·SUPPORT 59·BULK_PALLET 10), `reserve-rack-cells.json` 420, `bulk-pallet-cells.json` 10.
@@ -25,5 +25,5 @@
 - 시뮬레이터는 닫기 도중 사용자가 다시 켰다. 끝난 뒤 읽었을 때 없어진 칸에 재고는 없었다.
 
 ## 4. 남은 것
-- 시뮬레이터: LAN `GET /locations`(MFC-SEED-01)와 `busanjin/location-positions.json` 대조.
+- (끝) 시뮬레이터 대조 — 어긋남 0.
 - 2~5호점은 이미 만든 센터라 바뀌지 않는다. 1호점 칸을 본뜨는 스크립트(`mfc_clone_center.py` 등)는 이제 새 1호점을 읽는다 — 원본 고정본은 `deploy/lan/seed/seed-template-2026-11-24.json`(#410, 다시 설계 전).
