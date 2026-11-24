@@ -163,3 +163,14 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **사용자 결정(2026-11-24)**: "직원마다 평점을 볼 수 있게 하고 고객 개인정보는 가리는 식으로, 관리자가 개인의 성과 측정 및 관리 목적"(전체 평점은 그대로). 2026-11-17 "상담원 평가에 쓰지 않음·상담원별로 나누지 않음"을 바꿈 — 보는 사람은 OPERATOR_ADMIN 만 그대로. 업무 원문 Commerce §14.2 "만족도 = 상담 평가(기사 평가·제재 아님)"와 맞음.
 - **정한 것(2026-11-24 사용자 "추천안대로 진행")**: ① 몫 = 고객이 평가하기 직전 마지막 AGENT 답변자 한 명(평가 없는 문의는 지금 마지막 AGENT 답변자) ② 대상 = 전체 요약과 같음(상담원 접수·라이더 문의 제외) ③ 답변자는 `cs_inquiry_reply.author_id` 에 처음부터 있어 지난 답변도 그대로 셈 ④ 평가 목록에 고객 정보 없음, 의견 속 전화·메일 모양은 서버가 가림.
 - **구현**(2026-11-24 PC 2, case-service 0.38.0): 상세 `replies[].authorId`(직원 토큰에만 — 라이더는 자기 메시지만, 고객 null), `GET /inquiries/satisfaction-summary/by-agent`(직원별 answeredCount·ratedCount·scoreSum·averageScore·byScore — 합 = 전체 요약), `GET /inquiries/satisfaction-ratings?agentId=&answeredFrom&answeredTo&size&cursor`(그 직원 몫 평가 목록 — inquiryId·inquiryNumber·score·가린 comment·ratedAt·answeredAt). 마이그레이션 없음. 게이트웨이 허용 목록 2줄.
+
+## R-16. 고객 오배송 문의 → 채팅에서 다시 보내기·환불 선택 → MisdeliveryConfirmed (2026-11-24, 보낸 영역 platform — PC 1, 받는 쪽 backoffice PC 2)
+- **근거**: [ADR-0086](../../adr/0086-customer-misdelivery-inquiry-choice-and-rider-deduction.md) 결정 1~3(사용자 2026-11-24 — 주문 28767701 계기).
+- **필요한 것**:
+  1. `POST /inquiries` 고객 `deliveryIssue: NOT_RECEIVED` + `deliveryId` 가 **전달 완료된 고객 배송(FORWARD·RESHIPMENT)** 이면 오배송 사건(MISDELIVERY, 고객 선택 대기)을 자동으로 연다. 전달 전이면 지금처럼 상담원 문의. 배송 상태 확인은 execution 조회(이미 쓰는 길) — 본인 주문 확인은 지금처럼 order.
+  2. **고객 문의 채팅**: 지금 라이더 대화(0.21.0 `/inquiries/{id}/messages`)를 고객 문의에도. case 가 선택 메시지(다시 보내기/취소·환불, 기한 시각)를 넣는다.
+  3. 선택 API(고객 본인, 예 `POST /inquiries/{id}/misdelivery-choices {resolution: RESHIP|REFUND}`, 멱등) — 한 번만. 고르면 `MisdeliveryConfirmed`(platform.case.v1) fault **RIDER**, resolution, `source: CUSTOMER_INQUIRY`, `inquiryId`, `orderId`, `autoResolved` 를 싣는다(기존 칸 caseId·deliveryId·riderId·confirmedAt 그대로).
+  4. **5시간** 안에 안 고르면 자동 REFUND(`autoResolved: true`) + 채팅에 알림. 상담원이 고객 대신 고르기(CS_AGENT·OPERATOR_ADMIN, 이력).
+  5. 통합 백오피스 오배송 문의 처리 화면: 문의·채팅·선택 상태·남은 시간·회수/재발송/환불 진행·대신 고르기.
+- **받는 쪽(바꿀 것 없음 — PC 1·PC 5)**: orchestration 재발송 사가(RESHIP/REFUND)·dispatch 회수 배차가 지금 `MisdeliveryConfirmed` 를 그대로 받는다. 새 칸은 선택(없어도 동작).
+- **사용자 결정**: 끝(ADR-0086). 상태: 요청.
