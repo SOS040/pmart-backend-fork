@@ -67,7 +67,7 @@
 
 ## 2.4 고객 오배송 문의로 시작 (2026-11-24, ADR-0086 — 설계, 구현 전)
 - 고객 `POST /inquiries` NOT_RECEIVED + 전달 완료 배송 → case 가 오배송 사건 자동 → 문의 채팅에서 고객이 RESHIP/REFUND 선택(5시간 안 고르면 자동 REFUND) → `MisdeliveryConfirmed`(fault RIDER, source CUSTOMER_INQUIRY) → 이 문서 §2(재발송 사가)·DD-2(회수) 그대로.
-- 회수 배송 24시간 미배정이면 포기(dispatch `RECOVERY_ABANDONED`) → execution 라이더 차감 예정(결제액 − 배달팁) → 이의 5일 → 확정·다음 정산 이월. 요청 case R-16·execution DE-9.
+- 회수 배송 24시간 미배정이면 포기(dispatch `RECOVERY_ABANDONED`). 회수가 상품을 돌려놓지 못하고 끝나면(자동 포기·직원 취소 등 누가 접었든) execution 라이더 차감 예정(결제액 − 배달팁, 오배송 배송당 한 번) → 이의 5일 → 확정·다음 정산 이월. 요청 case R-16·execution DE-9.
 
 ## 3. 남은 것
 - **고침(2026-11-18)**: 모자란 품목이 없으면 REQUEST_WORK 뒤 완료해야 하는데, 다음 단계를 고르는 보조 함수가 "없음"을 같은 단계로 바꿔 **작업 지시를 같은 트랜잭션에서 끝없이 다시 불렀다**(시험은 늘 모자란 품목이 있어 못 봤다). 사고 재발송 시험에서 찾음.

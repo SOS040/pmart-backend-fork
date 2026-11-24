@@ -81,7 +81,7 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 ## DE-9. 오배송 회수 포기 → 라이더 정산 차감(이의 5일·이월) (2026-11-24, 보낸 영역 platform — PC 1, 받는 쪽 delivery PC 5)
 - **근거**: [ADR-0086](../../adr/0086-customer-misdelivery-inquiry-choice-and-rider-deduction.md) 결정 5~7.
 - **필요한 것**:
-  1. `DeliveryCancelledBeforePickup` reason `RECOVERY_ABANDONED`(dispatch, PR #416) + 오배송 귀책 RIDER(`MisdeliveryConfirmed` fault) → 그 오배송 배송 라이더에게 **차감 예정**. 금액 = order `GET /internal/orders/{id}` 의 `approvedAmount − deliveryTip`(봉투값 포함, 쿠폰 할인 뒤). 하루 안에 회수 성공이면 만들지 않는다.
+  1. **회수가 상품을 돌려놓지 못하고 끝나면 누가 접었든**(24시간 자동 포기 `RECOVERY_ABANDONED`·직원 취소 등) 차감, **오배송 배송당 한 번**(사용자 2026-11-24 "그 제안대로" — PC 5 제안) + 오배송 귀책 RIDER(`MisdeliveryConfirmed` fault) → 그 오배송 배송 라이더에게 **차감 예정**. 금액 = order `GET /internal/orders/{id}` 의 `approvedAmount − deliveryTip`(봉투값 포함, 쿠폰 할인 뒤). 회수에 성공하면(반납) 만들지 않는다.
   2. 라이더 앱 알림 + **이의 5일**(라이더 API — 사유·사진). 지원센터(RIDER_OPS) 받아들임 = 차감 취소, 거절 = 확정. 이의 없이 5일 → 확정.
   3. 확정 차감은 다음 정산에서 빼고, 모자라면 **다음 정산으로 넘김**(상한 없음). 남은 차감액을 라이더 앱·라이더 백오피스에 서버 값으로.
   4. 사건(이름은 PC 5 가 정함): 차감 예정·확정·취소 — rider·라이더 백오피스가 보이게.
