@@ -124,6 +124,13 @@ LAN 시험에 쓰는 직원 계정과 역할·센터를 한곳에 모은 목록�
 | 품질검사 | `mfcw-mk-qc-01` ~ `mfcw-mk-qc-10` | 10 | `INSPECT` |
 | 입고 | `mfcw-mk-rcv-01` ~ `mfcw-mk-rcv-10` | 10 | `RECEIVE·PUTAWAY` |
 
+## 2-5. 칠곡 DC 시험 계정 29개 — 센터 `CDC01`(2026-11-25 cdc R-16)
+- 만든 것: `deploy/lan/seed/cdc_test_workers.py`(다시 돌려도 안전, `--check` 상태만) — 인사 등록(소속 센터 CDC01) → 계정 발급 → employee-auth 역할·센터 맞춤(CDC 역할은 자동 승인 규칙이 없어 claude-dev 관리자로).
+- 센터 관리자: `claude-cdc-sup` — `CDC_SUPERVISOR`·`CDC01`, 비밀번호 파일 `keycloak-claude-cdc-sup-password`.
+- 작업자 28명 — `CDC_WORKER`·`CDC01`, **공용** 비밀번호 파일 `keycloak-cdc-test-workers-password`, 홀수 정규직·짝수 알바(계약 끝 2026-12-31):
+  `cdcw-fc-01~10`(FC 피킹) · `cdcw-dl-01~05`(분배·라인) · `cdcw-qc-01~05`(검품) · `cdcw-ld-01~05`(상차) · `cdcw-fk-01~03`(지게차). 이름 "CDC시험 칠곡 <분야> NN".
+- 확인(2026-11-25): `cdcw-fc-01`·`cdcw-fk-03` 토큰 roles [CDC_WORKER]·centers [CDC01], `claude-cdc-sup` [CDC_SUPERVISOR]·[CDC01]. CDC 서비스는 지금 역할을 보지 않고 직원 토큰·centers 만 본다.
+
 ## 3. 고객·라이더 시험 계정
 
 - **목포 MFC 시험 고객** `CU-d58124e3-f13a-4d5f-a7ed-7c851b32160e`(2026-11-23 사용자 시험용 Google 로그인, R-39): 쇼핑 주소 `ADR-9e541718-…` "전남 목포시 평화로83번길 16 101동 101호 (시험)" → 쇼핑 센터 `MFC-MOKPO-01`. 개발용 고객 토큰 허용 목록(pmart-config d88fc70 `auth-service-lan.yml`) — `POST :8501/api/v1/internal/dev-customer-tokens`(헤더 Idempotency-Key·X-Source-System·X-Device-Id). 목포 취급 SKU 503(1호점과 같게).

@@ -122,7 +122,11 @@ def set_roles(op, roles, centers):
     """employee-auth 직원 역할·센터를 맞춘다(claude-dev 관리자 — staff_auth.staff_token 과 같은 방식). 바꿨으면 True."""
     admin, _ = staff_auth._exchange("claude-dev", staff_auth._password("claude-dev"))
     auth = {"Authorization": "Bearer " + admin}
-    st, cur = staff_auth._json("GET", f"{GW}/employee-auth/employees/{op}", headers=auth)
+    for _ in range(30):  # 발급 DONE 직후 employee-auth 에 아직 없을 수 있다(404) — 잠깐 기다린다
+        st, cur = staff_auth._json("GET", f"{GW}/employee-auth/employees/{op}", headers=auth)
+        if st != 404:
+            break
+        time.sleep(2)
     if st != 200:
         raise SystemExit(f"{op} 직원 조회 실패: HTTP {st}")
     if sorted(cur["roles"]) == sorted(roles) and sorted(cur["centers"]) == sorted(centers) and cur["state"] == "ACTIVE":
