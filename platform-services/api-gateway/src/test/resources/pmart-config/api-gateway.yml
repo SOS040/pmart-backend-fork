@@ -175,7 +175,7 @@ spring:
             - id: cdc-outbound-service
               uri: ${pmart.gateway.upstream.cdc-outbound-service}
               predicates:
-                - Path=/api/v1/waves/**,/api/v1/cdcs/*/tasks/**,/api/v1/cdcs/*/workers/*/next-tasks,/api/v1/sorting-results,/api/v1/inspection-results,/api/v1/loading-results,/api/v1/work-results/** # CDC 출고(2026-11-25 R-16, cdc 시뮬레이터 실서버 모드)
+                - Path=/api/v1/waves/**,/api/v1/cdcs/*/tasks/**,/api/v1/cdcs/*/workers/*/next-tasks,/api/v1/sorting-results,/api/v1/inspection-results,/api/v1/loading-results,/api/v1/work-results/**,/api/v1/cdcs/*/transfers/*/pre-departure-cancellations,/api/v1/cdcs/*/transfers/*/pre-departure-cancellations/** # CDC 출고(2026-11-25 R-16, cdc 시뮬레이터 실서버 모드) · 미출발 취소(0.7.0 #466)
               order: -88
             - id: cdc-location-service
               uri: ${pmart.gateway.upstream.cdc-location-service}
@@ -385,6 +385,8 @@ pmart:
         path: /api/v1/storefront/sections/*/items # storefront-service
       - method: GET
         path: /api/v1/storefront/products/*/related # storefront-service 함께 산 상품(0.19.0 BR-100 R5)
+      - method: GET
+        path: /api/v1/storefront/care-cards # storefront-service 상품페이지 관리 카드(0.20.0 BR-102)
       - method: GET
         path: /api/v1/storefront/banners # storefront-service
       - method: GET

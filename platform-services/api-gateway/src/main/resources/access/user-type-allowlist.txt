@@ -76,6 +76,7 @@ GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 GET /api/v1/cdcs/{cdcId}/tasks OPERATOR
 GET /api/v1/cdcs/{cdcId}/tasks/{taskId} OPERATOR
+GET /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations/{requestId} OPERATOR
 GET /api/v1/centers OPERATOR
 GET /api/v1/centers/{centerId} OPERATOR
 GET /api/v1/centers/{centerId}/calendar OPERATOR
@@ -366,6 +367,7 @@ GET /api/v1/stop-requests OPERATOR
 GET /api/v1/storefront/banner-image-specs OPERATOR
 GET /api/v1/storefront/banner-images/{imageId} PUBLIC
 GET /api/v1/storefront/banners PUBLIC
+GET /api/v1/storefront/care-cards PUBLIC
 GET /api/v1/storefront/custom-tabs/{tabKey} PUBLIC
 GET /api/v1/storefront/home PUBLIC
 GET /api/v1/storefront/layout-drafts OPERATOR
@@ -388,7 +390,6 @@ GET /api/v1/tasks/{taskId}/executions OPERATOR
 GET /api/v1/tasks/{taskId}/executions/{executionId} OPERATOR
 GET /api/v1/tasks/{taskId}/starts/{requestId} OPERATOR
 GET /api/v1/transfers/{trfId} OPERATOR
-GET /api/v1/transfers/{trfId}/pre-departure-cancellations/{requestId} OPERATOR
 GET /api/v1/transfers/{trfId}/requests/{requestId} OPERATOR
 GET /api/v1/transport-requests/{transportRequestId} OPERATOR
 GET /api/v1/trips/{tripId} OPERATOR
@@ -451,6 +452,7 @@ POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/pick-results OPERATOR
 POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/starts OPERATOR
+POST /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/next-tasks OPERATOR
 POST /api/v1/change-requests OPERATOR
 POST /api/v1/change-requests/{changeRequestId}/submissions OPERATOR
@@ -692,7 +694,6 @@ POST /api/v1/tasks/{taskId}/starts OPERATOR
 POST /api/v1/tasks/{taskId}/unblocks OPERATOR
 POST /api/v1/transfers/{trfId}/cancellations OPERATOR
 POST /api/v1/transfers/{trfId}/changes OPERATOR
-POST /api/v1/transfers/{trfId}/pre-departure-cancellations OPERATOR
 POST /api/v1/transfers/{trfId}/residual-closures OPERATOR
 POST /api/v1/trips/{tripId}/departures OPERATOR
 POST /api/v1/trips/{tripId}/incidents OPERATOR

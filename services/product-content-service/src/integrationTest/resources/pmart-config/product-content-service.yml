@@ -26,6 +26,8 @@ pmart:
   content:
     # "N개 남음" 임계값(정책값, 2026-11-25 사용자 "10개 이하" — BR-100 R7): 0 < 가용 ≤ 이 값이면 옵션 availability LOW·lowStockQty. 없으면 LOW 안 씀
     low-stock-threshold: 10
+    # 1회 최대 낱개 수(같은 상품 모든 옵션 합, 2026-11-25 BR-101 R2) — product-service.yml purchase-limit-units 와 같은 값(바꾸면 둘 다)
+    purchase-limit-units: 10
   security:
     # 계약 security: [] 작업(비회원 둘러보기, 게시본만). 기본 목록을 덮어쓰므로 actuator·error 도 다시 적는다. 세 경로 모두 GET 하나뿐이라 경로 단위 허용이 계약과 일치.
     permit-paths:
