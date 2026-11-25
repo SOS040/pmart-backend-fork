@@ -46,7 +46,7 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web hr-backoffice-web mfc-backoffice-web rider-backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web hr-backoffice-web mfc-backoffice-web rider-backoffice-web cdc-backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
 # RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
 RAG_APPS=" ai-assistant-service customer-assistant-service "
@@ -55,7 +55,7 @@ is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
 # RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
 # 사내 메일(ADR-0056 결정 9)·웹메일도 같은 PC(Keycloak·hr-service)만 이름으로 부른다
 # hr-service 는 게이트웨이가 Eureka 로, mail-provisioner 는 같은 PC 의 hr-service 만 이름으로 부른다(ADR-0056 5-5)
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner hr-backoffice-web mfc-backoffice-web rider-backoffice-web "
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner hr-backoffice-web mfc-backoffice-web rider-backoffice-web cdc-backoffice-web "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -94,7 +94,7 @@ if [ -n "${WHERE[api-gateway]:-}" ]; then
 fi
 # 위 보조 구성요소가 생긴 뒤 placement 에 더한 구성요소: 그 PC 줄의 맨 뒤(보조 구성요소 뒤)로 옮겨 기존 고정 IP 를 그대로 둔다
 # (2026-11-17 사용자 "보조 컨테이너 안 건드리고 싶은데" — 줄 중간에 끼면 뒤 보조 7개가 다시 만들어진다). 새로 붙일 것도 여기에 이어 적는다
-LATE=" rider-backoffice-web "
+LATE=" rider-backoffice-web cdc-backoffice-web "
 for pc in "${PCS[@]}"; do
   for c in $LATE; do
     if [[ " ${COMPS[$pc]} " == *" $c "* ]]; then
@@ -411,6 +411,27 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     volumes:
       - ./rider-backoffice:/usr/share/nginx/html:ro
+      - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(LAN 사설 CA)
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 443 || exit 1"] # HTTPS 대기만(mfc-backoffice-web 과 같은 이유)
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+EOF
+        ;;
+      cdc-backoffice-web)
+        # DC 백오피스(별도 앱, 2026-11-25 사용자 "Dc 백오피스 만들어줘 … 통합 백오피스에서 sso로 클릭해서 이동" — pmart-clients web/cdc-backoffice(제안) `npm run build:lan`) — 같은 nginx 설정, 8447.
+        # 게이트웨이 CORS 출처 https://192.168.0.40:8447·https://d603-16:8447(api-gateway-lan.yml). 파일은 render 가 cdc-backoffice/ 에 둔다. HTTP 8085 → 8447. 계획 docs/cdc/cdc-backoffice-plan.md
+        cat <<EOF
+  cdc-backoffice-web:
+    <<: *common
+    image: nginx:1.27-alpine
+    ports: ["8085:80", "8447:443"] # HTTPS 8447(ADR-0057). 8085 는 https://…:8447 로 넘기기만
+    networks: { default: { ipv4_address: $ip_addr } }
+    volumes:
+      - ./cdc-backoffice:/usr/share/nginx/html:ro
       - ./backoffice-nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(LAN 사설 CA)
     healthcheck:
@@ -1219,7 +1240,7 @@ EOF
   fi
 
   # 게이트웨이·백오피스 HTTPS(ADR-0057): 이 PC 서버 인증서·키 → build/<pc>/tls(키는 build/ 에만, git 제외)
-  if [[ "$comps" == *" api-gateway "* || "$comps" == *" backoffice-web "* || "$comps" == *" hr-backoffice-web "* || "$comps" == *" mfc-backoffice-web "* || "$comps" == *" rider-backoffice-web "* ]]; then
+  if [[ "$comps" == *" api-gateway "* || "$comps" == *" backoffice-web "* || "$comps" == *" hr-backoffice-web "* || "$comps" == *" mfc-backoffice-web "* || "$comps" == *" rider-backoffice-web "* || "$comps" == *" cdc-backoffice-web "* ]]; then
     [ -f "$SECRETS/tls/$pc.crt" ] || { echo "$pc: LAN HTTPS 인증서 없음 — deploy/lan/lan.sh tls-issue $pc 먼저" >&2; exit 1; }
     mkdir -p "$dir/tls"
     cp "$SECRETS/tls/$pc.crt" "$dir/tls/cert.pem"; cp "$SECRETS/tls/$pc.key" "$dir/tls/key.pem"
@@ -1288,6 +1309,16 @@ EOF
       cp -r "$LAN/rider-backoffice-dist/." "$dir/rider-backoffice/"
     else
       cp "$LAN/backoffice/rider-placeholder.html" "$dir/rider-backoffice/index.html"
+    fi
+  fi
+  # DC 백오피스 정적 파일(2026-11-25): lan.sh publish-cdc-backoffice 가 둔 빌드(cdc-backoffice-dist, git 제외). 없으면 안내 페이지
+  if [[ "$comps" == *" cdc-backoffice-web "* ]]; then
+    cp "$LAN/backoffice/nginx.conf" "$dir/backoffice-nginx.conf"
+    rm -rf "$dir/cdc-backoffice"; mkdir -p "$dir/cdc-backoffice"
+    if [ -f "$LAN/cdc-backoffice-dist/index.html" ]; then
+      cp -r "$LAN/cdc-backoffice-dist/." "$dir/cdc-backoffice/"
+    else
+      cp "$LAN/backoffice/cdc-placeholder.html" "$dir/cdc-backoffice/index.html"
     fi
   fi
 

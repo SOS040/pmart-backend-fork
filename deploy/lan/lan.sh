@@ -10,6 +10,7 @@
 #   deploy/lan/lan.sh publish-hr-backoffice <dist> 인사팀 백오피스 빌드(web/hr-backoffice build:lan 결과)를 올리고 hr-backoffice-web 만 다시 배포(:8081)
 #   deploy/lan/lan.sh publish-mfc-backoffice <dist> MFC 백오피스 빌드(build:lan 결과)를 올리고 mfc-backoffice-web 만 다시 배포(https :8445, 2026-11-15)
 #   deploy/lan/lan.sh publish-rider-backoffice <dist> 라이더 백오피스 빌드(build:lan 결과)를 올리고 rider-backoffice-web 만 다시 배포(https :8446, 2026-11-17)
+#   deploy/lan/lan.sh publish-cdc-backoffice <dist> DC 백오피스 빌드(build:lan 결과)를 올리고 cdc-backoffice-web 만 다시 배포(https :8447, 2026-11-25)
 #   deploy/lan/lan.sh web-sync [--apply]            pmart-clients main 과 LAN 웹 앱 4개(version.txt) 비교 — 뒤처지면 종료 3, --apply 면 뒤처진 앱만 빌드·배포(2026-11-18)
 #   deploy/lan/lan.sh rag-pull <pc> <모델...>       그 PC 의 ollama 에 모델 받기(ADR-0051, 예: qwen3-embedding:0.6b qwen3:4b)
 #   deploy/lan/lan.sh rag-warm <pc> [모델...]       ollama 에 대화 모델을 미리 올림(첫 적재 약 30초 > 호출 시간 제한 25초). ollama 재시작 뒤 한 번.
@@ -250,6 +251,14 @@ case "$cmd" in
     rm -rf "$LAN/rider-backoffice-dist" && mkdir -p "$LAN/rider-backoffice-dist" && cp -r "$src/." "$LAN/rider-backoffice-dist/"
     echo "라이더 백오피스 빌드 $(find "$LAN/rider-backoffice-dist" -type f | wc -l)개 파일 → $pc"
     "$0" deploy "$pc" rider-backoffice-web ;;
+  publish-cdc-backoffice)
+    src="${1:?dist 경로(index.html 이 있는 폴더)}"
+    [ -f "$src/index.html" ] || { echo "index.html 없음: $src" >&2; exit 1; }
+    pc="$(awk '/^[^#[:space:]]/ {cur = $1} {for (i = 1; i <= NF; i++) if ($i == "cdc-backoffice-web") {print cur; exit}}' "$LAN/placement.conf")"
+    [ -n "$pc" ] || { echo "placement.conf 에 cdc-backoffice-web 없음" >&2; exit 1; }
+    rm -rf "$LAN/cdc-backoffice-dist" && mkdir -p "$LAN/cdc-backoffice-dist" && cp -r "$src/." "$LAN/cdc-backoffice-dist/"
+    echo "DC 백오피스 빌드 $(find "$LAN/cdc-backoffice-dist" -type f | wc -l)개 파일 → $pc"
+    "$0" deploy "$pc" cdc-backoffice-web ;;
   config-push)
     # 설정 저장소 사본(사람이 고친 내용)을 commit·push. 메시지는 인자로(없으면 기본). 값은 출력하지 않고 바뀐 키만 보인다
     config_sync
