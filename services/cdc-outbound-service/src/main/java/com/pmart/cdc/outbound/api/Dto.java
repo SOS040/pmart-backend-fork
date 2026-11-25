@@ -58,6 +58,7 @@ final class Dto {
         t.pickMethod() == null ? null : Task.PickMethodEnum.fromValue(t.pickMethod()));
     out.setRegionCode(t.regionCode());
     out.setAisle(t.aisle());
+    out.setPriority(t.priority());
     out.setKind(Task.KindEnum.fromValue(t.kind()));
     out.setZone(t.zone());
     out.setFloor(t.floor());

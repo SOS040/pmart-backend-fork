@@ -25,3 +25,11 @@
 - **LPN 관리(0.19.0)**: `GET /cdcs/{cdcId}/lpns?trfId=&unitType=&page=&size=` — BOX·PLT·RT, 분류 최신 순, 봉인·검품·상차·출발 칸, BOX 는 contents[sku·lot·qty].
 - 화면 다시 올림: 8447 = clients 2e9631c3(web-sync, 빌드 설정 지문 다른 직원 웹과 같게).
 
+
+## 덧붙임(2026-11-26 오후 — 작업 조작, cdc-outbound 0.20.0)
+사용자 "큰 순서 전부 고치고"의 3번. 자기 센터 관리자만, 모두 `Idempotency-Key`·`X-Source-System` 필수, `X-Expected-Version`(작업 version) 선택. 응답은 바뀐 뒤 `Task`(200).
+- 재배정 `POST /cdcs/{cdcId}/tasks/{taskId}/reassignments {workerId?, reason?}` — 시작 전(CREATED·ACCEPTED)만. 작업자를 주면 ACCEPTED(그 작업자가 다른 작업을 들고 있으면 409 `WORKER_BUSY`), 비우면 대기열(CREATED).
+- 보류 `…/holds {reason?}` — 시작 전만, 상태 **HELD**(새 TaskState 값), 담당 비움. PDA 다음 작업 받기에 안 나옴. 재개 `…/resumptions {reason?}` — HELD → CREATED.
+- 우선순위 `…/priority-changes {priority, reason?}` — -100~100(기본 0), 높을수록 PDA 가 먼저 받음(같으면 기한 순). 끝난 작업은 409. `Task.priority` 새 칸.
+- 이력 `GET …/adjustments` → `items[{adjustmentId, action REASSIGN·HOLD·RESUME·PRIORITY, fromState, toState, fromAssignee, toAssignee, fromPriority, toPriority, reason, actorId, adjustedAt}]` 최신 순.
+- 시작한 작업(IN_PROGRESS 뒤)은 피킹 실적이 섞이므로 409 `INVALID_STATE` — 화면에서 버튼을 숨겨 주세요.

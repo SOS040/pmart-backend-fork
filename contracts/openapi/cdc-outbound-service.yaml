@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.19.0
+  version: 0.20.0
   description: |
+    0.20.0(2026-11-26, DC 백오피스 작업 조작 — 사용자 "큰 순서 전부 고치고", Flyway V13): 자기 센터 운영자가 작업을 손댄다. 시작한 작업(IN_PROGRESS 뒤)은 실적이 섞이므로 재배정·보류 안 함.
+      `POST /cdcs/{cdcId}/tasks/{taskId}/reassignments {workerId?, reason?}`(CREATED·ACCEPTED → 작업자 지정이면 ACCEPTED·그 작업자가 다른 작업을 들고 있으면 409 WORKER_BUSY, 비우면 CREATED),
+      `…/holds`(CREATED·ACCEPTED → **HELD**, 담당 비움 — PDA 다음 작업 받기에서 빠짐, 미출발 취소는 시작 전으로 봄), `…/resumptions`(HELD → CREATED), `…/priority-changes {priority -100~100}`
+      (높을수록 다음 작업 받기에서 먼저 — 같으면 기한·만든 순), `GET …/adjustments`(조작 이력). TaskState 에 HELD, Task 에 priority. 모두 Idempotency-Key·(선택) X-Expected-Version.
     0.19.0(2026-11-26, DC 백오피스 — 사용자 "응 진행해"): `GET /cdcs/{cdcId}/tasks` 의 waveId 를 선택으로(없으면 센터 전체 작업 — 통합 작업관리 "전체 작업 현황"),
       직원 조회 `GET /cdcs/{cdcId}/shortages?state=&page=&size=`(피킹 부족 뒤 재할당 진행·결과 — 결품 관리), `GET /cdcs/{cdcId}/lpns?trfId=&unitType=&page=&size=`(LPN 구성·검품·상차 — LPN 관리). 읽기만.
     0.18.0(2026-11-25, DC 백오피스 M-1·M-4 — 사용자 "서버에 작업 남기는 방식은 PDA로 스캔한 위치로 해", "응 그 다음 기능 추가할 거"): 작업자 마지막 스캔 위치(Flyway V12 worker_location).
@@ -220,6 +224,160 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/Task' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /cdcs/{cdcId}/tasks/{taskId}/reassignments:
+    post:
+      tags: [staff-views]
+      summary: '[운영자] 작업 재배정 (0.20.0)'
+      operationId: reassignTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workerId: { type: [string, 'null'], maxLength: 128, description: '맡길 작업자(비우면 대기열로 — CREATED)' }
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: 바꾼 뒤 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE(시작한 작업 등) / VERSION_CONFLICT / WORKER_BUSY(재배정 — 그 작업자가 다른 작업을 들고 있음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/tasks/{taskId}/holds:
+    post:
+      tags: [staff-views]
+      summary: '[운영자] 작업 보류 (0.20.0 — HELD, 다음 작업 받기에서 빠짐)'
+      operationId: holdTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskReasonRequest' }
+      responses:
+        '200':
+          description: 바꾼 뒤 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE(시작한 작업 등) / VERSION_CONFLICT / WORKER_BUSY(재배정 — 그 작업자가 다른 작업을 들고 있음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/tasks/{taskId}/resumptions:
+    post:
+      tags: [staff-views]
+      summary: '[운영자] 보류 작업 재개 (0.20.0 — HELD → CREATED)'
+      operationId: resumeTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskReasonRequest' }
+      responses:
+        '200':
+          description: 바꾼 뒤 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE(시작한 작업 등) / VERSION_CONFLICT / WORKER_BUSY(재배정 — 그 작업자가 다른 작업을 들고 있음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/tasks/{taskId}/priority-changes:
+    post:
+      tags: [staff-views]
+      summary: '[운영자] 작업 우선순위 바꾸기 (0.20.0)'
+      operationId: changeTaskPriority
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priority]
+              properties:
+                priority: { type: integer, minimum: -100, maximum: 100 }
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: 바꾼 뒤 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE(시작한 작업 등) / VERSION_CONFLICT / WORKER_BUSY(재배정 — 그 작업자가 다른 작업을 들고 있음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/tasks/{taskId}/adjustments:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 작업 조작 이력 (0.20.0)'
+      operationId: listTaskAdjustments
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 최신 순
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TaskAdjustment' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/shortages:
     get:
@@ -1171,6 +1329,25 @@ components:
                   allocatedQty: { type: integer }
                   pickedQty: { type: integer }
                   shortQty: { type: integer }
+    TaskReasonRequest:
+      type: object
+      properties:
+        reason: { type: string, maxLength: 300 }
+    TaskAdjustment:
+      type: object
+      required: [adjustmentId, action, fromState, toState, fromPriority, toPriority, actorId, adjustedAt]
+      properties:
+        adjustmentId: { type: string }
+        action: { type: string, description: 'REASSIGN / HOLD / RESUME / PRIORITY' }
+        fromState: { type: string }
+        toState: { type: string }
+        fromAssignee: { type: [string, 'null'] }
+        toAssignee: { type: [string, 'null'] }
+        fromPriority: { type: integer }
+        toPriority: { type: integer }
+        reason: { type: [string, 'null'] }
+        actorId: { type: string }
+        adjustedAt: { type: string, format: date-time }
     WorkerLocation:
       type: object
       required: [workerId, locationState]
@@ -1233,7 +1410,7 @@ components:
       enum: [DRAFT, PLANNED, RELEASED, IN_PROGRESS, WORK_DONE, CLOSED, CANCELLED]
     TaskState:
       type: string
-      enum: [CREATED, ASSIGNED, ACCEPTED, IN_PROGRESS, PARTIAL, DONE, EXCEPTION, CANCELLED]
+      enum: [CREATED, ASSIGNED, ACCEPTED, HELD, IN_PROGRESS, PARTIAL, DONE, EXCEPTION, CANCELLED]
     TransferIntakeInput:
       type: object
       required: [trfId, trfVersion, cdcId, mfcId, approvalRef, deadlineMeaning, dueAt, lines]
@@ -1334,6 +1511,7 @@ components:
           type: [string, 'null']
           description: (0.10.0) DPS 작업의 선반 통로(위치 코드 넷째 구간). 그 밖은 비움.
         kind: { type: string, enum: [PICK, SORT, INSPECT, LOAD] }
+        priority: { type: integer, description: '(0.20.0) -100~100, 높을수록 다음 작업 받기에서 먼저(기본 0)' }
         zone: { type: string, description: 구역 글자(0.2.0 — 다음 작업 받기 거르기) }
         floor: { type: string, description: 층(0.2.0) }
         dueAt: { type: string, format: date-time, description: TRF 기한(0.2.0 — 배정 순서) }

@@ -137,7 +137,7 @@ public class CancellationStore {
   public int cancelOpenTasks(String trfId) {
     String open =
         "SELECT s.task_id FROM task_line_share s JOIN task t ON t.task_id = s.task_id"
-            + " WHERE s.trf_id = ? AND t.state IN ('CREATED', 'ASSIGNED', 'ACCEPTED')";
+            + " WHERE s.trf_id = ? AND t.state IN ('CREATED', 'ASSIGNED', 'ACCEPTED', 'HELD')";
     java.util.List<String> tasks = jdbc.queryForList(open, String.class, trfId);
     if (tasks.isEmpty()) {
       return 0;

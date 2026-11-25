@@ -174,6 +174,116 @@ public class StaffViewsController implements StaffViewsApi {
     return ResponseEntity.ok(out);
   }
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.pmart.cdc.outbound.application.TaskAdjustments adjustments;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.pmart.cdc.outbound.application.TaskService taskService;
+
+  private ResponseEntity<com.pmart.cdc.outbound.api.generated.model.Task> taskNow(
+      String cdcId, String taskId) {
+    return ResponseEntity.ok(Dto.task(taskService.get(cdcId, taskId)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.Task> reassignTask(
+      String cdcId,
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.outbound.api.generated.model.ReassignTaskRequest body,
+      @Nullable Integer xExpectedVersion) {
+    adjustments.reassign(
+        idempotencyKey,
+        xSourceSystem,
+        cdcId,
+        taskId,
+        xExpectedVersion,
+        body.getWorkerId(),
+        body.getReason());
+    return taskNow(cdcId, taskId);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.Task> holdTask(
+      String cdcId,
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      @Nullable Integer xExpectedVersion,
+      com.pmart.cdc.outbound.api.generated.model.@Nullable TaskReasonRequest body) {
+    adjustments.hold(
+        idempotencyKey,
+        xSourceSystem,
+        cdcId,
+        taskId,
+        xExpectedVersion,
+        body == null ? null : body.getReason());
+    return taskNow(cdcId, taskId);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.Task> resumeTask(
+      String cdcId,
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      @Nullable Integer xExpectedVersion,
+      com.pmart.cdc.outbound.api.generated.model.@Nullable TaskReasonRequest body) {
+    adjustments.resume(
+        idempotencyKey,
+        xSourceSystem,
+        cdcId,
+        taskId,
+        xExpectedVersion,
+        body == null ? null : body.getReason());
+    return taskNow(cdcId, taskId);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.Task> changeTaskPriority(
+      String cdcId,
+      String taskId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.outbound.api.generated.model.ChangeTaskPriorityRequest body,
+      @Nullable Integer xExpectedVersion) {
+    adjustments.priority(
+        idempotencyKey,
+        xSourceSystem,
+        cdcId,
+        taskId,
+        xExpectedVersion,
+        body.getPriority(),
+        body.getReason());
+    return taskNow(cdcId, taskId);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.ListTaskAdjustments200Response>
+      listTaskAdjustments(String cdcId, String taskId) {
+    var out = new com.pmart.cdc.outbound.api.generated.model.ListTaskAdjustments200Response();
+    out.setItems(
+        new ArrayList<>(
+            adjustments.history(cdcId, taskId).stream()
+                .map(
+                    a ->
+                        new com.pmart.cdc.outbound.api.generated.model.TaskAdjustment()
+                            .adjustmentId(a.adjustmentId())
+                            .action(a.action())
+                            .fromState(a.fromState())
+                            .toState(a.toState())
+                            .fromAssignee(a.fromAssignee())
+                            .toAssignee(a.toAssignee())
+                            .fromPriority(a.fromPriority())
+                            .toPriority(a.toPriority())
+                            .reason(a.reason())
+                            .actorId(a.actorId())
+                            .adjustedAt(time(a.at())))
+                .toList()));
+    return ResponseEntity.ok(out);
+  }
+
   @Override
   public ResponseEntity<TransferDetail> getCenterTransfer(String cdcId, String trfId) {
     var d = views.transfer(cdcId, trfId);

@@ -1424,6 +1424,122 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 작업 조작(0.20.0, V13): 보류하면 다음 작업 받기에서 빠지고 재개하면 돌아온다. 우선순위가 높은 작업을 먼저 받는다. 재배정은 시작 전만, 다른 작업을 든
+   * 작업자에겐 409 WORKER_BUSY. 이력이 남고, 다른 센터는 403. CDC10.
+   */
+  @Test
+  void staffAdjustsTasks() {
+    String c = "CDC10";
+    String ops = TestJwt.operator("ops-10", List.of("CDC_SUPERVISOR"), List.of(c));
+    String wa = TestJwt.operator("w10a", List.of("CDC_WORKER"), List.of(c));
+    String trf = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String a61 = "CDC10-A-5-61-01-1-1";
+    String a62 = "CDC10-A-5-62-01-1-1";
+    stubAllocate(
+        trf,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":2},{\"sku\":\"E-00000002\",\"allocatedQty\":3}]}");
+    stubAllocationLots(
+        alc,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + a61
+            + "\",\"qty\":2}]},{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\""
+            + a62
+            + "\",\"qty\":3}]}");
+    location.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .withRequestBody(matchingJsonPath("$.centerId", equalTo(c)))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"items\":[{\"locationCode\":\""
+                            + a61
+                            + "\",\"pickMethod\":\"DPS\"},{\"locationCode\":\""
+                            + a62
+                            + "\",\"pickMethod\":\"DPS\"}],\"missing\":[]}")));
+    assertThat(
+            post(SERVICE, "/internal/transfer-intakes", trfAt(trf, c, "MFC-BJG-01", DUE, 2, 3))
+                .status())
+        .isEqualTo(202);
+    String waveId =
+        post(ops, "/waves", Map.of("cdcId", c, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops, "/waves/" + waveId + "/releases", null).status()).isEqualTo(202);
+    String base = "/cdcs/" + c + "/tasks/";
+    String t61 = null;
+    String t62 = null;
+    for (JsonNode t : get(ops, "/cdcs/" + c + "/tasks?waveId=" + waveId).body().path("items")) {
+      assertThat(t.path("priority").asInt()).isZero();
+      if ("61".equals(t.path("aisle").asString())) {
+        t61 = t.path("taskId").asString();
+      } else {
+        t62 = t.path("taskId").asString();
+      }
+    }
+    assertThat(t61).isNotNull();
+    assertThat(t62).isNotNull();
+
+    // 보류 → 다음 작업 받기에서 빠짐 → 재개
+    Res held = post(ops, base + t61 + "/holds", Map.of("reason", "통로 막힘"));
+    assertThat(held.status()).as(held.body().toString()).isEqualTo(200);
+    assertThat(held.body().path("state").asString()).isEqualTo("HELD");
+    assertThat(
+            post(wa, "/cdcs/" + c + "/workers/w10a/next-tasks", Map.of("aisles", List.of("61")))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_TASK_AVAILABLE");
+    assertThat(post(ops, base + t61 + "/holds", null).body().path("code").asString())
+        .isEqualTo("INVALID_STATE");
+    assertThat(post(ops, base + t61 + "/resumptions", null).body().path("state").asString())
+        .isEqualTo("CREATED");
+
+    // 우선순위: 62 를 올리면 거르기 없이 받아도 62 가 먼저
+    assertThat(post(ops, base + t62 + "/priority-changes", Map.of("priority", 101)).status())
+        .isEqualTo(400);
+    Res pr = post(ops, base + t62 + "/priority-changes", Map.of("priority", 50));
+    assertThat(pr.body().path("priority").asInt()).as(pr.body().toString()).isEqualTo(50);
+    Res mine = post(wa, "/cdcs/" + c + "/workers/w10a/next-tasks", Map.of());
+    assertThat(mine.status()).as(mine.body().toString()).isEqualTo(201);
+    assertThat(mine.body().path("taskId").asString()).isEqualTo(t62);
+
+    // 재배정: 작업을 든 작업자에겐 막힘, 다른 작업자는 ACCEPTED, 비우면 대기열로
+    assertThat(
+            post(ops, base + t61 + "/reassignments", Map.of("workerId", "w10a"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("WORKER_BUSY");
+    Res ra = post(ops, base + t61 + "/reassignments", Map.of("workerId", "w10b", "reason", "지원"));
+    assertThat(ra.body().path("state").asString()).as(ra.body().toString()).isEqualTo("ACCEPTED");
+    assertThat(ra.body().path("assigneeId").asString()).isEqualTo("w10b");
+    Res back = post(ops, base + t61 + "/reassignments", Map.of());
+    assertThat(back.body().path("state").asString()).isEqualTo("CREATED");
+    assertThat(
+            back.body().path("assigneeId").isMissingNode()
+                || back.body().path("assigneeId").isNull())
+        .isTrue();
+
+    // 이력(최신 순)·다른 센터
+    JsonNode hist = get(ops, base + t61 + "/adjustments").body().path("items");
+    assertThat(hist.findValuesAsString("action"))
+        .containsExactly("REASSIGN", "REASSIGN", "RESUME", "HOLD");
+    assertThat(hist.get(3).path("reason").asString()).isEqualTo("통로 막힘");
+    assertThat(hist.get(3).path("actorId").asString()).isEqualTo("ops-10");
+    String other = TestJwt.operator("ops-x", List.of("CDC_SUPERVISOR"), List.of("CDC99"));
+    assertThat(post(other, base + t61 + "/holds", null).status()).isEqualTo(403);
+    assertThat(get(other, base + t61 + "/adjustments").status()).isEqualTo(403);
+  }
+
+  /**
    * 피킹 부족 재할당(0.12.0, CDC-F-018): 10 중 7 집고 3 부족 → 재고 해제(그 LOT·위치·재계수 대기) → 추가 할당 2(다른 칸) → 새 작업 2,
    * 못 찾음 1(PickShortageResolved) → 새 작업 끝나면 TRF PICKED(실피킹 9 = 7 + 2, 못 찾음 1). 추가 할당 불명이면
    * SHORTAGE_REALLOCATING 으로 남고 다시 부르면 끝난다. CDC06.

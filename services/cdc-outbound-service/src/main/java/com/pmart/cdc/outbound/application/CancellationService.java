@@ -41,7 +41,7 @@ public class CancellationService {
 
   public static final Set<String> CANCEL_STATES = Set.of("CANCELLED", "CANCELLING", "CANCEL_HOLD");
   static final Set<String> NOT_STARTED_TASK =
-      Set.of("CREATED", "ASSIGNED", "ACCEPTED", "CANCELLED");
+      Set.of("CREATED", "ASSIGNED", "ACCEPTED", "HELD", "CANCELLED"); // HELD 0.20.0 — 시작 전
   static final Set<String> INVENTORY_REASONS =
       Set.of("TRANSFER_CANCELLED", "TRANSFER_CHANGED", "PICK_SHORTAGE", "QUALITY_BLOCKED");
   private static final Logger log = LoggerFactory.getLogger(CancellationService.class);

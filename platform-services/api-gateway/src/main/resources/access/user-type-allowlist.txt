@@ -87,6 +87,7 @@ GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 GET /api/v1/cdcs/{cdcId}/stock-snapshot OPERATOR
 GET /api/v1/cdcs/{cdcId}/tasks OPERATOR
 GET /api/v1/cdcs/{cdcId}/tasks/{taskId} OPERATOR
+GET /api/v1/cdcs/{cdcId}/tasks/{taskId}/adjustments OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers/{trfId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations/{requestId} OPERATOR
@@ -478,7 +479,11 @@ POST /api/v1/cdcs/{cdcId}/recount-holds/{holdId}/releases OPERATOR
 POST /api/v1/cdcs/{cdcId}/regions OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
+POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/holds OPERATOR
 POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/pick-results OPERATOR
+POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/priority-changes OPERATOR
+POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/reassignments OPERATOR
+POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/resumptions OPERATOR
 POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/starts OPERATOR
 POST /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/location-scans OPERATOR

@@ -26,7 +26,7 @@
 | 4 | 재고관리(현황·원장·이동·실사·품질) | cdc-inventory 는 내부 경로만(`/internal/availability`·`snapshots`·`adjustments`…) — 직원 조회 API 없음. 품질은 cdc-quality 계약(`/holds`·`/recalls`·`/disposal-approvals`) | 일부(직원 조회 API 필요) |
 | 5 | 보충관리 | cdc-inbound `replenishment-moves` 계약 | 계약만 |
 | 6 | TRF·Wave | cdc-outbound `GET/POST /waves`·`…/releases`, `/cdcs/{id}/tasks`, `/cdcs/{id}/regions`, 미출발 취소 | **있음**(TRF 목록 직원 조회는 내부 경로만) |
-| 7 | 통합 작업관리 | cdc-outbound Task 목록·상세·착수·피킹 실적·다음 작업 | **있음**(재배정·보류·우선순위 변경 없음) |
+| 7 | 통합 작업관리 | cdc-outbound Task 목록·상세·착수·피킹 실적·다음 작업 | **있음**(재배정·보류·재개·우선순위 0.20.0 — 시작 전 작업만) |
 | 8 | 피킹·분배(FC·DPS·AutoStore·분배·DAS·Wheel Sorter·자키) — 한 메뉴 탭 | FC 피킹 Task·묶음 피킹(지역)만. 분류·검품·상차 실적 경로 있음. 설비(DPS·AutoStore·소터) 연동 없음 | FC **있음**, 나머지 없음 |
 | 9 | 출고관리(검품·LPN·출고 대기) | cdc-outbound `inspection-results`·`loading-results`·`sorting-results`, 출발 준비 | 일부 |
 | 10 | 출하·운송 | transport-planning·execution·fleet 계약, 출발 검증은 cdc-outbound 내부 | 계약만 |

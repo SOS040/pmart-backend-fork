@@ -81,7 +81,7 @@ public class ReadinessService {
       if (pick && !CLOSED_TASK.contains(k[1])) {
         pickOpen = true;
       }
-      if (pick && !"CREATED".equals(k[1]) && !"ASSIGNED".equals(k[1])) {
+      if (pick && !"CREATED".equals(k[1]) && !"ASSIGNED".equals(k[1]) && !"HELD".equals(k[1])) {
         pickTouched = true;
       }
       if ("EXCEPTION".equals(k[1])) {

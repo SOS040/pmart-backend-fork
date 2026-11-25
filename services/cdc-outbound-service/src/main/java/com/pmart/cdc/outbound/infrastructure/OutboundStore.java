@@ -65,7 +65,48 @@ public class OutboundStore {
       @Nullable String pickMode,
       @Nullable String pickMethod,
       @Nullable String regionCode,
-      @Nullable String aisle) {}
+      @Nullable String aisle,
+      int priority) {
+
+    public TaskRow(
+        String taskId,
+        String waveId,
+        @Nullable String trfId,
+        String cdcId,
+        String kind,
+        @Nullable String zone,
+        @Nullable String floor,
+        Instant dueAt,
+        String state,
+        int version,
+        @Nullable String assigneeId,
+        Instant createdAt,
+        @Nullable Instant completedAt,
+        @Nullable String pickMode,
+        @Nullable String pickMethod,
+        @Nullable String regionCode,
+        @Nullable String aisle) {
+      this(
+          taskId,
+          waveId,
+          trfId,
+          cdcId,
+          kind,
+          zone,
+          floor,
+          dueAt,
+          state,
+          version,
+          assigneeId,
+          createdAt,
+          completedAt,
+          pickMode,
+          pickMethod,
+          regionCode,
+          aisle,
+          0);
+    }
+  }
 
   /** 줄의 TRF 몫(0.9.0). */
   public record ShareRow(
@@ -379,7 +420,7 @@ public class OutboundStore {
   private static final String TASK_COLS =
       "t.task_id, t.wave_id, t.trf_id, t.cdc_id, t.kind, t.zone, t.floor, t.due_at, t.state,"
           + " t.row_version, t.assignee_id, t.created_at, t.completed_at, t.pick_mode, t.pick_method,"
-          + " t.region_code, t.aisle";
+          + " t.region_code, t.aisle, t.priority";
 
   /** 몫이 든 작업(단건 작업도 몫 한 줄씩 — V7). */
   private static final String TASKS_OF_TRF =
@@ -611,7 +652,8 @@ public class OutboundStore {
           .append(")");
       args.addAll(aisles);
     }
-    sql.append(" ORDER BY t.due_at, t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED");
+    // 우선순위(0.20.0) 높은 것 먼저 — 같으면 기한·만든 순(보류 HELD 는 state = 'CREATED' 조건에서 빠진다)
+    sql.append(" ORDER BY t.priority DESC, t.due_at, t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED");
     return jdbc.query(sql.toString(), (rs, i) -> task(rs), args.toArray()).stream().findFirst();
   }
 
@@ -702,7 +744,8 @@ public class OutboundStore {
         rs.getString("pick_mode"),
         rs.getString("pick_method"),
         rs.getString("region_code"),
-        rs.getString("aisle"));
+        rs.getString("aisle"),
+        rs.getInt("priority"));
   }
 
   private static @Nullable Instant instant(ResultSet rs, String col) throws SQLException {
