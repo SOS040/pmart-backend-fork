@@ -150,3 +150,10 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 37,306칸 모두 새 규칙 통과(`ChilgokLayoutIT`), 백엔드 사본 바꿈. 팔레트 자리 18,048(RESERVE 15,792 + 랙 1단 2,256) — 하한 18,000 지킴.
 - 바닥 하중 2,500kg/㎡·오토스토어 약 2,000kg/㎡ 는 시뮬레이터 값 그대로(사용자) — chilgok-dc.md 에 `[가정]` 으로 적음.
 - LAN 반영은 사용자가 최종 배치라 할 때(그 전엔 시드 --apply 안 함).
+### 알림 — 묶음 피킹 2단계 (cdc-outbound 0.9.0·cdc-location 0.5.0, 2026-11-25)
+- 설계 `docs/cdc/design/2026-11-25-batch-picking.md`(사용자 결정 §7). Wave 릴리스가 위치 통로 방식(cdc-location `aisle-pick-methods` → 조회 pickMethod)으로 작업을 만든다:
+  DPS·방식 없음 = DISCRETE(지금과 같음), BOX_PICK·FC·DISTRIBUTION = REGION_BATCH(지역 카트 — 지역 × 방식 × 구역 × 층), LINE = SKU_BATCH(라인 DAS — Wave 안 모든 MFC).
+- **Task 모양 변화**: `pickMode`·`pickMethod`·`regionCode`·`trfIds[]`, 줄마다 `shares[]`(trfId·mfcId·dueAt·plannedQty·pickedQty·shortQty — 라인 불·분배 PDA 숫자). **묶음 작업이면 `trfId` 가 비어 있다**(사용자 결정) — 화면은 trfIds·shares 를 본다. 단건 작업은 지금처럼 trfId 가 있다.
+- 피킹 실적은 지금처럼 줄 합계(SKU·LOT·위치). 서버가 기한 이른 TRF 몫부터 채우고 부족은 기한 늦은 몫부터 뺀다. 나눠 담기는 지금 `/sorting-results`(BOX = TRF 하나, 분류 ≤ 그 TRF 몫 실피킹).
+- 다음 작업 받기 본문에 `pickMode` 거르기를 더했다. 지역표 `GET /cdcs/{cdcId}/regions`(칠곡 BUSAN·HONAM·CHUNGCHEONG·GANGWON — 지역 코드 = 지역 바코드 값).
+- LAN 은 cdc-location 0.5.0 배포와 칠곡 통로 방식 값을 넣기 전까지 모두 단건으로 돈다.
