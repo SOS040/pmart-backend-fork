@@ -141,7 +141,10 @@ public class MeController implements MeApi {
     var w =
         withdrawals.request(
             idempotencyKey,
-            createMyWithdrawalRequest == null ? null : createMyWithdrawalRequest.getReason());
+            createMyWithdrawalRequest == null ? null : createMyWithdrawalRequest.getReason(),
+            createMyWithdrawalRequest == null
+                ? null
+                : createMyWithdrawalRequest.getProviderAccessToken());
     return ResponseEntity.status(202)
         .body(
             new com.pmart.rider.api.generated.model.CreateMyWithdrawal202Response()

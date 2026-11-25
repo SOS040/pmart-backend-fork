@@ -306,15 +306,16 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
             .withFormParam("service_provider", equalTo("NAVER")));
   }
 
+  /** 2026-11-25: LOGIN 교환은 처음·가입 전·가입한 라이더 모두 끊지 않는다(가입 전 끊기 없앰 — 끊기는 탈퇴 재인증만). */
   @Test
-  void loginUnlinksOnlyWhenSignupNotFinished() {
-    // 처음(연결 없음) → 끊음
+  void loginNeverUnlinks() {
+    // 처음(연결 없음) → 끊지 않음
     naverIssues("nv-" + UUID.randomUUID(), null);
     assertThat(exchange(UUID.randomUUID().toString(), "c1", CALLBACK, null).status())
         .isEqualTo(200);
-    assertThat(unlinkCalls()).isEqualTo(1);
+    assertThat(unlinkCalls()).isZero();
 
-    // 연결은 있지만 rider-service 에 가입 전(404) → 끊음
+    // 연결은 있지만 rider-service 에 가입 전(404) → 끊지 않음
     naver.resetRequests();
     String pendingSub = "nv-" + UUID.randomUUID();
     String pending = "RD-" + UUID.randomUUID();
@@ -326,7 +327,7 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     naverIssues(pendingSub, null);
     assertThat(exchange(UUID.randomUUID().toString(), "c2", CALLBACK, null).status())
         .isEqualTo(200);
-    assertThat(unlinkCalls()).isEqualTo(1);
+    assertThat(unlinkCalls()).isZero();
 
     // 가입한 라이더(200) → 끊지 않음
     naver.resetRequests();

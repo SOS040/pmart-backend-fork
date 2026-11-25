@@ -181,14 +181,19 @@ public class NaverCodeExchangeService {
     String sub = subjectOf(tokens.idToken());
     holdEmail(sub, naver.profile(accessToken).email());
     // 프로필을 읽은 뒤 끊는다(끊으면 access token 이 무효)
-    String reason = withdrawal ? "WITHDRAWAL" : signupPending(sub) ? "SIGNUP_PENDING" : null;
+    // 가입 전 끊기(RA-1 ③ SIGNUP_PENDING)는 없앴다(2026-11-25 — 고객 auth 와 같게, 사용자 "라이더쪽에도 지금 고객앱 소셜로그인 기능
+    // 구조처럼"). 교환 때는 아직 가입 전이라 곧 가입을 마칠 사람까지 끊어 가입 뒤 첫 로그인·탈퇴 재인증에 동의 화면이 또 떴다
+    String reason = withdrawal ? "WITHDRAWAL" : null;
     if (reason != null) {
       boolean ok = naver.unlink(clientId, secret, accessToken);
       log.info("네이버 연결 끊기 purpose={} ok={}", reason, ok);
     }
   }
 
-  /** 이 네이버 계정(sub)으로 가입을 마친 라이더가 없는가(RA-1 ③). sub 를 못 읽거나 조회가 실패하면 false(끊지 않음). sub 는 로그 금지. */
+  /**
+   * 이 네이버 계정(sub)으로 가입을 마친 라이더가 없는가(RA-1 ③). sub 를 못 읽거나 조회가 실패하면 false(끊지 않음). sub 는 로그 금지.
+   * 2026-11-25 부터 교환에서 부르지 않는다(가입 전 끊기 없앰).
+   */
   boolean signupPending(@Nullable String sub) {
     if (sub == null || store == null || riders == null) {
       return false;

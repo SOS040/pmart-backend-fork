@@ -65,8 +65,36 @@ public class WithdrawalService {
     this.clock = clock;
   }
 
-  /** 탈퇴 신청. 같은 requestId 로 이미 끝났으면 그 결과(완료)를 그대로. 거절됐던 요청은 다시 검사한다(막던 것이 풀렸을 수 있다). */
+  /** 구글 연결 끊기(2026-11-25). 시험에서는 없을 수 있다. */
+  private com.pmart.rider.infrastructure.@Nullable GoogleRevokeClient google;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  void setGoogle(com.pmart.rider.infrastructure.GoogleRevokeClient google) {
+    this.google = google;
+  }
+
   public Withdrawal request(String requestId, @Nullable String reason) {
+    return request(requestId, reason, null);
+  }
+
+  /**
+   * providerAccessToken(0.29.0, 2026-11-25 — 고객 BR-105 와 같게): 구글로 로그인한 라이더 앱이 탈퇴 직전 받은 접근 토큰. 완료되면
+   * 구글 연결을 끊는다(실패해도 탈퇴 그대로, 토큰은 저장·로그 안 함).
+   */
+  public Withdrawal request(
+      String requestId, @Nullable String reason, @Nullable String providerAccessToken) {
+    Withdrawal w = requestInner(requestId, reason);
+    if ("COMPLETED".equals(w.state())
+        && providerAccessToken != null
+        && !providerAccessToken.isBlank()
+        && google != null) {
+      google.revoke(providerAccessToken.strip());
+    }
+    return w;
+  }
+
+  /** 탈퇴 신청. 같은 requestId 로 이미 끝났으면 그 결과(완료)를 그대로. 거절됐던 요청은 다시 검사한다(막던 것이 풀렸을 수 있다). */
+  private Withdrawal requestInner(String requestId, @Nullable String reason) {
     String riderId = RiderService.requireRider();
     var done = store.withdrawal(riderId, requestId).filter(w -> "COMPLETED".equals(w.state()));
     if (done.isPresent()) {
