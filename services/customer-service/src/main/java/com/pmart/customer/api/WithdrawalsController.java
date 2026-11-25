@@ -42,7 +42,8 @@ public class WithdrawalsController implements WithdrawalsApi {
             body.getProvider() == null ? null : body.getProvider().getValue(),
             body.getProviderToken(),
             body.getReasonCode(),
-            body.getReasonText());
+            body.getReasonText(),
+            body.getProviderAccessToken());
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(response(v));
   }
 

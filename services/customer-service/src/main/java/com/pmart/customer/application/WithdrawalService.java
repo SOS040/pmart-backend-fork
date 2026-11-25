@@ -100,6 +100,14 @@ public class WithdrawalService {
     this.clock = clock;
   }
 
+  /** 구글 연결 끊기(BR-105). 시험에서는 없을 수 있다. */
+  private com.pmart.customer.infrastructure.@Nullable GoogleRevokeClient google;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  void setGoogle(com.pmart.customer.infrastructure.GoogleRevokeClient google) {
+    this.google = google;
+  }
+
   public View request(
       String accountId,
       String requestId,
@@ -109,6 +117,31 @@ public class WithdrawalService {
       String providerToken,
       @Nullable String reasonCode,
       @Nullable String reasonText) {
+    return request(
+        accountId,
+        requestId,
+        sourceSystem,
+        expectedVersion,
+        provider,
+        providerToken,
+        reasonCode,
+        reasonText,
+        null);
+  }
+
+  /**
+   * providerAccessToken(0.18.0 BR-105) — GOOGLE 이면 접수 뒤 구글 연결을 끊는다(실패해도 탈퇴 그대로, 토큰은 해시·저장·로그 안 함).
+   */
+  public View request(
+      String accountId,
+      String requestId,
+      String sourceSystem,
+      @Nullable Integer expectedVersion,
+      String provider,
+      String providerToken,
+      @Nullable String reasonCode,
+      @Nullable String reasonText,
+      @Nullable String providerAccessToken) {
     checkProvider(provider, providerToken);
     // 같은 키 재시도(응답 유실)는 저장된 결과 — 재인증 전에 확인하지 않는다(토큰은 매번 새로 받아 오므로 해시에 넣지 않는다)
     clients.reauthenticate(accountId, provider, providerToken);
@@ -125,6 +158,14 @@ public class WithdrawalService {
                 View.class,
                 () -> accept(accountId, expectedVersion, reasonCode, reasonText))
             .value();
+    // 접수됨(대기·완료) → 구글 연결 끊기(BR-105, 트랜잭션 밖). 철회로 끝난 것은 끊지 않는다
+    if ("GOOGLE".equals(provider)
+        && providerAccessToken != null
+        && !providerAccessToken.isBlank()
+        && !"REVOKED".equals(v.state())
+        && google != null) {
+      google.revoke(providerAccessToken.strip());
+    }
     if ("PENDING".equals(v.state())) {
       check(v.withdrawalId()); // 의무가 없으면 바로 완료(그 사이 실패는 주기 작업이 다시)
       return view(store.find(v.withdrawalId()).orElseThrow());

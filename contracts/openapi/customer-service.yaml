@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
+    0.18.0(2026-11-25, 클라이언트 BR-105 "구글도 서버가 끊게"): 탈퇴 접수 `POST /me/withdrawals` 에 선택 `providerAccessToken`(GOOGLE 일 때만 — 재인증 직후 받은
+      구글 OAuth 접근 토큰). 접수되면(대기·완료) 서버가 `https://oauth2.googleapis.com/revoke` 로 이 앱과의 구글 연결을 끊는다(비밀값 없음, 토큰은 저장·로그·응답 안 함, 실패해도 탈퇴는 그대로).
+      없으면 지금처럼 앱의 기기 끊기. 철회(revocations)에는 없다 — 철회로 끝나면 끊지 않는다.
     0.17.0(2026-11-25, 클라이언트 BR-100 R3 "하트 아래 숫자"): `GET /product-wish-counts?productIds=` — 상품마다 찜한 회원 수(공개, 토큰 없이). 쉼표로 100개까지,
       찜이 없는 상품은 0. 누가 찜했는지는 주지 않는다. 탈퇴 완료 회원의 찜은 지워져 세지 않는다.
     0.16.0(2026-11-23 CU-7 — 사용자 결정: 이용제한 = 문의·리뷰 작성 막기, 정지 = 주문·로그인까지 막기, 기간 7일 자동 해제, 영구 정지 없음, 라이더와 따로):
@@ -772,6 +775,7 @@ paths:
               properties:
                 provider: { type: string, enum: [GOOGLE, KAKAO, NAVER, APPLE], description: '(0.12.0) 재인증한 제공자 — 이 계정에 연결된 소셜이어야 한다' }
                 providerToken: { type: string, description: '(0.12.0) 방금 다시 로그인해 받은 ID 토큰. 로그 금지' }
+                providerAccessToken: { type: string, maxLength: 4096, x-added-in: '2026-11-25', description: '(0.18.0 BR-105) GOOGLE 만 — 재인증 직후 받은 구글 OAuth 접근 토큰. 접수되면 서버가 구글 연결을 끊는다(revoke). 저장·로그·응답 안 함. 다른 제공자는 무시' }
                 reasonCode: { type: string, maxLength: 40 }
                 reasonText: { type: string, maxLength: 500 }
       responses:
