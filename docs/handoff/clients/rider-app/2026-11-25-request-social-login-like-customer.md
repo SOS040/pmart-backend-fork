@@ -33,4 +33,4 @@
 - `GET /riders/me` 에 `providerNickname`(표시용). 실명 `name` 은 그대로 가입 입력.
 - 로그인마다 최신 값. 배포 전에 로그인한 라이더는 다음 로그인부터 채워진다. 탈퇴하면 지운다.
 - 카카오 닉네임은 카카오 콘솔 동의 항목 "닉네임", 네이버 이름·별명은 네이버 콘솔 제공 정보를 켜야 온다(고객 앱과 같은 앱 키면 이미 켬).
-- 사진은 다음 단계(사용자 결정 대기).
+- **사진(2026-11-25 추가, rider-service 0.31.0 — 사용자 "프로필 사진도 해줘")**: `provider-profile`·`/riders/me` 의 `profileImageUrl`(= `/api/v1/riders/me/profile-image?v=…`, 사본 없으면 null) → `GET /riders/me/profile-image` 를 **본인 토큰 헤더로** 받아 그린다(`<img src>` 만으로는 안 됨, 고객 앱 /me/profile-image 와 같음). v 가 바뀌면 다시 받기. 가입 전에도. 사본은 로그인 뒤 서버가 비동기로 만들어 1~2초 늦을 수 있다(null 이면 기본 아바타). 카카오 기본 사진은 사본 없음.

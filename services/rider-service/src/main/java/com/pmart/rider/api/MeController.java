@@ -22,6 +22,28 @@ public class MeController implements MeApi {
 
   private final com.pmart.rider.application.ProviderProfiles providerProfiles;
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.pmart.rider.application.RiderProfileImages profileImages;
+
+  /** 본인 소셜 프로필 사진 사본(0.31.0, 2026-11-25). 개인 사진이라 공유 캐시 금지(private). */
+  @Override
+  public ResponseEntity<org.springframework.core.io.Resource> getMyRiderProfileImage() {
+    var img = profileImages.mine();
+    var b =
+        ResponseEntity.ok()
+            .contentType(org.springframework.http.MediaType.parseMediaType(img.contentType()))
+            .cacheControl(
+                org.springframework.http.CacheControl.maxAge(java.time.Duration.ofDays(1))
+                    .cachePrivate());
+    if (img.sha256() != null) {
+      b = b.eTag("\"" + img.sha256().strip() + "\"");
+    }
+    if (img.body().length() >= 0) {
+      b = b.contentLength(img.body().length());
+    }
+    return b.body(new org.springframework.core.io.InputStreamResource(img.body().body()));
+  }
+
   public MeController(
       RiderService riders,
       com.pmart.rider.application.WithdrawalService withdrawals,
@@ -43,6 +65,11 @@ public class MeController implements MeApi {
                     .map(
                         com.pmart.rider.application.ProviderProfiles.ProviderProfile
                             ::providerNickname)
+                    .orElse(null))
+            .profileImageUrl(
+                providerProfiles
+                    .find(r.riderId())
+                    .map(p -> com.pmart.rider.application.RiderProfileImages.url(p.imageSha256()))
                     .orElse(null)));
   }
 
@@ -60,6 +87,8 @@ public class MeController implements MeApi {
                             .fromValue(p.provider()))
                     .name(p.name())
                     .providerNickname(p.providerNickname())
+                    .profileImageUrl(
+                        com.pmart.rider.application.RiderProfileImages.url(p.imageSha256()))
                     .authenticatedAt(
                         java.time.OffsetDateTime.ofInstant(p.at(), java.time.ZoneOffset.UTC)));
     return ResponseEntity.ok(out);

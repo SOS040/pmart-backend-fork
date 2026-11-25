@@ -23,7 +23,11 @@ public class ProviderProfiles {
   public static final Set<String> TYPES = Set.of("RiderAuthenticated");
 
   public record ProviderProfile(
-      String provider, @Nullable String name, @Nullable String providerNickname, Instant at) {
+      String provider,
+      @Nullable String name,
+      @Nullable String providerNickname,
+      Instant at,
+      @Nullable String imageSha256) {
     @Override
     public String toString() {
       return "ProviderProfile[" + provider + ", ***]";
@@ -32,10 +36,12 @@ public class ProviderProfiles {
 
   private final JdbcTemplate jdbc;
   private final Clock clock;
+  private final RiderProfileImages images;
 
-  public ProviderProfiles(JdbcTemplate jdbc, Clock clock) {
+  public ProviderProfiles(JdbcTemplate jdbc, Clock clock, RiderProfileImages images) {
     this.jdbc = jdbc;
     this.clock = clock;
+    this.images = images;
   }
 
   /** inbox 트랜잭션 안. */
@@ -55,33 +61,43 @@ public class ProviderProfiles {
             : e.occurredAt();
     jdbc.update(
         "INSERT INTO rider_provider_profile (rider_id, provider, name, provider_nickname,"
-            + " authenticated_at, updated_at) VALUES (?,?,?,?,?,?)"
+            + " picture_source_url, authenticated_at, updated_at) VALUES (?,?,?,?,?,?,?)"
             + " ON CONFLICT (rider_id) DO UPDATE SET"
             + " provider = EXCLUDED.provider,"
             + " name = COALESCE(EXCLUDED.name, rider_provider_profile.name),"
             + " provider_nickname = COALESCE(EXCLUDED.provider_nickname,"
             + " rider_provider_profile.provider_nickname),"
+            + " picture_source_url = COALESCE(EXCLUDED.picture_source_url,"
+            + " rider_provider_profile.picture_source_url),"
             + " authenticated_at = EXCLUDED.authenticated_at, updated_at = EXCLUDED.updated_at"
             + " WHERE EXCLUDED.authenticated_at >= rider_provider_profile.authenticated_at",
         riderId,
         provider,
         clip(text(p, "name")),
         clip(text(p, "providerNickname")),
+        pictureUrl(text(p, "pictureUrl")),
         Timestamp.from(at),
         Timestamp.from(clock.instant()));
+    // 사진 사본은 커밋 뒤(원본이 바뀌었을 때만 받는다)
+    images.copyAfterCommit(riderId);
+  }
+
+  private static @Nullable String pictureUrl(@Nullable String v) {
+    return v == null || v.length() > 1000 ? null : v;
   }
 
   public Optional<ProviderProfile> find(String riderId) {
     return jdbc
         .query(
-            "SELECT provider, name, provider_nickname, authenticated_at FROM rider_provider_profile"
-                + " WHERE rider_id = ?",
+            "SELECT provider, name, provider_nickname, authenticated_at, image_sha256"
+                + " FROM rider_provider_profile WHERE rider_id = ?",
             (rs, i) ->
                 new ProviderProfile(
                     rs.getString("provider"),
                     rs.getString("name"),
                     rs.getString("provider_nickname"),
-                    rs.getTimestamp("authenticated_at").toInstant()),
+                    rs.getTimestamp("authenticated_at").toInstant(),
+                    rs.getString("image_sha256")),
             riderId)
         .stream()
         .findFirst();
@@ -92,9 +108,15 @@ public class ProviderProfiles {
     return find(RiderService.requireRider());
   }
 
-  /** 탈퇴 때(그 트랜잭션 안). */
+  /** 탈퇴 때(그 트랜잭션 안) — 사진 사본 파일은 커밋 뒤 지운다. */
   public void delete(String riderId) {
+    String key =
+        jdbc.query(
+            "SELECT image_key FROM rider_provider_profile WHERE rider_id = ?",
+            rs -> rs.next() ? rs.getString(1) : null,
+            riderId);
     jdbc.update("DELETE FROM rider_provider_profile WHERE rider_id = ?", riderId);
+    images.deleteAfterCommit(key);
   }
 
   private static @Nullable String text(JsonNode p, String field) {

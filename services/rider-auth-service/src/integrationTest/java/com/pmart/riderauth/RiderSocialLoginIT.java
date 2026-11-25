@@ -192,12 +192,19 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
             "gn-" + g,
             "dev-" + g,
             "GOOGLE",
-            idTokenWith(g, RIDER_WEB, "https://accounts.google.com", Map.of("name", "홍길동")));
+            idTokenWith(
+                g,
+                RIDER_WEB,
+                "https://accounts.google.com",
+                Map.of("name", "홍길동", "picture", "https://lh3.googleusercontent.com/a/g=s96-c")));
     assertThat(gr.status()).as(gr.body().toString()).isEqualTo(200);
     JsonNode gp = authenticatedPayload(gr.body().path("riderId").asString());
     assertThat(gp.path("provider").asString()).isEqualTo("GOOGLE");
     assertThat(gp.path("name").asString()).isEqualTo("홍길동");
     assertThat(gp.path("providerNickname").asString()).isEqualTo("홍길동");
+    // 사진 주소(2026-11-25) — 구글 사진 호스트 https 만
+    assertThat(gp.path("pictureUrl").asString())
+        .isEqualTo("https://lh3.googleusercontent.com/a/g=s96-c");
 
     String k = "k-" + UUID.randomUUID();
     Res kr =

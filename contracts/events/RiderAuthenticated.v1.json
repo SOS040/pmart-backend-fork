@@ -48,6 +48,11 @@
               "type": "string",
               "maxLength": 100,
               "description": "제공자 닉네임(카카오 닉네임·네이버 별명), 없으면 이름(구글은 이름)"
+            },
+            "pictureUrl": {
+              "type": "string",
+              "maxLength": 1000,
+              "description": "(2026-11-25) 제공자 프로필 사진 주소 — 구글 googleusercontent·카카오 kakaocdn·네이버 pstatic 의 https 만(카카오 기본 사진 제외). 앱에 그대로 주지 않고 rider-service 가 사본을 만든다"
             }
           },
           "additionalProperties": true

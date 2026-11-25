@@ -110,7 +110,8 @@ public class RiderLoginService {
       String provider,
       Instant at,
       @org.jspecify.annotations.Nullable String name,
-      @org.jspecify.annotations.Nullable String nickname) {
+      @org.jspecify.annotations.Nullable String nickname,
+      @org.jspecify.annotations.Nullable String picture) {
     if (events == null || codec == null) {
       return;
     }
@@ -124,6 +125,11 @@ public class RiderLoginService {
     String nick = nickname != null ? nickname : name;
     if (nick != null) {
       payload.put("providerNickname", nick);
+    }
+    // 사진 주소(2026-11-25 — 사용자 "프로필 사진도 해줘") — 제공자 사진 호스트 https 만, 사본은 rider-service 가 만든다
+    String pic = ProviderPictures.of(provider, picture);
+    if (pic != null) {
+      payload.put("pictureUrl", pic);
     }
     var envelope =
         codec.create(
@@ -161,7 +167,9 @@ public class RiderLoginService {
       String provider, GoogleIdTokenVerifier.Identity identity) {
     if (!"KAKAO".equals(provider)
         || kakao == null
-        || (identity.email() != null && identity.nickname() != null)) {
+        || (identity.email() != null
+            && identity.nickname() != null
+            && identity.pictureUrl() != null)) {
       return identity;
     }
     var p = kakao.profile(identity.subject());
@@ -171,7 +179,7 @@ public class RiderLoginService {
         useEmail ? p.email() : identity.email(),
         useEmail ? Boolean.TRUE : identity.emailVerified(),
         identity.name(),
-        identity.pictureUrl(),
+        identity.pictureUrl() != null ? identity.pictureUrl() : p.imageUrl(),
         identity.nickname() != null ? identity.nickname() : p.nickname());
   }
 
@@ -246,6 +254,7 @@ public class RiderLoginService {
               }
               String name = identity.name();
               String nickname = identity.nickname();
+              String picture = identity.pictureUrl();
               if ("NAVER".equals(provider)) {
                 // 네이버 ID 토큰에는 이메일·이름이 없다 — 코드 교환 때 묶어 둔 가린 이메일(2026-11-22 RA-1 ④)·이름·별명(2026-11-25)
                 var held =
@@ -259,6 +268,9 @@ public class RiderLoginService {
                 }
                 if (nickname == null) {
                   nickname = held.nickname();
+                }
+                if (picture == null) {
+                  picture = held.picture();
                 }
               }
               String state = store.accountState(riderId).orElse("ACTIVE");
@@ -286,7 +298,7 @@ public class RiderLoginService {
                   created,
                   now);
               store.recordLogin(provider, identity.subject(), riderId, now);
-              publishAuthenticated(riderId, provider, now, name, nickname);
+              publishAuthenticated(riderId, provider, now, name, nickname, picture);
               RiderTokens.Tokens t = openSession(riderId, deviceId, sourceSystem, now);
               return new Result(authRequestId, MEMBER, riderId, created, t, now);
             });

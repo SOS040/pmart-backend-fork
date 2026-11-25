@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.30.0
+  version: 0.31.0
   description: |
+    0.31.0(2026-11-25, 사용자 "프로필 사진도 해줘" — 고객 /me/profile-image 와 같게): 소셜 프로필 사진 사본. 새 `GET /riders/me/profile-image`(본인 토큰, 이미지 바이트),
+      `RiderProviderProfile.profileImageUrl`·`RiderProfile.profileImageUrl`(= `/api/v1/riders/me/profile-image?v=…`, 사본이 바뀌면 v 가 바뀐다, 없으면 null). 제공자 주소는 주지 않는다.
+      로그인 뒤 서버가 한 번 받아 비공개 저장소에 둔다(구글·카카오(기본 사진 제외)·네이버, 1MB·이미지 형식 확인). 가입 전에도. 탈퇴 때 지운다.
     0.30.0(2026-11-25, 사용자 "라이더쪽에도 지금 고객앱 소셜로그인 기능 구조처럼" "이름 닉네임 먼저해줘" — 고객 0.19.0 providerNickname 과 같게): 소셜 이름·닉네임 사본
       (rider-auth `RiderAuthenticated` → 로그인마다 최신). 새 `GET /riders/me/provider-profile`(가입 전에도 — 가입 화면 이름 미리 채우기, 없으면 빈 값),
       `RiderProfile.providerNickname`. 라이더 실명 `name` 은 지금처럼 가입 때 라이더가 넣은 값(소셜 이름으로 바꾸지 않는다). 카카오는 실명을 주지 않아 `name` 없음.
@@ -366,6 +369,30 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RiderProviderProfile' }
+
+  /riders/me/profile-image:
+    get:
+      tags: [me]
+      summary: 본인 소셜 프로필 사진 (0.31.0 — 서버 사본)
+      description: |
+        제공자 사진 주소를 그대로 주지 않는다. 소셜 로그인 뒤 서버가 한 번 받아 비공개 저장소에 둔 사본. 본인 토큰이 있어야 읽는다(`Authorization` 헤더 — `<img src>` 만으로는 안 됨).
+        주소는 `profileImageUrl` 을 쓴다. 가입 전에도 된다. 사본이 없으면 404.
+      operationId: getMyRiderProfileImage
+      x-pmart-user-types: [RIDER]
+      responses:
+        '200':
+          description: 이미지 바이트
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+            image/gif:
+              schema: { type: string, format: binary }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /riders/me/location-area:
     get:
@@ -1304,10 +1331,12 @@ components:
         name: { type: string, description: 제공자 실명(카카오는 없음) }
         providerNickname: { type: string, description: 제공자 닉네임, 없으면 이름 }
         authenticatedAt: { type: string, format: date-time, description: 마지막 소셜 로그인 시각 }
+        profileImageUrl: { type: [string, 'null'], x-added-in: '2026-11-25', description: '(0.31.0) 사진 사본 경로 /api/v1/riders/me/profile-image?v=… (본인 토큰). 사본이 없으면 null' }
     RiderProfile:
       type: object
       properties:
         riderId: { type: string }
+        profileImageUrl: { type: [string, 'null'], x-added-in: '2026-11-25', description: '(0.31.0) 소셜 프로필 사진 사본 경로(본인 토큰). 없으면 null' }
         providerNickname: { type: string, x-added-in: '2026-11-25', description: '(0.30.0) 소셜 로그인 닉네임(카카오 닉네임·네이버 별명, 없으면 제공자 이름). 실명 name(가입 입력)과 따로' }
         riderNumber: { type: [string, 'null'], pattern: '^R[1-9][0-9]{3,4}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호(ADR-0085 R + 4자리 예 R4785, 거의 다 차면 5자리 — 2026-11-22 기존 6자리를 바꿈. ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
         version: { type: integer }

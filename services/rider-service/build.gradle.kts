@@ -15,6 +15,11 @@ dependencies {
     implementation(libs.bundles.service.kafka)
     implementation(libs.bundles.service.data)
     implementation(libs.bundles.service.observability)
+    // 프로필 사진 사본 저장소(2026-11-25 — 고객 customer-service 와 같게): S3 호환(LAN SeaweedFS). 동기 클라이언트만 쓰므로 netty 는 뺀다
+    implementation(platform(libs.aws.sdk.bom))
+    implementation(libs.aws.sdk.s3) {
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+    }
 
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))

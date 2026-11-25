@@ -558,6 +558,21 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     assertThat(pp.path("provider").asString()).isEqualTo("NAVER");
     assertThat(pp.path("name").asString()).isEqualTo("홍길동");
     assertThat(pp.path("providerNickname").asString()).isEqualTo("길동이");
+    // 사진(0.31.0): 원본 주소는 저장하지만 이 시험엔 저장소(버킷)가 없어 사본·주소 없음, 사진 경로 404
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT picture_source_url FROM rider_provider_profile WHERE rider_id = ?",
+                String.class,
+                rider))
+        .contains("googleusercontent.com");
+    assertThat(pp.path("profileImageUrl").isMissingNode() || pp.path("profileImageUrl").isNull())
+        .isTrue();
+    int imageStatus =
+        http.get()
+            .uri("/riders/me/profile-image")
+            .header("Authorization", "Bearer " + TestJwt.rider(rider))
+            .exchange((q, x) -> x.getStatusCode().value());
+    assertThat(imageStatus).isEqualTo(404);
 
     // 늦게 온 옛 로그인 사건은 되돌리지 않는다
     authenticated(rider, Instant.now().minusSeconds(3600), "옛이름", "옛닉");
@@ -596,7 +611,9 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
                     "name",
                     name,
                     "providerNickname",
-                    nickname))
+                    nickname,
+                    "pictureUrl",
+                    "https://lh3.googleusercontent.com/a/" + rider + "=s96-c"))
             .buildJson();
     kafka.send("platform.auth.v1", rider, json).join();
   }

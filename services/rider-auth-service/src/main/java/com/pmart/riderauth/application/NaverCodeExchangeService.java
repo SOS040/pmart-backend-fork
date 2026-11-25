@@ -217,7 +217,8 @@ public class NaverCodeExchangeService {
     String masked = profile.email() == null ? null : RiderLoginService.maskEmail(profile.email());
     String name = cleanName(profile.name());
     String nickname = cleanName(profile.nickname());
-    if (masked == null && name == null && nickname == null) {
+    String picture = ProviderPictures.of("NAVER", profile.image());
+    if (masked == null && name == null && nickname == null && picture == null) {
       return;
     }
     if (sub == null) {
@@ -230,6 +231,7 @@ public class NaverCodeExchangeService {
           masked,
           name,
           nickname,
+          picture,
           clock.instant().plus(EMAIL_HOLD),
           clock.instant());
     } catch (RuntimeException ex) {

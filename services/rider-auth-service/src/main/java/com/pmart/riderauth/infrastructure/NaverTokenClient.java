@@ -84,8 +84,16 @@ public class NaverTokenClient {
   }
 
   /** 프로필 API 결과(이메일 원문 — 개인정보, 로그·toString 금지). */
-  public record Profile(@Nullable String email, @Nullable String name, @Nullable String nickname) {
-    public static final Profile NONE = new Profile(null, null, null);
+  public record Profile(
+      @Nullable String email,
+      @Nullable String name,
+      @Nullable String nickname,
+      @Nullable String image) {
+    public static final Profile NONE = new Profile(null, null, null, null);
+
+    public Profile(@Nullable String email, @Nullable String name, @Nullable String nickname) {
+      this(email, name, nickname, null);
+    }
 
     public Profile(@Nullable String email) {
       this(email, null, null);
@@ -223,10 +231,13 @@ public class NaverTokenClient {
     if (nickname.isEmpty()) {
       nickname = name;
     }
+    // 사진(2026-11-25 — 사용자 "프로필 사진도 해줘") response.profile_image — 동의 항목 "프로필 사진"
+    String image = n.path("response").path("profile_image").asString("").strip();
     return new Profile(
         email.isEmpty() ? null : email,
         name.isEmpty() ? null : name,
-        nickname.isEmpty() ? null : nickname);
+        nickname.isEmpty() ? null : nickname,
+        image.isEmpty() ? null : image);
   }
 
   /**

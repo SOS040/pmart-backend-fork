@@ -56,8 +56,9 @@ public class KakaoUnlinkClient {
   }
 
   /** 카카오 사용자 정보의 이메일·닉네임(2026-11-25). */
-  public record KakaoProfile(@Nullable String email, @Nullable String nickname) {
-    static final KakaoProfile NONE = new KakaoProfile(null, null);
+  public record KakaoProfile(
+      @Nullable String email, @Nullable String nickname, @Nullable String imageUrl) {
+    static final KakaoProfile NONE = new KakaoProfile(null, null, null);
 
     @Override
     public String toString() {
@@ -101,7 +102,12 @@ public class KakaoUnlinkClient {
     if (nick.isEmpty()) {
       nick = body.path("properties").path("nickname").asString("").strip();
     }
-    return new KakaoProfile(email, nick.isEmpty() ? null : nick);
+    // 사진(2026-11-25 — 사용자 "프로필 사진도 해줘"): 기본 사진이면 없음(고객 auth 와 같게)
+    String image =
+        account.path("profile").path("is_default_image").asBoolean(false)
+            ? ""
+            : account.path("profile").path("profile_image_url").asString("").strip();
+    return new KakaoProfile(email, nick.isEmpty() ? null : nick, image.isEmpty() ? null : image);
   }
 
   public boolean configured() {
