@@ -61,3 +61,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: 사용자 결정 — R-18 분배·라인·DPS 1단계를 시뮬레이터가 계약 그대로 만든다(백엔드 변경 없음, 2단계 묶음 피킹은 나중). LAN 위치 전환은 최종 랙 배치·설계가 정해진 뒤(그 전엔 시드 --apply 금지). PR `cdc/r18-decisions`.
 - 2026-11-25: 묶음 피킹(2단계) 설계 `docs/cdc/design/2026-11-25-batch-picking.md` — 사용자 결정 4개(묶음 범위·부족은 기한 이른 TRF 부터 채움·6층은 선반 통로 pickMethod·미설명 수량이면 출발 검증 막음). 다음: 계약 → 구현. PR `cdc/batch-picking-design`.
 - 2026-11-25: 묶음 피킹 결정 4 먼저 구현 — cdc-outbound 0.8.0, 실피킹 > BOX 분류(SKU 별)면 출발 검증 불일치 `UNEXPLAINED_QTY`(TOUT 없음, 사건 MISSING). 단건 피킹에도 적용. PR `cdc/departure-unsorted-block`. 다음: cdc-location pickMethod → cdc-outbound 묶음 작업.
+- 2026-11-25: cdc-location 0.5.0 — 피킹 선반 통로별 피킹 방식 설정값(`/cdcs/{cdcId}/aisle-pick-methods`, DPS·BOX_PICK·FC·DISTRIBUTION·LINE, Flyway V3)·일괄 조회 `pickMethod`. PR `cdc/location-pick-method`. 남음: 칠곡 통로별 값(6층 B 어느 통로가 야채 분배인지 — 시뮬레이터 배치·사용자) 넣기, cdc-outbound 묶음 작업.
