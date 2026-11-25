@@ -56,12 +56,22 @@ public final class ProfileImageRules {
   }
 
   /** Google 사진 주소 끝의 크기 지정({@code =s96-c}, {@code =s96})을 {@code =s<size>-c} 로. 없으면 그대로. */
+  /** 네이버 CDN 크기(지원: s80·s160 — f160_160 같음). */
+  static final String NAVER_TYPE = "s160";
+
+  /** 크기를 바꾼 주소로 못 받았을 때 다시 받을 원래 주소(같으면 null). */
+  public static @Nullable URI original(URI fetched, String source) {
+    URI o = URI.create(source.strip());
+    return o.equals(fetched) ? null : o;
+  }
+
   static String sized(String url, String host, int sizePx) {
     // 네이버(*.pstatic.net, 2026-11-25 BR-103): 원본이 1.45MB PNG 라 1MB 상한에 걸려 사본이 늘 실패 — CDN 축소
     // ?type=s<크기>(같은 사진 25KB)
     String h = host.toLowerCase(Locale.ROOT);
     if (h.equals("pstatic.net") || h.endsWith(".pstatic.net")) {
-      return url.replaceFirst("[?#].*$", "") + "?type=s" + sizePx;
+      // 네이버 CDN 은 정해진 크기만 준다(s80·s160 — s256 등은 404, 2026-11-25 LAN 확인). 256px 칸에 s160
+      return url.replaceFirst("[?#].*$", "") + "?type=" + NAVER_TYPE;
     }
     return url.replaceFirst("=s\\d+(-c)?$", "=s" + sizePx + "-c");
   }

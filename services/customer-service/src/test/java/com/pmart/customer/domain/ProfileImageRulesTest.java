@@ -32,11 +32,11 @@ class ProfileImageRulesTest {
     assertThat(
             ProfileImageRules.fetchUri(
                 "https://phinf.pstatic.net/contact/20231010_1/abc.png", naver, false, 256))
-        .contains(URI.create("https://phinf.pstatic.net/contact/20231010_1/abc.png?type=s256"));
+        .contains(URI.create("https://phinf.pstatic.net/contact/20231010_1/abc.png?type=s160"));
     assertThat(
             ProfileImageRules.fetchUri(
                 "https://phinf.pstatic.net/contact/x.png?type=f80_80", naver, false, 256))
-        .contains(URI.create("https://phinf.pstatic.net/contact/x.png?type=s256"));
+        .contains(URI.create("https://phinf.pstatic.net/contact/x.png?type=s160"));
   }
 
   @Test

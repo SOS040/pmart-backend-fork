@@ -39,3 +39,9 @@
 2. customer-service 로그 "고객 인증 반영"·"프로필 사진 …" 줄과 시각.
 3. 사진이면 주소의 상태·크기만(주소 원문은 남기지 않는다) — 상한(1MB)·허용 호스트(`allowed-host-suffixes`)·리다이렉트(따르지 않음) 확인.
 4. auth 로그 `네이버 프로필 … 생략 reason=` — `missing_name`·`missing_email`·`missing_profile_image` 면 네이버가 안 준 것(동의 화면에서 끔·콘솔 제공 정보).
+
+## 덧붙임 — 첫 고침이 오히려 막음(같은 날 오후, 고객앱 `2026-11-25-backend-br103-photo-still-missing.md`)
+- 배포(4dc42be7, 06:19 UTC) 뒤 07:04·07:08 로그인도 "응답이 없거나 상한 초과". 원인: 네이버 CDN 은 **정해진 크기만** 준다 — `?type=s80`·`s160`(=`f160_160`)은 200, `s256`·`s100`~`s640`·`w240` 등은 **404**. 고친 코드가 `?type=s256` 을 붙여 늘 404 였다(이번 계정 원본은 79KB 라 원본이면 됐다).
+- 고침: 네이버는 `?type=s160` 고정(`ProfileImageRules.NAVER_TYPE`), 크기 바꾼 주소가 안 되면 **원래 주소로 한 번 더**(`ProfileImageRules.original`, 1MB 상한 그대로) — `ProfileImageService.copy`.
+- 그 계정(CU-2cde…)의 사진 출처 기록: 07:08:23 NONE → 07:08:26 PROVIDER(되돌리기) → 받기 실패 → 07:13:30 NONE. NONE·CUSTOM 이면 로그인해도 덮지 않는다(BR-80) — 되돌리기(`POST /me/profile-image/provider-restorations`)가 PROVIDER 로 바꾸고 다시 받는다. 계정은 그 뒤 탈퇴.
+- 교훈: CDN 크기 파라미터는 지원 값을 실제로 받아 보고 정한다 — 한 값(s160)만 시험하고 다른 값(s256)을 썼다.

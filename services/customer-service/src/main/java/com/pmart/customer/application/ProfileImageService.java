@@ -122,6 +122,11 @@ public class ProfileImageService {
     byte[] body;
     try {
       body = downloader.download(uri.get()).orElse(null);
+      // 크기를 바꾼 주소가 안 되면(CDN 이 그 크기를 모름 404 등) 원래 주소로 한 번 더(1MB 상한은 그대로)
+      URI original = body == null ? ProfileImageRules.original(uri.get(), source) : null;
+      if (original != null) {
+        body = downloader.download(original).orElse(null);
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return;
