@@ -41,7 +41,7 @@ public final class ProfileImageRules {
         || !hostAllowed(u.getHost(), allowedHostSuffixes)) {
       return Optional.empty();
     }
-    return Optional.of(URI.create(sized(u.toString(), sizePx)));
+    return Optional.of(URI.create(sized(u.toString(), u.getHost(), sizePx)));
   }
 
   static boolean hostAllowed(String host, List<String> suffixes) {
@@ -56,7 +56,13 @@ public final class ProfileImageRules {
   }
 
   /** Google 사진 주소 끝의 크기 지정({@code =s96-c}, {@code =s96})을 {@code =s<size>-c} 로. 없으면 그대로. */
-  static String sized(String url, int sizePx) {
+  static String sized(String url, String host, int sizePx) {
+    // 네이버(*.pstatic.net, 2026-11-25 BR-103): 원본이 1.45MB PNG 라 1MB 상한에 걸려 사본이 늘 실패 — CDN 축소
+    // ?type=s<크기>(같은 사진 25KB)
+    String h = host.toLowerCase(Locale.ROOT);
+    if (h.equals("pstatic.net") || h.endsWith(".pstatic.net")) {
+      return url.replaceFirst("[?#].*$", "") + "?type=s" + sizePx;
+    }
     return url.replaceFirst("=s\\d+(-c)?$", "=s" + sizePx + "-c");
   }
 
