@@ -39,10 +39,15 @@ class Labels implements ResponseBodyAdvice<Object> {
 
   private final DisplayNumberStore numbers;
   private final ProductNames names;
+  private final com.pmart.cdc.outbound.application.WaveAdjustments adjustments;
 
-  Labels(DisplayNumberStore numbers, ProductNames names) {
+  Labels(
+      DisplayNumberStore numbers,
+      ProductNames names,
+      com.pmart.cdc.outbound.application.WaveAdjustments adjustments) {
     this.numbers = numbers;
     this.names = names;
+    this.adjustments = adjustments;
   }
 
   @Override
@@ -140,8 +145,17 @@ class Labels implements ResponseBodyAdvice<Object> {
     }
     Map<String, String> wn = numbers.numbers(Kind.WAVE, waveIds);
     Map<String, String> tr = numbers.numbers(Kind.TRF, trfIds);
+    var holds = adjustments.holds(waveIds);
     for (Wave w : ws) {
       w.setWaveNumber(get(wn, w.getWaveId()));
+      var h = w.getWaveId() == null ? null : holds.get(w.getWaveId());
+      if (h != null) {
+        w.setHold(
+            new com.pmart.cdc.outbound.api.generated.model.WaveHold()
+                .reason(h.reason())
+                .heldBy(h.by())
+                .heldAt(h.at().atOffset(java.time.ZoneOffset.UTC)));
+      }
       if (w.getTrfIds() != null) {
         w.setTrfNumbers(
             new ArrayList<>(w.getTrfIds().stream().map(id -> tr.getOrDefault(id, "")).toList()));

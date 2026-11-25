@@ -396,6 +396,14 @@ public class OutboundStore {
         == 1;
   }
 
+  /** 보류된 Wave 인가(0.22.0, V15). */
+  public boolean waveHeld(String waveId) {
+    Boolean b =
+        jdbc.queryForObject(
+            "SELECT held_at IS NOT NULL FROM wave WHERE wave_id = ?", Boolean.class, waveId);
+    return Boolean.TRUE.equals(b);
+  }
+
   /** Wave 의 Task 상태별 수(total·done·exception 요약용). */
   public int[] taskSummary(String waveId) {
     Integer total =
@@ -633,7 +641,8 @@ public class OutboundStore {
                 + TASK_COLS
                 + " FROM task t JOIN wave w ON w.wave_id = t.wave_id WHERE t.cdc_id = ?"
                 + " AND t.state = 'CREATED' AND t.assignee_id IS NULL"
-                + " AND w.state IN ('RELEASED', 'IN_PROGRESS')");
+                + " AND w.state IN ('RELEASED', 'IN_PROGRESS') AND w.held_at IS NULL"); // 0.22.0 보류
+    // Wave 제외
     List<Object> args = new ArrayList<>(List.of(cdcId));
     if (kind != null) {
       sql.append(" AND t.kind = ?");

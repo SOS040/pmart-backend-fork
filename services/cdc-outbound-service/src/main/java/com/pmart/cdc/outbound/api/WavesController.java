@@ -33,6 +33,112 @@ public class WavesController implements WavesApi {
     this.regions = regions;
   }
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.pmart.cdc.outbound.application.WaveAdjustments adjustments;
+
+  @Override
+  public ResponseEntity<Wave> holdWave(
+      String waveId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.outbound.api.generated.model.WaveReasonRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        dto(
+            adjustments.hold(
+                idempotencyKey, xSourceSystem, waveId, xExpectedVersion, body.getReason())));
+  }
+
+  @Override
+  public ResponseEntity<Wave> resumeWave(
+      String waveId,
+      String idempotencyKey,
+      String xSourceSystem,
+      @Nullable Integer xExpectedVersion,
+      com.pmart.cdc.outbound.api.generated.model.@Nullable TaskReasonRequest body) {
+    return ResponseEntity.ok(
+        dto(
+            adjustments.resume(
+                idempotencyKey,
+                xSourceSystem,
+                waveId,
+                xExpectedVersion,
+                body == null ? null : body.getReason())));
+  }
+
+  @Override
+  public ResponseEntity<Wave> cancelWave(
+      String waveId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.outbound.api.generated.model.WaveReasonRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        dto(
+            adjustments.cancel(
+                idempotencyKey, xSourceSystem, waveId, xExpectedVersion, body.getReason())));
+  }
+
+  @Override
+  public ResponseEntity<Wave> mergeWave(
+      String waveId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.outbound.api.generated.model.MergeWaveRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        dto(
+            adjustments.merge(
+                idempotencyKey,
+                xSourceSystem,
+                waveId,
+                xExpectedVersion,
+                body.getSourceWaveId(),
+                body.getReason())));
+  }
+
+  @Override
+  public ResponseEntity<Wave> splitWave(
+      String waveId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.outbound.api.generated.model.SplitWaveRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(
+            dto(
+                adjustments.split(
+                    idempotencyKey,
+                    xSourceSystem,
+                    waveId,
+                    xExpectedVersion,
+                    body.getTrfIds(),
+                    body.getReason())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.ListWaveAdjustments200Response>
+      listWaveAdjustments(String waveId) {
+    var out = new com.pmart.cdc.outbound.api.generated.model.ListWaveAdjustments200Response();
+    out.setItems(
+        new java.util.ArrayList<>(
+            adjustments.history(waveId).stream()
+                .map(
+                    a ->
+                        new com.pmart.cdc.outbound.api.generated.model.WaveAdjustment()
+                            .adjustmentId(a.adjustmentId())
+                            .action(a.action())
+                            .fromState(a.fromState())
+                            .toState(a.toState())
+                            .otherWaveId(a.otherWaveId())
+                            .trfIds(new java.util.ArrayList<>(a.trfIds()))
+                            .reason(a.reason())
+                            .actorId(a.actorId())
+                            .adjustedAt(Dto.time(a.at())))
+                .toList()));
+    return ResponseEntity.ok(out);
+  }
+
   @Override
   public ResponseEntity<ListRegions200Response> listRegions(String cdcId) {
     return ResponseEntity.ok(regions(regions.list(cdcId)));

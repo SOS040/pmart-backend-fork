@@ -190,6 +190,14 @@ public class WaveService {
           if (!"PLANNED".equals(w.state())) {
             throw PmartException.invalidState("Wave 상태 " + w.state() + " 에서는 릴리스할 수 없습니다.");
           }
+          if (store.waveHeld(waveId)) { // 0.22.0 보류
+            throw new PmartException(
+                "WAVE_HELD",
+                HttpStatus.CONFLICT,
+                "보류된 Wave 는 릴리스할 수 없습니다 — 먼저 재개하세요.",
+                false,
+                List.of());
+          }
           List<TransferRow> trfs = store.transfersOfWave(waveId);
           Map<String, String> regionOf = new HashMap<>();
           for (RegionRow r : store.regions(w.cdcId())) {

@@ -44,3 +44,12 @@ PC 5 요청(화면 번호 T·W·K, P-1 상품 이름). 규칙은 ADR-0070 덧붙
 - 찾기: `GET /cdcs/{cdcId}/transfers|waves|departures|tasks?number=` — `T482913`·`t482913`·`482913` 모두 같은 번호. 숫자가 아니면 빈 목록.
 - 상품 이름: `TransferDetail.lines[].productName`·`Task.lines[].productName`(product 승인 스냅샷 internalName, 못 찾으면 null).
 - 실사 번호 C 와 cdc-inventory 상품 이름(stock-snapshot·location-stocks·sku-handlings·count-sessions·recount-holds)은 **cdc-inventory 요청 CI-1** 로 CDC 세션이 해요(그쪽 PR 과 겹치지 않게). 그동안은 말씀하신 대로 화면이 product 에서 찾아 주세요.
+
+## 덧붙임(2026-11-26 — Wave 조작, cdc-outbound 0.22.0)
+사용자 "큰 순서 전부 고치고" 4번. 자기 센터 관리자만, `Idempotency-Key`·`X-Source-System` 필수, `X-Expected-Version`(Wave version) 선택. 응답은 바뀐 뒤 `Wave`.
+- 보류 `POST /waves/{waveId}/holds {reason}`(사유 필수) — PLANNED·RELEASED·IN_PROGRESS. 상태(state)는 그대로, 응답 `hold {reason, heldBy, heldAt}`. 보류 중엔 릴리스 409 `WAVE_HELD`, PDA 다음 작업 받기에 안 나옴(이미 받은·시작한 작업은 계속). 재개 `…/resumptions {reason?}`.
+- 취소 `…/cancellations {reason}` — PLANNED, 또는 RELEASED 인데 시작·실적 있는 작업이 없을 때만(있으면 409 `PICKING_STARTED`). 작업은 CANCELLED, TRF 는 Wave 에서 빠져 ALLOCATED 로 — 다시 Wave 에 넣을 수 있어요.
+- 합치기 `…/merges {sourceWaveId, reason?}` — 둘 다 PLANNED·같은 온도대. sourceWaveId 의 TRF 가 이 Wave 로, 원 Wave 는 CANCELLED.
+- 나누기 `…/splits {trfIds, reason?}` — PLANNED, 고른 TRF 로 새 PLANNED Wave(201, 응답은 새 Wave). 다 옮길 수는 없어요.
+- 이력 `GET /waves/{waveId}/adjustments` → `items[{action HOLD·RESUME·CANCEL·MERGE_IN·MERGED·SPLIT_OUT·SPLIT_FROM, fromState, toState, otherWaveId, trfIds, reason, actorId, adjustedAt}]`.
+- 릴리스 뒤(작업이 생긴 뒤)는 합치기·나누기 안 됨 — 화면에서 버튼을 숨겨 주세요.

@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.21.0
+  version: 0.22.0
   description: |
+    0.22.0(2026-11-26, DC 백오피스 Wave 조작 — 사용자 "큰 순서 전부 고치고" 4번, WMS CDC-F-017, Flyway V15): `POST /waves/{waveId}/holds {reason}`(PLANNED·RELEASED·IN_PROGRESS —
+      단계와 따로, 보류 중엔 릴리스 409 WAVE_HELD·PDA 다음 작업 받기에서 빠짐, 받은·시작한 작업은 그대로)·`…/resumptions`·`…/cancellations {reason}`(PLANNED, 또는 시작·실적 없는 RELEASED —
+      작업 CANCELLED, IN_WAVE TRF 는 Wave 에서 빠져 할당 상태로(다시 편성 가능, 할당·예약 그대로), 실적 있으면 409 PICKING_STARTED)·`…/merges {sourceWaveId}`(둘 다 PLANNED·같은 센터·온도대,
+      원 Wave CANCELLED)·`…/splits {trfIds}`(PLANNED, 일부 TRF 로 새 PLANNED Wave, 201)·`GET …/adjustments`(이력). Wave 에 `hold {reason, heldBy, heldAt}`(보류일 때만).
+      취소·병합으로 닫힌 Wave 는 WaveStateChanged CANCELLED.
     0.21.0(2026-11-26, PC5 DC 백오피스 요청 — 사용자 "관리자가 볼 땐 직관적으로 … 짧게 붙인 번호로", "무슨 상품인지는 안 적히나?", Flyway V14):
       화면 번호(ADR-0070·0085 규칙, 무작위·겹치지 않음·바뀌지 않음, 기존 행도 V14 가 채움) — TRF `trfNumber` T+6(T482913), Wave `waveNumber` W+4(차면 5자리),
       작업 `taskNumber` K+5, 출발 검증 `departureNumber` S+6. 시스템 ID 는 그대로. Task 에 taskNumber·waveNumber·trfNumber·trfNumbers(trfIds 순)·shares[].trfNumber,
@@ -206,6 +211,176 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /waves/{waveId}/holds:
+    post:
+      tags: [waves]
+      summary: '[운영자] Wave 보류 (0.22.0 — 릴리스·다음 작업 받기 막음, 받은·시작한 작업은 그대로)'
+      operationId: holdWave
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaveReasonRequest' }
+      responses:
+        '200':
+          description: 바꾼 뒤 Wave
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wave' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / PICKING_STARTED(취소 — 시작·실적 있는 작업)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /waves/{waveId}/resumptions:
+    post:
+      tags: [waves]
+      summary: '[운영자] Wave 보류 풀기 (0.22.0)'
+      operationId: resumeWave
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskReasonRequest' }
+      responses:
+        '200':
+          description: 바꾼 뒤 Wave
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wave' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / PICKING_STARTED(취소 — 시작·실적 있는 작업)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /waves/{waveId}/cancellations:
+    post:
+      tags: [waves]
+      summary: '[운영자] Wave 취소 (0.22.0 — PLANNED 또는 시작·실적 없는 RELEASED, TRF 는 다시 편성 가능)'
+      operationId: cancelWave
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaveReasonRequest' }
+      responses:
+        '200':
+          description: 바꾼 뒤 Wave
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wave' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / PICKING_STARTED(취소 — 시작·실적 있는 작업)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /waves/{waveId}/merges:
+    post:
+      tags: [waves]
+      summary: '[운영자] Wave 합치기 (0.22.0 — 둘 다 PLANNED·같은 온도대, sourceWaveId 의 TRF 를 이 Wave 로, 원 Wave 는 CANCELLED)'
+      operationId: mergeWave
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MergeWaveRequest' }
+      responses:
+        '200':
+          description: 바꾼 뒤 Wave
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wave' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / PICKING_STARTED(취소 — 시작·실적 있는 작업)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /waves/{waveId}/splits:
+    post:
+      tags: [waves]
+      summary: '[운영자] Wave 나누기 (0.22.0 — PLANNED, 고른 TRF 로 새 PLANNED Wave — 응답은 새 Wave)'
+      operationId: splitWave
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SplitWaveRequest' }
+      responses:
+        '201':
+          description: 새 Wave
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wave' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE / VERSION_CONFLICT / PICKING_STARTED(취소 — 시작·실적 있는 작업)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /waves/{waveId}/adjustments:
+    get:
+      tags: [waves]
+      summary: '[운영자] Wave 조작 이력 (0.22.0)'
+      operationId: listWaveAdjustments
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: waveId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 최신 순
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/WaveAdjustment' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/tasks:
     get:
@@ -1342,6 +1517,43 @@ components:
                   allocatedQty: { type: integer }
                   pickedQty: { type: integer }
                   shortQty: { type: integer }
+    WaveHold:
+      type: object
+      required: [reason, heldBy, heldAt]
+      properties:
+        reason: { type: string }
+        heldBy: { type: string }
+        heldAt: { type: string, format: date-time }
+    WaveReasonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 300 }
+    MergeWaveRequest:
+      type: object
+      required: [sourceWaveId]
+      properties:
+        sourceWaveId: { type: string, description: 이 Wave 로 합칠 다른 PLANNED Wave }
+        reason: { type: string, maxLength: 300 }
+    SplitWaveRequest:
+      type: object
+      required: [trfIds]
+      properties:
+        trfIds: { type: array, minItems: 1, items: { type: string }, description: 새 Wave 로 옮길 TRF(하나 이상 남겨야 함) }
+        reason: { type: string, maxLength: 300 }
+    WaveAdjustment:
+      type: object
+      required: [adjustmentId, action, fromState, toState, trfIds, actorId, adjustedAt]
+      properties:
+        adjustmentId: { type: string }
+        action: { type: string, description: 'HOLD / RESUME / CANCEL / MERGE_IN / MERGED / SPLIT_OUT / SPLIT_FROM' }
+        fromState: { type: string }
+        toState: { type: string }
+        otherWaveId: { type: [string, 'null'], description: 병합·분할 상대 }
+        trfIds: { type: array, items: { type: string } }
+        reason: { type: [string, 'null'] }
+        actorId: { type: string }
+        adjustedAt: { type: string, format: date-time }
     TaskReasonRequest:
       type: object
       properties:
@@ -1482,6 +1694,9 @@ components:
         version: { $ref: '_common.yaml#/components/schemas/Version' }
         trfIds: { type: array, items: { type: string } }
         trfNumbers: { type: array, items: { type: string }, description: '(0.21.0) trfIds 와 같은 순서의 화면 번호(옛 기록은 빈 문자열)' }
+        hold:
+          description: (0.22.0) 보류 중일 때만 — 단계(state)와 따로
+          allOf: [{ $ref: '#/components/schemas/WaveHold' }]
         plannedDepartureWindow: { type: object, properties: { start: { type: string, format: date-time }, end: { type: string, format: date-time } } }
         taskSummary: { type: object, properties: { total: { type: integer }, done: { type: integer }, exception: { type: integer } } }
         createdAt: { type: string, format: date-time }

@@ -429,6 +429,7 @@ GET /api/v1/vehicles OPERATOR
 GET /api/v1/vehicles/{vehicleId} OPERATOR
 GET /api/v1/vehicles/{vehicleId}/next-availability OPERATOR
 GET /api/v1/waves/{waveId} OPERATOR
+GET /api/v1/waves/{waveId}/adjustments OPERATOR
 GET /api/v1/work-orders OPERATOR
 GET /api/v1/work-results/{workResultId} OPERATOR
 PATCH /api/v1/carts/{cartId}/items/{itemId} CUSTOMER,GUEST
@@ -746,7 +747,12 @@ POST /api/v1/trips/{tripId}/stops/{stopId}/departures OPERATOR
 POST /api/v1/trips/{tripId}/stops/{stopId}/handovers OPERATOR
 POST /api/v1/trips/{tripId}/stops/{stopId}/unloading-starts OPERATOR
 POST /api/v1/waves OPERATOR
+POST /api/v1/waves/{waveId}/cancellations OPERATOR
+POST /api/v1/waves/{waveId}/holds OPERATOR
+POST /api/v1/waves/{waveId}/merges OPERATOR
 POST /api/v1/waves/{waveId}/releases OPERATOR
+POST /api/v1/waves/{waveId}/resumptions OPERATOR
+POST /api/v1/waves/{waveId}/splits OPERATOR
 POST /api/v1/webhooks/toss PUBLIC
 PUT /api/v1/content-drafts/{draftId} OPERATOR
 PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR

@@ -1589,6 +1589,115 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * Wave 조작(0.22.0, V15): 나누기·합치기(PLANNED 만)·보류(릴리스·다음 작업 받기 막음)·재개·취소(시작·실적 없을 때 — TRF 는 다시 편성
+   * 가능)·이력. CDC11.
+   */
+  @Test
+  void staffAdjustsWaves() {
+    String c = "CDC11";
+    String ops = TestJwt.operator("ops-11", List.of("CDC_SUPERVISOR"), List.of(c));
+    String wk = TestJwt.operator("w11", List.of("CDC_WORKER"), List.of(c));
+    List<String> trfs = new java.util.ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      String trf = "TRF-" + UUID.randomUUID();
+      String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+      stubAllocate(
+          trf,
+          200,
+          "{\"allocationId\":\""
+              + alc
+              + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":2},{\"sku\":\"E-00000002\",\"allocatedQty\":3}]}");
+      stubAllocationLots(
+          alc,
+          "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\"CDC11-A-5-61-01-1-1\",\"qty\":2}]},"
+              + "{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\"CDC11-A-5-62-01-1-1\",\"qty\":3}]}");
+      assertThat(
+              post(SERVICE, "/internal/transfer-intakes", trfAt(trf, c, "MFC-BJG-01", DUE, 2, 3))
+                  .status())
+          .isEqualTo(202);
+      trfs.add(trf);
+    }
+    String w1 =
+        post(ops, "/waves", Map.of("cdcId", c, "trfIds", List.of(trfs.get(0), trfs.get(1))))
+            .body()
+            .path("waveId")
+            .asString();
+    String w2 =
+        post(ops, "/waves", Map.of("cdcId", c, "trfIds", List.of(trfs.get(2))))
+            .body()
+            .path("waveId")
+            .asString();
+
+    // 나누기 → 새 Wave 에 B
+    Res sp = post(ops, "/waves/" + w1 + "/splits", Map.of("trfIds", List.of(trfs.get(1))));
+    assertThat(sp.status()).as(sp.body().toString()).isEqualTo(201);
+    String w3 = sp.body().path("waveId").asString();
+    assertThat(sp.body().path("trfIds").get(0).asString()).isEqualTo(trfs.get(1));
+    assertThat(
+            post(ops, "/waves/" + w1 + "/splits", Map.of("trfIds", List.of(trfs.get(0))))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("INVALID_STATE"); // 다 옮기면 나누기가 아님
+
+    // 합치기 → w1 = A + C, w2 CANCELLED
+    Res mg = post(ops, "/waves/" + w1 + "/merges", Map.of("sourceWaveId", w2));
+    assertThat(mg.status()).as(mg.body().toString()).isEqualTo(200);
+    assertThat(mg.body().path("trfIds").size()).isEqualTo(2);
+    assertThat(get(ops, "/waves/" + w2).body().path("state").asString()).isEqualTo("CANCELLED");
+
+    // 보류 → 릴리스 막힘 → 재개 → 릴리스
+    assertThat(post(ops, "/waves/" + w1 + "/holds", Map.of()).status()).isEqualTo(400);
+    Res hd = post(ops, "/waves/" + w1 + "/holds", Map.of("reason", "차량 늦음"));
+    assertThat(hd.body().path("hold").path("reason").asString())
+        .as(hd.body().toString())
+        .isEqualTo("차량 늦음");
+    assertThat(post(ops, "/waves/" + w1 + "/releases", null).body().path("code").asString())
+        .isEqualTo("WAVE_HELD");
+    JsonNode resumed = post(ops, "/waves/" + w1 + "/resumptions", null).body().path("hold");
+    assertThat(resumed.isMissingNode() || resumed.isNull()).isTrue();
+    assertThat(post(ops, "/waves/" + w1 + "/releases", null).status()).isEqualTo(202);
+
+    // 릴리스 뒤 보류 → PDA 다음 작업 받기에 안 나옴
+    post(ops, "/waves/" + w1 + "/holds", Map.of("reason", "점검"));
+    assertThat(
+            post(wk, "/cdcs/" + c + "/workers/w11/next-tasks", Map.of())
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_TASK_AVAILABLE");
+    post(ops, "/waves/" + w1 + "/resumptions", null);
+    Res got = post(wk, "/cdcs/" + c + "/workers/w11/next-tasks", Map.of());
+    assertThat(got.status()).as(got.body().toString()).isEqualTo(201);
+
+    // 취소(받기만 하고 시작 안 함) → 작업 CANCELLED, TRF 다시 편성 가능
+    Res cn = post(ops, "/waves/" + w1 + "/cancellations", Map.of("reason", "재편성"));
+    assertThat(cn.body().path("state").asString()).as(cn.body().toString()).isEqualTo("CANCELLED");
+    assertThat(
+            get(ops, "/cdcs/" + c + "/tasks?waveId=" + w1)
+                .body()
+                .path("items")
+                .findValuesAsString("state"))
+        .containsOnly("CANCELLED");
+    JsonNode a = get(ops, "/cdcs/" + c + "/transfers/" + trfs.get(0)).body();
+    assertThat(a.path("state").asString()).isEqualTo("ALLOCATED");
+    assertThat(a.path("waveId").isNull() || a.path("waveId").isMissingNode()).isTrue();
+    assertThat(
+            post(ops, "/waves", Map.of("cdcId", c, "trfIds", List.of(trfs.get(0), trfs.get(2))))
+                .status())
+        .isEqualTo(201);
+    assertThat(post(ops, "/waves/" + w3 + "/cancellations", Map.of("reason", "필요 없음")).status())
+        .isEqualTo(200);
+
+    JsonNode hist = get(ops, "/waves/" + w1 + "/adjustments").body().path("items");
+    assertThat(hist.findValuesAsString("action"))
+        .containsExactly("CANCEL", "RESUME", "HOLD", "RESUME", "HOLD", "MERGE_IN", "SPLIT_OUT");
+    String other = TestJwt.operator("ops-x", List.of("CDC_SUPERVISOR"), List.of("CDC99"));
+    assertThat(post(other, "/waves/" + w3 + "/holds", Map.of("reason", "x")).status())
+        .isEqualTo(403);
+  }
+
+  /**
    * 피킹 부족 재할당(0.12.0, CDC-F-018): 10 중 7 집고 3 부족 → 재고 해제(그 LOT·위치·재계수 대기) → 추가 할당 2(다른 칸) → 새 작업 2,
    * 못 찾음 1(PickShortageResolved) → 새 작업 끝나면 TRF PICKED(실피킹 9 = 7 + 2, 못 찾음 1). 추가 할당 불명이면
    * SHORTAGE_REALLOCATING 으로 남고 다시 부르면 끝난다. CDC06.
