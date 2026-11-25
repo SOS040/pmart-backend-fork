@@ -37,11 +37,43 @@ public class StaffViews {
   private final StaffViewStore store;
   private final Clock clock;
   private final WaveService waves;
+  private final DepartureService departures;
+  private final ReadinessService readiness;
 
-  public StaffViews(StaffViewStore store, Clock clock, WaveService waves) {
+  public StaffViews(
+      StaffViewStore store,
+      Clock clock,
+      WaveService waves,
+      DepartureService departures,
+      ReadinessService readiness) {
     this.store = store;
     this.clock = clock;
     this.waves = waves;
+    this.departures = departures;
+    this.readiness = readiness;
+  }
+
+  public record DeparturePage(
+      List<DepartureService.View> items, int page, int size, boolean hasNext) {}
+
+  /** 출발 검증 결과 목록(0.16.0 M-3) — 줄은 내부 조회와 같은 내용. */
+  public DeparturePage departures(String cdcId, @Nullable String result, int page, int size) {
+    Support.requireCenter(cdcId);
+    int p = Math.max(0, page);
+    int s = Math.min(200, Math.max(1, size));
+    var ids = store.departureIds(cdcId, blank(result), p, s);
+    boolean next = ids.size() > s;
+    var items = (next ? ids.subList(0, s) : ids).stream().map(departures::view).toList();
+    return new DeparturePage(items, p, s, next);
+  }
+
+  /** TRF 출발 준비(0.16.0 M-3) — 이 센터 TRF 만(아니면 404). */
+  public ReadinessService.Readiness readiness(String cdcId, String trfId) {
+    Support.requireCenter(cdcId);
+    store
+        .transfer(cdcId, trfId)
+        .orElseThrow(() -> PmartException.notFound("TRF_NOT_FOUND", "TRF 가 없습니다."));
+    return readiness.of(trfId);
   }
 
   public record WavePage(List<WaveService.WaveView> items, int page, int size, boolean hasNext) {}

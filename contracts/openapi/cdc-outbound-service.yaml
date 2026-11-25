@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
+    0.16.0(2026-11-25, DC 백오피스 M-3 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-25-backend-monitoring-gaps.md, 사용자 "응"): 직원 조회 2개(자기 센터 운영자만, 읽기만).
+      `GET /cdcs/{cdcId}/departures?result=&page=&size=`(출발 검증 결과 — 줄 = 내부 `DepartureValidation` 과 같은 모양: TRF 별 결과·잔량 해제·불일치 사유, 검증 최신 순),
+      `GET /cdcs/{cdcId}/transfers/{trfId}/readiness`(출발 준비 단계·막힌 이유 — 내부 `/internal/outbound-readiness` 와 같은 내용). 운송(차량·기사·운행)은 TMS 서비스 뒤.
     0.15.0(2026-11-25, DC 백오피스 W-1 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-25-backend-wave-list.md): 직원 조회 `GET /cdcs/{cdcId}/waves?state=&page=&size=`
       — 이 센터 Wave 목록(줄 = `Wave` 그대로 — trfIds·taskSummary 포함), 만든 시각 최신 순, 쪽 나눔은 transfers 와 같게(page 0부터, size ≤ 200, hasNext). 자기 센터 운영자만. 읽기만.
     0.14.0(2026-11-25, 피킹 재고는 출고대기 자리로 옮겨 적기 — 사용자 결정, 설계 docs/cdc/design/2026-11-25-count-adjustment.md §5): 피킹 실적의 실피킹(TRF 몫마다)을
@@ -266,6 +269,53 @@ paths:
                   size: { type: integer }
                   hasNext: { type: boolean }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/departures:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 출발 검증 결과 목록 (0.16.0 — DC 백오피스 M-3)'
+      description: |
+        이 센터 TRF 가 든 출발 검증. 검증 시각 최신 순(같으면 departureId 순). result(MATCHED·PARTIALLY_MATCHED·MISMATCHED)로 거른다. page 는 0부터.
+        줄은 `GET /internal/departure-validations/{departureId}` 와 같은 모양.
+      operationId: listCenterDepartures
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: result, in: query, required: false, schema: { type: string, enum: [MATCHED, PARTIALLY_MATCHED, MISMATCHED] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/DepartureValidation' } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/transfers/{trfId}/readiness:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] TRF 출발 준비 (0.16.0 — 내부 outbound-readiness 와 같은 내용)'
+      operationId: getCenterTransferReadiness
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: trfId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OutboundReadiness' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /cdcs/{cdcId}/transfers/{trfId}:
     get:
@@ -898,22 +948,24 @@ paths:
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  trfId: { type: string }
-                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-                  readiness: { type: string, enum: [NOT_STARTED, PICKING, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED] }
-                  readyLpnCount: { type: integer }
-                  readyQty: { type: integer }
-                  totalWeightG: { type: integer }
-                  temperatureZones: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
-                  earliestReadyAt: { type: [string, 'null'], format: date-time }
-                  blockers: { type: array, items: { type: string } }
+              schema: { $ref: '#/components/schemas/OutboundReadiness' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
 components:
   schemas:
+    OutboundReadiness:
+      type: object
+      description: '출발 준비(0.6.0) — 내부 /internal/outbound-readiness·직원 /cdcs/{cdcId}/transfers/{trfId}/readiness(0.16.0) 같은 모양'
+      properties:
+        trfId: { type: string }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        readiness: { type: string, enum: [NOT_STARTED, PICKING, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED] }
+        readyLpnCount: { type: integer }
+        readyQty: { type: integer }
+        totalWeightG: { type: integer }
+        temperatureZones: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
+        earliestReadyAt: { type: [string, 'null'], format: date-time }
+        blockers: { type: array, items: { type: string } }
     TransferSummary:
       type: object
       description: '(0.11.0) TRF 한 줄 — 수량은 줄 합'

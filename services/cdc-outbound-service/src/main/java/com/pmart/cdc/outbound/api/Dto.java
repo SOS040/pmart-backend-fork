@@ -1,7 +1,7 @@
 package com.pmart.cdc.outbound.api;
 
-import com.pmart.cdc.outbound.api.generated.model.GetOutboundReadiness200ResponseAsOf;
 import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
+import com.pmart.cdc.outbound.api.generated.model.OutboundReadinessAsOf;
 import com.pmart.cdc.outbound.api.generated.model.PickMode;
 import com.pmart.cdc.outbound.api.generated.model.Task;
 import com.pmart.cdc.outbound.api.generated.model.TaskLinesInner;
@@ -26,10 +26,10 @@ final class Dto {
   }
 
   /** 지금 장부를 읽은 조회(CURRENT). */
-  static GetOutboundReadiness200ResponseAsOf asOf(Instant at) {
-    var a = new GetOutboundReadiness200ResponseAsOf();
+  static OutboundReadinessAsOf asOf(Instant at) {
+    var a = new OutboundReadinessAsOf();
     a.setAsOf(time(at));
-    a.setFreshness(GetOutboundReadiness200ResponseAsOf.FreshnessEnum.CURRENT);
+    a.setFreshness(OutboundReadinessAsOf.FreshnessEnum.CURRENT);
     return a;
   }
 

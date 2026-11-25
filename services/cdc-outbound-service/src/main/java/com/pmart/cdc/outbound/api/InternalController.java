@@ -4,10 +4,10 @@ import com.pmart.cdc.outbound.api.generated.InternalApi;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidation;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidationMismatchesInner;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidationTransfersInner;
-import com.pmart.cdc.outbound.api.generated.model.GetOutboundReadiness200Response;
 import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
 import com.pmart.cdc.outbound.api.generated.model.LpnComposition;
 import com.pmart.cdc.outbound.api.generated.model.LpnCompositionContentsInner;
+import com.pmart.cdc.outbound.api.generated.model.OutboundReadiness;
 import com.pmart.cdc.outbound.api.generated.model.ShipmentManifest;
 import com.pmart.cdc.outbound.api.generated.model.ShipmentManifestLinesInner;
 import com.pmart.cdc.outbound.api.generated.model.TransferIntake;
@@ -259,21 +259,26 @@ public class InternalController implements InternalApi {
   }
 
   @Override
-  public ResponseEntity<GetOutboundReadiness200Response> getOutboundReadiness(String trfId) {
-    var r = readiness.of(trfId);
-    var out = new GetOutboundReadiness200Response();
+  public ResponseEntity<OutboundReadiness> getOutboundReadiness(String trfId) {
+    return ResponseEntity.ok(readinessDto(readiness.of(trfId)));
+  }
+
+  /** 출발 준비 응답(내부·직원 조회 같은 모양 — 0.16.0). */
+  static OutboundReadiness readinessDto(
+      com.pmart.cdc.outbound.application.ReadinessService.Readiness r) {
+    var out = new OutboundReadiness();
     out.setTrfId(r.trfId());
     out.setAsOf(Dto.asOf(r.asOf()));
-    out.setReadiness(GetOutboundReadiness200Response.ReadinessEnum.fromValue(r.readiness()));
+    out.setReadiness(OutboundReadiness.ReadinessEnum.fromValue(r.readiness()));
     out.setReadyLpnCount(r.readyLpnCount());
     out.setReadyQty(r.readyQty());
     out.setTotalWeightG((int) Math.min(Integer.MAX_VALUE, r.totalWeightG()));
     out.setTemperatureZones(
         r.temperatureZones().stream()
-            .map(GetOutboundReadiness200Response.TemperatureZonesEnum::fromValue)
+            .map(OutboundReadiness.TemperatureZonesEnum::fromValue)
             .toList());
     out.setEarliestReadyAt(Dto.time(r.earliestReadyAt()));
     out.setBlockers(r.blockers());
-    return ResponseEntity.ok(out);
+    return out;
   }
 }

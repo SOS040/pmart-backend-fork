@@ -201,6 +201,12 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     JsonNode i1 = get(SERVICE, "/internal/transfer-intakes/" + trf1).body();
     JsonNode rd0 = readiness(trf1);
     assertThat(rd0.path("readiness").asString()).isEqualTo("NOT_STARTED");
+    // M-3(0.16.0) 직원 출발 준비 — 내부와 같은 내용, 다른 센터 TRF 는 404
+    JsonNode staffRd = get(OPS, "/cdcs/" + CENTER + "/transfers/" + trf1 + "/readiness").body();
+    assertThat(staffRd.path("readiness").asString()).isEqualTo("NOT_STARTED");
+    assertThat(staffRd.path("blockers").toString()).contains("NOT_IN_WAVE");
+    assertThat(get(OPS, "/cdcs/" + CENTER + "/transfers/TRF-NONE/readiness").status())
+        .isEqualTo(404);
     assertThat(rd0.path("blockers").toString()).contains("NOT_IN_WAVE");
     assertThat(get(SERVICE, "/internal/outbound-readiness?trfId=TRF-NONE").status()).isEqualTo(404);
     assertThat(i1.path("state").asString()).isEqualTo("PARTIALLY_ALLOCATED");
@@ -533,6 +539,12 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(t1v.path("commitId").asString()).isEqualTo("CMT-9");
     assertThat(t1v.path("departedQty").asInt()).isEqualTo(7);
     assertThat(v.body().path("transfers").get(1).path("result").asString()).isEqualTo("MISMATCHED");
+    // M-3(0.16.0) 직원 출발 검증 목록 — 결과로 거르기, 줄은 내부와 같은 모양
+    JsonNode deps =
+        get(OPS, "/cdcs/" + CENTER + "/departures?result=PARTIALLY_MATCHED&size=200").body();
+    assertThat(deps.path("items").findValuesAsString("departureId")).contains(dep);
+    assertThat(deps.path("items").findValuesAsString("overallResult"))
+        .containsOnly("PARTIALLY_MATCHED");
     inventory.verify(
         1,
         postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-postings"))

@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-25, DC 백오피스 M-6 칸별 재고 — PC 5 요청, 사용자 "응"): 직원 조회 `GET /cdcs/{cdcId}/location-stocks?locationPrefix=&sku=` — 재고 스냅샷을
+      칸 기준으로 펼친 줄(칸·SKU·LOT·품질 상태·현물·예약·소비기한), 칸 코드 순. 자기 센터 운영자만. 읽기만(cdc-location occupiedQty 는 그대로 비움 — 칸 재고는 이 조회로).
     0.8.0(2026-11-25, 재계수·실사 조정 — WMS CDC-F-029·030, 설계 docs/cdc/design/2026-11-25-count-adjustment.md, 사용자 "MFC 실사와 같게"): 실사 세션
       `/cdcs/{cdcId}/count-sessions` — 시작(칸 잠금: 새 할당 후보에서 뺌)·장부 숨긴 첫 계수·다른 작업자 재계수·시작/계수자 아닌 운영자 결정 → CNT 조정·재계수 대기 해소·InventoryAdjustmentPosted.
       승인 관문 `pmart.inventory.approval-ref.mode`(VERIFY — MFC 와 같은 본사 기준, RECORD_ONLY — 번호 기록만). 실물이 예약보다 적어지는 조정은 아직 409 COUNT_BELOW_RESERVED(설계 §4 는 다음 PR).
@@ -769,6 +771,47 @@ paths:
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
                   items: { type: array, items: { $ref: '#/components/schemas/DailyReconciliationLine' } }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cdcs/{cdcId}/location-stocks:
+    get:
+      tags: [availability]
+      summary: '[운영자] 칸별 재고 (0.9.0 — DC 백오피스 칸 카드)'
+      description: |
+        재고 스냅샷(현물 행이 있는 SKU)을 칸 기준으로 펼친다 — 한 줄 = 칸 × SKU × LOT × 품질 상태. locationPrefix(칸 코드 앞부분, 예 CDC01-C-05)·sku 로 거른다.
+        칸 코드 → SKU → LOT 순. 줄이 많으면 limit(기본 500, 최대 2000)에서 자르고 truncated=true.
+      operationId: listCenterLocationStocks
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: locationPrefix, in: query, required: false, schema: { type: string, maxLength: 40 } }
+        - { name: sku, in: query, required: false, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, truncated]
+                properties:
+                  cdcId: { type: string }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  truncated: { type: boolean }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [locationCode, sku, lot, qualityState, onHand, reserved]
+                      properties:
+                        locationCode: { type: string }
+                        sku: { type: string }
+                        lot: { type: string }
+                        qualityState: { type: string }
+                        onHand: { type: integer }
+                        reserved: { type: integer }
+                        expiresAt: { type: [string, 'null'], format: date }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/stock-snapshot:
     get:

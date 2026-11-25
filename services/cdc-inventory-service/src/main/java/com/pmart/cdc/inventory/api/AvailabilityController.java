@@ -104,6 +104,62 @@ public class AvailabilityController implements AvailabilityApi {
     return ResponseEntity.ok(out);
   }
 
+  /** DC 백오피스 칸별 재고(0.9.0 M-6) — 스냅샷을 칸 기준으로 펼침, 칸 → SKU → LOT 순. */
+  @Override
+  public ResponseEntity<
+          com.pmart.cdc.inventory.api.generated.model.ListCenterLocationStocks200Response>
+      listCenterLocationStocks(
+          String cdcId, @Nullable String locationPrefix, @Nullable String sku, Integer limit) {
+    com.pmart.cdc.inventory.application.Operator.requireCenter(cdcId);
+    int max = limit == null ? 500 : Math.min(2000, Math.max(1, limit));
+    String prefix =
+        locationPrefix == null || locationPrefix.isBlank() ? null : locationPrefix.strip();
+    var snap = queries.snapshot(cdcId, sku);
+    var rows =
+        new java.util.ArrayList<
+            com.pmart.cdc.inventory.api.generated.model
+                .ListCenterLocationStocks200ResponseItemsInner>();
+    for (var v : snap.items()) {
+      for (var l : v.lots()) {
+        for (var pl : l.places()) {
+          if (prefix != null && !pl.locationCode().startsWith(prefix)) {
+            continue;
+          }
+          rows.add(
+              new com.pmart.cdc.inventory.api.generated.model
+                      .ListCenterLocationStocks200ResponseItemsInner()
+                  .locationCode(pl.locationCode())
+                  .sku(v.sku())
+                  .lot(l.lot())
+                  .qualityState(pl.qualityState())
+                  .onHand(pl.onHand())
+                  .reserved(pl.reserved())
+                  .expiresAt(l.expiresAt()));
+        }
+      }
+    }
+    rows.sort(
+        java.util.Comparator.comparing(
+                com.pmart.cdc.inventory.api.generated.model
+                        .ListCenterLocationStocks200ResponseItemsInner
+                    ::getLocationCode)
+            .thenComparing(
+                com.pmart.cdc.inventory.api.generated.model
+                        .ListCenterLocationStocks200ResponseItemsInner
+                    ::getSku)
+            .thenComparing(
+                com.pmart.cdc.inventory.api.generated.model
+                        .ListCenterLocationStocks200ResponseItemsInner
+                    ::getLot));
+    boolean cut = rows.size() > max;
+    var out = new com.pmart.cdc.inventory.api.generated.model.ListCenterLocationStocks200Response();
+    out.setCdcId(cdcId);
+    out.setAsOf(Dto.asOf(snap.asOf()));
+    out.setTruncated(cut);
+    out.setItems(new java.util.ArrayList<>(cut ? rows.subList(0, max) : rows));
+    return ResponseEntity.ok(out);
+  }
+
   static Availability dto(AvailabilityView v, boolean withPlaces) {
     var out = new Availability();
     out.setCdcId(v.cdcId());

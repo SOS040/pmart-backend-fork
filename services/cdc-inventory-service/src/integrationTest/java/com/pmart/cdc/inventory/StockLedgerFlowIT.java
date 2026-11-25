@@ -1020,6 +1020,22 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
                     "/cdcs/" + CENTER + "/stock-snapshot")
                 .status())
         .isEqualTo(403);
+    // 2-3) 칸별 재고(0.9.0 M-6) — 선반 칸으로 거르면 그 칸 줄만, 현물·예약이 스냅샷과 같다
+    JsonNode cells =
+        get(
+                OPERATOR,
+                "/cdcs/" + CENTER + "/location-stocks?sku=" + sku + "&locationPrefix=" + shelf)
+            .body();
+    assertThat(cells.path("items").findValuesAsString("locationCode")).containsOnly(shelf);
+    int cellOnHand = 0;
+    int cellReserved = 0;
+    for (JsonNode c : cells.path("items")) {
+      cellOnHand += c.path("onHand").asInt();
+      cellReserved += c.path("reserved").asInt();
+    }
+    assertThat(cellOnHand).isEqualTo(shelfOnHand);
+    assertThat(cellReserved).isEqualTo(shelfReserved);
+    assertThat(cells.path("truncated").asBoolean()).isFalse();
 
     // 3) 선반에서 출발 전기(위치를 비우면 할당이 잡은 위치 = 선반)
     Map<String, Object> dep = new LinkedHashMap<>();

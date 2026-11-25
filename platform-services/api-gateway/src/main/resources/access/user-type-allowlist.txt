@@ -73,6 +73,8 @@ GET /api/v1/categories/{categoryId}/filters PUBLIC
 GET /api/v1/category-tree-versions/{version} OPERATOR
 GET /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
 GET /api/v1/cdcs/{cdcId}/count-sessions/{sessionId} OPERATOR
+GET /api/v1/cdcs/{cdcId}/departures OPERATOR
+GET /api/v1/cdcs/{cdcId}/location-stocks OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR
@@ -85,6 +87,7 @@ GET /api/v1/cdcs/{cdcId}/tasks/{taskId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers/{trfId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations/{requestId} OPERATOR
+GET /api/v1/cdcs/{cdcId}/transfers/{trfId}/readiness OPERATOR
 GET /api/v1/cdcs/{cdcId}/waves OPERATOR
 GET /api/v1/centers OPERATOR
 GET /api/v1/centers/{centerId} OPERATOR

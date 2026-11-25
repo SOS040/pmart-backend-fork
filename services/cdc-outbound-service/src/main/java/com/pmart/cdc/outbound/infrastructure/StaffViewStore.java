@@ -85,6 +85,24 @@ public class StaffViewStore {
     return jdbc.queryForList(sql.toString(), String.class, args.toArray());
   }
 
+  /** 이 센터 TRF 가 든 출발 ID(검증 최신 순) — size + 1 개(0.16.0 M-3). */
+  public List<String> departureIds(String cdcId, @Nullable String result, int page, int size) {
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT d.departure_id FROM departure d WHERE EXISTS (SELECT 1 FROM departure_transfer dt"
+                + " JOIN transfer t ON t.trf_id = dt.trf_id WHERE dt.departure_id = d.departure_id"
+                + " AND t.cdc_id = ?)");
+    List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (result != null) {
+      sql.append(" AND d.overall_result = ?");
+      args.add(result);
+    }
+    sql.append(" ORDER BY d.validated_at DESC, d.departure_id LIMIT ? OFFSET ?");
+    args.add(size + 1);
+    args.add((long) page * size);
+    return jdbc.queryForList(sql.toString(), String.class, args.toArray());
+  }
+
   public Optional<TransferRow> transfer(String cdcId, String trfId) {
     return jdbc
         .query(
