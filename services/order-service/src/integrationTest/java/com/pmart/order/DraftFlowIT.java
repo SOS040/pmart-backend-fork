@@ -602,6 +602,23 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(codes.getLast()).as("다른 사유 뒤에").isEqualTo("CONTACT_REQUIRED");
   }
 
+  /** BR-106(0.23.0, 2026-11-25): 상세 주소 없는 쇼핑 주소면 초안은 만들되 DETAIL_ADDRESS_REQUIRED 로 막는다(연락처 앞). */
+  @Test
+  void missingDetailAddressBlocksDraft() {
+    String first = TestJwt.customer(FIRST);
+    shoppingContext("ADR-NODETAIL", "SERVICEABLE", "MFC-1", null, null);
+    Res d =
+        create(
+            first,
+            draft("PI-" + UUID.randomUUID(), "E-00000001", 2, "ADR-NODETAIL", "SINGLE", null));
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(201);
+    List<String> codes = new java.util.ArrayList<>();
+    d.body().path("blockers").forEach(b -> codes.add(b.path("code").asString()));
+    assertThat(codes).contains("DETAIL_ADDRESS_REQUIRED", "CONTACT_REQUIRED");
+    assertThat(codes.indexOf("DETAIL_ADDRESS_REQUIRED"))
+        .isLessThan(codes.indexOf("CONTACT_REQUIRED"));
+  }
+
   @Test
   void draftQuoteBlockersAndOptions() {
     String first = TestJwt.customer(FIRST);

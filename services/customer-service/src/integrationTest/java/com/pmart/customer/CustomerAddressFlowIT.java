@@ -550,11 +550,11 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * 0.14.0(2026-11-20 — 로그아웃 때 "지금 주소로 계속 둘러볼까요?"): 비회원 배송지는 상세 주소 없이(도로명·위치만) 저장, 회원 주소록은 상세 주소
-   * 필수(400).
+   * 0.14.0(2026-11-20 — 로그아웃 때 "지금 주소로 계속 둘러볼까요?"): 비회원 배송지는 상세 주소 없이(도로명·위치만) 저장.
+   * 0.20.0(2026-11-25 BR-106): 회원 주소록도 상세 없이 저장된다(그대로 옮기기 — 주문서가 막는다).
    */
   @Test
-  void guestAddressWithoutDetailButMemberNeedsDetail() {
+  void guestAddressWithoutDetailCopiesToMemberWithoutDetail() {
     String device = "DEV-" + UUID.randomUUID();
     Map<String, Object> roadOnly = new LinkedHashMap<>();
     roadOnly.put("roadAddress", "IN");
@@ -579,10 +579,12 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
 
     String member = TestJwt.customer("CU-DT-" + UUID.randomUUID());
     Res noDetail = send(member, HttpMethod.POST, "/me/addresses", roadOnly);
-    assertThat(noDetail.status()).isEqualTo(400);
-    Map<String, Object> blank = new LinkedHashMap<>(roadOnly);
-    blank.put("detailAddress", "  ");
-    assertThat(send(member, HttpMethod.POST, "/me/addresses", blank).status()).isEqualTo(400);
+    assertThat(noDetail.status()).as(noDetail.body().toString()).isEqualTo(201);
+    assertThat(
+            noDetail.body().path("detailAddress").isMissingNode()
+                || noDetail.body().path("detailAddress").isNull()
+                || noDetail.body().path("detailAddress").asString().isBlank())
+        .isTrue();
   }
 
   void orderConfirmed(UUID eventId, String accountId, String orderId, boolean firstPurchase)

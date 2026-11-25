@@ -263,6 +263,10 @@ public class DraftService {
             requireMinOrderAmount());
 
     List<OrderRules.Blocker> blockers = new ArrayList<>();
+    if (address.detailMissing()) {
+      // BR-106: 상세 없이 옮긴 주소 — 앱이 그 주소의 상세를 받아 저장한 뒤 초안을 다시 만든다
+      blockers.add(new OrderRules.Blocker("DETAIL_ADDRESS_REQUIRED", "상세 주소를 입력해 주세요"));
+    }
     if (address.contactMissing()) {
       // BR-60: 배송지·프로필 모두 연락처가 없다 — 앱이 "내 연락처"를 프로필에 저장한 뒤 초안을 다시 만든다
       blockers.add(new OrderRules.Blocker("CONTACT_REQUIRED", "받는 분 연락처를 입력해 주세요"));

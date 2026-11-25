@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.19.0
+  version: 0.20.0
   description: |
+    0.20.0(2026-11-25, 클라이언트 BR-106 — 사용자 "비회원 주소 그거 복사해와야지"): 회원 주소록 `detailAddress` 선택(전에는 없거나 비면 400). 비회원 배송지를
+      상세 없이 그대로 옮길 수 있다. 상세 없는 주소로는 주문서가 막힌다(order 0.23.0 `DETAIL_ADDRESS_REQUIRED`).
     0.19.0(2026-11-25, 사용자 "실제 이름과 닉네임 다르게 관리", "별명만 기존 이름으로 채워넣는걸로"): `Profile.providerNickname`
       — 로그인 제공자 닉네임(카카오 닉네임·네이버 별명, 없으면 이름 — 구글은 이름). `name` 은 제공자 실명만(카카오는 실명을 주지 않아 비어 있다 — 앱이 입력받는다). 고객이 정한 별명은 `nickname` 그대로.
       로그인마다 최신 값, 사건에 없으면 유지 — 배포 전 가입자는 다음 로그인부터 채워진다. 탈퇴 완료 때 지움.
@@ -1666,7 +1668,7 @@ components:
       properties:
         label: { type: string, maxLength: 20 }
         roadAddress: { type: string, maxLength: 200 }
-        detailAddress: { type: string, maxLength: 200, description: '회원 주소록은 필수(없거나 비면 400 VALIDATION_FAILED). 비회원 배송지는 선택(0.14.0 — 로그아웃 뒤 둘러보기용, 응답에서도 없을 수 있음)' }
+        detailAddress: { type: string, maxLength: 200, description: '회원 주소록도 선택(0.20.0 BR-106 — 없는 주소로는 주문서 DETAIL_ADDRESS_REQUIRED). 비회원 배송지는 선택(0.14.0 — 로그아웃 뒤 둘러보기용, 응답에서도 없을 수 있음)' }
         postalCode: { type: string, maxLength: 10 }
         receiverName: { type: [string, 'null'], maxLength: 50, description: '0.8.0 선택 — 없으면 주문 때 프로필 이름. PATCH 에서 빠지면 그대로' }
         receiverPhone: { type: [string, 'null'], maxLength: 20, description: '0.8.0 선택 — 없으면 주문 때 프로필 phone. PATCH 에서 빠지면 그대로' }

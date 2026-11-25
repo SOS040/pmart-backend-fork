@@ -60,12 +60,24 @@ public class Upstreams {
   /** 쇼핑 주소 판정 사본 + 주문 당시 배송지 사본(BR-37). 필수 필드가 비어 오면 shipping 은 null. */
   /**
    * @param contactMissing 배송지·프로필 모두 받는 분 연락처가 없다(BR-60) — 초안 CONTACT_REQUIRED
+   * @param detailMissing 배송지에 상세 주소가 없다(BR-106, 2026-11-25 — 회원 주소록도 상세 선택) — 초안
+   *     DETAIL_ADDRESS_REQUIRED
    */
   public record Address(
       String serviceability,
       @Nullable String mfcId,
       @Nullable ShippingAddress shipping,
-      boolean contactMissing) {}
+      boolean contactMissing,
+      boolean detailMissing) {
+
+    public Address(
+        String serviceability,
+        @Nullable String mfcId,
+        @Nullable ShippingAddress shipping,
+        boolean contactMissing) {
+      this(serviceability, mfcId, shipping, contactMissing, false);
+    }
+  }
 
   /** 운영 캘린더 결과: configRequired 면 ranges 는 비어 있다. */
   public record CenterDay(boolean configRequired, boolean open, List<int[]> ranges) {}
@@ -134,7 +146,8 @@ public class Upstreams {
         svc.path("state").asString("UNKNOWN"),
         svc.hasNonNull("mfcId") ? svc.get("mfcId").asString() : null,
         shipping(a, now),
-        !a.isMissingNode() && text(a, "receiverPhone") == null);
+        !a.isMissingNode() && text(a, "receiverPhone") == null,
+        !a.isMissingNode() && text(a, "detailAddress") == null);
   }
 
   /**

@@ -41,6 +41,7 @@ public final class OrderRules {
           "DELIVERY_MODE_UNAVAILABLE",
           "SLOT_REQUIRED",
           "SLOT_UNAVAILABLE",
+          "DETAIL_ADDRESS_REQUIRED", // BR-106 — 상세 주소 없음(주소 → 연락처 순으로 받는다)
           "CONTACT_REQUIRED",
           "COUPON_NOT_APPLICABLE"); // ADR-0082 — 쓸 수 없는 쿠폰(빼고 다시)
 
