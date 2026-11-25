@@ -42,6 +42,27 @@ public class StaffViewsController implements StaffViewsApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.ListCenterWaves200Response>
+      listCenterWaves(
+          String cdcId,
+          com.pmart.cdc.outbound.api.generated.model.@Nullable WaveState state,
+          Integer page,
+          Integer size) {
+    var p =
+        views.waves(
+            cdcId,
+            state == null ? null : state.getValue(),
+            page == null ? 0 : page,
+            size == null ? 50 : size);
+    var out = new com.pmart.cdc.outbound.api.generated.model.ListCenterWaves200Response();
+    out.setItems(new ArrayList<>(p.items().stream().map(WavesController::dto).toList()));
+    out.setPage(p.page());
+    out.setSize(p.size());
+    out.setHasNext(p.hasNext());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
   public ResponseEntity<TransferDetail> getCenterTransfer(String cdcId, String trfId) {
     var d = views.transfer(cdcId, trfId);
     TransferRow t = d.transfer();

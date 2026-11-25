@@ -71,6 +71,20 @@ public class StaffViewStore {
     return jdbc.query(sql.toString(), StaffViewStore::transfer, args.toArray());
   }
 
+  /** Wave ID 목록(만든 시각 최신 순) — size + 1 개를 읽어 다음 쪽 여부를 판정한다(0.15.0 W-1). */
+  public List<String> waveIds(String cdcId, @Nullable String state, int page, int size) {
+    StringBuilder sql = new StringBuilder("SELECT wave_id FROM wave WHERE cdc_id = ?");
+    List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (state != null) {
+      sql.append(" AND state = ?");
+      args.add(state);
+    }
+    sql.append(" ORDER BY created_at DESC, wave_id LIMIT ? OFFSET ?");
+    args.add(size + 1);
+    args.add((long) page * size);
+    return jdbc.queryForList(sql.toString(), String.class, args.toArray());
+  }
+
   public Optional<TransferRow> transfer(String cdcId, String trfId) {
     return jdbc
         .query(

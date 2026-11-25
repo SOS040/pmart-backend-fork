@@ -266,6 +266,18 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("INVALID_STATE");
     Res wave = post(OPS, "/waves", Map.of("cdcId", CENTER, "trfIds", List.of(trf1)));
     assertThat(wave.status()).as(wave.body().toString()).isEqualTo(201);
+    // W-1(0.15.0): 센터 Wave 목록 — 최신 순, state 거르기, 다른 센터 403
+    JsonNode waveList = get(OPS, "/cdcs/" + CENTER + "/waves?state=PLANNED&size=200").body();
+    assertThat(waveList.path("items").findValuesAsString("waveId"))
+        .contains(wave.body().path("waveId").asString());
+    assertThat(waveList.path("items").findValuesAsString("state")).containsOnly("PLANNED");
+    assertThat(waveList.path("items").get(0).path("trfIds").isArray()).isTrue();
+    assertThat(
+            get(
+                    TestJwt.operator("ops-x", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
+                    "/cdcs/" + CENTER + "/waves")
+                .status())
+        .isEqualTo(403);
     assertThat(wave.body().path("state").asString()).isEqualTo("PLANNED");
     String waveId = wave.body().path("waveId").asString();
     assertThat(

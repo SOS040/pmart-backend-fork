@@ -36,10 +36,25 @@ public class StaffViews {
 
   private final StaffViewStore store;
   private final Clock clock;
+  private final WaveService waves;
 
-  public StaffViews(StaffViewStore store, Clock clock) {
+  public StaffViews(StaffViewStore store, Clock clock, WaveService waves) {
     this.store = store;
     this.clock = clock;
+    this.waves = waves;
+  }
+
+  public record WavePage(List<WaveService.WaveView> items, int page, int size, boolean hasNext) {}
+
+  /** Wave 목록(0.15.0 W-1) — 줄은 GET /waves/{id} 와 같은 내용. */
+  public WavePage waves(String cdcId, @Nullable String state, int page, int size) {
+    Support.requireCenter(cdcId);
+    int p = Math.max(0, page);
+    int s = Math.min(200, Math.max(1, size));
+    var ids = store.waveIds(cdcId, blank(state), p, s);
+    boolean next = ids.size() > s;
+    var items = (next ? ids.subList(0, s) : ids).stream().map(waves::get).toList();
+    return new WavePage(items, p, s, next);
   }
 
   public Page transfers(
