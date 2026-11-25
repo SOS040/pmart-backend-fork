@@ -175,7 +175,7 @@ spring:
             - id: cdc-outbound-service
               uri: ${pmart.gateway.upstream.cdc-outbound-service}
               predicates:
-                - Path=/api/v1/waves/**,/api/v1/cdcs/*/tasks/**,/api/v1/cdcs/*/workers/*/next-tasks,/api/v1/sorting-results,/api/v1/inspection-results,/api/v1/loading-results,/api/v1/work-results/**,/api/v1/cdcs/*/transfers/*/pre-departure-cancellations,/api/v1/cdcs/*/transfers/*/pre-departure-cancellations/**,/api/v1/cdcs/*/regions,/api/v1/cdcs/*/transfers,/api/v1/cdcs/*/transfers/*,/api/v1/cdcs/*/outbound-summary # (0.11.0 2026-11-25 DC 백오피스 TRF 목록·상세·출고 집계) CDC 출고(2026-11-25 R-16, cdc 시뮬레이터 실서버 모드) · 미출발 취소(0.7.0 #466)
+                - Path=/api/v1/waves/**,/api/v1/cdcs/*/tasks/**,/api/v1/cdcs/*/workers/*/next-tasks,/api/v1/sorting-results,/api/v1/inspection-results,/api/v1/loading-results,/api/v1/work-results/**,/api/v1/cdcs/*/transfers/*/pre-departure-cancellations,/api/v1/cdcs/*/transfers/*/pre-departure-cancellations/**,/api/v1/cdcs/*/regions,/api/v1/cdcs/*/transfers,/api/v1/cdcs/*/transfers/*,/api/v1/cdcs/*/outbound-summary,/api/v1/cdcs/*/waves # (0.11.0 2026-11-25 DC 백오피스 TRF 목록·상세·출고 집계) CDC 출고(2026-11-25 R-16, cdc 시뮬레이터 실서버 모드) · 미출발 취소(0.7.0 #466)
               order: -88
             - id: cdc-location-service
               uri: ${pmart.gateway.upstream.cdc-location-service}
