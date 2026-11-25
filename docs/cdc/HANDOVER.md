@@ -81,3 +81,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-26: 통로 피킹 방식 대응표 — 시뮬레이터 2657c94: 5F F·7F G 선반도 LINE(상온 DAS 존 — 1칸만 켜지는 비율 48% → 15%). `cdc_pick_methods.py` 80통로(LINE 31·FC 6). LAN 은 그대로(전환 때). PR `cdc/pick-method-line-ambient`.
 - 2026-11-26: 수령 정정 cdc-inventory 0.13.0(Flyway V8) — ReceiptCorrectionPosted 구독·receipt-acks correctionId(정정 뒤 누계). PR `cdc/receipt-correction`. 다음: 운송 손실 승인(CDC-F-027).
 - 2026-11-26: 운송 손실 승인 cdc-inventory 0.14.0(Flyway V9, #503 0.13.0 다음) — MFC 입고 종결 기록 `/internal/transit-closures` + 운영자 `/cdcs/{cdcId}/transit-losses`(종결 전 409, 실사와 같은 승인 관문). PR `cdc/transit-loss`. MFC 입고 종결(MI-5, PC 3)·승인 kind TRANSPORT_LOSS(AP-4 덧붙임, PC 1) 대기.
+- 2026-11-26: R-22 구역 글자 바뀜(사용자, 기사 사진 — 옛 A→H·B→G·C→A·D→B·E→C·F→D·G→E·H→F)·층 도크 9·승강기 문 층마다 2 — cdc-location 0.6.0, cdc-outbound 출고대기 자리 계산(계약 그대로), 위치 사본 38,915칸·통로 방식·재고 시드. PR `cdc/layout-r22`. LAN 은 최종 배치 때.
