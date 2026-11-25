@@ -25,6 +25,7 @@ public class CustomerStore {
       @Nullable String socialProvider,
       @Nullable String nickname,
       @Nullable String name,
+      @Nullable String providerNickname,
       @Nullable String email,
       @Nullable Boolean emailVerified,
       @Nullable String profileImageSha256,
@@ -55,7 +56,17 @@ public class CustomerStore {
       @Nullable String name,
       @Nullable String email,
       @Nullable Boolean emailVerified,
-      @Nullable String pictureUrl) {}
+      @Nullable String pictureUrl,
+      @Nullable String providerNickname) {
+
+    public ProviderProfile(
+        @Nullable String name,
+        @Nullable String email,
+        @Nullable Boolean emailVerified,
+        @Nullable String pictureUrl) {
+      this(name, email, emailVerified, pictureUrl, null);
+    }
+  }
 
   public record AddressRow(
       String addressId,
@@ -95,14 +106,18 @@ public class CustomerStore {
             + " OR EXCLUDED.last_authenticated_at >= customer.last_authenticated_at)";
     jdbc.update(
         "INSERT INTO customer (account_id, status, social_provider, joined_at,"
-            + " last_authenticated_at, name, email, email_verified, profile_image_source_url, version,"
-            + " updated_at) VALUES (?,'ACTIVE',?,?,?,?,?,?,?,0,?)"
+            + " last_authenticated_at, name, email, email_verified, profile_image_source_url,"
+            + " provider_nickname, version, updated_at) VALUES (?,'ACTIVE',?,?,?,?,?,?,?,?,0,?)"
             + " ON CONFLICT (account_id) DO UPDATE SET"
             + " social_provider = COALESCE(customer.social_provider, EXCLUDED.social_provider),"
             + " joined_at = LEAST(customer.joined_at, EXCLUDED.joined_at),"
             + " name = CASE WHEN "
             + latest
             + " THEN COALESCE(EXCLUDED.name, customer.name) ELSE customer.name END,"
+            + " provider_nickname = CASE WHEN "
+            + latest
+            + " THEN COALESCE(EXCLUDED.provider_nickname, customer.provider_nickname)"
+            + " ELSE customer.provider_nickname END,"
             + " email = CASE WHEN "
             + latest
             + " THEN COALESCE(EXCLUDED.email, customer.email) ELSE customer.email END,"
@@ -124,6 +139,7 @@ public class CustomerStore {
         p.email(),
         p.emailVerified(),
         p.pictureUrl(),
+        p.providerNickname(),
         ts(now));
   }
 
@@ -155,7 +171,8 @@ public class CustomerStore {
   }
 
   private static final String PROFILE_SELECT =
-      "SELECT account_id, status, social_provider, nickname, name, email, email_verified,"
+      "SELECT account_id, status, social_provider, nickname, name, provider_nickname, email,"
+          + " email_verified,"
           + " profile_image_sha256, profile_photo_source, joined_at, version, phone, phone_verified,"
           + " customer_number, restriction, restriction_until, restriction_version FROM customer";
 
@@ -166,6 +183,7 @@ public class CustomerStore {
         rs.getString("social_provider"),
         rs.getString("nickname"),
         rs.getString("name"),
+        rs.getString("provider_nickname"),
         rs.getString("email"),
         rs.getObject("email_verified", Boolean.class),
         rs.getString("profile_image_sha256"),

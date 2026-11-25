@@ -211,11 +211,19 @@ public class NaverTokenClient {
   }
 
   /** 프로필 API 결과(원문). 값은 없을 수 있다. 이메일은 개인정보 — 로그·toString 금지. */
-  public record Profile(@Nullable String image, @Nullable String email, @Nullable String name) {
-    public static final Profile NONE = new Profile(null, null, null);
+  public record Profile(
+      @Nullable String image,
+      @Nullable String email,
+      @Nullable String name,
+      @Nullable String nickname) {
+    public static final Profile NONE = new Profile(null, null, null, null);
 
     public Profile(@Nullable String image, @Nullable String email) {
-      this(image, email, null);
+      this(image, email, null, null);
+    }
+
+    public Profile(@Nullable String image, @Nullable String email, @Nullable String name) {
+      this(image, email, name, null);
     }
 
     @Override
@@ -265,9 +273,11 @@ public class NaverTokenClient {
     String image = body.path("response").path("profile_image").asString("");
     String email = body.path("response").path("email").asString("");
     // 이름(2026-11-25): response.name(고객이 이름 제공에 동의했을 때), 없으면 별명 nickname
+    // 이름은 실명 response.name 만(2026-11-25 — 고객앱이 이름을 입력받는다), 별명 response.nickname 은 따로(없으면 이름)
+    String nickname = body.path("response").path("nickname").asString("").strip();
     String name = body.path("response").path("name").asString("").strip();
-    if (name.isEmpty()) {
-      name = body.path("response").path("nickname").asString("").strip();
+    if (nickname.isEmpty()) {
+      nickname = name;
     }
     if (image.isBlank()) {
       log.info("네이버 프로필 사진 생략 reason=missing_profile_image");
@@ -281,7 +291,8 @@ public class NaverTokenClient {
     return new Profile(
         image.isBlank() ? null : image,
         email.isBlank() ? null : email,
-        name.isEmpty() ? null : name);
+        name.isEmpty() ? null : name,
+        nickname.isEmpty() ? null : nickname);
   }
 
   private static String errorCode(HttpClientErrorException e) {

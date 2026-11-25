@@ -782,7 +782,9 @@ public class CustomerSocialLoginService {
       String provider, IdTokenVerifier.Identity identity) {
     if (!"KAKAO".equals(provider)
         || kakao == null
-        || (identity.email() != null && identity.name() != null && identity.pictureUrl() != null)) {
+        || (identity.email() != null
+            && identity.nickname() != null
+            && identity.pictureUrl() != null)) {
       return identity;
     }
     var p = kakao.profile(identity.subject());
@@ -794,10 +796,12 @@ public class CustomerSocialLoginService {
         identity.subject(),
         useEmail ? p.email() : identity.email(),
         useEmail ? p.emailVerified() : identity.emailVerified(),
-        identity.name() != null ? identity.name() : p.nickname(),
+        // 카카오는 실명을 주지 않는다 — 닉네임은 이름 칸에 넣지 않는다(2026-11-25, 이름은 고객앱이 입력받음)
+        identity.name(),
         identity.pictureUrl() != null
             ? identity.pictureUrl()
-            : com.pmart.auth.domain.ProviderPictureRules.kakao(p.imageUrl()));
+            : com.pmart.auth.domain.ProviderPictureRules.kakao(p.imageUrl()),
+        identity.nickname() != null ? identity.nickname() : p.nickname());
   }
 
   /** Google 이 준 프로필(이름·이메일·사진)은 저장하지 않고 사건으로 customer-service 에 넘긴다(ADR-0024). 없는 값은 싣지 않는다. */
@@ -814,6 +818,9 @@ public class CustomerSocialLoginService {
     String email = identity.email();
     Boolean emailVerified = identity.emailVerified();
     String name = identity.name();
+    // 소셜 닉네임(2026-11-25 — 사용자 "구글 닉네임도 없으면 구글이름으로", "별명만 기존 이름으로 채워넣는걸로"): 닉네임이 없으면 이름.
+    // 이름은 실명만(없으면 비움 — 고객앱이 입력받는다). 카카오 = 닉네임만, 네이버 = 교환 때 묶어 둔 이름·별명
+    String nickname = identity.nickname() != null ? identity.nickname() : name;
     if ((email == null || name == null) && "NAVER".equals(provider)) {
       // 네이버 ID 토큰에는 이메일·이름이 없다 — 교환 때 서버가 네이버 프로필 API 에서 직접 받아 이 sub 에 묶어 둔 값(BR-77,
       // 이름 2026-11-25). 네이버는 확인 여부를 주지 않아 emailVerified 는 싣지 않는다. 없으면 그 값 없이(customer 기존 값 유지).
@@ -825,10 +832,14 @@ public class CustomerSocialLoginService {
       if (name == null) {
         name = held.name();
       }
+      if (nickname == null) {
+        nickname = held.nickname() != null ? held.nickname() : name;
+      }
     }
     putIfPresent(payload, "email", email);
     putIfPresent(payload, "emailVerified", emailVerified);
     putIfPresent(payload, "name", name);
+    putIfPresent(payload, "providerNickname", nickname);
     // 네이버는 ID 토큰에 사진이 없어 앱이 넘긴 주소(0.8.0, ProviderPictureRules — 맞을 때만)
     putIfPresent(
         payload,

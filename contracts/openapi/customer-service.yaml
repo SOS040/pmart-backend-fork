@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.18.0
+  version: 0.19.0
   description: |
+    0.19.0(2026-11-25, 사용자 "실제 이름과 닉네임 다르게 관리", "별명만 기존 이름으로 채워넣는걸로"): `Profile.providerNickname`
+      — 로그인 제공자 닉네임(카카오 닉네임·네이버 별명, 없으면 이름 — 구글은 이름). `name` 은 제공자 실명만(카카오는 실명을 주지 않아 비어 있다 — 앱이 입력받는다). 고객이 정한 별명은 `nickname` 그대로.
+      로그인마다 최신 값, 사건에 없으면 유지 — 배포 전 가입자는 다음 로그인부터 채워진다. 탈퇴 완료 때 지움.
     0.18.0(2026-11-25, 클라이언트 BR-105 "구글도 서버가 끊게"): 탈퇴 접수 `POST /me/withdrawals` 에 선택 `providerAccessToken`(GOOGLE 일 때만 — 재인증 직후 받은
       구글 OAuth 접근 토큰). 접수되면(대기·완료) 서버가 `https://oauth2.googleapis.com/revoke` 로 이 앱과의 구글 연결을 끊는다(비밀값 없음, 토큰은 저장·로그·응답 안 함, 실패해도 탈퇴는 그대로).
       없으면 지금처럼 앱의 기기 끊기. 철회(revocations)에는 없다 — 철회로 끝나면 끊지 않는다.
@@ -1643,6 +1646,7 @@ components:
         status: { $ref: '#/components/schemas/AccountStatus' }
         nickname: { type: string }
         name: { type: string, description: 로그인 제공자(Google) 프로필 이름. 로그인마다 최신 값(ADR-0024). 없을 수 있다 }
+        providerNickname: { type: string, x-added-in: '2026-11-25', description: '(0.19.0) 로그인 제공자 닉네임 — 카카오 닉네임·네이버 별명, 없으면 제공자 이름(구글은 이름). 고객이 정한 별명(nickname)과 다르다. 없을 수 있다' }
         email: { type: string, description: 로그인 제공자가 준 이메일. 없을 수 있다 }
         emailVerified: { type: boolean, description: 제공자가 이메일을 확인했는지 }
         profileImageUrl: { type: string, description: '프로필 사진 사본 경로(게이트웨이 상대 경로 `/api/v1/me/profile-image?v=…`, 본인 토큰 필요). 사본이 없으면 비어 있다' }

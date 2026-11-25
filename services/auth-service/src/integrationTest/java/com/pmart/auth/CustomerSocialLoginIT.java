@@ -187,7 +187,7 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
   @Test
   void naverNameAndEmailFromHeldProfile() {
     String sub = "nv-" + UUID.randomUUID();
-    naverEmails.save(sub, "gd@naver.com", "홍길동", java.time.Instant.now().plusSeconds(600));
+    naverEmails.save(sub, "gd@naver.com", "홍길동", "길동이", java.time.Instant.now().plusSeconds(600));
     String naver = bareIdToken(sub, "naver-client-id", "https://nid.naver.com");
     Res ok = login(UUID.randomUUID().toString(), "phone-" + UUID.randomUUID(), "NAVER", naver);
     assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
@@ -201,6 +201,8 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
                     ok.body().path("accountId").asString()))
             .path("payload");
     assertThat(payload.path("name").asString()).isEqualTo("홍길동");
+    // 2026-11-25: 네이버 별명은 따로
+    assertThat(payload.path("providerNickname").asString()).isEqualTo("길동이");
     assertThat(payload.path("email").asString()).isEqualTo("gd@naver.com");
     assertThat(naverEmails.takeProfile(sub, java.time.Instant.now()).name()).isNull();
   }
@@ -317,6 +319,8 @@ class CustomerSocialLoginIT extends PostgresKafkaContainerSupport {
     assertThat(payload.path("email").asString()).isEqualTo(sub + "@gmail.com");
     assertThat(payload.path("emailVerified").asBoolean()).isTrue();
     assertThat(payload.path("name").asString()).isEqualTo("홍길동");
+    // 2026-11-25: 구글은 닉네임이 없어 이름으로
+    assertThat(payload.path("providerNickname").asString()).isEqualTo("홍길동");
     assertThat(payload.path("pictureUrl").asString()).endsWith(sub);
     // auth 는 제공자 sub 만 저장한다(이메일·이름 컬럼 없음)
     assertThat(

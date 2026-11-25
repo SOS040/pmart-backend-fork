@@ -156,14 +156,13 @@ public class NaverCodeExchangeService {
                   call(cfg, authorizationCode, codeVerifier, redirectUri, state);
               NaverTokenClient.Profile profile = profile(tokens.accessToken());
               Exchanged out = new Exchanged(tokens.idToken(), pickImage(profile.image()));
-              holdProfile(tokens.idToken(), profile.email(), profile.name());
+              holdProfile(tokens.idToken(), profile.email(), profile.name(), profile.nickname());
               // 프로필을 읽은 뒤 끊는다(끊으면 access token 이 무효)
               String reason =
-                  withdrawal
-                      ? "WITHDRAWAL"
-                      : cfg.unlinkAfterExchange()
-                          ? "LOGIN"
-                          : signupPending(tokens.idToken()) ? "SIGNUP_PENDING" : null;
+                  withdrawal ? "WITHDRAWAL" : cfg.unlinkAfterExchange() ? "LOGIN" : null;
+              // 가입 전 끊기(BR-79 SIGNUP_PENDING)는 없앴다(2026-11-25 사용자 "왜 난 그 권한동의화면을 계속 얻고싶은거야").
+              // 교환 때는 아직 회원이 아니라 곧 가입을 마칠 사람까지 끊어, 가입 뒤 첫 로그인·탈퇴 재인증에 동의 화면이 또 떴다.
+              // 규칙 "동의는 처음 가입할 때만": 탈퇴 재인증(WITHDRAWAL)만 끊는다(재가입 때 동의 화면)
               if (reason != null && tokens.accessToken() != null) {
                 boolean ok =
                     naver.unlink(
@@ -180,6 +179,7 @@ public class NaverCodeExchangeService {
 
   /**
    * 이 네이버 계정(sub)으로 가입을 마친 PMart 계정이 없는가(BR-79). sub 를 못 읽거나 조회가 실패하면 false(끊지 않음). sub 는 로그 금지.
+   * 2026-11-25 부터 교환에서 부르지 않는다(가입 전 끊기 없앰) — 가입을 그만둔 경우만 나중에 끊는 방식을 넣을 때 쓴다.
    */
   boolean signupPending(String idToken) {
     if (customers == null) {
@@ -221,7 +221,8 @@ public class NaverCodeExchangeService {
    * 이메일·이름(2026-11-25)을 id_token sub 에 묶어 둔다. 실패는 경고만(로그인은 그 값 없이). 이메일·이름·sub 는 로그 금지. 이름은 100자
    * 이하·제어 문자 없을 때만.
    */
-  private void holdProfile(String idToken, @Nullable String email, @Nullable String name) {
+  private void holdProfile(
+      String idToken, @Nullable String email, @Nullable String name, @Nullable String nickname) {
     if (emails == null) {
       return;
     }
@@ -239,7 +240,12 @@ public class NaverCodeExchangeService {
       log.info("네이버 프로필 이름 생략 reason=invalid_name");
       n = null;
     }
-    if (e == null && n == null) {
+    String k = nickname == null ? null : nickname.strip();
+    if (k != null
+        && (k.isEmpty() || k.length() > 100 || k.chars().anyMatch(Character::isISOControl))) {
+      k = null;
+    }
+    if (e == null && n == null && k == null) {
       return;
     }
     String sub = subjectOf(idToken);
@@ -248,7 +254,7 @@ public class NaverCodeExchangeService {
       return;
     }
     try {
-      emails.save(sub, e, n, clock.instant().plus(EMAIL_HOLD));
+      emails.save(sub, e, n, k, clock.instant().plus(EMAIL_HOLD));
     } catch (RuntimeException ex) {
       log.warn("네이버 프로필 이메일 보관 실패 reason={}", ex.getClass().getSimpleName());
     }

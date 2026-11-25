@@ -37,8 +37,12 @@ public class NaverProfileEmailStore {
   }
 
   /** 묶어 둔 값. 둘 다 없을 수 있다. */
-  public record Held(@Nullable String email, @Nullable String name) {
-    public static final Held NONE = new Held(null, null);
+  public record Held(@Nullable String email, @Nullable String name, @Nullable String nickname) {
+    public static final Held NONE = new Held(null, null, null);
+
+    public Held(@Nullable String email, @Nullable String name) {
+      this(email, name, null);
+    }
 
     @Override
     public String toString() {
@@ -54,16 +58,29 @@ public class NaverProfileEmailStore {
   /** 기록(같은 계정이 다시 교환하면 새 값·새 만료). 둘 다 null 이면 아무것도 하지 않는다. */
   public void save(
       String subject, @Nullable String email, @Nullable String name, Instant expiresAt) {
-    if (email == null && name == null) {
+    save(subject, email, name, null, expiresAt);
+  }
+
+  /** 별명(V10, 2026-11-25)까지. 셋 다 null 이면 아무것도 하지 않는다. */
+  public void save(
+      String subject,
+      @Nullable String email,
+      @Nullable String name,
+      @Nullable String nickname,
+      Instant expiresAt) {
+    if (email == null && name == null && nickname == null) {
       return;
     }
     jdbc.update(
-        "INSERT INTO naver_profile_email (subject_hash, email, name, expires_at) VALUES (?,?,?,?)"
+        "INSERT INTO naver_profile_email (subject_hash, email, name, nickname, expires_at)"
+            + " VALUES (?,?,?,?,?)"
             + " ON CONFLICT (subject_hash) DO UPDATE SET email = EXCLUDED.email,"
-            + " name = EXCLUDED.name, expires_at = EXCLUDED.expires_at",
+            + " name = EXCLUDED.name, nickname = EXCLUDED.nickname,"
+            + " expires_at = EXCLUDED.expires_at",
         hash(subject),
         email,
         name,
+        nickname,
         Timestamp.from(expiresAt));
   }
 
@@ -77,10 +94,11 @@ public class NaverProfileEmailStore {
     List<Held> live =
         jdbc.query(
             "DELETE FROM naver_profile_email WHERE subject_hash = ?"
-                + " RETURNING email, name, expires_at",
+                + " RETURNING email, name, nickname, expires_at",
             (rs, i) ->
                 rs.getTimestamp("expires_at").toInstant().isAfter(now)
-                    ? new Held(rs.getString("email"), rs.getString("name"))
+                    ? new Held(
+                        rs.getString("email"), rs.getString("name"), rs.getString("nickname"))
                     : Held.NONE,
             hash(subject));
     return live.isEmpty() ? Held.NONE : live.get(0);

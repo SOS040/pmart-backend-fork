@@ -45,7 +45,12 @@
             },
             "name": {
               "type": "string",
-              "description": "제공자 프로필 이름"
+              "description": "제공자 프로필 이름(실명만 — 카카오는 실명을 주지 않아 없음, 2026-11-25)"
+            },
+            "providerNickname": {
+              "type": "string",
+              "maxLength": 100,
+              "description": "(2026-11-25) 제공자 닉네임 — 카카오 닉네임·네이버 별명, 없으면 이름(구글은 이름). 고객이 앱에서 정한 별명과 다르다. 개인정보 — 로그 금지"
             },
             "pictureUrl": {
               "type": "string",

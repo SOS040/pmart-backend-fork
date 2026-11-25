@@ -36,7 +36,18 @@ public class IdTokenVerifier {
       @Nullable String email,
       @Nullable Boolean emailVerified,
       @Nullable String name,
-      @Nullable String pictureUrl) {}
+      @Nullable String pictureUrl,
+      @Nullable String nickname) {
+
+    public Identity(
+        String subject,
+        @Nullable String email,
+        @Nullable Boolean emailVerified,
+        @Nullable String name,
+        @Nullable String pictureUrl) {
+      this(subject, email, emailVerified, name, pictureUrl, null);
+    }
+  }
 
   public static class Rejected extends RuntimeException {
     public Rejected(String message) {
@@ -111,12 +122,11 @@ public class IdTokenVerifier {
         jwt.getSubject(),
         blankToNull(jwt.getClaimAsString("email")),
         jwt.hasClaim("email_verified") ? jwt.getClaimAsBoolean("email_verified") : null,
-        // 카카오 ID 토큰은 name 대신 nickname(동의했을 때), 네이버 ID 토큰은 프로필 클레임이 없다
-        blankToNull(
-            jwt.getClaimAsString("name") != null
-                ? jwt.getClaimAsString("name")
-                : jwt.getClaimAsString("nickname")),
-        blankToNull(jwt.getClaimAsString("picture")));
+        // 이름은 실명 클레임 name 만(2026-11-25 사용자 "이름은 무조건 입력하게 하는데" — 고객앱이 입력받는다). 카카오 ID 토큰의
+        // nickname 은 닉네임 칸으로. 네이버 ID 토큰은 프로필 클레임이 없다
+        blankToNull(jwt.getClaimAsString("name")),
+        blankToNull(jwt.getClaimAsString("picture")),
+        blankToNull(jwt.getClaimAsString("nickname")));
   }
 
   private static @Nullable String blankToNull(@Nullable String v) {

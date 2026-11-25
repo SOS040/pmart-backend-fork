@@ -221,8 +221,8 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * BR-79 (가): 그 sub 로 가입을 마친 계정이 없으면(처음·동의 단계에서 나간 가입) 교환 뒤 네이버 연결을 끊고, 가입을 마친 회원이면 끊지 않는다. 끊기 실패도
-   * 교환 200.
+   * 2026-11-25(BR-79 가입 전 끊기 없앰): 로그인 교환은 처음·가입 중·회원 모두 네이버 연결을 끊지 않는다(가입 뒤 첫 로그인·탈퇴 재인증에 동의 화면이 또
+   * 뜨던 것). 끊기는 탈퇴 재인증(WITHDRAWAL)만.
    */
   @Test
   void unlinksNaverWhenSignupNotFinishedButNotForMembers() {
@@ -260,7 +260,7 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
       assertThat(exchange(UUID.randomUUID().toString(), "code-" + sub, CALLBACK).status())
           .isEqualTo(200);
     }
-    assertThat(unlinkCalls() - before).isEqualTo(2);
+    assertThat(unlinkCalls() - before).isZero();
 
     stub(
         200,
@@ -273,7 +273,7 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
             idTokenWithSub(member)));
     assertThat(exchange(UUID.randomUUID().toString(), "code-member", CALLBACK).status())
         .isEqualTo(200);
-    assertThat(unlinkCalls() - before).isEqualTo(2);
+    assertThat(unlinkCalls() - before).isZero();
 
     // 끊기 실패해도 교환은 성공
     naver.stubFor(
@@ -529,7 +529,9 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     assertThat(naverEmails.take(sub2, now)).isNull();
   }
 
-  /** 2026-11-25: 프로필 이름(name, 없으면 nickname)도 이메일과 함께 묶는다 — 이메일이 없어도 이름만으로. 응답에는 싣지 않는다. */
+  /**
+   * 2026-11-25: 프로필 이름(실명 name 만)·별명(nickname, 없으면 이름)도 이메일과 함께 묶는다 — 이메일이 없어도 이름만으로. 응답에는 싣지 않는다.
+   */
   @Test
   void profileNameIsHeldWithOrWithoutEmail() {
     var b64 = java.util.Base64.getUrlEncoder().withoutPadding();
@@ -555,8 +557,9 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     var held = naverEmails.takeProfile(sub, now);
     assertThat(held.email()).isEqualTo("gd@naver.com");
     assertThat(held.name()).isEqualTo("홍길동");
+    assertThat(held.nickname()).isEqualTo("길동");
 
-    // 이름 없이 별명만, 이메일 없음 → 별명만 묶는다
+    // 이름 없이 별명만, 이메일 없음 → 별명만 묶는다(2026-11-25: 이름 칸은 비움 — 고객앱이 입력받는다)
     naver.resetAll();
     String sub2 = "naver-sub-" + UUID.randomUUID();
     stub(
@@ -571,6 +574,7 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
         .isEqualTo(200);
     var nick = naverEmails.takeProfile(sub2, now);
     assertThat(nick.email()).isNull();
-    assertThat(nick.name()).isEqualTo("길동");
+    assertThat(nick.name()).isNull();
+    assertThat(nick.nickname()).isEqualTo("길동");
   }
 }

@@ -180,6 +180,8 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
                     true,
                     "name",
                     name,
+                    "providerNickname",
+                    name + "닉",
                     "pictureUrl",
                     "https://lh3.googleusercontent.com/a/" + accountId))
             .buildJson();
@@ -208,6 +210,7 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     authenticated(cu, "2026-10-30T00:00:00Z", "홍길동", "old@gmail.com");
     Res first = get(me, "/me");
     assertThat(first.body().path("name").asString()).isEqualTo("홍길동");
+    assertThat(first.body().path("providerNickname").asString()).isEqualTo("홍길동닉");
     assertThat(first.body().path("email").asString()).isEqualTo("old@gmail.com");
     assertThat(first.body().path("emailVerified").asBoolean()).isTrue();
     // 사진 사본은 저장소(S3)가 있을 때만 — 이 시험엔 버킷이 없어 제공자 URL 을 그대로 내주지 않는다(ProfileImageIT)

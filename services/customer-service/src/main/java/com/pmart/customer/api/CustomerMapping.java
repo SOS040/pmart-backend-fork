@@ -111,6 +111,7 @@ final class CustomerMapping {
         .status(AccountStatus.fromValue(p.status()))
         .nickname(p.nickname())
         .name(p.name())
+        .providerNickname(p.providerNickname())
         .email(p.email())
         .emailVerified(p.emailVerified())
         .profileImageUrl(ProfileImageService.url(p.profileImageSha256()))

@@ -75,7 +75,8 @@ public class ProfileService {
             text(p, "name"),
             text(p, "email"),
             p.hasNonNull("emailVerified") ? p.get("emailVerified").asBoolean() : null,
-            text(p, "pictureUrl"));
+            text(p, "pictureUrl"),
+            text(p, "providerNickname"));
     store.upsertFromAuthentication(
         accountId, p.path("provider").asString("GOOGLE"), at, profile, clock.instant());
     // 사진은 제공자 URL 을 그대로 주지 않고 커밋 뒤 우리 저장소로 사본을 만든다
