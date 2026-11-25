@@ -53,6 +53,6 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: 사용자 "MFC랑 같은 sku"·"10,900 설계에 맞춰 선반 확장" — CDC-7 기록, 시뮬레이터에 선반 확장·위치 목록 재내보내기 요청(B-1). 시작 재고는 실제 LAN SKU 만(시드 다음 PR).
 - 2026-11-25: cdc-inventory 0.4.0 재고 스냅샷(칸별 재고 조회) — PR `cdc/inventory-snapshot`.
 - 2026-11-25: 위치 목록 사본을 시뮬레이터 dd3d185(B-1 선반 확장)로 — 32,436칸, PR `cdc/chilgok-locations-v2`.
-- 2026-11-25: 시작 재고 시드 `deploy/lan/seed/cdc_stock.py`(실제 LAN SKU, 취급·안전량 0·초기 보유) — PR `cdc/stock-seed`. 남은 일: 할당 "같은 LOT 이면 선반 먼저"(위치 유형 필요).
+- 2026-11-25: 시작 재고 시드 `deploy/lan/seed/cdc_stock.py`(실제 LAN SKU, 취급·안전량 0·초기 보유) — PR `cdc/stock-seed`. → 2026-11-25 할당 피킹 선반 먼저(cdc-inventory 0.5.0·cdc-location 0.4.0 위치 일괄 조회) PR `cdc/shelf-first`.
 - 2026-11-25: 출발 뒤 잔여 해제 거절 사유 — cdc-outbound 0.5.0 `residual_status` FAILED·`residual_reason`(V5), 출발 검증 응답 `transfers[].residualStatus·residualReason` — PR `cdc/residual-reason`(#455 검토 후속).
 - 2026-11-25: 출발 준비 조회 `/internal/outbound-readiness` — cdc-outbound 0.6.0(CDC-F-020, TMS·MFC 조건 제외) — PR `cdc/outbound-readiness`. 다음: 미출발 취소(CDC-F-026).
