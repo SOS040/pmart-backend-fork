@@ -87,9 +87,14 @@ public class CouponService {
 
   // ------------------------------------------------------------------ 고객
 
+  /** 회원·비회원(0.4.0 BR-104 — 비회원은 받은 수 0, 받기는 회원만). */
   public List<Campaign> campaigns() {
-    PmartPrincipal who = customer();
-    Map<String, Integer> mine = store.issuedToByPromotion(who.subject());
+    PmartPrincipal who = PmartPrincipal.current().orElse(null);
+    boolean guest = who != null && who.type() == PmartPrincipal.PrincipalType.GUEST;
+    if (!guest) {
+      who = customer();
+    }
+    Map<String, Integer> mine = guest ? Map.of() : store.issuedToByPromotion(who.subject());
     return store.runningCoupons("DOWNLOAD", now()).stream()
         .map(p -> new Campaign(p, mine.getOrDefault(p.promotionId(), 0)))
         .toList();

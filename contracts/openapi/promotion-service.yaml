@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: promotion-service
-  version: 0.3.1
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-25, 클라이언트 BR-104 — 사용자 "로그인 안 해도 첫 화면에 쿠폰 버튼 떠야지"): `GET /coupon-campaigns` 를 비회원 토큰(GUEST)도 읽는다 —
+      같은 목록, 비회원은 `myIssuedCount` 0(회원별 값 없음). 받기(`POST …/downloads`)는 지금처럼 회원만(비회원 403). 토큰 없는 호출은 받지 않는다(앱은 비회원 세션 토큰이 있다).
     0.3.1(2026-11-24, 백오피스 요청 PRM-1 + 행사 발급 내역 — 사용자 "쿠폰 발급 기록 조회"·"만들어"): 직원 `GET /promotions/coupons` — 쿠폰 발급 기록(고객 기준·행사 기준,
       하나 이상). 쿠폰마다 행사·고객·상태(AVAILABLE·HELD·USED·EXPIRED)·받은 경로(DOWNLOAD·STAFF·SIGNUP·COMPENSATION)·발급한 직원·사유·시각·사용 주문.
       MARKETING·OPERATOR_ADMIN·CS_AGENT. 추가 경로만(게이트웨이 라우트 `/promotions/**` 안).
@@ -303,10 +305,10 @@ paths:
   /coupon-campaigns:
     get:
       tags: [coupons]
-      summary: 지금 내려받을 수 있는 쿠폰 행사 (고객)
-      description: 발급 방식 DOWNLOAD·진행 중인 쿠폰 행사. 내가 받은 수(`myIssuedCount`)와 남은 수량(`remaining`, 총 수량이 없으면 null)을 함께 준다.
+      summary: 지금 내려받을 수 있는 쿠폰 행사 (고객·비회원)
+      description: 발급 방식 DOWNLOAD·진행 중인 쿠폰 행사. 내가 받은 수(`myIssuedCount`)와 남은 수량(`remaining`, 총 수량이 없으면 null)을 함께 준다. (0.4.0 BR-104) 비회원 토큰도 읽는다 — `myIssuedCount` 0.
       operationId: listCouponCampaigns
-      x-pmart-user-types: [CUSTOMER]
+      x-pmart-user-types: [CUSTOMER, GUEST]
       responses:
         '200':
           description: OK
