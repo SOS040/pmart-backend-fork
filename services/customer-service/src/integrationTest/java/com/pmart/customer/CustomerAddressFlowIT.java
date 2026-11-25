@@ -203,6 +203,32 @@ class CustomerAddressFlowIT extends PostgresKafkaContainerSupport {
     throw new AssertionError("CustomerAuthenticated 미반영");
   }
 
+  /** BR-107(0.21.0): 고객이 넣은 실명은 로그인이 덮지 않고, 빈 문자열이면 로그인 계정 이름으로 되돌린다. */
+  @Test
+  void customerNameIsNotOverwrittenByLoginAndCanRevert() throws Exception {
+    String cu = "CU-" + UUID.randomUUID();
+    String me = TestJwt.customer(cu);
+    authenticated(cu, "2026-10-30T00:00:00Z", "구글이름", "a@gmail.com");
+    assertThat(get(me, "/me").body().path("nameSource").asString()).isEqualTo("PROVIDER");
+
+    Res set = send(me, HttpMethod.POST, "/me/profile-changes", Map.of("name", "  홍길동 "));
+    assertThat(set.status()).as(set.body().toString()).isEqualTo(200);
+    Res after = get(me, "/me");
+    assertThat(after.body().path("name").asString()).isEqualTo("홍길동");
+    assertThat(after.body().path("nameSource").asString()).isEqualTo("CUSTOMER");
+
+    authenticated(cu, "2026-10-31T00:00:00Z", "새구글이름", "a@gmail.com");
+    assertThat(get(me, "/me").body().path("name").asString()).as("로그인이 덮지 않음").isEqualTo("홍길동");
+
+    assertThat(send(me, HttpMethod.POST, "/me/profile-changes", Map.of("name", "a\nb")).status())
+        .isEqualTo(400);
+    assertThat(send(me, HttpMethod.POST, "/me/profile-changes", Map.of("name", "")).status())
+        .isEqualTo(200);
+    Res reverted = get(me, "/me");
+    assertThat(reverted.body().path("name").asString()).isEqualTo("새구글이름");
+    assertThat(reverted.body().path("nameSource").asString()).isEqualTo("PROVIDER");
+  }
+
   @Test
   void googleProfileIsKeptAndLateOldLoginDoesNotRollBack() throws Exception {
     String cu = "CU-" + UUID.randomUUID();

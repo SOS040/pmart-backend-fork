@@ -112,6 +112,7 @@ final class CustomerMapping {
         .nickname(p.nickname())
         .name(p.name())
         .providerNickname(p.providerNickname())
+        .nameSource(Profile.NameSourceEnum.fromValue(p.nameSource()))
         .email(p.email())
         .emailVerified(p.emailVerified())
         .profileImageUrl(ProfileImageService.url(p.profileImageSha256()))

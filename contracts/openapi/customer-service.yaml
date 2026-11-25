@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.20.0
+  version: 0.21.0
   description: |
+    0.21.0(2026-11-25, 클라이언트 BR-107 — 사용자 "이름이랑 닉네임 내 정보에서 수정할 수 있는 기능 필요해"): `POST /me/profile-changes` 에 `name`(고객 실명 — 앞뒤 공백 떼고
+      1~30자, 줄바꿈·제어 문자 불가). 넣으면 `Profile.nameSource` CUSTOMER — 로그인해도 제공자 이름으로 덮지 않는다. 빈 문자열이면 로그인 계정 이름으로 되돌리기(PROVIDER, 제공자 이름이
+      없으면 비어 있음). `Profile.nameSource` PROVIDER|CUSTOMER.
     0.20.0(2026-11-25, 클라이언트 BR-106 — 사용자 "비회원 주소 그거 복사해와야지"): 회원 주소록 `detailAddress` 선택(전에는 없거나 비면 400). 비회원 배송지를
       상세 없이 그대로 옮길 수 있다. 상세 없는 주소로는 주문서가 막힌다(order 0.23.0 `DETAIL_ADDRESS_REQUIRED`).
     0.19.0(2026-11-25, 사용자 "실제 이름과 닉네임 다르게 관리", "별명만 기존 이름으로 채워넣는걸로"): `Profile.providerNickname`
@@ -107,11 +110,11 @@ paths:
   /me/profile-changes:
     post:
       tags: [profile]
-      summary: 프로필 변경 (닉네임·연락처). 확정 주문의 배송정보는 소급 수정하지 않음
+      summary: 프로필 변경 (닉네임·연락처·실명). 확정 주문의 배송정보는 소급 수정하지 않음
       description: |
         즉시 반영(status APPLIED, version +1). 같은 닉네임이면 버전을 올리지 않는다.
         nickname 은 앞뒤 공백을 떼고 1~30자, 줄바꿈·제어 문자 불가.
-        phone(0.7.0, 2026-11-19): 확인 안 된 연락처로 저장 — 휴대폰 번호(01X, 10~11자리, 하이픈·공백 무시)만, 아니면 400 VALIDATION_FAILED(field phone). 빈 문자열이면 지운다. nickname·phone 중 하나 이상. 같은 값이면 바꾸지 않는다.
+        phone(0.7.0, 2026-11-19): 확인 안 된 연락처로 저장 — 휴대폰 번호(01X, 10~11자리, 하이픈·공백 무시)만, 아니면 400 VALIDATION_FAILED(field phone). 빈 문자열이면 지운다. nickname·phone·name(0.21.0) 중 하나 이상. 같은 값이면 바꾸지 않는다.
         결과는 GET /me/profile-changes/{requestId}(= Idempotency-Key)로 다시 본다.
       operationId: changeMyProfile
       x-pmart-user-types: [CUSTOMER]
@@ -128,6 +131,7 @@ paths:
               properties:
                 nickname: { type: string, maxLength: 30 }
                 phone: { type: string, maxLength: 20, description: '0.7.0 — 휴대폰 번호(확인 안 된 연락처). 빈 문자열 = 지우기. 값은 로그 금지' }
+                name: { type: string, maxLength: 60, x-added-in: '2026-11-25', description: '(0.21.0 BR-107) 고객 실명 1~30자(앞뒤 공백 뗌, 줄바꿈·제어 문자 불가 → 400 field name). 넣으면 nameSource CUSTOMER(로그인이 덮지 않음). 빈 문자열 = 로그인 계정 이름으로 되돌리기(PROVIDER). 값은 로그 금지' }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
@@ -1648,6 +1652,7 @@ components:
         status: { $ref: '#/components/schemas/AccountStatus' }
         nickname: { type: string }
         name: { type: string, description: 로그인 제공자(Google) 프로필 이름. 로그인마다 최신 값(ADR-0024). 없을 수 있다 }
+        nameSource: { type: string, enum: [PROVIDER, CUSTOMER], x-added-in: '2026-11-25', description: '(0.21.0 BR-107) name 의 출처 — PROVIDER 로그인 제공자 이름(로그인마다 최신), CUSTOMER 고객이 입력(로그인이 덮지 않음)' }
         providerNickname: { type: string, x-added-in: '2026-11-25', description: '(0.19.0) 로그인 제공자 닉네임 — 카카오 닉네임·네이버 별명, 없으면 제공자 이름(구글은 이름). 고객이 정한 별명(nickname)과 다르다. 없을 수 있다' }
         email: { type: string, description: 로그인 제공자가 준 이메일. 없을 수 있다 }
         emailVerified: { type: boolean, description: 제공자가 이메일을 확인했는지 }

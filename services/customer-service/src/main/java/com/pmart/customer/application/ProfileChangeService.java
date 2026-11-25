@@ -63,7 +63,19 @@ public class ProfileChangeService {
       @Nullable Integer expectedVersion,
       @Nullable String nickname,
       @Nullable String phone) {
-    if (nickname == null && phone == null) {
+    return change(accountId, requestId, sourceSystem, expectedVersion, nickname, phone, null);
+  }
+
+  /** name(2026-11-25 BR-107): 고객 실명 — 값이면 CUSTOMER(로그인이 덮지 않음), 빈 문자열이면 제공자 이름으로 되돌리기. */
+  public Result change(
+      String accountId,
+      String requestId,
+      String sourceSystem,
+      @Nullable Integer expectedVersion,
+      @Nullable String nickname,
+      @Nullable String phone,
+      @Nullable String name) {
+    if (nickname == null && phone == null && name == null) {
       throw invalid("nickname", "바꿀 값이 없습니다.");
     }
     if (nickname != null) {
@@ -81,6 +93,14 @@ public class ProfileChangeService {
                 throw invalid("phone", reason);
               });
     }
+    if (name != null) {
+      ProfileRules.nameProblem(name)
+          .ifPresent(
+              reason -> {
+                throw invalid("name", reason);
+              });
+    }
+    String newName = name == null ? null : name.strip(); // "" = 되돌리기
     String nick =
         nickname == null ? null : Objects.requireNonNull(ProfileRules.normalizeNickname(nickname));
     boolean setPhone = phone != null;
@@ -95,6 +115,9 @@ public class ProfileChangeService {
     if (setPhone) {
       request.put("phone", newPhone == null ? "" : newPhone);
     }
+    if (newName != null) {
+      request.put("name", newName);
+    }
     request.put("expectedVersion", expectedVersion);
     return idempotency
         .execute(
@@ -107,7 +130,13 @@ public class ProfileChangeService {
               check(locked, expectedVersion);
               boolean nickSame = nick == null || nick.equals(locked.nickname());
               boolean phoneSame = !setPhone || Objects.equals(newPhone, locked.phone());
-              if (nickSame && phoneSame) {
+              boolean nameSame =
+                  newName == null
+                      || (newName.isEmpty()
+                          ? "PROVIDER".equals(locked.nameSource())
+                          : "CUSTOMER".equals(locked.nameSource())
+                              && newName.equals(locked.name()));
+              if (nickSame && phoneSame && nameSame) {
                 return new Result(requestId, locked.version(), now.toString(), false);
               }
               if (store.updateProfile(
@@ -116,16 +145,18 @@ public class ProfileChangeService {
                       nickSame ? null : nick,
                       !phoneSame,
                       newPhone,
+                      nameSame ? null : newName,
                       now)
                   == 0) {
                 throw versionConflict();
               }
               log.info(
-                  "프로필 변경 {} 버전 {} (닉네임 {}, 연락처 {})",
+                  "프로필 변경 {} 버전 {} (닉네임 {}, 연락처 {}, 이름 {})",
                   accountId,
                   locked.version() + 1,
                   !nickSame,
-                  !phoneSame);
+                  !phoneSame,
+                  !nameSame);
               return new Result(requestId, locked.version() + 1, now.toString(), true);
             })
         .value();

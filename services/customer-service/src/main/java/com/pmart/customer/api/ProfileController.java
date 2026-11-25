@@ -99,7 +99,8 @@ public class ProfileController implements ProfileApi {
                 xSourceSystem,
                 xExpectedVersion,
                 body.getNickname(),
-                body.getPhone())));
+                body.getPhone(),
+                body.getName())));
   }
 
   @Override

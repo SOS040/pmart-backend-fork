@@ -29,6 +29,20 @@ public final class ProfileRules {
     return Optional.empty();
   }
 
+  /**
+   * 실명(2026-11-25 BR-107): 닉네임과 같은 규칙 — 1~30자, 줄바꿈·제어 문자 불가. 빈 문자열은 "제공자 이름으로 되돌리기"라 여기서 보지 않는다.
+   */
+  public static Optional<String> nameProblem(String raw) {
+    String v = raw.strip();
+    if (v.codePointCount(0, v.length()) > NICKNAME_MAX) {
+      return Optional.of("이름은 " + NICKNAME_MAX + "자까지입니다.");
+    }
+    if (v.codePoints().anyMatch(Character::isISOControl)) {
+      return Optional.of("이름에 줄바꿈·제어 문자를 쓸 수 없습니다.");
+    }
+    return Optional.empty();
+  }
+
   public static @Nullable String normalizeNickname(@Nullable String raw) {
     return raw == null ? null : raw.strip();
   }

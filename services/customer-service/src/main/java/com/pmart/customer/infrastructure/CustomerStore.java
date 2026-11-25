@@ -26,6 +26,7 @@ public class CustomerStore {
       @Nullable String nickname,
       @Nullable String name,
       @Nullable String providerNickname,
+      String nameSource,
       @Nullable String email,
       @Nullable Boolean emailVerified,
       @Nullable String profileImageSha256,
@@ -106,14 +107,20 @@ public class CustomerStore {
             + " OR EXCLUDED.last_authenticated_at >= customer.last_authenticated_at)";
     jdbc.update(
         "INSERT INTO customer (account_id, status, social_provider, joined_at,"
-            + " last_authenticated_at, name, email, email_verified, profile_image_source_url,"
-            + " provider_nickname, version, updated_at) VALUES (?,'ACTIVE',?,?,?,?,?,?,?,?,0,?)"
+            + " last_authenticated_at, name, provider_name, email, email_verified,"
+            + " profile_image_source_url, provider_nickname, version, updated_at)"
+            + " VALUES (?,'ACTIVE',?,?,?,?,?,?,?,?,?,0,?)"
             + " ON CONFLICT (account_id) DO UPDATE SET"
             + " social_provider = COALESCE(customer.social_provider, EXCLUDED.social_provider),"
             + " joined_at = LEAST(customer.joined_at, EXCLUDED.joined_at),"
             + " name = CASE WHEN "
             + latest
+            + " AND customer.name_source = 'PROVIDER'"
             + " THEN COALESCE(EXCLUDED.name, customer.name) ELSE customer.name END,"
+            + " provider_name = CASE WHEN "
+            + latest
+            + " THEN COALESCE(EXCLUDED.provider_name, customer.provider_name)"
+            + " ELSE customer.provider_name END,"
             + " provider_nickname = CASE WHEN "
             + latest
             + " THEN COALESCE(EXCLUDED.provider_nickname, customer.provider_nickname)"
@@ -135,6 +142,7 @@ public class CustomerStore {
         provider,
         ts(at),
         ts(at),
+        p.name(),
         p.name(),
         p.email(),
         p.emailVerified(),
@@ -171,8 +179,8 @@ public class CustomerStore {
   }
 
   private static final String PROFILE_SELECT =
-      "SELECT account_id, status, social_provider, nickname, name, provider_nickname, email,"
-          + " email_verified,"
+      "SELECT account_id, status, social_provider, nickname, name, provider_nickname, name_source,"
+          + " email, email_verified,"
           + " profile_image_sha256, profile_photo_source, joined_at, version, phone, phone_verified,"
           + " customer_number, restriction, restriction_until, restriction_version FROM customer";
 
@@ -184,6 +192,7 @@ public class CustomerStore {
         rs.getString("nickname"),
         rs.getString("name"),
         rs.getString("provider_nickname"),
+        rs.getString("name_source"),
         rs.getString("email"),
         rs.getObject("email_verified", Boolean.class),
         rs.getString("profile_image_sha256"),
@@ -260,15 +269,38 @@ public class CustomerStore {
       boolean setPhone,
       @Nullable String phone,
       Instant now) {
+    return updateProfile(accountId, expectedVersion, nickname, setPhone, phone, null, now);
+  }
+
+  /**
+   * 실명까지(2026-11-25 BR-107). nameChange: null 그대로, "" 제공자 이름으로 되돌리기(PROVIDER), 값 고객 실명(CUSTOMER).
+   */
+  public int updateProfile(
+      String accountId,
+      int expectedVersion,
+      @Nullable String nickname,
+      boolean setPhone,
+      @Nullable String phone,
+      @Nullable String nameChange,
+      Instant now) {
+    boolean setName = nameChange != null;
+    boolean revert = "".equals(nameChange);
     return jdbc.update(
         "UPDATE customer SET nickname = COALESCE(?, nickname),"
             + " phone = CASE WHEN ? THEN ? ELSE phone END,"
             + " phone_verified = CASE WHEN ? THEN false ELSE phone_verified END,"
+            + " name = CASE WHEN ? THEN provider_name WHEN ? THEN ? ELSE name END,"
+            + " name_source = CASE WHEN ? THEN 'PROVIDER' WHEN ? THEN 'CUSTOMER' ELSE name_source END,"
             + " version = version + 1, updated_at = ? WHERE account_id = ? AND version = ?",
         nickname,
         setPhone,
         phone,
         setPhone,
+        revert,
+        setName,
+        revert ? null : nameChange,
+        revert,
+        setName,
         ts(now),
         accountId,
         expectedVersion);

@@ -3,7 +3,7 @@
 보낸 영역: platform
 받는 앱: customer-app
 작성: pmart-backend, 2026-11-25
-상태: **서버 구현(auth V10·customer 0.19.0) — LAN 배포 전**
+상태: **LAN 배포 끝**(2026-11-25 auth·customer 01e4a815)
 
 ## 바뀐 것 (사용자 2026-11-25 "실제 이름과 닉네임 다르게 관리", "이름은 무조건 입력하게 하는데(고객앱 구현됨) 별명만 기존 이름으로 채워넣는걸로")
 | 로그인 | `GET /me` `name` | `GET /me` `providerNickname`(새 칸) |
