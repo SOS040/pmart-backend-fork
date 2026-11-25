@@ -180,7 +180,7 @@ spring:
             - id: cdc-location-service
               uri: ${pmart.gateway.upstream.cdc-location-service}
               predicates:
-                - Path=/api/v1/cdcs/*/locations/**,/api/v1/cdcs/*/locations # CDC 위치(cdc-location 0.3.0 #456, 2026-11-25 R-16)
+                - Path=/api/v1/cdcs/*/locations/**,/api/v1/cdcs/*/locations,/api/v1/cdcs/*/aisle-pick-methods # CDC 위치(cdc-location 0.3.0 #456, 2026-11-25 R-16) · 통로 피킹 방식(0.5.0 #483)
               order: -87
             - id: mfc-fulfillment-service
               uri: ${pmart.gateway.upstream.mfc-fulfillment-service}
