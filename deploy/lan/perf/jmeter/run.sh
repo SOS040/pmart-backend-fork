@@ -4,13 +4,16 @@
 #   sh deploy/lan/perf/jmeter/run.sh 10         # 한 단계만(인원)
 #   DURATION=60 sh deploy/lan/perf/jmeter/run.sh 10   # 짧은 확인
 # 먼저: python -I -X utf8 deploy/lan/perf/jmeter/guest_tokens.py 100 (토큰 1시간 유효)
-# 결과: deploy/lan/perf/jmeter/out/<시각>-u<인원>/{results.jtl, report/index.html}
+# 결과: $OUT_DIR/<시각>-u<인원>/{results.jtl, report/index.html, jmeter.log}
+#   OUT_DIR 기본 /d/pmart-perf/jmeter(D 드라이브 — C 는 여유가 적다, 사용자 2026-11-26). 토큰은 그대로 저장소 out/(git 제외)
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 JMETER=${JMETER:-/c/tools/apache-jmeter-5.6.3/bin/jmeter.bat}
 DURATION=${DURATION:-300}
 RAMP=${RAMP:-60}
 STAGES=${*:-10 50 100}
+OUT_DIR=${OUT_DIR:-/d/pmart-perf/jmeter}
+mkdir -p "$OUT_DIR" || { echo "결과 폴더 $OUT_DIR 를 만들 수 없음 — OUT_DIR 로 바꾸세요" >&2; exit 1; }
 
 [ -f "$HERE/out/tokens.csv" ] || { echo "토큰 없음 — guest_tokens.py 먼저" >&2; exit 1; }
 free=$(powershell -NoProfile -Command "[int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024)")
@@ -18,7 +21,7 @@ free=$(powershell -NoProfile -Command "[int]((Get-CimInstance Win32_OperatingSys
 
 cd "$HERE"
 for u in $STAGES; do
-  d="out/$(date +%Y%m%d-%H%M%S)-u$u"
+  d="$OUT_DIR/$(date +%Y%m%d-%H%M%S)-u$u"
   mkdir -p "$d"
   echo "== $u명 · ${DURATION}s (램프 ${RAMP}s) → $d"
   HEAP="-Xms512m -Xmx2g" "$JMETER" -n -t pmart-guest.jmx \

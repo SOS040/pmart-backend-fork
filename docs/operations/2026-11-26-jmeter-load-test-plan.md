@@ -21,7 +21,7 @@
 | `pmart-guest.jmx` | 시험 계획(`gen_jmx.py` 로 만든 것 — 고칠 때는 gen_jmx.py 를 고치고 다시 만든다) |
 | `gen_jmx.py` | jmx 만들기 `python -I -X utf8 deploy/lan/perf/jmeter/gen_jmx.py deploy/lan/perf/jmeter/pmart-guest.jmx` |
 | `keywords.csv` | 검색어 20개(의미 검색 "빨간 라면" 포함) |
-| `run.sh` | 단계 실행(메모리 4GB 확인 → 단계마다 jtl·HTML 보고서 → `summary.py` 멈춤 판정) |
+| `run.sh` | 단계 실행(메모리 4GB 확인 → 단계마다 jtl·HTML 보고서 → `summary.py` 멈춤 판정). **결과는 D 드라이브 `D:\pmart-perf\jmeter\<시각>-u<인원>\`**(사용자 2026-11-26 — C 여유 30GB, D 159GB). 바꾸려면 `OUT_DIR=/d/다른곳` |
 | `summary.py` | 요청별 건수·오류%·p50·p95·상태 코드, 전체 처리량 |
 
 JMeter: `C:\tools\apache-jmeter-5.6.3`(PC 1, 2026-11-26 설치 — §7). Java 21 은 PC 1 에 있다.
@@ -43,7 +43,7 @@ JMeter: `C:\tools\apache-jmeter-5.6.3`(PC 1, 2026-11-26 설치 — §7). Java 21
 - 넣은 주문은 끝나고 목록(주문 ID)을 남긴다 — 필요하면 고객 취소(시험 결제라 환불도 토스 없이).
 
 ## 4. 보는 것
-- JMeter: `out/<시각>-u<인원>/report/index.html`(응답 시간 분포·처리량·오류), `summary.py` 표.
+- JMeter: `D:\pmart-perf\jmeter\<시각>-u<인원>eport\index.html`(응답 시간 분포·처리량·오류), `summary.py` 표.
 - Grafana(PC 1, `deploy/lan/monitoring`): 서비스별 `http_server_requests` p95, JVM 힙·GC, Hikari 연결, 게이트웨이 429 수(`spring_cloud_gateway…`/rate limit), Kafka 소비 지연, search `pmart_search_es_seconds`, pc2 ollama(검색 벡터 시간 초과 — search-service 로그 WARN).
 - 각 PC CPU·메모리(`lan.sh status <pc>`, node exporter).
 - 결과 정리: 단계마다 처리량·p95·오류%·병목 서비스·429 비율을 `docs/operations/2026-11-26-jmeter-load-test-result.md` 로.
