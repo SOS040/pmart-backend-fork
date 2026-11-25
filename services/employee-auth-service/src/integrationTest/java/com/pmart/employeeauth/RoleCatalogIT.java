@@ -153,6 +153,8 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
             "HR_ADMIN",
             "CENTER_MASTER_APPROVER",
             "CS_AGENT",
+            "CDC_SUPERVISOR", // 2026-11-25 cdc R-16
+            "CDC_WORKER",
             "DISPLAY_APPROVER",
             "INVENTORY_APPROVER",
             "MARKETING",
@@ -173,12 +175,14 @@ class RoleCatalogIT extends PostgresKafkaContainerSupport {
             centerScoped.add(i.path("code").asText());
           }
         });
-    assertThat(centerScoped).containsExactly("MFC_SUPERVISOR", "MFC_WORKER");
+    assertThat(centerScoped)
+        .containsExactly("CDC_SUPERVISOR", "CDC_WORKER", "MFC_SUPERVISOR", "MFC_WORKER");
     assertThat(items.get(0).path("name").asText()).isEqualTo("운영 관리자");
-    assertThat(items.get(6).path("name").asText()).isEqualTo("마케팅(행사·쿠폰)");
-    assertThat(items.get(8).path("name").asText()).isEqualTo("센터 관리자");
-    assertThat(items.get(12).path("name").asText()).isEqualTo("라이더 운영");
-    assertThat(items.get(13).path("name").asText()).isEqualTo("배송 권역 승인자");
+    assertThat(items.get(8).path("name").asText()).isEqualTo("마케팅(행사·쿠폰)");
+    assertThat(items.get(4).path("name").asText()).isEqualTo("CDC 센터 관리자");
+    assertThat(items.get(10).path("name").asText()).isEqualTo("센터 관리자");
+    assertThat(items.get(14).path("name").asText()).isEqualTo("라이더 운영");
+    assertThat(items.get(15).path("name").asText()).isEqualTo("배송 권역 승인자");
   }
 
   @Test

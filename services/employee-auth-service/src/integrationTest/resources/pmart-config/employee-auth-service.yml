@@ -119,6 +119,12 @@ pmart:
         sso: true
         post-logout-path: /login
         refresh-cookie: false
+      # DC 백오피스(별도 웹 앱, 2026-11-25 사용자 "Dc 백오피스 만들어줘 … sso로 클릭해서 이동") — 다른 백오피스와 같은 값(SSO 켬). 쓰는 사람 CDC_SUPERVISOR·OPERATOR_ADMIN
+      cdc-backoffice:
+        session-idle: PT12H
+        sso: true
+        post-logout-path: /login
+        refresh-cookie: false
     keycloak:
       client-id: employee-auth-service
       timeout: PT5S
