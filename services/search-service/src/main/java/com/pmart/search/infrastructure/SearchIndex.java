@@ -66,7 +66,8 @@ public class SearchIndex {
   public static final Map<String, String> INDICES =
       Map.of(
           PRODUCTS,
-          "products-v10", // 2026-11-23 사용자 사전에 그릭요구르트·스파클링(동의어가 안 잇던 2낱말) / v9 표시사항 값
+          "products-v11", // 2026-11-25 ADR-0088 의미 검색 aiTags·semanticVector / v10
+          // 2026-11-23 사용자 사전에 그릭요구르트·스파클링(동의어가 안 잇던 2낱말) / v9 표시사항 값
           // nutrition·allergens / v8
           // 2026-11-22 원산지(originType·originText)·설명(description) + 동의어 낱말 사용자 사전 /
           // v7
@@ -315,6 +316,21 @@ public class SearchIndex {
   }
 
   /** 문서 하나를 지운다. 없으면(404) 그대로 성공(멱등). */
+  /** 문서 일부만 고친다(ADR-0088 꼬리표·벡터 — Logstash 가 쓰는 칸은 건드리지 않는다). 문서가 없으면 404 를 무시(그 사이 지워짐). */
+  public void update(String alias, String id, Map<String, Object> partial) {
+    ensure(alias);
+    run(
+        "update",
+        alias,
+        () ->
+            http.post()
+                .uri("/{alias}/_update/{id}", alias, id)
+                .body(mapper.writeValueAsString(Map.of("doc", partial)))
+                .retrieve()
+                .onStatus(s -> s.value() == 404, (q, r) -> {})
+                .toBodilessEntity());
+  }
+
   public void delete(String alias, String id) {
     ensure(alias);
     run(

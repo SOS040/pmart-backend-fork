@@ -131,6 +131,17 @@ public class ProductSearch {
   private final Clock clock;
   private final LabelRules.@Nullable Thresholds nutrition;
 
+  /** 의미 검색(ADR-0088) — 없으면(시험·설정 없음) 키워드만. */
+  private @Nullable QueryVectors vectors;
+
+  private @Nullable SemanticProperties semantic;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  void setSemantic(QueryVectors vectors, SemanticProperties semantic) {
+    this.vectors = vectors;
+    this.semantic = semantic;
+  }
+
   public ProductSearch(
       SearchIndex index, CategoryTreeClient categories, Clock clock, SearchProperties props) {
     this.nutrition = props.nutrition() == null ? null : props.nutrition().thresholds();
@@ -182,7 +193,26 @@ public class ProductSearch {
             namesFor(rest),
             extra(onSale ? onSaleFilter() : null, nut)));
     req.put("sort", sort(sort, query != null));
-    JsonNode res = index.search(SearchIndex.PRODUCTS, req);
+    // 의미 검색(ADR-0088): 검색어 벡터와 가까운 상품을 같은 거르기로 더한다(점수 합 — 가중치 낮게, 키워드 일치가 앞). 초성·할인율순은 빼고
+    Map<String, Object> knn =
+        query == null || SearchRules.isChosungQuery(query) || byDiscount
+            ? null
+            : knn(query, (Map<?, ?>) req.get("query"));
+    if (knn != null) {
+      req.put("knn", knn);
+    }
+    JsonNode res;
+    try {
+      res = index.search(SearchIndex.PRODUCTS, req);
+    } catch (RuntimeException e) {
+      if (knn == null) {
+        throw e;
+      }
+      // 벡터 칸이 아직 없는 색인(재색인 전) 등 — 키워드만으로 다시(검색은 실패시키지 않는다)
+      log.warn("의미 검색 질의 실패 — 키워드만: {}", e.getClass().getSimpleName());
+      req.remove("knn");
+      res = index.search(SearchIndex.PRODUCTS, req);
+    }
     List<Hit> out = new ArrayList<>();
     for (JsonNode h : res.path("hits").path("hits")) {
       out.add(withPath(hit(h.path("_source"), center)));
@@ -197,6 +227,32 @@ public class ProductSearch {
     List<String> applied = new ArrayList<>();
     filters.forEach((k, vs) -> vs.forEach(v -> applied.add(k + "." + v)));
     return new Result(out, total, next, sort, List.copyOf(applied));
+  }
+
+  /** kNN 부분(ADR-0088). 거르기는 키워드 질의의 filter·must_not 그대로(센터 취급·카테고리·가격·필터·판매중지). 벡터를 못 얻으면 null. */
+  @SuppressWarnings("unchecked")
+  private @Nullable Map<String, Object> knn(String query, Map<?, ?> keywordQuery) {
+    if (vectors == null || semantic == null || !semantic.searchReady()) {
+      return null;
+    }
+    float[] v = vectors.of(query);
+    if (v == null) {
+      return null;
+    }
+    Map<String, Object> bool = (Map<String, Object>) keywordQuery.get("bool");
+    Map<String, Object> filter = new LinkedHashMap<>();
+    filter.put("filter", bool.get("filter"));
+    filter.put("must_not", bool.get("must_not"));
+    int k = semantic.knnK();
+    Map<String, Object> knn = new LinkedHashMap<>();
+    knn.put("field", "semanticVector");
+    knn.put("query_vector", v);
+    knn.put("k", k);
+    knn.put("num_candidates", Math.max(k * 4, 100));
+    knn.put("similarity", semantic.similarity());
+    knn.put("boost", semantic.knnBoost());
+    knn.put("filter", Map.of("bool", filter));
+    return knn;
   }
 
   /**
@@ -641,7 +697,8 @@ public class ProductSearch {
                                   "type",
                                   "cross_fields",
                                   "fields",
-                                  List.of("name", "originText", "description"),
+                                  // aiTags(ADR-0088 LLM 꼬리표 — 검색 전용): "빨간 라면" → 빨간(꼬리표)+라면(이름)
+                                  List.of("name", "originText", "description", "aiTags"),
                                   "operator",
                                   "and",
                                   "boost",
