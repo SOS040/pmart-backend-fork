@@ -329,11 +329,11 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
     assertThat(jwt.getClaimAsStringList("centers")).containsExactly("MFC-IT-01");
     assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt()))
         .isEqualTo(Duration.ofMinutes(15));
-    // mfc 앱 세션은 무활동 30분
+    // mfc 앱 세션 무활동 한도 = 근무 길이 12시간(ADR-0089, 2026-11-25 — 전에는 30분). 세션 최대도 12시간이라 그쪽이 먼저
     Instant refreshExp =
         Instant.parse(r.body().path("tokens").path("refreshTokenExpiresAt").asText());
     assertThat(Duration.between(Instant.now(), refreshExp))
-        .isBetween(Duration.ofMinutes(29), Duration.ofMinutes(31));
+        .isBetween(Duration.ofHours(12).minusMinutes(2), Duration.ofHours(12).plusMinutes(1));
 
     // 티켓은 한 번만
     assertThat(exchange(ticket, v, "pda-1").status()).isEqualTo(401);
