@@ -542,6 +542,75 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 소셜 이름·닉네임(2026-11-25): rider-auth RiderAuthenticated(platform.auth.v1) → 가입 전에도
+   * provider-profile, 가입 뒤 /riders/me providerNickname(실명 name 은 가입 입력 그대로), 옛 사건은 되돌리지 않음.
+   */
+  @Test
+  void providerProfileFromRiderAuthenticated() {
+    String rider = "RD-pp-" + UUID.randomUUID();
+    authenticated(rider, Instant.now().minusSeconds(60), "홍길동", "길동이");
+    long deadline = System.currentTimeMillis() + 30_000;
+    JsonNode pp = providerProfile(rider);
+    while (System.currentTimeMillis() < deadline && !pp.has("providerNickname")) {
+      Thread.onSpinWait();
+      pp = providerProfile(rider);
+    }
+    assertThat(pp.path("provider").asString()).isEqualTo("NAVER");
+    assertThat(pp.path("name").asString()).isEqualTo("홍길동");
+    assertThat(pp.path("providerNickname").asString()).isEqualTo("길동이");
+
+    // 늦게 온 옛 로그인 사건은 되돌리지 않는다
+    authenticated(rider, Instant.now().minusSeconds(3600), "옛이름", "옛닉");
+    try {
+      Thread.sleep(1500);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    assertThat(providerProfile(rider).path("providerNickname").asString()).isEqualTo("길동이");
+
+    assertThat(signup(rider, phone(), "k-" + rider).getStatusCode().value()).isEqualTo(201);
+    JsonNode me =
+        json(
+            http.get()
+                .uri("/riders/me")
+                .header("Authorization", "Bearer " + TestJwt.rider(rider))
+                .retrieve()
+                .body(String.class));
+    assertThat(me.path("providerNickname").asString()).isEqualTo("길동이");
+    assertThat(me.path("name").asString()).isNotEqualTo("홍길동");
+  }
+
+  private void authenticated(String rider, Instant at, String name, String nickname) {
+    String json =
+        EventEnvelopeFixtures.envelope("RiderAuthenticated")
+            .from("rider-auth-service")
+            .aggregate("RiderAccount", rider, at.toEpochMilli())
+            .payload(
+                Map.of(
+                    "riderId",
+                    rider,
+                    "provider",
+                    "NAVER",
+                    "authenticatedAt",
+                    at.toString(),
+                    "name",
+                    name,
+                    "providerNickname",
+                    nickname))
+            .buildJson();
+    kafka.send("platform.auth.v1", rider, json).join();
+  }
+
+  private JsonNode providerProfile(String rider) {
+    return json(
+        http.get()
+            .uri("/riders/me/provider-profile")
+            .header("Authorization", "Bearer " + TestJwt.rider(rider))
+            .retrieve()
+            .body(String.class));
+  }
+
+  /**
    * 도움요청 대화 금칙어(2026-11-23 — 사용자 "응"): execution RiderHelpProfanityDetected(delivery.delivery.v1) →
    * 같은 7일 정지.
    */
