@@ -143,7 +143,9 @@ public class GatewaySecurityConfig {
           "X-Expected-Version",
           "X-Device-Id",
           "X-Request-Id",
-          "traceparent");
+          "traceparent",
+          // SSE 이어 받기(EventSource 가 다시 붙을 때 보냄) — MFC 백오피스 :8445 → :8443 교차 출처(2026-11-25 PC 3 요청)
+          "Last-Event-ID");
 
   /**
    * 허용 출처가 없으면 어떤 경로에도 CORS 설정을 걸지 않는다(브라우저 교차 출처 호출은 거부). 자격 증명 경로(ADR-0059 — 웹 백오피스 refresh 쿠키)는
