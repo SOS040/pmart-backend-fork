@@ -332,6 +332,7 @@ GET /api/v1/riders/me/compensations RIDER
 GET /api/v1/riders/me/deductions RIDER
 GET /api/v1/riders/me/deliveries RIDER
 GET /api/v1/riders/me/earnings RIDER
+GET /api/v1/riders/me/location-area RIDER
 GET /api/v1/riders/me/locations/latest RIDER
 GET /api/v1/riders/me/operating-time RIDER
 GET /api/v1/riders/me/phone-verifications/{verificationId} RIDER
