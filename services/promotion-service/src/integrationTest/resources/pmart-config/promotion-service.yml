@@ -2,6 +2,10 @@
 server:
   port: 8109
 pmart:
+  security:
+    # 비회원 토큰(typ=GUEST)이 쓸 수 있는 경로(2026-11-25 BR-104 — 쿠폰 행사 목록 읽기만, 받기는 회원만)
+    guest-paths:
+      - /api/v1/coupon-campaigns
   messaging:
     domain: commerce # 반영 회신은 platform.approval-receipt.v1(코드에서 토픽 지정)
   web:

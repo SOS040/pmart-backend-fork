@@ -682,6 +682,19 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
 
     Res campaigns = send("GET", ta, "/coupon-campaigns", null);
     assertThat(campaigns.body().path("items").findValuesAsString("promotionId")).contains(promo);
+    // BR-104(0.4.0): 비회원도 목록은 읽고(받은 수 0) 받기는 403
+    String guestToken =
+        com.pmart.common.test.TestJwt.token(
+            "GST-" + UUID.randomUUID(), "GUEST", List.of(), List.of(), "customer-app");
+    Res guestList = send("GET", guestToken, "/coupon-campaigns", null);
+    assertThat(guestList.status()).as(guestList.body().toString()).isEqualTo(200);
+    assertThat(guestList.body().path("items").findValuesAsString("promotionId")).contains(promo);
+    guestList
+        .body()
+        .path("items")
+        .forEach(i -> assertThat(i.path("myIssuedCount").asInt()).isZero());
+    assertThat(send("POST", guestToken, "/coupon-campaigns/" + promo + "/downloads", null).status())
+        .isEqualTo(403);
 
     String key = UUID.randomUUID().toString();
     Res got = send("POST", ta, "/coupon-campaigns/" + promo + "/downloads", null, key);
