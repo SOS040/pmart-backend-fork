@@ -4,7 +4,7 @@
 받는 앱: customer-app
 원 문서: `pmart-clients docs/handoff/customer-app/2026-11-25-backend-naver-profile-missing.md`
 작성: pmart-backend, 2026-11-25
-상태: 사진 고침 구현(customer-service, LAN 배포 전) · 이름·이메일은 서버에 들어감 — 앱 다시 읽기 필요
+상태: **사진 고침 LAN 배포 끝**(customer-service 4dc42be7 — 다음 네이버 로그인 때 사진 사본) · 이름·이메일은 서버에 들어감 — 앱 다시 읽기 필요
 
 ## LAN 에서 확인한 것(값은 안 봄 — 있음/없음만)
 - 11-25 네이버 가입 2건(05:34·05:56 UTC, 가입 38초·47초 걸림)과 그 뒤 로그인 2건 모두 auth `CustomerAuthenticated` 에 **이름·이메일·사진 주소가 다 있었다**(이름은 auth 0.11 V9 배포 뒤부터). customer-service 도 매번 받아 반영했다("고객 인증 반영").
