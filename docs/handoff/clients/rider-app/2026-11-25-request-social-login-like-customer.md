@@ -1,7 +1,7 @@
 보낸 영역: platform(PC 1)
 받는 앱: rider-app
 작성: pmart-backend, 2026-11-25
-상태: **서버 구현(rider-auth·rider-service 0.28.0, 커밋 37d44ce0) — LAN 배포 전**
+상태: **서버 구현(rider-auth·rider-service 0.29.0) — LAN 배포 전**
 
 # 요청: 라이더 소셜 로그인을 고객 앱과 같게 — 탈퇴 때 구글 연결을 서버가 끊기
 
