@@ -32,7 +32,8 @@ public class StaffViews {
       Map<String, Long> wavesByState,
       Map<String, Long> tasksByKindState,
       @Nullable Double progress,
-      Instant asOf) {}
+      Instant asOf,
+      List<StaffViewStore.MfcTotals> byMfc) {}
 
   private final StaffViewStore store;
   private final Clock clock;
@@ -124,7 +125,8 @@ public class StaffViews {
         store.wavesByState(cdcId, from, to),
         store.tasksByKindState(cdcId, from, to),
         progress,
-        now);
+        now,
+        store.byMfc(cdcId, from, to));
   }
 
   private static @Nullable String blank(@Nullable String v) {

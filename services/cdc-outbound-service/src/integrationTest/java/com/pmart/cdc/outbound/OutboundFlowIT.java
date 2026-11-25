@@ -259,6 +259,8 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(sum.path("transfersByState").findValuesAsString("key"))
         .contains("PARTIALLY_ALLOCATED", "ALLOCATION_FAILED", "ALLOCATED");
     assertThat(sum.path("approvedQty").asInt()).isGreaterThanOrEqualTo(14);
+    // M-4(0.18.0) MFC 별 합
+    assertThat(sum.path("byMfc").findValuesAsString("mfcId")).contains("MFC-BJG-01");
     assertThat(
             get(
                     TestJwt.operator("ops-x", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
@@ -379,6 +381,35 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(post(W1, "/cdcs/CDC01/tasks/" + t1 + "/pick-results", ok).status()).isEqualTo(202);
     assertThat(get(OPS, "/cdcs/CDC01/tasks/" + t1).body().path("state").asString())
         .isEqualTo("DONE");
+    // M-1(0.18.0) 작업자 위치 — 피킹 실적 마지막 줄 위치가 남고, 위치 스캔으로 바뀐다(본인만)
+    JsonNode board = get(OPS, "/cdcs/CDC01/workers").body();
+    JsonNode me = null;
+    for (JsonNode wk : board.path("workers")) {
+      if ("w1".equals(wk.path("workerId").asString())) {
+        me = wk;
+      }
+    }
+    assertThat(me).isNotNull();
+    assertThat(me.path("locationCode").asString()).isEqualTo(line1.path("locationCode").asString());
+    assertThat(me.path("source").asString()).isEqualTo("PICK_RESULT");
+    assertThat(me.path("locationState").asString()).isEqualTo("FRESH");
+    assertThat(
+            post(
+                    W1,
+                    "/cdcs/CDC01/workers/w1/location-scans",
+                    Map.of("locationCode", "CDC01-C-7-02-01-1-1"))
+                .status())
+        .isEqualTo(204);
+    assertThat(
+            post(
+                    W2,
+                    "/cdcs/CDC01/workers/w1/location-scans",
+                    Map.of("locationCode", "CDC01-C-7-02"))
+                .status())
+        .isEqualTo(403);
+    JsonNode floor7 = get(OPS, "/cdcs/CDC01/workers?floor=7").body();
+    assertThat(floor7.path("workers").findValuesAsString("workerId")).contains("w1");
+    assertThat(floor7.path("byFloor").toString()).contains("\"key\":\"7\"");
 
     // 8) 두 번째 작업 — 1 부족 → PARTIAL·PickShortageReported, Wave WORK_DONE, TRF PICKED
     JsonNode line2 =
@@ -1728,7 +1759,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * 실사 부족 받기(0.17.0): 아직 안 집은 작업 줄(칸 x 5)에 AllocationShortfall 2 → 줄 부족 2(COUNT_LOSS)·TRF 줄 부족 2·후속
+   * 실사 부족 받기(0.18.0): 아직 안 집은 작업 줄(칸 x 5)에 AllocationShortfall 2 → 줄 부족 2(COUNT_LOSS)·TRF 줄 부족 2·후속
    * RELEASED → 추가 할당 2(칸 y) → 새 작업·PickShortageResolved(2, 0)·TRF 줄 부족 0. 소비자와 같이 트랜잭션 안에서 부른다.
    * CDC09.
    */

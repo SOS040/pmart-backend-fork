@@ -21,6 +21,9 @@ public class TasksController implements TasksApi {
 
   private final TaskService tasks;
 
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.pmart.cdc.outbound.application.WorkerLocations workerLocations;
+
   public TasksController(TaskService tasks) {
     this.tasks = tasks;
   }
@@ -122,6 +125,8 @@ public class TasksController implements TasksApi {
                 lines,
                 xExpectedVersion)
             .value();
+    // 작업자 위치(0.18.0 M-1) — 실적 마지막 줄 위치, 실패해도 실적은 그대로
+    workerLocations.afterPick(cdcId, body.getWorkerId(), lines.getLast().locationCode(), taskId);
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(Dto.command(r));
   }
 }

@@ -157,6 +157,30 @@ public class StaffViewStore {
         Timestamp.from(to));
   }
 
+  public record MfcTotals(
+      String mfcId, long transfers, long approved, long allocated, long picked, long shortQty) {}
+
+  /** [from, to) 기한 TRF 의 MFC 별 합(0.18.0 M-4) — MFC 순. */
+  public List<MfcTotals> byMfc(String cdcId, Instant from, Instant to) {
+    return jdbc.query(
+        "SELECT t.mfc_id, count(DISTINCT t.trf_id) AS c, coalesce(sum(l.approved_qty),0) AS a,"
+            + " coalesce(sum(l.allocated_qty),0) AS al, coalesce(sum(l.picked_qty),0) AS p,"
+            + " coalesce(sum(l.short_qty),0) AS s FROM transfer t LEFT JOIN transfer_line l"
+            + " ON l.trf_id = t.trf_id WHERE t.cdc_id = ? AND t.due_at >= ? AND t.due_at < ?"
+            + " GROUP BY t.mfc_id ORDER BY t.mfc_id",
+        (rs, i) ->
+            new MfcTotals(
+                rs.getString("mfc_id"),
+                rs.getLong("c"),
+                rs.getLong("a"),
+                rs.getLong("al"),
+                rs.getLong("p"),
+                rs.getLong("s")),
+        cdcId,
+        Timestamp.from(from),
+        Timestamp.from(to));
+  }
+
   /** 그 TRF 들이 든 Wave 의 상태별 수. */
   public Map<String, Long> wavesByState(String cdcId, Instant from, Instant to) {
     return counts(

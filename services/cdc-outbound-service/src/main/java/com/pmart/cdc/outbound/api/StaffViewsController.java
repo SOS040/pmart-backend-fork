@@ -136,7 +136,65 @@ public class StaffViewsController implements StaffViewsApi {
     out.setWavesByState(counts(s.wavesByState()));
     out.setTasksByKindState(counts(s.tasksByKindState()));
     out.setAsOf(time(s.asOf()));
+    out.setByMfc(
+        new ArrayList<>(
+            s.byMfc().stream()
+                .map(
+                    m ->
+                        new com.pmart.cdc.outbound.api.generated.model.OutboundSummaryByMfcInner()
+                            .mfcId(m.mfcId())
+                            .transferCount((int) m.transfers())
+                            .approvedQty((int) m.approved())
+                            .allocatedQty((int) m.allocated())
+                            .pickedQty((int) m.picked())
+                            .shortQty((int) m.shortQty()))
+                .toList()));
     return ResponseEntity.ok(out);
+  }
+
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.pmart.cdc.outbound.application.WorkerLocations workerLocations;
+
+  /** 작업자 현황(0.18.0 M-1). */
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.WorkerBoard> listCenterWorkers(
+      String cdcId, @Nullable String floor) {
+    var b = workerLocations.board(cdcId, floor);
+    var out = new com.pmart.cdc.outbound.api.generated.model.WorkerBoard();
+    out.setAsOf(time(b.asOf()));
+    out.setWorkers(
+        new ArrayList<>(
+            b.workers().stream()
+                .map(
+                    w ->
+                        new com.pmart.cdc.outbound.api.generated.model.WorkerLocation()
+                            .workerId(w.workerId())
+                            .locationCode(w.locationCode())
+                            .zone(w.zone())
+                            .floor(w.floor())
+                            .source(w.source())
+                            .scannedAt(w.scannedAt() == null ? null : time(w.scannedAt()))
+                            .locationState(
+                                com.pmart.cdc.outbound.api.generated.model.WorkerLocation
+                                    .LocationStateEnum.fromValue(w.locationState()))
+                            .taskId(w.taskId())
+                            .taskKind(w.taskKind())
+                            .taskState(w.taskState()))
+                .toList()));
+    out.setByFloor(counts(b.byFloor()));
+    return ResponseEntity.ok(out);
+  }
+
+  /** 위치 스캔(0.18.0 M-1, PDA 본인). */
+  @Override
+  public ResponseEntity<Void> scanWorkerLocation(
+      String cdcId,
+      String workerId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.outbound.api.generated.model.ScanWorkerLocationRequest body) {
+    workerLocations.scan(cdcId, workerId, body.getLocationCode(), body.getTaskId());
+    return ResponseEntity.noContent().build();
   }
 
   static TransferSummary summary(TransferRow t) {

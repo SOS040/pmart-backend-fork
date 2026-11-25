@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
+    0.18.0(2026-11-25, DC 백오피스 M-1·M-4 — 사용자 "서버에 작업 남기는 방식은 PDA로 스캔한 위치로 해", "응 그 다음 기능 추가할 거"): 작업자 마지막 스캔 위치(Flyway V12 worker_location).
+      PDA(시뮬레이터 가상 작업자 포함)가 `POST /cdcs/{cdcId}/workers/{workerId}/location-scans {locationCode, taskId?}`(본인, 204)로 보내거나, 피킹 실적의 마지막 줄 locationCode 가 그 작업자 위치가 된다.
+      백오피스 `GET /cdcs/{cdcId}/workers?floor=`(작업자·지금 작업·마지막 위치(층·구역)·시각·FRESH/STALE/UNKNOWN — 10분 지나면 STALE, byFloor = FRESH 인원).
+      `outbound-summary` 에 `byMfc[]`(그날 MFC 별 TRF 수·승인·할당·피킹·부족).
     0.17.0(2026-11-25, 실사 부족 받기 — 설계 docs/cdc/design/2026-11-25-count-adjustment.md §4): cdc-inventory `AllocationShortfall`(COUNT_LOSS) 구독(첫 사건 구독) —
       그 TRF 의 안 끝난 작업 줄에 부족(사유 COUNT_LOSS)·TRF 줄 부족 + → 피킹 부족 후속(재고가 이미 풀었으니 해제 건너뜀)으로 다른 LOT 재할당·새 작업 또는 못 찾음(PickShortageResolved). 경로·모양 변화 없음.
     0.16.0(2026-11-25, DC 백오피스 M-3 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-25-backend-monitoring-gaps.md, 사용자 "응"): 직원 조회 2개(자기 센터 운영자만, 읽기만).
@@ -214,6 +218,54 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/Task' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /cdcs/{cdcId}/workers:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 작업자 현황 — 마지막 스캔 위치·지금 작업 (0.18.0 M-1)'
+      description: |
+        마지막 스캔 위치가 있거나 지금 작업(ACCEPTED·IN_PROGRESS)을 든 작업자. 층 → 구역 → 작업자 순. floor 로 거르면 그 층에 마지막 위치가 있는 사람만.
+        locationState: FRESH(마지막 스캔이 `pmart.outbound.worker-location-stale` 기본 10분 안)·STALE(그보다 오래 — "모름")·UNKNOWN(스캔 없음). byFloor = FRESH 인원.
+      operationId: listCenterWorkers
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: floor, in: query, required: false, schema: { type: string, maxLength: 4 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerBoard' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/workers/{workerId}/location-scans:
+    post:
+      tags: [staff-views]
+      summary: '[PDA] 위치 바코드 스캔 (0.18.0 M-1)'
+      description: |
+        작업자 본인(토큰 주체 = workerId)·자기 센터만. 그 작업자의 마지막 위치를 이 코드로 바꾼다(이력 없음). 피킹 실적을 보내면 따로 부르지 않아도 그 마지막 줄 위치가 남는다.
+      operationId: scanWorkerLocation
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locationCode]
+              properties:
+                locationCode: { type: string, maxLength: 40, description: '스캔한 위치 코드(예 CDC01-A-5-01-01-1-1)' }
+                taskId: { type: string, maxLength: 64, description: 지금 하는 작업(있으면) }
+      responses:
+        '204': { description: 기록함 }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/waves:
     get:
@@ -1005,6 +1057,27 @@ components:
                   allocatedQty: { type: integer }
                   pickedQty: { type: integer }
                   shortQty: { type: integer }
+    WorkerLocation:
+      type: object
+      required: [workerId, locationState]
+      properties:
+        workerId: { type: string }
+        locationCode: { type: [string, 'null'] }
+        zone: { type: [string, 'null'], description: 위치 코드 둘째 구간 }
+        floor: { type: [string, 'null'], description: 위치 코드 셋째 구간 }
+        source: { type: [string, 'null'], description: 'PICK_RESULT / SCAN' }
+        scannedAt: { type: [string, 'null'], format: date-time }
+        locationState: { type: string, enum: [FRESH, STALE, UNKNOWN] }
+        taskId: { type: [string, 'null'] }
+        taskKind: { type: [string, 'null'] }
+        taskState: { type: [string, 'null'] }
+    WorkerBoard:
+      type: object
+      required: [workers, byFloor]
+      properties:
+        asOf: { type: string, format: date-time }
+        workers: { type: array, items: { $ref: '#/components/schemas/WorkerLocation' } }
+        byFloor: { type: array, items: { $ref: '#/components/schemas/CountByKey' }, description: '층별 FRESH 인원(key = 층)' }
     CountByKey:
       type: object
       required: [key, count]
@@ -1027,6 +1100,19 @@ components:
         progress: { type: [number, 'null'], description: '피킹 합 ÷ 승인 합(0~1), 승인 0 이면 null' }
         wavesByState: { type: array, items: { $ref: '#/components/schemas/CountByKey' } }
         tasksByKindState: { type: array, items: { $ref: '#/components/schemas/CountByKey' }, description: 'key = 종류:상태(예 PICK:DONE)' }
+        byMfc:
+          type: array
+          description: '(0.18.0 M-4) 그날 MFC 별 합 — MFC 순'
+          items:
+            type: object
+            required: [mfcId, transferCount, approvedQty, allocatedQty, pickedQty, shortQty]
+            properties:
+              mfcId: { type: string }
+              transferCount: { type: integer }
+              approvedQty: { type: integer }
+              allocatedQty: { type: integer }
+              pickedQty: { type: integer }
+              shortQty: { type: integer }
         asOf: { type: string, format: date-time }
     WaveState:
       type: string
