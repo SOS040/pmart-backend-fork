@@ -83,8 +83,11 @@ public class SemanticEnricher {
                     Map.of("exists", Map.of("field", "productVersion"))))));
     JsonNode res = index.search(SearchIndex.PRODUCTS, req);
     int made = 0;
+    int tried =
+        0; // 실패도 센다 — ollama 가 계속 실패하면 한 주기에 batch-size 번만 부른다(2026-11-26 LAN: 500 을 연달아 받으며 전 상품을
+    // 훑었다)
     for (JsonNode h : res.path("hits").path("hits")) {
-      if (made >= props.batchSize()) {
+      if (tried >= props.batchSize()) {
         break;
       }
       JsonNode d = h.path("_source");
@@ -101,6 +104,7 @@ public class SemanticEnricher {
       if (hash.equals(d.path("semanticHash").asString(null))) {
         continue;
       }
+      tried++;
       try {
         List<String> tags =
             SemanticRules.parseTags(
