@@ -75,15 +75,26 @@ public class OllamaClient {
     return out;
   }
 
-  /** 프롬프트 → 모델 응답 글(JSON 형식 요청, 온도 0, 생각 끔). 실패는 예외. */
+  /** 프롬프트 → 모델 응답 글({"tags": [...]} 모양 강제, 온도 0, 생각 끔). 실패는 예외. */
   public @Nullable String generateJson(String prompt, Duration timeout) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("model", props.tagModel());
     body.put("prompt", prompt);
     body.put("stream", false);
-    body.put("format", "json");
+    // 응답 모양을 tags 배열 하나로 묶는다(2026-11-26 LAN — "json" 만 주면 입력 칸을 되풀이하거나 같은 말을 반복하다
+    // ollama 가 500 "token repeat limit reached" 로 끊었다, 504 중 58건). 반복 벌점·길이 상한도 같은 이유.
+    body.put(
+        "format",
+        Map.of(
+            "type",
+            "object",
+            "properties",
+            Map.of(
+                "tags", Map.of("type", "array", "items", Map.of("type", "string"), "maxItems", 12)),
+            "required",
+            java.util.List.of("tags")));
     body.put("think", false);
-    body.put("options", Map.of("temperature", 0));
+    body.put("options", Map.of("temperature", 0, "repeat_penalty", 1.1, "num_predict", 200));
     if (props.keepAlive() != null) {
       body.put("keep_alive", props.keepAlive());
     }
