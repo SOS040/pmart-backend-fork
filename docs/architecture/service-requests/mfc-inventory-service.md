@@ -96,7 +96,7 @@
 
 - **근거**: 요청서 pmart-clients `docs/handoff/backoffice/2026-11-25-backend-low-stock-count.md`(PR #517). 사용자(PC 2) "근데 품절되기 전에 알아야 하는 거 아님?" → **사용자 결정(2026-11-25) "하루 판매량 기준"** — 발주 수량 추천(MI-4)과 같은 d(28일 이동평균)·같은 공급 정책 표.
 - **필요한 것**: LS-1 `GET /stock-summaries` 줄마다 `lowStockSkuCount`(0 < A ≤ SS)·`lowStockUnknownSkuCount`(d 를 못 정함 — 0 으로 채우지 않기)·`lowStockBasis`. LS-2 곧 품절 목록(sku·A·d·SS, 남은 날 순, 품절 목록도). LS-3(선택) `/stock-stream` `summary-changed` 를 SS 경계에서도.
-- **상태**: 구현(PC 3, 2026-11-25 — mfc-inventory 0.47.0 V32, mfc-inbound 같은 PR). 회신 `docs/handoff/clients/backoffice/2026-11-25-reply-low-stock-count.md`.
+- **상태**: 구현·LAN 배포(PC 3, 2026-11-25 — mfc-inventory 0.47.0 V32·0.48.0(재고 이력 #470), mfc-inbound 같은 PR, #465·#470 375cd21e·a3e01377, pc3·게이트웨이 pc4 a3e01377, pmart-config 5700f40). LAN 은 인계 실적(handover_sale_daily)이 없어 기준을 보내는 센터가 없고 모든 SKU 가 "기준 모름"(503개) — 실적이 쌓이면 1시간 안에 채워진다. 회신 `docs/handoff/clients/backoffice/2026-11-25-reply-low-stock-count.md`.
   - d·정책의 정본은 mfc-inbound — `LowStockBasisPublisher` 가 1시간마다(기동 1분 뒤) 센터마다 `PUT /internal/mfcs/{mfcId}/low-stock-basis`(온도대별 safetyDays·historyDays·minHistoryDays·averageWindowDays + 판 SKU 의 d). inventory 가 A 와 비교해 센다. **곧 품절 판정에는 공급 정책 중 safetyDays 만** 쓴다(검토 주기·리드타임 등이 비어도 셈).
   - 목록 `GET /stock-summaries/{mfcId}/skus?kind=LOW_STOCK|SOLD_OUT|LOW_STOCK_UNKNOWN&size&cursor`.
   - PC 1: 게이트웨이 mfc-inventory 라우트 Path 에 `/api/v1/stock-summaries/*/skus`(시험 사본·허용 목록은 PR 에 있음).
