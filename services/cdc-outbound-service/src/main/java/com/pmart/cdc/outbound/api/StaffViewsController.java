@@ -31,8 +31,15 @@ public class StaffViewsController implements StaffViewsApi {
 
   @Override
   public ResponseEntity<ListCenterTransfers200Response> listCenterTransfers(
-      String cdcId, @Nullable String state, @Nullable String mfcId, Integer page, Integer size) {
-    var p = views.transfers(cdcId, state, mfcId, page == null ? 0 : page, size == null ? 50 : size);
+      String cdcId,
+      @Nullable String state,
+      @Nullable String mfcId,
+      Integer page,
+      Integer size,
+      @Nullable String number) {
+    var p =
+        views.transfers(
+            cdcId, state, mfcId, number, page == null ? 0 : page, size == null ? 50 : size);
     var out = new ListCenterTransfers200Response();
     out.setItems(new ArrayList<>(p.items().stream().map(StaffViewsController::summary).toList()));
     out.setPage(p.page());
@@ -47,11 +54,13 @@ public class StaffViewsController implements StaffViewsApi {
           String cdcId,
           com.pmart.cdc.outbound.api.generated.model.@Nullable WaveState state,
           Integer page,
-          Integer size) {
+          Integer size,
+          @Nullable String number) {
     var p =
         views.waves(
             cdcId,
             state == null ? null : state.getValue(),
+            number,
             page == null ? 0 : page,
             size == null ? 50 : size);
     var out = new com.pmart.cdc.outbound.api.generated.model.ListCenterWaves200Response();
@@ -64,8 +73,14 @@ public class StaffViewsController implements StaffViewsApi {
 
   @Override
   public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.ListCenterDepartures200Response>
-      listCenterDepartures(String cdcId, @Nullable String result, Integer page, Integer size) {
-    var p = views.departures(cdcId, result, page == null ? 0 : page, size == null ? 50 : size);
+      listCenterDepartures(
+          String cdcId,
+          @Nullable String result,
+          Integer page,
+          Integer size,
+          @Nullable String number) {
+    var p =
+        views.departures(cdcId, result, number, page == null ? 0 : page, size == null ? 50 : size);
     var out = new com.pmart.cdc.outbound.api.generated.model.ListCenterDepartures200Response();
     out.setItems(new ArrayList<>(p.items().stream().map(InternalController::dto).toList()));
     out.setPage(p.page());

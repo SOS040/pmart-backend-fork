@@ -35,13 +35,15 @@ public class TasksController implements TasksApi {
       @Nullable TaskState state,
       @Nullable String assigneeId,
       Integer size,
-      @Nullable String cursor) {
+      @Nullable String cursor,
+      @Nullable String number) {
     var page =
         tasks.list(
             cdcId,
             waveId,
             state == null ? null : state.getValue(),
             assigneeId,
+            number,
             cursor,
             size == null ? 50 : size);
     var out = new ListTasks200Response();

@@ -94,11 +94,19 @@ public class StaffViews {
       List<DepartureService.View> items, int page, int size, boolean hasNext) {}
 
   /** 출발 검증 결과 목록(0.16.0 M-3) — 줄은 내부 조회와 같은 내용. */
-  public DeparturePage departures(String cdcId, @Nullable String result, int page, int size) {
+  public DeparturePage departures(
+      String cdcId, @Nullable String result, @Nullable String number, int page, int size) {
     Support.requireCenter(cdcId);
     int p = Math.max(0, page);
     int s = Math.min(200, Math.max(1, size));
-    var ids = store.departureIds(cdcId, blank(result), p, s);
+    var ids =
+        store.departureIds(
+            cdcId,
+            blank(result),
+            com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.normalize(
+                com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.Kind.DEPARTURE, number),
+            p,
+            s);
     boolean next = ids.size() > s;
     var items = (next ? ids.subList(0, s) : ids).stream().map(departures::view).toList();
     return new DeparturePage(items, p, s, next);
@@ -116,22 +124,43 @@ public class StaffViews {
   public record WavePage(List<WaveService.WaveView> items, int page, int size, boolean hasNext) {}
 
   /** Wave 목록(0.15.0 W-1) — 줄은 GET /waves/{id} 와 같은 내용. */
-  public WavePage waves(String cdcId, @Nullable String state, int page, int size) {
+  public WavePage waves(
+      String cdcId, @Nullable String state, @Nullable String number, int page, int size) {
     Support.requireCenter(cdcId);
     int p = Math.max(0, page);
     int s = Math.min(200, Math.max(1, size));
-    var ids = store.waveIds(cdcId, blank(state), p, s);
+    var ids =
+        store.waveIds(
+            cdcId,
+            blank(state),
+            com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.normalize(
+                com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.Kind.WAVE, number),
+            p,
+            s);
     boolean next = ids.size() > s;
     var items = (next ? ids.subList(0, s) : ids).stream().map(waves::get).toList();
     return new WavePage(items, p, s, next);
   }
 
   public Page transfers(
-      String cdcId, @Nullable String state, @Nullable String mfcId, int page, int size) {
+      String cdcId,
+      @Nullable String state,
+      @Nullable String mfcId,
+      @Nullable String number,
+      int page,
+      int size) {
     Support.requireCenter(cdcId);
     int p = Math.max(0, page);
     int s = Math.min(200, Math.max(1, size));
-    var rows = store.transfers(cdcId, blank(state), blank(mfcId), p, s);
+    var rows =
+        store.transfers(
+            cdcId,
+            blank(state),
+            blank(mfcId),
+            com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.normalize(
+                com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.Kind.TRF, number),
+            p,
+            s);
     boolean next = rows.size() > s;
     return new Page(next ? rows.subList(0, s) : rows, p, s, next);
   }

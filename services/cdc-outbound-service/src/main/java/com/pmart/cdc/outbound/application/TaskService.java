@@ -94,10 +94,20 @@ public class TaskService {
       @Nullable String waveId,
       @Nullable String state,
       @Nullable String assigneeId,
+      @Nullable String number,
       @Nullable String cursor,
       int size) {
     Support.requireCenter(cdcId);
-    List<TaskRow> rows = store.tasks(cdcId, waveId, state, assigneeId, cursor, size + 1);
+    List<TaskRow> rows =
+        store.tasks(
+            cdcId,
+            waveId,
+            state,
+            assigneeId,
+            com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.normalize(
+                com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.Kind.TASK, number),
+            cursor,
+            size + 1);
     boolean more = rows.size() > size;
     List<TaskView> items = new ArrayList<>();
     for (TaskRow t : more ? rows.subList(0, size) : rows) {

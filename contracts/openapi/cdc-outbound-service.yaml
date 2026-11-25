@@ -1,8 +1,14 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.20.0
+  version: 0.21.0
   description: |
+    0.21.0(2026-11-26, PC5 DC 백오피스 요청 — 사용자 "관리자가 볼 땐 직관적으로 … 짧게 붙인 번호로", "무슨 상품인지는 안 적히나?", Flyway V14):
+      화면 번호(ADR-0070·0085 규칙, 무작위·겹치지 않음·바뀌지 않음, 기존 행도 V14 가 채움) — TRF `trfNumber` T+6(T482913), Wave `waveNumber` W+4(차면 5자리),
+      작업 `taskNumber` K+5, 출발 검증 `departureNumber` S+6. 시스템 ID 는 그대로. Task 에 taskNumber·waveNumber·trfNumber·trfNumbers(trfIds 순)·shares[].trfNumber,
+      Wave 에 waveNumber·trfNumbers(trfIds 순), TransferSummary·TransferDetail 에 trfNumber·waveNumber, DepartureValidation 에 departureNumber·transfers[].trfNumber.
+      목록 찾기 `number`(transfers·waves·departures·tasks — 글자 있든 없든, 대소문자 무관). 상품 이름 `productName`(product-service internalName, MFC 와 같은 기준 — 못 찾으면 null)
+      TransferDetail.lines[]·Task.lines[].
     0.20.0(2026-11-26, DC 백오피스 작업 조작 — 사용자 "큰 순서 전부 고치고", Flyway V13): 자기 센터 운영자가 작업을 손댄다. 시작한 작업(IN_PROGRESS 뒤)은 실적이 섞이므로 재배정·보류 안 함.
       `POST /cdcs/{cdcId}/tasks/{taskId}/reassignments {workerId?, reason?}`(CREATED·ACCEPTED → 작업자 지정이면 ACCEPTED·그 작업자가 다른 작업을 들고 있으면 409 WORKER_BUSY, 비우면 CREATED),
       `…/holds`(CREATED·ACCEPTED → **HELD**, 담당 비움 — PDA 다음 작업 받기에서 빠짐, 미출발 취소는 시작 전으로 봄), `…/resumptions`(HELD → CREATED), `…/priority-changes {priority -100~100}`
@@ -214,6 +220,7 @@ paths:
         - { name: assigneeId, in: query, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
+        - { name: number, in: query, required: false, schema: { type: string, maxLength: 16 }, description: '(0.21.0) 화면 번호로 찾기 — K20481·20481' }
       responses:
         '200':
           description: OK
@@ -552,6 +559,7 @@ paths:
         - { name: state, in: query, required: false, schema: { $ref: '#/components/schemas/WaveState' } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: number, in: query, required: false, schema: { type: string, maxLength: 16 }, description: '(0.21.0) 화면 번호로 찾기 — W3051·3051' }
       responses:
         '200':
           description: OK
@@ -581,6 +589,7 @@ paths:
         - { name: mfcId, in: query, required: false, schema: { type: string, maxLength: 32 } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: number, in: query, required: false, schema: { type: string, maxLength: 16 }, description: '(0.21.0) 화면 번호로 찾기 — T482913·t482913·482913 같은 번호' }
       responses:
         '200':
           description: OK
@@ -610,6 +619,7 @@ paths:
         - { name: result, in: query, required: false, schema: { type: string, enum: [MATCHED, PARTIALLY_MATCHED, MISMATCHED] } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: number, in: query, required: false, schema: { type: string, maxLength: 16 }, description: '(0.21.0) 화면 번호로 찾기 — S482913·482913' }
       responses:
         '200':
           description: OK
@@ -1298,12 +1308,14 @@ components:
       required: [trfId, trfVersion, mfcId, state, dueAt, lineCount, approvedQty, allocatedQty, pickedQty, shortQty]
       properties:
         trfId: { type: string }
+        trfNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
         trfVersion: { type: integer }
         mfcId: { type: string }
         state: { type: string }
         deadlineMeaning: { type: string, description: 'ARRIVAL / HANDOVER / READY' }
         dueAt: { type: string, format: date-time }
         waveId: { type: [string, 'null'] }
+        waveNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
         allocationError: { type: [string, 'null'], description: 재고 쪽 거절 사유 }
         lineCount: { type: integer }
         approvedQty: { type: integer }
@@ -1325,6 +1337,7 @@ components:
                 required: [sku, approvedQty, allocatedQty, pickedQty, shortQty]
                 properties:
                   sku: { type: string }
+                  productName: { type: [string, 'null'], description: '(0.21.0) 상품 관리용 명칭 — 못 찾으면 null' }
                   approvedQty: { type: integer }
                   allocatedQty: { type: integer }
                   pickedQty: { type: integer }
@@ -1463,10 +1476,12 @@ components:
       type: object
       properties:
         waveId: { type: string }
+        waveNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
         cdcId: { type: string }
         state: { $ref: '#/components/schemas/WaveState' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
         trfIds: { type: array, items: { type: string } }
+        trfNumbers: { type: array, items: { type: string }, description: '(0.21.0) trfIds 와 같은 순서의 화면 번호(옛 기록은 빈 문자열)' }
         plannedDepartureWindow: { type: object, properties: { start: { type: string, format: date-time }, end: { type: string, format: date-time } } }
         taskSummary: { type: object, properties: { total: { type: integer }, done: { type: integer }, exception: { type: integer } } }
         createdAt: { type: string, format: date-time }
@@ -1491,7 +1506,11 @@ components:
       type: object
       properties:
         taskId: { type: string }
+        taskNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
         waveId: { type: string }
+        waveNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
+        trfNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
+        trfNumbers: { type: array, items: { type: string }, description: '(0.21.0) trfIds 와 같은 순서의 화면 번호' }
         trfId:
           type: [string, 'null']
           description: TRF 하나짜리 작업의 TRF. (0.9.0) 묶음 작업(REGION_BATCH·SKU_BATCH)이면 비움 — trfIds·shares 를 본다.
@@ -1524,6 +1543,7 @@ components:
             type: object
             properties:
               sku: { type: string }
+              productName: { type: [string, 'null'], description: '(0.21.0) 상품 관리용 명칭 — 못 찾으면 null' }
               lot: { type: string }
               locationCode: { type: string }
               plannedQty: { type: integer }
@@ -1538,6 +1558,7 @@ components:
                   type: object
                   properties:
                     trfId: { type: string }
+                    trfNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
                     mfcId: { type: string }
                     dueAt: { type: string, format: date-time }
                     plannedQty: { type: integer }
@@ -1570,6 +1591,7 @@ components:
       type: object
       properties:
         departureId: { type: string }
+        departureNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
         tripId: { type: string }
         vehicleId: { type: string }
         source: { type: string, enum: [REAL, SIMULATED] }
@@ -1581,6 +1603,7 @@ components:
             type: object
             properties:
               trfId: { type: string }
+              trfNumber: { type: [string, 'null'], description: '(0.21.0) 화면 번호(ADR-0070 덧붙임) — 없으면 옛 기록' }
               result: { type: string, enum: [MATCHED, MISMATCHED] }
               departedQty: { type: integer }
               postingStatus: { $ref: '_common.yaml#/components/schemas/CommandStatus' }

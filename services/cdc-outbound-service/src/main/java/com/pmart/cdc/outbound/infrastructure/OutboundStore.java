@@ -565,11 +565,16 @@ public class OutboundStore {
       @Nullable String waveId,
       @Nullable String state,
       @Nullable String assigneeId,
+      @Nullable String taskNumber,
       @Nullable String afterTaskId,
       int limit) {
     StringBuilder sql =
         new StringBuilder("SELECT " + TASK_COLS + " FROM task t WHERE t.cdc_id = ?");
     List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (taskNumber != null) { // 0.21.0 화면 번호로 찾기
+      sql.append(" AND t.task_number = ?");
+      args.add(taskNumber);
+    }
     if (waveId != null) { // 0.19.0 — 없으면 센터 전체
       sql.append(" AND t.wave_id = ?");
       args.add(waveId);

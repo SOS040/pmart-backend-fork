@@ -52,7 +52,8 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(
       name = "inventory",
       baseUrlProperties = "pmart.outbound.cdc-inventory-base-url"),
-  @ConfigureWireMock(name = "location", baseUrlProperties = "pmart.outbound.cdc-location-base-url")
+  @ConfigureWireMock(name = "location", baseUrlProperties = "pmart.outbound.cdc-location-base-url"),
+  @ConfigureWireMock(name = "product", baseUrlProperties = "pmart.outbound.product-base-url")
 })
 @TestMethodOrder(MethodOrderer.MethodName.class) // 주 흐름의 outbox 수 세기가 취소 시나리오(CDC02) 사건과 섞이지 않게 먼저
 class OutboundFlowIT extends PostgresKafkaContainerSupport {
@@ -81,6 +82,9 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("location")
   WireMockServer location;
+
+  @InjectWireMock("product")
+  WireMockServer product;
 
   RestClient http;
 
@@ -1486,6 +1490,44 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     }
     assertThat(t61).isNotNull();
     assertThat(t62).isNotNull();
+
+    // 화면 번호·상품 이름(0.21.0, V14) — 번호로 찾기는 글자·대소문자 무관
+    product.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(urlPathEqualTo("/api/v1/internal/skus"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"items\":[{\"sku\":\"E-00000001\",\"internalName\":\"사과 1입\"}],\"missing\":[\"E-00000002\"]}")));
+    JsonNode task61 = get(ops, base + t61).body();
+    String kNo = task61.path("taskNumber").asString();
+    assertThat(kNo).matches("K[0-9]{5,}");
+    assertThat(task61.path("waveNumber").asString()).matches("W[0-9]{4,}");
+    String tNo = task61.path("trfNumber").asString();
+    assertThat(tNo).matches("T[0-9]{6,}");
+    assertThat(task61.path("lines").get(0).path("productName").asString()).isEqualTo("사과 1입");
+    JsonNode byNo =
+        get(ops, "/cdcs/" + c + "/tasks?number=" + kNo.substring(1)).body().path("items");
+    assertThat(byNo.size()).isEqualTo(1);
+    assertThat(byNo.get(0).path("taskId").asString()).isEqualTo(t61);
+    assertThat(get(ops, "/cdcs/" + c + "/tasks?number=abc").body().path("items").size()).isZero();
+    JsonNode trfs =
+        get(ops, "/cdcs/" + c + "/transfers?number=" + tNo.toLowerCase(java.util.Locale.ROOT))
+            .body()
+            .path("items");
+    assertThat(trfs.size()).isEqualTo(1);
+    assertThat(trfs.get(0).path("trfNumber").asString()).isEqualTo(tNo);
+    assertThat(trfs.get(0).path("waveNumber").asString())
+        .isEqualTo(task61.path("waveNumber").asString());
+    JsonNode detail = get(ops, "/cdcs/" + c + "/transfers/" + trf).body();
+    assertThat(detail.path("trfNumber").asString()).isEqualTo(tNo);
+    assertThat(detail.path("lines").findValuesAsString("productName")).contains("사과 1입");
+    JsonNode wv =
+        get(ops, "/cdcs/" + c + "/waves?number=" + task61.path("waveNumber").asString())
+            .body()
+            .path("items");
+    assertThat(wv.size()).isEqualTo(1);
+    assertThat(wv.get(0).path("trfNumbers").get(0).asString()).isEqualTo(tNo);
 
     // 보류 → 다음 작업 받기에서 빠짐 → 재개
     Res held = post(ops, base + t61 + "/holds", Map.of("reason", "통로 막힘"));

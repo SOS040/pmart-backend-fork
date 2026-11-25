@@ -33,3 +33,14 @@
 - 우선순위 `…/priority-changes {priority, reason?}` — -100~100(기본 0), 높을수록 PDA 가 먼저 받음(같으면 기한 순). 끝난 작업은 409. `Task.priority` 새 칸.
 - 이력 `GET …/adjustments` → `items[{adjustmentId, action REASSIGN·HOLD·RESUME·PRIORITY, fromState, toState, fromAssignee, toAssignee, fromPriority, toPriority, reason, actorId, adjustedAt}]` 최신 순.
 - 시작한 작업(IN_PROGRESS 뒤)은 피킹 실적이 섞이므로 409 `INVALID_STATE` — 화면에서 버튼을 숨겨 주세요.
+
+## 덧붙임(2026-11-26 — 화면 번호·상품 이름, cdc-outbound 0.21.0)
+PC 5 요청(화면 번호 T·W·K, P-1 상품 이름). 규칙은 ADR-0070 덧붙임(2026-11-26).
+- 번호: `trfNumber` T+6, `waveNumber` W+4(차면 5), `taskNumber` K+5, `departureNumber` S+6. 기존 기록도 모두 번호가 붙었어요(옛 기록 "번호 없음"은 거의 안 나올 거예요 — 그래도 null 대비).
+  - Task: taskNumber·waveNumber·trfNumber·**trfNumbers**(trfIds 와 같은 순서)·lines[].shares[].trfNumber
+  - Wave: waveNumber·**trfNumbers**(trfIds 순)
+  - TransferSummary·TransferDetail: trfNumber·waveNumber
+  - DepartureValidation: departureNumber·transfers[].trfNumber
+- 찾기: `GET /cdcs/{cdcId}/transfers|waves|departures|tasks?number=` — `T482913`·`t482913`·`482913` 모두 같은 번호. 숫자가 아니면 빈 목록.
+- 상품 이름: `TransferDetail.lines[].productName`·`Task.lines[].productName`(product internalName, 못 찾으면 null).
+- 실사 번호 C 와 cdc-inventory 상품 이름(stock-snapshot·location-stocks·sku-handlings·count-sessions·recount-holds)은 **cdc-inventory 요청 CI-1** 로 CDC 세션이 해요(그쪽 PR 과 겹치지 않게). 그동안은 말씀하신 대로 화면이 product 에서 찾아 주세요.

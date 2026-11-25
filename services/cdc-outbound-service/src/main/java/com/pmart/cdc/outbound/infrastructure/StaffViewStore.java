@@ -54,9 +54,18 @@ public class StaffViewStore {
 
   /** size + 1 개를 읽어 다음 쪽 여부를 판정한다. */
   public List<TransferRow> transfers(
-      String cdcId, @Nullable String state, @Nullable String mfcId, int page, int size) {
+      String cdcId,
+      @Nullable String state,
+      @Nullable String mfcId,
+      @Nullable String trfNumber,
+      int page,
+      int size) {
     StringBuilder sql = new StringBuilder(SUMMARY).append(" WHERE t.cdc_id = ?");
     List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (trfNumber != null) { // 0.21.0 화면 번호로 찾기
+      sql.append(" AND t.trf_number = ?");
+      args.add(trfNumber);
+    }
     if (state != null) {
       sql.append(" AND t.state = ?");
       args.add(state);
@@ -72,9 +81,14 @@ public class StaffViewStore {
   }
 
   /** Wave ID 목록(만든 시각 최신 순) — size + 1 개를 읽어 다음 쪽 여부를 판정한다(0.15.0 W-1). */
-  public List<String> waveIds(String cdcId, @Nullable String state, int page, int size) {
+  public List<String> waveIds(
+      String cdcId, @Nullable String state, @Nullable String waveNumber, int page, int size) {
     StringBuilder sql = new StringBuilder("SELECT wave_id FROM wave WHERE cdc_id = ?");
     List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (waveNumber != null) {
+      sql.append(" AND wave_number = ?");
+      args.add(waveNumber);
+    }
     if (state != null) {
       sql.append(" AND state = ?");
       args.add(state);
@@ -86,7 +100,8 @@ public class StaffViewStore {
   }
 
   /** 이 센터 TRF 가 든 출발 ID(검증 최신 순) — size + 1 개(0.16.0 M-3). */
-  public List<String> departureIds(String cdcId, @Nullable String result, int page, int size) {
+  public List<String> departureIds(
+      String cdcId, @Nullable String result, @Nullable String departureNumber, int page, int size) {
     StringBuilder sql =
         new StringBuilder(
             "SELECT d.departure_id FROM departure d WHERE EXISTS (SELECT 1 FROM departure_transfer dt"
@@ -96,6 +111,10 @@ public class StaffViewStore {
     if (result != null) {
       sql.append(" AND d.overall_result = ?");
       args.add(result);
+    }
+    if (departureNumber != null) {
+      sql.append(" AND d.departure_number = ?");
+      args.add(departureNumber);
     }
     sql.append(" ORDER BY d.validated_at DESC, d.departure_id LIMIT ? OFFSET ?");
     args.add(size + 1);
