@@ -169,4 +169,32 @@ class LayoutRulesTest {
                 .timerStyle())
         .isNull();
   }
+
+  @Test
+  void careCardsChecked() {
+    var ok =
+        new LayoutRules.CareCards(
+            "우리동네 PMart, 이렇게 관리해요",
+            List.of(new LayoutRules.CareCard("C-QC", "IMG-1", "사전 품질 검수", "입고 때\n살펴봐요", 0)));
+    assertThat(reasons(new Body(List.of(), List.of(), List.of(), null, List.of(), null, ok)))
+        .isEmpty();
+    var bad =
+        new LayoutRules.CareCards(
+            "",
+            List.of(
+                new LayoutRules.CareCard("X1", "IMG-9", "", "최저가 보장", 0),
+                new LayoutRules.CareCard("C-A", "IMG-1", "온도", "x".repeat(81), 1),
+                new LayoutRules.CareCard("C-A", "IMG-1", "온도", "보관", 2)));
+    assertThat(reasons(new Body(List.of(), List.of(), List.of(), null, List.of(), null, bad)))
+        .contains(
+            "INVALID_TITLE",
+            "INVALID_CARD_ID",
+            "IMAGE_NOT_FOUND",
+            "PROMOTION_NOT_ALLOWED",
+            "INVALID_BODY",
+            "DUPLICATE_ID");
+    var empty = new LayoutRules.CareCards("제목", List.of());
+    assertThat(reasons(new Body(List.of(), List.of(), List.of(), null, List.of(), null, empty)))
+        .contains("INVALID_CARD_COUNT");
+  }
 }

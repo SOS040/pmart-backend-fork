@@ -194,13 +194,52 @@ public class LayoutsController implements LayoutsApi {
                             instant(x.getEndsAt()),
                             Boolean.TRUE.equals(x.getShowTimer())))
                 .toList();
+    var cc = b.getCareCards();
+    LayoutRules.CareCards careCards =
+        cc == null
+            ? null
+            : new LayoutRules.CareCards(
+                cc.getTitle(),
+                cc.getItems() == null
+                    ? List.of()
+                    : cc.getItems().stream()
+                        .map(
+                            x ->
+                                new LayoutRules.CareCard(
+                                    x.getCardId(),
+                                    x.getImageId(),
+                                    x.getTitle(),
+                                    x.getBody(),
+                                    x.getSortOrder() == null ? 0 : x.getSortOrder()))
+                        .toList());
     return new LayoutRules.Body(
         banners,
         themes,
         tabs,
         b.getNote(),
         b.getHomeOrder() == null ? List.of() : b.getHomeOrder(),
-        b.getBannerIntervalSeconds());
+        b.getBannerIntervalSeconds(),
+        careCards);
+  }
+
+  static com.pmart.storefront.api.generated.model.@Nullable LayoutCareCards careCards(
+      LayoutRules.@Nullable CareCards c) {
+    if (c == null) {
+      return null;
+    }
+    return new com.pmart.storefront.api.generated.model.LayoutCareCards()
+        .title(c.title())
+        .items(
+            c.items().stream()
+                .map(
+                    x ->
+                        new com.pmart.storefront.api.generated.model.LayoutCareCard()
+                            .cardId(x.cardId())
+                            .imageId(x.imageId())
+                            .title(x.title())
+                            .body(x.body())
+                            .sortOrder(x.sortOrder()))
+                .toList());
   }
 
   static LayoutDraft view(LayoutService.Draft d) {
@@ -247,6 +286,7 @@ public class LayoutsController implements LayoutsApi {
                 .toList())
         .homeOrder(d.body().homeOrder())
         .bannerIntervalSeconds(d.body().bannerIntervalSeconds())
+        .careCards(careCards(d.body().careCards()))
         .themes(
             d.body().themes().stream()
                 .map(

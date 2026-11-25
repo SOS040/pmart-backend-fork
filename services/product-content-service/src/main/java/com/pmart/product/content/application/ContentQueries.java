@@ -57,6 +57,9 @@ public class ContentQueries {
   /** "N개 남음" 임계값(BR-100 R7, 정책값 — 없으면 LOW 안 씀). */
   private final @Nullable Integer lowStockThreshold;
 
+  /** 1회 최대 낱개 수(BR-101 R2, 정책값 — 없으면 null). */
+  private final @Nullable Integer purchaseLimitUnits;
+
   public ContentQueries(
       CatalogStore catalog,
       DraftStore drafts,
@@ -68,7 +71,11 @@ public class ContentQueries {
       com.pmart.product.content.infrastructure.ReviewRatingStore reviewRatings,
       @org.springframework.beans.factory.annotation.Value(
               "${pmart.content.low-stock-threshold:#{null}}")
-          @Nullable Integer lowStockThreshold) {
+          @Nullable Integer lowStockThreshold,
+      @org.springframework.beans.factory.annotation.Value(
+              "${pmart.content.purchase-limit-units:#{null}}")
+          @Nullable Integer purchaseLimitUnits) {
+    this.purchaseLimitUnits = purchaseLimitUnits;
     this.reviewRatings = reviewRatings;
     this.lowStockThreshold = lowStockThreshold;
     this.catalog = catalog;
@@ -96,6 +103,8 @@ public class ContentQueries {
     m.put("description", c.description());
     m.put("images", images(c));
     m.put("storageGuide", c.storageGuide());
+    // 1회 최대 낱개 수(0.11.0 BR-101 R2 — product-service 구매 상한과 같은 정책값)
+    m.put("purchaseLimitUnits", purchaseLimitUnits);
     m.put("returnGuide", c.returnGuide());
     m.put("notices", mapper.readTree(c.notices()));
     // 상품 정보 칸(0.9.0 BR-100 R1) — notices 글줄을 나눈다
@@ -409,8 +418,11 @@ public class ContentQueries {
       return null;
     }
     Map<String, com.pmart.product.content.infrastructure.PricingClient.Price> prices;
+    java.util.Set<String> notSet;
     try {
-      prices = pricing.prices(skus);
+      var r = pricing.pricesWithNotSet(skus);
+      prices = r.prices();
+      notSet = r.notSet();
     } catch (PmartException | org.springframework.web.client.RestClientException e) {
       log.warn("상품 화면 가격 조회 실패 — 가격 없이 표시");
       return false;
@@ -421,7 +433,17 @@ public class ContentQueries {
         Map<String, Object> price = new LinkedHashMap<>();
         price.put("basePrice", p.basePrice());
         price.put("priceVersion", p.priceVersion());
+        // 지금 기간 할인(0.11.0 — 앱이 /prices 를 따로 부르지 않게)
+        if (p.discount() != null) {
+          Map<String, Object> d = new LinkedHashMap<>();
+          d.put("salePrice", p.discount().salePrice());
+          d.put("ratePercent", p.discount().ratePercent());
+          d.put("name", p.discount().name());
+          d.put("endsAt", p.discount().endsAt());
+          price.put("discount", d);
+        }
         o.put("price", price);
+        o.put("priceNotSet", false);
         // 단위 가격(2026-11-19 BR-19): 기본가 × 100 ÷ 내용량. 내용량이 없으면 내지 않는다
         if (o.get("netContent") instanceof Map<?, ?> net
             && net.get("amount") instanceof Integer amount
@@ -435,6 +457,8 @@ public class ContentQueries {
             o.put("unitPrice", u);
           }
         }
+      } else if (notSet.contains((String) o.get("sku"))) {
+        o.put("priceNotSet", true);
       }
     }
     return true;

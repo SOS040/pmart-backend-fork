@@ -167,13 +167,29 @@ public final class LayoutRules {
     }
   }
 
+  /** 상품페이지 관리 카드 하나(2026-11-25 BR-102). 그림은 올린 배너 이미지(같은 저장소·축소본). */
+  public record CareCard(String cardId, String imageId, String title, String body, int sortOrder) {}
+
+  /** 상품페이지 "이렇게 관리해요" 구획 — 제목 + 카드(모든 상품 공통). */
+  public record CareCards(String title, List<CareCard> items) {
+    public CareCards {
+      items = items == null ? List.of() : List.copyOf(items);
+    }
+  }
+
+  static final Pattern CARD_ID = Pattern.compile("^C-[A-Za-z0-9_-]{1,38}$");
+
   public record Body(
       List<Banner> banners,
       List<Theme> themes,
       List<Tab> tabs,
       @Nullable String note,
       List<String> homeOrder,
-      @Nullable Integer bannerIntervalSeconds) {
+      @Nullable Integer bannerIntervalSeconds,
+      // 옛 본문 JSON 을 그대로 두려고 비면 쓰지 않는다(해시·저장 모양 같게)
+      @com.fasterxml.jackson.annotation.JsonInclude(
+              com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+          @Nullable CareCards careCards) {
     public Body {
       banners = banners == null ? List.of() : List.copyOf(banners);
       themes = themes == null ? List.of() : List.copyOf(themes);
@@ -181,16 +197,26 @@ public final class LayoutRules {
       homeOrder = homeOrder == null ? List.of() : List.copyOf(homeOrder);
     }
 
+    public Body(
+        List<Banner> banners,
+        List<Theme> themes,
+        List<Tab> tabs,
+        @Nullable String note,
+        List<String> homeOrder,
+        @Nullable Integer bannerIntervalSeconds) {
+      this(banners, themes, tabs, note, homeOrder, bannerIntervalSeconds, null);
+    }
+
     public Body(List<Banner> banners, List<Theme> themes, List<Tab> tabs, @Nullable String note) {
-      this(banners, themes, tabs, note, List.of(), null);
+      this(banners, themes, tabs, note, List.of(), null, null);
     }
 
     public Body(List<Banner> banners, List<Theme> themes, @Nullable String note) {
-      this(banners, themes, List.of(), note, List.of(), null);
+      this(banners, themes, List.of(), note, List.of(), null, null);
     }
 
     public static Body empty() {
-      return new Body(List.of(), List.of(), List.of(), null, List.of(), null);
+      return new Body(List.of(), List.of(), List.of(), null, List.of(), null, null);
     }
 
     /** MD 탭에 넣은 테마(HOME 에서 뺀다). */
@@ -247,6 +273,43 @@ public final class LayoutRules {
                     + "×"
                     + spec.minHeight()
                     + "). 앱에서 가장자리가 잘리거나 흐려 보입니다."));
+      }
+    }
+    if (body.careCards() != null) {
+      BannerImageSpec spec = BannerImageSpec.of("CARE_CARD");
+      for (int i = 0; i < body.careCards().items().size(); i++) {
+        CareCard c = body.careCards().items().get(i);
+        if (spec == null || !imageExists.test(c.imageId())) {
+          continue;
+        }
+        String at = "careCards.items[" + i + "].imageId";
+        int[] size = imageSize.apply(c.imageId());
+        if (size == null) {
+          out.add(new Warning(at, "BANNER_IMAGE_SIZE_UNKNOWN", "가로·세로를 읽지 못했습니다."));
+          continue;
+        }
+        String code = spec.problem(size[0], size[1]);
+        if (code != null) {
+          out.add(
+              new Warning(
+                  at,
+                  code,
+                  "지금 "
+                      + size[0]
+                      + "×"
+                      + size[1]
+                      + " — 관리 카드 권장 "
+                      + spec.ratioLabel()
+                      + " "
+                      + spec.recommendedWidth()
+                      + "×"
+                      + spec.recommendedHeight()
+                      + "(최소 "
+                      + spec.minWidth()
+                      + "×"
+                      + spec.minHeight()
+                      + ")."));
+        }
       }
     }
     return out;
@@ -388,7 +451,49 @@ public final class LayoutRules {
         out.add(new Problem("homeOrder", "UNPLACED_GROUP"));
       }
     }
+    checkCareCards(body.careCards(), imageExists, out);
     return out;
+  }
+
+  /**
+   * 관리 카드(BR-102) — 제목 1~30자, 카드 1~10장, ID C-…·중복 없음, 올린 그림, 카드 제목 1~30자·설명 1~80자, 근거 없는 판촉 문구 금지.
+   */
+  static void checkCareCards(
+      @Nullable CareCards cards, Predicate<String> imageExists, List<Problem> out) {
+    if (cards == null) {
+      return;
+    }
+    if (cards.title() == null || cards.title().isBlank() || cards.title().length() > 30) {
+      out.add(new Problem("careCards.title", "INVALID_TITLE"));
+    } else if (promotional(cards.title())) {
+      out.add(new Problem("careCards.title", "PROMOTION_NOT_ALLOWED"));
+    }
+    if (cards.items().isEmpty() || cards.items().size() > 10) {
+      out.add(new Problem("careCards.items", "INVALID_CARD_COUNT"));
+    }
+    Set<String> ids = new HashSet<>();
+    for (int i = 0; i < cards.items().size(); i++) {
+      CareCard c = cards.items().get(i);
+      String at = "careCards.items[" + i + "]";
+      if (c.cardId() == null || !CARD_ID.matcher(c.cardId()).matches()) {
+        out.add(new Problem(at + ".cardId", "INVALID_CARD_ID"));
+      } else if (!ids.add(c.cardId())) {
+        out.add(new Problem(at + ".cardId", "DUPLICATE_ID"));
+      }
+      if (c.imageId() == null || !imageExists.test(c.imageId())) {
+        out.add(new Problem(at + ".imageId", "IMAGE_NOT_FOUND"));
+      }
+      if (c.title() == null || c.title().isBlank() || c.title().length() > 30) {
+        out.add(new Problem(at + ".title", "INVALID_TITLE"));
+      } else if (promotional(c.title())) {
+        out.add(new Problem(at + ".title", "PROMOTION_NOT_ALLOWED"));
+      }
+      if (c.body() == null || c.body().isBlank() || c.body().length() > 80) {
+        out.add(new Problem(at + ".body", "INVALID_BODY"));
+      } else if (promotional(c.body())) {
+        out.add(new Problem(at + ".body", "PROMOTION_NOT_ALLOWED"));
+      }
+    }
   }
 
   public static boolean promotional(@Nullable String text) {

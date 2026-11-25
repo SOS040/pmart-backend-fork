@@ -208,10 +208,17 @@ public class LayoutStore {
   /** 게시된 어떤 버전에든 쓰인 이미지인가(공개 보기). */
   public boolean imagePublished(String imageId) {
     return !jdbc.queryForList(
-            "SELECT 1 FROM layout_version v, jsonb_array_elements(v.body -> 'banners') b"
-                + " WHERE b ->> 'imageId' = ? LIMIT 1",
-            imageId)
-        .isEmpty();
+                "SELECT 1 FROM layout_version v, jsonb_array_elements(v.body -> 'banners') b"
+                    + " WHERE b ->> 'imageId' = ? LIMIT 1",
+                imageId)
+            .isEmpty()
+        // 관리 카드 그림(BR-102)
+        || !jdbc.queryForList(
+                "SELECT 1 FROM layout_version v,"
+                    + " jsonb_array_elements(COALESCE(v.body -> 'careCards' -> 'items', '[]'::jsonb)) c"
+                    + " WHERE c ->> 'imageId' = ? LIMIT 1",
+                imageId)
+            .isEmpty();
   }
 
   private static DraftRow draftRow(ResultSet rs, int i) throws SQLException {

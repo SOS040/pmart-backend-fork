@@ -60,6 +60,7 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.content.purchase-limit-units=10",
       "pmart.security.service-token.token-uri=${pmart.content.inventory-base-url}/api/v1/internal/service-tokens"
     })
 @Import(TestJwtConfiguration.class)
@@ -654,10 +655,31 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
                                 "priceVersion",
                                 2,
                                 "effectiveFrom",
-                                "2026-11-19T00:00:00Z")),
+                                "2026-11-19T00:00:00Z",
+                                "discount",
+                                Map.of(
+                                    "promotionId",
+                                    "PRM-1",
+                                    "name",
+                                    "주말 특가",
+                                    "unitDiscount",
+                                    398,
+                                    "salePrice",
+                                    3582,
+                                    "ratePercent",
+                                    10,
+                                    "endsAt",
+                                    "2026-12-01T00:00:00Z"))),
                         "notSet",
                         List.of()))));
     JsonNode priced = get("/product-contents/" + productId, null).body();
+    // 0.11.0: 기간 할인·미설정 표시·1회 최대 낱개 수
+    JsonNode disc = priced.path("options").path(0).path("price").path("discount");
+    assertThat(disc.path("salePrice").asLong()).isEqualTo(3582L);
+    assertThat(disc.path("ratePercent").asInt()).isEqualTo(10);
+    assertThat(disc.path("name").asString()).isEqualTo("주말 특가");
+    assertThat(priced.path("options").path(0).path("priceNotSet").asBoolean(true)).isFalse();
+    assertThat(priced.path("purchaseLimitUnits").asInt()).isEqualTo(10);
     assertThat(priced.path("options").path(0).path("price").path("basePrice").asLong())
         .isEqualTo(3980L);
     assertThat(priced.path("options").path(0).path("price").path("priceVersion").asInt())

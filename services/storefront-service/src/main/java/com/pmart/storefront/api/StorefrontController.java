@@ -391,6 +391,36 @@ public class StorefrontController implements StorefrontApi {
     return new ThemePage(items, next, clock.instant());
   }
 
+  /** 상품페이지 관리 카드(0.20.0 BR-102) — 지금 게시 버전의 것, 정렬 순. 없으면 제목 null·빈 목록. */
+  @Override
+  public ResponseEntity<com.pmart.storefront.api.generated.model.ListCareCards200Response>
+      listCareCards() {
+    var cards = layouts.currentBody().map(com.pmart.storefront.domain.LayoutRules.Body::careCards);
+    var out = new com.pmart.storefront.api.generated.model.ListCareCards200Response();
+    if (cards.isEmpty() || cards.get().items().isEmpty()) {
+      return ResponseEntity.ok(out.title(null).items(List.of()));
+    }
+    return ResponseEntity.ok(
+        out.title(cards.get().title())
+            .items(
+                cards.get().items().stream()
+                    .sorted(
+                        java.util.Comparator.comparingInt(
+                            com.pmart.storefront.domain.LayoutRules.CareCard::sortOrder))
+                    .map(
+                        x ->
+                            new com.pmart.storefront.api.generated.model
+                                    .ListCareCards200ResponseItemsInner()
+                                .cardId(x.cardId())
+                                .imageUrl(
+                                    java.net.URI.create(
+                                        "/api/v1/storefront/banner-images/" + x.imageId()))
+                                .title(x.title())
+                                .body(x.body())
+                                .sortOrder(x.sortOrder()))
+                    .toList()));
+  }
+
   /** 함께 산 상품(0.19.0 BR-100 R5). */
   @Override
   public ResponseEntity<com.pmart.storefront.api.generated.model.ListRelatedProducts200Response>

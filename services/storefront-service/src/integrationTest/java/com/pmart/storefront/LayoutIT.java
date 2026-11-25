@@ -275,7 +275,36 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                 "productIds",
                 List.of("PRD-L2", "PRD-L1", "PRD-L3"),
                 "sortOrder",
-                0)));
+                0)),
+        // 0.20.0 BR-102 상품페이지 관리 카드(그림은 배너 그림 올리기)
+        "careCards",
+        Map.of(
+            "title",
+            "우리동네 PMart, 이렇게 관리해요",
+            "items",
+            List.of(
+                Map.of(
+                    "cardId",
+                    "C-TEMP",
+                    "imageId",
+                    imageId,
+                    "title",
+                    "온도 맞춤 보관",
+                    "body",
+                    "상온·냉장·냉동을\n따로 보관해요",
+                    "sortOrder",
+                    1),
+                Map.of(
+                    "cardId",
+                    "C-QC",
+                    "imageId",
+                    imageId,
+                    "title",
+                    "사전 품질 검수",
+                    "body",
+                    "입고 때 하나씩\n살펴봐요",
+                    "sortOrder",
+                    0))));
   }
 
   @Test
@@ -402,6 +431,13 @@ class LayoutIT extends PostgresKafkaContainerSupport {
         .isEqualTo(200);
     assertThat(send("GET", null, "/storefront/banner-images/" + imageId + "?w=700", null).status())
         .isEqualTo(200);
+    // 0.20.0 BR-102 관리 카드 — 게시본, 정렬 순, 그림은 배너 그림 주소
+    JsonNode care = send("GET", MD, "/storefront/care-cards", null).body();
+    assertThat(care.path("title").asString()).isEqualTo("우리동네 PMart, 이렇게 관리해요");
+    assertThat(care.path("items").findValuesAsString("cardId")).containsExactly("C-QC", "C-TEMP");
+    assertThat(care.path("items").path(0).path("imageUrl").asString())
+        .isEqualTo("/api/v1/storefront/banner-images/" + imageId);
+    assertThat(care.path("items").path(0).path("body").asString()).isEqualTo("입고 때 하나씩\n살펴봐요");
     // 초안 PUBLISHED·반영 회신 APPLIED
     JsonNode published = send("GET", MD, "/storefront/layout-drafts/" + draftId, null).body();
     assertThat(published.path("state").asString()).isEqualTo("PUBLISHED");

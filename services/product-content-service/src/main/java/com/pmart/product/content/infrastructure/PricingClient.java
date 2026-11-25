@@ -21,7 +21,18 @@ public class PricingClient {
   /** 계약 상한(요청당 SKU 100개). */
   static final int MAX_SKUS = 100;
 
-  public record Price(long basePrice, int priceVersion) {}
+  /** 지금 기간 할인(pricing DisplayDiscount 사본). */
+  public record Discount(long salePrice, int ratePercent, String name, String endsAt) {}
+
+  public record Price(
+      long basePrice, int priceVersion, @org.jspecify.annotations.Nullable Discount discount) {
+    public Price(long basePrice, int priceVersion) {
+      this(basePrice, priceVersion, null);
+    }
+  }
+
+  /** 가격·미설정 SKU(0.11.0). */
+  public record Prices(Map<String, Price> prices, java.util.Set<String> notSet) {}
 
   private final RestClient pricing;
   private final ObjectMapper mapper;
@@ -36,7 +47,13 @@ public class PricingClient {
 
   /** 가격이 정해진 SKU 만 — 미설정(notSet)·모르는 SKU 는 빠진다. */
   public Map<String, Price> prices(List<String> skus) {
+    return pricesWithNotSet(skus).prices();
+  }
+
+  /** 가격(할인 포함)과 미설정 SKU. */
+  public Prices pricesWithNotSet(List<String> skus) {
     Map<String, Price> out = new HashMap<>();
+    java.util.Set<String> notSet = new java.util.HashSet<>();
     List<String> distinct = skus.stream().distinct().toList();
     for (int from = 0; from < distinct.size(); from += MAX_SKUS) {
       List<String> chunk =
@@ -54,14 +71,25 @@ public class PricingClient {
                                   .build())
                       .retrieve()
                       .body(String.class));
-      for (JsonNode p : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
+      JsonNode root = mapper.readTree(raw == null ? "{}" : raw);
+      for (JsonNode p : root.path("items")) {
         if (p.path("basePrice").isNumber()) {
+          JsonNode d = p.path("discount");
+          Discount discount =
+              d.isObject() && d.path("salePrice").isNumber()
+                  ? new Discount(
+                      d.path("salePrice").asLong(),
+                      d.path("ratePercent").asInt(0),
+                      d.path("name").asString(""),
+                      d.path("endsAt").asString(null))
+                  : null;
           out.put(
               p.path("sku").asString(),
-              new Price(p.path("basePrice").asLong(), p.path("priceVersion").asInt(0)));
+              new Price(p.path("basePrice").asLong(), p.path("priceVersion").asInt(0), discount));
         }
       }
+      root.path("notSet").forEach(n -> notSet.add(n.asString()));
     }
-    return out;
+    return new Prices(out, notSet);
   }
 }

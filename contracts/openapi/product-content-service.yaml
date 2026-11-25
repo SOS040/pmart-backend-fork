@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-25, 고객 앱 로딩 S5·BR-101 R2): 옵션 `price` 에 지금 기간 할인 `discount {salePrice, ratePercent, name, endsAt}`(pricing `/prices` 의 discount
+      사본 — 없으면 null)와, 가격이 정해지지 않은 SKU 는 `priceNotSet: true`(price 없음). 앱이 상세를 그리려고 `/prices` 를 따로 부르지 않아도 된다.
+      상세에 `purchaseLimitUnits` — 같은 상품(모든 옵션 합) 1회 최대 낱개 수(product-service 구매 상한과 같은 정책값 `pmart.content.purchase-limit-units`, 없으면 null).
+      확정은 장바구니·주문의 서버 거절(QUANTITY_LIMIT_EXCEEDED). 옵션 사진(BR-101 R1)은 옵션별 사진 자료가 없어 아직 없다.
     0.10.0(2026-11-25, 클라이언트 BR-100 R7 "N개 남음" — 사용자 "10개 이하"): 옵션 `availability` 에 LOW 를 쓴다 — 취급하고 가용 A 가 0 < A ≤ 임계값이면
       state LOW + `lowStockQty` = A. 임계값은 정책값 `pmart.content.low-stock-threshold`(설정 저장소, LAN 10) — 없으면 LOW 를 쓰지 않는다(예전처럼 AVAILABLE).
     0.9.0(2026-11-25, 클라이언트 BR-100 R1 "상품 정보 칸"): 상세(`ProductContent`)에 `origin`(원산지 값)·`expiryGuide`(소비기한·제조일 안내 값)·
@@ -766,6 +770,16 @@ components:
           properties:
             basePrice: { $ref: '_common.yaml#/components/schemas/Money' }
             priceVersion: { type: integer }
+            discount:
+              type: [object, 'null']
+              x-added-in: '2026-11-25'
+              description: '(0.11.0) 지금 기간 할인(pricing discount 사본, 개당). 없으면 null. 결제 금액은 주문서 견적'
+              properties:
+                salePrice: { $ref: '_common.yaml#/components/schemas/Money' }
+                ratePercent: { type: integer }
+                name: { type: string }
+                endsAt: { type: string, format: date-time }
+        priceNotSet: { type: [boolean, 'null'], x-added-in: '2026-11-25', description: '(0.11.0) true = pricing 에 가격이 정해지지 않은 SKU(price 없음). 조회 실패면 null' }
         availability:
           type: object
           description: |
@@ -807,6 +821,7 @@ components:
             storageGuide: { type: string }
             returnGuide: { type: string }
             notices: { type: array, items: { type: string } }
+            purchaseLimitUnits: { type: [integer, 'null'], minimum: 1, x-added-in: '2026-11-25', description: '(0.11.0 BR-101 R2) 같은 상품(모든 옵션 합) 1회 최대 낱개 수 — product-service 구매 상한과 같은 값. 정책값 없으면 null' }
             origin: { type: [string, 'null'], x-added-in: '2026-11-25', description: '(0.9.0 BR-100) notices "원산지:" 줄의 값. 없으면 null' }
             expiryGuide: { type: [string, 'null'], x-added-in: '2026-11-25', description: '(0.9.0 BR-100) 항목 이름에 소비기한·유통기한·품질유지기한·제조연월일이 든 첫 줄의 값. 없으면 null' }
             legalInfo:

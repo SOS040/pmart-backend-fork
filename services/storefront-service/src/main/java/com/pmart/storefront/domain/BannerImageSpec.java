@@ -23,6 +23,15 @@ public record BannerImageSpec(
 
   private static final BannerImageSpec WIDE =
       new BannerImageSpec(2.8, "2.8:1", 1960, 700, 1080, 386);
+
+  /** 상품페이지 배너(2026-11-25 BR-100 Q1 (가) — 고객 앱 칸 약 411×91dp). */
+  private static final BannerImageSpec PRODUCT_DETAIL =
+      new BannerImageSpec(4.5, "4.5:1", 1960, 436, 1080, 240);
+
+  /** 상품페이지 관리 카드 그림(2026-11-25 BR-102 — 앱 칸 268.6×152dp ≈ 16:9). */
+  private static final BannerImageSpec CARE_CARD =
+      new BannerImageSpec(1.7778, "16:9", 1080, 608, 720, 405);
+
   private static final BannerImageSpec POPUP =
       new BannerImageSpec(0.8, "4:5", 1080, 1350, 720, 900);
   private static final BannerImageSpec SPLASH =
@@ -37,7 +46,8 @@ public record BannerImageSpec(
           "CATEGORY",
           "PRODUCT_DETAIL",
           "POPUP",
-          "SPLASH");
+          "SPLASH",
+          "CARE_CARD");
 
   public static final Map<String, BannerImageSpec> BY_PLACEMENT =
       Map.of(
@@ -45,7 +55,8 @@ public record BannerImageSpec(
           "HOME_MIDDLE", WIDE,
           "HOME_INLINE", WIDE,
           "CATEGORY", WIDE,
-          "PRODUCT_DETAIL", WIDE,
+          "PRODUCT_DETAIL", PRODUCT_DETAIL,
+          "CARE_CARD", CARE_CARD,
           "POPUP", POPUP,
           "SPLASH", SPLASH);
 

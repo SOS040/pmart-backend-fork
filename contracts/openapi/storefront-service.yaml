@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.19.0
+  version: 0.20.0
   description: |
+    0.20.0(2026-11-25, 클라이언트 BR-102 "우리동네 PMart, 이렇게 관리해요" 카드 · BR-100 Q1): 편성 본문에 `careCards {title, items[{cardId C-…, imageId, title, body, sortOrder}]}`
+      (모든 상품 공통, 배너·테마와 같은 초안 → DISPLAY 승인 → 게시). 그림은 배너 그림 올리기(`/storefront/banner-images`)로 — 축소본 `?w=` 그대로. 검사: 제목·카드 제목 1~30자,
+      설명 1~80자(줄바꿈 그대로), 카드 1~10장, 올린 그림(IMAGE_NOT_FOUND), 근거 없는 판촉 문구 금지. 그림 규격 경고 CARE_CARD 16:9(권장 1080×608·최소 720×405).
+      고객 `GET /storefront/care-cards`(토큰 없이) → `{title, items[{cardId, imageUrl, title, body, sortOrder}]}` 게시본만·정렬 순, 없으면 title null·빈 목록.
+      같은 판: 상품페이지 배너 PRODUCT_DETAIL 그림 규격을 앱 칸(약 411×91dp)에 맞춰 **4.5:1**(권장 1960×436·최소 1080×240)로(0.17.0 은 2.8:1 이었다).
     0.19.0(2026-11-25, 클라이언트 BR-100 R5 "다른 사람들이 함께 구매한 상품"): `GET /storefront/products/{productId}/related?kind=BOUGHT_TOGETHER&mfcId=&size=` —
       최근 판매 집계 기간(ranking.sales-window-days, LAN 30일) 동안 이 상품(대표 SKU)이 든 확정 주문에 같이 담긴 다른 상품을, 같이 담긴 주문 수가 많은 순(같으면 상품 ID).
       순 수량(취소·반품 뺀) 0 인 줄은 세지 않는다. 항목은 진열과 같은 DisplayItem(진열 가능·센터 취급만 — mfcId 를 주면 판매 가능·N개 남음도). 집계 기간 설정이 없거나
@@ -162,6 +167,34 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /storefront/care-cards:
+    get:
+      tags: [storefront]
+      summary: 상품페이지 "이렇게 관리해요" 카드 (0.20.0 BR-102 — 게시된 것만)
+      operationId: listCareCards
+      security: []
+      responses:
+        '200':
+          description: OK — 정렬 순. 없으면 title null·빈 목록(앱은 구획을 뺀다)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  title: { type: [string, 'null'] }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [cardId, imageUrl, title, body, sortOrder]
+                      properties:
+                        cardId: { type: string }
+                        imageUrl: { type: string, format: uri, description: '`/api/v1/storefront/banner-images/{imageId}` — ?w= 축소본(0.16.0)' }
+                        title: { type: string }
+                        body: { type: string, description: 줄바꿈(\n)을 그대로 보인다 }
+                        sortOrder: { type: integer }
 
   /storefront/products/{productId}/related:
     get:
@@ -357,7 +390,7 @@ paths:
                       type: object
                       required: [placement, ratio, ratioLabel, recommendedWidth, recommendedHeight, minWidth, minHeight]
                       properties:
-                        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, HOME_INLINE, CATEGORY, PRODUCT_DETAIL, POPUP, SPLASH] }
+                        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, HOME_INLINE, CATEGORY, PRODUCT_DETAIL, POPUP, SPLASH, CARE_CARD], description: '0.20.0 CARE_CARD = 상품페이지 관리 카드 그림(배너 자리가 아님)' }
                         ratio: { type: number, description: '가로 ÷ 세로' }
                         ratioLabel: { type: string, description: '예 "2.8:1"·"4:5"·"9:16"' }
                         recommendedWidth: { type: integer }
@@ -651,6 +684,25 @@ components:
           description: '0.10.0 홈 순서 — 배너 묶음 groupId(G-…)·테마 sectionId(T-…)를 보일 순서대로. 없는 것·MD 탭에 넣은 테마 UNKNOWN_SECTION, 중복 DUPLICATE_ID, HOME_INLINE 묶음이 빠지면 UNPLACED_GROUP. 비우면 예전 순서(테마 sortOrder)'
         bannerIntervalSeconds: { type: [integer, 'null'], minimum: 2, maximum: 30, description: '0.10.0 배너 자동 넘김 간격(초) — 맨 위 넘기기·배너 묶음 모두. 비우면 앱 기본값(INVALID_INTERVAL)' }
         note: { type: [string, 'null'], maxLength: 200, description: 운영 메모(고객에게 안 보임) }
+        careCards: { $ref: '#/components/schemas/LayoutCareCards' }
+    LayoutCareCards:
+      type: [object, 'null']
+      x-added-in: '2026-11-25'
+      description: '0.20.0 BR-102 상품페이지 "이렇게 관리해요" 구획(모든 상품 공통). 비우면 구획 없음'
+      required: [title, items]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 30, description: '구획 제목(예 "우리동네 PMart, 이렇게 관리해요") — INVALID_TITLE' }
+        items: { type: array, minItems: 1, maxItems: 10, items: { $ref: '#/components/schemas/LayoutCareCard' }, description: 'INVALID_CARD_COUNT' }
+    LayoutCareCard:
+      type: object
+      x-added-in: '2026-11-25'
+      required: [cardId, imageId, title, body]
+      properties:
+        cardId: { type: string, pattern: '^C-[A-Za-z0-9_-]{1,38}$', description: '초안 안에서 고유(INVALID_CARD_ID·DUPLICATE_ID)' }
+        imageId: { type: string, description: '올린 배너 그림(IMAGE_NOT_FOUND) — 규격 CARE_CARD 16:9 는 경고만' }
+        title: { type: string, minLength: 1, maxLength: 30 }
+        body: { type: string, minLength: 1, maxLength: 80, description: 줄바꿈(\n) 그대로 }
+        sortOrder: { type: integer, minimum: 0 }
     LayoutTab:
       type: object
       x-added-in: '2026-11-21'
