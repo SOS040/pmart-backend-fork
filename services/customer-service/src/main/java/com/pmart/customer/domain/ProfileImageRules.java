@@ -33,6 +33,16 @@ public final class ProfileImageRules {
       return Optional.empty();
     }
     String scheme = u.getScheme() == null ? "" : u.getScheme().toLowerCase(Locale.ROOT);
+    // 카카오 ID 토큰 picture 는 http://k.kakaocdn.net/… 로 온다(2026-11-25 LAN) — 같은 주소가 https 로도 된다. 허용
+    // 호스트면 https 로 바꿔 받는다
+    if (scheme.equals("http")
+        && !allowHttp
+        && u.getHost() != null
+        && hostAllowed(u.getHost(), List.of("kakaocdn.net"))
+        && hostAllowed(u.getHost(), allowedHostSuffixes)) {
+      u = URI.create("https" + u.toString().substring(4));
+      scheme = "https";
+    }
     if (!(scheme.equals("https") || (allowHttp && scheme.equals("http")))) {
       return Optional.empty();
     }

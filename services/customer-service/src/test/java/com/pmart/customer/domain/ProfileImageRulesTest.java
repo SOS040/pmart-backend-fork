@@ -27,6 +27,18 @@ class ProfileImageRulesTest {
   }
 
   @Test
+  void kakaoHttpPhotoIsUpgradedToHttps() {
+    List<String> kakao = List.of("kakaocdn.net");
+    assertThat(
+            ProfileImageRules.fetchUri(
+                "http://k.kakaocdn.net/dn/abc/img_640x640.jpg", kakao, false, 256))
+        .contains(URI.create("https://k.kakaocdn.net/dn/abc/img_640x640.jpg"));
+    // 허용 밖 호스트의 http 는 그대로 거절
+    assertThat(ProfileImageRules.fetchUri("http://evil.example/a.jpg", kakao, false, 256))
+        .isEmpty();
+  }
+
+  @Test
   void naverPhotoAsksCdnForSmallSize() {
     List<String> naver = List.of("pstatic.net");
     assertThat(

@@ -45,3 +45,10 @@
 - 고침: 네이버는 `?type=s160` 고정(`ProfileImageRules.NAVER_TYPE`), 크기 바꾼 주소가 안 되면 **원래 주소로 한 번 더**(`ProfileImageRules.original`, 1MB 상한 그대로) — `ProfileImageService.copy`.
 - 그 계정(CU-2cde…)의 사진 출처 기록: 07:08:23 NONE → 07:08:26 PROVIDER(되돌리기) → 받기 실패 → 07:13:30 NONE. NONE·CUSTOM 이면 로그인해도 덮지 않는다(BR-80) — 되돌리기(`POST /me/profile-image/provider-restorations`)가 PROVIDER 로 바꾸고 다시 받는다. 계정은 그 뒤 탈퇴.
 - 교훈: CDN 크기 파라미터는 지원 값을 실제로 받아 보고 정한다 — 한 값(s160)만 시험하고 다른 값(s256)을 썼다.
+
+## 덧붙임 — 카카오(같은 날, 사용자 "카카오도 확인해줘")
+- 07:17 UTC 카카오 로그인 사건: `email` 있음·`pictureUrl` 있음(`http://k.kakaocdn.net/…` — 카카오 ID 토큰 picture 는 **http**)·`name` 없음.
+- 사진: customer 가 "원본이 허용 범위 밖이라 받지 않음"으로 버렸다 — https 만 받는 규칙. 같은 주소를 https 로 받으면 200(4.5KB) → **카카오 CDN(`*.kakaocdn.net`)만 http → https 로 바꿔 받는다**(`ProfileImageRules.fetchUri`, 다른 호스트 http 는 그대로 거절). 시험 `ProfileImageRulesTest.kakaoHttpPhotoIsUpgradedToHttps`.
+- 이름: 카카오 사용자 정보(Admin 키)에 **닉네임 동의 항목 자체가 없다**(`profile_nickname_needs_agreement` 키 없음) — 서버가 받을 값이 없다. 카카오 개발자 콘솔 → 카카오 로그인 → 동의항목에서 **"닉네임"(profile_nickname)** 을 켜야 ID 토큰 `nickname`·사용자 정보 `profile.nickname` 이 온다(auth 는 둘 다 읽는다). 실명 "이름"(name)은 비즈 앱 심사가 필요하다.
+- 이 계정의 사용자 정보는 지금 이메일·사진 모두 `needs_agreement: true`(동의 안 함·다시 동의 필요) — 동의 화면에서 이메일·사진을 고르지 않으면 값이 안 온다.
+
