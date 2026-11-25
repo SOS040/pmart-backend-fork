@@ -182,6 +182,11 @@ spring:
               predicates:
                 - Path=/api/v1/cdcs/*/locations/**,/api/v1/cdcs/*/locations,/api/v1/cdcs/*/aisle-pick-methods # CDC 위치(cdc-location 0.3.0 #456, 2026-11-25 R-16) · 통로 피킹 방식(0.5.0 #483)
               order: -87
+            - id: cdc-quality-service
+              uri: ${pmart.gateway.upstream.cdc-quality-service}
+              predicates:
+                - Path=/api/v1/cdcs/*/quality-holds,/api/v1/cdcs/*/quality-holds/**,/api/v1/cdcs/*/disposal-approvals,/api/v1/cdcs/*/disposal-approvals/** # CDC 품질 보류·폐기(cdc-quality 0.2.0 #510, 2026-11-26)
+              order: -86
             - id: mfc-fulfillment-service
               uri: ${pmart.gateway.upstream.mfc-fulfillment-service}
               predicates:
@@ -296,6 +301,7 @@ pmart:
       cdc-inventory-service: http://cdc-inventory-service:8601
       cdc-outbound-service: http://cdc-outbound-service:8603
       cdc-location-service: http://cdc-location-service:8602
+      cdc-quality-service: http://cdc-quality-service:8604
       mfc-capacity-service: http://mfc-capacity-service:8303
       mfc-location-service: http://mfc-location-service:8304
       mfc-quality-service: http://mfc-quality-service:8305
