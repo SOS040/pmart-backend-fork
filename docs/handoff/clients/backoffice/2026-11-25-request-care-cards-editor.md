@@ -4,7 +4,7 @@
 받는 앱: backoffice (통합 백오피스 웹 — 진열 편성 화면)
 작성: pmart-backend, 2026-11-25 — 고객 앱 BR-102("이미지가 없어 — 백오피스에서 관리하게 만들어줘")의 백오피스 몫
 계약: **storefront-service 0.20.0**
-상태: 백엔드 구현(LAN 배포 전). 남은 것 = 이 화면
+상태: 백엔드 LAN 배포 끝(2026-11-25 fa190338). 남은 것 = 이 화면
 
 ## 바뀐 것
 - 편성 초안 본문에 `careCards {title, items: [{cardId, imageId, title, body, sortOrder}]}`(모든 상품 공통 한 묶음). 배너·테마와 같은 초안 → 제출 → DISPLAY 승인 → 게시. 비우면(null) 구획 없음.
