@@ -749,6 +749,10 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
         post(OPERATOR, base, key(), Map.of("locationCodes", List.of(k1), "reason", "부족 칸 재계수"));
     assertThat(st.status()).as(st.body().toString()).isEqualTo(201);
     String sid = st.body().path("sessionId").asString();
+    // CS-1(0.12.0) 실사 목록 — 최신 순, state 거르기, 결정 전 lines 없음
+    JsonNode list = get(OPERATOR, base + "?state=COUNTING&size=200").body();
+    assertThat(list.path("items").findValuesAsString("sessionId")).contains(sid);
+    assertThat(list.path("items").findValuesAsString("state")).containsOnly("COUNTING");
     assertThat(st.body().path("state").asString()).isEqualTo("COUNTING");
     assertThat(st.body().path("sheet").get(0).path("lot").asString()).isEqualTo("C1");
     assertThat(st.body().toString()).doesNotContain("bookQty");

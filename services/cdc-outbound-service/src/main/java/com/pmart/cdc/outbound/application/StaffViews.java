@@ -54,6 +54,42 @@ public class StaffViews {
     this.readiness = readiness;
   }
 
+  public record ShortagePage(
+      List<StaffViewStore.ShortageRow> items, int page, int size, boolean hasNext) {}
+
+  /** 피킹 부족 재할당 목록(0.19.0 결품 관리). */
+  public ShortagePage shortages(String cdcId, @Nullable String state, int page, int size) {
+    Support.requireCenter(cdcId);
+    int p = Math.max(0, page);
+    int s = Math.min(200, Math.max(1, size));
+    var rows = store.shortages(cdcId, blank(state), p, s);
+    boolean next = rows.size() > s;
+    return new ShortagePage(next ? rows.subList(0, s) : rows, p, s, next);
+  }
+
+  public record LpnPage(
+      List<StaffViewStore.LpnRow> items,
+      java.util.Map<String, List<StaffViewStore.LpnContent>> contents,
+      int page,
+      int size,
+      boolean hasNext) {}
+
+  /** LPN 목록(0.19.0 LPN 관리) — BOX 내용 포함. */
+  public LpnPage lpns(
+      String cdcId, @Nullable String trfId, @Nullable String unitType, int page, int size) {
+    Support.requireCenter(cdcId);
+    int p = Math.max(0, page);
+    int s = Math.min(200, Math.max(1, size));
+    var rows = store.lpns(cdcId, blank(trfId), blank(unitType), p, s);
+    boolean next = rows.size() > s;
+    var items = next ? rows.subList(0, s) : rows;
+    var contents = new java.util.HashMap<String, List<StaffViewStore.LpnContent>>();
+    for (var c : store.lpnContents(items.stream().map(StaffViewStore.LpnRow::lpn).toList())) {
+      contents.computeIfAbsent(c.lpn(), k -> new java.util.ArrayList<>()).add(c);
+    }
+    return new LpnPage(items, contents, p, s, next);
+  }
+
   public record DeparturePage(
       List<DepartureService.View> items, int page, int size, boolean hasNext) {}
 

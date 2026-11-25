@@ -11,6 +11,7 @@ import com.pmart.cdc.inventory.application.CountService;
 import com.pmart.cdc.inventory.application.CountService.CountLine;
 import com.pmart.cdc.inventory.application.CountService.View;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,6 +34,18 @@ public class CountsController implements CountsApi {
             .start(idempotencyKey, xSourceSystem, cdcId, body.getLocationCodes(), body.getReason())
             .value();
     return ResponseEntity.status(HttpStatus.CREATED).body(dto(v));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.inventory.api.generated.model.ListCountSessions200Response>
+      listCountSessions(String cdcId, @Nullable String state, Integer page, Integer size) {
+    var p = counts.list(cdcId, state, page == null ? 0 : page, size == null ? 50 : size);
+    var out = new com.pmart.cdc.inventory.api.generated.model.ListCountSessions200Response();
+    out.setItems(new java.util.ArrayList<>(p.items().stream().map(CountsController::dto).toList()));
+    out.setPage(p.page());
+    out.setSize(p.size());
+    out.setHasNext(p.hasNext());
+    return ResponseEntity.ok(out);
   }
 
   @Override

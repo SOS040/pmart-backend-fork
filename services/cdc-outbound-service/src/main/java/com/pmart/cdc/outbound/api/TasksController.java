@@ -31,7 +31,7 @@ public class TasksController implements TasksApi {
   @Override
   public ResponseEntity<ListTasks200Response> listTasks(
       String cdcId,
-      String waveId,
+      @Nullable String waveId,
       @Nullable TaskState state,
       @Nullable String assigneeId,
       Integer size,

@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
+    0.12.0(2026-11-26, DC 백오피스 CS-1 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-26-backend-count-session-list.md, 사용자 "응 진행해"): `GET /cdcs/{cdcId}/count-sessions?state=&page=&size=`
+      — 이 센터 실사 목록(줄 = CountSession — 결정 전 lines 없음), 만든 시각 최신 순, 쪽 나눔 page 0부터·size ≤ 200·hasNext. 자기 센터 운영자만. 읽기만.
     0.11.0(2026-11-25, MFC 수령·운송 중 재고 대사 — WMS CDC-F-024·025, 설계 docs/cdc/design/2026-11-25-receipt-transit.md, 사용자 결정): `MfcReceiptPosted` 구독(mfc.inventory.v1)과
       복구용 `POST /internal/receipt-acks`(501 해제) — 같은 receiptId 한 번, 줄별(SKU·LOT)로 출발 줄에 정상·격리·미판정을 더하고 Transit −r, 출발 줄 초과·없는 LOT 은 그 줄만 보류(CONFLICT),
       t = 0 이면 TRANSIT_RECONCILED, 남으면 RECEIPT_POSTED_AWAITING_ACK(자동 손실 없음) → TransitReconciled. TOUT 보다 먼저 온 사건은 기다렸다가 TOUT 때 처리. (0.10.0 은 실사 부족 #500.)
@@ -911,6 +913,32 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /cdcs/{cdcId}/count-sessions:
+    get:
+      tags: [counts]
+      summary: '[운영자] 실사 목록 (0.12.0 — DC 백오피스 CS-1)'
+      description: |
+        이 센터 실사. 만든 시각 최신 순(같으면 sessionId 순). state 로 거른다(생략 = 전부). 줄은 `GET /cdcs/{cdcId}/count-sessions/{sessionId}` 와 같은 모양.
+      operationId: listCountSessions
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: state, in: query, required: false, schema: { type: string, enum: [COUNTING, RECOUNT_REQUIRED, PENDING_APPROVAL, MATCHED, APPROVED, REJECTED] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CountSession' } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
     post:
       tags: [counts]
       summary: '[운영자] 실사 시작 — 칸 잠금·장부 기준 고정 (0.8.0)'

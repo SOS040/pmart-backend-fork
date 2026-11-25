@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.18.0
+  version: 0.19.0
   description: |
+    0.19.0(2026-11-26, DC 백오피스 — 사용자 "응 진행해"): `GET /cdcs/{cdcId}/tasks` 의 waveId 를 선택으로(없으면 센터 전체 작업 — 통합 작업관리 "전체 작업 현황"),
+      직원 조회 `GET /cdcs/{cdcId}/shortages?state=&page=&size=`(피킹 부족 뒤 재할당 진행·결과 — 결품 관리), `GET /cdcs/{cdcId}/lpns?trfId=&unitType=&page=&size=`(LPN 구성·검품·상차 — LPN 관리). 읽기만.
     0.18.0(2026-11-25, DC 백오피스 M-1·M-4 — 사용자 "서버에 작업 남기는 방식은 PDA로 스캔한 위치로 해", "응 그 다음 기능 추가할 거"): 작업자 마지막 스캔 위치(Flyway V12 worker_location).
       PDA(시뮬레이터 가상 작업자 포함)가 `POST /cdcs/{cdcId}/workers/{workerId}/location-scans {locationCode, taskId?}`(본인, 204)로 보내거나, 피킹 실적의 마지막 줄 locationCode 가 그 작업자 위치가 된다.
       백오피스 `GET /cdcs/{cdcId}/workers?floor=`(작업자·지금 작업·마지막 위치(층·구역)·시각·FRESH/STALE/UNKNOWN — 10분 지나면 STALE, byFloor = FRESH 인원).
@@ -203,7 +205,7 @@ paths:
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
-        - { name: waveId, in: query, required: true, schema: { type: string } }
+        - { name: waveId, in: query, required: false, schema: { type: string }, description: '(0.19.0 선택) 없으면 센터 전체 작업' }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/TaskState' } }
         - { name: assigneeId, in: query, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
@@ -218,6 +220,118 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/Task' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /cdcs/{cdcId}/shortages:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 피킹 부족 재할당 목록 (0.19.0 — 결품 관리)'
+      description: |
+        이 센터 TRF 의 피킹 부족 후속(PickShortageReported 뒤 재고 해제 → 추가 할당 → 새 작업). 최신 순. state = PENDING·RELEASED(진행 중)·DONE·FAILED.
+      operationId: listCenterShortages
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: state, in: query, required: false, schema: { type: string, enum: [PENDING, RELEASED, DONE, FAILED] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [followupId, trfId, waveId, taskId, sku, lot, locationCode, shortQty, state, reallocatedQty, unresolvedQty]
+                      properties:
+                        followupId: { type: string }
+                        trfId: { type: string }
+                        mfcId: { type: string }
+                        waveId: { type: string }
+                        taskId: { type: string }
+                        sku: { type: string }
+                        lot: { type: string }
+                        locationCode: { type: string }
+                        shortQty: { type: integer }
+                        state: { type: string }
+                        reallocatedQty: { type: integer }
+                        unresolvedQty: { type: integer }
+                        newTaskIds: { type: array, items: { type: string } }
+                        reason: { type: [string, 'null'] }
+                        createdAt: { type: string, format: date-time }
+                        updatedAt: { type: string, format: date-time }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/lpns:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] LPN 목록 — 구성·검품·상차 (0.19.0 — LPN 관리)'
+      description: |
+        이 센터 TRF 의 LPN(BOX·PLT·RT). 분류 최신 순. trfId·unitType 으로 거른다. BOX 는 contents(SKU·LOT·수량), RT·PLT 는 그릇(하위 BOX 는 parentLpn).
+      operationId: listCenterLpns
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: trfId, in: query, required: false, schema: { type: string, maxLength: 64 } }
+        - { name: unitType, in: query, required: false, schema: { type: string, enum: [BOX, PLT, RT] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [lpn, trfId, waveId, unitType, sealState, loaded]
+                      properties:
+                        lpn: { type: string }
+                        trfId: { type: string }
+                        mfcId: { type: string }
+                        waveId: { type: string }
+                        unitType: { type: string }
+                        parentLpn: { type: [string, 'null'] }
+                        sealState: { type: string }
+                        sealNo: { type: [string, 'null'] }
+                        temperatureZone: { type: [string, 'null'] }
+                        weightG: { type: [integer, 'null'] }
+                        sortedBy: { type: string }
+                        sortedAt: { type: string, format: date-time }
+                        inspection: { type: [string, 'null'] }
+                        failReason: { type: [string, 'null'] }
+                        inspectedAt: { type: [string, 'null'], format: date-time }
+                        loaded: { type: boolean }
+                        tripId: { type: [string, 'null'] }
+                        vehicleId: { type: [string, 'null'] }
+                        dockCode: { type: [string, 'null'] }
+                        loadedAt: { type: [string, 'null'], format: date-time }
+                        departureId: { type: [string, 'null'] }
+                        contents:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              sku: { type: string }
+                              lot: { type: string }
+                              qty: { type: integer }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/workers:
     get:

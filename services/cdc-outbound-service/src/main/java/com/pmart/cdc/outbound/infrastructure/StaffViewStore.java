@@ -103,6 +103,150 @@ public class StaffViewStore {
     return jdbc.queryForList(sql.toString(), String.class, args.toArray());
   }
 
+  public record ShortageRow(
+      String followupId,
+      String trfId,
+      String mfcId,
+      String waveId,
+      String taskId,
+      String sku,
+      String lot,
+      String locationCode,
+      int shortQty,
+      String state,
+      int reallocatedQty,
+      int unresolvedQty,
+      @Nullable String newTaskIds,
+      @Nullable String reason,
+      Instant createdAt,
+      Instant updatedAt) {}
+
+  /** 피킹 부족 후속(0.19.0) — 최신 순, size + 1 개. */
+  public List<ShortageRow> shortages(String cdcId, @Nullable String state, int page, int size) {
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT f.*, t.mfc_id FROM pick_shortage_followup f JOIN transfer t ON t.trf_id ="
+                + " f.trf_id WHERE t.cdc_id = ?");
+    List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (state != null) {
+      sql.append(" AND f.state = ?");
+      args.add(state);
+    }
+    sql.append(" ORDER BY f.created_at DESC, f.followup_id LIMIT ? OFFSET ?");
+    args.add(size + 1);
+    args.add((long) page * size);
+    return jdbc.query(
+        sql.toString(),
+        (rs, i) ->
+            new ShortageRow(
+                rs.getString("followup_id"),
+                rs.getString("trf_id"),
+                rs.getString("mfc_id"),
+                rs.getString("wave_id"),
+                rs.getString("task_id"),
+                rs.getString("sku"),
+                rs.getString("lot"),
+                rs.getString("location_code"),
+                rs.getInt("short_qty"),
+                rs.getString("state"),
+                rs.getInt("reallocated_qty"),
+                rs.getInt("unresolved_qty"),
+                rs.getString("new_task_ids"),
+                rs.getString("reason"),
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getTimestamp("updated_at").toInstant()),
+        args.toArray());
+  }
+
+  public record LpnRow(
+      String lpn,
+      String trfId,
+      String mfcId,
+      String waveId,
+      String unitType,
+      @Nullable String parentLpn,
+      String sealState,
+      @Nullable String sealNo,
+      @Nullable String temperatureZone,
+      @Nullable Integer weightG,
+      String sortedBy,
+      Instant sortedAt,
+      @Nullable String inspection,
+      @Nullable String failReason,
+      @Nullable Instant inspectedAt,
+      boolean loaded,
+      @Nullable String tripId,
+      @Nullable String vehicleId,
+      @Nullable String dockCode,
+      @Nullable Instant loadedAt,
+      @Nullable String departureId) {}
+
+  public record LpnContent(String lpn, String sku, String lot, int qty) {}
+
+  /** LPN(0.19.0) — 분류 최신 순, size + 1 개. */
+  public List<LpnRow> lpns(
+      String cdcId, @Nullable String trfId, @Nullable String unitType, int page, int size) {
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT p.*, t.mfc_id FROM lpn p JOIN transfer t ON t.trf_id = p.trf_id WHERE t.cdc_id = ?");
+    List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (trfId != null) {
+      sql.append(" AND p.trf_id = ?");
+      args.add(trfId);
+    }
+    if (unitType != null) {
+      sql.append(" AND p.unit_type = ?");
+      args.add(unitType);
+    }
+    sql.append(" ORDER BY p.sorted_at DESC, p.lpn LIMIT ? OFFSET ?");
+    args.add(size + 1);
+    args.add((long) page * size);
+    return jdbc.query(
+        sql.toString(),
+        (rs, i) ->
+            new LpnRow(
+                rs.getString("lpn"),
+                rs.getString("trf_id"),
+                rs.getString("mfc_id"),
+                rs.getString("wave_id"),
+                rs.getString("unit_type"),
+                rs.getString("parent_lpn"),
+                rs.getString("seal_state"),
+                rs.getString("seal_no"),
+                rs.getString("temperature_zone"),
+                (Integer) rs.getObject("weight_g"),
+                rs.getString("sorted_by"),
+                rs.getTimestamp("sorted_at").toInstant(),
+                rs.getString("inspection"),
+                rs.getString("fail_reason"),
+                ts(rs, "inspected_at"),
+                rs.getBoolean("loaded"),
+                rs.getString("trip_id"),
+                rs.getString("vehicle_id"),
+                rs.getString("dock_code"),
+                ts(rs, "loaded_at"),
+                rs.getString("departure_id")),
+        args.toArray());
+  }
+
+  public List<LpnContent> lpnContents(List<String> lpns) {
+    if (lpns.isEmpty()) {
+      return List.of();
+    }
+    String marks = String.join(",", java.util.Collections.nCopies(lpns.size(), "?"));
+    return jdbc.query(
+        "SELECT lpn, sku, lot, qty FROM lpn_content WHERE lpn IN ("
+            + marks
+            + ") ORDER BY lpn, sku, lot",
+        (rs, i) -> new LpnContent(rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4)),
+        lpns.toArray());
+  }
+
+  private static @Nullable Instant ts(ResultSet rs, String col) throws SQLException {
+    Timestamp t = rs.getTimestamp(col);
+    return t == null ? null : t.toInstant();
+  }
+
   public Optional<TransferRow> transfer(String cdcId, String trfId) {
     return jdbc
         .query(

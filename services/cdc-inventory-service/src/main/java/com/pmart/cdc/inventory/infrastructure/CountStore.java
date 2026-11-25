@@ -135,6 +135,20 @@ public class CountStore {
     jdbc.update("UPDATE count_location SET open = false WHERE session_id = ?", sessionId);
   }
 
+  /** 실사 ID(0.12.0 CS-1) — 만든 시각 최신 순, size + 1 개. */
+  public List<String> sessionIds(String cdcId, @Nullable String state, int page, int size) {
+    StringBuilder sql = new StringBuilder("SELECT session_id FROM count_session WHERE cdc_id = ?");
+    java.util.ArrayList<Object> args = new java.util.ArrayList<>(List.of(cdcId));
+    if (state != null) {
+      sql.append(" AND state = ?");
+      args.add(state);
+    }
+    sql.append(" ORDER BY created_at DESC, session_id LIMIT ? OFFSET ?");
+    args.add(size + 1);
+    args.add((long) page * size);
+    return jdbc.queryForList(sql.toString(), String.class, args.toArray());
+  }
+
   public Optional<SessionRow> find(String sessionId, boolean lock) {
     return jdbc
         .query(

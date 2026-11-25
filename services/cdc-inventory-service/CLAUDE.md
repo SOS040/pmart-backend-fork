@@ -50,3 +50,4 @@
 - 아직 501: 수령 정정·품질·손실·조정(`/internal/adjustments` — 실사 밖 ADJ)·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 재고 현황(2026-11-25, 0.6.0)**: `GET /cdcs/{cdcId}/stock-snapshot?sku=&withPlaces=`(`AvailabilityController.getCenterStockSnapshot`) — 내부 `/internal/snapshots` 와 같은 `InventoryQueries.snapshot`, 자기 센터 운영자만(`Operator.requireCenter`), withPlaces 기본 false(LOT·위치 빼고). 시험 `StockLedgerFlowIT` 2-2.
 - **칸별 재고(2026-11-25, 0.9.0 — DC 백오피스 M-6)**: `GET /cdcs/{cdcId}/location-stocks?locationPrefix=&sku=&limit=`(`AvailabilityController.listCenterLocationStocks`) — `InventoryQueries.snapshot` 을 칸 × SKU × LOT × 품질 상태 줄로 펼침, 칸 → SKU → LOT 순, limit 기본 500·최대 2000(넘으면 truncated). cdc-location occupiedQty 는 그대로 null. 시험 `StockLedgerFlowIT` 2-3.
+- **실사 목록(2026-11-26, 0.12.0 — DC 백오피스 CS-1)**: `GET /cdcs/{cdcId}/count-sessions?state=&page=&size=`(`CountStore.sessionIds` 최신 순 → 줄마다 `CountService.view` = 단건과 같은 모양, 결정 전 lines 없음). 시험 `StockLedgerFlowIT`(실사 시작 뒤 COUNTING 목록).

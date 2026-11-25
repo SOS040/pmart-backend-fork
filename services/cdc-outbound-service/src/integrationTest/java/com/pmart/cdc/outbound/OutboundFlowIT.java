@@ -439,6 +439,16 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(get(OPS, "/cdcs/CDC01/tasks/" + t2).body().path("state").asString())
         .isEqualTo("PARTIAL");
     assertThat(outbox("PickShortageReported")).isEqualTo(1);
+    // 0.19.0: Wave 없이 센터 전체 작업, 결품 관리(부족 후속 — 이 TRF 줄)
+    assertThat(
+            get(OPS, "/cdcs/CDC01/tasks?size=200")
+                .body()
+                .path("items")
+                .findValuesAsString("taskId"))
+        .contains(t1, t2);
+    JsonNode shorts = get(OPS, "/cdcs/CDC01/shortages?size=200").body();
+    assertThat(shorts.path("items").findValuesAsString("trfId")).contains(trf1);
+    assertThat(shorts.path("items").get(0).path("shortQty").asInt()).isPositive();
     assertThat(get(OPS, "/waves/" + waveId).body().path("state").asString()).isEqualTo("WORK_DONE");
     JsonNode done = get(SERVICE, "/internal/transfer-intakes/" + trf1).body();
     assertThat(done.path("state").asString()).isEqualTo("PICKED");
@@ -493,6 +503,11 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
         List.of(rtLpn, box(b1, rt, "E-00000001", "L1", 5), box(b2, rt, "E-00000002", "L2", 2)));
     Res sorted = post(OPS, "/sorting-results", sortBody);
     assertThat(sorted.status()).as(sorted.body().toString()).isEqualTo(202);
+    // 0.19.0 LPN 관리 — 이 TRF 의 BOX 와 내용
+    JsonNode lpns = get(OPS, "/cdcs/CDC01/lpns?trfId=" + trf1 + "&unitType=BOX").body();
+    assertThat(lpns.path("items").size()).isPositive();
+    assertThat(lpns.path("items").findValuesAsString("unitType")).containsOnly("BOX");
+    assertThat(lpns.path("items").get(0).path("contents").size()).isPositive();
     assertThat(post(OPS, "/sorting-results", sortBody).body().path("code").asString())
         .isEqualTo("LPN_ALREADY_SEALED");
     String wr = sorted.body().path("resultId").asString();

@@ -91,7 +91,7 @@ public class TaskService {
   @Transactional(readOnly = true)
   public Page list(
       String cdcId,
-      String waveId,
+      @Nullable String waveId,
       @Nullable String state,
       @Nullable String assigneeId,
       @Nullable String cursor,

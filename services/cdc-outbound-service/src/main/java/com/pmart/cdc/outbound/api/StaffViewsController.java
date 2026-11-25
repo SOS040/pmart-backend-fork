@@ -81,6 +81,100 @@ public class StaffViewsController implements StaffViewsApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.ListCenterShortages200Response>
+      listCenterShortages(String cdcId, @Nullable String state, Integer page, Integer size) {
+    var p = views.shortages(cdcId, state, page == null ? 0 : page, size == null ? 50 : size);
+    var out = new com.pmart.cdc.outbound.api.generated.model.ListCenterShortages200Response();
+    out.setItems(
+        new ArrayList<>(
+            p.items().stream()
+                .map(
+                    f ->
+                        new com.pmart.cdc.outbound.api.generated.model
+                                .ListCenterShortages200ResponseItemsInner()
+                            .followupId(f.followupId())
+                            .trfId(f.trfId())
+                            .mfcId(f.mfcId())
+                            .waveId(f.waveId())
+                            .taskId(f.taskId())
+                            .sku(f.sku())
+                            .lot(f.lot())
+                            .locationCode(f.locationCode())
+                            .shortQty(f.shortQty())
+                            .state(f.state())
+                            .reallocatedQty(f.reallocatedQty())
+                            .unresolvedQty(f.unresolvedQty())
+                            .newTaskIds(
+                                f.newTaskIds() == null || f.newTaskIds().isBlank()
+                                    ? new ArrayList<>()
+                                    : new ArrayList<>(List.of(f.newTaskIds().split(","))))
+                            .reason(f.reason())
+                            .createdAt(time(f.createdAt()))
+                            .updatedAt(time(f.updatedAt())))
+                .toList()));
+    out.setPage(p.page());
+    out.setSize(p.size());
+    out.setHasNext(p.hasNext());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.ListCenterLpns200Response>
+      listCenterLpns(
+          String cdcId,
+          @Nullable String trfId,
+          @Nullable String unitType,
+          Integer page,
+          Integer size) {
+    var p = views.lpns(cdcId, trfId, unitType, page == null ? 0 : page, size == null ? 50 : size);
+    var out = new com.pmart.cdc.outbound.api.generated.model.ListCenterLpns200Response();
+    out.setItems(
+        new ArrayList<>(
+            p.items().stream()
+                .map(
+                    l ->
+                        new com.pmart.cdc.outbound.api.generated.model
+                                .ListCenterLpns200ResponseItemsInner()
+                            .lpn(l.lpn())
+                            .trfId(l.trfId())
+                            .mfcId(l.mfcId())
+                            .waveId(l.waveId())
+                            .unitType(l.unitType())
+                            .parentLpn(l.parentLpn())
+                            .sealState(l.sealState())
+                            .sealNo(l.sealNo())
+                            .temperatureZone(l.temperatureZone())
+                            .weightG(l.weightG())
+                            .sortedBy(l.sortedBy())
+                            .sortedAt(time(l.sortedAt()))
+                            .inspection(l.inspection())
+                            .failReason(l.failReason())
+                            .inspectedAt(l.inspectedAt() == null ? null : time(l.inspectedAt()))
+                            .loaded(l.loaded())
+                            .tripId(l.tripId())
+                            .vehicleId(l.vehicleId())
+                            .dockCode(l.dockCode())
+                            .loadedAt(l.loadedAt() == null ? null : time(l.loadedAt()))
+                            .departureId(l.departureId())
+                            .contents(
+                                new ArrayList<>(
+                                    p.contents().getOrDefault(l.lpn(), List.of()).stream()
+                                        .map(
+                                            c ->
+                                                new com.pmart.cdc.outbound.api.generated.model
+                                                        .ListCenterLpns200ResponseItemsInnerContentsInner()
+                                                    .sku(c.sku())
+                                                    .lot(c.lot())
+                                                    .qty(c.qty()))
+                                        .toList())))
+                .toList()));
+    out.setPage(p.page());
+    out.setSize(p.size());
+    out.setHasNext(p.hasNext());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
   public ResponseEntity<TransferDetail> getCenterTransfer(String cdcId, String trfId) {
     var d = views.transfer(cdcId, trfId);
     TransferRow t = d.transfer();
