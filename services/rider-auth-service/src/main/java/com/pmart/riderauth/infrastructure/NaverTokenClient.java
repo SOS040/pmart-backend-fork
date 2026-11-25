@@ -84,8 +84,12 @@ public class NaverTokenClient {
   }
 
   /** 프로필 API 결과(이메일 원문 — 개인정보, 로그·toString 금지). */
-  public record Profile(@Nullable String email) {
-    public static final Profile NONE = new Profile(null);
+  public record Profile(@Nullable String email, @Nullable String name, @Nullable String nickname) {
+    public static final Profile NONE = new Profile(null, null, null);
+
+    public Profile(@Nullable String email) {
+      this(email, null, null);
+    }
 
     @Override
     public String toString() {
@@ -209,12 +213,20 @@ public class NaverTokenClient {
       log.info("네이버 프로필 생략 reason=resultcode");
       return Profile.NONE;
     }
-    String email = n.path("response").path("email").asString("");
-    if (email.isBlank()) {
+    String email = n.path("response").path("email").asString("").strip();
+    if (email.isEmpty()) {
       log.info("네이버 프로필 이메일 생략 reason=missing_email");
-      return Profile.NONE;
     }
-    return new Profile(email.strip());
+    // 이름(실명 response.name)·별명(response.nickname) — 2026-11-25, 별명이 없으면 이름(고객 auth 와 같게)
+    String name = n.path("response").path("name").asString("").strip();
+    String nickname = n.path("response").path("nickname").asString("").strip();
+    if (nickname.isEmpty()) {
+      nickname = name;
+    }
+    return new Profile(
+        email.isEmpty() ? null : email,
+        name.isEmpty() ? null : name,
+        nickname.isEmpty() ? null : nickname);
   }
 
   /**

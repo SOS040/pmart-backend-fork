@@ -32,7 +32,18 @@ public class GoogleIdTokenVerifier {
       @Nullable String email,
       @Nullable Boolean emailVerified,
       @Nullable String name,
-      @Nullable String pictureUrl) {}
+      @Nullable String pictureUrl,
+      @Nullable String nickname) {
+
+    public Identity(
+        String subject,
+        @Nullable String email,
+        @Nullable Boolean emailVerified,
+        @Nullable String name,
+        @Nullable String pictureUrl) {
+      this(subject, email, emailVerified, name, pictureUrl, null);
+    }
+  }
 
   public static class Rejected extends RuntimeException {
     public Rejected(String message) {
@@ -103,7 +114,9 @@ public class GoogleIdTokenVerifier {
         blankToNull(jwt.getClaimAsString("email")),
         jwt.hasClaim("email_verified") ? jwt.getClaimAsBoolean("email_verified") : null,
         blankToNull(jwt.getClaimAsString("name")),
-        blankToNull(jwt.getClaimAsString("picture")));
+        blankToNull(jwt.getClaimAsString("picture")),
+        // 카카오 ID 토큰의 닉네임(2026-11-25) — 이름(실명) 칸에는 넣지 않는다
+        blankToNull(jwt.getClaimAsString("nickname")));
   }
 
   private static @Nullable String blankToNull(@Nullable String v) {

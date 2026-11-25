@@ -20,15 +20,49 @@ public class MeController implements MeApi {
 
   private final com.pmart.rider.application.WithdrawalService withdrawals;
 
+  private final com.pmart.rider.application.ProviderProfiles providerProfiles;
+
   public MeController(
-      RiderService riders, com.pmart.rider.application.WithdrawalService withdrawals) {
+      RiderService riders,
+      com.pmart.rider.application.WithdrawalService withdrawals,
+      com.pmart.rider.application.ProviderProfiles providerProfiles) {
+    this.providerProfiles = providerProfiles;
     this.withdrawals = withdrawals;
     this.riders = riders;
   }
 
   @Override
   public ResponseEntity<RiderProfile> getMyRider() {
-    return ResponseEntity.ok(RiderViews.profile(riders.me()));
+    var r = riders.me();
+    // 소셜 닉네임(0.30.0, 2026-11-25) — 실명 name 은 가입 입력 그대로
+    return ResponseEntity.ok(
+        RiderViews.profile(r)
+            .providerNickname(
+                providerProfiles
+                    .find(r.riderId())
+                    .map(
+                        com.pmart.rider.application.ProviderProfiles.ProviderProfile
+                            ::providerNickname)
+                    .orElse(null)));
+  }
+
+  /** 소셜 이름·닉네임(0.30.0, 2026-11-25) — 가입 전에도(가입 화면 이름 미리 채우기). 없으면 빈 값. */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.RiderProviderProfile>
+      getMyProviderProfile() {
+    var out = new com.pmart.rider.api.generated.model.RiderProviderProfile();
+    providerProfiles
+        .mine()
+        .ifPresent(
+            p ->
+                out.provider(
+                        com.pmart.rider.api.generated.model.RiderProviderProfile.ProviderEnum
+                            .fromValue(p.provider()))
+                    .name(p.name())
+                    .providerNickname(p.providerNickname())
+                    .authenticatedAt(
+                        java.time.OffsetDateTime.ofInstant(p.at(), java.time.ZoneOffset.UTC)));
+    return ResponseEntity.ok(out);
   }
 
   @Override

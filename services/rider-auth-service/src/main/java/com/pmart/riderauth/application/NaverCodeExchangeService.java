@@ -179,7 +179,7 @@ public class NaverCodeExchangeService {
       return;
     }
     String sub = subjectOf(tokens.idToken());
-    holdEmail(sub, naver.profile(accessToken).email());
+    holdProfile(sub, naver.profile(accessToken));
     // 프로필을 읽은 뒤 끊는다(끊으면 access token 이 무효)
     // 가입 전 끊기(RA-1 ③ SIGNUP_PENDING)는 없앴다(2026-11-25 — 고객 auth 와 같게, 사용자 "라이더쪽에도 지금 고객앱 소셜로그인 기능
     // 구조처럼"). 교환 때는 아직 가입 전이라 곧 가입을 마칠 사람까지 끊어 가입 뒤 첫 로그인·탈퇴 재인증에 동의 화면이 또 떴다
@@ -206,26 +206,45 @@ public class NaverCodeExchangeService {
     }
   }
 
-  /** 가린 이메일을 sub 해시에 묶어 둔다. 실패는 경고만(로그인은 이메일 없이). 이메일·sub 는 로그 금지. */
-  private void holdEmail(@Nullable String sub, @Nullable String email) {
-    if (store == null || email == null) {
+  /**
+   * 가린 이메일·이름·별명(2026-11-25)을 sub 해시에 묶어 둔다. 실패는 경고만(로그인은 그 값 없이). 이메일·이름·sub 는 로그 금지. 이름·별명은 100자
+   * 이하·제어 문자 없을 때만.
+   */
+  private void holdProfile(@Nullable String sub, NaverTokenClient.Profile profile) {
+    if (store == null) {
+      return;
+    }
+    String masked = profile.email() == null ? null : RiderLoginService.maskEmail(profile.email());
+    String name = cleanName(profile.name());
+    String nickname = cleanName(profile.nickname());
+    if (masked == null && name == null && nickname == null) {
       return;
     }
     if (sub == null) {
-      log.info("네이버 프로필 이메일 생략 reason=missing_sub");
-      return;
-    }
-    String masked = RiderLoginService.maskEmail(email);
-    if (masked == null) {
-      log.info("네이버 프로필 이메일 생략 reason=invalid_email");
+      log.info("네이버 프로필 생략 reason=missing_sub");
       return;
     }
     try {
-      store.holdNaverEmail(
-          subjectHash(sub), masked, clock.instant().plus(EMAIL_HOLD), clock.instant());
+      store.holdNaverProfile(
+          subjectHash(sub),
+          masked,
+          name,
+          nickname,
+          clock.instant().plus(EMAIL_HOLD),
+          clock.instant());
     } catch (RuntimeException ex) {
       log.warn("네이버 프로필 이메일 보관 실패 reason={}", ex.getClass().getSimpleName());
     }
+  }
+
+  private static @Nullable String cleanName(@Nullable String v) {
+    if (v == null) {
+      return null;
+    }
+    String s = v.strip();
+    return s.isEmpty() || s.length() > 100 || s.chars().anyMatch(Character::isISOControl)
+        ? null
+        : s;
   }
 
   /** 보관 키 — 원 sub 대신 SHA-256(hex). */

@@ -52,8 +52,23 @@ public class KakaoUnlinkClient {
    * {api-base-url}/v2/user/me} Admin 키·회원번호, 유효·확인된 이메일만. 어떤 실패도 null. 값은 로그 금지.
    */
   public @Nullable String email(String kakaoUserId) {
+    return profile(kakaoUserId).email();
+  }
+
+  /** 카카오 사용자 정보의 이메일·닉네임(2026-11-25). */
+  public record KakaoProfile(@Nullable String email, @Nullable String nickname) {
+    static final KakaoProfile NONE = new KakaoProfile(null, null);
+
+    @Override
+    public String toString() {
+      return "KakaoProfile[***]";
+    }
+  }
+
+  /** 이메일(유효·확인된 것만)·닉네임(동의 항목 "닉네임"). 어떤 실패도 NONE. 값은 로그 금지. */
+  public KakaoProfile profile(String kakaoUserId) {
     if (adminKey == null) {
-      return null;
+      return KakaoProfile.NONE;
     }
     tools.jackson.databind.JsonNode body;
     try {
@@ -66,22 +81,27 @@ public class KakaoUnlinkClient {
               .body(tools.jackson.databind.JsonNode.class);
     } catch (HttpStatusCodeException e) {
       log.info("카카오 사용자 정보 생략 reason=http_{}", e.getStatusCode().value());
-      return null;
+      return KakaoProfile.NONE;
     } catch (RuntimeException e) {
       log.info("카카오 사용자 정보 생략 reason={}", e.getClass().getSimpleName());
-      return null;
+      return KakaoProfile.NONE;
     }
     if (body == null || !body.isObject()) {
-      return null;
+      return KakaoProfile.NONE;
     }
     var account = body.path("kakao_account");
-    if (!account.path("email").isString()
-        || !account.path("is_email_valid").asBoolean(false)
-        || !account.path("is_email_verified").asBoolean(false)) {
-      return null;
+    String email = null;
+    if (account.path("email").isString()
+        && account.path("is_email_valid").asBoolean(false)
+        && account.path("is_email_verified").asBoolean(false)) {
+      String e = account.path("email").asString().strip();
+      email = e.isEmpty() ? null : e;
     }
-    String email = account.path("email").asString().strip();
-    return email.isEmpty() ? null : email;
+    String nick = account.path("profile").path("nickname").asString("").strip();
+    if (nick.isEmpty()) {
+      nick = body.path("properties").path("nickname").asString("").strip();
+    }
+    return new KakaoProfile(email, nick.isEmpty() ? null : nick);
   }
 
   public boolean configured() {

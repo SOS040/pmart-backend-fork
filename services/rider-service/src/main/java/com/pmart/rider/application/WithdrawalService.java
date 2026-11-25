@@ -65,6 +65,13 @@ public class WithdrawalService {
     this.clock = clock;
   }
 
+  private @Nullable ProviderProfiles providerProfiles;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  void setProviderProfiles(ProviderProfiles providerProfiles) {
+    this.providerProfiles = providerProfiles;
+  }
+
   /** 구글 연결 끊기(2026-11-25). 시험에서는 없을 수 있다. */
   private com.pmart.rider.infrastructure.@Nullable GoogleRevokeClient google;
 
@@ -127,6 +134,9 @@ public class WithdrawalService {
                   .ifPresent(
                       me -> phones.getObject().holdWithdrawn(riderId, me.name(), me.phone(), now));
               store.withdraw(riderId, now);
+              if (providerProfiles != null) {
+                providerProfiles.delete(riderId); // 소셜 이름·닉네임 사본(2026-11-25)
+              }
               store.recordDuty(riderId, true, true, false, false, now); // 열린 운행 구간 닫기
               store.upsertWithdrawal(riderId, requestId, "COMPLETED", List.of(), reason, now, now);
               Map<String, Object> p = new LinkedHashMap<>();

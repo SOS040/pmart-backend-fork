@@ -315,14 +315,58 @@ public class RiderAuthStore {
   /** 네이버 가린 이메일 잠시 보관(RA-1 ④, V4). 같은 sub 는 덮어쓴다. 지난 것은 이때 함께 지운다. */
   public void holdNaverEmail(
       String subjectHash, String emailMasked, Instant expiresAt, Instant now) {
+    holdNaverProfile(subjectHash, emailMasked, null, null, expiresAt, now);
+  }
+
+  /** 가린 이메일·이름·별명(V5, 2026-11-25)을 함께 묶는다. */
+  public void holdNaverProfile(
+      String subjectHash,
+      @Nullable String emailMasked,
+      @Nullable String name,
+      @Nullable String nickname,
+      Instant expiresAt,
+      Instant now) {
     jdbc.update("DELETE FROM naver_email_hold WHERE expires_at < ?", Timestamp.from(now));
     jdbc.update(
-        "INSERT INTO naver_email_hold (subject_hash, email_masked, expires_at) VALUES (?, ?, ?)"
-            + " ON CONFLICT (subject_hash) DO UPDATE SET email_masked = EXCLUDED.email_masked,"
-            + " expires_at = EXCLUDED.expires_at",
+        "INSERT INTO naver_email_hold (subject_hash, email_masked, name, nickname, expires_at)"
+            + " VALUES (?, ?, ?, ?, ?) ON CONFLICT (subject_hash) DO UPDATE SET"
+            + " email_masked = EXCLUDED.email_masked, name = EXCLUDED.name,"
+            + " nickname = EXCLUDED.nickname, expires_at = EXCLUDED.expires_at",
         subjectHash,
         emailMasked,
+        name,
+        nickname,
         Timestamp.from(expiresAt));
+  }
+
+  /** 묶어 둔 네이버 값(기한 안). 모두 없을 수 있다. */
+  public record NaverHold(
+      @Nullable String emailMasked, @Nullable String name, @Nullable String nickname) {
+    public static final NaverHold NONE = new NaverHold(null, null, null);
+
+    @Override
+    public String toString() {
+      return "NaverHold[***]";
+    }
+  }
+
+  /** 보관한 값을 꺼내고 지운다(기한 안의 것만). */
+  public NaverHold takeNaverHold(String subjectHash, Instant now) {
+    return jdbc
+        .query(
+            "DELETE FROM naver_email_hold WHERE subject_hash = ?"
+                + " RETURNING email_masked, name, nickname, expires_at",
+            (rs, n) ->
+                rs.getTimestamp("expires_at").toInstant().isAfter(now)
+                    ? new NaverHold(
+                        rs.getString("email_masked"),
+                        rs.getString("name"),
+                        rs.getString("nickname"))
+                    : NaverHold.NONE,
+            subjectHash)
+        .stream()
+        .findFirst()
+        .orElse(NaverHold.NONE);
   }
 
   /** 보관한 가린 이메일을 꺼내고 지운다(기한 안의 것만). */

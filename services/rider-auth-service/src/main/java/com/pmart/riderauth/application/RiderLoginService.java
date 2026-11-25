@@ -85,6 +85,61 @@ public class RiderLoginService {
     this.kakao = kakao;
   }
 
+  /** 소셜 이름·닉네임 사건(2026-11-25 RiderAuthenticated, 토픽 platform.auth.v1). 시험에서는 없을 수 있다. */
+  private com.pmart.common.messaging.@org.jspecify.annotations.Nullable EventPublisher events;
+
+  private com.pmart.common.messaging.@org.jspecify.annotations.Nullable EventEnvelopeCodec codec;
+
+  @org.springframework.beans.factory.annotation.Autowired(required = false)
+  void setEvents(
+      com.pmart.common.messaging.EventPublisher events,
+      com.pmart.common.messaging.EventEnvelopeCodec codec) {
+    this.events = events;
+    this.codec = codec;
+  }
+
+  public static final String AUTH_TOPIC = "platform.auth.v1";
+
+  /**
+   * 소셜 이름·닉네임을 rider-service 로(2026-11-25 — 고객 CustomerAuthenticated 와 같게, 사용자 "이름 닉네임 먼저해줘"). 로그인
+   * 트랜잭션 안(outbox). name = 제공자 실명만(카카오는 없음), providerNickname = 닉네임, 없으면 이름. 둘 다 없으면 싣지 않고 사건은
+   * 낸다(로그인 사실). rider-auth 는 이름을 저장하지 않는다. 값은 로그 금지.
+   */
+  private void publishAuthenticated(
+      String riderId,
+      String provider,
+      Instant at,
+      @org.jspecify.annotations.Nullable String name,
+      @org.jspecify.annotations.Nullable String nickname) {
+    if (events == null || codec == null) {
+      return;
+    }
+    java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("riderId", riderId);
+    payload.put("provider", provider);
+    payload.put("authenticatedAt", at.toString());
+    if (name != null) {
+      payload.put("name", name);
+    }
+    String nick = nickname != null ? nickname : name;
+    if (nick != null) {
+      payload.put("providerNickname", nick);
+    }
+    var envelope =
+        codec.create(
+            events.sourceSystem(),
+            "RiderAuthenticated",
+            1,
+            "RiderAccount",
+            riderId,
+            at.toEpochMilli(),
+            new com.pmart.common.messaging.EventEnvelope.Actor(
+                com.pmart.common.messaging.EventEnvelope.ActorType.RIDER, riderId),
+            com.pmart.common.messaging.EventEnvelope.EventSource.REAL,
+            payload);
+    events.publish(envelope, AUTH_TOPIC);
+  }
+
   public RiderLoginService(
       RiderAuthStore store,
       RiderTokens tokens,
@@ -104,15 +159,20 @@ public class RiderLoginService {
 
   private GoogleIdTokenVerifier.Identity withKakaoEmail(
       String provider, GoogleIdTokenVerifier.Identity identity) {
-    if (!"KAKAO".equals(provider) || kakao == null || identity.email() != null) {
+    if (!"KAKAO".equals(provider)
+        || kakao == null
+        || (identity.email() != null && identity.nickname() != null)) {
       return identity;
     }
-    String email = kakao.email(identity.subject());
-    if (email == null) {
-      return identity;
-    }
+    var p = kakao.profile(identity.subject());
+    boolean useEmail = identity.email() == null && p.email() != null;
     return new GoogleIdTokenVerifier.Identity(
-        identity.subject(), email, true, identity.name(), identity.pictureUrl());
+        identity.subject(),
+        useEmail ? p.email() : identity.email(),
+        useEmail ? Boolean.TRUE : identity.emailVerified(),
+        identity.name(),
+        identity.pictureUrl(),
+        identity.nickname() != null ? identity.nickname() : p.nickname());
   }
 
   public Result login(
@@ -184,11 +244,22 @@ public class RiderLoginService {
                   return null;
                 }
               }
+              String name = identity.name();
+              String nickname = identity.nickname();
               if ("NAVER".equals(provider)) {
-                // 네이버 ID 토큰에는 이메일이 없다 — 코드 교환 때 묶어 둔 가린 이메일(2026-11-22 RA-1 ④)
-                store
-                    .takeNaverEmail(NaverCodeExchangeService.subjectHash(identity.subject()), now)
-                    .ifPresent(m -> store.setEmailMasked(provider, identity.subject(), m));
+                // 네이버 ID 토큰에는 이메일·이름이 없다 — 코드 교환 때 묶어 둔 가린 이메일(2026-11-22 RA-1 ④)·이름·별명(2026-11-25)
+                var held =
+                    store.takeNaverHold(
+                        NaverCodeExchangeService.subjectHash(identity.subject()), now);
+                if (held.emailMasked() != null) {
+                  store.setEmailMasked(provider, identity.subject(), held.emailMasked());
+                }
+                if (name == null) {
+                  name = held.name();
+                }
+                if (nickname == null) {
+                  nickname = held.nickname();
+                }
               }
               String state = store.accountState(riderId).orElse("ACTIVE");
               if (!"ACTIVE".equals(state)) {
@@ -215,6 +286,7 @@ public class RiderLoginService {
                   created,
                   now);
               store.recordLogin(provider, identity.subject(), riderId, now);
+              publishAuthenticated(riderId, provider, now, name, nickname);
               RiderTokens.Tokens t = openSession(riderId, deviceId, sourceSystem, now);
               return new Result(authRequestId, MEMBER, riderId, created, t, now);
             });

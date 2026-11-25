@@ -150,6 +150,68 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
         .getTokenValue();
   }
 
+  /** 이름·닉네임 클레임을 더한 ID 토큰(2026-11-25). */
+  static String idTokenWith(String sub, String aud, String iss, Map<String, Object> extra) {
+    Instant now = Instant.now();
+    JwtClaimsSet.Builder b =
+        JwtClaimsSet.builder()
+            .issuer(iss)
+            .subject(sub)
+            .audience(List.of(aud))
+            .claim("azp", RIDER_ANDROID)
+            .issuedAt(now)
+            .expiresAt(now.plusSeconds(600));
+    extra.forEach(b::claim);
+    return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(GOOGLE_KEY)))
+        .encode(
+            JwtEncoderParameters.from(
+                JwsHeader.with(SignatureAlgorithm.RS256).keyId("google-test").build(), b.build()))
+        .getTokenValue();
+  }
+
+  JsonNode authenticatedPayload(String riderId) {
+    return read(jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'RiderAuthenticated'"
+                    + " AND aggregateid = ? AND topic = 'platform.auth.v1'"
+                    + " ORDER BY created_at DESC LIMIT 1",
+                String.class,
+                riderId)
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        .path("payload");
+  }
+
+  /**
+   * 2026-11-25(고객 CustomerAuthenticated 와 같게): 로그인마다 RiderAuthenticated(platform.auth.v1) — 구글 이름 =
+   * 이름·닉네임, 카카오 닉네임은 닉네임만(실명 칸은 비움).
+   */
+  @Test
+  void loginPublishesProviderNameAndNickname() {
+    String g = "g-" + UUID.randomUUID();
+    Res gr =
+        login(
+            "gn-" + g,
+            "dev-" + g,
+            "GOOGLE",
+            idTokenWith(g, RIDER_WEB, "https://accounts.google.com", Map.of("name", "홍길동")));
+    assertThat(gr.status()).as(gr.body().toString()).isEqualTo(200);
+    JsonNode gp = authenticatedPayload(gr.body().path("riderId").asString());
+    assertThat(gp.path("provider").asString()).isEqualTo("GOOGLE");
+    assertThat(gp.path("name").asString()).isEqualTo("홍길동");
+    assertThat(gp.path("providerNickname").asString()).isEqualTo("홍길동");
+
+    String k = "k-" + UUID.randomUUID();
+    Res kr =
+        login(
+            "kn-" + k,
+            "dev-" + k,
+            "KAKAO",
+            idTokenWith(k, KAKAO_APP, "https://kauth.kakao.com", Map.of("nickname", "길동이")));
+    assertThat(kr.status()).as(kr.body().toString()).isEqualTo(200);
+    JsonNode kp = authenticatedPayload(kr.body().path("riderId").asString());
+    assertThat(kp.has("name")).isFalse();
+    assertThat(kp.path("providerNickname").asString()).isEqualTo("길동이");
+  }
+
   static String google(String sub) {
     return idToken(sub, RIDER_WEB, "https://accounts.google.com");
   }

@@ -33,6 +33,18 @@ class RiderEventConsumers {
   }
 
   /**
+   * 인증 사건(platform.auth.v1, 바인딩 {@code authEvents-in-0} — 2026-11-25): rider-auth {@code
+   * RiderAuthenticated} 만(소셜 이름·닉네임 사본). 같은 토픽의 고객·직원 사건은 버린다.
+   */
+  @Bean
+  PmartEventConsumer authEvents(
+      EventConsumers consumers, com.pmart.rider.application.ProviderProfiles profiles) {
+    return consumers.of(
+        e -> com.pmart.rider.application.ProviderProfiles.TYPES.contains(e.eventType()),
+        profiles::on);
+  }
+
+  /**
    * 배송 사건(delivery.delivery.v1, 바인딩 {@code deliveryEvents-in-0} — 2026-11-23): 도움요청 대화 금칙어({@code
    * RiderHelpProfanityDetected})만 받고 나머지 배송 사건은 버린다.
    */
