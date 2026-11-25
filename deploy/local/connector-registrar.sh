@@ -25,6 +25,9 @@ register() {
   service="$(echo "$db" | tr '_' '-')"
   name="outbox-${service}"
   wget -q -O /dev/null "${CONNECT_URL}/connectors/${name}" 2>/dev/null && return 0
+  # heartbeat 표(2026-11-25): 쓰기가 적은 DB 도 슬롯 확인 위치가 앞으로 가게 — 템플릿 heartbeat.action.query 가 이 표에 쓴다(deploy/lan/debezium-heartbeat.sh 와 같음)
+  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$db" -qc "CREATE TABLE IF NOT EXISTS public.pmart_heartbeat (id integer PRIMARY KEY, ts timestamptz NOT NULL)" >/dev/null 2>&1
+  [ "$(psql_q "$db" "SELECT 1 FROM pg_publication_tables WHERE pubname = 'pmart_outbox' AND tablename = 'pmart_heartbeat'")" = "1" ]     || psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$db" -qc "ALTER PUBLICATION pmart_outbox ADD TABLE public.pmart_heartbeat" >/dev/null 2>&1
   body="$(sed -e "s|\${SERVICE_SLOT}|${db}|g" -e "s|\${SERVICE}|${service}|g" \
               -e "s|\${DB_HOST}|${DB_HOST}|g" -e "s|\${DB_PORT}|${DB_PORT}|g" \
               -e "s|\${DB_USER}|${DB_USER}|g" -e "s|\${DB_PASSWORD}|${PGPASSWORD}|g" \
