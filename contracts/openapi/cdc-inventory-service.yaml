@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
+    0.6.0(2026-11-25, DC 백오피스 1단계 재고 현황 — 사용자 "Dc 백오피스 만들어줘"): 직원 조회 `GET /cdcs/{cdcId}/stock-snapshot` — 내부 `/internal/snapshots` 와 같은
+      내용(SKU별 현물·가용·예약, withPlaces=true 면 LOT·위치별)을 자기 센터 운영자(토큰 centers)에게. 읽기만.
     CDC 재고 단일 쓰기 주체. 위치·LOT·품질상태별 On-hand, 이관 예약 R(0 ≤ R ≤ E ≤ 장부), Held, 안전량 S, 가용 max(0, E−R−S),
     LOT 식별/소비기한/FEFO, 초기 보유 INITIAL_BALANCE, 승인 TRF 다LOT FEFO 할당, TOUT 1회 전기, Transit 소유·대사(q = r + l + t),
     승인 손실/폐기/ADJ 집행, 일일 수불 대사의 정본. (docs/architecture/service-map.md §4, docs/adr/0002)
@@ -677,6 +679,33 @@ paths:
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
                   items: { type: array, items: { $ref: '#/components/schemas/DailyReconciliationLine' } }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cdcs/{cdcId}/stock-snapshot:
+    get:
+      tags: [availability]
+      summary: '[운영자] 재고 현황 (DC 백오피스 — 내부 스냅샷과 같은 내용)'
+      description: |
+        sku 를 비우면 센터에 현물 행이 있는 SKU 전부. withPlaces=true 면 lots[].locations[](위치·품질 상태별 현물·예약)까지 — 기본 false(목록 화면은 가볍게).
+        자기 센터 운영자만(토큰 centers 에 cdcId, 없으면 403).
+      operationId: getCenterStockSnapshot
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: withPlaces, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshotId: { type: string }
+                  cdcId: { type: string }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  items: { type: array, items: { $ref: '#/components/schemas/Availability' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/sku-handlings:
     get:

@@ -45,6 +45,21 @@ public class AvailabilityController implements AvailabilityApi {
     return ResponseEntity.ok(out);
   }
 
+  /** DC 백오피스 재고 현황(2026-11-25) — 내부 스냅샷과 같은 내용, 자기 센터 운영자만. */
+  @Override
+  public ResponseEntity<GetSnapshot200Response> getCenterStockSnapshot(
+      String cdcId, @Nullable String sku, Boolean withPlaces) {
+    com.pmart.cdc.inventory.application.Operator.requireCenter(cdcId);
+    var snap = queries.snapshot(cdcId, sku);
+    var out = new GetSnapshot200Response();
+    out.setSnapshotId(snap.snapshotId());
+    out.setCdcId(snap.cdcId());
+    out.setAsOf(Dto.asOf(snap.asOf()));
+    boolean places = Boolean.TRUE.equals(withPlaces);
+    out.setItems(snap.items().stream().map(v -> dto(v, places)).toList());
+    return ResponseEntity.ok(out);
+  }
+
   static Availability dto(AvailabilityView v, boolean withPlaces) {
     var out = new Availability();
     out.setCdcId(v.cdcId());

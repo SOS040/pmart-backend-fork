@@ -229,6 +229,32 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(get(SERVICE, "/internal/transfer-intakes/" + trf3).body().path("state").asString())
         .isEqualTo("ALLOCATED");
 
+    // 2-1) DC 백오피스 직원 조회(0.11.0, 2026-11-25) — TRF 목록·상세·그날 출고 집계, 다른 센터 403
+    JsonNode trfList =
+        get(OPS, "/cdcs/" + CENTER + "/transfers?state=PARTIALLY_ALLOCATED&size=200").body();
+    assertThat(trfList.path("items").findValuesAsString("trfId")).contains(trf1);
+    assertThat(trfList.path("items").findValuesAsString("state"))
+        .containsOnly("PARTIALLY_ALLOCATED");
+    JsonNode detail = get(OPS, "/cdcs/" + CENTER + "/transfers/" + trf1).body();
+    assertThat(detail.path("approvedQty").asInt()).isEqualTo(10);
+    assertThat(detail.path("lines").size()).isEqualTo(2);
+    assertThat(detail.path("lines").get(0).path("approvedQty").asInt()).isEqualTo(6);
+    assertThat(get(OPS, "/cdcs/" + CENTER + "/transfers/TRF-NONE").status()).isEqualTo(404);
+    String day =
+        java.time.LocalDate.ofInstant(Instant.parse(DUE), java.time.ZoneId.of("Asia/Seoul"))
+            .toString();
+    JsonNode sum = get(OPS, "/cdcs/" + CENTER + "/outbound-summary?date=" + day).body();
+    assertThat(sum.path("transferCount").asInt()).isGreaterThanOrEqualTo(3);
+    assertThat(sum.path("transfersByState").findValuesAsString("key"))
+        .contains("PARTIALLY_ALLOCATED", "ALLOCATION_FAILED", "ALLOCATED");
+    assertThat(sum.path("approvedQty").asInt()).isGreaterThanOrEqualTo(14);
+    assertThat(
+            get(
+                    TestJwt.operator("ops-x", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
+                    "/cdcs/" + CENTER + "/transfers")
+                .status())
+        .isEqualTo(403);
+
     // 3) Wave 생성 — 확보 안 된 TRF·이미 Wave 에 든 TRF 거절
     assertThat(
             post(OPS, "/waves", Map.of("cdcId", CENTER, "trfIds", List.of(trf2)))

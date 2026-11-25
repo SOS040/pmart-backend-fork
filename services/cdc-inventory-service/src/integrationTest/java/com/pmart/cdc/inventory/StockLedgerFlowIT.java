@@ -669,6 +669,28 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(get(SERVICE, "/internal/snapshots?cdcId=" + CENTER + "&snapshotId=OLD").status())
         .isEqualTo(404);
 
+    // 2-2) DC 백오피스 재고 현황(0.6.0, 2026-11-25) — 같은 내용, 자기 센터 운영자만, 기본은 위치 없이
+    JsonNode staff = get(OPERATOR, "/cdcs/" + CENTER + "/stock-snapshot?sku=" + sku).body();
+    assertThat(staff.path("items").get(0).path("onHand").asInt())
+        .isEqualTo(item.path("onHand").asInt());
+    assertThat(
+            staff.path("items").get(0).path("lots").isMissingNode()
+                || staff.path("items").get(0).path("lots").isEmpty()
+                || staff.path("items").get(0).path("lots").get(0).path("locations").isMissingNode()
+                || staff.path("items").get(0).path("lots").get(0).path("locations").isEmpty())
+        .isTrue();
+    assertThat(
+            get(OPERATOR, "/cdcs/" + CENTER + "/stock-snapshot?sku=" + sku + "&withPlaces=true")
+                .body()
+                .toString())
+        .contains(shelf);
+    assertThat(
+            get(
+                    TestJwt.operator("op-2", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
+                    "/cdcs/" + CENTER + "/stock-snapshot")
+                .status())
+        .isEqualTo(403);
+
     // 3) 선반에서 출발 전기(위치를 비우면 할당이 잡은 위치 = 선반)
     Map<String, Object> dep = new LinkedHashMap<>();
     dep.put("cdcId", CENTER);

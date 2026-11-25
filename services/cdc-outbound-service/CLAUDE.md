@@ -42,3 +42,4 @@
   착수 전 미출발 취소는 묶음 작업에서 그 TRF 몫만 뺀다(줄 계획 −몫, 빈 작업은 CANCELLED). 재고 MOV 없음(설계 §4).
   DPS 는 TRF × 구역 × 층 × **선반 통로**(0.10.0, Flyway V8 `task.aisle` — 시뮬레이터 R-20, 사용자 "제안대로"): 컨베이어 통로 작업자가 다음 작업 받기 `aisles` 로 자기 통로만 받는다(TRF 끼리는 묶지 않음).
 - 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.
+- **DC 백오피스 직원 조회(2026-11-25, 0.11.0 — 사용자 "Dc 백오피스 만들어줘", 계획 docs/cdc/cdc-backoffice-plan.md 1단계)**: `api/StaffViewsController` → `application/StaffViews` → `infrastructure/StaffViewStore`(읽기만, `Support.requireCenter`). `GET /cdcs/{cdcId}/transfers`(state·mfcId·page·size≤200, 기한 순, 줄 합)·`…/transfers/{trfId}`(줄별 승인·할당·피킹·부족)·`/outbound-summary?date=`(Asia/Seoul 그날 기한 TRF — 상태별 수·수량 합·진행률 피킹÷승인, Wave 상태별·작업 종류:상태별). 게이트웨이 라우트·허용 목록. 시험 `OutboundFlowIT.intakeWaveTasksPicking` 2-1.

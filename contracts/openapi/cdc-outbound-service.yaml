@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
+    0.11.0(2026-11-25, DC 백오피스 1단계 — 사용자 "Dc 백오피스 만들어줘", 계획 docs/cdc/cdc-backoffice-plan.md): 직원 조회 3개(자기 센터 운영자 — 토큰 centers 에 cdcId).
+      `GET /cdcs/{cdcId}/transfers`(TRF 목록 — 상태·MFC 거르기, 기한 순), `GET /cdcs/{cdcId}/transfers/{trfId}`(줄별 승인·할당·피킹·부족 수량),
+      `GET /cdcs/{cdcId}/outbound-summary?date=`(그날(Asia/Seoul, TRF 기한 기준) 출고 집계 — TRF 상태별 수·수량 합·진행률, Wave 상태별 수, 작업 종류×상태별 수). 읽기만.
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
     수량 전기는 cdc-inventory(할당/해제/TOUT), 차량·운행은 TMS(transport-*), 승인은 replenishment가 정본.
@@ -29,6 +32,7 @@ tags:
   - { name: tasks, description: 작업·실피킹 결과 }
   - { name: results, description: 분류·검품·상차 결과 등록 }
   - { name: transfers, description: 미출발 취소 }
+  - { name: staff-views, description: "(0.11.0) DC 백오피스 직원 조회 — TRF 목록·상세·출고 집계" }
   - { name: internal, description: 서비스 간 호출 (replenishment / transport / cdc-inventory / mfc-inbound) }
 
 paths:
@@ -190,6 +194,73 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/Task' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /cdcs/{cdcId}/transfers:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] TRF 목록 (0.11.0 — DC 백오피스 TRF 관리)'
+      description: |
+        이 센터가 인수한 승인 TRF. 기한(dueAt) 빠른 순, 같으면 trfId 순. state·mfcId 로 거른다(생략 = 전부). page 는 0부터.
+      operationId: listCenterTransfers
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: state, in: query, required: false, schema: { type: string, maxLength: 24 }, description: 'TRF 상태(RECEIVED·ALLOCATED·PARTIALLY_ALLOCATED·ALLOCATION_FAILED·IN_WAVE·PICKED·…)' }
+        - { name: mfcId, in: query, required: false, schema: { type: string, maxLength: 32 } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TransferSummary' } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/transfers/{trfId}:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] TRF 상세 — 줄별 수량 (0.11.0)'
+      operationId: getCenterTransfer
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: trfId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferDetail' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cdcs/{cdcId}/outbound-summary:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 그날 출고 집계 (0.11.0 — DC 백오피스 대시보드)'
+      description: |
+        date(Asia/Seoul, 생략 = 오늘)에 기한(dueAt)이 든 TRF 기준. 진행률 = 피킹 합 ÷ 승인 합(승인 0 이면 null). Wave·작업은 그 TRF 의 것.
+        입고(cdc-inbound)는 아직 서비스가 없어 여기에 없다.
+      operationId: getOutboundSummary
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OutboundSummary' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/regions:
     get:
@@ -792,6 +863,66 @@ paths:
 
 components:
   schemas:
+    TransferSummary:
+      type: object
+      description: '(0.11.0) TRF 한 줄 — 수량은 줄 합'
+      required: [trfId, trfVersion, mfcId, state, dueAt, lineCount, approvedQty, allocatedQty, pickedQty, shortQty]
+      properties:
+        trfId: { type: string }
+        trfVersion: { type: integer }
+        mfcId: { type: string }
+        state: { type: string }
+        deadlineMeaning: { type: string, description: 'ARRIVAL / HANDOVER / READY' }
+        dueAt: { type: string, format: date-time }
+        waveId: { type: [string, 'null'] }
+        allocationError: { type: [string, 'null'], description: 재고 쪽 거절 사유 }
+        lineCount: { type: integer }
+        approvedQty: { type: integer }
+        allocatedQty: { type: integer }
+        pickedQty: { type: integer }
+        shortQty: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TransferDetail:
+      allOf:
+        - $ref: '#/components/schemas/TransferSummary'
+        - type: object
+          required: [lines]
+          properties:
+            lines:
+              type: array
+              items:
+                type: object
+                required: [sku, approvedQty, allocatedQty, pickedQty, shortQty]
+                properties:
+                  sku: { type: string }
+                  approvedQty: { type: integer }
+                  allocatedQty: { type: integer }
+                  pickedQty: { type: integer }
+                  shortQty: { type: integer }
+    CountByKey:
+      type: object
+      required: [key, count]
+      properties:
+        key: { type: string }
+        count: { type: integer }
+    OutboundSummary:
+      type: object
+      description: '(0.11.0) 그날 출고 집계'
+      required: [cdcId, date, transferCount, transfersByState, approvedQty, allocatedQty, pickedQty, shortQty, wavesByState, tasksByKindState]
+      properties:
+        cdcId: { type: string }
+        date: { type: string, format: date }
+        transferCount: { type: integer }
+        transfersByState: { type: array, items: { $ref: '#/components/schemas/CountByKey' } }
+        approvedQty: { type: integer }
+        allocatedQty: { type: integer }
+        pickedQty: { type: integer }
+        shortQty: { type: integer }
+        progress: { type: [number, 'null'], description: '피킹 합 ÷ 승인 합(0~1), 승인 0 이면 null' }
+        wavesByState: { type: array, items: { $ref: '#/components/schemas/CountByKey' } }
+        tasksByKindState: { type: array, items: { $ref: '#/components/schemas/CountByKey' }, description: 'key = 종류:상태(예 PICK:DONE)' }
+        asOf: { type: string, format: date-time }
     WaveState:
       type: string
       enum: [DRAFT, PLANNED, RELEASED, IN_PROGRESS, WORK_DONE, CLOSED, CANCELLED]
