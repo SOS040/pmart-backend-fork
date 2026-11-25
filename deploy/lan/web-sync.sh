@@ -45,7 +45,7 @@ else
 fi
 
 # 앱 → 포트(https). 앱 이름 = web/<앱> = lan.sh publish-<앱> = 컨테이너 <앱>-web
-APPS="backoffice:443 hr-backoffice:8444 mfc-backoffice:8445 rider-backoffice:8446"
+APPS="backoffice:443 hr-backoffice:8444 mfc-backoffice:8445 rider-backoffice:8446 cdc-backoffice:8447" # cdc-backoffice 2026-11-25(DC 백오피스)
 
 host_of() { # placement.conf 에서 <앱>-web 이 놓인 PC 의 IP
   awk -v svc="$1-web" '/^[^#[:space:]]/ {cur = $2} {for (i = 1; i <= NF; i++) if ($i == svc) {print cur; exit}}' "$LAN/placement.conf"
@@ -118,7 +118,7 @@ if [ "$(cat "$BUILD/node_modules/.web-sync-lock" 2>/dev/null || true)" != "$lock
 fi
 # 계약 타입(src/api/generated — git 에 없음)은 tools/web-tools(workspace 밖, 따로 설치)의 gen:api 가 형제 폴더
 # ../pmart-backend/contracts/openapi 에서 만든다(개발 폴더 빌드와 같은 길). backoffice 의 gen:api 가 core·hr·mfc 사본도 만들고,
-# rider-backoffice 는 자기 gen:api(사본 복사 포함)를 따로 돈다.
+# rider-backoffice 는 자기 gen:api(사본 복사 포함)를 따로 돈다. cdc-backoffice 도 따로(2026-11-25).
 tools_sha="$(git -C "$BUILD" rev-parse "$target:tools/web-tools/package-lock.json")"
 if [ "$(cat "$BUILD/tools/web-tools/node_modules/.web-sync-lock" 2>/dev/null || true)" != "$tools_sha" ]; then
   echo "npm ci (tools/web-tools — ${tools_sha:0:8})"
@@ -130,6 +130,7 @@ gen_log="${TMPDIR:-${TEMP:-/tmp}}/pmart-web-sync-gen.log"
 gen() { (cd "$BUILD" && npm run gen:api -w "web/$1") > "$gen_log" 2>&1 || { tail -20 "$gen_log" >&2; echo "계약 타입 생성 실패: $1" >&2; exit 1; }; }
 gen backoffice
 case " ${behind[*]} " in *" rider-backoffice "*) gen rider-backoffice ;; esac
+case " ${behind[*]} " in *" cdc-backoffice "*) gen cdc-backoffice ;; esac # 자기 gen:api(2026-11-25)
 
 failed=0
 for app in "${behind[@]}"; do
