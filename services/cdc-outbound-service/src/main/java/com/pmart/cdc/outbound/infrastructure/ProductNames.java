@@ -25,6 +25,7 @@ public class ProductNames {
 
   private static final Logger log = LoggerFactory.getLogger(ProductNames.class);
   private static final Duration TTL = Duration.ofMinutes(10);
+  private static final Duration BUDGET = Duration.ofSeconds(2); // 응답 하나에서 이름 찾기에 쓰는 시간 상한
 
   private record Entry(String name, Instant at) {}
 
@@ -51,25 +52,52 @@ public class ProductNames {
         miss.add(s);
       }
     }
+    Instant deadline = now.plus(BUDGET);
     for (int i = 0; i < miss.size(); i += 100) {
       List<String> part = miss.subList(i, Math.min(miss.size(), i + 100));
       try {
+        // SKU → 상품 ID·승인 버전(SkuDetail 에는 이름이 없다)
         String body =
             http.get()
                 .uri("/api/v1/internal/skus?skus={s}", String.join(",", part))
                 .header("X-Source-System", "cdc-outbound-service")
                 .retrieve()
                 .body(String.class);
-        JsonNode items = mapper.readTree(body == null ? "{}" : body).path("items");
+        Map<String, List<String>> skusOf = new HashMap<>();
+        Map<String, Integer> versionOf = new HashMap<>();
         for (String s : part) {
-          cache.put(s, new Entry("", now)); // 없는 SKU 도 잠시 담아 매번 부르지 않는다
+          cache.put(s, new Entry("", now)); // 없는 SKU·이름 없는 상품도 잠시 담아 매번 부르지 않는다
         }
-        for (JsonNode it : items) {
+        for (JsonNode it : mapper.readTree(body == null ? "{}" : body).path("items")) {
           String sku = it.path("sku").asString(null);
-          String name = it.path("internalName").asString(null);
-          if (sku != null && name != null && !name.isBlank()) {
-            cache.put(sku, new Entry(name, now));
-            out.put(sku, name);
+          String pid = it.path("productId").asString(null);
+          if (sku != null && pid != null && it.path("version").isNumber()) {
+            skusOf.computeIfAbsent(pid, k -> new ArrayList<>()).add(sku);
+            versionOf.put(pid, it.path("version").asInt());
+          }
+        }
+        // 상품 승인 스냅샷의 관리용 명칭(internalName — MFC 와 같은 기준)
+        for (var e : skusOf.entrySet()) {
+          if (Instant.now().isAfter(deadline)) {
+            log.warn("상품 이름 조회 시간 넘김 — 나머지는 다음 조회에");
+            return out;
+          }
+          String prod =
+              http.get()
+                  .uri(
+                      "/api/v1/internal/products/{id}/versions/{v}",
+                      e.getKey(),
+                      versionOf.get(e.getKey()))
+                  .header("X-Source-System", "cdc-outbound-service")
+                  .retrieve()
+                  .body(String.class);
+          String name =
+              mapper.readTree(prod == null ? "{}" : prod).path("internalName").asString(null);
+          if (name != null && !name.isBlank()) {
+            for (String sku : e.getValue()) {
+              cache.put(sku, new Entry(name, now));
+              out.put(sku, name);
+            }
           }
         }
       } catch (RuntimeException e) {

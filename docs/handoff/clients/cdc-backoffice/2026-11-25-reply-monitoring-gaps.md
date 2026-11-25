@@ -42,5 +42,5 @@ PC 5 요청(화면 번호 T·W·K, P-1 상품 이름). 규칙은 ADR-0070 덧붙
   - TransferSummary·TransferDetail: trfNumber·waveNumber
   - DepartureValidation: departureNumber·transfers[].trfNumber
 - 찾기: `GET /cdcs/{cdcId}/transfers|waves|departures|tasks?number=` — `T482913`·`t482913`·`482913` 모두 같은 번호. 숫자가 아니면 빈 목록.
-- 상품 이름: `TransferDetail.lines[].productName`·`Task.lines[].productName`(product internalName, 못 찾으면 null).
+- 상품 이름: `TransferDetail.lines[].productName`·`Task.lines[].productName`(product 승인 스냅샷 internalName, 못 찾으면 null).
 - 실사 번호 C 와 cdc-inventory 상품 이름(stock-snapshot·location-stocks·sku-handlings·count-sessions·recount-holds)은 **cdc-inventory 요청 CI-1** 로 CDC 세션이 해요(그쪽 PR 과 겹치지 않게). 그동안은 말씀하신 대로 화면이 product 에서 찾아 주세요.

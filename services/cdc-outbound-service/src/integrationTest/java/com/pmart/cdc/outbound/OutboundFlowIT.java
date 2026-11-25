@@ -1498,7 +1498,14 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
                 aResponse()
                     .withHeader("Content-Type", "application/json")
                     .withBody(
-                        "{\"items\":[{\"sku\":\"E-00000001\",\"internalName\":\"사과 1입\"}],\"missing\":[\"E-00000002\"]}")));
+                        "{\"items\":[{\"sku\":\"E-00000001\",\"productId\":\"PRD-1\",\"version\":3}],\"missing\":[\"E-00000002\"]}")));
+    product.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                urlPathEqualTo("/api/v1/internal/products/PRD-1/versions/3"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"productId\":\"PRD-1\",\"internalName\":\"사과 1입\"}")));
     JsonNode task61 = get(ops, base + t61).body();
     String kNo = task61.path("taskNumber").asString();
     assertThat(kNo).matches("K[0-9]{5,}");
