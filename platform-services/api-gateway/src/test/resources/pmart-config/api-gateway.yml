@@ -185,7 +185,7 @@ spring:
             - id: cdc-quality-service
               uri: ${pmart.gateway.upstream.cdc-quality-service}
               predicates:
-                - Path=/api/v1/cdcs/*/quality-holds,/api/v1/cdcs/*/quality-holds/**,/api/v1/cdcs/*/disposal-approvals,/api/v1/cdcs/*/disposal-approvals/** # CDC 품질 보류·폐기(cdc-quality 0.2.0 #510, 2026-11-26)
+                - Path=/api/v1/cdcs/*/quality-holds,/api/v1/cdcs/*/quality-holds/**,/api/v1/cdcs/*/disposal-approvals,/api/v1/cdcs/*/disposal-approvals/**,/api/v1/cdc-recalls,/api/v1/cdc-recalls/** # CDC 품질 보류·폐기(cdc-quality 0.2.0 #510, 2026-11-26) · 리콜(0.3.0 #513)
               order: -86
             - id: mfc-fulfillment-service
               uri: ${pmart.gateway.upstream.mfc-fulfillment-service}
