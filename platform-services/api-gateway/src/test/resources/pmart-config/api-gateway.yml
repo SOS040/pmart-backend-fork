@@ -187,6 +187,11 @@ spring:
               predicates:
                 - Path=/api/v1/cdcs/*/quality-holds,/api/v1/cdcs/*/quality-holds/**,/api/v1/cdcs/*/disposal-approvals,/api/v1/cdcs/*/disposal-approvals/**,/api/v1/cdc-recalls,/api/v1/cdc-recalls/**,/api/v1/cdcs/*/operation-restrictions,/api/v1/cdcs/*/operation-restrictions/** # CDC 품질 보류·폐기(cdc-quality 0.2.0 #510, 2026-11-26) · 리콜(0.3.0 #513) · 운영 제한(0.4.0 #515)
               order: -86
+            - id: cdc-inbound-service
+              uri: ${pmart.gateway.upstream.cdc-inbound-service}
+              predicates:
+                - Path=/api/v1/cdcs/*/putaway-tasks,/api/v1/cdcs/*/putaway-tasks/**,/api/v1/cdcs/*/replenishment-checks # CDC 적치 지시·자동 보충(cdc-inbound 0.2.0 #520, 2026-11-26)
+              order: -85
             - id: mfc-fulfillment-service
               uri: ${pmart.gateway.upstream.mfc-fulfillment-service}
               predicates:
@@ -302,6 +307,7 @@ pmart:
       cdc-outbound-service: http://cdc-outbound-service:8603
       cdc-location-service: http://cdc-location-service:8602
       cdc-quality-service: http://cdc-quality-service:8604
+      cdc-inbound-service: http://cdc-inbound-service:8605
       mfc-capacity-service: http://mfc-capacity-service:8303
       mfc-location-service: http://mfc-location-service:8304
       mfc-quality-service: http://mfc-quality-service:8305
