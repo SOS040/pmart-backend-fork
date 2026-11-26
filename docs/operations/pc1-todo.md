@@ -6,6 +6,11 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - PR 검토·병합·PR 배포는 PR 세션 몫(이 문서에 넣지 않는다).
 - 마지막 갱신: 2026-11-24.
 
+## 000. 2026-11-26 오후 세션
+- [x] 구매 기록 활용 ①·R4·O-13(order 0.24.0·review 0.9.0)·O-12(order 0.25.0)·CU-5·CU-6(customer 0.22.0·auth 0.12.0) — 모두 LAN 배포. 앱·화면은 고객앱 세션(`handoff/clients/customer-app/2026-11-26-request-frequent-items.md`)·PC 2.
+- [ ] **JMeter 부하 시험** — `docs/operations/2026-11-26-jmeter-load-test-plan.md` §6(다른 세션에 시간 알림 → 비회원 토큰 100개 → 1분 확인 → 10·50·100명, 결과 `D:\pmart-perf\jmeter\`). 주문·결제 소량 스크립트는 몇 건인지 사용자 확인 뒤.
+- [ ] (CDC 세션 몫 — 결정만 사용자) DC 부분 출고 승인·수동 할당 — 추천 둘 다 지금처럼.
+
 ## 00. 2026-11-24 재부팅 뒤 이어서 할 것
 - [x] **LAN 다시 올리기** — 2026-11-24 끝(19:2x 확인: 다섯 PC 컨테이너 모두 running — 멈춘 것은 init 3개뿐·정상, 감시 작업 Ready·마지막 결과 0·5분 주기, 게이트웨이 health UP, 웹 443·8444~8446 200). 옛 줄: 2026-11-24 전체 `down`(볼륨 남김) 뒤 재부팅. `deploy/lan/lan.sh deploy all`(config-server 먼저) → `lan.sh status all` → **`Enable-ScheduledTask -TaskName 'PMart LAN Watch'`**(내릴 때 사용 안 함으로 바꿈). 올린 뒤 rag-warm pc2, 시뮬레이터들에 알림. 시작은 사용자 지시 뒤.
 - [x] **1호점 부산진구 다시 설계(R-45)** — 2026-11-24 PC 1 반영 끝(move 171·close 6,343·positions 9,185, 회신 `handoff/simulator/mfc/2026-11-24-reply-r45-busanjin-applied.md`, 시뮬레이터 대조 어긋남 0). 옛 줄: — 요청서 `handoff/simulator/mfc/2026-11-24-request-busanjin-redesign.md`(피킹 222랙 8,756·보충 29랙 435·대형 10, 랙당 칸 지금 그대로). 순서: 사용자 시뮬레이터 "확정"(로컬 6e35a62) → 시뮬레이터 push → PC 3 새 PR(브랜치 `mfc/r45-reshape`, 사본·계획 숫자) → PC 1 병합·`mfc_layout.py r45plan` 숫자 사용자 확인 → 1호점 가상 작업자·실주문 멈춘 뒤 `r45` 실행(없어지는 칸 약 6,268 — 재고는 같은 온도대·구역 빈 칸으로 정정 뒤 닫기, 예약·보류 줄 남김) → 시뮬레이터 대조.
@@ -83,7 +88,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 
 - [x] **CL-8 클레임 센터 거르기**(구현 2026-11-23 claim 0.13.0)(2026-11-23 사용자 "주문에 붙은 것만") — claim `GET /claims`·`/claims/counts`·`/claims/metrics/refunds` `mfcId`, 취소·교환 행 센터 채우기. 시작은 사용자 지시 뒤.
 
-- [ ] **고객 관리 원천(PC 2 PR #365 요청서 — 병합 대기)** 2026-11-23 사용자 "목록·분류부터"·"추천대로": 1차 CU-5 직원 고객 목록·검색 + O-12 고객별 구매 요약(분류 신규 1달·우수 3개월 100만원·휴면 1년·위험 6개월) → 2차 CU-6·PY-1·PRM-1·RV-1 → 3차 O-13 → CU-7 은 사용자 결정 뒤. 정의: 이름 검색 2글자 이상 앞부분 일치(목록 가린 이름·전화, 검색 감사 기록), lastActiveAt = max(마지막 로그인·토큰 갱신, 마지막 주문). 공용 표는 #365 병합 뒤.
+- [x] **고객 관리 원천 — PC 1 몫 끝(2026-11-26 LAN 배포: O-13 9f4504ac·O-12 b3e1e56e·CU-5·CU-6 1d94ebb7, 회신 `handoff/clients/backoffice/2026-11-26-reply-*`. 화면·bff 합치기는 PC 2)**(PC 2 PR #365 요청서) 2026-11-23 사용자 "목록·분류부터"·"추천대로": 1차 CU-5 직원 고객 목록·검색 + O-12 고객별 구매 요약(분류 신규 1달·우수 3개월 100만원·휴면 1년·위험 6개월) → 2차 CU-6·PY-1·PRM-1·RV-1 → 3차 O-13 → CU-7 은 사용자 결정 뒤. 정의: 이름 검색 2글자 이상 앞부분 일치(목록 가린 이름·전화, 검색 감사 기록), lastActiveAt = max(마지막 로그인·토큰 갱신, 마지막 주문). 공용 표는 #365 병합 뒤.
 - [x] **BR-84 타이머 테마 모양 timerStyle**(storefront 0.12.0 구현 2026-11-23)(PC1 프론트 2026-11-23, 요청서 pmart-clients `customer-app/2026-11-23-backend-timer-theme-style.md`) — 사용자 확인 뒤 시작.
 
 ## 4. 기다리는 것(다른 쪽이 끝나면 PC 1 이 이어서)
