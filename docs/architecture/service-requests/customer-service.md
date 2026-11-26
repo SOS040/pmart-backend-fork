@@ -45,9 +45,11 @@
 - **필요한 것**: `GET /customers` 목록(쪽 넘김, 가린 값만) — 거르기 이름(부분 일치?)·전화·회원번호·가입일 기간·상태, 가입 최근 순.
 - **정할 것(PC 1)**: 이름 검색을 어떻게 할지(개인정보 원문 검색 — ADR-0062 와 맞는지, 완전 일치만 허용할지). 최근 구매일 거르기는 order 값이라 O-12 와 같이 보기.
 - 받는 쪽: backoffice-bff `views/customer-search` 확장(PC 2).
+- **구현(2026-11-26 PC 1, 계약 0.22.0 — 결정 2026-11-23 "추천대로")**: `GET /customers` 에 고객번호·전화·ID 가 없으면 **목록 모드** — 가입 최근 순·`size`(1~200)·`cursor`, 거르기 `name`(이름 **2글자 이상 앞부분 일치**, 별명은 안 찾음, LIKE 와일드카드는 글자 그대로)·`joinedFrom`·`joinedTo`(Asia/Seoul 날짜 포함)·`status`. 응답 가린 값 + 줄에 `joinedAt`, `page`. **이름으로 찾으면 audit-service 에 검색 기록**(accessType SEARCH·subjectRef CUSTOMER_LIST·fields NAME·recordCount, 검색어 없음)이 된 뒤에만 결과(실패 503). 이름 없는 목록은 기록 안 함. 최근 구매일 거르기는 order O-12 `customer-ids`. 색인 V22(가입 순·이름 앞부분). 시험 `StaffCustomerIT.staffListFiltersPagesAndRecordsNameSearch`. LAN 배포 전.
 
 ## CU-6. 고객 최근 활동일 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
 - **필요한 것**: 고객 상세(`GET /customers/{id}`)와 목록에 `lastActiveAt`(마지막 로그인 또는 앱 사용 — 정의는 PC 1 이 정해 주세요). 가입 경로(socialProvider)·가입일·이메일(가림)은 이미 있음.
+- **정의(2026-11-23 사용자 "추천대로")·구현(2026-11-26 PC 1)**: lastActiveAt = max(마지막 로그인, 마지막 토큰 갱신, 마지막 주문). 로그인·갱신은 auth-service, 주문은 order-service 가 정본이라 customer 에 두지 않고 **bff 가 합친다** — auth 0.12.0 내부 `GET /internal/customers/activities?accountIds=`(1~200, `lastLoginAt`·`lastTokenRefreshAt`, 없는 계정 null) + order 0.25.0 `customer-summaries` 의 `lastOrderAt`. 앱을 열기만 하고 토큰을 갱신하지 않은 사용은 세지 않는다(access 토큰 수명 안). 시험 `CustomerWithdrawalIT.customerActivitiesGiveLastLoginAndRefresh`. LAN 배포 전.
 
 ## CU-7. 계정 이용제한 — 사유 "욕설 사용" (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
 - **사용자 결정(2026-11-23)**: 계정 상태 관리 — 정상·이용제한·정지·탈퇴, 제한 사유·해제. 사유 예: **욕설 사용**.

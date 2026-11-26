@@ -110,6 +110,41 @@ class CustomerWithdrawalIT extends PostgresKafkaContainerSupport {
             device));
   }
 
+  /** 0.12.0 CU-6: 마지막 로그인·토큰 갱신(요청 순서·중복 한 번·없는 계정 null), 개수 검사 400. */
+  @Test
+  void customerActivitiesGiveLastLoginAndRefresh() {
+    String device = "phone-" + UUID.randomUUID();
+    Res first = login(device, CustomerSocialLoginIT.google("g-" + UUID.randomUUID()));
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(200);
+    String accountId = first.body().path("accountId").asString();
+    String path = "/internal/customers/activities?accountIds=";
+
+    JsonNode before = get(path + accountId + ",CU-NONE," + accountId).body().path("items");
+    assertThat(before.findValuesAsString("accountId")).containsExactly(accountId, "CU-NONE");
+    assertThat(before.path(0).path("lastLoginAt").asString()).isNotEmpty();
+    assertThat(before.path(0).path("lastTokenRefreshAt").isNull()).isTrue();
+    assertThat(before.path(1).path("lastLoginAt").isNull()).isTrue();
+
+    Res refreshed = refresh(device, first.body().path("tokens").path("refreshToken").asString());
+    assertThat(refreshed.status()).as(refreshed.body().toString()).isEqualTo(200);
+    JsonNode after = get(path + accountId).body().path("items").path(0);
+    assertThat(Instant.parse(after.path("lastTokenRefreshAt").asString()))
+        .isAfterOrEqualTo(Instant.parse(after.path("lastLoginAt").asString()));
+
+    assertThat(get(path + ",").status()).isEqualTo(400);
+    StringBuilder many = new StringBuilder();
+    for (int i = 0; i < 201; i++) {
+      many.append("CU-").append(i).append(',');
+    }
+    assertThat(get(path + many).status()).isEqualTo(400);
+  }
+
+  Res get(String path) {
+    var e = http.get().uri(path).retrieve().toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
   @Test
   void reauthenticationChecksTokenAndLink() {
     String sub = "g-" + UUID.randomUUID();

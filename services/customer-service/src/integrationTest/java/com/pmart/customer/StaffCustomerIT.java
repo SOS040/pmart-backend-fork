@@ -135,8 +135,10 @@ class StaffCustomerIT extends PostgresKafkaContainerSupport {
     assertThat(batch).hasSize(2);
     assertThat(batch.path(0).path("nameMasked").asString()).isEqualTo("이*");
     assertThat(batch.path(1).path("customerId").asString()).isEqualTo(a);
-    // 셋 중 하나만·형식
-    assertThat(get(CS, "/customers").status()).isEqualTo(400);
+    // 셋 중 하나만·형식(0.22.0: 셋 다 없으면 목록 — 찾기와 목록 거르기를 섞으면 400)
+    assertThat(get(CS, "/customers?customerNumber=" + number + "&joinedFrom=2020-01-01").status())
+        .isEqualTo(400);
+    assertThat(byNumber.path("page").isNull() || byNumber.path("page").isMissingNode()).isTrue();
     assertThat(get(CS, "/customers?customerNumber=" + number + "&phone=01012345678").status())
         .isEqualTo(400);
     assertThat(get(CS, "/customers?phone=02-123-4567").status()).isEqualTo(400);
@@ -187,6 +189,95 @@ class StaffCustomerIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.caseRef", equalToStr("CUSTOMER:" + a)))
             .withRequestBody(matchingJsonPath("$.fields[0]", equalToStr("NAME")))
             .withRequestBody(matchingJsonPath("$.actor.actorId", equalToStr("cs-1"))));
+  }
+
+  /**
+   * 0.22.0 CU-5: 목록 — 가입 최근 순·쪽 넘김(가입일 한국 날짜·상태 거르기), 이름 2글자 이상 앞부분 일치(와일드카드는 글자 그대로), 이름 검색은 audit
+   * SEARCH 기록 뒤에만(검색어는 안 보냄, 실패 503), 이름 없는 목록은 기록 안 함.
+   */
+  @Test
+  void staffListFiltersPagesAndRecordsNameSearch() {
+    String tag = UUID.randomUUID().toString().substring(0, 6);
+    String x1 = customer("Pq" + tag + "민수", "01011110001");
+    String x2 = customer("Pq" + tag + "민호", "01011110002");
+    String x3 = customer("Ab" + tag, "01011110003");
+    String x4 = customer("Cd" + tag, "01011110004");
+    joined(x1, "2015-03-10T03:00:00Z");
+    joined(x2, "2015-03-05T03:00:00Z");
+    joined(x3, "2015-03-07T03:00:00Z");
+    joined(x4, "2015-02-28T15:30:00Z"); // 03-01 00:30 KST
+    jdbc.update("UPDATE customer SET status = 'WITHDRAW_PENDING' WHERE account_id = ?", x4);
+
+    String march = "/customers?joinedFrom=2015-03-01&joinedTo=2015-03-31";
+    JsonNode all = get(CS, march).body();
+    assertThat(all.path("items").findValuesAsString("customerId")).containsExactly(x1, x3, x2, x4);
+    assertThat(all.path("items").path(0).path("nameMasked").asString()).startsWith("P");
+    assertThat(all.path("items").path(0).path("joinedAt").asString()).startsWith("2015-03-10");
+    assertThat(all.toString()).doesNotContain("01011110001");
+    JsonNode p1 = get(CS, march + "&size=2").body();
+    assertThat(p1.path("items").findValuesAsString("customerId")).containsExactly(x1, x3);
+    String next = p1.path("page").path("nextCursor").asString();
+    JsonNode p2 = get(CS, march + "&size=2&cursor=" + next).body();
+    assertThat(p2.path("items").findValuesAsString("customerId")).containsExactly(x2, x4);
+    assertThat(p2.path("page").path("nextCursor").isNull()).isTrue();
+    assertThat(
+            get(CS, march + "&status=WITHDRAW_PENDING")
+                .body()
+                .path("items")
+                .findValuesAsString("customerId"))
+        .containsExactly(x4);
+    // 이름 없는 목록은 기록하지 않는다
+    audit.verify(0, postRequestedFor(urlPathEqualTo(LOGS)));
+
+    // 이름 검색: 기록 실패 503 → 결과 없음
+    audit.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(LOGS))
+            .willReturn(aResponse().withStatus(503)));
+    Res down = get(CS, "/customers?name=Pq" + tag);
+    assertThat(down.status()).isEqualTo(503);
+    assertThat(down.body().toString()).doesNotContain(x1);
+    audit.resetAll();
+    audit.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(LOGS))
+            .willReturn(
+                aResponse()
+                    .withStatus(201)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"piiAccessLogId\":\"PAL-S\",\"recordedAt\":\"2026-11-26T00:00:00Z\"}")));
+    JsonNode byName = get(CS, "/customers?name= Pq" + tag + " ").body();
+    assertThat(byName.path("items").findValuesAsString("customerId")).containsExactly(x1, x2);
+    audit.verify(
+        postRequestedFor(urlPathEqualTo(LOGS))
+            .withRequestBody(matchingJsonPath("$.accessType", equalToStr("SEARCH")))
+            .withRequestBody(matchingJsonPath("$.subjectRef", equalToStr("CUSTOMER_LIST")))
+            .withRequestBody(matchingJsonPath("$.fields[0]", equalToStr("NAME")))
+            .withRequestBody(matchingJsonPath("$.recordCount", equalToStr("2")))
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.notContaining("Pq" + tag)));
+    // 이름 + 가입일 함께, 와일드카드는 글자 그대로(아무것도 안 맞음)
+    assertThat(
+            get(CS, "/customers?name=Pq" + tag + "&joinedFrom=2015-03-06")
+                .body()
+                .path("items")
+                .findValuesAsString("customerId"))
+        .containsExactly(x1);
+    assertThat(get(CS, "/customers?name=%%").body().path("items")).isEmpty();
+
+    // 검사
+    assertThat(get(CS, "/customers?name=P").status()).isEqualTo(400);
+    assertThat(get(CS, "/customers?joinedFrom=2015-04-01&joinedTo=2015-03-01").status())
+        .isEqualTo(400);
+    assertThat(get(CS, "/customers?cursor=@@bad").status()).isEqualTo(400);
+    assertThat(get(CS, "/customers?size=201").status()).isEqualTo(400);
+    assertThat(get(MFC, march).status()).isEqualTo(403);
+  }
+
+  void joined(String id, String at) {
+    jdbc.update(
+        "UPDATE customer SET joined_at = ? WHERE account_id = ?",
+        java.sql.Timestamp.from(java.time.Instant.parse(at)),
+        id);
   }
 
   static com.github.tomakehurst.wiremock.matching.StringValuePattern equalToStr(String v) {

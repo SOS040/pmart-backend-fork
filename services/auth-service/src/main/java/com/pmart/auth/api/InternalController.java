@@ -16,9 +16,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalController implements InternalApi {
 
   private final CustomerWithdrawalService withdrawals;
+  private final com.pmart.auth.application.CustomerActivityService activities;
 
-  public InternalController(CustomerWithdrawalService withdrawals) {
+  public InternalController(
+      CustomerWithdrawalService withdrawals,
+      com.pmart.auth.application.CustomerActivityService activities) {
     this.withdrawals = withdrawals;
+    this.activities = activities;
   }
 
   /** 고객 재인증 확인(탈퇴 접수·철회 전, 0.9.0 — ADR-0077). 상태 변경 없음. */
@@ -30,5 +34,30 @@ public class InternalController implements InternalApi {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(new VerifyCustomerReauthentication200Response().verified(true).provider(provider));
+  }
+
+  /** 0.12.0 CU-6 — 고객 마지막 로그인·토큰 갱신(요청 순서). */
+  @Override
+  public ResponseEntity<com.pmart.auth.api.generated.model.GetCustomerActivities200Response>
+      getCustomerActivities(String accountIds) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            new com.pmart.auth.api.generated.model.GetCustomerActivities200Response()
+                .items(
+                    activities.activities(accountIds).stream()
+                        .map(
+                            a ->
+                                new com.pmart.auth.api.generated.model
+                                        .GetCustomerActivities200ResponseItemsInner()
+                                    .accountId(a.accountId())
+                                    .lastLoginAt(utc(a.lastLoginAt()))
+                                    .lastTokenRefreshAt(utc(a.lastTokenRefreshAt())))
+                        .toList()));
+  }
+
+  private static java.time.@org.jspecify.annotations.Nullable OffsetDateTime utc(
+      java.time.@org.jspecify.annotations.Nullable Instant i) {
+    return i == null ? null : java.time.OffsetDateTime.ofInstant(i, java.time.ZoneOffset.UTC);
   }
 }

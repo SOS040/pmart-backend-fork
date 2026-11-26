@@ -34,13 +34,37 @@ public class StaffController implements StaffApi {
 
   @Override
   public ResponseEntity<StaffCustomerList> searchCustomersForStaff(
-      @Nullable String customerNumber, @Nullable String phone, @Nullable String customerIds) {
-    return ResponseEntity.ok(
-        new StaffCustomerList()
-            .items(
-                staff.search(customerNumber, phone, customerIds).stream()
-                    .map(StaffController::summary)
-                    .toList()));
+      @Nullable String customerNumber,
+      @Nullable String phone,
+      @Nullable String customerIds,
+      @Nullable String name,
+      java.time.@Nullable LocalDate joinedFrom,
+      java.time.@Nullable LocalDate joinedTo,
+      com.pmart.customer.api.generated.model.@Nullable AccountStatus status,
+      @Nullable Integer size,
+      @Nullable String cursor) {
+    var r =
+        staff.find(
+            customerNumber,
+            phone,
+            customerIds,
+            new StaffCustomerService.ListFilter(
+                name,
+                joinedFrom,
+                joinedTo,
+                status == null ? null : status.getValue(),
+                size,
+                cursor),
+            requestSource());
+    StaffCustomerList body =
+        new StaffCustomerList().items(r.items().stream().map(StaffController::summary).toList());
+    if (r.list()) {
+      body.page(
+          new com.pmart.customer.api.generated.model.StaffCustomerListPage()
+              .nextCursor(r.nextCursor())
+              .size(size == null ? 50 : size));
+    }
+    return ResponseEntity.ok(body);
   }
 
   @Override
@@ -171,6 +195,19 @@ public class StaffController implements StaffApi {
         .phoneMasked(ProfileRules.maskPhone(c.phone()))
         .status(AccountStatus.fromValue(c.status()))
         .restriction(restriction(c))
-        .restrictedUntil(until(c));
+        .restrictedUntil(until(c))
+        .joinedAt(c.joinedAt().atOffset(ZoneOffset.UTC));
+  }
+
+  /** 검색 기록의 화면 값 — GET 이라 필수 헤더가 없다. X-Source-System 이 있으면 그것, 없으면 "staff". */
+  private static String requestSource() {
+    var attrs = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+    if (attrs instanceof org.springframework.web.context.request.ServletRequestAttributes sra) {
+      String v = sra.getRequest().getHeader("X-Source-System");
+      if (v != null && !v.isBlank()) {
+        return v.strip();
+      }
+    }
+    return "staff";
   }
 }

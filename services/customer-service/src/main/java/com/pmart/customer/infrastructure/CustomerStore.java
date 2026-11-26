@@ -223,6 +223,47 @@ public class CustomerStore {
         digits);
   }
 
+  /**
+   * 직원 고객 목록(CU-5): 가입 최근 순(같으면 account_id), 이름 앞부분 일치·가입 시각 범위·상태 거르기, {@code after*} 다음부터 {@code
+   * limit} 개.
+   */
+  public List<ProfileRow> staffList(
+      @Nullable String namePattern,
+      @Nullable Instant joinedFrom,
+      @Nullable Instant joinedToExclusive,
+      @Nullable String status,
+      @Nullable Instant afterJoinedAt,
+      @Nullable String afterAccountId,
+      int limit) {
+    StringBuilder sql = new StringBuilder(PROFILE_SELECT + " WHERE true");
+    List<Object> args = new java.util.ArrayList<>();
+    if (namePattern != null) {
+      sql.append(" AND name LIKE ? ESCAPE '\'");
+      args.add(namePattern);
+    }
+    if (joinedFrom != null) {
+      sql.append(" AND joined_at >= ?");
+      args.add(java.sql.Timestamp.from(joinedFrom));
+    }
+    if (joinedToExclusive != null) {
+      sql.append(" AND joined_at < ?");
+      args.add(java.sql.Timestamp.from(joinedToExclusive));
+    }
+    if (status != null) {
+      sql.append(" AND status = ?");
+      args.add(status);
+    }
+    if (afterJoinedAt != null && afterAccountId != null) {
+      sql.append(" AND (joined_at < ? OR (joined_at = ? AND account_id > ?))");
+      args.add(java.sql.Timestamp.from(afterJoinedAt));
+      args.add(java.sql.Timestamp.from(afterJoinedAt));
+      args.add(afterAccountId);
+    }
+    sql.append(" ORDER BY joined_at DESC, account_id ASC LIMIT ?");
+    args.add(limit);
+    return jdbc.query(sql.toString(), CustomerStore::profileRow, args.toArray());
+  }
+
   /** 여러 고객 한 번에(CU-3 — bff 화면 표기). 없는 ID 는 빠진다, 요청 순서대로. */
   public List<ProfileRow> byIds(List<String> accountIds) {
     if (accountIds.isEmpty()) {

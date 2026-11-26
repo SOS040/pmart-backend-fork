@@ -3,6 +3,7 @@ package com.pmart.customer.application;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import com.pmart.customer.domain.StaffCustomerListRules;
 import com.pmart.customer.infrastructure.AuditClient;
 import com.pmart.customer.infrastructure.CustomerStore;
 import com.pmart.customer.infrastructure.CustomerStore.ProfileRow;
@@ -61,6 +62,111 @@ public class StaffCustomerService {
     this.store = store;
     this.audit = audit;
     this.clock = clock;
+  }
+
+  /** 찾기·목록 결과 — nextCursor 는 목록 모드에서만, list 는 목록 모드였는지. */
+  public record Listing(List<ProfileRow> items, @Nullable String nextCursor, boolean list) {}
+
+  /** 목록 거르기(0.22.0 CU-5). */
+  public record ListFilter(
+      @Nullable String name,
+      java.time.@Nullable LocalDate joinedFrom,
+      java.time.@Nullable LocalDate joinedTo,
+      @Nullable String status,
+      @Nullable Integer size,
+      @Nullable String cursor) {
+
+    /** 거르기를 줬는지 — size 는 계약 기본값(50)이 늘 들어와 세지 않는다. */
+    boolean any() {
+      return !blank(name)
+          || joinedFrom != null
+          || joinedTo != null
+          || status != null
+          || !blank(cursor);
+    }
+  }
+
+  /**
+   * 찾기(고객번호·전화·ID 중 하나) 또는 목록(셋 다 없으면 — CU-5). 찾기와 목록 거르기를 같이 주면 400. 이름으로 찾은 목록은 audit 기록 뒤에만
+   * 준다(검색어는 기록에 넣지 않음).
+   */
+  public Listing find(
+      @Nullable String customerNumber,
+      @Nullable String phone,
+      @Nullable String customerIds,
+      ListFilter filter,
+      String clientSource) {
+    PmartPrincipal p = requireStaff();
+    int given =
+        (blank(customerNumber) ? 0 : 1) + (blank(phone) ? 0 : 1) + (blank(customerIds) ? 0 : 1);
+    if (given > 0) {
+      if (filter.any()) {
+        throw new PmartException(
+            ErrorCode.VALIDATION_FAILED,
+            "customerNumber·phone·customerIds 찾기와 목록 거르기(name·joinedFrom·joinedTo·status·size·cursor)는 같이 쓸 수 없습니다.");
+      }
+      return new Listing(search(customerNumber, phone, customerIds), null, false);
+    }
+    String name = StaffCustomerListRules.name(filter.name());
+    String problem = StaffCustomerListRules.nameProblem(name);
+    if (problem == null) {
+      problem = StaffCustomerListRules.rangeProblem(filter.joinedFrom(), filter.joinedTo());
+    }
+    int size = filter.size() == null ? StaffCustomerListRules.DEFAULT_SIZE : filter.size();
+    if (problem == null) {
+      problem = StaffCustomerListRules.sizeProblem(size);
+    }
+    StaffCustomerListRules.Cursor after = StaffCustomerListRules.decode(filter.cursor());
+    if (problem == null && !blank(filter.cursor()) && after == null) {
+      problem = "cursor 가 올바르지 않습니다.";
+    }
+    if (problem != null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, problem);
+    }
+    StaffCustomerListRules.JoinedRange r =
+        StaffCustomerListRules.range(filter.joinedFrom(), filter.joinedTo());
+    List<ProfileRow> rows =
+        store.staffList(
+            name == null ? null : StaffCustomerListRules.prefixPattern(name),
+            r.from(),
+            r.toExclusive(),
+            filter.status(),
+            after == null ? null : after.joinedAt(),
+            after == null ? null : after.customerId(),
+            size + 1);
+    boolean more = rows.size() > size;
+    List<ProfileRow> page = more ? rows.subList(0, size) : rows;
+    if (name != null) {
+      recordNameSearch(p, clientSource, page.size());
+    }
+    String next =
+        more
+            ? StaffCustomerListRules.encode(
+                new StaffCustomerListRules.Cursor(
+                    page.get(size - 1).joinedAt(), page.get(size - 1).accountId()))
+            : null;
+    return new Listing(List.copyOf(page), next, true);
+  }
+
+  /** 이름 검색 기록(CU-5, 2026-11-23 "검색 감사 기록") — 검색어·결과 ID 는 넣지 않는다. 실패면 결과를 주지 않는다(503). */
+  private void recordNameSearch(PmartPrincipal p, String clientSource, int resultCount) {
+    Map<String, Object> actor = new LinkedHashMap<>();
+    actor.put("actorId", p.subject());
+    actor.put("actorType", "OPERATOR");
+    actor.put("roles", p.roles());
+    actor.put("centerScope", p.centerScope());
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("occurredAt", clock.instant().toString());
+    body.put("actor", actor);
+    body.put("subjectType", "CUSTOMER");
+    body.put("subjectRef", "CUSTOMER_LIST");
+    body.put("accessType", "SEARCH");
+    body.put("fields", List.of("NAME"));
+    body.put("purpose", "직원 고객 목록 이름 검색(가린 결과)");
+    body.put("screen", truncate(clientSource, 80) + ":customer-list");
+    body.put("recordCount", Math.max(1, resultCount));
+    // 검색마다 한 기록(GET 이라 클라이언트 키가 없다)
+    audit.recordPiiAccess("customer-name-search:" + java.util.UUID.randomUUID(), body);
   }
 
   /** 셋 중 하나만. */

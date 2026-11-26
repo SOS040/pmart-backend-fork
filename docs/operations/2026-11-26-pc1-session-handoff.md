@@ -34,7 +34,8 @@
   - R4 정의 그대로(배송 완료만 셈, 2026-11-16 전 배송 없음 — 사용자 받아들임).
   - ① 상한: windowDays 1~365(기본 180), minOrders 1~10(기본 2), limit 1~50(기본 20).
   - **끝남(2026-11-26 오후)**: 0f01f259(order 0.24.0 ①·O-13)·9f4504ac(review 0.9.0 R4) push·LAN 배포(pc2 order·review, pc4 api-gateway), LAN 확인 통과. 고객앱 요청 `docs/handoff/clients/customer-app/2026-11-26-request-frequent-items.md`, 공용 표 O-13 LAN 배포. 남은 것은 앱(그쪽 세션)·백오피스 화면(PC 2).
-  - **O-12(사용자 "고객별 남은거 해줘")**: order 0.25.0 `customer-summaries`·`customer-ids` — 같은 "산 것" 정의(요청서의 승인 금액 대신, 환불 안 뺌), CS_AGENT·OPERATOR_ADMIN. push·LAN 배포(b3e1e56e, 사용자 "푸시 배포 해줘") — LAN 확인 통과. 회신 `docs/handoff/clients/backoffice/2026-11-26-reply-o12-customer-purchase-summaries.md`. 고객관리 PC 1 몫 남은 것: **CU-5**(직원 고객 목록·이름 검색 방식 정하기 — ADR-0062)·CU-6(최근 활동일).
+  - **O-12(사용자 "고객별 남은거 해줘")**: order 0.25.0 `customer-summaries`·`customer-ids` — 같은 "산 것" 정의(요청서의 승인 금액 대신, 환불 안 뺌), CS_AGENT·OPERATOR_ADMIN. push·LAN 배포(b3e1e56e, 사용자 "푸시 배포 해줘") — LAN 확인 통과. 회신 `docs/handoff/clients/backoffice/2026-11-26-reply-o12-customer-purchase-summaries.md`. 고객관리 PC 1 몫 남은 것: CU-5·CU-6 → 아래.
+  - **CU-5·CU-6(사용자 "다음 남은것처리해줘")**: customer 0.22.0 `GET /customers` 목록 모드(이름 2글자 앞부분·가입일·상태, 이름 검색 audit SEARCH 기록 뒤에만 — 실패 503, V22 색인), auth 0.12.0 내부 `GET /internal/customers/activities`(로그인·토큰 갱신, V11 색인) — lastActiveAt 은 bff 가 order O-12 와 합친다. 시험 통과·커밋. push·배포는 사용자 말 기다림. 회신 `docs/handoff/clients/backoffice/2026-11-26-reply-cu5-cu6-customer-list-last-active.md`.
 - 공통 정의: "산 것" = 확정 주문(customer_order) 중 CANCELLED·EXPIRED 아님, 출고 전 전부 취소된 줄(`quantity − cancelled_before_ship_qty = 0`) 제외. 횟수 = **서로 다른 주문 수**(한 주문에 2개 담은 것은 1번).
 
 | # | 무엇 | 어디 | 안 | 시간(대략) |

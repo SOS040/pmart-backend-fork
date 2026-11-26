@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: auth-service
-  version: 0.11.1
+  version: 0.12.0
   description: |
+    0.12.0(2026-11-26, CU-6 고객 최근 활동일 — 2026-11-23 사용자 "추천대로": lastActiveAt = max(마지막 로그인·토큰 갱신, 마지막 주문)): 내부
+      `GET /internal/customers/activities?accountIds=`(1~200) — 계정마다 `lastLoginAt`(소셜 로그인 완료)·`lastTokenRefreshAt`(세션 갱신 중 가장 최근, 폐기된 세션 포함).
+      마지막 주문은 order `GET /orders/metrics/customer-summaries` 의 lastOrderAt — 셋 중 가장 늦은 값을 bff 가 lastActiveAt 으로 쓴다. 상태 변경 없음.
     0.11.1(2026-11-21 BR-79 — 사용자 "(가)·네이버 1번 서버 변경으로"): `POST /auth/naver-token-exchanges` LOGIN 에서도, 그 네이버 계정(id_token sub)으로 **가입을 마친 계정이 없으면**
     (처음이거나 약관 동의·휴대폰 확인에서 나간 가입) 교환 뒤 네이버 앱 연결을 끊는다 — 가입을 끝내지 않고 나가면 다음 네이버 로그인에서 동의를 다시 받는다. 가입을 마친 회원은 끊지 않는다.
     끊기·조회 실패는 교환을 막지 않는다. 요청·응답 모양은 그대로.
@@ -577,6 +580,36 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- keys (JWKS — 사용자 토큰 검증, ADR-0011). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  /internal/customers/activities:
+    get:
+      tags: [internal]
+      summary: '[bff→auth] 고객 마지막 로그인·토큰 갱신 시각 (0.12.0, CU-6)'
+      description: |
+        `accountIds`(쉼표, 1~200, 중복 한 번)마다 한 줄(요청 순서). auth 에 없는 계정은 두 값 null. 로그인 = 소셜 로그인 완료 시각(customer_account.last_login_at),
+        토큰 갱신 = 그 고객 세션(폐기된 것 포함)의 마지막 갱신 시각. 비회원 세션은 세지 않는다. 읽기만, 로그 없음(계정 ID 목록도 남기지 않음).
+      operationId: getCustomerActivities
+      parameters:
+        - { name: accountIds, in: query, required: true, schema: { type: string, maxLength: 12000 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [accountId]
+                      properties:
+                        accountId: { type: string }
+                        lastLoginAt: { type: [string, 'null'], format: date-time }
+                        lastTokenRefreshAt: { type: [string, 'null'], format: date-time }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
   /internal/customers/{accountId}/reauthentications:
     post:
       tags: [internal]

@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: customer-service
-  version: 0.21.0
+  version: 0.22.0
   description: |
+    0.22.0(2026-11-26, CU-5 직원 고객 목록 — 2026-11-23 사용자 "목록·분류부터"·"추천대로", 2026-11-26 "다음 남은것처리해줘"): `GET /customers` 에 **목록 모드** —
+      `customerNumber`·`phone`·`customerIds` 가 없으면 가입 최근 순 목록(쪽 넘김), 거르기 `name`(이름 **2글자 이상 앞부분 일치**)·`joinedFrom`·`joinedTo`(Asia/Seoul 날짜, 포함)·`status`.
+      이름으로 찾으면 audit-service 에 검색 기록(accessType SEARCH, 검색어는 남기지 않음)이 된 뒤에만 결과를 준다(기록 실패 503). 응답은 그대로 가린 값, 줄에 `joinedAt` 추가.
     0.21.0(2026-11-25, 클라이언트 BR-107 — 사용자 "이름이랑 닉네임 내 정보에서 수정할 수 있는 기능 필요해"): `POST /me/profile-changes` 에 `name`(고객 실명 — 앞뒤 공백 떼고
       1~30자, 줄바꿈·제어 문자 불가). 넣으면 `Profile.nameSource` CUSTOMER — 로그인해도 제공자 이름으로 덮지 않는다. 빈 문자열이면 로그인 계정 이름으로 되돌리기(PROVIDER, 제공자 이름이
       없으면 비어 있음). `Profile.nameSource` PROVIDER|CUSTOMER.
@@ -889,9 +892,12 @@ paths:
   /customers:
     get:
       tags: [staff]
-      summary: '[직원] 고객 찾기 — 고객번호·전화 완전 일치, 또는 고객 ID 여러 개 (0.11.0, CU-3·CU-4)'
+      summary: '[직원] 고객 찾기·목록 — 고객번호·전화 완전 일치, 고객 ID 여러 개, 또는 이름 앞부분·가입일·상태 목록 (0.11.0 CU-3·CU-4, 0.22.0 CU-5)'
       description: |
-        권한 CS_AGENT·OPERATOR_ADMIN(그 밖·고객·라이더 403). `customerNumber`·`phone`·`customerIds` 중 **하나만**(둘 이상이거나 없으면 400).
+        권한 CS_AGENT·OPERATOR_ADMIN(그 밖·고객·라이더 403). `customerNumber`·`phone`·`customerIds` 는 **하나만**(둘 이상이면 400) — 이때 목록 거르기 값과 같이 주면 400.
+        **목록 모드(0.22.0 CU-5)** — 셋 다 없으면: 가입 최근 순(joinedAt 내림차순, 같으면 customerId), `size`(1~200, 기본 50)·`cursor`(불투명 — 다음 쪽은 같은 거르기와 함께).
+        거르기: `name` = 이름(제공자·고객이 넣은 실명) **2글자 이상 앞부분 일치**(앞뒤 공백 제거, 별명은 찾지 않음, 1글자·51자 이상 400), `joinedFrom`·`joinedTo`(Asia/Seoul 날짜, 둘 다 포함, from > to 400), `status`.
+        **이름으로 찾으면** audit-service `POST /internal/pii-access-logs`(accessType SEARCH·fields [NAME]·subjectRef `CUSTOMER_LIST`·recordCount = 결과 수, **검색어는 넣지 않음**)에 기록이 된 뒤에만 결과를 준다 — 기록 실패·결과 불명 503(결과 없음). 이름 없이 가입일·상태만 보는 목록은 기록하지 않는다.
         - `customerNumber`: 6자리 완전 일치. `phone`: 휴대전화 숫자(01로 시작 10~11자리, 하이픈·공백 무시) 완전 일치 — 프로필 휴대폰 번호 기준.
         - `customerIds`: 쉼표로 50개까지(백오피스 bff 가 목록·표에 "김*수 · 482913" 를 붙일 때). 없는 ID 는 빠진다.
         이름 검색·전체 목록은 없다(BackOffice 개인정보 — 목적별 제한). 응답은 가린 값만. 찾는 전화번호는 로그에 남기지 않는다. 찾기는 열람 기록을 남기지 않는다(원문이 없으므로).
@@ -901,6 +907,12 @@ paths:
         - { name: customerNumber, in: query, schema: { type: string, pattern: '^[1-9][0-9]{5}$' } }
         - { name: phone, in: query, schema: { type: string, maxLength: 20 } }
         - { name: customerIds, in: query, schema: { type: string, maxLength: 4000 }, description: '쉼표로 구분한 고객 ID(50개까지)' }
+        - { name: name, in: query, x-added-in: '2026-11-26', schema: { type: string, maxLength: 50 }, description: '0.22.0 목록 — 이름 2글자 이상 앞부분 일치(검색 기록 남음)' }
+        - { name: joinedFrom, in: query, x-added-in: '2026-11-26', schema: { type: string, format: date }, description: '0.22.0 목록 — 가입일(Asia/Seoul) 이날부터' }
+        - { name: joinedTo, in: query, x-added-in: '2026-11-26', schema: { type: string, format: date }, description: '0.22.0 목록 — 가입일(Asia/Seoul) 이날까지(포함)' }
+        - { name: status, in: query, x-added-in: '2026-11-26', schema: { $ref: '#/components/schemas/AccountStatus' }, description: '0.22.0 목록' }
+        - { name: size, in: query, x-added-in: '2026-11-26', schema: { type: integer, minimum: 1, maximum: 200, default: 50 }, description: '0.22.0 목록 한 쪽' }
+        - { name: cursor, in: query, x-added-in: '2026-11-26', schema: { type: string, maxLength: 200 }, description: '0.22.0 목록 다음 쪽' }
       responses:
         '200':
           description: OK — 찾은 고객(없으면 빈 목록)
@@ -909,6 +921,7 @@ paths:
               schema: { $ref: '#/components/schemas/StaffCustomerList' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /customers/{customerId}:
     get:
@@ -1454,12 +1467,14 @@ components:
         status: { $ref: '#/components/schemas/AccountStatus' }
         restriction: { $ref: '#/components/schemas/AccountRestriction' }
         restrictedUntil: { type: [string, 'null'], format: date-time }
+        joinedAt: { type: string, format: date-time, x-added-in: '2026-11-26', description: '0.22.0 CU-5 — 가입 시각' }
     StaffCustomerList:
       type: object
       x-added-in: '2026-11-20'
       required: [items]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/StaffCustomerSummary' } }
+        page: { $ref: '_common.yaml#/components/schemas/Page', x-added-in: '2026-11-26', description: '0.22.0 — 목록 모드에서만(찾기 모드는 null)' }
     StaffCustomerDetail:
       type: object
       x-added-in: '2026-11-20'

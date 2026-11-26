@@ -378,4 +378,26 @@ public class CustomerStore {
         split(rs.getString("optional_consents")),
         rs.getString("completion_key"));
   }
+
+  /** 고객 최근 활동(CU-6) 한 줄 — auth 에 있는 계정만. */
+  public record Activity(
+      String accountId, @Nullable Instant lastLoginAt, @Nullable Instant lastTokenRefreshAt) {}
+
+  /** CU-6: 계정마다 마지막 로그인·고객 세션(폐기 포함) 마지막 갱신. */
+  public List<Activity> activities(List<String> accountIds) {
+    return jdbc.query(
+        "SELECT a.account_id, a.last_login_at,"
+            + " (SELECT max(s.last_refreshed_at) FROM auth_session s"
+            + " WHERE s.principal_id = a.account_id AND s.principal_type = 'CUSTOMER') AS refreshed"
+            + " FROM customer_account a WHERE a.account_id = ANY (?)",
+        (rs, i) -> {
+          Timestamp login = rs.getTimestamp("last_login_at");
+          Timestamp refreshed = rs.getTimestamp("refreshed");
+          return new Activity(
+              rs.getString("account_id"),
+              login == null ? null : login.toInstant(),
+              refreshed == null ? null : refreshed.toInstant());
+        },
+        (Object) accountIds.toArray(String[]::new));
+  }
 }
