@@ -17,7 +17,7 @@
 | 3 | 배차 불가 자동 취소 = 배차 요청 + 20분 | **코드·시험 끝, 커밋 `c8502a6c7`, push·배포 전** |
 | 4 | Kafka 밀린 메시지(빈 Bus 임시 그룹) | **끝(LAN)** — 빈 `anonymous.*` 3개 삭제, lag 0 확인 |
 | 5 | IV-8·MI-5·CO-1·CO-2 | **코드·시험 끝, 커밋 3개, push·배포 전** |
-| 6 | 자동 보충 | **코드 작성 중 — 커밋 안 됨, 시험 안 돌림**(사용자가 시험 실행 도중 멈춤) |
+| 6 | 자동 보충 | **코드 작성, 커밋 `dff88d46e`(wip) — 시험은 아직 안 돌림**(사용자가 시험 실행 도중 멈춤) |
 | 7 | MFC·DC 재고 실시간 보기 | **시작 안 함** |
 
 ## 2. push·배포 전인 커밋
@@ -34,13 +34,13 @@ pmart-clients README 의 같은 줄은 고객앱 세션("PC1 프론트")이 지�
 
 배포할 때(사용자가 말하면): pc5 delivery-dispatch, pc3 mfc-inventory·mfc-inbound·cdc-outbound(+ pmart-config push 먼저, mfc-inbound V15·V16 Flyway). jib 전 `deploy/lan/.secrets/registry.env` source.
 
-## 3. 6번 자동 보충 — 하다 만 곳 (커밋 안 됨)
+## 3. 6번 자동 보충 — 하다 만 곳 (커밋 `dff88d46e` wip, 시험 전)
 설계(사용자 "추천 자동 발주 + 승인"):
 1. **자동 초안** `application/AutoSupply`: 매일 06:00 Asia/Seoul(`pmart.inbound.auto-supply-cron`, 켜기 `pmart.inbound.auto-supply-enabled` — 기본 false) 인계 실적 있는 센터마다 최근 28일 판 SKU 의 발주 추천(`SupplyRecommendations.compute` — 권한 검사 뺀 계산으로 분리함) 추천 수량 > 0 줄로 공급 요청 SUBMITTED(`submitted_by` SYSTEM, ref `AUTO-<센터>-<yyyyMMdd>` 하루 한 번, 미해결 요청 SKU 는 뺌 — `SupplyRequestService.createSystem`). 수동 실행 `POST /internal/auto-supply-runs {mfcId?}`.
 2. **승인**: 기존 센터 관리자 승인 그대로. `pmart.inbound.supplying-cdc`(예 CDC01)가 있으면 initial_stock_load 대신 `InboundPromises.expectFromSupply`(입고 예정 EXPECTED, trfId `TRF-<요청 ID>`, fromCdc, 기한 승인 + `supply-due-after` P1D) + `supply_request.linked_trf_id·transfer_*` → 승인 응답 직후 `AutoSupply.send` 가 cdc-outbound `POST /internal/transfer-intakes`(`CdcTransferIntakeClient`, 키 `mfc-inbound-supply-trf:<trfId>`), 실패는 `sendDue`(PT15S) 재시도·400/409/422 는 멈춤. 비어 있으면 예전 동작(MI-4).
 3. 그 뒤는 기존 흐름: CDC 할당·피킹·출발 → `TransferDeparted` → 같은 trfId 입고 예정에 출발 줄 → 도착·수령 → IV-8 사건 → MI-5 종결.
 
-고친·만든 파일(작업 트리, 커밋 전):
+고친·만든 파일(커밋 `dff88d46e`):
 - 계약 `contracts/openapi/mfc-inbound-service.yaml` 0.23.0(설명, `/internal/auto-supply-runs`, SupplyRequest `transferCdcId·transferDueAt·transferSentAt·transferError`)
 - `V16__auto_supply_and_cdc_transfer.sql`(supply_request transfer_* 칸, SYSTEM ref unique 색인)
 - `application/AutoSupply.java`(새), `infrastructure/CdcTransferIntakeClient.java`(새), `InboundProperties`(cdcOutboundBaseUrl 기본 `http://cdc-outbound-service:8603`·supplyingCdc·supplyDueAfter·autoSupplyEnabled), `InboundPromises.expectFromSupply`, `SupplyRequestService`(Row 칸 4개·approve 분기·createSystem·transfer 메서드), `SupplyRecommendations.compute`, `SupplyRequestsController`(승인 뒤 send·dto), `InternalController.runAutoSupply`
@@ -50,7 +50,7 @@ pmart-clients README 의 같은 줄은 고객앱 세션("PC1 프론트")이 지�
 1. `./gradlew :services:mfc-inbound-service:test :services:mfc-inbound-service:integrationTest`(메모리 먼저) — `AutoSupplyIT` 와 기존 `SupplyOrderIT`(보급 DC 없음 = 예전 동작) 둘 다 통과 확인. AutoSupplyIT 의 추천 수량이 0 이면 정책 시드('*' AMBIENT R1·L1·SS1)·가용 0 stub 을 확인.
 2. pmart-config: `mfc-inbound-service-lan.yml` 에 `cdc-outbound-base-url: http://cdc-outbound-service:8603`(같은 pc3), `supplying-cdc: CDC01`, `auto-supply-enabled: true`(LAN). local 은 localhost:8603.
 3. **결정할 점(사용자에게 확인 권장)**: 보급 DC 를 켜면 MI-4 센터 발주 승인(시뮬레이터 R-48 이 쓰는 "승인 → 바로 입고 예정")이 "DC 이관 → 출발해야 입고"로 바뀐다. LAN 에 켤지, 센터별로 할지.
-4. ADR-0091 문서(`docs/adr/0091-auto-supply-and-cdc-transfer.md`) 쓰기 + `docs/business/flows/forecast-based-supply-request.md`·mfc-inbound CLAUDE.md·service-map(SC-1 일부 대체) 갱신, 그 뒤 커밋.
+4. ADR-0091 문서(`docs/adr/0091-auto-supply-and-cdc-transfer.md`) 쓰기 + `docs/business/flows/forecast-based-supply-request.md`·mfc-inbound CLAUDE.md·service-map(SC-1 일부 대체) 갱신, 시험 통과 뒤 커밋.
 5. DC 쪽 재고가 없으면 cdc-outbound 인수는 ALLOCATION_FAILED — LAN 에서 CDC01 재고 있는 SKU 로 확인.
 
 ## 4. 7번 실시간 재고 — 시작 안 함
