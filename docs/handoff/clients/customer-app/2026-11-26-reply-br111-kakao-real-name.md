@@ -4,7 +4,7 @@
 받는 앱: customer-app
 요청: pmart-clients `docs/handoff/customer-app/2026-11-26-backend-kakao-real-name.md`(R1~R3·Q1)
 작성: pmart-backend PC 1, 2026-11-26 — 사용자 "응"(Q1 추천 = R1 먼저 넣어 두기)
-상태: 구현·시험 통과(auth-service check 단위 22·통합 40). **LAN 배포 전**(배포되면 이 줄을 고친다)
+상태: 구현·시험 통과(auth-service check 단위 22·통합 40). **LAN 배포**(2026-11-26 16:12, 75c365ad — pc4 auth-service, 기동 ERROR 0). 카카오 콘솔 "이름" 동의가 켜지기 전에는 동작이 지금과 같다
 
 ## 요청서 진단 확인
 - 서버 쪽 진단은 모두 맞았다 — 카카오는 `withProviderProfile` 이 이름을 일부러 비웠고, `KakaoUnlinkClient.profile` 은 닉네임·이메일·사진만 읽었다.
