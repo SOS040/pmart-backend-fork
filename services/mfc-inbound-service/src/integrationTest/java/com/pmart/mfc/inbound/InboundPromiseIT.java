@@ -367,6 +367,8 @@ class InboundPromiseIT extends PostgresKafkaContainerSupport {
             .withHeader("Idempotency-Key", equalTo(rid))
             .withRequestBody(matchingJsonPath("$.trfId", equalTo(trf)))
             .withRequestBody(matchingJsonPath("$.departureId", equalTo("DEP-" + trf)))
+            // IV-8: CDC 이관이면 보낸 CDC 를 실어 inventory 가 MfcReceiptPosted 를 낸다
+            .withRequestBody(matchingJsonPath("$.fromCdc", equalTo("CDC-1")))
             .withRequestBody(matchingJsonPath("$.lines[0].sourceLotRef", equalTo("CDC-L1")))
             .withRequestBody(matchingJsonPath("$.lines[0].expiryDate", equalTo("2026-12-31")))
             .withRequestBody(matchingJsonPath("$.lines[0].quarantinedQty", equalTo("2"))));

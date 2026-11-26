@@ -75,11 +75,26 @@ public class InventoryReceiptClient {
       String mfcId,
       Instant receivedAt,
       List<Map<String, Object>> lines) {
+    return postRaw(receiptId, trfId, departureId, mfcId, receivedAt, lines, null);
+  }
+
+  /** fromCdc 가 있으면 CDC 이관 수령 — inventory 가 MfcReceiptPosted 를 낸다(IV-8, inventory 0.52.0). */
+  public Result postRaw(
+      String receiptId,
+      String trfId,
+      String departureId,
+      String mfcId,
+      Instant receivedAt,
+      List<Map<String, Object>> lines,
+      @org.jspecify.annotations.Nullable String fromCdc) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("receiptId", receiptId);
     body.put("trfId", trfId);
     body.put("departureId", departureId);
     body.put("mfcId", mfcId);
+    if (fromCdc != null && !fromCdc.isBlank()) {
+      body.put("fromCdc", fromCdc);
+    }
     body.put("receivedAt", receivedAt.toString());
     body.put("lines", lines);
     return send(receiptId, body);

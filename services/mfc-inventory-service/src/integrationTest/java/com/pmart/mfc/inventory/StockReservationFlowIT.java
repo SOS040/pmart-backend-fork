@@ -234,6 +234,53 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
         storageType);
   }
 
+  /**
+   * IV-8(2026-11-26): CDC 이관 수령(fromCdc 있음)은 MfcReceiptPosted 를 한 번 낸다 — 줄 lot 은 CDC 출발 LOT(sourceLotRef) 그대로,
+   * receivedQty = 정상 + 격리 + 미판정. 같은 receiptId 재전송은 사건을 더 내지 않고, fromCdc 없는 수령은 내지 않는다.
+   */
+  @Test
+  void cdcTransferReceiptPublishesMfcReceiptPostedOnce() {
+    String sku = newSku();
+    projection(sku, "AMBIENT");
+    String receiptId = "RCV-TRF-" + UUID.randomUUID();
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("receiptId", receiptId);
+    body.put("trfId", "TRF-IT-1");
+    body.put("departureId", "DEP-IT-1");
+    body.put("mfcId", mfc);
+    body.put("fromCdc", "CDC01");
+    body.put("lines", List.of(line(sku, 4, 1, "CDC-LOT-7", "2027-01-31")));
+    assertThat(postReceipt(UUID.randomUUID().toString(), body).status()).isEqualTo(201);
+    assertThat(postReceipt(UUID.randomUUID().toString(), body).status()).isEqualTo(201);
+    List<String> events =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE type = 'MfcReceiptPosted' AND"
+                + " aggregateid = ?",
+            String.class,
+            receiptId);
+    assertThat(events).hasSize(1);
+    JsonNode payload = read(events.get(0)).path("payload");
+    assertThat(payload.path("trfId").asString()).isEqualTo("TRF-IT-1");
+    assertThat(payload.path("departureId").asString()).isEqualTo("DEP-IT-1");
+    assertThat(payload.path("fromCdc").asString()).isEqualTo("CDC01");
+    assertThat(payload.path("receivedQty").asInt()).isEqualTo(5);
+    assertThat(payload.path("postingId").asString()).isEqualTo(payload.path("commitId").asString());
+    assertThat(payload.path("lines").path(0).path("lot").asString()).isEqualTo("CDC-LOT-7");
+    assertThat(payload.path("lines").path(0).path("normalQty").asInt()).isEqualTo(4);
+    assertThat(payload.path("lines").path(0).path("quarantinedQty").asInt()).isEqualTo(1);
+
+    String plain = "RCV-" + UUID.randomUUID();
+    assertThat(postReceipt(UUID.randomUUID().toString(), receipt(plain, sku, 2, 0)).status())
+        .isEqualTo(201);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_event WHERE type = 'MfcReceiptPosted' AND"
+                    + " aggregateid = ?",
+                Integer.class,
+                plain))
+        .isZero();
+  }
+
   static Map<String, Object> line(
       String sku, int normal, int quarantined, String lotRef, String expiry) {
     Map<String, Object> line = new LinkedHashMap<>();

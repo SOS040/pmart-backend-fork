@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.51.0
+  version: 0.52.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -97,6 +97,9 @@ info:
     0.48.0(2026-11-25, 재고 이력 조회 — 사용자 "재고 이력 조회 만들어"): `GET /mfcs/{mfcId}/stock-ledger?sku=` — 그 SKU 의 수량을 바꾼 확정 단위(commitId)를 최신순으로, 원인(cause)·시각·출처(sourceSystem·sourceRef)·위치·LOT 별 증감, 그 확정 단위 뒤 센터 합계(H·Q·E·R·A). lotId·locationCode·cause·from·to 거르기, 커서. 추가 경로만.
     0.49.0(2026-11-25, 재고 이력에 주문·처리한 사람 — MFC 백오피스 요청 2026-11-25-backend-stock-ledger-order-actor, LOT 추적): `StockLedgerCommit.orderId`(예약에 딸린 확정 — 예약·풀림·만료·결품·취소 복귀·인계·PICK·PACK)·`actorOperatorId`(작업 실행이면 작업자, 직원이 직접 부른 정정·조정이면 그 직원 — 시스템·서비스면 null), 거르기 `orderId=`. 작업 실행 요청에 선택 칸 `performedBy`(fulfillment·inbound 가 작업자를 싣는다). 추가 칸만.
     0.50.0(2026-11-25, 재고·LOT 운영자 검색 준비 — MFC 백오피스 요청 2026-11-25-backend-inventory-search, 사용자 "웹 검색도 고객앱 참조해서 엘라스틱서치로"·"지난 LOT 도 넣어", 사용자 결정: 색인은 search-service 쪽·지난 LOT 1년): 사건 `MfcLotStockChanged`(토픽 mfc.lot-stock.v1 — LOT 하나의 지금 모습, H·Q·E·칸이 바뀔 때마다)와 재발행 `POST /internal/lot-stock-republications?mfcId=`. 검색 경로는 search-service(PC 1 — 요청서 `service-requests/search-service.md` SR-MFC-1). 추가만.
+    0.52.0(2026-11-26, 요청 IV-8 — 사용자 "구현해"·"전부 여기서"): 수령 확정 `ConfirmReceiptRequest.fromCdc`(선택) — 있으면(CDC 이관 TRF 입고) 같은 트랜잭션에서
+      `MfcReceiptPosted.v1`(토픽 mfc.inventory.v1, aggregate Receipt = receiptId — 같은 receiptId 는 처음 한 번만) 발행. 줄 lot = 수령 줄 `sourceLotRef`(CDC 출발 LOT 그대로),
+      postingId = commitId. fromCdc 가 없는 수령(센터 발주·LAN 시험 입고·회수품 반입)은 사건 없음. 수령 수량 정정 기능이 아직 없어 `ReceiptCorrectionPosted` 는 내지 않는다.
     0.51.0(2026-11-26, 마감세일 — 요청 IV-9, ADR-0090 B2, 사용자 "추천대로"): 예약 줄 `lotConstraint.lotId` 지원 — 그 줄은 그 LOT 의 적격 가용에서만 잡고(다른 LOT 을 섞지 않음),
       모자라면 422 INSUFFICIENT_STOCK(details reason `NO_ELIGIBLE_LOT;…;lotId=<LOT>`). LOT 지정 줄은 `orderLineId` 필수(같은 줄·SKU 한 번). 지정 줄을 먼저 배정하고, 같은 SKU 일반 줄은 남은 것에서
       FEFO — **일반 줄은 마감 LOT 을 피하지 않는다**(PC 3 결정). 피킹 지시·위치 배정은 예전처럼 조각의 LOT 칸만, 결품·막힘·품질 보류 뒤 재확보도 지정 줄은 그 LOT 안에서만(없으면 이행부족 그대로).
@@ -2925,6 +2928,7 @@ components:
         trfId: { type: string, description: 이관 지시 ID (replenishment) }
         departureId: { type: string, description: cdc TOUT departureId }
         mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        fromCdc: { $ref: '_common.yaml#/components/schemas/CenterId', description: '(0.52.0, IV-8) 보낸 CDC — 있으면 CDC 이관 입고로 보고 MfcReceiptPosted 발행' }
         receivedAt: { type: string, format: date-time }
         lines:
           type: array

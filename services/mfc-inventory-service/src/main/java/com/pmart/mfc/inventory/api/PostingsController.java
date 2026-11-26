@@ -198,7 +198,8 @@ public class PostingsController implements PostingsApi {
                 body.getDepartureId(),
                 body.getMfcId(),
                 body.getReceivedAt() == null ? null : body.getReceivedAt().toInstant(),
-                lines));
+                lines,
+                body.getFromCdc()));
     return ResponseEntity.status(HttpStatus.CREATED).body(Commands.dto(r));
   }
 

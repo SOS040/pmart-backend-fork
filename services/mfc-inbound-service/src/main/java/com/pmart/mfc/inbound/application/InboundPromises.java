@@ -509,8 +509,11 @@ public class InboundPromises {
       m.put("toLocationCode", l.toLocationCode());
       body.add(m);
     }
+    // IV-8(2026-11-26): CDC 이관이면 보낸 CDC 를 실어 inventory 가 MfcReceiptPosted 를 낸다(CDC 운송 중 대사)
+    String fromCdc = store.find(r.trfId()).map(x -> x.fromCdc).orElse(null);
     InventoryReceiptClient.Result res =
-        inventory.postRaw(rid, r.trfId(), r.departureId(), r.mfcId(), r.receivedAt(), body);
+        inventory.postRaw(
+            rid, r.trfId(), r.departureId(), r.mfcId(), r.receivedAt(), body, fromCdc);
     Instant now = clock.instant();
     switch (res) {
       case InventoryReceiptClient.Result.Posted p -> {

@@ -112,6 +112,7 @@
 - **CDC 쪽**: cdc-inventory 가 구독해 줄별로 Transit −r 대사(같은 receiptId 한 번, 출발 줄 초과·없는 LOT 은 그 줄만 보류) → `TransitReconciled`. 유실 복구용 `/internal/receipt-acks`(같은 규칙). 미정산은 자동 손실로 지우지 않는다.
 - **사용자 결정(2026-11-25)**: 미판정도 받은 수량으로 본다(r 에 넣음), 전달은 사건 + 복구용 API.
 - **설정**: cdc-inventory 구독 바인딩(`mfc.inventory.v1`) — PC 1(pmart-config).
+- **상태(2026-11-26 PC 1 — 사용자 "구현해"·"전부 여기서", PC 3 대신)**: 1·2 **구현** — mfc-inventory 0.52.0 `ConfirmReceiptRequest.fromCdc` 가 있으면 `MfcReceiptPosted` 발행(lot = 수령 줄 `sourceLotRef` = CDC 출발 LOT, postingId = commitId), mfc-inbound 가 CDC 이관 입고 예정의 fromCdc 를 실음. 3(`ReceiptCorrectionPosted`)은 MFC 에 수령 수량 정정 기능이 없어 **아직**(정정 기능을 만들 때 같이). 시험 `StockReservationFlowIT.cdcTransferReceiptPublishesMfcReceiptPostedOnce`·`InboundPromiseIT`.
 - **(2026-11-26 cdc 세션 덧붙임)** CDC 쪽 `ReceiptCorrectionPosted` 구독도 구현했다(cdc-inventory 0.13.0) — **줄(`lines[]` sku·lot·deltaNormal/Quarantined/PendingQty)을 꼭 실어 주기**(deltaQty 만 있으면 출발 줄에 나눌 수 없어 거절). 품질 판정만 바뀐 것은 내지 않는다.
 
 ## IV-9. LOT 지정 예약·LOT 가용 조회 — 마감세일 (2026-11-26, 보낸 영역 platform — PC 1)
