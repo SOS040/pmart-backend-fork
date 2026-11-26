@@ -117,7 +117,7 @@
 - PC 1 메모리: 한계 찾기 내내 10.6GB 아래로 안 내려감(JMeter 300명·초당 260건은 PC 1 에 문제없음).
 - 호스트 CPU(node exporter `node_cpu_seconds_total`)는 Prometheus 에 없어 못 봄.
 
-### 5-2. 고를 수 있는 것 (사용자 판단 — 지금은 바꾸지 않음)
+### 5-2. 고를 수 있는 것 — **조치 안 함**(사용자 2026-11-27 "조치는 안할거야 lan환경이라"). 방법·추천 정리: `docs/operations/2026-11-27-db-pool-bottleneck-options.md`
 1. 풀 크기: pc2 서비스(storefront·product-content·cart·promotion·pricing)만 10 안팎으로 — pc2 Postgres 200 연결 안에서 계산 필요(지금 114).
 2. 요청 줄이기: promotion-service 가 거의 모든 요청마다 불린다(홈·검색·상세의 할인 조회) — 사본(짧은 캐시)을 두면 뒤쪽 부하가 크게 준다. storefront 연결 대기 36 이 가장 크다.
 3. 그대로: LAN 은 시험 환경 — 한계(초당 약 260건, 동시 300명이 0.2~0.5초 간격)를 기록만.
