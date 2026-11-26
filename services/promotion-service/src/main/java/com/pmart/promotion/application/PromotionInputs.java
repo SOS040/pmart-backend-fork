@@ -45,6 +45,7 @@ final class PromotionInputs {
         r.endsAt(),
         discount(r),
         targets.stream().map(t -> new PromotionRules.Target(t[0], t[1])).toList(),
-        coupon(r, recipients));
+        coupon(r, recipients),
+        r.offerBuy() == null ? null : new PromotionRules.Offer(r.offerBuy(), r.offerFree()));
   }
 }

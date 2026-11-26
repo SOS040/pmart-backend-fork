@@ -160,7 +160,9 @@ public class PromotionService {
             0,
             createdBy,
             at,
-            at));
+            at,
+            in.offer() == null ? null : in.offer().buy(),
+            in.offer() == null ? null : in.offer().free()));
     List<String[]> targets = new ArrayList<>();
     in.targets().forEach(t -> targets.add(new String[] {t.type(), t.id()}));
     store.replaceTargets(id, targets);
@@ -303,7 +305,10 @@ public class PromotionService {
 
   private static String summary(PromotionRow r, PromotionRules.@Nullable Recipients rc) {
     String d = "RATE".equals(r.discountType()) ? r.discountValue() + "%" : r.discountValue() + "원";
-    String s = ("PRICE_DISCOUNT".equals(r.kind()) ? "기간 할인 " : "장바구니 쿠폰 ") + r.name() + " — " + d;
+    String s =
+        PromotionRules.QUANTITY_OFFER.equals(r.kind())
+            ? "수량 행사 " + r.name() + " — " + r.offerBuy() + "+" + r.offerFree()
+            : ("PRICE_DISCOUNT".equals(r.kind()) ? "기간 할인 " : "장바구니 쿠폰 ") + r.name() + " — " + d;
     // 0.3.0 — 심사자가 몇 명에게 나가는지 알게(사용자 "추천안대로")
     return rc == null ? s : s + " · 받을 고객 " + rc.accountIds().size() + "명(시작 때 발급)";
   }

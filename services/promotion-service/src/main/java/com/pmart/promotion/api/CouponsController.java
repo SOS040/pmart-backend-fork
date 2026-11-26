@@ -16,8 +16,24 @@ import org.springframework.web.bind.annotation.RestController;
 public class CouponsController implements CouponsApi {
 
   private final CouponService coupons;
+  private final com.pmart.promotion.application.QuantityOffers offers;
 
-  public CouponsController(CouponService coupons) {
+  /** 0.5.0 진행 중 수량 행사 SKU(홈 "+1 하나더", ADR-0090). */
+  @Override
+  public ResponseEntity<com.pmart.promotion.api.generated.model.ListQuantityOfferItems200Response>
+      listQuantityOfferItems(Integer limit) {
+    return ResponseEntity.ok(
+        new com.pmart.promotion.api.generated.model.ListQuantityOfferItems200Response()
+            .asOf(PromotionMapping.odt(offers.asOf(null)))
+            .items(
+                offers.running(limit == null ? 100 : limit).stream()
+                    .map(PromotionMapping::quantityOffer)
+                    .toList()));
+  }
+
+  public CouponsController(
+      CouponService coupons, com.pmart.promotion.application.QuantityOffers offers) {
+    this.offers = offers;
     this.coupons = coupons;
   }
 

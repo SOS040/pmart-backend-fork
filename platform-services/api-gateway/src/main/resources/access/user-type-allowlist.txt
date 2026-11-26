@@ -323,6 +323,7 @@ GET /api/v1/products/{productId}/reviews PUBLIC
 GET /api/v1/products/{productId}/sale-state-changes/{requestId} OPERATOR
 GET /api/v1/promotions OPERATOR
 GET /api/v1/promotions/coupons OPERATOR
+GET /api/v1/promotions/quantity-offer-items CUSTOMER,GUEST
 GET /api/v1/promotions/theme-targets OPERATOR
 GET /api/v1/promotions/{promotionId} OPERATOR
 GET /api/v1/purchase-orders/{purchaseOrderId} OPERATOR

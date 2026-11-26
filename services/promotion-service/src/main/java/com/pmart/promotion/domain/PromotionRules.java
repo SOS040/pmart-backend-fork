@@ -66,7 +66,13 @@ public final class PromotionRules {
     }
   }
 
-  /** 행사 입력(도메인 모양). */
+  /** 0.5.0 수량 행사(ADR-0090) — 같은 SKU 유상 buy 개마다 free 개를 더 준다. */
+  public record Offer(int buy, int free) {}
+
+  public static final String QUANTITY_OFFER = "QUANTITY_OFFER";
+  public static final int MAX_OFFER_BUY = 10;
+
+  /** 행사 입력(도메인 모양). 수량 행사는 discount 를 쓰지 않는다(값 0 — 받지 않았음). */
   public record Input(
       String kind,
       String name,
@@ -74,7 +80,31 @@ public final class PromotionRules {
       Instant endsAt,
       Discount discount,
       List<Target> targets,
-      @Nullable CouponPolicy coupon) {}
+      @Nullable CouponPolicy coupon,
+      @Nullable Offer offer) {
+
+    public Input(
+        String kind,
+        String name,
+        Instant startsAt,
+        Instant endsAt,
+        Discount discount,
+        List<Target> targets,
+        @Nullable CouponPolicy coupon) {
+      this(kind, name, startsAt, endsAt, discount, targets, coupon, null);
+    }
+  }
+
+  /** 수량 행사 무료 수량 — 유상 수량의 buy 배수마다 free 개(A2). */
+  public static int freeQuantity(Offer o, int paidQuantity) {
+    return paidQuantity <= 0 ? 0 : (paidQuantity / o.buy()) * o.free();
+  }
+
+  /** 같은 SKU 에 수량 행사가 여럿이면 무료 비율 free÷(buy+free) 이 큰 쪽이 고객에게 유리(A5). a 가 b 보다 유리하면 양수. */
+  public static int compareOffers(Offer a, Offer b) {
+    return Long.compare(
+        (long) a.free() * (b.buy() + b.free()), (long) b.free() * (a.buy() + a.free()));
+  }
 
   /** code = 화면이 가려 쓸 코드(0.3.0 — 없을 수 있음). */
   public record Problem(String field, String reason, @Nullable String code) {
@@ -103,6 +133,14 @@ public final class PromotionRules {
       out.add(new Problem("endsAt", "이미 지난 끝 시각입니다."));
     }
     Discount d = in.discount();
+    if (QUANTITY_OFFER.equals(in.kind())) {
+      checkOffer(in, out);
+      checkTargets(in, out, themeKinds);
+      return out;
+    }
+    if (in.offer() != null) {
+      out.add(new Problem("offer", "수량 조건은 수량 행사(QUANTITY_OFFER)에만 둡니다."));
+    }
     if ("RATE".equals(d.type())) {
       if (d.value() < 1 || d.value() > MAX_RATE) {
         out.add(new Problem("discount.value", "할인율은 1~" + MAX_RATE + "% 입니다."));
@@ -115,37 +153,7 @@ public final class PromotionRules {
       out.add(new Problem("discount.type", "RATE 또는 AMOUNT 입니다."));
     }
     if ("PRICE_DISCOUNT".equals(in.kind())) {
-      if (in.targets().isEmpty()) {
-        out.add(new Problem("targets", "할인할 상품(SKU)·카테고리·진열 테마를 하나 이상 고르세요."));
-      }
-      if (in.targets().size() > MAX_TARGETS) {
-        out.add(new Problem("targets", "대상은 " + MAX_TARGETS + "개까지입니다."));
-      }
-      Set<String> seen = new HashSet<>();
-      for (int i = 0; i < in.targets().size(); i++) {
-        Target t = in.targets().get(i);
-        if (!"SKU".equals(t.type()) && !"CATEGORY".equals(t.type()) && !"THEME".equals(t.type())) {
-          out.add(new Problem("targets[" + i + "].type", "SKU·CATEGORY·THEME 중 하나입니다."));
-        } else if ("SKU".equals(t.type()) && !t.id().matches("^[EB]-[0-9]{8}$")) {
-          out.add(new Problem("targets[" + i + "].id", "SKU 코드 모양이 아닙니다(E-/B- 8자리)."));
-        } else if ("THEME".equals(t.type()) && !t.id().matches("^T-[A-Za-z0-9_-]{1,38}$")) {
-          out.add(new Problem("targets[" + i + "].id", "진열 테마 ID 모양이 아닙니다(T-…)."));
-        } else if ("THEME".equals(t.type()) && !themeKinds.containsKey(t.id())) {
-          out.add(
-              new Problem(
-                  "targets[" + i + "].id",
-                  "지금 게시된 진열에 없는 테마입니다(초안에만 있거나 빠짐).",
-                  "THEME_NOT_PUBLISHED"));
-        } else if ("THEME".equals(t.type()) && RANKING_AUTO.equals(themeKinds.get(t.id()))) {
-          out.add(
-              new Problem(
-                  "targets[" + i + "].id",
-                  "자동 랭킹 테마는 상품이 저절로 바뀌어 할인 대상으로 고를 수 없습니다.",
-                  "THEME_AUTO_RANKING"));
-        } else if (!seen.add(t.type() + ":" + t.id())) {
-          out.add(new Problem("targets[" + i + "]", "같은 대상이 두 번 있습니다."));
-        }
-      }
+      checkTargets(in, out, themeKinds);
       if (d.maxAmount() != null) {
         out.add(new Problem("discount.maxAmount", "최대 할인액은 쿠폰에만 씁니다."));
       }
@@ -189,9 +197,65 @@ public final class PromotionRules {
         }
       }
     } else {
-      out.add(new Problem("kind", "PRICE_DISCOUNT 또는 COUPON 입니다."));
+      out.add(new Problem("kind", "PRICE_DISCOUNT·COUPON·QUANTITY_OFFER 중 하나입니다."));
     }
     return out;
+  }
+
+  /** 기간 할인·수량 행사 대상(SKU·카테고리·진열 테마) 검사. */
+  private static void checkTargets(Input in, List<Problem> out, Map<String, String> themeKinds) {
+    if (in.targets().isEmpty()) {
+      out.add(new Problem("targets", "할인할 상품(SKU)·카테고리·진열 테마를 하나 이상 고르세요."));
+    }
+    if (in.targets().size() > MAX_TARGETS) {
+      out.add(new Problem("targets", "대상은 " + MAX_TARGETS + "개까지입니다."));
+    }
+    Set<String> seen = new HashSet<>();
+    for (int i = 0; i < in.targets().size(); i++) {
+      Target t = in.targets().get(i);
+      if (!"SKU".equals(t.type()) && !"CATEGORY".equals(t.type()) && !"THEME".equals(t.type())) {
+        out.add(new Problem("targets[" + i + "].type", "SKU·CATEGORY·THEME 중 하나입니다."));
+      } else if ("SKU".equals(t.type()) && !t.id().matches("^[EB]-[0-9]{8}$")) {
+        out.add(new Problem("targets[" + i + "].id", "SKU 코드 모양이 아닙니다(E-/B- 8자리)."));
+      } else if ("THEME".equals(t.type()) && !t.id().matches("^T-[A-Za-z0-9_-]{1,38}$")) {
+        out.add(new Problem("targets[" + i + "].id", "진열 테마 ID 모양이 아닙니다(T-…)."));
+      } else if ("THEME".equals(t.type()) && !themeKinds.containsKey(t.id())) {
+        out.add(
+            new Problem(
+                "targets[" + i + "].id",
+                "지금 게시된 진열에 없는 테마입니다(초안에만 있거나 빠짐).",
+                "THEME_NOT_PUBLISHED"));
+      } else if ("THEME".equals(t.type()) && RANKING_AUTO.equals(themeKinds.get(t.id()))) {
+        out.add(
+            new Problem(
+                "targets[" + i + "].id",
+                "자동 랭킹 테마는 상품이 저절로 바뀌어 할인 대상으로 고를 수 없습니다.",
+                "THEME_AUTO_RANKING"));
+      } else if (!seen.add(t.type() + ":" + t.id())) {
+        out.add(new Problem("targets[" + i + "]", "같은 대상이 두 번 있습니다."));
+      }
+    }
+  }
+
+  /** 0.5.0 수량 행사 — buy 1~10, free 1~buy, 할인값·쿠폰 설정 없음. */
+  private static void checkOffer(Input in, List<Problem> out) {
+    Offer o = in.offer();
+    if (o == null) {
+      out.add(new Problem("offer", "수량 조건(몇 개 사면 몇 개 더)이 필요합니다."));
+    } else {
+      if (o.buy() < 1 || o.buy() > MAX_OFFER_BUY) {
+        out.add(new Problem("offer.buyQuantity", "사는 수량은 1~" + MAX_OFFER_BUY + "개입니다."));
+      }
+      if (o.free() < 1 || o.free() > o.buy()) {
+        out.add(new Problem("offer.freeQuantity", "더 주는 수량은 1개부터 사는 수량까지입니다."));
+      }
+    }
+    if (in.discount().value() != 0 || in.discount().maxAmount() != null) {
+      out.add(new Problem("discount", "수량 행사에는 할인값을 두지 않습니다."));
+    }
+    if (in.coupon() != null) {
+      out.add(new Problem("coupon", "수량 행사에는 쿠폰 설정을 두지 않습니다."));
+    }
   }
 
   private static void checkRecipients(CouponPolicy c, List<Problem> out) {

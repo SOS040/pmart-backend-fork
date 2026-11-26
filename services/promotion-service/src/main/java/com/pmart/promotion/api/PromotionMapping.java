@@ -33,13 +33,17 @@ final class PromotionMapping {
   static PromotionRules.Input input(PromotionInput in) {
     Discount d = in.getDiscount();
     CouponPolicy c = in.getCoupon();
+    com.pmart.promotion.api.generated.model.QuantityOffer o = in.getOffer();
     List<PromotionTarget> targets = in.getTargets() == null ? List.of() : in.getTargets();
     return new PromotionRules.Input(
         in.getKind().getValue(),
         in.getName(),
         in.getStartsAt().toInstant(),
         in.getEndsAt().toInstant(),
-        new PromotionRules.Discount(d.getType().getValue(), d.getValue(), d.getMaxAmount()),
+        // 0.5.0: 수량 행사는 discount 를 두지 않는다 — 없으면 AMOUNT·0(검사가 다른 종류에선 "1원 이상"으로 막는다)
+        d == null
+            ? new PromotionRules.Discount("AMOUNT", 0, null)
+            : new PromotionRules.Discount(d.getType().getValue(), d.getValue(), d.getMaxAmount()),
         targets.stream()
             .map(t -> new PromotionRules.Target(t.getType().getValue(), t.getId()))
             .toList(),
@@ -52,7 +56,8 @@ final class PromotionMapping {
                 c.getPerCustomerLimit(),
                 c.getUseDays(),
                 c.getUseUntil() == null ? null : c.getUseUntil().toInstant(),
-                recipients(c.getRecipients())));
+                recipients(c.getRecipients())),
+        o == null ? null : new PromotionRules.Offer(o.getBuyQuantity(), o.getFreeQuantity()));
   }
 
   /** 0.3.0 받을 고객 — 순서 그대로(겹침·한도는 검사가 problems 로). */
@@ -80,7 +85,16 @@ final class PromotionMapping {
             .startsAt(odt(r.startsAt()))
             .endsAt(odt(r.endsAt()))
             .endedAt(odt(r.endedAt()))
-            .discount(discount(r.discountType(), r.discountValue(), r.discountMax()))
+            .discount(
+                PromotionRules.QUANTITY_OFFER.equals(r.kind())
+                    ? null
+                    : discount(r.discountType(), r.discountValue(), r.discountMax()))
+            .offer(
+                r.offerBuy() == null
+                    ? null
+                    : new com.pmart.promotion.api.generated.model.QuantityOffer()
+                        .buyQuantity(r.offerBuy())
+                        .freeQuantity(r.offerFree()))
             .targets(
                 new java.util.ArrayList<>(
                     v.targets().stream()
@@ -177,6 +191,20 @@ final class PromotionMapping {
         .state(CouponHold.StateEnum.fromValue(h.state()))
         .discountAmount(Math.toIntExact(h.discountAmount()))
         .couponUsable(h.couponUsable());
+  }
+
+  /** 0.5.0 SKU 수량 행사. */
+  static com.pmart.promotion.api.generated.model.SkuQuantityOffer quantityOffer(
+      com.pmart.promotion.application.QuantityOffers.Result r) {
+    PromotionRow p = r.promotion();
+    return new com.pmart.promotion.api.generated.model.SkuQuantityOffer()
+        .sku(r.sku())
+        .productId(r.productId())
+        .promotionId(p.promotionId())
+        .name(p.name())
+        .buyQuantity(r.offer().buy())
+        .freeQuantity(r.offer().free())
+        .endsAt(odt(p.endsAt()));
   }
 
   static @Nullable OffsetDateTime odt(@Nullable Instant i) {

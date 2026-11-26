@@ -23,8 +23,26 @@ public class InternalController implements InternalApi {
 
   private final PriceDiscounts discounts;
   private final CouponService coupons;
+  private final com.pmart.promotion.application.QuantityOffers offers;
 
-  public InternalController(PriceDiscounts discounts, CouponService coupons) {
+  /** 0.5.0 SKU 별 수량 행사(ADR-0090). */
+  @Override
+  public ResponseEntity<com.pmart.promotion.api.generated.model.ListQuantityOfferItems200Response>
+      lookupQuantityOffers(
+          String skus, java.time.@org.jspecify.annotations.Nullable OffsetDateTime at) {
+    java.time.Instant asOf = offers.asOf(at == null ? null : at.toInstant());
+    return ResponseEntity.ok(
+        new com.pmart.promotion.api.generated.model.ListQuantityOfferItems200Response()
+            .asOf(PromotionMapping.odt(asOf))
+            .items(
+                offers.lookup(skus, asOf).stream().map(PromotionMapping::quantityOffer).toList()));
+  }
+
+  public InternalController(
+      PriceDiscounts discounts,
+      CouponService coupons,
+      com.pmart.promotion.application.QuantityOffers offers) {
+    this.offers = offers;
     this.discounts = discounts;
     this.coupons = coupons;
   }

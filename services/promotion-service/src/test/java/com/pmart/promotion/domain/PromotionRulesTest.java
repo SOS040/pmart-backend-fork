@@ -162,4 +162,56 @@ class PromotionRulesTest {
     assertThat(bad.stream().map(PromotionRules.Problem::field))
         .contains("coupon.recipients.accountIds[1]", "coupon.recipients.reason");
   }
+
+  @Test
+  void quantityOfferRulesFreeQuantityAndRatio() {
+    var oneOne = new PromotionRules.Offer(1, 1);
+    var twoOne = new PromotionRules.Offer(2, 1);
+    assertThat(PromotionRules.freeQuantity(oneOne, 3)).isEqualTo(3);
+    assertThat(PromotionRules.freeQuantity(twoOne, 1)).isZero();
+    assertThat(PromotionRules.freeQuantity(twoOne, 5)).isEqualTo(2);
+    assertThat(PromotionRules.freeQuantity(twoOne, 0)).isZero();
+    assertThat(PromotionRules.compareOffers(oneOne, twoOne)).isPositive();
+    assertThat(PromotionRules.compareOffers(new PromotionRules.Offer(2, 2), oneOne)).isZero();
+
+    java.time.Instant now = java.time.Instant.parse("2026-11-26T00:00:00Z");
+    var target = List.of(new Target("SKU", "E-00000001"));
+    var ok =
+        new Input(
+            "QUANTITY_OFFER",
+            "1+1",
+            now,
+            now.plusSeconds(3600),
+            new Discount("AMOUNT", 0, null),
+            target,
+            null,
+            oneOne);
+    assertThat(PromotionRules.check(ok, now)).isEmpty();
+    var bad =
+        new Input(
+            "QUANTITY_OFFER",
+            "x",
+            now,
+            now.plusSeconds(3600),
+            new Discount("RATE", 10, null),
+            List.of(),
+            null,
+            new PromotionRules.Offer(11, 0));
+    assertThat(PromotionRules.check(bad, now))
+        .extracting(PromotionRules.Problem::field)
+        .contains("offer.buyQuantity", "offer.freeQuantity", "discount", "targets");
+    var offerOnDiscount =
+        new Input(
+            "PRICE_DISCOUNT",
+            "x",
+            now,
+            now.plusSeconds(3600),
+            new Discount("RATE", 10, null),
+            target,
+            null,
+            oneOne);
+    assertThat(PromotionRules.check(offerOnDiscount, now))
+        .extracting(PromotionRules.Problem::field)
+        .contains("offer");
+  }
 }

@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 
 /** 행사·쿠폰·점유·상품 사본 저장(ADR-0082). 명시 SQL(JDBC). */
@@ -45,7 +46,74 @@ public class PromotionStore {
       int version,
       String createdBy,
       Instant createdAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      @Nullable Integer offerBuy,
+      @Nullable Integer offerFree) {
+
+    /** 수량 행사 칸 없이(그 밖 종류). */
+    public PromotionRow(
+        String promotionId,
+        String kind,
+        String name,
+        String state,
+        Instant startsAt,
+        Instant endsAt,
+        @Nullable Instant endedAt,
+        String discountType,
+        int discountValue,
+        @Nullable Integer discountMax,
+        @Nullable String issueMode,
+        @Nullable Long minOrderAmount,
+        @Nullable Integer totalQuantity,
+        @Nullable Integer perCustomerLimit,
+        @Nullable Integer useDays,
+        @Nullable Instant useUntil,
+        int issuedCount,
+        int usedCount,
+        String input,
+        @Nullable String draftHash,
+        @Nullable String approvalId,
+        @Nullable String endHash,
+        @Nullable String endReason,
+        int version,
+        String createdBy,
+        Instant createdAt,
+        Instant updatedAt) {
+      this(
+          promotionId,
+          kind,
+          name,
+          state,
+          startsAt,
+          endsAt,
+          endedAt,
+          discountType,
+          discountValue,
+          discountMax,
+          issueMode,
+          minOrderAmount,
+          totalQuantity,
+          perCustomerLimit,
+          useDays,
+          useUntil,
+          issuedCount,
+          usedCount,
+          input,
+          draftHash,
+          approvalId,
+          endHash,
+          endReason,
+          version,
+          createdBy,
+          createdAt,
+          updatedAt,
+          null,
+          null);
+    }
+  }
+
+  /** 0.5.0 진행 중 수량 행사가 걸린 SKU 한 줄(행사 + 상품 사본의 상품 ID). */
+  public record OfferTarget(String sku, @Nullable String productId, PromotionRow promotion) {}
 
   public record CouponRow(
       String couponId,
@@ -89,7 +157,7 @@ public class PromotionStore {
                 + " discount_type = ?, discount_value = ?, discount_max = ?, issue_mode = ?,"
                 + " min_order_amount = ?, total_quantity = ?, per_customer_limit = ?, use_days = ?,"
                 + " use_until = ?, input = ?::jsonb, draft_hash = NULL, version = version + 1,"
-                + " updated_at = ? WHERE promotion_id = ?",
+                + " updated_at = ?, offer_buy = ?, offer_free = ? WHERE promotion_id = ?",
             r.kind(),
             r.name(),
             ts(r.startsAt()),
@@ -105,13 +173,16 @@ public class PromotionStore {
             ts(r.useUntil()),
             r.input(),
             ts(r.updatedAt()),
+            r.offerBuy(),
+            r.offerFree(),
             r.promotionId());
     if (n == 0) {
       jdbc.update(
           "INSERT INTO promotion (promotion_id, kind, name, state, starts_at, ends_at, discount_type,"
               + " discount_value, discount_max, issue_mode, min_order_amount, total_quantity,"
               + " per_customer_limit, use_days, use_until, input, version, created_by, created_at,"
-              + " updated_at) VALUES (?,?,?,'DRAFT',?,?,?,?,?,?,?,?,?,?,?,?::jsonb,0,?,?,?)",
+              + " updated_at, offer_buy, offer_free)"
+              + " VALUES (?,?,?,'DRAFT',?,?,?,?,?,?,?,?,?,?,?,?::jsonb,0,?,?,?,?,?)",
           r.promotionId(),
           r.kind(),
           r.name(),
@@ -129,7 +200,9 @@ public class PromotionStore {
           r.input(),
           r.createdBy(),
           ts(r.createdAt()),
-          ts(r.updatedAt()));
+          ts(r.updatedAt()),
+          r.offerBuy(),
+          r.offerFree());
     }
   }
 
@@ -268,6 +341,15 @@ public class PromotionStore {
    * 상품(sku_product)으로).
    */
   public List<Candidate> priceCandidates(Collection<String> skus, Instant at) {
+    return candidates("PRICE_DISCOUNT", skus, at);
+  }
+
+  /** 0.5.0 수량 행사 후보(대상 판정은 기간 할인과 같다). */
+  public List<Candidate> offerCandidates(Collection<String> skus, Instant at) {
+    return candidates("QUANTITY_OFFER", skus, at);
+  }
+
+  private List<Candidate> candidates(String kind, Collection<String> skus, Instant at) {
     if (skus.isEmpty()) {
       return List.of();
     }
@@ -275,7 +357,7 @@ public class PromotionStore {
     return jdbc.query(
         "SELECT p.*, t.target_type AS t_type, t.target_id AS t_id FROM promotion p"
             + " JOIN promotion_target t ON t.promotion_id = p.promotion_id"
-            + " WHERE p.kind = 'PRICE_DISCOUNT' AND p.state = 'APPROVED' AND p.starts_at <= ?"
+            + " WHERE p.kind = ? AND p.state = 'APPROVED' AND p.starts_at <= ?"
             + " AND p.ends_at > ? AND (p.ended_at IS NULL OR p.ended_at > ?)"
             + " AND ((t.target_type = 'SKU' AND t.target_id = ANY (?::varchar[]))"
             + " OR (t.target_type = 'CATEGORY' AND t.target_id IN"
@@ -285,12 +367,48 @@ public class PromotionStore {
             + " JOIN sku_product sp ON sp.product_id = tp.product_id"
             + " WHERE sp.sku = ANY (?::varchar[]))))",
         (rs, i) -> new Candidate(promotion(rs), rs.getString("t_type"), rs.getString("t_id")),
+        kind,
         ts(at),
         ts(at),
         ts(at),
         arr,
         arr,
         arr);
+  }
+
+  /**
+   * 0.5.0 진행 중 수량 행사가 걸린 SKU 전부(카테고리·테마는 상품 사본으로 펼침) — 한 SKU 에 행사가 여럿이면 여러 줄. 상품 사본(sku_product)이
+   * 있는 SKU 만(카테고리·테마 대상은 사본으로만 알 수 있고, SKU 대상도 카드를 만들려면 상품 ID 가 필요).
+   */
+  public List<OfferTarget> runningOfferTargets(Instant at) {
+    Timestamp t = Timestamp.from(at);
+    return jdbc.query(
+        "SELECT sp.sku AS o_sku, sp.product_id AS o_product, p.* FROM promotion p"
+            + " JOIN promotion_target pt ON pt.promotion_id = p.promotion_id"
+            + " JOIN sku_product sp ON (pt.target_type = 'SKU' AND sp.sku = pt.target_id)"
+            + " OR (pt.target_type = 'CATEGORY' AND sp.sku IN"
+            + " (SELECT sc.sku FROM sku_category sc WHERE sc.category_id = pt.target_id))"
+            + " OR (pt.target_type = 'THEME' AND sp.product_id IN"
+            + " (SELECT tp.product_id FROM theme_copy_product tp WHERE tp.section_id = pt.target_id))"
+            + " WHERE p.kind = 'QUANTITY_OFFER' AND p.state = 'APPROVED' AND p.starts_at <= ?"
+            + " AND p.ends_at > ? AND (p.ended_at IS NULL OR p.ended_at > ?)",
+        (rs, i) -> new OfferTarget(rs.getString("o_sku"), rs.getString("o_product"), promotion(rs)),
+        t,
+        t,
+        t);
+  }
+
+  /** SKU → 상품 ID(상품 사본). */
+  public Map<String, String> productsOf(Collection<String> skus) {
+    Map<String, String> out = new HashMap<>();
+    if (skus.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT sku, product_id FROM sku_product WHERE sku = ANY (?::varchar[])",
+        (RowCallbackHandler) rs -> out.put(rs.getString("sku"), rs.getString("product_id")),
+        "{" + String.join(",", skus) + "}");
+    return out;
   }
 
   /** SKU → 그 상품이 든 진열 테마 sectionId(받아 둔 사본, 0.3.0). */
@@ -515,7 +633,9 @@ public class PromotionStore {
         rs.getInt("version"),
         rs.getString("created_by"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        (Integer) rs.getObject("offer_buy"),
+        (Integer) rs.getObject("offer_free"));
   }
 
   private static CouponRow coupon(ResultSet rs) throws SQLException {

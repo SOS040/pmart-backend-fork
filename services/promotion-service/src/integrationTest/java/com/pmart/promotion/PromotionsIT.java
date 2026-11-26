@@ -302,6 +302,101 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
     return "E-" + String.format("%08d", (int) (Math.random() * 90_000_000) + 10_000_000);
   }
 
+  Map<String, Object> quantityOffer(String name, int buy, int free, List<?> targets) {
+    Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("kind", "QUANTITY_OFFER");
+    m.put("name", name);
+    m.put("startsAt", now.minus(1, ChronoUnit.MINUTES).toString());
+    m.put("endsAt", now.plus(1, ChronoUnit.DAYS).toString());
+    m.put("offer", Map.of("buyQuantity", buy, "freeQuantity", free));
+    m.put("targets", targets);
+    return m;
+  }
+
+  /**
+   * 0.5.0 수량 행사(ADR-0090): 할인값 없이 offer 로 만들고 승인 → 내부 조회는 SKU 마다 무료 비율이 큰 1개(1+1 > 2+1), 카테고리 대상은
+   * 상품 사본으로 펼침, 고객 목록(+1 하나더)은 진행 중 SKU 와 상품 ID. 할인값을 같이 주거나 offer 가 없으면 제출이 막힌다.
+   */
+  @Test
+  void quantityOffersPickTheBestRatioAndListRunningSkus() throws Exception {
+    String skuA = randomSku();
+    String skuB = randomSku();
+    String productA = "PRD-" + UUID.randomUUID();
+    String productB = "PRD-" + UUID.randomUUID();
+    String cat = "p" + (int) (Math.random() * 900 + 100);
+    productPublished(productA, skuA, List.of());
+    productPublished(productB, skuB, List.of(cat + "-c01"));
+    await(
+        () ->
+            jdbc.queryForObject(
+                "SELECT count(*) FROM sku_product WHERE sku IN (?, ?)", Integer.class, skuA, skuB),
+        n -> n != null && n == 2);
+
+    // 검사: offer 없음·할인값 같이 줌 → problems
+    Map<String, Object> noOffer =
+        quantityOffer("x", 1, 1, List.of(Map.of("type", "SKU", "id", skuA)));
+    noOffer.remove("offer");
+    Res noOfferRes = send("POST", MKT, "/promotions", noOffer);
+    assertThat(noOfferRes.body().path("problems").toString())
+        .as(noOfferRes.status() + " " + noOfferRes.body())
+        .contains("offer");
+    Map<String, Object> withDiscount =
+        quantityOffer("x", 1, 1, List.of(Map.of("type", "SKU", "id", skuA)));
+    withDiscount.put("discount", Map.of("type", "RATE", "value", 10));
+    assertThat(send("POST", MKT, "/promotions", withDiscount).body().path("problems").toString())
+        .contains("discount");
+    assertThat(
+            send(
+                    "POST",
+                    MKT,
+                    "/promotions",
+                    quantityOffer("x", 1, 2, List.of(Map.of("type", "SKU", "id", skuA))))
+                .body()
+                .path("problems")
+                .toString())
+        .contains("offer.freeQuantity");
+
+    // A: 2+1(SKU) 와 1+1(SKU) → 1+1, B: 카테고리 2+1
+    approved(quantityOffer("A 2+1", 2, 1, List.of(Map.of("type", "SKU", "id", skuA))));
+    String oneOne =
+        approved(quantityOffer("A 1+1", 1, 1, List.of(Map.of("type", "SKU", "id", skuA))));
+    String catOffer =
+        approved(quantityOffer("카테고리 2+1", 2, 1, List.of(Map.of("type", "CATEGORY", "id", cat))));
+    Res got = send("GET", MKT, "/promotions/" + oneOne, null);
+    assertThat(got.body().path("kind").asString()).isEqualTo("QUANTITY_OFFER");
+    assertThat(got.body().path("discount").isNull() || got.body().path("discount").isMissingNode())
+        .isTrue();
+    assertThat(got.body().path("offer").path("buyQuantity").asInt()).isEqualTo(1);
+
+    Res lookup =
+        send(
+            "GET",
+            null,
+            "/internal/quantity-offers?skus=" + skuA + "," + skuB + ",E-00000000",
+            null);
+    assertThat(lookup.status()).as(lookup.body().toString()).isEqualTo(200);
+    Map<String, JsonNode> bySku = new LinkedHashMap<>();
+    lookup.body().path("items").forEach(i -> bySku.put(i.path("sku").asString(), i));
+    assertThat(bySku).containsOnlyKeys(skuA, skuB);
+    assertThat(bySku.get(skuA).path("promotionId").asString()).isEqualTo(oneOne);
+    assertThat(bySku.get(skuA).path("productId").asString()).isEqualTo(productA);
+    assertThat(bySku.get(skuB).path("promotionId").asString()).isEqualTo(catOffer);
+    assertThat(bySku.get(skuB).path("buyQuantity").asInt()).isEqualTo(2);
+    // 수량 행사는 기간 할인 조회에 섞이지 않는다
+    assertThat(discounts(Map.of(skuA, 1000))).isEmpty();
+    assertThat(send("GET", null, "/internal/quantity-offers?skus=", null).status()).isEqualTo(400);
+
+    // 고객 목록: 진행 중 SKU 마다 1개
+    Res list =
+        send("GET", TestJwt.customer("CU-qo"), "/promotions/quantity-offer-items?limit=200", null);
+    assertThat(list.status()).as(list.body().toString()).isEqualTo(200);
+    Map<String, JsonNode> listed = new LinkedHashMap<>();
+    list.body().path("items").forEach(i -> listed.put(i.path("sku").asString(), i));
+    assertThat(listed.get(skuA).path("promotionId").asString()).isEqualTo(oneOne);
+    assertThat(listed.get(skuB).path("productId").asString()).isEqualTo(productB);
+  }
+
   @Test
   void periodDiscountsBySkuAndCategoryTakeTheLargestAndEndEarly() throws Exception {
     String skuA = randomSku();
