@@ -59,6 +59,14 @@ def tput(name, pct, inner):
             + '</ThroughputController><hashTree>' + inner + '</hashTree>')
 
 
+def when_pid(name, inner):
+    # 검색 결과가 0건이면 pid·sku 가 NONE — 그때는 상세·담기를 보내지 않는다(2026-11-27 첫 시험에서 404·400 이 오류로 셈)
+    return (f'<IfController guiclass="IfControllerPanel" testclass="IfController" testname="{x(name)}">'
+            + s("IfController.condition", '${__jexl3("${pid}" != "NONE")}')
+            + b("IfController.evaluateAll", False) + b("IfController.useExpression", True)
+            + '</IfController><hashTree>' + inner + '</hashTree>')
+
+
 def csv(name, file, vars_):
     return (f'<CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="{x(name)}">'
             + s("filename", file) + s("fileEncoding", "UTF-8") + s("variableNames", vars_) + b("ignoreFirstLine", False)
@@ -76,22 +84,35 @@ seed = ('<OnceOnlyController guiclass="OnceOnlyControllerGui" testclass="OnceOnl
 browse = tput("둘러보기 40%", 40.0,
               http("홈 /storefront/home", "GET", "/api/v1/storefront/home?mfcId=${mfcId}")
               + http("카테고리 사진 /search/category-images", "GET", "/api/v1/search/category-images?mfcId=${mfcId}")
-              + http("상품 상세 /product-contents/{id}", "GET", "/api/v1/product-contents/${pid}?mfcId=${mfcId}"))
+              + when_pid("상품 있을 때", http("상품 상세 /product-contents/{id}", "GET", "/api/v1/product-contents/${pid}?mfcId=${mfcId}")))
 srch = tput("검색 30%", 30.0,
             search + http("자동완성 /search/suggestions", "GET", "/api/v1/search/suggestions?q=${__urlencode(${kw})}"))
 cart = tput("장바구니 20%", 20.0,
             http("장바구니 열기 POST /carts", "POST", "/api/v1/carts", '{"mfcId":"${mfcId}"}',
                  idem() + jp(["cartId", "cartVersion"], ["$.cartId", "$.cartVersion"], ["NONE", "0"]))
-            + http("담기 POST /carts/{id}/items", "POST", "/api/v1/carts/${cartId}/items",
+            + when_pid("상품 있을 때", http("담기 POST /carts/{id}/items", "POST", "/api/v1/carts/${cartId}/items",
                    '{"sku":"${sku}","quantity":1,"expectedVersion":${cartVersion}}',
                    idem() + jp(["cartItemId"], ["$.cartItemId"], ["NONE"]))
             + http("장바구니 보기 GET /carts/{id}", "GET", "/api/v1/carts/${cartId}")
             + http("빼기 DELETE /carts/{id}/items/{item}", "DELETE", "/api/v1/carts/${cartId}/items/${cartItemId}",
-                   children=idem()))
+                   children=idem())))
 info = tput("배송·쿠폰 10%", 10.0,
             http("배송 옵션 /delivery-options", "GET", "/api/v1/delivery-options?mfcId=${mfcId}&itemAmount=20000")
             + http("배송 시간대 /slots", "GET", "/api/v1/slots?mfcId=${mfcId}&date=${__time(yyyy-MM-dd,)}")
             + http("쿠폰 목록 /coupon-campaigns", "GET", "/api/v1/coupon-campaigns"))
+
+# 비회원 토큰은 스레드마다 하나 고정(스레드 번호 % 줄 수). CSV Data Set 은 반복마다 다음 줄로 넘어가 스레드끼리 토큰을 돌려 써서
+# 같은 비회원 장바구니를 동시에 고쳐 담기 409(버전 충돌)가 났다(2026-11-27 100명 — 256건). 첫 요청 전에 한 번만 읽는다.
+TOKEN_SCRIPT = """if (vars.get('token') == null) {
+  def f = new File(Parameters)
+  if (!f.isAbsolute()) { f = new File(org.apache.jmeter.services.FileServer.getFileServer().getBaseDir(), Parameters) }
+  def lines = f.readLines('UTF-8').findAll { it.trim() }
+  def p = lines[ctx.getThreadNum() % lines.size()].split(',')
+  vars.put('device', p[0].trim()); vars.put('token', p[1].trim())
+}"""
+token_per_thread = ('<JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="비회원 토큰 — 스레드마다 하나">'
+                    + s("scriptLanguage", "groovy") + s("parameters", "${__P(tokens,out/tokens.csv)}") + s("filename", "")
+                    + s("cacheKey", "true") + s("script", TOKEN_SCRIPT) + '</JSR223PreProcessor><hashTree/>')
 
 tg = ('<ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="비회원 고객">'
       + s("ThreadGroup.on_sample_error", "continue")
@@ -101,8 +122,9 @@ tg = ('<ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="
       + b("ThreadGroup.scheduler", True) + s("ThreadGroup.duration", "${__P(duration,300)}") + s("ThreadGroup.delay", "0")
       + b("ThreadGroup.same_user_on_next_iteration", True)
       + '</ThreadGroup><hashTree>'
-      + '<UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="생각 시간 1~3초">'
-      + s("ConstantTimer.delay", "1000") + s("RandomTimer.range", "2000") + '</UniformRandomTimer><hashTree/>'
+      + '<UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="생각 시간(기본 1~3초, -JthinkMin·-JthinkRange ms)">'
+      + s("ConstantTimer.delay", "${__P(thinkMin,1000)}") + s("RandomTimer.range", "${__P(thinkRange,2000)}") + '</UniformRandomTimer><hashTree/>'
+      + token_per_thread
       + seed + browse + srch + cart + info + '</hashTree>')
 
 plan = ('<?xml version="1.0" encoding="UTF-8"?>\n<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3"><hashTree>'
@@ -112,7 +134,6 @@ plan = ('<?xml version="1.0" encoding="UTF-8"?>\n<jmeterTestPlan version="1.2" p
         + "".join(f'<elementProp name="{k}" elementType="Argument">{s("Argument.name", k)}{s("Argument.value", v)}{s("Argument.metadata", "=")}</elementProp>'
                   for k, v in [("host", "${__P(host,192.168.0.40)}"), ("port", "${__P(port,8443)}"), ("mfcId", "${__P(mfcId,MFC-BJG-01)}")])
         + '</collectionProp></elementProp></TestPlan><hashTree>'
-        + csv("비회원 토큰(guest_tokens.py)", "${__P(tokens,out/tokens.csv)}", "device,token")
         + csv("검색어", "${__P(keywords,keywords.csv)}", "kw")
         + ('<ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="HTTP 기본값">'
            + '<elementProp name="HTTPsampler.Arguments" elementType="Arguments"><collectionProp name="Arguments.arguments"/></elementProp>'

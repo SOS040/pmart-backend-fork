@@ -264,7 +264,7 @@ AI 상담(RAG) ─(토큰 없이, ADR-0083)─▶ search-service
 ### 14-1. 하는 일
 - 키워드 검색(BM25)은 그대로 두고 **더한다**. 검색할 때 LLM 글 생성은 쓰지 않는다(CPU 에서 수 초) — 늘어나는 것은 검색어 임베딩 한 번뿐.
 - 미리(뒤 작업): 상품마다 LLM(qwen3:4b)이 색·맛·식감·쓰임 같은 짧은 낱말을 최대 12개 뽑아 `aiTags`, 상품명·카테고리·꼬리표·설명 앞부분을 임베딩(qwen3-embedding:0.6b)해 `semanticVector`.
-- 검색할 때: 키워드 cross_fields 에 `aiTags` 를 더하고, 관련도 정렬일 때 검색어 벡터 kNN(`similarity` 0.55·`knn-boost` 3·`knn-k` 20)을 섞는다. 거르기(센터 취급·판매중지·필터)는 kNN 에도 같이. 초성·할인율순에서는 쓰지 않는다. kNN 이 실패하면 키워드만 다시.
+- 검색할 때: 키워드 cross_fields 에 `aiTags` 를 더하고, 관련도 정렬일 때 검색어 벡터 kNN(`similarity` 0.52 — 2026-11-27 0.55 에서 내림, LAN 반영 pmart-config e56daf1, 검색어 30개 비교 `docs/operations/2026-11-27-jmeter-load-test-result.md` §7·`knn-boost` 3·`knn-k` 20)을 섞는다. 거르기(센터 취급·판매중지·필터)는 kNN 에도 같이. 초성·할인율순에서는 쓰지 않는다. kNN 이 실패하면 키워드만 다시.
 - 꼬리표는 **고객 화면에 보이지 않는다**(검색 전용). 금지 낱말(원산지·유기농·영양·알레르기·효능·최저가·보관 주의)·상품명에 있는 낱말은 버린다(`SemanticRules.parseTags`).
 
 ### 14-2. 설정 (pmart-config `search-service-lan.yml` `pmart.search.semantic.*`)
