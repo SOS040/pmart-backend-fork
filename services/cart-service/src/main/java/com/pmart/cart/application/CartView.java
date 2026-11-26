@@ -51,7 +51,12 @@ public class CartView {
       @Nullable Integer discountRatePercent,
       @Nullable String discountName,
       String saleState,
-      CartRules.Availability availability) {}
+      CartRules.Availability availability,
+      // 0.6.0 ADR-0090 — 수량 행사(없으면 null·0)
+      @Nullable String offerName,
+      int offerBuy,
+      int offerFree,
+      int freeQuantity) {}
 
   public record Source(String system, boolean available, Instant asOf) {}
 
@@ -128,6 +133,7 @@ public class CartView {
       CatalogClient.Price price = prices.get(i.sku());
       CatalogClient.Sku d = details.get(i.sku());
       CatalogClient.Stock s = stock.get(i.sku());
+      int free = price == null ? 0 : price.freeQuantity(i.quantity());
       lines.add(
           new Line(
               i,
@@ -141,7 +147,12 @@ public class CartView {
               d == null ? "UNKNOWN" : d.saleState(),
               s == null
                   ? CartRules.Availability.UNKNOWN
-                  : CartRules.availability(s.available(), s.handlingEnabled(), i.quantity())));
+                  // 수량 행사 무료분까지(주문서와 같은 총 수량)
+                  : CartRules.availability(s.available(), s.handlingEnabled(), i.quantity() + free),
+              price == null ? null : price.offerName(),
+              price == null ? 0 : price.offerBuy(),
+              price == null ? 0 : price.offerFree(),
+              free));
       if (i.selected()) {
         if (price == null) {
           amountKnown = false;

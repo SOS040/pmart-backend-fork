@@ -418,6 +418,37 @@ class CartFlowIT extends PostgresKafkaContainerSupport {
     assertThat(sale.path("selectedListAmount").asInt())
         .isEqualTo(9_500); // 0.5.0 BR-97 할인 전 1900 × 5
     assertThat(sale.path("minOrderShortfall").asInt()).isEqualTo(6_450);
+    // 수량 행사(0.6.0, ADR-0090): 1+1 이면 담은 5개(유상)에 무료 5 — 합계는 유상만, 기간 할인가는 없다
+    json(
+        WireMock.get(urlPathEqualTo("/api/v1/prices")),
+        Map.of(
+            "items",
+            List.of(
+                Map.of(
+                    "sku",
+                    "E-00000001",
+                    "basePrice",
+                    1900,
+                    "priceVersion",
+                    1,
+                    "discountAvailable",
+                    true,
+                    "quantityOffer",
+                    Map.of(
+                        "promotionId", "PRM-11",
+                        "name", "두부 1+1",
+                        "buyQuantity", 1,
+                        "freeQuantity", 1,
+                        "endsAt", "2026-12-01T00:00:00Z")))));
+    JsonNode offer = get("/carts/" + guestCart, guest).body();
+    JsonNode offerDisplay = offer.path("items").path(0).path("display");
+    assertThat(offerDisplay.path("quantityOffer").path("name").asString()).isEqualTo("두부 1+1");
+    assertThat(offerDisplay.path("freeQuantity").asInt()).isEqualTo(5);
+    assertThat(
+            offerDisplay.path("salePrice").isNull()
+                || offerDisplay.path("salePrice").isMissingNode())
+        .isTrue();
+    assertThat(offer.path("selectedItemAmount").asInt()).isEqualTo(9_500);
     json(
         WireMock.get(urlPathEqualTo("/api/v1/prices")),
         Map.of(

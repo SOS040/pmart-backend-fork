@@ -77,7 +77,16 @@ final class CartMapping {
                 .saleState(CartItemDisplay.SaleStateEnum.fromValue(l.saleState()))
                 // 담당 MFC 가용 사본(불명은 UNKNOWN, 0 아님). 담기를 막지 않는다
                 .availability(CartItemDisplay.AvailabilityEnum.fromValue(l.availability().state()))
-                .availableQty(l.availability().exposedQty()));
+                .availableQty(l.availability().exposedQty())
+                // 0.6.0 ADR-0090 수량 행사
+                .quantityOffer(
+                    l.offerName() == null
+                        ? null
+                        : new com.pmart.cart.api.generated.model.CartItemDisplayQuantityOffer()
+                            .name(l.offerName())
+                            .buyQuantity(l.offerBuy())
+                            .freeQuantity(l.offerFree()))
+                .freeQuantity(l.freeQuantity()));
   }
 
   static CartChangeResult change(ChangeResult r) {

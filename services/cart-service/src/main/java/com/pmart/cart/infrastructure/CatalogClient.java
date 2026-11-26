@@ -40,7 +40,18 @@ public class CatalogClient {
       int version,
       @Nullable Long salePrice,
       @Nullable Integer ratePercent,
-      @Nullable String discountName) {
+      @Nullable String discountName,
+      // 수량 행사(0.6.0 ADR-0090, pricing 0.4.1 quantityOffer) — 없으면 null·0
+      @Nullable String offerName,
+      int offerBuy,
+      int offerFree) {
+
+    /** 유상 수량에 붙는 무료 수량(표시용 — 주문서 견적이 최종). pricing·promotion 과 같은 식. */
+    public int freeQuantity(int paidQuantity) {
+      return offerBuy <= 0 || offerFree <= 0 || paidQuantity <= 0
+          ? 0
+          : (paidQuantity / offerBuy) * offerFree;
+    }
 
     /** 합계에 쓰는 단가 — 할인가가 있으면 할인가. */
     public long effective() {
@@ -220,6 +231,8 @@ public class CatalogClient {
     for (JsonNode p : mapper.readTree(raw == null ? "{}" : raw).path("items")) {
       JsonNode d = p.path("discount");
       boolean sale = d.path("salePrice").isNumber();
+      JsonNode o = p.path("quantityOffer");
+      boolean offer = o.path("buyQuantity").isNumber();
       out.put(
           p.path("sku").asString(),
           new Price(
@@ -227,7 +240,10 @@ public class CatalogClient {
               p.path("priceVersion").asInt(),
               sale ? d.path("salePrice").asLong() : null,
               sale ? d.path("ratePercent").asInt() : null,
-              sale ? d.path("name").asString(null) : null));
+              sale ? d.path("name").asString(null) : null,
+              offer ? o.path("name").asString("") : null,
+              offer ? o.path("buyQuantity").asInt() : 0,
+              offer ? o.path("freeQuantity").asInt() : 0));
     }
     return out;
   }

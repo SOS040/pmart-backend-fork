@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cart-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
+    0.6.0(2026-11-26, ADR-0090 수량 행사 1+1·2+1): 품목 `quantity` 는 유상 수량. 표시 사본에 `quantityOffer`(이름·buy·free — pricing /prices 사본)와
+      `freeQuantity`(= ⌊quantity ÷ buy⌋ × free, 행사 없으면 0). 합계는 유상 수량만(무료분 0원). 재고 표시(availability)는 총 수량(quantity + freeQuantity)으로 본다 —
+      주문서도 총 수량으로 재고를 확인한다. 실제 무료 수량은 주문서 견적이 정한다.
     0.5.0(2026-11-25, 클라이언트 BR-97 "할인가 표시해" — 장바구니 막대 할인 전 합계 줄긋기): `Cart.selectedListAmount` = 선택 품목의 기간 할인 **전** 단가(기본가) 합계(주문 초안 `Quote.baseItemAmount` 와 같은 기준). `selectedItemAmount` 가 null 이면 null. 언제나 selectedItemAmount + selectedDiscountAmount 와 같다.
     0.4.0(2026-11-21, ADR-0082 4단계 할인가 표시): 품목 표시에 기간 할인 `salePrice`·`discountRatePercent`·`discountName`(pricing `/prices` 의 discount 사본).
     `selectedItemAmount` 는 **기간 할인 뒤** 단가 합계(주문 초안 최소주문 판정과 같은 기준 — 쿠폰 전), `selectedDiscountAmount` = 그 기간 할인 합계. 결제 금액은 주문서 견적.
@@ -379,6 +382,18 @@ components:
             salePrice: { type: [integer, 'null'], minimum: 0, description: '(0.4.0) 기간 할인가(개당). 할인 없거나 모르면 null — unitPrice 를 보인다' }
             discountRatePercent: { type: [integer, 'null'], description: '(0.4.0) 할인율(내림, %)' }
             discountName: { type: [string, 'null'], description: '(0.4.0) 행사 이름' }
+            quantityOffer:
+              x-added-in: '2026-11-26'
+              description: '(0.6.0 ADR-0090) 지금 걸린 수량 행사(1+1·2+1). 없으면 null. 걸리면 salePrice 는 null(기간 할인과 겹치지 않음)'
+              oneOf:
+                - type: 'null'
+                - type: object
+                  required: [name, buyQuantity, freeQuantity]
+                  properties:
+                    name: { type: string }
+                    buyQuantity: { type: integer }
+                    freeQuantity: { type: integer }
+            freeQuantity: { type: integer, minimum: 0, x-added-in: '2026-11-26', description: '(0.6.0) 이 수량에 붙는 무료 수량(표시용 — 주문서 견적이 최종)' }
             saleState: { type: string, enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED, UNKNOWN] }
             availability:
               type: string
