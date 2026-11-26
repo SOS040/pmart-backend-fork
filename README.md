@@ -1,3 +1,10 @@
+<div align="center">
+
+[동성인재개발교육원](https://www.dshrd.or.kr/)<br>
+교과과정: [클라우드 AI기반 마이크로서비스 풀스택(리액트/자바) 개발](https://www.work24.go.kr/hr/a/a/3100/selectTracseDetl.do?tracseId=AIG20250000501497&tracseTme=2&cstmConsTme=&crseTracseSe=C0061&trainstCstmrId=&tracseReqstsCd=&focusId=)
+
+</div>
+
 # PMart Backend
 
 퀵 커머스(도심 소형 풀필먼트 기반 즉시·예약 배달) 백엔드. Spring Boot 마이크로서비스 / Gradle Multi-Project (Kotlin DSL) / Java 21.
@@ -63,11 +70,22 @@ flowchart LR
 - 아키텍처: `docs/architecture/architecture-design.md`, 결정 기록 `docs/adr/`
 - 작업 일지: `docs/worklog/`
 
+## 팀
+
+| 이름 | 비즈니스 로직 | 개발 |
+|---|---|---|
+| 배희지 | Commerce | 플랫폼(로그인·인증, 인사, 승인, API 게이트웨이, 공통 라이브러리, LAN 배포), 커머스·주문·결제·검색 서비스 |
+| 오화실 | SCM | AI 상담(RAG) |
+| 윤서영 | Delivery, TMS, MFC·DC 규모 | 라스트마일 배송·라이더 서비스, CDC(중앙 물류센터) 서비스 |
+| 이유현 | MFC | MFC 서비스 |
+| 이종근 | WMS | 백오피스 서버(backoffice-bff)·상담/사건 서비스 |
+| 전소영 | OMS | AI 상담(RAG) |
+
+앱·웹 담당까지 포함한 전체 팀 구성은 조직 페이지 [code-and-pick](https://github.com/code-and-pick#팀)에 있다.
+
 ---
 
 <div align="center">
-
-**동성인재개발교육원** — https://www.dshrd.or.kr/
 
 지도: 서성원 훈련 교사
 
